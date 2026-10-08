@@ -19,7 +19,13 @@ struct globalvars_s { float value[2]; };
 #define countof(a) (sizeof(a)/sizeof((a)[0]))
 #define min(a,b) ((a)<(b)?(a):(b))
 #define max(a,b) ((a)>(b)?(a):(b))
-#define IS_NAN(f) (!isfinite(f))
+static int HostNonFinite(float f)
+{
+	uint32_t bits;
+	memcpy(&bits,&f,sizeof(bits));
+	return (bits & (255u<<23)) == (255u<<23); //same NaN/Inf bit predicate as FTE
+}
+#define IS_NAN(f) HostNonFinite(f)
 #define Vector4Copy(a,b) memcpy((b),(a),sizeof(float)*4)
 #include "ui_abi.h"
 typedef struct plugin_s { pluguiservice_t nativeui; } plugin_t;
@@ -88,7 +94,9 @@ int main(void)
 	pluguiservice_t service = {sizeof(service),PLUGUI_VERSION,PLUGUI_CAP_INDEXED2D,Open,Draw,Close}, bad;
 	srect_t clip = {0.1875f,0.5f,0.28125f,0.25f,-99999,99999};
 	float m,c,old,box[4]={0,0,640,480};
-	unsigned int before;
+	unsigned int before, native_before, flush_before;
+	float invalidclip[3] = {NAN,INFINITY,3.4e38f};
+	unsigned int j;
 	currentplug=&plugins[0];
 	CHECK(!Plug_NativeUI_Register(NULL,sizeof(service)));
 	CHECK(!Plug_NativeUI_Register(&service,sizeof(service)-1));
@@ -162,6 +170,18 @@ int main(void)
 	currentplug=&plugins[1]; service.Open=Open; CHECK(Plug_NativeUI_Register(&service,sizeof(service)));
 	old=m; m=Call(PF_ui_native_open,&menu,101); CHECK(m>old);
 	CHECK(Call(PF_ui_native_close,&menu,m)==1);
+	//Inherited non-finite clips (including finite -> physical overflow) fail
+	//before any native callback/flush, and release the partially-open owner once.
+	for (j=0;j<countof(invalidclip);j++)
+	{
+		m=Call(PF_ui_native_open,&menu,101);
+		clip.x=invalidclip[j]; Plug_NativeUI_SetClip(&menu,&clip);
+		host_framecount++; native_before=draws; before=closes; flush_before=flushes;
+		CHECK(!Call(PF_ui_native_draw,&menu,m) && draws==native_before);
+		CHECK(closes==before+1 && flushes==flush_before);
+		CHECK(!Call(PF_ui_native_close,&menu,m));
+	}
+	clip.x=0.1875f; Plug_NativeUI_SetClip(&menu,NULL);
 	//Close/reopen in one host frame cannot authorize another draw in that frame.
 	host_framecount++; m=Call(PF_ui_native_open,&menu,101); CHECK(Call(PF_ui_native_draw,&menu,m)==1);
 	CHECK(Call(PF_ui_native_close,&menu,m)==1); m=Call(PF_ui_native_open,&menu,101);

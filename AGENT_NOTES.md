@@ -3808,6 +3808,18 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+- **P594 inherited native clipping: validate AFTER physical conversion.** Final
+  P593 review found inherited clipping was intersected after P589's validation.
+  NaN/Inf and finite virtual-to-physical overflow must fail before callback/flush,
+  release the opened owner once and return explicit QC fallback. New acting host
+  controls fail 12 assertions on P593; corrected actual-core controls pass 170
+  assertions plus 24 grader controls. They use FTE-equivalent NaN/Inf bit semantics,
+  not libc finite assumptions. This is host robustness, not malformed-driver
+  injection or a native-module sandbox. `tools/p594clip.md` records the falsifier;
+  published P593 tag remains immutable. Local source/tag `bed572f50` / `patch-594`;
+  frozen build/publication/native delivery are separate pending gates. QC/progs,
+  panels, input/model ABI, preferences and Build number are unchanged by this fix.
+
 - **P593 native bridge prerequisite: explicit QC draw sites, not plugin overlay
   hooks.** `NativeUI/1` copies an exact service table; optional named MQC/CSQC
   status/open/draw/close builtins provide one owner per VM, non-reused float-exact
@@ -3832,8 +3844,19 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   or the fixture itself creates another valid owner. P590 fixture names are kept
   after forward-renumbering to the one product patch 593 (peers published 590-592).
   Published engine implementation/tag: `25ad9d56e` / `patch-593`; main's
-  `452c8814a` merge adds only the peer P590-592 delivery record. Game publication,
-  frozen stamped verification and deployment are recorded separately when complete.
+  `452c8814a` merge adds only the peer P590-592 delivery record. Game feature
+  `d3b7174` is published. Clean frozen engine/tag and game feature rebuild stamped
+  `git-7115-patch-593-0-g25ad9d56e`, with the same 74 baseline warning fingerprints;
+  frozen `p590-bridge-3nyqfybl` and `p589-mesh-hei0vtp6` pass. Guarded dual Windows
+  native+CSQC+MQC delivery kept rollback; unchanged SSQC was not replaced. Actual
+  installed executable paths ACT in `p590-bridge-hmrva9oz` / `-gvq91c1r`, zero failed,
+  at 2026-10-08T11:00:43Z; configs/data/server/DLL digests remain unchanged. Pi progs
+  swap from exact game feature kept `.prev`, zero players, 12 fresh lobbies; all
+  12 advertise the exact new cached CSQC CRC/size, protected engine/config and
+  rollback hashes match, health 12, verified 2026-10-08T10:54:38Z. No Pi engine,
+  Windows server/DLL, config, reader, evidence, release or Build change. Two private
+  finish-only Pi probes failed on quoting and decimal-vs-hex size parsing; source
+  confirms *csprogssize is hex. No recopy/restart was used to finish those gates.
   Next: minimal ImGui command-list service; widget/model/input transport, real
   panels, non-GL/device-input acceptance and CPU/GPU budgets remain separate gates.
 

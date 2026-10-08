@@ -960,6 +960,8 @@ release. The acting mixed QC-before/native/QC-after gallery passes in both VMs,
 with independent virtual scales and full CSQC UpdateView; caller state and stale,
 foreign, duplicate and outside-draw rejection have real-host controls. Optional
 shared QC wrappers are compiled but no actual panel/default/input chain changes.
+P594 additionally rejects non-finite final inherited clips before service dispatch;
+NaN/Inf/physical-conversion-overflow host controls prove release to fallback.
 Next implement the minimal ImGui command-list service on this proven bridge;
 widget/model/input transport and real-panel migration remain separate work.
 No non-GL/device-input or cost acceptance is implied. Preserve legacy fallback
