@@ -270,6 +270,12 @@ __pycache__/
 #  fonts negation below can take effect.  It is not a dead line -- do not delete.
 /ftesurf/gfx/*
 !/ftesurf/gfx/fonts/
+# The three selectable crosshairs already ship in release archives.
+!/ftesurf/gfx/crosshairs/
+/ftesurf/gfx/crosshairs/*
+!/ftesurf/gfx/crosshairs/xhair1.png
+!/ftesurf/gfx/crosshairs/xhair2.png
+!/ftesurf/gfx/crosshairs/xhair3.png
 # Authored shared SUI chrome; no other UI files are implicitly publishable.
 !/ftesurf/gfx/ui/
 /ftesurf/gfx/ui/*
