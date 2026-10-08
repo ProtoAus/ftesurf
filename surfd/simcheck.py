@@ -500,17 +500,21 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
         return 0, 0, 0
     # Peer checkpoint and observations commit together, including an all-failed
     # admission with no observations. No file work holds this write transaction.
+    inserted = []
     with conn:
         _checkpoint(conn, "peer", last_attempt, a_id)
-        conn.executemany(
+        sql = (
             "INSERT OR IGNORE INTO sims (a_id, b_id, map, track, leg, tier,"
             " player_a, player_b, who_a, who_b, same_who, verdict, reason, skip_code,"
             " match, cover, prefix, offset, compared, moves_a, moves_b,"
-            " tick_a, tick_b, at, source_capture) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            [f[0] for f in found])
-    skipped = sum(1 for f in found if not f[1])
-    notable = sum(1 for f in found if f[1] and f[2] >= NOTABLE)
-    return len(found), skipped, notable
+            " tick_a, tick_b, at, source_capture) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        # Count only this flush's additions, not overlap or trigger writes.
+        for f in found:
+            if conn.execute(sql, f[0]).rowcount == 1:
+                inserted.append(f)
+    skipped = sum(1 for f in inserted if not f[1])
+    notable = sum(1 for f in inserted if f[1] and f[2] >= NOTABLE)
+    return len(inserted), skipped, notable
 
 
 def pending(conn, limit=50, read_budget=None):
