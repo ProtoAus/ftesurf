@@ -56,6 +56,12 @@ output = StringIO()
 with redirect_stdout(output):
     assert sweep.main(['--dry-run', '--sims-sql-steps', '1']) == 0
 assert 'sims pending: unavailable (SQL read limit; coverage not measured)' in output.getvalue(), output.getvalue()
+assert 'sims: unavailable (SQL read limit; sample not measured)' in output.getvalue(), output.getvalue()
+output = StringIO()
+with redirect_stdout(output):
+    assert sweep.main(['--dry-run', '--sims-sql-steps', '0']) == 0
+assert 'SQL reads disabled' in output.getvalue(), output.getvalue()
+assert 'no pairs stored' not in output.getvalue(), output.getvalue()
 assert before == [tuple(r) for r in conn.execute('SELECT * FROM sims ORDER BY id')]
 print('DRY_RUN_ACTED')
 with mock.patch.object(simcheck, 'similarity_step', return_value=(0,0,'')) as target:

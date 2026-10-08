@@ -592,7 +592,7 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
     return stored, notable, note
 
 
-def summary(conn):
+def summary(conn, read_budget=None):
     """The stored sample, split the only way that means anything.
 
     -> dict.  A single max over all pairs is the number that misleads, because the
@@ -604,18 +604,20 @@ def summary(conn):
            "same_max": None, "cross_max": None, "same_n": 0, "cross_n": 0,
            "unknown_n": 0, "unknown_max": None, "skip_codes": {}}
     try:
-        exists = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sims'").fetchone()
+        exists = _read(conn,
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sims'",
+            read_budget=read_budget)
         if not exists:
             return dict.fromkeys(out, None) | {"state": "missing"}
         # Old samples stay unknown; a read never migrates or infers old prose.
-        columns = {r[1] for r in conn.execute("PRAGMA table_info(sims)")}
+        columns = {r[1] for r in _read(conn, "PRAGMA table_info(sims)",
+                                     read_budget=read_budget)}
         code = "skip_code" if "skip_code" in columns else "''"
         known = sorted(KNOWN_SKIP_CODES)
         # One sample query/snapshot. Fixed categories bound Python result rows
         # regardless of sample size or arbitrary stored prose/codes. SQLite still
-        # scans the sample: this is not a database scan or hard elapsed-time bound.
-        rows = conn.execute(
+        # scans the sample; only an explicit owner read budget bounds VM work.
+        rows = _read(conn,
             "SELECT CASE WHEN verdict = 'compared' THEN"
             "   CASE WHEN who_a != '' AND who_b != '' THEN"
             "     CASE WHEN same_who THEN 'same' ELSE 'cross' END"
@@ -626,7 +628,9 @@ def summary(conn):
             "     THEN " + code + " ELSE 'unknown' END AS category,"
             " COUNT(*) AS n, MAX(match) AS maximum,"
             " SUM(CASE WHEN verdict = 'compared' AND match >= ? THEN 1 ELSE 0 END) AS notable"
-            " FROM sims GROUP BY bucket, category", (*known, NOTABLE)).fetchall()
+            " FROM sims GROUP BY bucket, category", (*known, NOTABLE), read_budget)
+    except ReadLimit:
+        return dict.fromkeys(out, None) | {"state": "limited"}
     except Exception:
         return dict.fromkeys(out, None) | {"state": "error"}
     if rows:
@@ -645,9 +649,11 @@ def summary(conn):
     return out
 
 
-def summary_line(conn):
+def summary_line(conn, read_budget=None):
     """One read-only line, distinguishing no sample from an unavailable sample."""
-    s = summary(conn)
+    s = summary(conn, read_budget=read_budget)
+    if s["state"] == "limited":
+        return "sims: unavailable (SQL read limit; sample not measured)"
     if s["state"] == "missing":
         return "sims: unavailable (table missing)"
     if s["state"] == "error":

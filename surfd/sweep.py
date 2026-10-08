@@ -1024,7 +1024,11 @@ def main(argv=None):
                     print("sims pending: unavailable (SQL read limit; coverage not measured)")
             else:
                 print("sims pending: unavailable (SQL reads disabled)")
-            line = simcheck.summary_line(conn)
+            # Summary gets an independent allowance; pending exhaustion is not
+            # evidence that the stored sample is empty or itself unavailable.
+            line = (simcheck.summary_line(conn,
+                    read_budget=simcheck.ReadBudget(conn, args.sims_sql_steps))
+                    if args.sims_sql_steps else "sims: unavailable (SQL reads disabled)")
             print(line or "sims: no pairs stored yet")
         except Exception as exc:
             print("sims: unavailable (%r)" % exc)

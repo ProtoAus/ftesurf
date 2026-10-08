@@ -686,7 +686,12 @@ and admin `*_sources.py` controls explicitly; the shipper does not discover them
 The read-only summary aggregates one snapshot into at most 13 fixed category/
 identity result rows, instead of materializing all observations in Python. Counts,
 maxima, notable attention labels and missing/empty/error distinctions are unchanged.
-SQLite still scans the sample; this does not bound total database work or memory.
+SQLite still scans the sample. Dry-run grants summary an independent selected-read
+VM allowance, including metadata and aggregate fetching. Exhaustion returns a
+fixed unavailable/sample-not-measured line with all counters unknown, never a
+partial aggregate, measured zero or false empty. Legacy summaries without an
+explicit owner budget remain unbounded and preserve existing callback ownership;
+this is not a bound on total database work/memory, elapsed time or lock waits.
 
 Run the focused source-cursor, peer-cursor, pair-fault, pending, peers, summary,
 ingestion, codes, time, collection, budget-CLI and observation controls alongside
