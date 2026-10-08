@@ -226,7 +226,8 @@ def case_render_text():
     template = os.path.join(os.path.dirname(__file__), 'templates', 'admin_run.html')
     text = open(template, encoding='utf-8').read()
     block = text[text.index('  const card = document.getElementById("rcptcard");'):text.index('  renderKey(j);')]
-    harness = r'''
+    helpers = text[text.index('function renderReceiptAssociations('):text.index('function renderRun(')]
+    harness = helpers + r'''
 const j = {receipt: JSON.parse(process.argv[2])};
 class Element {
   constructor(tag, cls, text) { this.tag=tag; this.text=text || ''; this.children=[]; }

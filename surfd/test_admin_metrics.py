@@ -67,7 +67,8 @@ def case_api():
 def case_dom():
     text = open(os.path.join(os.path.dirname(__file__), 'templates', 'admin_run.html'), encoding='utf-8').read()
     block = text[text.index('  const card = document.getElementById("rcptcard");'):text.index('  renderKey(j);')]
-    harness = r'''
+    helpers = text[text.index('function renderReceiptAssociations('):text.index('function renderRun(')]
+    harness = helpers + r'''
 const j={receipt:JSON.parse(process.argv[2])};
 class Element {
  constructor(tag,cls,text) {this.tag=tag;this.text=text || '';this.children=[];}
