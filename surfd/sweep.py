@@ -919,21 +919,27 @@ def evidence_step(conn):
         return 0, 0
 
 
-def similarity_step(conn, limit=50, max_pairs=200, max_seconds=10.0):
+def similarity_step(conn, limit=50, max_pairs=200, max_seconds=10.0,
+                    max_sql_steps=1000000):
     """surfd schema 10: store the cross-run similarity sample.  STORE-ONLY --
     nothing here moves a badge or a verdict, and a fault is printed rather than
     raised, because a measurement that cannot run must not take the checks that DO
     gate badges down with it.  -> (pairs stored, notable, note)."""
     if not math.isfinite(max_seconds):
         raise ValueError("max_seconds must be finite")
-    if limit <= 0 or max_pairs <= 0 or max_seconds <= 0:  # disabled: no import/note
+    if type(max_sql_steps) is not int or max_sql_steps < 0:
+        raise ValueError("max_sql_steps must be a nonnegative integer")
+    if limit <= 0 or max_pairs <= 0 or max_seconds <= 0 or max_sql_steps == 0:
         return 0, 0, ""
     mod = _simcheck()
     if mod is None:
         return 0, 0, ""
     try:
+        # Sweep owns this connection and its otherwise unused callback slot.
+        reads = mod.ReadBudget(conn, max_sql_steps)
         return mod.similarity_step(conn, surfd, limit=limit, tools_dir=TOOLS,
-                                   max_pairs=max_pairs, max_seconds=max_seconds)
+                                   max_pairs=max_pairs, max_seconds=max_seconds,
+                                   read_budget=reads)
     except Exception as exc:
         print("sweep: similarity step failed: %r" % exc, file=sys.stderr)
         return 0, 0, ""
@@ -977,7 +983,12 @@ def main(argv=None):
     ap.add_argument("--sims-seconds", type=float, default=10.0,
                     help="cooperative similarity admission seconds (default 10; 0 disables); "
                          "in-flight work finishes, not a hard timeout")
+    ap.add_argument("--sims-sql-steps", type=int, default=1000000,
+                    help="selected similarity SQL read instruction allowance (default 1000000; "
+                         "0 disables collection); not time, write or RSS bound")
     args = ap.parse_args(argv)
+    if args.sims_sql_steps < 0:
+        ap.error("--sims-sql-steps must be nonnegative")
     if args.sims_pairs < 0:
         ap.error("--sims-pairs must be nonnegative")
     if not math.isfinite(args.sims_seconds) or args.sims_seconds < 0:
@@ -1004,8 +1015,15 @@ def main(argv=None):
         try:
             import simcheck
             simcheck.ensure_schema(conn)
-            print("sims pending: %d run(s) with unobserved eligible pairs"
-                  % len(simcheck.pending(conn, 10 ** 6)))
+            if args.sims_sql_steps:
+                try:
+                    reads = simcheck.ReadBudget(conn, args.sims_sql_steps)
+                    print("sims pending: %d run(s) with unobserved eligible pairs"
+                          % len(simcheck.pending(conn, 10 ** 6, read_budget=reads)))
+                except simcheck.ReadLimit:
+                    print("sims pending: unavailable (SQL read limit; coverage not measured)")
+            else:
+                print("sims pending: unavailable (SQL reads disabled)")
             line = simcheck.summary_line(conn)
             print(line or "sims: no pairs stored yet")
         except Exception as exc:
@@ -1018,7 +1036,8 @@ def main(argv=None):
     rcpts, rbad = receipt_step(conn)
     sims, simnotable, simnote = similarity_step(conn, limit=args.sims,
                                                max_pairs=args.sims_pairs,
-                                               max_seconds=args.sims_seconds)
+                                               max_seconds=args.sims_seconds,
+                                               max_sql_steps=args.sims_sql_steps)
     counts = sweep(conn, args.limit)
     line = " ".join("%s %d" % kv for kv in sorted(counts.items())) or "nothing to verify"
     if added or dropped:

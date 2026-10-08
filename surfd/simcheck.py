@@ -80,6 +80,8 @@ NOTABLE = 0.95
 # Previously 50 source rows could each admit 200 peers in one cron pass.
 MAX_PAIRS = 200
 MAX_SECONDS = 10.0
+# Selected SQLite read instructions only; not time, lock waits, writes or RSS.
+MAX_SQL_STEPS = 1000000
 # Operational ingestion limits, not a validity or similarity threshold. Sources
 # over either budget abstain; no truncated prefix may become a measurement.
 MAX_SOURCE_BYTES = 16 << 20
@@ -135,6 +137,64 @@ def source_snapshot(raw):
         return source_capture(json.loads(raw, object_pairs_hook=unique))
     except (ValueError, TypeError, RecursionError):
         return None
+
+
+class ReadLimit(Exception):
+    """No complete result is available within the selected SQL read allowance."""
+
+
+class ReadBudget:
+    """Explicit connection-owner opt-in; owns the progress-handler slot per read.
+
+    Python SQLite cannot retrieve an existing callback. Never use this on a
+    connection whose callback belongs to another caller. Unbudgeted APIs leave
+    that slot alone. A reserved final quantum conservatively charges residual
+    instructions even for short statements; this may abstain before the cap.
+    """
+    def __init__(self, conn, steps):
+        if type(steps) is not int or steps <= 0:
+            raise ValueError("SQL read steps must be a positive integer")
+        self.conn = conn
+        self.remaining = steps
+        self.exhausted = False
+
+    def rows(self, sql, parameters=()):
+        if self.remaining <= 0:
+            self.exhausted = True
+            raise ReadLimit()
+        quantum = min(1000, self.remaining)
+        self.remaining -= quantum
+        def progress():
+            if self.remaining < quantum:
+                self.exhausted = True
+                return 1
+            self.remaining -= quantum
+            return 0
+        cursor = None
+        self.conn.set_progress_handler(progress, quantum)
+        try:
+            cursor = self.conn.execute(sql, parameters)
+            return cursor.fetchall()
+        except sqlite3.OperationalError:
+            if self.exhausted:
+                raise ReadLimit() from None
+            raise
+        finally:
+            if cursor is not None:
+                cursor.close()
+            self.conn.set_progress_handler(None, 0)
+
+
+def _read(conn, sql, parameters=(), read_budget=None):
+    if read_budget is not None:
+        if read_budget.conn is not conn:
+            raise ValueError("SQL read budget belongs to another connection")
+        return read_budget.rows(sql, parameters)
+    cursor = conn.execute(sql, parameters)
+    try:
+        return cursor.fetchall()
+    finally:
+        cursor.close()
 
 
 class _PairBudget:
@@ -242,13 +302,14 @@ CREATE TABLE IF NOT EXISTS sim_cursor (
 """
 
 
-def _cursor(conn, scope, source_id=0):
+def _cursor(conn, scope, source_id=0, read_budget=None):
     """Read-only; historical databases have no admission state yet."""
-    if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='sim_cursor'").fetchone():
+    if not _read(conn, "SELECT 1 FROM sqlite_master WHERE name='sim_cursor'",
+                 read_budget=read_budget):
         return 0
-    row = conn.execute("SELECT after_id FROM sim_cursor WHERE scope=? AND source_id=?",
-                       (scope, source_id)).fetchone()
-    return row[0] if row else 0
+    rows = _read(conn, "SELECT after_id FROM sim_cursor WHERE scope=? AND source_id=?",
+                 (scope, source_id), read_budget)
+    return rows[0][0] if rows else 0
 
 
 def _advance(conn, scope, after_id, source_id=0):
@@ -420,15 +481,15 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
     return len(found), skipped, notable
 
 
-def pending(conn, limit=50):
+def pending(conn, limit=50, read_budget=None):
     """Eligible sources after the last admitted ID first, then wrap ascending.
 
     Observations suppress only their own pairs; admission state is not evidence.
     Reads never advance/create state. Rotating finite source fixtures prevents an
     unavailable oldest source monopolizing later passes, not full fleet coverage.
     """
-    after = _cursor(conn, "source")
-    return conn.execute(
+    after = _cursor(conn, "source", read_budget=read_budget)
+    return _read(conn,
         "SELECT r.* FROM replays r WHERE r.kind = 'run'"
         " AND EXISTS (SELECT 1 FROM replays p WHERE p.map = r.map"
         "             AND p.track = r.track AND p.leg = r.leg"
@@ -436,11 +497,11 @@ def pending(conn, limit=50):
         "             AND NOT EXISTS (SELECT 1 FROM sims s"
         "                 WHERE (s.a_id = r.id AND s.b_id = p.id)"
         "                    OR (s.a_id = p.id AND s.b_id = r.id)))"
-        " ORDER BY (r.id > ?) DESC, r.id LIMIT ?", (after, limit)).fetchall()
+        " ORDER BY (r.id > ?) DESC, r.id LIMIT ?", (after, limit), read_budget)
 
 
 def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
-                    max_pairs=MAX_PAIRS, max_seconds=MAX_SECONDS):
+                    max_pairs=MAX_PAIRS, max_seconds=MAX_SECONDS, read_budget=None):
     """The sweep's entry point.  -> (pairs stored, notable, note).
 
     `tools_dir` is the CALLER's resolved tools directory (sweep passes its TOOLS).
@@ -472,7 +533,9 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         return 0, 0, "similarity skipped: %s" % why
     try:
         ensure_schema(conn)
-        rows = pending(conn, limit)
+        rows = pending(conn, limit, read_budget=read_budget)
+    except ReadLimit:
+        return 0, 0, "sims SQL read limit reached (coverage not measured)"
     except Exception as exc:
         return 0, 0, "similarity step failed: %r" % exc
     stored = skipped = notable = failed = 0

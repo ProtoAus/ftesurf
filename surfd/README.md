@@ -626,6 +626,16 @@ normal database writes can finish after the deadline; this is not a hard timeout
 overall memory/scan bound or fair scheduler. The CLI retains its existing
 import-time database initialization even for rejected arguments.
 
+`--sims-sql-steps` defaults to 1,000,000 SQLite VM instructions across selected
+collector reads; zero disables collection. Source cursor/pending reads abstain
+as a whole on exhaustion, without partial selection or invented observations.
+The sweep connection owner explicitly grants the progress-handler slot per read;
+standalone APIs without a `ReadBudget` preserve caller callbacks and old behavior.
+Residual instructions are conservatively charged as one final callback quantum
+per statement, so small queries can exhaust admission before the actual cap.
+This is not elapsed time, lock waits, schema/write/file work, total RSS or complete
+coverage. Dry-run unavailable counts are not measured zero.
+
 Each collector comparison explicitly limits sources to 16 MiB and 200,000 moves.
 Excess bytes (including ignored records) or moves abstain as a whole; no prefix
 is scored. Support lacking either bounded-input or source-capture capability is
