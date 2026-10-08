@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   bed572f50475dc627df6bda482891b6da9a85495
+commit   38413ccdf704265c46b99507bbd0d7094e4388f9
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,11 @@ commit   bed572f50475dc627df6bda482891b6da9a85495
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-594
-patch    594
+tag      patch-595
+patch    595
+# Patch 595: optional pinned Dear ImGui service, explicit MQC/CSQC gallery only.
+# Bounded C-ABI command-list adapter and per-VM RGBA atlases; no raw GPU hooks.
+# No real-panel/default/input/model/performance/Build change. NoDeploy acts.
 # Patch 594: reject non-finite final inherited clips before native dispatch.
 # NaN/Inf and finite physical-conversion overflow release to QC fallback.
 # Patch 593: copied NativeUI/1 service and optional VM-owned QC draw-site bridge.
