@@ -131,10 +131,35 @@ to `9ba5cb2` (committed peer tooling/notes only; no QC source delta). Patch 599
 number/history/tag remains untouched. Native tag/pin changes are appropriate for
 this engine work; qcbuild remains unchanged.
 
-Game source/test commit `3e1f643` exists locally; native scope correction and
-updated receipt/pin are pending a follow-up game commit. Pending: corrected
-exact-commit stamped Full build/runtime and exact-SHA publication. No installed/native/progs/config/player-data,
-Pi, server, release or Build-number change has been made by this workstream.
+Game source/test `3e1f643` plus corrected pin/scope receipt `365f43f` are committed.
+Corrected clean frozen game `365f43f7f8fef589254352db3f5161210050a134` and engine
+`c61458c94f23b2cf1552301d1232dde33e04274a` / local `patch-600`:
+
+- `rig/frozen-fixed-build.log` completes all native/compiler stages; expected
+  preexisting summary-only exit 1 remains, not a successful wrapper exit.
+- Exact `SVN_VERSION` / `SVNREVISION` inputs and +29 offset produce
+  `git-7134-patch-600-0-gc61458c94`, verified IN BOTH native client/server bytes.
+  The ImGui DLL has its own upstream/service version rather than this engine
+  stamp; clean-source compile/link provenance and its hash are retained in
+  `rig/frozen-fixed-input.json` / `frozen-fixed-hashes.json`.
+- `frozen-fixed-warning-comparison.json`: 74 baseline occurrences / 49 distinct,
+  zero new, three zero-warning QC programs. No dirty-source deploy workaround.
+- Final native Makefile DLL/engine runtime `p600-input-23k5d1j6`: 33 screenshots,
+  zero failed; its 17 mutation controls pass. Passive frozen regression
+  `p595-imgui-jbozvwpc`: 23 screenshots and 16 controls, zero failed.
+- Corrected source host `rig/fixed-host-controls`: all 929 bridge / 699 interactive
+  plus 171/108 passive assertions pass for the relevant 16/32-bit arms. Standalone
+  corrected C++ parser check: zero errors; refreshed Pi reports no new parser
+  errors (one necessary-global-include lint advisory, existing CSQC advisories).
+- At 2026-10-08T16:23:08Z, `installed-binary-preservation.json` proves both actual
+  installed client paths (`C:/FTESurf/ftesurf64.exe`, `C:/FTEQuake/fteqw64.exe`)
+  still match the OLD draw-only control hash from before these builds. No source
+  or fixture has been copied into either install.
+
+Only exact-SHA publication and this docs-only verification receipt remain at this
+checkpoint. No installed/native/progs/config/player-data, Pi, server, release or
+Build-number change has been made by this workstream. Native dual deployment is
+NOT claimed: test-stage artifacts stay in the owned trees until separately gated.
 
 Next implementation: bounded counted model/widget snapshots plus stable row/action
 identity and freshness rejection; do not substitute owner generation for model
