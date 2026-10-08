@@ -3790,12 +3790,19 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   the isolated static-map arms pass. Do not relax that reader or report a live
   pixel-noise pass. Windows deployment stopped BEFORE any swap because the
   owner's running `C:/FTESurf/ftesurf64.exe` is locked; do not terminate it.
-  Close-game/dual-install deployment is pending. Prepared guarded script is
-  `C:/FTESurf-font-proof/rig/deploy-p570.ps1` (retains .prev and UTC backups,
-  hashes both installs and supplies absent font/mask assets). The second
+  Dual Windows deployment completed at 2026-10-08T05:28:54Z after the owner
+  closed the game; no process was stopped. Guarded script
+  `C:/FTESurf-font-proof/rig/deploy-p570.ps1` verified both installs against the
+  clean proof's five artifact hashes and supplied matching font/mask assets.
+  `.prev` plus `rig/deploy-p570-20261008T052851Z` retain rollback copies and
+  per-file provenance. Both installed-client copies pass the gallery/reload/
+  unbaked controls (primary scale 1, second scale 2); matched images differ by
+  zero pixels. Each actual dedicated/editor arm passes all 28 checks in its
+  disposable rig (`font-quality-ho5psde5`, `font-quality-36f16w1n`,
+  `ui-modern-20261008-162943`, `ui-modern-20261008-163011`). The second
   executable is `C:/FTEQuake/fteqw64.exe`, not ftesurf64.exe. No primary peer
-  sources/configs were changed. Next: finish that swap, verify both installed
-  clients, then Stage B's minimal ImGui bridge and later cost/aesthetic gates.
+  sources/configs were changed. Next: Stage B's minimal ImGui bridge, with
+  cost/aesthetic/device acceptance still separate.
 - **P566 SUI/font tests:** `ui_style 1` is the opt-in HUD-editor sample;
   `shared/sh_ui.qc` is ordered after fonts/SUI in both VMs. Native font means
   the final PHYSICAL height is a baked size: convert first, snap with the
