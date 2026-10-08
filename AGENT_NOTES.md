@@ -4365,6 +4365,16 @@ failure on published baseline; do not repair unrelated tests to mask it. Windows
 admin UDP/RCON failures still match baseline; Linux full tests pass after one
 recorded unmodified rerun of the existing dynamic-board timestamp equality case.
 
+Publication74dcca0 shipped ONLY simcheck.py/sweep.py via canonical -Only -NoReload;
+installed Python3.11 passes15 unique new controls without skips. Additional WAL
+writer/wrapper control proves short abstention, restoration/recovery and later
+synthetic verification with prior wait. Explicit live mode=ro/DML-denial controls
+leave cursor/sample history unchanged; original sims/receipts/verdicts/reviews rows
+match the pre-copy backup via bounded SQL with ACTED changed/deleted-row fixtures.
+Do not turn this into mutable board/replay preservation or live-contention proof.
+Both destination hashes and health/auth checks pass; rollback files/mode600 DB
+backup retained. No game/QC/engine/config/Windows artifact or owner-process restart.
+
 ### Selected similarity SQL read budgets (P571-573, 2026-10-08)
 
 Sweep opts into a pass-wide 1,000,000 SQLite VM instruction allowance through
