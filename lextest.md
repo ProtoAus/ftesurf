@@ -20,7 +20,7 @@ signed difference. The native time must match the main held timer. Practice
 resumes remain untimed, not a fabricated native clock. Close/reopen should not
 leave an old selected caption. Check readability with your HUD scale/resolution.
 
-Actual draw/timer/native/ack/prefix controls pass at caps30/100/300 and both
+Actual draw/timer/native/ack/prefix controls pass at caps 30/100/300 and both
 clients with configured latency; compiled untimed/foreign/missing-metadata
 branches and repeated-position native ties pass. Strict requested/native clock
 equivalence remains red: this caption explains the choice, not a new selection

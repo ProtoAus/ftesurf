@@ -1597,21 +1597,31 @@ publicly WITH its fix, not before it.
   forwarded ACTUAL draw text and timer-panel output in private overlays; nine
   compiled metadata/presentation units and five REAL SV_RewindFind repeated-
   position/window/tie cases restore the player's private test ring. Four six-cut
-  warm/fresh-cold arms at caps30/100/300 and both clients pass independent native/
-  body/hold/release/ack/prefix/camera/UI gates with explicit120ms delay; unchanged
+  warm/fresh-cold arms at caps 30/100/300 and both clients pass independent native/
+  body/hold/release/ack/prefix/camera/UI gates with explicit 120ms delay; unchanged
   requested-clock test stays RED on three/four cuts. Presentation is not general
   alignment. Twenty-five UI counterfactuals, prior HUD21/12, navigation/focus/
-  opposition and reader306/0 pass. Production screenshot/status/timer control
-  passes; inspected screenshots are1920x1080 (video request is not size proof).
+  opposition and reader 306/0 pass. Production screenshot/status/timer control
+  passes; inspected screenshots are 1920x1080 (video request is not size proof).
   QC pointer locals must be separate declarations: combined `*old, *m` produced
   a double-pointer cast warning/error in the private test. Initial seam/compile
   failures did not ACT. With delay/screenshots, 500ms initial save wait left go
-  legitimately blocked; allow1600ms and prove pending/hold. Inserting screenshots
+  legitimately blocked; allow 1600ms and prove pending/hold. Inserting screenshots
   inside fixed six-cut hold/log windows misplaced late cmd-timer replies at
   high caps; run images separately, never remove body/frozen/clock assertions.
   Countdown number changes during hold; compare fixed NATIVE caption, not the
   whole draw string. Low-resolution/custom HUD and actual-device/untimed camera
   feel remain human gates. No evidence, selection, camera or engine/Build change.
+  Frozen 8994b59 rebuilt clean/zero warnings and deployed to both Windows installs
+  and empty-gated twelve-lobby fleet, P554 retained .prev. SSQC/menu/config/engine
+  and owner source/index/personal cfg unchanged. Non-instrumented request/pending/
+  native/delta/main-timer/close controls pass on both clients and live lobby 1;
+  production screenshots inspected. Destination/previous hashes and twelve active
+  services verified; final health OK/twelve empty rows 2026-10-08 01:46:48 UTC.
+  Original game push raced a peer ROADMAP-only plan: inspect/rebase unpublished
+  commit, no force; source/progs remained identical. First post-probe health
+  assertion did not pass and its response was not retained; later explicit saved
+  readbacks passed. Do not invent a cause from that missing first snapshot.
 
 - **Focus cancels activity, not ownership (Patch 554).** `rw_kactive` is separate
   from down/taken identity. Chat/menu/modal cursor and effective console cursor
