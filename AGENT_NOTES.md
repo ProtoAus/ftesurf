@@ -3842,6 +3842,12 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+- **Native .inc scope is load-bearing:** ui_imgui/input.inc is included INSIDE
+  FteImGui. Third-party and standard headers must stay at global scope in the
+  parent .cpp; otherwise it declares nested FteImGui::ImGui/std and breaks the
+  real compiler. P600's first local frozen gate caught a late include cleanup;
+  new-location LSP errors were real, not the earlier missing-database cache.
+  Restore global includes and repeat host/frozen/runtime gates BEFORE publication.
 - **P600 native input queues must be bounded across frames, not just per Draw:**
   ImGui trickles alternating edges across NewFrame. Resetting a per-frame event
   counter does not bound the residual queue. Limit BOTH host accepted events

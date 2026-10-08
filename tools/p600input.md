@@ -116,15 +116,24 @@ Real compilers and runtime remain the authority; no clean-cache-only claim.
 
 ## Commit/frozen/push/deployment boundary
 
-Canonical engine source/tag: `ce5ae6a86882ca9093dd1b6f7bed434eddf3f80f` / `patch-600`.
-It contains native feature `41c807539` plus the inspected concurrent Patch 599
-verification-note merge; no peer native source changes. Game base advanced intact
+Canonical engine source/tag: `c61458c94f23b2cf1552301d1232dde33e04274a` / `patch-600`.
+It contains native feature `41c807539`, inspected concurrent Patch 599 notes
+(`ce5ae6a86`) and the include-scope correction (`c61458c94`); no peer native source
+changes. The initial local `ce5ae6a86` freeze and its host controls FAILED because
+late header cleanup moved library declarations inside FteImGui. Retained logs:
+`rig/frozen-build.log` (native plugin stage), `rig/frozen-host-controls/host16/compile.log`.
+No silent substitution: external headers restored to global scope, fragment scope
+comment added, and `rig/fixed-host-controls` repeats all 929/699 plus passive
+controls successfully. The unpushed local tag was corrected before publication;
+no bad tag/binary was published or installed. This is a real newly introduced
+compile failure, NOT the earlier cached missing-database issue or summary bug. Game base advanced intact
 to `9ba5cb2` (committed peer tooling/notes only; no QC source delta). Patch 599
 number/history/tag remains untouched. Native tag/pin changes are appropriate for
 this engine work; qcbuild remains unchanged.
 
-Pending at this checkpoint: clean game commit, exact-commit stamped Full build and
-repeated runtime, exact-SHA pushes. No installed/native/progs/config/player-data,
+Game source/test commit `3e1f643` exists locally; native scope correction and
+updated receipt/pin are pending a follow-up game commit. Pending: corrected
+exact-commit stamped Full build/runtime and exact-SHA publication. No installed/native/progs/config/player-data,
 Pi, server, release or Build-number change has been made by this workstream.
 
 Next implementation: bounded counted model/widget snapshots plus stable row/action
