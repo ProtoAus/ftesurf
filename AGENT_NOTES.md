@@ -1675,6 +1675,20 @@ publicly WITH its fix, not before it.
   PREVIOUS contact hull; the new tick's posture/hull is not recorded here.
   Bounds are retained, but side-gap math is not the full collision/support
   oracle. Keep authored edge/jump/seam and same-input mark/render gates open.
+- **Actual contact/tick hulls (tooling only).** `offramp_hull_smoke.py` composes
+  a fourth private layer in a NEW clean native worktree. Copy actual mins/maxs,
+  capsule/movement type and posture state separately at accepted contacts and
+  tick ends; raw stand/duck cvars are not observed hull heights. A transition
+  flag alone does not imply the small hull. Seven real `PMSrc_ApplyHull` setup
+  controls restore all touched state, but are NOT crouch/motion trajectories.
+  `offramp_hull.py` uses EACH POINT's actual hull for copied halfspace gaps;
+  capsule/non-normal samples abstain. Quiet/parity/repeat and the initial
+  standing-only replay prove capture, not physical exits or posture coverage.
+  Added dump rows exceeded the prior 120-second limit on the same segment;
+  180 seconds completed. Retain timeout rigs; no performance claim. No extra
+  capture-path queries/I/O/allocations, player ABI or mark/hold/recorder change.
+  Full support-oracle, authored edge/jump/seam/unsupported movement and all
+  same-input render/rate/classifier/mark acceptance gates remain open.
 
 ## Rewind (Patch 477)
 
