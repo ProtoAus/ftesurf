@@ -414,8 +414,11 @@ joint convex/AABB oracle; fixture-only/no-oracle/OFF/ON/repeat body parity and
 winning snapshot bindings ACT. A ninth real capsule ramp/departure case binds
 native tick/contact/winner snapshots and path-sensitive capsule-vs-box queries;
 it explicitly ABSTAINS from independent capsule geometry/support rather than
-substituting an AABB oracle. Transformed/triangle/displacement, airborne posture,
-explicit cached/recovery/portal paths, full capsule geometry and general-map
+substituting an AABB oracle. A tenth translated/yaw world-brush actor binds
+native instance/accepted-hull snapshots and rotation-sensitive real queries,
+retaining transformed geometry ABSTAIN and exact original-nine parity.
+Non-world/entity/embedded/triangle/displacement, airborne posture, explicit
+cached/recovery/portal paths, full capsule/transform geometry and general-map
 coverage remain unverified. These sampled fixture controls do not establish
 continuous physical exit time or close classifier, FPS/tick-rate, held/render,
 LOD or human acceptance above.
