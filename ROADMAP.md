@@ -422,9 +422,15 @@ winner, native hit/miss/world-only removal queries, and physically different
 removed trajectory. Actual winner/model/whole-brush/hull snapshots bind while
 entity geometry/support remains ABSTAIN; joint AABB query checks include only
 active untransformed fixture brushes. Exact original-ten parity remains required.
-General non-world/entity/map wiring and geometry, embedded/triangle/displacement,
-airborne posture, explicit cached/recovery/portal paths, full capsule/transform
-geometry and general-map coverage remain unverified. These sampled fixture controls do not establish
+A matched embedded BIH_MODEL/removed-parent pair now ACTS a native depth-1 child
+brush winner and physically different removed trajectory, with same-pose native
+removal controls and active-child-only joint AABB identity-fixture query checks.
+Child/root/model/whole-brush/hull snapshots bind; embedded geometry/support stays
+ABSTAIN. Exact original-twelve parity remains required. Embedded here means a
+nested collision model, not a player starting solid: actual-body checks stay strict.
+General non-world/entity/embedded map wiring, nested transforms and geometry,
+triangle/displacement, airborne posture, explicit cached/recovery/portal paths,
+full capsule/transform geometry and general-map coverage remain unverified. These sampled fixture controls do not establish
 continuous physical exit time or close classifier, FPS/tick-rate, held/render,
 LOD or human acceptance above.
 

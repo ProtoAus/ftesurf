@@ -409,19 +409,19 @@ or continuous collision-time coverage. Mismatch is refusal, never a weakened
 physical-exit claim. Accepted whole winning snapshots must match an authored
 brush, and native tick/hull/posture/trace/leaf ordinals bind to actual samples.
 
-Protocol `OFFRAMPMOTION_` v5: BEGIN capture/oracle/case counts and maximum step
+Protocol `OFFRAMPMOTION_` v6: BEGIN capture/oracle/case counts and maximum step
 capacity, explicit per-CASE step counts (first six 32, open posture 96, ceiling
-posture 192, capsule 32, transformed 32, entity-present/removed 32 each), SOURCE
+posture 192, capsule 32, transformed 32, entity-present/removed and embedded-present/removed 32 each), SOURCE
 fixture-template SHA256 and native base commit, exact ordered PARAM rows
 (including explicit rotated-box-hull cvar), CASE/BRUSH/PLANE/SEED, INSTANCE
-for transformed/entity cases, SET/PHYSENT for the entity pair, ordered TICK and
-ORACLE rows, CASE_END, END, COMPLETE.
+for transformed/entity/embedded cases, SET/PHYSENT for the entity/embedded pairs,
+EMBED for the embedded pair, ordered TICK and ORACLE rows, CASE_END, END, COMPLETE.
 TICK carries actual command inputs, native tick count/rate, ramp/ground state,
 body/velocity, hull/posture. ORACLE carries case/tick/kind/brush, exact endpoints,
 fraction/solid flags/entity/plane/contents. Missing/duplicate/reordered/unknown/
 malformed rows, changed input/provenance, nonfinite data, unregistered hull/pose,
 wrong bindings, quiet subject or failed actor/native query all refuse. Named
-capsule/transformed/entity cases are structurally validated but explicitly ABSTAIN
+capsule/transformed/entity/embedded cases are structurally validated but ABSTAIN
 from geometry. Embedded SOURCE is build provenance, not tamper-proof binary or map authenticity.
 
 The first successful family observes two distinct delays: side/convex projected
@@ -590,8 +590,51 @@ copied-shape substitution, cached route, silent native hits/removal, stale misse
 query/body binding and entity-to-world geometry promotion. Capsules and
 transformed instances retain their previous explicit abstentions.
 
-Exact physical exit time, classification/debounce/mark policy, embedded/
-triangle/displacement, general non-world/entity/map wiring and geometry,
-airborne or other posture trajectories, explicit cached/recovery/portal motion,
-general world support, independent capsule/transform geometry, P560 clock and
-same-input recorded/live/render/rate/camera/LOD/hold acceptance remain **NOT_TESTED**.
+## ACTED embedded BIH_MODEL winner and removed-parent trajectory
+
+Here **embedded means a child collision model in a BIH_MODEL leaf**, NOT a player
+starting inside solid. All actual-body stationary/nonembedded checks stay strict.
+Two matched 32-tick cases use the prior entity pair's standing AABB, geometry,
+seed/velocity and zero commands. Present world physent 0 has one BIH_MODEL root
+leaf pointing to a loaded native single-brush child `*authored_offramp_embedded`,
+identity embedded origin/axis. Child leaf 0 owns ramp brush 1. The removed parent
+has only remote direct brush 0 instead. No new collision callback or production
+mover branch is invented; both parents/child use the actual BIH_Build API.
+
+SET/PHYSENT/INSTANCE bind actual world physent/count/filter/model/pose. Ordered
+`EMBED` rows bind case, root/child leaf, actual parent node count, active-child
+flag, model/brush root kind, child name, embedded origin and axis. A real present
+PM_PlayerMove -> PM_PlayerTrace -> BIH_MODEL -> child BIH_BRUSH winner must bind
+world physent 0, child model name, leaf/root 0, depth 1, route 0, complete copied
+brush 1, accepted plane and actual standing hull. The existing
+**`embedded-model-unsupported`** category remains intact: geometry/support
+**ABSTAIN**. Copied root-physent pose is not a general embedded-transform snapshot;
+child planes must never silently become accepted world-brush support.
+
+Actual stationary/down2 queries use PM_PlayerTrace over the parent. Named
+`unembedded` repeats SAME down2 endpoints/hull with only the query's world model
+pointer temporarily replaced by the direct remote-brush model, then immediately
+restores it. Hits require native world winner 0; misses require -1 and zero
+plane/contents. The joint AABB check includes ONLY child brush 1 for present
+actual identity-embedded queries, and ONLY remote brush 0 for unembedded/removed
+queries. These are sampled identity-transform fixture queries, NOT general
+embedded geometry/support/identity/map-loading acceptance.
+
+The present actor produces 22 actual depth-1 child-brush contacts, down2 hits
+0..20/misses 21..31 and raw ramp loss 22. Every unembedded query misses and the
+actual-hit/removal-miss difference ACTS 0..20. The removed trajectory has no ramp,
+contact or downward hit, with physically different first/final body states.
+Empty removed captures still require full valid tick/hull/selftest envelopes.
+All five-arm parity checks and exact original-twelve body/query/winner arrays
+remain mandatory; nooracle parity proves temporary model replacement did not
+alter later movement. ACTED refusals cover embedding schema/root/child/axis,
+wrong depth/model/leaf/hull/callback, cached route, silent native hit/removal,
+parent/child-physent confusion and embedded-to-world support promotion. Previous
+capsule/transformed/entity gates and abstentions remain unchanged.
+
+Exact physical exit time, classification/debounce/mark policy, general embedded/
+nested-transform/model/map wiring and geometry, triangle/displacement, general
+non-world/entity geometry, airborne or other posture trajectories, explicit
+cached/recovery/portal motion, general world support, independent capsule/
+transform geometry, P560 clock and same-input recorded/live/render/rate/camera/
+LOD/hold acceptance remain **NOT_TESTED**.

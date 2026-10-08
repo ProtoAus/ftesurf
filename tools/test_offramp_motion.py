@@ -7,7 +7,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from offramp_motion import ENTITY_MODEL, INSTANCE, LABELS, MAX_STEPS, PARAMS, authored, compare, grade, joint_overlap, oracle_validate, parse, shape_category, step_count
+from offramp_motion import EMBEDDED_MODEL, ENTITY_MODEL, INSTANCE, LABELS, MAX_STEPS, PARAMS, authored, compare, grade, joint_overlap, oracle_validate, parse, shape_category, step_count
 from offramp_motion_smoke import TARGET, instrument, prepare
 import test_offramp_hull as hull_tests
 
@@ -224,6 +224,34 @@ class Tests(unittest.TestCase):
             bad = miss[:]; bad[index] = value
             with self.subTest(index=index), self.assertRaises(AssertionError): oracle_validate(bad, tick, brushes)
 
+    def test_identity_embedded_query_active_child_and_removal(self):
+        brushes, tick, row = entity_query(12); row[13] = '0'
+        oracle_validate(row, tick, brushes)
+        removed = row[:]; removed[2:4], removed[10:19] = ['unembedded', '0'], ['1', '0', '0', '-1', '0', '0', '0', '0', '0']
+        oracle_validate(removed, tick, brushes)
+        with patch('offramp_motion.joint_overlap', side_effect=AssertionError('JOINT ACTED')):
+            with self.assertRaisesRegex(AssertionError, 'JOINT ACTED'): oracle_validate(row, tick, brushes)
+            with self.assertRaisesRegex(AssertionError, 'JOINT ACTED'): oracle_validate(removed, tick, brushes)
+        fake = removed[:]; fake[2:4] = ['down2', '-1']
+        with self.assertRaisesRegex(AssertionError, 'JOINT'): oracle_validate(fake, tick, brushes)
+        fake = row[:]; fake[2:4] = ['unembedded', '0']
+        with self.assertRaisesRegex(AssertionError, 'JOINT'): oracle_validate(fake, tick, brushes)
+        _, removed_tick, _ = entity_query(13)
+        fake = removed[:]; fake[0], fake[2:4] = '13', ['down2', '-1']
+        oracle_validate(fake, removed_tick, brushes)
+        fake = row[:]; fake[0] = '13'
+        with self.assertRaisesRegex(AssertionError, 'JOINT'): oracle_validate(fake, removed_tick, brushes)
+
+    def test_embedded_query_wrong_family_parent_winner_pose_or_embed_refuses(self):
+        brushes, tick, row = entity_query(12); row[13] = '0'
+        for index, value in ((0, '11'), (2, 'worldonly'), (3, '0'), (4, '999'), (11, '1'), (12, '1'), (13, '1'), (14, '0'), (18, '0')):
+            bad = row[:]; bad[index] = value
+            with self.subTest(index=index), self.assertRaises(AssertionError): oracle_validate(bad, tick, brushes)
+        miss = row[:]; miss[2:4], miss[10:19] = ['unembedded', '0'], ['1', '0', '0', '-1', '0', '0', '0', '0', '0']
+        for index, value in ((13, '0'), (14, '.8'), (18, '1')):
+            bad = miss[:]; bad[index] = value
+            with self.subTest(index=index), self.assertRaises(AssertionError): oracle_validate(bad, tick, brushes)
+
     def test_explicit_fixture_profile_and_case_schema(self):
         self.assertEqual(len(PARAMS), 42)
         self.assertEqual(PARAMS['fixrampbugs'], 2)
@@ -236,6 +264,8 @@ class Tests(unittest.TestCase):
         self.assertEqual(authored(7)[0][1]['mins'], [-32, -128, 50])
         self.assertEqual(authored(7)[0][1]['maxs'], [32, 128, 128])
         self.assertEqual(authored(10), authored(11))
+        self.assertEqual(authored(12), authored(13))
+        self.assertEqual(authored(10), authored(12))
         self.assertEqual([b['mins'][1] for b in authored(10)[0]], [-1024, -64])
         self.assertEqual([b['maxs'][1] for b in authored(10)[0]], [-896, 64])
 
@@ -380,6 +410,58 @@ def controls(text):
         ('entity-copied-callback', 'OFFRAMPGEOM', 'CONTACT', 15, 0),
         ('entity-accepted-hull', 'OFFRAMPHULL', 'CONTACT', 7, 45)):
         bad.append((label, change_case(text, 10, tag, index, value, namespace=namespace)))
+    embed_line = first('EMBED')
+    removed_embed = next(l for l in text.splitlines() if 'OFFRAMPMOTION_EMBED 13 ' in l)
+    seed_line = next(l for l in text.splitlines() if 'OFFRAMPMOTION_SEED 12 ' in l)
+    bad += [('embedded-missing-EMBED', text.replace(embed_line+'\n', '', 1)),
+            ('embedded-missing-removed-EMBED', text.replace(removed_embed+'\n', '', 1)),
+            ('embedded-duplicate-EMBED', text+embed_line+'\n'),
+            ('embedded-width', text.replace(embed_line, embed_line.rsplit(' ', 1)[0], 1)),
+            ('embedded-reordered-EMBED', text.replace(embed_line+'\n'+seed_line, seed_line+'\n'+embed_line, 1))]
+    for label, tag, index, value, pred in (
+        ('embedded-active-physents', 'SET', 1, 2, lambda r: r[0] == '12'),
+        ('embedded-skip-filter', 'SET', 2, 0, lambda r: r[0] == '12'),
+        ('embedded-world-slot', 'PHYSENT', 1, 1, lambda r: r[0] == '12'),
+        ('embedded-parent-model', 'PHYSENT', 3, EMBEDDED_MODEL, lambda r: r[0] == '12'),
+        ('embedded-parent-direct-brush', 'PHYSENT', 4, 1, lambda r: r[0] == '12'),
+        ('embedded-parent-pose', 'INSTANCE', 2, 1000, lambda r: r[0] == '12'),
+        ('embedded-root-leaf', 'EMBED', 1, 1, lambda r: r[0] == '12'),
+        ('embedded-child-leaf', 'EMBED', 2, 1, lambda r: r[0] == '12'),
+        ('embedded-node-count', 'EMBED', 3, 3, lambda r: r[0] == '12'),
+        ('embedded-inactive-child', 'EMBED', 4, 0, lambda r: r[0] == '12'),
+        ('embedded-removed-child-active', 'EMBED', 4, 1, lambda r: r[0] == '13'),
+        ('embedded-root-kind', 'EMBED', 5, 'brush', lambda r: r[0] == '12'),
+        ('embedded-child-name', 'EMBED', 6, ENTITY_MODEL, lambda r: r[0] == '12'),
+        ('embedded-child-origin', 'EMBED', 7, 1000, lambda r: r[0] == '12'),
+        ('embedded-child-axis', 'EMBED', 10, .5, lambda r: r[0] == '12'),
+        ('embedded-child-axis-nonfinite', 'EMBED', 11, 'nan', lambda r: r[0] == '12'),
+        ('embedded-ramp-silent', 'TICK', 8, 0, lambda r: r[:2] == ['12', '0']),
+        ('embedded-removed-fake-ramp', 'TICK', 8, 1, lambda r: r[:2] == ['13', '0']),
+        ('embedded-query-child-physent', 'ORACLE', 13, 1, lambda r: r[0] == '12' and float(r[10]) < 1),
+        ('embedded-query-endpoint', 'ORACLE', 4, 999, lambda r: r[0] == '12'),
+        ('embedded-query-body-startsolid', 'ORACLE', 11, 1, lambda r: r[0] == '12'),
+        ('embedded-query-removal-label', 'ORACLE', 2, 'worldonly', lambda r: r[0] == '12' and r[2] == 'unembedded')):
+        bad.append((label, change(text, tag, index, value, pred)))
+    bad.append(('embedded-native-hits-silent', change_all(text, 'ORACLE',
+                {10: 1, 13: -1, 14: 0, 15: 0, 16: 0, 17: 0, 18: 0}, lambda r: r[0] == '12' and r[2] == 'down2')))
+    bad.append(('embedded-removal-silent', change_all(text, 'ORACLE',
+                {10: .5, 13: 0, 14: .8, 15: 0, 16: .6, 17: 0, 18: 1}, lambda r: r[0] == '12' and r[2] == 'unembedded')))
+    for label, namespace, tag, index, value in (
+        ('embedded-contact-child-physent', 'OFFRAMPBUF', 'CONTACT', 3, 1),
+        ('embedded-origin-child-physent', 'OFFRAMPORIGIN', 'CONTACT', 8, 1),
+        ('embedded-origin-parent-model', 'OFFRAMPORIGIN', 'CONTACT', 9, 'maps/authored_offramp_motion.bsp'),
+        ('embedded-origin-wrong-child', 'OFFRAMPORIGIN', 'CONTACT', 9, ENTITY_MODEL),
+        ('embedded-origin-cached-route', 'OFFRAMPORIGIN', 'CONTACT', 2, 1),
+        ('embedded-origin-triangle', 'OFFRAMPORIGIN', 'CONTACT', 3, 2),
+        ('embedded-origin-leaf', 'OFFRAMPORIGIN', 'CONTACT', 4, 1),
+        ('embedded-origin-root', 'OFFRAMPORIGIN', 'CONTACT', 5, 1),
+        ('embedded-origin-depth-flattened', 'OFFRAMPORIGIN', 'CONTACT', 6, 0),
+        ('embedded-origin-wrong-depth', 'OFFRAMPORIGIN', 'CONTACT', 6, 2),
+        ('embedded-copied-world-brush', 'OFFRAMPGEOM', 'SHAPE', 4, -1024),
+        ('embedded-copied-root-pose', 'OFFRAMPGEOM', 'CONTACT', 7, 1000),
+        ('embedded-copied-root-callback', 'OFFRAMPGEOM', 'CONTACT', 15, 0),
+        ('embedded-accepted-hull', 'OFFRAMPHULL', 'CONTACT', 7, 45)):
+        bad.append((label, change_case(text, 12, tag, index, value, namespace=namespace)))
     return bad
 
 
@@ -432,7 +514,18 @@ def acted_controls(arms):
     assert r['entity_support_geometry_acceptance'] == 'ABSTAIN'
     assert r['entity_removal_trajectory_gates'] == 'PASS'
     assert r['cases'][10]['accepted'] and not r['cases'][11]['accepted']
-    print(f'{len(bad)+9} ACTED native motion controls, zero failed; capsule/transformed/entity actors ABSTAIN PASS')
+    def promote_embedded(o, contact, shape, payload, mapname):
+        if o[6] == 1 and o[9] == EMBEDDED_MODEL: return 'copied-world-brush-plane-bound', [5]
+        return shape_category(o, contact, shape, payload, mapname)
+    with patch('offramp_motion.shape_category', side_effect=promote_embedded), unittest.TestCase().assertRaisesRegex(AssertionError, 'promoted'):
+        grade(texts['on'])
+    altered = change(texts['on'], 'ORACLE', 10, .5, lambda r: r[0] == '12' and r[2] == 'down2' and float(r[10]) < 1)
+    with unittest.TestCase().assertRaises(AssertionError):
+        compare(texts['nooracle'], texts['control'], texts['off'], altered, texts['repeat'])
+    assert r['embedded_support_geometry_acceptance'] == 'ABSTAIN'
+    assert r['embedded_removal_trajectory_gates'] == 'PASS'
+    assert r['cases'][12]['accepted'] and not r['cases'][13]['accepted']
+    print(f'{len(bad)+11} ACTED native motion controls, zero failed; capsule/transformed/entity/embedded actors ABSTAIN PASS')
 
 
 def snapshot(engine):

@@ -2406,8 +2406,13 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   hit/miss/world-only removal queries and a different removed body trajectory.
   Actual entity/model/brush/hull binding and active-only joint AABB fixture
   queries pass; entity geometry/support remains ABSTAIN, never world support.
-  Original ten cases stay unchanged. General entity/map wiring and geometry
-  remain open. This is bounded fixture coverage, not a physical-exit or classifier fix.
+  A matched embedded BIH_MODEL/removed-parent pair now ACTS a depth-1 child-brush
+  winner, native removal queries and physically different removed trajectory.
+  Child/root/model/whole-brush/hull bind while embedded geometry/support ABSTAIN;
+  actual-body nonembedded checks stay strict. Identity-fixture queries include
+  only active child geometry. Original twelve cases stay unchanged. General
+  entity/embedded/map wiring, nested transforms and geometry remain open.
+  This is bounded fixture coverage, not a physical-exit or classifier fix.
   General geometry, uninstrumented cadence, LODs, unsupported mover paths and
   the recorded/live/render chain remain open.
   Falsifier: a known brush edge, raw contact-loss tick/hull/plane,
