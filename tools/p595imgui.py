@@ -156,7 +156,7 @@ def run(a):
         (game/'probe.cfg').write_text(cfg(arm,port))
         svcmd = [str(root/'fteqwsv64.exe'),'-basedir',str(root),'-nohome','-noplugins','-port',str(port),
                  '+set','cfg_save_auto','0','+set','sv_public','0','+map','p595_imgui.map']
-        clcmd = [str(root/'ftesurf64.exe'),'-basedir',str(root),'-nohome','-nosound','-nocdaudio','-window',
+        clcmd = [str(a.engine.resolve() if a.installed else root/'ftesurf64.exe'),'-basedir',str(root),'-nohome','-nosound','-nocdaudio','-window',
                  '+set','plug_loaddefault','0','+set','vid_width','640','+set','vid_height','480',
                  '+set','vid_fullscreen','0','+set','vid_winmaximize','0','+set','vid_renderer','gl',
                  '+set','cfg_save_auto','0','+exec','probe.cfg']
@@ -170,7 +170,9 @@ def run(a):
             finally:
                 if sv.poll() is None: sv.terminate(); sv.wait(timeout=10)
         report['arms'][arm] = {'exit':rc,'timed_out':timed,'engine_sha256':sha(a.engine),
-                              'csprogs_sha256':sha(game/'csprogs.dat'),'client_command':clcmd,'server_command':svcmd}
+                              'csprogs_sha256':sha(game/'csprogs.dat'),'installed_executable':a.installed,
+                              'plugin_fixture_sha256':sha(root/'fteplug_ui_imgui_x64.dll'),
+                              'client_command':clcmd,'server_command':svcmd}
         (rig/'report.json').write_text(json.dumps(report,indent=2)+'\n')
     errors = grade(rig); (rig/'grade.json').write_text(json.dumps({'errors':errors},indent=2)+'\n')
     for s in errors: print('FAIL',s)
@@ -184,6 +186,7 @@ if __name__ == '__main__':
     p.add_argument('--server',type=Path,default=Path('C:/FTEQuake/fteqwsv64.exe'))
     p.add_argument('--cc',type=Path,default=Path('C:/msys64/ucrt64/bin/g++.exe'))
     p.add_argument('--plugin',type=Path)
+    p.add_argument('--installed',action='store_true',help='Launch actual --engine path with disposable basedir/cwd; byte-identical installed plugin fixture')
     p.add_argument('command',nargs='?',choices=('run','grade'),default='run')
     p.add_argument('rig',nargs='?',type=Path)
     a = p.parse_args()
