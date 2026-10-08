@@ -75,7 +75,9 @@ confirmation), then selects that measured event for the chase view. This is
 The grader requires an acted native ramp plane and airborne loss, native/packet
 clock and raw-contact agreement, actual counted recording anchors, contiguous
 client ordinals, an independent 80 ms hold reconstruction, and a leave at that
-sample's exact ordinal/time/position. Its rendered marker must retain the stored
+sample's exact ordinal/time/position. A discontinuity clears the hold with
+`Line_Point`'s actual `t - 999` stamp (not an invented zero), including QC's
+float32 subtraction and hold comparison. Timing thresholds are not widened. Its rendered marker must retain the stored
 event's position and time. Counterfactuals remove/forge each stage and must be
 refused. Native authority in the client log is rejected, not promoted.
 

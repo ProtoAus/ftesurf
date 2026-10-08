@@ -9,6 +9,7 @@ import argparse
 import json
 import math
 from pathlib import Path
+import struct
 
 WIDTHS = {'NATIVE': 13, 'PACKET': 9, 'ANCHOR': 4, 'SAMPLE': 10,
           'BODY': 9, 'EVENT': 8, 'RENDER': 8, 'HELD': 5}
@@ -18,6 +19,13 @@ EPS = 0.000002  # decimal printing / QC float32, NOT a timing tolerance
 def require(ok, reason):
     if not ok:
         raise AssertionError(reason)
+
+
+def f32(value):
+    try:
+        return struct.unpack('<f', struct.pack('<f', value))[0]
+    except OverflowError as e:
+        raise AssertionError('value outside QC float32 range') from e
 
 
 def parse(text):
@@ -113,10 +121,11 @@ def grade_text(server, client):
         raw = bool(int(flags) & 16)
         ground = bool(int(flags) & 1)
         if brk:
-            held, last = 0, 0.0
+            # Line_Point explicitly expires the hold at t - 999, not zero.
+            held, last = 0, f32(f32(t) - 999)
         if raw:
-            last, held = t, 1
-        elif held and t >= last and t - last > .08 + EPS:
+            last, held = f32(t), 1
+        elif held and f32(t) >= last and f32(f32(t) - last) > f32(.08):
             held = 0
         want = 0 if ground else (2 if held else 1)
         require(kind == want and on == held, 'held-kind differs from raw/clock control')

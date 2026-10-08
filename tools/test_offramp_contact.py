@@ -65,6 +65,8 @@ def main():
         ('held-kind-fake', server, change(client, 'SAMPLE', 6, 0, lambda r: r[6] == '2')),
         ('held-state-fake', server, change(client, 'SAMPLE', 7, 0, lambda r: r[7] == '1')),
         ('last-contact-fake', server, change(client, 'BODY', 8, -123)),
+        ('break-stamp-not-cleared', server, change(client, 'SAMPLE', 9, 1,
+             lambda r: not (int(r[5]) & 16) and r[7] == '0' and r[9] == '0')),
         ('command-clock-reversed', server, change(client, 'SAMPLE', 4, 999999)),
         ('missing-leave', server, drop(client, 'EVENT', leave)),
         ('leave-ordinal-fake', server, change(client, 'EVENT', 1, 999999, leave)),
