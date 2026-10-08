@@ -1602,7 +1602,7 @@ publicly WITH its fix, not before it.
   requested-clock test stays RED on three/four cuts. Presentation is not general
   alignment. Twenty-five UI counterfactuals, prior HUD21/12, navigation/focus/
   opposition and reader 306/0 pass. Production screenshot/status/timer control
-  passes; inspected screenshots are 1920x1080 (video request is not size proof).
+  passes; PNG IHDR verifies 1920x1111 (video request is not size proof).
   QC pointer locals must be separate declarations: combined `*old, *m` produced
   a double-pointer cast warning/error in the private test. Initial seam/compile
   failures did not ACT. With delay/screenshots, 500ms initial save wait left go
