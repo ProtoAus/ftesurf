@@ -621,7 +621,10 @@ collection is not calibration or a guarantee of complete pair coverage.
 Collector budgets are independent: `--sims` caps selected source rows,
 `--sims-pairs` caps newly admitted pairs (default 200), and `--sims-seconds` caps
 elapsed admission cooperatively (default 10 seconds). Zero disables; elapsed
-CLI values must be finite and nonnegative. In-flight loading, comparison and
+CLI values must be finite and nonnegative. Source, peer and pair limits require
+exact integers in 0..9223372036854775807 before optional loading or queries;
+negative SQLite LIMIT values are never used as an unlimited-work shortcut.
+In-flight loading, comparison and
 normal database writes can finish after the deadline; this is not a hard timeout,
 overall memory/scan bound or fair scheduler. The CLI retains its existing
 import-time database initialization even for rejected arguments.

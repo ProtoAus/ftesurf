@@ -100,6 +100,12 @@ KNOWN_SKIP_CODES = frozenset(SKIP_CODES.values()) | {"peer_unresolved", "unknown
 SOURCE_SNAPSHOT_MAX = 512
 
 
+def _limit(name, value):
+    """Exact nonnegative SQLite LIMIT/admission input; negatives mean unlimited."""
+    if type(value) is not int or not 0 <= value <= 9223372036854775807:
+        raise ValueError("%s must be an integer in 0..9223372036854775807" % name)
+
+
 def source_capture(value):
     """Allowlisted compared-buffer provenance, never current-source validation."""
     if (not isinstance(value, dict) or set(value) != {"version", "a", "b"}
@@ -448,6 +454,9 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
     between comparisons held the write lock for all the rest: 80 peers held it
     6.9 s, a concurrent /api/run got a 500 and `import surfd` (migrate) failed.
     """
+    _limit("limit_peers", limit_peers)
+    if limit_peers == 0:
+        return 0, 0, 0
     rs = reader
     if rs is None:
         rs, why = _recsim(tools_dir)
@@ -529,6 +538,9 @@ def pending(conn, limit=50, read_budget=None):
     Reads never advance/create state. Rotating finite source fixtures prevents an
     unavailable oldest source monopolizing later passes, not full fleet coverage.
     """
+    _limit("limit", limit)
+    if limit == 0:
+        return []
     after = _cursor(conn, "source", read_budget=read_budget)
     return _read(conn,
         "SELECT r.* FROM replays r WHERE r.kind = 'run'"
@@ -565,9 +577,11 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
     measurement that cannot run must not take the checks that DO gate badges down
     with it.
     """
+    _limit("limit", limit)
+    _limit("max_pairs", max_pairs)
     if not math.isfinite(max_seconds):
         raise ValueError("max_seconds must be finite")
-    if limit <= 0 or max_pairs <= 0 or max_seconds <= 0:
+    if limit == 0 or max_pairs == 0 or max_seconds <= 0:
         return 0, 0, ""
     budget = _PairBudget(max_pairs, max_seconds)
     rs, why = _recsim(tools_dir)

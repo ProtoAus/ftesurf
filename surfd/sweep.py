@@ -925,6 +925,9 @@ def similarity_step(conn, limit=50, max_pairs=200, max_seconds=10.0,
     nothing here moves a badge or a verdict, and a fault is printed rather than
     raised, because a measurement that cannot run must not take the checks that DO
     gate badges down with it.  -> (pairs stored, notable, note)."""
+    for name, value in (("limit", limit), ("max_pairs", max_pairs)):
+        if type(value) is not int or not 0 <= value <= 9223372036854775807:
+            raise ValueError("%s must be an integer in 0..9223372036854775807" % name)
     if not math.isfinite(max_seconds):
         raise ValueError("max_seconds must be finite")
     if type(max_sql_steps) is not int or max_sql_steps < 0:
@@ -998,8 +1001,10 @@ def main(argv=None):
         ap.error("--sims-lock-ms must be in 0..2147483647")
     if args.sims_sql_steps < 0:
         ap.error("--sims-sql-steps must be nonnegative")
-    if args.sims_pairs < 0:
-        ap.error("--sims-pairs must be nonnegative")
+    if not 0 <= args.sims <= 9223372036854775807:
+        ap.error("--sims must be nonnegative and at most 9223372036854775807")
+    if not 0 <= args.sims_pairs <= 9223372036854775807:
+        ap.error("--sims-pairs must be nonnegative and at most 9223372036854775807")
     if not math.isfinite(args.sims_seconds) or args.sims_seconds < 0:
         ap.error("--sims-seconds must be finite and nonnegative")
     conn = surfd.connect()
