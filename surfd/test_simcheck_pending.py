@@ -61,7 +61,7 @@ class PendingTests(unittest.TestCase):
             self.add(i)
         stored = [self.step()[0] for _ in range(6)]
         self.assertEqual(stored, [1] * 6)
-        self.assertEqual(set(self.compared),
+        self.assertEqual({tuple(sorted(pair)) for pair in self.compared},
                          {(1, 2), (1, 3), (1, 4), (2, 3), (2, 4), (3, 4)})
         self.assertEqual(len(self.resolved), 12)  # both paths ACTED each pass
         self.assertEqual(self.pending_ids(), [])

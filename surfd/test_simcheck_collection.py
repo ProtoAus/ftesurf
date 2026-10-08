@@ -156,7 +156,7 @@ class PairBudget(CollectorAvailability):
         self.compared.clear()
         stored, notable, note = self.step(1)
         self.assertEqual((stored, notable, len(self.compared)), (1,1,1))
-        self.assertEqual(self.compared, [('1','3')])  # partially sampled oldest remains eligible
+        self.assertEqual(self.compared, [('2','3')])  # next source's admission turn
         self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM sims').fetchone()[0], 2)
         # No complete-pair scheduling claim: current pending semantics remain.
 

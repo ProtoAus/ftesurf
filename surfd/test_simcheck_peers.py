@@ -7,10 +7,11 @@ import test_simcheck_pending as fixture
 
 
 class PeerTests(fixture.PendingTests):
-    def direct(self, source=1, limit_peers=200):
+    def direct(self, source=1, limit_peers=200, budget=None):
         row = self.conn.execute('SELECT * FROM replays WHERE id=?', (source,)).fetchone()
         with mock.patch.object(simcheck, '_recsim', return_value=(self.mod, 'fake')):
-            return simcheck.compare_run(self.surfd, self.conn, row, limit_peers=limit_peers)
+            return simcheck.compare_run(self.surfd, self.conn, row,
+                                        limit_peers=limit_peers, budget=budget)
 
     def crowded(self):
         for i in range(1, 207):
@@ -31,7 +32,10 @@ class PeerTests(fixture.PendingTests):
 
     def test_crowded_window_still_obeys_one_pair_per_pass(self):
         self.crowded()
-        self.assertEqual([self.step()[0] for _ in range(5)], [1] * 5)
+        # Pin this source's peer-window contract independently of global source
+        # rotation. Each call gets a fresh shared-style one-pair admission budget.
+        self.assertEqual([self.direct(budget=simcheck._PairBudget(1, 1.))[0]
+                          for _ in range(5)], [1] * 5)
         self.assertEqual(self.compared, [(1, i) for i in range(202, 207)])
         self.assertNotIn(1, self.pending_ids())
 
@@ -66,15 +70,16 @@ class PeerTests(fixture.PendingTests):
             return original(row)
 
         self.surfd.replay_file = path
-        stored, notable, note = self.step()
-        self.assertEqual((stored, notable), (1, 0))
-        self.assertIn('1 attempted', note)
+        budget = simcheck._PairBudget(1, 1.)
+        stored, skipped, notable = self.direct(budget=budget)
+        self.assertEqual((stored, skipped, notable), (1, 1, 0))
+        self.assertEqual(budget.attempted, 1)
         self.assertEqual(self.resolved, [1, 202])
         self.assertEqual(self.compared, [])
         row = self.conn.execute('SELECT verdict,skip_code FROM sims'
                                 ' WHERE a_id=1 AND b_id=202').fetchone()
         self.assertEqual(tuple(row), ('skip', 'peer_unresolved'))
-        self.assertEqual(self.step()[0], 1)
+        self.assertEqual(self.direct(budget=simcheck._PairBudget(1, 1.))[0], 1)
         self.assertEqual(self.compared, [(1, 203)])  # valid next peer ACTED
 
 

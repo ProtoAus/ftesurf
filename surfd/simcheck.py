@@ -185,10 +185,36 @@ CREATE INDEX IF NOT EXISTS sims_b ON sims (b_id);
 """
 
 
+CURSOR_SQL = """
+CREATE TABLE IF NOT EXISTS sim_cursor (
+    scope TEXT NOT NULL CHECK(scope IN ('source', 'peer')),
+    source_id INTEGER NOT NULL,
+    after_id INTEGER NOT NULL,
+    PRIMARY KEY (scope, source_id)
+);
+"""
+
+
+def _cursor(conn, scope, source_id=0):
+    """Read-only; historical databases have no admission state yet."""
+    if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='sim_cursor'").fetchone():
+        return 0
+    row = conn.execute("SELECT after_id FROM sim_cursor WHERE scope=? AND source_id=?",
+                       (scope, source_id)).fetchone()
+    return row[0] if row else 0
+
+
+def _advance(conn, scope, after_id, source_id=0):
+    """Short committed admission checkpoint, never a comparison observation."""
+    with conn:
+        conn.execute("INSERT INTO sim_cursor(scope,source_id,after_id) VALUES(?,?,?)"
+                     " ON CONFLICT(scope,source_id) DO UPDATE SET after_id=excluded.after_id",
+                     (scope, source_id, after_id))
+
+
 def ensure_schema(conn):
-    """Create `sims` if it is missing.  Idempotent and safe to race, because
-    `migrate()` runs on EVERY `import surfd` including the sweep's cron import."""
-    conn.executescript(SIMS_SQL)
+    """Collector's additive tables; idempotent and safe to race."""
+    conn.executescript(SIMS_SQL + CURSOR_SQL)
     if "skip_code" not in {r[1] for r in conn.execute("PRAGMA table_info(sims)")}:
         try:
             conn.execute("ALTER TABLE sims ADD COLUMN skip_code TEXT NOT NULL DEFAULT ''")
@@ -319,13 +345,13 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
 
 
 def pending(conn, limit=50):
-    """Run-kind replays with at least one unobserved eligible pair, oldest first.
+    """Eligible sources after the last admitted ID first, then wrap ascending.
 
-    A stored observation (including a skip) suppresses only its own pair. Budgeted
-    partial work must remain eligible on a later pass. Lone runs and runs whose
-    eligible pairs are all stored are not pending. This is eligibility, not fair
-    retry scheduling: unresolved old sources can still crowd out newer sources.
+    Observations suppress only their own pairs; admission state is not evidence.
+    Reads never advance/create state. Rotating finite source fixtures prevents an
+    unavailable oldest source monopolizing later passes, not full fleet coverage.
     """
+    after = _cursor(conn, "source")
     return conn.execute(
         "SELECT r.* FROM replays r WHERE r.kind = 'run'"
         " AND EXISTS (SELECT 1 FROM replays p WHERE p.map = r.map"
@@ -334,7 +360,7 @@ def pending(conn, limit=50):
         "             AND NOT EXISTS (SELECT 1 FROM sims s"
         "                 WHERE (s.a_id = r.id AND s.b_id = p.id)"
         "                    OR (s.a_id = p.id AND s.b_id = r.id)))"
-        " ORDER BY r.id LIMIT ?", (limit,)).fetchall()
+        " ORDER BY (r.id > ?) DESC, r.id LIMIT ?", (after, limit)).fetchall()
 
 
 def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
@@ -379,6 +405,9 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         if not budget.available():
             break
         try:
+            # Advance admitted sources even if resolution/comparison later fails.
+            # Commit before comparison so no file work holds a write transaction.
+            _advance(conn, "source", row["id"])
             s, k, n = compare_run(surfd, conn, row, now=now, tools_dir=tools_dir,
                                   diagnostics=diagnostics, budget=budget)
         except Exception as exc:
