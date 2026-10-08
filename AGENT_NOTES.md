@@ -3404,6 +3404,37 @@ gates only: never recopy a correct destination or overwrite the first backup.
 Isolated secretless app logs are not live heartbeat failures. Historical rows
 are not reclassified; this does not establish pair coverage or calibration.
 
+
+### Cleanup copies without crossing into live content
+
+Measured Windows/NanoPi cleanup pitfalls (2026-10-08), not a product patch:
+
+- **Windows `DirEntry.stat()` is not canonical identity.** Its cached results
+  can have zero `st_dev`, `st_ino` and `st_nlink` while `Path.lstat()` returns
+  the real values. Use no-follow `lstat` for reparse-point, hardlink and
+  before/after identity checks. A real junction control must prove rejection
+  and that unlinking only the junction leaves a target sentinel intact.
+- **POSIX unlink changes surviving hardlink aliases' ctime.** A strict guard
+  can stop after deleting one alias even though the other name's bytes have
+  not changed. Do not broadly ignore ctime: accept only an inode this exact
+  transaction already unlinked, with identical device/inode, mode, size and
+  mtime, plus a fresh hash matching the preserved archive. After a partial
+  stop, rehash/replan the remaining entries; never blindly retry or force.
+- Archive and verify every ignored artifact before removing a published-clean
+  worktree. Preserve dirty/untracked files, unique history, player data and
+  owner configs. Check locks, descendants and process executable/args/cwd.
+  Use normal `git worktree remove`; retain branch/history recovery.
+- For test overlays, archive links as inert metadata and delete via anchored
+  directory descriptors with `O_NOFOLLOW`. Reject linked roots and every
+  mount boundary. Acted controls need a directory link, a regular hardlink
+  pair and a target sentinel; the sentinel must survive the actual removal.
+- Compare live map/static-file metadata, config/progs/binary hashes, existing
+  backup names and lobby PIDs before/after. Separate new live data from loss:
+  directory timestamps can change when new files arrive while every existing
+  file remains unchanged. Keep raw inventories, process args and recovery
+  archives private; never publish them as verification output.
+
+
 ## Chat and `say` — the contract, and it changed in 342
 
 Getting this wrong kills the restart keys silently, so it gets its own section.
