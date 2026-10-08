@@ -7,7 +7,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from offramp_motion import PARAMS, authored, compare, grade, joint_overlap, oracle_validate, parse
+from offramp_motion import LABELS, MAX_STEPS, PARAMS, authored, compare, grade, joint_overlap, oracle_validate, parse, step_count
 from offramp_motion_smoke import TARGET, instrument, prepare
 import test_offramp_hull as hull_tests
 
@@ -73,14 +73,35 @@ class Tests(unittest.TestCase):
         for text in ('', 'OFFRAMPMOTION_BEGIN 1 0 1 6 32', 'all checks passed\nOFFRAMPMOTION_BEGIN 1 0 1 6 32'):
             with self.assertRaises(AssertionError): grade(text)
 
+    def test_standing_counterfactual_is_not_actual_crouch_collision(self):
+        brushes, _ = authored(7)
+        tick = [0]*28
+        tick[10:13], tick[16:22] = [0, 0, .05], [-16, -16, 0, 16, 16, 45]
+        row = ['7', '0', 'standing', '-1']+list(map(str, [0, 0, .05, 0, 0, .05, 1, 1, 1, 0, 0, 0, 0, 0, 1]))
+        oracle_validate(row, tick, brushes)
+        actual = row[:]; actual[2] = 'stationary'
+        with self.assertRaisesRegex(AssertionError, 'embedded'):
+            oracle_validate(actual, tick, brushes)
+        miss = row[:]; miss[11:13], miss[18] = ['0', '0'], '0'
+        actual = miss[:]; actual[2] = 'stationary'
+        oracle_validate(actual, tick, brushes)
+        with self.assertRaisesRegex(AssertionError, 'JOINT'):
+            oracle_validate(miss, tick, brushes)
+        tick[10] = 48.05
+        miss[4], miss[7] = '48.05', '48.05'
+        oracle_validate(miss, tick, brushes)
+
     def test_explicit_fixture_profile_and_case_schema(self):
         self.assertEqual(len(PARAMS), 41)
         self.assertEqual(PARAMS['fixrampbugs'], 2)
-        for c in range(6):
+        for c in range(len(LABELS)):
             brushes, seed = authored(c)
             self.assertEqual(len(seed), 12)
-            self.assertEqual(len(brushes), 2 if c == 5 else 1)
+            self.assertEqual(len(brushes), 2 if c in (5, 7) else 1)
             self.assertEqual(len(brushes[0]['planes']), 7 if c == 2 else 6)
+            self.assertEqual(step_count(c), 32 if c < 6 else (96 if c == 6 else MAX_STEPS))
+        self.assertEqual(authored(7)[0][1]['mins'], [-32, -128, 50])
+        self.assertEqual(authored(7)[0][1]['maxs'], [32, 128, 128])
 
 
 def controls(text):
@@ -93,7 +114,7 @@ def controls(text):
             ('failed-native-setup', text.replace('all checks passed', 'native checks did NOT pass')),
             ('unknown-command', text+'Unknown command deliberate\n')]
     for label, tag, index, value in (
-        ('version', 'BEGIN', 0, 2), ('invalid-capture', 'BEGIN', 1, 2), ('invalid-oracle', 'BEGIN', 2, 2),
+        ('version', 'BEGIN', 0, 1), ('invalid-capture', 'BEGIN', 1, 2), ('invalid-oracle', 'BEGIN', 2, 2),
         ('case-count', 'BEGIN', 3, 7), ('step-cap', 'BEGIN', 4, 33), ('source-digest', 'SOURCE', 0, 'bad'),
         ('source-base', 'SOURCE', 1, 'bad'), ('wrong-profile', 'PARAM', 1, 999), ('wrong-case', 'CASE', 0, 1),
         ('wrong-label', 'CASE', 1, 'unregistered'), ('wrong-case-count', 'CASE', 2, 31), ('wrong-brush-count', 'CASE', 3, 3),
@@ -113,6 +134,17 @@ def controls(text):
     # still exists; returning fraction=1 is not allowed to close support gates.
     bad.append(('native-oracle-false-negative', change(text, 'ORACLE', 10, 1, lambda r: r[2:4] == ['projected', '-1'])))
     bad.append(('native-capture-silent', '\n'.join(l for l in lines if not any(p in l for p in ('OFFRAMPBUF_', 'OFFRAMPORIGIN_', 'OFFRAMPGEOM_', 'OFFRAMPHULL_')))))
+    for label, tag, index, value, pred in (
+        ('posture-button-silent', 'TICK', 5, 0, lambda r: r[0] == '6' and r[1] == '3'),
+        ('posture-transition-silent', 'TICK', 23, 0, lambda r: r[0] == '6' and r[1] == '3'),
+        ('posture-fake-crouch-hull', 'TICK', 21, 62, lambda r: r[0] == '6' and r[22] == '1'),
+        ('posture-fake-duck-timer', 'TICK', 24, -1, lambda r: r[0] == '6' and r[1] == '3'),
+        ('posture-fake-oldbuttons', 'TICK', 27, 0, lambda r: r[0] == '6' and r[1] == '3'),
+        ('ceiling-no-standing-hit', 'ORACLE', 11, 0, lambda r: r[0] == '7' and r[2] == 'standing' and r[11] == '1'),
+        ('ceiling-standing-endpoint', 'ORACLE', 4, 999, lambda r: r[0] == '7' and r[2] == 'standing'),
+        ('ceiling-actual-body-embedded', 'ORACLE', 11, 1, lambda r: r[0] == '7' and r[2] == 'stationary'),
+        ('ceiling-wrong-clear-hull', 'TICK', 21, 45, lambda r: r[0] == '7' and r[1] == '191')):
+        bad.append((label, change(text, tag, index, value, pred)))
     return bad
 
 
@@ -132,7 +164,7 @@ def acted_controls(arms):
         try: compare(texts['nooracle'], texts['control'], texts['off'], text, texts['repeat'])
         except AssertionError: continue
         raise AssertionError('Native cross-arm counterfactual accepted')
-    print(f'{len(bad)+3} ACTED native motion controls, zero failed; six trajectory actors/queries/bindings PASS')
+    print(f'{len(bad)+3} ACTED native motion controls, zero failed; eight trajectory/posture actors/queries/bindings PASS')
 
 
 def snapshot(engine):

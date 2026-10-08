@@ -408,7 +408,9 @@ or continuous collision-time coverage. Mismatch is refusal, never a weakened
 physical-exit claim. Accepted whole winning snapshots must match an authored
 brush, and native tick/hull/posture/trace/leaf ordinals bind to actual samples.
 
-Protocol `OFFRAMPMOTION_` v1: BEGIN capture/oracle/case/step counts, SOURCE
+Protocol `OFFRAMPMOTION_` v2: BEGIN capture/oracle/case counts and maximum step
+capacity, explicit per-CASE step counts (first six 32, open posture 96, ceiling
+posture 192), SOURCE
 fixture-template SHA256 and native base commit, exact ordered PARAM rows,
 CASE/BRUSH/PLANE/SEED, ordered TICK and ORACLE rows, CASE_END, END, COMPLETE.
 TICK carries actual command inputs, native tick count/rate, ramp/ground state,
@@ -425,8 +427,31 @@ input-driven raw loss retains immediate AND projected native support, and a
 previous brush's support can vanish while the seam union persists. These are
 sampled diagnostic observations, **not rules to shift visible marks**.
 
-Only this authored static fixture family is closed. Exact physical exit time,
-classification/debounce/mark policy, transformed/embedded/entity/triangle/
-displacement/capsule and real posture-change trajectories, explicit cached/
-recovery/portal motion, general world support, P560 clock and same-input
-recorded/live/render/rate/camera/LOD/hold acceptance remain **NOT_TESTED**.
+Two further **real posture** cases use a standing seed and genuine duck-button
+press/hold/release while moving on a standable floor: an open duck/unduck cycle,
+and a low ceiling that blocks standing until the whole body clears its edge.
+No mid-trajectory pose/hull/velocity is injected. Completion requires an actual
+standing-hull duck transition, smaller crouched hull, unduck transition and
+restored standing hull, bound to captured ticks/timers/buttons. Ground support
+and nonembedded actual-body queries must ACT throughout. The first six cases'
+body/oracle/accepted bindings remain exactly equal to their retained v1 controls.
+
+Posture cases add a separately named `standing` stationary world query at the
+actual tick position, using a LOCAL copy of the hull with the explicit profile's
+standing height. It NEVER mutates pmove. The reader checks the standing AABB
+against the same whole-brush joint oracle. Solid flags are permitted ONLY for
+this counterfactual fit query; they must not be promoted to actual-body contact.
+The ceiling control must block the standing query while the crouched query
+misses, retain crouch after button release, clear the ceiling, then really stand.
+The open control must never block standing. These are bounded static/AABB
+posture-policy controls, not capsule, arbitrary ceiling or airborne-duck coverage.
+The initial 96-tick ceiling attempt remained blocked and failed completion;
+its retained evidence was not called a pass. The ceiling horizon was extended,
+not its clearance/completion/parity requirements relaxed.
+
+Only this authored static fixture family and two posture cases are closed.
+Exact physical exit time, classification/debounce/mark policy, transformed/
+embedded/entity/triangle/displacement/capsule, airborne or other posture-change
+trajectories, explicit cached/recovery/portal motion, general world support,
+P560 clock and same-input recorded/live/render/rate/camera/LOD/hold acceptance
+remain **NOT_TESTED**.

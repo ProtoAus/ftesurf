@@ -20,8 +20,13 @@ from offramp_origin import CHECKS as ORIGIN_CHECKS, integers, parse as origin_pa
 from offramp_shape import category as shape_category, decode as shape_decode
 
 LABELS = ('interior-ride', 'partial-full-side-exit', 'convex-side-exit',
-          'interior-input-departure', 'ground-jump', 'overlapping-brush-seam')
+          'interior-input-departure', 'ground-jump', 'overlapping-brush-seam',
+          'open-ground-duck-cycle', 'ceiling-blocked-unduck')
 STEPS = 32
+MAX_STEPS = 192
+
+
+def step_count(case): return STEPS if case < 6 else (96 if case == 6 else MAX_STEPS)
 WIDTHS = {'BEGIN': 5, 'SOURCE': 2, 'PARAM': 2, 'CASE': 4, 'BRUSH': 9, 'PLANE': 7,
           'SEED': 13, 'TICK': 28, 'ORACLE': 19, 'CASE_END': 2, 'END': 1, 'COMPLETE': 0}
 PARAMS = dict(zip(('physicsmode ticrate gravity entgravity maxspeed spectatormaxspeed maxairspeed maxvelocity '
@@ -90,7 +95,7 @@ def _joint_overlap(planes, mins, maxs):
 
 
 def authored(case):
-    count = 2 if case == 5 else 1
+    count = 2 if case in (5, 7) else 1
     brushes = []
     for b in range(count):
         lo = [-256, -256 if case == 2 else (-8 if b else -64), -512]
@@ -98,11 +103,17 @@ def authored(case):
         planes = [[1, 0, 0, hi[0]], [-1, 0, 0, -lo[0]], [0, 1, 0, hi[1]], [0, -1, 0, -lo[1]],
                   [0, 0, -1, 512], [0 if case == 4 else .8, 0, 1 if case == 4 else .6, 0]]
         if case == 2: planes += [[math.sqrt(.5), math.sqrt(.5), 0, 0]]
+        if case >= 6:
+            lo = [-32, -128, 50] if b else [-256, -256, -512]
+            hi = [32, 128, 128] if b else [256, 256, 0]
+            planes = [[1, 0, 0, hi[0]], [-1, 0, 0, -lo[0]], [0, 1, 0, hi[1]],
+                      [0, -1, 0, -lo[1]], [0, 0, -1, -lo[2]], [0, 0, 1, hi[2]]]
         brushes.append({'mins': lo, 'maxs': hi, 'planes': planes})
     x, y = (-40 if case == 2 else -100), (76 if case == 1 else (-32 if case == 5 else 0))
     z = .05 if case == 4 else (12.8-.8*x+.05)/.6
     seed = [x, y, z, 0 if case == 3 else (60 if case == 4 else 300),
             250 if case in (1, 2, 5) else 0, 0 if case in (3, 4) else -400, -16, -16, 0, 16, 16, 62]
+    if case >= 6: seed = [-100, 0, .05, 0, 0, 0, -16, -16, 0, 16, 16, 62]
     return brushes, seed
 
 
@@ -112,11 +123,13 @@ def hit(row): return row[10] < 1 and row[11] == row[12] == 0
 def oracle_validate(row, tick, brushes):
     case, ordinal = integers(row[:2]); kind = row[2]; brush = integers(row[3:4])[0]
     v = numbers(row[4:]); start, end = v[:3], v[3:6]
-    require(0 <= v[6] <= 1 and integers(row[11:13]) == [0, 0], 'invalid/embedded authored oracle fraction/flags')
+    require(0 <= v[6] <= 1 and all(f in (0, 1) for f in integers(row[11:13])) and
+            v[8] <= v[7] and (kind == 'standing' or integers(row[11:13]) == [0, 0]), 'invalid/embedded authored oracle fraction/flags')
     require(integers(row[13:14]) == [0], 'oracle fixture entity binding changed')
     contents = integers(row[18:])[0]
     require(0 <= contents <= 0xffffffff, 'invalid oracle contents')
     pos, mins, maxs = tick[10:13], tick[16:19], tick[19:22]
+    if kind == 'standing': maxs = maxs[:2]+[mins[2]+PARAMS['standheight']]
     expected_start, expected_end = pos[:], pos[:]
     if kind == 'down2': expected_end[2] -= 2
     elif kind == 'projected':
@@ -124,7 +137,7 @@ def oracle_validate(row, tick, brushes):
         low = sum(n*(hi if n < 0 else lo) for n, lo, hi in zip(p[:3], mins, maxs))
         z = (p[3]-low-p[0]*pos[0]-p[1]*pos[1])/p[2]
         expected_start[2], expected_end[2] = z+2, z-2
-    else: require(kind == 'stationary', 'unknown oracle query kind')
+    else: require(kind in ('stationary', 'standing'), 'unknown oracle query kind')
     require(close(start, expected_start) and close(end, expected_end), 'oracle endpoints not bound to actual tick hull/point')
     subset = brushes if brush == -1 else [brushes[brush]]
     lo = [min(a, b)+m for a, b, m in zip(start, end, mins)]
@@ -133,7 +146,11 @@ def oracle_validate(row, tick, brushes):
     native = v[6] < 1 or bool(v[7] or v[8])
     require(native == joint, 'native query disagrees with JOINT convex oracle')
     if kind == 'stationary': require(not native, 'authored mover ended embedded in solid')
-    if v[6] < 1:
+    if v[7] or v[8]:
+        require(kind == 'standing' and contents == 1 and
+                (v[10:14] == [0, 0, 0, 0] or any(close(v[10:14], p) for b in subset for p in b['planes'])),
+                'counterfactual standing solid not bound to authored collider')
+    elif v[6] < 1:
         require(any(close(v[10:14], p) for b in subset for p in b['planes']) and contents == 1,
                 'oracle winning plane/contents not authored collider')
     else:
@@ -143,11 +160,12 @@ def oracle_validate(row, tick, brushes):
 
 
 def bind_capture(text, case, ticks, brushes):
+    steps = step_count(case)
     buffer, order = buffer_parse(text)
     contacts = buffer['CONTACT']
-    require(buffer['BEGIN'] == [[1, 32768]] and buffer['END'] == [[STEPS, len(contacts), 0]] and
-            order == ['BEGIN']+['TICK']*STEPS+['CONTACT']*len(contacts)+['END'], 'invalid case native capture envelope')
-    require(len(buffer['TICK']) == STEPS, 'missing captured native tick')
+    require(buffer['BEGIN'] == [[1, 32768]] and buffer['END'] == [[steps, len(contacts), 0]] and
+            order == ['BEGIN']+['TICK']*steps+['CONTACT']*len(contacts)+['END'], 'invalid case native capture envelope')
+    require(len(buffer['TICK']) == steps, 'missing captured native tick')
     for i, (r, t) in enumerate(zip(buffer['TICK'], ticks)):
         require(r[:4] == [i, i, i+1, i+1] and close(r[4:7], [t[7], t[8], t[9]]) and
                 r[7:13] == t[10:16], 'motion not bound to actual captured native tick')
@@ -160,7 +178,7 @@ def bind_capture(text, case, ticks, brushes):
     ht, hc, _ = hull_decode(text, buffer['TICK'], contacts, shapes)
     per_tick = Counter(); winners = []
     for i, (r, o, s) in enumerate(zip(contacts, origin_rows, shapes)):
-        require(r[0] == i and int(r[1]) == r[1] and 0 <= r[1] < STEPS and 0 <= r[4] <= 1 and
+        require(r[0] == i and int(r[1]) == r[1] and 0 <= r[1] < steps and 0 <= r[4] <= 1 and
                 int(r[2]) == r[2] and 0 <= r[2] < 8 and r[3] == 0 and r[21:] == [0, 0, 0], 'invalid accepted fixture trace')
         require(o[:2] == [i, int(r[1])] and o[8] == 0 and o[3] == 1 and o[4] >= 0 and o[5] >= 0 and
                 o[6] == 0 and o[7] == 1, 'accepted origin not bound to fixture brush')
@@ -189,7 +207,7 @@ def grade(text):
         require(pos < len(rows) and rows[pos][0] == tag, f'missing/duplicate/reordered motion {tag}')
         w = rows[pos][1]; pos += 1; return w
     header = integers(take('BEGIN'))
-    require(header[0] == 1 and header[1] in (0, 1) and header[2] in (0, 1) and header[3:] == [6, STEPS], 'unsupported motion header')
+    require(header[0] == 2 and header[1] in (0, 1) and header[2] in (0, 1) and header[3:] == [len(LABELS), MAX_STEPS], 'unsupported motion header')
     capture, oracle = header[1:3]
     source = take('SOURCE')
     require(re.fullmatch('[0-9a-f]{64}', source[0]) and re.fullmatch('[0-9a-f]{40}', source[1]), 'invalid fixture/source stamp')
@@ -197,15 +215,16 @@ def grade(text):
         p = take('PARAM'); require(p[0] == name and close(numbers(p[1:]), [expected], 1e-4), 'wrong/duplicate native input profile')
     cases = []
     blocks = re.findall(r'OFFRAMPMOTION_CASE [0-9]+ .*?(?=OFFRAMPMOTION_CASE_END [0-9]+ [0-9]+)', text, flags=re.S)
-    require(len(blocks) == 6, 'missing/duplicate native case block')
+    require(len(blocks) == len(LABELS), 'missing/duplicate native case block')
     legacy = ('OFFRAMPBUF_', 'OFFRAMPORIGIN_', 'OFFRAMPGEOM_', 'OFFRAMPHULL_')
     legacy_count = lambda s: sum(any(p in line for p in legacy) for line in s.splitlines())
     require(legacy_count(text) == sum(legacy_count(b) for b in blocks), 'capture rows outside native case envelope')
     if not capture:
         require(not any(s in text for s in ('OFFRAMPBUF_', 'OFFRAMPORIGIN_', 'OFFRAMPGEOM_', 'OFFRAMPHULL_')), 'fixture-only/OFF capture not quiet')
     for c, label in enumerate(LABELS):
+        steps = step_count(c)
         authored_brushes, seed = authored(c); case = take('CASE')
-        require(case == [str(c), label, str(STEPS), str(len(authored_brushes))], 'wrong case actor/header')
+        require(case == [str(c), label, str(steps), str(len(authored_brushes))], 'wrong case actor/header')
         brushes = []
         for b, expected in enumerate(authored_brushes):
             row = take('BRUSH'); require(integers(row[:3]) == [c, b, len(expected['planes'])] and close(numbers(row[3:]), expected['mins']+expected['maxs']), 'wrong authored brush')
@@ -216,34 +235,68 @@ def grade(text):
             brushes.append({'mins': numbers(row[3:6]), 'maxs': numbers(row[6:]), 'planes': planes})
         r = take('SEED'); require(integers(r[:1]) == [c] and close(numbers(r[1:]), seed), 'wrong/changed case seed')
         ticks, queries = [], []
-        for i in range(STEPS):
+        for i in range(steps):
             t = numbers(take('TICK'))
-            require(t[:7] == [c, i, 15, 250 if c == 3 and i == 3 else 0, 0, 2 if c == 4 and i == 3 else 0, 1] and
+            forward = 250 if c >= 6 or (c == 3 and i == 3) else 0
+            buttons = (8 if 3 <= i <= (34 if c == 6 else 44) else 0) if c >= 6 else (2 if c == 4 and i == 3 else 0)
+            require(t[:7] == [c, i, 15, forward, 0, buttons, 1] and
                     close(t[7:8], [.015], 1e-8) and t[8] in (0, 1) and t[9] in (0, 1) and
-                    t[16:22] == [-16, -16, 0, 16, 16, 62] and t[22:27] == [0, 0, 0, 0, 0] and
-                    t[27].is_integer() and 0 <= t[27] <= 255, 'wrong command/tick/hull actor')
+                    t[16:21] == [-16, -16, 0, 16, 16] and t[21] in (45, 62) and
+                    t[22] in (0, 1) and t[23] in (0, 1) and 0 <= t[24] <= 1000 and t[25:27] == [0, 0] and
+                    t[27].is_integer() and 0 <= t[27] <= 255 and
+                    (c >= 6 or (t[21] == 62 and t[22:25] == [0, 0, 0])), 'wrong command/tick/hull actor')
             ticks.append(t)
             qrows = []
             if oracle:
-                for kind, brush in [('stationary', -1), ('down2', -1), ('projected', -1), *[('projected', b) for b in range(len(brushes))]]:
+                for kind, brush in [('stationary', -1), ('down2', -1), ('projected', -1), *[('projected', b) for b in range(len(brushes))], *([('standing', -1)] if c >= 6 else [])]:
                     row = take('ORACLE'); require(integers(row[:2]) == [c, i] and row[2:4] == [kind, str(brush)], 'oracle not bound/ordered to native case tick')
                     qrows.append(oracle_validate(row, t, brushes))
             queries.append(qrows)
-        require(integers(take('CASE_END')) == [c, STEPS] and math.dist(ticks[-1][10:13], seed[:3]) > 1, 'native trajectory did not ACT')
+        require(integers(take('CASE_END')) == [c, steps] and math.dist(ticks[-1][10:13], seed[:3]) > 1, 'native trajectory did not ACT')
         winners = bind_capture(blocks[c], c, ticks, brushes) if capture else []
         cases.append({'label': label, 'brushes': brushes, 'seed': numbers(r[1:]), 'ticks': ticks, 'oracles': queries, 'accepted': winners})
-    require(integers(take('END')) == [6] and take('COMPLETE') == [] and pos == len(rows), 'missing/duplicate motion completion')
+    require(integers(take('END')) == [len(LABELS)] and take('COMPLETE') == [] and pos == len(rows), 'missing/duplicate motion completion')
+    if oracle: assess_posture(*cases[6:])
     return {'capture': capture, 'oracle': oracle, 'source': source, 'cases': cases}
+
+
+def assess_posture(open_cycle, ceiling):
+    for c in (open_cycle, ceiling):
+        ts, qs = c['ticks'], c['oracles']
+        require(len(ts) == step_count(LABELS.index(c['label'])) and all(t[9] == 1 and t[8] == 0 for t in ts), 'posture ground actor failed')
+        require(all(t[21] == (45 if t[22] else 62) and (int(t[27]) & 8) == t[5] for t in ts),
+                'posture hull/button state is not an actual transition')
+        down = [i for i, t in enumerate(ts) if t[5] == 8 and t[23] == 1 and t[22] == 0 and t[21] == 62]
+        crouch = [i for i, t in enumerate(ts) if t[5] == 8 and t[22] == 1 and t[23] == 0 and t[21] == 45]
+        up = [i for i, t in enumerate(ts) if t[5] == 0 and t[22:24] == [1, 1] and t[21] == 45]
+        stand = [i for i, t in enumerate(ts) if i > 34 and t[5] == 0 and t[22:25] == [0, 0, 0] and t[21] == 62]
+        require(down and crouch and up and stand and ts[0][22:25] == [0, 0, 0] and
+                max(down) < min(crouch) < min(up) < min(stand) and
+                len(down) >= 26 and len(up) >= 13 and stand[-1] == len(ts)-1 and
+                all(hit(q[1]) for q in qs),
+                'real duck/unduck cycle did not ACT')
+        c['duck_transition_ticks'], c['crouched_button_ticks'] = down, crouch
+        c['unduck_transition_ticks'], c['standing_after_release_ticks'] = up, stand
+        c['standing_fit_blocked_ticks'] = [i for i, q in enumerate(qs) if q[-1][10] < 1 or q[-1][11] or q[-1][12]]
+    require(not open_cycle['standing_fit_blocked_ticks'], 'open posture fit control is blocked')
+    ts = ceiling['ticks']; blocked = ceiling['standing_fit_blocked_ticks']
+    released = [i for i in blocked if ts[i][5] == 0 and ts[i][21:24] == [45, 1, 0]]
+    require(released and len(released) >= 3 and max(blocked) < min(ceiling['unduck_transition_ticks']) and
+            ts[max(blocked)+1][10] > 48 and
+            any(t[10] < -48 and abs(t[13]) < EPS and t[21] == 62 for t in ts[3:30]) and
+            all(not (q[0][10] < 1 or q[0][11] or q[0][12]) for q in ceiling['oracles']),
+            'ceiling block/clear/real unduck did not ACT')
+    ceiling['released_but_ceiling_blocked_ticks'] = released
 
 
 def assess(cases):
     for c in cases:
         ts, qs = c['ticks'], c['oracles']
         require(all(qs), 'missing full native query actor')
-        c['raw_loss_ticks'] = [i for i in range(1, STEPS) if ts[i-1][8] and not ts[i][8]]
+        c['raw_loss_ticks'] = [i for i in range(1, len(ts)) if ts[i-1][8] and not ts[i][8]]
         c['immediate_support_ticks'] = [i for i, q in enumerate(qs) if hit(q[1])]
         c['projected_support_ticks'] = [i for i, q in enumerate(qs) if hit(q[2])]
-    a, side, convex, interior, jump, seam = cases
+    a, side, convex, interior, jump, seam, open_cycle, ceiling = cases
     require(all(t[8] for t in a['ticks']) and len(a['projected_support_ticks']) == STEPS and not a['raw_loss_ticks'], 'interior ride control failed')
     for c, edge in ((side, [0, 1, 0, 64]), (convex, [math.sqrt(.5), math.sqrt(.5), 0, 0])):
         partial = [i for i in c['projected_support_ticks'] if dot(edge[:3], c['ticks'][i][10:13]) > edge[3]]
@@ -256,6 +309,7 @@ def assess(cases):
             any(interior['ticks'][i][8] for i in range(interior['raw_loss_ticks'][0]+1, STEPS)), 'interior command loss/reacquisition did not ACT')
     require(jump['ticks'][2][9] == 1 and jump['ticks'][3][5] == 2 and jump['ticks'][3][13+2] > 250 and
             jump['ticks'][3][9] == 0 and 3 not in jump['immediate_support_ticks'] and len(jump['projected_support_ticks']) == STEPS, 'real ground jump did not ACT')
+    assess_posture(open_cycle, ceiling)
     require(len(seam['projected_support_ticks']) == STEPS and all(t[8] for t in seam['ticks']) and
             {a['brush'] for a in seam['accepted']} == {0, 1} and
             len({a['leaf'] for a in seam['accepted']}) == 2 and any(not hit(q[3]) and hit(q[4]) for q in seam['oracles']), 'union/previous-brush seam handoff did not ACT')
@@ -287,7 +341,7 @@ def main():
     result = compare(*(Path(arms[n]['log']).read_text(errors='replace') for n in names))
     require(result['source'][0] == arms['on']['fixture_sha256'], 'binary fixture stamp differs from tooling template')
     result['arms'] = arms; a.output.write_text(json.dumps(result, indent=2)+'\n')
-    print('Six acted native static-brush fixtures: PASS; full native/joint query and capture parity PASS')
+    print('Eight acted native static-brush/posture fixtures: PASS; full native/joint query and capture parity PASS')
     print('Physical timestamp/classifier/mark/unsupported paths/clock/render/rate/hold acceptance: NOT_TESTED')
 
 

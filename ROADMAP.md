@@ -405,11 +405,17 @@ triangle, equal-fraction, overwrite and unsupported-path controls. Runtime leaf
 identity is not a Source brush-lump ID. An optional whole-brush snapshot now
 copies actual loaded side planes/bounds at the win, with exact plane membership,
 finite/cap/pose/callback abstention and immutable payload repeat controls. Side
-gap diagnostics use the previous contact hull, not a newly captured loss-tick
-hull; they are not a collision/support oracle. Winning mover geometry, cached/
-recovery/portal paths and authored edge/jump/seam departures remain unverified.
-This does not close the classifier, FPS/tick-rate, held/render, LOD or human
-acceptance above.
+gap diagnostics alone are not a collision/support oracle. The optional hull
+layer copies actual accepted-contact and tick-end hull/posture instead of
+assuming the previous contact's hull. The separate authored motion command
+now drives six real static-brush edge/input/jump/seam controls plus open and
+ceiling-blocked duck/unduck cycles. Full native queries agree with a bounded
+joint convex/AABB oracle; fixture-only/no-oracle/OFF/ON/repeat body parity and
+winning snapshot bindings ACT. Capsule/transformed/triangle/displacement,
+airborne posture, explicit cached/recovery/portal paths and general-map
+coverage remain unverified. These sampled fixture controls do not establish
+continuous physical exit time or close classifier, FPS/tick-rate, held/render,
+LOD or human acceptance above.
 
 ### 12.5 Momentum demo labels: coverage and honest provenance
 

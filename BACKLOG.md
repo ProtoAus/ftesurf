@@ -2377,8 +2377,12 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   per-tick bit/normal, sampled held kind, event creation and actual rendered
   position; private acted 30/100/300 captures and counterfactual refusals measure
   the stages, not a classification fix. Packet/stat clock jumps must not be
-  mistaken for a longer configured hold. Exact hull/brush-edge geometry,
-  uninstrumented cadence, LODs and broader contact controls remain open.
+  mistaken for a longer configured hold. Separate authored static-brush
+  trajectories now bind actual hulls to full native/joint edge/input/jump/seam
+  queries and real open/ceiling-blocked duck cycles with five-arm body parity.
+  This is bounded fixture coverage, not a physical-exit or classifier fix.
+  General geometry, uninstrumented cadence, LODs, unsupported mover paths and
+  the recorded/live/render chain remain open.
   Falsifier: a known brush edge, raw contact-loss tick/hull/plane,
   held-kind transition and rendered event position logged together, at several
   tick/frame rates and LODs. Include ramp-to-ground, curved/prop/displacement
