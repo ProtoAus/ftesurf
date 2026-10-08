@@ -590,6 +590,12 @@ headless verifier per map on port 27698, with `nice 19`, idle IO and
 would index. `test_sweep.py` stubs out the engine (use a throwaway
 `SURFD_HOME`), and `cfg/test/p349verify.cfg` tests the verifier itself.
 
+`sweep.main()` explicitly closes the connection it creates on normal, dry-run,
+error and interruption exits, even when a caller retains an exception traceback.
+Step APIs still borrow connections and never close them. Existing step commit/
+rollback decisions are unchanged; this adds no enclosing transaction and claims
+no measured cron-path leak.
+
 ### Similarity runtime support (store-only)
 
 The normal surfd stage has tools for tests; staging does **not** install them.

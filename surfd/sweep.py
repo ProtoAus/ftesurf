@@ -1010,6 +1010,14 @@ def main(argv=None):
     if not math.isfinite(args.sims_seconds) or args.sims_seconds < 0:
         ap.error("--sims-seconds must be finite and nonnegative")
     conn = surfd.connect()
+    try:
+        return _main_connected(conn, args)
+    finally:
+        conn.close()
+
+
+def _main_connected(conn, args):
+    """Run the existing steps; main owns lifetime, each step owns its commits."""
     ensure_schema(conn)
     if args.dry_run:
         for row in pending(conn, args.limit):
