@@ -1,4 +1,5 @@
 """Atomic peer admission/observations; real SQLite rollback and bounded reader."""
+from contextlib import closing
 import os
 import sqlite3
 from types import SimpleNamespace
@@ -38,7 +39,7 @@ class AtomicFlush(unittest.TestCase):
         self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM sims').fetchone()[0], 0)
         self.assertFalse(self.conn.in_transaction)
         self.assertEqual(self.peer_cursor(), 99)
-        with sqlite3.connect(self.db) as reopened:
+        with closing(sqlite3.connect(self.db)) as reopened:
             self.assertEqual(self.peer_cursor(reopened), 99)
             self.assertEqual(reopened.execute('SELECT COUNT(*) FROM sims').fetchone()[0], 0)
 
@@ -65,8 +66,9 @@ class AtomicFlush(unittest.TestCase):
         compared = []
         def compare(a, b, **kw):
             self.assertFalse(self.conn.in_transaction)
-            with sqlite3.connect(self.db) as writer:
-                writer.execute('INSERT INTO probe VALUES (1)')
+            with closing(sqlite3.connect(self.db)) as writer:
+                with writer:
+                    writer.execute('INSERT INTO probe VALUES (1)')
             verdict, metrics = fixture.rs.compare_paths(a, b, **kw)
             compared.append(metrics['compared'])
             return verdict, metrics
@@ -76,7 +78,7 @@ class AtomicFlush(unittest.TestCase):
         self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM probe').fetchone()[0], 2)
         self.assertEqual(sum(t.upper().startswith('BEGIN') for t in transactions), 1)
         self.assertEqual(sum(t.upper() == 'COMMIT' for t in transactions), 1)
-        with sqlite3.connect(self.db) as reopened:
+        with closing(sqlite3.connect(self.db)) as reopened:
             self.assertEqual(self.peer_cursor(reopened), 3)
             self.assertEqual(reopened.execute('SELECT COUNT(*) FROM sims').fetchone()[0], 2)
 
