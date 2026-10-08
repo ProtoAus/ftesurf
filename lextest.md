@@ -17,9 +17,10 @@ Lex's feedback: the UI looks good; text appears improved but is still only
 "OK" against Apple-like quality. Overall appearance is approved. Advanced
 font quality is an unbuilt roadmap follow-up with a strict low recurring
 rendering budget, not a completed acceptance or permission for costly effects.
-Specific input/DPI/lifecycle checks below remain pending. As of this delivery,
-local P570 Windows binaries are waiting for the running game to close before
-the guarded dual-install swap; source/tag and Pi CSQC are already updated.
+Specific input/DPI/lifecycle checks below remain pending. P570 is deployed
+on both Windows installs as of 2026-10-08T05:28:54Z; source/tag and Pi CSQC
+are also updated. Both installed clients pass isolated font/editor controls.
+No owner settings were changed; rollback copies are retained.
 
 - With updated server CSQC, try `ui_style 1; hud_edit on`, then compare
   `ui_style 0`. Judge rounded controls, contrast, selected/hover/pressed states
