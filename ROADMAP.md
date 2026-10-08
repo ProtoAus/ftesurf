@@ -428,8 +428,14 @@ removal controls and active-child-only joint AABB identity-fixture query checks.
 Child/root/model/whole-brush/hull snapshots bind; embedded geometry/support stays
 ABSTAIN. Exact original-twelve parity remains required. Embedded here means a
 nested collision model, not a player starting solid: actual-body checks stay strict.
-General non-world/entity/embedded map wiring, nested transforms and geometry,
-triangle/displacement, airborne posture, explicit cached/recovery/portal paths,
+A matched actual BIH_TRIANGLE/removed-triangle pair now ACTS a native kind-2
+world winner, hit/miss/same-pose removal queries and different removed movement.
+Origin/leaf/model/actual hull/identity instance bind with an empty brush payload;
+authored vertex/index rows are wiring, not copied accepted geometry. Triangle
+geometry/support remains ABSTAIN (no independent triangle oracle). Exact original
+fourteen full case/winner parity remains required. General non-world/entity/
+embedded map wiring, nested transforms and geometry, real-map triangle/
+displacement/prop geometry, airborne posture, explicit cached/recovery/portal paths,
 full capsule/transform geometry and general-map coverage remain unverified. These sampled fixture controls do not establish
 continuous physical exit time or close classifier, FPS/tick-rate, held/render,
 LOD or human acceptance above.
