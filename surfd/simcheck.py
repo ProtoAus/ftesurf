@@ -48,8 +48,10 @@ it delegates to `reccheck`.  If `recsim` is not importable the step reports that
 and stores nothing -- it does not fall back to a second parser.
 """
 
+import json
 import math
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -91,6 +93,41 @@ SKIP_CODES = {
     "source limit": "source_limit",
 }
 KNOWN_SKIP_CODES = frozenset(SKIP_CODES.values()) | {"peer_unresolved", "unknown"}
+
+SOURCE_SNAPSHOT_MAX = 512
+
+
+def source_capture(value):
+    """Allowlisted compared-buffer provenance, never current-source validation."""
+    if (not isinstance(value, dict) or set(value) != {"version", "a", "b"}
+            or type(value["version"]) is not int or value["version"] != 1):
+        return None
+    for side in ("a", "b"):
+        item = value[side]
+        if (not isinstance(item, dict) or set(item) != {"sha256", "bytes"}
+                or not isinstance(item["sha256"], str)
+                or not re.fullmatch(r"[0-9a-f]{64}", item["sha256"])
+                or type(item["bytes"]) is not int
+                or not 0 < item["bytes"] <= MAX_SOURCE_BYTES):
+            return None
+    return value
+
+
+def source_snapshot(raw):
+    """Bounded versioned storage projection; malformed/legacy input is unbound."""
+    if not isinstance(raw, str) or len(raw) > SOURCE_SNAPSHOT_MAX:
+        return None
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate source snapshot key")
+            value[key] = item
+        return value
+    try:
+        return source_capture(json.loads(raw, object_pairs_hook=unique))
+    except (ValueError, TypeError, RecursionError):
+        return None
 
 
 class _PairBudget:
@@ -143,6 +180,8 @@ def _recsim(tools_dir=None):
         return None, "%s has no compare_paths (too old?)" % path
     if getattr(mod, "BOUNDED_INPUT_VERSION", None) != 1:
         return None, "recsim lacks bounded input capability (too old?)"
+    if getattr(mod, "SOURCE_CAPTURE_VERSION", None) != 1:
+        return None, "recsim lacks source capture capability (too old?)"
     return mod, path
 
 
@@ -167,6 +206,7 @@ CREATE TABLE IF NOT EXISTS sims (
     verdict    TEXT    NOT NULL,
     reason     TEXT    NOT NULL DEFAULT '',
     skip_code   TEXT NOT NULL DEFAULT '',
+    source_capture TEXT NOT NULL DEFAULT '',
     match      REAL    NOT NULL DEFAULT 0,
     cover      REAL    NOT NULL DEFAULT 0,
     prefix     INTEGER NOT NULL DEFAULT 0,
@@ -218,13 +258,14 @@ def _advance(conn, scope, after_id, source_id=0):
 def ensure_schema(conn):
     """Collector's additive tables; idempotent and safe to race."""
     conn.executescript(SIMS_SQL + CURSOR_SQL)
-    if "skip_code" not in {r[1] for r in conn.execute("PRAGMA table_info(sims)")}:
-        try:
-            conn.execute("ALTER TABLE sims ADD COLUMN skip_code TEXT NOT NULL DEFAULT ''")
-        except sqlite3.OperationalError:
-            # Another schema initializer may have added it after our read.
-            if "skip_code" not in {r[1] for r in conn.execute("PRAGMA table_info(sims)")}:
-                raise
+    for column in ("skip_code", "source_capture"):
+        if column not in {r[1] for r in conn.execute("PRAGMA table_info(sims)")}:
+            try:
+                conn.execute("ALTER TABLE sims ADD COLUMN %s TEXT NOT NULL DEFAULT ''" % column)
+            except sqlite3.OperationalError:
+                # Another schema initializer may have added it after our read.
+                if column not in {r[1] for r in conn.execute("PRAGMA table_info(sims)")}:
+                    raise
 
 
 # --------------------------------------------------------------------------
@@ -261,6 +302,7 @@ def _pair_result(rs, surfd, row, peer, pa, now):
     ta = tb = 0.0
     who_a = who_b = ""
     same = 0
+    captured = ""
     if d:
         match, cover = d["match"], d["cover"]
         prefix, offset, compared = d["prefix"], d["offset"], d["compared"]
@@ -268,10 +310,13 @@ def _pair_result(rs, surfd, row, peer, pa, now):
         ta, tb = d["tickrate_a"], d["tickrate_b"]
         who_a, who_b = d["who_a"], d["who_b"]
         same = 1 if d["same_who"] else 0
+        snapshot = source_capture(d.get("sources"))
+        if snapshot is not None:
+            captured = json.dumps(snapshot, sort_keys=True, separators=(",", ":"))
     return ((row["id"], peer["id"], row["map"], row["track"], row["leg"],
              row["tier"], row["player"], peer["player"], who_a, who_b, same,
              verdict, reason if not d else "", skip_code, match, cover, prefix, offset,
-             compared, ma, mb, ta, tb, now), d is not None, match)
+             compared, ma, mb, ta, tb, now, captured), d is not None, match)
 
 
 def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
@@ -361,7 +406,7 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
             "INSERT OR IGNORE INTO sims (a_id, b_id, map, track, leg, tier,"
             " player_a, player_b, who_a, who_b, same_who, verdict, reason, skip_code,"
             " match, cover, prefix, offset, compared, moves_a, moves_b,"
-            " tick_a, tick_b, at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " tick_a, tick_b, at, source_capture) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             [f[0] for f in found])
     skipped = sum(1 for f in found if not f[1])
     notable = sum(1 for f in found if f[1] and f[2] >= NOTABLE)

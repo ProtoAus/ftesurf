@@ -628,8 +628,8 @@ import-time database initialization even for rejected arguments.
 
 Each collector comparison explicitly limits sources to 16 MiB and 200,000 moves.
 Excess bytes (including ignored records) or moves abstain as a whole; no prefix
-is scored. Support lacking the bounded-input capability is unavailable. Optional
-reader limits do not change standalone census defaults. New unjudgeable pairs
+is scored. Support lacking either bounded-input or source-capture capability is
+unavailable. Optional reader limits do not change standalone census defaults. New unjudgeable pairs
 persist fixed `skip_code` categories; old rows stay empty and are reported as
 legacy unknown without reconstruction from reason prose. Authenticated admin
 projects only safe fixed labels, not source filenames or exception details.
@@ -650,7 +650,16 @@ level selection/checkpoint/storage failures remain row failures; storage still
 rolls back the observation transaction. Comparisons run outside write transactions;
 source checkpoints precede work and one peer checkpoint follows each source call,
 including faults. Rotating finite fixtures does not prove full fleet fairness,
-source-byte binding, remeasurement of old skips, exactly-once or complete coverage.
+remeasurement of old skips, exactly-once or complete coverage.
+
+New compared observations atomically retain a version-1 `source_capture` snapshot
+of the exact bounded binary buffers parsed: A/B SHA-256 and byte length, including
+ignored bytes and original newline representation. The collector accepts only the
+fixed hash/size schema; it never reopens paths to reconstruct provenance. Legacy,
+skipped and unsupported/invalid captures remain empty, without historical reread
+or backfill. Stored orientation owns A/B, and retries never refresh the first
+observation. This identifies historical bytes consumed, not simultaneous/atomic
+filesystem acquisition, present-file equality, source authenticity or calibration.
 
 The read-only summary aggregates one snapshot into at most 13 fixed category/
 identity result rows, instead of materializing all observations in Python. Counts,
