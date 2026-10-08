@@ -31,8 +31,10 @@ class MetricDuplicates(bounds.MetricBounds):
                     before = self.stored()
                     with mock.patch.object(simcheck, '_recsim', side_effect=AssertionError('no source reader in historical review')):
                         out, seen = self.fetch()
-                    self.assertIsNone(out['receipt']['journal_metrics'])
-                    self.assertIsNone(out['verdicts'][0]['counts_metrics'])
+                    for field, value in (('journal', out['receipt']['journal_metrics']),
+                                         ('counts', out['verdicts'][0]['counts_metrics'])):
+                        with self.subTest(projection=field):
+                            self.assertIsNone(value)
                     self.assertEqual(out['receipt']['verdict'], 'VALID')
                     self.assertEqual(out['verdicts'][0]['verdict'], 'PASS')
                     self.assertEqual(self.stored(), before)

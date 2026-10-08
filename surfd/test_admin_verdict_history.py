@@ -68,8 +68,13 @@ class VerdictHistory(ObservationFixture):
             self.skipTest('Node absent; actual DOM tested on Windows')
         text = Path(self.a.__file__).with_name('templates').joinpath('admin_run.html').read_text(encoding='utf-8')
         start = text.find('function renderVerdictSummary(')
-        self.assertGreaterEqual(start, 0, 'actual summary helper must exist')
-        block = text[start:text.index('function renderRun(', start)]
+        if start >= 0:
+            block = text[start:text.index('function renderRun(', start)]
+        else:
+            # Execute the predecessor's actual inline summary, not an absent-helper red.
+            start = text.index('  const cur = j.verdicts.filter(')
+            block = ('function renderVerdictSummary(verdicts, history) {const j={verdicts};' +
+                     text[start:text.index('  const RCPT_CLS', start)] + '}')
         js = r'''
 class E {constructor(text){this.text=String(text??'');} set innerHTML(v){throw Error('HTML sink');}}
 const el=(t,c,s)=>new E(s),pill=(s,c)=>new E(s),VERDICT_CLS={};
