@@ -176,8 +176,19 @@ class SourceLimit(ValueError):
     """The source exceeds an operational ingestion budget, not a player fault."""
 
 
+def _source_limits(max_bytes, max_moves):
+    """Reject invalid configuration before read(size); negative sizes read all."""
+    for name, value in (("max_bytes", max_bytes), ("max_moves", max_moves)):
+        if value is not None:
+            if type(value) is not int or value < 0:
+                raise ValueError("%s must be a nonnegative integer or None" % name)
+    if max_bytes is not None and max_bytes >= sys.maxsize:
+        raise ValueError("max_bytes plus one must fit a read size")
+
+
 def parse_rec(path, strict=False, max_bytes=None, max_moves=None):
     """Read move columns; optional limits bound capture and retained move rows."""
+    _source_limits(max_bytes, max_moves)
     try:
         return _parse_rec(path, max_bytes=max_bytes, max_moves=max_moves)
     except (OSError, MalformedRec, SourceLimit) as exc:
@@ -432,6 +443,7 @@ def compare_paths(path_a, path_b, min_len=MIN_LEN, max_bytes=None, max_moves=Non
     comparison, and refusing it would hide exactly the pairs worth reading.  The
     caller decides; nothing here does.
     """
+    _source_limits(max_bytes, max_moves)
     if os.path.realpath(path_a) == os.path.realpath(path_b):
         return SKIP_SAME_FILE, "both arguments resolve to one file"
     recs = []
