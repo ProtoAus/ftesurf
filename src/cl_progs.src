@@ -19,6 +19,7 @@ shared/sh_interp.qc
 // beside the printf define at the top of it.  Here rather than lower down
 // because cl_hud.qc and everything after it may draw with it.
 sui_sys.qc
+shared/sh_ui.qc
 // Patch 467: the feedback renderer, the same file menu.dat compiles.  Engine
 // builtins only; client/cl_milk.qc (the sky) is its owner here.
 milk_sys.qc

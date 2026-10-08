@@ -11,6 +11,24 @@ to be wrong.
 
 ---
 
+## 00. 8 Oct — modern SUI editor preview (Patch 566)
+
+- With updated server CSQC, try `ui_style 1; hud_edit on`, then compare
+  `ui_style 0`. Judge rounded controls, contrast, selected/hover/pressed states
+  and actual keyboard/mouse feel; the gameplay HUD should remain familiar.
+- Hover the text-effects chip and other descriptions: judge the 0.35 s
+  delay, wrapping and edge placement. Hold a mouse button, close/reopen,
+  type/chat and alt-tab: no stuck input/cursor or lingering tooltip.
+- Judge native-font appearance at your normal resolution/DPI and sizes.
+  Modern text snaps to physical bakes instead of stretching glyphs; size
+  steps are intentional. Layout tests do not certify that you like the
+  resulting sizes/hinting. Check moving between monitors/virtual UI scales.
+
+28 isolated runtime checks per UI arm, seven producer/grader tests and the
+controlled p498 menu checks pass. Actual OS/device delivery, full CPU/GPU
+percentiles and broad renderer/lifecycle acceptance are not claimed. Native
+ImGui is not installed by this patch; it is the next roadmap milestone.
+
 ## 00. 8 Oct — requested/native rewind clocks (Patch 560)
 
 After reconnect/restart, inspect a fractional cursor: main HUD is display-only,

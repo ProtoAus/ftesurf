@@ -872,6 +872,7 @@ void() HUD_EditClose =
 	ui_he_open = FALSE;
 	ui_he_drag = FALSE;
 	ui_he_held = "";
+	sui_tooltip_reset();
 
 	/*
 	  The cursor goes back to the game ONLY if nothing else still wants it.
@@ -948,12 +949,18 @@ void() HUD_EditOpen =
   cl_watch.qc:2477 records what a missing sui_end latches.
 ===========================================================================
 */
-#define HEC_PANEL  '0.07 0.09 0.12'
-#define HEC_LINE   '0.35 0.70 1.00'
-#define HEC_HOT    '1.00 0.80 0.35'
-#define HEC_GHOST  '0.45 0.48 0.55'
-#define HEC_TEXT   '0.88 0.92 0.98'
-#define HEC_DIM    '0.55 0.60 0.68'
+#define HEC_PANEL  SUI_THEME_PANEL
+#define HEC_LINE   SUI_THEME_LINE
+#define HEC_HOT    SUI_THEME_FOCUS
+#define HEC_GHOST  SUI_THEME_MUTED
+#define HEC_TEXT   SUI_THEME_TEXT
+#define HEC_DIM    SUI_THEME_DIM
+
+void(vector pos, string text, float size, vector color, float alpha) HE_UIText =
+{
+	if (sui_style_modern) sui_native_text(pos, text, size, color, alpha);
+	else HUD_Text(pos, text, size, color, alpha);
+};
 
 /*
   A labelled chip.  Returns TRUE on the frame it is released.
@@ -973,17 +980,36 @@ void() HUD_EditOpen =
 float(string id, vector pos, vector sz, string label, float on, float sc,
       string tip) HE_Chip =
 {
+	local vector glyph;
 	sui_action_element(pos, sz, id, sui_noop);
-	sui_fill(pos, sz, on ? '0.16 0.30 0.44' : '0.12 0.13 0.16', 1, 0);
-	sui_border_box(pos, sz, 1,
-	               sui_is_hovered(id) ? HEC_HOT : (on ? HEC_LINE : HEC_GHOST),
-	               sui_is_hovered(id) ? 1.0 : 0.5, 0);
-	HUD_Text([pos_x + 4 * sc, pos_y + (sz_y - 8 * sc) * 0.5, 0], label,
-	         8 * sc, on ? HEC_TEXT : HEC_DIM, 1);
+	if (sui_style_modern)
+		sui_style_box(pos, sz, 3 * sc,
+			sui_is_held(id) ? SUI_THEME_PRESSED : (sui_is_hovered(id) ? SUI_THEME_HOVER
+				: (on ? SUI_THEME_SELECTED : SUI_THEME_CHIP)),
+			sui_is_hovered(id) ? HEC_HOT : (on ? HEC_LINE : HEC_GHOST), 1);
+	else
+	{
+		sui_fill(pos, sz, on ? SUI_THEME_SELECTED : SUI_THEME_CHIP, 1, 0);
+		sui_border_box(pos, sz, 1,
+			sui_is_hovered(id) ? HEC_HOT : (on ? HEC_LINE : HEC_GHOST),
+			sui_is_hovered(id) ? 1.0 : 0.5, 0);
+	}
+	if (sui_style_modern)
+	{
+		glyph = sui_native_text_size(8 * sc);
+		sui_native_text([pos_x + 4 * sc, pos_y + (sz_y - glyph_y) * 0.5, 0],
+			label, 8 * sc, on ? HEC_TEXT : HEC_DIM, 1);
+	}
+	else HUD_Text([pos_x + 4 * sc, pos_y + (sz_y - 8 * sc) * 0.5, 0], label,
+		8 * sc, on ? HEC_TEXT : HEC_DIM, 1);
 
-	if (tip != "")
-	if (sui_is_hovered(id))
-		ui_he_tip = tip;
+	if (sui_style_modern)
+		sui_tooltip_for(id, tip, sc);
+	else
+	{
+		if (tip != "")
+		if (sui_is_hovered(id)) ui_he_tip = tip;
+	}
 
 	return sui_is_released(id);
 };
@@ -1221,7 +1247,7 @@ void(vector scr) HUD_EditDraw =
 		               (mode == 2) ? HEC_HOT : ((mode == 1) ? HEC_LINE : HEC_GHOST),
 		               (mode == 0) ? 0.35 : 0.9, 0);
 
-		HUD_Text([p_x + 2, p_y - 10 * sc, 0], he_label[i], 8 * sc,
+		HE_UIText([p_x + 2, p_y - 10 * sc, 0], he_label[i], 8 * sc,
 		         (mode == 2) ? HEC_HOT : ((mode == 1) ? HEC_LINE : HEC_GHOST), 0.9);
 	}
 
@@ -1354,8 +1380,13 @@ void(vector scr) HUD_EditDraw =
 	if (p_y < 0) p_y = 0;
 
 	sui_action_element(p, sz, "he_panel", sui_noop);
-	sui_fill(p, sz, HEC_PANEL, 0.92, 0);
-	sui_border_box(p, sz, 1, HEC_LINE, 0.7, 0);
+	if (sui_style_modern)
+		sui_style_box(p, sz, 7 * psc, HEC_PANEL, HEC_LINE, 0.92);
+	else
+	{
+		sui_fill(p, sz, HEC_PANEL, 0.92, 0);
+		sui_border_box(p, sz, 1, HEC_LINE, 0.7, 0);
+	}
 
 	/*
 	  THE TITLE BAR IS THE HANDLE, and it is a separate hit rect registered after
@@ -1383,15 +1414,19 @@ void(vector scr) HUD_EditDraw =
 	else
 		ui_he_pdrag = FALSE;
 
-	sui_fill(p, [panw, 16 * psc, 0],
-	         sui_is_hovered("he_panelbar") ? '0.16 0.30 0.44' : '0.10 0.13 0.18', 1, 0);
+	if (sui_style_modern)
+		sui_roundbox(p + [psc, psc, 0], [panw - 2 * psc, 14 * psc, 0], 5 * psc,
+			sui_is_hovered("he_panelbar") ? SUI_THEME_SELECTED : '0.10 0.13 0.18', 1);
+	else
+		sui_fill(p, [panw, 16 * psc, 0],
+			sui_is_hovered("he_panelbar") ? SUI_THEME_SELECTED : '0.10 0.13 0.18', 1, 0);
 
 	x = p_x + 6 * psc;
 	y = p_y + 6 * psc;
 	w = panw - 12 * psc;
 
-	HUD_Text([x, y, 0], "HUD layout", 10 * psc, HEC_TEXT, 1);
-	HUD_Text([p_x + panw - 34 * psc, y + psc, 0], "move", 7 * psc, HEC_DIM, 0.8);
+	HE_UIText([x, y, 0], "HUD layout", 10 * psc, HEC_TEXT, 1);
+	HE_UIText([p_x + panw - 34 * psc, y + psc, 0], "move", 7 * psc, HEC_DIM, 0.8);
 	y = y + 14 * psc;
 
 	/*
@@ -1546,7 +1581,7 @@ void(vector scr) HUD_EditDraw =
 			if (cur >= 1) s = sprintf("size %g", cur);
 			else          s = sprintf("size %g auto", he_base[i] * sc);
 
-			HUD_Text([ox, y + (rowh - 7 * psc) * 0.5, 0], s,
+			HE_UIText([ox, y + (rowh - 7 * psc) * 0.5, 0], s,
 			         7 * psc, HEC_DIM, 0.9);
 
 			k = tokenize(he_sizes[i]);
@@ -1605,7 +1640,7 @@ void(vector scr) HUD_EditDraw =
 			otip = Gfx_Field(def, 5, "|");     // build 66; "" on rows without one
 
 			sui_fill([x, y, 0], [w, rowh, 0], HEC_PANEL, 0.5, 0);
-			HUD_Text([ox, y + (rowh - 7 * psc) * 0.5, 0], olab,
+			HE_UIText([ox, y + (rowh - 7 * psc) * 0.5, 0], olab,
 			         7 * psc, HEC_DIM, 0.9);
 
 			if (okind == "t")
@@ -1795,11 +1830,11 @@ void(vector scr) HUD_EditDraw =
 	               "done", TRUE, psc, "");
 	y = y + rowh + 3 * psc;
 
-	HUD_Text([x, y, 0], "drag to move   SHIFT: no snap", 7 * psc, HEC_DIM, 0.8);
+	HE_UIText([x, y, 0], "drag to move   SHIFT: no snap", 7 * psc, HEC_DIM, 0.8);
 
 	// LAST, over everything: it is not a control and registers no hit rect, so
 	// nothing it covers becomes unclickable.
-	HE_DrawTip(scr, psc);
+	if (!sui_style_modern) HE_DrawTip(scr, psc);
 
 	sui_end();
 	Font_Reset();
@@ -2065,6 +2100,74 @@ void() HUD_EditStatus =
   exactly that bug in Ghost_ConsoleCommand, and it presented as the command
   silently doing nothing at all, with no "unknown command" to go on.
 */
+// Existing whole-chain entry point; declared here for the isolated UI probes.
+float(float evtype, float scanx, float chary, float devid) CL_InputChain;
+
+void() HUD_EditUIProbe =
+{
+	local int i, n;
+	local float sc, took, font;
+	local vector pos, sz;
+	n = (int)min(MAX_ACTION_ELEMENTS, _action_elements_index);
+	if (strcmp(argv(2), "hover") == 0)
+	{
+		if (!ui_he_open) { print("sui_probe: editor closed\n"); return; }
+		for (i = 0i; i < n; i++)
+		{
+			if (strcmp(_action_elements[i].id, argv(3)) == 0)
+			{
+				pos = _action_elements[i].pos;
+				sz = _action_elements[i].size;
+				activate_mouse_cursor();
+				_sui_mouse_move(pos + sz * 0.5, TRUE);
+				print(sprintf("sui_hover [%s] %g %g\n", argv(3), _cursor_position_x, _cursor_position_y));
+				return;
+			}
+		}
+		print(sprintf("sui_probe: no control [%s]\n", argv(3)));
+		return;
+	}
+	if (strcmp(argv(2), "focus") == 0)
+	{
+		took = CL_InputChain(IE_FOCUS, stof(argv(3)),
+			strcmp(argv(4), "") != 0 ? stof(argv(4)) : stof(argv(3)), 0);
+		print(sprintf("sui_focus %g took %g\n", sui_style_focused, took));
+		return;
+	}
+	if (strcmp(argv(2), "down") == 0 || strcmp(argv(2), "up") == 0)
+	{
+		if (!ui_he_open) { print("sui_probe: editor closed\n"); return; }
+		sc = stringtokeynum(argv(3));
+		if (sc <= 0) { print("sui_probe: invalid key\n"); return; }
+		took = CL_InputChain(strcmp(argv(2), "down") == 0 ? IE_KEYDOWN : IE_KEYUP, sc, 0, 0);
+		print(sprintf("sui_event %s %s took %g\n", argv(2), argv(3), took));
+		return;
+	}
+	print(sprintf("sui_probe style %g round %g asset %g tip %g lines %g wraps %g\n",
+		sui_style_modern, sui_round_calls, sui_round_available, sui_tip_visible, sui_tip_count, sui_tip_wraps));
+	print(sprintf("sui_work frames %g quads %g screen %g %g focused %g\n",
+		sui_style_frames, sui_style_quads, sui_style_screen_x, sui_style_screen_y, sui_style_focused));
+	print(sprintf("sui_font native %g ratio %g %g glyph %g %g calls %g\n",
+		sui_tip_native_pixels, sui_style_pixel_ratio_x, sui_style_pixel_ratio_y,
+		sui_tip_glyph_size_x, sui_tip_glyph_size_y, sui_style_text_calls));
+	print(sprintf("sui_tip [%s] %g %g %g %g\n", sui_tip_id,
+		sui_tip_pos_x, sui_tip_pos_y, sui_tip_size_x, sui_tip_size_y));
+	print(sprintf("sui_panel open %g selected %g dirty %g cursor %g held %g\n",
+		ui_he_open, ui_he_sel, ui_he_dirty, ui_cursor_claims, _holding_click));
+	font = drawfont;
+	drawfont = sui_tip_font;
+	for (i = 0i; i < (int)sui_tip_count; i++)
+		print(sprintf("sui_tip_line %i width %g limit %g\n", i,
+			stringwidth(sui_tip_lines[i], TRUE, sui_tip_glyph_size),
+			sui_tip_width - 12 * sui_tip_scale));
+	drawfont = font;
+	for (i = 0i; i < n; i++)
+	{
+		pos = _action_elements[i].pos; sz = _action_elements[i].size;
+		print(sprintf("sui_element [%s] %g %g %g %g\n", _action_elements[i].id, pos_x, pos_y, sz_x, sz_y));
+	}
+};
+
 float(string cmd) HUD_EditConsoleCommand =
 {
 	local float i;
@@ -2074,6 +2177,7 @@ float(string cmd) HUD_EditConsoleCommand =
 	if (argv(0) != "hud_edit")
 		return FALSE;
 
+	if (strcmp(argv(1), "ui") == 0) { HUD_EditUIProbe(); return TRUE; }
 	if (argv(1) == "status") { HUD_EditStatus(); return TRUE; }
 	if (argv(1) == "on")     { HUD_EditOpen();   return TRUE; }
 	if (argv(1) == "off")    { HUD_EditClose();  return TRUE; }

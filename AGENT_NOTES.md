@@ -3701,6 +3701,30 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+- **P566 SUI/font tests:** `ui_style 1` is the opt-in HUD-editor sample;
+  `shared/sh_ui.qc` is ordered after fonts/SUI in both VMs. Native font means
+  the final PHYSICAL height is a baked size: convert first, snap with the
+  selected face's ladder, then convert back on both axes. Pixel-align origins.
+  Layout/scale screenshots passing is not font-quality acceptance. The new
+  tooltip must measure with its cached drawfont/glyph size; a console probe's
+  default font is not the font that drew it. Wrap only on changed text/face/
+  size/width, not every frame, and do not reset a valid hover merely because
+  a screenshot/slow frame took >250ms. IE_FOCUS mouse and keyboard arguments
+  are independent, with -1 meaning unchanged; retain both and reset tooltips
+  before any handler can consume focus. `getkeydest` exists in MQC, not this
+  CSQC defs/table: trying it in shared CSQC made git-6681 qcc crash silently;
+  a reduced compile isolated that reference. DP registercvar archive is 32,
+  not 1; MENU does not define the CSQC `CVAR_ARCHIVE` convenience macro.
+  Fresh menu rigs also need the offline-consent/chosen-name prerequisites
+  and the p498 fixture's fixed geometry, not the owner's archived state.
+  `HUD_EditClose` explicitly saves when dirty: automatic-save guards alone
+  are insufficient. The UI driver creates a marked disposable basedir, uses
+  `map ui_modern.map` (omitting the extension searches for a .bsp), seeds its
+  exact csprogs and terminates only its own handles. On published `21cfeea`,
+  build.ps1 has no NoDeploy option and QC-only builds stay in the worktree;
+  inspect the actual script before relying on a different shared version.
+
+
 ### Source water and visual controls (Patch 538)
 
 - `CVAR_NOSET` does not defeat an early command-line `+set`: cvar registration

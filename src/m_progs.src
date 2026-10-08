@@ -12,6 +12,7 @@ shared/sh_font.qc
 // and CSQC "both".  There is a third module and this is it.
 shared/sh_json.qc
 sui_sys.qc
+shared/sh_ui.qc
 // Patch 467: the feedback renderer, shared with csprogs like sui_sys.qc.
 // Needs only engine builtins; m_milk.qc below is its menu owner.
 milk_sys.qc

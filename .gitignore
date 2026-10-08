@@ -270,6 +270,10 @@ __pycache__/
 #  fonts negation below can take effect.  It is not a dead line -- do not delete.
 /ftesurf/gfx/*
 !/ftesurf/gfx/fonts/
+# Authored shared SUI chrome; no other UI files are implicitly publishable.
+!/ftesurf/gfx/ui/
+/ftesurf/gfx/ui/*
+!/ftesurf/gfx/ui/roundmask.png
 #  Patch 467: the sky placeholder `r_skybox milk` needs (scripts/milk.shader).
 !/ftesurf/gfx/env/
 /ftesurf/gfx/env/*

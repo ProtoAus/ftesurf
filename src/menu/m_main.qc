@@ -6908,6 +6908,7 @@ void() m_init =
 	FS_CvarsMoved();
 
 	Font_Init();
+	sui_style_init();
 
 	menu_screen = SCREEN_MAIN;
 	ms_query = "";

@@ -1128,6 +1128,10 @@ float(float evtype, float scanx, float chary, float devid) sui_input_event =
 // void() sui_pre_draw 
 // Resets state for sui actions so that no trouble happens. 
 // Call it before your menu code per frame in your draw/updateview.
+// Shared chrome is defined after SUI in both VM manifests.
+void(float width, float height) sui_style_begin;
+void() sui_tooltip_finish;
+
 void(float width, float height) sui_begin =
 {
 	_scan_listen_count = 0;
@@ -1139,6 +1143,7 @@ void(float width, float height) sui_begin =
 	
 	sui_reset_frame();
 	sui_push_frame([0, 0], [width, height]);
+	sui_style_begin(width, height);
 }
 
 void() sui_draw_bind_overlay;
@@ -1157,6 +1162,8 @@ void() sui_end =
 	{
 		_retarget_kb_cursor();
 	}
+	// Informational chrome is last and registers no action/cursor owner.
+	sui_tooltip_finish();
 	// Dirty part:
 	_sui_draw_initialized = FALSE;
 	// reset "once" type actions

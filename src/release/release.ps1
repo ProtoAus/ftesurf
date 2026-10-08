@@ -219,6 +219,8 @@ $ShipGameFiles = @(
     'ftesurf/textures/no_texture.png'
     'ftesurf/gfx/env/missingtexture.png'
     'ftesurf/gfx/env/missing_error_palette.png'
+    # Shared SUI chrome: generated in-tree, not third-party artwork.
+    'ftesurf/gfx/ui/roundmask.png'
 )
 $ShipGlobs = @(
     # cfg\ top level only -- test\ (663 per-patch fixtures) is a subdirectory

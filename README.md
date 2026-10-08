@@ -165,6 +165,27 @@ world-path name labels; neither clears the loaded run lines.
 
 ---
 
+## Modern UI preview (opt-in)
+
+The HUD editor has a modern SUI preview: rounded controls, clearer interaction
+states and delayed, wrapped tooltips. The gameplay HUD is unchanged.
+
+```text
+seta ui_style 1
+hud_edit on
+```
+
+`ui_style 0` restores the classic editor. `ui_tooltip_delay` defaults to 0.35
+seconds. Modern editor text selects native **physical-pixel** font bakes and
+pixel-aligned positions; layout scale is not fractional glyph stretching.
+This is SUI, not the planned native ImGui integration. Development status and
+remaining gates are in [ROADMAP.md](ROADMAP.md), section 13.
+
+The server must advertise the updated CSQC. After updating a local server,
+reload/restart it and reconnect when convenient; swapping client files alone
+cannot replace a connected server's old advertised code. No owner's running
+client/server is automatically stopped to install this preview.
+
 ## Layout
 
 | Path | |

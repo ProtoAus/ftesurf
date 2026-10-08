@@ -287,6 +287,7 @@ void() CSQC_WorldLoaded =
 void(float apilevel, string enginename, float engineversion) CSQC_Init =
 {
 	Font_Init();
+	sui_style_init();
 	HUD_RegisterCvars();
 	Zone_RegisterCvars();
 	Line_RegisterCvars();       // Patch 449: the run line's marks and window
@@ -1091,6 +1092,14 @@ float(float scanx) CL_ButtonBit =
 
 float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 {
+	if (evtype == IE_FOCUS)
+	{
+		// IE_FOCUS has independent mouse/keyboard values; -1 is unchanged.
+		if (scanx >= 0) sui_style_mouse_focus = (scanx != 0);
+		if (chary >= 0) sui_style_key_focus = (chary != 0);
+		sui_style_focused = (sui_style_mouse_focus && sui_style_key_focus);
+		sui_tooltip_reset();
+	}
 	/*
 	  PATCH 340: the chat draft, ahead of EVERYTHING including the replay and
 	  Keys_Edge.  While a draft exists every key belongs to the draft -- a W

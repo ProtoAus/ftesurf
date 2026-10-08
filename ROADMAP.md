@@ -561,7 +561,8 @@ or existing split timer works.
 
 ## 13. Modern SUI + native Dear ImGui — Lex, 8 Oct 2026
 
-**Status: proposed implementation and test plan; no UI code built or deployed.**
+**Status: Stage A opt-in HUD-editor sample implemented and isolated-tested in
+Patch 566. Native ImGui (B onwards) is NOT implemented.**
 Lex wants the current SUI improved, plus native ImGui for rich scoreboards,
 graphs, HUD editing and other interactive overlays. Keep the lightweight QC
 HUD and the existing interactive panels as fallbacks. This does NOT replace
@@ -580,9 +581,10 @@ item 12; choose a freshly inspected clean implementation base before coding.
   scrolling, keyboard navigation, sliders and text fields already exist.
   `sui_fill`, `sui_subpic`, `sui_border_box` and `sui_text` are useful extension
   sites. Preserve existing calls and interaction IDs.
-- `src/shared/sh_font.qc`: shared TrueType faces, physical/virtual pixel
-  conversion and a baked size ladder already exist. Improve presentation;
-  do not rediscover fonts or undo the physical-pixel text-size fix.
+- `src/shared/sh_font.qc`: shared TrueType faces and per-face baked size
+  ladders already exist. `Font_Px` snaps a requested size, but callers must
+  account for the renderer's virtual-to-physical conversion. Stage A's modern
+  path does that explicitly; the legacy HUD/text interfaces remain unchanged.
 - `src/client/cl_hudedit.qc`: `HE_Tip` supplies descriptions, `HE_Chip`
   latches hover text and `HE_DrawTip` draws local tooltips; generalize that
   experience. `HUD_EditClose` explicitly queues
@@ -684,7 +686,17 @@ not just leave the player with a basic HUD and no interactive controls.
 
 ### 13.3 Independent SUI improvements
 
-These should help even installations that never load ImGui.
+These help even installations that never load ImGui.
+
+**Typography constraint — Lex, 8 Oct.** Layout scaling is not font-quality
+acceptance. Use a glyph bake at the actual physical-pixel height, not a scaled
+nearby atlas. Stage A converts the desired height to physical pixels, snaps
+against the selected existing font ladder, converts back on both axes and
+pixel-aligns text origins. Size changes step between native bakes. A new native
+size is possible by rasterizing the TTF again and caching that bake; do not
+rebuild atlases every frame or substitute bitmap stretching. Apply the same
+net-physical-size rule to ImGui's font/framebuffer scaling. Larger font ranges,
+missing-glyph/DPI behaviour and human legibility remain explicit acceptance.
 
 - Shared colour/spacing/radius/focus tokens, scaled consistently. Candidate
   location: a new shared UI module ordered after fonts in both `.src` files.
@@ -714,6 +726,34 @@ resolution, renderer and input behaviour. Implement tokens, rounded helpers
 and a shared tooltip on one real panel, with a classic/modern comparison.
 Gate: visible improvement, identical action IDs/results, no new warnings,
 correct clipping/scaling and no idle tooltip work when not shown.
+
+**A delivery (P566).** Added `src/shared/sh_ui.qc`, shared SUI frame hooks,
+a generated/licensed-in-tree nine-slice mask, and an opt-in HUD editor using
+`ui_style 1` (`0` remains default/classic). Modern text is drawn at native
+physical bakes. Tooltips delay (`ui_tooltip_delay`, default 0.35 s), wrap/cache,
+clamp to screen edges, and release cached strings on close/hold/focus loss.
+Mouse and keyboard focus are independent; -1 means unchanged. The editor
+continues using the same action IDs, drag machinery and settings.
+
+QC build: zero warnings. `tools/test_ui_modern.py`: 28 checks per isolated
+real-dedicated/client arm, including missing-mask fallback, native font-size
+requests, geometry/action parity, dirty-save isolation and zero additional
+closed SUI frames/submissions. Tested 1280x720, 1920x1080 and 2560x1440,
+HUD scales 0.75/1/2 and virtual-screen scales 1/1.5/2, using both Windows
+client binaries. Same-style panel pixel floors were zero; the acted speed-HUD
+control stayed pixel-identical. Seven producer/grader tests include absent
+probes and font/tooltip/closed-work mutants. Existing p498 menu navigation:
+16/16 after fresh-rig offline-consent/chosen-name bootstrap, fixed geometry
+and 1.5 s rendered waits; stock fresh-rig failures were fixture prerequisites,
+not patched product code. First tests established bounds/actions only; font
+requests were corrected after Lex's warning and the revised matrix re-run.
+
+Not closed: actual OS/device feel, broad nested clipping/UTF-8/lifecycle matrix,
+full CPU/GPU/percentile budgets or human font/style acceptance. No graph,
+scoreboard, main-menu styling, evidence semantics or native ImGui changed.
+Full shipguard is blocked in a bare worktree by pre-existing untracked
+`ftesurf/particles`; the new exact asset entry and its missing-entry mutant
+are separately tested. This is not release/archive verification.
 
 **B — native plumbing and isolated gallery (large; highest-risk step).**
 Bring up one opt-in CSQC test window with text, rounded controls, nested
@@ -812,9 +852,12 @@ Any additional high-FPS matrix is explicitly specified, not an inherited cap.
   `python tools/seed_csprogs.py` and restart the test server. For main-menu
   arms issue `menu_restart`; for in-game HUD arms close the builtin menu.
 - Build from `src/` with pwsh 7. QC:
-  `pwsh -NoProfile -Command "./build.ps1 -Jobs 8 -NoDeploy"`.
-  Engine/interface work adds `-Engine -Full`
-  and uses isolated `-FteRoot`/install paths; do not repoint/copy over shared
+  `pwsh -NoProfile -Command "./build.ps1 -Jobs 8"` in an isolated worktree.
+  The published script inspected at `21cfeea` has no `-NoDeploy` parameter;
+  QC-only builds write into that worktree and do not copy to either install.
+  Check the actual script before future use. Engine/interface work adds
+  `-Engine -Full` and explicit isolated `-FteRoot` and `-QuakeDir` destinations;
+  do not repoint/copy over shared
   engine objects. Regenerate clangd's database after build-flag changes and
   inspect LSP diagnostics, but the compiler/runtime remain the actual gates.
 - Reuse relevant existing falsifiers: `tools/p498keys.py` (whole-chain input),
@@ -837,10 +880,11 @@ Any additional high-FPS matrix is explicitly specified, not an inherited cap.
   Fleet/release deployment needs its full operations/ship-set gates; a native
   client UI does not imply that server progs or the Pi need changes.
 
-**Next decision.** Start A and B as separate opt-in prototypes, compare the
-results on Lex's laptop, and approve the visual style/performance budgets
+**Next step.** Lex tries the Stage A editor/font appearance; keep it opt-in.
+Next implementation is B's native gallery/host bridge, still with legacy
+fallback and physical-native fonts. Measure/approve performance budgets
 before switching the scoreboard default. The larger menu/editor migration
-is conditional on these gates, not already authorized for release.
+is conditional on those gates, not already authorized for release.
 
 ---
 
