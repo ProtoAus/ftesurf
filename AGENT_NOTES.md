@@ -1689,6 +1689,24 @@ publicly WITH its fix, not before it.
   capture-path queries/I/O/allocations, player ABI or mark/hold/recorder change.
   Full support-oracle, authored edge/jump/seam/unsupported movement and all
   same-input render/rate/classifier/mark acceptance gates remain open.
+- **Authored native static trajectories (tooling only).** `offramp_motion_smoke`
+  adds a PRIVATE command driving REAL PM_PlayerMove/PMSrc ticks on models from
+  the existing BIH_Build API, not mirrored private node layouts. Fixture-only
+  versus capture servers, plus a no-oracle arm, prove body/query/binding parity.
+  Six32-tick cases ACT: interior ride, partial/full straight and convex side
+  exits, input-driven interior short loss/reacquisition, real ground jump and
+  overlapping-brush handoff. Query actual hulls AFTER ticks: stationary, down2,
+  projected +/-2 against union and each brush; validate JOINT convex/box
+  feasibility, not independent expanded-plane maxima. A unit wedge falsifies
+  the latter. Side support disappears at an end sample BEFORE raw contact's
+  falling edge; an interior raw loss retains support and previous-brush loss
+  at a seam need not mean union loss. These are observations, NOT mark rules.
+  No map/progs/plugin/asynchronous spawn or owner content/process needed.
+  Embedded template/base stamps are provenance, not authenticity. No new
+  production traces/ABI/marks/hold/clock/evidence semantics. Only these static
+  fixture actors are closed: exact physical exit time, broader support/world,
+  real posture/capsule/transform/entity/triangle/displacement and explicit
+  cached/recovery/portal motion, plus P560 clock/live/rate/render gates stay open.
 
 ## Rewind (Patch 477)
 
