@@ -356,14 +356,21 @@ def _checkpoint(conn, scope, after_id, source_id=0):
                  (scope, source_id, after_id))
 
 
+def _idle(conn):
+    if conn.in_transaction:
+        raise ValueError("similarity collection requires an idle connection")
+
+
 def _advance(conn, scope, after_id, source_id=0):
     """Short committed source admission, not completion or a reservation."""
+    _idle(conn)
     with conn:
         _checkpoint(conn, scope, after_id, source_id)
 
 
 def ensure_schema(conn):
-    """Collector's additive tables; idempotent and safe to race."""
+    """Collector's additive tables; idle connection required for script ownership."""
+    _idle(conn)
     conn.executescript(SIMS_SQL + CURSOR_SQL)
     for column in ("skip_code", "source_capture"):
         if column not in {r[1] for r in conn.execute("PRAGMA table_info(sims)")}:
@@ -457,6 +464,7 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
     _limit("limit_peers", limit_peers)
     if limit_peers == 0:
         return 0, 0, 0
+    _idle(conn)
     rs = reader
     if rs is None:
         rs, why = _recsim(tools_dir)
@@ -583,6 +591,8 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         raise ValueError("max_seconds must be finite")
     if limit == 0 or max_pairs == 0 or max_seconds <= 0:
         return 0, 0, ""
+    if conn.in_transaction:
+        return 0, 0, "sims unavailable: active caller transaction (coverage not measured)"
     budget = _PairBudget(max_pairs, max_seconds)
     rs, why = _recsim(tools_dir)
     if rs is None:

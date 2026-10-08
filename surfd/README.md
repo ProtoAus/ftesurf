@@ -659,6 +659,14 @@ Other query/storage failures keep their original behavior. Python without SQLite
 error-code attributes retains generic failure/error reporting, never guesses from
 exception prose. This is availability telemetry, not a finding about the player.
 
+Enabled collection and direct comparison require an idle SQLite connection.
+An active caller transaction is unavailable before optional support loading,
+schema/file work or sweep handler-slot changes; pending caller DML is neither
+committed nor rolled back. Schema initialization and source admission reject
+non-idle connections. Disabled calls and read-only pending/summary APIs leave
+caller ownership unchanged. This prevents implicit commits/lock retention for
+embedded callers; it is not proof of a live cron-path transaction leak.
+
 Each collector comparison explicitly limits sources to 16 MiB and 200,000 moves.
 Excess bytes (including ignored records) or moves abstain as a whole; no prefix
 is scored. Support lacking either bounded-input or source-capture capability is

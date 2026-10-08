@@ -936,6 +936,8 @@ def similarity_step(conn, limit=50, max_pairs=200, max_seconds=10.0,
         raise ValueError("max_lock_ms must be an integer in 0..2147483647")
     if limit <= 0 or max_pairs <= 0 or max_seconds <= 0 or max_sql_steps == 0:
         return 0, 0, ""
+    if conn.in_transaction:
+        return 0, 0, "sims unavailable: active caller transaction (coverage not measured)"
     mod = _simcheck()
     if mod is None:
         return 0, 0, ""
