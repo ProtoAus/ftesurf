@@ -1585,6 +1585,34 @@ publicly WITH its fix, not before it.
 
 ## Rewind (Patch 477)
 
+- **Request/native captions (P560).** Fractional display, sampled wire request
+  and acknowledged native clock are separate. `Rewind_ResumeInfo` states the
+  sampled request while browsing, waiting while pending, and native/request/
+  signed delta while counting. Native caption requires correlated SLTRAILTAG
+  plus valid SAVETICKS/rate; untimed practice and missing/foreign metadata never
+  invent a clock. State clears/gets gated across reset/open/close. Context goes
+  below key legend (.84), not on the speed/e-line (.735 initially overlapped in
+  inspected pixels). Countdown caption .46; actual held main HUD is untouched.
+  `stitched_rewind_smoke.py --presentation --selection-audit --visual` records
+  forwarded ACTUAL draw text and timer-panel output in private overlays; nine
+  compiled metadata/presentation units and five REAL SV_RewindFind repeated-
+  position/window/tie cases restore the player's private test ring. Four six-cut
+  warm/fresh-cold arms at caps30/100/300 and both clients pass independent native/
+  body/hold/release/ack/prefix/camera/UI gates with explicit120ms delay; unchanged
+  requested-clock test stays RED on three/four cuts. Presentation is not general
+  alignment. Twenty-five UI counterfactuals, prior HUD21/12, navigation/focus/
+  opposition and reader306/0 pass. Production screenshot/status/timer control
+  passes; inspected screenshots are1920x1080 (video request is not size proof).
+  QC pointer locals must be separate declarations: combined `*old, *m` produced
+  a double-pointer cast warning/error in the private test. Initial seam/compile
+  failures did not ACT. With delay/screenshots, 500ms initial save wait left go
+  legitimately blocked; allow1600ms and prove pending/hold. Inserting screenshots
+  inside fixed six-cut hold/log windows misplaced late cmd-timer replies at
+  high caps; run images separately, never remove body/frozen/clock assertions.
+  Countdown number changes during hold; compare fixed NATIVE caption, not the
+  whole draw string. Low-resolution/custom HUD and actual-device/untimed camera
+  feel remain human gates. No evidence, selection, camera or engine/Build change.
+
 - **Focus cancels activity, not ownership (Patch 554).** `rw_kactive` is separate
   from down/taken identity. Chat/menu/modal cursor and effective console cursor
   cancel browsing holds; IE_FOCUS cancels only keyboard=0, not unchanged -1 or

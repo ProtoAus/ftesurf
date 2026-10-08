@@ -25,7 +25,7 @@ commit   fa5aef7ad3f4521a2a918b596eee208bbb0926ef
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-543
-patch    559
+patch    560
 qcbuild  89
 #   ^ Build 89 = Patches 434-438 (2026-09-23).  It moves on the user's own
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
@@ -33,6 +33,12 @@ qcbuild  89
 #     where it used to be read from.
 date     2026-10-08
 
+# PATCH 560: REWIND REQUEST/NATIVE PRESENTATION. Show sampled request,
+# waiting, and correlated selected native clock with signed delta. Practice
+# remains untimed; absent/unmatched metadata never invents a native clock.
+# Selection, camera/body, restore/prefix/evidence and engine pin/tag/Build
+# unchanged. This is not requested/native clock equivalence or full alignment.
+#
 # PATCHES 557-559: SIMILARITY SAMPLE ELIGIBILITY AND SUMMARY. Partially
 # observed native runs remain pending; stored pairs are excluded before the
 # 200-new-peer window. One summary snapshot returns <=13 fixed aggregate rows.

@@ -365,7 +365,11 @@ packet-delay arm reproduces strict requested-clock red results (+60/+60/+45ms)
 while native-ring selection, native held body/clock, exact acknowledged prefix,
 hold/release and camera/discontinuity checks pass. This isolates a clock/pose
 alignment or presentation contract, not another raw trim boundary failure.
-No native/evidence retiming or widened oracle; general UX/feel remain open.
+No native/evidence retiming or widened oracle. P560 now distinguishes sampled
+request, pending and correlated selected native clock/delta in the viewer;
+practice remains explicitly untimed. Four delayed warm/fresh-cold six-cut
+matrices and real repeated-position/tie/window controls pass. This presentation
+delivery does not close general alignment or camera/UX feel acceptance.
 Native-event tooling after P542 additionally checks
 engine-driven keep/zero-velocity teleport volumes on actual map ground, a
 genuine six-second running stop and a fixed cursor over elapsed wall time.

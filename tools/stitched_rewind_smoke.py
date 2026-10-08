@@ -273,6 +273,7 @@ def main():
     ap.add_argument('--baseline', action='store_true', help='Use HEAD client cursor/state code instead of working-tree edits')
     ap.add_argument('--fps', type=int, choices=(30, 100, 300), default=100)
     ap.add_argument('--client', type=Path, help='Installed client executable (used for both warm and fresh cold clients)')
+    ap.add_argument('--presentation', action='store_true', help='Private actual-draw/timer probes and native repeated-position controls')
     a = ap.parse_args()
     if a.grade_only:
         try:
@@ -284,6 +285,9 @@ def main():
             if a.visual:
                 from stitched_visual import grade as grade_visual
                 grade_visual(a.grade_only/'ftesurf')
+            if a.presentation:
+                from rewind_selection_presentation import grade as grade_presentation
+                grade_presentation(a.grade_only/'ftesurf')
         return
     a.output_dir.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix='stitch-source-', dir=a.output_dir))
@@ -334,6 +338,10 @@ def main():
     else:
         warm = once(warm, 'cl_maxfps 100\n', f'cl_maxfps {a.fps}\n')
         cold = once(cold, 'cl_maxfps 100\n', f'cl_maxfps {a.fps}\n')
+    if a.presentation:
+        from rewind_selection_presentation import instrument, config
+        instrument(work)
+        warm, cold = config(warm), config(cold)
     # The second cfg runs in the SAME isolated rig, via a fresh client process.
     cfg.write_text(warm.replace('echo RUNLINES COMPLETE\nquit\n', 'echo RUNLINES COMPLETE\nexec cfg/test/stitch_finish.cfg\n'))
     (work/'ftesurf/cfg/test/stitch_cold.cfg').write_text(cold)
@@ -366,6 +374,9 @@ def main():
         if a.visual:
             from stitched_visual import grade as grade_visual
             grade_visual(rig/'ftesurf')
+        if a.presentation:
+            from rewind_selection_presentation import grade as grade_presentation
+            grade_presentation(rig/'ftesurf')
 
 if __name__ == '__main__':
     main()

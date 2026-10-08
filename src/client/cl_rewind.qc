@@ -58,6 +58,8 @@ float  rw_resgen;               // ...on this line (tr_gen: the two slots altern
 float  rw_resn;                 // ...with this many samples, so the same unchanged line
 float  rw_atres;                // opened there
 float  rw_kst[RW_KEYS];         // 1 this mode took the press, 2 it was down before the mode opened
+float rw_reqticks, rw_reqtick, rw_go_ticket, rw_go_practice;
+float rw_nativeok, rw_nativeticks, rw_nativetick; // acknowledged presentation, never a load target
 float  rw_kdown[RW_KEYS];       // down as CSQC_InputEvent saw it, whoever took the press (Rewind_Track)
 float rw_kactive[RW_KEYS];     // focus loss cancels activity, not ownership until release
 float rw_navscan[RW_NAVN], rw_navdir[RW_NAVN];
@@ -356,6 +358,7 @@ float() Rewind_Open =
 	rw_seen = getstatf(STAT_FS_SLSEQ);
 	rw_ack = rw_cd = rw_dir = rw_leave = rw_pinseen = 0;
 	rw_openat = cltime;
+	rw_nativeok = FALSE;
 	rw_serial = rw_serial + 1;
 	rw_last = cltime;
 	Rewind_NavClear();
@@ -448,6 +451,10 @@ void() Rewind_Go =
 	}
 	rw_seq = getstatf(STAT_FS_SLSEQ);
 	rw_goi = floor(rw_i);
+	rw_reqtick = tr_tick;
+	rw_reqticks = (tr_tick > 0) ? rint(tr_cur_t / tr_tick) : 0;
+	rw_go_practice = tr_practice;
+	rw_nativeok = FALSE;
 	Trail_ReplayClear();
 	if (tr_practice)
 	{
@@ -456,6 +463,7 @@ void() Rewind_Go =
 	}
 	else
 		SaveLoc_Cmd(strcat("sl_saveat ", Rewind_At(), " go"));
+	rw_go_ticket = tr_saveack;
 	rw_ack = rec_sl_sent;
 	rw_sentat = cltime;
 	rw_dir = 0;
@@ -504,6 +512,14 @@ void() Rewind_Answer =
 			Rewind_Close();
 		}
 		return;
+	}
+	// Only the correlated save acknowledgement can label a native clock.
+	if (!rw_go_practice && rw_go_ticket > 0)
+	if (getstatf(STAT_FS_SLTRAILTAG) == rw_go_ticket)
+	{
+		rw_nativeticks = getstatf(STAT_FS_SAVETICKS);
+		rw_nativetick = serverkeyfloat("pm_ticrate");
+		rw_nativeok = (rw_nativeticks >= 0 && rw_nativetick > 0 && rw_reqtick > 0);
 	}
 	rec_sl_holdack   = rw_ack;
 	rec_sl_holdackat = 0;
@@ -675,6 +691,33 @@ void() Rewind_Camera =
 	PVS_Publish(cam);
 };
 
+// Sampled request, fractional display and selected native clock are distinct.
+// This caption never changes the target, the live timer or retained history.
+string() Rewind_ResumeInfo =
+{
+	if (!rw_on) return "";
+	if (rw_ack)
+	{
+		if (rw_go_practice) return "sampled practice resume -- waiting (untimed)";
+		if (rw_reqtick <= 0) return "waiting for native snapshot";
+		return sprintf("requested %s -- waiting for native snapshot",
+			Time_TickString(rw_reqticks, rw_reqtick));
+	}
+	if (rw_cd)
+	{
+		if (rw_go_practice) return "practice resume -- untimed";
+		if (!rw_nativeok) return "resume accepted -- native clock unavailable";
+		return sprintf("native resume %s -- requested %s (%+.3fs)",
+			Time_TickString(rw_nativeticks, rw_nativetick),
+			Time_TickString(rw_reqticks, rw_reqtick),
+			rw_nativeticks * rw_nativetick - rw_reqticks * rw_reqtick);
+	}
+	if (tr_practice) return "sampled practice cursor -- resume is untimed";
+	if (tr_tick <= 0) return "sampled request unavailable";
+	return sprintf("sampled request %s -- native resume selects nearest recorded position",
+		Time_TickString(rint(tr_cur_t / tr_tick), tr_tick));
+};
+
 void(vector scr) Rewind_Draw =
 {
 	local string s;
@@ -699,6 +742,9 @@ void(vector scr) Rewind_Draw =
 	{
 		HUD_TextC([scr_x * 0.5, scr_y * 0.36, 0], ftos(ceil(rw_cd - cltime)),
 		          48 * ui_cv_scale, '0.45 0.85 1', 0.95);
+		Font_Set(ui_font_ui);
+		HUD_TextC([scr_x * 0.5, scr_y * 0.46, 0], Rewind_ResumeInfo(),
+		          12 * ui_cv_scale, '0.6 0.9 1', 0.95);
 		Font_Reset();
 		return;
 	}
@@ -708,6 +754,8 @@ void(vector scr) Rewind_Draw =
 		HUD_TextC([scr_x * 0.5, scr_y * 0.12, 0], "REWIND", 28 * ui_cv_scale,
 		          '0.45 0.85 1', 0.95);
 	Font_Set(ui_font_ui);           // context/key line; main HUD owns the numbers
+	HUD_TextC([scr_x * 0.5, scr_y * 0.84, 0], Rewind_ResumeInfo(),
+	          11 * ui_cv_scale, '0.6 0.9 1', 0.90);
 	if (rw_atres)
 		HUD_TextC([scr_x * 0.5, scr_y * 0.76, 0],
 		          "where you last resumed -- what you did since is not on this line",
@@ -716,8 +764,10 @@ void(vector scr) Rewind_Draw =
 		s = "...";
 	else if (Rewind_Old())
 		s = "arrows/strafe binds scrub   too far back: the server keeps the last two minutes";
+	else if (tr_practice)
+		s = "arrows/strafe binds scrub   ENTER resume sampled practice   S save sampled practice";
 	else
-		s = "arrows/strafe binds scrub   ENTER resume here   S save here";
+		s = "arrows/strafe binds scrub   ENTER native resume   S native save";
 	s = strcat("REWIND: ", s, (rw_st0 == TS_RUNNING) ? "   ESC resume where you were" : "   ESC back");
 	HUD_TextC([scr_x * 0.5, scr_y * 0.80, 0], s, 12 * ui_cv_scale, '0.8 0.8 0.8', 0.85);
 	Font_Reset();
@@ -981,6 +1031,7 @@ float() Rewind_Console =
 		print(sprintf("rewind: at %s  %s\n", Rewind_At(),
 		              Time_TickString(tr_tick > 0 ? rint(tr_cur_t / tr_tick) : 0, tr_tick)));
 		print(sprintf("rewind: pin %g serial %g\n", getstatf(STAT_FS_PIN), rw_serial));
+		print("rewind: selection ", Rewind_ResumeInfo(), "\n");
 		print(sprintf("rewind: HUD %g time %.6f speed %.3f e_line %.3f index %.6f dir %g sampled %g\n",
 		              ui_rw_on, ui_rw_time, ui_hl_speed, ui_hl_e, rw_i, rw_dir, ui_rw_velok));
 		cam = getproperty(VF_ORIGIN);
@@ -1039,6 +1090,7 @@ void() Rewind_Reset =
 	rw_resi = -1;
 	tr_cur_on = FALSE;
 	ui_rw_on = ui_rw_was = FALSE;
+	rw_nativeok = rw_go_ticket = rw_reqticks = rw_reqtick = 0;
 	Rewind_SwReset();
 	Rewind_NavClear();
 };

@@ -11,6 +11,21 @@ to be wrong.
 
 ---
 
+## 00. 8 Oct — requested/native rewind clocks (Patch 560)
+
+After reconnect/restart, inspect a fractional cursor: main HUD is display-only,
+while the context below the keys names the sampled request. Resume: pending
+says waiting, then the held countdown names native time, requested time and
+signed difference. The native time must match the main held timer. Practice
+resumes remain untimed, not a fabricated native clock. Close/reopen should not
+leave an old selected caption. Check readability with your HUD scale/resolution.
+
+Actual draw/timer/native/ack/prefix controls pass at caps30/100/300 and both
+clients with configured latency; compiled untimed/foreign/missing-metadata
+branches and repeated-position native ties pass. Strict requested/native clock
+equivalence remains red: this caption explains the choice, not a new selection
+or evidence clock. Actual-device/untimed camera feel and custom layouts need you.
+
 ## 00. 8 Oct — live rewind focus cancellation (Patch 554)
 
 After reconnect/restart, start a run and open rewind. Hold a bare strafe bind

@@ -2347,8 +2347,12 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   Do not change native selection solely to make a requested-clock oracle green.
   Falsifier: instrument requested sampled clock/pose, selected native snapshot
   clock/pose and acknowledged visual bound together at 30/100/300 FPS, with
-  explicit latency and repeated-pose tie controls. Establish presentation/alignment
-  semantics separately from native correctness; keep the strict-red arm. Repair
+  explicit latency and repeated-pose tie controls. P560 delivers the presentation
+  distinction: sampled request, waiting, and correlated native/request/delta,
+  with no invented clock for untimed/missing metadata. Four delayed six-cut
+  matrices and five real repeated-position/window/tie units pass; strict clock
+  equivalence remains red. General pose/clock alignment is NOT closed by that
+  caption; keep the strict-red arm and independent native/body/prefix gates. Repair
   alignment without weakening body/prefix checks, inventing authoritative state
   or retiming the recording. Keep genuine stops and discontinuities explicit.
 - **"Off ramp" labels appear well beyond the actual ramp exit.** Sites:
