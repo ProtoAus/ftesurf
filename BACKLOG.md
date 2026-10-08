@@ -5,6 +5,30 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Native plugin data textures return an unusable handle -- 2026-10-08
+
+`engine/client/cl_plugin.inc:Plug_Draw_LoadImageData/Plug_Draw_LoadImage`:
+a valid 2x2 32-bit TGA uploads, but the type-3 image path deliberately assigns
+`pic = NULL` and returns 0. Drawing that handle produces no texture. This
+breaks the existing plugin 2D API's one-call memory-upload/draw path for an
+ImGui atlas. Measured on the installed P570 client with a disposable plugin:
+exact-size ABI accepted/short size rejected, magenta MenuEvent sentinel acts,
+identical disk TGA gives a nonzero handle and red/green/half-alpha blue/white
+pixels. Both arms reach and retain the result across `vid_restart`; the
+`-noplugins` control rejects commands and has no sentinel. An additional
+same-name `LoadImage` after `LoadImageData` retrieves the uploaded texture:
+its whole 128x128 crop matches the disk control exactly before/after restart.
+So the upload acts; it is the returned drawing handle that is omitted.
+Evidence: `C:/FTESurf-font-proof/rig/ui-plugin-preflight/` subdirectories
+`fixed-size-disk-control-2` and `same-name-memory-control`. No product code
+was changed and no ImGui bridge acceptance is claimed.
+
+Falsifier: the same valid in-memory image gives a nonzero drawable handle,
+correct dimensions/straight-versus-premultiplied alpha and disk-control pixels;
+replacement and renderer restart recreate it without missing/stale textures.
+Bad/empty input and no renderer must fail closed. Cover unload/handle lifetime
+explicitly; the old header's persistence comment is not a verified contract.
+
 ## Refract dither with explicit translucent flags -- 2026-10-07
 
 `plugins/hl2/mat_vmt.c:Refract` plus the shared translucent tail: a synthetic

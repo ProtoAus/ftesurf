@@ -931,12 +931,21 @@ Any additional high-FPS matrix is explicitly specified, not an inherited cap.
   client UI does not imply that server progs or the Pi need changes.
 
 **Next step.** Overall Stage A appearance is approved; keep it opt-in while
-interaction/lifecycle acceptance remains pending. Establish the font-quality
-baseline and bounded low-cost experiments before/alongside B's native gallery/
-host bridge, preserving legacy fallback and physical-native fonts. Measure/
-approve performance budgets
-before switching the scoreboard default. The larger menu/editor migration
-is conditional on those gates, not already authorized for release.
+interaction/lifecycle acceptance remains pending. P570's physical-native font
+baseline and guarded dual Windows delivery are complete; quality preference,
+cost and device acceptance remain separate. Stage B's existing-ABI preflight
+now proves plugin/menu/disk-texture/alpha/restart activity and reproduces the
+in-memory texture path returning handle 0 (BACKLOG.md). It does not implement
+ImGui or a QC bridge. First fix/verify the memory atlas handle/lifetime path,
+then add a separate exact-size versioned indexed-2D interface and explicit
+MQC/CSQC submission (not Sbar hooks). Normalize physical coordinates, alpha
+and clip ownership/restoration; `srect_t` is not backend-uniform, so do not
+wrap raw `BE_Scissor` and claim renderer parity. Use the native gallery's
+acting QC-before/after, disabled-backend and reload controls before porting a
+real panel. Preserve legacy fallback and physical-native fonts. Measure/
+approve performance budgets before switching the scoreboard default. The
+larger menu/editor migration is conditional on those gates, not already
+authorized for release.
 
 ---
 

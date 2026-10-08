@@ -3800,9 +3800,37 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   zero pixels. Each actual dedicated/editor arm passes all 28 checks in its
   disposable rig (`font-quality-ho5psde5`, `font-quality-36f16w1n`,
   `ui-modern-20261008-162943`, `ui-modern-20261008-163011`). The second
-  executable is `C:/FTEQuake/fteqw64.exe`, not ftesurf64.exe. No primary peer
+  executable is `C:/FTEQuake/fteqw64.exe`, not ftesurf64.exe. The deployment
+  JSON's `rows.name` is the logical source artifact name; map its secondary
+  `ftesurf64.exe` row to `fteqw64.exe` for a later destination recheck. All 18
+  artifact/asset hashes still match after testing. No primary peer
   sources/configs were changed. Next: Stage B's minimal ImGui bridge, with
   cost/aesthetic/device acceptance still separate.
+- **Stage B existing-ABI preflight (2026-10-08):** no ImGui implementation
+  yet. Disposable native fixture against engine `3abccb525` (docs-only delta
+  from deployed `60dfdc102`) accepts exact 2D/Input/Cmd sizes, rejects shortened
+  2D, draws a magenta MenuEvent sentinel and disk 2x2 RGBA control, including
+  half-alpha blue/white, before/after `vid_restart`. Disabled-plugin arm
+  rejects commands/no sentinel; subject reaches 100 then 310 rendered frames.
+  Valid memory TGA returns 0 and draws nothing because
+  `cl_plugin.inc:Plug_Draw_LoadImage` explicitly sets NULL for type 3; tracked
+  in BACKLOG.md. Same-name `LoadImage` after `LoadImageData` retrieves the
+  uploaded texture, exactly matching the disk crop before/after restart.
+  This proves upload acted, not the one-call returned-handle contract. Do not
+  call the prerequisite probe a passed native atlas/ImGui gallery.
+  Evidence `C:/FTESurf-font-proof/rig/ui-plugin-preflight`: `preflight.c`,
+  `run.py`, `PREDICTIONS.md`, final `same-name-memory-control/results.json`.
+  `python .../run.py` compiles with GCC `-Wall -Wextra -Werror` and asserts the
+  acting controls plus this known failure; it uses one-shot output dirs.
+  Initial startup `-width/-height` did not set capture dimensions, and
+  `vid_width/vid_height` alone still maximized to 1920x1111. The corrected arm
+  also sets `vid_winmaximize 0` early and asserts 640x480 physical/virtual
+  dimensions. Do not sample virtual coordinates as physical. A shader-name
+  lookup workaround produced no memory texture; not accepted. Existing 2D
+  exposes quads only; header handle persistence is not established, and the
+  backend `srect_t` units differ (merged.h Patch 208). Next is the atlas path,
+  then a separate versioned indexed-2D ABI plus explicit QC submission and
+  clipped mixed-native/QC controls, not a pretend wrapper over Sbar callbacks.
 - **P566 SUI/font tests:** `ui_style 1` is the opt-in HUD-editor sample;
   `shared/sh_ui.qc` is ordered after fonts/SUI in both VMs. Native font means
   the final PHYSICAL height is a baked size: convert first, snap with the
