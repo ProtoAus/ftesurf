@@ -144,7 +144,9 @@ def host_controls(fte: Path, cc: Path, fixture=None) -> int:
         root = Path(directory)
         header = (fte/'plugins/plugin.h').read_text()
         start = header.index('//ExportInterface: one trusted synchronous service;')
-        end = header.index('#define pluguiinputservice_name "NativeUIInput/1"', start)
+        marker = '#define pluguimodelservice_name "NativeUIModel/1"'
+        if marker not in header: marker = '#define pluguiinputservice_name "NativeUIInput/1"'
+        end = header.index(marker, start)
         end = header.index('\n', end)
         (root/'ui_abi.h').write_text(header[start:end]+'\n')
         #These implementation includes have no host state; stubs live in fixture TU.

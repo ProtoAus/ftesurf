@@ -3866,6 +3866,18 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   real compiler. P600's first local frozen gate caught a late include cleanup;
   new-location LSP errors were real, not the earlier missing-database cache.
   Restore global includes and repeat host/frozen/runtime gates BEFORE publication.
+- **P601 native models are immutable revisioned snapshots, not array offsets:**
+  Stage 0..count-1 inside the frontend draw bracket and commit before Draw.
+  Malformed/incomplete/duplicate rows poison the transaction; only a complete
+  counted copy publishes. Stable widget/row IDs and current revision govern
+  actions, not label hashes or list indices. Replacement resets BOTH queued/held
+  input and unpolled actions and revokes successful-draw authority until redraw.
+  Literal ##/### labels must render as plain text rather than alter ImGui IDs.
+  Checkbox updates are QC-owned new revisions, not mutations of copied values.
+  Owner generation alone does not prove snapshot freshness. Keep implementation
+  includes free of third-party headers inside namespaces (P600 scope failure).
+  Synthetic diagnostic events are not real-device/panel acceptance. Contract and
+  acting reorder/delete/held/queued/unpolled controls: tools/p601model.md.
 - **P600 native input queues must be bounded across frames, not just per Draw:**
   ImGui trickles alternating edges across NewFrame. Resetting a per-frame event
   counter does not bound the residual queue. Limit BOTH host accepted events

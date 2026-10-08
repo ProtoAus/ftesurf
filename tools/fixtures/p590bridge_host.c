@@ -20,6 +20,7 @@ struct globalvars_s { float value[15]; };
 #define OFS_PARM1 6
 #define OFS_PARM2 9
 #define OFS_PARM3 12
+#define OFS_PARM4 15
 #define countof(a) (sizeof(a)/sizeof((a)[0]))
 #define min(a,b) ((a)<(b)?(a):(b))
 #define max(a,b) ((a)>(b)?(a):(b))
@@ -32,6 +33,9 @@ static int HostNonFinite(float f)
 #define IS_NAN(f) HostNonFinite(f)
 #define Vector4Copy(a,b) memcpy((b),(a),sizeof(float)*4)
 #include "ui_abi.h"
+static const char *qclabel = "host label";
+static const char *PR_GetStringOfs(pubprogfuncs_t *vm, unsigned int offset)
+{ (void)vm; (void)offset; return qclabel; }
 typedef struct plugin_s { pluguiservice_t nativeui; } plugin_t;
 static plugin_t plugins[2], *currentplug;
 static struct { int width,height,pixelwidth,pixelheight; } vid = {320,240,640,480};
@@ -103,6 +107,7 @@ int main(void)
 	unsigned int j;
 	currentplug=&plugins[0];
 	CHECK(!Plug_NativeUI_InputRegister(NULL,0));
+	CHECK(!Plug_NativeUI_ModelRegister(NULL,0));
 	CHECK(!Plug_NativeUI_Register(NULL,sizeof(service)));
 	CHECK(!Plug_NativeUI_Register(&service,sizeof(service)-1));
 	CHECK(!Plug_NativeUI_Register(&service,sizeof(service)+1));

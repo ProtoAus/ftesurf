@@ -141,24 +141,26 @@ def grade(rig):
     return errors
 
 
-def run(a):
+def run(a, *, fixture='p600input.qc', config=cfg, grader=grade, prefix='p600-input-', arms=ARMS, engines=None):
     if os.name != 'nt': raise RuntimeError('Windows runtime required; grading is portable')
-    rig = Path(tempfile.mkdtemp(prefix='p600-input-',dir=ROOT/'rig'))
+    rig = Path(tempfile.mkdtemp(prefix=prefix,dir=ROOT/'rig'))
     (rig/'P599_RIG.txt').write_text('Owned disposable QC transport controls; no device-input claim.\n')
     plugin = a.plugin or build(a.fte.resolve(),rig/'build',a.cc.resolve())
     qc = rig/'qc'; qc.mkdir()
     for name in ('m_defs','cl_defs'): shutil.copy2(ROOT/'src/defs'/f'{name}.qc',qc/f'{name}.qc')
-    for p in (ROOT/'src/shared/sh_nativeui.qc',ROOT/'tools/fixtures/p600input.qc'): shutil.copy2(p,qc/p.name)
+    for p in (ROOT/'src/shared/sh_nativeui.qc',ROOT/'tools/fixtures'/fixture): shutil.copy2(p,qc/p.name)
     for name,defs in (('menu','m_defs'),('csprogs','cl_defs')):
-        (qc/'progs.src').write_text(f'{rig/name}.dat\n{defs}.qc\nsh_nativeui.qc\np600input.qc\n')
+        (qc/'progs.src').write_text(f'{rig/name}.dat\n{defs}.qc\nsh_nativeui.qc\n{fixture}\n')
         with (rig/f'compile-{name}.log').open('w') as out:
             result = subprocess.run([str(ROOT/'src/fteqcc64.exe'),'-srcfile','progs.src'],cwd=qc,stdout=out,stderr=subprocess.STDOUT)
         if result.returncode or 'Done. 0 warnings' not in (rig/f'compile-{name}.log').read_text(errors='replace'):
             raise RuntimeError('QC compilation failed: '+str(rig))
-    report = {'utc':datetime.now(timezone.utc).isoformat(),'plugin_sha256':sha(plugin),'arms':{}}
-    for arm in ARMS:
+    report = {'utc':datetime.now(timezone.utc).isoformat(),'plugin_sha256':sha(plugin),
+              'fixture_sha256':sha(ROOT/'tools/fixtures'/fixture),
+              'wrapper_sha256':sha(ROOT/'src/shared/sh_nativeui.qc'),'arms':{}}
+    for arm in arms:
         root = rig/arm; game = root/'ftesurf'; game.mkdir(parents=True)
-        engine = a.old_engine if arm == 'drawonly' else a.engine
+        engine = (engines or {}).get(arm, a.old_engine if arm == 'drawonly' else a.engine)
         shutil.copy2(engine,root/'ftesurf64.exe'); shutil.copy2(a.server,root/'fteqwsv64.exe')
         shutil.copy2(plugin,root/'fteplug_ui_imgui_x64.dll')
         for name in ('menu','csprogs'): shutil.copy2(rig/f'{name}.dat',game/f'{name}.dat')
@@ -169,7 +171,7 @@ def run(a):
         (game/'cfg').mkdir(); (game/'cfg/default.cfg').write_text('cfg_save_auto 0\n')
         (root/'default.fmf').write_text('FTEMANIFEST 1\nGAME FTESurfInputFixture\nNAME "Native input fixture"\nBASEGAME ftesurf\nDISABLEHOMEDIR 1\nMAINCONFIG p599-unused\n')
         with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as s: s.bind(('127.0.0.1',0)); port = s.getsockname()[1]
-        (game/'probe.cfg').write_text(cfg(arm,port))
+        (game/'probe.cfg').write_text(config(arm,port))
         svcmd = [str(root/'fteqwsv64.exe'),'-basedir',str(root),'-nohome','-noplugins','-port',str(port),
                  '+set','cfg_save_auto','0','+set','sv_public','0','+map','p599_input.map']
         clcmd = [str(root/'ftesurf64.exe'),'-basedir',str(root),'-nohome','-nosound','-nocdaudio','-window',
@@ -189,7 +191,7 @@ def run(a):
                               'server_sha256':sha(a.server),'csprogs_sha256':sha(game/'csprogs.dat'),
                               'client_command':clcmd,'server_command':svcmd}
         (rig/'report.json').write_text(json.dumps(report,indent=2)+'\n')
-    errors = grade(rig); (rig/'grade.json').write_text(json.dumps({'errors':errors},indent=2)+'\n')
+    errors = grader(rig); (rig/'grade.json').write_text(json.dumps({'errors':errors},indent=2)+'\n')
     for s in errors: print('FAIL',s)
     print('rig',rig,'failed',len(errors)); return int(bool(errors))
 

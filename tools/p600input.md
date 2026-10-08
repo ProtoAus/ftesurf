@@ -114,6 +114,12 @@ errors came from opening the new checkout before its database/driver environment
 CSQC refresh/definition resolves PF_ui_native_input to cl_plugin_ui_input.inc.
 Real compilers and runtime remain the authority; no clean-cache-only claim.
 
+## Continuation
+
+P601 counted widget/model snapshots and stable action/row identity now continue
+this prerequisite in tools/p601model.md. The production/device/cost/deployment
+gates below are not waived by diagnostic model tests.
+
 ## Commit/frozen/push/deployment boundary
 
 Canonical engine source/tag: `c61458c94f23b2cf1552301d1232dde33e04274a` / `patch-600`.

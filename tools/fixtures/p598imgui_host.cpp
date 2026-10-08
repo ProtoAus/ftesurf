@@ -10,6 +10,8 @@ static unsigned checks, faults, calls, creates, destroys;
 static bool failcreate, failsubmit;
 static pluguiservice_t service;
 static pluguiinputservice_t inputservice;
+static pluguimodelservice_t modelservice;
+static bool modelavailable = true;
 static bool inputavailable = true;
 static std::set<plugmeshtex_t> live;
 static std::vector<plugmeshvertex_t> ink;
@@ -61,6 +63,12 @@ static qboolean QDECL ExportInterface(const char *name, void *p, size_t size)
 		Check(size == sizeof(inputservice),"exact additive input service");
 		if (!inputavailable) return qfalse;
 		std::memcpy(&inputservice,p,sizeof(inputservice)); return qtrue;
+	}
+	if (!std::strcmp(name,pluguimodelservice_name))
+	{
+		Check(size == sizeof(modelservice),"exact additive model service");
+		if (!modelavailable) return qfalse;
+		std::memcpy(&modelservice,p,sizeof(modelservice)); return qtrue;
 	}
 	Check(!std::strcmp(name,pluguiservice_name) && size == sizeof(service),"exact exported service");
 	std::memcpy(&service,p,sizeof(service)); return qtrue;

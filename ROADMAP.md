@@ -1002,8 +1002,11 @@ actions without changing NativeUI/1. Interactive diagnostic owners perform real
 button/checkbox/text edits; both VM contexts, reset/queue/text bounds, UTF-8 scalar
 preservation, fallback and lifecycle controls pass. Synthetic QC event dispatch
 proves transport, NOT physical device routing or real-panel cursor/minus safety.
-Next define bounded widget/model snapshots and stable row/action identities
-before migrating a real panel. No non-GL/device-input, modern appearance,
+P601 supplies bounded copied widget/model snapshots and stable widget/row/action
+identities for diagnostic owners; see tools/p601model.md. Renamed/reordered/deleted
+rows, queued/held presses and unpolled actions have acting freshness controls.
+Next choose a real-panel migration separately, retaining explicit QC ownership
+and covering fallback; the diagnostic protocol does not authorize that switch. No non-GL/device-input, modern appearance,
 font/DPI policy or cost acceptance is implied. Preserve covering legacy fallback
 and physical-native fonts. Measure/
 approve performance budgets before switching the scoreboard default. The

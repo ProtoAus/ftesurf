@@ -7,6 +7,11 @@ float(float handle) ui_native_close = #0;
 float() ui_native_input_status = #0;
 float(float handle, float type, float a, float b) ui_native_input = #0;
 vector(float handle) ui_native_poll = #0;
+float() ui_native_model_status = #0;
+float(float handle, float revision, float count) ui_native_model_begin = #0;
+float(float handle, float index, vector identity, float value, string label) ui_native_model_widget = #0;
+float(float handle) ui_native_model_commit = #0;
+vector(float handle, float revision) ui_native_model_poll = #0;
 
 float() NUI_Available =
 {
@@ -55,6 +60,43 @@ vector(float handle) NUI_Poll =
 	if (!NUI_InputAvailable())
 		return '0 0 0';
 	return ui_native_poll(handle);
+};
+
+//Immutable counted models: widget/row/revision IDs are stable positive integers.
+//Stage ordered indices 0..count-1, then commit before draw. Never poll old revisions.
+float() NUI_ModelAvailable =
+{
+	if (!NUI_InputAvailable()) return FALSE;
+	if (!checkbuiltin(ui_native_model_status)) return FALSE;
+	if (!checkbuiltin(ui_native_model_begin)) return FALSE;
+	if (!checkbuiltin(ui_native_model_widget)) return FALSE;
+	if (!checkbuiltin(ui_native_model_commit)) return FALSE;
+	if (!checkbuiltin(ui_native_model_poll)) return FALSE;
+	return ui_native_model_status();
+};
+float(float handle, float revision, float count) NUI_ModelBegin =
+{
+	if (!handle) return FALSE;
+	if (!NUI_ModelAvailable()) return FALSE;
+	return ui_native_model_begin(handle,revision,count);
+};
+float(float handle, float index, vector identity, float value, string label) NUI_ModelWidget =
+{
+	if (!handle) return FALSE;
+	if (!NUI_ModelAvailable()) return FALSE;
+	return ui_native_model_widget(handle,index,identity,value,label);
+};
+float(float handle) NUI_ModelCommit =
+{
+	if (!handle) return FALSE;
+	if (!NUI_ModelAvailable()) return FALSE;
+	return ui_native_model_commit(handle);
+};
+vector(float handle, float revision) NUI_ModelPoll =
+{
+	if (!handle) return '0 0 0';
+	if (!NUI_ModelAvailable()) return '0 0 0';
+	return ui_native_model_poll(handle,revision); //widget ID, row ID, typed value
 };
 
 //Open and Draw are authorized only during the engine's MQC/CSQC draw callback.
