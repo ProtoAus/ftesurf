@@ -421,7 +421,7 @@ def _pair_result(rs, surfd, row, peer, pa, now):
 
 
 def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
-                diagnostics=None, budget=None, read_budget=None):
+                diagnostics=None, budget=None, read_budget=None, reader=None):
     """Compare one replays row against the other run-kind rows on its map/leg.
 
     -> (stored, skipped, notable).  Stores one `sims` row per pair examined, so a
@@ -440,12 +440,17 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
     An optional shared budget admits new pair attempts, including unresolved
     peers and raised comparisons; it never stores results for unattempted work.
 
+    A supplied reader belongs to this pass; direct callers otherwise resolve
+    their explicit tools directory. No process-global reader cache is kept.
+
     Every comparison runs with NO transaction open; the rows are written in one
     short transaction after the last.  A pair is ~88 ms on the Pi, and inserting
     between comparisons held the write lock for all the rest: 80 peers held it
     6.9 s, a concurrent /api/run got a 500 and `import surfd` (migrate) failed.
     """
-    rs, why = _recsim(tools_dir)
+    rs = reader
+    if rs is None:
+        rs, why = _recsim(tools_dir)
     if rs is None:
         return 0, 0, 0
     t0 = int(time.time()) if now is None else now
@@ -589,7 +594,7 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
             _advance(conn, "source", row["id"])
             s, k, n = compare_run(surfd, conn, row, now=now, tools_dir=tools_dir,
                                   diagnostics=diagnostics, budget=budget,
-                                  read_budget=read_budget)
+                                  read_budget=read_budget, reader=rs)
         except ReadLimit:
             break
         except Exception as exc:
