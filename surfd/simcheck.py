@@ -388,7 +388,7 @@ def _pair_result(rs, surfd, row, peer, pa, now):
 
 
 def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
-                diagnostics=None, budget=None):
+                diagnostics=None, budget=None, read_budget=None):
     """Compare one replays row against the other run-kind rows on its map/leg.
 
     -> (stored, skipped, notable).  Stores one `sims` row per pair examined, so a
@@ -421,8 +421,8 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
         return 0, 0, 0
     # Stored pairs must not occupy the bounded candidate window. Historical
     # observations use either orientation, so exclude both before LIMIT.
-    after = _cursor(conn, "peer", a_id)
-    peers = conn.execute(
+    after = _cursor(conn, "peer", a_id, read_budget=read_budget)
+    peers = _read(conn,
         "SELECT p.* FROM replays p WHERE p.map = ? AND p.track = ? AND p.leg = ?"
         " AND p.kind = 'run' AND p.id != ?"
         " AND NOT EXISTS (SELECT 1 FROM sims s"
@@ -430,7 +430,7 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
         "        OR (s.a_id = p.id AND s.b_id = ?))"
         " ORDER BY (p.id > ?) DESC, p.id LIMIT ?",
         (row["map"], row["track"], row["leg"], a_id, a_id, a_id,
-         after, limit_peers)).fetchall()
+         after, limit_peers), read_budget)
     if not peers:
         return 0, 0, 0
     pa, w = _row_path(surfd, row)
@@ -443,9 +443,12 @@ def compare_run(surfd, conn, row, now=None, limit_peers=200, tools_dir=None,
     try:
         for pr in peers:
             # Late recheck remains before admission and cursor advancement.
-            have = conn.execute(
-                "SELECT id FROM sims WHERE (a_id = ? AND b_id = ?) OR (a_id = ? AND b_id = ?)",
-                (a_id, pr["id"], pr["id"], a_id)).fetchone()
+            try:
+                have = _read(conn,
+                    "SELECT id FROM sims WHERE (a_id = ? AND b_id = ?) OR (a_id = ? AND b_id = ?)",
+                    (a_id, pr["id"], pr["id"], a_id), read_budget)
+            except ReadLimit:
+                break  # flush prior results; this peer was never admitted
             if have:
                 continue
             if budget is not None:
@@ -514,8 +517,9 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
     new pair attempts across all of them. Zero disables before loading support.
     Each comparison source is bounded by bytes and moves. `max_seconds` stops
     new row/pair admission cooperatively using a monotonic clock; in-flight work
-    finishes and normal results flush. Loader/schema/query time counts too, but
-    none is interrupted. This is not a hard timeout, an overall RSS bound or
+    finishes and normal results flush. Loader/schema/query time counts too.
+    An explicit owner ReadBudget interrupts selected SQL reads as whole queries,
+    preserving prior comparisons. This is not a hard timeout, an overall RSS bound or
     complete/fair pair coverage.
 
     A fault here is printed and never stops the verification, exactly as the
@@ -548,7 +552,10 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
             # Commit before comparison so no file work holds a write transaction.
             _advance(conn, "source", row["id"])
             s, k, n = compare_run(surfd, conn, row, now=now, tools_dir=tools_dir,
-                                  diagnostics=diagnostics, budget=budget)
+                                  diagnostics=diagnostics, budget=budget,
+                                  read_budget=read_budget)
+        except ReadLimit:
+            break
         except Exception as exc:
             print("simcheck: replay %s failed: %r" % (row["id"], exc),
                   file=sys.stderr)
@@ -557,6 +564,8 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         stored += s
         skipped += k
         notable += n
+        if read_budget is not None and read_budget.exhausted:
+            break
     note = ""
     if stored:
         note = "sims +%d" % stored
@@ -571,6 +580,8 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         unavailable.append("%d pair failed" % diagnostics["pair_failed"])
     if unavailable:
         note = (note + " " if note else "") + "sims unavailable: " + ", ".join(unavailable)
+    if read_budget is not None and read_budget.exhausted:
+        note = (note + " " if note else "") + "sims SQL read limit reached (coverage not measured)"
     if budget.remaining <= 0:
         note = (note + " " if note else "") + (
             "sims pair limit reached (%d attempted; coverage not measured)" % budget.attempted)

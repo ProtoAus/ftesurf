@@ -627,8 +627,10 @@ overall memory/scan bound or fair scheduler. The CLI retains its existing
 import-time database initialization even for rejected arguments.
 
 `--sims-sql-steps` defaults to 1,000,000 SQLite VM instructions across selected
-collector reads; zero disables collection. Source cursor/pending reads abstain
-as a whole on exhaustion, without partial selection or invented observations.
+collector reads; zero disables collection. Source cursor/pending and peer cursor/
+candidate/late-recheck reads share the allowance. Queries abstain as a whole on
+exhaustion, without partial selection or invented observations. Late-recheck
+exhaustion still flushes prior successful comparisons; no new peer is admitted.
 The sweep connection owner explicitly grants the progress-handler slot per read;
 standalone APIs without a `ReadBudget` preserve caller callbacks and old behavior.
 Residual instructions are conservatively charged as one final callback quantum
