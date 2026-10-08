@@ -4120,6 +4120,31 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   the floor from a pair of shots at the SAME cvar ~0.7 s apart, grading regions
   against it, never the whole frame (the fps counter always moves).
 
+### Similarity eligibility and summary controls (P557-559, 2026-10-08)
+
+`simcheck.pending()` means an eligible native pair remains unobserved, not that
+its source has no stored observation. Stored pairs in either orientation must be
+excluded BEFORE the peer LIMIT. Four sources with row/pair budgets one should
+ACT six times, then go idle; a primary with 200 observed older peers must still
+reach newer peers. This is eligibility, not fair retry or full-coverage proof.
+The summary returns <=13 fixed aggregate rows in Python; SQLite scan/working
+memory and cooperative elapsed completion remain unbounded.
+
+Frozen Linux suites passed at the inspected deployment commit; 23 focused
+controls also passed with `sys.modules['simcheck']` bound to the INSTALLED file.
+Real installed-reader controls completed six 80-opportunity pairs across budgeted
+passes, then five new peers beyond a mixed-orientation 200-observation window.
+Live metadata checks used mode=ro while holding the sweep lock; no real collection
+or verdict/sample mutation was needed to prove the temporary fixtures ACTED.
+
+An unchanged `test_admin_metrics` run failed its full public-board dict comparison.
+That response includes dynamic `t` and can cross a wall-clock second; the failure
+artifact did not retain the earlier timestamp separately. Same source bytes
+had passed in the previous frozen stages and passed one recorded rerun. Keep the
+failed artifact, source proof and rerun; do not repair unrelated product code or
+claim that changing authentication/metrics changed the board. A deterministic
+clock-boundary falsifier is recorded in BACKLOG.md.
+
 ### The public web surface (`/board/`) -- what may leave the process
 
 - **A PUBLISHED `runs.player` WOULD BE A PUBLISHED IDENTITY.** That column is

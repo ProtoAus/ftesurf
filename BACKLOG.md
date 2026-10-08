@@ -2677,6 +2677,16 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
 
 ## Harness coverage
 
+- **Admin metrics board-invariance control includes wall-clock `t`.**
+  `surfd/test_admin_metrics.py:32,57` compares complete public-board JSON across
+  multiple authenticated API calls; `/api/board` includes its current timestamp.
+  One unchanged frozen run failed this comparison and one recorded rerun passed;
+  its failure log prints only the later response, not the earlier timestamp.
+  Falsifier: drive the two board responses across a deterministic clock second
+  while leaving rows/tiers unchanged. A content-invariance control should still
+  pass, while a real board-content change must fail. Keep clock checks separate;
+  do not weaken public exposure assertions or repair product code for this flake.
+
 - **surf_aquaflow CRASHES THIS PC HEADLESS, on every engine and csprogs tried.**
   2026-10-03, `cfg/test/p474page.cfg` (minimized, listen server): the log ends at
   `Loaded Certificate DN` right after the map loads, and `crashaddr.txt` gets an

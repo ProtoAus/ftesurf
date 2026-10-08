@@ -33,6 +33,12 @@ qcbuild  89
 #     where it used to be read from.
 date     2026-10-08
 
+# PATCHES 557-559: SIMILARITY SAMPLE ELIGIBILITY AND SUMMARY. Partially
+# observed native runs remain pending; stored pairs are excluded before the
+# 200-new-peer window. One summary snapshot returns <=13 fixed aggregate rows.
+# Store-only: not fair/complete coverage, a SQLite scan/RSS/hard-time bound or
+# a badge/ranking gate. Engine pin/tag and qcbuild unchanged. See surfd/README.
+#
 # PATCH 554: LIVE REWIND FOCUS CANCELLATION. Chat/menu/console or keyboard
 # focus loss cancels active scrubs, retaining press/release ownership. Return
 # and repeats cannot restart; release/fresh press acts. Main console uses the
