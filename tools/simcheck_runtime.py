@@ -70,6 +70,32 @@ def probe(path):
         sys.dont_write_bytecode = old
     if Path(mod.__file__).resolve() != Path(path).resolve() or not callable(getattr(mod, 'compare_paths', None)):
         raise ValueError('runtime comparison capability/path unavailable')
+    for marker in ('BOUNDED_INPUT_VERSION', 'SOURCE_CAPTURE_VERSION'):
+        version = getattr(mod, marker, None)
+        if type(version) is not int or version != 1:
+            raise ValueError('runtime bounded/capture capability unavailable')
+    # Declarations alone do not prove the required operation acts. Disposable
+    # sources only; this is a smoke contract, not a sandbox or code attestation.
+    data = ('FTESURF-REC 9\nmap synthetic\ntickrate 100\nbegin\n' + ''.join(
+        'in %d %d 0 %d 0 0 0 0 0 4\n' % (i, i, 100+i%7) for i in range(80))
+        + 'end 80\n').encode()
+    try:
+        with tempfile.TemporaryDirectory(prefix='simcheck-probe-') as root:
+            a, b = Path(root)/'a.rec', Path(root)/'b.rec'
+            a.write_bytes(data); b.write_bytes(data)
+            verdict, result = mod.compare_paths(str(a), str(b), max_bytes=len(data), max_moves=80)
+            source = {'sha256': digest(data), 'bytes': len(data)}
+            if (verdict != 'compared' or result.get('compared') != 80
+                    or result.get('match') != 1.0
+                    or result.get('sources') != {'version':1, 'a':source, 'b':source}):
+                raise ValueError('positive comparison/capture mismatch')
+            for limits in ({'max_bytes':len(data)-1, 'max_moves':80},
+                           {'max_bytes':len(data), 'max_moves':79}):
+                verdict, reason = mod.compare_paths(str(a), str(b), **limits)
+                if verdict != 'source limit' or not isinstance(reason, str):
+                    raise ValueError('source limit did not abstain whole')
+    except Exception as exc:
+        raise ValueError('runtime bounded comparison self-check failed') from exc
     return mod
 
 

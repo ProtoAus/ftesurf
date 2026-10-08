@@ -90,6 +90,50 @@ class Runtime(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'capability'):self.call(apply=True)
         self.assertFalse((self.tools/'census').exists())
 
+    def test_required_version_markers_block_before_existing_target_mutation(self):
+        parent=self.tools/'census';parent.mkdir();target=parent/'recsim.py'
+        target.write_bytes(b'prior');before=sorted(p.name for p in parent.iterdir())
+        mode=target.stat().st_mode
+        for marker in ('BOUNDED_INPUT_VERSION','SOURCE_CAPTURE_VERSION'):
+            for replacement in ('',marker+' = False',marker+' = True',marker+' = 2'):
+                bad=SOURCE.replace((marker+' = 1').encode(),replacement.encode())
+                (self.pkg/'recsim.py').write_bytes(bad)
+                self.m['recsim_sha256']=runtime.digest(bad);self.manifest()
+                for apply in (False,True):
+                    with self.subTest(marker=marker,replacement=replacement,apply=apply):
+                        with self.assertRaisesRegex(ValueError,'capability'):
+                            self.call(runtime.digest(b'prior'),apply)
+                        self.assertEqual(target.read_bytes(),b'prior')
+                        self.assertEqual(target.stat().st_mode,mode)
+                        self.assertEqual(sorted(p.name for p in parent.iterdir()),before)
+
+    def test_hash_valid_reader_that_ignores_a_limit_is_refused(self):
+        for name in ('max_bytes','max_moves'):
+            bad=SOURCE+('''\n_probe_original = compare_paths
+def compare_paths(a, b, **kw):
+    if kw.get('%s') == %s:
+        kw['%s'] = None
+    return _probe_original(a, b, **kw)
+''' % (name, 'len(open(a, "rb").read())-1' if name=='max_bytes' else '79', name)).encode()
+            (self.pkg/'recsim.py').write_bytes(bad)
+            self.m['recsim_sha256']=runtime.digest(bad);self.manifest()
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(ValueError,'self-check'):
+                    self.call(apply=True)
+                self.assertFalse((self.tools/'census').exists())
+
+    def test_captured_hash_must_describe_positive_probe_bytes(self):
+        bad=SOURCE+b'''\n_probe_original = compare_paths
+def compare_paths(a, b, **kw):
+    verdict, data = _probe_original(a, b, **kw)
+    if verdict == 'compared': data['sources']['a']['sha256'] = '0'*64
+    return verdict, data
+'''
+        (self.pkg/'recsim.py').write_bytes(bad)
+        self.m['recsim_sha256']=runtime.digest(bad);self.manifest()
+        with self.assertRaisesRegex(ValueError,'self-check'):self.call(apply=True)
+        self.assertFalse((self.tools/'census').exists())
+
     def test_reject_unknown_manifest_and_relative_destination(self):
         self.m['version']=2;self.manifest()
         with self.assertRaisesRegex(ValueError,'manifest'):self.call()
