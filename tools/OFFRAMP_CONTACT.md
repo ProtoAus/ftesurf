@@ -1057,3 +1057,84 @@ fix. Original unresolved capture categories and general triangle support ABSTAIN
 remain. General corner/tie/bias/transform/capsule/entity/nested/topology/recovery/
 portal/real-map, clock/render/rates/LOD/hold and human acceptance are OPEN. No
 product patch, engine pin/tag, QC Build, installed program or deployment change.
+
+## Real PM copied-winning bevel trajectory (private diagnostic only)
+
+`offramp_bevpm_smoke.py` keeps the original twenty-case command unchanged and
+adds a separate `pm_offramp_bevtrajectory capture oracle` command/envelope. Use
+NEW clean paired engine worktrees at the inspected native base, one fixture-only
+and one full motion/copy/slab/bevel capture composition; NEVER ship either server.
+
+```
+python tools/offramp_bevpm_smoke.py --instrument-native <private-engine>
+python tools/offramp_bevpm_smoke.py --instrument-native <fixture-only-engine> --fixture-only
+# sv-rel build BOTH with pwsh7 and the documented TMP/TEMP recipe; never deploy.
+python tools/offramp_bevpm_smoke.py --server <private-server> --control-server <fixture-only-server> --output-dir <new-arms-dir>
+python tools/offramp_bevpm.py --arms <arms.json> --output <new-report.json>
+python tools/test_offramp_bevpm.py --native-arms <arms.json>
+```
+
+Registered winding xyz (0,0,0), (0,256,-1024/3), (256,0,-256), indices0/1/2,
+back slab4 and standing AABB[-16,-16,0]..[16,16,62] produce front normal
+(3,4,3)/sqrt34. The x=0 edge-cross-X bevel is (0,.8,.6), dist0/tag5, in the
+surf band rather than the standable small-box setup's 1/sqrt2 bevel. Single
+initial origin(-8,64,-32)/velocity(-25,200,-400), explicit existing motion
+profile, then32 zero-input15ms commands: real PM_PlayerMove -> PMSrc_Tick ->
+PM_PlayerTrace -> BIH_TRIANGLE. No post-seed body/hull injection or brush proxy.
+
+Three matched actors: triangle/bevelON; actual zero-leaf BIH removal/bevelON;
+triangle/bevelOFF. The zero-leaf builder owns one empty group node, NOT a
+triangle. Removal also repeats each down2 query at the SAME actual pose with
+only the model pointer replaced, then immediately restored. Full mover/profile/
+probe/debug state restores at command end; identical BIH-local probe save/restore
+adapters exist in BOTH control and capture builds. There is no new movement
+query or hot-path print; fixed native numeric rows dump only after capture ends.
+
+The retained actor ACTS12 tag5 bevel contacts/ramp ticks10..21 and raw loss22.
+Post-command down2 hits10..20, misses0..9 and21..31; every stationary and local
+triangle-removal query misses. Removed actor has no contact/ramp/downward hit
+and a different final body. BevelOFF ACTS6 earlier tag2 side-plane contacts,
+ticks6..11, before the ideal finite prism: ghosts, NOT physical support. Even
+its final contact sweep eventually enters the ideal prism, but its accepted
+native fraction is earlier at a separately joint/SAT-clear pose. ModeOFF side
+fraction/bias is checked against independently derived OLD side-plane algebra,
+explicitly not an ideal geometry oracle.
+
+Complete13-axis finite-prism SAT over each ON accepted COPIED WINNING xyz gives
+a clear-start entry with that bevel plane and native1/32 biased fraction. The
+accepted sweep start/end bind previous native body/velocity and half gravity;
+actual posture/identity instance/direct BIH/world physent0/origin route0/leaf0/
+root0/depth0, empty brush snapshot and fixed index/xyz/tag/bevel/slab copy bind
+independently. Query SAT uses authored fixture xyz, explicitly NOT an accepted
+copy. Native original-triangle axial bounds can still exclude extruded back
+corners; query misses never establish general geometric support absence.
+
+New v1 BEGIN binds version/capture/oracle/cases3/steps32; SOURCE binds template+
+installer/motion/native-base identity. Ordered CASE/FIXTURE/SEED,32 TICK rows
+and optional stationary/down2/untriangled QUERY triples, CASE_END and END are
+strict. Capture has the unchanged buffer/origin/shape/hull/copy/slab/bevel
+selftests/envelopes, including empty removal. Unknown/duplicate/missing/nonfinite/
+integer/order/geometry/source/winner/hull/input/plane/fraction/bias/binding faults
+refuse; no capture rows may escape cases or appear in quiet global envelopes.
+The reader splits only that strict new envelope before grading original twenty
+cases; their full preceding reader result stays EXACT. Five-arm body parity,
+four enabled-query parity and ON/repeat full capture equality are mandatory.
+
+Twelve tests (six pure, six actual-native) pass without skips in the retained
+native invocation:6,018 ACTED numeric query/fixture/seed/accepted-contact/winning-
+copy refusals, plus schema/quiet/envelope controls. Sixty-two stationary checks
+on actual copied sweeps independently agree with joint convex feasibility.
+Mirrored plausible new fractions preserve all enabled new-query parity AND old
+twenty-case results, then refuse against independent geometry. Pure invocation
+skips native tests; skips are NOT runtime evidence. Reports need NEW paths and
+hash retained binaries/configs/manifests/logs. Same-base native control warning
+multiset matches the subject: zero NEW compiler diagnostics. A fresh exact-
+commit build/run must repeat all five arms before publication is called proved.
+
+Only this bounded real PM bevel/copy/bias/removed/OFF control is closed. Native
+`world-triangle-unresolved` stays; general triangle support **ABSTAIN**, general
+native/ideal semantics **NOT_VERIFIED**, physical-exit/classifier/render/hold
+**NOT_TESTED**. Back-slab NON-equivalence remains measured. Arbitrary corner/tie,
+capsule/transform/entity/nested/recovery/portal/topology/real-map, clock/render/
+rates/camera/LOD/hold and human acceptance remain open. No product patch,
+ENGINE pin/tag, QC Build, installed program or deployment changes.

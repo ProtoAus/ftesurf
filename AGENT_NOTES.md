@@ -4053,6 +4053,25 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+### Native fixture APIs and falsifiers must actually act — 2026-10-09
+
+- `com_bih.c`'s `struct bihproberec_s` and `BIH_ProbeSave/Restore` are local
+  implementation details, NOT `com_bih.h` APIs. Calling them from an included
+  `pm_source.c` fixture fails with an unknown storage size/implicit declarations.
+  The private bevel PM fixture uses identical translation-unit-local adapters
+  in fixture-only and capture builds; no product ABI or mover patch is implied.
+- Native retained logs can preserve CRLF. A missing-row fault constructed with
+  `text.replace(splitlines_row + '\n', '', 1)` can silently remove NOTHING.
+  Verify changed text and the exact decremented row count before calling the
+  rejecting reader. Never count a no-op mutation as an ACTED refusal.
+- Setup-only native triangle bevel queries are not a PM trajectory. The separate
+  `offramp_bevpm` command ACTS steep tag5 copied-winning contacts through actual
+  `PM_PlayerMove`, matched removal and bevel-OFF earlier side-plane ghosts,
+  independent complete SAT/bias and joint feasibility controls; old twenty-case
+  reports stay exact. This bounded evidence does not resolve arbitrary native
+  back-slab/triangle support or physical exit/classifier/render/hold acceptance.
+
+
 - **Native .inc scope is load-bearing:** ui_imgui/input.inc is included INSIDE
   FteImGui. Third-party and standard headers must stay at global scope in the
   parent .cpp; otherwise it declares nested FteImGui::ImGui/std and breaks the
