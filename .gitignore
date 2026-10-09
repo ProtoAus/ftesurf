@@ -116,7 +116,7 @@ __pycache__/
 !/.gitattributes
 !/.editorconfig
 !/.github/
-# Pi project configuration only; runtime evidence and local state stay private.
+# pi.dev project configuration only; runtime evidence and local state stay private.
 !/.pi/
 /.pi/*
 !/.pi/settings.json

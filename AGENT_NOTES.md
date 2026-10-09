@@ -1,6 +1,6 @@
 # AGENT_NOTES.md
 
-Detailed working notes, moved out of Pi's always-loaded AGENTS.md. The short
+Detailed working notes, moved out of pi.dev's always-loaded AGENTS.md. The short
 AGENTS.md is the startup contract; read relevant sections here BEFORE changing
 that subsystem. Older references to AGENTS.md's detailed sections refer here.
 Keep new operational findings here, not in the startup brief. No historical
@@ -8,20 +8,20 @@ findings were removed in the split.
 
 Working notes for coding-agent sessions in this repo. Read CONTRIBUTING.md too
 (git identity, `git clean -x`, line endings, `.src` ordering).
-Pi subagent setup and its read-only smoke workflow are documented in
+pi.dev subagent setup and its read-only smoke workflow are documented in
 `.pi/README.md`. Native roles inherit the parent session's selected model via
-`.pi/settings.json`; delegation still requires an operator request. Runtime
-state under `.pi/` is ignored, not material to commit or publish.
+`.pi/settings.json`. Runtime state under `.pi/` is ignored, not material to
+commit or publish.
 Keep code comments concise; long-form reasoning belongs in ENGINE_PATCHES.md
 essays, not in source files. See CLAUDE.md for the comment-style rules.
 Beta phase, not release: building, deploying and restarting the Pi lobbies are
 routine — do not hesitate when a change needs it.
 
-## Pi startup contract
+## pi.dev startup contract
 
-Start Pi from `C:\FTESurf` (or `pwsh -NoProfile -File
+Start pi.dev from `C:\FTESurf` (or `pwsh -NoProfile -File
 C:\FTESurf\tools\pi-start.ps1`) so this brief and `.pi/settings.json` load.
-Pi has NO built-in `/add-dir`: its tools can use absolute paths outside cwd;
+pi.dev has NO built-in `/add-dir`: its tools can use absolute paths outside cwd;
 that access does NOT auto-load sibling instructions and is NOT a sandbox.
 
 This work spans three directories:
@@ -42,9 +42,8 @@ for clangd's compilation database and smoke checks. clangd does NOT understand
 QuakeC: QC must be checked with fteqcc and the project's runtime falsifiers.
 A clean LSP report is not a build or physics/security verification.
 
-Direct execution is the default; use agents only when the operator asks for
-delegation/review/parallel work. Native roles inherit the selected model. Never
-silently fall back to external CLIs or another provider after a child failure.
+Native roles inherit the selected model. Never silently fall back to external
+CLIs or another provider after a child failure.
 
 Context-fold defaults are intentional. A folded/compacted claim is not source
 truth: reread the cited code or private document before acting on it. At a long
@@ -1522,7 +1521,7 @@ publicly WITH its fix, not before it.
   and `test_recsim_observations.py` in addition to the regular deployment suite,
   which does not auto-discover new suites. Typed observations now project fixed
   malformed/unreadable labels; empty historical codes retain legacy withholding.
-- Fresh parallel Pi reviewers in a NEW shared worktree can race automatic npm
+- Fresh parallel pi.dev reviewers in a NEW shared worktree can race automatic npm
   dependency installation (`ENOTEMPTY`, errno -4051). Capture state/diff and exact
   failed run first; once dependencies are present, retry that lane with the same
   native protocol. This setup failure is not a code review or external fallback

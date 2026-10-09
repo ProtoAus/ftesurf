@@ -1,6 +1,10 @@
-# Pi in FTESurf
+# pi.dev in FTESurf
 
-Double-click **`C:\FTESurf\Start-Pi.cmd`** to open Pi in this checkout. It is also
+"pi.dev" is the coding agent throughout; "the Pi" elsewhere in this repo is the
+NanoPi that hosts the lobbies. The command, packages and files keep their own
+names (`pi`, `pi-lsp`, `Start-Pi.cmd`, `PI_AGENT_DIR`).
+
+Double-click **`C:\FTESurf\Start-Pi.cmd`** to open pi.dev in this checkout. It is also
 a terminal command, including from another directory:
 
 ```powershell
@@ -15,15 +19,15 @@ an error stays visible until a keypress; terminal calls with arguments return
 the exit code without pausing. PowerShell 7 is required. A desktop shortcut may
 point to the CMD file with `C:\FTESurf` as its working directory.
 
-Plain Pi must start from **C:\FTESurf**, not the engine checkout or `ftesurf/`.
+Plain pi.dev must start from **C:\FTESurf**, not the engine checkout or `ftesurf/`.
 The direct `pwsh -NoProfile -File C:\FTESurf\tools\pi-start.ps1` route still works.
 
 The launcher changes cwd and supplies pi-lsp's agent-directory environment; it
 never pins the model, changes permissions/trust, or starts a build/deploy.
 Plain `pi` from this repo is also valid after opening a new terminal with the
 configured PI_AGENT_DIR environment. Inspect the startup resource list and the
-footer's model. Trust this known project when Pi asks; do not globally trust all
-projects. Pi has no built-in `/add-dir` and cwd is not a sandbox: absolute engine
+footer's model. Trust this known project when pi.dev asks; do not globally trust all
+projects. pi.dev has no built-in `/add-dir` and cwd is not a sandbox: absolute engine
 and private-tree paths work without adding them, but their instructions must be
 read explicitly.
 
@@ -36,9 +40,9 @@ is auto-loaded; anti-cheat work reads the named private documents on demand.
 
 The project declares `npm:pi-subagents`, `npm:pi-lsp` and `npm:context-fold` in
 `.pi/settings.json`. On a new machine, install those with `pi install npm:<name>`
-and authenticate the desired model provider in Pi. Global/project resource
-loading is managed by Pi; do not install duplicate manual extension copies.
-After resource changes, restart Pi or use `/reload`.
+and authenticate the desired model provider in pi.dev. Global/project resource
+loading is managed by pi.dev; do not install duplicate manual extension copies.
+After resource changes, restart pi.dev or use `/reload`.
 
 Native roles inherit the model selected in the parent, including Sol 6.1 when
 selected. Explicit role overrides prevent user settings pinning them to another
@@ -76,13 +80,13 @@ root markers, two indexing workers, no include insertion, and an exact
 `--query-driver` allowlist. Never allow every executable as a query driver.
 
 The current pi-lsp release resolves its user config with PI_AGENT_DIR or the
-HOME environment variable, not Pi core's Windows resolver. PowerShell's `$HOME`
+HOME environment variable, not pi.dev core's Windows resolver. PowerShell's `$HOME`
 is not necessarily `$env:HOME`. This workstation has a user PI_AGENT_DIR setting;
-the launcher handles existing terminals immediately. If using a custom Pi core
+the launcher handles existing terminals immediately. If using a custom pi.dev core
 agent dir, align PI_AGENT_DIR with PI_CODING_AGENT_DIR. GCC needs its DLLs on
 PATH and a Windows TMP/TEMP; the LSP config supplies those ONLY to clangd.
 
-Ask Pi to use **lsp_hover**, **lsp_definition** and **lsp_references** on an engine
+Ask pi.dev to use **lsp_hover**, **lsp_definition** and **lsp_references** on an engine
 symbol. The installed extension has these tools; do not rely on a `/lsp status`
 command (its README advertises commands this installed version does not register).
 `lsp_diagnostics` returns cached observations: "no diagnostics recorded" before
@@ -112,11 +116,9 @@ are not isolation; trusted local processes and packages run with your permission
 
 ## Delegation safety and smoke test
 
-- Work directly unless the operator requests delegation. Setup verification is
-  authorized by the setup request, not standing permission to delegate all work.
 - Prefer native scout/worker/fresh reviewer. Ordinary children are leaves, not
   orchestrators; use the native supervisor channel, no extra intercom needed.
-- Use one async workflow for authorized multi-step/parallel work. Consume native
+- Use one async workflow for multi-step/parallel work. Consume native
   completion notifications, not polling/bg_wait merely for a wake.
 - One writer per checkout. Isolated worktrees require a clean source; never
   stash peers' work to get one. A clean worktree lacks ignored build/content
@@ -152,14 +154,14 @@ memory, refinements, schedules and runtime reports stay ignored/private.
   validation error returns exit 1 with the wrapper's error message, without a
   terminal pause. The local desktop shortcut's target/arguments/cwd were read
   back and verified. Interactive drawing was not automated by these checks.
-- Pi 1.0.4, clangd 23.1.2, UCRT64 GCC; 222 m-rel translation units generated.
+- pi.dev 1.0.4, clangd 23.1.2, UCRT64 GCC; 222 m-rel translation units generated.
   Four parser tests pass, including empty input refusal and MSYS path mapping.
   Before/after SHA256s of the installed exe, both lobby progs and built engine
   exe are identical across database generation: it did not rebuild/deploy them.
 - clangd --check with the configured driver/environment and --tweaks= reports
   zero errors on pm_source.c, sv_user.c and in_generic.c. Default --check's
   refactoring self-tests fail on FTE macros; those are not parser diagnostics.
-- A fresh Pi print-mode session through pi-start.ps1 successfully used hover on
+- A fresh pi.dev print-mode session through pi-start.ps1 successfully used hover on
   PMSrc_StartGravity and definition navigation to PMSrc_FinishGravity. The old
   already-running parent can still lack PI_AGENT_DIR: restart through the launcher.
 - Native setup workflow dfd6bb1a completed: scout/worker/reviewer metadata names

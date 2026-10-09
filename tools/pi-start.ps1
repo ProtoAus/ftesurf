@@ -7,7 +7,7 @@ param(
     [string[]]$PiArgs
 )
 $ErrorActionPreference = 'Stop'
-# pi-lsp currently uses PI_AGENT_DIR/HOME rather than Pi core's agent-dir resolver.
+# pi-lsp currently uses PI_AGENT_DIR/HOME rather than pi.dev core's agent-dir resolver.
 if (!$env:PI_AGENT_DIR) {
     $env:PI_AGENT_DIR = if ($env:PI_CODING_AGENT_DIR) { $env:PI_CODING_AGENT_DIR } else { Join-Path $HOME '.pi/agent' }
 }
@@ -17,9 +17,9 @@ foreach ($command in @('pi', 'clangd', 'python')) {
     if (!(Get-Command $command -ErrorAction SilentlyContinue)) { throw "Missing $command on PATH" }
 }
 if ($Check) {
-    Write-Host "Pi startup cwd: $root"
+    Write-Host "pi.dev startup cwd: $root"
     & pi --version
-    if ($LASTEXITCODE -ne 0) { throw 'Pi version check failed' }
+    if ($LASTEXITCODE -ne 0) { throw 'pi.dev version check failed' }
     & clangd --version
     if ($LASTEXITCODE -ne 0) { throw 'clangd version check failed' }
     $settings = Get-Content -Raw (Join-Path $root '.pi/settings.json') | ConvertFrom-Json
@@ -37,7 +37,7 @@ if ($Check) {
     if ($entries.Count -eq 0) { throw 'Empty engine compilation database' }
     Write-Host "LSP configuration: $lsp"
     Write-Host "Engine database: $database ($($entries.Count) translation units)"
-    Write-Host 'Static preflight only; ask Pi for an engine hover to test the live server.'
+    Write-Host 'Static preflight only; ask pi.dev for an engine hover to test the live server.'
     exit 0
 }
 Push-Location $root

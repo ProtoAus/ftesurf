@@ -25,7 +25,7 @@ for (const result of results) {
 const review = await runs.run("review", {
   agent: "reviewer",
   context: "fresh",
-  task: "Read-only review of Pi setup files only: .pi/settings.json, .pi/README.md, .pi/workflows/subagents-smoke.js, and the Pi allowlist block in .gitignore. Check model inheritance, preservation of user-wide settings, secret/runtime exclusion, and the smoke workflow contract. No edits, staging, commits, builds, deploys, or private/credential reads. Report concrete defects or no findings, under 300 words. Smoke reports follow:\n" + results.map(result => result.output).join("\n"),
+  task: "Read-only review of pi.dev setup files only: .pi/settings.json, .pi/README.md, .pi/workflows/subagents-smoke.js, and the pi.dev allowlist block in .gitignore. Check model inheritance, preservation of user-wide settings, secret/runtime exclusion, and the smoke workflow contract. No edits, staging, commits, builds, deploys, or private/credential reads. Report concrete defects or no findings, under 300 words. Smoke reports follow:\n" + results.map(result => result.output).join("\n"),
   output: "setup-smoke/review.md"
 });
 if (!review.ok) throw new Error("Setup review failed: " + JSON.stringify(review));

@@ -1,9 +1,23 @@
 # CLAUDE.md
 
-Read **AGENTS.md** first — it is the working brief for this repo: layout, build,
-run-and-test, the anti-cheat/evidence contract, Pi operations, and the pitfalls
-that each cost a real debugging session. CONTRIBUTING.md covers git identity,
-line endings and `.src` ordering. Everything below is style only.
+Read **AGENTS.md** first — the short startup contract: safety, layout, the
+build/test/commit/deploy order and the harness essentials. What it used to hold
+— the anti-cheat/evidence contract, NanoPi operations, and the pitfalls that each
+cost a real debugging session — is **AGENT_NOTES.md** since 2026-10-06; AGENTS.md's
+table names the sections to read, whole, before touching a subsystem.
+CONTRIBUTING.md covers git identity, line endings and `.src` ordering. The rest
+of this file is what differs for Claude Code, then style.
+
+## Claude Code here
+
+- `pi.dev` is the other coding agent in this repo; "the Pi" is the NanoPi. The
+  pi.dev lines in AGENTS.md (`.pi/`, context-fold, `recall_folded`, `lsp_*`,
+  "no `/add-dir`") are not yours.
+- `/add-dir` works here: add `C:\FTESurf-private` before anti-cheat work, and
+  the engine checkout if a session starts without it.
+- Scratch worktrees go under the owned task root AGENTS.md names, made with
+  `git worktree add`. The Agent tool's worktree isolation and EnterWorktree put
+  them in `.claude/worktrees` instead; do not use those here.
 
 ## Comments and notes: concise
 
@@ -176,6 +190,10 @@ chatty.
   from a `git worktree` at the pre-batch commit with `-NoDeploy`, copy its .dat
   in, and prove which build ran by hash (`tools/p439smoke.py`'s cfg header has
   the recipe, including the hash that showed the worktree really was pre-patch).
+  THE FLAG IS ONLY AS OLD AS `daa884b` (2026-10-09). A `build.ps1` before that
+  has no `-NoDeploy` and no CmdletBinding, so it takes the switch without a
+  word: QC-only the .dat stays in the worktree, but `-Engine` copies the exe and
+  plugins into `C:\FTEQuake`. Grep the script that will actually run.
 - A STATE READ AFTER A MAP RESTART CAN BE ANSWERED BEFORE THE SPAWN THAT
   RESTORES IT. Patch 477's retry arm read `cmd timer` 8 s after `retry` and got
   `idle` on a mutant whose run WAS restored: the reply came between the reconnect

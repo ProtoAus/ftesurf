@@ -1,15 +1,18 @@
 # AGENTS.md
 
-Mandatory startup contract for Pi and other coding agents. Read CONTRIBUTING.md
+Mandatory startup contract for pi.dev and other coding agents. Read CONTRIBUTING.md
 and CLAUDE.md before changes. Detailed subsystem rules and measured pitfalls live
 in AGENT_NOTES.md: read the relevant sections BEFORE planning/editing/testing,
 not only after a failure. That file is intentionally not auto-loaded in full.
 
+Naming: `pi.dev` is the coding agent (`.pi/`, `Start-Pi.cmd`, the `pi` command).
+"The Pi", "Pi operations" and `-Pi` always mean the NanoPi that hosts the lobbies.
+
 ## Start here
 
-- Start Pi from `C:\FTESurf`, or use `pwsh -NoProfile -File
+- Start pi.dev from `C:\FTESurf`, or use `pwsh -NoProfile -File
   C:\FTESurf\tools\pi-start.ps1`. This loads `.pi/settings.json` and this brief.
-- Pi has NO built-in `/add-dir`. Tools accept absolute paths outside cwd, but
+- pi.dev has NO built-in `/add-dir`. Tools accept absolute paths outside cwd, but
   sibling instructions do not auto-load. This is not a filesystem sandbox.
 - `C:\msys64\home\Lex\fteqw` is the engine checkout (C/C++, mover, input journal,
   `pm_recsim`/`pm_verify`, ENGINE_PATCHES.md). It is REQUIRED for engine,
@@ -21,9 +24,8 @@ not only after a failure. That file is intentionally not auto-loaded in full.
   dual deployment. Use absolute paths when accessing any of these directories.
 - At task start inspect Git status/branch/ref in every affected checkout; read
   any sibling instructions that exist. Do not assume a clean or single-user tree.
-- Direct execution is the default. Delegate only when the operator asks for
-  agents/review/parallel work. Native roles inherit the selected parent model;
-  no silent provider/external-CLI fallback after a child failure. See .pi/README.md.
+- pi.dev's native subagent roles inherit the selected parent model; no silent
+  provider/external-CLI fallback after a child failure. See .pi/README.md.
 
 ## Non-negotiable safety
 
@@ -35,7 +37,7 @@ not only after a failure. That file is intentionally not auto-loaded in full.
 - No private design, working exploit recipes, credentials, GUIDs or raw private
   tool output in public commits, agent reports, shared/exported sessions or logs.
   Read secrets inside scripts; never print them or put them in command arguments.
-  Private checkpoints stay in the private tree. Pi sessions themselves may
+  Private checkpoints stay in the private tree. pi.dev sessions themselves may
   contain sensitive source/tool results; do not share them without review.
 - Never kill the owner's game or another session's processes. Never stash or
   revert another session's files. Park/restore shared fixtures, coordinate use,
