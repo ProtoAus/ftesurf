@@ -837,3 +837,97 @@ mesh/adjacency/displacement/prop geometry, exact physical exit, recovery/portal,
 classifier/marks, clock/render/rates/LOD/hold, human or real-map acceptance is
 implied. This is reader tooling over retained native evidence, NOT a new native
 runtime/build/deployment or a product off-ramp fix.
+
+## Return-bound winning triangle fixed copy (private diagnostic only)
+
+`offramp_tricopy_smoke.py` composes the unchanged motion/buffer/origin/brush/hull
+plans and a separate fixed triangle payload in the private origin. This does NOT
+change trace/model/plugin ABI, the public movement actor/template/protocol or
+existing capture categories. Install in a NEW tracked-clean isolated engine
+worktree, build sv-rel with pwsh7, then use the unchanged motion five-arm runner:
+
+```
+python tools/offramp_tricopy_smoke.py --instrument-native <private-engine>
+python tools/offramp_motion_smoke.py --server <private-server> --control-server <fixture-only-server> --output-dir <new-arms-dir> --timeout 240
+python tools/offramp_tricopy.py --arms <arms.json> --output <new-copy-report.json>
+python tools/test_offramp_tricopy.py --native-arms <arms.json>
+```
+
+NEVER ship these servers. This is a private native diagnostic rebuild, NOT an
+engine product patch/pin/tag/QC Build/deployment or a newly authored mover actor.
+A retained fixture-only binary at the SAME engine/fixture base can be the control
+if its compiled provenance is explicit. Hash actual binaries/configs/manifests;
+verify the new copy-code digest and unchanged motion fixture stamp. Clean exact
+commit proof rebuilds the subject and repeats all five arms, not just a reader
+run against an earlier binary. The logging-heavy batch can exceed a 180s outer
+command timeout even though each server finishes; use an adequate outer limit,
+retain partial rigs/unknown exits, and never invent missing exit metadata.
+
+At the same sequence-proven accepted leaf win as origin, copy the actual native
+index triple and referenced three xyz vertices immediately, plus the winning
+native plane tag, applied bevel flag and four-unit back-slab constant (installer
+guards BOTH native clip/test expressions). No source/model/index/vertex pointer
+survives. Point traces correctly record no applied bevels; current standing-AABB
+motion records applied bevels. Plane tags are copied diagnostics, not an oracle
+for constructing geometry. Nontriangle winners clear all triangle fields.
+Unknown/disabled/solid/portal returns retain existing Unknown clearing. Status0
+is empty/nontriangle/unknown; status1 is complete fixed-three-vertex geometry;
+status2 is invalid source with ALL remaining fields zero, never a partial copy.
+
+Native triangle leaves provide no vertex-array count. This is copying already
+accepted native dereferences, NOT validating arbitrary pointers/index bounds,
+mesh ownership/topology/adjacency or concurrent source loading. Invalid/null/
+degenerate direct snapshot controls are safe setup negatives, not native traces
+through invalid memory. Runtime capture adds no allocation/query/string format/
+cvar lookup: fixed scalar/vertex value copies only. Setup/dump checks are not
+hot-path performance proof, and these private origin structs are larger.
+
+Twenty-three native setup checks per case ACT real near/far same-kind triangle
+wins, actual differing index triples, saved-copy preservation under later source
+mutation/probes, wrong output address, nearer/equal-fraction/brush competition,
+nested and physent losing/winning ownership. Equal-fraction triangle wins REPLACE
+with `enterfrac <= truefraction`; first-wins was a wrong initial test, not an
+engine bug. Translated/capsule/hybrid metadata and portal/solid/disabled/nohit
+clearing are separately controlled, NOT new unsupported movement trajectories.
+Source nodes/xyz/indexes/pmove/probe/callback state restore before the mover.
+
+The `OFFRAMPTRICOPY` v1 protocol has ordered CHECK/SELFTEST, BEGIN(1,3), SOURCE
+(copy-template/installer digest), CONTACT18 and END(total,complete,invalid).
+CONTACT is ordinal/tick/status/plane-tag/bevels/back-slab/three-indexes/nine-xyz.
+One fixed row per actual accepted contact; no global dictionary ID or current
+probe lookup at dump. Rows bind to the returned buffer ordinal/tick/origin and
+native model/leaf/root/depth/physent. Complete copies require finite ordered
+nondegenerate geometry, distinct integral native index values and native slab/
+flag/tag validity; empty/invalid payloads cannot promote stale data. Fixture-only
+and capture-OFF arms must contain NO new rows. Setup failures, missing/duplicate/
+reordered/source-drifted rows, count/binding/geometry faults and repeat mismatch
+all refuse. Reports require a NEW path; retained binary/input hashes are checked.
+
+The twenty-case actor remains exact to the preceding cached proof. There are
+251 accepted contacts: fourteen triangle snapshots, 237 explicit empty copies.
+All fourteen current direct worldBIH, identity-instance, standing-AABB, fresh
+route-0, front-face contacts match actual native wiring/index identity, then
+independently match a finite-prism SAT sweep using **COPIED WINNING xyz**, not
+substituted authored vertices or the native plane. Native entry normal/distance
+matches independent geometry, and biased fraction is
+`max(0, geometric_enter - (1/32)/abs(dot(delta, entry_normal)))`, checked within
+2e-4 spatial units / 1e-5 normal tolerance. These are bounded accepted-sweep
+checks, NOT raw-loss/physical-exit timing or a global support oracle.
+
+Fourteen tests (nine pure, five actual-native) and 4,938 ACTED native refusal
+controls pass, including every accepted contact's binding/empty-or-complete
+faults, all copied xyz/index/slab/tag/bevel faults and every triangle sweep's
+fraction/plane/hull/route faults. Mirrored wrong copied vertices preserve ALL
+old five-arm case/body/query/winner parity, then fail native copy binding. Ordinary
+unit invocation explicitly skips five native tests; skips are not runtime proof.
+Eight installer controls prove existing-include/late-anchor/native-slab-drift/
+tracked-dirty/owner-checkout refusal with all bytes unchanged; the owned temporary
+dirty fixture restores byte-exact. Never remove another session's fixture.
+
+Original `world-triangle-unresolved` and general triangle support **ABSTAIN** stay
+unchanged. Existing authored query SAT remains a separate unchanged diagnostic.
+Current face contacts do not measure general native axial/broadphase/back-slab/
+corner/bevel bias or equal-fraction support choices, transforms/capsules/entities/
+nested models, arbitrary triangle copying/overflow/index validity, displacement/
+prop/real-map topology, recovery/portal, classifier/debounce/marks, continuous
+physical exit, clock/render/rates/LOD/hold or human acceptance. Those are OPEN.

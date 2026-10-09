@@ -438,7 +438,13 @@ triangle/four-unit-back-slab SAT interval, not the recorded plane/fraction.
 Hit/miss/removal and native bias checks pass, including mirrored fraction faults
 that otherwise preserve five-arm parity. These are authored-wiring query checks,
 NOT copied accepted triangle support or general native triangle semantics.
-Exact original fourteen full case/winner parity remains required. An open-air
+A separate `offramp_tricopy` seam now copies actual native winning indexes/xyz,
+return-bound before later probes/source changes. Native competition/ownership
+controls and fourteen independent copied-geometry sweep checks pass; original
+world-triangle-unresolved categories and general support ABSTAIN are unchanged.
+Native axial/broadphase/back/corner/bevel semantics and real-map topology remain
+open, not inferred from the face-only actor. Exact original fourteen full
+case/winner parity remains required. An open-air
 duck/release and matched no-duck falling pair now ACT native instant hull/origin/timer transitions,
 +8.5-unit crouch shift/reversal and matching landing, with actual tick/hull binding
 and current-hull joint AABB fixture queries. Original sixteen full case/winner

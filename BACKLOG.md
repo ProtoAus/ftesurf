@@ -2420,7 +2420,12 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   `tools/offramp_triangle.py` separately checks the retained standing-AABB native
   queries against an independent finite triangle/four-unit-slab SAT interval,
   including hit/miss/removal and native collision bias. This oracle uses authored
-  wiring, NOT copied accepted triangles, and does not promote support. Real-map
+  wiring and does not promote support. A separate `offramp_tricopy` layer now
+  copies actual winning triangle indexes/vertices at the native win, proves
+  return-bound ownership against later probes/competition, and independently
+  checks the fourteen bounded standing-world accepted sweeps. Original capture
+  categories stay unresolved and general native/support semantics ABSTAIN;
+  copying a winning triangle is not general support/physical-exit proof. Real-map
   triangle/displacement/prop geometry and identity remain open. An open-air
   crouch/release and matched no-duck falling pair now ACT native instant hull/origin/timer transitions,
   +8.5-unit shift/reversal and matching landing. Current-hull native/joint AABB

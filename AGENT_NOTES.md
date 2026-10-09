@@ -1845,6 +1845,29 @@ publicly WITH its fix, not before it.
   ideal full slab everywhere, copied accepted geometry, physical exits or marks.
   `world-triangle-unresolved` and support ABSTAIN remain unchanged; no new native
   build/runtime actor or product/deployment claim belongs to this reader work.
+- **Winning triangle fixed-copy seam (tooling only).** `offramp_tricopy_smoke.py`
+  adds a separate private value payload to the origin, not trace/model/plugin
+  ABI: actual three indexes/xyz at the winning leaf, native winning plane tag,
+  applied bevel flag and source-guarded four-unit back slab. No pointer survives
+  into the buffer. Probe/source mutation, same-kind competition, nested/physent
+  ownership and brush/unknown clearing ACT in native setup. Triangle equal
+  fractions REPLACE (`enterfrac <= truefraction`), not first-wins; the first test
+  got this wrong and its failed rig remains. Preserve invalid-source zeros, not
+  partial geometry; copied native dereferences are NOT pointer/index bounds
+  validation because the native leaf supplies no vertex-array length. The
+  existing motion reader still ignores/abstains on triangle geometry; mirrored
+  bad copied vertices keep old parity but fail the new binding check. All fourteen
+  direct standing-world contacts independently agree with copied-prism SAT and
+  max(0, geometric entry - 1/32/closing speed); clamp matters, tolerance is spatial.
+  Native axial/broadphase/back/corner/bevel semantics are NOT globally equivalent
+  to ideal SAT. General support stays ABSTAIN, original twenty cases/winners exact.
+  Setup point/capsule/translated/hybrid/portal examples prove copy metadata and
+  refusal/clearing, NOT unsupported mover trajectories. Installer failure must
+  be atomic; sentinels/owned dirty fixture restore byte-exact. Build diagnostics
+  compare absolute-root-normalized messages, not guessed old checkout names or
+  warning totals alone. A logging-heavy five-arm batch outgrew 180s outer timeout:
+  retain partial rig/unknown exit, use fresh rigs and adequate timeout; do not
+  fabricate completion/exit metadata from a completed-looking log.
 
 ## Rewind (Patch 477)
 
