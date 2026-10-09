@@ -432,9 +432,14 @@ A matched actual BIH_TRIANGLE/removed-triangle pair now ACTS a native kind-2
 world winner, hit/miss/same-pose removal queries and different removed movement.
 Origin/leaf/model/actual hull/identity instance bind with an empty brush payload;
 authored vertex/index rows are wiring, not copied accepted geometry. Triangle
-geometry/support remains ABSTAIN (no independent triangle oracle). Exact original
-fourteen full case/winner parity remains required. An open-air duck/release and
-matched no-duck falling pair now ACT native instant hull/origin/timer transitions,
+geometry/support remains ABSTAIN. A separate `tools/offramp_triangle.py` now
+checks retained native standing-AABB queries against an independent finite
+triangle/four-unit-back-slab SAT interval, not the recorded plane/fraction.
+Hit/miss/removal and native bias checks pass, including mirrored fraction faults
+that otherwise preserve five-arm parity. These are authored-wiring query checks,
+NOT copied accepted triangle support or general native triangle semantics.
+Exact original fourteen full case/winner parity remains required. An open-air
+duck/release and matched no-duck falling pair now ACT native instant hull/origin/timer transitions,
 +8.5-unit crouch shift/reversal and matching landing, with actual tick/hull binding
 and current-hull joint AABB fixture queries. Original sixteen full case/winner
 objects remain exact. This does not cover airborne winning collisions or general

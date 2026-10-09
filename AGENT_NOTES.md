@@ -1745,6 +1745,22 @@ publicly WITH its fix, not before it.
   fixture actors are closed: exact physical exit time, broader support/world,
   real posture/capsule/transform/entity/triangle/displacement and explicit
   cached/recovery/portal motion, plus P560 clock/live/rate/render gates stay open.
+- **Independent authored triangle/slab SAT (tooling only).**
+  `offramp_triangle.py` compares the retained triangle/removal standing-AABB
+  queries to a complete geometric prism/box SAT sweep interval. Include all
+  prism-face/box-face/edge-cross-axis projections and the four-unit BACK slab;
+  face/axial tests alone ACT a false positive at an oblique back corner. The
+  solver uses authored vertices, not native fractions/planes. Native collision
+  bias is 1/32 along the independently derived entry normal, not a universal
+  fraction tolerance. Native misses have entnum -1, zero plane/contents; guessing
+  0 broke the first controls. Triangle hit ticks are 0..13, not another fixture's
+  0..22. Inactive removed geometry may overlap while native removal still misses;
+  that is explicitly hypothetical, not an actual embedded body. Mirroring a
+  wrong fraction into all arms preserves parity but the SAT check refuses it.
+  Query agreement does NOT prove native axial/broadphase semantics equal the
+  ideal full slab everywhere, copied accepted geometry, physical exits or marks.
+  `world-triangle-unresolved` and support ABSTAIN remain unchanged; no new native
+  build/runtime actor or product/deployment claim belongs to this reader work.
 
 ## Rewind (Patch 477)
 

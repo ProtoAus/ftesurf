@@ -2416,10 +2416,13 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   winner, native hit/miss/same-pose removal queries and different removed movement.
   Origin/model/leaf/hull/identity instance bind with an empty brush payload;
   authored vertices/indices are wiring, not copied accepted geometry. Triangle
-  support remains ABSTAIN (no independent triangle oracle); original fourteen
-  full case/winner arrays stay exact. Real-map triangle/displacement/prop
-  geometry and identity remain open. An open-air crouch/release and matched
-  no-duck falling pair now ACT native instant hull/origin/timer transitions,
+  support remains ABSTAIN; original fourteen full case/winner arrays stay exact.
+  `tools/offramp_triangle.py` separately checks the retained standing-AABB native
+  queries against an independent finite triangle/four-unit-slab SAT interval,
+  including hit/miss/removal and native collision bias. This oracle uses authored
+  wiring, NOT copied accepted triangles, and does not promote support. Real-map
+  triangle/displacement/prop geometry and identity remain open. An open-air
+  crouch/release and matched no-duck falling pair now ACT native instant hull/origin/timer transitions,
   +8.5-unit shift/reversal and matching landing. Current-hull native/joint AABB
   queries and completed tick/hull binding pass; original sixteen full case/winner
   objects stay exact. These zero-ramp-contact actors do not cover airborne winning

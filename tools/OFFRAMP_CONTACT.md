@@ -777,3 +777,63 @@ General cached/water/posture/step variants, native recovery/portal actors,
 independent capsule/transform/triangle geometry, real maps, continuous physical
 exit/classifier/marks/clock/render/rates/LOD/hold/human acceptance stay OPEN.
 Tooling only; no product behavior/pins/Build/deployment. NEVER ship these servers.
+
+## Independent authored triangle/slab query oracle (diagnostic only)
+
+`offramp_triangle.py` adds a separate offline check of the retained native
+triangle/removal cases, without changing the motion protocol, template, native
+binary, capture category or any existing case/body/query/winner array. Its inputs
+are a five-arm manifest from `offramp_motion_smoke.py` and the retained logs and
+binaries; the existing motion reader first proves actor/binding/parity. Reports
+need a NEW output path. Example (private retained paths supplied by the operator):
+
+```
+python tools/offramp_triangle.py --arms <arms.json> --output <new-report.json>
+python tools/test_offramp_triangle.py --native-arms <arms.json>
+```
+
+The independent geometry is the finite triangular prism made from the three
+AUTHORED wiring vertices plus their four-unit backward extrusion along the
+solid-side winding normal. It is NOT copied accepted triangle geometry. Project
+all six prism vertices and the full actual standing AABB onto the prism-face
+axes, box-face axes and all prism-edge/box-axis crosses; intersect their continuous
+time intervals for the translating box. Both interval bounds/signs matter. Native
+planes, fractions and solid flags do NOT construct this geometric answer.
+Touching and strict overlap are separate results. Degenerate/nonfinite geometry,
+nonpositive slab thickness and inverted/zero-volume hulls refuse.
+
+Nine pure units include hand-derived front/back sweeps, partial vertex/edge
+contact, complete exits, winding, slab-vs-thin-slab sensitivity, translation,
+and independent JOINT convex-feasibility comparisons. A concrete oblique back
+corner ACTS a false positive if edge-cross axes are omitted, and both full SAT
+and joint feasibility reject it. This is not a collection of quiet negatives.
+
+For the bounded native actor, query endpoints/hull/posture/active triangle bind
+exactly. Present stationary body must be clear. Down2 hit/miss agrees with SAT;
+native impact plane matches an independently derived geometric entry plane and
+native fraction stops 1/32 early along that normal (2e-4 spatial tolerance for
+float32 vertices/body/log values). Native miss/removal requires fraction 1,
+both solid flags 0, entity -1, ZERO plane and ZERO contents. Same-pose untriangled
+and removed movement use only the active native remote brush, while SAT against
+the inactive triangle is explicitly a hypothetical geometry result. It may
+intersect/start-overlap without any actual native collision; never call that an
+embedded actual body or an authenticated support plane.
+
+The retained present actor has down2 hits 0..13 and misses 14..31; inactive
+triangle intersection ACTS on removed-body down2 ticks 0..13. All 192 native
+query rows pass. Thirteen tests (nine pure, four retained-native) pass with 1,558
+ACTED refusal controls. A wrong triangle fraction mirrored into ALL oracle arms
+still passes the existing body/query parity, then fails this independent SAT/bias
+check. Endpoint/hull/posture/wiring/active flags and native fraction/plane/solid/
+entity/contents faults also refuse. Ordinary unit invocation explicitly skips
+four native tests; those skips are NOT runtime evidence.
+
+Only authored-fixture standing-AABB query agreement is closed. Native axial
+clipping/broadphase and biased clipping need not equal the ideal full prism for
+arbitrary sweeps. Existing `world-triangle-unresolved` capture and triangle
+support geometry **ABSTAIN** stay unchanged; the original motion reader still
+abstains on independent triangle geometry. No accepted-triangle copy, general
+mesh/adjacency/displacement/prop geometry, exact physical exit, recovery/portal,
+classifier/marks, clock/render/rates/LOD/hold, human or real-map acceptance is
+implied. This is reader tooling over retained native evidence, NOT a new native
+runtime/build/deployment or a product off-ramp fix.
