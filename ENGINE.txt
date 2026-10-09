@@ -25,7 +25,10 @@ commit   35370f0387b94eefb95fa506f28ccd24c6693f6e
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-601
-patch    602
+patch    603
+# Patch 603: new positive receipts compare signed ticks to the captured rec finish.
+# Content mismatch preserves valid signature/angles; 0/-1 sentinels are exempt.
+# Exact optional counter parsing; no format/schema/engine/progs/Build change.
 # Patch 601 (reserved before concurrent 602): counted native model snapshots.
 # Atomic copies, stable widget/row/revision action identity, stale-press reset.
 # Diagnostic owners only; no production route/default/progs/install/Pi/Build.

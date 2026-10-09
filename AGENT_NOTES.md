@@ -833,6 +833,26 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   protected files/history/scalar board counts/master+worker/health12 unchanged.
   No reload or Windows game swap. Provenance/limits: `tools/p602finish.md`.
 
+- **A finished receipt also describes the selected recording's duration**
+  (Patch 603). `join_rec` compares positive signed ticks with the readable closed
+  recording's exact integral finish, from the SAME captured bytes as nonce/angles.
+  Mismatch is content FAULT with signature1 and independent angle result intact.
+  -1 unkept and0 abandon are not recording durations. Missing/malformed/nonintegral
+  closes remain unavailable, not invented clocks; VALID signature alone is not a
+  measured association. New full/rec-only/view-only joins check; journal-only does
+  not rejudge old recordings. Cache one parse per capture and reset on recapture.
+  Computed `Report.finish_ticks` is not header `info`: review caught header-key
+  spoofing and binary64 near-integer rounding. Raw bounded Decimal extraction
+  closes both; legacy float grammar/info and fault classifications stay unchanged.
+  `tools/test_receipt_ticks.py`:18 acting crypto/file/SQLite controls, including
+  both sentinels, old grammar, exact-counter/header edges and snapshot replacement.
+  Initial12 has8 baseline failures; final independent review closes both findings.
+  Full Linux71 pass; Windows71 only the same two admin UDP assertions. rcpt74 and
+  recorder306 pass; immutable269 rec/91 view baseline/subject170 faulted files/173
+  faults, unchanged. No schema/format, detector, history, rank/review, engine/QC/
+  progs/config/pin/tag or Build change. Extra parsing without a view is intentional,
+  not measured fleet-scale cost. Publication/install limits: `tools/p603receiptclock.md`.
+
 - **Angle explanations are observations, not strings to reconstruct later**
   (Patch 511). `receipts.angles_reason` stores up to 1,000 characters from the
   same captured pair as `angles`; diagnostic notes include why an existing

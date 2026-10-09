@@ -54,6 +54,7 @@ import math
 import os
 import re
 import sys
+from decimal import Decimal, InvalidOperation
 
 # BUILD 80.  A token in exponent form anywhere after `begin`.
 #
@@ -453,6 +454,7 @@ class Report:
         self.faults = []
         self.notes = []
         self.info = {}
+        self.finish_ticks = None   # computed only, never supplied by a header key
         # The angle stream: (ticks, yaw, pitch, instart, source) or None.  Only
         # check_rec fills it, and only angle_join reads it.
         self.angles = None
@@ -499,6 +501,24 @@ def is_float(s):
 
 def is_int(s):
     return s.lstrip("-").isdigit()
+
+
+def exact_finish_ticks(token):
+    """Exact integral signed-32 counter, or unavailable; no binary64 rounding.
+
+    The writer's %g also permits exponent notation. Cap this optional parsing
+    before Decimal/int work; legacy float info and grammar verdicts stay intact.
+    """
+    if len(token) > 128:
+        return None
+    try:
+        value = Decimal(token)
+        if value.is_finite() and 0 <= value <= 2147483647:
+            if value == value.to_integral_value():
+                return int(value)
+    except InvalidOperation:
+        pass
+    return None
 
 
 def check_pairs(r, where, toks, numeric=True):
@@ -2578,6 +2598,8 @@ def check_rec(path, verbose=False, *, data=None):
                 r.fault("'end' says %d checkpoints, the file has %d cp records"
                         % (int(e_cp), cps))
             r.info["ticks"] = int(e_ticks)
+            # Cross-file assertions cannot use the legacy int(float) projection.
+            r.finish_ticks = exact_finish_ticks(args[0])
             r.info["time"] = e_ticks * tickrate
 
     # ---- rate, measured ----------------------------------------------------

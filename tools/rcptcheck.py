@@ -105,6 +105,7 @@ class Receipt(object):
         self.ok = None
         self.recpath = None         # the .rec join_rec found, for join_angles
         self.recdata = None
+        self.rec_report = None      # ticks and angles parse the same captured bytes
         # One observation per path for this report, including absence/read errors.
         self.file_bytes = {}
         self.file_present = set()
@@ -301,6 +302,7 @@ def join_rec(r):
         r.note("joined %s" % os.path.relpath(path, GAME))
         r.recpath = path
         r.recdata = text.encode("utf-8")
+        r.rec_report = None
         want = signed_get(r, "nonce")
 
         # A FILE CAN STATE MORE THAN ONE NONCE AND THE RECEIPT SIGNS THE LAST.
@@ -334,8 +336,44 @@ def join_rec(r):
         else:
             r.fault("the .rec states %s and the receipt signs %r"
                     % (", ".join("%s %s" % (s[2], s[1]) for s in stated), want))
+        join_recording_ticks(r)
         return
     r.note("no .rec with this runid on this disk (normal off the host)")
+
+
+def recording_report(r):
+    """One grammar parse shared by duration and angle joins; no path reopen."""
+    if r.rec_report is None:
+        import reccheck
+        r.rec_report = reccheck.check_rec(r.recpath, data=r.recdata)
+    return r.rec_report
+
+
+def join_recording_ticks(r):
+    """Bind a positive kept-run statement to a readable closed recording.
+
+    -1 is unkept and 0 is the abandon latch, not a recording duration. Missing
+    or malformed recordings are unavailable here, never an invented tick value.
+    """
+    value = signed_get(r, "ticks")
+    try:
+        if value is None or len(value) > 11:
+            return
+        ticks = int(value)
+        if ticks <= 0:
+            return
+        rec = recording_report(r)
+    except Exception as exc:
+        r.note("recording tick check unavailable (%r)" % exc)
+        return
+    finish = rec.finish_ticks if rec.ok else None
+    if finish is None:
+        r.note("recording tick check unavailable: no readable integral finish")
+    elif ticks != finish:
+        r.fault("the receipt signs ticks %d but the recording finish is %d ticks"
+                % (ticks, finish))
+    else:
+        r.note("recording finish ticks agree with the signed receipt (%d)" % finish)
 
 
 def join_ticks(r):
@@ -473,7 +511,7 @@ def join_angles(r, want):
             r.angles_detail = "not the sidecar the receipt signed: %s" % r.digest_bad["view"]
             return
         import reccheck
-        rec = reccheck.check_rec(r.recpath, data=r.recdata)
+        rec = recording_report(r)
         v = reccheck.check_view(view, rec, data=data)
     except OSError as exc:
         r.ioerror = True
