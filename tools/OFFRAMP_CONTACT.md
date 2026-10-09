@@ -1194,3 +1194,76 @@ Only this fixed identity/world/standing-AABB plane-set comparison is closed.
 General triangle support **ABSTAIN**, arbitrary native semantics **NOT_TESTED**,
 physical-exit/classifier/render/hold acceptance **NOT_TESTED**. No product patch,
 engine pin/tag, QC Build, installed program, deployment or release changes.
+
+## Exact bounded front-triangle reachability and derived gap algebra
+
+`offramp_trisupport.py` builds a separate zero-thickness FRONT-surface model.
+It consumes the retained bevel-PM arms through all prior gates and preserves the
+complete preceding plane-set report. It neither launches nor instruments an
+engine. Use NEW report paths under an owned private task root:
+
+```
+python -B tools/offramp_trisupport.py --arms <retained-bevel-PM-arms.json> --output <new-private-report.json>
+python -B tools/test_offramp_trisupport.py --native-arms <retained-bevel-PM-arms.json>
+```
+
+For supplied upward-wound finite triangle xyz and a fixed translating AABB,
+construct the closed feasible domain of `origin=start+t*(end-start)-d*Z`,
+`0<=t<=1`, `0<=d<=D`. Complete triangle/AABB SAT uses xyz, triangle normal and
+triangle-edge cross xyz axes. Unnormalized rational axes and exact halfplane
+clipping introduce no geometric epsilon, native bias or four-unit back slab.
+Inputs are exact rational interpretations of serialized finite decimals, NOT
+exact underlying float32/native physics. Output rationals are reduced fraction
+strings; constraints, domain vertices, parameter bounds, downward-distance
+range and coverage interval remain explicit. Zero horizon and degenerate
+segment/point domains retain closed touching, not invented penetration.
+
+A second construction requires a COMMON triangle point in the translated box:
+nonnegative barycentrics summing to one, with all xyz box inequalities satisfied
+simultaneously. Exact Fourier-Motzkin elimination projects barycentric variables
+onto the same t/d domain. This construction has no SAT axes or native planes;
+it shares the exact polygon-clipping primitive, not an independent arithmetic
+implementation. Domain/projection equality is required. Independent spatial
+barycentric clipping supplies xyz/common-point witnesses at every domain vertex
+and sampled body, with legal downward distances. Analytic fixtures and spatial
+grid checks additionally test the shared arithmetic.
+
+The diagnostic reports 96 captured body samples, 96 explicitly DERIVED linear
+command-endpoint segments and 18 captured accepted-contact REQUEST domains.
+Authored fixture-front geometry and copied winning-front geometry have separate
+labels and provenance. A captured attempted sweep is not the final collision-
+clipped body path. Removed geometry can remain counterfactually reachable but
+never becomes live supplied-patch coverage. D=2 simply binds the existing down2
+query horizon, not a physical-support/classifier constant. Horizontal footprint
+loss, vertical reach loss, initial overlap and mathematical surface intersection
+are not automatically standable or load-bearing contact. Vertical/downward or
+degenerate triangles, nonfinite coordinates and invalid hulls/horizons refuse;
+no capsule/transform/entity/embedded/posture substitution is introduced.
+
+`patch_coverage` unions only EXPLICITLY SUPPLIED triangles, never presumed map
+neighbors or reconstructed topology. The complement preserves every positive
+gap and endpoint inclusion. Tests cover partial footprint support after center
+exit, diagonal-corner refusal despite independent axial overlap, contiguous
+patch handoff, short gap/recontact, removed-neighbor suffix loss, vertical lift
+and exact zero-measure contact. Both endpoints can be reachable while the
+interior is not; tiny positive gaps are not rounded away or silently dwelled.
+The converse alias (unreachable endpoints, reachable interpolated interior)
+also ACTS on a retained trajectory. Neither alias establishes actual sub-command
+movement. Derived gap durations do not define a hold threshold or physical
+exit timestamp. No dwell or exit policy is implemented.
+
+Twenty-five tests (17 pure, eight retained-native) include 40 deterministic
+random domain comparisons with 480 spatial-grid checks, 288 sampled domains at
+registered horizons 0/2/8, 270 copied-xyz/hull binding refusals, 15 fixture/mode
+manifest refusals and two ACTED retained-trajectory geometric construction
+mutants with unchanged predecessor reports. Binding refusals are not independent
+native-semantic verification. Missing diagonal axes, replacing front by back,
+concealing an expanded horizon or using center-only footprint ACT in pure
+geometry tests. Pure-only invocation skips retained tests; skips are not runtime
+proof. Clean exact-commit reproduction is OFFLINE reuse of retained captures,
+not a new native build/run, generalization or deployed acceptance.
+
+General triangle support remains **ABSTAIN**; standability/load-bearing contact,
+complete discovered neighborhood topology, physical exit, native equivalence,
+classifier/render/hold/clock acceptance remain **NOT_TESTED** or **NOT_IMPLEMENTED**.
+No product patch, engine pin/tag, QC Build, installed progs, deployment or release.
