@@ -1874,6 +1874,21 @@ publicly WITH its fix, not before it.
   warning totals alone. A logging-heavy five-arm batch outgrew 180s outer timeout:
   retain partial rig/unknown exit, use fresh rigs and adequate timeout; do not
   fabricate completion/exit metadata from a completed-looking log.
+- **Full native triangle back slab is NOT the ideal prism (tooling only).**
+  `offramp_trislab` ACTS full BIH queries on one horizontal identity triangle
+  with a small AABB and explicit removal/solid/front controls. Native shaped
+  axial planes use original triangle xyz extents, not extruded slab bounds:
+  back sweep enters FOUR units later than ideal SAT, and short-back/stationary
+  slab queries miss despite ideal intersection. Stationary alone cannot separate
+  broadphase from axial exclusion. Front agreement and copied winning xyz do
+  not generalize this away. Never reinterpret native miss as ideal-prism clear
+  or hypothetical removed geometry as actual support. Setup-only queries restore
+  before the unchanged twenty-case mover; old motion/copy results remain exact.
+  Nine tests (three actual-native) and10,440 ACTED refusals bind inputs/results;
+  mirrored new fraction faults preserve old parity then refuse. General support
+  stays ABSTAIN; no engine collision/marker fix or deployment. Corpus subset
+  drivers must retain/report non-file glob matches (including directories named
+  run.rec), never delete player fixtures or call skipped candidates full coverage.
 
 ## Rewind (Patch 477)
 

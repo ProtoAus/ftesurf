@@ -931,3 +931,61 @@ corner/bevel bias or equal-fraction support choices, transforms/capsules/entitie
 nested models, arbitrary triangle copying/overflow/index validity, displacement/
 prop/real-map topology, recovery/portal, classifier/debounce/marks, continuous
 physical exit, clock/render/rates/LOD/hold or human acceptance. Those are OPEN.
+
+## Full native back-slab non-equivalence falsifier (private setup only)
+
+`offramp_trislab_smoke.py` composes the unchanged triangle-copy/motion layers
+with a separate restored setup-only BIH query fixture. Install in a NEW clean
+isolated engine worktree, build sv-rel using pwsh7 and the documented TMP/TEMP
+recipe, then use the unchanged five-arm motion runner. NEVER ship these servers.
+
+```
+python tools/offramp_trislab_smoke.py --instrument-native <private-engine>
+python tools/offramp_motion_smoke.py --server <private-server> --control-server <same-base-fixture-only-server> --output-dir <new-arms-dir> --timeout 240
+python tools/offramp_trislab.py --arms <arms.json> --output <new-report.json>
+python tools/test_offramp_trislab.py --native-arms <arms.json>
+```
+
+The fixture is one large horizontal +Z-wound triangle, four-unit back slab,
+identity model, bevels/source clipping ON and a small AABB [-.5,.5] on all axes.
+Six full `BIH_Trace` queries (front, back, short-back, stationary back-slab,
+stationary face, outside) each run active and removed, then repeat. Twenty setup
+calls per ON arm produce 480 query rows; OFF and fixture-only emit NONE. Probe,
+origin/callback/cvar state restores before the unchanged mover actor. Numeric
+rows copy before dump; these are NOT hot-path logs or new PM trajectories.
+
+Front sweep z6 -> -6 hits at true fraction5.5/12 and native biased fraction
+(5.5-1/32)/12; independent ideal finite-prism SAT agrees at geometric entry.
+Back sweep z-6 -> 2 hits at native true fraction5.5/8, biased (5.5-1/32)/8 and
+axial -Z plane tag105/dist0. Ideal prism instead enters at1.5/8 with -Z/dist4:
+the native hit is FOUR units later. The source's shaped axial planes use the
+original triangle extents, not the extruded back vertices. Short sweep z-6 -> -2
+and stationary z-2 are native misses despite ideal prism intersection/strict
+overlap respectively. The stationary miss alone does not distinguish native
+broadphase from axial exclusion. Stationary z0 ACTS native startsolid/allsolid;
+x150 is clear in both. All same-pose removal queries are clear natively, even
+where the now-inactive prism hypothetically intersects. No removal/solid return
+is promoted to a return-bound accepted triangle copy or actual support.
+
+This is a measured **NON-equivalence**, not a failed search repackaged as global
+agreement. Ideal SAT is built from authored setup xyz, not the native plane/tag/
+fraction or an accepted-copy claim. Analytic front/back intervals and separate
+joint convex feasibility controls support the geometry. Nine tests (six pure,
+three retained-native), 10,440 ACTED query/fixture refusal controls and mirrored
+fraction faults pass; mirrored faults preserve old body/query/winner/copy parity
+then fail this new diagnostic. Ordinary invocation explicitly skips the three
+native tests; skips are NOT runtime evidence. Protocol v1 has strict ordered
+BEGIN(1,24), SOURCE(template/installer digest), FIXTURE18, QUERY21 x24, END24;
+input/hull/geometry/index/active/count/source/fraction/plane/flags/ownership and
+local/runtime repeat drift refuse. Reports require NEW paths and hash retained
+binaries/configs/manifests/logs. Existing twenty-case arrays and triangle-copy
+reader result remain EXACT against the preceding retained proof. Native build
+retains existing diagnostics with zero NEW normalized messages.
+
+General triangle support stays **ABSTAIN**; original capture categories remain
+unresolved. This falsifier closes only the claim that ideal full-prism SAT can
+serve as an unconditional oracle for these native back-slab queries: it cannot.
+It does NOT fix engine collision, off-ramp marking, physical exit or topology,
+or close arbitrary bevel/corner/bias/tie/transform/capsule/entity/recovery/portal/
+real-map, clock/render/rates/LOD/hold or human acceptance. No product patch,
+ENGINE pin/tag, QC Build, installed program or deployment changes are implied.

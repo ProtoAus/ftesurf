@@ -2425,8 +2425,14 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   return-bound ownership against later probes/competition, and independently
   checks the fourteen bounded standing-world accepted sweeps. Original capture
   categories stay unresolved and general native/support semantics ABSTAIN;
-  copying a winning triangle is not general support/physical-exit proof. Real-map
-  triangle/displacement/prop geometry and identity remain open. An open-air
+  copying a winning triangle is not general support/physical-exit proof.
+  `tools/offramp_trislab.py` separately ACTS setup-only full native back-slab
+  queries: shaped native axial clipping enters four units later than ideal prism
+  SAT, with native short-back/stationary misses despite ideal overlap. Explicit
+  front/solid/removal controls and exact original motion/copy parity bind this
+  NON-equivalence, not a marker/collision fix or unconditional support oracle.
+  General native corners/bevel bias/ties and real-map triangle/displacement/prop
+  geometry and identity remain open. An open-air
   crouch/release and matched no-duck falling pair now ACT native instant hull/origin/timer transitions,
   +8.5-unit shift/reversal and matching landing. Current-hull native/joint AABB
   queries and completed tick/hull binding pass; original sixteen full case/winner
