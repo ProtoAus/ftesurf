@@ -116,3 +116,30 @@ progs, cfg, data or Pi swap was performed. Follow-up is a separately chosen real
 panel with explicit input ownership, covering fallback and measured budgets;
 physical device/minus/modifier/cursor, non-GL/font/DPI and cost acceptance remain
 unverified. No production migration is implied by these diagnostic controls.
+
+## Resume verification — 9 Oct 2026 UTC
+
+Fetched both origins. Game worktree fast-forwarded cleanly to
+`c8bc2228e3b68f5112a0efde08e00e28b6505cec`; engine worktree remains
+`368a622ce99d17a44a17f1dee3b85859daf14836`. Both P601 feature commits remain
+ancestors of their respective origin/main; `patch-601` still resolves to the
+recorded engine feature commit. The new game fast-forward changes only unrelated
+cleanup notes. Owned path for this resume is `tools/p601model.md` only.
+
+- `python tools/test_p601model.py --out
+  rig/p601-resume-20261009T003848Z`: fresh actual-source controls pass, with 463
+  model-host and 929 input-host checks, plus 172 passive host checks for each
+  invocation. Both 16/32-bit arms pass 184 model, 700 input and 109 passive checks
+  per relevant executable. Controlled native units compile with -Werror; zero
+  failures. Button/checkbox acting controls precede stale-action subjects.
+- `python tools/p601model.py grade rig/p601-model-sicdm_9i`: zero failures.
+  `python tools/test_p601model_unit.py rig/p601-model-sicdm_9i`: 21 tests pass.
+  `python tools/test_p600input_unit.py rig/p600-input-wcdb7jua`: 17 tests pass.
+  These regrade retained runtime evidence; no new live-client run or full engine/
+  production QC build is claimed in this resume.
+
+P601 has no unfinished implementation/publication gate in this checkpoint.
+Next requires an explicit real-panel choice (roadmap C proposes the scoreboard),
+with legacy retained as default and fallback. This resume adds no product code,
+input route, preference, patch/Build bump or deployment. Device, lifecycle,
+font/DPI, non-GL and performance acceptance remain separate gates.
