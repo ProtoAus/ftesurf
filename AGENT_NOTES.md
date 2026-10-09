@@ -1741,6 +1741,20 @@ publicly WITH its fix, not before it.
   listen server's tick in a harness, `sv_cheats 1` first -- the movement lock
   reverts a typed `pm_ticrate`.
 
+- **Bounded actual intra-command path diagnostic (not exit acceptance).**
+`tools/offramp_tripath{,_smoke}.py` adds fixed-capacity native TryPlayerMove
+value copies to the unchanged three bevel-PM actors. Capture ALL attempts,
+including misses and native endpoint validations, time-left/clip/commit/return;
+do not substitute accepted requests or command-endpoint interpolation for the
+actual collision-clipped body path. Fixture-only vs OFF/ON/repeat must preserve
+prior body/query gates. Only ordinary identity standing-AABB paths are graded;
+cached/recovery/portal/ground/sliding/posture generalization refuses or remains
+NOT_TESTED. Native zero biased fraction with positive truefraction can still
+clip and take a residual sweep. Native time-left is NOT an elapsed exit clock:
+a clear pass breaks before decrementing it. Raw-loss first move is now captured
+and remains native/ideal clear, NOT support-exit proof. Independent field/row
+falsifiers must ACT even with prior gates and mirrored repeat parity unchanged.
+See `tools/OFFRAMP_CONTACT.md`; private diagnostic builds NEVER ship.
 - **Off-ramp stage diagnostic (not a patch or fix).** The first `surf_dune`
   route rides a slope but reaches ground before a surf-to-air leave: native
   contact alone does not prove the intended off-ramp arm acted. On Voyager,

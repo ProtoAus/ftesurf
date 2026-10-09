@@ -1267,3 +1267,71 @@ General triangle support remains **ABSTAIN**; standability/load-bearing contact,
 complete discovered neighborhood topology, physical exit, native equivalence,
 classifier/render/hold/clock acceptance remain **NOT_TESTED** or **NOT_IMPLEMENTED**.
 No product patch, engine pin/tag, QC Build, installed progs, deployment or release.
+
+## ACTED bounded native intra-command attempts and committed body segments
+
+`offramp_tripath_smoke.py` composes the unchanged bevel-PM fixture/capture plan
+with a fixed-capacity value-copy layer inside Source `TryPlayerMove`. The
+fixture-only control has NO new mover seams. The subject records all ordinary
+attempts (including misses), native time-left and bump ordinal, actual body and
+fixed origins, preclip velocity, desired endpoint, actual hull, trace fraction/
+truefraction/endpos/solid flags/entity/plane/contents, validation results, outcomes,
+and final return state. It dumps after the case, never printing, allocating or
+adding a query inside movement. Neither an accepted request nor a straight
+interpolation between command endpoints substitutes for the committed path.
+
+Use NEW private paths and isolated native worktrees at the registered base:
+
+```
+python -B tools/offramp_tripath_smoke.py --instrument-native <clean-control> --fixture-only
+python -B tools/offramp_tripath_smoke.py --instrument-native <clean-subject>
+# Build each private sv-rel server. NEVER install/deploy diagnostic binaries.
+python -B tools/offramp_tripath_smoke.py --server <subject-server> --control-server <fixture-only-server> --output-dir <new-private-root>
+python -B tools/offramp_tripath.py --arms <new-private-root/arms.json> --output <new-private-report.json>
+python -B tools/test_offramp_tripath.py --native-arms <new-private-root/arms.json>
+```
+
+Runner paths are resolved before launching from the canonical content CWD.
+The five arms preserve all predecessor 20-case and bevel-PM gates and require
+exact body/query parity and ON/repeat path equality. The bounded reader accepts
+ONLY uncached, nonportal, unrecovered, airborne, nonsliding standing identity
+AABBs. Other routes/postures, missing/unknown/outside/duplicate rows, source
+changes, overflow, missing outcomes or incomplete validation coverage refuse.
+Unsupported recovery is explicitly flagged, not silently generalized.
+
+The three actors produce 96 native calls, 114 actual attempts/committed segments
+(44/32/38), 78 native endpoint validations (20/32/26), and 18 accepted copied hits
+(12/0/6). Every hit is followed by a captured residual sweep. Independent gates
+bind initial call velocity to half gravity, each attempted endpoint to native
+velocity/time-left, collision endpoints to biased fraction, next attempts to
+committed body/clip velocity, final return to command body/second half gravity,
+and every hit to its copied winning contact. Native halfspace predictions check
+ALL trace outputs, not just accepted hits; misses use authored fixture geometry,
+not an invented copied winning neighborhood. No general trace-wrapper claim.
+
+Fourteen accepted hits have biased fraction ZERO while truefraction is positive;
+the body does not advance on that attempt, but clipping and the residual sweep
+still ACT. Native entering bias, geometric entry, actual body advancement and
+native `allFraction` bookkeeping remain distinct. In particular, a clear final
+attempt breaks BEFORE decrementing native time-left; that field is not a direct
+elapsed-time or physical-exit clock. The report retains both requested and
+committed segments and does not infer a new gap/dwell/exit timestamp.
+
+Raw-loss command22 now has an ACTUAL captured first sweep and clear endpoint
+validation, with the committed result bound to the final command body. It is
+clear in both native plane-set and ideal finite-prism models. This supersedes
+only the preceding NOT_CAPTURED status of that specific derived request. It
+DOES NOT promote raw loss, native down2 miss, or sampled/derived front reach to
+physical support exit. Load bearing, complete neighboring topology, recovery,
+cached/portal paths, geometry generalization and classifier/render/hold clocks
+remain **NOT_TESTED**; general native path/support acceptance **ABSTAIN**.
+
+Nine tests (three pure, six retained-native) include 10,524 individually ACTED
+numeric path-field refusals and 1,008 row deletion/duplication refusals. A
+mirrored plausible residual-time mutant leaves predecessor reports and repeat
+parity identical but fails the NEW independent time-continuity gate. Quiet,
+outside-envelope, overflow, unsupported-route/posture, nonfinite and fixture
+source/mode faults also refuse. Pure invocation skips retained-native cases;
+skips are NOT execution evidence. Clean exact-tooling-commit reproduction must
+install in new native control/subject trees, build and rerun all five arms,
+not just re-grade old logs. No product patch, pin/tag/Build, deployment/release.
