@@ -231,7 +231,7 @@ def grade(block):
         if cap:
             accepted = capture(b, ticks, c)
         else:
-            require(not re.search(r'OFFRAMP(?:BUF|ORIGIN|SHAPE|HULL|TRICOPY|TRISLAB|TRIBEV)_', b), 'quiet bevel PM arm has capture rows')
+            require(not re.search(r'OFFRAMP(?:BUF|ORIGIN|GEOM|HULL|TRICOPY|TRISLAB|TRIBEV)_', b), 'quiet bevel PM arm has capture rows')
             accepted = []
         result.append(dict(label=LABELS[c], ticks=ticks, queries=qs, query_diagnostics=qr, accepted=accepted))
     require(rows[cursor:] == [('END', ['3'])], 'bevel PM unknown/extra/footer rows')
@@ -241,7 +241,7 @@ def grade(block):
         for parser in (shape_parse, hull_parse, copy_parse, bevel_parse, slab_parse):
             require(parser(block) == sum((parser(b) for b in blocks), []), 'bevel PM capture/setup outside cases')
     else:
-        require(not re.search(r'OFFRAMP(?:BUF|ORIGIN|SHAPE|HULL|TRICOPY|TRISLAB|TRIBEV)_', block),
+        require(not re.search(r'OFFRAMP(?:BUF|ORIGIN|GEOM|HULL|TRICOPY|TRISLAB|TRIBEV)_', block),
                 'quiet bevel PM envelope has capture rows')
     ramp = [[i for i, t in enumerate(c['ticks']) if t[8]] for c in result]
     losses = [i for i in range(1, 32) if result[0]['ticks'][i-1][8] and not result[0]['ticks'][i][8]]

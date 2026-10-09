@@ -1741,6 +1741,25 @@ publicly WITH its fix, not before it.
   listen server's tick in a harness, `sv_cheats 1` first -- the movement lock
   reverts a typed `pm_ticrate`.
 
+- **Multi-patch reach actors (native, not exit acceptance).**
+`tools/offramp_trimulti{,_smoke}.py` adds five actors on a rectangular-patch
+ramp; in two of them reach is actually lost and regained. The supplied patch
+set is the BUILT native BIH's triangle leaves, dumped by value with their node
+indexes and required to equal the table; no neighbourhood is discovered. Reach
+loss comes in two kinds and the boundary record tells them apart: a FOOTPRINT
+EDGE (wide gap; unmoved at larger horizons) and a HORIZON CUT (vertical lift;
+gone at horizon 8). On the one loss here the native ramp flag stayed set for
+the rest of that command, and reach returned 1.9 commands before the next hit.
+Coplanar ties are real, between two triangles of a quad and between a face and
+a bevel that IS the face plane: never gate on which tied plane or leaf won.
+Clip velocity is verified on the single-plane branch only. A CONSISTENT LIE
+NEEDS ITS OWN TEST: every single-field mutant was refused while the trace
+endpoint and clip-velocity gates had no falsifier, until a forgery moved a
+whole chain of rows together. When a check lists row prefixes by name, read
+what the layer prints: the shape layer's is GEOM. AND A MUTANT SWEEP IS A TEST
+TOO: its first run here "killed" all 54 mutants in test setup, a path bug in
+the harness. Run the unmutated copy through it first.
+See `tools/OFFRAMP_CONTACT.md`; private diagnostic builds NEVER ship.
 - **Front reach on the captured path (offline, not exit acceptance).**
 `tools/offramp_trireach.py` runs the exact front algebra on the committed
 segments below instead of endpoint chords. `hypothetical_down` (0<=d<=2)
