@@ -2423,8 +2423,12 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   +8.5-unit shift/reversal and matching landing. Current-hull native/joint AABB
   queries and completed tick/hull binding pass; original sixteen full case/winner
   objects stay exact. These zero-ramp-contact actors do not cover airborne winning
-  collisions, blocked-unduck/sliding or general posture. This is bounded fixture
-  coverage, not a physical-exit or classifier fix.
+  collisions, blocked-unduck/sliding or general posture. A grounded ascending-ramp
+  approach and matched removed-ramp walker now ACT native cached-firsttrace reuse,
+  winning whole brush/plane/actual hull and prior-grounded-body/requested-sweep
+  binding. Actual/local/removed joint AABB queries ACT; original eighteen full
+  case/winner objects stay exact. General cached variants/recovery/portal actors
+  remain open. This is bounded fixture coverage, not a physical-exit or classifier fix.
   General geometry, uninstrumented cadence, LODs, unsupported mover paths and
   the recorded/live/render chain remain open.
   Falsifier: a known brush edge, raw contact-loss tick/hull/plane,

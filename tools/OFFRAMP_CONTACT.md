@@ -722,7 +722,58 @@ faults. Fixture-only oracle mutations also refuse without a capture backstop.
 
 Only bounded open-air crouch/release execution and snapshot/query binding are
 closed. General airborne/blocked-unduck/sliding/dead/spectator posture, native
-cached/recovery/portal trajectories, independent capsule/transform/triangle
+general cached/recovery/portal trajectories, independent capsule/transform/triangle
 geometry, real-map coverage, continuous physical exit/classifier/marks/clock/
 render/rates/LOD/hold/human acceptance remain OPEN. Tooling only, NEVER ship the
 private instrumented servers; no product patch/pins/Build or deployment.
+
+## ACTED cached first-trace approach and native ramp-removal control
+
+Protocol 9 appends two 64-tick standing actors (20 total cases). Both start at
+(-100,0,.05) with velocity (250,0,0) and execute real 15ms forward=250 commands.
+The world has a wide flat floor plus an ascending steep brush ramp with normal
+(-.8,0,.6). The matched control removes ONLY the ramp leaf, keeping the authored
+geometry, seed and commands. BRUSHSET binds actual world leaf count/active flags.
+No per-tick pose/hull/ground/route injection is permitted.
+
+Native WalkMove supplies its blocked first trace to StepMove; the flat
+TryPlayerMove branch reuses that trace when its requested endpoint matches.
+The actual diagnostic seam selects route 1 and copies firstorigin/firstshape/
+firstinstance. This is the mover's cached FIRST TRACE, not a general engine brush
+collision-cache test. The actor actually enters this branch on ticks 22, 23, 24,
+then has 39 fresh route-0 contacts (42 total). The removed-ramp actor performs a
+native grounded walk and accepts zero ramp contacts. Both agree before first
+impact on 22 and then diverge. Native ramp-contact and ground bits can coexist;
+do not equate the ground bit with unique geometric ramp support.
+
+Each cached winner must be bump 0, nonrecovered/nonsolid, world brush with the
+matching whole ascending-ramp payload, native plane, identity instance and
+actual standing hull. Sweep start binds to the previous completed grounded body;
+first impact follows no-ramp grounded approach. Requested horizontal sweep length
+binds to this prescribed one-dimensional command's native friction/acceleration
+profile: 3.75 units initially, then shorter after actual clipping. This check is
+not a generalized mover solver, physical-support oracle or continuity proof.
+Runtime BIH leaf/root ordinals bind capture rows, not stable map brush IDs.
+
+Four native queries use completed actual body/hull: stationary/full-world,
+down2/full-world, down2/isolated ramp (rampdown2), down2/isolated floor (unramped).
+All truth must match bounded joint convex/AABB feasibility over the appropriate
+active/local geometry. Full-world actual-body solid remains refusal. Only the
+removed actor's isolated ramp counterfactual can be solid: native fraction=1,
+startsolid=allsolid=1, entity=0, ZERO plane and ZERO contents. BIH returns early
+for this inside-brush case without accepting a winning plane; fabricating contents
+or a witness refuses. This is NOT an actual-body collision. Subject ramp hit vs
+floor-only miss and removed actor's inactive-ramp solid query must ACT.
+
+Fixture-only nooracle/oracle and capture OFF/ON/repeat pass exact body/query/
+repeat binding parity. Original eighteen full case/winner objects remain EXACT.
+Twenty-three motion units and 330 ACTED native refusal controls pass, including
+all retained controls, missing/altered BRUSHSET, silent/fake body/removal queries,
+cached-route erasure/fresh promotion, wrong origin/model/shape/hull/plane/sweep/
+fraction/recovery and fixture-only actor faults without a capture backstop.
+
+Only this grounded cached-firsttrace trajectory/query/capture branch is closed.
+General cached/water/posture/step variants, native recovery/portal actors,
+independent capsule/transform/triangle geometry, real maps, continuous physical
+exit/classifier/marks/clock/render/rates/LOD/hold/human acceptance stay OPEN.
+Tooling only; no product behavior/pins/Build/deployment. NEVER ship these servers.

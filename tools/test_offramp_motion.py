@@ -7,7 +7,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from offramp_motion import EMBEDDED_MODEL, ENTITY_MODEL, INSTANCE, LABELS, MAX_STEPS, PARAMS, assess_airposture, authored, compare, grade, joint_overlap, oracle_validate, parse, shape_category, step_count
+from offramp_motion import EMBEDDED_MODEL, ENTITY_MODEL, INSTANCE, LABELS, MAX_STEPS, PARAMS, assess_airposture, assess_cached_capture, authored, compare, grade, joint_overlap, oracle_validate, parse, shape_category, step_count
 from offramp_motion_smoke import TARGET, instrument, prepare
 import test_offramp_hull as hull_tests
 
@@ -319,17 +319,59 @@ class Tests(unittest.TestCase):
             bad = row[:]; bad[index] = value
             with self.subTest(index=index), self.assertRaises(AssertionError): oracle_validate(bad, tick, brushes)
 
+    def test_cached_firsttrace_requires_actual_prior_ground_and_sweep(self):
+        ticks = [[0]*28 for _ in range(64)]
+        ticks[21][8:10], ticks[21][10:13] = [0, 1], [-17.5, 0, .03125]
+        ticks[21][13] = 250
+        good = dict(originroute=1, tick=22, bump=0, brush=1, fraction=.4,
+                    native_plane=[-.8, 0, .6, 0], sweep_start=[-17.5, 0, .03125], sweep_end=[-13.75, 0, .03125])
+        assess_cached_capture(ticks, [good])
+        for key, value in (('originroute', 0), ('tick', 0), ('tick', 64), ('tick', 65), ('bump', 1), ('brush', 0),
+                ('fraction', 1), ('native_plane', [.8, 0, .6, 0]), ('sweep_start', [-17.5, 0, 18]),
+                ('sweep_end', [-13.75, 0, 18]), ('sweep_end', [-13.7, 0, .03125])):
+            with self.subTest(key=key), self.assertRaises(AssertionError): assess_cached_capture(ticks, [dict(good, **{key:value})])
+        ticks[22][8:10], ticks[22][10:16] = [1, 1], [-15.2, 0, 1.11875, 90, 0, 0]
+        later = dict(good, tick=23, fraction=0, sweep_start=[-15.2, 0, 1.11875], sweep_end=[-13.64975, 0, 1.11875])
+        assess_cached_capture(ticks, [good, later])
+        with self.assertRaises(AssertionError):
+            assess_cached_capture(ticks, [good, dict(later, sweep_end=[-11.45, 0, 1.11875])])
+        ticks[21][9] = 0
+        with self.assertRaises(AssertionError): assess_cached_capture(ticks, [good])
+
+    def test_cached_removed_world_and_inactive_ramp_query_are_distinct(self):
+        brushes, seed = authored(19)
+        tick = [19, 0, 15, 250, 0, 0, 1, .015, 0, 1]+seed[:6]+seed[6:]+[0]*6
+        tick[10:13] = [80, 0, .03125]
+        row = ['19', '0', 'down2', '-1']+list(map(str, tick[10:13]+[80, 0, -1.96875]+[.01, 0, 0, 0, 0, 0, 1, 0, 1]))
+        oracle_validate(row, tick, brushes)
+        unramped = row[:]; unramped[2:4] = ['unramped', '0']
+        oracle_validate(unramped, tick, brushes)
+        local = row[:]; local[2:4] = ['rampdown2', '1']; local[10:19] = ['1', '1', '1', '0', '0', '0', '0', '0', '0']
+        oracle_validate(local, tick, brushes)
+        with patch('offramp_motion.joint_overlap', side_effect=AssertionError('CACHE_JOINT_ACTED')):
+            for q in (row, unramped, local):
+                with self.assertRaisesRegex(AssertionError, 'CACHE_JOINT_ACTED'): oracle_validate(q, tick, brushes)
+        # Actual world stationary/actual down2 NEVER inherit the removed-shape solid allowance.
+        for kind in ('stationary', 'down2'):
+            fake = local[:]; fake[2:4] = [kind, '-1']
+            with self.subTest(kind=kind), self.assertRaises(AssertionError): oracle_validate(fake, tick, brushes)
+        for index, value in ((2, 'worldonly'), (3, '-1'), (4, '999'), (13, '-1'), (18, '1')):
+            fake = local[:]; fake[index] = value
+            with self.subTest(index=index), self.assertRaises(AssertionError): oracle_validate(fake, tick, brushes)
+
     def test_explicit_fixture_profile_and_case_schema(self):
         self.assertEqual(len(PARAMS), 43)
         self.assertEqual(PARAMS['fixrampbugs'], 2)
         for c in range(len(LABELS)):
             brushes, seed = authored(c)
             self.assertEqual(len(seed), 12)
-            self.assertEqual(len(brushes), 2 if c in (5, 7) or 10 <= c < 16 else 1)
+            self.assertEqual(len(brushes), 2 if c in (5, 7) or 10 <= c < 16 or c >= 18 else 1)
             self.assertEqual(len(brushes[0]['planes']), 7 if c == 2 else 6)
             self.assertEqual(step_count(c), 64 if c >= 16 else (32 if c < 6 or c >= 8 else (96 if c == 6 else MAX_STEPS)))
         self.assertEqual(authored(7)[0][1]['mins'], [-32, -128, 50])
         self.assertEqual(authored(7)[0][1]['maxs'], [32, 128, 128])
+        self.assertEqual(authored(18), authored(19))
+        self.assertEqual(authored(18)[0][1]['planes'][5], [-.8, 0, .6, 0])
         self.assertEqual(authored(10), authored(11))
         self.assertEqual(authored(12), authored(13))
         self.assertEqual(authored(10), authored(12))
@@ -613,6 +655,48 @@ def controls(text):
                                     (16, 11, 63, {21: 45, 22: 1, 24: 1000})):
         bad.append(('air-coherent-silent-posture-'+str(start), change_all(text, 'TICK', updates,
                     lambda r, case=case, start=start, end=end: int(r[0]) == case and start <= int(r[1]) <= end)))
+    for label, case, tag, index, value, pred, namespace in (
+        ('cached-set-count', 18, 'BRUSHSET', 1, 1, lambda r: True, 'OFFRAMPMOTION'),
+        ('cached-set-silent', 18, 'BRUSHSET', 3, 0, lambda r: True, 'OFFRAMPMOTION'),
+        ('cached-removed-set-promotion', 19, 'BRUSHSET', 3, 1, lambda r: True, 'OFFRAMPMOTION'),
+        ('cached-wrong-forward', 18, 'TICK', 3, 0, lambda r: r[1] == '22', 'OFFRAMPMOTION'),
+        ('cached-silent-raw-impact', 18, 'TICK', 8, 0, lambda r: r[8] == '1', 'OFFRAMPMOTION'),
+        ('cached-fake-control-ramp', 19, 'TICK', 8, 1, lambda r: True, 'OFFRAMPMOTION'),
+        ('cached-fake-control-air', 19, 'TICK', 9, 0, lambda r: True, 'OFFRAMPMOTION'),
+        ('cached-world-local-family', 18, 'ORACLE', 2, 'rampdown2', lambda r: r[2] == 'down2', 'OFFRAMPMOTION'),
+        ('cached-query-local-brush', 18, 'ORACLE', 3, 0, lambda r: r[2] == 'rampdown2', 'OFFRAMPMOTION'),
+        ('cached-query-unramped-endpoint', 18, 'ORACLE', 9, 999, lambda r: r[2] == 'unramped', 'OFFRAMPMOTION'),
+        ('cached-query-erased-ramp-hit', 18, 'ORACLE', 10, 1, lambda r: r[2] == 'rampdown2' and float(r[10]) < 1, 'OFFRAMPMOTION'),
+        ('cached-control-hidden-local-solid', 19, 'ORACLE', 11, 0, lambda r: r[2] == 'rampdown2' and r[11] == '1', 'OFFRAMPMOTION'),
+        ('cached-control-solid-fake-contents', 19, 'ORACLE', 18, 1, lambda r: r[2] == 'rampdown2' and r[11] == '1', 'OFFRAMPMOTION'),
+        ('cached-origin-fake-fresh-promotion', 18, 'CONTACT', 2, 1, lambda r: r[2] == '0', 'OFFRAMPORIGIN'),
+        ('cached-origin-route-recovery', 18, 'CONTACT', 2, 2, lambda r: r[2] == '1', 'OFFRAMPORIGIN'),
+        ('cached-origin-route-portal', 18, 'CONTACT', 2, 3, lambda r: r[2] == '1', 'OFFRAMPORIGIN'),
+        ('cached-origin-wrong-brush-kind', 18, 'CONTACT', 3, 2, lambda r: r[2] == '1', 'OFFRAMPORIGIN'),
+        ('cached-origin-wrong-model', 18, 'CONTACT', 9, ENTITY_MODEL, lambda r: r[2] == '1', 'OFFRAMPORIGIN'),
+        ('cached-contact-wrong-bump', 18, 'CONTACT', 2, 1, lambda r: True, 'OFFRAMPBUF'),
+        ('cached-contact-wrong-start', 18, 'CONTACT', 9, 999, lambda r: True, 'OFFRAMPBUF'),
+        ('cached-contact-wrong-end', 18, 'CONTACT', 12, 999, lambda r: True, 'OFFRAMPBUF'),
+        ('cached-contact-wrong-plane', 18, 'CONTACT', 6, .8, lambda r: True, 'OFFRAMPBUF'),
+        ('cached-contact-wrong-fraction', 18, 'CONTACT', 4, 1, lambda r: True, 'OFFRAMPBUF'),
+        ('cached-contact-recovered', 18, 'CONTACT', 21, 1, lambda r: True, 'OFFRAMPBUF'),
+        ('cached-shape-wrong-bounds', 18, 'SHAPE', 4, -257, lambda r: True, 'OFFRAMPGEOM'),
+        ('cached-hull-wrong-top', 18, 'CONTACT', 7, 45, lambda r: True, 'OFFRAMPHULL')):
+        bad.append((label, change_case(text, case, tag, index, value, pred, namespace)))
+    for case in (18, 19):
+        token = next(l for l in text.splitlines() if f'OFFRAMPMOTION_BRUSHSET {case} ' in l)
+        bad.append(('missing-cached-set-'+str(case), text.replace(token, '')))
+        bad.append(('duplicate-cached-set-'+str(case), text.replace(token, token+'\n'+token)))
+    # Erasing ALL cached labels must refuse, not merely alter a report count.
+    start = text.index('OFFRAMPMOTION_CASE 18 '); end = text.index('OFFRAMPMOTION_CASE_END 18 ', start)
+    lines = text[start:end].splitlines(); count = 0
+    for i, line in enumerate(lines):
+        token = 'OFFRAMPORIGIN_CONTACT '
+        if token not in line: continue
+        prefix, tail = line.split(token, 1); row = tail.split()
+        if row[2] == '1': row[2] = '0'; lines[i] = prefix+token+' '.join(row); count += 1
+    assert count, 'Native cached labels did not ACT for erase control'
+    bad.append(('all-cached-routes-erased', text[:start]+'\n'.join(lines)+'\n'+text[end:]))
     return bad
 
 
@@ -696,7 +780,16 @@ def acted_controls(arms):
     for index, value in ((12, 128), (24, 985), (27, 0), (9, 1)):
         altered = change_case(texts['control'], 16, 'TICK', index, value, lambda row: row[1] == '3')
         with unittest.TestCase().assertRaises(AssertionError): grade(altered)
-    print(f'{len(bad)+17} ACTED native motion controls, zero failed; capsule/transformed/entity/embedded/triangle actors ABSTAIN PASS')
+    assert r['cached_ground_approach_native_path_capture_gates'] == 'PASS'
+    assert r['general_cached_recovery_portal_acceptance'] == 'NOT_TESTED'
+    # Legal actor/query mutations in the fixture-only oracle arm cannot hide the
+    # native ramp approach/removal, even with no capture comparison available.
+    for case, index, value, pred in ((18, 8, 0, lambda row: row[8] == '1'),
+            (18, 9, 0, lambda row: row[1] == '0'), (19, 8, 1, lambda row: row[1] == '0'),
+            (19, 15, 1, lambda row: row[1] == '0')):
+        altered = change_case(texts['control'], case, 'TICK', index, value, pred)
+        with unittest.TestCase().assertRaises(AssertionError): grade(altered)
+    print(f'{len(bad)+21} ACTED native motion controls, zero failed; capsule/transformed/entity/embedded/triangle actors ABSTAIN PASS')
 
 
 def snapshot(engine):

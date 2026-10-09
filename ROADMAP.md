@@ -438,9 +438,14 @@ matched no-duck falling pair now ACT native instant hull/origin/timer transition
 +8.5-unit crouch shift/reversal and matching landing, with actual tick/hull binding
 and current-hull joint AABB fixture queries. Original sixteen full case/winner
 objects remain exact. This does not cover airborne winning collisions or general
-posture. General non-world/entity/embedded map wiring, nested transforms and
-geometry, real-map triangle/displacement/prop geometry, general airborne/blocked/
-sliding posture, explicit cached/recovery/portal paths,
+posture. A grounded ascending-ramp approach and matched removed-ramp walker now
+ACT native cached-firsttrace reuse, with winning whole brush/plane/actual hull,
+prior-grounded-body/requested-sweep binding and actual/local/removed joint AABB
+queries. Original eighteen full case/winner objects remain exact. This is NOT a
+general engine collision-cache or physical-support solver. General non-world/
+entity/embedded map wiring, nested transforms and geometry, real-map triangle/
+displacement/prop geometry, general airborne/blocked/sliding posture, general
+cached variants and explicit recovery/portal paths,
 full capsule/transform geometry and general-map coverage remain unverified. These sampled fixture controls do not establish
 continuous physical exit time or close classifier, FPS/tick-rate, held/render,
 LOD or human acceptance above.
