@@ -851,7 +851,13 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   recorder306 pass; immutable269 rec/91 view baseline/subject170 faulted files/173
   faults, unchanged. No schema/format, detector, history, rank/review, engine/QC/
   progs/config/pin/tag or Build change. Extra parsing without a view is intentional,
-  not measured fleet-scale cost. Publication/install limits: `tools/p603receiptclock.md`.
+  not measured fleet-scale cost. Exact7e24d9d installed2026-10-09: secondary04:09:08Z,
+  primary04:10:06Z, Pi04:13:28Z; actual installed18 controls at each, three hashes exact.
+  Primary's peer edit cleared before the guarded copy; never overwritten while dirty.
+  Canonical Pi lock/completed mode600 rollback,137 protected files/history/scalar counts/
+  master+worker/health12 unchanged; Windows protected6/195 and index unchanged.
+  Initial primary/Pi path-context failures restored predecessors; private harness-only
+  correction, no product repair/reload/progs/game/config swap. `tools/p603receiptclock.md`.
 
 - **Angle explanations are observations, not strings to reconstruct later**
   (Patch 511). `receipts.angles_reason` stores up to 1,000 characters from the

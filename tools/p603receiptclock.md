@@ -74,12 +74,44 @@ build is claimed or needed for this reader-only fix.
 
 ## Publication/deployment
 
-Exact inspected commits, UTC, selected destination hashes, acting installed-reader
-controls, completed backup/rollback and preserved live history/process/health are
-recorded here after verification. Ship only the two owned readers and their test;
-do not ship a peer's uncommitted source.
+Exact product `7e24d9d92fcecc679690ca926ebb3ec5a6d7c504` and changelog-only engine
+`2d3394a6874191880966144dcd89823678836bc7` were inspected and pushed by exact SHA.
+Frozen clean-tree source review confirms that product identity. The467-file final
+staging manifest differs after unpublished upstream rebase only in the unrelated
+pi.dev launcher script; all466 remaining source/fixture files, including the three
+ship paths, match the final tested bytes. Frozen focused18/strict compilation pass.
 
-The primary Windows `tools/rcptcheck.py` is peer-modified and must not be overwritten.
-That install is blocked until the peer integrates the change. Secondary Windows
-and Pi eligibility and actual installed controls are separate gates. No game,
-progs/config/engine swap, owner-process restart or release is in this batch.
+Only the two reader modules and their test were installed, parser before consumer:
+
+| Installed file | SHA256 |
+| --- | --- |
+| reccheck.py | 270a9654548ec6fe89e1ee2d0df547a1fc7633ca4152d9949b061c0b297667c4 |
+| rcptcheck.py | e16a58746156fa727c125ce5bb3cf9be3cf027391f914131f32cc3af86139cbe |
+| test_receipt_ticks.py | 689485d6f066c28734ca0837d693fdedbc4fee29e53c2db9e891cc408663862b |
+
+- Secondary Windows `C:/FTEQuake/tools`: **2026-10-09T04:09:08Z**, actual installed
+  reader/test18 controls pass;6 other support/game files and shared index unchanged.
+- Primary Windows `C:/FTESurf/tools`: **2026-10-09T04:10:06Z**, actual installed
+  reader/test18 controls pass;195 other support/game files and shared index unchanged.
+  Its initial peer-modified-reader blocker cleared when the peer completed work;
+  immediately before deployment both readers were clean at inspected e2aead9 and
+  matched the same approved predecessor pair. No peer change was overwritten.
+- Pi `/srv/nvme/ftesurf-server/game/tools`: **2026-10-09T04:13:28Z**, canonical sweep
+  lock, actual installed reader/test18 controls and actual app/sweep module paths
+  pass. All137 other support/source/game files, receipt/verdict/review/sim/cursor
+  history hashes, scalar run/replay counts, original master/worker and health12
+  unchanged. Completed mode600 SQLite/source rollback retained at
+  `/srv/nvme/surfd/rollback-p603-20261009-041319`. No reload required.
+
+Installed reader imports are explicitly bound to destination paths. Generated
+fixture helpers come from frozen source; temporary homes never import the live
+ledger. The first primary/Pi path-context gates failed BEFORE test bodies acted;
+exact predecessor readers were restored, logs retained, and only the private
+harness's explicit import precedence/context was corrected. No product repair,
+relaxed assertion or redundant secondary reship. Windows rollback pairs are
+retained in the private owned task's artifacts.
+
+No game/progs/config/engine swap, owner-process restart, historical reread or
+release. Primary checkout branch/ref/index were not advanced by deployment.
+Practice-hold/calibration, ranking identity policy and historical rechecking remain
+separate work; this verifies content consistency, not client or recording authenticity.
