@@ -1138,3 +1138,59 @@ native/ideal semantics **NOT_VERIFIED**, physical-exit/classifier/render/hold
 capsule/transform/entity/nested/recovery/portal/topology/real-map, clock/render/
 rates/camera/LOD/hold and human acceptance remain open. No product patch,
 ENGINE pin/tag, QC Build, installed program or deployment changes.
+
+## Bounded native triangle plane-set characterization (offline diagnostic)
+
+`offramp_bevclip.py` consumes the retained five-arm bevel-PM capture above. It
+adds no native seam, query, binary or physics change. All predecessor PM/body/
+query/capture/source gates still run, and their complete report is retained.
+Use NEW report paths in an owned private task root:
+
+```
+python -B tools/offramp_bevclip.py --arms <retained-bevel-PM-arms.json> --output <new-private-report.json>
+python -B tools/test_offramp_bevclip.py --native-arms <retained-bevel-PM-arms.json>
+```
+
+The independent mathematical model constructs front/back-four, three outward
+side planes, optional edge-cross-axis slab-support bevels, and six axial planes
+from xyz/winding, before consulting native outputs. Hull support uses the bound
+standing AABB. Crucially, native axial distances use the ORIGINAL three triangle
+vertices, not the six extruded-prism vertices. This is a native-semantic model,
+NOT the physical finite-prism oracle. Closed intersection intervals and every
+plane's signed start/end distances remain in the report; the native 1/32 entering
+bias is separate from geometric intersection. The first entering plane wins an
+exact within-triangle tie in algebra; general native tie acceptance is untested.
+
+All288 retained actual queries and18 accepted contacts agree. Query geometry
+uses authored xyz, while accepted geometry uses the copied winning triangle.
+Contacts do not capture truefraction: its prediction is labeled, never reported
+as an observed measurement. Only accepted entry tags2/5 ACT here, NOT every
+plane or all native semantics. Quiet-arm queries are NOT_CAPTURED. Removed-
+triangle counterfactuals can be embedded in hypothetical geometry; their closed
+intervals are reported but embedded PM-wrapper outputs are explicitly NOT_MODELED.
+
+For ON down2 ticks21/22, native negative-X axial tag103 separates the whole query
+by0.25/0.625 units. Removing just that plane restores the ideal finite-prism entry
+interval. ON stationary queries are clear in BOTH models. The first unobstructed
+move derived at raw loss22 is clear in BOTH models: outward side tag2 is also a
+full-prism separating plane. Removing tag103 alone does NOT make that move hit.
+The post-command down2 ideal query still intersects at22. Thus neither raw loss
+nor native down2 miss is promoted to physical support departure. The derived
+loss sweep is labeled NOT_CAPTURED_ACCEPTED_TRACE, not invented capture evidence.
+
+Seventeen tests (nine pure, eight retained-native) include2,880 NEW-gate numeric
+query-output refusals,108 copied-contact output/tag refusals and three ACTED
+plane-construction mutants, all independent of the old reader's refusal gates.
+Expanding axial planes to the full slab, removing bevels or shifting the acted
+side plane refuses while predecessor reports and retained arms stay unchanged.
+A shifted front plane does NOT ACT on this fixture; that explicit negative
+coverage control prevents an all-plane runtime-verification claim. Relaxed
+late-query prism overlap also agrees with independent joint convex feasibility.
+Pure invocation skips the eight retained-native tests; skips are not runtime
+evidence. Clean exact-commit OFFLINE reproduction uses the existing immutable
+arms; this does not claim a new native build/run or renewed engine verification.
+
+Only this fixed identity/world/standing-AABB plane-set comparison is closed.
+General triangle support **ABSTAIN**, arbitrary native semantics **NOT_TESTED**,
+physical-exit/classifier/render/hold acceptance **NOT_TESTED**. No product patch,
+engine pin/tag, QC Build, installed program, deployment or release changes.
