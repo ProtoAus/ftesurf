@@ -53,6 +53,71 @@ commands/results, control vs subject, unresolved questions and next step);
 private anti-cheat checkpoints stay in the private tree. Do not turn unknowns
 into findings or completed tests into claims about an unverified deployed build.
 
+## Agent workspace lifecycle
+
+Mandatory for NEW agent-created scratch copies on Windows and the NanoPi.
+Before creating one, reread `C:\FTESurf\AGENTS.md`: a detached worktree can
+carry an older instruction snapshot. Read any sibling instructions as usual.
+Do not move existing installs, peer work or retained archives to enforce this
+layout retroactively.
+
+| Scratch work | One task root |
+|---|---|
+| Non-private Windows | `C:\FTESurf-worktrees\<task>-<unique>\` |
+| Private/security Windows | `C:\FTESurf-private\worktrees\<task>-<unique>\` |
+| NanoPi | `/srv/nvme/agent-work/<task>-<unique>/` |
+
+Keep the task name short and the suffix unique. Verify ancestors are ordinary
+owned directories, not links/mount redirections into protected paths. On the
+NanoPi verify this root is OUTSIDE service/static-file/map/data/database paths;
+restrict private task directories to the owner (`0700`). If the approved root
+cannot be used, ask; do not silently scatter copies elsewhere.
+
+- **One root per task/session, not one top-level folder per attempt.** Keep
+  `qc/`, `engine/`, `control/`, `subject/`, `artifacts/` and `tmp/` below it as
+  needed. Use inspected Git SHAs and `git worktree add` for source isolation.
+  A clone is an exception with a recorded reason, not the default. Reuse only
+  YOUR compatible scratch trees; never reuse a peer's root. Do not duplicate
+  full installs, map/Steam libraries or package caches for every arm. Use
+  verified read-only inputs where supported, not hardlinks to writable player
+  data or unrecorded junctions into a live install.
+- **Ownership first.** Before populating the root, write untracked `OWNER.md`
+  there with task/session owner, UTC creation/update, repository/base SHAs,
+  exact owned paths and process handles, arm purposes, status (`active`,
+  `retained`, `blocked` or `done`) and retention/cleanup plan. Keep private
+  details private; no secrets, credentials, player GUIDs or raw process args in
+  public notes. Checkpoint the root in the session handoff. A filename, old
+  timestamp, clean Git status or missing owner note is NOT abandonment proof.
+- **Contain copies, not the product.** Canonical in-place engine/QC builds,
+  documented `dist/`/release stages, compiler-internal temp files and required
+  runtime gamedir fixtures keep their existing contracts. Do not change CWD
+  or relocate QC `fopen` fixtures blindly: those readers require the gamedir.
+  Give any necessary shared fixture exact ownership, bounded paths and verified
+  park/restore steps. Tool-managed temporary directories are acceptable only
+  with bounded lifetime/cleanup; retained project copies belong in the task
+  root, not `%TEMP%` or a loose `/tmp`/NVMe folder.
+- **Isolation must be checked, not inferred.** Inspect the build script from
+  the exact commit for supported flags and all write/deploy targets. In
+  `src/build.ps1`, `-FteRoot` selects the ENGINE checkout; the QC/product root
+  comes from the script location, and `-QuakeDir` selects the second native
+  destination.
+  Do not assume `-NoDeploy` suppresses every native copy, or that an unsupported
+  flag protects anything. Keep control builds away from live destinations;
+  intentional deployment still follows the dual-install/Pi operations rules.
+- **Retire what you own before ending the task.** Stop only your processes;
+  verify no peer, lock or registered descendant still needs the tree. Inspect
+  staged, unstaged, untracked AND ignored content. Preserve unique source,
+  exact staging, detached/unpushed history and needed evidence in a verified
+  recovery archive/checkpoint BEFORE deletion. A patch alone can omit staged
+  blobs, untracked files or history; a commit alone omits ignored artifacts.
+  Do not force-remove, blanket-clean, follow links or discard player data;
+  ask before any data destruction or uncertain ownership/retention decision.
+  Use ordinary `git worktree remove` only when safe; remove plain disposable
+  copies only from an explicit owned manifest. Keep useful logs/receipts without
+  retaining another whole build by default. If blocked, retain the root, update
+  `OWNER.md`, and report its exact path, reason and next cleanup step. Mark
+  completion only after checking path absence and worktree registrations.
+
 ## Repository layout
 
 - `ftesurf64.exe` — prebuilt FTE engine binary (Windows x64). Engine C code is

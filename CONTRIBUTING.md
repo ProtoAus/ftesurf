@@ -12,7 +12,10 @@ is your recorded times. `git clean -x`, `git clean -X`, `git stash --all`, or
 GitHub Desktop's "Discard all changes" will delete all of it without naming any
 of it.
 
-If you want a scratch tree, clone somewhere else and deploy into your install.
+For an agent scratch tree, use the owned task-root layout in [AGENTS.md](AGENTS.md)
+and the **Agent workspace lifecycle** section of [AGENT_NOTES.md](AGENT_NOTES.md).
+Prefer a Git worktree at an inspected commit; do not scatter full install clones
+around the drives. Deployment into the live installs is a separate, verified step.
 
 ## Set your commit identity before your first commit
 

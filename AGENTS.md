@@ -45,6 +45,31 @@ not only after a failure. That file is intentionally not auto-loaded in full.
 - No release or deployment of another session's uncommitted work. Use a clean
   worktree at an inspected commit for isolated verification and deployment.
 
+## Agent workspace placement and lifecycle
+
+- BEFORE creating a worktree, clone, build copy or test overlay, read **Agent
+  workspace lifecycle** in AGENT_NOTES.md. Use one short, uniquely owned task
+  root: `C:\FTESurf-worktrees\<task>-<unique>\` for non-private Windows work;
+  `C:\FTESurf-private\worktrees\<task>-<unique>\` for private/security work;
+  `/srv/nvme/agent-work/<task>-<unique>/` for NanoPi scratch (never web-served).
+- Put paired QC/engine worktrees, control/subject copies and artifacts UNDER that
+  root. Prefer `git worktree add` at an inspected SHA; do not copy an entire
+  install, map library or dependency cache for every attempt. No new ad-hoc
+  `C:\FTESurf-*`, `fteqw-*`, `%TEMP%` or NVMe-root build directories.
+- Create `OWNER.md` BEFORE populating the root: task/session ownership, UTC,
+  repositories/SHAs, owned paths/processes, status and cleanup/retention plan.
+  Never reuse, move or delete another session's root. Missing ownership is NOT
+  evidence that a folder is abandoned. Existing shared folders are not a
+  migration/cleanup target merely because this new layout differs.
+- On completion stop only your processes, preserve unique source/staging/history
+  and needed evidence, then retire ONLY your verified disposable copies. If
+  cleanup is blocked or retention is needed, mark it and report the exact path;
+  do not leave an unexplained full build tree. Dirty/ignored files, links and
+  player data are not disposable just because the task finished.
+- This governs NEW scratch copies, not canonical builds/deployment paths or
+  runtime-required gamedir fixtures. Keep the documented build/harness contracts
+  and check actual output/deploy targets; a tidy path does not prove isolation.
+
 ## Layout, language and tooling
 
 - `src/server` + `sv_progs.src` -> qwprogs.dat; `src/client` + cl_progs.src ->
@@ -128,6 +153,7 @@ operational constraints and recorded failed experiments, not optional background
 | Task | Required sections |
 |---|---|
 | Any implementation/test | Build; Run and test; Conventions; relevant Pitfalls |
+| New worktree/build copy/overlay; workspace cleanup | Agent workspace lifecycle; Build; Run and test; measured cleanup pitfalls in Pi operations |
 | Movement/trigger/prediction | Boundaries and interfaces; Anti-cheat and run evidence; engine patch entries |
 | Recorder/receipts/holds/rewind | Anti-cheat and run evidence; Rewind; private design |
 | HUD/replay/run lines | The run line; Boundaries and interfaces; Rewind if relevant |
