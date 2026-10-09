@@ -634,7 +634,7 @@ capsule/transformed/entity gates and abstentions remain unchanged.
 
 Exact physical exit time, classification/debounce/mark policy, general embedded/
 nested-transform/model/map wiring and geometry, triangle/displacement, general
-non-world/entity geometry, airborne or other posture trajectories, explicit
+non-world/entity geometry, general airborne/other posture trajectories, explicit
 cached/recovery/portal motion, general world support, independent capsule/
 transform geometry, P560 clock and same-input recorded/live/render/rate/camera/
 LOD/hold acceptance remain **NOT_TESTED**.
@@ -683,6 +683,46 @@ payload faults, silent hit/miss/removal and geometry-promotion refusal.
 
 This closes only the bounded native triangle execution/query/capture-binding
 control. Independent slab/bevel/support/continuous-exit geometry, real-map
-triangle/displacement/props, airborne posture, explicit cached/recovery/portal
+triangle/displacement/props, general airborne posture, explicit cached/recovery/portal
 actors, classifier/live marker and clock/render/rates/LOD/hold acceptance remain
 **NOT_TESTED**. No product mover or collision behavior changes or deployment.
+
+## ACTED open-air duck/unduck and matched no-duck falling control
+
+Protocol 8 appends two 64-tick flat-floor AABB actors (18 total cases). Both seed
+standing at (-100,0,128) with velocity (60,0,0), then use real 15ms PM_PlayerMove
+commands. Case 16 holds duck on ticks 3..10 and releases on 11; case 17 never
+ducks. There is no post-seed pose/hull injection. These are open-air falling
+controls, NOT airborne collision/ceiling/sliding or general posture coverage.
+
+Native duck is instantaneous in air: on tick 3 the actual hull becomes 45 high,
+ducked=1, ducking=0, timer=1000 and oldbuttons carries duck. The timer decreases
+15ms per held tick. Native release on 11 immediately restores the 62-high hull,
+clears ducked/ducking/timer/buttons, and reverses the origin adjustment. Against
+the matched no-duck trajectory, actual origin.z differs by +8.5 on 3..10 and by
+zero before/after (float32 rounding tolerance 1e-4); XY and velocities agree.
+Both have actual airborne gravity, one matching native landing on 37, and end
+standing on the floor. The reader requires all of these ACTED gates.
+
+After each tick, stationary/down2/projected whole-floor/single-floor queries use
+the CURRENT actual hull. Full native hit/solid truth must agree with the bounded
+joint convex/AABB oracle. The stationary standing-hull query uses a LOCAL hull
+copy at the current pose: it is not the mover's CanUnduck sweep, physical support
+or an accepted body contact. Projected floor hits throughout; actual down2 misses
+in early flight and hits after landing. Capture binds native body, actual hull,
+posture/timer/buttons for every completed tick. These actors have ZERO accepted
+ramp contacts; full tick/hull/selftest/footer envelopes remain mandatory, and
+nothing promotes that absence into airborne winning-geometry coverage.
+
+Fixture-only nooracle/oracle and capture OFF/ON/repeat preserve exact body/query
+parity and repeat capture bindings. Original sixteen full case/winner objects
+stay EXACT. Twenty-one motion units and 295 ACTED refusal controls pass, including
+all retained controls and airborne actor/hull/timer/button/origin/query/landing
+faults. Fixture-only oracle mutations also refuse without a capture backstop.
+
+Only bounded open-air crouch/release execution and snapshot/query binding are
+closed. General airborne/blocked-unduck/sliding/dead/spectator posture, native
+cached/recovery/portal trajectories, independent capsule/transform/triangle
+geometry, real-map coverage, continuous physical exit/classifier/marks/clock/
+render/rates/LOD/hold/human acceptance remain OPEN. Tooling only, NEVER ship the
+private instrumented servers; no product patch/pins/Build or deployment.

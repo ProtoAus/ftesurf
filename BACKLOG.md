@@ -2418,8 +2418,13 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   authored vertices/indices are wiring, not copied accepted geometry. Triangle
   support remains ABSTAIN (no independent triangle oracle); original fourteen
   full case/winner arrays stay exact. Real-map triangle/displacement/prop
-  geometry and identity remain open. This is bounded fixture coverage, not a
-  physical-exit or classifier fix.
+  geometry and identity remain open. An open-air crouch/release and matched
+  no-duck falling pair now ACT native instant hull/origin/timer transitions,
+  +8.5-unit shift/reversal and matching landing. Current-hull native/joint AABB
+  queries and completed tick/hull binding pass; original sixteen full case/winner
+  objects stay exact. These zero-ramp-contact actors do not cover airborne winning
+  collisions, blocked-unduck/sliding or general posture. This is bounded fixture
+  coverage, not a physical-exit or classifier fix.
   General geometry, uninstrumented cadence, LODs, unsupported mover paths and
   the recorded/live/render chain remain open.
   Falsifier: a known brush edge, raw contact-loss tick/hull/plane,

@@ -7,7 +7,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from offramp_motion import EMBEDDED_MODEL, ENTITY_MODEL, INSTANCE, LABELS, MAX_STEPS, PARAMS, authored, compare, grade, joint_overlap, oracle_validate, parse, shape_category, step_count
+from offramp_motion import EMBEDDED_MODEL, ENTITY_MODEL, INSTANCE, LABELS, MAX_STEPS, PARAMS, assess_airposture, authored, compare, grade, joint_overlap, oracle_validate, parse, shape_category, step_count
 from offramp_motion_smoke import TARGET, instrument, prepare
 import test_offramp_hull as hull_tests
 
@@ -62,6 +62,24 @@ def transformed_query():
     tick = [9, 0, 15, 0, 0, 0, 1, .015, 1, 0]+seed[:6]+seed[6:]+[0]*6
     row = ['9', '0', 'stationary', '-1']+list(map(str, seed[:3]*2+[1, 0, 0, 0, 0, 0, 0, 0, 0]))
     return brushes, tick, row
+
+
+def airposture_cases():
+    """Synthetic gate units only; ACTED controls below use actual native logs."""
+    cases = []
+    for case in (16, 17):
+        brushes, seed = authored(case); ticks, queries = [], []
+        for i in range(64):
+            duck, ground = case == 16 and 3 <= i <= 10, i >= 37
+            t = [case, i, 15, 0, 0, 8 if duck else 0, 1, .015, 0, int(ground),
+                 -100+i*.9, 0, (0 if ground else 128-.09*(i+1)**2)+(8.5 if duck else 0),
+                 60, 0, 0 if ground else -12*(i+1), -16, -16, 0, 16, 16,
+                 45 if duck else 62, int(duck), 0, 1000-15*(i-3) if duck else 0, 0, 0, 8 if duck else 0]
+            q = [[0]*19 for _ in range(5)]
+            for row, fraction in zip(q, (1, .5 if ground else 1, .5, .5, 1)): row[10] = fraction
+            ticks.append(t); queries.append(q)
+        cases.append(dict(label=LABELS[case], brushes=brushes, seed=seed, ticks=ticks, oracles=queries))
+    return cases
 
 
 def flat_query():
@@ -279,15 +297,37 @@ class Tests(unittest.TestCase):
         with patch('offramp_motion.joint_overlap', side_effect=AssertionError('REMOVED_ACTED')):
             with self.assertRaisesRegex(AssertionError, 'REMOVED_ACTED'): oracle_validate(row, tick, brushes)
 
+    def test_airborne_instant_duck_unduck_control_and_landing(self):
+        cases = airposture_cases(); assess_airposture(*cases)
+        self.assertEqual(cases[0]['airborne_duck_ticks'], list(range(3, 11)))
+        self.assertEqual(cases[0]['native_landing_tick'], 37)
+        for case, tick, index, value in ((0, 3, 12, 120), (0, 3, 21, 62), (0, 3, 22, 0),
+                (0, 3, 23, 1), (0, 3, 24, 985), (0, 11, 24, 1000), (0, 3, 27, 0),
+                (1, 3, 22, 1), (0, 37, 9, 0), (1, 0, 15, 0), (1, 63, 12, 5)):
+            bad = airposture_cases(); bad[case]['ticks'][tick][index] = value
+            with self.subTest(case=case, tick=tick, index=index), self.assertRaises(AssertionError):
+                assess_airposture(*bad)
+
+    def test_airborne_full_current_hull_native_queries_use_joint_floor_oracle(self):
+        brushes, _ = authored(16)
+        tick = airposture_cases()[0]['ticks'][3]
+        row = ['16', '3', 'stationary', '-1']+list(map(str, tick[10:13]*2+[1, 0, 0, 0, 0, 0, 0, 0, 0]))
+        oracle_validate(row, tick, brushes)
+        with patch('offramp_motion.joint_overlap', side_effect=AssertionError('AIR_AABB_ACTED')):
+            with self.assertRaisesRegex(AssertionError, 'AIR_AABB_ACTED'): oracle_validate(row, tick, brushes)
+        for index, value in ((2, 'untriangled'), (3, '1'), (4, '999'), (11, '1'), (13, '-1'), (14, '1')):
+            bad = row[:]; bad[index] = value
+            with self.subTest(index=index), self.assertRaises(AssertionError): oracle_validate(bad, tick, brushes)
+
     def test_explicit_fixture_profile_and_case_schema(self):
         self.assertEqual(len(PARAMS), 43)
         self.assertEqual(PARAMS['fixrampbugs'], 2)
         for c in range(len(LABELS)):
             brushes, seed = authored(c)
             self.assertEqual(len(seed), 12)
-            self.assertEqual(len(brushes), 2 if c in (5, 7) or c >= 10 else 1)
+            self.assertEqual(len(brushes), 2 if c in (5, 7) or 10 <= c < 16 else 1)
             self.assertEqual(len(brushes[0]['planes']), 7 if c == 2 else 6)
-            self.assertEqual(step_count(c), 32 if c < 6 or c >= 8 else (96 if c == 6 else MAX_STEPS))
+            self.assertEqual(step_count(c), 64 if c >= 16 else (32 if c < 6 or c >= 8 else (96 if c == 6 else MAX_STEPS)))
         self.assertEqual(authored(7)[0][1]['mins'], [-32, -128, 50])
         self.assertEqual(authored(7)[0][1]['maxs'], [32, 128, 128])
         self.assertEqual(authored(10), authored(11))
@@ -548,6 +588,31 @@ def controls(text):
         ('triangle-accepted-hull', 'OFFRAMPHULL', 'CONTACT', 7, 45),
         ('triangle-accepted-capsule', 'OFFRAMPHULL', 'CONTACT', 8, 1)):
         bad.append((label, change_case(text, 14, tag, index, value, namespace=namespace)))
+    for label, case, tag, index, value, pred, namespace in (
+        ('air-button-silent', 16, 'TICK', 5, 0, lambda r: r[1] == '3', 'OFFRAMPMOTION'),
+        ('air-no-instant-duck', 16, 'TICK', 23, 1, lambda r: r[1] == '3', 'OFFRAMPMOTION'),
+        ('air-wrong-crouch-hull', 16, 'TICK', 21, 62, lambda r: r[1] == '3', 'OFFRAMPMOTION'),
+        ('air-timer-silent', 16, 'TICK', 24, 0, lambda r: r[1] == '3', 'OFFRAMPMOTION'),
+        ('air-oldbuttons-silent', 16, 'TICK', 27, 0, lambda r: r[1] == '3', 'OFFRAMPMOTION'),
+        ('air-no-instant-unduck', 16, 'TICK', 22, 1, lambda r: r[1] == '11', 'OFFRAMPMOTION'),
+        ('air-origin-shift-silent', 16, 'TICK', 12, 128, lambda r: r[1] == '3', 'OFFRAMPMOTION'),
+        ('air-fake-gravity', 17, 'TICK', 15, 0, lambda r: r[1] == '0', 'OFFRAMPMOTION'),
+        ('air-fake-control-duck', 17, 'TICK', 22, 1, lambda r: r[1] == '3', 'OFFRAMPMOTION'),
+        ('air-no-landing', 16, 'TICK', 9, 0, lambda r: r[1] == '63', 'OFFRAMPMOTION'),
+        ('air-query-endpoints', 16, 'ORACLE', 4, 999, lambda r: True, 'OFFRAMPMOTION'),
+        ('air-query-body-solid', 16, 'ORACLE', 11, 1, lambda r: r[2] == 'stationary', 'OFFRAMPMOTION'),
+        ('air-query-triangle-family', 16, 'ORACLE', 2, 'untriangled', lambda r: r[2] == 'down2', 'OFFRAMPMOTION'),
+        ('air-query-projected-silent', 16, 'ORACLE', 10, 1, lambda r: r[2] == 'projected', 'OFFRAMPMOTION'),
+        ('air-query-standing-fake-hit', 16, 'ORACLE', 10, .5, lambda r: r[2] == 'standing', 'OFFRAMPMOTION'),
+        ('air-captured-hull', 16, 'TICK', 6, 62, lambda r: r[0] == '3', 'OFFRAMPHULL'),
+        ('air-captured-duck', 16, 'TICK', 9, 0, lambda r: r[0] == '3', 'OFFRAMPHULL'),
+        ('air-captured-timer', 16, 'TICK', 11, 0, lambda r: r[0] == '3', 'OFFRAMPHULL')):
+        bad.append((label, change_case(text, case, tag, index, value, pred, namespace)))
+    # Plausible multi-tick posture edits must not erase duck/release actuation.
+    for case, start, end, updates in ((16, 3, 10, {21: 62, 22: 0, 24: 0, 27: 0}),
+                                    (16, 11, 63, {21: 45, 22: 1, 24: 1000})):
+        bad.append(('air-coherent-silent-posture-'+str(start), change_all(text, 'TICK', updates,
+                    lambda r, case=case, start=start, end=end: int(r[0]) == case and start <= int(r[1]) <= end)))
     return bad
 
 
@@ -624,7 +689,14 @@ def acted_controls(arms):
     assert r['triangle_removal_trajectory_gates'] == 'PASS'
     assert r['cases'][14]['independent_triangle_query_oracle'] == 'NOT_IMPLEMENTED'
     assert r['cases'][14]['accepted'] and not r['cases'][15]['accepted']
-    print(f'{len(bad)+13} ACTED native motion controls, zero failed; capsule/transformed/entity/embedded/triangle actors ABSTAIN PASS')
+    assert r['airborne_open_duck_unduck_native_gates'] == 'PASS'
+    assert r['general_airborne_posture_acceptance'] == 'NOT_TESTED'
+    # Fixture-only oracle arm has no capture backstop: plausible legal pose or
+    # timer changes MUST still fail the matched native-air posture gates.
+    for index, value in ((12, 128), (24, 985), (27, 0), (9, 1)):
+        altered = change_case(texts['control'], 16, 'TICK', index, value, lambda row: row[1] == '3')
+        with unittest.TestCase().assertRaises(AssertionError): grade(altered)
+    print(f'{len(bad)+17} ACTED native motion controls, zero failed; capsule/transformed/entity/embedded/triangle actors ABSTAIN PASS')
 
 
 def snapshot(engine):

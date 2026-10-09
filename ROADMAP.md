@@ -433,9 +433,14 @@ world winner, hit/miss/same-pose removal queries and different removed movement.
 Origin/leaf/model/actual hull/identity instance bind with an empty brush payload;
 authored vertex/index rows are wiring, not copied accepted geometry. Triangle
 geometry/support remains ABSTAIN (no independent triangle oracle). Exact original
-fourteen full case/winner parity remains required. General non-world/entity/
-embedded map wiring, nested transforms and geometry, real-map triangle/
-displacement/prop geometry, airborne posture, explicit cached/recovery/portal paths,
+fourteen full case/winner parity remains required. An open-air duck/release and
+matched no-duck falling pair now ACT native instant hull/origin/timer transitions,
++8.5-unit crouch shift/reversal and matching landing, with actual tick/hull binding
+and current-hull joint AABB fixture queries. Original sixteen full case/winner
+objects remain exact. This does not cover airborne winning collisions or general
+posture. General non-world/entity/embedded map wiring, nested transforms and
+geometry, real-map triangle/displacement/prop geometry, general airborne/blocked/
+sliding posture, explicit cached/recovery/portal paths,
 full capsule/transform geometry and general-map coverage remain unverified. These sampled fixture controls do not establish
 continuous physical exit time or close classifier, FPS/tick-rate, held/render,
 LOD or human acceptance above.
