@@ -1741,6 +1741,20 @@ publicly WITH its fix, not before it.
   listen server's tick in a harness, `sv_cheats 1` first -- the movement lock
   reverts a typed `pm_ticrate`.
 
+- **Front reach on the captured path (offline, not exit acceptance).**
+`tools/offramp_trireach.py` runs the exact front algebra on the committed
+segments below instead of endpoint chords. `hypothetical_down` (0<=d<=2)
+CONTAINS `in_place`; on these actors live in-place reach is empty, the hull
+riding 1/32 off whichever plane it hit (0.0521 above the front with the bevel,
+0.1012 without). Parameterize a command by time-left BEFORE x committed
+fraction, pinned against captured velocity; still not an exit clock. Record
+whether a reach boundary is the horizon cut or the footprint edge: both
+entries here are the cut, both exits the edge, and bevel-OFF's "interior
+reach, unreachable endpoints" holds at horizon 2 only. The chord was resolvably
+wrong in 1 of 96 commands; a kink under one float32 step is not a finding.
+No actor loses and regains reach: recontact is NOT ACTED. A gate that compares
+empty with empty has not run -- carry the non-empty count (12 of 114 here).
+See `tools/OFFRAMP_CONTACT.md`.
 - **Bounded actual intra-command path diagnostic (not exit acceptance).**
 `tools/offramp_tripath{,_smoke}.py` adds fixed-capacity native TryPlayerMove
 value copies to the unchanged three bevel-PM actors. Capture ALL attempts,

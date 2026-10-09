@@ -1335,3 +1335,104 @@ source/mode faults also refuse. Pure invocation skips retained-native cases;
 skips are NOT execution evidence. Clean exact-tooling-commit reproduction must
 install in new native control/subject trees, build and rerun all five arms,
 not just re-grade old logs. No product patch, pin/tag/Build, deployment/release.
+
+## Front reach on captured committed segments (offline diagnostic)
+
+`offramp_trireach.py` feeds the committed body segments captured above to the
+exact front-domain algebra, in place of chords between command endpoints. It
+consumes the same five arms through every prior gate; it launches and
+instruments nothing. Use NEW report paths under an owned private task root:
+
+```
+python -B tools/offramp_trireach.py --arms <native-path-arms.json> --output <new-private-report.json>
+python -B tools/test_offramp_trireach.py --native-arms <native-path-arms.json>
+```
+
+Each committed segment gets two domains: `in_place` (horizon 0: the hull meets
+the front where the mover put it) and `hypothetical_down` (the closed range
+0<=d<=2, which CONTAINS in_place; 2 binds the down2 query and is not a support
+constant). The horizon-0 domain must equal the d=0 edge of the deeper one. On
+these actors that gate has something to compare on 12 segments only, all on
+the removed actor's counterfactual front; the 82 live segments compare empty
+with empty. Segments keep attempt ordinal, bump, time-left before and after,
+biased fraction, plane and both velocities. Arithmetic is exact on serialized
+decimals; the long fractions in a report are not measurement precision.
+
+A command is parameterized by nominal share: time-left BEFORE the attempt times
+committed fraction, normalized. Unlike time-left alone that is defined for the
+clear final pass. The rule is pinned by requiring the captured pre-clip
+velocity to carry each start to its end in that share; only hit commands can
+tell one rule from another. It remains a parameterization, NOT an elapsed exit
+clock. A zero-fraction hit is one point with zero share.
+
+Track coverage is glued from the segments, and two computations of the same
+thing must then agree: the track cut to a command against that command's own
+glue, and every boundary site against its command parameter. The probe is
+exhaustive for the GLUING (membership is constant between breakpoints, so each
+cell and breakpoint is compared with local coverage). Its common-point
+witnesses, placed 2^-40 of a cell from each breakpoint and at quarter points,
+only SAMPLE a segment's own domain: an interval lost from both local and glued
+coverage can sit between samples, and that domain rests on the two
+constructions of the front-reach section. Of 1,245 probe parameters 233 fall
+inside coverage, 91 of those on live fronts. Each boundary records the down
+range it is reachable at, so a boundary on the horizon cut (it would move with
+the horizon) is told from one on the footprint edge. The chord domain is
+recomputed for all 96 commands and must equal the preceding section's. A kink
+counts as resolved only beyond one float32 step of the command's largest
+coordinate, the mover's own position quantum.
+
+Observed on 114 segments (14 zero-length points), bounded to these three
+actors and to horizon 2 unless stated:
+
+- Four commands carry a positive-fraction hit. Two kink resolvably (0.34 and
+  0.12 units off the chord at the same share); the other two by less than one
+  float32 step. Coverage changes resolvably in ONE command.
+- Bevel ON: one reach interval. It begins on the pre-contact segment of the
+  first-hit command at 0.257 of that command, where the chord said 0.339. That
+  entry is the horizon cut. It ends at exactly 1/3 of the last command whose
+  native return still reports ramp contact, where the hull's max x passes the
+  front's edge; that exit is reachable from 0.052 down to 2 and does not
+  depend on the horizon.
+- Bevel OFF: the chord's "unreachable endpoints, reachable interior" is
+  reproduced on one captured residual sweep that is 0.99997 of its command;
+  the two differ below the float32 kink. It is a horizon-2 statement: the
+  entry is the horizon cut, none of the 39 captured points is reachable at 2,
+  and 2 and 4 of them are at horizons 4 and 8. Native ramp contact spans six
+  commands and horizon-2 reach touches one.
+- Live in-place reach is empty on all 82 live segments. Where horizon-2 reach
+  exists the hull is held off by the entering bias of the plane it hit: 0.0521
+  = (1/32)/0.6 over the bevel plane (24 segments) and 0.1012 = (1/32)/0.3087
+  over the bevel-off side plane (one segment, at its footprint exit). The
+  other 57 live segments are out of horizon-2 reach altogether.
+- 12 of the 18 native hit bodies are reachable at horizon 2, all bevel ON. On
+  their REQUESTED sweeps the exact front is met in place where native reports
+  truefraction: one fresh entry agrees within 3e-7 units along the contact
+  normal, and the other eleven are the same re-contact from bias distance on
+  one edge, within 7e-6. Five of the six bevel-OFF ghost hits never meet the
+  front; the sixth meets it 0.108 of a sweep after the native hit. This is
+  not native equivalence.
+- NO actor loses reach and regains it. That is reported
+  `NOT_ACTED_IN_THESE_ACTORS`, never passed; a regained touch of zero measure
+  would read `ZERO_MEASURE_TOUCH_ONLY`. Hand-derived kinked paths show the
+  algebra finding a gap the chord covers and reach the chord misses, which is
+  algebra, not native evidence.
+
+Twenty-nine tests (twelve pure, seventeen retained-native). Each of these
+refuses at its own gate: the chord substituted for captured segments; three
+wrong share rules (equal, time-left after, truefraction); merged or exchanged
+horizons; a shifted track glue; track or command shares exchanged; a stuck
+command offset; a forged predecessor chord, kinked or not; identity, duration,
+ramp-flag, hull and actor-order faults. 1,026 mirrored segment-field faults
+refuse at chain binding, which is binding and not independent native semantics.
+Coverage nests across horizons 0/2/8 on all 114 segments, with 12/37/45 of
+them non-empty. Pure invocation skips the retained cases; skips are not runtime
+evidence. Clean reproduction is OFFLINE reuse of retained captures, not a new
+native run.
+
+General triangle support remains **ABSTAIN** and native front-reach
+equivalence **NOT_CLAIMED**. Physical exit, load-bearing or standable contact,
+discovered neighborhood topology, cached/recovery/portal/ground/sliding routes
+and classifier/render/hold/clock acceptance remain **NOT_TESTED** or
+**NOT_IMPLEMENTED**. Loss followed by recontact needs fresh native actors that
+lose and regain reach. No product patch, engine pin/tag, QC Build, installed
+progs, deployment or release.
