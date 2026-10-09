@@ -2431,8 +2431,13 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   SAT, with native short-back/stationary misses despite ideal overlap. Explicit
   front/solid/removal controls and exact original motion/copy parity bind this
   NON-equivalence, not a marker/collision fix or unconditional support oracle.
-  General native corners/bevel bias/ties and real-map triangle/displacement/prop
-  geometry and identity remain open. An open-air
+  A separate `tools/offramp_tribev.py` setup-only full BIH fixture now ACTS a
+  copied-winning front-edge bevel tag5 with independent SAT entry/bias, while
+  bevel-OFF produces earlier tag2 contact and stationary false solid. Removal,
+  face/occupied/outside/repeat controls and old twenty-case/copy/slab parity pass.
+  This is NOT a new bevel-winning PM actor or support/physical-exit/marker fix;
+  general native corner/bias/tie behavior, transforms and real-map triangle/
+  displacement/prop geometry and identity remain open. An open-air
   crouch/release and matched no-duck falling pair now ACT native instant hull/origin/timer transitions,
   +8.5-unit shift/reversal and matching landing. Current-hull native/joint AABB
   queries and completed tick/hull binding pass; original sixteen full case/winner

@@ -989,3 +989,71 @@ It does NOT fix engine collision, off-ramp marking, physical exit or topology,
 or close arbitrary bevel/corner/bias/tie/transform/capsule/entity/recovery/portal/
 real-map, clock/render/rates/LOD/hold or human acceptance. No product patch,
 ENGINE pin/tag, QC Build, installed program or deployment changes are implied.
+
+## Bounded copied-winning front-edge/bevel queries (private setup only)
+
+`offramp_tribev_smoke.py` composes the unchanged motion/copy/back-slab layers
+with a restored setup-only full BIH fixture. Install in a NEW clean isolated
+engine worktree, build sv-rel with pwsh7 and the documented TMP/TEMP recipe,
+then use the unchanged five-arm motion runner. NEVER ship these servers.
+
+```
+python tools/offramp_tribev_smoke.py --instrument-native <private-engine>
+python tools/offramp_motion_smoke.py --server <private-server> --control-server <same-base-fixture-only-server> --output-dir <new-arms-dir> --timeout 240
+python tools/offramp_tribev.py --arms <arms.json> --output <new-report.json>
+python tools/test_offramp_tribev.py --native-arms <arms.json>
+```
+
+Ordered xyz (0,0,0), (0,4,-4), (4,0,-4), indexes0/1/2, solid-side normal
+(1,1,1)/sqrt3, slab4 and centered AABB[-.5,.5] define this identity fixture.
+Five full native queries run active bevels1, active bevels0, removed bevels1,
+then repeat. Twenty restored setup calls per ON arm produce600 QUERY rows and
+600 bound COPY rows; fixture-only/capture-OFF emit NONE. Fixed numeric copies
+are made immediately at return; no source/model/index/xyz pointer survives into
+these rows. Probe/origin/callback/out/sourceclip/bevel state restores before the
+original mover; no new PM path queries, hot-path logs or actor changes.
+
+- Face reference (1,1,2)->(1,1,-2) ACTS front tag0 at true5/8 and native biased
+  fraction5/8-sqrt3/128, both bevel modes.
+- Edge (-.25,2,0)->(-.25,2,-2) ACTS bevel tag5/normal(0,1,1)/sqrt2/dist0 with
+  true1/2 and biased1/2-sqrt2/64. Independent full finite-prism SAT over COPIED
+  WINNING xyz gives that entry plane and truefraction, not vice versa.
+- Bevel-OFF instead ACTS in-plane tag2/normal(-2,1,1)/sqrt6 at true1/4 and
+  biased1/4-sqrt6/64. Independent geometry still enters1/2: earlier hit is a
+  ghost, NOT actual geometric support.
+- Stationary (-.25,2,-.75) is independently clear: hull minimum y+z=.25 exceeds
+  prism maximum0. Native bevels1 misses, bevels0 sets startsolid/allsolid.
+  Stationary (-.25,2,-2) ACTS solid in both; (6,6,6) is clear in both.
+- Every same-pose removal query is natively clear, even where the now-inactive
+  prism hypothetically intersects. Solid/miss/removal copies are fully empty;
+  only actual clear-start winning hits carry the complete fixed native copy.
+
+Original triangle axial bounds admit these front contacts and ghost poses;
+bevel-OFF changes only edge-cross constraints, not those bounds or broadphase.
+The hand-derived ON edge bound is y+z<=1 for this box; the OFF in-plane bound
+-2x+y+z<=2 instead admits y+z<=1.5 at x=-.25. Separate joint convex feasibility
+checks agree with full SAT before/after entry and on stationary separation;
+omitting edge-cross axes ACTS that ghost as an offline false positive. This
+bounded front result does NOT undo the measured back-slab NON-equivalence or
+establish global native/ideal geometry agreement.
+
+Protocol v1 orders BEGIN(1,30), SOURCE(template/installer digest), FIXTURE18,
+QUERY23/COPY17 x30 and END30. Queries bind ordinal/mode/actual endpoints, native
+fraction/truefraction/flags/contents/plane and kind/leaf/root/depth/direct-BIH;
+copies bind ordinal/status/tag/applied bevel/slab/indexes/xyz, with explicit empty
+clearing on nonwinning returns. Source/schema/order/envelope/count/finite/integer/
+fixture/geometry/hull/ownership/binding/local/runtime-repeat faults refuse.
+Reports need NEW paths and hash retained binaries/configs/manifests/logs. Ten
+units (six pure, four actual-native) and24,360 ACTED numeric refusal controls pass;
+mirrored wrong new fraction/xyz preserves all old mover/copy/slab parity then
+refuses. Pure invocation skips four native tests; skips are NOT runtime evidence.
+Clean exact-commit native rebuild repeats all five arms, not merely the reader.
+Original twenty full motion/copy/back-slab results stay exact, with zero NEW
+normalized native build messages versus the same-base fixture-only control.
+
+This is setup-only small-AABB evidence, NOT a new bevel-winning PM trajectory,
+physical exit measurement, support authentication or off-ramp marker/classifier
+fix. Original unresolved capture categories and general triangle support ABSTAIN
+remain. General corner/tie/bias/transform/capsule/entity/nested/topology/recovery/
+portal/real-map, clock/render/rates/LOD/hold and human acceptance are OPEN. No
+product patch, engine pin/tag, QC Build, installed program or deployment change.

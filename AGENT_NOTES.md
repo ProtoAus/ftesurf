@@ -1889,6 +1889,20 @@ publicly WITH its fix, not before it.
   stays ABSTAIN; no engine collision/marker fix or deployment. Corpus subset
   drivers must retain/report non-file glob matches (including directories named
   run.rec), never delete player fixtures or call skipped candidates full coverage.
+- **Bounded copied front-edge/bevel queries (tooling only).** `offramp_tribev`
+  restores a separate setup-only full BIH fixture before the unchanged mover.
+  One oblique identity triangle/small AABB ACTS a tag5 bevel winner: independent
+  SAT over COPIED winning xyz gives entry1/2 and 1/32 normal-distance bias.
+  Bevel-OFF instead wins in-plane tag2 at1/4 and reports a stationary false solid
+  where complete SAT and independent joint feasibility prove separation. Face,
+  occupied, outside, removed and repeated controls ACT; solid/miss copies remain
+  empty. Original axial bounds admit these front contacts; this bounded agreement
+  does NOT undo the measured back-slab NON-equivalence. Thirty queries/setup,
+  ten tests (four actual-native) and24,360 ACTED numeric refusals bind full queries
+  and return-bound copies. Mirrored new fraction/xyz faults preserve old mover/
+  copy/slab parity then refuse. This is NOT a new bevel-winning PM trajectory,
+  authenticated support, physical exit, marker/classifier fix or deployment.
+  General corner/tie/transform/capsule/entity/topology/recovery/portal remains open.
 
 ## Rewind (Patch 477)
 

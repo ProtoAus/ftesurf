@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""PRIVATE restored full native BIH front-edge/bevel installer; NEVER ship."""
+import argparse
+import hashlib
+from pathlib import Path
+
+from offramp_contact_smoke import isolated
+from offramp_trislab_smoke import prepare as slab_prepare
+from stitched_rewind_smoke import once
+
+ROOT = Path(__file__).resolve().parent.parent
+TARGET = 'offramp_tribev_native.inc'
+
+
+def source_digest():
+    return hashlib.sha256(b''.join((ROOT/'tools'/n).read_bytes() for n in
+                                  (TARGET, 'offramp_tribev_smoke.py'))).hexdigest()
+
+
+def prepare(engine):
+    common = engine/'engine/common'
+    if (common/TARGET).exists():
+        raise RuntimeError('Refusing to overwrite private front-edge/bevel include')
+    prepared = slab_prepare(engine)
+    bih = common/'com_bih.c'
+    prepared[bih] = once(prepared[bih], '#include "offramp_origin_selftest.inc"',
+                         'static void OfframpTriBev_Selftest(void);\n#include "offramp_origin_selftest.inc"')
+    prepared[bih] += (f'\n#define OFFRAMP_TRIBEV_SOURCE_SHA256 "{source_digest()}"\n'
+                      f'#include "{TARGET}"\n')
+    setup = common/'offramp_origin_selftest.inc'
+    prepared[setup] = once(prepared[setup], '\tOfframpTriSlab_Selftest();',
+                          '\tOfframpTriSlab_Selftest();\n\tOfframpTriBev_Selftest();')
+    prepared[common/TARGET] = (ROOT/'tools'/TARGET).read_text()
+    return prepared
+
+
+def instrument(engine):
+    isolated(engine)
+    prepared = prepare(engine)
+    for path, text in prepared.items():
+        path.write_text(text, newline='' if path.name == 'offramp_motion_native.inc' else None)
+    print('Private restored setup-only front-edge/bevel seams installed:', engine)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('--instrument-native', type=Path, required=True)
+    instrument(ap.parse_args().instrument_native)
+
+
+if __name__ == '__main__':
+    main()

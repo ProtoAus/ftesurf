@@ -442,9 +442,15 @@ A separate `offramp_tricopy` seam now copies actual native winning indexes/xyz,
 return-bound before later probes/source changes. Native competition/ownership
 controls and fourteen independent copied-geometry sweep checks pass; original
 world-triangle-unresolved categories and general support ABSTAIN are unchanged.
-Native axial/broadphase/back/corner/bevel semantics and real-map topology remain
-open, not inferred from the face-only actor. Exact original fourteen full
-case/winner parity remains required. An open-air
+Native axial/broadphase/back/corner/bevel semantics and real-map topology are
+not inferred from the face-only actor. Separate setup-only `offramp_trislab`
+queries ACT native back-slab NON-equivalence to ideal prism SAT; native miss is
+not unconditional geometric clear. Separate `offramp_tribev` queries ACT one
+copied-winning front-edge bevel's geometric entry/bias and bevel-OFF ghosts,
+with face/solid/removal/repeat controls and exact twenty-case/copy/slab parity.
+These are NOT new PM trajectories or general support/physical-exit/marker proof.
+A real bevel-winning PM actor, general corner/tie/transform/capsule/entity/native
+semantics and real-map topology remain open. An open-air
 duck/release and matched no-duck falling pair now ACT native instant hull/origin/timer transitions,
 +8.5-unit crouch shift/reversal and matching landing, with actual tick/hull binding
 and current-hull joint AABB fixture queries. Original sixteen full case/winner
