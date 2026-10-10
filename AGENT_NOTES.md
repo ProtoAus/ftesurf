@@ -5949,8 +5949,10 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   lives `NONCE_KEEP` (5 min): the first fix kept them an hour and one burst
   shut sign-in for that hour. A link scanner that fetches the address first
   burns an honest player's reply; they start again.
-- **EVERY LOBBY IS 127.0.0.1**, so a per-source limit on a lobby route is one
-  bucket for the fleet. The per-player limits come first and are keyed on the
+- **EVERY LOBBY POSTS FROM ONE ADDRESS**, so a per-source limit on a lobby
+  route is one bucket for the fleet. (It is the Pi's LAN address,
+  192.168.1.102, not loopback: surfd's access log, 10 Oct. This line said
+  127.0.0.1 from the rig.) The per-player limits come first and are keyed on the
   client ADDRESS the lobby reports (`ip`), not the guid: a guid is whatever the
   client says, and one player could spend another's. 12 connects and 8 link
   steps a minute an address, which is also every signature it can have checked.
@@ -6023,6 +6025,43 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   schema-12 file (review C measured it) and never looks at the new tables. The
   database backup is `data/surfd.db.bak-76cfd63-20261010-211806` (its stamp is
   local time).
+- **DEPLOYED 2026-10-10 13:45 to 13:49 UTC (FTESurf `3adb6f8`, Patch 615):
+  surfd, the Pi's twelve lobbies, both Windows installs.**
+  THE FIRST ATTEMPT WAS REFUSED, 13:31Z: `surfd-deploy.ps1 -Ref 6fc1695`
+  stopped at its suite stage on test_board's two-thread arm and installed
+  nothing (the migration race above; `3adb6f8` is the fix).
+  surfd, 13:45Z: `-Ref 3adb6f8 -Only` accounts.py, surfd.py, test_accounts.py,
+  test_board.py, web/board.css. Twelve staged suites pass on the Pi, the five
+  files hash-match, master 2479950 SIGHUP'd, `schema migrated 12 -> 13` and
+  `surfd ready` at 13:45:47, /health 12 lobbies. Read back: schema 13, `links`
+  gone, `linkkeys` empty, `linkcodes.claim` there, the one account row intact,
+  `SURFD_LINK_HOSTS` unset, `SURFD_PUBLIC_HOST` (play.proto.bar) resolving on
+  the Pi to 180.150.62.57; the page 200 and an unlink with no token 400 through
+  proto.bar; keyless POSTs to both `/api` routes 403 on the host.
+  Lobbies, 13:47Z: `build.ps1 -Jobs 8 -Pi` from the clean worktree. 12 rows, 0
+  players. `qwprogs.dat` `199ffdd8` (1018110 bytes) and `csprogs.dat`
+  `a28719be` (5007410), hash-verified on the Pi; the previous pair kept as
+  `.prev` (`5e7fd33b`, `7dca72dc`: Patch 613's); all 12 restarted.
+  LIVE, ONCE: `tools/pi_lobby_smoke.py --addr play.proto.bar:27510`, a rig
+  client with a new key and no csprogs, was served `a28719be`, drew the board,
+  logged no QC error, and 18 s after connecting was told "this install is not
+  linked to a Steam account". surfd's access log has that lobby's `POST
+  /api/account`, 200, 21 bytes, at 13:47:55: the engine's signature naming
+  180.150.62.57:27510 verified on the Pi and the address check passed.
+  Windows, 13:49Z: qwprogs.dat/.lno and csprogs.dat/.lno into
+  `C:\FTESurf\ftesurf` and `C:\FTEQuake\ftesurf`. Their `.prev` is now the
+  Patch 613 pair; the Patch 608 csprogs (`69515b32`) is no longer kept.
+  menu.dat (`d3889177`) and the binaries untouched. No game was running.
+  NOT DONE LIVE: a link. Nobody has typed `link` on a real lobby (lextest 00).
+  ROLLBACK: lobbies, the `.prev` pair and a restart. surfd, the five
+  `*.pre3adb6f8-20261011-004334` files (stamp local) and SIGHUP, NOT MEASURED
+  on a schema-13 file: 612's two `/api` routes read `links`, which is gone,
+  though no Patch 613 lobby calls them. The database backup
+  `data/surfd.db.bak-3adb6f8-20261011-004334` is schema 12, taken 13:43Z.
+- **A .dat CARRIES ITS COMPILE DATE.** fteqcc writes `Compiled [YYYY/MM/DD]`
+  into the header (one byte differed, offset 115, across midnight), so "is the
+  installed csprogs a build of main?" cannot be answered by hash on another
+  day. Diff the bytes.
 
 ### The ship set is an allowlist, and three things it never named -- 2026-09-28
 

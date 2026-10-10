@@ -13,6 +13,8 @@ to be wrong.
 
 ## 00. 10 Oct — `link` in the game (Patch 615)
 
+Live on the Pi's lobbies and both your Windows installs since 10 Oct 13:49 UTC.
+
 The second piece of Steam accounts (ROADMAP 14). You signed in on the site on
 10 Oct and it gave you a code; the game now takes one. **Times are still ranked
 exactly as before**: this links an install to an account and nothing reads the
