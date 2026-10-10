@@ -870,6 +870,103 @@ float() Gfx_Console =
 	return TRUE;
 };
 
+// What a page is about, for the modern header. Follows Gfx_Def's page comments.
+string(float page) Gfx_PageName =
+{
+	if (page == 0) return "Surfaces";
+	if (page == 1) return "Reflections and detail";
+	if (page == 2) return "Map content";
+	if (page == 3) return "Collision and prop light";
+	return "Models, fog and particles";
+};
+
+// The modern (ui_style 1) draw; the pieces are cl_saveloc.qc's KeyMenu_Row.
+void(vector scr, float pages) Gfx_DrawModern =
+{
+	local vector p, vc;
+	local float sc, w, h, lsz, ssz, y, i, row, total, hh, vx;
+	local string val, inert;
+
+	sc  = ui_cv_scale;
+	Font_Set(ui_font_ui);
+	lsz = Font_Px(8 * sc);
+	ssz = Font_Px(6 * sc);
+	h   = 14 * sc;
+	hh  = 26 * sc;                      // title line + page line
+	w   = 168 * sc;
+
+	total = 3 * sc + hh + GFX_PER_PAGE * h + 4 * sc + 4 * h + 2 * ssz + 6 * sc;
+	p = [scr_x * cvar("hud_gfx_x"), scr_y * cvar("hud_gfx_y"), 0];
+	_sui_round_draw(p, [w, total, 0], 5 * sc, SUI_THEME_PANEL, 0.90);
+
+	y = p_y + 3 * sc;
+	HUD_Text([p_x + 6 * sc, y + (13 * sc - lsz) * 0.5], "Source Renderer", lsz, SUI_THEME_TEXT, 1);
+	// One dot a page, the lit one where you are.
+	for (i = 0; i < pages; i = i + 1)
+		_sui_round_draw([p_x + w - 6 * sc - (pages - i) * 6 * sc + 2 * sc, y + 5 * sc, 0],
+		                [4 * sc, 4 * sc, 0], 2 * sc,
+		                (i == ui_gfx_page) ? SUI_THEME_ACCENT : SUI_THEME_EDGE_HI, 1);
+	HUD_Text([p_x + 6 * sc, y + 13 * sc + (11 * sc - ssz) * 0.5], Gfx_PageName(ui_gfx_page),
+	         ssz, SUI_THEME_ACCENT, 1);
+	HUD_TextR([p_x + w - 6 * sc, y + 13 * sc + (11 * sc - ssz) * 0.5],
+	          sprintf("page %g of %g", ui_gfx_page + 1, pages), ssz, SUI_THEME_MUTED, 1);
+	drawfill([p_x + 4 * sc, y + hh - 2 * sc, 0], [w - 8 * sc, 1, 0], SUI_THEME_EDGE_HI, 0.7, 0);
+	y = y + hh;
+
+	// The star has a column of its own, so the values line up with or without it.
+	vx = p_x + w - 12 * sc;
+	for (i = 1; i <= GFX_PER_PAGE; i = i + 1)
+	{
+		row = ui_gfx_page * GFX_PER_PAGE + i;
+		if (row <= GFX_ROWS)
+		{
+			inert = Gfx_Inert(row);
+			KeyMenu_Row([p_x, y], w, h, sprintf("%g", i), Gfx_Label(row),
+			            (inert != "") ? KM_INERT : KM_NORMAL, lsz, sc);
+			if (inert != "")
+				HUD_TextR([vx, y + (h - sc - lsz) * 0.5], inert, lsz, SUI_THEME_MUTED, 1);
+			else
+			{
+				val = Gfx_ValueName(row);
+				vc = SUI_THEME_WARN;
+				if (val == "On")  vc = SUI_THEME_GOOD;
+				if (val == "Off") vc = SUI_THEME_DIM;
+				HUD_TextR([vx, y + (h - sc - lsz) * 0.5], val, lsz, vc, 1);
+			}
+			if (Gfx_NeedsReload(row))
+				HUD_Text([vx + 3 * sc, y + (h - sc - lsz) * 0.5], "*", lsz,
+				         SUI_THEME_FOCUS, (inert != "") ? 0.5 : 1);
+		}
+		y = y + h;
+	}
+
+	y = y + sc;
+	drawfill([p_x + 4 * sc, y, 0], [w - 8 * sc, 1, 0], SUI_THEME_EDGE_HI, 0.7, 0);
+	y = y + 3 * sc;
+
+	KeyMenu_Row([p_x, y], w, h, "7", "Reload map", KM_NORMAL, lsz, sc);
+	HUD_TextR([vx, y + (h - sc - lsz) * 0.5], "retry", lsz, SUI_THEME_MUTED, 1);
+	y = y + h;
+	KeyMenu_Row([p_x, y], w, h, "8", "Previous page", KM_NORMAL, lsz, sc);
+	HUD_TextR([vx, y + (h - sc - lsz) * 0.5],
+	          sprintf("%g", ((ui_gfx_page + pages - 1) % pages) + 1), lsz, SUI_THEME_MUTED, 1);
+	y = y + h;
+	KeyMenu_Row([p_x, y], w, h, "9", "Next page", KM_NORMAL, lsz, sc);
+	HUD_TextR([vx, y + (h - sc - lsz) * 0.5],
+	          sprintf("%g", ((ui_gfx_page + 1) % pages) + 1), lsz, SUI_THEME_MUTED, 1);
+	y = y + h;
+	KeyMenu_Row([p_x, y], w, h, "0", "Close", KM_NORMAL, lsz, sc);
+	y = y + h + sc;
+
+	HUD_Text([p_x + 6 * sc, y], "*", ssz, SUI_THEME_FOCUS, 1);
+	HUD_Text([p_x + 11 * sc, y], "needs a rebuild or a map load", ssz, SUI_THEME_MUTED, 1);
+	y = y + ssz + sc;
+	HUD_Text([p_x + 11 * sc, y], "retry may reuse cached data", ssz, SUI_THEME_MUTED, 1);
+
+	Font_Reset();
+	HUD_Rect("gfx", p, [w, total, 0], p);
+};
+
 void(vector scr) Gfx_Draw =
 {
 	local vector p;
@@ -877,6 +974,16 @@ void(vector scr) Gfx_Draw =
 
 	if (!ui_gfx_open)
 		return;
+
+	if (sui_style_modern)
+	{
+		pages = Gfx_Pages();
+		// See the classic draw: a page the row count no longer reaches.
+		if (ui_gfx_page >= pages)
+			ui_gfx_page = 0;
+		Gfx_DrawModern(scr, pages);
+		return;
+	}
 
 	Font_Set(ui_font_ui);
 	lsz = Font_Px(8 * ui_cv_scale);

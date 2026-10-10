@@ -4,6 +4,71 @@ Patch 603 is now published for unrelated reader work. The p603 filenames and
 older checkpoints below preserve evidence continuity, NOT a product-number
 reservation. Fetch both repositories and reallocate max+1 before publication.
 
+## Patch 606 — the board under `ui_style 1`, 2026-10-10
+
+Patch 606 gives +showscores a second layout (`Scores_DrawModern`) behind
+`ui_style 1` and themes the provider. `ui_style 0` runs the board code the
+sections below measured. What changed for these tools:
+
+- `p603scores.py --style 0|1` and `p603perf.py --style 0|1` set `ui_style`
+  before the board opens. Unset leaves the default (0).
+- The modern layout keeps the classic sui ids, so every click, focus and
+  hand-off check runs unchanged against it.
+- The basic suite now clicks the source switch for real (`p603 move sb_t0`,
+  `sb_t1`, `sb_t2`, then `p603 tab <label>`): Online, Segmented, Local, in
+  either style. It clears `lobby_dir` first so an online tab cannot reach a
+  real board from a rig.
+- `p603scores.py` compiles its fixture csprogs from the WORKING TREE's `src/`;
+  `--qc-artifacts` supplies menu.dat, and qwprogs.dat outside `--dense`/`--http`.
+- `p603perf.py` proves the native route from a screenshot by counting the
+  themed provider's own background. It counted ImGui's default blue until the
+  theme removed it.
+- The p603 rigs carry no `gfx/ui/roundmask.png`, so they draw the modern layout
+  square-cornered: the missing-mask fallback, not the shipped look. The shipped
+  look is `tools/ui_gallery.py`'s.
+
+### Commands
+
+    python tools/test_ui_theme.py --engine <exe> --server <sv> --control-qc <Patch 605 progs> --subject-qc <progs> \
+        --library <install gamedir> --out ROOT/runtime/<tag>/theme
+    python tools/p603scores.py --style 0|1 ... --arms legacy --out ROOT/runtime/<tag>/board<style>
+    python tools/p603scores.py --dense --style 1 ... --arms native1 native2 legacy --out ROOT/runtime/<tag>/dense1
+    python tools/p603perf.py run --rows 20 --repeats 3 --samples 5 --style 0|1 ... --out ROOT/runtime/<tag>/perf<style>
+    python tools/ui_gallery.py --engine <exe> --server <sv> --qc-artifacts <progs> --library <install gamedir> \
+        [--styles 0 1] [--width W --height H] [--renderer gl|d3d11|vk] --out ROOT/runtime/<tag>/...
+
+### Results (QC 7027eed's tree with engine d100d856d's, before the patch entries; ROOT/runtime/fix3b)
+
+- **Build.** Three progs at 0 warnings; qwprogs.dat byte-identical to the
+  installed one (no server QC changed).
+- **Theme gate** (`theme/`, rigs `ui-gallery-5rvel_3x` control,
+  `ui-gallery-encl20ng` subject, `ui-gallery-0eomktex` mutant): 13 panel states
+  at `ui_style 0` differ from the Patch 605 progs by 0 pixels; all 13 differ at
+  `ui_style 1`; the mutant (one classic colour moved) is caught on the three
+  hud_edit shots, 76,248-76,734 pixels, and reads 0 on the save-lock shot; the
+  parked mouse reads `tip 1 [cs_tier1]` at style 1 and `tip 0 []` at style 0.
+  32 checks, 0 failed.
+- **Board actions, legacy arm** (`board0/p603-scores-*`, `board1/p603-scores-*`):
+  0 failures in each style, the source-switch clicks included.
+- **Dense, `--style 1`** (`dense1/p603-scores-*`): native1, native2, legacy,
+  0 failures.
+- **Other SUI gates.** `test_ui_modern.py` 28/28, `p498keys.py` 16/16,
+  `test_water_menu.py` 0 failed.
+- **Cost, reported, not gated** (`ROOT/runtime/fix3p`, `fix3q`, `fix3r`; QC
+  UpdateView median us/frame, 20 rows, board open; legacy / no-plugin / native;
+  the machine was shared with the owner and another agent's jobs):
+  final build, modern, 15:57: 1594 / 1537 / 1465 (closed 458 / 429 / 481);
+  final build, classic, 16:01: 1329 / 1157 / 1000 (closed 400 / 364 / 392),
+  `[focus] window is foreground` in every arm;
+  first review copy (a07ae96), modern, 16:07: 1208 / 1190 / 1114 (closed 364 /
+  454 / 365); final build, modern, 16:12: 1169 / 1173 / 1075 (closed 346 / 352 /
+  337). Draw calls 127 and about 18,250 indices in every modern legacy sample.
+  Two runs of one build differ by 36%; no layout or build is shown cheaper, and
+  the 14:37 figures an earlier draft quoted (modern 1074, classic 1203) are one
+  more sample of the same noise.
+- **Not run:** D3D11 and Vulkan in the modern layout, the old-plugin,
+  old-engine and no-plugin arms in the modern layout, hostile names, soak.
+
 ## Published — Patch 605 (and 604), 2026-10-10
 
 `ui_native_scores 1` is published as an opt-in; `0` (legacy) stays the default and

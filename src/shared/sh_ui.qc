@@ -1,14 +1,48 @@
 /* Shared SUI chrome. Existing controls/IDs and the gameplay HUD stay unchanged. */
-#define SUI_THEME_PANEL '0.07 0.09 0.12'
-#define SUI_THEME_LINE '0.35 0.70 1.00'
-#define SUI_THEME_FOCUS '1.00 0.80 0.35'
-#define SUI_THEME_MUTED '0.45 0.48 0.55'
-#define SUI_THEME_TEXT '0.88 0.92 0.98'
-#define SUI_THEME_DIM '0.55 0.60 0.68'
-#define SUI_THEME_CHIP '0.12 0.13 0.16'
-#define SUI_THEME_SELECTED '0.16 0.30 0.44'
-#define SUI_THEME_HOVER '0.18 0.23 0.30'
-#define SUI_THEME_PRESSED '0.22 0.28 0.36'
+
+// ui_style 0: the HUD editor's colours from before the modern style existed.
+#define SUI_CLASSIC_PANEL '0.07 0.09 0.12'
+#define SUI_CLASSIC_LINE '0.35 0.70 1.00'
+#define SUI_CLASSIC_FOCUS '1.00 0.80 0.35'
+#define SUI_CLASSIC_MUTED '0.45 0.48 0.55'
+#define SUI_CLASSIC_TEXT '0.88 0.92 0.98'
+#define SUI_CLASSIC_DIM '0.55 0.60 0.68'
+#define SUI_CLASSIC_CHIP '0.12 0.13 0.16'
+#define SUI_CLASSIC_SELECTED '0.16 0.30 0.44'
+
+/*
+  ui_style 1 (Patch 606): one dark slate ramp and seven pastel accents, read by
+  every modern panel in both VMs. The ImGui scoreboard provider carries the same
+  values (plugins/ui_imgui/scores.inc, `Dusk`); change them together.
+  Surfaces darkest to lightest: WELL, PANEL, CHIP, HOVER, PRESSED.
+*/
+#define SUI_THEME_WELL     '0.075 0.078 0.110'
+#define SUI_THEME_PANEL    '0.102 0.110 0.149'
+#define SUI_THEME_CHIP     '0.141 0.153 0.208'
+#define SUI_THEME_HOVER    '0.184 0.200 0.275'
+#define SUI_THEME_PRESSED  '0.231 0.251 0.345'
+#define SUI_THEME_SELECTED '0.200 0.262 0.361'   // CHIP tinted with ACCENT
+#define SUI_THEME_EDGE     '0.204 0.220 0.286'   // hairlines
+#define SUI_THEME_EDGE_HI  '0.314 0.337 0.435'
+#define SUI_THEME_TEXT     '0.882 0.894 0.949'
+#define SUI_THEME_DIM      '0.651 0.671 0.761'
+#define SUI_THEME_MUTED    '0.435 0.459 0.565'
+#define SUI_THEME_ACCENT   '0.549 0.769 0.973'   // sky
+#define SUI_THEME_ACCENT2  '0.737 0.667 0.961'   // lilac
+#define SUI_THEME_GOOD     '0.608 0.890 0.710'   // mint
+#define SUI_THEME_WARN     '0.961 0.867 0.588'   // butter
+#define SUI_THEME_FOCUS    '0.973 0.749 0.596'   // peach
+#define SUI_THEME_BAD      '0.961 0.624 0.690'   // rose
+#define SUI_THEME_INFO     '0.561 0.863 0.839'   // aqua
+#define SUI_THEME_GOOD_BG  '0.225 0.286 0.298'   // CHIP tinted with GOOD
+#define SUI_THEME_BAD_BG   '0.321 0.257 0.314'   // CHIP tinted with BAD
+#define SUI_THEME_LINE     SUI_THEME_ACCENT
+
+// Inline colour escapes for text that mixes colours in one string.
+#define SUI_ESC_GOOD  (sui_style_modern ? "^x9eb" : "^2")
+#define SUI_ESC_BAD   (sui_style_modern ? "^xf9b" : "^1")
+#define SUI_ESC_WARN  (sui_style_modern ? "^xfd9" : "^3")
+#define SUI_ESC_MUTED (sui_style_modern ? "^x79a" : "^9")
 #define SUI_TIP_LINES 24
 
 float sui_style_modern;
@@ -57,20 +91,32 @@ void() sui_tooltip_reset =
 	sui_tip_candidate_text = "";
 };
 
-void(float width, float height) sui_style_begin =
+void(float width, float height) _sui_style_metrics =
 {
 	local vector pixels;
 	pixels = getproperty(VF_SCREENPSIZE);
 	if (pixels_x <= 0 || pixels_y <= 0) pixels = [width, height, 0];
 	sui_style_pixel_ratio = [max(1, pixels_x) / max(1, width), max(1, pixels_y) / max(1, height), 0];
-	sui_style_text_calls = 0;
-	sui_style_frames += 1;
 	sui_style_modern = (cvar("ui_style") > 0);
 	sui_style_screen = [width, height, 0];
+};
+
+void(float width, float height) sui_style_begin =
+{
+	_sui_style_metrics(width, height);
+	sui_style_text_calls = 0;
+	sui_style_frames += 1;
 	sui_tip_candidate_id = "";
 	sui_tip_candidate_text = "";
 	sui_tip_visible = FALSE;
 	sui_round_calls = 0;
+};
+
+// For a panel drawn in the HUD stack, outside any sui bracket: the style and the
+// pixel ratio only. No frame, action or tooltip state is touched.
+void(vector scr) sui_style_hud =
+{
+	_sui_style_metrics(scr_x, scr_y);
 };
 
 // Snap the PHYSICAL glyph height to the selected face's baked ladder, then
@@ -159,11 +205,39 @@ void(vector pos, vector size, float radius, vector fill, vector border, float al
 	_sui_round_draw(pos + '1 1 0', size - '2 2 0', max(0, radius - 1), fill, alpha);
 };
 
+// A modern modal panel: a stepped drop shadow, a hairline and the fill. The mask
+// has hard straight edges, so the shadow is three widening translucent boxes.
+void(vector pos, vector size, float radius, float alpha) sui_style_panel =
+{
+	sui_transform_box(pos, size);
+	_sui_round_draw(pos + '-7 -4 0', size + '14 16 0', radius + 7, '0 0 0', 0.07 * alpha);
+	_sui_round_draw(pos + '-4 -2 0', size + '8 9 0', radius + 4, '0 0 0', 0.12 * alpha);
+	_sui_round_draw(pos + '-2 -1 0', size + '4 4 0', radius + 2, '0 0 0', 0.18 * alpha);
+	_sui_round_draw(pos, size, radius, SUI_THEME_EDGE, alpha);
+	_sui_round_draw(pos + '1 1 0', size - '2 2 0', max(0, radius - 1), SUI_THEME_PANEL, alpha);
+};
+
+// The modern scroll thumb: half the gutter, rounded. FALSE leaves the classic
+// one to sui_scrollbar.
+float(vector pos, vector size, float hot) sui_style_thumb =
+{
+	local float w;
+	if (!sui_style_modern) return FALSE;
+	sui_transform_box(pos, size);
+	w = max(3, floor(size_x * 0.5));
+	_sui_round_draw([pos_x + size_x - w - 1, pos_y + 1, 0], [w, max(w, size_y - 2), 0], w * 0.5,
+		hot ? SUI_THEME_ACCENT : SUI_THEME_EDGE_HI, 1);
+	return TRUE;
+};
+
 void(string id, string text, float scale) sui_tooltip_for =
 {
 	if (!sui_style_modern) return;
 	if (_holding_click) return;
 	if (strcmp(text, "") == 0) return;
+	// A mouse's hover only: the keyboard cursor rests on a control from the moment
+	// a menu opens, and a tip nobody asked for covers its neighbours.
+	if (!_cursor_is_mouse_active) return;
 	if (!sui_is_hovered(id)) return;
 	// Last matching control wins, like SUI's hit list. These are frame-local.
 	sui_tip_candidate_id = id;
@@ -219,7 +293,7 @@ void(float width, vector fontsize, float maxlines) _sui_tooltip_wrap =
 	}
 };
 
-void() sui_tooltip_finish =
+void() _sui_tooltip_finish =
 {
 	local float now, sc, fs, width, maxlines, i, wasclip;
 	local vector pos, size, clipmin, clipmax, glyph;
@@ -273,8 +347,9 @@ void() sui_tooltip_finish =
 	clipmin = _sui_clip_area_mins;
 	clipmax = _sui_clip_area_maxs;
 	drawresetcliparea();
-	_sui_round_draw(pos, size, 4 * sc, SUI_THEME_LINE, 0.96);
-	_sui_round_draw(pos + '1 1 0', size - '2 2 0', max(0, 4 * sc - 1), SUI_THEME_PANEL, 0.98);
+	_sui_round_draw(pos + '-2 -1 0', size + '4 4 0', 4 * sc + 2, '0 0 0', 0.22);
+	_sui_round_draw(pos, size, 4 * sc, SUI_THEME_EDGE_HI, 1);
+	_sui_round_draw(pos + '1 1 0', size - '2 2 0', max(0, 4 * sc - 1), SUI_THEME_CHIP, 1);
 	for (i = 0; i < sui_tip_count; i += 1)
 		drawstring(_sui_pixel_align(pos + [6 * sc, 5 * sc + i * (fs + 3 * sc), 0]),
 			sui_tip_lines[i], glyph, SUI_THEME_TEXT, 1, 0);
@@ -282,4 +357,17 @@ void() sui_tooltip_finish =
 	sui_tip_visible = TRUE;
 	sui_tip_pos = pos;
 	sui_tip_size = size;
+};
+
+// m_draw resets the font before its sui_end, and a tip measured and drawn in
+// the 8 px bitmap is unreadable: a tip is UI text wherever the bracket ends.
+void() sui_tooltip_finish =
+{
+	local float font, cur;
+	font = drawfont;
+	cur = ui_font_cur;
+	if (!drawfont) Font_Set(ui_font_ui);
+	_sui_tooltip_finish();
+	drawfont = font;
+	ui_font_cur = cur;
 };

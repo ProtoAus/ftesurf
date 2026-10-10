@@ -857,6 +857,113 @@ void(vector p, float w, float h, string key, string label, float hot, float lsz)
 	         hot ? '1 1 1' : '0.72 0.75 0.80', 1);
 };
 
+/*
+  The modern digit menu (ui_style 1, Patch 606): one translucent rounded card, a
+  keycap per row and a tint on the row a digit is about to act on. cl_gfx.qc
+  draws with the same pieces. Raw screen coordinates: these menus are part of
+  the HUD stack, outside any sui bracket, so nothing here is hit-tested.
+*/
+#define KM_NORMAL 0
+#define KM_HOT    1
+#define KM_DANGER 2
+#define KM_INERT  3
+
+void(vector p, float w, float h, string key, string label, float state, float lsz, float sc) KeyMenu_Row =
+{
+	local float cap, kw;
+	local vector fg, capfill;
+
+	if (state == KM_HOT)
+		_sui_round_draw([p_x + 2 * sc, p_y, 0], [w - 4 * sc, h - sc, 0], 2.5 * sc, SUI_THEME_SELECTED, 1);
+	else if (state == KM_DANGER)
+		_sui_round_draw([p_x + 2 * sc, p_y, 0], [w - 4 * sc, h - sc, 0], 2.5 * sc, SUI_THEME_BAD_BG, 1);
+
+	capfill = SUI_THEME_CHIP;
+	fg = SUI_THEME_DIM;
+	if (state == KM_HOT)    { capfill = SUI_THEME_ACCENT; fg = SUI_THEME_TEXT; }
+	if (state == KM_DANGER) { capfill = SUI_THEME_BAD;    fg = SUI_THEME_BAD; }
+	if (state == KM_INERT)  fg = SUI_THEME_MUTED;
+
+	cap = h - 3 * sc;
+	_sui_round_draw([p_x + 4 * sc, p_y + sc, 0], [cap, cap, 0], 2 * sc, capfill, 1);
+	kw = stringwidth(key, TRUE, [lsz, lsz]);
+	HUD_Text([p_x + 4 * sc + (cap - kw) * 0.5, p_y + sc + (cap - lsz) * 0.5], key, lsz,
+	         (state == KM_HOT || state == KM_DANGER) ? SUI_THEME_WELL : SUI_THEME_DIM, 1);
+	HUD_Text([p_x + 8 * sc + cap, p_y + (h - sc - lsz) * 0.5], label, lsz, fg, 1);
+};
+
+void(vector scr, float count, float idx) SaveLoc_DrawModern =
+{
+	local vector p;
+	local float sc, w, h, lsz, y, locked, fresh, armed, total, hh;
+
+	sc  = ui_cv_scale;
+	Font_Set(ui_font_ui);
+	lsz = Font_Px(8 * sc);
+	h   = 14 * sc;
+	hh  = 15 * sc;                      // the header band
+	w   = 96 * sc;
+
+	locked = SaveLoc_RunLocked();
+	armed  = (rec_sl_armdel > 0 && cltime - rec_sl_armdel <= FS_SL_ARMTIME);
+	// Lapsed, or never armed; cleared here as in the classic draw.
+	if (!armed)
+		rec_sl_armdel = 0;
+
+	total = 3 * sc + hh + 9 * h + 3 * sc;
+	if (getstatf(STAT_FS_SAVETICKS) > 0) total = total + h;
+	if (locked) total = total + h;
+
+	p = [scr_x * cvar("hud_saveloc_x"), scr_y * cvar("hud_saveloc_y"), 0];
+	_sui_round_draw(p, [w, total, 0], 5 * sc, SUI_THEME_PANEL, 0.90);
+
+	y = p_y + 3 * sc;
+	HUD_Text([p_x + 6 * sc, y + (hh - 2 * sc - lsz) * 0.5], "Save Lock", lsz, SUI_THEME_TEXT, 1);
+	HUD_TextR([p_x + w - 6 * sc, y + (hh - 2 * sc - lsz) * 0.5],
+	          (count > 0) ? sprintf("%g / %g", idx, count) : "no saves", lsz,
+	          (count > 0) ? SUI_THEME_WARN : SUI_THEME_MUTED, 1);
+	drawfill([p_x + 4 * sc, y + hh - 2 * sc, 0], [w - 8 * sc, 1, 0], SUI_THEME_EDGE_HI, 0.7, 0);
+	y = y + hh;
+
+	// The run clock stored in the slot the cursor is on; see the classic draw.
+	if (getstatf(STAT_FS_SAVETICKS) > 0)
+	{
+		HUD_Text([p_x + 6 * sc, y + (h - sc - lsz) * 0.5], "run at", lsz, SUI_THEME_MUTED, 1);
+		HUD_TextR([p_x + w - 6 * sc, y + (h - sc - lsz) * 0.5],
+		          Time_TickString(getstatf(STAT_FS_SAVETICKS), Timer_Tick()), lsz,
+		          SUI_THEME_ACCENT, 1);
+		y = y + h;
+	}
+
+	if (locked)
+	{
+		fresh = (ui_tm_lockat > 0 && cltime - ui_tm_lockat <= FS_SL_ARMTIME);
+		if (fresh)
+			_sui_round_draw([p_x + 2 * sc, y, 0], [w - 4 * sc, h - sc, 0], 2.5 * sc, SUI_THEME_BAD_BG, 1);
+		HUD_Text([p_x + 6 * sc, y + (h - sc - lsz) * 0.5], "no loads mid-run", lsz,
+		         fresh ? SUI_THEME_BAD : SUI_THEME_MUTED, 1);
+		y = y + h;
+	}
+
+	KeyMenu_Row([p_x, y], w, h, "1", "Create save", KM_NORMAL, lsz, sc);        y = y + h;
+	KeyMenu_Row([p_x, y], w, h, "2", "Load save",
+	            (count > 0 && !locked) ? KM_HOT : KM_NORMAL, lsz, sc);            y = y + h;
+	KeyMenu_Row([p_x, y], w, h, "3", "Go to next", KM_NORMAL, lsz, sc);         y = y + h;
+	KeyMenu_Row([p_x, y], w, h, "4", "Go to previous", KM_NORMAL, lsz, sc);     y = y + h;
+	KeyMenu_Row([p_x, y], w, h, "5", "Go to first", KM_NORMAL, lsz, sc);        y = y + h;
+	KeyMenu_Row([p_x, y], w, h, "6", "Go to last", KM_NORMAL, lsz, sc);         y = y + h;
+	KeyMenu_Row([p_x, y], w, h, "7", "Remove save", KM_NORMAL, lsz, sc);        y = y + h;
+	if (armed)
+		KeyMenu_Row([p_x, y], w, h, "8", "Again to confirm", KM_DANGER, lsz, sc);
+	else
+		KeyMenu_Row([p_x, y], w, h, "8", "Delete all", KM_NORMAL, lsz, sc);
+	y = y + h;
+	KeyMenu_Row([p_x, y], w, h, "0", "Close menu", KM_NORMAL, lsz, sc);
+
+	Font_Reset();
+	HUD_Rect("saveloc", p, [w, total, 0], p);
+};
+
 void(vector scr) SaveLoc_Draw =
 {
 	local vector p;
@@ -873,6 +980,12 @@ void(vector scr) SaveLoc_Draw =
 
 	count = getstatf(STAT_FS_SAVECOUNT);
 	idx   = getstatf(STAT_FS_SAVEINDEX);
+
+	if (sui_style_modern)
+	{
+		SaveLoc_DrawModern(scr, count, idx);
+		return;
+	}
 
 	Font_Set(ui_font_ui);
 	lsz = Font_Px(8 * ui_cv_scale);

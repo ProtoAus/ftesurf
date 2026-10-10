@@ -120,7 +120,9 @@ def start_stub(root, board_factory=None):
 
     server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
     server.evidence_lock = threading.Lock()
-    server.worker = threading.Thread(target=server.serve_forever, name='p603-loopback-http')
+    #Daemon: an exception between here and the caller's try/finally used to leave
+    #this thread serving, so the driver printed its traceback and never exited.
+    server.worker = threading.Thread(target=server.serve_forever, name='p603-loopback-http', daemon=True)
     server.worker.start()
     return server
 

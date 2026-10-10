@@ -1066,6 +1066,17 @@ and open/close endurance are measured against legacy on that machine only (see
 font/DPI and device acceptance are a human's (lextest.md). Switching the default,
 or migrating the menu/editor, waits on those and on an approved budget.
 
+P606 takes Stage A's modern style from one panel to every SUI panel a player
+meets, and gives it a palette: one token set in `sh_ui.qc` (dark slate, pastel
+accents) read by hud_edit, the save-lock and Source-renderer menus, the map
+picker, the menu leaderboard and the +showscores board, whose modern layout is
+new (`Scores_DrawModern`: same data, row drawers, ids and hand-offs). The native
+table's provider wears the same colours. In P606 `ui_style 0` is still the
+default and is gated pixel-identical (`tools/test_ui_theme.py`); Lex has since
+retired the old look, so P607 removes it and the switch. Next on the native
+side, each its own patch because both move the fixed-offset gates: the game's
+own font embedded in the provider, and the table's columns in the board's order.
+
 ---
 
 ## Order

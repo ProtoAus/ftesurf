@@ -78,9 +78,26 @@ float  pl_bgen;                 // ob_gen the room list last asked at (Patch 357
 // list must not take the shared ob_* store from it with a fetch of its own.
 float  pl_boardbusy;
 
+// Patch 606: the room list's colours; the shared theme's under ui_style 1.
+#define PLC_DIM   (sui_style_modern ? SUI_THEME_DIM      : '0.55 0.55 0.58')
+#define PLC_FAINT (sui_style_modern ? SUI_THEME_MUTED    : '0.45 0.45 0.5')
+#define PLC_TIME  (sui_style_modern ? SUI_THEME_DIM      : '0.65 0.65 0.7')
+#define PLC_SEL   (sui_style_modern ? SUI_THEME_SELECTED : '0.16 0.22 0.30')
+#define PLC_HOT   (sui_style_modern ? SUI_THEME_HOVER    : '0.12 0.12 0.16')
+#define PLC_OFF   (sui_style_modern ? SUI_THEME_BAD      : '1 0.7 0.65')
+#define PLC_TITLE (sui_style_modern ? SUI_THEME_MUTED    : '0.35 0.75 1')
+#define PLC_SPEC  (sui_style_modern ? SUI_THEME_ACCENT   : '0.35 0.85 1')   // the spectated row
+#define PLC_RING  (sui_style_modern ? SUI_THEME_ACCENT   : '0.5 0.8 1')     // a hovered voice icon
+
 // Medal plates, in the order the podium wears them.
 vector(float r) Pl_Medal =
 {
+	if (sui_style_modern)
+	{
+		if (r == 1) return SUI_THEME_WARN;
+		if (r == 2) return '0.78 0.80 0.88';
+		if (r == 3) return SUI_THEME_FOCUS;
+	}
 	if (r == 1) return '1.00 0.84 0.00';   // gold
 	if (r == 2) return '0.75 0.78 0.82';   // silver
 	if (r == 3) return '0.72 0.45 0.20';   // bronze
@@ -277,8 +294,13 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 	pl_panelpos = p;
 	pl_panelsize = sz;
 
-	sui_fill(p, sz, '0.05 0.05 0.07', 0.92, 0);
-	sui_border_box(p, sz, 1, '0.28 0.30 0.36', 0.9, 0);
+	if (sui_style_modern)
+		sui_style_panel(p, sz, ceil(pad * 0.8), 0.97);
+	else
+	{
+		sui_fill(p, sz, '0.05 0.05 0.07', 0.92, 0);
+		sui_border_box(p, sz, 1, '0.28 0.30 0.36', 0.9, 0);
+	}
 
 	/*
 	  One type scale, snapped to the font ladder like every other panel:
@@ -291,7 +313,8 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 
 	Font_Set(ui_font_ui);
 	sui_text([p_x + pad, p_y + pad], [tsz, tsz],
-	         sprintf("in this server  %g", n), '0.35 0.75 1', 1, 0);
+	         sprintf(sui_style_modern ? "IN THIS SERVER   %g" : "in this server  %g", n),
+	         PLC_TITLE, 1, 0);
 
 	y  = p_y + pad + 22;
 	me = player_localnum;
@@ -319,7 +342,7 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 		{
 			// Out of room: say how many are missing rather than clip silently.
 			sui_text([p_x + pad, y], [tsz, tsz],
-			         sprintf("... %g more", n - i), '0.55 0.55 0.58', 1, 0);
+			         sprintf("... %g more", n - i), PLC_DIM, 1, 0);
 			break;
 		}
 
@@ -327,20 +350,20 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 		// it, so they are in front and keep their own clicks (sui hit-tests front
 		// to back).  sui_is_clicked: pressed AND released on the row.
 		if (spc_stat == j + 1)
-			sui_fill([p_x + 4, y], [sz_x - 8, rh - 2], '0.16 0.22 0.30', 1, 0);
+			sui_fill([p_x + 4, y], [sz_x - 8, rh - 2], PLC_SEL, 1, 0);
 		if (j != me)
 		{
 			sui_action_element([p_x + 4, y], [sz_x - 8, rh - 2],
 			                   sprintf("pl_row%g", j), sui_noop);
 			if (sui_is_hovered(sprintf("pl_row%g", j)))
-				sui_fill([p_x + 4, y], [sz_x - 8, rh - 2], '0.12 0.12 0.16', 0.6, 0);
+				sui_fill([p_x + 4, y], [sz_x - 8, rh - 2], PLC_HOT, 0.6, 0);
 			// A held-TAB peek has no cursor: a click there lands on a stale position.
 			if (rec_sb_open)
 			if (sui_is_clicked(sprintf("pl_row%g", j)))
 				pl_specpick = j + 1;
 		}
 		if (spc_stat == j + 1)
-			sui_border_box([p_x + 4, y], [sz_x - 8, rh - 2], 1, '0.35 0.85 1', 0.95, 0);
+			sui_border_box([p_x + 4, y], [sz_x - 8, rh - 2], 1, PLC_SPEC, 0.95, 0);
 
 		xx = p_x + pad;
 
@@ -356,7 +379,7 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 			sui_text([xx + 3, y + 6], [tsz, tsz], ftos(r), '0.1 0.1 0.1', 1, 0);
 		}
 		else if (b > 0)
-			sui_text([xx + 3, y + 6], [tsz, tsz], ftos(r), '0.55 0.55 0.58', 1, 0);
+			sui_text([xx + 3, y + 6], [tsz, tsz], ftos(r), PLC_DIM, 1, 0);
 		else
 			sui_text([xx + 3, y + 6], [tsz, tsz], "-", '0.4 0.4 0.44', 1, 0);
 		xx = xx + ceil(tsz * 1.8);
@@ -375,7 +398,7 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 		sui_text([xx, y + 6], [tsz, tsz], id, '1 1 1', 1, 0);
 		if (j == me)
 			sui_text([xx + stringwidth(id, TRUE, [tsz, tsz]) + 6, y + 6], [tsz, tsz],
-			         "you", '0.45 0.45 0.5', 1, 0);
+			         "you", PLC_FAINT, 1, 0);
 
 		// Best main time, right-aligned before the icon block; medal-coloured
 		// on the podium, plain above it.
@@ -387,7 +410,7 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 			id = Time_TickString(b, Timer_Tick());
 			sui_text([xx + tw - ceil(tsz * 0.6) - stringwidth(id, TRUE, [tsz, tsz]), y + 6],
 			         [tsz, tsz], id,
-			         (r >= 1 && r <= 3) ? Pl_Medal(r) : '0.65 0.65 0.7', 1, 0);
+			         (r >= 1 && r <= 3) ? Pl_Medal(r) : PLC_TIME, 1, 0);
 		}
 		if (showping)
 		{
@@ -396,7 +419,7 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 			// time column's own start -- unseen until the room list absorbed rows.)
 			if (ping != "")
 				sui_text([p_x + sz_x - pad - 46 - ceil(tsz * 3), y + 6],
-				         [tsz, tsz], strcat(ping, "ms"), '0.55 0.55 0.58', 1, 0);
+				         [tsz, tsz], strcat(ping, "ms"), PLC_DIM, 1, 0);
 		}
 
 		// Voice: icon button.  speaking > muted > idle.
@@ -412,7 +435,7 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 		        (voicemuted || voiceon) ? 1 : 0.45, 0);
 		if (sui_is_hovered(sprintf("pl_v%g", j)))
 			sui_border_box([p_x + sz_x - pad - 46, y + 4], [18, 18], 1,
-			               '0.5 0.8 1', 1, 0);
+			               PLC_RING, 1, 0);
 		if (sui_is_released(sprintf("pl_v%g", j)) && j != me)
 			Pl_VoiceToggle(j, nm);
 
@@ -422,15 +445,24 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 		{
 			sui_action_element([p_x + sz_x - pad - 24, y + 4], [24, 18],
 			                   sprintf("pl_c%g", j), sui_noop);
-			sui_fill([p_x + sz_x - pad - 24, y + 4], [24, 18],
-			         silenced ? '0.30 0.16 0.16' : '0.10 0.10 0.13', 1, 0);
-			sui_border_box([p_x + sz_x - pad - 24, y + 4], [24, 18], 1,
-			               silenced ? '1 0.5 0.4'
-			                        : (sui_is_hovered(sprintf("pl_c%g", j))
-			                           ? '0.5 0.8 1' : '0.28 0.30 0.36'), 1, 0);
+			if (sui_style_modern)
+				sui_style_box([p_x + sz_x - pad - 24, y + 4], [24, 18], 4,
+				              silenced ? SUI_THEME_BAD_BG : SUI_THEME_CHIP,
+				              silenced ? SUI_THEME_BAD
+				                       : (sui_is_hovered(sprintf("pl_c%g", j))
+				                          ? SUI_THEME_ACCENT : SUI_THEME_EDGE_HI), 1);
+			else
+			{
+				sui_fill([p_x + sz_x - pad - 24, y + 4], [24, 18],
+				         silenced ? '0.30 0.16 0.16' : '0.10 0.10 0.13', 1, 0);
+				sui_border_box([p_x + sz_x - pad - 24, y + 4], [24, 18], 1,
+				               silenced ? '1 0.5 0.4'
+				                        : (sui_is_hovered(sprintf("pl_c%g", j))
+				                           ? '0.5 0.8 1' : '0.28 0.30 0.36'), 1, 0);
+			}
 			sui_text([p_x + sz_x - pad - 18, y + 7], [tsz - 1, tsz - 1],
 			         silenced ? "off" : "chat",
-			         silenced ? '1 0.7 0.65' : '0.55 0.55 0.58', 1, 0);
+			         silenced ? PLC_OFF : PLC_DIM, 1, 0);
 			if (sui_is_released(sprintf("pl_c%g", j)))
 				Chat_SilenceToggle(nm);
 		}
@@ -448,7 +480,7 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 	else
 		nm = "click a player to spectate";
 	sui_text([p_x + pad, p_y + sz_y - 24], [tsz, tsz], Chat_Fit(nm, sz_x - pad * 2, tsz),
-	         '0.55 0.55 0.58', 1, 0);
+	         PLC_DIM, 1, 0);
 };
 
 void() Players_RegisterCvars =

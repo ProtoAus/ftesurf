@@ -1300,6 +1300,8 @@ void(string id, vector pos, vector size, __inout string text, __inout float curs
 };
 
 
+float(vector pos, vector size, float hot) sui_style_thumb;	// sh_ui.qc
+
 void(string id, vector size, vector contentsize, __inout vector offset, vector scrollbar_widths) sui_scrollbar =
 {
 	vector maxoffset = contentsize - size;
@@ -1333,9 +1335,12 @@ void(string id, vector size, vector contentsize, __inout vector offset, vector s
 		// Green thumb to match the return/accept buttons in the menu palette
 		// (MENU_BUTTON_RETURN / MENU_BUTTON_RETURN_BORDER).  Brightens toward
 		// the border colour on hover so it reads as interactive.
-		vector bar_col = sui_is_hovered(barname) ? '0.4 0.6 0.4' : '0.18 0.32 0.18';
-		sui_fill(barpos, barsize, bar_col, 0.9, 0);
-		sui_border_box(barpos, barsize, 1, '0.4 0.6 0.4', 1.0, 0);
+		if (!sui_style_thumb(barpos, barsize, sui_is_hovered(barname) || sui_is_held(barname)))
+		{
+			vector bar_col = sui_is_hovered(barname) ? '0.4 0.6 0.4' : '0.18 0.32 0.18';
+			sui_fill(barpos, barsize, bar_col, 0.9, 0);
+			sui_border_box(barpos, barsize, 1, '0.4 0.6 0.4', 1.0, 0);
+		}
 		sui_action_element(barpos, barsize, barname, sui_noop, TRUE);
 		sui_pop_frame();
 	} 

@@ -92,7 +92,7 @@ string(float t) Mlb_TabLabel =
 		return Mlb_TabName(t);
 	c = Mlb_TabCount(t);
 	if (c <= 0)
-		return strcat(Mlb_TabName(t), "  ^9none");
+		return strcat(Mlb_TabName(t), "  ", SUI_ESC_MUTED, "none");
 	return sprintf("%s  %g", Mlb_TabName(t), c);
 };
 
@@ -572,6 +572,19 @@ void() Mlb_Poll =
 	}
 };
 
+// The podium wears the theme's butter, silver and peach under ui_style 1.
+vector(float r) Mlb_RankCol =
+{
+	if (sui_style_modern)
+	{
+		if (r == 1) return SUI_THEME_WARN;
+		if (r == 2) return '0.78 0.80 0.88';
+		if (r == 3) return SUI_THEME_FOCUS;
+		return SUI_THEME_MUTED;
+	}
+	return COL_DIM;
+};
+
 void(vector rp, float i, float rw, float tr, float dr, float nw) Mlb_DrawRow =
 {
 	local float ty;
@@ -583,7 +596,8 @@ void(vector rp, float i, float rw, float tr, float dr, float nw) Mlb_DrawRow =
 
 	Font_Set(ui_font_mono);
 	s = bufstr_get(mlb_brank, i);
-	sui_text([rp_x + MLB_RANK_R - stringwidth(s, TRUE, SZ_ROW), ty], SZ_ROW, s, COL_DIM, 1, 0);
+	sui_text([rp_x + MLB_RANK_R - stringwidth(s, TRUE, SZ_ROW), ty], SZ_ROW, s,
+	         Mlb_RankCol(stof(s)), 1, 0);
 	s = bufstr_get(mlb_btime, i);
 	sui_text([rp_x + tr - stringwidth(s, TRUE, SZ_ROW), ty], SZ_ROW, s, COL_TEXT, 1, 0);
 	s = bufstr_get(mlb_bdate, i);
@@ -626,7 +640,7 @@ void(vector p, float w) Mlb_DrawBody =
 	{
 		sui_text(p, SZ_LABEL, "Online play is off", COL_TEXT, 1, 0);
 		sui_text(p + '0 24 0', SZ_LABEL,
-		         ui_fit_text("^9leaderboards come from a server, which needs the online terms",
+		         ui_fit_text(strcat(SUI_ESC_MUTED, "leaderboards come from a server, which needs the online terms"),
 		                     w, SZ_LABEL), COL_DIM, 1, 0);
 		if (ui_button("mlb_terms", p + '0 56 0', [150, 30], "read the terms"))
 			menu_screen = SCREEN_TERMS;     // m_draw closes the panel off this screen
@@ -635,14 +649,14 @@ void(vector p, float w) Mlb_DrawBody =
 	{
 		sui_text(p, SZ_LABEL, "No leaderboard server is set", COL_TEXT, 1, 0);
 		sui_text(p + '0 24 0', SZ_LABEL,
-		         ui_fit_text("^9lobby_dir is empty -- set it to a directory, e.g. https://play.proto.bar",
+		         ui_fit_text(strcat(SUI_ESC_MUTED, "lobby_dir is empty -- set it to a directory, e.g. https://play.proto.bar"),
 		                     w, SZ_LABEL), COL_DIM, 1, 0);
 	}
 	else if (mlb_state == MLBS_FAIL)
 	{
 		sui_text(p, SZ_LABEL, ui_fit_text(Mlb_Why(mlb_code), w, SZ_LABEL), COL_FAIL, 1, 0);
 		sui_text(p + '0 24 0', SZ_LABEL,
-		         ui_fit_text(strcat("^9asked ", cvar_string("lobby_dir")), w, SZ_LABEL),
+		         ui_fit_text(strcat(SUI_ESC_MUTED, "asked ", cvar_string("lobby_dir")), w, SZ_LABEL),
 		         COL_DIM, 1, 0);
 		if (ui_button("mlb_retry", p + '0 56 0', [84, 30], "retry"))
 			Mlb_Retry();
@@ -674,8 +688,13 @@ void(vector screensize) Mlb_Draw =
 	sz = [w, h];
 
 	sui_fill('0 0 0', screensize, '0 0 0', 0.6, 0);
-	sui_fill(p, sz, COL_PANEL, 1, 0);
-	sui_border_box(p, sz, 1, COL_BORDER, 1, 0);
+	if (sui_style_modern)
+		sui_style_panel(p, sz, 12, 1);
+	else
+	{
+		sui_fill(p, sz, COL_PANEL, 1, 0);
+		sui_border_box(p, sz, 1, COL_BORDER, 1, 0);
+	}
 	sui_push_frame(p, sz);
 
 	// Closed at the end: the rows below still read the buffers a close frees.
@@ -715,8 +734,13 @@ void(vector screensize) Mlb_Draw =
 	sui_text([17 + dr - stringwidth("date", TRUE, SZ_LABEL), ly - 22], SZ_LABEL,
 	         "date", COL_DIM, 1, 0);
 
-	sui_fill([16, ly], ls, '0.03 0.03 0.04', 1, 0);
-	sui_border_box([16, ly], ls, 1, COL_ACCENT, 1, 0);
+	if (sui_style_modern)
+		sui_style_box([16, ly], ls, 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
+	else
+	{
+		sui_fill([16, ly], ls, '0.03 0.03 0.04', 1, 0);
+		sui_border_box([16, ly], ls, 1, COL_ACCENT, 1, 0);
+	}
 
 	if (mlb_state == MLBS_OK && mlb_n > 0)
 	{

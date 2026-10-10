@@ -45,12 +45,15 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 void(string target) P603_Point =
 {
 	local int i;
+	local float literal;
 	local vector pixel, virt, ratio;
 	local string id;
 	pixel = getproperty(VF_SCREENPSIZE);
 	virt = getproperty(VF_SCREENVSIZE);
 	ratio = [pixel_x / virt_x, pixel_y / virt_y, 0];
-	if (scn_painted)
+	//A target spelt as a sui id (the source switch, sb_t0..3) is QC's on either route.
+	literal = !strcmp(substring(target, 0, 3), "sb_");
+	if (scn_painted && !literal)
 	{
 		//Coordinates of actual rendered fixed-width columns, not an injected
 		//native action. The grader requires Watch_Open/line work to ACT.
@@ -67,6 +70,7 @@ void(string target) P603_Point =
 		id = !strcmp(target, "line") ? "sb_ln0" : "sb_run0";
 		if (Scores_IsOnline())
 			if (strcmp(target, "line")) id = !strcmp(target, "missing") ? "sb_ob1" : "sb_ob0";
+		if (literal) id = target;
 		for (i = 0i; i < (int)min(MAX_ACTION_ELEMENTS, _action_elements_index); i = i + 1i)
 			if (!strcmp(_action_elements[i].id, id))
 			{
@@ -112,6 +116,8 @@ float(string cmd) CSQC_ConsoleCommand =
 		print(sprintf("P603 RECT %s %g %g %g %g\n", label, scn_pos_x, scn_pos_y, scn_size_x, scn_size_y));
 	}
 	else if (!strcmp(op, "move")) P603_Point(argv(2));
+	else if (!strcmp(op, "tab"))
+		print(sprintf("P603 TAB %s tab=%g online=%g\n", argv(2), rec_sb_tab, Scores_IsOnline()));
 	else if (!strcmp(op, "down"))
 	{
 		P603_Mouse();

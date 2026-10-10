@@ -949,12 +949,17 @@ void() HUD_EditOpen =
   cl_watch.qc:2477 records what a missing sui_end latches.
 ===========================================================================
 */
-#define HEC_PANEL  SUI_THEME_PANEL
-#define HEC_LINE   SUI_THEME_LINE
-#define HEC_HOT    SUI_THEME_FOCUS
-#define HEC_GHOST  SUI_THEME_MUTED
-#define HEC_TEXT   SUI_THEME_TEXT
-#define HEC_DIM    SUI_THEME_DIM
+#define HEC_PANEL  (sui_style_modern ? SUI_THEME_PANEL  : SUI_CLASSIC_PANEL)
+#define HEC_LINE   (sui_style_modern ? SUI_THEME_ACCENT : SUI_CLASSIC_LINE)
+#define HEC_HOT    (sui_style_modern ? SUI_THEME_FOCUS  : SUI_CLASSIC_FOCUS)
+#define HEC_GHOST  (sui_style_modern ? SUI_THEME_MUTED  : SUI_CLASSIC_MUTED)
+#define HEC_TEXT   (sui_style_modern ? SUI_THEME_TEXT   : SUI_CLASSIC_TEXT)
+#define HEC_DIM    (sui_style_modern ? SUI_THEME_DIM    : SUI_CLASSIC_DIM)
+#define HEC_PANE   (sui_style_modern ? SUI_THEME_WELL   : SUI_CLASSIC_PANEL)
+// The fixed snap lines run across HUD elements, so they are one colour in both
+// styles: test_ui_modern.py grades a HUD element's pixels across the two (it
+// read 58 changed pixels of the centre line under the speedometer otherwise).
+#define HEC_GUIDE  SUI_CLASSIC_MUTED
 
 void(vector pos, string text, float size, vector color, float alpha) HE_UIText =
 {
@@ -980,28 +985,46 @@ void(vector pos, string text, float size, vector color, float alpha) HE_UIText =
 float(string id, vector pos, vector sz, string label, float on, float sc,
       string tip) HE_Chip =
 {
-	local vector glyph;
+	local vector glyph, fill;
+	local float hot;
 	sui_action_element(pos, sz, id, sui_noop);
 	if (sui_style_modern)
-		sui_style_box(pos, sz, 3 * sc,
-			sui_is_held(id) ? SUI_THEME_PRESSED : (sui_is_hovered(id) ? SUI_THEME_HOVER
-				: (on ? SUI_THEME_SELECTED : SUI_THEME_CHIP)),
-			sui_is_hovered(id) ? HEC_HOT : (on ? HEC_LINE : HEC_GHOST), 1);
+	{
+		/*
+		  Patch 606: the fill carries the state and a hairline appears only under
+		  the cursor. Every chip used to wear a bright outline, lit or not, which
+		  made thirty of them read as a grid of boxes instead of a list.
+		*/
+		hot = sui_is_hovered(id);
+		fill = on ? SUI_THEME_SELECTED : SUI_THEME_CHIP;
+		if (hot) fill = SUI_THEME_HOVER;
+		if (sui_is_held(id)) fill = SUI_THEME_PRESSED;
+		if (strcmp(label, "") == 0)
+		{
+			// The show/hide square: an accent pip in the box when on, empty when off.
+			sui_style_box(pos, sz, 3 * sc, hot ? SUI_THEME_HOVER : SUI_THEME_CHIP,
+			              hot ? SUI_THEME_FOCUS : SUI_THEME_EDGE_HI, 1);
+			if (on)
+				sui_roundbox(pos + [3 * sc, 3 * sc, 0], sz - [6 * sc, 6 * sc, 0], 2 * sc,
+				             SUI_THEME_ACCENT, 1);
+		}
+		else if (hot)
+			sui_style_box(pos, sz, 3 * sc, fill, SUI_THEME_EDGE_HI, 1);
+		else
+			sui_roundbox(pos, sz, 3 * sc, fill, 1);
+		glyph = sui_native_text_size(8 * sc);
+		sui_native_text([pos_x + 4 * sc, pos_y + (sz_y - glyph_y) * 0.5, 0],
+			label, 8 * sc, (on || hot) ? SUI_THEME_TEXT : SUI_THEME_DIM, 1);
+	}
 	else
 	{
-		sui_fill(pos, sz, on ? SUI_THEME_SELECTED : SUI_THEME_CHIP, 1, 0);
+		sui_fill(pos, sz, on ? SUI_CLASSIC_SELECTED : SUI_CLASSIC_CHIP, 1, 0);
 		sui_border_box(pos, sz, 1,
 			sui_is_hovered(id) ? HEC_HOT : (on ? HEC_LINE : HEC_GHOST),
 			sui_is_hovered(id) ? 1.0 : 0.5, 0);
+		HUD_Text([pos_x + 4 * sc, pos_y + (sz_y - 8 * sc) * 0.5, 0], label,
+			8 * sc, on ? HEC_TEXT : HEC_DIM, 1);
 	}
-	if (sui_style_modern)
-	{
-		glyph = sui_native_text_size(8 * sc);
-		sui_native_text([pos_x + 4 * sc, pos_y + (sz_y - glyph_y) * 0.5, 0],
-			label, 8 * sc, on ? HEC_TEXT : HEC_DIM, 1);
-	}
-	else HUD_Text([pos_x + 4 * sc, pos_y + (sz_y - 8 * sc) * 0.5, 0], label,
-		8 * sc, on ? HEC_TEXT : HEC_DIM, 1);
 
 	if (sui_style_modern)
 		sui_tooltip_for(id, tip, sc);
@@ -1102,12 +1125,12 @@ void(vector scr) HUD_EditDraw =
 
 	// The six fixed snap lines, drawn faintly the whole time so the targets are
 	// visible before you are near them.
-	drawfill([64, 0, 0],           [1, scr_y, 0], HEC_GHOST, 0.18, 0);
-	drawfill([scr_x - 64, 0, 0],   [1, scr_y, 0], HEC_GHOST, 0.18, 0);
-	drawfill([0, 64, 0],           [scr_x, 1, 0], HEC_GHOST, 0.18, 0);
-	drawfill([0, scr_y - 64, 0],   [scr_x, 1, 0], HEC_GHOST, 0.18, 0);
-	drawfill([scr_x * 0.5, 0, 0],  [1, scr_y, 0], HEC_GHOST, 0.25, 0);
-	drawfill([0, scr_y * 0.5, 0],  [scr_x, 1, 0], HEC_GHOST, 0.25, 0);
+	drawfill([64, 0, 0],           [1, scr_y, 0], HEC_GUIDE, 0.18, 0);
+	drawfill([scr_x - 64, 0, 0],   [1, scr_y, 0], HEC_GUIDE, 0.18, 0);
+	drawfill([0, 64, 0],           [scr_x, 1, 0], HEC_GUIDE, 0.18, 0);
+	drawfill([0, scr_y - 64, 0],   [scr_x, 1, 0], HEC_GUIDE, 0.18, 0);
+	drawfill([scr_x * 0.5, 0, 0],  [1, scr_y, 0], HEC_GUIDE, 0.25, 0);
+	drawfill([0, scr_y * 0.5, 0],  [scr_x, 1, 0], HEC_GUIDE, 0.25, 0);
 
 	Font_Set(ui_font_ui);
 
@@ -1243,9 +1266,10 @@ void(vector scr) HUD_EditDraw =
 		mode = (ui_he_drag && ui_he_held == he_id[i]) ? 2 : ((r >= 0) ? 1 : 0);
 		if (mode == 0)
 			sui_fill(p, sz, HEC_GHOST, 0.08, 0);
+		// Modern: a drawn panel's outline is quieter than the one being dragged.
 		sui_border_box(p, sz, (mode == 2) ? 2 : 1,
 		               (mode == 2) ? HEC_HOT : ((mode == 1) ? HEC_LINE : HEC_GHOST),
-		               (mode == 0) ? 0.35 : 0.9, 0);
+		               (mode == 0) ? 0.35 : ((mode == 1 && sui_style_modern) ? 0.5 : 0.9), 0);
 
 		HE_UIText([p_x + 2, p_y - 10 * sc, 0], he_label[i], 8 * sc,
 		         (mode == 2) ? HEC_HOT : ((mode == 1) ? HEC_LINE : HEC_GHOST), 0.9);
@@ -1381,7 +1405,7 @@ void(vector scr) HUD_EditDraw =
 
 	sui_action_element(p, sz, "he_panel", sui_noop);
 	if (sui_style_modern)
-		sui_style_box(p, sz, 7 * psc, HEC_PANEL, HEC_LINE, 0.92);
+		sui_style_panel(p, sz, 7 * psc, 1);
 	else
 	{
 		sui_fill(p, sz, HEC_PANEL, 0.92, 0);
@@ -1415,11 +1439,15 @@ void(vector scr) HUD_EditDraw =
 		ui_he_pdrag = FALSE;
 
 	if (sui_style_modern)
-		sui_roundbox(p + [psc, psc, 0], [panw - 2 * psc, 14 * psc, 0], 5 * psc,
-			sui_is_hovered("he_panelbar") ? SUI_THEME_SELECTED : '0.10 0.13 0.18', 1);
+	{
+		// No bar at rest: the title is the handle, and it lights under the cursor.
+		if (sui_is_hovered("he_panelbar"))
+			sui_roundbox(p + [2 * psc, 2 * psc, 0], [panw - 4 * psc, 13 * psc, 0], 5 * psc,
+				SUI_THEME_HOVER, 1);
+	}
 	else
 		sui_fill(p, [panw, 16 * psc, 0],
-			sui_is_hovered("he_panelbar") ? SUI_THEME_SELECTED : '0.10 0.13 0.18', 1, 0);
+			sui_is_hovered("he_panelbar") ? SUI_CLASSIC_SELECTED : '0.10 0.13 0.18', 1, 0);
 
 	x = p_x + 6 * psc;
 	y = p_y + 6 * psc;
@@ -1575,7 +1603,7 @@ void(vector scr) HUD_EditDraw =
 		*/
 		if (he_cvsize[i] != "")
 		{
-			sui_fill([x, y, 0], [w, rowh, 0], HEC_PANEL, 0.5, 0);
+			sui_fill([x, y, 0], [w, rowh, 0], HEC_PANE, 0.5, 0);
 
 			cur = cvar(he_cvsize[i]);
 			if (cur >= 1) s = sprintf("size %g", cur);
@@ -1639,7 +1667,7 @@ void(vector scr) HUD_EditDraw =
 			onam = Gfx_Field(def, 4, "|");
 			otip = Gfx_Field(def, 5, "|");     // build 66; "" on rows without one
 
-			sui_fill([x, y, 0], [w, rowh, 0], HEC_PANEL, 0.5, 0);
+			sui_fill([x, y, 0], [w, rowh, 0], HEC_PANE, 0.5, 0);
 			HE_UIText([ox, y + (rowh - 7 * psc) * 0.5, 0], olab,
 			         7 * psc, HEC_DIM, 0.9);
 
