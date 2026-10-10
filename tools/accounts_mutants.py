@@ -168,7 +168,12 @@ def run(item):
             return name, "BAD MUTANT (%d matches)" % src.count(old)
         with open(path, "w", encoding="utf-8", newline="") as fh:
             fh.write(src.replace(old, new))
+    # A private temp dir: a mutant that crashes the suite skips its cleanup,
+    # and whatever it leaves has to die with this copy.
+    tmp = os.path.join(dst, "tmp")
+    os.makedirs(tmp)
     p = subprocess.run([sys.executable, "test_accounts.py"], cwd=dst,
+                       env=dict(os.environ, TEMP=tmp, TMP=tmp, TMPDIR=tmp),
                        capture_output=True, text=True, errors="replace")
     fails = [l[5:70].strip() for l in p.stdout.splitlines() if l.startswith("FAIL")]
     crash = p.returncode != 0 and "FAILURE(S)" not in p.stdout

@@ -10,10 +10,13 @@ a sign-in refused locally must cost Steam nothing.  The only sockets opened
 are to a server this file starts on 127.0.0.1, for steam.http's own cases.
 """
 
+import atexit
 import hashlib
 import importlib
 import json
+import logging
 import os
+import shutil
 import socket
 import socketserver
 import sqlite3
@@ -88,8 +91,22 @@ class FakeSteam(object):
         return sum(1 for _, data in self.calls if data is not None)
 
 
+HOMES = []
+
+
+@atexit.register
+def tidy():
+    """Every case makes a home (238 KiB) and a mutant sweep runs 89 suites: one
+    day of that left 9,950 of them, 2.3 GiB, in the temp dir."""
+    logging.shutdown()                  # the logger holds the first home's file
+    for home in HOMES:
+        shutil.rmtree(home, ignore_errors=True)
+
+
 def fresh(board_url=BOARD, steam_key="STEAMKEY", home=None):
     home = home or tempfile.mkdtemp(prefix="surfd-acct-")
+    if home not in HOMES:
+        HOMES.append(home)
     with open(os.path.join(home, "surfd.env"), "w") as fh:
         fh.write("SURFD_KEY=testkey\n")
     os.environ.update(SURFD_HOME=home, SURFD_DB=os.path.join(home, "test.db"),
