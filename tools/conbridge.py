@@ -345,7 +345,10 @@ class Session:
             common += ['+set', 'run_resume', '0']
         if not a.no_server:
             self.port = a.port or free_port()
-            args = [*common, '+log_name', self.tag + '_sv', '-port', str(self.port),
+            # -noreset: without it a dedicated server that hits Sys_Error waits 10 s and then
+            # CreateProcess()es its own command line (sv_sys_win.c:885-931) -- a second
+            # server that is nobody's child.
+            args = [*common, '-noreset', '+log_name', self.tag + '_sv', '-port', str(self.port),
                     '+sv_public', '0', *a.server_args.split()]
             self.launch('sv', a.server, args + (['+map', a.map] if a.map else []))
         if not a.no_client:
@@ -442,6 +445,8 @@ class Session:
         for line in lines:
             self.engines[key].send(line)
         r = self.wait(key, pattern, mark, 10)
+        if r['verdict'] == 'exited':            # the engine's own last line, not this check's
+            raise Boot(f'{key} died during start: {self.why(r)}')
         if r['verdict'] != 'match':
             raise Boot(f'{why} ({key}: {self.why(r)})')
         return r

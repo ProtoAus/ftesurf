@@ -11,7 +11,13 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 a map that is not installed asks `https://play.proto.bar/maps/<name>.bsp`, gets
 404, logs `SV_Error: Couldn't download map <name>.` and ends with exit status
 3221225477 (access violation), not an error exit; crashaddr.txt is not written.
-Two runs of two, both under `-plugin` with piped stdin. Not reduced: unknown
+Four runs of four under `-plugin` with piped stdin, the last two with `-noreset`
+too, so it is not Sys_Error's 10 s wait and CreateProcess of its own command
+line (sv_sys_win.c:885-931). The log's last line is SV_Error's own Con_Printf
+(sv_main.c:383) and no second copy from Sys_Error's Con_Log (sv_sys_win.c:876)
+follows. My reading, not measured: the fault is between the two --
+SV_UnspawnServer or SV_Shutdown with no server ever spawned, or COM_WorkerAbort.
+`-allowmapless` (sv_ccmds.c:723) skips the SV_Error and was not tried. Unknown
 without `-plugin`, on the Linux lobby binary, or for `map` on a running server.
 Falsifier: `python tools/conbridge.py start --no-client --map no_such_map_zz`
 prints `process exited rc 3221225477`; fixed, the status is a plain error exit
