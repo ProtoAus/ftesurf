@@ -6338,6 +6338,36 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   on a schema-13 file: 612's two `/api` routes read `links`, which is gone,
   though no Patch 613 lobby calls them. The database backup
   `data/surfd.db.bak-3adb6f8-20261011-004334` is schema 12, taken 13:43Z.
+- **DEPLOYED 2026-10-10 15:49 to 15:52 UTC (FTESurf `7c1161c`, built at
+  `2dd135a`, Patch 617): the Pi's twelve lobbies, both Windows installs, surfd.**
+  It waited eleven minutes on the owner, who was on a lobby: `-Pi` refuses
+  with a player on, and no file goes into an install under a running game.
+  Lobbies, 15:49Z: `build.ps1 -Jobs 8 -Pi` from the clean worktree. 12 rows, 0
+  players. `qwprogs.dat` `092f9880` (1017194 bytes) and `csprogs.dat`
+  `4355bdf0` (5098190), hash-verified on the Pi; the previous pair kept as
+  `.prev` (`199ffdd8`, Patch 615's, and `ce6397a5`, Patch 614's); all 12
+  restarted.
+  Windows, 15:49Z: the same two progs and their `.lno` into both installs;
+  `.prev` is the pair above; menu.dat (`19874c5a`), binaries, plugins and
+  default.cfg untouched. The only games running were another session's rig
+  copies.
+  surfd, 15:51Z: `-Ref 2dd135a -Only` accounts.py and test_accounts.py (codes
+  are ten characters, the page's instructions). Twelve staged suites pass on
+  the Pi, both files hash-match, master 2479950 SIGHUP'd, `surfd ready`
+  15:51:49, /health 12 lobbies. No schema change.
+  LIVE, TWICE: `pi_lobby_smoke.py --addr play.proto.bar:27510` was served
+  `4355bdf0`, drew the board and was told how to link in the new words. Then a
+  rig client with a new key opened the BOX on that lobby, typed a made-up code
+  with real key presses and was told "That code is not valid or has expired":
+  surfd's log has the lobby's `POST /api/link`, 200, 30 bytes, at 15:52:37.
+  `linkkeys` still holds its one row.
+  NOT DONE LIVE: a link made in the box. Only the owner has a Steam account to
+  do it with (lextest 00).
+  ROLLBACK: lobbies and installs, the `.prev` pair (Patch 615's qwprogs with
+  Patch 614's csprogs is a pair that ran from 15:06Z to 15:49Z). surfd, the two
+  `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
+  deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
+  removed after it, the owner having asked for the redundant ones to go.
 - **A .dat CARRIES ITS COMPILE DATE.** fteqcc writes `Compiled [YYYY/MM/DD]`
   into the header (one byte differed, offset 115, across midnight), so "is the
   installed csprogs a build of main?" cannot be answered by hash on another

@@ -90,6 +90,8 @@ Not a ranking, recorder, evidence or server change. BACKLOG.md has the leftovers
 
 ## 00. 11 Oct — the Steam link box (Patch 617)
 
+Live on the Pi's lobbies and both your Windows installs since 10 Oct 15:52 UTC.
+
 You asked whether the confirming number could just be an OK box. It is one
 now, and the code goes in the same box instead of after `link`.
 
