@@ -1,10 +1,11 @@
 /* PRIVATE separately enveloped native PM multi-patch actors. NEVER ship.
  * Only initial seeds author pmove; all later states come from PM_PlayerMove.
- * One ramp plane family, 0.8x+0.6z=const; every vertex is an exact float.
+ * Ramp plane family 0.8x+0.6z=const, and for the trough its mirror image
+ * -0.8x+0.6z=const; every vertex is an exact float.
  * Queries follow commands; fixed numeric copies dump after capture ends.
  */
 #define OFFRAMP_TRIMULTI_STEPS 32
-#define OFFRAMP_TRIMULTI_CASES 5
+#define OFFRAMP_TRIMULTI_CASES 11
 void OfframpTriMulti_DumpLeaves(model_t *mod, int actor);
 static void OfframpTriMulti_f(void)
 {
@@ -13,13 +14,20 @@ static void OfframpTriMulti_f(void)
 	static struct bihleaf_s leaves[4], none;
 	static vecV_t xyz[8];
 	static index_t indexes[4][3] = {{0,1,2}, {0,2,3}, {4,5,6}, {4,6,7}};
-	/* P1 is y 0..y1, P2 is y y2..256 lowered by drop; live counts the leaves handed to BIH_Build. */
-	static const struct { const char *label; float y1, y2, drop; int authored, live; vec3_t vel; } actors[OFFRAMP_TRIMULTI_CASES] = {
-		{"seam-handoff", 64, 64, 0, 4, 4, {0, 400, 0}},
-		{"narrow-gap", 64, 80, 0, 4, 4, {0, 400, 0}},
-		{"wide-gap-recontact", 64, 114, 2, 4, 4, {0, 400, 0}},
-		{"removed-neighbour-exit", 64, 114, 2, 4, 2, {0, 400, 0}},
-		{"vertical-lift", 256, 256, 0, 2, 2, {40, 400, 30}},
+	/* P1 is y 0..y1, P2 is y y2..256 lowered by drop; live counts the leaves handed to BIH_Build.
+	 * A non-zero trough replaces both: plane A over x 0..trough, its mirror image over x trough..2*trough. */
+	static const struct { const char *label; float y1, y2, drop; int authored, live; vec3_t vel; float trough; } actors[OFFRAMP_TRIMULTI_CASES] = {
+		{"seam-handoff", 64, 64, 0, 4, 4, {0, 400, 0}, 0},
+		{"narrow-gap", 64, 80, 0, 4, 4, {0, 400, 0}, 0},
+		{"wide-gap-recontact", 64, 114, 2, 4, 4, {0, 400, 0}, 0},
+		{"removed-neighbour-exit", 64, 114, 2, 4, 2, {0, 400, 0}, 0},
+		{"vertical-lift", 256, 256, 0, 2, 2, {40, 400, 30}, 0},
+		{"narrow-gap-lowered", 64, 80, 2, 4, 4, {0, 400, 0}, 0},
+		{"wide-gap-coplanar", 64, 114, 0, 4, 4, {0, 400, 0}, 0},
+		{"crease-trough", 0, 0, 0, 4, 4, {60, 400, -80}, 72},
+		{"edge-ladder", 8.0078125f, 256, 0, 2, 2, {0, 0.03125f, 0}, 0},
+		{"horizon-graze-out", 256, 256, 0, 2, 2, {23.5f, 400, 17.6875f}, 0},
+		{"horizon-graze-in", 256, 256, 0, 2, 2, {23.5f, 400, 17.65625f}, 0},
 	};
 	static struct {
 		vec3_t pos, vel, mins, maxs;
@@ -63,7 +71,7 @@ static void OfframpTriMulti_f(void)
 	Cvar_SetValue(&pm_rotatedboxhulls, 1);
 	Cvar_SetValue(&pm_trisoup_bevels, 1);
 	OfframpMotion_Profile();
-	Con_Printf("OFFRAMPTRIMULTI_BEGIN 2 %i %i %i %i\nOFFRAMPTRIMULTI_SOURCE %s %s %s\n", capture, oracle,
+	Con_Printf("OFFRAMPTRIMULTI_BEGIN 3 %i %i %i %i\nOFFRAMPTRIMULTI_SOURCE %s %s %s\n", capture, oracle,
 		OFFRAMP_TRIMULTI_CASES, OFFRAMP_TRIMULTI_STEPS,
 		OFFRAMP_TRIMULTI_SOURCE_SHA256, OFFRAMP_MOTION_SOURCE_SHA256, OFFRAMP_MOTION_ENGINE_COMMIT);
 	for (c = 0; c < OFFRAMP_TRIMULTI_CASES; c++)
@@ -75,10 +83,19 @@ static void OfframpTriMulti_f(void)
 		VectorSet(world.mins, -16, -16, -512); VectorSet(world.maxs, 272, 272, 64);
 		empty = world;
 		BIH_Build(&empty, &none, 0); empty.numnodes = 1; /* builder owns one empty group */
-		VectorSet(xyz[0], 0, 0, 0); VectorSet(xyz[1], 0, actors[c].y1, 0);
-		VectorSet(xyz[2], 192, actors[c].y1, -256); VectorSet(xyz[3], 192, 0, -256);
-		VectorSet(xyz[4], 0, actors[c].y2, -actors[c].drop); VectorSet(xyz[5], 0, 256, -actors[c].drop);
-		VectorSet(xyz[6], 192, 256, -256-actors[c].drop); VectorSet(xyz[7], 192, actors[c].y2, -256-actors[c].drop);
+		if (actors[c].trough)
+		{
+			float t = actors[c].trough, z = -t*4/3;
+			VectorSet(xyz[0], 0, 0, 0); VectorSet(xyz[1], 0, 256, 0); VectorSet(xyz[2], t, 256, z); VectorSet(xyz[3], t, 0, z);
+			VectorSet(xyz[4], t, 0, z); VectorSet(xyz[5], t, 256, z); VectorSet(xyz[6], 2*t, 256, 0); VectorSet(xyz[7], 2*t, 0, 0);
+		}
+		else
+		{
+			VectorSet(xyz[0], 0, 0, 0); VectorSet(xyz[1], 0, actors[c].y1, 0);
+			VectorSet(xyz[2], 192, actors[c].y1, -256); VectorSet(xyz[3], 192, 0, -256);
+			VectorSet(xyz[4], 0, actors[c].y2, -actors[c].drop); VectorSet(xyz[5], 0, 256, -actors[c].drop);
+			VectorSet(xyz[6], 192, 256, -256-actors[c].drop); VectorSet(xyz[7], 192, actors[c].y2, -256-actors[c].drop);
+		}
 		Con_Printf("OFFRAMPTRIMULTI_CASE %i %s %i %i %i\n", c, actors[c].label, OFFRAMP_TRIMULTI_STEPS, actors[c].authored, actors[c].live);
 		for (j = 0; j < actors[c].authored; j++)
 		{

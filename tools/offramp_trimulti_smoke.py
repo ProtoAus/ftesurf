@@ -106,7 +106,8 @@ def main():
     ap.add_argument('--instrument-native', type=Path); ap.add_argument('--fixture-only', action='store_true')
     ap.add_argument('--server', type=Path); ap.add_argument('--control-server', type=Path)
     ap.add_argument('--output-dir', type=Path); ap.add_argument('--content', type=Path, default=Path('C:/FTESurf'))
-    ap.add_argument('--port', type=int, default=27617); ap.add_argument('--timeout', type=float, default=240)
+    # Per arm: a capture arm of the eleven actors took 191 s, a quiet one under 45.
+    ap.add_argument('--port', type=int, default=27617); ap.add_argument('--timeout', type=float, default=480)
     a = ap.parse_args()
     if a.instrument_native:
         instrument(a.instrument_native, a.fixture_only); return
