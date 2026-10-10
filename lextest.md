@@ -2540,5 +2540,28 @@ fail teleports. The list is now told where the recording moved the body.
 - On bhop maps, a hop that was cut short by a fail teleport reads what the
   flight itself gained; the teleport's own change in height and speed is no
   longer counted for or against it. Tell me if any row now looks wrong to you.
-- Not changed: the Segments column while you are playing (only replays), the
-  marks on the line, and any row a teleport of over 512 units already blanked.
+- Not changed: the marks on the line, and any row a teleport of over 512
+  units already blanked. The Segments column while you are playing is the
+  next section.
+
+## 16. Segment rows right after a teleport, while you play (Patch 616)
+
+Section 15 was replays only. Your own Segments column had the same fault while
+you played: after a map teleporter the next row could carry the teleporter's
+change in height, or be measured from the floor you had just left. On
+surf_kitsune that happened at the very start: after the spawn room's door the
+first jump read about +358 for a +57 jump.
+
+- surf_kitsune, alone or on a lobby: from the spawn, walk backwards into the
+  door behind you (it lifts you to the floor above) and jump once up there.
+  The jump's row should read about +57, like any jump on flat ground.
+- Any staged map: the first row after a stage teleporter should be a small
+  plain number. A short fall that starts at a teleporter reads as "Air", not
+  as a Jump or Bhop.
+- Loading a save is meant to be unchanged: the row you were in when you saved
+  comes back with the load, as before. Tell me if a row after a load looks
+  different from what you are used to.
+- Not covered: a teleport shorter than about 128 units that your own game did
+  not predict (always the case when you host the game yourself) can still be
+  missed. Tell me if a row after some teleporter still looks wrong, and on
+  which map.

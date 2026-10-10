@@ -5797,6 +5797,8 @@ void(vector scr) HUD_Draw =
 	*/
 	if (!rec_wt_on && !spc_hud)
 	{
+		// Patch 616: a teleport, told to the live column as a replay's is.
+		Board_LiveMoved(org, vel, tg_teleseq, tg_lastseq, clientcommandframe);
 		Board_Frame(org, vel, onground);
 
 		// Feed the energy history even when the readout is hidden, so turning it

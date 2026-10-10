@@ -531,6 +531,14 @@ float  seg_ground_e;        // Strafe_Energy at the last frame onground was true
 float  seg_ground_ok;       // ...and TRUE once that has actually been sampled
 float  seg_laste;           // ...and the previous frame's, for the landing edge
 float  seg_broke;           // the run line broke on this frame (Board_LineBroke)
+// Patch 616: the live body's last frame, for Board_LiveMoved.
+vector seg_lv_org, seg_lv_vel;
+float  seg_lv_t, seg_lv_have;
+float  seg_lv_tele;         // ...whose upper state was a predicted teleport's own command
+float  seg_lv_ptele;        // ...and the command the last one had been predicted on
+float  seg_lv_was;          // ...and it was told as one (seg_lv_np counts teleports, not frames)
+float  seg_lv_quiet;        // cltime until which a save-lock load or hold is placing the body
+float  seg_lv_np, seg_lv_nk;    // teleports told so far, predicted and kinematic (`replay seq live`)
 
 /*
   BUILD 89 -- WHY seg_emax IS NO LONGER ONLY A CEILING.
@@ -1973,6 +1981,10 @@ void() Board_ResetContact =
 	// landing that happened somewhere else.
 	seg_bd_pend = seg_bd_de = seg_bd_v = 0;
 
+	// Patch 616: this placement's step is the load's, not a teleport to tell the
+	// column (Board_LiveMoved).  As long as a restore may stay in flight.
+	seg_lv_quiet = cltime + SEG_RS_DEADLINE;
+
 	HUD_ClearRampHold();
 	HUD_ClearEnergyHistory();
 };
@@ -2601,6 +2613,9 @@ void(vector org, vector vel, float onground) Board_Frame =
 		// or turned 561 u/s into 188).
 		if (seg_kind != SEG_NONE)
 			seg_e0 = seg_e0 + (Strafe_Energy(org, vel, gravity) - seg_laste);
+		// Patch 616: an air time that lands on this frame closes at "last frame's"
+		// energy (build 88), which has to be this side of the step too.
+		seg_laste = Strafe_Energy(org, vel, gravity);
 	}
 
 	/*
@@ -3095,8 +3110,8 @@ void(vector org, vector vel, float onground) Board_Frame =
 			seg_sub = SEQSUB_NONE;
 		else if (seg_kind != SEG_NONE)
 			seg_sub = SEQSUB_NONE;              // came off a ramp
-		else if (rec_wt_build && !seg_ground_ok)
-			seg_sub = SEQSUB_NONE;              // put here by a teleport: no hop to name
+		else if (!seg_ground_ok)
+			seg_sub = SEQSUB_NONE;              // put here by a teleport or a load: no hop to name
 		else
 		{
 			local float dwell;
@@ -3428,7 +3443,7 @@ void() Board_Warped =
 
 /*
   The run line broke here: a teleport.  The build pass calls this before the
-  sample's frame (Watch_BuildSeq); the live board is not told.
+  sample's frame (Watch_BuildSeq), the live board through Board_LiveMoved.
 
   The held ride ends at once, as the line's does (Line_Point).  The launch point
   did not come with you: a hop row opened across the teleport measured from the
@@ -3444,4 +3459,96 @@ void() Board_LineBroke =
 	seg_ground_ok = FALSE;
 	seg_broke     = TRUE;
 	seq_break     = TRUE;
+};
+
+/*
+  Patch 616: the same for the LIVE body, once a frame before Board_Frame.
+
+  A MAP TELEPORTER THE CLIENT PREDICTED (a dedicated server only: on a listen
+  server the engine does not run the hook).  tele is the command cl_triggers.qc
+  last predicted one on, and last the command its hook last ran on -- the upper
+  of the two states the drawn body lies between, since cl_pred.c stops its
+  replay there.  The engine blends a move under 128 u between the two, so every
+  frame whose upper state is the teleport's own command is told, and the first
+  frame past it; and the frame a teleport is first predicted on, the only one
+  when a slow frame steps over the whole command.  n, the command counter, only
+  bounds a stale pair: which two commands the body lies between moves with the
+  frame rate (n - 2 and n - 1, or one earlier).
+
+  ANYTHING ELSE that moved the body further than its two velocities explain is
+  the replay's kinematic rule (Interp_Fit's SNAP, 64 u), and no looser.  An
+  allowance for a booster the client had not predicted (its speed change times
+  the unacknowledged time) was tried and lost a real one: at 30 fps behind
+  120 ms a falling body put back on the floor, 157 u, went untold.
+
+  NOT A SAVE-LOCK LOAD.  That has Board_Warped, or a restore whose segment keeps
+  the reference its save holds, and taking a step out of that reference is the
+  row the restore exists to prevent.  The event and the placed origin need not
+  share a frame, a save taken under 512 u away disarms ui_rs_armed before its
+  step lands, and letting a hold go moves the body by its speed times the round
+  trip with no event at all.  So from the event (still unread this frame, or
+  Board_ResetContact's clock) or the hold, until the next step is seen.
+*/
+void(vector org, vector vel, float tele, float last, float n) Board_LiveMoved =
+{
+	local float near, mid, snap, hit, dt, lim;
+	local vector d;
+
+	near = (tele > 0 && tele >= n - 3 && tele <= n + 1);
+	mid  = (near && tele == last);
+	hit  = 0;
+	if (mid || seg_lv_tele)
+		hit = 1;
+	else if (near && tele != seg_lv_ptele)
+		hit = 1;
+
+	snap = FALSE;
+	dt   = cltime - seg_lv_t;
+	if (seg_lv_have)
+	if (dt > 0)
+	{
+		d    = org - seg_lv_org - (seg_lv_vel + vel) * (0.5 * dt);
+		lim  = 0.5 * (vlen(seg_lv_vel) + vlen(vel)) * dt + 64;
+		snap = (vlen(d) > lim);
+	}
+	if (!hit)
+	if (snap)
+		hit = 2;
+
+	if (getstatf(STAT_FS_HOLD) || getstatf(STAT_FS_PIN) > 0)
+		seg_lv_quiet = cltime + SEG_RS_DEADLINE;
+	if (ui_rs_armed || cltime < seg_lv_quiet || getstatf(STAT_FS_SLSEQ) != seq_slseq)
+	{
+		if (snap)
+		{
+			seg_lv_quiet = 0;       // that was its step
+			if (cvar("cl_trigdebug"))
+				print(sprintf("seg: live step of %.1f is a load's, not told\n", vlen(org - seg_lv_org)));
+		}
+		hit = 0;
+	}
+
+	if (hit)
+	{
+		if (hit == 2)
+			seg_lv_nk = seg_lv_nk + 1;
+		else if (!seg_lv_was)
+			seg_lv_np = seg_lv_np + 1;
+		if (cvar("cl_trigdebug"))
+			print(sprintf("seg: live break %g at command %g (teleport on %g), moved %.1f, open %g\n",
+			              hit, n, tele, vlen(org - seg_lv_org), seg_kind));
+		Board_LineBroke();
+	}
+	seg_lv_was   = (hit == 1);
+	seg_lv_tele  = mid;
+	seg_lv_ptele = tele;
+	// Only on a frame the clock moved: the test above ran on no other (cltime is a
+	// float, and at a high frame rate two frames share one after some hours).
+	if (dt > 0 || !seg_lv_have)
+	{
+		seg_lv_org  = org;
+		seg_lv_vel  = vel;
+		seg_lv_t    = cltime;
+		seg_lv_have = TRUE;
+	}
 };

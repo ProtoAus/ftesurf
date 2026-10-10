@@ -1634,6 +1634,52 @@ publicly WITH its fix, not before it.
 
 ## The run line (Patches 432, 449-453)
 
+- Patch 616: the LIVE Segments column at a teleport. `Board_LiveMoved`
+  (`cl_board.qc`), called from the HUD just before the live `Board_Frame`,
+  calls Patch 613's `Board_LineBroke` on a frame the body was moved. A map
+  teleporter the client PREDICTED: `tg_teleseq` is the command it fired on and
+  `tg_lastseq` the command the hook last ran on, which is the upper of the two
+  states the drawn body lies between; while they are equal, and one frame
+  past, and on the frame a teleport is first predicted. Anything else: the
+  replay's kinematic rule between two rendered frames (64 u more than the two
+  velocities explain) and no looser. A LISTEN SERVER HAS ONLY THE
+  SECOND: the engine does not run the prediction hook there. A SAVE-LOCK LOAD
+  IS NOT TOLD: from its event (`Board_ResetContact`'s 2 s clock, or the event
+  still unread this frame, or `ui_rs_armed`) or its hold (`STAT_FS_HOLD`,
+  `STAT_FS_PIN`) until the next step is seen, because a restore puts the open
+  row back with the reference its save holds. `Board_Frame`'s break block now
+  moves `seg_laste` too, and that line runs in the replay pass as well. An air
+  row opened with no ground sample is not named Jump or Bhop live either.
+  `replay seq live` prints the column and the teleports told (predicted,
+  kinematic); `cl_trigdebug 1` prints each break and each load step kept
+  quiet. Arm `runlines_seglive.cfg` + `test_runlines_seglive.py`, in
+  surf_kitsune's spawn room (no zone there, so the run timer never clears the
+  column; its door lifts a walking body 300 u, the real case). Three controls,
+  each one edit compiled out; the grader's docstring names them.
+  What the measuring and the one review taught:
+  WHICH TWO COMMANDS THE BODY LIES BETWEEN MOVES WITH THE FRAME RATE. The
+  first cut keyed the predicted window on the command counter (n - 1); the
+  replay stops at the first command sent within one net interval, so it is
+  n - 2 as often as not. The door hid it: 300 u is not blended and the
+  kinematic rule took the same frame, and the grader summed the two counters.
+  LETTING A HOLD GO IS A STEP WITH NO EVENT: behind 250 ms a 400 u/s save moved
+  the body 129 u on release and the first cut told it as a teleport.
+  A REVIEW FIX IS A CHANGE AND ONE OF THESE WAS WRONG. To keep a corrected,
+  unpredicted booster from reading as a teleport the threshold was given the
+  speed change times the unacknowledged time. That finding was arithmetic and
+  so was the cure; the arm then lost a real move to it (157 u onto the floor
+  at 30 fps behind 120 ms). Run five times each, that variant fails 4 of 5
+  with the allowance and 0 of 5 without, so the one green run it had given
+  on the pass before was the fifth. It is out again and the booster is
+  BACKLOG. One green run of a case near a threshold is not coverage: run it
+  several times and against the build without the change.
+  A SERVER COMMAND'S ANSWER IS PRINTED A ROUND TRIP LATER, after the next
+  stage's `echo`: the grader reads the three `cmd viewpos` answers in order,
+  not per stage (read per stage, every run said "cannot measure").
+  THE FIRST JUMP AFTER THE MENU CLOSES can leave before the column has seen the
+  floor (5 u low and no hop name on two of three dedicated runs): the arm
+  waits 500 ms first. And a stage in a zone is cleared by the run timer.
+  `cl_maxfps` IS A CAP: the arm prints what was drawn (`cl_predtrace -200`).
 - Patch 613: a replay's SEGMENTS rows at a teleport. The run line knows where
   a recording moved the body (a break: `Watch_ScanPair`); the segment machine
   (`Board_Frame`, fed by `Watch_BuildSeq`) only noticed a step over 512 u
@@ -1641,8 +1687,8 @@ publicly WITH its fix, not before it.
   build pass calls `Board_LineBroke` there: the held ramp ride ends at once
   (as `Line_Point`'s does), the launch point is forgotten, the energy step
   across the break is charged to no row, the rows either side are not merged,
-  and a fall that begins with a teleport is not named Jump or Bhop. THE LIVE
-  BOARD IS NOT TOLD. On eight recordings (1,894 rows) 86 rows change, none is
+  and a fall that begins with a teleport is not named Jump or Bhop. The live
+  board was not told until Patch 616. On eight recordings (1,894 rows) 86 rows change, none is
   added or dropped and no mark moves: surf_rookie's 0.54 s "Bhop" at +23807
   and 99.96% reads 124, six more rows between 1770 and 3247 in size read
   under 140, and the save010 file passes p449mark's containment (its ramp row

@@ -35,6 +35,12 @@ patch    618
 # Enter answers "link this game to X?"; no console command carries a code or a
 # consent, because a server can type a command and cannot press a key. Codes are
 # ten characters. qwprogs, csprogs and surfd's page text; no engine source.
+# Patch 616: the player's own Segments column is told where the body was teleported,
+# as a replay's has been since Patch 613: the energy step is charged to no row and the
+# ground left behind is not the next hop's launch point (on surf_kitsune the first jump
+# after the spawn room's door read +358 for a +57 jump). A save-lock load is not told.
+# csprogs only: no engine source, server QC, recorder, evidence, ranking, default or
+# Build change (commit and tag above stay).
 # Patch 614: the run-graph panel's two plots are drawn by the ui_imgui plugin on
 # ImPlot where the plugin is loaded (`plug_load ui_imgui`), and by QC as before
 # where it is not.

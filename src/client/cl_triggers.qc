@@ -1364,6 +1364,7 @@ void() Trig_LoadForMap =
 	tg_n = 0;
 	tt_n = 0;
 	tg_lastseq = -1;
+	tg_teleseq = 0;
 	tg_pusharmed = 0;
 	tg_hookseen = 0;
 	tg_c_tele = tg_c_push = tg_c_speed = 0;

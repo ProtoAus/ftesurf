@@ -5146,6 +5146,17 @@ float(string cmd) Watch_ConsoleCommand =
 	// under SEG_MINTIME is a mark with no row, which is the point.
 	if (a == "seq")
 	{
+		// Patch 616: `replay seq live` is the player's own column, and how many
+		// teleports it was told of (predicted, kinematic).
+		if (argv(2) == "live")
+		{
+			print(sprintf("lvsb %g %g %g\n", seq_n, seg_lv_np, seg_lv_nk));
+			for (i = 0; i < seq_n; i = i + 1)
+				print(sprintf("lvs %g %g %g %.4f %.2f %.3f %.4f\n", i, seq_kind[i],
+				              seq_sub[i], seq_dur[i], seq_de[i], seq_emax[i], seq_pct[i]));
+			print(sprintf("lvse %g\n", seq_n));
+			return TRUE;
+		}
 		print(sprintf("lnsb %g %g\n", rec_wt_sqn, rec_wt_tickrate));
 		for (i = 0; i < rec_wt_sqn; i = i + 1)
 			// Patch 473: + the row's ceiling and percentage, nested (varargs cap 8).

@@ -2499,21 +2499,75 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   Falsifier for (1) and (2): a known brush edge with the mover's own
   contact-loss tick beside the mark; the stage diagnostics in
   `tools/OFFRAMP_CONTACT.md` are the way to get that tick. Plan 12.4.
-- **Segments rows at a teleport: what Patch 613 left open.** A replay's build
-  pass now tells the segment machine where the run line broke
-  (`cl_board.qc:Board_LineBroke`). Open: (1) THE LIVE BOARD IS NOT TOLD, so
-  your own Segments column while you play still measures a hop across a
-  teleport from the ground left behind; not measured live. (2) A segment moved
-  more than 512 u is still dropped whole (`SEG_JUMPDIST`) where one moved less
-  is now kept with the step taken out; one rule would be simpler. (3) Three
-  rows of one surf_rookie recording still read under -2700 with no break in
-  them (a 0.015 s board row, a 3.1 s air row, a 1.4 s ramp row): not looked
-  at. (4) The arm's recording is one whole range with no `board` record, no
+  (5) HANDING THE CLIENT'S PREDICTED RAMP FLAG TO CSQC WAS READ AND NOT BUILT
+  (10 Oct, on Lex's question whether the player's own collision code could
+  just say contact or no contact). It does for a recording: `pm_source.c` sets
+  `rampcontact` where the move clips and `SV_RecFlags` writes it. The client's
+  prediction computes the same flag (`PMSrc_SaveState`, `cl_pred.c`) and CSQC
+  is not handed it (`pr_csqc.c` gives origin, velocity and the ground flag).
+  Handing it over cures nothing in (3): on a listen server no command is
+  replayed, so there is no predicted flag; the flag belongs to the state the
+  drawn body is blending TOWARDS, as `pmove_onground` does, so under the tick
+  rate it is as far from `pmove_org` as the stats are; and each sample's clock
+  is the server's too, so the pairing stays. What would: the predicted STATE
+  with its command number (origin, velocity, flags), which makes the ring
+  exact at any frame rate; and on a listen server keeping the stats one frame,
+  since they describe the frame drawn next. Neither is built or measured.
+- **Segments rows at a teleport: what Patches 613 and 616 left open.** A
+  replay's build pass and the live column are both told where the body was
+  moved (`cl_board.qc:Board_LineBroke`, `Board_LiveMoved`). Open:
+  (1) LIVE, A MOVE UNDER 128 u THAT THE CLIENT DID NOT PREDICT. The engine
+  draws it as a slide across one command (`cl_pred.c`) and the kinematic rule
+  needs 64 u more than the velocities explain inside one rendered frame, so on
+  a listen server (no prediction hook) or for a server-made move it is seen
+  only at a low frame rate, and under 64 u never. A replay knows both from the
+  recording's `warp` records. Not driven by an arm: surf_kitsune has no
+  teleporter that short.
+  (2) LIVE, THE PREDICTED PATH'S BLEND is read, not run, for the same reason:
+  the arm's only predicted teleporter is 300 u, which the engine does not
+  blend. The review's model had the first cut of the rule, keyed on the
+  command counter, missing part of a blend at most frame rates; it is keyed on
+  the command the hook last ran on now. Falsifier for (1) and (2): a bhop map
+  with a teleporter under 128 u, the live column beside `replay seq` of the
+  same run's recording.
+  (3) LIVE, THE CORRECTION OF A BOOSTER THE CLIENT DID NOT PREDICT may read as
+  a teleport: when the acknowledgement lands the body moves by the speed
+  change times the unacknowledged time in one frame (a 1000 u/s boost behind
+  100 ms: 100 u), which the kinematic rule takes, so the live row loses the
+  boost where the same run's replay keeps it. Calculated by the review, never
+  observed: no arm drives such a booster. AN ALLOWANCE FOR IT WAS BUILT AND
+  TAKEN OUT AGAIN: adding that product to the 64 u threshold left a real move
+  untold, a falling body put back on the floor (135 to 157 u, 265 u/s to
+  zero) at 30 fps behind 120 ms: untold in 4 runs of 5 with it, told in 5 of
+  5 without (as a step of 108 to 119 u against about 68, so a longer round
+  trip will lose it either way; where is not measured). Falsifier: a
+  server-only push on a dedicated rig with `sv_minping`, the live row beside
+  `replay seq`; a cure has to pass `runlines_seglive.cfg` at 30 fps too.
+  (4) AFTER A SAVE-LOCK LOAD the column is deaf until the next step it sees,
+  or 2 s: the load's own placement, or its hold being let go. A real teleport
+  inside that window is not told. A load WITHOUT the hold (`cmd sl_goto`,
+  `sl_next`) from standing ground into a mid-air save closes the restored row
+  on the frame before the body arrives, and names the fall after it a Bhop
+  measured from the old floor: rows of -201 and +201 for a fall that gained
+  nothing (-1 and +201 on the build before). That is the restore's own fault
+  and older than this patch; the load key's pair does not do it. A restored
+  air row also joins an air row above it (the list comes back without its
+  `seq_break`).
+  (5) A segment moved more than 512 u is still dropped whole (`SEG_JUMPDIST`)
+  where one moved less is kept with the step taken out; one rule would be
+  simpler.
+  (6) Three rows of one surf_rookie recording still read under -2700 with no
+  break in them (a 0.015 s board row, a 3.1 s air row, a 1.4 s ramp row): not
+  looked at.
+  (7) The replay arm's recording is one whole range with no `board` record, no
   cut ride under 0.10 s and no merge across a break; a stage window's break
-  list and those paths are read, not run. (5) A build pass labels its first
-  hop from a `seg_t0` nothing seeds (older than this patch). Falsifier for
-  (1): the live column after a map teleporter beside `replay seq` of the same
-  run's recording.
+  list and those paths are read, not run. A build pass labels its first hop
+  from a `seg_t0` nothing seeds (older than both patches).
+  (8) THE LIVE ARM is one room of one map, graded against expectations written
+  by hand and not against `replay seq` of the same run; it holds a walk, jumps
+  and falls, and no ramp. `cl_triggers` did not predict that room's second
+  door at 2010 u/s in one run: the server teleported and the kinematic rule
+  told the column.
 - **Peak/trough speed and energy labels are not reliably visible.** Existing
   `cl_lines.qc:Line_Point` reversals are gated by `LN_EVZMIN` and `SEG_AIR`;
   contact changes take a separate branch. `Line_Marks`/`hud_lines_nums 1`
