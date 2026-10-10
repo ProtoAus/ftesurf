@@ -126,6 +126,32 @@ float  *ln_ec;                  // the clock of the sample the classifier's edge
 float  *ln_rcf;
 vector *ln_rcv;
 
+/*
+  THE RIDE'S EDGE AGAINST THE MAP (Line_Edge, Patch 628).  Four records a slot:
+  [0] the last contact sample, [1] the one before it, [2] the last sample in the
+  hold's gap whose hull is still against the ramp, [3] the first one off it.
+  Only a recording's two scanners hand in the plane (Line_Plane); the live line
+  does not, and keeps the last-contact stamp.
+*/
+float  ln_xi[LN_SLOTS * 4];     // sample ordinal, -1 none
+float  ln_xt[LN_SLOTS * 4], ln_xd[LN_SLOTS * 4];             // clock, ducked
+vector ln_xo[LN_SLOTS * 4], ln_xv[LN_SLOTS * 4], ln_xn[LN_SLOTS * 4];   // where, how fast, the face
+vector ln_cn[LN_SLOTS];         // this sample's plane, and whether one was handed in
+float  ln_cd[LN_SLOTS], ln_chave[LN_SLOTS];
+float  ln_xon[LN_SLOTS];        // hud_lines_edge as the slot's build began, and the file has planes
+float  ln_xq[LN_SLOTS];         // a sample in this hold's gap could not be read: the leave abstains
+float  ln_xhow[LN_SLOTS * 4];   // leaves: as stamped, edge after [0], edge before [0], edge after [2]
+vector ln_hitn;                 // Line_OnRamp's face
+entity ln_probe;                // ...and the entity its trace is made as
+vector ln_exo, ln_exv;          // Line_Edge's answer: where, how fast,
+float  ln_ext, ln_exi;          // when, and the sample it is counted on
+#define LN_XREACH  0.5          // u: the hull is "against" a face this near (0.25 above to 0.5 into)
+#define LN_XSTEPS  6            // halvings of the tick the edge is found in
+// MOVE_NOMONSTERS | MOVE_MISSILE, the engine's world-only trace (World_Move): the
+// map's own brushes and displacements and nothing a client entity adds -- the
+// glare pass links walk-through brush copies as SOLID_BSP (cl_sprites.qc).
+#define LN_XMOVE   3
+
 float  ln_n[LN_SLOTS];
 float  ln_bkn[LN_SLOTS];
 float  ln_step[LN_SLOTS];       // build decimation: keep every step-th sample
@@ -415,6 +441,185 @@ void() Line_Movevars =
 	ln_mv_ghold    = cvar("hud_strafe_groundhold");
 };
 
+// ---- Patch 628: the ride's edge against the map ---------------------------
+
+// The records, and their planes with them: a cleared record's plane was still
+// read by the gap's probe, so one file could mark differently in a used slot.
+void(float s) Line_EdgeClear =
+{
+	ln_xi[s * 4] = ln_xi[s * 4 + 1] = ln_xi[s * 4 + 2] = ln_xi[s * 4 + 3] = -1;
+	ln_xn[s * 4] = ln_xn[s * 4 + 1] = ln_xn[s * 4 + 2] = ln_xn[s * 4 + 3] = '0 0 0';
+	ln_xq[s] = FALSE;
+};
+
+// A file with no plane to ask with (an import, a format before the column): no
+// record is kept and no sample costs anything.  After Line_Begin.
+void(float s) Line_EdgeOff =
+{
+	ln_xon[s] = FALSE;
+};
+
+// The plane the recording wrote on the sample about to be classified, and its
+// hull.  Called just before Line_Point by a scanner that has them.
+void(float s, vector n, float ducked) Line_Plane =
+{
+	ln_cn[s]    = n;
+	ln_cd[s]    = ducked;
+	ln_chave[s] = TRUE;
+};
+
+/*
+  Is the hull at o against a ramp face of the loaded map, the way it faces n?
+  1 yes, 0 no, -1 THE MAP CANNOT SAY (the hull starts inside something: a
+  crease, a pillar beside the path) -- which is not "no", and a caller that
+  needs a definite answer abstains on it.
+  Traced from a quarter unit off the face to LN_XREACH into it, so a point a hair
+  inside it (one on the chord between two samples) still answers.  Measured
+  against two native recordings' own bit: 2,861 of 2,888 contact ticks on
+  surf_kitsune and 2,091 of 2,130 on surf_voyager are against a face at this
+  reach, and most of the misses are a ride's last tick, where the hull has
+  already left.
+*/
+float(vector o, vector n, float ducked) Line_OnRamp =
+{
+	// Traced as a player's hull is: against player clip as well as solid.  With
+	// `world` as the entity the trace passes through clip brushes, and a map whose
+	// ramps are clip over a displacement read as having no ramps at all (0 of
+	// 382 contact ticks on surf_axiom, 1 of 1,130 on surf_boreas).
+	if (!ln_probe)
+	{
+		ln_probe = spawn();
+		ln_probe.hitcontentsmaski = CONTENTBITS_BOXSOLID;
+	}
+	tracebox(o + n * 0.25, PM_HULL_MINS, ducked ? PM_DUCK_MAXS : PM_HULL_MAXS,
+	         o - n * LN_XREACH, LN_XMOVE, ln_probe);
+	if (trace_startsolid)
+		return -1;
+	if (trace_fraction >= 1)
+		return FALSE;
+	if (fabs(trace_plane_normal_z) < 0.1 || fabs(trace_plane_normal_z) > PM_STANDABLE)
+		return FALSE;
+	ln_hitn = trace_plane_normal;
+	return TRUE;
+};
+
+void(float s, float r, float i, float t, vector o, vector v, vector n) Line_EdgeSet =
+{
+	ln_xi[s * 4 + r] = i;
+	ln_xt[s * 4 + r] = t;
+	ln_xo[s * 4 + r] = o;
+	ln_xv[s * 4 + r] = v;
+	ln_xn[s * 4 + r] = n;
+	ln_xd[s * 4 + r] = ln_cd[s];
+};
+
+/*
+  WHERE THE HULL LEFT THE RAMP, for the leave whose edge fell on this sample
+  (o, v, t).  TRUE with ln_ex*; FALSE: the map cannot say, and the mark stays on
+  the last contact sample, as before this patch.
+
+  The recording's bit says the mover clipped a ramp DURING a tick, and its
+  sample is where that tick ended -- usually already past the lip.  So: the
+  last sample whose hull is still against the ramp (the last contact sample if
+  it is, else the one before it, else a sample in the hold's gap that the bit
+  missed), the next sample, and the tick between them halved LN_XSTEPS times
+  along the straight line from one to the other.  The answer is the last point
+  found against the ramp.
+*/
+float(float s, vector o, vector v, float t) Line_Edge =
+{
+	local float b, l, i, lo, hi, mid, how, tf, r;
+	local vector ol, vl, of, vf, n;
+
+	b = s * 4;
+	if (!ln_xon[s])
+		return FALSE;
+	if (ln_xq[s])
+		return FALSE;
+	l = -1;
+	how = 0;
+	n = '0 0 0';
+	of = o;
+	vf = v;
+	tf = t;
+	if (ln_xi[b + 2] >= 0)
+	{
+		l = 2;                      // contact outlived the bit
+		how = 3;
+		n = ln_xn[b + 2];
+	}
+	else if (ln_xi[b] >= 0 && ln_xn[b] != '0 0 0')
+	{
+		r = Line_OnRamp(ln_xo[b], ln_xn[b], ln_xd[b]);
+		if (r > 0)
+		{
+			l = 0;                  // the lip is in the tick after the last contact
+			how = 1;
+			n = ln_hitn;
+		}
+		else if (r == 0)            // off it for certain: not "cannot say"
+		if (ln_xi[b + 1] >= 0)
+		if (ln_xn[b + 1] != '0 0 0')
+		if (ln_xi[b] - ln_xi[b + 1] == 1)
+		if (Line_OnRamp(ln_xo[b + 1], ln_xn[b + 1], ln_xd[b + 1]) > 0)
+		{
+			l = 1;                  // ...or in the last contact tick itself
+			how = 2;
+			n = ln_hitn;
+			of = ln_xo[b];
+			vf = ln_xv[b];
+			tf = ln_xt[b];
+		}
+	}
+	if (l < 0)
+		return FALSE;
+	if (l != 1)
+	{
+		if (ln_xi[b + 3] >= 0)
+		{
+			of = ln_xo[b + 3];
+			vf = ln_xv[b + 3];
+			tf = ln_xt[b + 3];
+		}
+		// The far end is the sample the leave was seen on, which nothing has
+		// asked about: a body that never left the face would be "placed" 63/64
+		// of the way into its last tick.
+		else if (Line_OnRamp(o, n, ln_cd[s]) != 0)
+			return FALSE;
+	}
+	ol = ln_xo[b + l];
+	vl = ln_xv[b + l];
+	lo = 0;
+	hi = 1;
+	for (i = 0; i < LN_XSTEPS; i = i + 1)
+	{
+		mid = (lo + hi) * 0.5;
+		r = Line_OnRamp(ol + (of - ol) * mid, n, ln_xd[b + l]);
+		if (r < 0)
+			return FALSE;
+		if (r)
+		{
+			lo = mid;
+			n = ln_hitn;
+		}
+		else
+			hi = mid;
+	}
+	ln_exo = ol + (of - ol) * lo;
+	ln_exv = vl + (vf - vl) * lo;
+	ln_ext = ln_xt[b + l] + (tf - ln_xt[b + l]) * lo;
+	ln_exi = ln_xi[b + l];
+	ln_xhow[b + how] = ln_xhow[b + how] + 1;
+	// For an arm: the answer, and the map asked afresh at it and at the first
+	// point found off the ramp (1 and 0, or the halving went the wrong way).
+	if (cvar("hud_lines_edgedebug"))
+		print(sprintf("lnx %g %g %g %.4f %.4f %s %s\n", s, how, ln_exi, ln_xt[b + l], tf,
+		              sprintf("%.4f %.4f %.2f %.2f %.2f", ln_ext, lo, ln_exo_x, ln_exo_y, ln_exo_z),
+		              sprintf("%g %g", Line_OnRamp(ln_exo, n, ln_xd[b + l]),
+		                      Line_OnRamp(ol + (of - ol) * hi, n, ln_xd[b + l]))));
+	return TRUE;
+};
+
 void(float s) Line_Begin =
 {
 	Line_Alloc();
@@ -430,6 +635,10 @@ void(float s) Line_Begin =
 	ln_inf[s]   = INF_MEASURED;
 	ln_rlast[s] = 0;
 	ln_rcf[s * 2] = -1;
+	Line_EdgeClear(s);
+	ln_chave[s] = FALSE;
+	ln_xon[s]   = cvar("hud_lines_edge");
+	ln_xhow[s * 4] = ln_xhow[s * 4 + 1] = ln_xhow[s * 4 + 2] = ln_xhow[s * 4 + 3] = 0;
 	ln_gjmp[s]  = FALSE;
 	ln_pvz[s]   = 0;
 	ln_po[s]    = ln_pv[s] = '0 0 0';
@@ -887,7 +1096,8 @@ void(float s, vector o, vector v, float fl, float t, float yaw) Line_Seed =
 void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
      vector aux) Line_Point =
 {
-	local float k, q, here;
+	local float k, q, here, r;
+	local vector edge;
 
 	// aux is [yaw, the plane's z, wishdir . plane] -- one parm slot rather than
 	// three, which is what keeps this call inside fteqcc's eight.
@@ -910,7 +1120,10 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 	// A leave stamped behind either mark would be out of order (a stitch on a
 	// repeated clock arrives with no break, and the hold survives it).
 	if (brk || stitch)
+	{
 		ln_rcf[s * 2] = -1;
+		Line_EdgeClear(s);
+	}
 
 	here = FALSE;                   // a contact mark sits on this very sample
 	// Not across a break (the body moved), nor before anything is known.
@@ -927,14 +1140,26 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 			// Patch 608: the edge is seen when the hold runs out, and the mark
 			// goes back to the ride's last real contact -- 0.09 s and a median
 			// 211 u earlier on the surf_kitsune fixture (84..315).
+			// Patch 628: and from there to the ramp's own edge, where the loaded
+			// map can say where the hull left it (Line_Edge).
 			if (ln_rcf[s * 2] >= 0)
 			{
-				Line_EvAt(s, LN_E_LEAVE, ln_pkind[s] * 4 + k, ln_rcf[s * 2 + 1],
-				          ln_rcv[s * 2], ln_rcv[s * 2 + 1], ln_rcf[s * 2], t);
+				if (Line_Edge(s, o, v, t))
+					Line_EvAt(s, LN_E_LEAVE, ln_pkind[s] * 4 + k, ln_ext, ln_exo, ln_exv,
+					          ln_exi, t);
+				else
+				{
+					ln_xhow[s * 4] = ln_xhow[s * 4] + 1;
+					Line_EvAt(s, LN_E_LEAVE, ln_pkind[s] * 4 + k, ln_rcf[s * 2 + 1],
+					          ln_rcv[s * 2], ln_rcv[s * 2 + 1], ln_rcf[s * 2], t);
+				}
 				here = FALSE;
 			}
 			else
+			{
+				ln_xhow[s * 4] = ln_xhow[s * 4] + 1;    // every ramp leave is counted once
 				Line_Ev(s, LN_E_LEAVE, ln_pkind[s] * 4 + k, t, o, v);
+			}
 		}
 		else
 			Line_Ev(s, ln_gjmp[s] ? LN_E_JUMP : LN_E_LEAVE,
@@ -974,6 +1199,49 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 		ln_rcv[s * 2]     = o;
 		ln_rcv[s * 2 + 1] = v;
 	}
+
+	// Line_Edge's records.  A contact sample moves the last one back and takes
+	// its place; a sample in the hold's gap is asked of the map until one is off.
+	// Nothing here for a slot that will not place (the switch, a file with no
+	// plane): it was 8 budget events a sample on the longest import's open.
+	if (ln_xon[s])
+	{
+		if (k != SEG_RAMP)
+		{
+			if (ln_xi[s * 4] >= 0)      // [0] is the first record a ride sets
+				Line_EdgeClear(s);
+		}
+		else if (fl & (WT_F_RAMP | WT_F_RAMPI))
+		{
+			Line_EdgeSet(s, 1, ln_xi[s * 4], ln_xt[s * 4], ln_xo[s * 4], ln_xv[s * 4], ln_xn[s * 4]);
+			ln_xd[s * 4 + 1] = ln_xd[s * 4];
+			Line_EdgeSet(s, 0, ln_nsamp[s], t, o, v, ln_chave[s] ? ln_cn[s] : '0 0 0');
+			ln_xi[s * 4 + 2] = ln_xi[s * 4 + 3] = -1;
+			ln_xq[s] = FALSE;
+		}
+		else if (ln_chave[s])
+		if (!ln_xq[s])
+		if (ln_xi[s * 4 + 3] < 0)
+		{
+			// The plane of a record that is HELD: [2], else [0].
+			edge = '0 0 0';
+			if (ln_xi[s * 4 + 2] >= 0)
+				edge = ln_xn[s * 4 + 2];
+			else if (ln_xi[s * 4] >= 0)
+				edge = ln_xn[s * 4];
+			if (edge != '0 0 0')
+			{
+				r = Line_OnRamp(o, edge, ln_cd[s]);
+				if (r > 0)
+					Line_EdgeSet(s, 2, ln_nsamp[s], t, o, v, ln_hitn);
+				else if (r == 0)
+					Line_EdgeSet(s, 3, ln_nsamp[s], t, o, v, '0 0 0');
+				else
+					ln_xq[s] = TRUE;    // the map cannot say: this leave stays as stamped
+			}
+		}
+	}
+	ln_chave[s] = FALSE;
 
 	Line_Was(s, k, v, fl);
 	ln_pyaw[s] = aux_x;
@@ -2684,6 +2952,11 @@ void() Line_RegisterCvars =
 	registercvar("hud_lines_leave",  "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_jump",   "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_stitch", "1", CVAR_ARCHIVE);
+	// Patch 628: 1 a recording's off-ramp mark goes to the ramp's own edge where
+	// the loaded map can find it; 0 it stays on the last contact sample.  Read
+	// when a line is built.  _edgedebug prints each one as it is found.
+	registercvar("hud_lines_edge",   "1", CVAR_ARCHIVE);
+	registercvar("hud_lines_edgedebug", "0");
 	registercvar("hud_lines_size",   "4", CVAR_ARCHIVE);
 	registercvar("hud_lines_gap",   "40", CVAR_ARCHIVE);
 	// Complete labels by default; opt into the old sparse overlap policy.
@@ -2738,6 +3011,7 @@ float() Line_Console =
 	      "  hud_lines_speed/energy/vz/delta/time/names 0/1\n"
 	      "  ~ before a number: a ramp edge inferred on an imported run\n"
 	      "  hud_lines_marks/land/leave/jump/stitch 0/1\n"
+	      "  hud_lines_edge 1 (off-ramp mark at the ramp's edge, from the map)\n"
 	      "  hud_lines_numsize 12, hud_lines_size 4, hud_lines_gap 40\n"
 	      "  hud_lines_declutter 0 (all labels); 1 (sparse overlaps)\n"
 	      "  hud_lines_ref 0/1 (HUD/run start), hud_seq_units 0/1/2\n"

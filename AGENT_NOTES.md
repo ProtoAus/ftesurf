@@ -1639,6 +1639,84 @@ publicly WITH its fix, not before it.
 
 ## The run line (Patches 432, 449-453)
 
+- Patch 628: THE OFF-RAMP MARK AT THE RAMP'S OWN EDGE, from the loaded map.
+  The ramp bit says the mover clipped a ramp DURING a tick; its sample is
+  where that tick ended, and on 176 of 290 native leaves the hull is already
+  off the ramp there. `Line_Edge` (`cl_lines.qc`) asks the map. `Line_OnRamp`
+  traces the player's hull from a quarter unit off the recorded plane to half
+  a unit into it and wants a face of the ramp band. The last sample whose
+  hull is still against the ramp is the last contact sample (how 1), else the
+  one before it (how 2), else a sample in the hold's 0.08 s that the bit
+  missed (how 3); the tick from there to the NEXT sample is halved six times
+  along the straight line between them, and the mark is the last point found
+  against the ramp: time, place and velocity read off that line, the ordinal
+  the first sample's.
+  THE PROBE HAS THREE ANSWERS, and the third is not "no": 1 against a ramp
+  face, 0 clear, -1 the hull starts inside something and the map cannot say.
+  A leave is placed only on definite answers -- the near sample 1, the far
+  sample 0 (asked, when it is the sample the leave was seen on), every
+  halving 1 or 0 -- and otherwise stays on the last contact sample, Patch
+  608's rule. That is also what `hud_lines_edge 0` gives, what a file with
+  no plane gets (an import, a format before the column: `Line_EdgeOff`, and
+  then no record is kept and a sample costs nothing), and what the live line
+  always does: only a recording's two scanners hand in the plane.
+  WHAT THE TRACE IS MADE AS, twice wrong before it was right. As `world` it
+  passes through player clip, and a map whose ramps are clip brushes read as
+  having no ramps (0 of 382 contact ticks on surf_axiom, 1 of 1,130 on
+  surf_boreas): it is made as an entity whose `hitcontentsmaski` is
+  `CONTENTBITS_BOXSOLID`. And as an ordinary move it also hits what is not
+  the map: the glare pass's walk-through copies of brush entities, linked
+  SOLID_BSP (`cl_sprites.qc`), and the server's brush entities of the
+  moment. Something of that kind stood between the probe and the ramp on
+  surf_medley (71% of its contact ticks answered) and surf_tensor2 (61%);
+  which of the two was not separated. It is world-only now (`LN_XMOVE`, the
+  engine's MOVE_WORLDONLY): 99.0 and 98.9. The review named the mechanism;
+  the 17-map run showed it was the cause. A ramp that is a brush entity or a
+  prop is not seen, and abstains.
+  Measured over one native recording on each of 17 maps (2026-10-11, `replay
+  rampprobe` and `replay marks` in the game): the hull is against a ramp
+  face on 21,892 of 22,461 contact ticks; 16 maps at 98% or more and
+  surf_boreas at 65 (388 of its ticks find no ramp face in reach and 5 start
+  in solid; not explained). Of 290 ramp leaves 283 are placed -- 68 with the
+  lip in the tick after the last contact, 176 in the last contact tick
+  itself, 39 after a sample the bit missed -- and 7 stay as stamped. On the
+  arm's two maps the placed marks moved a median 11.6 u (surf_kitsune, most
+  39.7) and 15.3 u (surf_voyager, most 157.4: a ride whose contact outlived
+  its bit by four ticks).
+  Arm `runlines_edge.cfg` + `test_runlines_edge.py`: on; off (the model, mark
+  for mark); a board line; the wrong map (nothing is against anything and no
+  mark moves); the clip map. The client prints each placed leave (`lnx`,
+  under `hud_lines_edgedebug`). Eight one-edit mutants are each caught in the
+  game by the check that names them: the tick halved the wrong way, the
+  sample before the last contact never tried, the hold's gap never asked of
+  the map, the trace made as the world, the mark keeping its first sample's
+  clock, or its velocity, the switch ignored, a board line not handed the
+  plane.
+  THE REVIEW'S THREE CASES ARE NOT ON THOSE MAPS and were shown offline, by
+  its own scenarios on the build before and the build after (the built
+  csprogs in an interpreter, a small brush tracer standing in for the map):
+  a cleared record's plane was still read, so one file marked differently in
+  a slot that had been used; a pillar 0.03 u beside the path made "inside
+  something" read as "off the ramp" and put the mark BEFORE the last contact
+  sample; a body that never left the face was placed 63/64 into its last
+  tick. All three abstain now. Its parity check (the table bit-identical to
+  the build before with no plane, with the switch off, with every trace
+  missing, with every trace solid) and its ordering fuzz (110 streams, 5,826
+  leaves, 0 violations) pass on the shipped build. None of that is the
+  engine.
+  The open's budget (Patch 626's note): 2 events a sample on a file with no
+  plane, and 79.0% on the longest import against main's 76.2 with all three
+  patches in. The first cut cost 8 a sample on files it could never place.
+  The live line: `runlines_livelag` passes on this build and its one leave is
+  counted as stamped (`lnmx 10 1 1 0 0 0`).
+  `tools/runlines_smoke.py --mount` gives an overlay the default list of other
+  games: without it a map that lives in one of them does not load, and the
+  cfg waits its whole `waitmap` and carries on with no map.
+  The older arms that compare a native line with tools/p449mark.py now say
+  `set hud_lines_edge 0`: the model cannot trace a map, and the rule it holds
+  is the fallback that still ships.
+  NOT RUN, or not looked for in what ran: a ducked body on a ramp; a ramp
+  that is a brush entity or a prop (abstains, by reading).
 - Patch 627: THE TOPS AND BOTTOMS. A line now marks the top of each arc and
   the bottom of each ride (speed, energy, time), and they are on by default:
   `hud_lines_nums 2` in `default.cfg` and `registercvar`. Until now a turn

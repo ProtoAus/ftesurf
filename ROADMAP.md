@@ -385,8 +385,14 @@ P608 stamps a ramp leave at the ride's last real contact instead of where the
 0.08 s hold ran out; the held classifier and the board are unchanged. P611
 pairs the live line's samples with the command frame the server's stats
 describe, which removes its marks' lag behind a ping (measured at 30 to 1000
-fps and at both tick rates, on one ramp). An interpolated crossing, a ride
-whose bit flickers before its end, and displacement/prop ramps remain.
+fps and at both tick rates, on one ramp). P628 moves a recording's ramp
+leave to the ramp's own edge where the loaded map confirms the contact: the
+last point at which the player's hull is against a ramp face, between two
+samples (283 of 290 leaves over 17 maps; where the map cannot say, P608's
+stamp stands). That answers the interpolated crossing and the flickering bit
+for replays and board lines. The live line, a ride whose contact was inferred,
+a gate for a map the trace sees only part of (surf_boreas: 65%), and ramps
+that are brush entities or props remain (BACKLOG, "Ramp-leave marks").
 
 **Build.** Audit native "off ramp" placement against the mover's actual contact
 loss tick and hull/plane, not just proximity of the player's centre to a ramp.

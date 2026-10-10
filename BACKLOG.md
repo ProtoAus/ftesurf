@@ -2551,13 +2551,35 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   the ride's last real contact (`cl_lines.qc:Line_Point`), and the live line
   pairs its samples with the frame the server's stats describe
   (`cl_trail.qc:Trail_Pair`). Open, each under a tick unless said:
-  (1) WHERE THE BIT FLICKERS before a ride ends, the last set bit can be a gap
-  early. Counted over nine recordings: 53 of 386 rides have a bridged gap in
-  their last 0.25 s (none on three clean surf runs, 13 of 119 on surf_rookie,
-  10 of 17 on one bhop file), gaps a median 0.02 to 0.045 s. Where the body
-  really left is not in the file.
-  (2) No interpolated crossing: the stamp is the first sample at or past the
-  exit, up to a tick late.
+  (1) and (2), the bit flickering before a ride ends and no crossing between
+  samples: ANSWERED FOR A RECORDING by Patch 628, from the loaded map (the
+  mark goes to the last point the hull is against a ramp face; 283 of 290
+  leaves over 17 maps). How common the flicker is, counted before that patch
+  over nine recordings: 53 of 386 rides have a bridged gap in their last
+  0.25 s (none on three clean surf runs, 13 of 119 on surf_rookie, 10 of 17
+  on one bhop file), gaps a median 0.02 to 0.045 s. Left of the two:
+  THE LIVE LINE is not placed, and a ride whose contact was inferred has no
+  plane and is not placed.
+  NO GATE BY MAP. On surf_boreas the probe answers for 65% of the contact
+  ticks (388 of 1,130 find no ramp face in reach; cause not found: props and
+  brush entities are not traced) and the client still placed 15 of its 19
+  leaves where it did answer. A placement needs a definite "against" and a
+  definite "clear" one sample apart, so the harm is bounded by one tick (the
+  hold's 0.08 s for a sample the bit missed) -- but a ramp the trace cannot
+  see reads as "clear" where the body is still on it, and those marks are
+  not known to be better than the stamp. A per-recording share of confirmed
+  contact, with placing off under 90%, is the gate the arm already applies
+  to itself; it costs a trace per contact sample.
+  THE MARK IS ON THE STRAIGHT LINE between two samples; the body's real path
+  in that tick is the ramp and then a fall, and nothing measured how far the
+  two differ. Nothing independent of the trace says where a lip is: the
+  evidence is that the trace agrees with the mover's own bit on 21,892 of
+  22,461 contact ticks.
+  WHAT THE ARM DOES NOT GRADE (the review): 66 of the 283 placements are
+  graded row by row (the two arm maps); the other maps are counted. The
+  "asked again: 1 and 0" check is the client asking its own function. No
+  long recording, and the traces' wall-clock cost at an open was not timed
+  (at most 9 a leave, and one a sample in a hold's gap).
   (3) The live line. The engine's blend puts a sample up to one rendered frame
   past its clock (3 u at 100 fps and 890 u/s, under 1 u at 1000 fps). A ride
   whose first or last contact tick fell between two snapshots is marked a tick
@@ -2572,16 +2594,21 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   their ping short of where they are (`cl_trailrequest.qc`, `cl_rewind.qc`).
   A perfect auto-bhop's contact draws a trough and no land or jump mark (four
   of six hops), as before.
-  (4) Coverage. Recorded lines: 298 ramp leaves in eight recordings of six
-  maps at both tick rates, each on a sample of its file, 128 on rides whose
-  contact normal turned over 5 degrees; a recording cannot say brush,
-  displacement or prop, so that split is unmeasured. Live: one ramp of one
-  map, at five frame rates, both tick rates and three latencies, one exit at
-  890 u/s; no ramp-to-ground, no real internet path (the latency was
+  (4) Coverage. Recorded lines, Patch 608's stamp: 298 ramp leaves in eight
+  recordings of six maps at both tick rates, each on a sample of its file,
+  128 on rides whose contact normal turned over 5 degrees. Patch 628's
+  placing: one native recording on each of 17 maps, 290 ramp leaves; four of
+  the maps have over 40 displacements, and the map confirms 99 percent of the
+  contact on three of them and 65 on the fourth (surf_boreas). A recording
+  still cannot say brush, displacement or prop, so that split is unmeasured.
+  RAMP TO GROUND: one ride in those 17 recordings ends on ground (a landing
+  mark, no leave); not looked at. Live (Patch 611): one ramp of one map, at
+  five frame rates, both tick rates and three latencies, one exit at 890
+  u/s; no ramp-to-ground, no real internet path (the latency was
   `sv_minping`), and the predicted-teleporter case is one run.
-  Falsifier for (1) and (2): a known brush edge with the mover's own
-  contact-loss tick beside the mark; the stage diagnostics in
-  `tools/OFFRAMP_CONTACT.md` are the way to get that tick. Plan 12.4.
+  Falsifier for what is left of (1) and (2): a known brush edge with the
+  mover's own contact-loss instant beside the mark; the stage diagnostics in
+  `tools/OFFRAMP_CONTACT.md` are the way to get it. Plan 12.4.
   (5) HANDING THE CLIENT'S PREDICTED RAMP FLAG TO CSQC WAS READ AND NOT BUILT
   (10 Oct, on Lex's question whether the player's own collision code could
   just say contact or no contact). It does for a recording: `pm_source.c` sets

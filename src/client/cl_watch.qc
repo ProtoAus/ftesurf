@@ -1600,6 +1600,8 @@ void(float ra, float rb) Watch_ScanRange =
 	Line_Begin(0);
 	Line_Foreign(0, rec_wt_foreign);
 	Line_Inferred(0, inf_why[0]);
+	if (rec_wt_foreign || !rec_wt_v4)
+		Line_EdgeOff(0);                // no plane in the file: nothing to place with
 	Line_Tick(0, rec_wt_tickrate);
 	Line_GraphGravity(0, rec_wt_graphgravity);
 	Line_Owner(0, rec_wt_owner);
@@ -1708,6 +1710,8 @@ void(float ra, float rb) Watch_ScanRange =
 		                   stof(argv(WT_C_NORM + 2))] : '0 0 0';
 		wsh = Watch_WishOf(stof(argv(WT_C_YAW)), stof(argv(WT_C_MOVE)),
 		                   stof(argv(WT_C_MOVE + 1)));
+		if (ln_xon[0])
+			Line_Plane(0, nrm, fl & WT_F_DUCKED);   // Patch 628: for the ramp's edge
 		Line_Point(0, o, v, fl, t, (c > 0) ? rec_wt_snlast : 0, rec_wt_sstitch,
 		           [stof(argv(WT_C_YAW)), nrm_z, wsh * nrm]);
 		rec_wt_spt    = t;
@@ -1871,6 +1875,8 @@ float() Watch_LineJobWindow =
 	// starts with no sample before it.
 	Infer_Close(1);
 	Line_Inferred(wt_lj_slot, inf_why[1]);
+	if (wt_lj_fgn)
+		Line_EdgeOff(wt_lj_slot);       // as the replay's scan: no plane in the file
 	if (wt_lj_fleg < 0)
 		wt_lj_fleg = FS_LegOf(wt_lj_seg, wt_lj_seg > 0);
 	if (wt_lj_leg > 0)
@@ -2173,6 +2179,8 @@ float() Watch_LineJobStep =
 		                         stof(argv(WT_C_NORM + 2))] : '0 0 0';
 		wsh = Watch_WishOf(stof(argv(WT_C_YAW)), stof(argv(WT_C_MOVE)),
 		                   stof(argv(WT_C_MOVE + 1)));
+		if (ln_xon[wt_lj_slot])
+			Line_Plane(wt_lj_slot, nrm, fl & WT_F_DUCKED);
 		Line_Point(wt_lj_slot, o, v, fl, t, brk, wt_lj_stitch,
 		           [stof(argv(WT_C_YAW)), nrm_z, wsh * nrm]);
 		wt_lj_c  = wt_lj_c + 1;
@@ -5257,6 +5265,11 @@ float(string cmd) Watch_ConsoleCommand =
 		// (the last one to finish) read: the step and the contact ticks it fed.
 		print(sprintf("lnmi %g %g %.2f %g\n", sl, ln_inf[sl], inf_step[sl ? 1 : 0],
 		              inf_n[sl ? 1 : 0]));
+		// Patch 628: its ramp leaves by how the mark was placed -- on the last
+		// contact sample; at the edge in the tick after it; in the last contact
+		// tick itself; after a sample the bit missed.
+		print(sprintf("lnmx %g %g %g %g %g %g\n", sl, ln_xon[sl], ln_xhow[sl * 4],
+		              ln_xhow[sl * 4 + 1], ln_xhow[sl * 4 + 2], ln_xhow[sl * 4 + 3]));
 		print(sprintf("lnme %g\n", ln_evn[sl]));
 		return TRUE;
 	}
@@ -5376,6 +5389,75 @@ float(string cmd) Watch_ConsoleCommand =
 			print("replay: nothing loaded\n");
 		else
 			Watch_StageWindow(stof(argv(2)) - 1);
+		return TRUE;
+	}
+	/*
+	  Patch 628: `rampprobe`.  Does Line_OnRamp -- the hull against a ramp face of
+	  the LOADED MAP -- agree with this recording's own ramp bit?  Every sample in
+	  the air: one with the bit, asked with the plane the file wrote; one without,
+	  up to half a second after a ride, asked with that ride's last plane.  It is
+	  how an arm, or a person, learns whether the map in memory is the one the run
+	  was made on and whether its ramps are faces this client can trace.
+	*/
+	if (a == "rampprobe")
+	{
+		local float pi, pc, pfl, pt, plast, cn, ch, gn, gh, an, ah, pr, pq;
+		local vector po, pn, pln;
+		local string ps;
+
+		if (!rec_wt_open || !rec_wt_v4)
+		{
+			print("rprb CANNOT MEASURE: no replay open, or its file has no plane column\n");
+			return TRUE;
+		}
+		pln = '0 0 0';
+		plast = -999;
+		cn = ch = gn = gh = an = ah = pq = 0;
+		for (pi = rec_wt_rec0; pi < rec_wt_recn; pi = pi + 1)
+		{
+			ps = bufstr_get(rec_wt_rec, pi);
+			pc = str2chr(ps, 0);
+			if (pc != 45 && (pc < 48 || pc > 57))
+				continue;
+			tokenize(ps);
+			pfl = stof(argv(WT_C_FLAGS));
+			if (pfl & WT_F_ONGROUND)
+				continue;
+			pt = stof(argv(WT_C_T));
+			po = [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)), stof(argv(WT_C_ORG + 2))];
+			pn = [stof(argv(WT_C_NORM)), stof(argv(WT_C_NORM + 1)), stof(argv(WT_C_NORM + 2))];
+			if (pfl & WT_F_RAMP)
+			{
+				if (pn == '0 0 0')
+					continue;
+				pln = pn;
+				plast = pt;
+				cn = cn + 1;
+				pr = Line_OnRamp(po, pn, pfl & WT_F_DUCKED);
+				if (pr > 0)
+					ch = ch + 1;
+				else if (pr < 0)
+					pq = pq + 1;
+			}
+			else if (pt - plast <= 0.5)
+			{
+				if (pt - plast <= 0.08)
+				{
+					gn = gn + 1;
+					if (Line_OnRamp(po, pln, pfl & WT_F_DUCKED) > 0)
+						gh = gh + 1;
+				}
+				else
+				{
+					an = an + 1;
+					if (Line_OnRamp(po, pln, pfl & WT_F_DUCKED) > 0)
+						ah = ah + 1;
+				}
+			}
+		}
+		// `cannot tell`: contact ticks whose hull starts inside something.
+		print(sprintf("rprb contact %g against a ramp %g | in the 0.08 s after a ride %g against %g | 0.08 to 0.5 s after %g against %g | cannot tell %g\n",
+		              cn, ch, gn, gh, an, ah, pq));
 		return TRUE;
 	}
 	// Patch 432: `bench <n>`, the path's draw timed (Watch_Path2D).

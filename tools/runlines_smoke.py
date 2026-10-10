@@ -29,6 +29,9 @@ def main():
                     help='copy a control recording into the overlay, never alter its source')
     ap.add_argument('--also', action='append', default=[], metavar='NAME=PATH',
                     help='another recording, copied to cfg/test/NAME in the overlay')
+    ap.add_argument('--mount', action='store_true',
+                    help='mount the default list of other games (fs_addons.default.txt), so a map that '
+                         'lives in one of them loads; an overlay has no fs_addons.txt of its own')
     ap.add_argument('--port', type=int, default=27619)
     ap.add_argument('--dedicated', action='store_true')
     ap.add_argument('--map', default='surf_dune', help='with --dedicated: the map the server starts')
@@ -61,6 +64,8 @@ def main():
             shutil.copyfile(ROOT / 'ftesurf' / name, gd / name)
             print(name, hashlib.sha256((gd / name).read_bytes()).hexdigest())
         shutil.copyfile(ROOT / 'ftesurf/fs_addons.default.txt', gd / 'fs_addons.default.txt')
+        if a.mount:
+            shutil.copyfile(ROOT / 'ftesurf/fs_addons.default.txt', gd / 'fs_addons.txt')
         paths = subprocess.check_output(['git', '-C', str(ROOT), 'ls-files',
                                          'ftesurf/cfg'], text=True).splitlines()
         for rel in paths:

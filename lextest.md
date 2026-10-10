@@ -2849,3 +2849,28 @@ a busy line? `hud_lines_nums 1` goes back to contacts only.
 Not changed: the chevrons, the Segments column, anything recorded or ranked.
 Your own live line gets the dots too, each one a moment after you pass it; I
 have not tested that part in a game.
+
+## 19. The off-ramp mark at the ramp's edge (Patch 628)
+
+The chevron where a ride ends has sat, since section 13, on the last tick that
+touched the ramp. That tick's position is where the tick ENDED, which is
+usually just past the lip. The game now asks the map itself where your body
+was last against the ramp and puts the mark there.
+
+- Any replay or board line of a run made in this game: look at a few ramp
+  ends. The white chevron should sit on the lip rather than slightly past it.
+  The change is small: about a body width (a median 12 to 15 units on the two
+  maps I measured), and the speed beside it can read a unit or two different.
+- Where a ride's contact flickered before its end the mark could sit early;
+  those are found too (the mark moved up to 157 units on one such ride).
+- `hud_lines_edge 0` puts every mark back where section 13 left it, if you
+  want to compare. Reopen the replay after changing it.
+- Not changed: your own live line while you play, and Momentum demos (their
+  contact is worked out, section 17, and there is no ramp direction to ask the
+  map with). Where the map cannot say, a mark stays where it was: 7 of the
+  290 ramp ends I counted over 17 maps. surf_boreas is the one map where the
+  game can see only about two thirds of the ramp contact; marks there are
+  moved where it can and are the ones I trust least.
+
+What I would like to hear: on a ramp end you know well, is the chevron on the
+lip now?
