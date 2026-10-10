@@ -636,6 +636,10 @@ string(string id, float row) HE_OptDef =
 		                     "|The per-tick graph under the timeline: turn rate against ideal, centre is right, up is too fast.";
 		if (row == 1) return "hud_trainer_rows|Detail rows|c|0 3 6|none;3;6"
 		                     "|How many strafes get a numbered row. The timeline already shows them all.";
+		if (row == 2) return "hud_trainer_jumps|Last jumps|t||"
+		                     "|The last eight jumps under the panel. The Left and Right arrow keys step through them.";
+		if (row == 3) return "hud_trainer_split|Split at ramps|t||"
+		                     "|A surf ramp ends a jump as the ground does, so a run reads as its transfers. Off: only the ground does.";
 		return "";
 	}
 

@@ -2169,6 +2169,8 @@ float(string cmd) CSQC_ConsoleCommand =
 	// TAB's bind to CSQC before it turns its own scoreboard on (sbar.c:788).
 	if (LineGraph_Command(cmd))
 		return TRUE;
+	if (Trn_Command(cmd))
+		return TRUE;
 	if (Scores_ConsoleCommand(cmd))
 		return TRUE;
 

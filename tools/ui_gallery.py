@@ -30,6 +30,8 @@ from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 MAP = 'uigallery'
+SERVER_CFG = None
+EXTRA_PLUGINS = ()      # DLLs to put beside both exes; the server then runs with plugins on
 SHOTS = ('menu_main', 'menu_create', 'menu_create_hover', 'menu_board', 'menu_board_empty',
          'hud_plain', 'hudedit_list', 'hudedit_pane', 'hudedit_tip', 'gfx_page1', 'gfx_page2',
          'saveloc', 'scores_local', 'scores_online', 'linegraph')
@@ -247,6 +249,8 @@ def run(a):
         shutil.copy2(a.server, root / 'fteqwsv64.exe')
         if native:
             shutil.copy2(a.plugins / 'fteplug_ui_imgui_x64.dll', root / 'fteplug_ui_imgui_x64.dll')
+        for extra in EXTRA_PLUGINS:
+            shutil.copy2(extra, root / Path(extra).name)
         (root / 'default.fmf').write_text('FTEMANIFEST 1\nGAME FTESurfUIGallery\nNAME "UI gallery"\n'
                                          'BASEGAME ftesurf\nDISABLEHOMEDIR 1\nMAINCONFIG gallery-unused\n')
         port = None
@@ -263,8 +267,11 @@ def run(a):
         stub = start_stub(root)
         (game / 'gallery.cfg').write_text(config(a, size, port, stub.server_port, native))
         # The raw .map has no clipping hull: without this the player falls for ever.
-        (game / 'gallery_server.cfg').write_text(f'sv_cheats 1\nmap {MAP}.map\nwaitms 1000\nsv_gravity 0\n')
-        svcmd = [str(root / 'fteqwsv64.exe'), '-basedir', str(root), '-nohome', '-noplugins',
+        # SERVER_CFG is an arm's own map, for one that needs a floor (tools/p621trn.py --real).
+        (game / 'gallery_server.cfg').write_text(
+            SERVER_CFG or f'sv_cheats 1\nmap {MAP}.map\nwaitms 1000\nsv_gravity 0\n')
+        svcmd = [str(root / 'fteqwsv64.exe'), '-basedir', str(root), '-nohome',
+                 *(() if EXTRA_PLUGINS else ('-noplugins',)),
                  '-port', str(port), '+set', 'cfg_save_auto', '0', '+set', 'sv_public', '0',
                  '+set', 'lobby_dir', '', '+exec', 'gallery_server.cfg']
         clcmd = [str(root / 'ftesurf64.exe'), '-basedir', str(root), '-nohome', '-nosound', '-nocdaudio',

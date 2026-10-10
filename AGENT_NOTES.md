@@ -4700,6 +4700,55 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   engine worktree has no `engine/libs-x86_64-w64-mingw32` (ignored, 72 MB):
   copy it from one that built.
 
+### The trainer's jumps and their history (Patch 621) — 2026-10-10
+
+- A JUMP IS FREE AIR. It was take-off to landing by the ground flag alone, and
+  on a surf map that is the whole flight: over the 106 recordings in the
+  desktop's data/runs (`fl` bits 1 and 16; a few are arm fixtures) one a run at
+  the median, the longest 163 s, 56 of them past the ring's 16 strafes. By the
+  rule that shipped it is five a run, median 0.90 s and three strafes, none
+  past 14: 1530 jumps kept, 198 stretches under 0.15 s and 84 with no strafe
+  not kept. `hud_trainer_split 0` is the old rule.
+- THE RAMP FLAG DROPS OUT IN THE MIDDLE OF A RIDE: 185 gaps of one to four ticks
+  against 529 of twenty or more. `TRN_MINAIR` (0.15 s) is the whole answer: a
+  jump shorter than that is not kept, and the open one is not put on the panel
+  until it is older. No lookahead, no bridging; `trainer status` counts what was
+  dropped (`short`, `empty`). The census that sized this first used a four-tick
+  hold that did not ship; the review caught the numbers quoted from it.
+- A STRAFE'S SYNC IS TIMED FROM THE KEY, NOT FROM WHERE THE STRAFE OPENED. The
+  ground and the ramp close every strafe, so a key already down at take-off
+  opens one there, and the first cut paired that with whatever flick was near:
+  the review's emulation gave a number to 123 of the 408 first strafes after a
+  ride. `trn_kt` is the clock the key last changed at, read on the ground and
+  the ramp too. Held longer than the pairing window: no number. Pressed inside
+  it: timed from the press. In the air nothing changes (the two are the same
+  tick).
+- BLOCK 0 IS THE OPEN JUMP. Every strafe and trace array is nine blocks; the
+  sampler indexes block 0 as it always did and a kept jump in slot k is block
+  k + 1, so the panel draws any of them through one range (`trv_*`).
+- A LANDED JUMP IS DRAWN FROM ITS COPY. Before, its timeline's span was
+  `trn_clock - t0` and went on growing on the ground, and `trn_j_v1` followed
+  the ground speed, so "+N u/s" bled away as you slowed down to read it.
+- THE ARROWS ARE READ BY SCAN ELSEWHERE (replay seek, rewind browse, board tabs,
+  the menus), and those panels take the key before a bind runs. That is why
+  `bind LEFTARROW "trainer older"` is safe in default.cfg.
+- `tools/p621trn.py`. The gallery rig's map has no floor, so its real flags say
+  air for ever; `trainer feed 1|2|3` authors ground, ramp and air, and `+right`
+  authors each strafe's rate, so every kept jump is known without the subject.
+  `--real` feeds nothing: surf_kitsune, a hop from the spawn and a drop onto a
+  ramp, and the jumps come back ended by 1 (ground) and 2 (ramp).
+- A SOURCE MAP IN THE GALLERY RIG needs hl2's loader beside BOTH exes and the
+  server without `-noplugins` (`ui_gallery.EXTRA_PLUGINS`, `SERVER_CFG`). The
+  Windows server prints nothing to a pipe: log to a file to see why it left.
+- THE ARM'S FED CASES: a key held 400 ms into a jump reads no sync and the swap
+  after it -15 ms; a key pressed with its flick 45 ms before the jump reads 0.
+  The cut the review read gave the held key -15 and the pressed one +45.
+- MUTANTS, once, seven one-line defects (`tmp/mut621.py` in the task root, not
+  kept in tools/): all seven fail the fed arm. The first sweep read six, because
+  the seventh crashed the GRADER (a KeyError where a jump was missing); a
+  mutant that does not run is not a catch, so the grader was fixed and it was
+  run again.
+
 ### Names: fallback faces, whole owners, a label that slides (Patch 620) — 2026-10-10
 
 - A FONT SLOT IS A LIST OF FACES. `loadfont`'s face argument is split on commas

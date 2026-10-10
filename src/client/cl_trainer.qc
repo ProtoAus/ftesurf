@@ -51,6 +51,15 @@
 #define TRN_MAXS   16           // strafes kept; a long surf jump is 6-8
 #define TRN_PTS   256           // per-tick trace samples, ~2.5 s at 100 Hz
 #define TRN_ROWS    6           // detail rows drawn; the rest stay on the timeline
+#define TRN_HIST    8           // finished jumps kept (Patch 621)
+#define TRN_BLOCKS  9           // TRN_HIST + 1: block 0 is the open jump, slot k is block k + 1
+// A jump shorter than this is not one: a ride's contact flag drops out for a tick or
+// four (185 times in 106 recordings) and what follows a dropout is not a jump.
+#define TRN_MINAIR  0.15
+
+#define TRS_GROUND  1
+#define TRS_RIDE    2           // clipping a surf ramp
+#define TRS_AIR     3
 
 /*
   THE COMMITTED-TURN THRESHOLD, in degrees per second, and it is a floor on
@@ -96,19 +105,20 @@ float trn_haveaa;               // sv_airaccelerate was published at all
 float trn_vart;                 // trn_clock of the last read
 
 // --- the open jump --------------------------------------------------------
-float trn_air;                  // airborne right now, per the server's flag
+float trn_air;                  // in a jump's air right now: see Trn_State
 float trn_j_t0;                 // trn_clock at take-off
-float trn_j_v0, trn_j_v1;       // horizontal speed at take-off / latest
-float trn_j_n;                  // strafes closed or open in THIS jump
-float trn_j_shown;              // the jump the panel is drawing (frozen on land)
+float trn_j_v0, trn_j_v1;       // horizontal speed at take-off / last in the air
+float trn_j_n;                  // strafes made in THIS jump; the ring keeps TRN_MAXS
+float ui_trn_split;             // hud_trainer_split, refreshed with the movevars
+float trn_feed;                 // `trainer feed`: an arm's authored TRS_*, 0 = the server's
 
-// --- the strafe ring ------------------------------------------------------
+// --- the strafe ring: the open jump's, in block 0 ---------------------------
 float trn_n;                    // strafes in the ring, 0..TRN_MAXS
-float trn_s_dir[TRN_MAXS];      // +1 right (sidemove > 0), -1 left
-float trn_s_t0[TRN_MAXS];       // trn_clock when the key went down
-float trn_s_dur[TRN_MAXS];
-float trn_s_qsum[TRN_MAXS];     // Strafe_Quality * dt, over graded ticks only
-float trn_s_esum[TRN_MAXS];     // (rate/ideal - 1) * dt, same ticks
+float trn_s_dir[TRN_MAXS * TRN_BLOCKS];      // +1 right (sidemove > 0), -1 left
+float trn_s_t0[TRN_MAXS * TRN_BLOCKS];       // trn_clock when the key went down
+float trn_s_dur[TRN_MAXS * TRN_BLOCKS];
+float trn_s_qsum[TRN_MAXS * TRN_BLOCKS];     // Strafe_Quality * dt, over graded ticks only
+float trn_s_esum[TRN_MAXS * TRN_BLOCKS];     // (rate/ideal - 1) * dt, same ticks
 /*
   The measured turn rate itself, dt-weighted.  Nothing on screen reads it: it
   exists so the report below can print a number an arm can CHECK, because
@@ -116,17 +126,41 @@ float trn_s_esum[TRN_MAXS];     // (rate/ideal - 1) * dt, same ticks
   that makes the rate the one quantity here with an authored expected value.
   err and q are both ratios against an ideal the arm would have to re-derive.
 */
-float trn_s_rsum[TRN_MAXS];
-float trn_s_gdur[TRN_MAXS];     // the duration those ticks account for
-float trn_s_wrong[TRN_MAXS];    // dt held with the key opposing the turn
-float trn_s_sync[TRN_MAXS];     // seconds: + key late, - key early
-float trn_s_v0[TRN_MAXS], trn_s_v1[TRN_MAXS];
+float trn_s_rsum[TRN_MAXS * TRN_BLOCKS];
+float trn_s_gdur[TRN_MAXS * TRN_BLOCKS];     // the duration those ticks account for
+float trn_s_wrong[TRN_MAXS * TRN_BLOCKS];    // dt held with the key opposing the turn
+float trn_s_sync[TRN_MAXS * TRN_BLOCKS];     // seconds: + key late, - key early
+float trn_s_v0[TRN_MAXS * TRN_BLOCKS], trn_s_v1[TRN_MAXS * TRN_BLOCKS];
 
-// --- the per-tick trace ---------------------------------------------------
+// --- the per-tick trace, same blocks ----------------------------------------
 float trn_p_n;
-float trn_p_t[TRN_PTS];
-float trn_p_r[TRN_PTS];         // turn rate / ideal; -1 = no answer
-float trn_p_d[TRN_PTS];         // key direction at that tick, 0 = none
+float trn_p_t[TRN_PTS * TRN_BLOCKS];
+float trn_p_r[TRN_PTS * TRN_BLOCKS];         // turn rate / ideal; -1 = no answer
+float trn_p_d[TRN_PTS * TRN_BLOCKS];         // key direction at that tick, 0 = none
+
+// --- the kept jumps (Patch 621): a ring of TRN_HIST, numbered from 1 ---------
+float trh_n;                    // jumps kept
+float trh_head;                 // the newest one's slot
+float trh_seq;                  // the newest one's number
+float trh_num[TRN_HIST];
+float trh_t0[TRN_HIST], trh_t1[TRN_HIST];   // trn_clock at take-off / at its last tick in the air
+float trh_v0[TRN_HIST], trh_v1[TRN_HIST];
+float trh_sn[TRN_HIST], trh_pn[TRN_HIST];   // strafes and trace ticks kept
+float trh_made[TRN_HIST];       // strafes made, which can pass TRN_MAXS
+float trh_q[TRN_HIST];          // its grade, -1 = no answer
+float trh_end[TRN_HIST];        // what ended it: TRS_GROUND or TRS_RIDE
+float trn_pin;                  // the kept jump on show, by number; 0 = the open or the newest
+float trn_lost_short, trn_lost_empty;       // jumps not kept, counted for `trainer status`
+string trn_keys;                // the strip's key hint, zoned
+float trn_keys_t;
+
+// --- the jump on show, set by Trn_View --------------------------------------
+float trv_a, trv_e;             // its strafes: trn_s_*[trv_a .. trv_e)
+float trv_pa, trv_pe;           // its trace: trn_p_*[trv_pa .. trv_pe)
+float trv_t0, trv_t1, trv_v0, trv_v1;
+float trv_num;                  // its number: 0 the open jump, -1 none
+vector trn_box_p, trn_box_s;    // where the panel was last drawn, for `trainer status`
+float trn_box_u;
 
 // --- sampling state ------------------------------------------------------
 float trn_lastyaw, trn_haveyaw;
@@ -134,6 +168,9 @@ float trn_dir;                  // the committed key direction
 float trn_tsign;                // the committed TURN direction
 float trn_flip_t;               // trn_clock of the last committed flip
 float trn_pend;                 // strafe awaiting a flick, or -1
+float trn_pend_t;               // ...and the clock its key went down at
+// Patch 621: the strafe key itself, on the ground and on a ramp too.
+float trn_kdir, trn_kt;         // the key held, and the clock it last changed at
 
 /*
   The numbers the grade rests on, read from the SERVERINFO the server
@@ -175,6 +212,7 @@ void() Trn_ReadVars =
 	if (trn_vart && trn_clock - trn_vart < 0.5 && trn_clock >= trn_vart)
 		return;
 	trn_vart = trn_clock;
+	ui_trn_split = cvar("hud_trainer_split");
 
 	trn_tick = serverkeyfloat("pm_ticrate");        if (trn_tick <= 0) trn_tick = PM_TICK;
 	trn_cap  = serverkeyfloat("pm_maxairspeed");    if (trn_cap  <= 0) trn_cap  = 30;
@@ -215,11 +253,18 @@ void() Trn_Clear =
 	trn_n       = 0;
 	trn_p_n     = 0;
 	trn_j_n     = 0;
-	trn_j_shown = 0;
+	trh_n       = 0;
+	trh_head    = 0;
+	trh_seq     = 0;
+	trn_pin     = 0;
+	trn_lost_short = trn_lost_empty = 0;
 	trn_dir     = 0;
 	trn_tsign   = 0;
 	trn_flip_t  = 0;
 	trn_pend    = -1;
+	trn_kdir    = 0;
+	trn_kt      = 0;
+	trn_feed    = 0;                // an arm's handle does not outlive the panel
 	trn_haveyaw = FALSE;
 	trn_air     = FALSE;
 	trn_vart    = 0;            // ...and let Trn_ReadVars run again on re-enable
@@ -249,7 +294,7 @@ float() Trn_Speed =
 */
 float(float i) Trn_Q =
 {
-	if (i < 0 || i >= TRN_MAXS)
+	if (i < 0 || i >= TRN_MAXS * TRN_BLOCKS)
 		return -1;
 	if (trn_s_gdur[i] <= 0.0001)
 		return -1;
@@ -259,12 +304,12 @@ float(float i) Trn_Q =
 // The longest strafe in the shown jump, which the detail bars are drawn as a
 // fraction of.  Its own function because the row loop would otherwise recompute
 // it per row, and because 0 has to become 1 exactly once.
-float(float first) Trn_MaxDur =
+float() Trn_MaxDur =
 {
 	local float i, m;
 
 	m = 0;
-	for (i = first; i < trn_n; i = i + 1)
+	for (i = trv_a; i < trv_e; i = i + 1)
 		if (trn_s_dur[i] > m)
 			m = trn_s_dur[i];
 	return (m > 0) ? m : 1;
@@ -330,8 +375,6 @@ float(float dir, float t0, float v0) Trn_Open =
 		trn_n = TRN_MAXS - 1;
 		if (trn_pend >= 0)
 			trn_pend = trn_pend - 1;
-		if (trn_j_shown > trn_n)
-			trn_j_shown = trn_n;
 	}
 
 	i = trn_n;
@@ -351,6 +394,156 @@ float(float dir, float t0, float v0) Trn_Open =
 	return i;
 };
 
+// The slot holding kept jump `num`, or -1.
+float(float num) Trn_SlotOf =
+{
+	local float k;
+
+	if (num > trh_seq || num <= trh_seq - trh_n)
+		return -1;
+	k = trh_head - (trh_seq - num);
+	if (k < 0)
+		k = k + TRN_HIST;
+	return k;
+};
+
+/*
+  Patch 621: the jump that just ended, copied out of the ring so the next one cannot
+  push it off the panel. Not kept, and counted, when it is not one to read: no strafe
+  in it, or shorter than TRN_MINAIR. `t1` is its last tick in the air.
+*/
+void(float t1, float how) Trn_Keep =
+{
+	local float k, b, pb, i, gq, gd;
+
+	if (trn_n <= 0)
+	{
+		trn_lost_empty = trn_lost_empty + 1;
+		return;
+	}
+	if (t1 - trn_j_t0 < TRN_MINAIR)
+	{
+		trn_lost_short = trn_lost_short + 1;
+		return;
+	}
+	k = trh_head + 1;
+	if (!trh_n || k >= TRN_HIST)
+		k = 0;
+	if (trh_n < TRN_HIST)
+		trh_n = trh_n + 1;
+	trh_head = k;
+	trh_seq  = trh_seq + 1;
+
+	b = (k + 1) * TRN_MAXS;
+	gq = gd = 0;
+	for (i = 0; i < trn_n; i = i + 1)
+	{
+		trn_s_dir[b + i]   = trn_s_dir[i];
+		trn_s_t0[b + i]    = trn_s_t0[i];
+		trn_s_dur[b + i]   = trn_s_dur[i];
+		trn_s_qsum[b + i]  = trn_s_qsum[i];
+		trn_s_esum[b + i]  = trn_s_esum[i];
+		trn_s_rsum[b + i]  = trn_s_rsum[i];
+		trn_s_gdur[b + i]  = trn_s_gdur[i];
+		trn_s_wrong[b + i] = trn_s_wrong[i];
+		trn_s_sync[b + i]  = trn_s_sync[i];
+		trn_s_v0[b + i]    = trn_s_v0[i];
+		trn_s_v1[b + i]    = trn_s_v1[i];
+		gq = gq + trn_s_qsum[i];
+		gd = gd + trn_s_gdur[i];
+	}
+	pb = (k + 1) * TRN_PTS;
+	for (i = 0; i < trn_p_n; i = i + 1)
+	{
+		trn_p_t[pb + i] = trn_p_t[i];
+		trn_p_r[pb + i] = trn_p_r[i];
+		trn_p_d[pb + i] = trn_p_d[i];
+	}
+	trh_num[k]  = trh_seq;
+	trh_t0[k]   = trn_j_t0;
+	trh_t1[k]   = t1;
+	trh_v0[k]   = trn_j_v0;
+	trh_v1[k]   = trn_j_v1;
+	trh_sn[k]   = trn_n;
+	trh_pn[k]   = trn_p_n;
+	trh_made[k] = trn_j_n;
+	trh_end[k]  = how;
+	trh_q[k]    = -1;
+	if (gd > 0.0001)
+		trh_q[k] = gq / gd;
+	trn_pin = 0;                    // the jump just made is the one to look at
+
+	dprint(sprintf("trainer: kept jump %g strafes %g of %g air %.0fms v %.0f->%.0f trace %g\n",
+	               trh_seq, trn_n, trn_j_n, (t1 - trn_j_t0) * 1000, trn_j_v0, trn_j_v1, trn_p_n));
+};
+
+// Ground, ramp or air, from the server's two flags. `trainer feed` overrides them so
+// an arm can author a ramp where its map has none (tools/p621trn.py).
+float() Trn_State =
+{
+	if (trn_feed)
+		return trn_feed;
+	if (getstatf(STAT_FS_FLAGS) & FL_ONGROUND)
+		return TRS_GROUND;
+	if (getstatf(STAT_FS_RAMPCONTACT))
+		return TRS_RIDE;
+	return TRS_AIR;
+};
+
+// The open jump is worth showing: it has a strafe and has outlived a dropout.
+float() Trn_OpenShown =
+{
+	if (!trn_air || trn_n <= 0)
+		return FALSE;
+	return (trn_clock - trn_j_t0 >= TRN_MINAIR);
+};
+
+// Which jump the panel shows, into trv_*: the pinned one, else the open one, else the
+// newest kept. trv_num -1 and an empty range when there is none.
+void() Trn_View =
+{
+	local float k;
+
+	k = -1;
+	if (trn_pin)
+	{
+		k = Trn_SlotOf(trn_pin);
+		if (k < 0)
+			trn_pin = 0;            // pushed out of the ring
+	}
+	if (k < 0)
+	{
+		if (Trn_OpenShown())
+		{
+			trv_num = 0;
+			trv_a  = 0;     trv_e  = trn_n;
+			trv_pa = 0;     trv_pe = trn_p_n;
+			trv_t0 = trn_j_t0;
+			trv_t1 = trn_clock;
+			trv_v0 = trn_j_v0;
+			trv_v1 = trn_j_v1;
+			return;
+		}
+		if (!trh_n)
+		{
+			trv_num = -1;
+			trv_a = trv_e = trv_pa = trv_pe = 0;
+			trv_t0 = trv_t1 = trv_v0 = trv_v1 = 0;
+			return;
+		}
+		k = trh_head;
+	}
+	trv_num = trh_num[k];
+	trv_a  = (k + 1) * TRN_MAXS;
+	trv_e  = trv_a + trh_sn[k];
+	trv_pa = (k + 1) * TRN_PTS;
+	trv_pe = trv_pa + trh_pn[k];
+	trv_t0 = trh_t0[k];
+	trv_t1 = trh_t1[k];
+	trv_v0 = trh_v0[k];
+	trv_v1 = trh_v1[k];
+};
+
 /*
   ONE SAMPLE PER OUTGOING COMMAND.  Called from CSQC_Input_Frame AFTER
   PreStrafe_InputFrame, so what is read is the usercmd as it will actually
@@ -361,7 +554,7 @@ float(float dir, float t0, float v0) Trn_Open =
 */
 void() Trn_InputFrame =
 {
-	local float yaw, d, dt, side, dir, rate, ideal, q, sp, air, i, ts;
+	local float yaw, d, dt, side, dir, rate, ideal, q, sp, air, i, ts, st, contact;
 
 	ui_trn_on = cvar("hud_trainer");
 	if (!ui_trn_on)
@@ -395,7 +588,14 @@ void() Trn_InputFrame =
 	trn_clock = trn_clock + dt;
 
 	sp  = Trn_Speed();
-	air = !(getstatf(STAT_FS_FLAGS) & FL_ONGROUND);
+	// Patch 621: a jump is free air. A ramp ends it as the ground does, so a surf run is
+	// its transfers and not one flight (106 recordings: one flight a run at the median,
+	// five jumps). hud_trainer_split 0 is the old rule, the ride inside the jump.
+	st  = Trn_State();
+	contact = (st == TRS_RIDE);
+	air = (st == TRS_AIR);
+	if (contact && !ui_trn_split)
+		air = TRUE;
 	rate = fabs(d) / dt;
 
 	/*
@@ -421,40 +621,11 @@ void() Trn_InputFrame =
 			*/
 			if (trn_pend >= 0 && trn_pend < trn_n)
 			{
-				if (trn_clock - trn_s_t0[trn_pend] <= TRN_SYNCWIN)
-					trn_s_sync[trn_pend] = trn_s_t0[trn_pend] - trn_clock;
+				if (trn_clock - trn_pend_t <= TRN_SYNCWIN)
+					trn_s_sync[trn_pend] = trn_pend_t - trn_clock;
 				trn_pend = -1;
 			}
 		}
-	}
-
-	// Take-off and landing.  The server's flag, not pmove_onground, which is
-	// recomputed per rendered frame and can toggle inside one command frame
-	// with nothing having happened (cl_hud.qc:3991).
-	if (air && !trn_air)
-	{
-		// A new jump.  The previous one stays in the ring until this one has a
-		// strafe of its own, so taking off does not blank what you were reading.
-		trn_j_t0 = trn_clock;
-		trn_j_v0 = sp;
-		trn_j_n  = 0;
-		trn_dir  = 0;
-		trn_pend = -1;
-	}
-	trn_air  = air;
-	trn_j_v1 = sp;
-
-	if (!air)
-	{
-		if (trn_dir)
-			Trn_Report(trn_n - 1);
-		// Grounded: close whatever was open.  Ground movement is a different
-		// optimum entirely (sh_strafe.qc:190-210) -- wishdir nearly ALONG the
-		// velocity, not across it -- and grading it with the air formula would
-		// be confidently wrong rather than slightly wrong.
-		trn_dir  = 0;
-		trn_pend = -1;
-		return;
 	}
 
 	/*
@@ -467,6 +638,47 @@ void() Trn_InputFrame =
 	dir  = 0;
 	if (side > 0) dir =  1;
 	if (side < 0) dir = -1;
+	// Patch 621: read here, before the ground and the ramp return, so that the clock a
+	// key went down at is known when a jump opens the strafe it was already holding.
+	if (dir != trn_kdir)
+	{
+		trn_kdir = dir;
+		trn_kt   = trn_clock;
+	}
+
+	// Take-off and landing.  The server's flag, not pmove_onground, which is
+	// recomputed per rendered frame and can toggle inside one command frame
+	// with nothing having happened (cl_hud.qc:3991).
+	if (air && !trn_air)
+	{
+		// A new jump, and the ring is its alone: the last one is kept (Trn_Keep), and
+		// stays on the panel until this one is worth showing (Trn_OpenShown).
+		trn_j_t0 = trn_clock;
+		trn_j_v0 = sp;
+		trn_j_n  = 0;
+		trn_n    = 0;
+		trn_p_n  = 0;
+		trn_dir  = 0;
+		trn_pend = -1;
+	}
+
+	if (!air)
+	{
+		if (trn_dir)
+			Trn_Report(trn_n - 1);
+		if (trn_air)
+			Trn_Keep(trn_clock - dt, st);
+		trn_air = FALSE;
+		// Grounded: close whatever was open.  Ground movement is a different
+		// optimum entirely (sh_strafe.qc:190-210) -- wishdir nearly ALONG the
+		// velocity, not across it -- and grading it with the air formula would
+		// be confidently wrong rather than slightly wrong.
+		trn_dir  = 0;
+		trn_pend = -1;
+		return;
+	}
+	trn_air  = TRUE;
+	trn_j_v1 = sp;                  // in the air only: on the ground it is friction's
 
 	if (dir != trn_dir)
 	{
@@ -489,10 +701,27 @@ void() Trn_InputFrame =
 			  panel prints a dash.  That is the third verdict: "no flick to
 			  measure against" is not a score of zero.
 			*/
-			if (trn_flip_t && trn_clock - trn_flip_t <= TRN_SYNCWIN)
-				trn_s_sync[i] = trn_clock - trn_flip_t;
-			else
-				trn_pend = i;
+			/*
+			  Patch 621: timed from the KEY (trn_kt), which is now, except for the
+			  strafe a jump opens: the ground and the ramp close every strafe, so a
+			  key already down at take-off opens one there.  Pressed within the
+			  window, it is timed from the press.  Held for longer, it was not
+			  swapped here at all and gets no number: the review counted 123 of the
+			  408 first strafes after a ride given one, 85 of them outside 20 ms.
+			*/
+			trn_pend = -1;
+			if (trn_clock - trn_kt <= TRN_SYNCWIN)
+			{
+				if (trn_flip_t && trn_flip_t <= trn_kt && trn_kt - trn_flip_t <= TRN_SYNCWIN)
+					trn_s_sync[i] = trn_kt - trn_flip_t;
+				else if (trn_flip_t > trn_kt)
+					trn_s_sync[i] = trn_kt - trn_flip_t;    // the key led, by less than the window
+				else
+				{
+					trn_pend   = i;
+					trn_pend_t = trn_kt;
+				}
+			}
 		}
 		else
 			trn_pend = -1;
@@ -522,7 +751,7 @@ void() Trn_InputFrame =
 	  ramp reports the half it can stand behind.
 	*/
 	ideal = 0;
-	if (trn_binds && !getstatf(STAT_FS_RAMPCONTACT))
+	if (trn_binds && !contact)
 		ideal = Strafe_IdealTurn(sp, trn_gain, trn_tick);
 
 	if (ideal > 0.001)
@@ -561,8 +790,6 @@ void() Trn_InputFrame =
 	trn_p_r[trn_p_n] = (ideal > 0.001) ? (rate / ideal) : -1;
 	trn_p_d[trn_p_n] = dir;
 	trn_p_n = trn_p_n + 1;
-
-	trn_j_shown = trn_j_n;
 };
 
 // ---------------------------------------------------------------------------
@@ -607,13 +834,13 @@ vector(float sync) Trn_SyncColour =
   fault, the largest, rather than a list: a paragraph during a jump is not
   readable and the ranking is the useful part.
 */
-string(float first) Trn_Coach =
+string() Trn_Coach =
 {
 	local float i, n, gd, esum, ssum, sn, wrong, q, worst;
 
 	n = 0; gd = 0; esum = 0; ssum = 0; sn = 0; wrong = 0;
 	worst = 1;
-	for (i = first; i < trn_n; i = i + 1)
+	for (i = trv_a; i < trv_e; i = i + 1)
 	{
 		n = n + 1;
 		gd    = gd + trn_s_gdur[i];
@@ -692,14 +919,14 @@ string(float v) Trn_Signed =
   and drew as a few pixels; a tick past the range draws full height. The shaded
   band is +-20%, grade A's.
 */
-void(vector p, float w, float first, float u, float hsz, float trace) Trn_Timeline =
+void(vector p, float w, float u, float hsz, float trace) Trn_Timeline =
 {
 	local float i, span, t0, x, x2, gut, tw, bh, cy, r, dev, ch, ty, tk, th, u1;
 	local vector c;
 
 	u1 = max(1, floor(u));              // a unit's worth of gap, in whole pixels
-	t0 = trn_j_t0;
-	span = trn_clock - t0;
+	t0 = trv_t0;
+	span = trv_t1 - t0;             // a kept jump's own, so it does not shrink as time passes
 	if (span < 0.35)
 		span = 0.35;                    // a short hop must not stretch to fill
 
@@ -726,7 +953,7 @@ void(vector p, float w, float first, float u, float hsz, float trace) Trn_Timeli
 		drawfill([p_x + gut, ty], [tw, 1], SUI_THEME_EDGE_HI, 0.8, 0);
 		// One tick's width, so neighbouring columns meet.
 		tk = max(1, ceil(tw * trn_tick / span));
-		for (i = 0; i < trn_p_n; i = i + 1)
+		for (i = trv_pa; i < trv_pe; i = i + 1)
 		{
 			if (trn_p_t[i] < t0)
 				continue;
@@ -755,7 +982,7 @@ void(vector p, float w, float first, float u, float hsz, float trace) Trn_Timeli
 	}
 
 	// --- a band per strafe ------------------------------------------------
-	for (i = first; i < trn_n; i = i + 1)
+	for (i = trv_a; i < trv_e; i = i + 1)
 	{
 		x  = p_x + gut + ((trn_s_t0[i] - t0) / span) * tw;
 		x2 = p_x + gut + ((trn_s_t0[i] + trn_s_dur[i] - t0) / span) * tw;
@@ -787,9 +1014,83 @@ void(vector p, float w, float first, float u, float hsz, float trace) Trn_Timeli
   whole panel. The overall grade is the header's reading; each row gains the
   speed its strafe added, which the ring always held and nothing showed.
 */
+#define TRN_STRIP  32           // the strip's height, units: gap, hairline, label row, cells
+#define TRN_CELLH  18
+
+// The strip's hint: the keys that hold the two commands, looked up once a second.
+string() Trn_Keys =
+{
+	local string a, b;
+	local float sp;
+
+	if (trn_keys_t && cltime - trn_keys_t < 1 && cltime >= trn_keys_t)
+		return trn_keys;
+	trn_keys_t = cltime;
+	if (trn_keys != "")
+		strunzone(trn_keys);
+	trn_keys = "";
+	a = findkeysforcommandex("trainer older");
+	sp = strstrofs(a, " ", 0);
+	if (sp > 0)
+		a = substring(a, 0, sp);
+	a = strzone(a);
+	b = findkeysforcommandex("trainer newer");
+	sp = strstrofs(b, " ", 0);
+	if (sp > 0)
+		b = substring(b, 0, sp);
+	if (a != "")
+	if (b != "")
+		trn_keys = strzone(strreplace("ARROW", "", strtoupper(sprintf("%s older   %s newer", a, b))));
+	strunzone(a);
+	return trn_keys;
+};
+
+// Patch 621: the kept jumps, oldest on the left, each with its grade and the speed it
+// added. The one on show is ringed; none is while the open jump is.
+void(float px, float y, float w, float u, float sz, float hsz) Trn_Strip =
+{
+	local float c, k, num, cw, x, g, q, u1;
+	local vector col;
+	local string s;
+
+	u1 = max(1, floor(u));
+	drawfill([px + 4 * u, y], [w - 8 * u, 1], SUI_THEME_EDGE, 1, 0);
+	y = y + 4 * u;
+	x = px + 6 * u;
+	Plot_Text([x, y], "LAST JUMPS", hsz, SUI_THEME_MUTED, 1);
+	s = Trn_Keys();
+	if (s != "")
+		Plot_TextR([px + w - 6 * u, y], s, hsz, SUI_THEME_MUTED, 1);
+	y = y + 8 * u;
+
+	cw = 16 * u;
+	for (c = 0; c < TRN_HIST; c = c + 1)
+	{
+		num = trh_seq - (TRN_HIST - 1 - c);
+		k = Trn_SlotOf(num);
+		if (k < 0)
+			_sui_round_draw([x, y], [cw, TRN_CELLH * u], 2 * u, SUI_THEME_CHIP, 0.35);
+		else
+		{
+			if (num == trv_num)
+				_sui_round_draw([x - u1, y - u1], [cw + 2 * u1, TRN_CELLH * u + 2 * u1],
+				                2 * u + u1, SUI_THEME_TEXT, 0.9);
+			_sui_round_draw([x, y], [cw, TRN_CELLH * u], 2 * u, SUI_THEME_CHIP, 1);
+			q = trh_q[k];
+			Plot_TextC([x + cw * 0.5, y + u], Trn_Grade(q), sz, Plot_Quality(q), 1);
+			g = floor(trh_v1[k] - trh_v0[k] + 0.5);
+			col = SUI_THEME_DIM;
+			if (g >  0.5) col = SUI_THEME_GOOD;
+			if (g < -0.5) col = SUI_THEME_BAD;
+			Plot_TextC([x + cw * 0.5, y + 10 * u], Trn_Signed(g), hsz, col, 1);
+		}
+		x = x + cw + 2 * u;
+	}
+};
+
 void(vector scr) Trn_Draw =
 {
-	local float sz, hsz, u, w, h, rh, bw, i, first, rows, q, gq, gd, x, xr, y, mx, trace, g;
+	local float sz, hsz, u, w, h, rh, bw, i, rows, q, gq, gd, x, xr, y, mx, trace, g, strip;
 	local vector p, bp, c;
 	local string s;
 
@@ -811,12 +1112,12 @@ void(vector scr) Trn_Draw =
 	rh  = 10 * u;
 	bw  = 58 * u;
 	trace = cvar("hud_trainer_trace");
+	strip = cvar("hud_trainer_jumps");
 
-	// Which strafes belong to the jump on show.  trn_j_shown freezes at the
-	// landing, so the panel keeps the last jump up instead of blanking.
-	first = trn_n - trn_j_shown;
-	if (first < 0)
-		first = 0;
+	// Patch 621: the open jump, the newest kept or a pinned one. A landed jump is its
+	// kept copy, so its timeline no longer stretches and its speed no longer bleeds
+	// while the panel is being read.
+	Trn_View();
 
 	// hud_trainer_rows 0 is "timeline only", which is the compact form: the
 	// timeline already carries every strafe, so the rows are the detail and not
@@ -824,16 +1125,18 @@ void(vector scr) Trn_Draw =
 	rows = floor(cvar("hud_trainer_rows"));
 	if (rows < 0)        rows = 0;
 	if (rows > TRN_ROWS) rows = TRN_ROWS;
-	if (rows > trn_n - first)
-		rows = trn_n - first;
+	if (rows > trv_e - trv_a)
+		rows = trv_e - trv_a;
 
 	gq = 0; gd = 0;
-	for (i = first; i < trn_n; i = i + 1)
+	for (i = trv_a; i < trv_e; i = i + 1)
 	{
 		gq = gq + trn_s_qsum[i];
 		gd = gd + trn_s_gdur[i];
 	}
-	q = (gd > 0.0001) ? (gq / gd) : -1;
+	q = -1;
+	if (gd > 0.0001)
+		q = gq / gd;
 
 	// Sized from the row count, which changes during a jump: a fixed box either
 	// clips the sixth row or leaves a slab of fill under a one-strafe hop.
@@ -842,34 +1145,51 @@ void(vector scr) Trn_Draw =
 		h = h + (TRN_TRACE + 4) * u;
 	if (rows > 0)
 		h = h + 12 * u + rows * rh;
+	if (strip)
+		h = h + TRN_STRIP * u;
 
 	bp = [cvar("hud_trainer_x") * scr_x, cvar("hud_trainer_y") * scr_y, 0];
 	p  = [floor(bp_x - w * 0.5), floor(bp_y), 0];
+	// Patch 621: the strip made it 32 units taller. Placed low, a jump with six rows
+	// would run off the screen, so it rises to keep its bottom edge on it.
+	if (p_y + h > scr_y)
+	{
+		p_y = max(0, floor(scr_y - h));
+		bp_y = p_y;                 // hud_edit drags from where it is drawn, not from below the screen
+	}
+
 	Plot_Panel(p, [w, h], u);
 
 	// --- the header: the jump's grade, which is only about the hands ---------
 	y = p_y + Plot_Header(p, w, u, sz, "Strafe trainer",
 	                      (q < 0) ? "-" : sprintf("%s  %.0f%%", Trn_Grade(q), q * 100),
 	                      Plot_Quality(q));
+	// A kept jump that is not the newest says how far back it is.
+	if (trv_num > 0)
+	if (trv_num < trh_seq)
+		Plot_Text([p_x + 10 * u + stringwidth("Strafe trainer", TRUE, [sz, sz]),
+		           p_y + 3 * u + (PLOT_BAND * u - 2 * u - sz) * 0.5 + (sz - hsz) * 0.75],
+		          sprintf("%g back", trh_seq - trv_num), hsz, SUI_THEME_WARN, 1);
 	x  = p_x + 6 * u;
 	xr = p_x + w - 6 * u;
 
 	/*
 	  The jump's speed change, which is NOT the grade and must not be read as
 	  one: it is two samples of STAT_FS_VELOCITY either end of the air time, so
-	  a ramp, a booster or a wall is in it as much as your hands are.  It is
-	  here because it is the number a surfer actually wants.
+	  a booster or a wall is in it as much as your hands are (and a ramp, with
+	  hud_trainer_split off).  It is here because it is the number a surfer
+	  actually wants.
 	*/
-	mx = floor(trn_j_v1 - trn_j_v0 + 0.5);
+	mx = floor(trv_v1 - trv_v0 + 0.5);
 	c = SUI_THEME_DIM;
 	if (mx >  0.5) c = SUI_THEME_GOOD;
 	if (mx < -0.5) c = SUI_THEME_BAD;
-	Plot_Text ([x, y + (10 * u - hsz) * 0.5], Trn_Coach(first), hsz, SUI_THEME_DIM, 1);
+	Plot_Text ([x, y + (10 * u - hsz) * 0.5], Trn_Coach(), hsz, SUI_THEME_DIM, 1);
 	Plot_TextR([xr, y + (10 * u - hsz) * 0.5], strcat(Trn_Signed(mx), " u/s"), hsz, c, 1);
 	y = y + 10 * u;
 
 	// --- the timeline -----------------------------------------------------
-	Trn_Timeline([x, y + 2 * u], xr - x, first, u, hsz, trace);
+	Trn_Timeline([x, y + 2 * u], xr - x, u, hsz, trace);
 	y = y + (TRN_LANE * 2 + 4) * u;
 	if (trace)
 		y = y + (TRN_TRACE + 4) * u;
@@ -890,11 +1210,11 @@ void(vector scr) Trn_Draw =
 		Plot_TextR([xr, y], "SYNC ms", hsz, SUI_THEME_MUTED, 1);
 		y = y + 8 * u;
 
-		mx = Trn_MaxDur(first);
-		i = trn_n - rows;
-		if (i < first)
-			i = first;
-		for (; i < trn_n; i = i + 1)
+		mx = Trn_MaxDur();
+		i = trv_e - rows;
+		if (i < trv_a)
+			i = trv_a;
+		for (; i < trv_e; i = i + 1)
 		{
 			c = Plot_Quality(Trn_Q(i));
 			Plot_Text([x, y + (rh - sz) * 0.5], (trn_s_dir[i] > 0) ? "R" : "L", sz,
@@ -925,8 +1245,107 @@ void(vector scr) Trn_Draw =
 		}
 	}
 
+	if (strip)
+		Trn_Strip(p_x, y + 2 * u, w, u, sz, hsz);
+
+	trn_box_p = p;
+	trn_box_s = [w, h, 0];
+	trn_box_u = u;
 	HUD_Rect("trainer", p, [w, h], bp);
 	Font_Reset();
+};
+
+/*
+  `trainer older|newer|live` step the panel through the kept jumps (default.cfg binds
+  the arrows); the next jump kept takes the panel back. `status` prints what an arm
+  grades, `feed` authors the body's state for one (tools/p621trn.py).
+*/
+float(string cmd) Trn_Command =
+{
+	local float n, k, i, b, cur, lo, r;
+	local string s;
+
+	n = tokenize(cmd);
+	if (argv(0) != "trainer")
+		return FALSE;
+	lo = trh_seq - trh_n + 1;
+	if (argv(1) == "older")
+	{
+		if (!trh_n)
+			return TRUE;
+		cur = trn_pin;
+		if (!cur)
+		{
+			cur = trh_seq;
+			if (Trn_OpenShown())
+				cur = trh_seq + 1;      // the open jump is on show: the newest kept is one back
+		}
+		cur = cur - 1;
+		if (cur < lo)
+			cur = lo;
+		trn_pin = cur;
+		return TRUE;
+	}
+	if (argv(1) == "newer")
+	{
+		if (!trn_pin)
+			return TRUE;
+		cur = trn_pin + 1;
+		if (cur > trh_seq)
+			cur = 0;
+		if (cur == trh_seq)
+		if (!Trn_OpenShown())
+			cur = 0;                    // the newest is what an unpinned panel shows
+		trn_pin = cur;
+		return TRUE;
+	}
+	if (argv(1) == "live")
+	{
+		trn_pin = 0;
+		return TRUE;
+	}
+	if (argv(1) == "feed")
+	{
+		trn_feed = floor(stof(argv(2)));
+		if (trn_feed < 0 || trn_feed > TRS_AIR)
+			trn_feed = 0;
+		print(sprintf("trainer: feed %g\n", trn_feed));
+		return TRUE;
+	}
+	if (argv(1) == "status")
+	{
+		Trn_View();
+		print(sprintf("trainer: state %g open %g strafes %g kept %g newest %g pin %g show %g\n",
+		              Trn_State(), trn_air, trn_n, trh_n, trh_seq, trn_pin, trv_num));
+		print(sprintf("trainer: not kept short %g empty %g split %g fed %g\n",
+		              trn_lost_short, trn_lost_empty, ui_trn_split, trn_feed));
+		print(sprintf("trainer: show span %.0fms v %.1f->%.1f strafes %g trace %g\n",
+		              (trv_t1 - trv_t0) * 1000, trv_v0, trv_v1, trv_e - trv_a, trv_pe - trv_pa));
+		print(sprintf("trainer: panel %g %g %g %g u %g strip %g\n", trn_box_p_x, trn_box_p_y,
+		              trn_box_s_x, trn_box_s_y, trn_box_u, cvar("hud_trainer_jumps") ? TRN_STRIP : 0));
+		for (i = lo; i <= trh_seq; i = i + 1)
+		{
+			k = Trn_SlotOf(i);
+			if (k < 0)
+				continue;
+			s = "";
+			b = (k + 1) * TRN_MAXS;
+			for (n = 0; n < trh_sn[k]; n = n + 1)
+			{
+				r = 0;
+				if (trn_s_gdur[b + n] > 0)
+					r = trn_s_rsum[b + n] / trn_s_gdur[b + n];
+				s = strcat(s, sprintf(" %s%.1f", (trn_s_dir[b + n] > 0) ? "R" : "L", r));
+			}
+			print(sprintf("trainer: jump %g end %g strafes %g of %g air %.0fms v %.1f->%.1f",
+			              trh_num[k], trh_end[k], trh_sn[k], trh_made[k],
+			              (trh_t1[k] - trh_t0[k]) * 1000, trh_v0[k], trh_v1[k]));
+			print(sprintf(" trace %g q %.3f rates%s\n", trh_pn[k], trh_q[k], s));
+		}
+		return TRUE;
+	}
+	print("trainer older | newer | live | status\n");
+	return TRUE;
 };
 
 void() Trn_RegisterCvars =
@@ -937,6 +1356,9 @@ void() Trn_RegisterCvars =
 	registercvar("hud_trainer_size", "0", CVAR_ARCHIVE);
 	registercvar("hud_trainer_rows", "6", CVAR_ARCHIVE);
 	registercvar("hud_trainer_trace", "1", CVAR_ARCHIVE);
+	registercvar("hud_trainer_jumps", "1", CVAR_ARCHIVE);   // the strip of kept jumps
+	registercvar("hud_trainer_split", "1", CVAR_ARCHIVE);   // a ramp ends a jump
+	registercommand("trainer");
 	/*
 	  LEFT OF CENTRE AND HIGH, and both numbers were measured off a screenshot
 	  rather than chosen -- two collisions in a row said guessing does not work.

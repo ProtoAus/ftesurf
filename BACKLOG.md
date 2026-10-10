@@ -2225,6 +2225,9 @@ that was never armed (see the bullet below it), and item 10's own residual.
   the stat is that prediction jitters by a tick), or move the per-tick grade to
   the server where the normal is exact and send the finished per-strafe record.
   Bhop maps, which is what it was asked for, are unaffected.
+  Patch 621: by default the ride is no longer inside a jump at all
+  (`hud_trainer_split`), so a surf player's rows are their air strafes and are
+  graded. The ride itself is still ungraded, and this entry stands for it.
 - **`tools/mapmeta.py`'s `MAPDIRS` omits the Momentum install -- the FIRST and
   largest mount -- so the tier alias pass has never considered most of the
   library.** `ftesurf/fs_addons.txt` mounts `Momentum Mod Playtest/momentum`,
@@ -2639,6 +2642,37 @@ lextest.md. Left open, none of it a wrong action:
     Off by default.
   - Stage D of ROADMAP 13 (a native ImGui graph) was asked for by Lex on 10
     Oct and is Patch 614.
+- **Patch 621, left open.** None is a wrong action.
+  - Eight jumps (`TRN_HIST`), each a block of 16 strafes and 256 trace ticks. On a
+    bhop map that is eight hops. More needs a strip that scrolls.
+  - A ramp touched for one to three ticks in the middle of a jump splits it in
+    two: 12 of them in the 106 recordings measured, against 1530 jumps.
+  - A TELEPORT INSIDE A JUMP IS IN ITS NUMBERS. Only the ground and a ramp end a
+    jump, so one that passes a map teleporter, a save loaded in the air or a
+    rewind carries that step in its "+N u/s", its cell and its last strafe's
+    GAIN. The review's emulation over the same recordings: 116 of 1453 kept
+    jumps, median -324 u/s, extremes -3394 and +3303. It was in the old panel's
+    header too; now each is a kept cell. `tg_teleseq` (cl_triggers.qc) says when
+    a teleport was PREDICTED, a round trip before the stats this panel reads
+    show it; ending a jump there needs that lag handled.
+  - With a ghost up the panel still draws, and shows the frozen open jump as if
+    it were live. Inherited.
+  - While a rewind counts down the arrows page the trainer, which is on screen.
+  - At 1920x1080 with hud_scale 2 the DEFAULT place (0.28 / 0.27) overlaps the
+    Segments column as soon as a jump has a row; before the strip it took four
+    rows. Both move in hud_edit.
+  - The cells are not clickable. There is no bind menu either: default.cfg binds
+    the arrows, and a saved config that already binds them leaves the two
+    commands (`trainer older`, `trainer newer`) keyless and the hint blank.
+  - The strip's cost was not measured: nine rounded boxes and up to seventeen
+    strings a frame more. The 610 entry has the panel's.
+  - `cfg/test/p462trn.cfg` (the sync arm, on the owner's install) was not rerun;
+    `p610ui.py` grades the same sampler's rates and its late flick.
+  - `trainer feed` is an arm's handle in shipped QC. It changes what the local
+    panel thinks the body is doing and nothing else; `hud_trainer 0` clears it
+    and `trainer status` says `fed`.
+  - The on-screen clamp and hud_edit: dragging a clamped panel DOWN does nothing
+    (it cannot go lower), by reading; not driven by an arm.
 - **Patch 620, left open.** None is a wrong action.
   - The fallback faces were looked at on one Windows machine (LTSC 2024, which
     has all seven). The Linux list (DejaVu Sans, Droid Sans Fallback, .ttf names

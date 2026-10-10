@@ -11,6 +11,35 @@ to be wrong.
 
 ---
 
+## 00. 10 Oct — the trainer keeps your last jumps (Patch 621)
+
+Published 10 Oct; not on an install or the Pi as this is written.
+
+You said the jump's info is gone before you can read it. Two things were doing
+that, and both are changed.
+
+- **The last eight jumps stay.** A strip under the panel has one cell a jump,
+  newest on the right: its grade and the speed it added. **Left arrow** steps
+  the whole panel back a jump (it says "2 back"), **Right arrow** forward. The
+  next jump you make takes the panel back to it by itself. Are eight enough?
+  On a bhop map that is eight hops.
+- **A jump is the air between two ramps now**, not the whole flight. In the
+  recordings on this machine a run was ONE jump at the median (the longest
+  163 s), so the panel was a window sliding over it; split at the ramps it is
+  five, about 0.9 s and three strafes each. While you ride a ramp the panel
+  holds the transfer you just made. `Split at ramps` in hud_edit turns this off
+  if you liked it whole. Is that the right unit?
+- **SYNC shows a dash on a jump's first strafe when you were already holding the
+  key** (off a ramp, or from the ground). You did not swap there, so there is
+  nothing to time. A key you press just before the jump is timed from the press.
+- **A landed jump no longer changes while you read it.** Its timeline used to
+  keep stretching and its "+N u/s" followed your speed on the ground.
+- The panel is 32 units taller with the strip: 80 px at your size 20. Where you
+  have it, a jump with six rows would have run off the bottom of the window, so
+  the panel now rises to keep its last line on screen. If that jumping about is
+  worse than a shorter panel, `Last jumps` in hud_edit switches the strip off.
+- **Not done:** the cells cannot be clicked, and nothing grades the ride itself.
+
 ## 00. 10 Oct — names you can read (Patch 620)
 
 Published 10 Oct 17:37 UTC (04:37 on the 11th here). Live since 17:47 UTC on

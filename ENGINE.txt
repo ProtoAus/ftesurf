@@ -25,7 +25,14 @@ commit   a67cebe1ea3ac43c2e48794349ccbca3da7a1fb6
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-614
-patch    620
+patch    621
+# Patch 621: the strafe trainer keeps its last eight jumps. A strip under the panel shows
+# each one's grade and the speed it added, and LEFTARROW / RIGHTARROW (cfg/default.cfg)
+# step the panel back through them. A jump is free air now: a surf ramp ends one as the
+# ground does (hud_trainer_split, on), so a surf run reads as its transfers. A landed
+# jump is drawn from its kept copy, so it no longer stretches or loses speed while it is
+# read. csprogs and two cfg files: no engine source, server QC, recorder, evidence,
+# ranking or Build change (commit and tag above stay).
 # Patch 620: a runner's name is drawn whole and in real letters. Every font slot and
 # the console name the system's own fonts as fallback faces (Cyrillic, kana, Hanzi,
 # Hangul, Thai, symbols, emoji; nothing ships), a name is cut between characters and
