@@ -13,7 +13,9 @@ to be wrong.
 
 ## 00. 10 Oct — your own line on the run graphs (Patch 622)
 
-Published 10 Oct; not on an install or the Pi as this is written.
+Published 10 Oct 20:10 UTC (07:10 on the 11th here). Live since 20:12 UTC on
+both installs and 20:13 UTC on all twelve lobbies (csprogs only). Each
+replaced file has a `.prev` copy beside it.
 
 You asked to see your own line competing as you race. With runs ticked on the
 board, the HUD graph now draws yours too: a white line that grows as you go,
