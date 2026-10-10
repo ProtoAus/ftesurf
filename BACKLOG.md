@@ -2651,15 +2651,49 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   and falls, and no ramp. `cl_triggers` did not predict that room's second
   door at 2010 u/s in one run: the server teleported and the kinematic rule
   told the column.
-- **Peak/trough speed and energy labels are not reliably visible.** Existing
-  `cl_lines.qc:Line_Point` reversals are gated by `LN_EVZMIN` and `SEG_AIR`;
-  contact changes take a separate branch. `Line_Marks`/`hud_lines_nums 1`
-  defaults to contacts; 2 adds peaks. Audit missing display/defaults separately
-  from classifier coverage. Falsifier: an airborne ascending->descending apex,
-  descending->ascending ramp bottom, reversal at contact transition and a slow
-  genuine reversal show the time/speed/energy AT the reversal, while zero-noise
-  and teleport/stitch controls do not invent events. Repeat for a native run
-  and a Momentum demo with honest missing/inferred-contact provenance. Plan 12.5–12.6.
+- **Tops and bottoms on a line: what Patch 627 left open.** The marks exist
+  on a ramp now and are on by default (`cl_lines.qc:Line_Peak`). Open:
+  (1) A turn is read off a STRAIGHT LINE in vz between two samples. In the
+  air that is exact. On a ramp, and above all across a landing (vz jumps at
+  the instant of contact, not over the tick), it is a reading: up to a tick
+  in time. A landing that turns vz itself is shown by the landing's own mark
+  and number, which are the sample's, not the instant's.
+  (2) THE LIVE LINE shows a top or bottom only once the body is 8 u past it.
+  No top or bottom has been seen on a live line in an arm: `runlines_livelag`
+  passes on the build with all three patches (and on one ride run on both
+  builds its land and leave have the control's clocks and speeds, 0.9 u
+  away), but its ride has no turn.
+  On one jump-out start behind 120 ms the live line's first sample sat
+  0.225 s into the run instead of at 0; seen once, not reproduced, and the
+  one control run did not jump.
+  (3) A turn that is not 8 u clear is not marked: a hop under 8 u high, a
+  ride's last bottom when the run ends before the body has risen 8 u.
+  (4) The label is the contact marks' own (speed, energy, time, by the
+  `hud_lines_*` switches) in one pale colour for tops and bottoms alike. No
+  word says which it is; nobody has judged whether that reads.
+  (5) Density: a median 13 a run on imports, 577 on the busiest of 400 (a
+  bhop file: a top a hop). `hud_lines_nums 1` puts back contacts only.
+  (6) NOT RUN: a slot past `LN_EVCAP` marks (the tops and bottoms are dropped
+  first there, as before). tools/p449cap.py's model of that case has been
+  wrong since Patch 613 (it appends a top that arrives at a full table, which
+  the client drops: 266 of 1,722 capped runs differ in the review's fuzz; one
+  rule fixes it). Not from this patch.
+  (7) A BOARD LINE AND THE REPLAY DIFFER BY THE RUN'S FIRST TOP in 14 of 75
+  native whole-run files and 53 of 700 imports (the review, by the mark
+  model; 8 and 30 before this patch): the board line's count starts at its
+  one seed sample, the replay's at the file's first. The fix is a board line
+  that walks the half second before its window through the classifier
+  without drawing it, and the same for a replay cut to a stage; the seed's
+  "exactly one sample" rule (Patch 449) was chosen for the ramp hold and
+  would have to go with it. The peaks fixture's apex 1 is this case.
+  (8) SMALL, from the review. A ramp leave stamped BACK onto a sample that
+  already carried a turn leaves both marks (2 native cases, 7 imported). A
+  bottom that a landing covers has no mark of its own, so `hud_lines_land 0`
+  removes it while other bottoms stay. The mark model keeps positions in
+  double and the client in float: 2 of 62,136 fuzzed turns picked the other
+  of two bottoms 0.0001 u apart, none in 1,288 real files. Nothing pins a
+  stitch that is not also a break, nor the far side read off a turn between
+  two samples.
 
 ## UI theme and board layout (Patches 606, 607, 610)
 

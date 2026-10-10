@@ -505,6 +505,14 @@ inferred or unavailable, with identical event times in all viewer modes.
 
 ### 12.6 Apex and ramp-bottom speed/energy labels
 
+**Done in P627**, for replays and board lines, native and imported: a turn is
+stamped where vz crossed zero between its two samples and marked when it
+stands 8 u of height clear on both sides, in the air and on a ramp; the labels
+are on by default. Every acceptance case below is a constructed fixture
+(`tools/test_runlines_peaks.py`). What is left is in BACKLOG ("Tops and
+bottoms on a line"): the live line is not run, and nobody has yet judged how
+the labels read. The text below is the brief as it was.
+
 **Build.** Show **time, speed and energy at vertical-velocity reversals**:
 ascending -> descending is the airborne high point; descending -> ascending
 is the trough/bottom of ramping. These are height extrema, not necessarily

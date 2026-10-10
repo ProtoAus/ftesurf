@@ -25,7 +25,14 @@ commit   c543d688ad16a871753fa9525c23487f437741a5
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-625
-patch    626
+patch    627
+# Patch 627: a run line marks the top of each arc and the bottom of each ride, with its
+# speed, energy and time, and shows them by default (hud_lines_nums 2). A turn is
+# stamped where vz crossed zero between two samples, and counts when it stands 8 units
+# of height clear on both sides -- so a bottom ON a ramp is marked (none was), a wobble
+# is not, and tops and bottoms alternate. The same marks on an imported run.
+# csprogs and ftesurf/cfg/default.cfg (the label default): no engine source, server QC,
+# recorder, evidence, ranking or Build change (commit and tag above stay).
 # Patch 626: an imported Momentum run's line has ramp marks. A .mtv records no ramp
 # contact, so the viewer infers it from the samples (a push up between two ticks in the
 # air; the fall a tick is read off the file) and says so: `~` before a ramp edge's

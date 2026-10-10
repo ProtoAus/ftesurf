@@ -1774,7 +1774,7 @@ float  wt_lj_ta, wt_lj_tb;      // the window, run seconds
 float  wt_lj_c, wt_lj_pt, wt_lj_frc, wt_lj_veto, wt_lj_ride;
 float  wt_lj_stitch;             // a save state came back in this interval
 float  wt_lj_fgn, wt_lj_momdemo; // the header's `foreign` and `momdemo` (cl_infer.qc)
-vector wt_lj_qv;                 // the sample before the window: Line_Seed's
+vector wt_lj_qv, wt_lj_qo;       // the sample before the window: Line_Seed's
 float  wt_lj_qfl, wt_lj_qt, wt_lj_qhave, wt_lj_qyaw;
 vector wt_lj_po, wt_lj_pv;
 
@@ -2122,12 +2122,12 @@ float() Watch_LineJobStep =
 				tokenize(s);
 				wt_lj_qv = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)),
 				            stof(argv(WT_C_VEL + 2))];
+				wt_lj_qo = [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)),
+				            stof(argv(WT_C_ORG + 2))];
 				wt_lj_qfl = stof(argv(WT_C_FLAGS));
 				wt_lj_qfl = wt_lj_qfl - (wt_lj_qfl & WT_F_RAMPI);   // see Watch_Flags
 				if (inf_why[1] == INF_INFERRED)
-				if (Infer_Step(1, [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)),
-				                   stof(argv(WT_C_ORG + 2))], wt_lj_qv, wt_lj_qfl, t,
-				               wt_lj_tick))
+				if (Infer_Step(1, wt_lj_qo, wt_lj_qv, wt_lj_qfl, t, wt_lj_tick))
 				if (Infer_Bit(1))
 					wt_lj_qfl = wt_lj_qfl | WT_F_RAMPI;
 				wt_lj_qyaw = stof(argv(WT_C_YAW));
@@ -2166,7 +2166,7 @@ float() Watch_LineJobStep =
 		}
 		if (wt_lj_c == 0)
 		if (wt_lj_qhave)
-			Line_Seed(wt_lj_slot, wt_lj_qv, wt_lj_qfl, wt_lj_qt, wt_lj_qyaw);
+			Line_Seed(wt_lj_slot, wt_lj_qo, wt_lj_qv, wt_lj_qfl, wt_lj_qt, wt_lj_qyaw);
 		// Patch 469: >=, as the replay's scan spells it.  A v4+ sample has exactly
 		// WT_C_V4N columns, so `>` zeroed the plane on every board line.
 		nrm = (n >= WT_C_V4N) ? [stof(argv(WT_C_NORM)), stof(argv(WT_C_NORM + 1)),

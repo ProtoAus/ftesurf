@@ -96,6 +96,15 @@ class RampLeave(unittest.TestCase):
         cls.table = marks(cls.text)
         cls.leaves = ramp_leaves(cls.table, cls.rows)
 
+    def opener(self, m):
+        """The mark that opened the ride a leave closes: the one before it in the table that is not
+        a top or a bottom (Patch 627 marks those between a ride's two edges: 6 of 32 rides on
+        cfg/test/p492voy.rec)."""
+        n = m['n'] - 1
+        while n > 0 and self.table[n]['kind'] in (p449mark.E_APEX, p449mark.E_TROUGH):
+            n -= 1
+        return self.table[n]
+
     def test_authored_ride_shapes_are_stamped_as_written(self):
         self.assertIsNotNone(self.shapes, 'the arm did not replay cfg/test/runlines_rampshapes.rec')
         got = marks(self.shapes)
@@ -110,7 +119,7 @@ class RampLeave(unittest.TestCase):
         """Not a gate: the shapes of ride the fixture holds, so a pass is read for what it covers."""
         ramp, ground = p449mark.F_RAMP, p449mark.F_ONGROUND
         stamped_without_bit = sum(not self.rows[m['i']][2] & ramp for m in self.leaves)
-        one_sample = sum(self.table[m['n'] - 1]['i'] == m['i'] for m in self.leaves)
+        one_sample = sum(self.opener(m)['i'] == m['i'] for m in self.leaves)
         both_bits = sum(bool(r[2] & ramp and r[2] & ground) for r in self.rows)
         repeated = sum(a[0] == b[0] for a, b in zip(self.rows, self.rows[1:]))
         gaps, run, seen = 0, 0, False
@@ -128,9 +137,16 @@ class RampLeave(unittest.TestCase):
 
     def test_every_mark_carries_the_clock_of_its_edge(self):
         self.assertTrue(all(m['edge'] is not None for m in self.table), 'no edge clock: a build before the patch')
+        times = [r[0] for r in self.rows]
         for m in self.table:
             if m['kind'] == p449mark.E_LEAVE and m['sub'] == RAMP_TO_AIR:
                 self.assertGreaterEqual(m['edge'], m['t'] - 1e-4)
+            elif m['kind'] in (p449mark.E_APEX, p449mark.E_TROUGH):
+                # Patch 627: a top or bottom is stamped where vz crossed zero, between
+                # the sample before its edge and the edge's own.
+                before = times[max(0, bisect.bisect_left(times, m['edge'] - 1e-4) - 1)]
+                self.assertLessEqual(m['t'], m['edge'] + 1e-4)
+                self.assertGreaterEqual(m['t'], before - 1e-4)
             else:
                 self.assertAlmostEqual(m['edge'], m['t'], delta=1e-4)
 
@@ -148,7 +164,7 @@ class RampLeave(unittest.TestCase):
         moved, late = [], []
         for m in self.leaves:
             t, pos, fl, vel = self.rows[m['i']]
-            opened = self.table[m['n'] - 1]
+            opened = self.opener(m)
             touched = bool(fl & p449mark.F_RAMP)
             with self.subTest(t=round(m['t'], 3)):
                 # The stamped sample touched the ramp, or the ride has no contact of its own and it is
@@ -186,7 +202,7 @@ class RampLeave(unittest.TestCase):
             for i in range(m['i'], m['edge_i'] + 1):
                 tail += 1
                 self.assertTrue(near(colour[i], AIR_RGB), 'point %d after a leave is not drawn as air' % i)
-            opened = self.table[m['n'] - 1]
+            opened = self.opener(m)
             for i in range(opened['i'], m['i']):
                 ride += 1
                 self.assertTrue(near(colour[i], RAMP_RGB), 'point %d inside a ride is not drawn as ramp' % i)

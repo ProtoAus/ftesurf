@@ -611,7 +611,7 @@ string(string id, float row) HE_OptDef =
 		if (row == 1) return "hud_watch_path|Demo line|t|||The demo currently open in the replay viewer.";
 		if (row == 2) return "hud_lines_board|Board lines|t|||Show selected leaderboard lines without forgetting the selection.";
 		if (row == 11) return "hud_lines_order|Board lines show|c|0 4 8 16|all near;next 4 s;next 8 s;next 16 s|Only the stretch of each ticked run that comes next from where you are, so a later part of the route does not show through a wall.";
-		if (row == 3) return "hud_lines_nums|Labels|c|0 1 2|off;contacts;+ peaks|Numbers at surface contacts; peaks adds vertical turnarounds.";
+		if (row == 3) return "hud_lines_nums|Labels|c|0 1 2|off;contacts;+ peaks|Numbers at surface contacts; peaks adds the top of each arc and the bottom of each ride.";
 		if (row == 4) return "hud_watch_path_color|Colour by|c|0 1 2 3 4|speed;gain;contact;energy;air control|Advanced controls: lines help in the console.";
 		if (row == 5) return "hud_watch_path_px|Thickness|c|1 2 3 4 6|1 px;2 px;3 px;4 px;6 px|Default width. Player and board width overrides remain console settings.";
 		if (row == 6) return "hud_watch_path_far|Visible for|c|0 3000 6000 12000|forever;3000;6000;12000|Units of distance. Fades over the last third.";

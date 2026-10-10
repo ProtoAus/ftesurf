@@ -2814,3 +2814,38 @@ get on and off the ramps, and is there a map where they are plainly wrong
 
 Not changed: your own recordings, anything a server records or ranks, the
 imported files themselves.
+
+## 18. Speed and energy at the top of an arc and the bottom of a ride (Patch 627)
+
+(Known before you look: a ticked board line can lack the very first top of a
+run that the replay of the same run shows -- about one whole-run line in five.
+It is in the BACKLOG. And nothing here was seen on your own live line by a
+test: that one is yours to look at.)
+
+A line now has a small dot with numbers at the top of each air arc and at the
+bottom of each ride, as well as the chevrons where you get on and off a ramp.
+Before, only tops in the air could be shown, they were off unless you turned
+them on, and the bottom of a ride on a ramp was never marked at all.
+
+- Any replay or board line: look for a pale dot where the line is lowest on a
+  ramp, with the speed, energy and time there, and another at the top of the
+  arc after it. They are on by default now.
+- The Labels chip in the lines settings has the three choices as before: off,
+  contacts, + peaks. "+ peaks" is the new default; "contacts" is how it used
+  to look.
+- The numbers are for the exact moment you stopped going down (or up), worked
+  out between two ticks, so a top's time can read between two ticks' times.
+- A small wobble does not get a dot: the turn has to be 8 units clear of the
+  one before it and of where you go next. A tiny hop under 8 units has none.
+- On a Momentum demo they work the same (and the ramp marks beside them carry
+  the `~` from section 17).
+- A place to look: surf_voyager, `replay cfg/test/p492voy.rec`, pause at about
+  0:03.9: the dot at the bottom of the first long ride reads about 2001 u/s.
+
+What I would like to hear: can you tell a top from a bottom at a glance (they
+are the same pale colour and the same dot), and are there too many labels on
+a busy line? `hud_lines_nums 1` goes back to contacts only.
+
+Not changed: the chevrons, the Segments column, anything recorded or ranked.
+Your own live line gets the dots too, each one a moment after you pass it; I
+have not tested that part in a game.

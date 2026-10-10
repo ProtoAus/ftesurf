@@ -61,7 +61,7 @@
   identically.  Do not interpolate hops the file does not contain.
 */
 #define LN_EVCAP   4096         // marks a slot holds; past it, peaks go first
-#define LN_EVZMIN  40           // u/s of |vz| a peak needs: 2.5 ticks of gravity
+#define LN_EVDZ    8            // height a top or bottom stands clear by, each side
 #define LN_CELLS   4096         // declutter cells; 64 x 36 at the default gap
 #define LN_LABMAX  128          // labels queued for the end of the frame
 
@@ -143,7 +143,15 @@ float  ln_ron[LN_SLOTS];        // the ramp hold's two variables, this slot's ow
 float  ln_rlast[LN_SLOTS];
 float  ln_gjmp[LN_SLOTS];       // +jump seen anywhere in the ground phase
 float  ln_pvz[LN_SLOTS];
-float  ln_vzmax[LN_SLOTS];      // |vz| since the last reversal: the peak gate
+vector ln_po[LN_SLOTS], ln_pv[LN_SLOTS];     // the sample before: where, how fast
+// The tops and bottoms (Line_Peak): the last one marked and its height (or
+// where the count began), and the turn waiting for the body to move clear of it.
+float  ln_pklast[LN_SLOTS], ln_pkz[LN_SLOTS];
+float  ln_pkk[LN_SLOTS];        // its kind, 0 none waiting
+float  ln_pkcov[LN_SLOTS];      // a contact mark on its sample already shows it
+float  ln_phere[LN_SLOTS];      // the sample before carried a contact mark
+float  ln_pkt[LN_SLOTS], ln_pki[LN_SLOTS], ln_pkc[LN_SLOTS];     // time, sample, edge clock
+vector ln_pko[LN_SLOTS], ln_pkv[LN_SLOTS];
 float  ln_nsamp[LN_SLOTS];      // samples this slot has classified
 float  ln_tick[LN_SLOTS];       // the recording's own tick, for the ceiling
 float  ln_pyaw[LN_SLOTS], ln_pt[LN_SLOTS];   // the sample before: yaw, clock
@@ -424,7 +432,9 @@ void(float s) Line_Begin =
 	ln_rcf[s * 2] = -1;
 	ln_gjmp[s]  = FALSE;
 	ln_pvz[s]   = 0;
-	ln_vzmax[s] = 0;
+	ln_po[s]    = ln_pv[s] = '0 0 0';
+	ln_pklast[s] = ln_pkz[s] = ln_pkk[s] = 0;
+	ln_phere[s] = FALSE;
 	ln_pyaw[s]  = 0;
 	ln_pt[s]    = 0;
 	ln_gsince[s] = 0;
@@ -472,6 +482,22 @@ void(float s, float why) Line_Inferred =
   `si` and `tc`: the sample the mark is stamped with, and the clock of the sample
   the classifier's edge fell on.  They differ only for a ramp leave (Line_Point).
 */
+void(float i, float j) Line_EvSwap =
+{
+	local float f;
+	local vector p;
+
+	f = ln_ek[i];   ln_ek[i]  = ln_ek[j];   ln_ek[j]  = f;
+	f = ln_es[i];   ln_es[i]  = ln_es[j];   ln_es[j]  = f;
+	f = ln_et[i];   ln_et[i]  = ln_et[j];   ln_et[j]  = f;
+	p = ln_ep[i];   ln_ep[i]  = ln_ep[j];   ln_ep[j]  = p;
+	f = ln_evh[i];  ln_evh[i] = ln_evh[j];  ln_evh[j] = f;
+	f = ln_e2[i];   ln_e2[i]  = ln_e2[j];   ln_e2[j]  = f;
+	f = ln_ez[i];   ln_ez[i]  = ln_ez[j];   ln_ez[j]  = f;
+	f = ln_ei[i];   ln_ei[i]  = ln_ei[j];   ln_ei[j]  = f;
+	f = ln_ec[i];   ln_ec[i]  = ln_ec[j];   ln_ec[j]  = f;
+};
+
 void(float s, float k, float sub, float t, vector o, vector v, float si, float tc) Line_EvAt =
 {
 	local float b, n, i, j;
@@ -524,6 +550,15 @@ void(float s, float k, float sub, float t, vector o, vector v, float si, float t
 	ln_ei[b + n]  = si;
 	ln_ec[b + n]  = tc;
 	ln_evn[s] = n + 1;
+	// Kept in time order, which Line_EvFind searches by: a ramp leave is stamped
+	// back at its last contact, behind a turnaround marked in the hold's gap.
+	while (n > 0)
+	{
+		if (ln_et[b + n - 1] <= t)
+			break;
+		Line_EvSwap(b + n - 1, b + n);
+		n = n - 1;
+	}
 };
 
 // A mark on the sample being classified, which is every mark but a ramp leave.
@@ -713,6 +748,109 @@ void(float s, float k, vector v, float fl) Line_Was =
 	ln_gjmp[s]  = (k == SEG_NONE) ? (ln_gjmp[s] || (fl & WT_F_JUMP)) : FALSE;
 };
 
+// The tops and bottoms start again at height z: on a slot's first sample, after
+// a break or a loaded save, and on or beside ground.  Nothing waits, nothing to
+// alternate with.
+void(float s, float z) Line_PeakReset =
+{
+	ln_pkk[s]    = 0;
+	ln_pklast[s] = 0;
+	ln_pkz[s]    = z;
+};
+
+// The far side: at height z the body is LN_EVDZ clear of the turn that waits.
+void(float s, float z) Line_PeakFar =
+{
+	local vector w;
+
+	if (!ln_pkk[s])
+		return;
+	w = ln_pko[s];
+	if ((ln_pkk[s] == LN_E_APEX) ? (w_z - z < LN_EVDZ) : (z - w_z < LN_EVDZ))
+		return;
+	if (!ln_pkcov[s])
+		Line_EvAt(s, ln_pkk[s], 0, ln_pkt[s], w, ln_pkv[s], ln_pki[s], ln_pkc[s]);
+	ln_pklast[s] = ln_pkk[s];
+	ln_pkz[s]    = w_z;
+	ln_pkk[s]    = 0;
+};
+
+/*
+  ONE SAMPLE'S PART IN THE TOPS AND BOTTOMS.  Patch 627.
+
+  A turn is where vz crossed zero between the sample before and this one, read
+  off the straight line vz draws between the two (exact in the air: the mover's
+  gravity is two half steps): its time, its height, its sideways speed.  On a
+  ramp it is the same reading of the same two samples.
+
+  It is MARKED when it stands LN_EVDZ of height clear on both sides: of the turn
+  before it (or of where the count began), and of where the body goes next.  So
+  a mark is stamped back at its turn once the body has moved on -- Line_EvAt
+  keeps the table in time order -- tops and bottoms alternate, and a wobble
+  smaller than that marks nothing however fast vz flips.  Before this patch the
+  test was |vz| >= 40 and the air only, which missed every bottom on a ramp;
+  that test with a height alternative, tried first, marked 52 pairs under 0.1 s
+  apart in 400 imports where this marks none.
+
+  `here`: a contact mark sits on this sample or the one before (a landing on an
+  upslope IS the bottom, and half of them turn vz up a tick after the landing's
+  own sample), so the turn counts for the alternation and is not drawn twice.
+*/
+void(float s, vector o, vector v, float t, float here) Line_Peak =
+{
+	local float pk, f, dt, z;
+	local vector po, pv, eo, ev, w;
+
+	pk = 0;
+	if (ln_pvz[s] > 0 && v_z <= 0)
+		pk = LN_E_APEX;
+	else if (ln_pvz[s] <= 0 && v_z > 0)
+		pk = LN_E_TROUGH;
+	f = dt = 0;
+	eo = o;
+	ev = v;
+	if (pk)
+	{
+		po = ln_po[s];
+		pv = ln_pv[s];
+		dt = t - ln_pt[s];
+		f  = (pv_z != v_z) ? bound(0, pv_z / (pv_z - v_z), 1) : 1;
+		eo = po + (o - po) * f;
+		eo_z = po_z + 0.5 * pv_z * f * dt;
+		ev = pv + (v - pv) * f;
+		ev_z = 0;
+	}
+
+	// The far side: the body, or the turn it has just made, is clear of the one waiting.
+	if (ln_pkk[s])
+	{
+		z = o_z;
+		if (pk)
+			z = (ln_pkk[s] == LN_E_APEX) ? min(z, eo_z) : max(z, eo_z);
+		Line_PeakFar(s, z);
+	}
+	if (!pk)
+		return;
+	if (ln_pkk[s] == pk)
+	{
+		// The same kind again before the first was clear: the higher top, the lower bottom.
+		w = ln_pko[s];
+		if ((pk == LN_E_APEX) ? (eo_z <= w_z) : (eo_z >= w_z))
+			return;
+	}
+	else if (ln_pkk[s] || pk == ln_pklast[s])
+		return;                     // the other kind inside LN_EVDZ of the one waiting: a wobble
+	else if ((pk == LN_E_APEX) ? (eo_z - ln_pkz[s] < LN_EVDZ) : (ln_pkz[s] - eo_z < LN_EVDZ))
+		return;                     // the near side
+	ln_pkk[s]   = pk;
+	ln_pkcov[s] = here;
+	ln_pkt[s]   = ln_pt[s] + f * dt;
+	ln_pko[s]   = eo;
+	ln_pkv[s]   = ev;
+	ln_pki[s]   = ln_nsamp[s];
+	ln_pkc[s]   = t;
+};
+
 /*
   A sample BEFORE the shown window: its state only, no point and no mark.
 
@@ -722,12 +860,15 @@ void(float s, float k, vector v, float fl) Line_Was =
   Exactly ONE sample seeds, in both -- a longer history would warm this slot's
   ramp hold while slot 0 starts it cold, and they would disagree again.
 */
-void(float s, vector v, float fl, float t, float yaw) Line_Seed =
+void(float s, vector o, vector v, float fl, float t, float yaw) Line_Seed =
 {
 	Line_Was(s, Line_Contact(s, v, fl, t), v, fl);
 	ln_pyaw[s] = yaw;
 	ln_pt[s] = t;
-	ln_vzmax[s] = 0;
+	ln_po[s] = o;                   // a turnaround before the first shown sample is
+	ln_pv[s] = v;                   // stamped between the two, as slot 0's is
+	Line_PeakReset(s, o_z);
+	ln_phere[s] = FALSE;
 	ln_nsamp[s] = 0;                // the window's first sample is ordinal 0
 };
 
@@ -746,7 +887,7 @@ void(float s, vector v, float fl, float t, float yaw) Line_Seed =
 void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
      vector aux) Line_Point =
 {
-	local float k, q;
+	local float k, q, here;
 
 	// aux is [yaw, the plane's z, wishdir . plane] -- one parm slot rather than
 	// three, which is what keeps this call inside fteqcc's eight.
@@ -771,10 +912,12 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 	if (brk || stitch)
 		ln_rcf[s * 2] = -1;
 
-	if (brk || ln_pkind[s] < 0)
-		ln_vzmax[s] = 0;            // the body moved, or nothing is known yet
-	else if (k != ln_pkind[s])
+	here = FALSE;                   // a contact mark sits on this very sample
+	// Not across a break (the body moved), nor before anything is known.
+	if (!brk && ln_pkind[s] >= 0)
+	if (k != ln_pkind[s])
 	{
+		here = TRUE;
 		if (k == SEG_NONE || k == SEG_RAMP)
 			Line_Ev(s, LN_E_LAND, ln_pkind[s] * 4 + k, t, o, v);
 		else if (ln_pkind[s] == SEG_RAMP)
@@ -785,35 +928,34 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 			// goes back to the ride's last real contact -- 0.09 s and a median
 			// 211 u earlier on the surf_kitsune fixture (84..315).
 			if (ln_rcf[s * 2] >= 0)
+			{
 				Line_EvAt(s, LN_E_LEAVE, ln_pkind[s] * 4 + k, ln_rcf[s * 2 + 1],
 				          ln_rcv[s * 2], ln_rcv[s * 2 + 1], ln_rcf[s * 2], t);
+				here = FALSE;
+			}
 			else
 				Line_Ev(s, LN_E_LEAVE, ln_pkind[s] * 4 + k, t, o, v);
 		}
 		else
 			Line_Ev(s, ln_gjmp[s] ? LN_E_JUMP : LN_E_LEAVE,
 			        ln_pkind[s] * 4 + k, t, o, v);
-		ln_vzmax[s] = 0;            // a takeoff is not a trough
 	}
-	else if (k == SEG_AIR)
+
+	// The tops and bottoms (Line_Peak): in the air, on a ramp and across the
+	// change between them -- most of a surf run's bottoms are ON a ramp.  Never
+	// on or beside ground (a takeoff is not a bottom), nor across a break.
+	if (brk || stitch || ln_pkind[s] < 0 || k == SEG_NONE || ln_pkind[s] == SEG_NONE)
 	{
-		// The gate is the debounce: vz noise around zero would otherwise fire
-		// hundreds of reversals a second on a slow slide.
-		ln_vzmax[s] = max(ln_vzmax[s], fabs(v_z));
-		if (ln_vzmax[s] >= LN_EVZMIN)
-		{
-			if (ln_pvz[s] > 0 && v_z <= 0)
-			{
-				Line_Ev(s, LN_E_APEX, 0, t, o, v);
-				ln_vzmax[s] = 0;
-			}
-			else if (ln_pvz[s] <= 0 && v_z > 0)
-			{
-				Line_Ev(s, LN_E_TROUGH, 0, t, o, v);
-				ln_vzmax[s] = 0;
-			}
-		}
+		// A landing on ground is itself the far side of a turn that waits: a
+		// hop onto a ledge 9 u under its top was marked or not by where the
+		// last air sample fell.
+		if (!brk && !stitch && k == SEG_NONE && ln_pkind[s] > SEG_NONE)
+			Line_PeakFar(s, o_z);
+		Line_PeakReset(s, o_z);
 	}
+	else
+		Line_Peak(s, o, v, t, here || ln_phere[s]);
+	ln_phere[s] = here;
 
 	/*
 	  The ride's last real contact.  On the two authored exits measured the bit
@@ -836,6 +978,8 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 	Line_Was(s, k, v, fl);
 	ln_pyaw[s] = aux_x;
 	ln_pt[s] = t;
+	ln_po[s] = o;
+	ln_pv[s] = v;
 	if (!ln_nsamp[s])
 	{
 		ln_z0[s]  = o_z;        // the run's own start, one choice of energy zero
@@ -1203,8 +1347,7 @@ float(float s, float ahead) Line_FollowWindow =
 	return TRUE;
 };
 
-// The first mark at or after t.  The list is appended in sample order, so it is
-// sorted by construction.
+// The first mark at or after t.  Line_EvAt keeps the list in time order.
 float(float s, float t) Line_EvFind =
 {
 	local float b, lo, hi, m;
@@ -2549,7 +2692,7 @@ void() Line_RegisterCvars =
 	// Patch 451: the numbers.  ON by default (Lex, asked when they were off):
 	// a line you have to switch on twice is a line most people never see.
 	// 1 = on the contact marks; 2 adds the peaks, which is dense on a bhop run.
-	registercvar("hud_lines_nums",    "1", CVAR_ARCHIVE);
+	registercvar("hud_lines_nums",    "2", CVAR_ARCHIVE);    // Patch 627: the tops and bottoms too
 	registercvar("hud_lines_speed",   "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_energy",  "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_vz",      "0", CVAR_ARCHIVE);
@@ -2591,7 +2734,7 @@ float() Line_Console =
 	      "  hud_trail 1       player line\n"
 	      "  hud_watch_path 1  open demo line\n"
 	      "  hud_lines_board 1 selected board lines\n"
-	      "Labels: hud_lines_nums 0/1/2 (off/contacts/+peaks)\n"
+	      "Labels: hud_lines_nums 0/1/2 (off/contacts/+ tops and bottoms)\n"
 	      "  hud_lines_speed/energy/vz/delta/time/names 0/1\n"
 	      "  ~ before a number: a ramp edge inferred on an imported run\n"
 	      "  hud_lines_marks/land/leave/jump/stitch 0/1\n"

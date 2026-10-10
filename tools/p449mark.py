@@ -35,6 +35,13 @@ change, so agreement on a stamp shows the two say the same thing, not that
 either is right.  tools/test_runlines_rampleave.py checks the stamp against the
 file's own flag bits and positions instead.
 
+THE TOPS AND BOTTOMS (Patch 627) are stamped where vz crossed zero between two
+samples, and marked once they stand EVDZ of height clear on both sides; so the
+list is in TIME order and a mark can be appended behind later ones and moved
+back.  This part too was written beside the client's.  The check that does not
+depend on it is tools/test_runlines_peaks.py, whose fixture is built tick by
+tick and whose expected marks come from that construction.
+
   python tools/p449mark.py ftesurf/logs/p449mark.log [--verbose]
 
 Reads FIXTURE/lnmb/lnk/lnm lines from the log, the .rec paths from the FIXTURE
@@ -52,7 +59,7 @@ KIND_NAME = {1: "land", 2: "leave", 3: "jump", 4: "apex", 5: "trough",
 
 F_ONGROUND, F_JUMP, F_RAMP = 1, 4, 16
 RAMP_GAP = 0.08                      # cl_board.qc:248, PMSRC_BOARD_AIRGATE
-EVZMIN = 40                          # cl_lines.qc LN_EVZMIN
+EVDZ = 8                             # cl_lines.qc LN_EVDZ
 EVCAP = 4096                         # cl_lines.qc LN_EVCAP
 
 C_T, C_ORG, C_VEL, C_FLAGS = 0, 1, 4, 9
@@ -86,12 +93,33 @@ def derive(path, breaks, bits=None, seed=None):
     """
     out = []
     pkind = -1
-    ron, rlast, gjmp, pvz, vzmax = False, 0.0, False, 0.0, 0.0
+    ron, rlast, gjmp, pvz = False, 0.0, False, 0.0
+    # The tops and bottoms: the last one marked and its height (or where the
+    # count began), and the turn waiting for the body to move clear of it.
+    pklast, pkz, pend = 0, 0.0, None
+    pstamped = False                # the sample before carried a contact mark
+    prev = None                     # the sample before: (t, o, v)
     ride = None                     # the open ride's last real contact, as a mark's fields
     stitch = False
     body = False
     n = 0
     at = -1                         # file ordinal
+
+    def far(z):
+        """The turn that waits is EVDZ clear of height z: mark it, back at its turn."""
+        nonlocal pklast, pkz, pend
+        if pend is None:
+            return
+        if (pend[0] - z < EVDZ) if pend[1][0] == E_APEX else (z - pend[0] < EVDZ):
+            return
+        if not pend[2]:
+            out.append(pend[1])
+            i = len(out) - 1                # kept in time order
+            while i > 0 and out[i - 1][2] > out[i][2]:
+                out[i - 1], out[i] = out[i], out[i - 1]
+                i -= 1
+        pklast, pkz, pend = pend[1][0], pend[0], None
+
     with open(path, "r", errors="replace") as fh:
         for line in fh:
             line = line.rstrip("\n")
@@ -123,6 +151,8 @@ def derive(path, breaks, bits=None, seed=None):
                 pkind = GROUND if (fl & F_ONGROUND) else (RAMP if raw else AIR)
                 pvz = v[2]
                 gjmp = bool(fl & F_JUMP) if pkind == GROUND else False
+                prev, pklast, pkz, pend = (t, o, v), 0, o[2], None
+                pstamped = False
                 stitch = False
                 continue
             n += 1
@@ -151,30 +181,68 @@ def derive(path, breaks, bits=None, seed=None):
                 rec(E_STITCH, 0)
             if brk or stitch:
                 ride = None             # a leave stamped behind either would be out of order
-            if brk or pkind < 0:
-                vzmax = 0.0
-            elif k != pkind:
+            stamped = False         # a contact mark sits on this very sample
+            if not brk and pkind >= 0 and k != pkind:
+                stamped = True
                 if k in (GROUND, RAMP):
                     rec(E_LAND, pkind * 4 + k)
                 elif pkind == RAMP:
-                    rec(E_LEAVE, pkind * 4 + k, ride if ride is not None else here)
+                    if ride is not None:
+                        # stamped back at the last contact, and kept in time order:
+                        # a turnaround in the hold's gap is already in the list
+                        rec(E_LEAVE, pkind * 4 + k, ride)
+                        stamped = False
+                        i = len(out) - 1
+                        while i > 0 and out[i - 1][2] > out[i][2]:
+                            out[i - 1], out[i] = out[i], out[i - 1]
+                            i -= 1
+                    else:
+                        rec(E_LEAVE, pkind * 4 + k)
                 else:
                     rec(E_JUMP if gjmp else E_LEAVE, pkind * 4 + k)
-                vzmax = 0.0
-            elif k == AIR:
-                vzmax = max(vzmax, abs(v[2]))
-                if vzmax >= EVZMIN:
-                    if pvz > 0 and v[2] <= 0:
-                        rec(E_APEX, 0)
-                        vzmax = 0.0
-                    elif pvz <= 0 and v[2] > 0:
-                        rec(E_TROUGH, 0)
-                        vzmax = 0.0
+
+            # The tops and bottoms (Patch 627): in the air, on a ramp and across
+            # the change between them, never on or beside ground.  A turn is where
+            # vz crossed zero between the two samples; it is marked, stamped back
+            # at the turn, once it stands EVDZ of height clear on both sides.
+            if brk or stitch or pkind < 0 or k == GROUND or pkind == GROUND:
+                # a landing on ground is itself the far side of a turn that waits
+                if not brk and not stitch and k == GROUND and pkind > GROUND:
+                    far(o[2])
+                pklast, pkz, pend = 0, o[2], None
+            else:
+                pk = E_APEX if (pvz > 0 and v[2] <= 0) else \
+                    E_TROUGH if (pvz <= 0 and v[2] > 0) else 0
+                turn = None
+                if pk:
+                    pt, po, pv = prev
+                    dt = f32(t - pt)
+                    f = min(1.0, max(0.0, pv[2] / (pv[2] - v[2]))) if pv[2] != v[2] else 1.0
+                    ex, ey = pv[0] + (v[0] - pv[0]) * f, pv[1] + (v[1] - pv[1]) * f
+                    # (its height, the mark, a contact mark on this sample or the one
+                    # before already shows it)
+                    turn = (po[2] + 0.5 * pv[2] * f * dt,
+                            (pk, 0, pt + f * dt, n - 1, (ex * ex + ey * ey) ** 0.5,
+                             ex * ex + ey * ey, 0.0, t), stamped or pstamped)
+                if pend is not None:            # the far side
+                    z = o[2]
+                    if turn:
+                        z = min(z, turn[0]) if pend[1][0] == E_APEX else max(z, turn[0])
+                    far(z)
+                if turn:
+                    if pend is not None and pend[1][0] == pk:
+                        if (turn[0] > pend[0]) if pk == E_APEX else (turn[0] < pend[0]):
+                            pend = turn         # the higher top, the lower bottom
+                    elif pend is None and pk != pklast:
+                        if (turn[0] - pkz >= EVDZ) if pk == E_APEX else (pkz - turn[0] >= EVDZ):
+                            pend = turn         # the near side
             if k != RAMP:
                 ride = None
             elif raw or ride is None:
                 ride = here
+            prev = (t, o, v)
             pkind, pvz = k, v[2]
+            pstamped = stamped
             gjmp = (gjmp or bool(fl & F_JUMP)) if k == GROUND else False
             stitch = False
     return out, n

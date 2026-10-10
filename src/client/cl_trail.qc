@@ -374,7 +374,7 @@ float(float f, float t, float riding) Trail_Take =
 	              getstatf(STAT_FS_SLORG + 2)]) > TR_JUMP)
 		return TRUE;                // load clock arrived ahead of the body
 	if (!tr_nsamp)
-		Line_Seed(tr_live, v, fl, t, yaw);
+		Line_Seed(tr_live, o, v, fl, t, yaw);
 
 	brk = tr_stitch;
 	if (tr_nsamp > 0)
