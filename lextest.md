@@ -11,6 +11,35 @@ to be wrong.
 
 ---
 
+## 00. 10 Oct — names you can read (Patch 620)
+
+Published 10 Oct; not on an install or the Pi as this is written.
+
+You asked about the glitched names, the bitmap font on the lines and the label
+that jumps. Measured first: on five Momentum boards 74 of 845 names hold
+characters our three fonts lack (Cyrillic, Japanese, Chinese, Thai, symbols,
+emoji), and six hold a `^`, which the engine reads as a colour code. Checked in
+a rig with made-up names of each kind, never with a real player's.
+
+- **Names show as letters now**, on the board, the run-graph chips, the lines
+  and in the console. Windows' own fonts fill in what ours lack, so nothing was
+  added to the download. Arabic and Thai come out letter by letter (the engine
+  does no shaping) and emoji are one colour. Does anything still show as a box
+  on a real board? Tell me the map and the rank.
+- **A name with a space was losing everything after it** wherever it came from
+  a recording (your own runs on the Local tab, a replay's title, a line's
+  name). The whole name is read now.
+- **The name on each ticked line in the world** is in the UI font and slides
+  along the line with you; it used to hop between samples (about 300 u apart
+  on a 50 s run at speed). When you ride along a line its name sits where the
+  line comes into view, low in the middle of the screen (86% of the way down),
+  never off it. Its size follows `hud_lines_numsize`, like the marks' numbers,
+  and it is cut at 18 characters. Is that the right place and size, and is it
+  readable over a bright sky (it has a 1 px shadow and nothing else)?
+- **Not done:** the replay's title bar and the old panels that still use the
+  engine's bitmap font; the native scoreboard (`ui_native_scores 1`), whose
+  table has a Latin-only face.
+
 ## 00. 10 Oct — run graphs on ImPlot (Patch 614)
 
 Published 10 Oct 15:02 UTC (02:02 on the 11th here). Live since 15:04 UTC on

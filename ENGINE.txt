@@ -25,7 +25,15 @@ commit   a67cebe1ea3ac43c2e48794349ccbca3da7a1fb6
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-614
-patch    618
+patch    620
+# Patch 620: a runner's name is drawn whole and in real letters. Every font slot and
+# the console name the system's own fonts as fallback faces (Cyrillic, kana, Hanzi,
+# Hangul, Thai, symbols, emoji; nothing ships), a name is cut between characters and
+# keeps its ^, a recording's owner is the whole name and not its first word, and the
+# name on a ticked line in the world is in the UI face and slides along the line.
+# csprogs and menu.dat only: no engine source, server QC, recorder, evidence, ranking,
+# default or Build change (commit and tag above stay). 619 is held by another session
+# and had not landed.
 # Patch 618: fteplug_ui_imgui is loaded at client boot, by one guarded line in
 # cfg/default.cfg beside hl2's, so the run graphs' ImPlot plots (Patch 614) need no
 # console command where the DLL is installed. A config default and nothing else: no

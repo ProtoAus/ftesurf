@@ -16,6 +16,12 @@ prints a warning and falls back to the built-in 8px bitmap font.)
 
 Notes:
 
+- **Since Patch 620 every slot also names fallback faces** for glyphs these three
+  lack (`FONT_FB_WIN` / `FONT_FB_LINUX` in `sh_font.qc`): Segoe UI, Segoe UI Symbol,
+  MS Gothic, Microsoft YaHei, Malgun Gothic, Leelawadee UI and Segoe UI Emoji on
+  Windows; DejaVu Sans and Droid Sans Fallback on Linux. The engine looks them up
+  in the player's own font directory. **They are not in this repository and are
+  not redistributed**; one that is absent is skipped.
 - **`GoogleMed.ttf` is an unmodified copy of `GoogleSansCode-Medium.ttf`** under a
   shorter filename. The font binary is untouched. None of the three declares a
   Reserved Font Name, so renaming the file is permitted under OFL §1–3.

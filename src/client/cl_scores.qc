@@ -452,7 +452,7 @@ void(float r, string path) Scores_ReadHeader =
 
 		if (argv(0) == "FTESURF-REC") rec_sb_rowver[r]   = stof(argv(1));
 		if (argv(0) == "flags")       rec_sb_rowflags[r] = stof(argv(1));
-		if (argv(0) == "owner")       owner = argv(1);
+		if (argv(0) == "owner")       owner = UI_OwnerLine(l);
 
 		/*
 		  runid is "<yyyymmdd>-<hhmmss>-<slot>" and the list wants the date.
@@ -1566,7 +1566,7 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 
 		Font_Set(ui_font_ui);
 
-		s = bufstr_get(rec_sb_bowner, idx);
+		s = UI_NameShow(bufstr_get(rec_sb_bowner, idx), 0);
 		Scores_Cell(lp, SBK_OWNER, d,
 		            (s != "") ? s : "unknown", on ? SBC_TEXT : SBC_DIM,
 		            on ? 0.9 : 0.35);
@@ -1934,7 +1934,7 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 
 		Font_Set(ui_font_ui);
 
-		s = bufstr_get(ob_bname, idx);
+		s = UI_NameShow(bufstr_get(ob_bname, idx), 0);
 		ncol = SBC_TEXT;
 		if (idx == ob_mine)
 			ncol = SBC_GOOD;

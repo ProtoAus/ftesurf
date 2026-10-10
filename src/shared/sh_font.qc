@@ -128,6 +128,93 @@ float ui_font_ready;            // all four slots allocated, NOT face-load proof
 float ui_font_tries;
 float ui_font_native[4], ui_font_native_tries[4];
 
+/*
+  PATCH 620 -- FACES AFTER THE FIRST FILL IN WHAT IT LACKS.
+
+  Imported board names carry Cyrillic, kana, Hanzi, Thai, symbols and emoji: 74 of
+  845 distinct names on five Momentum boards (10 Oct). Roboto has the first of
+  those and none of the rest, and the engine draws a glyph no face has as a hex
+  box (or, for Cyrillic, as KOI8 letters). gl_font.c splits a face list on
+  commas, tries each for a glyph in order, and looks for a file in the game and
+  then in the OS font directory. So the system's own fonts serve: nothing below
+  ships, and one that is not there is skipped. There is no shaping: Arabic and
+  Thai come out letter by letter, which reads better than boxes.
+  Linux gets .ttf names only: a list entry that fails to load and does not end
+  .ttf or .otf is then tried as an image font (Font_LoadFont).
+*/
+#define FONT_FACE_UI    "gfx/fonts/Roboto.ttf"
+#define FONT_FACE_DISP  "gfx/fonts/BebasNeueRegular.ttf,gfx/fonts/Roboto.ttf"
+#define FONT_FACE_MONO  "gfx/fonts/GoogleMed.ttf,gfx/fonts/Roboto.ttf"
+#define FONT_FB_WIN     ",segoeui.ttf,seguisym.ttf,msgothic.ttc,msyh.ttc,malgun.ttf,leelawui.ttf,seguiemj.ttf"
+#define FONT_FB_LINUX   ",truetype/dejavu/DejaVuSans.ttf,truetype/droid/DroidSansFallbackFull.ttf"
+
+string(string faces) Font_Faces =
+{
+	if (cvar_string("sys_platform") == "Win")
+		return strcat(faces, FONT_FB_WIN);
+	return strcat(faces, FONT_FB_LINUX);
+};
+
+/*
+  A player's name as text to draw: at most `chars` characters (0: all of it), cut
+  between UTF-8 sequences and never inside one, and a ^ kept a ^ (the engine
+  reads ^3 as a colour, and six names in that sample have one). QC strings are
+  bytes here (utf8_enable 0), which is why substring alone left half a
+  character behind. UI_CharBytes is where the first `chars` characters end.
+*/
+float(string s, float chars) UI_CharBytes =
+{
+	local float i, n, c, k, run;
+
+	n = strlen(s);
+	k = run = 0;
+	for (i = 0; i < n; i = i + 1)
+	{
+		c = str2chr(s, i);
+		if ((c & 192) == 128)
+		{
+			// A continuation byte: inside a character. A fourth in a row is not UTF-8
+			// and counts as one, so no file's bytes outrun four a character.
+			run = run + 1;
+			if (run < 4) continue;
+		}
+		run = 0;
+		if (k == chars) break;
+		k = k + 1;
+	}
+	return i;
+};
+
+string(string s, float chars) UI_NameShow =
+{
+	local float i;
+
+	if (chars > 0)
+	{
+		i = UI_CharBytes(s, chars);
+		if (i < strlen(s)) s = strcat(substring(s, 0, i), "..");
+	}
+	if (strstrofs(s, "^") >= 0) s = strreplace("^", "^^", s);
+	return s;
+};
+
+// A recording's `owner` line as the whole name. The recorder writes "owner %s" with the
+// netname, spaces and all, and the three display readers took argv(1): its first word
+// (560 of the 6077 recordings on the desktop have a space in it). The tail is trimmed
+// because tokenize was what dropped a CR from a CRLF copy. A name wrapped in quotes
+// still reads as what is inside, as argv(1) gave it: fixtures write that form.
+string(string l) UI_OwnerLine =
+{
+	local float n;
+
+	n = strlen(l);
+	while (n > 6 && str2chr(l, n - 1) <= 32)
+		n = n - 1;
+	if (n >= 8 && str2chr(l, 6) == 34 && str2chr(l, n - 1) == 34)
+		return substring(l, 7, n - 8);
+	return substring(l, 6, n - 6);
+};
+
 // Separate physical ladders: do not shrink legacy menu/HUD virtual bakes.
 // The engine's pixels=1 option also survives font/renderer reloads.
 float(float slot) Font_NativeSlot =
@@ -140,19 +227,19 @@ float(float slot) Font_NativeSlot =
 	if (slot)
 	{
 		if (slot == ui_font_ui)
-		{ i = 0; name = "fsui_px"; face = "gfx/fonts/Roboto.ttf"; sizes = FONT_UI_SIZES; }
+		{ i = 0; name = "fsui_px"; face = FONT_FACE_UI; sizes = FONT_UI_SIZES; }
 		else if (slot == ui_font_display)
-		{ i = 1; name = "fsdisp_px"; face = "gfx/fonts/BebasNeueRegular.ttf"; sizes = FONT_DISPLAY_SIZES; }
+		{ i = 1; name = "fsdisp_px"; face = FONT_FACE_DISP; sizes = FONT_DISPLAY_SIZES; }
 		else if (slot == ui_font_mono)
-		{ i = 2; name = "fsmono_px"; face = "gfx/fonts/GoogleMed.ttf"; sizes = FONT_MONO_SIZES; }
+		{ i = 2; name = "fsmono_px"; face = FONT_FACE_MONO; sizes = FONT_MONO_SIZES; }
 		else if (slot == ui_font_dispsm)
-		{ i = 3; name = "fsdispsm_px"; face = "gfx/fonts/BebasNeueRegular.ttf"; sizes = FONT_DISPSM_SIZES; }
+		{ i = 3; name = "fsdispsm_px"; face = FONT_FACE_DISP; sizes = FONT_DISPSM_SIZES; }
 	}
 	if (i < 0) return slot;
 	if (!ui_font_native[i] && ui_font_native_tries[i] < 3)
 	{
 		ui_font_native_tries[i] += 1;
-		ui_font_native[i] = loadfont(name, face, strcat(sizes, " pixels=1"), -1, 0, 0);
+		ui_font_native[i] = loadfont(name, Font_Faces(face), strcat(sizes, " pixels=1"), -1, 0, 0);
 	}
 	return ui_font_native[i];
 };
@@ -243,14 +330,26 @@ float(float want) Font_Px =
 
 void() Font_Init =
 {
-	ui_font_ui      = loadfont("fsui",   "gfx/fonts/Roboto.ttf",
+	local string want, have;
+
+	ui_font_ui      = loadfont("fsui",   Font_Faces(FONT_FACE_UI),
 	                           FONT_UI_SIZES, -1, 0, 0);
-	ui_font_display = loadfont("fsdisp", "gfx/fonts/BebasNeueRegular.ttf",
+	ui_font_display = loadfont("fsdisp", Font_Faces(FONT_FACE_DISP),
 	                           FONT_DISPLAY_SIZES, -1, 0, 0);
-	ui_font_mono    = loadfont("fsmono", "gfx/fonts/GoogleMed.ttf",
+	ui_font_mono    = loadfont("fsmono", Font_Faces(FONT_FACE_MONO),
 	                           FONT_MONO_SIZES, -1, 0, 0);
-	ui_font_dispsm  = loadfont("fsdispsm", "gfx/fonts/BebasNeueRegular.ttf",
+	ui_font_dispsm  = loadfont("fsdispsm", Font_Faces(FONT_FACE_DISP),
 	                           FONT_DISPSM_SIZES, -1, 0, 0);
+
+	// The console's face is a cvar, and an archived one: default.cfg's plain value, or a
+	// saved copy of it, would keep the fallbacks out. Only that value and the other
+	// platform's list are moved: anything else is a face the player chose.
+	want = Font_Faces(FONT_FACE_MONO);
+	have = cvar_string("con_textfont");
+	if (have != want)
+	if (have == "gfx/fonts/GoogleMed.ttf" || have == strcat(FONT_FACE_MONO, FONT_FB_WIN)
+	    || have == strcat(FONT_FACE_MONO, FONT_FB_LINUX))
+		cvar_set("con_textfont", want);
 
 	ui_lad_ui_first   = 0;
 	ui_lad_ui_n       = Font_ParseLadder(FONT_UI_SIZES, 0);

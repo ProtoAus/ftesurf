@@ -1068,7 +1068,7 @@ void() Watch_Scan =
 		if (argv(0) == "leg")         rec_wt_leg      = stof(argv(1));
 		if (argv(0) == "tickrate")    rec_wt_tickrate = stof(argv(1));
 		if (argv(0) == "movetickrate") mrate           = stof(argv(1));
-		if (argv(0) == "owner")       rec_wt_owner    = argv(1);
+		if (argv(0) == "owner")       rec_wt_owner    = UI_OwnerLine(s);
 		if (argv(0) == "flags")       rec_wt_recflags = stof(argv(1));
 		if (argv(0) == "runid")       rec_wt_runid    = argv(1);
 		if (argv(0) == "foreign")     rec_wt_foreign  = TRUE;
@@ -1900,7 +1900,7 @@ float() Watch_LineJobStep =
 				if (argv(0) == "leg")       wt_lj_fleg = stof(argv(1));
 				if (argv(0) == "startseg")  wt_lj_seg  = stof(argv(1));
 				if (argv(0) == "pmpin") wt_lj_graphgravity = Line_HeaderGravity(s);
-				if (argv(0) == "owner") Line_Owner(wt_lj_slot, argv(1));
+				if (argv(0) == "owner") Line_Owner(wt_lj_slot, UI_OwnerLine(s));
 				// Line_Begin(slot) already cleared this at open, above.
 				if (argv(0) == "foreign")   Line_Foreign(wt_lj_slot, TRUE);
 			}
@@ -3986,7 +3986,7 @@ void(vector scr) Watch_Chrome =
 	  The owner is spelled once, here, so the width and the draw cannot disagree
 	  about whether it is "unknown".
 	*/
-	s = (rec_wt_owner != "") ? rec_wt_owner : "unknown";
+	s = (rec_wt_owner != "") ? UI_NameShow(rec_wt_owner, 0) : "unknown";
 	stitle = sprintf("%s   %s%s", s, Time_TickString(rec_wt_endticks, rec_wt_tickrate),
 	                 rec_wt_abandon ? " (abandoned)" : "");
 	sclock = sprintf("%s / %s   %.2fx%s",

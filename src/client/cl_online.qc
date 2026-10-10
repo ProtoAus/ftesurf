@@ -1818,7 +1818,7 @@ void() Online_Status =
 			word = strcat(word, " verified");	// Patch 374: the cell's mark
 
 		print(sprintf("   %3g  %-20s %10s  ticks %g @ %.6g Hz  flags %g  %s\n",
-		              ob_rank[i], bufstr_get(ob_bname, i),
+		              ob_rank[i], UI_NameShow(bufstr_get(ob_bname, i), 0),
 		              Time_TickString(ob_ticks[i], 1 / ob_rate[i]),
 		              ob_ticks[i], ob_rate[i], ob_flags[i], word));
 	}

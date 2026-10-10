@@ -66,13 +66,22 @@ float(float s) LineGraph_Available =
 
 vector(float s) LineGraph_Colour = { return Plot_Series(s); };
 
+// "3 name", made once per name: UI_NameShow walks the bytes.
+string lg_name_of[LG_SLOTS], lg_name_show[LG_SLOTS];
 string(float s) LineGraph_Name =
 {
 	local string name;
 	name = ln_owner[s];
 	if (name == "" && s > 0) name = sb_ln_name[s - 1];
 	if (name == "") name = "unknown";
-	return sprintf("%g %s", s, substring(name, 0, 18));
+	if (name != lg_name_of[s])
+	{
+		if (lg_name_of[s]) strunzone(lg_name_of[s]);
+		if (lg_name_show[s]) strunzone(lg_name_show[s]);
+		lg_name_of[s] = strzone(name);
+		lg_name_show[s] = strzone(sprintf("%g %s", s, UI_NameShow(name, 18)));
+	}
+	return lg_name_show[s];
 };
 
 float(float s, float i) LineGraph_Energy =
@@ -838,7 +847,8 @@ void(float t, vector scr, vector plot, vector size) LineGraph_Card =
 		if (!sample_z) continue;
 		x = p_x + fs * 0.8;
 		sui_roundbox([x, y + (fs - 7) * 0.5 + 1], [7, 7], 3.5, Plot_Series(s), 1);
-		Scores_Text([x + fs * 0.8, y], fs, substring(LineGraph_Name(s), 0, 18), SUI_THEME_TEXT, 1);
+		Scores_Text([x + fs * 0.8, y], fs,
+		            substring(LineGraph_Name(s), 0, UI_CharBytes(LineGraph_Name(s), 18)), SUI_THEME_TEXT, 1);
 		Scores_TextR([p_x + xs, y], fs, sprintf("%.0f", sample_x), SUI_THEME_TEXT, 1);
 		if (best - sample_x >= 0.5)
 			Scores_TextR([p_x + xg, y], fs, sprintf("%.0f", best - sample_x), SUI_THEME_BAD, 1);
@@ -1614,37 +1624,208 @@ void(vector scr) LineGraph_Draw =
 		LineGraph_Hud(scr, have);
 };
 
-// Label the closest visible retained point; never invent a label floating over
-// an off-screen path. Stable slot numbers and colours match both graph panels.
+/*
+  Each drawn run's name at the point of its line nearest the eye, in the UI face.
+  Never a label over a path that is off screen. Stable slot numbers and colours
+  match both graph panels.
+
+  Patch 620. It was the nearest of at most 256 SAMPLES (a 50 s run is every 13th
+  point, 300 u apart at speed), so it hopped along the line; and it drew in
+  whatever face was current, the engine's bitmap. Now the coarse pass only finds
+  where to look: the segments either side of its sample are each asked for their
+  own closest point, and the label slides along the one that wins.
+*/
+vector lg_lab_w[LG_SLOTS], lg_lab_q[LG_SLOTS];  // last frame's labels: the point on the line, and on screen
+float lg_lab_on[LG_SLOTS];
+/*
+  A label's point has to be where its text can be read: in front of the eye and inside
+  the screen, less a margin and the text's own width. (The first cut took the nearest
+  point of the line whatever it projected to, and the nearest point of a line you are
+  riding along is under the camera.)
+*/
+vector lgl_lo, lgl_hi;          // that rectangle, virtual pixels
+vector lgl_q, lgl_p;            // the last point tried: on screen, and in the world
+float lgl_ahead;                // hud_watch_path_ahead: the replay's line is shown past its playhead
+
+// The point `f` of the way from sample i to the next, in slot s at base b. f is 0 at
+// the last sample and across a break: the caller keeps it so. 2: a label may sit there;
+// 1: it is in front of the eye but off the label area; 0: neither.
+float(float s, float b, float i, float f) LineGraph_LabelAt =
+{
+	local vector p;
+	local float t;
+
+	p = ln_pos[b + i];
+	t = ln_t[b + i];
+	if (f > 0)
+	{
+		p = p + (ln_pos[b + i + 1] - p) * f;
+		t = t + (ln_t[b + i + 1] - t) * f;
+	}
+	lgl_p = p;
+	if (s == 0)
+	if (!lgl_ahead)
+	if (t > rec_wt_time)
+		return FALSE;
+	if (!Line_ProjPt(p))
+		return FALSE;
+	lgl_q = ln_qmk;
+	if (lgl_q_x < lgl_lo_x || lgl_q_x > lgl_hi_x || lgl_q_y < lgl_lo_y || lgl_q_y > lgl_hi_y)
+		return 1;
+	return 2;
+};
+
 void() LineGraph_WorldLabels =
 {
-	local float s, i, b, d, best, stride;
-	local vector q, at, pos;
+	local float s, i, j, k, n, b, d, e, best, stride, bi, f, sz, f0, dir, us, ulo, uhi, ci, cbest;
+	local vector q, at, p0, seg, aw, vs;
+	for (s = 0; s < LG_SLOTS; s = s + 1) lg_lab_on[s] = FALSE;
 	if (!cvar("hud_linegraph_labels")) return;
+	f0 = ui_font_cur;
+	Font_Set(ui_font_ui);
+	sz = Font_Px(max(12, ln_numsize * 4 / 3));
+	vs = getproperty(VF_SCREENVSIZE);
+	lgl_ahead = (cvar("hud_watch_path_ahead") > 0);
 	for (s = 0; s < LG_SLOTS; s = s + 1)
 	{
 		if (!LineGraph_Available(s)) continue;
 		if (s > 0)
 		if (cvar("hud_lines_board") <= 0) continue;
 		b = s * LN_CAP;
-		best = 99999999;
-		at = '0 0 0';
+		// The text is drawn up and to the right of its point (below).
+		lgl_lo = [vs_x * 0.02, vs_y * 0.06 + sz + 6, 0];
+		lgl_hi = [vs_x * 0.98 - 6 - stringwidth(LineGraph_Name(s), TRUE, [sz, sz]), vs_y * 0.86, 0];
+		if (lgl_hi_x < lgl_lo_x) continue;
+
+		// The nearest of up to 256 samples that a label may sit at (bi), and the nearest
+		// that is merely in front of the eye (ci).
+		best = cbest = 99999999;
+		at = aw = '0 0 0';
+		bi = ci = -1;
 		stride = max(1, ceil((ln_ib[s] - ln_ia[s] + 1) / 256));
 		for (i = ln_ia[s]; i <= ln_ib[s]; i = i + stride)
 		{
-			pos = ln_pos[b + i];
-			d = vlen(pos - ln_eye);
-			if (d > ln_far || d >= best) continue;
-			if (s == 0 && cvar("hud_watch_path_ahead") <= 0)
-			if (ln_t[b + i] > rec_wt_time) continue;
-			if (!Line_ProjPt(pos)) continue;
-			best = d;
-			at = ln_qmk;
+			d = vlen(ln_pos[b + i] - ln_eye);
+			if (d >= best) continue;        // cbest is never over best: neither can gain
+			if (ln_far > 0)             // 0 is "never fade", not "nothing in range"
+			if (d > ln_far) continue;
+			k = LineGraph_LabelAt(s, b, i, 0);
+			if (!k) continue;
+			if (k == 2)
+			{
+				best = d;
+				at = lgl_q;
+				aw = lgl_p;
+				bi = i;
+			}
+			if (d < cbest)
+			{
+				cbest = d;
+				ci = i;
+			}
 		}
-		if (best == 99999999) continue;
-		q = at + [6, 0 - ln_labsz - 6];
-		HUD_Text(q, LineGraph_Name(s), max(12, ln_labsz), LineGraph_Colour(s), 0.95);
+		// None of the 256 on screen: the line may still cross it between two of them,
+		// close by. Every sample either side of the nearest one is tried.
+		if (bi < 0)
+		if (ci >= 0)
+		for (i = max(ln_ia[s], ci - stride); i <= min(ln_ib[s], ci + stride); i = i + 1)
+		{
+			d = vlen(ln_pos[b + i] - ln_eye);
+			if (d >= best) continue;
+			if (ln_far > 0)
+			if (d > ln_far) continue;
+			if (LineGraph_LabelAt(s, b, i, 0) != 2) continue;
+			best = d;
+			at = lgl_q;
+			aw = lgl_p;
+			bi = i;
+		}
+		if (bi < 0) continue;
+
+		// From it, sample by sample towards the eye while the line comes nearer...
+		j = bi;
+		d = best;
+		dir = 0;
+		if (j < ln_ib[s])
+		if (!ln_brk[b + j + 1])
+		if (vlen(ln_pos[b + j + 1] - ln_eye) < d) dir = 1;
+		if (!dir)
+		if (j > ln_ia[s])
+		if (!ln_brk[b + j])
+		if (vlen(ln_pos[b + j - 1] - ln_eye) < d) dir = -1;
+		for (n = 0; dir && n < stride * 2; n = n + 1)
+		{
+			k = j + dir;
+			if (k < ln_ia[s] || k > ln_ib[s]) break;
+			if (ln_brk[b + max(j, k)]) break;       // a teleport: no segment to be on
+			e = vlen(ln_pos[b + k] - ln_eye);
+			if (e >= d) break;
+			j = k;
+			d = e;
+		}
+		// ...to the nearest point of the line, on the segment either side of that sample.
+		us = j;                     // a point of the line: a sample's index plus a fraction
+		if (j < ln_ib[s])
+		if (!ln_brk[b + j + 1])
+		{
+			p0 = ln_pos[b + j];
+			seg = ln_pos[b + j + 1] - p0;
+			f = seg * seg;
+			if (f > 0)
+			{
+				f = bound(0, ((ln_eye - p0) * seg) / f, 1);
+				e = vlen(p0 + seg * f - ln_eye);
+				if (e < d) { d = e; us = j + f; }
+			}
+		}
+		if (j > ln_ia[s])
+		if (!ln_brk[b + j])
+		{
+			p0 = ln_pos[b + j - 1];
+			seg = ln_pos[b + j] - p0;
+			f = seg * seg;
+			if (f > 0)
+			{
+				f = bound(0, ((ln_eye - p0) * seg) / f, 1);
+				e = vlen(p0 + seg * f - ln_eye);
+				if (e < d) { d = e; us = j - 1 + f; }
+			}
+		}
+		// There, if the text can be read there; else as near to it as it can be read,
+		// which is where the line comes onto the screen.
+		i = floor(us);
+		if (LineGraph_LabelAt(s, b, i, us - i) == 2)
+		{
+			at = lgl_q;
+			aw = lgl_p;
+		}
+		else
+		{
+			ulo = bi;
+			uhi = us;
+			for (n = 0; n < 12; n = n + 1)
+			{
+				f = (ulo + uhi) * 0.5;
+				i = floor(f);
+				if (LineGraph_LabelAt(s, b, i, f - i) == 2)
+				{
+					ulo = f;
+					at = lgl_q;
+					aw = lgl_p;
+				}
+				else
+					uhi = f;
+			}
+		}
+		lg_lab_on[s] = TRUE;
+		lg_lab_w[s] = aw;
+		lg_lab_q[s] = at;
+		q = at + [6, 0 - sz - 6];
+		// Over sky or a pale wall the colour alone is not enough.
+		drawstring(q + [ln_px, ln_px], LineGraph_Name(s), [sz, sz], '0 0 0', 0.7, 0);
+		drawstring(q, LineGraph_Name(s), [sz, sz], LineGraph_Colour(s), 0.95, 0);
 	}
+	Font_Set(f0);
 };
 
 // The view, from the panel's own input: `f` scales the span about time `t`.
@@ -1749,6 +1930,17 @@ float(string cmd) LineGraph_Command =
 			ve = ve + lg_polyn[LG_SLOTS + s];
 		}
 		print(sprintf("linegraph: vertices %g %g\n", vs, ve));
+		// The names on the lines, as last drawn: the eye, then each label's point on its
+		// line (world) and on screen, and the text.
+		print(sprintf("linegraph: eye %.3f %.3f %.3f\n", ln_eye_x, ln_eye_y, ln_eye_z));
+		for (s = 0; s < LG_SLOTS; s = s + 1)
+			if (lg_lab_on[s])
+			{
+				sample = lg_lab_w[s];
+				print(sprintf("linegraph: label %g at %.3f %.3f %.3f", s, sample_x, sample_y, sample_z));
+				sample = lg_lab_q[s];
+				print(sprintf(" screen %.1f %.1f text [%s]\n", sample_x, sample_y, LineGraph_Name(s)));
+			}
 		// The panel's plots as last laid out: left, top, width, and both plots' height.
 		print(sprintf("linegraph: plots %g %g %g %g\n", lg_plotp_x, lg_plotp_y, lg_plotsize_x, lg_ploty1 - lg_plotp_y));
 		sample = LineGraph_NativePx(lg_plotp);

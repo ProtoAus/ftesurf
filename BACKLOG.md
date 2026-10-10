@@ -2639,6 +2639,32 @@ lextest.md. Left open, none of it a wrong action:
     Off by default.
   - Stage D of ROADMAP 13 (a native ImGui graph) was asked for by Lex on 10
     Oct and is Patch 614.
+- **Patch 620, left open.** None is a wrong action.
+  - The fallback faces were looked at on one Windows machine (LTSC 2024, which
+    has all seven). The Linux list (DejaVu Sans, Droid Sans Fallback, .ttf names
+    only) was never loaded; the Debian rig is the place.
+  - A listed face that is ABSENT and does not end .ttf or .otf (`msgothic.ttc`,
+    `msyh.ttc` under Wine, say) is then tried as an image font
+    (`Font_LoadFont`). What that prints or costs was not measured.
+  - No shaping and no bidi: Arabic and Thai names are their letters in file
+    order. Emoji are one colour. A glyph none of the faces has is still the
+    engine's hex box.
+  - Text still drawn in the engine's bitmap font shows boxes as before: the
+    replay's title bar and info rows (`cl_watch.qc`, `drawstring` with no
+    Font_Set), and whatever else has not been restyled.
+  - The native scoreboard's table (`ui_native_scores 1`) draws names with the
+    plugin's Latin-only face.
+  - `UI_NameShow` is applied where a name is drawn by the board, the run-graph
+    chips and labels, the replay title and `online status`. Any other place a
+    name with a `^` reaches a drawstring still takes it for a colour: the
+    results card and the chat were not checked.
+  - The name on a line has a 1 px shadow and no plate; over a bright sky that
+    may not be enough (lextest asks).
+  - A ridden line's name sits on the 86% line at mid screen, which is where a
+    player may have put the keys or the mouse pad. Nothing moves it aside.
+  - A label is found from a sample that is itself on screen. A line whose
+    samples are all off screen while a stretch between two of them crosses it
+    (possible only very close to the camera) gets no name.
 - **Patch 614, left open.** None is a wrong action.
   - Patch 618 loads the plugin at client boot (Lex, 10 Oct: "yes, make it
     default"). A client without the DLL, which is every release so far, prints

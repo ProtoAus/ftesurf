@@ -4700,6 +4700,65 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   engine worktree has no `engine/libs-x86_64-w64-mingw32` (ignored, 72 MB):
   copy it from one that built.
 
+### Names: fallback faces, whole owners, a label that slides (Patch 620) — 2026-10-10
+
+- A FONT SLOT IS A LIST OF FACES. `loadfont`'s face argument is split on commas
+  (`Font_LoadFont`, gl_font.c) and a glyph comes from the first face that has
+  it. A file is looked for in the game and then in the OS font directory
+  (CSIDL_FONTS on Windows, /usr/share/fonts on Linux), so the system's fonts
+  serve as fallbacks at no size. Before this a missing glyph was the engine's
+  hex box, or for Cyrillic a KOI8 transliteration ("PRIWET"), which is what
+  "glitched names" was. `FONT_FB_WIN` / `FONT_FB_LINUX` in sh_font.qc.
+- AN ENTRY THAT FAILS TO LOAD AND DOES NOT END .ttf OR .otf IS RETRIED AS AN
+  IMAGE FONT. So the Linux list is .ttf names only. The two .ttc on the Windows
+  list ship with Windows 10 and 11 as far as I know; seen on one machine.
+- THE CONSOLE'S FACE IS A CVAR AND AN ARCHIVED ONE (`con_textfont`): a saved
+  copy of the old default wins over default.cfg. `Font_Init` moves that exact
+  value (and the other platform's list) to this platform's list. Anything else
+  is a face the player chose: the first cut moved every value that BEGAN with
+  GoogleMed.ttf, which a player's own list does.
+- QC STRINGS ARE BYTES HERE (`utf8_enable` 0), so `substring(name, 0, 18)` left
+  half a character behind, which drew as a stray red letter. `UI_CharBytes`
+  is where the first n characters end; a fourth continuation byte in a row
+  counts as a character, so a damaged file cannot outrun four bytes each.
+  `UI_NameShow` cuts there and doubles a `^`: six of 845 real names have one.
+- THREE READERS TOOK `argv(1)` FOR A RECORDING'S OWNER, its first word; the
+  recorder writes the whole netname, and 560 of the 6077 recordings on the
+  desktop have a space in it. `UI_OwnerLine` takes the rest of the line and
+  trims the tail, because tokenize was what used to drop a CR.
+  `cl_online.qc`'s reader (the upload) already took the line and is untouched.
+- A QUOTED OWNER STILL READS AS WHAT IS INSIDE THE QUOTES. The grammar says
+  "read to end of line", but `ui_gallery.py`, `p603scores.py` and `p603http.py`
+  write `owner "Two Words"` and grade the unquoted name, and the first cut of
+  this patch drew their quotes on the board: the look gate caught it (11235
+  pixels of the Local tab's player column). Three imported runs here have a
+  player whose name really is quoted; they lose the quotes as they always did.
+- THE NAME ON A LINE WAS THE NEAREST OF 256 SAMPLES, in whatever face was
+  current. `LineGraph_WorldLabels` sets the UI face, walks from that sample to
+  the nearest POINT of the line, and puts the name there if text can be read
+  there: in front of the eye and inside 2..98% by 6..86% of the screen, less
+  the text's width. Where it cannot, it bisects back along the line to where
+  the line comes onto the screen. `linegraph status` prints `eye`, and for each
+  label its point on the line, its screen position and its text.
+- THE NEAREST POINT OF A LINE YOU RIDE ALONG IS UNDER THE CAMERA. The first cut
+  had no on-screen rule and its arm looked only ACROSS lines, so it passed with
+  every label of the usual view off screen; the review modelled it and the arm
+  then measured it, at (957, 3681) on a 1920x1080 screen. An arm for a thing
+  drawn in the world needs the view the thing is used from.
+- `hud_watch_path_far 0` is "never fade"; the label loop read it as "nothing in
+  range" and drew no name at all. Fixed here.
+- `tools/p620names.py`: four authored runs with one made-up name of each kind.
+  Four eyes looking across them, between samples: 16 labels, all on the true
+  closest point (0.001 u); with the refinement compiled out they sit up to
+  26.2 u off. Three eyes on run 1's line looking along it: all four labels on
+  screen, the ridden line's at the middle of the 86% line (960, 928.8), each
+  the same distance ahead of the eye at all three (spread 0.02 u). What a glyph
+  LOOKS like is not graded: the four shots are for eyes, and the build before
+  the patch gives the boxes to compare with.
+- REAL NAMES STAY OUT OF FIXTURES AND NOTES. The census that sized this (74 of
+  845 on five boards) read the public board API and kept counts by Unicode
+  block, not the names.
+
 ### Native fixture APIs and falsifiers must actually act — 2026-10-09
 
 - `com_bih.c`'s `struct bihproberec_s` and `BIH_ProbeSave/Restore` are local
