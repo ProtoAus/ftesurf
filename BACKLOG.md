@@ -2437,6 +2437,14 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   and teleport/stitch controls do not invent events. Repeat for a native run
   and a Momentum demo with honest missing/inferred-contact provenance. Plan 12.5–12.6.
 
+## Screenshots on D3D9/D3D8 are probably upside down
+
+`D3D9_VID_GetRGBInfo` and `D3D8_VID_GetRGBInfo` (engine/d3d/vid_d3d.c, vid_d3d8.c)
+have the bottom-up copy loop Patch 604 fixed in `D3D11_VID_GetRGBInfo`, with the
+same positive stride. Neither renderer starts on the test laptop, so this is read,
+not measured. Check: `screenshot` under `vid_renderer d3d9`; the HUD should be the
+right way up.
+
 ## Imported runs (Momentum, KSF)
 
 - **An immediate stage restart can reuse/trim the live trail** (run-line review,

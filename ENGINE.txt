@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   35370f0387b94eefb95fa506f28ccd24c6693f6e
+commit   26e74dc91a59c37753411f72ee53337306201fb2
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,11 @@ commit   35370f0387b94eefb95fa506f28ccd24c6693f6e
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-601
-patch    603
+tag      patch-604
+patch    604
+# Patch 604: Vulkan device enumeration no longer calls an uninitialised pointer
+# (intermittent 0xC0000005 at startup); D3D11 screenshots are the right way up.
+# Engine only: no QC, progs, config, default or Build change.
 # Patch 603: new positive receipts compare signed ticks to the captured rec finish.
 # Content mismatch preserves valid signature/angles; 0/-1 sentinels are exempt.
 # Exact optional counter parsing; no format/schema/engine/progs/Build change.
