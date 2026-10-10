@@ -31,6 +31,10 @@ patch    618
 # console command where the DLL is installed. A config default and nothing else: no
 # QC, progs, engine source, recorder, evidence, ranking or Build change (commit and
 # tag above stay). 616 and 617 are held by other sessions and had not landed.
+# Patch 617: the Steam `link` command opens a box. The code is typed into it and
+# Enter answers "link this game to X?"; no console command carries a code or a
+# consent, because a server can type a command and cannot press a key. Codes are
+# ten characters. qwprogs, csprogs and surfd's page text; no engine source.
 # Patch 614: the run-graph panel's two plots are drawn by the ui_imgui plugin on
 # ImPlot where the plugin is loaded (`plug_load ui_imgui`), and by QC as before
 # where it is not.
@@ -38,7 +42,7 @@ patch    618
 # 1.0 is vendored beside Dear ImGui. Engine, plugin and csprogs. The client, the
 # server and all five plugins were rebuilt from one tree (tag patch-614, stamp
 # git-7165-patch-614-0-ga67cebe1e), which is why `commit` and `tag` moved; the
-# server's source has not changed since Patch 609. `patch` stays at 615, the
+# server's source has not changed since Patch 609. `patch` stayed at 615 then, the
 # highest number published: it never moves down.
 # Patch 613: a replay's Segments rows around a teleport. The segment machine is told
 # where the run line broke: a held ramp ride ends there, the launch point is forgotten

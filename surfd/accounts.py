@@ -24,19 +24,19 @@ lobby showed the player).  No run signs a negative below -1, and the game
 server's receipt handler refuses them, so none can be filed as a run's either.
 
 LINKING IS ASK, THEN CONFIRM.  Asking proves a key for a code and CLAIMS the
-code for that key: nobody else can use it after.  The lobby then shows the
-account's name and a number of ITS choosing, and confirming signs that number;
-surfd never sees the number except under the signature.  Text a server the
-player has LEFT put in the client (a delayed command, a bind) can ask; it
-cannot read the number.
+code for that key: nobody else can use it after.  The lobby then sends the
+client the account's name and a number of ITS choosing, and confirming signs
+that number; surfd never sees the number except under the signature.
 
-WHAT THAT DOES NOT COVER, and why nothing may rank on a link yet (ROADMAP 14.3
-has the gate).  Whoever can write to the client's connection as well as read it
-has both commands signed like typed ones.  The lobby is sent a digest of the
-code and never the code, but a code is 40 bits and a digest can be searched:
-what keeps a code is the claim, made by the same packet that exposes the
-digest.  And a code is a bearer token until somebody asks with it: typed into
-a game whose server is not ours, it is that server's.
+WHO MAY ASK AND CONFIRM IS THE GAME'S BUSINESS, NOT THIS FILE'S.  surfd proves
+a key signed; it cannot see whether a person meant it.  Since Patch 617 the
+client makes both signatures only under key presses in its own link box
+(cl_account.qc); Patch 615 made them for a console command, which a server can
+type.  The lobby is sent a digest of the code and never the code, but a code
+is 50 bits and a digest can be searched, given days: what keeps a code is the
+claim, made by the same packet that exposes the digest.  And a code is a
+bearer token until somebody asks with it: typed into a game whose server is
+not ours, it is that server's.
 
 The page says to keep a code private and lists what is linked, with a way to
 unlink.  A ban never pins an install to the banned account -- that would let
@@ -114,7 +114,7 @@ CREATE INDEX IF NOT EXISTS linkkeys_steamid ON linkkeys (steamid);
 CODE_TTL = 600           # s a code can be redeemed for
 CODE_KEEP = 86400        # s a spent or superseded code's row is kept
 CODE_LIVE_MAX = 500      # unredeemed codes outstanding; past it sign-in waits
-CODE_LEN = 8
+CODE_LEN = 10            # 50 bits: a digest of the code crosses the wire (see the header)
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"    # no I O 0 1
 SUPERSEDED = "superseded"
 # A nonce may be dated NONCE_SKEW ahead and is stale NONCE_SKEW after its date,
@@ -196,7 +196,8 @@ def load_board_url(raw, log):
 
 
 def show_code(code):
-    return code[:4] + "-" + code[4:]
+    half = len(code) // 2
+    return code[:half] + "-" + code[half:]
 
 
 def game_name(name):
@@ -806,11 +807,13 @@ def register(app, d):
             resp = _page(1, "Link Steam", (
                 "<p>Signed in as <b>%s</b>.</p>\n"
                 "<p>In FTESurf, join an official lobby, open the console and "
-                "type:</p>\n<p class=\"linkcode\">link %s</p>\n"
+                "type <b>link</b>. Close the console and type this code into "
+                "the box that opened:</p>\n<p class=\"linkcode\">%s</p>\n"
                 "<p>The code works once and expires in ten minutes. Keep it to "
                 "yourself: whoever types it first is linked to your account. "
-                "And only use a code you got from this page yourself: a code "
-                "someone sends you links your game to their account.</p>"
+                "Type it only into that box, never after a command. And only "
+                "use a code you got from this page yourself: a code someone "
+                "sends you links your game to their account.</p>"
                 % (who, show_code(code))) + installs_html(db, steamid, now, browser))
         resp.delete_cookie(cookie, path=cookie_path, secure=secure,
                            httponly=True, samesite="Lax")

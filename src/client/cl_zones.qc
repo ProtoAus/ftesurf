@@ -632,7 +632,9 @@ float(string cmd) Zone_ConsoleCommand =
 			print("zone_goto <n> -- stand in zone n.  See zone_list.\n");
 			return TRUE;
 		}
-		localcmd(sprintf("cmd zone_goto %s\n", argv(1)));
+		// %g of a number, not %s: a quoted `1;anything` ran `anything` at THIS
+		// VM's level, and a server can type zone_goto (Patch 617, arm M).
+		localcmd(sprintf("cmd zone_goto %g\n", stof(argv(1))));
 		return TRUE;
 	}
 

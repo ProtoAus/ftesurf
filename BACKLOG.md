@@ -40,44 +40,52 @@ what the first item wanted; it stays here because the hole itself is open.
 - **A link scanner that fetches the return address first burns it.** By design
   (AGENT_NOTES, "a stray assertion is burned"); the player starts again.
 
-## The `link` command: what it left -- 2026-10-10
+## The Steam link box: what it left -- 2026-10-11
 
-Patch 615, `src/server/sv_account.qc` and `src/client/cl_account.qc`.
+Patches 615 and 617, `src/server/sv_account.qc` and `src/client/cl_account.qc`.
+Patch 617 closed 615's two worst (a `link` that arrived down the connection
+was signed like a typed one, and a squatted `link` cvar sent a typed code in
+the open): no console command carries a code or a consent now.
 
-THE FIRST THREE ARE ROADMAP 14.3's GATE and have one fix: `link` as an engine
-command that hashes and signs itself and runs for the local console only. The
-sequences are in the private tree's `checkpoints/steam-accounts-20261010.md`.
-
-- **A `link` that arrives down the connection is signed like a typed one.**
-  The engine's `rec_sign` refuses a server's stufftext, but `link` is game
-  code and game code may ask for a signature. So the confirming number stops
-  text a server left behind and nobody who can write to the connection while
-  reading it. Measured on the rig with the server doing the typing: both
-  commands, linked.
-- **The name `link` can be taken before the game code loads.** A cvar of that
-  name, left by a server the player was on, makes the registration fail
-  silently and a typed code that cvar's value. cl_account.qc now reads for it
-  and tells the player not to type a code (`p615link.py --taken`); it cannot
-  undo it, and it sees only what exists when the game code loads.
-- **A code typed on somebody else's server is theirs to read.** `link` is
-  registered by the game code (cl_account.qc), and a server supplies the game
-  code. And a code is 40 bits, so even the digest a lobby is sent can be
-  searched by whoever sees it; today the ask in the same packet claims the
-  code first.
-- **No menu row.** Linking is a console command; the page says so. A row in the
-  menu that shows the address and takes the code is ROADMAP 14.2's leftover.
+- **Game code builds console lines out of text, and `rec_sign` is a console
+  command.** ROADMAP 14.3's gate. 123 `localcmd` calls in src/client, about
+  55 with something variable in them; `zone_goto` and `ghost speed` pasted
+  their argument in whole and are fixed (`p615link.py`, M, fails on the build
+  before). Nobody has read the other string sites for the same thing
+  (`exec particles/%s.cfg`, `cl_voip_mute "%s"`, `rec_ul_arm %s`, the hud_edit
+  `seta %s %s` family, `cmd ` + a saveloc command). What it wants is the
+  engine change in the roadmap; an audit of the sites is the stopgap.
+- **Not covered by an arm:** that the run's receipt never signs a tick count
+  below -1 (cl_replay.qc); it needs a server that sets the stat. By reading.
+- **A code typed on somebody else's server is theirs to read.** Their game
+  code draws whatever box it likes. The page says to use an official lobby,
+  and a code is 50 bits, so the digest a server is handed is days of search.
+  Nothing in game code can close this; an engine-drawn box could.
+- **The account's name in the box is what the connection says it is.** It
+  arrives as stufftext on an unencrypted channel. It is there so a player who
+  typed a code somebody gave them sees whose it is; it is not a proof of that.
+- **The engine can be told to inject key presses.** `in_journal_synth` feeds
+  SPACE and mouse moves through the real input path, and any console can run
+  it. The box answers to Enter, Y, N and Esc only (`p615link.py`, K). A new
+  engine test command that injects other keys would be a way round the box:
+  give such commands the level check `rec_sign` has.
+- **Nothing in QC may call `CSQC_InputEvent`.** It is what says a key was
+  real. The arm greps for it; a harness that wants the input chain calls
+  `CL_InputEvent`.
+- **A client whose `link` name was taken cannot link until it restarts.**
+  cl_account.qc says so at connect (`p615link.py --taken`). It reads only what
+  exists when the game code loads.
+- **No menu row, and no paste.** `link` is typed in the console, the console
+  has to be closed before the box takes keys, and ten characters are typed by
+  hand. A menu row that opens the box is ROADMAP 14.2's leftover.
 - **The connect line repeats on every map.** `Account_Frame` asks once per
   client VM, and a map change is a new VM. An unlinked player is told how to
   link at each one. Falsifier: two maps in one session, one line.
 - **A lost connect proof is not asked for again.** The client stops asking
   once it has been handed a nonce (`acct_cl_got`), and the server drops the
-  proof silently if it is late, crosses a `link`, or surfd says `later`. The
-  install is "not known" for that map. Display only today.
-- **A second ask replaces a pending number without a word** (`Account_Link`),
-  and the new prompt differs from the old one only in the account's name.
-- **The account's name and the number are also printed to spectators who are
-  following the player**, and into a server-side demo, as any `sprint` is. The
-  number is no use without the install's key.
+  proof silently if it is late, crosses a link, or surfd says `later`. The
+  install is "not known" for that map. Display only today; ROADMAP 14.3 needs
+  it fixed first.
 - **Not covered by an arm:** a client that sends account commands before it
   has spawned (`acct_here`), and the reset at disconnect; both by reading.
 - **A player on the Pi's own LAN cannot link by its LAN address.**
@@ -85,10 +93,6 @@ sequences are in the private tree's `checkpoints/steam-accounts-20261010.md`.
   nobody's"), so a client that joined `192.168.1.102:<port>` is told the
   leaderboard does not know the server by that address. Join by
   `play.proto.bar`. Falsifier: `tools/p615link.py --refuse-address`.
-- **The confirming number is guessable at one in a million a try.** One try a
-  number and eight asks a minute an address; not measured against a client
-  that is being typed for. If it ever matters, count wrong numbers per
-  connection.
 - **A slow Pi and many connects.** Every connect costs surfd one Ed25519 check
   in pure Python; 480 a minute are allowed, then connects are told `later` and
   say nothing. Not measured on the Pi under load.

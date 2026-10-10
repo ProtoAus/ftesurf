@@ -6070,27 +6070,85 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   FIRST CUT SIGNED 0 and took a receipt "only while a proof was owed": the
   review filed a stray proof as a kept abandon's receipt and had a proof eat a
   real one.
-- **A LINK IS TWO COMMANDS, AND THE SECOND IS A NUMBER THE LOBBY PRINTS.** Text
-  a server left in a client (an `in` timer, a bind) runs later on ours and can
-  type `link <its code>`. It cannot read what our lobby then prints, and the
-  signature that links is over that number (`confirm_nonce`). One try a number;
-  the number is drawn a BYTE a digit (a hex character's code mod 10 makes six
-  digits twice as likely as the other four). The arm's K types blind.
-  **WHAT THE NUMBER DOES NOT DO, MEASURED.** A probe build whose server stuffed
-  `link <code>` and then `link <number>` back at the client linked it: the
-  engine runs a stuffed game-code command, and game code's `localcmd` is above
-  the level `rec_sign` refuses. The number was designed against a server the
-  player has LEFT and the first docs said "cannot read the number" as if that
-  were everyone. ROADMAP 14.3 opens with the fix; do not rank on a link first.
+- **A LINK IS MADE BY THE KEYBOARD AND BY NOTHING ELSE (Patch 617).** Patch 615
+  took the code as `link <code>` and the consent as `link <number>`, a number
+  the lobby printed, on the argument that text a server left in a client
+  cannot read it. A probe build whose server stuffed both commands back at the
+  client linked it: the engine runs a stuffed game-code command, and game
+  code's `localcmd` is above the level `rec_sign` refuses. So now `link` only
+  opens a box (cl_account.qc); the code is typed into it and Enter answers
+  "link this game to X?"; and NO console command carries a code or makes
+  either signature. The number is still the lobby's and still signed, to bind
+  the answer to the question; nobody types it.
+- **`CSQC_InputEvent` IS THE ENGINE'S ENTRY AND NOTHING IN QC MAY CALL IT.** It
+  sets `cl_input_real` round `CL_InputEvent`, and the box acts only while that
+  is set. `vote key` feeds `CL_InputEvent` and `hud_edit ui` feeds
+  `CL_InputChain`, from the console, which a server can type: both find the
+  box deaf. The arm greps every .qc for a call, presses the same Enter both
+  ways, and FAILS on a build with the guard removed (built and run: the
+  console's Enter moved the link).
+- **`rec_sign` IS A CONSOLE COMMAND, SO EVERY `localcmd` IS A ROAD TO IT.** The
+  box makes its signatures only under keys, and the review still found two
+  other ways to the same signature. The run's receipt (cl_replay.qc) signed
+  `rec_sign <nonce> <ticks>` with BOTH taken from the server, and -3 and -4
+  are tick counts: it signs nothing below -1 now. And `zone_goto` and `ghost
+  speed` pasted a typed argument into a `localcmd`, where `"1;rec_sign ..."`
+  is two commands at game code's level; both take a number now, and the arm's
+  M echoes a marker through the old build. About fifty more `localcmd` calls
+  carry text and have not been read for it. ROADMAP 14.3 opens with the real
+  fix (signing as a builtin). Until then "only the keyboard" is true of the
+  box, not of the client.
+- **THE BOX TAKES PRESSES AND NEVER RELEASES.** The first cut copied the chat
+  draft and swallowed the release of a key it took. With the box closing under
+  a held key that left the game its repeats but not its release: a held `2`
+  loaded a saveloc and held it, a held digit cast a vote. Now a release always
+  goes on (a press the box took ran no bind, so there is nothing to undo), and
+  the REPEATS of a press it took are kept from the game until the key is up.
+  It keeps its own table of keys down: `chat_rep` can be set from the console.
+- **ESC AFTER THE CONFIRM SAID "CANCELLED" OVER A LINK THAT WENT THROUGH.** The
+  confirm is with surfd before a hand can reach Esc. The box now says
+  "Linking..." and waits; an answer that outlives its patience is still shown.
+- **A SECOND ESC IS THE GAME'S.** The arm dismissed an ending with Esc after an
+  Esc that had already closed it; the engine opened its menu, the menu took
+  the keyboard, and every later key in the run went nowhere. It dismisses with
+  Backspace. A player doing the same just sees the menu.
+- **FOUR TEST OVERLAYS CALL `CSQC_InputEvent` ON PURPOSE** (tools/fixtures/
+  p603*_runtime.qc, rewind_navigation_smoke.py, watch_navigation_smoke.py):
+  in THOSE builds a console-driven key counts as real. The arm's grep reads
+  src/ only, which is what ships.
+- **THE ENGINE HAS A COMMAND THAT INJECTS REAL KEYS.** `in_journal_synth` puts
+  SPACE and mouse moves through `IN_KeyEvent`, the device path, with no level
+  check. So consent is Enter, Y, N or Esc, never SPACE and never "any key";
+  the arm runs it at the question. A new engine test command that injects
+  other keys is a way round every CSQC prompt: give it `rec_sign`'s check.
+- **A HELD KEY REPEATS INTO WHATEVER OPENS UNDER IT.** The Enter that sends the
+  code is still down when the question arrives, and Windows repeats it. The
+  box takes a repeat (`chat_rep`, cl_chat.qc) as nothing, and ignores every
+  key for 0.6 s after the question appears. The arm holds Enter across it.
+- **THE BOX WAS RIGHT IN THE LOG AND WRONG ON THE SCREEN, TWICE.** Screenshots
+  of each state: the "would move" line sat on the footer, and with the console
+  open nothing was drawn at all (`notmenu` is false under this engine's
+  console window, and the HUD block is skipped), so `link` appeared to do
+  nothing until the console closed. It is drawn in both branches now.
+- **AN ARM THAT WAITS FOR A LINE MUST WAIT FOR A NEW ONE.** `Log.wait` matches
+  after the last match, and an earlier box's "link box open" was still ahead
+  of it: the arm typed into a box that was not up yet and the first key went
+  to the game. It read as the box dropping a character, in one arm only.
+  Count the line before sending and wait for the count to rise.
+- **A RIG CLIENT HAS ITS MENU UP FROM BOOT**, and game code is offered keys only
+  when nothing else has the keyboard. The arm sends `closemenu`, finds the
+  window by its class (`FTEGLQuake`) and posts WM_KEYDOWN with the scan code
+  in lParam: the engine maps the key from that, not from wParam.
 - **THE CODE NEVER REACHES THE LOBBY.** The client sends `code_tag(code)` and
   signs `ask_nonce(code)`: three tagged SHA-256s, so the wire's is not the
   signed one. The first key to ask with a code holds it (`linkcodes.claim`);
-  only that key can confirm. A code is 40 bits and the tag unsalted, so the tag
-  is NOT a secret-keeper: the claim is.
+  only that key can confirm. A code is 50 bits (ten characters since Patch
+  617) and the tag unsalted, so the tag is NOT a secret-keeper: the claim is.
 - **A GAME-CODE COMMAND'S NAME IS FREE ONLY UNTIL A SERVER TAKES IT.** "Grepped
   the engine and plugins" checks a namespace that servers add to at run time: a
   cvar named `link` makes `registercommand` fail silently and the typed line a
-  cvar set. cl_account.qc reads `cvar_type` BEFORE registering and warns.
+  cvar set. cl_account.qc reads `cvar_type` BEFORE registering and says so; and
+  since Patch 617 a typed `link` has no code after it to lose.
 - **A CONNECTING CLIENT'S COMMANDS REACH QC BEFORE ITS EDICT IS CLEARED.** The
   engine reuses the slot as it is, clears it at the newcomer's `spawn`, and
   runs ClientConnect at `begin`; `SV_ParseClientCommand` is live from

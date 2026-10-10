@@ -616,7 +616,8 @@ float(string cmd) Ghost_ConsoleCommand =
 			  BEHIND the seta prints from the far side of it instead, in order,
 			  through the same dispatch.
 			*/
-			localcmd(sprintf("seta ghost_speed %s\n", argv(2)));
+			// %g of a number: see cl_zones.qc's zone_goto (Patch 617, arm M).
+			localcmd(sprintf("seta ghost_speed %g\n", stof(argv(2))));
 			localcmd("ghost speed\n");
 			return TRUE;
 		}

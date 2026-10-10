@@ -226,6 +226,8 @@ M = [
     ("unlink-cookie", A, "resp.set_cookie(ucookie, browser, max_age=UNLINK_TTL, path=cookie_path,",
      'resp.set_cookie("x" + ucookie, browser, max_age=UNLINK_TTL, path=cookie_path,'),
     ("unlink-host", A, 'ucookie = "__Host-ftu" if secure else "ftu"', 'ucookie = "ftu"'),
+    ("code-len", A, "CODE_LEN = 10 ", "CODE_LEN = 8 "),
+    ("code-dash", A, "half = len(code) // 2", "half = 4"),
     # schema 13
     ("links-12", A, "CREATE TABLE IF NOT EXISTS linkcodes (",
      "CREATE TABLE IF NOT EXISTS links (player TEXT PRIMARY KEY, steamid TEXT NOT NULL,"

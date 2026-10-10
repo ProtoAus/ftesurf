@@ -1,31 +1,29 @@
 /*
 ===========================================================================
-  sv_account.qc -- Steam accounts on a keyed server (Patch 615, ROADMAP 14.2).
+  sv_account.qc -- Steam accounts on a keyed server (Patches 615, 617).
 
-  A connection is told which Steam account its install is linked to, and
-  `link <code>` links it.  Everything rests on ONE proof: the client signs a
-  nonce with its `fskey` (the engine's rec_sign, cl_receipt.c) and surfd checks
-  the signature (surfd/accounts.py).  This file moves the pieces and decides
-  nothing; it ranks, kicks and refuses nobody.
+  A connection is told which Steam account its install is linked to, and the
+  client's link box links it.  Everything rests on ONE proof: the client signs
+  a nonce with its `fskey` (the engine's rec_sign, cl_receipt.c) and surfd
+  checks the signature (surfd/accounts.py).  This file moves the pieces and
+  decides nothing; it ranks, kicks and refuses nobody.
 
     connect  CSQC `cmd acct_hello` -> stuffcmd `acct_hello <nonce>` -> rec_sign
              -> `rec_rcpt` -> POST /api/account -> "linked to ..."
-    link     CSQC `cmd link <digest of the code>` and a signature for it
-             -> POST /api/link -> the account's name and A NUMBER, shown here
-             -> the player types `link <number>`; CSQC signs the number
-             -> POST /api/link again -> linked
+    link     the box: `cmd link <digest of the code>` and a signature for it
+             -> POST /api/link -> the account's name, and a number made here
+             -> stuffcmd `acct_ask <number> "name"`; the box asks, Enter signs
+             -> `cmd link <number>` and its signature -> POST /api/link -> linked
 
   AN INSTALL IS ITS KEY.  The guid goes along for the log and is trusted for
   nothing: any server that sends this fleet's sv_guidkey is handed it.
 
-  THE NUMBER IS WHY A LINK TAKES TWO COMMANDS.  A server the player was on
-  earlier can leave text behind in the client (an `in` timer, a bind) that runs
-  here later and types `link <its code>` for them.  It cannot read the number
-  this server then prints, and the signature that links is over that number.
-  IT STOPS NOBODY WHO CAN WRITE TO THIS CONNECTION AS WELL AS READ IT: a `link`
-  that arrives as stufftext is signed like a typed one (measured on the rig).
-  That wants `link` in the engine, refused to anything but the local console,
-  and nothing may rank on a link until it is (ROADMAP 14.3).
+  THE NUMBER BINDS THE ANSWER TO THE QUESTION.  It is this server's, fresh for
+  each ask, and the signature that links is over it: a confirm recorded from
+  one ask is no good for another.  It is no longer what the player types
+  (Patch 615 had `link <number>`, and anything that could write to the
+  connection typed it).  Consent is a key press in the client's box, which
+  cl_account.qc takes from the engine's own events only.
 
   THE THREE PROOFS SIGN TICKS -2, -3 AND -4, AND A RUN SIGNS NONE OF THEM.  A
   finish signs its stamp or -1 and a kept abandon 0, so Account_Proof and
@@ -45,7 +43,7 @@
 #define ACCT_WAIT       5       // s a proof is waited for (a round trip and a signature)
 #define ACCT_HELLOS     3       // nonces one connection may ask for
 #define ACCT_GAP        3       // s between one player's codes
-#define ACCT_PINLIFE    90      // s the number shown stays good
+#define ACCT_PINLIFE    90      // s the question stays open
 #define ACCT_RQLIFE     15      // s an unanswered question blocks the next
 
 #define ACCT_UNKNOWN    0       // .acct_state: nobody has said
@@ -57,7 +55,7 @@
 .float  acct_want_t;
 .string acct_nonce;             // the connect nonce in force, zoned
 .string acct_tag;               // the digest of the code being linked, zoned
-.string acct_pin;               // the number this player must type back, zoned
+.string acct_pin;               // the number the box must sign, zoned
 .float  acct_pin_t;
 .float  acct_rq;                // uri request out for this client, 0 = none
 .float  acct_rq_kind;
@@ -158,12 +156,32 @@ void(entity e) Account_Say =
 		                              "leaderboards\n", e.acct_name));
 	else if (e.acct_state == ACCT_NONE)
 		sprint(e, PRINT_HIGH, sprintf("^5steam:^7 this install is not linked to a Steam "
-		                              "account. Sign in at ^3%s^7 and type ^3link <code>^7 "
-		                              "in the console\n", Account_Url()));
+		                              "account. Sign in at ^3%s^7, then type ^3link^7 in "
+		                              "the console\n", Account_Url()));
 	else
 		sprint(e, PRINT_HIGH, sprintf("^5steam:^7 the leaderboard has not said who this "
-		                              "install is yet. To link it, sign in at ^3%s^7 and "
-		                              "type ^3link <code>^7 in the console\n", Account_Url()));
+		                              "install is yet. To link it, sign in at ^3%s^7, then "
+		                              "type ^3link^7 in the console\n", Account_Url()));
+};
+
+// A word for the client's box (cl_account.qc has what each says).  Always a
+// literal of this file: nothing from the client or from surfd goes in.
+void(entity e, string word) Account_Note =
+{
+	stuffcmd(e, sprintf("acct_note %s\n", word));
+};
+
+// A name from surfd, inside a quoted stuffcmd argument.  surfd's allowlist
+// (accounts.game_name) has none of these already; this is the second lock.
+string(string s) Account_Quoted =
+{
+	s = strreplace("\"", "'", s);
+	s = strreplace("\\", "", s);
+	s = strreplace(";", "", s);
+	s = strreplace("$", "", s);
+	s = strreplace("\n", "", s);
+	s = strreplace("\r", "", s);
+	return s;
 };
 
 // `cmd acct_hello`: the client's game code is up and asks for its nonce.
@@ -236,17 +254,27 @@ string() Account_NewPin =
 };
 
 /*
-  `cmd link`, `cmd link <32 hex>` (asking: the digest of a code) or
-  `cmd link <six digits>` (confirming: the number Account_Reply showed).
-  The client's signature follows in the same packet; Account_Proof posts.
+  `cmd link` (who am I), `cmd link cancel`, `cmd link <32 hex>` (asking: the
+  digest of a code) or `cmd link <six digits>` (confirming: the number
+  Account_Reply sent the box).  The client's signature follows in the same
+  packet; Account_Proof posts.  Every refusal is a word for the box.
 */
 void(entity e, string arg) Account_Link =
 {
 	if (!e.acct_here)
 		return;
+	if (arg == "cancel")
+	{
+		e.acct_want = 0;
+		Account_Drop(e);
+		return;
+	}
 	if (!Account_On())
 	{
-		sprint(e, PRINT_HIGH, "^5steam:^7 this server has no leaderboard to link to\n");
+		if (arg == "")
+			sprint(e, PRINT_HIGH, "^5steam:^7 this server has no leaderboard to link to\n");
+		else
+			Account_Note(e, "off");
 		return;
 	}
 	if (arg == "")
@@ -256,28 +284,27 @@ void(entity e, string arg) Account_Link =
 	}
 	if (Account_Busy(e))
 	{
-		sprint(e, PRINT_HIGH, "^5steam:^7 still asking the leaderboard. Wait a moment\n");
+		Account_Note(e, "busy");
 		return;
 	}
 	if (Account_IsPin(arg))
 	{
 		if (e.acct_pin == "")
 		{
-			sprint(e, PRINT_HIGH, "^1steam:^7 no number is waiting. Type ^3link <code>^7 first\n");
+			Account_Note(e, "code");
 			return;
 		}
 		if (time - e.acct_pin_t > ACCT_PINLIFE)
 		{
 			Account_Drop(e);
-			sprint(e, PRINT_HIGH, "^1steam:^7 that number has expired. Type ^3link <code>^7 again\n");
+			Account_Note(e, "stale");
 			return;
 		}
 		if (strcmp(arg, e.acct_pin))
 		{
-			// One try: text that guesses must start over, and a code lasts ten minutes.
+			// One try.  The box sends the number it was sent; anything else guessed.
 			Account_Drop(e);
-			sprint(e, PRINT_HIGH, "^1steam:^7 that is not the number shown. Type "
-			                      "^3link <code>^7 again\n");
+			Account_Note(e, "proof");
 			return;
 		}
 		e.acct_want   = ACCT_CONFIRM;
@@ -286,13 +313,13 @@ void(entity e, string arg) Account_Link =
 	}
 	if (!SV_RecIsHex(arg, 32))
 	{
-		sprint(e, PRINT_HIGH, "^1steam:^7 that is not a code. It looks like ^3ABCD-EFGH^7\n");
+		Account_Note(e, "code");
 		return;
 	}
 	if (e.acct_last)
 	if (time - e.acct_last < ACCT_GAP)
 	{
-		sprint(e, PRINT_HIGH, "^5steam:^7 one code at a time: wait a few seconds\n");
+		Account_Note(e, "soon");
 		return;
 	}
 	e.acct_last = time;
@@ -377,7 +404,7 @@ float(entity e, string pub, string ticks, string sig, string svname) Account_Pro
 		e.acct_rq = 0;
 		dprint("^1account:^7 uri_post refused the request\n");
 		if (kind != ACCT_HELLO)
-			sprint(e, PRINT_HIGH, "^1steam:^7 the server is busy. Try again in a moment\n");
+			Account_Note(e, "busy");
 	}
 	return TRUE;
 };
@@ -393,24 +420,22 @@ void(entity who, float linked, float banned, string nm) Account_Is =
 	Account_SetName(who, linked ? nm : "");
 };
 
+// surfd's refusal, as one of the box's words.  `why` is surfd's text: it is
+// matched here and never passed on.
 void(entity who, string why) Account_Refused =
 {
 	if (why == "banned")
-		sprint(who, PRINT_HIGH, "^1steam:^7 that Steam account is banned from the leaderboards\n");
+		Account_Note(who, "banned");
 	else if (why == "slow")
-		sprint(who, PRINT_HIGH, "^1steam:^7 too many tries. Wait a minute\n");
+		Account_Note(who, "slow");
 	else if (why == "later")
-		sprint(who, PRINT_HIGH, "^1steam:^7 the leaderboard cannot check that right now. Try "
-		                        "again in a minute\n");
+		Account_Note(who, "later");
 	else if (why == "server")
-		sprint(who, PRINT_HIGH, "^1steam:^7 the leaderboard does not know this server by the "
-		                        "address you joined it on, so it cannot link here\n");
+		Account_Note(who, "server");
 	else if (why == "proof")
-		sprint(who, PRINT_HIGH, "^1steam:^7 this client could not sign for the code. Type "
-		                        "^3link <code>^7 again\n");
+		Account_Note(who, "proof");
 	else
-		sprint(who, PRINT_HIGH, sprintf("^1steam:^7 that code is not valid or has expired. Get "
-		                                "a new one at ^3%s^7\n", Account_Url()));
+		Account_Note(who, "code");
 };
 
 // surfd's answer.  Called from URI_Get_Callback (sv_lobby.qc) for ids past ACCT_ID_BASE.
@@ -460,8 +485,7 @@ void(float reqid, float code, string body) Account_Reply =
 		if (kind != ACCT_HELLO)
 		{
 			Account_Drop(who);
-			sprint(who, PRINT_HIGH, "^1steam:^7 the leaderboard did not answer. Type "
-			                        "^3link <code>^7 again in a minute\n");
+			Account_Note(who, "silent");
 		}
 		return;
 	}
@@ -485,19 +509,16 @@ void(float reqid, float code, string body) Account_Reply =
 			strunzone(who.acct_pin);
 		who.acct_pin   = strzone(Account_NewPin());
 		who.acct_pin_t = time;
-		if (a != "")
-			sprint(who, PRINT_HIGH, sprintf("^5steam:^7 this install is linked to ^3%s^7. To move "
-			                                "it to ^3%s^7 type ^3link %s^7\n", a, b, who.acct_pin));
-		else
-			sprint(who, PRINT_HIGH, sprintf("^5steam:^7 link this install to ^3%s^7? Type "
-			                                "^3link %s^7 to confirm\n", b, who.acct_pin));
+		// The names are only ever drawn by the box; the number it validates.
+		stuffcmd(who, sprintf("acct_ask %s \"%s\" \"%s\"\n", who.acct_pin,
+		                      Account_Quoted(b), Account_Quoted(a)));
 		return;
 	}
 	Account_Drop(who);
 	if (ok)
 	{
 		Account_Is(who, TRUE, banned, nm);
-		sprint(who, PRINT_HIGH, sprintf("^2steam:^7 this install is now linked to ^3%s^7\n", nm));
+		stuffcmd(who, sprintf("acct_note linked \"%s\"\n", Account_Quoted(nm)));
 		return;
 	}
 	Account_Refused(who, why);

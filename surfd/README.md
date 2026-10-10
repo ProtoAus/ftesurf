@@ -858,9 +858,11 @@ AN INSTALL IS ITS SIGNING KEY. Both `/api` routes need the shared key, a
 
 The lobby never sees the code: `tag` is `code_tag(code)`, and surfd finds the
 live code it is a digest of. Asking keeps the code for the key that asked
-(`linkcodes.claim`) and answers with the account's name; the lobby shows the
-player a six-digit `pin` of its own choosing, and confirming, signed over that
-pin by the same key, spends the code and writes `linkkeys`. `server` is the
+(`linkcodes.claim`) and answers with the account's name; the lobby sends the
+client's link box a six-digit `pin` of its own choosing, and confirming, signed
+over that pin by the same key, spends the code and writes `linkkeys`. Whether a
+person meant either signature is the game's business (cl_account.qc makes them
+only under key presses), not surfd's. `server` is the
 address the client signed; it must be one `SURFD_PUBLIC_HOST` resolves to, or
 one listed in `SURFD_LINK_HOSTS`, on the port `node` names. `why: later` means
 surfd could not check (the name does not resolve, `ed25519.py` is not in
@@ -870,7 +872,7 @@ and the per-player limits are keyed on it (12 connects and 8 link steps a
 minute). `player` is the guid, kept for the log. `acct` marks a reply as
 surfd's: QuakeC is handed an empty body for a request that never connected.
 
-A code is 8 characters, lasts ten minutes and works once; a new sign-in
+A code is 10 characters, lasts ten minutes and works once; a new sign-in
 supersedes the account's older code. It is a bearer token for those ten
 minutes, so the page lists what is linked and can unlink it, in the browser
 that signed in (`__Host-ftu`). `name` is the Steam persona reduced to what a

@@ -243,8 +243,8 @@ def signin(m, sid=SID, ip="198.51.100.1", mutate=None, extra=()):
 
 def code_of(resp):
     t = text(resp)
-    at = t.find('class="linkcode">link ')
-    return t[at + 22:at + 31] if at >= 0 else ""
+    at = t.find('class="linkcode">')
+    return t[at + 17:t.find("<", at + 17)] if at >= 0 else ""
 
 
 def count(m, table):
@@ -515,7 +515,7 @@ setc = get(mh, "/board/link/steam").headers["Set-Cookie"].lower()
 check("a loopback http board gets a plain, path-scoped cookie that is NOT Secure",
       (setc.split("=")[0], "path=/board/link;" in setc, "secure" in setc),
       ("ftl", True, False))
-check("...and a sign-in still completes there", len(code_of(signin(mh))), 9)
+check("...and a sign-in still completes there", len(code_of(signin(mh))), 11)
 
 print("\n--- 4. a sign-in Steam confirms ----------------------------------")
 
@@ -523,7 +523,7 @@ m = fresh()
 m.STEAM_HTTP.personas[SID] = ('<b>Lex</b> & "co"', "a" * 40)
 r = signin(m)
 code = code_of(r)
-check("the page shows a code", (r.status_code, len(code), code[4:5]), (200, 9, "-"))
+check("the page shows a code", (r.status_code, len(code), code[5:6]), (200, 11, "-"))
 check("...and the persona, escaped",
       "Signed in as <b>&lt;b&gt;Lex&lt;/b&gt; &amp; &quot;co&quot;</b>" in text(r), True)
 gone = r.headers.get("Set-Cookie", "").split(";")
@@ -652,12 +652,12 @@ check("a HEAD is refused and spends nothing",
 # The controls: the same harness, unmutated and at the edge of the window.
 r = back(m, cookie, return_to, fields, "198.51.101.3")
 check("CONTROL that same assertion, as a GET, is accepted and Steam is asked",
-      (r.status_code, len(code_of(r)), len(m.STEAM_HTTP.calls)), (200, 9, 2))
+      (r.status_code, len(code_of(r)), len(m.STEAM_HTTP.calls)), (200, 11, 2))
 r = signin(m, ip="198.51.101.4",
            mutate=lambda f: f.__setitem__("openid.response_nonce",
                                           stamp(START - steam.NONCE_SKEW) + "e"))
 check("CONTROL a nonce exactly at the window's edge is accepted",
-      (r.status_code, len(code_of(r)), len(m.STEAM_HTTP.calls)), (200, 9, 4))
+      (r.status_code, len(code_of(r)), len(m.STEAM_HTTP.calls)), (200, 11, 4))
 
 print("\n--- 6. the browser that comes back must be the one that left -----")
 
@@ -733,7 +733,7 @@ for n, (label, exc) in enumerate((("unavailable", steam.Unavailable("status 500"
     r = signin(m, ip="198.51.100.%d" % (40 + n))
     check("no profile (%s): the code is still issued, named by the id" % label,
           (r.status_code, len(code_of(r)), "Steam account " + SID in text(r),
-           rows(m, "SELECT name FROM accounts")), (200, 9, True, [("",)]))
+           rows(m, "SELECT name FROM accounts")), (200, 11, True, [("",)]))
 # The logger outlives a re-import, so its file is the FIRST case's, not m._home's.
 logged = open(m.log.handlers[0].baseFilename).read()
 check("...and the unplanned error is logged by its type, never its text",
@@ -744,12 +744,12 @@ m.STEAM_HTTP.personas[SID] = ("ab\ud83d", "a" * 40)       # half of a surrogate 
 r = signin(m, ip="198.51.100.6")
 check("a persona that is not valid Unicode is stored as something that is",
       (r.status_code, len(code_of(r)), rows(m, "SELECT name FROM accounts")),
-      (200, 9, [("ab?",)]))
+      (200, 11, [("ab?",)]))
 
 mk = fresh(steam_key=None)
 r = signin(mk)
 check("no SURFD_STEAM_KEY: one request, and no profile asked for",
-      (r.status_code, len(code_of(r)), len(mk.STEAM_HTTP.calls)), (200, 9, 1))
+      (r.status_code, len(code_of(r)), len(mk.STEAM_HTTP.calls)), (200, 11, 1))
 
 print("\n--- 8. one assertion, one code; one account, one live code -------")
 

@@ -1117,10 +1117,10 @@ own font embedded in the provider, and the table's columns in the board's order.
 
 ## 14. Steam accounts — Lex, 10 Oct 2026
 
-**Status: 14.1 and 14.2 built (Patches 612, 615). A player signs in on the
-site, types `link <code>` in the game and then the number the lobby shows, and
-every connect proves which account the install belongs to. No run is ranked by
-it yet.**
+**Status: 14.1 and 14.2 built (Patches 612, 615, 617). A player signs in on
+the site, types `link` in the game, enters the code in the box that opens and
+presses Enter on "link this game to X?", and every connect proves which account
+the install belongs to. No run is ranked by it yet.**
 Lex: a player's records belong to their Steam account, which also gives the
 name and the picture, and a ban is a ban on that account. Ranked times require
 one. The guid rows on the board today are test data and are not migrated.
@@ -1147,7 +1147,7 @@ Off until `SURFD_BOARD_URL` is set; names and avatars need `SURFD_STEAM_KEY`.
 Reviewed through three lenses before it shipped; what they found and what is
 still open is in AGENT_NOTES ("Steam accounts") and BACKLOG.
 
-### 14.2 The game: `link <code>`, with proof of the install's key — done, Patch 615
+### 14.2 The game: the link box, with proof of the install's key — done, Patches 615 and 617
 
 `src/server/sv_account.qc`, `src/client/cl_account.qc`, surfd schema 13.
 AS BUILT IT DIFFERS FROM THE FIRST PLAN IN ONE WAY THAT MATTERS: a link is keyed
@@ -1155,15 +1155,18 @@ on the install's signing key (`fskey`), not on the guid. A guid is handed to
 any server that sends this fleet's `sv_guidkey`, so a guid-keyed link could be
 moved, or squatted before its owner ever linked.
 
-- **`link <code>`, then `link <number>`** (console). The client sends a DIGEST
-  of the code, which never leaves it, and has the engine sign for it
+- **The link box** (Patch 617; 615 took the code and the consent as console
+  commands). `link` opens it. The code is typed INTO the box, and the client
+  sends a DIGEST of it, never the code, with the engine's signature for it
   (`rec_sign`, the receipt statement with ticks -3). The server posts key,
   signature and the address the CLIENT signed to `/api/link`; surfd checks the
   signature and that the address is ours on that lobby's port, keeps the code
-  for that key, and names the account. The lobby prints a six-digit number;
-  `link <number>` signs it (ticks -4), and that signature is what links. Two
-  commands because text another server left in a client can type the first for
-  the player and cannot read the second.
+  for that key, and names the account. The lobby sends the box that name and a
+  six-digit number of its own; Enter on "link this game to X?" signs the number
+  (ticks -4), and that signature is what links. A CONSOLE COMMAND CAN BE TYPED
+  FOR THE PLAYER, by a server's stufftext or by text another server left; a key
+  press cannot. So the box takes the engine's key events and nothing else, and
+  no command carries a code or makes either signature.
 - **Every connect**: the client asks, the server issues a nonce, the client
   signs it (ticks -2), `/api/account` answers for that key. The lobby says
   "linked to X" or how to link. This is what 14.3 ranks on: a proven key per
@@ -1171,30 +1174,43 @@ moved, or squatted before its owner ever linked.
 - **The sign-in page** lists the account's installs and unlinks one (two GETs:
   ask, then do), in the browser that signed in.
 - `tools/p615link.py` is the arm: installed server and client in a private rig,
-  this checkout's surfd, Steam faked; it types into the client and reads the
-  number back. `--receipt` runs a whole run on the same progs and reads its
-  receipt back.
+  this checkout's surfd, Steam faked. It presses real keys in the rig's window
+  and, as controls, the same keys from the console. `--receipt` runs a whole
+  run on the same progs and reads its receipt back.
 
-**Left.** No menu row: the page says to open the console. The engine still has
-no command that opens a browser. The connect line repeats on every map. Whether
-the code page wants an origin of its own (BACKLOG's last sign-in item). And
-`link` is a game-code command, which is 14.3's gate.
+**Left.** No menu row: `link` is typed in the console, which then has to be
+closed. Nothing pastes into the box. The engine still has no command that opens
+a browser. The connect line repeats on every map. Whether the code page wants
+an origin of its own (BACKLOG's last sign-in item).
 
 ### 14.3 Ranked means linked, and a ban bites
 
-**BEFORE IT: `link` MOVES INTO THE ENGINE.** Patch 615's review left three ways
-to a wrong link, all because `link` is a game-code command (BACKLOG, "The
-`link` command"; the private checkpoint has each): it is signed the same when
-it arrives down the connection as when it is typed, its name can be taken by a
-server the player was on before, and typed on somebody else's server the code
-is theirs. None costs anything while nothing ranks on a link. One change
-closes the three: an engine `link` beside `rec_sign` in cl_receipt.c that does
-the hashing and the signing itself and runs for the local console only, as
-`rec_sign` already refuses a server. With it: codes of more than 40 bits, since
-the digest that crosses the wire can be searched; links made before it are
-dropped or proved again; and the lobby keeps "could not be checked" apart from
-"not linked" for the whole map, retrying, where today a lost connect proof is
-just silence.
+**BEFORE IT.** Patch 615's review left three ways to a wrong link, all because
+a link was made by console commands. Patch 617 closed the two that could be
+closed in game code: a command that arrives down the connection, or that a
+squatted name swallows, no longer carries a code or a consent. What is left to
+do first:
+
+- **`rec_sign` leaves the console.** It is a console command, game code runs
+  console lines one level above where it refuses, and game code builds such
+  lines out of text in some fifty places. Patch 617's review found the run's
+  own receipt signing a tick count the server chose (clamped now) and two
+  commands pasting a typed argument in whole (fixed); the rest are not
+  audited. So whoever can write to a player's connection may still find a way
+  to have its key sign a link with no key pressed. The fix is in the engine:
+  signing as a builtin that only game code can call, and the console command
+  for the typed console alone. Then the three callers are three lines of game
+  code and no text reaches them. NOTHING RANKS ON A LINK BEFORE THIS.
+- Links made before then are dropped (they were consented to by a command, or
+  could have been signed for by text), and each player links again in the box.
+- The lobby keeps "could not be checked" apart from "not linked" for the whole
+  map and asks again; today a lost connect proof is silence (BACKLOG).
+- STILL TRUE, AND NOT FIXABLE HERE: a code typed while on somebody else's
+  server is theirs, because their game code draws what it likes. The page says
+  to use an official lobby; a code is 50 bits now, so the digest a server is
+  handed is days of work, not minutes. And the NAME the box shows comes down
+  the same unencrypted connection as everything else: it is a courtesy against
+  typing somebody else's code, not a proof.
 
 **Build.** The lobby already knows each connection's account from its proven
 key (14.2), so it sends that with the run and `submit_run` takes the account

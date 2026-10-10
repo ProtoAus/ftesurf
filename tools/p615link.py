@@ -12,35 +12,42 @@ with Steam faked.  So each signature is made by the engine's C and checked by
 surfd's Python over a statement each built for itself: the one thing no
 single-language test can show.
 
-IT TYPES, AND READS WHAT COMES BACK.  The client runs with -plugin and takes
-console lines on stdin (conbridge.py's way in), because a link is two commands
-and the second is a number the SERVER prints: a cfg cannot know it.  Every step
-waits for the subject's own line, never for a clock.
+IT TYPES TWO WAYS, AND THE DIFFERENCE IS THE TEST.  Console lines go in on
+stdin (-plugin, conbridge.py's way).  KEYS go to the rig's window as WM_KEYDOWN,
+the path a keyboard's take through the engine to CSQC_InputEvent.  A link is
+made by keys and by nothing else (cl_account.qc), so every arm that links
+presses keys, and K presses the same Enter from the console and must fail.
 
 THE ARMS, in one client session:
   A  on connect the client proves its key and is told it is not linked
   L  two asks for a nonce in one packet get ONE: the second must not replace
      what the client is already signing (1 reconnect in 9 was refused this way
      before the client's ask timer left the game clock, which jumps at connect)
-  B  `link <code>` (lower case, with a dash) is answered with the account's
-     name and a number; `link <number>` links it
-  C  `link` alone says who it is linked to
-  D  another account's code says where it is and where it would go; a WRONG
-     number is refused and moves nothing; asking again and the right one moves
-  F  an unknown code is refused; G two malformed ones never leave the client,
-     and the one carrying a command does not run it
+  B  `link` opens the box; the code typed into it (lower case) is answered with
+     the account's name; Enter links it, and an Esc right after cannot say
+     "cancelled" over a confirm that is already with surfd
+  C  `cmd link` says who it is linked to
+  D  another account's code says where it is and where it would go; Esc moves
+     nothing; asking again and Enter moves it
+  F  an unknown code is refused; G a code given as `link <code>` on the console
+     is not sent, and one carrying a command does not run it
+  K  CONTROLS for a link nobody at the keyboard made: with the question up, an
+     Enter fed down the input chain from the console (`vote key`) does not
+     link, nor do the SPACE presses the engine's `in_journal_synth` injects as
+     real ones, nor a held Enter's auto-repeat; with no box open, a stuffed
+     `acct_ask` raises no question; and no .qc file calls CSQC_InputEvent
+  M  `zone_goto` and `ghost speed` no longer paste their argument into a console
+     line (a quoted `1;rec_sign ...` ran as a second command at game code's level)
   H  CONTROL: the right code's digest with a signature over the WRONG nonce is
      refused and leaves the code unclaimed -- so B's yes was the signature's
   J  receipts shaped like a finish's (ticks 7) and a kept abandon's (ticks 0)
      go to the run's own handler while a link is owed, and the link completes
-  K  CONTROL for text left behind by another server: `link <code>` and then a
-     guessed number, typed blind, links nothing
   I  after a reconnect the server knows who it is from the proof alone
 --refuse-address runs surfd with an address list that omits this box: the same
 `link` must be refused for the ADDRESS, which is the control for that check.
 --taken sets a cvar named `link` before connecting, as a server the player was
 on earlier can: the game code's command cannot be registered over it, so the
-client must say so and a code typed anyway must reach no lobby.
+client must say so, and `link` opens no box.
 --receipt runs cfg/test/p417sign.cfg (a whole run on a listen host) on these
 progs instead, and has tools/rcptcheck.py read the receipt it leaves: the
 dispatch this patch put in front of SV_RecRcpt must not cost a run its receipt.
@@ -174,10 +181,10 @@ def sign_in(port, sid, ip):
     url = return_to + "&" + urllib.parse.urlencode(fields)
     page = urllib.request.urlopen(urllib.request.Request(
         url, headers={"X-Real-IP": ip, "Cookie": cookie})).read().decode()
-    at = page.find('class="linkcode">link ')
+    at = page.find('class="linkcode">')
     if at < 0:
         raise RuntimeError("the sign-in page showed no code")
-    return page[at + 22:at + 31]
+    return page[at + 17:page.find("<", at + 17)]
 
 
 class Log(object):
@@ -208,6 +215,70 @@ class Log(object):
         while self.text().count(needle) < want and time.time() < end:
             time.sleep(0.25)
         return self.text().count(needle)
+
+
+class Keys(object):
+    """Key presses for one process's game window, as Windows delivers a
+    keyboard's: WM_KEYDOWN and WM_KEYUP on its own queue.  Not the console."""
+    VK = {"enter": 0x0D, "esc": 0x1B, "back": 0x08}
+
+    def __init__(self, pid):
+        import ctypes
+        from ctypes import wintypes
+        self.u = ctypes.windll.user32
+        self.u.MapVirtualKeyW.restype = ctypes.c_uint
+        found = []
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def each(hwnd, _lparam):
+            owner = wintypes.DWORD()
+            self.u.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+            name = ctypes.create_unicode_buffer(64)
+            self.u.GetClassNameW(hwnd, name, 64)
+            if owner.value == pid and name.value == "FTEGLQuake":
+                found.append(hwnd)
+            return True
+        self.u.EnumWindows(each, 0)
+        if len(found) != 1:
+            raise RuntimeError("the client has %d game windows, not one" % len(found))
+        self.hwnd = found[0]
+
+    def _post(self, vk, down, repeat=False):
+        scan = self.u.MapVirtualKeyW(vk, 0)
+        lparam = 1 | (scan << 16)
+        if repeat:
+            lparam |= 1 << 30               # "was down before": an OS auto-repeat
+        if not down:
+            lparam |= (1 << 30) | (1 << 31)
+        if not self.u.PostMessageW(self.hwnd, 0x0100 if down else 0x0101, vk, lparam):
+            raise RuntimeError("PostMessage failed")
+
+    def press(self, name):
+        vk = self.VK[name]
+        self._post(vk, True)
+        time.sleep(0.06)
+        self._post(vk, False)
+        time.sleep(0.06)
+
+    def hold(self, name, repeats):
+        """Down, `repeats` auto-repeats, and NO release."""
+        vk = self.VK[name]
+        self._post(vk, True)
+        for _ in range(repeats):
+            time.sleep(0.04)
+            self._post(vk, True, repeat=True)
+
+    def release(self, name):
+        self._post(self.VK[name], False)
+        time.sleep(0.06)
+
+    def type(self, text):
+        for ch in text.upper():
+            vk = ord(ch)                    # letters and digits are their own VK
+            self._post(vk, True)
+            time.sleep(0.03)
+            self._post(vk, False)
+            time.sleep(0.03)
 
 
 def receipt_arm(a, rig, gd):
@@ -242,7 +313,7 @@ def receipt_arm(a, rig, gd):
     return 1 if FAILED else 0
 
 
-def link_arm(a, send, cl, sv, db, gport, codes):
+def link_arm(a, send, keys, cl, sv, db, gport, codes):
     def rows(sql):
         conn = sqlite3.connect(db)
         try:
@@ -253,29 +324,54 @@ def link_arm(a, send, cl, sv, db, gport, codes):
     def key():
         return rows("SELECT length(pub), steamid, length(player), node FROM linkkeys")
 
+    def who():
+        k = key()
+        return k[0][1] if k else ""
+
+    def opens(line):
+        """A console line that should open the box.  -> it did, counted: an
+        earlier box's "open" line is still in the log, and typing into a box
+        that is not up yet loses the first key to the game (it did)."""
+        n = cl.text().count("link box open")
+        send(line)
+        opened = cl.count("link box open", n + 1) > n
+        cl.at = max(cl.at, cl.text().rfind("link box open"))
+        return opened
+
+    def box(code):
+        """`link`, then the code typed into the box and Enter.  -> the box opened."""
+        opened = opens("link")
+        keys.type(code)
+        keys.press("enter")
+        return opened
+
     c1, c2, c3, c4 = (c.replace("-", "") for c in codes)
     hello = r"kind 1 answered for client 1: answered 1 ok 0 linked %d banned 0 why '%s'"
+    asked = r"kind 2 answered for client 1: answered 1 ok 0 linked 0 banned 0 why '%s'"
 
     if a.taken:
         check("with `link` already a cvar the client says so, and asks for no nonce",
               (bool(cl.wait("another server changed this game's link command", 25)),
                sv.text().count("issued to client")), (True, 0))
-        send("link " + codes[0])
+        send("link")
+        time.sleep(1.0)
+        keys.type(c1)
+        keys.press("enter")
         time.sleep(4)
-        check("...and a code typed anyway reaches no lobby",
-              (sv.text().count("asked for client"), key(),
+        check("...and `link` opens no box, so a code typed anyway reaches no lobby",
+              ("link box open" in cl.text(), sv.text().count("asked for client"), key(),
                rows("SELECT used_at, claim FROM linkcodes WHERE code = '%s'" % c1)),
-              (0, [], [(0, "")]))
+              (False, 0, [], [(0, "")]))
         return
 
     if a.refuse_address:
         check("the connect's proof is refused for the address, and says nothing",
               bool(sv.wait(hello % (0, "server"))), True)
-        send("link " + codes[0])
-        check("CONTROL with this box's address unlisted: link is refused for the ADDRESS",
-              (bool(cl.wait("does not know this server by the address")), key(),
+        opened = box(c1)
+        check("CONTROL with this box's address unlisted: the link is refused for the ADDRESS",
+              (opened, bool(cl.wait("does not know this server by the address")), key(),
                rows("SELECT used_at, claim FROM linkcodes WHERE code = '%s'" % c1)),
-              (True, [], [(0, "")]))
+              (True, True, [], [(0, "")]))
         return
 
     check("A  the connect's proof was answered unasked: not linked, and how to link",
@@ -288,56 +384,128 @@ def link_arm(a, send, cl, sv, db, gport, codes):
           (bool(sv.wait(hello % (0, ""))), sv.text().count("issued to client") - issued),
           (True, 1))
 
-    send("link " + codes[0].lower())
-    m = cl.wait(r"link this install to Lex\? Type link ([0-9]{6}) to confirm")
-    check("B  link <code> is answered with the account's name and a number",
-          (bool(m), key(), rows("SELECT used_at, length(claim) FROM linkcodes WHERE code = '%s'" % c1)),
-          (True, [], [(0, 64)]))
-    send("link " + (m.group(1) if m else "000000"))
-    check("B  link <number> links it",
-          (bool(cl.wait("now linked to Lex")), key()),
-          (True, [(64, SIDS[0], 32, "p%d" % gport)]))
+    opened = box(c1.lower())
+    check("B  the code typed into the box is answered with the account's name",
+          (opened, bool(cl.wait(r"link this game to Lex\? Enter to link")), key(),
+           rows("SELECT used_at, length(claim) FROM linkcodes WHERE code = '%s'" % c1)),
+          (True, True, [], [(0, 64)]))
+    time.sleep(0.8)                         # the question ignores keys for 0.6 s
+    keys.press("enter")
+    keys.press("esc")                       # too late: the confirm is with surfd
+    linked = bool(cl.wait("now linked to Lex"))
+    check("B  Enter links it, and an Esc after it does not claim to have cancelled",
+          (linked, key(), "link cancelled" in cl.text().split("steam: linking")[-1]),
+          (True, [(64, SIDS[0], 32, "p%d" % gport)], False))
+    # Backspace, not Esc, to dismiss an ending: if the Esc above already closed
+    # it, a second Esc is the GAME's and opens the menu, which then has the
+    # keyboard and every later key in this arm goes nowhere (it did).
+    keys.press("back")
 
-    send("link")
-    check("C  link alone says who", bool(cl.wait("this install is linked to Lex")), True)
+    send("cmd link")
+    check("C  cmd link says who", bool(cl.wait("this install is linked to Lex")), True)
 
     time.sleep(3.2)                         # the server's gap between one player's codes
-    send("link " + codes[1])
-    m = cl.wait(r"is linked to Lex\. To move it to Other type link ([0-9]{6})")
-    check("D  another account's code says where it is and where it would go", bool(m), True)
-    pin = m.group(1) if m else "000000"
-    send("link " + ("%06d" % ((int(pin) + 1) % 1000000)))
-    check("D  a wrong number is refused and moves nothing",
-          (bool(cl.wait("that is not the number shown")), key()[0][1] if key() else ""),
-          (True, SIDS[0]))
+    opened = box(c2)
+    check("D  another account's code says where it is and where it would go",
+          (opened, bool(cl.wait(r"link this game to Other\? Enter to link")),
+           bool(sv.wait(asked % "confirm"))), (True, True, True))
+    time.sleep(0.8)
+    keys.press("esc")
+    check("D  Esc cancels, and moves nothing",
+          (bool(cl.wait("link cancelled")), who()), (True, SIDS[0]))
+
+    # K: with a question up, everything but a fresh key press.
     time.sleep(3.2)
-    send("link " + codes[1])
-    m = cl.wait(r"To move it to Other type link ([0-9]{6})")
-    send("link " + (m.group(1) if m else "000000"))
-    check("D  asking again, and the right number, moves it",
-          (bool(cl.wait("now linked to Other")), key()[0][1] if key() else ""),
-          (True, SIDS[1]))
+    box(c2)
+    up = bool(cl.wait(r"link this game to Other\? Enter to link"))
+    time.sleep(0.8)
+    send("vote key 13 1")                   # Enter, fed down the chain from the console
+    send("vote key 13 0")
+    fed = bool(cl.wait(r"vote key: scan 13 down 1", 10))
+    time.sleep(2.0)
+    check("K  CONTROL an Enter fed down the input chain from the console links nothing",
+          (up, fed, who(), "linking" in cl.text().split("vote key: scan 13 down 1")[-1]),
+          (True, True, SIDS[0], False))
+    # The engine's own test command DOES reach CSQC_InputEvent: it injects SPACE
+    # and mouse moves as if from a device (in_generic.c).  So SPACE answers nothing.
+    send("in_journal_synth 64")
+    real = bool(cl.wait(r"in_journal_synth: injected 64 mouse and 4 key events", 10))
+    time.sleep(1.5)
+    check("K  CONTROL the engine's injected SPACE presses reach the box and answer nothing",
+          (real, who(), "linking" in cl.text().split("in_journal_synth: injected")[-1]),
+          (True, SIDS[0], False))
+    keys.press("esc")
+    cl.wait("link cancelled")
 
     time.sleep(3.2)
-    send("link ABCD-EFGH")
-    check("F  an unknown code is refused", bool(cl.wait("not valid or has expired")), True)
-
-    send("link nonsense!")
-    send('link "ABCD;echo P615-INJECTED;EFGH"')
-    got = [bool(cl.wait("that is not a code")), bool(cl.wait("that is not a code"))]
+    opens("link")
+    keys.type(c2)
+    before = cl.text().count("linking")
+    keys.hold("enter", 40)                  # down, and forty repeats across the question's arrival
+    held = bool(cl.wait(r"link this game to Other\? Enter to link"))
+    keys.hold("enter", 30)                  # ...and thirty more, past its 0.6 s of deafness
     time.sleep(1.0)
-    check("G  two malformed codes never leave the client, and nothing ran",
-          (got, "P615-INJECTED" in cl.text().replace("ABCD;echo P615-INJECTED;EFGH", ""),
-           "P615-INJECTED" in sv.text()), ([True, True], False, False))
+    check("K  CONTROL a held Enter's repeats do not answer the question it sent",
+          (held, cl.text().count("linking") - before, who()), (True, 0, SIDS[0]))
+    keys.release("enter")
+    keys.press("enter")
+    check("D  ...and a fresh Enter moves it",
+          (bool(cl.wait("now linked to Other")), who()), (True, SIDS[1]))
+    keys.press("back")
+
+    send('acct_ask 123456 "Mallory" ""')   # what a stuffed answer looks like, with no box waiting
+    time.sleep(1.0)
+    keys.press("enter")
+    time.sleep(1.5)
+    check("K  CONTROL an answer nobody asked for raises no question",
+          ("Mallory" in cl.text().replace('acct_ask 123456 "Mallory"', ""), who()),
+          (False, SIDS[1]))
+    called = [p.name for p in sorted((ROOT / "src").rglob("*.qc"))
+              if "CSQC_InputEvent(" in p.read_text(errors="replace")]
+    check("K  no .qc file calls CSQC_InputEvent: only the engine says a key was real",
+          called, [])
+
+    time.sleep(3.2)
+    opened = box("ABCDEFGHJK")
+    check("F  an unknown code is refused",
+          (opened, bool(cl.wait("not valid or has expired"))), (True, True))
+    keys.press("back")
+
+    time.sleep(3.2)
+    n = sv.text().count("asked for client")
+    hints = cl.text().count("the code goes in the box")
+    opens("link " + codes[2])
+    keys.press("esc")
+    opens('link "ABCDE;echo P615-INJECTED;FGHJK"')
+    keys.press("esc")
+    time.sleep(1.5)
+    hint = cl.text().count("the code goes in the box") - hints == 2
+    check("G  a code given on the console is not sent, and nothing in one runs",
+          (hint, sv.text().count("asked for client") - n,
+           "P615-INJECTED" in cl.text().replace("ABCDE;echo P615-INJECTED;FGHJK", ""),
+           "P615-INJECTED" in sv.text(),
+           rows("SELECT used_at, claim FROM linkcodes WHERE code = '%s'" % c3)),
+          (True, 0, False, False, [(0, "")]))
+
+    # M: game-code commands that pasted their argument into a console line.  A
+    # server can type these, and game code's own lines run where rec_sign obeys.
+    send('zone_goto "1;echo P617-LAUNDERED-A"')
+    send('ghost speed "1;echo P617-LAUNDERED-B"')
+    time.sleep(2.0)
+    seen = cl.text().replace('"1;echo P617-LAUNDERED', "")
+    check("M  an argument to zone_goto or ghost speed is a number, not more commands",
+          ("P617-LAUNDERED-A" in seen, "P617-LAUNDERED-B" in seen), (False, False))
 
     time.sleep(3.2)
     send("cmd link " + digest("ftesurf-code ", c3))
     send("rec_sign %s -3 - 0" % ("0" * 32))
     check("H  CONTROL the right code under a signature for the wrong nonce",
-          (bool(cl.wait("could not sign for the code")),
+          (bool(sv.wait(asked % "proof")),
            rows("SELECT used_at, claim FROM linkcodes WHERE code = '%s'" % c3)),
           (True, [(0, "")]))
 
+    # J by hand at the console: the player's own console may still sign, and
+    # that is what lets this arm put run-shaped receipts between the two.
     time.sleep(3.2)
     before = sv.text().count("timer: receipt refused")
     send("cmd link " + digest("ftesurf-code ", c3))
@@ -345,22 +513,18 @@ def link_arm(a, send, cl, sv, db, gport, codes):
     send("rec_sign %s 0 - 0" % ("2" * 32))
     passed = sv.count("timer: receipt refused", before + 2) - before
     send("rec_sign %s -3 - 0" % digest("ftesurf-link ", c3))
-    m = cl.wait(r"To move it to Third type link ([0-9]{6})")
-    pin = m.group(1) if m else "000000"
-    send("cmd link " + pin)
-    send("rec_sign %s -4 - 0" % digest("ftesurf-confirm ", c3 + " " + pin))
+    got = bool(sv.wait(asked % "confirm"))
     check("J  both run-shaped receipts reached the run's handler while a link was owed",
-          (passed, bool(m), bool(cl.wait("now linked to Third")), key()[0][1] if key() else ""),
-          (2, True, True, SIDS[2]))
-
+          (passed, got, rows("SELECT used_at, length(claim) FROM linkcodes WHERE code = '%s'" % c3)),
+          (2, True, [(0, 64)]))
     time.sleep(3.2)
-    send("link " + codes[3])                # what an `in` timer left by another server can do
-    asked = bool(cl.wait(r"To move it to Fourth type link [0-9]{6}"))
-    send("link 000000")                     # ...and what it cannot: read the number
-    check("K  CONTROL text typed blind asks, guesses, and links nothing",
-          (asked, bool(cl.wait("that is not the number shown")), key()[0][1] if key() else "",
-           rows("SELECT used_at, length(claim) FROM linkcodes WHERE code = '%s'" % c4)),
-          (True, True, SIDS[2], [(0, 64)]))
+    box(c3)
+    up = bool(cl.wait(r"link this game to Third\? Enter to link"))
+    time.sleep(0.8)
+    keys.press("enter")
+    check("J  ...and the link it began is finished in the box",
+          (up, bool(cl.wait("now linked to Third")), who()), (True, True, SIDS[2]))
+    keys.press("back")
 
     send("disconnect")
     time.sleep(2.0)
@@ -462,7 +626,10 @@ def main():
                 break
         check("the client connected and its game code loaded", bool(up), True)
         if up:
-            link_arm(a, send, cl, sv, db, gport, codes)
+            # Keys reach game code only while nothing else has the keyboard, and
+            # a client nobody is sitting at still has its menu up from boot.
+            send("closemenu")
+            link_arm(a, send, Keys(client.pid), cl, sv, db, gport, codes)
         check("no VM error or unknown command in the client's log",
               [w for w in ("Unknown command", "QC VM error", "Cannot call", "stack overflow")
                if w in cl.text()], [])

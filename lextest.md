@@ -88,34 +88,26 @@ Judge:
 
 Not a ranking, recorder, evidence or server change. BACKLOG.md has the leftovers.
 
-## 00. 10 Oct — `link` in the game (Patch 615)
+## 00. 11 Oct — the Steam link box (Patch 617)
 
-Live on the Pi's lobbies and both your Windows installs since 10 Oct 13:49 UTC.
+You asked whether the confirming number could just be an OK box. It is one
+now, and the code goes in the same box instead of after `link`.
 
-The second piece of Steam accounts (ROADMAP 14). You signed in on the site on
-10 Oct and it gave you a code; the game now takes one. **Times are still ranked
-exactly as before**: this links an install to an account and nothing reads the
-link yet.
-
-Every test ran one rig client against a fake Steam. Only you can do the real one:
-
-- **Join an official lobby by `play.proto.bar`**, not the Pi's LAN address.
-  Linking checks the address your game is connected to, and the LAN's is
-  refused on purpose ("the leaderboard does not know this server by the address
-  you joined it on"). If the server browser put you on the LAN address, that is
-  a finding: say so.
-- **A few seconds in** the lobby says, once: "steam: this install is not linked
-  to a Steam account. Sign in at proto.bar/ftesurf/board/link and type link
-  <code> in the console".
-- **Sign in on the site, then type `link ABCD-EFGH`** (your code) in the
-  console. The lobby answers "link this install to Proto? Type link 123456 to
-  confirm". Type that. It should say "this install is now linked to Proto".
-- **Reconnect, or wait for the next map.** "this install is linked to Proto".
-- **The sign-in page** now lists the install under your name with an *Unlink*
-  link; it asks before it unlinks. Try it, then link again with a new code.
-- **To judge:** the wording; whether two commands is tolerable (the number is
-  there so that nothing but you can finish a link); the line repeating on every
-  map; and that it is a console command at all rather than a menu row.
+- **Join an official lobby by `play.proto.bar`**, open the console, type
+  `link`, and close the console. A box is on screen: "Type the code from the
+  sign-in page".
+- **Sign in on the site** (the code is ten characters now, `ABCDE-FGHJK`), type
+  it into the box and press Enter. The box asks "Link this game to the Steam
+  account Proto". Enter links; Esc cancels.
+- **Your install is already linked** from yesterday, so the box will say so in
+  red only if the code is for a different account. Linking again to the same
+  account is fine.
+- **To judge:** the box's wording and where it sits (lower middle of the
+  screen, so it shows under an open console); having to close the console to
+  type; that nothing pastes into it; and that `link ABCDE-FGHJK` on the console
+  now only opens the box and says the code goes inside. That last one is on
+  purpose: a console command can be typed for you by a server, a key press
+  cannot.
 
 ## 00. 10 Oct — dark pastel theme and the redesigned leaderboard (Patches 606, 607)
 

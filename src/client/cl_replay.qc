@@ -2029,7 +2029,12 @@ void() Rec_ViewFrame =
 		  nothing to sign over, and an unsigned run is the state every build
 		  before this one is in.
 		*/
+		// Patch 617: AND NEVER A TICK COUNT BELOW -1.  The nonce and the count
+		// are both the server's, and -2, -3 and -4 are the statements that
+		// prove a key and link an install (cl_account.qc): without this line a
+		// connection that could set a stat had this client sign a link.
 		if (rec_rp_nonce != "")
+		if (getstatf(STAT_FS_RUNTICKS) >= -1)
 			localcmd(sprintf("rec_sign %s %d %s %g\n", rec_rp_nonce,
 			                 getstatf(STAT_FS_RUNTICKS),
 			                 rec_rp_lastview == "" ? "-" : rec_rp_lastview,

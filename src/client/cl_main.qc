@@ -1323,13 +1323,20 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 };
 
 // The gate in front of the chain above; its essay is up there.
-float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
+float(float evtype, float scanx, float chary, float devid) CL_InputEvent =
 {
 	local float bit, took;
 
 	Watch_Track(evtype, scanx, chary); // Observes releases even when an earlier panel takes them.
 	Rewind_Track(evtype, scanx, chary); // Patch 477: ahead of every handler that may take a press
 	Chat_Track(evtype, scanx);      // round 25: and which presses are repeats, for the draft
+
+	// Patch 617: the Steam link box, ahead of everything, and ONLY for an event
+	// the engine sent (see CSQC_InputEvent below).  It keeps its own account
+	// of which keys are down: chat_rep can be moved from the console.
+	if (cl_input_real)
+	if (Account_InputEvent(evtype, scanx, chary))
+		return TRUE;
 
 	// Key events only: in an IE_MOUSEABS, scanx is an X COORDINATE, and 512 of
 	// them along it would otherwise read as K_MOUSE1.
@@ -1384,6 +1391,24 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 	// passive-key path (MOUSE3 taking a cursor) pairs the same way.
 	if (took && bit && evtype == IE_KEYDOWN)
 		cl_btn_taken = cl_btn_taken | bit;
+	return took;
+};
+
+/*
+  THE ENGINE'S ENTRY, AND NOTHING IN QC MAY CALL IT (Patch 617).  It is the one
+  place that says an event came from a device: the Steam link box acts on
+  cl_input_real and on nothing else, because a console command can be typed
+  for the player by a server and a key press cannot.  A harness that wants to
+  feed the chain calls CL_InputEvent, as `vote key` does, and finds the box
+  deaf.  tools/p615link.py fails if this name is called from any .qc file.
+*/
+float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
+{
+	local float took;
+
+	cl_input_real = TRUE;
+	took = CL_InputEvent(evtype, scanx, chary, devid);
+	cl_input_real = FALSE;
 	return took;
 };
 
@@ -1837,6 +1862,10 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		// The save-lock hold's deadman.  Here rather than inside SaveLoc_Draw
 		// because it has to run whether or not the menu is up.
 		SaveLoc_HoldFrame();
+
+		// Patch 617: the Steam link box, LAST: it is offered every key first, so
+		// it must not sit under a panel that looks like the one being typed at.
+		Account_Draw(scr);
 	}
 	else
 	{
@@ -1850,11 +1879,18 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		// Same argument, but this one is not cosmetic: a save-lock hold whose
 		// release went missing would leave the player pinned.
 		SaveLoc_Idle();
+
+		// Patch 617: `link` is typed in the console window, which like a menu
+		// makes notmenu false; the box it opens is drawn under it anyway.
+		Account_Draw(scr);
 	}
 };
 
 float(string cmd) CSQC_ConsoleCommand =
 {
+	// Patch 617: a QC error inside CL_InputEvent would leave this set, and the
+	// next thing to run is very likely a command.  Nothing real is nested here.
+	cl_input_real = FALSE;
 	tokenize(cmd);
 
 	/*
@@ -2016,7 +2052,7 @@ float(string cmd) CSQC_ConsoleCommand =
 		local float vk_scan, vk_down, vk_took;
 		vk_scan = stof(argv(2));
 		vk_down = stof(argv(3));
-		vk_took = CSQC_InputEvent(vk_down ? IE_KEYDOWN : IE_KEYUP, vk_scan, 0, 0);
+		vk_took = CL_InputEvent(vk_down ? IE_KEYDOWN : IE_KEYUP, vk_scan, 0, 0);
 		print(sprintf("vote key: scan %g down %g took %g pick %g capture %g saves %g\n",
 		              vk_scan, vk_down, vk_took, vt_pick, Vote_Capturing(),
 		              getstatf(STAT_FS_SAVECOUNT)));
@@ -2031,7 +2067,7 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (argv(1) == "look")
 	{
 		local float sl_took;
-		sl_took = CSQC_InputEvent(IE_MOUSEDELTA, stof(argv(2)), stof(argv(3)), 0);
+		sl_took = CL_InputEvent(IE_MOUSEDELTA, stof(argv(2)), stof(argv(3)), 0);
 		print(sprintf("spectate look: took %g, camera %v, aim %v\n", sl_took,
 		              spc_camang, getproperty(VF_CL_VIEWANGLES)));
 		return TRUE;
