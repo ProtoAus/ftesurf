@@ -30,9 +30,12 @@ You said "yea do these 3". What you should see, on any replay or ticked line:
 - **The white off-ramp chevron sits on the ramp's lip** on runs made in this
   game, about a body width back from where it was. Section 19.
 
-Three things I could not check for you and would look at first:
-1. Board, Imported tab, watch a Momentum run on a lobby: I tested the files
-   from disk, not through the online board.
+Three things I would look at first:
+1. Board, Imported tab, click a Momentum run on a lobby. After the deploy a
+   test client took one imported surf_voyager run from the board server by
+   its id (what the click hands on) and opened it: `~` marks, Ramp rows, and
+   the same contact the reference tool works out. The click itself, and any
+   other map, are yours.
 2. Your own live line while you play: the dots should appear a moment after
    each top and bottom. No test of mine got one onto a live line.
 3. Whether tops and bottoms read apart, and whether a busy line has too many
