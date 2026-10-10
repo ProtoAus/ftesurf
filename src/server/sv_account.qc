@@ -1,31 +1,35 @@
 /*
 ===========================================================================
-  sv_account.qc -- Steam accounts on a keyed server (Patches 615, 617, 619).
+  sv_account.qc -- Steam accounts on a keyed server (Patches 615, 617, 619, 625).
 
   A connection is told which Steam account its install is linked to, and the
   client's link box links it.  Everything rests on ONE proof: the client signs
-  a nonce with its `fskey` (the engine's rec_sign, cl_receipt.c) and surfd
-  checks the signature (surfd/accounts.py).  This file moves the pieces and
-  decides nothing; it ranks, kicks and refuses nobody.
+  a nonce with its `fskey` (the engine's acct_sign builtin, cl_receipt.c) and
+  surfd checks the signature (surfd/accounts.py).  This file moves the pieces
+  and decides nothing; it ranks, kicks and refuses nobody.
 
-    connect  CSQC `cmd acct_hello` -> stuffcmd `acct_hello <nonce>` -> rec_sign
-             -> `rec_rcpt` -> POST /api/account -> "linked to ..."
+  A PROOF ARRIVES AS `acct_proof <kind> <pub> <key> <sig> "<server>" <code>`
+  (Patch 625: the engine's acct_sign output behind the kind that was asked for).  Through 619 it was a run receipt with a negative tick count, signed
+  by a console command that text could reach; an engine with the builtin signs
+  a statement of its own and says, inside it, whether a device's key was being
+  pressed.  An old engine's `rec_rcpt` proof is dropped without a word: surfd
+  would refuse it, and the client's game code tells its player to update.
+
+    connect  CSQC `cmd acct_hello` -> stuffcmd `acct_hello <nonce>` -> acct_sign
+             -> `cmd acct_proof` -> POST /api/account -> "linked to ..."
     link     the box: `cmd link <digest of the code>` and a signature for it
              -> POST /api/link -> the account's name, and a number made here
              -> stuffcmd `acct_ask <number> "name"`; the box asks, Enter signs
              -> `cmd link <number>` and its signature -> POST /api/link -> linked
-    start    (Patch 619) `cmd link start` -> stuffcmd `acct_start <nonce>` ->
-             rec_sign (ticks -5) -> POST /api/link/start -> a code surfd keeps
-             for this key -> `acct_go <code>`; the player signs in on the site
-             with it and is shown a NUMBER; this file asks /api/link/wait and,
-             when the code has an account, sends `acct_ask` as above with a
-             flag: the box asks for the page's number, and `cmd link <number of
-             ours> <number of the page>` carries it to surfd with the confirm.
-             The code is public and links nothing; the page's number, which
-             this file only passes on, is what ties the browser to the game.
-             The start's signature is over the nonce AND a secret the client
-             made, so neither this file nor surfd can check it until the
-             player's browser brings that secret (surfd/accounts.py).
+    start    (Patches 619, 625) on Enter the client makes an opener, names
+             the start from it, signs both and sends `cmd link start <code>`
+             with the proof; this file posts /api/link/start and, if surfd
+             took it, asks /api/link/wait until somebody has signed in at the
+             address the client's ENGINE opened, then sends `acct_ask` with a
+             flag: the box asks for the sign-in page's number, and `cmd link
+             <number of ours> <number of the page>` carries it to surfd with
+             the confirm.  Nothing comes back to the client before the
+             question: there is no code a rewritten connection could swap.
 
   AN INSTALL IS ITS KEY.  The guid goes along for the log and is trusted for
   nothing: any server that sends this fleet's sv_guidkey is handed it.
@@ -37,12 +41,10 @@
   connection typed it).  Consent is a key press in the client's box, which
   cl_account.qc takes from the engine's own events only.
 
-  THE FOUR PROOFS SIGN TICKS -2 TO -5, AND A RUN SIGNS NONE OF THEM.  A
-  finish signs its stamp or -1 and a kept abandon 0, so Account_Proof and
-  SV_RecRcpt can never want the same `rec_rcpt`; and SV_RecRcpt refuses
-  anything below -1, so a proof could not be filed as a run's even if it got
-  there.  The first cut signed 0: a kept abandon's hold takes the first receipt
-  that signs 0, and the review walked a stray proof into one.
+  THE FOUR PROOFS ARE KINDS -2 TO -5 OF THEIR OWN STATEMENT, AND A RUN'S
+  RECEIPT IS ANOTHER STATEMENT ALTOGETHER.  The numbers are the tick counts
+  they once borrowed: SV_RecRcpt still refuses anything below -1, so an old
+  engine's proof cannot be filed as a run's.
 
   THE NONCE IS THIS SERVER'S, from the OS (SV_RandHex).  A client-chosen one
   would let a recorded proof be replayed; the netchan is not encrypted.
@@ -73,7 +75,7 @@
 .float  acct_want;
 .float  acct_want_t;
 .string acct_nonce;             // the connect nonce in force, zoned
-.string acct_snonce;            // ...and a start's, zoned
+.string acct_scode;             // a start's code, as its client made it, zoned
 .float  acct_poll_t;            // when to ask /api/link/wait next
 .float  acct_poll_end;          // ...and when to give up; 0 = not waiting
 .string acct_tag;               // the digest of the code being linked, zoned
@@ -149,10 +151,10 @@ void(entity e) Account_Connect =
 {
 	if (e.acct_nonce != "")
 		strunzone(e.acct_nonce);
-	if (e.acct_snonce != "")
-		strunzone(e.acct_snonce);
+	if (e.acct_scode != "")
+		strunzone(e.acct_scode);
 	e.acct_nonce  = "";
-	e.acct_snonce = "";
+	e.acct_scode  = "";
 	Account_Drop(e);
 	e.acct_want   = 0;
 	e.acct_rq     = 0;
@@ -294,31 +296,34 @@ string() Account_NewPin =
 	return out;
 };
 
-// A code as surfd issues one: ten of its alphabet (accounts.CODE_ALPHABET).
+// A code as surfd issues one: twelve of its alphabet (accounts.CODE_LEN, CODE_ALPHABET).
 float(string s) Account_IsCode =
 {
 	local float i;
 
-	if (strlen(s) != 10)
+	if (strlen(s) != 12)
 		return FALSE;
-	for (i = 0; i < 10; i = i + 1)
+	for (i = 0; i < 12; i = i + 1)
 		if (strstrofs("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", substring(s, i, 1)) < 0)
 			return FALSE;
 	return TRUE;
 };
 
 /*
-  `cmd link start`: the box asks for a link nobody has to type a code for.  The
-  client gets a nonce to sign (ticks -5); Account_Proof posts it and
-  Account_Reply sends the code back.  The same gap as a typed code's.
+  `cmd link start <code>`: the box started a link.  The code is the client's
+  own (a digest of the opener only it has); its proof follows in the same
+  packet and Account_Proof posts both.  The same gap as a typed code's.
 */
-void(entity e) Account_Start =
+void(entity e, string code) Account_Start =
 {
-	local string n;
-
 	if (!Account_On())
 	{
 		Account_Note(e, "off");
+		return;
+	}
+	if (!Account_IsCode(code))
+	{
+		Account_Note(e, "proof");
 		return;
 	}
 	Account_Unwait(e);
@@ -335,13 +340,11 @@ void(entity e) Account_Start =
 	}
 	e.acct_last = time;
 	Account_Drop(e);
-	n = SV_RandHex(16);
-	if (e.acct_snonce != "")
-		strunzone(e.acct_snonce);
-	e.acct_snonce = strzone(n);
+	if (e.acct_scode != "")
+		strunzone(e.acct_scode);
+	e.acct_scode  = strzone(code);
 	e.acct_want   = ACCT_START;
 	e.acct_want_t = time;
-	stuffcmd(e, sprintf("acct_start %s\n", n));
 };
 
 /*
@@ -387,10 +390,10 @@ void(entity e) Account_Think =
 };
 
 /*
-  `cmd link` (who am I), `cmd link cancel`, `cmd link start`, `cmd link <32
-  hex>` (asking: the digest of a code) or `cmd link <six digits> [<four>]`
-  (confirming: the number Account_Reply sent the box and, for a start, the one
-  the sign-in page showed).  The client's signature follows in the same packet;
+  `cmd link` (who am I), `cmd link cancel`, `cmd link start <code>`, `cmd link
+  <48 hex>` (asking: a salt and the digest of a typed code under it) or `cmd
+  link <six digits> [<32 hex>]` (confirming: the number Account_Reply sent the
+  box and, for a start, the client's digest of the one the sign-in page showed).  The client's signature follows in the same packet;
   Account_Proof posts.  Every refusal is a word for the box.
 */
 void(entity e, string arg, string num) Account_Link =
@@ -405,7 +408,7 @@ void(entity e, string arg, string num) Account_Link =
 	}
 	if (arg == "start")
 	{
-		Account_Start(e);
+		Account_Start(e, num);
 		return;
 	}
 	if (!Account_On())
@@ -447,17 +450,19 @@ void(entity e, string arg, string num) Account_Link =
 			Account_Note(e, "proof");
 			return;
 		}
-		// The page's number: four digits or nothing.  surfd judges it.
+		// The page's number, as the client's digest of it with its opener
+		// (32 hex), or nothing.  This file never sees the number; surfd judges.
 		if (e.acct_num != "")
 			strunzone(e.acct_num);
 		e.acct_num = "";
-		if (Account_Digits(num, 4))
+		if (SV_RecIsHex(num, 32))
 			e.acct_num = strzone(num);
 		e.acct_want   = ACCT_CONFIRM;
 		e.acct_want_t = time;
 		return;
 	}
-	if (!SV_RecIsHex(arg, 32))
+	// A typed code's digest under the client's salt: 16 hex of one, 32 of the other.
+	if (!SV_RecIsHex(arg, 48))
 	{
 		Account_Note(e, "code");
 		return;
@@ -486,41 +491,65 @@ float() Account_NextId =
 };
 
 /*
-  A `rec_rcpt`.  FALSE = it is a run's, and SV_RecRcpt gets it as before.
-  TRUE = it signs one of the four proof kinds: it is ours, wanted or not, and
-  is never passed on.
+  TRUE for the tick counts Patches 615-619 signed their proofs under.  Such a
+  `rec_rcpt` is an old engine's: it is nobody's now, and is not a run's.
 */
-float(entity e, string pub, string ticks, string sig, string svname) Account_Proof =
+float(string ticks) Account_OldProof =
+{
+	if (ticks == "-2")
+		return TRUE;
+	if (ticks == "-3")
+		return TRUE;
+	if (ticks == "-4")
+		return TRUE;
+	if (ticks == "-5")
+		return TRUE;
+	return FALSE;
+};
+
+/*
+  `acct_proof <kind> <pub> <key> <sig> "<server>"`: what the client's engine
+  signed for the step this file is waiting on.  Wanted or not, it goes nowhere
+  else.  `key` is the engine's word that a device's key was down, and `gcode`
+  its word for which csprogs asked (a SHA-256); both are inside the signature,
+  so surfd is the one to judge them.
+*/
+void(entity e, string kindarg, string pub, string keyed, string sig, string svname,
+     string gcode) Account_Proof =
 {
 	local float  kind;
 	local string body, path;
 
 	kind = 0;
-	if (ticks == "-2")
+	if (kindarg == "-2")
 		kind = ACCT_HELLO;
-	if (ticks == "-3")
+	if (kindarg == "-3")
 		kind = ACCT_ASK;
-	if (ticks == "-4")
+	if (kindarg == "-4")
 		kind = ACCT_CONFIRM;
-	if (ticks == "-5")
+	if (kindarg == "-5")
 		kind = ACCT_START;
 	if (!kind)
-		return FALSE;
+		return;
 	if (!e.acct_here)
-		return TRUE;                    // ours by its kind, and from nobody yet
+		return;                         // from nobody yet
 	if (e.acct_want != kind)
-		return TRUE;                    // nobody asked for this one
+		return;                         // nobody asked for this one
 	e.acct_want = 0;
 	if (time - e.acct_want_t > ACCT_WAIT)
-		return TRUE;
+		return;
 	if (!Account_On())
-		return TRUE;
+		return;
 	if (Account_Busy(e))
-		return TRUE;                    // one question at a time
+		return;                         // one question at a time
 	if (!SV_RecIsHex(pub, 64))
-		return TRUE;
+		return;
 	if (!SV_RecIsHex(sig, 128))
-		return TRUE;
+		return;
+	if (!SV_RecIsHex(gcode, 64))
+		return;
+	if (keyed != "1")
+		keyed = "0";
 
 	// Seven values, then the kind's own (sprintf takes eight).  `ip` is what
 	// THIS server saw: surfd's per-player limits are keyed on it, not the guid.
@@ -529,6 +558,7 @@ float(entity e, string pub, string ticks, string sig, string svname) Account_Pro
 	               uri_escape(sprintf("p%g", cvar("sv_port"))),
 	               uri_escape(infokey(e, "ip")), uri_escape(infokey(e, "guid")),
 	               pub, sig, uri_escape(svname));
+	body = strcat(body, "&keyed=", keyed, "&game=", gcode);
 	path = "/api/link";
 	if (kind == ACCT_HELLO)
 	{
@@ -538,7 +568,7 @@ float(entity e, string pub, string ticks, string sig, string svname) Account_Pro
 	else if (kind == ACCT_START)
 	{
 		path = "/api/link/start";
-		body = strcat(body, "&nonce=", e.acct_snonce);
+		body = strcat(body, "&code=", e.acct_scode);
 	}
 	else
 		body = strcat(body, "&tag=", e.acct_tag);
@@ -559,7 +589,6 @@ float(entity e, string pub, string ticks, string sig, string svname) Account_Pro
 		if (kind != ACCT_HELLO)
 			Account_Note(e, "busy");
 	}
-	return TRUE;
 };
 
 void(entity who, float linked, float banned, string nm) Account_Is =
@@ -587,6 +616,8 @@ void(entity who, string why) Account_Refused =
 		Account_Note(who, "server");
 	else if (why == "proof")
 		Account_Note(who, "proof");
+	else if (why == "game")
+		Account_Note(who, "game");
 	else if (why == "number")
 		Account_Note(who, "number");
 	else
@@ -689,19 +720,20 @@ void(float reqid, float code, string body) Account_Reply =
 	}
 	if (kind == ACCT_START)
 	{
-		if (!ok || !Account_IsCode(cd))
+		if (!ok)
 		{
 			Account_Refused(who, (why == "") ? "later" : why);
 			return;
 		}
-		// The code links nothing (the header), so it may travel in the open.
-		// The digest is what every later call names it by.
+		// surfd took the start.  Its code is the client's own and links
+		// nothing (the header); the digest is what every later call names it by.
+		if (who.acct_tag != "")
+			strunzone(who.acct_tag);
 		who.acct_tag = strzone(substring(strtolower(digest_hex("SHA256",
-		                       strcat("ftesurf-code ", cd))), 0, 32));
+		                       strcat("ftesurf-code ", who.acct_scode))), 0, 32));
 		who.acct_poll_t    = time + ACCT_POLL;
 		who.acct_poll_end  = time + ACCT_STARTLIFE;
 		who.acct_start_end = who.acct_poll_end;
-		stuffcmd(who, sprintf("acct_go %s\n", cd));
 		return;
 	}
 	if (kind == ACCT_ASK)

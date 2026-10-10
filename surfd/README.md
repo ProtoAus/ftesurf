@@ -825,76 +825,112 @@ style) and sets no cookie, except the Steam sign-in below.
 
 ## Steam accounts (/board/link)
 
-`accounts.py` and `steam.py`, schema 14. STORE-ONLY: nothing that ranks,
+`accounts.py` and `steam.py`, schema 15. STORE-ONLY: nothing that ranks,
 verifies or publishes a run reads these tables (ROADMAP 14 has the stages).
 The pages are off unless `SURFD_BOARD_URL` is set; `SURFD_STEAM_KEY` adds names
 and avatars.
 
 ```
-GET  /board/link[?c=CODE&k=OPENER]   what linking is, and the button
-GET  /board/link/steam      302 to Steam's OpenID; sets the state cookie. `c`
-                            and `k` ride in return_to, so Steam's signature
-                            covers them
-GET  /board/link/return     checks the reply, asks Steam; with `c`, attaches the
-                            account to the game's start and shows its NUMBER;
-                            without, shows a code to type. Lists the account's
-                            linked installs
+GET  /board/link[?k=OPENER] what linking is, and the button
+GET  /board/link/steam      302 to Steam's OpenID; sets the state cookie. `k`
+                            rides in return_to, so Steam's signature covers it
+GET  /board/link/return     checks the reply, asks Steam; with `k`, attaches the
+                            account to the start that opener names and shows
+                            its NUMBER; without, shows a code to type. Lists
+                            the account's linked installs
 GET  /board/link.css        the pages' one stylesheet (web/link.css)
 GET  /board/link/unlink?t=  asks, then (its own link) unlinks one install
-POST /api/link     key, node, player, ip, tag, pub, sig, server        asking
+POST /api/link     key, node, player, ip, tag, pub, sig, server, keyed, game  asking
   -> {"acct":1,"ok":0,"why":"confirm","to","from"}   `from` is "" unless it would move
 POST /api/link     ...the same, and pin [, shown]                      confirming
   -> {"acct":1,"ok":1,"name","banned"}
-either -> {"acct":1,"ok":0,"why":"code"|"banned"|"slow"|"proof"|"server"|"later"|"number"}
-POST /api/link/start  key, node, player, ip, nonce, pub, sig, server   the game starts
-  -> {"acct":1,"ok":1,"code"} | {"acct":1,"ok":0,"why":"slow"|"proof"|"server"|"later"}
+either -> {"acct":1,"ok":0,"why":"code"|"banned"|"slow"|"proof"|"server"|"game"|"later"|"number"}
+POST /api/link/start  key, node, player, ip, code, pub, sig, server, keyed, game
+  -> {"acct":1,"ok":1} | {"acct":1,"ok":0,"why":"slow"|"proof"|"server"|"game"|"later"|"code"}
 POST /api/link/wait   key, node, ip, tag                               no signature
   -> {"acct":1,"state":"wait"|"ready","to","from"} | {"acct":1,"state":"gone"[,"why":"banned"]}
-POST /api/account  key, node, ip, nonce, pub, sig, server
-  -> {"acct":1,"linked":0[,"why":"proof"|"server"|"later"]}
+POST /api/account  key, node, ip, nonce, pub, sig, server, keyed, game
+  -> {"acct":1,"linked":0[,"why":"proof"|"server"|"game"|"later"]}
    | {"acct":1,"linked":1,"name","banned"}
 ```
 
 AN INSTALL IS ITS SIGNING KEY. The four `/api` routes need the shared key and
 a `SURFD_TRUSTED` source; all but `/api/link/wait` also carry a signature by
-`pub` over rec_sign's statement (`accounts.STATEMENT`), whose `ticks` line says
-which kind it is (a start's is kept and checked later: below):
+`pub` over the ACCOUNT's statement (`accounts.STATEMENT`, since Patch 625; the
+engine's `acct_sign` builtin is the only thing that signs it):
 
-| kind | ticks | nonce signed |
-|---|---|---|
-| a connect | -2 | the 32 hex the lobby chose for it |
-| asking | -3 | `ask_nonce(code)` |
-| confirming | -4 | `confirm_nonce(code, pin)` |
-| starting | -5 | `start_nonce(nonce, opener)`: the lobby's 32 hex with the client's secret |
+    FTESURF-ACCT 1
+    server <the address the client is talking to>
+    nonce <32 hex>
+    kind <below>
+    key <1 if a device's key press was being delivered to game code, else 0>
+    code <SHA-256 of the csprogs that asked, 64 hex: the form's `game`>
 
-The lobby never sees a TYPED code: `tag` is `code_tag(code)`, and surfd finds the
-live code it is a digest of (a start's code passes through the lobby in the
-clear, and is not a secret: see below). Asking keeps the code for the key that asked
+| kind | | nonce signed | key |
+|---|---|---|---|
+| a connect | -2 | the 32 hex the lobby chose for it | either |
+| asking | -3 | `ask_nonce(code)` | 1 |
+| confirming | -4 | `confirm_nonce(code, pin)` | 1 |
+| starting | -5 | `start_nonce(code, opener)`: its code with the client's secret (kept, and checked later: below) | 1 |
+
+`keyed` is the lobby passing on the engine's word; it is inside the signature,
+so a flag changed on the way fails there. So is `game`: the SHA-256 of the
+csprogs that asked (the statement's `code` line). surfd takes a proof only
+when it names game code OUR LOBBIES SERVE: the files in `SURFD_GAME_CODE`
+(comma-separated; default `<SURFD_GAME>/ftesurf/csprogs.dat` and its `.prev`,
+which is where a deploy leaves the one before), re-read when their size or
+time changes. Another's is `why: game`; when that cannot be said (no file
+readable, or one that is there cannot be read and the proof names none of the
+others) the answer is `why: later`, and the log names each file and its state
+whenever that changes. A start's kept signature is asked the same question
+again when a sign-in opens it. This
+is what makes "a key was pressed" consent to OUR box: a client picks the
+csprogs it runs from a download cache by a 32-bit checksum. A proof signed the way engines
+before 625 signed (a run receipt's statement with a negative tick count, from
+a console command) is refused: `why: proof`. Links live in `keylinks` since
+schema 15. The table they lived in before (`linkkeys`) is never read and is
+EMPTIED at every start of surfd (`links_now`): the links made before 625, and
+any that older code writes into the file after a rollback, are not links. It
+is kept, empty, so that older code rolled back onto the file still starts.
+
+The lobby never sees a TYPED code: `tag` is 16 hex of salt the client drew and
+then `typed_tag(salt, code)`, and surfd finds the live typed code it is a
+digest of. Twelve characters and a salt since Patch 625: the packet that
+claims a code can be dropped on the way, and ten characters under a bare
+digest were thirty GPU-hours or one table. (A start's code passes through the
+lobby in the clear, is named by the plain `code_tag`, and is not a secret: see
+below. Neither kind of row answers to the other's tag.) Asking keeps the code for the key that asked
 (`linkcodes.claim`) and answers with the account's name; the lobby sends the
 client's link box a six-digit `pin` of its own choosing, and confirming, signed
-over that pin by the same key, spends the code and writes `linkkeys`. Whether a
+over that pin by the same key, spends the code and writes `keylinks`. Whether a
 person meant either signature is the game's business (cl_account.qc makes them
 only under key presses), not surfd's.
 
-A LINK THE GAME STARTS (Patch 619). The client makes a 24-hex OPENER and
-never sends it to the lobby. `/api/link/start` takes the key's signature over
-`start_nonce(nonce, opener)` and CANNOT CHECK IT: it checks the shape and that
-it was made for an address of ours, keeps it (`linkcodes.seal`) and issues a
-code that names the key (`claim`) and has no account (`shown` is `?`), so
-nobody can ask or confirm with it. The code goes back to the client in the
-clear, which shows `/board/link?c=CODE&k=OPENER`. THE CODE LINKS NOTHING AND
-IS NOT A SECRET. `link_return` verifies the kept signature with the opener the
+A LINK THE GAME STARTS (Patches 619, 625). The client makes a 24-hex OPENER
+and never sends it to the lobby. The start's `code` is the client's too:
+`start_code_of(opener)`, twelve of the alphabet from a digest. `/api/link/start`
+takes the code and the key's signature over `start_nonce(code, opener)` and
+CANNOT CHECK IT: it checks the shape, that it was made for an address of ours
+and that the engine says a key was pressed, keeps it (`linkcodes.seal`) under
+that code (the first to bring a code holds it; never replaced) with the key
+(`claim`) and no account (`shown` is `?`), so nobody can ask or confirm with
+it. The engine opens `/board/link?k=OPENER`. THE CODE LINKS NOTHING AND IS
+NOT A SECRET. `link_return` verifies the kept signature with the opener the
 sign-in brought: it fits only the key whose client made that opener, so a code
-read off the wire, or swapped on it, opens nothing (the same "start again"
-page as a start that does not exist, and the start is not touched). When it
+read off the wire and registered under another key opens nothing (the same
+"start again" page as a start that does not exist, and nothing is attached). When it
 fits, the start gets the signed-in account and a four-digit number (`shown`),
 which the page shows; a sign-in that came with a start's address never yields
 a code to type. The same account again sees the same number; a DIFFERENT
 account with the right address ends the start for both (`used_by`
 `contested`). `/api/link/wait` then says `ready` with the account's name, the
-lobby sends its pin, and confirming is `/api/link` with `shown`: the page's
-number as the player typed it into the game. ONE TRY: a wrong or missing
-number answers `number` and spends the start (`mismatch`). Signing in for a
+lobby sends its pin, and confirming is `/api/link` with `shown`: NOT the
+number but `number_proof(opener, pin, number)`, the game's digest of what the
+player typed with ITS OWN opener (an attached start's `seal` holds the opener
+the browser brought, so surfd can compare). A number typed into a game that
+did not start that link, and read off its connection, is therefore nobody's.
+ONE TRY: a wrong or missing proof answers `number` and spends the start
+(`mismatch`). Signing in for a
 key's start retires that key's other starts. Starts spend from the same
 budgets as link steps (`link_call`) and have a cap of their own (200 nobody
 has signed in for; they do not count toward the 500 codes that close
@@ -912,7 +948,7 @@ and the per-player limits are keyed on it (12 connects and 8 link steps a
 minute). `player` is the guid, kept for the log. `acct` marks a reply as
 surfd's: QuakeC is handed an empty body for a request that never connected.
 
-A code is 10 characters, lasts ten minutes and works once; a new sign-in
+A code is 12 characters, lasts ten minutes and works once; a new sign-in
 supersedes the account's older code. It is a bearer token for those ten
 minutes, so the page lists what is linked and can unlink it, in the browser
 that signed in (`__Host-ftu`). `name` is the Steam persona reduced to what a

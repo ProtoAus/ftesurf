@@ -11,6 +11,36 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — linking Steam: one key press opens your browser (Patches 619, 625)
+
+NOT LIVE YET when this was written: see AGENT_NOTES for the DEPLOYED line.
+625 needs the new engine, which goes into both your installs with it.
+
+- **What a new player sees.** On the first official lobby of a game, a small
+  box: "Rank your times under your Steam name. Press Enter to link". Enter
+  opens the sign-in page in their browser. They press Sign in with Steam, and
+  the page shows a four-digit number. Back in the game the box is already
+  asking "Link this game to the Steam account X" and for that number: four
+  digits, Enter, linked. Esc on the first box means later; it comes back the
+  next time the game is started, and `link` in the console opens it any time.
+- **YOUR LINK WAS DROPPED, on purpose.** Every link made before this engine
+  could have been signed by a console line with no key pressed, and stage 3 is
+  about to rank on links. So you get the prompt too: link again, twenty
+  seconds.
+- **Why there is a number at all.** I first built it with nothing typed: the
+  site matched your browser to your game by address. The review showed that
+  lets someone on the same network (a housemate, a campus, some ISPs) get YOUR
+  Steam account linked to THEIR game by sending you a link. The number is what
+  proves the person who signed in is the person at the game. It also means it
+  works from any browser, a phone included (the address is copied as well).
+- **To judge:** that your browser really opens on Enter, and where the game
+  window goes when it does; the wording of the boxes and the pages; that Enter
+  is the key (it is your chat key too, for those 40 seconds); whether four
+  digits is the right price.
+- **The old way still works:** sign in on the site without the game's address
+  and you get a twelve-character code (ABCD-EFGH-JKLM); `link`, then type it
+  into the box.
+
 ## 00. 10 Oct — your own line on the run graphs (Patch 622)
 
 Published 10 Oct 20:10 UTC (07:10 on the 11th here). Live since 20:12 UTC on
@@ -76,40 +106,6 @@ the plugin was only on the two development installs. They do now.
   Sep 2025, Feb and Apr 2026) and the script refuses to pack any `.prev`. I
   did not touch them. Move or delete them when you are ready.
 - Linux has no such plugin: a Linux player keeps the QC plots.
-
-## 00. 11 Oct — linking Steam from inside the game (Patch 619)
-
-Live on the Pi's lobbies and both your Windows installs since 10 Oct 18:45 UTC.
-
-You asked for the least friction: a popup on first launch, the link copied,
-the site clean, "or maybe ... auto magically linked".
-
-- **What a new player sees.** On the first official lobby of a game, a small
-  box: "Rank your times under your Steam name. Press Enter to link". Enter
-  copies a sign-in address; they paste it into a browser and press Sign in
-  with Steam. The page shows a four-digit number. Back in the game the box is
-  already asking "Link this game to the Steam account X" and for that number:
-  four digits, Enter, linked. Esc on the first box means later; it comes back
-  the next time the game is started, and `link` in the console opens it any
-  time.
-- **Your install is linked**, so you get no prompt. Type `link` and close the
-  console; Enter, paste, sign in, type the number.
-- **Why there is a number at all.** I first built it with nothing typed: the
-  site matched your browser to your game by address. The review showed that
-  lets someone on the same network (a housemate, a campus, some ISPs) get YOUR
-  Steam account linked to THEIR game by sending you a link. The number is what
-  proves the person who signed in is the person at the game. It also means it
-  works from any browser, a phone included.
-- **The game cannot open your browser or paste for you yet.** That needs the
-  engine; today it copies the address and shows it. The address is long (it
-  ends in a secret your game made, which is what stops anyone else signing in
-  for your game): paste it, do not retype it.
-- **To judge:** the wording of the boxes and the pages (they follow your
-  browser's light or dark setting); that the first box comes up by itself;
-  that Enter is the key (it is your chat key too, for those 40 seconds);
-  whether four digits is the right price.
-- **The old way still works:** sign in on the site without the game's address
-  and you get a ten-character code; `link`, then type it into the box.
 
 ## 00. 10 Oct — the trainer keeps your last jumps (Patch 621)
 

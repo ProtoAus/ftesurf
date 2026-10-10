@@ -23,13 +23,15 @@ THE ARMS, in one client session:
   L  two asks for a nonce in one packet get ONE: the second must not replace
      what the client is already signing (1 reconnect in 9 was refused this way
      before the client's ask timer left the game clock, which jumps at connect)
-  N  the game starts the link (Patch 619): the prompt that came up by itself
-     leaves the game its keys (Tab among them); an Enter fed from the console
-     and a stuffed code start nothing; Enter on it starts a link, the address
-     it shows is copied, and the wait for the browser leaves the keys too
-  B  the code with an opener that is not this client's (all the wire shows)
-     opens nothing; a "browser" at another address signs in with the address
-     the box showed and is shown a number;
+  N  the game starts the link (Patches 619, 625): the prompt that came up by
+     itself leaves the game its keys (Tab among them); an Enter fed from the
+     console starts nothing and the console command signs no link (the engine
+     says so); ONE Enter starts a link, surfd takes it, and the engine is
+     asked to open the address the box shows (run with -nobrowse, so it
+     prints it); the wait for the browser leaves the keys too
+  B  a sign-in with an opener that is not this client's opens nothing; a
+     "browser" at another address signs in with the address the box showed
+     and is shown a number;
      the game asks "link to X?" and for that number by itself; Enter and Y
      without it link nothing; the number and Enter link, and an Esc right
      after cannot say "cancelled" over a confirm that is already with surfd
@@ -48,10 +50,12 @@ THE ARMS, in one client session:
      `acct_ask` raises no question; and no .qc file calls CSQC_InputEvent
   M  `zone_goto` and `ghost speed` no longer paste their argument into a console
      line (a quoted `1;rec_sign ...` ran as a second command at game code's level)
-  H  CONTROL: the right code's digest with a signature over the WRONG nonce is
-     refused and leaves the code unclaimed -- so B's yes was the signature's
+  H  CONTROL: the console is asked for the signature that would claim a code
+     (Patch 615's `link <code>` made it this way): the engine refuses, in its
+     own words, and the code stays unclaimed
   J  receipts shaped like a finish's (ticks 7) and a kept abandon's (ticks 0)
-     go to the run's own handler while a link is owed, and the link completes
+     are still the console command's, and go to the run's own handler while a
+     link is owed; the link is then made in the box
   I  after a reconnect the server knows who it is from the proof alone
 --refuse-address runs surfd with an address list that omits this box: the same
 `link` must be refused for the ADDRESS, which is the control for that check.
@@ -132,14 +136,21 @@ def build_rig(a):
     return rig, gd, junctions
 
 
-def start_surfd(rig, port, hosts):
+def start_surfd(rig, port, hosts, foreign=False):
     home = rig / "surfd-home"
     home.mkdir()
+    served = rig / "ftesurf" / "csprogs.dat"
+    if foreign:
+        # surfd is told our lobbies serve something else than this one does
+        served = home / "other.dat"
+        served.write_bytes(b"not the csprogs this rig's lobby serves")
     (home / "surfd.env").write_text("SURFD_KEY=%s\n" % KEY)
     os.environ.update(SURFD_HOME=str(home), SURFD_DB=str(home / "p615.db"),
                       SURFD_ENV=str(home / "surfd.env"), SURFD_RUNS=str(home / "runs"),
                       SURFD_MAPS=str(home / "maps"), SURFD_WEBSHOTS=str(home / "shots"),
                       SURFD_TOOLS=str(ROOT / "tools"), SURFD_LINK_HOSTS=hosts,
+                      # what the rig's lobby serves, and so what a proof must name
+                      SURFD_GAME_CODE=str(served),
                       SURFD_BOARD_URL="http://127.0.0.1:%d/board" % port)
     for k in ("SURFD_PUBLIC_HOST", "SURFD_TRUSTED", "SURFD_PROXIES", "SURFD_ADMIN_HASH",
               "SURFD_STEAM_KEY", "SURFD_GAME"):
@@ -165,13 +176,13 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def browser(port, sid, ip, c=""):
-    """A browser at `ip` signing in through (a faked) Steam, with the code a
-    game started in the address if `c`.  -> the page it ends on."""
+def browser(port, sid, ip, k=""):
+    """A browser at `ip` signing in through (a faked) Steam, at the address a
+    game opened if `k` (its opener).  -> the page it ends on."""
     base = "http://127.0.0.1:%d/board/link" % port
     opener = urllib.request.build_opener(NoRedirect)
     try:
-        opener.open(urllib.request.Request(base + "/steam" + ("?c=" + c if c else ""),
+        opener.open(urllib.request.Request(base + "/steam" + ("?k=" + k if k else ""),
                                            headers={"X-Real-IP": ip}))
         raise RuntimeError("/steam did not redirect")
     except urllib.error.HTTPError as r:
@@ -309,7 +320,7 @@ def receipt_arm(a, rig, gd):
     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     si.wShowWindow = 7
     client = subprocess.Popen(
-        [str(a.content / "ftesurf64.exe"), "-basedir", str(rig), "-manifest",
+        [str(a.client), "-nobrowse", "-basedir", str(rig), "-manifest",
          str(rig / "default.fmf"), "-window", "+exec", "cfg/test/p417sign.cfg"],
         cwd=a.content, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, startupinfo=si)
     try:
@@ -336,12 +347,18 @@ def receipt_arm(a, rig, gd):
 
 
 # The address the box shows for a start: its code, and the opener the client made.
-GO = r"sign in at proto\.bar/ftesurf/board/link\?c=([A-Z2-9]{10})&k=([0-9a-f]{24})"
+GO = r"sign in at proto\.bar/ftesurf/board/link\?k=([0-9a-f]{24})"
 
 
 def address(m):
-    """What follows `?c=` in the address a start showed."""
-    return "%s&k=%s" % (m.group(1), m.group(2)) if m else ""
+    """The opener in the address a start showed."""
+    return m.group(1) if m else ""
+
+
+def code_of_start(m):
+    """The code that start goes by in surfd: its client made it from the opener."""
+    import accounts
+    return accounts.start_code_of(m.group(1)) if m else ""
 
 
 def link_arm(a, send, keys, cl, sv, db, gport, codes):
@@ -353,7 +370,7 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
             conn.close()
 
     def key():
-        return rows("SELECT length(pub), steamid, length(player), node FROM linkkeys")
+        return rows("SELECT length(pub), steamid, length(player), node FROM keylinks")
 
     def who():
         k = key()
@@ -395,6 +412,17 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
               (False, 0, [], [(0, "")]))
         return
 
+    if a.foreign_code:
+        check("the connect's proof is refused for its game code, and says nothing",
+              bool(sv.wait(hello % (0, "game"))), True)
+        opened = box(c1)
+        check("CONTROL with other game code on surfd's disk than this lobby serves: the link is "
+              "refused for the GAME CODE",
+              (opened, bool(cl.wait("not running this lobby's own game code")), key(),
+               rows("SELECT used_at, claim FROM linkcodes WHERE code = '%s'" % c1)),
+              (True, True, [], [(0, "")]))
+        return
+
     if a.refuse_address:
         check("the connect's proof is refused for the address, and says nothing",
               bool(sv.wait(hello % (0, "server"))), True)
@@ -428,32 +456,41 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
     keys.press("tab")
     time.sleep(0.5)
     check("N  the prompt that came up by itself leaves the game its keys, and Tab is not its",
-          (cl.text().count("gamekey-w"), "steam: starting" in cl.text(), "code sent" in cl.text()),
+          (cl.text().count("gamekey-w"), "sign in at" in cl.text(), "code sent" in cl.text()),
           (1, False, False))
     send("vote key 13 1")                   # Enter, fed down the chain from the console
     send("vote key 13 0")
     fed = bool(cl.wait(r"vote key: scan 13 down 1", 10))
-    send("acct_go ABCDEFGHJK")              # ...and an address nobody started
-    time.sleep(1.5)
-    check("N  CONTROL an Enter fed from the console starts nothing, and a stuffed code shows no address",
-          (fed, "steam: starting" in cl.text(), "sign in at" in cl.text()), (True, False, False))
+    # ...and the old way to a link's signature: the console command, from the
+    # console itself.  The ENGINE prints its refusal.
+    send("rec_sign " + "ab" * 16 + " -4 - 0")
+    refused = bool(cl.wait("account proofs are not signed from the console", 10))
+    time.sleep(1.0)
+    check("N  CONTROL an Enter fed from the console starts nothing, and the console signs no link",
+          (fed, refused, "sign in at" in cl.text()), (True, True, False))
     keys.press("enter")
     m = cl.wait(GO, 20)
-    started = m.group(1) if m else ""
-    check("N  Enter on the prompt starts a link: an address with a code surfd keeps for this key",
-          (bool(m), "copied" in cl.text().split("sign in at")[-1][:120],
+    started = code_of_start(m)
+    # printed before the box's own line, so searched for in the whole log
+    opened = re.search(r"acct_browse: https://proto\.bar/ftesurf/board/link\?k=([0-9a-f]{24}) "
+                       r"\(-nobrowse: not opened\)", cl.text())
+    check("N  ONE Enter on the prompt starts a link: surfd has it for this key, and the ENGINE "
+          "was asked to open the same address",
+          (bool(m), bool(opened) and opened.group(1) == address(m),
+           "opened in your browser" in cl.text().split("sign in at")[-1][:120],
+           bool(sv.wait(r"kind 4 answered for client 1: answered 1 ok 1", 15)),
            rows("SELECT steamid, length(claim), shown, used_at FROM linkcodes WHERE code = '%s'"
                 % started)),
-          (True, True, [("", 64, "?", 0)]))
+          (True, True, True, True, [("", 64, "?", 0)]))
     keys.press("w")
     time.sleep(0.5)
     check("N  the wait for the browser leaves the game its keys too",
           cl.text().count("gamekey-w"), 2)
-    # What the wire shows is the code.  With it and an opener that is not this
-    # client's, a sign-in attaches nothing and the game is asked nothing.
-    page = browser(a.hport, SIDS[0], "198.51.100.8", started + "&k=" + "0" * 24)
+    # The wire shows the start's code, never its opener.  A sign-in with
+    # another opener names another start: nothing attaches, nothing is asked.
+    page = browser(a.hport, SIDS[0], "198.51.100.8", "0" * 24)
     time.sleep(3.0)
-    check("B  CONTROL the code with another opener opens nothing, and no question is raised",
+    check("B  CONTROL a sign-in with another opener opens nothing, and no question is raised",
           ("Start again from the game" in page, code_on(page),
            rows("SELECT steamid FROM linkcodes WHERE code = '%s'" % started),
            "link this game to" in cl.text().split("sign in at")[-1]),
@@ -488,7 +525,6 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
     opened = opens("link")
     keys.press("enter")
     m = cl.wait(GO, 20)
-    dropped = m.group(1) if m else ""
     keys.press("esc")
     cancelled = bool(cl.wait("link cancelled", 10))
     browser(a.hport, SIDS[0], "198.51.100.9", address(m))
@@ -499,7 +535,7 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
     opens("link")
     keys.press("enter")
     m = cl.wait(GO, 20)
-    spent = m.group(1) if m else ""
+    spent = code_of_start(m)
     number = code_on(browser(a.hport, SIDS[0], "198.51.100.9", address(m)))
     up = bool(cl.wait(r"link this game to Lex\? Type the number from the sign-in page", 15))
     time.sleep(0.8)
@@ -570,19 +606,13 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
     check("K  CONTROL an answer nobody asked for raises no question",
           ("Mallory" in cl.text().replace('acct_ask 123456 "Mallory"', ""), who()),
           (False, SIDS[1]))
-    n = cl.text().count("sign in at")
-    send("acct_go ABCDEFGHJK")              # ...and with no box at all
-    send("acct_start " + "ab" * 16)
-    time.sleep(1.0)
-    check("K  CONTROL a start's answers, unasked, show no address",
-          cl.text().count("sign in at") - n, 0)
     called = [p.name for p in sorted((ROOT / "src").rglob("*.qc"))
               if "CSQC_InputEvent(" in p.read_text(errors="replace")]
     check("K  no .qc file calls CSQC_InputEvent: only the engine says a key was real",
           called, [])
 
     time.sleep(3.2)
-    opened = box("ABCDEFGHJK")
+    opened = box("ABCDEFGHJKLM")
     check("F  an unknown code is refused",
           (opened, bool(cl.wait("not valid or has expired"))), (True, True))
     keys.press("back")
@@ -612,27 +642,32 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
     check("M  an argument to zone_goto or ghost speed is a number, not more commands",
           ("P617-LAUNDERED-A" in seen, "P617-LAUNDERED-B" in seen), (False, False))
 
+    # H: the lobby is told a code's digest by hand, and the console is asked
+    # for the signature that would claim it.  Through Patch 619 this claimed
+    # the code (it was this arm's J); the engine signs no link from a console now.
     time.sleep(3.2)
-    send("cmd link " + digest("ftesurf-code ", c3))
-    send("rec_sign %s -3 - 0" % ("0" * 32))
-    check("H  CONTROL the right code under a signature for the wrong nonce",
-          (bool(sv.wait(asked % "proof")),
-           rows("SELECT used_at, claim FROM linkcodes WHERE code = '%s'" % c3)),
-          (True, [(0, "")]))
+    n = cl.text().count("account proofs are not signed from the console")
+    # as the box sends a typed code: a salt, then the digest under it
+    send("cmd link " + "5a17c0de5a17c0de" + digest("ftesurf-code ", "5a17c0de5a17c0de " + c3))
+    send("rec_sign %s -3 - 0" % digest("ftesurf-link ", c3))
+    refused = cl.count("account proofs are not signed from the console", n + 1) - n
+    time.sleep(2.0)
+    check("H  CONTROL the console cannot sign for a code: the engine refuses and it stays unclaimed",
+          (refused, rows("SELECT used_at, claim FROM linkcodes WHERE code = '%s'" % c3)),
+          (1, [(0, "")]))
 
-    # J by hand at the console: the player's own console may still sign, and
-    # that is what lets this arm put run-shaped receipts between the two.
+    # J: a run's receipt is still the console command's to sign, and still
+    # goes to the run's handler with a link owed.
     time.sleep(3.2)
     before = sv.text().count("timer: receipt refused")
-    send("cmd link " + digest("ftesurf-code ", c3))
+    # as the box sends a typed code: a salt, then the digest under it
+    send("cmd link " + "5a17c0de5a17c0de" + digest("ftesurf-code ", "5a17c0de5a17c0de " + c3))
     send("rec_sign %s 7 - 0" % ("1" * 32))
     send("rec_sign %s 0 - 0" % ("2" * 32))
     passed = sv.count("timer: receipt refused", before + 2) - before
-    send("rec_sign %s -3 - 0" % digest("ftesurf-link ", c3))
-    got = bool(sv.wait(asked % "confirm"))
     check("J  both run-shaped receipts reached the run's handler while a link was owed",
-          (passed, got, rows("SELECT used_at, length(claim) FROM linkcodes WHERE code = '%s'" % c3)),
-          (2, True, [(0, 64)]))
+          (passed, rows("SELECT used_at, claim FROM linkcodes WHERE code = '%s'" % c3)),
+          (2, [(0, "")]))
     time.sleep(3.2)
     box(c3)
     up = bool(cl.wait(r"link this game to Third\? Enter to link"))
@@ -650,7 +685,7 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
            bool(cl.wait("this install is linked to Third", 15))), (True, True))
 
     used = dict(rows("SELECT code, used_by FROM linkcodes"))
-    pub16 = rows("SELECT substr(pub, 1, 16) FROM linkkeys")
+    pub16 = rows("SELECT substr(pub, 1, 16) FROM keylinks")
     check("surfd holds one key, for the third account, from this lobby",
           key(), [(64, SIDS[2], 32, "p%d" % gport)])
     check("...the three codes it spent are marked with that key (the first was the game's own);"
@@ -663,13 +698,20 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--progs", type=pathlib.Path, required=True)
     ap.add_argument("--content", type=pathlib.Path, default=pathlib.Path("C:/FTESurf"))
+    ap.add_argument("--client", type=pathlib.Path,
+                    help="the client exe under test (default: <content>/ftesurf64.exe); "
+                         "its plugins are the ones beside it")
+    ap.add_argument("--server", type=pathlib.Path,
+                    default=pathlib.Path("C:/FTEQuake/fteqwsv64.exe"))
     ap.add_argument("--output-dir", type=pathlib.Path)
     ap.add_argument("--map", default="bhop_eazy")
     ap.add_argument("--refuse-address", action="store_true")
+    ap.add_argument("--foreign-code", action="store_true")
     ap.add_argument("--taken", action="store_true")
     ap.add_argument("--receipt", action="store_true")
     ap.add_argument("--timeout", type=int, default=240)
     a = ap.parse_args()
+    a.client = a.client or a.content / "ftesurf64.exe"
     # Absolute: the engines run with the install as their cwd, not this one.
     a.progs = a.progs.resolve()
     a.output_dir = (a.output_dir or pathlib.Path(tempfile.gettempdir())).resolve()
@@ -693,7 +735,8 @@ def main():
             probe.bind(("127.0.0.1", 0))
             hport = probe.getsockname()[1]
         a.hport = hport
-        web, db = start_surfd(rig, hport, "192.0.2.1" if a.refuse_address else "127.0.0.1")
+        web, db = start_surfd(rig, hport, "192.0.2.1" if a.refuse_address else "127.0.0.1",
+                              a.foreign_code)
         codes = [sign_in(hport, sid, "198.51.100.%d" % (n + 1)) for n, sid in enumerate(SIDS)]
         conn = sqlite3.connect(db)
         for sid, name in NAMES.items():         # the fake has no profile to fetch
@@ -705,7 +748,7 @@ def main():
                   "+set", "cfg_save_auto", "0", "+set", "log_enable", "1",
                   "+set", "log_dir", "logs"]
         server = subprocess.Popen(
-            ["C:/FTEQuake/fteqwsv64.exe", *common, "+set", "log_name", "p615sv",
+            [str(a.server), *common, "+set", "log_name", "p615sv",
              "+set", "developer", "1",       # the server's account lines are dprints
              "+set", "sv_public", "0", "+set", "sv_port", str(gport),
              "+set", "sv_guidkey", "p615-probe", "+set", "sv_maxrate", "0",
@@ -721,7 +764,7 @@ def main():
         si.wShowWindow = 7                      # SW_SHOWMINNOACTIVE
         # -plugin: console lines on stdin, and the client quits when the pipe closes.
         client = subprocess.Popen(
-            [str(a.content / "ftesurf64.exe"), "-plugin", *common, "+set", "log_name", "p615cl",
+            [str(a.client), "-plugin", "-nobrowse", *common, "+set", "log_name", "p615cl",
              "-window", "-nosound", "+set", "con_savehistory", "0", "+set", "cl_idlefps", "0",
              "+set", "cl_maxfps", "100", "+set", "rate", "2000000", "+set", "drate", "5000000"],
             cwd=a.content, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,

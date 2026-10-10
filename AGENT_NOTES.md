@@ -6325,7 +6325,7 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   #501 of 501. It orders by `of - rk`, people beaten. Likewise `wr` counts
   first places and `wrc` counts the contested ones; the page leads with `wrc`.
 
-### Steam accounts (Patches 612, 615, 617 and 619, surfd schema 14) -- stored, and ranking on nothing
+### Steam accounts (Patches 612, 615, 617, 619 and 625, surfd schema 15) -- stored, and ranking on nothing
 
 - **STORE-ONLY.** `accounts`, `linkkeys`, `linkcodes` and `linknonces` are read
   by nothing that ranks, verifies or publishes, and sv_account.qc kicks and
@@ -6419,6 +6419,84 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   when nothing else has the keyboard. The arm sends `closemenu`, finds the
   window by its class (`FTEGLQuake`) and posts WM_KEYDOWN with the scan code
   in lParam: the engine maps the key from that, not from wParam.
+- **THE ENGINE SIGNS ACCOUNT PROOFS, THROUGH BUILTINS, AND SAYS WHETHER A KEY WAS
+  PRESSED (Patch 625).** `acct_sign(nonce, kind)` signs `FTESURF-ACCT 1` with a
+  `key` line; kinds -3, -4 and -5 are refused unless the engine is inside its
+  own delivery of a DEVICE's key-down to game code (`in_generic.c` marks every
+  event made by `in_journal_synth` or a plugin; `pr_csqc.c` holds the flag
+  round CSQC_InputEvent). `rec_sign` on the console still signs a run's
+  receipt and nothing below -1. surfd refuses the old statement, so an engine
+  before 625 cannot link and `cl_account.qc` says "needs an update".
+  MEASURED WITH A PROBE csprogs (not in the tree: it asks for a confirm's
+  signature from a console command and on any SPACE): console 0 characters,
+  `in_journal_synth`'s SPACE 0 with QC's own `cl_input_real` reading 1, a
+  SPACE posted to the window 213. So the engine now refuses what 617 could
+  only route around by answering four keys.
+- **625'S OWN REVIEWS, AND WHAT THEY CHANGED.** Engine lens: a QC error inside
+  the key handler longjmps out of Host_Frame past the line that takes the
+  "device's key" flags down, so the next csprogs to load signed without a key
+  (the flags come down at the landing now, at every IN_Commands and with the
+  VM, and the builtins want both); one press could loop the browser and all
+  three link kinds (one signature and one browser a press; a held key's
+  repeats are not presses); demo and QTV playback is "connected" with a
+  netchan address that is whoever sent the last packet (refused). Protocol
+  lens: nothing in the new start, and two older things it would not let
+  ranking sit on, both fixed here: a typed code's bare digest (twelve
+  characters and a salt now), and the page's number crossing in the clear
+  (a digest with the client's opener now). It also asked what a rollback does
+  to "links were dropped": `linkkeys.via`, and the drop at every start.
+- **625'S SECOND ROUND, AND REPRODUCING A TRACED FINDING BEFORE FIXING IT.**
+  Both reviewers had only READ their findings, so each went into the probe
+  first, against the build they had read. The engine's: the statement named
+  whatever the netchan pointed at, and one handshake packet re-points it
+  under loaded game code (reproduced: a key press then signed for an address
+  that game code never came from). The address is now noted when the VM is
+  made and compared when it asks. And an injected key-up cleared the repeat
+  latch (reproduced), so the latch moved into in_generic.c and is driven by
+  device events alone. The protocol's: THE CLIENT PICKS ITS CSPROGS FROM A
+  DOWNLOAD CACHE BY A 32-BIT CHECKSUM (`CSQC_FindMainProgs`), so "a key press
+  is consent" was consent to whatever was in that cache. Every account proof
+  now carries the SHA-256 of the csprogs that asked (statement line `code`,
+  form field `game`) and surfd takes only what it can read off the lobbies'
+  disk (`SURFD_GAME_CODE`). `p615link.py --foreign-code` is that arm: the
+  lobby serves one file, surfd is told another, and the real engine's proof
+  is refused in words the box prints. A link also lives in `keylinks` now:
+  the first cut stamped rows of `linkkeys`, and older code's upsert left the
+  stamp on a row it re-linked.
+- **625'S THIRD ROUND FOUND NO WAY TO A WRONG LINK, AND STILL CHANGED THINGS.**
+  Engine: the address a VM may sign for is noted when its SERVERDATA arrives,
+  with whether that was a live connection, so a VM made in demo playback or
+  with no connection never signs; the press latch is cleared by
+  `Key_ClearStates` (X11 and D3D11 release keys on a focus change without the
+  input queue, and Enter's release goes to the browser the same press
+  opened); "one file of code" is the VM's own `numprogs`, not a guess from
+  file names. surfd: the old link table is EMPTIED at each start, not dropped
+  (the live code, rolled back onto a 15 file without it, answered 500), and
+  `keylinks` is made at every start (a file an earlier cut stamped 15 had
+  none); a start's kept signature is asked "is that game code ours" again
+  when a sign-in opens it; a game code file is hashed through one handle with
+  its size and time taken before and after; one unreadable file makes an
+  unmatched proof "cannot check", not "foreign".
+- **AFTER A PROGS DEPLOY, READ surfd's LOG FOR THE GAME CODE IT EXPECTS.** It
+  logs `account proofs must name game code: <file> <16 hex>; ...` whenever
+  that changes, each file with its hash or `is absent` or `CANNOT BE READ`. If the lobbies serve a csprogs surfd cannot read (another path, a
+  permission), every link and every connect answers `later` or `game`. The
+  default path is `<SURFD_GAME>/ftesurf/csprogs.dat` and `.prev`.
+- **`acct_browse(opener)` OPENS ONE PAGE.** The address is the engine's constant
+  with the opener after it; game code cannot name another, and it works only
+  under a device's key press. `-nobrowse` on the command line prints the
+  address instead: every harness passes it (p615link.py does), because the
+  desktop it runs on is the owner's. A switch and not a cvar: a server sets
+  cvars. Linux is `xdg-open` by fork and exec, COMPILED BY NOBODY YET.
+- **THE ARM NEEDS THE ENGINE UNDER TEST:** `p615link.py --client <exe> --server
+  <exe>`; plugins are the ones beside the client. Its H used to claim a code
+  from the console and is now the engine refusing to.
+- **A START IS ONE KEY PRESS AND NAMES ITSELF.** The code is a digest of the
+  opener (`Account_CodeOf`, surfd's `start_code_of`), so the lobby sends the
+  client nothing before the question: `acct_start` and `acct_go` are gone,
+  and with them the code a rewritten connection could swap. The first start to
+  bring a code holds it; a watcher who registers it first gets a start their
+  key never sealed, which the real opener does not open.
 - **THE LINK STARTS IN THE GAME (Patch 619), AND A NUMBER TIES THE BROWSER TO
   IT.** The start's code is in an address and on the wire: public, and it links
   nothing. The page the player signs in on shows four digits
@@ -6442,7 +6520,9 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   cannot be copied is a signature over something its watcher never saw. The
   cost: `/api/link/start` stores a claim it has not verified, so "one start a
   key" is enforced at sign-in, and a wrong signature is found there too.
-- **THE OPENER IS FRAME TIMING, HASHED** (`Account_Stir`: every frame's `cltime`,
+- **THE OPENER IS THE ENGINE'S RANDOM BYTES HASHED WITH A POOL OF THE VM'S OWN**
+  since Patch 625 (`acct_random`). The pool, which was all of it in 619:
+- **THE POOL IS FRAME TIMING, HASHED** (`Account_Stir`: every frame's `cltime`,
   `frametime` and `random()`, and every key event, into a SHA-256 chain).
   Measured on this machine, 11 Oct: `frametime` differs frame to frame in its
   sixth and seventh digits (0.00998342875, 0.0100200288, 0.0100286286 ...),

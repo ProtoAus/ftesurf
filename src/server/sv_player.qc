@@ -1221,9 +1221,9 @@ void(string cmd) SV_ParseClientCommand =
 	*/
 	if (c == "rec_rcpt")
 	{
-		// Patch 615: a receipt that signs ticks -2, -3 or -4 is a key proof,
-		// never a run's.  See Account_Proof.
-		if (!Account_Proof(self, argv(1), argv(2), argv(7), argv(8)))
+		// Patch 625: ticks -2 to -5 were an account proof's until the engine
+		// got a statement for them (acct_proof, below).  Nobody's now.
+		if (!Account_OldProof(argv(2)))
 			SV_RecRcpt(self, argv(1), argv(2), argv(3), argv(4), argv(5), argv(6),
 			           argv(7), argv(8));
 		return;
@@ -1232,6 +1232,11 @@ void(string cmd) SV_ParseClientCommand =
 	// Patch 615: Steam accounts (sv_account.qc).
 	if (c == "acct_hello")      { Account_Hello(self);                    return; }
 	if (c == "link")            { Account_Link(self, argv(1), argv(2));   return; }
+	if (c == "acct_proof")
+	{
+		Account_Proof(self, argv(1), argv(2), argv(3), argv(4), argv(5), argv(6));
+		return;
+	}
 
 	// Patch 382: `rec_spec <entnum>` holds the body and watches that player (or
 	// switches target); `rec_spec 0` starts the countdown back.  See SV_SpecStart.

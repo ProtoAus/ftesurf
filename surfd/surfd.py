@@ -440,7 +440,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 
 # --------------------------------------------------------------------------
@@ -1488,8 +1488,19 @@ def migrate():
             conn.commit()
             version = 14
 
+        if version < 15:
+            # SCHEMA 15: links move to a table older code has never heard of
+            # (accounts.py, Patch 625).  accounts.links_now is the step; it
+            # runs below, at this start and every other.
+            conn.execute("PRAGMA user_version=15")
+            conn.commit()
+            version = 15
+
         verdict_metrics(conn)
+        gone = accounts.links_now(conn)
         conn.commit()
+        if gone:
+            log.info("dropped %d link(s) made before a key press could be proven", gone)
         if version == started:
             log.info("schema already at version %d (db=%s)", version, DB_PATH)
         else:

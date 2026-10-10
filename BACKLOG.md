@@ -45,9 +45,6 @@ what the first item wanted; it stays here because the hole itself is open.
 Patch 619. ROADMAP 14.2 has what it does. Its review's findings that were not
 fixed are here.
 
-- **The game cannot open a browser, and nothing pastes into the box.** The
-  sign-in address is copied; the player pastes it. An engine command for the
-  first, behind the same level check as `rec_sign`, is the rest of "one click".
 - **The number is the link, so it is the thing to protect.** Read out to
   somebody else, it links THEIR game, exactly as a typed code does; the page
   says so. Four digits and one try: a blind guess is one in ten thousand for
@@ -56,11 +53,53 @@ fixed are here.
   whole address (a player pasting it into a chat) can sign in for it: their
   account's name is then in that game's question, and the number is on THEIR
   page. Reading the wire gives the code and not the address.
-- **The opener is as good as the client's frame timing** (AGENT_NOTES). An
-  engine random source for game code would replace the pool.
-- **Game code still does not know its own key.** The seal works round that;
-  14.3's engine change (signing as a builtin) would let the client name its
-  key in the address outright.
+- **An engine older than Patch 625 cannot link**, and no release carries 625
+  yet. Its player is told the game needs an update.
+- **Whoever can rewrite a player's connection can borrow it.** Every proof
+  names the server and the key, and nothing names the connection it came down:
+  a man in the middle of a whole session relays the player's proofs as their
+  own. Signatures cannot close that; an encrypted transport can (the engine
+  speaks DTLS; the lobbies do not offer it). 14.3 (a) must not treat "this
+  connection proved key K" as more than it is.
+- **No account proof over `dtls://`, `tcp://` or `ws://`.** The engine sends an
+  address only if it is digits, letters, dots, colons and brackets; a scheme's
+  slashes are refused, every kind, the connect's included.
+- **`rec_sign` still signs a run's receipt during demo playback** (the account
+  builtins refuse). Nothing has been built on it; one line in cl_receipt.c.
+- **`acct_browse` on Linux says yes when `xdg-open` is missing**, and its
+  child is never reaped.
+- **THE CSPROGS DOWNLOAD CACHE TRUSTS A 32-BIT CHECKSUM** (engine,
+  `CSQC_FindMainProgs`). Account proofs no longer depend on it (Patch 625:
+  they name the code by SHA-256), but the box a player sees on our lobby still
+  does. Wants an engine patch on both sides: the server names its csprogs by
+  a strong hash and the client runs no other.
+- **A run's receipt names the connection's address with no check of where the
+  game code came from** (`rec_sign`; the account builtins check since 625).
+- **The cap on starts nobody has signed in for is one number for everybody**
+  (200): a few addresses can hold it full and Enter then answers "later". The
+  typed code still works. Count them per client address; `link cancel` should
+  also give its start back.
+- **The name the box shows is not in what Enter signs** (the code and the
+  lobby's number are). It comes down the same connection; a courtesy.
+- **A lobby that is busy drops a proof without a word**, so the box waits out
+  its timer. Say "busy".
+- **A press is inferred, not read from the OS** (engine, `in_real_held`): a
+  key physically held through a focus change, or an X11 repeat whose release
+  arrives alone, can count as a second press. Windows says "repeat" in the
+  message; the input queue has no field for it.
+- **Two reads in the progs loader take game code's word for a size**
+  (`pr_edict.c`, the addprogs name copy and the `.lno` header; a reviewer's
+  pointer, not measured). Upstream code, reachable from any csprogs.
+- **Link odds and ends from 625's review:** a sign-in through any start's
+  address retires the account's other codes even when it fits nothing; unlink
+  reads then deletes with no transaction; the prompt takes an Enter meant for
+  chat, and `_acct_prompted` is a cvar a server can clear; with no system
+  entropy an opener is the pool alone.
+- **`acct_browse` on Linux is written and not compiled** (`xdg-open`, fork and
+  exec). The Linux drop is built by tools/linux; nobody has run it since.
+- **That the browser really opened was not looked at.** The rig runs
+  `-nobrowse` and reads the address the engine printed; ShellExecuteW's
+  success is its return value.
 - **Esc in the game does not reach surfd.** A sign-in for a start the player
   cancelled, or whose map changed, still gets a number, and no box asks for
   it. The page says what to do. A lobby-to-surfd "ended" call would make the
@@ -90,14 +129,12 @@ Patch 617 closed 615's two worst (a `link` that arrived down the connection
 was signed like a typed one, and a squatted `link` cvar sent a typed code in
 the open): no console command carries a code or a consent now.
 
-- **Game code builds console lines out of text, and `rec_sign` is a console
-  command.** ROADMAP 14.3's gate. 123 `localcmd` calls in src/client, about
-  55 with something variable in them; `zone_goto` and `ghost speed` pasted
-  their argument in whole and are fixed (`p615link.py`, M, fails on the build
-  before). Nobody has read the other string sites for the same thing
-  (`exec particles/%s.cfg`, `cl_voip_mute "%s"`, `rec_ul_arm %s`, the hud_edit
-  `seta %s %s` family, `cmd ` + a saveloc command). What it wants is the
-  engine change in the roadmap; an audit of the sites is the stopgap.
+- **Game code builds console lines out of text.** For the account link this
+  no longer matters: the engine signs it through a builtin under a key press
+  (Patch 625). `rec_sign` still obeys such a line for a RUN's receipt, which
+  is what it is for. The fifty-odd string sites are still unread for other
+  commands (`exec particles/%s.cfg`, `cl_voip_mute "%s"`, `rec_ul_arm %s`, the
+  hud_edit `seta %s %s` family, `cmd ` + a saveloc command).
 - **Not covered by an arm:** that the run's receipt never signs a tick count
   below -1 (cl_replay.qc); it needs a server that sets the stat. By reading.
 - **A code typed on somebody else's server is theirs to read.** Their game
@@ -107,11 +144,11 @@ the open): no console command carries a code or a consent now.
 - **The account's name in the box is what the connection says it is.** It
   arrives as stufftext on an unencrypted channel. It is there so a player who
   typed a code somebody gave them sees whose it is; it is not a proof of that.
-- **The engine can be told to inject key presses.** `in_journal_synth` feeds
-  SPACE and mouse moves through the real input path, and any console can run
-  it. The box answers to Enter, Y, N and Esc only (`p615link.py`, K). A new
-  engine test command that injects other keys would be a way round the box:
-  give such commands the level check `rec_sign` has.
+- **The engine can be told to inject key presses**, and since Patch 625 it
+  knows which ones it was told: `in_journal_synth` and a plugin's input shims
+  mark their events, and `acct_sign` refuses a link's kinds under them. A new
+  way of making key events has to go through `in_newevent` under
+  `IN_SynthOrigin`, or it will read as a device's.
 - **Nothing in QC may call `CSQC_InputEvent`.** It is what says a key was
   real. The arm greps for it; a harness that wants the input chain calls
   `CL_InputEvent`.

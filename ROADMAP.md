@@ -1147,9 +1147,10 @@ Off until `SURFD_BOARD_URL` is set; names and avatars need `SURFD_STEAM_KEY`.
 Reviewed through three lenses before it shipped; what they found and what is
 still open is in AGENT_NOTES ("Steam accounts") and BACKLOG.
 
-### 14.2 The game: the link box, with proof of the install's key — done, Patches 615, 617 and 619
+### 14.2 The game: the link box, with proof of the install's key — done, Patches 615, 617, 619 and 625
 
-`src/server/sv_account.qc`, `src/client/cl_account.qc`, surfd schema 14.
+`src/server/sv_account.qc`, `src/client/cl_account.qc`, surfd schema 15, and
+(625) the engine's `acct_sign`, `acct_random` and `acct_browse`.
 AS BUILT IT DIFFERS FROM THE FIRST PLAN IN ONE WAY THAT MATTERS: a link is keyed
 on the install's signing key (`fskey`), not on the guid. A guid is handed to
 any server that sends this fleet's `sv_guidkey`, so a guid-keyed link could be
@@ -1207,50 +1208,77 @@ moved, or squatted before its owner ever linked.
   found the version without this.
 - **The pages** are one card each, light or dark with the browser, no script.
 
-**Left.** The game cannot open a browser or paste: the address is copied and
-has to be pasted by hand, until the engine has a command for it. No menu row:
-after the first prompt, `link` is typed in the console, which then has to be
-closed. A map change while the player is in the browser closes the box.
-Whether the code page wants an origin of its own (BACKLOG's last sign-in item).
+- **One key press, and the browser opens** (Patch 625, with 14.3's engine
+  gate). Enter on the prompt makes the opener, names the start from it, has
+  the engine sign both and open the sign-in page; nothing comes back from the
+  lobby first, so there is no code for a rewritten connection to swap. Sign
+  in, read four digits, type them, Enter.
+
+**Left.** No menu row: after the first prompt, `link` is typed in the console,
+which then has to be closed. A map change while the player is in the browser
+closes the box. A player on an engine older than Patch 625 cannot link at all
+and is told to update: it needs a release. Whether the code page wants an
+origin of its own (BACKLOG's last sign-in item).
 
 ### 14.3 Ranked means linked, and a ban bites
 
-**BEFORE IT.** Patch 615's review left three ways to a wrong link, all because
-a link was made by console commands. Patch 617 closed the two that could be
-closed in game code: a command that arrives down the connection, or that a
-squatted name swallows, no longer carries a code or a consent. What is left to
-do first:
+**BEFORE IT: done, Patch 625.** Patch 615's review left three ways to a wrong
+link, all because a link was made by console commands. Patch 617 closed the
+two that game code could close. The third was that `rec_sign` is a console
+command, game code runs console lines one level above where it refuses, and
+game code builds such lines out of text in some fifty places: whoever could
+write to a player's connection might find one that signed a link with no key
+pressed.
 
-- **`rec_sign` leaves the console.** It is a console command, game code runs
-  console lines one level above where it refuses, and game code builds such
-  lines out of text in some fifty places. Patch 617's review found the run's
-  own receipt signing a tick count the server chose (clamped now) and two
-  commands pasting a typed argument in whole (fixed); the rest are not
-  audited. So whoever can write to a player's connection may still find a way
-  to have its key sign a link with no key pressed. The fix is in the engine:
-  signing as a builtin that only game code can call, and the console command
-  for the typed console alone. Then the three callers are three lines of game
-  code and no text reaches them. NOTHING RANKS ON A LINK BEFORE THIS.
-- Links made before then are dropped (they were consented to by a command, or
-  could have been signed for by text), and each player links again in the box.
-- The lobby keeps "could not be checked" apart from "not linked" for the whole
-  map and asks again; today a lost connect proof is silence (BACKLOG).
-- STILL TRUE, AND NOT FIXABLE HERE: a code typed while on somebody else's
-  server is theirs, because their game code draws what it likes. The page says
-  to use an official lobby; a code is 50 bits now, so the digest a server is
-  handed is days of work, not minutes. And the NAME the box shows comes down
+- **Signing left the console.** The engine signs account proofs through a
+  builtin, `acct_sign`, into a statement of their own (`FTESURF-ACCT 1`) that
+  says in a signed line whether a device's key was being pressed, and refuses
+  to ask, confirm or start a link without one: a key the engine itself took
+  off a device, not one a command or a plugin injected. The console's
+  `rec_sign` signs a run's receipt and nothing below -1. surfd takes no
+  account proof signed the old way, so "this link was consented to at a
+  keyboard" is checked rather than hoped, and an engine older than 625 cannot
+  link.
+- **Links made before it are dropped, at every start of surfd.** Schema 15
+  moves links to a table of their own (`keylinks`); the one older code wrote
+  (`linkkeys`) is never read and is emptied at each start, so a rollback
+  cannot leave a link behind (and can still start: the table stays). One row today, the owner's test link. Each
+  player links again in the box.
+- **A proof names the game code that asked, and surfd takes only ours.** "A
+  key was pressed" is consent to whatever drew the box, and the client picks
+  the csprogs it runs out of a download cache, by a 32-bit checksum: the code
+  on a lobby was never known to be the lobby's. The engine puts the SHA-256
+  of the csprogs it is running inside every account proof, the connect's
+  included, and surfd reads what its lobbies serve (their `csprogs.dat` and
+  the `.prev` beside it) and takes no other. Foreign code on our lobby can
+  still draw what it likes; it cannot make a link, use one, or be a proven
+  connection.
+- **The address a proof names is the one that game code came from**, and a
+  press is a device's key that was not already down (the second review round:
+  a handshake packet could re-point the connection under loaded game code,
+  and an injected key-up could make a held key's repeat a press again).
+- **The typed flow was hardened with it.** Its review costed the ten-character
+  code at thirty GPU-hours if the one packet that claims it is dropped: codes
+  are twelve characters under a salt drawn per ask. And the sign-in page's
+  number no longer crosses the wire: the game sends a digest of it with its
+  own opener, so a number typed into a game that did not start that link is
+  worth nothing to whoever reads the connection.
+- STILL TO DO IN (a): the lobby keeps "could not be checked" apart from "not
+  linked" for the whole map and asks again; today a lost connect proof is
+  silence (BACKLOG).
+- STILL TO DO, AN ENGINE PATCH OF ITS OWN: the download cache. A lobby should
+  name the csprogs it serves by a hash that cannot be collided and the client
+  should run no other; until then our lobby's box can be somebody else's
+  drawing, which the item below is about.
+- STILL TRUE, AND NOT FIXABLE HERE: a code or a number typed while on somebody
+  else's server is theirs, because their game code draws what it likes, and so
+  is a sign-in made at an address somebody else supplied. Both are a person
+  being talked into it; every "type this number" link has that shape. The
+  page says to use an official lobby and to sign in only from the game's own
+  Enter, the sign-in page lists an account's installs and unlinks one, and
+  (a) must make a link that is not the player's cheap to see. And the NAME the box shows comes down
   the same unencrypted connection as everything else: it is a courtesy against
-  typing somebody else's code, not a proof.
-
-**The engine change, specified (not built).** In cl_receipt.c the signing moves
-into a function, with two callers. A CSQC builtin calls it for game code, and
-refuses the two link kinds (ticks -3, -4) unless the engine is inside its own
-delivery of a device's key event to game code (a flag round `CSQC_KeyPress`,
-not set for `in_journal_synth`). The console command `rec_sign` answers only
-the typed console (exec level LOCAL exactly), so a line game code wrote can no
-longer reach it. Game code uses the builtin when it is there and the console
-line when it is not, so the progs go out first and old engines keep working.
-It rebuilds the client, so every plugin and both installs go with it.
+  linking to somebody else's account, not a proof.
 
 **MEASURED FIRST (the Pi, 2026-10-10).** The ranked tier holds 13 rows, all one
 install's (the owner's): two map runs and eleven stage rows on six maps. The
@@ -1258,14 +1286,14 @@ imported tiers hold 2,947,861 rows (`momentum`, 60,236 players) and 235,716
 (`ksf`, 10,549), keyed on SteamID64 already. 23 receipts, 2 signing keys. The
 one link on record names the same key that signed that install's receipts: a
 run's receipt and an install's link are the SAME `fskey`, so "is this run's key
-one of its account's" is a join, `receipts.pub = linkkeys.pub`. So the re-key
+one of its account's" is a join, `receipts.pub = keylinks.pub`. So the re-key
 is not the migration of a board: it is thirteen rows.
 
 **Then, in three patches, each reviewed and deployed on its own.**
 
 - **(a) A ranked row needs a linked account.** The lobby remembers the key
   surfd proved for each connection and sends it with the run. `submit_run`
-  looks it up in `linkkeys`: linked, the row is stored under the SteamID64 with
+  looks it up in `keylinks`: linked, the row is stored under the SteamID64 with
   the guid in a new `install` column (the leaf digest and the receipt joins
   read that); not linked, the run goes to the community tier, which no board
   lists, and the lobby tells the player to link; banned, it is not stored. A
