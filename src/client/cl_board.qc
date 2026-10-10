@@ -530,6 +530,7 @@ float  seg_lastt;           // cltime of the previous frame
 float  seg_ground_e;        // Strafe_Energy at the last frame onground was true
 float  seg_ground_ok;       // ...and TRUE once that has actually been sampled
 float  seg_laste;           // ...and the previous frame's, for the landing edge
+float  seg_broke;           // the run line broke on this frame (Board_LineBroke)
 
 /*
   BUILD 89 -- WHY seg_emax IS NO LONGER ONLY A CEILING.
@@ -2589,6 +2590,19 @@ void(vector org, vector vel, float onground) Board_Frame =
 	gravity = serverkeyfloat("sv_gravity");
 	if (gravity < 1) gravity = 800;
 
+	// Board_LineBroke: the engine moved the body, and the energy step across
+	// that is nobody's gain or loss.  The open segment's reference moves with
+	// it, before the leave edge below reads it.
+	if (seg_broke)
+	{
+		seg_broke = FALSE;
+		// The whole step, not only its height: a teleport rewrites velocity too
+		// (bhop_monster_jam's put the body back 58 u up with its speed zeroed,
+		// or turned 561 u/s into 188).
+		if (seg_kind != SEG_NONE)
+			seg_e0 = seg_e0 + (Strafe_Energy(org, vel, gravity) - seg_laste);
+	}
+
 	/*
 	  Build 20's two switches, cached per frame rather than read per row.
 
@@ -3081,6 +3095,8 @@ void(vector org, vector vel, float onground) Board_Frame =
 			seg_sub = SEQSUB_NONE;
 		else if (seg_kind != SEG_NONE)
 			seg_sub = SEQSUB_NONE;              // came off a ramp
+		else if (rec_wt_build && !seg_ground_ok)
+			seg_sub = SEQSUB_NONE;              // put here by a teleport: no hop to name
 		else
 		{
 			local float dwell;
@@ -3408,4 +3424,24 @@ void() Board_Warped =
 	// And the row after a load may not be sewn onto the row before it: you were
 	// somewhere else in between, which is the definition of a real gap.
 	seq_break = TRUE;
+};
+
+/*
+  The run line broke here: a teleport.  The build pass calls this before the
+  sample's frame (Watch_BuildSeq); the live board is not told.
+
+  The held ride ends at once, as the line's does (Line_Point).  The launch point
+  did not come with you: a hop row opened across the teleport measured from the
+  ground left behind -- surf_rookie's file had a 0.54 s Bhop row reading +23807
+  at 99.96%.  The energy step across it is charged to no row (seg_broke), and
+  the rows either side are not sewn together.  SEG_JUMPDIST still voids a
+  segment moved further than 512 u.
+*/
+void() Board_LineBroke =
+{
+	ramp_on       = FALSE;
+	ramp_drops    = 0;
+	seg_ground_ok = FALSE;
+	seg_broke     = TRUE;
+	seq_break     = TRUE;
 };

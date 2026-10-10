@@ -1634,6 +1634,35 @@ publicly WITH its fix, not before it.
 
 ## The run line (Patches 432, 449-453)
 
+- Patch 613: a replay's SEGMENTS rows at a teleport. The run line knows where
+  a recording moved the body (a break: `Watch_ScanPair`); the segment machine
+  (`Board_Frame`, fed by `Watch_BuildSeq`) only noticed a step over 512 u
+  (`SEG_JUMPDIST`). The scan now lists the file lines it broke on and the
+  build pass calls `Board_LineBroke` there: the held ramp ride ends at once
+  (as `Line_Point`'s does), the launch point is forgotten, the energy step
+  across the break is charged to no row, the rows either side are not merged,
+  and a fall that begins with a teleport is not named Jump or Bhop. THE LIVE
+  BOARD IS NOT TOLD. On eight recordings (1,894 rows) 86 rows change, none is
+  added or dropped and no mark moves: surf_rookie's 0.54 s "Bhop" at +23807
+  and 99.96% reads 124, six more rows between 1770 and 3247 in size read
+  under 140, and the save010 file passes p449mark's containment (its ramp row
+  ended 0.02 s past a 154 u teleport, where the hold ran out and nothing is
+  marked). `runlines_segbreak.cfg` replays an authored body with three such
+  teleports against rows written by hand; `test_runlines_segbreak.py` needs
+  `--control-log` and refuses a build before the patch.
+  Also: the apex or trough that arrives at a full mark table went in after the
+  other peaks were cut; it goes with them now (`Line_EvAt`; checked with a
+  private `LN_EVCAP 20` build, one kind-4 row beside `cut 1` before, none after).
+  What the measuring taught: CUTTING THE HOLD ALONE MADE ONE ROW WORSE. With
+  the ride ended at the teleport, surf_4am's next row opened "off the ground"
+  and took the ground left behind as its launch point (+4935); the old build
+  was only spared by a phantom held ramp. The step taken out is the WHOLE
+  energy step, not its height: bhop_monster_jam's fail teleports put the body
+  back 58 u up with its speed zeroed, and a height-only cut charged that speed
+  to the hop (-76 where the flight gained 99). The fixture's third teleport
+  rewrites speed so the two rules read differently (-2.6 against -52.7).
+  `p449mark.py` now takes a break mark as the mark a row may end on; on the
+  build before, the save010 row still fails it, so that is not what passes it.
 - Patch 611: the LIVE line (`cl_trail.qc`) pairs each sample with the command
   frame the server's stats describe. The ramp bit and the run clock are stats;
   the position is predicted. `Trail_Keep` keeps 64 command frames of predicted
@@ -1717,8 +1746,8 @@ publicly WITH its fix, not before it.
   census), so the arm also replays the authored `runlines_rampshapes.rec`
   against a table written by hand. p449mark's stamp is NOT independent of the
   client, and its model had lacked Patch 530's hold reset at a break: three of
-  its eight fixtures failed on the unmodified build, and one still fails
-  containment (BACKLOG). No fixture reaches LN_EVCAP; the compaction was
+  its eight fixtures failed on the unmodified build, and one still failed
+  containment until Patch 613. No fixture reaches LN_EVCAP; the compaction was
   checked with a private LN_EVCAP 20 build. Not covered then: the LIVE line's
   stat lag, turning ramps and the rate sweeps (see Patch 611 above).
   Deployed from `26e350e` on 2026-10-10: csprogs only to both Windows installs

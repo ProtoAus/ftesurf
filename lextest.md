@@ -2447,3 +2447,19 @@ uses where they were when the server measured it: 3 units at 120 ms.
   `trail` in the console first: its `pairing` row says what it was doing.
 
 Not changed: the server, recordings, replays and board lines.
+
+## 15. Segment rows right after a teleport, in a replay (Patch 613)
+
+In a replay's Segments list, a row that began or ended at a teleport could
+show nonsense. One surf_rookie recording had a half-second "Bhop" row reading
++23807 at 99.96%; a staged or bhop run has one of these at many restarts and
+fail teleports. The list is now told where the recording moved the body.
+
+- Open a replay of a run with restarts or teleporters and scroll the Segments
+  list: are the absurd rows gone? A fall that starts with a teleport should
+  read as plain air with a small number, not as a Jump or Bhop.
+- On bhop maps, a hop that was cut short by a fail teleport reads what the
+  flight itself gained; the teleport's own change in height and speed is no
+  longer counted for or against it. Tell me if any row now looks wrong to you.
+- Not changed: the Segments column while you are playing (only replays), the
+  marks on the line, and any row a teleport of over 512 units already blanked.

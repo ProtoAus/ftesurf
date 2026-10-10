@@ -234,7 +234,8 @@ def main():
                              % (i, w[7], g[7], w[2]))
             if len(fails) > 4:
                 break
-        # CONTAINMENT.  Every segment row starts at a contact edge, so every row
+        # CONTAINMENT.  Every segment row starts at a contact edge, or at the
+        # break that cut a held ride short, so every row
         # boundary must have a mark whose EDGE fell on its tick (a ramp leave is
         # stamped earlier than its edge).  Not the reverse: a contact
         # under SEG_MINTIME is a mark with no row, and that count is printed
@@ -243,10 +244,12 @@ def main():
         if r["rows"] and r["tickrate"] > 0 and not capped:
             ticks = set()
             for g in r["marks"]:
-                if g[0] in (E_LAND, E_LEAVE, E_JUMP):
+                if g[0] in (E_LAND, E_LEAVE, E_JUMP, E_BREAK):
                     ticks.add(int((g[2] if g[7] is None else g[7]) / r["tickrate"]))
             miss = [t for (_, t) in r["rows"] if t > 0 and t not in ticks]
-            loose = len([g for g in r["marks"] if g[0] in (E_LAND, E_LEAVE, E_JUMP)])                 - len(set(t for (_, t) in r["rows"] if t > 0))
+            row_ticks = set(t for (_, t) in r["rows"] if t > 0)
+            loose = sum(1 for g in r["marks"] if g[0] in (E_LAND, E_LEAVE, E_JUMP)
+                        and int((g[2] if g[7] is None else g[7]) / r["tickrate"]) not in row_ticks)
             if miss:
                 fails.append("containment: %d row boundary/ies with no mark, "
                              "first at tick %d" % (len(miss), miss[0]))

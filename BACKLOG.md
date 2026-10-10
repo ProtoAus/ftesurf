@@ -2446,19 +2446,21 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   Falsifier for (1) and (2): a known brush edge with the mover's own
   contact-loss tick beside the mark; the stage diagnostics in
   `tools/OFFRAMP_CONTACT.md` are the way to get that tick. Plan 12.4.
-- **A Segments row can start at a teleport where the line marks nothing.**
-  `tools/p449mark.py` on `data/saves/bhop_monster_jam/save010/run.rec`:
-  `containment: 2 row boundary/ies with no mark, first at tick 80947`, on the
-  build before Patch 608 as well. Suspected, not traced: since Patch 530
-  `cl_lines.qc:Line_Point` clears its ramp hold at a break and the board's
-  (`cl_board.qc:Board_RampHold`, run by `Watch_BuildSeq`) does not. Falsifier:
-  that fixture through p449mark.
-- **The mark that fires the peak cut is kept even when it is a peak.**
-  `cl_lines.qc:Line_EvAt` tests `ln_evcut` before the cut it is about to make,
-  so the apex or trough arriving at a full table is appended after the others
-  go. One mark per slot, at LN_EVCAP 4096 marks. Falsifier: build with
-  `LN_EVCAP 20`, `replay marks 0` on a surf run shows a kind-4 row beside
-  `cut 1`.
+- **Segments rows at a teleport: what Patch 613 left open.** A replay's build
+  pass now tells the segment machine where the run line broke
+  (`cl_board.qc:Board_LineBroke`). Open: (1) THE LIVE BOARD IS NOT TOLD, so
+  your own Segments column while you play still measures a hop across a
+  teleport from the ground left behind; not measured live. (2) A segment moved
+  more than 512 u is still dropped whole (`SEG_JUMPDIST`) where one moved less
+  is now kept with the step taken out; one rule would be simpler. (3) Three
+  rows of one surf_rookie recording still read under -2700 with no break in
+  them (a 0.015 s board row, a 3.1 s air row, a 1.4 s ramp row): not looked
+  at. (4) The arm's recording is one whole range with no `board` record, no
+  cut ride under 0.10 s and no merge across a break; a stage window's break
+  list and those paths are read, not run. (5) A build pass labels its first
+  hop from a `seg_t0` nothing seeds (older than this patch). Falsifier for
+  (1): the live column after a map teleporter beside `replay seq` of the same
+  run's recording.
 - **Peak/trough speed and energy labels are not reliably visible.** Existing
   `cl_lines.qc:Line_Point` reversals are gated by `LN_EVZMIN` and `SEG_AIR`;
   contact changes take a separate branch. `Line_Marks`/`hud_lines_nums 1`

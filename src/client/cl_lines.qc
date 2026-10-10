@@ -459,6 +459,9 @@ void(float s, float k, float sub, float t, vector o, vector v, float si, float t
 				}
 			ln_evn[s] = n = j;
 			ln_evcut[s] = TRUE;
+			// The peak that filled the table goes with the others.
+			if (k == LN_E_APEX || k == LN_E_TROUGH)
+				return;
 		}
 		if (n >= LN_EVCAP)
 		{

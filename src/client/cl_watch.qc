@@ -491,6 +491,11 @@ float  rec_wt_sqshown;           // rows applied to the live ring right now
 float  rec_wt_sqbuildtick;       // the tick the build pass is currently on
 float  rec_wt_bdshown;           // the board event Board_Compute last ran on
 float  rec_wt_bridged;           // build 25: ramp-contact gaps the hold bridged
+// The file lines the scan broke the run line on, in order, for Watch_BuildSeq.
+#define WT_BKLMAX 4096
+float *rec_wt_bkl;
+float  rec_wt_bkln;
+float  rec_wt_bklover;           // breaks the cap dropped this scan
 
 /*
   The live column, put back where the replay found it.
@@ -1501,6 +1506,9 @@ void(float ra, float rb) Watch_ScanRange =
 
 	rec_wt_cnt = 0;
 	c = 0;                          // sample ordinal, from the range's first
+	if (!rec_wt_bkl)
+		rec_wt_bkl = memalloc(sizeof(float) * WT_BKLMAX);
+	rec_wt_bkln = rec_wt_bklover = 0;
 	Line_Begin(0);
 	Line_Foreign(0, rec_wt_foreign);
 	Line_Tick(0, rec_wt_tickrate);
@@ -1592,7 +1600,19 @@ void(float ra, float rb) Watch_ScanRange =
 		}
 
 		if (c > 0)
+		{
 			Watch_ScanPair(t, o, v, fl, key);
+			if (rec_wt_snlast)
+			{
+				if (rec_wt_bkln < WT_BKLMAX)
+				{
+					rec_wt_bkl[rec_wt_bkln] = i;
+					rec_wt_bkln = rec_wt_bkln + 1;
+				}
+				else
+					rec_wt_bklover = rec_wt_bklover + 1;
+			}
+		}
 		// Patch 432: the run line, broken where the pair snapped (a teleport).
 		// Patch 449: and classified -- contact, hops, peaks, save-state stitches.
 		nrm = rec_wt_v4 ? [stof(argv(WT_C_NORM)), stof(argv(WT_C_NORM + 1)),
@@ -2524,7 +2544,7 @@ void() Watch_SeqRestore =
 */
 void() Watch_BuildSeq =
 {
-	local float i, fl, n, t;
+	local float i, fl, n, t, bk;
 	local vector org, vel;
 	local string s;
 
@@ -2579,6 +2599,7 @@ void() Watch_BuildSeq =
 	// to do with the file being read.  See the split in cl_board.qc.
 	Board_ResetRun();
 
+	bk = 0;
 	for (i = rec_wt_bline; i < rec_wt_recn; i = i + 1)
 	{
 		s = bufstr_get(rec_wt_rec, i);
@@ -2616,6 +2637,19 @@ void() Watch_BuildSeq =
 		if (rec_wt_sqbuildtick < 0)
 			rec_wt_sqbuildtick = 0;
 
+		// Where the scan broke the line, the segment machine is told (see
+		// Board_LineBroke).  bhop_monster_jam: a 154 u teleport 0.06 s after a
+		// ramp's last contact left a row starting 0.02 s past it, at no mark.
+		while (bk < rec_wt_bkln)
+		{
+			if (rec_wt_bkl[bk] >= i)
+				break;
+			bk = bk + 1;
+		}
+		if (bk < rec_wt_bkln)
+		if (rec_wt_bkl[bk] == i)
+			Board_LineBroke();
+
 		Board_Frame(org, vel, (fl & WT_F_ONGROUND) ? TRUE : FALSE);
 		if (board_ov_now > rec_wt_bt1)
 			break;                  // Patch 431: the sample that closes the range
@@ -2650,6 +2684,9 @@ void() Watch_BuildSeq =
 	if (rec_wt_sqover > 0)
 		print(sprintf("^3replay: %g segment row(s) past the %g cap were dropped; "
 		              "the segment column stops there\n", rec_wt_sqover, WT_SQMAX));
+	if (rec_wt_bklover > 0)
+		print(sprintf("^3replay: %g teleport(s) past the %g cap were not told to the "
+		              "segment column\n", rec_wt_bklover, WT_BKLMAX));
 };
 
 /*
