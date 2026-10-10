@@ -5837,12 +5837,12 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   in a browser without the state cookie is recorded in `linknonces` and
   refused. Without that, a victim who signed in through a link they were sent
   could hand the resulting address back to the sender, who holds the cookie.
-  ROUND 2 SHOWED WHAT IT DOES NOT COVER: a reply refused BEFORE that line is
-  not recorded -- the victim's page limit (ten GETs, which a lure page can send
-  from their browser), nginx's limit, a lock -- and stays usable for
-  `steam.NONCE_SKEW` (120 s). No budget keyed on the victim survives an
-  attacker who can make the victim's browser spend it first; it is in BACKLOG,
-  and ROADMAP 14.2's install list is the real answer. Made-up strays stop
+  ROUND 2 SHOWED WHAT IT DOES NOT COVER: a reply refused BEFORE that line (a
+  rate limit, nginx's, a lock) is not recorded and stays usable for
+  `steam.NONCE_SKEW` (120 s). No allowance keyed on the victim closes that; it
+  is in BACKLOG, the sequence is in the private tree's
+  `checkpoints/steam-accounts-20261010.md`, and ROADMAP 14.2's install list is
+  the real answer. Made-up strays stop
   being recorded at half the table so they cannot close sign-in, and a row
   lives `NONCE_KEEP` (5 min): the first fix kept them an hour and one burst
   shut sign-in for that hour. A link scanner that fetches the address first
@@ -5858,8 +5858,8 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   replay key until every pattern here became `fullmatch`.
 - **`SURFD_BOARD_URL` IS THE BROWSER'S ADDRESS** (`https://proto.bar/ftesurf/board`),
   not surfd's `/board`. Realm and return_to come from it. The cookie is
-  `__Host-ftl` with Path=/ because proto.bar is shared with other applications
-  (the vhost's catch-all is the public filebrowser); a Flask test client never
+  `__Host-ftl` with Path=/ because the board shares its origin with other
+  applications; a Flask test client never
   returns it, so test_accounts.py sends the header itself with
   `use_cookies=False`, or its jar replaces it.
 - **nginx allows GET (and so HEAD) only under `/ftesurf/board/`**, so the

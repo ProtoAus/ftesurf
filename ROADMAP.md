@@ -1146,9 +1146,8 @@ installs with a way to unlink each one. That last part is not built.
 the server line can be enforced: Patch 422 left the same question open. Whether
 a link's `rec_rcpt` can collide with a run finishing in the same second. The
 engine has no command that opens a browser; the menu shows the address unless
-one is added (engine patch, board host only). Whether another application on
-the proto.bar origin can serve a script there (BACKLOG): if so the code page
-wants its own origin.
+one is added (engine patch, board host only). Whether the code page wants an
+origin of its own (BACKLOG's last sign-in item; unchecked).
 **Size.** Medium. QC and surfd; no engine change required. Three-lens review
 before deploy: it decides who owns a run.
 
