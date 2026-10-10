@@ -25,7 +25,11 @@ commit   93828165ce11d7920ce49f4a28e3e065e88699c0
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-606
-patch    607
+patch    608
+# Patch 608: the run line stamps a ramp leave at the ride's last real contact,
+# not where the 0.08 s hold ran out (a median 211 u later on one surf run).
+# csprogs only: no engine source, server QC, recorder, evidence, ranking,
+# default or Build change (commit and tag above stay).
 # Patch 607: the old SUI look and the ui_style switch are removed. The dark pastel
 # look of Patch 606 is the only one, and the +showscores board shrinks its type on
 # a small window instead of changing layout. Mod-side only: no engine source,

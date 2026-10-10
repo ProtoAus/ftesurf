@@ -65,19 +65,20 @@ class Labels(unittest.TestCase):
         for m in re.finditer(r'lnm (\d+) ([^\r\n]+)', self.text):
             f = ['lnm', m[1], *m[2].split()]
             if len(f) >= 12:
-                marks.append(dict(t=float(f[4]), z=float(f[8]), speed=float(f[9]),
+                marks.append(dict(kind=int(f[2]), t=float(f[4]), z=float(f[8]), speed=float(f[9]),
                                   v2=float(f[10]), vz=float(f[11])))
         self.assertGreater(len(marks), 8)
         zero = re.search(r'lnmz 0 ([\d.-]+) ([\d.-]+)', self.text)
         self.assertIsNotNone(zero)
         ref = float(zero[1]) + float(zero[2]) / 1600
-        bytime = {round(m['t'], 4): (i, m) for i, m in enumerate(marks)}
-        rows = list(re.finditer(r'lndm 0 \d+ ([\d.]+) [\d.-]+ [\d.-]+ "([^"]+)"',
+        # Kind and clock: a ride's land and leave can share a sample (Patch 608).
+        bymark = {(m['kind'], round(m['t'], 4)): (i, m) for i, m in enumerate(marks)}
+        rows = list(re.finditer(r'lndm 0 (\d+) ([\d.]+) [\d.-]+ [\d.-]+ "([^"]+)"',
                                 self.data['COMPLETE']))
         self.assertGreater(len(rows), 0)
         for row in rows:
-            i, src = bytime[round(float(row[1]), 4)]
-            nums = re.fullmatch(r'([\d.-]+) u/s  E ([\d+-]+)  vz ([\d+-]+)  dE ([\d+-]+)  ([\d.]+) s', row[2])
+            i, src = bymark[(int(row[1]), round(float(row[2]), 4))]
+            nums = re.fullmatch(r'([\d.-]+) u/s  E ([\d+-]+)  vz ([\d+-]+)  dE ([\d+-]+)  ([\d.]+) s', row[3])
             self.assertIsNotNone(nums)
             speed, energy, vz, delta, t = map(float, nums.groups())
             self.assertAlmostEqual(speed, src['speed'], delta=0.51)

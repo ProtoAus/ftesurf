@@ -2378,3 +2378,27 @@ omitted. Unavailable journal/counts/similarity remains distinct from measured
 zero. Automated actual Node and installed API controls pass; human readability,
 real greater-than-200 history layout and detector calibration are not accepted by
 those controls. No player-facing badge/clock/physics or enforcement change.
+
+---
+
+## 13. Where the "left the ramp" mark sits (Patch 608)
+
+The single chevron where a ride ends, and the speed and energy beside it, used
+to sit where an 80 ms debounce ran out: 84 to 315 units past the end of the
+ramp on the surf_kitsune run I measured. It is now stamped on the last sample
+that actually touched the ramp.
+
+- Open a surf replay with the marks on and look at a few ramp ends: is the
+  chevron at the end of the ramp now? Expect it within about a body width,
+  slightly past the lip rather than on it (the line follows your centre, and
+  the stamp can be one tick late).
+- Its numbers are the exit's own now, so an exit speed can read differently
+  from before.
+- With the contact colouring (`hud_watch_path_color 2`) the ramp colour ends
+  at the same place.
+- Your own live line on a lobby may still trail: there the contact flag
+  arrives from the server behind your predicted position. Tell me if it reads
+  late there; that part is not changed or measured yet.
+
+Not changed: which contacts count, the Segments column, the board, anything
+the server records.

@@ -3,15 +3,16 @@
 Reads `replay colours` output (ln_col itself, sampled) and derives what each
 sampled point's colour should be straight from the .rec:
 
-  contact  the three-state rule from the documented flag bits, the same one
-           p449mark.py reimplements -- imported from it rather than written
-           twice, since two copies of a rule is the defect this patch's whole
+  contact  the phases between the contact marks p449mark.py derives from the
+           file -- its three-state rule, imported rather than written twice,
+           since two copies of a rule is the defect this patch's whole
            design is arranged to avoid.
   energy   E = z + |v|^2 / 2g over the same two-samples-each-side window the
            client uses, divided by Strafe_PowerCeiling(30, g, tick).
 
   python tools/p452col.py [ftesurf/logs/p452col.log]
 """
+import bisect
 import os
 import re
 import sys
@@ -50,18 +51,21 @@ def samples(recpath):
     return out, tick
 
 
-def contact_kinds(rows):
-    """The contact kind of every sample, by the documented rule."""
-    ks, ron, rlast = [], False, 0.0
-    for t, z, spd, vz, fl in rows:
-        raw = fl & p449mark.F_RAMP
-        held = bool(raw) or (ron and rlast > 0 and t >= rlast
-                             and p449mark.f32(t - rlast) <= p449mark.f32(0.08))
-        if raw:
-            rlast = t
-        ron = held
-        ks.append(GROUND if (fl & p449mark.F_ONGROUND) else (RAMP if held else AIR))
-    return ks
+def contact_kinds(rows, marks):
+    """The contact kind each point is DRAWN as: a phase runs from one contact mark to the next.
+
+    The marks are the file's own (p449mark.derive), so since Patch 608 a ramp
+    phase ends at the ride's last real contact, not where the 0.08 s hold ran
+    out.  A mark closes its phase at the first sample at or after its time.
+    """
+    contact = [m for m in marks if m[0] <= p449mark.E_JUMP]
+    times = [r[0] for r in rows]
+    ks, k = [], (contact[0][1] // 4 if contact else -1)
+    for m in contact:
+        upto = bisect.bisect_left(times, m[2])
+        ks += [k] * (upto - len(ks))
+        k = m[1] % 4
+    return ks + [k] * (len(rows) - len(ks))
 
 
 def parse(path):
@@ -102,7 +106,7 @@ def main():
         print("FAIL no p452col blocks or no mark dump in %s" % log)
         return 1
     rows, tick = samples("ftesurf/" + recpath)
-    kinds = contact_kinds(rows)
+    kinds = contact_kinds(rows, p449mark.derive("ftesurf/" + recpath, brk)[0])
     # the client's point array is the sample array here (no decimation on a
     # 5321-sample file), which lncb's count confirms below
     out, bad = [], 0

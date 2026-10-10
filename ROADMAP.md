@@ -381,6 +381,10 @@ numeric traces do not settle them.
 
 ### 12.4 Contact labels at the actual surface event
 
+P608 stamps a ramp leave at the ride's last real contact instead of where the
+0.08 s hold ran out; the held classifier and the board are unchanged. The live
+line's stat lag, an interpolated crossing and the acceptance sweep below remain.
+
 **Build.** Audit native "off ramp" placement against the mover's actual contact
 loss tick and hull/plane, not just proximity of the player's centre to a ramp.
 Keep the raw event separate from the held contact used to stabilise HUD/board

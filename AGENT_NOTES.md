@@ -1612,6 +1612,38 @@ publicly WITH its fix, not before it.
 
 ## The run line (Patches 432, 449-453)
 
+- Patch 608: a ramp LEAVE mark is stamped at the ride's last real contact (the
+  last sample carrying the ramp bit), not on the sample the 0.08 s hold ran out
+  on. The classifier, its edges, the hold and the Segments rows are unchanged, so
+  a bridged gap still marks nothing; each mark also keeps its edge's clock
+  (`ln_ec`, the LAST column of `replay marks`), which containment is graded on.
+  The contact colour follows the marks, so it ends with the ride too. On a
+  surf_kitsune recording all 38 ramp leaves moved back 0.090 s, a median 211 u
+  (84..315). The stamp is the first sample at or past the exit (on the two
+  authored exits measured the bit stayed set through the tick the hull left
+  in), so it can be a tick late, and where the bit alternates it can end a gap
+  early. A ride with no contact of its own since the slot began or the last
+  break or stitch takes its first such sample: that is what keeps the table in
+  clock order, and the review's one code finding was a stitch on a repeated
+  clock (no break, so the hold survives) putting the leave BEHIND the stitch.
+  `runlines_rampleave.cfg` through `runlines_smoke.py --recording`, graded by
+  `test_runlines_rampleave.py` (give it `--control-log`: a build before the patch
+  must be refused), `p449mark.py` and `p452col.py`, which now colours from the
+  file's marks. THAT RECORDING'S 38 RIDES ARE ONE SHAPE (the test prints the
+  census), so the arm also replays the authored `runlines_rampshapes.rec`
+  against a table written by hand. p449mark's stamp is NOT independent of the
+  client, and its model had lacked Patch 530's hold reset at a break: three of
+  its eight fixtures failed on the unmodified build, and one still fails
+  containment (BACKLOG). No fixture reaches LN_EVCAP; the compaction was
+  checked with a private LN_EVCAP 20 build. NOT covered: the LIVE line reads
+  the bit from a server stat beside a predicted position (its lag is not
+  measured), curved/prop ramps, and tick/frame-rate/LOD sweeps.
+  Two traps: `runlines_smoke.py` copies only TRACKED cfg files, so a new
+  fixture is "cannot read" until `git add`, and the run still says completed.
+  And DO NOT RESTORE ONE LINE OF AN UNCOMMITTED FILE WITH `git checkout --
+  <file>`: that took this whole patch out of `cl_lines.qc` after a throwaway
+  build. It came back from the diff, proven by the rebuilt csprogs matching the
+  tested one byte for byte. Commit first, or undo the line.
 - Patch 527: `hud_edit lines` has seven rows, not 29. Player (`hud_trail`),
   demo (`hud_watch_path`) and selected board (`hud_lines_board`) lines are
   independent and on by default. Turning off board drawing retains selections.

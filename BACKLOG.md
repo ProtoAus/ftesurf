@@ -2375,76 +2375,32 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   caption; keep the strict-red arm and independent native/body/prefix gates. Repair
   alignment without weakening body/prefix checks, inventing authoritative state
   or retiming the recording. Keep genuine stops and discontinuities explicit.
-- **"Off ramp" labels appear well beyond the actual ramp exit.** Sites:
-  `cl_lines.qc:Line_Contact/Line_Point/Line_Marks`, `Board_RampHeld` and the
-  native per-tick raw contact/normal producers. The line classifier uses held
-  contact; establish its contribution versus sampling/render delay before
-  changing it. Initial diagnostic: `tools/OFFRAMP_CONTACT.md` separates native
-  per-tick bit/normal, sampled held kind, event creation and actual rendered
-  position; private acted 30/100/300 captures and counterfactual refusals measure
-  the stages, not a classification fix. Packet/stat clock jumps must not be
-  mistaken for a longer configured hold. Separate authored static-brush
-  trajectories now bind actual hulls to full native/joint edge/input/jump/seam
-  queries and real open/ceiling-blocked duck cycles with five-arm body parity.
-  A real capsule ramp/departure actor also binds winning/tick/contact snapshots
-  and native hit/miss/capsule-vs-box controls, retaining explicit capsule geometry
-  ABSTAIN (no independent capsule oracle). A real translated/yaw world-brush
-  actor binds native instance/hull snapshots and rotation-sensitive queries,
-  with transformed geometry ABSTAIN (no independent transform oracle).
-  Identity-solid results remain counterfactual, never body contact or misses.
-  A matched non-world/removed-physent pair now ACTS a real physent-1 ramp winner,
-  hit/miss/world-only removal queries and a different removed body trajectory.
-  Actual entity/model/brush/hull binding and active-only joint AABB fixture
-  queries pass; entity geometry/support remains ABSTAIN, never world support.
-  A matched embedded BIH_MODEL/removed-parent pair now ACTS a depth-1 child-brush
-  winner, native removal queries and physically different removed trajectory.
-  Child/root/model/whole-brush/hull bind while embedded geometry/support ABSTAIN;
-  actual-body nonembedded checks stay strict. Identity-fixture queries include
-  only active child geometry. Original twelve cases stay unchanged. General
-  entity/embedded/map wiring, nested transforms and geometry remain open.
-  A matched actual BIH_TRIANGLE/removed-triangle pair now ACTS a kind-2 world
-  winner, native hit/miss/same-pose removal queries and different removed movement.
-  Origin/model/leaf/hull/identity instance bind with an empty brush payload;
-  authored vertices/indices are wiring, not copied accepted geometry. Triangle
-  support remains ABSTAIN; original fourteen full case/winner arrays stay exact.
-  `tools/offramp_triangle.py` separately checks the retained standing-AABB native
-  queries against an independent finite triangle/four-unit-slab SAT interval,
-  including hit/miss/removal and native collision bias. This oracle uses authored
-  wiring and does not promote support. A separate `offramp_tricopy` layer now
-  copies actual winning triangle indexes/vertices at the native win, proves
-  return-bound ownership against later probes/competition, and independently
-  checks the fourteen bounded standing-world accepted sweeps. Original capture
-  categories stay unresolved and general native/support semantics ABSTAIN;
-  copying a winning triangle is not general support/physical-exit proof.
-  `tools/offramp_trislab.py` separately ACTS setup-only full native back-slab
-  queries: shaped native axial clipping enters four units later than ideal prism
-  SAT, with native short-back/stationary misses despite ideal overlap. Explicit
-  front/solid/removal controls and exact original motion/copy parity bind this
-  NON-equivalence, not a marker/collision fix or unconditional support oracle.
-  A separate `tools/offramp_tribev.py` setup-only full BIH fixture now ACTS a
-  copied-winning front-edge bevel tag5 with independent SAT entry/bias, while
-  bevel-OFF produces earlier tag2 contact and stationary false solid. Removal,
-  face/occupied/outside/repeat controls and old twenty-case/copy/slab parity pass.
-  This is NOT a new bevel-winning PM actor or support/physical-exit/marker fix;
-  general native corner/bias/tie behavior, transforms and real-map triangle/
-  displacement/prop geometry and identity remain open. An open-air
-  crouch/release and matched no-duck falling pair now ACT native instant hull/origin/timer transitions,
-  +8.5-unit shift/reversal and matching landing. Current-hull native/joint AABB
-  queries and completed tick/hull binding pass; original sixteen full case/winner
-  objects stay exact. These zero-ramp-contact actors do not cover airborne winning
-  collisions, blocked-unduck/sliding or general posture. A grounded ascending-ramp
-  approach and matched removed-ramp walker now ACT native cached-firsttrace reuse,
-  winning whole brush/plane/actual hull and prior-grounded-body/requested-sweep
-  binding. Actual/local/removed joint AABB queries ACT; original eighteen full
-  case/winner objects stay exact. General cached variants/recovery/portal actors
-  remain open. This is bounded fixture coverage, not a physical-exit or classifier fix.
-  General geometry, uninstrumented cadence, LODs, unsupported mover paths and
-  the recorded/live/render chain remain open.
-  Falsifier: a known brush edge, raw contact-loss tick/hull/plane,
-  held-kind transition and rendered event position logged together, at several
-  tick/frame rates and LODs. Include ramp-to-ground, curved/prop/displacement
-  ramps and teleport controls. Place labels at measured contact events rather
-  than guessing from centre-to-surface distance. Plan 12.4.
+- **Ramp-leave marks: what Patch 608 left open.** The mark now sits on the
+  ride's last real contact (`cl_lines.qc:Line_Point`), so the 0.08 s hold no
+  longer carries it 84..315 u past the exit. Open: (1) the LIVE line reads
+  `STAT_FS_RAMPCONTACT` beside a predicted `pmove_org` (`cl_trail.qc:
+  Trail_Sample`), so its marks lag by the stat's latency, not measured;
+  (2) where the bit alternates, a ride can end on a clear tick and the mark
+  sits up to that gap early; (3) the stamp is the first sample at or past the
+  exit, up to a tick late, with no interpolated crossing; (4) only surf
+  recordings were graded: no curved or prop ramp, and no tick-rate, frame-rate
+  or LOD sweep. Falsifier: a known brush edge with the raw contact-loss tick,
+  the mark and its drawn position logged together, live and from the .rec, at
+  several tick and frame rates. The stage diagnostics that preceded the fix are
+  in `tools/OFFRAMP_CONTACT.md`. Plan 12.4.
+- **A Segments row can start at a teleport where the line marks nothing.**
+  `tools/p449mark.py` on `data/saves/bhop_monster_jam/save010/run.rec`:
+  `containment: 2 row boundary/ies with no mark, first at tick 80947`, on the
+  build before Patch 608 as well. Suspected, not traced: since Patch 530
+  `cl_lines.qc:Line_Point` clears its ramp hold at a break and the board's
+  (`cl_board.qc:Board_RampHold`, run by `Watch_BuildSeq`) does not. Falsifier:
+  that fixture through p449mark.
+- **The mark that fires the peak cut is kept even when it is a peak.**
+  `cl_lines.qc:Line_EvAt` tests `ln_evcut` before the cut it is about to make,
+  so the apex or trough arriving at a full table is appended after the others
+  go. One mark per slot, at LN_EVCAP 4096 marks. Falsifier: build with
+  `LN_EVCAP 20`, `replay marks 0` on a surf run shows a kind-4 row beside
+  `cut 1`.
 - **Peak/trough speed and energy labels are not reliably visible.** Existing
   `cl_lines.qc:Line_Point` reversals are gated by `LN_EVZMIN` and `SEG_AIR`;
   contact changes take a separate branch. `Line_Marks`/`hud_lines_nums 1`

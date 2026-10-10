@@ -22,6 +22,19 @@ Marks are keyed by SAMPLE ORDINAL, never by time.  Both bhop fixtures repeat a
 timestamp (a file records one sample per packet and a held clock repeats it), so
 `t` does not identify a sample, and keying on it mis-assigned a break in each.
 
+A RAMP LEAVE IS STAMPED AT THE RIDE'S LAST REAL CONTACT (Patch 608).  The
+classifier still sees the edge when the 0.08 s hold runs out, so a bridged gap
+marks nothing; but the mark's time, ordinal, position and velocity are those of
+the last sample carrying the ramp bit.  A ride with no such sample of its own
+since the last break or stitch (or opened by the hold as the body left ground)
+takes its first such sample.  Each mark
+also carries the clock of the sample its edge fell on, which is what the
+containment check uses: a segment row still starts where the hold ran out.
+THIS PART OF THE MODEL IS NOT INDEPENDENT: it was written beside the client
+change, so agreement on a stamp shows the two say the same thing, not that
+either is right.  tools/test_runlines_rampleave.py checks the stamp against the
+file's own flag bits and positions instead.
+
   python tools/p449mark.py ftesurf/logs/p449mark.log [--verbose]
 
 Reads FIXTURE/lnmb/lnk/lnm lines from the log, the .rec paths from the FIXTURE
@@ -67,6 +80,7 @@ def derive(path, breaks):
     out = []
     pkind = -1
     ron, rlast, gjmp, pvz, vzmax = False, 0.0, False, 0.0, 0.0
+    ride = None                     # the open ride's last real contact, as a mark's fields
     stitch = False
     body = False
     n = 0
@@ -89,6 +103,11 @@ def derive(path, breaks):
             fl = int(float(f[C_FLAGS]))
             n += 1
 
+            # A hold cannot bridge a teleport (Patch 530).  This model lacked the
+            # reset until Patch 608 and made a leave the client rightly does not.
+            brk = (n - 1) in breaks
+            if brk:
+                ron, rlast = False, f32(t - 999)
             raw = fl & F_RAMP
             held = bool(raw) or (ron and rlast > 0 and t >= rlast
                                  and f32(t - rlast) <= f32(RAMP_GAP))
@@ -97,22 +116,24 @@ def derive(path, breaks):
             ron = held
             k = GROUND if (fl & F_ONGROUND) else (RAMP if held else AIR)
 
-            rec = lambda kind, sub: out.append(
-                (kind, sub, t, n - 1, (v[0] ** 2 + v[1] ** 2) ** 0.5,
-                 v[0] ** 2 + v[1] ** 2 + v[2] ** 2, v[2]))
+            here = (t, n - 1, (v[0] ** 2 + v[1] ** 2) ** 0.5,
+                    v[0] ** 2 + v[1] ** 2 + v[2] ** 2, v[2])
+            # (kind, sub, t, ordinal, speed, v.v, vz, the clock the edge fell on)
+            rec = lambda kind, sub, at=here: out.append((kind, sub) + at + (t,))
 
-            brk = (n - 1) in breaks
             if brk:
                 rec(E_BREAK, 0)
             if stitch:
                 rec(E_STITCH, 0)
+            if brk or stitch:
+                ride = None             # a leave stamped behind either would be out of order
             if brk or pkind < 0:
                 vzmax = 0.0
             elif k != pkind:
                 if k in (GROUND, RAMP):
                     rec(E_LAND, pkind * 4 + k)
                 elif pkind == RAMP:
-                    rec(E_LEAVE, pkind * 4 + k)
+                    rec(E_LEAVE, pkind * 4 + k, ride if ride is not None else here)
                 else:
                     rec(E_JUMP if gjmp else E_LEAVE, pkind * 4 + k)
                 vzmax = 0.0
@@ -125,6 +146,10 @@ def derive(path, breaks):
                     elif pvz <= 0 and v[2] > 0:
                         rec(E_TROUGH, 0)
                         vzmax = 0.0
+            if k != RAMP:
+                ride = None
+            elif raw or ride is None:
+                ride = here
             pkind, pvz = k, v[2]
             gjmp = (gjmp or bool(fl & F_JUMP)) if k == GROUND else False
             stitch = False
@@ -160,7 +185,9 @@ def parse_log(path):
                 cur["brk"].add(int(float(f[5])))
             cur["marks"].append((int(float(f[2])), int(float(f[3])),
                                  float(f[4]), int(float(f[5])),
-                                 float(f[9]), float(f[10]), float(f[11])))
+                                 float(f[9]), float(f[10]), float(f[11]),
+                                 # a build before Patch 608 prints no edge clock
+                                 float(f[12]) if len(f) > 12 else None))
     return runs
 
 
@@ -202,10 +229,14 @@ def main():
             elif abs(w[4] - g[4]) > 0.01 or abs(w[6] - g[6]) > 0.01:
                 fails.append("[%d] speed/vz file %.2f/%.2f client %.2f/%.2f"
                              % (i, w[4], w[6], g[4], g[6]))
+            elif g[7] is None or abs(w[7] - g[7]) > 1e-4:
+                fails.append("[%d] edge clock file %.4f client %s at t=%.4f"
+                             % (i, w[7], g[7], w[2]))
             if len(fails) > 4:
                 break
         # CONTAINMENT.  Every segment row starts at a contact edge, so every row
-        # boundary must have a mark on its tick.  Not the reverse: a contact
+        # boundary must have a mark whose EDGE fell on its tick (a ramp leave is
+        # stamped earlier than its edge).  Not the reverse: a contact
         # under SEG_MINTIME is a mark with no row, and that count is printed
         # rather than asserted -- it is what "no debounce" means.
         loose = 0
@@ -213,7 +244,7 @@ def main():
             ticks = set()
             for g in r["marks"]:
                 if g[0] in (E_LAND, E_LEAVE, E_JUMP):
-                    ticks.add(int(g[2] / r["tickrate"]))
+                    ticks.add(int((g[2] if g[7] is None else g[7]) / r["tickrate"]))
             miss = [t for (_, t) in r["rows"] if t > 0 and t not in ticks]
             loose = len([g for g in r["marks"] if g[0] in (E_LAND, E_LEAVE, E_JUMP)])                 - len(set(t for (_, t) in r["rows"] if t > 0))
             if miss:

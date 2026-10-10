@@ -116,6 +116,12 @@ float  *ln_evh;                 // horizontal speed there, u/s
 float  *ln_e2;                  // v . v, 3D: the energy term, minus the height
 float  *ln_ez;                  // vz, signed
 float  *ln_ei;                  // the sample it came from, counted by this slot
+float  *ln_ec;                  // the clock of the sample the classifier's edge fell on
+
+// A ride's last REAL contact, where its leave mark is stamped (Line_Point).  Per
+// slot: [ordinal, clock] and [position, velocity]; ordinal < 0 is no ride open.
+float  *ln_rcf;
+vector *ln_rcv;
 
 float  ln_n[LN_SLOTS];
 float  ln_bkn[LN_SLOTS];
@@ -287,6 +293,9 @@ void() Line_Alloc =
 	// carry such a pair), so time does not identify a sample and a reader that
 	// keys on it mis-assigns the mark.  +147 KB.
 	ln_ei   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
+	ln_ec   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
+	ln_rcf  = memalloc(sizeof(float) * LN_SLOTS * 2);
+	ln_rcv  = memalloc(sizeof(vector) * LN_SLOTS * 2);
 	ln_cell = memalloc(sizeof(float) * LN_CELLS);
 	ln_lcell = memalloc(sizeof(float) * LN_CELLS);
 };
@@ -375,6 +384,7 @@ void(float s) Line_Begin =
 	ln_ron[s]   = FALSE;            // of a board line's window must mark nothing
 	ln_fgn[s]   = FALSE;            // until the header says otherwise
 	ln_rlast[s] = 0;
+	ln_rcf[s * 2] = -1;
 	ln_gjmp[s]  = FALSE;
 	ln_pvz[s]   = 0;
 	ln_vzmax[s] = 0;
@@ -413,8 +423,11 @@ float(float s) Line_IsForeign =
 
   Halving, the way the point array does, is the wrong answer here: it would
   drop every other hop.
+
+  `si` and `tc`: the sample the mark is stamped with, and the clock of the sample
+  the classifier's edge fell on.  They differ only for a ramp leave (Line_Point).
 */
-void(float s, float k, float sub, float t, vector o, vector v) Line_Ev =
+void(float s, float k, float sub, float t, vector o, vector v, float si, float tc) Line_EvAt =
 {
 	local float b, n, i, j;
 
@@ -435,6 +448,7 @@ void(float s, float k, float sub, float t, vector o, vector v) Line_Ev =
 				{
 					ln_ek[b + j]  = ln_ek[b + i];
 					ln_ei[b + j]  = ln_ei[b + i];
+					ln_ec[b + j]  = ln_ec[b + i];
 					ln_es[b + j]  = ln_es[b + i];
 					ln_et[b + j]  = ln_et[b + i];
 					ln_ep[b + j]  = ln_ep[b + i];
@@ -459,8 +473,15 @@ void(float s, float k, float sub, float t, vector o, vector v) Line_Ev =
 	ln_evh[b + n] = vlen([v_x, v_y, 0]);
 	ln_e2[b + n]  = v * v;
 	ln_ez[b + n]  = v_z;
-	ln_ei[b + n]  = ln_nsamp[s];
+	ln_ei[b + n]  = si;
+	ln_ec[b + n]  = tc;
 	ln_evn[s] = n + 1;
+};
+
+// A mark on the sample being classified, which is every mark but a ramp leave.
+void(float s, float k, float sub, float t, vector o, vector v) Line_Ev =
+{
+	Line_EvAt(s, k, sub, t, o, v, ln_nsamp[s], t);
 };
 
 // One sample.  brk: the segment from the previous sample is a teleport.
@@ -695,6 +716,10 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 		Line_Ev(s, LN_E_BREAK, 0, t, o, v);
 	if (stitch)
 		Line_Ev(s, LN_E_STITCH, 0, t, o, v);
+	// A leave stamped behind either mark would be out of order (a stitch on a
+	// repeated clock arrives with no break, and the hold survives it).
+	if (brk || stitch)
+		ln_rcf[s * 2] = -1;
 
 	if (brk || ln_pkind[s] < 0)
 		ln_vzmax[s] = 0;            // the body moved, or nothing is known yet
@@ -703,9 +728,18 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 		if (k == SEG_NONE || k == SEG_RAMP)
 			Line_Ev(s, LN_E_LAND, ln_pkind[s] * 4 + k, t, o, v);
 		else if (ln_pkind[s] == SEG_RAMP)
+		{
 			// ALWAYS a leave, never a hop: +jump held through a whole surf would
 			// otherwise put a double chevron on every ramp exit.
-			Line_Ev(s, LN_E_LEAVE, ln_pkind[s] * 4 + k, t, o, v);
+			// Patch 608: the edge is seen when the hold runs out, and the mark
+			// goes back to the ride's last real contact -- 0.09 s and a median
+			// 211 u earlier on the surf_kitsune fixture (84..315).
+			if (ln_rcf[s * 2] >= 0)
+				Line_EvAt(s, LN_E_LEAVE, ln_pkind[s] * 4 + k, ln_rcf[s * 2 + 1],
+				          ln_rcv[s * 2], ln_rcv[s * 2 + 1], ln_rcf[s * 2], t);
+			else
+				Line_Ev(s, LN_E_LEAVE, ln_pkind[s] * 4 + k, t, o, v);
+		}
 		else
 			Line_Ev(s, ln_gjmp[s] ? LN_E_JUMP : LN_E_LEAVE,
 			        ln_pkind[s] * 4 + k, t, o, v);
@@ -729,6 +763,24 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 				ln_vzmax[s] = 0;
 			}
 		}
+	}
+
+	/*
+	  The ride's last real contact.  On the two authored exits measured the bit
+	  stayed set through the tick the hull left in (tools/OFFRAMP_CONTACT.md), so
+	  that sample is the first at or past the exit.  A ride with no contact of
+	  its own since the slot began or the last break or stitch -- or one the hold
+	  opened as the body left ground -- takes its first such sample, which keeps
+	  the marks in sample order.
+	*/
+	if (k != SEG_RAMP)
+		ln_rcf[s * 2] = -1;
+	else if ((fl & WT_F_RAMP) || ln_rcf[s * 2] < 0)
+	{
+		ln_rcf[s * 2]     = ln_nsamp[s];
+		ln_rcf[s * 2 + 1] = t;
+		ln_rcv[s * 2]     = o;
+		ln_rcv[s * 2 + 1] = v;
 	}
 
 	Line_Was(s, k, v, fl);

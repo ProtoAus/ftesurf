@@ -5042,11 +5042,13 @@ float(string cmd) Watch_ConsoleCommand =
 		for (i = 0; i < ln_evn[sl]; i = i + 1)
 		{
 			ep = ln_ep[b + i];
-			print(sprintf("lnm %g %g %g %.4f %s\n", i, ln_ek[b + i], ln_es[b + i],
+			// The edge's own clock goes LAST: older readers index the columns.
+			print(sprintf("lnm %g %g %g %.4f %s %.4f\n", i, ln_ek[b + i], ln_es[b + i],
 			              ln_et[b + i],
 			              sprintf("%g %.2f %.2f %.2f %.4f %.4f %.4f", ln_ei[b + i],
 			                      ep_x, ep_y, ep_z,
-			                      ln_evh[b + i], ln_e2[b + i], ln_ez[b + i])));
+			                      ln_evh[b + i], ln_e2[b + i], ln_ez[b + i]),
+			              ln_ec[b + i]));
 		}
 		// The energy zero this slot's labels are measured from, said out loud:
 		// a grader that took it from the same place the code did could not
