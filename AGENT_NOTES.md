@@ -4503,6 +4503,26 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   BETWEEN STEPS. A peer's 30 s install run overlapped one gallery of the look
   gate. That run was not flagged INTERFERED and its pixels matched; read the
   focus lines before trusting one that was.
+- A HOVER CAN DIFFER BETWEEN TWO RUNS OF ONE BUILD. One look-gate run failed on
+  two menu shots that differed only in which lobby card was lit, with no focus
+  line in either log; the same builds matched to the pixel on the next run. The
+  real mouse cursor resting over the rig's window would do that, and nothing
+  records where it was: likely, not demonstrated.
+- **DEPLOYED 2026-10-10 14:12 to 14:14 UTC (FTESurf `eafb117`).** Both installs:
+  csprogs.dat `fe286a637a2d1ebb`, menu.dat `a8ef786dad01bb12`, their `.lno` with
+  them; qwprogs.dat was already this build's (`199ffdd83dec9651`) and was not
+  written. `.prev` there is Patch 615's csprogs (`a28719be71d38908`) and the 10
+  Oct menu.dat (`d38891771c3ae376`). The Pi: `build.ps1 -Pi` from a clean
+  worktree at `eafb117`, 0 players, all 12 lobbies restarted 14:14:04 to
+  14:14:13 UTC; read back csprogs `fe286a63`, qwprogs unchanged, `.prev` the
+  Patch 615 pair. `tools/pi_lobby_smoke.py`: lobby 1 served `fe286a63` and the
+  board drew.
+  TWO THINGS THE COPY NEEDED. fteqcc's compile date (`Compiled [YYYY/MM/DD]` at
+  offset 96 of a .dat) made the installed menu.dat, built the day before,
+  differ from a build of the same source by one byte, so "is the installed
+  file main's build" is asked with that date masked. And a fresh `git worktree`
+  has no `src/fteqcc64.exe` (ignored): `-Pi` stops at the compile, before
+  anything is sent. Copy the compiler in from the checkout that gated.
 
 ### Native fixture APIs and falsifiers must actually act — 2026-10-09
 

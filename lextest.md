@@ -11,9 +11,11 @@ to be wrong.
 
 ---
 
-## 00. 11 Oct — strafe trainer, run graphs, scroll thumb (Patch 610)
+## 00. 10 Oct — strafe trainer, run graphs, scroll thumb (Patch 610)
 
-Published 11 Oct; not on an install or the Pi as this is written.
+Published 10 Oct 14:10 UTC (01:10 on the 11th here), and live since 14:14 UTC on
+both installs and all twelve lobbies. To go back: each replaced file has a
+`.prev` beside it.
 
 Measured on the desktop PC only (GL; D3D11 and Vulkan complete the same arm),
 with a driven jump and three made-up 50 s runs: not a real map, not your mouse.
