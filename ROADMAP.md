@@ -1089,6 +1089,107 @@ own font embedded in the provider, and the table's columns in the board's order.
 
 ---
 
+## 14. Steam accounts — Lex, 10 Oct 2026
+
+**Status: 14.1 built (Patch 612). surfd stores accounts and runs the Steam
+sign-in; nothing in the game uses it yet and no run is ranked by it.**
+Lex: a player's records belong to their Steam account, which also gives the
+name and the picture, and a ban is a ban on that account. Ranked times require
+one. The guid rows on the board today are test data and are not migrated.
+
+**Today.** A player is the engine guid (`infokey(e, "guid")`): one per install,
+and any server that sends the fleet's `sv_guidkey` is handed it (sv_main.c:137).
+`fskey` signs each run's receipt (Patch 417) and the admin flags a changed key
+(Patch 422, "until real accounts or Steam IDs"). surfd has no ban. The engine
+has no Steamworks; builtins 730-736 are unimplemented achievement stubs.
+
+**Two ways to prove a SteamID, one account store.** Web sign-in (Steam OpenID
+on the board site) needs no AppID and no SDK and works on Linux; it costs the
+player one link per install. A Steamworks ticket (14.5) needs FTESurf's own
+AppID and has no link step. Both end at the same `accounts` row.
+
+### 14.1 surfd: accounts, sign-in, codes — done, Patch 612
+
+`surfd/accounts.py`, `surfd/steam.py`, schema 12 (`accounts`, `links`,
+`linkcodes`, `linknonces`), store-only. `/board/link` signs in through Steam
+and shows a ten-minute, single-use code; a lobby spends it with `POST
+/api/link` and asks `POST /api/account` who an install is. The code goes from
+the browser to the game, never the other way (accounts.py's header has why).
+Off until `SURFD_BOARD_URL` is set; names and avatars need `SURFD_STEAM_KEY`.
+Reviewed through three lenses before it shipped; what they found and what is
+still open is in AGENT_NOTES ("Steam accounts") and BACKLOG.
+
+### 14.2 The game: `link <code>`, with proof of the install's key
+
+**Build.** CSQC `link <code>` and a row in the menu that shows the page's
+address and takes the code. The client proves it holds its `fskey` with the
+receipt machinery as it is: `rec_sign <nonce> 0 - 0`, nonce = the first 32 hex
+of sha256 over a fixed prefix and the code, which the engine answers with
+`rec_rcpt` (key, signature, and the server address the CLIENT sees). SSQC holds
+one pending link per client, posts code, guid, key and signature to
+`/api/link`, and prints who the install now belongs to. surfd verifies the
+signature (tools/ed25519.py, as the sweeper does) and stores `links.pub`. On
+connect the lobby asks `/api/account` and says "linked as X" or how to link.
+
+**THE PROOF IS NOT OPTIONAL.** A link by guid alone can be made by anyone who
+harvested the guid. Until this lands `/api/link` has no caller, and 14.3 must
+never rank on a link whose `pub` is empty.
+
+**A CODE IS A BEARER TOKEN, so the player needs a way back.** Whoever types a
+code first is linked, and a streamed or sent code is enough. Before `link`
+ships: the game says who an install is linked to on every connect; `link` on an
+install that is already linked asks before moving it (`/api/link` answers
+`why: move` until `confirm=1`); and the sign-in page lists the account's
+installs with a way to unlink each one. That last part is not built.
+
+**Unknowns.** Which address clients sign for a lobby (public, LAN, v6), so
+the server line can be enforced: Patch 422 left the same question open. Whether
+a link's `rec_rcpt` can collide with a run finishing in the same second. The
+engine has no command that opens a browser; the menu shows the address unless
+one is added (engine patch, board host only). Whether another application on
+the proto.bar origin can serve a script there (BACKLOG): if so the code page
+wants its own origin.
+**Size.** Medium. QC and surfd; no engine change required. Three-lens review
+before deploy: it decides who owns a run.
+
+### 14.3 Ranked means linked, and a ban bites
+
+**Build.** `submit_run` resolves the guid to an account. A ranked row needs a
+link with a proven key, and its `runs.player` becomes the SteamID64, as it
+already is for imported rows: a reinstall keeps its times, and a player's own
+Momentum and KSF rows join their profile. The install guid moves to its own
+column for the leaf-digest and receipt joins. An unlinked finish is not ranked
+and the lobby says why. The sweeper holds a ranked run whose receipt key is not
+one of the account's (Patch 422's flag, made a gate). Admin: ban and unban by
+SteamID with a note; a banned account is refused at connect and at submit and
+its rows leave the public board (kept, not deleted). The old guid rows are
+dropped from ranked after a database backup.
+**Unknowns.** How many honest runs have no verified receipt (Multi-Session and
+segmented runs can have none), measured on the fleet before the gate.
+**Size.** Large, and the riskiest: full review rounds.
+
+### 14.4 Name and picture, on the site and in the game
+
+**Build.** A cron tool refreshes names and caches avatar images under surfd
+(the board's CSP is `img-src 'self'`, so the site cannot hotlink Steam's).
+Site: Steam name, avatar and profile link on rows and the player page, through
+`web_ext`'s one gate. Game: the lobby names a linked player from the account
+(`accounts.game_name` already strips colour, link and command characters), and
+the scoreboard and board rows draw the avatar from a file the client fetched
+from surfd.
+**Unknowns.** Which image formats this engine build decodes (Steam serves
+JPEG); the scoreboard's cost with 32 avatars.
+**Size.** Medium. One review.
+
+### 14.5 Steamworks: no link step
+
+Needs FTESurf's own AppID (Steam Direct; Momentum Mod mounts other games'
+content the same way). Steam's SDK cannot be linked into a GPLv2 engine, so it
+lives in a small helper process the engine talks to over a pipe. The client
+gets a Web API ticket, the lobby forwards it, surfd checks it with Steam and
+lands on the same `accounts` row; 14.3 and 14.4 do not change.
+**Size.** Medium once the AppID exists.
+
 ## Order
 
 - **A -- client, no decisions needed:** 2 (thickness), 10 (sort), 1 without
@@ -1101,6 +1202,8 @@ own font embedded in the provider, and the table's columns in the board's order.
 - 5 waits on the answer below.
 - **E -- current run-line/rewind request:** 12, in its staged delivery order
   above. This is a separate plan, not an extension of the old demo-import status.
+- **F -- Steam accounts:** 14.1 is done; then 14.2, 14.3 and 14.4 in that
+  order. 14.5 waits on an AppID.
 
 ## Decisions for Lex
 
@@ -1110,3 +1213,9 @@ own font embedded in the provider, and the table's columns in the board's order.
 3. **Builds (8):** how a second build of a map is stored and named, and
    whether the lobbies offer both.
 4. **Where you saw 25 KSF places** (which screen).
+5. **A Steam Web API key (14.1):** made at steamcommunity.com/dev/apikey for
+   `proto.bar`, into the Pi's `surfd.env` as `SURFD_STEAM_KEY`. Sign-in works
+   without it; names and pictures do not.
+6. **SteamIDs on the public board (14.4):** a linked row would show the Steam
+   profile, as Momentum's board does. Planned as yes.
+7. **An AppID (14.5):** whether and when to put FTESurf through Steam Direct.

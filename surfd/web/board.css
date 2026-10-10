@@ -307,3 +307,17 @@ footer p { margin: 0 0 7px; }
   background: var(--panel);
   margin: 0 0 18px;
 }
+
+/* ---- /board/link: the Steam sign-in pages (accounts.py) ------------------ */
+.linkbox { max-width: 58ch; }
+.linkbox p { color: var(--dim); margin: 0 0 16px; }
+.linkbox b { color: var(--text); }
+.linkbox .go {
+  display: inline-block; text-decoration: none; border-radius: 980px;
+  background: var(--accent); color: #00131f; font-weight: 600; padding: 10px 22px;
+}
+.linkbox .go:hover { background: #8FD4FF; }
+.linkbox .linkcode {
+  font-family: var(--mono); font-size: clamp(26px, 6vw, 40px); letter-spacing: .06em;
+  color: var(--text); user-select: all; margin: 6px 0 20px;
+}

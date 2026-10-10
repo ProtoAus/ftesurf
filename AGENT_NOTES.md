@@ -929,7 +929,8 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   unchanged real receipt pass (0 reads/faults), original master/one fresh worker
   and health12 are proven. No lobbies/progs/binaries/configs/Windows install swap.
   For a selected `surfd-deploy.ps1 -Only` stage, include its unchanged import
-  supports (recplot/simcheck/rcon) or staging fails before copy. Live tools default
+  supports (recplot/simcheck/rcon; accounts/steam since Patch 612) or staging
+  fails before copy. Live tools default
   to the game's `tools/`, not surfd's directory. Fixture writers may prepend their
   own tools path: preload actual installed readers and assert module paths in
   installed controls; byte-identical staged code is not installed-path proof.
@@ -5787,6 +5788,76 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   profile has 35 such boards and 0 contested firsts), by board size it led with
   #501 of 501. It orders by `of - rk`, people beaten. Likewise `wr` counts
   first places and `wrc` counts the contested ones; the page leads with `wrc`.
+
+### Steam accounts (Patch 612, surfd schema 12) -- stored, and ranking on nothing
+
+- **STORE-ONLY, AND A LINK IS NOT YET PROOF.** `accounts`, `links`,
+  `linkcodes` and `linknonces` are read by nothing that ranks, verifies or
+  publishes. `/api/link` binds whatever guid the lobby names, and a guid is
+  harvestable (sv_main.c:137), so `links.pub` is `''` on every row until
+  ROADMAP 14.2 makes the client sign for it. Never rank or publish on a row
+  with no `pub`.
+- **THE CODE GOES BROWSER -> GAME, AND IT IS A BEARER TOKEN.** The other
+  direction lets a link sent to a victim bind THEIR Steam account to the
+  sender's install. This direction still links whoever types the code first,
+  so: a linked install moves only on `confirm=1`, and A BAN MUST NEVER PIN AN
+  INSTALL TO ITS ACCOUNT. The first cut refused to move a banned account's
+  install, and the review turned that into a weapon: link a victim's install
+  to a throwaway account, get it banned, and the victim is locked out.
+- **A STRAY ASSERTION IS BURNED, BEST EFFORT.** A valid Steam reply that lands
+  in a browser without the state cookie is recorded in `linknonces` and
+  refused. Without that, a victim who signed in through a link they were sent
+  could hand the resulting address back to the sender, who holds the cookie.
+  ROUND 2 SHOWED WHAT IT DOES NOT COVER: a reply refused BEFORE that line is
+  not recorded -- the victim's page limit (ten GETs, which a lure page can send
+  from their browser), nginx's limit, a lock -- and stays usable for
+  `steam.NONCE_SKEW` (120 s). No budget keyed on the victim survives an
+  attacker who can make the victim's browser spend it first; it is in BACKLOG,
+  and ROADMAP 14.2's install list is the real answer. Made-up strays stop
+  being recorded at half the table so they cannot close sign-in, and a row
+  lives `NONCE_KEEP` (5 min): the first fix kept them an hour and one burst
+  shut sign-in for that hour. A link scanner that fetches the address first
+  burns an honest player's reply; they start again.
+- **EVERY LOBBY IS 127.0.0.1**, so a per-source limit on a lobby route is one
+  bucket for the fleet. `/api/link` applies the install's own limit first, or
+  one install typing `link` 120 times answers every other player 429.
+- **EXACT SETS, AND `fullmatch`.** The reply must hold exactly Steam's ten
+  fields and its signed list exactly Steam's seven. Everything received goes
+  back to Steam to be checked, and whether Steam's parser folds
+  `openid.claimed.id` onto `claimed_id` is NOT known; nothing unlisted is sent.
+  `re.match(r"^...$")` accepts a trailing newline: a nonce with one was a second
+  replay key until every pattern here became `fullmatch`.
+- **`SURFD_BOARD_URL` IS THE BROWSER'S ADDRESS** (`https://proto.bar/ftesurf/board`),
+  not surfd's `/board`. Realm and return_to come from it. The cookie is
+  `__Host-ftl` with Path=/ because proto.bar is shared with other applications
+  (the vhost's catch-all is the public filebrowser); a Flask test client never
+  returns it, so test_accounts.py sends the header itself with
+  `use_cookies=False`, or its jar replaces it.
+- **nginx allows GET (and so HEAD) only under `/ftesurf/board/`**, so the
+  sign-in is three GETs and no form, and the handlers refuse HEAD themselves:
+  Flask answers HEAD on a GET route, and one would spend a sign-in unseen.
+- **THREE VERDICTS.** `steam.Refused` (400) and `steam.Unavailable` (503) are
+  different pages. `SURFD_STEAM_KEY` travels in a URL: `steam.http` raises with
+  a status or an exception's type name, never its text, and `http.client`'s
+  own exceptions are not `OSError` (a cut-short reply was a 500 until caught).
+- **A CAP CHECKED BEFORE ITS PRUNE NEVER EMPTIES.** `linknonces` is pruned
+  before it is counted; the first cut pruned inside the insert the cap had
+  already refused, which is a permanent lockout once full. The suite found it.
+- **WHAT THE LOGS HOLD NOW.** surfd.log names SteamIDs and installs' 8-hex
+  public ids. gunicorn's and nginx's access logs hold each sign-in's return
+  address: SteamID beside client address. `run.sh` sets umask 077 for the first;
+  the Pi's existing `logs/gunicorn.log` was 644 and is chmodded at deploy.
+- **`accounts.py` and `steam.py` hold no module state** (the suites pop `surfd`
+  from sys.modules per case and these two stay loaded), and surfd.py imports
+  both at module top: a `surfd-deploy.ps1 -Only` that ships surfd.py must ship
+  them too, or the worker cannot boot. Loud on purpose; a guarded import would
+  deploy "successfully" without the feature.
+- **NOT COVERED BY AN ARM:** `BEGIN IMMEDIATE` in `link_redeem` (a ban landing
+  between its read and its write), and the browser's side of the cookie.
+- **MEASURED AGAINST REAL STEAM (2026-10-10):** a refusal's exact bytes
+  (`ns:...\nis_valid:false\n`, 0.3 s from the desktop and from the Pi), that a
+  302 is not followed, a bad key's 403, and one profile through the real key.
+  NOT MEASURED: a positive assertion. lextest.md has the human step.
 
 ### The ship set is an allowlist, and three things it never named -- 2026-09-28
 

@@ -13,6 +13,9 @@ LOGFILE="$HOME_DIR/logs/gunicorn.log"
 BIND=0.0.0.0:8084
 
 cd "$HOME_DIR"
+# gunicorn.log is created by the redirect below, outside surfd's own umask, and
+# its access lines carry Steam sign-in return addresses (accounts.py).
+umask 077
 mkdir -p "$HOME_DIR/logs" "$HOME_DIR/data"
 
 if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then

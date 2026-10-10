@@ -30,10 +30,13 @@ import shutil
 import sqlite3
 import threading
 import time
+import types
 
 from flask import Flask, Response, g, jsonify, request, send_file
 
+import accounts         # Steam accounts: schema 12 and its routes
 import recplot          # .rec -> plot data; stdlib only, never raises
+import steam            # the only module that asks Steam anything
 
 # --------------------------------------------------------------------------
 # Configuration
@@ -56,6 +59,11 @@ LOG_PATH = os.path.join(LOG_DIR, "surfd.log")
 # chmodded 600 by hand.  Other uids do run on that box (nginx workers as
 # www-data, a --noauth public FileBrowser as `filebrowser` over /srv/nvme/
 # Public), so this is not a single-user argument.
+#
+# SINCE SCHEMA 12 surfd.log names accounts: accounts.py logs a SteamID64 and an
+# install's 8-hex public id when one is linked.  Both are public ids, neither is
+# a guid.  A Steam sign-in's return address (SteamID beside client address) is
+# in gunicorn's access log, which run.sh creates owner-only for that reason.
 #
 # WHAT THE LOG CARRIES IS MEASURED, NOT ASSUMED, and it is not a credential
 # today: 0 guid-shaped and 0 digest-shaped tokens in the live surfd.log, because
@@ -432,7 +440,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 
 # --------------------------------------------------------------------------
@@ -1455,6 +1463,14 @@ def migrate():
             conn.execute("PRAGMA user_version=11")
             conn.commit()
             version = 11
+
+        if version < 12:
+            # SCHEMA 12: Steam accounts (accounts.py).  Three ADDITIVE tables,
+            # store-only like 7, 9 and 10: a schema-11 surfd never looks at them.
+            conn.executescript(accounts.SQL)
+            conn.execute("PRAGMA user_version=12")
+            conn.commit()
+            version = 12
 
         verdict_metrics(conn)
         conn.commit()
@@ -4784,6 +4800,14 @@ def _register_admin():
 
 
 _register_admin()
+
+# Tests replace STEAM_HTTP; the lambdas read it, `time` and SECRET at call time.
+STEAM_HTTP = steam.http
+accounts.register(app, types.SimpleNamespace(
+    log=log, get_db=get_db, clock=lambda: time.time(), rate_ok=rate_ok,
+    rate_key=rate_key, is_trusted=lambda ip: is_trusted(ip, TRUSTED_SOURCES),
+    secret=lambda: SECRET, setting=setting, fail=fail, game_json=game_json,
+    clean_text=clean_text, http=lambda *a, **k: STEAM_HTTP(*a, **k)))
 
 migrate()
 log.info("surfd ready (db=%s ttl=%ds cap=%d nodes)", DB_PATH, LOBBY_TTL, MAX_NODES)

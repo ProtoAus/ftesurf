@@ -227,7 +227,7 @@ set -e
 cd STAGE/surfd
 mkdir -p STAGE/tmp
 rc=0
-for t in test_web test_recplot test_board test_join test_replays test_sweep test_surfd test_simcheck test_momboards test_momgrab test_momrequest; do
+for t in test_web test_recplot test_board test_join test_replays test_sweep test_surfd test_simcheck test_momboards test_momgrab test_momrequest test_accounts; do
   [ -f "$t.py" ] || continue
   printf '%-16s ' "$t"
   if TMPDIR=STAGE/tmp SURFD_HOME=$(mktemp -d) python3 "$t.py" > "STAGE/tmp/$t.out" 2>&1; then

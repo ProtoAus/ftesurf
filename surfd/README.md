@@ -821,7 +821,41 @@ on main clean, else main segmented, else its first board. Rows are
 `/api/board`'s minus `player`. Both API routes share the `web` rate bucket
 (`WEB_RATE_MAX`, 120/min per `rate_key()`); the maps list is rebuilt at most
 every 60 s. Every `/board/` response carries a strict CSP (no inline script or
-style) and sets no cookie.
+style) and sets no cookie, except the Steam sign-in below.
+
+## Steam accounts (/board/link)
+
+`accounts.py` and `steam.py`, schema 12. STORE-ONLY: nothing that ranks,
+verifies or publishes a run reads these tables (ROADMAP 14 has the stages).
+Off unless `SURFD_BOARD_URL` is set; `SURFD_STEAM_KEY` adds names and avatars.
+
+```
+GET  /board/link            what linking is, and the button
+GET  /board/link/steam      302 to Steam's OpenID; sets the state cookie
+GET  /board/link/return     checks the reply, asks Steam, shows a code
+POST /api/link     key, player, code, node[, confirm=1]    a lobby spends a code
+  -> {"ok":1,"steamid","name","avatar","banned"}
+   | {"ok":0,"why":"code"|"banned"|"slow"}
+   | {"ok":0,"why":"move","from","to"}     linked elsewhere: send it again with confirm=1
+POST /api/account  key, player                             who an install is
+  -> {"linked":0} | {"linked":1,"steamid","name","avatar","banned"}
+```
+
+The two `/api` routes need the shared key AND a `SURFD_TRUSTED` source, and are
+not proxied. A code is 8 characters, lasts ten minutes and works once; a new
+sign-in supersedes the account's older code. It is a bearer token for those ten
+minutes: whoever types it first is linked. `name` is the Steam persona reduced
+to what a Quake name can safely carry (`accounts.game_name`, an allowlist, 31
+bytes).
+
+`/board/link/return` is the one public GET that makes surfd call out. It asks
+Steam only for a reply with exactly Steam's ten fields that passes every local
+check, from the browser holding the state cookie (`__Host-ftl`), that
+`linknonces` has not seen: at most 3 times a minute per source, 30 for
+everyone, 2 at once. A reply that lands in the wrong browser is recorded as
+seen, so it cannot be finished elsewhere. `python3 test_accounts.py` is the
+falsifier: Steam is a fake that counts what it was asked, and `steam.http` is
+driven against a loopback server.
 
 ## Run review (/admin/runs)
 

@@ -5,6 +5,48 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Steam sign-in: what the review left -- 2026-10-10
+
+Patch 612's two review rounds, `surfd/accounts.py` unless said. The first
+item is the only one that can link the wrong account, and it needs the
+victim's help; the rest are availability or exposure. Settle the first before
+ROADMAP 14.3 makes a link count for anything.
+
+- **A sign-in can be finished by someone else if the victim's arrival is
+  refused first.** The attacker starts a sign-in and keeps the cookie, the
+  victim signs in through the attacker's link, and the victim hands back the
+  address they land on. `link_return` records a reply that arrives without the
+  cookie, but not one refused before that: by the page limit (ten GETs from
+  the victim's address, which a lure page can send), by nginx, or by a lock.
+  The address then works for `steam.NONCE_SKEW` (120 s). Falsifier (round 2
+  ran it): section 6's arm with ten `/board/link` GETs from the victim's
+  address first: the stray is 429, `linknonces` stays empty, and the replay
+  under the starter's cookie shows a code. What it wants: the installs list
+  and unlink on the sign-in page (ROADMAP 14.2), so a wrong link is seen and
+  undone.
+- **Thirty requests a minute deny sign-in to everyone.** Each source may have
+  Steam asked 3 times a minute and a refused source waits out the minute, but
+  the state cookie is self-minted (an unkeyed digest) and every IPv6 address is
+  its own source, so the 30-a-minute total is spendable by anyone with that
+  many addresses. Falsifier: section 9's forged arm, widened to 30 addresses,
+  ends with the honest sign-in at 503.
+- **The limiter's flush resets these caps too.** `surfd.py rate_ok` clears its
+  table past `RATE_TABLE_MAX` (4096) keys; the reviewer did it with 4,093
+  distinct IPv6 sources, which also emptied the sign-in buckets. It fails open
+  for every limiter in the process, not only this one.
+- **proto.bar is one origin for several applications.** The vhost's catch-all
+  is the public filebrowser (`src/release/ftesurf.nginx`, header). If it will
+  serve an uploaded HTML file inline, a script on that origin can read the code
+  page, and `/admin` shares the origin too. NOT CHECKED on the host. Falsifier:
+  request an uploaded `.html` by its raw address and read `Content-Type`,
+  `Content-Disposition` and `Content-Security-Policy`.
+- **A slow sign-in can outlast nginx.** The timeouts bound each socket wait, not
+  DNS or the whole exchange, and the handler's own writes can wait a second
+  each on a lock: past nginx's 5 s the browser gets a 504 while surfd issues a
+  code nobody sees. The next sign-in supersedes it.
+- **A link scanner that fetches the return address first burns it.** By design
+  (AGENT_NOTES, "a stray assertion is burned"); the player starts again.
+
 ## The debug dedicated server does not link -- 2026-10-10
 
 `make sv-dbg FTE_TARGET=win64` (engine at Patch 609): `ld` rejects

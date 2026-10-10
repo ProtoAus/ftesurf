@@ -25,7 +25,12 @@ commit   d43004f60bd6819f744d97e56b3aaf074a3d023d
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-606
-patch    611
+patch    612
+# Patch 612: Steam accounts, stage 1 (ROADMAP 14). surfd signs a browser in through
+# Steam and stores the account: schema 12, four additive tables nothing ranking,
+# verifying or publishing reads. surfd only: no engine source, QC, recorder,
+# evidence, ranking or Build change (commit and tag above stay). 610 is held by
+# another session and had not landed when this did.
 # Patch 611: the player's own live run line takes each sample's position from the
 # command frame the server's stats describe, not from the current one. Behind a
 # 120 ms ping its ramp-exit mark sat 79 to 101 u past the place the server

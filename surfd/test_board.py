@@ -183,7 +183,7 @@ def user_version(mod):
 # surfd.SCHEMA_VERSION (6 -> 7 went unbumped here for a day, and 9 -> 10 broke
 # three arms that know nothing about a similarity sample -- the (g) and (h)
 # upgrade races and the v7-to-head check -- which is the warning working).
-HEAD_SCHEMA = 11
+HEAD_SCHEMA = 12
 
 print("\n--- 1. schema -----------------------------------------------------")
 
