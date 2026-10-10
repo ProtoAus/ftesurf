@@ -855,7 +855,8 @@ check, from the browser holding the state cookie (`__Host-ftl`), that
 everyone, 2 at once. A reply that lands in the wrong browser is recorded as
 seen, so it cannot be finished elsewhere. `python3 test_accounts.py` is the
 falsifier: Steam is a fake that counts what it was asked, and `steam.http` is
-driven against a loopback server.
+driven against a loopback server. `python tools/accounts_mutants.py` checks the
+falsifier: 89 single edits to the code, each of which the suite must fail on.
 
 ## Run review (/admin/runs)
 
