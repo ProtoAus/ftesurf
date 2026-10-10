@@ -6794,6 +6794,41 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **DEPLOYED 10 Oct 2026, 22:07-22:10 UTC (FTESurf `e31cce8`, engine
+  `c543d688a` = tag `patch-625`, Patch 625): surfd, the Pi's twelve lobbies,
+  both Windows installs, progs AND engine.** Over Patch 622's pair
+  (`2e41110e` / `47444c35`) and surfd's 619 files, all read back first.
+  surfd FIRST, `surfd ready` 22:07:19Z: `-Ref e31cce8 -Only` accounts.py,
+  surfd.py and their two tests; the staged suites pass on the Pi; database
+  backup `surfd.db.bak-e31cce8-20261011-090453`. Read back: schema 15,
+  `keylinks` made and empty, `linkkeys` kept and emptied (its log line:
+  `dropped 1 link(s)`, the owner's test link), `accounts` still its one row,
+  13 ranked rows untouched. It logged the game code it expects from the
+  default path, the lobbies' `csprogs.dat` and `.prev`.
+  Lobbies, 22:08:34Z: `build.ps1 -Pi` from the clean worktree, 12 rows and 0
+  players; `qwprogs.dat` `bc25c080` (1020466 bytes) and `csprogs.dat`
+  `f1126df3` (5386290), hash-verified on the Pi (a peer's independent build
+  of `e31cce8` gave the same pair); the 622 pair kept as `.prev`; all 12
+  active from 22:08:37. surfd noticed the new csprogs at its next check
+  (22:10:57Z) with no restart.
+  Windows, 22:09:52Z, no installed game running: the same two progs and
+  their `.lno` into both installs (`menu.dat` `e5604321` unchanged), and the
+  patch-625 engine build, one stamp `git-7182-patch-625-0-gc543d688a`:
+  `C:\FTESurf\ftesurf64.exe` and `C:\FTEQuake\fteqw64.exe` `183faf44`,
+  `fteqwsv64.exe` `e9cfd598`, plugins hl2 `66042d85`, ui_imgui `ab7b0512`
+  (both installs), cod `a6c00b64`, box3d `f19f9814`, ode `59508a3d`
+  (`C:\FTEQuake`). Every replaced file has a `.prev` (exe `7c97e69b`, server
+  `1c338f64`, hl2 `4406ae6a`, ui_imgui `69929fe5`). The Pi's own server
+  binary is untouched: 625 changes no server C.
+  READ BACK LIVE, as far as it goes without a person: the installed client in
+  a private rig (its own key) joined lobby `play.proto.bar:27540`; its
+  connect proof was answered "not linked" and the prompt came up, so the
+  address, the game code's hash and the signature all passed on the live
+  service. It pressed nothing: Enter copies over the owner's clipboard and
+  leaves a start in the live database, and the arm shows Enter on these same
+  bytes. NOT CHECKED: a real person linking end to end (lextest).
+  A JOIN BY THE Pi's LAN ADDRESS STILL CANNOT LINK (`why: server`, as before):
+  use the lobby list or `play.proto.bar`.
 - **DEPLOYED 10 Oct 2026, 18:40-18:45 UTC (FTESurf `66a4225`, Patch 619): surfd,
   the Pi's twelve lobbies, both Windows installs.** Over Patch 621's pair
   (`092f9880` / `87bd5e43`), read back on all three before anything was copied.

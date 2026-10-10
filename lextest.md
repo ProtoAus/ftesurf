@@ -13,8 +13,10 @@ to be wrong.
 
 ## 00. 11 Oct — linking Steam: one key press opens your browser (Patches 619, 625)
 
-NOT LIVE YET when this was written: see AGENT_NOTES for the DEPLOYED line.
-625 needs the new engine, which goes into both your installs with it.
+Published and live 10 Oct 22:07-22:10 UTC (09:07 on the 11th here): the site,
+all twelve lobbies, and both your installs, which also got the new engine
+(every replaced file has a `.prev` beside it). Join from the lobby list or
+`play.proto.bar`: a lobby joined by the Pi's LAN address still cannot link.
 
 - **What a new player sees.** On the first official lobby of a game, a small
   box: "Rank your times under your Steam name. Press Enter to link". Enter
@@ -40,6 +42,23 @@ NOT LIVE YET when this was written: see AGENT_NOTES for the DEPLOYED line.
 - **The old way still works:** sign in on the site without the game's address
   and you get a twelve-character code (ABCD-EFGH-JKLM); `link`, then type it
   into the box.
+- **I checked it live only as far as the prompt.** Your installed game, in a
+  scratch folder with its own key, joined a real lobby and was offered the
+  link. I did not press Enter there: it would have copied over your clipboard.
+  So the browser opening and the four digits are yours to try first.
+- **Two things for you to decide, neither urgent:**
+  1. Anyone can still be TALKED into it: sent to the real sign-in page by a
+     link that is somebody else's, then asked for the number by a box that is
+     not ours. No signature stops a persuaded person. I can make the page
+     refuse (or warn) when the browser and the game are on different
+     networks, which stops a stranger doing it and breaks signing in on a
+     phone or through a VPN. Say if you want that.
+  2. The game picks the code it runs on a lobby from a download folder by a
+     weak 32-bit check, so a server someone visited earlier can leave its own
+     drawing code behind for our lobby. Since this patch such code cannot make
+     or use a link (the site checks which code asked), but it could still draw
+     a fake box. Closing it is an engine patch of its own; I would do it
+     before ranked times depend on links (stage 3 a).
 
 ## 00. 10 Oct — your own line on the run graphs (Patch 622)
 
