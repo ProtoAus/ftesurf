@@ -1638,6 +1638,10 @@ publicly WITH its fix, not before it.
   checked with a private LN_EVCAP 20 build. NOT covered: the LIVE line reads
   the bit from a server stat beside a predicted position (its lag is not
   measured), curved/prop ramps, and tick/frame-rate/LOD sweeps.
+  Deployed from `26e350e` on 2026-10-10: csprogs only to both Windows installs
+  (08:07Z) and, with a byte-identical qwprogs, to the Pi (08:09Z, 12 lobbies
+  restarted empty; `pi_lobby_smoke.py` on lobby 1 was served this csprogs).
+  `.prev` is Patch 607's in all three places.
   Two traps: `runlines_smoke.py` copies only TRACKED cfg files, so a new
   fixture is "cannot read" until `git add`, and the run still says completed.
   And DO NOT RESTORE ONE LINE OF AN UNCOMMITTED FILE WITH `git checkout --
