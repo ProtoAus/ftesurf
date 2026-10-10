@@ -2,9 +2,10 @@
 """Falsifiers for conbridge.py's guards that need no engine. python tools/test_conbridge.py
 
 Every child is an idle python, and STATE and the gamedir are a scratch directory, so the real
-bridge state and the real install are never touched. Takes about 25 s: one case waits out
-the 20 s a stuck engine is given to quit. The live half (send, wait, info, shot against a
-running game) has no arm here; it was driven by hand on surf_kitsune.
+bridge state and the real install are never touched. Takes about 30 s: one case waits out
+the 20 s a stuck engine is given to quit. What only a running game can show -- that the
+engine takes the session manifest, that run_resume 0 survives the QC registering it, send,
+wait, info, shot -- has no arm here; it was driven by hand on surf_kitsune.
 """
 import argparse
 import importlib.util
@@ -13,25 +14,25 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
 script = str(Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(__file__).with_name('conbridge.py'))
 
 
-def load(path, state):
-    spec = importlib.util.spec_from_file_location('conbridge', path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    mod.STATE = state
-    return mod
-
-
 scratch = Path(tempfile.mkdtemp(prefix='cbtest-'))
 (scratch / 'state').mkdir()
-cb = load(script, scratch / 'state')
+# Inherited by every child, the detached daemon included: a first cut patched STATE in this
+# process only, and the daemon `start` spawned wrote its state file into the real directory.
+os.environ['CONBRIDGE_STATE'] = str(scratch / 'state')
+spec = importlib.util.spec_from_file_location('conbridge', script)
+cb = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cb)
+assert cb.STATE == scratch / 'state'
 fails = []
-IDLE = [sys.executable, '-c', 'import time; time.sleep(300)']
+IDLE = ['-c', 'import time; time.sleep(300)']
+OWNER = 'cfg_save_auto "1"\n'
 
 
 def check(name, ok, detail=''):
@@ -47,25 +48,28 @@ def ns(**kw):
     return argparse.Namespace(**base)
 
 
+def idle(log):
+    # argv[0] is not the executable, as in a real session.
+    return cb.Engine('cl', sys.executable, 'python', IDLE, scratch, game / 'logs' / log, True)
+
+
 def cli(path, *args):
     # cp1252 is what a piped stdout gets on a stock Windows Python; forced, so the encoding
     # case exists whatever this shell exports.
-    code = ('import importlib.util,sys;from pathlib import Path;'
-            f's=importlib.util.spec_from_file_location("conbridge",r"{path}");'
-            'm=importlib.util.module_from_spec(s);s.loader.exec_module(m);'
-            f'm.STATE=Path(r"{cb.STATE}");sys.argv=["conbridge.py"]+{list(args)!r};sys.exit(m.main())')
     env = {**os.environ, 'PYTHONIOENCODING': 'cp1252', 'PYTHONUTF8': '0'}
-    p = subprocess.run([sys.executable, '-c', code], capture_output=True, env=env)
+    p = subprocess.run([sys.executable, str(path), *args], capture_output=True, env=env)
     return p.returncode, (p.stdout + p.stderr).decode('cp1252', 'replace')
 
 
-game = scratch / 'root' / 'g'
+root = scratch / 'root'
+game = root / 'g'
 (game / 'data' / 'resume').mkdir(parents=True)
 (game / 'logs').mkdir()
-(game / 'one.cfg').write_text('cfg_save_auto "1"\n')
+(game / 'one.cfg').write_text(OWNER)
+(root / 'default.fmf').write_text('FTEMANIFEST 1\nGAME "X"\nMAINCONFIG one\nset sv_mintic 0.015\n')
 
 # -- an engine that never reads its stdin: the pipe takes ~4 KB, then a write blocks ------
-eng = cb.Engine('cl', IDLE, scratch, game / 'logs' / 'x.log', True)
+eng = idle('x.log')
 t0, sent, err = time.monotonic(), 0, ''
 try:
     for _ in range(400):
@@ -79,6 +83,10 @@ check('send to a non-reading engine refuses instead of blocking',
       f'{sent} lines accepted in {time.monotonic() - t0:.1f} s')
 sess = cb.Session(ns())
 sess.snapshot()
+sess.plumb()
+check('the session manifest is the install\'s with one line changed',
+      sess.fmf.read_text() == f'FTEMANIFEST 1\nGAME "X"\nMAINCONFIG {sess.tag}\nset sv_mintic 0.015\n')
+check('the session config starts as the owner\'s', sess.cfg.read_text() == OWNER)
 sess.engines['cl'] = eng
 t0 = time.monotonic()
 rep = sess.shutdown(False)
@@ -86,52 +94,110 @@ check('shutdown of that engine terminates it and returns',
       'TERMINATED' in rep['ends']['cl'] and not eng.alive() and time.monotonic() - t0 < 40,
       f'{time.monotonic() - t0:.1f} s; {rep["ends"]["cl"]}')
 check('and that stop is not a clean exit', cb.troubled(rep))
+check('shutdown removes the session manifest and config', not sess.fmf.exists() and not sess.cfg.exists())
 check('unchanged config: the copy is removed', not sess.bak.exists() and rep['cfg_changed'] == [])
 
-# -- the config changes during the session ----------------------------------------------
+# -- the owner's config changes during the session: whose write was it? -------------------
 sess = cb.Session(ns(name='u'))
 sess.snapshot()
-(game / 'one.cfg').write_text('cfg_save_auto "0"\nvid_width "640"\n')
+sess.plumb()
+check('the session config is not counted as a change to the owner\'s', sess.cfg_changed() == [])
+(game / 'one.cfg').write_text('cfg_save_auto "1"\nvolume "0.3"\n')
+rep = sess.shutdown(False)
+check('a change without the session marker is reported, and is not this session\'s',
+      rep['cfg_changed'] == [str(game / 'one.cfg')] and rep['cfg_ours'] == [] and not cb.troubled(rep))
+check('so no copy is kept', not sess.bak.exists() and cb.kept('u') == [])
+(game / 'one.cfg').write_text(OWNER)
+time.sleep(1.1)                                   # a fresh tag; it is to the second
+sess = cb.Session(ns(name='u'))
+sess.snapshot()
+(game / 'one.cfg').write_text(f'cfg_save_auto "0"\nseta {cb.MARKER} "{sess.tag}"\n')
 rep = sess.shutdown(False)
 copy = Path(rep['cfg_backup']) / 'one.cfg' if rep['cfg_backup'] else None
-check('a changed config is reported', rep['cfg_changed'] == [str(game / 'one.cfg')], str(rep['cfg_changed']))
-check('the bytes from the start are kept', bool(copy) and copy.read_text() == 'cfg_save_auto "1"\n')
-check('and that stop is not a clean exit', cb.troubled(rep))
+check('a change carrying this session\'s marker is this session\'s',
+      rep['cfg_ours'] == [str(game / 'one.cfg')] and cb.troubled(rep))
+check('the bytes from the start are kept', bool(copy) and copy.read_text() == OWNER)
 check('kept() lists the copy for the next start', [p.name for p in cb.kept('u')] == [sess.bak.name])
 check('kept() does not match another name', cb.kept('t') == [] and cb.kept('u_2') == [])
+(game / 'one.cfg').write_text(OWNER)
+time.sleep(1.1)
+sess = cb.Session(ns(name='u'))
+sess.snapshot()
+(game / 'one.cfg').write_text(f'seta {cb.MARKER} "bridge_u_20200101T000000"\n')
+rep = sess.shutdown(False)
+check('another session\'s marker is not this session\'s', rep['cfg_ours'] == [] and len(rep['cfg_changed']) == 1)
+(game / 'one.cfg').write_text(OWNER)
+
+# -- the stop report sees the files beside data/: a data/-only listing missed conhistory.txt --
+sess = cb.Session(ns(name='s'))
+sess.snapshot()
+(game / 'conhistory.txt').write_text('x')
+(game / 'data' / 'new.txt').write_text('x')
+rep = sess.shutdown(False)
+check('a new top-level file and a new data/ file are both reported',
+      rep['install']['added'] == [os.path.join('g', 'conhistory.txt'), os.path.join('g', 'data', 'new.txt')],
+      str(rep['install']['added']))
+(game / 'conhistory.txt').unlink()
+(game / 'data' / 'new.txt').unlink()
 
 # -- never snapshotted must not read as "everything changed", nor as "unchanged" -----------
 rep = cb.Session(ns(name='v')).shutdown(False)
 check('no snapshot: no verdict, and a note saying so',
       rep['cfg_changed'] == [] and any('never snapshotted' in n for n in rep['notes']))
 
-# -- a map on the client is a listen server without the run_resume guard -------------------
-live = cb.Engine('cl', IDLE, scratch, game / 'logs' / 'y.log', True)
+# -- a manifest the tool cannot rewrite must stop the start, not fall back -----------------
+(root / 'default.fmf').write_text('FTEMANIFEST 1\nGAME "X"\n')
 sess = cb.Session(ns(name='w'))
-sess.engines['cl'] = live
-for line, refused in (('map surf_dune', True), ('echo a; map x', True), ('changelevel x', True),
-                      ('devmap x', True), ('cmd mapvote x', False), ('echo map', False),
-                      ('mapname', False), ('+forward; waitms 200; -forward', False)):
-    try:
-        sess.push(live, line)
-        got = False
-    except ValueError as e:
-        got = 'listen server' in str(e)
-    check(f'client line {line!r} refused={refused}', got == refused)
-sess = cb.Session(ns(name='w2', resume=True))
-sess.engines['cl'] = live
+sess.snapshot()
 try:
-    sess.push(live, 'map surf_dune')
-    check('--resume allows it', True)
-except ValueError as e:
-    check('--resume allows it', False, str(e))
-live.proc.terminate()
-live.proc.wait(10)
-rc, out = cli(script, 'start')
-check('start with a server and no --map is refused', rc == 2 and 'needs --map' in out, out.strip()[-90:])
+    sess.plumb()
+    check('no MAINCONFIG line: refused', False)
+except cb.Boot as e:
+    check('no MAINCONFIG line: refused', 'MAINCONFIG' in str(e) and not sess.fmf.exists())
+sess.shutdown(False)
+(root / 'default.fmf').write_text('FTEMANIFEST 1\nGAME "X"\nMAINCONFIG one\n')
+
+# -- a peer that opens the pipe and says nothing -----------------------------------------
+if os.name == 'nt':
+    key = os.urandom(16)
+
+    def ask(name, address, seconds):
+        cb.save_state(name, {'name': name, 'pid': os.getpid(), 'address': address,
+                             'authkey': key.hex(), 'phase': 'ready', 'engines': {}})
+        got = {}
+        t = threading.Thread(target=lambda: got.update(cb.call(ns(name=name), {'op': 'status'})), daemon=True)
+        t.start()
+        t.join(seconds)
+        return got, t.is_alive()
+
+    address = rf'\\.\pipe\cbtest-{os.getpid()}'
+    sess = cb.Session(ns(name='p'))
+    threading.Thread(target=sess.accept, args=(cb.Listener(address, family=cb.FAMILY), key), daemon=True).start()
+    silent = open(address, 'r+b', buffering=0)
+    got, stuck = ask('p', address, 8)
+    check('a silent pipe client does not stall a real request', got.get('ok') is True and not stuck)
+    # Control: the handshake where it used to be, inside accept().
+    inline = cb.Listener(address + '-inline', family=cb.FAMILY, authkey=key)
+
+    def old():
+        try:
+            while True:
+                c = inline.accept()
+                c.recv_bytes()
+                c.send_bytes(b'{"ok": true}')
+                c.close()
+        except EOFError:                          # the silent peer closing, at the end
+            pass
+
+    threading.Thread(target=old, daemon=True).start()
+    silent2 = open(address + '-inline', 'r+b', buffering=0)
+    got, stuck = ask('p2', address + '-inline', 4)
+    check('CONTROL, handshake inside accept(): the same request stalls', stuck and not got)
+    silent.close()
+    silent2.close()
 
 # -- stop must not clear a live daemon's state -------------------------------------------
-holder = subprocess.Popen(IDLE)
+holder = subprocess.Popen([sys.executable, *IDLE])
 cb.save_state('boot', {'name': 'boot', 'pid': holder.pid, 'address': 'x', 'authkey': '00',
                        'phase': 'booting', 'engines': {}})
 rc, out = cli(script, '--name', 'boot', 'stop')
@@ -145,19 +211,30 @@ rc, out = cli(script, '--name', 'boot', 'stop')
 check('with the daemon gone, stop clears it',
       rc == 2 and not cb.state_path('boot').exists() and 'daemon is gone' in out)
 
+# -- start sweeps a dead session's manifest and config, and only its own name's -----------
+dead = [root / 'bridge_boot_20200101T000000.fmf', game / 'bridge_boot_20200101T000000.cfg']
+other = [root / 'bridge_boot_2_20200101T000000.fmf', game / 'bridge_bootleg.cfg']
+for p in dead + other:
+    p.write_text('x')
+rc, out = cli(script, '--name', 'boot', 'start', '--map', 'm', '--root', str(root), '--gamedir', 'g',
+              '--server', str(scratch / 'no-such.exe'), '--client', str(scratch / 'no-such.exe'))
+check('start with no executable fails cleanly', rc == 2 and 'no executable' in out, out.strip()[-80:])
+check('and swept the dead session\'s two files', not any(p.exists() for p in dead))
+check('but not another name\'s', all(p.exists() for p in other))
+check('and left nothing of its own', not list(root.glob('bridge_boot_2026*')) and not list(game.glob('bridge_boot_2026*')))
+
 # -- finish() removes only its own state ---------------------------------------------------
 cb.save_state('other', {'name': 'other', 'pid': 1, 'address': 'x', 'authkey': '00',
                         'phase': 'ready', 'engines': {}})
 subprocess.run([sys.executable, '-c',
-                'import importlib.util;from pathlib import Path;'
+                'import importlib.util;'
                 f's=importlib.util.spec_from_file_location("conbridge",r"{script}");'
-                'm=importlib.util.module_from_spec(s);s.loader.exec_module(m);'
-                f'm.STATE=Path(r"{cb.STATE}");m.finish("other",0)'])
+                'm=importlib.util.module_from_spec(s);s.loader.exec_module(m);m.finish("other",0)'])
 check("finish() leaves another daemon's state", cb.state_path('other').exists())
 
 # -- text the console codec cannot encode, with its control --------------------------------
 cb.save_state('gone', {'name': 'gone', 'pid': 1, 'address': 'x', 'authkey': '00',
-                       'phase': 'failed', 'reason': 'snowman ☃ in a log line', 'engines': {}})
+                       'phase': 'failed', 'reason': 'snowman \u2603 in a log line', 'engines': {}})
 rc, out = cli(script, '--name', 'gone', 'status')
 check('an unencodable message exits 2, not a traceback',
       rc == 2 and 'Traceback' not in out and 'snowman' in out)
@@ -171,4 +248,7 @@ check('CONTROL, that line removed: UnicodeEncodeError and exit 1', rc == 1 and '
 
 shutil.rmtree(scratch)
 print(f'\n{len(fails)} failed', fails or '')
-sys.exit(1 if fails else 0)
+sys.stdout.flush()
+# Not sys.exit: the pipe cases leave daemon threads blocked in I/O on purpose, and finalizing
+# the interpreter around them aborted it (exit 0xC0000409 with "0 failed" printed).
+os._exit(1 if fails else 0)

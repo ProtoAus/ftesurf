@@ -20,21 +20,23 @@ command has no reply -- output arrives frames later and SSQC prints land in the 
 log -- hence `send` then `wait`, never "run and return".
 
 It runs in the real install by default, as the owner's own profile, and shares
-<gamedir>/data with the owner. `stop` diffs that tree and the gamedir's *.cfg against the
-start; it reports and does not undo.
-  * run_resume: the server gets `run_resume 0` before the client joins, so the session
-    neither parks over nor drops the owner's data/resume/<map> slot. That needs the server's
-    QC, hence --map is required, and a `map` sent to the CLIENT (a listen server, unguarded)
-    is refused. The game's own sweep of slots past run_resume_days still runs at map load.
-  * config: `cfg_save_auto 0` stops the automatic write only. An explicit cfg_save -- the HUD
-    editor's save runs one -- writes this session's window size and fps cap into the owner's
-    config, so the files are copied aside at start and the copy is kept if they changed.
+<gamedir>/data with the owner. `stop` diffs that tree, the files directly in the root and
+the gamedir, and the gamedir's *.cfg against the start; it reports and does not undo.
+  * config: both engines run on a manifest of the session's own -- the install's default.fmf
+    with MAINCONFIG pointed at a copy of the owner's config -- so every cfg_save, automatic,
+    menu or hud_edit, lands in that copy, which `stop` deletes. Each engine's manifest is
+    read back at start. A command that names the owner's file outright (`saveconfig
+    ftesurf.cfg`) still writes it; stop tells that apart by a marker cvar the session archives.
+  * run_resume: both engines get `set run_resume 0` before any map, so neither the dedicated
+    server nor a listen server the client starts (map, an alias, the menu's PLAY) parks over
+    or drops the owner's data/resume/<map> slot. The game's own sweep of slots past
+    run_resume_days still runs at map load.
   * window: put behind the others and off the foreground at start (`window`); a vid_restart
     brings it forward again.
 Windows-tested only.
 
 Exit status: 0 done; 1 a negative answer (timeout, not connected, spawn not proven, a stop
-that found the config changed or had to terminate); 2 could not ask.
+that had to terminate or found the session wrote the owner's config); 2 could not ask.
 """
 from __future__ import annotations
 
@@ -53,19 +55,20 @@ import tempfile
 import threading
 import time
 import traceback
-from multiprocessing.connection import AuthenticationError, Client, Listener
+from multiprocessing.connection import (AuthenticationError, Client, Listener, answer_challenge,
+                                        deliver_challenge)
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-STATE = Path(tempfile.gettempdir()) / 'ftesurf-bridge'
+# An env var, not an option: the detached daemon has to land in the same place as its caller.
+STATE = Path(os.environ.get('CONBRIDGE_STATE') or Path(tempfile.gettempdir()) / 'ftesurf-bridge')
 FAMILY = 'AF_PIPE' if os.name == 'nt' else 'AF_UNIX'
 # The engine's stdin buffer is char[256]; a line that fills it with no newline never
 # completes (sys_win.c:2977, sv_sys_win.c:1059).
 MAXLINE = 240
 PENDING = 64                # lines queued for an engine before send says it is not reading
 SVPREFIX = 'echo;'
-# On the client these start a listen server, which has no run_resume guard.
-LISTEN = re.compile(r'(?:^|;)\s*(?:map|devmap|changelevel)(?:\s|;|$)')
+MARKER = 'bridge_session'
 STAMP = re.compile(r'^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ')
 NAME = re.compile(r'^[A-Za-z0-9_-]+$')
 WINDOW = ('back', 'min', 'free')
@@ -208,8 +211,8 @@ def placed(line: str) -> bool:
 
 
 class Engine:
-    def __init__(self, key: str, argv: list, cwd: Path, log: Path, show: bool):
-        self.key, self.argv, self.log = key, argv, log
+    def __init__(self, key: str, exe: str, argv0: str, args: list, cwd: Path, log: Path, show: bool):
+        self.key, self.log = key, log
         si, flags = None, 0
         if os.name == 'nt':
             if key == 'sv':
@@ -218,7 +221,9 @@ class Engine:
                 si = subprocess.STARTUPINFO()
                 si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                 si.wShowWindow = 7              # SW_SHOWMINNOACTIVE: leaves the owner's focus alone
-        self.proc = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE,
+        # argv[0] is not the executable: the engine looks for <basedir>/<argv0>.fmf before
+        # default.fmf (fs.c:7495), which is how the session gets its own manifest.
+        self.proc = subprocess.Popen([argv0, *args], executable=exe, cwd=cwd, stdin=subprocess.PIPE,
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                      startupinfo=si, creationflags=flags)
         self.lock = threading.Lock()
@@ -317,6 +322,8 @@ class Session:
         self.before = None
         self.cfgs: dict[Path, str] = {}
         self.bak = STATE / f'{self.tag}.cfgbak'
+        self.fmf = self.root / f'{self.tag}.fmf'
+        self.cfg = self.game / f'{self.tag}.cfg'
         self.snapped = False
         self.deadline = 0.0
 
@@ -328,55 +335,89 @@ class Session:
             raise Boot(f'no gamedir {self.game}')
         self.deadline = time.monotonic() + a.boot_timeout
         self.snapshot()
-        common =['-plugin', '+set', 'cfg_save_auto', '0', '+log_enable', '1', '+log_dir', 'logs']
+        self.plumb()
+        # MARKER is archived, so any config this session's engines write carries its tag.
+        common = ['-plugin', '+set', 'cfg_save_auto', '0', '+seta', MARKER, self.tag,
+                  '+log_enable', '1', '+log_dir', 'logs']
+        if not a.resume:
+            # Before any map, on both: registercvar leaves an existing cvar alone
+            # (pr_bgcmd.c:2036), and the client's own listen server reads the client's.
+            common += ['+set', 'run_resume', '0']
         if not a.no_server:
             self.port = a.port or free_port()
-            argv = [a.server, *common, '+log_name', self.tag + '_sv', '-port', str(self.port),
+            args = [*common, '+log_name', self.tag + '_sv', '-port', str(self.port),
                     '+sv_public', '0', *a.server_args.split()]
-            if a.map:
-                argv += ['+map', a.map]
-            self.launch('sv', argv)
-            if a.map and not a.resume:
-                # After the map: registercvar resets a value set before it. Unknown here
-                # means the server QC never loaded, i.e. the map did not.
-                self.expect('sv', ['set run_resume 0', 'run_resume'], r'^"run_resume" is "0"$',
-                            'run_resume 0 not read back -- did the map load?')
-                self.guards.append('run_resume 0 (sv, read back at start)')
-        if a.resume:
-            self.guards.append('run_resume NOT guarded (--resume)')
+            self.launch('sv', a.server, args + (['+map', a.map] if a.map else []))
         if not a.no_client:
             w, h = a.size.lower().split('x')
-            argv = [a.client, *common, '+log_name', self.tag + '_cl', '-window',
+            args = [*common, '+log_name', self.tag + '_cl', '-window',
                     '+set', 'vid_fullscreen', '0', '+set', 'vid_winmaximize', '0',
                     '+set', 'vid_width', w, '+set', 'vid_height', h,
                     '+set', 'cl_idlefps', '0', '+set', 'cl_maxfps', '100',
+                    # or its quit rewrites the owner's conhistory.txt from a copy read at start
+                    '+set', 'con_savehistory', '0',
                     *([] if a.sound else ['-nosound']), *a.client_args.split()]
-            self.launch('cl', argv)
-            self.expect('cl', ['cfg_save_auto'], r'^"cfg_save_auto" is "0"$',
-                        'cfg_save_auto is not 0: this client would write the owner\'s config')
-            self.guards.append('cfg_save_auto 0 (cl, read back at start)')
-            if not a.resume:
-                self.guards.append('map on the client refused')
+            self.launch('cl', a.client, args)
             if a.map and not a.no_server:
                 self.connect()
+        self.guards = [f'saves go to {self.cfg.name} (manifest read back)',
+                       'run_resume NOT guarded (--resume)' if a.resume else
+                       'run_resume 0 set before any map (read back)']
         self.mark = {k: e.size() for k, e in self.engines.items()}
 
+    def survey(self) -> dict:
+        """data/ in full, plus the files directly in the root and the gamedir.
+
+        The second half is there because the client rewrote <gamedir>/conhistory.txt on every
+        quit (same bytes, new mtime) and a data/-only listing called that "nothing changed".
+        """
+        out = listing(self.game / 'data')
+        mine = {self.fmf, self.cfg}
+        for folder in (self.root, self.game):
+            for p in folder.iterdir():
+                try:
+                    if p.is_file() and p not in mine:
+                        out[str(p)] = (p.stat().st_size, p.stat().st_mtime_ns)
+                except FileNotFoundError:   # gone between the listing and the stat: not there
+                    pass
+        return out
+
     def snapshot(self) -> None:
-        self.before = listing(self.game / 'data')
-        # cfg_save_auto 0 stops the automatic write only: an explicit cfg_save (hud_edit's
-        # save runs one) still writes this session's window and fps values into the owner's
-        # config. So keep the bytes; shutdown keeps the copy if they changed.
+        self.before = self.survey()
         self.bak.mkdir(parents=True)
         for p in sorted(self.game.glob('*.cfg')):
             shutil.copy2(p, self.bak / p.name)
             self.cfgs[p] = sha(self.bak / p.name)
         self.snapped = True
 
-    def launch(self, key: str, argv: list) -> None:
-        if not Path(argv[0]).is_file():
-            raise Boot(f'no executable {argv[0]}')
+    def plumb(self) -> None:
+        """A manifest and a main config of the session's own, so no save reaches the owner's.
+
+        Every cfg_save -- the automatic one, the menu's, hud_edit's -- writes
+        fs_manifest->mainconfig (cmd.c:4562); cfg_save_auto 0 only stops the first. The
+        session's manifest is the install's with that one line changed, and its config
+        starts as a copy of the owner's.
+        """
+        src = self.root / 'default.fmf'
+        if not src.is_file():
+            raise Boot(f'no {src}: the session cannot be given its own main config')
+        lines = src.read_text(encoding='utf-8', errors='surrogateescape').splitlines()
+        hits = [i for i, line in enumerate(lines) if line.split()[:1] == ['MAINCONFIG']
+                or line.split()[:1] == ['mainconfig']]
+        if len(hits) != 1 or len(lines[hits[0]].split()) != 2:
+            raise Boot(f'{src}: expected exactly one `MAINCONFIG <name>` line')
+        owner = lines[hits[0]].split()[1].strip('"')
+        owner = owner if owner.lower().endswith('.cfg') else owner + '.cfg'
+        lines[hits[0]] = f'MAINCONFIG {self.tag}'
+        if (self.bak / owner).is_file():
+            shutil.copy2(self.bak / owner, self.cfg)
+        self.fmf.write_text('\n'.join(lines) + '\n', encoding='utf-8', errors='surrogateescape')
+
+    def launch(self, key: str, exe: str, args: list) -> None:
+        if not Path(exe).is_file():
+            raise Boot(f'no executable {exe}')
         log = self.game / 'logs' / f'{self.tag}_{key}.log'
-        eng = self.engines[key] = Engine(key, argv, self.root, log, self.policy == 'free')
+        eng = self.engines[key] = Engine(key, exe, self.tag, args, self.root, log, self.policy == 'free')
         marker = 'BRIDGE-READY-' + secrets.token_hex(4)
         while True:
             # Re-sent until echoed: a line the client reads while it is still starting
@@ -388,6 +429,13 @@ class Session:
             if r['verdict'] == 'exited' or time.monotonic() >= self.deadline:
                 r['secs'] = time.monotonic() - self.t0
                 raise Boot(f'{key} never echoed the ready marker: {self.why(r)}; log {log}')
+        # The two things that keep this engine out of the owner's files, in its own words.
+        self.expect(key, ['fs_showmanifest'], rf'^mainconfig "?{re.escape(self.cfg.name)}"?$',
+                    'not on the session manifest: a save would land in the owner\'s config')
+        if not self.a.resume:
+            # Set before the QC registers it, 0 is also its default, and the engine says so.
+            self.expect(key, ['run_resume'], r'^"run_resume" is "0"( \(default\))?$',
+                        'run_resume is not 0')
 
     def expect(self, key: str, lines: list, pattern: str, why: str) -> dict:
         mark = self.engines[key].size()
@@ -487,9 +535,6 @@ class Session:
         if len(line.encode()) > room:
             raise ValueError(f'line is {len(line.encode())} bytes; the engine stdin buffer takes '
                              f'{room} -- split it')
-        if eng.key == 'cl' and not self.a.resume and LISTEN.search(line):
-            raise ValueError('a map on the client is a listen server on the owner\'s profile with '
-                             'run_resume 1; send it to the server (--sv), or start with --resume')
         if not eng.alive():
             raise ValueError(f'{eng.key} has exited, rc {eng.proc.returncode}')
         self.mark = {k: e.size() for k, e in self.engines.items()}
@@ -607,7 +652,7 @@ class Session:
     def cfg_changed(self) -> list:
         if not self.snapped:                    # nothing to compare with; shutdown says so
             return []
-        now = {p: sha(p) for p in sorted(self.game.glob('*.cfg'))}
+        now = {p: sha(p) for p in sorted(self.game.glob('*.cfg')) if p != self.cfg}
         return sorted(str(p) for p in set(now) | set(self.cfgs) if now.get(p) != self.cfgs.get(p))
 
     def op_stop(self, req: dict) -> dict:
@@ -624,8 +669,10 @@ class Session:
                 continue
             if eng.alive():
                 try:
+                    if not self.a.resume:
+                        eng.send('set run_resume 0')    # whatever the session did since: no park
                     if key == 'cl':
-                        eng.send('cfg_save_auto 0')     # quit writes the config when it is on
+                        eng.send('cfg_save_auto 0')     # and no save on the way out
                     eng.send('quit')
                     how = 'quit'
                 except ValueError as e:                 # not reading, or its stdin is gone
@@ -649,11 +696,23 @@ class Session:
                     notes.append(f'{key} stdin close: {e}')
         made = [e.log for e in self.engines.values() if e.log.exists()] + \
                [p for p in self.shots if p.exists()]
+        if not any(e.alive() for e in self.engines.values()):
+            for p in (self.fmf, self.cfg):
+                try:
+                    p.unlink(missing_ok=True)
+                except OSError as e:
+                    notes.append(f'session file left behind: {p} ({e})')
         rep = {'ok': True, 'ends': ends, 'notes': notes, 'cfg_changed': self.cfg_changed(),
-               'cfg_backup': '', 'focus_lines': [], 'purged': [], 'purge_errors': []}
+               'cfg_ours': [], 'cfg_backup': '', 'focus_lines': [], 'purged': [], 'purge_errors': []}
         if not self.snapped:
             notes.append('the configs were never snapshotted, so nothing is known about them')
-        if rep['cfg_changed']:
+        # The session saves into its own config, so a change to the owner's is normally the
+        # owner's game. MARKER settles it: only this session's engines archive this tag.
+        ours = re.compile(rf'{MARKER}\s+"?{re.escape(self.tag)}"?')
+        for p in rep['cfg_changed']:
+            if not Path(p).is_file() or ours.search(Path(p).read_text(errors='replace')):
+                rep['cfg_ours'].append(p)
+        if rep['cfg_ours']:
             rep['cfg_backup'] = str(self.bak)
         elif self.bak.is_dir():
             for p in self.cfgs:
@@ -662,9 +721,9 @@ class Session:
         if 'cl' in self.engines:
             rep['focus_lines'] = [raw for text, raw, _ in self.engines['cl'].read(0) if '[focus]' in text]
         if self.before is not None:
-            after = listing(self.game / 'data')
+            after = self.survey()
             rel = lambda p: os.path.relpath(p, self.root)
-            rep['data'] = {
+            rep['install'] = {
                 'added': sorted(rel(p) for p in after if p not in self.before),
                 'removed': sorted(rel(p) for p in self.before if p not in after),
                 'changed': sorted(rel(p) for p in after if p in self.before and after[p] != self.before[p]),
@@ -682,10 +741,14 @@ class Session:
 
     # ---- daemon ---------------------------------------------------------------------
 
-    def serve_one(self, conn) -> None:
+    def serve_one(self, conn, key: bytes) -> None:
         req, rep = {}, None
         try:
             with conn:
+                # Here and not in accept(): a peer that opens the pipe and says nothing must
+                # cost one parked thread, not every later request.
+                deliver_challenge(conn, key)
+                answer_challenge(conn, key)
                 try:
                     req = json.loads(conn.recv_bytes())
                     self.last = time.monotonic()
@@ -699,10 +762,20 @@ class Session:
                 conn.send_bytes(json.dumps(rep).encode())
                 if req.get('op') == 'stop' and rep.get('ok'):
                     conn.poll(5)                # let the caller read the report before we go
-        except (OSError, EOFError):
-            traceback.print_exc()
+        except (OSError, EOFError, AuthenticationError) as e:
+            print(f'dropped a connection: {type(e).__name__}: {e}', flush=True)
         if req.get('op') == 'stop' and rep and rep.get('ok'):
             finish(self.a.name, 0)
+
+    def accept(self, listener, key: bytes) -> None:
+        while True:
+            try:
+                conn = listener.accept()
+            except (EOFError, OSError) as e:
+                print(f'accept failed: {type(e).__name__}: {e}', flush=True)
+                time.sleep(0.2)
+                continue
+            threading.Thread(target=self.serve_one, args=(conn, key), daemon=True).start()
 
     def watchdog(self) -> None:
         while True:
@@ -711,7 +784,7 @@ class Session:
                 print(f'idle {self.a.idle} min: stopping', flush=True)
                 rep = self.op_stop({})
                 print(json.dumps(rep, indent=1), flush=True)
-                if troubled(rep) or any(rep.get('data', {}).values()):
+                if troubled(rep) or any(rep.get('install', {}).values()):
                     # Nobody is reading stdout, and the next start truncates the daemon log.
                     (STATE / f'{self.tag}.idle-stop.json').write_text(json.dumps(rep, indent=1))
                 finish(self.a.name, 0)
@@ -745,7 +818,7 @@ def finish(name: str, rc: int) -> None:
 
 def troubled(rep: dict) -> bool:
     """A stop report that must not read as a clean exit."""
-    return bool(rep['cfg_changed'] or rep['purge_errors']
+    return bool(rep['cfg_ours'] or rep['purge_errors']
                 or any('TERMINATED' in how for how in rep['ends'].values()))
 
 
@@ -772,19 +845,13 @@ def cmd_serve(a: argparse.Namespace) -> int:
         save_state(a.name, {**st, 'phase': 'failed', 'reason': f'{type(e).__name__}: {e}',
                             'files': rep['files']})
         return 2
-    listener = Listener(address, family=FAMILY, authkey=bytes.fromhex(st['authkey']))
+    listener = Listener(address, family=FAMILY)     # no authkey here: see serve_one
     save_state(a.name, {**st, 'phase': 'ready',
                         'engines': {k: e.proc.pid for k, e in sess.engines.items()}})
     print(f'ready: {sess.tag}', flush=True)
     threading.Thread(target=sess.watchdog, daemon=True).start()
     try:
-        while True:
-            try:
-                conn = listener.accept()
-            except (AuthenticationError, EOFError, OSError) as e:
-                print(f'refused a connection: {type(e).__name__}: {e}', flush=True)
-                continue
-            threading.Thread(target=sess.serve_one, args=(conn,), daemon=True).start()
+        sess.accept(listener, bytes.fromhex(st['authkey']))
     except KeyboardInterrupt:
         print(json.dumps(sess.op_stop({}), indent=1), flush=True)
         finish(a.name, 0)
@@ -836,6 +903,13 @@ def cmd_start(a: argparse.Namespace) -> int:
     STATE.mkdir(parents=True, exist_ok=True)
     for p in kept(a.name):
         print(f'note: kept from an earlier session, delete it once read: {p}')
+    # No daemon of this name is alive, so a manifest or config with its tag is a dead one's.
+    tag = re.compile(rf'bridge_{re.escape(a.name)}_\d{{8}}T\d{{6}}\.(fmf|cfg)')
+    for folder, ext in ((Path(a.root), '.fmf'), (Path(a.root) / a.gamedir, '.cfg')):
+        for p in sorted(folder.glob('bridge_*' + ext)) if folder.is_dir() else []:
+            if tag.fullmatch(p.name):
+                p.unlink()
+                print(f"removed a dead session's file: {p}")
     dlog = STATE / f'{a.name}.daemon.log'
     flags = (subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP) if os.name == 'nt' else 0
     with dlog.open('w') as out:
@@ -1011,16 +1085,16 @@ def show_stop(r: dict) -> None:
     for note in r['notes']:
         print('note:', note)
     for p in r['cfg_changed']:
-        print('CONFIG CHANGED DURING THE SESSION:', p)
-    if r['cfg_changed']:
-        print(f"  the files as they were at start: {r['cfg_backup']}\n  This session, your own "
-              f'game or a peer wrote them: compare before copying anything back.')
-    else:
+        if p in r['cfg_ours']:
+            print(f"THIS SESSION WROTE OR REMOVED {p}\n  as it was at start: {r['cfg_backup']}")
+        else:
+            print(f'changed during the session, not by it (no session marker inside): {p}')
+    if not r['cfg_changed']:
         print('gamedir *.cfg: unchanged')
     if r['focus_lines']:
         print(f"{len(r['focus_lines'])} [focus] lines in the client log, last: {r['focus_lines'][-1]}")
-    d = r.get('data', {})
-    print('data/ during the session (this session, the owner or a peer): '
+    d = r.get('install', {})
+    print('data/ and the top-level files during the session (this session, the owner or a peer): '
           + ', '.join(f'{len(d.get(k, []))} {k}' for k in ('added', 'removed', 'changed')))
     for k in ('added', 'removed', 'changed'):
         for p in d.get(k, [])[:40]:
@@ -1057,7 +1131,7 @@ def main() -> int:
         p.add_argument('--no-client', action='store_true')
         p.add_argument('--window', choices=WINDOW, default='back', help=WINDOW_HELP)
         p.add_argument('--sound', action='store_true')
-        p.add_argument('--resume', action='store_true', help='leave run_resume alone and allow a map on the client (the session may then park over or drop data/resume/<map>)')
+        p.add_argument('--resume', action='store_true', help='leave run_resume alone (the session may then park over or drop data/resume/<map>)')
         p.add_argument('--keep-menu', action='store_true', help='do not menu_restart + ui_close after the spawn')
         p.set_defaults(fn=cmd_start if name == 'start' else cmd_serve)
     p = sub.add_parser('send', help='one console line')
@@ -1100,9 +1174,6 @@ def main() -> int:
             ap.error('nothing to launch')
         if a.map and a.no_server:
             ap.error('--map needs the dedicated server (prediction, and the run_resume guard)')
-        if not (a.map or a.no_server or a.resume):
-            ap.error('the server needs --map: run_resume 0 can only be set once its QC has '
-                     'loaded (--resume starts one without the guard)')
         if not re.fullmatch(r'\d+x\d+', a.size.lower()):
             ap.error('--size is WxH')
     for stream in (sys.stdout, sys.stderr):
@@ -1112,8 +1183,8 @@ def main() -> int:
         return a.fn(a)
     except NoSession as e:
         print(e)
-    except (EOFError, OSError) as e:
-        print(f'the bridge went away mid-request ({type(e).__name__}: {e})')
+    except (EOFError, OSError) as e:            # the daemon went away mid-request, or a file did
+        print(f'{type(e).__name__}: {e}')
     return 2
 
 

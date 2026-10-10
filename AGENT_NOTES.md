@@ -263,9 +263,10 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   time: `send`, `wait <regex>`, `log`, `info` (cmd viewpos + cmd timer), `shot`,
   `stop`; `--help` has the rest. It feeds stdin under `-plugin` and tails the two
   logs. NOT AN ARM -- nothing in it repeats, so freeze what it finds into a cfg
-  with a control. It runs in the real install as the owner's profile; `stop`
-  lists what changed under `data/` and keeps the pre-session `*.cfg` if they
-  changed (`tools/test_conbridge.py` checks those guards with no engine).
+  with a control. It runs in the real install as the owner's profile, on a
+  manifest of its own so every cfg_save lands in a private copy of ftesurf.cfg;
+  `stop` lists what changed under `data/` and at the top level
+  (`tools/test_conbridge.py` checks the guards with no engine).
   Measured building it (2026-10-10), and any
   hand-rolled driver meets the same: a line the CLIENT reads while still starting
   is dropped silently; the SERVER logs a typed line with no newline
@@ -274,6 +275,16 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   an answer is not a spawn; a minimized client wrote 1280x720 of black and still
   logged `Wrote` (one shot); and the client takes the foreground on every mode
   set (gl_vidnt.c:1727) whatever STARTUPINFO asked for.
+  THREE MORE, each usable by an arm: the engine reads `<basedir>/<argv0>.fmf`
+  before default.fmf (fs.c:7495) and argv[0] is whatever the command line says,
+  so `Popen([name, ...], executable=exe)` gives one run its own MAINCONFIG with
+  no rig -- `fs_showmanifest` reads it back. A `+set run_resume 0` given BEFORE
+  the map survived the server QC's registercvar, on a dedicated server (across a
+  second map load) and on a listen server; it reads back `"0" (default)`, and
+  PF_registercvar returns early on a cvar that exists (pr_bgcmd.c:2036). The
+  reset the `cl_trigdebug` bullet records is CSQC's and was not re-measured. And
+  a client's quit rewrites `<gamedir>/conhistory.txt` from the copy it read at
+  start (same bytes, new mtime) unless `con_savehistory 0`.
 - AN ARM NEEDS A CONTROL BUILD AND A DETECTOR PROVEN TO HAVE FIRED. "Not flagged"
   is also what a subject that never fired prints, so an arm with no pre-change
   build beside it measures nothing — p411push printed a textbook flip on a pad
