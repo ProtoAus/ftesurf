@@ -5,6 +5,19 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## conbridge: what its guards do not cover -- 2026-10-10
+
+`tools/conbridge.py`, left open by its one review. `Session.push` refuses
+`map`/`devmap`/`changelevel` typed at the CLIENT, but an alias, an exec'd cfg or
+the menu's own PLAY still starts a listen server with `run_resume 1` on the
+owner's profile. An explicit `cfg_save` (hud_edit's save runs one) still writes
+the session's window and fps cvars into ftesurf.cfg: the tool keeps the
+pre-session copy and exits 1, it neither prevents nor restores. And `cmd_serve`
+runs the pipe handshake inside `listener.accept()`, so a local process that
+opens the pipe and says nothing stalls every request (reviewer-reproduced).
+Falsifier for the last: hold `\\.\pipe\ftesurf-bridge-<name>-*` open and
+silent; `status` must still answer.
+
 ## Dedicated server exits 0xC0000005 on a map it cannot find -- 2026-10-10
 
 `C:\FTEQuake\fteqwsv64.exe` (FTE git-7144-patch-606) started with `+map` naming

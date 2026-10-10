@@ -264,7 +264,9 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   `stop`; `--help` has the rest. It feeds stdin under `-plugin` and tails the two
   logs. NOT AN ARM -- nothing in it repeats, so freeze what it finds into a cfg
   with a control. It runs in the real install as the owner's profile; `stop`
-  lists what changed under `data/`. Measured building it (2026-10-10), and any
+  lists what changed under `data/` and keeps the pre-session `*.cfg` if they
+  changed (`tools/test_conbridge.py` checks those guards with no engine).
+  Measured building it (2026-10-10), and any
   hand-rolled driver meets the same: a line the CLIENT reads while still starting
   is dropped silently; the SERVER logs a typed line with no newline
   (sv_main.c:5369), gluing the reply's first line to it; between `client X

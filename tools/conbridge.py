@@ -20,13 +20,21 @@ command has no reply -- output arrives frames later and SSQC prints land in the 
 log -- hence `send` then `wait`, never "run and return".
 
 It runs in the real install by default, as the owner's own profile, and shares
-<gamedir>/data with the owner. `stop` diffs that tree and the gamedir's *.cfg against a
-listing taken at start; it reports and does not undo. The server is given `run_resume 0`
-before the client joins, so the session can neither park over nor drop the owner's
-data/resume/<map> slot. The client window is put behind the others and off the foreground
-at start (`window`); a vid_restart brings it forward again. Windows-tested only.
+<gamedir>/data with the owner. `stop` diffs that tree and the gamedir's *.cfg against the
+start; it reports and does not undo.
+  * run_resume: the server gets `run_resume 0` before the client joins, so the session
+    neither parks over nor drops the owner's data/resume/<map> slot. That needs the server's
+    QC, hence --map is required, and a `map` sent to the CLIENT (a listen server, unguarded)
+    is refused. The game's own sweep of slots past run_resume_days still runs at map load.
+  * config: `cfg_save_auto 0` stops the automatic write only. An explicit cfg_save -- the HUD
+    editor's save runs one -- writes this session's window size and fps cap into the owner's
+    config, so the files are copied aside at start and the copy is kept if they changed.
+  * window: put behind the others and off the foreground at start (`window`); a vid_restart
+    brings it forward again.
+Windows-tested only.
 
-Exit status: 0 done, 1 a negative answer (timeout, not connected), 2 could not ask.
+Exit status: 0 done; 1 a negative answer (timeout, not connected, spawn not proven, a stop
+that found the config changed or had to terminate); 2 could not ask.
 """
 from __future__ import annotations
 
@@ -34,8 +42,10 @@ import argparse
 import hashlib
 import json
 import os
+import queue
 import re
 import secrets
+import shutil
 import socket
 import subprocess
 import sys
@@ -52,7 +62,10 @@ FAMILY = 'AF_PIPE' if os.name == 'nt' else 'AF_UNIX'
 # The engine's stdin buffer is char[256]; a line that fills it with no newline never
 # completes (sys_win.c:2977, sv_sys_win.c:1059).
 MAXLINE = 240
+PENDING = 64                # lines queued for an engine before send says it is not reading
 SVPREFIX = 'echo;'
+# On the client these start a listen server, which has no run_resume guard.
+LISTEN = re.compile(r'(?:^|;)\s*(?:map|devmap|changelevel)(?:\s|;|$)')
 STAMP = re.compile(r'^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d ')
 NAME = re.compile(r'^[A-Za-z0-9_-]+$')
 WINDOW = ('back', 'min', 'free')
@@ -211,6 +224,21 @@ class Engine:
         self.lock = threading.Lock()
         self.cursor = 0
         self.typed: list[str] = []
+        self.out: queue.Queue = queue.Queue(maxsize=PENDING)
+        self.broken = ''
+        threading.Thread(target=self.pump, daemon=True).start()
+
+    def pump(self) -> None:
+        # Its own thread: a write to an engine that has stopped reading blocks once the pipe
+        # holds about 4 KB (measured), and that must not take the caller, or stop, with it.
+        while True:
+            line = self.out.get()
+            try:
+                self.proc.stdin.write(line.encode() + b'\n')
+                self.proc.stdin.flush()
+            except (OSError, ValueError) as e:
+                self.broken = f'{type(e).__name__}: {e}'
+                return
 
     def alive(self) -> bool:
         return self.proc.poll() is None
@@ -223,6 +251,10 @@ class Engine:
 
     def send(self, line: str) -> None:
         with self.lock:
+            if self.broken:
+                raise ValueError(f'{self.key} stdin is closed ({self.broken})')
+            if self.out.full():
+                raise ValueError(f'{self.key} is not reading its console: {PENDING} lines are waiting')
             if self.key == 'sv':
                 # The server logs a typed line with NO newline (sv_main.c:5369), so a reply's
                 # first line would glue onto it. A bare echo prints that newline first, and
@@ -230,8 +262,7 @@ class Engine:
                 line = SVPREFIX + line
                 if line not in self.typed:
                     self.typed = [line] + self.typed[:63]
-            self.proc.stdin.write(line.encode() + b'\n')
-            self.proc.stdin.flush()
+            self.out.put_nowait(line)           # only send() puts, under the lock: never Full here
 
     def untyped(self, text: str) -> str:
         found = True
@@ -284,7 +315,10 @@ class Session:
         self.stoplock = threading.Lock()
         self.report = None
         self.before = None
-        self.cfgs = {}
+        self.cfgs: dict[Path, str] = {}
+        self.bak = STATE / f'{self.tag}.cfgbak'
+        self.snapped = False
+        self.deadline = 0.0
 
     # ---- boot -----------------------------------------------------------------------
 
@@ -292,9 +326,9 @@ class Session:
         a = self.a
         if not self.game.is_dir():
             raise Boot(f'no gamedir {self.game}')
-        self.before = listing(self.game / 'data')
-        self.cfgs = {p: sha(p) for p in sorted(self.game.glob('*.cfg'))}
-        common = ['-plugin', '+set', 'cfg_save_auto', '0', '+log_enable', '1', '+log_dir', 'logs']
+        self.deadline = time.monotonic() + a.boot_timeout
+        self.snapshot()
+        common =['-plugin', '+set', 'cfg_save_auto', '0', '+log_enable', '1', '+log_dir', 'logs']
         if not a.no_server:
             self.port = a.port or free_port()
             argv = [a.server, *common, '+log_name', self.tag + '_sv', '-port', str(self.port),
@@ -307,7 +341,9 @@ class Session:
                 # means the server QC never loaded, i.e. the map did not.
                 self.expect('sv', ['set run_resume 0', 'run_resume'], r'^"run_resume" is "0"$',
                             'run_resume 0 not read back -- did the map load?')
-                self.guards.append('run_resume 0 (sv, read back)')
+                self.guards.append('run_resume 0 (sv, read back at start)')
+        if a.resume:
+            self.guards.append('run_resume NOT guarded (--resume)')
         if not a.no_client:
             w, h = a.size.lower().split('x')
             argv = [a.client, *common, '+log_name', self.tag + '_cl', '-window',
@@ -318,10 +354,23 @@ class Session:
             self.launch('cl', argv)
             self.expect('cl', ['cfg_save_auto'], r'^"cfg_save_auto" is "0"$',
                         'cfg_save_auto is not 0: this client would write the owner\'s config')
-            self.guards.append('cfg_save_auto 0 (cl, read back)')
+            self.guards.append('cfg_save_auto 0 (cl, read back at start)')
+            if not a.resume:
+                self.guards.append('map on the client refused')
             if a.map and not a.no_server:
                 self.connect()
         self.mark = {k: e.size() for k, e in self.engines.items()}
+
+    def snapshot(self) -> None:
+        self.before = listing(self.game / 'data')
+        # cfg_save_auto 0 stops the automatic write only: an explicit cfg_save (hud_edit's
+        # save runs one) still writes this session's window and fps values into the owner's
+        # config. So keep the bytes; shutdown keeps the copy if they changed.
+        self.bak.mkdir(parents=True)
+        for p in sorted(self.game.glob('*.cfg')):
+            shutil.copy2(p, self.bak / p.name)
+            self.cfgs[p] = sha(self.bak / p.name)
+        self.snapped = True
 
     def launch(self, key: str, argv: list) -> None:
         if not Path(argv[0]).is_file():
@@ -329,7 +378,6 @@ class Session:
         log = self.game / 'logs' / f'{self.tag}_{key}.log'
         eng = self.engines[key] = Engine(key, argv, self.root, log, self.policy == 'free')
         marker = 'BRIDGE-READY-' + secrets.token_hex(4)
-        t0 = time.monotonic()
         while True:
             # Re-sent until echoed: a line the client reads while it is still starting
             # is dropped without a word (measured: one early send, 40 s, no echo).
@@ -337,8 +385,8 @@ class Session:
             r = self.poll(key, f'^{marker}$', 0)
             if r['verdict'] == 'match':
                 break
-            if r['verdict'] == 'exited' or time.monotonic() - t0 >= self.a.boot_timeout:
-                r['secs'] = time.monotonic() - t0
+            if r['verdict'] == 'exited' or time.monotonic() >= self.deadline:
+                r['secs'] = time.monotonic() - self.t0
                 raise Boot(f'{key} never echoed the ready marker: {self.why(r)}; log {log}')
 
     def expect(self, key: str, lines: list, pattern: str, why: str) -> dict:
@@ -354,13 +402,13 @@ class Session:
         cl, sv = self.engines['cl'], self.engines['sv']
         svmark, clmark = sv.size(), cl.size()
         cl.send(f'connect 127.0.0.1:{self.port}')
-        r = self.wait('sv', r'^client .* connected$', svmark, self.a.boot_timeout)
+        r = self.wait('sv', r'^client .* connected$', svmark, max(1, self.deadline - time.monotonic()))
         if r['verdict'] != 'match':
             raise Boot(f'the server never logged the connection: {self.why(r)}')
         # The join lines are behind a lobby setting, and the server QC answers cmd viewpos
         # BEFORE the spawn with an unplaced body (measured: 0 0 0 twice, then the spawn point
         # 4 s later). So ask until the body is somewhere.
-        t0, zero = time.monotonic(), None
+        zero = None
         while True:
             clmark = cl.size()
             cl.send('cmd viewpos')
@@ -375,8 +423,8 @@ class Session:
                     self.spawn = 'NOT PROVEN, the body is still at the origin: ' + r['line']
                     break
                 time.sleep(0.5)                 # an answer is instant; do not flood the console
-            elif r['verdict'] == 'exited' or now - t0 >= self.a.boot_timeout:
-                r['secs'] = now - t0
+            elif r['verdict'] == 'exited' or now >= self.deadline:
+                r['secs'] = now - self.t0
                 raise Boot(f'connected, but the server never answered cmd viewpos: {self.why(r)}')
         if not self.a.keep_menu:
             # The builtin menu is open from boot and hides the whole HUD stack (AGENT_NOTES).
@@ -439,6 +487,9 @@ class Session:
         if len(line.encode()) > room:
             raise ValueError(f'line is {len(line.encode())} bytes; the engine stdin buffer takes '
                              f'{room} -- split it')
+        if eng.key == 'cl' and not self.a.resume and LISTEN.search(line):
+            raise ValueError('a map on the client is a listen server on the owner\'s profile with '
+                             'run_resume 1; send it to the server (--sv), or start with --resume')
         if not eng.alive():
             raise ValueError(f'{eng.key} has exited, rc {eng.proc.returncode}')
         self.mark = {k: e.size() for k, e in self.engines.items()}
@@ -554,6 +605,8 @@ class Session:
         return {'ok': True, 'window': state, 'foreground': fg}
 
     def cfg_changed(self) -> list:
+        if not self.snapped:                    # nothing to compare with; shutdown says so
+            return []
         now = {p: sha(p) for p in sorted(self.game.glob('*.cfg'))}
         return sorted(str(p) for p in set(now) | set(self.cfgs) if now.get(p) != self.cfgs.get(p))
 
@@ -574,25 +627,38 @@ class Session:
                     if key == 'cl':
                         eng.send('cfg_save_auto 0')     # quit writes the config when it is on
                     eng.send('quit')
+                    how = 'quit'
+                except ValueError as e:                 # not reading, or its stdin is gone
+                    how = f'could not be told to quit ({e})'
+                try:
                     eng.proc.wait(20)
-                    ends[key] = f'quit, rc {eng.proc.returncode}'
+                    ends[key] = f'{how}, rc {eng.proc.returncode}'
                 except subprocess.TimeoutExpired:
                     eng.proc.terminate()
-                    eng.proc.wait(10)
-                    ends[key] = 'did not quit in 20 s; TERMINATED'
-                except OSError as e:
-                    eng.proc.wait(10)
-                    ends[key] = f'exited as quit was sent ({e}), rc {eng.proc.returncode}'
+                    try:
+                        eng.proc.wait(10)
+                        ends[key] = f'{how}; still up after 20 s; TERMINATED'
+                    except subprocess.TimeoutExpired:
+                        ends[key] = f'{how}; TERMINATED but pid {eng.proc.pid} is STILL ALIVE'
             else:
                 ends[key] = f'had already exited, rc {eng.proc.returncode}'
-            try:
-                eng.proc.stdin.close()
-            except OSError as e:
-                notes.append(f'{key} stdin close: {e}')
+            if not eng.alive():                 # closing under a blocked write would hang here
+                try:
+                    eng.proc.stdin.close()
+                except OSError as e:
+                    notes.append(f'{key} stdin close: {e}')
         made = [e.log for e in self.engines.values() if e.log.exists()] + \
                [p for p in self.shots if p.exists()]
         rep = {'ok': True, 'ends': ends, 'notes': notes, 'cfg_changed': self.cfg_changed(),
-               'focus_lines': [], 'purged': [], 'purge_errors': []}
+               'cfg_backup': '', 'focus_lines': [], 'purged': [], 'purge_errors': []}
+        if not self.snapped:
+            notes.append('the configs were never snapshotted, so nothing is known about them')
+        if rep['cfg_changed']:
+            rep['cfg_backup'] = str(self.bak)
+        elif self.bak.is_dir():
+            for p in self.cfgs:
+                (self.bak / p.name).unlink(missing_ok=True)
+            self.bak.rmdir()
         if 'cl' in self.engines:
             rep['focus_lines'] = [raw for text, raw, _ in self.engines['cl'].read(0) if '[focus]' in text]
         if self.before is not None:
@@ -643,7 +709,11 @@ class Session:
             time.sleep(5)
             if self.a.idle and time.monotonic() - self.last > self.a.idle * 60:
                 print(f'idle {self.a.idle} min: stopping', flush=True)
-                print(json.dumps(self.op_stop({}), indent=1), flush=True)
+                rep = self.op_stop({})
+                print(json.dumps(rep, indent=1), flush=True)
+                if troubled(rep) or any(rep.get('data', {}).values()):
+                    # Nobody is reading stdout, and the next start truncates the daemon log.
+                    (STATE / f'{self.tag}.idle-stop.json').write_text(json.dumps(rep, indent=1))
                 finish(self.a.name, 0)
 
 
@@ -666,9 +736,23 @@ def save_state(name: str, st: dict) -> None:
 
 
 def finish(name: str, rc: int) -> None:
-    state_path(name).unlink(missing_ok=True)
+    st = load_state(name)
+    if st and st['pid'] == os.getpid():         # never another daemon's
+        state_path(name).unlink(missing_ok=True)
     sys.stdout.flush()
     os._exit(rc)
+
+
+def troubled(rep: dict) -> bool:
+    """A stop report that must not read as a clean exit."""
+    return bool(rep['cfg_changed'] or rep['purge_errors']
+                or any('TERMINATED' in how for how in rep['ends'].values()))
+
+
+def kept(name: str) -> list:
+    """What earlier sessions of this name left for the owner to read."""
+    tag = re.compile(rf'bridge_{re.escape(name)}_\d{{8}}T\d{{6}}\.')
+    return sorted(p for p in STATE.iterdir() if tag.match(p.name)) if STATE.is_dir() else []
 
 
 def cmd_serve(a: argparse.Namespace) -> int:
@@ -710,7 +794,8 @@ def cmd_serve(a: argparse.Namespace) -> int:
 def call(a: argparse.Namespace, req: dict) -> dict:
     st = load_state(a.name)
     if not st:
-        raise NoSession(f"no bridge session '{a.name}' -- start one")
+        old = ''.join(f'\n  kept from an earlier session: {p}' for p in kept(a.name))
+        raise NoSession(f"no bridge session '{a.name}' -- start one{old}")
     if st['phase'] != 'ready':
         raise NoSession(f"session '{a.name}' is {st['phase']}: {st.get('reason', 'still launching')}")
     try:
@@ -718,7 +803,7 @@ def call(a: argparse.Namespace, req: dict) -> dict:
     except (OSError, AuthenticationError) as e:
         gone = {k: pid_alive(p) for k, p in {'daemon': st['pid'], **st['engines']}.items()}
         raise NoSession(f"session '{a.name}' did not answer ({type(e).__name__}: {e}); "
-                        f'processes alive: {gone}. `stop` clears the stale state.')
+                        f'processes alive: {gone}')
     with conn:
         conn.send_bytes(json.dumps(req).encode())
         rep = json.loads(conn.recv_bytes())
@@ -749,6 +834,8 @@ def cmd_start(a: argparse.Namespace) -> int:
         return 2
     state_path(a.name).unlink(missing_ok=True)
     STATE.mkdir(parents=True, exist_ok=True)
+    for p in kept(a.name):
+        print(f'note: kept from an earlier session, delete it once read: {p}')
     dlog = STATE / f'{a.name}.daemon.log'
     flags = (subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP) if os.name == 'nt' else 0
     with dlog.open('w') as out:
@@ -756,10 +843,13 @@ def cmd_start(a: argparse.Namespace) -> int:
                                    'serve', *launch_args(a)], stdin=subprocess.DEVNULL, stdout=out,
                                   stderr=subprocess.STDOUT, creationflags=flags,
                                   start_new_session=(os.name != 'nt'))
+    t0 = time.monotonic()
     while True:
         st = load_state(a.name)
         if st and st['phase'] == 'ready':
-            return show_status(call(a, {'op': 'status'}), a)
+            r = call(a, {'op': 'status'})
+            show_status(r, a)
+            return 1 if r['spawn'].startswith('NOT PROVEN') else 0
         if st and st['phase'] == 'failed':
             print(f"start failed: {st['reason']}")
             for f in st.get('files', []):
@@ -768,6 +858,9 @@ def cmd_start(a: argparse.Namespace) -> int:
             return 2
         if daemon.poll() is not None:
             print(f'daemon exited rc {daemon.returncode} before it was ready; see {dlog}')
+            return 2
+        if time.monotonic() - t0 > a.boot_timeout + 60:     # its own boot is bounded; this is a backstop
+            print(f'daemon pid {daemon.pid} is still booting past its timeout; see {dlog}')
             return 2
         time.sleep(0.2)
 
@@ -887,21 +980,42 @@ def cmd_stop(a: argparse.Namespace) -> int:
     except NoSession as e:
         if not st:
             raise
-        # The engines quit by themselves when the daemon's end of their stdin closes.
-        alive = {k: pid_alive(p) for k, p in {'daemon': st['pid'], **st['engines']}.items()}
-        print(f'{e}\nclearing stale state; processes alive: {alive}')
+        if pid_alive(st['pid']):
+            # Booting, or it answered with an error: the session is still its daemon's, and
+            # clearing the state here let a second start launch two more engines beside it.
+            print(f'{e}\nits daemon (pid {st["pid"]}) is alive, so the state stays; a booting one '
+                  f'gives up at --boot-timeout. State: {state_path(a.name)}')
+            return 2
+        alive = {k: pid_alive(p) for k, p in st['engines'].items()}
+        print(f'{e}\nthe daemon is gone, clearing its state. Engines alive: {alive} (they quit '
+              f'by themselves when its end of their stdin closes)')
         state_path(a.name).unlink(missing_ok=True)
         return 2
     if a.json:
         print(json.dumps(r, indent=1))
-        return 1 if r['purge_errors'] else 0
+    else:
+        show_stop(r)
+    t0 = time.monotonic()
+    while pid_alive(st['pid']) and time.monotonic() - t0 < 10:     # it holds its log open
+        time.sleep(0.1)
+    try:
+        (STATE / f'{a.name}.daemon.log').unlink(missing_ok=True)
+    except OSError as e:
+        print(f'note: daemon log kept ({e})')
+    return 1 if troubled(r) else 0
+
+
+def show_stop(r: dict) -> None:
     for key, how in r['ends'].items():
         print(f'{key}: {how}')
     for note in r['notes']:
         print('note:', note)
     for p in r['cfg_changed']:
         print('CONFIG CHANGED DURING THE SESSION:', p)
-    if not r['cfg_changed']:
+    if r['cfg_changed']:
+        print(f"  the files as they were at start: {r['cfg_backup']}\n  This session, your own "
+              f'game or a peer wrote them: compare before copying anything back.')
+    else:
         print('gamedir *.cfg: unchanged')
     if r['focus_lines']:
         print(f"{len(r['focus_lines'])} [focus] lines in the client log, last: {r['focus_lines'][-1]}")
@@ -919,14 +1033,6 @@ def cmd_stop(a: argparse.Namespace) -> int:
         print('PURGE FAILED:', e)
     for p in r['files']:
         print('left:', p)
-    t0 = time.monotonic()
-    while pid_alive(st['pid']) and time.monotonic() - t0 < 10:     # it holds its log open
-        time.sleep(0.1)
-    try:
-        (STATE / f'{a.name}.daemon.log').unlink(missing_ok=True)
-    except OSError as e:
-        print(f'note: daemon log kept ({e})')
-    return 1 if r['purge_errors'] else 0
 
 
 def main() -> int:
@@ -946,12 +1052,12 @@ def main() -> int:
         p.add_argument('--port', type=int, default=0, help='server UDP port; 0 picks a free one')
         p.add_argument('--size', default='1280x720', help='client window, WxH')
         p.add_argument('--idle', type=float, default=30, help='stop after this many minutes with no request; 0 never')
-        p.add_argument('--boot-timeout', type=float, default=120)
+        p.add_argument('--boot-timeout', type=float, default=120, help='seconds for the whole start')
         p.add_argument('--no-server', action='store_true', help='client only (menus)')
         p.add_argument('--no-client', action='store_true')
         p.add_argument('--window', choices=WINDOW, default='back', help=WINDOW_HELP)
         p.add_argument('--sound', action='store_true')
-        p.add_argument('--resume', action='store_true', help='leave run_resume alone (the session may then park over or drop data/resume/<map>)')
+        p.add_argument('--resume', action='store_true', help='leave run_resume alone and allow a map on the client (the session may then park over or drop data/resume/<map>)')
         p.add_argument('--keep-menu', action='store_true', help='do not menu_restart + ui_close after the spawn')
         p.set_defaults(fn=cmd_start if name == 'start' else cmd_serve)
     p = sub.add_parser('send', help='one console line')
@@ -994,13 +1100,21 @@ def main() -> int:
             ap.error('nothing to launch')
         if a.map and a.no_server:
             ap.error('--map needs the dedicated server (prediction, and the run_resume guard)')
+        if not (a.map or a.no_server or a.resume):
+            ap.error('the server needs --map: run_resume 0 can only be set once its QC has '
+                     'loaded (--resume starts one without the guard)')
         if not re.fullmatch(r'\d+x\d+', a.size.lower()):
             ap.error('--size is WxH')
+    for stream in (sys.stdout, sys.stderr):
+        # Log text is not always cp1252, and an encode error would exit 1: a "negative answer".
+        stream.reconfigure(errors='backslashreplace')
     try:
         return a.fn(a)
     except NoSession as e:
         print(e)
-        return 2
+    except (EOFError, OSError) as e:
+        print(f'the bridge went away mid-request ({type(e).__name__}: {e})')
+    return 2
 
 
 if __name__ == '__main__':
