@@ -13,7 +13,9 @@ to be wrong.
 
 ## 00. 10 Oct — names you can read (Patch 620)
 
-Published 10 Oct; not on an install or the Pi as this is written.
+Published 10 Oct 17:37 UTC (04:37 on the 11th here). Live since 17:47 UTC on
+both installs (csprogs, menu.dat) and 17:48 UTC on all twelve lobbies
+(csprogs). Each replaced file has a `.prev` beside it.
 
 You asked about the glitched names, the bitmap font on the lines and the label
 that jumps. Measured first: on five Momentum boards 74 of 845 names hold
