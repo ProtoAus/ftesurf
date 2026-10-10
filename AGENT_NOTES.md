@@ -4526,6 +4526,22 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ### Run graphs on ImPlot (Patch 614) — 2026-10-10
 
+- **DEPLOYED 2026-10-10 15:03 to 15:07 UTC (FTESurf `56d8582`, engine
+  `a67cebe1e`, tag `patch-614`).** Both installs: the client `7c97e69b27cad2b2`,
+  C:\FTEQuake's server `1c338f6407b15489`, the five plugins (ui_imgui
+  `69929fe57fa06826`, hl2 `4406ae6a98515b7e`), csprogs.dat `ce6397a5a3de525e`,
+  menu.dat `19874c5a21619d1b`; qwprogs.dat not written (`199ffdd83dec9651`).
+  `.prev` beside each is what it replaced. The Pi: `build.ps1 -Pi` from a clean
+  worktree, 0 players, 12 lobbies restarted 15:06:34 to 15:06:42 UTC; read back
+  csprogs `ce6397a5`, qwprogs unchanged, `.prev` Patch 610's pair. Lobby 2
+  served `ce6397a5` to a fresh client running a copy of the installed exe.
+- THE PLUGIN IS NOT LOADED BY A NORMAL BOOT, AND NO ARM COULD HAVE SAID SO: each
+  one types `plug_load ui_imgui`. Found after the deploy, by asking what the
+  owner would see. In a rig with the real default.cfg and both DLLs beside the
+  exe, `plug_loaddefault` reads 3, `plug_list` says `fteplug_ui_imgui_x64.dll:
+  not loaded`, and `ui_imgui_status` is an unknown command until the plug_load.
+  The patch's notes said "where the plugin is installed"; they say "loaded" now.
+  When a feature rides on something optional, boot a plain rig and look.
 - THREE LAYERS, ONE AUTHORITY. QC (`cl_linegraph.qc`, the `lgn_*` block) owns the
   rows, the energy sum (`lgn_e`, 8192 rows a frame), the chips, the card and
   every number. The engine (`cl_plugin_ui_plot.inc`) copies rows out of QC memory

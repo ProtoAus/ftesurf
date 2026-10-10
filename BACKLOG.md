@@ -2582,6 +2582,12 @@ lextest.md. Left open, none of it a wrong action:
   - Stage D of ROADMAP 13 (a native ImGui graph) was asked for by Lex on 10
     Oct and is Patch 614.
 - **Patch 614, left open.** None is a wrong action.
+  - Nothing loads the plugin at boot. default.cfg loads only hl2, and with
+    `plug_loaddefault 3` a scan still lists `fteplug_ui_imgui_x64.dll: not
+    loaded` (measured in a rig, 10 Oct). So the native plots, like the native
+    scoreboard, want `plug_load ui_imgui` typed each session. One line in
+    default.cfg would do it for whoever has the DLL; it is Lex's call, asked
+    in lextest, because it also starts the plugin on every boot.
   - The plugin is not in the release ship set (`build.ps1 -Engine` copies it to
     the two development installs only), so a release player gets the QC plots.
     Shipping it is a release decision: the DLL, its MIT notices (Dear ImGui,

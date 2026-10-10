@@ -27,7 +27,8 @@ commit   a67cebe1ea3ac43c2e48794349ccbca3da7a1fb6
 tag      patch-614
 patch    615
 # Patch 614: the run-graph panel's two plots are drawn by the ui_imgui plugin on
-# ImPlot where the plugin is installed, and by QC as before where it is not.
+# ImPlot where the plugin is loaded (`plug_load ui_imgui`), and by QC as before
+# where it is not.
 # NativeUIPlot/1 hands a provider counted sample series out of QC memory; ImPlot
 # 1.0 is vendored beside Dear ImGui. Engine, plugin and csprogs. The client, the
 # server and all five plugins were rebuilt from one tree (tag patch-614, stamp
