@@ -105,6 +105,9 @@ int main(void)
 	unsigned int before, native_before, flush_before;
 	float invalidclip[3] = {NAN,INFINITY,3.4e38f};
 	unsigned int j;
+#ifdef PLUGUI_MODEL2_VERSION
+	CHECK(!Plug_NativeUI_ModelRegister2(NULL,0));
+#endif
 	currentplug=&plugins[0];
 	CHECK(!Plug_NativeUI_InputRegister(NULL,0));
 	CHECK(!Plug_NativeUI_ModelRegister(NULL,0));

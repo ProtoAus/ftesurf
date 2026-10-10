@@ -808,7 +808,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	print("FTESurf CSQC loaded\n");
 };
 
-void() CSQC_Shutdown = { };
+void() CSQC_Shutdown = { Scores_NativeClose(); };
 
 /*
   Forced view angles from the server -- svc_setangle, its relative form, and
@@ -1098,6 +1098,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (scanx >= 0) sui_style_mouse_focus = (scanx != 0);
 		if (chary >= 0) sui_style_key_focus = (chary != 0);
 		sui_style_focused = (sui_style_mouse_focus && sui_style_key_focus);
+		if (!sui_style_focused) Scores_NativeClose();
 		sui_tooltip_reset();
 	}
 	/*
@@ -1453,6 +1454,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	Trail_SaveAnswerFrame();
 	Trail_Frame();
 	Trail_RequestFrame();
+	Scores_NativeFrame(notmenu);
 	navfocus = (notmenu && !chat_typing && !UI_CursorHeld());
 	// notmenu excludes menus/windows, not the main console. Use its effective cursor.
 	if (checkbuiltin(getcursormode))

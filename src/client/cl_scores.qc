@@ -66,6 +66,7 @@ float  rec_sb_rowtag[SB_MAXROW];         // RT_*
 float  rec_sb_rowflags[SB_MAXROW];       // header `flags`, or -1 when absent
 float  rec_sb_rowver[SB_MAXROW];         // FTESURF-REC version
 float  rec_sb_rown;
+float  rec_sb_rowgen;            //Local generation, including same-path replacement.
 float  rec_sb_rowover;                   // files the leg had that would not fit
 
 /*
@@ -174,6 +175,12 @@ vector rec_sb_oscroll;           // the online list's own scroll position
 // definitions for readability rather than for any structural reason.
 void() Scores_Close;
 void() Scores_Status;
+void() Scores_NativeClose;
+void(float top) Scores_NativeReset;
+void(float visible) Scores_NativeFrame;
+float(vector p, vector sz) Scores_NativeDraw;
+float() Scores_NativePick;
+float(float evtype, float scanx, float chary, float devid) Scores_NativeInput;
 
 /*
   The three questions the rest of this file asks about the tab, in one place.
@@ -263,6 +270,33 @@ void() Scores_ForgetFinish =
 string() Scores_FinStyle =
 {
 	return (FS_RunClass(rec_sb_finflags) == RC_SEGMENT) ? "segmented" : "clean";
+};
+
+float() Scores_FinishedLeg =
+{
+	if (rec_sb_finticks <= 0) return FALSE;
+	if (rec_sb_leg < 0 || rec_sb_leg >= rec_sb_legn) return FALSE;
+	return (rec_sb_legtrack[rec_sb_leg] == rec_sb_fintrack &&
+		rec_sb_legnum[rec_sb_leg] == rec_sb_finleg);
+};
+
+float() Scores_FinishedOnline =
+{
+	if (!Scores_FinishedLeg()) return FALSE;
+	return !strcmp(Scores_StyleOf(), Scores_FinStyle());
+};
+
+float() Scores_StandingOutside =
+{
+	if (!Scores_FinishedOnline()) return FALSE;
+	if (ob_mine >= 0 || rec_sb_finrank <= 0 || ob_n <= 0) return FALSE;
+	return rec_sb_finrank > ob_rank[ob_n - 1];
+};
+
+float() Scores_OnlineSeekReady =
+{
+	if (!Scores_FinishedOnline()) return FALSE;
+	return (rec_sb_seek && !rec_sb_finwait && ob_state == OBS_OK && ob_q_gen == ob_gen);
 };
 
 void() Scores_ApplyFollow =
@@ -656,6 +690,7 @@ void(float leg) Scores_BuildRows =
 	local float h, n, i, r, cut, dot;
 	local string fn, base, tagw;
 
+	rec_sb_rowgen = rec_sb_rowgen + 1;
 	rec_sb_rown     = 0;
 	rec_sb_rowover  = 0;
 	rec_sb_best     = 0;
@@ -1419,12 +1454,7 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 	}
 
 	// Patch 357: on the finished leg, seek once to the finish just set.
-	fin = FALSE;
-	if (rec_sb_finticks > 0)
-	if (rec_sb_leg >= 0)
-	if (rec_sb_legtrack[rec_sb_leg] == rec_sb_fintrack)
-	if (rec_sb_legnum[rec_sb_leg] == rec_sb_finleg)
-		fin = TRUE;
+	fin = Scores_FinishedLeg();
 	if (fin && rec_sb_seek && !Scores_IsOnline())
 	{
 		for (idx = 0; idx < rec_sb_rown; idx = idx + 1)
@@ -1793,18 +1823,9 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 
 	// Patch 357.  The player's own row, pinned under the list when the finish
 	// just set ranks past the page (OB_MAXROW); then the one-time seek to it.
-	pinned = FALSE;
-	if (ob_mine < 0 && rec_sb_finrank > 0 && ob_n > 0)
-	if (track == rec_sb_fintrack && leg == rec_sb_finleg)
-	if (!strcmp(Scores_StyleOf(), Scores_FinStyle()))
-	if (rec_sb_finrank > ob_rank[ob_n - 1])
-	{
-		pinned = TRUE;
-		rs_y = rs_y - rec_sb_rowh;
-	}
-	if (rec_sb_seek && !rec_sb_finwait && ob_state == OBS_OK && ob_q_gen == ob_gen)
-	if (track == rec_sb_fintrack && leg == rec_sb_finleg)
-	if (!strcmp(Scores_StyleOf(), Scores_FinStyle()))
+	pinned = Scores_StandingOutside();
+	if (pinned) rs_y = rs_y - rec_sb_rowh;
+	if (Scores_OnlineSeekReady())
 	{
 		if (ob_mine >= 0)
 			rec_sb_oscroll_y = max(0, (ob_mine - 2) * rec_sb_rowh);
@@ -2201,7 +2222,7 @@ void(vector scr) Scores_Draw =
 {
 	local vector p, sz, rp, rs, lp;
 	local float w, h, x0, y0, lw, idx, hot, on, tick, pick;
-	local float scale, chipw, chiph, pad, legw, ytabs, yhead, footh;
+	local float scale, chipw, chiph, pad, legw, ytabs, yhead, footh, native;
 	local string s, rid;
 
 	if (!rec_sb_open && !sc_held)
@@ -2291,6 +2312,7 @@ void(vector scr) Scores_Draw =
 
 	if (zone_count <= 0)
 	{
+		Scores_NativeClose();
 		Scores_Text([x0 + pad, y0 + pad * 2 + rec_sb_sztitle], rec_sb_szhead,
 		            "this map has no zone file, so it has no legs and no times",
 		            SBC_DIM, 1);
@@ -2462,69 +2484,89 @@ void(vector scr) Scores_Draw =
 	if (Scores_ColX(rec_sb_cols) > rs_x - pad) rec_sb_cols = SBX_TAG;
 	if (Scores_ColX(rec_sb_cols) > rs_x - pad) rec_sb_cols = SBX_DATE;
 
-	Font_Set(ui_font_ui);
-	Scores_Text([rp_x + Scores_ColX(SBX_RANK), rp_y], rec_sb_szhead, "#", SBC_DIM, 1);
-	Scores_Text([rp_x + Scores_ColX(SBX_TIME), rp_y], rec_sb_szhead, "time", SBC_DIM, 1);
-	Scores_Text([rp_x + Scores_ColX(SBX_DELTA), rp_y], rec_sb_szhead, "delta", SBC_DIM, 1);
-	Scores_Text([rp_x + Scores_ColX(SBX_OWNER), rp_y], rec_sb_szhead, "player", SBC_DIM, 1);
+	native = Scores_NativeDraw(rp, [rs_x, rs_y + rec_sb_szhead + pad * 0.5]);
+	if (!native)
+	{
+		Font_Set(ui_font_ui);
+		Scores_Text([rp_x + Scores_ColX(SBX_RANK), rp_y], rec_sb_szhead, "#", SBC_DIM, 1);
+		Scores_Text([rp_x + Scores_ColX(SBX_TIME), rp_y], rec_sb_szhead, "time", SBC_DIM, 1);
+		Scores_Text([rp_x + Scores_ColX(SBX_DELTA), rp_y], rec_sb_szhead, "delta", SBC_DIM, 1);
+		Scores_Text([rp_x + Scores_ColX(SBX_OWNER), rp_y], rec_sb_szhead, "player", SBC_DIM, 1);
 
-	/*
-	  THE LAST THREE HEADINGS ARE WHERE THE TWO SOURCES STOP AGREEING.
+		/*
+		  THE LAST THREE HEADINGS ARE WHERE THE TWO SOURCES STOP AGREEING.
 
-	  An online row has no `date`.  surfd stores a submission timestamp, but
-	  this client has no clock it may trust against it -- so the column is an
-	  AGE, computed from the reply's own `t` minus the row's own `when`, both
-	  server-side.  Calling that "date" would be a heading that lies about its
-	  units, and a player would read "3d" as a day of the month.
-	*/
-	/*
-	  BUILD 68: `replay` IS AN ONLINE HEADING ONLY, AND THE LOCAL BOARD KEEPS
-	  THE GAP RATHER THAN FILLING IT.
+		  An online row has no `date`.  surfd stores a submission timestamp, but
+		  this client has no clock it may trust against it -- so the column is an
+		  AGE, computed from the reply's own `t` minus the row's own `when`, both
+		  server-side.  Calling that "date" would be a heading that lies about its
+		  units, and a player would read "3d" as a day of the month.
+		*/
+		/*
+		  BUILD 68: `replay` IS AN ONLINE HEADING ONLY, AND THE LOCAL BOARD KEEPS
+		  THE GAP RATHER THAN FILLING IT.
 
-	  One column table serves both tabs, so the local board now has seven blank
-	  characters between `player` and `date`.  Filling them (RT_LOBBY -> "none",
-	  everything else -> "watch") would be the unification, and it is deliberately
-	  NOT done here: every local row's recording is on this disk already, so the
-	  column would answer a question nobody on that tab is asking, and the answer
-	  would be "yes" on essentially every row.  A heading over a column that says
-	  the same thing throughout is worse than a gap, which at least reads as
-	  "this tab does not use this".  Same reasoning the line below already gives
-	  for leaving the local tag column unlabelled.
-	*/
-	if (rec_sb_cols > SBX_REP)
-	if (Scores_IsOnline())
-		Scores_Text([rp_x + Scores_ColX(SBX_REP), rp_y], rec_sb_szhead,
-		            "replay", SBC_DIM, 1);
+		  One column table serves both tabs, so the local board now has seven blank
+		  characters between `player` and `date`.  Filling them (RT_LOBBY -> "none",
+		  everything else -> "watch") would be the unification, and it is deliberately
+		  NOT done here: every local row's recording is on this disk already, so the
+		  column would answer a question nobody on that tab is asking, and the answer
+		  would be "yes" on essentially every row.  A heading over a column that says
+		  the same thing throughout is worse than a gap, which at least reads as
+		  "this tab does not use this".  Same reasoning the line below already gives
+		  for leaving the local tag column unlabelled.
+		*/
+		if (rec_sb_cols > SBX_REP)
+		if (Scores_IsOnline())
+			Scores_Text([rp_x + Scores_ColX(SBX_REP), rp_y], rec_sb_szhead,
+			            "replay", SBC_DIM, 1);
 
-	if (rec_sb_cols > SBX_DATE)
-		Scores_Text([rp_x + Scores_ColX(SBX_DATE), rp_y], rec_sb_szhead,
-		            Scores_IsOnline() ? "age" : "date", SBC_DIM, 1);
-	if (rec_sb_cols > SBX_KIND)
-		Scores_Text([rp_x + Scores_ColX(SBX_KIND), rp_y], rec_sb_szhead, "run", SBC_DIM, 1);
-	// The local board has never labelled its last column and does not start
-	// now: `latest` and `lobby` say what they are.  "no ruleset" does not.
-	if (rec_sb_cols > SBX_TAG)
-	if (Scores_IsOnline())
-		Scores_Text([rp_x + Scores_ColX(SBX_TAG), rp_y], rec_sb_szhead, "why", SBC_DIM, 1);
-	if (rec_sb_cols > SBX_LINE)
-		Scores_Text([rp_x + Scores_ColX(SBX_LINE), rp_y], rec_sb_szhead, "line", SBC_DIM, 1);
+		if (rec_sb_cols > SBX_DATE)
+			Scores_Text([rp_x + Scores_ColX(SBX_DATE), rp_y], rec_sb_szhead,
+			            Scores_IsOnline() ? "age" : "date", SBC_DIM, 1);
+		if (rec_sb_cols > SBX_KIND)
+			Scores_Text([rp_x + Scores_ColX(SBX_KIND), rp_y], rec_sb_szhead, "run", SBC_DIM, 1);
+		// The local board has never labelled its last column and does not start
+		// now: `latest` and `lobby` say what they are.  "no ruleset" does not.
+		if (rec_sb_cols > SBX_TAG)
+		if (Scores_IsOnline())
+			Scores_Text([rp_x + Scores_ColX(SBX_TAG), rp_y], rec_sb_szhead, "why", SBC_DIM, 1);
+		if (rec_sb_cols > SBX_LINE)
+			Scores_Text([rp_x + Scores_ColX(SBX_LINE), rp_y], rec_sb_szhead, "line", SBC_DIM, 1);
 
-	/*
-	  The tick this map's server is actually running, which is what every LOCAL
-	  time on screen is divided by.  Read once per frame rather than per row.
+		/*
+		  The tick this map's server is actually running, which is what every LOCAL
+		  time on screen is divided by.  Read once per frame rather than per row.
 
-	  The online rows deliberately do NOT use it: each carries the rate it was
-	  actually set at, which is the case surfd ranks by milliseconds to get
-	  right.  Formatting a foreign run against this client's tickrate would
-	  print a time that disagrees with the rank printed beside it.
-	*/
-	tick = Timer_Tick();
-	pick = -1;
+		  The online rows deliberately do NOT use it: each carries the rate it was
+		  actually set at, which is the case surfd ranks by milliseconds to get
+		  right.  Formatting a foreign run against this client's tickrate would
+		  print a time that disagrees with the rank printed beside it.
+		*/
+		tick = Timer_Tick();
+		pick = -1;
 
-	if (Scores_IsOnline())
-		pick = Scores_DrawOnlineRows(rp, rs, pad);
+		if (Scores_IsOnline())
+			pick = Scores_DrawOnlineRows(rp, rs, pad);
+		else
+			pick = Scores_DrawLocalRows(rp, rs, tick, pad);
+	}
 	else
-		pick = Scores_DrawLocalRows(rp, rs, tick, pad);
+	{
+		pick = Scores_NativePick();
+		// `scores olpick` is consumed by the legacy online draw, which did not run.
+		if (Scores_IsOnline())
+		{
+			if (pick < 0)
+			if (rec_sb_olpick > 0)
+			if (rec_sb_olpick <= ob_n)
+			{
+				pick = rec_sb_olpick - 1;
+				print(sprintf("scores: olpick row %g\n", pick));
+			}
+			rec_sb_olpick = 0;
+		}
+	}
 
 	// ---- the footer ------------------------------------------------------
 	Font_Set(ui_font_ui);
@@ -2697,6 +2739,7 @@ void() Scores_Close =
 	  Before the `rec_sb_open` test, deliberately: Scores_Close is called on
 	  paths where the board is already shut and the intent must still go.
 	*/
+	Scores_NativeClose();
 	rec_sb_wantrep = 0;
 	if (rec_sb_momwant) Online_MomClear();
 	rec_sb_momwant = FALSE;
@@ -2737,6 +2780,7 @@ void() Scores_Open =
 {
 	if (rec_sb_open)
 		return;
+	Scores_NativeReset(!sc_held);
 	rec_sb_open = TRUE;
 	// Re-read the folder every time it opens; a pin from the hold keeps the
 	// player's place (-2, Patch 357).
@@ -2767,6 +2811,7 @@ void() Scores_Toggle =
 */
 float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 {
+	local float native;
 	/*
 	  PATCH 341: THE PIN.  MOUSE2 while the held board is up toggles the pinned
 	  state -- the one press that makes the scoreboard stay.  Swallowed, so the
@@ -2797,6 +2842,9 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 
 	if (!rec_sb_open && !sc_held)
 		return FALSE;
+	native = Scores_NativeInput(evtype, scanx, chary, devid);
+	if (native < 0) return FALSE;
+	if (native > 0) return TRUE;
 
 	if (evtype == IE_MOUSEABS)
 	{
@@ -2907,6 +2955,7 @@ float(string cmd) Scores_ConsoleCommand =
 {
 	if (argv(0) == "+showscores")
 	{
+		if (!sc_held) Scores_NativeReset(TRUE);
 		sc_held = TRUE;
 		return TRUE;
 	}
@@ -3314,6 +3363,8 @@ void() Scores_RegisterCvars =
 	registercommand("scores");
 	// Patch 437: the harness handle, mirrored per frame below.
 	registercvar("sb_ln_lineleg", "0");
+	registercvar("ui_native_scores", "0", CVAR_ARCHIVE);
+	registercvar("ui_native_scores_font", "13", CVAR_ARCHIVE);
 
 	rec_sb_legbuilt = -1;
 	rec_sb_legzoned = FALSE;

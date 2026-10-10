@@ -168,6 +168,7 @@ client/cl_spectate.qc
 // Watch_Open, and after cl_timer.qc because every time on it is formatted at
 // Timer_Tick's rate.  Stage 2 of build 24.
 client/cl_scores.qc
+client/cl_scores_native.qc
 client/cl_portal.qc
 // AFTER cl_scores.qc, which owns Scores_LastOf -- the rank scan parses the same
 // <ticks>_<tag> filenames the leaderboard does and there is no second copy of

@@ -11,6 +11,36 @@ to be wrong.
 
 ---
 
+## 00. 10 Oct — opt-in native scoreboard table (Patch 605)
+
+Off by default. In the console: `ui_native_scores 1`, then TAB (peek) or pin the
+board; `ui_native_scores 0` puts the old table back. `ui_native_scores_font
+13|16|20|24` picks the physical pixel size. Only the ranked table is native;
+tabs, filters, leg list and the room list are still the old panel. If anything
+goes wrong it should fall back to the old table for that gesture, not break.
+If the table never changes, type `ui_imgui_status`: "Unknown command" means the
+plugin is not loaded; `plug_load ui_imgui` loads it.
+
+Machines measured: this laptop, GL/D3D11/Vulkan, synthetic rows. Judge:
+
+- **Is it readable at all?** The font is ImGui's built-in 13 px bitmap face,
+  scaled in steps. It sits beside the panel's own font and looks like a
+  different program. Which size, if any, is acceptable at your resolution?
+- **24 rows a page against ~19.5.** Denser, with a scrollbar and Previous/Next.
+  Too dense? Is paging by button better or worse than the old scroll?
+- **Mouse feel.** Only the player name is a click target (the old table takes
+  the whole row). Hover, press-release on the name, the line checkbox, the wheel.
+  A click is dropped if another row's label changes while you hold it.
+- **Names.** Non-Latin names show as `?` (the old table shows boxes). Colour
+  codes are stripped.
+- **A real board.** Everything measured used local `.rec` rows or a loopback
+  HTTP board. Open the online tab on a populated map, page to the end, follow
+  your own row after a finish, pin from a peek and check it stays on your page.
+- **DPI / a second machine.** Nothing here was tried at a Windows display scale
+  other than this laptop's, on another GPU, or in fullscreen.
+
+Not a ranking, recorder or evidence change. BACKLOG.md lists the known quirks.
+
 ## 00. 8 Oct — bounded operator history/log/plot display (Patches 590–592)
 
 Backend deployed and live read controls verified at 2026-10-08T10:16:14Z.

@@ -55,7 +55,10 @@ static void Publish(float h,float revision)
 	CHECK(Widget(h,1,12,91,1,0,"plain text"));
 	CHECK(Call(PF_ui_native_model_commit,&menu,h));
 }
-int main(void)
+#ifndef P601_MAIN
+#define P601_MAIN main
+#endif
+int P601_MAIN(void)
 {
 	pluguiservice_t service={sizeof(service),PLUGUI_VERSION,PLUGUI_CAP_INDEXED2D,Open,Draw,Close};
 	pluguiinputservice_t input={sizeof(input),PLUGUI_INPUT_VERSION,PLUGUI_INPUT_CAP_EVENTS,Input,Poll};

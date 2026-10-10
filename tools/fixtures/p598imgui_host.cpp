@@ -11,6 +11,10 @@ static bool failcreate, failsubmit;
 static pluguiservice_t service;
 static pluguiinputservice_t inputservice;
 static pluguimodelservice_t modelservice;
+#ifdef PLUGUI_MODEL2_VERSION
+static pluguimodelservice2_t modelservice2;
+static bool model2available = true;
+#endif
 static bool modelavailable = true;
 static bool inputavailable = true;
 static std::set<plugmeshtex_t> live;
@@ -70,6 +74,14 @@ static qboolean QDECL ExportInterface(const char *name, void *p, size_t size)
 		if (!modelavailable) return qfalse;
 		std::memcpy(&modelservice,p,sizeof(modelservice)); return qtrue;
 	}
+#ifdef PLUGUI_MODEL2_VERSION
+	if (!std::strcmp(name,pluguimodelservice2_name))
+	{
+		Check(size == sizeof(modelservice2),"exact additive dense model service");
+		if (!model2available) return qfalse;
+		std::memcpy(&modelservice2,p,sizeof(modelservice2)); return qtrue;
+	}
+#endif
 	Check(!std::strcmp(name,pluguiservice_name) && size == sizeof(service),"exact exported service");
 	std::memcpy(&service,p,sizeof(service)); return qtrue;
 }
@@ -95,6 +107,7 @@ int main()
 	Check(!service.Open(&bad),"unsupported owner refuses"); bad = {0,GalleryMenu,3};
 	Check(!service.Open(&bad),"invalid VM refuses");
 	ImGuiContext *outside = ImGui::CreateContext();
+	ImGui::GetIO().IniFilename = nullptr; //The control context must not write imgui.ini into the cwd.
 	Check(service.Open(&menu),"menu opens");
 	Check(ImGui::GetCurrentContext() == outside,"open context restored");
 	Check(service.Open(&client),"client opens separately");

@@ -4118,6 +4118,147 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   reports stay exact. This bounded evidence does not resolve arbitrary native
   back-slab/triangle support or physical exit/classifier/render/hold acceptance.
 
+- **Native-score density continuation** (published as Patch 605; historical p603 harness IDs):
+  never enlarge the exact-size /1 struct in place. The additive /2 snapshot is
+  256 widgets (28684 bytes vs /1's7180); the two VM stage/current pairs occupy
+  114736 bytes. The scoreboard itself caps24 nine-cell rows + at most6 metadata
+  widgets (222), not an entire store. An optional capacity builtin negotiates
+  256; old engines/providers stay64 and six-row pages. Keep QC numeric/label
+  cache halves non-overlapping (1024 floats / 256 labels) and token/key halves
+  at24 each; changing only the native bound corrupts the old mirrors.
+  Equal-sized page replacement after vertical scrolling does NOT clamp back to
+  its start: the retained before control fails12 checks per index width. Reset
+  vertical scroll on first-row identity/count replacement, not every same-row
+  checkbox/font/geometry revision. The clipper's final seek stretches RowPosY2
+  over omitted rows; never use RowPosY2-RowPosY1 as a single-row mouse metric.
+  A tall13px viewport can fit all24; use a genuinely overflowing viewport or
+  larger physical font to prove wheel/scrollbar ACT. At different virtual scales
+  the inherited shell has different physical extents: compare glyph ink in a
+  fixed common region, not raw background or variable crop sizes. Legacy peek
+  is already clickable; test its acting cover separately from native passive
+  inertness and close that watch before pinning. Following own index31 lands
+  /1 on page30; it needs FIVE real Previous clicks to return to0, not the one
+  needed by /2 page24. The32-row HTTP case uses the real callback/parser/FindMine
+  (authoritative synthetic *phash, never ob_mine), and proves identical/reordered/
+  shrunk authority plus cold/warm replay identity. Final GL six-arm gate and69
+  read-only reader controls pass; 597 /2 bridge and2872 dense +3750 original
+  scoreboard checks per index width pass, native warnings fatal. One-factor
+  six-row source freeze leaves all3750 originals acting and fails exactly the
+  24-row acceptance. Evidence: C:/FTESurf-worktrees/imgui-dense-20261009T150334Z.
+  Backend, cost, endurance and publication gates closed in Patch 605
+  (`tools/p603scores.md`, top section); human font/DPI/device acceptance is
+  lextest.md's, and the default stays legacy.
+
+- **Native scoreboard, what the finish cost** (Patch 604/605, 2026-10-10):
+  - `.gitignore` drops `*.c`/`*.cpp`. Four host fixtures under `tools/fixtures/`
+    were on disk, built and green, and absent from the staged commit. After
+    adding a fixture, `git status --ignored -- tools/fixtures` and `git add -f`.
+  - A host fixture that calls `ImGui::CreateContext()` writes `imgui.ini` into
+    the cwd unless `GetIO().IniFilename = nullptr`. The plugin already does this;
+    two fixtures did not, and a stray `C:/FTESurf/imgui.ini` was theirs.
+  - A D3D11 `screenshot` taken before Patch 604 is upside down. Any older D3D11
+    capture, and any reader threshold tuned on one, is flipped. D3D9/D3D8 have
+    the same loop (BACKLOG).
+  - The Vulkan start crash was `Win32VK_EnumerateDevices` calling through an
+    uninitialised local when `vulkan-1.dll` was already loaded: 10 of 40 cold
+    starts on the unfixed client, 0 of 40 fixed (`tools/vkenum_coldstart.py`).
+    The renderer option list is the cvar `_vid_renderer_opts`.
+  - `PlugUI_LabelValid` refuses a control byte or malformed UTF-8 and one refused
+    label costs the whole table, so every label goes through
+    `Scores_NativePlain`. It has three modes because the QC string builtins do:
+    bytes (`utf8_enable 0`, the product default), code points, and code points
+    that `chr2str` writes back as raw bytes (`utf8_enable 1` with
+    `com_parseutf8 <= 0`). `tools/p603names.py` runs all of them.
+  - Hit-test a click against SUI's `_cursor_position`, never a private copy fed
+    only while the table paints: motion made while it is not painting is lost
+    and the next press acts on the old row (`dense_cursor` in `p603dense.py`;
+    the pre-fix source clicks row 8 instead of row 0).
+  - A product-source control for a NEW harness step needs the new fixtures on
+    the OLD product source: a detached worktree at the pre-fix commit with only
+    `tools/p603dense.py` and the two `p603*_runtime.qc` fixtures copied in.
+  - PRIVATE BYTES ARE NOT FLAT, SO A FITTED SLOPE READS THE COLLECTOR. QC temp
+    strings (one per `bufstr_get`/`sprintf`/`strcat`) are freed by a threshold
+    collector whose threshold only grows, so the client saw-tooths by tens to
+    hundreds of MiB with a board open. The first soak's "under 4 MiB" bounds
+    failed every arm, legacy included, and its leak control sat inside the
+    subject's noise: it measured nothing about leaks. Grade the FLOOR (min of
+    the last third minus min of the first) against a legacy arm, with enough
+    fast cycles that a per-cycle leak outgrows the teeth, and keep a leak arm
+    that must separate (`tools/p603soak.py`).
+  - What that soak did find: rebuilding ~220 labels every frame made 5.4 MiB/s
+    of garbage against legacy's 1.05. `Scores_NativeDraw` now rebuilds only when
+    its `scn_sig*` numbers change, an action was polled, or 0.1 s has passed.
+    Anything new that must show on the very next frame belongs in the signature.
+  - THE COLLECTOR IS IN THE CPU NUMBER TOO. The same held-open table, identical
+    pixels and plugin counters, read 822 us of QC UpdateView with the collector
+    off (`pr_gc_threaded 2`, diagnostic) and 1159 us with it cycling. Fresh
+    sessions with little garbage read low, long-churned ones high, legacy always
+    high. Say which regime an arm was in before comparing two medians; a "cost
+    regression" of a third of a millisecond with unchanged draw counts is this.
+  - Cost runs also just drift on this laptop: closed-phase QC UpdateView stepped
+    between cycles inside one arm in two of the first three runs (native +24%,
+    legacy -8%). Run the arms in both orders (`p603perf.py --arms absent legacy
+    native`) and read the per-cycle samples before believing a median.
+  - The harness reaps BACKGROUND shells when the laptop runs short of memory
+    (twice in this work: a `-Full -Jobs 8` engine build, then a soak's leak
+    arm, whose samples lived in the driver and were lost). A driver that holds
+    its measurements in memory until the last arm should write them per sample.
+
+- **Synthetic mouse controls need a single motion writer:** the P603 continuation
+  (2026-10-09) intermittently consumed both native button edges without acting a
+  watch/missing-replay control. Win32 `INS_Accumulate` feeds real absolute cursor
+  coordinates on inactive-mouse frames, racing the fixture's direct CSQC motion.
+  The test-only entrypoint wrapper now rejects hardware IE_MOUSEABS while its
+  synthetic motion calls the unchanged production input body. Corrected combined
+  local/HTTP/lifecycle matrix is zero-fault at both virtual scales. This is a
+  synthetic-event proof, explicitly NOT manual device/focus acceptance.
+- **Probe the completed draw, not the previous frame:** an HTTP callback can
+  publish OBS_READY immediately before a console probe while native painting still
+  describes the prior frame. P603 HTTP probes are queued and sampled after the
+  actual production CSQC_UpdateView, with a frame barrier before the next action.
+  Pending probe labels use strcmp against empty, not string-handle truthiness.
+  Keep completion, exact fields, duplicate checks and acting controls mandatory.
+- **A later control can mask an earlier wrong identity:** combining P603 lifecycle
+  failure-cover watches with the base suite let a later correct Row0 replay satisfy
+  the base watch's whole-log identity search. The wrong-identity reader mutant
+  caught it. Bind the identity search to that control's own action/probe interval;
+  the combined 25 base / 29 HTTP / 26 lifecycle reader controls now pass.
+- **Identical board bytes do not retain native click authority:** the actual
+  loopback HTTP scoreboard acting control (2026-10-09) replaced rows and advanced
+  `ob_epoch`, but a byte-equal model skipped commit and accepted a held old watch
+  on release. Track the online replacement epoch separately from display/context
+  keys: commit a fresh revision even for identical labels/IDs, without resetting
+  the selected page. Corrected two-scale native + legacy/no-plugin HTTP matrix
+  is zero-fault; genuine parser FindMine, cold replay/line/watch and queued/failed
+  demo POST controls act before held-refresh subjects. See `tools/p603scores.md`
+  and `tools/p603http.py`. These historical p603 harness names no longer reserve
+  product Patch 603. Loopback/synthetic identity is not public service, external
+  downloader, real-device or deployment acceptance.
+- **Map-clock state is not online-board readiness:** P603's finite parsed-board
+  acting gate stayed on legacy because native drawing tested `ui_mc_state != 2`.
+  `MapClock_Read` / `HUD_MapClockText` define that as the map-change clock (2 is
+  changing map), not consent/fetch readiness. Use the current board's valid leg
+  and `Online_Shows` before native allocation, like the legacy online table.
+  Wrong-body leg/style retain legacy explanations without native churn. The
+  corrected five-arm local/finish matrix `p603-scores-7sbn9_kl` is zero-fault;
+  its synthetic own-index seam is NOT Online_FindMine/HTTP/download acceptance.
+  A one-shot finish seek must be consumed only after native publish/draw succeeds,
+  or same-frame legacy fallback loses its reveal. See `tools/p603scores.md`.
+- **Native table children do not inherit passive input safety from their parent:**
+  P603's acting ImGui host found a watch action under a parent NoInputs window:
+  the table's scrolling child still processed widgets. Disable the passive
+  widget scope as well. Corrected 16/32-bit hosts pass 474 scoreboard assertions
+  each, including an acting pinned watch/line before cancellation subjects.
+  This is a local-table WIP finding, not roadmap C/device acceptance; checkpoint
+  `tools/p603scores.md`. Transient online readiness must precede native allocation,
+  or an unready board can open/upload/close a context every frame.
+- **Struct-vector member typos can silently crash git-6681 qcc:**
+  `_action_elements[i].size_y` returns 0xc0000005 with no compiler output;
+  `.size.y` is correct for the vector inside a struct. Single-factor P603
+  probes retain the crash while a float-index/dotted-member control compiles.
+  Do not blame untouched QC or infer that the index type caused this crash.
+  Runtime fixtures must prove watch/line ACTED before stale-click subjects;
+  `replay off`, not nonexistent `replay close`, releases the replay input owner.
 
 - **Native .inc scope is load-bearing:** ui_imgui/input.inc is included INSIDE
   FteImGui. Third-party and standard headers must stay at global scope in the
@@ -4156,6 +4297,49 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   p599/P599 is retained solely for preregistered rig continuity; concurrent
   verifier P599 remains intact. No production panel/progs/Pi/Build/default change.
 
+- **Native atlas release can happen after recording but before submitting a
+  Vulkan frame (2026-10-09 staging):** action polling follows NativeMesh draw;
+  replay watch can synchronously close the UI owner. Immediate Vulkan image/view/
+  sampler destruction then loses the device although the mesh API copied all CPU
+  arrays. Use the existing copied-handle VK_AtFrameEnd fence helper, as upload
+  replacement already does; do not retain QC/ImGui pointers or merely wait for
+  previously submitted GPU work. Native watch + renderer/plugin/VM/preference
+  teardown act with fenced destruction; legacy acts too. An unrelated pre-plugin
+  Vulkan cold-start 0xC0000005 remains in BACKLOG.md. See tools/p603scores.md.
+- **Native scoreboard physical fonts (2026-10-09 staging):** actual13/16/20/24
+  ProggyClean bakes share one bounded immutable atlas; optional sixth metadata
+  selects a bake without changing NativeUIModel/1. Default five-widget schema
+  stays compatible; the prior scoreboard provider rejects larger metadata and
+  gets gesture-latched usable legacy cover. Rebuild style from an immutable base,
+  not cumulative ScaleAllSizes; scale table/footer budgets, reserve wrapped text,
+  and reset held authority when a selected bake changes. Font/DPI/Unicode quality
+  and automatic physical-DPI selection remain separate, unaccepted gates.
+  FTE parses literal nan/inf cvar spellings as +/-0, so prove raw strings plus
+  observed numeric results rather than claiming QC received IEEE NaN/Inf.
+  ImGui preserves scroll on font changes: a drag control aimed at the old left
+  edge clicks the track, not the moved thumb. Reset with actual horizontal wheel
+  input before a thumb-drag control (no production scroll reset); require the
+  scrolled line action to ACT. Source-only variants must copy EVERY pinned vendor
+  manifest entry, including LICENSE.txt; an incomplete copy cannot be a negative
+  mechanism witness. Font source-only selector freeze fails actual-bake checks
+  while metadata/input controls stay green at both index widths. Font reader
+  probes/statuses/watch identities are interval-bound; PNG ink and virtual-scale
+  equality are measured separately from metadata. See tools/p603scores.md and
+  C:/FTESurf-worktrees/imgui-font-20261009T131505Z/CHECKPOINT.md.
+- **Cost/row-density controls must compare real displayed work:** NativeUIModel/1
+  has 64 widgets; six 9-cell rows plus header/standing/paging fit, ~20 rows do not.
+  A 24-row store showing native six vs legacy twenty is not a speed comparison.
+  Use six total rows, uninstrumented QC, spaced 100-frame CPU dumps, open/closed
+  native counters and table-pixel witnesses; reject missing/stale dumps instead
+  of lending a later sample. r_speeds total refresh includes its overlay and
+  pacing/present; process private bytes include screenshot/allocator transients.
+- **NoDeploy compiler success and wrapper success remain separate (2026-10-09):**
+  engine/client/server/plugins and all three QC programs can build, then the final
+  build.ps1 summary Get-Item still reads absent installed qwprogs.dat in a staging
+  tree and errors. Keep that wrapper failure, compiler output and artifact hashes;
+  do not deploy or claim exit zero. From Bash, a literal Windows .ps1 wrapper
+  avoids -Command path conversion; if the outer launch excludes MSYS conversion,
+  clear that exclusion inside pwsh before make passes POSIX paths to native GCC.
 - **P598 minimal ImGui is a diagnostic prerequisite, not migrated UI:** optional
   pinned 1.91.9b plugin exports only NativeUI/1 service + shutdown/status; separate
   MQC/CSQC contexts/atlases, no implicit ini/log files, no Tick/Menu/Sbar drawing.

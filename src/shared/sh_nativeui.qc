@@ -1,6 +1,13 @@
 //Optional explicit draw-site bridge. No automatic panel/input/preference changes.
 //One owner per VM. Handles are VM-local and invalid after any native/VM reset.
 float() ui_native_status = #0;
+float() ui_native_gamefocus = #0;
+
+float() NUI_GameFocus =
+{
+	if (!checkbuiltin(ui_native_gamefocus)) return FALSE;
+	return ui_native_gamefocus();
+};
 float(float owner) ui_native_open = #0;
 float(float handle) ui_native_draw = #0;
 float(float handle) ui_native_close = #0;
@@ -8,6 +15,7 @@ float() ui_native_input_status = #0;
 float(float handle, float type, float a, float b) ui_native_input = #0;
 vector(float handle) ui_native_poll = #0;
 float() ui_native_model_status = #0;
+float() ui_native_model_limit = #0;
 float(float handle, float revision, float count) ui_native_model_begin = #0;
 float(float handle, float index, vector identity, float value, string label) ui_native_model_widget = #0;
 float(float handle) ui_native_model_commit = #0;
@@ -74,6 +82,13 @@ float() NUI_ModelAvailable =
 	if (!checkbuiltin(ui_native_model_poll)) return FALSE;
 	return ui_native_model_status();
 };
+float() NUI_ModelLimit =
+{
+	//Old engines know only the exact-size /1 ABI; no optimistic oversized send.
+	if (checkbuiltin(ui_native_model_limit)) return ui_native_model_limit();
+	return 64;
+};
+
 float(float handle, float revision, float count) NUI_ModelBegin =
 {
 	if (!handle) return FALSE;

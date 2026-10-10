@@ -887,6 +887,25 @@ row identity. Keep hold-to-peek and MOUSE2/pinned interaction exactly usable.
 Do not resurrect item 12's removed mixed-list Compare chip.
 Gate: row/content/action parity with legacy; scrolling and refreshing cannot
 select another run; release/focus controls pass and legacy fallback works.
+Current unpublished ranked-table slice: `tools/p603scores.md`, still opt-in and
+legacy-covered. Real-source local/HTTP routes, lifecycle, enable/VM teardown,
+docked-room exclusion and narrow overflow have synthetic acting controls.
+GL/D3D11 act; Vulkan atlas teardown now waits for its fence and passes those
+controls. D3D9 device creation/fallback is not parity. Six-row uninstrumented
+CPU samples exist; wider stores/endurance/device budgets and human font/input
+acceptance remain. Bounded physical13/16/20/24 bakes are now staged on the unchanged
+model ABI, with acting size-change authority, atlas stability, physical ink and
+prior-score-provider fallback controls. This is not face/Unicode quality, automatic
+DPI or shared QC/native typography acceptance. A bounded density continuation now
+adds a separate exact-size NativeUIModel/2 (256 widgets); /1 stays at64 and
+older engines/providers retain six-row native pages. Current providers budget
+24 nine-cell rows plus at most6 metadata widgets, using the existing physical
+viewport/clipper and vertical/horizontal scroll. Both-index real ImGui controls,
+six GL runtime arms, 32-row real loopback parser/FindMine, identical/reordered/
+shrunk replacement authority, first-row scroll reset and reader counterfactuals
+act. This does not extend earlier six-row D3D11/Vulkan/cost evidence to /2:
+denser-store percentile/allocator/endurance/backend/device budgets remain the
+next gate, along with human font/input acceptance and clean publication proof.
 
 **D — graph presentation (medium after B; can follow C independently).**
 Use the same retained samples, incremental preparation, bins and source IDs.
@@ -1038,13 +1057,14 @@ proves transport, NOT physical device routing or real-panel cursor/minus safety.
 P601 supplies bounded copied widget/model snapshots and stable widget/row/action
 identities for diagnostic owners; see tools/p601model.md. Renamed/reordered/deleted
 rows, queued/held presses and unpolled actions have acting freshness controls.
-Next choose a real-panel migration separately, retaining explicit QC ownership
-and covering fallback; the diagnostic protocol does not authorize that switch. No non-GL/device-input, modern appearance,
-font/DPI policy or cost acceptance is implied. Preserve covering legacy fallback
-and physical-native fonts. Measure/
-approve performance budgets before switching the scoreboard default. The
-larger menu/editor migration is conditional on those gates, not already
-authorized for release.
+P605 publishes the first real panel on that bridge: the ranked scoreboard table,
+opt-in behind `ui_native_scores 1` with legacy as default and fallback, on an
+additive exact-size `NativeUIModel/2` (256 widgets, 24-row pages). GL, D3D11 and
+Vulkan pass the same acting gate on one laptop; D3D9 does not start there. Cost
+and open/close endurance are measured against legacy on that machine only (see
+`tools/p603scores.md`), which is evidence, not a portable budget. Appearance,
+font/DPI and device acceptance are a human's (lextest.md). Switching the default,
+or migrating the menu/editor, waits on those and on an approved budget.
 
 ---
 

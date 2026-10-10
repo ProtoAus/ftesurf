@@ -42,6 +42,7 @@ int main()
 	Check(service.Open(&oldowner),"old host passive open acts"); service.Close(&oldowner,1);
 	inputavailable = true; Check(FTEPlug_Init(&coreapi),"input-capable host loads");
 	ImGuiContext *outside = ImGui::CreateContext();
+	ImGui::GetIO().IniFilename = nullptr; //The control context must not write imgui.ini into the cwd.
 	Check(service.Open(&owner),"interactive opens");
 	pluguiowner_t other = {2,InteractiveClient,101};
 	Check(service.Open(&other),"second VM interactive opens independently");

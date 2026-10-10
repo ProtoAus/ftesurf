@@ -2437,6 +2437,108 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   and teleport/stitch controls do not invent events. Repeat for a native run
   and a Momentum demo with honest missing/inferred-contact provenance. Plan 12.5–12.6.
 
+## Native scoreboard (opt-in, Patch 605)
+
+Published and deployed as `ui_native_scores 1`; legacy stays the default. Evidence,
+commands and limits: `tools/p603scores.md` (the p603 file names are a historical
+harness number, not Patch 603). Human-only acceptance is in lextest.md. Everything
+below came from the two review rounds or the gates of 2026-10-09/10 and fails safe:
+a click is lost or the table falls back to legacy, never a wrong row.
+
+- **The default switch is still held.** Needs the lextest.md items (font face and
+  size, mouse feel, DPI, a second machine), a font with more than Latin glyphs
+  (ProggyClean draws CJK names as `?`; legacy draws boxes), and an agreed CPU
+  budget: open cost measured 0.78-0.79x legacy on one laptop, GL only, in a
+  number the temp-string collector moves by a third (section below).
+- **A held click is dropped when any cell changes.** `Scores_NativePublish`
+  republishes on any label change and every `SetModel2` resets plugin input, so a
+  press on row 2 while row 1 goes "queued" -> "on" does nothing on release. Same
+  for an age label ticking over. Check: hold a line box down across another row's
+  transition. Wants per-cell revision or a press that survives an unrelated change.
+- **Parity gaps against legacy.** Line box is inert (`--`) on a filtered Local row
+  where legacy still registers `Scores_LineCell`; only the first row with matching
+  ticks is highlighted where legacy marks every one; only the player cell is a
+  click target where legacy takes the whole row; Next fetches the following online
+  page only when clicked where legacy fetches near the end of the scroll.
+- **Labels can trail the data by a tenth of a second.** The page is rebuilt on a
+  signature (page, count, highlight, pin, font, reply epoch or local rescan,
+  layout), after any action, and otherwise at 10 Hz. `Online_MomBindRow`
+  (cl_online.qc) rewrites `ob_rep` in place with no epoch bump, so a row can read
+  "queued" for up to 0.1 s while a click on it already takes the replay branch:
+  same row, same intent. Anything that must show on the next frame belongs in
+  `scn_sig1`/`scn_sig2`.
+- **A click after typing in chat lands on the pre-chat row.** `Chat_InputEvent`
+  (cl_chat.qc) swallows mouse motion while a draft is open, so `_cursor_position`
+  is stale when the pinned table gets the next press. Legacy's hover is equally
+  stale. `tools/p603dense.py`'s `dense_cursor` step covers only the
+  `ui_native_scores 0` window. Fix shape: `ev_mouse_seen` in cl_entview.qc.
+- **A second `ui_native_draw` in one host frame costs the table for that gesture.**
+  `cl_plugin_ui.inc` returns 0 for it and `Scores_NativeDraw` latches `scn_failed`.
+  Not traced: whether loading-plaque or stereo redraws reach it.
+- **Replay ids of 1,000,000 or more collide.** `Scores_LineKey` and the fetch URL
+  in cl_online.qc both print `%g` (six significant digits). The native click is
+  resolved by slot and then checked against this key, so a collision cannot pick
+  another row, but line state is shared between the colliding rows. Not
+  determined: whether surfd's autoincrement ids reach that size.
+- **Vendor ImGui asserts are live.** `plugins/Makefile` builds the vendor objects
+  without `NDEBUG` and `IM_ASSERT` is libc `assert`, so one would abort the client
+  instead of falling back. No reachable assert was found by reading.
+- **`ScoresGallery` bounds the clip's extent but not its origin.** A finite origin
+  of 2^31 or more with a legal extent reaches ImGui's float-to-int truncation
+  (undefined). Only a CSQC passing an absurd `drawsetcliparea` gets there.
+- **Vulkan deferred destroys only drain on a presented frame.** While minimized
+  (`cl_main.c` skips `SCR_UpdateScreen`) map-change purges accumulate until
+  restore; on device loss `VK_FencedCheck` drops jobs attached to an in-flight
+  frame (a leak, not a double free). Same shape as the existing
+  `VKBE_SafeClearVBO` deferral.
+- **`tools/p603names.py` grades the table staying up, not the label bytes.** A
+  sanitizer that returned `?` for every name would pass; the text was read by eye
+  in the screenshots. Wants a probe that prints the sanitized bytes.
+- **Legacy does not clip a long owner name.** A 200-byte name overruns the date,
+  run and line columns (seen in the names control screenshot). Pre-existing.
+- **The soak's leak-control arm was not rerun on the shipped QC.** The third run
+  (`runtime/soak3`) had its native and legacy arms complete (floor rise 21.0
+  against 1.9 MiB over 800 open/close cycles) when the host's memory reaper
+  killed the leak arm, so that rig fails `planned/acting arm set differs` and
+  `tools/test_p603soak_unit.py` has no complete passing rig to run on. On the
+  complete second rig 17 of its 18 controls act; the 18th, `test_acting`,
+  reports that rig's real 59.3 MiB miss. The leak arm separated there (294
+  against 54 MiB). Rerun all three arms when the laptop has memory to spare.
+- **Page floor still creeps with churn.** 21 MiB over 800 opens at 32 rows, flat
+  at 6 rows (`runtime/soak-rows6`): it follows per-row QC string work, not the
+  open itself. See the temp-string section.
+
+## QC temp-string garbage balloons the client while a board is open
+
+Found by Patch 605's soak (2026-10-10), which failed its memory bounds in every
+arm, legacy included. The legacy scoreboard makes about 1 MiB/s of temp strings
+held open (every `bufstr_get`, `sprintf` and `strcat` allocates one) and the
+engine reclaims them with a threshold collector: `PR_RunGC` (qclib/initlib.c)
+runs once half the table is live, and `PR_AllocTempStringLen` doubles the table
+whenever it fills while a threaded collection is in flight. The threshold only
+grows, so the saw-tooth gets taller over a session: legacy peaked 126 MiB over
+its floor in a 3-minute hold; the native table, before it stopped rebuilding
+every label each frame, 650 MiB. Private bytes come back at each collection,
+so it is not a leak. With `pr_gc_threaded 0` (not the default) that pre-fix
+native table grew 6 MiB/s for two minutes and never came back
+(`runtime/soak-gc0`); not investigated. Check: `tools/p603soak.py --arms
+legacy native`, per-sample private bytes in report.json. Wants either less
+garbage in the per-frame board code or a collector whose threshold can come
+back down.
+
+It costs CPU as well, and it moves cost measurements. The same held-open native
+table, same pixels and same plugin counters, read 822 us of QC UpdateView with
+the collector disabled (`pr_gc_threaded 2`) and 1159 us with it on
+(`runtime/regime-gc2`, `regime-gc1`): about a third of a millisecond a frame
+while it cycles. Fresh sessions that make little garbage read the low figure
+(828-852 us in the cost runs), long-churned ones the high (1174 us in two soak
+holds), and the legacy board, which always makes enough garbage, reads
+1050-1110 us. A cost comparison that does not say which regime each arm was in
+is comparing collectors. One earlier cost run stepped 80-100 us mid-arm
+(`runtime/perf20/p603-perf-u69mhxdt`) and one no-plugin arm read 85 us high for
+a whole process with identical pixels (`runtime/lean/perf32`); neither was tied
+to the collector.
+
 ## Screenshots on D3D9/D3D8 are probably upside down
 
 `D3D9_VID_GetRGBInfo` and `D3D8_VID_GetRGBInfo` (engine/d3d/vid_d3d.c, vid_d3d8.c)

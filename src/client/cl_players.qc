@@ -45,6 +45,7 @@
 
 float pl_specpick;              // slot + 1 a row click asked to spectate, 0 none (Scores_Draw takes it)
 float pl_rows;                  // players drawn this frame (diagnostics)
+vector pl_panelpos, pl_panelsize; //Visible room rect for native-table hit exclusion.
 
 #define PL_MAXSLOT  64          // QW slots; getplayerkeyvalue returns "" past the end
 #define PL_RH       26          // row height, px
@@ -163,6 +164,7 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 	local float rank[PL_MAXSLOT];
 	local string nm, ping, id, map;
 
+	pl_panelsize = '0 0 0';
 	// Nothing to list before a server is loaded (main-menu board peeks).
 	map = serverkey("map");
 	if (map == "")
@@ -272,6 +274,8 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 		p_x  = bp_x + bsz_x - sz_x - pad;
 	}
 	p_y = bp_y;
+	pl_panelpos = p;
+	pl_panelsize = sz;
 
 	sui_fill(p, sz, '0.05 0.05 0.07', 0.92, 0);
 	sui_border_box(p, sz, 1, '0.28 0.30 0.36', 0.9, 0);
