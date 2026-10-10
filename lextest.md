@@ -13,7 +13,9 @@ to be wrong.
 
 ## 00. 10 Oct — the trainer keeps your last jumps (Patch 621)
 
-Published 10 Oct; not on an install or the Pi as this is written.
+Published 10 Oct 18:13 UTC (05:13 on the 11th here). Live since 18:20 UTC on
+both installs (csprogs, cfg/default.cfg) and 18:21 UTC on all twelve lobbies
+(csprogs). Each replaced file has a `.prev` or a `.pre621` copy beside it.
 
 You said the jump's info is gone before you can read it. Two things were doing
 that, and both are changed.
