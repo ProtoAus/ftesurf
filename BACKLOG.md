@@ -5,6 +5,18 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Dedicated server exits 0xC0000005 on a map it cannot find -- 2026-10-10
+
+`C:\FTEQuake\fteqwsv64.exe` (FTE git-7144-patch-606) started with `+map` naming
+a map that is not installed asks `https://play.proto.bar/maps/<name>.bsp`, gets
+404, logs `SV_Error: Couldn't download map <name>.` and ends with exit status
+3221225477 (access violation), not an error exit; crashaddr.txt is not written.
+Two runs of two, both under `-plugin` with piped stdin. Not reduced: unknown
+without `-plugin`, on the Linux lobby binary, or for `map` on a running server.
+Falsifier: `python tools/conbridge.py start --no-client --map no_such_map_zz`
+prints `process exited rc 3221225477`; fixed, the status is a plain error exit
+or the server stays up. Found testing tools/conbridge.py.
+
 ## P577-580 primary Windows reader deployment blocked -- 2026-10-08
 
 `C:/FTESurf/tools/census/recsim.py` is tracked and modified in the shared

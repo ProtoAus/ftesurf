@@ -258,6 +258,20 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   caller's, so a shell left in `ftesurf/` produces NO log at all and the run just
   sits there: two 200 s timeouts read as a hang before the cwd was the answer.
   Pass `-WorkingDirectory "C:\FTESurf"` rather than trusting the shell's.
+- EXPLORING WITHOUT A CFG PER QUESTION: `python tools/conbridge.py start --map <m>`
+  keeps one client and one dedicated server up and takes a console line at a
+  time: `send`, `wait <regex>`, `log`, `info` (cmd viewpos + cmd timer), `shot`,
+  `stop`; `--help` has the rest. It feeds stdin under `-plugin` and tails the two
+  logs. NOT AN ARM -- nothing in it repeats, so freeze what it finds into a cfg
+  with a control. It runs in the real install as the owner's profile; `stop`
+  lists what changed under `data/`. Measured building it (2026-10-10), and any
+  hand-rolled driver meets the same: a line the CLIENT reads while still starting
+  is dropped silently; the SERVER logs a typed line with no newline
+  (sv_main.c:5369), gluing the reply's first line to it; between `client X
+  connected` and the spawn `cmd viewpos` IS answered, with `setpos` all zeros, so
+  an answer is not a spawn; a minimized client wrote 1280x720 of black and still
+  logged `Wrote` (one shot); and the client takes the foreground on every mode
+  set (gl_vidnt.c:1727) whatever STARTUPINFO asked for.
 - AN ARM NEEDS A CONTROL BUILD AND A DETECTOR PROVEN TO HAVE FIRED. "Not flagged"
   is also what a subject that never fired prints, so an arm with no pre-change
   build beside it measures nothing — p411push printed a textbook flip on a pad
