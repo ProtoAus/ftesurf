@@ -26,6 +26,13 @@ commit   c543d688ad16a871753fa9525c23487f437741a5
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-625
 patch    625
+# Patch 624 (published after 625; `patch` does not move down): a ticked board line is
+# drawn in run order from where the viewer is: the 8 s of the run ahead of the point of
+# the line nearest the eye and 2 s behind it (hud_lines_order; 0 is everything within
+# hud_watch_path_far, as before), so a later part of the route no longer shows through a
+# wall. The cursor follows the viewer along the line, the whole line is looked over four
+# times a second, and the name on a line sits inside what is drawn. csprogs only: no
+# engine source, server QC, recorder, evidence, ranking, default or Build change.
 # Patch 625: account proofs leave the console. The engine signs them through a builtin
 # (acct_sign) into a statement of their own that names the server, whether a device's key
 # was being pressed and the SHA-256 of the csprogs that asked; a link's kinds are refused

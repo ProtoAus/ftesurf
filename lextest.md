@@ -11,6 +11,33 @@ to be wrong.
 
 ---
 
+## 00. 10 Oct — ticked lines in run order (Patch 624)
+
+Published 10 Oct; not on an install or the Pi as this is written.
+
+You said a demo line sometimes shows through a wall from a later part of the
+run. A ticked line was drawn wherever it came within 6000 u of you, whichever
+part of the run that was.
+
+- **Now each ticked line shows the next 8 seconds of its run from where you
+  are along it, and 2 seconds behind.** The game follows the point of the line
+  nearest you as you move, so the stretch you see is the one that comes next.
+  A part of the route that passes close by later is not drawn until you get
+  there. `Board lines show` in hud_edit's Lines: all near (the old way), next
+  4 s, 8 s or 16 s. Is 8 right at your speeds?
+- If you leave the line (a fall, a different route) it finds the nearest part
+  again within a quarter of a second. Where the route passes the same place
+  twice it keeps the pass you were on; after a restart it takes the first.
+  Where the recorded run stood still (a wait before a stage), you see what it
+  did next, not the wait.
+- The name on a line stays on the part that is drawn.
+- The open replay's own line and your white trail are unchanged.
+- **Not checked by me:** a real map. The rig's runs are authored (one passes a
+  place twice 20 s apart, one goes at 2000 u/s for 162 s); I have not flown a
+  real route with a line ticked. BACKLOG lists what is known to be odd: a
+  recording with a failed attempt in it shows that attempt first, and a
+  rewind into the second of two close passes can show the first.
+
 ## 00. 11 Oct — linking Steam: one key press opens your browser (Patches 619, 625)
 
 Published and live 10 Oct 22:07-22:10 UTC (09:07 on the 11th here): the site,
@@ -115,8 +142,10 @@ the plugin was only on the two development installs. They do now.
   `C:\msys64\home\Lex\fteqw` is on the old branch with binaries from 5 Oct and
   no plugin; the installed engine was built in a worktree. The script stops at
   its engine check there (it would have before this patch too). Either pass
-  `-FteRoot` the tree the installed engine came from, or move that checkout to
-  `main` and rebuild it.
+  `-FteRoot C:\FTESurf-worktrees\steamrank-20261010T1420Z\eng`, the tree
+  Patch 625's installed engine was built in (its `engine\release` holds those
+  exact bytes, and it is being kept for this), or move that checkout to `main`
+  and rebuild it.
 - I ran it as a dry run on a scratch copy of the ship set, with the upload
   tools replaced by stubs so nothing touched R2 or the site. The archive it
   made has the plugin (the same bytes as the installed one) and the notices.

@@ -4705,6 +4705,70 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   engine worktree has no `engine/libs-x86_64-w64-mingw32` (ignored, 72 MB):
   copy it from one that built.
 
+### Board lines in run order (Patch 624) — 2026-10-10
+
+- THE WINDOW WAS ALREADY THERE. `Line_Window(ta, tb)` narrows a draw's local
+  ia/ib, fades both ends and touches no storage; the replay used it round its
+  playhead and the board loop switched it off, because a board line had no
+  playhead. This patch gives it one: the sample nearest the eye, in run order
+  (`Line_Follow`), and `Line_FollowWindow` sets the window from it before each
+  board slot's `Line_Draw`. It is ONE global window: off again after the loop.
+- NEAREST IS NOT ENOUGH, WHICH IS THE WHOLE BUG. A route that passes the same
+  place twice has two nearest points. The cursor is FOLLOWED (48 samples either
+  side a frame, the last of equals; a line's own teleport is two neighbouring
+  samples, so it crosses with the viewer), and four times a second the whole
+  line is looked over as well. Every stretch within 1.5 times the nearest
+  distance (or 128 u) is a candidate: the one being followed stays if it is
+  one, else the one nearest in time to it wins; with no cursor believed (a new
+  line, or a restart: the clock stepped back or the timer armed) the earliest.
+- THE FIRST CUT LOOKED ONLY WHEN THE EYE WAS 768 u FROM THE FOLLOWED STRETCH,
+  AND THE REVIEW BROKE IT FOUR WAYS, by porting the follow to Python and flying
+  real recordings through it. (1) A stop in the recording longer than 48
+  samples held the cursor at its first sample: `<` takes the first of equals,
+  and a 9 s stop left nothing drawn ahead of the viewer. (2) Another part of
+  the route within 768 u was never taken: dropping from one pass to another
+  470 u away, 6.9 s beside a line that was not drawn. (3) The look compared its
+  512 samples and nothing between them: on a run of a few minutes they are
+  hundreds of units apart against a tolerance of 128 u, and it took the later
+  pass a quarter of the time at 2000 u/s. Now any of the 512 that could have a
+  nearer sample beside it (a sample between two is at most their spacing nearer
+  than either) is looked at sample by sample, and a run of them is ONE stretch
+  with one nearest sample, so a near pass cannot crowd a farther one out of the
+  24 kept. (4) A restart's forget lasted one frame, and the stats lead the
+  view: spent where the viewer still was, it took that place's stretch and kept
+  it. It lasts `LN_FO_FRESH` (0.5 s) now.
+- `lines order` prints the cursor, the looks made and those that moved it;
+  `replay marktrace 1` prints, from inside the draw, the window a slot was given
+  (`lnd`) and the samples it drew (`lnd2`). `tools/p624order.py` grades both,
+  and counts the later pass's pixels: 0 with the order on, 1094 with
+  `hud_lines_order 0`. It has a step for each of the review's four on a second
+  authored run at a real pace (2000 u/s, 162 s, the 512 samples 660 u apart,
+  and the fixture checks that a look at the 512 alone takes the wrong pass),
+  and THE REVIEWED BUILD FAILS EVERY ONE: after a restart from far down the
+  later pass it reads 27.165 s where 5.000 belongs.
+  Thirteen one-line mutants each fail at the step that is theirs: always the
+  earliest; a restart forgets nothing, or for one frame; the window never set,
+  or as long behind as ahead; never follows; nearest only; the first of
+  equals; the 512 alone; never looks again; keeps whatever it follows; the
+  name on the whole line; a stale window read as one.
+- THE NAME ON A LINE MUST SEARCH WHAT WAS DRAWN. `LineGraph_WorldLabels` looked
+  over the slot's whole shown range; with a window that puts a name on a part
+  of the line that is not there. It reads the window the board loop gave the
+  slot THIS frame (`ln_fo_wt` is that frame's cltime), less a twelfth of the
+  span at each end: the window fades over a sixth. THE FIRST CUT READ
+  `tb >= ta` AS "A WINDOW WAS GIVEN", which the arrays' initial 0 and 0 also
+  are, and the board loop returns before it writes anything when no line is
+  ticked: the open replay's name sat on its first sample, or nowhere, until a
+  line had been ticked once. Every rig that opened a replay ticked lines
+  first. The arm stands ON one pass with the cursor on
+  the other: the name is on the cursor's pass, 100 u aside, and with the clamp
+  taken out it is on the pass under the eye. ITS FIRST CUT STOOD BETWEEN THE
+  PASSES AND PASSED WITH THE CLAMP TAKEN OUT: the search takes the nearest of
+  256 coarse samples the text fits at, and 2 u of drift decided which pass
+  that was, the right one both times.
+- `cfg/test/p449win.cfg` W5 reads `winon 0` for a board line to show that the
+  REPLAY's window never reaches it. It sets `hud_lines_order 0` now.
+
 ### The live run on the run graphs (Patch 622) — 2026-10-10
 
 - THE LIVE SLOT IS A GRAPH SLOT NOW, NOT A SPECIAL CASE BESIDE THEM. `LG_SLOTS`

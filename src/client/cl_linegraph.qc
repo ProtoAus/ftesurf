@@ -2004,7 +2004,7 @@ float(float s, float b, float i, float f) LineGraph_LabelAt =
 
 void() LineGraph_WorldLabels =
 {
-	local float s, i, j, k, n, b, d, e, best, stride, bi, f, sz, f0, dir, us, ulo, uhi, ci, cbest;
+	local float s, i, j, k, n, b, d, e, best, stride, bi, f, sz, f0, dir, us, ulo, uhi, ci, cbest, ia, ib;
 	local vector q, at, p0, seg, aw, vs;
 	for (s = 0; s < LG_SLOTS; s = s + 1) lg_lab_on[s] = FALSE;
 	if (!cvar("hud_linegraph_labels")) return;
@@ -2024,14 +2024,26 @@ void() LineGraph_WorldLabels =
 		lgl_lo = [vs_x * 0.02, vs_y * 0.06 + sz + 6, 0];
 		lgl_hi = [vs_x * 0.98 - 6 - stringwidth(LineGraph_Name(s), TRUE, [sz, sz]), vs_y * 0.86, 0];
 		if (lgl_hi_x < lgl_lo_x) continue;
+		ia = LG_Ia(s);
+		ib = LG_Ib(s);
+		// Patch 624: in run order a board line is drawn inside a window that fades over a
+		// sixth of itself at each end (Line_Window). The name sits where the line is at least
+		// half there: the window this frame's draw used, less a twelfth at each end.
+		if (ln_fo_wt[s] == cltime)
+		{
+			d = (ln_fo_tb[s] - ln_fo_ta[s]) / 12;
+			ia = max(ia, Line_Find(s, ln_fo_ta[s] + d));
+			ib = min(ib, Line_Find(s, ln_fo_tb[s] - d + 0.0001) - 1);
+		}
+		if (ib < ia) continue;
 
 		// The nearest of up to 256 samples that a label may sit at (bi), and the nearest
 		// that is merely in front of the eye (ci).
 		best = cbest = 99999999;
 		at = aw = '0 0 0';
 		bi = ci = -1;
-		stride = max(1, ceil((LG_Ib(s) - LG_Ia(s) + 1) / 256));
-		for (i = LG_Ia(s); i <= LG_Ib(s); i = i + stride)
+		stride = max(1, ceil((ib - ia + 1) / 256));
+		for (i = ia; i <= ib; i = i + stride)
 		{
 			d = vlen(ln_pos[b + i] - ln_eye);
 			if (d >= best) continue;        // cbest is never over best: neither can gain
@@ -2056,7 +2068,7 @@ void() LineGraph_WorldLabels =
 		// close by. Every sample either side of the nearest one is tried.
 		if (bi < 0)
 		if (ci >= 0)
-		for (i = max(LG_Ia(s), ci - stride); i <= min(LG_Ib(s), ci + stride); i = i + 1)
+		for (i = max(ia, ci - stride); i <= min(ib, ci + stride); i = i + 1)
 		{
 			d = vlen(ln_pos[b + i] - ln_eye);
 			if (d >= best) continue;
@@ -2074,17 +2086,17 @@ void() LineGraph_WorldLabels =
 		j = bi;
 		d = best;
 		dir = 0;
-		if (j < LG_Ib(s))
+		if (j < ib)
 		if (!ln_brk[b + j + 1])
 		if (vlen(ln_pos[b + j + 1] - ln_eye) < d) dir = 1;
 		if (!dir)
-		if (j > LG_Ia(s))
+		if (j > ia)
 		if (!ln_brk[b + j])
 		if (vlen(ln_pos[b + j - 1] - ln_eye) < d) dir = -1;
 		for (n = 0; dir && n < stride * 2; n = n + 1)
 		{
 			k = j + dir;
-			if (k < LG_Ia(s) || k > LG_Ib(s)) break;
+			if (k < ia || k > ib) break;
 			if (ln_brk[b + max(j, k)]) break;       // a teleport: no segment to be on
 			e = vlen(ln_pos[b + k] - ln_eye);
 			if (e >= d) break;
@@ -2093,7 +2105,7 @@ void() LineGraph_WorldLabels =
 		}
 		// ...to the nearest point of the line, on the segment either side of that sample.
 		us = j;                     // a point of the line: a sample's index plus a fraction
-		if (j < LG_Ib(s))
+		if (j < ib)
 		if (!ln_brk[b + j + 1])
 		{
 			p0 = ln_pos[b + j];
@@ -2106,7 +2118,7 @@ void() LineGraph_WorldLabels =
 				if (e < d) { d = e; us = j + f; }
 			}
 		}
-		if (j > LG_Ia(s))
+		if (j > ia)
 		if (!ln_brk[b + j])
 		{
 			p0 = ln_pos[b + j - 1];

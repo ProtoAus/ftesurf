@@ -2717,6 +2717,55 @@ lextest.md. Left open, none of it a wrong action:
     Off by default.
   - Stage D of ROADMAP 13 (a native ImGui graph) was asked for by Lex on 10
     Oct and is Patch 614.
+- **Patch 624, left open.** None is a wrong action.
+  - Measured on two authored runs in the gallery rig (two passes 100 u apart
+    and 20 s apart; and one at 2000 u/s for 162 s with a 6 s stop and a third
+    pass 500 u aside). No real map was flown, no real recording was ticked in
+    the game and no line with a teleport in it; the join fade at a window's
+    edge was built and not looked at. The review flew real recordings through
+    its own Python port of the first cut's follow, not through this one.
+  - Cost, one profiled run with the 162 s run ticked in all eight slots (the
+    profiler inflates it, so these compare with each other and are not
+    milliseconds): the follow is about 15,000 QC ops a frame, 90 us of the
+    board loop's 561; with `hud_lines_order 0` at the same place the loop is
+    930, because it draws three times the points. 20 km from every line the
+    loop is 164 (the follow 85). A look reads at most 4096 samples one by one,
+    and none for a line too far to be drawn.
+  - The cursor is the line's sample nearest the EYE. Watching in third person
+    or from a free camera it follows the camera, not a body.
+  - Where two passes are within 1.5 times the nearest distance (or 128 u) of
+    the eye, the one being followed is kept, and when none is, the one nearest
+    in time to the old cursor. A shortcut that rejoins the route at such a
+    place a long way on is therefore read as the earlier pass until the viewer
+    is that much nearer the other.
+  - A restart is told from the timer (the clock steps back, or it arms), and
+    the earliest stretch near the viewer is then taken for half a second. A
+    save-state load or a rewind steps the clock back too, and into the later
+    of two passes that is the wrong one; taking the stretch nearest the
+    player's own run clock would serve both. A teleport back to a stage start
+    with the clock running on is not a restart to this code. Only the arming
+    half of the test is driven by the arm.
+  - A recording that holds a failed attempt (a retry inside the run) shows the
+    abandoned attempt first where the two overlap: it is the earlier in run
+    order. The review counted 4 of 12 recordings with a teleport in
+    `data/runs` that have one of a second or more.
+  - The look takes the two ends of each of its 512 steps as the bound on what
+    lies between. A loop of the line inside one step, with both ends far from
+    the eye, is not seen (a step is up to 128 samples, 1.9 s, on a 16-minute
+    line; 22 samples on the arm's 162 s run).
+  - Where a recorded run moves about in one small place for longer than the
+    window (not a dead stop, which the cursor walks through), nothing past
+    that place is drawn until the viewer has passed it.
+  - `Board lines show` is row 11 of hud_edit's Lines, so it sits last in the
+    pane, under the nearby-players rows.
+  - The window is in seconds of the RUN's clock, so beside a slow stretch of a
+    run it is a short piece of line and beside a fast one a long piece;
+    `hud_watch_path_far` still cuts it by distance.
+  - Facing back along a line, what is in view is the 2 s behind the cursor: a
+    short, fading piece, with the name on it.
+  - `hud_lines_win`/`winf` users: a teleport join now fades with the window,
+    as the line and the marks did.
+  - No line in `cfg/default.cfg`: the cvar's default is the QC's (8).
 - **Patch 622, left open.** None is a wrong action.
   - Measured in the gallery rig only: a floorless box with a start zone, and a
     two-stage fixture whose second stage is entered by `setpos`. No real staged
@@ -2790,10 +2839,12 @@ lextest.md. Left open, none of it a wrong action:
   - THE DEFAULT `-FteRoot` CANNOT CUT A RELEASE AS IT STANDS.
     `C:\msys64\home\Lex\fteqw` is on `engine-patches` at Patch 510's notes with
     binaries of 5 Oct (exe `fad78fd5`, hl2 `ab6a69f8`) and no ui_imgui plugin;
-    the installs run `7c97e69b` / `4406ae6a` / `69929fe5`, built in a worktree.
+    the installs ran `7c97e69b` / `4406ae6a` / `69929fe5` then and run Patch
+    625's `183faf44` / `66042d85` / `ab7b0512` now, each built in a worktree.
     Gate 3 stops there, as it should. The next release needs `-FteRoot` at the
-    tree the installed engine was built from, or that checkout moved to `main`
-    and rebuilt.
+    tree the installed engine was built from
+    (`C:\FTESurf-worktrees\steamrank-20261010T1420Z\eng` for 625's, kept for
+    this), or that checkout moved to `main` and rebuilt.
   - The Linux archive has no such plugin, so a Linux player still gets the QC
     plots and the one console line at boot.
 - **Patch 621, left open.** None is a wrong action.

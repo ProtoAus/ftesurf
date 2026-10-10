@@ -168,6 +168,31 @@ float  ln_mv_gravity, ln_mv_gfric, ln_mv_stopspeed, ln_mv_duck, ln_mv_ghold;
 // from that shows nothing at all.
 float  ln_winon, ln_wina, ln_winb, ln_winka, ln_winkb;
 
+/*
+  Patch 624: where the viewer is along a line, so that a board line can be shown in run
+  order (the stretch that comes next, through the window above) and not as everything
+  within hud_watch_path_far: a later part of the route then does not show through a wall.
+  A sample index, followed a few samples a frame. A few times a second the whole line is
+  looked over as well, and the cursor moves if the stretch it follows is no longer among the
+  nearest (the viewer left for another part of the route).
+*/
+#define LN_FO_NEAR  48          // samples either side of the cursor searched a frame
+#define LN_FO_EVERY 0.25        // seconds between looks at the whole line
+#define LN_FO_SOON  0.05        // the same, while a restart is not yet believed
+#define LN_FO_FRESH 0.5         // seconds a restart's forget lasts: the stats lead the view by a frame or more
+#define LN_FO_SPOTS 24          // stretches near the eye one look can weigh
+#define LN_FO_READ  4096        // samples one look may read one by one; past it the 512 stand for the rest
+float  ln_fo_i[LN_SLOTS];       // the cursor
+float  ln_fo_gen[LN_SLOTS];     // ln_graphgen of the line it is on, + 1; 0 = none
+float  ln_fo_d[LN_SLOTS];       // units from the eye to its sample
+float  ln_fo_at[LN_SLOTS];      // cltime of the last look at the whole line
+float  ln_fo_n[LN_SLOTS], ln_fo_mv[LN_SLOTS];   // looks made, and those that moved the cursor (`lines order`)
+float  ln_fo_ta[LN_SLOTS], ln_fo_tb[LN_SLOTS];  // the window this frame's draw was given
+float  ln_fo_wt[LN_SLOTS];      // cltime of the frame it was given in: only that frame's is one
+float  ln_fo_si[LN_FO_SPOTS], ln_fo_sd[LN_FO_SPOTS];    // a look's stretches: the nearest sample of each, its distance
+float  ln_fo_clock, ln_fo_state;    // the timer last frame
+float  ln_fo_fresh;             // cltime until which a restart leaves no cursor believed
+
 // The marks' own frame state: the cvars, read once, and the declutter grid.
 float  ln_mkon, ln_mkland, ln_mkleave, ln_mkjump, ln_mkstitch;
 float  ln_mkpx, ln_mkgap, ln_declutter;
@@ -947,6 +972,223 @@ void(float ta, float tb) Line_Window =
 void() Line_WindowOff =
 {
 	ln_winon = FALSE;
+};
+
+// Patch 624. Once a frame, before the lines that follow the viewer are drawn: a run
+// that starts again (the clock steps back, or the timer arms) leaves no cursor believed
+// for LN_FO_FRESH, so the stretch taken is the earliest and not the one nearest in time
+// to where the last run had got to. Not for one frame: the stats arrive before the view
+// does, and a forget spent where the viewer still was took the old place's stretch.
+void() Line_FollowFrame =
+{
+	local float clock, state;
+
+	clock = getstatf(STAT_FS_TIMERTICKS);
+	state = getstatf(STAT_FS_TIMERSTATE);
+	if (clock < ln_fo_clock || (state == TS_ARMED && ln_fo_state != TS_ARMED))
+		ln_fo_fresh = cltime + LN_FO_FRESH;
+	ln_fo_clock = clock;
+	ln_fo_state = state;
+};
+
+// One stretch of a look: its nearest sample and how near. The LN_FO_SPOTS nearest are kept.
+float ln_fo_sn;
+void(float i, float d) Line_FollowSpot =
+{
+	local float m, j;
+
+	m = ln_fo_sn;
+	if (ln_fo_sn < LN_FO_SPOTS)
+		ln_fo_sn = ln_fo_sn + 1;
+	else
+	{
+		m = 0;
+		for (j = 1; j < LN_FO_SPOTS; j = j + 1)
+			if (ln_fo_sd[j] > ln_fo_sd[m])
+				m = j;
+		if (d >= ln_fo_sd[m])
+			return;
+	}
+	ln_fo_si[m] = i;
+	ln_fo_sd[m] = d;
+};
+
+// The run clock of slot s's sample nearest the eye, in run order; -1 for no line.
+float(float s) Line_Follow =
+{
+	local float b, ia, ib, i, j, d, best, bi, lo, hi, stride, half, tol, tprev, k, bk, have, prev, n, m;
+	local float open, obi, obk, mseg, left;
+	local vector p, pp, pn;
+
+	b  = s * LN_CAP;
+	ia = ln_ia[s];
+	ib = ln_ib[s];
+	if (!ln_on[s] || ib < ia)
+		return -1;
+	have = (ln_fo_gen[s] == ln_graphgen[s] + 1);
+	prev = have;
+	if (cltime < ln_fo_fresh)
+		prev = FALSE;
+	tprev = 0;
+	if (have)
+	{
+		// Followed: the nearest of the samples round the cursor, and the LAST of equals,
+		// so it walks through a stop in the recording instead of resting at its start
+		// (a 9 s stop left nothing drawn ahead of the viewer). A line's own teleport is
+		// two neighbouring samples, so the cursor crosses it with the viewer.
+		lo = max(ia, ln_fo_i[s] - LN_FO_NEAR);
+		hi = min(ib, ln_fo_i[s] + LN_FO_NEAR);
+		best = 99999999;
+		bi = lo;
+		for (i = lo; i <= hi; i = i + 1)
+		{
+			d = vlen(ln_pos[b + i] - ln_eye);
+			if (d <= best)
+			{
+				best = d;
+				bi = i;
+			}
+		}
+		ln_fo_i[s] = bi;
+		ln_fo_d[s] = best;
+		tprev = ln_t[b + bi];
+		k = prev ? LN_FO_EVERY : LN_FO_SOON;
+		if (cltime >= ln_fo_at[s])
+		if (cltime - ln_fo_at[s] < k)
+			return tprev;
+	}
+	// The whole line. 512 samples of it say how near it comes... (A slot's first look is
+	// back-dated by its number, so eight lines do not all look on one frame.)
+	ln_fo_at[s] = cltime;
+	if (!have)
+		ln_fo_at[s] = cltime - s * 0.03;
+	ln_fo_n[s] = ln_fo_n[s] + 1;
+	stride = max(1, ceil((ib - ia + 1) / 512));
+	half = floor(stride * 0.5);
+	best = 99999999;
+	bi = ia;
+	mseg = 0;
+	pp = ln_pos[b + ia];
+	for (i = ia; i <= ib; i = i + stride)
+	{
+		p = ln_pos[b + i];
+		mseg = max(mseg, vlen(p - pp));
+		pp = p;
+		d = vlen(p - ln_eye);
+		if (d < best)
+		{
+			best = d;
+			bi = i;
+		}
+	}
+	// A line with no sample that could be inside hud_watch_path_far draws nothing: the
+	// nearest of the 512 will do, and a viewer far from eight long lines pays for no more.
+	if (ln_far > 0)
+	if (best - mseg > ln_far)
+	{
+		if (!have || ln_fo_i[s] != bi)
+			ln_fo_mv[s] = ln_fo_mv[s] + 1;
+		ln_fo_i[s] = bi;
+		ln_fo_d[s] = best;
+		ln_fo_gen[s] = ln_graphgen[s] + 1;
+		return ln_t[b + bi];
+	}
+	// ...and wherever one of them could have a point that near beside it, every sample
+	// is looked at: the 512 are up to 128 samples apart, hundreds of units at speed,
+	// against a tolerance of 128 u (the first cut took the later pass a quarter of the
+	// time at 2000 u/s). A sample between two is at most their spacing nearer than either.
+	// A run of such samples is one stretch, one pass by the eye, and gives one spot.
+	tol = max(best * 1.5, best + 128);
+	ln_fo_sn = 0;
+	open = FALSE;
+	obi = obk = 0;
+	left = LN_FO_READ;
+	pp = ln_pos[b + ia];
+	for (i = ia; i <= ib; i = i + stride)
+	{
+		p = ln_pos[b + i];
+		pn = ln_pos[b + min(ib, i + stride)];
+		d = vlen(p - ln_eye) - max(vlen(p - pp), vlen(pn - p));
+		pp = p;
+		if (d > tol)
+		{
+			if (open)
+				Line_FollowSpot(obi, obk);
+			open = FALSE;
+			continue;
+		}
+		lo = max(ia, i - half);
+		hi = min(ib, i + half);
+		if (left <= 0)
+			lo = hi = i;
+		left = left - (hi - lo + 1);
+		for (j = lo; j <= hi; j = j + 1)
+		{
+			d = vlen(ln_pos[b + j] - ln_eye);
+			if (!open || d < obk)
+			{
+				obk = d;
+				obi = j;
+				open = TRUE;
+			}
+		}
+	}
+	if (open)
+		Line_FollowSpot(obi, obk);
+	n = ln_fo_sn;
+	// Which stretch, when the route passes here more than once: of those as near as the
+	// nearest, the one being followed; else the one nearest in time to it; or with no
+	// cursor believed (a new line, a new run) the earliest.
+	best = 99999999;
+	for (j = 0; j < n; j = j + 1)
+		if (ln_fo_sd[j] < best)
+			best = ln_fo_sd[j];
+	tol = max(best * 1.5, best + 128);
+	if (prev)
+	if (ln_fo_d[s] <= tol)
+		return tprev;
+	m = -1;
+	bk = 99999999;
+	for (j = 0; j < n; j = j + 1)
+	{
+		if (ln_fo_sd[j] > tol)
+			continue;
+		k = ln_fo_si[j] - ia;
+		if (prev)
+			k = fabs(ln_t[b + ln_fo_si[j]] - tprev);
+		if (k < bk)
+		{
+			bk = k;
+			m = j;
+		}
+	}
+	if (m < 0)
+		return have ? tprev : -1;
+	if (!have || ln_fo_i[s] != ln_fo_si[m])
+		ln_fo_mv[s] = ln_fo_mv[s] + 1;
+	ln_fo_i[s] = ln_fo_si[m];
+	ln_fo_d[s] = ln_fo_sd[m];
+	ln_fo_gen[s] = ln_graphgen[s] + 1;
+	return ln_t[b + ln_fo_i[s]];
+};
+
+// A window of `ahead` seconds of slot s's run from where the viewer is along it, and a
+// quarter of that behind; FALSE (and no window) when the slot has no line.
+float(float s, float ahead) Line_FollowWindow =
+{
+	local float t;
+
+	t = Line_Follow(s);
+	if (t < 0)
+	{
+		Line_WindowOff();
+		return FALSE;
+	}
+	ln_fo_ta[s] = t - max(1, ahead * 0.25);
+	ln_fo_tb[s] = t + ahead;
+	ln_fo_wt[s] = cltime;
+	Line_Window(ln_fo_ta[s], ln_fo_tb[s]);
+	return TRUE;
 };
 
 // The first mark at or after t.  The list is appended in sample order, so it is
@@ -2200,6 +2442,16 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 			d0 = al * bound(0, (ln_far - vlen(p0 - ln_eye)) * ln_fadek, 1);
 			d1 = al * bound(0, (ln_far - vlen(p1 - ln_eye)) * ln_fadek, 1);
 		}
+		// Patch 624: and with the window, as Line_Feed and Line_Marks do. A board line's
+		// window moves with the viewer now, and a join at full strength beside a line
+		// that is fading out pops.
+		if (ln_winon)
+		{
+			d0 = d0 * bound(0, min((ln_t[b + j - 1] - ln_wina) * ln_winka,
+			                       (ln_winb - ln_t[b + j - 1]) * ln_winkb), 1);
+			d1 = d1 * bound(0, min((ln_t[b + j] - ln_wina) * ln_winka,
+			                       (ln_winb - ln_t[b + j]) * ln_winkb), 1);
+		}
 		if (d0 <= 0 && d1 <= 0)
 			continue;
 		Line_Dash(p0, p1, '0.85 0.88 0.95', max(d0, d1));
@@ -2290,14 +2542,33 @@ void() Line_RegisterCvars =
 	// Lex, 4 Oct 2026: the numbers say what they are by default.
 	registercvar("hud_lines_names",   "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_win",    "0", CVAR_ARCHIVE);
+	// Patch 624: seconds of each ticked board line shown ahead of where the viewer is
+	// along it (and a quarter of that behind); 0 is everything within hud_watch_path_far.
+	registercvar("hud_lines_order",  "8", CVAR_ARCHIVE);
 	registercvar("hud_lines_winf",   "0", CVAR_ARCHIVE);
 };
 
 // Advanced settings stay addressable by their archived names.
 float() Line_Console =
 {
+	local float s;
+
 	if (argv(0) != "lines")
 		return FALSE;
+	// Patch 624, for an arm: where the viewer is along each board line and what was drawn.
+	if (argv(1) == "order")
+	{
+		print(sprintf("lines: order %g eye %.1f %.1f %.1f\n", cvar("hud_lines_order"), ln_eye_x, ln_eye_y, ln_eye_z));
+		for (s = LN_S_BOARD; s < LN_S_TRAIL; s = s + 1)
+		{
+			if (!ln_on[s])
+				continue;
+			print(sprintf("lines: order slot %g cursor %g t %.4f at %.1f u searches %g moved %g",
+			              s, ln_fo_i[s], ln_t[s * LN_CAP + ln_fo_i[s]], ln_fo_d[s], ln_fo_n[s], ln_fo_mv[s]));
+			print(sprintf(" window %.4f %.4f\n", ln_fo_ta[s], ln_fo_tb[s]));
+		}
+		return TRUE;
+	}
 	print("lines: independent switches (0 off, 1 on):\n"
 	      "  hud_trail 1       player line\n"
 	      "  hud_watch_path 1  open demo line\n"
@@ -2313,6 +2584,7 @@ float() Line_Console =
 	      "  hud_watch_path_ahead 1, hud_watch_path_foreign 0.55\n"
 	      "  hud_lines_telealpha 0.3 (faded dashed teleport joins)\n"
 	      "  hud_lines_win/winf 0 (whole line), or seconds behind/ahead\n"
+	      "  hud_lines_order 8 (board lines: seconds ahead of you; 0 all near)\n"
 	      "  hud_trail_prev 1, hud_trail_fade 1 (seconds)\n"
 	      "  hud_lines_reveal 0.18 (chunk reveal seconds; 0 instant)\n");
 	return TRUE;

@@ -1351,7 +1351,7 @@ void() Scores_LinesPin =
 // After renderscene, beside the replay's path.
 void() Scores_LinesDraw =
 {
-	local float i;
+	local float i, ahead;
 
 	if (!cvar("hud_lines_board"))
 		return;
@@ -1361,10 +1361,19 @@ void() Scores_LinesDraw =
 	Line_StatsReset();
 	// Patch 449: a board line has no playhead, so no window.  Never inferred
 	// from the 99999999 below -- that sentinel minus a window is the whole line.
+	// Patch 624: unless hud_lines_order gives it one, round where the viewer is
+	// along it (Line_FollowWindow), so the run is shown in its own order.
+	ahead = cvar("hud_lines_order");
 	Line_WindowOff();
+	Line_FollowFrame();
 	for (i = 0; i < SB_LNMAX; i = i + 1)
 		if (sb_ln_st[i] == SBL_ON)
+		{
+			if (ahead > 0)
+				Line_FollowWindow(i + 1, ahead);
 			Line_Draw(i + 1, 99999999, '0 0 0', 1, 0.85);
+		}
+	Line_WindowOff();
 };
 
 // `scores lines`: the table.
