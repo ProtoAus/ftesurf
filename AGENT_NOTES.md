@@ -161,6 +161,15 @@ if those files were accidentally copied; preserve any peer replacement. The
 script itself remains a follow-up in BACKLOG.
 
 
+**A fresh engine worktree is not a build tree (measured P609).** It has no
+`engine/libs-x86_64-w64-mingw32` (an ignored `makelibs` product), so `make sv-rel`
+there links `zlib1.dll` and the exe ends in 0.1 s with 0xC0000135 when started
+from anything but an msys shell: five arms "ran" that way and measured nothing.
+Pass `ARCHLIBS=C:/msys64/home/Lex/fteqw/engine/libs-x86_64-w64-mingw32` and
+compare `objdump -p <exe>`'s DLL names with the installed binary's. It also
+stamps nothing (`.git` is a file there): supply `SVN_VERSION` and `SVNREVISION`,
+and make the patch tag ANNOTATED or `git describe --long` skips it.
+
 From `src/`, with pwsh 7 (NOT `powershell`):
 
     pwsh -NoProfile -Command "./build.ps1 -Jobs 8"
@@ -285,6 +294,18 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   reset the `cl_trigdebug` bullet records is CSQC's and was not re-measured. And
   a client's quit rewrites `<gamedir>/conhistory.txt` from the copy it read at
   start (same bytes, new mtime) unless `con_savehistory 0`.
+- WHERE A DEDICATED SERVER'S CRASH RECORD IS DEPENDS ON ITS BUILD. From Patch 609
+  it appends module+offset frames to `crashaddr.txt` in the basedir it is running
+  (here, beside the client's records; each record names its exe). EVERY SERVER
+  BUILT BEFORE THAT wrote to the hard-coded `C:\FTEQuake\quakers\crashaddr.txt`,
+  so this tree's file staying old did not mean nothing faulted: 609's own fault
+  sat there through four runs written up as "not written". Whoever built an exe
+  has its unstripped twin beside it as `fteqwsv64.exe.db`; `nm -n` on that names
+  every frame. Same patch: a server that reaches Sys_Error no longer restarts
+  itself unless started with `-autoreset` (before, unless `-noreset`: on a
+  mistyped `+map`, an orphan copy every 13 s), and a release server cannot be
+  made to fault on request -- `crashme` is `_DEBUG` only and `sv-dbg` does not
+  link (BACKLOG) -- so `tools/p609sverr.py` starts a thread at address 5 in it.
 - AN ARM NEEDS A CONTROL BUILD AND A DETECTOR PROVEN TO HAVE FIRED. "Not flagged"
   is also what a subject that never fired prints, so an arm with no pre-change
   build beside it measures nothing — p411push printed a textbook flip on a pad

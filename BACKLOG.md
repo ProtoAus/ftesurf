@@ -5,23 +5,17 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
-## Dedicated server exits 0xC0000005 on a map it cannot find -- 2026-10-10
+## The debug dedicated server does not link -- 2026-10-10
 
-`C:\FTEQuake\fteqwsv64.exe` (FTE git-7144-patch-606) started with `+map` naming
-a map that is not installed asks `https://play.proto.bar/maps/<name>.bsp`, gets
-404, logs `SV_Error: Couldn't download map <name>.` and ends with exit status
-3221225477 (access violation), not an error exit; crashaddr.txt is not written.
-Four runs of four under `-plugin` with piped stdin, the last two with `-noreset`
-too, so it is not Sys_Error's 10 s wait and CreateProcess of its own command
-line (sv_sys_win.c:885-931). The log's last line is SV_Error's own Con_Printf
-(sv_main.c:383) and no second copy from Sys_Error's Con_Log (sv_sys_win.c:876)
-follows. My reading, not measured: the fault is between the two --
-SV_UnspawnServer or SV_Shutdown with no server ever spawned, or COM_WorkerAbort.
-`-allowmapless` (sv_ccmds.c:723) skips the SV_Error and was not tried. Unknown
-without `-plugin`, on the Linux lobby binary, or for `map` on a running server.
-Falsifier: `python tools/conbridge.py start --no-client --map no_such_map_zz`
-prints `process exited rc 3221225477`; fixed, the status is a plain error exit
-or the server stays up. Found testing tools/conbridge.py.
+`make sv-dbg FTE_TARGET=win64` (engine at Patch 609): `ld` rejects
+`-Wl,--no-dynamicbase` (engine/Makefile:1588), and with `DEBUG_LDFLAGS=` emptied
+plugin.c:1962-1982's `Plug_IN_*` stubs are undefined references to `IN_KeyEvent`,
+`IN_MouseMove`, `IN_Journal_MarkSynth` and the rest: unused statics the release
+build drops at -O2 and -O0 keeps. So there is no server with `crashme`,
+`errorme` or `loopme` (all `_DEBUG` only), and Patch 609 had to start a thread at
+address 5 from outside to make a release server fault. Found measuring where
+the crash record goes; not fixed. Falsifier: the command above links, and
+`crashme` on its console writes a record to `<basedir>\crashaddr.txt`.
 
 ## P577-580 primary Windows reader deployment blocked -- 2026-10-08
 

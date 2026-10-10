@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   engine-patches
-commit   93828165ce11d7920ce49f4a28e3e065e88699c0
+commit   d43004f60bd6819f744d97e56b3aaf074a3d023d
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -25,7 +25,14 @@ commit   93828165ce11d7920ce49f4a28e3e065e88699c0
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-606
-patch    608
+patch    609
+# Patch 609: the Windows dedicated server's fatal-error path. A server that reaches
+# SV_Error (a +map nobody has) exits 1 instead of faulting in Log_String; it restarts
+# itself only when started with -autoreset; and its crash record goes to crashaddr.txt in
+# the basedir it is running, not to C:\FTEQuake\quakers\. Engine only: log.c and
+# sv_sys_win.c. Only fteqwsv64.exe was rebuilt and installed (tag patch-609, stamp
+# git-7151-patch-609-0-gd43004f60); the client and plugins are still Patch 606's
+# binaries, which is why `tag` above has not moved.
 # Patch 608: the run line stamps a ramp leave at the ride's last real contact,
 # not where the 0.08 s hold ran out (a median 211 u later on one surf run).
 # csprogs only: no engine source, server QC, recorder, evidence, ranking,

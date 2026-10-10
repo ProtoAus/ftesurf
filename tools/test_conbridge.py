@@ -145,6 +145,13 @@ rep = cb.Session(ns(name='v')).shutdown(False)
 check('no snapshot: no verdict, and a note saying so',
       rep['cfg_changed'] == [] and any('never snapshotted' in n for n in rep['notes']))
 
+# -- a dedicated server with no map ends itself after 3 s: refused before anything starts ----
+rc, out = cli(script, '--name', 'nomap', 'start')
+check('start with a server and no --map is refused', rc == 2 and 'needs --map' in out and not cb.state_path('nomap').exists())
+rc, out = cli(script, '--name', 'nomap', 'start', '--no-server', '--client', str(scratch / 'no-such.exe'),
+              '--root', str(root), '--gamedir', 'g')
+check('client-only needs no map (it gets as far as the missing exe)', rc == 2 and 'no executable' in out, out.strip()[-80:])
+
 # -- a manifest the tool cannot rewrite must stop the start, not fall back -----------------
 (root / 'default.fmf').write_text('FTEMANIFEST 1\nGAME "X"\n')
 sess = cb.Session(ns(name='w'))

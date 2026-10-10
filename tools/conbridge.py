@@ -345,9 +345,9 @@ class Session:
             common += ['+set', 'run_resume', '0']
         if not a.no_server:
             self.port = a.port or free_port()
-            # -noreset: without it a dedicated server that hits Sys_Error waits 10 s and then
-            # CreateProcess()es its own command line (sv_sys_win.c:885-931) -- a second
-            # server that is nobody's child.
+            # -noreset: a server built before Patch 609 that hits Sys_Error waits 10 s and then
+            # CreateProcess()es its own command line -- a second server that is nobody's
+            # child. From 609 that needs -autoreset; this keeps older builds in line.
             args = [*common, '-noreset', '+log_name', self.tag + '_sv', '-port', str(self.port),
                     '+sv_public', '0', *a.server_args.split()]
             self.launch('sv', a.server, args + (['+map', a.map] if a.map else []))
@@ -1031,6 +1031,8 @@ def cmd_info(a: argparse.Namespace) -> int:
     elif r['verdict'] == 'ok':
         t = r['timer']
         print(f"origin {' '.join(r['origin'])}  angles {' '.join(r['angles'])}")
+        if all(w.strip('-0.') == '' for w in r['origin'] + r['angles']):
+            print('  (all zeros is also what the server answers BEFORE the spawn: ask again)')
         print(f"velocity {' '.join(r['velocity'])}  horizontal {r['speed']}")
         print(f"timer {t['state']} on {t['map']}, practice {t['practice']}, "
               f"recording {t['recording']}")
@@ -1179,6 +1181,9 @@ def main() -> int:
             ap.error('nothing to launch')
         if a.map and a.no_server:
             ap.error('--map needs the dedicated server (prediction, and the run_resume guard)')
+        if not a.map and not a.no_server:
+            # measured: "SV_Error: Couldn't load a map" about 3 s after start
+            ap.error('the dedicated server needs --map: with none it ends itself after 3 s')
         if not re.fullmatch(r'\d+x\d+', a.size.lower()):
             ap.error('--size is WxH')
     for stream in (sys.stdout, sys.stderr):
