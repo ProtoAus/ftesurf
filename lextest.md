@@ -17,14 +17,13 @@ Published 10 Oct 15:02 UTC (02:02 on the 11th here). Live since 15:04 UTC on
 both installs (engine, plugins, csprogs, menu.dat) and 15:07 UTC on all twelve
 lobbies (csprogs). Each replaced file has a `.prev` beside it.
 
-**To see it, type `plug_load ui_imgui` in the console first, each session.**
-The plugin sits beside the exe on your two installs, but a normal boot does not
-load it (measured in a rig with the real default.cfg). Without it you get
-Patch 610's plots, which is also what `ui_native_graphs 0` gives. Say if you
-want it loaded for you at boot: one line beside `plug_load hl2`.
+**Nothing to type any more (Patch 618, same day).** You said to make it the
+default, so the plugin is now loaded at boot by one line in default.cfg. Open
+Run graphs and the plots are ImPlot's. `ui_native_graphs 0` gives Patch 610's
+plots back; taking the line out of default.cfg keeps the plugin out altogether.
 
-The **run graphs** panel's two plots are then drawn by the ImGui plugin (your
-two installs have it; no release does). Everything round them is
+The **run graphs** panel's two plots are drawn by the ImGui plugin (your two
+installs have it; no release does). Everything round them is
 the panel from Patch 610. Measured on the desktop PC with three made-up 50 s
 runs and a harness for a mouse. Judge, with real runs and your own hand:
 

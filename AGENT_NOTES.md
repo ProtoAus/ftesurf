@@ -4542,6 +4542,14 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   not loaded`, and `ui_imgui_status` is an unknown command until the plug_load.
   The patch's notes said "where the plugin is installed"; they say "loaded" now.
   When a feature rides on something optional, boot a plain rig and look.
+- PATCH 618 NAMES IT IN default.cfg: `if $dedicated == 0 plug_load ui_imgui`.
+  Three plain boots on that file (`runtime/plugprobe`, the stamped Patch 614
+  binaries): a client with the DLL lists it loaded and answers
+  `ui_imgui_status`; a client without it boots and draws the QC panels; a
+  dedicated server with the DLL beside it does not touch it. With the guard
+  taken out, that server loads the DLL, the plugin refuses, and the log says
+  `Couldn't load plugin ui_imgui`: the guard is what the server arm shows.
+  `$dedicated` is the engine's own macro (cmd.c), "1" or "0".
 - THREE LAYERS, ONE AUTHORITY. QC (`cl_linegraph.qc`, the `lgn_*` block) owns the
   rows, the energy sum (`lgn_e`, 8192 rows a frame), the chips, the card and
   every number. The engine (`cl_plugin_ui_plot.inc`) copies rows out of QC memory
