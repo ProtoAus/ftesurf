@@ -349,9 +349,19 @@ check("a schema-11 database gains them on the next start",
       (sorted(names & set(TABLES)), rows(m, "PRAGMA user_version")[0][0]), (TABLES, 13))
 
 # A 12 database as Patch 612 left it: `links` present, no `linkkeys`.
+LINKS_12 = """
+CREATE TABLE IF NOT EXISTS links (
+    player    TEXT    PRIMARY KEY,
+    steamid   TEXT    NOT NULL,
+    pub       TEXT    NOT NULL DEFAULT '',
+    node      TEXT    NOT NULL DEFAULT '',
+    linked_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS links_steamid ON links (steamid);
+"""
 home = m._home
 conn = sqlite3.connect(m._test_db)
-conn.executescript("DROP TABLE linkcodes; DROP TABLE linkkeys;" + accounts.SQL
+conn.executescript("DROP TABLE linkcodes; DROP TABLE linkkeys;" + accounts.SQL + LINKS_12
                    + "PRAGMA user_version=12;")
 conn.close()
 m = fresh(home=home)
@@ -361,13 +371,75 @@ check("a schema-12 database swaps its empty `links` for `linkkeys`, and codes le
        "claim" in [r[1] for r in rows(m, "PRAGMA table_info(linkcodes)")]),
       (False, True, 13, True))
 conn = sqlite3.connect(m._test_db)
-conn.executescript(accounts.SQL + "INSERT INTO links (player, steamid, linked_at)"
+conn.executescript(accounts.SQL + LINKS_12 + "INSERT INTO links (player, steamid, linked_at)"
                    " VALUES ('g', '%s', 1); DROP TABLE linkkeys; PRAGMA user_version=12;" % SID)
 conn.close()
 m = fresh(home=home)
 check("...but a `links` somebody filled is left as it was",
       (rows(m, "SELECT player FROM links"), rows(m, "PRAGMA user_version")[0][0]),
       ([("g",)], 13))
+
+# gunicorn and a cron tool do start together on a deploy, and a script commits
+# between its statements.  So: an 11 database, and at each CREATE of steps 12
+# and 13 in turn ANOTHER process runs both steps to the end first.  The Pi's
+# two-thread arm met this by luck (test_board.py); here it is every boundary.
+m = fresh()
+real_connect = m.connect
+RACED = []
+
+
+def finish_elsewhere(what):
+    other = sqlite3.connect(m._test_db)
+    try:
+        other.executescript(accounts.SQL)
+        accounts.upgrade_13(other)
+        other.execute("PRAGMA user_version=13")
+        other.commit()
+        RACED[-1][1] = what
+    finally:
+        other.close()
+
+
+def racing_connect():
+    conn = real_connect()
+    seen = []
+
+    def spy(sql):
+        # Counted from step 12's first statement: migrate() runs CREATEs of its
+        # own before it, and a count from the connection's start raced those.
+        words = sql.split()
+        if words[:1] != ["CREATE"] or (not seen and "accounts" not in words):
+            return
+        seen.append(words[words.index("ON") + 1] if words[1] == "INDEX" else words[5])
+        if len(seen) == RACED[-1][0]:
+            finish_elsewhere(seen[-1])
+    conn.set_trace_callback(spy)
+    return conn
+
+
+outcomes = []
+for at in range(1, 7):                  # step 12 has four CREATEs, step 13 two
+    conn = sqlite3.connect(m._test_db)
+    conn.executescript("".join("DROP TABLE IF EXISTS %s;" % t for t in TABLES + ["links"])
+                       + "PRAGMA user_version=11;")
+    conn.close()
+    RACED.append([at, "never raced"])
+    m.connect = racing_connect
+    try:
+        m.migrate()
+        outcomes.append("ok")
+    except Exception as exc:            # noqa: BLE001  (the finding IS the exception)
+        outcomes.append(repr(exc))
+    finally:
+        m.connect = real_connect
+names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table'")}
+check("another process finishing steps 12 and 13 at any of their six statements breaks neither",
+      (outcomes, sorted(names & set(TABLES)), "links" in names,
+       rows(m, "PRAGMA user_version")[0][0]),
+      (["ok"] * 6, TABLES, False, 13))
+check("...and those six were the statements raced: each table, and each index by its table",
+      [r[1] for r in RACED],
+      ["accounts", "linkcodes", "linkcodes", "linknonces", "linkkeys", "linkkeys"])
 
 print("\n--- 2. off unless SURFD_BOARD_URL is set -------------------------")
 

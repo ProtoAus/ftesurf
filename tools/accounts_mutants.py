@@ -227,6 +227,11 @@ M = [
      'resp.set_cookie("x" + ucookie, browser, max_age=UNLINK_TTL, path=cookie_path,'),
     ("unlink-host", A, 'ucookie = "__Host-ftu" if secure else "ftu"', 'ucookie = "ftu"'),
     # schema 13
+    ("links-12", A, "CREATE TABLE IF NOT EXISTS linkcodes (",
+     "CREATE TABLE IF NOT EXISTS links (player TEXT PRIMARY KEY, steamid TEXT NOT NULL,"
+     " pub TEXT NOT NULL DEFAULT '', node TEXT NOT NULL DEFAULT '', linked_at INTEGER NOT NULL);\n"
+     "CREATE INDEX IF NOT EXISTS links_steamid ON links (steamid);\n"
+     "CREATE TABLE IF NOT EXISTS linkcodes ("),
     ("schema-13", "surfd.py", "accounts.upgrade_13(conn)", "pass"),
     ("schema-13-keys", A, "    conn.executescript(SQL_KEYS)\n    if \"claim\"", "    if \"claim\""),
     ("schema-13-claim", A,

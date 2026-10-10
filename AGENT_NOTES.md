@@ -5916,10 +5916,17 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   build made before the last edit to sv_account.qc. `build.ps1 -NoDeploy`
   writes a NEW `rig/build-nodeploy-<guid>` each time; the driver prints each
   .dat's hash, so read them, and delete the old build dirs.
-- **A STEP THAT DROPS A TABLE RACES ITSELF.** Schema 13 dropped the empty
-  `links`; test_board.py's two-threads-migrating arm caught the second thread
-  finding it gone (`no such table`). gunicorn and a cron tool do start together
-  on a deploy. The step now tolerates exactly that error.
+- **A STEP THAT DROPS A TABLE RACES ITSELF, AND THE STEP THAT MADE IT.** Schema
+  13 dropped the empty `links`; test_board.py's two-threads-migrating arm caught
+  the second thread finding it gone (`no such table`), and the step now
+  tolerates exactly that. THE SECOND HALF SHIPPED: a process still in step 12's
+  script reached `CREATE INDEX ... ON links` after another had finished 13.
+  The same arm met it ONCE, in the deploy stage on the Pi, having passed every
+  run on the desktop, and `surfd-deploy.ps1` refused to install. Step 12 no
+  longer makes the table. A thread arm finds a race by luck: test_accounts.py
+  now lets a second connection finish both steps at each of their six
+  statements in turn (sqlite's trace hook), and fails on the old script at the
+  third. gunicorn and a cron tool do start together on a deploy.
 - **THE CODE GOES BROWSER -> GAME, AND IT IS A BEARER TOKEN.** The other
   direction lets a link sent to a victim bind THEIR Steam account to the
   sender's install. This direction still links whoever types the code first,

@@ -79,14 +79,6 @@ CREATE TABLE IF NOT EXISTS accounts (
     banned_at  INTEGER NOT NULL DEFAULT 0,
     ban_note   TEXT    NOT NULL DEFAULT ''
 );
-CREATE TABLE IF NOT EXISTS links (
-    player    TEXT    PRIMARY KEY,
-    steamid   TEXT    NOT NULL,
-    pub       TEXT    NOT NULL DEFAULT '',
-    node      TEXT    NOT NULL DEFAULT '',
-    linked_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS links_steamid ON links (steamid);
 CREATE TABLE IF NOT EXISTS linkcodes (
     code      TEXT    PRIMARY KEY,
     steamid   TEXT    NOT NULL,
@@ -100,6 +92,11 @@ CREATE TABLE IF NOT EXISTS linknonces (
     seen_at INTEGER NOT NULL
 );
 """
+
+# SQL IS STEP 12 AND NO LONGER MAKES `links`, the guid-keyed table 13 drops.
+# While it did, a process still in this script could reach `CREATE INDEX ... ON
+# links` just after another had finished 13: "no such table: main.links".  The
+# Pi's two-thread arm met it (test_board.py); this box's never had.
 
 # Schema 13 (upgrade_13): a link is keyed on the install's key, and a code
 # remembers which key asked for it first (`linkcodes.claim`, added there).
