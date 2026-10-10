@@ -13,7 +13,7 @@ to be wrong.
 
 ## 00. 10 Oct — the trainer keeps your last jumps (Patch 621)
 
-Published 10 Oct 18:13 UTC (05:13 on the 11th here). Live since 18:20 UTC on
+Published 10 Oct 18:18 UTC (05:18 on the 11th here). Live since 18:20 UTC on
 both installs (csprogs, cfg/default.cfg) and 18:21 UTC on all twelve lobbies
 (csprogs). Each replaced file has a `.prev` or a `.pre621` copy beside it.
 
