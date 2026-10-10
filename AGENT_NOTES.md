@@ -1673,6 +1673,14 @@ publicly WITH its fix, not before it.
   on the pass before was the fifth. It is out again and the booster is
   BACKLOG. One green run of a case near a threshold is not coverage: run it
   several times and against the build without the change.
+  Deployed 2026-10-10 from `adc724d`, csprogs `ebc342f0` only (qwprogs and
+  menu.dat were already these bytes in all three places): both Windows
+  installs 16:15Z, the Pi 16:15Z to 16:16Z with nobody on, all 12 lobby
+  processes started after the swap (read from the host), and
+  `pi_lobby_smoke.py` on lobby 1 was served this csprogs and drew the board.
+  That smoke does not walk through a teleporter: the rule itself was measured
+  in rigs on this file, not on the fleet. `.prev` is Patch 617's csprogs
+  (`4355bdf0`); on the Pi the `.prev` pair is the whole 617 build.
   A SERVER COMMAND'S ANSWER IS PRINTED A ROUND TRIP LATER, after the next
   stage's `echo`: the grader reads the three `cmd viewpos` answers in order,
   not per stage (read per stage, every run said "cannot measure").
