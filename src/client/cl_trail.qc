@@ -66,6 +66,9 @@
 #define TR_EYEMID 0.5           // of the way between duck and stand view heights
 #define TR_SETTLE 0.5           // Patch 477: seconds after a clock-back restart...
 #define TR_JUMP   128           // ...in which a step this long drops the head (52 u is 3500 u/s)
+#define TR_RING   64            // Patch 611: command frames of predicted state kept (the engine predicts across 63)
+#define TR_LEAD   2             // ...an acknowledged frame's state is the one drawn this many frames later
+#define TR_FILL   2             // ...the widest step between two snapshots whose middle is still sampled
 
 float  tr_live, tr_prev;        // slot indices, swapped at a run start
 float  tr_on;                   // the live slot holds a run
@@ -88,6 +91,16 @@ float  tr_gen;                  // Patch 477: lines opened, so a line is told fr
 float  tr_cur_on;
 float  tr_cur_t;
 vector tr_cur_p;
+// Patch 611: the kept frames (Trail_Keep) and which of them a sample takes (Trail_Pair).
+float  *tr_kf;                  // per frame: [command frame, cltime, WT_F_ONGROUND|WT_F_JUMP, yaw]
+vector *tr_kv;                  // ...and [position, velocity, wish]
+float  tr_kept;                 // the newest command frame kept
+float  tr_kfrom;                // frames before this one are not where the server had the body
+float  tr_emit;                 // the command frame of the last sample
+float  tr_lastramp;             // ...and the ramp stat it carried
+// This run: samples taken from an older frame, samples between two snapshots,
+// and frames that brought no new server state.
+float  tr_npair, tr_nfill, tr_nwait;
 
 #include "cl_trailstate.qc"
 
@@ -124,6 +137,7 @@ void() Trail_Reset =
 	tr_on = tr_prevon = tr_stopped = FALSE;
 	tr_nsamp = tr_builds = tr_since = 0;
 	tr_state = 0;
+	tr_kept = tr_kfrom = tr_emit = 0;
 	if (tr_raw >= 1)
 		buf_del(tr_raw);
 	tr_raw = tr_stitch = tr_slseq = tr_practice = 0;
@@ -161,17 +175,20 @@ void() Trail_Open =
 	tr_nsamp  = 0;
 	tr_builds = 0;
 	tr_since  = 0;
+	tr_npair  = 0;
+	tr_nfill  = 0;
+	tr_nwait  = 0;
 };
 
 // The plane under the player, which is what the recorder writes: the ramp
 // normal while riding one, else the ground normal, else nothing.  SV_RecNormal
 // (sv_timer.qc:3614) picks between the same two in the same order.
-vector() Trail_Normal =
+vector(float onground, float riding) Trail_Normal =
 {
-	if (getstatf(STAT_FS_RAMPCONTACT))
+	if (riding)
 		return [getstatf(STAT_FS_RAMPNORM), getstatf(STAT_FS_RAMPNORM + 1),
 		        getstatf(STAT_FS_RAMPNORM + 2)];
-	if (pmove_onground)
+	if (onground)
 		return [getstatf(STAT_FS_GROUNDNORM), getstatf(STAT_FS_GROUNDNORM + 1),
 		        getstatf(STAT_FS_GROUNDNORM + 2)];
 	return '0 0 0';
@@ -217,31 +234,133 @@ float(vector p) Trail_InBoundary =
 	return FALSE;
 };
 
-void() Trail_Sample =
+/*
+  Patch 611: every command frame's predicted state, kept so that a sample can be
+  the frame the server's stats describe (Trail_Pair).  It runs whether or not a
+  run is on the clock: a run's first samples pair with frames from before it.
+*/
+void() Trail_Keep =
 {
-	local float fl, t, brk, b, dt;
+	local float n, c, b, bits, dt, spd;
+	local vector o, v, po, pv;
+
+	n = clientcommandframe;
+	if (n == tr_kept)
+		return;
+	if (!tr_kf)
+	{
+		tr_kf = memalloc(sizeof(float) * TR_RING * 4);
+		tr_kv = memalloc(sizeof(vector) * TR_RING * 3);
+		for (c = 0; c < TR_RING; c = c + 1)
+			tr_kf[c * 4] = -1;
+	}
+	o = pmove_org;
+	v = pmove_vel;
+	// The engine sends one command a rendered frame at most (cl_input.c
+	// CL_SendCmd), so any other step is a counter that restarted or frames this
+	// never saw: nothing older is known.
+	if (n != tr_kept + 1)
+	{
+		if (n < tr_kept)
+			tr_emit = 0;
+		tr_kfrom = n;
+	}
+	else
+	{
+		/*
+		  A step no move makes (the test Trail_Take breaks the line on, over the
+		  time this command really took): the body was put somewhere.  If the
+		  client's own trigger prediction did it, the server does the same on the
+		  same command and the frames kept before it stand -- they hold the path
+		  up to the teleporter.  Otherwise the server did it alone, a round trip
+		  ago, and they are not where it had the body.
+		*/
+		b   = tr_kept & (TR_RING - 1);
+		po  = tr_kv[b * 3];
+		pv  = tr_kv[b * 3 + 1];
+		dt  = max((tr_tick > 0) ? tr_tick : 0.015, cltime - tr_kf[b * 4 + 1]);
+		spd = max(vlen([pv_x, pv_y, 0]) + fabs(pv_z), vlen([v_x, v_y, 0]) + fabs(v_z));
+		if (vlen(o - po) > max(128, spd * dt * 3 + 64))
+		if (tg_teleseq < n - 3 || tg_teleseq > n)
+			tr_kfrom = n;
+	}
+	// A held body is drawn where the server has it, not predicted.
+	if (getstatf(STAT_FS_TIMERFLAGS) & TF_FROZEN)
+		tr_kfrom = n + 1;
+
+	bits = 0;
+	if (pmove_onground)         bits = bits | WT_F_ONGROUND;
+	if (Keys_Held(FSK_JUMP))    bits = bits | WT_F_JUMP;
+
+	c = n & (TR_RING - 1);
+	tr_kf[c * 4]     = n;
+	tr_kf[c * 4 + 1] = cltime;
+	tr_kf[c * 4 + 2] = bits;
+	tr_kf[c * 4 + 3] = input_angles_y;
+	tr_kv[c * 3]     = o;
+	tr_kv[c * 3 + 1] = v;
+	tr_kv[c * 3 + 2] = Watch_WishOf(input_angles_y, input_movevalues_x, input_movevalues_y);
+	tr_kept = n;
+};
+
+/*
+  Patch 611: which kept frame the stats in hand describe; -1 is none yet.
+
+  The ramp bit and the run clock arrive in the snapshot that acknowledges command
+  A, and the engine draws the state after command A while the client's counter
+  reads A + 2: CL_PredictMove simulates one net interval, a tick, behind real
+  time (cl_pred.c, CL_GetPredictionRealtime).  On a local server that is the
+  current frame.  Behind a ping it is an older one, and sampling "now" put every
+  stat beside a body that much further on.  Measured against the server's own
+  recording of the ride (tools/test_runlines_livelag.py: surf_kitsune,
+  sv_minping 120, an 890 u/s exit): the ramp-exit mark 79 and 100 u from its
+  recorded sample before, 3 u paired.  What is left is the engine's blend, under
+  one rendered frame of travel.  Under the tick rate a command is longer than
+  that interval and the truth lies between two kept frames: the line is then as
+  right as it is with no ping, not better (BACKLOG).
+
+  tr_kfrom is where the kept frames stop being the server's path: a teleport the
+  server made alone (Trail_Keep), a load (Trail_Frame) or a hold.
+*/
+float() Trail_Pair =
+{
+	local float n, p;
+
+	n = clientcommandframe;
+	p = servercommandframe + TR_LEAD;
+	// The current frame is the stats' own: a local server, prediction off, or
+	// so far behind that the engine has stopped predicting (cl_pred.c, 63).
+	if (p >= n || cvar("cl_nopred") || n - p >= TR_RING - 3)
+		return n;
+	if (p <= tr_emit || p < tr_kfrom)
+		return -1;
+	if (tr_kf[(p & (TR_RING - 1)) * 4] != p)
+		return -1;
+	return p;
+};
+
+// One sample from kept frame f.  FALSE once the line has stopped.
+float(float f, float t, float riding) Trail_Take =
+{
+	local float fl, brk, b, c, dt, yaw;
 	local vector o, v, nrm, wsh;
 
-	o = pmove_org;
+	c = f & (TR_RING - 1);
+	o = tr_kv[c * 3];
 	if (o == '0 0 0')
-		return;                     // prediction has not run; not a position
-	v = pmove_vel;
+		return TRUE;                // prediction had not run; not a position
+	v   = tr_kv[c * 3 + 1];
+	wsh = tr_kv[c * 3 + 2];
+	yaw = tr_kf[c * 4 + 3];
 
-	fl = 0;
-	if (pmove_onground)                     fl = fl | WT_F_ONGROUND;
-	if (getstatf(STAT_FS_RAMPCONTACT))      fl = fl | WT_F_RAMP;
+	fl = tr_kf[c * 4 + 2];          // on ground and the jump key, of that frame
+	if (riding)                             fl = fl | WT_F_RAMP;
 	if (Trail_Ducked())                     fl = fl | WT_F_DUCKED;
-	if (Keys_Held(FSK_JUMP))                fl = fl | WT_F_JUMP;
 
-	// The run clock, in seconds, which is the .rec's own `t` column and the one
-	// clock the recording and the sidecar already share.  Two samples CAN carry
-	// the same value -- the stat moves per server tick and this runs per command
-	// -- and Line_Grade returns -1 on a zero interval, which is the handled case.
-	t = tr_practice ? tr_practicebase + cltime - tr_practiceat
-	                : getstatf(STAT_FS_TIMERTICKS) * tr_tick;
+	if (tr_practice)
+		t = tr_practicebase + max(0, tr_kf[c * 4 + 1] - tr_practiceat);
 
-	nrm = Trail_Normal();
-	wsh = Watch_WishOf(input_angles_y, input_movevalues_x, input_movevalues_y);
+	nrm = Trail_Normal(fl & WT_F_ONGROUND, riding);
 
 	/*
 	  Patch 477: a load's clock stat can land a frame before its origin, so the
@@ -253,9 +372,9 @@ void() Trail_Sample =
 	if (tr_stitch && cltime < tr_settle)
 	if (vlen(o - [getstatf(STAT_FS_SLORG), getstatf(STAT_FS_SLORG + 1),
 	              getstatf(STAT_FS_SLORG + 2)]) > TR_JUMP)
-		return;                     // load clock arrived ahead of the body
+		return TRUE;                // load clock arrived ahead of the body
 	if (!tr_nsamp)
-		Line_Seed(tr_live, v, fl, t, input_angles_y);
+		Line_Seed(tr_live, v, fl, t, yaw);
 
 	brk = tr_stitch;
 	if (tr_nsamp > 0)
@@ -269,11 +388,11 @@ void() Trail_Sample =
 		{
 			tr_stopped = TRUE;
 			Line_End(tr_live);
-			return; // never attach the reset destination to the rewind head
+			return FALSE; // never attach the reset destination to the rewind head
 		}
 	}
-	Line_Point(tr_live, o, v, fl, t, brk, tr_stitch, [input_angles_y, nrm_z, wsh * nrm]);
-	Trail_Record(o, v, fl, t, brk, tr_stitch, [input_angles_y, nrm_z, wsh * nrm]);
+	Line_Point(tr_live, o, v, fl, t, brk, tr_stitch, [yaw, nrm_z, wsh * nrm]);
+	Trail_Record(o, v, fl, t, brk, tr_stitch, [yaw, nrm_z, wsh * nrm]);
 	tr_stitch = FALSE;
 
 	tr_lastt = t;
@@ -286,6 +405,63 @@ void() Trail_Sample =
 		tr_since = 0;
 		tr_builds = tr_builds + 1;
 	}
+	return TRUE;
+};
+
+void() Trail_Sample =
+{
+	local float p, f, e, t, t0, riding, both;
+
+	p = Trail_Pair();
+	if (p < 0)
+	{
+		tr_nwait = tr_nwait + 1;
+		return;                     // nothing new from the server
+	}
+	riding = getstatf(STAT_FS_RAMPCONTACT) ? TRUE : FALSE;
+
+	// The run clock, in seconds, which is the .rec's own `t` column and the one
+	// clock the recording and the sidecar already share.  Two samples CAN carry
+	// the same value -- the stat moves per server tick and this runs per command
+	// -- and Line_Grade returns -1 on a zero interval, which is the handled case.
+	t = getstatf(STAT_FS_TIMERTICKS) * tr_tick;
+
+	/*
+	  Two commands acknowledged at once leave a frame no snapshot described.  It
+	  is sampled all the same, its clock between its neighbours': a one-tick
+	  ground contact lives in the kept frame and would otherwise make no mark,
+	  and the line keeps a sample a command (27 of 116 at sv_minping 120).  Its
+	  ramp bit is the one both neighbours agree on, so a ride's marks stay on
+	  samples the server said were in contact.  Only that one frame: a wider
+	  step is a burst, and the one measured sat on a teleport the server made,
+	  where the frames between are not its path.
+	*/
+	e    = tr_emit;
+	t0   = tr_lastt;
+	both = (riding && tr_lastramp) ? TRUE : FALSE;
+	if (tr_nsamp > 0)
+	if (!tr_stitch)
+	if (p - e > 1)
+	if (p - e <= TR_FILL)
+	if (tr_practice || t >= t0)     // a practice clock is the kept frame's own
+		for (f = e + 1; f < p; f = f + 1)
+		{
+			if (f < tr_kfrom)
+				continue;
+			if (tr_kf[(f & (TR_RING - 1)) * 4] != f)
+				continue;
+			tr_emit = f;
+			if (!Trail_Take(f, t0 + (t - t0) * (f - e) / (p - e), both))
+				return;
+			tr_nfill = tr_nfill + 1;
+		}
+
+	tr_emit     = p;
+	tr_lastramp = riding;
+	if (!Trail_Take(p, t, riding))
+		return;
+	if (p != clientcommandframe)
+		tr_npair = tr_npair + 1;
 };
 
 // Before clearscene, with the other per-frame readers.
@@ -310,6 +486,7 @@ void() Trail_Frame =
 		return;
 	}
 
+	Trail_Keep();
 	st = getstatf(STAT_FS_TIMERSTATE);
 	sq = getstatf(STAT_FS_SLSEQ);
 	op = SLOP_NONE;
@@ -328,6 +505,9 @@ void() Trail_Frame =
 		}
 		if (op == SLOP_LOADED)
 		{
+			// Patch 611: the server moved the body; its state is drawn from the
+			// next frame on (the engine applies a snapshot a frame after its stats).
+			tr_kfrom = clientcommandframe + 1;
 			// An implicit go may reuse its previous id. It is a new prefix,
 			// never whatever picture a remote client's old file held there.
 			if (tr_timedgo_ack > 0)
@@ -483,6 +663,11 @@ float() Trail_Console =
 	              tr_nsamp, tr_builds, tr_since, tr_tick, tr_state));
 	print(sprintf("trail: marks %g, breaks %g, stopped %g (visual discontinuities only)\n",
 	              ln_evn[tr_live], ln_bkn[tr_live], tr_stopped));
+	// Patch 611: how far behind the newest frame the last sample was taken.
+	print(sprintf("trail: pairing %g of %g samples from an older frame and %g between "
+	              "snapshots, last %g behind (ack %g behind), %g waits\n", tr_npair, tr_nsamp,
+	              tr_nfill, tr_kept - tr_emit, clientcommandframe - servercommandframe,
+	              tr_nwait));
 	if (ln_n[tr_live] > 0)
 		print(sprintf("trail: head %.3f s at %v\n", ln_t[tr_live * LN_CAP + ln_n[tr_live] - 1],
 		              ln_pos[tr_live * LN_CAP + ln_n[tr_live] - 1]));

@@ -2396,9 +2396,28 @@ that actually touched the ramp.
   from before.
 - With the contact colouring (`hud_watch_path_color 2`) the ramp colour ends
   at the same place.
-- Your own live line on a lobby may still trail: there the contact flag
-  arrives from the server behind your predicted position. Tell me if it reads
-  late there; that part is not changed or measured yet.
+- Your own live line behind a ping is section 14.
 
 Not changed: which contacts count, the Segments column, the board, anything
 the server records.
+
+## 14. Your own live line for a player with ping (Patch 611)
+
+On this PC and on a LAN lobby nothing should look different: there the live
+line's marks were already within about 3 units of where the server saw them.
+The change is for a player with real latency. Their ramp flag arrives late, so
+the "landed" and "left the ramp" marks on their own line were drawn that far
+down the path: 44 units at about 60 ms and 79 to 100 at about 120 ms in my
+test, at only 890 u/s, so several hundred at real surf speed. Each sample now
+uses where they were when the server measured it: 3 units at 120 ms.
+
+- You cannot see this from home without latency. If someone remote plays a
+  lobby, ask whether the marks on their own line sit at the ramp ends now,
+  and whether the line still looks whole.
+- One thing that is meant: for a player with ping the newest end of the line
+  now stops a little short of them while they move (by their ping), and a
+  line that ends at a reset no longer runs on past the reset point.
+- If your own line ever looks thinner or stops growing, tell me and type
+  `trail` in the console first: its `pairing` row says what it was doing.
+
+Not changed: the server, recordings, replays and board lines.

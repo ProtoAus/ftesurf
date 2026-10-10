@@ -1633,6 +1633,68 @@ publicly WITH its fix, not before it.
 
 ## The run line (Patches 432, 449-453)
 
+- Patch 611: the LIVE line (`cl_trail.qc`) pairs each sample with the command
+  frame the server's stats describe. The ramp bit and the run clock are stats;
+  the position is predicted. `Trail_Keep` keeps 64 command frames of predicted
+  state and `Trail_Pair` takes frame `servercommandframe + 2`: the engine draws
+  one net interval behind real time (`cl_pred.c` CL_GetPredictionRealtime), so
+  that IS the current frame on a local dedicated server and an older one
+  behind a ping. When two commands are acknowledged at once the frame between
+  them is sampled too (clock between its neighbours', ramp bit only if both
+  have it), so the line keeps a sample a command. Measured against the
+  server's own recording of a scripted ride (surf_kitsune, exit at 890 u/s,
+  `sv_minping 120`): the ramp-exit mark 79 and 100 u from the recorded contact
+  sample on the build before, 3 u after; 44 u before at `sv_minping 60`; every
+  sample of the run a median 69 u from its recorded one before, 2.5 u (at most
+  9) after, with the recorded sample's ramp bit on all 113. At 250 ms: 4 u. At
+  100 tick: 0 u (101 before). Seventeen marks of a hopping run: a median 0.6 u
+  (at most 1.6), 15.6 u (at most 28) before.
+  `runlines_livelag.cfg` through `runlines_smoke.py --dedicated --map
+  surf_kitsune --server-arg "+set sv_minping 120"`, graded by
+  `test_runlines_livelag.py <rig>/ftesurf --control <older build's rig>/ftesurf`.
+  EXIT STATUS 2 IS "CANNOT MEASURE" (no latency in the run, a save that missed
+  the ride): not a pass, run it again.
+  TELEPORTS. One the client PREDICTED (a map trigger, `cl_triggers 1`;
+  `tg_teleseq` in `cl_triggers.qc` is the command it fired on) needs nothing:
+  the frames kept before it are where the server had the body, and the line
+  now runs to within a tick of the teleporter. One the server made alone
+  (`cmd setpos`, a zone's cancel region, a load, a hold) makes the kept frames
+  wrong for a round trip, so `tr_kfrom` refuses them; the line still draws ONE
+  sample of the old path, because the engine applies a snapshot's state a
+  frame after its stats (two such samples on the build before, with no ping).
+  UNDER THE TICK RATE the line is as right as it is with no latency at that
+  frame rate, not better: a command then spans a tick or two. Measured with no
+  latency on the build before: at 60 fps one sample in ten is a frame off (17 u
+  at the 90th centile), at 30 fps a median 12 u. Pairing by TIME instead of by
+  frame count (a tick after frame A + 1 was drawn) read 2 u at 30 fps offline:
+  BACKLOG.
+  Traps, each met while measuring:
+  `sv_minping` is what makes latency on loopback (the server holds the
+  client's packets back). ON A LISTEN SERVER THE STATS LEAD THE DRAWN BODY by
+  under a tick (the acknowledged frame is 1 behind, not 2): untouched, 12 to
+  19 u at 890 u/s. `servercommandframe` DOES advance in today's client on both
+  server kinds; the `cl_hud.qc` essay that says otherwise is about an older
+  build. The engine sends ONE command a rendered frame at most, so under 67
+  fps `clientcommandframe` counts frames, not ticks. `+set pm_ticrate 0.01` on
+  a surf map changes the cvar and not the mover (the recording's
+  `movetickrate` stays 0.015): a `bhop_` map NAME loads the 100 Hz mode, so
+  the 100 tick run used a private copy of the map and its zone file under such
+  a name. The ride's saves must land in the 0.3 s between the exit and the
+  reset, which is why the arm issues twelve; that reset is the zone's, not the
+  map's carpet trigger, so the client does not predict it. An acknowledgement
+  BURST of seven frames sat exactly on a `cmd setpos`: sampling every frame of
+  it drew six samples of the old path, which is why only one frame between
+  snapshots is filled. A perfect auto-bhop's one-tick contact is not in the
+  predicted ground flag at the tick's end: four of six hops drew a trough and
+  no land or jump mark, before and after.
+  The review (one round) found the first cut dropping the last round trip of
+  path before a predicted teleporter, losing a hop contact in a skipped frame,
+  blanking under 12 fps with ping and breaking the line on a 0.25 s stall; all
+  four are what the paragraphs above replaced, and the rework was not reviewed
+  again.
+  The same day's coverage of RECORDED lines, nothing changed: 298 ramp leaves
+  in eight recordings of six maps at both tick rates, each on a sample of its
+  file, 128 of them on rides whose contact normal turned more than 5 degrees.
 - Patch 608: a ramp LEAVE mark is stamped at the ride's last real contact (the
   last sample carrying the ramp bit), not on the sample the 0.08 s hold ran out
   on. The classifier, its edges, the hold and the Segments rows are unchanged, so
@@ -1656,9 +1718,8 @@ publicly WITH its fix, not before it.
   client, and its model had lacked Patch 530's hold reset at a break: three of
   its eight fixtures failed on the unmodified build, and one still fails
   containment (BACKLOG). No fixture reaches LN_EVCAP; the compaction was
-  checked with a private LN_EVCAP 20 build. NOT covered: the LIVE line reads
-  the bit from a server stat beside a predicted position (its lag is not
-  measured), curved/prop ramps, and tick/frame-rate/LOD sweeps.
+  checked with a private LN_EVCAP 20 build. Not covered then: the LIVE line's
+  stat lag, turning ramps and the rate sweeps (see Patch 611 above).
   Deployed from `26e350e` on 2026-10-10: csprogs only to both Windows installs
   (08:07Z) and, with a byte-identical qwprogs, to the Pi (08:09Z, 12 lobbies
   restarted empty; `pi_lobby_smoke.py` on lobby 1 was served this csprogs).

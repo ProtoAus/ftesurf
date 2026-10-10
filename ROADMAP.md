@@ -382,8 +382,11 @@ numeric traces do not settle them.
 ### 12.4 Contact labels at the actual surface event
 
 P608 stamps a ramp leave at the ride's last real contact instead of where the
-0.08 s hold ran out; the held classifier and the board are unchanged. The live
-line's stat lag, an interpolated crossing and the acceptance sweep below remain.
+0.08 s hold ran out; the held classifier and the board are unchanged. P611
+pairs the live line's samples with the command frame the server's stats
+describe, which removes its marks' lag behind a ping (measured at 30 to 1000
+fps and at both tick rates, on one ramp). An interpolated crossing, a ride
+whose bit flickers before its end, and displacement/prop ramps remain.
 
 **Build.** Audit native "off ramp" placement against the mover's actual contact
 loss tick and hull/plane, not just proximity of the player's centre to a ramp.

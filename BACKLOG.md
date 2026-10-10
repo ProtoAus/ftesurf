@@ -2369,19 +2369,41 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   caption; keep the strict-red arm and independent native/body/prefix gates. Repair
   alignment without weakening body/prefix checks, inventing authoritative state
   or retiming the recording. Keep genuine stops and discontinuities explicit.
-- **Ramp-leave marks: what Patch 608 left open.** The mark now sits on the
-  ride's last real contact (`cl_lines.qc:Line_Point`), so the 0.08 s hold no
-  longer carries it 84..315 u past the exit. Open: (1) the LIVE line reads
-  `STAT_FS_RAMPCONTACT` beside a predicted `pmove_org` (`cl_trail.qc:
-  Trail_Sample`), so its marks lag by the stat's latency, not measured;
-  (2) where the bit alternates, a ride can end on a clear tick and the mark
-  sits up to that gap early; (3) the stamp is the first sample at or past the
-  exit, up to a tick late, with no interpolated crossing; (4) only surf
-  recordings were graded: no curved or prop ramp, and no tick-rate, frame-rate
-  or LOD sweep. Falsifier: a known brush edge with the raw contact-loss tick,
-  the mark and its drawn position logged together, live and from the .rec, at
-  several tick and frame rates. The stage diagnostics that preceded the fix are
-  in `tools/OFFRAMP_CONTACT.md`. Plan 12.4.
+- **Ramp-leave marks: what Patches 608 and 611 left open.** The mark sits on
+  the ride's last real contact (`cl_lines.qc:Line_Point`), and the live line
+  pairs its samples with the frame the server's stats describe
+  (`cl_trail.qc:Trail_Pair`). Open, each under a tick unless said:
+  (1) WHERE THE BIT FLICKERS before a ride ends, the last set bit can be a gap
+  early. Counted over nine recordings: 53 of 386 rides have a bridged gap in
+  their last 0.25 s (none on three clean surf runs, 13 of 119 on surf_rookie,
+  10 of 17 on one bhop file), gaps a median 0.02 to 0.045 s. Where the body
+  really left is not in the file.
+  (2) No interpolated crossing: the stamp is the first sample at or past the
+  exit, up to a tick late.
+  (3) The live line. The engine's blend puts a sample up to one rendered frame
+  past its clock (3 u at 100 fps and 890 u/s, under 1 u at 1000 fps). A ride
+  whose first or last contact tick fell between two snapshots is marked a tick
+  late (land) or early (leave): 10 u. UNDER THE TICK RATE it is only as right
+  as it is with no latency: one sample in ten a frame off at 60 fps, a median
+  12 u at 30 fps; pairing by time (a tick after frame A + 1 was drawn, between
+  the two kept frames) read about 2 u at 30 fps offline and is not built. On a
+  LISTEN server the stats lead the drawn body by under a tick (12 to 19 u at
+  890 u/s) and nothing corrects it. A teleport the server made alone still
+  draws one sample of the old path. A save's picture and the rewind's "where
+  you were" take the line's newest sample, which for a player with ping is now
+  their ping short of where they are (`cl_trailrequest.qc`, `cl_rewind.qc`).
+  A perfect auto-bhop's contact draws a trough and no land or jump mark (four
+  of six hops), as before.
+  (4) Coverage. Recorded lines: 298 ramp leaves in eight recordings of six
+  maps at both tick rates, each on a sample of its file, 128 on rides whose
+  contact normal turned over 5 degrees; a recording cannot say brush,
+  displacement or prop, so that split is unmeasured. Live: one ramp of one
+  map, at five frame rates, both tick rates and three latencies, one exit at
+  890 u/s; no ramp-to-ground, no real internet path (the latency was
+  `sv_minping`), and the predicted-teleporter case is one run.
+  Falsifier for (1) and (2): a known brush edge with the mover's own
+  contact-loss tick beside the mark; the stage diagnostics in
+  `tools/OFFRAMP_CONTACT.md` are the way to get that tick. Plan 12.4.
 - **A Segments row can start at a teleport where the line marks nothing.**
   `tools/p449mark.py` on `data/saves/bhop_monster_jam/save010/run.rec`:
   `containment: 2 row boundary/ies with no mark, first at tick 80947`, on the

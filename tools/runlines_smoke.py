@@ -9,6 +9,7 @@ read through junctions; only junctions we created are removed, never targets.
 import argparse
 import hashlib
 import pathlib
+import shlex
 import shutil
 import socket
 import subprocess
@@ -28,6 +29,9 @@ def main():
                     help='copy a control recording into the overlay, never alter its source')
     ap.add_argument('--port', type=int, default=27619)
     ap.add_argument('--dedicated', action='store_true')
+    ap.add_argument('--map', default='surf_dune', help='with --dedicated: the map the server starts')
+    ap.add_argument('--server-arg', action='append', default=[],
+                    help='with --dedicated: extra server arguments, e.g. "+set sv_minping 120"')
     ap.add_argument('--timeout', type=int, default=150)
     a = ap.parse_args()
     rig = pathlib.Path(tempfile.mkdtemp(prefix='ftesurf-runlines-', dir=a.output_dir))
@@ -75,16 +79,19 @@ def main():
                 raise ValueError('Use a dedicated lobby-range port')
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
                 probe.bind(('127.0.0.1', a.port))
-            text = text.replace('map surf_dune\n', f'connect 127.0.0.1:{a.port}\n')
+            if f'map {a.map}\n' not in text:
+                raise ValueError(f'cfg has no "map {a.map}" line to turn into a connect')
+            text = text.replace(f'map {a.map}\n', f'connect 127.0.0.1:{a.port}\n')
         target.write_text(text, encoding='utf-8')
         (gd / 'downloads/csprogsvers').mkdir(parents=True)
         subprocess.run(['python', str(ROOT / 'tools/seed_csprogs.py'), str(gd / 'csprogs.dat')],
                        check=True, capture_output=True)
         common = ['-basedir', str(rig), '-manifest', str(rig / 'default.fmf')]
         if a.dedicated:
+            extra = [word for arg in a.server_arg for word in shlex.split(arg)]
             server = subprocess.Popen(['C:/FTEQuake/fteqwsv64.exe', *common, '+sv_public', '0',
                                        '-port', str(a.port), '+log_enable', '1', '+log_name',
-                                       'runlines_server', '+map', 'surf_dune'], cwd=a.content,
+                                       'runlines_server', *extra, '+map', a.map], cwd=a.content,
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         executable = a.client or a.content / 'ftesurf64.exe'
         client = subprocess.Popen([str(executable), *common, '-window',

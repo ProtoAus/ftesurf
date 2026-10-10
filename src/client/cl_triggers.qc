@@ -169,6 +169,7 @@ vector tt_ang[TG_TT_MAX];
 
 // chain state
 float  tg_lastseq;              // sequence of the last command hooked
+float  tg_teleseq;              // Patch 611: ...and of the last one a teleport was predicted on (cl_trail.qc)
 float  tg_pusharmed;
 vector tg_pushvec;
 vector tg_pmins, tg_pmaxs;      // last hook's hull, for trig_here
@@ -955,6 +956,7 @@ float(float i, float seq) TG_FireTeleport =
 	}
 
 	predmove_org = newpos;
+	tg_teleseq   = seq;
 	// "I did not travel here, I was put here" -- Source clears the ground
 	// entity before moving you.
 	predmove_onground = 0;

@@ -25,7 +25,13 @@ commit   d43004f60bd6819f744d97e56b3aaf074a3d023d
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-606
-patch    609
+patch    611
+# Patch 611: the player's own live run line takes each sample's position from the
+# command frame the server's stats describe, not from the current one. Behind a
+# 120 ms ping its ramp-exit mark sat 79 to 101 u past the place the server
+# recorded; paired it is 3 u (10 where the exit tick's snapshot never came).
+# csprogs only: no engine source, server QC, recorder, evidence, ranking,
+# default or Build change (commit and tag above stay).
 # Patch 609: the Windows dedicated server's fatal-error path. A server that reaches
 # SV_Error (a +map nobody has) exits 1 instead of faulting in Log_String; it restarts
 # itself only when started with -autoreset; and its crash record goes to crashaddr.txt in
