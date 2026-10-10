@@ -13,6 +13,8 @@ to be wrong.
 
 ## 00. 11 Oct — linking Steam from inside the game (Patch 619)
 
+Live on the Pi's lobbies and both your Windows installs since 10 Oct 18:45 UTC.
+
 You asked for the least friction: a popup on first launch, the link copied,
 the site clean, "or maybe ... auto magically linked".
 

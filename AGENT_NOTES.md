@@ -6596,6 +6596,43 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **DEPLOYED 10 Oct 2026, 18:40-18:45 UTC (FTESurf `66a4225`, Patch 619): surfd,
+  the Pi's twelve lobbies, both Windows installs.** Over Patch 621's pair
+  (`092f9880` / `87bd5e43`), read back on all three before anything was copied.
+  surfd FIRST, 18:40Z: `-Ref 66a4225 -Only` accounts.py, surfd.py and
+  web/link.css (new). Twelve staged suites pass on the Pi, the three files
+  hash-match, master 2479950 SIGHUP'd, `surfd ready` 18:42:47, /health 12
+  lobbies. Read back: schema 14, `linkcodes` has `shown` and `seal`,
+  `linkkeys` still its one row. `/board/link`, `/board/link.css` and a start's
+  address answer 200 through proto.bar; `/api/link/start` and `/wait` are 404
+  from outside.
+  Lobbies, 18:43Z: `build.ps1 -Jobs 8 -Pi` from the clean worktree. 12 rows, 0
+  players. `qwprogs.dat` `2e41110e` (1019982 bytes) and `csprogs.dat`
+  `8a5ccca3` (5367186), hash-verified on the Pi; the 621 pair kept as `.prev`;
+  all 12 active, started 18:44:00 to 18:44:09.
+  Windows, 18:44:36Z: the same two progs and their `.lno` into both installs;
+  `.prev` is the 621 pair; menu.dat (`e5604321`), binaries, plugins and
+  default.cfg (`591c3236`) untouched. No game was running.
+  LIVE, ONCE, 18:45:16-18:45:23Z: a rig client with a new key joined lobby 1 by
+  `play.proto.bar`, was served `8a5ccca3`, told it is not linked, and got the
+  prompt unasked. A real Enter started a link: surfd logged `POST
+  /api/link/start` 200 and "started a link on p27510", the row has no account,
+  `shown` `?` and a 181-character seal; the box showed the address and the
+  live page for it hands code and opener to its button; the lobby's `POST
+  /api/link/wait` came at 18:45:21 and :23 and stopped at Esc.
+  NOT DONE LIVE: the sign-in, the number and the link. Only the owner has a
+  Steam account to do it with (lextest 00).
+  ROLLBACK: lobbies and installs, the `.prev` pair. surfd, the two
+  `*.pre66a4225-20261011-054030` files, remove web/link.css, SIGHUP. ROLL THE
+  LOBBIES BACK FIRST AND WAIT TEN MINUTES: the old `step` knows nothing of a
+  start's number and would confirm a signed-in start without it. Schema 14
+  stays (two additive columns the old code ignores). Database backups: this
+  deploy's `surfd.db.bak-66a4225-20261011-054030` and the Patch 617 one, both
+  kept.
+- **`p615link.py` WRITES THE REAL CLIPBOARD.** The rig client calls
+  `clipboard_set` like any other, so every run on a desktop leaves a test
+  sign-in address where the owner's last copy was. Say so if they are at the
+  machine.
 - **A .dat CARRIES ITS COMPILE DATE.** fteqcc writes `Compiled [YYYY/MM/DD]`
   into the header (one byte differed, offset 115, across midnight), so "is the
   installed csprogs a build of main?" cannot be answered by hash on another
