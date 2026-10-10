@@ -26,6 +26,13 @@ commit   a67cebe1ea3ac43c2e48794349ccbca3da7a1fb6
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-614
 patch    623
+# Patch 622 (published after 623; `patch` does not move down): the player's own run is
+# drawn on the run graphs as it happens, in white with a dot at its head, against the
+# ticked runs: from the run's start beside whole runs, from the stage's own start (the
+# server's stage base) beside runs of the stage in progress. It is the live trail's samples
+# (hud_trail), folded into the drawn bins as they arrive; hud_linegraph_live switches it.
+# csprogs only: no engine source, server QC, recorder, evidence, ranking, default or Build
+# change (commit and tag above stay).
 # Patch 623: the Windows release ships fteplug_ui_imgui_x64.dll (the run graphs' ImPlot
 # plots), pinned to the engine tree's build by the same gate as the exe and the hl2
 # plugin, with THIRD-PARTY.txt for what that DLL is built with (Dear ImGui, ImPlot, stb,

@@ -11,6 +11,37 @@ to be wrong.
 
 ---
 
+## 00. 10 Oct — your own line on the run graphs (Patch 622)
+
+Published 10 Oct; not on an install or the Pi as this is written.
+
+You asked to see your own line competing as you race. With runs ticked on the
+board, the HUD graph now draws yours too: a white line that grows as you go,
+with a dot where you are and a hairline through the plot at that moment, so
+the others' speed at your time can be read off it.
+
+- **What it is set against.** Beside whole runs it starts at your run's start.
+  Beside runs of a stage it starts when YOUR stage clock starts (leaving the
+  stage's box), and only while you are in that stage: tick stage 3 runs and
+  your line appears when you are in stage 3. If nothing ticked matches where
+  you are, there is no white line. Is that the comparison you wanted, or
+  should a stage line also show against your whole run?
+- **It stays after the run** (finished or failed) until your next run starts,
+  so you can stop and compare. On a staged map your line restarts at each
+  stage, as the white trail in the world does; the stage you just ran stays up
+  while you stand in the next one's box.
+- **Slower than everything ticked:** the graph's time axis grows by a quarter
+  of the longest ticked run at a time, so your dot never leaves it. The other
+  lines stay drawn while it does.
+- It needs the Player line on (`Player line` in hud_edit's Lines): the graph
+  reads that trail. `Your run` in hud_edit's Run graph switches it off.
+- The big panel (`run graphs` on the board) shows it too. On the ImPlot plots
+  it has no dot at its head yet.
+- **Not checked by me:** a real staged surf map end to end, and anything with
+  a save state in it (a rewind, a load, practice). BACKLOG lists what the
+  review read there: after a load inside a stage your line restarts at the
+  load, and a practice attempt can show as "You" once practice ends.
+
 ## 00. 10 Oct — the next release carries the ImPlot plugin (Patch 623)
 
 Published 10 Oct. Nothing to deploy: it is the release script, and no release

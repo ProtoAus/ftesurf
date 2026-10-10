@@ -1,6 +1,7 @@
 /*
   Patch 545: the graph of the SAME retained samples as the world run lines.
-  Slots 0..8 only: replay + eight board comparisons, never the live trail.
+  Slots 0..8: replay + eight board comparisons. Patch 622: and the live run's
+  slot, set against them from the same zero (LineGraph_LiveAlign).
   Clocks align at Line_Range's run/stage start. Energy includes vertical speed,
   uses recorded gravity when pinned, otherwise an explicitly labelled g=800
   assumption, relative to its first shown run sample. Never bridges a break.
@@ -16,7 +17,7 @@
   (`graph`) with a switch on the board and in the panel. Both draw with
   cl_plot.qc; the panel takes the board's type.
 */
-#define LG_SLOTS 9
+#define LG_SLOTS 11             // LN_SLOTS: the replay, eight board lines, the live run's two
 #define LG_BINS 384
 #define LG_STRIDE 12
 // A bin: 0/1 speed min/max, 2/3 energy min/max, 4/5 speed first/last, 6/7 energy.
@@ -40,6 +41,7 @@ float lg_gen;                   // bumped when the drawn curves change
 vector lg_ry[2];                // the value range drawn: speed, energy
 float lg_rgen[2], lg_rv0[2], lg_rv1[2];
 float lg_hud;                   // the HUD graph drew this frame
+vector lg_hudp, lg_huds;        // ...its first plot's place and size, for `linegraph status`
 /*
   What is drawn every frame: each curve cut down, once, to the fewest vertices
   that stay within a physical pixel of what its bins hold (the filter keeps half
@@ -51,26 +53,73 @@ float lg_hud;                   // the HUD graph drew this frame
   the bins hold about 2300 points (`linegraph status` prints the counts).
 */
 float *lg_poly;
-float lg_polyn[18];
+float lg_polyn[22];             // 2 * LG_SLOTS
 float lg_pgen[2], lg_plo[2], lg_phi[2], lg_ph[2];
 float lg_sw_k, lg_sw_n, lg_sw_tol, lg_sw_have, lg_sw_start;
 float lg_sw_at, lg_sw_av, lg_sw_pt, lg_sw_lo, lg_sw_hi;
 vector lg_mouse, lg_plotp, lg_plotsize;
 float lg_ploty1;                // the bottom of the lower plot
 
+/*
+  Patch 622: the player's own run, as it happens. Its line is the trail's (cl_trail.qc, slot
+  tr_live, which swaps between two); what is the graph's is where its clock starts (the run,
+  or the stage being run: whichever the ticked runs show) and how far its samples have been
+  folded into the drawn bins. A slot's bins are rebuilt whole when its line changes, and this
+  one changes every tick, so it is the one slot that is added to instead.
+*/
+var float lv_slot = -1;         // the live slot while its run is on the graph
+float lv_start, lv_ia;          // x = 0 on its run clock, and its first sample at or after that
+float lv_leg;                   // what x = 0 is: 0 the run's start, k stage k's
+float lv_gen, lv_have;          // tr_gen of the run the alignment is of; it has one (kept after the run)
+float lv_why;                   // why there is none: LVW_*
+var float lv_sel = TRUE;        // its chip, which outlives the slot swap
+float lv_done, lv_reach;        // samples below these are in the drawn bins / the bins being built
+float lv_bslot, lv_bgen, lv_bstart, lv_bstep;   // what those bins were built of
+float lv_head;                  // bumped when a sample is folded: only its curve is cut again
+float lv_plive[2];
+float lv_pend, lv_phave, lv_pstart, lv_pleg, lv_pt;     // another answer waiting; the head when first seen
+float lv_refok;                 // lg_ref of the live slot is its energy at lv_ia
+float lv_bgg;                   // ln_graphgen of the line the bins were built of
+float lv_wait;                  // the drawn bins are of the line before a rebuild in flight: not folded into
+float lv_rebuilds, lg_blanks;   // rebuilds only the live run asked for; frames the HUD graph was "building..."
+// A changed answer waits until the line's head is this far past the frame it was first seen
+// in, and past the new zero. The timer's stats are the server's present: a teleport into a
+// stage's box moves them a frame or more before the trail's sample there ends the line, which
+// was then given the next line's stage and zero and kept like that (one dot at x = 0). And a
+// line opened on the way out of a box reads the box's own base until the exit's arrives, a
+// ping later: under this long, that one is never taken.
+#define LV_SETTLE 0.25
+
+#define LVW_ON       0
+#define LVW_OFF      1          // hud_linegraph_live 0
+#define LVW_NORUN    2          // no run on the live slot (or hud_trail 0)
+#define LVW_PRACTICE 3          // a practice clock is not the timer's
+#define LVW_NOMATCH  4          // no ticked run shows this run or the stage being run
+
+// A slot's start and shown samples: the line's own, but the live slot's are the graph's.
+float(float s) LG_Start = { if (s == lv_slot) return lv_start; return ln_start[s]; };
+float(float s) LG_Ia    = { if (s == lv_slot) return lv_ia;    return ln_ia[s]; };
+float(float s) LG_Ib    = { if (s == lv_slot) return ln_n[s] - 1; return ln_ib[s]; };
+
 float(float s) LineGraph_Available =
 {
+	if (s >= LN_S_TRAIL) return (s == lv_slot);
 	if (s == 0) return (rec_wt_open && ln_on[0] && cvar("hud_watch_path") > 0);
 	return (sb_ln_st[s - 1] == SBL_ON && ln_on[s] && (lg_open || cvar("hud_lines_board") > 0));
 };
 
-vector(float s) LineGraph_Colour = { return Plot_Series(s); };
+vector(float s) LineGraph_Colour =
+{
+	if (s >= LN_S_TRAIL) return '1 1 1';        // the live run
+	return Plot_Series(s);
+};
 
 // "3 name", made once per name: UI_NameShow walks the bytes.
 string lg_name_of[LG_SLOTS], lg_name_show[LG_SLOTS];
 string(float s) LineGraph_Name =
 {
 	local string name;
+	if (s >= LN_S_TRAIL) return "You";
 	name = ln_owner[s];
 	if (name == "" && s > 0) name = sb_ln_name[s - 1];
 	if (name == "") name = "unknown";
@@ -104,12 +153,12 @@ vector(float s, float seconds) LineGraph_At =
 	local vector lo, hi;
 	if (!LineGraph_Available(s)) return '0 0 0';
 	b = s * LN_CAP;
-	t = seconds + ln_start[s];
+	t = seconds + LG_Start(s);
 	i = Line_Find(s, t);
-	if (i > ln_ib[s] || i < ln_ia[s]) return '0 0 0';
+	if (i > LG_Ib(s) || i < LG_Ia(s)) return '0 0 0';
 	hi = [ln_spd[b + i], LineGraph_Energy(s, i), 1];
 	if (fabs(ln_t[b + i] - t) < 0.00001) return hi;
-	if (i <= ln_ia[s]) return '0 0 0';
+	if (i <= LG_Ia(s)) return '0 0 0';
 	a = i - 1;
 	dt = ln_t[b + i] - ln_t[b + a];
 	if (ln_brk[b + i] || dt <= 0) return '0 0 0';
@@ -143,6 +192,7 @@ float lgn_sgen[LG_SLOTS], lgn_sstep[LG_SLOTS], lgn_sg[LG_SLOTS], lgn_sref[LG_SLO
 float lgn_map[LG_SLOTS], lgn_count, lgn_marked;  // the published revision: series -> slot
 float lgn_serial, lgn_r0, lgn_r1;   // the range asked for; r1 <= r0 is the whole run
 float lgn_v0, lgn_v1;           // the view the plugin reports
+float lgn_ext, lgn_extp;        // where the rows last published end, and those before them
 float lgn_hover, lgn_hovert, lgn_points, lgn_rebuilt, lgn_cut, lgn_drew;
 float lgn_lost, lgn_nodraw;     // frames running on which the owner was opened again / its draw refused
 float lgn_nodraws, lgn_events;  // draws refused, and positions and notches sent, ever (`linegraph status`)
@@ -226,6 +276,7 @@ void() LineGraph_Register =
 {
 	registercvar("hud_linegraph", "1", CVAR_ARCHIVE);
 	registercvar("hud_linegraph_labels", "1", CVAR_ARCHIVE);
+	registercvar("hud_linegraph_live", "1", CVAR_ARCHIVE);     // Patch 622: your own run on the graphs
 	// Patch 610. Under the map info, clear of the key block the old bottom-right
 	// panel covered. 1 speed, 2 energy, 3 both.
 	registercvar("hud_linegraph_x", "0.99", CVAR_ARCHIVE);
@@ -240,20 +291,206 @@ void() LineGraph_Register =
 	LineGraph_Reset();
 };
 
+/*
+  Which stretch of the live run the graph shows, and from what clock. A ticked run's x = 0 is
+  its window's start: a run's, or a stage's own, which is where its clock was started from
+  (the walk out of its box: a `stagepost` window is [T - dur, T]). The live run is given the
+  same zero: the stage in progress, from the server's stage base, if a ticked run shows that
+  stage; else the run's start if one shows a whole run (and this is one); else it is not
+  drawn, because the ticked runs are of somewhere else. A run that has ended keeps its last
+  answer, as its line is kept, and a running one changes its answer only once the line has
+  gone on past the change (LV_SETTLE).
+*/
+void() LineGraph_LiveAlign =
+{
+	local float s, c, track, legnow, have0, havenow, any, leg, head, chave, cstart, cleg;
+
+	lv_slot = -1;
+	lv_why = LVW_OFF;
+	if (!cvar("hud_linegraph_live")) return;
+	lv_why = LVW_NORUN;
+	s = tr_live;
+	if (s < LN_S_TRAIL || !tr_on) return;       // Trail_Init has not run, or no run yet
+	if (ln_n[s] < 2) return;
+	lv_why = LVW_PRACTICE;
+	if (tr_practice) return;                    // that clock is the wall's, from where a save was loaded
+	if (lv_gen != tr_gen)
+	{
+		lv_gen = tr_gen;
+		lv_have = lv_pend = FALSE;
+	}
+	// What the ticked runs show: a whole run of this track, the stage in progress, or neither.
+	track = getstatf(STAT_FS_TIMERTRACK);
+	legnow = 0;
+	if (getstatf(STAT_FS_TIMERSEGS) > 1) legnow = getstatf(STAT_FS_TIMERSEG) + 1;
+	any = have0 = havenow = FALSE;
+	for (c = 0; c < LN_S_TRAIL; c = c + 1)
+	{
+		if (!LineGraph_Available(c)) continue;
+		any = TRUE;
+		if (ln_track[c] >= 0)
+		if (ln_track[c] != track) continue;
+		if (ln_leg[c] <= 0) have0 = TRUE;           // a loader that did not say shows a whole run
+		else if (ln_leg[c] == legnow) havenow = TRUE;
+	}
+	head = ln_t[s * LN_CAP + ln_n[s] - 1];
+	if (!tr_stopped)
+	if (getstatf(STAT_FS_TIMERSTATE) == TS_RUNNING)
+	{
+		// RUNLEG is track * 100 + leg + 1 while a run is recorded; a stage run is not a whole one.
+		leg = getstatf(STAT_FS_RUNLEG);
+		leg = leg - floor(leg / 100) * 100 - 1;
+		chave = TRUE;
+		cstart = cleg = 0;
+		if (havenow)
+		{
+			// It moves when the player walks out of the stage's box (and again after a
+			// restart of the stage): the bins are rebuilt from the new zero.
+			cstart = getstatf(STAT_FS_STAGEBASE) * ln_tick[s];
+			cleg = legnow;
+		}
+		else if (!have0 || leg > 0)
+			chave = FALSE;
+		if (chave == lv_have && (!chave || (cstart == lv_start && cleg == lv_leg)))
+			lv_pend = FALSE;
+		else
+		{
+			if (!lv_pend || chave != lv_phave || cstart != lv_pstart || cleg != lv_pleg)
+			{
+				lv_pend = TRUE;
+				lv_phave = chave;
+				lv_pstart = cstart;
+				lv_pleg = cleg;
+				lv_pt = head;
+			}
+			if (head >= max(lv_pt, cstart) + LV_SETTLE)
+			{
+				lv_have = chave;
+				lv_start = cstart;
+				lv_leg = cleg;
+				lv_pend = FALSE;
+			}
+		}
+	}
+	lv_why = LVW_NOMATCH;
+	if (!lv_have || !any) return;
+	lv_why = LVW_ON;
+	lv_slot = s;
+	lv_ia = Line_Find(s, lv_start);
+	lg_selected[s] = lv_sel;
+	// Its energy is against this server's gravity; the trail's line assumes 800.
+	if (ln_g_assumed[s])
+	if (ln_mv_gravity >= 1)
+		Line_GraphGravity(s, ln_mv_gravity);
+};
+
+// The live run's energy is measured from its first sample at or after its zero, which can
+// come after the bins were asked for: nothing is binned before it.
+void() LineGraph_LiveRef =
+{
+	if (lv_refok || lv_slot < 0) return;
+	if (lv_ia >= ln_n[lv_slot]) return;
+	lg_ref[lv_slot] = LineGraph_Energy(lv_slot, lv_ia);
+	lv_refok = TRUE;
+};
+
+// Patch 622: the live run's samples since the last frame, into the DRAWN bins (the layout
+// and the rules of LineGraph_Prepare's loop, for a line that only grows).
+void() LineGraph_LiveFold =
+{
+	local float s, b, i, n, t, v, e, gap, j, k, budget, grew, wide;
+	local vector r;
+
+	s = lv_slot;
+	b = s * LN_CAP;
+	n = ln_n[s];
+	grew = wide = FALSE;
+	budget = 512;
+	for (i = max(lv_done, lv_ia); i < n && budget > 0; i = i + 1)
+	{
+		budget = budget - 1;
+		t = ln_t[b + i] - lv_start;
+		if (t < lg_f0 || t > lg_f1) continue;       // outside the drawn view: a zoomed panel
+		gap = ln_brk[b + i];
+		if (i > lv_ia)
+		if (ln_t[b + i] - ln_t[b + i - 1] > max(0.25, ln_tick[s] * ln_step[s] * 2)) gap = TRUE;
+		j = bound(0, floor((t - lg_f0) / (lg_f1 - lg_f0) * (LG_BINS - 1)), LG_BINS - 1);
+		k = ((lg_front * LG_SLOTS + s) * LG_BINS + j) * LG_STRIDE;
+		v = ln_spd[b + i];
+		e = LineGraph_Energy(s, i) - lg_ref[s];
+		if (!lg_bins[k + LG_HAVE])
+		{
+			lg_bins[k] = lg_bins[k + 1] = lg_bins[k + 4] = v;
+			lg_bins[k + 2] = lg_bins[k + 3] = lg_bins[k + 6] = e;
+			lg_bins[k + LG_FIRSTT] = t;
+			lg_bins[k + LG_HAVE] = 1;
+		}
+		else
+		{
+			lg_bins[k] = min(lg_bins[k], v);
+			lg_bins[k + 1] = max(lg_bins[k + 1], v);
+			lg_bins[k + 2] = min(lg_bins[k + 2], e);
+			lg_bins[k + 3] = max(lg_bins[k + 3], e);
+		}
+		lg_bins[k + 5] = v;
+		lg_bins[k + 7] = e;
+		lg_bins[k + LG_LASTT] = t;
+		lg_bins[k + LG_BREAK] = (lg_bins[k + LG_BREAK] || gap);
+		grew = TRUE;
+		// Past either axis as it stands: both are measured again, and every curve cut again.
+		// An axis nobody has read since the curves last changed is measured when it is: the
+		// plot the HUD does not draw kept its old range and cut every curve again a frame.
+		r = lg_ry[0];
+		if (r_z)
+		if (lg_rgen[0] == lg_gen)
+		if (v < r_x || v > r_y) wide = TRUE;
+		r = lg_ry[1];
+		if (r_z)
+		if (lg_rgen[1] == lg_gen)
+		if (ln_g[s] > 0)
+		if (e < r_x || e > r_y) wide = TRUE;
+	}
+	lv_done = i;
+	if (grew) lv_head = lv_head + 1;
+	if (wide)
+	if (lg_selected[s])
+		lg_gen = lg_gen + 1;
+};
+
 void() LineGraph_Prepare =
 {
-	local float s, changed, i, b, j, k, t, v, e, gap, budget, back, span;
-	changed = FALSE;
+	local float s, changed, live, i, b, j, k, t, v, e, gap, budget, back, span;
+	LineGraph_LiveAlign();
+	changed = live = FALSE;
 	for (s = 0; s < LG_SLOTS; s = s + 1)
 	{
 		i = LineGraph_Available(s);
+		if (s >= LN_S_TRAIL)
+		{
+			// The live line grows every tick and is folded in below. Its bins are another
+			// line's after a new run, a new start, a halving, a trim back past what was
+			// folded, or once its head has run off the end of the span.
+			if (lg_available[s] != i)
+				live = TRUE;
+			else if (i)
+			{
+				if (lv_bslot != s || lv_bgen != lv_gen || lv_bstart != lv_start || lv_bstep != ln_step[s])
+					live = TRUE;
+				// (its graph generation: a trim or a load can put back a line as long as the one folded)
+				if (lv_bgg != ln_graphgen[s] || ln_n[s] < lv_done)
+					live = TRUE;
+				if (ln_t[s * LN_CAP + ln_n[s] - 1] - lv_start > lg_tmax)
+					live = TRUE;
+			}
+			continue;
+		}
 		if (lg_available[s] != i || lg_seen[s] != ln_graphgen[s] || lg_seen_n[s] != ln_n[s])
 		{
 			changed = TRUE;
 			if (lg_seen[s] != ln_graphgen[s]) lg_selected[s] = TRUE;
 		}
 	}
-	if (changed)
+	if (changed || live)
 	{
 		if (!lg_bins) lg_bins = memalloc(sizeof(float) * 2 * LG_SLOTS * LG_BINS * LG_STRIDE);
 		lg_tmax = 0;
@@ -264,16 +501,46 @@ void() LineGraph_Prepare =
 			lg_seen_n[s] = ln_n[s];
 			if (lg_available[s])
 			{
-				i = max(ln_ia[s], Line_Find(s, ln_start[s]));
-				lg_ref[s] = (i <= ln_ib[s]) ? LineGraph_Energy(s, i) : 0;
-				lg_tmax = max(lg_tmax, ln_t[s * LN_CAP + ln_ib[s]] - ln_start[s]);
+				i = max(LG_Ia(s), Line_Find(s, LG_Start(s)));
+				lg_ref[s] = 0;
+				if (i <= LG_Ib(s)) lg_ref[s] = LineGraph_Energy(s, i);
+				if (s == lv_slot) lv_refok = (i <= LG_Ib(s));
+				if (s != lv_slot)
+					lg_tmax = max(lg_tmax, ln_t[s * LN_CAP + LG_Ib(s)] - LG_Start(s));
 			}
 		}
-		// Neither buffer is of these lines any more.
-		lg_fok = FALSE;
+		if (lv_slot >= 0)
+		{
+			lv_bslot = lv_slot;
+			lv_bgen = lv_gen;
+			lv_bstart = lv_start;
+			lv_bstep = ln_step[lv_slot];
+			lv_bgg = ln_graphgen[lv_slot];
+			lv_done = lv_reach = 0;
+			// The ticked runs set the span. Past the longest of them the live head would
+			// leave the plot, so the span grows a quarter of it at a time: a rebuild every
+			// so often, not every tick.
+			t = ln_t[lv_slot * LN_CAP + ln_n[lv_slot] - 1] - lv_start;
+			if (lg_tmax > 0)
+			if (t > lg_tmax)
+			{
+				span = max(1, lg_tmax * 0.25);
+				lg_tmax = (floor(t / span) + 1) * span;
+			}
+		}
+		// Neither buffer is of these lines any more. Unless only the live run moved: the drawn
+		// one still holds the ticked runs and stays up, not folded into, while the other is
+		// built. Without this the whole graph blanked at every run start and every stretch.
+		if (changed) lg_fok = FALSE;
+		else
+		{
+			lv_wait = lg_fok;
+			lv_rebuilds = lv_rebuilds + 1;
+		}
 		lg_building = FALSE;
 		lg_b1 = lg_b0 - 1;
 	}
+	LineGraph_LiveRef();
 	if (lg_tmax <= 0) { lg_buildslot = LG_SLOTS; lg_fok = FALSE; return; }
 
 	if (!lg_open) lg_fit = TRUE;
@@ -312,10 +579,11 @@ void() LineGraph_Prepare =
 		// From one sample before the view to one past it: a curve runs in from
 		// the plot's edge instead of starting inside it.
 		if (lg_buildpoint < 0)
-			lg_buildpoint = lg_available[s] ? max(ln_ia[s], Line_Find(s, ln_start[s] + lg_b0) - 1) : 0;
+			lg_buildpoint = lg_available[s] ? max(LG_Ia(s), Line_Find(s, LG_Start(s) + lg_b0) - 1) : 0;
 		i = lg_buildpoint;
-		if (!lg_available[s] || i > ln_ib[s])
+		if (!lg_available[s] || i > LG_Ib(s))
 		{
+			if (s == lv_slot) lv_reach = i;
 			lg_buildslot = lg_buildslot + 1;
 			lg_buildpoint = -1;
 			continue;
@@ -323,10 +591,10 @@ void() LineGraph_Prepare =
 		lg_buildpoint = i + 1;
 		budget = budget - 1;
 		b = s * LN_CAP;
-		t = ln_t[b + i] - ln_start[s];
+		t = ln_t[b + i] - LG_Start(s);
 		if (t < 0) continue;
 		gap = ln_brk[b + i];
-		if (i > ln_ia[s])
+		if (i > LG_Ia(s))
 		if (ln_t[b + i] - ln_t[b + i - 1] > max(0.25, ln_tick[s] * ln_step[s] * 2)) gap = TRUE;
 		// The sample either side of the view is there for the segment that crosses
 		// the plot's edge. Binned on its own (the run ended before the view, or a
@@ -334,12 +602,13 @@ void() LineGraph_Prepare =
 		// 40 s run's last speed topped the axis of a view of 45 to 55 s.
 		if (t < lg_b0)
 		{
-			if (i >= ln_ib[s]) continue;
+			if (i >= LG_Ib(s)) continue;
 			if (ln_brk[b + i + 1]) continue;
 			if (ln_t[b + i + 1] - ln_t[b + i] > max(0.25, ln_tick[s] * ln_step[s] * 2)) continue;
 		}
 		if (t > lg_b1)
 		{
+			if (s == lv_slot) lv_reach = ln_n[s];       // the rest is past the view too
 			lg_buildslot = lg_buildslot + 1;
 			lg_buildpoint = -1;
 			if (gap) continue;
@@ -376,7 +645,14 @@ void() LineGraph_Prepare =
 		lg_f1 = lg_b1;
 		lg_fok = TRUE;
 		lg_gen = lg_gen + 1;
+		lv_done = lv_reach;
+		lv_wait = FALSE;
 	}
+	if (lg_fok)
+	if (!lv_wait)
+	if (lv_slot >= 0)
+	if (lg_available[lv_slot])
+		LineGraph_LiveFold();
 };
 
 /*
@@ -499,13 +775,13 @@ void(float t, float v) LineGraph_Swing =
 
 // Every slot's curve for one plot, from the drawn buffer, to within `tol` of
 // its values. A break, a gap and a bin holding either end a strip.
-void(float energy, float tol) LineGraph_Simplify =
+void(float energy, float tol, float s0, float s1) LineGraph_Simplify =
 {
 	local float s, j, k, o, prev, gapmax, t0, t1, vf, vl, va, vb;
 	if (!lg_poly) lg_poly = memalloc(sizeof(float) * 2 * LG_SLOTS * LG_POLYMAX * 3);
 	o = energy * 2;
 	lg_sw_tol = tol;
-	for (s = 0; s < LG_SLOTS; s = s + 1)
+	for (s = s0; s <= s1; s = s + 1)
 	{
 		lg_sw_k = (energy * LG_SLOTS + s) * LG_POLYMAX * 3;
 		lg_sw_n = 0;
@@ -593,9 +869,26 @@ void(vector p, vector size, vector r, float fs, float u, float modal, string cap
 
 // One plot's curves at the current view. Polygons only: the caller has the clip
 // area set and draws no text until it is reset.
+void(vector p, float base, float sx, float sy, float energy, vector r, float s, float wpx) LineGraph_Curve =
+{
+	local float i, k, n;
+	if (!lg_available[s] || !lg_selected[s]) return;
+	n = lg_polyn[energy * LG_SLOTS + s];
+	if (!n) return;
+	Plot_Strip(wpx, LineGraph_Colour(s), 0.95);
+	k = (energy * LG_SLOTS + s) * LG_POLYMAX * 3;
+	for (i = 0; i < n; i = i + 1)
+	{
+		if (lg_poly[k + 2]) Plot_StripEnd();
+		Plot_Q([p_x + (lg_poly[k] - lg_v0) * sx, base - (lg_poly[k + 1] - r_x) * sy]);
+		k = k + 3;
+	}
+	Plot_StripEnd();
+};
+
 void(vector p, vector size, float energy, vector r, float wpx) LineGraph_Curves =
 {
-	local float s, i, k, n, sx, sy, base;
+	local float s, sx, sy, base;
 	if (!lg_fok || !r_z) return;
 	sx = size_x / (lg_v1 - lg_v0);
 	sy = size_y / (r_y - r_x);
@@ -606,25 +899,23 @@ void(vector p, vector size, float energy, vector r, float wpx) LineGraph_Curves 
 		lg_plo[energy] = r_x;
 		lg_phi[energy] = r_y;
 		lg_ph[energy] = size_y;
+		lv_plive[energy] = lv_head;
 		// Half a physical pixel, in the plot's value units.
-		LineGraph_Simplify(energy, 0.5 / (max(1, sui_style_pixel_ratio_y) * sy));
+		LineGraph_Simplify(energy, 0.5 / (max(1, sui_style_pixel_ratio_y) * sy), 0, LG_SLOTS - 1);
 	}
-	// Highest slot first: the replay and the first board line end up on top.
-	for (s = LG_SLOTS - 1; s >= 0; s = s - 1)
+	else if (lv_plive[energy] != lv_head)
 	{
-		if (!lg_available[s] || !lg_selected[s]) continue;
-		n = lg_polyn[energy * LG_SLOTS + s];
-		if (!n) continue;
-		Plot_Strip(wpx, Plot_Series(s), 0.95);
-		k = (energy * LG_SLOTS + s) * LG_POLYMAX * 3;
-		for (i = 0; i < n; i = i + 1)
-		{
-			if (lg_poly[k + 2]) Plot_StripEnd();
-			Plot_Q([p_x + (lg_poly[k] - lg_v0) * sx, base - (lg_poly[k + 1] - r_x) * sy]);
-			k = k + 3;
-		}
-		Plot_StripEnd();
+		// Only the live run grew: only its curve is cut again.
+		lv_plive[energy] = lv_head;
+		if (lv_slot >= 0)
+			LineGraph_Simplify(energy, 0.5 / (max(1, sui_style_pixel_ratio_y) * sy), lv_slot, lv_slot);
 	}
+	// Highest slot first: the replay and the first board line end up on top, and
+	// the live run over them all, wider.
+	for (s = LN_S_TRAIL - 1; s >= 0; s = s - 1)
+		LineGraph_Curve(p, base, sx, sy, energy, r, s, wpx);
+	if (lv_slot >= 0)
+		LineGraph_Curve(p, base, sx, sy, energy, r, lv_slot, wpx * 1.5);
 };
 
 // A drawn run's energy rests on g = 800 that its recording did not state.
@@ -661,6 +952,26 @@ void(vector p, vector size, float energy, vector r, float d) LineGraph_Playhead 
 	if (energy && ln_g[0] <= 0) return;
 	v = energy ? sample_y - lg_ref[0] : sample_x;
 	LineGraph_Dot([x, p_y + size_y * (1 - (v - r_x) / (r_y - r_x))], d, Plot_Series(0));
+};
+
+// Patch 622: where the player is now on their own curve, and a hairline through the plot there.
+void(vector p, vector size, float energy, vector r, float d) LineGraph_LiveHead =
+{
+	local float s, b, i, t, x, v;
+	s = lv_slot;
+	if (s < 0 || !r_z) return;
+	if (!lg_available[s] || !lg_selected[s]) return;
+	i = ln_n[s] - 1;
+	if (i < lv_ia) return;
+	b = s * LN_CAP;
+	t = ln_t[b + i] - lv_start;
+	if (t < lg_v0 || t > lg_v1) return;
+	x = floor(p_x + (t - lg_v0) / (lg_v1 - lg_v0) * size_x);
+	drawfill([x, p_y], [1, size_y], SUI_THEME_TEXT, 0.3, 0);
+	if (energy && ln_g[s] <= 0) return;
+	v = ln_spd[b + i];
+	if (energy) v = LineGraph_Energy(s, i) - lg_ref[s];
+	LineGraph_Dot([x, p_y + size_y * bound(0, 1 - (v - r_x) / (r_y - r_x), 1)], d, LineGraph_Colour(s));
 };
 
 /*
@@ -706,10 +1017,13 @@ void(vector scr, float have) LineGraph_Hud =
 	y = p_y + Plot_Header(p, w, u, sz, "Run graph", (have == 1) ? "1 run" : sprintf("%g runs", have), SUI_THEME_MUTED);
 	pp = [p_x + 6 * u, y + 2 * u, 0];
 	lg_hud = TRUE;
+	lg_hudp = pp;
+	lg_huds = [lw, ph, 0];
 
 	// ---- fills and text ----------------------------------------------------
 	if (!lg_fok)
 	{
+		lg_blanks = lg_blanks + 1;
 		_sui_round_draw(pp, [lw, n * ph + (n - 1) * 4 * u], 2 * u, SUI_THEME_WELL, 0.75);
 		Plot_Text(pp + [4 * u, 4 * u], "building...", hsz, SUI_THEME_MUTED, 1);
 	}
@@ -738,7 +1052,7 @@ void(vector scr, float have) LineGraph_Hud =
 		if (x > 0)
 		if (x + tw > lw + 5 * u) { rows = rows + 1; x = 0; y = y + 8 * u; }
 		if (rows > 3) break;
-		_sui_round_draw(_sui_pixel_align([pp_x + x, y + (hsz - 4 * u) * 0.5 + u]), [4 * u, 4 * u], 2 * u, Plot_Series(s), 1);
+		_sui_round_draw(_sui_pixel_align([pp_x + x, y + (hsz - 4 * u) * 0.5 + u]), [4 * u, 4 * u], 2 * u, LineGraph_Colour(s), 1);
 		Plot_Text([pp_x + x + 6 * u, y], name, hsz, SUI_THEME_DIM, 1);
 		x = x + tw;
 	}
@@ -752,6 +1066,7 @@ void(vector scr, float have) LineGraph_Hud =
 		LineGraph_Curves(pp, [lw, ph], e, r, 1.5);
 		drawresetcliparea();
 		LineGraph_Playhead(pp, [lw, ph], e, r, 4 * u);
+		LineGraph_LiveHead(pp, [lw, ph], e, r, 4 * u);
 		if (n == 2)
 		{
 			r = LineGraph_RangeY(TRUE);
@@ -759,6 +1074,7 @@ void(vector scr, float have) LineGraph_Hud =
 			LineGraph_Curves(pp + [0, ph + 4 * u], [lw, ph], TRUE, r, 1.5);
 			drawresetcliparea();
 			LineGraph_Playhead(pp + [0, ph + 4 * u], [lw, ph], TRUE, r, 4 * u);
+			LineGraph_LiveHead(pp + [0, ph + 4 * u], [lw, ph], TRUE, r, 4 * u);
 		}
 	}
 	HUD_Rect("graph", p, [w, h], bp);
@@ -790,12 +1106,13 @@ void(float s, vector pos, float h) LineGraph_Chip =
 	else
 		sui_roundbox(pos, [w, h], h * 0.5, lg_selected[s] ? SBC_PANEL : SUI_THEME_WELL, 1);
 	sui_roundbox([floor(pos_x + h * 0.5), pos_y + floor((h - d) * 0.5)], [d, d], d * 0.5,
-	             lg_selected[s] ? Plot_Series(s) : SUI_THEME_MUTED, 1);
+	             lg_selected[s] ? LineGraph_Colour(s) : SUI_THEME_MUTED, 1);
 	Scores_Text([floor(pos_x + h * 0.5 + d + h * 0.3), pos_y + floor((h - sb_szui) * 0.5)], sb_szui, name,
 	            lg_selected[s] ? SUI_THEME_TEXT : SUI_THEME_MUTED, 1);
 	if (sui_is_released(id))
 	{
 		lg_selected[s] = !lg_selected[s];
+		if (s == lv_slot) lv_sel = lg_selected[s];
 		lg_gen = lg_gen + 1;
 	}
 };
@@ -846,7 +1163,7 @@ void(float t, vector scr, vector plot, vector size) LineGraph_Card =
 		sample = LineGraph_At(s, t);
 		if (!sample_z) continue;
 		x = p_x + fs * 0.8;
-		sui_roundbox([x, y + (fs - 7) * 0.5 + 1], [7, 7], 3.5, Plot_Series(s), 1);
+		sui_roundbox([x, y + (fs - 7) * 0.5 + 1], [7, 7], 3.5, LineGraph_Colour(s), 1);
 		Scores_Text([x + fs * 0.8, y], fs,
 		            substring(LineGraph_Name(s), 0, UI_CharBytes(LineGraph_Name(s), 18)), SUI_THEME_TEXT, 1);
 		Scores_TextR([p_x + xs, y], fs, sprintf("%.0f", sample_x), SUI_THEME_TEXT, 1);
@@ -895,28 +1212,28 @@ float() LineGraph_NativeRows =
 			lgn_sgen[s] = -1;
 			continue;
 		}
-		first = max(ln_ia[s], Line_Find(s, ln_start[s]));
+		first = max(LG_Ia(s), Line_Find(s, LG_Start(s)));
 		// What the rows were summed from. The halving past LN_CAP rewrites rows in
 		// place under the same generation: its doubled step is what says so.
 		stale = (lgn_sgen[s] != ln_graphgen[s] || lgn_sstep[s] != ln_step[s] || lgn_first[s] != first);
-		if (lgn_sg[s] != ln_g[s] || lgn_sref[s] != lg_ref[s] || lgn_sstart[s] != ln_start[s]) stale = TRUE;
-		if (lgn_done[s] > ln_ib[s] + 1) stale = TRUE;
+		if (lgn_sg[s] != ln_g[s] || lgn_sref[s] != lg_ref[s] || lgn_sstart[s] != LG_Start(s)) stale = TRUE;
+		if (lgn_done[s] > LG_Ib(s) + 1) stale = TRUE;
 		if (stale)
 		{
 			lgn_sgen[s] = ln_graphgen[s]; lgn_sstep[s] = ln_step[s]; lgn_first[s] = first;
-			lgn_sg[s] = ln_g[s]; lgn_sref[s] = lg_ref[s]; lgn_sstart[s] = ln_start[s];
+			lgn_sg[s] = ln_g[s]; lgn_sref[s] = lg_ref[s]; lgn_sstart[s] = LG_Start(s);
 			lgn_done[s] = first;
 			lgn_dirty = TRUE;
 		}
 		b = s * LN_CAP;
-		for (i = lgn_done[s]; i <= ln_ib[s] && budget > 0; i = i + 1)
+		for (i = lgn_done[s]; i <= LG_Ib(s) && budget > 0; i = i + 1)
 		{
 			lgn_e[b + i] = LineGraph_Energy(s, i) - lg_ref[s];
 			budget = budget - 1;
 		}
 		if (i != lgn_done[s]) lgn_dirty = TRUE;
 		lgn_done[s] = i;
-		if (i <= ln_ib[s]) complete = FALSE;
+		if (i <= LG_Ib(s)) complete = FALSE;
 	}
 	return complete;
 };
@@ -925,11 +1242,15 @@ float() LineGraph_NativeRows =
 // the rows where they lie, checks them and copies them; a refusal is FALSE.
 float() LineGraph_NativePublish =
 {
-	local float s, k, n, b, rows, flags;
-	n = 0;
+	local float s, k, n, b, rows, flags, ext;
+	n = ext = 0;
 	for (s = 0; s < LG_SLOTS; s = s + 1)
 		if (lg_available[s])
-		if (ln_ib[s] >= lgn_first[s]) n = n + 1;
+		if (LG_Ib(s) >= lgn_first[s])
+		{
+			n = n + 1;
+			ext = max(ext, ln_t[s * LN_CAP + LG_Ib(s)] - LG_Start(s));
+		}
 	lgn_rev = lgn_rev + 1;
 	if (!ui_native_plot_begin(lgn_handle, lgn_rev, n)) return FALSE;
 	k = 0;
@@ -937,19 +1258,19 @@ float() LineGraph_NativePublish =
 	for (s = 0; s < LG_SLOTS; s = s + 1)
 	{
 		if (!lg_available[s]) continue;
-		rows = ln_ib[s] - lgn_first[s] + 1;
+		rows = LG_Ib(s) - lgn_first[s] + 1;
 		if (rows < 1) continue;
 		b = s * LN_CAP + lgn_first[s];
 		flags = (ln_g[s] > 0) ? 1 : 0;      // energy needs a gravity (LineGraph_Energy)
 		if (s == 0) { flags = flags + 2; lgn_marked = TRUE; }   // the replay's clock rides it
-		if (!ui_native_plot_series(lgn_handle, k, [flags, max(0.25, ln_tick[s] * ln_step[s] * 2), 0], Plot_Series(s)))
+		if (!ui_native_plot_series(lgn_handle, k, [flags, max(0.25, ln_tick[s] * ln_step[s] * 2), 0], LineGraph_Colour(s)))
 			return FALSE;
 		if (ln_g[s] > 0)
 		{
-			if (!ui_native_plot_rows(lgn_handle, k, &ln_t[b], &ln_spd[b], &lgn_e[b], &ln_brk[b], rows, ln_start[s]))
+			if (!ui_native_plot_rows(lgn_handle, k, &ln_t[b], &ln_spd[b], &lgn_e[b], &ln_brk[b], rows, LG_Start(s)))
 				return FALSE;
 		}
-		else if (!ui_native_plot_rows(lgn_handle, k, &ln_t[b], &ln_spd[b], __NULL__, &ln_brk[b], rows, ln_start[s]))
+		else if (!ui_native_plot_rows(lgn_handle, k, &ln_t[b], &ln_spd[b], __NULL__, &ln_brk[b], rows, LG_Start(s)))
 			return FALSE;
 		lgn_map[k] = s;
 		k = k + 1;
@@ -958,6 +1279,8 @@ float() LineGraph_NativePublish =
 	lgn_count = k;
 	lgn_dirty = FALSE;
 	lgn_pub = cltime;
+	lgn_extp = lgn_ext;
+	lgn_ext = ext;
 	return TRUE;
 };
 
@@ -1322,7 +1645,9 @@ void() LineGraph_Fit =
 // The view is narrower than the run.
 float() LineGraph_Zoomed =
 {
-	if (lgn_drew) return (lgn_v0 > 0.0005 || lgn_v1 < lg_tmax - 0.0005);
+	// Its whole view ends where its rows do (the span is rounded on past a live head), and
+	// it reports the view a frame after new rows: short of both sets is narrower.
+	if (lgn_drew) return (lgn_v0 > 0.0005 || lgn_v1 < min(lgn_ext, lgn_extp) - 0.0005);
 	return !lg_fit;
 };
 
@@ -1369,8 +1694,8 @@ float(vector scr, vector p, float w, float pad, float y, float y1) LineGraph_Pan
 	Scores_Hint(x, y, "wheel", "zoom");
 	if (lg_tmax > 0)
 		Scores_Text([p_x + pad, y], fs,
-		            LineGraph_Zoomed() ? sprintf("%s to %s of %s", Plot_Clock(lgn_v0, 0.1), Plot_Clock(lgn_v1, 0.1), Plot_Clock(lg_tmax, 0.1))
-		                               : sprintf("the whole run, %s", Plot_Clock(lg_tmax, 0.1)),
+		            LineGraph_Zoomed() ? sprintf("%s to %s of %s", Plot_Clock(lgn_v0, 0.1), Plot_Clock(lgn_v1, 0.1), Plot_Clock(lgn_ext, 0.1))
+		                               : sprintf("the whole run, %s", Plot_Clock(lgn_ext, 0.1)),
 		            SUI_THEME_DIM, 1);
 	if (lgn_hover)
 	{
@@ -1559,6 +1884,8 @@ void(vector scr, float have) LineGraph_Panel =
 		drawresetcliparea();
 		LineGraph_Playhead(plot, [pw, ph], FALSE, r0, 7);
 		LineGraph_Playhead([plot_x, y0 + rec_sb_szhead + 6], [pw, ph], TRUE, r1, 7);
+		LineGraph_LiveHead(plot, [pw, ph], FALSE, r0, 7);
+		LineGraph_LiveHead([plot_x, y0 + rec_sb_szhead + 6], [pw, ph], TRUE, r1, 7);
 
 		// ---- the cursor: a line through both plots, a dot on each curve, the card
 		if (hover)
@@ -1573,12 +1900,12 @@ void(vector scr, float have) LineGraph_Panel =
 				if (!r0_z) continue;
 				r1 = LineGraph_RangeY(FALSE);
 				if (r1_z)
-					LineGraph_Dot([x, plot_y + ph * (1 - (r0_x - r1_x) / (r1_y - r1_x))], 7, Plot_Series(s));
+					LineGraph_Dot([x, plot_y + ph * (1 - (r0_x - r1_x) / (r1_y - r1_x))], 7, LineGraph_Colour(s));
 				r1 = LineGraph_RangeY(TRUE);
 				e = r0_y - lg_ref[s];
 				if (r1_z)
 				if (ln_g[s] > 0)
-					LineGraph_Dot([x, y0 + rec_sb_szhead + 6 + ph * (1 - (e - r1_x) / (r1_y - r1_x))], 7, Plot_Series(s));
+					LineGraph_Dot([x, y0 + rec_sb_szhead + 6 + ph * (1 - (e - r1_x) / (r1_y - r1_x))], 7, LineGraph_Colour(s));
 			}
 			LineGraph_Card(t, scr, plot, [pw, ph]);
 		}
@@ -1689,6 +2016,7 @@ void() LineGraph_WorldLabels =
 	for (s = 0; s < LG_SLOTS; s = s + 1)
 	{
 		if (!LineGraph_Available(s)) continue;
+		if (s >= LN_S_TRAIL) continue;      // the player's own trail needs no name
 		if (s > 0)
 		if (cvar("hud_lines_board") <= 0) continue;
 		b = s * LN_CAP;
@@ -1702,8 +2030,8 @@ void() LineGraph_WorldLabels =
 		best = cbest = 99999999;
 		at = aw = '0 0 0';
 		bi = ci = -1;
-		stride = max(1, ceil((ln_ib[s] - ln_ia[s] + 1) / 256));
-		for (i = ln_ia[s]; i <= ln_ib[s]; i = i + stride)
+		stride = max(1, ceil((LG_Ib(s) - LG_Ia(s) + 1) / 256));
+		for (i = LG_Ia(s); i <= LG_Ib(s); i = i + stride)
 		{
 			d = vlen(ln_pos[b + i] - ln_eye);
 			if (d >= best) continue;        // cbest is never over best: neither can gain
@@ -1728,7 +2056,7 @@ void() LineGraph_WorldLabels =
 		// close by. Every sample either side of the nearest one is tried.
 		if (bi < 0)
 		if (ci >= 0)
-		for (i = max(ln_ia[s], ci - stride); i <= min(ln_ib[s], ci + stride); i = i + 1)
+		for (i = max(LG_Ia(s), ci - stride); i <= min(LG_Ib(s), ci + stride); i = i + 1)
 		{
 			d = vlen(ln_pos[b + i] - ln_eye);
 			if (d >= best) continue;
@@ -1746,17 +2074,17 @@ void() LineGraph_WorldLabels =
 		j = bi;
 		d = best;
 		dir = 0;
-		if (j < ln_ib[s])
+		if (j < LG_Ib(s))
 		if (!ln_brk[b + j + 1])
 		if (vlen(ln_pos[b + j + 1] - ln_eye) < d) dir = 1;
 		if (!dir)
-		if (j > ln_ia[s])
+		if (j > LG_Ia(s))
 		if (!ln_brk[b + j])
 		if (vlen(ln_pos[b + j - 1] - ln_eye) < d) dir = -1;
 		for (n = 0; dir && n < stride * 2; n = n + 1)
 		{
 			k = j + dir;
-			if (k < ln_ia[s] || k > ln_ib[s]) break;
+			if (k < LG_Ia(s) || k > LG_Ib(s)) break;
 			if (ln_brk[b + max(j, k)]) break;       // a teleport: no segment to be on
 			e = vlen(ln_pos[b + k] - ln_eye);
 			if (e >= d) break;
@@ -1765,7 +2093,7 @@ void() LineGraph_WorldLabels =
 		}
 		// ...to the nearest point of the line, on the segment either side of that sample.
 		us = j;                     // a point of the line: a sample's index plus a fraction
-		if (j < ln_ib[s])
+		if (j < LG_Ib(s))
 		if (!ln_brk[b + j + 1])
 		{
 			p0 = ln_pos[b + j];
@@ -1778,7 +2106,7 @@ void() LineGraph_WorldLabels =
 				if (e < d) { d = e; us = j + f; }
 			}
 		}
-		if (j > ln_ia[s])
+		if (j > LG_Ia(s))
 		if (!ln_brk[b + j])
 		{
 			p0 = ln_pos[b + j - 1];
@@ -1947,6 +2275,32 @@ float(string cmd) LineGraph_Command =
 		print(sprintf("linegraph: plots pixels %g %g", sample_x, sample_y));
 		sample = LineGraph_NativePx([lg_plotsize_x, lg_ploty1 - lg_plotp_y]);
 		print(sprintf(" %g %g\n", sample_x, sample_y));
+		// Patch 622. live: the slot on the graph (-1 none) and why not (LVW_*); its zero on the
+		// run clock and what that is (leg 0 the run, k stage k); samples, those folded into the
+		// drawn bins, and its head: seconds from that zero, speed, energy less the reference.
+		s = lv_slot;
+		t = 0;
+		if (s >= 0) t = ln_n[s];
+		if (t > 0)
+		{
+			t = ln_t[s * LN_CAP + ln_n[s] - 1] - lv_start;
+			print(sprintf("linegraph: live %g why %g start %.4f leg %g samples %g folded %g head %.4f",
+			              lv_slot, lv_why, lv_start, lv_leg, ln_n[s] - lv_ia, lv_done - lv_ia, t));
+			print(sprintf(" speed %.2f energy %.2f span %.4f gen %g\n", ln_spd[s * LN_CAP + ln_n[s] - 1],
+			              LineGraph_Energy(s, ln_n[s] - 1) - lg_ref[s], lg_tmax, lv_gen));
+		}
+		else
+			print(sprintf("linegraph: live -1 why %g\n", lv_why));
+		// Rebuilds only the live run asked for, frames the HUD graph was blank, the curves'
+		// generation (it moves when they are cut again), and an alignment waiting to settle.
+		print(sprintf("linegraph: liveops rebuilds %g blanks %g curves %g pending %g\n",
+		              lv_rebuilds, lg_blanks, lg_gen, lv_pend));
+		// The timer's own stats, which the alignment reads, and the HUD graph's first plot.
+		print(sprintf("linegraph: timer state %g seg %g of %g track %g clock %.4f base %.4f\n",
+		              getstatf(STAT_FS_TIMERSTATE), getstatf(STAT_FS_TIMERSEG), getstatf(STAT_FS_TIMERSEGS),
+		              getstatf(STAT_FS_TIMERTRACK), getstatf(STAT_FS_TIMERTICKS) * tr_tick,
+		              getstatf(STAT_FS_STAGEBASE) * tr_tick));
+		print(sprintf("linegraph: hud plot %g %g %g %g drawn %g\n", lg_hudp_x, lg_hudp_y, lg_huds_x, lg_huds_y, lg_hud));
 		// Where the open replay's marker stands; -1 with no replay drawn.
 		print(sprintf("linegraph: playhead %.4f runs %g\n",
 		              lg_available[0] ? rec_wt_time - ln_start[0] : -1,
@@ -1959,6 +2313,7 @@ float(string cmd) LineGraph_Command =
 		print(sprintf("linegraph: native drew %g refused %g revision %g series %g points %g rebuilt %g cut %g\n",
 		              lgn_drew, lgn_failed, lgn_rev, lgn_count, lgn_points, lgn_rebuilt, lgn_cut));
 		print(sprintf("linegraph: native view %.4f %.4f hover %g %.4f\n", lgn_v0, lgn_v1, lgn_hover, lgn_hovert));
+		print(sprintf("linegraph: native extent %.4f zoomed %g\n", lgn_ext, LineGraph_Zoomed()));
 		print(sprintf("linegraph: native input in %g down %g wheel %g lost %g nodraw %g ever %g events %g\n",
 		              lgn_in, lgn_down, lgn_wheel, lgn_lost, lgn_nodraw, lgn_nodraws, lgn_events));
 		// Every panel frame is one or the other: a frame with no plots would show here.
@@ -2059,6 +2414,7 @@ float(string cmd) LineGraph_Command =
 	{
 		s = bound(0, floor(stof(argv(2))), LG_SLOTS - 1);
 		lg_selected[s] = !lg_selected[s];
+		if (s == lv_slot) lv_sel = lg_selected[s];
 		lg_gen = lg_gen + 1;
 		return TRUE;
 	}
@@ -2069,7 +2425,7 @@ float(string cmd) LineGraph_Command =
 		sample = LineGraph_At(s, t);
 		print(sprintf("linegraph: slot %g t %.4f valid %g speed %.4f selected %g bins %g\n", s, t, sample_z, sample_x, lg_selected[s], lg_buildslot));
 		if (sample_z && ln_g[s] > 0)
-			print(sprintf("linegraph: energy %.4f relative %+.4f gravity %.4f start %.4f\n", sample_y, sample_y - lg_ref[s], ln_g[s], ln_start[s]));
+			print(sprintf("linegraph: energy %.4f relative %+.4f gravity %.4f start %.4f\n", sample_y, sample_y - lg_ref[s], ln_g[s], LG_Start(s)));
 		return TRUE;
 	}
 	print("linegraph [close | status | zoom [<from> <to>] | toggle 0..8 | sample <slot> <seconds> | probe]\n");

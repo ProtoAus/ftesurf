@@ -2661,12 +2661,7 @@ lextest.md. Left open, none of it a wrong action:
   avatar panel. (The run graphs and the strafe trainer were designed in
   Patch 610; the replay chrome that sits over the graph was not.)
 - **Patch 610, left open.** None is a wrong action.
-  - No "you are here" on the HUD graph during your own run. The open replay
-    has its playhead (`LineGraph_Playhead`); the live clock has no one
-    alignment with lines that start at a run and lines that start at a stage,
-    and Patch 545 kept the live trail (slots 9-10) out of the graph on
-    purpose. Falsifier for a fix: `p610ui.py`'s `replay` mark reads the
-    playhead; a live one wants the same line with the timer running.
+  - (Done in Patch 622: the live run is on the graphs, with its head marked.)
   - `Scores_Tick` (the Verified mark) asks `drawline` for a width of 0.14 em
     and gets one pixel: the builtin ignores its width (pr_menu.c:1089). Draw it
     with `Plot_Strip` and compare the mark's ink before and after.
@@ -2685,6 +2680,54 @@ lextest.md. Left open, none of it a wrong action:
     Off by default.
   - Stage D of ROADMAP 13 (a native ImGui graph) was asked for by Lex on 10
     Oct and is Patch 614.
+- **Patch 622, left open.** None is a wrong action.
+  - Measured in the gallery rig only: a floorless box with a start zone, and a
+    two-stage fixture whose second stage is entered by `setpos`. No real staged
+    map was run end to end, and no map whose stage is entered WITHOUT a
+    teleport (the trail then does not restart; the line is given the new
+    stage's zero a quarter second after the crossing, and again at the walk
+    out of the box).
+  - NOTHING WITH A SAVE STATE IN IT WAS DRIVEN: the rig cannot load one. What
+    the review read there, none of it run:
+    - After a load inside a stage the server reopens the stage at the load
+      tick (`sv_saveloc.qc`, `SV_StageOpen`) and the live zero follows it: the
+      white curve restarts at x = 0 at the load, not at the stage's start.
+    - A practice line (a load with the timer not running) is hidden while
+      practice lasts (`why 3`). When practice ends in a start or stage box the
+      line, wall-clock samples and all, is drawn as "You" from the old zero
+      until the next run. The fix is to keep it hidden until the trail's line
+      is begun again, which a timed load into the same trail also does; one
+      was written without that and taken out.
+    - A trim or a load that puts back a line at least as long as the one
+      folded is now seen (the line's graph generation). Not driven.
+    - The energy zero is latched at the first sample at or after the time zero
+      (`LineGraph_LiveRef`) for a line trimmed back past its zero. With the
+      settle rule the rig no longer makes that state; its one sighting is the
+      `stats-believed-at-once` mutant, whose one-sample line read energy 0.0
+      where the first cut read 52.6.
+  - The alignment rule's edges, each a wrong zero and not a wrong number:
+    a whole run and a stage ticked together (the stage's zero wins while you
+    are in it); a kept line keeps its zero when the ticked set changes; RUNLEG
+    is 0 after a mid-run discard, so a `!s N` run then counts as a whole run;
+    a stage file older than `stagepost` starts at the boundary and the live
+    line at the box's exit; a file with no `track` reads as track 0, so on a
+    bonus it matches nothing and no live line is drawn.
+  - A changed alignment waits 0.25 s of the line's own growth (`LV_SETTLE`).
+    Behind a ping longer than that, a line opened on the way out of a stage's
+    box is drawn from the box's own base for about the ping, then redrawn.
+  - While a rebuild for the live run alone is in flight (a few frames) the
+    white curve is the one from before it.
+  - The plugin's plots have no marker at the live head, and republish the live
+    rows every 0.25 s while the panel is open over a run: the cost of that
+    with eight long ticked runs was not measured.
+  - With nothing ticked there is no graph, so no live line either: the graph is
+    of comparisons.
+  - `LG_SLOTS` is now 11: 73 KB more bins, 76 KB more curve vertices, and 0.5 MB
+    more of the plugin path's energy rows when that path is first used.
+  - `tools/p545graph.py`: its ten sampled replies pass on this build, and its
+    cursor step fails (`cursor 0.1236 duration 0.1000`). Main's build prints the
+    same two numbers: the panel has moved since Patch 545 and the arm's mouse
+    position has not. Not from this patch, not fixed by it.
 - **Patch 623, left open.** None is a wrong action.
   - No release was cut. The change was run as a dry run in a scratch copy of
     the ship set with the network stubbed (`tools/release_dryrun.ps1`), so the

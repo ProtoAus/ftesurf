@@ -4705,6 +4705,68 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   engine worktree has no `engine/libs-x86_64-w64-mingw32` (ignored, 72 MB):
   copy it from one that built.
 
+### The live run on the run graphs (Patch 622) — 2026-10-10
+
+- THE LIVE SLOT IS A GRAPH SLOT NOW, NOT A SPECIAL CASE BESIDE THEM. `LG_SLOTS`
+  is `LN_SLOTS` (11), so every `ln_*[s]` in cl_linegraph.qc still indexes the
+  line it means; what differs for the live one goes through three accessors
+  (`LG_Start`, `LG_Ia`, `LG_Ib`): its zero is the graph's and its last sample
+  is `ln_n - 1`, not the trail's shown range. `LineGraph_Available(9|10)` is
+  `s == lv_slot`.
+- ITS BINS ARE ADDED TO, NOT REBUILT. A slot's bins were rebuilt whole when its
+  sample count changed; the live one's changes every tick. `LineGraph_LiveFold`
+  puts new samples straight into the drawn buffer and bumps `lv_head`, on which
+  only that slot's curve is cut again. A full rebuild is for a new run
+  (`tr_gen`), a new zero, the halving past LN_CAP (`ln_step`), a line begun
+  again in place (`ln_graphgen`: a trim, a load) and the head passing the span.
+- A STAGE RUN'S ZERO IS WHERE ITS CLOCK STARTED, NOT THE BOUNDARY. A ticked
+  stage window is `[T - dur, T]` from `stagepost`, and `dur` is counted from
+  `run_st_tick`, which `SV_StageStart` moves to the walk out of the stage's
+  box. So the live zero is `STAT_FS_STAGEBASE` as it stands, not as it stood
+  when the segment changed: the first cut captured it at the change and was a
+  box-wait early. The arm's `base` column is that stat, and start == base is
+  graded.
+- THE TIMER'S STATS ARE THE SERVER'S PRESENT, AND THE LINE IS ITS PAST. A
+  teleport into a stage's box moves the stats a frame or more before the
+  trail's sample there ends the line (`Trail_Take`, `Trail_InBoundary`). The
+  first cut re-read the alignment every frame, so the line that was about to
+  end was given the next stage and its zero, and kept like that: one dot at
+  x = 0, energy 52.6 where 0.0 belonged. It was in the arm's own passing log;
+  the arm graded only `seg` and `base` at that mark, and the review read the
+  line beside them. A changed answer now waits `LV_SETTLE` (0.25 s) of the
+  line's OWN growth past the frame it was first seen in. The arm ticks a
+  stage 1 run as well and reads the line in the box of stage 2: same line,
+  same zero, every sample it had, not growing; the first cut fails it.
+- A REBUILD ONLY THE LIVE RUN ASKED FOR KEEPS THE DRAWN BUFFER UP (`lv_wait`:
+  not folded into meanwhile). It blanked the whole graph to "building..." at
+  every run start and stretch. THE RIG COULD NOT SHOW THAT: its two 401-sample
+  runs rebuild inside one frame (2048 samples a frame), so a blank frame never
+  happens whichever way the code is written. The arm's `many` phase ticks
+  eight: blank frames 0, then 7 as they are ticked, and still 7 after three
+  rebuilds for the live run alone (the mutant: 3 more).
+- AN AXIS NOBODY READS IS NOT A REASON TO CUT EVERY CURVE AGAIN. The fold bumps
+  the curves' generation when a sample leaves either cached range; the range
+  of a plot the HUD does not draw is never refreshed, so once the energy left
+  it every frame cut all eleven slots again: 108 times in 1.7 s against 3
+  (the mutant, and the arm's `up` step: `setpos` 400 u higher, no status in
+  between, because the status reads both ranges and a range just read is not
+  stale). A range is compared only while `lg_rgen` says it is current.
+- THE PLUGIN'S WHOLE VIEW ENDS WHERE ITS ROWS DO, not at `lg_tmax`, which is
+  rounded on past a live head: the `fit` chip stayed up past the longest ticked
+  run. `lgn_ext`, and the rows before it, since the view comes back a frame
+  after new rows.
+- `ln_leg` / `ln_track` (cl_lines.qc) say what a ticked slot's window shows; the
+  two loaders set them after `Line_Range` (`Line_Leg`). Without them the graph
+  could not tell a stage window from a whole run.
+- `tools/p622live.py`: the timer really runs in the gallery rig (its start box,
+  a strafe out of it, then coasting at one speed with no floor and no gravity).
+  Linear arm, `--staged`, and `--plugins` for the panel on ImPlot. The `timer`
+  line of `linegraph status` is the server's stats, the `live` line what the
+  graph made of them, `liveops` its own counters; the white ink in the plot is
+  counted and ends at the head's column. Ten one-line mutants, each caught at
+  its own step. `tools/p545graph.py` read `build 9` for a finished cache: it is
+  `LG_SLOTS`, 11 now.
+
 ### The release ships the ui_imgui plugin, and a dry run with no network (Patch 623) — 2026-10-10
 
 - `release.ps1 -DryRun` IS NOT OFFLINE. It writes and deletes a probe object in

@@ -1679,6 +1679,7 @@ float  wt_lj_slot, wt_lj_leg, wt_lj_phase;    // phase 1 records, 2 samples, 0 i
 float  wt_lj_hdr;               // still in the header
 float wt_lj_graphgravity;
 float  wt_lj_tick, wt_lj_mtick, wt_lj_fleg, wt_lj_seg;
+float  wt_lj_track;             // Patch 622: the file's `track`, for Line_Leg
 float  wt_lj_wseg, wt_lj_wdur, wt_lj_pa, wt_lj_pb, wt_lj_sa, wt_lj_sb, wt_lj_end;
 float  wt_lj_ta, wt_lj_tb;      // the window, run seconds
 float  wt_lj_c, wt_lj_pt, wt_lj_frc, wt_lj_veto, wt_lj_ride;
@@ -1834,6 +1835,7 @@ float(float slot, string path, float leg) Watch_LineJobStart =
 	wt_lj_graphgravity = 0;
 	wt_lj_fleg  = -1;
 	wt_lj_seg   = 0;
+	wt_lj_track = 0;
 	wt_lj_wseg  = -1;
 	wt_lj_pa = wt_lj_pb = wt_lj_sa = wt_lj_sb = wt_lj_end = -1;
 	// Patch 441: the JOB's table, cleared for this file.  Patch 437 cleared the
@@ -1876,6 +1878,7 @@ float() Watch_LineJobStep =
 			}
 			Line_End(wt_lj_slot);
 			Line_Range(wt_lj_slot, wt_lj_ta, wt_lj_tb, wt_lj_ta);
+			Line_Leg(wt_lj_slot, wt_lj_track, (wt_lj_leg > 0) ? wt_lj_leg : wt_lj_fleg);
 			Watch_LineJobStop();
 			return ln_on[wt_lj_slot] ? 1 : -1;
 		}
@@ -1898,6 +1901,7 @@ float() Watch_LineJobStep =
 				if (argv(0) == "tickrate")  wt_lj_tick = stof(argv(1));
 				if (argv(0) == "movetickrate") wt_lj_mtick = stof(argv(1));
 				if (argv(0) == "leg")       wt_lj_fleg = stof(argv(1));
+				if (argv(0) == "track")     wt_lj_track = stof(argv(1));
 				if (argv(0) == "startseg")  wt_lj_seg  = stof(argv(1));
 				if (argv(0) == "pmpin") wt_lj_graphgravity = Line_HeaderGravity(s);
 				if (argv(0) == "owner") Line_Owner(wt_lj_slot, UI_OwnerLine(s));
@@ -2043,6 +2047,7 @@ float() Watch_LineJobStep =
 void() Watch_LineRange =
 {
 	Line_Range(0, rec_wt_vt0, rec_wt_vt1, rec_wt_wincut ? rec_wt_wint0 : 0);
+	Line_Leg(0, rec_wt_track, rec_wt_wincut ? rec_wt_winseg + 1 : rec_wt_leg);
 };
 
 /*

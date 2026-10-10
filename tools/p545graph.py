@@ -16,6 +16,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+SLOTS = 11     # LG_SLOTS: where a finished build's slot cursor rests (9 before Patch 622's two live slots)
 
 
 def prepare():
@@ -127,7 +128,7 @@ def check(path):
         values = [int(got[0]), float(got[1]), int(got[2]), float(got[3])]
         if any(abs(a-b) > .003 for a,b in zip(values, want[:4])):
             errors.append("reply %d sample %s != %s" % (i,values,want[:4]))
-        if int(got[5]) != 9:
+        if int(got[5]) != SLOTS:
             errors.append("reply %d cache not finished" % i)
         if want[4] is not None:
             if not all(got[6:]):
@@ -139,7 +140,7 @@ def check(path):
     for word in ("p545graph DONE", "line 1 drawn", "line 2 drawn", "line 3 drawn", "line 4 drawn"):
         if word not in text:
             errors.append("missing control: " + word)
-    cursor = re.search(r"linegraph: open 1 cursor ([\d.]+) duration ([\d.]+) build 9", text)
+    cursor = re.search(r"linegraph: open 1 cursor ([\d.]+) duration ([\d.]+) build %d" % SLOTS, text)
     if not cursor or not 0 < float(cursor[1]) < float(cursor[2]):
         errors.append("shared mouse cursor did not act")
     if re.search(r"(QC ERROR|runaway|VM error|failed|could not)", text, re.I):

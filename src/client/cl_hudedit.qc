@@ -627,6 +627,8 @@ string(string id, float row) HE_OptDef =
 		                     "|Speed against time, energy against time, or one above the other.";
 		if (row == 1) return "hud_linegraph_labels|Names on lines|t||"
 		                     "|Each run's number and name beside its line in the world.";
+		if (row == 2) return "hud_linegraph_live|Your run|t||"
+		                     "|Your own run as you make it, in white, against the ticked runs. Needs the Player line on.";
 		return "";
 	}
 

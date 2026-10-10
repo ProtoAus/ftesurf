@@ -89,6 +89,9 @@
 vector *ln_pos;
 string ln_owner[LN_SLOTS];
 float ln_g[LN_SLOTS], ln_g_assumed[LN_SLOTS], ln_start[LN_SLOTS], ln_graphgen[LN_SLOTS];
+// Patch 622: the track and leg a slot's shown window is (leg 0 the whole run, k stage k), for
+// the graph to set the live run against; -1 until a loader says (Line_Leg).
+float ln_track[LN_SLOTS], ln_leg[LN_SLOTS];
 float  *ln_spd;
 float  *ln_t;
 float  *ln_born;                // visual publication time, demo and two live slots
@@ -314,6 +317,7 @@ void(float s) Line_Clear =
 	ln_n[s]  = 0;
 	ln_published[s] = 0;
 	ln_g[s] = ln_start[s] = 0;
+	ln_track[s] = ln_leg[s] = -1;
 	ln_graphgen[s] = ln_graphgen[s] + 1;
 	ln_bkn[s] = 0;
 	ln_ia[s] = ln_ib[s] = 0;
@@ -342,6 +346,12 @@ void(float s, string name) Line_Owner =
 {
 	if (ln_owner[s] != "") strunzone(ln_owner[s]);
 	ln_owner[s] = strzone(name);
+};
+
+void(float s, float track, float leg) Line_Leg =
+{
+	ln_track[s] = track;
+	ln_leg[s] = leg;
 };
 
 void(float s, float g) Line_GraphGravity =
