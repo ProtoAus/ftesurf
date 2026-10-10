@@ -8,6 +8,9 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 VENDOR = ('imgui.cpp', 'imgui_draw.cpp', 'imgui_tables.cpp', 'imgui_widgets.cpp')
+# Since Patch 614 ui_imgui.cpp also links ImPlot's core (the host fixtures include that file, so
+# they need it as well); an engine tree from before the patch has no such source.
+SINCE_614 = ('implot.cpp',)
 
 
 def build(fte: Path, out: Path, cc: Path, host=False, index32=False, host_source=None):
@@ -28,6 +31,7 @@ def build(fte: Path, out: Path, cc: Path, host=False, index32=False, host_source
     sources = [source/'backend.cpp']
     sources += [(host_source or ROOT/'tools/fixtures/p598imgui_host.cpp') if host else source/'ui_imgui.cpp']
     sources += [source/'vendor'/p for p in VENDOR]
+    sources += [source/'vendor'/p for p in SINCE_614 if (source/'vendor'/p).is_file()]
     with (out/'compile.log').open('w') as log:
         for p in sources:
             obj = out/(p.stem+'.o')

@@ -15,6 +15,10 @@ static pluguimodelservice_t modelservice;
 static pluguimodelservice2_t modelservice2;
 static bool model2available = true;
 #endif
+#ifdef PLUGUI_PLOT_VERSION
+static pluguiplotservice_t plotservice;
+static bool plotavailable = true;
+#endif
 static bool modelavailable = true;
 static bool inputavailable = true;
 static std::set<plugmeshtex_t> live;
@@ -82,7 +86,18 @@ static qboolean QDECL ExportInterface(const char *name, void *p, size_t size)
 		std::memcpy(&modelservice2,p,sizeof(modelservice2)); return qtrue;
 	}
 #endif
+#ifdef PLUGUI_PLOT_VERSION
+	if (!std::strcmp(name,pluguiplotservice_name))
+	{
+		Check(size == sizeof(plotservice),"exact additive plot service");
+		if (!plotavailable) return qfalse;
+		std::memcpy(&plotservice,p,sizeof(plotservice)); return qtrue;
+	}
+#endif
+	//Anything else is the drawing service, or a name this host does not know: an older
+	//host refuses those, and filing one here once overwrote the service table.
 	Check(!std::strcmp(name,pluguiservice_name) && size == sizeof(service),"exact exported service");
+	if (std::strcmp(name,pluguiservice_name)) return qfalse;
 	std::memcpy(&service,p,sizeof(service)); return qtrue;
 }
 static qboolean QDECL ExportFunction(const char *name, funcptr_t p)

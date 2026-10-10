@@ -162,6 +162,14 @@ labels use matching run names and slot numbers. Escape closes the panel. A
 watched replay can be compared too, as slot 0, with its position marked on its
 curve.
 
+Where the `ui_imgui` plugin is beside the engine (development installs; it is
+not in a release yet), the panel's two plots are drawn by it instead, on ImPlot:
+the same chips, readout and numbers, with curves at full sample resolution, a
+labelled value axis that follows the view, a right-drag that selects a stretch
+of time, a double click or the right button for the whole run, and a bar
+between the two plots that drags. `ui_native_graphs 0` keeps the built-in
+plots; without the plugin they are what you get.
+
 Clocks align at each run/stage start. Energy includes vertical velocity and is
 shown relative to that run's first sample, in equivalent-height units. Imported
 or legacy recordings without a gravity pin say **g 800 assumed** on the energy

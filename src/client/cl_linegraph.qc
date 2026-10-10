@@ -110,11 +110,76 @@ vector(float s, float seconds) LineGraph_At =
 	return lo + (hi - lo) * f;
 };
 
+/*
+  Patch 614: the comparison panel's two plots on ImPlot, where the ui_imgui plugin
+  and an engine with NativeUIPlot/1 are present (NUI_PlotAvailable). QC keeps the
+  panel, the chips, the card and every number in them. The plugin is handed each
+  run's rows by pointer (time, speed and breaks straight from the line arrays,
+  energy from lgn_e) and draws the curves, the axes and the view the player
+  drags; it reports that view and the cursor's time back. Anything missing or
+  refused and the QC plots draw instead, the same frame.
+*/
+#define LGN_BUDGET 8192         // energy rows summed a frame
+#define LGN_PERIOD 0.25         // seconds between revisions while a line still loads
+#define LGN_MINW   160          // physical pixels the plugin's owner needs
+#define LGN_MINH   120
+float lgn_handle;               // the native owner, 0 for none
+float lgn_failed;               // why it was refused during this open (LineGraph_NativeFail), else 0
+float lgn_rev, lgn_dirty, lgn_pub;  // revisions sent; rows differ from the last; its cltime
+float *lgn_e;                   // energy less lg_ref, [slot * LN_CAP + row]
+float *lgn_scratch;             // eight floats for `linegraph probe`
+float lgn_done[LG_SLOTS];       // lgn_e is current below this row
+float lgn_first[LG_SLOTS];      // the first row sent: the run's start
+float lgn_sgen[LG_SLOTS], lgn_sstep[LG_SLOTS], lgn_sg[LG_SLOTS], lgn_sref[LG_SLOTS], lgn_sstart[LG_SLOTS];
+float lgn_map[LG_SLOTS], lgn_count, lgn_marked;  // the published revision: series -> slot
+float lgn_serial, lgn_r0, lgn_r1;   // the range asked for; r1 <= r0 is the whole run
+float lgn_v0, lgn_v1;           // the view the plugin reports
+float lgn_hover, lgn_hovert, lgn_points, lgn_rebuilt, lgn_cut, lgn_drew;
+float lgn_lost, lgn_nodraw;     // frames running on which the owner was opened again / its draw refused
+float lgn_nodraws, lgn_events;  // draws refused, and positions and notches sent, ever (`linegraph status`)
+float lgn_wheel, lgn_sentpos;   // notches not yet sent; the last event sent was a position
+float lgn_refuse, lgn_lose;     // `linegraph refuse` and `lose N`, not yet acted on
+var float lgn_hot = -1;         // the slot whose chip is under the cursor
+vector lgn_pos, lgn_size;       // the plots' rectangle, virtual
+float lgn_in, lgn_down, lgn_moved;  // cursor inside; buttons held from inside; a position to send
+float lgn_leave;                // draws until the hover is abandoned: the last release is drawn first
+float lgn_probe;                // `linegraph probe`: the next hostile case, 0 for none
+float lg_frames, lg_frames_t;   // `linegraph frames`: panel frames since it was last asked, and when
+float lg_routes, lg_routes_n, lg_routes_q;  // panel frames ever, and those whose plots the plugin / QC drew
+
+void() LineGraph_NativeClose =
+{
+	if (lgn_handle) NUI_Close(lgn_handle);
+	lgn_handle = 0;
+	lgn_rev = lgn_count = lgn_marked = 0;   // revisions restart with an owner
+	lgn_dirty = TRUE;
+	lgn_in = lgn_down = lgn_moved = lgn_leave = lgn_hover = lgn_drew = lgn_probe = 0;
+	lgn_wheel = lgn_sentpos = lgn_refuse = lgn_lose = lgn_nodraw = 0;
+};
+
+// 1 open, 2 memory, 3 rows, 4 view, 5 draw (refused three frames running), 6 input,
+// 7 the owner lost three frames running, 9 `linegraph refuse`. `linegraph status` prints it.
+void(float why) LineGraph_NativeFail =
+{
+	LineGraph_NativeClose();
+	lgn_failed = why;
+};
+
+// The window lost focus: a held button's release may never come.
+void() LineGraph_NativeBlur =
+{
+	if (!lgn_handle) return;
+	if (lgn_in || lgn_down) NUI_Input(lgn_handle, 6, 0, 0);
+	lgn_in = lgn_down = lgn_leave = lgn_wheel = lgn_sentpos = FALSE;
+};
+
 void() LineGraph_Close =
 {
 	lg_open = FALSE;
 	lg_drag = FALSE;
 	lg_fit = TRUE;                  // the HUD graph is always the whole run
+	LineGraph_NativeClose();
+	lgn_failed = lgn_lost = 0;      // the next open may try the plugin again
 	UI_CursorRelease(UIC_LINEGRAPH);
 };
 
@@ -128,6 +193,8 @@ void() LineGraph_Open =
 	}
 	lg_open = TRUE;
 	lg_fit = TRUE;
+	lgn_serial = lgn_serial + 1;    // and the plugin's view with it
+	lgn_r0 = lgn_r1 = 0;
 	UI_CursorClaim(UIC_LINEGRAPH);
 };
 
@@ -142,6 +209,7 @@ void() LineGraph_Reset =
 	{
 		lg_seen[s] = -1;
 		lg_seen_n[s] = lg_available[s] = 0;
+		lgn_sgen[s] = -1;
 	}
 };
 
@@ -155,6 +223,8 @@ void() LineGraph_Register =
 	registercvar("hud_linegraph_y", "0.30", CVAR_ARCHIVE);
 	registercvar("hud_linegraph_plots", "1", CVAR_ARCHIVE);
 	registercvar("hud_linegraph_size", "0", CVAR_ARCHIVE);
+	// Patch 614: the panel's plots through the ui_imgui plugin where it is loaded.
+	registercvar("ui_native_graphs", "1", CVAR_ARCHIVE);
 	registercommand("linegraph");
 	lg_buildslot = LG_SLOTS;
 	lg_fit = TRUE;
@@ -705,6 +775,7 @@ void(float s, vector pos, float h) LineGraph_Chip =
 	w = LineGraph_ChipW(s, h);
 	sui_action_element(pos, [w, h], id, sui_noop);
 	hot = sui_is_hovered(id);
+	if (hot) lgn_hot = s;
 	if (hot)
 		sui_style_box(pos, [w, h], h * 0.5, lg_selected[s] ? SBC_PANEL : SUI_THEME_WELL, SUI_THEME_EDGE_HI, 1);
 	else
@@ -781,6 +852,524 @@ void(float t, vector scr, vector plot, vector size) LineGraph_Card =
 		Scores_Text([p_x + fs * 0.8, y], fs, "* gravity 800 assumed: not in the recording", SUI_THEME_WARN, 1);
 };
 
+// ---- Patch 614: the panel's plots on ImPlot (the block over LineGraph_NativeClose) ----
+
+// Virtual to physical pixels; z is 0 when the engine could not say.
+vector(vector v) LineGraph_NativePx =
+{
+	local vector physical, virtualsize;
+	physical = getproperty(VF_SCREENPSIZE);
+	virtualsize = getproperty(VF_SCREENVSIZE);
+	if (virtualsize_x <= 0 || virtualsize_y <= 0) return '0 0 0';
+	return [v_x * physical_x / virtualsize_x, v_y * physical_y / virtualsize_y, 1];
+};
+
+// Brings lgn_e up to date, LGN_BUDGET rows a frame. TRUE once every drawn run's
+// rows are summed.
+float() LineGraph_NativeRows =
+{
+	local float s, i, b, first, budget, complete, stale;
+	if (!lgn_e)
+	{
+		lgn_e = memalloc(sizeof(float) * LG_SLOTS * LN_CAP);
+		if (!lgn_e) return FALSE;
+		for (s = 0; s < LG_SLOTS; s = s + 1) lgn_sgen[s] = -1;
+	}
+	budget = LGN_BUDGET;
+	complete = TRUE;
+	for (s = 0; s < LG_SLOTS; s = s + 1)
+	{
+		if (!lg_available[s])
+		{
+			if (lgn_sgen[s] != -1) lgn_dirty = TRUE;
+			lgn_sgen[s] = -1;
+			continue;
+		}
+		first = max(ln_ia[s], Line_Find(s, ln_start[s]));
+		// What the rows were summed from. The halving past LN_CAP rewrites rows in
+		// place under the same generation: its doubled step is what says so.
+		stale = (lgn_sgen[s] != ln_graphgen[s] || lgn_sstep[s] != ln_step[s] || lgn_first[s] != first);
+		if (lgn_sg[s] != ln_g[s] || lgn_sref[s] != lg_ref[s] || lgn_sstart[s] != ln_start[s]) stale = TRUE;
+		if (lgn_done[s] > ln_ib[s] + 1) stale = TRUE;
+		if (stale)
+		{
+			lgn_sgen[s] = ln_graphgen[s]; lgn_sstep[s] = ln_step[s]; lgn_first[s] = first;
+			lgn_sg[s] = ln_g[s]; lgn_sref[s] = lg_ref[s]; lgn_sstart[s] = ln_start[s];
+			lgn_done[s] = first;
+			lgn_dirty = TRUE;
+		}
+		b = s * LN_CAP;
+		for (i = lgn_done[s]; i <= ln_ib[s] && budget > 0; i = i + 1)
+		{
+			lgn_e[b + i] = LineGraph_Energy(s, i) - lg_ref[s];
+			budget = budget - 1;
+		}
+		if (i != lgn_done[s]) lgn_dirty = TRUE;
+		lgn_done[s] = i;
+		if (i <= ln_ib[s]) complete = FALSE;
+	}
+	return complete;
+};
+
+// One revision: every drawn run that has a row, in slot order. The engine reads
+// the rows where they lie, checks them and copies them; a refusal is FALSE.
+float() LineGraph_NativePublish =
+{
+	local float s, k, n, b, rows, flags;
+	n = 0;
+	for (s = 0; s < LG_SLOTS; s = s + 1)
+		if (lg_available[s])
+		if (ln_ib[s] >= lgn_first[s]) n = n + 1;
+	lgn_rev = lgn_rev + 1;
+	if (!ui_native_plot_begin(lgn_handle, lgn_rev, n)) return FALSE;
+	k = 0;
+	lgn_marked = FALSE;
+	for (s = 0; s < LG_SLOTS; s = s + 1)
+	{
+		if (!lg_available[s]) continue;
+		rows = ln_ib[s] - lgn_first[s] + 1;
+		if (rows < 1) continue;
+		b = s * LN_CAP + lgn_first[s];
+		flags = (ln_g[s] > 0) ? 1 : 0;      // energy needs a gravity (LineGraph_Energy)
+		if (s == 0) { flags = flags + 2; lgn_marked = TRUE; }   // the replay's clock rides it
+		if (!ui_native_plot_series(lgn_handle, k, [flags, max(0.25, ln_tick[s] * ln_step[s] * 2), 0], Plot_Series(s)))
+			return FALSE;
+		if (ln_g[s] > 0)
+		{
+			if (!ui_native_plot_rows(lgn_handle, k, &ln_t[b], &ln_spd[b], &lgn_e[b], &ln_brk[b], rows, ln_start[s]))
+				return FALSE;
+		}
+		else if (!ui_native_plot_rows(lgn_handle, k, &ln_t[b], &ln_spd[b], __NULL__, &ln_brk[b], rows, ln_start[s]))
+			return FALSE;
+		lgn_map[k] = s;
+		k = k + 1;
+	}
+	if (!ui_native_plot_commit(lgn_handle)) return FALSE;
+	lgn_count = k;
+	lgn_dirty = FALSE;
+	lgn_pub = cltime;
+	return TRUE;
+};
+
+/*
+  `linegraph probe`: one hostile transaction a frame through the real builtins,
+  each printing what every call returned (-1: not called). tools/p614plots.py
+  holds the table they must match; all are refusals, and the plots must still
+  be drawn, from a newer revision, after the last. One a frame because the
+  engine budgets transactions per frame: a refusal for THAT is not the one
+  under test.
+*/
+void() LineGraph_NativeProbe =
+{
+	local float n, s, rev, bg, sr, rw, cm, vw, v;
+	local float *x;
+	local float *a;
+	local vector spec, rgb;
+	local string name;
+	if (!lgn_count) { print("linegraph: probe needs a drawn run\n"); lgn_probe = 0; return; }
+	if (!lgn_scratch) lgn_scratch = memalloc(sizeof(float) * 8);
+	if (!lgn_scratch) { lgn_probe = 0; return; }
+	n = lgn_probe;
+	lgn_probe = lgn_probe + 1;
+	rev = lgn_rev + 1;
+	s = lgn_map[0];
+	x = &ln_t[s * LN_CAP + lgn_first[s]];
+	a = &ln_spd[s * LN_CAP + lgn_first[s]];
+	spec = [0, 0.25, 0];
+	rgb = '0.5 0.5 0.5';
+	v = 10 + lgn_rev;                       // +Inf, made at run time: six squarings
+	v = v * v; v = v * v; v = v * v; v = v * v; v = v * v; v = v * v;
+	lgn_scratch[0] = 1; lgn_scratch[1] = 0; // time running backwards
+	lgn_scratch[2] = 0; lgn_scratch[3] = 1;
+	lgn_scratch[4] = 5; lgn_scratch[5] = v;
+	lgn_scratch[6] = 2000000000; lgn_scratch[7] = 0;    // past PLUGUI_PLOT_MAX_VALUE, and finite
+	bg = sr = rw = cm = vw = -1;
+	name = "";
+	if (n == 1) { name = "stale-revision"; bg = ui_native_plot_begin(lgn_handle, lgn_rev, 1); }
+	else if (n == 2) { name = "seventeen-series"; bg = ui_native_plot_begin(lgn_handle, rev, 17); }
+	else if (n == 3) { name = "fractional-count"; bg = ui_native_plot_begin(lgn_handle, rev, 1.5); }
+	else if (n == 4)
+	{
+		name = "unknown-flag";
+		bg = ui_native_plot_begin(lgn_handle, rev, 1);
+		sr = ui_native_plot_series(lgn_handle, 0, [4, 0.25, 0], rgb);
+		cm = ui_native_plot_commit(lgn_handle);
+	}
+	else if (n == 5)
+	{
+		name = "zero-gap";
+		bg = ui_native_plot_begin(lgn_handle, rev, 1);
+		sr = ui_native_plot_series(lgn_handle, 0, [0, 0, 0], rgb);
+	}
+	else if (n == 6)
+	{
+		name = "colour-out-of-range";
+		bg = ui_native_plot_begin(lgn_handle, rev, 1);
+		sr = ui_native_plot_series(lgn_handle, 0, spec, '2 0 0');
+	}
+	else if (n == 7)
+	{
+		name = "no-rows";
+		bg = ui_native_plot_begin(lgn_handle, rev, 1);
+		sr = ui_native_plot_series(lgn_handle, 0, spec, rgb);
+		rw = ui_native_plot_rows(lgn_handle, 0, x, a, __NULL__, __NULL__, 0, 0);
+		cm = ui_native_plot_commit(lgn_handle);
+	}
+	else if (n == 8)
+	{
+		name = "too-many-rows";
+		bg = ui_native_plot_begin(lgn_handle, rev, 1);
+		sr = ui_native_plot_series(lgn_handle, 0, spec, rgb);
+		rw = ui_native_plot_rows(lgn_handle, 0, x, a, __NULL__, __NULL__, 65537, 0);
+	}
+	else if (n == 9)
+	{
+		name = "null-time";
+		bg = ui_native_plot_begin(lgn_handle, rev, 1);
+		sr = ui_native_plot_series(lgn_handle, 0, spec, rgb);
+		rw = ui_native_plot_rows(lgn_handle, 0, __NULL__, a, __NULL__, __NULL__, 2, 0);
+	}
+	else if (n == 10)
+	{
+		// Two rows that would start 1.6 GB past the line arrays.
+		name = "beyond-vm-memory";
+		bg = ui_native_plot_begin(lgn_handle, rev, 1);
+		sr = ui_native_plot_series(lgn_handle, 0, spec, rgb);
+		rw = ui_native_plot_rows(lgn_handle, 0, &ln_t[400000000], a, __NULL__, __NULL__, 2, 0);
+	}
+	else if (n == 11)
+	{
+		name = "second-value-not-declared";
+		bg = ui_native_plot_begin(lgn_handle, rev, 1);
+		sr = ui_native_plot_series(lgn_handle, 0, spec, rgb);
+		rw = ui_native_plot_rows(lgn_handle, 0, x, a, a, __NULL__, 1, 0);
+	}
+	else if (n == 12)
+	{
+		name = "second-value-missing";
+		bg = ui_native_plot_begin(lgn_handle, rev, 1);
+		sr = ui_native_plot_series(lgn_handle, 0, [1, 0.25, 0], rgb);
+		rw = ui_native_plot_rows(lgn_handle, 0, x, a, __NULL__, __NULL__, 1, 0);
+	}
+	else if (n == 13)
+	{
+		name = "time-backwards";
+		bg = ui_native_plot_begin(lgn_handle, rev, 1);
+		sr = ui_native_plot_series(lgn_handle, 0, spec, rgb);
+		rw = ui_native_plot_rows(lgn_handle, 0, &lgn_scratch[0], &lgn_scratch[2], __NULL__, __NULL__, 2, 0);
+	}
+	else if (n == 14)
+	{
+		name = "infinite-value";
+		bg = ui_native_plot_begin(lgn_handle, rev, 1);
+		sr = ui_native_plot_series(lgn_handle, 0, spec, rgb);
+		rw = ui_native_plot_rows(lgn_handle, 0, &lgn_scratch[2], &lgn_scratch[4], __NULL__, __NULL__, 2, 0);
+	}
+	else if (n == 15)
+	{
+		name = "series-missing";
+		bg = ui_native_plot_begin(lgn_handle, rev, 2);
+		sr = ui_native_plot_series(lgn_handle, 0, spec, rgb);
+		rw = ui_native_plot_rows(lgn_handle, 0, &lgn_scratch[2], &lgn_scratch[2], __NULL__, __NULL__, 2, 0);
+		cm = ui_native_plot_commit(lgn_handle);
+	}
+	else if (n == 16)
+	{
+		name = "rows-twice";
+		bg = ui_native_plot_begin(lgn_handle, rev, 1);
+		sr = ui_native_plot_series(lgn_handle, 0, spec, rgb);
+		ui_native_plot_rows(lgn_handle, 0, &lgn_scratch[2], &lgn_scratch[2], __NULL__, __NULL__, 2, 0);
+		rw = ui_native_plot_rows(lgn_handle, 0, &lgn_scratch[2], &lgn_scratch[2], __NULL__, __NULL__, 2, 0);
+		cm = ui_native_plot_commit(lgn_handle);
+	}
+	else if (n == 17) { name = "hidden-mask-too-wide"; vw = ui_native_plot_view(lgn_handle, '0 0 13', '65536 0 0', '0 0 0'); }
+	else if (n == 18) { name = "caption-size-zero"; vw = ui_native_plot_view(lgn_handle, '0 0 0', '0 0 0', '0 0 0'); }
+	else if (n == 19) { name = "infinite-mark"; vw = ui_native_plot_view(lgn_handle, [v, 1, 13], '0 0 0', '0 0 0'); }
+	else if (n == 20)
+	{
+		name = "value-past-a-billion";
+		bg = ui_native_plot_begin(lgn_handle, rev, 1);
+		sr = ui_native_plot_series(lgn_handle, 0, spec, rgb);
+		rw = ui_native_plot_rows(lgn_handle, 0, &lgn_scratch[2], &lgn_scratch[6], __NULL__, __NULL__, 2, 0);
+	}
+	else
+	{
+		// The owner must have outlived all of it: ask for a fresh revision.
+		print(sprintf("linegraph: probe done handle %g\n", lgn_handle > 0));
+		lgn_probe = 0;
+		lgn_dirty = TRUE;
+		lgn_pub = 0;
+		return;
+	}
+	print(sprintf("linegraph: probe %g %s begin %g series %g rows %g commit %g view %g\n", n, name, bg, sr, rw, cm, vw));
+};
+
+/*
+  The plots' rectangle drawn by the plugin. FALSE: nothing was drawn there and
+  the caller draws the QC plots. `fs` is the caption size, which the plugin
+  matches its own type to.
+*/
+float(vector p, vector size, float fs) LineGraph_NativeDraw =
+{
+	local float k, bit, hidden, loud, marked, i, complete;
+	local vector px, a;
+	lgn_drew = lgn_hover = FALSE;
+	lgn_pos = p;                    // kept whether or not it draws: `linegraph status` prints them
+	lgn_size = size;
+	if (lgn_failed) return FALSE;
+	if (!cvar("ui_native_graphs")) { LineGraph_NativeClose(); return FALSE; }
+	if (!NUI_PlotAvailable()) { LineGraph_NativeClose(); return FALSE; }
+	px = LineGraph_NativePx(size);
+	if (px_x < LGN_MINW || px_y < LGN_MINH) { LineGraph_NativeClose(); return FALSE; }
+	complete = LineGraph_NativeRows();
+	if (!lgn_e) { LineGraph_NativeFail(2); return FALSE; }
+	if (!lgn_handle)
+	{
+		if (!complete) return FALSE;        // a few frames of the QC plots while the rows are summed
+		Scores_NativeClose();               // one owner a VM: the board's table is not up behind this
+	}
+	if (lgn_lose > 0)
+	if (lgn_handle)
+	{
+		lgn_lose = lgn_lose - 1;
+		NUI_Close(lgn_handle);          // `linegraph lose`: behind this panel's back
+	}
+	// The live owner's handle again, at no cost; or a new owner where a renderer
+	// restart or a plugin reload took the old one, and then everything is sent anew.
+	i = NUI_Open(206);
+	if (!i) { LineGraph_NativeFail(1); return FALSE; }
+	if (i != lgn_handle)
+	{
+		// Lost once (a renderer restart) it is replaced. Lost again on each of three
+		// frames it is dying of something this panel sends it, and is given up: a
+		// new context, font atlas and revision every frame is no way to carry on.
+		if (lgn_handle) lgn_lost = lgn_lost + 1;
+		lgn_handle = i;
+		if (lgn_lost >= 3) { LineGraph_NativeFail(7); return FALSE; }
+		lgn_rev = lgn_count = lgn_marked = 0;
+		lgn_in = lgn_down = lgn_leave = lgn_probe = lgn_wheel = lgn_sentpos = 0;
+		lgn_dirty = TRUE;
+	}
+	else lgn_lost = 0;
+	if (lgn_probe)
+	if (lgn_rev)
+		LineGraph_NativeProbe();
+	if (lgn_dirty)
+	if (complete)
+	if (!lgn_rev || cltime < lgn_pub || cltime >= lgn_pub + LGN_PERIOD)
+		if (!LineGraph_NativePublish()) { LineGraph_NativeFail(3); return FALSE; }
+	if (!lgn_rev) return FALSE;
+
+	hidden = loud = 0;
+	bit = 1;
+	for (k = 0; k < lgn_count; k = k + 1)
+	{
+		if (!lg_selected[lgn_map[k]]) hidden = hidden + bit;
+		else if (lgn_hot == lgn_map[k]) loud = loud + bit;
+		bit = bit * 2;
+	}
+	marked = (lgn_marked && lg_available[0] && lg_selected[0]);
+	px = LineGraph_NativePx([fs, fs]);
+	if (px_y < 1) px_y = 13;
+	if (!ui_native_plot_view(lgn_handle, [marked ? rec_wt_time - ln_start[0] : 0, marked, px_y],
+	                         [hidden, loud, 0], [lgn_serial, lgn_r0, lgn_r1]))
+		{ LineGraph_NativeFail(4); return FALSE; }
+	// One queued event a frame: the latest position, or one of the wheel's notches
+	// (ImPlot zooms a step for a frame's wheel, whatever its size). A fast mouse
+	// must not spend the engine's per-frame event budget, and ImGui takes a wheel
+	// after a move (or a move after a wheel) a frame later, so a position before
+	// every notch outran it and filled the plugin's queue. With both waiting they
+	// take turns.
+	if (lgn_in || lgn_down)
+	{
+		if (lgn_moved && (!lgn_wheel || !lgn_sentpos))
+		{
+			lgn_moved = FALSE;
+			lgn_sentpos = TRUE;
+			lgn_events = lgn_events + 1;
+			px = LineGraph_NativePx(lg_mouse);
+			if (!NUI_Input(lgn_handle, 1, px_x, px_y)) { LineGraph_NativeFail(6); return FALSE; }
+		}
+		else if (lgn_wheel)
+		{
+			i = (lgn_wheel > 0) ? 1 : -1;
+			lgn_wheel = lgn_wheel - i;
+			lgn_sentpos = FALSE;
+			lgn_events = lgn_events + 1;
+			if (!NUI_Input(lgn_handle, 3, 0, i)) { LineGraph_NativeFail(6); return FALSE; }
+		}
+	}
+	else lgn_moved = lgn_wheel = FALSE;
+	if (lgn_refuse) { lgn_refuse = FALSE; LineGraph_NativeFail(9); return FALSE; }
+	drawsetcliparea(p_x, p_y, size_x, size_y);
+	i = NUI_Draw(lgn_handle);
+	drawresetcliparea();
+	if (!i)
+	{
+		// A VM draws one native owner a frame, and the board's table has drawn this
+		// one when its `run graphs` chip opens the panel (Scores_Finish, mid-frame).
+		// Refused once is that, and QC draws this frame's plots; refused on three
+		// frames running is the plugin's own failure.
+		lgn_nodraw = lgn_nodraw + 1;
+		lgn_nodraws = lgn_nodraws + 1;
+		if (lgn_nodraw >= 3) LineGraph_NativeFail(5);
+		return FALSE;
+	}
+	lgn_nodraw = 0;
+	lgn_drew = TRUE;
+	// What it shows and where the cursor reads: 1 and 2 the view, 3 the cursor's
+	// time (absent off the plots), 4 the points it drew, 5 how many of its two
+	// plots it had to cut afresh for this frame (0 while the view is only read).
+	for (i = 0; i < 16; i = i + 1)
+	{
+		a = NUI_Poll(lgn_handle);
+		if (a == '0 0 0') break;
+		if (a_x == 1) lgn_v0 = a_z;
+		else if (a_x == 2) lgn_v1 = a_z;
+		else if (a_x == 3) { lgn_hover = TRUE; lgn_hovert = a_z; }
+		else if (a_x == 4) lgn_points = a_z;
+		else if (a_x == 5) { lgn_rebuilt = a_z; lgn_cut = lgn_cut + a_z; }
+	}
+	// The cursor left with nothing held. The plugin has now drawn whatever was let
+	// go on the way out (a box, a pan); only then is its mouse taken away.
+	if (lgn_in || lgn_down) lgn_leave = 0;
+	else if (lgn_leave > 0)
+	{
+		lgn_leave = lgn_leave - 1;
+		if (!lgn_leave)
+			if (!NUI_Input(lgn_handle, 6, 0, 0)) { LineGraph_NativeFail(6); return TRUE; }
+	}
+	return TRUE;
+};
+
+// The cursor moved (lg_mouse). Leaving with no button held abandons the hover,
+// two draws on (LineGraph_NativeDraw).
+void() LineGraph_NativeMoved =
+{
+	local float inside;
+	if (!lgn_handle || !lgn_drew) return;
+	inside = (lg_mouse_x >= lgn_pos_x && lg_mouse_y >= lgn_pos_y
+	       && lg_mouse_x < lgn_pos_x + lgn_size_x && lg_mouse_y < lgn_pos_y + lgn_size_y);
+	if (lgn_in)
+	if (!inside)
+	if (!lgn_down)
+		lgn_leave = 2;
+	lgn_in = inside;
+	lgn_moved = TRUE;
+};
+
+// A mouse button or the wheel while the native plots are up. TRUE: it was theirs.
+// A press belongs to them when it lands inside; its release follows it out.
+float(float evtype, float scanx) LineGraph_NativeKey =
+{
+	local float button, bit, down, ok;
+	local vector px;
+	if (!lgn_handle || !lgn_drew) return FALSE;
+	down = (evtype == IE_KEYDOWN);
+	button = bit = 0;
+	if (scanx == K_MOUSE1) bit = 1;
+	else if (scanx == K_MOUSE2) { button = 1; bit = 2; }
+	else if (scanx != K_MWHEELUP && scanx != K_MWHEELDOWN) return FALSE;
+	if (!bit)
+	{
+		// Notches are counted here and sent from the draw, one a frame.
+		if (!lgn_in) return FALSE;
+		if (down) lgn_wheel = bound(-10, lgn_wheel + ((scanx == K_MWHEELUP) ? 1 : -1), 10);
+		return TRUE;
+	}
+	if (down)
+	{
+		if (!lgn_in) return FALSE;
+		lgn_down = lgn_down | bit;
+	}
+	else
+	{
+		if (!(lgn_down & bit)) return FALSE;
+		lgn_down = lgn_down - bit;
+	}
+	// A button is sent at once, after where it happened.
+	px = LineGraph_NativePx(lg_mouse);
+	lgn_moved = FALSE;
+	lgn_sentpos = TRUE;
+	if (!NUI_Input(lgn_handle, 1, px_x, px_y)) { LineGraph_NativeFail(6); return TRUE; }
+	ok = NUI_Input(lgn_handle, 2, button, down);
+	if (!ok) { LineGraph_NativeFail(6); return TRUE; }
+	// Let go outside with nothing else held: the hover goes with it, once drawn.
+	if (!lgn_in)
+	if (!lgn_down)
+		lgn_leave = 2;
+	return TRUE;
+};
+
+// The whole run again, in whichever plots are up.
+void() LineGraph_Fit =
+{
+	lg_fit = TRUE;
+	lgn_serial = lgn_serial + 1;
+	lgn_r0 = lgn_r1 = 0;
+};
+
+// The view is narrower than the run.
+float() LineGraph_Zoomed =
+{
+	if (lgn_drew) return (lgn_v0 > 0.0005 || lgn_v1 < lg_tmax - 0.0005);
+	return !lg_fit;
+};
+
+/*
+  The panel's plot area on the plugin: one caption row, its rectangle, the
+  footer and the card. FALSE: nothing was drawn and LineGraph_Panel carries on
+  with the QC plots. `y` is the caption's row, `y1` the bottom of the area.
+*/
+float(vector scr, vector p, float w, float pad, float y, float y1) LineGraph_PanelNative =
+{
+	local vector nat, size;
+	local float x, fs, k;
+	local string text;
+	fs = rec_sb_szhead;
+	nat = [p_x + pad, y + fs + 6, 0];
+	size = [w - pad * 2, y1 - nat_y, 0];
+	if (!LineGraph_NativeDraw(nat, size, fs)) return FALSE;
+
+	x = nat_x;
+	Scores_Text([x, y], fs, "SPEED", SUI_THEME_MUTED, 1);
+	x = x + fs * 4.2;
+	Scores_Text([x, y], fs, "horizontal, u/s", SUI_THEME_DIM, 1);
+	x = x + stringwidth("horizontal, u/s", TRUE, [fs, fs]) + pad * 2;
+	Scores_Text([x, y], fs, "ENERGY", SUI_THEME_MUTED, 1);
+	x = x + fs * 4.9;
+	// As over the QC plots: where both do not fit, the warning is the one that stays.
+	text = "height + v*v/2g, in units above the run's first sample";
+	k = stringwidth("g 800 assumed where a recording does not say", TRUE, [fs, fs]);
+	if (!LineGraph_Assumed())
+		Scores_Text([x, y], fs, text, SUI_THEME_DIM, 1);
+	else if (x + stringwidth(text, TRUE, [fs, fs]) + pad + k <= nat_x + size_x)
+	{
+		Scores_Text([x, y], fs, text, SUI_THEME_DIM, 1);
+		Scores_TextR([nat_x + size_x, y], fs, "g 800 assumed where a recording does not say", SUI_THEME_WARN, 1);
+	}
+	else
+		Scores_Text([x, y], fs, "g 800 assumed where a recording does not say", SUI_THEME_WARN, 1);
+
+	y = y1 + pad;
+	sui_fill([p_x + pad, y - floor(pad * 0.5)], [w - pad * 2, 1], SUI_THEME_EDGE, 1, 0);
+	x = Scores_Hint(p_x + w - pad, y, "esc", "close");
+	x = Scores_Hint(x, y, "rmb", "whole run, or drag a box");
+	x = Scores_Hint(x, y, "drag", "pan");
+	Scores_Hint(x, y, "wheel", "zoom");
+	if (lg_tmax > 0)
+		Scores_Text([p_x + pad, y], fs,
+		            LineGraph_Zoomed() ? sprintf("%s to %s of %s", Plot_Clock(lgn_v0, 0.1), Plot_Clock(lgn_v1, 0.1), Plot_Clock(lg_tmax, 0.1))
+		                               : sprintf("the whole run, %s", Plot_Clock(lg_tmax, 0.1)),
+		            SUI_THEME_DIM, 1);
+	if (lgn_hover)
+	{
+		lg_cursor_t = lgn_hovert;
+		LineGraph_Card(lgn_hovert, scr, nat, size);
+	}
+	return TRUE;
+};
+
 /*
   The comparison panel: the board's chrome and type, the runs as chips, two
   plots on one time axis. Wheel zooms about the cursor, a drag pans, the right
@@ -842,16 +1431,17 @@ void(vector scr, float have) LineGraph_Panel =
 	xr = xr - ceil(chipw * 1.25) - 6;
 	if (Scores_Chip("lg_hud", [xr, y], [ceil(chipw * 1.25), chiph], "hud graph", cvar("hud_linegraph") > 0))
 		localcmd(sprintf("seta hud_linegraph %g\n", (cvar("hud_linegraph") > 0) ? 0 : 1));
-	if (!lg_fit)
+	if (LineGraph_Zoomed())
 	{
 		xr = xr - chipw - 6;
 		if (Scores_Chip("lg_fit", [xr, y], [chipw, chiph], "fit", FALSE))
-			lg_fit = TRUE;
+			LineGraph_Fit();
 	}
 
 	// ---- the runs --------------------------------------------------------------
 	y = p_y + pad + rec_sb_sztitle + ceil(pad * 0.75);
 	x = 0;
+	lgn_hot = -1;
 	for (s = 0; s < LG_SLOTS; s = s + 1)
 	{
 		if (!lg_available[s]) continue;
@@ -872,6 +1462,19 @@ void(vector scr, float have) LineGraph_Panel =
 	lg_plotp = plot;
 	lg_plotsize = [pw, ph, 0];
 	lg_ploty1 = y0 + rec_sb_szhead + 6 + ph;
+	// Patch 614: the same area on the plugin where it is present. FALSE and the QC
+	// plots below draw, this frame.
+	if (!have) LineGraph_NativeClose();
+	else if (LineGraph_PanelNative(scr, p, w, pad, y, lg_ploty1 + 6 + rec_sb_szhead))
+	{
+		lg_routes_n = lg_routes_n + 1;
+		sui_end();
+		Font_Reset();
+		if (closing)
+			LineGraph_Close();
+		return;
+	}
+	lg_routes_q = lg_routes_q + 1;
 	r0 = LineGraph_RangeY(FALSE);
 	r1 = LineGraph_RangeY(TRUE);
 
@@ -983,9 +1586,12 @@ void(vector scr) LineGraph_Draw =
 	if (lg_open)
 	if (rec_sb_open || ui_he_open || ui_rs_cursor || ui_ev_cursor) LineGraph_Close();
 	// A panel opened over this one (the customizer has a key) takes the mouse, and
-	// a held button's release with it.
-	if (lg_drag)
-	if (ui_cursor_claims & ~(UIC_WATCH | UIC_LINEGRAPH)) lg_drag = FALSE;
+	// a held button's release with it: here, and in the plugin.
+	if (ui_cursor_claims & ~(UIC_WATCH | UIC_LINEGRAPH))
+	{
+		lg_drag = FALSE;
+		LineGraph_NativeBlur();
+	}
 	if (!lg_open && !cvar("hud_linegraph")) return;
 	if (rec_sb_open || ui_rs_cursor || ui_ev_cursor) return;
 	// The HUD graph yields to the TAB board held over it, and to the finish card,
@@ -999,7 +1605,11 @@ void(vector scr) LineGraph_Draw =
 	have = 0;
 	for (s = 0; s < LG_SLOTS; s = s + 1) if (lg_available[s]) have = have + 1;
 	if (lg_open)
+	{
+		lg_frames = lg_frames + 1;      // `linegraph frames`
+		lg_routes = lg_routes + 1;
 		LineGraph_Panel(scr, have);
+	}
 	else if (have)
 		LineGraph_Hud(scr, have);
 };
@@ -1060,6 +1670,7 @@ float(float evtype, float scanx, float chary, float devid) LineGraph_InputEvent 
 	if (evtype == IE_MOUSEABS)
 	{
 		lg_mouse = [scanx, chary];
+		LineGraph_NativeMoved();
 		if (lg_drag)
 		if (lg_plotsize_x > 0)
 		{
@@ -1072,8 +1683,13 @@ float(float evtype, float scanx, float chary, float devid) LineGraph_InputEvent 
 		sui_input_event(evtype, scanx, chary, devid);
 		return TRUE;
 	}
+	// The plugin's plots take what lands on them; the chips and ESC stay here.
+	if (evtype == IE_KEYDOWN || evtype == IE_KEYUP)
+	if (LineGraph_NativeKey(evtype, scanx))
+		return TRUE;
 	inplot = (lg_mouse_x >= lg_plotp_x && lg_mouse_x <= lg_plotp_x + lg_plotsize_x
 	       && lg_mouse_y >= lg_plotp_y && lg_mouse_y <= lg_ploty1);
+	if (lgn_drew) inplot = FALSE;       // the QC plots are not on screen
 	if (scanx == K_MOUSE1)
 	{
 		// A drag pans only once zoomed in: the whole run has nowhere to go.
@@ -1090,7 +1706,7 @@ float(float evtype, float scanx, float chary, float devid) LineGraph_InputEvent 
 	}
 	if (scanx == K_MOUSE2)
 	{
-		if (evtype == IE_KEYDOWN) lg_fit = TRUE;
+		if (evtype == IE_KEYDOWN) LineGraph_Fit();
 		return TRUE;
 	}
 	if (scanx == K_MWHEELUP || scanx == K_MWHEELDOWN)
@@ -1135,11 +1751,31 @@ float(string cmd) LineGraph_Command =
 		print(sprintf("linegraph: vertices %g %g\n", vs, ve));
 		// The panel's plots as last laid out: left, top, width, and both plots' height.
 		print(sprintf("linegraph: plots %g %g %g %g\n", lg_plotp_x, lg_plotp_y, lg_plotsize_x, lg_ploty1 - lg_plotp_y));
+		sample = LineGraph_NativePx(lg_plotp);
+		print(sprintf("linegraph: plots pixels %g %g", sample_x, sample_y));
+		sample = LineGraph_NativePx([lg_plotsize_x, lg_ploty1 - lg_plotp_y]);
+		print(sprintf(" %g %g\n", sample_x, sample_y));
 		// Where the open replay's marker stands; -1 with no replay drawn.
 		print(sprintf("linegraph: playhead %.4f runs %g\n",
 		              lg_available[0] ? rec_wt_time - ln_start[0] : -1,
 		              lg_available[0] + lg_available[1] + lg_available[2] + lg_available[3] + lg_available[4]
 		              + lg_available[5] + lg_available[6] + lg_available[7] + lg_available[8]));
+		// Patch 614. drew: the plugin drew the last frame's plots; refused: why it was
+		// given up for this open (LineGraph_NativeFail), 0 if it was not.
+		// rebuilt: plots the plugin cut afresh for the last frame; cut: the sum of that since
+		// the game started (it stands still while a view is only read).
+		print(sprintf("linegraph: native drew %g refused %g revision %g series %g points %g rebuilt %g cut %g\n",
+		              lgn_drew, lgn_failed, lgn_rev, lgn_count, lgn_points, lgn_rebuilt, lgn_cut));
+		print(sprintf("linegraph: native view %.4f %.4f hover %g %.4f\n", lgn_v0, lgn_v1, lgn_hover, lgn_hovert));
+		print(sprintf("linegraph: native input in %g down %g wheel %g lost %g nodraw %g ever %g events %g\n",
+		              lgn_in, lgn_down, lgn_wheel, lgn_lost, lgn_nodraw, lgn_nodraws, lgn_events));
+		// Every panel frame is one or the other: a frame with no plots would show here.
+		print(sprintf("linegraph: routes panel %g native %g qc %g\n", lg_routes, lg_routes_n, lg_routes_q));
+		print(sprintf("linegraph: native rect %g %g %g %g\n", lgn_pos_x, lgn_pos_y, lgn_size_x, lgn_size_y));
+		sample = LineGraph_NativePx(lgn_pos);
+		print(sprintf("linegraph: native pixels %g %g", sample_x, sample_y));
+		sample = LineGraph_NativePx(lgn_size);
+		print(sprintf(" %g %g\n", sample_x, sample_y));
 		return TRUE;
 	}
 	if (argv(1) == "cursor" && n == 4)
@@ -1163,14 +1799,68 @@ float(string cmd) LineGraph_Command =
 	// The view, for a cfg: `zoom <from> <to>` in seconds, bare `zoom` for the whole run.
 	if (argv(1) == "zoom")
 	{
-		lg_fit = TRUE;
+		LineGraph_Fit();
 		if (n == 4)
 		if (stof(argv(3)) > stof(argv(2)))
 		{
-			lg_fit = FALSE;
-			lg_v0 = stof(argv(2));
-			lg_v1 = stof(argv(3));
+			// Inside the run, both ends: a range the plugin could not show came back as
+			// a report the engine dropped the owner over, every frame. With none of it
+			// inside, the whole run stays.
+			t = bound(0, stof(argv(2)), lg_tmax);
+			s = bound(0, stof(argv(3)), lg_tmax);
+			if (s > t)
+			{
+				lg_fit = FALSE;
+				lg_v0 = lgn_r0 = t;
+				lg_v1 = lgn_r1 = s;
+			}
 		}
+		return TRUE;
+	}
+	// For a cfg: a point of the native plots' rectangle by fraction (their own axes
+	// are the plugin's to place, so a time cannot be aimed at from here).
+	if (argv(1) == "cursorfrac" && n == 4)
+	{
+		LineGraph_InputEvent(IE_MOUSEABS, lgn_pos_x + lgn_size_x * stof(argv(2)), lgn_pos_y + lgn_size_y * stof(argv(3)), 0);
+		return TRUE;
+	}
+	// For a cfg, through the panel's own input path: `button 1|2 down|up`, `wheel 1|-1`.
+	if (argv(1) == "button" && n == 4)
+	{
+		LineGraph_InputEvent((argv(3) == "down") ? IE_KEYDOWN : IE_KEYUP, (argv(2) == "2") ? K_MOUSE2 : K_MOUSE1, 0, 0);
+		return TRUE;
+	}
+	if (argv(1) == "wheel" && n == 3)
+	{
+		LineGraph_InputEvent(IE_KEYDOWN, (stof(argv(2)) > 0) ? K_MWHEELUP : K_MWHEELDOWN, 0, 0);
+		return TRUE;
+	}
+	// What a frame costs with the panel up, for an A/B of the two plot routes: frames
+	// drawn since the last ask, and the client seconds they took.
+	if (argv(1) == "frames")
+	{
+		print(sprintf("linegraph: frames %g seconds %.4f native %g\n", lg_frames, cltime - lg_frames_t, lgn_drew));
+		lg_frames = 0;
+		lg_frames_t = cltime;
+		return TRUE;
+	}
+	// For a cfg: `refuse` gives the plugin up at the next draw, as any refusal would;
+	// `lose N` closes its owner behind the panel on each of the next N draws.
+	if (argv(1) == "refuse")
+	{
+		lgn_refuse = TRUE;
+		return TRUE;
+	}
+	if (argv(1) == "lose" && n == 3)
+	{
+		lgn_lose = bound(0, floor(stof(argv(2))), 8);
+		return TRUE;
+	}
+	// One hostile transaction a frame at the native plots (LineGraph_NativeProbe).
+	if (argv(1) == "probe")
+	{
+		if (!lgn_drew) print("linegraph: probe needs the native plots drawn\n");
+		else lgn_probe = 1;
 		return TRUE;
 	}
 	if (argv(1) == "toggle" && n == 3)
@@ -1190,6 +1880,6 @@ float(string cmd) LineGraph_Command =
 			print(sprintf("linegraph: energy %.4f relative %+.4f gravity %.4f start %.4f\n", sample_y, sample_y - lg_ref[s], ln_g[s], ln_start[s]));
 		return TRUE;
 	}
-	print("linegraph [close | status | zoom [<from> <to>] | toggle 0..8 | sample <slot> <seconds>]\n");
+	print("linegraph [close | status | zoom [<from> <to>] | toggle 0..8 | sample <slot> <seconds> | probe]\n");
 	return TRUE;
 };

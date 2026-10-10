@@ -11,6 +11,31 @@ to be wrong.
 
 ---
 
+## 00. 10 Oct — run graphs on ImPlot (Patch 614)
+
+Published 10 Oct; not on an install or the Pi as this is written.
+
+The **run graphs** panel's two plots are now drawn by the ImGui plugin where it
+is installed (your two installs; no release has it). Everything round them is
+the panel from Patch 610. Measured on the desktop PC with three made-up 50 s
+runs and a harness for a mouse. Judge, with real runs and your own hand:
+
+- **The curves.** Every sample is there when you zoom (the built-in plots draw
+  384 bins). Is anything about a real long run wrong, or slow to appear? The
+  first frames after opening are the built-in plots while the energy is summed.
+- **Moving the view.** Wheel zooms about the cursor, a drag pans, a right-drag
+  marks a stretch of time to zoom into, the right button alone or a double
+  click shows the whole run, and the bar between the two plots drags to give
+  one more room. The value axes follow whatever is in view. Does the wheel step
+  feel right (a notch out is x1.25, as before)? Is the right-drag box obvious
+  enough without a hint beside it?
+- **Picking a run out.** Rest the cursor on a run's chip and its curves go bold
+  while the others dim; click the chip and they go.
+- **The readout** is the same card, with the same numbers, from the same code.
+- **`ui_native_graphs 0`** gives the built-in plots back. Which should be the
+  default where both exist? It is the native ones now.
+- **Releases.** Players do not have the plugin. Say if it should ship.
+
 ## 00. 10 Oct — strafe trainer, run graphs, scroll thumb (Patch 610)
 
 Published 10 Oct 14:10 UTC (01:10 on the 11th here), and live since 14:14 UTC on

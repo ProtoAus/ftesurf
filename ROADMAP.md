@@ -938,6 +938,16 @@ panel also reaches only clients that have the plugin, where csprogs reaches
 whoever a lobby serves. Lex asked for it on those terms the same day (plots a
 player can manipulate); it follows as its own patch, with this panel as the
 fallback where the plugin is absent.
+Patch 614 (10 Oct) is that patch: `NativeUIPlot/1` carries counted rows (time,
+two values, a break flag) from QC memory by bounds-checked pointer, ImPlot 1.0
+is vendored beside Dear ImGui, and owner 206 draws the panel's two plots. QC
+still owns the samples, the energy sum, the names and every number shown; the
+HUD graph stays QC. Against this stage's gate: the readout is QC's own
+(`LineGraph_Card`), breaks and gaps cut the native curves as they cut the QC
+ones (unit-tested at the cut), an assumed gravity is still said by QC, and nine
+full series are bounded twice over (8192 energy rows a frame in QC, 6000 points
+a plot in the plugin). Not done: the plugin is not in the release ship set, so
+only development installs draw it.
 
 **E — HUD editor inspector (medium/large after C/D).** First port only the
 options inspector: controls, descriptions, grouping and tooltips. Keep the

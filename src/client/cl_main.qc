@@ -1100,6 +1100,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (chary >= 0) sui_style_key_focus = (chary != 0);
 		sui_style_focused = (sui_style_mouse_focus && sui_style_key_focus);
 		if (!sui_style_focused) Scores_NativeClose();
+		if (!sui_style_focused) LineGraph_NativeBlur();
 		sui_tooltip_reset();
 	}
 	/*

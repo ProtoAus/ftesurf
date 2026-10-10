@@ -4524,6 +4524,98 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   has no `src/fteqcc64.exe` (ignored): `-Pi` stops at the compile, before
   anything is sent. Copy the compiler in from the checkout that gated.
 
+### Run graphs on ImPlot (Patch 614) — 2026-10-10
+
+- THREE LAYERS, ONE AUTHORITY. QC (`cl_linegraph.qc`, the `lgn_*` block) owns the
+  rows, the energy sum (`lgn_e`, 8192 rows a frame), the chips, the card and
+  every number. The engine (`cl_plugin_ui_plot.inc`) copies rows out of QC memory
+  and validates them. The plugin (`plots.inc`, owner 206) draws and reports the
+  view and the cursor's time back as scalar actions 1-5. Nothing the plugin
+  reports is used as data: the card reads `LineGraph_At` at the reported time.
+- `ui_native_plot_rows` TAKES QC POINTERS, the first native UI builtin that
+  does. The host resolves each with `PR_PointerToNative_MoInvalidate` at OFFSET
+  0 (its regular-pointer branch tests `offset` but returns `stringtable + ptr`,
+  so a non-zero offset would be bounds-checked in one place and read in
+  another), and reads through memcpy: a QC pointer need not be aligned.
+- A PLOTTED NUMBER IS BOUNDED, NOT JUST FINITE: `PLUGUI_PLOT_MAX_VALUE`, 1e9.
+  The first cut took any finite float, and at 1e30 a flat view could not be
+  padded and a hover failed the frame. x is judged LESS ITS OFFSET, so a run
+  that starts late on a long clock still passes.
+- A VM DRAWS ONE NATIVE OWNER A FRAME, AND THE BOARD'S CHIP OPENS THE PANEL
+  MID-FRAME (`Scores_Finish`), after the board's native table has drawn. The
+  panel's first draw is then refused. The first cut read that as the plugin
+  failing and kept the QC plots for the whole open; `lgn_nodraw` lets one go
+  and gives up on three running.
+- THE HOST DROPS AN OWNER OVER AN ACTION PAST 1e6. A zoom request outside the
+  run came back as such a report; the panel saw no actions, kept `drew 1`, and
+  opened a new owner every frame (context, font atlas, revision).
+  `linegraph status` read healthy throughout: only the plugin's `opens` counter
+  moved. When a native panel looks right and costs too much, read
+  `ui_imgui_status` twice.
+- ImPlot ZOOMS ONE STEP FOR A FRAME'S WHEEL WHATEVER ITS SIZE (`implot.cpp:2026`),
+  a notch in and a notch out are not inverses (x0.8333 and x1.25 at ZoomRate
+  0.25, x1.0417 the pair), and ImGui takes a wheel queued after a move a frame
+  later. So the panel sends one event a frame, a notch at a time, and a harness
+  cannot predict a span after mixed notches: it counts what was sent.
+- IMGUI'S ASSERTS ARE LIVE IN THE PLUGIN BUILD. Owner 206 switches the
+  recoverable ones to a callback that fails the frame (`PlotsError`); a plain
+  `IM_ASSERT` anywhere, and every other owner, still ends the process.
+- A POINT ON SCREEN COSTS ABOUT A MICROSECOND through the mesh path (the backend
+  expands indices to vertices, the host clips every triangle on the CPU). Two
+  points a pixel column was 11,752 points and 9-16 ms a frame. The plugin now
+  cuts each curve to within 0.25 px of its rows and keeps the strips until the
+  view changes; `linegraph status` prints `points`, `rebuilt` (0 while the view
+  is only read) and `cut`, its running sum. If `cut` climbs while nothing is
+  touched, something in the key moves every frame: the y axis is fitted to ROWS
+  in view for that reason, not to the surviving vertices.
+- THE FIRST COST RUN THAT LOOKED BAD WAS MINE. A second run read native at 3.9 ms
+  and QC at 5.4 ms in one window: an image diff and a rebase were running beside
+  it. `p614plots.py --arms cost` alternates the two routes inside one run for
+  that reason; read the QC windows against each other before the difference.
+- A MUTANT THAT DOES NOT BUILD IS NOT A CATCH. Two of the host sweep's catches
+  were an unused variable and an unused function under -Werror: the fixture
+  never ran, and "21 of 22" had been 19. `p614mutants.py` has a NO RUN verdict
+  now, and both mutants were rewritten to compile (and are caught).
+- THE HARNESS'S OWN FOUR. Found by review, each fixed: the native arm printed
+  NOT GRADED and passed when the plugin did not draw; the fallback arms graded a
+  status line that reads the same on every route and no pixels; one check
+  compared a variable with its copy; five grammar cases were refused by a
+  neighbouring rule. `linegraph refuse` and `lose N` exist so an arm can force
+  the two ways out, and the `routes` line counts which route drew each frame.
+- `linegraph probe` SENDS ONE HOSTILE TRANSACTION A FRAME, not all at once: the
+  host allows two `begin`s a frame, and a refusal for the budget is not the
+  refusal under test. Each case prints what every call returned.
+- AN OLDER FIXTURE FILED THE NEW TABLE AS THE DRAWING SERVICE.
+  `p598imgui_host.cpp`'s ExportInterface copied any name it did not know over
+  its `service` table, so the plugin's fourth export made `Close` a wild pointer
+  and the suite segfaulted. It read like a plugin crash; the control was the
+  same fixture against the pre-patch tree (110 checks, 0 failed). Unknown names
+  are refused now, as an older host does.
+- THE UNIT TOOLS EXTRACT THE ABI FROM plugin.h BY A MARKER LINE
+  (`test_p590bridge_unit.py::host_controls`). A new table after the last marker
+  is not in `ui_abi.h` and every host fixture stops compiling: add the marker.
+- `[focus]` LINES: `window is foreground` is the gallery's INTERFERED. The
+  other one (`NOT foreground but the focus messages said active -- correcting`)
+  drops a parked SUI hover just the same; it cost one run its emphasis shot.
+  `p614plots.py` fails an arm on either between the panel opening and the arm's
+  own `vid_restart`, which always prints two.
+- THE REAL MOUSE CAN REACH A RIG, AND NO FOCUS LINE SAYS SO. A GL or Vulkan rig
+  prints `NOT foreground ... correcting` as it starts and took no real input
+  in any run. A D3D11 rig prints no focus line at all, and both D3D11 runs of
+  the native arm took real mouse positions: 77 before the harness's first move
+  in one, 106 inside an idle second in the other. Most likely its window is
+  the real foreground one; that was not checked. `linegraph status` prints
+  `events`, what the panel forwarded to the plugin, and the arm calls a count
+  that moves while its own cursor is parked INTERFERED.
+- THE PLUGIN'S CLOCK IS REAL FOR OWNER 206 ONLY (a double click and the splitter
+  delay are measured in ImGui time; every other owner still advances 10 ms a
+  Draw). A fixture that draws frames back to back gets the 0.5 ms floor.
+- msys `make` FROM GIT BASH LOSES TEMP: gcc then tries `C:\WINDOWS\` and every
+  compile fails with "Cannot create temporary file". Exporting TEMP in bash does
+  not reach it. Run the engine build from pwsh, as `build.ps1` does. And a new
+  engine worktree has no `engine/libs-x86_64-w64-mingw32` (ignored, 72 MB):
+  copy it from one that built.
+
 ### Native fixture APIs and falsifiers must actually act — 2026-10-09
 
 - `com_bih.c`'s `struct bihproberec_s` and `BIH_ProbeSave/Restore` are local

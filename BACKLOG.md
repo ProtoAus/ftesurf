@@ -2580,7 +2580,43 @@ lextest.md. Left open, none of it a wrong action:
     bars; plain fills for bands under two radii would take most of that back.
     Off by default.
   - Stage D of ROADMAP 13 (a native ImGui graph) was asked for by Lex on 10
-    Oct and is the next patch; what it needs is written there.
+    Oct and is Patch 614.
+- **Patch 614, left open.** None is a wrong action.
+  - The plugin is not in the release ship set (`build.ps1 -Engine` copies it to
+    the two development installs only), so a release player gets the QC plots.
+    Shipping it is a release decision: the DLL, its MIT notices (Dear ImGui,
+    ImPlot) and the OFL notice for the Roboto subset it embeds.
+  - Cost. Uncapped at 1080p on the desktop PC with three 50 s runs the native
+    plots cost about 2.0 ms a frame where the QC plots cost about 1.45 (2.06
+    and 2.06 against 1.39 and 1.51 in one alternating run; 2.19 against 1.61
+    with the cursor on the plots; 0.88 against 0.83 with no curve shown). The
+    lever left is the host's mesh path
+    (`cl_plugin_mesh.inc` clips every triangle on the CPU and re-expands indexed
+    geometry) and the backend's own expansion before it; the cut-down curves and
+    the kept strips are what made it this cheap.
+  - The plugin is built with ImGui's asserts live (no `-DNDEBUG`). Owner 206
+    sends ImGui's recoverable errors to a callback that fails the frame; the
+    scoreboard's owner and the fixture owners still assert, and an assert is the
+    game closing. Found by this patch's review, not seen happen.
+  - A native scoreboard (`ui_native_scores 1`) and the native plots cannot be up
+    together: one owner a VM. The panel closes the board's owner when it opens,
+    and the frame the board's chip opens it in is drawn by QC.
+  - `ui_native_scores` forwards every mouse position to the plugin; the plots
+    send one event a frame. A mouse reporting faster than 128 positions a frame
+    would cost the native board its owner (the host's per-frame event budget).
+  - A wheel flicked past ten notches before a frame is drawn keeps ten.
+  - The time axis steps in tens (0:20, 0:40), ImPlot's own ticks, where the QC
+    panel steps in clock units (0:15, 0:30).
+  - The value axes always fit the rows in view. A player cannot hold one still
+    or zoom it; ImPlot can, behind menus that are switched off here.
+  - A number past a billion (an energy at a gravity near zero) is refused whole
+    and the QC plots draw that open.
+  - D3D11 is graded on the open panel's pixels alone (the same counts as GL).
+    The real mouse reached the plots in both of its runs and the arm said
+    INTERFERED before any gesture (AGENT_NOTES has the numbers). GL, Vulkan
+    and the three smaller windows drive every gesture.
+  - A real mouse was never used: wheel feel, the double click and dragging the
+    bar between the plots are lextest items.
 - **The board on a small window.** It never draws under the room list while
   anything else can give: type steps, then columns, then a narrower list. Past
   that (under about 790 px wide at hud_scale 2, wider with the Imported tab or

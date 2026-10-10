@@ -12,7 +12,7 @@
 typedef int qboolean;
 typedef float vec4_t[4];
 typedef struct pubprogfuncs_s { int id; } pubprogfuncs_t;
-struct globalvars_s { float value[15]; };
+struct globalvars_s { float value[32]; };
 #define G_FLOAT(ofs) (pr_globals->value[ofs])
 #define G_VECTOR(ofs) (pr_globals->value+(ofs))
 #define OFS_RETURN 0
@@ -21,6 +21,9 @@ struct globalvars_s { float value[15]; };
 #define OFS_PARM2 9
 #define OFS_PARM3 12
 #define OFS_PARM4 15
+#define OFS_PARM5 18
+#define OFS_PARM6 21
+#define OFS_PARM7 24
 #define countof(a) (sizeof(a)/sizeof((a)[0]))
 #define min(a,b) ((a)<(b)?(a):(b))
 #define max(a,b) ((a)>(b)?(a):(b))
@@ -36,6 +39,25 @@ static int HostNonFinite(float f)
 static const char *qclabel = "host label";
 static const char *PR_GetStringOfs(pubprogfuncs_t *vm, unsigned int offset)
 { (void)vm; (void)offset; return qclabel; }
+#ifdef PLUGUI_PLOT_VERSION
+//NativeUIPlot/1 (Patch 614) reads QC memory by pointer: a small VM, with the engine's own
+//regular-pointer rule (qclib/initlib.c: inside VM memory, and never address 0).
+typedef unsigned char qbyte;
+typedef int pint_t;
+#define VMFLOATS 140000u
+static union { float f[VMFLOATS]; unsigned char b[VMFLOATS*4]; } vmmem;
+static unsigned int allocfail; //fail the Nth allocation from now; 0 never
+void *PR_PointerToNative_MoInvalidate(pubprogfuncs_t *inst, pint_t ptr, size_t offset, size_t datasize)
+{
+	(void)inst; offset += ptr;
+	if (datasize > sizeof(vmmem) || offset >= sizeof(vmmem)-datasize || (!offset && datasize>1)) return NULL;
+	return vmmem.b+ptr;
+}
+static void BZ_Free(void *p) { free(p); }
+static void *BZF_Realloc(void *p, size_t n) { if (allocfail && !--allocfail) return NULL; return realloc(p,n); }
+static int HostInt(struct globalvars_s *g, int ofs) { int i; memcpy(&i,&g->value[ofs],sizeof(i)); return i; }
+#define G_INT(ofs) HostInt(pr_globals,ofs)
+#endif
 typedef struct plugin_s { pluguiservice_t nativeui; } plugin_t;
 static plugin_t plugins[2], *currentplug;
 static struct { int width,height,pixelwidth,pixelheight; } vid = {320,240,640,480};
@@ -107,6 +129,9 @@ int main(void)
 	unsigned int j;
 #ifdef PLUGUI_MODEL2_VERSION
 	CHECK(!Plug_NativeUI_ModelRegister2(NULL,0));
+#endif
+#ifdef PLUGUI_PLOT_VERSION
+	CHECK(!Plug_NativeUI_PlotRegister(NULL,0));
 #endif
 	currentplug=&plugins[0];
 	CHECK(!Plug_NativeUI_InputRegister(NULL,0));
