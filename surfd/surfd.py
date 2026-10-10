@@ -440,7 +440,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 
 # --------------------------------------------------------------------------
@@ -1479,6 +1479,14 @@ def migrate():
             conn.execute("PRAGMA user_version=13")
             conn.commit()
             version = 13
+
+        if version < 14:
+            # SCHEMA 14: a link the game starts (accounts.py, /api/link/start).
+            # One additive column.
+            accounts.upgrade_14(conn)
+            conn.execute("PRAGMA user_version=14")
+            conn.commit()
+            version = 14
 
         verdict_metrics(conn)
         conn.commit()
@@ -3917,7 +3925,7 @@ def replay(rid):
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 WEB_FILES = {"board.js": "text/javascript", "board.css": "text/css",
-             "runview.js": "text/javascript"}
+             "runview.js": "text/javascript", "link.css": "text/css"}
 WEB_RATE_MAX = 120       # API reads per RATE_WINDOW per source, bucket "web"
 # One 960px JPEG per map, built by tools/mapshots_web.py from the 1280x720
 # `medium` in gfx/mapshots and named for the MAP, not for Momentum's uuid --

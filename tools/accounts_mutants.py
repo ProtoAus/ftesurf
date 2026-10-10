@@ -11,6 +11,10 @@ mutant's text no longer matches the source (BAD MUTANT: the code moved, so move
 the mutant with it).  About four minutes; nothing outside the temp dir is
 written.
 
+A mutant's text must be in the file exactly ONCE.  Where two functions share a
+line, a fifth element names the one meant ("def link_return("): the edit is
+then the first match after that marker, and the marker must itself be unique.
+
 PAIRS lists mutants that are allowed to survive ALONE because a second check
 covers the same hole; together they must die.
 
@@ -86,7 +90,7 @@ M = [
      'if False and db.execute("SELECT 1 FROM linknonces WHERE nonce = ?",'),
     ("replay-write", A, "            if not burn(db, nonce, now):", "            if False:"),
     ("replay-both", A, None, None),
-    ("live-cap", A, "if live >= CODE_LIVE_MAX:", "if False:"),
+    ("live-cap", A, "if live >= CODE_LIVE_MAX:", "if False:", "def link_return("),
     ("nonce-cap", A, "elif seen >= NONCE_MAX:", "elif False:"),
     ("nonce-prune", A, "(now - NONCE_KEEP,))", "(0,))"),
     ("source-cap", A, 'elif not d.rate_ok(src, now, OUT_SOURCE_MAX, "linkout1"):', "elif False:"),
@@ -99,9 +103,10 @@ M = [
     ("profile-text", A, "else type(exc).__name__)", "else exc)"),
     ("unavailable-page", A, 'except steam.Unavailable as exc:\n            log.warning("link: Steam unavailable',
      'except steam.Refused as exc:\n            log.warning("link: Steam unavailable'),
-    ("ban-code", A, 'if not acct["banned_at"]:', "if True:"),
-    ("supersede", A, '" WHERE steamid = ? AND used_at = 0",', '" WHERE steamid = ? AND used_at = -1",'),
-    ("code-prune", A, "(now - CODE_KEEP,))", "(0,))"),
+    ("ban-code", A, '            if not acct["banned_at"]:', "            if True:"),
+    ("supersede", A, '" WHERE steamid = ? AND used_at = 0 AND code != ?",',
+     '" WHERE steamid = ? AND used_at = -1 AND code != ?",'),
+    ("code-prune", A, "(now - CODE_KEEP,))", "(0,))", "def link_return("),
     ("escape", A, 'who = html.escape(acct["name"] or "Steam account " + steamid)',
      'who = (acct["name"] or "Steam account " + steamid)'),
     ("secure", A, 'secure = parts.scheme == "https"', "secure = False"),
@@ -132,7 +137,7 @@ M = [
     ("acct-peer", A, 'if not d.rate_ok(peer, now, ACCT_PEER_MAX, "acctpeer"):', "if False:"),
     ("peer-port", A, "    for cand in (raw, raw.rpartition(\":\")[0]):", "    for cand in (raw,):"),
     ("hello-nonce", A, '        if not _STATE.fullmatch(nonce):\n            return d.fail(400, "bad nonce")',
-     "        if False:\n            pass"),
+     "        if False:\n            pass", "def account_status("),
     ("hello-why", A, 'return game({"linked": 0, "why": why})', 'return game({"linked": 0})'),
     ("pin-shape", A, "        if pin and not _PIN.fullmatch(pin):", "        if False:"),
     ("pin-prefix", A, "_PIN.fullmatch(pin)", "_PIN.match(pin)"),
@@ -155,9 +160,9 @@ M = [
     ("ban-link", A, 'if row["banned_at"]:\n            return {"ok": 0, "why": "banned"}, "", ""',
      'if False:\n            return {"ok": 0, "why": "banned"}, "", ""'),
     ("move-same", A, 'moving = old is not None and old["steamid"] != row["steamid"]',
-     "moving = old is not None"),
+     "moving = old is not None", "def step("),
     ("claim-read", A, '            if row["claim"] not in ("", pub):', "            if False:"),
-    ("claim-write", A, "            if took.rowcount != 1:", "            if False:"),
+    ("claim-write", A, "            if took.rowcount != 1:", "            if False:", "def step("),
     ("claim-both", A, None, None),
     ("claim-steal", A, None, None),
     ("claim-any", A, "\" AND used_at = 0 AND claim IN ('', ?)\", (pub, code, pub))",
@@ -166,20 +171,23 @@ M = [
     ("ask-links", A, "        if not confirming:\n", "        if False:\n"),
     ("relink-stamp", A, '" node = excluded.node, linked_at = excluded.linked_at",',
      '" node = excluded.node",'),
-    ("immediate", A, '            db.execute("BEGIN IMMEDIATE")\n', ""),
+    ("immediate", A, '            db.execute("BEGIN IMMEDIATE")\n', "", "def link_redeem("),
     # accounts.py: the key proof
     ("proof-shape", A, "        if not (_HEX64.fullmatch(pub) and _HEX128.fullmatch(sig)\n"
      "                and _SERVER.fullmatch(server)):", "        if False:"),
     ("proof-sig-prefix", A, "_HEX128.fullmatch(sig)", "_HEX128.match(sig)"),
-    ("proof-verify", A, "if not ed.verify(bytes.fromhex(pub), msg, bytes.fromhex(sig)):", "if False:"),
+    ("proof-verify", A, "return bool(ed.verify(bytes.fromhex(pub), msg, bytes.fromhex(sig)))",
+     "return True"),
     ("proof-budget", A, 'if ed is None or not d.rate_ok("*", now, budget[1], budget[0]):',
      "if ed is None:"),
     ("budget-split", A, '("verify-hello", HELLO_VERIFY_MAX))', '("verify-link", HELLO_VERIFY_MAX))'),
     ("statement", A, "ticks %d\\nhid - 0 0", "ticks %d\\nhid - 0 1"),
-    ("kind-hello", A, "TICKS_HELLO, TICKS_ASK, TICKS_CONFIRM = -2, -3, -4",
-     "TICKS_HELLO, TICKS_ASK, TICKS_CONFIRM = 0, -3, -4"),
-    ("kind-one", A, "TICKS_HELLO, TICKS_ASK, TICKS_CONFIRM = -2, -3, -4",
-     "TICKS_HELLO, TICKS_ASK, TICKS_CONFIRM = -2, -3, -3"),
+    ("kind-hello", A, "TICKS_HELLO, TICKS_ASK, TICKS_CONFIRM, TICKS_START = -2, -3, -4, -5",
+     "TICKS_HELLO, TICKS_ASK, TICKS_CONFIRM, TICKS_START = 0, -3, -4, -5"),
+    ("kind-one", A, "TICKS_HELLO, TICKS_ASK, TICKS_CONFIRM, TICKS_START = -2, -3, -4, -5",
+     "TICKS_HELLO, TICKS_ASK, TICKS_CONFIRM, TICKS_START = -2, -3, -3, -5"),
+    ("kind-start", A, "TICKS_HELLO, TICKS_ASK, TICKS_CONFIRM, TICKS_START = -2, -3, -4, -5",
+     "TICKS_HELLO, TICKS_ASK, TICKS_CONFIRM, TICKS_START = -2, -3, -4, -3"),
     ("kind-ask", A, "why, pub = proven(now, node, ask_nonce(code), TICKS_ASK,",
      "why, pub = proven(now, node, ask_nonce(code), TICKS_CONFIRM,"),
     ("kind-confirm", A, "why, pub = proven(now, node, confirm_nonce(code, pin), TICKS_CONFIRM,",
@@ -247,37 +255,125 @@ M = [
     ("name-bytes", A, 'while len(safe.encode("utf-8")) > NAME_BYTES:', "while len(safe) > NAME_BYTES:"),
     ("name-reserved", A, ' or safe.lower() == "console":', ":"),
     ("name-nfc", A, 'unicodedata.normalize("NFC", name or "")', '(name or "")'),
+    # accounts.py: a link the game starts (Patch 619)
+    ("start-nonce", A, '        if not _STATE.fullmatch(nonce):\n            return d.fail(400, "bad nonce")',
+     "        if False:\n            pass", "def link_begin("),
+    ("start-server", A, "        why, pub, sig, server = shaped(now, node)\n        if why:",
+     "        why, pub, sig, server = shaped(now, node)\n        if False:", "def link_begin("),
+    ("seal-shape", A, "        if len(part) != 3:\n            return False\n", ""),
+    ("seal", A, "fits = row is not None and opens(row, opener, now)", "fits = row is not None"),
+    ("seal-kind", A, "start_nonce(part[0], opener),\n                      TICKS_START,",
+     "start_nonce(part[0], opener),\n                      TICKS_ASK,"),
+    ("seal-opener", A, "return _tagged(TAG_START, nonce + \" \" + opener)",
+     "return _tagged(TAG_START, nonce + \" \")"),
+    ("seal-nonce", A, "return _tagged(TAG_START, nonce + \" \" + opener)",
+     "return _tagged(TAG_START, \" \" + opener)"),
+    ("seal-key", A, "return signed(now, row[\"claim\"], part[1], part[2], start_nonce(part[0], opener),",
+     "return True or signed(now, row[\"claim\"], part[1], part[2], start_nonce(part[0], opener),"),
+    ("seal-budget", A, "                if fits is None:\n", "                if False:\n"),
+    ("seal-budget-own", A, 'TICKS_START, ("verify-open", OPEN_VERIFY_MAX))',
+     'TICKS_START, ("verify-link", LINK_VERIFY_MAX))'),
+    ("opener-shape", A, "if code and _OPENER.fullmatch(opener):", "if code:"),
+    ("upgrade-second", A, 'for col in ("shown", "seal"):', 'for col in ("shown",):'),
+    ("start-cap", A, "if waiting >= START_LIVE_MAX:", "if False:"),
+    ("start-cap-own", A, '"SELECT COUNT(*) FROM linkcodes WHERE used_at = 0 AND shown = ?"',
+     '"SELECT COUNT(*) FROM linkcodes WHERE used_at = 0 AND shown != ?"'),
+    ("start-prune", A, "(now - CODE_KEEP,))", "(0,))", "def link_begin("),
+    ("attach-newest", A, "\" WHERE shown != '' AND claim = ? AND used_at = 0\"",
+     "\" WHERE shown != '' AND claim = ? AND used_at = -1\""),
+    ("start-claim", A, '(code, now, pub, NOT_YET, "%s %s %s" % (nonce, sig, server)))',
+     '(code, now, "", NOT_YET, "%s %s %s" % (nonce, sig, server)))'),
+    ("wait-typed", A, 'if row is None or not row["shown"]:', "if row is None:"),
+    ("wait-account", A, 'if not row["steamid"]:', "if False:"),
+    ("wait-banned", A, 'if row["name"] is None or row["banned_at"]:',
+     'if row["name"] is None:'),
+    ("wait-rate", A,
+     'return game({"state": "wait"})          # asked too often: it is still a wait', "pass"),
+    ("wait-bucket", A, 'lobby_call(WAIT_FLOOD_MAX, "waitflood")',
+     'lobby_call(LINK_FLOOD_MAX, "linkflood")'),
+    ("wait-steps", A, 'if not d.rate_ok(peer, now, WAIT_RATE_MAX, "linkwait"):',
+     'if not d.rate_ok(peer, now, WAIT_RATE_MAX, "linktry"):'),
+    ("wait-move", A, 'moving = old is not None and old["steamid"] != row["steamid"]',
+     "moving = old is not None", "def link_wait("),
+    ("number", A, 'if row["shown"] and not _same(row["shown"], shown):', "if False:"),
+    ("number-spend", A, "\" WHERE code = ? AND used_at = 0\", (now, MISMATCH, code))",
+     "\" WHERE code = ? AND used_at = -1\", (now, MISMATCH, code))"),
+    ("number-sent", A, '(request.form.get("shown") or "")[:16])', '"")'),
+    ("number-digits", A, 'shown = "".join(secrets.choice("0123456789") for _ in range(SHOWN_LEN))',
+     'shown = "".join(secrets.choice("0123456789") for _ in range(1))'),
+    ("attach-start", A, "\" AND used_at = 0 AND shown != '' AND issued_at >= ?\",",
+     "\" AND used_at = 0 AND issued_at >= ?\","),
+    ("attach-typed", A, None, None),
+    ("attach-fresh", A, "\" AND used_at = 0 AND shown != '' AND issued_at >= ?\",",
+     "\" AND used_at = 0 AND shown != '' AND issued_at >= ? - 99999\","),
+    ("attach-again", A, "\" WHERE steamid = ? AND used_at = 0 AND code != ?\",",
+     "\" WHERE steamid = ? AND used_at = 0 AND ? != 'x'\","),
+    ("attach-contest", A, "\" WHERE code = ? AND used_at = 0\", (now, CONTESTED, started))",
+     "\" WHERE code = ? AND used_at = -1\", (now, CONTESTED, started))"),
+    ("attach-second", A, 'elif row["steamid"]:', "elif False:"),
+    ("attach-no-code", A, "                if started:\n", "                if started and False:\n"),
+    ("signin-cap", A, "\"SELECT COUNT(*) FROM linkcodes WHERE used_at = 0 AND steamid != ''\"",
+     "\"SELECT COUNT(*) FROM linkcodes WHERE used_at = 0\""),
+    ("return-code", A, '"&c=%s&k=%s" % (c, k) if c else "")', '"")'),
+    ("page-code", A, '"?c=%s&amp;k=%s" % (c, k) if c else "")))', '"")))'),
+    ("code-shape", A, "if len(code) == CODE_LEN and all(ch in CODE_ALPHABET for ch in code):",
+     "if code:"),
     # surfd.py
     ("schema-step", "surfd.py", "conn.executescript(accounts.SQL)", "pass"),
+    ("schema-14", "surfd.py", "accounts.upgrade_14(conn)", "pass"),
 ]
 PAIRS = {"spent-all": ("spent-pre", "spent-read", "spent-write"),
          "replay-both": ("replay-read", "replay-write"),
          "expiry-both": ("expiry", "expiry-pre"),
          "claim-both": ("claim-read", "claim-write"),
-         "claim-steal": ("claim-read", "claim-any")}
+         "claim-steal": ("claim-read", "claim-any"),
+         "attach-typed": ("attach-start", "seal-shape")}
 # Each of these survives ALONE because the same fact is read more than once:
 # an assertion's replay and a code's age, spending and claim are each checked
 # before the costly step and again under the lock or by the write itself.
 EXPECT = {"replay-read", "expiry", "expiry-pre", "spent-pre", "spent-read", "spent-write",
           "claim-read", "claim-write", "claim-any"}
+# Patch 619: live_code is no longer only the costly step's pre-check -- /api/link/wait
+# reads through it and nothing else, so `expiry-pre` and `spent-pre` now die alone.
+EXPECT -= {"expiry-pre", "spent-pre"}
+# A typed code named as a start is turned away twice: by the query (it has no
+# `shown`) and by its empty seal.
+EXPECT |= {"attach-start", "seal-shape"}
 BY = {m[0]: m for m in M}
 
 
 def run(item):
-    name, fname, old, new = item
+    name = item[0]
     dst = os.path.join(SCRATCH, name)
     shutil.copytree(SRC, dst, ignore=shutil.ignore_patterns("__pycache__"))
-    edits = [(fname, old, new)]
+    edits = [item[1:]]
     if name in PAIRS:
         edits = [BY[k][1:] for k in PAIRS[name]]
-    for f, old, new in edits:
+    for f, old, new, *within in edits:
         path = os.path.join(dst, f)
         with open(path, encoding="utf-8", newline="") as fh:
             src = fh.read()
-        if src.count(old) != 1:
-            return name, "BAD MUTANT (%d matches)" % src.count(old)
+        if within:
+            # The first match inside the named function: from its marker to
+            # the next definition at the same depth.
+            if src.count(within[0]) != 1:
+                shutil.rmtree(dst)
+                return name, "BAD MUTANT (marker: %d matches)" % src.count(within[0])
+            lo = src.index(within[0])
+            hi = src.find("\n    def ", lo + 1)
+            hi = len(src) if hi < 0 else hi
+            if src.count(old, lo, hi) != 1:
+                shutil.rmtree(dst)
+                return name, "BAD MUTANT (%d matches in %s)" % (src.count(old, lo, hi), within[0])
+            at = src.index(old, lo, hi)
+            src = src[:at] + new + src[at + len(old):]
+        else:
+            if src.count(old) != 1:
+                shutil.rmtree(dst)
+                return name, "BAD MUTANT (%d matches)" % src.count(old)
+            src = src.replace(old, new)
         with open(path, "w", encoding="utf-8", newline="") as fh:
-            fh.write(src.replace(old, new))
+            fh.write(src)
     # A private temp dir: a mutant that crashes the suite skips its cleanup,
     # and whatever it leaves has to die with this copy.
     tmp = os.path.join(dst, "tmp")

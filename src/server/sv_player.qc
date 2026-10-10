@@ -705,6 +705,7 @@ void() PlayerPostThink =
 
 	SV_WatchHoldMove(self);             // Patch 499: ahead of the watcher that reads it
 	SV_NoclipWatch(self);
+	Account_Think(self);                // Patch 619: a started Steam link, waited on
 
 	/*
 	  Patch 382: HELD (spectate).  No bhop dwell, +use, sample, zone scan or clock:
@@ -1230,7 +1231,7 @@ void(string cmd) SV_ParseClientCommand =
 
 	// Patch 615: Steam accounts (sv_account.qc).
 	if (c == "acct_hello")      { Account_Hello(self);                    return; }
-	if (c == "link")            { Account_Link(self, argv(1));            return; }
+	if (c == "link")            { Account_Link(self, argv(1), argv(2));   return; }
 
 	// Patch 382: `rec_spec <entnum>` holds the body and watches that player (or
 	// switches target); `rec_spec 0` starts the countdown back.  See SV_SpecStart.

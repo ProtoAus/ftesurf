@@ -40,6 +40,49 @@ what the first item wanted; it stays here because the hole itself is open.
 - **A link scanner that fetches the return address first burns it.** By design
   (AGENT_NOTES, "a stray assertion is burned"); the player starts again.
 
+## The link that starts in the game: what it left -- 2026-10-11
+
+Patch 619. ROADMAP 14.2 has what it does. Its review's findings that were not
+fixed are here.
+
+- **The game cannot open a browser, and nothing pastes into the box.** The
+  sign-in address is copied; the player pastes it. An engine command for the
+  first, behind the same level check as `rec_sign`, is the rest of "one click".
+- **The number is the link, so it is the thing to protect.** Read out to
+  somebody else, it links THEIR game, exactly as a typed code does; the page
+  says so. Four digits and one try: a blind guess is one in ten thousand for
+  each time somebody is talked into signing in.
+- **The address is the secret now, not the code.** Whoever is GIVEN a start's
+  whole address (a player pasting it into a chat) can sign in for it: their
+  account's name is then in that game's question, and the number is on THEIR
+  page. Reading the wire gives the code and not the address.
+- **The opener is as good as the client's frame timing** (AGENT_NOTES). An
+  engine random source for game code would replace the pool.
+- **Game code still does not know its own key.** The seal works round that;
+  14.3's engine change (signing as a builtin) would let the client name its
+  key in the address outright.
+- **Esc in the game does not reach surfd.** A sign-in for a start the player
+  cancelled, or whose map changed, still gets a number, and no box asks for
+  it. The page says what to do. A lobby-to-surfd "ended" call would make the
+  page say "start again" straight away.
+- **Starts have their own cap (200 nobody has signed in for).** A key is free
+  to make, so a few addresses of modified clients on a lobby can hold it and
+  stop NEW starts; typed codes and sign-in are not affected.
+- **A map change while the player is in the browser closes the box.** `link`
+  starts again and the old start dies with its ten minutes.
+- **The prompt takes Enter for up to 40 seconds** on the first lobby of a game,
+  and Enter is `say` by default. It says so on screen. Once a game.
+- **"Copied" is the builtin having been called.** The engine's call returns
+  nothing; where the platform's clipboard is a private buffer the address is
+  still on screen.
+- **The lobby's connect line ("linked to X") is as of the connect.** An unlink
+  on the site shows on the next map.
+- **A surfd stall:** a wait nobody answered is retried after 20 s, and the
+  engine has no timeout of its own on the first; run submission shares its 32
+  requests. Each waiter is 30 requests a minute for 90 s, then 12.
+- **`test_admin.py` fails two checks on an untouched main on this machine**
+  (AGENT_NOTES). Not looked into.
+
 ## The Steam link box: what it left -- 2026-10-11
 
 Patches 615 and 617, `src/server/sv_account.qc` and `src/client/cl_account.qc`.

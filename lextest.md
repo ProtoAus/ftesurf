@@ -11,6 +11,38 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — linking Steam from inside the game (Patch 619)
+
+You asked for the least friction: a popup on first launch, the link copied,
+the site clean, "or maybe ... auto magically linked".
+
+- **What a new player sees.** On the first official lobby of a game, a small
+  box: "Rank your times under your Steam name. Press Enter to link". Enter
+  copies a sign-in address; they paste it into a browser and press Sign in
+  with Steam. The page shows a four-digit number. Back in the game the box is
+  already asking "Link this game to the Steam account X" and for that number:
+  four digits, Enter, linked. Esc on the first box means later; it comes back
+  the next time the game is started, and `link` in the console opens it any
+  time.
+- **Your install is linked**, so you get no prompt. Type `link` and close the
+  console; Enter, paste, sign in, type the number.
+- **Why there is a number at all.** I first built it with nothing typed: the
+  site matched your browser to your game by address. The review showed that
+  lets someone on the same network (a housemate, a campus, some ISPs) get YOUR
+  Steam account linked to THEIR game by sending you a link. The number is what
+  proves the person who signed in is the person at the game. It also means it
+  works from any browser, a phone included.
+- **The game cannot open your browser or paste for you yet.** That needs the
+  engine; today it copies the address and shows it. The address is long (it
+  ends in a secret your game made, which is what stops anyone else signing in
+  for your game): paste it, do not retype it.
+- **To judge:** the wording of the boxes and the pages (they follow your
+  browser's light or dark setting); that the first box comes up by itself;
+  that Enter is the key (it is your chat key too, for those 40 seconds);
+  whether four digits is the right price.
+- **The old way still works:** sign in on the site without the game's address
+  and you get a ten-character code; `link`, then type it into the box.
+
 ## 00. 10 Oct — the trainer keeps your last jumps (Patch 621)
 
 Published 10 Oct 18:18 UTC (05:18 on the 11th here). Live since 18:20 UTC on

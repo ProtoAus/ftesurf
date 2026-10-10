@@ -23,12 +23,22 @@ THE ARMS, in one client session:
   L  two asks for a nonce in one packet get ONE: the second must not replace
      what the client is already signing (1 reconnect in 9 was refused this way
      before the client's ask timer left the game clock, which jumps at connect)
-  B  `link` opens the box; the code typed into it (lower case) is answered with
-     the account's name; Enter links it, and an Esc right after cannot say
-     "cancelled" over a confirm that is already with surfd
+  N  the game starts the link (Patch 619): the prompt that came up by itself
+     leaves the game its keys (Tab among them); an Enter fed from the console
+     and a stuffed code start nothing; Enter on it starts a link, the address
+     it shows is copied, and the wait for the browser leaves the keys too
+  B  the code with an opener that is not this client's (all the wire shows)
+     opens nothing; a "browser" at another address signs in with the address
+     the box showed and is shown a number;
+     the game asks "link to X?" and for that number by itself; Enter and Y
+     without it link nothing; the number and Enter link, and an Esc right
+     after cannot say "cancelled" over a confirm that is already with surfd
+  Q  Esc on the wait cancels it, and a sign-in for that start raises no
+     question; a wrong number says so and spends the start
   C  `cmd link` says who it is linked to
-  D  another account's code says where it is and where it would go; Esc moves
-     nothing; asking again and Enter moves it
+  D  a sign-in that did not start in the game: `link`, and another account's
+     code typed into the box says where the install is and where it would go;
+     Esc moves nothing; asking again and Enter moves it
   F  an unknown code is refused; G a code given as `link <code>` on the console
      is not sent, and one carrying a command does not run it
   K  CONTROLS for a link nobody at the keyboard made: with the question up, an
@@ -155,12 +165,14 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def sign_in(port, sid, ip):
-    """Steam's side of a sign-in, played against the running surfd.  -> the code."""
+def browser(port, sid, ip, c=""):
+    """A browser at `ip` signing in through (a faked) Steam, with the code a
+    game started in the address if `c`.  -> the page it ends on."""
     base = "http://127.0.0.1:%d/board/link" % port
     opener = urllib.request.build_opener(NoRedirect)
     try:
-        opener.open(urllib.request.Request(base + "/steam", headers={"X-Real-IP": ip}))
+        opener.open(urllib.request.Request(base + "/steam" + ("?c=" + c if c else ""),
+                                           headers={"X-Real-IP": ip}))
         raise RuntimeError("/steam did not redirect")
     except urllib.error.HTTPError as r:
         cookie = r.headers["Set-Cookie"].split(";")[0]
@@ -179,12 +191,22 @@ def sign_in(port, sid, ip):
         "openid.sig": "c2lnbmF0dXJlLi4uLi4uLi4uLi4uLi4=",
     }
     url = return_to + "&" + urllib.parse.urlencode(fields)
-    page = urllib.request.urlopen(urllib.request.Request(
+    return urllib.request.urlopen(urllib.request.Request(
         url, headers={"X-Real-IP": ip, "Cookie": cookie})).read().decode()
+
+
+def code_on(page):
+    """The code a sign-in page shows to be typed, or ""."""
     at = page.find('class="linkcode">')
-    if at < 0:
+    return page[at + 17:page.find("<", at + 17)] if at >= 0 else ""
+
+
+def sign_in(port, sid, ip):
+    """A sign-in that did not start in a game.  -> the code to type."""
+    code = code_on(browser(port, sid, ip))
+    if not code:
         raise RuntimeError("the sign-in page showed no code")
-    return page[at + 17:page.find("<", at + 17)]
+    return code
 
 
 class Log(object):
@@ -220,7 +242,7 @@ class Log(object):
 class Keys(object):
     """Key presses for one process's game window, as Windows delivers a
     keyboard's: WM_KEYDOWN and WM_KEYUP on its own queue.  Not the console."""
-    VK = {"enter": 0x0D, "esc": 0x1B, "back": 0x08}
+    VK = {"enter": 0x0D, "esc": 0x1B, "back": 0x08, "tab": 0x09, "w": 0x57}
 
     def __init__(self, pid):
         import ctypes
@@ -313,6 +335,15 @@ def receipt_arm(a, rig, gd):
     return 1 if FAILED else 0
 
 
+# The address the box shows for a start: its code, and the opener the client made.
+GO = r"sign in at proto\.bar/ftesurf/board/link\?c=([A-Z2-9]{10})&k=([0-9a-f]{24})"
+
+
+def address(m):
+    """What follows `?c=` in the address a start showed."""
+    return "%s&k=%s" % (m.group(1), m.group(2)) if m else ""
+
+
 def link_arm(a, send, keys, cl, sv, db, gport, codes):
     def rows(sql):
         conn = sqlite3.connect(db)
@@ -374,9 +405,10 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
               (True, True, [], [(0, "")]))
         return
 
-    check("A  the connect's proof was answered unasked: not linked, and how to link",
-          (bool(sv.wait(hello % (0, ""))), bool(cl.wait("not linked to a Steam account"))),
-          (True, True))
+    check("A  the connect's proof was answered unasked: not linked, and the prompt came up",
+          (bool(sv.wait(hello % (0, ""))), bool(cl.wait("not linked to a Steam account")),
+           bool(cl.wait("press Enter to link your Steam account", 10))),
+          (True, True, True))
 
     issued = sv.text().count("issued to client")
     send("cmd acct_hello; cmd acct_hello")  # one console line: both reach the server together
@@ -384,16 +416,66 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
           (bool(sv.wait(hello % (0, ""))), sv.text().count("issued to client") - issued),
           (True, 1))
 
-    opened = box(c1.lower())
-    check("B  the code typed into the box is answered with the account's name",
-          (opened, bool(cl.wait(r"link this game to Lex\? Enter to link")), key(),
-           rows("SELECT used_at, length(claim) FROM linkcodes WHERE code = '%s'" % c1)),
-          (True, True, [], [(0, 64)]))
+    # N: the game starts the link.  Enter on the prompt that came up by itself;
+    # the address it shows is opened by a "browser", which is shown a number;
+    # the game asks for that number by itself.
+    time.sleep(3.2)                         # L's second ask is inside the lobby's gap
+    # The prompt is not the keyboard's owner: W is the game's (it prints), and
+    # Tab, which is how a player gets to a browser, is nobody's.
+    send('bind w "echo gamekey-w"')
+    time.sleep(0.5)
+    keys.press("w")
+    keys.press("tab")
+    time.sleep(0.5)
+    check("N  the prompt that came up by itself leaves the game its keys, and Tab is not its",
+          (cl.text().count("gamekey-w"), "steam: starting" in cl.text(), "code sent" in cl.text()),
+          (1, False, False))
+    send("vote key 13 1")                   # Enter, fed down the chain from the console
+    send("vote key 13 0")
+    fed = bool(cl.wait(r"vote key: scan 13 down 1", 10))
+    send("acct_go ABCDEFGHJK")              # ...and an address nobody started
+    time.sleep(1.5)
+    check("N  CONTROL an Enter fed from the console starts nothing, and a stuffed code shows no address",
+          (fed, "steam: starting" in cl.text(), "sign in at" in cl.text()), (True, False, False))
+    keys.press("enter")
+    m = cl.wait(GO, 20)
+    started = m.group(1) if m else ""
+    check("N  Enter on the prompt starts a link: an address with a code surfd keeps for this key",
+          (bool(m), "copied" in cl.text().split("sign in at")[-1][:120],
+           rows("SELECT steamid, length(claim), shown, used_at FROM linkcodes WHERE code = '%s'"
+                % started)),
+          (True, True, [("", 64, "?", 0)]))
+    keys.press("w")
+    time.sleep(0.5)
+    check("N  the wait for the browser leaves the game its keys too",
+          cl.text().count("gamekey-w"), 2)
+    # What the wire shows is the code.  With it and an opener that is not this
+    # client's, a sign-in attaches nothing and the game is asked nothing.
+    page = browser(a.hport, SIDS[0], "198.51.100.8", started + "&k=" + "0" * 24)
+    time.sleep(3.0)
+    check("B  CONTROL the code with another opener opens nothing, and no question is raised",
+          ("Start again from the game" in page, code_on(page),
+           rows("SELECT steamid FROM linkcodes WHERE code = '%s'" % started),
+           "link this game to" in cl.text().split("sign in at")[-1]),
+          (True, "", [("",)], False))
+    page = browser(a.hport, SIDS[0], "198.51.100.9", address(m))
+    number = code_on(page)
+    asked_here = bool(cl.wait(r"link this game to Lex\? Type the number from the sign-in page", 15))
+    check("B  a browser at ANOTHER address signs in with the address and is shown a number; the game asks for it",
+          (len(number), number.isdigit(), "Type this number into the game" in page,
+           asked_here, key()), (4, True, True, True, []))
     time.sleep(0.8)                         # the question ignores keys for 0.6 s
+    keys.press("enter")                     # no number yet
+    keys.type("y")                          # ...and Y is not an answer to this question
+    time.sleep(1.0)
+    check("B  CONTROL Enter and Y without the page's number link nothing",
+          ("steam: linking" in cl.text().split("Type the number from the sign-in page")[-1],
+           key()), (False, []))
+    keys.type(number)
     keys.press("enter")
     keys.press("esc")                       # too late: the confirm is with surfd
     linked = bool(cl.wait("now linked to Lex"))
-    check("B  Enter links it, and an Esc after it does not claim to have cancelled",
+    check("B  the page's number and Enter link it; an Esc after does not claim to have cancelled",
           (linked, key(), "link cancelled" in cl.text().split("steam: linking")[-1]),
           (True, [(64, SIDS[0], 32, "p%d" % gport)], False))
     # Backspace, not Esc, to dismiss an ending: if the Esc above already closed
@@ -401,12 +483,40 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
     # keyboard and every later key in this arm goes nowhere (it did).
     keys.press("back")
 
+    # Q: the ways a start ends without a link.
+    time.sleep(3.2)
+    opened = opens("link")
+    keys.press("enter")
+    m = cl.wait(GO, 20)
+    dropped = m.group(1) if m else ""
+    keys.press("esc")
+    cancelled = bool(cl.wait("link cancelled", 10))
+    browser(a.hport, SIDS[0], "198.51.100.9", address(m))
+    time.sleep(5.0)                         # two of the lobby's waits, had it kept asking
+    check("Q  Esc on the wait cancels it: a sign-in for that start raises no question here",
+          (opened, bool(m), cancelled, "link this game to" in cl.text().split("link cancelled")[-1]),
+          (True, True, True, False))
+    opens("link")
+    keys.press("enter")
+    m = cl.wait(GO, 20)
+    spent = m.group(1) if m else ""
+    number = code_on(browser(a.hport, SIDS[0], "198.51.100.9", address(m)))
+    up = bool(cl.wait(r"link this game to Lex\? Type the number from the sign-in page", 15))
+    time.sleep(0.8)
+    keys.type("%04d" % ((int(number or 0) + 1) % 10000))
+    keys.press("enter")
+    check("Q  a wrong number says so, and spends the start: one try",
+          (up, bool(cl.wait("not the number on the page", 15)), key(),
+           rows("SELECT used_by FROM linkcodes WHERE code = '%s'" % spent)),
+          (True, True, [(64, SIDS[0], 32, "p%d" % gport)], [("mismatch",)]))
+    keys.press("back")
+
     send("cmd link")
     check("C  cmd link says who", bool(cl.wait("this install is linked to Lex")), True)
 
     time.sleep(3.2)                         # the server's gap between one player's codes
     opened = box(c2)
-    check("D  another account's code says where it is and where it would go",
+    check("D  another account's code typed into the box says where it is and where it would go",
           (opened, bool(cl.wait(r"link this game to Other\? Enter to link")),
            bool(sv.wait(asked % "confirm"))), (True, True, True))
     time.sleep(0.8)
@@ -460,6 +570,12 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
     check("K  CONTROL an answer nobody asked for raises no question",
           ("Mallory" in cl.text().replace('acct_ask 123456 "Mallory"', ""), who()),
           (False, SIDS[1]))
+    n = cl.text().count("sign in at")
+    send("acct_go ABCDEFGHJK")              # ...and with no box at all
+    send("acct_start " + "ab" * 16)
+    time.sleep(1.0)
+    check("K  CONTROL a start's answers, unasked, show no address",
+          cl.text().count("sign in at") - n, 0)
     called = [p.name for p in sorted((ROOT / "src").rglob("*.qc"))
               if "CSQC_InputEvent(" in p.read_text(errors="replace")]
     check("K  no .qc file calls CSQC_InputEvent: only the engine says a key was real",
@@ -473,13 +589,13 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
 
     time.sleep(3.2)
     n = sv.text().count("asked for client")
-    hints = cl.text().count("the code goes in the box")
+    hints = cl.text().count("a code is typed into the box")
     opens("link " + codes[2])
     keys.press("esc")
     opens('link "ABCDE;echo P615-INJECTED;FGHJK"')
     keys.press("esc")
     time.sleep(1.5)
-    hint = cl.text().count("the code goes in the box") - hints == 2
+    hint = cl.text().count("a code is typed into the box") - hints == 2
     check("G  a code given on the console is not sent, and nothing in one runs",
           (hint, sv.text().count("asked for client") - n,
            "P615-INJECTED" in cl.text().replace("ABCDE;echo P615-INJECTED;FGHJK", ""),
@@ -537,9 +653,10 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
     pub16 = rows("SELECT substr(pub, 1, 16) FROM linkkeys")
     check("surfd holds one key, for the third account, from this lobby",
           key(), [(64, SIDS[2], 32, "p%d" % gport)])
-    check("...the three codes it spent are marked with that key, the fourth is not spent",
-          ([used.get(c) for c in (c1, c2, c3)] == [pub16[0][0]] * 3 if pub16 else None,
-           used.get(c4)), (True, ""))
+    check("...the three codes it spent are marked with that key (the first was the game's own);"
+          " the typed first and the fourth are not",
+          ([used.get(c) for c in (started, c2, c3)] == [pub16[0][0]] * 3 if pub16 else None,
+           used.get(c1), used.get(c4)), (True, "superseded", ""))
 
 
 def main():
@@ -575,6 +692,7 @@ def main():
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
             probe.bind(("127.0.0.1", 0))
             hport = probe.getsockname()[1]
+        a.hport = hport
         web, db = start_surfd(rig, hport, "192.0.2.1" if a.refuse_address else "127.0.0.1")
         codes = [sign_in(hport, sid, "198.51.100.%d" % (n + 1)) for n, sid in enumerate(SIDS)]
         conn = sqlite3.connect(db)

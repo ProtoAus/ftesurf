@@ -1147,9 +1147,9 @@ Off until `SURFD_BOARD_URL` is set; names and avatars need `SURFD_STEAM_KEY`.
 Reviewed through three lenses before it shipped; what they found and what is
 still open is in AGENT_NOTES ("Steam accounts") and BACKLOG.
 
-### 14.2 The game: the link box, with proof of the install's key — done, Patches 615 and 617
+### 14.2 The game: the link box, with proof of the install's key — done, Patches 615, 617 and 619
 
-`src/server/sv_account.qc`, `src/client/cl_account.qc`, surfd schema 13.
+`src/server/sv_account.qc`, `src/client/cl_account.qc`, surfd schema 14.
 AS BUILT IT DIFFERS FROM THE FIRST PLAN IN ONE WAY THAT MATTERS: a link is keyed
 on the install's signing key (`fskey`), not on the guid. A guid is handed to
 any server that sends this fleet's `sv_guidkey`, so a guid-keyed link could be
@@ -1178,10 +1178,40 @@ moved, or squatted before its owner ever linked.
   and, as controls, the same keys from the console. `--receipt` runs a whole
   run on the same progs and reads its receipt back.
 
-**Left.** No menu row: `link` is typed in the console, which then has to be
-closed. Nothing pastes into the box. The engine still has no command that opens
-a browser. The connect line repeats on every map. Whether the code page wants
-an origin of its own (BACKLOG's last sign-in item).
+- **The link starts in the game** (Patch 619; Lex, 11 Oct: "as simple/fast/nice
+  as possible ... or auto magically linked"). An install that is not linked
+  gets a prompt on its first lobby of a game, which takes Enter and Esc and
+  leaves every other key to the game. Enter STARTS a link: the client proves
+  its key (ticks -5), `/api/link/start` issues a code kept for that key, and the
+  game copies the sign-in address with that code in it. The page the player
+  signs in on shows a FOUR-DIGIT NUMBER. The lobby asks `/api/link/wait`; when
+  somebody has signed in, the box asks "link this game to X?" and for the
+  number, and Enter signs the lobby's own number and sends the page's with it.
+  Four digits typed, where 617 took ten characters, a console and a site to
+  find.
+- **What ties the browser to the game is the number, not the code.** The code
+  is public (it crosses the wire and sits in an address) and links nothing.
+  The number is shown only to whoever signed in, is good for one try by the
+  key that started, and a second account signing in for the same start ends
+  it. BOTH CONSENTS STAY: the account's owner signed in and read out a number
+  to a game; the install's owner typed it under the account's name. The first
+  cut tied them by address (same address, no typing at all) and its review
+  linked one person's account to another's install; nothing here depends on
+  addresses now, so it works the same from a phone, a VPN or the Pi's own LAN.
+- **And the address is one only that client could have made.** It ends in an
+  opener the client made itself; what the client's key signs for the start is
+  the lobby's nonce WITH that opener, and surfd checks the signature only when
+  a sign-in brings it. So the number, which is typed into the game and crosses
+  its wire in the clear, is worth nothing to anyone but the key that started:
+  a code swapped on a rewritten connection opens nothing. The second review
+  found the version without this.
+- **The pages** are one card each, light or dark with the browser, no script.
+
+**Left.** The game cannot open a browser or paste: the address is copied and
+has to be pasted by hand, until the engine has a command for it. No menu row:
+after the first prompt, `link` is typed in the console, which then has to be
+closed. A map change while the player is in the browser closes the box.
+Whether the code page wants an origin of its own (BACKLOG's last sign-in item).
 
 ### 14.3 Ranked means linked, and a ban bites
 

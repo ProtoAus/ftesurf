@@ -202,9 +202,10 @@ def stamp(at):
 SERIAL = [0]
 
 
-def start(m, ip="198.51.100.1"):
-    """GET /board/link/steam -> (the cookie pair, return_to)."""
-    r = get(m, "/board/link/steam", ip=ip)
+def start(m, ip="198.51.100.1", c=""):
+    """GET /board/link/steam -> (the cookie pair, return_to).  `c` is a code
+    the game started, as the page's button carries it."""
+    r = get(m, "/board/link/steam" + ("?c=" + c if c else ""), ip=ip)
     q = urllib.parse.parse_qs(urllib.parse.urlsplit(r.headers["Location"]).query)
     return r.headers["Set-Cookie"].split(";")[0], q["openid.return_to"][0]
 
@@ -233,8 +234,8 @@ def back(m, cookie, return_to, fields, ip="198.51.100.1", extra=(), method="GET"
                method=method)
 
 
-def signin(m, sid=SID, ip="198.51.100.1", mutate=None, extra=()):
-    cookie, return_to = start(m, ip)
+def signin(m, sid=SID, ip="198.51.100.1", mutate=None, extra=(), c=""):
+    cookie, return_to = start(m, ip, c)
     fields = assertion(m, return_to, sid)
     if mutate:
         mutate(fields)
@@ -333,9 +334,9 @@ print("\n--- 1. schema ----------------------------------------------------")
 m = fresh()
 names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table'")}
 check("a fresh database has the four account tables", sorted(names & set(TABLES)), TABLES)
-check("...and is stamped schema 13, without 12's guid-keyed `links`",
+check("...and is stamped schema 14, without 12's guid-keyed `links`",
       (rows(m, "PRAGMA user_version")[0][0], m.SCHEMA_VERSION, "links" in names),
-      (13, 13, False))
+      (14, 14, False))
 
 # An 11 database: the same file with the tables gone and the stamp put back.
 home = m._home
@@ -346,7 +347,7 @@ conn.close()
 m = fresh(home=home)
 names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table'")}
 check("a schema-11 database gains them on the next start",
-      (sorted(names & set(TABLES)), rows(m, "PRAGMA user_version")[0][0]), (TABLES, 13))
+      (sorted(names & set(TABLES)), rows(m, "PRAGMA user_version")[0][0]), (TABLES, 14))
 
 # A 12 database as Patch 612 left it: `links` present, no `linkkeys`.
 LINKS_12 = """
@@ -368,8 +369,9 @@ m = fresh(home=home)
 names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table'")}
 check("a schema-12 database swaps its empty `links` for `linkkeys`, and codes learn to be claimed",
       ("links" in names, "linkkeys" in names, rows(m, "PRAGMA user_version")[0][0],
-       "claim" in [r[1] for r in rows(m, "PRAGMA table_info(linkcodes)")]),
-      (False, True, 13, True))
+       "claim" in [r[1] for r in rows(m, "PRAGMA table_info(linkcodes)")],
+       "shown" in [r[1] for r in rows(m, "PRAGMA table_info(linkcodes)")]),
+      (False, True, 14, True, True))
 conn = sqlite3.connect(m._test_db)
 conn.executescript(accounts.SQL + LINKS_12 + "INSERT INTO links (player, steamid, linked_at)"
                    " VALUES ('g', '%s', 1); DROP TABLE linkkeys; PRAGMA user_version=12;" % SID)
@@ -377,7 +379,7 @@ conn.close()
 m = fresh(home=home)
 check("...but a `links` somebody filled is left as it was",
       (rows(m, "SELECT player FROM links"), rows(m, "PRAGMA user_version")[0][0]),
-      ([("g",)], 13))
+      ([("g",)], 14))
 
 # gunicorn and a cron tool do start together on a deploy, and a script commits
 # between its statements.  So: an 11 database, and at each CREATE of steps 12
@@ -436,7 +438,7 @@ names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table
 check("another process finishing steps 12 and 13 at any of their six statements breaks neither",
       (outcomes, sorted(names & set(TABLES)), "links" in names,
        rows(m, "PRAGMA user_version")[0][0]),
-      (["ok"] * 6, TABLES, False, 13))
+      (["ok"] * 6, TABLES, False, 14))
 check("...and those six were the statements raced: each table, and each index by its table",
       [r[1] for r in RACED],
       ["accounts", "linkcodes", "linkcodes", "linknonces", "linkkeys", "linkkeys"])
@@ -486,8 +488,11 @@ check("the first page is html, uncached, under the board's CSP",
       (r.status_code, r.mimetype, r.headers.get("Cache-Control"),
        "form-action 'none'" in r.headers.get("Content-Security-Policy", "")),
       (200, "text/html", "no-store", True))
-check("...links to the sign-in and the board's stylesheet, relatively",
-      ('href="link/steam"' in text(r), 'href="board.css"' in text(r)), (True, True))
+check("...links to the sign-in and its own stylesheet, relatively",
+      ('href="link/steam"' in text(r), 'href="link.css"' in text(r)), (True, True))
+r2 = get(m, "/board/link.css", ip="198.51.100.77")
+check("...which is served, as a stylesheet, and asks for no script",
+      (r2.status_code, r2.mimetype, "<script" in text(r)), (200, "text/css", False))
 check("...and sets no cookie", r.headers.get("Set-Cookie"), None)
 
 r = get(m, "/board/link/steam")
@@ -534,7 +539,7 @@ check("...uncached, with the state cookie removed under the name and path it was
       ("no-store", "__Host-ftl=",
        ["httponly", "max-age=0", "path=/", "samesite=lax", "secure"]))
 check("...and its links resolve from /board/link/return",
-      ('href="../board.css"' in text(r), 'href="../../"' in text(r)), (True, True))
+      ('href="../link.css"' in text(r), 'href="../../"' in text(r)), (True, True))
 calls = m.STEAM_HTTP.calls
 check("Steam was asked exactly twice", len(calls), 2)
 sent = {k: v[0] for k, v in urllib.parse.parse_qs(calls[0][1].decode()).items()}
@@ -771,10 +776,10 @@ check("the superseded code does not link", link(m, KEY1, first), no("code"))
 
 run(m, "UPDATE accounts SET banned_at = ? WHERE steamid = ?", (START, SID))
 r = signin(m, ip="198.51.100.8")
-check("a banned account signs in and gets no code",
+check("a banned account signs in and gets no code: none shown, none made, none retired",
       (r.status_code, "is banned" in text(r), code_of(r),
-       rows(m, "SELECT COUNT(*) FROM linkcodes WHERE used_at = 0")[0][0]),
-      (403, True, "", 1))
+       rows(m, "SELECT code FROM linkcodes WHERE used_at = 0"), count(m, "linkcodes")),
+      (403, True, "", [(second,)], 2))
 
 m = fresh(steam_key=None)
 m.STEAM_HTTP.down = True
@@ -1296,6 +1301,300 @@ check("the digests are tagged, 32 hex, and what the client computes",
       (hashlib.sha256(b"ftesurf-code ABCDEFGH").hexdigest()[:32],
        hashlib.sha256(b"ftesurf-link ABCDEFGH").hexdigest()[:32],
        hashlib.sha256(b"ftesurf-confirm ABCDEFGH 482913").hexdigest()[:32]))
+
+print("\n--- 12e. the game starts a link; the page's number ties the two ---")
+
+
+OPENER = "0123456789abcdef01234567"     # the secret the game made, as its address carries it
+
+
+def begin(m, seed, nonce="cd" * 16, opener=OPENER, **kw):
+    """POST /api/link/start as a lobby would: the key's signature over the
+    lobby's nonce WITH the client's opener, which is not sent.  -> the reply."""
+    form = dict(key="testkey", node="p27510", player="guid-%d" % seed[0],
+                ip="10.0.0.%d:27001" % seed[0], nonce=nonce)
+    form.update(proof(seed, accounts.start_nonce(kw.pop("signed", nonce), opener),
+                      kw.pop("ticks", accounts.TICKS_START), kw.pop("server", HERE_ADDR)))
+    form.update(kw)
+    return body(post(m, "/api/link/start", **form))
+
+
+def at(code, opener=OPENER):
+    """A start's code as its sign-in address carries it: with the opener."""
+    return "%s&k=%s" % (code, opener)
+
+
+def waiting(m, seed, code, **kw):
+    form = dict(key="testkey", node="p27510", ip="10.0.0.%d:27001" % seed[0],
+                tag=accounts.code_tag(bare(code)))
+    form.update(kw)
+    return body(post(m, "/api/link/wait", **form))
+
+
+def started(m, code):
+    return rows(m, "SELECT steamid, claim, shown, used_by FROM linkcodes WHERE code = ?",
+                (code,))
+
+
+def returned(m, cookie, rt, ip="198.51.100.60", sid=SID):
+    return get(m, "/board/link/return?" + urllib.parse.urlsplit(rt).query + "&"
+               + urllib.parse.urlencode(assertion(m, rt, sid)), ip=ip, cookie=cookie)
+
+
+WAIT, GONE = {"acct": 1, "state": "wait"}, {"acct": 1, "state": "gone"}
+AGAIN = "Start again from the game"
+number_of = code_of                     # the page shows it in the same tile
+
+m = fresh()
+r = begin(m, KEY1)
+C = r.get("code", "")
+check("a start is answered with a code, kept for that key and with no account",
+      (sorted(r), len(C), started(m, C)),
+      (["acct", "code", "ok"], accounts.CODE_LEN, [("", PUB1, accounts.NOT_YET, "")]))
+check("...the lobby is told to wait", waiting(m, KEY1, C), WAIT)
+check("...and nobody can ask or confirm with it, its own key included",
+      (ask(m, KEY1, C)["why"], confirm(m, KEY1, C, shown="0000"), confirm(m, KEY2, C)),
+      ("code", no("code"), no("code")))
+check("the page a start's address opens hands code and opener to its button, or neither",
+      ('href="link/steam?c=%s&amp;k=%s"' % (C, OPENER) in text(get(m, "/board/link?c=" + at(C))),
+       "steam?c=" in text(get(m, "/board/link?c=" + C)),
+       "steam?c=" in text(get(m, "/board/link?c=%s&k=%s" % (C, "%3Cscript%3E"))),
+       "steam?c=" in text(get(m, "/board/link?c=%3Cscript%3E&k=" + OPENER))),
+      (True, False, False, False))
+
+m.time.now += 61
+cookie, rt = start(m, ip="198.51.100.60", c=at(C))
+C2 = begin(m, KEY2, opener="fedcba9876543210fedcba98")["code"]
+r = get(m, "/board/link/return?" + urllib.parse.urlsplit(rt.replace("c=" + C, "c=" + C2)).query
+        + "&" + urllib.parse.urlencode(assertion(m, rt)), ip="198.51.100.60", cookie=cookie)
+check("the code rides in what Steam signed: swapped on the way back, the reply is refused",
+      (r.status_code, started(m, C)[0][0], started(m, C2)[0][0]), (400, "", ""))
+
+# The code alone is what a reader of the wire has: without the opener the
+# game made, it opens nothing, and the start is not even touched.
+r = signin(m, sid=SID2, ip="203.0.113.40", c=at(C, "f" * 24))
+check("a sign-in with the code and somebody else's opener attaches nothing and ends nothing",
+      (AGAIN in text(r), code_of(r), started(m, C), waiting(m, KEY1, C)),
+      (True, "", [("", PUB1, accounts.NOT_YET, "")], WAIT))
+# ...and a code SWAPPED on the wire: the victim's client puts ITS opener after
+# another install's code.  That start was signed with another opener.
+r = signin(m, sid=SID2, ip="203.0.113.42", c=at(C2, "fedcba9876543210fedcba98"))
+check("CONTROL another install's start opens for the opener ITS key signed with",
+      (len(number_of(r)), started(m, C2)[0][0]), (accounts.SHOWN_LEN, SID2))
+C3 = begin(m, KEY3, opener="a" * 24)["code"]
+r = signin(m, ip="203.0.113.43", c=at(C3, OPENER))
+check("...and not for this one's: a swapped code attaches nobody",
+      (AGAIN in text(r), started(m, C3)), (True, [("", PUB3, accounts.NOT_YET, "")]))
+m.time.now += 61
+r = signin(m, sid=SID2, ip="203.0.113.41", c=C)
+check("...and with no opener it is an ordinary sign-in: a code to type, the start untouched",
+      (len(bare(code_of(r))), started(m, C)),
+      (accounts.CODE_LEN, [("", PUB1, accounts.NOT_YET, "")]))
+
+r = signin(m, ip="203.0.113.50", c=at(C))
+N = number_of(r)
+check("a sign-in with its own address, from ANYWHERE, is shown a four-digit number and attached",
+      (r.status_code, len(N), N.isdigit(), "Type this number into the game" in text(r),
+       started(m, C)),
+      (200, accounts.SHOWN_LEN, True, True, [(SID, PUB1, N, "")]))
+check("...the lobby's wait now names the account",
+      waiting(m, KEY1, C), {"acct": 1, "state": "ready", "to": "Lex", "from": ""})
+r = signin(m, ip="203.0.113.51", c=at(C))
+check("...the same account signing in again sees the same number, and the start lives",
+      (number_of(r), started(m, C)), (N, [(SID, PUB1, N, "")]))
+check("...another key cannot confirm it, number and all",
+      confirm(m, KEY2, C, shown=N), no("code"))
+m.time.now += 61
+check("...the key that started it links by signing the lobby's number WITH the page's",
+      (confirm(m, KEY1, C, shown=N), keys(m), started(m, C)[0][3]),
+      (YES, [(PUB1[:8], SID, "p27510")], PUB1[:16]))
+check("...after which the start is gone", waiting(m, KEY1, C), GONE)
+
+m = fresh()
+C = begin(m, KEY1)["code"]
+N = number_of(signin(m, ip="203.0.113.52", c=at(C)))
+wrong = "%04d" % ((int(N) + 1) % 10000)
+check("a wrong number links nothing and SPENDS the start: one try",
+      (confirm(m, KEY1, C, shown=wrong), keys(m), started(m, C)[0][3], waiting(m, KEY1, C)),
+      (no("number"), [], accounts.MISMATCH, GONE))
+check("...so the right one, afterwards, is too late", confirm(m, KEY1, C, shown=N), no("code"))
+m = fresh()
+C = begin(m, KEY1)["code"]
+signin(m, ip="203.0.113.53", c=at(C))
+check("no number at all is a wrong number",
+      (confirm(m, KEY1, C), started(m, C)[0][3]), (no("number"), accounts.MISMATCH))
+
+m = fresh()
+C = begin(m, KEY1)["code"]
+N = number_of(signin(m, ip="203.0.113.54", c=at(C)))
+r = signin(m, sid=SID2, ip="203.0.113.55", c=at(C))
+check("a second ACCOUNT signing in for one start ends it for both, and is given nothing",
+      (AGAIN in text(r), code_of(r), started(m, C)[0][3], waiting(m, KEY1, C),
+       rows(m, "SELECT COUNT(*) FROM linkcodes WHERE steamid = ?", (SID2,))),
+      (True, "", accounts.CONTESTED, GONE, [(0,)]))
+check("...and the first account's number no longer confirms",
+      confirm(m, KEY1, C, shown=N), no("code"))
+
+m = fresh()
+C = begin(m, KEY1)["code"]
+m.time.now += accounts.CODE_TTL + 1
+r = signin(m, ip="203.0.113.56", c=at(C))
+check("a start older than ten minutes is gone; a sign-in with it gets no number and no code",
+      (waiting(m, KEY1, C), AGAIN in text(r), code_of(r), count(m, "linkcodes")),
+      (GONE, True, "", 1))
+r = signin(m, ip="203.0.113.57", c=at("ABCDEFGHJK"))
+check("...nor does one with a code nobody started", (AGAIN in text(r), code_of(r)), (True, ""))
+typed = bare(code_of(signin(m, sid=SID2, ip="203.0.113.58")))
+r = signin(m, ip="203.0.113.59", c=at(typed))
+check("a TYPED code in the address is not a start: nothing attaches to it",
+      (AGAIN in text(r), code_of(r), started(m, typed)), (True, "", [(SID2, "", "", "")]))
+check("...and a typed code is not something a lobby waits on", waiting(m, KEY1, typed), GONE)
+
+m = fresh()
+typed = bare(code_of(signin(m, ip="203.0.113.60")))
+first = begin(m, KEY1)["code"]
+signin(m, ip="203.0.113.61", c=at(first))
+check("signing in for a start retires the account's typed code: one live code an account",
+      started(m, typed)[0][3], "superseded")
+second = begin(m, KEY1, nonce="ce" * 16)["code"]
+check("a key's second start does not end its first until somebody signs in for it",
+      (started(m, first)[0][3], waiting(m, KEY1, second)), ("", WAIT))
+signin(m, sid=SID2, ip="203.0.113.62", c=at(second))
+check("...and then it does: one start per key, the one that was signed in for",
+      (started(m, first)[0][3], waiting(m, KEY1, first)), ("superseded", GONE))
+
+# A start's signature is not checked when it arrives: it is over an opener
+# surfd has not seen.  So a wrong one is ACCEPTED there, and opens nothing.
+m = fresh()
+for label, kw in (
+        ("a connect's signature in a start's place", dict(ticks=accounts.TICKS_HELLO)),
+        ("an ask's", dict(ticks=accounts.TICKS_ASK)),
+        ("a signature over another nonce", dict(signed="ab" * 16))):
+    bad = begin(m, KEY3, **kw).get("code", "")
+    r = signin(m, ip="203.0.113.63", c=at(bad))
+    check("a start with %s is kept, and no sign-in opens it" % label,
+          (len(bad), AGAIN in text(r), started(m, bad)),
+          (accounts.CODE_LEN, True, [("", PUB3, accounts.NOT_YET, "")]))
+    m.time.now += 61
+n = count(m, "linkcodes")
+check("a start with a signature made on somebody else's server is refused at once",
+      (begin(m, KEY3, server="203.0.113.7:27510"), count(m, "linkcodes") - n),
+      ({"acct": 1, "ok": 0, "why": "server"}, 0))
+check("a start with a nonce that is not 32 hex is a 400",
+      post(m, "/api/link/start", key="testkey", node="p27510", ip="10.0.0.9", nonce="xyz",
+           **proof(KEY3, accounts.start_nonce("ab" * 16, OPENER),
+                   accounts.TICKS_START)).status_code, 400)
+C = begin(m, KEY1)["code"]
+spent = m._rate.setdefault(("verify-link", "*"), [])
+spent.extend([m.time.now] * accounts.LINK_VERIFY_MAX)
+r = signin(m, ip="203.0.113.66", c=at(begin(m, KEY2, nonce="ce" * 16)["code"]))
+check("with the LINK steps' signature checks spent, a sign-in for a start still opens",
+      len(number_of(r)), accounts.SHOWN_LEN)
+spent = m._rate.setdefault(("verify-open", "*"), [])
+spent.extend([m.time.now] * accounts.OPEN_VERIFY_MAX)
+r = signin(m, ip="203.0.113.64", c=at(C))
+check("with its OWN minute's checks spent, a sign-in for a start is asked to come back",
+      (r.status_code, "cannot check that right now" in text(r), started(m, C)),
+      (503, True, [("", PUB1, accounts.NOT_YET, "")]))
+m.time.now += 61
+check("...and a minute later it opens",
+      len(number_of(signin(m, ip="203.0.113.65", c=at(C)))), accounts.SHOWN_LEN)
+check("...and without the lobby's key a start and a wait are both 403",
+      (post(m, "/api/link/start", nonce="ab" * 16).status_code,
+       post(m, "/api/link/wait", tag="ab" * 16).status_code), (403, 403))
+
+m = fresh()
+signin(m, sid=SID2, ip="198.51.100.63")
+run(m, "UPDATE accounts SET banned_at = ? WHERE steamid = ?", (START, SID2))
+C = begin(m, KEY1)["code"]
+r = signin(m, sid=SID2, ip="198.51.100.64", c=at(C))
+check("a banned account signing in for a game's start attaches nothing",
+      (r.status_code, "banned" in text(r), started(m, C)),
+      (403, True, [("", PUB1, accounts.NOT_YET, "")]))
+
+m = fresh()
+C = begin(m, KEY1)["code"]
+N = number_of(signin(m, sid=SID2, ip="198.51.100.65", c=at(C)))
+run(m, "UPDATE accounts SET banned_at = ? WHERE steamid = ?", (START, SID2))
+check("an account banned AFTER it was attached: the wait says so, and nothing confirms",
+      (waiting(m, KEY1, C), confirm(m, KEY1, C, shown=N), keys(m)),
+      ({"acct": 1, "state": "gone", "why": "banned"}, no("banned"), []))
+
+m = fresh()
+link(m, KEY1, code_of(signin(m, ip="198.51.100.66")))
+m.time.now += 61
+C = begin(m, KEY1)["code"]
+signin(m, sid=SID2, ip="198.51.100.67", c=at(C))
+check("a start for a key that is linked elsewhere says where it would move from",
+      waiting(m, KEY1, C), {"acct": 1, "state": "ready", "to": "Other", "from": "Lex"})
+C = begin(m, KEY1, nonce="ce" * 16)["code"]
+signin(m, ip="198.51.100.68", c=at(C))
+check("...and one for the account it is already on does not call that a move",
+      waiting(m, KEY1, C), {"acct": 1, "state": "ready", "to": "Lex", "from": ""})
+
+m = fresh()
+C = begin(m, KEY1)["code"]
+got = [waiting(m, KEY1, C)["state"] for _ in range(accounts.WAIT_RATE_MAX)]
+N = number_of(signin(m, ip="198.51.100.69", c=at(C)))
+check("%d waits a minute per client address; past it the answer is still wait"
+      % accounts.WAIT_RATE_MAX,
+      (set(got), waiting(m, KEY1, C)), ({"wait"}, WAIT))
+check("...and they spent none of that player's link steps",
+      confirm(m, KEY1, C, shown=N), YES)
+m.time.now += 61
+check("...a minute later a wait is the truth again (the start is spent)", waiting(m, KEY1, C), GONE)
+
+m = fresh()
+got = {post(m, "/api/link/wait", tag="ab" * 16).status_code
+       for _ in range(accounts.LINK_FLOOD_MAX + 1)}
+check("%d keyless waits are refused one by one, and cost the link steps' allowance nothing"
+      % (accounts.LINK_FLOOD_MAX + 1),
+      (got, post(m, "/api/link", tag="ab" * 16).status_code), ({403}, 403))
+
+m = fresh()
+conn = sqlite3.connect(m._test_db)
+conn.executemany("INSERT INTO linkcodes (code, steamid, issued_at, claim, shown) VALUES (?,'',?,?,?)",
+                 [("S%07d" % i, START, "%064x" % i, accounts.NOT_YET)
+                  for i in range(accounts.CODE_LIVE_MAX)])
+conn.commit()
+conn.close()
+check("with more than %d starts nobody has signed in for, a start is told to come back"
+      % accounts.START_LIVE_MAX,
+      (begin(m, KEY1), count(m, "linkcodes") == accounts.CODE_LIVE_MAX > accounts.START_LIVE_MAX),
+      ({"acct": 1, "ok": 0, "why": "later"}, True))
+check("...but %d of them are not codes outstanding: sign-in is open" % accounts.CODE_LIVE_MAX,
+      len(bare(code_of(signin(m, ip="198.51.100.70")))), accounts.CODE_LEN)
+m.time.now += accounts.CODE_KEEP + 1
+check("...and a day on, a start prunes the old rows itself",
+      (begin(m, KEY1, nonce="ce" * 16).get("ok"), count(m, "linkcodes")), (1, 1))
+
+m = fresh()
+got = [begin(m, KEY1, nonce="%032x" % i).get("why", "") for i in range(accounts.TRY_RATE_MAX + 1)]
+check("starts count as link steps: %d a minute per client address" % accounts.TRY_RATE_MAX,
+      (got[:-1] == [""] * accounts.TRY_RATE_MAX, got[-1]), (True, "slow"))
+
+for raw, want in (("ABCDEFGHJK", "ABCDEFGHJK"), ("ABCDE-FGHJK", "ABCDEFGHJK"),
+                  ("abcdefghjk", ""), ("ABCDEFGHJ", ""), ("ABCDEFGHJK0", ""),
+                  ("ABCDEFGHI0", ""), ("", ""), (None, "")):
+    check("start_code %r" % (raw,), accounts.start_code(raw), want)
+
+# A 13 database: the same file without the column, and the stamp put back.
+m = fresh()
+home = m._home
+conn = sqlite3.connect(m._test_db)
+conn.executescript("ALTER TABLE linkcodes DROP COLUMN shown;"
+                   "ALTER TABLE linkcodes DROP COLUMN seal; PRAGMA user_version=13;")
+conn.close()
+m = fresh(home=home)
+cols = [r[1] for r in rows(m, "PRAGMA table_info(linkcodes)")]
+check("a schema-13 database gains both columns on the next start",
+      ("shown" in cols, "seal" in cols, rows(m, "PRAGMA user_version")[0][0]), (True, True, 14))
+conn = sqlite3.connect(m._test_db)
+conn.executescript("ALTER TABLE linkcodes DROP COLUMN seal; PRAGMA user_version=13;")
+conn.close()
+m = fresh(home=home)
+check("...and one that already has the first gains the second",
+      "seal" in [r[1] for r in rows(m, "PRAGMA table_info(linkcodes)")], True)
 
 print("\n--- 12d. the sign-in page lists installs, and unlinks one --------")
 

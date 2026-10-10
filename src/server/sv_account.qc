@@ -1,6 +1,6 @@
 /*
 ===========================================================================
-  sv_account.qc -- Steam accounts on a keyed server (Patches 615, 617).
+  sv_account.qc -- Steam accounts on a keyed server (Patches 615, 617, 619).
 
   A connection is told which Steam account its install is linked to, and the
   client's link box links it.  Everything rests on ONE proof: the client signs
@@ -14,6 +14,18 @@
              -> POST /api/link -> the account's name, and a number made here
              -> stuffcmd `acct_ask <number> "name"`; the box asks, Enter signs
              -> `cmd link <number>` and its signature -> POST /api/link -> linked
+    start    (Patch 619) `cmd link start` -> stuffcmd `acct_start <nonce>` ->
+             rec_sign (ticks -5) -> POST /api/link/start -> a code surfd keeps
+             for this key -> `acct_go <code>`; the player signs in on the site
+             with it and is shown a NUMBER; this file asks /api/link/wait and,
+             when the code has an account, sends `acct_ask` as above with a
+             flag: the box asks for the page's number, and `cmd link <number of
+             ours> <number of the page>` carries it to surfd with the confirm.
+             The code is public and links nothing; the page's number, which
+             this file only passes on, is what ties the browser to the game.
+             The start's signature is over the nonce AND a secret the client
+             made, so neither this file nor surfd can check it until the
+             player's browser brings that secret (surfd/accounts.py).
 
   AN INSTALL IS ITS KEY.  The guid goes along for the log and is trusted for
   nothing: any server that sends this fleet's sv_guidkey is handed it.
@@ -25,7 +37,7 @@
   connection typed it).  Consent is a key press in the client's box, which
   cl_account.qc takes from the engine's own events only.
 
-  THE THREE PROOFS SIGN TICKS -2, -3 AND -4, AND A RUN SIGNS NONE OF THEM.  A
+  THE FOUR PROOFS SIGN TICKS -2 TO -5, AND A RUN SIGNS NONE OF THEM.  A
   finish signs its stamp or -1 and a kept abandon 0, so Account_Proof and
   SV_RecRcpt can never want the same `rec_rcpt`; and SV_RecRcpt refuses
   anything below -1, so a proof could not be filed as a run's even if it got
@@ -40,6 +52,13 @@
 #define ACCT_HELLO      1       // .acct_want: a connect's proof, ticks -2
 #define ACCT_ASK        2       // ...a link's first step, -3
 #define ACCT_CONFIRM    3       // ...and its second, -4
+#define ACCT_START      4       // ...or a link the game starts, -5
+#define ACCT_WAITING    5       // .acct_rq_kind only: a wait carries no proof
+#define ACCT_POLL       2       // s between waits, for the first ACCT_POLL_EAGER s
+#define ACCT_POLL_EAGER 90
+#define ACCT_POLL_IDLE  5       // ...then: a start left alone is 150 requests, not 300
+#define ACCT_POLL_MISS  20      // ...and after a wait surfd never answered
+#define ACCT_STARTLIFE  600     // s a start is waited on: a code's life (surfd CODE_TTL)
 #define ACCT_WAIT       5       // s a proof is waited for (a round trip and a signature)
 #define ACCT_HELLOS     3       // nonces one connection may ask for
 #define ACCT_GAP        3       // s between one player's codes
@@ -54,9 +73,14 @@
 .float  acct_want;
 .float  acct_want_t;
 .string acct_nonce;             // the connect nonce in force, zoned
+.string acct_snonce;            // ...and a start's, zoned
+.float  acct_poll_t;            // when to ask /api/link/wait next
+.float  acct_poll_end;          // ...and when to give up; 0 = not waiting
 .string acct_tag;               // the digest of the code being linked, zoned
 .string acct_pin;               // the number the box must sign, zoned
-.float  acct_pin_t;
+.float  acct_pin_t;             // when it stops being good
+.float  acct_start_end;         // when the start being waited on dies; kept past the wait
+.string acct_num;               // the sign-in page's number as the box sent it, zoned
 .float  acct_rq;                // uri request out for this client, 0 = none
 .float  acct_rq_kind;
 .float  acct_rq_t;
@@ -66,6 +90,7 @@
 .float  acct_hellos;
 .float  acct_here;              // ClientConnect has run for THIS connection
 float   acct_rq_next;
+float() Account_NextId;
 
 // The board's own gate (Lobby_SubmitRun): pointed at a directory, and keyed.
 float() Account_On =
@@ -79,12 +104,6 @@ float() Account_On =
 	return TRUE;
 };
 
-string() Account_Url =
-{
-	registercvar("lobby_link_url", "proto.bar/ftesurf/board/link");
-	return cvar_string("lobby_link_url");
-};
-
 void(entity e, string s) Account_SetName =
 {
 	if (e.acct_name != "")
@@ -94,15 +113,35 @@ void(entity e, string s) Account_SetName =
 		e.acct_name = strzone(s);
 };
 
-// Forget the link in progress: the code's digest and the number.
+/*
+  A wait or a start in flight belongs to a link the player has since moved on
+  from: its answer is nobody's, and it must not make them "busy".  A START's
+  answer in particular: the review pressed Esc between the Enter and surfd's
+  reply, and the reply then armed ten minutes of waits for a box that had
+  closed.  Forgotten here, it finds no player in Account_Reply.
+*/
+void(entity e) Account_Unwait =
+{
+	if (!e.acct_rq)
+		return;
+	if (e.acct_rq_kind == ACCT_WAITING || e.acct_rq_kind == ACCT_START)
+		e.acct_rq = 0;
+};
+
+// Forget the link in progress: the code's digest, the numbers, and a wait on it.
 void(entity e) Account_Drop =
 {
+	Account_Unwait(e);
 	if (e.acct_tag != "")
 		strunzone(e.acct_tag);
 	if (e.acct_pin != "")
 		strunzone(e.acct_pin);
+	if (e.acct_num != "")
+		strunzone(e.acct_num);
 	e.acct_tag = "";
 	e.acct_pin = "";
+	e.acct_num = "";
+	e.acct_poll_end = 0;
 };
 
 // Edicts are recycled: a new connection owes nothing and is nobody.
@@ -110,7 +149,10 @@ void(entity e) Account_Connect =
 {
 	if (e.acct_nonce != "")
 		strunzone(e.acct_nonce);
+	if (e.acct_snonce != "")
+		strunzone(e.acct_snonce);
 	e.acct_nonce  = "";
+	e.acct_snonce = "";
 	Account_Drop(e);
 	e.acct_want   = 0;
 	e.acct_rq     = 0;
@@ -155,13 +197,11 @@ void(entity e) Account_Say =
 		sprint(e, PRINT_HIGH, sprintf("^1steam:^7 ^3%s^7 is banned from the "
 		                              "leaderboards\n", e.acct_name));
 	else if (e.acct_state == ACCT_NONE)
-		sprint(e, PRINT_HIGH, sprintf("^5steam:^7 this install is not linked to a Steam "
-		                              "account. Sign in at ^3%s^7, then type ^3link^7 in "
-		                              "the console\n", Account_Url()));
+		sprint(e, PRINT_HIGH, "^5steam:^7 this install is not linked to a Steam account. "
+		                      "Type ^3link^7 in the console to link it\n");
 	else
-		sprint(e, PRINT_HIGH, sprintf("^5steam:^7 the leaderboard has not said who this "
-		                              "install is yet. To link it, sign in at ^3%s^7, then "
-		                              "type ^3link^7 in the console\n", Account_Url()));
+		sprint(e, PRINT_HIGH, "^5steam:^7 the leaderboard has not said who this install is "
+		                      "yet. Type ^3link^7 in the console to link it\n");
 };
 
 // A word for the client's box (cl_account.qc has what each says).  Always a
@@ -214,13 +254,14 @@ void(entity e) Account_Hello =
 	              num_for_edict(e)));
 };
 
-float(string s) Account_IsPin =
+// `n` digits and nothing else.
+float(string s, float n) Account_Digits =
 {
 	local float i, c;
 
-	if (strlen(s) != 6)
+	if (strlen(s) != n)
 		return FALSE;
-	for (i = 0; i < 6; i = i + 1)
+	for (i = 0; i < n; i = i + 1)
 	{
 		c = str2chr(s, i);
 		if (c < '0')
@@ -253,13 +294,106 @@ string() Account_NewPin =
 	return out;
 };
 
+// A code as surfd issues one: ten of its alphabet (accounts.CODE_ALPHABET).
+float(string s) Account_IsCode =
+{
+	local float i;
+
+	if (strlen(s) != 10)
+		return FALSE;
+	for (i = 0; i < 10; i = i + 1)
+		if (strstrofs("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", substring(s, i, 1)) < 0)
+			return FALSE;
+	return TRUE;
+};
+
 /*
-  `cmd link` (who am I), `cmd link cancel`, `cmd link <32 hex>` (asking: the
-  digest of a code) or `cmd link <six digits>` (confirming: the number
-  Account_Reply sent the box).  The client's signature follows in the same
-  packet; Account_Proof posts.  Every refusal is a word for the box.
+  `cmd link start`: the box asks for a link nobody has to type a code for.  The
+  client gets a nonce to sign (ticks -5); Account_Proof posts it and
+  Account_Reply sends the code back.  The same gap as a typed code's.
 */
-void(entity e, string arg) Account_Link =
+void(entity e) Account_Start =
+{
+	local string n;
+
+	if (!Account_On())
+	{
+		Account_Note(e, "off");
+		return;
+	}
+	Account_Unwait(e);
+	if (Account_Busy(e))
+	{
+		Account_Note(e, "busy");
+		return;
+	}
+	if (e.acct_last)
+	if (time - e.acct_last < ACCT_GAP)
+	{
+		Account_Note(e, "soon");
+		return;
+	}
+	e.acct_last = time;
+	Account_Drop(e);
+	n = SV_RandHex(16);
+	if (e.acct_snonce != "")
+		strunzone(e.acct_snonce);
+	e.acct_snonce = strzone(n);
+	e.acct_want   = ACCT_START;
+	e.acct_want_t = time;
+	stuffcmd(e, sprintf("acct_start %s\n", n));
+};
+
+/*
+  A started link, waited on.  From PlayerPostThink, so it stops with the
+  player.  No proof rides on a wait: it reads an account's NAME for a code
+  surfd already keeps for this player's key.
+*/
+void(entity e) Account_Think =
+{
+	if (!e.acct_poll_end)
+		return;
+	if (time > e.acct_poll_end)
+	{
+		Account_Drop(e);
+		Account_Note(e, "stale");
+		return;
+	}
+	if (time < e.acct_poll_t)
+		return;
+	if (e.acct_rq)
+	{
+		if (time - e.acct_rq_t <= ACCT_RQLIFE)
+			return;
+		// Never answered.  The engine may still be holding that request (it has
+		// 32 and no timeout of ours), so the next is not for a while.
+		e.acct_rq     = 0;
+		e.acct_poll_t = time + ACCT_POLL_MISS;
+		return;
+	}
+	e.acct_poll_t  = time + ACCT_POLL_IDLE;
+	if (time < e.acct_poll_end - ACCT_STARTLIFE + ACCT_POLL_EAGER)
+		e.acct_poll_t = time + ACCT_POLL;
+	e.acct_rq      = Account_NextId();
+	e.acct_rq_kind = ACCT_WAITING;
+	e.acct_rq_t    = time;
+	if (!uri_post(strcat(cvar_string("lobby_master"), "/api/link/wait"), e.acct_rq,
+	              "application/x-www-form-urlencoded",
+	              sprintf("key=%s&node=%s&ip=%s&tag=%s",
+	                      uri_escape(cvar_string("lobby_master_key")),
+	                      uri_escape(sprintf("p%g", cvar("sv_port"))),
+	                      uri_escape(infokey(e, "ip")), e.acct_tag)))
+		e.acct_rq = 0;                  // the engine is full: the next think asks again
+};
+
+/*
+  `cmd link` (who am I), `cmd link cancel`, `cmd link start`, `cmd link <32
+  hex>` (asking: the digest of a code) or `cmd link <six digits> [<four>]`
+  (confirming: the number Account_Reply sent the box and, for a start, the one
+  the sign-in page showed).  The client's signature follows in the same packet;
+  Account_Proof posts.  Every refusal is a word for the box.
+*/
+void(entity e, string arg, string num) Account_Link =
 {
 	if (!e.acct_here)
 		return;
@@ -267,6 +401,11 @@ void(entity e, string arg) Account_Link =
 	{
 		e.acct_want = 0;
 		Account_Drop(e);
+		return;
+	}
+	if (arg == "start")
+	{
+		Account_Start(e);
 		return;
 	}
 	if (!Account_On())
@@ -282,19 +421,20 @@ void(entity e, string arg) Account_Link =
 		Account_Say(e);
 		return;
 	}
+	Account_Unwait(e);                  // a typed code outranks the start it replaces
 	if (Account_Busy(e))
 	{
 		Account_Note(e, "busy");
 		return;
 	}
-	if (Account_IsPin(arg))
+	if (Account_Digits(arg, 6))
 	{
 		if (e.acct_pin == "")
 		{
 			Account_Note(e, "code");
 			return;
 		}
-		if (time - e.acct_pin_t > ACCT_PINLIFE)
+		if (time > e.acct_pin_t)
 		{
 			Account_Drop(e);
 			Account_Note(e, "stale");
@@ -307,6 +447,12 @@ void(entity e, string arg) Account_Link =
 			Account_Note(e, "proof");
 			return;
 		}
+		// The page's number: four digits or nothing.  surfd judges it.
+		if (e.acct_num != "")
+			strunzone(e.acct_num);
+		e.acct_num = "";
+		if (Account_Digits(num, 4))
+			e.acct_num = strzone(num);
 		e.acct_want   = ACCT_CONFIRM;
 		e.acct_want_t = time;
 		return;
@@ -341,7 +487,7 @@ float() Account_NextId =
 
 /*
   A `rec_rcpt`.  FALSE = it is a run's, and SV_RecRcpt gets it as before.
-  TRUE = it signs one of the three proof kinds: it is ours, wanted or not, and
+  TRUE = it signs one of the four proof kinds: it is ours, wanted or not, and
   is never passed on.
 */
 float(entity e, string pub, string ticks, string sig, string svname) Account_Proof =
@@ -356,6 +502,8 @@ float(entity e, string pub, string ticks, string sig, string svname) Account_Pro
 		kind = ACCT_ASK;
 	if (ticks == "-4")
 		kind = ACCT_CONFIRM;
+	if (ticks == "-5")
+		kind = ACCT_START;
 	if (!kind)
 		return FALSE;
 	if (!e.acct_here)
@@ -387,10 +535,15 @@ float(entity e, string pub, string ticks, string sig, string svname) Account_Pro
 		path = "/api/account";
 		body = strcat(body, "&nonce=", e.acct_nonce);
 	}
+	else if (kind == ACCT_START)
+	{
+		path = "/api/link/start";
+		body = strcat(body, "&nonce=", e.acct_snonce);
+	}
 	else
 		body = strcat(body, "&tag=", e.acct_tag);
 	if (kind == ACCT_CONFIRM)
-		body = strcat(body, "&pin=", e.acct_pin);
+		body = strcat(body, "&pin=", e.acct_pin, "&shown=", e.acct_num);
 
 	e.acct_rq      = Account_NextId();
 	e.acct_rq_kind = kind;
@@ -434,6 +587,8 @@ void(entity who, string why) Account_Refused =
 		Account_Note(who, "server");
 	else if (why == "proof")
 		Account_Note(who, "proof");
+	else if (why == "number")
+		Account_Note(who, "number");
 	else
 		Account_Note(who, "code");
 };
@@ -444,7 +599,7 @@ void(float reqid, float code, string body) Account_Reply =
 	local entity who;
 	local int    root;
 	local float  kind, answered, ok, linked, banned;
-	local string why, nm, a, b;
+	local string why, nm, a, b, st, cd;
 
 	who = findfloat(world, acct_rq, reqid);
 	if (who == world)
@@ -467,6 +622,8 @@ void(float reqid, float code, string body) Account_Reply =
 	nm       = strcat(json_get_string(json_find_object_child(root, "name")));
 	a        = strcat(json_get_string(json_find_object_child(root, "from")));
 	b        = strcat(json_get_string(json_find_object_child(root, "to")));
+	st       = strcat(json_get_string(json_find_object_child(root, "state")));
+	cd       = strcat(json_get_string(json_find_object_child(root, "code")));
 	if (root)
 		json_free(root);
 	if (code)
@@ -475,9 +632,40 @@ void(float reqid, float code, string body) Account_Reply =
 		dprint(sprintf("^1account:^7 the directory returned %g to request %d\n", code, reqid));
 	}
 	// Seven values: a varargs call takes eight parameters, the format among them.
-	dprint(sprintf("^5account:^7 kind %g answered for client %g: answered %g ok %g "
-	              "linked %g banned %g why '%s'\n", kind, num_for_edict(who), answered,
-	              ok, linked, banned, why));
+	// A wait that says "wait" is every two seconds for ten minutes: not printed.
+	if (kind != ACCT_WAITING || st != "wait")
+		dprint(sprintf("^5account:^7 kind %g answered for client %g: answered %g ok %g "
+		              "linked %g banned %g why '%s'\n", kind, num_for_edict(who), answered,
+		              ok, linked, banned, strcat(why, st)));
+
+	if (kind == ACCT_WAITING)
+	{
+		// Unanswered, or still waiting: Account_Think asks again.
+		if (!answered)
+			return;
+		if (!who.acct_poll_end)
+			return;                     // cancelled while this was out
+		if (st == "ready")
+		{
+			who.acct_poll_end = 0;
+			if (who.acct_pin != "")
+				strunzone(who.acct_pin);
+			who.acct_pin   = strzone(Account_NewPin());
+			// Good for as long as the start is: the player is in a browser
+			// when this is sent, and 90 s of it ran out there in the review.
+			who.acct_pin_t = who.acct_start_end;
+			// "n": the box asks for the number the sign-in page shows.
+			stuffcmd(who, sprintf("acct_ask %s \"%s\" \"%s\" n\n", who.acct_pin,
+			                      Account_Quoted(b), Account_Quoted(a)));
+		}
+		else if (st == "gone")
+		{
+			// Replaced, contested or spent: not "took too long".
+			Account_Drop(who);
+			Account_Note(who, (why == "banned") ? "banned" : "gone");
+		}
+		return;
+	}
 
 	if (!answered)
 	{
@@ -495,6 +683,25 @@ void(float reqid, float code, string body) Account_Reply =
 			return;                     // could not be checked: not "not linked"
 		Account_Is(who, linked, banned, nm);
 		Account_Say(who);
+		// For the client's prompt: 1 not linked, 2 linked, 3 banned.
+		stuffcmd(who, sprintf("acct_is %g\n", who.acct_state));
+		return;
+	}
+	if (kind == ACCT_START)
+	{
+		if (!ok || !Account_IsCode(cd))
+		{
+			Account_Refused(who, (why == "") ? "later" : why);
+			return;
+		}
+		// The code links nothing (the header), so it may travel in the open.
+		// The digest is what every later call names it by.
+		who.acct_tag = strzone(substring(strtolower(digest_hex("SHA256",
+		                       strcat("ftesurf-code ", cd))), 0, 32));
+		who.acct_poll_t    = time + ACCT_POLL;
+		who.acct_poll_end  = time + ACCT_STARTLIFE;
+		who.acct_start_end = who.acct_poll_end;
+		stuffcmd(who, sprintf("acct_go %s\n", cd));
 		return;
 	}
 	if (kind == ACCT_ASK)
@@ -508,7 +715,7 @@ void(float reqid, float code, string body) Account_Reply =
 		if (who.acct_pin != "")
 			strunzone(who.acct_pin);
 		who.acct_pin   = strzone(Account_NewPin());
-		who.acct_pin_t = time;
+		who.acct_pin_t = time + ACCT_PINLIFE;
 		// The names are only ever drawn by the box; the number it validates.
 		stuffcmd(who, sprintf("acct_ask %s \"%s\" \"%s\"\n", who.acct_pin,
 		                      Account_Quoted(b), Account_Quoted(a)));

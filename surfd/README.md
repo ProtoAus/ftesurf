@@ -825,45 +825,85 @@ style) and sets no cookie, except the Steam sign-in below.
 
 ## Steam accounts (/board/link)
 
-`accounts.py` and `steam.py`, schema 13. STORE-ONLY: nothing that ranks,
+`accounts.py` and `steam.py`, schema 14. STORE-ONLY: nothing that ranks,
 verifies or publishes a run reads these tables (ROADMAP 14 has the stages).
 The pages are off unless `SURFD_BOARD_URL` is set; `SURFD_STEAM_KEY` adds names
 and avatars.
 
 ```
-GET  /board/link            what linking is, and the button
-GET  /board/link/steam      302 to Steam's OpenID; sets the state cookie
-GET  /board/link/return     checks the reply, asks Steam, shows a code and the
-                            account's linked installs
+GET  /board/link[?c=CODE&k=OPENER]   what linking is, and the button
+GET  /board/link/steam      302 to Steam's OpenID; sets the state cookie. `c`
+                            and `k` ride in return_to, so Steam's signature
+                            covers them
+GET  /board/link/return     checks the reply, asks Steam; with `c`, attaches the
+                            account to the game's start and shows its NUMBER;
+                            without, shows a code to type. Lists the account's
+                            linked installs
+GET  /board/link.css        the pages' one stylesheet (web/link.css)
 GET  /board/link/unlink?t=  asks, then (its own link) unlinks one install
 POST /api/link     key, node, player, ip, tag, pub, sig, server        asking
   -> {"acct":1,"ok":0,"why":"confirm","to","from"}   `from` is "" unless it would move
-POST /api/link     ...the same, and pin                                confirming
+POST /api/link     ...the same, and pin [, shown]                      confirming
   -> {"acct":1,"ok":1,"name","banned"}
-either -> {"acct":1,"ok":0,"why":"code"|"banned"|"slow"|"proof"|"server"|"later"}
+either -> {"acct":1,"ok":0,"why":"code"|"banned"|"slow"|"proof"|"server"|"later"|"number"}
+POST /api/link/start  key, node, player, ip, nonce, pub, sig, server   the game starts
+  -> {"acct":1,"ok":1,"code"} | {"acct":1,"ok":0,"why":"slow"|"proof"|"server"|"later"}
+POST /api/link/wait   key, node, ip, tag                               no signature
+  -> {"acct":1,"state":"wait"|"ready","to","from"} | {"acct":1,"state":"gone"[,"why":"banned"]}
 POST /api/account  key, node, ip, nonce, pub, sig, server
   -> {"acct":1,"linked":0[,"why":"proof"|"server"|"later"]}
    | {"acct":1,"linked":1,"name","banned"}
 ```
 
-AN INSTALL IS ITS SIGNING KEY. Both `/api` routes need the shared key, a
-`SURFD_TRUSTED` source, and a signature by `pub` over rec_sign's statement
-(`accounts.STATEMENT`), whose `ticks` line says which kind it is:
+AN INSTALL IS ITS SIGNING KEY. The four `/api` routes need the shared key and
+a `SURFD_TRUSTED` source; all but `/api/link/wait` also carry a signature by
+`pub` over rec_sign's statement (`accounts.STATEMENT`), whose `ticks` line says
+which kind it is (a start's is kept and checked later: below):
 
 | kind | ticks | nonce signed |
 |---|---|---|
 | a connect | -2 | the 32 hex the lobby chose for it |
 | asking | -3 | `ask_nonce(code)` |
 | confirming | -4 | `confirm_nonce(code, pin)` |
+| starting | -5 | `start_nonce(nonce, opener)`: the lobby's 32 hex with the client's secret |
 
-The lobby never sees the code: `tag` is `code_tag(code)`, and surfd finds the
-live code it is a digest of. Asking keeps the code for the key that asked
+The lobby never sees a TYPED code: `tag` is `code_tag(code)`, and surfd finds the
+live code it is a digest of (a start's code passes through the lobby in the
+clear, and is not a secret: see below). Asking keeps the code for the key that asked
 (`linkcodes.claim`) and answers with the account's name; the lobby sends the
 client's link box a six-digit `pin` of its own choosing, and confirming, signed
 over that pin by the same key, spends the code and writes `linkkeys`. Whether a
 person meant either signature is the game's business (cl_account.qc makes them
-only under key presses), not surfd's. `server` is the
-address the client signed; it must be one `SURFD_PUBLIC_HOST` resolves to, or
+only under key presses), not surfd's.
+
+A LINK THE GAME STARTS (Patch 619). The client makes a 24-hex OPENER and
+never sends it to the lobby. `/api/link/start` takes the key's signature over
+`start_nonce(nonce, opener)` and CANNOT CHECK IT: it checks the shape and that
+it was made for an address of ours, keeps it (`linkcodes.seal`) and issues a
+code that names the key (`claim`) and has no account (`shown` is `?`), so
+nobody can ask or confirm with it. The code goes back to the client in the
+clear, which shows `/board/link?c=CODE&k=OPENER`. THE CODE LINKS NOTHING AND
+IS NOT A SECRET. `link_return` verifies the kept signature with the opener the
+sign-in brought: it fits only the key whose client made that opener, so a code
+read off the wire, or swapped on it, opens nothing (the same "start again"
+page as a start that does not exist, and the start is not touched). When it
+fits, the start gets the signed-in account and a four-digit number (`shown`),
+which the page shows; a sign-in that came with a start's address never yields
+a code to type. The same account again sees the same number; a DIFFERENT
+account with the right address ends the start for both (`used_by`
+`contested`). `/api/link/wait` then says `ready` with the account's name, the
+lobby sends its pin, and confirming is `/api/link` with `shown`: the page's
+number as the player typed it into the game. ONE TRY: a wrong or missing
+number answers `number` and spends the start (`mismatch`). Signing in for a
+key's start retires that key's other starts. Starts spend from the same
+budgets as link steps (`link_call`) and have a cap of their own (200 nobody
+has signed in for; they do not count toward the 500 codes that close
+sign-in); checking a start's signature at sign-in has an allowance of its own
+(60 a minute), and past it the page says to try again. Waits have their own
+budgets too (60 a minute per client address, past which the answer is `wait`;
+6000 a minute per source, apart from the link steps').
+
+`server` is the address the client signed; it must be one `SURFD_PUBLIC_HOST` resolves to, or
 one listed in `SURFD_LINK_HOSTS`, on the port `node` names. `why: later` means
 surfd could not check (the name does not resolve, `ed25519.py` is not in
 `SURFD_TOOLS`, or the minute's checks are spent: 480 for connects, 240 for

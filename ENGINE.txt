@@ -41,6 +41,14 @@ patch    621
 # csprogs and menu.dat only: no engine source, server QC, recorder, evidence, ranking,
 # default or Build change (commit and tag above stay). 619 is held by another session
 # and had not landed.
+# Patch 619: the Steam link starts in the game. An install that is not linked gets
+# a prompt on its first lobby of a game; Enter signs for a code, the sign-in address
+# with it is copied, and the page the player signs in on shows a four-digit number.
+# The box asks "link this game to X?" by itself, and that number with Enter links.
+# A ten-character code typed into the box still works for a sign-in that did not
+# start in the game. The sign-in pages are redrawn. qwprogs, csprogs and surfd
+# (schema 14); no engine source, recorder, evidence, ranking or Build change (commit
+# and tag above stay).
 # Patch 618: fteplug_ui_imgui is loaded at client boot, by one guarded line in
 # cfg/default.cfg beside hl2's, so the run graphs' ImPlot plots (Patch 614) need no
 # console command where the DLL is installed. A config default and nothing else: no

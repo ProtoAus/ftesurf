@@ -6207,7 +6207,7 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   #501 of 501. It orders by `of - rk`, people beaten. Likewise `wr` counts
   first places and `wrc` counts the contested ones; the page leads with `wrc`.
 
-### Steam accounts (Patches 612 and 615, surfd schema 13) -- stored, and ranking on nothing
+### Steam accounts (Patches 612, 615, 617 and 619, surfd schema 14) -- stored, and ranking on nothing
 
 - **STORE-ONLY.** `accounts`, `linkkeys`, `linkcodes` and `linknonces` are read
   by nothing that ranks, verifies or publishes, and sv_account.qc kicks and
@@ -6301,7 +6301,73 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   when nothing else has the keyboard. The arm sends `closemenu`, finds the
   window by its class (`FTEGLQuake`) and posts WM_KEYDOWN with the scan code
   in lParam: the engine maps the key from that, not from wParam.
-- **THE CODE NEVER REACHES THE LOBBY.** The client sends `code_tag(code)` and
+- **THE LINK STARTS IN THE GAME (Patch 619), AND A NUMBER TIES THE BROWSER TO
+  IT.** The start's code is in an address and on the wire: public, and it links
+  nothing. The page the player signs in on shows four digits
+  (`linkcodes.shown`); the box asks for them under the account's name; surfd
+  compares, one try, and a wrong one spends the start. THE FIRST CUT TIED THE
+  TWO BY ADDRESS (a browser at the address the game started from, nothing
+  typed), then by address plus "the account's first install". The review
+  walked a victim's account onto somebody else's install with one sign-in:
+  an address is a household, a campus or a carrier's NAT, and at rollout every
+  account is one with no install. Do not bring the address back as a shortcut.
+- **A START'S SIGNATURE IS CHECKED WHEN THE BROWSER ARRIVES, NOT WHEN THE START
+  DOES.** The page's number is typed into the game and goes to the lobby in the
+  clear. That is harmless only if a player can never be signed in for
+  somebody else's start, and game code cannot tell its own start from another:
+  it does not know its own key, and every line from the lobby can be rewritten
+  on the way. So the client makes a secret (the opener, `&k=` in the address),
+  and its key signs the lobby's nonce WITH it. surfd keeps that signature
+  (`linkcodes.seal`) and verifies it with the opener a sign-in brings. THE
+  FIRST ANSWER WAS A DIGEST OF THE OPENER SENT WITH THE START, and it does not
+  work: whoever sees the digest can register it under their own key. What
+  cannot be copied is a signature over something its watcher never saw. The
+  cost: `/api/link/start` stores a claim it has not verified, so "one start a
+  key" is enforced at sign-in, and a wrong signature is found there too.
+- **THE OPENER IS FRAME TIMING, HASHED** (`Account_Stir`: every frame's `cltime`,
+  `frametime` and `random()`, and every key event, into a SHA-256 chain).
+  Measured on this machine, 11 Oct: `frametime` differs frame to frame in its
+  sixth and seventh digits (0.00998342875, 0.0100200288, 0.0100286286 ...),
+  so a few seconds of frames is far more than the 96 bits taken; the mouse's
+  moves are folded in as well. THE START'S SIGNATURE IS AN OFFLINE TEST FOR A
+  GUESSED OPENER (key, nonce and signature all cross the wire), so everything
+  rests on that pool: game code has no random source of the engine's, and if
+  it gets one, use it. Opening a start at sign-in has a signature allowance of
+  its own (`verify-open`), so a flood of link steps cannot strand a player who
+  has just spent a Steam assertion.
+- **THE BOX TAKES NO KEY A PLAYER NEEDS TO REACH A BROWSER.** The first cut took
+  Tab for "I have a code": Alt+Tab is how the player gets to the browser, and
+  default.cfg binds Tab and Enter (`+showscores`, `say`). The prompt that comes
+  up by itself and the wait for the browser take Enter and Esc and nothing
+  else (`Account_Light`); the question for a start takes digits, Backspace,
+  Enter and Esc, and NOT Y or N.
+- **A START IN FLIGHT IS FORGOTTEN ON CANCEL** (`Account_Unwait`). Esc between
+  the Enter and surfd's reply used to leave the request out; its reply then
+  armed ten minutes of waits for a box that had closed. The client also sends
+  `cmd link cancel` when its own 20 s runs out on anything but a confirm.
+- **THE LOBBY'S NUMBER FOR A START LIVES AS LONG AS THE START** (`acct_pin_t` is
+  a deadline now). It is issued while the player is still in the browser; with
+  617's 90 s it was dead before they got back.
+- **THE SIGN-IN ADDRESS IS THE CLIENT'S OWN CONSTANT.** `acct_go` carries a code
+  and nothing else; what is copied is `ACCT_LINK_URL` with it. A server that
+  could put an address on the clipboard under "paste this into your browser"
+  would be choosing the sign-in page. The server's `lobby_link_url` cvar is gone.
+- **THE PROMPT IS ONCE A GAME, NOT ONCE A MAP**: `_acct_prompted` is a cvar
+  because CSQC globals die with the map. A map change during the browser step
+  closes the box for the same reason; `link` starts again.
+- **`p615link.py`: A KEY THE GAME OWNS HAS TO PRINT.** "The prompt leaves the
+  game its keys" is graded on `bind w "echo gamekey-w"` and a count of that
+  line: once with the prompt up, twice once the wait is.
+- **`accounts_mutants.py` PINS A MUTANT TO A FUNCTION** (fifth element) where
+  two share a line. Thirteen older mutants went BAD the day `/api/link/start`
+  repeated `/api/link`'s limits; the shared lines became `link_call` and the
+  rest are pinned. `expiry-pre` and `spent-pre` no longer survive alone:
+  `/api/link/wait` reads through `live_code` and nothing else.
+- **`test_admin.py` FAILS TWO CHECKS ON AN UNTOUCHED main** on this machine
+  (11 Oct, `fec0820`: the amplification-guard message, and "three snapshots
+  cost no more packets than one: got 8, want 4"). Not from the accounts work;
+  nobody has looked.
+- **A TYPED CODE NEVER REACHES THE LOBBY.** The client sends `code_tag(code)` and
   signs `ask_nonce(code)`: three tagged SHA-256s, so the wire's is not the
   signed one. The first key to ask with a code holds it (`linkcodes.claim`);
   only that key can confirm. A code is 50 bits (ten characters since Patch
