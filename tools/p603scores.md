@@ -247,7 +247,8 @@ owner's call, so on a public lobby the csprogs panels keep the old look.
 the fallback. The stage described in the checkpoints below was rebased onto
 origin/main, reviewed, fixed and gated in the owned root
 `C:/FTESurf-worktrees/imgui-ship-20261009T2050Z/` (ROOT below; its rigs are
-retained until the root is retired). Everything was measured on ONE laptop with
+retained until the root is retired). Everything was measured on ONE machine, the
+desktop PC (RTX 2080 SUPER; this file said "laptop" until 10 Oct, wrongly), with
 synthetic rows; this is not device, DPI, font or appearance acceptance — those are
 lextest.md's. Known quirks: BACKLOG.md "Native scoreboard".
 

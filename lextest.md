@@ -77,7 +77,8 @@ On both Windows installs since 10 Oct, NOT on the Pi. A lobby hands every client
 its own csprogs, so on the public lobbies the cvar does nothing until the Pi is
 deployed; try it on a map you start locally.
 
-Machines measured: this laptop, GL/D3D11/Vulkan, synthetic rows. Judge:
+Machines measured: this PC (the desktop, RTX 2080 SUPER; not the laptop),
+GL/D3D11/Vulkan, synthetic rows. Judge:
 
 - **Is it readable at all?** The font is ImGui's built-in 13 px bitmap face,
   scaled in steps. It sits beside the panel's own font and looks like a
@@ -93,7 +94,7 @@ Machines measured: this laptop, GL/D3D11/Vulkan, synthetic rows. Judge:
   HTTP board. Open the online tab on a populated map, page to the end, follow
   your own row after a finish, pin from a peek and check it stays on your page.
 - **DPI / a second machine.** Nothing here was tried at a Windows display scale
-  other than this laptop's, on another GPU, or in fullscreen.
+  other than this PC's, on another GPU (the laptop's above all), or in fullscreen.
 
 Not a ranking, recorder or evidence change. BACKLOG.md lists the known quirks.
 

@@ -2464,6 +2464,13 @@ and Patch 607 removed it: no `ui_style`, no classic drawing branch, one board
 layout. The old look is at 562a6c9 and before. What a human has to judge is in
 lextest.md. Left open, none of it a wrong action:
 
+- **Nothing here was measured on the laptop.** Every rig in Patches 604-607 ran
+  on the desktop PC (its logs say `GL_RENDERER: NVIDIA GeForce RTX 2080 SUPER`);
+  their records said "one laptop" until 10 Oct, which was wrong and is
+  corrected. The new look draws more quads than the old one (nine-slice rounded
+  boxes, a stepped shadow under each panel), so the desktop's cost does not
+  transfer: run `tools/p603perf.py` and look at hud_edit and the board on the
+  N100 laptop before assuming it is free there.
 - **Old arms that name the classic board.** `cfg/test/b64tabs.cfg`,
   `b68col.cfg` and `b64live.cfg` predict `cols` budgets (76/65/44/83) of the
   removed character-offset table; `scores status` now prints the drawn column
@@ -2555,7 +2562,7 @@ a click is lost or the table falls back to legacy, never a wrong row.
 - **The default switch is still held.** Needs the lextest.md items (font face and
   size, mouse feel, DPI, a second machine), a font with more than Latin glyphs
   (ProggyClean draws CJK names as `?`; legacy draws boxes), and an agreed CPU
-  budget: open cost measured 0.78-0.79x legacy on one laptop, GL only, in a
+  budget: open cost measured 0.78-0.79x legacy on one machine (the desktop PC), GL only, in a
   number the temp-string collector moves by a third (section below).
 - **A held click is dropped when any cell changes.** `Scores_NativePublish`
   republishes on any label change and every `SetModel2` resets plugin input, so a
@@ -2610,7 +2617,7 @@ a click is lost or the table falls back to legacy, never a wrong row.
   `tools/test_p603soak_unit.py` has no complete passing rig to run on. On the
   complete second rig 17 of its 18 controls act; the 18th, `test_acting`,
   reports that rig's real 59.3 MiB miss. The leak arm separated there (294
-  against 54 MiB). Rerun all three arms when the laptop has memory to spare.
+  against 54 MiB). Rerun all three arms when the PC has memory to spare.
 - **Page floor still creeps with churn.** 21 MiB over 800 opens at 32 rows, flat
   at 6 rows (`runtime/soak-rows6`): it follows per-row QC string work, not the
   open itself. See the temp-string section.
@@ -2650,7 +2657,7 @@ to the collector.
 
 `D3D9_VID_GetRGBInfo` and `D3D8_VID_GetRGBInfo` (engine/d3d/vid_d3d.c, vid_d3d8.c)
 have the bottom-up copy loop Patch 604 fixed in `D3D11_VID_GetRGBInfo`, with the
-same positive stride. Neither renderer starts on the test laptop, so this is read,
+same positive stride. Neither renderer starts on the test PC, so this is read,
 not measured. Check: `screenshot` under `vid_renderer d3d9`; the HUD should be the
 right way up.
 
