@@ -1212,21 +1212,50 @@ do first:
   the same unencrypted connection as everything else: it is a courtesy against
   typing somebody else's code, not a proof.
 
-**Build.** The lobby already knows each connection's account from its proven
-key (14.2), so it sends that with the run and `submit_run` takes the account
-from surfd's own table, never from the guid. A ranked row needs a linked key,
-and its `runs.player` becomes the SteamID64, as it
-already is for imported rows: a reinstall keeps its times, and a player's own
-Momentum and KSF rows join their profile. The install guid moves to its own
-column for the leaf-digest and receipt joins. An unlinked finish is not ranked
-and the lobby says why. The sweeper holds a ranked run whose receipt key is not
-one of the account's (Patch 422's flag, made a gate). Admin: ban and unban by
-SteamID with a note; a banned account is refused at connect and at submit and
-its rows leave the public board (kept, not deleted). The old guid rows are
-dropped from ranked after a database backup.
-**Unknowns.** How many honest runs have no verified receipt (Multi-Session and
-segmented runs can have none), measured on the fleet before the gate.
-**Size.** Large, and the riskiest: full review rounds.
+**The engine change, specified (not built).** In cl_receipt.c the signing moves
+into a function, with two callers. A CSQC builtin calls it for game code, and
+refuses the two link kinds (ticks -3, -4) unless the engine is inside its own
+delivery of a device's key event to game code (a flag round `CSQC_KeyPress`,
+not set for `in_journal_synth`). The console command `rec_sign` answers only
+the typed console (exec level LOCAL exactly), so a line game code wrote can no
+longer reach it. Game code uses the builtin when it is there and the console
+line when it is not, so the progs go out first and old engines keep working.
+It rebuilds the client, so every plugin and both installs go with it.
+
+**MEASURED FIRST (the Pi, 2026-10-10).** The ranked tier holds 13 rows, all one
+install's (the owner's): two map runs and eleven stage rows on six maps. The
+imported tiers hold 2,947,861 rows (`momentum`, 60,236 players) and 235,716
+(`ksf`, 10,549), keyed on SteamID64 already. 23 receipts, 2 signing keys. The
+one link on record names the same key that signed that install's receipts: a
+run's receipt and an install's link are the SAME `fskey`, so "is this run's key
+one of its account's" is a join, `receipts.pub = linkkeys.pub`. So the re-key
+is not the migration of a board: it is thirteen rows.
+
+**Then, in three patches, each reviewed and deployed on its own.**
+
+- **(a) A ranked row needs a linked account.** The lobby remembers the key
+  surfd proved for each connection and sends it with the run. `submit_run`
+  looks it up in `linkkeys`: linked, the row is stored under the SteamID64 with
+  the guid in a new `install` column (the leaf digest and the receipt joins
+  read that); not linked, the run goes to the community tier, which no board
+  lists, and the lobby tells the player to link; banned, it is not stored. A
+  reinstall or a second machine then improves the same row, and a player's
+  Momentum and KSF rows are theirs on the profile page with no more work. At
+  deploy the thirteen guid rows leave the ranked tier, after the deploy's
+  database backup.
+- **(b) The sweeper holds a ranked run whose receipt key is not one of its
+  account's** (Patch 422's flag, made a gate), and one with no verified
+  receipt at all once (a) has shown how many honest runs that is.
+- **(c) Bans.** Admin: ban and unban by SteamID with a note. A banned
+  account's rows leave every public board (kept, not deleted), its installs
+  are told at connect, and (a) already refuses its runs.
+
+**Unknowns.** How many honest ranked runs have no verified receipt
+(Multi-Session and segmented runs can have none): thirteen rows are not a
+sample, so (b) counts for a week before it holds anything. What the in-game
+board uses to mark "your" row once `player` is a SteamID.
+**Size.** (a) is large and the riskiest, being the submit path: full review
+rounds.
 
 ### 14.4 Name and picture, on the site and in the game
 
