@@ -21,6 +21,10 @@ goes wrong it should fall back to the old table for that gesture, not break.
 If the table never changes, type `ui_imgui_status`: "Unknown command" means the
 plugin is not loaded; `plug_load ui_imgui` loads it.
 
+On both Windows installs since 10 Oct, NOT on the Pi. A lobby hands every client
+its own csprogs, so on the public lobbies the cvar does nothing until the Pi is
+deployed; try it on a map you start locally.
+
 Machines measured: this laptop, GL/D3D11/Vulkan, synthetic rows. Judge:
 
 - **Is it readable at all?** The font is ImGui's built-in 13 px bitmap face,

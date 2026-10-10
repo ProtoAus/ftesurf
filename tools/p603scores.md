@@ -120,6 +120,59 @@ and the installed hashes are in the deployment record that follows this commit.
   wrong-action or stuck-UI defect, one cosmetic staleness. Everything else is
   in BACKLOG.md.
 
+### Final build and Windows deployment — 2026-10-10
+
+Published: ftequakers `26e74dc91` (Patch 604, tag patch-604) and `f6b92f413`
+(Patch 605, tag patch-605); this repository `6af23fc` (build.ps1 summary),
+`f892aa5` (Patch 604 record), `a1c8dd7` (Patch 605).
+
+Build of exactly those commits, `build.ps1 -Engine -Full -NoDeploy -Jobs 6`, 132 s,
+exit 0. The engine Makefile's `test -d ../.git` fails in a worktree and leaves
+the binary unstamped (the first final build was; caught by reading its bytes), so
+the rebuild passed `SVN_VERSION=git-7142-patch-605-0-gf6b92f413` and the matching
+`SVNREVISION` in the environment. Client and server both contain that string. 77
+compiler warning lines, the same count as the pre-review stage build; 55 distinct
+sites, none on a line this work changed. Three progs at 0 warnings, byte-identical
+to the build every QC-dependent gate above ran on.
+
+| sha256 (first 16) | file |
+|---|---|
+| `d06480c2661351f5` | fteqw64.exe (installed as ftesurf64.exe / fteqw64.exe) |
+| `90cd91c03e4b92b4` | fteqwsv64.exe |
+| `086b8a29dd35a835` | fteplug_ui_imgui_x64.dll |
+| `37e4cd604786ee54` | fteplug_hl2_x64.dll |
+| `dfeb400c75e3aff2` | fteplug_box3d_x64.dll |
+| `053a19f6f6948ace` | fteplug_cod_x64.dll |
+| `5d07ff5351e9713e` | fteplug_ode_x64.dll |
+| `3bd943ca40390396` | csprogs.dat |
+| `5e7fd33b3d0beac1` | qwprogs.dat |
+| `bb08951eb595687d` | menu.dat |
+
+Rerun on those binaries, all 0 failed: host suites (629 / 2872 / 3750 and the
+model regression counts), GL six arms `runtime/final/gl/p603-scores-4t07pp8h`
+with 69/69 reader controls, hostile names `runtime/final/names/p603-names-ezjvjvve`,
+D3D11 `runtime/final/d3d11/p603-scores-mg1nspav`, Vulkan
+`runtime/final/vk/p603-scores-96fulhx8`. NOT rerun on the stamped binaries: the
+cost runs and the soak, which measured the same source built without the stamp.
+
+Deployed 2026-10-10T01:35:58Z to `C:/FTESurf` and `C:/FTEQuake` by a guarded copy
+(ROOT/tmp/deploy.py, receipt ROOT/artifacts/deploy-receipt.json): every
+destination was first checked against the hash recorded when the task began, the
+live file kept as `<name>.prev`, the copy verified. 25 files match the build (23
+replaced, two line tables already identical): the client, the server (second
+install), all five plugins in both, and `ftesurf/{qwprogs,csprogs,menu}.dat` with
+their `.lno` in both. build.ps1 itself refreshes only hl2 and ui_imgui in the
+primary; box3d, cod and ode were refreshed there too so no plugin beside the new
+exe comes from an older build. No game or server was running from either install,
+and none was started from one: live behaviour rests on hash identity with the
+gated binaries. The owner's `ftesurf.cfg` was not opened.
+
+The progs come from origin/main, so this also puts Patch 600/601's guarded QC
+transport (previously published without a progs deploy) on both installs; it is
+inert without `ui_native_scores 1`. No other commit has touched product QC since the
+previous installed progs were built (2026-10-08T10:55Z). **Not deployed to the Pi**: that restarts the public
+lobbies and is the owner's call.
+
 ### Not covered
 
 Real online boards (loopback HTTP only); another GPU, driver or machine; D3D9;
