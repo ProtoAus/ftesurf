@@ -4550,6 +4550,12 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   taken out, that server loads the DLL, the plugin refuses, and the log says
   `Couldn't load plugin ui_imgui`: the guard is what the server arm shows.
   `$dedicated` is the engine's own macro (cmd.c), "1" or "0".
+  **DEPLOYED 2026-10-10 15:30 to 15:31 UTC (FTESurf `9239f6f`):** default.cfg
+  `e971b8cb0ced3e67` in both installs, the predecessor (`8fd357ac59147c8a`)
+  beside each as `default.cfg.pre618-20261010T153048Z`; and on the Pi for
+  parity (`default.cfg.pre618-20261010-153115`), with no lobby restarted,
+  since a server skips the line. C:\FTESurf is also the canonical checkout,
+  so `git status` there shows default.cfg modified until it reaches 9239f6f.
 - THREE LAYERS, ONE AUTHORITY. QC (`cl_linegraph.qc`, the `lgn_*` block) owns the
   rows, the energy sum (`lgn_e`, 8192 rows a frame), the chips, the card and
   every number. The engine (`cl_plugin_ui_plot.inc`) copies rows out of QC memory

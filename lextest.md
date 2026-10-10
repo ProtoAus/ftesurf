@@ -21,6 +21,8 @@ lobbies (csprogs). Each replaced file has a `.prev` beside it.
 default, so the plugin is now loaded at boot by one line in default.cfg. Open
 Run graphs and the plots are ImPlot's. `ui_native_graphs 0` gives Patch 610's
 plots back; taking the line out of default.cfg keeps the plugin out altogether.
+On both installs since 15:30 UTC (02:30 here); the old default.cfg is beside
+the new one as `default.cfg.pre618-...`. Start the game fresh to pick it up.
 
 The **run graphs** panel's two plots are drawn by the ImGui plugin (your two
 installs have it; no release does). Everything round them is
