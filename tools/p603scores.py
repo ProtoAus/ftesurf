@@ -55,7 +55,7 @@ def compile_client(rig):
         raise RuntimeError('actual-source fixture compilation failed: ' + str(log))
 
 
-def config(arm, port):
+def config(arm, port, style=None):
     width, height = (960, 540) if arm == 'native2' else (1920, 1080)
     scale = 1.5 if arm == 'native2' else 3
     lines = ['cfg_save_auto 0', 'log_enable 1', 'log_dir logs', 'log_name scores',
@@ -66,8 +66,12 @@ def config(arm, port):
              'scr_consize 0', 'vid_srgb 0', 'v_gamma 1', 'v_contrast 1', 'v_brightness 0',
              'name P603Fixture', 'waitms 1500', 'menu_restart', 'waitms 700', 'ui_close']
     if arm != 'absent': lines += ['plug_load ui_imgui', 'ui_imgui_status']
-    lines += [f'connect 127.0.0.1:{port}', 'waitms 6500', 'ui_close',
-              'set ui_native_scores ' + ('0' if arm == 'legacy' else '1'),
+    lines += [f'connect 127.0.0.1:{port}', 'waitms 6500', 'ui_close']
+    #Patch 606: the modern board's controls keep the classic sui ids, so the same
+    #gates grade its clicks. Unset leaves the registered default (classic). Before
+    #the three lines below: the suites splice at that exact sequence.
+    if style is not None: lines += [f'set ui_style {style}']
+    lines += ['set ui_native_scores ' + ('0' if arm == 'legacy' else '1'),
               'set ui_native_scores_font 13',
               'scores tab local', '+showscores', 'waitms 1000',
               'p603 probe peek', 'screenshot peek']
@@ -105,6 +109,12 @@ def config(arm, port):
               'p603 focus -1 0', 'waitms 300', 'p603 up', 'waitms 300',
               'p603 probe keyboard_lost', 'p603 focus -1 1', 'waitms 700',
               'p603 probe keyboard_back'] + reset
+    #Patch 606: the source switch under real clicks; every other arm changes tab from
+    #the console. Online, Segmented, back to Local: three states, none the one before
+    #it. No board host first, so an online tab cannot reach a real one from a rig.
+    lines += ['set lobby_dir ""']
+    for target, label in (('sb_t0', 'seg_online'), ('sb_t1', 'seg_segment'), ('sb_t2', 'seg_local')):
+        lines += click(target) + ['p603 tab ' + label]
     lines += ['toggleconsole', 'waitms 700', 'p603 probe console', 'toggleconsole',
               'waitms 700', 'p603 probe console_back', '-showscores', 'replay off', 'waitms 500',
               'p603 probe closed1']
@@ -149,7 +159,7 @@ def run(a):
     plugin = a.plugin or build(a.fte.resolve(), rig / 'native-build', a.cxx.resolve())
     report = {'follow': a.follow, 'http': a.http, 'http_version': 2, 'life': a.life,
               'dense': a.dense, 'dense_http': a.dense, 'font': a.font, 'font_fallback': a.font_fallback, 'utc': datetime.now(timezone.utc).isoformat(), 'csprogs_sha256': sha(rig / 'csprogs.dat'),
-              'plugin_sha256': sha(plugin), 'renderer': a.renderer, 'planned_arms': a.arms, 'arms': {}}
+              'plugin_sha256': sha(plugin), 'renderer': a.renderer, 'style': a.style, 'planned_arms': a.arms, 'arms': {}}
     for arm in a.arms:
         root = rig / arm
         game = root / 'ftesurf'
@@ -199,7 +209,7 @@ def run(a):
                 from p603dense_http import board32
                 stub = start_stub(root, board32)
             else: stub = start_stub(root)
-        cfg = config(arm, port)
+        cfg = config(arm, port, a.style)
         if a.dense:
             from p603dense import config_dense
             cfg = config_dense(cfg, arm)
@@ -347,6 +357,9 @@ def grade(rig):
                  'keyboard focus regain did not restore usable table')
             need(get('STATE', 'console_back', 'h') > 0 and get('STATE', 'console_back', 'painted') == 1,
                  'console regain did not restore usable table')
+        tabs = re.findall(r'P603 TAB (\w+) (tab=\d+ online=\d+)', text)
+        need(tabs == [('seg_online', 'tab=0 online=1'), ('seg_segment', 'tab=1 online=1'), ('seg_local', 'tab=2 online=0')],
+             'source switch did not follow real clicks: ' + str(tabs))
         need(get('OWNER', 'console', 'focus') == 0 and get('STATE', 'console', 'h') == 0,
              'console precedence subject never acted/released native')
         for name in ('closed1', 'closed2'):
@@ -396,6 +409,7 @@ if __name__ == '__main__':
     suite.add_argument('--dense', action='store_true', help='bounded additive capacity/24-row page gate')
     p.add_argument('--font-fallback', action='store_true', help='expect older scoreboard provider to cover non-default sizes')
     p.add_argument('--out', type=Path, help='owned task-root output directory')
+    p.add_argument('--style', type=int, choices=(0, 1), help='set ui_style before the board opens (default: leave it)')
     a = p.parse_args()
     if not a.grade and a.qc_artifacts is None: p.error('--qc-artifacts is required for runtime')
     if (a.font or a.dense) and a.life: p.error('font/dense and lifecycle gates must run separately')

@@ -2437,6 +2437,65 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   and teleport/stitch controls do not invent events. Repeat for a native run
   and a Momentum demo with honest missing/inferred-contact provenance. Plan 12.5–12.6.
 
+## Modern UI theme and board layout (`ui_style 1`, Patch 606)
+
+Published and on both Windows installs. In this patch `ui_style` still defaults
+to 0 and the classic look is gated pixel-identical (`tools/test_ui_theme.py`).
+What a human has to judge is in lextest.md. Left open, none of it a wrong action:
+
+- **The old look is retired** (owner, 10 Oct: "we have it in the git"). Patch
+  607 removes `ui_style`, every classic drawing branch and the classic board
+  layout, gated the other way round: the modern pixels of this patch must not
+  move. Until it lands the two looks coexist and the default is still classic.
+- **The native table is themed but still looks foreign.** `ScoresTheme`
+  (`plugins/ui_imgui/scores.inc`) changes colours only, because the p603 gates
+  click at fixed pixel offsets inside the table; it still draws ProggyClean and
+  its own column order (time before player), and it scrolls sideways inside the
+  modern board, whose table area is narrower than the classic one's. The game's
+  Roboto should be embedded in the plugin the way ProggyClean is, not read at run
+  time: `plugfsfuncs_t`'s `LoadFile` cannot ask for a trusted-only lookup, and
+  ImGui's stb_truetype is not written for untrusted fonts. Falsifier for the
+  swap: `p603scores.py --font` (its glyph-height bounds are ProggyClean's) and
+  the dense gate's rank-ink pair. The table wears the theme in EITHER style:
+  the provider cannot see `ui_style`, and the classic board it would matter in
+  is going.
+- **Not restyled:** the terms and name screens (their `^1 ^2 ^3` escapes are
+  still Quake's saturated colours on the pastel panel), the in-world main menu,
+  the results card, replay chrome, vote box, chat, entity inspector and the
+  avatar panel. `cl_linegraph.qc` follows the board's palette macros and so
+  changed colour without being looked at.
+- **The modern board on a small window.** It never draws under the room list.
+  When its smallest form does not fit (under about 790 px wide at hud_scale 2,
+  wider with the Imported tab or a larger hud_scale) the classic layout draws
+  instead, in the new colours, with the room list docked over its edge as
+  before; the fit depends on the tab count, so the Imported tab appearing can
+  flip it. Patch 607 replaces that fallback with smaller type. `scores
+  status`'s `cols` word still uses the classic budget's three names and cannot
+  say that the run-class column was the one dropped.
+- **Menu tooltips are witnessed by a synthetic hover only.** `ui_hover <x> <y>`
+  (menu VM, harness) parks a mouse-mode cursor and `ui_hover` reports the tip;
+  `test_ui_theme.py` P4 grades one chip in each style. No arm covers the other
+  tips, the delay, or a real mouse.
+- **`tools/compare_chip_smoke.py` was not rerun.** It patches `cl_scores.qc` at
+  four text seams; all four still match exactly once (`Scores_Seg` takes `tab`,
+  not `id`, for that reason), but the tool itself needs `surf_dune` and a full
+  product build and was not run against this patch.
+- **`p603scores.py`'s basic suite fails one native check in BOTH styles:**
+  "actual native page controls did not act". It expects a 6-row page from 8 rows;
+  the dense provider's page is 24. The dense suite is the one that grades native
+  paging. Either seed 32 rows in the basic suite or retire its native arms.
+- **The modern board's cost is reported, not budgeted** (tools/p603scores.md,
+  Patch 606). It draws more than the classic board and builds two or three more
+  temp strings a row (`Scores_Delta`), which feeds the collector section below.
+- **Small:** the room list keeps its fixed 12 px type beside 16 px rows; the
+  mono and UI faces snap to different size ladders, so at some window heights
+  the names sit one rung under the times (12 against 14 at 720p); a podium
+  plate follows the local list's position number, so with a cheated run sorted
+  first the best clean run wears a silver 2; `test_ui_theme.py`'s regions are
+  1920x1080 at hud_scale 2 only; `test_ui_modern.py` reads 21 changed pixels
+  inside the speedometer between styles (bound 30), from another element's
+  outline crossing it.
+
 ## Native scoreboard (opt-in, Patch 605)
 
 Published and deployed as `ui_native_scores 1`; legacy stays the default. Evidence,

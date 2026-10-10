@@ -4100,6 +4100,76 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+### SUI theme, the modern board and the gallery (Patch 606) — 2026-10-10
+
+- LOOK AT THE PANELS WITH `tools/ui_gallery.py`. One isolated rig per `ui_style`,
+  a loopback stub for lobbies and both boards, up to sixteen screenshots plus a
+  side-by-side `pairs/` folder; `--width/--height` for other window sizes. It
+  grades only that every shot exists and the log has no QC error.
+  `tools/test_ui_theme.py` is the gate built on it: classic pixel-identical to a
+  control build, modern different, a csprogs it mutates itself (one classic
+  colour) caught, and a menu tooltip read back. Its regions are 1920x1080 at
+  hud_scale 2.
+- `sui_style_modern` IS SET ONCE A FRAME, in `CSQC_UpdateView` (`sui_style_hud`)
+  and in every `sui_begin`. A panel's own palette macro
+  (`#define SBC_BG (sui_style_modern ? SUI_THEME_PANEL : '...')`) is how classic
+  stays untouched: add the modern value there, never edit the literal. TWO
+  LITERALS THAT LOOK ALIKE ARE NOT ONE MACRO: the first cut folded the room
+  list's `'0.35 0.85 1'` and `'0.5 0.8 1'` into a macro whose classic arm was
+  `'0.35 0.75 1'`, and the pixel gate could not see it (one player in the room,
+  nobody spectated, no voice icon hovered). A reviewer diffing removed literals
+  against their replacements found it; do that diff, the gate only covers the
+  states its gallery reaches.
+- `m_draw` CALLS `Font_Reset()` BEFORE `sui_end()`, so anything `sui_end` draws
+  (tooltips, the bind overlay) starts in the 8 px bitmap face unless it selects a
+  font itself. The first menu tooltip was drawn in it.
+- THE KEYBOARD CURSOR IS A HOVER. sui parks it on a control the moment a menu
+  opens, so a tooltip keyed on `sui_is_hovered` alone pops up unasked. Tips test
+  `_cursor_is_mouse_active`. `ui_click` ends in keyboard mode, so a cfg holds a
+  tip up with `ui_hover <x> <y>` (menu VM) and reads it back with a bare
+  `ui_hover` at least one frame later: `tip 1 [<sui id>]`.
+- THE MODERN BOARD CAN DECLINE. `Scores_DrawModern` sizes itself first and
+  returns FALSE, having drawn nothing, when its smallest form does not fit; the
+  classic layout then draws that frame. Anything added to it before the sizing
+  loop's exit must not draw or change state the classic layout reads.
+- THE p603 SUITES COMPILE THEIR OWN CSPROGS FROM THE WORKING TREE (`src/` plus
+  `tools/fixtures/`); `--qc-artifacts` supplies menu.dat, and qwprogs.dat outside
+  `--dense`/`--http`. The tree is the board source under test, whatever build
+  directory is passed, so do not edit `src/` while one runs.
+- THE p603 SUITES SPLICE THE CFG AT EXACT SEQUENCES: the three startup lines
+  (`set ui_native_scores_font 13` / `scores tab local` / `+showscores`), the
+  final `-showscores` / `replay off` / `waitms 500` / `p603 probe closed1`, and
+  `echo P603 FINISHED` / `quit`. A line inserted inside one makes a suite raise
+  before any arm runs; `--style` and the source-switch clicks sit outside them.
+- THE MODERN BOARD KEEPS THE CLASSIC sui IDS (`sb_run<i>`, `sb_ln<i>`, `sb_t0..3`,
+  `sb_leg<i>`, `sb_fa/fc/fs/fx`, `sb_tref`, `sb_graph`), which is why
+  `p603scores.py --style 1` can grade its clicks unchanged, and why
+  `p603 move sb_t1` (any id spelt `sb_...`) can click the source switch. Both
+  row drawers read `sb_colx/sb_colr/sb_colon`; a new column wants an `SBK_` id,
+  a slot in `Scores_ColsClassic` AND in `Scores_ColsModern`.
+- THE p603 RIGS HAVE NO `gfx/ui/roundmask.png`, so they draw the modern layout
+  square-cornered (the missing-mask fallback). Their screenshots are evidence
+  of what acted, not of the look.
+- `p603perf.py` PROVES THE NATIVE ROUTE FROM A SCREENSHOT: it counts the themed
+  provider's own background. It used to count ImGui's default blue, which the
+  theme removed; a provider colour change moves that witness before anything
+  else.
+- `p498keys.py` IN A BARE WORKTREE NEEDS `ftesurf/data/consent.txt` (`version 1`)
+  AND A CHOSEN NAME (`+set name X` on the command line; an autoexec.cfg is not
+  run), or it grades the terms screen: 6 of 16 failed, then 1, then 0, with no
+  product change between them. Run the exe by hand and `--grade-only`. The run
+  leaves `installed.lst` BESIDE the gamedir as well as files in it; a cleanup
+  that lists only `ftesurf/` misses it.
+- A HARNESS WINDOW THAT TAKES THE FOREGROUND MID-RUN FAILS UNRELATED CHECKS.
+  `test_ui_modern.py` lost four (tooltip, dirty save) in the one run whose log
+  holds `[focus] window is foreground` between its stages; the next run, on the
+  same files, passed. Grep for that line before believing a UI arm's failure.
+  (`window is NOT foreground ... correcting` at startup is the normal line.)
+- AN `-Engine` BUILD CHANGES THE ENGINE'S HASH EVEN WHEN ONLY THE PLUGIN'S
+  SOURCES CHANGED: both `fteqw64.exe` and `fteqwsv64.exe` came out different from
+  the previous build of the same engine source. Identical bytes are not available
+  as evidence that engine source did not move; use the commit.
+
 ### Native fixture APIs and falsifiers must actually act — 2026-10-09
 
 - `com_bih.c`'s `struct bihproberec_s` and `BIH_ProbeSave/Restore` are local

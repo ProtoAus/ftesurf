@@ -72,7 +72,7 @@ def prepare(root, a, arm):
     raise RuntimeError('no designated dedicated test port free')
 
 
-def config(arm, port, repeats, samples):
+def config(arm, port, repeats, samples, style=None):
     lines = ['cfg_save_auto 0', 'set log_enable 1', 'set log_dir logs', 'set log_name perf', 'set log_readable 1',
              'set cl_idlefps 0', 'set cl_maxfps 100', 'set vid_vsync 0', 'set r_speeds 2',
              'set pr_enable_profiling 0', 'set vid_conautoscale 0', 'set vid_conwidth 1920',
@@ -82,8 +82,10 @@ def config(arm, port, repeats, samples):
              'waitms 1500', 'menu_restart', 'waitms 700', 'ui_close']
     if arm != 'absent': lines += ['plug_load ui_imgui', 'ui_imgui_status']
     lines += [f'connect 127.0.0.1:{port}', 'waitms 6500', 'ui_close',
-              f'set ui_native_scores {int(arm == "native")}', 'set ui_native_scores_font 13', 'set hud_scale 2',
-              'scores tab local', 'scores leg 0', 'scores status', 'scores close']
+              f'set ui_native_scores {int(arm == "native")}', 'set ui_native_scores_font 13', 'set hud_scale 2']
+    #Patch 606: which board layout is being timed. Unset leaves the default (classic).
+    if style is not None: lines += [f'set ui_style {style}']
+    lines += ['scores tab local', 'scores leg 0', 'scores status', 'scores close']
     for cycle in range(repeats):
         for phase in PHASES:
             lines += ['scores open' if phase == 'open' else 'scores close', 'waitms 1800',
@@ -170,9 +172,13 @@ def grade(rig):
                             pixels = im.convert('RGB').crop((688,355,1343,720))
                             ink = pixels.get_flattened_data() if hasattr(pixels, 'get_flattened_data') else tuple(pixels.getdata())
                             bright = sum(min(v) > 130 for v in ink)
-                            blue = sum(b > r+20 and b > g+10 for r,g,b in ink)
+                            #The provider's own window background (ScoresTheme, Patch 606). It was
+                            #"blue ink > 4000", ImGui's default buttons: 4631 with the themed table
+                            #in the classic board and 1460 in the modern one, against 1094-1408 legacy.
+                            #Measured for this: 85633-95187 native, 522-1974 legacy.
+                            well = sum(abs(r-19) <= 3 and abs(g-20) <= 3 and abs(b-28) <= 3 for r,g,b in ink)
                             need(bright > 1000 if phase == 'open' else bright < 900, arm + ': scoreboard glyphs did not act/close')
-                            need((blue > 4000) == (phase == 'open' and arm == 'native'), arm + ': actual native/legacy screenshot route')
+                            need((well > 20000) == (phase == 'open' and arm == 'native'), arm + ': actual native/legacy screenshot route')
                     except (OSError, ValueError): errors.append(arm + ': unreadable screenshot')
         need(meta.get('csprogs_sha256') == report.get('csprogs_sha256'), arm + ': unequal/instrumented QC identity')
         need(meta.get('engine_sha256') == report.get('engine_sha256'), arm + ': unequal engine identity')
@@ -207,7 +213,7 @@ def run(a):
         root = rig / arm
         port = prepare(root, a, arm)
         game = root / 'ftesurf'
-        (game / 'perf.cfg').write_text(config(arm, port, a.repeats, a.samples))
+        (game / 'perf.cfg').write_text(config(arm, port, a.repeats, a.samples, a.style))
         svcmd = [str(root / 'fteqwsv64.exe'), '-basedir', str(root), '-nohome', '-noplugins', '-port', str(port),
                  '+set', 'cfg_save_auto', '0', '+set', 'sv_public', '0', '+set', 'lobby_dir', '', '+map', 'p603scores.map']
         clcmd = [str(root / 'ftesurf64.exe'), '-basedir', str(root), '-nohome', '-nosound', '-nocdaudio', '-window',
@@ -261,6 +267,7 @@ if __name__ == '__main__':
     p.add_argument('--rows', type=int, default=6, choices=range(6, 257))
     p.add_argument('--repeats', type=int, default=2, choices=range(2, 11))
     p.add_argument('--samples', type=int, default=3, choices=range(3, 21))
+    p.add_argument('--style', type=int, choices=(0, 1), help='set ui_style before the board opens (default: leave it)')
     p.add_argument('command', nargs='?', choices=('run', 'grade'), default='run')
     p.add_argument('rig', nargs='?', type=Path)
     a = p.parse_args()

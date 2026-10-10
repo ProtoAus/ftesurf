@@ -11,6 +11,59 @@ to be wrong.
 
 ---
 
+## 00. 10 Oct — dark pastel theme and the redesigned leaderboard (Patch 606)
+
+In this patch everything is still behind `ui_style 1`, which your config has;
+`ui_style 0` is the old look, pixel for pixel. You have since said the old look
+can go (10 Oct), so Patch 607 removes it and the switch; nothing below asks you
+about the default any more.
+On both Windows installs since 10 Oct, NOT on the Pi: the map picker and its
+leaderboard are in menu.dat and change at once, but hud_edit, the save-lock and
+Source-renderer menus and the +showscores board are csprogs, which a lobby
+hands you. On a public lobby those four keep the old look until the Pi is
+deployed; start a map locally to see them.
+
+One palette everywhere: dark slate surfaces, pastel sky / mint / butter / peach /
+rose accents. Judge, at your resolution and on a real map rather than my black
+test room:
+
+- **The colours themselves.** Too muted, too purple, enough contrast against a
+  bright sky? The numbers are the block at the top of `src/shared/sh_ui.qc`;
+  the native table repeats them in `plugins/ui_imgui/scores.inc`.
+- **+showscores.** New layout: big map title, the sources as one switch, the
+  legs as a `TRACK` sidebar, player before time, times right-aligned, plates on
+  the podium (clean runs only), `+2.070` instead of `+0:02.070`, key hints in the
+  footer. Text is 16 px where it was 12, so it holds 24 rows where the old one
+  showed about 19 of smaller ones. The board and the room list are centred as a
+  pair and the board no longer changes width when you change source. On a
+  smaller window it first shrinks its type (16, 14, then the old 12), then
+  drops why/tag, date and run class, then narrows the room list; it never
+  draws under the room list. (Below about 790 px wide the old layout still
+  takes over in this patch; 607 ends that.) Is anything in the wrong place, or
+  missing a column you used?
+- **hud_edit.** The chips lost their outlines: a filled chip is on, a hairline is
+  only the cursor. Is on/off still obvious at a glance? The show/hide square is a
+  pip in a box now.
+- **Save-lock and Source-renderer menus.** One translucent card each, a keycap per
+  row. The renderer menu names its page and colours values by meaning (mint On,
+  grey Off, butter for a named mode, a peach `*`). Is the card too opaque over the
+  map while you are surfing?
+- **Map picker.** Pills, a tier colour ramp on the rows (mint 1-2 through rose
+  9-10), a green `start` once a map is picked. Hover a filter, the leaderboard
+  button, or a row whose tier is marked `?`, `~` or `k`: a tooltip should say
+  what it means, after a short delay, for the mouse only (never the keyboard
+  cursor). A harness parks a synthetic mouse there and reads the tip back; your
+  real mouse, and whether the wording helps, are yours.
+- **The native table** (`ui_native_scores 1`, off in your config) wears the same
+  colours. Still ImGui's bitmap font and its own column order; that is the next
+  piece of work, not an oversight.
+- **What still has the old generic look**, because it was not on the list:
+  the terms and name screens, the in-world main menu, the results card, replay
+  chrome, vote box, chat, the entity inspector and the avatar panel. Say which
+  of those you want done.
+
+Not a ranking, recorder, evidence or server change. BACKLOG.md has the leftovers.
+
 ## 00. 10 Oct — opt-in native scoreboard table (Patch 605)
 
 Off by default. In the console: `ui_native_scores 1`, then TAB (peek) or pin the

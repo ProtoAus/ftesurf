@@ -1627,6 +1627,10 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 
 	if (notmenu)
 	{
+		// Patch 606: the UI style for every 2D panel this frame, including the
+		// HUD-stack menus that draw outside a sui bracket.
+		sui_style_hud(scr);
+
 		/*
 		  Patch 270.  NM_Frame samples the engine's received-delta counters and
 		  closes a one-second window; NM_Draw prints it.  Sampling is OUTSIDE the

@@ -4,6 +4,134 @@ Patch 603 is now published for unrelated reader work. The p603 filenames and
 older checkpoints below preserve evidence continuity, NOT a product-number
 reservation. Fetch both repositories and reallocate max+1 before publication.
 
+## Patch 606 — the board under `ui_style 1`, 2026-10-10
+
+Patch 606 gives +showscores a second layout (`Scores_DrawModern`) behind
+`ui_style 1` and themes the provider. `ui_style 0` runs the board code the
+sections below measured. What changed for these tools:
+
+- `p603scores.py --style 0|1` and `p603perf.py --style 0|1` set `ui_style`
+  before the board opens. Unset leaves the default (0).
+- The modern layout keeps the classic sui ids, so every click, focus and
+  hand-off check runs unchanged against it.
+- The basic suite now clicks the source switch for real (`p603 move sb_t0`,
+  `sb_t1`, `sb_t2`, then `p603 tab <label>`): Online, Segmented, Local, in
+  either style. It clears `lobby_dir` first so an online tab cannot reach a
+  real board from a rig.
+- `p603scores.py` compiles its fixture csprogs from the WORKING TREE's `src/`;
+  `--qc-artifacts` supplies menu.dat, and qwprogs.dat outside `--dense`/`--http`.
+- `p603perf.py` proves the native route from a screenshot by counting the
+  themed provider's own background. It counted ImGui's default blue until the
+  theme removed it.
+- The p603 rigs carry no `gfx/ui/roundmask.png`, so they draw the modern layout
+  square-cornered: the missing-mask fallback, not the shipped look. The shipped
+  look is `tools/ui_gallery.py`'s.
+
+### Commands
+
+    python tools/test_ui_theme.py --engine <exe> --server <sv> --control-qc <Patch 605 progs> --subject-qc <progs> \
+        --library <install gamedir> --out ROOT/runtime/<tag>/theme
+    python tools/p603scores.py --style 0|1 ... --arms legacy --out ROOT/runtime/<tag>/board<style>
+    python tools/p603scores.py --dense --style 1 ... --arms native1 native2 legacy --out ROOT/runtime/<tag>/dense1
+    python tools/p603perf.py run --rows 20 --repeats 3 --samples 5 --style 0|1 ... --out ROOT/runtime/<tag>/perf<style>
+    python tools/ui_gallery.py --engine <exe> --server <sv> --qc-artifacts <progs> --library <install gamedir> \
+        [--styles 0 1] [--width W --height H] [--renderer gl|d3d11|vk] --out ROOT/runtime/<tag>/...
+
+### Results (QC 7027eed's tree with engine d100d856d's, before the patch entries; ROOT/runtime/fix3b)
+
+- **Build.** Three progs at 0 warnings; qwprogs.dat byte-identical to the
+  installed one (no server QC changed).
+- **Theme gate** (`theme/`, rigs `ui-gallery-5rvel_3x` control,
+  `ui-gallery-encl20ng` subject, `ui-gallery-0eomktex` mutant): 13 panel states
+  at `ui_style 0` differ from the Patch 605 progs by 0 pixels; all 13 differ at
+  `ui_style 1`; the mutant (one classic colour moved) is caught on the three
+  hud_edit shots, 76,248-76,734 pixels, and reads 0 on the save-lock shot; the
+  parked mouse reads `tip 1 [cs_tier1]` at style 1 and `tip 0 []` at style 0.
+  32 checks, 0 failed.
+- **Board actions, legacy arm** (`board0/p603-scores-*`, `board1/p603-scores-*`):
+  0 failures in each style, the source-switch clicks included.
+- **Dense, `--style 1`** (`dense1/p603-scores-*`): native1, native2, legacy,
+  0 failures.
+- **Other SUI gates.** `test_ui_modern.py` 28/28, `p498keys.py` 16/16,
+  `test_water_menu.py` 0 failed.
+- **Cost, reported, not gated** (`ROOT/runtime/fix3p`, `fix3q`, `fix3r`; QC
+  UpdateView median us/frame, 20 rows, board open; legacy / no-plugin / native;
+  the machine was shared with the owner and another agent's jobs):
+  final build, modern, 15:57: 1594 / 1537 / 1465 (closed 458 / 429 / 481);
+  final build, classic, 16:01: 1329 / 1157 / 1000 (closed 400 / 364 / 392),
+  `[focus] window is foreground` in every arm;
+  first review copy (a07ae96), modern, 16:07: 1208 / 1190 / 1114 (closed 364 /
+  454 / 365); final build, modern, 16:12: 1169 / 1173 / 1075 (closed 346 / 352 /
+  337). Draw calls 127 and about 18,250 indices in every modern legacy sample.
+  Two runs of one build differ by 36%; no layout or build is shown cheaper, and
+  the 14:37 figures an earlier draft quoted (modern 1074, classic 1203) are one
+  more sample of the same noise.
+- **Not run:** D3D11 and Vulkan in the modern layout, the old-plugin,
+  old-engine and no-plugin arms in the modern layout, hostile names, soak.
+
+### Final build and Windows deployment — Patch 606, 2026-10-10
+
+Published: ftequakers `93828165c` (Patch 606, tag patch-606); this repository
+`55c4057`.
+
+Build of exactly those commits, `build.ps1 -Engine -Full -NoDeploy -Jobs 4`, exit
+0, with `SVN_VERSION=git-7144-patch-606-0-g93828165c` and the matching
+`SVNREVISION` in the environment (a worktree build stamps nothing otherwise).
+Client and server both contain that string and not Patch 605's. 426 lines of the
+log hold the word `warning`, the same count and kinds as Patch 605's final build:
+349 from make, 74 compiler lines (none in `plugins/ui_imgui`, which builds under
+-Werror) and the three `Done. 0 warnings` of the progs. The three progs are
+byte-identical to the build every QC gate above ran on.
+
+| sha256 (first 16) | file |
+|---|---|
+| `6fb2ff02a559c314` | fteqw64.exe (installed as ftesurf64.exe / fteqw64.exe) |
+| `13ecc334cc2ba536` | fteqwsv64.exe |
+| `f93b8f9dacc95a55` | fteplug_ui_imgui_x64.dll |
+| `d4d20d075c4a4c80` | fteplug_hl2_x64.dll |
+| `966b302625f864f7` | fteplug_box3d_x64.dll |
+| `bbdaa2bf4edd482a` | fteplug_cod_x64.dll |
+| `700101dde5c28483` | fteplug_ode_x64.dll |
+| `3ae1bba0b9224e0c` | csprogs.dat |
+| `5e7fd33b3d0beac1` | qwprogs.dat (unchanged since Patch 605) |
+| `c14493765bfabfe0` | menu.dat |
+
+Rerun on those binaries, all 0 failed: host suites (629 / 3750 / 2872 per index
+width and the model regression counts), GL six arms
+`runtime/final606/gl/p603-scores-bt7apfp_` with 69/69 reader controls, hostile
+names `runtime/final606/names/p603-names-ppiwjp2p`, D3D11
+`runtime/final606/d3d11/p603-scores-jowgcrru`, Vulkan
+`runtime/final606/vk/p603-scores-62qu9eu6`. Those run at the default `ui_style
+0`: the classic board with the themed provider. Also `p603scores.py` legacy arm
+at `--style 0` and `--style 1` and `test_ui_modern.py` 28/28
+(`runtime/final606u`).
+
+`test_ui_theme.py` on these binaries FAILED its first run: three classic menu
+comparisons differed (8,949, 2,520 and 2,520 pixels: a hovered lobby cell and a
+hovered close button missing in the subject). That rig's log holds `[focus]
+window is foreground` across exactly those shots, and its parked cursor read
+back as 321,1137, the real pointer; the control and the mutant, undisturbed,
+agreed with each other on every menu shot. The rerun, with no foreground line in
+any rig, passed 32 of 32 (`runtime/final606v/theme`). The gallery should say
+"interfered" itself instead of failing; that is Patch 607's.
+
+NOT rerun on the stamped binaries: p498keys, the dense suite at `--style 1`, the
+cost runs.
+
+Deployed 2026-10-10T05:51:29Z to `C:/FTESurf` and `C:/FTEQuake` by the guarded copy
+(ROOT/tmp/deploy606.py, receipt ROOT/artifacts/deploy606-receipt.json): every
+destination was first checked against the hash recorded after the Patch 605
+deploy and opened for writing before anything was copied, the live file kept as
+`<name>.prev` (replacing Patch 605's predecessors), the copy verified.
+25 files match the build (21 replaced; `qwprogs.dat` and its line table were
+already identical in both installs): the client, the server (second install),
+all five plugins in both, and `ftesurf/{qwprogs,csprogs,menu}.dat` with their
+`.lno` in both. No game or server was running from either install, and none was
+started from one. The owner's `ftesurf.cfg` was read for four settings
+(`ui_style`, `ui_native_scores`, `vid_renderer`, the window size) and not
+written. **Not deployed to the Pi**: that restarts the public lobbies and is the
+owner's call, so on a public lobby the csprogs panels keep the old look.
+
 ## Published — Patch 605 (and 604), 2026-10-10
 
 `ui_native_scores 1` is published as an opt-in; `0` (legacy) stays the default and

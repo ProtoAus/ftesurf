@@ -165,17 +165,19 @@ world-path name labels; neither clears the loaded run lines.
 
 ---
 
-## Modern UI preview (opt-in)
+## Modern UI style (opt-in)
 
-The HUD editor has a modern SUI preview: rounded controls, clearer interaction
-states and delayed, wrapped tooltips. The gameplay HUD is unchanged.
+`ui_style 1` gives the map picker, both leaderboards, the HUD editor and the
+save-lock and Source-renderer menus one dark pastel look: rounded controls,
+clearer interaction states and delayed, wrapped tooltips. The +showscores board
+gets its own layout under it. The gameplay HUD is unchanged.
 
 ```text
 seta ui_style 1
 hud_edit on
 ```
 
-`ui_style 0` restores the classic editor. `ui_tooltip_delay` defaults to 0.35
+`ui_style 0` restores the classic look. `ui_tooltip_delay` defaults to 0.35
 seconds. Modern editor text selects native **physical-pixel** font bakes and
 pixel-aligned positions; layout scale is not fractional glyph stretching.
 The corrected physical-font path requires the Patch 570 engine as well as CSQC;

@@ -33,19 +33,21 @@
 // ---------------------------------------------------------------------------
 //  Palette.  Flat and dark; the map list is the only thing worth looking at.
 // ---------------------------------------------------------------------------
-#define COL_TEXT        '1 1 1'
-#define COL_DIM         '0.55 0.55 0.58'
-#define COL_ACCENT      '0.35 0.75 1'
-#define COL_PANEL       '0.06 0.06 0.08'
-#define COL_ROW         '0.11 0.11 0.14'
-#define COL_ROW_HOVER   '0.18 0.20 0.26'
-#define COL_ROW_SEL     '0.10 0.30 0.45'
-#define COL_BORDER      '0.28 0.30 0.36'
+// Patch 606: under ui_style 1 each is the shared theme's token (sh_ui.qc), so
+// every screen in this VM follows it; ui_style 0 keeps the colours below.
+#define COL_TEXT        (sui_style_modern ? SUI_THEME_TEXT     : '1 1 1')
+#define COL_DIM         (sui_style_modern ? SUI_THEME_DIM      : '0.55 0.55 0.58')
+#define COL_ACCENT      (sui_style_modern ? SUI_THEME_ACCENT   : '0.35 0.75 1')
+#define COL_PANEL       (sui_style_modern ? SUI_THEME_PANEL    : '0.06 0.06 0.08')
+#define COL_ROW         (sui_style_modern ? SUI_THEME_CHIP     : '0.11 0.11 0.14')
+#define COL_ROW_HOVER   (sui_style_modern ? SUI_THEME_HOVER    : '0.18 0.20 0.26')
+#define COL_ROW_SEL     (sui_style_modern ? SUI_THEME_SELECTED : '0.10 0.30 0.45')
+#define COL_BORDER      (sui_style_modern ? SUI_THEME_EDGE_HI  : '0.28 0.30 0.36')
 // The action column's Play button.  Green because it is the one control on
 // this screen that starts something, and the only one that is safe on every
 // row it appears on -- COL_ACCENT is already the tier chip and the panel edge.
-#define COL_PLAY        '0.30 0.85 0.45'
-#define COL_PLAY_HOT    '0.12 0.32 0.18'
+#define COL_PLAY        (sui_style_modern ? SUI_THEME_GOOD     : '0.30 0.85 0.45')
+#define COL_PLAY_HOT    (sui_style_modern ? SUI_THEME_GOOD_BG  : '0.12 0.32 0.18')
 
 // ---------------------------------------------------------------------------
 //  Font sizes.  MULTIPLES OF 8, ALWAYS.
@@ -504,7 +506,12 @@ float(string id, vector pos, float minw, float h, string label, vector col) ui_o
 
 	float hot = sui_is_hovered(id);
 	if (hot)
-		sui_fill(pos, size, COL_ROW_HOVER, 0.6, 0);
+	{
+		if (sui_style_modern)
+			sui_roundbox(pos, size, 8, COL_ROW_HOVER, 0.8);
+		else
+			sui_fill(pos, size, COL_ROW_HOVER, 0.6, 0);
+	}
 
 	sui_text([pos_x + 12, pos_y + (size_y - SZ_ITEM_H) * 0.5], SZ_ITEM,
 	         hot ? shown : label,
@@ -523,7 +530,8 @@ float(string id, vector pos, float minw, float h, string label, vector col) ui_o
   shipped is because the wide one only appears before a map is chosen, which
   is exactly the state you stop being in as soon as you test it.
 */
-float(string id, vector pos, vector size, string label) ui_button =
+// `primary` (modern style only) marks the one button that moves you forward.
+float(string id, vector pos, vector size, string label, float primary = FALSE) ui_button =
 {
 	float w = stringwidth(label, TRUE, SZ_LABEL) + 16;
 	if (w < size_x)
@@ -533,6 +541,19 @@ float(string id, vector pos, vector size, string label) ui_button =
 	sui_action_element(pos, size, id, sui_noop);
 
 	float hot = sui_is_hovered(id);
+	if (sui_style_modern)
+	{
+		if (primary)
+			sui_style_box(pos, size, 7, hot ? SUI_THEME_GOOD : SUI_THEME_GOOD_BG, SUI_THEME_GOOD, 1);
+		else
+			sui_style_box(pos, size, 7,
+			              sui_is_held(id) ? SUI_THEME_PRESSED : (hot ? COL_ROW_HOVER : COL_ROW),
+			              hot ? COL_ACCENT : SUI_THEME_EDGE, 1);
+		sui_text([pos_x + 10, pos_y + (size_y - SZ_LABEL_H) * 0.5], SZ_LABEL, label,
+		         primary ? (hot ? SUI_THEME_WELL : SUI_THEME_GOOD) : (hot ? COL_ACCENT : COL_TEXT),
+		         1, 0);
+		return sui_is_released(id);
+	}
 	sui_fill(pos, size, hot ? COL_ROW_HOVER : COL_ROW, 1, 0);
 	sui_border_box(pos, size, 1, hot ? COL_ACCENT : COL_BORDER, 1, 0);
 	sui_text([pos_x + 8, pos_y + (size_y - SZ_LABEL_H) * 0.5], SZ_LABEL,
@@ -872,6 +893,18 @@ void(float tier) ui_consent_write =
 	cvar_set("rec_terms", ftos(tier));
 };
 
+// A tier's colour on a map row: mint at the easy end through to rose
+// (ui_style 1); the one accent otherwise.
+vector(float t) ui_tier_col =
+{
+	if (!sui_style_modern) return COL_ACCENT;
+	if (t <= 2) return SUI_THEME_GOOD;
+	if (t <= 4) return SUI_THEME_INFO;
+	if (t <= 6) return SUI_THEME_ACCENT;
+	if (t <= 8) return SUI_THEME_FOCUS;
+	return SUI_THEME_BAD;
+};
+
 float(string label) ui_chip_w =
 {
 	return stringwidth(label, TRUE, SZ_LABEL) + CHIP_PAD;
@@ -888,12 +921,35 @@ float(vector pos, string id, string label, float on) ui_chip =
 	sui_action_element(pos, sz, id, sui_noop);
 
 	hot = sui_is_hovered(id);
+	if (sui_style_modern)
+	{
+		// A pill: lit by its fill and accent text, outlined only under the cursor.
+		if (hot)
+			sui_style_box(pos, sz, CHIP_H * 0.5, on ? COL_ROW_SEL : COL_ROW_HOVER, SUI_THEME_EDGE_HI, 1);
+		else
+			sui_roundbox(pos, sz, CHIP_H * 0.5, on ? COL_ROW_SEL : COL_ROW, 1);
+		sui_text([pos_x + CHIP_PAD * 0.5, pos_y + (CHIP_H - SZ_LABEL_H) * 0.5],
+		         SZ_LABEL, label, on ? COL_ACCENT : (hot ? COL_TEXT : COL_DIM), 1, 0);
+		return w;
+	}
 	sui_fill(pos, sz, on ? COL_ROW_SEL : COL_ROW, 1, 0);
 	sui_border_box(pos, sz, 1, (on || hot) ? COL_ACCENT : COL_BORDER, 1, 0);
 	sui_text([pos_x + CHIP_PAD * 0.5, pos_y + (CHIP_H - SZ_LABEL_H) * 0.5],
 	         SZ_LABEL, label, (on || hot) ? COL_TEXT : COL_DIM, 1, 0);
 
 	return w;
+};
+
+// A text field's box: a recessed well under the modern style.
+void(vector pos, vector size, float focus) ui_field_box =
+{
+	if (sui_style_modern)
+	{
+		sui_style_box(pos, size, 7, SUI_THEME_WELL, focus ? COL_ACCENT : SUI_THEME_EDGE, 1);
+		return;
+	}
+	sui_fill(pos, size, COL_ROW, 1, 0);
+	sui_border_box(pos, size, 1, focus ? COL_ACCENT : COL_BORDER, 1, 0);
 };
 
 // Single-line text field.  sui_text_input owns the caret and the keystrokes;
@@ -904,8 +960,7 @@ void(string id, vector pos, vector size, __inout string text,
 	sui_text_input(id, pos, size, text, cursor);
 
 	float focus = sui_is_last_clicked(id);
-	sui_fill(pos, size, COL_ROW, 1, 0);
-	sui_border_box(pos, size, 1, focus ? COL_ACCENT : COL_BORDER, 1, 0);
+	ui_field_box(pos, size, focus);
 
 	vector tp = [pos_x + 6, pos_y + (size_y - SZ_LABEL_H) * 0.5];
 	if (text == "" && !focus)
@@ -942,8 +997,7 @@ void(string id, vector pos, vector size, __inout string text,
 	sui_text_input(id, pos, size, text, cursor);
 
 	float focus = sui_is_last_clicked(id);
-	sui_fill(pos, size, COL_ROW, 1, 0);
-	sui_border_box(pos, size, 1, focus ? COL_ACCENT : COL_BORDER, 1, 0);
+	ui_field_box(pos, size, focus);
 
 	vector tp = [pos_x + 6, pos_y + (size_y - SZ_LABEL_H) * 0.5];
 
@@ -5549,7 +5603,7 @@ void() ui_prejoin_tick =
 #define ST_HELD     3
 #define ST_DL       4
 #define ST_RESULT   5
-#define COL_FAIL    '1 0.55 0.35'
+#define COL_FAIL    (sui_style_modern ? SUI_THEME_BAD : '1 0.55 0.35')
 
 float  ui_st_kind;
 string ui_st_text;              // the line, cut from its end to fit
@@ -5871,8 +5925,13 @@ void(vector screensize) ui_status_toast =
 	w = stringwidth(ui_st_text, TRUE, SZ_LABEL) + stringwidth(ui_st_figs, TRUE, SZ_LABEL) + 32;
 	w = min(screensize_x - 32, max(360, w));
 	p = [floor((screensize_x - w) * 0.5), screensize_y - 96];
-	sui_fill(p, [w, 44], COL_PANEL, 0.88, 0);
-	sui_border_box(p, [w, 44], 1, COL_BORDER, 1, 0);
+	if (sui_style_modern)
+		sui_style_panel(p, [w, 44], 10, 0.94);
+	else
+	{
+		sui_fill(p, [w, 44], COL_PANEL, 0.88, 0);
+		sui_border_box(p, [w, 44], 1, COL_BORDER, 1, 0);
+	}
 	ui_status_line(p + '16 9 0', w - 32);
 	ui_status_bar(p + '16 32 0', w - 32, 3);
 };
@@ -6006,18 +6065,29 @@ void(vector pos, vector sz, string sel) ui_board_button =
 
 	if (sel == "")
 	{
-		sui_fill(pos, sz, COL_ROW, 0.5, 0);
-		sui_border_box(pos, sz, 1, COL_BORDER, 0.5, 0);
+		if (sui_style_modern)
+			sui_style_box(pos, sz, 7, COL_ROW, SUI_THEME_EDGE, 0.5);
+		else
+		{
+			sui_fill(pos, sz, COL_ROW, 0.5, 0);
+			sui_border_box(pos, sz, 1, COL_BORDER, 0.5, 0);
+		}
 		sui_text([pos_x + 8, pos_y + (sz_y - SZ_LABEL_H) * 0.5], SZ_LABEL,
 		         "leaderboard", COL_DIM, 0.5, 0);
 		return;
 	}
 	sui_action_element(pos, sz, "cs_board", sui_noop, TRUE);
 	hot = sui_is_hovered("cs_board");
-	sui_fill(pos, sz, hot ? COL_ROW_HOVER : COL_ROW, 1, 0);
-	sui_border_box(pos, sz, 1, hot ? COL_ACCENT : COL_BORDER, 1, 0);
+	if (sui_style_modern)
+		sui_style_box(pos, sz, 7, hot ? COL_ROW_HOVER : COL_ROW, hot ? COL_ACCENT : SUI_THEME_EDGE, 1);
+	else
+	{
+		sui_fill(pos, sz, hot ? COL_ROW_HOVER : COL_ROW, 1, 0);
+		sui_border_box(pos, sz, 1, hot ? COL_ACCENT : COL_BORDER, 1, 0);
+	}
 	sui_text([pos_x + 8, pos_y + (sz_y - SZ_LABEL_H) * 0.5], SZ_LABEL, "leaderboard",
 	         hot ? COL_ACCENT : COL_TEXT, 1, 0);
+	sui_tooltip_for("cs_board", "The picked map's main-track times: KSF, Momentum Mod and FTESurf's own lobbies.", 2);
 	if (sui_is_released("cs_board"))
 		Mlb_Open(sel, -1);
 };
@@ -6046,8 +6116,13 @@ void(vector screensize) screen_create =
 
 	float inner = size_x - 32;      // content width inside the 16px margins
 
-	sui_fill(pos, size, COL_PANEL, 1, 0);
-	sui_border_box(pos, size, 1, COL_BORDER, 1, 0);
+	if (sui_style_modern)
+		sui_style_panel(pos, size, 12, 1);
+	else
+	{
+		sui_fill(pos, size, COL_PANEL, 1, 0);
+		sui_border_box(pos, size, 1, COL_BORDER, 1, 0);
+	}
 	sui_text([pos_x + 16, pos_y + 12], SZ_HEAD, "create server", COL_ACCENT, 1, 0);
 
 	sui_push_frame(pos, size);
@@ -6086,6 +6161,10 @@ void(vector screensize) screen_create =
 		string tid    = strcat("cs_tier", ftos(f));
 
 		fx += ui_chip([fx, y + 20], tid, tlabel, ms_tier == f) + CHIP_GAP;
+		// Built only for the chip under the cursor: one string a frame, not eleven.
+		if (sui_is_hovered(tid))
+			sui_tooltip_for(tid, (f == 0) ? "Maps of every tier, and the untiered ones."
+			                : sprintf("Only tier %g maps. 1 is the easiest, 10 the hardest.", f), 2);
 
 		if (sui_is_released(tid))
 			ms_tier = f;
@@ -6121,6 +6200,9 @@ void(vector screensize) screen_create =
 			mlit = (ms_modes & ui_cat_bit(ui_mode_id(f))) != 0;
 
 		mx += ui_chip([mx, mrow + 20], mcid, mlbl, mlit) + CHIP_GAP;
+		if (sui_is_hovered(mcid))
+			sui_tooltip_for(mcid, (f == 0) ? "Light every gametype."
+			                : "Show or hide this gametype. The last lit one stays on.", 2);
 
 		if (sui_is_released(mcid))
 		{
@@ -6170,6 +6252,7 @@ void(vector screensize) screen_create =
 		float  sbit = ui_srcf_bit(f);
 
 		sx += ui_chip([sx, srow + 20], scid, slbl, ms_srcf == sbit) + CHIP_GAP;
+		sui_tooltip_for(scid, "Which map library to list: Momentum Mod's, Counter-Strike: Source's, or both.", 2);
 
 		if (sui_is_released(scid))
 			ms_srcf = sbit;
@@ -6190,6 +6273,7 @@ void(vector screensize) screen_create =
 	}
 	sui_text([ax, arow], SZ_LABEL, ahd, COL_DIM, 1, 0);
 	ui_chip([ax, arow + 20], "cs_showall", "show all", ms_showall);
+	sui_tooltip_for("cs_showall", "Also list the maps that have neither a picture nor a tier. A search always finds them.", 2);
 	if (sui_is_released("cs_showall"))
 		ui_showall_set(!ms_showall);
 	y += 56;
@@ -6212,10 +6296,10 @@ void(vector screensize) screen_create =
 
 	string mhd;
 	if (ms_nhidden > 0)
-		mhd = sprintf("map  ^9(%g of %g -- %g more under show all)",
+		mhd = sprintf("map  %s(%g of %g -- %g more under show all)", SUI_ESC_MUTED,
 		              ms_viewcount, ms_count, ms_nhidden);
 	else
-		mhd = sprintf("map  ^9(%g of %g)", ms_viewcount, ms_count);
+		mhd = sprintf("map  %s(%g of %g)", SUI_ESC_MUTED, ms_viewcount, ms_count);
 	sui_text([16, y], SZ_LABEL, mhd, COL_DIM, 1, 0);
 
 	/*
@@ -6279,13 +6363,16 @@ void(vector screensize) screen_create =
 
 		vector cp = [16, y], crs = [inner, ROW_H];
 		sui_action_element(cp, crs, "cs_lobterms", sui_noop);
-		if (sui_is_hovered("cs_lobterms"))
+		if (sui_style_modern)
+			sui_roundbox(cp, crs, 8, sui_is_hovered("cs_lobterms") ? COL_ROW_HOVER : COL_ROW,
+			             sui_is_hovered("cs_lobterms") ? 1 : 0.6);
+		else if (sui_is_hovered("cs_lobterms"))
 			sui_fill(cp, crs, COL_ROW_HOVER, 1, 0);
 		ui_thumb([cp_x + 3, cp_y + 2], [78, 44], -1, -1);
 		sui_text([cp_x + 90, cp_y + 5], SZ_ROW,
 		         "public lobbies are off", COL_TEXT, 1, 0);
 		sui_text([cp_x + 90, cp_y + 26], SZ_ROW,
-		         "^9they send data to a server -- click to read what, and choose",
+		         strcat(SUI_ESC_MUTED, "they send data to a server -- click to read what, and choose"),
 		         COL_DIM, 1, 0);
 		if (sui_is_released("cs_lobterms"))
 			menu_screen = SCREEN_TERMS;
@@ -6339,7 +6426,7 @@ void(vector screensize) screen_create =
 		*/
 		string llbl = "public lobbies";
 		if (lshow < Lob_Count())
-			llbl = sprintf("public lobbies^9  -- showing %g of %g", lshow,
+			llbl = sprintf("public lobbies%s  -- showing %g of %g", SUI_ESC_MUTED, lshow,
 			               Lob_Count());
 		sui_text([16, y], SZ_LABEL, llbl, COL_DIM, 1, 0);
 		y += 20;
@@ -6378,7 +6465,10 @@ void(vector screensize) screen_create =
 				}
 
 			sui_action_element(lp, lrs, lid, sui_noop);
-			if (sui_is_hovered(lid))
+			if (sui_style_modern)
+				sui_roundbox(lp, lrs, 8, sui_is_hovered(lid) ? COL_ROW_HOVER : COL_ROW,
+				             sui_is_hovered(lid) ? 1 : 0.6);
+			else if (sui_is_hovered(lid))
 				sui_fill(lp, lrs, COL_ROW_HOVER, 1, 0);
 
 			ui_thumb([lp_x + 3, lp_y + 2], [78, 44], lpage, lcell);
@@ -6405,9 +6495,9 @@ void(vector screensize) screen_create =
 			if (lrow < 0)
 			{
 				sui_text([lp_x + 8, lp_y + 5], SZ_ROW,
-				         ui_fit_text("^1not", 70, SZ_ROW), COL_DIM, 1, 0);
+				         ui_fit_text(strcat(SUI_ESC_BAD, "not"), 70, SZ_ROW), COL_DIM, 1, 0);
 				sui_text([lp_x + 8, lp_y + 24], SZ_ROW,
-				         ui_fit_text("^1installed", 70, SZ_ROW), COL_DIM, 1, 0);
+				         ui_fit_text(strcat(SUI_ESC_BAD, "installed"), 70, SZ_ROW), COL_DIM, 1, 0);
 			}
 
 			/*
@@ -6417,8 +6507,8 @@ void(vector screensize) screen_create =
 			  of the line a player choosing between five lobbies reads -- to any
 			  long map name.
 			*/
-			string lcnt = ui_fit_text(sprintf("^2%g^9 / %g", Lob_Players(li), Lob_Max(li)),
-			                          ltw, SZ_ROW);
+			string lcnt = ui_fit_text(sprintf("%s%g%s / %g", SUI_ESC_GOOD, Lob_Players(li),
+			                                  SUI_ESC_MUTED, Lob_Max(li)), ltw, SZ_ROW);
 			float  lcw  = stringwidth(lcnt, TRUE, SZ_ROW);
 
 			sui_text([lp_x + 90 + ltw - lcw, lp_y + 26], SZ_ROW, lcnt, COL_DIM, 1, 0);
@@ -6447,8 +6537,13 @@ void(vector screensize) screen_create =
 	ui_cs_rows = floor((ls_y - 2) / ROW_H);
 
 	{
-		sui_fill([16, y], ls, '0.03 0.03 0.04', 1, 0);
-		sui_border_box([16, y], ls, 1, COL_ACCENT, 1, 0);
+		if (sui_style_modern)
+			sui_style_box([16, y], ls, 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
+		else
+		{
+			sui_fill([16, y], ls, '0.03 0.03 0.04', 1, 0);
+			sui_border_box([16, y], ls, 1, COL_ACCENT, 1, 0);
+		}
 
 		if (ms_viewcount == 0)
 			sui_text([24, y + 10], SZ_ROW, "no matches", COL_DIM, 1, 0);
@@ -6492,7 +6587,12 @@ void(vector screensize) screen_create =
 				float on  = (real == ms_selected);
 				float hot = sui_is_hovered(rid);
 				if (on || hot)
-					sui_fill(rp, rs, on ? COL_ROW_SEL : COL_ROW_HOVER, 1, 0);
+				{
+					if (sui_style_modern)
+						sui_roundbox(rp + '1 1 0', rs - '2 2 0', 7, on ? COL_ROW_SEL : COL_ROW_HOVER, 1);
+					else
+						sui_fill(rp, rs, on ? COL_ROW_SEL : COL_ROW_HOVER, 1, 0);
+				}
 
 				/*
 				  Two lines per row, not one.
@@ -6550,6 +6650,17 @@ void(vector screensize) screen_create =
 				  MT_TSRC.
 				*/
 				mtier = bufstr_get(ms_tierv, real);
+				// The marks below, in words, for the row under the cursor.
+				if (hot)
+				if (stof(mtier) > 0)
+				{
+					if (mtsrc == "alias")
+						sui_tooltip_for(rid, "T~  the tier of the same map without its port suffix -- probably this one's.", 2);
+					else if (mtsrc == "sugg")
+						sui_tooltip_for(rid, "T?  a suggested tier: nobody has ranked this map yet.", 2);
+					else if (mtsrc == "ksf")
+						sui_tooltip_for(rid, "Tk  KSF's tier, another community's scale.", 2);
+				}
 				if (stof(mtier) > 0 && mtsrc == "alias")
 					sui_text([rp_x + 90, rp_y + 6], SZ_ROW,
 					         strcat("T", mtier, "~"), COL_DIM, 0.85, 0);
@@ -6561,7 +6672,7 @@ void(vector screensize) screen_create =
 					         strcat("T", mtier, "k"), COL_DIM, 0.85, 0);
 				else if (stof(mtier) > 0)
 					sui_text([rp_x + 90, rp_y + 6], SZ_ROW,
-					         strcat("T", mtier), COL_ACCENT, 1, 0);
+					         strcat("T", mtier), ui_tier_col(stof(mtier)), 1, 0);
 				else
 					sui_text([rp_x + 90, rp_y + 6], SZ_ROW, "--", COL_DIM, 0.6, 0);
 				// KSF's tier under the chip (ROADMAP 7): another community's scale,
@@ -6593,7 +6704,7 @@ void(vector screensize) screen_create =
 				wrw = 0;
 				if (mwr != "")
 				{
-					mwr = strcat("^9best  ^7", Time_MsString((int)stof(mwr)));
+					mwr = strcat(SUI_ESC_MUTED, "best  ^7", Time_MsString((int)stof(mwr)));
 					wrw = stringwidth(mwr, TRUE, SZ_ROW) + 16;
 				}
 
@@ -6609,7 +6720,7 @@ void(vector screensize) screen_create =
 				// detached, past the end of a name that had been cut.
 				if (bufstr_get(ms_new, real) == "1")
 					sui_text([rp_x + 130 + stringwidth(mnmf, TRUE, SZ_ROW),
-					          rp_y + 4], SZ_ROW, "^2NEW", COL_TEXT, 1, 0);
+					          rp_y + 4], SZ_ROW, strcat(SUI_ESC_GOOD, "NEW"), COL_TEXT, 1, 0);
 
 				// Second line: where it came from, what it is, then how it is
 				// laid out.  The gamemode is here rather than in a column of its
@@ -6620,11 +6731,11 @@ void(vector screensize) screen_create =
 				sub = ui_srcname(stof(bufstr_get(ms_src, real)));
 				smode = ui_mode_name(stof(bufstr_get(ms_modev, real)));
 				if (smode != "")
-					sub = sprintf("%s  ^9|^7  %s", sub, smode);
+					sub = sprintf("%s  %s|^7  %s", sub, SUI_ESC_MUTED, smode);
 				if (mstages > 0)
-					sub = sprintf("%s  ^9|^7  %g stages", sub, mstages);
+					sub = sprintf("%s  %s|^7  %g stages", sub, SUI_ESC_MUTED, mstages);
 				else if (mlinear == 1)
-					sub = strcat(sub, "  ^9|^7  linear");
+					sub = strcat(sub, "  ", SUI_ESC_MUTED, "|^7  linear");
 				if (mbonus > 0)
 					sub = sprintf("%s, %g bonus", sub, mbonus);
 				// ROADMAP 6: the games it needs, red where this PC lacks one.
@@ -6632,7 +6743,7 @@ void(vector screensize) screen_create =
 				// nothing below reads ms_meta's argv.)
 				mdep = ui_deps_text(real);
 				if (mdep != "")
-					sub = strcat(sub, "  ^9|^7  needs ", mdep);
+					sub = strcat(sub, "  ", SUI_ESC_MUTED, "|^7  needs ", mdep);
 
 				/*
 				  The time, right-aligned against the row's own right edge.
@@ -6664,7 +6775,7 @@ void(vector screensize) screen_create =
 				{
 					mtime = Time_TickString(stof(mpb), ui_map_tick(real));
 					if (bufstr_get(ms_pblob, real) != "")
-						mtime = strcat("^9lobby  ^7", mtime);
+						mtime = strcat(SUI_ESC_MUTED, "lobby  ^7", mtime);
 				}
 				else
 					mtime = "--:--.---";
@@ -6700,8 +6811,8 @@ void(vector screensize) screen_create =
 				mpopw = 0;
 				if (mpop >= 0)
 				{
-					mpopt = sprintf("%s%g^9 playing", (mpop > 0) ? "^2" : "^9",
-					                mpop);
+					mpopt = sprintf("%s%g%s playing", (mpop > 0) ? SUI_ESC_GOOD : SUI_ESC_MUTED,
+					                mpop, SUI_ESC_MUTED);
 					mpopw = stringwidth(mpopt, TRUE, SZ_ROW) + 16;
 					sui_text([rp_x + rs_x - ROW_RPAD - dlg - mtw - mpopw,
 					          rp_y + 26], SZ_ROW, mpopt, COL_DIM, 1, 0);
@@ -6786,14 +6897,24 @@ void(vector screensize) screen_create =
 					ph = sui_is_hovered(pid);
 					if (pb)
 						ph = FALSE;
-					sui_fill(pp, ps, ph ? COL_PLAY_HOT : COL_PANEL, 1, 0);
-					sui_border_box(pp, ps, 1, COL_PLAY, pb ? 0.3 : 1, 0);
+					if (sui_style_modern)
+					{
+						// A pill, filled under the cursor, the word centred.
+						sui_roundbox(pp, ps, ps_y * 0.5, ph ? COL_PLAY : COL_PLAY_HOT, pb ? 0.3 : 1);
+						sui_text([pp_x + (ps_x - stringwidth("Play", TRUE, SZ_ROW)) * 0.5, pp_y + 8],
+						         SZ_ROW, "Play", ph ? SUI_THEME_WELL : COL_PLAY, pb ? 0.3 : 1, 0);
+					}
+					else
+					{
+						sui_fill(pp, ps, ph ? COL_PLAY_HOT : COL_PANEL, 1, 0);
+						sui_border_box(pp, ps, 1, COL_PLAY, pb ? 0.3 : 1, 0);
 
-					// Centred rather than two-line: there is no second fact to
-					// say about a map you already have, and an empty lower line
-					// is what this column is being fixed for.
-					sui_text([pp_x + DL_PAD, pp_y + 8], SZ_ROW, "> Play",
-					         ph ? COL_TEXT : COL_PLAY, pb ? 0.3 : 1, 0);
+						// Centred rather than two-line: there is no second fact to
+						// say about a map you already have, and an empty lower line
+						// is what this column is being fixed for.
+						sui_text([pp_x + DL_PAD, pp_y + 8], SZ_ROW, "> Play",
+						         ph ? COL_TEXT : COL_PLAY, pb ? 0.3 : 1, 0);
+					}
 
 					/*
 					  THROUGH ui_launch, not around it.  Selecting first and then
@@ -6825,25 +6946,41 @@ void(vector screensize) screen_create =
 						// it is 0 until the size is known, so the bar can sit at
 						// zero while the rate already reads: that is honest, the
 						// bytes are moving and the total is not yet agreed.
-						sui_fill(gp, [gs_x, 6], COL_PANEL, 1, 0);
-						sui_fill(gp, [gs_x * bound(0, dl_pct / 100, 1), 6],
-						         COL_ACCENT, 1, 0);
+						if (sui_style_modern)
+						{
+							sui_roundbox(gp, [gs_x, 6], 3, COL_ROW_HOVER, 1);
+							if (dl_pct > 0)
+								sui_roundbox(gp, [max(6, gs_x * bound(0, dl_pct / 100, 1)), 6], 3,
+								             COL_ACCENT, 1);
+						}
+						else
+						{
+							sui_fill(gp, [gs_x, 6], COL_PANEL, 1, 0);
+							sui_fill(gp, [gs_x * bound(0, dl_pct / 100, 1), 6],
+							         COL_ACCENT, 1, 0);
+						}
 						sui_text([gp_x, gp_y + 10], SZ_ROW,
 						         (dl_rate > 0) ? ui_dl_rate(dl_rate) : "...",
 						         COL_DIM, 1, 0);
 					}
 					else if (mine && dl_state == DL_OK)
-						sui_text([gp_x, gp_y + 4], SZ_ROW, "^2installed", COL_TEXT, 1, 0);
+						sui_text([gp_x, gp_y + 4], SZ_ROW, strcat(SUI_ESC_GOOD, "installed"), COL_TEXT, 1, 0);
 					else if (mine && dl_state == DL_FAIL)
-						sui_text([gp_x, gp_y + 4], SZ_ROW, "^1failed", COL_TEXT, 1, 0);
+						sui_text([gp_x, gp_y + 4], SZ_ROW, strcat(SUI_ESC_BAD, "failed"), COL_TEXT, 1, 0);
 					else if (dl_state == DL_ACTIVE)
-						sui_text([gp_x, gp_y + 4], SZ_ROW, "^9queued", COL_DIM, 0.5, 0);
+						sui_text([gp_x, gp_y + 4], SZ_ROW, strcat(SUI_ESC_MUTED, "queued"), COL_DIM, 0.5, 0);
 					else
 					{
 						sui_action_element(gp, gs, gid, sui_noop);
 						float gh = sui_is_hovered(gid);
-						sui_fill(gp, gs, gh ? COL_ROW_HOVER : COL_PANEL, 1, 0);
-						sui_border_box(gp, gs, 1, COL_BORDER, 1, 0);
+						if (sui_style_modern)
+							sui_style_box(gp, gs, 7, gh ? COL_ROW_HOVER : COL_ROW,
+							              gh ? COL_ACCENT : SUI_THEME_EDGE, 1);
+						else
+						{
+							sui_fill(gp, gs, gh ? COL_ROW_HOVER : COL_PANEL, 1, 0);
+							sui_border_box(gp, gs, 1, COL_BORDER, 1, 0);
+						}
 						// A re-get is not the same offer as a download and must
 						// not read like one: this row already has a playable
 						// map, it is just the wrong cut of it.
@@ -6851,7 +6988,7 @@ void(vector screensize) screen_create =
 						         wrong ? "Wrong build" : "Download",
 						         gh ? COL_TEXT : COL_ACCENT, 1, 0);
 						sui_text([gp_x + DL_PAD, gp_y + 18], SZ_ROW,
-						         wrong ? strcat("^3re-get ",
+						         wrong ? strcat(SUI_ESC_WARN, "re-get ",
 						                        ui_dl_size(stof(bufstr_get(ms_dlkb, real))))
 						               : ui_dl_size(stof(bufstr_get(ms_dlkb, real))),
 						         COL_DIM, 1, 0);
@@ -6871,7 +7008,7 @@ void(vector screensize) screen_create =
 	float  busy  = ui_join_busy();
 	string stlbl = busy ? "joining..." : ((sel == "") ? "pick a map" : "start");
 	float  sbw   = max(150, stringwidth(stlbl, TRUE, SZ_LABEL) + 16);   // ui_button's width
-	if (ui_button("cs_start", [16, by], [150, 30], stlbl))
+	if (ui_button("cs_start", [16, by], [150, 30], stlbl, (sel != "" && !busy)))
 	if (!busy)
 		ui_launch();
 
@@ -6994,6 +7131,7 @@ void() m_init =
 	registercommand("ui_focus");
 	registercommand("ui_cursor");
 	registercommand("ui_click");
+	registercommand("ui_hover");
 
 	localcmd("bind escape togglemenu\n");
 
@@ -7735,6 +7873,26 @@ float(string cmd) m_consolecommand =
 		// two prints.
 		print(sprintf("ui_click: focus '%s' held %g\n",
 		              sui_text_input_focused_id, sui_text_focus()));
+		return TRUE;
+	}
+
+	if (argv(0) == "ui_hover")
+	{
+		/*
+		  A MOUSE HOVER THAT STAYS (Patch 606). Tooltips answer a mouse hover only,
+		  and `ui_click` above ends in keyboard mode, so without this no cfg could
+		  put one on screen.
+
+		    ui_hover <x> <y>   park the mouse cursor there, in mouse mode
+		    ui_hover           report it, and whether a tip is up and whose
+		*/
+		if (argv(1) != "")
+		{
+			activate_mouse_cursor();
+			_sui_mouse_move([stof(argv(1)), stof(argv(2)), 0], TRUE);
+		}
+		print(sprintf("ui_hover: %g %g  mouse %g  tip %g [%s]\n", _cursor_position_x,
+		              _cursor_position_y, _cursor_is_mouse_active, sui_tip_visible, sui_tip_id));
 		return TRUE;
 	}
 

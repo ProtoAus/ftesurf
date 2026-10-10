@@ -893,16 +893,18 @@ void() Scores_Refresh =
   before it and nothing else, and the table stays aligned at any hud_scale
   instead of at the one it was eyeballed on.
 */
-#define SBC_BG      '0.03 0.04 0.06'
-#define SBC_PANEL   '0.07 0.08 0.11'
-#define SBC_LINE    '0.30 0.55 0.85'
-#define SBC_TEXT    '0.88 0.91 0.96'
-#define SBC_DIM     '0.50 0.54 0.60'
-#define SBC_HOT     '0.16 0.22 0.32'
-#define SBC_SEL     '0.20 0.36 0.55'
-#define SBC_GOOD    '0.45 0.90 0.50'
-#define SBC_BAD     '0.95 0.45 0.40'
-#define SBC_WARN    '1.00 0.82 0.20'
+// Patch 606: each is the shared theme's token under ui_style 1 (sh_ui.qc) and
+// the board's own colour otherwise. cl_linegraph.qc draws with these too.
+#define SBC_BG      (sui_style_modern ? SUI_THEME_PANEL    : '0.03 0.04 0.06')
+#define SBC_PANEL   (sui_style_modern ? SUI_THEME_CHIP     : '0.07 0.08 0.11')
+#define SBC_LINE    (sui_style_modern ? SUI_THEME_ACCENT   : '0.30 0.55 0.85')
+#define SBC_TEXT    (sui_style_modern ? SUI_THEME_TEXT     : '0.88 0.91 0.96')
+#define SBC_DIM     (sui_style_modern ? SUI_THEME_DIM      : '0.50 0.54 0.60')
+#define SBC_HOT     (sui_style_modern ? SUI_THEME_HOVER    : '0.16 0.22 0.32')
+#define SBC_SEL     (sui_style_modern ? SUI_THEME_SELECTED : '0.20 0.36 0.55')
+#define SBC_GOOD    (sui_style_modern ? SUI_THEME_GOOD     : '0.45 0.90 0.50')
+#define SBC_BAD     (sui_style_modern ? SUI_THEME_BAD      : '0.95 0.45 0.40')
+#define SBC_WARN    (sui_style_modern ? SUI_THEME_WARN     : '1.00 0.82 0.20')
 
 // Amber for the two states that explain a MISSING time, dim for the one that
 // explains nothing.  Never red: neither is something the player did, and this
@@ -988,6 +990,7 @@ float rec_sb_sztitle;
 float rec_sb_cw;                 // one mono character, in pixels
 float rec_sb_rowh;
 float rec_sb_cols;               // how many columns the window can afford
+float sb_szui;                   // modern board: the UI face's row size this frame
 
 /*
   Text, at a size the font was actually baked at.
@@ -1030,11 +1033,139 @@ void(vector pos, float sz, vector col, float a) Scores_Tick =
 // The x of a column, in pixels, from its character offset.
 float(float chars) Scores_ColX = { return chars * rec_sb_cw; };
 
+/*
+  Patch 606: WHERE EACH COLUMN IS THIS FRAME, as a table both row drawers read.
+  The classic board fills it from the character offsets above, so nothing it
+  draws moves; the modern board (Scores_DrawModern) orders and aligns the same
+  nine columns differently. sb_colx is a right-aligned column's RIGHT edge.
+*/
+#define SBK_RANK  0
+#define SBK_TIME  1
+#define SBK_DELTA 2
+#define SBK_OWNER 3
+#define SBK_REP   4
+#define SBK_DATE  5
+#define SBK_KIND  6
+#define SBK_TAG   7
+#define SBK_LINE  8
+float sb_colx[9];
+float sb_colr[9];               // right-aligned
+float sb_colon[9];              // drawn at this window width
+
+void() Scores_ColsClassic =
+{
+	local float i;
+
+	for (i = 0; i < 9; i = i + 1)
+		sb_colr[i] = FALSE;
+	sb_colx[SBK_RANK]  = Scores_ColX(SBX_TIME) - rec_sb_cw;
+	sb_colr[SBK_RANK]  = TRUE;
+	sb_colx[SBK_TIME]  = Scores_ColX(SBX_TIME);
+	sb_colx[SBK_DELTA] = Scores_ColX(SBX_DELTA);
+	sb_colx[SBK_OWNER] = Scores_ColX(SBX_OWNER);
+	sb_colx[SBK_REP]   = Scores_ColX(SBX_REP);
+	sb_colx[SBK_DATE]  = Scores_ColX(SBX_DATE);
+	sb_colx[SBK_KIND]  = Scores_ColX(SBX_KIND);
+	sb_colx[SBK_TAG]   = Scores_ColX(SBX_TAG);
+	sb_colx[SBK_LINE]  = Scores_ColX(SBX_LINE) + rec_sb_cw * 0.5;
+	sb_colon[SBK_RANK]  = TRUE;
+	sb_colon[SBK_TIME]  = TRUE;
+	sb_colon[SBK_DELTA] = TRUE;
+	sb_colon[SBK_OWNER] = TRUE;
+	sb_colon[SBK_REP]   = (rec_sb_cols > SBX_REP);
+	sb_colon[SBK_DATE]  = (rec_sb_cols > SBX_DATE);
+	sb_colon[SBK_KIND]  = (rec_sb_cols > SBX_KIND);
+	sb_colon[SBK_TAG]   = (rec_sb_cols > SBX_TAG);
+	sb_colon[SBK_LINE]  = (rec_sb_cols > SBX_LINE);
+};
+
+// One cell of a row, at its column's place and alignment.
+void(vector lp, float col, float d, string text, vector c, float a) Scores_Cell =
+{
+	if (sb_colr[col])
+		Scores_TextR([lp_x + sb_colx[col], d], rec_sb_szrow, text, c, a);
+	else
+		Scores_Text([lp_x + sb_colx[col], d], rec_sb_szrow, text, c, a);
+};
+
+// A row's highlight: a rounded bar under the modern style.
+void(vector lp, float w, vector c, float a) Scores_RowFill =
+{
+	if (sui_style_modern)
+		sui_roundbox(lp + '0 1 0', [w, rec_sb_rowh - 2], ceil(rec_sb_cw * 0.6), c, a);
+	else
+		sui_fill(lp, [w, rec_sb_rowh], c, a, 0);
+};
+
+// The rank. Modern: the podium wears a plate (butter, silver, peach), as the
+// room list's does -- where `plate` says the row has earned one: a cheated or
+// filtered-out run can sort into the first three of the local list.
+void(vector lp, float d, float rank, float a, float plate) Scores_RankCell =
+{
+	local vector c;
+	local float w, x;
+	local string t;
+
+	t = sprintf("%g", rank);
+	if (!sui_style_modern)
+	{
+		// The classic expression, association included: lp_x is not 0 on the pinned row.
+		Scores_TextR([lp_x + Scores_ColX(SBX_TIME) - rec_sb_cw, d], rec_sb_szrow, t, SBC_DIM, a);
+		return;
+	}
+	if (plate)
+	if (rank >= 1)
+	if (rank <= 3)
+	{
+		c = SUI_THEME_WARN;
+		if (rank == 2) c = '0.78 0.80 0.88';
+		if (rank == 3) c = SUI_THEME_FOCUS;
+		w = ceil(rec_sb_cw * 2.2);
+		x = lp_x + sb_colx[SBK_RANK] - rec_sb_cw * 0.5 - w * 0.5;
+		sui_roundbox([x, lp_y + 3], [w, rec_sb_rowh - 6], ceil(rec_sb_cw * 0.45), c, a);
+		Scores_Text([x + (w - stringwidth(t, TRUE, [rec_sb_szrow, rec_sb_szrow])) * 0.5, d],
+		            rec_sb_szrow, t, SUI_THEME_WELL, a);
+		return;
+	}
+	Scores_TextR([lp_x + sb_colx[SBK_RANK], d], rec_sb_szrow, t, SUI_THEME_MUTED, a);
+};
+
+// "+0:02.070" classic; the modern board drops the empty minutes: "+2.070".
+string(string t) Scores_Delta =
+{
+	if (sui_style_modern)
+	if (substring(t, 0, 2) == "0:")
+	{
+		t = substring(t, 2, -1);
+		// "02.070" -> "2.070", but "0.549" keeps its one zero.
+		if (substring(t, 0, 1) == "0")
+		if (substring(t, 1, 1) != ".")
+			t = substring(t, 1, -1);
+	}
+	return strcat("+", t);
+};
+
 // A filter chip.  Returns TRUE on the frame it is clicked.  Its own size comes
 // from the row size so the chips and the rows are one type scale.
 float(string id, vector pos, vector sz, string label, float on) Scores_Chip =
 {
+	local float tsz, tw;
+
 	sui_action_element(pos, sz, id, sui_noop);
+	if (sui_style_modern)
+	{
+		// A pill: the fill says lit, a hairline says the cursor is on it.
+		if (sui_is_hovered(id))
+			sui_style_box(pos, sz, sz_y * 0.5, on ? SBC_SEL : SBC_HOT, SUI_THEME_EDGE_HI, 1);
+		else
+			sui_roundbox(pos, sz, sz_y * 0.5, on ? SBC_SEL : SBC_PANEL, 1);
+		// Centred, in the small face on a short chip. The caller has the UI face set.
+		tsz = (sz_y < rec_sb_szrow * 1.7) ? rec_sb_szhead : sb_szui;
+		tw  = stringwidth(label, TRUE, [tsz, tsz]);
+		Scores_Text([pos_x + (sz_x - tw) * 0.5, pos_y + (sz_y - tsz) * 0.5], tsz, label,
+		            on ? SBC_LINE : (sui_is_hovered(id) ? SBC_TEXT : SBC_DIM), 1);
+		return sui_is_released(id);
+	}
 	sui_fill(pos, sz, on ? SBC_SEL : (sui_is_hovered(id) ? SBC_HOT : SBC_PANEL),
 	         1, 0);
 	sui_border_box(pos, sz, 1, on ? SBC_LINE : SBC_DIM, on ? 0.9 : 0.4, 0);
@@ -1392,7 +1523,7 @@ void(vector lp, float idx) Scores_LineCell =
 	local float i, st, bs;
 	local vector bp;
 
-	if (rec_sb_cols <= SBX_LINE)
+	if (!sb_colon[SBK_LINE])
 		return;
 	key = Scores_LineKey(idx);
 	if (key == "")
@@ -1400,10 +1531,14 @@ void(vector lp, float idx) Scores_LineCell =
 	i  = Scores_LineFind(key);
 	st = (i >= 0) ? sb_ln_st[i] : SBL_FREE;
 	bs = floor(Font_Px(rec_sb_szrow) * 0.75);
-	bp = [lp_x + Scores_ColX(SBX_LINE) + rec_sb_cw * 0.5, lp_y + floor((rec_sb_rowh - bs) * 0.5)];
+	bp = [lp_x + sb_colx[SBK_LINE], lp_y + floor((rec_sb_rowh - bs) * 0.5)];
 	id = strcat("sb_ln", ftos(idx));
 	sui_action_element(bp - '3 3 0', [bs + 6, bs + 6], id, sui_noop);
-	sui_border_box(bp, [bs, bs], 1, sui_is_hovered(id) ? SBC_TEXT : SBC_DIM, 0.9, 0);
+	if (sui_style_modern)
+		sui_style_box(bp, [bs, bs], 3, SUI_THEME_CHIP,
+		              sui_is_hovered(id) ? SUI_THEME_TEXT : SUI_THEME_EDGE_HI, 1);
+	else
+		sui_border_box(bp, [bs, bs], 1, sui_is_hovered(id) ? SBC_TEXT : SBC_DIM, 0.9, 0);
 	if (st == SBL_ON)
 		Scores_Tick(bp + [bs * 0.1, 0], bs, SBC_GOOD, 0.95);
 	else if (st == SBL_FAIL)
@@ -1491,14 +1626,14 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 
 		if (fin)
 		if (rec_sb_rowticks[idx] == rec_sb_finticks)
-			sui_fill(lp, [rs_x - pad * 0.5, rec_sb_rowh], SBC_SEL, 0.35, 0);
+			Scores_RowFill(lp, rs_x - pad * 0.5, SBC_SEL, 0.35);
 
 		if (on)
 		{
 			sui_action_element(lp, [rs_x - pad * 0.5, rec_sb_rowh], rid, sui_noop);
 			hot = sui_is_hovered(rid);
 			if (hot)
-				sui_fill(lp, [rs_x - pad * 0.5, rec_sb_rowh], SBC_HOT, 1, 0);
+				Scores_RowFill(lp, rs_x - pad * 0.5, SBC_HOT, 1);
 			if (sui_is_released(rid))
 				pick = idx;
 		}
@@ -1516,9 +1651,7 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 		*/
 		Font_Set(ui_font_mono);
 
-		Scores_TextR([lp_x + Scores_ColX(SBX_TIME) - rec_sb_cw, d],
-		             rec_sb_szrow, sprintf("%g", idx + 1),
-		             SBC_DIM, on ? 1 : 0.35);
+		Scores_RankCell(lp, d, idx + 1, on ? 1 : 0.35, (on && cl == RC_CLEAN));
 
 		/*
 		  BUILD 57, STAGE T: A LOBBY TIME IS COLOURED, not just labelled.
@@ -1531,7 +1664,7 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 		  is a real time set against real players, and it is also the one row
 		  here that cannot be watched.
 		*/
-		Scores_Text([lp_x + Scores_ColX(SBX_TIME), d], rec_sb_szrow,
+		Scores_Cell(lp, SBK_TIME, d,
 		            (ticks > 0) ? Time_TickString(ticks, tick) : "--:--.---",
 		            on ? ((rec_sb_rowtag[idx] == RT_LOBBY) ? SBC_WARN : SBC_TEXT)
 		               : SBC_DIM,
@@ -1541,24 +1674,24 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 		// itself says "best" rather than "+0.000", which is a number that
 		// reads as a measurement and is really a tautology.
 		if (rec_sb_best > 0 && ticks > 0 && ticks != rec_sb_best)
-			Scores_Text([lp_x + Scores_ColX(SBX_DELTA), d], rec_sb_szrow,
-			            sprintf("+%s", Time_TickString(ticks - rec_sb_best, tick)),
+			Scores_Cell(lp, SBK_DELTA, d,
+			            Scores_Delta(Time_TickString(ticks - rec_sb_best, tick)),
 			            SBC_BAD, on ? 0.9 : 0.3);
 		else if (ticks > 0 && ticks == rec_sb_best)
-			Scores_Text([lp_x + Scores_ColX(SBX_DELTA), d], rec_sb_szrow,
+			Scores_Cell(lp, SBK_DELTA, d,
 			            "best", SBC_GOOD, on ? 0.9 : 0.3);
 
 		Font_Set(ui_font_ui);
 
 		s = bufstr_get(rec_sb_bowner, idx);
-		Scores_Text([lp_x + Scores_ColX(SBX_OWNER), d], rec_sb_szrow,
+		Scores_Cell(lp, SBK_OWNER, d,
 		            (s != "") ? s : "unknown", on ? SBC_TEXT : SBC_DIM,
 		            on ? 0.9 : 0.35);
 
-		if (rec_sb_cols > SBX_DATE)
+		if (sb_colon[SBK_DATE])
 		{
 			s = bufstr_get(rec_sb_bdate, idx);
-			Scores_Text([lp_x + Scores_ColX(SBX_DATE), d], rec_sb_szrow,
+			Scores_Cell(lp, SBK_DATE, d,
 			            (s != "") ? s : "--", SBC_DIM, on ? 0.9 : 0.35);
 		}
 
@@ -1579,21 +1712,21 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 		  two middle states -- which is what `practice` already is under the
 		  live timer -- green for clean, and dim for the dash.
 		*/
-		if (rec_sb_cols > SBX_KIND)
+		if (sb_colon[SBK_KIND])
 		{
 			if (cl == RC_CLEAN)             // "multi" for a Multi-Session run
-				Scores_Text([lp_x + Scores_ColX(SBX_KIND), d], rec_sb_szrow,
+				Scores_Cell(lp, SBK_KIND, d,
 				            (rec_sb_rowflags[idx] > 0) ? FS_RunKindName(rec_sb_rowflags[idx])
 				                                        : FS_RunClassName(cl),
 				            SBC_GOOD, on ? 0.85 : 0.3);
 			else if (cl == RC_CHEAT)
-				Scores_Text([lp_x + Scores_ColX(SBX_KIND), d], rec_sb_szrow,
+				Scores_Cell(lp, SBK_KIND, d,
 				            FS_RunClassName(cl), SBC_BAD, on ? 0.85 : 0.3);
 			else if (cl == RC_UNKNOWN)
-				Scores_Text([lp_x + Scores_ColX(SBX_KIND), d], rec_sb_szrow,
+				Scores_Cell(lp, SBK_KIND, d,
 				            "--", SBC_DIM, on ? 0.6 : 0.25);
 			else
-				Scores_Text([lp_x + Scores_ColX(SBX_KIND), d], rec_sb_szrow,
+				Scores_Cell(lp, SBK_KIND, d,
 				            FS_RunClassName(cl), SBC_WARN, on ? 0.85 : 0.3);
 		}
 
@@ -1648,7 +1781,7 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 		  online tab uses for TF_NOCLOCK -- deliberately, because it is the same fact
 		  about the reader's row: this time was taken on the old clock.
 		*/
-		if (rec_sb_cols > SBX_TAG)
+		if (sb_colon[SBK_TAG])
 		{
 			if (rec_sb_rowtag[idx] == RT_LOBBY)
 			{
@@ -1659,14 +1792,14 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 					s = FS_CertWhy(rec_sb_rowflags[idx]);
 				if (s == "")
 					s = "lobby";
-				Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
+				Scores_Cell(lp, SBK_TAG, d,
 				            s, SBC_WARN, on ? 0.85 : 0.3);
 			}
 			else if (rec_sb_rowtag[idx] == RT_LAST || rec_sb_rowtag[idx] == RT_CHEAT)
-				Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
+				Scores_Cell(lp, SBK_TAG, d,
 				            "latest", SBC_DIM, on ? 0.7 : 0.25);
 			else if (rec_sb_rowver[idx] > 0 && rec_sb_rowver[idx] < 5)
-				Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
+				Scores_Cell(lp, SBK_TAG, d,
 				            "old clock", SBC_DIM, on ? 0.7 : 0.25);
 		}
 		Scores_LineCell(lp, idx);           // Patch 433
@@ -1873,10 +2006,10 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		  column to put one in yet.
 		*/
 		if (idx == ob_mine)
-			sui_fill(lp, [rs_x - pad * 0.5, rec_sb_rowh], SBC_SEL, 0.45, 0);
+			Scores_RowFill(lp, rs_x - pad * 0.5, SBC_SEL, 0.45);
 		if (hot)
 		if (Online_RowRep(idx) > 0 || bufstr_get(ob_bget, idx) != "")
-			sui_fill(lp, [rs_x - pad * 0.5, rec_sb_rowh], SBC_HOT, 1, 0);
+			Scores_RowFill(lp, rs_x - pad * 0.5, SBC_HOT, 1);
 		if (sui_is_released(rid))
 			pick = idx + 1;     // +1 so row 0 is distinguishable from "none"
 
@@ -1889,8 +2022,7 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		  displayed rank is a function of the scroll position is wrong in a
 		  way nobody would think to check.
 		*/
-		Scores_TextR([lp_x + Scores_ColX(SBX_TIME) - rec_sb_cw, d],
-		             rec_sb_szrow, sprintf("%g", ob_rank[idx]), SBC_DIM, 1);
+		Scores_RankCell(lp, d, ob_rank[idx], 1, TRUE);
 
 		/*
 		  EVERY ROW AT ITS OWN RATE.  Time_TickString wants SECONDS PER TICK
@@ -1899,7 +2031,7 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		  rule cl_online.qc's header sets out.  Getting it backwards printed
 		  0:52.500 as 64:48:53.328.
 		*/
-		Scores_Text([lp_x + Scores_ColX(SBX_TIME), d], rec_sb_szrow,
+		Scores_Cell(lp, SBK_TIME, d,
 		            Time_TickString(ob_ticks[idx], 1 / ob_rate[idx]),
 		            SBC_TEXT, 1);
 
@@ -1910,11 +2042,11 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		  product between the number surfd sent and the digit drawn.
 		*/
 		if (ref > 0 && ob_ms[idx] > ref)
-			Scores_Text([lp_x + Scores_ColX(SBX_DELTA), d], rec_sb_szrow,
-			            sprintf("+%s", Time_MsString((int)ob_ms[idx] - (int)ref)),
+			Scores_Cell(lp, SBK_DELTA, d,
+			            Scores_Delta(Time_MsString((int)ob_ms[idx] - (int)ref)),
 			            SBC_BAD, 0.9);
 		else if (ref > 0 && ob_ms[idx] == ref)
-			Scores_Text([lp_x + Scores_ColX(SBX_DELTA), d], rec_sb_szrow,
+			Scores_Cell(lp, SBK_DELTA, d,
 			            "best", SBC_GOOD, 0.9);
 
 		Font_Set(ui_font_ui);
@@ -1923,7 +2055,7 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		ncol = SBC_TEXT;
 		if (idx == ob_mine)
 			ncol = SBC_GOOD;
-		Scores_Text([lp_x + Scores_ColX(SBX_OWNER), d], rec_sb_szrow,
+		Scores_Cell(lp, SBK_OWNER, d,
 		            (s != "") ? s : "unknown", ncol, 0.9);
 
 		/*
@@ -1942,7 +2074,7 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		  exactly the kind of thing that gets added later, and an unguarded
 		  column is how the one that was added last time ran off the edge.
 		*/
-		if (rec_sb_cols > SBX_REP)
+		if (sb_colon[SBK_REP])
 		{
 			s = Online_RepString(idx);
 			if (Online_RowRep(idx) < 1)
@@ -1957,19 +2089,19 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 					if (om_state == OM_FAIL) s = "retry";
 				}
 			}
-			Scores_Text([lp_x + Scores_ColX(SBX_REP), d], rec_sb_szrow,
+			Scores_Cell(lp, SBK_REP, d,
 			            s, (Online_RowRep(idx) > 0) ? SBC_GOOD : SBC_DIM, 0.85);
 			// Patch 374: after the word; "watch" + the mark fits SBW_REP in Roboto.
 			if (ob_ver[idx] > 0)
-				Scores_Tick([lp_x + Scores_ColX(SBX_REP) + rec_sb_cw * 0.3
+				Scores_Tick([lp_x + sb_colx[SBK_REP] + rec_sb_cw * 0.3
 				             + stringwidth(s, TRUE, [Font_Px(rec_sb_szrow), Font_Px(rec_sb_szrow)]), d],
 				            rec_sb_szrow, SBC_GOOD, 0.95);
 		}
 
-		if (rec_sb_cols > SBX_DATE)
+		if (sb_colon[SBK_DATE])
 		{
 			s = Online_AgeString(idx);
-			Scores_Text([lp_x + Scores_ColX(SBX_DATE), d], rec_sb_szrow,
+			Scores_Cell(lp, SBK_DATE, d,
 			            (s != "") ? s : "--", SBC_DIM, 0.9);
 		}
 
@@ -1983,10 +2115,10 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		  twice in two languages, and this column is the only place it would
 		  ever be visible.
 		*/
-		if (rec_sb_cols > SBX_KIND)
+		if (sb_colon[SBK_KIND])
 		{
 			i = FS_RunClass(ob_flags[idx]);
-			Scores_Text([lp_x + Scores_ColX(SBX_KIND), d], rec_sb_szrow,
+			Scores_Cell(lp, SBK_KIND, d,
 			            FS_RunClassName(i),
 			            (i == RC_CLEAN) ? SBC_GOOD : SBC_WARN, 0.85);
 		}
@@ -1996,11 +2128,11 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		  never red: the TF_UNCERT bits describe a hole in the certification,
 		  not something the player did.  Blank on a ranked board by construction.
 		*/
-		if (rec_sb_cols > SBX_TAG)
+		if (sb_colon[SBK_TAG])
 		{
 			s = Online_WhyString(idx);
 			if (s != "")
-				Scores_Text([lp_x + Scores_ColX(SBX_TAG), d], rec_sb_szrow,
+				Scores_Cell(lp, SBK_TAG, d,
 				            s, SBC_WARN, 0.85);
 		}
 		Scores_LineCell(lp, idx);           // Patch 433
@@ -2016,16 +2148,15 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 	if (pinned)
 	{
 		lp = [rp_x, rp_y + rec_sb_szhead + pad * 0.5 + rs_y];
-		sui_fill(lp, [rs_x - pad * 0.5, rec_sb_rowh], SBC_SEL, 0.45, 0);
+		Scores_RowFill(lp, rs_x - pad * 0.5, SBC_SEL, 0.45);
 		d = lp_y + (rec_sb_rowh - rec_sb_szrow) * 0.5;
 		Font_Set(ui_font_mono);
-		Scores_TextR([lp_x + Scores_ColX(SBX_TIME) - rec_sb_cw, d],
-		             rec_sb_szrow, sprintf("%g", rec_sb_finrank), SBC_DIM, 1);
+		Scores_RankCell(lp, d, rec_sb_finrank, 1, TRUE);
 		if (rec_sb_finbest > 0)
-			Scores_Text([lp_x + Scores_ColX(SBX_TIME), d], rec_sb_szrow,
+			Scores_Cell(lp, SBK_TIME, d,
 			            Time_MsString((int)rec_sb_finbest), SBC_TEXT, 1);
 		Font_Set(ui_font_ui);
-		Scores_Text([lp_x + Scores_ColX(SBX_OWNER), d], rec_sb_szrow,
+		Scores_Cell(lp, SBK_OWNER, d,
 		            getplayerkeyvalue(player_localnum, "name"), SBC_GOOD, 0.9);
 	}
 	// Patch 395: `scores olpick`, a click minus the hit test.
@@ -2218,6 +2349,538 @@ float() Scores_SpecHandOff =
 	return TRUE;
 };
 
+// The footer's count: what the list holds, for whichever source is up.
+string() Scores_CountLine =
+{
+	local string s;
+
+	if (Scores_IsOnline())
+	{
+		/*
+		  ONLY WHEN THE ROWS IN MEMORY ARE THIS BOARD'S, and that test was
+		  missing.  ob_n and ob_cnt_* survive a failed or in-flight fetch by
+		  design (Online_Clear is not called on failure), so this footer
+		  cheerfully printed the PREVIOUS leg's counts under the current leg's
+		  heading -- next to a panel that was simultaneously saying "asking the
+		  leaderboard...".  That is precisely the failure cl_online.qc's own
+		  header calls "worth spending four string reads to make impossible",
+		  written into the one place it was not checked.
+		*/
+		if (Online_Shows(rec_sb_legtrack[rec_sb_leg],
+		                 rec_sb_legnum[rec_sb_leg],
+		                 Scores_TierOf(), Scores_StyleOf()))
+		{
+			s = sprintf("%g %s time(s) on %s", ob_n,
+			            Scores_StyleOf(), Scores_LegName(rec_sb_leg));
+			if (ob_cnt_ranked > ob_n)
+				s = sprintf("%s  (top %g of %g shown)", s, ob_n, ob_cnt_ranked);
+			if (ob_state == OBS_FETCH)
+				s = strcat(s, "   refreshing...");
+		}
+		else
+			s = sprintf("%s on %s", Scores_StyleOf(), Scores_LegName(rec_sb_leg));
+	}
+	else
+	{
+		s = sprintf("%g run(s) on %s", rec_sb_rown, Scores_LegName(rec_sb_leg));
+		if (rec_sb_rowover > 0)
+			s = sprintf("%s  (%g more than the %g this list holds)",
+			            s, rec_sb_rowover, SB_MAXROW);
+	}
+
+	return s;
+};
+
+// A click the native table reported, or `scores olpick` when the legacy online
+// draw that would have consumed it did not run.
+float() Scores_NativeRowPick =
+{
+	local float pick;
+
+	pick = Scores_NativePick();
+	if (Scores_IsOnline())
+	{
+		if (pick < 0)
+		if (rec_sb_olpick > 0)
+		if (rec_sb_olpick <= ob_n)
+		{
+			pick = rec_sb_olpick - 1;
+			print(sprintf("scores: olpick row %g\n", pick));
+		}
+		rec_sb_olpick = 0;
+	}
+	return pick;
+};
+
+// Everything after a board's own drawing, shared by both layouts: the room list
+// inside the bracket, the bracket's end, then the hand-offs.
+void(vector p, vector sz, float pad, vector scr, float pick) Scores_Finish =
+{
+	local string s;
+
+	/*
+	  PATCH 340: the room list, INSIDE this bracket and before its sui_end.
+
+	  A second sui bracket in the same frame draws dead buttons -- sui_begin
+	  empties the hit-test list and sui_end clears the input buffer, so the
+	  LAST bracket owns every click (cl_main.qc's Ev_Panel comment).  Sharing
+	  this one is what makes the mute buttons live.  It gets the rect this
+	  function just computed because it anchors to it; cl_players.qc's header
+	  has the rest.
+	*/
+	// Nested, never && around an index (QC evaluates both sides).
+	pl_boardbusy = Scores_IsOnline();
+	if (rec_sb_tab == SB_T_ONLINE)
+	if (rec_sb_leg >= 0)
+	if (rec_sb_leg < rec_sb_legn)
+	if (rec_sb_legtrack[rec_sb_leg] == 0)
+	if (rec_sb_legnum[rec_sb_leg] == 0)
+		pl_boardbusy = FALSE;
+	Players_Panel(p, sz, pad, scr);
+
+	sui_end();
+	Font_Reset();
+
+	if (Scores_SpecHandOff())
+		return;
+
+	if (rec_sb_graphpick)
+	{
+		rec_sb_graphpick = FALSE;
+		LineGraph_Open();
+		return;
+	}
+
+	// Patch 433: a `line` box, on the frame boundary like the row picks below.
+	if (rec_sb_lnpick)
+	{
+		Scores_LineToggle(rec_sb_lnpick - 1);
+		rec_sb_lnpick = 0;
+		return;
+	}
+
+	/*
+	  THE HAND-OFF, AFTER sui_end AND AFTER THE LOOP.
+
+	  Acting on the click inside the list would close the board and open a
+	  recording in the middle of a virtualised draw -- with the scroll view's
+	  clip area still pushed and sui's click-once actions not yet cleared, so the
+	  next frame would see the same release again and re-open the same file.  A
+	  pending index costs one float and lands the whole transition on a frame
+	  boundary, which is what every other button in this file does implicitly by
+	  being the last thing drawn.
+	*/
+	if (Scores_IsOnline())
+	{
+		Scores_OnlineHandOff(pick);
+		return;
+	}
+
+	if (pick >= 0)
+	{
+		/*
+		  BUILD 57, STAGE T -- A LOBBY ROW HAS NOTHING TO WATCH, AND IT SAYS SO.
+
+		  The recorder is off in a lobby, so the file behind that row is a header
+		  with `samples 0` and no movement at all.  Watch_Open would refuse it --
+		  "holds 0 samples -- nothing to play" -- but it would refuse it AFTER
+		  closing this board and claiming the cursor, which reads as the replay
+		  having broken rather than as there being no replay.  Refused here, where
+		  the reason is known, and the board stays up so the next click is
+		  somewhere useful.
+		*/
+		if (rec_sb_rowtag[pick] == RT_LOBBY)
+			print("^3scores:^7 that time was set on a lobby -- no replay\n");
+		else
+		{
+			s = bufstr_get(rec_sb_bpath, pick);
+			Scores_Close();
+			Watch_Open(s);
+		}
+	}
+
+};
+
+/*
+===========================================================================
+  The modern board (ui_style 1, Patch 606).
+
+  The data, both row drawers, every control's id and what a click does are the
+  classic board's. This is only where things go: a header band, the sources as
+  one segmented control, the legs as a sidebar, and a table that puts the player
+  first and right-aligns the numbers. It has its own scale and is centred as one
+  group with the room list, so the design holds on a 720-line window.
+===========================================================================
+*/
+
+// The visible columns, left to right, for an owner column `ow` wide. Returns
+// the row's width. sb_colon[] says which optional columns are in.
+float(float ow, float online) Scores_ColsModern =
+{
+	local float x, g, cw, i;
+
+	cw = rec_sb_cw;
+	g  = cw * 1.5;
+	for (i = 0; i < 9; i = i + 1)
+		sb_colr[i] = FALSE;
+
+	x = cw * 0.8;
+	sb_colx[SBK_RANK] = x + cw * 2.4;
+	sb_colr[SBK_RANK] = TRUE;
+	x = x + cw * 4;
+	sb_colx[SBK_OWNER] = x;
+	x = x + ow + g + cw * 8.5;
+	sb_colx[SBK_TIME] = x;
+	sb_colr[SBK_TIME] = TRUE;
+	x = x + g + cw * 9;
+	sb_colx[SBK_DELTA] = x;
+	sb_colr[SBK_DELTA] = TRUE;
+	x = x + g * 1.6;
+	if (sb_colon[SBK_REP])  { sb_colx[SBK_REP] = x;  x = x + cw * 9 + g; }
+	if (sb_colon[SBK_DATE]) { sb_colx[SBK_DATE] = x; x = x + cw * (online ? 5 : 10) + g; }
+	if (sb_colon[SBK_KIND]) { sb_colx[SBK_KIND] = x; x = x + cw * 8.5 + g; }
+	if (sb_colon[SBK_TAG])  { sb_colx[SBK_TAG] = x;  x = x + cw * 9.5 + g; }
+	if (sb_colon[SBK_LINE]) { sb_colx[SBK_LINE] = x + cw * 0.5; x = x + cw * 3; }
+	return x + cw * 0.5;
+};
+
+void(vector rp, float col, string label) Scores_HeadCell =
+{
+	if (!sb_colon[col])
+		return;
+	if (sb_colr[col])
+		Scores_TextR([rp_x + sb_colx[col], rp_y], rec_sb_szhead, label, SUI_THEME_MUTED, 1);
+	else
+		Scores_Text([rp_x + sb_colx[col], rp_y], rec_sb_szhead, label, SUI_THEME_MUTED, 1);
+};
+
+// One segment of the source tabs: the classic chips' ids and click rule.
+// (`tab`, not `id`: tools/compare_chip_smoke.py finds Scores_Chip by its one
+// `sui_action_element(pos, sz, id, ...)` line.)
+float(string tab, vector pos, vector sz, string label, float on) Scores_Seg =
+{
+	local float hot, tw;
+
+	sui_action_element(pos, sz, tab, sui_noop);
+	hot = sui_is_hovered(tab);
+	if (on)
+		sui_roundbox(pos + '2 2 0', sz - '4 4 0', (sz_y - 4) * 0.5, SUI_THEME_SELECTED, 1);
+	else if (hot)
+		sui_roundbox(pos + '2 2 0', sz - '4 4 0', (sz_y - 4) * 0.5, SUI_THEME_HOVER, 1);
+	tw = stringwidth(label, TRUE, [sb_szui, sb_szui]);
+	Scores_Text([pos_x + (sz_x - tw) * 0.5, pos_y + (sz_y - sb_szui) * 0.5], sb_szui, label,
+	            on ? SUI_THEME_ACCENT : (hot ? SUI_THEME_TEXT : SUI_THEME_DIM), 1);
+	return sui_is_released(tab);
+};
+
+// A key hint ending at `xr`: a keycap, then what it does. Returns where the one
+// to its left should end.
+float(float xr, float y, string key, string what) Scores_Hint =
+{
+	local float kw, ww, sz;
+
+	sz = rec_sb_szhead;
+	ww = stringwidth(what, TRUE, [sz, sz]);
+	kw = stringwidth(key, TRUE, [sz, sz]) + sz;
+	Scores_Text([xr - ww, y], sz, what, SUI_THEME_DIM, 1);
+	sui_roundbox([xr - ww - sz * 0.5 - kw, y - 3], [kw, sz + 6], 4, SUI_THEME_CHIP, 1);
+	Scores_Text([xr - ww - kw, y], sz, key, SUI_THEME_TEXT, 1);
+	return xr - ww - sz * 0.5 - kw - sz * 1.4;
+};
+
+// The modern board's type for a row `px` tall. Each face snaps on its own
+// ladder, so the mono and UI sizes can sit a rung apart.
+void(float px) Scores_ModernType =
+{
+	Font_Set(ui_font_mono);
+	rec_sb_szrow = Font_Px(px);
+	rec_sb_cw    = rec_sb_szrow * SB_EM;
+	Font_Set(ui_font_ui);
+	sb_szui        = Font_Px(px);
+	rec_sb_szhead  = Font_Px(max(px * 0.75, 11));   // the small labels stop at 12 px
+	rec_sb_sztitle = Font_Px(px * 1.5);
+};
+
+// The wider source's row for this owner width (the online tabs add a replay
+// column). Sizing on it keeps the panel still when the source tab changes.
+float(float ow) Scores_NeedModern =
+{
+	local float a, b;
+
+	sb_colon[SBK_REP] = TRUE;
+	a = Scores_ColsModern(ow, TRUE);
+	sb_colon[SBK_REP] = FALSE;
+	b = Scores_ColsModern(ow, FALSE);
+	return max(a, b);
+};
+
+// FALSE, having drawn nothing: this window cannot hold the design, and the
+// caller draws the classic layout instead.
+float(vector scr) Scores_DrawModern =
+{
+	local vector p, sz, rp, rs, lp;
+	local float scale, bs, pad, w, h, x0, y0, sidew, tabh, chiph, chipw, segw, listh, n;
+	local float ytabs, yhead, ylist, yfoot, yc, x, idx, on, hot, pick, native, online;
+	local float roomw, have, need, floorw, ow, tablew, rows, chrome, step, k;
+	local string s, rid;
+
+	scale = cvar("hud_scale");
+	if (scale <= 0) scale = 2;
+	bs = min(scale, scr_y / 432);       // a short window gets smaller type...
+	if (bs < 1) bs = 1;
+	n = 3;
+	if (ob_cnt_imported > 0 || rec_sb_tab == SB_T_MOMENTUM)
+		n = 4;
+
+	/*
+	  WHAT FITS, tried in the order a player would choose. Steps 0-2: every column
+	  with a whole (300) room list beside the board, at 8, 7, then 6 units of type
+	  -- but never under the classic board's 6 * hud_scale. Step 2 then gives up
+	  why/tag, date and run class in that order; step 3 is the same beside the
+	  list at its narrowest (200). Rank, player, time, delta, the replay word and
+	  the line box are never cut, and nothing here is ever drawn under the room
+	  list: past step 3 the classic layout draws, and docks it as it always has.
+	*/
+	sb_colon[SBK_RANK]  = TRUE;
+	sb_colon[SBK_OWNER] = TRUE;
+	sb_colon[SBK_TIME]  = TRUE;
+	sb_colon[SBK_DELTA] = TRUE;
+	sb_colon[SBK_LINE]  = TRUE;
+	pad = 0;
+	sidew = 0;
+	segw = 0;
+	chipw = 0;
+	roomw = 0;
+	have = 0;
+	need = 0;
+	step = 0;
+	while (1)
+	{
+		if (step > 3)
+			return FALSE;
+		k = max(6, 8 - step);
+		Scores_ModernType(max(k * bs, 6 * scale));
+		pad   = rec_sb_szrow;           // every ladder rung is even: its halves are whole pixels
+		chipw = ceil(rec_sb_cw * 8.5);
+		sidew = ceil(rec_sb_cw * 15);
+		segw  = ceil(rec_sb_cw * 11.5);
+		roomw = ((step < 3) ? 300 : 200) + pad;
+		have  = scr_x - pad * 2 - roomw - (pad * 3 + sidew) - pad * 0.5;
+		// The header row holds the tabs, a gap and four filter chips whatever the
+		// table needs: its inner width is the table's plus 1.5 pad and the sidebar.
+		floorw = segw * n + pad + (chipw + 6) * 4 - 6 - (pad * 1.5 + sidew);
+
+		sb_colon[SBK_TAG]  = TRUE;
+		sb_colon[SBK_DATE] = TRUE;
+		sb_colon[SBK_KIND] = TRUE;
+		need = max(Scores_NeedModern(rec_sb_cw * 12), floorw);
+		if (step >= 2)
+		{
+			if (need > have) { sb_colon[SBK_TAG] = FALSE;  need = max(Scores_NeedModern(rec_sb_cw * 12), floorw); }
+			if (need > have) { sb_colon[SBK_DATE] = FALSE; need = max(Scores_NeedModern(rec_sb_cw * 12), floorw); }
+			if (need > have) { sb_colon[SBK_KIND] = FALSE; need = max(Scores_NeedModern(rec_sb_cw * 12), floorw); }
+		}
+		if (need <= have)
+			break;
+		step = step + 1;
+	}
+	rec_sb_rowh = ceil(rec_sb_szrow * 1.75);
+	tabh  = ceil(rec_sb_szrow * 1.9);
+	chiph = ceil(rec_sb_szhead * 2);
+
+	// The owner column takes the slack a whole room list leaves, more of it on
+	// the tabs with no replay column.
+	online = Scores_IsOnline();
+	sb_colon[SBK_REP] = online;
+	need = max(need, min(have - (300 + pad - roomw), need + rec_sb_cw * 10));
+	ow = rec_sb_cw * 12 + (need - Scores_ColsModern(rec_sb_cw * 12, online));
+	tablew = Scores_ColsModern(ow, online) + pad * 0.5;
+	w = pad * 3 + sidew + tablew;
+
+	// `scores status` reports the classic budget's name for what was kept.
+	rec_sb_cols = SBX_END;
+	if (!sb_colon[SBK_TAG])  rec_sb_cols = SBX_TAG;
+	if (!sb_colon[SBK_DATE]) rec_sb_cols = SBX_DATE;
+
+	chrome = pad + rec_sb_sztitle + ceil(pad * 0.75) + tabh + pad
+	       + rec_sb_szhead + pad * 0.5
+	       + ceil(pad * 0.75) + rec_sb_szhead * 2 + 6 + pad;
+	rows  = bound(6, floor((scr_y * 0.86 - chrome) / rec_sb_rowh), 24);
+	listh = rows * rec_sb_rowh;
+	h = chrome + listh;
+
+	// Centred as a pair with a whole room list; a narrower one takes what the row has left.
+	x0 = floor((scr_x - w - 300 - pad) * 0.5);
+	if (x0 < pad) x0 = pad;
+	y0 = floor((scr_y - h) * 0.5);
+	p  = [x0, y0];
+	sz = [w, h];
+	sui_style_panel(p, sz, ceil(pad * 0.75), 0.98);
+
+	// ---- the header: the map, and its clock on the title's baseline ---------
+	Font_Set(ui_font_ui);
+	Scores_Text([x0 + pad, y0 + pad], rec_sb_sztitle,
+	            (serverkey("map") != "") ? serverkey("map") : "no map", SUI_THEME_TEXT, 1);
+	Scores_DrawClock([x0 + pad, y0 + pad], x0 + w - pad);
+
+	if (zone_count <= 0)
+	{
+		Scores_NativeClose();
+		Scores_Text([x0 + pad, y0 + pad * 2 + rec_sb_sztitle], sb_szui,
+		            "this map has no zone file, so it has no legs and no times",
+		            SUI_THEME_DIM, 1);
+		pl_boardbusy = FALSE;             // no legs: no online board to protect
+		Players_Panel(p, sz, pad, scr);
+		sui_end();
+		Font_Reset();
+		Scores_SpecHandOff();
+		return TRUE;
+	}
+
+	// ---- the sources, one control; what narrows them, to its right ----------
+	ytabs = y0 + pad + rec_sb_sztitle + ceil(pad * 0.75);
+	sui_roundbox([x0 + pad, ytabs], [segw * n, tabh], tabh * 0.5, SUI_THEME_WELL, 1);
+	if (Scores_Seg("sb_t0", [x0 + pad, ytabs], [segw, tabh], "Online", rec_sb_tab == SB_T_ONLINE))
+	{
+		rec_sb_tab = SB_T_ONLINE;
+		rec_sb_tabauto = FALSE;         // the player chose; the follow leaves it
+	}
+	if (Scores_Seg("sb_t1", [x0 + pad + segw, ytabs], [segw, tabh], "Segmented",
+	               rec_sb_tab == SB_T_SEGMENT))
+	{
+		rec_sb_tab = SB_T_SEGMENT;
+		rec_sb_tabauto = FALSE;
+	}
+	if (Scores_Seg("sb_t2", [x0 + pad + segw * 2, ytabs], [segw, tabh], "Local",
+	               rec_sb_tab == SB_T_LOCAL))
+	{
+		rec_sb_tab = SB_T_LOCAL;
+		rec_sb_tabauto = FALSE;
+	}
+	if (n == 4)
+	if (Scores_Seg("sb_t3", [x0 + pad + segw * 3, ytabs], [segw, tabh], "Imported",
+	               rec_sb_tab == SB_T_MOMENTUM))
+	{
+		rec_sb_tab = SB_T_MOMENTUM;
+		rec_sb_tabauto = FALSE;
+	}
+
+	// A segment clicked this frame has just changed the source. The chips, the
+	// rows drawn and Scores_Finish's hand-off must all read the same one.
+	if (Scores_IsOnline() != online)
+	{
+		online = Scores_IsOnline();
+		sb_colon[SBK_REP] = online;
+		ow = rec_sb_cw * 12 + (need - Scores_ColsModern(rec_sb_cw * 12, online));
+		Scores_ColsModern(ow, online);
+	}
+
+	x = x0 + w - pad - chipw;
+	yc = ytabs + floor((tabh - chiph) * 0.5);
+	if (!online)
+	{
+		if (Scores_Chip("sb_fx", [x, yc], [chipw, chiph], "cheated", rec_sb_filter == SB_F_CHEATED))
+			rec_sb_filter = SB_F_CHEATED;
+		x = x - chipw - 6;
+		if (Scores_Chip("sb_fs", [x, yc], [chipw, chiph], "stitched", rec_sb_filter == SB_F_STITCHED))
+			rec_sb_filter = SB_F_STITCHED;
+		x = x - chipw - 6;
+		if (Scores_Chip("sb_fc", [x, yc], [chipw, chiph], "clean", rec_sb_filter == SB_F_CLEAN))
+			rec_sb_filter = SB_F_CLEAN;
+		x = x - chipw - 6;
+		if (Scores_Chip("sb_fa", [x, yc], [chipw, chiph], "all", rec_sb_filter == SB_F_ALL))
+			rec_sb_filter = SB_F_ALL;
+	}
+	else if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
+	{
+		// The only way an online tab re-asks for a board it already asked for.
+		if (Scores_Chip("sb_tref", [x, yc], [chipw, chiph], "refresh", FALSE))
+			Online_Fetch(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
+			             Scores_TierOf(), Scores_StyleOf());
+	}
+
+	sui_fill([x0 + pad, ytabs + tabh + pad * 0.5], [w - pad * 2, 1], SUI_THEME_EDGE, 1, 0);
+	yhead = ytabs + tabh + pad;
+	ylist = yhead + rec_sb_szhead + pad * 0.5;   // where both row drawers put their list
+
+	// ---- the legs, a sidebar; the graphs under them --------------------------
+	Scores_Text([x0 + pad + rec_sb_cw, yhead], rec_sb_szhead, "TRACK", SUI_THEME_MUTED, 1);
+	rs = [sidew - ceil(rec_sb_cw), rec_sb_rowh];
+	sui_list_view_begin("sb_legs", [x0 + pad, ylist], [sidew, listh - tabh - pad * 0.5],
+	                    rs, rec_sb_legn, rec_sb_legscroll, [0, ceil(rec_sb_cw)]);
+	lp = '0 0 0';
+	for (idx = sui_list_item(lp); idx > -1; idx = sui_list_item(lp))
+	{
+		rid = strcat("sb_leg", ftos(idx));
+		sui_action_element(lp, rs, rid, sui_noop);
+		on  = (idx == rec_sb_leg);
+		hot = sui_is_hovered(rid);
+		if (on || hot)
+			sui_roundbox(lp + '0 1 0', rs - '0 2 0', ceil(rec_sb_cw * 0.6),
+			             on ? SUI_THEME_SELECTED : SUI_THEME_HOVER, 1);
+		Scores_Text([lp_x + rec_sb_cw, lp_y + (rec_sb_rowh - sb_szui) * 0.5], sb_szui,
+		            Scores_LegName(idx),
+		            on ? SUI_THEME_ACCENT : (hot ? SUI_THEME_TEXT : SUI_THEME_DIM), 1);
+		if (sui_is_released(rid))
+			rec_sb_leg = idx;
+	}
+	sui_list_view_end();
+	if (Scores_Chip("sb_graph", [x0 + pad, ylist + listh - tabh], [rs_x, tabh], "run graphs", FALSE))
+		rec_sb_graphpick = TRUE;
+
+	// ---- the runs --------------------------------------------------------------
+	rp = [x0 + pad * 2 + sidew, yhead];
+	rs = [tablew, listh];
+	native = Scores_NativeDraw(rp, [rs_x, rs_y + rec_sb_szhead + pad * 0.5]);
+	if (!native)
+	{
+		Font_Set(ui_font_ui);
+		Scores_HeadCell(rp, SBK_RANK, "#");
+		Scores_HeadCell(rp, SBK_OWNER, "PLAYER");
+		Scores_HeadCell(rp, SBK_TIME, "TIME");
+		Scores_HeadCell(rp, SBK_DELTA, "DELTA");
+		Scores_HeadCell(rp, SBK_REP, "REPLAY");
+		Scores_HeadCell(rp, SBK_DATE, online ? "AGE" : "DATE");
+		Scores_HeadCell(rp, SBK_KIND, "RUN");
+		// The local board has never labelled its last column: `latest` and
+		// `lobby` say what they are.
+		if (online)
+			Scores_HeadCell(rp, SBK_TAG, "WHY");
+		Scores_HeadCell(rp, SBK_LINE, "LINE");
+
+		if (online)
+			pick = Scores_DrawOnlineRows(rp, rs, pad);
+		else
+			pick = Scores_DrawLocalRows(rp, rs, Timer_Tick(), pad);
+	}
+	else
+		pick = Scores_NativeRowPick();
+
+	// ---- the footer: what is listed, and the keys ------------------------------
+	yfoot = ylist + listh + ceil(pad * 0.75);
+	sui_fill([x0 + pad, ylist + listh + floor(pad * 0.3)], [w - pad * 2, 1], SUI_THEME_EDGE, 1, 0);
+	Font_Set(ui_font_ui);
+	Scores_Text([x0 + pad, yfoot], rec_sb_szhead, Scores_CountLine(), SUI_THEME_DIM, 1);
+	x = Scores_Hint(x0 + w - pad, yfoot, "tab", "close");
+	if (online)
+	{
+		x = Scores_Hint(x, yfoot, "rmb", "cursor");
+		x = Scores_Hint(x, yfoot, "up down", "leg");
+		x = Scores_Hint(x, yfoot, "left right", "source");
+	}
+	else
+		x = Scores_Hint(x, yfoot, "click", "watch a run");
+
+	// Where a run set here goes, on every tab: see the classic footer.
+	s = Scores_BoardNote();
+	if (s != "")
+		Scores_Text([x0 + pad, yfoot + rec_sb_szhead + 6], rec_sb_szhead,
+		            s, Scores_BoardNoteCol(), 0.9);
+
+	Scores_Finish(p, sz, pad, scr, pick);
+	return TRUE;
+};
+
 void(vector scr) Scores_Draw =
 {
 	local vector p, sz, rp, rs, lp;
@@ -2236,6 +2899,10 @@ void(vector scr) Scores_Draw =
 	// hidden.  A leaderboard you cannot see the map through reads as a menu, and
 	// this one is opened mid-session with the same key you use to peek.
 	sui_fill('0 0 0', [scr_x, scr_y], '0 0 0', 0.55, 0);
+
+	if (sui_style_modern)
+	if (Scores_DrawModern(scr))
+		return;
 
 	/*
 	  THE TYPE SCALE, and it is read here rather than inherited.
@@ -2261,6 +2928,7 @@ void(vector scr) Scores_Draw =
 	Font_Set(ui_font_ui);
 	rec_sb_szhead  = Font_Px(6 * scale);
 	rec_sb_sztitle = Font_Px(8 * scale);
+	sb_szui = rec_sb_szrow;         // the pill chips' text when this layout draws under ui_style 1
 
 	pad   = ceil(rec_sb_cw * 1.5);
 	rec_sb_rowh = ceil(rec_sb_szrow * 1.7);
@@ -2299,8 +2967,13 @@ void(vector scr) Scores_Draw =
 	p  = [x0, y0];
 	sz = [w, h];
 
-	sui_fill(p, sz, SBC_BG, 0.94, 0);
-	sui_border_box(p, sz, 1, SBC_LINE, 0.9, 0);
+	if (sui_style_modern)
+		sui_style_panel(p, sz, ceil(pad * 0.8), 0.97);
+	else
+	{
+		sui_fill(p, sz, SBC_BG, 0.94, 0);
+		sui_border_box(p, sz, 1, SBC_LINE, 0.9, 0);
+	}
 
 	// ---- the header ------------------------------------------------------
 	Font_Set(ui_font_ui);
@@ -2439,7 +3112,12 @@ void(vector scr) Scores_Draw =
 		on  = (idx == rec_sb_leg);
 		hot = sui_is_hovered(rid);
 		if (on || hot)
-			sui_fill(lp, rs, on ? SBC_SEL : SBC_HOT, 1, 0);
+		{
+			if (sui_style_modern)
+				sui_roundbox(lp, rs - '0 1 0', ceil(rec_sb_cw * 0.5), on ? SBC_SEL : SBC_HOT, 1);
+			else
+				sui_fill(lp, rs, on ? SBC_SEL : SBC_HOT, 1, 0);
+		}
 
 		Scores_Text([lp_x + rec_sb_cw, lp_y + (rec_sb_rowh - rec_sb_szrow) * 0.5],
 		            rec_sb_szrow, Scores_LegName(idx),
@@ -2483,6 +3161,7 @@ void(vector scr) Scores_Draw =
 	if (Scores_ColX(rec_sb_cols) > rs_x - pad) rec_sb_cols = SBX_LINE;   // Patch 433
 	if (Scores_ColX(rec_sb_cols) > rs_x - pad) rec_sb_cols = SBX_TAG;
 	if (Scores_ColX(rec_sb_cols) > rs_x - pad) rec_sb_cols = SBX_DATE;
+	Scores_ColsClassic();
 
 	native = Scores_NativeDraw(rp, [rs_x, rs_y + rec_sb_szhead + pad * 0.5]);
 	if (!native)
@@ -2516,19 +3195,19 @@ void(vector scr) Scores_Draw =
 		  "this tab does not use this".  Same reasoning the line below already gives
 		  for leaving the local tag column unlabelled.
 		*/
-		if (rec_sb_cols > SBX_REP)
+		if (sb_colon[SBK_REP])
 		if (Scores_IsOnline())
 			Scores_Text([rp_x + Scores_ColX(SBX_REP), rp_y], rec_sb_szhead,
 			            "replay", SBC_DIM, 1);
 
-		if (rec_sb_cols > SBX_DATE)
+		if (sb_colon[SBK_DATE])
 			Scores_Text([rp_x + Scores_ColX(SBX_DATE), rp_y], rec_sb_szhead,
 			            Scores_IsOnline() ? "age" : "date", SBC_DIM, 1);
-		if (rec_sb_cols > SBX_KIND)
+		if (sb_colon[SBK_KIND])
 			Scores_Text([rp_x + Scores_ColX(SBX_KIND), rp_y], rec_sb_szhead, "run", SBC_DIM, 1);
 		// The local board has never labelled its last column and does not start
 		// now: `latest` and `lobby` say what they are.  "no ruleset" does not.
-		if (rec_sb_cols > SBX_TAG)
+		if (sb_colon[SBK_TAG])
 		if (Scores_IsOnline())
 			Scores_Text([rp_x + Scores_ColX(SBX_TAG), rp_y], rec_sb_szhead, "why", SBC_DIM, 1);
 		if (rec_sb_cols > SBX_LINE)
@@ -2552,57 +3231,11 @@ void(vector scr) Scores_Draw =
 			pick = Scores_DrawLocalRows(rp, rs, tick, pad);
 	}
 	else
-	{
-		pick = Scores_NativePick();
-		// `scores olpick` is consumed by the legacy online draw, which did not run.
-		if (Scores_IsOnline())
-		{
-			if (pick < 0)
-			if (rec_sb_olpick > 0)
-			if (rec_sb_olpick <= ob_n)
-			{
-				pick = rec_sb_olpick - 1;
-				print(sprintf("scores: olpick row %g\n", pick));
-			}
-			rec_sb_olpick = 0;
-		}
-	}
+		pick = Scores_NativeRowPick();
 
 	// ---- the footer ------------------------------------------------------
 	Font_Set(ui_font_ui);
-	if (Scores_IsOnline())
-	{
-		/*
-		  ONLY WHEN THE ROWS IN MEMORY ARE THIS BOARD'S, and that test was
-		  missing.  ob_n and ob_cnt_* survive a failed or in-flight fetch by
-		  design (Online_Clear is not called on failure), so this footer
-		  cheerfully printed the PREVIOUS leg's counts under the current leg's
-		  heading -- next to a panel that was simultaneously saying "asking the
-		  leaderboard...".  That is precisely the failure cl_online.qc's own
-		  header calls "worth spending four string reads to make impossible",
-		  written into the one place it was not checked.
-		*/
-		if (Online_Shows(rec_sb_legtrack[rec_sb_leg],
-		                 rec_sb_legnum[rec_sb_leg],
-		                 Scores_TierOf(), Scores_StyleOf()))
-		{
-			s = sprintf("%g %s time(s) on %s", ob_n,
-			            Scores_StyleOf(), Scores_LegName(rec_sb_leg));
-			if (ob_cnt_ranked > ob_n)
-				s = sprintf("%s  (top %g of %g shown)", s, ob_n, ob_cnt_ranked);
-			if (ob_state == OBS_FETCH)
-				s = strcat(s, "   refreshing...");
-		}
-		else
-			s = sprintf("%s on %s", Scores_StyleOf(), Scores_LegName(rec_sb_leg));
-	}
-	else
-	{
-		s = sprintf("%g run(s) on %s", rec_sb_rown, Scores_LegName(rec_sb_leg));
-		if (rec_sb_rowover > 0)
-			s = sprintf("%s  (%g more than the %g this list holds)",
-			            s, rec_sb_rowover, SB_MAXROW);
-	}
+	s = Scores_CountLine();
 	Scores_Text([x0 + pad, y0 + h - pad - footh], rec_sb_szrow, s, SBC_DIM, 1);
 
 	/*
@@ -2640,86 +3273,7 @@ void(vector scr) Scores_Draw =
 		Scores_Text([x0 + pad, y0 + h - pad - rec_sb_szrow], rec_sb_szrow,
 		            s, Scores_BoardNoteCol(), 0.85);
 
-	/*
-	  PATCH 340: the room list, INSIDE this bracket and before its sui_end.
-
-	  A second sui bracket in the same frame draws dead buttons -- sui_begin
-	  empties the hit-test list and sui_end clears the input buffer, so the
-	  LAST bracket owns every click (cl_main.qc's Ev_Panel comment).  Sharing
-	  this one is what makes the mute buttons live.  It gets the rect this
-	  function just computed because it anchors to it; cl_players.qc's header
-	  has the rest.
-	*/
-	// Nested, never && around an index (QC evaluates both sides).
-	pl_boardbusy = Scores_IsOnline();
-	if (rec_sb_tab == SB_T_ONLINE)
-	if (rec_sb_leg >= 0)
-	if (rec_sb_leg < rec_sb_legn)
-	if (rec_sb_legtrack[rec_sb_leg] == 0)
-	if (rec_sb_legnum[rec_sb_leg] == 0)
-		pl_boardbusy = FALSE;
-	Players_Panel(p, sz, pad, scr);
-
-	sui_end();
-	Font_Reset();
-
-	if (Scores_SpecHandOff())
-		return;
-
-	if (rec_sb_graphpick)
-	{
-		rec_sb_graphpick = FALSE;
-		LineGraph_Open();
-		return;
-	}
-
-	// Patch 433: a `line` box, on the frame boundary like the row picks below.
-	if (rec_sb_lnpick)
-	{
-		Scores_LineToggle(rec_sb_lnpick - 1);
-		rec_sb_lnpick = 0;
-		return;
-	}
-
-	/*
-	  THE HAND-OFF, AFTER sui_end AND AFTER THE LOOP.
-
-	  Acting on the click inside the list would close the board and open a
-	  recording in the middle of a virtualised draw -- with the scroll view's
-	  clip area still pushed and sui's click-once actions not yet cleared, so the
-	  next frame would see the same release again and re-open the same file.  A
-	  pending index costs one float and lands the whole transition on a frame
-	  boundary, which is what every other button in this file does implicitly by
-	  being the last thing drawn.
-	*/
-	if (Scores_IsOnline())
-	{
-		Scores_OnlineHandOff(pick);
-		return;
-	}
-
-	if (pick >= 0)
-	{
-		/*
-		  BUILD 57, STAGE T -- A LOBBY ROW HAS NOTHING TO WATCH, AND IT SAYS SO.
-
-		  The recorder is off in a lobby, so the file behind that row is a header
-		  with `samples 0` and no movement at all.  Watch_Open would refuse it --
-		  "holds 0 samples -- nothing to play" -- but it would refuse it AFTER
-		  closing this board and claiming the cursor, which reads as the replay
-		  having broken rather than as there being no replay.  Refused here, where
-		  the reason is known, and the board stays up so the next click is
-		  somewhere useful.
-		*/
-		if (rec_sb_rowtag[pick] == RT_LOBBY)
-			print("^3scores:^7 that time was set on a lobby -- no replay\n");
-		else
-		{
-			s = bufstr_get(rec_sb_bpath, pick);
-			Scores_Close();
-			Watch_Open(s);
-		}
-	}
+	Scores_Finish(p, sz, pad, scr, pick);
 };
 
 /*
