@@ -2773,3 +2773,44 @@ first jump read about +358 for a +57 jump.
   not predict (always the case when you host the game yourself) can still be
   missed. Tell me if a row after some teleporter still looks wrong, and on
   which map.
+
+## 17. Ramp marks on a Momentum demo (Patch 626)
+
+A Momentum demo records nothing about touching a ramp, so its line had no
+on-ramp or off-ramp chevrons, its Segments column had no Ramp rows, and the
+strafe bar judged its rides as if they were free air. The game now works the
+contact out from the demo's own velocity, tick by tick, and marks it as worked
+out rather than recorded.
+
+- Board, Imported tab, watch any Momentum run (or tick its line): the line
+  has the orange on-ramp and white off-ramp chevrons, and the number beside
+  each starts with `~`, as in `~2741 u/s`. The `~` means "inferred". A mark
+  that is not a ramp edge (a jump, a landing on the ground) has no `~`.
+- The Segments column now lists Ramp rows between the Air rows.
+- On a ride the strafe bar says `ramp: no plane` and shows no target. That is
+  deliberate: the demo does not say which way the ramp faces, and the old
+  target there was the free-air one, which is wrong on a ramp.
+- The best place to judge it is surf_voyager, because your own Momentum run
+  there also exists flown again by this game with real contact:
+  `replay data/momentum/surf_voyager/main/0004418_proto-2da02252_run.rec` is
+  the demo, `replay cfg/test/p492voy.rec` the same run with recorded contact
+  (no `~`). They should show the same rides: 33 of the 38 match, 31 of those
+  starting on the same tick.
+- Known wrong on that run, so you need not report these: at 0:42.6 the lift
+  shows as a ride (a Ramp row and two marks) though it is no ramp; five short
+  touches under an overhang around 0:45 have no mark; two rides (0:21.7 and
+  0:30.4) start early.
+- 24 of the 5,281 imported runs are not done (21 old files with no per-tick
+  velocity, 2 with almost no air time, and the one run over 200,000 samples:
+  your own 59-minute surf_666 main). Their status says `unavailable` and
+  why, and they draw no ramp marks, as before. The long one is a limit of
+  mine, not of the demo: working it out as the replay opens would have taken
+  that open to 95% of what the engine allows one script call, and past it the
+  game ends. BACKLOG has the fix.
+
+What I would like to hear: on maps you know, do the `~` marks sit where you
+get on and off the ramps, and is there a map where they are plainly wrong
+(boosters, lifts and low-gravity sections are the likely places)?
+
+Not changed: your own recordings, anything a server records or ranks, the
+imported files themselves.

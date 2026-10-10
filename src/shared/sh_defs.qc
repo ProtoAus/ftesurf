@@ -2887,6 +2887,7 @@ float(string w) FS_TagFromName =
 #define WT_F_JUMP      4
 #define WT_F_ATTACK    8
 #define WT_F_RAMP     16        // v4: the move clipped a ramp plane this tick
+#define WT_F_RAMPI    32        // never in a file: a reader inferred that (cl_infer.qc)
 
 /*
   IS THIS .rec LINE A SAMPLE OR A RECORD?

@@ -27,6 +27,8 @@ def main():
     ap.add_argument('--output-dir', type=pathlib.Path)
     ap.add_argument('--recording', type=pathlib.Path,
                     help='copy a control recording into the overlay, never alter its source')
+    ap.add_argument('--also', action='append', default=[], metavar='NAME=PATH',
+                    help='another recording, copied to cfg/test/NAME in the overlay')
     ap.add_argument('--port', type=int, default=27619)
     ap.add_argument('--dedicated', action='store_true')
     ap.add_argument('--map', default='surf_dune', help='with --dedicated: the map the server starts')
@@ -70,6 +72,13 @@ def main():
             target = gd / 'cfg/test/runlines_sample.rec'
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(a.recording, target)
+        for pair in a.also:
+            name, _, source = pair.partition('=')
+            if not source or pathlib.PurePath(name).name != name:
+                raise ValueError('--also wants NAME=PATH, NAME a bare file name: %s' % pair)
+            target = gd / 'cfg/test' / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
         cfg = a.cfg if a.cfg.is_absolute() else ROOT / a.cfg
         target = gd / 'cfg/test/runlines_smoke.cfg'
         target.parent.mkdir(parents=True, exist_ok=True)

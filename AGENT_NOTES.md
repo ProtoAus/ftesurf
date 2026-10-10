@@ -1639,6 +1639,86 @@ publicly WITH its fix, not before it.
 
 ## The run line (Patches 432, 449-453)
 
+- Patch 626: RAMP CONTACT INFERRED ON AN IMPORTED RUN. A .mtv records none, so
+  an import's line had no ramp marks, its Segments column no ramp rows, and the
+  strafe bar graded its rides against the flat-air target. `cl_infer.qc`
+  infers it in the viewer from the samples; no file is rewritten and
+  `WT_F_RAMPI` exists in memory only. Between two samples one mover tick
+  apart, neither on ground and not a teleport, contact is a push up -- (change
+  in vz) + step > 0.045 -- less a hard push (over 2.5 steps) with no sideways
+  change at all, which is a floor touched for a tick. THE STEP IS READ OFF THE
+  FILE (the commonest fall, to 0.01), never 800 * tick: one imported map runs
+  gravity 750. Two readers through one `Infer_Step`: the replay
+  (`Watch_InferScan`, a bit per buffer line, which the line, the Segments
+  build and the playhead read through `Watch_Flags`) and the board-line job,
+  which reads an import's file twice (a first pass for the step). UNAVAILABLE
+  is a third answer: an import with no `momdemo` (21 of 5,281 -- velocity
+  differenced from positions and NO ground flag, so a floor would read as a
+  ramp; their fall is sharp enough, shares 0.27 to 0.50, that only the header
+  tells), under 30 judgeable pairs, no fall common enough, or a run over
+  200,000 samples (`INF_SCANMAX`: the budget, below). It is SAID: a
+  ramp edge's label starts with `~`, `replay status` and `hud_watch_info` say
+  `inferred`, the bar says `ramp: no plane` and gives no target, and
+  `Line_Grade` gives no answer on an inferred tick. THE PLANE IS NOT INFERRED.
+  tools/rampinfer.py is the rule in Python, written from the measurement and
+  not from the QC; its `--score` and `--twin` are how the rule is known.
+  Against native bit 16, one file a run (2026-10-10): 16 tick-counted
+  recordings on 8 maps -- all 14,640 contact ticks and all 155 rides, 152
+  starting and 155 ending on the recording's own tick, 1 extra ride (a noclip
+  hover in a cheat file); 145 frame-sampled ones on 29 maps, re-clocked --
+  52,386 of 52,433 ticks, 810 of 816 rides, 791 starts and 797 ends exact, 115
+  extra rides of which 108 are in cheat, practice and save files and 7 in
+  clean runs holding 351. AND ONE REAL DEMO: cfg/test/p492voy.rec is the
+  owner's surf_voyager Momentum run flown again by this engine (bodies a
+  median 0.3 u apart over the timed run), so its bit 16 is the contact the
+  import lacks: 33 of 38 rides found, 31 starts and 32 ends on the exact tick;
+  the 5 missed are one to eleven ticks on a face pointing DOWN; 1 extra ride
+  is a lift. Over all 5,281 imports: 5,257 inferred, 24 unavailable (21 with
+  no `momdemo`, 2 with too little air, 1 too long).
+  What the measuring taught:
+  A JITTERY CLOCK IS NOT A JITTERY MOVER. The first cut divided by the clock
+  step and read half of free flight as a push: a format under 5 samples by
+  frame (steps of 0.0088 and 0.0152 on a 0.01 tick) while vz still moves by
+  whole steps.
+  LEAVING OUT "vz DID NOT MOVE" WAS WRONG. Noclip and a ladder do that, and so
+  does a body wedged still on a ramp, which is how a surf run waits at its
+  start: native files set the bit there (2,770 ticks).
+  REQUIRING A RAMP'S OWN SIDEWAYS PUSH WAS WRONG TOO. A body landing in the
+  crease between two facets of a curved ramp is pushed up while the sideways
+  parts cancel: that test refused the first tick of 10 rides in 33 on the demo.
+  A REPLAY OPENS IN ONE QC CALL, AND THE CALL HAS A BUDGET. The engine ends a
+  call at 100,000,000 branches, calls and returns (`execloop.h` RUNAWAYCHECK:
+  the session ends with "runaway loop error"), and every pass of the open is
+  paid per sample -- about 320 a sample before this patch, so some 312,000
+  samples was already the ceiling. No arm sees it. The review counted it by
+  running the BUILT csprogs in an offline QuakeC interpreter: the longest
+  import (238,434 samples, an hour of surf_666) opened at 76.2% of the budget
+  on main, 94.7% with this patch's first cut, and 97.4% with the two patches
+  stacked on it. Shipped instead: the scan tokenizes a line once (48 a
+  sample, was 82), and over 200,000 samples (`INF_SCANMAX`) neither reader
+  infers and the line says `unavailable: too long a run`. That file opens at
+  77.9% now; the longest that is still inferred (197,512 samples) at 73.1%.
+  BEFORE ADDING ANYTHING PER SAMPLE TO THE OPEN, COUNT IT ON THAT FILE.
+  BIT 32 IS A READER'S OWN: the three places that read a file's flags column
+  for a line clear it first (`Watch_Flags`), so a file cannot set it.
+  Arm `runlines_infer.cfg` + `test_runlines_infer.py` on surf_voyager: ten
+  checks against the reference and tools/p449mark.py. The control is main, and
+  six one-edit mutants are each caught by the check that names them (run on
+  the build before the review's fixes). tools/test_rampinfer.py: 25 cases.
+  MY OWN 19 MUTANTS OF THE RULE WERE ALL CAUGHT AND SAID LITTLE: of the
+  review's 46, the 17 cases I had caught 17 -- no threshold, bound, tie or
+  rounding was pinned. The 25 catch 42 (the four left: the hold's length in
+  the scoring helper, twice, and two details of the mark model's seed). A
+  mutant list written by the author of the tests measures the author.
+  WHAT THE ARM CANNOT SHOW: its one recording never lands on the rule's edges
+  (breaking the teleport refusal, the one-tick window, the three thresholds,
+  the tie or the rounding in the reference changes none of its 4,516 bits).
+  The client is held to the reference there only offline: 96,000 generated
+  samples aimed at every threshold, through the built `Infer_*`, 0
+  differences (the review's script, rerun on the shipped build). The same
+  interpreter ran what the arm does not: a board line whose window opens in
+  contact (two legs of a staged import), six real imports at both tick
+  rates, reopening and dropped jobs. None of it is the engine.
 - Patch 616: the LIVE Segments column at a teleport. `Board_LiveMoved`
   (`cl_board.qc`), called from the HUD just before the live `Board_Frame`,
   calls Patch 613's `Board_LineBroke` on a frame the body was moved. A map
@@ -2714,7 +2794,9 @@ See `tools/OFFRAMP_CONTACT.md`; private diagnostic builds NEVER ship.
   ground contact. The .mtv has all three -- tools/momreplay.py decodes them, and
   since 4 Oct tools/momreimport.py writes every import from its demo (5260 of
   5281): eye angles, fl ground/duck/jump/attack, the move from the recorded
-  wishVel. Still never recorded: ramp contact (bit 16, the plane -- BACKLOG).
+  wishVel. Still never recorded: ramp contact (bit 16, the plane). The viewer
+  infers the contact since Patch 626 and says so (the run line's notes); the
+  plane it does not (BACKLOG).
   **Never write a `.view` sidecar for an import**: that file is the client's
   per-frame evidence, and nothing here was recorded per frame.
 - **NO `warp` RECORDS ARE SYNTHESISED**, and the grammar forbids it in terms:

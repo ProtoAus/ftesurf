@@ -3127,19 +3127,62 @@ right way up.
   once. Falsifier: distinguish an authoritative new attempt from a save/rewind
   clock-back, preserve failed attempt/head, then start/fade only after departure;
   P502 same-frame go/save, warm-history and cold-load arms must still pass.
-- **Re-imported Momentum runs read every ramp as free air** (2026-10-04, the
-  re-import's review; true of the .wrpath imports too). A .mtv records no ramp
-  contact, so fl bit 16 is never set and the plane is 0 0 0 -- and readers take
-  a clear bit 16 in a 17-column file as "measured, not riding": the strafe bar
-  grades ramp ticks against the flat-air target, the segment column has no ramp
-  rows, and line marks/colour treat rides as air (cl_watch.qc:1261, 2549;
-  cl_lines.qc:573; cl_hud.qc:3725). Real ground/jump bits now make it look
-  measured: 24-43% of airborne ticks in four surf files are not free fall. FIX
-  BY INFERENCE, validated first: the per-tick wishVel and post-move velocity
-  give the expected air step (half gravity, AirAccelerate at aircap 30), and
-  the residual of a clipped tick is along the plane normal. Score it against
-  FTESurf's own recordings, which carry the engine's true bit 16 and plane, and
-  declare it in the header. Until then the alternative is a reader guard.
+- **Inferred ramp contact on imported runs: what Patch 626 left open.** A
+  .mtv records no ramp contact; the viewer infers it and says so
+  (`cl_infer.qc`; tools/rampinfer.py holds the rule and how it was measured).
+  This item was "Re-imported Momentum runs read every ramp as free air".
+  (1) NO PLANE. The strafe bar says `ramp: no plane` on an inferred ride and
+  the air-control colour gives no answer there. On the one demo with truth
+  (tools/rampinfer.py --twin) the sideways-to-upward ratio of a contact tick
+  equalled the recorded plane's on 1,958 ticks (p5 to p95 1.00), so the
+  plane's nz and heading look recoverable from a tick's velocity change. The
+  known exception is a tick in the crease between two facets.
+  (2) A LIFT, A BOOSTER, A GRAVITY ZONE AND A LADDER READ AS A RAMP. One ride
+  in 38 on that demo (surf_voyager's lift: 46 ticks of one constant push, a
+  Ramp row and two marks that are not a ramp); 7 extra rides against 351 in
+  clean native runs. A constant push over 0.49 of a step cannot be an
+  unstrafed slide on a face of nz <= 0.7, but a wedged body's push is exactly
+  one step, so "constant" alone does not separate them. The map's trigger
+  volumes, or a hull trace beside the body, would.
+  (3) A FACE POINTING DOWN is not looked for: 5 of 38 rides on that demo (one
+  to eleven ticks under an overhang), 30 of 52,433 native contact ticks.
+  Looking for a push down found every one of them and as many pushes that are
+  no ramp.
+  (4) SOME RIDES START EARLY: 2 in 38 on the demo begin 84 and 11 ticks before
+  the bit does, and 3 in 155 about 50 ticks early on one native surf_kitsune
+  run. Not looked at; a face flatter than the ramp band that the body slides
+  on without grounding would read this way.
+  (5) UNAVAILABLE: 21 imports kept their .wrpath body (no `momdemo`) and 2
+  have under 30 airborne pairs. They draw no ramp mark and say why.
+  (6) The practice-save prefix taken from an imported replay
+  (`Trail_ReplayPrefix`) still carries no ramp marks, and the web run page
+  (recplot.py) does not infer.
+  (7) NOT RUN IN THE ENGINE: a board line whose window opens with the body in
+  contact (the seed's own bit); a file over 65,536 samples; a native file
+  under v4 (it says `not recorded`: read, not run). The first two were run
+  offline by the review, on the built csprogs in a QuakeC interpreter, and
+  matched the reference and the mark model.
+  (8) THE OPEN'S BUDGET, AND THE CAP IT FORCED. A replay opens in one QC call
+  and the engine ends a call at 100,000,000 branches, calls and returns; the
+  open costs about 327 of them a sample now (320 before this patch), so a
+  recording of some 300,000 samples -- 75 minutes at tick 0.015 -- ends the
+  session when it is opened, imported or native. Nothing that long exists
+  (the longest is 238,434). Inferring adds 48 a sample, so a file over
+  200,000 samples is not inferred: one import today, the owner's own
+  59-minute surf_666 run, which says `unavailable: too long a run`. The fix
+  for both is an open spread over frames, as the board-line job already is
+  (192 frames for that file, 5% of the budget in its worst); then the cap
+  goes. A board line of an import reads its file twice; that is the job and
+  it is not one call.
+  (9) THREE READER MISMATCHES ON FILES NOTHING WRITES (the review). A header
+  key with no value (`momdemo`, `foreign`) is ignored by the replay and taken
+  by the board-line job and tools/rampinfer.py. With no tick rate in the
+  header the client falls back to PM_TICK and infers; rampinfer.py says
+  unavailable. With no `begin` line the replay reads samples and infers; the
+  other two read none.
+  (10) THE ARM'S ONE RECORDING NEVER LANDS ON THE RULE'S EDGES (AGENT_NOTES,
+  Patch 626). A generated fixture in the arm, as `runlines_peaks` has, would
+  put the thresholds in the game instead of in an offline interpreter.
 - **The web run page reads 8 MiB of a recording** (recplot.py MAX_BYTES), and
   three re-imported surf_666 main runs are 17-24 MB: their page plots and
   times the first third. The cap keeps one request from holding the Pi's single

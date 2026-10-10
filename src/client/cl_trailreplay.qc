@@ -83,6 +83,7 @@ void() Trail_ReplayPrefix =
 		o = [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG+1)), stof(argv(WT_C_ORG+2))];
 		v = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL+1)), stof(argv(WT_C_VEL+2))];
 		fl = stof(argv(WT_C_FLAGS));
+		fl = fl - (fl & WT_F_RAMPI);            // a reader's own bit (Watch_Flags)
 		pitch = stof(argv(WT_C_PITCH));
 		yaw = stof(argv(WT_C_YAW));
 		nrm = rec_wt_v4 ? [stof(argv(WT_C_NORM)), stof(argv(WT_C_NORM+1)), stof(argv(WT_C_NORM+2))] : '0 0 0';

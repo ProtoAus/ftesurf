@@ -25,7 +25,17 @@ commit   c543d688ad16a871753fa9525c23487f437741a5
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-625
-patch    625
+patch    626
+# Patch 626: an imported Momentum run's line has ramp marks. A .mtv records no ramp
+# contact, so the viewer infers it from the samples (a push up between two ticks in the
+# air; the fall a tick is read off the file) and says so: `~` before a ramp edge's
+# number, `inferred` in the replay's status, `ramp: no plane` on the strafe bar. The
+# Segments column gains its ramp rows. 5,257 of 5,281 imports; the other 24 say
+# `unavailable` and why (one of them: a run over 200,000 samples, which is not inferred
+# because a replay opens in one QC call with a fixed budget). No recording is rewritten
+# and the plane is not inferred.
+# csprogs only: no engine source, server QC, recorder, evidence, ranking, default or
+# Build change (commit and tag above stay).
 # Patch 624 (published after 625; `patch` does not move down): a ticked board line is
 # drawn in run order from where the viewer is: the 8 s of the run ahead of the point of
 # the line nearest the eye and 2 s behind it (hud_lines_order; 0 is everything within

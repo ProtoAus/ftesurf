@@ -476,10 +476,18 @@ LOD or human acceptance above.
 
 ### 12.5 Momentum demo labels: coverage and honest provenance
 
-**Today.** The re-imported demos now carry much more than positions, but the
-existing BACKLOG item "Re-imported Momentum runs read every ramp as free air"
-still applies: `.mtv` has no authoritative ramp-contact bit/plane. Do not treat
-missing contact as measured free air, and do not call inferred labels exact.
+**Today.** P626 infers ramp contact for a re-imported demo in the viewer, from
+its own per-tick velocity, and says that it did: `~` on a ramp edge's label,
+`inferred` in the replay's status, `ramp: no plane` on the strafe bar. The
+line, a board line, the Segments column and the playhead read one result; 24
+of 5,281 imports say `unavailable` instead. Scored against native bit 16 and
+against one real demo that has a native twin (tools/rampinfer.py). `.mtv`
+still has no authoritative contact bit or plane: the plane is not inferred, a
+lift reads as a ramp and a face pointing down is not looked for (BACKLOG,
+"Inferred ramp contact on imported runs"). Do not call inferred labels exact.
+What is left of the list below: the plane; map-matched tracing; duck-origin
+handling, stage windows (no import carries `stage` records) and mismatched map
+builds, none of which this patch looked at.
 
 **Build.** Audit native and imported metadata/label availability separately.
 Derive reliable timing/velocity/energy labels from available samples, with

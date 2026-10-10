@@ -109,6 +109,9 @@ client/cl_gfx.qc
 client/cl_vote.qc
 client/cl_replay.qc
 client/cl_zones.qc
+// Inferred ramp contact.  After sh_interp.qc (Interp_Fit); before cl_lines.qc,
+// which reads its INF_* codes, and cl_watch.qc, whose two scanners drive it.
+client/cl_infer.qc
 // Patch 432: the run lines.  Before cl_watch.qc (the replay is slot 0) and
 // cl_mouse.qc (the trail's anti-aliased segment).
 client/cl_lines.qc

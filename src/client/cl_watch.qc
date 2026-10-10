@@ -128,6 +128,10 @@ string rec_wt_runid;
 // The `foreign` header key: this recording came from another game, so the
 // line is tinted and nothing here pretends it was timed by this server.
 float  rec_wt_foreign;
+// `momdemo`: an import written from its own demo -- per-tick velocity and real
+// ground flags, which is what inferring its ramp contact needs (cl_infer.qc).
+float  rec_wt_momdemo;
+float  *rec_wt_inf;             // per buffer line: contact inferred at that sample
 /*
   `momquality <ratio> <ceiling> <lowconf>` on an imported run: how far its
   velocity exceeds the speed the DEMO ITSELF says the player reached.
@@ -599,6 +603,9 @@ void() Watch_Free =
 	rec_wt_rec  = 0;
 	rec_wt_view = 0;
 	rec_wt_recn = rec_wt_viewn = 0;
+	if (rec_wt_inf)
+		memfree(rec_wt_inf);
+	rec_wt_inf = __NULL__;
 	Line_Clear(0);
 	rec_wt_evn  = 0;
 	rec_wt_on   = FALSE;
@@ -1014,6 +1021,83 @@ void() Watch_ViewMap =
   sample width.  Patch 431: the per-sample tables moved to Watch_ScanRange, which
   a stage opened from the board runs over its window only.
 */
+/*
+  The open replay's ramp contact when its file has none (cl_infer.qc): one bit a
+  buffer line, read through Watch_Flags by every pass that reads the flags
+  column, so the line, the segment column and the playhead cannot disagree.
+*/
+void() Watch_InferScan =
+{
+	local float i, c, why;
+	local string s;
+	local float *side;
+
+	why = INF_MEASURED;
+	if (rec_wt_foreign)
+		why = rec_wt_momdemo ? INF_INFERRED : INF_NOVEL;
+	else if (!rec_wt_v4)
+		why = INF_NOBIT;
+	if (why == INF_INFERRED && rec_wt_nsamp > INF_SCANMAX)
+		why = INF_LONG;                 // before the walk: its cost is the reason
+	Infer_Open(0, why);
+	if (rec_wt_inf)
+		memfree(rec_wt_inf);
+	rec_wt_inf = __NULL__;
+	if (why != INF_INFERRED)
+		return;
+
+	// One walk for the falls, keeping each judgeable pair's two numbers; then,
+	// with the step known, the bits from those.  Tokenizing every line twice
+	// was 82 of the open's 397 budget events a sample; this is 48.
+	rec_wt_inf = memalloc(sizeof(float) * rec_wt_recn);
+	side = memalloc(sizeof(float) * rec_wt_recn);
+	for (i = 0; i < rec_wt_recn; i = i + 1)
+	{
+		rec_wt_inf[i] = FALSE;
+		side[i] = -1;                   // no pair ends here: a length is never negative
+		if (i < rec_wt_rec0)
+			continue;
+		s = bufstr_get(rec_wt_rec, i);
+		c = str2chr(s, 0);
+		if (c != 45 && (c < 48 || c > 57))
+			continue;
+		tokenize(s);
+		if (!Infer_Step(0, [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)),
+		                    stof(argv(WT_C_ORG + 2))],
+		                [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)),
+		                 stof(argv(WT_C_VEL + 2))],
+		                stof(argv(WT_C_FLAGS)), stof(argv(WT_C_T)), rec_wt_tickrate))
+			continue;
+		Infer_Count(0);
+		rec_wt_inf[i] = inf_dvz;
+		side[i] = inf_dvh;
+	}
+	Infer_Close(0);
+	for (i = 0; i < rec_wt_recn; i = i + 1)
+	{
+		if (side[i] < 0)
+			continue;
+		inf_dvz = rec_wt_inf[i];
+		inf_dvh = side[i];
+		rec_wt_inf[i] = Infer_Bit(0);
+	}
+	memfree(side);
+};
+
+// The flags column of buffer line i, already tokenized, with the inferred bit.
+// Bit 32 is a reader's own: a file that carries it does not get to set it.
+float(float i) Watch_Flags =
+{
+	local float fl;
+
+	fl = stof(argv(WT_C_FLAGS));
+	fl = fl - (fl & WT_F_RAMPI);
+	if (rec_wt_inf)
+	if (rec_wt_inf[i])
+		fl = fl | WT_F_RAMPI;
+	return fl;
+};
+
 void() Watch_Scan =
 {
 	local float i, n, c, ver, nextix;
@@ -1038,6 +1122,7 @@ void() Watch_Scan =
 	rec_wt_map      = "";
 	rec_wt_runid    = "";
 	rec_wt_foreign  = FALSE;
+	rec_wt_momdemo  = FALSE;
 	rec_wt_momq     = 0;
 	rec_wt_momceil  = 0;
 	rec_wt_pad      = 0;
@@ -1072,6 +1157,7 @@ void() Watch_Scan =
 		if (argv(0) == "flags")       rec_wt_recflags = stof(argv(1));
 		if (argv(0) == "runid")       rec_wt_runid    = argv(1);
 		if (argv(0) == "foreign")     rec_wt_foreign  = TRUE;
+		if (argv(0) == "momdemo")     rec_wt_momdemo  = TRUE;
 		if (argv(0) == "momquality" && n >= 3)
 		{
 			rec_wt_momq    = stof(argv(1));
@@ -1306,6 +1392,8 @@ void() Watch_Scan =
 	rec_wt_bt0 = 0;
 	rec_wt_bt1 = -1;                // nothing built yet: Watch_ScanRange
 
+	Watch_InferScan();              // after rec_wt_v4 and the tick rate are known
+
 	// ---- the .view's index -----------------------------------------------
 	rec_wt_view0  = 0;
 	rec_wt_vxn    = 0;
@@ -1511,6 +1599,7 @@ void(float ra, float rb) Watch_ScanRange =
 	rec_wt_bkln = rec_wt_bklover = 0;
 	Line_Begin(0);
 	Line_Foreign(0, rec_wt_foreign);
+	Line_Inferred(0, inf_why[0]);
 	Line_Tick(0, rec_wt_tickrate);
 	Line_GraphGravity(0, rec_wt_graphgravity);
 	Line_Owner(0, rec_wt_owner);
@@ -1544,7 +1633,7 @@ void(float ra, float rb) Watch_ScanRange =
 		tokenize(s);
 		v   = [stof(argv(WT_C_VEL + 0)), stof(argv(WT_C_VEL + 1)),
 		       stof(argv(WT_C_VEL + 2))];
-		fl  = stof(argv(WT_C_FLAGS));
+		fl  = Watch_Flags(i);
 		key = stof(argv(WT_C_KEYS));
 
 		o_x = stof(argv(WT_C_ORG + 0));
@@ -1684,6 +1773,7 @@ float  wt_lj_wseg, wt_lj_wdur, wt_lj_pa, wt_lj_pb, wt_lj_sa, wt_lj_sb, wt_lj_end
 float  wt_lj_ta, wt_lj_tb;      // the window, run seconds
 float  wt_lj_c, wt_lj_pt, wt_lj_frc, wt_lj_veto, wt_lj_ride;
 float  wt_lj_stitch;             // a save state came back in this interval
+float  wt_lj_fgn, wt_lj_momdemo; // the header's `foreign` and `momdemo` (cl_infer.qc)
 vector wt_lj_qv;                 // the sample before the window: Line_Seed's
 float  wt_lj_qfl, wt_lj_qt, wt_lj_qhave, wt_lj_qyaw;
 vector wt_lj_po, wt_lj_pv;
@@ -1777,6 +1867,10 @@ float() Watch_LineJobWindow =
 	// At the job's start it handed the slot a tick of 0, i.e. the default.
 	Line_Tick(wt_lj_slot, wt_lj_tick);
 	Line_GraphGravity(wt_lj_slot, wt_lj_graphgravity);
+	// Pass one counted the falls of a file whose contact is inferred; pass two
+	// starts with no sample before it.
+	Infer_Close(1);
+	Line_Inferred(wt_lj_slot, inf_why[1]);
 	if (wt_lj_fleg < 0)
 		wt_lj_fleg = FS_LegOf(wt_lj_seg, wt_lj_seg > 0);
 	if (wt_lj_leg > 0)
@@ -1845,6 +1939,8 @@ float(float slot, string path, float leg) Watch_LineJobStart =
 	wt_lj_endt = 0;
 	wt_lj_stitch = FALSE;
 	wt_lj_qhave  = FALSE;
+	wt_lj_fgn = wt_lj_momdemo = FALSE;
+	Infer_Open(1, INF_MEASURED);
 	Line_Begin(slot);
 	return TRUE;
 };
@@ -1858,7 +1954,9 @@ float() Watch_LineJobStep =
 
 	if (wt_lj_phase == 0)
 		return -1;
-	for (i = 0; i < ((wt_lj_phase == 1) ? WT_LJ_PASS1 : WT_LJ_PASS2); i = i + 1)
+	// A pass one that tokenizes (an inferred file's falls) takes pass two's budget.
+	for (i = 0; i < ((wt_lj_phase == 1 && inf_why[1] != INF_INFERRED) ? WT_LJ_PASS1
+	                                                                 : WT_LJ_PASS2); i = i + 1)
 	{
 		s = fgets(wt_lj_fh);
 		if (s == "")
@@ -1889,11 +1987,22 @@ float() Watch_LineJobStep =
 			if (substring(s, 0, 5) == "begin")
 			{
 				wt_lj_hdr = FALSE;
-				// No stage asked for, or the file is that stage's own: no pass one.
+				// No stage asked for, or the file is that stage's own: no pass one
+				// -- unless its contact is to be inferred, which wants every fall
+				// in the file first (the replay's Watch_InferScan reads them all).
 				if (wt_lj_phase == 1)
-				if (wt_lj_leg <= 0 || wt_lj_leg == ((wt_lj_fleg >= 0) ? wt_lj_fleg
-				                                    : FS_LegOf(wt_lj_seg, wt_lj_seg > 0)))
-					Watch_LineJobWindow();
+				{
+					if (wt_lj_fgn)
+						Infer_Open(1, wt_lj_momdemo ? INF_INFERRED : INF_NOVEL);
+					if (wt_lj_mtick > 0)
+						wt_lj_tick = wt_lj_mtick;
+					if (wt_lj_tick <= 0)
+						wt_lj_tick = PM_TICK;
+					if (inf_why[1] != INF_INFERRED)
+					if (wt_lj_leg <= 0 || wt_lj_leg == ((wt_lj_fleg >= 0) ? wt_lj_fleg
+					                                    : FS_LegOf(wt_lj_seg, wt_lj_seg > 0)))
+						Watch_LineJobWindow();
+				}
 			}
 			else if (wt_lj_phase == 1)
 			{
@@ -1906,13 +2015,31 @@ float() Watch_LineJobStep =
 				if (argv(0) == "pmpin") wt_lj_graphgravity = Line_HeaderGravity(s);
 				if (argv(0) == "owner") Line_Owner(wt_lj_slot, UI_OwnerLine(s));
 				// Line_Begin(slot) already cleared this at open, above.
-				if (argv(0) == "foreign")   Line_Foreign(wt_lj_slot, TRUE);
+				if (argv(0) == "foreign")
+				{
+					Line_Foreign(wt_lj_slot, TRUE);
+					wt_lj_fgn = TRUE;
+				}
+				if (argv(0) == "momdemo")   wt_lj_momdemo = TRUE;
 			}
 			continue;
 		}
 
 		if (wt_lj_phase == 1)
 		{
+			if (c == 45 || (c >= 48 && c <= 57))
+			{
+				if (inf_why[1] != INF_INFERRED)
+					continue;
+				tokenize(s);
+				if (Infer_Step(1, [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)),
+				                   stof(argv(WT_C_ORG + 2))],
+				               [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)),
+				                stof(argv(WT_C_VEL + 2))],
+				               stof(argv(WT_C_FLAGS)), stof(argv(WT_C_T)), wt_lj_tick))
+					Infer_Count(1);
+				continue;
+			}
 			// Watch_Scan's pass one for one stage: `stagepost` then the closing
 			// `stage`/`end`, and the `stage` records around it for an old file.
 			if (c != 115 && c != 101)           // 's' 'e'
@@ -1996,6 +2123,13 @@ float() Watch_LineJobStep =
 				wt_lj_qv = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)),
 				            stof(argv(WT_C_VEL + 2))];
 				wt_lj_qfl = stof(argv(WT_C_FLAGS));
+				wt_lj_qfl = wt_lj_qfl - (wt_lj_qfl & WT_F_RAMPI);   // see Watch_Flags
+				if (inf_why[1] == INF_INFERRED)
+				if (Infer_Step(1, [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)),
+				                   stof(argv(WT_C_ORG + 2))], wt_lj_qv, wt_lj_qfl, t,
+				               wt_lj_tick))
+				if (Infer_Bit(1))
+					wt_lj_qfl = wt_lj_qfl | WT_F_RAMPI;
 				wt_lj_qyaw = stof(argv(WT_C_YAW));
 				wt_lj_qt  = t;
 				wt_lj_qhave = TRUE;
@@ -2006,6 +2140,19 @@ float() Watch_LineJobStep =
 		o = [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)), stof(argv(WT_C_ORG + 2))];
 		v = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)), stof(argv(WT_C_VEL + 2))];
 		fl = stof(argv(WT_C_FLAGS));
+		fl = fl - (fl & WT_F_RAMPI);
+		if (inf_why[1] == INF_INFERRED)
+		{
+			if (Infer_Step(1, o, v, fl, t, wt_lj_tick))
+			if (Infer_Bit(1))
+				fl = fl | WT_F_RAMPI;
+		}
+		else if (n < WT_C_V4N)
+		if (inf_why[1] == INF_MEASURED)
+		{
+			inf_why[1] = INF_NOBIT;         // a native file older than the bit
+			Line_Inferred(wt_lj_slot, INF_NOBIT);
+		}
 		brk = FALSE;
 		if (wt_lj_c > 0)
 		{
@@ -2626,8 +2773,8 @@ void() Watch_BuildSeq =
 
 		tokenize(s);
 		board_ov_now    = stof(argv(WT_C_T));
-		fl              = stof(argv(WT_C_FLAGS));
-		board_ov_riding = (fl & WT_F_RAMP) ? TRUE : FALSE;
+		fl              = Watch_Flags(i);
+		board_ov_riding = (fl & (WT_F_RAMP | WT_F_RAMPI)) ? TRUE : FALSE;
 
 		org = [stof(argv(WT_C_ORG + 0)), stof(argv(WT_C_ORG + 1)),
 		       stof(argv(WT_C_ORG + 2))];
@@ -2987,7 +3134,7 @@ void() Watch_Parse =
 	rec_wt_cva   = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)),
 	                stof(argv(WT_C_VEL + 2))];
 	rec_wt_cpa   = [stof(argv(WT_C_PITCH)), stof(argv(WT_C_YAW)), 0];
-	rec_wt_cfla  = stof(argv(WT_C_FLAGS));
+	rec_wt_cfla  = Watch_Flags(rec_wt_rcur);
 	rec_wt_ckeys = stof(argv(WT_C_KEYS));
 	rec_wt_cnorm = '0 0 1';
 	rec_wt_cmv   = '0 0 0';
@@ -3012,7 +3159,7 @@ void() Watch_Parse =
 		rec_wt_cvb  = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)),
 		               stof(argv(WT_C_VEL + 2))];
 		rec_wt_cpb  = [stof(argv(WT_C_PITCH)), stof(argv(WT_C_YAW)), 0];
-		rec_wt_cflb = stof(argv(WT_C_FLAGS));
+		rec_wt_cflb = Watch_Flags(rec_wt_rnext);
 	}
 
 	rec_wt_cfit = INTERP_LINEAR;
@@ -3159,7 +3306,7 @@ void() Watch_Sample =
 	rec_wt_gnorm = rec_wt_cnorm;
 	rec_wt_rc    = FALSE;
 	if (rec_wt_v4)
-		rec_wt_rc = (rec_wt_cfla & WT_F_RAMP) ? TRUE : FALSE;
+		rec_wt_rc = (rec_wt_cfla & (WT_F_RAMP | WT_F_RAMPI)) ? TRUE : FALSE;
 
 	/*
 	  ---- the angles and the keys ------------------------------------------
@@ -4526,10 +4673,12 @@ void(vector scr) Watch_Info =
 	                      rec_wt_viewn - rec_wt_view0));                      y = y + lh;
 
 	Watch_InfoRow([p_x, y], w, sz, cw, "ramp",
-	              rec_wt_v4
-	                ? sprintf("%g  %.2f %.2f %.2f", rec_wt_rc ? 1 : 0,
-	                          rec_wt_gnorm_x, rec_wt_gnorm_y, rec_wt_gnorm_z)
-	                : "not recorded");                                      y = y + lh;
+	              (inf_why[0] == INF_INFERRED)
+	                ? sprintf("%g  inferred, no plane", rec_wt_rc ? 1 : 0)
+	              : (inf_why[0] != INF_MEASURED)
+	                ? Infer_Name(inf_why[0])
+	                : sprintf("%g  %.2f %.2f %.2f", rec_wt_rc ? 1 : 0,
+	                          rec_wt_gnorm_x, rec_wt_gnorm_y, rec_wt_gnorm_z));  y = y + lh;
 
 	Watch_InfoRow([p_x, y], w, sz, cw, "rows",
 	              sprintf("%g seq (%g)  %g board", rec_wt_sqn,
@@ -4910,6 +5059,11 @@ void() Watch_Status =
 		print(sprintf("  import    momquality %.4f of %.0f u/s%s\n",
 		              rec_wt_momq, rec_wt_momceil,
 		              rec_wt_momq > 1.05 ? "  ^3OVER ITS OWN CEILING^7" : ""));
+	// The line's own latched state beside the scan's numbers (tools/rampinfer.py
+	// prints the same four for the file).
+	print(sprintf("  ramp contact %s (line %g)  step %.2f  share %.3f of %g airborne pairs  ticks %g\n",
+	              Infer_Name(inf_why[0]), ln_inf[0], inf_step[0], inf_share[0],
+	              inf_air[0], inf_n[0]));
 	// The probe: 256 units dead ahead, projected either side of renderscene.
 	// Both should read the centre of the screen and they should agree.
 	sv = getproperty(VF_SCREENVSIZE);
@@ -5091,11 +5245,18 @@ float(string cmd) Watch_ConsoleCommand =
 			                      ep_x, ep_y, ep_z,
 			                      ln_evh[b + i], ln_e2[b + i], ln_ez[b + i]),
 			              ln_ec[b + i]));
+			// Its numbers as the draw pass would write them (the last frame's
+			// switches): a camera shows a few marks, this is every one.
+			print(sprintf("lnml %g \"%s\"\n", i, Line_Label(sl, i)));
 		}
 		// The energy zero this slot's labels are measured from, said out loud:
 		// a grader that took it from the same place the code did could not
 		// catch the code taking it from the wrong sample.
 		print(sprintf("lnmz %g %.4f %.4f\n", sl, ln_z0[sl], ln_v20[sl]));
+		// Where the slot's ramp contact came from; for a board line, what its job
+		// (the last one to finish) read: the step and the contact ticks it fed.
+		print(sprintf("lnmi %g %g %.2f %g\n", sl, ln_inf[sl], inf_step[sl ? 1 : 0],
+		              inf_n[sl ? 1 : 0]));
 		print(sprintf("lnme %g\n", ln_evn[sl]));
 		return TRUE;
 	}

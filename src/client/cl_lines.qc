@@ -280,6 +280,7 @@ float  ln_db, ln_dn, ln_da;     // the slot being drawn: base, points, alpha
   visibly faster than a slow one.
 */
 float  ln_fgn[LN_SLOTS];        // slot holds a foreign run
+float  ln_inf[LN_SLOTS];        // where its ramp contact came from, INF_* (cl_infer.qc)
 float  ln_dtint;                // the draw's blend strength, 0 = none
 #define LN_FGNCOL  '0.25 0.45 1.00'
 
@@ -418,6 +419,7 @@ void(float s) Line_Begin =
 	ln_pkind[s] = -1;               // unknown, not "in the air": the first sample
 	ln_ron[s]   = FALSE;            // of a board line's window must mark nothing
 	ln_fgn[s]   = FALSE;            // until the header says otherwise
+	ln_inf[s]   = INF_MEASURED;
 	ln_rlast[s] = 0;
 	ln_rcf[s * 2] = -1;
 	ln_gjmp[s]  = FALSE;
@@ -446,6 +448,14 @@ void(float s, float on) Line_Foreign =
 float(float s) Line_IsForeign =
 {
 	return (s >= 0 && s < LN_SLOTS) ? ln_fgn[s] : FALSE;
+};
+
+// Where this slot's ramp contact came from: set by the same two scanners, after
+// Line_Begin.  An inferred ramp edge's label says so (Line_Label).
+void(float s, float why) Line_Inferred =
+{
+	if (s >= 0 && s < LN_SLOTS)
+		ln_inf[s] = why;
 };
 
 /*
@@ -611,6 +621,8 @@ float(float s, vector v, float fl, float t, vector aux) Line_Grade =
 	dt = t - ln_pt[s];
 	if (dt <= 0 || ln_nsamp[s] < 1)
 		return -1;                      // nothing to have turned from
+	if (fl & WT_F_RAMPI)
+		return -1;                      // a ramp tick with no plane to grade against
 
 	// Unsigned degrees per second, the short way round the circle.
 	turn = aux_x - ln_pyaw[s];
@@ -685,7 +697,7 @@ float(float s, vector v, float fl, float t) Line_Contact =
 {
 	local float raw, held;
 
-	raw  = fl & WT_F_RAMP;
+	raw  = fl & (WT_F_RAMP | WT_F_RAMPI);
 	held = Board_RampHeld(raw, ln_ron[s], ln_rlast[s], t);
 	if (raw)
 		ln_rlast[s] = t;
@@ -813,7 +825,7 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 	*/
 	if (k != SEG_RAMP)
 		ln_rcf[s * 2] = -1;
-	else if ((fl & WT_F_RAMP) || ln_rcf[s * 2] < 0)
+	else if ((fl & (WT_F_RAMP | WT_F_RAMPI)) || ln_rcf[s * 2] < 0)
 	{
 		ln_rcf[s * 2]     = ln_nsamp[s];
 		ln_rcf[s * 2 + 1] = t;
@@ -2182,6 +2194,12 @@ string(float s, float e) Line_Label =
 			f = sprintf("%.2fs", ln_et[b + e]);
 		t = strcat(t, (t != "") ? sep : "", f);
 	}
+	// An inferred ramp edge says so: "~701 u/s".  sub is from-kind * 4 + to-kind.
+	if (t != "")
+	if (ln_inf[s] == INF_INFERRED)
+	if (ln_ek[b + e] == LN_E_LAND || ln_ek[b + e] == LN_E_LEAVE)
+	if (floor(ln_es[b + e] / 4) == SEG_RAMP || (ln_es[b + e] & 3) == SEG_RAMP)
+		t = strcat("~", t);
 	return t;
 };
 
@@ -2575,6 +2593,7 @@ float() Line_Console =
 	      "  hud_lines_board 1 selected board lines\n"
 	      "Labels: hud_lines_nums 0/1/2 (off/contacts/+peaks)\n"
 	      "  hud_lines_speed/energy/vz/delta/time/names 0/1\n"
+	      "  ~ before a number: a ramp edge inferred on an imported run\n"
 	      "  hud_lines_marks/land/leave/jump/stitch 0/1\n"
 	      "  hud_lines_numsize 12, hud_lines_size 4, hud_lines_gap 40\n"
 	      "  hud_lines_declutter 0 (all labels); 1 (sparse overlaps)\n"

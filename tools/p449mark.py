@@ -75,8 +75,15 @@ def is_sample(line):
     return line[:1].isdigit() or line[:1] == "-"
 
 
-def derive(path, breaks):
-    """Every mark the file implies, in order.  breaks: a set of sample times."""
+def derive(path, breaks, bits=None, seed=None):
+    """Every mark the file implies, in order.  breaks: a set of sample ordinals.
+
+    bits: per sample of the FILE, ramp contact a reader inferred (an import has
+    no bit 16; tools/rampinfer.py), OR-ed into the raw contact.
+    seed: a board line's window.  Samples before file ordinal `seed` are not
+    read, that one only seeds the contact state (Line_Seed: no mark, no ride
+    stamp), and ordinals -- the breaks' too -- count from the one after it.
+    """
     out = []
     pkind = -1
     ron, rlast, gjmp, pvz, vzmax = False, 0.0, False, 0.0, 0.0
@@ -84,6 +91,7 @@ def derive(path, breaks):
     stitch = False
     body = False
     n = 0
+    at = -1                         # file ordinal
     with open(path, "r", errors="replace") as fh:
         for line in fh:
             line = line.rstrip("\n")
@@ -96,11 +104,27 @@ def derive(path, breaks):
                 if k == "resume" or k == "retry":
                     stitch = True          # ...for the sample that follows it
                 continue
+            at += 1
+            if seed is not None and at < seed:
+                stitch = False
+                continue
             f = line.split()
             t = f32(float(f[C_T]))
             o = (float(f[C_ORG]), float(f[C_ORG + 1]), float(f[C_ORG + 2]))
             v = tuple(f32(float(f[C_VEL + i])) for i in range(3))
             fl = int(float(f[C_FLAGS]))
+            if bits is not None and bits[at]:
+                fl |= F_RAMP
+            if seed is not None and at == seed:
+                raw = fl & F_RAMP
+                if raw:
+                    rlast = t
+                ron = bool(raw)
+                pkind = GROUND if (fl & F_ONGROUND) else (RAMP if raw else AIR)
+                pvz = v[2]
+                gjmp = bool(fl & F_JUMP) if pkind == GROUND else False
+                stitch = False
+                continue
             n += 1
 
             # A hold cannot bridge a teleport (Patch 530).  This model lacked the
