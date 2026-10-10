@@ -82,6 +82,19 @@ Patch 607 removes the classic look: there is one +showscores layout and no
   now takes a stop file and waits while another game is running.
 - **Not run:** soak; `compare_chip_smoke.py` itself.
 
+### Deployment — Patch 607, 2026-10-10
+
+Published: this repository `5474c48`; ftequakers gains only the
+`ENGINE_PATCHES.md` entry. Progs built from the commit: csprogs
+`162aaf018682ca0b`, menu `d38891771c3ae376`, qwprogs `5e7fd33b3d0beac1`
+(unchanged), byte-identical to the build the gates above ran on. Deployed
+2026-10-10T07:16:07Z to `C:/FTESurf` and `C:/FTEQuake` by the guarded copy
+(ROOT/tmp/deploy607.py, receipt ROOT/artifacts/deploy607-receipt.json):
+`csprogs.dat`, `menu.dat` and their `.lno` in both (8 files), each destination
+first checked against the hash recorded after the Patch 606 deploy, the live
+file kept as `<name>.prev`, the copy verified. The binaries are Patch 606's. No
+game was running from either install. **Not deployed to the Pi.**
+
 ## Patch 606 — the board under `ui_style 1`, 2026-10-10
 
 Patch 606 gives +showscores a second layout (`Scores_DrawModern`) behind
