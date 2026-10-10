@@ -1091,8 +1091,10 @@ own font embedded in the provider, and the table's columns in the board's order.
 
 ## 14. Steam accounts — Lex, 10 Oct 2026
 
-**Status: 14.1 built (Patch 612). surfd stores accounts and runs the Steam
-sign-in; nothing in the game uses it yet and no run is ranked by it.**
+**Status: 14.1 and 14.2 built (Patches 612, 615). A player signs in on the
+site, types `link <code>` in the game and then the number the lobby shows, and
+every connect proves which account the install belongs to. No run is ranked by
+it yet.**
 Lex: a player's records belong to their Steam account, which also gives the
 name and the picture, and a ban is a ban on that account. Ranked times require
 one. The guid rows on the board today are test data and are not migrated.
@@ -1119,42 +1121,59 @@ Off until `SURFD_BOARD_URL` is set; names and avatars need `SURFD_STEAM_KEY`.
 Reviewed through three lenses before it shipped; what they found and what is
 still open is in AGENT_NOTES ("Steam accounts") and BACKLOG.
 
-### 14.2 The game: `link <code>`, with proof of the install's key
+### 14.2 The game: `link <code>`, with proof of the install's key — done, Patch 615
 
-**Build.** CSQC `link <code>` and a row in the menu that shows the page's
-address and takes the code. The client proves it holds its `fskey` with the
-receipt machinery as it is: `rec_sign <nonce> 0 - 0`, nonce = the first 32 hex
-of sha256 over a fixed prefix and the code, which the engine answers with
-`rec_rcpt` (key, signature, and the server address the CLIENT sees). SSQC holds
-one pending link per client, posts code, guid, key and signature to
-`/api/link`, and prints who the install now belongs to. surfd verifies the
-signature (tools/ed25519.py, as the sweeper does) and stores `links.pub`. On
-connect the lobby asks `/api/account` and says "linked as X" or how to link.
+`src/server/sv_account.qc`, `src/client/cl_account.qc`, surfd schema 13.
+AS BUILT IT DIFFERS FROM THE FIRST PLAN IN ONE WAY THAT MATTERS: a link is keyed
+on the install's signing key (`fskey`), not on the guid. A guid is handed to
+any server that sends this fleet's `sv_guidkey`, so a guid-keyed link could be
+moved, or squatted before its owner ever linked.
 
-**THE PROOF IS NOT OPTIONAL.** A link by guid alone can be made by anyone who
-harvested the guid. Until this lands `/api/link` has no caller, and 14.3 must
-never rank on a link whose `pub` is empty.
+- **`link <code>`, then `link <number>`** (console). The client sends a DIGEST
+  of the code, which never leaves it, and has the engine sign for it
+  (`rec_sign`, the receipt statement with ticks -3). The server posts key,
+  signature and the address the CLIENT signed to `/api/link`; surfd checks the
+  signature and that the address is ours on that lobby's port, keeps the code
+  for that key, and names the account. The lobby prints a six-digit number;
+  `link <number>` signs it (ticks -4), and that signature is what links. Two
+  commands because text another server left in a client can type the first for
+  the player and cannot read the second.
+- **Every connect**: the client asks, the server issues a nonce, the client
+  signs it (ticks -2), `/api/account` answers for that key. The lobby says
+  "linked to X" or how to link. This is what 14.3 ranks on: a proven key per
+  connection.
+- **The sign-in page** lists the account's installs and unlinks one (two GETs:
+  ask, then do), in the browser that signed in.
+- `tools/p615link.py` is the arm: installed server and client in a private rig,
+  this checkout's surfd, Steam faked; it types into the client and reads the
+  number back. `--receipt` runs a whole run on the same progs and reads its
+  receipt back.
 
-**A CODE IS A BEARER TOKEN, so the player needs a way back.** Whoever types a
-code first is linked, and a streamed or sent code is enough. Before `link`
-ships: the game says who an install is linked to on every connect; `link` on an
-install that is already linked asks before moving it (`/api/link` answers
-`why: move` until `confirm=1`); and the sign-in page lists the account's
-installs with a way to unlink each one. That last part is not built.
-
-**Unknowns.** Which address clients sign for a lobby (public, LAN, v6), so
-the server line can be enforced: Patch 422 left the same question open. Whether
-a link's `rec_rcpt` can collide with a run finishing in the same second. The
-engine has no command that opens a browser; the menu shows the address unless
-one is added (engine patch, board host only). Whether the code page wants an
-origin of its own (BACKLOG's last sign-in item; unchecked).
-**Size.** Medium. QC and surfd; no engine change required. Three-lens review
-before deploy: it decides who owns a run.
+**Left.** No menu row: the page says to open the console. The engine still has
+no command that opens a browser. The connect line repeats on every map. Whether
+the code page wants an origin of its own (BACKLOG's last sign-in item). And
+`link` is a game-code command, which is 14.3's gate.
 
 ### 14.3 Ranked means linked, and a ban bites
 
-**Build.** `submit_run` resolves the guid to an account. A ranked row needs a
-link with a proven key, and its `runs.player` becomes the SteamID64, as it
+**BEFORE IT: `link` MOVES INTO THE ENGINE.** Patch 615's review left three ways
+to a wrong link, all because `link` is a game-code command (BACKLOG, "The
+`link` command"; the private checkpoint has each): it is signed the same when
+it arrives down the connection as when it is typed, its name can be taken by a
+server the player was on before, and typed on somebody else's server the code
+is theirs. None costs anything while nothing ranks on a link. One change
+closes the three: an engine `link` beside `rec_sign` in cl_receipt.c that does
+the hashing and the signing itself and runs for the local console only, as
+`rec_sign` already refuses a server. With it: codes of more than 40 bits, since
+the digest that crosses the wire can be searched; links made before it are
+dropped or proved again; and the lobby keeps "could not be checked" apart from
+"not linked" for the whole map, retrying, where today a lost connect proof is
+just silence.
+
+**Build.** The lobby already knows each connection's account from its proven
+key (14.2), so it sends that with the run and `submit_run` takes the account
+from surfd's own table, never from the guid. A ranked row needs a linked key,
+and its `runs.player` becomes the SteamID64, as it
 already is for imported rows: a reinstall keeps its times, and a player's own
 Momentum and KSF rows join their profile. The install guid moves to its own
 column for the leaf-digest and receipt joins. An unlinked finish is not ranked
@@ -1201,8 +1220,8 @@ lands on the same `accounts` row; 14.3 and 14.4 do not change.
 - 5 waits on the answer below.
 - **E -- current run-line/rewind request:** 12, in its staged delivery order
   above. This is a separate plan, not an extension of the old demo-import status.
-- **F -- Steam accounts:** 14.1 is done; then 14.2, 14.3 and 14.4 in that
-  order. 14.5 waits on an AppID.
+- **F -- Steam accounts:** 14.1 and 14.2 are done; then 14.3 and 14.4. 14.5
+  waits on an AppID.
 
 ## Decisions for Lex
 

@@ -440,7 +440,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 
 # --------------------------------------------------------------------------
@@ -1471,6 +1471,14 @@ def migrate():
             conn.execute("PRAGMA user_version=12")
             conn.commit()
             version = 12
+
+        if version < 13:
+            # SCHEMA 13: a link is keyed on the install's signing key, proven,
+            # where 12's `links` was keyed on the guid (accounts.py has why).
+            accounts.upgrade_13(conn)
+            conn.execute("PRAGMA user_version=13")
+            conn.commit()
+            version = 13
 
         verdict_metrics(conn)
         conn.commit()
@@ -4801,13 +4809,16 @@ def _register_admin():
 
 _register_admin()
 
-# Tests replace STEAM_HTTP; the lambdas read it, `time` and SECRET at call time.
+# Tests replace STEAM_HTTP and RESOLVE; the lambdas read them, `time`, SECRET
+# and PUBLIC_HOST at call time.
 STEAM_HTTP = steam.http
+RESOLVE = accounts.resolve_host
 accounts.register(app, types.SimpleNamespace(
     log=log, get_db=get_db, clock=lambda: time.time(), rate_ok=rate_ok,
     rate_key=rate_key, is_trusted=lambda ip: is_trusted(ip, TRUSTED_SOURCES),
     secret=lambda: SECRET, setting=setting, fail=fail, game_json=game_json,
-    clean_text=clean_text, http=lambda *a, **k: STEAM_HTTP(*a, **k)))
+    clean_text=clean_text, http=lambda *a, **k: STEAM_HTTP(*a, **k),
+    public_host=lambda: PUBLIC_HOST, resolve=lambda name: RESOLVE(name)))
 
 migrate()
 log.info("surfd ready (db=%s ttl=%ds cap=%d nodes)", DB_PATH, LOBBY_TTL, MAX_NODES)

@@ -321,3 +321,7 @@ footer p { margin: 0 0 7px; }
   font-family: var(--mono); font-size: clamp(26px, 6vw, 40px); letter-spacing: .06em;
   color: var(--text); user-select: all; margin: 6px 0 20px;
 }
+.linkbox .installs { list-style: none; padding: 0; margin: 0 0 16px; color: var(--dim); }
+.linkbox .installs li { padding: 6px 0; border-top: 1px solid var(--line); }
+.linkbox .installs code { color: var(--text); }
+.linkbox .installs a { margin-left: 10px; }

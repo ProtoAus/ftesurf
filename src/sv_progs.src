@@ -35,5 +35,9 @@ server/sv_resume.qc
 // Patch 383: the pose stream.  After sv_timer.qc (run_movetick, SV_RecKeys),
 // sv_saveloc.qc (rec_sl_hold) and sv_lobby.qc; sv_player.qc and sv_main.qc call it.
 server/sv_pose.qc
+// Patch 615: Steam accounts.  After sv_lobby.qc (Lobby_Active; its
+// URI_Get_Callback holds the prototype) and sv_timer.qc (SV_RecIsHex); before
+// sv_player.qc, which calls it from the command dispatch and ClientConnect.
+server/sv_account.qc
 server/sv_player.qc
 server/sv_main.qc

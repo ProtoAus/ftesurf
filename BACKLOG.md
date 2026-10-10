@@ -9,8 +9,9 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 Patch 612's two review rounds, `surfd/accounts.py` unless said. The first
 item is the only one that can link the wrong account, and it needs the
-victim's help; the rest are availability or exposure. Settle the first before
-ROADMAP 14.3 makes a link count for anything.
+victim's help; the rest are availability or exposure. Since Patch 615 the
+account's owner can see and undo a wrong link on the sign-in page, which is
+what the first item wanted; it stays here because the hole itself is open.
 
 - **A sign-in can be finished by someone else if the victim's arrival is
   refused first.** `link_return` records a reply that arrives in the wrong
@@ -38,6 +39,62 @@ ROADMAP 14.3 makes a link count for anything.
   code nobody sees. The next sign-in supersedes it.
 - **A link scanner that fetches the return address first burns it.** By design
   (AGENT_NOTES, "a stray assertion is burned"); the player starts again.
+
+## The `link` command: what it left -- 2026-10-10
+
+Patch 615, `src/server/sv_account.qc` and `src/client/cl_account.qc`.
+
+THE FIRST THREE ARE ROADMAP 14.3's GATE and have one fix: `link` as an engine
+command that hashes and signs itself and runs for the local console only. The
+sequences are in the private tree's `checkpoints/steam-accounts-20261010.md`.
+
+- **A `link` that arrives down the connection is signed like a typed one.**
+  The engine's `rec_sign` refuses a server's stufftext, but `link` is game
+  code and game code may ask for a signature. So the confirming number stops
+  text a server left behind and nobody who can write to the connection while
+  reading it. Measured on the rig with the server doing the typing: both
+  commands, linked.
+- **The name `link` can be taken before the game code loads.** A cvar of that
+  name, left by a server the player was on, makes the registration fail
+  silently and a typed code that cvar's value. cl_account.qc now reads for it
+  and tells the player not to type a code (`p615link.py --taken`); it cannot
+  undo it, and it sees only what exists when the game code loads.
+- **A code typed on somebody else's server is theirs to read.** `link` is
+  registered by the game code (cl_account.qc), and a server supplies the game
+  code. And a code is 40 bits, so even the digest a lobby is sent can be
+  searched by whoever sees it; today the ask in the same packet claims the
+  code first.
+- **No menu row.** Linking is a console command; the page says so. A row in the
+  menu that shows the address and takes the code is ROADMAP 14.2's leftover.
+- **The connect line repeats on every map.** `Account_Frame` asks once per
+  client VM, and a map change is a new VM. An unlinked player is told how to
+  link at each one. Falsifier: two maps in one session, one line.
+- **A lost connect proof is not asked for again.** The client stops asking
+  once it has been handed a nonce (`acct_cl_got`), and the server drops the
+  proof silently if it is late, crosses a `link`, or surfd says `later`. The
+  install is "not known" for that map. Display only today.
+- **A second ask replaces a pending number without a word** (`Account_Link`),
+  and the new prompt differs from the old one only in the account's name.
+- **The account's name and the number are also printed to spectators who are
+  following the player**, and into a server-side demo, as any `sprint` is. The
+  number is no use without the install's key.
+- **Not covered by an arm:** a client that sends account commands before it
+  has spawned (`acct_here`), and the reset at disconnect; both by reading.
+- **A player on the Pi's own LAN cannot link by its LAN address.**
+  `SURFD_LINK_HOSTS` is unset on purpose (AGENT_NOTES, "a private address is
+  nobody's"), so a client that joined `192.168.1.102:<port>` is told the
+  leaderboard does not know the server by that address. Join by
+  `play.proto.bar`. Falsifier: `tools/p615link.py --refuse-address`.
+- **The confirming number is guessable at one in a million a try.** One try a
+  number and eight asks a minute an address; not measured against a client
+  that is being typed for. If it ever matters, count wrong numbers per
+  connection.
+- **A slow Pi and many connects.** Every connect costs surfd one Ed25519 check
+  in pure Python; 480 a minute are allowed, then connects are told `later` and
+  say nothing. Not measured on the Pi under load.
+- **One client per arm.** `tools/p615link.py` never has two players on the
+  lobby, so a reply reaching the wrong one of two is covered only by reading
+  (`findfloat` on a per-client request id, cleared at disconnect).
 
 ## The debug dedicated server does not link -- 2026-10-10
 

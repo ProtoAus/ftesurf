@@ -5823,18 +5823,108 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   #501 of 501. It orders by `of - rk`, people beaten. Likewise `wr` counts
   first places and `wrc` counts the contested ones; the page leads with `wrc`.
 
-### Steam accounts (Patch 612, surfd schema 12) -- stored, and ranking on nothing
+### Steam accounts (Patches 612 and 615, surfd schema 13) -- stored, and ranking on nothing
 
-- **STORE-ONLY, AND A LINK IS NOT YET PROOF.** `accounts`, `links`,
-  `linkcodes` and `linknonces` are read by nothing that ranks, verifies or
-  publishes. `/api/link` binds whatever guid the lobby names, and a guid is
-  harvestable (sv_main.c:137), so `links.pub` is `''` on every row until
-  ROADMAP 14.2 makes the client sign for it. Never rank or publish on a row
-  with no `pub`.
+- **STORE-ONLY.** `accounts`, `linkkeys`, `linkcodes` and `linknonces` are read
+  by nothing that ranks, verifies or publishes, and sv_account.qc kicks and
+  refuses nobody. ROADMAP 14.3 is where that changes.
+- **AN INSTALL IS ITS KEY, NOT ITS GUID (Patch 615).** Patch 612's `links` was
+  keyed on the guid, and a guid is handed to any server that sends this fleet's
+  `sv_guidkey` (sv_main.c:137): whoever harvested one could move the link, or
+  squat it before its owner linked. `linkkeys` is keyed on the `fskey` public
+  key, and every lobby call carries a signature by it: a connect's over a nonce
+  THE LOBBY chose (a client-chosen one could be replayed off the wire), a
+  link's over digests of the code. The guid goes along for the log and decides
+  nothing; test_accounts.py has the harvested-guid arm.
+- **THE STATEMENT IS rec_sign's, AND TWO LANGUAGES BUILD IT.** `rec_sign <nonce>
+  <kind> - 0` signs `FTESURF-RCPT 1 / server / nonce / ticks <kind> / hid - 0 0
+  / view -` in C (cl_receipt.c); `accounts.STATEMENT` rebuilds it in Python. The
+  suite pins the Python bytes; ONLY `tools/p615link.py` shows the engine's
+  signature verifying under them, because it runs the installed client. Run it
+  after touching either side.
+- **THE KIND IS THE TICK COUNT: -2 A CONNECT, -3 ASKING, -4 CONFIRMING.** A run
+  signs its stamp, -1, or 0 for a kept abandon, and `SV_RecRcpt` refuses below
+  -1, so no proof can be filed as a run's and no run's taken for a proof. THE
+  FIRST CUT SIGNED 0 and took a receipt "only while a proof was owed": the
+  review filed a stray proof as a kept abandon's receipt and had a proof eat a
+  real one.
+- **A LINK IS TWO COMMANDS, AND THE SECOND IS A NUMBER THE LOBBY PRINTS.** Text
+  a server left in a client (an `in` timer, a bind) runs later on ours and can
+  type `link <its code>`. It cannot read what our lobby then prints, and the
+  signature that links is over that number (`confirm_nonce`). One try a number;
+  the number is drawn a BYTE a digit (a hex character's code mod 10 makes six
+  digits twice as likely as the other four). The arm's K types blind.
+  **WHAT THE NUMBER DOES NOT DO, MEASURED.** A probe build whose server stuffed
+  `link <code>` and then `link <number>` back at the client linked it: the
+  engine runs a stuffed game-code command, and game code's `localcmd` is above
+  the level `rec_sign` refuses. The number was designed against a server the
+  player has LEFT and the first docs said "cannot read the number" as if that
+  were everyone. ROADMAP 14.3 opens with the fix; do not rank on a link first.
+- **THE CODE NEVER REACHES THE LOBBY.** The client sends `code_tag(code)` and
+  signs `ask_nonce(code)`: three tagged SHA-256s, so the wire's is not the
+  signed one. The first key to ask with a code holds it (`linkcodes.claim`);
+  only that key can confirm. A code is 40 bits and the tag unsalted, so the tag
+  is NOT a secret-keeper: the claim is.
+- **A GAME-CODE COMMAND'S NAME IS FREE ONLY UNTIL A SERVER TAKES IT.** "Grepped
+  the engine and plugins" checks a namespace that servers add to at run time: a
+  cvar named `link` makes `registercommand` fail silently and the typed line a
+  cvar set. cl_account.qc reads `cvar_type` BEFORE registering and warns.
+- **A CONNECTING CLIENT'S COMMANDS REACH QC BEFORE ITS EDICT IS CLEARED.** The
+  engine reuses the slot as it is, clears it at the newcomer's `spawn`, and
+  runs ClientConnect at `begin`; `SV_ParseClientCommand` is live from
+  `cs_connected`. So per-client state is reset in ClientDisconnect (which also
+  frees its zoned strings: the engine's clear zeroes them unfreed), and the
+  account commands wait for `acct_here`, set by ClientConnect. `vote_here` and
+  `run_inserver` are the same guard.
+- **THE GAME CLOCK JUMPS AT CONNECT; TIME A CLIENT-SIDE WAIT WITH `cltime`.**
+  CSQC's `time` read 33.7 on the first frame and 116.5 on the next, so the
+  connect ask's 3-7 s wait fired at once and its 8 s retry could fire with it.
+  Two asks minted two nonces, the first signature was posted under the second,
+  and surfd refused it: 1 reconnect in 9, silently. Found only because one arm
+  run failed and the next did not; forced by the arm's L (one console line, two
+  asks), which the unfixed build fails with two `issued` lines and `proof`.
+  The server now keeps ONE nonce in force while a proof is owed.
+- **THE SIGNED ADDRESS MUST BE OURS, AND A PRIVATE ADDRESS IS NOBODY'S.** The
+  statement names the server the CLIENT is talking to; surfd accepts what
+  `SURFD_PUBLIC_HOST` resolves to, on the asking lobby's port, plus
+  `SURFD_LINK_HOSTS`. Measured on the Pi's 23 receipts (2026-10-10): 22 signed
+  the public address, 1 the LAN's, and the port equalled the lobby's in all 23.
+  DO NOT LIST THE LAN ADDRESS IN PRODUCTION: 192.168.1.102 is also a machine on
+  every other LAN that numbers one so, and a player who joins a server there
+  signs exactly the string this fleet's LAN players would. A name that has
+  never resolved answers `later`, not `server`: a third verdict.
+- **A PROOF ARRIVES AS `rec_rcpt`, AHEAD OF SV_RecRcpt** (sv_player.qc's
+  dispatch). `Account_Proof` takes every receipt whose ticks is -2, -3 or -4,
+  owed or not, and nothing else: a run-shaped receipt goes to the run's handler
+  even while a link is owed (the arm's J), and a build that takes every receipt
+  leaves a finished run with none (`p615link.py --receipt` fails on it: the
+  mutant was built and run against the first cut's dispatch).
+- **A REPLY WITH CODE 0 AND NO BODY IS NOT AN ANSWER.** A request that never
+  connected reaches `URI_Get_Callback` as 0 too. surfd puts `acct` in every
+  lobby reply and sv_account.qc treats its absence as silence, never as "not
+  linked". `ClientDisconnect` clears the request id: the engine does not clear
+  an edict until its next player spawns, and an answer still out would find them.
+- **NOTHING A SERVER STUFFS MAY REACH `localcmd` UNCHECKED** (cl_account.qc). A
+  stuffed command runs BELOW the game code's own level, so pasting its argument
+  into a command line hands the server ours. The nonce is 32 lowercase hex or
+  dropped; a typed code is its eight characters or never sent.
+- **THE CONNECT ASK IS NOT IN THE HUD BLOCK.** `Account_Frame` first sat beside
+  `Banner_Frame`, which an open menu skips (`notmenu`), and a headless client's
+  builtin menu is open from boot: the arm's connect proof never happened while
+  every `link` worked. It is called beside `Rec_ViewFrame` now.
+- **A RIG RUNS THE PROGS YOU HAND IT.** The arm's first full failure was a
+  build made before the last edit to sv_account.qc. `build.ps1 -NoDeploy`
+  writes a NEW `rig/build-nodeploy-<guid>` each time; the driver prints each
+  .dat's hash, so read them, and delete the old build dirs.
+- **A STEP THAT DROPS A TABLE RACES ITSELF.** Schema 13 dropped the empty
+  `links`; test_board.py's two-threads-migrating arm caught the second thread
+  finding it gone (`no such table`). gunicorn and a cron tool do start together
+  on a deploy. The step now tolerates exactly that error.
 - **THE CODE GOES BROWSER -> GAME, AND IT IS A BEARER TOKEN.** The other
   direction lets a link sent to a victim bind THEIR Steam account to the
   sender's install. This direction still links whoever types the code first,
-  so: a linked install moves only on `confirm=1`, and A BAN MUST NEVER PIN AN
+  so: every link names the account and waits for the number, a move says where
+  from, and A BAN MUST NEVER PIN AN
   INSTALL TO ITS ACCOUNT. The first cut refused to move a banned account's
   install, and the review turned that into a weapon: link a victim's install
   to a throwaway account, get it banned, and the victim is locked out.
@@ -5853,8 +5943,17 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   shut sign-in for that hour. A link scanner that fetches the address first
   burns an honest player's reply; they start again.
 - **EVERY LOBBY IS 127.0.0.1**, so a per-source limit on a lobby route is one
-  bucket for the fleet. `/api/link` applies the install's own limit first, or
-  one install typing `link` 120 times answers every other player 429.
+  bucket for the fleet. The per-player limits come first and are keyed on the
+  client ADDRESS the lobby reports (`ip`), not the guid: a guid is whatever the
+  client says, and one player could spend another's. 12 connects and 8 link
+  steps a minute an address, which is also every signature it can have checked.
+- **A MUTANT THAT SURVIVES IS A MISSING TEST OR A CHECK NOBODY NEEDS.** The v2
+  sweep left eight. Five wanted tests (a seven-digit number, a re-link to the
+  same account, a move's date, the buckets, the write lock); one wanted a pair;
+  and two checks changed no answer and were deleted: a tag's shape (it is only
+  ever compared) and a per-address signature budget the two limits above
+  already bound. The lock's test bans the account from a second connection
+  inside the step, through sqlite's trace hook, and must be refused the lock.
 - **EXACT SETS, AND `fullmatch`.** The reply must hold exactly Steam's ten
   fields and its signed list exactly Steam's seven. Everything received goes
   back to Steam to be checked, and whether Steam's parser folds
@@ -5886,12 +5985,16 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   both at module top: a `surfd-deploy.ps1 -Only` that ships surfd.py must ship
   them too, or the worker cannot boot. Loud on purpose; a guarded import would
   deploy "successfully" without the feature.
-- **NOT COVERED BY AN ARM:** `BEGIN IMMEDIATE` in `link_redeem` (a ban landing
-  between its read and its write), and the browser's side of the cookie.
+- **NOT COVERED BY AN ARM:** the browser's side of the cookies, more than one
+  client on a lobby (every arm has one), and a real player's `link` on a real
+  lobby (lextest.md).
 - **MEASURED AGAINST REAL STEAM (2026-10-10):** a refusal's exact bytes
   (`ns:...\nis_valid:false\n`, 0.3 s from the desktop and from the Pi), that a
   302 is not followed, a bad key's 403, and one profile through the real key.
-  NOT MEASURED: a positive assertion. lextest.md has the human step.
+  A POSITIVE ASSERTION: Lex signed in at 10:41 UTC the same day and the page
+  showed his code; the row carries his persona and avatar. So Steam's real
+  reply is exactly the ten fields and seven signed names the exact-set check
+  demands.
 - **DEPLOYED 2026-10-10 10:20 UTC (FTESurf `76cfd63`), surfd only.**
   `surfd-deploy.ps1 -Ref 76cfd63 -Only` the seven files the patch owns
   (accounts.py, steam.py, surfd.py, run.sh, test_accounts.py, test_board.py,

@@ -825,28 +825,56 @@ style) and sets no cookie, except the Steam sign-in below.
 
 ## Steam accounts (/board/link)
 
-`accounts.py` and `steam.py`, schema 12. STORE-ONLY: nothing that ranks,
+`accounts.py` and `steam.py`, schema 13. STORE-ONLY: nothing that ranks,
 verifies or publishes a run reads these tables (ROADMAP 14 has the stages).
-Off unless `SURFD_BOARD_URL` is set; `SURFD_STEAM_KEY` adds names and avatars.
+The pages are off unless `SURFD_BOARD_URL` is set; `SURFD_STEAM_KEY` adds names
+and avatars.
 
 ```
 GET  /board/link            what linking is, and the button
 GET  /board/link/steam      302 to Steam's OpenID; sets the state cookie
-GET  /board/link/return     checks the reply, asks Steam, shows a code
-POST /api/link     key, player, code, node[, confirm=1]    a lobby spends a code
-  -> {"ok":1,"steamid","name","avatar","banned"}
-   | {"ok":0,"why":"code"|"banned"|"slow"}
-   | {"ok":0,"why":"move","from","to"}     linked elsewhere: send it again with confirm=1
-POST /api/account  key, player                             who an install is
-  -> {"linked":0} | {"linked":1,"steamid","name","avatar","banned"}
+GET  /board/link/return     checks the reply, asks Steam, shows a code and the
+                            account's linked installs
+GET  /board/link/unlink?t=  asks, then (its own link) unlinks one install
+POST /api/link     key, node, player, ip, tag, pub, sig, server        asking
+  -> {"acct":1,"ok":0,"why":"confirm","to","from"}   `from` is "" unless it would move
+POST /api/link     ...the same, and pin                                confirming
+  -> {"acct":1,"ok":1,"name","banned"}
+either -> {"acct":1,"ok":0,"why":"code"|"banned"|"slow"|"proof"|"server"|"later"}
+POST /api/account  key, node, ip, nonce, pub, sig, server
+  -> {"acct":1,"linked":0[,"why":"proof"|"server"|"later"]}
+   | {"acct":1,"linked":1,"name","banned"}
 ```
 
-The two `/api` routes need the shared key AND a `SURFD_TRUSTED` source, and are
-not proxied. A code is 8 characters, lasts ten minutes and works once; a new
-sign-in supersedes the account's older code. It is a bearer token for those ten
-minutes: whoever types it first is linked. `name` is the Steam persona reduced
-to what a Quake name can safely carry (`accounts.game_name`, an allowlist, 31
-bytes).
+AN INSTALL IS ITS SIGNING KEY. Both `/api` routes need the shared key, a
+`SURFD_TRUSTED` source, and a signature by `pub` over rec_sign's statement
+(`accounts.STATEMENT`), whose `ticks` line says which kind it is:
+
+| kind | ticks | nonce signed |
+|---|---|---|
+| a connect | -2 | the 32 hex the lobby chose for it |
+| asking | -3 | `ask_nonce(code)` |
+| confirming | -4 | `confirm_nonce(code, pin)` |
+
+The lobby never sees the code: `tag` is `code_tag(code)`, and surfd finds the
+live code it is a digest of. Asking keeps the code for the key that asked
+(`linkcodes.claim`) and answers with the account's name; the lobby shows the
+player a six-digit `pin` of its own choosing, and confirming, signed over that
+pin by the same key, spends the code and writes `linkkeys`. `server` is the
+address the client signed; it must be one `SURFD_PUBLIC_HOST` resolves to, or
+one listed in `SURFD_LINK_HOSTS`, on the port `node` names. `why: later` means
+surfd could not check (the name does not resolve, `ed25519.py` is not in
+`SURFD_TOOLS`, or the minute's checks are spent: 480 for connects, 240 for
+links) and is not a refusal. `ip` is the client's address as the lobby saw it,
+and the per-player limits are keyed on it (12 connects and 8 link steps a
+minute). `player` is the guid, kept for the log. `acct` marks a reply as
+surfd's: QuakeC is handed an empty body for a request that never connected.
+
+A code is 8 characters, lasts ten minutes and works once; a new sign-in
+supersedes the account's older code. It is a bearer token for those ten
+minutes, so the page lists what is linked and can unlink it, in the browser
+that signed in (`__Host-ftu`). `name` is the Steam persona reduced to what a
+Quake name can safely carry (`accounts.game_name`, an allowlist, 31 bytes).
 
 `/board/link/return` is the one public GET that makes surfd call out. It asks
 Steam only for a reply with exactly Steam's ten fields that passes every local
@@ -856,7 +884,8 @@ everyone, 2 at once. A reply that lands in the wrong browser is recorded as
 seen, so it cannot be finished elsewhere. `python3 test_accounts.py` is the
 falsifier: Steam is a fake that counts what it was asked, and `steam.http` is
 driven against a loopback server. `python tools/accounts_mutants.py` checks the
-falsifier: 89 single edits to the code, each of which the suite must fail on.
+falsifier: single edits to the code, each of which the suite must fail on.
+`python tools/p615link.py` is the only arm in which the ENGINE signs.
 
 ## Run review (/admin/runs)
 

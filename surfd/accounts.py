@@ -1,25 +1,47 @@
 #!/usr/bin/env python3
 """
-accounts.py -- Steam accounts for surfd (schema 12).
+accounts.py -- Steam accounts for surfd (schema 13).
 
 STORE-ONLY: nothing that ranks, verifies or publishes a run reads these tables.
 
   accounts    one row per SteamID64 that has signed in, or been banned
-  links       install guid -> account; one account, many installs
+  linkkeys    an install's signing key -> account; one account, many installs
   linkcodes   what a sign-in hands the player to type into the game
   linknonces  every Steam assertion seen once, so none is used twice
 
-THE CODE GOES FROM THE BROWSER TO THE GAME, not the other way.  A code shown in
-the game and entered on the web would bind the VISITOR's Steam account to the
-code's install, so a link sent to a victim ("sign in to see my run") would hand
-the sender the victim's account.  This way round a stranger's code is only
-useful typed into the victim's own game, on an official lobby.
+AN INSTALL IS ITS KEY, NOT ITS GUID.  The engine guid is handed to any server
+that sends the fleet's sv_guidkey, so a link keyed on it could be moved, or
+squatted before its owner ever linked, by whoever harvested one.  Every lobby
+call carries a signature by the install's `fskey` over rec_sign's statement
+(cl_receipt.c), which names the server the CLIENT is talking to: it must be an
+address of ours, on the asking lobby's port, or a signature made on somebody
+else's server would do.
 
-A CODE IS STILL A BEARER TOKEN for its ten minutes: whoever types it first is
-linked.  The page says to keep it private, an install that is already linked
-moves only on a second, explicit request, and a ban never pins an install to
-the banned account -- that would let one player link a victim's install to a
-throwaway account, get it banned, and lock the victim out.
+THREE THINGS ARE SIGNED AND NONE CAN STAND IN FOR ANOTHER.  The statement's
+`ticks` says which: -2 a connect (the lobby's nonce), -3 asking to link (a
+digest of the code), -4 confirming it (a digest of the code AND the number the
+lobby showed the player).  No run signs a negative below -1, and the game
+server's receipt handler refuses them, so none can be filed as a run's either.
+
+LINKING IS ASK, THEN CONFIRM.  Asking proves a key for a code and CLAIMS the
+code for that key: nobody else can use it after.  The lobby then shows the
+account's name and a number of ITS choosing, and confirming signs that number;
+surfd never sees the number except under the signature.  Text a server the
+player has LEFT put in the client (a delayed command, a bind) can ask; it
+cannot read the number.
+
+WHAT THAT DOES NOT COVER, and why nothing may rank on a link yet (ROADMAP 14.3
+has the gate).  Whoever can write to the client's connection as well as read it
+has both commands signed like typed ones.  The lobby is sent a digest of the
+code and never the code, but a code is 40 bits and a digest can be searched:
+what keeps a code is the claim, made by the same packet that exposes the
+digest.  And a code is a bearer token until somebody asks with it: typed into
+a game whose server is not ours, it is that server's.
+
+The page says to keep a code private and lists what is linked, with a way to
+unlink.  A ban never pins an install to the banned account -- that would let
+one player link a victim's install to a throwaway account, get it banned, and
+lock the victim out.
 
 The sign-in pages are registered only when SURFD_BOARD_URL is set; the two
 lobby routes need the shared key AND a trusted source.
@@ -32,10 +54,14 @@ import hashlib
 import hmac
 import html
 import ipaddress
+import os
 import re
 import secrets
+import socket
 import sqlite3
+import sys
 import threading
+import time
 import unicodedata
 import urllib.parse
 
@@ -75,6 +101,19 @@ CREATE TABLE IF NOT EXISTS linknonces (
 );
 """
 
+# Schema 13 (upgrade_13): a link is keyed on the install's key, and a code
+# remembers which key asked for it first (`linkcodes.claim`, added there).
+SQL_KEYS = """
+CREATE TABLE IF NOT EXISTS linkkeys (
+    pub       TEXT    PRIMARY KEY,
+    steamid   TEXT    NOT NULL,
+    player    TEXT    NOT NULL DEFAULT '',
+    node      TEXT    NOT NULL DEFAULT '',
+    linked_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS linkkeys_steamid ON linkkeys (steamid);
+"""
+
 CODE_TTL = 600           # s a code can be redeemed for
 CODE_KEEP = 86400        # s a spent or superseded code's row is kept
 CODE_LIVE_MAX = 500      # unredeemed codes outstanding; past it sign-in waits
@@ -92,14 +131,37 @@ WEB_RATE_MAX = 10        # sign-in page hits per window per source
 OUT_RATE_MAX = 30        # confirmations asked of Steam per window, everyone
 OUT_SOURCE_MAX = 3       # ...and per source, so one address cannot spend them all
 OUT_ATONCE = 2           # ...and in flight at once: gunicorn has four threads
-ACCT_RATE_MAX = 600      # /api/account calls per window per source
-LINK_FLOOD_MAX = 1200    # /api/link calls per window per source, before the key is read
-LINK_RATE_MAX = 120      # ...and redeem attempts, after the per-install limit
-TRY_RATE_MAX = 6         # redeem attempts per window per install
+# Every lobby posts from one address, so a per-source limit is the whole fleet's.
+# The per-player limits are keyed on the client address the LOBBY reports: a guid
+# is whatever the client says it is, and one player could spend another's.
+ACCT_RATE_MAX = 2400     # /api/account calls per window per source, before the key is read
+ACCT_PEER_MAX = 12       # ...and per client address
+LINK_FLOOD_MAX = 2400    # /api/link calls per window per source, before the key is read
+LINK_RATE_MAX = 600      # ...and link steps, after the per-address limit
+TRY_RATE_MAX = 8         # link steps per window per client address (a link is two)
+# Those two are also all the signatures one address can have checked: 20 a window.
+HELLO_VERIFY_MAX = 480   # signatures checked per window for everyone: connects
+LINK_VERIFY_MAX = 240    # ...and links, a budget connects cannot spend
+HOSTS_TTL = 300          # s a lookup of the public host is reused
+HOSTS_RETRY = 30         # s before a failed lookup is tried again
+HOSTS_STALE = 86400      # s an old answer is believed while lookups fail
+UNLINK_TTL = 600         # s an unlink link on the sign-in page works for
+
+# What an install signs: rec_sign's statement (cl_receipt.c, RCPT_VERSION and
+# its five lines) with no evidence.  `ticks` is the kind; see the header.
+STATEMENT = "FTESURF-RCPT 1\nserver %s\nnonce %s\nticks %d\nhid - 0 0\nview -\n"
+TICKS_HELLO, TICKS_ASK, TICKS_CONFIRM = -2, -3, -4
+TAG_CODE = "ftesurf-code "          # the code as it crosses the wire
+TAG_ASK = "ftesurf-link "           # ...as asking signs it
+TAG_CONFIRM = "ftesurf-confirm "    # ...and confirming, with the number
 
 _STATE = re.compile(r"[0-9a-f]{32}")
 _URL_OK = re.compile(r"https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]*)?")
-_CODE_OK = re.compile(r"[%s]{%d}" % (CODE_ALPHABET, CODE_LEN))
+_HEX64 = re.compile(r"[0-9a-f]{64}")
+_HEX128 = re.compile(r"[0-9a-f]{128}")
+_SERVER = re.compile(r"[\x21-\x7e]{3,128}")
+_UNLINK = re.compile(r"(ask|do)\.([0-9]{10})\.([0-9]{17})\.([0-9a-f]{16})\.([0-9a-f]{32})")
+_PIN = re.compile(r"[0-9]{6}")
 # A persona becomes a Quake name, so it is built from an ALLOWLIST: letters,
 # digits and this punctuation.  Everything the engine or the mod reads as
 # markup is outside it -- ^ and & (colour, links), \ " ; $ % (infostrings and
@@ -136,12 +198,6 @@ def load_board_url(raw, log):
     return url
 
 
-def clean_code(raw):
-    """What a player typed -> the stored spelling, or ""."""
-    code = re.sub(r"[\s-]", "", str(raw or "")).upper()
-    return code if _CODE_OK.fullmatch(code) else ""
-
-
 def show_code(code):
     return code[:4] + "-" + code[4:]
 
@@ -164,9 +220,57 @@ def game_name(name):
     return safe
 
 
-def install_id(player):
-    """The 8 hex a lobby already publishes for an install (FS_GuidId)."""
-    return hashlib.sha256(player.encode("utf-8", "replace")).hexdigest()[:8]
+def _tagged(tag, text):
+    return hashlib.sha256((tag + text).encode("ascii")).hexdigest()[:32]
+
+
+def code_tag(code):
+    """What the game sends in place of the code (cl_account.qc agrees)."""
+    return _tagged(TAG_CODE, code)
+
+
+def ask_nonce(code):
+    return _tagged(TAG_ASK, code)
+
+
+def confirm_nonce(code, pin):
+    return _tagged(TAG_CONFIRM, code + " " + pin)
+
+
+def peer_of(raw):
+    """The client address a lobby reports, without a port.  "?" if it is not one."""
+    raw = (raw or "").strip()
+    for cand in (raw, raw.rpartition(":")[0]):
+        try:
+            return str(ipaddress.ip_address(cand.strip("[]")))
+        except ValueError:
+            continue
+    return "?"
+
+
+def upgrade_13(conn):
+    """Schema 13.  Safe to run twice, and from two processes at once: gunicorn
+    and a cron tool both start here on a deploy."""
+    conn.executescript(SQL_KEYS)
+    if "claim" not in {r[1] for r in conn.execute("PRAGMA table_info(linkcodes)")}:
+        try:
+            conn.execute("ALTER TABLE linkcodes ADD COLUMN claim TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column" not in str(exc):
+                raise
+    # 12's guid-keyed `links` never had a caller: it goes if it is empty, which
+    # it is everywhere, and stays untouched if somebody did fill it.
+    try:
+        if not conn.execute("SELECT 1 FROM links LIMIT 1").fetchone():
+            conn.execute("DROP TABLE IF EXISTS links")
+    except sqlite3.OperationalError as exc:
+        if "no such table" not in str(exc):
+            raise
+
+
+def resolve_host(name):
+    """Every address `name` resolves to, as strings.  Raises OSError."""
+    return {info[4][0] for info in socket.getaddrinfo(name, None)}
 
 
 def _same(a, b):
@@ -200,15 +304,32 @@ def register(app, d):
     """Add the account routes to `app`.
 
     `d` carries surfd's own helpers (log, get_db, clock, rate_ok, rate_key,
-    is_trusted, secret, setting, fail, game_json, clean_text, http) so this
-    module never imports surfd back.
+    is_trusted, secret, setting, fail, game_json, clean_text, http,
+    public_host, resolve) so this module never imports surfd back.
     """
     log = d.log
     board_url = load_board_url(d.setting("SURFD_BOARD_URL"), log)
     steam_key = (d.setting("SURFD_STEAM_KEY") or "").strip()
+    # sweep.py's TOOLS, spelled a second time: the game's readers live with the game.
+    tools_dir = d.setting("SURFD_TOOLS") or os.path.join(
+        d.setting("SURFD_GAME") or "/srv/nvme/ftesurf-server/game", "tools")
+    # Addresses a client may truthfully sign besides SURFD_PUBLIC_HOST's: the
+    # LAN's, for players on it.  Literal addresses only.
+    own_hosts = set()
+    for part in (d.setting("SURFD_LINK_HOSTS") or "").split(","):
+        if part.strip():
+            try:
+                own_hosts.add(ipaddress.ip_address(part.strip()))
+            except ValueError:
+                log.error("SURFD_LINK_HOSTS entry %r is not an address. Ignoring it.",
+                          part.strip())
+    looked = {"at": None, "tried": None, "addrs": set()}
 
     def game(payload):
-        return Response(d.game_json(payload), status=200, mimetype="application/json")
+        # `acct` is how the game tells an answer from an empty body: a request
+        # that never connected reaches QuakeC as code 0 too (sv_account.qc).
+        return Response(d.game_json(dict(payload, acct=1)), status=200,
+                        mimetype="application/json")
 
     def lobby_ok(src):
         secret = d.secret()
@@ -216,98 +337,206 @@ def register(app, d):
         return bool(secret and key and _same(key, secret)) and d.is_trusted(src)
 
     def account_json(row):
-        return {"steamid": row["steamid"], "name": game_name(row["name"]),
-                "avatar": row["avatar"], "banned": 1 if row["banned_at"] else 0}
+        # Name and ban, and nothing a lobby has no use for yet.
+        return {"name": game_name(row["name"]), "banned": 1 if row["banned_at"] else 0}
+
+    def verifier():
+        """tools/ed25519, found the way sweep.py finds it.  None if it is not there."""
+        if tools_dir not in sys.path:
+            sys.path.insert(0, tools_dir)
+        try:
+            import ed25519
+        except Exception as exc:
+            log.error("link: no ed25519.py in %s (%s)", tools_dir, type(exc).__name__)
+            return None
+        return ed25519
+
+    def ours(server, node, now):
+        """Is `server` an address a client reaches THIS lobby on?  True, False,
+        or None when that cannot be decided now."""
+        host, sep, port = server.rpartition(":")
+        if not sep or not port.isdigit() or node != "p" + port:
+            return False
+        try:
+            addr = ipaddress.ip_address(host.strip("[]"))
+        except ValueError:
+            return False
+        addr = getattr(addr, "ipv4_mapped", None) or addr
+        if addr in own_hosts:
+            return True
+        name = d.public_host()
+        if not name:
+            return False
+        fresh = looked["at"] is not None and now - looked["at"] <= HOSTS_TTL
+        if not fresh and (looked["tried"] is None or now - looked["tried"] > HOSTS_RETRY):
+            looked["tried"] = now
+            try:
+                found = {ipaddress.ip_address(x) for x in d.resolve(name)}
+                looked["at"], looked["addrs"] = now, found
+            except (OSError, ValueError) as exc:
+                log.warning("link: could not look up %s (%s)", name, type(exc).__name__)
+        if looked["at"] is None or now - looked["at"] > HOSTS_STALE:
+            return None             # no answer worth believing: not a refusal
+        return addr in looked["addrs"]
+
+    def proven(now, node, nonce, ticks, budget):
+        """("", pub) when the request carries a signature, by the key it names,
+        over this kind of statement, `nonce` and an address of ours; else (why, "")."""
+        pub = request.form.get("pub") or ""         # exact: rec_sign writes lowercase hex
+        sig = request.form.get("sig") or ""
+        server = request.form.get("server") or ""
+        if not (_HEX64.fullmatch(pub) and _HEX128.fullmatch(sig)
+                and _SERVER.fullmatch(server)):
+            return "proof", ""
+        here = ours(server, node, now)
+        if here is None:
+            return "later", ""
+        if not here:
+            log.warning("link: a key signed for %s on %s, which is not this fleet",
+                        server, node)
+            return "server", ""
+        ed = verifier()
+        if ed is None or not d.rate_ok("*", now, budget[1], budget[0]):
+            return "later", ""
+        msg = (STATEMENT % (server, nonce, ticks)).encode("utf-8")
+        if not ed.verify(bytes.fromhex(pub), msg, bytes.fromhex(sig)):
+            log.info("link: key %s's signature did not verify (kind %d, nonce %s.., %s)",
+                     pub[:16], ticks, nonce[:8], node)
+            return "proof", ""
+        return "", pub
+
+    def lobby_call(flood, bucket):
+        """(now, src, None) for a lobby's POST, or (0, "", reply) to send instead."""
+        now = int(d.clock())
+        src = request.remote_addr or "0.0.0.0"
+        if not d.rate_ok(src, now, flood, bucket):
+            return 0, "", d.fail(429, "rate limited")
+        if not lobby_ok(src):
+            log.warning("rejected %s from %s", request.path, src)
+            return 0, "", d.fail(403, "forbidden")
+        return now, src, None
 
     @app.post("/api/account")
     def account_status():
-        """Which account an install is linked to.  Lobbies ask at connect."""
-        now = int(d.clock())
-        src = request.remote_addr or "0.0.0.0"
-        if not d.rate_ok(src, now, ACCT_RATE_MAX, "acct"):
-            return d.fail(429, "rate limited")
-        if not lobby_ok(src):
-            log.warning("rejected account query from %s", src)
-            return d.fail(403, "forbidden")
-        player = d.clean_text(request.form.get("player"))
-        if not player:
-            return d.fail(400, "missing player")
+        """Who a connection is: the account its proven key is linked to.
+
+        The lobby sends a nonce IT chose with the client's signature over it,
+        so the answer is about whoever holds that key now, not about a guid.
+        """
+        now, src, early = lobby_call(ACCT_RATE_MAX, "acct")
+        if early is not None:
+            return early
+        nonce = request.form.get("nonce") or ""
+        if not _STATE.fullmatch(nonce):
+            return d.fail(400, "bad nonce")
+        peer = peer_of(request.form.get("ip"))
+        if not d.rate_ok(peer, now, ACCT_PEER_MAX, "acctpeer"):
+            return game({"linked": 0, "why": "later"})
+        node = d.clean_text(request.form.get("node")) or "?"
+        why, pub = proven(now, node, nonce, TICKS_HELLO,
+                          ("verify-hello", HELLO_VERIFY_MAX))
+        if why:
+            return game({"linked": 0, "why": why})
         row = d.get_db().execute(
-            "SELECT a.steamid, a.name, a.avatar, a.banned_at FROM links l"
-            " JOIN accounts a ON a.steamid = l.steamid WHERE l.player = ?",
-            (player,)).fetchone()
+            "SELECT a.name, a.banned_at FROM linkkeys k"
+            " JOIN accounts a ON a.steamid = k.steamid WHERE k.pub = ?",
+            (pub,)).fetchone()
         if row is None:
             return game({"linked": 0})
         return game(dict(account_json(row), linked=1))
 
-    def redeem(db, now, player, code, node, confirmed):
-        """The reply for one redeem, and the account it left.  Writes only on ok."""
+    def live_code(db, now, tag):
+        """The unspent, unexpired code this digest is of, or ""."""
+        for (code,) in db.execute(
+                "SELECT code FROM linkcodes WHERE used_at = 0 AND issued_at >= ?",
+                (now - CODE_TTL,)):
+            if _same(code_tag(code), tag):
+                return code
+        return ""
+
+    def step(db, now, pub, player, code, node, confirming):
+        """One link step under the write lock.  -> (reply, steamid, moved_from).
+        Asking claims the code for `pub`; confirming spends it and links."""
         row = db.execute(
-            "SELECT a.steamid, a.name, a.avatar, a.banned_at, c.issued_at, c.used_at"
+            "SELECT a.steamid, a.name, a.banned_at, c.issued_at, c.used_at, c.claim"
             " FROM linkcodes c JOIN accounts a ON a.steamid = c.steamid"
             " WHERE c.code = ?", (code,)).fetchone()
         if row is None or row["used_at"] or row["issued_at"] < now - CODE_TTL:
-            return {"ok": 0, "why": "code"}, None
+            return {"ok": 0, "why": "code"}, "", ""
         if row["banned_at"]:
-            return {"ok": 0, "why": "banned"}, None
+            return {"ok": 0, "why": "banned"}, "", ""
         old = db.execute(
-            "SELECT l.steamid, a.name FROM links l"
-            " LEFT JOIN accounts a ON a.steamid = l.steamid WHERE l.player = ?",
-            (player,)).fetchone()
+            "SELECT k.steamid, a.name FROM linkkeys k"
+            " LEFT JOIN accounts a ON a.steamid = k.steamid WHERE k.pub = ?",
+            (pub,)).fetchone()
         moving = old is not None and old["steamid"] != row["steamid"]
-        if moving and not confirmed:
-            # Not spent: the same code, sent again with confirm=1, moves it.
-            return {"ok": 0, "why": "move", "from": game_name(old["name"]),
-                    "to": game_name(row["name"])}, None
+        if not confirming:
+            if row["claim"] not in ("", pub):
+                return {"ok": 0, "why": "code"}, "", ""     # another key asked first
+            took = db.execute("UPDATE linkcodes SET claim = ? WHERE code = ?"
+                              " AND used_at = 0 AND claim IN ('', ?)", (pub, code, pub))
+            if took.rowcount != 1:
+                return {"ok": 0, "why": "code"}, "", ""
+            return {"ok": 0, "why": "confirm", "to": game_name(row["name"]),
+                    "from": game_name(old["name"]) if moving else ""}, row["steamid"], ""
+        if row["claim"] != pub:
+            return {"ok": 0, "why": "code"}, "", ""         # confirm without having asked
         spent = db.execute(
             "UPDATE linkcodes SET used_at = ?, used_by = ?"
-            " WHERE code = ? AND used_at = 0", (now, install_id(player), code))
+            " WHERE code = ? AND used_at = 0", (now, pub[:16], code))
         if spent.rowcount != 1:
-            return {"ok": 0, "why": "code"}, None
+            return {"ok": 0, "why": "code"}, "", ""
         db.execute(
-            "INSERT INTO links (player, steamid, node, linked_at)"
-            " VALUES (?, ?, ?, ?) ON CONFLICT(player) DO UPDATE SET"
-            " steamid = excluded.steamid, pub = '', node = excluded.node,"
-            " linked_at = excluded.linked_at",
-            (player, row["steamid"], node, now))
-        return dict(account_json(row), ok=1), (old["steamid"] if moving else "")
+            "INSERT INTO linkkeys (pub, steamid, player, node, linked_at)"
+            " VALUES (?, ?, ?, ?, ?) ON CONFLICT(pub) DO UPDATE SET"
+            " steamid = excluded.steamid, player = excluded.player,"
+            " node = excluded.node, linked_at = excluded.linked_at",
+            (pub, row["steamid"], player, node, now))
+        return (dict(account_json(row), ok=1), row["steamid"],
+                old["steamid"] if moving else "")
 
     @app.post("/api/link")
     def link_redeem():
-        """Spend a code: bind the install that typed it to the code's account.
+        """One step of a link: ask (no `pin`), then confirm (with it).
 
         A refusal the player can act on is a 200 with `why`: QuakeC sees a
         body only on success (sv_lobby.qc, URI_Get_Callback).
         """
-        now = int(d.clock())
-        src = request.remote_addr or "0.0.0.0"
-        if not d.rate_ok(src, now, LINK_FLOOD_MAX, "linkflood"):
-            return d.fail(429, "rate limited")
-        if not lobby_ok(src):
-            log.warning("rejected link from %s", src)
-            return d.fail(403, "forbidden")
-        player = d.clean_text(request.form.get("player"))
-        if not player:
-            return d.fail(400, "missing player")
-        # The install's own limit first.  Every lobby posts from one address,
-        # so an install hammering `link` must not spend the lobbies' allowance.
-        if not d.rate_ok(player, now, TRY_RATE_MAX, "linktry"):
+        now, src, early = lobby_call(LINK_FLOOD_MAX, "linkflood")
+        if early is not None:
+            return early
+        peer = peer_of(request.form.get("ip"))
+        if not d.rate_ok(peer, now, TRY_RATE_MAX, "linktry"):
             return game({"ok": 0, "why": "slow"})
         if not d.rate_ok(src, now, LINK_RATE_MAX, "linkapi"):
             return d.fail(429, "rate limited")
-        code = clean_code(request.form.get("code"))
-        if not code:
+        tag = request.form.get("tag") or ""
+        pin = request.form.get("pin") or ""
+        if pin and not _PIN.fullmatch(pin):
             return game({"ok": 0, "why": "code"})
         node = d.clean_text(request.form.get("node")) or "?"
+        player = d.clean_text(request.form.get("player"))      # for the log, nothing else
 
         db = d.get_db()
         try:
-            # IMMEDIATE: a ban landing between the read and the write would
-            # otherwise link an install to an account banned a moment before.
+            # A signature is only checked for a code that could be spent: a
+            # check costs tens of milliseconds and a guess must not buy one.
+            code = live_code(db, now, tag)
+            if not code:
+                return game({"ok": 0, "why": "code"})
+            if pin:
+                why, pub = proven(now, node, confirm_nonce(code, pin), TICKS_CONFIRM,
+                                  ("verify-link", LINK_VERIFY_MAX))
+            else:
+                why, pub = proven(now, node, ask_nonce(code), TICKS_ASK,
+                                  ("verify-link", LINK_VERIFY_MAX))
+            if why:
+                return game({"ok": 0, "why": why})
+            # IMMEDIATE: a ban, or the other lobby, landing between the read
+            # and the write must lose.
             db.execute("BEGIN IMMEDIATE")
-            reply, was = redeem(db, now, player, code, node,
-                                request.form.get("confirm") == "1")
-            if reply["ok"]:
+            reply, steamid, was = step(db, now, pub, player, code, node, bool(pin))
+            if steamid:
                 db.commit()
             else:
                 db.rollback()
@@ -316,8 +545,8 @@ def register(app, d):
             log.exception("link: storage error")
             return d.fail(500, "storage error")
         if reply["ok"]:
-            log.info("link: install %s -> account %s on %s%s", install_id(player),
-                     reply["steamid"], node, " (was %s)" % was if was else "")
+            log.info("link: key %s -> account %s on %s%s", pub[:16], steamid, node,
+                     " (was %s)" % was if was else "")
         return game(reply)
 
     if not board_url:
@@ -329,6 +558,7 @@ def register(app, d):
     # __Host- (Secure, Path=/, no Domain) cannot be set from a subdomain or over
     # plain http, and this origin is shared with other applications.
     cookie = "__Host-ftl" if secure else "ftl"
+    ucookie = "__Host-ftu" if secure else "ftu"     # the browser that may unlink
     cookie_path = "/" if secure else parts.path + "/link"
     asking = threading.BoundedSemaphore(OUT_ATONCE)
     log.info("Steam sign-in at %s/link (%s profile key)", board_url,
@@ -346,6 +576,39 @@ def register(app, d):
         return _page(1, "Link Steam",
                      "<p>%s</p>\n<p><a class=\"go\" href=\"../link\">Start again</a></p>"
                      % html.escape(message), status)
+
+    def unlink_token(step, at, steamid, key16, linked_at, browser):
+        """A link that unlinks one install.  Good for UNLINK_TTL, in the
+        browser whose sign-in printed it (`browser` is that cookie), for the
+        link as it stood then (`linked_at`): a re-link makes it stale.
+        "" when there is no secret to sign with."""
+        secret = d.secret()
+        if not secret or not browser:
+            return ""
+        body = "%s.%d.%s.%s" % (step, at, steamid, key16)
+        mac = hmac.new(
+            hashlib.sha256(b"surfd unlink " + secret.encode("utf-8")).digest(),
+            ("%s.%d.%s" % (body, linked_at, hashlib.sha256(
+                browser.encode("utf-8", "replace")).hexdigest())).encode("ascii"),
+            hashlib.sha256).hexdigest()[:32]
+        return body + "." + mac
+
+    def installs_html(db, steamid, now, browser):
+        """The account's linked installs, each with its unlink link."""
+        rows = db.execute("SELECT pub, node, linked_at FROM linkkeys WHERE steamid = ?"
+                          " ORDER BY linked_at", (steamid,)).fetchall()
+        if not rows:
+            return "\n<p>No install is linked to this account yet.</p>"
+        items = []
+        for r in rows:
+            token = unlink_token("ask", now, steamid, r["pub"][:16], r["linked_at"], browser)
+            items.append(
+                "<li><code>%s</code> linked %s on %s%s</li>" % (
+                    r["pub"][:16], time.strftime("%Y-%m-%d", time.gmtime(r["linked_at"])),
+                    html.escape(r["node"]),
+                    " <a href=\"unlink?t=%s\">Unlink</a>" % token if token else ""))
+        return ("\n<p>Installs linked to this account:</p>\n<ul class=\"installs\">\n%s\n</ul>"
+                % "\n".join(items))
 
     def held(db, now):
         """Assertions on record.  Pruned BEFORE counted, or a full table never empties."""
@@ -534,11 +797,13 @@ def register(app, d):
                          "minute.", 500)
 
         who = html.escape(acct["name"] or "Steam account " + steamid)
+        browser = secrets.token_urlsafe(18)
         if not code:
             log.info("link: banned account %s signed in", steamid)
             resp = _page(1, "Link Steam",
                          "<p>Signed in as <b>%s</b>.</p>\n<p>This Steam account "
-                         "is banned from the FTESurf leaderboards.</p>" % who, 403)
+                         "is banned from the FTESurf leaderboards.</p>" % who
+                         + installs_html(db, steamid, now, browser), 403)
         else:
             log.info("link: code issued for account %s", steamid)
             resp = _page(1, "Link Steam", (
@@ -549,7 +814,58 @@ def register(app, d):
                 "yourself: whoever types it first is linked to your account. "
                 "And only use a code you got from this page yourself: a code "
                 "someone sends you links your game to their account.</p>"
-                % (who, show_code(code))))
+                % (who, show_code(code))) + installs_html(db, steamid, now, browser))
         resp.delete_cookie(cookie, path=cookie_path, secure=secure,
                            httponly=True, samesite="Lax")
+        resp.set_cookie(ucookie, browser, max_age=UNLINK_TTL, path=cookie_path,
+                        secure=secure, httponly=True, samesite="Lax")
         return resp
+
+    @app.get("/board/link/unlink")
+    def link_unlink():
+        """Two GETs, because nginx passes nothing else: the first asks, the
+        second (its own token) unlinks.  A link fetched by something that is
+        not the owner clicking it therefore changes nothing."""
+        now = int(d.clock())
+        early = refuse_now(now)
+        if early is not None:
+            return early
+        m = _UNLINK.fullmatch(request.args.get("t", ""))
+        browser = request.cookies.get(ucookie, "")
+        if m is None or not browser:
+            return again("That link is not valid here. Sign in again to see your "
+                         "installs.", 400)
+        step, at, steamid, key16 = m.group(1), int(m.group(2)), m.group(3), m.group(4)
+        db = d.get_db()
+        try:
+            row = db.execute(
+                "SELECT k.pub, k.node, k.linked_at, a.name FROM linkkeys k"
+                " JOIN accounts a ON a.steamid = k.steamid"
+                " WHERE k.steamid = ? AND substr(k.pub, 1, 16) = ?",
+                (steamid, key16)).fetchone()
+            # One answer for a forged link, another browser's, a stale one and
+            # an install already gone: none of them is told which.
+            good = row is not None and unlink_token(step, at, steamid, key16,
+                                                    row["linked_at"], browser)
+            if not good or not _same(good, m.group(0)) or not -60 <= now - at <= UNLINK_TTL:
+                return again("That link is not valid here, or the install is already "
+                             "unlinked. Sign in again to see your installs.", 400)
+            who = html.escape(row["name"] or "Steam account " + steamid)
+            if step == "ask":
+                return _page(1, "Unlink an install", (
+                    "<p>Unlink install <code>%s</code> (linked %s on %s) from "
+                    "<b>%s</b>?</p>\n<p>It can be linked again with a new code.</p>\n"
+                    "<p><a class=\"go\" href=\"unlink?t=%s\">Unlink it</a></p>" % (
+                        key16, time.strftime("%Y-%m-%d", time.gmtime(row["linked_at"])),
+                        html.escape(row["node"]), who,
+                        unlink_token("do", at, steamid, key16, row["linked_at"], browser))))
+            db.execute("DELETE FROM linkkeys WHERE pub = ?", (row["pub"],))
+            db.commit()
+        except sqlite3.Error:
+            db.rollback()
+            log.exception("link: storage error")
+            return again("Something went wrong on our side. Try again in a "
+                         "minute.", 500)
+        log.info("link: key %s unlinked from account %s on the site", key16, steamid)
+        return again("Install %s is no longer linked to %s." % (
+            key16, row["name"] or "Steam account " + steamid))

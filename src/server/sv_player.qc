@@ -321,6 +321,7 @@ void() ClientConnect =
 	// unless lobby_enable is set, so a solo session is byte-identical to before.
 	Lobby_ClientConnect(self);
 	Vote_ClientConnect(self);           // Patch 372: every begin, map changes included
+	Account_Connect(self);              // Patch 615: edicts are recycled
 };
 
 void() ClientDisconnect =
@@ -331,6 +332,7 @@ void() ClientDisconnect =
 	// timer's teardown is the part that must not be skipped if this throws.
 	Lobby_ClientDisconnect(self);
 	Vote_ClientDisconnect(self);
+	Account_Disconnect(self);           // Patch 615: an answer still out is nobody's now
 
 	// Patch 382: `spec 0 ... drop` before the park's `pause ... drop`.
 	SV_SpecRelease(self, "drop");
@@ -1216,10 +1218,19 @@ void(string cmd) SV_ParseClientCommand =
 	  to -- which is what stops a signature made on one server being posted as a
 	  receipt on another.  The server adds what only it knows.  See SV_RecRcpt.
 	*/
-	if (c == "rec_rcpt")        { SV_RecRcpt(self, argv(1), argv(2), argv(3),
-	                                         argv(4), argv(5), argv(6), argv(7),
-	                                         argv(8));
-	                              return; }
+	if (c == "rec_rcpt")
+	{
+		// Patch 615: a receipt that signs ticks -2, -3 or -4 is a key proof,
+		// never a run's.  See Account_Proof.
+		if (!Account_Proof(self, argv(1), argv(2), argv(7), argv(8)))
+			SV_RecRcpt(self, argv(1), argv(2), argv(3), argv(4), argv(5), argv(6),
+			           argv(7), argv(8));
+		return;
+	}
+
+	// Patch 615: Steam accounts (sv_account.qc).
+	if (c == "acct_hello")      { Account_Hello(self);                    return; }
+	if (c == "link")            { Account_Link(self, argv(1));            return; }
 
 	// Patch 382: `rec_spec <entnum>` holds the body and watches that player (or
 	// switches target); `rec_spec 0` starts the countdown back.  See SV_SpecStart.

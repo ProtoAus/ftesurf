@@ -1991,8 +1991,19 @@ float(string body) Lobby_Directed =
 	return TRUE;
 };
 
+// Patch 615: sv_account.qc's requests take ids from here up, past anything the
+// heartbeat's and the run's counters reach in a map's life, and it answers them.
+#define ACCT_ID_BASE 8000000
+void(float reqid, float code, string body) Account_Reply;
+
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
+	if (reqid >= ACCT_ID_BASE)
+	{
+		Account_Reply(reqid, responsecode, resourcebody);
+		return;
+	}
+
 	// Odd ids are run submissions; see the parity note above.
 	//
 	// THE ID IS PASSED ON, not just used to classify.  Build 65 answers the

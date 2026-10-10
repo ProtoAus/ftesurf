@@ -30,14 +30,22 @@ FAILED = []
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+# The game's readers (ed25519.py) live in tools/; a sweep that copies only
+# surfd/ says where they are.
+TOOLS = os.environ.get("ACCOUNTS_TEST_TOOLS") or os.path.join(os.path.dirname(HERE), "tools")
+sys.path.insert(0, TOOLS)
+
 import accounts     # noqa: E402  (stateless; surfd imports the same module)
+import ed25519      # noqa: E402
 import steam        # noqa: E402
 
 BOARD = "https://proto.bar/ftesurf/board"
 SID = "76561198000000001"
 SID2 = "76561198000000002"
 START = 1800000000
-TABLES = ["accounts", "linkcodes", "linknonces", "links"]
+TABLES = ["accounts", "linkcodes", "linkkeys", "linknonces"]
+HERE_ADDR = "127.0.0.1:27510"       # what a client on this box signs for lobby p27510
+KEY1, KEY2, KEY3 = (bytes([n]) * 32 for n in (1, 2, 3))     # three installs' seeds
 
 
 def check(label, got, want):
@@ -103,7 +111,8 @@ def tidy():
         shutil.rmtree(home, ignore_errors=True)
 
 
-def fresh(board_url=BOARD, steam_key="STEAMKEY", home=None):
+def fresh(board_url=BOARD, steam_key="STEAMKEY", home=None, hosts="127.0.0.1",
+          public_host=None, tools=TOOLS):
     home = home or tempfile.mkdtemp(prefix="surfd-acct-")
     if home not in HOMES:
         HOMES.append(home)
@@ -116,8 +125,14 @@ def fresh(board_url=BOARD, steam_key="STEAMKEY", home=None):
                       SURFD_WEBSHOTS=os.path.join(home, "webshots"))
     for k in ("SURFD_PUBLIC_HOST", "SURFD_TRUSTED", "SURFD_PROXIES",
               "SURFD_ADMIN_HASH", "SURFD_ADMIN_SECRET", "SURFD_BOARD_URL",
-              "SURFD_STEAM_KEY", "SURFD_MOMENTUM", "SURFD_MOMTRACKS"):
+              "SURFD_STEAM_KEY", "SURFD_MOMENTUM", "SURFD_MOMTRACKS",
+              "SURFD_LINK_HOSTS", "SURFD_GAME"):
         os.environ.pop(k, None)
+    os.environ["SURFD_TOOLS"] = tools
+    if hosts:
+        os.environ["SURFD_LINK_HOSTS"] = hosts
+    if public_host:
+        os.environ["SURFD_PUBLIC_HOST"] = public_host
     if board_url:
         os.environ["SURFD_BOARD_URL"] = board_url
     if steam_key:
@@ -127,6 +142,12 @@ def fresh(board_url=BOARD, steam_key="STEAMKEY", home=None):
     m = importlib.import_module("surfd")
     m.time = FakeClock()
     m.STEAM_HTTP = FakeSteam()
+    m.LOOKUPS = []
+
+    def resolve(name):                  # no case may ask the real resolver
+        m.LOOKUPS.append(name)
+        raise OSError("no resolver in this test")
+    m.RESOLVE = resolve
     m._home = home
     m._test_db = os.environ["SURFD_DB"]
     return m
@@ -230,8 +251,81 @@ def count(m, table):
     return rows(m, "SELECT COUNT(*) FROM " + table)[0][0]
 
 
-def link(m, player, code, **kw):
-    return body(post(m, "/api/link", key="testkey", player=player, code=code, **kw))
+PROOFS = {}
+PIN = "482913"
+
+
+def proof(seed, nonce, ticks, server=HERE_ADDR):
+    """What rec_sign sends for this key: pub, sig and the address it signed."""
+    k = (seed, nonce, ticks, server)
+    if k not in PROOFS:
+        msg = (accounts.STATEMENT % (server, nonce, ticks)).encode("utf-8")
+        PROOFS[k] = {"pub": ed25519.publickey(seed).hex(),
+                     "sig": ed25519.sign(seed, msg).hex(), "server": server}
+    return dict(PROOFS[k])
+
+
+def bare(code):
+    return code.replace("-", "")
+
+
+def ask(m, seed, code, **kw):
+    """`link <code>` as lobby p27510 posts it: a digest of the code, and the
+    key's signature for asking.  Each install has an address of its own."""
+    form = dict(key="testkey", node="p27510", player="guid-%d" % seed[0],
+                ip="10.0.0.%d:27001" % seed[0], tag=accounts.code_tag(bare(code)))
+    form.update(proof(seed, accounts.ask_nonce(bare(code)), accounts.TICKS_ASK,
+                      kw.pop("server", HERE_ADDR)))
+    form.update(kw)
+    return body(post(m, "/api/link", **form))
+
+
+def confirm(m, seed, code, pin=PIN, **kw):
+    """`link <number>`: the same, signed over the number the lobby showed."""
+    form = dict(key="testkey", node="p27510", player="guid-%d" % seed[0],
+                ip="10.0.0.%d:27001" % seed[0], tag=accounts.code_tag(bare(code)), pin=pin)
+    form.update(proof(seed, accounts.confirm_nonce(bare(code), kw.pop("signed_pin", pin)),
+                      accounts.TICKS_CONFIRM, kw.pop("server", HERE_ADDR)))
+    form.update(kw)
+    return body(post(m, "/api/link", **form))
+
+
+def link(m, seed, code, **kw):
+    """Both steps; the confirm's answer, or the ask's if it was not `confirm`."""
+    r = ask(m, seed, code, **dict(kw))
+    if r.get("why") != "confirm":
+        return r
+    return confirm(m, seed, code, **kw)
+
+
+def hello(m, seed, nonce="ab" * 16, **kw):
+    """A connect: the lobby's nonce and the client's signature over it."""
+    form = dict(key="testkey", node="p27510", nonce=nonce, ip="10.0.0.%d:27001" % seed[0])
+    form.update(proof(seed, kw.pop("signed", nonce), kw.pop("ticks", accounts.TICKS_HELLO),
+                      kw.pop("server", HERE_ADDR)))
+    form.update(kw)
+    return body(post(m, "/api/account", **form))
+
+
+def keys(m):
+    return rows(m, "SELECT substr(pub, 1, 8), steamid, node FROM linkkeys ORDER BY linked_at, pub")
+
+
+def verified(m):
+    """How many signatures surfd has checked this minute (its own limiter's count)."""
+    return sum(len(m._rate.get((b, "*"), ())) for b in ("verify-hello", "verify-link"))
+
+
+def unspent(m):
+    return rows(m, "SELECT used_at, claim FROM linkcodes ORDER BY rowid")
+
+
+PUB1, PUB2, PUB3 = (ed25519.publickey(k).hex() for k in (KEY1, KEY2, KEY3))
+YES = {"acct": 1, "ok": 1, "name": "Lex", "banned": 0}
+
+
+def no(why, **more):
+    return dict({"acct": 1, "ok": 0, "why": why}, **more)
 
 
 print("\n--- 1. schema ----------------------------------------------------")
@@ -239,8 +333,9 @@ print("\n--- 1. schema ----------------------------------------------------")
 m = fresh()
 names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table'")}
 check("a fresh database has the four account tables", sorted(names & set(TABLES)), TABLES)
-check("...and is stamped schema 12",
-      (rows(m, "PRAGMA user_version")[0][0], m.SCHEMA_VERSION), (12, 12))
+check("...and is stamped schema 13, without 12's guid-keyed `links`",
+      (rows(m, "PRAGMA user_version")[0][0], m.SCHEMA_VERSION, "links" in names),
+      (13, 13, False))
 
 # An 11 database: the same file with the tables gone and the stamp put back.
 home = m._home
@@ -251,7 +346,28 @@ conn.close()
 m = fresh(home=home)
 names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table'")}
 check("a schema-11 database gains them on the next start",
-      (sorted(names & set(TABLES)), rows(m, "PRAGMA user_version")[0][0]), (TABLES, 12))
+      (sorted(names & set(TABLES)), rows(m, "PRAGMA user_version")[0][0]), (TABLES, 13))
+
+# A 12 database as Patch 612 left it: `links` present, no `linkkeys`.
+home = m._home
+conn = sqlite3.connect(m._test_db)
+conn.executescript("DROP TABLE linkcodes; DROP TABLE linkkeys;" + accounts.SQL
+                   + "PRAGMA user_version=12;")
+conn.close()
+m = fresh(home=home)
+names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table'")}
+check("a schema-12 database swaps its empty `links` for `linkkeys`, and codes learn to be claimed",
+      ("links" in names, "linkkeys" in names, rows(m, "PRAGMA user_version")[0][0],
+       "claim" in [r[1] for r in rows(m, "PRAGMA table_info(linkcodes)")]),
+      (False, True, 13, True))
+conn = sqlite3.connect(m._test_db)
+conn.executescript(accounts.SQL + "INSERT INTO links (player, steamid, linked_at)"
+                   " VALUES ('g', '%s', 1); DROP TABLE linkkeys; PRAGMA user_version=12;" % SID)
+conn.close()
+m = fresh(home=home)
+check("...but a `links` somebody filled is left as it was",
+      (rows(m, "SELECT player FROM links"), rows(m, "PRAGMA user_version")[0][0]),
+      ([("g",)], 13))
 
 print("\n--- 2. off unless SURFD_BOARD_URL is set -------------------------")
 
@@ -264,6 +380,7 @@ check("...and nothing asked Steam", len(m.STEAM_HTTP.calls), 0)
 check("...while the lobby routes still exist (403 without a key)",
       [post(m, p, player="g").status_code for p in ("/api/account", "/api/link")],
       [403, 403])
+check("...and nothing asked a resolver", m.LOOKUPS, [])
 
 
 class Quiet(object):
@@ -578,7 +695,7 @@ second = code_of(signin(m, ip="198.51.100.7")).replace("-", "")
 check("a second sign-in supersedes the first code, and keeps its row",
       rows(m, "SELECT code, used_by FROM linkcodes ORDER BY rowid"),
       [(first, accounts.SUPERSEDED), (second, "")])
-check("the superseded code does not link", link(m, "g1", first), {"ok": 0, "why": "code"})
+check("the superseded code does not link", link(m, KEY1, first), no("code"))
 
 run(m, "UPDATE accounts SET banned_at = ? WHERE steamid = ?", (START, SID))
 r = signin(m, ip="198.51.100.8")
@@ -703,56 +820,114 @@ r = signin(m, ip="203.0.116.2")
 check("an hour on, they are pruned by the next sign-in",
       (r.status_code, count(m, "linknonces")), (200, 1))
 
-print("\n--- 10. the lobby redeems a code ---------------------------------")
+print("\n--- 10. asking: the key signs for the code and claims it ---------")
 
 m = fresh()
 code = code_of(signin(m))
+good = dict(key="testkey", node="p27510", player="guid-1", ip="10.0.0.1:27001",
+            tag=accounts.code_tag(bare(code)),
+            **proof(KEY1, accounts.ask_nonce(bare(code)), accounts.TICKS_ASK))
 check("no key, a wrong key, a non-ASCII key",
-      [post(m, "/api/link", player="g1", code=code, **kw).status_code
-       for kw in ({}, {"key": "nope"}, {"key": "\u043a\u043b\u044e\u0447"})],
+      [post(m, "/api/link", **dict(good, **kw)).status_code
+       for kw in ({"key": ""}, {"key": "nope"}, {"key": "ключ"})],
       [403, 403, 403])
 check("the right key from an untrusted address",
-      post(m, "/api/link", addr="203.0.113.9", key="testkey", player="g1",
-           code=code).status_code, 403)
-check("...and none of those spent the code",
-      rows(m, "SELECT used_at FROM linkcodes"), [(0,)])
-check("no player", post(m, "/api/link", key="testkey", code=code).status_code, 400)
-for bad in ("", "ABCD", "ABCD-EFG0", "ABCD-EFGHJ", "'; DROP TABLE links;--"):
-    check("code %r" % bad, link(m, "shape", bad), {"ok": 0, "why": "code"})
-    m.time.now += 11
-check("a well-formed code nobody was given", link(m, "g0", "ABCDEFGH"),
-      {"ok": 0, "why": "code"})
+      post(m, "/api/link", addr="203.0.113.9", **good).status_code, 403)
+for n, bad in enumerate(("", bare(code), "ab" * 15, "AB" * 16, "ab" * 16 + "\n", "'; DROP TABLE x;--")):
+    check("a tag that is not 32 hex: %r" % bad[:12],
+          body(post(m, "/api/link", **dict(good, tag=bad, ip="10.9.0.%d" % n))), no("code"))
+check("a well-formed tag of a code nobody was given",
+      body(post(m, "/api/link", **dict(good, tag=accounts.code_tag("ABCDEFGH"), ip="10.9.1.1"))),
+      no("code"))
+check("...and none of those had a signature checked or touched the code",
+      (verified(m), unspent(m)), (0, [(0, "")]))
 
-r = post(m, "/api/link", key="testkey", player="guid-one", node="p27510",
-         code=" " + code.lower() + " ")
-check("the code as typed (lower case, dash, spaces) links the install",
+other = accounts.ask_nonce("ABCDEFGH")
+BAD = [
+    ("no proof at all", dict(pub="", sig="", server=""), "proof"),
+    ("a key that is not 64 hex", dict(pub=PUB1[:62]), "proof"),
+    ("a signature that is not hex", dict(sig="z" * 128), "proof"),
+    ("a signature with a trailing newline", dict(sig=good["sig"] + "\n"), "proof"),
+    ("an address with a space in it", dict(server="127.0.0.1:27510 x"), "proof"),
+    ("another key's signature under this key's name", dict(pub=PUB2), "proof"),
+    ("this key's signature over another code", dict(sig=proof(KEY1, other, -3)["sig"]), "proof"),
+    ("a CONNECT's signature over the right nonce: the wrong kind",
+     dict(sig=proof(KEY1, accounts.ask_nonce(bare(code)), accounts.TICKS_HELLO)["sig"]), "proof"),
+    ("a CONFIRM's signature in an ask's place",
+     dict(sig=proof(KEY1, accounts.ask_nonce(bare(code)), accounts.TICKS_CONFIRM)["sig"]), "proof"),
+    ("a run receipt's shape (ticks 0) over the right nonce",
+     dict(sig=proof(KEY1, accounts.ask_nonce(bare(code)), 0)["sig"]), "proof"),
+    ("a key of small order, which anybody can sign under",
+     dict(pub="01" + "00" * 31, sig="01" + "00" * 63), "proof"),
+    ("a signature made on somebody else's server",
+     proof(KEY1, accounts.ask_nonce(bare(code)), -3, "203.0.113.7:27510"), "server"),
+    ("...or for another of our ports",
+     proof(KEY1, accounts.ask_nonce(bare(code)), -3, "127.0.0.1:27520"), "server"),
+    ("...or posted by a lobby on another port", dict(node="p27520"), "server"),
+    ("...or by a lobby that names no port, for an address with none",
+     dict(node="p", **proof(KEY1, accounts.ask_nonce(bare(code)), -3, "127.0.0.1:")), "server"),
+    ("an address that is a name, not a number",
+     proof(KEY1, accounts.ask_nonce(bare(code)), -3, "play.proto.bar:27510"), "server"),
+    ("an address with no port", dict(server="127.0.0.1"), "server"),
+]
+for n, (label, change, why) in enumerate(BAD):
+    r = body(post(m, "/api/link", **dict(good, ip="10.9.2.%d" % n, **change)))
+    check(label, (r, keys(m), unspent(m)), (no(why), [], [(0, "")]))
+
+r = post(m, "/api/link", **good)
+check("CONTROL the same request untampered is answered: confirm, and who it is for",
       (r.status_code, r.mimetype, body(r)),
-      (200, "application/json",
-       {"ok": 1, "steamid": SID, "name": "Lex", "avatar": "a" * 40, "banned": 0}))
-check("...stored against the install, with the lobby",
-      rows(m, "SELECT player, steamid, pub, node FROM links"),
-      [("guid-one", SID, "", "p27510")])
-check("...and the code is spent, marked with the install's public id",
-      rows(m, "SELECT used_at > 0, used_by FROM linkcodes"),
-      [(1, hashlib.sha256(b"guid-one").hexdigest()[:8])])
-check("a spent code links nobody else", link(m, "guid-two", code),
-      {"ok": 0, "why": "code"})
+      (200, "application/json", no("confirm", to="Lex", **{"from": ""})))
+check("...the code is CLAIMED by that key, and still unspent, and nothing is linked",
+      (unspent(m), keys(m)), ([(0, PUB1)], []))
+check("asking again with the same key is the same answer", ask(m, KEY1, code),
+      no("confirm", to="Lex", **{"from": ""}))
+check("another key asking with a claimed code is told it is no good",
+      (ask(m, KEY2, code), unspent(m)), (no("code"), [(0, PUB1)]))
+
+print("\n--- 11. confirming: the key signs the number it was shown --------")
+
+check("another key cannot confirm what it did not ask for",
+      (confirm(m, KEY2, code), keys(m)), (no("code"), []))
+for label, kw, why in (
+        ("a number that is not six digits", dict(pin="12345"), "code"),
+        ("...or has a letter in it", dict(pin="12345a"), "code"),
+        ("...or a seventh digit, though the key signed all seven", dict(pin=PIN + "0"), "code"),
+        ("a signature over a different number than the one posted",
+         dict(signed_pin="000000"), "proof"),
+        ("an ASK's signature in a confirm's place",
+         dict(sig=proof(KEY1, accounts.confirm_nonce(bare(code), PIN), accounts.TICKS_ASK)["sig"]),
+         "proof"),
+        ("the ask's own signature, replayed with a number",
+         dict(sig=good["sig"]), "proof")):
+    check(label, (confirm(m, KEY1, code, **kw), keys(m), unspent(m)), (no(why), [], [(0, PUB1)]))
+m.time.now += 61            # the refusals above were install 1's eight steps for the minute
+r = confirm(m, KEY1, code)
+check("CONTROL the claiming key, signing the number, links", r, YES)
+check("...stored against the key, with the guid and lobby it came from",
+      rows(m, "SELECT pub, steamid, player, node FROM linkkeys"),
+      [(PUB1, SID, "guid-1", "p27510")])
+check("...and the code is spent, marked with the key that spent it",
+      rows(m, "SELECT used_at > 0, used_by FROM linkcodes"), [(1, PUB1[:16])])
+m.time.now += 61            # this section spent install 1's eight steps for the minute
+check("a spent code answers nobody, not even its own key",
+      (ask(m, KEY1, code), confirm(m, KEY1, code), ask(m, KEY2, code)),
+      (no("code"), no("code"), no("code")))
 
 m.time.now += 61
 code = code_of(signin(m, ip="198.51.100.20"))
 m.time.now += accounts.CODE_TTL
-check("a code is good at exactly ten minutes", link(m, "guid-two", code)["ok"], 1)
+check("a code is good at exactly ten minutes", link(m, KEY2, code), YES)
 code = code_of(signin(m, ip="198.51.100.21"))
+ask(m, KEY3, code)
 m.time.now += accounts.CODE_TTL + 1
-check("...and not a second later", link(m, "guid-three", code), {"ok": 0, "why": "code"})
-check("one account now holds two installs",
-      rows(m, "SELECT player FROM links WHERE steamid = ? ORDER BY player", (SID,)),
-      [("guid-one",), ("guid-two",)])
-code = code_of(signin(m, ip="198.51.100.25"))
-check("an install linking to the account it already has spends the code and stays",
-      (link(m, "guid-two", code)["ok"],
-       rows(m, "SELECT steamid FROM links WHERE player='guid-two'")), (1, [(SID,)]))
-
+check("...and not a second later, even claimed", confirm(m, KEY3, code), no("code"))
+check("one account now holds two installs", keys(m),
+      [(PUB1[:8], SID, "p27510"), (PUB2[:8], SID, "p27510")])
+m.time.now += 61
+code = code_of(signin(m, ip="198.51.100.30"))
+check("an install asking with a new code for its own account is not told it would move",
+      ask(m, KEY1, code), no("confirm", to="Lex", **{"from": ""}))
 m.STEAM_HTTP.personas[SID] = ("Lex2", "c" * 40)
 signin(m, ip="198.51.100.27")
 check("a later sign-in refreshes the stored persona and avatar",
@@ -761,115 +936,386 @@ check("a later sign-in refreshes the stored persona and avatar",
 m.STEAM_HTTP.personas[SID] = ("Lex", "a" * 40)
 signin(m, ip="198.51.100.28")
 
-print("\n--- 11. moving an install, and bans ------------------------------")
+print("\n--- 12. moving a key, bans, and what a guid is worth -------------")
 
 m.time.now += 61
 code = code_of(signin(m, sid=SID2, ip="198.51.100.22"))
-check("a linked install does not move on the code alone: it is told from and to",
-      (link(m, "guid-two", code), rows(m, "SELECT steamid FROM links WHERE player='guid-two'"),
-       rows(m, "SELECT used_at FROM linkcodes WHERE code = ?", (code.replace("-", ""),))),
-      ({"ok": 0, "why": "move", "from": "Lex", "to": "Other"}, [(SID,)], [(0,)]))
-r = link(m, "guid-two", code, confirm="1")
-check("...and moves when the same code comes back confirmed",
-      (r["ok"], r["steamid"], rows(m, "SELECT steamid FROM links WHERE player='guid-two'")),
-      (1, SID2, [(SID2,)]))
-check("confirm on a first link is simply a link",
-      link(m, "guid-nine", code_of(signin(m, ip="198.51.100.26")), confirm="1")["ok"], 1)
+check("asking with another account's code says where the key is and where it would go",
+      (ask(m, KEY2, code), keys(m)[1]),
+      (no("confirm", to="Other", **{"from": "Lex"}), (PUB2[:8], SID, "p27510")))
+r = confirm(m, KEY2, code)
+check("...and confirming moves it, dated now",
+      (r, rows(m, "SELECT steamid, linked_at FROM linkkeys WHERE pub = ?", (PUB2,))),
+      (dict(YES, name="Other"), [(SID2, int(m.time.now))]))
+
+# An attacker who harvested install 1's guid presents it with their own key.
+m.time.now += 61
+code = code_of(signin(m, sid=SID2, ip="198.51.100.29"))
+r = link(m, KEY3, code, player="guid-1")
+check("a harvested guid moves nothing but the key that signed",
+      (r["ok"], rows(m, "SELECT steamid FROM linkkeys WHERE pub = ?", (PUB1,)),
+       rows(m, "SELECT steamid, player FROM linkkeys WHERE pub = ?", (PUB3,))),
+      (1, [(SID,)], [(SID2, "guid-1")]))
 
 m.time.now += 61
 code = code_of(signin(m, sid=SID2, ip="198.51.100.23"))
+check("(asked, before the ban)", ask(m, KEY1, code)["why"], "confirm")
 run(m, "UPDATE accounts SET banned_at = ? WHERE steamid = ?", (START, SID2))
-check("a code for an account banned since it was issued does not link",
-      link(m, "guid-four", code), {"ok": 0, "why": "banned"})
+check("a code for an account banned since it was asked for does not link",
+      (confirm(m, KEY1, code), ask(m, KEY1, code)), (no("banned"), no("banned")))
 check("...and is not spent by the attempt",
-      rows(m, "SELECT used_at FROM linkcodes WHERE code = ?", (code.replace("-", ""),)),
-      [(0,)])
-check("a banned account's install says so",
-      body(post(m, "/api/account", key="testkey", player="guid-two")),
-      {"linked": 1, "steamid": SID2, "name": "Other", "avatar": "b" * 40, "banned": 1})
-# guid-two was talked into a stranger's code, and the stranger got banned.
+      rows(m, "SELECT used_at FROM linkcodes WHERE code = ?", (bare(code),)), [(0,)])
+check("a banned account's install is told so when it connects", hello(m, KEY2),
+      {"acct": 1, "linked": 1, "name": "Other", "banned": 1})
+# KEY2 was talked into a stranger's code, and the stranger got banned.
 code = code_of(signin(m, sid=SID, ip="198.51.100.24"))
 check("...and its owner can still take it back to their own account",
-      (link(m, "guid-two", code)["why"], link(m, "guid-two", code, confirm="1")["ok"],
-       body(post(m, "/api/account", key="testkey", player="guid-two"))["banned"]),
-      ("move", 1, 0))
+      (ask(m, KEY2, code), confirm(m, KEY2, code), hello(m, KEY2)["banned"]),
+      (no("confirm", to="Lex", **{"from": "Other"}), YES, 0))
 
-print("\n--- 12. what a lobby is told about an install --------------------")
+print("\n--- 12a. who a connection is -------------------------------------")
 
 check("no key / untrusted address",
-      [post(m, "/api/account", player="guid-one").status_code,
+      [post(m, "/api/account", nonce="ab" * 16).status_code,
        post(m, "/api/account", addr="203.0.113.9", key="testkey",
-            player="guid-one").status_code], [403, 403])
-check("no player", post(m, "/api/account", key="testkey").status_code, 400)
-check("an install nobody linked",
-      body(post(m, "/api/account", key="testkey", player="stranger")), {"linked": 0})
-check("a linked install",
-      body(post(m, "/api/account", key="testkey", player="guid-one")),
-      {"linked": 1, "steamid": SID, "name": "Lex", "avatar": "a" * 40, "banned": 0})
+            nonce="ab" * 16).status_code], [403, 403])
+check("a nonce that is not the lobby's 32 hex",
+      [post(m, "/api/account", key="testkey", nonce=n).status_code
+       for n in ("", "ab" * 15, "AB" * 16, "ab" * 16 + "\n")], [400, 400, 400, 400])
+before = verified(m)
+check("a key nobody linked", hello(m, bytes([9]) * 32), {"acct": 1, "linked": 0})
+check("...was checked before that was said", verified(m) - before, 1)
+check("a linked key, and nothing about the account but its name and standing",
+      hello(m, KEY1), {"acct": 1, "linked": 1, "name": "Lex", "banned": 0})
+check("a signature over some other nonce (a replayed connect)",
+      hello(m, KEY1, nonce="cd" * 16, signed="ab" * 16), {"acct": 1, "linked": 0, "why": "proof"})
+check("an ASK's or a run's signature over the lobby's nonce: the wrong kind",
+      [hello(m, KEY1, ticks=t)["why"] for t in (accounts.TICKS_ASK, accounts.TICKS_CONFIRM, 0, -1)],
+      ["proof"] * 4)
+check("a signature made on somebody else's server",
+      hello(m, KEY1, server="203.0.113.7:27510"), {"acct": 1, "linked": 0, "why": "server"})
+check("another key's signature under a linked key's name",
+      hello(m, bytes([9]) * 32, pub=PUB1), {"acct": 1, "linked": 0, "why": "proof"})
+check("no proof", body(post(m, "/api/account", key="testkey", node="p27510",
+                           nonce="ab" * 16)), {"acct": 1, "linked": 0, "why": "proof"})
 
 m = fresh()
 m.STEAM_HTTP.personas[SID] = ('^1Lex";quit\\', "a" * 40)
 code = code_of(signin(m))
-check("a hostile persona reaches the lobby as a safe name, on both routes",
-      (link(m, "guid-six", code)["name"],
-       body(post(m, "/api/account", key="testkey", player="guid-six"))["name"],
+check("a hostile persona reaches the lobby as a safe name, on all three answers",
+      (ask(m, KEY1, code)["to"], confirm(m, KEY1, code)["name"], hello(m, KEY1)["name"],
        rows(m, "SELECT name FROM accounts")),
-      ("1Lexquit", "1Lexquit", [('^1Lex";quit\\',)]))
+      ("1Lexquit", "1Lexquit", "1Lexquit", [('^1Lex";quit\\',)]))
+
+# The addresses a client may sign: SURFD_LINK_HOSTS, and what the public name resolves to.
+m = fresh(hosts="192.168.1.102", public_host="play.proto.bar")
+answers = [{"203.0.113.50"}]
+
+
+def resolver(name):
+    m.LOOKUPS.append(name)
+    if not answers:
+        raise OSError("resolver down")
+    return answers[0]
+
+
+m.RESOLVE = resolver
+code = code_of(signin(m))
+NOBODY = {"acct": 1, "linked": 0}
+check("the public name's address, v4 or v4-in-v6, and the LAN's are ours",
+      [hello(m, KEY1, server=a) for a in
+       ("203.0.113.50:27510", "[::ffff:203.0.113.50]:27510", "192.168.1.102:27510")],
+      [NOBODY] * 3)
+check("...loopback is not, unless it is listed", hello(m, KEY1),
+      dict(NOBODY, why="server"))
+check("...and the name was looked up once for all of that", m.LOOKUPS, ["play.proto.bar"])
+answers.pop()
+m.time.now += accounts.HOSTS_TTL + 1
+check("a lookup that fails later keeps the last answer",
+      (hello(m, KEY1, server="203.0.113.50:27510"), len(m.LOOKUPS)), (NOBODY, 2))
+check("...is not repeated for every question while it fails",
+      ([hello(m, KEY1, server="203.0.113.50:27510") for _ in range(3)], len(m.LOOKUPS)),
+      ([NOBODY] * 3, 2))
+m.time.now += accounts.HOSTS_RETRY + 1
+check("...is tried again after a while", (hello(m, KEY1, server="203.0.113.50:27510"),
+                                         len(m.LOOKUPS)), (NOBODY, 3))
+check("...and a link works through it",
+      link(m, KEY1, code, server="203.0.113.50:27510")["ok"], 1)
+m.time.now += accounts.HOSTS_STALE
+check("a day of failed lookups: the old answer is no longer believed, and that is not a no",
+      hello(m, KEY1, server="203.0.113.50:27510"), dict(NOBODY, why="later"))
+
+m = fresh(hosts="192.168.1.102", public_host="play.proto.bar")
+code = code_of(signin(m))
+check("a name that has NEVER resolved: not a refusal, try later; nothing spent",
+      (hello(m, KEY1, server="203.0.113.50:27510"),
+       ask(m, KEY1, code, server="203.0.113.50:27510"), unspent(m), verified(m)),
+      (dict(NOBODY, why="later"), no("later"), [(0, "")], 0))
+check("...while a listed address needs no lookup", hello(m, KEY1, server="192.168.1.102:27510"),
+      NOBODY)
+
+m = fresh(hosts=None)
+check("no address configured at all: every signature is for somebody else's server",
+      hello(m, KEY1), dict(NOBODY, why="server"))
+
+m = fresh(tools=tempfile.mkdtemp(prefix="surfd-acct-"))
+HOMES.append(os.environ["SURFD_TOOLS"])
+sys.modules.pop("ed25519", None)
+sys.path.remove(TOOLS)
+r1 = hello(m, KEY1)
+sys.path.insert(0, TOOLS)
+import ed25519          # noqa: E402,F811  (back for the rest of the file)
+check("a host with no ed25519.py cannot check a signature, and says later, not no",
+      r1, dict(NOBODY, why="later"))
+
+print("\n--- 12b. limits are per player, as the LOBBY saw them ------------")
+
+m = fresh()
+got = [hello(m, KEY1).get("why", "") for _ in range(accounts.ACCT_PEER_MAX + 1)]
+check("%d connects a minute from one client address, then later" % accounts.ACCT_PEER_MAX,
+      (got[:-1] == [""] * accounts.ACCT_PEER_MAX, got[-1]), (True, "later"))
+check("...another address is unaffected, whatever guid either states",
+      hello(m, KEY1, ip="10.0.5.5:1").get("why", ""), "")
+check("...and the port the client came from is not part of who it is",
+      hello(m, KEY1, ip="10.0.0.1:9999").get("why", ""), "later")
 
 m = fresh()
 code = code_of(signin(m))
-tries = [link(m, "guesser", "ABCDEFGH")["why"] for _ in range(accounts.TRY_RATE_MAX + 1)]
-check("%d guesses a minute per install, then it is told to slow down"
+tries = [ask(m, KEY1, "ABCDEFGH")["why"] for _ in range(accounts.TRY_RATE_MAX + 1)]
+check("%d link steps a minute per client address, then it is told to slow down"
       % accounts.TRY_RATE_MAX,
       (tries[:-1] == ["code"] * accounts.TRY_RATE_MAX, tries[-1]), (True, "slow"))
-check("...even with the right code", link(m, "guesser", code), {"ok": 0, "why": "slow"})
-check("...while another install links with it", link(m, "honest", code)["ok"], 1)
+check("...even with the right code", ask(m, KEY1, code), no("slow"))
+check("...which another player cannot do TO it by stating its guid",
+      [ask(m, KEY2, "ABCDEFGH", player="guid-3")["why"] for _ in range(accounts.TRY_RATE_MAX + 1)][-1],
+      "slow")
+check("...the third player, whose guid that was, links untroubled", link(m, KEY3, code), YES)
 
 m = fresh()
+junk = dict(key="testkey", node="p27510", nonce="ab" * 16, pub="ab" * 32, sig="cd" * 64,
+            server=HERE_ADDR)
+got = [body(post(m, "/api/account", ip="10.7.%d.%d" % (i // 250, i % 250), **junk)).get("why")
+       for i in range(accounts.HELLO_VERIFY_MAX + 1)]
+check("%d connect signatures a minute are checked for everyone; the next is asked back later"
+      % accounts.HELLO_VERIFY_MAX,
+      (got[:-1] == ["proof"] * accounts.HELLO_VERIFY_MAX, got[-1]), (True, "later"))
 code = code_of(signin(m))
-run(m, "ALTER TABLE links RENAME TO links_gone")
-r = post(m, "/api/link", key="testkey", player="unlucky", code=code)
-run(m, "ALTER TABLE links_gone RENAME TO links")
-check("a storage error is a 500, and the code is still good afterwards",
-      (r.status_code, rows(m, "SELECT used_at FROM linkcodes"),
-       link(m, "unlucky", code)["ok"]), (500, [(0,)], 1))
-
-for raw, want in (("abcd-efgh", "ABCDEFGH"), (" AB CD-EF GH ", "ABCDEFGH"),
-                  ("ABCDEFG0", ""), ("ABCDEFGI", ""), ("ABCDEFG", ""),
-                  ("ABCDEFGHJ", ""), ("ABCDEFGH\n", "ABCDEFGH"), ("", ""), (None, "")):
-    check("clean_code %r" % (raw,), accounts.clean_code(raw), want)
+check("...and a flood of connects cannot spend the budget links are checked from",
+      link(m, KEY1, code), YES)
 
 m = fresh()
-got = [post(m, "/api/account", key="testkey", player="p%d" % i).status_code
+got = [post(m, "/api/account", key="testkey").status_code
        for i in range(accounts.ACCT_RATE_MAX + 1)]
-check("%d account queries a minute from one address, then 429" % accounts.ACCT_RATE_MAX,
-      (got[:-1] == [200] * accounts.ACCT_RATE_MAX, got[-1]), (True, 429))
+check("%d account posts a minute from one source, then 429" % accounts.ACCT_RATE_MAX,
+      (got[:-1] == [400] * accounts.ACCT_RATE_MAX, got[-1]), (True, 429))
+check("...which costs the lobbies none of their link steps",
+      post(m, "/api/link", key="testkey", ip="10.8.0.1", tag="ab" * 16).status_code, 200)
 
 m = fresh()
-code = code_of(signin(m))
-tries = [post(m, "/api/link", key="testkey", player="hammer", code="ABCDEFGH")
-         for _ in range(accounts.LINK_RATE_MAX + 1)]
-check("one install hammering link is told to slow down, not counted against the lobbies",
-      ([r.status_code for r in tries] == [200] * len(tries),
-       [body(r)["why"] for r in tries].count("slow"), link(m, "bystander", code)["ok"]),
-      (True, len(tries) - accounts.TRY_RATE_MAX, 1))
-
-m = fresh()
-got = [post(m, "/api/link", key="testkey", player="p%d" % i, code="ABCDEFGH").status_code
-       for i in range(accounts.LINK_RATE_MAX + 1)]
-check("%d link calls a minute from one address, then 429" % accounts.LINK_RATE_MAX,
+got = [post(m, "/api/link", key="testkey", ip="10.8.%d.%d" % (i // 250, i % 250),
+            tag="ab" * 16).status_code for i in range(accounts.LINK_RATE_MAX + 1)]
+check("%d link steps a minute from all lobbies, then 429" % accounts.LINK_RATE_MAX,
       (got[:-1] == [200] * accounts.LINK_RATE_MAX, got[-1]), (True, 429))
-got = [post(m, "/api/account", key="testkey", player="p%d" % i).status_code
-       for i in range(accounts.ACCT_RATE_MAX)]
-check("...which costs the lobbies none of their %d account queries" % accounts.ACCT_RATE_MAX,
-      got == [200] * accounts.ACCT_RATE_MAX, True)
+check("...which costs the lobbies none of their account queries",
+      post(m, "/api/account", key="testkey").status_code, 400)
 
 m = fresh()
-got = [post(m, "/api/link", player="p", code="ABCDEFGH").status_code
+got = [post(m, "/api/link", tag="ab" * 16).status_code
        for _ in range(accounts.LINK_FLOOD_MAX + 1)]
 check("%d keyless link calls a minute are refused one by one, then unread"
       % accounts.LINK_FLOOD_MAX,
       (got[:-1] == [403] * accounts.LINK_FLOOD_MAX, got[-1]), (True, 429))
+
+for given, want in (("203.0.113.9:27001", "203.0.113.9"), ("203.0.113.9", "203.0.113.9"),
+                    ("[2001:db8::1]:27001", "2001:db8::1"), ("2001:db8::1", "2001:db8::1"),
+                    ("", "?"), ("nonsense", "?"), (None, "?")):
+    check("peer_of %r" % (given,), accounts.peer_of(given), want)
+
+print("\n--- 12c. two lobbies, one code; a storage error -------------------")
+
+m = fresh()
+code = code_of(signin(m))
+ask(m, KEY1, code)
+real_verify = ed25519.verify
+
+
+def racing(pub, msg, sig):
+    run(m, "UPDATE linkcodes SET used_at = ?, used_by = 'the other lobby' WHERE code = ?",
+        (START, bare(code)))
+    return real_verify(pub, msg, sig)
+
+
+ed25519.verify = racing
+r = confirm(m, KEY1, code)
+ed25519.verify = real_verify
+check("a code spent while its signature was being checked links nobody",
+      (r, keys(m), rows(m, "SELECT used_by FROM linkcodes")),
+      (no("code"), [], [("the other lobby",)]))
+
+m = fresh()
+code = code_of(signin(m))
+
+
+def claiming(pub, msg, sig):
+    run(m, "UPDATE linkcodes SET claim = ? WHERE code = ?", (PUB2, bare(code)))
+    return real_verify(pub, msg, sig)
+
+
+ed25519.verify = claiming
+r = ask(m, KEY1, code)
+ed25519.verify = real_verify
+check("a code claimed by another key while this one's signature was being checked stays theirs",
+      (r, unspent(m)), (no("code"), [(0, PUB2)]))
+
+m = fresh()
+code = code_of(signin(m))
+ask(m, KEY1, code)
+real_connect = m.connect
+BAN = []
+
+
+def watched():
+    """surfd's connection, with a second writer that tries to ban the account
+    between a link step's read of it and the step's write."""
+    conn = real_connect()
+
+    def spy(sql):
+        if sql.startswith("SELECT k.steamid, a.name FROM linkkeys") and not BAN:
+            other = sqlite3.connect(m._test_db, timeout=0)
+            try:
+                other.execute("UPDATE accounts SET banned_at = ? WHERE steamid = ?", (START, SID))
+                other.commit()
+                BAN.append("landed")
+            except sqlite3.OperationalError as exc:
+                BAN.append(str(exc))
+            finally:
+                other.close()
+    conn.set_trace_callback(spy)
+    return conn
+
+
+m.connect = watched
+r = confirm(m, KEY1, code)
+m.connect = real_connect
+check("a ban cannot land between a link step's read and its write: the step holds the lock",
+      (BAN, r, rows(m, "SELECT banned_at FROM accounts WHERE steamid = ?", (SID,))),
+      (["database is locked"], YES, [(0,)]))
+
+m = fresh()
+code = code_of(signin(m))
+ask(m, KEY1, code)
+run(m, "ALTER TABLE linkkeys RENAME TO linkkeys_gone")
+r = post(m, "/api/link", key="testkey", node="p27510", ip="10.0.0.1", pin=PIN,
+         tag=accounts.code_tag(bare(code)),
+         **proof(KEY1, accounts.confirm_nonce(bare(code), PIN), accounts.TICKS_CONFIRM))
+run(m, "ALTER TABLE linkkeys_gone RENAME TO linkkeys")
+check("a storage error is a 500, and the code is still good afterwards",
+      (r.status_code, unspent(m), confirm(m, KEY1, code)), (500, [(0, PUB1)], YES))
+
+check("the statement a key signs is rec_sign's, byte for byte (cl_receipt.c)",
+      accounts.STATEMENT % ("1.2.3.4:27510", "ab" * 16, -3),
+      "FTESURF-RCPT 1\nserver 1.2.3.4:27510\nnonce " + "ab" * 16
+      + "\nticks -3\nhid - 0 0\nview -\n")
+check("the three kinds sign three numbers no run does",
+      (accounts.TICKS_HELLO, accounts.TICKS_ASK, accounts.TICKS_CONFIRM), (-2, -3, -4))
+check("the digests are tagged, 32 hex, and what the client computes",
+      (accounts.code_tag("ABCDEFGH"), accounts.ask_nonce("ABCDEFGH"),
+       accounts.confirm_nonce("ABCDEFGH", "482913")),
+      (hashlib.sha256(b"ftesurf-code ABCDEFGH").hexdigest()[:32],
+       hashlib.sha256(b"ftesurf-link ABCDEFGH").hexdigest()[:32],
+       hashlib.sha256(b"ftesurf-confirm ABCDEFGH 482913").hexdigest()[:32]))
+
+print("\n--- 12d. the sign-in page lists installs, and unlinks one --------")
+
+
+def page_cookie(resp, name="__Host-ftu"):
+    """The `name=value` the page set for unlinking, or ""."""
+    for c in resp.headers.getlist("Set-Cookie"):
+        if c.startswith(name + "=") and "max-age=0" not in c.lower():
+            return c.split(";")[0]
+    return ""
+
+
+def token_of(resp):
+    t = text(resp)
+    at = t.find('href="unlink?t=')
+    return t[at + 15:t.find('"', at + 15)] if at >= 0 else ""
+
+
+def unlink(m, token, browser, ip="198.51.102.1", method="GET"):
+    return get(m, "/board/link/unlink?t=" + token, ip=ip, cookie=browser, method=method)
+
+
+m = fresh()
+r = signin(m)
+check("an account with nothing linked is told so",
+      ("No install is linked" in text(r), token_of(r)), (True, ""))
+link(m, KEY1, code_of(r))
+link(m, KEY2, code_of(signin(m, sid=SID2, ip="198.51.100.2")))
+r = signin(m, ip="198.51.100.3")
+mine = page_cookie(r)
+ask_t = token_of(r)
+uc = [c for c in r.headers.getlist("Set-Cookie") if c.startswith("__Host-ftu=")][0]
+check("after linking, the page names the install by its key, lobby and day, with a link",
+      ("<code>%s</code> linked %s on p27510" % (PUB1[:16], stamp(START)[:10]) in text(r),
+       ask_t.startswith("ask.%d.%s.%s." % (START, SID, PUB1[:16])), PUB2[:16] in text(r)),
+      (True, True, False))
+check("...and marks the browser that may use it",
+      sorted(a.strip().lower() for a in uc.split(";")[1:] if not a.strip().lower().startswith("expires")),
+      ["httponly", "max-age=600", "path=/", "samesite=lax", "secure"])
+r = unlink(m, ask_t, mine)
+do_t = token_of(r)
+check("the link asks first, and changes nothing",
+      (r.status_code, "Unlink install <code>%s</code>" % PUB1[:16] in text(r),
+       "<b>Lex</b>" in text(r), do_t.startswith("do."), len(keys(m))), (200, True, True, True, 2))
+check("the asking link cannot be turned into the doing one",
+      (unlink(m, "do" + ask_t[3:], mine).status_code, len(keys(m))), (400, 2))
+check("a HEAD on the doing link is refused",
+      (unlink(m, do_t, mine, method="HEAD").status_code, len(keys(m))), (405, 2))
+other_browser = page_cookie(signin(m, sid=SID2, ip="198.51.100.4"))
+forged = [
+    ("another account's id", do_t.replace(SID, SID2), mine),
+    ("another install's key", do_t.replace(PUB1[:16], PUB2[:16]), mine),
+    ("a later time", do_t.replace(str(START), str(START + 1)), mine),
+    ("a changed signature", do_t[:-1] + ("0" if do_t[-1] != "0" else "1"), mine),
+    ("a trailing newline", do_t + "%0A", mine),
+    ("nothing", "", mine),
+    ("no browser cookie: somebody who only has the address", do_t, None),
+    ("another browser's cookie", do_t, other_browser),
+]
+for n, (label, t, browser) in enumerate(forged):
+    check("a doing link with %s" % label,
+          (unlink(m, t, browser, ip="198.51.102.%d" % (10 + n)).status_code, len(keys(m))),
+          (400, 2))
+check("...and the asking link is as closed to a stranger",
+      unlink(m, ask_t, None, ip="198.51.102.29").status_code, 400)
+old_secret, m.SECRET = m.SECRET, "another-secret"
+check("...or one signed under another secret",
+      (unlink(m, do_t, mine, ip="198.51.102.30").status_code, len(keys(m))), (400, 2))
+m.SECRET = old_secret
+m.time.now += accounts.UNLINK_TTL + 1
+check("a link older than ten minutes has expired",
+      (unlink(m, do_t, mine, ip="198.51.102.31").status_code, len(keys(m))), (400, 2))
+m.time.now -= 1
+r = unlink(m, do_t, mine, ip="198.51.102.32")
+check("CONTROL at exactly ten minutes the doing link unlinks that install and no other",
+      (r.status_code, "no longer linked to Lex" in text(r), keys(m)),
+      (200, True, [(PUB2[:8], SID2, "p27510")]))
+check("...after which the key is nobody's", hello(m, KEY1), {"acct": 1, "linked": 0})
+
+m = fresh()
+link(m, KEY1, code_of(signin(m)))
+r = signin(m, ip="198.51.100.3")
+mine = page_cookie(r)
+do_t = token_of(unlink(m, token_of(r), mine))
+check("(unlinked once)", unlink(m, do_t, mine, ip="198.51.102.33").status_code, 200)
+m.time.now += 61
+link(m, KEY1, code_of(signin(m, ip="198.51.100.5")))
+r = unlink(m, do_t, mine, ip="198.51.102.34")
+check("a used unlink link does not unlink the install again once it has been re-linked",
+      (r.status_code, len(keys(m))), (400, 1))
+hits = [unlink(m, "x", mine, ip="198.51.102.40").status_code for _ in range(11)]
+check("the page limit covers unlink too", (hits[:10], hits[10]), ([400] * 10, 429))
 
 print("\n--- 13. a persona as a player name -------------------------------")
 

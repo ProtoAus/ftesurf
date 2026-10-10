@@ -315,6 +315,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Ghost_RegisterCvars();
 	Results_RegisterCvars();        // build 48
 	Banner_RegisterCvars();         // Patch 361
+	Account_RegisterCvars();        // Patch 615
 	/*
 	  Build 49.  This one also takes every particleeffectnum handle, ONCE, and
 	  that has to happen here rather than per map: the effect names are what
@@ -1403,6 +1404,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// whether or not `notmenu` -- a run does not stop while the console is up,
 	// and a gap in the sidecar would read as a camera that teleported.
 	Rec_ViewFrame();
+	Account_Frame();                // Patch 615: here, not with the HUD, which a menu skips
 
 	// Same lazy-reload idiom Zone_Draw uses: cheap string compare every frame,
 	// work only on an actual map change.
@@ -2155,6 +2157,8 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (LT_ConsoleCommand(cmd))
 		return TRUE;
 	if (Banner_ConsoleCommand(cmd))
+		return TRUE;
+	if (Account_ConsoleCommand(cmd))    // Patch 615: `link`, and the stuffed `acct_hello`
 		return TRUE;
 	if (MPad_ConsoleCommand(cmd))
 		return TRUE;

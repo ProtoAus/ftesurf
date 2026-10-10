@@ -192,6 +192,9 @@ client/cl_lobbytime.qc
 // Patch 361: the completion banner.  After cl_lobbytime.qc (LT_BestOnLegC) and
 // cl_results.qc (Results_KeyRank / Results_Rank, and the toast it replaces).
 client/cl_banner.qc
+// Patch 615: the `link` command and the connect proof.  Needs nothing here;
+// before cl_main.qc, which registers it, feeds it commands and ticks it.
+client/cl_account.qc
 // Patch 390: the mouse pad.  After cl_watch.qc and cl_spectate.qc (rec_wt_*,
 // spc_tang) and cl_hud.qc (HUD_KeysGeom); before cl_hudedit.qc and cl_main.qc.
 client/cl_mouse.qc

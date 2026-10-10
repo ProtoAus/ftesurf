@@ -25,7 +25,7 @@ commit   d43004f60bd6819f744d97e56b3aaf074a3d023d
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-606
-patch    613
+patch    615
 # Patch 613: a replay's Segments rows around a teleport. The segment machine is told
 # where the run line broke: a held ramp ride ends there, the launch point is forgotten
 # and the energy step across it is charged to no row (one recording had a 0.54 s

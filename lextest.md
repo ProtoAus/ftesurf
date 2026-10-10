@@ -11,31 +11,32 @@ to be wrong.
 
 ---
 
-## 00. 10 Oct — Steam sign-in on the board site (Patch 612)
+## 00. 10 Oct — `link` in the game (Patch 615)
 
-Live on the Pi since 10 Oct 10:20 UTC, with your Steam key in place.
+The second piece of Steam accounts (ROADMAP 14). You signed in on the site on
+10 Oct and it gave you a code; the game now takes one. **Times are still ranked
+exactly as before**: this links an install to an account and nothing reads the
+link yet.
 
-The first piece of Steam accounts (ROADMAP 14). **Nothing in the game changes
-yet**: no command, no name, no picture, and times are ranked exactly as before.
-What exists is the website half: a page that signs you in through Steam and
-gives you a code the game will later accept.
+Every test ran one rig client against a fake Steam. Only you can do the real one:
 
-Every test of it ran against a fake Steam. Only a person with a Steam account
-can do the real one:
-
-- **Open `https://proto.bar/ftesurf/board/link`** and press *Sign in through
-  Steam*. Steam's own page should say you are signing in to `proto.bar`.
-- **After Steam sends you back** you should see "Signed in as" and a code like
-  `link ABCD-EFGH`. If it says Steam's reply was not valid, or that the sign-in
-  did not start in this browser, that is a real finding: tell me which.
-- **Reload that page.** It should say the sign-in has already been used.
-- **Your Steam name** appears only once `SURFD_STEAM_KEY` is in the Pi's
-  `surfd.env` (ROADMAP, Decisions 5). Without it the page says "Steam account"
-  and your id.
-- **The wording.** The page is the only explanation a new player gets of why
-  the game wants their Steam account. Say if it reads wrong.
-
-The code cannot be used yet; typing `link` in the game does nothing until 14.2.
+- **Join an official lobby by `play.proto.bar`**, not the Pi's LAN address.
+  Linking checks the address your game is connected to, and the LAN's is
+  refused on purpose ("the leaderboard does not know this server by the address
+  you joined it on"). If the server browser put you on the LAN address, that is
+  a finding: say so.
+- **A few seconds in** the lobby says, once: "steam: this install is not linked
+  to a Steam account. Sign in at proto.bar/ftesurf/board/link and type link
+  <code> in the console".
+- **Sign in on the site, then type `link ABCD-EFGH`** (your code) in the
+  console. The lobby answers "link this install to Proto? Type link 123456 to
+  confirm". Type that. It should say "this install is now linked to Proto".
+- **Reconnect, or wait for the next map.** "this install is linked to Proto".
+- **The sign-in page** now lists the install under your name with an *Unlink*
+  link; it asks before it unlinks. Try it, then link again with a new code.
+- **To judge:** the wording; whether two commands is tolerable (the number is
+  there so that nothing but you can finish a link); the line repeating on every
+  map; and that it is a console command at all rather than a menu row.
 
 ## 00. 10 Oct — dark pastel theme and the redesigned leaderboard (Patches 606, 607)
 

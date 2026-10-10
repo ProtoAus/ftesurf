@@ -12,7 +12,7 @@ the mutant with it).  About four minutes; nothing outside the temp dir is
 written.
 
 PAIRS lists mutants that are allowed to survive ALONE because a second check
-covers the same hole; the two together must die.
+covers the same hole; together they must die.
 
 Add a mutant with every check you add: a check with no mutant that it alone
 kills is a check nobody has seen fail.
@@ -118,24 +118,121 @@ M = [
      "return d.is_trusted(src)"),
     ("trusted", A, "return bool(secret and key and _same(key, secret)) and d.is_trusted(src)",
      "return bool(secret and key and _same(key, secret))"),
+    ("acct-marker", A, "d.game_json(dict(payload, acct=1))", "d.game_json(dict(payload))"),
+    ("lobby-flood", A, "        if not d.rate_ok(src, now, flood, bucket):", "        if False:"),
+    ("link-order", A, 'now, src, early = lobby_call(LINK_FLOOD_MAX, "linkflood")',
+     'now, src, early = lobby_call(LINK_RATE_MAX, "linkapi")'),
+    ("link-rate", A, 'if not d.rate_ok(src, now, LINK_RATE_MAX, "linkapi"):', "if False:"),
+    ("one-bucket", A, 'LINK_RATE_MAX, "linkapi"):', 'LINK_RATE_MAX, "acct"):'),
+    ("tries", A, 'if not d.rate_ok(peer, now, TRY_RATE_MAX, "linktry"):', "if False:"),
+    ("tries-guid", A, '        peer = peer_of(request.form.get("ip"))\n'
+     '        if not d.rate_ok(peer, now, TRY_RATE_MAX, "linktry"):',
+     '        peer = request.form.get("player") or "?"\n'
+     '        if not d.rate_ok(peer, now, TRY_RATE_MAX, "linktry"):'),
+    ("acct-peer", A, 'if not d.rate_ok(peer, now, ACCT_PEER_MAX, "acctpeer"):', "if False:"),
+    ("peer-port", A, "    for cand in (raw, raw.rpartition(\":\")[0]):", "    for cand in (raw,):"),
+    ("hello-nonce", A, '        if not _STATE.fullmatch(nonce):\n            return d.fail(400, "bad nonce")',
+     "        if False:\n            pass"),
+    ("hello-why", A, 'return game({"linked": 0, "why": why})', 'return game({"linked": 0})'),
+    ("pin-shape", A, "        if pin and not _PIN.fullmatch(pin):", "        if False:"),
+    ("pin-prefix", A, "_PIN.fullmatch(pin)", "_PIN.match(pin)"),
+    # accounts.py: a code's life -- read before the signature, again under the lock
     ("expiry", A, 'or row["issued_at"] < now - CODE_TTL:', "or False:"),
+    ("expiry-pre", A, '"SELECT code FROM linkcodes WHERE used_at = 0 AND issued_at >= ?",\n'
+     "                (now - CODE_TTL,)):",
+     '"SELECT code FROM linkcodes WHERE used_at = 0 AND issued_at >= ?",\n'
+     "                (0,)):"),
+    ("expiry-both", A, None, None),
     ("expiry-edge", A, 'or row["issued_at"] < now - CODE_TTL:', 'or row["issued_at"] <= now - CODE_TTL:'),
     ("spent-read", A, 'if row is None or row["used_at"] or', "if row is None or"),
+    ("spent-pre", A, '"SELECT code FROM linkcodes WHERE used_at = 0 AND issued_at >= ?"',
+     '"SELECT code FROM linkcodes WHERE used_at >= 0 AND issued_at >= ?"'),
     ("spent-write", A, "if spent.rowcount != 1:", "if False:"),
-    ("spent-both", A, None, None),
-    ("ban-link", A, 'if row["banned_at"]:\n            return {"ok": 0, "why": "banned"}, None',
-     'if False:\n            return {"ok": 0, "why": "banned"}, None'),
-    ("move-ask", A, "if moving and not confirmed:", "if False:"),
+    ("spent-all", A, None, None),
+    ("proof-first", A, '            if not code:\n                return game({"ok": 0, "why": "code"})',
+     "            if False:\n                pass"),
+    ("tag-compare", A, "if _same(code_tag(code), tag):", "if True:"),
+    ("ban-link", A, 'if row["banned_at"]:\n            return {"ok": 0, "why": "banned"}, "", ""',
+     'if False:\n            return {"ok": 0, "why": "banned"}, "", ""'),
     ("move-same", A, 'moving = old is not None and old["steamid"] != row["steamid"]',
      "moving = old is not None"),
-    ("tries", A, 'if not d.rate_ok(player, now, TRY_RATE_MAX, "linktry"):', "if False:"),
-    ("link-rate", A, 'if not d.rate_ok(src, now, LINK_RATE_MAX, "linkapi"):', "if False:"),
-    ("link-flood", A, 'if not d.rate_ok(src, now, LINK_FLOOD_MAX, "linkflood"):', "if False:"),
-    ("link-order", A, 'if not d.rate_ok(src, now, LINK_FLOOD_MAX, "linkflood"):',
-     'if not d.rate_ok(src, now, LINK_RATE_MAX, "linkapi"):'),
-    ("acct-rate", A, 'if not d.rate_ok(src, now, ACCT_RATE_MAX, "acct"):', "if False:"),
-    ("one-bucket", A, 'LINK_RATE_MAX, "linkapi"):', 'LINK_RATE_MAX, "acct"):'),
-    ("code-shape", A, 'return code if _CODE_OK.fullmatch(code) else ""', "return code"),
+    ("claim-read", A, '            if row["claim"] not in ("", pub):', "            if False:"),
+    ("claim-write", A, "            if took.rowcount != 1:", "            if False:"),
+    ("claim-both", A, None, None),
+    ("claim-steal", A, None, None),
+    ("claim-any", A, "\" AND used_at = 0 AND claim IN ('', ?)\", (pub, code, pub))",
+     "\" AND used_at = 0 AND ? != ''\", (pub, code, pub))"),
+    ("claim-confirm", A, '        if row["claim"] != pub:', "        if False:"),
+    ("ask-links", A, "        if not confirming:\n", "        if False:\n"),
+    ("relink-stamp", A, '" node = excluded.node, linked_at = excluded.linked_at",',
+     '" node = excluded.node",'),
+    ("immediate", A, '            db.execute("BEGIN IMMEDIATE")\n', ""),
+    # accounts.py: the key proof
+    ("proof-shape", A, "        if not (_HEX64.fullmatch(pub) and _HEX128.fullmatch(sig)\n"
+     "                and _SERVER.fullmatch(server)):", "        if False:"),
+    ("proof-sig-prefix", A, "_HEX128.fullmatch(sig)", "_HEX128.match(sig)"),
+    ("proof-verify", A, "if not ed.verify(bytes.fromhex(pub), msg, bytes.fromhex(sig)):", "if False:"),
+    ("proof-budget", A, 'if ed is None or not d.rate_ok("*", now, budget[1], budget[0]):',
+     "if ed is None:"),
+    ("budget-split", A, '("verify-hello", HELLO_VERIFY_MAX))', '("verify-link", HELLO_VERIFY_MAX))'),
+    ("statement", A, "ticks %d\\nhid - 0 0", "ticks %d\\nhid - 0 1"),
+    ("kind-hello", A, "TICKS_HELLO, TICKS_ASK, TICKS_CONFIRM = -2, -3, -4",
+     "TICKS_HELLO, TICKS_ASK, TICKS_CONFIRM = 0, -3, -4"),
+    ("kind-one", A, "TICKS_HELLO, TICKS_ASK, TICKS_CONFIRM = -2, -3, -4",
+     "TICKS_HELLO, TICKS_ASK, TICKS_CONFIRM = -2, -3, -3"),
+    ("kind-ask", A, "why, pub = proven(now, node, ask_nonce(code), TICKS_ASK,",
+     "why, pub = proven(now, node, ask_nonce(code), TICKS_CONFIRM,"),
+    ("kind-confirm", A, "why, pub = proven(now, node, confirm_nonce(code, pin), TICKS_CONFIRM,",
+     "why, pub = proven(now, node, confirm_nonce(code, pin), TICKS_ASK,"),
+    ("kind-status", A, "why, pub = proven(now, node, nonce, TICKS_HELLO,",
+     "why, pub = proven(now, node, nonce, TICKS_ASK,"),
+    ("tag-code", A, 'TAG_CODE = "ftesurf-code "', 'TAG_CODE = "ftesurf-link "'),
+    ("tag-ask", A, 'TAG_ASK = "ftesurf-link "', 'TAG_ASK = "ftesurf-link"'),
+    ("tag-confirm", A, 'TAG_CONFIRM = "ftesurf-confirm "', 'TAG_CONFIRM = "ftesurf-link "'),
+    ("confirm-pin", A, 'return _tagged(TAG_CONFIRM, code + " " + pin)', "return _tagged(TAG_CONFIRM, code)"),
+    ("confirm-nonce", A, "confirm_nonce(code, pin), TICKS_CONFIRM,", "ask_nonce(code), TICKS_CONFIRM,"),
+    ("addr-refuse", A, "        if not here:\n", "        if False:\n"),
+    ("addr-later", A, "        if here is None:\n", "        if False:\n"),
+    ("addr-port", A, 'if not sep or not port.isdigit() or node != "p" + port:',
+     "if not sep or not port.isdigit():"),
+    ("addr-port-empty", A, 'if not sep or not port.isdigit() or node != "p" + port:',
+     'if not sep or node != "p" + port:'),
+    ("addr-mapped", A, 'addr = getattr(addr, "ipv4_mapped", None) or addr', "pass"),
+    ("addr-listed", A, "        if addr in own_hosts:\n            return True", "        if False:\n            return True"),
+    ("addr-unset", A, "        if not name:\n            return False", "        if False:\n            return False"),
+    ("addr-ttl", A, 'fresh = looked["at"] is not None and now - looked["at"] <= HOSTS_TTL',
+     'fresh = looked["at"] is not None'),
+    ("addr-retry", A, 'or now - looked["tried"] > HOSTS_RETRY):', "or True):"),
+    ("addr-retry-never", A, 'or now - looked["tried"] > HOSTS_RETRY):', "or False):"),
+    ("addr-stale", A, 'if looked["at"] is None or now - looked["at"] > HOSTS_STALE:',
+     'if looked["at"] is None:'),
+    ("addr-never", A, 'if looked["at"] is None or now - looked["at"] > HOSTS_STALE:', "if False:"),
+    # accounts.py: unlinking on the site
+    ("unlink-mac", A, "if not good or not _same(good, m.group(0)) or not -60",
+     "if not good or not -60"),
+    ("unlink-secret", A, 'b"surfd unlink " + secret.encode("utf-8")', 'b"surfd unlink "'),
+    ("unlink-ttl", A, " or not -60 <= now - at <= UNLINK_TTL:", ":"),
+    ("unlink-ttl-edge", A, "<= now - at <= UNLINK_TTL:", "<= now - at < UNLINK_TTL:"),
+    ("unlink-ask", A, '            if step == "ask":', "            if False:"),
+    ("unlink-shape", A, 'm = _UNLINK.fullmatch(request.args.get("t", ""))',
+     'm = _UNLINK.match(request.args.get("t", ""))'),
+    ("unlink-browser", A, '            ("%s.%d.%s" % (body, linked_at, hashlib.sha256(\n'
+     '                browser.encode("utf-8", "replace")).hexdigest())).encode("ascii"),',
+     '            ("%s.%d" % (body, linked_at)).encode("ascii"),'),
+    ("unlink-stamp", A, '            ("%s.%d.%s" % (body, linked_at, hashlib.sha256(\n'
+     '                browser.encode("utf-8", "replace")).hexdigest())).encode("ascii"),',
+     '            ("%s.%s" % (body, hashlib.sha256(\n'
+     '                browser.encode("utf-8", "replace")).hexdigest())).encode("ascii"),'),
+    ("unlink-cookie", A, "resp.set_cookie(ucookie, browser, max_age=UNLINK_TTL, path=cookie_path,",
+     'resp.set_cookie("x" + ucookie, browser, max_age=UNLINK_TTL, path=cookie_path,'),
+    ("unlink-host", A, 'ucookie = "__Host-ftu" if secure else "ftu"', 'ucookie = "ftu"'),
+    # schema 13
+    ("schema-13", "surfd.py", "accounts.upgrade_13(conn)", "pass"),
+    ("schema-13-keys", A, "    conn.executescript(SQL_KEYS)\n    if \"claim\"", "    if \"claim\""),
+    ("schema-13-claim", A,
+     'if "claim" not in {r[1] for r in conn.execute("PRAGMA table_info(linkcodes)")}:', "if False:"),
+    ("schema-13-keep", A, '        if not conn.execute("SELECT 1 FROM links LIMIT 1").fetchone():',
+     "        if True:"),
     # accounts.py: the name
     ("game-name", A, '"name": game_name(row["name"]),', '"name": row["name"],'),
     ("name-symbols", A, 'unicodedata.category(ch)[0] in "LN"', 'unicodedata.category(ch)[0] in "LNSPC"'),
@@ -146,10 +243,16 @@ M = [
     # surfd.py
     ("schema-step", "surfd.py", "conn.executescript(accounts.SQL)", "pass"),
 ]
-PAIRS = {"spent-both": ("spent-read", "spent-write"),
-         "replay-both": ("replay-read", "replay-write")}
-# replay-write dies alone (the stored row is counted); its partner does not.
-EXPECT = {"spent-read", "spent-write", "replay-read"}
+PAIRS = {"spent-all": ("spent-pre", "spent-read", "spent-write"),
+         "replay-both": ("replay-read", "replay-write"),
+         "expiry-both": ("expiry", "expiry-pre"),
+         "claim-both": ("claim-read", "claim-write"),
+         "claim-steal": ("claim-read", "claim-any")}
+# Each of these survives ALONE because the same fact is read more than once:
+# an assertion's replay and a code's age, spending and claim are each checked
+# before the costly step and again under the lock or by the write itself.
+EXPECT = {"replay-read", "expiry", "expiry-pre", "spent-pre", "spent-read", "spent-write",
+          "claim-read", "claim-write", "claim-any"}
 BY = {m[0]: m for m in M}
 
 
@@ -173,7 +276,8 @@ def run(item):
     tmp = os.path.join(dst, "tmp")
     os.makedirs(tmp)
     p = subprocess.run([sys.executable, "test_accounts.py"], cwd=dst,
-                       env=dict(os.environ, TEMP=tmp, TMP=tmp, TMPDIR=tmp),
+                       env=dict(os.environ, TEMP=tmp, TMP=tmp, TMPDIR=tmp,
+                                ACCOUNTS_TEST_TOOLS=os.path.dirname(os.path.abspath(__file__))),
                        capture_output=True, text=True, errors="replace")
     fails = [l[5:70].strip() for l in p.stdout.splitlines() if l.startswith("FAIL")]
     crash = p.returncode != 0 and "FAILURE(S)" not in p.stdout
