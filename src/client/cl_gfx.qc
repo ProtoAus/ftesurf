@@ -721,15 +721,8 @@ float(float scan, float down) Gfx_Key =
 	return FALSE;
 };
 
-/*
-  `inert` is "" for a live row, or the reason it currently does nothing.
-
-  An inert row keeps its key and its label -- it is still pressable, and cycling
-  it is still the right thing to do while you are on your way to making it
-  matter -- but it dims, and the reason takes the value column.  The value is
-  the one thing worth suppressing: reading `55%` off a row that is not being
-  consulted is how you conclude the setting is broken.
-*/
+// A plain row: key, label, and the value or the reason the row is inert.
+// cl_vote.qc is its only user since Patch 607; this menu draws KeyMenu_Row.
 void(vector p, float w, float h, string key, string label, string val,
      float latched, string inert, float lsz) Gfx_Row =
 {
@@ -870,7 +863,7 @@ float() Gfx_Console =
 	return TRUE;
 };
 
-// What a page is about, for the modern header. Follows Gfx_Def's page comments.
+// What a page is about, for the header. Follows Gfx_Def's page comments.
 string(float page) Gfx_PageName =
 {
 	if (page == 0) return "Surfaces";
@@ -880,12 +873,21 @@ string(float page) Gfx_PageName =
 	return "Models, fog and particles";
 };
 
-// The modern (ui_style 1) draw; the pieces are cl_saveloc.qc's KeyMenu_Row.
-void(vector scr, float pages) Gfx_DrawModern =
+// The rows are cl_saveloc.qc's KeyMenu_Row.
+void(vector scr) Gfx_Draw =
 {
 	local vector p, vc;
-	local float sc, w, h, lsz, ssz, y, i, row, total, hh, vx;
+	local float sc, w, h, lsz, ssz, y, i, row, total, hh, vx, pages;
 	local string val, inert;
+
+	if (!ui_gfx_open)
+		return;
+
+	pages = Gfx_Pages();
+	// A page the row count no longer reaches (a setting deleted while this was
+	// open, or GFX_ROWS shrank across a build): snap back, not an empty page.
+	if (ui_gfx_page >= pages)
+		ui_gfx_page = 0;
 
 	sc  = ui_cv_scale;
 	Font_Set(ui_font_ui);
@@ -914,12 +916,17 @@ void(vector scr, float pages) Gfx_DrawModern =
 	y = y + hh;
 
 	// The star has a column of its own, so the values line up with or without it.
+	// Every slot takes its height, a short last page too: 7/8/9 stay under the
+	// same finger from page to page.
 	vx = p_x + w - 12 * sc;
 	for (i = 1; i <= GFX_PER_PAGE; i = i + 1)
 	{
 		row = ui_gfx_page * GFX_PER_PAGE + i;
 		if (row <= GFX_ROWS)
 		{
+			// `inert` is "" for a live row, or why it currently does nothing. The
+			// row stays pressable and the reason takes the value column: a value
+			// read off a row that is not consulted looks like a broken setting.
 			inert = Gfx_Inert(row);
 			KeyMenu_Row([p_x, y], w, h, sprintf("%g", i), Gfx_Label(row),
 			            (inert != "") ? KM_INERT : KM_NORMAL, lsz, sc);
@@ -964,98 +971,5 @@ void(vector scr, float pages) Gfx_DrawModern =
 	HUD_Text([p_x + 11 * sc, y], "retry may reuse cached data", ssz, SUI_THEME_MUTED, 1);
 
 	Font_Reset();
-	HUD_Rect("gfx", p, [w, total, 0], p);
-};
-
-void(vector scr) Gfx_Draw =
-{
-	local vector p;
-	local float w, h, lsz, gap, y, i, row, pages;
-
-	if (!ui_gfx_open)
-		return;
-
-	if (sui_style_modern)
-	{
-		pages = Gfx_Pages();
-		// See the classic draw: a page the row count no longer reaches.
-		if (ui_gfx_page >= pages)
-			ui_gfx_page = 0;
-		Gfx_DrawModern(scr, pages);
-		return;
-	}
-
-	Font_Set(ui_font_ui);
-	lsz = Font_Px(8 * ui_cv_scale);
-	h   = 13 * ui_cv_scale;
-	// Widened from 132 with the twenty-row list: "Prop collide" beside
-	// "VPhysics *" is the longest pair, and it did not fit.  Build 33's
-	// "Prop distance" / "Unlimited" and "Dither scale" / "set by Dither level"
-	// are the two to re-check if this is ever narrowed again.
-	w   = 150 * ui_cv_scale;
-	gap = 1 * ui_cv_scale;
-
-	pages = Gfx_Pages();
-	// A page the row count no longer reaches -- someone deleted a setting while
-	// this was open, or GFX_ROWS shrank across a build.  Snap back rather than
-	// draw an empty page and look broken.
-	if (ui_gfx_page >= pages)
-		ui_gfx_page = 0;
-
-	p = [scr_x * cvar("hud_gfx_x"), scr_y * cvar("hud_gfx_y"), 0];
-	y = p_y;
-
-	drawfill([p_x, y], [w, h + gap], '0.10 0.13 0.17', 0.85, 0);
-	HUD_Text([p_x + h * 0.35, y + (h - lsz) * 0.5], "Source Renderer", lsz, '1 1 1', 1);
-	HUD_TextR([p_x + w - h * 0.35, y + (h - lsz) * 0.5],
-	          sprintf("page %g/%g", ui_gfx_page + 1, pages), lsz,
-	          '0.55 0.58 0.62', 1);
-	y = y + h + gap * 2;
-
-	// Always draw GFX_PER_PAGE slots, even when the last page is short: the
-	// footer keeps its position, and the block does not change height as you
-	// page, which is what makes 7/8/9 stay under the same finger.
-	for (i = 1; i <= GFX_PER_PAGE; i = i + 1)
-	{
-		row = ui_gfx_page * GFX_PER_PAGE + i;
-		if (row > GFX_ROWS)
-		{
-			drawfill([p_x, y], [w, h], '0 0 0', 0.25, 0);
-			y = y + h + gap;
-			continue;
-		}
-		Gfx_Row([p_x, y], w, h, sprintf("%g", i),
-		        Gfx_Label(row), Gfx_ValueName(row), Gfx_NeedsReload(row),
-		        Gfx_Inert(row), lsz);
-		y = y + h + gap;
-	}
-
-	// The menu's own verbs, one per row like everything above them.  "8/9 Page"
-	// on a single row read as one control with two keys, which is not what it is:
-	// they are two separate moves in opposite directions, and the value column
-	// says where each one lands.
-	y = y + gap;
-	Gfx_Row([p_x, y], w, h, "7", "Reload map", "retry", FALSE, "", lsz);
-	y = y + h + gap;
-	Gfx_Row([p_x, y], w, h, "8", "Previous page",
-	        sprintf("%g", ((ui_gfx_page + pages - 1) % pages) + 1), FALSE, "", lsz);
-	y = y + h + gap;
-	Gfx_Row([p_x, y], w, h, "9", "Next page",
-	        sprintf("%g", ((ui_gfx_page + 1) % pages) + 1), FALSE, "", lsz);
-	y = y + h + gap;
-	Gfx_Row([p_x, y], w, h, "0", "Close", "", FALSE, "", lsz);
-	y = y + h + gap;
-
-	y = y + gap * 2;
-	HUD_Text([p_x + h * 0.35, y], "* needs rebuild / map load", lsz * 0.9,
-	         '0.55 0.58 0.62', 1);
-	y = y + lsz;
-	HUD_Text([p_x + h * 0.35, y], "retry may reuse cached data", lsz * 0.9,
-	         '0.55 0.58 0.62', 1);
-	y = y + lsz;
-
-	Font_Reset();
-
-	// Build 31: the box, for `hud_edit`.
-	HUD_Rect("gfx", p, [w, y - p_y, 0], p);
+	HUD_Rect("gfx", p, [w, total, 0], p);       // the box, for `hud_edit`
 };

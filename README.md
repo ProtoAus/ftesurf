@@ -165,20 +165,16 @@ world-path name labels; neither clears the loaded run lines.
 
 ---
 
-## Modern UI style (opt-in)
+## UI style
 
-`ui_style 1` gives the map picker, both leaderboards, the HUD editor and the
-save-lock and Source-renderer menus one dark pastel look: rounded controls,
-clearer interaction states and delayed, wrapped tooltips. The +showscores board
-gets its own layout under it. The gameplay HUD is unchanged.
+The map picker, both leaderboards, the HUD editor and the save-lock and
+Source-renderer menus share one dark pastel look: rounded controls, clear
+interaction states and delayed, wrapped tooltips. The gameplay HUD is
+unchanged. The earlier look and its `ui_style` switch were removed in Patch
+607; git has them (562a6c9 and before).
 
-```text
-seta ui_style 1
-hud_edit on
-```
-
-`ui_style 0` restores the classic look. `ui_tooltip_delay` defaults to 0.35
-seconds. Modern editor text selects native **physical-pixel** font bakes and
+`ui_tooltip_delay` defaults to 0.35 seconds. Editor text selects native
+**physical-pixel** font bakes and
 pixel-aligned positions; layout scale is not fractional glyph stretching.
 The corrected physical-font path requires the Patch 570 engine as well as CSQC;
 legacy virtual font slots remain unchanged. The matched gallery and falsifiers
@@ -189,7 +185,7 @@ remaining gates are in [ROADMAP.md](ROADMAP.md), section 13.
 The server must advertise the updated CSQC. After updating a local server,
 reload/restart it and reconnect when convenient; swapping client files alone
 cannot replace a connected server's old advertised code. No owner's running
-client/server is automatically stopped to install this preview.
+client/server is automatically stopped to install it.
 
 ## Layout
 

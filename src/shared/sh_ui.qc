@@ -1,20 +1,12 @@
 /* Shared SUI chrome. Existing controls/IDs and the gameplay HUD stay unchanged. */
 
-// ui_style 0: the HUD editor's colours from before the modern style existed.
-#define SUI_CLASSIC_PANEL '0.07 0.09 0.12'
-#define SUI_CLASSIC_LINE '0.35 0.70 1.00'
-#define SUI_CLASSIC_FOCUS '1.00 0.80 0.35'
-#define SUI_CLASSIC_MUTED '0.45 0.48 0.55'
-#define SUI_CLASSIC_TEXT '0.88 0.92 0.98'
-#define SUI_CLASSIC_DIM '0.55 0.60 0.68'
-#define SUI_CLASSIC_CHIP '0.12 0.13 0.16'
-#define SUI_CLASSIC_SELECTED '0.16 0.30 0.44'
-
 /*
-  ui_style 1 (Patch 606): one dark slate ramp and seven pastel accents, read by
-  every modern panel in both VMs. The ImGui scoreboard provider carries the same
-  values (plugins/ui_imgui/scores.inc, `Dusk`); change them together.
+  The palette (Patch 606): one dark slate ramp and seven pastel accents, read by
+  every restyled panel in both VMs. The ImGui scoreboard provider carries the
+  same values (plugins/ui_imgui/scores.inc, `Dusk`); change them together.
   Surfaces darkest to lightest: WELL, PANEL, CHIP, HOVER, PRESSED.
+  Patch 607 removed the look this replaced and its `ui_style` switch; it is in
+  git at 562a6c9 and earlier.
 */
 #define SUI_THEME_WELL     '0.075 0.078 0.110'
 #define SUI_THEME_PANEL    '0.102 0.110 0.149'
@@ -39,13 +31,12 @@
 #define SUI_THEME_LINE     SUI_THEME_ACCENT
 
 // Inline colour escapes for text that mixes colours in one string.
-#define SUI_ESC_GOOD  (sui_style_modern ? "^x9eb" : "^2")
-#define SUI_ESC_BAD   (sui_style_modern ? "^xf9b" : "^1")
-#define SUI_ESC_WARN  (sui_style_modern ? "^xfd9" : "^3")
-#define SUI_ESC_MUTED (sui_style_modern ? "^x79a" : "^9")
+#define SUI_ESC_GOOD  "^x9eb"
+#define SUI_ESC_BAD   "^xf9b"
+#define SUI_ESC_WARN  "^xfd9"
+#define SUI_ESC_MUTED "^x79a"
 #define SUI_TIP_LINES 24
 
-float sui_style_modern;
 float sui_style_focused, sui_style_mouse_focus, sui_style_key_focus;
 float sui_round_checked, sui_round_available;
 float sui_round_calls;
@@ -69,7 +60,6 @@ void() sui_style_init =
 	sui_style_mouse_focus = TRUE;
 	sui_style_key_focus = TRUE;
 	// DP archive=1<<5, in both VMs (MENU has no CVAR_ARCHIVE macro).
-	registercvar("ui_style", "0", 32);
 	registercvar("ui_tooltip_delay", "0.35", 32);
 };
 
@@ -97,7 +87,6 @@ void(float width, float height) _sui_style_metrics =
 	pixels = getproperty(VF_SCREENPSIZE);
 	if (pixels_x <= 0 || pixels_y <= 0) pixels = [width, height, 0];
 	sui_style_pixel_ratio = [max(1, pixels_x) / max(1, width), max(1, pixels_y) / max(1, height), 0];
-	sui_style_modern = (cvar("ui_style") > 0);
 	sui_style_screen = [width, height, 0];
 };
 
@@ -112,8 +101,8 @@ void(float width, float height) sui_style_begin =
 	sui_round_calls = 0;
 };
 
-// For a panel drawn in the HUD stack, outside any sui bracket: the style and the
-// pixel ratio only. No frame, action or tooltip state is touched.
+// For a panel drawn in the HUD stack, outside any sui bracket: the pixel ratio
+// only. No frame, action or tooltip state is touched.
 void(vector scr) sui_style_hud =
 {
 	_sui_style_metrics(scr_x, scr_y);
@@ -194,19 +183,13 @@ void(vector pos, vector size, float radius, vector color, float alpha) sui_round
 
 void(vector pos, vector size, float radius, vector fill, vector border, float alpha) sui_style_box =
 {
-	if (!sui_style_modern)
-	{
-		sui_fill(pos, size, fill, alpha, 0);
-		sui_border_box(pos, size, 1, border, alpha, 0);
-		return;
-	}
 	sui_transform_box(pos, size);
 	_sui_round_draw(pos, size, radius, border, alpha);
 	_sui_round_draw(pos + '1 1 0', size - '2 2 0', max(0, radius - 1), fill, alpha);
 };
 
-// A modern modal panel: a stepped drop shadow, a hairline and the fill. The mask
-// has hard straight edges, so the shadow is three widening translucent boxes.
+// A modal panel: a stepped drop shadow, a hairline and the fill. The mask has
+// hard straight edges, so the shadow is three widening translucent boxes.
 void(vector pos, vector size, float radius, float alpha) sui_style_panel =
 {
 	sui_transform_box(pos, size);
@@ -217,22 +200,18 @@ void(vector pos, vector size, float radius, float alpha) sui_style_panel =
 	_sui_round_draw(pos + '1 1 0', size - '2 2 0', max(0, radius - 1), SUI_THEME_PANEL, alpha);
 };
 
-// The modern scroll thumb: half the gutter, rounded. FALSE leaves the classic
-// one to sui_scrollbar.
-float(vector pos, vector size, float hot) sui_style_thumb =
+// The scroll thumb: half the gutter, rounded.
+void(vector pos, vector size, float hot) sui_style_thumb =
 {
 	local float w;
-	if (!sui_style_modern) return FALSE;
 	sui_transform_box(pos, size);
 	w = max(3, floor(size_x * 0.5));
 	_sui_round_draw([pos_x + size_x - w - 1, pos_y + 1, 0], [w, max(w, size_y - 2), 0], w * 0.5,
 		hot ? SUI_THEME_ACCENT : SUI_THEME_EDGE_HI, 1);
-	return TRUE;
 };
 
 void(string id, string text, float scale) sui_tooltip_for =
 {
-	if (!sui_style_modern) return;
 	if (_holding_click) return;
 	if (strcmp(text, "") == 0) return;
 	// A mouse's hover only: the keyboard cursor rests on a control from the moment
@@ -304,7 +283,7 @@ void() _sui_tooltip_finish =
 #else
 	if (!sui_style_focused) sui_tip_candidate_id = "";
 #endif
-	if (!sui_style_modern || _holding_click || strcmp(sui_tip_candidate_id, "") == 0)
+	if (_holding_click || strcmp(sui_tip_candidate_id, "") == 0)
 	{
 		sui_tooltip_reset();
 		return;

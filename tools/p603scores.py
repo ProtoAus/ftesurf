@@ -55,7 +55,7 @@ def compile_client(rig):
         raise RuntimeError('actual-source fixture compilation failed: ' + str(log))
 
 
-def config(arm, port, style=None):
+def config(arm, port):
     width, height = (960, 540) if arm == 'native2' else (1920, 1080)
     scale = 1.5 if arm == 'native2' else 3
     lines = ['cfg_save_auto 0', 'log_enable 1', 'log_dir logs', 'log_name scores',
@@ -67,10 +67,7 @@ def config(arm, port, style=None):
              'name P603Fixture', 'waitms 1500', 'menu_restart', 'waitms 700', 'ui_close']
     if arm != 'absent': lines += ['plug_load ui_imgui', 'ui_imgui_status']
     lines += [f'connect 127.0.0.1:{port}', 'waitms 6500', 'ui_close']
-    #Patch 606: the modern board's controls keep the classic sui ids, so the same
-    #gates grade its clicks. Unset leaves the registered default (classic). Before
-    #the three lines below: the suites splice at that exact sequence.
-    if style is not None: lines += [f'set ui_style {style}']
+    #The suites splice at the exact three-line sequence that ends this block.
     lines += ['set ui_native_scores ' + ('0' if arm == 'legacy' else '1'),
               'set ui_native_scores_font 13',
               'scores tab local', '+showscores', 'waitms 1000',
@@ -159,7 +156,7 @@ def run(a):
     plugin = a.plugin or build(a.fte.resolve(), rig / 'native-build', a.cxx.resolve())
     report = {'follow': a.follow, 'http': a.http, 'http_version': 2, 'life': a.life,
               'dense': a.dense, 'dense_http': a.dense, 'font': a.font, 'font_fallback': a.font_fallback, 'utc': datetime.now(timezone.utc).isoformat(), 'csprogs_sha256': sha(rig / 'csprogs.dat'),
-              'plugin_sha256': sha(plugin), 'renderer': a.renderer, 'style': a.style, 'planned_arms': a.arms, 'arms': {}}
+              'plugin_sha256': sha(plugin), 'renderer': a.renderer, 'planned_arms': a.arms, 'arms': {}}
     for arm in a.arms:
         root = rig / arm
         game = root / 'ftesurf'
@@ -209,7 +206,7 @@ def run(a):
                 from p603dense_http import board32
                 stub = start_stub(root, board32)
             else: stub = start_stub(root)
-        cfg = config(arm, port, a.style)
+        cfg = config(arm, port)
         if a.dense:
             from p603dense import config_dense
             cfg = config_dense(cfg, arm)
@@ -409,7 +406,6 @@ if __name__ == '__main__':
     suite.add_argument('--dense', action='store_true', help='bounded additive capacity/24-row page gate')
     p.add_argument('--font-fallback', action='store_true', help='expect older scoreboard provider to cover non-default sizes')
     p.add_argument('--out', type=Path, help='owned task-root output directory')
-    p.add_argument('--style', type=int, choices=(0, 1), help='set ui_style before the board opens (default: leave it)')
     a = p.parse_args()
     if not a.grade and a.qc_artifacts is None: p.error('--qc-artifacts is required for runtime')
     if (a.font or a.dense) and a.life: p.error('font/dense and lifecycle gates must run separately')

@@ -11,17 +11,17 @@ to be wrong.
 
 ---
 
-## 00. 10 Oct — dark pastel theme and the redesigned leaderboard (Patch 606)
+## 00. 10 Oct — dark pastel theme and the redesigned leaderboard (Patches 606, 607)
 
-In this patch everything is still behind `ui_style 1`, which your config has;
-`ui_style 0` is the old look, pixel for pixel. You have since said the old look
-can go (10 Oct), so Patch 607 removes it and the switch; nothing below asks you
-about the default any more.
+This is the only look now. Patch 606 put it behind `ui_style 1`; you then said
+the old one can go, and Patch 607 removed it and the switch (the `seta ui_style
+"1"` line in your config is ignored and harmless).
 On both Windows installs since 10 Oct, NOT on the Pi: the map picker and its
 leaderboard are in menu.dat and change at once, but hud_edit, the save-lock and
 Source-renderer menus and the +showscores board are csprogs, which a lobby
 hands you. On a public lobby those four keep the old look until the Pi is
-deployed; start a map locally to see them.
+deployed -- and from then on every player gets the new one, not only you.
+Start a map locally to see them.
 
 One palette everywhere: dark slate surfaces, pastel sky / mint / butter / peach /
 rose accents. Judge, at your resolution and on a real map rather than my black
@@ -38,9 +38,9 @@ test room:
   pair and the board no longer changes width when you change source. On a
   smaller window it first shrinks its type (16, 14, then the old 12), then
   drops why/tag, date and run class, then narrows the room list; it never
-  draws under the room list. (Below about 790 px wide the old layout still
-  takes over in this patch; 607 ends that.) Is anything in the wrong place, or
-  missing a column you used?
+  draws under the room list. Below about 790 px wide it shrinks its type
+  further, down to 8 px, instead of changing layout. Is anything in the wrong
+  place, or missing a column you used?
 - **hud_edit.** The chips lost their outlines: a filled chip is on, a hairline is
   only the cursor. Is on/off still obvious at a glance? The show/hide square is a
   pip in a box now.
@@ -129,9 +129,10 @@ plugins to both Windows installs at 2026-10-08T09:09:48Z. It does not install an
 ImGui panel or replace the QC editor: explicit QC dispatch/mixed clip ownership,
 non-GL/device behavior and performance acceptance are still roadmap gates.
 
-- With updated server CSQC, try `ui_style 1; hud_edit on`, then compare
-  `ui_style 0`. Judge rounded controls, contrast, selected/hover/pressed states
-  and actual keyboard/mouse feel; the gameplay HUD should remain familiar.
+- With updated server CSQC, try `hud_edit on` (the classic style this was
+  compared against went in Patch 607). Judge rounded controls, contrast,
+  selected/hover/pressed states and actual keyboard/mouse feel; the gameplay
+  HUD should remain familiar.
 - Hover the text-effects chip and other descriptions: judge the 0.35 s
   delay, wrapping and edge placement. Hold a mouse button, close/reopen,
   type/chat and alt-tab: no stuck input/cursor or lingering tooltip.

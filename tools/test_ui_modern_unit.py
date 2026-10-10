@@ -3,6 +3,7 @@
 import contextlib
 import io
 from pathlib import Path
+import shutil
 import tempfile
 import unittest
 from PIL import Image
@@ -54,15 +55,18 @@ class UiTests(unittest.TestCase):
             if name == "done":
                 continue
             visible = int(name in ("visible", "cached", "focusback", "keyboardback", "edge"))
-            modern = int(name != "A")
-            lines += [f"sui_probe style {modern} round {modern*2} asset {modern} tip {visible} lines 2 wraps 1",
+            # Stage A is the closed editor; the selection click lands in `action`.
+            shut = name == "A" or name.startswith("closed")
+            opened = int(name != "A")
+            picked = -1 if name in ("A", "B", "delayed", "visible", "cached", "held") else 2
+            lines += [f"sui_probe round {opened*2} asset {opened} tip {visible} lines 2 wraps 1",
                       f"sui_work frames 100 quads 200 screen 100 100 focused 1",
                       "sui_font native 8 ratio 1 1 glyph 8 8 calls 50",
                       "sui_tip [he_fontfx] 40 40 30 20",
-                      f"sui_panel open {int(not name.startswith('closed'))} selected 2 dirty 0 cursor {0 if name.startswith('closed') else 4} held 0",
+                      f"sui_panel open {int(not shut)} selected {picked} dirty 0 cursor {0 if shut else 4} held 0",
                       "sui_tip_line 0 width 20 limit 50", "sui_tip_line 1 width 30 limit 50"]
-            if name == "A":
-                lines += ["sui_element [he_panel] 10 10 20 20", "sui_element [speed] 35 60 30 25", "sui_panel open 1 selected 2 dirty 0 cursor 4 held 0"]
+            if name == "B":
+                lines += ["sui_element [he_panel] 10 10 20 20"]
             if name == "closed1":
                 lines += ["hud_edit: layout saved"]
         log = game / "logs/ui_modern.log"
@@ -70,7 +74,6 @@ class UiTests(unittest.TestCase):
         for name in ("sui_A", "sui_A_repeat", "sui_B", "sui_B_repeat", "sui_tip", "sui_edge"):
             im = Image.new("RGB", (100, 100))
             im.paste((20, 20, 20) if name.startswith("sui_A") else (40, 40, 40), (10, 10, 30, 30))
-            im.paste((255, 255, 255), (45, 67, 50, 72))
             im.save(game / "screenshots" / (name + ".png"))
         return log
 
@@ -84,8 +87,28 @@ class UiTests(unittest.TestCase):
             log = self.fixture(rig)
             self.assertEqual(self.graded(rig), 0)
             text = log.read_text()
-            text = text.replace("=== sui visible ===\nsui_probe style 1 round 2 asset 1 tip 1", "=== sui visible ===\nsui_probe style 1 round 2 asset 1 tip 0")
-            log.write_text(text)
+            bad = text.replace("=== sui visible ===\nsui_probe round 2 asset 1 tip 1", "=== sui visible ===\nsui_probe round 2 asset 1 tip 0")
+            self.assertNotEqual(bad, text)
+            log.write_text(bad)
+            self.assertEqual(self.graded(rig), 1)
+
+    def test_selection_that_did_not_move(self):
+        with tempfile.TemporaryDirectory(prefix="sui-grader-") as tmp:
+            rig = Path(tmp)
+            log = self.fixture(rig)
+            text = log.read_text()
+            start = text.index("=== sui action ===")
+            bad = text[:start] + text[start:].replace("selected 2", "selected -1", 1)
+            self.assertNotEqual(bad, text)
+            log.write_text(bad)
+            self.assertEqual(self.graded(rig), 1)
+
+    def test_editor_that_drew_nothing(self):
+        with tempfile.TemporaryDirectory(prefix="sui-grader-") as tmp:
+            rig = Path(tmp)
+            self.fixture(rig)
+            for name in ("sui_B", "sui_B_repeat"):
+                shutil.copyfile(rig / "ftesurf/screenshots/sui_A.png", rig / "ftesurf/screenshots" / (name + ".png"))
             self.assertEqual(self.graded(rig), 1)
 
     def test_missing_probes_are_not_a_pass(self):

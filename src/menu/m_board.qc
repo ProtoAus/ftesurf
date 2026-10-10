@@ -572,17 +572,13 @@ void() Mlb_Poll =
 	}
 };
 
-// The podium wears the theme's butter, silver and peach under ui_style 1.
+// The podium wears the theme's butter, silver and peach.
 vector(float r) Mlb_RankCol =
 {
-	if (sui_style_modern)
-	{
-		if (r == 1) return SUI_THEME_WARN;
-		if (r == 2) return '0.78 0.80 0.88';
-		if (r == 3) return SUI_THEME_FOCUS;
-		return SUI_THEME_MUTED;
-	}
-	return COL_DIM;
+	if (r == 1) return SUI_THEME_WARN;
+	if (r == 2) return '0.78 0.80 0.88';
+	if (r == 3) return SUI_THEME_FOCUS;
+	return SUI_THEME_MUTED;
 };
 
 void(vector rp, float i, float rw, float tr, float dr, float nw) Mlb_DrawRow =
@@ -688,13 +684,7 @@ void(vector screensize) Mlb_Draw =
 	sz = [w, h];
 
 	sui_fill('0 0 0', screensize, '0 0 0', 0.6, 0);
-	if (sui_style_modern)
-		sui_style_panel(p, sz, 12, 1);
-	else
-	{
-		sui_fill(p, sz, COL_PANEL, 1, 0);
-		sui_border_box(p, sz, 1, COL_BORDER, 1, 0);
-	}
+	sui_style_panel(p, sz, 12, 1);
 	sui_push_frame(p, sz);
 
 	// Closed at the end: the rows below still read the buffers a close frees.
@@ -734,13 +724,7 @@ void(vector screensize) Mlb_Draw =
 	sui_text([17 + dr - stringwidth("date", TRUE, SZ_LABEL), ly - 22], SZ_LABEL,
 	         "date", COL_DIM, 1, 0);
 
-	if (sui_style_modern)
-		sui_style_box([16, ly], ls, 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
-	else
-	{
-		sui_fill([16, ly], ls, '0.03 0.03 0.04', 1, 0);
-		sui_border_box([16, ly], ls, 1, COL_ACCENT, 1, 0);
-	}
+	sui_style_box([16, ly], ls, 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
 
 	if (mlb_state == MLBS_OK && mlb_n > 0)
 	{

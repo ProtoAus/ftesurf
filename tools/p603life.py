@@ -46,9 +46,14 @@ def extend_config(cfg, arm):
     lines += ['p603life target sb_fc', 'waitms 200', 'p603 down', 'waitms 200', 'p603 up', 'waitms 700']
     probe('shell')
     if native:
-        reset(); hold(); lines += ['set hud_scale 5', 'waitms 700', 'p603life room', 'waitms 200']
+        #Patch 607: the room list docks over the board only on a canvas too narrow for
+        #the board's smallest form (about 600 wide), so this narrows the canvas. It
+        #used to raise hud_scale, which the board now answers by shrinking its type.
+        wide = (960, 540) if arm == 'native2' else (1920, 1080)
+        reset(); hold(); lines += ['vid_conwidth 560', 'vid_conheight 315', 'waitms 900', 'scores status',
+                                   'p603life room', 'waitms 200']
         release(); lines += ['p603life dock']; probe('dock', True)
-        lines += [f'set hud_scale {1.5 if arm == "native2" else 3}', 'waitms 700']
+        lines += [f'vid_conwidth {wide[0]}', f'vid_conheight {wide[1]}', 'waitms 900']
         reset()
         for mode, name in ((1, 'first'), (2, 'equivalent'), (3, 'changed')):
             lines += [f'p603life cache_set {mode}', 'waitms 400', f'p603life cache_probe {name}']

@@ -33,21 +33,20 @@
 // ---------------------------------------------------------------------------
 //  Palette.  Flat and dark; the map list is the only thing worth looking at.
 // ---------------------------------------------------------------------------
-// Patch 606: under ui_style 1 each is the shared theme's token (sh_ui.qc), so
-// every screen in this VM follows it; ui_style 0 keeps the colours below.
-#define COL_TEXT        (sui_style_modern ? SUI_THEME_TEXT     : '1 1 1')
-#define COL_DIM         (sui_style_modern ? SUI_THEME_DIM      : '0.55 0.55 0.58')
-#define COL_ACCENT      (sui_style_modern ? SUI_THEME_ACCENT   : '0.35 0.75 1')
-#define COL_PANEL       (sui_style_modern ? SUI_THEME_PANEL    : '0.06 0.06 0.08')
-#define COL_ROW         (sui_style_modern ? SUI_THEME_CHIP     : '0.11 0.11 0.14')
-#define COL_ROW_HOVER   (sui_style_modern ? SUI_THEME_HOVER    : '0.18 0.20 0.26')
-#define COL_ROW_SEL     (sui_style_modern ? SUI_THEME_SELECTED : '0.10 0.30 0.45')
-#define COL_BORDER      (sui_style_modern ? SUI_THEME_EDGE_HI  : '0.28 0.30 0.36')
+// Each is the shared theme's token (sh_ui.qc), so every screen in this VM follows it.
+#define COL_TEXT        SUI_THEME_TEXT
+#define COL_DIM         SUI_THEME_DIM
+#define COL_ACCENT      SUI_THEME_ACCENT
+#define COL_PANEL       SUI_THEME_PANEL
+#define COL_ROW         SUI_THEME_CHIP
+#define COL_ROW_HOVER   SUI_THEME_HOVER
+#define COL_ROW_SEL     SUI_THEME_SELECTED
+#define COL_BORDER      SUI_THEME_EDGE_HI
 // The action column's Play button.  Green because it is the one control on
 // this screen that starts something, and the only one that is safe on every
 // row it appears on -- COL_ACCENT is already the tier chip and the panel edge.
-#define COL_PLAY        (sui_style_modern ? SUI_THEME_GOOD     : '0.30 0.85 0.45')
-#define COL_PLAY_HOT    (sui_style_modern ? SUI_THEME_GOOD_BG  : '0.12 0.32 0.18')
+#define COL_PLAY        SUI_THEME_GOOD
+#define COL_PLAY_HOT    SUI_THEME_GOOD_BG
 
 // ---------------------------------------------------------------------------
 //  Font sizes.  MULTIPLES OF 8, ALWAYS.
@@ -506,12 +505,7 @@ float(string id, vector pos, float minw, float h, string label, vector col) ui_o
 
 	float hot = sui_is_hovered(id);
 	if (hot)
-	{
-		if (sui_style_modern)
-			sui_roundbox(pos, size, 8, COL_ROW_HOVER, 0.8);
-		else
-			sui_fill(pos, size, COL_ROW_HOVER, 0.6, 0);
-	}
+		sui_roundbox(pos, size, 8, COL_ROW_HOVER, 0.8);
 
 	sui_text([pos_x + 12, pos_y + (size_y - SZ_ITEM_H) * 0.5], SZ_ITEM,
 	         hot ? shown : label,
@@ -530,7 +524,7 @@ float(string id, vector pos, float minw, float h, string label, vector col) ui_o
   shipped is because the wide one only appears before a map is chosen, which
   is exactly the state you stop being in as soon as you test it.
 */
-// `primary` (modern style only) marks the one button that moves you forward.
+// `primary` marks the one button that moves you forward.
 float(string id, vector pos, vector size, string label, float primary = FALSE) ui_button =
 {
 	float w = stringwidth(label, TRUE, SZ_LABEL) + 16;
@@ -541,23 +535,15 @@ float(string id, vector pos, vector size, string label, float primary = FALSE) u
 	sui_action_element(pos, size, id, sui_noop);
 
 	float hot = sui_is_hovered(id);
-	if (sui_style_modern)
-	{
-		if (primary)
-			sui_style_box(pos, size, 7, hot ? SUI_THEME_GOOD : SUI_THEME_GOOD_BG, SUI_THEME_GOOD, 1);
-		else
-			sui_style_box(pos, size, 7,
-			              sui_is_held(id) ? SUI_THEME_PRESSED : (hot ? COL_ROW_HOVER : COL_ROW),
-			              hot ? COL_ACCENT : SUI_THEME_EDGE, 1);
-		sui_text([pos_x + 10, pos_y + (size_y - SZ_LABEL_H) * 0.5], SZ_LABEL, label,
-		         primary ? (hot ? SUI_THEME_WELL : SUI_THEME_GOOD) : (hot ? COL_ACCENT : COL_TEXT),
-		         1, 0);
-		return sui_is_released(id);
-	}
-	sui_fill(pos, size, hot ? COL_ROW_HOVER : COL_ROW, 1, 0);
-	sui_border_box(pos, size, 1, hot ? COL_ACCENT : COL_BORDER, 1, 0);
-	sui_text([pos_x + 8, pos_y + (size_y - SZ_LABEL_H) * 0.5], SZ_LABEL,
-	         label, hot ? COL_ACCENT : COL_TEXT, 1, 0);
+	if (primary)
+		sui_style_box(pos, size, 7, hot ? SUI_THEME_GOOD : SUI_THEME_GOOD_BG, SUI_THEME_GOOD, 1);
+	else
+		sui_style_box(pos, size, 7,
+		              sui_is_held(id) ? SUI_THEME_PRESSED : (hot ? COL_ROW_HOVER : COL_ROW),
+		              hot ? COL_ACCENT : SUI_THEME_EDGE, 1);
+	sui_text([pos_x + 10, pos_y + (size_y - SZ_LABEL_H) * 0.5], SZ_LABEL, label,
+	         primary ? (hot ? SUI_THEME_WELL : SUI_THEME_GOOD) : (hot ? COL_ACCENT : COL_TEXT),
+	         1, 0);
 
 	return sui_is_released(id);
 };
@@ -893,11 +879,9 @@ void(float tier) ui_consent_write =
 	cvar_set("rec_terms", ftos(tier));
 };
 
-// A tier's colour on a map row: mint at the easy end through to rose
-// (ui_style 1); the one accent otherwise.
+// A tier's colour on a map row: mint at the easy end through to rose.
 vector(float t) ui_tier_col =
 {
-	if (!sui_style_modern) return COL_ACCENT;
 	if (t <= 2) return SUI_THEME_GOOD;
 	if (t <= 4) return SUI_THEME_INFO;
 	if (t <= 6) return SUI_THEME_ACCENT;
@@ -921,35 +905,21 @@ float(vector pos, string id, string label, float on) ui_chip =
 	sui_action_element(pos, sz, id, sui_noop);
 
 	hot = sui_is_hovered(id);
-	if (sui_style_modern)
-	{
-		// A pill: lit by its fill and accent text, outlined only under the cursor.
-		if (hot)
-			sui_style_box(pos, sz, CHIP_H * 0.5, on ? COL_ROW_SEL : COL_ROW_HOVER, SUI_THEME_EDGE_HI, 1);
-		else
-			sui_roundbox(pos, sz, CHIP_H * 0.5, on ? COL_ROW_SEL : COL_ROW, 1);
-		sui_text([pos_x + CHIP_PAD * 0.5, pos_y + (CHIP_H - SZ_LABEL_H) * 0.5],
-		         SZ_LABEL, label, on ? COL_ACCENT : (hot ? COL_TEXT : COL_DIM), 1, 0);
-		return w;
-	}
-	sui_fill(pos, sz, on ? COL_ROW_SEL : COL_ROW, 1, 0);
-	sui_border_box(pos, sz, 1, (on || hot) ? COL_ACCENT : COL_BORDER, 1, 0);
+	// A pill: lit by its fill and accent text, outlined only under the cursor.
+	if (hot)
+		sui_style_box(pos, sz, CHIP_H * 0.5, on ? COL_ROW_SEL : COL_ROW_HOVER, SUI_THEME_EDGE_HI, 1);
+	else
+		sui_roundbox(pos, sz, CHIP_H * 0.5, on ? COL_ROW_SEL : COL_ROW, 1);
 	sui_text([pos_x + CHIP_PAD * 0.5, pos_y + (CHIP_H - SZ_LABEL_H) * 0.5],
-	         SZ_LABEL, label, (on || hot) ? COL_TEXT : COL_DIM, 1, 0);
+	         SZ_LABEL, label, on ? COL_ACCENT : (hot ? COL_TEXT : COL_DIM), 1, 0);
 
 	return w;
 };
 
-// A text field's box: a recessed well under the modern style.
+// A text field's box: a recessed well.
 void(vector pos, vector size, float focus) ui_field_box =
 {
-	if (sui_style_modern)
-	{
-		sui_style_box(pos, size, 7, SUI_THEME_WELL, focus ? COL_ACCENT : SUI_THEME_EDGE, 1);
-		return;
-	}
-	sui_fill(pos, size, COL_ROW, 1, 0);
-	sui_border_box(pos, size, 1, focus ? COL_ACCENT : COL_BORDER, 1, 0);
+	sui_style_box(pos, size, 7, SUI_THEME_WELL, focus ? COL_ACCENT : SUI_THEME_EDGE, 1);
 };
 
 // Single-line text field.  sui_text_input owns the caret and the keystrokes;
@@ -5603,7 +5573,7 @@ void() ui_prejoin_tick =
 #define ST_HELD     3
 #define ST_DL       4
 #define ST_RESULT   5
-#define COL_FAIL    (sui_style_modern ? SUI_THEME_BAD : '1 0.55 0.35')
+#define COL_FAIL    SUI_THEME_BAD
 
 float  ui_st_kind;
 string ui_st_text;              // the line, cut from its end to fit
@@ -5925,13 +5895,7 @@ void(vector screensize) ui_status_toast =
 	w = stringwidth(ui_st_text, TRUE, SZ_LABEL) + stringwidth(ui_st_figs, TRUE, SZ_LABEL) + 32;
 	w = min(screensize_x - 32, max(360, w));
 	p = [floor((screensize_x - w) * 0.5), screensize_y - 96];
-	if (sui_style_modern)
-		sui_style_panel(p, [w, 44], 10, 0.94);
-	else
-	{
-		sui_fill(p, [w, 44], COL_PANEL, 0.88, 0);
-		sui_border_box(p, [w, 44], 1, COL_BORDER, 1, 0);
-	}
+	sui_style_panel(p, [w, 44], 10, 0.94);
 	ui_status_line(p + '16 9 0', w - 32);
 	ui_status_bar(p + '16 32 0', w - 32, 3);
 };
@@ -6065,26 +6029,14 @@ void(vector pos, vector sz, string sel) ui_board_button =
 
 	if (sel == "")
 	{
-		if (sui_style_modern)
-			sui_style_box(pos, sz, 7, COL_ROW, SUI_THEME_EDGE, 0.5);
-		else
-		{
-			sui_fill(pos, sz, COL_ROW, 0.5, 0);
-			sui_border_box(pos, sz, 1, COL_BORDER, 0.5, 0);
-		}
+		sui_style_box(pos, sz, 7, COL_ROW, SUI_THEME_EDGE, 0.5);
 		sui_text([pos_x + 8, pos_y + (sz_y - SZ_LABEL_H) * 0.5], SZ_LABEL,
 		         "leaderboard", COL_DIM, 0.5, 0);
 		return;
 	}
 	sui_action_element(pos, sz, "cs_board", sui_noop, TRUE);
 	hot = sui_is_hovered("cs_board");
-	if (sui_style_modern)
-		sui_style_box(pos, sz, 7, hot ? COL_ROW_HOVER : COL_ROW, hot ? COL_ACCENT : SUI_THEME_EDGE, 1);
-	else
-	{
-		sui_fill(pos, sz, hot ? COL_ROW_HOVER : COL_ROW, 1, 0);
-		sui_border_box(pos, sz, 1, hot ? COL_ACCENT : COL_BORDER, 1, 0);
-	}
+	sui_style_box(pos, sz, 7, hot ? COL_ROW_HOVER : COL_ROW, hot ? COL_ACCENT : SUI_THEME_EDGE, 1);
 	sui_text([pos_x + 8, pos_y + (sz_y - SZ_LABEL_H) * 0.5], SZ_LABEL, "leaderboard",
 	         hot ? COL_ACCENT : COL_TEXT, 1, 0);
 	sui_tooltip_for("cs_board", "The picked map's main-track times: KSF, Momentum Mod and FTESurf's own lobbies.", 2);
@@ -6116,13 +6068,7 @@ void(vector screensize) screen_create =
 
 	float inner = size_x - 32;      // content width inside the 16px margins
 
-	if (sui_style_modern)
-		sui_style_panel(pos, size, 12, 1);
-	else
-	{
-		sui_fill(pos, size, COL_PANEL, 1, 0);
-		sui_border_box(pos, size, 1, COL_BORDER, 1, 0);
-	}
+	sui_style_panel(pos, size, 12, 1);
 	sui_text([pos_x + 16, pos_y + 12], SZ_HEAD, "create server", COL_ACCENT, 1, 0);
 
 	sui_push_frame(pos, size);
@@ -6363,11 +6309,8 @@ void(vector screensize) screen_create =
 
 		vector cp = [16, y], crs = [inner, ROW_H];
 		sui_action_element(cp, crs, "cs_lobterms", sui_noop);
-		if (sui_style_modern)
-			sui_roundbox(cp, crs, 8, sui_is_hovered("cs_lobterms") ? COL_ROW_HOVER : COL_ROW,
-			             sui_is_hovered("cs_lobterms") ? 1 : 0.6);
-		else if (sui_is_hovered("cs_lobterms"))
-			sui_fill(cp, crs, COL_ROW_HOVER, 1, 0);
+		sui_roundbox(cp, crs, 8, sui_is_hovered("cs_lobterms") ? COL_ROW_HOVER : COL_ROW,
+		             sui_is_hovered("cs_lobterms") ? 1 : 0.6);
 		ui_thumb([cp_x + 3, cp_y + 2], [78, 44], -1, -1);
 		sui_text([cp_x + 90, cp_y + 5], SZ_ROW,
 		         "public lobbies are off", COL_TEXT, 1, 0);
@@ -6465,11 +6408,8 @@ void(vector screensize) screen_create =
 				}
 
 			sui_action_element(lp, lrs, lid, sui_noop);
-			if (sui_style_modern)
-				sui_roundbox(lp, lrs, 8, sui_is_hovered(lid) ? COL_ROW_HOVER : COL_ROW,
-				             sui_is_hovered(lid) ? 1 : 0.6);
-			else if (sui_is_hovered(lid))
-				sui_fill(lp, lrs, COL_ROW_HOVER, 1, 0);
+			sui_roundbox(lp, lrs, 8, sui_is_hovered(lid) ? COL_ROW_HOVER : COL_ROW,
+			             sui_is_hovered(lid) ? 1 : 0.6);
 
 			ui_thumb([lp_x + 3, lp_y + 2], [78, 44], lpage, lcell);
 
@@ -6537,13 +6477,7 @@ void(vector screensize) screen_create =
 	ui_cs_rows = floor((ls_y - 2) / ROW_H);
 
 	{
-		if (sui_style_modern)
-			sui_style_box([16, y], ls, 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
-		else
-		{
-			sui_fill([16, y], ls, '0.03 0.03 0.04', 1, 0);
-			sui_border_box([16, y], ls, 1, COL_ACCENT, 1, 0);
-		}
+		sui_style_box([16, y], ls, 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
 
 		if (ms_viewcount == 0)
 			sui_text([24, y + 10], SZ_ROW, "no matches", COL_DIM, 1, 0);
@@ -6587,12 +6521,7 @@ void(vector screensize) screen_create =
 				float on  = (real == ms_selected);
 				float hot = sui_is_hovered(rid);
 				if (on || hot)
-				{
-					if (sui_style_modern)
-						sui_roundbox(rp + '1 1 0', rs - '2 2 0', 7, on ? COL_ROW_SEL : COL_ROW_HOVER, 1);
-					else
-						sui_fill(rp, rs, on ? COL_ROW_SEL : COL_ROW_HOVER, 1, 0);
-				}
+					sui_roundbox(rp + '1 1 0', rs - '2 2 0', 7, on ? COL_ROW_SEL : COL_ROW_HOVER, 1);
 
 				/*
 				  Two lines per row, not one.
@@ -6897,24 +6826,11 @@ void(vector screensize) screen_create =
 					ph = sui_is_hovered(pid);
 					if (pb)
 						ph = FALSE;
-					if (sui_style_modern)
-					{
-						// A pill, filled under the cursor, the word centred.
-						sui_roundbox(pp, ps, ps_y * 0.5, ph ? COL_PLAY : COL_PLAY_HOT, pb ? 0.3 : 1);
-						sui_text([pp_x + (ps_x - stringwidth("Play", TRUE, SZ_ROW)) * 0.5, pp_y + 8],
-						         SZ_ROW, "Play", ph ? SUI_THEME_WELL : COL_PLAY, pb ? 0.3 : 1, 0);
-					}
-					else
-					{
-						sui_fill(pp, ps, ph ? COL_PLAY_HOT : COL_PANEL, 1, 0);
-						sui_border_box(pp, ps, 1, COL_PLAY, pb ? 0.3 : 1, 0);
-
-						// Centred rather than two-line: there is no second fact to
-						// say about a map you already have, and an empty lower line
-						// is what this column is being fixed for.
-						sui_text([pp_x + DL_PAD, pp_y + 8], SZ_ROW, "> Play",
-						         ph ? COL_TEXT : COL_PLAY, pb ? 0.3 : 1, 0);
-					}
+					// A pill, filled under the cursor. One centred word, not two lines:
+					// there is no second fact to say about a map you already have.
+					sui_roundbox(pp, ps, ps_y * 0.5, ph ? COL_PLAY : COL_PLAY_HOT, pb ? 0.3 : 1);
+					sui_text([pp_x + (ps_x - stringwidth("Play", TRUE, SZ_ROW)) * 0.5, pp_y + 8],
+					         SZ_ROW, "Play", ph ? SUI_THEME_WELL : COL_PLAY, pb ? 0.3 : 1, 0);
 
 					/*
 					  THROUGH ui_launch, not around it.  Selecting first and then
@@ -6946,19 +6862,10 @@ void(vector screensize) screen_create =
 						// it is 0 until the size is known, so the bar can sit at
 						// zero while the rate already reads: that is honest, the
 						// bytes are moving and the total is not yet agreed.
-						if (sui_style_modern)
-						{
-							sui_roundbox(gp, [gs_x, 6], 3, COL_ROW_HOVER, 1);
-							if (dl_pct > 0)
-								sui_roundbox(gp, [max(6, gs_x * bound(0, dl_pct / 100, 1)), 6], 3,
-								             COL_ACCENT, 1);
-						}
-						else
-						{
-							sui_fill(gp, [gs_x, 6], COL_PANEL, 1, 0);
-							sui_fill(gp, [gs_x * bound(0, dl_pct / 100, 1), 6],
-							         COL_ACCENT, 1, 0);
-						}
+						sui_roundbox(gp, [gs_x, 6], 3, COL_ROW_HOVER, 1);
+						if (dl_pct > 0)
+							sui_roundbox(gp, [max(6, gs_x * bound(0, dl_pct / 100, 1)), 6], 3,
+							             COL_ACCENT, 1);
 						sui_text([gp_x, gp_y + 10], SZ_ROW,
 						         (dl_rate > 0) ? ui_dl_rate(dl_rate) : "...",
 						         COL_DIM, 1, 0);
@@ -6973,14 +6880,8 @@ void(vector screensize) screen_create =
 					{
 						sui_action_element(gp, gs, gid, sui_noop);
 						float gh = sui_is_hovered(gid);
-						if (sui_style_modern)
-							sui_style_box(gp, gs, 7, gh ? COL_ROW_HOVER : COL_ROW,
-							              gh ? COL_ACCENT : SUI_THEME_EDGE, 1);
-						else
-						{
-							sui_fill(gp, gs, gh ? COL_ROW_HOVER : COL_PANEL, 1, 0);
-							sui_border_box(gp, gs, 1, COL_BORDER, 1, 0);
-						}
+						sui_style_box(gp, gs, 7, gh ? COL_ROW_HOVER : COL_ROW,
+						              gh ? COL_ACCENT : SUI_THEME_EDGE, 1);
 						// A re-get is not the same offer as a download and must
 						// not read like one: this row already has a playable
 						// map, it is just the wrong cut of it.

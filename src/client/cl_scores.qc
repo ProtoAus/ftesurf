@@ -893,18 +893,17 @@ void() Scores_Refresh =
   before it and nothing else, and the table stays aligned at any hud_scale
   instead of at the one it was eyeballed on.
 */
-// Patch 606: each is the shared theme's token under ui_style 1 (sh_ui.qc) and
-// the board's own colour otherwise. cl_linegraph.qc draws with these too.
-#define SBC_BG      (sui_style_modern ? SUI_THEME_PANEL    : '0.03 0.04 0.06')
-#define SBC_PANEL   (sui_style_modern ? SUI_THEME_CHIP     : '0.07 0.08 0.11')
-#define SBC_LINE    (sui_style_modern ? SUI_THEME_ACCENT   : '0.30 0.55 0.85')
-#define SBC_TEXT    (sui_style_modern ? SUI_THEME_TEXT     : '0.88 0.91 0.96')
-#define SBC_DIM     (sui_style_modern ? SUI_THEME_DIM      : '0.50 0.54 0.60')
-#define SBC_HOT     (sui_style_modern ? SUI_THEME_HOVER    : '0.16 0.22 0.32')
-#define SBC_SEL     (sui_style_modern ? SUI_THEME_SELECTED : '0.20 0.36 0.55')
-#define SBC_GOOD    (sui_style_modern ? SUI_THEME_GOOD     : '0.45 0.90 0.50')
-#define SBC_BAD     (sui_style_modern ? SUI_THEME_BAD      : '0.95 0.45 0.40')
-#define SBC_WARN    (sui_style_modern ? SUI_THEME_WARN     : '1.00 0.82 0.20')
+// The shared theme's tokens (sh_ui.qc). cl_linegraph.qc draws with these too.
+#define SBC_BG      SUI_THEME_PANEL
+#define SBC_PANEL   SUI_THEME_CHIP
+#define SBC_LINE    SUI_THEME_ACCENT
+#define SBC_TEXT    SUI_THEME_TEXT
+#define SBC_DIM     SUI_THEME_DIM
+#define SBC_HOT     SUI_THEME_HOVER
+#define SBC_SEL     SUI_THEME_SELECTED
+#define SBC_GOOD    SUI_THEME_GOOD
+#define SBC_BAD     SUI_THEME_BAD
+#define SBC_WARN    SUI_THEME_WARN
 
 // Amber for the two states that explain a MISSING time, dim for the one that
 // explains nothing.  Never red: neither is something the player did, and this
@@ -915,68 +914,6 @@ vector() Scores_BoardNoteCol =
 {
 	return (serverkey("board") == "ranked") ? SBC_DIM : SBC_WARN;
 };
-
-/*
-  The column table, in characters of the mono face.
-
-  Widths first, then the offsets are their running sum -- so inserting a column
-  or widening one cannot leave a stale offset behind, which is what a list of
-  pixel constants guarantees eventually.  The widths are worst cases: a time is
-  "1:22.065" (8) and could be "10:22.065" (9), a delta carries a leading '+',
-  and a Source player name is capped at 31 but 18 is what fits without pushing
-  the date off a 1280-wide window.
-*/
-#define SBW_RANK    4
-#define SBW_TIME   10
-#define SBW_DELTA  11
-#define SBW_OWNER  19
-#define SBW_DATE   12
-#define SBW_KIND    9
-// BUILD 64: 7 -> 11.  The online tabs put the DEMOTION REASON in this column
-// ("no ruleset", "no journal" -- 10 characters), where the local tab puts the
-// file's tag.  Widening the last column only widens what the panel ASKS for;
-// the clamp against the window and the drop order below are unchanged.
-// PATCH 340: 11 -> 10.  The eleventh character was a gutter nobody could see
-// the need for, and on a wide window it read as the dead space to the right
-// of "why" that the panel was then blamed for.  Ten is the longest word the
-// column can hold; the drop order still protects it on narrow windows.
-#define SBW_TAG    10
-/*
-  BUILD 68: THE REPLAY MARK, AND ITS POSITION IS THE WHOLE POINT.
-
-  Seven characters -- six for the longest word (was "remote") plus a gutter, which
-  is what SBW_TAG was before build 64 widened it.
-
-  IT GOES BETWEEN `player` AND `age`, NOT AT THE END, AND THAT IS NOT A TASTE
-  DECISION.  The drop rule below keeps the largest of three budgets that fits:
-  SBX_END, then SBX_TAG, then SBX_DATE.  With this column inserted here those
-  become 83 / 72 / 51, and every one of them clears SBX_REP (44) -- so the mark
-  is drawn at every window width there is.  Put at the end instead it would sit
-  past SBX_TAG and vanish on the first narrowing.
-
-  That matters because of what the RT_LOBBY precedent actually says, which is
-  the opposite of how it is usually quoted.  Its WORD lives in the tag column
-  and its own comment concedes that column "is the first column this board DROPS
-  on a narrow window"; the amber on the TIME cell is there precisely as "the
-  half of the mark that always survives".  So the precedent is not "a word
-  survives" -- it is "a word does not, so pay for it in colour".  A column that
-  survives on its own is the better answer to the same problem, and it is why
-  this needs no second mark on the time.
-*/
-#define SBW_REP     9
-
-#define SBX_RANK    0
-#define SBX_TIME   (SBX_RANK  + SBW_RANK)
-#define SBX_DELTA  (SBX_TIME  + SBW_TIME)
-#define SBX_OWNER  (SBX_DELTA + SBW_DELTA)
-#define SBX_REP    (SBX_OWNER + SBW_OWNER)
-#define SBX_DATE   (SBX_REP   + SBW_REP)
-#define SBX_KIND   (SBX_DATE  + SBW_DATE)
-#define SBX_TAG    (SBX_KIND  + SBW_KIND)
-// Patch 433: the `line` tick right of `why`, dropped first when the window narrows.
-#define SBW_LINE    5
-#define SBX_LINE   (SBX_TAG   + SBW_TAG)
-#define SBX_END    (SBX_LINE  + SBW_LINE)
 
 // The advance of the mono face, per em.  Measured out of GoogleMed.ttf's hmtx
 // in build 21 rather than trusted from its `post` table, which claims
@@ -989,8 +926,8 @@ float rec_sb_szhead;
 float rec_sb_sztitle;
 float rec_sb_cw;                 // one mono character, in pixels
 float rec_sb_rowh;
-float rec_sb_cols;               // how many columns the window can afford
-float sb_szui;                   // modern board: the UI face's row size this frame
+float rec_sb_cols;               // table columns in the last drawn frame (`scores status`)
+float sb_szui;                   // the UI face's row size this frame
 
 /*
   Text, at a size the font was actually baked at.
@@ -1030,14 +967,9 @@ void(vector pos, float sz, vector col, float a) Scores_Tick =
 	drawline(w, pos + [sz*0.28, sz*0.76], pos + [sz*0.72, sz*0.18], col, a, 0);
 };
 
-// The x of a column, in pixels, from its character offset.
-float(float chars) Scores_ColX = { return chars * rec_sb_cw; };
-
 /*
-  Patch 606: WHERE EACH COLUMN IS THIS FRAME, as a table both row drawers read.
-  The classic board fills it from the character offsets above, so nothing it
-  draws moves; the modern board (Scores_DrawModern) orders and aligns the same
-  nine columns differently. sb_colx is a right-aligned column's RIGHT edge.
+  WHERE EACH COLUMN IS THIS FRAME, as a table both row drawers read; Scores_Cols
+  fills it. sb_colx is a right-aligned column's RIGHT edge.
 */
 #define SBK_RANK  0
 #define SBK_TIME  1
@@ -1052,33 +984,6 @@ float sb_colx[9];
 float sb_colr[9];               // right-aligned
 float sb_colon[9];              // drawn at this window width
 
-void() Scores_ColsClassic =
-{
-	local float i;
-
-	for (i = 0; i < 9; i = i + 1)
-		sb_colr[i] = FALSE;
-	sb_colx[SBK_RANK]  = Scores_ColX(SBX_TIME) - rec_sb_cw;
-	sb_colr[SBK_RANK]  = TRUE;
-	sb_colx[SBK_TIME]  = Scores_ColX(SBX_TIME);
-	sb_colx[SBK_DELTA] = Scores_ColX(SBX_DELTA);
-	sb_colx[SBK_OWNER] = Scores_ColX(SBX_OWNER);
-	sb_colx[SBK_REP]   = Scores_ColX(SBX_REP);
-	sb_colx[SBK_DATE]  = Scores_ColX(SBX_DATE);
-	sb_colx[SBK_KIND]  = Scores_ColX(SBX_KIND);
-	sb_colx[SBK_TAG]   = Scores_ColX(SBX_TAG);
-	sb_colx[SBK_LINE]  = Scores_ColX(SBX_LINE) + rec_sb_cw * 0.5;
-	sb_colon[SBK_RANK]  = TRUE;
-	sb_colon[SBK_TIME]  = TRUE;
-	sb_colon[SBK_DELTA] = TRUE;
-	sb_colon[SBK_OWNER] = TRUE;
-	sb_colon[SBK_REP]   = (rec_sb_cols > SBX_REP);
-	sb_colon[SBK_DATE]  = (rec_sb_cols > SBX_DATE);
-	sb_colon[SBK_KIND]  = (rec_sb_cols > SBX_KIND);
-	sb_colon[SBK_TAG]   = (rec_sb_cols > SBX_TAG);
-	sb_colon[SBK_LINE]  = (rec_sb_cols > SBX_LINE);
-};
-
 // One cell of a row, at its column's place and alignment.
 void(vector lp, float col, float d, string text, vector c, float a) Scores_Cell =
 {
@@ -1088,17 +993,14 @@ void(vector lp, float col, float d, string text, vector c, float a) Scores_Cell 
 		Scores_Text([lp_x + sb_colx[col], d], rec_sb_szrow, text, c, a);
 };
 
-// A row's highlight: a rounded bar under the modern style.
+// A row's highlight: a rounded bar.
 void(vector lp, float w, vector c, float a) Scores_RowFill =
 {
-	if (sui_style_modern)
-		sui_roundbox(lp + '0 1 0', [w, rec_sb_rowh - 2], ceil(rec_sb_cw * 0.6), c, a);
-	else
-		sui_fill(lp, [w, rec_sb_rowh], c, a, 0);
+	sui_roundbox(lp + '0 1 0', [w, rec_sb_rowh - 2], ceil(rec_sb_cw * 0.6), c, a);
 };
 
-// The rank. Modern: the podium wears a plate (butter, silver, peach), as the
-// room list's does -- where `plate` says the row has earned one: a cheated or
+// The rank. The podium wears a plate (butter, silver, peach), as the room
+// list's does -- where `plate` says the row has earned one: a cheated or
 // filtered-out run can sort into the first three of the local list.
 void(vector lp, float d, float rank, float a, float plate) Scores_RankCell =
 {
@@ -1107,12 +1009,6 @@ void(vector lp, float d, float rank, float a, float plate) Scores_RankCell =
 	local string t;
 
 	t = sprintf("%g", rank);
-	if (!sui_style_modern)
-	{
-		// The classic expression, association included: lp_x is not 0 on the pinned row.
-		Scores_TextR([lp_x + Scores_ColX(SBX_TIME) - rec_sb_cw, d], rec_sb_szrow, t, SBC_DIM, a);
-		return;
-	}
 	if (plate)
 	if (rank >= 1)
 	if (rank <= 3)
@@ -1130,10 +1026,9 @@ void(vector lp, float d, float rank, float a, float plate) Scores_RankCell =
 	Scores_TextR([lp_x + sb_colx[SBK_RANK], d], rec_sb_szrow, t, SUI_THEME_MUTED, a);
 };
 
-// "+0:02.070" classic; the modern board drops the empty minutes: "+2.070".
+// The gap to the best time, without its empty minutes: "+2.070", not "+0:02.070".
 string(string t) Scores_Delta =
 {
-	if (sui_style_modern)
 	if (substring(t, 0, 2) == "0:")
 	{
 		t = substring(t, 2, -1);
@@ -1152,25 +1047,16 @@ float(string id, vector pos, vector sz, string label, float on) Scores_Chip =
 	local float tsz, tw;
 
 	sui_action_element(pos, sz, id, sui_noop);
-	if (sui_style_modern)
-	{
-		// A pill: the fill says lit, a hairline says the cursor is on it.
-		if (sui_is_hovered(id))
-			sui_style_box(pos, sz, sz_y * 0.5, on ? SBC_SEL : SBC_HOT, SUI_THEME_EDGE_HI, 1);
-		else
-			sui_roundbox(pos, sz, sz_y * 0.5, on ? SBC_SEL : SBC_PANEL, 1);
-		// Centred, in the small face on a short chip. The caller has the UI face set.
-		tsz = (sz_y < rec_sb_szrow * 1.7) ? rec_sb_szhead : sb_szui;
-		tw  = stringwidth(label, TRUE, [tsz, tsz]);
-		Scores_Text([pos_x + (sz_x - tw) * 0.5, pos_y + (sz_y - tsz) * 0.5], tsz, label,
-		            on ? SBC_LINE : (sui_is_hovered(id) ? SBC_TEXT : SBC_DIM), 1);
-		return sui_is_released(id);
-	}
-	sui_fill(pos, sz, on ? SBC_SEL : (sui_is_hovered(id) ? SBC_HOT : SBC_PANEL),
-	         1, 0);
-	sui_border_box(pos, sz, 1, on ? SBC_LINE : SBC_DIM, on ? 0.9 : 0.4, 0);
-	Scores_Text([pos_x + rec_sb_cw, pos_y + (sz_y - rec_sb_szrow) * 0.5],
-	            rec_sb_szrow, label, on ? SBC_TEXT : SBC_DIM, 1);
+	// A pill: the fill says lit, a hairline says the cursor is on it.
+	if (sui_is_hovered(id))
+		sui_style_box(pos, sz, sz_y * 0.5, on ? SBC_SEL : SBC_HOT, SUI_THEME_EDGE_HI, 1);
+	else
+		sui_roundbox(pos, sz, sz_y * 0.5, on ? SBC_SEL : SBC_PANEL, 1);
+	// Centred, in the small face on a short chip. The caller has the UI face set.
+	tsz = (sz_y < rec_sb_szrow * 1.7) ? rec_sb_szhead : sb_szui;
+	tw  = stringwidth(label, TRUE, [tsz, tsz]);
+	Scores_Text([pos_x + (sz_x - tw) * 0.5, pos_y + (sz_y - tsz) * 0.5], tsz, label,
+	            on ? SBC_LINE : (sui_is_hovered(id) ? SBC_TEXT : SBC_DIM), 1);
 	return sui_is_released(id);
 };
 
@@ -1534,11 +1420,8 @@ void(vector lp, float idx) Scores_LineCell =
 	bp = [lp_x + sb_colx[SBK_LINE], lp_y + floor((rec_sb_rowh - bs) * 0.5)];
 	id = strcat("sb_ln", ftos(idx));
 	sui_action_element(bp - '3 3 0', [bs + 6, bs + 6], id, sui_noop);
-	if (sui_style_modern)
-		sui_style_box(bp, [bs, bs], 3, SUI_THEME_CHIP,
-		              sui_is_hovered(id) ? SUI_THEME_TEXT : SUI_THEME_EDGE_HI, 1);
-	else
-		sui_border_box(bp, [bs, bs], 1, sui_is_hovered(id) ? SBC_TEXT : SBC_DIM, 0.9, 0);
+	sui_style_box(bp, [bs, bs], 3, SUI_THEME_CHIP,
+	              sui_is_hovered(id) ? SUI_THEME_TEXT : SUI_THEME_EDGE_HI, 1);
 	if (st == SBL_ON)
 		Scores_Tick(bp + [bs * 0.1, 0], bs, SBC_GOOD, 0.95);
 	else if (st == SBL_FAIL)
@@ -1740,7 +1623,7 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 		/*
 		  BUILD 57, STAGE T: and `lobby`, which is the one word in this column
 		  that changes what a CLICK does -- see the hand-off below.  Five
-		  characters, so SBW_TAG's seven still fit it.
+		  characters, which the last column holds.
 		*/
 		/*
 		  BUILD 76: AND `old clock`, WHICH IS THE VERSION MARKER FOR AN ARCHIVED RUN.
@@ -1777,7 +1660,7 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 		  shape, a comparison whose two sides are not comparable answering anyway.
 		  Unknown draws nothing, which is this board's standing rule since build 65.
 
-		  Nine characters, so SBW_TAG's eleven still fit, and the same two words the
+		  Nine characters, which the last column holds, and the same two words the
 		  online tab uses for TF_NOCLOCK -- deliberately, because it is the same fact
 		  about the reader's row: this time was taken on the old clock.
 		*/
@@ -1786,7 +1669,7 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 			if (rec_sb_rowtag[idx] == RT_LOBBY)
 			{
 				// A demoted lobby run is kept here (LT_Keep) and says why it is
-				// on no board; FS_CertWhy's words fit SBW_TAG.
+				// on no board; FS_CertWhy's words fit the last column.
 				s = "";
 				if (rec_sb_rowflags[idx] > 0)
 					s = FS_CertWhy(rec_sb_rowflags[idx]);
@@ -2068,11 +1951,9 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		  below -- red here is for a run that was REFUSED, and a missing
 		  recording is not something the player did.
 
-		  The guard is insurance rather than live logic: SBX_REP is 44 and the
-		  narrowest budget the drop rule can choose is 51, so this is true at
-		  every width today.  It is written anyway because a fourth drop step is
-		  exactly the kind of thing that gets added later, and an unguarded
-		  column is how the one that was added last time ran off the edge.
+		  The guard is insurance rather than live logic: Scores_Draw never
+		  cuts this column on an online tab.  It is written anyway because
+		  another drop step is exactly the kind of thing that gets added later.
 		*/
 		if (sb_colon[SBK_REP])
 		{
@@ -2091,7 +1972,7 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 			}
 			Scores_Cell(lp, SBK_REP, d,
 			            s, (Online_RowRep(idx) > 0) ? SBC_GOOD : SBC_DIM, 0.85);
-			// Patch 374: after the word; "watch" + the mark fits SBW_REP in Roboto.
+			// Patch 374: after the word; "watch" + the mark fits the column in Roboto.
 			if (ob_ver[idx] > 0)
 				Scores_Tick([lp_x + sb_colx[SBK_REP] + rec_sb_cw * 0.3
 				             + stringwidth(s, TRUE, [Font_Px(rec_sb_szrow), Font_Px(rec_sb_szrow)]), d],
@@ -2503,19 +2384,20 @@ void(vector p, vector sz, float pad, vector scr, float pick) Scores_Finish =
 
 /*
 ===========================================================================
-  The modern board (ui_style 1, Patch 606).
+  The board's layout (Patch 606; the only one since Patch 607).
 
-  The data, both row drawers, every control's id and what a click does are the
-  classic board's. This is only where things go: a header band, the sources as
-  one segmented control, the legs as a sidebar, and a table that puts the player
-  first and right-aligns the numbers. It has its own scale and is centred as one
-  group with the room list, so the design holds on a 720-line window.
+  A header band, the sources as one segmented control, the legs as a sidebar,
+  and a table that puts the player first and right-aligns the numbers. It has
+  its own type scale and is centred as one group with the room list, so the
+  design holds on a 720-line window.
 ===========================================================================
 */
 
 // The visible columns, left to right, for an owner column `ow` wide. Returns
-// the row's width. sb_colon[] says which optional columns are in.
-float(float ow, float online) Scores_ColsModern =
+// the row's width. sb_colon[] says which optional columns are in. Widths are
+// worst cases in mono characters: a time is "10:22.065", a delta carries a '+',
+// the last column holds the ten-character demotion reasons ("no ruleset").
+float(float ow, float online) Scores_Cols =
 {
 	local float x, g, cw, i;
 
@@ -2554,9 +2436,8 @@ void(vector rp, float col, string label) Scores_HeadCell =
 		Scores_Text([rp_x + sb_colx[col], rp_y], rec_sb_szhead, label, SUI_THEME_MUTED, 1);
 };
 
-// One segment of the source tabs: the classic chips' ids and click rule.
-// (`tab`, not `id`: tools/compare_chip_smoke.py finds Scores_Chip by its one
-// `sui_action_element(pos, sz, id, ...)` line.)
+// One segment of the source tabs. (`tab`, not `id`: tools/compare_chip_smoke.py
+// finds Scores_Chip by its one `sui_action_element(pos, sz, id, ...)` line.)
 float(string tab, vector pos, vector sz, string label, float on) Scores_Seg =
 {
 	local float hot, tw;
@@ -2588,9 +2469,9 @@ float(float xr, float y, string key, string what) Scores_Hint =
 	return xr - ww - sz * 0.5 - kw - sz * 1.4;
 };
 
-// The modern board's type for a row `px` tall. Each face snaps on its own
-// ladder, so the mono and UI sizes can sit a rung apart.
-void(float px) Scores_ModernType =
+// The board's type for a row `px` tall. Each face snaps on its own ladder, so
+// the mono and UI sizes can sit a rung apart.
+void(float px) Scores_Type =
 {
 	Font_Set(ui_font_mono);
 	rec_sb_szrow = Font_Px(px);
@@ -2603,31 +2484,47 @@ void(float px) Scores_ModernType =
 
 // The wider source's row for this owner width (the online tabs add a replay
 // column). Sizing on it keeps the panel still when the source tab changes.
-float(float ow) Scores_NeedModern =
+float(float ow) Scores_Need =
 {
 	local float a, b;
 
 	sb_colon[SBK_REP] = TRUE;
-	a = Scores_ColsModern(ow, TRUE);
+	a = Scores_Cols(ow, TRUE);
 	sb_colon[SBK_REP] = FALSE;
-	b = Scores_ColsModern(ow, FALSE);
+	b = Scores_Cols(ow, FALSE);
 	return max(a, b);
 };
 
-// FALSE, having drawn nothing: this window cannot hold the design, and the
-// caller draws the classic layout instead.
-float(vector scr) Scores_DrawModern =
+void(vector scr) Scores_Draw =
 {
 	local vector p, sz, rp, rs, lp;
 	local float scale, bs, pad, w, h, x0, y0, sidew, tabh, chiph, chipw, segw, listh, n;
 	local float ytabs, yhead, ylist, yfoot, yc, x, idx, on, hot, pick, native, online;
-	local float roomw, have, need, floorw, ow, tablew, rows, chrome, step, k;
+	local float roomw, have, need, floorw, ow, tablew, rows, chrome, step, px;
 	local string s, rid;
 
+	if (!rec_sb_open && !sc_held)
+		return;
+
+	Scores_Refresh();
+
+	sui_begin(scr_x, scr_y);
+
+	// The panel: most of the screen, with the world dimmed behind it rather than
+	// hidden.  A leaderboard you cannot see the map through reads as a menu, and
+	// this one is opened mid-session with the same key you use to peek.
+	sui_fill('0 0 0', [scr_x, scr_y], '0 0 0', 0.55, 0);
+
+	// hud_scale is read here, not ui_cv_scale: that is HUD_Draw's, which does not
+	// run on every frame this does, and a board that changed size with the HUD
+	// switched off would be a baffling bug.
 	scale = cvar("hud_scale");
 	if (scale <= 0) scale = 2;
+	if (scale > 16) scale = 16;         // an absurd value would make the type, and the loop below, infinite
 	bs = min(scale, scr_y / 432);       // a short window gets smaller type...
 	if (bs < 1) bs = 1;
+	// The imported tab only where there is one: ob_cnt_imported is the last
+	// fetch's count, and a fourth tab that is always empty is worse than none.
 	n = 3;
 	if (ob_cnt_imported > 0 || rec_sb_tab == SB_T_MOMENTUM)
 		n = 4;
@@ -2635,11 +2532,13 @@ float(vector scr) Scores_DrawModern =
 	/*
 	  WHAT FITS, tried in the order a player would choose. Steps 0-2: every column
 	  with a whole (300) room list beside the board, at 8, 7, then 6 units of type
-	  -- but never under the classic board's 6 * hud_scale. Step 2 then gives up
-	  why/tag, date and run class in that order; step 3 is the same beside the
-	  list at its narrowest (200). Rank, player, time, delta, the replay word and
-	  the line box are never cut, and nothing here is ever drawn under the room
-	  list: past step 3 the classic layout draws, and docks it as it always has.
+	  (6 * hud_scale is as small as it goes while anything else can give). Step 2
+	  then gives up why/tag, date and run class in that order; step 3 is the same
+	  beside the list at its narrowest (200). Past that the type itself shrinks,
+	  to 8 px, and a window too small even for that gets the 8 px board clipped
+	  (Players_Panel then docks the list over it, its own rule). Rank, player,
+	  time, delta, the replay word and the line box are never cut. Both row
+	  drawers read sb_colon, so every tab drops the same columns.
 	*/
 	sb_colon[SBK_RANK]  = TRUE;
 	sb_colon[SBK_OWNER] = TRUE;
@@ -2653,13 +2552,15 @@ float(vector scr) Scores_DrawModern =
 	roomw = 0;
 	have = 0;
 	need = 0;
+	px = 0;
 	step = 0;
 	while (1)
 	{
-		if (step > 3)
-			return FALSE;
-		k = max(6, 8 - step);
-		Scores_ModernType(max(k * bs, 6 * scale));
+		if (step <= 3)
+			px = max(max(6, 8 - step) * bs, 6 * scale);
+		else
+			px = px * 0.8;
+		Scores_Type(px);
 		pad   = rec_sb_szrow;           // every ladder rung is even: its halves are whole pixels
 		chipw = ceil(rec_sb_cw * 8.5);
 		sidew = ceil(rec_sb_cw * 15);
@@ -2673,15 +2574,18 @@ float(vector scr) Scores_DrawModern =
 		sb_colon[SBK_TAG]  = TRUE;
 		sb_colon[SBK_DATE] = TRUE;
 		sb_colon[SBK_KIND] = TRUE;
-		need = max(Scores_NeedModern(rec_sb_cw * 12), floorw);
+		need = max(Scores_Need(rec_sb_cw * 12), floorw);
 		if (step >= 2)
 		{
-			if (need > have) { sb_colon[SBK_TAG] = FALSE;  need = max(Scores_NeedModern(rec_sb_cw * 12), floorw); }
-			if (need > have) { sb_colon[SBK_DATE] = FALSE; need = max(Scores_NeedModern(rec_sb_cw * 12), floorw); }
-			if (need > have) { sb_colon[SBK_KIND] = FALSE; need = max(Scores_NeedModern(rec_sb_cw * 12), floorw); }
+			if (need > have) { sb_colon[SBK_TAG] = FALSE;  need = max(Scores_Need(rec_sb_cw * 12), floorw); }
+			if (need > have) { sb_colon[SBK_DATE] = FALSE; need = max(Scores_Need(rec_sb_cw * 12), floorw); }
+			if (need > have) { sb_colon[SBK_KIND] = FALSE; need = max(Scores_Need(rec_sb_cw * 12), floorw); }
 		}
 		if (need <= have)
 			break;
+		if (step >= 3)
+		if (px <= 8)
+			break;                      // nothing smaller to try
 		step = step + 1;
 	}
 	rec_sb_rowh = ceil(rec_sb_szrow * 1.75);
@@ -2693,15 +2597,21 @@ float(vector scr) Scores_DrawModern =
 	online = Scores_IsOnline();
 	sb_colon[SBK_REP] = online;
 	need = max(need, min(have - (300 + pad - roomw), need + rec_sb_cw * 10));
-	ow = rec_sb_cw * 12 + (need - Scores_ColsModern(rec_sb_cw * 12, online));
-	tablew = Scores_ColsModern(ow, online) + pad * 0.5;
+	ow = rec_sb_cw * 12 + (need - Scores_Cols(rec_sb_cw * 12, online));
+	tablew = Scores_Cols(ow, online) + pad * 0.5;
 	w = pad * 3 + sidew + tablew;
+	if (w > scr_x - pad * 2)
+	{
+		// Too small for even the smallest form: the table's last columns clip.
+		w = scr_x - pad * 2;
+		tablew = max(rec_sb_cw * 8, w - pad * 3 - sidew);
+	}
 
-	// `scores status` reports the classic budget's name for what was kept.
-	rec_sb_cols = SBX_END;
-	if (!sb_colon[SBK_TAG])  rec_sb_cols = SBX_TAG;
-	if (!sb_colon[SBK_DATE]) rec_sb_cols = SBX_DATE;
+	// For `scores status`: how many columns this frame's table has.
+	rec_sb_cols = 5 + sb_colon[SBK_REP] + sb_colon[SBK_DATE] + sb_colon[SBK_KIND] + sb_colon[SBK_TAG];
 
+	// The footer is two lines whether or not the server publishes a board
+	// state: a list a row taller on an old server would move for no visible reason.
 	chrome = pad + rec_sb_sztitle + ceil(pad * 0.75) + tabh + pad
 	       + rec_sb_szhead + pad * 0.5
 	       + ceil(pad * 0.75) + rec_sb_szhead * 2 + 6 + pad;
@@ -2730,14 +2640,15 @@ float(vector scr) Scores_DrawModern =
 		            "this map has no zone file, so it has no legs and no times",
 		            SUI_THEME_DIM, 1);
 		pl_boardbusy = FALSE;             // no legs: no online board to protect
-		Players_Panel(p, sz, pad, scr);
+		Players_Panel(p, sz, pad, scr);   // Patch 340: the room list is not about zones
 		sui_end();
 		Font_Reset();
 		Scores_SpecHandOff();
-		return TRUE;
+		return;
 	}
 
 	// ---- the sources, one control; what narrows them, to its right ----------
+	// On a row of their own, not beside the title: a map name has no width limit.
 	ytabs = y0 + pad + rec_sb_sztitle + ceil(pad * 0.75);
 	sui_roundbox([x0 + pad, ytabs], [segw * n, tabh], tabh * 0.5, SUI_THEME_WELL, 1);
 	if (Scores_Seg("sb_t0", [x0 + pad, ytabs], [segw, tabh], "Online", rec_sb_tab == SB_T_ONLINE))
@@ -2771,10 +2682,18 @@ float(vector scr) Scores_DrawModern =
 	{
 		online = Scores_IsOnline();
 		sb_colon[SBK_REP] = online;
-		ow = rec_sb_cw * 12 + (need - Scores_ColsModern(rec_sb_cw * 12, online));
-		Scores_ColsModern(ow, online);
+		ow = rec_sb_cw * 12 + (need - Scores_Cols(rec_sb_cw * 12, online));
+		Scores_Cols(ow, online);
 	}
 
+	/*
+	  The class chips are LOCAL's only. "all" is the default: hiding rows by
+	  default makes a board that disagrees with the folder it came from. The
+	  online tabs never merge tiers (Patch 355), so they have nothing to filter
+	  and get the refresh chip instead -- the only way an online tab re-asks for
+	  a board it already asked for (the anti-hammer note beside Online_Need).
+	  The local list rebuilds from its directory on every open and needs none.
+	*/
 	x = x0 + w - pad - chipw;
 	yc = ytabs + floor((tabh - chiph) * 0.5);
 	if (!online)
@@ -2793,7 +2712,6 @@ float(vector scr) Scores_DrawModern =
 	}
 	else if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
 	{
-		// The only way an online tab re-asks for a board it already asked for.
 		if (Scores_Chip("sb_tref", [x, yc], [chipw, chiph], "refresh", FALSE))
 			Online_Fetch(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
 			             Scores_TierOf(), Scores_StyleOf());
@@ -2840,6 +2758,8 @@ float(vector scr) Scores_DrawModern =
 		Scores_HeadCell(rp, SBK_TIME, "TIME");
 		Scores_HeadCell(rp, SBK_DELTA, "DELTA");
 		Scores_HeadCell(rp, SBK_REP, "REPLAY");
+		// An online row has no date this client's clock may be trusted against:
+		// the column is an AGE, both of its ends the server's.
 		Scores_HeadCell(rp, SBK_DATE, online ? "AGE" : "DATE");
 		Scores_HeadCell(rp, SBK_KIND, "RUN");
 		// The local board has never labelled its last column: `latest` and
@@ -2848,6 +2768,8 @@ float(vector scr) Scores_DrawModern =
 			Scores_HeadCell(rp, SBK_TAG, "WHY");
 		Scores_HeadCell(rp, SBK_LINE, "LINE");
 
+		// A local time is divided by THIS map's server tick; an online row
+		// carries the rate it was set at, which is what surfd ranked it by.
 		if (online)
 			pick = Scores_DrawOnlineRows(rp, rs, pad);
 		else
@@ -2857,6 +2779,8 @@ float(vector scr) Scores_DrawModern =
 		pick = Scores_NativeRowPick();
 
 	// ---- the footer: what is listed, and the keys ------------------------------
+	// The hints say what a CLICK does; on an online tab it opens nothing (the
+	// replay is on somebody else's disk), so those name the keys instead.
 	yfoot = ylist + listh + ceil(pad * 0.75);
 	sui_fill([x0 + pad, ylist + listh + floor(pad * 0.3)], [w - pad * 2, 1], SUI_THEME_EDGE, 1, 0);
 	Font_Set(ui_font_ui);
@@ -2871,407 +2795,13 @@ float(vector scr) Scores_DrawModern =
 	else
 		x = Scores_Hint(x, yfoot, "click", "watch a run");
 
-	// Where a run set here goes, on every tab: see the classic footer.
+	// Where a run set here goes. On EVERY tab, Local included: that is where
+	// "why are my times only here" gets asked. Under the counts, not beside
+	// them: that line is about this board, this one about the server.
 	s = Scores_BoardNote();
 	if (s != "")
 		Scores_Text([x0 + pad, yfoot + rec_sb_szhead + 6], rec_sb_szhead,
 		            s, Scores_BoardNoteCol(), 0.9);
-
-	Scores_Finish(p, sz, pad, scr, pick);
-	return TRUE;
-};
-
-void(vector scr) Scores_Draw =
-{
-	local vector p, sz, rp, rs, lp;
-	local float w, h, x0, y0, lw, idx, hot, on, tick, pick;
-	local float scale, chipw, chiph, pad, legw, ytabs, yhead, footh, native;
-	local string s, rid;
-
-	if (!rec_sb_open && !sc_held)
-		return;
-
-	Scores_Refresh();
-
-	sui_begin(scr_x, scr_y);
-
-	// The panel: most of the screen, with the world dimmed behind it rather than
-	// hidden.  A leaderboard you cannot see the map through reads as a menu, and
-	// this one is opened mid-session with the same key you use to peek.
-	sui_fill('0 0 0', [scr_x, scr_y], '0 0 0', 0.55, 0);
-
-	if (sui_style_modern)
-	if (Scores_DrawModern(scr))
-		return;
-
-	/*
-	  THE TYPE SCALE, and it is read here rather than inherited.
-
-	  ui_cv_scale is set by HUD_ReadCvars at the top of HUD_Draw, which does run
-	  before this every frame -- but only on the frames HUD_Draw runs at all, and
-	  a board that changes size when the HUD is switched off would be a genuinely
-	  baffling bug.  One cvar read while the board is up costs nothing.
-
-	  The bases are chosen so that hud_scale 2 lands ON a rung of each ladder
-	  rather than relying on Font_Px to round: 6*2 = 12 and 8*2 = 16 are both UI
-	  and mono rungs.  Font_Px still runs, because hud_scale is a float and
-	  somebody will set it to 1.5.
-	*/
-	scale = cvar("hud_scale");
-	if (scale <= 0)
-		scale = 2;
-
-	Font_Set(ui_font_mono);
-	rec_sb_szrow  = Font_Px(6 * scale);
-	rec_sb_cw     = rec_sb_szrow * SB_EM;
-
-	Font_Set(ui_font_ui);
-	rec_sb_szhead  = Font_Px(6 * scale);
-	rec_sb_sztitle = Font_Px(8 * scale);
-	sb_szui = rec_sb_szrow;         // the pill chips' text when this layout draws under ui_style 1
-
-	pad   = ceil(rec_sb_cw * 1.5);
-	rec_sb_rowh = ceil(rec_sb_szrow * 1.7);
-	chiph = ceil(rec_sb_szrow * 1.8);
-
-	/*
-	  The panel's size, and the width is asked for in CHARACTERS.
-
-	  SBX_END is the whole table's width, so the panel asks for exactly what its
-	  contents need plus the leg column plus padding, and is then clamped to the
-	  window.  Asking for a fraction of the screen and hoping the columns fit
-	  inside it is what put the replay chrome's hint line out through its own
-	  border, and this is the same mistake one panel over.
-	*/
-	legw = ceil(rec_sb_cw * 15);
-	w = SBX_END * rec_sb_cw + legw + pad * 4;
-	if (w > scr_x - pad * 2) w = scr_x - pad * 2;
-	/*
-	  PATCH 340: THE FLOOR DROPPED FROM HALF THE WINDOW TO 42%.
-
-	  The floor existed so a narrow window could not squeeze the board into
-	  illegibility, but on a WIDE one it did the opposite harm: the content
-	  asks for ~78 characters and the clamp handed the panel 960 px anyway,
-	  and the ~200 px of difference landed to the right of the last column --
-	  "the why column has way too much room", as the report put it.  The
-	  slack was never the column's; it was the clamp's.  42% still clears
-	  every column budget at 1280 and stops inventing space at 1920.
-	*/
-	if (w < scr_x * 0.42)     w = scr_x * 0.42;
-
-	h = scr_y * 0.78;
-	if (h > rec_sb_rowh * 26) h = rec_sb_rowh * 26;
-
-	x0 = floor((scr_x - w) * 0.5);
-	y0 = floor((scr_y - h) * 0.5);
-	p  = [x0, y0];
-	sz = [w, h];
-
-	if (sui_style_modern)
-		sui_style_panel(p, sz, ceil(pad * 0.8), 0.97);
-	else
-	{
-		sui_fill(p, sz, SBC_BG, 0.94, 0);
-		sui_border_box(p, sz, 1, SBC_LINE, 0.9, 0);
-	}
-
-	// ---- the header ------------------------------------------------------
-	Font_Set(ui_font_ui);
-	Scores_Text([x0 + pad, y0 + pad], rec_sb_sztitle,
-	            (serverkey("map") != "") ? serverkey("map") : "no map",
-	            SBC_TEXT, 1);
-	Scores_DrawClock([x0 + pad, y0 + pad], Scores_IsOnline() ? x0 + w - pad
-	                 : x0 + w - pad * 5 - ceil(rec_sb_cw * 10) * 4);   // left of the chips
-
-	if (zone_count <= 0)
-	{
-		Scores_NativeClose();
-		Scores_Text([x0 + pad, y0 + pad * 2 + rec_sb_sztitle], rec_sb_szhead,
-		            "this map has no zone file, so it has no legs and no times",
-		            SBC_DIM, 1);
-		pl_boardbusy = FALSE;             // no legs: no online board to protect
-		Players_Panel(p, sz, pad, scr);   // Patch 340: the room list is not
-		sui_end();                        // about zones; it shows here too.
-		Font_Reset();
-		Scores_SpecHandOff();
-		return;
-	}
-
-	/*
-	  The class chips, top right, on LOCAL only (build 44).  "all" is the
-	  default: hiding rows by default makes a board that disagrees with the
-	  folder it came from.  The online tabs have no chips (Patch 355: ranked
-	  only -- never merge tiers, which is why there was never an "all" there).
-	*/
-	chipw = ceil(rec_sb_cw * 10);
-	if (!Scores_IsOnline())
-	{
-		if (Scores_Chip("sb_fx", [x0 + w - pad - chipw, y0 + pad], [chipw, chiph],
-		                "cheated", rec_sb_filter == SB_F_CHEATED))
-			rec_sb_filter = SB_F_CHEATED;
-		if (Scores_Chip("sb_fs", [x0 + w - pad * 2 - chipw * 2, y0 + pad],
-		                [chipw, chiph], "stitched", rec_sb_filter == SB_F_STITCHED))
-			rec_sb_filter = SB_F_STITCHED;
-		if (Scores_Chip("sb_fc", [x0 + w - pad * 3 - chipw * 3, y0 + pad],
-		                [chipw, chiph], "clean", rec_sb_filter == SB_F_CLEAN))
-			rec_sb_filter = SB_F_CLEAN;
-		if (Scores_Chip("sb_fa", [x0 + w - pad * 4 - chipw * 4, y0 + pad],
-		                [chipw, chiph], "all", rec_sb_filter == SB_F_ALL))
-			rec_sb_filter = SB_F_ALL;
-	}
-
-	/*
-	  ---- the tabs, on their own row ---------------------------------------
-
-	  A ROW OF THEIR OWN AND NOT BESIDE THE MAP NAME.  The obvious cheaper
-	  layout puts them to the right of the title and costs no vertical space,
-	  but the title is a map name of unbounded width -- surf_air_arena_rebuild
-	  is a real file -- so the tabs would collide with it on exactly the maps
-	  whose names are longest, and nowhere else.  One row is 1/26th of the
-	  panel's height and is predictable at every width.
-
-	  The refresh chip is the ONLY way an online tab re-asks for a board it has
-	  already asked for; see the anti-hammer note beside Online_Need.  It is
-	  drawn only on the online tabs because the local list rebuilds itself from
-	  the directory on every open anyway.
-	*/
-	ytabs = y0 + pad * 2 + rec_sb_sztitle;
-	if (Scores_Chip("sb_t0", [x0 + pad, ytabs], [chipw, chiph],
-	                "online", rec_sb_tab == SB_T_ONLINE))
-	{
-		rec_sb_tab = SB_T_ONLINE;
-		rec_sb_tabauto = FALSE;     // the player chose; the follow leaves it
-	}
-	if (Scores_Chip("sb_t1", [x0 + pad * 2 + chipw, ytabs], [chipw, chiph],
-	                "segmented", rec_sb_tab == SB_T_SEGMENT))
-	{
-		rec_sb_tab = SB_T_SEGMENT;
-		rec_sb_tabauto = FALSE;
-	}
-	if (Scores_Chip("sb_t2", [x0 + pad * 3 + chipw * 2, ytabs], [chipw, chiph],
-	                "local", rec_sb_tab == SB_T_LOCAL))
-	{
-		rec_sb_tab = SB_T_LOCAL;
-		rec_sb_tabauto = FALSE;
-	}
-	/*
-	  The imported board, drawn only where there is one.  ob_cnt_imported comes
-	  from the LAST fetch's counts, so the chip appears once any board on this
-	  map has been asked for -- which is the same moment the player could act on
-	  it.  Hiding it when the count is 0 is deliberate: on a map nobody has
-	  imported, a fourth tab that is always empty is worse than no tab.
-	*/
-	if (ob_cnt_imported > 0 || rec_sb_tab == SB_T_MOMENTUM)
-	if (Scores_Chip("sb_t3", [x0 + pad * 4 + chipw * 3, ytabs], [chipw, chiph],
-	                "imported", rec_sb_tab == SB_T_MOMENTUM))
-	{
-		rec_sb_tab = SB_T_MOMENTUM;
-		rec_sb_tabauto = FALSE;
-	}
-	if (Scores_IsOnline())
-	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
-	if (Scores_Chip("sb_tref", [x0 + w - pad - chipw, ytabs], [chipw, chiph],
-	                "refresh", FALSE))
-		Online_Fetch(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
-		             Scores_TierOf(), Scores_StyleOf());
-
-	yhead = ytabs + chiph + ceil(pad * 0.5);
-
-	// ---- the legs, down the left ----------------------------------------
-	lw = legw;
-	rp = [x0 + pad, yhead];
-	if (Scores_Chip("sb_graph", rp, [lw - pad * 0.5, rec_sb_szhead * 1.2], "graphs", FALSE))
-		rec_sb_graphpick = TRUE;
-
-	/*
-	  THE FOOTER IS TWO LINES NOW, AND BOTH LISTS HAVE TO KNOW.
-
-	  Every list height below ends `- pad * 2 - footh`, where footh used to be
-	  the single row the counts line occupies.  Build 64 adds the board-state
-	  sentence underneath it (Scores_BoardNote), and reserving the space in only
-	  one of the two lists would leave the legs column overlapping the text.
-
-	  RESERVED UNCONDITIONALLY, even on a server that publishes no state and
-	  therefore draws nothing there.  A panel whose list is a row taller when
-	  the server happens to be old is a layout that moves under the player for
-	  reasons they cannot see -- and one blank row costs less than that.
-	*/
-	footh = rec_sb_szrow * 2 + ceil(pad * 0.35);
-
-	lp = [x0 + pad, rp_y + rec_sb_szhead + pad * 0.5];
-	sui_list_view_begin("sb_legs", lp, [lw, y0 + h - lp_y - pad * 2 - footh],
-	                    [lw - pad * 0.5, rec_sb_rowh], rec_sb_legn,
-	                    rec_sb_legscroll, [0, ceil(rec_sb_cw)]);
-	rs = [lw - pad * 0.5, rec_sb_rowh];
-	lp = '0 0 0';
-	for (idx = sui_list_item(lp); idx > -1; idx = sui_list_item(lp))
-	{
-		rid = strcat("sb_leg", ftos(idx));
-		sui_action_element(lp, rs, rid, sui_noop);
-
-		on  = (idx == rec_sb_leg);
-		hot = sui_is_hovered(rid);
-		if (on || hot)
-		{
-			if (sui_style_modern)
-				sui_roundbox(lp, rs - '0 1 0', ceil(rec_sb_cw * 0.5), on ? SBC_SEL : SBC_HOT, 1);
-			else
-				sui_fill(lp, rs, on ? SBC_SEL : SBC_HOT, 1, 0);
-		}
-
-		Scores_Text([lp_x + rec_sb_cw, lp_y + (rec_sb_rowh - rec_sb_szrow) * 0.5],
-		            rec_sb_szrow, Scores_LegName(idx),
-		            (on || hot) ? SBC_TEXT : SBC_DIM, 1);
-
-		if (sui_is_released(rid))
-			rec_sb_leg = idx;
-	}
-	sui_list_view_end();
-
-	// ---- the runs, on the right -----------------------------------------
-	rp = [x0 + pad * 2 + lw, yhead];
-	rs = [w - lw - pad * 3, y0 + h - (rp_y + rec_sb_szhead + pad * 0.5) - pad * 2 - footh];
-
-	/*
-	  HOW MANY COLUMNS THE WINDOW CAN AFFORD, decided here and obeyed below.
-
-	  The table is 83 characters wide at full dress (76 before build 68 added
-	  the replay column).  On a narrow window that does not fit, and a column
-	  that runs off the right edge is worse than one that is not drawn -- so the
-	  two least load-bearing go first: the last column (the file's tag locally,
-	  the demotion reason online), then the date/age.  Rank, time, delta, player
-	  and the class word are what a leaderboard IS and are never dropped.
-
-	  THE THREE BUDGETS ARE 83 / 72 / 51, AND THE FLOOR MOVED BY SEVEN.  That is
-	  the one cost of the new column and it is worth stating rather than
-	  discovering: the narrowest table this board can produce is now 51
-	  characters where it was 44, so a window that could just fit the old floor
-	  can overflow the new one.  No fourth step was added to drop the replay
-	  column too, deliberately -- the mark surviving every width is the reason it
-	  was put at SBX_REP in the first place, and 51 characters is roughly 370 px
-	  at the shipped scale, which no window this game runs in is narrower than.
-	  If one ever is, the honest fix is a fourth budget, not a narrower mark.
-
-	  BUILD 64: BOTH SOURCES OBEY THIS ONE DECISION.  rec_sb_cols is read by
-	  both row drawers, so a window narrow enough to drop a column drops the
-	  same column on every tab.  A per-drawer copy of this arithmetic would
-	  eventually let two tabs disagree about how wide the same table is.
-	*/
-	rec_sb_cols = SBX_END;
-	if (Scores_ColX(rec_sb_cols) > rs_x - pad) rec_sb_cols = SBX_LINE;   // Patch 433
-	if (Scores_ColX(rec_sb_cols) > rs_x - pad) rec_sb_cols = SBX_TAG;
-	if (Scores_ColX(rec_sb_cols) > rs_x - pad) rec_sb_cols = SBX_DATE;
-	Scores_ColsClassic();
-
-	native = Scores_NativeDraw(rp, [rs_x, rs_y + rec_sb_szhead + pad * 0.5]);
-	if (!native)
-	{
-		Font_Set(ui_font_ui);
-		Scores_Text([rp_x + Scores_ColX(SBX_RANK), rp_y], rec_sb_szhead, "#", SBC_DIM, 1);
-		Scores_Text([rp_x + Scores_ColX(SBX_TIME), rp_y], rec_sb_szhead, "time", SBC_DIM, 1);
-		Scores_Text([rp_x + Scores_ColX(SBX_DELTA), rp_y], rec_sb_szhead, "delta", SBC_DIM, 1);
-		Scores_Text([rp_x + Scores_ColX(SBX_OWNER), rp_y], rec_sb_szhead, "player", SBC_DIM, 1);
-
-		/*
-		  THE LAST THREE HEADINGS ARE WHERE THE TWO SOURCES STOP AGREEING.
-
-		  An online row has no `date`.  surfd stores a submission timestamp, but
-		  this client has no clock it may trust against it -- so the column is an
-		  AGE, computed from the reply's own `t` minus the row's own `when`, both
-		  server-side.  Calling that "date" would be a heading that lies about its
-		  units, and a player would read "3d" as a day of the month.
-		*/
-		/*
-		  BUILD 68: `replay` IS AN ONLINE HEADING ONLY, AND THE LOCAL BOARD KEEPS
-		  THE GAP RATHER THAN FILLING IT.
-
-		  One column table serves both tabs, so the local board now has seven blank
-		  characters between `player` and `date`.  Filling them (RT_LOBBY -> "none",
-		  everything else -> "watch") would be the unification, and it is deliberately
-		  NOT done here: every local row's recording is on this disk already, so the
-		  column would answer a question nobody on that tab is asking, and the answer
-		  would be "yes" on essentially every row.  A heading over a column that says
-		  the same thing throughout is worse than a gap, which at least reads as
-		  "this tab does not use this".  Same reasoning the line below already gives
-		  for leaving the local tag column unlabelled.
-		*/
-		if (sb_colon[SBK_REP])
-		if (Scores_IsOnline())
-			Scores_Text([rp_x + Scores_ColX(SBX_REP), rp_y], rec_sb_szhead,
-			            "replay", SBC_DIM, 1);
-
-		if (sb_colon[SBK_DATE])
-			Scores_Text([rp_x + Scores_ColX(SBX_DATE), rp_y], rec_sb_szhead,
-			            Scores_IsOnline() ? "age" : "date", SBC_DIM, 1);
-		if (sb_colon[SBK_KIND])
-			Scores_Text([rp_x + Scores_ColX(SBX_KIND), rp_y], rec_sb_szhead, "run", SBC_DIM, 1);
-		// The local board has never labelled its last column and does not start
-		// now: `latest` and `lobby` say what they are.  "no ruleset" does not.
-		if (sb_colon[SBK_TAG])
-		if (Scores_IsOnline())
-			Scores_Text([rp_x + Scores_ColX(SBX_TAG), rp_y], rec_sb_szhead, "why", SBC_DIM, 1);
-		if (rec_sb_cols > SBX_LINE)
-			Scores_Text([rp_x + Scores_ColX(SBX_LINE), rp_y], rec_sb_szhead, "line", SBC_DIM, 1);
-
-		/*
-		  The tick this map's server is actually running, which is what every LOCAL
-		  time on screen is divided by.  Read once per frame rather than per row.
-
-		  The online rows deliberately do NOT use it: each carries the rate it was
-		  actually set at, which is the case surfd ranks by milliseconds to get
-		  right.  Formatting a foreign run against this client's tickrate would
-		  print a time that disagrees with the rank printed beside it.
-		*/
-		tick = Timer_Tick();
-		pick = -1;
-
-		if (Scores_IsOnline())
-			pick = Scores_DrawOnlineRows(rp, rs, pad);
-		else
-			pick = Scores_DrawLocalRows(rp, rs, tick, pad);
-	}
-	else
-		pick = Scores_NativeRowPick();
-
-	// ---- the footer ------------------------------------------------------
-	Font_Set(ui_font_ui);
-	s = Scores_CountLine();
-	Scores_Text([x0 + pad, y0 + h - pad - footh], rec_sb_szrow, s, SBC_DIM, 1);
-
-	/*
-	  The hint says what a CLICK does, and on the online tabs a click does not
-	  open anything -- so it names the keys instead of promising a replay that
-	  is on somebody else's disk.
-
-	  BUILD 86: "rmb pins" became "rmb for cursor", and the online string gained
-	  the key.  Letting go of +showscores now closes the board on every tab, so
-	  "esc to close" alone was understating it -- and the pin no longer outlives
-	  the key, which means what mouse2 actually buys you is the cursor for the rest
-	  of the hold.  A hint that names a behaviour the build removed is worse than
-	  no hint.
-	*/
-	s = Scores_IsOnline()
-	      ? "left/right change tab    up/down change leg    rmb for cursor    tab or esc to close"
-	      : "click a run to watch it    tab or esc to close";
-	Scores_TextR([x0 + w - pad, y0 + h - pad - footh], rec_sb_szrow,
-	             s, SBC_DIM, 0.8);
-
-	/*
-	  ---- AND WHERE A RUN SET HERE GOES.  On EVERY tab, including Local.
-
-	  Local is where the player's own times are, so it is exactly where "why is
-	  this the only place they are" gets asked -- putting the sentence only on
-	  the online tabs would hide it from the tab the question is asked on.
-
-	  Below the counts rather than beside them because it is a different KIND of
-	  fact: the line above describes the board being looked at, this one
-	  describes the server being played on, and running them together reads as
-	  one sentence about the board.
-	*/
-	s = Scores_BoardNote();
-	if (s != "")
-		Scores_Text([x0 + pad, y0 + h - pad - rec_sb_szrow], rec_sb_szrow,
-		            s, Scores_BoardNoteCol(), 0.85);
 
 	Scores_Finish(p, sz, pad, scr, pick);
 };
@@ -3778,26 +3308,18 @@ void() Scores_Status =
 	              rec_sb_leg + 1, rec_sb_legn, Scores_LegName(rec_sb_leg)));
 
 	/*
-	  `cols` is the LAST DRAWN FRAME's column budget, and it is reported because
-	  it is otherwise checkable only by eye.
-
-	  The drop rule (SBX_END -> SBX_TAG -> SBX_DATE) is arithmetic over the
-	  panel width, and both row drawers obey the same global -- but a config
-	  cannot read a pixel, and the first attempt to test it set vid_conwidth,
-	  which is the MENU's virtual screen and does not reach CSQC at all.  The
-	  board looked identical and the arm looked passed.  A number that says
-	  which budget was actually chosen cannot be misread that way.
-
-	  It is 0 until the board has been drawn once, which is honest: nothing has
-	  decided a width yet.
+	  `cols` and `type` are the LAST DRAWN FRAME's table: how many columns it had
+	  (5 to 9) and its row type in pixels.  Reported because the sizing steps are
+	  otherwise checkable only by eye, and a config cannot read a pixel.  Both
+	  are 0 until the board has been drawn once.
 	*/
-	print(sprintf("  tab %s   filter %s   cols %g\n",
+	print(sprintf("  tab %s   filter %s   cols %g   type %g\n",
 	              (rec_sb_tab == SB_T_LOCAL) ? "local"
 	                : ((rec_sb_tab == SB_T_SEGMENT) ? "segmented" : "online"),
 	              (rec_sb_filter == SB_F_CLEAN) ? "clean"
 	              : ((rec_sb_filter == SB_F_STITCHED) ? "stitched"
 	              : ((rec_sb_filter == SB_F_CHEATED) ? "cheated" : "all")),
-	              rec_sb_cols));
+	              rec_sb_cols, rec_sb_szrow));
 
 	/*
 	  THE SERVER'S ANSWER VERBATIM, then this file's reading of it.

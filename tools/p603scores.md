@@ -4,6 +4,84 @@ Patch 603 is now published for unrelated reader work. The p603 filenames and
 older checkpoints below preserve evidence continuity, NOT a product-number
 reservation. Fetch both repositories and reallocate max+1 before publication.
 
+## Patch 607 — one board layout, 2026-10-10
+
+Patch 607 removes the classic look: there is one +showscores layout and no
+`ui_style`. For these tools:
+
+- `--style` is gone from `p603scores.py` and `p603perf.py`; every arm runs the
+  one layout. The Patch 606 commands below that pass it are history.
+- `ui_gallery.py` takes `--sizes WxH ...` (one arm a size) where it took
+  `--styles`, `--width` and `--height`; `--against <rig or arm>` writes pairs. It
+  shoots the plain HUD first, and reports a rig whose window took the foreground
+  as INTERFERED: the owner's desktop reached it, so no shot can be trusted.
+- `test_ui_theme.py` compares two builds (`--control-qc`, or `--control-arm` for
+  a gallery that already ran) and proves each panel was on screen (P0).
+- `p603life.py`'s dock arm narrows the canvas to 560 (`vid_conwidth` is live in
+  these rigs); raising hud_scale no longer docks the room list.
+- `scores status` prints `cols <5-9>` and `type <px>` for the last drawn frame.
+
+### Commands
+
+    python tools/test_ui_theme.py --engine <exe> --server <sv> --control-arm <Patch 606 gallery>/style1 \
+        --subject-qc <progs> --library <install gamedir> --out ROOT/runtime/<tag>/look
+    python tools/ui_gallery.py --engine <exe> --server <sv> --qc-artifacts <progs> --library <install gamedir> \
+        --sizes 1280x720 1024x768 800x600 640x480 [--against <rig>] --out ROOT/runtime/<tag>/gal
+    python tools/p603scores.py ... --arms legacy --out ROOT/runtime/<tag>/board
+    python tools/p603scores.py --dense [--renderer d3d11|vk] ... --out ROOT/runtime/<tag>/...
+    python tools/p603scores.py --life ... --arms native1 native2 legacy --out ROOT/runtime/<tag>/life
+    python tools/p603perf.py run [--rows 20 --repeats 3 --samples 5] ... --out ROOT/runtime/<tag>/perf
+
+### Results (the tree of the Patch 607 commit, engine patch-606 binaries as installed; ROOT/runtime/one3, one4)
+
+- **Build.** Three progs at 0 warnings; qwprogs.dat byte-identical to Patch
+  606's (no server QC changed). csprogs.dat is 40 KB smaller.
+- **Look gate** (`one4/look`): 30 checks, 0 failed. All 13 panel states are on
+  screen (P0) and pixel-identical to the Patch 606 final build at `ui_style 1`
+  (`ROOT/runtime/final606v/theme/subject/*/style1`); the mutant (the theme's
+  butter moved) differs on `gfx_page1` (1,745) and `scores_local` (2,099) and by
+  0 on `hudedit_list`; the parked mouse reads `tip 1 [cs_tier1]`. Its first two
+  runs did not grade: one read 16 and 18 "changed" pixels on the map picker, all
+  in the panel's rounded corners where the animated backdrop shows (the regions
+  now sit six pixels in), and one exited 2 because the mutant's rig window took
+  the foreground.
+- **Other sizes** (`one3/gal`, against the Patch 606 arms at the same size):
+  1280x720, 1024x768 and 800x600 are identical in every in-game shot but for the
+  ping digits. `scores status` there: type 14 with 8 or 9 columns, type 12 with
+  7 or 8, type 12 with 5 or 6. 640x480 is new: type 8, 6 or 7 columns, the room
+  list 200 wide beside the board, where Patch 606 fell back to the classic
+  layout. Its small labels are larger than its rows (BACKLOG).
+- **Board actions, legacy arm** (`one3/board`): 0 failures, the three
+  source-switch clicks included. **Dense** (`one3/dense`): native1, native2,
+  legacy, 0 failures.
+- **GL six arms** (`one4/gl`): 0 failures; reader controls 69/69 once the
+  one-pixel control followed the table's rectangle (it was a fixed (568,279),
+  inside the rank crop only in the classic layout: 68/69 before). **Hostile
+  names** (`one4/names`), **D3D11** (`one4/d3d11`), **Vulkan** (`one4/vk`): 0
+  failures each.
+- **Lifecycle** (`one3/life`): the dock arm passes in both native arms at a
+  560-wide canvas (`cols 5 type 8`, list 200 wide and docked, `clipped=1 gap=1
+  hover=0`). The suite's two other failures are the stale ones BACKLOG names,
+  identical on Patch 606's tree (`ROOT/runtime/base606/life`).
+- **Other SUI gates.** `test_ui_modern.py` 27/27 (its two classic checks are
+  gone, one "the open editor changes pixels" check is new) and its unit tests
+  9/9; `p498keys.py` 16/16; `test_water_menu.py` 0 failed; the five
+  `compare_chip_smoke.py` seams each match once.
+- **Cost** (`one4/perf`, QC UpdateView median us/frame, 20 rows, open): legacy
+  1194, no plugin 1197, native 1121; closed 355-459. Inside Patch 606's range
+  for the same layout. At the default 6 rows the tool's screenshot crop read 893
+  bright pixels against a bound of 1000 in every arm: it was placed on the
+  classic rows. Moved to the layout's first six rows, the same rig regrades at 0
+  failures (`one3/perf6`).
+- **A batch that would not stop.** `one3` ran while a batch I had stopped
+  (`one2`, an abandoned build) was still executing its remaining steps: the
+  harness's stop did not end the script. Nothing from `one2` is cited. `one3`'s
+  rigs are separate directories and ports, its editor rig's provenance shows
+  this build's csprogs, and every step in it passed; a second game running can
+  fail these checks (focus, timing) but has no way to pass one. The gate script
+  now takes a stop file and waits while another game is running.
+- **Not run:** soak; `compare_chip_smoke.py` itself.
+
 ## Patch 606 — the board under `ui_style 1`, 2026-10-10
 
 Patch 606 gives +showscores a second layout (`Scores_DrawModern`) behind

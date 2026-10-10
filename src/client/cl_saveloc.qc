@@ -842,26 +842,10 @@ float() SaveLoc_Console =
 };
 
 /*
-  One row.  `hot` is the action the header's index is about to act on, which
-  is load -- so it is the row that tells you what `2` will do.
-*/
-void(vector p, float w, float h, string key, string label, float hot, float lsz) SaveLoc_Row =
-{
-	local vector fg;
-
-	drawfill(p, [w, h], hot ? '0.16 0.22 0.30' : '0 0 0', hot ? 0.80 : 0.55, 0);
-
-	fg = hot ? '1.00 0.90 0.55' : '0.80 0.83 0.88';
-	HUD_Text([p_x + h * 0.35, p_y + (h - lsz) * 0.5], key, lsz, fg, 1);
-	HUD_Text([p_x + h * 1.25, p_y + (h - lsz) * 0.5], label, lsz,
-	         hot ? '1 1 1' : '0.72 0.75 0.80', 1);
-};
-
-/*
-  The modern digit menu (ui_style 1, Patch 606): one translucent rounded card, a
-  keycap per row and a tint on the row a digit is about to act on. cl_gfx.qc
-  draws with the same pieces. Raw screen coordinates: these menus are part of
-  the HUD stack, outside any sui bracket, so nothing here is hit-tested.
+  The digit menus (Patch 606): one translucent rounded card, a keycap per row
+  and a tint on the row a digit is about to act on. cl_gfx.qc draws with the
+  same pieces. Raw screen coordinates: these menus are part of the HUD stack,
+  outside any sui bracket, so nothing here is hit-tested.
 */
 #define KM_NORMAL 0
 #define KM_HOT    1
@@ -892,10 +876,21 @@ void(vector p, float w, float h, string key, string label, float state, float ls
 	HUD_Text([p_x + 8 * sc + cap, p_y + (h - sc - lsz) * 0.5], label, lsz, fg, 1);
 };
 
-void(vector scr, float count, float idx) SaveLoc_DrawModern =
+void(vector scr) SaveLoc_Draw =
 {
 	local vector p;
-	local float sc, w, h, lsz, y, locked, fresh, armed, total, hh;
+	local float sc, w, h, lsz, y, locked, fresh, armed, total, hh, count, idx;
+
+	if (!rec_sl_open)
+		return;
+	if (!cvar("rec_savelock"))
+	{
+		rec_sl_open = FALSE;         // turned off underneath us
+		return;
+	}
+
+	count = getstatf(STAT_FS_SAVECOUNT);
+	idx   = getstatf(STAT_FS_SAVEINDEX);
 
 	sc  = ui_cv_scale;
 	Font_Set(ui_font_ui);
@@ -906,7 +901,8 @@ void(vector scr, float count, float idx) SaveLoc_DrawModern =
 
 	locked = SaveLoc_RunLocked();
 	armed  = (rec_sl_armdel > 0 && cltime - rec_sl_armdel <= FS_SL_ARMTIME);
-	// Lapsed, or never armed; cleared here as in the classic draw.
+	// Lapsed, or never armed: cleared here as well as on the next keypress, so
+	// the row cannot sit armed-looking after the window has gone.
 	if (!armed)
 		rec_sl_armdel = 0;
 
@@ -925,7 +921,8 @@ void(vector scr, float count, float idx) SaveLoc_DrawModern =
 	drawfill([p_x + 4 * sc, y + hh - 2 * sc, 0], [w - 8 * sc, 1, 0], SUI_THEME_EDGE_HI, 0.7, 0);
 	y = y + hh;
 
-	// The run clock stored in the slot the cursor is on; see the classic draw.
+	// The run clock stored in the slot the cursor is on: what tells seven saves
+	// along one run apart. A save taken outside a run stores 0 and shows none.
 	if (getstatf(STAT_FS_SAVETICKS) > 0)
 	{
 		HUD_Text([p_x + 6 * sc, y + (h - sc - lsz) * 0.5], "run at", lsz, SUI_THEME_MUTED, 1);
@@ -935,6 +932,7 @@ void(vector scr, float count, float idx) SaveLoc_DrawModern =
 		y = y + h;
 	}
 
+	// Patch 391: loads are refused on a clean run; rose just after a refusal.
 	if (locked)
 	{
 		fresh = (ui_tm_lockat > 0 && cltime - ui_tm_lockat <= FS_SL_ARMTIME);
@@ -945,6 +943,7 @@ void(vector scr, float count, float idx) SaveLoc_DrawModern =
 		y = y + h;
 	}
 
+	// Load is the hot row: it is what the header's index is about to act on.
 	KeyMenu_Row([p_x, y], w, h, "1", "Create save", KM_NORMAL, lsz, sc);        y = y + h;
 	KeyMenu_Row([p_x, y], w, h, "2", "Load save",
 	            (count > 0 && !locked) ? KM_HOT : KM_NORMAL, lsz, sc);            y = y + h;
@@ -961,132 +960,7 @@ void(vector scr, float count, float idx) SaveLoc_DrawModern =
 	KeyMenu_Row([p_x, y], w, h, "0", "Close menu", KM_NORMAL, lsz, sc);
 
 	Font_Reset();
+	// The box, for `hud_edit`. Only registered while the menu is open; the editor
+	// has a nominal rect for the closed case.
 	HUD_Rect("saveloc", p, [w, total, 0], p);
-};
-
-void(vector scr) SaveLoc_Draw =
-{
-	local vector p;
-	local float w, h, lsz, gap, count, idx, y, locked, fresh;
-	local string hdr;
-
-	if (!rec_sl_open)
-		return;
-	if (!cvar("rec_savelock"))
-	{
-		rec_sl_open = FALSE;         // turned off underneath us
-		return;
-	}
-
-	count = getstatf(STAT_FS_SAVECOUNT);
-	idx   = getstatf(STAT_FS_SAVEINDEX);
-
-	if (sui_style_modern)
-	{
-		SaveLoc_DrawModern(scr, count, idx);
-		return;
-	}
-
-	Font_Set(ui_font_ui);
-	lsz = Font_Px(8 * ui_cv_scale);
-	h   = 13 * ui_cv_scale;
-	w   = 84 * ui_cv_scale;
-	gap = 1 * ui_cv_scale;
-
-	p = [scr_x * cvar("hud_saveloc_x"), scr_y * cvar("hud_saveloc_y"), 0];
-	y = p_y;
-
-	// Header: the title on the left, the cursor on the right.  "3/7" is the
-	// whole point of the menu -- it is what `2` is about to load.
-	drawfill([p_x, y], [w, h + gap], '0.10 0.13 0.17', 0.85, 0);
-	HUD_Text([p_x + h * 0.35, y + (h - lsz) * 0.5], "Save Lock", lsz, '1 1 1', 1);
-
-	hdr = (count > 0) ? sprintf("%g/%g", idx, count) : "--";
-	HUD_TextR([p_x + w - h * 0.35, y + (h - lsz) * 0.5], hdr, lsz,
-	          (count > 0) ? '1.00 0.90 0.55' : '0.55 0.58 0.62', 1);
-	y = y + h + gap * 2;
-
-	/*
-	  Build 17: the run clock stored in the slot the cursor is on.
-
-	  "3/7" says which save `2` will load and nothing about WHICH SAVE THAT IS,
-	  which is fine when they are three metres apart and useless when they are
-	  seven points along one run.  The time is the thing that distinguishes them,
-	  and it is the same number the timer will read after the load.
-
-	  Drawn only when there is one: a save taken outside a run stores 0, and
-	  "0:00.000" would read as a save at the start of the run rather than as a
-	  save with no run behind it.
-	*/
-	if (getstatf(STAT_FS_SAVETICKS) > 0)
-	{
-		drawfill([p_x, y], [w, h], '0.10 0.13 0.17', 0.75, 0);
-		HUD_Text([p_x + h * 0.35, y + (h - lsz) * 0.5], "run at", lsz,
-		         '0.55 0.58 0.62', 1);
-		HUD_TextR([p_x + w - h * 0.35, y + (h - lsz) * 0.5],
-		          Time_TickString(getstatf(STAT_FS_SAVETICKS), Timer_Tick()), lsz,
-		          '0.45 0.85 1.00', 1);
-		y = y + h + gap * 2;
-	}
-
-	// Patch 391: loads are refused on a clean run; the armed-row red just after
-	// a refusal.
-	locked = SaveLoc_RunLocked();
-	if (locked)
-	{
-		fresh = (ui_tm_lockat > 0 && cltime - ui_tm_lockat <= FS_SL_ARMTIME);
-		drawfill([p_x, y], [w, h], fresh ? '0.30 0.08 0.08' : '0.10 0.13 0.17',
-		         fresh ? 0.90 : 0.75, 0);
-		HUD_Text([p_x + h * 0.35, y + (h - lsz) * 0.5], "no loads mid-run", lsz,
-		         fresh ? '1.00 0.65 0.55' : '0.55 0.58 0.62', 1);
-		y = y + h + gap * 2;
-	}
-
-	/*
-	  Build 25 -- Momentum's nine, in Momentum's order.
-
-	  `hot` is still "the row the header's index is about to act on", which is
-	  Load; the four navigation rows move that index rather than being it, so
-	  they are not hot even though they also teleport.
-
-	  Row 8 says what it is about to do rather than what it is called, and that
-	  is the whole of the confirmation being visible: an armed Delete All reads
-	  "Delete All -- again to confirm" in the same warning red the timer uses for
-	  a voided run, and goes back to its own label when the arm lapses.
-	*/
-	SaveLoc_Row([p_x, y], w, h, "1", "Create Save",   FALSE, lsz);      y = y + h + gap;
-	SaveLoc_Row([p_x, y], w, h, "2", "Load Save",     count > 0 && !locked, lsz);  y = y + h + gap;
-	SaveLoc_Row([p_x, y], w, h, "3", "Go to next",    FALSE, lsz);      y = y + h + gap;
-	SaveLoc_Row([p_x, y], w, h, "4", "Go to previous",FALSE, lsz);      y = y + h + gap;
-	SaveLoc_Row([p_x, y], w, h, "5", "Go to First",   FALSE, lsz);      y = y + h + gap;
-	SaveLoc_Row([p_x, y], w, h, "6", "Go to Last",    FALSE, lsz);      y = y + h + gap;
-	SaveLoc_Row([p_x, y], w, h, "7", "Remove Save",   FALSE, lsz);      y = y + h + gap;
-
-	if (rec_sl_armdel > 0 && cltime - rec_sl_armdel <= FS_SL_ARMTIME)
-	{
-		drawfill([p_x, y], [w, h], '0.30 0.08 0.08', 0.90, 0);
-		HUD_Text([p_x + h * 0.35, y + (h - lsz) * 0.5], "8", lsz, '1.00 0.80 0.55', 1);
-		HUD_Text([p_x + h * 1.25, y + (h - lsz) * 0.5], "again to confirm", lsz,
-		         '1.00 0.65 0.55', 1);
-	}
-	else
-	{
-		// Lapsed, or never armed.  Cleared here as well as on the next keypress
-		// so the row cannot sit armed-looking after the window has gone.
-		if (rec_sl_armdel > 0)
-			rec_sl_armdel = 0;
-		SaveLoc_Row([p_x, y], w, h, "8", "Delete All", FALSE, lsz);
-	}
-	y = y + h + gap;
-
-	SaveLoc_Row([p_x, y], w, h, "0", "Close menu",    FALSE, lsz);
-	y = y + h + gap;
-
-	Font_Reset();
-
-	// Build 31: the box, for `hud_edit`.  Left/top anchored like the gfx menu,
-	// and only registered while the menu is open -- the editor falls back to a
-	// nominal rect for the closed case, since a panel you cannot see at this
-	// moment is still one you might want to move.
-	HUD_Rect("saveloc", p, [w, y - p_y, 0], p);
 };

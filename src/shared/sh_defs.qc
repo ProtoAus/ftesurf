@@ -2072,8 +2072,8 @@ float(float flags) FS_RunClass =
 /*
   ...and the word, which is what the report actually asked to change.
 
-  "segmented" is 9 characters and SBW_KIND is 9, so the leaderboard's column
-  width is unchanged by this build.  IT HAS NO SLACK LEFT: the next word added
+  "segmented" is 9 characters, which is what the leaderboard's run column
+  holds.  IT HAS NO SLACK LEFT: the next word added
   here does not fit and the column has to grow with it.
 */
 string(float c) FS_RunClassName =
@@ -2086,7 +2086,7 @@ string(float c) FS_RunClassName =
 };
 
 // The kind word for a row: the class, except a clean Multi-Session run reads
-// "multi" and a clean spectated one "spec" (fits SBW_KIND's 9).  A tainted class
+// "multi" and a clean spectated one "spec" (the run column holds 9).  A tainted class
 // wins -- the taint is the news.
 string(float flags) FS_RunKindName =
 {
@@ -2102,7 +2102,7 @@ string(float flags) FS_RunKindName =
 
 // The certification hole keeping a run off the ranked board, worst first; ""
 // when there is none.  The board's words (build 72-76, Online_WhyString's
-// essay): <= 10 characters for SBW_TAG, and they name the hole, never the
+// essay): <= 10 characters for the board's last column, and they name the hole, never the
 // player's setting or disk -- `cmd timer` has the detail.
 string(float flags) FS_CertWhy =
 {

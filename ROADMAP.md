@@ -831,7 +831,8 @@ correct clipping/scaling and no idle tooltip work when not shown.
 
 **A delivery (P566).** Added `src/shared/sh_ui.qc`, shared SUI frame hooks,
 a generated/licensed-in-tree nine-slice mask, and an opt-in HUD editor using
-`ui_style 1` (`0` remains default/classic). Modern text is drawn at native
+`ui_style 1` (`0` stayed default/classic until P607 removed the switch). Modern
+text is drawn at native
 physical bakes. Tooltips delay (`ui_tooltip_delay`, default 0.35 s), wrap/cache,
 clamp to screen edges, and release cached strings on close/hold/focus loss.
 Mouse and keyboard focus are independent; -1 means unchanged. The editor
@@ -1071,9 +1072,11 @@ meets, and gives it a palette: one token set in `sh_ui.qc` (dark slate, pastel
 accents) read by hud_edit, the save-lock and Source-renderer menus, the map
 picker, the menu leaderboard and the +showscores board, whose modern layout is
 new (`Scores_DrawModern`: same data, row drawers, ids and hand-offs). The native
-table's provider wears the same colours. In P606 `ui_style 0` is still the
-default and is gated pixel-identical (`tools/test_ui_theme.py`); Lex has since
-retired the old look, so P607 removes it and the switch. Next on the native
+table's provider wears the same colours. P606 kept `ui_style 0` as the default,
+gated pixel-identical; Lex then retired the old look and P607 removed it and
+the switch, gated the other way (`tools/test_ui_theme.py`: the new look did not
+move). The board now shrinks its type on a small window instead of changing
+layout. Next on the native
 side, each its own patch because both move the fixed-offset gates: the game's
 own font embedded in the provider, and the table's columns in the board's order.
 

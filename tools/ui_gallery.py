@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Screenshot gallery of the SUI panels in an isolated rig: look at pixels.
 
-One arm per ui_style value. Each arm opens the main menu, the map picker, the
-menu leaderboard, hud_edit, the save-lock and Source-renderer menus and the
-in-game leaderboard (legacy and, with the plugin, native), and screenshots each.
+One arm per window size (--sizes). Each arm opens the main menu, the map
+picker, the menu leaderboard, hud_edit, the save-lock and Source-renderer menus
+and the in-game leaderboard (legacy and, with the plugin, native), and
+screenshots each. --against pairs every shot with another rig's, side by side.
 Lobbies and boards come from a loopback stub; maps, thumbnails and the tier
 table are COPIED from --library. Nothing is launched from an install and no
 owner config or player data is read.
@@ -30,7 +31,7 @@ from urllib.parse import parse_qs, urlparse
 ROOT = Path(__file__).resolve().parents[1]
 MAP = 'uigallery'
 SHOTS = ('menu_main', 'menu_create', 'menu_create_hover', 'menu_board', 'menu_board_empty',
-         'hudedit_list', 'hudedit_pane', 'hudedit_tip', 'gfx_page1', 'gfx_page2',
+         'hud_plain', 'hudedit_list', 'hudedit_pane', 'hudedit_tip', 'gfx_page1', 'gfx_page2',
          'saveloc', 'scores_local', 'scores_online', 'linegraph')
 NAMES = ('Lex', 'kitsune', 'moonwalk', 'ramp_goblin', 'Aurora', 'strafe.exe', 'veloc1ty',
          'surf_dad', 'nyx', 'Halcyon', 'bhop_bunny', 'zero-g', 'Mistral', 'pixelrain',
@@ -138,7 +139,7 @@ def start_stub(root):
     return server
 
 
-def config(a, style, port, http_port, native):
+def config(a, size, port, http_port, native):
     def shot(name, wait=600):
         return [f'waitms {wait}', 'screenshot ' + name, 'waitms 250']
 
@@ -149,12 +150,12 @@ def config(a, style, port, http_port, native):
              'vid_srgb 0', 'v_gamma 1', 'v_contrast 1', 'v_brightness 0',
              'set ui_bootcheck 0', 'set rec_terms 4', 'set run_resume 0',
              f'set lobby_dir "http://127.0.0.1:{http_port}"', 'set lobby_poll 6',
-             f'set ui_style {style}', 'set ui_tooltip_delay 0.35', 'name GalleryUser',
+             'set ui_tooltip_delay 0.35', 'name GalleryUser',
              'waitms 1500', 'menu_restart', 'waitms 1200']
-    lines += [f'set ui_style {style}'] + shot('menu_main', 900)
+    lines += shot('menu_main', 900)
     lines += ['ui_strip_test screen create'] + shot('menu_create', 4500)
     lines += ['ui_key downarrow', 'waitms 300', 'ui_key downarrow'] + shot('menu_create_hover', 700)
-    if (a.width, a.height) == (1920, 1080):
+    if size == (1920, 1080):
         # The tier-1 chip under a parked MOUSE cursor: tooltips ignore the keyboard's.
         # `ui_hover` alone then prints whether a tip is up (test_ui_theme.py grades it).
         lines += ['ui_hover 486 224'] + shot('menu_create_tip', 1200) + ['ui_hover', 'ui_key downarrow', 'waitms 300']
@@ -164,10 +165,12 @@ def config(a, style, port, http_port, native):
     if native:
         lines += ['plug_load ui_imgui']
     lines += [f'connect 127.0.0.1:{port}', 'waitms 7000', 'ui_close', 'waitms 500',
-              f'set ui_style {style}', f'set hud_scale {a.hud_scale}', 'set rec_terms 4',
+              f'set hud_scale {a.hud_scale}', 'set rec_terms 4',
               f'set lobby_dir "http://127.0.0.1:{http_port}"',
               'set hud_edit_panel_x 0.05', 'set hud_edit_panel_y 0.08',
               'set hud_mapinfo_timeleft 0', 'set ui_native_scores 0']
+    # Nothing open: what every in-game panel shot must visibly differ from.
+    lines += shot('hud_plain', 800)
     lines += ['hud_edit on', 'waitms 700', 'hud_edit ui hover he_done'] + shot('hudedit_list')
     lines += ['hud_edit ui hover he_sel_speed', 'hud_edit ui down mouse1', 'waitms 120',
               'hud_edit ui hover he_sel_speed', 'hud_edit ui up mouse1'] + shot('hudedit_pane', 700)
@@ -208,12 +211,13 @@ def run(a):
     rig = Path(tempfile.mkdtemp(prefix='ui-gallery-', dir=out))
     (rig / 'UI_GALLERY_RIG.txt').write_text('Owned disposable gallery rig. No owner config or player data.\n')
     native = (a.plugins / 'fteplug_ui_imgui_x64.dll').is_file()
-    report = {'utc': datetime.now(timezone.utc).isoformat(), 'styles': a.styles, 'native': native,
-              'size': [a.width, a.height], 'hud_scale': a.hud_scale, 'arms': {},
+    report = {'utc': datetime.now(timezone.utc).isoformat(), 'native': native,
+              'planned': [f'{w}x{h}' for w, h in a.sizes], 'hud_scale': a.hud_scale, 'arms': {},
               'engine_sha256': sha(a.engine), 'server_sha256': sha(a.server),
               'progs_sha256': {n: sha(a.qc_artifacts / n) for n in ('qwprogs.dat', 'csprogs.dat', 'menu.dat')}}
-    for style in a.styles:
-        root = rig / f'style{style}'
+    for size in a.sizes:
+        arm = f'{size[0]}x{size[1]}'
+        root = rig / arm
         game = root / 'ftesurf'
         game.mkdir(parents=True)
         for folder in ('cfg', 'glsl', 'scripts', 'models', 'gfx', 'textures'):
@@ -255,15 +259,15 @@ def run(a):
         if port is None:
             raise RuntimeError('no free designated dedicated test port')
         stub = start_stub(root)
-        (game / 'gallery.cfg').write_text(config(a, style, port, stub.server_port, native))
+        (game / 'gallery.cfg').write_text(config(a, size, port, stub.server_port, native))
         # The raw .map has no clipping hull: without this the player falls for ever.
         (game / 'gallery_server.cfg').write_text(f'sv_cheats 1\nmap {MAP}.map\nwaitms 1000\nsv_gravity 0\n')
         svcmd = [str(root / 'fteqwsv64.exe'), '-basedir', str(root), '-nohome', '-noplugins',
                  '-port', str(port), '+set', 'cfg_save_auto', '0', '+set', 'sv_public', '0',
                  '+set', 'lobby_dir', '', '+exec', 'gallery_server.cfg']
         clcmd = [str(root / 'ftesurf64.exe'), '-basedir', str(root), '-nohome', '-nosound', '-nocdaudio',
-                 '-window', '+set', 'plug_loaddefault', '0', '+set', 'vid_width', str(a.width),
-                 '+set', 'vid_height', str(a.height), '+set', 'vid_fullscreen', '0',
+                 '-window', '+set', 'plug_loaddefault', '0', '+set', 'vid_width', str(size[0]),
+                 '+set', 'vid_height', str(size[1]), '+set', 'vid_fullscreen', '0',
                  '+set', 'vid_winmaximize', '0', '+set', 'vid_renderer', a.renderer,
                  '+set', 'cfg_save_auto', '0', '+exec', 'gallery.cfg']
         code = None
@@ -289,57 +293,77 @@ def run(a):
                 stub.shutdown()
                 stub.server_close()
                 stub.worker.join(timeout=10)
-        report['arms'][str(style)] = {'returncode': code, 'port': port}
+        report['arms'][arm] = {'returncode': code, 'port': port}
         (rig / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
-        print('Completed style', style, root)
+        print('Completed', arm, root)
     return rig
 
 
 def grade(rig):
     errors = []
     report = json.loads((rig / 'report.json').read_text())
-    for style, result in report['arms'].items():
-        root = rig / f'style{style}'
+    for arm in report.get('planned', []):
+        if arm not in report['arms']:
+            errors.append(f'{arm}: planned arm never ran')
+    for arm, result in report['arms'].items():
+        root = rig / arm
         logs = list((root / 'ftesurf/logs').glob('gallery*.log'))
         if len(logs) != 1:
-            errors.append(f'style {style}: unique log required')
+            errors.append(f'{arm}: unique log required')
             continue
         text = logs[0].read_text(errors='replace')
         if result.get('returncode') != 0:
-            errors.append(f'style {style}: client exit {result.get("returncode")}')
+            errors.append(f'{arm}: client exit {result.get("returncode")}')
         if text.count('UIGALLERY FINISHED') != 1:
-            errors.append(f'style {style}: completion marker missing')
-        for bad in re.findall(r'[^\r\n]*(?:Unknown command|QC runtime error|CSQC_Abort|Menu_Abort|sui error|sui warning)[^\r\n]*', text):
+            errors.append(f'{arm}: completion marker missing')
+        for bad in re.findall(r'[^\r\n]*(?:Unknown command|QC runtime error|CSQC_Abort|Menu_Abort|sui error|sui warning|sui_probe: no control|sui_probe: editor closed)[^\r\n]*', text):
             # Progs from before Patch 606 have no ui_hover; they are still a valid control.
             if 'Unknown command "ui_hover"' not in bad:
-                errors.append(f'style {style}: {bad.strip()[:140]}')
+                errors.append(f'{arm}: {bad.strip()[:140]}')
+        # Not a failure of the build: the owner's desktop reached the rig. The parked
+        # hovers are gone and real input may have landed, so no shot can be trusted.
+        if '[focus] window is foreground' in text:
+            errors.append(f'{arm}: INTERFERED -- the rig window took the foreground mid-run; rerun it')
         wanted = SHOTS + (('scores_native',) if report.get('native') else ())
-        if report.get('size') == [1920, 1080]:
+        if arm == '1920x1080':
             wanted += ('menu_create_tip',)
         for name in wanted:
             if len(list((root / 'ftesurf/screenshots').glob(name + '.*'))) != 1:
-                errors.append(f'style {style}: missing screenshot {name}')
+                errors.append(f'{arm}: missing screenshot {name}')
     return errors
 
 
-def sheet(rig):
-    """Side-by-side PNG per shot when two styles ran: left the first, right the second."""
+def sheet(rig, against):
+    """Side-by-side PNG per shot: `against` on the left, this rig on the right.
+
+    An arm pairs with the same-named arm of `against`, or with `against` itself
+    when that directory is one arm (it holds ftesurf/screenshots).
+    """
     from PIL import Image
     report = json.loads((rig / 'report.json').read_text())
-    styles = list(report['arms'])
-    if len(styles) != 2:
-        return
-    dest = rig / 'pairs'
-    dest.mkdir(exist_ok=True)
-    for shot in sorted((rig / f'style{styles[0]}/ftesurf/screenshots').glob('*.*')):
-        other = rig / f'style{styles[1]}/ftesurf/screenshots' / shot.name
-        if not other.is_file():
+    for arm in report['arms']:
+        left = against / arm if (against / arm / 'ftesurf/screenshots').is_dir() else against
+        if not (left / 'ftesurf/screenshots').is_dir():
+            print('NO PAIRS for', arm, '-- no screenshots under', left)
             continue
-        a, b = Image.open(shot).convert('RGB'), Image.open(other).convert('RGB')
-        pair = Image.new('RGB', (a.width + b.width + 8, max(a.height, b.height)), (255, 0, 255))
-        pair.paste(a, (0, 0))
-        pair.paste(b, (a.width + 8, 0))
-        pair.save(dest / (shot.stem + '.png'))
+        dest = rig / 'pairs' / arm
+        for shot in sorted((rig / arm / 'ftesurf/screenshots').glob('*.*')):
+            other = left / 'ftesurf/screenshots' / shot.name
+            if not other.is_file():
+                continue
+            dest.mkdir(parents=True, exist_ok=True)
+            a, b = Image.open(other).convert('RGB'), Image.open(shot).convert('RGB')
+            pair = Image.new('RGB', (a.width + b.width + 8, max(a.height, b.height)), (255, 0, 255))
+            pair.paste(a, (0, 0))
+            pair.paste(b, (a.width + 8, 0))
+            pair.save(dest / (shot.stem + '.png'))
+
+
+def size_arg(text):
+    w, _, h = text.partition('x')
+    if not (w.isdigit() and h.isdigit()):
+        raise argparse.ArgumentTypeError('a size is WIDTHxHEIGHT')
+    return int(w), int(h)
 
 
 if __name__ == '__main__':
@@ -350,9 +374,8 @@ if __name__ == '__main__':
     p.add_argument('--qc-artifacts', type=Path)
     p.add_argument('--library', type=Path, help='an install gamedir to COPY map tables, thumbnails and small maps from')
     p.add_argument('--out', type=Path, help='owned task-root output directory')
-    p.add_argument('--styles', nargs='+', type=int, default=[0, 1])
-    p.add_argument('--width', type=int, default=1920)
-    p.add_argument('--height', type=int, default=1080)
+    p.add_argument('--sizes', nargs='+', type=size_arg, default=[(1920, 1080)], metavar='WxH')
+    p.add_argument('--against', type=Path, help='another gallery rig (or one arm of one) to pair every shot with')
     p.add_argument('--hud-scale', type=float, default=2)
     p.add_argument('--renderer', choices=('gl', 'd3d11', 'vk'), default='gl')
     p.add_argument('--timeout', type=int, default=180)
@@ -366,7 +389,8 @@ if __name__ == '__main__':
             a.plugins = a.engine.parent
     rig = a.grade or run(a)
     errors = grade(rig)
-    sheet(rig)
+    if a.against:
+        sheet(rig, a.against)
     for error in errors:
         print('FAIL', error)
     print('Gallery rig', rig)

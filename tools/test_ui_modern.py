@@ -150,7 +150,7 @@ def grade(rig, missing_mask=False):
         fails += not ok
         print(("PASS " if ok else "FAIL ") + message)
 
-    probe = r"sui_probe style (\S+) round (\S+) asset (\S+) tip (\S+) lines (\S+) wraps (\S+)"
+    probe = r"sui_probe round (\S+) asset (\S+) tip (\S+) lines (\S+) wraps (\S+)"
     panel = r"sui_panel open (\S+) selected (\S+) dirty (\S+) cursor (\S+) held (\S+)"
     work = r"sui_work frames (\S+) quads (\S+) screen (\S+) (\S+) focused (\S+)"
     ps = {name: values(rows, "sui_probe ", probe) for name, rows in s.items()}
@@ -159,20 +159,20 @@ def grade(rig, missing_mask=False):
         return 2
     a = ps["A"]
     b = ps["B"]
-    check(a is not None and a[0] == 0 and a[1] == 0, "classic real panel acts without rounded drawing")
-    check(b is not None and b[0] == 1 and ((b[1] > 0 and b[2] == 1) if not missing_mask else (b[1] == 0 and b[2] == 0)),
-          "modern real panel draws rounding, or explicit missing-mask fallback")
-    check(ps["delayed"] is not None and ps["delayed"][3] == 0, "tooltip is not shown before delay")
-    check(ps["visible"] is not None and ps["visible"][3] == 1 and ps["visible"][4] >= 2, "tooltip appears and actually wraps")
-    check(ps["cached"] is not None and ps["visible"] is not None and ps["cached"][5] == ps["visible"][5], "steady hover does not rebuild wrapped strings")
-    check(ps["held"] is not None and ps["held"][3] == 0, "held mouse clears tooltip")
-    check(ps["focuslost"] is not None and ps["focuslost"][3] == 0, "whole-chain focus-loss probe clears tooltip")
-    check(ps["focusback"] is not None and ps["focusback"][3] == 1, "fresh focus restores delayed tooltip")
-    check(ps["keyboardlost"] is not None and ps["keyboardlost"][3] == 0, "keyboard-only loss with unchanged mouse clears tooltip")
-    check(ps["keyboardback"] is not None and ps["keyboardback"][3] == 1, "keyboard-only restoration preserves unchanged mouse focus")
-    ap = values(s["A"], "sui_panel ", panel, 1)
+    check(a is not None and a[0] == 0, "no rounded drawing before the editor opens")
+    check(b is not None and ((b[0] > 0 and b[1] == 1) if not missing_mask else (b[0] == 0 and b[1] == 0)),
+          "real panel draws rounding, or explicit missing-mask fallback")
+    check(ps["delayed"] is not None and ps["delayed"][2] == 0, "tooltip is not shown before delay")
+    check(ps["visible"] is not None and ps["visible"][2] == 1 and ps["visible"][3] >= 2, "tooltip appears and actually wraps")
+    check(ps["cached"] is not None and ps["visible"] is not None and ps["cached"][4] == ps["visible"][4], "steady hover does not rebuild wrapped strings")
+    check(ps["held"] is not None and ps["held"][2] == 0, "held mouse clears tooltip")
+    check(ps["focuslost"] is not None and ps["focuslost"][2] == 0, "whole-chain focus-loss probe clears tooltip")
+    check(ps["focusback"] is not None and ps["focusback"][2] == 1, "fresh focus restores delayed tooltip")
+    check(ps["keyboardlost"] is not None and ps["keyboardlost"][2] == 0, "keyboard-only loss with unchanged mouse clears tooltip")
+    check(ps["keyboardback"] is not None and ps["keyboardback"][2] == 1, "keyboard-only restoration preserves unchanged mouse focus")
+    ap = values(s["B"], "sui_panel ", panel)
     bp = values(s["action"], "sui_panel ", panel)
-    check(ap is not None and bp is not None and ap[1] == bp[1] and bp[1] >= 0, "same real selection action agrees in both styles")
+    check(ap is not None and bp is not None and bp[1] >= 0 and bp[1] != ap[1], "real selection action changes the selection")
     close = values(s["closed2"], "sui_panel ", panel)
     check(close is not None and close[0] == 0 and close[3] == 0, "closed editor releases its cursor claim")
     w1 = values(s["closed1"], "sui_work ", work)
@@ -184,7 +184,7 @@ def grade(rig, missing_mask=False):
     baked = tuple(float(n) for n in ladder[1].split()) if ladder else ()
     check(font is not None and font[0] in baked and font[5] > 0
           and abs(font[3]*font[1]-font[0]) < .001 and abs(font[4]*font[2]-font[0]) < .001,
-          "modern text requests a baked physical-pixel size on both axes, not fractional glyph scaling")
+          "text requests a baked physical-pixel size on both axes, not fractional glyph scaling")
     bounds = values(s["visible"], "sui_tip ", r"sui_tip \[[^]]*\] (\S+) (\S+) (\S+) (\S+)")
     frame = values(s["visible"], "sui_work ", work)
     check(bounds is not None and frame is not None and bounds[0] >= 0 and bounds[1] >= 0
@@ -195,7 +195,7 @@ def grade(rig, missing_mask=False):
     check("hud_edit: layout saved" in alltext or "layout saved to ftesurf.cfg" in alltext,
           "dirty close acted and explicitly saved into the disposable rig")
     edge = values(s["edge"], "sui_tip ", r"sui_tip \[[^]]*\] (\S+) (\S+) (\S+) (\S+)")
-    check(ps["edge"] is not None and ps["edge"][3] == 1 and edge is not None and frame is not None
+    check(ps["edge"] is not None and ps["edge"][2] == 1 and edge is not None and frame is not None
           and edge[0] >= 0 and edge[1] >= 0 and edge[0]+edge[2] <= frame[2]+1
           and edge[1]+edge[3] <= frame[3]+1, "lower-right hover tooltip is clamped on screen")
     shots = {}
@@ -208,35 +208,22 @@ def grade(rig, missing_mask=False):
         from PIL import Image, ImageChops
         images = {name: Image.open(path).convert("RGB") for name, path in shots.items()}
         pbox = next((re.fullmatch(r"sui_element \[he_panel\] (\S+) (\S+) (\S+) (\S+)", line)
-                     for line in s["A"] if line.startswith("sui_element [he_panel]")), None)
-        aframe = values(s["A"], "sui_work ", work)
+                     for line in s["B"] if line.startswith("sui_element [he_panel]")), None)
+        aframe = values(s["B"], "sui_work ", work)
         if pbox and aframe and len({im.size for im in images.values()}) == 1:
             w, h = images["sui_A"].size
             x, y, pw, ph = map(float, pbox.groups())
             sx, sy = w/aframe[2], h/aframe[3]
             box = (int(x*sx), int(y*sy), int((x+pw)*sx), int((y+ph)*sy))
-            hud = next((re.fullmatch(r"sui_element \[speed\] (\S+) (\S+) (\S+) (\S+)", line)
-                        for line in s["A"] if line.startswith("sui_element [speed]")), None)
-            if not hud:
-                check(False, "actual speed HUD control rectangle is available")
-                return 1
-            hx, hy, hw, hh = map(float, hud.groups())
-            # Remove editor hit padding/border; do not grade its changed captions
-            # as if they were the always-visible gameplay HUD.
-            control = (int((hx+5)*sx), int((hy+5)*sy), int((hx+hw-5)*sx), int((hy+hh-5)*sy))
             def difference(a, b, region):
                 data = ImageChops.difference(images[a].crop(region), images[b].crop(region)).tobytes()
                 return sum(data[i:i+3] != b"\0\0\0" for i in range(0, len(data), 3))
             floor_a = difference("sui_A", "sui_A_repeat", box)
             floor_b = difference("sui_B", "sui_B_repeat", box)
             changed = difference("sui_A_repeat", "sui_B_repeat", box)
-            outside = difference("sui_A_repeat", "sui_B_repeat", control)
-            data = images["sui_A_repeat"].crop(control).tobytes()
-            ink = sum(data[i:i+3] != b"\0\0\0" for i in range(0, len(data), 3))
-            print(f"Pixels: classic floor {floor_a}, modern floor {floor_b}, panel delta {changed}, HUD control delta {outside}")
-            check(floor_a < 30 and floor_b < 30, "same-style panel repeats establish a low noise floor")
-            check(changed > 100, "modern editor actually changes visible pixels")
-            check(ink > 5 and outside < 30, "acted lightweight HUD control stays unchanged")
+            print(f"Pixels: closed floor {floor_a}, open floor {floor_b}, panel delta {changed}")
+            check(floor_a < 30 and floor_b < 30, "same-state repeats establish a low noise floor")
+            check(changed > 100, "the open editor actually changes visible pixels")
         else:
             check(False, "pixel geometry/dimensions are gradeable")
     check((rig / "ftesurf/ftesurf.cfg").is_file(), "explicit config save exists in the rig")

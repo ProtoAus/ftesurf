@@ -59,9 +59,13 @@ def main():
                 'float(string id, vector pos, vector sz, string label, float on) Scores_Chip =')
     text = once(text, '\tsui_action_element(pos, sz, id, sui_noop);',
                 '\tif (!strcmp(id, "sb_tmix")) sc_test_cmp = sc_test_cmp + 1;\n'
-                '\tif (!strcmp(id, "sb_t3")) sc_test_imp = sc_test_imp + 1;\n'
                 '\tif (!strcmp(id, "sb_tref")) sc_test_refresh = sc_test_refresh + 1;\n'
                 '\tsui_action_element(pos, sz, id, sui_noop);')
+    # Patch 607: the source tabs are Scores_Seg's now, not chips.
+    text = once(text, '\tsui_action_element(pos, sz, tab, sui_noop);',
+                '\tif (!strcmp(tab, "sb_tmix")) sc_test_cmp = sc_test_cmp + 1;\n'
+                '\tif (!strcmp(tab, "sb_t3")) sc_test_imp = sc_test_imp + 1;\n'
+                '\tsui_action_element(pos, sz, tab, sui_noop);')
     text = once(text, '\tScores_Refresh();\n\n\tsui_begin(scr_x, scr_y);',
                 '\tScores_Refresh();\n\tsc_test_cmp = sc_test_imp = sc_test_refresh = 0;\n\n\tsui_begin(scr_x, scr_y);')
     text = once(text, '\tsui_end();\n\tFont_Reset();\n\n\tif (Scores_SpecHandOff())',

@@ -72,7 +72,7 @@ def prepare(root, a, arm):
     raise RuntimeError('no designated dedicated test port free')
 
 
-def config(arm, port, repeats, samples, style=None):
+def config(arm, port, repeats, samples):
     lines = ['cfg_save_auto 0', 'set log_enable 1', 'set log_dir logs', 'set log_name perf', 'set log_readable 1',
              'set cl_idlefps 0', 'set cl_maxfps 100', 'set vid_vsync 0', 'set r_speeds 2',
              'set pr_enable_profiling 0', 'set vid_conautoscale 0', 'set vid_conwidth 1920',
@@ -83,8 +83,6 @@ def config(arm, port, repeats, samples, style=None):
     if arm != 'absent': lines += ['plug_load ui_imgui', 'ui_imgui_status']
     lines += [f'connect 127.0.0.1:{port}', 'waitms 6500', 'ui_close',
               f'set ui_native_scores {int(arm == "native")}', 'set ui_native_scores_font 13', 'set hud_scale 2']
-    #Patch 606: which board layout is being timed. Unset leaves the default (classic).
-    if style is not None: lines += [f'set ui_style {style}']
     lines += ['scores tab local', 'scores leg 0', 'scores status', 'scores close']
     for cycle in range(repeats):
         for phase in PHASES:
@@ -169,12 +167,15 @@ def grade(rig):
                     try:
                         with Image.open(shots[0]) as im:
                             need(im.size == (1920, 1080), arm + ': screenshot resolution changed')
-                            pixels = im.convert('RGB').crop((688,355,1343,720))
+                            #The table's first six rows in the board's layout (Patch 607). The old crop sat
+                            #lower, on the classic board's rows: six rows of this one left it 893 bright
+                            #pixels against a bound of 1000. Measured here at --rows 6: open 5751 legacy,
+                            #3685 native, closed 0.
+                            pixels = im.convert('RGB').crop((441,232,1330,404))
                             ink = pixels.get_flattened_data() if hasattr(pixels, 'get_flattened_data') else tuple(pixels.getdata())
                             bright = sum(min(v) > 130 for v in ink)
                             #The provider's own window background (ScoresTheme, Patch 606). It was
-                            #"blue ink > 4000", ImGui's default buttons: 4631 with the themed table
-                            #in the classic board and 1460 in the modern one, against 1094-1408 legacy.
+                            #"blue ink > 4000", ImGui's default buttons, which the theme removed.
                             #Measured for this: 85633-95187 native, 522-1974 legacy.
                             well = sum(abs(r-19) <= 3 and abs(g-20) <= 3 and abs(b-28) <= 3 for r,g,b in ink)
                             need(bright > 1000 if phase == 'open' else bright < 900, arm + ': scoreboard glyphs did not act/close')
@@ -213,7 +214,7 @@ def run(a):
         root = rig / arm
         port = prepare(root, a, arm)
         game = root / 'ftesurf'
-        (game / 'perf.cfg').write_text(config(arm, port, a.repeats, a.samples, a.style))
+        (game / 'perf.cfg').write_text(config(arm, port, a.repeats, a.samples))
         svcmd = [str(root / 'fteqwsv64.exe'), '-basedir', str(root), '-nohome', '-noplugins', '-port', str(port),
                  '+set', 'cfg_save_auto', '0', '+set', 'sv_public', '0', '+set', 'lobby_dir', '', '+map', 'p603scores.map']
         clcmd = [str(root / 'ftesurf64.exe'), '-basedir', str(root), '-nohome', '-nosound', '-nocdaudio', '-window',
@@ -267,7 +268,6 @@ if __name__ == '__main__':
     p.add_argument('--rows', type=int, default=6, choices=range(6, 257))
     p.add_argument('--repeats', type=int, default=2, choices=range(2, 11))
     p.add_argument('--samples', type=int, default=3, choices=range(3, 21))
-    p.add_argument('--style', type=int, choices=(0, 1), help='set ui_style before the board opens (default: leave it)')
     p.add_argument('command', nargs='?', choices=('run', 'grade'), default='run')
     p.add_argument('rig', nargs='?', type=Path)
     a = p.parse_args()

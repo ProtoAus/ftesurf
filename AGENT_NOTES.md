@@ -4143,26 +4143,45 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
-### SUI theme, the modern board and the gallery (Patch 606) — 2026-10-10
+### SUI theme, the board and the gallery (Patches 606, 607) — 2026-10-10
 
-- LOOK AT THE PANELS WITH `tools/ui_gallery.py`. One isolated rig per `ui_style`,
-  a loopback stub for lobbies and both boards, up to sixteen screenshots plus a
-  side-by-side `pairs/` folder; `--width/--height` for other window sizes. It
-  grades only that every shot exists and the log has no QC error.
-  `tools/test_ui_theme.py` is the gate built on it: classic pixel-identical to a
-  control build, modern different, a csprogs it mutates itself (one classic
-  colour) caught, and a menu tooltip read back. Its regions are 1920x1080 at
+- LOOK AT THE PANELS WITH `tools/ui_gallery.py`. One isolated rig, one arm per
+  window size (`--sizes 1920x1080 800x600 ...`), a loopback stub for lobbies and
+  both boards, up to sixteen screenshots an arm; `--against <rig or arm>` writes
+  side-by-side pairs. It grades only that every shot exists and the log has no
+  QC error. `tools/test_ui_theme.py` is the look gate built on it: every panel
+  pixel-identical to a control build (or to an earlier gallery arm), a csprogs
+  it mutates itself (one theme colour) caught where that colour is drawn and
+  nowhere else, and a menu tooltip read back. Its regions are 1920x1080 at
   hud_scale 2.
-- `sui_style_modern` IS SET ONCE A FRAME, in `CSQC_UpdateView` (`sui_style_hud`)
-  and in every `sui_begin`. A panel's own palette macro
-  (`#define SBC_BG (sui_style_modern ? SUI_THEME_PANEL : '...')`) is how classic
-  stays untouched: add the modern value there, never edit the literal. TWO
-  LITERALS THAT LOOK ALIKE ARE NOT ONE MACRO: the first cut folded the room
-  list's `'0.35 0.85 1'` and `'0.5 0.8 1'` into a macro whose classic arm was
-  `'0.35 0.75 1'`, and the pixel gate could not see it (one player in the room,
-  nobody spectated, no voice icon hovered). A reviewer diffing removed literals
-  against their replacements found it; do that diff, the gate only covers the
-  states its gallery reaches.
+- THERE IS ONE STYLE SINCE PATCH 607. The palette is `SUI_THEME_*` in
+  `sh_ui.qc`; a panel's own names (`SBC_`, `HEC_`, `PLC_`, `COL_`) are aliases
+  of those tokens. While two styles existed, each alias was
+  `(style ? token : '<old literal>')`, and TWO LITERALS THAT LOOK ALIKE WERE NOT
+  ONE MACRO: the first cut folded the room list's `'0.35 0.85 1'` and
+  `'0.5 0.8 1'` into a macro whose classic arm was `'0.35 0.75 1'`, and the
+  pixel gate could not see it (one player in the room, nobody spectated, no
+  voice icon hovered). A reviewer diffing removed literals against their
+  replacements found it; do that diff, a gate only covers the states its
+  gallery reaches.
+- "0 PIXELS DIFFER" BETWEEN TWO BUILDS IS ALSO WHAT TWO PANELS THAT NEVER OPENED
+  LOOK LIKE. While two styles existed, "modern differs from classic" proved each
+  panel drew; with one style that witness was gone and a reviewer noticed.
+  `test_ui_theme.py` P0 now makes every shot differ from a named other shot of
+  the SAME run (the plain HUD, or the state before it). And A MENU PANEL'S
+  ROUNDED CORNERS SHOW THE ANIMATED BACKDROP: a region two pixels inside a
+  12 px-radius panel read 16-18 "changed" pixels, all in its corners; six clears
+  them.
+- A RIG WINDOW THAT TAKES THE FOREGROUND LOSES ITS PARKED HOVERS. The final
+  Patch 606 theme run failed three menu comparisons that way (a hovered lobby
+  cell and a hovered close button missing), with `[focus] window is foreground`
+  in that rig's log and the parked cursor reading back as the real pointer's
+  321,1137. `ui_gallery.py` now reports such a rig as INTERFERED and the gate
+  exits 2, not 1: it is not the build's fault and not a pass either.
+- A HELPER NAMED FOR ONE PANEL CAN BE ANOTHER'S ONLY DRAWER. Deleting the
+  renderer menu's classic `Gfx_Row` broke the vote box, which is its other
+  caller. fteqcc said so in its FIRST error and then printed hundreds of
+  cascaded warnings and crashed: read the first error, not the tail.
 - `m_draw` CALLS `Font_Reset()` BEFORE `sui_end()`, so anything `sui_end` draws
   (tooltips, the bind overlay) starts in the 8 px bitmap face unless it selects a
   font itself. The first menu tooltip was drawn in it.
@@ -4171,10 +4190,10 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   `_cursor_is_mouse_active`. `ui_click` ends in keyboard mode, so a cfg holds a
   tip up with `ui_hover <x> <y>` (menu VM) and reads it back with a bare
   `ui_hover` at least one frame later: `tip 1 [<sui id>]`.
-- THE MODERN BOARD CAN DECLINE. `Scores_DrawModern` sizes itself first and
-  returns FALSE, having drawn nothing, when its smallest form does not fit; the
-  classic layout then draws that frame. Anything added to it before the sizing
-  loop's exit must not draw or change state the classic layout reads.
+- THE BOARD ALWAYS DRAWS, AND SAYS WHICH FORM IT TOOK. `Scores_Draw` sizes
+  itself in steps (type, columns, room list) and past the last one shrinks its
+  type toward 8 px. `scores status` prints `cols` (5-9) and `type` (px) for the
+  last drawn frame: that is how a cfg tells the steps apart without a pixel.
 - THE p603 SUITES COMPILE THEIR OWN CSPROGS FROM THE WORKING TREE (`src/` plus
   `tools/fixtures/`); `--qc-artifacts` supplies menu.dat, and qwprogs.dat outside
   `--dense`/`--http`. The tree is the board source under test, whatever build
@@ -4183,20 +4202,35 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   (`set ui_native_scores_font 13` / `scores tab local` / `+showscores`), the
   final `-showscores` / `replay off` / `waitms 500` / `p603 probe closed1`, and
   `echo P603 FINISHED` / `quit`. A line inserted inside one makes a suite raise
-  before any arm runs; `--style` and the source-switch clicks sit outside them.
-- THE MODERN BOARD KEEPS THE CLASSIC sui IDS (`sb_run<i>`, `sb_ln<i>`, `sb_t0..3`,
-  `sb_leg<i>`, `sb_fa/fc/fs/fx`, `sb_tref`, `sb_graph`), which is why
-  `p603scores.py --style 1` can grade its clicks unchanged, and why
-  `p603 move sb_t1` (any id spelt `sb_...`) can click the source switch. Both
-  row drawers read `sb_colx/sb_colr/sb_colon`; a new column wants an `SBK_` id,
-  a slot in `Scores_ColsClassic` AND in `Scores_ColsModern`.
-- THE p603 RIGS HAVE NO `gfx/ui/roundmask.png`, so they draw the modern layout
+  before any arm runs; the source-switch clicks sit outside them.
+- THE BOARD'S sui IDS ARE THE HARNESS'S HANDLES (`sb_run<i>`, `sb_ln<i>`,
+  `sb_t0..3`, `sb_leg<i>`, `sb_fa/fc/fs/fx`, `sb_tref`, `sb_graph`): they
+  survived the redesign unchanged, which is why the p603 suites still grade its
+  clicks, and `p603 move sb_t1` (any id spelt `sb_...`) clicks the source
+  switch. Both row drawers read `sb_colx/sb_colr/sb_colon`; a new column wants
+  an `SBK_` id and a slot in `Scores_Cols`.
+- THE p603 RIGS HAVE NO `gfx/ui/roundmask.png`, so they draw the board
   square-cornered (the missing-mask fallback). Their screenshots are evidence
   of what acted, not of the look.
 - `p603perf.py` PROVES THE NATIVE ROUTE FROM A SCREENSHOT: it counts the themed
   provider's own background. It used to count ImGui's default blue, which the
   theme removed; a provider colour change moves that witness before anything
   else.
+- A FIXED PIXEL, CROP OR CVAR VALUE IN A GATE IS A LAYOUT ASSUMPTION. Three of
+  the p603 tools carried the classic board's geometry and each failed
+  differently when it went: `p603perf.py`'s crop sat below the new rows (893
+  bright pixels against a bound of 1000 at the default 6 rows, fine at 20);
+  `test_p603dense_unit.py`'s one-pixel control poked (568,279), outside the new
+  rank crop, so a control meant to be caught was not (68/69); `p603life.py`
+  docked the room list with `hud_scale 5`, which the new board answers by
+  shrinking its type. Derive positions from what the subject prints (`P603
+  RECT`), and when a layout changes, run each tool at its DEFAULT arguments
+  once, not only the ones the gate script passes.
+- TaskStop DOES NOT END A GATE SCRIPT'S LOOP ON THIS MACHINE. A stopped batch
+  ran its remaining steps for 24 more minutes beside the batch that replaced
+  it, two games at once. Listing only game and python processes afterwards did
+  not show the surviving `bash.exe`. The owned gate scripts check a stop file
+  between steps and wait while another game is running.
 - `p498keys.py` IN A BARE WORKTREE NEEDS `ftesurf/data/consent.txt` (`version 1`)
   AND A CHOSEN NAME (`+set name X` on the command line; an autoexec.cfg is not
   run), or it grades the terms screen: 6 of 16 failed, then 1, then 0, with no
@@ -4714,7 +4748,8 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   backend `srect_t` units differ (merged.h Patch 208). Next is the atlas path,
   then a separate versioned indexed-2D ABI plus explicit QC submission and
   clipped mixed-native/QC controls, not a pretend wrapper over Sbar callbacks.
-- **P566 SUI/font tests:** `ui_style 1` is the opt-in HUD-editor sample;
+- **P566 SUI/font tests:** the HUD editor was the first panel in this style
+  (opt-in behind `ui_style 1` until Patch 607 removed the switch);
   `shared/sh_ui.qc` is ordered after fonts/SUI in both VMs. Native font means
   the final PHYSICAL height is a baked size: convert first, snap with the
   selected face's ladder, then convert back on both axes. Pixel-align origins.

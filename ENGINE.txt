@@ -25,11 +25,15 @@ commit   93828165ce11d7920ce49f4a28e3e065e88699c0
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-606
-patch    606
+patch    607
+# Patch 607: the old SUI look and the ui_style switch are removed. The dark pastel
+# look of Patch 606 is the only one, and the +showscores board shrinks its type on
+# a small window instead of changing layout. Mod-side only: no engine source,
+# server QC, recorder, evidence or ranking change (commit and tag above stay).
 # Patch 606: one dark pastel look behind ui_style 1 for hud_edit, the map picker,
 # both leaderboards and the save-lock and Source-renderer menus, and a laid-out
 # +showscores board. The engine side is the scoreboard provider's colours only.
-# ui_style 0 stays default and pixel-identical here; Patch 607 removes it.
+# ui_style 0 stayed default and pixel-identical in that patch.
 # Patch 605: opt-in native scoreboard table (ui_native_scores 1) on additive
 # NativeUIModel/2, 256 widgets. Legacy stays default and fallback. No recorder,
 # evidence, ranking, server, release ship-set or Build change. lextest.md has

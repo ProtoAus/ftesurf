@@ -78,29 +78,23 @@ float  pl_bgen;                 // ob_gen the room list last asked at (Patch 357
 // list must not take the shared ob_* store from it with a fetch of its own.
 float  pl_boardbusy;
 
-// Patch 606: the room list's colours; the shared theme's under ui_style 1.
-#define PLC_DIM   (sui_style_modern ? SUI_THEME_DIM      : '0.55 0.55 0.58')
-#define PLC_FAINT (sui_style_modern ? SUI_THEME_MUTED    : '0.45 0.45 0.5')
-#define PLC_TIME  (sui_style_modern ? SUI_THEME_DIM      : '0.65 0.65 0.7')
-#define PLC_SEL   (sui_style_modern ? SUI_THEME_SELECTED : '0.16 0.22 0.30')
-#define PLC_HOT   (sui_style_modern ? SUI_THEME_HOVER    : '0.12 0.12 0.16')
-#define PLC_OFF   (sui_style_modern ? SUI_THEME_BAD      : '1 0.7 0.65')
-#define PLC_TITLE (sui_style_modern ? SUI_THEME_MUTED    : '0.35 0.75 1')
-#define PLC_SPEC  (sui_style_modern ? SUI_THEME_ACCENT   : '0.35 0.85 1')   // the spectated row
-#define PLC_RING  (sui_style_modern ? SUI_THEME_ACCENT   : '0.5 0.8 1')     // a hovered voice icon
+// The room list's colours, from the shared theme (sh_ui.qc).
+#define PLC_DIM   SUI_THEME_DIM
+#define PLC_FAINT SUI_THEME_MUTED
+#define PLC_TIME  SUI_THEME_DIM
+#define PLC_SEL   SUI_THEME_SELECTED
+#define PLC_HOT   SUI_THEME_HOVER
+#define PLC_OFF   SUI_THEME_BAD
+#define PLC_TITLE SUI_THEME_MUTED
+#define PLC_SPEC  SUI_THEME_ACCENT   // the spectated row
+#define PLC_RING  SUI_THEME_ACCENT   // a hovered voice icon
 
-// Medal plates, in the order the podium wears them.
+// Medal plates, in the order the podium wears them: butter, silver, peach.
 vector(float r) Pl_Medal =
 {
-	if (sui_style_modern)
-	{
-		if (r == 1) return SUI_THEME_WARN;
-		if (r == 2) return '0.78 0.80 0.88';
-		if (r == 3) return SUI_THEME_FOCUS;
-	}
-	if (r == 1) return '1.00 0.84 0.00';   // gold
-	if (r == 2) return '0.75 0.78 0.82';   // silver
-	if (r == 3) return '0.72 0.45 0.20';   // bronze
+	if (r == 1) return SUI_THEME_WARN;
+	if (r == 2) return '0.78 0.80 0.88';
+	if (r == 3) return SUI_THEME_FOCUS;
 	return '0 0 0';
 };
 
@@ -294,13 +288,7 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 	pl_panelpos = p;
 	pl_panelsize = sz;
 
-	if (sui_style_modern)
-		sui_style_panel(p, sz, ceil(pad * 0.8), 0.97);
-	else
-	{
-		sui_fill(p, sz, '0.05 0.05 0.07', 0.92, 0);
-		sui_border_box(p, sz, 1, '0.28 0.30 0.36', 0.9, 0);
-	}
+	sui_style_panel(p, sz, ceil(pad * 0.8), 0.97);
 
 	/*
 	  One type scale, snapped to the font ladder like every other panel:
@@ -313,8 +301,7 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 
 	Font_Set(ui_font_ui);
 	sui_text([p_x + pad, p_y + pad], [tsz, tsz],
-	         sprintf(sui_style_modern ? "IN THIS SERVER   %g" : "in this server  %g", n),
-	         PLC_TITLE, 1, 0);
+	         sprintf("IN THIS SERVER   %g", n), PLC_TITLE, 1, 0);
 
 	y  = p_y + pad + 22;
 	me = player_localnum;
@@ -445,21 +432,11 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 		{
 			sui_action_element([p_x + sz_x - pad - 24, y + 4], [24, 18],
 			                   sprintf("pl_c%g", j), sui_noop);
-			if (sui_style_modern)
-				sui_style_box([p_x + sz_x - pad - 24, y + 4], [24, 18], 4,
-				              silenced ? SUI_THEME_BAD_BG : SUI_THEME_CHIP,
-				              silenced ? SUI_THEME_BAD
-				                       : (sui_is_hovered(sprintf("pl_c%g", j))
-				                          ? SUI_THEME_ACCENT : SUI_THEME_EDGE_HI), 1);
-			else
-			{
-				sui_fill([p_x + sz_x - pad - 24, y + 4], [24, 18],
-				         silenced ? '0.30 0.16 0.16' : '0.10 0.10 0.13', 1, 0);
-				sui_border_box([p_x + sz_x - pad - 24, y + 4], [24, 18], 1,
-				               silenced ? '1 0.5 0.4'
-				                        : (sui_is_hovered(sprintf("pl_c%g", j))
-				                           ? '0.5 0.8 1' : '0.28 0.30 0.36'), 1, 0);
-			}
+			sui_style_box([p_x + sz_x - pad - 24, y + 4], [24, 18], 4,
+			              silenced ? SUI_THEME_BAD_BG : SUI_THEME_CHIP,
+			              silenced ? SUI_THEME_BAD
+			                       : (sui_is_hovered(sprintf("pl_c%g", j))
+			                          ? SUI_THEME_ACCENT : SUI_THEME_EDGE_HI), 1);
 			sui_text([p_x + sz_x - pad - 18, y + 7], [tsz - 1, tsz - 1],
 			         silenced ? "off" : "chat",
 			         silenced ? PLC_OFF : PLC_DIM, 1, 0);

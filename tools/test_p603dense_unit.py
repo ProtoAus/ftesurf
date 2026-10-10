@@ -97,10 +97,16 @@ def run(rig):
     with patch.object(Image,'open',image): check('blank-rank-ink',bool(grade_dense(rig,report)))
     #A single changed glyph pixel must falsify the physical-scale ink equality,
     #even with plenty of rank groups and all acting log witnesses still present.
+    #The pixel is the first dark one inside the rank crop grade_dense reads,
+    #found from the arm's own RECT line: it was a fixed (568,279), which sat in
+    #that crop only while the board put the table where the classic layout did.
+    rx,ry=[round(float(v)) for v in re.findall(r'P603 RECT dense_page0 ([0-9.e+\-]+) ([0-9.e+\-]+)',text['native1'])[0]]
     def image(path,*args,**kwargs):
         im=original_image(path,*args,**kwargs)
         if Path(path)==target:
-            result=im.convert('RGB');im.close();result.putpixel((568,279),(255,255,255));return result
+            result=im.convert('RGB');im.close()
+            spot=next((px,py) for py in range(ry+42,ry+462) for px in range(rx+8,rx+40) if min(result.getpixel((px,py)))<=150)
+            result.putpixel(spot,(255,255,255));return result
         return im
     with patch.object(Image,'open',image): check('wrong-physical-ink',bool(grade_dense(rig,report)))
     after={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
