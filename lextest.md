@@ -11,6 +11,33 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — demo line labels: three changes (Patches 626, 627, 628)
+
+Published 10 Oct 23:14 UTC (10:14 on the 11th here). Live since 23:15 UTC on
+both installs and 23:16 UTC on all twelve lobbies (csprogs; on the installs
+also `cfg/default.cfg`, for two new defaults). Each replaced file has a copy
+beside it: `.prev`, and `default.cfg.pre628-20261010T231531Z`.
+
+You said "yea do these 3". What you should see, on any replay or ticked line:
+
+- **A Momentum demo's line has the ramp chevrons now**, and the number beside
+  each starts with `~` (worked out from the demo's velocity, not recorded).
+  Its Segments column has Ramp rows. Section 17 below has where to look and
+  what is known wrong (a lift reads as a ramp). Your own hour-long surf_666
+  run is the one import that says `unavailable: too long a run` instead.
+- **A pale dot with numbers at the top of each arc and the bottom of each
+  ride**, on by default (`Labels: + peaks`). Section 18.
+- **The white off-ramp chevron sits on the ramp's lip** on runs made in this
+  game, about a body width back from where it was. Section 19.
+
+Three things I could not check for you and would look at first:
+1. Board, Imported tab, watch a Momentum run on a lobby: I tested the files
+   from disk, not through the online board.
+2. Your own live line while you play: the dots should appear a moment after
+   each top and bottom. No test of mine got one onto a live line.
+3. Whether tops and bottoms read apart, and whether a busy line has too many
+   labels (`hud_lines_nums 1` is the old look).
+
 ## 00. 10 Oct — ticked lines in run order (Patch 624)
 
 Published 10 Oct 22:24 UTC (09:24 on the 11th here). Live since 22:25 UTC on
