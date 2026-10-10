@@ -141,7 +141,7 @@ void(vector pos, string text, float want, vector color, float alpha) sui_native_
 // Raw screen coordinates; the public wrapper transforms exactly once.
 void(vector pos, vector size, float radius, vector color, float alpha) _sui_round_draw =
 {
-	local float x, y, dx, dy, dw, dh, u, v, uw, vh, r;
+	local float dw, dh, r;
 	if (size_x <= 0 || size_y <= 0) return;
 	r = max(0, min(radius, min(size_x, size_y) * 0.5));
 	if (!sui_round_checked)
@@ -155,22 +155,34 @@ void(vector pos, vector size, float radius, vector color, float alpha) _sui_roun
 		return;
 	}
 	sui_round_calls += 1;
-	// 32x32 mask, radius 8: edges/centre stay opaque and only corners scale.
-	for (y = 0; y < 3; y += 1)
-	for (x = 0; x < 3; x += 1)
+	/*
+	  32x32 mask, radius 8: the corners scale, the edges and the centre stay
+	  opaque. Written out cell by cell (Patch 610): the 3x3 loop this replaces
+	  spent 450 ops a box deciding which of nine cells it was in, and the
+	  trainer and the run graphs draw a score of boxes a frame during play.
+	*/
+	dw = size_x - 2 * r;
+	dh = size_y - 2 * r;
+	drawsubpic(pos, [r, r, 0], "gfx/ui/roundmask.png", '0 0 0', '0.25 0.25 0', color, alpha, 0);
+	drawsubpic(pos + [size_x - r, 0, 0], [r, r, 0], "gfx/ui/roundmask.png", '0.75 0 0', '0.25 0.25 0', color, alpha, 0);
+	drawsubpic(pos + [0, size_y - r, 0], [r, r, 0], "gfx/ui/roundmask.png", '0 0.75 0', '0.25 0.25 0', color, alpha, 0);
+	drawsubpic(pos + [size_x - r, size_y - r, 0], [r, r, 0], "gfx/ui/roundmask.png", '0.75 0.75 0', '0.25 0.25 0', color, alpha, 0);
+	sui_style_quads += 4;
+	if (dw > 0)
 	{
-		dx = r; dw = size_x - 2 * r; u = 0.25; uw = 0.5;
-		dy = r; dh = size_y - 2 * r; v = 0.25; vh = 0.5;
-		if (x == 0) { dx = 0; dw = r; u = 0; uw = 0.25; }
-		if (x == 2) { dx = size_x - r; dw = r; u = 0.75; uw = 0.25; }
-		if (y == 0) { dy = 0; dh = r; v = 0; vh = 0.25; }
-		if (y == 2) { dy = size_y - r; dh = r; v = 0.75; vh = 0.25; }
+		drawsubpic(pos + [r, 0, 0], [dw, r, 0], "gfx/ui/roundmask.png", '0.25 0 0', '0.5 0.25 0', color, alpha, 0);
+		drawsubpic(pos + [r, size_y - r, 0], [dw, r, 0], "gfx/ui/roundmask.png", '0.25 0.75 0', '0.5 0.25 0', color, alpha, 0);
+		sui_style_quads += 2;
+	}
+	if (dh > 0)
+	{
+		drawsubpic(pos + [0, r, 0], [r, dh, 0], "gfx/ui/roundmask.png", '0 0.25 0', '0.25 0.5 0', color, alpha, 0);
+		drawsubpic(pos + [size_x - r, r, 0], [r, dh, 0], "gfx/ui/roundmask.png", '0.75 0.25 0', '0.25 0.5 0', color, alpha, 0);
+		sui_style_quads += 2;
 		if (dw > 0)
-		if (dh > 0)
 		{
+			drawsubpic(pos + [r, r, 0], [dw, dh, 0], "gfx/ui/roundmask.png", '0.25 0.25 0', '0.5 0.5 0', color, alpha, 0);
 			sui_style_quads += 1;
-			drawsubpic(pos + [dx, dy, 0], [dw, dh, 0], "gfx/ui/roundmask.png",
-				[u, v, 0], [uw, vh, 0], color, alpha, 0);
 		}
 	}
 };
@@ -200,14 +212,21 @@ void(vector pos, vector size, float radius, float alpha) sui_style_panel =
 	_sui_round_draw(pos + '1 1 0', size - '2 2 0', max(0, radius - 1), SUI_THEME_PANEL, alpha);
 };
 
-// The scroll thumb: half the gutter, rounded.
+// The scroll thumb: half the gutter, rounded, with a three-line grip where it is
+// long enough to carry one (Patch 610; sui_scrollbar keeps it long enough to hold).
 void(vector pos, vector size, float hot) sui_style_thumb =
 {
-	local float w;
+	local float w, x, y, i;
 	sui_transform_box(pos, size);
 	w = max(3, floor(size_x * 0.5));
-	_sui_round_draw([pos_x + size_x - w - 1, pos_y + 1, 0], [w, max(w, size_y - 2), 0], w * 0.5,
+	x = pos_x + size_x - w - 1;
+	_sui_round_draw([x, pos_y + 1, 0], [w, max(w, size_y - 2), 0], w * 0.5,
 		hot ? SUI_THEME_ACCENT : SUI_THEME_EDGE_HI, 1);
+	if (size_y < w * 4)
+		return;
+	y = floor(pos_y + size_y * 0.5) - 3;
+	for (i = 0; i < 3; i += 1)
+		drawfill([x + 1, y + i * 3, 0], [w - 2, 1, 0], SUI_THEME_WELL, 0.7, 0);
 };
 
 void(string id, string text, float scale) sui_tooltip_for =

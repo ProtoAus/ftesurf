@@ -584,23 +584,22 @@ string(float q) Trn_Grade =
 	return "E";
 };
 
-// Blue for left, orange for right -- the same pair the mouse pad already uses
-// for the same two keys (MPC_STRAFE, cl_mouse.qc:25), so one convention covers
-// both panels rather than each inventing its own.
+// Sky for left, peach for right: the mouse pad's blue and orange for the same
+// two keys (MPC_STRAFE, cl_mouse.qc:25), in the panel palette (Patch 610).
 vector(float dir) Trn_DirColour =
 {
-	return (dir > 0) ? '1.00 0.55 0.15' : '0.30 0.65 1.00';
+	return (dir > 0) ? SUI_THEME_FOCUS : SUI_THEME_ACCENT;
 };
 
-// Late is the costly direction and reads red; early is merely untidy.  20 ms
+// Late is the costly direction and reads rose; early is merely untidy.  20 ms
 // is the pass band: at surf rate that is one tick either side of simultaneous,
 // which is the finest thing the measurement can resolve.
 vector(float sync) Trn_SyncColour =
 {
-	if (sync == TRN_NOSYNC)  return '0.45 0.45 0.50';
-	if (sync >  0.020)       return '1.00 0.45 0.40';
-	if (sync < -0.020)       return '1.00 0.80 0.35';
-	return '0.45 0.85 0.45';
+	if (sync == TRN_NOSYNC)  return SUI_THEME_MUTED;
+	if (sync >  0.020)       return SUI_THEME_BAD;
+	if (sync < -0.020)       return SUI_THEME_WARN;
+	return SUI_THEME_GOOD;
 };
 
 /*
@@ -664,6 +663,19 @@ string(float first) Trn_Coach =
 	return "clean";
 };
 
+// A signed whole number for the panel; zero has no sign.
+string(float v) Trn_Signed =
+{
+	v = floor(v + 0.5);
+	if (v == 0)
+		return "0";
+	return sprintf("%+.0f", v);
+};
+
+#define TRN_LANE   6            // a key lane's height, panel units (cl_plot.qc)
+#define TRN_TRACE 22            // the trace's
+#define TRN_DEV    0.6          // the trace's half range, as rate / ideal - 1
+
 /*
   THE TIMELINE IS THE POINT OF THE PANEL.
 
@@ -676,41 +688,44 @@ string(float first) Trn_Coach =
 
   Below: one column per tick of turn rate over ideal, centre line = ideal, up
   is too fast.  Per TICK, not resampled, because the trace is the measurement.
+  Patch 610: the trace spans +-TRN_DEV, not +-1. Real strafes sit inside +-30%
+  and drew as a few pixels; a tick past the range draws full height. The shaded
+  band is +-20%, grade A's.
 */
-void(vector p, float w, float h, float first, float sz) Trn_Timeline =
+void(vector p, float w, float first, float u, float hsz, float trace) Trn_Timeline =
 {
-	local float i, span, t0, x, x2, gut, tw, bh, cy, r, dev, ch, ty;
+	local float i, span, t0, x, x2, gut, tw, bh, cy, r, dev, ch, ty, tk, th, u1;
 	local vector c;
 
+	u1 = max(1, floor(u));              // a unit's worth of gap, in whole pixels
 	t0 = trn_j_t0;
 	span = trn_clock - t0;
 	if (span < 0.35)
 		span = 0.35;                    // a short hop must not stretch to fill
 
-	// A gutter for the L/R keys, INSIDE the panel: the axis has to be labelled
-	// or "above the line" means nothing, and hanging the labels off the left
-	// edge would put them outside the backdrop and outside HUD_Rect's box.
-	gut = ceil(sz * 0.9);
+	// A gutter for the L/R keys and the trace's two directions, INSIDE the
+	// panel: an axis has to be labelled or "above the line" means nothing.
+	gut = 14 * u;
 	tw  = w - gut;
+	bh  = TRN_LANE * u;
+	cy  = p_y + bh;                     // the key axis
 
-	bh = ceil(h * 0.21);                // one band
-	cy = p_y + bh;                      // the key axis
-	ch = h * 0.22;                      // the trace's half-height
-	ty = p_y + h * 0.76;                // ...and its centre
+	Plot_Text([p_x, cy - bh + (bh - hsz) * 0.5], "L", hsz, Trn_DirColour(-1), 1);
+	Plot_Text([p_x, cy + 1 + (bh - hsz) * 0.5],  "R", hsz, Trn_DirColour(1), 1);
+	drawfill([p_x + gut, cy], [tw, 1], SUI_THEME_EDGE_HI, 0.8, 0);
 
-	drawfill([p_x + gut, cy], [tw, ui_cv_scale], '0.30 0.32 0.38', 0.55, 0);
-
-	HUD_Text([p_x, cy - bh],          "L", sz * 0.75, '0.30 0.65 1.00', 0.7);
-	HUD_Text([p_x, cy + ui_cv_scale], "R", sz * 0.75, '1.00 0.55 0.15', 0.7);
-
-	/*
-	  --- the trace.  Its band and the key bands do not overlap vertically
-	  (0.54h..0.98h against 0..0.45h), so the two are independent and this can
-	  be switched off without disturbing anything drawn below it.
-	*/
-	if (cvar("hud_trainer_trace"))
+	// --- the trace.  Its box and the key lanes do not overlap vertically, so
+	// this can be switched off without disturbing anything drawn above it.
+	if (trace)
 	{
-		drawfill([p_x + gut, ty], [tw, ui_cv_scale * 0.5], '0.30 0.32 0.38', 0.35, 0);
+		th = TRN_TRACE * u;
+		ch = floor(th * 0.5);
+		ty = cy + bh + 4 * u + ch;      // its centre: the ideal rate
+		_sui_round_draw([p_x + gut, ty - ch], [tw, th], 2 * u, SUI_THEME_WELL, 0.75);
+		drawfill([p_x + gut, ty - floor(ch * (0.2 / TRN_DEV))], [tw, floor(ch * (0.2 / TRN_DEV)) * 2 + 1], SUI_THEME_GOOD, 0.10, 0);
+		drawfill([p_x + gut, ty], [tw, 1], SUI_THEME_EDGE_HI, 0.8, 0);
+		// One tick's width, so neighbouring columns meet.
+		tk = max(1, ceil(tw * trn_tick / span));
 		for (i = 0; i < trn_p_n; i = i + 1)
 		{
 			if (trn_p_t[i] < t0)
@@ -719,24 +734,24 @@ void(vector p, float w, float h, float first, float sz) Trn_Timeline =
 			if (r < 0)
 				continue;                   // no answer: a gap, not a zero
 
-			x = p_x + gut + ((trn_p_t[i] - t0) / span) * tw;
-
-			// (r-1) in [-1,1] spans exactly the meaningful range: Strafe_Quality is
-			// zero at both r = 0 and r = 2, so clamping here clamps nothing a grade
-			// could still have distinguished.
-			dev = r - 1;
+			x = floor(p_x + gut + ((trn_p_t[i] - t0) / span) * tw);
+			if (x + tk > p_x + w)
+				x = p_x + w - tk;
+			dev = (r - 1) / TRN_DEV;
 			if (dev >  1) dev =  1;
 			if (dev < -1) dev = -1;
 
 			// The ratio is the grade's only input, so hand it over as one: turn = r
 			// against ideal = 1 is the same fraction Strafe_Quality would divide.
-			c = HUD_QualityColor(Strafe_Quality(r, 1, trn_cap, trn_cap));
+			c = Plot_Quality(Strafe_Quality(r, 1, trn_cap, trn_cap));
+			dev = floor(dev * ch + 0.5);
 			if (dev >= 0)
-				drawfill([x, ty - dev * ch],
-				         [ui_cv_scale, dev * ch + ui_cv_scale * 0.5], c, 0.8, 0);
+				drawfill([x, ty - dev], [tk, dev + 1], c, 0.9, 0);
 			else
-				drawfill([x, ty], [ui_cv_scale, -dev * ch], c, 0.8, 0);
+				drawfill([x, ty], [tk, 0 - dev], c, 0.9, 0);
 		}
+		Plot_Text([p_x, ty - ch + u1], "fast", hsz, SUI_THEME_MUTED, 1);
+		Plot_Text([p_x, ty + ch - hsz - u1], "slow", hsz, SUI_THEME_MUTED, 1);
 	}
 
 	// --- a band per strafe ------------------------------------------------
@@ -744,32 +759,37 @@ void(vector p, float w, float h, float first, float sz) Trn_Timeline =
 	{
 		x  = p_x + gut + ((trn_s_t0[i] - t0) / span) * tw;
 		x2 = p_x + gut + ((trn_s_t0[i] + trn_s_dur[i] - t0) / span) * tw;
-		if (x2 - x < ui_cv_scale)
-			x2 = x + ui_cv_scale;       // a one-tick strafe must still be seen
+		if (x2 - x < 2 * u)
+			x2 = x + 2 * u;             // a one-tick strafe must still be seen
 		if (x2 > p_x + w)
 			x2 = p_x + w;
 
-		r = Trn_Q(i);
-		c = (r < 0) ? '0.45 0.45 0.50' : HUD_QualityColor(r);
-
+		c = Plot_Quality(Trn_Q(i));
 		if (trn_s_dir[i] < 0)
-			drawfill([x, cy - bh], [x2 - x, bh], c, 0.85, 0);
+			_sui_round_draw([x, cy - bh], [x2 - x, bh - u1], 1.5 * u, c, 0.95);
 		else
-			drawfill([x, cy + ui_cv_scale], [x2 - x, bh], c, 0.85, 0);
+			_sui_round_draw([x, cy + 1 + u1], [x2 - x, bh - u1], 1.5 * u, c, 0.95);
 
 		// THE FLICK, drawn where it actually happened rather than as a number.
 		if (trn_s_sync[i] != TRN_NOSYNC)
 		{
 			x2 = p_x + gut + ((trn_s_t0[i] - trn_s_sync[i] - t0) / span) * tw;
-			drawfill([x2, cy - bh - 2 * ui_cv_scale],
-			         [ui_cv_scale, bh * 2 + 5 * ui_cv_scale], '1 1 1', 0.85, 0);
+			if (x2 >= p_x + gut)
+			if (x2 <= p_x + w)
+				drawfill([floor(x2), cy - bh - u1], [u1, bh * 2 + 2 * u1 + 1], SUI_THEME_TEXT, 0.9, 0);
 		}
 	}
 };
 
+/*
+  Patch 610: the key menus' panel (cl_plot.qc), where this drew its own flat box.
+  Every dimension is in units of the text size, so hud_trainer_size scales the
+  whole panel. The overall grade is the header's reading; each row gains the
+  speed its strafe added, which the ring always held and nothing showed.
+*/
 void(vector scr) Trn_Draw =
 {
-	local float w, sz, hsz, lh, pad, i, first, rows, q, gq, gd, x, y0, tlh, mx;
+	local float sz, hsz, u, w, h, rh, bw, i, first, rows, q, gq, gd, x, xr, y, mx, trace, g;
 	local vector p, bp, c;
 	local string s;
 
@@ -784,19 +804,13 @@ void(vector scr) Trn_Draw =
 		return;
 
 	Font_Set(ui_font_ui);
-	sz  = HUD_Size("hud_trainer_size", Font_Px(8 * ui_cv_scale));
-	hsz = Font_Px(6 * ui_cv_scale);
-	lh  = ceil(sz * 1.35);
-	pad = ceil(sz * 0.7);
-	w   = ceil(sz * 21);
-	// The trace occupies the lower half of the timeline's box, so switching it
-	// off has to shrink the box or it leaves a slab of empty fill.  Trn_Timeline
-	// reads the same cvar and lays the bands out against whatever it is handed.
-	tlh = cvar("hud_trainer_trace") ? ceil(sz * 4.4) : ceil(sz * 2.1);
-
-	bp = [cvar("hud_trainer_x") * scr_x, cvar("hud_trainer_y") * scr_y, 0];
-	p  = [bp_x - w * 0.5, bp_y, 0];
-	y0 = p_y;
+	sz  = Font_Px(HUD_Size("hud_trainer_size", 8 * ui_cv_scale));
+	u   = sz / 8;
+	hsz = Font_Px(6 * u);
+	w   = 156 * u;
+	rh  = 10 * u;
+	bw  = 58 * u;
+	trace = cvar("hud_trainer_trace");
 
 	// Which strafes belong to the jump on show.  trn_j_shown freezes at the
 	// landing, so the panel keeps the last jump up instead of blanking.
@@ -821,38 +835,44 @@ void(vector scr) Trn_Draw =
 	}
 	q = (gd > 0.0001) ? (gq / gd) : -1;
 
-	// The backdrop is sized from the row count rather than from a constant,
-	// because the count changes during a jump and a fixed box either clips the
-	// sixth row or leaves a slab of empty fill under a one-strafe hop.
-	drawfill([p_x - pad, y0 - pad],
-	         [w + pad * 2, lh * 2.2 + tlh + pad * 0.5 + lh * rows + pad * 2],
-	         '0.05 0.06 0.08', 0.55, 0);
+	// Sized from the row count, which changes during a jump: a fixed box either
+	// clips the sixth row or leaves a slab of fill under a one-strafe hop.
+	h = (3 + PLOT_BAND + 10 + TRN_LANE * 2 + 4) * u + 4 * u;
+	if (trace)
+		h = h + (TRN_TRACE + 4) * u;
+	if (rows > 0)
+		h = h + 12 * u + rows * rh;
 
-	// --- the header -------------------------------------------------------
-	HUD_Text([p_x, p_y], "STRAFE", sz, '0.35 0.75 1.00', 0.95);
+	bp = [cvar("hud_trainer_x") * scr_x, cvar("hud_trainer_y") * scr_y, 0];
+	p  = [floor(bp_x - w * 0.5), floor(bp_y), 0];
+	Plot_Panel(p, [w, h], u);
+
+	// --- the header: the jump's grade, which is only about the hands ---------
+	y = p_y + Plot_Header(p, w, u, sz, "Strafe trainer",
+	                      (q < 0) ? "-" : sprintf("%s  %.0f%%", Trn_Grade(q), q * 100),
+	                      Plot_Quality(q));
+	x  = p_x + 6 * u;
+	xr = p_x + w - 6 * u;
 
 	/*
 	  The jump's speed change, which is NOT the grade and must not be read as
 	  one: it is two samples of STAT_FS_VELOCITY either end of the air time, so
 	  a ramp, a booster or a wall is in it as much as your hands are.  It is
-	  here because it is the number a surfer actually wants, and the grade
-	  beside it is the one that is only about the hands.
+	  here because it is the number a surfer actually wants.
 	*/
-	mx = trn_j_v1 - trn_j_v0;
-	HUD_TextR([p_x + w, p_y], sprintf("%s%.0f u/s", (mx >= 0) ? "+" : "", mx),
-	          sz, HUD_GainColor(mx), 0.95);
-	p_y = p_y + lh;
-
-	c = (q < 0) ? '0.45 0.45 0.50' : HUD_QualityColor(q);
-	HUD_Text ([p_x, p_y], Trn_Coach(first), hsz, '0.70 0.70 0.74', 0.9);
-	HUD_TextR([p_x + w, p_y],
-	          (q < 0) ? "-" : sprintf("%s  %.0f%%", Trn_Grade(q), q * 100),
-	          sz, c, 0.95);
-	p_y = p_y + lh * 1.2;
+	mx = floor(trn_j_v1 - trn_j_v0 + 0.5);
+	c = SUI_THEME_DIM;
+	if (mx >  0.5) c = SUI_THEME_GOOD;
+	if (mx < -0.5) c = SUI_THEME_BAD;
+	Plot_Text ([x, y + (10 * u - hsz) * 0.5], Trn_Coach(first), hsz, SUI_THEME_DIM, 1);
+	Plot_TextR([xr, y + (10 * u - hsz) * 0.5], strcat(Trn_Signed(mx), " u/s"), hsz, c, 1);
+	y = y + 10 * u;
 
 	// --- the timeline -----------------------------------------------------
-	Trn_Timeline(p, w, tlh, first, sz);
-	p_y = p_y + tlh + pad * 0.5;
+	Trn_Timeline([x, y + 2 * u], xr - x, first, u, hsz, trace);
+	y = y + (TRN_LANE * 2 + 4) * u;
+	if (trace)
+		y = y + (TRN_TRACE + 4) * u;
 
 	/*
 	  --- the rows, oldest first so they read down the way the timeline reads
@@ -860,41 +880,52 @@ void(vector scr) Trn_Draw =
 	  detail in the timeline, and a panel that grew mid-jump would move the
 	  numbers being read.
 	*/
-	mx = Trn_MaxDur(first);
-	i = trn_n - rows;
-	if (i < first)
-		i = first;
-	for (; i < trn_n; i = i + 1)
+	if (rows > 0)
 	{
-		q = Trn_Q(i);
-		c = (q < 0) ? '0.45 0.45 0.50' : HUD_QualityColor(q);
-		x = p_x;
+		drawfill([p_x + 4 * u, y], [w - 8 * u, 1], SUI_THEME_EDGE, 1, 0);
+		y = y + 4 * u;
+		Plot_Text ([x + 10 * u, y], "LENGTH", hsz, SUI_THEME_MUTED, 1);
+		Plot_TextC([x + 20 * u + bw, y], "GRADE", hsz, SUI_THEME_MUTED, 1);
+		Plot_TextR([xr - 30 * u, y], "GAIN", hsz, SUI_THEME_MUTED, 1);
+		Plot_TextR([xr, y], "SYNC ms", hsz, SUI_THEME_MUTED, 1);
+		y = y + 8 * u;
 
-		HUD_Text([x, p_y], (trn_s_dir[i] > 0) ? "R" : "L", sz,
-		         Trn_DirColour(trn_s_dir[i]), 0.95);
-		x = x + sz * 1.2;
+		mx = Trn_MaxDur(first);
+		i = trn_n - rows;
+		if (i < first)
+			i = first;
+		for (; i < trn_n; i = i + 1)
+		{
+			c = Plot_Quality(Trn_Q(i));
+			Plot_Text([x, y + (rh - sz) * 0.5], (trn_s_dir[i] > 0) ? "R" : "L", sz,
+			          Trn_DirColour(trn_s_dir[i]), 1);
 
-		// The bar's LENGTH is the strafe's own duration against the longest in
-		// the jump, so an uneven rhythm shows as ragged right edges; its fill
-		// colour is the grade.  Two facts, one bar, and they are independent.
-		drawfill([x, p_y + sz * 0.15], [w * 0.42, sz * 0.7], '0.12 0.13 0.16', 0.7, 0);
-		drawfill([x, p_y + sz * 0.15], [w * 0.42 * (trn_s_dur[i] / mx), sz * 0.7],
-		         c, 0.85, 0);
-		x = x + w * 0.42 + sz * 0.5;
+			// The bar's LENGTH is the strafe's own duration against the longest in
+			// the jump, so an uneven rhythm shows as ragged right edges; its fill
+			// colour is the grade.  Two facts, one bar, and they are independent.
+			_sui_round_draw([x + 10 * u, y + floor((rh - 4 * u) * 0.5)], [bw, 4 * u], 2 * u, SUI_THEME_CHIP, 1);
+			_sui_round_draw([x + 10 * u, y + floor((rh - 4 * u) * 0.5)],
+			                [max(4 * u, floor(bw * (trn_s_dur[i] / mx))), 4 * u], 2 * u, c, 1);
 
-		HUD_Text([x, p_y], Trn_Grade(q), sz, c, 0.95);
+			Plot_TextC([x + 20 * u + bw, y + (rh - sz) * 0.5], Trn_Grade(Trn_Q(i)), sz, c, 1);
 
-		if (trn_s_sync[i] == TRN_NOSYNC)
-			s = "-";
-		else
-			s = sprintf("%s%.0f", (trn_s_sync[i] > 0) ? "+" : "",
-			            trn_s_sync[i] * 1000);
-		HUD_TextR([p_x + w, p_y], s, sz, Trn_SyncColour(trn_s_sync[i]), 0.95);
-		p_y = p_y + lh;
+			// What the strafe added, from the same two speed samples as the header.
+			g = floor(trn_s_v1[i] - trn_s_v0[i] + 0.5);
+			c = SUI_THEME_DIM;
+			if (g >  0.5) c = SUI_THEME_GOOD;
+			if (g < -0.5) c = SUI_THEME_BAD;
+			Plot_TextR([xr - 30 * u, y + (rh - sz) * 0.5], Trn_Signed(g), sz, c, 1);
+
+			if (trn_s_sync[i] == TRN_NOSYNC)
+				s = "-";
+			else
+				s = Trn_Signed(trn_s_sync[i] * 1000);
+			Plot_TextR([xr, y + (rh - sz) * 0.5], s, sz, Trn_SyncColour(trn_s_sync[i]), 1);
+			y = y + rh;
+		}
 	}
 
-	HUD_Rect("trainer", [p_x - pad, y0 - pad],
-	         [w + pad * 2, p_y - y0 + pad * 2], bp);
+	HUD_Rect("trainer", p, [w, h], bp);
 	Font_Reset();
 };
 

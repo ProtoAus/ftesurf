@@ -75,6 +75,9 @@ client/cl_soundscape.qc
 // CSQC_ConsoleCommand.
 client/cl_triggers.qc
 client/cl_hud.qc
+// Patch 610: the panel, axis and strip the trainer and the run graphs share.
+// After cl_hud.qc (HUD_Text*) and before both; it prototypes cl_lines.qc's strip.
+client/cl_plot.qc
 // Patch 462: the strafe trainer.  AFTER cl_hud.qc for HUD_Text/HUD_TextR,
 // HUD_Size, HUD_Rect, HUD_QualityColor/HUD_GainColor and ui_cv_scale, and after
 // cl_keys.qc for rec_wt_on.  Its maths is sh_strafe.qc's and its yaw wrap is

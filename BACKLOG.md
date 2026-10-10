@@ -2520,7 +2520,7 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   and teleport/stitch controls do not invent events. Repeat for a native run
   and a Momentum demo with honest missing/inferred-contact provenance. Plan 12.5–12.6.
 
-## UI theme and board layout (Patches 606, 607)
+## UI theme and board layout (Patches 606, 607, 610)
 
 Published, on both Windows installs, and on the Pi's lobbies since 10 Oct
 07:29 UTC. Patch 606 added the look behind
@@ -2554,8 +2554,33 @@ lextest.md. Left open, none of it a wrong action:
 - **Not restyled:** the terms and name screens (their `^1 ^2 ^3` escapes are
   still Quake's saturated colours on the pastel panel), the in-world main menu,
   the results card, replay chrome, vote box, chat, entity inspector and the
-  avatar panel. `cl_linegraph.qc` follows the board's palette macros and so
-  changed colour without being looked at.
+  avatar panel. (The run graphs and the strafe trainer were designed in
+  Patch 610; the replay chrome that sits over the graph was not.)
+- **Patch 610, left open.** None is a wrong action.
+  - No "you are here" on the HUD graph during your own run. The open replay
+    has its playhead (`LineGraph_Playhead`); the live clock has no one
+    alignment with lines that start at a run and lines that start at a stage,
+    and Patch 545 kept the live trail (slots 9-10) out of the graph on
+    purpose. Falsifier for a fix: `p610ui.py`'s `replay` mark reads the
+    playhead; a live one wants the same line with the timer running.
+  - `Scores_Tick` (the Verified mark) asks `drawline` for a width of 0.14 em
+    and gets one pixel: the builtin ignores its width (pr_menu.c:1089). Draw it
+    with `Plot_Strip` and compare the mark's ink before and after.
+  - The map picker has no map list at 640x480: its filters and lobby cards
+    leave the list -16 px (`p610ui.py` prints NOT GRADED there). 800x600 has
+    two rows.
+  - The HUD graph's default place (0.99 / 0.30) is the Net panel's when
+    `hud_net` is on, and at 800x600 with hud_scale 2 nothing that wide fits
+    beside the strafe bar. Both move in hud_edit.
+  - A click in a scroll gutter away from the thumb does nothing (no page jump).
+  - The trainer panel costs more than the box it replaced: about half again
+    the QC operations, and under the profiler on the desktop 0.26 against 0.20
+    ms a frame in one run and 0.36 against 0.16 in another (145 to 193 frames
+    each, so the spread is the measurement's). 0.08 ms of it is the rounded
+    bars; plain fills for bands under two radii would take most of that back.
+    Off by default.
+  - Stage D of ROADMAP 13 (a native ImGui graph) was asked for by Lex on 10
+    Oct and is the next patch; what it needs is written there.
 - **The board on a small window.** It never draws under the room list while
   anything else can give: type steps, then columns, then a narrower list. Past
   that (under about 790 px wide at hud_scale 2, wider with the Imported tab or

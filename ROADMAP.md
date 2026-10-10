@@ -679,6 +679,8 @@ item 12; choose a freshly inspected clean implementation base before coding.
   incremental preparation, nine source slots, 384 display bins, breaks,
   hover values and recorded/assumed gravity labels. Keep these semantics;
   a new renderer is not a second replay reader or energy calculation.
+  (Since Patch 610 the drawers are `LineGraph_Hud`, `LineGraph_Panel` and
+  `LineGraph_Curves`; the semantics named here are unchanged.)
 - `src/client/cl_hud.qc`: `UI_CursorClaim/Release` own the mouse through a
   shared bitmask. Panel visibility is separate from cursor ownership.
   `cl_main.qc:CL_InputChain`, `CSQC_InputEvent` and `CSQC_UpdateView` define
@@ -922,6 +924,20 @@ zoom/pan until the existing behaviour passes. Keep the basic passive graph
 on QC initially so an always-visible HUD graph does not activate ImGui.
 Gate: numerical/identity parity, real breaks stay unjoined, missing metadata
 stays honest, and nine-source graph work stays bounded during loading.
+Patch 610 (10 Oct) did this stage's presentation list in the QC panel: round
+axes, legend chips, a hover readout, display selection, and the zoom and pan
+this stage deferred; the passive graph became a small hud_edit element. Its
+sampling, bins, breaks and gravity labels are Patch 545's (`tools/p545graph.py`
+passes unchanged). What a NATIVE graph would still need, read off the host that
+day: `cl_plugin_ui.inc` holds one owner per VM and draws it once a frame, so a
+graph cannot be up beside the native board; NativeUIModel carries 256 labelled
+widgets and no sample arrays, so it needs an additive counted float-series
+interface; and ImPlot, the library that draws multi-series plots on Dear ImGui
+(ImGui's own `PlotLines` is one unlabelled series), is not vendored. A native
+panel also reaches only clients that have the plugin, where csprogs reaches
+whoever a lobby serves. Lex asked for it on those terms the same day (plots a
+player can manipulate); it follows as its own patch, with this panel as the
+fallback where the plugin is absent.
 
 **E — HUD editor inspector (medium/large after C/D).** First port only the
 options inspector: controls, descriptions, grouping and tooltips. Keep the

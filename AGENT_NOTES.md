@@ -2748,6 +2748,14 @@ sui_end. Legend ticks hide graph curves, not the world-line loads. Escape releas
 only that cursor claim; watched-replay chrome retains its own claim. `hud_linegraph`
 and `hud_linegraph_labels` control passive graphs and world-path names.
 
+Patch 610 redrew both without touching the above. The envelope is binned over
+the panel's VIEW (wheel zoom, drag pan; a closed panel is always the whole run)
+into a second buffer that swaps in when complete, and what is drawn is a
+simplified cache of those bins. The passive graph is the hud_edit element
+`graph` (`hud_linegraph_x/_y/_plots/_size`), small, under the map info; it
+gives way to the finish card and to a held TAB board. Pitfalls: "The trainer,
+the run graphs and the list thumb (Patch 610)".
+
 Falsifiers: `tools/p545graph.py --prepare`, its cfg and `--check <fresh log>`;
 `tools/p545mom.py` has a localhost-only HTTP stub and its own game arm. The latter
 must use a cold disposable synthetic replay id to prove body delivery; a cached
@@ -4423,6 +4431,78 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   SOURCES CHANGED: both `fteqw64.exe` and `fteqwsv64.exe` came out different from
   the previous build of the same engine source. Identical bytes are not available
   as evidence that engine source did not move; use the commit.
+
+### The trainer, the run graphs and the list thumb (Patch 610) — 2026-10-10
+
+- LOOK AT THEM, AND GRADE THEM, WITH `tools/p610ui.py` (ui_gallery's rig). The
+  trainer: a driven jump in zero gravity, `+right`/`+left` at an authored
+  cl_yawspeed, graded on its own `trainer:` lines (developer 1 and
+  log_developer 1 around the drive only). The graphs: three synthetic 46-53 s
+  runs through `scores lineat`, one of them replayed; graded on `linegraph
+  status` (view, drawn window, value range, `hud`, vertices, playhead) and on
+  `hud_linegraph` after a real click on each of the three switches. The thumb:
+  `ui_cursor`'s rectangle for `cs_listvbar` before, during and after a drag.
+  `--legacy` sends a pre-610 csprogs only what it knows; `--perf` prints QC
+  time per frame from profile_csqc windows.
+- `drawline` IGNORES ITS WIDTH (pr_menu.c:1089): one aliased hardware line and
+  one draw call a call. The old graph issued two per filled bin per run per
+  plot. A curve is cl_plot.qc's `Plot_Strip`/`Plot_Q`, which is cl_lines.qc's
+  `Line_Emit` with a mitre. `Scores_Tick` still asks for a width it does not get.
+- ORDER IN A PANEL THAT DRAWS CURVES: fills and text, every polygon, a fill,
+  then text. A drawstring between two polygon batches does not appear (the
+  note over `ln_lab_p`). `drawresetcliparea` flushes the batch while it is
+  still clipped, so the clip goes round the curves and nothing else.
+- A CURVE IS SIMPLIFIED ONCE, NOT REDRAWN FROM ITS BINS. `LineGraph_Simplify`
+  cuts a slot's bins to the fewest vertices within a physical pixel of what
+  the bins hold (a cone of slopes from the last vertex keeps half a pixel from
+  each point it is fed, and a bin's low and high are fed when they stand that
+  far off its ends; a break, a gap or a bin holding either ends the strip) and
+  `LineGraph_Curves` draws that until the drawn buffer, the value range or the
+  plot's height changes. That bound is by construction: no arm measures the
+  deviation. The tolerance is in value units, so a taller plot keeps more:
+  three 50 s runs are 104 vertices on the HUD's speed plot and 197 on the
+  panel's (542 on its energy plot), from about 2300 points. `linegraph status`
+  prints the counts. The first cut's cone was three times as wide while its
+  notes said half a pixel; that was found in review, not by an arm.
+- THE GRAPH HAS A VIEW. Bins are built for [lg_v0, lg_v1] into the buffer that
+  is not drawn and swap in when complete; until then the old buffer is drawn at
+  the new view. `linegraph zoom <from> <to>` sets it from a cfg and bare `zoom`
+  fits. `lg_buildslot` still reads 9 when a build is done (`p545graph.py`).
+- THE COMPARISON PANEL DOES NOT SHRINK WITH hud_scale, only its type does: its
+  width is the larger of 68 row heights and 56% of the screen. The first cut
+  tied it to the type alone, and p545's rig (a small scale) drew a 540 px panel
+  with the energy caption under the gravity warning. Where both do not fit, the
+  warning stays.
+- `hud_edit ui hover|down|up` DRIVES WHICHEVER PANEL HOLDS THE CURSOR since 610
+  (the board's `sb_*`, the graph panel's `lg_*`), not only the editor: the last
+  sui bracket of a frame owns `_action_elements`. With no cursor panel it says
+  `sui_probe: no cursor panel` (it said `editor closed`).
+- THE MENU HAS A DRAG: `ui_hover @<id> [dx dy]` parks the mouse on the middle of
+  a control as last drawn, `ui_mouse down|up` is the button alone. `ui_click`
+  is both at once and cannot hold anything.
+- A REPLAY WHOSE `map` HEADER IS NOT THE SERVER'S NAME FOR THE MAP CLOSES ON ITS
+  NEXT FRAME (`rec_wt_map != serverkey("map")`). The replay arm first wrote
+  `map uigallery` on a server that says `uigallery.map`: the log read "opened"
+  then "stopped", and the playhead the arm existed to show read -1.
+- A SCROLL THUMB HAS A FLOOR (`sui_scrollbar`): four gutter widths, never over
+  half the list, and its travel shortens to match. A list whose proportional
+  thumb is already longer takes the old arithmetic untouched, which is why the
+  look gate matches the menu leaderboard's thumb to the pixel but for its grip.
+  At 640x480 the map picker's list has no height (-16 px): the tool prints NOT
+  GRADED rather than a pass.
+- `test_ui_theme.py --moved SHOT:X0,Y0,X1,Y1` leaves a rectangle a patch
+  changes on purpose out of P1, and a P1 failure prints the box its differing
+  pixels fall in. Find a rectangle by blanking candidates until 0 remain
+  (`differing(..., moved=[...], box=True)`), not by reading the layout code.
+- `profile_csqc` PRINTS OPS AND SECONDS, NOT CALLS. `Rewind_Waiting` and
+  `Online_ReplayState` are one op each, once a frame: their ops are the
+  window's frames, and the tool refuses a window where the two disagree. The
+  seconds are the profiler's, well above the unprofiled cost: compare builds
+  with them, do not quote them as a budget.
+- A GATE STEP THAT RUNS SEVERAL RIGS WAITS FOR ANOTHER SESSION'S GAME ONLY
+  BETWEEN STEPS. A peer's 30 s install run overlapped one gallery of the look
+  gate. That run was not flagged INTERFERED and its pixels matched; read the
+  focus lines before trusting one that was.
 
 ### Native fixture APIs and falsifiers must actually act — 2026-10-09
 

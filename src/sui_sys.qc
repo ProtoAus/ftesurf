@@ -1310,6 +1310,7 @@ void(string id, vector size, vector contentsize, __inout vector offset, vector s
 	sui_push_frame([0, 0], size);
 	float ofs;
 	float length;
+	float perpx;
 	vector barpos, barsize;
 	float scan = 0;
 	float char = 0;
@@ -1320,6 +1321,20 @@ void(string id, vector size, vector contentsize, __inout vector offset, vector s
 		sui_push_frame([0, 0], [scrollbar_widths_y, size_y]);
 		ofs = (offset_y / contentsize_y) * size_y;
 		length = (size_y / contentsize_y) * size_y;
+		perpx = contentsize_y / size_y;     // content scrolled per pixel of thumb travel
+		/*
+		  Patch 610: a floor on the thumb. In proportion, 1400 maps in a 620 px
+		  list is a 6 px thumb, which nobody can see or hold. Four gutter widths
+		  (never over half the list), and the travel shortens to match: the thumb
+		  still reaches both ends exactly when the list does. A list whose thumb
+		  is already longer takes the arithmetic above, unchanged.
+		*/
+		if (length < min(size_y * 0.5, scrollbar_widths_y * 4))
+		{
+			length = min(size_y * 0.5, scrollbar_widths_y * 4);
+			ofs = (offset_y / maxoffset_y) * (size_y - length);
+			perpx = maxoffset_y / (size_y - length);
+		}
 		barpos = [0, ofs];
 		barsize = [scrollbar_widths_y, length];
 		barname = strcat(id, "vbar");
@@ -1329,7 +1344,7 @@ void(string id, vector size, vector contentsize, __inout vector offset, vector s
 			vector anchor = barpos + _cursor_relative_click;
 			sui_transform_point(anchor);
 			float diff = _cursor_position_y - anchor_y;
-			offset_y += (diff * contentsize_y) / size_y; //  * contentsize_y; // (size_y / contentsize_y);
+			offset_y += diff * perpx;
 		}
 
 		sui_style_thumb(barpos, barsize, sui_is_hovered(barname) || sui_is_held(barname));

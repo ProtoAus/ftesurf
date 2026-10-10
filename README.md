@@ -148,30 +148,38 @@ a completed download: the bounded downloader runs every five minutes, and
 unavailable or unsupported demos report a failure. Closing the board cancels
 automatic watching, not the NanoPi's durable request.
 
-Tick the **line** boxes to load up to eight recorded runs together. Their speed
-and energy graphs appear while those lines are displayed. Click **graphs** in
-the board's left header, or enter `linegraph`, for mouse comparison. Move the
-mouse across either graph to read each run's speed and energy at the same elapsed
-time; use the coloured legend checkboxes to show/hide graph curves. Curve and
-visible world-path labels use matching run names and slot numbers. Escape closes
-mouse mode. A watched replay can be compared too, as slot 0.
+Tick the **line** boxes to load up to eight recorded runs together. While any
+is drawn, a small **Run graph** sits on the HUD under the map info: their speed
+against time. The board's **hud graph** chip switches it off, as does the same
+chip in the graph panel or its square in `hud_edit`, where it can also be moved,
+resized and set to show energy or both. Click **run graphs** in the board's left
+column, or enter `linegraph`, for the comparison panel. Move the mouse across
+either plot to read every run at that instant: its speed, how far behind the
+fastest it is there, and its energy. The wheel zooms the time axis about the
+cursor, a drag pans, the right button shows the whole run again. The coloured
+chips above the plots hide and show a run's curves. Curve and visible world-path
+labels use matching run names and slot numbers. Escape closes the panel. A
+watched replay can be compared too, as slot 0, with its position marked on its
+curve.
 
 Clocks align at each run/stage start. Energy includes vertical velocity and is
 shown relative to that run's first sample, in equivalent-height units. Imported
-or legacy recordings without a gravity pin explicitly say **g=800 assumed**.
-Graph samples do not bridge teleports or save-state stitches. Set
-`hud_linegraph 0` to hide the passive graph, or `hud_linegraph_labels 0` to hide
-world-path name labels; neither clears the loaded run lines.
+or legacy recordings without a gravity pin say **g 800 assumed** on the energy
+plot and are starred in the readout. Graph samples do not bridge teleports or
+save-state stitches. `hud_linegraph 0` hides the HUD graph and
+`hud_linegraph_labels 0` the world-path name labels; neither clears the loaded
+run lines.
 
 ---
 
 ## UI style
 
-The map picker, both leaderboards, the HUD editor and the save-lock and
-Source-renderer menus share one dark pastel look: rounded controls, clear
-interaction states and delayed, wrapped tooltips. The gameplay HUD is
-unchanged. The earlier look and its `ui_style` switch were removed in Patch
-607; git has them (562a6c9 and before).
+The map picker, both leaderboards, the HUD editor, the save-lock and
+Source-renderer menus and, since Patch 610, the strafe trainer and the run
+graphs share one dark pastel look: rounded controls, clear interaction states
+and delayed, wrapped tooltips. The rest of the gameplay HUD is unchanged. The
+earlier look and its `ui_style` switch were removed in Patch 607; git has them
+(562a6c9 and before).
 
 `ui_tooltip_delay` defaults to 0.35 seconds. Editor text selects native
 **physical-pixel** font bakes and

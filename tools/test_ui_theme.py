@@ -20,7 +20,10 @@ Predictions:
   P3  a mouse parked on a map-picker chip raises its tooltip: the menu VM's own
       `ui_hover` line says so.
 A patch that changes the look on purpose fails P1 by design: it names the shots
-that moved, and `ui_gallery.py --against` pairs them for a person to read.
+that moved, and `ui_gallery.py --against` pairs them for a person to read. Such a
+patch can still hold P1 for everything else: `--moved SHOT:X0,Y0,X1,Y1` (repeat
+it) leaves that rectangle of that shot out of P1 and says so. A P1 failure
+prints the box its differing pixels fall in, which is how a rectangle is found.
 Exit 0 all held, 1 a prediction failed, 2 a run could not be graded -- which
 includes a rig whose window took the foreground mid-run (ui_gallery.py says
 INTERFERED): the owner's desktop reached it, and that is not the build's fault.
@@ -67,21 +70,31 @@ def shot(arm, name):
     return paths[0] if len(paths) == 1 else None
 
 
-def differing(a, b, region=None, mask=None):
-    """Pixels that differ between two screenshots, or None when one is missing."""
+def differing(a, b, region=None, mask=None, moved=(), box=False):
+    """Pixels that differ between two screenshots, or None when one is missing.
+
+    `mask` and every rectangle of `moved` are blanked in both first. With `box`,
+    returns (count, bounding box of the differing pixels in frame coordinates).
+    """
     if a is None or b is None:
         return None
     with Image.open(a) as ia, Image.open(b) as ib:
         ia, ib = ia.convert('RGB'), ib.convert('RGB')
         if ia.size != ib.size:
             return None
-        if mask:
+        for rect in ([mask] if mask else []) + list(moved):
             for image in (ia, ib):
-                image.paste((0, 0, 0), mask)
+                image.paste((0, 0, 0), rect)
         if region:
             ia, ib = ia.crop(region), ib.crop(region)
         diff = ImageChops.difference(ia, ib).convert('L').point(lambda v: 255 if v else 0)
-        return sum(diff.histogram()[1:])
+        count = sum(diff.histogram()[1:])
+        if not box:
+            return count
+        bbox = diff.getbbox()
+        if bbox and region:
+            bbox = (bbox[0] + region[0], bbox[1] + region[1], bbox[2] + region[0], bbox[3] + region[1])
+        return count, bbox
 
 
 def panel_pixels(path, region):
@@ -151,8 +164,17 @@ def main():
     p.add_argument('--subject-qc', type=Path, required=True)
     p.add_argument('--library', type=Path, required=True)
     p.add_argument('--out', type=Path, required=True, help='owned task-root output directory')
+    p.add_argument('--moved', action='append', default=[], metavar='SHOT:X0,Y0,X1,Y1',
+                   help='a rectangle of one shot this patch changes on purpose: left out of P1')
     a = p.parse_args()
     a.out = a.out.resolve()
+    moved = {}
+    for spec in a.moved:
+        name, _, rect = spec.partition(':')
+        rect = tuple(int(v) for v in rect.split(','))
+        if name not in INGAME + tuple(MENU) or len(rect) != 4 or rect[0] >= rect[2] or rect[1] >= rect[3]:
+            p.error('--moved is SHOT:X0,Y0,X1,Y1 for a graded shot: ' + spec)
+        moved.setdefault(name, []).append(rect)
     if not any((d / 'OWNER.md').is_file() for d in [a.out, *a.out.parents]):
         p.error('--out requires an ancestor OWNER.md')
     a.out.mkdir(parents=True, exist_ok=True)
@@ -194,12 +216,17 @@ def main():
             continue
         check(drew > (500 if name in DREW else 100000), f'P0 {name}: {drew} pixels {want}')
     for name in INGAME + tuple(MENU):
-        same = compare(control, subject, name)
+        region = MENU.get(name)
+        same = differing(shot(control, name), shot(subject, name), region, None if region else PING,
+                         moved.get(name, ()), box=True)
         if same is None:
             ungraded += 1
             print('NOT REACHED', name, 'screenshot missing or resized')
             continue
-        check(same == 0, f'P1 {name}: {same} pixels differ from the control (want 0)')
+        for rect in moved.get(name, ()):
+            print(f'MOVED {name}: {rect} left out of P1, changed on purpose')
+        check(same[0] == 0, f'P1 {name}: {same[0]} pixels differ from the control (want 0)'
+              + (f', all inside {same[1]}' if same[0] else ''))
     for name, sees in [(n, True) for n in MUTANT_SEES] + [(n, False) for n in MUTANT_BLIND]:
         moved = compare(subject, mutant, name)
         if moved is None:

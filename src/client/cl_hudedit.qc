@@ -287,7 +287,7 @@ void() HE_BuildTable =
 	// among the LISTED rows rather than after the hidden block -- see he_listed:
 	// the list loop skips hidden rows, so the two orders only agree while the
 	// listed ones stay contiguous at the top.
-	HE_Add("trainer", "Strafe trainer", "hud_trainer_x", "hud_trainer_y", "hud_trainer", 0, HEA_CT, 180, 141);
+	HE_Add("trainer", "Strafe trainer", "hud_trainer_x", "hud_trainer_y", "hud_trainer", 0, HEA_CT, 156, 146);
 	HE_Text("hud_trainer_size",  "8 12 16 20",   8);     // UI; 16 at hud_scale 2
 	HE_Add("board",   "Board",      "hud_board_x",   "hud_board_y",   "hud_board",    0, HEA_CT,  120,  52);
 	HE_Text("hud_board_size",    "16 20 24 28", 10);     // mono from build 65; 20 today
@@ -302,6 +302,10 @@ void() HE_BuildTable =
 	// The line types have independent switches; this row is an options pane,
 	// not a misleading master toggle that only turns off the open demo.
 	HE_Add("lines",   "Run lines",  "",              "",              "",             1, HEA_CT,  0,   0);
+	// Patch 610: the HUD's run graph. It draws only while a line is ticked, so the
+	// outline here is usually the nominal one.
+	HE_Add("graph",   "Run graph",  "hud_linegraph_x", "hud_linegraph_y", "hud_linegraph", 0, HEA_RT, 150, 80);
+	HE_Text("hud_linegraph_size", "8 12 16 20",  8);     // UI; 16 at hud_scale 2
 	// Patch 390: -1/-1 = attached left of the key block; a drag detaches it.
 	HE_Add("mouse",   "Mouse",      "hud_mouse_x",   "hud_mouse_y",   "hud_mouse",    0, HEA_LT,   83,  52);
 	/*
@@ -617,6 +621,15 @@ string(string id, float row) HE_OptDef =
 		return "";
 	}
 
+	if (id == "graph")
+	{
+		if (row == 0) return "hud_linegraph_plots|Shows|c|1 2 3|speed;energy;both"
+		                     "|Speed against time, energy against time, or one above the other.";
+		if (row == 1) return "hud_linegraph_labels|Names on lines|t||"
+		                     "|Each run's number and name beside its line in the world.";
+		return "";
+	}
+
 	if (id == "trainer")
 	{
 		if (row == 0) return "hud_trainer_trace|Rate trace|t||"
@@ -662,6 +675,7 @@ string(string id) HE_Tip =
 	if (id == "banner")   return "Across the screen when you finish the map, a bonus or a stage.";
 	if (id == "spectate") return "Watching another player: pin the TAB board and click a name.";
 	if (id == "lines")    return "The path a recording took, drawn through walls, with what happened along it.";
+	if (id == "graph")    return "Speed over time for the runs whose LINE box is ticked on the leaderboard. On screen only while one is.";
 	if (id == "mouse")    return "Your mouse as turn; the dot wraps at the edges. Replays and spectate show their view.";
 	return "";
 };
@@ -1800,6 +1814,7 @@ void(float r) HE_Default =
 	if (id == "seq")     localcmd("seta hud_seq_x -0.25\nseta hud_seq_y 0.5\n");
 	if (id == "strafe")  localcmd("seta hud_strafe_x 0.5\nseta hud_strafe_y 0.42\n");
 	if (id == "trainer") localcmd("seta hud_trainer_x 0.28\nseta hud_trainer_y 0.27\n");
+	if (id == "graph")   localcmd("seta hud_linegraph_x 0.99\nseta hud_linegraph_y 0.30\n");
 	if (id == "board")   localcmd("seta hud_board_x -1\nseta hud_board_y -1\n");
 	if (id == "speed")   localcmd("seta hud_speed_x 0.5\nseta hud_speed_y 0.68\n");
 	if (id == "banner")  localcmd("seta hud_banner_x 0.5\nseta hud_banner_y 0.25\n");
@@ -2036,9 +2051,11 @@ void() HUD_EditUIProbe =
 	local float sc, took, font;
 	local vector pos, sz;
 	n = (int)min(MAX_ACTION_ELEMENTS, _action_elements_index);
+	// Patch 610: any panel holding the cursor, not only this one: the last sui
+	// bracket of the frame is whichever is open (the board, the run graphs).
 	if (strcmp(argv(2), "hover") == 0)
 	{
-		if (!ui_he_open) { print("sui_probe: editor closed\n"); return; }
+		if (!ui_cursor_claims) { print("sui_probe: no cursor panel\n"); return; }
 		for (i = 0i; i < n; i++)
 		{
 			if (strcmp(_action_elements[i].id, argv(3)) == 0)
@@ -2063,7 +2080,7 @@ void() HUD_EditUIProbe =
 	}
 	if (strcmp(argv(2), "down") == 0 || strcmp(argv(2), "up") == 0)
 	{
-		if (!ui_he_open) { print("sui_probe: editor closed\n"); return; }
+		if (!ui_cursor_claims) { print("sui_probe: no cursor panel\n"); return; }
 		sc = stringtokeynum(argv(3));
 		if (sc <= 0) { print("sui_probe: invalid key\n"); return; }
 		took = CL_InputChain(strcmp(argv(2), "down") == 0 ? IE_KEYDOWN : IE_KEYUP, sc, 0, 0);

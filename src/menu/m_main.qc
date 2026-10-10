@@ -7033,6 +7033,7 @@ void() m_init =
 	registercommand("ui_cursor");
 	registercommand("ui_click");
 	registercommand("ui_hover");
+	registercommand("ui_mouse");
 
 	localcmd("bind escape togglemenu\n");
 
@@ -7786,14 +7787,47 @@ float(string cmd) m_consolecommand =
 
 		    ui_hover <x> <y>   park the mouse cursor there, in mouse mode
 		    ui_hover           report it, and whether a tip is up and whose
+		    ui_hover @<id> [dx dy]   Patch 610: the middle of that control as last
+		                       drawn, plus an offset. With `ui_mouse` this is a drag,
+		                       aimed without a pixel in the cfg.
 		*/
-		if (argv(1) != "")
+		if (substring(argv(1), 0, 1) == "@")
+		{
+			local int hi;
+			local float found;
+			int hn = (int)min(MAX_ACTION_ELEMENTS, _action_elements_index);
+			found = FALSE;
+			for (hi = 0; hi < hn; hi++)
+			{
+				if (strcmp(_action_elements[hi].id, substring(argv(1), 1, -1)) == 0)
+				{
+					activate_mouse_cursor();
+					_sui_mouse_move(_action_elements[hi].pos + _action_elements[hi].size * 0.5
+					                + [stof(argv(2)), stof(argv(3)), 0], TRUE);
+					found = TRUE;
+				}
+			}
+			if (!found)
+				print(sprintf("ui_hover: no control [%s]\n", substring(argv(1), 1, -1)));
+		}
+		else if (argv(1) != "")
 		{
 			activate_mouse_cursor();
 			_sui_mouse_move([stof(argv(1)), stof(argv(2)), 0], TRUE);
 		}
 		print(sprintf("ui_hover: %g %g  mouse %g  tip %g [%s]\n", _cursor_position_x,
 		              _cursor_position_y, _cursor_is_mouse_active, sui_tip_visible, sui_tip_id));
+		return TRUE;
+	}
+
+	// Patch 610: the button alone, where `ui_hover` parked the cursor. Down, a
+	// move, up is a drag, which `ui_click` (both at once) cannot be.
+	if (argv(0) == "ui_mouse")
+	{
+		local float mtook;
+		mtook = Menu_InputEvent((argv(1) == "down") ? IE_KEYDOWN : IE_KEYUP, K_MOUSE1, 0, 0);
+		print(sprintf("ui_mouse: %s took %g  cursor %g %g\n", argv(1), mtook,
+		              _cursor_position_x, _cursor_position_y));
 		return TRUE;
 	}
 

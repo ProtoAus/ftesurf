@@ -38,6 +38,8 @@ NAMES = ('Lex', 'kitsune', 'moonwalk', 'ramp_goblin', 'Aurora', 'strafe.exe', 'v
          'tau', 'Odyssey', 'driftwood', 'Juniper', 'afterimage', 'koi', 'Solstice',
          'wavelength', 'emberfall', 'quasar', 'lowgrav', 'Tanager', 'hexa', 'Borealis')
 BSPS = ('bhop_3d', 'poop', 'surf_kitsune', 'surf_raqbonus3ramp', 'surf_voyager')
+# Shots only the 1920x1080 arm takes (its regions are what test_ui_theme.py reads).
+SHOTS_1080 = ('menu_create_tip',)
 
 
 def sha(path):
@@ -316,7 +318,7 @@ def grade(rig):
             errors.append(f'{arm}: client exit {result.get("returncode")}')
         if text.count('UIGALLERY FINISHED') != 1:
             errors.append(f'{arm}: completion marker missing')
-        for bad in re.findall(r'[^\r\n]*(?:Unknown command|QC runtime error|CSQC_Abort|Menu_Abort|sui error|sui warning|sui_probe: no control|sui_probe: editor closed)[^\r\n]*', text):
+        for bad in re.findall(r'[^\r\n]*(?:Unknown command|QC runtime error|CSQC_Abort|Menu_Abort|sui error|sui warning|sui_probe: no control|sui_probe: editor closed|sui_probe: no cursor panel)[^\r\n]*', text):
             # Progs from before Patch 606 have no ui_hover; they are still a valid control.
             if 'Unknown command "ui_hover"' not in bad:
                 errors.append(f'{arm}: {bad.strip()[:140]}')
@@ -326,7 +328,7 @@ def grade(rig):
             errors.append(f'{arm}: INTERFERED -- the rig window took the foreground mid-run; rerun it')
         wanted = SHOTS + (('scores_native',) if report.get('native') else ())
         if arm == '1920x1080':
-            wanted += ('menu_create_tip',)
+            wanted += SHOTS_1080
         for name in wanted:
             if len(list((root / 'ftesurf/screenshots').glob(name + '.*'))) != 1:
                 errors.append(f'{arm}: missing screenshot {name}')

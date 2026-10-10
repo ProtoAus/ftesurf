@@ -2724,7 +2724,7 @@ void(vector scr) Scores_Draw =
 	// ---- the legs, a sidebar; the graphs under them --------------------------
 	Scores_Text([x0 + pad + rec_sb_cw, yhead], rec_sb_szhead, "TRACK", SUI_THEME_MUTED, 1);
 	rs = [sidew - ceil(rec_sb_cw), rec_sb_rowh];
-	sui_list_view_begin("sb_legs", [x0 + pad, ylist], [sidew, listh - tabh - pad * 0.5],
+	sui_list_view_begin("sb_legs", [x0 + pad, ylist], [sidew, listh - tabh * 2 - 6 - pad * 0.5],
 	                    rs, rec_sb_legn, rec_sb_legscroll, [0, ceil(rec_sb_cw)]);
 	lp = '0 0 0';
 	for (idx = sui_list_item(lp); idx > -1; idx = sui_list_item(lp))
@@ -2743,8 +2743,13 @@ void(vector scr) Scores_Draw =
 			rec_sb_leg = idx;
 	}
 	sui_list_view_end();
-	if (Scores_Chip("sb_graph", [x0 + pad, ylist + listh - tabh], [rs_x, tabh], "run graphs", FALSE))
+	// Patch 610: the comparison panel, and the switch for the graph the HUD keeps
+	// while a LINE box is ticked -- beside the boxes that raise it.
+	if (Scores_Chip("sb_graph", [x0 + pad, ylist + listh - tabh * 2 - 6], [rs_x, tabh], "run graphs", FALSE))
 		rec_sb_graphpick = TRUE;
+	if (Scores_Chip("sb_hudgraph", [x0 + pad, ylist + listh - tabh], [rs_x, tabh], "hud graph",
+	                cvar("hud_linegraph") > 0))
+		localcmd(sprintf("seta hud_linegraph %g\n", (cvar("hud_linegraph") > 0) ? 0 : 1));
 
 	// ---- the runs --------------------------------------------------------------
 	rp = [x0 + pad * 2 + sidew, yhead];

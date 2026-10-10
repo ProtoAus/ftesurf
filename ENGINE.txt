@@ -35,14 +35,19 @@ patch    615
 # Patch 612: Steam accounts, stage 1 (ROADMAP 14). surfd signs a browser in through
 # Steam and stores the account: schema 12, four additive tables nothing ranking,
 # verifying or publishing reads. surfd only: no engine source, QC, recorder,
-# evidence, ranking or Build change (commit and tag above stay). 610 is held by
-# another session and had not landed when this did.
+# evidence, ranking or Build change (commit and tag above stay).
 # Patch 611: the player's own live run line takes each sample's position from the
 # command frame the server's stats describe, not from the current one. Behind a
 # 120 ms ping its ramp-exit mark sat 79 to 101 u past the place the server
 # recorded; paired it is 3 u (10 where the exit tick's snapshot never came).
 # csprogs only: no engine source, server QC, recorder, evidence, ranking,
 # default or Build change (commit and tag above stay).
+# Patch 610: the strafe trainer and the run graphs take the key menus' panel; the
+# HUD's run graph is small, a hud_edit element, and switches off from the board,
+# the comparison panel or the editor; that panel zooms and pans; a long list's
+# scroll thumb keeps a length that can be held. csprogs and menu.dat only: no
+# engine source, server QC, recorder, evidence, ranking, default or Build change
+# (commit and tag above stay).
 # Patch 609: the Windows dedicated server's fatal-error path. A server that reaches
 # SV_Error (a +map nobody has) exits 1 instead of faulting in Log_String; it restarts
 # itself only when started with -autoreset; and its crash record goes to crashaddr.txt in

@@ -11,6 +11,47 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — strafe trainer, run graphs, scroll thumb (Patch 610)
+
+Published 11 Oct; not on an install or the Pi as this is written.
+
+Measured on the desktop PC only (GL; D3D11 and Vulkan complete the same arm),
+with a driven jump and three made-up 50 s runs: not a real map, not your mouse.
+Judge:
+
+- **The graph that sat bottom right.** It is small now (300 x 160 px at
+  hud_scale 2, where it was 760 x 370), sits under the map info, shows speed
+  only, and has three off switches: the `hud graph` chip under `run graphs` on
+  the board, the same chip in the graph panel, and its square in hud_edit (`Run
+  graph`), where you can also drag it, size it, and pick speed, energy or both.
+  Is under the map info the right home? Should it be off until asked for?
+- **Run graphs panel** (`run graphs` on the board, or `linegraph`). Runs are
+  chips: click one to hide its curves. Axes step in round numbers. The cursor
+  carries a card: each run's speed, how far behind the fastest it is at that
+  instant, its energy. Wheel zooms about the cursor, a drag pans once zoomed,
+  the right button shows the whole run. A harness zooms and reads the cursor
+  back; the feel of a real wheel and drag is yours. Does the card cover what
+  you are reading? At a small hud_scale the panel keeps 56% of the screen's
+  width and only its type shrinks; that was looked at at one scale, in one rig.
+- **Curves.** Each is cut to the fewest points that stay within a pixel of the
+  data, which is where the cost went. On a real long run, does any curve look
+  wrong? The old drawing is in git at 306a0da.
+- **A watched replay** is run 0, with a marker on its own curve at the replay's
+  clock. Your own live run has no such marker (BACKLOG says why).
+- **Strafe trainer** (`hud_trainer 1`, or its square in hud_edit). The save
+  menu's panel. The header is the jump's grade; each row says what that strafe
+  gained (GAIN); the columns have names; the turn-rate strip spans +-60% of
+  ideal instead of +-100%, with grade A's +-20% shaded. Is +-60% the right
+  range for how you strafe? Left is sky and right is peach, the mouse pad's
+  blue and orange softened: readable mid-jump?
+- **Scroll bars.** A long list's thumb keeps 40 px on the map picker (under 6
+  before, with every map listed) and wears a three-line grip. A harness drags
+  it and it follows; whether it is easy to catch, and whether it wants to be
+  wider, is yours.
+- **The laptop.** Nothing here ran on it.
+
+Not a ranking, recorder, evidence or server change. BACKLOG.md has the leftovers.
+
 ## 00. 10 Oct — `link` in the game (Patch 615)
 
 Live on the Pi's lobbies and both your Windows installs since 10 Oct 13:49 UTC.
@@ -394,6 +435,11 @@ thresholds changed.
   and full pair coverage have not been claimed.
 
 ## 00. 7 Oct — in-game Momentum downloads and comparison graphs (Patch 545)
+
+(Patch 610 redrew both graphs: the first entry of this file. What is asked
+below about downloads, sampling and eight long files still stands; where it
+says "graphs in the left header" and "legend rows", read `run graphs` and the
+chips.)
 
 Machine controls cover queued/ready/missing records, cold delivery, two selected
 requests before polls, line loading, watching and replacing queued watch intent.
