@@ -13,7 +13,9 @@ to be wrong.
 
 ## 00. 10 Oct — ticked lines in run order (Patch 624)
 
-Published 10 Oct; not on an install or the Pi as this is written.
+Published 10 Oct 22:24 UTC (09:24 on the 11th here). Live since 22:25 UTC on
+both installs and 22:26 UTC on all twelve lobbies (csprogs only). Each
+replaced file has a `.prev` copy beside it.
 
 You said a demo line sometimes shows through a wall from a later part of the
 run. A ticked line was drawn wherever it came within 6000 u of you, whichever
