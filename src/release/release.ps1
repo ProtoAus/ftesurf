@@ -127,6 +127,9 @@ $SrcDir  = Split-Path -Parent $RelDir                     # ...\src
 $SurfDir = Split-Path -Parent $SrcDir                     # C:\FTESurf
 if (-not $OutDir) { $OutDir = Join-Path $SurfDir 'dist' }
 $StageRoot   = Join-Path $SurfDir 'release'
+# A relative -FteRoot is one folder to PowerShell (its location) and another to .NET (the
+# process's directory), and this script reads that tree through both.
+$FteRoot     = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($FteRoot)
 $EngineRel   = Join-Path $FteRoot 'engine\release'
 $PatchesMd   = Join-Path $FteRoot 'ENGINE_PATCHES.md'
 $VersionFile = Join-Path $SurfDir 'VERSION'
@@ -184,6 +187,10 @@ function Native ($exe, [string[]]$argv, [string]$what) {
 $ShipRootFiles = @(
     'ftesurf64.exe'          # the engine
     'fteplug_hl2_x64.dll'    # VPK/VMT/VTF/.phy -- without it no Source content loads
+    # Patch 623: the run graphs' ImPlot plots (Patch 614).  cfg\default.cfg loads it at
+    # boot (Patch 618) and prints "Couldn't load plugin ui_imgui" where it is absent.
+    # Its third-party notices are THIRD-PARTY.txt, generated below.
+    'fteplug_ui_imgui_x64.dll'
     'default.fmf'            # carries the 66.667 Hz / 15 ms tick constants
     'ftesurf.bat'            # sets the CWD FTE takes basedir from; seeds fs_addons.txt
     'ftesurf_debug.bat'
@@ -692,28 +699,48 @@ if ($staleReport.Count) {
 #  the install, so that pair is the definitional oracle for "what the engine tree
 #  currently builds". Check BOTH: checking only the exe passes a DLL-only skew,
 #  and it was the DLL-only direction that produced a split Patch 317 on this box.
+#  Patch 623: and the ui_imgui plugin, which speaks NativeUIPlot/1 to this exe and
+#  is refused by one that does not carry it.  NO built copy at all is "cannot
+#  check", as before.  One missing beside others that are there is SKEW: the tree
+#  does not build what is being shipped.  (All three or nothing switched the gate
+#  off for a tree holding only the exe and the hl2 plugin, which is what the
+#  keep-the-last-engine recipe in AGENT_NOTES.md makes.)
 $exeLocal = Join-Path $SurfDir 'ftesurf64.exe'
 $dllLocal = Join-Path $SurfDir 'fteplug_hl2_x64.dll'
+$imgLocal = Join-Path $SurfDir 'fteplug_ui_imgui_x64.dll'
 $exeBuilt = Join-Path $EngineRel 'fteqw64.exe'
 $dllBuilt = Join-Path $EngineRel 'fteplug_hl2_x64.dll'
+$imgBuilt = Join-Path $EngineRel 'fteplug_ui_imgui_x64.dll'
 $hExeLocal = (Get-FileHash -LiteralPath $exeLocal -Algorithm SHA256).Hash
 $hDllLocal = (Get-FileHash -LiteralPath $dllLocal -Algorithm SHA256).Hash
-$hExeBuilt = $null; $hDllBuilt = $null; $skew = @()
-if ((Test-Path -LiteralPath $exeBuilt) -and (Test-Path -LiteralPath $dllBuilt)) {
-    $hExeBuilt = (Get-FileHash -LiteralPath $exeBuilt -Algorithm SHA256).Hash
-    $hDllBuilt = (Get-FileHash -LiteralPath $dllBuilt -Algorithm SHA256).Hash
-    if ($hExeLocal -ne $hExeBuilt) { $skew += "ftesurf64.exe        $($hExeLocal.Substring(0,12)) != engine\release  $($hExeBuilt.Substring(0,12))" }
-    if ($hDllLocal -ne $hDllBuilt) { $skew += "fteplug_hl2_x64.dll  $($hDllLocal.Substring(0,12)) != engine\release  $($hDllBuilt.Substring(0,12))" }
-} else {
+$hImgLocal = (Get-FileHash -LiteralPath $imgLocal -Algorithm SHA256).Hash
+$hExeBuilt = $null; $hDllBuilt = $null; $skew = @(); $builtSeen = 0   # the receipt records these two
+$skewSet = @(
+    @{ Name = 'ftesurf64.exe';            Local = $hExeLocal; Built = $exeBuilt },
+    @{ Name = 'fteplug_hl2_x64.dll';      Local = $hDllLocal; Built = $dllBuilt },
+    @{ Name = 'fteplug_ui_imgui_x64.dll'; Local = $hImgLocal; Built = $imgBuilt }
+)
+foreach ($b in $skewSet) { if (Test-Path -LiteralPath $b.Built) { $builtSeen++ } }
+if ($builtSeen -eq 0) {
     Warn "no engine\release\ build at $EngineRel -- cannot check engine skew"
+} else {
+    foreach ($b in $skewSet) {
+        if (-not (Test-Path -LiteralPath $b.Built)) {
+            $skew += "$($b.Name)  has no built copy: no $(Split-Path -Leaf $b.Built) in engine\release beside the others"
+            continue
+        }
+        $h = (Get-FileHash -LiteralPath $b.Built -Algorithm SHA256).Hash
+        if ($b.Name -eq 'ftesurf64.exe') { $hExeBuilt = $h } elseif ($b.Name -eq 'fteplug_hl2_x64.dll') { $hDllBuilt = $h }
+        if ($b.Local -ne $h) { $skew += "$($b.Name)  $($b.Local.Substring(0,12)) != engine\release  $($h.Substring(0,12))" }
+    }
 }
-$patchAppliesToBinary = ($skew.Count -eq 0 -and $null -ne $hExeBuilt)
+$patchAppliesToBinary = ($skew.Count -eq 0 -and $builtSeen -eq $skewSet.Count)
 if ($skew.Count) {
     $msg = "the installed engine is not what the engine tree builds:`n" + (($skew | ForEach-Object { "      $_" }) -join "`n")
     $msg += "`n      => `"engine patch $enginePatch`" would be a claim about ENGINE_PATCHES.md, not about this binary."
     if ($AllowEngineSkew) { Warn "$msg`n    -> allowed by -AllowEngineSkew; the receipt and page will say 'unverified'"; $Overrides += 'AllowEngineSkew' }
-    else { Fail "$msg`n  Run .\src\build.ps1 -Engine to deploy the built pair, then re-run." }
-} elseif ($patchAppliesToBinary) { Good 'gate 3 (skew): shipped exe and plugin match engine\release\' }
+    else { Fail "$msg`n  Run .\src\build.ps1 -Engine to deploy the built exe and plugins, then re-run." }
+} elseif ($patchAppliesToBinary) { Good 'gate 3 (skew): shipped exe and both plugins match engine\release\' }
 
 # --- gate 4: the ship set carries what the QuakeC asks for -------------------
 #  $ShipRootFiles/$ShipGameFiles/$ShipGlobs are an ALLOWLIST, and nothing else in
@@ -764,7 +791,9 @@ Good "gate 4 (ship set): $(if ($sgLine) { $sgLine.Trim() } else { 'no literal as
 # script gets to rewrite. Report drift; never silently "fix" it.
 $enginePin = Join-Path $SurfDir 'ENGINE.txt'
 if (Test-Path -LiteralPath $enginePin) {
-    $pinTxt = (Get-Content -LiteralPath $enginePin -TotalCount 40) -join "`n"
+    # The whole file: `qcbuild` has been below the first 40 lines since the patch notes
+    # grew above it, and this read "qcbuild <nothing>" and compared nothing.
+    $pinTxt = (Get-Content -LiteralPath $enginePin) -join "`n"
     if ($pinTxt -match '(?m)^\s*patch\s+(\d+)\s*$')   { $pp = [int]$Matches[1] } else { $pp = $null }
     if ($pinTxt -match '(?m)^\s*qcbuild\s+(\d+)\s*$') { $pq = [int]$Matches[1] } else { $pq = $null }
     if (($null -ne $pp -and $pp -ne $enginePatch) -or ($null -ne $pq -and $pq -ne $qcBuild)) {
@@ -915,6 +944,14 @@ foreach ($rel in $shipRel) {
     Copy-Item -LiteralPath $srcFile -Destination $dstFile -Force
     $staged++; $stagedBytes += (Get-Item -LiteralPath $dstFile).Length
 }
+# Gate 3 hashed the three binaries before they were copied.  A deploy in between (another
+# session's, on a shared machine) would ship a file nothing compared, under the old hash.
+foreach ($b in $skewSet) {
+    $h = (Get-FileHash -LiteralPath (Join-Path $StageDir $b.Name) -Algorithm SHA256).Hash
+    if ($h -ne $b.Local) {
+        Fail "$($b.Name) changed between gate 3 and the stage ($($b.Local.Substring(0,12)) then $($h.Substring(0,12))): something replaced it during this run.  Re-run."
+    }
+}
 
 # Normalise the launchers to CRLF in the STAGE (never in the working tree).
 #
@@ -987,6 +1024,7 @@ engine patch     $engineLabel
 git HEAD         $GitShort  $GitHeadSub
 ftesurf64.exe        sha256 $hExeLocal
 fteplug_hl2_x64.dll  sha256 $hDllLocal
+fteplug_ui_imgui_x64.dll  sha256 $hImgLocal
 csprogs.dat          sha256 $((Get-FileHash -LiteralPath (Join-Path $SurfDir 'ftesurf\csprogs.dat') -Algorithm SHA256).Hash)
 qwprogs.dat          sha256 $((Get-FileHash -LiteralPath (Join-Path $SurfDir 'ftesurf\qwprogs.dat') -Algorithm SHA256).Hash)
 menu.dat             sha256 $((Get-FileHash -LiteralPath (Join-Path $SurfDir 'ftesurf\menu.dat') -Algorithm SHA256).Hash)
@@ -1037,7 +1075,8 @@ first run.  This is alpha software: physics fixes between builds can invalidate
 previously recorded run times.
 
 Licence: GPLv2 or later, see LICENSE.  The three fonts in ftesurf/gfx/fonts are
-SIL OFL 1.1, see ftesurf/gfx/fonts/FONTS.md.
+SIL OFL 1.1, see ftesurf/gfx/fonts/FONTS.md.  fteplug_ui_imgui_x64.dll is built
+with Dear ImGui and ImPlot (MIT): see THIRD-PARTY.txt.
 "@.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
 
 [System.IO.File]::WriteAllText((Join-Path $StageDir 'SOURCE.txt'), @"
@@ -1047,7 +1086,7 @@ FTESurf $Ver -- source
 FTESurf is GPLv2 or later.  See LICENSE for the full text.
 
   game (QuakeC)   https://github.com/ProtoAus/ftesurf
-  engine fork     https://github.com/ProtoAus/ftequakers   branch engine-patches
+  engine fork     https://github.com/ProtoAus/ftequakers   branch main
 
 This release was built from:
   QuakeC build $qcBuild, git $GitShort
@@ -1060,7 +1099,101 @@ material and static-prop lighting work exist only in that fork.
 FTESurf contains no Valve or Momentum Mod code and ships no Source assets.
 "@.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
 
-$staged += 3
+# --- third-party notices (Patch 623) -------------------------------------------
+#  What fteplug_ui_imgui_x64.dll is built from that is not FTESurf's or FTE's own: Dear
+#  ImGui (which carries three stb headers and the ProggyClean font), ImPlot, a subset of
+#  Roboto, and winpthreads, which the compiler links in with libstdc++ (plugins/Makefile,
+#  -static: the DLL holds its pthread_* names, the exe and the hl2 plugin none).  MIT, BSD
+#  and the OFL each ask that their notice travel with every copy.  Every text but
+#  ProggyClean's is READ, from the tree the DLL was built from (gate 3 pins the DLL to that
+#  tree's build) or from src\release\notices, and one that is missing or is not what was
+#  expected stops the release.
+$tpDir = Join-Path $FteRoot 'plugins\ui_imgui'
+function Get-Notice ([string]$name, [string]$path, [string]$must) {
+    if (-not (Test-Path -LiteralPath $path)) {
+        Fail "third-party notice missing for ${name}: $path`n  fteplug_ui_imgui_x64.dll may not ship without it."
+    }
+    $t = [System.IO.File]::ReadAllText($path).Replace("`r`n", "`n")
+    if ($t -notmatch $must) { Fail "third-party notice for ${name} is not the text expected (no /$must/): $path" }
+    return $t
+}
+$tpImgui  = (Get-Notice 'Dear ImGui' (Join-Path $tpDir 'vendor\LICENSE.txt') 'Omar Cornut').Trim()
+$tpRoboto = (Get-Notice 'Roboto' (Join-Path $tpDir 'fonts\OFL.txt') 'Roboto Project Authors').Trim()
+$tpWinpth = (Get-Notice 'winpthreads' (Join-Path $RelDir 'notices\winpthreads-COPYING.txt') 'Lockless Inc').Trim()
+#  ImPlot's LICENSE file names one holder and an older year; its sources name two.  The
+#  notice shipped is the one at the head of the files that were compiled.
+$tpLines = (Get-Notice 'ImPlot' (Join-Path $tpDir 'vendor\implot.h') 'Permission is hereby granted') -split "`n"
+$tpEnd = -1
+for ($i = 0; $i -lt [Math]::Min(60, $tpLines.Count); $i++) { if ($tpLines[$i] -match '^// ImPlot v') { $tpEnd = $i; break } }
+if ($tpEnd -lt 5) { Fail "implot.h does not open with its licence the way this script reads it (no '// ImPlot v' line after it)" }
+$tpImplot = (($tpLines[0..($tpEnd - 1)] | ForEach-Object { $_ -replace '^// ?', '' }) -join "`n").Trim()
+if ($tpImplot -notmatch 'Copyright \(c\)' -or $tpImplot -notmatch 'WITHOUT WARRANTY') {
+    Fail "the head of implot.h is not a licence notice as this script reads it"
+}
+#  stb's three headers state their two licences at their foot; one statement serves all three.
+$tpLines = (Get-Notice 'stb' (Join-Path $tpDir 'vendor\imstb_truetype.h') 'ALTERNATIVE A - MIT License') -split "`n"
+$tpAt = -1
+for ($i = $tpLines.Count - 1; $i -ge 0; $i--) { if ($tpLines[$i] -match '^This software is available under 2 licenses') { $tpAt = $i; break } }
+$tpEnd = -1
+if ($tpAt -ge 0) { for ($i = $tpAt; $i -lt $tpLines.Count; $i++) { if ($tpLines[$i] -match '^\*/') { $tpEnd = $i; break } } }
+if ($tpEnd -lt 0) { Fail "imstb_truetype.h does not end with its licence statement the way this script reads it" }
+$tpStb = (($tpLines[$tpAt..($tpEnd - 1)] | ForEach-Object { if ($_ -match '^-+$') { '' } else { $_ } }) -join "`n").Trim()
+$tp = @"
+FTESurf $Ver -- third-party software in fteplug_ui_imgui_x64.dll
+================================================================
+
+fteplug_ui_imgui_x64.dll draws the run graphs' plots.  It is part of the FTESurf
+engine fork (GPLv2 or later: LICENSE, SOURCE.txt) and is built with the software
+below, whose own notices follow.  None of it is downloaded at run time.  This file
+is about that one DLL; it does not list what the engine itself is built with.
+
+  Dear ImGui     MIT            https://github.com/ocornut/imgui
+  ImPlot         MIT            https://github.com/epezent/implot
+  stb_truetype, stb_rect_pack, stb_textedit
+                 MIT or public domain; they come inside Dear ImGui
+  ProggyClean    MIT            the font Dear ImGui embeds
+  Roboto         SIL OFL 1.1    a subset of Roboto Regular (U+0020 to U+007E)
+  winpthreads    MIT and BSD    mingw-w64's thread library, linked in by the compiler
+
+Dear ImGui's table of Japanese characters is generated from the Joyo Kanji list of
+Japan's Agency for Cultural Affairs and the Jinmeiyo Kanji list of its Ministry of
+Justice, which are available under CC BY 4.0
+(https://creativecommons.org/licenses/by/4.0/legalcode).
+"@
+$tp += "`n`n---------- Dear ImGui ----------`n`n" + $tpImgui
+$tp += "`n`n---------- ImPlot ----------`n`n" + $tpImplot
+$tp += "`n`n---------- stb_truetype, stb_rect_pack, stb_textedit ----------`n`n" + $tpStb
+$tp += @"
+
+
+---------- ProggyClean ----------
+
+ProggyClean.ttf
+Copyright (c) 2004, 2005 Tristan Grimmer
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"@
+$tp += "`n`n---------- Roboto ----------`n`n" + $tpRoboto
+$tp += "`n`n---------- winpthreads ----------`n`n" + $tpWinpth + "`n"
+[System.IO.File]::WriteAllText((Join-Path $StageDir 'THIRD-PARTY.txt'), $tp.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
+
+$staged += 4
 $stagedBytes = (Get-ChildItem -LiteralPath $StageDir -Recurse -File | Measure-Object -Property Length -Sum).Sum
 Good "staged $staged files, $(HumanSize $stagedBytes)"
 
@@ -1161,7 +1294,8 @@ if ($onlyArchive.Count -or $onlyStage.Count) {
     if ($onlyStage.Count)   { $m += "`n    staged but NOT in archive:`n" + (($onlyStage | ForEach-Object { "      $_" }) -join "`n") }
     Fail $m
 }
-foreach ($must in @('ftesurf64.exe', 'fteplug_hl2_x64.dll', 'default.fmf', 'ftesurf.bat', 'LICENSE',
+foreach ($must in @('ftesurf64.exe', 'fteplug_hl2_x64.dll', 'fteplug_ui_imgui_x64.dll', 'THIRD-PARTY.txt',
+        'default.fmf', 'ftesurf.bat', 'LICENSE',
         'ftesurf/csprogs.dat', 'ftesurf/qwprogs.dat', 'ftesurf/menu.dat',
         'ftesurf/fs_addons.default.txt', 'ftesurf/cfg/default.cfg')) {
     if (-not $setA.Contains($must)) { Fail "archive is missing a required file: $must" }
@@ -1351,6 +1485,7 @@ $receipt = [ordered]@{
         hashes     = [ordered]@{
             'ftesurf64.exe'        = $hExeLocal
             'fteplug_hl2_x64.dll'  = $hDllLocal
+            'fteplug_ui_imgui_x64.dll' = $hImgLocal
             'ftesurf/csprogs.dat'  = (FileSha 'ftesurf\csprogs.dat')
             'ftesurf/qwprogs.dat'  = (FileSha 'ftesurf\qwprogs.dat')
             'ftesurf/menu.dat'     = (FileSha 'ftesurf\menu.dat')

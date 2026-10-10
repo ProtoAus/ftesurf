@@ -25,7 +25,13 @@ commit   a67cebe1ea3ac43c2e48794349ccbca3da7a1fb6
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-614
-patch    621
+patch    623
+# Patch 623: the Windows release ships fteplug_ui_imgui_x64.dll (the run graphs' ImPlot
+# plots), pinned to the engine tree's build by the same gate as the exe and the hl2
+# plugin, with THIRD-PARTY.txt for what that DLL is built with (Dear ImGui, ImPlot, stb,
+# two fonts, winpthreads); SOURCE.txt names the engine's branch as main.
+# src/release/release.ps1 and two tools only: no QC, progs, engine source or default
+# change, and no release was cut. 622 is held by the same session and had not landed.
 # Patch 621: the strafe trainer keeps its last eight jumps. A strip under the panel shows
 # each one's grade and the speed it added, and LEFTARROW / RIGHTARROW (cfg/default.cfg)
 # step the panel back through them. A jump is free air now: a surf ramp ends one as the

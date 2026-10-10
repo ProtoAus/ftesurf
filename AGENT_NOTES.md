@@ -199,6 +199,11 @@ From `src/`, with pwsh 7 (NOT `powershell`):
     the worktree's highest ENGINE_PATCHES.md heading, and gate 3 only compares the
     two copies of the same exe -- so a worktree at the PIN (481 since 4 Oct) would
     stamp 481 on the 467 binary and pass. The tag is what makes it true.
+    SINCE PATCH 623 GATE 3 WANTS THE ui_imgui PLUGIN'S BUILT COPY THERE TOO and
+    stops, naming it, when the exe and hl2 plugin are there without it. A stage
+    older than 0.1.24 has none to copy, and an exe that old refuses the plugin
+    anyway: such a release takes it out of `$ShipRootFiles`, it does not pass
+    `-AllowEngineSkew`.
   - THE QC BUILD NUMBER: `-BuildNumber <n>`. The script derives it from a
     `Build NN:` commit subject and HARD-FAILS when the last one is more than 200
     commits back (Build 89 was 228). It now takes the number explicitly, because
@@ -4699,6 +4704,57 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   not reach it. Run the engine build from pwsh, as `build.ps1` does. And a new
   engine worktree has no `engine/libs-x86_64-w64-mingw32` (ignored, 72 MB):
   copy it from one that built.
+
+### The release ships the ui_imgui plugin, and a dry run with no network (Patch 623) — 2026-10-10
+
+- `release.ps1 -DryRun` IS NOT OFFLINE. It writes and deletes a probe object in
+  the production R2 bucket and reads the published archive's hash. To try a
+  change to the ship set without that, and without touching the tree releases
+  are cut from: `git worktree add` a scratch tree, build its QC, copy the three
+  binaries in from engine\release, `tools/release_tree.py <tree>` (copies the
+  ship set's untracked files from the install, read only), then
+  `tools/release_dryrun.ps1 -Tree .. -FteRoot .. -OutDir .. -BuildNumber <qcbuild>`.
+  It defines functions named rclone, ssh, scp and curl before calling the
+  script, which PowerShell resolves ahead of the executables, and lists what
+  they swallowed (three rclone calls). Every gate, the stage, the tripwire, the
+  pack and the archive check run for real.
+- GATE 3 PINS THREE BINARIES NOW: the exe, the hl2 plugin and
+  `fteplug_ui_imgui_x64.dll` must each hash to engine\release's.
+  `build.ps1 -Engine` deploys all three, so its advice still holds. No built
+  copy at all is "cannot check", as it was. ONE MISSING BESIDE THE OTHERS IS
+  SKEW: the first cut asked for all three or nothing, which switched the gate
+  off for a tree holding only the exe and the hl2 plugin (the review ran the
+  two versions of those lines side by side). And the three are hashed again in
+  the stage: gate 3 reads them minutes before they are copied, on a machine
+  where another session deploys.
+- THIRD-PARTY.txt IS GENERATED INTO THE STAGE, like VERSION.txt, and is about
+  that one DLL. READ, each stopping the release if absent or not the text
+  expected: Dear ImGui's LICENSE, the notice at the head of `implot.h` (ImPlot's
+  LICENSE file names one holder and 2020; the compiled sources name two), stb's
+  statement at the foot of `imstb_truetype.h`, Roboto's OFL beside the plugin's
+  font, all from `plugins/ui_imgui/` in the engine tree; and winpthreads'
+  COPYING from `src/release/notices/` (a copy of the compiler's own file).
+  ProggyClean's MIT text is typed in.
+- WINPTHREADS IS IN THAT DLL AND IN NEITHER OTHER BINARY. plugins/Makefile links
+  it `-static-libstdc++ -static`, and libstdc++ brings the thread library with
+  it: `grep -a -o 'pthread_[a-z_]*'` finds 134 names in the plugin, none in the
+  exe or the hl2 plugin. Its licence (MIT and a BSD part) asks for its notice
+  in binary copies. A C++ plugin linked that way owes it; the C ones do not.
+- SOURCE.txt NAMED THE BRANCH `engine-patches`, which stops at Patch 500 on the
+  remote and has no `plugins/ui_imgui`. The pinned commit is on `main` only
+  (`git branch -r --contains`). It says `main`.
+- THE `qcbuild` PIN WAS NEVER READ: the drift check took ENGINE.txt's first 40
+  lines and `qcbuild` is at 179, under the patch notes. `-BuildNumber` leans on
+  that warning. It reads the whole file.
+- THE STAGE COUNTS ITS GENERATED FILES BY A LITERAL (`$staged += 4`). Add one
+  and forget it, and "staged N files" is one short while the archive check
+  still passes: it compares the archive with the stage, not with that number.
+- Controls run in the scratch tree, each stopping the script with its own
+  message: the plugin absent ("ship set names a file that does not exist"),
+  one byte appended to it (gate 3 names it), its built copy absent beside the
+  other two (gate 3 names it), `implot.h` moved aside, a byte appended to the
+  staged DLL while the rest was still being copied. `-BuildNumber 88` draws the
+  drift warning with `qcbuild 89` in it, and a relative `-FteRoot` completes.
 
 ### The trainer's jumps and their history (Patch 621) — 2026-10-10
 

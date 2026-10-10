@@ -11,6 +11,39 @@ to be wrong.
 
 ---
 
+## 00. 10 Oct — the next release carries the ImPlot plugin (Patch 623)
+
+Published 10 Oct. Nothing to deploy: it is the release script, and no release
+was cut.
+
+You asked whether the ImPlot run graphs ship in the next release. They did not:
+the plugin was only on the two development installs. They do now.
+
+- `release.ps1` ships `fteplug_ui_imgui_x64.dll` beside the exe, refuses if it
+  is not the one the engine tree builds (the same gate as the exe and the hl2
+  plugin), and writes `THIRD-PARTY.txt` with the notices of what that DLL is
+  built with: Dear ImGui, ImPlot, the stb headers inside Dear ImGui, its two
+  fonts, and winpthreads (the compiler's thread library, which ends up inside
+  this DLL and neither other binary). Read that file once before the release:
+  is the wording what you want to publish?
+- `SOURCE.txt` told players the engine's source was on the branch
+  `engine-patches`. The plugin, and everything since Patch 500, is only on
+  `main`. It says `main` now.
+- **Your engine checkout cannot cut the release as it stands.**
+  `C:\msys64\home\Lex\fteqw` is on the old branch with binaries from 5 Oct and
+  no plugin; the installed engine was built in a worktree. The script stops at
+  its engine check there (it would have before this patch too). Either pass
+  `-FteRoot` the tree the installed engine came from, or move that checkout to
+  `main` and rebuild it.
+- I ran it as a dry run on a scratch copy of the ship set, with the upload
+  tools replaced by stubs so nothing touched R2 or the site. The archive it
+  made has the plugin (the same bytes as the installed one) and the notices.
+- **Something that will stop your next real release until it is dealt with:**
+  `C:\FTESurf\ftesurf\gfx\fonts` holds three backups (`*.ttf.prev`, from
+  Sep 2025, Feb and Apr 2026) and the script refuses to pack any `.prev`. I
+  did not touch them. Move or delete them when you are ready.
+- Linux has no such plugin: a Linux player keeps the QC plots.
+
 ## 00. 11 Oct — linking Steam from inside the game (Patch 619)
 
 Live on the Pi's lobbies and both your Windows installs since 10 Oct 18:45 UTC.

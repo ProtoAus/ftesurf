@@ -2685,6 +2685,37 @@ lextest.md. Left open, none of it a wrong action:
     Off by default.
   - Stage D of ROADMAP 13 (a native ImGui graph) was asked for by Lex on 10
     Oct and is Patch 614.
+- **Patch 623, left open.** None is a wrong action.
+  - No release was cut. The change was run as a dry run in a scratch copy of
+    the ship set with the network stubbed (`tools/release_dryrun.ps1`), so the
+    upload, the page and the Linux pack were not exercised; none of them names
+    the plugin.
+  - `C:\FTESurf\ftesurf\gfx\fonts` holds `BebasNeueRegular.ttf.prev`,
+    `GoogleMed.ttf.prev` and `Roboto.ttf.prev`. The release's deny tripwire
+    stops on `*.prev` in the stage, so the next real run stops there until they
+    are moved out. Not removed by this patch: they are not this session's.
+  - THIRD-PARTY.txt's list of what the DLL is built with is by hand (six
+    entries, versions not stated). Each text is read and checked, but if the
+    plugin gains a library or the compiler links in another, nothing fails.
+    libstdc++ and the mingw-w64 runtime are in the DLL too and are not listed:
+    I did not establish what, if anything, they ask of a binary copy.
+  - It is about the plugin only. The review reports that the exe and the hl2
+    plugin embed zlib, libpng, libjpeg and zstd, and the release has never
+    carried notices for those or for the compiler's runtime. Not checked by
+    me; older than this patch.
+  - `ftesurf/gfx/fonts/OFL.txt`, the licence of the three game fonts, opens
+    with the OFL's blank template lines (`Copyright (c) <dates>, <Copyright
+    Holder>`); the fonts' own copyright lines are in FONTS.md beside it. Older
+    than this patch.
+  - THE DEFAULT `-FteRoot` CANNOT CUT A RELEASE AS IT STANDS.
+    `C:\msys64\home\Lex\fteqw` is on `engine-patches` at Patch 510's notes with
+    binaries of 5 Oct (exe `fad78fd5`, hl2 `ab6a69f8`) and no ui_imgui plugin;
+    the installs run `7c97e69b` / `4406ae6a` / `69929fe5`, built in a worktree.
+    Gate 3 stops there, as it should. The next release needs `-FteRoot` at the
+    tree the installed engine was built from, or that checkout moved to `main`
+    and rebuilt.
+  - The Linux archive has no such plugin, so a Linux player still gets the QC
+    plots and the one console line at boot.
 - **Patch 621, left open.** None is a wrong action.
   - Eight jumps (`TRN_HIST`), each a block of 16 strafes and 256 trace ticks. On a
     bhop map that is eight hops. More needs a strip that scrolls.
@@ -2744,18 +2775,15 @@ lextest.md. Left open, none of it a wrong action:
     (possible only very close to the camera) gets no name.
 - **Patch 614, left open.** None is a wrong action.
   - Patch 618 loads the plugin at client boot (Lex, 10 Oct: "yes, make it
-    default"). A client without the DLL, which is every release so far, prints
-    `Couldn't load plugin ui_imgui` once in its console at boot and is
-    otherwise unchanged. Shipping the DLL, or leaving the line out of a
-    release's default.cfg, belongs to the release decision below.
+    default"). A client without the DLL (every release up to 0.1.23, and the
+    Linux build, which has no such plugin) prints `Couldn't load plugin
+    ui_imgui` once in its console at boot and is otherwise unchanged.
   - `plug_loaddefault 3` in default.cfg does nothing for a DLL beside the exe:
     the scan it controls has run before the file is read and the cvar is not
     saved, so every plugin is loaded by name. Making the scan work is an
     engine change nobody has asked for.
-  - The plugin is not in the release ship set (`build.ps1 -Engine` copies it to
-    the two development installs only), so a release player gets the QC plots.
-    Shipping it is a release decision: the DLL, its MIT notices (Dear ImGui,
-    ImPlot) and the OFL notice for the Roboto subset it embeds.
+  - (Patch 623: the Windows release ships the plugin and THIRD-PARTY.txt. No
+    release has been cut with it yet.)
   - Cost. Uncapped at 1080p on the desktop PC with three 50 s runs the native
     plots cost about 2.0 ms a frame where the QC plots cost about 1.45 (2.06
     and 2.06 against 1.39 and 1.51 in one alternating run; 2.19 against 1.61
