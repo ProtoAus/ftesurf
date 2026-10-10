@@ -30,34 +30,6 @@ Falsifier: identical synthetic pane geometry/texture with and without those
 keys; prove shader bits/program and covered pixels, then preserve the chosen
 mode's discard coverage rather than silently selecting the progless blend path.
 
-## Clean QC NoDeploy build fails at final summary -- 2026-10-08
-
-`src/build.ps1` final `Step "Done"`: `-NoDeploy` compiles into
-`rig/build-nodeploy-*`, but the two summary `Get-Item` calls still read
-`ftesurf/qwprogs.dat` and `ftesurf/csprogs.dat`. A source-only checkout has
-neither there. All three compiler runs reported zero warnings and produced
-nonempty outputs, then the summary threw. Both live Windows installs stayed
-unchanged by hash. Found while verifying source tracking for the crosshairs;
-the unrelated helper was preserved, not repaired to make that check pass.
-
-Falsifier: in a fresh source-only checkout with a resolved fteqcc, run
-`pwsh -NoProfile -Command "./build.ps1 -Jobs 8 -NoDeploy"` from `src/`.
-Require exit 0, three fresh outputs in the owned rig directory, a summary
-of those outputs, and no live binary/progs/config changes. Ordinary builds
-must still summarize their actual deployed outputs.
-
-## Native build ignores NoDeploy -- 2026-10-07
-
-`src/build.ps1:BuildEngine/DeployNative`: `-Engine -NoDeploy` still copies all
-native outputs into the product root and QuakeDir. Measured while isolating
-P541; copies were guarded and restored from `.prev`. Current safe workaround:
-use an isolated product worktree AND explicit private `-QuakeDir`.
-
-Falsifier for a future fix: hash both live native/progs sets before/after a
-clean isolated `-Engine -NoDeploy` build; no destination write or `.prev`
-rotation. Ordinary `-Engine` must still deploy both sets, with preserved
-backups, and missing secondary-install handling must remain explicit.
-
 ## Source live water: parity and depth-cost coverage -- 2026-10-07
 
 P541 fixes depth binding and shallow distortion/fog in live modes 1/2;

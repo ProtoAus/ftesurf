@@ -559,8 +559,9 @@ if ($Pi) {
 }
 
 Step "Done"
-Ok "qwprogs.dat  $((Get-Item "$SurfDir\ftesurf\qwprogs.dat").Length) bytes"
-Ok "csprogs.dat  $((Get-Item "$SurfDir\ftesurf\csprogs.dat").Length) bytes"
+$ProgsDir = if ($NoDeploy) { $NoDeployDir } else { "$SurfDir\ftesurf" }
+Ok "qwprogs.dat  $((Get-Item "$ProgsDir\qwprogs.dat").Length) bytes"
+Ok "csprogs.dat  $((Get-Item "$ProgsDir\csprogs.dat").Length) bytes"
 
 if ($Run) {
     Step "Launching"
