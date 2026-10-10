@@ -1663,6 +1663,11 @@ publicly WITH its fix, not before it.
   rewrites speed so the two rules read differently (-2.6 against -52.7).
   `p449mark.py` now takes a break mark as the mark a row may end on; on the
   build before, the save010 row still fails it, so that is not what passes it.
+  Patches 611 and 613 were deployed together on 2026-10-10 from `f141ee4`
+  (its QC is `63eea9c`'s): csprogs only to both Windows installs (10:28Z) and,
+  with a byte-identical qwprogs, to the Pi (10:28Z, 12 lobbies restarted with
+  nobody on; `pi_lobby_smoke.py` on lobby 1 was served this csprogs). `.prev`
+  is Patch 608's in all three places.
 - Patch 611: the LIVE line (`cl_trail.qc`) pairs each sample with the command
   frame the server's stats describe. The ramp bit and the run clock are stats;
   the position is predicted. `Trail_Keep` keeps 64 command frames of predicted
