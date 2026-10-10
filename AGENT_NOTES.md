@@ -3203,6 +3203,19 @@ script rather than passing it as an argument, where `ps` would show it.
   server QC `print()` does not reach the client's log at all (see the pitfall).
   It is also a temporary change to a public lobby: do it on one unit, say so in
   the entry, and put it back.
+- **`tools/pi_lobby_smoke.py` IS THE CLIENT CONNECT FROM AN ISOLATED RIG**
+  (added 2026-10-10). It gives a fresh client NO csprogs, joins a lobby, and
+  grades the file the engine downloaded against the build's hash, then that the
+  board drew (`scores status`). That is the one check that says what a lobby
+  SERVES rather than what sits on its disk. THE RIG MUST CARRY THE REAL
+  `default.fmf`: a lobby answers a client whose `PROTOCOLNAME` differs with
+  "Game mismatch: This is a FTE-Quake server but you are using FTE" ten times
+  and the cfg then runs to its end marker against no server at all, screenshot
+  included. Map content comes from `fs_addons.default.txt`'s Steam mounts; the
+  hl2 plugin must sit beside the exe.
+  `build.ps1 -Pi` ALSO REWRITES qwprogs EVERY TIME even when no server QC
+  changed: fteqcc stamps the compile date into the file (two bytes at 0x72), so
+  "the hash moved" is not evidence that server code did. Diff the bytes.
 - **A LOBBY PORT IS 27510 or 27520..27620 (cfg/lobby/lobby<N>.cfg), NOT 27698.**
   27698 is the sweep server's, which AGENTS.md already says to avoid for hand
   tests, and connecting to it from a smoke cfg produces `Can't "cmd", not

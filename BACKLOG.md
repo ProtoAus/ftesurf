@@ -2457,7 +2457,8 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
 
 ## UI theme and board layout (Patches 606, 607)
 
-Published and on both Windows installs. Patch 606 added the look behind
+Published, on both Windows installs, and on the Pi's lobbies since 10 Oct
+07:29 UTC. Patch 606 added the look behind
 `ui_style 1`; the owner retired the old one (10 Oct: "we have it in the git")
 and Patch 607 removed it: no `ui_style`, no classic drawing branch, one board
 layout. The old look is at 562a6c9 and before. What a human has to judge is in

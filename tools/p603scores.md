@@ -93,7 +93,25 @@ Published: this repository `5474c48`; ftequakers gains only the
 `csprogs.dat`, `menu.dat` and their `.lno` in both (8 files), each destination
 first checked against the hash recorded after the Patch 606 deploy, the live
 file kept as `<name>.prev`, the copy verified. The binaries are Patch 606's. No
-game was running from either install. **Not deployed to the Pi.**
+game was running from either install.
+
+**The Pi, 2026-10-10 07:28-07:29 UTC, on the owner's request.** `build.ps1 -Pi`
+from the clean worktree at `5b3f181` (the commits after it touch no game code),
+0 players in all 12 directory rows. Before: qwprogs `76f4a7bf24f2d759`, csprogs
+`108a66c5b0230432`, the 8 Oct pair. After: qwprogs `5e7fd33b3d0beac1`, csprogs
+`162aaf018682ca0b`, the old pair kept as `.prev`. The two qwprogs differ in two
+bytes, fteqcc's compile date, so no server QC shipped; what the lobbies now
+serve is the client code of Patches 595-607. `cfg/default.cfg` already equalled
+the repository's (`8fd357ac59147c8a`). Read back in one ssh call: all 12 units
+active since 07:28:57-07:29:07, no `.new` left behind. `tools/pi_lobby_smoke.py`
+(as `ROOT/tmp/pismoke.py`, rig `ROOT/runtime/pismoke/20261010T183134`): a fresh
+client with no csprogs joined lobby 1 on surf_kitsune, the file it downloaded
+hashes to the build, and the board drew (`cols 8   type 14` at 1280x720). The
+tool as committed then did the same on lobby 2
+(`ROOT/runtime/pismoke/pi-lobby-smoke-20261010T183415`). Its first run measured
+nothing: a rig manifest of my own was refused with "Game mismatch", so the rig
+carries the real `default.fmf` now. The native aarch64 engine and surfd were
+not touched.
 
 ## Patch 606 — the board under `ui_style 1`, 2026-10-10
 

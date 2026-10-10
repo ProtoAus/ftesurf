@@ -16,12 +16,11 @@ to be wrong.
 This is the only look now. Patch 606 put it behind `ui_style 1`; you then said
 the old one can go, and Patch 607 removed it and the switch (the `seta ui_style
 "1"` line in your config is ignored and harmless).
-On both Windows installs since 10 Oct, NOT on the Pi: the map picker and its
-leaderboard are in menu.dat and change at once, but hud_edit, the save-lock and
-Source-renderer menus and the +showscores board are csprogs, which a lobby
-hands you. On a public lobby those four keep the old look until the Pi is
-deployed -- and from then on every player gets the new one, not only you.
-Start a map locally to see them.
+On both Windows installs and, since you asked for it, on the Pi's twelve lobbies
+(restarted 10 Oct 07:29 UTC): hud_edit, the save-lock and Source-renderer menus
+and the +showscores board are csprogs, which a lobby hands to whoever joins, so
+every player gets those now. The map picker and its leaderboard are in menu.dat,
+which is each player's own install: other people see those when they update.
 
 One palette everywhere: dark slate surfaces, pastel sky / mint / butter / peach /
 rose accents. Judge, at your resolution and on a real map rather than my black
