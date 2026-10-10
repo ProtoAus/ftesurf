@@ -69,6 +69,69 @@ sections below measured. What changed for these tools:
 - **Not run:** D3D11 and Vulkan in the modern layout, the old-plugin,
   old-engine and no-plugin arms in the modern layout, hostile names, soak.
 
+### Final build and Windows deployment — Patch 606, 2026-10-10
+
+Published: ftequakers `93828165c` (Patch 606, tag patch-606); this repository
+`55c4057`.
+
+Build of exactly those commits, `build.ps1 -Engine -Full -NoDeploy -Jobs 4`, exit
+0, with `SVN_VERSION=git-7144-patch-606-0-g93828165c` and the matching
+`SVNREVISION` in the environment (a worktree build stamps nothing otherwise).
+Client and server both contain that string and not Patch 605's. 426 lines of the
+log hold the word `warning`, the same count and kinds as Patch 605's final build:
+349 from make, 74 compiler lines (none in `plugins/ui_imgui`, which builds under
+-Werror) and the three `Done. 0 warnings` of the progs. The three progs are
+byte-identical to the build every QC gate above ran on.
+
+| sha256 (first 16) | file |
+|---|---|
+| `6fb2ff02a559c314` | fteqw64.exe (installed as ftesurf64.exe / fteqw64.exe) |
+| `13ecc334cc2ba536` | fteqwsv64.exe |
+| `f93b8f9dacc95a55` | fteplug_ui_imgui_x64.dll |
+| `d4d20d075c4a4c80` | fteplug_hl2_x64.dll |
+| `966b302625f864f7` | fteplug_box3d_x64.dll |
+| `bbdaa2bf4edd482a` | fteplug_cod_x64.dll |
+| `700101dde5c28483` | fteplug_ode_x64.dll |
+| `3ae1bba0b9224e0c` | csprogs.dat |
+| `5e7fd33b3d0beac1` | qwprogs.dat (unchanged since Patch 605) |
+| `c14493765bfabfe0` | menu.dat |
+
+Rerun on those binaries, all 0 failed: host suites (629 / 3750 / 2872 per index
+width and the model regression counts), GL six arms
+`runtime/final606/gl/p603-scores-bt7apfp_` with 69/69 reader controls, hostile
+names `runtime/final606/names/p603-names-ppiwjp2p`, D3D11
+`runtime/final606/d3d11/p603-scores-jowgcrru`, Vulkan
+`runtime/final606/vk/p603-scores-62qu9eu6`. Those run at the default `ui_style
+0`: the classic board with the themed provider. Also `p603scores.py` legacy arm
+at `--style 0` and `--style 1` and `test_ui_modern.py` 28/28
+(`runtime/final606u`).
+
+`test_ui_theme.py` on these binaries FAILED its first run: three classic menu
+comparisons differed (8,949, 2,520 and 2,520 pixels: a hovered lobby cell and a
+hovered close button missing in the subject). That rig's log holds `[focus]
+window is foreground` across exactly those shots, and its parked cursor read
+back as 321,1137, the real pointer; the control and the mutant, undisturbed,
+agreed with each other on every menu shot. The rerun, with no foreground line in
+any rig, passed 32 of 32 (`runtime/final606v/theme`). The gallery should say
+"interfered" itself instead of failing; that is Patch 607's.
+
+NOT rerun on the stamped binaries: p498keys, the dense suite at `--style 1`, the
+cost runs.
+
+Deployed 2026-10-10T05:51:29Z to `C:/FTESurf` and `C:/FTEQuake` by the guarded copy
+(ROOT/tmp/deploy606.py, receipt ROOT/artifacts/deploy606-receipt.json): every
+destination was first checked against the hash recorded after the Patch 605
+deploy and opened for writing before anything was copied, the live file kept as
+`<name>.prev` (replacing Patch 605's predecessors), the copy verified.
+25 files match the build (21 replaced; `qwprogs.dat` and its line table were
+already identical in both installs): the client, the server (second install),
+all five plugins in both, and `ftesurf/{qwprogs,csprogs,menu}.dat` with their
+`.lno` in both. No game or server was running from either install, and none was
+started from one. The owner's `ftesurf.cfg` was read for four settings
+(`ui_style`, `ui_native_scores`, `vid_renderer`, the window size) and not
+written. **Not deployed to the Pi**: that restarts the public lobbies and is the
+owner's call, so on a public lobby the csprogs panels keep the old look.
+
 ## Published — Patch 605 (and 604), 2026-10-10
 
 `ui_native_scores 1` is published as an opt-in; `0` (legacy) stays the default and
