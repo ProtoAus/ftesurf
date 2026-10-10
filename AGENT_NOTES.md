@@ -1742,23 +1742,50 @@ publicly WITH its fix, not before it.
   reverts a typed `pm_ticrate`.
 
 - **Multi-patch reach actors (native, not exit acceptance).**
-`tools/offramp_trimulti{,_smoke}.py` adds five actors on a rectangular-patch
-ramp; in two of them reach is actually lost and regained. The supplied patch
-set is the BUILT native BIH's triangle leaves, dumped by value with their node
-indexes and required to equal the table; no neighbourhood is discovered. Reach
-loss comes in two kinds and the boundary record tells them apart: a FOOTPRINT
-EDGE (wide gap; unmoved at larger horizons) and a HORIZON CUT (vertical lift;
-gone at horizon 8). On the one loss here the native ramp flag stayed set for
-the rest of that command, and reach returned 1.9 commands before the next hit.
-Coplanar ties are real, between two triangles of a quad and between a face and
-a bevel that IS the face plane: never gate on which tied plane or leaf won.
-Clip velocity is verified on the single-plane branch only. A CONSISTENT LIE
-NEEDS ITS OWN TEST: every single-field mutant was refused while the trace
-endpoint and clip-velocity gates had no falsifier, until a forgery moved a
-whole chain of rows together. When a check lists row prefixes by name, read
-what the layer prints: the shape layer's is GEOM. AND A MUTANT SWEEP IS A TEST
-TOO: its first run here "killed" all 54 mutants in test setup, a path bug in
-the harness. Run the unmutated copy through it first.
+`tools/offramp_trimulti{,_smoke}.py`: eleven actors on a rectangular-patch
+ramp and one V trough. The supplied patch set is the BUILT native BIH's
+triangle leaves, dumped by value with their node indexes and required to equal
+the table; no neighbourhood is discovered. A reach boundary comes in two kinds
+and the record tells them apart: a HORIZON CUT (exists at one probe distance)
+and a FOOTPRINT EDGE (five of six here unmoved at larger horizons; the sixth
+vanished, a lowered neighbour being already under the footprint). Gap WIDTH and
+neighbour DROP each lose reach alone: a 16-unit gap whose neighbour is 2 lower
+loses it at the footprint edge, the neighbour 0.052 beyond the probe, and has
+it back within a command at a horizon cut; the one
+COPLANAR 50-unit gap here never regains it, because the unsupported body sinks
+0.18, 0.36, 0.54 a command and takes the far patch's SIDE as a wall (blocked
+2, graded; one hit). On the two exits observed the native ramp flag stayed set
+for the rest of that command and read clear in the next. Native down-2 equals
+exact horizon-2 reach at 352 of 352 tick ends, including ones 0.0006 and
+0.0013 either side of the cut and 0.0003 and 0.0002 either side of a footprint
+edge: a TRIANGLE leaf's clip decides on the TRUE entry fraction and the 1/32
+bias only moves the reported one (a brush under Source clip decides on the
+adjusted one; one tick end here tells the two apart). In a trough, at
+`pm_fixrampbugs` 2, the mover takes its two-plane crease branch in every
+command once it is there (16 of 32; verified; three planes and every stopping
+outcome refuse), and ANY move, once
+5.5e-5 of a command, clears its plane list first. The crease's float32
+normalisation bleeds 6e-5 u/s a clip at 400: a flat velocity tolerance was
+1.9e-5 from refusing an honest capture. Ties are real, between coplanar
+triangles, between a face and a bevel that IS the face plane (turned either
+way by rounding), and in a crease between two DIFFERENT planes: never gate on
+which tied plane or leaf won. A CONSISTENT LIE NEEDS ITS OWN TEST: a
+single-field fault trips some other gate as well, so deleting the gate changes
+no verdict. When a check lists row prefixes by name, read what the layer
+prints: the shape layer's is GEOM. A report label is a claim: derive it from
+the counts, or "verified" gets written over a rule no hit took.
+Harness lessons, each paid for here: a `Mock` patched in as a pass-through
+cache keeps every call it receives (2.1 GB in the slow tests; patch in a plain
+function). A MUTANT SWEEP IS A TEST TOO AND MUST READ A FROZEN COPY: one run
+"killed" all 54 mutants in test setup on a path bug, another 58 in under a
+second each on a source digest, after the worktree it imported from was edited
+under it. Pass the unmutated copy through the harness before the first mutant
+and AGAIN after the last, and count setup kills apart from test kills. SEAT A
+MUTANT AT THE CALL AS WELL AS IN THE FUNCTION: a unit pins what a function
+does with an argument, not which argument its caller hands it, and the clip
+rule's entry velocity lived through a sweep and a review that way. A falsifier
+not yet run against its mutant has shown nothing. A script named `warnings.py`
+shadows the standard module for every Python started beside it.
 See `tools/OFFRAMP_CONTACT.md`; private diagnostic builds NEVER ship.
 - **Front reach on the captured path (offline, not exit acceptance).**
 `tools/offramp_trireach.py` runs the exact front algebra on the committed

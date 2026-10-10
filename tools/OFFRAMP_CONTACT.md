@@ -1440,10 +1440,11 @@ progs, deployment or release.
 ## ACTED multi-patch actors: native patch copy and reach on a supplied set
 
 `offramp_trimulti_smoke.py` adds one more separately enveloped native command,
-`pm_offramp_multitrajectory`, on top of the path-capture layers above. Two of
-its five actors lose and regain front reach on the committed path, the first
-here to do so. Use NEW private paths and isolated native worktrees at the
-registered base:
+`pm_offramp_multitrajectory`, on top of the path-capture layers above. Among
+its eleven actors are the first here to lose and regain front reach on the
+committed path (four), to take a wall (one), and to take the mover's two-plane
+crease branch (one). Use NEW private paths and isolated native worktrees at
+the registered base:
 
 ```
 python -B tools/offramp_trimulti_smoke.py --instrument-native <clean-control> --fixture-only
@@ -1454,19 +1455,34 @@ python -B tools/offramp_trimulti.py --arms <new-private-root/arms.json> --output
 python -B tools/test_offramp_trimulti.py --native-arms <new-private-root/arms.json>
 ```
 
-Five actors share one ramp-plane family, 0.8x+0.6z=const (normal z 0.6: a surf
-ramp, never ground), built from rectangles split on a diagonal with exact-float
-vertices. P1 is y 0..Y1 and P2 is y Y2..256 lowered by `drop`. One standing
-identity AABB, 32 x 15 ms commands, bevels on, no input. The hull meets this
-plane along its bottom -x edge, 32 long in y, so its footprint in y is 32 wide.
+One standing identity AABB, 32 x 15 ms commands, bevels on, no input, one seed
+origin; the fixture profile's `pm_fixrampbugs` 2, bump count 8 and zero
+`sv_bounce`. Ten actors are on one ramp-plane family, 0.8x+0.6z=const (normal
+z 0.6: a surf ramp, never ground), rectangles split on a diagonal with
+exact-float vertices: P1 is y 0..Y1 and P2 is y Y2..256 lowered by `drop`. The
+hull meets this plane along its bottom -x edge, 32 long in y, so its footprint
+in y is 32 wide, and it rides the 1/32 collision bias off the plane: 0.052
+measured straight down. The trough is plane A over x 0..72 meeting its mirror
+image over x 72..144 in a V along y.
 
-| actor | Y1 | Y2 | drop | built | seed velocity |
-|---|---|---|---|---|---|
-| seam-handoff | 64 | 64 | 0 | P1+P2 | 0 400 0 |
-| narrow-gap | 64 | 80 | 0 | P1+P2 | 0 400 0 |
-| wide-gap-recontact | 64 | 114 | 2 | P1+P2 | 0 400 0 |
-| removed-neighbour-exit | 64 | 114 | 2 | P1 only | 0 400 0 |
-| vertical-lift | 256 | - | - | P1 | 40 400 30 |
+| # | actor | Y1 | Y2 | drop | built | seed velocity |
+|---|---|---|---|---|---|---|
+| 0 | seam-handoff | 64 | 64 | 0 | P1+P2 | 0 400 0 |
+| 1 | narrow-gap | 64 | 80 | 0 | P1+P2 | 0 400 0 |
+| 2 | wide-gap-recontact | 64 | 114 | 2 | P1+P2 | 0 400 0 |
+| 3 | removed-neighbour-exit | 64 | 114 | 2 | P1 only | 0 400 0 |
+| 4 | vertical-lift | 256 | - | - | P1 | 40 400 30 |
+| 5 | narrow-gap-lowered | 64 | 80 | 2 | P1+P2 | 0 400 0 |
+| 6 | wide-gap-coplanar | 64 | 114 | 0 | P1+P2 | 0 400 0 |
+| 7 | crease-trough | V at x 72 | | | A+B | 60 400 -80 |
+| 8 | edge-ladder | 8.0078125 | - | - | P1 | 0 0.03125 0 |
+| 9 | horizon-graze-out | 256 | - | - | P1 | 23.5 400 17.6875 |
+| 10 | horizon-graze-in | 256 | - | - | P1 | 23.5 400 17.65625 |
+
+Actors 1, 2, 5 and 6 are a 2 x 2 of gap width (16, 50) by neighbour height
+(coplanar, lowered 2). 8, 9 and 10 exist only to put tick ends at a reach
+boundary. 0..4 are unchanged from the first capture and reproduce its TICK and
+QUERY rows text for text.
 
 The supplied patch set is the built native BIH's own triangle leaves. A walker
 inside `com_bih.c`, present in both servers and run at setup only, prints each
@@ -1485,46 +1501,83 @@ Inside the envelope it binds fixture, leaf, seed, tick and query rows and
 predicts every native trace as the earliest entry over the supplied triangles
 by the existing per-triangle plane-set model. Ties are kept, not resolved.
 Which of two coplanar triangles native reports is not modelled. Between
-coplanar planes of ONE triangle float32 decides: here the bevel built from a
-slope-direction edge and the y axis IS the face plane, and one of 112 copied
-winners names that bevel instead of the face. A native tag is accepted only if
-it is a latest-entry plane of the copied triangle.
+coplanar planes of ONE triangle float32 decides: the bevel built from a
+slope-direction edge and the y axis IS the face plane, or turned round the
+back of the slab, by rounding alone, natively and in the model and not
+necessarily alike. A native tag is accepted if it is a latest-entry plane of
+the copied triangle, or names such a bevel while the face is one. So the tag
+is bound only up to the planes that coincide with the face in the model or
+would if turned: a tag rewritten to another of those is accepted, a side, an
+axis, another bevel or the back is not. Of 257 accepted contacts 256 name the
+face and one a bevel the model ties too; the turned-bevel clause has accepted
+nothing natively. A reviewer's float32 transcription of the clipper, which
+reproduces all 257 captured tags, says native can name 4 of the 20 turned
+pairs in this fixture and never the other 16. Nothing computed here depends
+on the tag. In the trough the first attempt of a command ties two planes that
+are NOT coplanar; native names either, and that is not modelled.
 
 In the path capture, position, time-left, fraction and the trace are bound for
-every attempt. The loop would accept more bumps, but no command here has more
-than two attempts and every hit is its command's first, so more are
-unexercised. The clip VELOCITY is checked on the mover's single-plane branch,
-which it re-enters whenever the body moved; a second consecutive standing hit
-would be carried and flagged `SECOND_PLANE_NOT_VERIFIED`, and none occurred.
-Each accepted contact's copied winner must be exactly one supplied triangle,
-and the winner's native leaf must be that triangle's dumped node index.
+every attempt, whatever the bump count. A hit is a ramp contact, accepted with
+a copied winner, or a WALL (plane normal z within FLT_EPSILON of 0). A wall is
+graded like any other attempt, has no copied winner, does not set the ramp
+flag, and its command must return `blocked` 2 while every other returns 0. A
+floor or any other plane refuses. The clip VELOCITY must be one of the mover's
+own rules for one plane or two: one plane is the airborne first-impact branch,
+entered again after ANY move, however small; with two in the list it is the
+first plane whose clip does not head into the other, else for two different
+planes the crease. A sign test within 1e-3 u/s keeps both outcomes, and where
+both rules leave one velocity (a wall joined to a ramp) the hit is named as
+either. The tolerance is 8e-5 u/s plus two float32 steps of the speed, because
+above 1,024 u/s one step alone is 1.2e-4. Three or more planes refuse by
+choice: the mover then clips the velocity the list's first hit left, which its
+outcome row carries, but no capture reaches a third plane and a rule nothing
+exercised is not graded. So does every outcome that leaves this route: the
+stop on a result opposing the command's entry velocity, the same-plane push,
+recovery, a command whose last attempt is a hit. None occurred. Each accepted
+contact's copied winner must be exactly one supplied triangle, and the
+winner's native leaf must be that triangle's dumped node index.
 
 Reach uses the committed-segment algebra above on the supplied set. Each
 boundary names the triangles that bound it. Horizons 4 and 8 are SAT-only
 sensitivity, required to nest. The supplied leaves plus the two never-built
 triangles are evaluated beside the live set as a counterfactual and never
-become live coverage.
+become live coverage. Each tick end carries its exact least downward distance
+to the supplied fronts and a footprint slack against their bounding
+rectangles; the native down-2 answer beside them is measured, not gated.
 
-Observed on 272 attempts and committed segments and 112 hits. 91 segments are
-zero-length points and four actors share their opening commands, so 209
-attempts and 88 hits are distinct. Bounded to these five actors, one hull and
-one plane family; horizon 2 unless stated:
+Observed on 610 attempts and committed segments, 257 accepted hits and one
+wall. 215 segments are zero-length points and six actors share their opening
+commands, so 469 attempts, 200 hits and 267 tick-end bodies are distinct.
+Bounded to these eleven actors, one hull and two mirrored plane families;
+horizon 2 unless stated:
 
 - Seam and coplanar 16-unit gap: reach is not lost on either. The gap is
   narrower than the 32-unit footprint; the winning triangle changes and native
-  contact is reported in every command from the first hit. Width and drop are
-  confounded here: the only lowered neighbour is also the only wide gap.
+  contact is reported in every command from the first hit.
 - Wide gap (50 units, neighbour 2 lower): reach is lost at exactly 1/3 of
   command 9, where the footprint clears the first patch, and regained at
   exactly 1/3 of command 12, where it reaches the next. Both are footprint
   edges, reachable below the horizon (from 0.052 and from 1.33). Neither moves
   at horizons 4 and 8; a probe shorter than 1.33 turns the regain into a
-  horizon cut, as its recorded down range says it must.
-- The native ramp flag around that one loss: the last hit opens command 9, the
-  flag stays set for the remaining 2/3 of the command and first reads clear at
-  the end of command 10. On the regain it is late: the landing hit is 1.9
-  commands after reach returned. One event; the removed-neighbour actor shares
-  it.
+  horizon cut, as its recorded down range says it must. The landing hit is 1.9
+  commands after reach returned.
+- Width and drop each lose reach alone, and differently. The three cells that
+  lose it lose it at that same footprint edge. Lowered and only 16 wide: reach
+  is back 0.96 of a command later (0.29 into command 10), at a HORIZON CUT, 3.9
+  commands before the landing hit. That loss is 0.052 deep: the neighbour is
+  already under the footprint, 2.052 down, so a drop of 1.9 would lose nothing
+  at horizon 2, and at horizons 4 and 8 this one loses nothing either. Its body
+  equals the wide lowered gap's at all 32 ticks; only the supplied patch set
+  tells the two apart. Coplanar and 50 wide: never back, at any horizon.
+- That coplanar wide gap ends at a wall: one hit, on an axis-aligned plane, the
+  first attempt of its command. Unsupported, the body sinks 0.18, 0.36, 0.54 a
+  command; when its footprint reaches the neighbour in command 12 it is 0.67
+  below that plane and the trace enters the neighbour's SIDE at truefraction
+  1/3, normal (0, -1, 0): in the model four coincident planes of one triangle
+  (side, two bevels, raw axis). The command returns blocked 2, the y velocity
+  is gone, and the hull falls 1/32 short of the neighbour's footprint for the
+  remaining 19 commands. The 2-unit drop is what lets the lowered actor pass
+  over the same edge.
 - Removed neighbour: the body is identical through tick 13 and differs from
   tick 14. Live reach is never regained; against the full authored set it is,
   at the same place. The body falls through where the removed front was,
@@ -1535,47 +1588,159 @@ one plane family; horizon 2 unless stated:
   throughout. Both boundaries are horizon cuts, reachable only at d=2. At
   horizon 4 the loss shrinks from commands 1.35..12.54 to 3.90..10.00, and at
   horizon 8 there is none. Reach returns 1.7 commands before the landing hit.
-- Live in-place reach is empty on all 272 segments. The d=0 edge gate compares
-  something only on the counterfactual: 18 segments, 27 triangle domains.
-- The native down-2 query agrees with exact horizon-2 reach at all 160 tick
-  ends (119 distinct bodies). It is not a sharp test: no tick end is within
-  0.34 units of the horizon cut or 2 units in y of a footprint edge.
-- Of the 112 hit traces 29 tie between two coplanar triangles and 77 between a
-  face and its own coplanar bevel. No command took two hits.
+- Trough. Sliding down A at 258 u/s across the crease, the body re-contacts A,
+  meets B after a real move (a one-plane clip), and is back on A without
+  moving: two planes in the list, neither clip clear of the other, and the
+  crease rule leaves (0, 400, 0). None of the cross-crease speed leaves that
+  command. Every command from there on takes the crease, sixteen in all
+  (16..31), with ground never set. From 18 on, fourteen commands: hit, hit at
+  fraction exactly 0, clear move along y, two accepted contacts each. In
+  command 17 the second hit moved 5.5e-5 of a command; that cleared the plane
+  list, so it was a one-plane clip and the crease came one hit later, at the
+  third attempt of four. One V, one speed, one plane order (B then A, 16 of
+  16), captured at `pm_fixrampbugs` 2: by the source, at 1 a later-bump hit at
+  fraction 0 goes to recovery instead of the crease.
+- The crease costs float32 speed. Native normalises the cross product and here
+  a component comes out one ulp short of 1: 400 u/s is 399.99902 sixteen clips
+  later, 6.1e-5 a clip, two float32 steps. That sat 1.9e-5 inside the flat 8e-5
+  tolerance the reader was written with, which does not hold every honest clip
+  at speed: by a float32 transcription of the mover's clip that reproduces all
+  242 captured one-plane clips text for text, a body sliding along this ramp
+  is more than 8e-5 from the rule in 0 of 4,000 draws at 400 u/s, 15 at 1,500
+  and 775 at 3,000 (worst 1.9e-4). The tolerance now grows with speed, and
+  that costs sight: at 400 u/s a consistent lie about a crease velocity from
+  about 1.1e-4 slower to 2.3e-4 faster than native is not seen, nor one about
+  a one-plane velocity within about 2.0e-4 at 500 u/s, where the largest of
+  the 242 captured errors is 1.3e-5. No clip captured here starts above 502
+  u/s.
+- Tick ends at a boundary. Edge ladder: the hull's y-min creeps over a strip's
+  edge at 0.00047 a command, and tick ends sit 0.000305 inside and 0.000164
+  outside it. Horizon graze: the top of a hop leaves one tick end 0.00125
+  beyond the 2-unit probe, inside a loss 0.029 command long whose ends are both
+  horizon cuts, or 0.00063 short of it with no loss. The native down-2 query
+  agrees with exact horizon-2 reach at all 352 tick ends (256 distinct
+  origins), those included. For a triangle leaf `BIH_ClipToTriangle` decides a hit on the
+  TRUE entry fraction and the 1/32 bias only moves the fraction it reports; a
+  brush under Source clip decides on the adjusted one. ONE tick end tells those
+  apart here: the graze 0.00125 out, inside the 0.052 band where a biased
+  decision would have hit, and native missed.
+- The native ramp flag and reach, on the two distinct exits observed (1/3 of
+  command 9, one body shared by four actors, and 0.65 of command 16 in the edge
+  ladder): the command had re-contacted at its start, the flag stayed set for
+  the rest of it and read clear in the next. On a regain the flag is late by
+  whatever the fall takes.
+- Live in-place reach is empty on all 610 segments (1,942 segment-triangle
+  pairs). The d=0 edge gate compares something only on the counterfactual: 18
+  segments, 27 triangle domains.
+- Of the 258 hit traces 54 tie between two or more triangles, 15 of them
+  across the crease; 171 tie a face with its own coplanar bevel, and the wall
+  is its four planes.
 
-So reach loss here comes in two kinds that the boundary record tells apart: a
-footprint edge, which no larger horizon moved, and a horizon cut, which exists
-at one probe distance only. Neither is tested or claimed as a physical exit.
+So a reach boundary comes in two kinds that the record tells apart: a horizon
+cut, which exists at one probe distance only, and a footprint edge. Five of the
+six footprint edges here stayed put at horizons 4 and 8. The sixth, the lowered
+narrow gap's exit, vanished: the neighbour was already under the footprint,
+2.05 down. Neither kind is tested or claimed as a physical exit.
 
-Thirty-three tests (nine pure, twenty-four retained-native). Every field of
-every fixture, leaf, seed and tick row (5,095), every native query field
-(9,120) and every path, buffer, origin and copied-contact field of the two
-recontact actors (11,258) is changed in turn and must refuse. An integer moves
-by one, so the meaning behind it has to refuse and not merely the integer
-parser. So must each of 2,256 row deletions, duplications and swaps with a
-neighbour on those two actors.
+All 26 predictions registered before the capture held, the crease's by 2e-5 of
+its 1e-3 allowance, and the reader as committed before the capture graded it
+unmodified. Changed afterwards, most of it by two review rounds, and so outside
+that sentence: the clip tolerance; a hit both two-plane rules fit is named as
+either; three or more planes refuse outright; exactly opposite planes yield
+no crease instead of an error; the per-rule clip margin, the reach outcome,
+how each winner's tag was matched and per-rule status labels in the report;
+contact classification pulled out as a function; one redundant duration check
+removed. The report they give equals the first wherever both have a value,
+three renamed status labels aside.
 
-Single-field faults leave gates that only a CONSISTENT lie can reach. Two
-forgeries therefore move a whole chain of rows together, a final body and a
-clipped velocity each shifted along the plane, and refuse at the trace-endpoint
-and clip-velocity gates, which nothing else here exercises. Attempts belonging
-to no command, a truncated path envelope, rows no reader owns, a native leaf
-that is not the dumped node, a winner without bevels, a removed triangle
-offered as live, header, footer and manifest faults refuse; a moved neighbour
-moves the regain with it. Four faults that pass their own arm (a quiet body, a
+Forty-five tests (thirteen pure, thirty-two retained-native). Every field of
+every fixture, leaf, seed and tick row but the leaf's node index (11,137),
+every native query field (20,064) and every path, buffer, origin and
+copied-contact field of the recontact, lift, wall and trough actors (23,841) is
+changed in turn and must refuse. An integer moves by one, so the meaning behind
+it has to refuse and not merely the integer parser. So must each of 3,555 row
+deletions, duplications and swaps with a neighbour on three of those actors. A
+node index is moved where something binds it: the 20 leaves that ever win, and
+one that never does, at five-arm parity; the other 13 are not.
+
+A single-field fault is refused by some other gate as well, so deleting a gate
+it also trips changes no verdict: such a gate needs a CONSISTENT lie. Four
+forgeries therefore move a whole chain of rows together along y, which keeps
+every distance to both ramp planes: a final body, the velocity a one-plane
+clip left, the velocity the crease left, and that crease velocity only 2e-4
+u/s slow. They refuse at the trace-endpoint gate, which no other test here
+needs, and at the clip gate, which only a unit test pins besides. A fifth
+stretches the time a hit leaves over and the clear move after it; a sixth
+strikes one accepted contact from every capture layer and their footers, so
+only the count of hits against copied contacts can object. Three more make
+the command's tick row and the capture buffer's copy of it lie together about
+the body, the velocity or the ramp flag; the gate comparing the tick with what
+the path returned is the first to refuse, and for the velocity the only one. A
+hit given a clean move's outcome code, a command ending on a hit, the outcome
+code of a stopping rule, a wall its command does not report and a report of a
+wall that was not hit refuse, each under its own name. One test records what
+the path hands the clip rule: the velocity its command entered with, which in
+all sixteen crease clips is no longer the body's. Attempts belonging to no
+command, a truncated path envelope, rows no reader owns, a native leaf that is
+not the dumped node, a winner without bevels, a removed triangle offered as
+live, header, footer and manifest faults refuse; a moved neighbour moves the
+regain with it. Four faults that pass their own arm (a quiet body, a
 never-winning leaf's node, a hit fraction and a truefraction inside tolerance)
 refuse only at five-arm parity, and do.
 
-Writing these found that the bevel-PM quiet-arm check named the shape layer
-`SHAPE` while its rows are `GEOM`; it is corrected. Pure invocation skips the
-retained cases; skips are not runtime evidence. Clean reproduction must install
-into new native trees, build and rerun all five arms.
+A source-level mutant sweep compiles one gate or measured rule out of a frozen
+copy of the tool per mutant and requires the suite to fail, with the unmutated
+copy passing before the first mutant and after the last. On the published
+five-actor tool it finished what an earlier run could not: 64 of 69 killed, 22
+of them only by a field or row mutation, and five survivors. Each has a
+falsifier here or is gone: the tick row against what the path returned (the
+three forgeries above), leaf nodes being distinct, the supplied set being the
+dump and not the table, the track/command consistency check being wired in,
+and a duration check an earlier gate had already made redundant.
+
+On this eleven-actor reader the sweep ran 123 mutants and killed 119: 50 by a
+unit test, 42 by a scenario test on the capture, 21 only by a field or row
+mutation, and 6 in setup, where the mutated reader refuses the honest capture.
+Three of the four survivors were gates with no falsifier: the outcome code of
+a stopping rule, a hit being followed by the rest of its command, and the
+count of hits against copied contacts. Each has one above. The fourth drops
+the same-plane guard in front of the crease and decides nothing: on 100,000
+same or nearly same plane pairs the reader answers alike without it, the zero
+crease behind it being stopped already. That sweep read the reader two
+commits before the published one. Its code is the same since (syntax trees
+equal with docstrings removed) and tests were only added, so what it killed
+stays killed; twelve mutants were then run on the final tests: those three,
+three survivors of the earlier sweep, two a review showed alive (the path
+handing the clip rule the body's velocity for the command's, a flat tolerance
+for one plane), the hit gate's three conditions one at a time, and the wall
+label wired to a constant. Eleven are killed, each by the test written for
+it; the constant survives, having the count's value on a capture with one
+wall hit.
+
+The suite used to patch its prediction cache in as a `Mock`, and a `Mock`
+keeps every call it receives: 2.1 GB in the slow tests. It is a plain function
+now and those tests peak at 0.11 GB (one test, one changed argument: 632 MB
+against 91). Pure invocation skips the retained cases;
+skips are not runtime evidence. Clean reproduction must install into new native
+trees, build and rerun all five arms.
 
 General triangle support remains **ABSTAIN** and native front-reach equivalence
-**NOT_CLAIMED**. Second-plane clip semantics and commands of more than two
-attempts are **NOT_EXERCISED**. Physical exit, load-bearing or standable
-contact, discovered neighborhood topology, creases, other plane families,
-hulls and postures, cached/recovery/portal/ground/sliding routes and
-classifier/render/hold/clock acceptance remain **NOT_TESTED** or
+**NOT_CLAIMED**. The multi-plane clip is verified on the two-plane crease of one
+V only, at one speed and in one plane order. "Along one plane", the sign-noise
+band (the nearest of 32 sign tests is 0.72 u/s from zero), the turned-bevel tag
+alias, three or more planes, the same-plane push, the entry-velocity stop, a
+floor, a ceiling, a wall joined to a plane list and a command that exhausts its
+bumps are **NOT_EXERCISED**. Between NEARLY opposite planes float32 rounding
+sets native's crease direction and the reader refuses an honest one (by a
+reviewer's transcription: all of 1,577 at 1e-4 rad apart, 926 of 1,695 at
+1e-2); none was captured. The one-plane clip is verified at overbounce 1
+only, and its corrective pass is under the gate's tolerance. The wall is one
+hit, so the wall label could be wired to a constant and read the same. A reach
+outcome counts a zero-length touch as a loss and not as a regain; none occurs.
+Which plane wins a tie is not modelled. One hull, two mirrored plane
+families, one mover profile, whole small authored models.
+Physical exit, load-bearing or standable contact, discovered neighborhood
+topology, other hulls and postures, cached/recovery/portal/ground/sliding
+routes and classifier/render/hold/clock acceptance remain **NOT_TESTED** or
 **NOT_IMPLEMENTED**. No product patch, engine pin/tag, QC Build, installed
 progs, deployment or release.
