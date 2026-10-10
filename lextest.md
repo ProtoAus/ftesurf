@@ -13,6 +13,8 @@ to be wrong.
 
 ## 00. 10 Oct — Steam sign-in on the board site (Patch 612)
 
+Live on the Pi since 10 Oct 10:20 UTC, with your Steam key in place.
+
 The first piece of Steam accounts (ROADMAP 14). **Nothing in the game changes
 yet**: no command, no name, no picture, and times are ranked exactly as before.
 What exists is the website half: a page that signs you in through Steam and

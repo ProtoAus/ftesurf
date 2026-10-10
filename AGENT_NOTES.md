@@ -5858,6 +5858,27 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   (`ns:...\nis_valid:false\n`, 0.3 s from the desktop and from the Pi), that a
   302 is not followed, a bad key's 403, and one profile through the real key.
   NOT MEASURED: a positive assertion. lextest.md has the human step.
+- **DEPLOYED 2026-10-10 10:20 UTC (FTESurf `76cfd63`), surfd only.**
+  `surfd-deploy.ps1 -Ref 76cfd63 -Only` the seven files the patch owns
+  (accounts.py, steam.py, surfd.py, run.sh, test_accounts.py, test_board.py,
+  web/board.css): the Pi's other differences from main are 38 test files and
+  an old `surfd.nginx` copy from earlier `-Only` deploys, left as found. All
+  twelve staged suites pass on the Pi (Python 3.11, Flask 2.2), the seven files
+  hash-match, master 2479950 SIGHUP'd, `schema migrated 11 -> 12` and `surfd
+  ready` at 10:20:14, /health 12 lobbies. `surfd.env` gained `SURFD_STEAM_KEY`
+  and `SURFD_BOARD_URL=https://proto.bar/ftesurf/board` (backups
+  `surfd.env.bak-pre612-*`, mode 600) and `logs/gunicorn.log` went 644 -> 600;
+  run.sh's umask only acts at the next start. Read back live: the four tables
+  exist and are empty, `/ftesurf/board/link` is 200 under the board's CSP, the
+  redirect lands on Steam's own sign-in form with realm `https://proto.bar`, the
+  cookie is `__Host-ftl` (Secure, HttpOnly, Lax, Path=/, 600 s), a return with
+  no assertion is 400 and a HEAD 405, `/api/account` and `/api/link` are 404
+  through both vhosts and answer on loopback with the key. No lobby, progs,
+  binary or config changed. ROLLBACK: put back the four
+  `*.pre76cfd63-20261010-211806` files and SIGHUP; the old code runs on the
+  schema-12 file (review C measured it) and never looks at the new tables. The
+  database backup is `data/surfd.db.bak-76cfd63-20261010-211806` (its stamp is
+  local time).
 
 ### The ship set is an allowlist, and three things it never named -- 2026-09-28
 
