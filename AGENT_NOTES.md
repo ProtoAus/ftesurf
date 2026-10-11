@@ -7275,6 +7275,22 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **"COULD NOT LOAD THE BOARD (HTTP 504)" WAS ONE QUERY (Patch 634).** The
+  owner saw it on the site's front page on 11 Oct. Timed on the Pi, route by
+  route: `/board/api/maps` 12.06 s, every other route under 0.2 s except a
+  player page at 2.0 s. nginx gives surfd 5 s, and the list is cached 60 s, so
+  it was the FIRST visitor after each minute who got it, and a reload worked.
+  Query by query: the imported count took 7.9 s of the 12, `SCAN runs USING
+  INDEX runs_run`, a walk in map order with a table lookup for each of 3.2
+  million rows, because `replay_id` beside the count is in no index. NOT
+  TODAY'S: the schema-15 backup from before Patch 629 gives the same plan (and
+  28 s cold). As two queries it is 0.67 s off `runs_board` (covering) and
+  0.026 s off `runs_replay`, the same answer on the live file (849 maps,
+  12,611 recordings); the recordings query needs `GROUP BY +map`, without
+  which sqlite picks the map-ordered walk again (6.3 s).
+  LEFT: the list is still built inside a request, about 2 s once a minute
+  (BACKLOG); a player page reads `runs` by `player` with no index, 0.6 s of a
+  full scan before its ranks.
 - **DEPLOYED 11 Oct 2026, 01:31-01:38 UTC (FTESurf `061fa8d`, Patch 629),
   SWITCHED OFF: surfd, the Pi's twelve lobbies, both Windows installs' progs.**
   No engine change. In this order:

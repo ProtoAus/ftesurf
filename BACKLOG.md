@@ -7,6 +7,11 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## The Boarding window: what Patch 631 left -- 2026-10-11
 
+- **The site's maps list is built inside a request** (Patch 634 took it from 12 s
+  to about 2 s): serve the last body and rebuild on a thread, as the player
+  directory does (`_people_kick`); `test_web.py` section 3 pins the rebuild as
+  synchronous. And a player page scans `runs` for its `player` (0.6 s of its 2 s):
+  `runs_live` covers our own rows only, the imported ones have no index by player.
 - **A replay has no leave row.** `cl_watch.qc:Watch_BoardApply` sets
   `leave_time = 0` ("left blank rather than stale"): the leave is the falling
   edge of ramp contact, which no record carries. The build pass does see it

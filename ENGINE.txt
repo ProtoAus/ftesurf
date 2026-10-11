@@ -25,7 +25,11 @@ commit   c543d688ad16a871753fa9525c23487f437741a5
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-625
-patch    631
+patch    634
+# Patch 634: the site's maps list answers inside the proxy's five seconds. One count
+# in surfd's `_web_maps_body` became two that each have an index (12 s -> about 2 s on
+# the Pi; the first visitor after each minute's cache had been shown "HTTP 504").
+# surfd only: no engine source, QuakeC, recorder, evidence, ranking or Build change.
 # Patch 631: the Boarding window's two energies are levels -- the speedometer's e as it
 # stood coming onto the ramp and coming off it -- where they were the touchdown's cost
 # and the ride's gain (the owner's list: "your current position in energy, not how much

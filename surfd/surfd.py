@@ -4133,9 +4133,17 @@ def _web_maps_body(now):
     stats = {r["map"]: r for r in db.execute(
         "SELECT map, COUNT(*) AS runs, MAX(submitted) AS last"
         "  FROM runs WHERE tier=? GROUP BY map", (TIER_RANKED,)).fetchall()}
-    imp = {r["map"]: r for r in db.execute(
-        "SELECT map, COUNT(*) AS n, SUM(CASE WHEN replay_id > 0 THEN 1 ELSE 0 END)"
-        "       AS reps FROM runs WHERE tier IN (?,?) GROUP BY map",
+    # TWO QUERIES, EACH OFF AN INDEX THAT ANSWERS IT (Patch 634).  As one, with
+    # replay_id beside the count, sqlite walked runs_run in map order and
+    # looked up each of 3.2 million rows: 6 to 9 s on the Pi (28 s cold) behind
+    # nginx's 5 s, so the first visitor after each minute's cache got "HTTP
+    # 504".  The counts take 0.7 s off runs_board, the recordings 0.03 s off
+    # runs_replay; `+map` is what keeps sqlite off the map-ordered walk.
+    reps = dict(db.execute(
+        "SELECT map, COUNT(*) FROM runs WHERE replay_id > 0 AND tier IN (?,?)"
+        " GROUP BY +map", TIERS_IMPORTED).fetchall())
+    imp = {r["map"]: {"n": r["n"], "reps": reps.get(r["map"], 0)} for r in db.execute(
+        "SELECT map, COUNT(*) AS n FROM runs WHERE tier IN (?,?) GROUP BY map",
         TIERS_IMPORTED).fetchall()}
     tiers = map_tiers()
     wrs = {r["map"]: r for r in db.execute(

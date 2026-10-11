@@ -597,6 +597,19 @@ def main():
           mp["bhop_eazy"]["have"], 1)
     check("the maps list carries imported counts",
           (mp["bhop_eazy"]["imp"], mp["bhop_eazy"]["runs"]), (3, 2))
+    # Patch 634: the count of imported recordings is a query of its own now.
+    # A ranked row with a recording on the same map is not one of them.
+    conn = sqlite3.connect(m._test_db)
+    marked = conn.execute("UPDATE runs SET replay_id = 999 WHERE map = 'bhop_eazy'"
+                          " AND tier = 'ranked'").rowcount
+    conn.commit()
+    conn.close()
+    m.time.now += m.WEB_MAPS_TTL + 1
+    mp = {x["map"]: x for x in body(get(m, "/board/api/maps"))["maps"]}
+    check("...and how many of them have a recording: the two Momentum demos, not the KSF row "
+          "and not our own ranked rows",
+          (marked, mp["bhop_eazy"]["reps"], mp["bhop_eazy"]["imp"], mp["surf_gone"]["reps"],
+           mp["surf_gone"]["imp"]), (2, 2, 3, 1, 1))
 
     # ---- search ------------------------------------------------------------
     s = body(get(m, "/board/api/players"))
