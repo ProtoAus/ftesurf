@@ -7241,6 +7241,7 @@ void() m_close =
 void() Menu_RendererRestarted =
 {
 	MM_Invalidate();
+	_sui_rnd_forget();              // Patch 642: the corner masks went with the renderer
 };
 
 float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
@@ -7444,7 +7445,11 @@ float(string cmd) m_consolecommand =
 
 	if (argv(0) == "ui_strip_test")
 	{
-		ui_strip_test(argv(1), argv(2));
+		// Patch 642: the menu VM's own count of corner masks, as `hud_edit ui` prints the game's.
+		if (argv(1) == "masks")
+			print(sprintf("menu sui_masks made %g off %g last %g gen %g\n", sui_rnd_n, sui_rnd_off, sui_rnd_last, sui_rnd_gen));
+		else
+			ui_strip_test(argv(1), argv(2));
 		return TRUE;
 	}
 

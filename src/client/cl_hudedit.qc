@@ -2180,6 +2180,18 @@ void() HUD_EditStatus =
 // Existing whole-chain entry point; declared here for the isolated UI probes.
 float(float evtype, float scanx, float chary, float devid) CL_InputChain;
 
+// Patch 642's arm: `hud_edit ui round <px>` keeps one white box of that corner
+// radius on black over the HUD (0 ends it), for a grader that reads the pixels.
+float ui_he_round;
+void(vector scr) HUD_EditRoundTest =
+{
+	if (ui_he_round <= 0)
+		return;
+	sui_style_hud(scr);
+	drawfill('40 40 0', '420 420 0', '0 0 0', 1, 0);
+	_sui_round_draw('60 60 0', '380 380 0', ui_he_round, '1 1 1', 1);
+};
+
 void() HUD_EditUIProbe =
 {
 	local int i, n;
@@ -2188,6 +2200,19 @@ void() HUD_EditUIProbe =
 	n = (int)min(MAX_ACTION_ELEMENTS, _action_elements_index);
 	// Patch 610: any panel holding the cursor, not only this one: the last sui
 	// bracket of the frame is whichever is open (the board, the run graphs).
+	if (strcmp(argv(2), "round") == 0)
+	{
+		// `round <px>` the test box; `round png` / `round mask` which way corners
+		// are drawn (png is the stretched 8 px mask, the way before Patch 642).
+		if (strcmp(argv(3), "png") == 0)
+			sui_rnd_off = TRUE;
+		else if (strcmp(argv(3), "mask") == 0)
+			sui_rnd_off = FALSE;
+		else
+			ui_he_round = stof(argv(3));
+		print(sprintf("sui_round test %g png %g\n", ui_he_round, sui_rnd_off));
+		return;
+	}
 	if (strcmp(argv(2), "hover") == 0)
 	{
 		if (!ui_cursor_claims) { print("sui_probe: no cursor panel\n"); return; }
@@ -2224,6 +2249,7 @@ void() HUD_EditUIProbe =
 	}
 	print(sprintf("sui_probe round %g asset %g tip %g lines %g wraps %g\n",
 		sui_round_calls, sui_round_available, sui_tip_visible, sui_tip_count, sui_tip_wraps));
+	print(sprintf("sui_masks made %g off %g last %g gen %g\n", sui_rnd_n, sui_rnd_off, sui_rnd_last, sui_rnd_gen));
 	print(sprintf("sui_work frames %g quads %g screen %g %g focused %g\n",
 		sui_style_frames, sui_style_quads, sui_style_screen_x, sui_style_screen_y, sui_style_focused));
 	print(sprintf("sui_font native %g ratio %g %g glyph %g %g calls %g\n",

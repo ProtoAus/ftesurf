@@ -1859,6 +1859,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  can never nest.
 		*/
 		HUD_EditDraw(scr);
+		HUD_EditRoundTest(scr);     // Patch 642's arm; draws only while asked
 
 		// The save-lock hold's deadman.  Here rather than inside SaveLoc_Draw
 		// because it has to run whether or not the menu is up.

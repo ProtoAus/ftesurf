@@ -5,6 +5,36 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Rounded corners: what Patch 642 left -- 2026-10-11
+
+- **A mask's name could be redefined after billions of draws.** The engine
+  counts every lookup of a shader by name (`R_LoadShader`, `uses`), and each
+  `drawsubpic` is one. The review's reading (of an older checkout, not
+  re-read on main): when the count wraps to zero the name is loaded again as
+  a file, which for a corner mask is a missing picture until the next video
+  restart. Its estimate is 8.5 hours at 1000 fps with twenty boxes of one
+  radius; not measured. The .png had the same wrap and reloaded harmlessly.
+  The cure is in the engine.
+- **One way out of a video restart skips the hooks.** `R_ApplyRenderer_Load`
+  returns early when the map's world model is gone after the reload ("Worldmodel
+  missing after video reload"), before it tells either VM. The menu would then
+  draw its rounded boxes from names that no longer exist until the next
+  restart. Read on the engine's main, not reproduced.
+- **Not measured: what the masks cost.** A new radius is rasterised in QC
+  (65,536 loop turns at 256 px); each map's new game VM makes its own again;
+  a box animated in size makes one per new pixel radius; a bordered box is
+  two radii, so two shaders and more batches (`sui_style_panel` five where it
+  was one: the review's count).
+- **`gl_picmip2d` above 0 may halve the masks** (the upload's image flags;
+  read, not tried).
+- **The arm sees one VM, one ratio.** Pixels are graded in the game VM at
+  `vid_conautoscale 1`, white on black, 6 px and up. The menu VM has its count
+  line (`ui_strip_test masks`: 2 made, 4 after a video restart) and a look at
+  its buttons; the Play pill itself was not reached, a fresh overlay stays on
+  the consent page and `set rec_terms 4` did not pass it. Other ratios, the
+  menu's in-world panels, tinted and translucent boxes and renderers other
+  than GL were not looked at.
+
 ## The owner's layout as the defaults: what Patch 637 left -- 2026-10-11
 
 - **The move to the owner's layout cannot tell a chosen old default from an

@@ -25,7 +25,14 @@ commit   c543d688ad16a871753fa9525c23487f437741a5
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-625
-patch    641
+patch    642
+# Patch 642: a rounded corner is drawn from a mask made at its own pixel radius, where
+# one 8 px mask was stretched to every size. Buttons, pills and panels keep a one-pixel
+# antialiased edge however large they are, and a rounded box sits on whole pixels. The
+# game code makes the masks (r_uploadimage and a shader each) and makes them again after
+# a video restart; where those builtins are missing the .png draws as before.
+# csprogs and menu.dat only: no engine source, server QC, surfd, recorder, evidence,
+# ranking, default or Build change (commit and tag above stay).
 # Patch 641: a config that still holds the HUD's old defaults is moved to the owner's
 # layout (Patch 637's), once. A setting saved at exactly its old default, by the engine,
 # by hud_edit's reset or by an older release's default.cfg, becomes the new one; an

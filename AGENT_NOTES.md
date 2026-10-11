@@ -4625,6 +4625,50 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+### Rounded corners from masks made at their own size (Patch 642) — 2026-10-11
+
+- THE BLUR WAS ONE 8-TEXEL CORNER STRETCHED. `gfx/ui/roundmask.png` is 32x32
+  with radius 8, and `_sui_round_draw` (`src/shared/sh_ui.qc`, both VMs) drew
+  it at every radius. Along the corner's edge the mean difference from the
+  exact shape was 0.025 at 6 px, 0.18 at 20, 0.34 at 96 and 0.37 at 176, with
+  3.6 to 33 times the exact count of half-lit pixels. Now a disc of the wanted
+  pixel radius is rasterised in QC and uploaded: 0.000 on the ladder's radii.
+- THE LADDER: by 1 to 32 px, by 2 to 64, by 8 to 128, by 16 to 256, rounded
+  UP. The radius itself is not rounded; a corner between two steps is the
+  next mask shrunk by under a pixel (0.030 at 45 px, 0.040 at 100).
+- AN UPLOADED PICTURE NEEDS ITS OWN SHADER. drawsubpic's default one wants a
+  premultiplied picture and does not find an upload under that name (the
+  missing-texture checker: ftesurf-5b's tip). `shaderforname` with a body that
+  names the texture; `rgbgen vertex` and `alphagen vertex` in it.
+- NEVER ASK ABOUT A MASK NAME THAT MAY NOT EXIST. A draw or a
+  `drawgetimagesize` on a name with no shader defines it as a file picture,
+  and `R_LoadShader` then returns that for good: the mask could never be made
+  under it. The first cut polled a name to see whether a video restart had
+  taken the masks and could poison names doing it (the review). Now each VM
+  forgets its masks in the hook the engine calls before the next draw
+  (`CSQC_RendererRestarted` in `cl_milk.qc`, `Menu_RendererRestarted` in
+  `m_main.qc`; engine `renderer.c`, after a restart) and makes them under the
+  next number. The VMs do not share names (`sui_rndc...`, `sui_rndm...`). A
+  name that will not make is tried once more under the next number, then the
+  .png draws for the rest of that VM's life.
+- A ROUNDED BOX IS SNAPPED TO WHOLE PIXELS, a tie going the way the rasteriser
+  takes it: `ceil(v * ratio - 0.5)`. `_sui_pixel_align` is `floor(v + 0.5)`,
+  which at an edge of exactly k + 0.5 (anything centred over an odd width)
+  lands one pixel past a `drawfill` of the same rectangle.
+- THE MEASURE IS ALONG THE EDGE. The first grader took the mean over the whole
+  corner square, which thins as the radius grows: the review's model showed a
+  mask with no antialiasing passing from 32 px up. `tools/test_p642corners.py`
+  takes the pixels within 1.5 px of the exact edge and the count of half-lit
+  ones; modelled, every fault tried reads 0.05 or more where an honest corner
+  reads 0.000 (`cfg/test/p642corners.cfg`, 9 radii drawn both ways and a video
+  restart: 6 of 6, and the old way fails from 20 px up).
+- TO LOOK: `hud_edit ui round <px>` keeps one white box on black, `round png`
+  and `round mask` pick the way, `round 0` ends it; `hud_edit ui` prints
+  `sui_masks made N off O last L gen G`, and the menu's own is
+  `ui_strip_test masks`.
+- csprogs: 130,609 of fteqcc's 131,072 global definitions. The per-radius
+  tables are memalloc'd for that reason.
+
 ### A config on the HUD's old defaults is moved, once (Patch 641) — 2026-10-11
 
 - THE OLD DEFAULT IS PINNED THREE WAYS, not one. The engine saves every

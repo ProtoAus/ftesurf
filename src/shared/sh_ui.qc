@@ -138,12 +138,191 @@ void(vector pos, string text, float want, vector color, float alpha) sui_native_
 	sui_style_text_calls += 1;
 };
 
+/*
+  Patch 642: A CORNER IS DRAWN FROM A MASK MADE AT ITS OWN SIZE.  The one mask
+  (gfx/ui/roundmask.png, 32x32, radius 8) was stretched to every radius: a 16 px
+  corner was 8 texels at twice their size and the Play button's at four times,
+  soft and then visibly low resolution (the owner, 11 Oct).  A disc of the
+  wanted pixel radius is rasterised once (coverage from the distance to its
+  edge, one quadrant computed and mirrored) and uploaded; a box is that disc's
+  four quadrants and its opaque middle, one texture as before.  Radii step by 1
+  to 32 px, by 2 to 64, by 8 to 128 and by 16 to 256, each rounded UP: a corner
+  is never magnified, and one that is not on a step is shrunk by under a pixel.
+
+  TWO THINGS THE ENGINE MAKES NECESSARY.  drawsubpic's default shader wants a
+  premultiplied picture and will not find an uploaded one under the same name
+  (it draws the missing-texture checker: ftesurf-5b, Patch 640), so each mask
+  gets a shader of its own that names the texture.  And a video restart drops
+  both, while a name drawn after that is defined as a missing file for good
+  (r_2d.c, R_LoadShader returns an existing name unchanged): so each VM forgets
+  its masks in its renderer-restart hook, before the next draw, and makes them
+  again under names with the next number.  The VMs do not share names.  The
+  .png stays as the way out.
+*/
+#define SUI_RND_TOP 256
+#ifdef MENU
+#define SUI_RND_VM "m"
+#else
+#define SUI_RND_VM "c"
+#endif
+// memalloc'd, one entry a pixel radius: csprogs has no global definitions to spare
+// (AGENT_NOTES, "CSPROGS SITS AT FTEQCC'S GLOBAL LIMIT").
+float  *sui_rnd_made;
+string *sui_rnd_name;
+float  sui_rnd_gen;             // the number in this VM's names: one more a restart
+float  sui_rnd_last;            // the radius made last (the status print)
+float  sui_rnd_off;             // the upload does not work here: the .png for good
+float  sui_rnd_n;               // masks made since start (the status print)
+
+float(float px) _sui_rnd_step =
+{
+	px = px - 0.01;                 // 15.000001 is 15
+	if (px <= 32) return max(2, ceil(px));
+	if (px <= 64) return ceil(px / 2) * 2;
+	if (px <= 128) return ceil(px / 8) * 8;
+	return min(SUI_RND_TOP, ceil(px / 16) * 16);
+};
+
+float(float px) _sui_rnd_make =
+{
+	local int *buf;
+	local int v;
+	local float n, x, y, dx, dy, a;
+	local string tex;
+	local vector got;
+
+	if (!checkbuiltin(r_uploadimage) || !checkbuiltin(shaderforname))
+		return FALSE;
+	n = px * 2;
+	buf = memalloc((int)(n * n * 4));
+	for (y = 0; y < px; y += 1)
+	{
+		dy = px - y - 0.5;
+		for (x = 0; x < px; x += 1)
+		{
+			dx = px - x - 0.5;
+			a = bound(0, px + 0.5 - sqrt(dx * dx + dy * dy), 1);
+			// bytes r g b a: white, and the coverage
+			v = ((int)rint(a * 255) << 24i) | 0x00ffffffi;
+			buf[y * n + x] = v;
+			buf[y * n + (n - 1 - x)] = v;
+			buf[(n - 1 - y) * n + x] = v;
+			buf[(n - 1 - y) * n + (n - 1 - x)] = v;
+		}
+	}
+	tex = sprintf("sui_rndt%s%g_%g", SUI_RND_VM, sui_rnd_gen, px);
+	r_uploadimage(tex, (int)n, (int)n, buf);
+	memfree(buf);
+	if (sui_rnd_name[px])
+		strunzone(sui_rnd_name[px]);
+	sui_rnd_name[px] = strzone(sprintf("sui_rnd%s%g_%g", SUI_RND_VM, sui_rnd_gen, px));
+	shaderforname(sui_rnd_name[px], sprintf(
+		"{\naffine\nnomipmaps\nprogram default2d\n{\nclampmap %s\nrgbgen vertex\nalphagen vertex\nblendfunc blend\n}\nsort additive\n}\n", tex));
+	got = drawgetimagesize(sui_rnd_name[px]);
+	if (got_x != n)
+		return FALSE;
+	sui_rnd_made[px] = TRUE;
+	sui_rnd_last = px;
+	sui_rnd_n += 1;
+	return TRUE;
+};
+
+// Each VM's renderer-restart hook calls this: the masks are gone with the renderer.
+void() _sui_rnd_forget =
+{
+	local float i;
+	sui_rnd_gen += 1;
+	sui_rnd_last = 0;
+	if (!sui_rnd_made)
+		return;
+	for (i = 0; i <= SUI_RND_TOP; i += 1)
+		sui_rnd_made[i] = FALSE;
+};
+
+// The mask for a corner of `px` physical pixels, or "" for the .png.
+string(float px) _sui_rnd_mask =
+{
+	if (sui_rnd_off)
+		return "";
+	if (!sui_rnd_made)
+	{
+		sui_rnd_made = memalloc(sizeof(float) * (SUI_RND_TOP + 1));
+		sui_rnd_name = memalloc(sizeof(string) * (SUI_RND_TOP + 1));
+	}
+	if (!sui_rnd_made[px])
+	if (!_sui_rnd_make(px))
+	{
+		// A name that is already something else (an earlier VM's, drawn while it was
+		// gone): once more under the next number, then the .png.
+		_sui_rnd_forget();
+		if (!_sui_rnd_make(px))
+		{
+			sui_rnd_off = TRUE;
+			return "";
+		}
+	}
+	return sui_rnd_name[px];
+};
+
+// An edge onto a pixel boundary, a tie going the way the rasteriser takes it (a
+// drawfill edge at k + 0.5 starts at pixel k), so a box does not move against a
+// drawfill beside it.
+float(float v, float ratio) _sui_rnd_snap =
+{
+	return ceil(v * ratio - 0.5) / ratio;
+};
+
 // Raw screen coordinates; the public wrapper transforms exactly once.
 void(vector pos, vector size, float radius, vector color, float alpha) _sui_round_draw =
 {
-	local float dw, dh, r;
+	local float dw, dh, r, rr;
+	local string m;
+	local vector at, far;
 	if (size_x <= 0 || size_y <= 0) return;
 	r = max(0, min(radius, min(size_x, size_y) * 0.5));
+	if (r > 0 && !sui_rnd_off)
+	{
+		// The box on whole pixels, so the mask's edge lands on them. One that would
+		// vanish, and every box where there are no masks, is drawn as before.
+		at  = [_sui_rnd_snap(pos_x, sui_style_pixel_ratio_x), _sui_rnd_snap(pos_y, sui_style_pixel_ratio_y), 0];
+		far = [_sui_rnd_snap(pos_x + size_x, sui_style_pixel_ratio_x),
+		       _sui_rnd_snap(pos_y + size_y, sui_style_pixel_ratio_y), 0];
+		far = far - at;
+		m = "";
+		rr = 0;
+		if (far_x > 0 && far_y > 0)
+		{
+			rr = min(r, min(far_x, far_y) * 0.5);
+			m = _sui_rnd_mask(_sui_rnd_step(rr * sui_style_pixel_ratio_y));
+		}
+		if (m != "")
+		{
+			pos = at;
+			size = far;
+			r = rr;
+			sui_round_calls += 1;
+			dw = size_x - 2 * r;
+			dh = size_y - 2 * r;
+			drawsubpic(pos, [r, r, 0], m, '0 0 0', '0.5 0.5 0', color, alpha, 0);
+			drawsubpic(pos + [size_x - r, 0, 0], [r, r, 0], m, '0.5 0 0', '0.5 0.5 0', color, alpha, 0);
+			drawsubpic(pos + [0, size_y - r, 0], [r, r, 0], m, '0 0.5 0', '0.5 0.5 0', color, alpha, 0);
+			drawsubpic(pos + [size_x - r, size_y - r, 0], [r, r, 0], m, '0.5 0.5 0', '0.5 0.5 0', color, alpha, 0);
+			sui_style_quads += 4;
+			// The middle of the disc is opaque: its centre point fills the rest.
+			if (dw > 0)
+			{
+				drawsubpic(pos + [r, 0, 0], [dw, size_y, 0], m, '0.5 0.5 0', '0 0 0', color, alpha, 0);
+				sui_style_quads += 1;
+			}
+			if (dh > 0)
+			{
+				drawsubpic(pos + [0, r, 0], [r, dh, 0], m, '0.5 0.5 0', '0 0 0', color, alpha, 0);
+				drawsubpic(pos + [size_x - r, r, 0], [r, dh, 0], m, '0.5 0.5 0', '0 0 0', color, alpha, 0);
+				sui_style_quads += 2;
+			}
+			return;
+		}
+	}
 	if (!sui_round_checked)
 	{
 		sui_round_checked = TRUE;

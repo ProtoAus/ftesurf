@@ -11,6 +11,23 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — rounded corners stay sharp at any size (Patch 642)
+
+From your message: small corners looked fine, big ones blurry and low
+resolution, the Play button worst. Every rounded box was one small picture of
+a corner, 8 pixels across, stretched to whatever size was asked. Now the game
+draws each corner from a picture made at exactly that size, so a 100 pixel
+corner has the same one-pixel smooth edge as a 6 pixel one.
+- **Yours to look at:** the Play button in the map list, the big panels, the
+  board's pills. I measured a test box in the game and looked at the menu's
+  buttons; I could not get the test rig past the first-run page to the Play
+  button itself.
+- To compare in a map: `hud_edit ui round 100` puts up a white test box, then
+  `hud_edit ui round png` is the old way and `hud_edit ui round mask` the new;
+  `hud_edit ui round 0` takes it away.
+- If a corner ever shows a checker pattern or goes missing (most likely right
+  after a video restart or a resolution change), tell me what you did before.
+
 ## 00. 11 Oct — Steam pictures on the site (Patch 639)
 
 From your list. On proto.bar/ftesurf/board a linked player's Steam picture
