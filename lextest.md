@@ -193,6 +193,37 @@ pixel for pixel.
   what is still expensive (`hud_lines_nums 2` on whole lines costs about 4 ms
   by itself), so fifty lines also needs those made cheaper.
 
+## 00. 12 Oct — CS:S builds have timers and both games' times; maps follow Momentum (Patch 651)
+
+From your reply. This is the server half; the switch in the map list is
+Patch 652, below when it lands.
+
+- **Momentum's zones on the CS:S build.** 18 of the 21 `_css` maps on the Pi
+  now have a timer, and 5 ports like `surf_sofia_fix`: each got its map's
+  zones only after a check that the two files share the same coordinates and
+  restart points. Three failed that check and stay untimed
+  (surf_aquaflow_css, surf_ravine_csgo, surf_sequoia_fix): they need zones
+  of their own, which your editor can make. More `_css` maps arrive at 20
+  every six hours and get zones the same way.
+- **Both games' times on both builds.** On `surf_ace_css` the board shows
+  7,672 Momentum times and 645 KSF times, the same as on `surf_ace`. Times
+  set in FTESurf stay with the build they were set on.
+- **Map updates are on.** 31 maps were replaced with Momentum's current
+  file (the old ones are kept on the Pi). 12 maps that had runs here were
+  among the candidates; a parked run on one of the replaced maps can no
+  longer be resumed.
+- **Not updated, and why.** bhop_eazy: the engine check compares it between
+  the Pi and this PC, and both have the older file, so I left it. 17 other
+  maps and 75 zone files: Momentum's own checksum for their zones does not
+  match the zones it serves (their change in January), so I cannot verify
+  them and did not take them. The three I compared differ only in a
+  timestamp and where bunnyhopping is allowed.
+- **The Beta list** cannot be read without a Steam sign-in (Momentum answers
+  "Unauthorized"), so it still comes from your Momentum install. Beta maps
+  have no zones for the same reason.
+- **KSF's one map without a download** is `surf_sinister_evil_fix`.
+- **Live since 11 Oct 15:19 UTC (12 Oct 02:19 here)** on the Pi.
+
 ## 00. 11 Oct — every KSF and Momentum map, and new ones as they come out (Patch 644)
 
 From your message. What I found, what runs now, what is not done.

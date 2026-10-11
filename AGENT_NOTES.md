@@ -8828,6 +8828,32 @@ the game fetches its own map list. The menu half is Patch 652.
 - **TWO FILES OF ITS OWN IN ANOTHER SHAPE** (`seen` in state.json, a
   catalogue row) used to end the run or add a row to the list; each now
   costs that row what it said.
+- **MOMENTUM'S zoneHash DOES NOT MATCH ITS OWN ZONES FOR 92 MAPS** (11 Oct).
+  No serialisation of the reply hashes to it. Three compared with the files
+  held (surf_ace, surf_crush, surf_grassland) differ in `dataTimestamp` (now
+  January 2026) and a new `globalRegions.allowBhop` and in nothing else: a
+  re-save on their side that left the hash behind. So for those maps
+  `--updates` cannot have the zones: 75 zone files and 17 builds stay as they
+  are, struck three times and then left 30 days. The donor of a second build
+  is therefore the file the plain map is TIMED BY here, at the published
+  build, hashed or not (4ceeca5): that gave surf_ace_css, surf_beginner_css,
+  surf_lovetunnel_css, surf_rookie_css and surf_whiteout_css their clocks.
+- **bhop_eazy IS NOT UPDATED** (`KEEP_BUILD`): the engine gate compares
+  `pm_dettest` on it between the Pi and Windows, and both hold 07320480e924
+  where Momentum publishes 4ddeea8cc0fa. Update it on both or on neither.
+- DEPLOYED 11 Oct: `610c1b0` to `/srv/nvme/surfd` (surfd.py, mapwatch.py,
+  zonefit.py; SIGHUP, "surfd ready" 15:19:13Z), then `4ceeca5` (mapwatch.py,
+  no reload, 15:34Z). Two runs by hand with `--updates` (15:20Z, 15:35Z): 31
+  builds replaced, the old ones linked in `maps/.old/`; 14 zone files
+  replaced; 23 second builds given zones (18 of the 21 `_css`; 3 SHIFTED and
+  surf_vestige_fix has its own timer triggers); 985 of the 1,857 maps have a
+  zone file (937 before). Seen on the host: `zones(sv): 12 on surf_ace_css
+  (maps/zones/online)` and `6 on bhop_24` from a throwaway server;
+  `play.proto.bar/api/board?maps=1` 200, 89,063 bytes, 1,787 rows, 20 naming
+  the map they are a build of, the bytes of the watcher's file;
+  `/api/board?map=surf_ace_css&tier=combined` counts 7,672 Momentum and 645
+  KSF rows. The crontab line has `--updates` since 15:39Z (the line before:
+  `data/mapwatch/crontab.pre651`).
 
 ### The library keeps itself level: `surfd/mapwatch.py` (Patch 644) -- 2026-10-11
 

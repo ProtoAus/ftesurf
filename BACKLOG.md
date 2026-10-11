@@ -135,6 +135,17 @@ From its one review (read, not run) and what the arm does not reach.
   destination, `teleDestPos` regions, and a file naming no destination at
   all, which rests on the world's mins (22 of 549 zone files). Check a pair:
   `python tools/census/zonefit.py <name>=<name>_css`.
+- **`--updates` cannot follow 92 maps**, because Momentum's zoneHash is not
+  the hash of its own zones for them (AGENT_NOTES, "zoneHash DOES NOT MATCH"):
+  17 builds and 75 zone files stay as held. The three compared changed only
+  `dataTimestamp` and `globalRegions.allowBhop`, so a rule that takes the
+  published zones where their `tracks` equal the file held would cover most.
+  Check: `state.json`'s `later` has 92 `z:<name>:<hash>` keys.
+- **bhop_eazy is kept at the build the engine gate uses** (`KEEP_BUILD` in
+  mapwatch.py); Momentum's current build is another. Changing it means the
+  PC's copy too, and the fixtures under `data/saves/bhop_eazy`.
+- **A second build whose map is a Beta map has no clock** (surf_techsune_css,
+  surf_tensor2_css on 11 Oct): Beta zones need a signed-in request.
 - **The board believes the catalogue.** `variant_base()` takes any `of` row
   of `data/mapwatch/catalogue.json`; only `mapwatch.py` writes that file.
 - **The list's New badge starts from 651's first run** (every name then held
