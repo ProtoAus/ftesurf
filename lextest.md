@@ -99,6 +99,38 @@ a few sizes, drift and fade out.
 - **Live since 11 Oct 14:53 UTC (12 Oct, 01:53 here)** on both installs and
   all twelve lobbies. Restart the game to get it.
 
+## 00. 12 Oct — names on every line, labels that stay put, energy as the speedo (Patch 661)
+
+From your message after trying twenty-odd lines. Four things changed:
+- **Every ticked line has its name**, drawn in that line's own colour. Before,
+  only the first eight had one.
+- **A mark's numbers stay at their mark.** They used to be pushed up and down
+  into rows to keep them apart, which is what put them far from what they were
+  about. Now the nearest one to you is drawn, one that would sit on top of it
+  fades out, and it fades in when you are close enough for the two to part.
+  Numbers also only show within 3000 units of you (the line and its name still
+  show as far as before).
+- **Energy on a label is the speedometer's energy**: the same kind of number,
+  from the same zero, so a label and the E under your speed can be compared.
+  It was a speed in u/s, measured from where that run started.
+- **HUD editor, new "Line labels" pane**: a switch each for speed, energy,
+  energy change, vertical speed and time (turn off all but Energy and a label
+  is just "E 2599"), energy as energy or as a speed, which zero, how near the
+  numbers show, whether a crowd is thinned or stacked, how many lines carry
+  marks, and names on or off. The Labels row moved there from "Run lines" and
+  Names on lines from "Run graph".
+
+**Yours to look at** (I could only test with one run copied into twenty lines,
+which by design shows one name and one number):
+- a real pack of different runs: do enough names and numbers find room, and is
+  3000 the right distance? "Numbers within" in the pane changes it;
+- "When crowded: stack them" is the old behaviour if you want it back;
+- with your speedometer's zero at "last jump", every label's energy changes
+  when you jump. If that is wrong for you, "Energy from: the run's start".
+
+And a correction: I wrote "measured on this laptop" in two earlier items. Every
+test of mine ran on this PC, the 9900K and the 2080 SUPER. Fixed below.
+
 ## 00. 12 Oct — the 0.1.24 download keeps eight lines (Patch 654)
 
 My sixty-four-line change went to the lobbies before I had run it on the
@@ -121,7 +153,8 @@ time until this fix went out, with nobody on a lobby when it went out.
 From your message: eight was the most you could tick, your injectable drew
 fifty. You can tick sixty-four now. Clicking the LINE heading on the board
 ticks every row in the list that has a recording, up to that many.
-- **What it costs, measured on this laptop:** sixty-four lines add 1.9 ms to a
+- **What it costs, measured on this PC (i9-9900K, RTX 2080 SUPER; I first
+  wrote "this laptop", which was wrong):** sixty-four lines add 1.9 ms to a
   frame. Eight used to add 3.3 before yesterday's engine change, and add 0.8
   now.
 - **The first eight you tick are the detailed ones:** marks and numbers on
@@ -213,7 +246,8 @@ pixel for pixel.
   the game to get it. The 0.1.24 download of the same hour was cut just
   before this and has the older engine: a copy unpacked from it draws lines
   the old way until the next release.
-- **What it buys, measured on this laptop:** eight ticked lines used to add
+- **What it buys, measured on this PC (i9-9900K, RTX 2080 SUPER; I first
+  wrote "this laptop", which was wrong):** eight ticked lines used to add
   3.3 ms to every frame and now add 0.9. With whole lines (`hud_lines_order 0`)
   7.7 ms became 2.5.
 - **It needs the new engine**, which is in both installs. Older clients keep

@@ -4818,6 +4818,78 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+### What is written on the run lines (Patch 661) — 2026-10-12
+
+- THE OWNER'S FOUR ASKS, after trying twenty-odd lines: a name on every line
+  in the line's colour, labels that do not "display too far away", energy in
+  "the other E measurement the HUD speedo uses", and switches for what a
+  label carries. "Too far away" was read two ways and both were done: far
+  from their MARK (the lanes moved a label up to eight rows off) and far from
+  the EYE (a number showed as far as its line, 12000 u).
+- ONE QUEUE, PLACED AT THE END OF THE FRAME. `Line_Marks` queues the numbers
+  while the lines draw, `LineGraph_WorldLabels` then queues the names (it runs
+  BEFORE `Line_FrameEnd` now, cl_main.qc), and `Line_LabelsPlace` gives out the
+  room: nearest the eye first (a name at half its distance, one already
+  showing at 0.85 of its own so a pair does not trade places), a grid of cells
+  stamped with the frame's number, and an alpha a label that eases 0.15 s in
+  and 0.10 s out (`ln_lfa`, `ln_lff`, indexed by mark, then `LN_LB_NAME +
+  slot` for a name). A label without room is still queued: that is what lets
+  it fade back in. One under `LN_LB_FAINT` is drawn and takes no room.
+- `hud_lines_declutter` 0 IS THE NEW PLACING; the lanes it used to mean are 2,
+  the sparse grid still 1. The four older arms that meant the lanes say 2 now.
+- THE QUEUE HOLDS 512 AND THE LAST 67 ARE THE NAMES': numbers are queued
+  first, and a crowd of them must not leave a line without its name.
+- THE LABEL TEXT ARRAY STAYS A REAL GLOBAL ARRAY (`ln_lab_t`): its strings
+  are temp strings and allocated memory is not where the collector looks. The
+  rest of the queue is allocated (the definition count).
+- A NAME SITS AT THE NEAREST READABLE POINT OF ITS LINE, found among 256
+  samples; past eight names they share 2048 and the two closer looks are 128
+  tries each, so a whole 65536-sample line is searched coarsely then. Its
+  colour is the line's own at that sample (`ln_col`), or its place by time.
+  `lg_lab_*` and `lg_name_*` are `LN_SLOTS` now; the graph is still eleven.
+- ENERGY ON A LABEL: `hud_lines_units` 1 energy (default), 0 the speed it is
+  worth, -1 the split list's `hud_seq_units`, which a label followed before
+  and which is u/s in the owner's layout. `hud_lines_ref` 0 is the default
+  now: the speedometer's zero in every state it has (`HUD_EnergyRef`, a
+  rewind's `ui_rw_ref`), and the run's own start where the speedometer has no
+  answer. Same formula as `Strafe_Energy`, so a label reads what the
+  speedometer would have read there. `hud_labels_rev` moves a saved 1 once.
+- THE EDITOR'S "Line labels" PANE is the 24th row of 28 (`HE_MAX` and
+  `HUDE_MAX` moved together). `hud_lines_nums` came from "Run lines" and
+  `hud_linegraph_labels` from "Run graph"; `hud_lines_marked`, `_ref`,
+  `_units`, `_label_far`, `_declutter` and the five element switches had no
+  row before.
+- THE ARM (`cfg/test/p661labels.cfg`, `tools/test_p661labels.py`) uses one
+  run in every line, so it shows ONE name and ONE number where twenty want the
+  place: that is the placing working, and it is also why no arm shows a real
+  crowd. `lines native` prints "last labels N with room, M without";
+  `linegraph status` lists every name, its colour and how far it has faded in.
+- THE ONE REVIEW FOUND, AND THESE WERE FIXED: names had been given the
+  numbers' range (a replay's own name vanished at 3000 u), a full queue
+  dropped every name, the closer looks cost thousands of tries a line with
+  whole lines ticked, the label's zero was not the speedometer's in a rewind
+  or with no start zone, one far label put every near one in a single
+  distance bucket, a nearly faded label kept an opaque one out, and the
+  frame counter was a float that stops at 2^24. Of those only the names'
+  range and the saved zero have a check in the arm.
+- PAST EIGHT NAMES A LINE LOOKS FOR ITS PLACE ONE FRAME IN (names / 16) and
+  keeps the point between looks, projected again. Without that, sixty-four
+  names cost 0.8 ms a frame; with it 0.3.
+- MEASURED (QC a frame, 1600x900, this PC, a paused replay, one run in every
+  line, 2.13 ms with none): eight lines 2.96, sixteen 3.13, thirty-two 3.48,
+  sixty-four 4.26 with their names (3.95 without; 4.02 before this patch,
+  when only eight had one). Numbers on the first eight add 0.1 where they
+  added 1.4, because they stop at 3000 u. Numbers on all sixty-four: 6.29.
+- `lg_gen` IS THE GRAPH'S, AND fteqcc TAKES A SECOND DECLARATION OF A GLOBAL
+  WITHOUT A WORD. The names' frame counter was first called that: it bumped
+  the graph's "curves changed" count every frame, the graph simplified every
+  curve again each frame, and eight lines cost 6.1 ms where they cost 2.9.
+  Every arm passed. The cost table showed it and `profile_csqc` said where
+  (LineGraph_Simplify and LineGraph_Swing, half the frame; the new code was
+  1.6%). Grep a new global's name before declaring it; it is `lg_lab_frame`.
+- THIS PC IS THE DESKTOP (i9-9900K, RTX 2080 SUPER). 645's and 649's notes
+  said "this laptop" in two lextest items; the owner corrected it.
+
 ### An engine before 645 keeps eight run lines (Patch 654) — 2026-10-12
 
 - `Scores_LineMax()` (`cl_scores.qc`) is `SB_LNMAX` where

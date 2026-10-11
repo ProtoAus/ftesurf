@@ -35,6 +35,40 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   (Patch 617: the wait leaves the game its keys), and odd beside a cursor.
 - ftesurf-5b, from Patch 653's review of 12 Oct.
 
+## Labels on the run lines: what Patch 661 left -- 2026-10-12
+
+- **Not measured: a real crowd.** The arm's twenty lines are one run, which
+  shows one name and one number. Twenty different runs were not put side by
+  side in a rig: how many labels find room in a real pack, and whether 3000 u
+  is the right range for numbers, are the owner's to look at.
+- **The run graph is still places 1..8.** Every line has its name now; the
+  graph's curves and legend are `LG_SLOTS` 11.
+- **A label's energy follows YOUR zero** (`hud_lines_ref 0`): at
+  `hud_energy_ref 1`, the default, that is where you last jumped, so every
+  label on screen changes when you jump. Not looked at on a bhop map, where
+  the zero moves every hop. "Energy from: the run's start" is the old way.
+- **Review findings fixed without a check of their own**: the names' reserved
+  places in the queue, the root-scaled distance buckets, a faint label taking
+  no room, the frame counter starting again at four million, the closer looks
+  capped past eight names, the zero in a rewind and with no start zone. Read,
+  built, and the arm still passes; none is exercised by it.
+- **Past eight names with whole lines ticked** (`hud_lines_order 0`) a name
+  is looked for at 32 samples and 128 tries either side: a long line you
+  stand beside can go without its name for a moment, and a name that is not
+  found disappears at once (only one without room fades).
+- **Ties go by draw order.** Two labels in one distance bucket (the buckets
+  are finer near the eye) are placed replay, board line, trail, name.
+- **A name beside an imported run in a speed colouring** is the colour before
+  the `hud_watch_path_foreign` blend, so it is a little off its line.
+- **The open "Line labels" pane is 13 rows**: the editor's panel is about
+  1012 px tall at `hud_scale 2`, 60 more than the tallest before, and a
+  window between 953 and 1011 lines tall draws it at half size.
+- **`hud_lines_declutter 1`, the sparse grid, is console only**; its cells
+  are still the two ends of a label, not its whole box.
+- **Older arms were told the old meaning** (`p451num`, `p451shot`,
+  `p632lines`, `runlines_labels`: lanes 2, unit -1, range 0, zero 1). They
+  were not re-run.
+
 ## Run lines on an engine before 645: what Patch 654 left -- 2026-10-12
 
 - **Eight WHOLE lines at 3 px still close that engine** (`hud_lines_order 0`,

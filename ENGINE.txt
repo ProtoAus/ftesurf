@@ -25,7 +25,15 @@ commit   7501a6ccebb2d2b7f2f3a7f0127e86680f3cefb3
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-658
-patch    660
+patch    661
+# Patch 661: what is written on the run lines. Every ticked line has its name, in the
+# line's own colour (the ninth line on had none). A mark's numbers stay at their mark:
+# the nearest to the eye has the room and the others fade out until there is some
+# (they were moved into lanes away from it), and they show within hud_lines_label_far
+# (3000 u). Energy on a label is the speedometer's: plain energy from its zero
+# (hud_lines_units 1, hud_lines_ref 0; it was u/s from the run's start). The HUD editor
+# has a "Line labels" pane with a switch for each number. csprogs and cfg/default.cfg:
+# no engine source, server QC, surfd, recorder, evidence, ranking or Build change.
 # Patch 658: the OpenGL renderer draws blended particles once a frame. GLBE_DrawWorld
 # submitted the UNLITDECAL sort bucket twice (once before the lights, once after), and
 # the script particle system's default alpha-blended shaders sort there: dust clouds,

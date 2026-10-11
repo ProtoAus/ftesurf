@@ -101,11 +101,12 @@ float(float s) LG_Start = { if (s == lv_slot) return lv_start; return ln_start[s
 float(float s) LG_Ia    = { if (s == lv_slot) return lv_ia;    return ln_ia[s]; };
 float(float s) LG_Ib    = { if (s == lv_slot) return ln_n[s] - 1; return ln_ib[s]; };
 
+// Any line slot (Patch 661: a name is asked for past the graph's eleven).
 float(float s) LineGraph_Available =
 {
-	if (s >= LN_S_TRAIL) return (s == lv_slot);
+	if (LN_TRAIL(s)) return (s == lv_slot);
 	if (s == 0) return (rec_wt_open && ln_on[0] && cvar("hud_watch_path") > 0);
-	return (sb_ln_st[s - 1] == SBL_ON && ln_on[s] && (lg_open || cvar("hud_lines_board") > 0));
+	return (sb_ln_st[LN_BOARDINDEX(s)] == SBL_ON && ln_on[s] && (lg_open || cvar("hud_lines_board") > 0));
 };
 
 vector(float s) LineGraph_Colour =
@@ -115,20 +116,23 @@ vector(float s) LineGraph_Colour =
 };
 
 // "3 name", made once per name: UI_NameShow walks the bytes.
-string lg_name_of[LG_SLOTS], lg_name_show[LG_SLOTS];
+string lg_name_of[LN_SLOTS], lg_name_show[LN_SLOTS];
+float lg_name_w[LN_SLOTS];      // its width at lg_lab_sz, 0 until LineGraph_WorldLabels measures it
 string(float s) LineGraph_Name =
 {
 	local string name;
-	if (s >= LN_S_TRAIL) return "You";
+	if (LN_TRAIL(s)) return "You";
 	name = ln_owner[s];
-	if (name == "" && s > 0) name = sb_ln_name[s - 1];
+	if (name == "" && s > 0) name = sb_ln_name[LN_BOARDINDEX(s)];
 	if (name == "") name = "unknown";
 	if (name != lg_name_of[s])
 	{
 		if (lg_name_of[s]) strunzone(lg_name_of[s]);
 		if (lg_name_show[s]) strunzone(lg_name_show[s]);
 		lg_name_of[s] = strzone(name);
-		lg_name_show[s] = strzone(sprintf("%g %s", s, UI_NameShow(name, 18)));
+		lg_name_w[s] = 0;
+		// The number is the board line's: 1..8 are slots 1..8, 9..64 the slots past the trail's.
+		lg_name_show[s] = strzone(sprintf("%g %s", s ? LN_BOARDINDEX(s) + 1 : 0, UI_NameShow(name, 18)));
 	}
 	return lg_name_show[s];
 };
@@ -1968,8 +1972,16 @@ void(vector scr) LineGraph_Draw =
   where to look: the segments either side of its sample are each asked for their
   own closest point, and the label slides along the one that wins.
 */
-vector lg_lab_w[LG_SLOTS], lg_lab_q[LG_SLOTS];  // last frame's labels: the point on the line, and on screen
-float lg_lab_on[LG_SLOTS];
+// Patch 661: every line has a name, not the graph's eleven; LN_SLOTS of each.
+vector lg_lab_w[LN_SLOTS], lg_lab_q[LN_SLOTS];  // last frame's labels: the point on the line, and on screen
+vector lg_lab_c[LN_SLOTS];                      // and the colour: the line's own there
+float lg_lab_on[LN_SLOTS];
+float lg_lab_sz;                                // the size they were measured at
+// The frame a slot last had a name, and this frame's number.  NOT lg_gen: that is the
+// graph's (its curves are made again when it moves), and fteqcc takes a second
+// `float lg_gen;` without a word. The first cut of this counted frames in it, and
+// eight lines' graph cost 3.2 ms more a frame.
+float lg_lab_gen[LN_SLOTS], lg_lab_frame;
 /*
   A label's point has to be where its text can be read: in front of the eye and inside
   the screen, less a margin and the text's own width. (The first cut took the nearest
@@ -2008,34 +2020,128 @@ float(float s, float b, float i, float f) LineGraph_LabelAt =
 	return 2;
 };
 
+// A queued name, drawn at the end of the frame with the numbers (Line_FrameEnd).
+void(float s, vector q, float a) LineGraph_NameDraw =
+{
+	local float f0, sz;
+	local string img;
+
+	f0 = ui_font_cur;
+	Font_Set(ui_font_ui);
+	sz = lg_lab_sz;
+	if (s > 0)
+	if (sb_ln_who[LN_BOARDINDEX(s)])
+	{
+		// drawpic, as the name beside it is a raw drawstring: screen positions.
+		img = SteamPic_Of(sb_ln_who[LN_BOARDINDEX(s)]);
+		if (img != "")
+		{
+			drawpic(q, img, [sz, sz], '1 1 1', a, 0);
+			q_x = q_x + sz + 4;
+		}
+	}
+	// Over sky or a pale wall the colour alone is not enough.
+	drawstring(q + [ln_px, ln_px], LineGraph_Name(s), [sz, sz], '0 0 0', a * 0.74, 0);
+	drawstring(q, LineGraph_Name(s), [sz, sz], lg_lab_c[s], a, 0);
+	Font_Set(f0);
+};
+
+// Slot s's name wants to sit at screen point `at`, which is `aw` on its line.
+void(float s, vector at, vector aw, float pw) LineGraph_NameQueue =
+{
+	local float d, a;
+
+	lg_lab_on[s] = TRUE;
+	lg_lab_gen[s] = lg_lab_frame;
+	lg_lab_w[s] = aw;
+	lg_lab_q[s] = at;
+	d = vlen(aw - ln_eye);
+	a = 0.95;
+	if (ln_fadek > 0)
+		a = a * bound(0, (ln_far - d) * ln_fadek, 1);   // as far as its line: the numbers' range is not a name's
+	if (a > 0)
+		Line_LabelQueue(at + [6, 0 - lg_lab_sz - 6], LineGraph_Name(s), lg_lab_c[s], a,
+		                pw + lg_name_w[s], lg_lab_sz, d, LN_LB_NAME + s);
+};
+
+/*
+  Patch 661: a name on every ticked line (the graph's eleven slots had one, so a
+  ninth line had none), in the line's own colour where the name sits.  They are
+  queued with the marks' numbers and placed with them, the nearest first.
+*/
 void() LineGraph_WorldLabels =
 {
 	local float s, i, j, k, n, b, d, e, best, stride, bi, f, sz, f0, dir, us, ulo, uhi, ci, cbest, ia, ib, pw;
-	local vector q, at, p0, seg, aw, vs;
-	local string img;
-	for (s = 0; s < LG_SLOTS; s = s + 1) lg_lab_on[s] = FALSE;
+	local float board, names, cap, far, walk, fine, every;
+	local vector at, p0, seg, aw, vs;
+	local string nm;
+	for (s = 0; s < LN_SLOTS; s = s + 1) lg_lab_on[s] = FALSE;
 	if (!cvar("hud_linegraph_labels")) return;
+	lg_lab_frame = lg_lab_frame + 1;
+	if (lg_lab_frame > 4000000)     // a float: start again, and every line looks afresh once
+		lg_lab_frame = 2;
 	f0 = ui_font_cur;
 	Font_Set(ui_font_ui);
 	sz = Font_Px(max(12, ln_numsize * 4 / 3));
+	if (sz != lg_lab_sz)
+		for (s = 0; s < LN_SLOTS; s = s + 1)
+			lg_name_w[s] = 0;
+	lg_lab_sz = sz;
 	vs = getproperty(VF_SCREENVSIZE);
 	lgl_ahead = (cvar("hud_watch_path_ahead") > 0);
-	for (s = 0; s < LG_SLOTS; s = s + 1)
+	board = (cvar("hud_lines_board") > 0);
+	// A name is looked for among up to 256 samples of its line; past eight names
+	// they share 2048, so sixty-four lines cost what eight did.
+	// (lg_lab_on is 2 here for "wants a name": one asking of each slot, not two.)
+	names = 0;
+	for (s = 0; s < LN_SLOTS; s = s + 1)
+		if (!LN_TRAIL(s))                   // the player's own trail needs no name
+		if (s == 0 || board)
+		if (LineGraph_Available(s))
+		{
+			lg_lab_on[s] = 2;
+			names = names + 1;
+		}
+	cap = (names <= 8) ? 256 : max(32, floor(2048 / names));
+	every = (names <= 8) ? 1 : ceil(names / 16);
+	far = ln_far;                   // a name shows as far as its line; 0: never fades
+	for (s = 0; s < LN_SLOTS; s = s + 1)
 	{
-		if (!LineGraph_Available(s)) continue;
-		if (s >= LN_S_TRAIL) continue;      // the player's own trail needs no name
-		if (s > 0)
-		if (cvar("hud_lines_board") <= 0) continue;
-		b = s * LN_CAP;
+		if (lg_lab_on[s] != 2) continue;
+		lg_lab_on[s] = FALSE;
+		b = LN_B(s);
 		// The text is drawn up and to the right of its point (below).
 		lgl_lo = [vs_x * 0.02, vs_y * 0.06 + sz + 6, 0];
 		// Patch 640: room for the row's Steam picture before the name.
 		pw = 0;
 		if (s > 0)
-		if (sb_ln_who[s - 1])
+		if (sb_ln_who[LN_BOARDINDEX(s)])
 			pw = sz + 4;
-		lgl_hi = [vs_x * 0.98 - 6 - pw - stringwidth(LineGraph_Name(s), TRUE, [sz, sz]), vs_y * 0.86, 0];
+		nm = LineGraph_Name(s);         // made again when the name changed, its width forgotten
+		if (lg_name_w[s] <= 0)
+			lg_name_w[s] = stringwidth(nm, TRUE, [sz, sz]);
+		lgl_hi = [vs_x * 0.98 - 6 - pw - lg_name_w[s], vs_y * 0.86, 0];
 		if (lgl_hi_x < lgl_lo_x) continue;
+		// Past eight names a line looks for its place one frame in `every`. Between
+		// looks it keeps the point it found, projected again, while the text can
+		// still be read there. (The replay's own line always looks: its name must
+		// not sit past the playhead.)
+		if (every > 1)
+		if (s > 0)
+		if (lg_lab_gen[s] == lg_lab_frame - 1)
+		if ((s + lg_lab_frame) - floor((s + lg_lab_frame) / every) * every)
+		{
+			aw = lg_lab_w[s];
+			if (Line_ProjPt(aw))
+			{
+				at = ln_qmk;
+				if (at_x >= lgl_lo_x && at_x <= lgl_hi_x && at_y >= lgl_lo_y && at_y <= lgl_hi_y)
+				{
+					LineGraph_NameQueue(s, at, aw, pw);
+					continue;
+				}
+			}
+		}
 		ia = LG_Ia(s);
 		ib = LG_Ib(s);
 		// Patch 624: in run order a board line is drawn inside a window that fades over a
@@ -2054,13 +2160,16 @@ void() LineGraph_WorldLabels =
 		best = cbest = 99999999;
 		at = aw = '0 0 0';
 		bi = ci = -1;
-		stride = max(1, ceil((ib - ia + 1) / 256));
+		stride = max(1, ceil((ib - ia + 1) / cap));
+		// The two closer looks below are stride * 2 samples each; past eight names 128.
+		walk = (names <= 8) ? stride * 2 : min(stride * 2, 128);
+		fine = max(1, ceil(stride * 2 / walk));
 		for (i = ia; i <= ib; i = i + stride)
 		{
 			d = vlen(ln_pos[b + i] - ln_eye);
 			if (d >= best) continue;        // cbest is never over best: neither can gain
-			if (ln_far > 0)             // 0 is "never fade", not "nothing in range"
-			if (d > ln_far) continue;
+			if (far > 0)                // 0 is "never fade", not "nothing in range"
+			if (d > far) continue;
 			k = LineGraph_LabelAt(s, b, i, 0);
 			if (!k) continue;
 			if (k == 2)
@@ -2080,12 +2189,13 @@ void() LineGraph_WorldLabels =
 		// close by. Every sample either side of the nearest one is tried.
 		if (bi < 0)
 		if (ci >= 0)
-		for (i = max(ia, ci - stride); i <= min(ib, ci + stride); i = i + 1)
+		// (Past eight names in steps, 128 tries at most: a whole line's stride is hundreds.)
+		for (i = max(ia, ci - stride); i <= min(ib, ci + stride); i = i + fine)
 		{
 			d = vlen(ln_pos[b + i] - ln_eye);
 			if (d >= best) continue;
-			if (ln_far > 0)
-			if (d > ln_far) continue;
+			if (far > 0)
+			if (d > far) continue;
 			if (LineGraph_LabelAt(s, b, i, 0) != 2) continue;
 			best = d;
 			at = lgl_q;
@@ -2105,7 +2215,7 @@ void() LineGraph_WorldLabels =
 		if (j > ia)
 		if (!ln_brk[b + j])
 		if (vlen(ln_pos[b + j - 1] - ln_eye) < d) dir = -1;
-		for (n = 0; dir && n < stride * 2; n = n + 1)
+		for (n = 0; dir && n < walk; n = n + 1)
 		{
 			k = j + dir;
 			if (k < ia || k > ib) break;
@@ -2146,6 +2256,7 @@ void() LineGraph_WorldLabels =
 		// There, if the text can be read there; else as near to it as it can be read,
 		// which is where the line comes onto the screen.
 		i = floor(us);
+		ci = i;                     // from here: the sample the name sits at, for its colour
 		if (LineGraph_LabelAt(s, b, i, us - i) == 2)
 		{
 			at = lgl_q;
@@ -2155,6 +2266,7 @@ void() LineGraph_WorldLabels =
 		{
 			ulo = bi;
 			uhi = us;
+			ci = bi;
 			for (n = 0; n < 12; n = n + 1)
 			{
 				f = (ulo + uhi) * 0.5;
@@ -2164,32 +2276,16 @@ void() LineGraph_WorldLabels =
 					ulo = f;
 					at = lgl_q;
 					aw = lgl_p;
+					ci = i;
 				}
 				else
 					uhi = f;
 			}
 		}
-		lg_lab_on[s] = TRUE;
-		lg_lab_w[s] = aw;
-		lg_lab_q[s] = at;
-		q = at + [6, 0 - sz - 6];
-		if (pw)
-		{
-			// drawpic, as the name beside it is a raw drawstring: screen positions.
-			img = SteamPic_Of(sb_ln_who[s - 1]);
-			if (img != "")
-			{
-				drawpic(q, img, [sz, sz], '1 1 1', 0.95, 0);
-				q_x = q_x + pw;
-			}
-		}
-		// Over sky or a pale wall the colour alone is not enough.
-		drawstring(q + [ln_px, ln_px], LineGraph_Name(s), [sz, sz], '0 0 0', 0.7, 0);
-		// Patch 632: beside a line in a plain colour the name wears that colour (the
-		// graph's own was mint green on a line ranked last and drawn red).
-		drawstring(q, LineGraph_Name(s), [sz, sz],
-		           (Line_Mode(s) < LN_CM_PLAIN) ? LineGraph_Colour(s)
-		             : ((s >= LN_S_TRAIL) ? LN_OWNCOL : ln_rk[s]), 0.95, 0);
+		// Patch 661: the name wears the line's colour where it sits: its place by time
+		// (Patch 632), or what the speed or the gain painted that sample.
+		lg_lab_c[s] = (Line_Mode(s) < LN_CM_PLAIN) ? ln_col[b + ci] : ln_rk[s];
+		LineGraph_NameQueue(s, at, aw, pw);
 	}
 	Font_Set(f0);
 };
@@ -2299,13 +2395,18 @@ float(string cmd) LineGraph_Command =
 		// The names on the lines, as last drawn: the eye, then each label's point on its
 		// line (world) and on screen, and the text.
 		print(sprintf("linegraph: eye %.3f %.3f %.3f\n", ln_eye_x, ln_eye_y, ln_eye_z));
-		for (s = 0; s < LG_SLOTS; s = s + 1)
+		// Patch 661: every slot, and the colour and how much of it has faded in (the
+		// room it was given: Line_LabelsPlace).
+		for (s = 0; s < LN_SLOTS; s = s + 1)
 			if (lg_lab_on[s])
 			{
 				sample = lg_lab_w[s];
 				print(sprintf("linegraph: label %g at %.3f %.3f %.3f", s, sample_x, sample_y, sample_z));
 				sample = lg_lab_q[s];
 				print(sprintf(" screen %.1f %.1f text [%s]\n", sample_x, sample_y, LineGraph_Name(s)));
+				sample = lg_lab_c[s];       // a line of its own: p620names.py reads the one above to its end
+				print(sprintf("linegraph: name %g colour %.2f %.2f %.2f shown %.2f\n", s,
+				              sample_x, sample_y, sample_z, ln_lfa ? ln_lfa[LN_LB_NAME + s] : 0));
 			}
 		// The panel's plots as last laid out: left, top, width, and both plots' height.
 		print(sprintf("linegraph: plots %g %g %g %g\n", lg_plotp_x, lg_plotp_y, lg_plotsize_x, lg_ploty1 - lg_plotp_y));

@@ -75,7 +75,7 @@
 #define LN_EVCAP   4096         // marks a slot holds; past it, peaks go first
 #define LN_EVDZ    8            // height a top or bottom stands clear by, each side
 #define LN_CELLS   4096         // declutter cells; 64 x 36 at the default gap
-#define LN_LABMAX  128          // labels queued for the end of the frame
+#define LN_LABMAX  512          // labels queued for the end of the frame; the last LN_SLOTS are the names'
 
 #define LN_E_LAND    1          // touched ground or ramp
 #define LN_E_LEAVE   2          // left it without jumping (a ramp exit, an edge)
@@ -292,13 +292,43 @@ float  ln_labover;              // ...and the ones past LN_LABMAX
   Ev_Labels (cl_entview.qc) has the same shape for the same reason, and the
   slot for it in cl_main is already there.
 */
-vector ln_lab_p[LN_LABMAX];
-vector ln_lab_c[LN_LABMAX];
-float  ln_lab_a[LN_LABMAX];
-float  ln_lab_w[LN_LABMAX];
+vector *ln_lab_p;
+vector *ln_lab_c;
+float  *ln_lab_a;
+float  *ln_lab_w;
 vector ln_labelpos, ln_labelscreen;
-string ln_lab_t[LN_LABMAX];
+string ln_lab_t[LN_LABMAX];     // a global array, not allocated: these are temp strings, held a frame
 float  ln_lab_n;
+/*
+  Patch 661: A LABEL STAYS AT ITS OWN MARK (hud_lines_declutter 0, the default).
+  The lanes moved it up to eight rows away to keep it whole, which with a
+  dozen lines put numbers nowhere near what they were about.  Now the frame's
+  labels are taken nearest the eye first (Line_LabelsPlace); one whose place is
+  taken fades out, and fades in when moving nearer has parted it from its
+  neighbour.  A line's name is a label too and goes first at its distance.
+  2 is the lanes, 1 the sparse grid.
+*/
+#define LN_LB_NAME  (LN_SLOTS * LN_EVCAP)   // a name's fade state: this + slot
+#define LN_LB_BUCK  96                      // distance buckets, the order: finer near the eye
+#define LN_LB_FAINT 0.3                     // a label under this alpha is drawn but takes no room
+#define LN_LB_WRAP  4000000                 // frames before the stamps start again (a float counts to 2^24)
+#define LN_LB_GRID  32768                   // room cells: 160 x 200 at most
+#define LN_LB_IN    0.15                    // seconds to fade in, and out
+#define LN_LB_OUT   0.10
+float  *ln_lab_d;               // how far from the eye, less its preference
+float  *ln_lab_h;               // text height (a name's is not a number's)
+float  *ln_lab_k;               // 0 a mark's numbers; slot + 1 a line's name
+float  *ln_lab_key;             // its fade state
+float  *ln_lab_nx;              // the next label of its bucket
+float  *ln_lfa;                 // fade state: the alpha a label had...
+float  *ln_lff;                 // ...and the frame it had it in
+float  *ln_lgrid;               // a room cell's last taking frame
+float  ln_lb_head[LN_LB_BUCK];
+float  ln_labgen, ln_labt;      // this frame's number, and the last one's cltime
+float  ln_labfar, ln_labfadek;  // hud_lines_label_far and its fade
+float  ln_lanes, ln_sparse;     // hud_lines_declutter 2 and 1
+float  ln_lbshown, ln_lbhidden; // last frame: labels with room, and without (`lines native`)
+void(float s, vector q, float a) LineGraph_NameDraw;
 float  *ln_cell;                // a cell's last claiming frame
 float  *ln_lcell;               // and the labels' own grid, see Line_Claim
 float  ln_cellgen, ln_cellnx, ln_cellny;
@@ -452,6 +482,16 @@ void() Line_AllocSlots =
 {
 	if (ln_n)
 		return;
+	ln_lab_p = memalloc(sizeof(vector) * LN_LABMAX);
+	ln_lab_c = memalloc(sizeof(vector) * LN_LABMAX);
+	ln_lab_a = memalloc(sizeof(float) * LN_LABMAX);
+	ln_lab_w = memalloc(sizeof(float) * LN_LABMAX);
+	ln_lab_d = memalloc(sizeof(float) * LN_LABMAX);
+	ln_lab_h = memalloc(sizeof(float) * LN_LABMAX);
+	ln_lab_k = memalloc(sizeof(float) * LN_LABMAX);
+	ln_lab_key = memalloc(sizeof(float) * LN_LABMAX);
+	ln_lab_nx = memalloc(sizeof(float) * LN_LABMAX);
+	ln_lgrid = memalloc(sizeof(float) * LN_LB_GRID);
 	ln_owner = memalloc(sizeof(string) * LN_SLOTS);
 	ln_g = memalloc(sizeof(float) * LN_SLOTS);
 	ln_g_assumed = memalloc(sizeof(float) * LN_SLOTS);
@@ -578,6 +618,8 @@ void() Line_Alloc =
 	ln_rcv  = memalloc(sizeof(vector) * LN_SLOTS * 2);
 	ln_cell = memalloc(sizeof(float) * LN_CELLS);
 	ln_lcell = memalloc(sizeof(float) * LN_CELLS);
+	ln_lfa = memalloc(sizeof(float) * (LN_LB_NAME + LN_SLOTS));     // Patch 661: 1.05 MiB each
+	ln_lff = memalloc(sizeof(float) * (LN_LB_NAME + LN_SLOTS));
 	if (checkbuiltin(lines_draw))
 	{
 		lines_arrays(ln_pos, ln_col, ln_t, ln_brk, ln_born, LN_TOTAL, 3 * LN_CAP);
@@ -2491,6 +2533,13 @@ void() Line_ViewFrame =
 	ln_mkstitch = cvar("hud_lines_stitch");
 	ln_mkpx     = cvar("hud_lines_size");   if (ln_mkpx < 1) ln_mkpx = 4;
 	ln_declutter = cvar("hud_lines_declutter");
+	ln_sparse   = (ln_declutter == 1);
+	ln_lanes    = (ln_declutter == 2);
+	// Patch 661: the numbers' own range, nearer than the line's; 0 is the line's.
+	ln_labfar   = cvar("hud_lines_label_far");
+	if (ln_labfar <= 0 || (ln_far > 0 && ln_labfar > ln_far))
+		ln_labfar = ln_far;
+	ln_labfadek = (ln_labfar > 0) ? 3 / ln_labfar : 0;
 	ln_mkgap    = cvar("hud_lines_gap");    if (ln_mkgap < 4) ln_mkgap = 40;
 	ln_mkgap    = ln_mkgap * ln_px;
 	ln_numon     = cvar("hud_lines_nums");
@@ -2502,9 +2551,12 @@ void() Line_ViewFrame =
 	ln_numref    = cvar("hud_lines_ref");
 	ln_numsize   = cvar("hud_lines_numsize");  if (ln_numsize < 6) ln_numsize = 12;
 	ln_names     = cvar("hud_lines_names");
-	// Board_Frame's seq_units is not refreshed while a replay is up, so the
-	// label reads the cvar itself: two readers of one cvar, not two answers.
-	ln_units     = cvar("hud_seq_units");
+	// Patch 661: a label's energy has its own unit, 1 energy as the speedometer
+	// prints it (the default), 0 the speed it is worth; -1 is the split list's
+	// (hud_seq_units, which a label followed until now and which reads u/s).
+	ln_units     = cvar("hud_lines_units");
+	if (ln_units < 0)
+		ln_units = cvar("hud_seq_units");
 	ln_grav      = serverkeyfloat("sv_gravity");
 	if (ln_grav < 1)
 		ln_grav = 800;
@@ -2882,7 +2934,7 @@ float(vector q, float lab) Line_Claim =
 	i = Line_CellOf(q);
 	if (i < 0)
 		return FALSE;
-	if (!ln_declutter)
+	if (!ln_sparse)
 		return TRUE;
 	// Labels claim their OWN grid.  Sharing one, a label lost every cell its
 	// own glyph had just taken -- at gap 240 that was every number on screen
@@ -2915,7 +2967,7 @@ float(vector lp, float lw) Line_ClaimSpan =
 	i1 = Line_CellOf(lp + [lw, 0, 0]);
 	if (i0 < 0 && i1 < 0)
 		return FALSE;
-	if (!ln_declutter)
+	if (!ln_sparse)
 		return TRUE;
 	if (i0 >= 0 && ln_lcell[i0] == ln_cellgen)
 		return FALSE;
@@ -2943,8 +2995,33 @@ float(vector p, float w) Line_LabelOccupied =
 	return FALSE;
 };
 
-// Complete mode moves nearby labels into bounded vertical lanes rather than
-// losing them to the overlap grid. In an impossibly dense view the fallback
+// One label for the end of the frame.  key is its fade state: a mark's index in
+// the mark tables, or LN_LB_NAME + slot for a line's name.  d is how far it is
+// from the eye, for the order.
+float(vector p, string t, vector c, float a, float w, float h, float d, float key) Line_LabelQueue =
+{
+	// The names are queued last (cl_main.qc) and a crowd's numbers must not use up
+	// their places: a number stops LN_SLOTS short of the end.
+	if (ln_lab_n >= ((key >= LN_LB_NAME) ? LN_LABMAX : LN_LABMAX - LN_SLOTS))
+	{
+		ln_labover = ln_labover + 1;
+		return FALSE;
+	}
+	ln_lab_p[ln_lab_n] = p;
+	ln_lab_t[ln_lab_n] = t;
+	ln_lab_c[ln_lab_n] = c;
+	ln_lab_a[ln_lab_n] = a;
+	ln_lab_w[ln_lab_n] = w;
+	ln_lab_h[ln_lab_n] = h;
+	ln_lab_d[ln_lab_n] = d;
+	ln_lab_key[ln_lab_n] = key;
+	ln_lab_k[ln_lab_n] = (key >= LN_LB_NAME) ? key - LN_LB_NAME + 1 : 0;
+	ln_lab_n = ln_lab_n + 1;
+	return TRUE;
+};
+
+// hud_lines_declutter 2 moves nearby labels into bounded vertical lanes rather
+// than losing them to the overlap grid. In an impossibly dense view the fallback
 // overprints; the renderer's explicit label-cap counter still applies.
 void(vector p, float w) Line_LabelPlace =
 {
@@ -2952,7 +3029,7 @@ void(vector p, float w) Line_LabelPlace =
 	local vector q;
 
 	ln_labelpos = p;
-	if (ln_declutter)
+	if (!ln_lanes)
 		return;
 	for (lane = 0; lane < 16; lane = lane + 1)
 	{
@@ -3047,7 +3124,20 @@ string(float s, float e) Line_Label =
 	// E = z + |v|^2 / 2g, Strafe_Energy evaluated from what the mark carries.
 	ep = ln_ep[b + e];
 	en = ep_z + ln_e2[b + e] / (2 * ln_grav);
-	ref = ln_numref ? (ln_z0[s] + ln_v20[s] / (2 * ln_grav)) : HUD_EnergyRef();
+	// Patch 661: at hud_lines_ref 0 the zero is the speedometer's in every state it
+	// has (HUD_DrawSpeed): a rewind's own, and where it prints "-- no start zone"
+	// there is none to share, so the run's own start stands in.
+	ref = ln_z0[s] + ln_v20[s] / (2 * ln_grav);
+	if (!ln_numref)
+	{
+		if (ui_rw_on)
+		{
+			if (ui_rw_refok)
+				ref = ui_rw_ref;
+		}
+		else if (HUD_ZeroKnown())
+			ref = HUD_EnergyRef();
+	}
 
 	if (ln_numspeed)
 	{
@@ -3098,7 +3188,7 @@ string(float s, float e) Line_Label =
 */
 void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Marks =
 {
-	local float b, n, e, k, k2, al, t0, t1, lw, f0;
+	local float b, n, e, k, k2, al, t0, t1, lw, f0, d, la;
 	local vector p, c, q, lp;
 	local string lab;
 
@@ -3177,7 +3267,13 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 		lab = "";
 		if (Line_LabelOn(s, e))
 		{
-			lab = Line_Label(s, e);
+			// Patch 661: the numbers have their own range, nearer than the line's.
+			d = vlen(p - ln_eye);
+			la = al;
+			if (ln_labfadek > 0)
+				la = la * bound(0, (ln_labfar - d) * ln_labfadek, 1);
+			if (la > 0)
+				lab = Line_Label(s, e);
 			if (lab != "")
 			{
 				lp = q + [6 * ln_px, 0 - (ln_labsz + 4) * ln_px, 0];
@@ -3186,18 +3282,8 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 				lp = ln_labelpos;
 				if (Line_ClaimSpan(lp, lw))
 				{
-					if (ln_lab_n < LN_LABMAX)
-					{
-						ln_lab_p[ln_lab_n] = lp;
-						ln_lab_t[ln_lab_n] = lab;
-						ln_lab_c[ln_lab_n] = c;
-						ln_lab_a[ln_lab_n] = al;
-						ln_lab_w[ln_lab_n] = lw;
-						ln_lab_n = ln_lab_n + 1;
+					if (Line_LabelQueue(lp, lab, c, la, lw, ln_labsz, d, n + e))
 						ln_nlab = ln_nlab + 1;
-					}
-					else
-						ln_labover = ln_labover + 1;
 				}
 				else
 					lab = "";
@@ -3470,17 +3556,134 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 
 // The frame's marks are done: cl_main calls this after the board lines, which
 // are drawn after the replay's.
+/*
+  Patch 661: which of the frame's labels have room (the block over ln_lab_d).
+  Taken nearest first: a name at half its distance, and one that is showing at
+  0.85 of its own, so two at about one distance do not trade places every
+  frame.  Room is a grid of cells stamped with the frame's number, a label's
+  whole box and two pixels round it.  The order is a bucket sort: the queue
+  holds 256 and sixty-four lines can fill it.
+*/
+void() Line_LabelsPlace =
+{
+	local float i, j, f, dt, a, room, cw, ch, nx, ny, x0, x1, y0, y1, x, y, key, dmax;
+	local vector p, vs;
+
+	dt = bound(0, cltime - ln_labt, 0.1);
+	ln_labt = cltime;
+	ln_lbshown = ln_lbhidden = 0;
+	if (!ln_lfa || ln_lab_n < 1)
+		return;
+	dmax = 1;
+	for (i = 0; i < ln_lab_n; i = i + 1)
+	{
+		key = ln_lab_key[i];
+		f = ln_lab_d[i];
+		if (ln_lab_k[i])
+			f = f * 0.5;
+		if (ln_lff[key] == ln_labgen - 1)
+		if (ln_lfa[key] > 0.5)
+			f = f * 0.85;
+		ln_lab_d[i] = f;
+		if (f > dmax)
+			dmax = f;
+	}
+	for (j = 0; j < LN_LB_BUCK; j = j + 1)
+		ln_lb_head[j] = -1;
+	for (i = ln_lab_n - 1; i >= 0; i = i - 1)      // backwards: a bucket keeps the queue's order
+	{
+		// The root: one label 12000 u off must not put every near one in one bucket.
+		j = floor(sqrt(ln_lab_d[i] / dmax) * (LN_LB_BUCK - 1));
+		ln_lab_nx[i] = ln_lb_head[j];
+		ln_lb_head[j] = i;
+	}
+	vs = getproperty(VF_SCREENVSIZE);
+	cw = max(12 * ln_px, vs_x / 160);
+	ch = max(6 * ln_px, vs_y / 200);
+	nx = min(160, floor(vs_x / cw) + 1);
+	ny = min(floor(LN_LB_GRID / nx), floor(vs_y / ch) + 1);
+	for (j = 0; j < LN_LB_BUCK; j = j + 1)
+	for (i = ln_lb_head[j]; i >= 0; i = ln_lab_nx[i])
+	{
+		p = ln_lab_p[i];
+		x0 = max(0, floor((p_x - 2 * ln_px) / cw));
+		x1 = min(nx - 1, floor((p_x + ln_lab_w[i] + 2 * ln_px) / cw));
+		y0 = max(0, floor((p_y - ln_px) / ch));
+		y1 = min(ny - 1, floor((p_y + ln_lab_h[i] + ln_px) / ch));
+		room = TRUE;
+		for (y = y0; y <= y1; y = y + 1)
+		{
+			for (x = x0; x <= x1; x = x + 1)
+				if (ln_lgrid[y * nx + x] == ln_labgen)
+				{
+					room = FALSE;
+					break;
+				}
+			if (!room)
+				break;
+		}
+		// One that is nearly faded out (the end of its range or of the line's window)
+		// is drawn where it is but keeps nobody else out.
+		if (room)
+		if (ln_lab_a[i] >= LN_LB_FAINT)
+			for (y = y0; y <= y1; y = y + 1)
+				for (x = x0; x <= x1; x = x + 1)
+					ln_lgrid[y * nx + x] = ln_labgen;
+		key = ln_lab_key[i];
+		a = (ln_lff[key] == ln_labgen - 1) ? ln_lfa[key] : 0;
+		if (room)
+		{
+			a = min(1, a + dt / LN_LB_IN);
+			ln_lbshown = ln_lbshown + 1;
+		}
+		else
+		{
+			a = max(0, a - dt / LN_LB_OUT);
+			ln_lbhidden = ln_lbhidden + 1;
+		}
+		ln_lfa[key] = a;
+		ln_lff[key] = ln_labgen;
+		ln_lab_a[i] = ln_lab_a[i] * a;
+	}
+};
+
 void() Line_FrameEnd =
 {
 	local float i, f0;
 
+	ln_labgen = ln_labgen + 1;
+	if (ln_labgen > LN_LB_WRAP)
+	{
+		// A float stops counting at 2^24, a day and a half at 144 fps: start again
+		// well before, with every stamp forgotten (a third of a million writes, once).
+		ln_labgen = 2;
+		for (i = 0; i < LN_LB_GRID; i = i + 1)
+			ln_lgrid[i] = 0;
+		if (ln_lff)
+			for (i = 0; i < LN_LB_NAME + LN_SLOTS; i = i + 1)
+				ln_lff[i] = 0;
+	}
+	if (ln_lanes || ln_sparse)
+	{
+		ln_lbshown = ln_lab_n;          // those two placed theirs as they were queued
+		ln_lbhidden = 0;
+	}
+	else
+		Line_LabelsPlace();
 	if (ln_lab_n > 0)
 	{
 		f0 = ui_font_cur;
 		Font_Set(ui_font_dispsm);
 		for (i = 0; i < ln_lab_n; i = i + 1)
-			HUD_Text(ln_lab_p[i], ln_lab_t[i], ln_labsz, ln_lab_c[i], ln_lab_a[i]);
+			if (ln_lab_a[i] > 0)
+			if (!ln_lab_k[i])
+				HUD_Text(ln_lab_p[i], ln_lab_t[i], ln_labsz, ln_lab_c[i], ln_lab_a[i]);
 		Font_Set(f0);
+		// A line's name (cl_linegraph.qc): its own face, and the row's picture.
+		for (i = 0; i < ln_lab_n; i = i + 1)
+			if (ln_lab_a[i] > 0)
+			if (ln_lab_k[i])
+				LineGraph_NameDraw(ln_lab_k[i] - 1, ln_lab_p[i], ln_lab_a[i]);
 	}
 	if (ln_trmk > 0)
 	{
@@ -3522,8 +3725,14 @@ void() Line_RegisterCvars =
 	registercvar("hud_lines_edgedebug", "0");
 	registercvar("hud_lines_size",   "4", CVAR_ARCHIVE);
 	registercvar("hud_lines_gap",   "40", CVAR_ARCHIVE);
-	// Complete labels by default; opt into the old sparse overlap policy.
+	// 0 (Patch 661) every label at its own mark, the nearest first, one without
+	// room faded out; 2 moved into lanes, the default before; 1 the sparse grid.
 	registercvar("hud_lines_declutter", "0", CVAR_ARCHIVE);
+	// Patch 661: how far a mark's numbers show, units; 0 as far as its line.
+	registercvar("hud_lines_label_far", "3000", CVAR_ARCHIVE);
+	// Patch 661: a label's energy, 1 as the speedometer prints it, 0 as a speed,
+	// -1 as the split list has it (hud_seq_units).
+	registercvar("hud_lines_units", "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_telealpha", "0.3", CVAR_ARCHIVE);
 	// Patch 451: the numbers.  1 = on the contact marks; 2 adds the peaks, which
 	// is dense on a bhop run; 3 (Patch 632) the peaks alone.  OFF by default since
@@ -3549,7 +3758,9 @@ void() Line_RegisterCvars =
 	registercvar("hud_lines_vz",      "0", CVAR_ARCHIVE);
 	registercvar("hud_lines_delta",   "0", CVAR_ARCHIVE);
 	registercvar("hud_lines_time",    "0", CVAR_ARCHIVE);
-	registercvar("hud_lines_ref",     "1", CVAR_ARCHIVE);
+	// Patch 661: 0, the speedometer's own zero, so a label and the energy line
+	// under your speed are one measurement; it was 1, the run's first sample.
+	registercvar("hud_lines_ref",     "0", CVAR_ARCHIVE);
 	registercvar("hud_lines_numsize","12", CVAR_ARCHIVE);
 	// Lex, 4 Oct 2026: the numbers say what they are by default.
 	registercvar("hud_lines_names",   "1", CVAR_ARCHIVE);
@@ -3597,6 +3808,8 @@ float() Line_Console =
 		              ln_npt, ln_nseg, ln_nwild, ln_nclip));
 		print(sprintf("lines: last box %g %g %g %g\n", ln_bbmin_x, ln_bbmin_y, ln_bbmax_x, ln_bbmax_y));
 		print(sprintf("lines: last marks %g of the first %g lines\n", ln_nmkf, ln_mkmax));
+		print(sprintf("lines: last labels %g with room, %g without (placing %g, within %g u)\n",
+		              ln_lbshown, ln_lbhidden, ln_declutter, ln_labfar));
 		print(sprintf("lines: repainted %g times (the live run's own not counted); tables made in %.1f ms\n",
 		              ln_npaint, ln_allocms));
 		return TRUE;
@@ -3611,8 +3824,10 @@ float() Line_Console =
 	      "  hud_lines_marks/land/leave/jump/stitch 0/1\n"
 	      "  hud_lines_edge 1 (off-ramp mark at the ramp's edge, from the map)\n"
 	      "  hud_lines_numsize 12, hud_lines_size 4, hud_lines_gap 40\n"
-	      "  hud_lines_declutter 0 (all labels); 1 (sparse overlaps)\n"
-	      "  hud_lines_ref 0/1 (HUD/run start), hud_seq_units 0/1/2\n"
+	      "  hud_lines_declutter 0 (at the mark, nearest first); 2 (lanes); 1 (sparse)\n"
+	      "  hud_lines_label_far 3000 (0: as far as the line)\n"
+	      "  hud_lines_ref 0/1 (HUD/run start)\n"
+	      "  hud_lines_units 1/0/-1 (energy/speed it is worth/as the split list)\n"
 	      "Style: hud_lines_color_own / _others 0..4 (speed/gain/contact/energy/\n"
 	      "    air control) or 5 (blue; by time), hud_watch_path_far 6000\n"
 	      "  hud_watch_path_px 1, _px_trail / _px_board -1 (inherit)\n"

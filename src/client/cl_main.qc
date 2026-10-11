@@ -1740,8 +1740,9 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		// inside them does not appear at all -- they are a stream of deferred
 		// polygon batches -- so it is drawn here, the slot Ev_Labels uses below
 		// and for the same reason.
-		Line_FrameEnd();
+		// Patch 661: the names are queued with the numbers and placed with them.
 		LineGraph_WorldLabels();
+		Line_FrameEnd();
 
 		/*
 		  Build 54.  The inspector's labels, and they are here for exactly the

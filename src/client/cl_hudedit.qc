@@ -116,7 +116,7 @@ void() HE_ResetAll;             // build 66, and the same story
   both constants go to 16 rather than to exactly 15.  One spare row is the cheap
   way to not find this out the same way twice.
 */
-#define HE_MAX 24                // 20 rows since Patch 429's specby; four spare
+#define HE_MAX 28                // 24 rows since Patch 661's "Line labels"; four spare (HUDE_MAX moves with it)
 
 /*
   The chip rows below the element list that are always there.  Named because the
@@ -302,6 +302,8 @@ void() HE_BuildTable =
 	// The line types have independent switches; this row is an options pane,
 	// not a misleading master toggle that only turns off the open demo.
 	HE_Add("lines",   "Run lines",  "",              "",              "",             1, HEA_CT,  0,   0);
+	// Patch 661: what is written on them (names, the marks' numbers), options only.
+	HE_Add("labels",  "Line labels","",              "",              "",             1, HEA_CT,  0,   0);
 	// Patch 610: the HUD's run graph. It draws only while a line is ticked, so the
 	// outline here is usually the nominal one.
 	HE_Add("graph",   "Run graph",  "hud_linegraph_x", "hud_linegraph_y", "hud_linegraph", 0, HEA_RT, 150, 80);
@@ -597,18 +599,38 @@ string(string id, float row) HE_OptDef =
 		if (row == 1) return "hud_watch_path|Demo line|t|||The demo currently open in the replay viewer.";
 		if (row == 2) return "hud_lines_board|Board lines|t|||Show selected leaderboard lines without forgetting the selection.";
 		if (row == 3) return "hud_lines_order|Board lines show|c|0 4 8 16|all near;next 4 s;next 8 s;next 16 s|Only the stretch of each ticked run that comes next from where you are, so a later part of the route does not show through a wall.";
-		// Patch 632: 3 is the tops and bottoms alone; listed third, so the chip
-		// goes off, contacts, peaks, both.
-		if (row == 4) return "hud_lines_nums|Labels|c|0 1 3 2|off;contacts;peaks;both|Numbers at surface contacts, at the top of each arc and the bottom of each ride, or at both.";
 		// Patch 632: one colouring for your own line and one for the others; 5 is
 		// each group's plain colour and the default.
-		if (row == 5) return "hud_lines_color_own|Your line|c|5 0 1 2 3 4|blue;speed;gain;contact;energy;air control|The line of the run you are making: plain blue, or coloured by one of five readings of the run.";
-		if (row == 6) return "hud_lines_color_others|Other lines|c|5 0 1 2 3 4|by time;speed;gain;contact;energy;air control|The open demo and the ticked board lines. by time: the fastest green, the slowest red.";
-		if (row == 7) return "hud_watch_path_px|Thickness|c|1 2 3 4 6|1 px;2 px;3 px;4 px;6 px|Default width. Player and board width overrides remain console settings.";
-		if (row == 8) return "hud_watch_path_far|Visible for|c|0 3000 6000 12000|forever;3000;6000;12000|Units of distance. Fades over the last third.";
-		if (row == 9) return "hud_lines_reveal|Chunk fade|c|0 0.09 0.18 0.36|instant;fast;smooth;slow|Continuous sample-age fade, without chunk steps. Seconds; never changes the run clock.";
+		if (row == 4) return "hud_lines_color_own|Your line|c|5 0 1 2 3 4|blue;speed;gain;contact;energy;air control|The line of the run you are making: plain blue, or coloured by one of five readings of the run.";
+		if (row == 5) return "hud_lines_color_others|Other lines|c|5 0 1 2 3 4|by time;speed;gain;contact;energy;air control|The open demo and the ticked board lines. by time: the fastest green, the slowest red.";
+		if (row == 6) return "hud_watch_path_px|Thickness|c|1 2 3 4 6|1 px;2 px;3 px;4 px;6 px|Default width. Player and board width overrides remain console settings.";
+		if (row == 7) return "hud_watch_path_far|Visible for|c|0 3000 6000 12000|forever;3000;6000;12000|Units of distance. Fades over the last third.";
+		if (row == 8) return "hud_lines_reveal|Chunk fade|c|0 0.09 0.18 0.36|instant;fast;smooth;slow|Continuous sample-age fade, without chunk steps. Seconds; never changes the run clock.";
 		// Patch 632: the nearby-player fade (cl_playerfade, _near, _far) left this
 		// pane for the console; HE_ResetAll still resets the three.
+		return "";
+	}
+
+	// Patch 661: what is written on the lines, in a pane of its own.  The Labels
+	// row came from "Run lines" and Names on lines from "Run graph".
+	if (id == "labels")
+	{
+		if (row == 0) return "hud_linegraph_labels|Names on lines|t||"
+		                     "|Each run's number and name beside its line, in the line's colour.";
+		// Patch 632: 3 is the tops and bottoms alone; listed third, so the chip
+		// goes off, contacts, peaks, both.
+		if (row == 1) return "hud_lines_nums|Numbers at|c|0 1 3 2|off;contacts;peaks;both|Numbers at surface contacts, at the top of each arc and the bottom of each ride, or at both.";
+		if (row == 2) return "hud_lines_speed|Speed|t|||Horizontal speed at the mark.";
+		if (row == 3) return "hud_lines_energy|Energy|t|||Height plus the height the speed is worth: what the speedometer's energy line would have read there.";
+		if (row == 4) return "hud_lines_delta|Energy change|t|||What the energy gained or lost since the mark before.";
+		if (row == 5) return "hud_lines_vz|Vertical speed|t|||Up or down speed at the mark.";
+		if (row == 6) return "hud_lines_time|Time|t|||The run's clock at the mark.";
+		if (row == 7) return "hud_lines_units|Energy as|c|1 0|energy;speed|Energy as the speedometer's energy line prints it, or as the speed it is worth in u/s.";
+		if (row == 8) return "hud_lines_ref|Energy from|c|0 1|your zero;the run's start|your zero: the zero your speedometer's energy line is using, so the two can be compared. the run's start: where that run began, the same whoever looks.";
+		if (row == 9) return "hud_lines_names|Say what each is|t|||E, dE, vz and the units beside the numbers. Off: the bare numbers.";
+		if (row == 10) return "hud_lines_label_far|Numbers within|c|1500 3000 6000 0|1500;3000;6000;the line's|How near a mark has to be for its numbers to show, in units. They fade in over the last third.";
+		if (row == 11) return "hud_lines_declutter|When crowded|c|0 2|nearest first;stack them|nearest first: a label stays at its own mark and fades in when it has room. stack them: labels move above and below each other.";
+		if (row == 12) return "hud_lines_marked|Marks on|c|1 4 8 64|1 line;4;8;every line|How many of the ticked board lines carry marks and numbers, counted from the first one drawn.";
 		return "";
 	}
 
@@ -616,9 +638,7 @@ string(string id, float row) HE_OptDef =
 	{
 		if (row == 0) return "hud_linegraph_plots|Shows|c|1 2 3|speed;energy;both"
 		                     "|Speed against time, energy against time, or one above the other.";
-		if (row == 1) return "hud_linegraph_labels|Names on lines|t||"
-		                     "|Each run's number and name beside its line in the world.";
-		if (row == 2) return "hud_linegraph_live|Your run|t||"
+		if (row == 1) return "hud_linegraph_live|Your run|t||"
 		                     "|Your own run as you make it, in white, against the ticked runs. Needs the Player line on.";
 		return "";
 	}
@@ -675,6 +695,7 @@ string(string id) HE_Tip =
 	if (id == "banner")   return "Across the screen when you finish the map, a bonus or a stage.";
 	if (id == "spectate") return "Watching another player: pin the TAB board and click a name.";
 	if (id == "lines")    return "The path a recording took, drawn through walls, with what happened along it.";
+	if (id == "labels")   return "What is written on the run lines: each run's name, and the numbers at its marks.";
 	if (id == "graph")    return "Speed over time for the runs whose LINE box is ticked on the leaderboard. On screen only while one is.";
 	if (id == "mouse")    return "Your mouse as turn; the dot wraps at the edges. Replays and spectate show their view.";
 	return "";
@@ -2044,6 +2065,16 @@ void() HE_MigrateDefaults =
 {
 	local float n;
 
+	// Patch 661: one more, under a mark of its own so Patch 641's stays what its arm
+	// reads.  A label's energy zero went from the run's start (1) to the
+	// speedometer's (0); the name was console only, so a saved 1 is the old default.
+	registercvar("hud_labels_rev", "0", CVAR_ARCHIVE);
+	if (cvar("hud_labels_rev") < 661)
+	{
+		if (HE_MoveOne("hud_lines_ref", 1, "0"))
+			print("hud: line labels now measure energy from your speedometer's zero (Line labels, Energy from)\n");
+		localcmd("seta hud_labels_rev 661\n");
+	}
 	registercvar("hud_layout_rev", "0", CVAR_ARCHIVE);
 	if (cvar("hud_layout_rev") >= 637)
 		return;
