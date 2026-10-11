@@ -7825,6 +7825,17 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   at 16 px in a 1920 x 1111 window. No consent file was written; the boot
   wrote its log, the screenshots and `installed.lst`. NOT PRESSED THERE:
   either answer, so the Steam offer was not seen from the download.
+  THE LINUX ARCHIVE WAS PUBLISHED UNBOOTED. Its checks were the build's gates
+  (sonames, glibc, stamp, code = pin) and the archive's (owner, modes, sha256
+  = stage, ldd resolves); nothing started it, and no Linux client is known to
+  have started a run since 0.1.14. READ THE SAME HOUR, NOT MEASURED
+  (ftesurf-0f's reviewer; this session read the same lines): outside Windows
+  the client game VM has 32 MiB (`qclib/initlib.c:601-606`), it cannot grow
+  (`:96`, and `pr_csqc.c` sets no relocation callback), and the run-line
+  tables `Line_Alloc` takes at the first line are larger, so the Linux client
+  would stop there with "Not enough addressable memory for progs VM". The
+  measurement and the cure (`pr_csqc_memsize` in default.cfg) are ftesurf-0f's.
+  A release with a Linux half BOOTS IT, and starts a run, before it publishes.
   WHAT COST A RUN: `ftesurf\gfx\fonts\*.ttf.prev` trips the deny list (moved
   aside, put back after); the main checkout has to BE the release commit (it
   was 101 behind, its five stray files byte-equal to main's); and a shell
