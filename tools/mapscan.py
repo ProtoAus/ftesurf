@@ -169,6 +169,9 @@ def _tier(v):
     return str(v) if type(v) is int and 1 <= v <= 10 else "-"
 
 
+VARIANT_OF = {}         # a second build's name, lowercased -> the roster's name it is a build of
+
+
 def merge_catalogue(roster, cat):
     """Add the Pi's names the roster lacks, and a tier it has where the roster
     has none.  Returns how many names were added."""
@@ -202,6 +205,8 @@ def merge_catalogue(roster, cat):
             plain = lc.get(of.lower())
             if plain is not None and "m" in roster[plain][1]:
                 roster[plain] = (roster[plain][0], "m") + roster[plain][2:]
+            if plain is not None:
+                VARIANT_OF[c["name"].lower()] = plain
     return added
 
 
@@ -361,7 +366,7 @@ def cmd_scan(args):
         fh.write("FTESURF-MAPDL 1\n")
         fh.write("# written by tools/mapscan.py -- do not edit\n")
         fh.write("# dl <name> <mode> <src> <tier> <kb> <first-iso> <new> "
-                 "<mtier> <ktier>\n")
+                 "<mtier> <ktier> [<of>]\n")
         fh.write("# tier is mtier (Momentum's), else ktier (KSF's); 0 = none.\n")
         for name in servable:
             # name is the PI's spelling; the catalogue row is found by fold.
@@ -369,11 +374,16 @@ def cmd_scan(args):
             d, _origin = seen.get(name, seen.get(roster_lc[name.lower()],
                                                  (stamp, "scan")))
             # The pair is APPENDED: the menu reads argv(1..7) after an n < 8 guard.
-            fh.write("dl %s %s %s %s %d %s %d %s %s\n" % (
+            # A tenth column on a second build: the map it is a build OF, in the
+            # Pi's spelling (Patch 651; the menu folds the two into one row).
+            of = VARIANT_OF.get(name.lower())
+            of = next((n for n in servable if of and n.lower() == of.lower()), None)
+            fh.write("dl %s %s %s %s %d %s %d %s %s%s\n" % (
                 name, mode, src, tier if tier != "-" else "0",
                 (inv[name] + 1023) // 1024, d,
                 1 if name.lower() in newset else 0,
-                mtier if mtier != "-" else "0", ktier if ktier != "-" else "0"))
+                mtier if mtier != "-" else "0", ktier if ktier != "-" else "0",
+                " " + of if of else ""))
     os.replace(tmp, DLFILE)
     write_seen(seen)
     print("\nwrote %s (%d rows)" % (DLFILE, len(servable)))

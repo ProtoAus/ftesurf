@@ -8750,6 +8750,54 @@ blind fallback in `ui_map_backdrop` alive for as long as it lived.
   other boards to 100 and every map's main board to 200 in one class by
   depth, then the rest. The request rate is unchanged (10 per 5 minutes).
 
+### Two builds of one map: zones, boards, and the list the game fetches (Patch 651) -- 2026-10-11
+
+Lex's reply to 644's report: follow Momentum's updates; copy Momentum's zones
+"if the map has a momentum mod version"; both games' times on both builds;
+the game fetches its own map list. The menu half is Patch 652.
+
+- **A SECOND BUILD TAKES THE PLAIN MAP'S ZONES ONLY THROUGH `surfd/zonefit.py`**
+  (`mapwatch.py`, "ZONES GIVEN TO A SECOND BUILD"). The target is a `<name>_css`
+  that is KSF's archive (`made`) or a port by suffix (`PORTS`; `_v2`, `_new`
+  and `_redux` are maps, and a `_css` that is not KSF's archive is nobody's
+  port). Not Momentum's own name under any row, not a Beta map, not one with
+  zones in `zones/online` or `zones/local`, not one with Momentum's timer
+  triggers in its BSP. Measured read-only on the Pi's files before deploy: 24
+  FIT, 3 SHIFTED (surf_aquaflow_css, surf_ravine_csgo, surf_sequoia_fix), 41
+  with zones already.
+- **THE FIT RULE IS `tools/census/zonefit.py`'s, COPIED** (tools/ is not on the
+  Pi): world mins within 64 units, every start/end/stage region inside the
+  target's world, every `teleDestTargetname` present. `test_zonefit.py` runs
+  both on the same pairs. What it does NOT see, from the review: a world
+  rearranged inside the same box; a name carried by an entity that is no
+  destination; a file naming no destination at all (22 of 549) rests on the
+  mins. The review's count on Momentum's own install: 61 FIT port pairs, 59
+  sharing a frame by named-entity offsets, 2 unmeasurable, 0 moved; of pairs
+  of unrelated maps that share mins, 4 of 1,143 passed.
+- **`given` IS WHAT MAKES A RE-RUN SAFE**: the zone bytes' hash and the
+  target build's. A file edited since is somebody's. A target whose build
+  changed is measured again and, no longer fitting, its file is moved to
+  `zones/online/.old/` (with `--updates`, no lobby on it), else left and
+  counted. A given file deleted by hand comes back next run: write a
+  `zones/local` file to keep a map untimed.
+- **A NUMBER NO FLOAT HOLDS ENDED EVERY RUN** in the first cut: `float()` of a
+  400-digit integer in a zone file is an OverflowError, not a ValueError.
+- **THE LIST** is `<state>/mapdl.txt`, `data/mapdl.txt`'s grammar with a tenth
+  column on a second build (the map it is a build OF); `tools/mapscan.py`
+  writes the column too. surfd serves it at `/api/board?maps=1`, on that path
+  for `game_avatar`'s reason: nginx forwards a fixed list. The first run
+  records every name `bootstrap`, so New means "arrived after the list began".
+- **BOARDS**: `variant_base()` reads the catalogue's `of` rows (only a file
+  compared with KSF's archive is one). A second build's board is its own
+  native rows and the plain name's imported ones, in one ORDER BY; an
+  ordinary map's SQL text is unchanged (25 of 25 bodies identical, the
+  review). On the Pi's database: the same index (`runs_board`), 0.048 s
+  against 0.017 s for a 100-row page. `/board/api/map` (the site) is not
+  changed.
+- **TWO FILES OF ITS OWN IN ANOTHER SHAPE** (`seen` in state.json, a
+  catalogue row) used to end the run or add a row to the list; each now
+  costs that row what it said.
+
 ### The library keeps itself level: `surfd/mapwatch.py` (Patch 644) -- 2026-10-11
 
 - **LOOK AT THE HOST.** This file said the Pi served 1,743 of 1,748 catalogued

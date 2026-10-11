@@ -103,23 +103,24 @@ From its one review (read, not run) and what the arm does not reach.
 
 ## The map library: what Patch 644 left -- 2026-10-11
 
-- **KSF's build of a map is a second row, not a switch, and has no clock.**
-  `mapwatch.py --variants` installs it as `<name>_css` (ROADMAP 8). Still to
-  do, each its own piece: (a) zones -- `tools/census/zonefit.py
-  <name>=<name>_css` then `tools/zoneinstall.py`, the measured donation that
-  did the 66 `_ksf` ports; check `zones(sv): N on <name>_css` in a lobby log.
-  (b) KSF's times are filed under the plain name, which is Momentum's build
-  (`ksfimport.py`, `maps = names & have`): file them under the variant where
-  one is held, and move the rows already there; check
-  `/api/board?map=<name>_css&tier=ksf`. (c) The menu reads no `variant` line
-  (`ui_meta_load`, m_main.qc): one row with a Momentum / CS:S switch.
-  (d) A renamed BSP loses its baked cubemaps and soundscape: both are looked
-  up by the file's basename (engine `plugins/hl2/mod_vbsp.c:10825-10860`,
-  `cl_soundscape.qc:644`).
-- **A new map reaches a player's list only with a release.** `data/mapdl.txt`
-  ships; the Pi writes no list of its own. Wanted: the watcher writes it, a
-  public route serves it (nginx: needs the owner's sudo, `maps.nginx` is a
-  list of locations) and the menu fetches it as `cl_zonedl.qc` fetches zones.
+- **A second build (`<name>_css`), after Patches 651 and 652.** Its zones are
+  the plain map's where `zonefit.py` says FIT; one that is SHIFTED or lacks a
+  restart point has no clock (3 of 27 on 11 Oct: surf_aquaflow_css,
+  surf_ravine_csgo, surf_sequoia_fix) and needs an offset or zones of its
+  own. Native runs are per build: one set on `<name>` is not on
+  `<name>_css`'s board, and the site's `/board/api/map` shows a second build
+  only its own rows. A renamed BSP loses its baked cubemaps and soundscape:
+  both are looked up by the file's basename (engine
+  `plugins/hl2/mod_vbsp.c:10825-10860`, `cl_soundscape.qc:644`).
+- **What `zonefit.py` cannot see** (the 651 review, run on built pairs): a
+  world rearranged inside the same box, a name on an entity that is not a
+  destination, `teleDestPos` regions, and a file naming no destination at
+  all, which rests on the world's mins (22 of 549 zone files). Check a pair:
+  `python tools/census/zonefit.py <name>=<name>_css`.
+- **The board believes the catalogue.** `variant_base()` takes any `of` row
+  of `data/mapwatch/catalogue.json`; only `mapwatch.py` writes that file.
+- **The list's New badge starts from 651's first run** (every name then held
+  is `bootstrap`), not from when a map was released.
 - **This PC's six-hourly scan runs `C:\FTESurf\tools\mapscan.py`,** whatever
   that checkout holds (`ed14d91` since 11 Oct; nothing keeps it at main). An
   old one writes no row for a map only KSF's site lists or for a `_css`

@@ -49,6 +49,7 @@ os.environ.update(SURFD_HOME=HOME, SURFD_DB=os.path.join(HOME, "test.db"),
                   SURFD_RUNS=os.path.join(HOME, "game", "data", "runs"))
 import surfd as S        # noqa: E402
 import mapwatch as W     # noqa: E402
+import test_zonefit as TZ   # noqa: E402  (vbsp, zones: files of the real shape)
 
 
 @atexit.register
@@ -646,6 +647,322 @@ def case_turns_with_the_crawl():
           seen, ["held", "held"])
 
 
+WORLD = ((-4096, -4096, -512), (4096, 4096, 2048))
+
+
+def build(tag, mins=WORLD[0], names=("start_dest",)):
+    """A VBSP zonefit can read; `tag` makes two builds of one world differ."""
+    return TZ.vbsp(mins, WORLD[1], names,
+                   extra=b'{\n"classname" "info_null"\n"targetname" "tag_%s"\n}\n' % tag)
+
+
+def zfile(maps, name):
+    try:
+        return read(os.path.join(maps, "zones", "online", name + ".json"))
+    except OSError:
+        return None
+
+
+def case_given_zones():
+    gz = json.loads(TZ.zones().decode())
+    gz2 = json.loads(TZ.zones(end=(1500, 0)).decode())
+    raw, raw2 = ztext(gz).encode(), ztext(gz2).encode()
+
+    def given(state):
+        return sorted(state_of(state).get("given", {}))
+
+    def ranked(name):
+        sql("INSERT OR REPLACE INTO runs (map, track, leg, tier, style, player, name, ticks,"
+            " tickrate, millis, flags, node, runid, submitted, replay_id) VALUES (?, 0, 0,"
+            " 'ranked', 'clean', 'p', 'n', 100, 100, 1000, 0, 'p1', '', 1, 0)", (name,))
+
+    # KSF's archive of a map Momentum zones takes those zones, in the run it arrives.
+    mom = {"surf_g": {"bsp": build(b"mom"), "zones": gz, "tier": 1}}
+    ksf = {"surf_g": {"tier": 1, "zip": kzip([("surf_g.bsp", build(b"ksf"))])}}
+    w, maps, state = setup(mom, ksf)
+    tick(maps, state, "--go", "--variants", "5")
+    check("KSF's build of a map Momentum zones is given those zones when the builds fit",
+          (lib(maps), zlist(maps), zfile(maps, "surf_g_css") == raw, given(state)),
+          (["surf_g.bsp", "surf_g_css.bsp", "zones"], ["surf_g.json", "surf_g_css.json"],
+           True, ["surf_g_css"]))
+
+    # A build in another frame is given nothing, and is measured once.
+    ksf = {"surf_g": {"tier": 1, "zip": kzip([("surf_g.bsp",
+                                               build(b"ksf", mins=(-3000, -4096, -512)))])}}
+    w, maps, state = setup(mom, ksf)
+    calls, real_fit = [], W.zonefit.fit
+
+    def counted(*a):
+        calls.append(1)
+        return real_fit(*a)
+    W.zonefit.fit = counted
+    try:
+        tick(maps, state, "--go", "--variants", "5")
+        tick(maps, state, "--go", "--variants", "5")
+    finally:
+        W.zonefit.fit = real_fit
+    check("a build whose world sits elsewhere is given nothing, and is measured once",
+          (zlist(maps), len(calls), sorted(state_of(state)["nofit"]), given(state)),
+          (["surf_g.json"], 1, ["surf_g_css"], []))
+
+    # A port by its suffix; a version is not a port; a port missing a restart
+    # point is not given; Momentum's own map keeps its own zones.
+    mom = {"surf_p": {"bsp": build(b"mom"), "zones": gz, "tier": 1},
+           "surf_q": {"bsp": build(b"q"), "zones": gz, "tier": 1},
+           "surf_q_fix": {"bsp": build(b"qfix"), "zones": gz2, "tier": 1},
+           "surf_q_ksf": {"bsp": build(b"qksf"), "zones": None, "tier": 1}}
+    own_timer = TZ.vbsp(WORLD[0], WORLD[1], ("start_dest",), extra=(
+        b'{\n"classname" "trigger_momentum_timer_start"\n"model" "*1"\n}\n'))
+    held = [("surf_p_fix", build(b"fix")), ("surf_p_v2", build(b"v2")),
+            ("surf_p_ksf", build(b"ksf", names=())), ("surf_p_njv", build(b"njv")),
+            ("surf_p_go", build(b"go")), ("surf_p_csgo", build(b"csgo")),
+            ("surf_p_css", build(b"somebody's own css")), ("surf_p_mom", build(b"pm")),
+            ("surf_p_fixed", own_timer)]
+    w, maps, state = setup(mom, {}, held=held)
+    # Momentum lists surf_p_mom itself, with a row this tool cannot use.
+    w.rawrows = [{"id": 7, "name": "surf_p_mom", "status": 0, "leaderboards": [],
+                  "currentVersion": {"bspHash": "zz", "downloadURL": "http://elsewhere/x.bsp",
+                                     "zoneHash": None}}]
+    os.makedirs(os.path.join(maps, "zones", "online"))
+    with open(os.path.join(maps, "zones", "online", "surf_p_njv.json"), "wb") as fh:
+        fh.write(b'{"somebody":"made these"}')
+    local = os.path.join(os.path.dirname(os.path.dirname(S.RUNS_DIR)), "maps", "zones", "local")
+    os.makedirs(local, exist_ok=True)
+    with open(os.path.join(local, "surf_p_go.json"), "wb") as fh:
+        fh.write(b"{}")
+    ranked("surf_p_csgo")
+    tick(maps, state, "--go")
+    os.remove(os.path.join(local, "surf_p_go.json"))
+    check("a port by its suffix is given the zones; a version, a port missing the restart "
+          "point, one with zones of its own, one with a local override and one with runs "
+          "are not; Momentum's own map of such a name keeps its own",
+          (zlist(maps), zfile(maps, "surf_p_fix") == raw, zfile(maps, "surf_q_fix") == raw2,
+           zfile(maps, "surf_q_ksf"), zfile(maps, "surf_p_njv"), given(state)),
+          (["surf_p.json", "surf_p_fix.json", "surf_p_njv.json", "surf_q.json", "surf_q_fix.json"],
+           True, True, None, b'{"somebody":"made these"}', ["surf_p_fix"]))
+    check("...nor is a _css file that is not KSF's archive, a name Momentum lists itself "
+          "with a row that cannot be used, or a port with timer triggers of its own",
+          (zfile(maps, "surf_p_css"), zfile(maps, "surf_p_mom"), zfile(maps, "surf_p_fixed"),
+           sorted(k for k, v in state_of(state)["nofit"].items() if v[2] == "OWN-TIMER")),
+          (None, None, None, ["surf_p_fixed"]))
+    lobby("p4", "surf_p_go")
+    tick(maps, state, "--go", "--updates")
+    check("with --updates the one with runs is given them; one a lobby is on still waits; "
+          "zones of its own are still its own",
+          (zfile(maps, "surf_p_csgo") == raw, zfile(maps, "surf_p_go"),
+           zfile(maps, "surf_p_njv")), (True, None, b'{"somebody":"made these"}'))
+    lobby("p4", "surf_elsewhere")
+    sql("DELETE FROM runs WHERE map = 'surf_p_csgo'")
+
+    # The donor's zones change: what was given follows with --updates, what
+    # somebody edited since does not, and the site's copy follows where it
+    # was the old file.
+    site = os.path.join(os.path.dirname(maps), "site")
+    os.makedirs(site)
+    for n, data in (("surf_p", raw), ("surf_p_fix", b'{"shipped":"another"}')):
+        with open(os.path.join(site, n + ".json"), "wb") as fh:
+            fh.write(data)
+    with open(os.path.join(maps, "zones", "online", "surf_p_csgo.json"), "wb") as fh:
+        fh.write(b'{"edited":"by hand"}')
+    w.mom["surf_p"]["zones"] = gz2
+    tick(maps, state, "--go", "--site-zones", site)
+    check("the donor's zones changed: without --updates nothing follows",
+          (zfile(maps, "surf_p") == raw, zfile(maps, "surf_p_fix") == raw), (True, True))
+    lobby("p4", "surf_p_fix")
+    tick(maps, state, "--go", "--updates", "--site-zones", site)
+    lobby("p4", "surf_elsewhere")
+    tick(maps, state, "--go", "--site-zones", site)
+    check("...with it the donor's file follows; a build given the old one, on which a "
+          "lobby sat during that run, does not follow in a later run without --updates",
+          (zfile(maps, "surf_p") == raw2, zfile(maps, "surf_p_fix") == raw), (True, True))
+    tick(maps, state, "--go", "--updates", "--site-zones", site)
+    check("...with it the donor's file, the build given it, and the site's copy of the old "
+          "file follow; a given file edited since and a different file on the site are kept",
+          (zfile(maps, "surf_p") == raw2, zfile(maps, "surf_p_fix") == raw2,
+           zfile(maps, "surf_p_csgo"), read(os.path.join(site, "surf_p.json")) == raw2,
+           read(os.path.join(site, "surf_p_fix.json"))),
+          (True, True, b'{"edited":"by hand"}', True, b'{"shipped":"another"}'))
+
+    # The build that was given zones is swapped for another: still fitting, it
+    # keeps them; in another frame, they are moved aside -- with --updates.
+    def swap(name, data):
+        with open(os.path.join(maps, name + ".bsp"), "wb") as fh:
+            fh.write(data)
+
+    swap("surf_p_fix", build(b"fix, recompiled"))
+    tick(maps, state, "--go", "--updates", "--site-zones", site)
+    check("a build given zones is replaced by one that still fits: the zones stay",
+          (zfile(maps, "surf_p_fix") == raw2, given(state)), (True, ["surf_p_csgo", "surf_p_fix",
+                                                                     "surf_p_go"]))
+    swap("surf_p_fix", build(b"fix, moved", mins=(-3000, -4096, -512)))
+    tick(maps, state, "--go", "--site-zones", site)
+    check("...by one in another frame: without --updates they are left, and said to be",
+          zfile(maps, "surf_p_fix") == raw2, True)
+    lobby("p4", "surf_p_fix")
+    tick(maps, state, "--go", "--updates", "--site-zones", site)
+    check("...with it, not while a lobby is on the map",
+          zfile(maps, "surf_p_fix") == raw2, True)
+    lobby("p4", "surf_elsewhere")
+    tick(maps, state, "--go", "--updates", "--site-zones", site)
+    aside = os.path.join(maps, "zones", "online", ".old")
+    check("...and then they are moved aside, kept, and no longer recorded as given; the "
+          "site keeps its own file of that name (it never was ours)",
+          (zfile(maps, "surf_p_fix"), [read(os.path.join(aside, f)) == raw2
+                                       for f in os.listdir(aside)], given(state),
+           read(os.path.join(site, "surf_p_fix.json"))),
+          (None, [True], ["surf_p_csgo", "surf_p_go"], b'{"shipped":"another"}'))
+    # The same again where the site's copy IS the file given: it goes too.
+    swap("surf_p_go", build(b"go, moved", mins=(-3000, -4096, -512)))
+    had = os.path.exists(os.path.join(site, "surf_p_go.json"))
+    tick(maps, state, "--go", "--updates", "--site-zones", site)
+    check("...and where the site's copy is the file that was given, it is removed with it",
+          (had, zfile(maps, "surf_p_go"), os.path.exists(os.path.join(site, "surf_p_go.json"))),
+          (True, None, False))
+
+    # Whatever the fit check raises is that pair's, not the run's.
+    def broken(*a):
+        raise RuntimeError("a BSP nothing expected")
+    mom = {"surf_e": {"bsp": build(b"mom"), "zones": gz, "tier": 1}}
+    w, maps, state = setup(mom, {}, held=[("surf_e_fix", build(b"fix"))])
+    real_fit, W.zonefit.fit = W.zonefit.fit, broken
+    try:
+        rc = tick(maps, state, "--go")
+    finally:
+        W.zonefit.fit = real_fit
+    check("a fit check that raises costs that one pair this run: the run ends well, the "
+          "map is in the list, and the pair is not written off",
+          (rc, zlist(maps), state_of(state)["nofit"], os.path.exists(os.path.join(state, "mapdl.txt"))),
+          (0, ["surf_e.json"], {}, True))
+    tick(maps, state, "--go")
+    check("...so the next run measures it and gives the zones", zlist(maps),
+          ["surf_e.json", "surf_e_fix.json"])
+    # Given, then the target is recompiled (it still fits) and the measurement
+    # fails once: what was given stays, and is confirmed by the run after.
+    with open(os.path.join(maps, "surf_e_fix.bsp"), "wb") as fh:
+        fh.write(build(b"fix, recompiled"))
+    W.zonefit.fit = broken
+    try:
+        tick(maps, state, "--go", "--updates")
+    finally:
+        W.zonefit.fit = real_fit
+    check("a measurement that fails on a build swapped since is not \"no longer fits\": "
+          "the zones given stay", (zlist(maps), sorted(state_of(state)["given"])),
+          (["surf_e.json", "surf_e_fix.json"], ["surf_e_fix"]))
+    # A table of its own state in another shape starts again, it does not end the run.
+    st = state_of(state)
+    st["nofit"], st["given"]["surf_e_fix"], st["later"] = {"surf_e_fix": 7}, "ours", [1, 2]
+    with io.open(os.path.join(state, "state.json"), "w", encoding="utf-8") as fh:
+        json.dump(st, fh)
+    rc = tick(maps, state, "--go", "--updates")
+    check("state.json's own tables in another shape do not end the run; a zone file whose "
+          "record is lost is somebody's, and kept",
+          (rc, zlist(maps)), (0, ["surf_e.json", "surf_e_fix.json"]))
+    # A record that names no build is measured, not taken on trust.
+    st = state_of(state)
+    st["given"] = {"surf_e_fix": {"of": "surf_e", "zh": sha(raw)}}
+    with io.open(os.path.join(state, "state.json"), "w", encoding="utf-8") as fh:
+        json.dump(st, fh)
+    with open(os.path.join(maps, "surf_e_fix.bsp"), "wb") as fh:
+        fh.write(build(b"fix, moved", mins=(-3000, -4096, -512)))
+    tick(maps, state, "--go", "--updates")
+    check("a record of zones given that names no build is measured again: on a build in "
+          "another frame they are taken back (moved aside)", zlist(maps),
+          [".old", "surf_e.json"])
+
+    # A donor held at another build than the published one gives nothing: its
+    # zone file is not known to be that build's.
+    mom = {"surf_d": {"bsp": build(b"mom"), "zones": gz, "tier": 1}}
+    w, maps, state = setup(mom, {}, held=[("surf_d", build(b"older")),
+                                          ("surf_d_fix", build(b"fix"))])
+    os.makedirs(os.path.join(maps, "zones", "online"))
+    with open(os.path.join(maps, "zones", "online", "surf_d.json"), "wb") as fh:
+        fh.write(raw)
+    tick(maps, state, "--go")
+    check("a donor held at another build than the published one gives nothing",
+          (zlist(maps), given(state)), (["surf_d.json"], []))
+
+
+def case_map_list():
+    def rows(state):
+        with io.open(os.path.join(state, "mapdl.txt"), encoding="utf-8") as fh:
+            lines = fh.read().split("\n")
+        return lines[0], [ln for ln in lines if ln.startswith("dl ")]
+
+    day = time.strftime("%Y-%m-%d", time.gmtime())
+    mom = {"surf_m1": M("m1", tier=3), "bhop_m2": M("m2", tier=2)}
+    ksf = {"surf_m1": Z("surf_m1", "ksf's m1"), "surf_k1": Z("surf_k1", "k1")}
+    w, maps, state = setup(mom, ksf, held=[("de_dust2", bsp("dust")),
+                                           ("surf_Old", bsp("old", 5000))])
+    tick(maps, state)
+    check("a dry run writes no list", os.path.exists(os.path.join(state, "mapdl.txt")), False)
+    tick(maps, state, "--go", "--variants", "5")
+    check("the list: a row for every surf/bhop map held, as the file is named, with its "
+          "mode, lists, tier, size in KB and tiers; KSF's build names the map it is a build of",
+          rows(state),
+          ("FTESURF-MAPDL 1",
+           ["dl bhop_m2 bhop m 2 4 %s 0 2 0" % day,
+            "dl surf_k1 surf k 1 4 %s 0 0 1" % day,
+            "dl surf_m1 surf km 3 4 %s 0 3 1" % day,
+            "dl surf_m1_css surf k 1 4 %s 0 0 1 surf_m1" % day,
+            "dl surf_Old surf - 0 5 %s 0 0 0" % day]))
+    w.mom["surf_n9"] = M("n9", tier=5)
+    w.ids["surf_n9"] = 999
+    tick(maps, state, "--go")
+    check("a map that arrives later wears New; the ones the list began with do not",
+          [ln.split()[1] + ":" + ln.split()[7] for ln in rows(state)[1]],
+          ["bhop_m2:0", "surf_k1:0", "surf_m1:0", "surf_m1_css:0", "surf_n9:1", "surf_Old:0"])
+    # KSF not read (its crawl parked): the last whole reading stands for the
+    # rows it described, and a map that is new now is listed all the same.
+    pf = os.path.join(S.DATA_DIR, "ksf", ".refused")
+    os.makedirs(os.path.dirname(pf), exist_ok=True)
+    with io.open(pf, "w", encoding="utf-8") as fh:
+        json.dump({"at": int(REAL_TIME()), "until": int(REAL_TIME()) + 3600, "n": 1, "why": "x"}, fh)
+    w.mom["surf_n8"] = M("n8", tier=4)
+    w.ids["surf_n8"] = 998
+    try:
+        tick(maps, state, "--go")
+    finally:
+        os.remove(pf)
+    check("with one list unread the rows keep what the last whole reading said, and a "
+          "map new this run is listed",
+          [" ".join(ln.split()[1:5]) for ln in rows(state)[1]],
+          ["bhop_m2 bhop m 2", "surf_k1 surf k 1", "surf_m1 surf km 3", "surf_m1_css surf k 1",
+           "surf_n8 surf m 4", "surf_n9 surf m 5", "surf_Old surf - 0"])
+    check("...and KSF's build still names the map it is a build of",
+          [ln.split()[10] for ln in rows(state)[1] if len(ln.split()) > 10], ["surf_m1"])
+    # The tool's own files in another shape cost a row its history, not the run.
+    st = state_of(state)
+    st["seen"]["surf_k1"] = "yesterday\ndl evil surf m 1 1 2026-01-01 0 0 0"
+    st["seen"]["bhop_m2"] = ["2026-01-01\ndl evil2 surf m 1 1 2026-01-01 0 0 0", "scan"]
+    with io.open(os.path.join(state, "state.json"), "w", encoding="utf-8") as fh:
+        json.dump(st, fh)
+    cat = json.load(io.open(os.path.join(state, "catalogue.json"), encoding="utf-8"))
+    cat["maps"]["surf_m1"] = "not a row"
+    cat["maps"]["surf_n9"]["src"] = 5
+    cat["maps"]["surf_m1_css"]["of"] = "surf_m1 x"
+    with io.open(os.path.join(state, "catalogue.json"), "w", encoding="utf-8") as fh:
+        json.dump(cat, fh)
+    with io.open(pf, "w", encoding="utf-8") as fh:      # KSF unread: that catalogue stands
+        json.dump({"at": int(REAL_TIME()), "until": int(REAL_TIME()) + 3600, "n": 1, "why": "x"}, fh)
+    try:
+        rc = tick(maps, state, "--go")
+    finally:
+        os.remove(pf)
+    got = rows(state)[1]
+    check("a seen record, a catalogue row or a build's map of another shape costs the row "
+          "what it said, never a second row or the run",
+          (rc, len(got), [ln for ln in got if "evil" in ln or " x" in ln],
+           [ln.split()[1:4] + ln.split()[6:7] for ln in got
+            if ln.split()[1] in ("surf_k1", "bhop_m2", "surf_m1", "surf_n9")]),
+          (0, 7, [], [["bhop_m2", "bhop", "m", day], ["surf_k1", "surf", "k", day],
+                      ["surf_m1", "surf", "-", day], ["surf_n9", "surf", "-", day]]))
+    os.remove(os.path.join(maps, "surf_Old.bsp"))
+    tick(maps, state, "--go")
+    check("a map no longer held leaves the list",
+          [ln.split()[1] for ln in rows(state)[1]],
+          ["bhop_m2", "surf_k1", "surf_m1", "surf_m1_css", "surf_n8", "surf_n9"])
+
+
 def case_bad_names_and_shapes():
     mom = {"surf_ok": M("ok", zones=False),
            "surf_lb": dict(M("lb", zones=False), leaderboards=5)}
@@ -996,6 +1313,19 @@ def case_held_builds():
     check("a name taken while its file was downloading keeps the file that took it",
           (lib(maps), read(os.path.join(maps, "surf_race.bsp"))),
           (["surf_race.bsp"], b"another tool's copy"))
+
+
+def case_kept_build():
+    mom = {"bhop_eazy": M("published now"), "surf_other": M("published now too")}
+    w, maps, state = setup(mom, {}, held=[("bhop_eazy", bsp("the gate's build")),
+                                          ("surf_other", bsp("an older build"))])
+    tick(maps, state, "--go", "--updates")
+    check("--updates replaces a build that is not the published one, and never the map "
+          "the engine gate compares",
+          (sha(read(os.path.join(maps, "bhop_eazy.bsp"))) == sha(bsp("the gate's build")),
+           sha(read(os.path.join(maps, "surf_other.bsp"))) == sha(mom["surf_other"]["bsp"]),
+           [u for u in w.files() if uuid_of("bhop_eazy") in u], zlist(maps)),
+          (True, True, [], ["surf_other.json"]))
 
 
 def case_first_zones():
@@ -1450,6 +1780,8 @@ def case_mapscan():
     check("where KSF's build has its own row, the plain row is Momentum's alone -- and only "
           "a row named <name>_css can say so",
           (ros["surf_a"][1], ros["surf_m"][1]), ("m", "km"))
+    check("...and it is recorded as a build of that map, for the list's tenth column",
+          mapscan.VARIANT_OF, {"surf_a_css": "surf_a"})
     check("a row whose name or mode is not exactly one is not a row; a tier out of range is none",
           (sorted(n for n in ros if not isinstance(n, str) or "\n" in n or n in ("surf_inj", "surf_num")),
            ros["surf_tier"]), ([], ("surf", "k", "-", "-", "-")))
@@ -1457,7 +1789,7 @@ def case_mapscan():
 
 def main():
     for case in (case_plan_and_install, case_bad_files, case_page_scan, case_limits_on_a_reply,
-                 case_turns_with_the_crawl,
+                 case_turns_with_the_crawl, case_given_zones, case_map_list, case_kept_build,
                  case_bad_names_and_shapes, case_hosts,
                  case_held_builds, case_first_zones, case_variants, case_zones_and_limits,
                  case_extra_and_lock, case_mapscan):

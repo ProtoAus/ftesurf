@@ -2454,23 +2454,75 @@ def public_state(verdict, decision):
     return "plain"
 
 
-def board_counts(db, mapname, track, leg, style):
+# --------------------------------------------------------------------------
+# Two builds of one map (Patch 651)
+# --------------------------------------------------------------------------
+#
+# Lex, 11 Oct 2026: "I still want to be able to see momentum times on a KSF
+# map, and KSF times on a Momentum map, the maps are for the most part
+# identical."  KSF's build of a name both games list is kept as <name>_css
+# (mapwatch.py); its board is its own native rows and the plain name's
+# imported ones.  A native row stays with the build it was set on.
+VARIANTS_TTL = 120
+CATALOGUE_MAX = 8 << 20     # mapwatch's catalogue.json is 230 KB
+_variants = {"at": None, "of": {}}
+
+
+def variant_base(mapname, now=None):
+    """The map whose imported times `mapname` shows as well, or None.  From
+    mapwatch.py's catalogue: only a file whose bytes were compared with KSF's
+    archive is listed there as a build `of` another, so a map that merely ends
+    in _css is not one.  An unreadable catalogue is no second builds, said by
+    nothing: the board then holds that build's own rows, as before 651."""
+    now = time.monotonic() if now is None else now
+    with _maps_lock:
+        at = _variants["at"]
+        if at is not None and 0 <= now - at < VARIANTS_TTL:
+            return _variants["of"].get(mapname)
+    of = {}
+    try:
+        with open(os.path.join(DATA_DIR, "mapwatch", "catalogue.json"), "rb") as fh:
+            doc = json.loads(fh.read(CATALOGUE_MAX).decode("utf-8"))
+        for k, row in doc["maps"].items():
+            base = clean_map(row.get("of")) if isinstance(row, dict) else None
+            if base:
+                of[k] = base            # read by a cleaned name, so any other key is inert
+    except (OSError, ValueError, KeyError, AttributeError, TypeError, RecursionError):
+        of = {}
+    with _maps_lock:
+        _variants["at"], _variants["of"] = now, of
+    return of.get(mapname)
+
+
+def _board_scope(mapname, base, col):
+    """WHERE text and its args for one board's rows by map.  With no `base`
+    it is the text every board has always had."""
+    if not base:
+        return col + "map=?", (mapname,)
+    return ("%smap IN (?,?) AND %smap = CASE WHEN %stier IN (%s) THEN ? ELSE ? END"
+            % (col, col, col, ",".join("?" * len(TIERS_IMPORTED))),
+            (mapname, base) + TIERS_IMPORTED + (base, mapname))
+
+
+def board_counts(db, mapname, track, leg, style, base=None):
     """Row counts per tier of one board: {"ranked": n, "community": n, ...}."""
     counts = {TIER_RANKED: 0, TIER_COMMUNITY: 0}
     for t in TIERS_IMPORTED:
         counts[t] = 0
+    scope, sargs = _board_scope(mapname, base, "")
     for row in db.execute(
             "SELECT tier, COUNT(*) AS n FROM runs"
-            " WHERE map=? AND track=? AND leg=? AND style=? GROUP BY tier",
-            (mapname, track, leg, style)).fetchall():
+            " WHERE " + scope + " AND track=? AND leg=? AND style=? GROUP BY tier",
+            sargs + (track, leg, style)).fetchall():
         if row["tier"] in counts:
             counts[row["tier"]] = row["n"]
     return counts
 
 
-def board_rows(db, mapname, track, leg, tier, style, limit, offset):
+def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None):
     """One board page in BOARD_ORDER, as /api/board's row dicts (`ver` last)."""
     rows = []
+    scope, sargs = _board_scope(mapname, base, "r.")
     # The combined board is the same query with the tier test widened and the
     # row's own tier selected out, so ORDER BY, paging and every column below
     # stay byte-for-byte the ordinary path.  A second query here would be a
@@ -2488,10 +2540,10 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset):
             + _PARENT_SQL + " AS prun, "
             + VER_SQL + " AS ver"
             "  FROM runs r"
-            " WHERE r.map=? AND r.track=? AND r.leg=? AND " + where
+            " WHERE " + scope + " AND r.track=? AND r.leg=? AND " + where
             + " AND r.style=?"
             " ORDER BY " + BOARD_ORDER + " LIMIT ? OFFSET ?",
-            (mapname, track, leg) + args + (style, limit, offset)).fetchall()):
+            sargs + (track, leg) + args + (style, limit, offset)).fetchall()):
         rows.append({
             "r": offset + i + 1,
             "player": row["player"],
@@ -3555,10 +3607,13 @@ def board():
 
     if request.args.get("avatar") is not None:      # Patch 639: see game_avatar
         return game_avatar(request.args.get("avatar"), now)
+    if request.args.get("maps") is not None:        # Patch 651: see game_maplist
+        return game_maplist()
 
     mapname = clean_map(request.args.get("map"))
     if not mapname:
         return fail(400, "bad map")
+    base = variant_base(mapname)
 
     track = strict_int(request.args.get("track", 0), 0, MAX_TRACK)
     leg = strict_int(request.args.get("leg", 0), 0, MAX_LEG)
@@ -3584,8 +3639,8 @@ def board():
         db = get_db()
         # Both tiers' counts, so the client can say "no ranked times yet, 37
         # community" without mixing trust levels in one list.
-        counts = board_counts(db, mapname, track, leg, style)
-        rows = board_rows(db, mapname, track, leg, tier, style, limit, offset)
+        counts = board_counts(db, mapname, track, leg, style, base)
+        rows = board_rows(db, mapname, track, leg, tier, style, limit, offset, base)
         # A short page of an imported board is a player at the end of what we
         # hold: queue the map for the KSF and Momentum top-ups (ksfimport.py
         # --watch, momwatch --want).  Only a board we already hold rows for,
@@ -3593,7 +3648,7 @@ def board():
         if (tier in TIERS_IMPORTED + (TIER_IMPORTED, TIER_COMBINED)
                 and len(rows) < limit
                 and any(counts.get(t, 0) for t in TIERS_IMPORTED)):
-            note_want(db, mapname)
+            note_want(db, base or mapname)      # the crawls know the plain name
         # `av` ONLY ON A ROW WHOSE PLAYER HAS A PICTURE THE GAME CAN FETCH
         # (Patch 639: its text copy is on disk), so every other row, and every
         # board with no such player on it, keeps its bytes (test_momindex.py
@@ -4212,6 +4267,35 @@ def web_avatar(handle):
     if not h:
         return fail(404, "not found")
     return _avatar_file(h, ".jpg", "image/jpeg")
+
+
+MAPLIST_MAX = 2 << 20       # 1,857 rows are 110 KB
+_maplist = {"sig": None, "body": b""}
+
+
+def game_maplist():
+    """The map list as mapwatch.py last wrote it (data/mapdl.txt's grammar, a
+    row for every map this box serves): what the menu fetches so a new map is
+    offered without a release.  ON /api/board (`?maps=1`) for game_avatar's
+    reason: the address the game talks to forwards a fixed list of paths."""
+    path = os.path.join(DATA_DIR, "mapwatch", "mapdl.txt")
+    try:
+        st = os.stat(path)
+        sig = (st.st_mtime_ns, st.st_size)
+        if not 0 < st.st_size <= MAPLIST_MAX:
+            return fail(404, "no map list")
+        with _maps_lock:
+            body = _maplist["body"] if _maplist["sig"] == sig else None
+        if body is None:
+            with open(path, "rb") as fh:
+                body = fh.read(MAPLIST_MAX)
+            with _maps_lock:
+                _maplist["sig"], _maplist["body"] = sig, body
+    except OSError:
+        return fail(404, "no map list")
+    resp = Response(body, status=200, mimetype="text/plain")
+    resp.headers["Cache-Control"] = "max-age=300"
+    return resp
 
 
 def game_avatar(who, now):

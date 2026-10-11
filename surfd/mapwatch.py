@@ -42,10 +42,26 @@ and with it what a parked run resumes to.
 TWO BUILDS OF ONE NAME (--variants N).  A name both list holds Momentum's
 build, and KSF's records were set on KSF's.  N of KSF's archives a run are
 compared with the file held, and one that differs is kept as <name>_css: its
-own name, so its own download, zones and board (ROADMAP 8).  KSF's archive and
-not a CS:S install's copy: on 11 Oct a PC's cstrike build was KSF's on 3 of 6
-maps.  It gets no zones here; donating the plain build's is
-tools/zoneinstall.py's measured step.
+own name, so its own download and its own native board (ROADMAP 8).  KSF's
+archive and not a CS:S install's copy: on 11 Oct a PC's cstrike build was
+KSF's on 3 of 6 maps.
+
+ZONES GIVEN TO A SECOND BUILD (Lex, 11 Oct: "copy a momentum mod zones if the
+map has a momentum mod version of the map").  A <name>_css that is KSF's
+archive, or a port named <name>_<one of PORTS>, that Momentum does not list
+itself and that has no zone file of its own takes the published zone file of
+<name> -- when zonefit.py says the two builds share a coordinate frame, the
+target has every restart point the file names, and it carries no timer
+triggers of its own.  Not otherwise: a zone is a world polygon, and 5 of the
+71 pairs the PC tool measured in September were different maps sharing a
+stem.  `given` in state.json records what was copied and onto which build: a
+file somebody edited since is theirs, and one whose build has changed is
+measured again and, if it no longer fits, moved aside (--updates) or reported.
+
+THE MAP LIST (<state>/mapdl.txt, data/mapdl.txt's grammar): a row for every
+surf/bhop map held, with a tenth column naming the map a second build is a
+build OF.  surfd serves it to the game (/api/board?maps=1), so a new map is
+offered without a release.
 
 A BUILD OR A ZONE FILE THAT DIFFERS from the published one is REPORTED and left
 alone without --updates: the runs on that map's board were set on what it
@@ -98,6 +114,7 @@ if not logging.getLogger("surfd").handlers:
     logging.getLogger("surfd").addHandler(_quiet)
 
 import surfd as S       # noqa: E402
+import zonefit          # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -135,6 +152,14 @@ FLOOR_GB = 20           # momgrab's floor on the same disk
 STRIKES = 3
 RETRY_DAYS = 30
 VARIANT = "_css"        # one of mapmeta.py's ALIAS_SUFFIXES: tier, picture and group follow
+# Suffixes that name ANOTHER COMPILE of a map, not another version of it: the
+# ports among mapmeta.py's ALIAS_SUFFIXES.  `_v2`, `_new` and `_redux` are maps.
+PORTS = ("ksf", "fix", "fixed", "go", "csgo", "njv", "mom")     # _css: only KSF's archive
+NEW_DAYS = 14           # tools/mapscan.py's: how long a row wears the New badge
+# Builds --updates leaves alone, and why.  bhop_eazy: the engine gate compares
+# `pm_dettest` on it between this box and Windows (AGENT_NOTES, Pi operations),
+# and on 11 Oct both held 07320480e924 where Momentum publishes 4ddeea8cc0fa.
+KEEP_BUILD = ("bhop_eazy",)
 WANT_DAYS = 14          # ksfimport's: a map viewed this recently goes first
 
 # fullmatch, never match with a `$`: that passes "name\n".
@@ -851,6 +876,47 @@ def played():
     return out
 
 
+DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+
+
+def list_rows(maps_dir, inv, cat, seen, today, cutoff):
+    """The map list's lines: data/mapdl.txt's grammar, which the menu reads
+    (ui_dl_load) and tools/mapscan.py also writes --
+      dl <name> <mode> <src> <tier> <kb> <first-iso> <new> <mtier> <ktier> [<of>]
+    One row per surf/bhop map HELD, named as the file is (the name is the
+    download path).  `of` is the map a second build is a build of."""
+    def tier(v):
+        return v if type(v) is int and 1 <= v <= 10 else 0
+
+    out = []
+    for k in sorted(inv):
+        stem = inv[k]
+        if not okname(stem):            # surf_/bhop_, and a name a row can carry
+            continue
+        try:
+            kb = (os.path.getsize(os.path.join(maps_dir, stem + ".bsp")) + 1023) // 1024
+        except OSError:
+            continue
+        c = cat.get(k)
+        c = c if isinstance(c, dict) else {}
+        src = c.get("src") if isinstance(c.get("src"), str) else ""
+        letters = ("k" if "k" in src else "") + ("m" if "m" in src or "b" in src else "")
+        mt, kt = tier(c.get("mtier")), tier(c.get("ktier"))
+        first = seen.get(k)
+        if not (isinstance(first, list) and len(first) == 2 and first[1] in ("scan", "bootstrap")
+                and isinstance(first[0], str) and DAY.fullmatch(first[0])):
+            first = seen[k] = [today, "scan"]       # new, or a record of another shape
+        row = "dl %s %s %s %d %d %s %d %d %d" % (
+            stem, c.get("mode") if c.get("mode") in ("surf", "bhop") else k[:4],
+            letters or "-", mt or kt, kb, first[0],
+            1 if first[1] == "scan" and first[0] >= cutoff else 0, mt, kt)
+        of = c.get("of")
+        if isinstance(of, str) and of.lower() in inv and okname(inv[of.lower()]):
+            row += " " + inv[of.lower()]
+        out.append(row)
+    return out
+
+
 # --------------------------------------------------------------------------
 
 def be_small():
@@ -913,8 +979,14 @@ def run(a):
     sp = os.path.join(a.state, "state.json")
     st = _load(sp)
     st = st if isinstance(st, dict) else {}
-    later = st.setdefault("later", {})      # key -> [strikes, when, why]
-    back = st.setdefault("back", {})        # key -> when its host last refused on it
+
+    def table(key):
+        """A table of state.json; one of another shape starts empty."""
+        if not isinstance(st.get(key), dict):
+            st[key] = {}
+        return st[key]
+    later = table("later")                  # key -> [strikes, when, why]
+    back = table("back")                    # key -> when its host last refused on it
     for k in [k for k, w in later.items() if now - w[1] > 2 * RETRY_DAYS * 86400]:
         del later[k]                        # the file left the lists long ago
     for k in [k for k, t in back.items() if now - t > RETRY_DAYS * 86400]:
@@ -1130,14 +1202,34 @@ def run(a):
             back.pop(zkey, None)
         return raw
 
+    def zsha(k):
+        try:
+            with open(os.path.join(zdir, zidx[k] + ".json"), "rb") as fh:
+                return hashlib.sha1(fh.read()).hexdigest()
+        except (OSError, KeyError):
+            return None
+
     def zone_put(k, raw, replace):
         """A FIRST zone file only while the name is free: one that arrived since
         the listing (mapsync copies them) is somebody's, and is kept."""
         zstem = zidx.get(k) or inv[k]       # never a second spelling of one name
+        old = zsha(k) if replace else None
         if not write_file(os.path.join(zdir, zstem + ".json"), raw, fresh=not replace):
             return False
         zidx[k] = zstem
         verified.append(zstem)
+        # What clients fetch follows a file this replaced, where it WAS that
+        # file: one that differs there is the shipped set's, and is kept.
+        if old and a.site_zones and os.path.isdir(a.site_zones):
+            sstem = stems(a.site_zones, ".json").get(k)
+            try:
+                if sstem:
+                    with open(os.path.join(a.site_zones, sstem + ".json"), "rb") as fh:
+                        same_there = hashlib.sha1(fh.read()).hexdigest() == old
+                    if same_there:
+                        write_file(os.path.join(a.site_zones, sstem + ".json"), raw)
+            except OSError:
+                pass
         return True
 
     for r in todo:
@@ -1150,6 +1242,9 @@ def run(a):
         raw = None
         if stem is not None:
             if not a.updates or r["src"] != "mom" or key in fresh:
+                continue
+            if key in KEEP_BUILD:
+                count("kept at the build held, by name (KEEP_BUILD)")
                 continue
             # A build goes in WITH its zones or not at all, so they are had
             # first: they are small, and without them nothing is downloaded.
@@ -1227,8 +1322,8 @@ def run(a):
     # `made` is the record that a _css file IS KSF's archive: sha1 by name.  A
     # _css file with no record (the state lost, or somebody's own file) is
     # compared with the archive like any other candidate, never written over.
-    same, made = st.setdefault("same", {}), st.setdefault("made", {})
-    foreign = st.setdefault("foreign", {})      # a _css file that was NOT the archive
+    same, made = table("same"), table("made")
+    foreign = table("foreign")                  # a _css file that was NOT the archive
     for kv in [kv for kv in made if kv not in inv
                or file_sha1(os.path.join(a.maps, inv[kv] + ".bsp"), hashes) != made[kv]]:
         del made[kv]
@@ -1296,10 +1391,8 @@ def run(a):
         if file_sha1(os.path.join(a.maps, inv[k] + ".bsp"), hashes) != r["sha"]:
             continue
         if k in zidx:
-            try:
-                with open(os.path.join(zdir, zidx[k] + ".json"), "rb") as fh:
-                    cur = hashlib.sha1(fh.read()).hexdigest()
-            except OSError:
+            cur = zsha(k)
+            if cur is None:
                 continue
             if cur == r["zh"]:
                 if zidx[k] not in verified:
@@ -1336,6 +1429,112 @@ def run(a):
         else:
             count("one arrived meanwhile: left", zw)
         _save(sp, st)
+    # ZONES GIVEN TO A SECOND BUILD (the module docstring).  The donor is an
+    # approved map whose zone file is the published one at the published build
+    # (`verified`); the target is held, is not Momentum's own, and has no zone
+    # file anywhere the server reads.
+    given, nofit = table("given"), table("nofit")
+    local = stems(os.path.join(os.path.dirname(os.path.dirname(os.path.normpath(S.RUNS_DIR))),
+                               "maps", "zones", "local"), ".json")
+    donors = set(verified)
+
+    def donor_of(t):
+        if t in made:
+            return t[:-len(VARIANT)]
+        for suf in PORTS:
+            if t.endswith("_" + suf):
+                return t[:-len(suf) - 1]
+        return None
+
+    for t in sorted(inv):
+        d = donor_of(t)
+        if (d is None or d not in mom or d not in inv or zidx.get(d) not in donors
+                or t in names or t in extra or t in local):
+            continue                    # `names`: Momentum's own map, usable row or not
+        have = zsha(t) if t in zidx else None
+        rec = given.get(t)
+        rec = rec if isinstance(rec, dict) else {}
+        if t in zidx and (have is None or have != rec.get("zh")):
+            continue                    # its own zones, or ours since edited: somebody's
+        dz = zsha(d)
+        tsha = file_sha1(os.path.join(a.maps, inv[t] + ".bsp"), hashes)
+        if dz is None or tsha is None:
+            continue
+        if dz == have and rec.get("t") == tsha:
+            continue                    # the file given, on the build it was measured on
+        # Given already, and the target's file is not the one that was measured.
+        stale = have is not None and rec.get("t") != tsha
+        nf = nofit.get(t)
+        if isinstance(nf, list) and nf[:2] == [dz, tsha] and not stale:
+            count("do not fit the build they would be given to", zw)
+            continue
+        if have is not None and not a.updates:
+            if stale:
+                count("given to a build that has since changed: left", zw)
+            else:
+                zdiff += 1
+            continue
+        with open(os.path.join(zdir, zidx[d] + ".json"), "rb") as fh:
+            raw = fh.read()
+        if hashlib.sha1(raw).hexdigest() != dz:
+            continue                    # it changed under us: next run
+        try:
+            verdict, why = zonefit.fit(raw, os.path.join(a.maps, inv[d] + ".bsp"),
+                                       os.path.join(a.maps, inv[t] + ".bsp"))
+        except Exception as e:          # see take(): one file must not end every run
+            verdict, why = None, "%s: %s" % (type(e).__name__, e)
+        if verdict is None or verdict == "UNREADABLE":
+            # NOT MEASURED is not "does not fit": nothing is given, and nothing
+            # given is taken back.  What fit() raised is not remembered either.
+            if verdict is not None:
+                nofit[t] = [dz, tsha, verdict]
+            count("could not be measured: left as they are", zw)
+            print("  zones of %s and %s could not be measured (%s)" % (inv[d], inv[t], why))
+            continue
+        if verdict != "FIT":
+            nofit[t] = [dz, tsha, verdict]
+            count("do not fit the build they would be given to", zw)
+            print("  zones of %s are not given to %s: %s (%s)" % (inv[d], inv[t], verdict, why))
+            if stale:
+                # What was given was measured on another build of the target.
+                if quiet(t):
+                    aside = os.path.join(zdir, ".old", "%s.%s.json" % (zidx[t], have[:12]))
+                    os.makedirs(os.path.dirname(aside), exist_ok=True)
+                    os.replace(os.path.join(zdir, zidx[t] + ".json"), aside)
+                    # ...and the copy clients fetch, where it is that file.
+                    sstem = stems(a.site_zones, ".json").get(t) if a.site_zones else None
+                    try:
+                        if sstem:
+                            with open(os.path.join(a.site_zones, sstem + ".json"), "rb") as fh:
+                                ours = hashlib.sha1(fh.read()).hexdigest() == have
+                            if ours:
+                                os.remove(os.path.join(a.site_zones, sstem + ".json"))
+                    except OSError:
+                        pass
+                    del zidx[t]
+                    del given[t]
+                    count("taken back: the build they were given to has changed", zw)
+                else:
+                    count("given to a build that has since changed: left", zw)
+                _save(sp, st)
+            continue
+        nofit.pop(t, None)
+        if have is None and not a.updates and not unplayed(t):
+            zwait += 1
+            continue
+        if not quiet(t) or (have is None and not a.updates and not unplayed(t, True)) \
+                or not quiet(t):
+            count("in play, or cannot tell: waits", zw)
+            continue
+        if zone_put(t, raw, have is not None):
+            given[t] = {"of": inv[d], "zh": dz, "t": tsha}
+            count("given to a second build of the map", zw)
+            print("  zones of %s given to %s (%s)" % (inv[d], inv[t], why))
+        else:
+            count("one arrived meanwhile: left", zw)
+        _save(sp, st)
+    for t in [t for t in given if t not in inv]:
+        del given[t]
     # What clients fetch (cl_zonedl.qc): every published zone file held, where
     # the site has none of that name in any spelling.  Never over a file there.
     if a.site_zones and os.path.isdir(a.site_zones):
@@ -1365,7 +1564,33 @@ def run(a):
                        "ktier": ksf[k]["tier"], "of": inv[k]}
     if len(read) == 2:
         _save(cp, {"at": now, "maps": cat, "momnames": sorted(names)})
-    st["last"] = {"at": now, "new": len(new), "differs": len(diff), "took": took}
+    else:
+        # One list unread: the last whole reading stands, plus what is new now.
+        prev = _load(cp)
+        prev = prev.get("maps") if isinstance(prev, dict) else None
+        cat = dict(prev if isinstance(prev, dict) else {}, **{
+            k: c for k, c in cat.items()
+            if not isinstance(prev, dict) or k not in prev})
+    # The list the game fetches.  The first run records every name as
+    # `bootstrap`: New means it arrived after the list began (mapscan's rule).
+    boot = not isinstance(st.get("seen"), dict)
+    seen = table("seen")
+    today = time.strftime("%Y-%m-%d", time.gmtime(now))
+    if boot:
+        seen.update({k: [today, "bootstrap"] for k in inv})
+    rows = list_rows(a.maps, inv, cat, seen, today,
+                     time.strftime("%Y-%m-%d", time.gmtime(now - NEW_DAYS * 86400)))
+    for k in [k for k in seen if k not in inv]:
+        del seen[k]
+    tmp = os.path.join(a.state, "mapdl.txt.tmp")
+    with io.open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("FTESURF-MAPDL 1\n# written by surfd/mapwatch.py at %d -- do not edit\n"
+                 "# dl <name> <mode> <src> <tier> <kb> <first-iso> <new> <mtier> <ktier> [<of>]\n"
+                 % now)
+        fh.write("".join(r + "\n" for r in rows))
+    os.replace(tmp, os.path.join(a.state, "mapdl.txt"))
+    st["last"] = {"at": now, "new": len(new), "differs": len(diff), "took": took,
+                  "listed": len(rows)}
     _save(sp, st)
     if back_again:
         print("  installed under a name that already has runs (their build may not be "
