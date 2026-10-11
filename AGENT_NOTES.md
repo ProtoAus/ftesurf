@@ -3310,7 +3310,9 @@ needs Lex's sudo. Do not call the public HTTPS path verified before that step.
   `tools/mapscan_6h.ps1`) and NOT a Pi cron, because `maproster.py` hashes the
   build this install would load out of the two Steam installs and those are here.
   The cost is stated in that file: a sweep missed while the PC is off is missed,
-  not queued.
+  not queued. Since Patch 644 it fetches nothing the Pi can fetch itself: it
+  reads the Pi's catalogue back and sends the Beta list ("The library keeps
+  itself level").
 
 ### The map browser's parallel buffers (build 89, and a build-58 defect)
 
@@ -3477,9 +3479,12 @@ script rather than passing it as an argument, where `ps` would show it.
   The DEMOS behind those rows would be ~92,000 files, ~35 GB and a day of
   sustained traffic. So `tools/momfetch.py` fetches times for everything and
   demos stay bounded and on demand. Do not casually widen that.
-- **The map catalogue is the one input that cannot be fetched.** `tools/msml.py`
+- **The map catalogue is the one input that cannot be fetched** -- FALSE for
+  approved maps, measured 11 Oct (Patch 644, "The library keeps itself
+  level"): `/v1/maps` lists them anonymously, ids and boards included. Still
+  how `momtracks.tsv` is made: `tools/msml.py`
   reads the game's `momentum/_cache/*.dat` (`MSML`, two u32s, a zlib JSON
-  array) for map ids and each map's track list; there is no endpoint for either.
+  array) for map ids and each map's track list.
   Export it with `--out` and ship the TSV to any box without the game --
   `momfetch --tracks` reads that instead of `--cache`.
 - **Ask in the map's OWN gamemode.** The catalogue claims a board in nearly
@@ -8381,3 +8386,100 @@ blind fallback in `ui_map_backdrop` alive for as long as it lived.
   conclusion is the kind of thing this file exists to catch.
 - The map roster stays a Windows scheduled task (`FTESurf map scan`, PT6H) for
   the reason already recorded: it hashes builds that live on this workstation.
+  Since Patch 644 the Pi lists upstream and fetches for itself (next section).
+- **`--watch`'S ORDER, since Patch 644** (`ksfimport.py`, the constants'
+  comment). On 11 Oct 372 of 448 Forward main boards held ONE 20-row page
+  while surf_rookie's stage boards held 2,300 rows each: a viewed map's every
+  board, four styles of every stage and bonus, went to its end before any
+  other map's second page. Now a viewed map's main board to 1,000, then its
+  other boards to 100 and every map's main board to 200 in one class by
+  depth, then the rest. The request rate is unchanged (10 per 5 minutes).
+
+### The library keeps itself level: `surfd/mapwatch.py` (Patch 644) -- 2026-10-11
+
+- **LOOK AT THE HOST.** This file said the Pi served 1,743 of 1,748 catalogued
+  maps. It served 767 of 1,753 (465 of KSF's 929, 379 of Momentum's 1,164): the
+  5 Oct restore stopped at `surf_k`, and what `mapgrab.py` had fetched from
+  Momentum's CDN was never fetched again. `data/mapscan.log` had printed
+  "catalogued but not on the Pi: 1052" every six hours, to nobody.
+  `mapsync.py` put back the 586 this PC holds (1,349 after); the rest is the
+  watcher's.
+- **MOMENTUM'S CATALOGUE CAN BE FETCHED**, which this file and `mapgrab.py`
+  both denied. `/v1/maps?gamemode=1|2&expand=currentVersion,leaderboards`
+  answers anonymously for APPROVED maps (ranked and unranked boards: 758
+  surf_/bhop_ names) with bspHash, downloadURL, zoneHash and the tier.
+  `/v1/maps/submissions` answers 401, so the Beta list (319) still comes from
+  the game's cache on a PC: `mapscan.py` writes it to the Pi as
+  `data/mapwatch/extra.tsv`. Zones are anonymous too:
+  `/v1/maps/<id>?expand=currentVersionWithZones`, and the `zones` object as
+  sent is byte for byte the game's file and hashes to zoneHash.
+- **KSF'S SITE IS AHEAD OF ITS DRIVE.** `ksf.surf/maps` embeds its whole list
+  in the page (952; the sheet stops at 929, 17 April) with `/files/<map>.zip`,
+  one bare `.bsp`. OuiSURF/Surf_Maps on GitHub is a README naming the same two
+  Drive folders and sheet `maproster.py` already reads.
+- **A CS:S INSTALL'S COPY IS NOT KSF'S BUILD.** Of six maps this PC's
+  `cstrike/maps` matched KSF's own archive on three; surf_kitsune,
+  surf_beginner and surf_ace are a THIRD build, neither KSF's nor Momentum's.
+  So the second build of a name both list is KSF's archive, kept as
+  `<name>_css` where its bytes differ (`--variants`; ROADMAP 8). It gets no
+  zones from the watcher. `state.json`'s `made` is the record that a `_css`
+  file IS that archive; one without a record (somebody's own, or the state
+  lost) is compared again, never written over, and is not catalogued until
+  it matches.
+- **`import surfd` SETS umask 077.** A cron tool that imports it and writes a
+  file nginx serves must chmod it; the first cut wrote every map 0600, a 404
+  to every player. The suite's mode check measures on Linux only and says
+  "skipped" on Windows: run it on the Pi (it fails there with the chmod out).
+- **ZONES ARE WRITTEN NARROWLY**: only Momentum's, only on the hash, only for
+  a map held at the build that row publishes (49 held builds differ; zones are
+  world coordinates), never under `zones/local`, and never while a lobby is on
+  the map or the lobbies cannot be heard (a run in progress is in `data/parts`,
+  which nothing here reads). A NAME with a native run, save, parked run or
+  kept evidence gets its FIRST zone file only with `--updates`: the file
+  changes its zone crc and what a parked run resumes to. That includes a map
+  installed the same run -- the review's catch: a BSP lost on 5 Oct and
+  fetched again still has its runs, and the log names each one ("installed
+  under a name that already has runs").
+- **`--updates` IS OFF, and bhop_eazy is why to think before turning it on**:
+  it is one of the 49, and `pm_dettest` on it is the engine gate. A replaced
+  build orphans every run set on the old one; nothing reads `.old/` back.
+- **A REFUSAL IS ABOUT THE HOST, A BAD FILE ABOUT THE FILE.** A 403, 429, 503
+  or silence ends that host for the run and sends that file to the back of
+  the next; a bad hash, bad archive, 404 or the file's own 5xx is struck
+  (3, then 30 days), keyed with the build's hash. A 200 that does not start
+  as a BSP or an archive is the host's (a block page), refused at its first
+  bytes. The first cut had one 500 blocking a host for ever, and a 403 for
+  everything shelving every file.
+- **WHAT A REPLY CAN COST IN MEMORY IS NOT ITS SIZE.** `zipfile` inflates a
+  bzip2 or LZMA member all at once whatever the directory claims (a 313-byte
+  archive: 449 MB), so only stored and deflated members are read. The regex
+  for the page's escaped strings took ~280 MB per megabyte of one chunk; the
+  scan that replaced it takes 1. A list reply at the 6 MB cap parses to
+  ~200 MB, and a list page holding more maps than were asked for is refused
+  (every name is kept). `be_small()` caps the process at 1.5 GB and marks it
+  first for the OOM killer.
+- **NO READ CLOCK COVERS A REPLY'S HEADERS.** The body clocks start at the
+  first body byte and the socket timeout restarts at every byte, so a host
+  dripping headers held the lock for ever (the review ran it: 12 s against a
+  3 s limit). `opened()` gives that wait its own SIGALRM deadline
+  (`OPEN_SECONDS`), ended as a refusal by that host; a `faulthandler` watchdog
+  exits a run that outlives every clock. Linux only: the suite's case for it
+  says "skipped" on Windows and fails on the Pi with the alarm out.
+- **HISTORY IS READ AT THE WRITE, NOT AT THE START.** Round 3's fix read
+  `played()` once before the downloads, and the next review wrote a zone file
+  under a run set meanwhile. It is read again (0.6 s on the Pi, 5 s cold)
+  between the zone request and the write, with a look at the lobbies on BOTH
+  sides of that read: one that came during the request is seen before it can
+  slip a run past it. A history folder that is listed and will not open, or a
+  game data folder that is not there, is "cannot tell", not "no runs".
+- **FIVE REVIEW ROUNDS, AND WHY IT STOPPED.** Rounds 1 to 4 each found a way
+  to put a zone file under a run or to hurt the box (round 4's was a
+  regression from round 3's fix). The fifth, on the zone-write path alone,
+  found a window one `played()` wide and the missing-folder reading; both are
+  closed above and have a failing mutant. Nothing after that was reviewed.
+- **Cron**: `23 */6 * * *`, `flock -n /tmp/surfd-mapwatch.lock`, `--variants 20
+  --site-zones /srv/nvme/ftesurf-site/zones --go`; state `data/mapwatch/`
+  (`catalogue.json` is what `mapscan.py` reads back); log
+  `logs/mapwatch.log`. About 10 list requests a run when nothing is new.
+- **THE SCAN ON THIS PC RUNS `C:\FTESurf\tools\mapscan.py`**, and that
+  checkout is not kept at origin/main: the task runs whatever is there.

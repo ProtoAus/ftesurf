@@ -166,6 +166,15 @@ COOLDOWN_MAX = 48 * 3600
 CATALOG_DAYS = 7           # re-list KSF's maps this often
 REFRESH_DAYS = 14          # re-ask a board's first page this often
 WANT_DAYS = 14             # a map viewed this recently is crawled first
+# --watch's order, by ranks paged (sweep_maps): a viewed map's Forward main
+# board to WANT_FIRST; then, shallowest first and in one class, its other
+# boards to WANT_REST and EVERY map's Forward main board to MAIN_FIRST; only
+# then deeper.  Until 11 Oct a viewed map's every board went to its END first
+# (30 stages in 4 styles is thousands of requests): 372 of 448 main boards
+# held one page.
+WANT_FIRST = 1000          # cl_online.qc's OB_MAXROW
+WANT_REST = 100
+MAIN_FIRST = 200           # surfd.BOARD_LIMIT_MAX
 STRIKES = 3                # parks on one board before it is set aside
 SKIP_DAYS = 30             # how long a board stays set aside
 REWALK_DAYS = 60           # an idle crawl walks its stalest board again this often
@@ -591,14 +600,16 @@ def rewalk_step(cache, idx, maps, now):
 
 
 def sweep_maps(maps, cache, depth, pacer, modes=(0,), prio=(), fetched=None,
-               idx=None):
+               idx=None, first=(0, 0, 0)):
     """Look the maps up, then fetch pages shallowest first until the budget or
     the work runs out -- so an interrupted sweep leaves every board equally deep.
 
-    Boards of `prio` maps go first.  A style other than Forward is asked for its
-    stages and bonuses only once its main board has a row: most maps have no
-    Sideways times at all.  Each page fetched is appended to `fetched` as
-    (map, zone, mode, rows).
+    Boards of `prio` maps go first.  `first` is (WANT_FIRST, WANT_REST,
+    MAIN_FIRST), in ranks paged: which boards go before the rest, and how far
+    (the constants' comment has the order).
+    A style other than Forward is asked for its stages and bonuses only once
+    its main board has a row: most maps have no Sideways times at all.  Each
+    page fetched is appended to `fetched` as (map, zone, mode, rows).
 
     Returns ({map: info}, maps KSF does not have, boards still wanting pages)."""
     infos, absent = {}, 0
@@ -613,11 +624,18 @@ def sweep_maps(maps, cache, depth, pacer, modes=(0,), prio=(), fetched=None,
             infos[mp] = info
     prio = set(prio)
     heap = []
+    want_first, want_rest, main_first = first
+
+    def rank(mp, z, m, n):
+        main = z == 0 and m == 0
+        if mp in prio:
+            return 0 if main and n < want_first else 1 if n < want_rest else 2
+        return 1 if main and n < main_first else 3
 
     def push(mp, z, m):
         st = board_state(cache, idx, mp, z, m)
         if wants_more(st, depth):
-            heapq.heappush(heap, (0 if mp in prio else 1, st[0], mp, z, m))
+            heapq.heappush(heap, (rank(mp, z, m, st[0]), st[0], mp, z, m))
 
     for mp, info in infos.items():
         zones = zones_of(info)
@@ -818,7 +836,8 @@ def watch_mode(args, have, cache):
                 refreshed = refresh_step(cache, idx, maps, prio, pacer,
                                          max(1, args.max // 4), now, fetched)
             _, _, left = sweep_maps(sorted(maps), cache, -1, pacer, sorted(KSF_MODES),
-                                    prio, fetched, idx)
+                                    prio, fetched, idx,
+                                    (WANT_FIRST, WANT_REST, MAIN_FIRST))
             if not left and pacer.left() > 0 and cat["done"]:
                 again = rewalk_step(cache, idx, maps, now)
                 if again:

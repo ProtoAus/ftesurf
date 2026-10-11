@@ -39,6 +39,21 @@ demos we do not have):
   the website tabs them. Stages and bonuses were already imported. The game's
   board has no style picker yet (BACKLOG).
 
+**11 Oct** (Patch 644. Lex: every KSF and Momentum surf/bhop map on the Pi,
+new ones fetched as they come out, a CS:S / Momentum choice, more than one
+page of KSF records):
+- 7: the audit is done and now standing. The Pi served 767 of 1,753
+  catalogued maps; `mapsync.py` put back 586, and `surfd/mapwatch.py` (cron,
+  six-hourly) reads Momentum's approved list and KSF's own site and fetches
+  what is new, Momentum's zones included. Beta maps come through this PC's
+  game cache. A new map's picture and stage count still wait (BACKLOG).
+- 5: most KSF boards held one page because of the crawl's order, not its
+  depth limit; main boards go first now. The game's board list took no mouse
+  wheel, so its next page was a thumb-drag away: Patch 646.
+- 8: started. `mapwatch.py --variants` keeps KSF's own archive of a name
+  Momentum also lists as `<name>_css` where the bytes differ. Not yet: their
+  zones, KSF's times filed under them, one row with a switch (BACKLOG).
+
 ---
 
 ## 1. Download and connect status under the map list

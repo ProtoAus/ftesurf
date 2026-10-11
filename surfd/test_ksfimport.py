@@ -10,11 +10,14 @@ was written.  surfd is imported against a throwaway home.
 """
 
 import argparse
+import atexit
 import http.client
 import io
 import json
+import logging
 import os
 import re
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -38,6 +41,12 @@ import surfd as S        # noqa: E402
 import ksfimport as K    # noqa: E402
 
 REAL_FETCH = K.fetch     # the cases below swap in FakeKSF
+
+
+@atexit.register
+def _cleanup():
+    logging.shutdown()      # the logger holds a file in HOME on Windows
+    shutil.rmtree(HOME, ignore_errors=True)
 
 STAGED = {"isLinear": False, "cp_count": 2, "b_count": 1}
 LINEAR = {"isLinear": True, "cp_count": 4, "b_count": 0}
@@ -171,6 +180,37 @@ def case_shallowest_first_and_cursor():
           [p for p in fake.asked if "search" in p], [])
     check("...and asks the next pages",
           pages(fake), [("surf_b", 0, 21), ("surf_a", 0, 41), ("surf_b", 0, 41)])
+
+
+def case_main_boards_first():
+    one = {"isLinear": False, "cp_count": 1, "b_count": 0}     # main and stage 1
+    boards = {("surf_p", 0): 100, ("surf_p", 1): 60, ("surf_q", 0): 100, ("surf_q", 1): 60}
+    fake = FakeKSF({"surf_p": one, "surf_q": one}, boards)
+    K.fetch = fake
+    K.sweep_maps(["surf_p", "surf_q"], fresh_cache(), -1, K.Pacer(0, 13),
+                 prio=["surf_p"], first=(60, 40, 40))           # 2 searches + 11
+    check("a viewed map's main board to WANT_FIRST; then its other boards to WANT_REST "
+          "and every main board to MAIN_FIRST, shallowest first; then deeper",
+          pages(fake),
+          [("surf_p", 0, 1), ("surf_p", 0, 21), ("surf_p", 0, 41),
+           ("surf_p", 1, 1), ("surf_q", 0, 1), ("surf_p", 1, 21), ("surf_q", 0, 21),
+           ("surf_p", 1, 41), ("surf_p", 0, 61), ("surf_p", 1, 61), ("surf_p", 0, 81)])
+    fake = FakeKSF({"surf_p": one, "surf_q": one}, boards)
+    K.fetch = fake
+    K.sweep_maps(["surf_p", "surf_q"], fresh_cache(), -1, K.Pacer(0, 13),
+                 prio=["surf_p"], first=(60, 20, 60))
+    check("...and past WANT_REST a viewed map's other boards wait for the main boards",
+          pages(fake),
+          [("surf_p", 0, 1), ("surf_p", 0, 21), ("surf_p", 0, 41),
+           ("surf_p", 1, 1), ("surf_q", 0, 1), ("surf_q", 0, 21), ("surf_q", 0, 41),
+           ("surf_p", 1, 21), ("surf_p", 1, 41), ("surf_p", 0, 61), ("surf_p", 1, 61)])
+    fake = FakeKSF({"surf_p": one, "surf_q": one}, boards)
+    K.fetch = fake
+    K.sweep_maps(["surf_p", "surf_q"], fresh_cache(), -1, K.Pacer(0, 8), prio=["surf_p"])
+    check("control: without `first`, a viewed map's every board goes to its end first",
+          pages(fake),
+          [("surf_p", 0, 1), ("surf_p", 1, 1), ("surf_p", 0, 21), ("surf_p", 1, 21),
+           ("surf_p", 0, 41), ("surf_p", 1, 41)])
 
 
 def case_linear_asks_no_stages():
@@ -406,14 +446,14 @@ def case_watch():
           ksf_rows("map='surf_w07'"), 20)
     fake.asked = []
     tick(cache, mapsdir, 3)
-    check("tick 2: the wanted map's other styles before any other map",
-          pages(fake, modes=True), [("surf_w07", 0, 1, 1), ("surf_w07", 0, 1, 2),
-                                    ("surf_w07", 0, 1, 3)])
-    fake.asked = []
-    tick(cache, mapsdir, 3)
-    check("tick 3: the wanted map to its end, then the shallowest board",
+    check("tick 2: the wanted map's Forward board to its end, then main boards by depth",
           pages(fake, modes=True), [("surf_w07", 0, 21, 0), ("surf_w07", 0, 41, 0),
                                     ("surf_w00", 0, 1, 0)])
+    fake.asked = []
+    tick(cache, mapsdir, 3)
+    check("tick 3: ...the wanted map's other styles in that same turn, not ahead of it",
+          pages(fake, modes=True), [("surf_w01", 0, 1, 0), ("surf_w02", 0, 1, 0),
+                                    ("surf_w03", 0, 1, 0)])
     check("the wanted map is whole on the board", ksf_rows("map='surf_w07'"), 45)
     tick(cache, mapsdir, 400)
     check("a map that is not installed is never asked about",
@@ -468,7 +508,8 @@ def case_watch_dry_and_owed():
     finally:
         K.write_rows = real
     check("a failed write leaves its boards owed",
-          (rc, sorted(b[0] for b in K.owed_boards(cache))), (1, ["surf_d00"] * 3))
+          (rc, sorted(b[0] for b in K.owed_boards(cache))),
+          (1, ["surf_d00", "surf_d00", "surf_d01"]))
     fake.asked = []
     tick(cache, mapsdir, 0)
     check("the next tick files them whole, asking nothing",
@@ -624,11 +665,11 @@ def case_review_round2():
 
     K.write_rows = locked
     try:
-        tick(cache, mapsdir, 4)             # the list, then page 1 of three styles
+        tick(cache, mapsdir, 2)             # the list, then Forward page 1
     finally:
         K.write_rows = real
     fake.asked = []
-    tick(cache, mapsdir, 2)                 # Backwards page 1, Forward page 2
+    tick(cache, mapsdir, 1)                 # Forward page 2
     check("control: the second tick paged the owed Forward board again",
           ("surf_o00", 0, 21, 0) in pages(fake, modes=True), True)
     held = len(K.board_load(cache, "surf_o00", 0)["rows"])
@@ -731,7 +772,8 @@ def case_board_reads_ksf_styles():
 
 def main():
     for case in (case_mapping, case_exact_name, case_paging_and_depth,
-                 case_shallowest_first_and_cursor, case_linear_asks_no_stages,
+                 case_shallowest_first_and_cursor, case_main_boards_first,
+                 case_linear_asks_no_stages,
                  case_write_and_filter, case_refusal, case_no_answer,
                  case_modes, case_merge_and_refresh, case_watch,
                  case_watch_refusal_parks, case_watch_dry_and_owed,

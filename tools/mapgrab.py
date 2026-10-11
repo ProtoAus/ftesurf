@@ -42,9 +42,12 @@ short .bsp under the real name reads as installed, stops the Download button
 offering it, and mismatches mapcrc -- a silent TF_NOMAP on every run played on
 it. An interrupted curl must leave nothing.
 
+SUPERSEDED ON THE PI BY surfd/mapwatch.py (Patch 644), which lists upstream
+itself, runs from cron and fetches zones.  This stays for a by-hand fill.
+
 WHAT THIS DOES NOT FETCH.  Zone files. The record carries a `zoneHash` but no
-zone URL, so there is nothing cached to fetch from and a zone would need a live
-API query. A map without maps/zones/online/<map>.json loads and cannot be timed
+zone URL, so there is nothing cached to fetch from and a zone needs a live
+API query (anonymous, it turned out: mapwatch.py makes it). A map without maps/zones/online/<map>.json loads and cannot be timed
 (see mapsync.py's header) -- but that is the existing condition for most of the
 library, not a regression this introduces: 531 of 1312 local maps have a zone.
 """

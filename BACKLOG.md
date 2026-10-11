@@ -28,6 +28,74 @@ From its one review (read, not run) and what the arm does not reach.
 - **A notch at the top or the bottom of a list is still taken**, and does
   nothing.
 
+## The map library: what Patch 644 left -- 2026-10-11
+
+- **KSF's build of a map is a second row, not a switch, and has no clock.**
+  `mapwatch.py --variants` installs it as `<name>_css` (ROADMAP 8). Still to
+  do, each its own piece: (a) zones -- `tools/census/zonefit.py
+  <name>=<name>_css` then `tools/zoneinstall.py`, the measured donation that
+  did the 66 `_ksf` ports; check `zones(sv): N on <name>_css` in a lobby log.
+  (b) KSF's times are filed under the plain name, which is Momentum's build
+  (`ksfimport.py`, `maps = names & have`): file them under the variant where
+  one is held, and move the rows already there; check
+  `/api/board?map=<name>_css&tier=ksf`. (c) The menu reads no `variant` line
+  (`ui_meta_load`, m_main.qc): one row with a Momentum / CS:S switch.
+  (d) A renamed BSP loses its baked cubemaps and soundscape: both are looked
+  up by the file's basename (engine `plugins/hl2/mod_vbsp.c:10825-10860`,
+  `cl_soundscape.qc:644`).
+- **A new map reaches a player's list only with a release.** `data/mapdl.txt`
+  ships; the Pi writes no list of its own. Wanted: the watcher writes it, a
+  public route serves it (nginx: needs the owner's sudo, `maps.nginx` is a
+  list of locations) and the menu fetches it as `cl_zonedl.qc` fetches zones.
+- **This PC's six-hourly scan runs `C:\FTESurf\tools\mapscan.py`,** and that
+  checkout was 100 commits behind origin/main on 11 Oct, with uncommitted
+  files of its own. Until it is brought up, the task's `mapdl.txt` has no row
+  for a map only KSF's site lists or for a `_css` build, and sends no Beta
+  list. Check: `data/mapscan.log` says "the Pi's catalogue: N names".
+- **A new map has no tier row, picture or stage count** until
+  `tools/mapmeta.py` is run by hand: the scan does not run it, because a
+  re-run has lost rows ("Re-running `tools/mapmeta.py` LOSES DATA", below).
+  Its tier still shows, from `mapdl.txt`.
+- **Momentum's boards for a new map are not crawled**: `momwatch.py` reads
+  `data/momtracks.tsv`, exported from a PC's game cache (`tools/msml.py`).
+  The watcher's list carries the same ids and boards.
+- **KSF's new maps cannot be timed.** KSF publishes no zones; the 14 names on
+  its site and in no catalogue here on 11 Oct (10 released since May) install
+  and load with no start or end.
+- **`--updates` is off, and 49 held builds are not Momentum's current one**
+  (bhop_eazy among them, the engine gate's map). With it on, a build and its
+  zones are two renames, not one; nothing reads `<maps>/.old/` back, so a
+  replaced build's runs and recordings have no file to be checked against.
+- **`surfd._MAPNAME_OK` ends in `$`** (surfd.py:1672), which also matches a
+  name with a trailing newline: `_scan_maps` would index a file so named and
+  hand the stem to `changelevel`. Check: `_MAPNAME_OK.match("surf_x\n")`.
+  The 644 review's finding; `mapwatch.py` uses `fullmatch`.
+- **`momgrab.py` never looks again at a demo it filed `nomap`** once the map
+  is installed, so its line is drawn over whatever build arrived (the 644
+  review, read not run).
+- **KSF's bonus tiers are not read**: the community sheet
+  (`1Hft-1XdK7lge5WWqP5hrNsSUJw_Ss2PS-t-c3CTawpQ`) grades bonuses by letter
+  (Y, X, S, A ...), about 140 rows.
+- **From the third review, left as found** (none can write under a run with
+  cron's flags). A map installed under a name that already has runs is given
+  TODAY's published build and only a log line says so: how many such names
+  the Pi has was not counted. Under `--updates` only: a zone-only replacement
+  looks at the lobbies before its request and not again before the write;
+  zone asks in the build loop sit under neither `--zones` nor the deadline;
+  `.old` gets a hard link to a symlink if the held BSP is one. A failed KSF
+  archive counts 0 bytes against `--max-gb`; a body cut short with no
+  Content-Length is struck as a bad file; `publish()`'s fallback after a link
+  error that is not EEXIST is check-then-replace; the site copy does not know
+  `zones/local` overrides; the first run hashes every held Momentum-listed
+  BSP unpaced, dry run included; a file arriving as `Surf_X.bsp` does not
+  block `surf_x.bsp`; `zones/online`, if absent, is made 0700.
+- **From the fourth, likewise.** The site copy of a zone file takes neither
+  look (they are the bytes the server already times by). A `_css` install
+  under a name with runs prints no notice. A `_css` file recorded as KSF's
+  archive is not compared again if KSF later replaces that archive. A box
+  with none of `runs/resume/saves/evidence` reads as no history. A run the
+  watchdog ends records nothing about the request in flight.
+
 ## Rounded corners: what Patch 642 left -- 2026-10-11
 
 - **A mask's name could be redefined after billions of draws.** The engine
