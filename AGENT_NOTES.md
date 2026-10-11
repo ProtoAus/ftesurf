@@ -8679,7 +8679,10 @@ blind fallback in `ui_map_backdrop` alive for as long as it lived.
   cron line takes with `flock -n`, so a tick starting meanwhile is skipped),
   waits `KSF_WAIT` for a tick in progress, and asks KSF nothing while
   `data/ksf/.refused` says the crawl is parked. The lock cases need flock:
-  "skipped" on Windows, graded on the Pi, where six mutants fail.
+  "skipped" on Windows, graded on the Pi, where six mutants fail. DEPLOYED
+  11 Oct 13:48Z from `0aa7e64` (`-Only surfd/mapwatch.py -NoBackup
+  -NoReload`); a dry run on the Pi then printed `ksf: NOT READ (it refused
+  its crawl ...: nothing asked until 2026-10-11 19:31 UTC)`.
 - `mapscan.py --go` from `C:\FTESurf` at 13:40Z: the Pi's catalogue 1,647
   names, 37 the roster did not have; 319 Beta names sent; `mapdl.txt` 1,787
   rows (1,279 in the 0.1.24 archive, 705 lines before that).
