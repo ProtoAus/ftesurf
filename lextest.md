@@ -42,6 +42,21 @@ a few sizes, drift and fade out.
 - **Live since 11 Oct 14:53 UTC (12 Oct, 01:53 here)** on both installs and
   all twelve lobbies. Restart the game to get it.
 
+## 00. 12 Oct — the 0.1.24 download keeps eight lines (Patch 654)
+
+My sixty-four-line change went to the lobbies before I had run it on the
+engine in the 0.1.24 download, and that engine closes when about forty lines
+are ticked (the game simply exits). It was live that way from 01:37 your
+time until this fix went out, with nobody on a lobby when it went out.
+- **Now:** a copy with the older engine keeps the old limit of eight and says
+  why when you tick a ninth. `C:\FTESurf` and `C:\FTEQuake` have the new
+  engine and draw sixty-four.
+- **Your Desktop copy** is the 0.1.24 download, so it stays at eight until
+  the next release.
+- **For players, sixty-four lines (and the cheaper drawing) arrive with the
+  next release**, which needs the new engine in it. That is the release
+  session's call and yours.
+
 ## 00. 12 Oct — up to sixty-four run lines (Patch 649)
 
 From your message: eight was the most you could tick, your injectable drew

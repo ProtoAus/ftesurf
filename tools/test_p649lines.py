@@ -33,6 +33,11 @@ The same run is loaded into every slot under one camera, which rides a replay of
 
 It also prints what the two crowds cost (QC time a frame); that is not graded.
 
+AN OLDER ENGINE (Patch 654).  Run with `--client <an exe before Patch 645>` the log says
+`native builtins 0`, and three other checks are made instead: the client reaches the end of
+the cfg, sixty-four asks leave eight lines drawn, and a ninth is refused in words.  Without
+654 the first fails: that engine dies as the fortieth line is added.
+
 Three verdicts: passed (exit 0), failed (1), not measured (2).
 """
 import pathlib
@@ -86,6 +91,16 @@ def cursors(body):
     return (float(t.group(1)), rows) if t else None
 
 
+def report(results):
+    passed = sum(1 for _, ok, _ in results if ok)
+    failed = sum(1 for _, ok, _ in results if ok is False)
+    unmeasured = sum(1 for _, ok, _ in results if ok is None)
+    for name, ok, detail in results:
+        print('%-12s %s: %s' % ('ok' if ok else ('NOT MEASURED' if ok is None else 'FAIL'), name, detail))
+    print('P649: %d passed, %d failed, %d not measured, of %d' % (passed, failed, unmeasured, len(results)))
+    return 1 if failed else (2 if unmeasured else 0)
+
+
 def main():
     if len(sys.argv) != 2:
         raise SystemExit(__doc__)
@@ -98,6 +113,23 @@ def main():
         results.append((name, ok, detail))
 
     n8, n64 = facts(block(text, 'P649 CROWD n8')), facts(block(text, 'P649 CROWD n64'))
+    if 'lines: native builtins 0 ' in text and 'lines: native builtins 1 ' not in text:
+        # Patch 654: an engine before Patch 645.  It has no line builtins and dies when one
+        # polygon batch reaches 32768 vertices, which the fortieth line did; it keeps eight.
+        said = len(re.findall(r'^scores lineat <1\.\.8> <path> \[leg\]', text, re.M))
+        last = [l for l in text.splitlines() if l.strip()][-1][:70]
+        check('an older engine: the client reaches the end', 'P649 end' in text, 'last line: %s' % last)
+        if not (n8 and n64):
+            check('an older engine: eight lines, asked for sixty-four', None,
+                  'status blocks: %s %s' % (bool(n8), bool(n64)))
+        else:
+            check('an older engine: eight lines, asked for sixty-four',
+                  n8['drawn'] == 8 and n64['drawn'] == 8 and n64['seg'] == n8['seg'],
+                  '%d drawn (%d segments), then %d drawn (%d segments)'
+                  % (n8['drawn'], n8['seg'], n64['drawn'], n64['seg']))
+        check('an older engine: a ninth line is refused in words', said >= 56,
+              '%d usage lines naming 1..8 (fifty-six asks past the eighth, and more after)' % said)
+        return report(results)
     if not (n8 and n64):
         check('eight, then sixty-four', None, 'status blocks: %s %s' % (bool(n8), bool(n64)))
     else:
@@ -183,13 +215,7 @@ def main():
     if cost:
         print('QC time a frame (not graded): ' + ', '.join('%s %.2f ms' % (k, v / 1000) for k, v in cost.items()))
 
-    passed = sum(1 for _, ok, _ in results if ok)
-    failed = sum(1 for _, ok, _ in results if ok is False)
-    unmeasured = sum(1 for _, ok, _ in results if ok is None)
-    for name, ok, detail in results:
-        print('%-12s %s: %s' % ('ok' if ok else ('NOT MEASURED' if ok is None else 'FAIL'), name, detail))
-    print('P649: %d passed, %d failed, %d not measured, of %d' % (passed, failed, unmeasured, len(results)))
-    return 1 if failed else (2 if unmeasured else 0)
+    return report(results)
 
 
 if __name__ == '__main__':

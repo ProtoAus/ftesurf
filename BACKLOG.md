@@ -5,6 +5,20 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Run lines on an engine before 645: what Patch 654 left -- 2026-10-12
+
+- **Eight WHOLE lines at 3 px still close that engine** (`hud_lines_order 0`,
+  `hud_watch_path_px 3`): the case Patch 645's notes name, as it was before
+  649. The limit of eight keeps a windowed crowd far under the batch size; it
+  does not count vertices. A count in `Line_Emit` that stops the QC loop
+  short of 32768 where `checkbuiltin(lines_draw)` is false would close it,
+  at the price of a line cut short. The cure players get is a release with
+  the 645 engine.
+- **Sixty-four lines reach players only with that release.** 0.1.24 has the
+  625 engine and stays at eight.
+- **Not measured: a lobby.** Both engines were run offline on one map with
+  one recording in every slot.
+
 ## Sixty-four run lines: what Patch 649 left -- 2026-10-12
 
 - **Names and the run graph are places 1..8, whatever is ticked.** Marks go

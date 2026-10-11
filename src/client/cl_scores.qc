@@ -1194,6 +1194,23 @@ float(string id, vector pos, vector sz, string label, float on) Scores_Chip =
 ===========================================================================
 */
 #define SB_LNMAX   64                 // Patch 649: board line i is slot LN_BOARDSLOT(i) (cl_lines.qc)
+// Patch 654: an engine before Patch 645 has no line builtins, so cl_lines.qc's own loop
+// draws, six to ten vertices a segment into one polygon batch, and that engine dies
+// when a batch reaches 32768 (ENGINE_PATCHES 645).  Measured on the 625 exe: the
+// fortieth line.  There the limit is the eight it always was.
+#define SB_LNOLD   8
+float() Scores_LineMax =
+{
+	return checkbuiltin(lines_draw) ? SB_LNMAX : SB_LNOLD;
+};
+void() Scores_LineFull =
+{
+	if (Scores_LineMax() < SB_LNMAX)
+		print(sprintf("^3scores:^7 %g lines at most with this engine (a newer game draws %g) -- untick one first.\n",
+		              SB_LNOLD, SB_LNMAX));
+	else
+		print(sprintf("^3scores:^7 %g lines at most -- untick one first.\n", SB_LNMAX));
+};
 #define SBL_FREE   0
 #define SBL_FETCH  1                  // waiting for its download
 #define SBL_QUEUE  2                  // the file is here, waiting for the builder
@@ -1312,12 +1329,12 @@ void(float row) Scores_LineToggle =
 			print(sprintf("scores: line %g off\n", i + 1));
 		return;
 	}
-	for (i = 0; i < SB_LNMAX; i = i + 1)
+	for (i = 0; i < Scores_LineMax(); i = i + 1)
 		if (sb_ln_st[i] == SBL_FREE)
 			break;
-	if (i >= SB_LNMAX)
+	if (i >= Scores_LineMax())
 	{
-		print(sprintf("^3scores:^7 %g lines at most -- untick one first.\n", SB_LNMAX));
+		Scores_LineFull();
 		return;
 	}
 	sb_ln_key[i] = strzone(key);
@@ -1421,10 +1438,10 @@ void() Scores_LineAll =
 	{
 		if (!Scores_LineAllRow(row))
 			continue;
-		for (i = 0; i < SB_LNMAX; i = i + 1)
+		for (i = 0; i < Scores_LineMax(); i = i + 1)
 			if (sb_ln_st[i] == SBL_FREE)
 				break;
-		if (i >= SB_LNMAX)
+		if (i >= Scores_LineMax())
 		{
 			left = left + 1;            // every slot holds a line: counted, for the sentence
 			continue;
@@ -1435,10 +1452,11 @@ void() Scores_LineAll =
 	sb_ln_quiet = FALSE;
 	if (!added && left)
 		Scores_Note(sprintf("all %g slots hold lines of other lists -- `scores lines clear` drops them",
-		                    SB_LNMAX));
+		                    Scores_LineMax()));
 	else if (left)
-		Scores_Note(sprintf("%g ticked, the first of %g with a recording (%g at most)",
-		                    added, added + left, SB_LNMAX));
+		Scores_Note(sprintf("%g ticked, the first of %g with a recording (%g at most%s)",
+		                    added, added + left, Scores_LineMax(),
+		                    (Scores_LineMax() < SB_LNMAX) ? " with this engine" : ""));
 	else if (!added)
 		Scores_Note("no row of this list has a recording to draw");
 	else
@@ -3595,9 +3613,9 @@ float(string cmd) Scores_ConsoleCommand =
 			local float ls;
 
 			ls = stof(argv(2));
-			if (ls < 1 || ls > SB_LNMAX)
+			if (ls < 1 || ls > Scores_LineMax())
 			{
-				print(sprintf("scores lineat <1..%g> <path> [leg]\n", SB_LNMAX));
+				print(sprintf("scores lineat <1..%g> <path> [leg]\n", Scores_LineMax()));
 				return TRUE;
 			}
 			ls = ls - 1;

@@ -4780,6 +4780,29 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+### An engine before 645 keeps eight run lines (Patch 654) — 2026-10-12
+
+- `Scores_LineMax()` (`cl_scores.qc`) is `SB_LNMAX` where
+  `checkbuiltin(lines_draw)`, and `SB_LNOLD` (8) where not. The three ways a
+  line is ticked ask it: a row's box, the LINE heading, `scores lineat`. The
+  refusal says a newer game draws sixty-four.
+- WHY: without the builtins `Line_Emit`'s own loop draws, six vertices a
+  segment (ten for a wide line) into ONE polygon batch, and an engine before
+  Patch 645 dies when a batch reaches 32768 (`PF_R_PolygonEnd`, ENGINE_PATCHES
+  645). Eight windowed lines are about 5,500. Patch 649 raised the limit for
+  every engine and was live on the lobbies that way from 14:37Z on 11 Oct
+  until this patch's deploy.
+- MEASURED on a copy of the 625 exe (`183faf44`, what 0.1.24 ships), the 649
+  arm's cfg: with 649's csprogs `95f30046` eight lines draw and the client
+  dies as the fortieth is added; with 654's the fifty-six asks past the
+  eighth are refused in words, eight lines are drawn (920 segments, as
+  before) and the client reaches the end.
+- THE ARM is 649's: `tools/test_p649lines.py` reads `native builtins 0` in
+  the log and grades those three things instead (run it with `--client <an
+  exe before 645>`). On the 645 engine the same build is 11 of 11.
+- THE LESSON IS IN 649'S NOTES: a limit that is raised is re-run on every
+  engine that is out, not on the newest.
+
 ### Sixty-four run lines (Patch 649) — 2026-10-12
 
 - SLOTS 0..10 ARE WHERE THEY WERE (0 the replay, 1..8 board lines, 9 and 10 the
