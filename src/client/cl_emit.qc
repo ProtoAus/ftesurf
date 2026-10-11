@@ -202,6 +202,7 @@ void() Emit_Alloc =
 	em_lit   = memalloc(sizeof(float) * EM_MAX);
 	em_ltacc = memalloc(sizeof(float) * EM_MAX);
 };
+void() Emit_AllocLife;
 
 // ------------------------------------------------------------------ counters
 float  em_seen[EK_N];           // found in the lump
@@ -813,6 +814,276 @@ float(float cls) Emit_FlameSlot =
 };
 
 /*
+===========================================================================
+  func_dustmotes the way Source draws it (Patch 648).
+
+  c_func_dust.cpp is the whole of it.  A mote is a square of particle/sparkles
+  whose half-side is rand(SizeMin, SizeMax) / 10000 of its DEPTH (:73, :234),
+  so it is the same few pixels at any distance: 1.4 to 2.9 across at 1080p for
+  the usual 10 and 20.  It is the entity's Color at Alpha, times a sine through
+  its life (:58-59), times a fall to nothing at DistMax (:68).  It lives
+  rand(LifetimeMin, LifetimeMax) seconds (:231) and leaves at
+  RandomVector(-SpeedMax, SpeedMax) less FallSpeed down (:227-228).
+
+  The ftesurf_dustmote_N blocks draw one median mote for the whole library, in
+  six colours, several units wide.  Every number above is the ENTITY'S, and
+  pointparticles carries none of them, so:
+
+  EACH LOOK ON THE MAP IS ITS OWN r_part BLOCK, written at map load (the library's
+  worst map has 27), and what differs per particle rides the colour channels
+  to ONE shader that draws the sprite itself:
+      red        the mote's size as a fraction of its depth
+      green      its life, seconds
+      blue       the entity's Color, r + 256 g + 65536 b
+      alpha      its age, seconds (alpha 0, alphadelta 1)
+      texcoord   whole part of s: DistMax; of t: Alpha, + 256 when Frozen
+  The engine's quad only has to contain the sprite.
+
+  "CORRECT AT ANY SIZE" IS THE SHADER, NOT A TEXTURE.  A two-pixel sprite cut
+  from a 32-pixel texture is whatever four texels the pixel centres land on, and
+  twinkles as it drifts.  particle/sparkles is a plain shape -- solid out to a
+  quarter of the half-side, falling in a straight line to nothing at 1.17, cut
+  off square (measured off the .vtf) -- so it is computed per pixel from four
+  taps, and a mote thinner than the grid can hold (0.6 px) is held at that and
+  dimmed by the area it lost.
+
+  THE VELOCITY IS NOT SOURCE'S CURVE, IT IS ITS DISPLACEMENT.  Source pulls x
+  and y towards the wind at 50 u/s^2 (:108-126, and there is no wind here), so a
+  13 u/s mote stops sideways inside 0.26 s and then only rises or sinks.  With a
+  life over 3.6 s its alpha is still under 5% by then; at surf_dune's 1 to 3 s
+  it is 16 to 53%, and Source's early dash is not drawn.  The engine has no such
+  pull, so each axis gets the constant speed that covers the same ground in the
+  mean life.
+
+  NOT DRAWN: env_wind, and the brush's own shape (a point is taken in its box).
+  func_dustcloud is not touched: Source never scales it with depth.
+===========================================================================
+*/
+#define DM_MAX         48
+#define DM_FROZEN_LIFE 12       // Source's Frozen motes never die; these are replaced
+#define DM_POOL        2048     // MAX_TOTAL_PARTICLES, particle_iterators.h:20: every
+                                // old-style particle in the world shares it, and a
+                                // spawn into a full pool is dropped (particlemgr.cpp:1150)
+#define DM_REACH       2        // a volume emits to this many DistMax: Source fades a
+                                // mote by its view DEPTH (:63-68), and at the corner of
+                                // a 16:9 screen at fov 90 that is 1.83 times nearer than
+                                // the mote is
+
+string dm_look[DM_MAX];         // "r g b alpha smin smax lmin lmax dist frozen", strzoned
+float *dm_fx;                   // [DM_MAX] handles
+float  dm_n;
+float  dm_over;                 // emitters whose look found the table full
+float  dm_alive;                // last frame: motes the volumes in range would keep alive
+float  dm_thr;                  // and the scale that holds them to DM_POOL
+float  dm_fresh;                // Emit_MoteLook made a look in this call
+string dm_why;                  // "" = Source's motes; else why the orbs draw
+float *em_life;                 // [EM_MAX] a Source mote's mean life; 0 for anything else
+
+/*
+  Two things about the blend.  It is ONE / ONE_MINUS_SRC_ALPHA with both factors
+  computed, because Source blends in linear light and this framebuffer does not
+  (see Emit_FlameShader).  What linear light gives is a curve over the wall's
+  brightness and this blend is a straight line, so it is made exact at two
+  walls: a 0.25 grey, per channel, and white, for a grey of the mote's
+  brightness -- so a pale mote can never darken a bright wall.  The first cut
+  was exact on black instead, and a white mote at alpha 0.087 measured 0.108 too
+  bright on a 0.37 wall; this is 0.023 over there and 0.10 under on a 0.04 one
+  (the arm's row W).  A black mote is exact on any wall, which is what the rest
+  of the ruler uses.
+
+  `sort additive`, not the bucket a blendalpha particle gets by default: the
+  engine draws that one (unlitdecal) twice a frame, and a mote meant to cover
+  0.85 measured 0.975.  BACKLOG, "blended particles are drawn twice".
+*/
+void() Emit_MoteShader =
+{
+	shaderforname("ftesurf_mote",
+		"{\nglslprogram\n{\n"
+		"!!ver 110\n"
+		"varying vec2 q;\n"         // across the engine's quad, -1..1, in its own frame
+		"varying vec3 ev;\n"        // eye space
+		"varying vec3 mote;\n"      // size / depth, life, age
+		"varying vec4 look;\n"      // Color and Alpha
+		"varying vec2 lim;\n"       // DistMax, Frozen
+		"#ifdef VERTEX_SHADER\n"
+		"attribute vec2 v_texcoord;\n"
+		"attribute vec4 v_colour;\n"
+		"uniform mat4 m_modelview;\n"
+		"void main()\n{\n"
+		// Unpacked HERE: an integer this size does not survive being interpolated.
+		" vec2 k = floor(v_texcoord * 0.5);\n"
+		" q = (v_texcoord - 2.0 * k) * 2.0 - 1.0;\n"
+		" float fz = floor(k.y / 256.0);\n"
+		" lim = vec2(k.x, fz);\n"
+		" float cb = floor(v_colour.b / 65536.0);\n"
+		" float cg = floor((v_colour.b - cb * 65536.0) / 256.0);\n"
+		" look = vec4(v_colour.b - cb * 65536.0 - cg * 256.0, cg, cb, k.y - fz * 256.0) / 255.0;\n"
+		" mote = v_colour.rga;\n"
+		" ev = (m_modelview * vec4(v_position, 1.0)).xyz;\n"
+		" gl_Position = ftetransform();\n"
+		"}\n#endif\n"
+		"#ifdef FRAGMENT_SHADER\n"
+		// particle/sparkles at t pixels from the centre of a mote of half-side h.
+		"float tap(vec2 t, float h)\n{\n"
+		" t = abs(t);\n"
+		" return step(max(t.x, t.y), h) * clamp((1.17 - length(t) / h) / 0.92, 0.0, 1.0);\n"
+		"}\n"
+		"void main()\n{\n"
+		" float depth = -ev.z;\n"
+		" float f = mote.z / mote.y;\n"
+		" if (f >= 1.0 || depth >= lim.x || depth <= 0.0)\n"
+		"  discard;\n"
+		// c_func_dust.cpp:58-59, or a Frozen mote's constant, eased at both ends; :68
+		" float a = look.a * mix(0.5 - 0.5 * cos(6.2831853 * f), clamp(min(mote.z, mote.y - mote.z) * 2.0, 0.0, 1.0), lim.y);\n"
+		" a *= 1.0 - depth / lim.x;\n"
+		// Pixels: world units and quad units per pixel, from the hardware's own slopes.
+		" float wpp = length(vec2(dFdx(ev.x), dFdy(ev.x)));\n"
+		" float qpp = length(vec2(dFdx(q.x), dFdy(q.x)));\n"
+		" float h = mote.x * depth / wpp;\n"
+		" float he = max(h, 0.6);\n"
+		" a *= (h * h) / (he * he);\n"
+		// The quad is a diamond on screen (the block's `rotation 0`; left alone the
+		// engine turns each particle at random); turn its frame square to the pixels.
+		" vec2 d = q / qpp;\n"
+		" vec2 p = vec2(d.x - d.y, d.x + d.y) * 0.7071;\n"
+		" a *= 0.25 * (tap(p + vec2(0.125, 0.375), he) + tap(p + vec2(-0.375, 0.125), he)\n"
+		"  + tap(p + vec2(-0.125, -0.375), he) + tap(p + vec2(0.375, -0.125), he));\n"
+		// 0.0474 is 0.25 ^ 2.2: the darker of the two walls the line is exact on.
+		" vec3 c = pow(look.rgb, vec3(2.2)) * a;\n"
+		" float ml = dot(c, vec3(0.3, 0.59, 0.11));\n"
+		" float g = (1.0 - a) * 0.0474;\n"
+		" float k = (pow(ml + 1.0 - a, 0.4545) - pow(ml + g, 0.4545)) / 0.75;\n"
+		" gl_FragColor = vec4(max(pow(c + g, vec3(0.4545)) - 0.25 * k, 0.0), 1.0 - k);\n"
+		"}\n#endif\n"
+		"}\nsort additive\ncull disable\n"
+		"{\nmap $whiteimage\nblendfunc gl_one gl_one_minus_src_alpha\nrgbgen vertex\nalphagen vertex\nnodepth\n}\n"
+		"polygonoffset\nsurfaceparm noshadows\nsurfaceparm nodlight\n}\n");
+};
+
+// Why this client draws the orbs instead, or "".
+string() Emit_MoteWhy =
+{
+	if (!cvar("vbsp_emit_motes"))
+		return "vbsp_emit_motes is 0";
+	if (!Milk_Supported())
+		return "the renderer is not OpenGL";
+	if (cvar_string("r_particlesystem") != "script")
+		return "r_particlesystem is not script";
+	return "";
+};
+
+/*
+  Write look i's block from dm_look[i].
+
+  The quad: its half-width across the flats is 1.06 * (0.25 + 0.001 * depth *
+  scale) at scalefactor 0 (particles/ftesurf.cfg, UNITS).  The sprite's square
+  sits turned 45 degrees inside it, so it needs 1.414 of the sprite's half-side
+  plus a pixel of edge: scale 1333 * (SizeMax / 10000 + 0.0015), and no less
+  than 4.7, which is one pixel at a focal length of 300.
+
+  `die` is LifetimeMax for every particle: the shader ends a mote at its own
+  life (green) and the engine carries it, undrawn, to the longest.  So
+  r_partinfo counts rate * LifetimeMax where Source has rate * the mean alive.
+  (`die min max` would not do it: the engine starts such a particle already
+  aged, alpha and colour alike -- p_script.c:5233-5282.)
+*/
+void(float i) Emit_MoteDefine =
+{
+	local float smin, smax, lmin, lmax, sc, k;
+	local string s, nm;
+
+	tokenize(dm_look[i]);
+	smin = stof(argv(4)) / 10000;
+	smax = stof(argv(5)) / 10000;
+	lmin = stof(argv(6));
+	lmax = stof(argv(7));
+	sc = 1333 * (max(smin, smax) + 0.0015);
+	if (sc < 4.7)
+		sc = 4.7;
+	k = stof(argv(3)) + stof(argv(9)) * 256;
+	nm = sprintf("ftesurf_dm%g", i);
+
+	// ftos, not %g: these are whole numbers past six digits.
+	s = sprintf("r_part %s\n{\ntexture ftesurf_mote\ntype normal\nblend blendalpha\nscalefactor 0\nscale %g\nrotation 0\nrgbf %g %g %s\nrgbrandf %g %g 0\n",
+	            nm, sc, smin, lmin,
+	            ftos(stof(argv(0)) + stof(argv(1)) * 256 + stof(argv(2)) * 65536),
+	            smax - smin, lmax - lmin);
+	s = strcat(s, sprintf("alpha 0\nalphadelta 1\ndie %g\ncount 1\nspawnmode box\nspawnorg 0\nveladd %g\n",
+	            lmax, stof(argv(9)) ? 0 : 1));
+	s = strcat(s, sprintf("tcoords %s %s %s %s\n}\n",
+	            ftos(stof(argv(8)) * 2), ftos(k * 2), ftos(stof(argv(8)) * 2 + 1), ftos(k * 2 + 1)));
+	localcmd(s);
+	dm_fx[i] = particleeffectnum(nm);
+};
+
+// The look's index, made on first sight; -1 when the table is full.
+float(string look) Emit_MoteLook =
+{
+	local float i;
+
+	for (i = 0; i < dm_n; i = i + 1)
+		if (!strcmp(dm_look[i], look))
+			return i;
+	if (dm_n >= DM_MAX)
+		return -1;
+	if (!dm_fx)
+		dm_fx = memalloc(sizeof(float) * DM_MAX);
+	if (!dm_n)
+		Emit_MoteShader();
+	dm_look[dm_n] = strzone(look);
+	dm_fresh = TRUE;
+	Emit_MoteDefine(dm_n);
+	dprint(sprintf("emit: mote look %g = %s\n", dm_n, look));
+	dm_n = dm_n + 1;
+	return dm_n - 1;
+};
+
+void() Emit_MoteFree =
+{
+	local float i;
+
+	for (i = 0; i < dm_n; i = i + 1)
+		strunzone(dm_look[i]);
+	dm_n = 0;
+	dm_over = 0;
+};
+
+// As Emit_FlameRepair: asked of look 0's own effect.
+float() Emit_MoteRepair =
+{
+	local float i;
+
+	if (!dm_n)
+		return FALSE;
+	if (particleeffectquery(dm_fx[0], 0) != "")
+		return FALSE;
+	Emit_MoteShader();
+	for (i = 0; i < dm_n; i = i + 1)
+		Emit_MoteDefine(i);
+	return TRUE;
+};
+
+void() Emit_AllocLife =
+{
+	if (!em_life)
+		em_life = memalloc(sizeof(float) * EM_MAX);
+};
+
+// One axis of a mote's sideways speed: the constant speed that ends where
+// Source's does, which loses 50 u/s every second (see the section's note).
+float(float v0, float life) Emit_MoteDrift =
+{
+	local float a;
+
+	a = fabs(v0);
+	if (a < 50 * life)
+		a = a * a / (100 * life);
+	else
+		a = a - 25 * life;
+	return (v0 < 0) ? -a : a;
+};
+
+/*
   Taken ONCE, at init, and never again -- including across map changes.
 
   particleeffectnum returns a stable handle even when the lookup fails, because
@@ -843,6 +1114,9 @@ void() Emit_RegisterCvars =
 {
 	registercvar("vbsp_emit",         "1", CVAR_ARCHIVE);
 	registercvar("vbsp_emit_dust",    "1", CVAR_ARCHIVE);
+	// func_dustmotes as Source draws them (Emit_MoteWhy); 0 keeps the
+	// ftesurf_dustmote orbs.  Read at map load.
+	registercvar("vbsp_emit_motes",   "1", CVAR_ARCHIVE);
 	registercvar("vbsp_emit_embers",  "1", CVAR_ARCHIVE);
 	registercvar("vbsp_emit_bubbles", "1", CVAR_ARCHIVE);
 	registercvar("vbsp_emit_fire",    "1", CVAR_ARCHIVE);
@@ -894,6 +1168,7 @@ void() Emit_RegisterCvars =
 
 	registercommand("emit_list");
 	registercommand("emit_test");
+	registercommand("emit_mote");
 
 	Emit_Precache();
 };
@@ -966,7 +1241,8 @@ float(vector col) Emit_Bucket =
   seconds, and folding that into a rate would lose the burstiness that is the
   entire visual.
 */
-void(vector bmin, vector bmax, vector vel, float jit, float rate, float burst,
+// Returns the emitter's index, or -1 when it was not added.
+float(vector bmin, vector bmax, vector vel, float jit, float rate, float burst,
      float dist, float eff, float kind) Emit_Add =
 {
 	local float i;
@@ -975,14 +1251,14 @@ void(vector bmin, vector bmax, vector vel, float jit, float rate, float burst,
 	if (em_n >= EM_MAX)
 	{
 		em_over = em_over + 1;
-		return;
+		return -1;
 	}
 	if (rate <= 0 || burst <= 0)
 	{
 		// Counted by kind, not dropped: this used to return in silence and
 		// the entity surfaced in emit_list only as an "unaccounted" residual.
 		em_norate[kind] = em_norate[kind] + 1;
-		return;
+		return -1;
 	}
 
 	if (rate > em_ratemax)
@@ -1011,10 +1287,12 @@ void(vector bmin, vector bmax, vector vel, float jit, float rate, float burst,
 	em_acc[i]   = random();         // stagger, so 339 emitters do not all fire
 	em_want[i]  = 0;                // on the same frame
 	em_lit[i]   = 0;
+	em_life[i]  = 0;
 	em_ltacc[i] = random();
 
 	em_n = em_n + 1;
 	em_live[kind] = em_live[kind] + 1;
+	return i;
 };
 
 /*
@@ -1043,14 +1321,15 @@ void() Emit_LoadForMap =
 	// straight into Zone_AddBox without a local in between.
 	local vector org, ang, bmin, bmax, col, vel;
 	/*
-	  Only the keys that reach a decision are read.  SizeMin/SizeMax, Lifetime*
-	  and ParticleDrawWidth are all set on essentially every instance and are
-	  all deliberately absent: they are baked into the effect blocks and cannot
-	  be passed through pointparticles, so parsing them would be dead weight
-	  that looks like it does something.  The header essay is where the full
-	  key inventory lives.
+	  Only the keys that reach a decision are read.  ParticleDrawWidth is set
+	  on essentially every instance and deliberately absent: it is baked into
+	  the effect blocks and cannot be passed through pointparticles.  SizeMin,
+	  SizeMax and Lifetime* were absent for the same reason until Patch 648,
+	  which reads them for func_dustmotes (a block per look; see its section).
+	  The header essay is where the full key inventory lives.
 	*/
 	local float  rate, alpha, dist, spd, frozen;
+	local float  smin, smax, lmin, lmax, fall, look;
 	local float  spawnflags, disabled, density, freq, current;
 	local float  firesize, maxdelay, magnitude, traillen, mspeed;
 	local float  ssize, esize, jetlen, spread, initst;
@@ -1059,6 +1338,7 @@ void() Emit_LoadForMap =
 	local float  ps, j, pchild, opened, fcls;
 
 	Emit_Alloc();
+	Emit_AllocLife();
 
 	// NOT written to vbsp_em_map here.  The latch is taken at the end of the
 	// walk, and only if the entity lump actually opened -- see the note there.
@@ -1074,6 +1354,8 @@ void() Emit_LoadForMap =
 	em_frozen = em_clamped = em_over = em_child = 0;
 	em_flwant = em_flmask = 0;
 	em_flwhy = Emit_FlameWhy();
+	Emit_MoteFree();
+	dm_why = Emit_MoteWhy();
 	i = 0;
 	while (i < EK_N)
 	{
@@ -1218,6 +1500,8 @@ void() Emit_LoadForMap =
 		cn = mdl = scol = effname = "";
 		org = ang = '0 0 0';
 		rate = dist = spd = frozen = 0;
+		smin = smax = lmin = lmax = fall = 0;
+		look = -1;
 		alpha = 255;
 		spawnflags = disabled = 0;
 		density = freq = current = 0;
@@ -1250,6 +1534,11 @@ void() Emit_LoadForMap =
 			else if (key == "distmax")       dist = stof(tok);
 			else if (key == "speedmax")      spd  = stof(tok);
 			else if (key == "frozen")        frozen = stof(tok);
+			else if (key == "sizemin")       smin = stof(tok);
+			else if (key == "sizemax")       smax = stof(tok);
+			else if (key == "lifetimemin")   lmin = stof(tok);
+			else if (key == "lifetimemax")   lmax = stof(tok);
+			else if (key == "fallspeed")     fall = stof(tok);
 
 			else if (key == "color")         scol = tok;
 			else if (key == "color1")        scol = tok;
@@ -1308,7 +1597,10 @@ void() Emit_LoadForMap =
 		  marks map-latched rows with a `*` to avoid.  Emit_Frame tests them
 		  instead, off em_kind, so every switch here is instant.
 		*/
+		// A Frozen volume's motes are made when it is, whatever StartDisabled
+		// says (c_func_dust.cpp:167-173): one volume in the library.
 		if (disabled)
+		if (!(frozen && kind == EK_DUST && dm_why == ""))
 		{
 			em_off[kind] = em_off[kind] + 1;
 			continue;
@@ -1399,6 +1691,60 @@ void() Emit_LoadForMap =
 					jit = 13;       // the library's own median SpawnRate pair
 			}
 			eff = ((kind == EK_DUST) ? FX_DUSTMOTE : FX_DUSTCLOUD) + bucket;
+
+			/*
+			  Source's own mote.  The keys are read as the CLIENT receives them:
+			  func_dust.cpp sends SpawnRate and SpeedMax in 12 bits, DistMax in
+			  16, the two lifetimes in 4 (:87-93) -- a LifetimeMax of 20 arrives
+			  as 4 -- and they are integers before that (:107-113).  Alpha is a
+			  byte (:166).  RemapVal takes the pair either way round (:231, :234).
+			*/
+			if (kind == EK_DUST)
+			if (dm_why == "")
+			{
+				lmin = floor(lmin) & 15;
+				lmax = floor(lmax) & 15;
+				if (lmin > lmax)
+				{
+					k = lmin;
+					lmin = lmax;
+					lmax = k;
+				}
+				if (frozen)
+					lmin = lmax = DM_FROZEN_LIFE;
+				if (lmax <= 0)
+				{
+					// Dead the frame it is born: Source draws nothing either.
+					em_off[kind] = em_off[kind] + 1;
+					continue;
+				}
+				if (lmin < 0.1)
+					lmin = 0.1;
+				dist = floor(dist) & 65535;
+				// Emit_ParseColor's 0..1, back to the bytes Source keeps.
+				scol = sprintf("%g %g %g %g %g", rint(col_x * 255), rint(col_y * 255), rint(col_z * 255),
+				               floor(alpha) & 255, smin);
+				scol = strcat(scol, sprintf(" %g %g %g %g %g", smax, lmin, lmax, dist, frozen ? 1 : 0));
+				look = Emit_MoteLook(scol);
+				if (look < 0)
+					dm_over = dm_over + 1;
+			}
+			if (look >= 0)
+			{
+				eff = look;
+				dist = dist * DM_REACH;
+				rate = floor(rate) & 4095;
+				spd = floor(spd) & 4095;
+				vel = [0, 0, -fall];
+				jit = spd;
+				if (frozen)
+				{
+					// SpawnRate motes, standing: that many alive, replaced as they go.
+					rate = rate / DM_FROZEN_LIFE;
+					vel = '0 0 1';
+					jit = 0;
+				}
+			}
 		}
 		else if (kind == EK_EMBER)
 		{
@@ -1686,12 +2032,17 @@ void() Emit_LoadForMap =
 			}
 		}
 
-		Emit_Add(bmin, bmax, vel, jit, rate, burst, dist, eff, kind);
-		if (kind == EK_FIRE)
+		j = Emit_Add(bmin, bmax, vel, jit, rate, burst, dist, eff, kind);
+		if (j >= 0)
 		{
-			// bit 16 is "don't drop light", set on 66%.
-			if (!(spawnflags & 16))
-				em_lit[em_n - 1] = 1;
+			if (look >= 0)
+				em_life[j] = (lmin + lmax) * 0.5;
+			if (kind == EK_FIRE)
+			{
+				// bit 16 is "don't drop light", set on 66%.
+				if (!(spawnflags & 16))
+					em_lit[j] = 1;
+			}
 		}
 	}
 
@@ -1801,7 +2152,7 @@ vector(float i) Emit_PointIn =
 */
 void() Emit_Frame =
 {
-	local float i, n, ft, thr, budget, dscale, d, lights, lit, k;
+	local float i, n, ft, thr, budget, dscale, d, lights, lit, k, mdem;
 	local float wdust, wember, wbubble, wfire, wspark, wsmoke, wstack, wpsys;
 	local vector eye, v;
 
@@ -1885,10 +2236,15 @@ void() Emit_Frame =
 	}
 	if (Emit_FlameStep())
 		em_reload_t = time + 1;
+	// Off the scripted particle system nothing of ours can answer, and a repair
+	// would send every block again each second for good.
 	if (time > em_reload_t && cvar("vbsp_emit_heal"))
+	if (cvar_string("r_particlesystem") == "script")
 	{
 		em_reload_t = time + 1;
 		k = Emit_FlameRepair();
+		if (Emit_MoteRepair())
+			k = TRUE;
 		if (particleeffectquery(em_fx[FX_DUSTMOTE], 0) == "")
 		{
 			localcmd("exec particles/ftesurf.cfg\n");
@@ -1925,6 +2281,8 @@ void() Emit_Frame =
 
 	// ---- pass 1: cull, and total the demand
 	em_demand = 0;
+	dm_alive = 0;
+	mdem = 0;
 	i = 0;
 	while (i < em_n)
 	{
@@ -1971,9 +2329,23 @@ void() Emit_Frame =
 			}
 		}
 		em_want[i] = em_rate[i];
-		em_demand = em_demand + em_rate[i] * em_burst[i];
+		if (em_life[i])
+		{
+			mdem = mdem + em_rate[i] * em_burst[i];
+			dm_alive = dm_alive + em_rate[i] * em_life[i];
+		}
+		else
+			em_demand = em_demand + em_rate[i] * em_burst[i];
 		i = i + 1;
 	}
+
+	// Source's pool, as a scale on every mote volume: a full pool refuses each
+	// volume's spawns alike.  surf_psychedelia asks for 144,000 alive.  Before
+	// the budget, so the other classes are not charged for motes never made.
+	dm_thr = 1;
+	if (dm_alive > DM_POOL)
+		dm_thr = DM_POOL / dm_alive;
+	em_demand = em_demand + mdem * dm_thr;
 
 	thr = 1;
 	if (budget > 0 && em_demand > budget)
@@ -1991,7 +2363,7 @@ void() Emit_Frame =
 			continue;
 		}
 
-		em_acc[i] = em_acc[i] + em_want[i] * thr * ft;
+		em_acc[i] = em_acc[i] + em_want[i] * thr * (em_life[i] ? dm_thr : 1) * ft;
 		if (em_acc[i] > EM_BURST_MAX)
 			em_acc[i] = EM_BURST_MAX;
 
@@ -2023,6 +2395,16 @@ void() Emit_Frame =
 					pointparticles(em_eff[i], em_mid[i], v, 1);
 				else if (em_eff[i] < 0)
 					pointparticles(Emit_FlameSlot(-1 - em_eff[i]), em_mid[i], '0 0 1', 1);
+				else if (em_life[i])
+				{
+					// A Source mote: RandomVector(-SpeedMax, SpeedMax), FallSpeed
+					// off z, and x and y as the ground Source's pull lets them cover.
+					v_x = Emit_MoteDrift(v_x, em_life[i]);
+					v_y = Emit_MoteDrift(v_y, em_life[i]);
+					if (vlen(v) < 0.01)
+						v = '0 0 1';
+					pointparticles(dm_fx[em_eff[i]], Emit_PointIn(i), v, 1);
+				}
 				else
 					pointparticles(em_fx[em_eff[i]], Emit_PointIn(i), v, 1);
 				n = n - 1;
@@ -2157,6 +2539,24 @@ void() Emit_List =
 		}
 	}
 
+	if (em_seen[EK_DUST])
+	{
+		if (dm_why != "")
+			print(sprintf("  func_dustmotes: orbs, because %s\n", dm_why));
+		else
+		{
+			tot = 0;
+			for (k = 0; k < dm_n; k = k + 1)
+				if (particleeffectquery(dm_fx[k], 0) != "")
+					tot = tot + 1;
+			print(sprintf("  func_dustmotes: Source's motes, %g looks asked, %g answering\n", dm_n, tot));
+			print(sprintf("  motes in range would keep %g alive; Source's pool is %g, so %.3f of them spawn\n",
+			              rint(dm_alive), DM_POOL, dm_thr));
+			if (dm_over)
+				print(sprintf("  %g func_dustmotes past %g looks, drawn as orbs\n", dm_over, DM_MAX));
+		}
+	}
+
 	// What a class costs, as an A/B: cl_maxfps 0, emit_list, wait, emit_list.
 	k = gettime(0);
 	if (em_fpst && k > em_fpst)
@@ -2284,8 +2684,66 @@ void() Emit_Test =
 	print("  if nothing appears at your feet, the fault is below this file\n");
 };
 
+/*
+  emit_mote <depth> <rise> <count> <r g b alpha sizemin sizemax lifemin lifemax distmax frozen> [right]
+
+  A ROW OF SOURCE MOTES AT A KNOWN DEPTH, standing still: `count` of one look,
+  `depth` units in front of the eye, `rise` of that depth above the line of
+  sight and `right` of it to the side, 0.06 of it apart.  It is the ruler
+  cfg/test/p648motes.cfg reads a mote's size and fade off -- a volume's motes
+  are at depths nobody knows.
+*/
+void() Emit_MoteRow =
+{
+	local float depth, n, i, look;
+	local vector o;
+	local string l;
+
+	if (dm_why != "")
+	{
+		print(sprintf("emit_mote: orbs, because %s\n", dm_why));
+		return;
+	}
+	if (argv(13) == "")
+	{
+		print("emit_mote <depth> <rise> <count> <r g b alpha sizemin sizemax lifemin lifemax distmax frozen> [right]\n");
+		return;
+	}
+	depth = stof(argv(1));
+	n = stof(argv(3));
+	o = getproperty(VF_ORIGIN);
+	makevectors(getproperty(VF_ANGLES));
+	o = o + v_forward * depth + v_up * (depth * stof(argv(2))) + v_right * (depth * stof(argv(14)));
+	// The look is argv's own text, so take the eye's vectors first: Emit_MoteLook tokenizes.
+	l = sprintf("%s %s %s %s %s", argv(4), argv(5), argv(6), argv(7), argv(8));
+	l = strcat(l, sprintf(" %s %s %s %s %s", argv(9), argv(10), argv(11), argv(12), argv(13)));
+	dm_fresh = FALSE;
+	look = Emit_MoteLook(l);
+	if (look < 0)
+	{
+		print(sprintf("emit_mote: all %g looks are taken\n", DM_MAX));
+		return;
+	}
+	// A look made by this very call is text the engine has not read yet, and
+	// a particle sent to it now is dropped without a word.  dm_fresh, not the
+	// query alone: on a second map the last map's block of that name answers.
+	if (dm_fresh || particleeffectquery(dm_fx[look], 0) == "")
+	{
+		print(sprintf("emit_mote: look %g is new; say it again to place the row\n", look));
+		return;
+	}
+	for (i = 0; i < n; i = i + 1)
+		pointparticles(dm_fx[look], o + v_right * ((i - (n - 1) * 0.5) * depth * 0.06), '0 0 0.0001', 1);
+	print(sprintf("emit_mote: %g of look %g (%s) at depth %g, row centre %v\n", n, look, l, depth, o));
+};
+
 float(string cmd) Emit_ConsoleCommand =
 {
+	if (argv(0) == "emit_mote")
+	{
+		Emit_MoteRow();
+		return TRUE;
+	}
 	if (argv(0) == "emit_list")
 	{
 		Emit_List();

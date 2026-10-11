@@ -4569,6 +4569,67 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   happen is rolling a DEPLOYED build back, and that is read off the installs'
   and the Pi's hashes, not off git.
 
+### func_dustmotes in the game (Patch 648) -- 2026-10-12
+
+- WHERE IT IS: `src/client/cl_emit.qc`, the Patch 648 section. One r_part block
+  per LOOK on the map (`ftesurf_dm<N>`, written at load), one shader
+  (`ftesurf_mote`) that draws the sprite itself. `emit_list` says
+  `func_dustmotes: Source's motes, N looks asked, M answering` or
+  `orbs, because <reason>`; `vbsp_emit_motes 0` is the old look.
+- WHAT RIDES WHERE. `rgbf` reaches the shader as floats, not bytes: red is the
+  size, green the life, blue the entity's colour as one integer (r + 256 g +
+  65536 b, exact in a float), alpha the age. `tcoords` carries DistMax and
+  Alpha in its whole parts. They are unpacked in the VERTEX shader: an integer
+  that size does not survive being interpolated.
+- THE DEFAULT BLEND BUCKET IS DRAWN TWICE A FRAME (BACKLOG, "Blended particles
+  are drawn twice"). The first cut's shader was `sort unlitdecal`, like the
+  engine's own, and every mote measured `1 - (1 - a)^2`: 0.975 for 0.85. The
+  exponent of the fit was 0.906 where 0.4545 was expected, twice it, which is
+  what gave it away. `sort additive` is drawn once; `sort blend` goes through
+  the per-particle sorted path instead of a batch.
+- A LOOK DEFINED THIS FRAME DOES NOT EXIST THIS FRAME. The block is `localcmd`
+  text; a `pointparticles` at it before the engine has read it is dropped
+  without a word. A volume loses a frame. `emit_mote` says "look N is new; say
+  it again", and the arm says each row twice.
+- THE KEYS ARRIVE NARROWER THAN THE MAP WRITES THEM. `func_dust.cpp:87-93`
+  sends the lifetimes in 4 bits, SpawnRate and SpeedMax in 12, DistMax in 16:
+  a LifetimeMax of 20 is 4 on the client (122 volumes on 39 maps wrap).
+- SOURCE KEEPS 2,048 OLD-STYLE PARTICLES IN THE WORLD
+  (`particle_iterators.h:20`, refused at `particlemgr.cpp:1150`). 173 maps
+  hold volumes that together ask for more; `Emit_Frame` scales every mote
+  volume in range alike (`dm_thr`), and `emit_list` prints the scale.
+- A RULER FOR SOMETHING TWO PIXELS WIDE: `emit_mote` stands rows of BLACK motes
+  at depths it is told, over a wall photographed bare. A black mote only
+  darkens, so `1 - (shot / bare)^2.2` is its coverage per pixel whatever the
+  wall is. The wall must be bright: over the dark doorway the grader refuses
+  ("too dark to read"), which is why the rows sit at rises 0.17, 0.10, 0.04.
+- A PIXEL IS `size / 10000 * height / 1.5` at fov 90 (the fov is the 4:3
+  frame's, as in Source), whatever the depth.
+- AN r_part PARTICLE STARTS AT A RANDOM ANGLE (`p_script.c:1118`) unless the
+  block says `rotation`. A shader that reads the quad's own frame draws its
+  square tilted at random; the review saw it in a screenshot's 6% contours, no
+  check did. At `rotation 0` the quad is a diamond (`:7166-7169`).
+- `die min max` IS NOT A RANDOM LIFE. The engine starts such a particle already
+  aged by the difference, alpha and colour alike (`:5233-5282`), so no channel
+  tells age from birth. The block says `die LifetimeMax` and the shader ends a
+  mote at its own life: `r_partinfo` counts LifetimeMax, not the mean.
+- A FIXED-FUNCTION BLEND IS A STRAIGHT LINE OVER THE WALL'S BRIGHTNESS and
+  linear light is a curve, so it is exact at two walls and only there. Which
+  two is a choice: black and white drew a white mote at alpha 0.087 0.108 too
+  bright on a 0.37 wall (measured, the arm's second control); a 0.25 grey and
+  white is 0.023 over there and 0.10 under on 0.04. A black mote is exact
+  everywhere, so a ruler of black motes cannot see this: row W (white, Alpha
+  26) is what does.
+- `tools/p648motes.py` IS THE FALSIFIER, with two controls kept in its header:
+  the depth term and the pool's scale out (SIZE at 330 reads 18.5 px for 88,
+  the engine holds 9,009 for 2,560), and `rotation 0` out with the blend on its
+  first anchors (UPRIGHT reads 1.23 px towards the sides for 0.00, row W as
+  above). `tools/sparkleshape.py <game>_dir.vpk` is where 0.25 and 1.17 come
+  from: the computed shape against Valve's texel by texel (mean difference
+  0.028, HL2 and CS:S alike).
+- `vid_restart` TAKES 8 s ON THE RIG, so an arm that reads 10 s after it has
+  seen 2 s of motes: read twice and grade the rise (315, then 981).
+
 ## The milk visualizer (Patch 467)
 
 - `src/milk_sys.qc` (both VMs, like sui_sys.qc) is a MilkDrop-style feedback

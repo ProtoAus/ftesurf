@@ -894,6 +894,58 @@ as proof that every source path was built into it. No FPS improvement is claimed
   Source particles and says `couldn't exec particles/ftesurf.cfg` once a
   second. Falsifier: `git ls-files ftesurf/particles` lists the seven files and
   a worktree's client loads a map without that line.
+- **Blended particles are drawn twice a frame (engine).** `GLBE_SubmitMeshes`
+  loops `i <= stop` (`gl_backend.c:6715` at `65bf6f464`) and `GLBE_DrawWorld`
+  calls it with `(PORTAL, SEETHROUGH+1)` and then `(SEETHROUGH+1, NEAREST)`
+  (`:7656`, `:7698`), so the bucket after SEETHROUGH, which is UNLITDECAL, goes
+  through both. The script particle system's default shaders for `blend
+  blendalpha` (and four more, `p_script.c:800-940`) are `sort unlitdecal`.
+  Measured with Patch 648's ruler: a black mote meant to cover 0.85 of a pixel
+  covered 0.975, and one meant for 0.67 covered 0.887, which are `1 - (1 - a)^2`;
+  on `sort additive` the same motes read 0.839 and 0.665. Stock FTE has the same
+  lines. NOT FIXED: every `blendalpha` effect in `particles/ftesurf.cfg` (the old
+  motes, dust clouds, smoke) was tuned by eye over the double draw, so fixing it
+  makes each of them fainter by its own alpha. The owner's call. Falsifier: the
+  ruler with a `sort unlitdecal` shader reads 0.85.
+- **Source dust motes: what Patch 648 does not draw.** `func_dustmotes` is
+  `c_func_dust.cpp`'s own mote now (`src/client/cl_emit.qc`, the Patch 648
+  section): 5,297 volumes on 487 of the library's 1,349 maps. Still open:
+  - **The brush's shape.** A mote is born anywhere in the brush's BOX; Source
+    tries ten points and keeps one inside the brush itself (`:216-222`). An
+    L-shaped or rotated volume leaks motes into its box's corners. Not counted.
+  - **`vbsp_emit_ratemax 200`** still clamps a volume at load: 270 volumes on
+    111 maps ask for more, to 4,000 a second.
+  - **The pool is the motes' alone.** Source's 2,048 (`MAX_TOTAL_PARTICLES`) is
+    shared with every old-style particle: smokestacks, steam, dust clouds. 173
+    maps hold volumes that together want more than 2,048 alive.
+  - **A volume is culled by distance** (its bounding sphere past twice
+    DistMax), Source's by PVS. A mote deeper than DistMax draws nothing either
+    way; twice covers the corner of a 16:9 screen to fov 100.
+  - **The blend is a straight line where linear light is a curve.** Exact over
+    a 0.25 grey and over white (`Emit_MoteShader`). Measured on surf_dune's
+    wall, a white mote at alpha 0.087: 0.023 over on a 0.37 channel, 0.029
+    under on 0.17, 0.103 under on 0.04, so motes are fainter than Source's
+    against near-black. A saturated colour's absent channel is under-shown on
+    a wall brighter than 0.25: `0 128 255` drew red 0.132 where linear light
+    gives 0.167 on 0.40. A read of the framebuffer, or a linear one, is the
+    only cure.
+  - **No fog term** in the shader: a mote in a fogged map is not fogged.
+  - **The engine carries every mote to LifetimeMax**, undrawn past its own
+    life: `r_partinfo` counts LifetimeMax where Source has the mean alive
+    (1.25 times at 9 to 15 s, 1.5 at 1 to 3).
+  - **Frozen** (79 volumes, 26 maps): Source's stand for ever; these live 12 s
+    and are replaced, fading over half a second at each end.
+  - **`env_wind`** is not read (Source pulls x and y towards it at 50 u/s^2),
+    and the pull itself is drawn as the constant speed that ends in the same
+    place (`Emit_MoteDrift`): Source's first quarter second of sideways dash
+    is not drawn, which shows on lives under 3.6 s.
+  - **Absent keys.** Source reads an absent Alpha, Color or DistMax as 0
+    (nothing drawn); here they are 255, white and 2000. No volume in the
+    library lacks one (Hammer writes them all).
+  - **`emit_list`'s "answering"** can count the last map's block of the same
+    name for the frame before this map's is read.
+  - **`func_dustcloud`** (529 in the library) is untouched and still orbs.
+  - **Cost on the laptop's Intel GPU** is not measured.
 - **Water's depth fog/capture budget remains incomplete.** Patch 523 adds
   capture-free mode 4 and repairs cheap reflection tint/view frame/signed scroll.
   Mode 1 still captures refraction; mode 2 captures refraction/reflection.

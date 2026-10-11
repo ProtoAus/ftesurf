@@ -26,6 +26,15 @@ commit   65bf6f4640fa17ac2c3cb79d7725226e55ce645b
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-645
 patch    650
+# Patch 648: func_dustmotes is drawn the way Source draws it (c_func_dust.cpp). A mote is
+# the entity's own colour, alpha, size range, life and speed, the same few pixels at any
+# distance, faded by a sine through its life and to nothing at DistMax; the sprite's shape
+# is computed per pixel, so a two-pixel mote is correct at any size. Each look on a map is
+# an r_part block written at load and one inline shader draws them all; no more than
+# Source's 2,048 are kept alive. Off OpenGL, off the scripted particle system or with
+# vbsp_emit_motes 0 the old orbs draw and emit_list says which. func_dustcloud unchanged.
+# csprogs only: no engine source, server QC, surfd, recorder, evidence, ranking, default
+# or Build change (commit and tag above stay).
 # Patch 649: sixty-four run lines can be ticked where eight could. The first eight ticked
 # carry marks and numbers (hud_lines_marked); the lines in places 1..8 have names and are
 # in the run graph; the rest are lines. A line in places 9..64 holds 8192 samples and a

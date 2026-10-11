@@ -11,6 +11,35 @@ to be wrong.
 
 ---
 
+## 00. 12 Oct — dust motes that look like Source's (Patch 648)
+
+From your message: Source's motes are bolder, rounder, much smaller, come in
+a few sizes, drift and fade out.
+- **They are Source's own rules now.** Each mote is a small dot with a solid
+  middle, 1.5 to 3 pixels across at 1080p on most maps, the same on screen
+  near or far. Sizes are drawn at random between the map's own two numbers.
+  It fades in and out once through its life and thins with distance.
+- **Colour, strength, life and speed are the map's**, per dust volume. Before,
+  every map got one average look in six colours.
+- **"Pre-compute the sizes":** done as maths in the shader, not as pictures.
+  The dot's shape is worked out for each pixel, so a 2-pixel mote does not
+  twinkle or blur as it drifts, at any resolution.
+- **Please look and tell me:** surf_dune, the room behind the first doorway
+  (white and orange motes), and any map you remember from Source. Are they
+  too faint or too few next to Source? They are much smaller than the old
+  orbs, so a room reads emptier than it did. I could not put the two side
+  by side.
+- **Never more than 2,048 at once**, which is Source's own limit. A few maps
+  ask for tens of thousands (surf_psychedelia: 144,000).
+- **Still the old orbs:** dust CLOUDS (the big soft ones, e.g. the snow haze
+  on surf_boreas). Different object, and Source draws those large.
+- To see the old motes again: `vbsp_emit_motes 0`, then load the map again.
+- **Your call:** the engine draws every ordinary see-through particle twice a
+  frame (dust clouds, smoke puffs, the old motes), so each is stronger than
+  its numbers say. Fixing it makes all of them fainter, and they were tuned
+  by eye as they are. Not changed. BACKLOG, "Blended particles are drawn
+  twice a frame".
+
 ## 00. 12 Oct — up to sixty-four run lines (Patch 649)
 
 From your message: eight was the most you could tick, your injectable drew
