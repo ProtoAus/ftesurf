@@ -4555,6 +4555,19 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 - A DRIVER STARTS THE GAME `SW_SHOWMINNOACTIVE` (`STARTUPINFO.wShowWindow = 7`).
   `-WindowStyle Minimized` handed to the exe, as older drivers do, is ignored:
   the window opens in front of the owner and the run prints focus lines.
+- DEPLOYED 11 Oct from `74e4d44`: csprogs `dcbf42b6`, the file the arm passed
+  on, to the Pi at 12:54Z with 12 lobby rows and 0 players, and to both
+  installs at 12:54:38Z with no game running, under the rig lock. Twelve
+  lobbies restarted, hashes read back from the host. `tools/pi_lobby_smoke.py`
+  on 27510 at 12:55Z: the client was served a csprogs hashing `dcbf42b6`, drew
+  the board, no QC error. `.prev` is Patch 646's `e9371ed5`; qwprogs, menu.dat
+  and the exe did not change. The smoke grades the board, not a flame: no
+  client has looked at a fire on a lobby.
+- A DEPLOY GUARD THAT READS MAIN REFUSES THE WRONG THING. The first attempt
+  stopped on "main holds later QC" (Patch 645, pushed and not yet deployed) and
+  touched nothing. Later QC on main is somebody's next deploy; what must not
+  happen is rolling a DEPLOYED build back, and that is read off the installs'
+  and the Pi's hashes, not off git.
 
 ## The milk visualizer (Patch 467)
 

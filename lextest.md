@@ -110,6 +110,8 @@ From your message: the scrolling HL2 fire was not showing, only the orbs.
   flame picture comes from. Without them the orbs stay. `emit_list` in the
   console says which you have and why.
 - To see the old look again: `vbsp_emit_flame 0`, then load the map again.
+- **Live since 11 Oct 12:54 UTC (23:54 here)** on both installs and all twelve
+  lobbies. Restart the game to get it.
 
 ## 00. 11 Oct — Steam pictures in the game (Patch 640)
 
