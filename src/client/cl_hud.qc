@@ -207,6 +207,7 @@ float  rec_sb_open;             // the leaderboard is up
 #define UIC_ENTVIEW  16         // cl_entview.qc   -- entity inspector (build 54)
 #define UIC_AVATAR   32         // cl_avatar.qc    -- customizer (not built yet)
 #define UIC_LINEGRAPH 64        // cl_linegraph.qc -- run comparison
+#define UIC_ACCOUNT  128        // cl_account.qc   -- the Steam link box, while it types or waits (Patch 653)
 
 float ui_cursor_claims;         // bitmask of UIC_*; 0 means the game has the mouse
 

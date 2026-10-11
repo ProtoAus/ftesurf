@@ -36,6 +36,18 @@
   The prompt that comes up by itself and the wait for the browser take Enter
   and Esc only, and the game keeps every other key.
 
+  ONE CLICK IS THE BOX'S (Patch 653): on the sign-in address while the box
+  waits for the browser, where it does what Enter does there, the page again
+  and the address on the clipboard.  It signs nothing; the consent is still a
+  key.  THE BOX HAS THE CURSOR ONLY IN A LINK THE PLAYER STARTED: from that
+  Enter, through the wait and the number, until it ends or a click beside the
+  box gives the mouse back (Enter in the wait takes it again).  Never for a
+  typed code or a prompt, which a console line can raise: those took the keys
+  already, and would have frozen the view with them.  While it has the cursor
+  the mouse's other buttons and its wheel are nobody's.  The click is
+  hit-tested in the input handler, not at draw: the engine opens a browser
+  only while a device's press is being delivered.
+
   THE OPENER is the engine's random bytes hashed with a pool of this VM's own
   (Account_Stir: every frame's timing, every key and the mouse's moves; frame
   times jitter at the 0.1 microsecond level, measured).  The start's signature
@@ -119,6 +131,13 @@ string acct_ui_no;          // ...and that number as typed so far: digits only, 
 float  acct_ui_owed;        // cltime a confirm went out whose answer has not been shown
 float  acct_ui_kd[ACCT_UI_KN];      // keys down, as the engine's own events said
 float  acct_ui_ours[ACCT_UI_KN];    // ...and whether the box took that press
+// Patch 653: the box's mouse.  The rects are the last draw's, in the screen's units.
+float  acct_ui_cur;         // waiting for the sign-in WITH the cursor: a click beside the box gives it back
+float  acct_ui_mx, acct_ui_my;      // the cursor, from the engine's own moves
+vector acct_ui_bp, acct_ui_bs;      // the box
+vector acct_ui_lp, acct_ui_ls;      // ...and the address on it; no width, not drawn
+float  acct_ui_had, acct_ui_said;   // what the developer lines last said: the claim, and whose address
+float  acct_ui_seen;        // the engine has said where the cursor is since the box took it
 
 // The engine's account builtins (Patch 625, cl_receipt.c).  acct_sign:
 // `<pub> <key> <sig> "<server>" <code>` for the lobby, or "" (no key press for
@@ -234,6 +253,7 @@ void(float good, string words) Account_UiEnd =
 	acct_ui_go   = Account_Keep(acct_ui_go, "");
 	acct_ui_key  = Account_Keep(acct_ui_key, "");
 	acct_ui_no   = Account_Keep(acct_ui_no, "");
+	acct_ui_cur  = FALSE;
 	Account_UiSet(ACCT_UI_NOTE);
 	print(sprintf("%s %s\n", good ? "^2steam:^7" : "^1steam:^7", words));
 };
@@ -245,6 +265,7 @@ void() Account_UiClose =
 	acct_ui_go  = Account_Keep(acct_ui_go, "");
 	acct_ui_key = Account_Keep(acct_ui_key, "");
 	acct_ui_no  = Account_Keep(acct_ui_no, "");
+	acct_ui_cur = FALSE;
 	Account_UiSet(ACCT_UI_NONE);
 };
 
@@ -362,6 +383,31 @@ void() Account_Frame =
 	if (acct_ui == ACCT_UI_GO)
 	if (cltime - acct_ui_t > ACCT_UI_GOLIFE)
 		Account_UiEnd(FALSE, "That took too long. Type link to start again.");
+
+	// Patch 653: the mouse is the box's in a link started here (acct_ui_cur, set
+	// by that Enter): the wait, the number, and the confirm's own wait.
+	c = FALSE;
+	if (acct_ui_cur)
+	{
+		if (acct_ui == ACCT_UI_GO)
+			c = TRUE;
+		if (acct_ui == ACCT_UI_ASK)
+		if (acct_ui_num)
+			c = TRUE;
+		if (acct_ui == ACCT_UI_WAIT)
+		if (acct_ui_conf)
+			c = TRUE;
+	}
+	if (c)
+		UI_CursorClaim(UIC_ACCOUNT);
+	else
+		UI_CursorRelease(UIC_ACCOUNT);
+	if (c != acct_ui_had)
+	{
+		acct_ui_had = c;
+		acct_ui_seen = FALSE;               // where the cursor was last time is not where it is
+		dprint(sprintf("steam: the box %s the mouse\n", c ? "has" : "does not have"));
+	}
 
 	if (acct_cl_got)
 		return;
@@ -489,8 +535,10 @@ void() Account_Confirm =
   is set and this checks again: a console command that feeds the input chain
   must find nobody here.
 
-  Keys only.  The mouse stays the game's, so the box holds no cursor claim and
-  `hud_edit ui`, which drives whatever holds one, has nothing of ours to drive.
+  Keys, and since Patch 653 the mouse's buttons while the box has the cursor
+  (Account_Click).  `hud_edit ui` drives whatever holds a cursor claim, and
+  ours is one: what it feeds is the input chain from the console, which does
+  not come here (cl_input_real), so there is still nothing of ours to drive.
 
   PRESSES ARE TAKEN, RELEASES NEVER.  A press the box takes ran no bind, so its
   release has nothing to undo and may go on to the game; a release the box
@@ -500,6 +548,50 @@ void() Account_Confirm =
   as the key stays down, box open or not: the first cut let those through once
   the box closed, and a held `2` loaded a saveloc, a held digit cast a vote.
 */
+float(vector p, vector sz) Account_Over =
+{
+	if (sz_x <= 0)
+		return FALSE;
+	if (acct_ui_mx < p_x || acct_ui_my < p_y)
+		return FALSE;
+	if (acct_ui_mx >= p_x + sz_x || acct_ui_my >= p_y + sz_y)
+		return FALSE;
+	return TRUE;
+};
+
+// A mouse button or the wheel, pressed while the box has the cursor.  -> it was
+// the box's: all of them are, so none runs a bind under a view that cannot turn.
+float(float scanx) Account_Click =
+{
+	if (!acct_ui_had)
+		return FALSE;                       // the game has the mouse
+	if (scanx != K_MOUSE1)
+		return TRUE;
+	// The cursor's place is the engine's to say, and it says it when the cursor
+	// first moves: until then a click is nowhere.
+	if (!acct_ui_seen)
+		return TRUE;
+	if (acct_ui == ACCT_UI_GO)
+	if (Account_Over(acct_ui_lp, acct_ui_ls))
+	{
+		// What Enter does here: the page again, the address on the clipboard.
+		// The engine opens one page a second: a refusal is not "no page opened".
+		if (acct_browse(acct_ui_key))
+			acct_ui_opened = TRUE;
+		Account_Copy();
+		dprint(sprintf("steam: the address was clicked at %g,%g: browser %g, clipboard %g\n",
+		               acct_ui_mx, acct_ui_my, acct_ui_opened, acct_ui_copied));
+		return TRUE;
+	}
+	if (Account_Over(acct_ui_bp, acct_ui_bs))
+		return TRUE;                        // on the box, on nothing
+	acct_ui_cur = FALSE;                    // beside it: the mouse is the game's again
+	dprint(sprintf("steam: a click beside the box at %g,%g gave the mouse back\n",
+	               acct_ui_mx, acct_ui_my));
+	// ...and the click is another panel's, if one is up with the cursor too.
+	return (UI_CursorHeld() == UIC_ACCOUNT);
+};
+
 float(float evtype, float scanx, float chary) Account_InputEvent =
 {
 	local float  slot;
@@ -510,12 +602,23 @@ float(float evtype, float scanx, float chary) Account_InputEvent =
 	// For the pool: every real event, the mouse's moves among them.  Folded
 	// here and stirred once a frame (a mouse reports a thousand times a second).
 	acct_pool_in = acct_pool_in * 1.000001 + evtype * 7.31 + scanx * 1.37 + chary * 0.61;
+	if (evtype == IE_MOUSEABS)
+	{
+		acct_ui_mx = scanx;
+		acct_ui_my = chary;
+		acct_ui_seen = TRUE;
+	}
 	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP)
 		return FALSE;
 	if (!scanx)
 		return FALSE;
 	if (scanx >= K_MOUSE1)                  // mice, wheels, pads
+	{
+		if (evtype == IE_KEYDOWN)
+		if (scanx <= K_MOUSE10)             // the buttons and the wheel (cl_defs.qc: 512..523)
+			return Account_Click(scanx);    // Patch 653
 		return FALSE;
+	}
 	Account_Stir(sprintf("%g %g %g %.9g", evtype, scanx, chary, cltime));
 	slot = Account_Slot(scanx);
 	if (evtype == IE_KEYUP)
@@ -579,6 +682,7 @@ float(float evtype, float scanx, float chary) Account_InputEvent =
 			acct_ui_opened = acct_browse(acct_ui_key);
 			Account_Copy();
 			Account_UiSet(ACCT_UI_GO);
+			acct_ui_cur = TRUE;
 			print(sprintf("^5steam:^7 sign in at ^3%s^7%s\n", Account_Address(), acct_ui_opened
 			              ? " (opened in your browser)"
 			              : (acct_ui_copied ? " (copied: paste it into your browser)" : "")));
@@ -600,9 +704,12 @@ float(float evtype, float scanx, float chary) Account_InputEvent =
 			print("^5steam:^7 link cancelled\n");
 			return TRUE;
 		}
-		// Enter: the page again, and the address on the clipboard again.
-		acct_ui_opened = acct_browse(acct_ui_key);
+		// Enter: the page again, the address on the clipboard again, and the
+		// cursor if a click had given it back.
+		if (acct_browse(acct_ui_key))
+			acct_ui_opened = TRUE;
 		Account_Copy();
+		acct_ui_cur = TRUE;
 		return TRUE;
 	}
 
@@ -868,42 +975,133 @@ float(string cmd) Account_ConsoleCommand =
 };
 
 // The box.  Low on the screen: `link` is typed in a console that covers the top.
+// The box is drawn in the HUD stack, outside any sui bracket: sui's rounded box
+// at absolute coordinates, an edge and a fill (Patch 653, the Dusk look).
+void(vector p, vector sz, float r, vector fill, vector edge, float a) Account_Box =
+{
+	_sui_round_draw(p, sz, r, edge, a);
+	_sui_round_draw(p + '1 1 0', sz - '2 2 0', max(0, r - 1), fill, a);
+};
+
+// A key's name on a cap and what the key does.  -> the x after both.
+float(float x, float y, float sz, string cap, string what) Account_Cap =
+{
+	local float cw, px;
+
+	if (cap == "")
+		return x;
+	px = Font_Px(sz);
+	cw = stringwidth(cap, TRUE, [px, px]) + px * 0.9;
+	Account_Box([x, y - px * 0.28], [cw, px * 1.56], ceil(px * 0.3), SUI_THEME_CHIP, SUI_THEME_EDGE_HI, 1);
+	HUD_Text([x + px * 0.45, y], cap, sz, SUI_THEME_DIM, 1);
+	x = x + cw + px * 0.5;
+	HUD_Text([x, y], what, sz, SUI_THEME_MUTED, 1);
+	return x + stringwidth(what, TRUE, [px, px]) + px * 1.3;
+};
+
+/*
+  `n` cells in groups of `grp`, centred on cx, holding `s` as typed so far: one
+  glyph to a cell, so nothing moves as it fills (this face's digits are not one
+  width, and a centred string of them shifted with every key).  The cell that
+  fills next wears the accent.
+*/
+void(float cx, float y, float sz, string s, float n, float grp, float bad) Account_Cells =
+{
+	local float  i, px, cw, ch, gap, ggap, w, x, len;
+	local vector edge;
+
+	px   = Font_Px(sz);
+	cw   = ceil(px * 1.3);
+	ch   = ceil(px * 1.75);
+	gap  = ceil(px * 0.2);
+	ggap = ceil(px * 0.7);
+	w    = n * cw + (n - 1) * gap + (ceil(n / grp) - 1) * (ggap - gap);
+	x    = floor(cx - w * 0.5);
+	len  = strlen(s);
+	for (i = 0; i < n; i = i + 1)
+	{
+		if (i > 0)
+			x = x + ((i == floor(i / grp) * grp) ? ggap : gap);
+		edge = SUI_THEME_EDGE;
+		if (i < len)
+			edge = SUI_THEME_EDGE_HI;
+		if (i == len)
+			edge = SUI_THEME_ACCENT;
+		if (bad)
+			edge = SUI_THEME_BAD;
+		Account_Box([x, y], [cw, ch], ceil(px * 0.28), SUI_THEME_WELL, edge, 1);
+		if (i < len)
+			HUD_TextC([x + cw * 0.5, y + (ch - px) * 0.5], substring(s, i, 1), sz, SUI_THEME_TEXT, 1);
+		x = x + cw;
+	}
+};
+
 void(vector scr) Account_Draw =
 {
-	local float  w, h, lsz, pad, y, y0, x, i, n;
-	local string s, foot;
+	local float  w, h, lsz, pad, y, y0, x, i, n, body, hot, r;
+	local string s, dots, k1, w1, k2, w2;
 
+	acct_ui_ls = '0 0 0';
 	if (!acct_ui)
 		return;
 
+	// Its own call: the box is drawn under a menu and the console too, where
+	// the HUD's did not run this frame.
+	sui_style_hud(scr);
 	Font_Set(ui_font_ui);
 	lsz = Font_Px(9 * ui_cv_scale);
-	pad = 8 * ui_cv_scale;
-	w   = min(250 * ui_cv_scale, scr_x * 0.9);
-	h   = lsz * 8.6 + pad * 2;
-	if (acct_ui == ACCT_UI_ASK)
-	if (acct_ui_num)
-		h = lsz * 11.6 + pad * 2;           // the question, and the number under it
-	x   = (scr_x - w) * 0.5;
-	y0  = min(scr_y * 0.56, scr_y - h - pad);
-	y   = y0;
+	pad = 10 * ui_cv_scale;
+	w   = min(260 * ui_cv_scale, scr_x * 0.9);
+	i   = floor(cltime * 2);
+	dots = substring("...", 0, 1 + i - floor(i / 3) * 3);
 
-	drawfill([x, y], [w, h], '0.10 0.13 0.17', 0.94, 0);
-	drawfill([x, y], [w, lsz + pad], '0.35 0.49 0.67', 1, 0);
-	HUD_Text([x + pad, y + pad * 0.5], "Link Steam", lsz, '1 1 1', 1);
-	y = y + lsz + pad * 1.6;
+	// The body's height in lines, by what it will hold.
+	body = 2.8;
+	if (acct_ui == ACCT_UI_PROMPT)
+		body = 5.9;
+	else if (acct_ui == ACCT_UI_GO)
+		body = 8.4;
+	else if (acct_ui == ACCT_UI_CODE)
+		body = 4.4;
+	else if (acct_ui == ACCT_UI_WAIT)
+		body = 1.5;
+	else if (acct_ui == ACCT_UI_ASK)
+		body = 3.8 + ((acct_ui_from != "") ? 1.5 : 0) + (acct_ui_num ? 4.9 : 0);
+	h  = ceil(pad * 0.9 + lsz * 1.9 + lsz * body + lsz * 2.3 + pad * 0.5);
+	x  = floor((scr_x - w) * 0.5);
+	y0 = max(0, floor(min(scr_y * 0.56, scr_y - h - pad)));
+	r  = ceil(pad * 0.8);
+	acct_ui_bp = [x, y0];
+	acct_ui_bs = [w, h];
 
-	foot = "Esc  cancel";
+	// sui_style_panel's shadow and fill, without its frame transform.
+	_sui_round_draw([x - 7, y0 - 4], [w + 14, h + 16], r + 7, '0 0 0', 0.07);
+	_sui_round_draw([x - 4, y0 - 2], [w + 8, h + 9], r + 4, '0 0 0', 0.12);
+	_sui_round_draw([x - 2, y0 - 1], [w + 4, h + 4], r + 2, '0 0 0', 0.18);
+	Account_Box([x, y0], [w, h], r, SUI_THEME_PANEL, SUI_THEME_EDGE, 0.97);
+	HUD_Text([x + pad, y0 + pad * 0.9], "LINK STEAM", lsz * 0.9, SUI_THEME_MUTED, 1);
+	y = y0 + pad * 0.9 + lsz * 1.9;
+
+	k1 = "";
+	w1 = "";
+	k2 = "Esc";
+	w2 = "cancel";
 	if (acct_ui == ACCT_UI_PROMPT)
 	{
-		HUD_Text([x + pad, y], "Rank your times under your Steam name.", lsz, '0.85 0.88 0.92', 1);
+		HUD_Text([x + pad, y], "Rank your times under your Steam name.", lsz, SUI_THEME_TEXT, 1);
 		y = y + lsz * 1.6;
 		HUD_Text([x + pad, y], acct_ui_free ? "It takes about twenty seconds."
 		                                    : "Have a code from the sign-in page? Type it here.",
-		         lsz * 0.9, '0.55 0.58 0.62', 1);
-		y = y + lsz * 2.2;
-		HUD_TextC([x + w * 0.5, y], "Press Enter to link", lsz * 1.4, '1.00 0.90 0.55', 1);
-		foot = acct_ui_free ? "Enter  link     Esc  later" : "Enter  link     Esc  cancel";
+		         lsz * 0.9, SUI_THEME_MUTED, 1);
+		y = y + lsz * 1.9;
+		Account_Box([x + pad, y], [w - pad * 2, lsz * 2.1], ceil(lsz * 0.45),
+		            SUI_THEME_SELECTED, SUI_THEME_ACCENT, 1);
+		n = Font_Px(lsz * 1.1);
+		HUD_TextC([x + w * 0.5, y + (lsz * 2.1 - n) * 0.5], "Press Enter to link", n, SUI_THEME_TEXT, 1);
+		k1 = "Enter";
+		w1 = "link";
+		if (acct_ui_free)
+			w2 = "later";
 	}
 	else if (acct_ui == ACCT_UI_GO)
 	{
@@ -913,77 +1111,81 @@ void(vector scr) Account_Draw =
 			s = "Paste this into your browser and sign in:";
 		else
 			s = "Open this in your browser and sign in:";
-		HUD_Text([x + pad, y], s, lsz, '0.85 0.88 0.92', 1);
-		y = y + lsz * 1.6;
+		HUD_Text([x + pad, y], s, lsz, SUI_THEME_TEXT, 1);
+		y = y + lsz * 1.7;
+		// The address: a link while the box has the cursor (Account_Click).
+		acct_ui_lp = [x + pad, y];
+		acct_ui_ls = [w - pad * 2, lsz * 2.0];
+		hot = FALSE;
+		if (acct_ui_had)
+		if (acct_ui_seen)
+			hot = Account_Over(acct_ui_lp, acct_ui_ls);
+		if (acct_ui_said != acct_ui_t)
+		{
+			acct_ui_said = acct_ui_t;       // once a start: tools/p653box.py aims its click by it
+			dprint(sprintf("steam: the address is drawn at %g,%g %gx%g on a %gx%g screen\n",
+			               acct_ui_lp_x, acct_ui_lp_y, acct_ui_ls_x, acct_ui_ls_y, scr_x, scr_y));
+		}
+		Account_Box(acct_ui_lp, acct_ui_ls, ceil(lsz * 0.4), hot ? SUI_THEME_CHIP : SUI_THEME_WELL,
+		            hot ? SUI_THEME_ACCENT : SUI_THEME_EDGE, 1);
 		s = Account_Address();
-		drawfill([x + pad, y - lsz * 0.3], [w - pad * 2, lsz * 1.7], '0.05 0.07 0.10', 1, 0);
 		// Fifty characters, read and not typed: the largest size on the font's
 		// ladder that fits.  HUD_TextC snaps to the ladder, so a computed size
 		// came back a rung too big and ran past the field.
 		for (n = lsz; n > 6; n = n - 1)
 			if (stringwidth(s, TRUE, [Font_Px(n), Font_Px(n)]) <= w - pad * 3)
 				break;
-		HUD_TextC([x + w * 0.5, y + (lsz - Font_Px(n)) * 0.5], s, n,
-		          acct_ui_opened ? '0.55 0.58 0.62' : '1.00 0.90 0.55', 1);
-		y = y + lsz * 2.0;
-		HUD_Text([x + pad, y], "Waiting for you to sign in...", lsz * 0.9, '0.55 0.95 0.60', 1);
-		y = y + lsz * 1.4;
+		HUD_TextC([x + w * 0.5, y + (lsz * 2.0 - Font_Px(n)) * 0.5], s, n,
+		          hot ? SUI_THEME_TEXT : SUI_THEME_ACCENT, 1);
+		y = y + lsz * 2.6;
+		HUD_Text([x + pad, y], strcat("Waiting for you to sign in", dots), lsz * 0.9, SUI_THEME_GOOD, 1);
+		y = y + lsz * 1.5;
 		HUD_Text([x + pad, y], "The page gives you a number to type here.", lsz * 0.9,
-		         '0.55 0.58 0.62', 1);
-		foot = "Enter  open it again     Esc  cancel";
+		         SUI_THEME_MUTED, 1);
+		y = y + lsz * 1.4;
+		HUD_Text([x + pad, y], acct_ui_cur ? "No page? Click the address above."
+		                                   : "No page? Press Enter to open it again.",
+		         lsz * 0.9, SUI_THEME_MUTED, 1);
+		k1 = "Enter";
+		w1 = "open it again";
 	}
 	else if (acct_ui == ACCT_UI_CODE)
 	{
-		HUD_Text([x + pad, y], "Type the code from the sign-in page", lsz, '0.85 0.88 0.92', 1);
-		y = y + lsz * 1.6;
-		// ABCDE-FGH__ : what is typed, then what is still owed.
-		n = strlen(acct_ui_buf);
-		s = "";
-		for (i = 0; i < ACCT_CODELEN; i = i + 1)
-		{
-			if (i > 0)
-			if (!(i & 3))
-				s = strcat(s, "-");             // ABCD-EFGH-JKLM, as the page shows it
-			s = strcat(s, (i < n) ? substring(acct_ui_buf, i, 1) : "_");
-		}
-		drawfill([x + pad, y - lsz * 0.3], [w - pad * 2, lsz * 2.1], '0.05 0.07 0.10', 1, 0);
-		HUD_TextC([x + w * 0.5, y], s, lsz * 1.5,
-		          (cltime - acct_ui_bad < 0.6) ? '1 0.35 0.30' : '1.00 0.90 0.55', 1);
-		foot = "Enter  continue     Esc  cancel";
+		HUD_Text([x + pad, y], "Type the code from the sign-in page", lsz, SUI_THEME_TEXT, 1);
+		y = y + lsz * 1.8;
+		// ABCD EFGH JKLM, as the page shows it.
+		Account_Cells(x + w * 0.5, y, lsz * 1.2, acct_ui_buf, ACCT_CODELEN, 4, cltime - acct_ui_bad < 0.6);
+		k1 = "Enter";
+		w1 = "continue";
 	}
 	else if (acct_ui == ACCT_UI_WAIT)
 	{
-		HUD_Text([x + pad, y], acct_ui_conf ? "Linking..." : "Asking the leaderboard...",
-		         lsz, '0.85 0.88 0.92', 1);
-		foot = acct_ui_conf ? "" : "Esc  cancel";
+		HUD_Text([x + pad, y], strcat(acct_ui_conf ? "Linking" : "Asking the leaderboard", dots),
+		         lsz, SUI_THEME_TEXT, 1);
+		if (acct_ui_conf)
+			k2 = "";
 	}
 	else if (acct_ui == ACCT_UI_ASK)
 	{
-		HUD_Text([x + pad, y], "Link this game to the Steam account", lsz, '0.85 0.88 0.92', 1);
+		HUD_Text([x + pad, y], "Link this game to the Steam account", lsz, SUI_THEME_TEXT, 1);
 		y = y + lsz * 1.6;
-		HUD_TextC([x + w * 0.5, y], acct_ui_to, lsz * 1.4, '1.00 0.90 0.55', 1);
+		HUD_TextC([x + w * 0.5, y], acct_ui_to, lsz * 1.4, SUI_THEME_WARN, 1);
 		y = y + lsz * 2.2;
 		if (acct_ui_from != "")
 		{
 			HUD_Text([x + pad, y], sprintf("It is linked to %s now, and would move", acct_ui_from),
-			         lsz * 0.9, '1 0.60 0.45', 1);
-			if (acct_ui_num)
-				y = y + lsz * 1.5;
+			         lsz * 0.9, SUI_THEME_FOCUS, 1);
+			y = y + lsz * 1.5;
 		}
-		foot = "Enter  link     Esc  cancel";
+		k1 = "Enter";
+		w1 = "link";
 		if (acct_ui_num)
 		{
 			HUD_Text([x + pad, y], "Type the number the sign-in page shows:", lsz * 0.9,
-			         '0.85 0.88 0.92', 1);
+			         SUI_THEME_DIM, 1);
 			y = y + lsz * 1.7;
-			// 4 8 _ _ : what is typed, then what is still owed.
-			n = strlen(acct_ui_no);
-			s = "";
-			for (i = 0; i < ACCT_NOLEN; i = i + 1)
-				s = strcat(s, (i > 0) ? " " : "", (i < n) ? substring(acct_ui_no, i, 1) : "_");
-			drawfill([x + pad, y - lsz * 0.3], [w - pad * 2, lsz * 2.1], '0.05 0.07 0.10', 1, 0);
-			HUD_TextC([x + w * 0.5, y], s, lsz * 1.5,
-			          (cltime - acct_ui_bad < 0.6) ? '1 0.35 0.30' : '1.00 0.90 0.55', 1);
+			Account_Cells(x + w * 0.5, y, lsz * 1.5, acct_ui_no, ACCT_NOLEN, ACCT_NOLEN,
+			              cltime - acct_ui_bad < 0.6);
 		}
 	}
 	else
@@ -998,12 +1200,16 @@ void(vector scr) Account_Draw =
 				if (substring(s, i, 1) == " ")
 					break;
 		}
-		HUD_Text([x + pad, y], substring(s, 0, i), lsz, acct_ui_good ? '0.55 0.95 0.60' : '1 0.60 0.45', 1);
+		HUD_Text([x + pad, y], substring(s, 0, i), lsz, acct_ui_good ? SUI_THEME_GOOD : SUI_THEME_BAD, 1);
 		if (i < n)
 			HUD_Text([x + pad, y + lsz * 1.4], substring(s, i + 1, n), lsz,
-			         acct_ui_good ? '0.55 0.95 0.60' : '1 0.60 0.45', 1);
-		foot = "Any key  close";
+			         acct_ui_good ? SUI_THEME_GOOD : SUI_THEME_BAD, 1);
+		k1 = "Any key";
+		w1 = "close";
+		k2 = "";
 	}
-	HUD_Text([x + pad, y0 + h - lsz - pad * 0.6], foot, lsz * 0.9, '0.55 0.58 0.62', 1);
+	y = y0 + h - pad * 0.5 - lsz * 1.5;
+	x = Account_Cap(x + pad, y, lsz * 0.9, k1, w1);
+	Account_Cap(x, y, lsz * 0.9, k2, w2);
 	Font_Reset();
 };

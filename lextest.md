@@ -11,6 +11,29 @@ to be wrong.
 
 ---
 
+## 00. 12 Oct — the Link Steam box (Patch 653)
+
+From your list after trying 0.1.24. You are linked already, so to see it:
+type `link` in the console, close the console, press Enter.
+1. **The look.** The box is the same rounded panel as the rest of the UI,
+   with key caps for Enter and Esc where the grey footer line was.
+2. **The mouse.** After Enter the box has the cursor. The proto.bar address
+   lights when you point at it, and a click opens the page again (your
+   browser still opens by itself first, as before). Click anywhere beside the
+   box to get your view back; Enter takes the cursor again. While the box has
+   the cursor the other mouse buttons do nothing.
+3. **The number.** Four cells, one digit each; nothing moves as you type.
+   The long code (`link`, then start typing a code) is twelve cells in fours.
+4. **Spectate list.** A linked player's picture is 26 px in a taller row,
+   where it was 14: about the leaderboard's. I have seen the taller row and
+   not yet a picture in it (my test player had none): yours to look at, on
+   a lobby with you on it.
+- **Not in this one:** paste, and selecting text. That is the next patch
+  (655): written and in test. Menus paste on today's engine; in the game it
+  needs the next release's engine.
+- **Yours to judge:** whether the cursor should stay while the box waits, or
+  go back to the game by itself after a few seconds.
+
 ## 00. 12 Oct — dust motes that look like Source's (Patch 648)
 
 From your message: Source's motes are bolder, rounder, much smaller, come in

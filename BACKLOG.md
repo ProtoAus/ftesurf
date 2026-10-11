@@ -5,6 +5,24 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## The link box: what Patch 653 left -- 2026-10-12
+
+- **A click before the cursor has moved is nobody's.** The engine says where
+  the cursor is only when it moves (`in_generic.c`, after a frame's keys), so
+  the box ignores a click until the first move since it took the mouse
+  (`acct_ui_seen`). A cursor that appears on the address needs a nudge.
+- **The question for a typed code has no timeout** (`ACCT_UI_ASK` without a
+  number, and `ACCT_UI_CODE` once a letter is in): it holds the keyboard
+  until Esc. Older than 653, which no longer adds the mouse to it; found by
+  653's review. A clock from the last key would close it.
+- **The native score table stands down while the box has the cursor**
+  (`Scores_NativeFront`, cl_scores_native.qc: any claim but the board's).
+  Seen only in the code.
+- **Keys other than Enter and Esc still run their binds while the box waits
+  with the cursor**: the view is still, the player can walk. By design
+  (Patch 617: the wait leaves the game its keys), and odd beside a cursor.
+- ftesurf-5b, from Patch 653's review of 12 Oct.
+
 ## Run lines on an engine before 645: what Patch 654 left -- 2026-10-12
 
 - **Eight WHOLE lines at 3 px still close that engine** (`hud_lines_order 0`,

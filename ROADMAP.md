@@ -1488,6 +1488,16 @@ owner column under 15 character widths (an 800 px window has 12): no
 pictures there. NOT YET: the opt-in native table, chat, the results screen
 (BACKLOG).
 
+**THE OWNER'S LIST OF 12 OCT, after trying release 0.1.24** (his words are
+in lextest and the patch log): the link box in the UI's look with a cursor
+and a clickable address, and cells for what is typed (BUILT, Patch 653);
+text fields that select, copy and paste (Patch 655: in test; game code's
+paste is an engine gate); Steam pictures for everyone on the boards, kept on
+the Pi and refreshed daily (67,258 SteamIDs on the boards that day; NOT
+BUILT); `hud_player` as a profile with the Steam name and picture, the
+customizer, a breakdown like the site's player page, and a player search
+there and on the leaderboard (NOT BUILT).
+
 **THE FIRST BOOT: BUILT, Patch 647.** `screen_terms` is one rounded panel
 with two cards, "On this machine" and "Public lobbies", their text wrapped
 to the cards (`ui_para`, measured first so the panel is sized from it) and

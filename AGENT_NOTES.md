@@ -7979,6 +7979,30 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **THE LINK BOX'S MOUSE (Patch 653), AND HOW A RIG CLICKS.**
+  `tools/p653box.py --progs <build> --output-dir <owned dir>`: p615link's
+  rig, about 100 s, screenshots of every state to look at.
+  THE BOX HAS THE CURSOR ONLY IN A LINK THE PLAYER STARTED (`acct_ui_cur`,
+  set by that Enter; `UIC_ACCOUNT` 128): the wait, the page's number, the
+  confirm. Its first cut claimed it for every state that owned the keyboard,
+  and the review pointed at `link` plus one letter: a console line and a
+  movement key away, with no timeout once a letter is in. The click is
+  hit-tested in `Account_InputEvent`, not at draw: `acct_browse` answers only
+  while a device's press is being delivered, and a mouse button is one
+  (measured: the engine printed its second `acct_browse:` for the click).
+  FOUR THINGS A RIG NEEDS TO CLICK. The engine does not read a posted
+  WM_MOUSEMOVE: with a free cursor it reads the desktop's pointer
+  (`in_win.c`, GetCursorPos), so the arm moves the real pointer and puts it
+  back. It reads it only in the front window unless `in_focusgrab 0`. A
+  posted WM_LBUTTONDOWN is a press. And a Python process is told a SCALED
+  client size (1536 for 1920) until `SetProcessDPIAware()`: the first aimed
+  click landed 143 px high and was graded as "beside the box", which an
+  earlier check then passed on.
+  A client's developer prints are not in its log without `log_developer 1`.
+  The box draws in the HUD stack, outside any sui bracket: `_sui_round_draw`
+  at absolute coordinates and its own `sui_style_hud`, not `sui_style_box`
+  (which adds the last bracket's frame). fteqcc WARNS on a ninth argument to
+  sprintf and drops it.
 - **RELEASED 11 Oct 2026, 12:24-12:28 UTC: 0.1.24** (QC build 89, game
   `580a640`, Windows and Linux; the owner asked for one "so players can
   test"). The engine is Patch 625's, the one both installs run: stamp
@@ -8034,6 +8058,13 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   bar's close button, which lights under the real mouse. NOT RUN: a 0.1.24
   client joining a live lobby since that deploy (this session's smoke was
   queued behind the owner's game and stopped for low memory).
+  AND A FAULT THAT REACHED IT, 14:37:27Z TO 15:13:07Z THAT DAY: Patch 649's
+  csprogs on the lobbies let any client tick sixty-four run lines, and this
+  release's 625 engine dies when one polygon batch passes 32768 vertices,
+  which the fortieth line did (ftesurf-0f measured both on a copy of the
+  exe). Patch 654 (csprogs `827dece4`) keeps the limit of eight on an engine
+  without the line builtins. Nobody was on a lobby at either deploy; whether
+  anyone joined between is not known.
   WHAT COST A RUN: `ftesurf\gfx\fonts\*.ttf.prev` trips the deny list (moved
   aside, put back after); the main checkout has to BE the release commit (it
   was 101 behind, its five stray files byte-equal to main's); and a shell

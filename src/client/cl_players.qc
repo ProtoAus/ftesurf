@@ -48,7 +48,8 @@ float pl_rows;                  // players drawn this frame (diagnostics)
 vector pl_panelpos, pl_panelsize; //Visible room rect for native-table hit exclusion.
 
 #define PL_MAXSLOT  64          // QW slots; getplayerkeyvalue returns "" past the end
-#define PL_RH       26          // row height, px
+#define PL_RH       32          // row height, px
+#define PL_AV       26          // Patch 653: a Steam picture's side: about the board's, twice what it was
 
 /*
   PATCH 340: BEST MAIN TIME PER PLAYER, and the ranking it buys.
@@ -240,7 +241,7 @@ void(float slot, string nm) Pl_VoiceToggle =
 void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 {
 	local vector p, sz;
-	local float i, j, y, rh, n, avail, voiceon, voicemuted, silenced, me;
+	local float i, j, y, rh, ro, n, avail, voiceon, voicemuted, silenced, me;
 	local float tsz, namew, bt, key, bestkey, kj, xx, r, b, showping, tw;
 	local float slot[PL_MAXSLOT];
 	local float best[PL_MAXSLOT];
@@ -293,6 +294,7 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 	}
 
 	rh = PL_RH;
+	ro = floor((PL_RH - 26) * 0.5);     // the row's contents were placed for 26 px
 	p  = '0 0 0';
 	sz = '0 0 0';
 
@@ -394,7 +396,7 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 	*/
 	showping = (sz_x >= 260) ? 1 : 0;
 	tw  = ceil(tsz * 5.2);              // best-time column
-	namew = sz_x - pad * 2 - ceil(tsz * 1.8) - 16
+	namew = sz_x - pad * 2 - ceil(tsz * 1.8) - (PL_AV + 4)
 	      - tw - 46 - (showping ? ceil(tsz * 3) : 0);
 	if (namew < tsz * 4)
 		namew = tsz * 4;
@@ -442,24 +444,24 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 		*/
 		if (r >= 1 && r <= 3)
 		{
-			sui_fill([xx, y + 5], [ceil(tsz * 1.5), rh - 12], Pl_Medal(r), 0.9, 0);
-			sui_text([xx + 3, y + 6], [tsz, tsz], ftos(r), '0.1 0.1 0.1', 1, 0);
+			sui_fill([xx, y + ro + 5], [ceil(tsz * 1.5), 14], Pl_Medal(r), 0.9, 0);
+			sui_text([xx + 3, y + ro + 6], [tsz, tsz], ftos(r), '0.1 0.1 0.1', 1, 0);
 		}
 		else if (b > 0)
-			sui_text([xx + 3, y + 6], [tsz, tsz], ftos(r), PLC_DIM, 1, 0);
+			sui_text([xx + 3, y + ro + 6], [tsz, tsz], ftos(r), PLC_DIM, 1, 0);
 		else
-			sui_text([xx + 3, y + 6], [tsz, tsz], "-", '0.4 0.4 0.44', 1, 0);
+			sui_text([xx + 3, y + ro + 6], [tsz, tsz], "-", '0.4 0.4 0.44', 1, 0);
 		xx = xx + ceil(tsz * 1.8);
 
 		// Colour swatch: the exact worn rgb (`lrgb`, Patch 341), which for a
 		// palette player IS the palette entry -- one source, no nearest-lie.
 		// Patch 640: a linked player's Steam picture in its place, the colour a
 		// bar under it.  *phash is "" for anyone not linked.
-		if (SteamPic_Draw([xx - 1, y + 4], 14, getplayerkeyvalue(j, "*phash"), 1))
-			sui_fill([xx - 1, y + 19], [14, 2], Av_WornRGB(j), 1, 0);
+		if (SteamPic_Draw([xx - 1, y + 1], PL_AV, getplayerkeyvalue(j, "*phash"), 1))
+			sui_fill([xx - 1, y + PL_AV + 2], [PL_AV, 2], Av_WornRGB(j), 1, 0);
 		else
-			sui_fill([xx, y + 7], [12, 12], Av_WornRGB(j), 1, 0);
-		xx = xx + 16;
+			sui_fill([xx + (PL_AV - 14) * 0.5, y + ro + 7], [12, 12], Av_WornRGB(j), 1, 0);
+		xx = xx + PL_AV + 4;
 
 		// The name, in the chat colour -- the same rule the chatbox uses, so
 		// a name is ONE colour everywhere it appears.
@@ -467,9 +469,9 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 			? nm
 			: strcat("^", Chat_ColourOf(j), nm, "^7");
 		id = Chat_Fit(id, namew, tsz);
-		sui_text([xx, y + 6], [tsz, tsz], id, '1 1 1', 1, 0);
+		sui_text([xx, y + ro + 6], [tsz, tsz], id, '1 1 1', 1, 0);
 		if (j == me)
-			sui_text([xx + stringwidth(id, TRUE, [tsz, tsz]) + 6, y + 6], [tsz, tsz],
+			sui_text([xx + stringwidth(id, TRUE, [tsz, tsz]) + 6, y + ro + 6], [tsz, tsz],
 			         "you", PLC_FAINT, 1, 0);
 
 		// Best main time, right-aligned before the icon block; medal-coloured
@@ -480,7 +482,7 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 		if (b > 0)
 		{
 			id = Time_TickString(b, Timer_Tick());
-			sui_text([xx + tw - ceil(tsz * 0.6) - stringwidth(id, TRUE, [tsz, tsz]), y + 6],
+			sui_text([xx + tw - ceil(tsz * 0.6) - stringwidth(id, TRUE, [tsz, tsz]), y + ro + 6],
 			         [tsz, tsz], id,
 			         (r >= 1 && r <= 3) ? Pl_Medal(r) : PLC_TIME, 1, 0);
 		}
@@ -490,23 +492,23 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 			// After the time column, before the voice icon.  (It was drawn at the
 			// time column's own start -- unseen until the room list absorbed rows.)
 			if (ping != "")
-				sui_text([p_x + sz_x - pad - 46 - ceil(tsz * 3), y + 6],
+				sui_text([p_x + sz_x - pad - 46 - ceil(tsz * 3), y + ro + 6],
 				         [tsz, tsz], strcat(ping, "ms"), PLC_DIM, 1, 0);
 		}
 
 		// Voice: icon button.  speaking > muted > idle.
 		voiceon     = stof(getplayerkeyvalue(j, "voipspeaking"));
 		voicemuted  = stof(getplayerkeyvalue(j, "vignored"));
-		sui_action_element([p_x + sz_x - pad - 46, y + 4], [18, 18],
+		sui_action_element([p_x + sz_x - pad - 46, y + ro + 4], [18, 18],
 		                   sprintf("pl_v%g", j), sui_noop);
-		drawpic([p_x + sz_x - pad - 46, y + 4],
+		drawpic([p_x + sz_x - pad - 46, y + ro + 4],
 		        voicemuted ? "gfx/thumbnails/muted"
 		                   : (voiceon ? "gfx/thumbnails/speaking"
 		                              : "gfx/thumbnails/speaking_off"),
 		        [18, 18], '1 1 1',
 		        (voicemuted || voiceon) ? 1 : 0.45, 0);
 		if (sui_is_hovered(sprintf("pl_v%g", j)))
-			sui_border_box([p_x + sz_x - pad - 46, y + 4], [18, 18], 1,
+			sui_border_box([p_x + sz_x - pad - 46, y + ro + 4], [18, 18], 1,
 			               PLC_RING, 1, 0);
 		if (sui_is_released(sprintf("pl_v%g", j)) && j != me)
 			Pl_VoiceToggle(j, nm);
@@ -515,14 +517,14 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 		silenced = Chat_Silenced(nm);
 		if (j != me)
 		{
-			sui_action_element([p_x + sz_x - pad - 24, y + 4], [24, 18],
+			sui_action_element([p_x + sz_x - pad - 24, y + ro + 4], [24, 18],
 			                   sprintf("pl_c%g", j), sui_noop);
-			sui_style_box([p_x + sz_x - pad - 24, y + 4], [24, 18], 4,
+			sui_style_box([p_x + sz_x - pad - 24, y + ro + 4], [24, 18], 4,
 			              silenced ? SUI_THEME_BAD_BG : SUI_THEME_CHIP,
 			              silenced ? SUI_THEME_BAD
 			                       : (sui_is_hovered(sprintf("pl_c%g", j))
 			                          ? SUI_THEME_ACCENT : SUI_THEME_EDGE_HI), 1);
-			sui_text([p_x + sz_x - pad - 18, y + 7], [tsz - 1, tsz - 1],
+			sui_text([p_x + sz_x - pad - 18, y + ro + 7], [tsz - 1, tsz - 1],
 			         silenced ? "off" : "chat",
 			         silenced ? PLC_OFF : PLC_DIM, 1, 0);
 			if (sui_is_released(sprintf("pl_c%g", j)))

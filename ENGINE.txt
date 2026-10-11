@@ -26,6 +26,12 @@ commit   65bf6f4640fa17ac2c3cb79d7725226e55ce645b
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-645
 patch    654
+# Patch 653: the Link Steam box is drawn in the Dusk look; from the Enter that starts a
+# link it has the mouse, and a click on the sign-in address opens the page again (a click
+# beside the box gives the mouse back); the code and the page's number are drawn one glyph
+# to a cell, so nothing moves as they are typed. The room list's Steam picture is 26 px.
+# csprogs only (cl_account.qc, cl_players.qc, cl_hud.qc): no engine source, server QC,
+# surfd, recorder, evidence, ranking, default or Build change (commit and tag above stay).
 # Patch 654: an engine before Patch 645 keeps the eight-line limit. With Patch 649 it
 # could tick sixty-four, drew them by the QC loop into one polygon batch, and died at the
 # fortieth (32768 vertices: the fault 645 fixed in the engine). The 0.1.24 download has
