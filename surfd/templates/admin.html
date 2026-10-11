@@ -10,8 +10,8 @@
 <body>
 <header>
   <h1>FTESurf admin</h1>
-  {% if have_runs %}
-  <nav class="nav"><a href="/admin/" aria-current="page">Fleet</a><a href="/admin/runs">Runs</a></nav>
+  {% if have_runs or have_bans %}
+  <nav class="nav"><a href="/admin/" aria-current="page">Fleet</a>{% if have_runs %}<a href="/admin/runs">Runs</a>{% endif %}{% if have_bans %}<a href="/admin/accounts">Accounts</a>{% endif %}</nav>
   {% endif %}
   <span class="muted" id="clock">&mdash;</span>
   <span class="spacer"></span>

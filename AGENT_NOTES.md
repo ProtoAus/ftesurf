@@ -6936,6 +6936,39 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   was closed. Look for his game before a run, and before believing a failure.
   The arm now puts the desktop's clipboard back if one of its sign-in
   addresses is what it left there.
+- **BANS ARE A TIER, NOT A FILTER (Patch 633).** A banned account's rows
+  stand on `banned:<tier>` in `runs` and `replays`. Before adding a reader,
+  name its tiers (every one does); a reader of "all tiers that are not
+  imported" would list banned rows. `test_ranked.py` section 8 grades the
+  public routes by their own words: with no file on disk a PUBLIC recording
+  answers "no recording on this node" and a banned one "no such run", so a
+  404 alone tells nothing. `test_admin.py` fails two rcon packet-count checks
+  on main as well (259 ok either way): not this patch's.
+  ITS REVIEW (two lenses) found that the first cut's "review goes on working
+  inside the family" was true of re-standing and FALSE of stage parking
+  (`restage` named `ranked`/`community`), so a reject made while banned came
+  back public at the unban and a clear made while banned stayed hidden; that
+  the recording behind stage rows (kind `evidence`, tier '') was still
+  served; that a ban committed while a run was being filed left that run
+  live (7 of 40 under a stress built to hit it); and that the page's list
+  re-sorted under a second click. Section 8's first fixture had NO FILE ON
+  DISK, so its replay was unbound, `_run_rejected` was false and the stage
+  path never ran: 8b writes a real recording.
+  THE FINAL CHECK of those fixes found three low corners, all in the new
+  path for a run filed across a ban, each needing a second coincidence and
+  none produced unforced: the late pass acted on a ban it had read before it
+  held the lock (an unban committing meanwhile was followed by a full
+  set-aside; it reads again under the lock now); if the pass never ran, or
+  timed out on the lock, the row stayed live (every start repairs it now,
+  `bans_now`); and a tie re-filed over the same recording across the ban
+  loses the row's link to its recording (BACKLOG, not fixed). Its fuzz, 200
+  sequences of ban, unban, review and sweep against a no-ban control, found
+  no difference; with the family rule forced back to the old code 49 of 200
+  differ.
+  `tools/mapwr.py`'s check runs only where `tools/` is beside `surfd/` and
+  prints `skip ... NOT MEASURED` in a copy of `surfd/` alone (a mutant's);
+  with its tier filter removed by hand it fails with `banned:ranked` as the
+  map's best.
 - **629'S LAST CHECK.** A file an earlier cut had started on had `runpins`
   without its key column and answered 500 to every run with an id (the start
   adds it and drops those pins). A post surfd holds back answers `why: held`

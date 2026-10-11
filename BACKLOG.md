@@ -192,9 +192,23 @@ fixed are here.
 - **SAVE SLOTS AND RECORDING NAMES ARE STILL KEYED ON THE GUID** (ROADMAP 14.3
   a has both, as gates before ranked-means-linked is switched on). A guid is
   the client's to choose and is handed to any server with the fleet's key.
-- **A ban that lands mid-run leaves that run's earlier stage rows standing**
-  with no recording to judge them by (the finish is refused whole). 14.3 (c)
-  hides a banned account's rows; until then they show.
+- **Bans (Patch 633), left open.** No history: `ban_note` holds the newest
+  note and surfd's log the rest (a `banlog` table wants a schema step). The
+  rows of a banned account's INSTALLS (guid rows, community tier or from
+  before it linked) stay; `installs` says which guids those are. A banned
+  person with another Steam account, or an unlinked game, is a new player.
+  A ban does not drop the account's connections: it is told at the next
+  connect. With ranked-means-linked off a ban hides and refuses nothing.
+  A RUN FILED ACROSS A BAN that re-files a recording the account already
+  holds, on an exact tie, leaves the surviving row with `replay_id = 0`,
+  before and after the unban (the final check; `submit_run` decides the ban
+  before its board transaction, and deciding inside it is the cure for this
+  and for the late pass altogether).
+  A banned run's `replay online <id>` (the admin page's watch commands) gets
+  the public 404: download the file from the panel and play it from disk.
+  Set-aside and banned rows count toward `MAX_RUNS` / `MAX_REPLAYS`. The
+  accounts list stops at 500. A typo that is still a valid SteamID64 is
+  banned in advance and says so, and its row stays after an unban.
 - **A run id is local time to the second, slot and port**: a clock stepped
   back repeats one, and a repeated id under another install is read live at
   every post (so it can still split on a link made mid-run).

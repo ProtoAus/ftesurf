@@ -907,6 +907,29 @@ nothing moves and a run is its guid's, as before.
 The lobby's word for the key is trusted as the lobby is: a proof names the
 server, the key and the game code, not the connection.
 
+BANS (Patch 633). `/admin/accounts` lists every account and bans or unbans one
+by SteamID with a note (`accounts.set_ban`; `banned_at`, `ban_note`). A ban
+moves the account's `runs` and `replays` rows from `<tier>` to
+`banned:<tier>`, set-aside copies too; an unban moves them back, keeping the
+faster where a row is in the way. NO READER HAS A BAN FILTER AND NONE NEEDS
+ONE: every board, page and count names its tiers (`tools/mapwr.py` did not,
+and does now). A review goes on working inside `banned:`: re-standing keys
+on a replay's own tier, and stage parking asks which family the player's
+rows are in (`_family`), so a reject or a clear made while banned is what
+the unban brings back. `/api/replay` refuses a recording BY ITS OWNER (a
+banned account's `run` and `evidence` rows; the evidence behind stage rows
+has no tier, and a sweep files more after the ban); `/board/api/run` refuses
+by tier. The admin reads the file at `/admin/api/run/<id>/file`, and the run
+page's download link is that. A run being filed while its account is banned
+is set aside after its own commit (`_ban_late`, which reads the ban again
+once it holds the lock): the identity is read in one transaction and the row
+written in another. EVERY START sets aside anything a banned account still
+has on a tier readers name (`accounts.bans_now`: one read of `accounts` when
+nobody is banned), for the late pass that could not get the lock. Imported
+tiers are left alone.
+The player directory is cached for five minutes and the maps list for one,
+so a name can linger that long on a list; its page is empty at once.
+
 AN INSTALL IS ITS SIGNING KEY. The four `/api` routes need the shared key and
 a `SURFD_TRUSTED` source; all but `/api/link/wait` also carry a signature by
 `pub` over the ACCOUNT's statement (`accounts.STATEMENT`, since Patch 625; the

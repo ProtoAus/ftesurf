@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>FTESurf admin - accounts</title>
+{% include "_admin_style.html" %}
+</head>
+<body>
+<header>
+  <h1>FTESurf admin</h1>
+  <nav class="nav"><a href="/admin/">Fleet</a>{% if have_runs %}<a href="/admin/runs">Runs</a>{% endif %}<a href="/admin/accounts" aria-current="page">Accounts</a></nav>
+  <span class="spacer"></span>
+  <form method="post" action="/admin/logout" style="margin:0">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit">Sign out</button>
+  </form>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Ban a Steam account</h2>
+    <p class="note" id="mode"></p>
+    <div class="row" style="margin-bottom:.6rem">
+      <input type="text" id="sid" placeholder="SteamID64 (17 digits)" maxlength="24"
+             inputmode="numeric" spellcheck="false" autocomplete="off">
+      <input type="text" id="note" placeholder="why (kept with the ban)" maxlength="200"
+             spellcheck="false" autocomplete="off" style="flex:1">
+      <button id="ban" class="primary">Ban</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Accounts <span class="muted" style="font-weight:400" id="summary"></span></h2>
+    <div class="scroll">
+      <table id="accounts"><thead><tr>
+        <th>name</th><th>SteamID</th><th class="num">installs</th>
+        <th class="num">rows shown</th><th class="num">rows hidden</th>
+        <th>last seen</th><th>state</th><th>note</th><th></th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const CSRF = {{ csrf | tojson }};
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = String(text);
+  return e;
+}
+function pill(word, cls) { return el("span", "pill " + (cls || ""), word); }
+function toast(msg, ok) {
+  const d = el("div", ok ? "ok" : "bad", msg);
+  document.getElementById("toast").appendChild(d);
+  setTimeout(() => d.remove(), ok ? 4000 : 9000);
+}
+function fmtDate(t) {
+  return t > 0 ? new Date(t * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"}) : "-";
+}
+
+// ONE ACTION AT A TIME, AND THE LIST IS REDRAWN BEFORE THE NEXT.  The list
+// re-sorts after a ban, so a second click lands on another account's button:
+// every button is dead from the click until the new list is drawn, the note
+// is spent by the action that used it, and a row's button sends the state the
+// page showed (`seen`), which surfd refuses if it is no longer true.
+let busy = false;
+function lock(on) {
+  busy = on;
+  for (const b of document.querySelectorAll("button[data-sid], #ban")) b.disabled = on;
+}
+async function post(fields) {
+  if (busy) return false;
+  lock(true);
+  const body = new URLSearchParams(Object.assign({csrf: CSRF}, fields));
+  let r, j, ok = false;
+  try {
+    r = await fetch("/admin/api/ban", {method: "POST", body, credentials: "same-origin"});
+    if (r.status === 401) { location.href = "/admin/login"; return false; }
+    j = await r.json();
+    ok = !!j.ok;
+    toast(ok ? (j.message || "done") : (j.error || "failed"), ok);
+  } catch (e) { toast("could not reach surfd: " + e.message, false); }
+  if (ok) {
+    document.getElementById("sid").value = "";
+    document.getElementById("note").value = "";
+  }
+  await load();
+  lock(false);
+  return ok;
+}
+
+function accountRow(a) {
+  const tr = el("tr");
+  const state = el("td");
+  state.appendChild(a.banned ? pill("banned " + fmtDate(a.banned), "down") : pill("ok", "up"));
+  const act = el("td"), b = el("button", "", a.banned ? "Unban" : "Ban");
+  b.dataset.sid = a.steamid;
+  b.dataset.action = a.banned ? "unban" : "ban";
+  b.dataset.seen = String(a.banned);
+  b.dataset.name = a.name || "(never signed in)";
+  act.appendChild(b);
+  tr.append(el("td", "", a.name || "(never signed in)"), el("td", "mono", a.steamid),
+            el("td", "num mono", a.installs), el("td", "num mono", a.shown),
+            el("td", "num mono", a.hidden), el("td", "", fmtDate(a.seen)), state,
+            el("td", "", a.note), act);
+  return tr;
+}
+
+async function load() {
+  let r, j;
+  try {
+    r = await fetch("/admin/api/accounts", {credentials: "same-origin"});
+    if (r.status === 401) { location.href = "/admin/login"; return; }
+    j = await r.json();
+  } catch (e) { toast("could not load accounts: " + e.message, false); return; }
+  if (!j.ok) { toast(j.error || "failed", false); return; }
+  const tb = document.querySelector("#accounts tbody");
+  tb.replaceChildren();
+  for (const a of j.accounts) tb.appendChild(accountRow(a));
+  if (!tb.children.length) {
+    const tr = el("tr"), td = el("td", "empty", "nobody has signed in through Steam yet");
+    td.colSpan = 9; tr.appendChild(td); tb.appendChild(tr);
+  }
+  const banned = j.accounts.filter(a => a.banned).length;
+  document.getElementById("summary").textContent =
+    "— " + j.accounts.length + " accounts, " + banned + " banned";
+  const m = document.getElementById("mode");
+  m.className = j.ranked_linked ? "note" : "note bad";
+  m.textContent = j.ranked_linked
+    ? "A banned account's rows leave every board (kept, and back on an unban), its runs are not stored, and its installs are told when they connect."
+    : "Ranked times do not need a linked account yet (SURFD_RANKED_LINKED=0): a ban is told to the account's installs and stops it linking, but its runs are still stored, under the install's own id.";
+}
+
+document.getElementById("ban").addEventListener("click", () => {
+  const sid = document.getElementById("sid").value.trim();
+  const note = document.getElementById("note").value.trim();
+  post({steamid: sid, action: "ban", note});
+});
+// A row's Ban only FILLS the form above (the reason is typed for that account,
+// and the Ban that sends it is the one beside the reason).  A row's Unban asks
+// first, by name.
+document.querySelector("#accounts tbody").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-sid]");
+  if (!b || busy) return;
+  if (b.dataset.action === "ban") {
+    document.getElementById("sid").value = b.dataset.sid;
+    document.getElementById("note").value = "";
+    document.getElementById("note").focus();
+    return;
+  }
+  if (!confirm("Unban " + b.dataset.name + " (" + b.dataset.sid + ")? Its rows go back on the boards."))
+    return;
+  post({steamid: b.dataset.sid, action: "unban", seen: b.dataset.seen,
+        note: document.getElementById("note").value.trim()});
+});
+
+load();
+</script>
+</body>
+</html>

@@ -1382,9 +1382,16 @@ is not the migration of a board: it is thirteen rows.
   linked, so the first linked runs read `shared`, and a second PC's read
   `new` (`admin.py` `_KEY_*`, `sweep.bind_key`). Judge a key against the
   account's own (`keylinks`, `installs`) before the flag holds anything.
-- **(c) Bans.** Admin: ban and unban by SteamID with a note. A banned
-  account's rows leave every public board (kept, not deleted), its installs
-  are told at connect, and (a) already refuses its runs.
+- **(c) Bans: BUILT, Patch 633.** `/admin/accounts`: ban and unban by
+  SteamID with a note (a ban needs one), also a SteamID that has not signed
+  in yet. A banned account's rows and recordings are set aside on
+  `banned:<tier>` (kept; an unban strips the prefix), so no board lists them
+  and nothing ranks against them; its recordings answer as if there were
+  none; its installs are told at connect (Patch 617) and (a) refuses its
+  runs. Imported rows under the same SteamID are other boards' records and
+  stay. A BAN BITES AS FAR AS (a) IS ON: with the switch off a run is its
+  guid's, so nothing of the account's is on a board to set aside and its
+  runs are still stored; the page says so.
 
 **Unknowns.** How many honest ranked runs have no verified receipt
 (Multi-Session and segmented runs can have none): thirteen rows are not a

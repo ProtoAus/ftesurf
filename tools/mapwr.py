@@ -24,7 +24,9 @@ against it.  This reads millis for exactly that reason -- `ticks` is not
 comparable across rows, because tickrate is per-run (66.6667, 100 and 125 all
 appear in this table) and 3532 ticks is a different time at each of them.
 
-ACROSS EVERY TIER, and the tier is recorded.  A map's record is whoever holds
+ACROSS THE FOUR TIERS A BOARD NAMES, and the tier is recorded (Patch 633: it
+read every tier, so a time a review or a ban had set aside could be a map's
+best).  A map's record is whoever holds
 it: `momentum` and `ksf` are imported archives, `ranked` is our own fleet.
 Taking the minimum over all of them is what makes the column mean "the best
 time anyone is known to have set" rather than "the best time on an empty board"
@@ -63,6 +65,7 @@ rows = db.execute(
     "SELECT map, MIN(millis) AS ms, tier, name"
     "  FROM runs"
     " WHERE track=0 AND leg=0 AND style='clean' AND millis > 0"
+    "   AND tier IN ('ranked', 'community', 'momentum', 'ksf')"
     " GROUP BY map"
     " ORDER BY map").fetchall()
 

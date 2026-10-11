@@ -430,7 +430,12 @@ def review_section(pw_hash, pw):
     d = detail(hal)
     check("detail: the full reason", [v["reason"] for v in d["verdicts"]],
           ["SENTINEL-REASON"])
-    check("...the download link", d["download"], "/api/replay/%d" % hal)
+    # Patch 633: the panel's own route, which a ban does not close (the public
+    # /api/replay answers 404 for a banned account's recording).
+    check("...the download link is the panel's own, and hands the file to the admin alone",
+          (d["download"], c.get(d["download"]).status_code,
+           m.app.test_client().get(d["download"]).status_code),
+          ("/admin/api/run/%d/file" % hal, 200, 401))
     check("...the watch commands", d["watch"],
           ["map surf_kitsune", "board_replay %d" % hal,
            "replay online %d" % hal])

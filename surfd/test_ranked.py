@@ -522,6 +522,414 @@ import accounts     # noqa: E402  (after the path is set)
 check("who_of is the digest the game takes of a row's player (FS_GuidId: SHA-256, 8 hex)",
       accounts.who_of(SID), hashlib.sha256(SID.encode()).hexdigest()[:8])
 
+print("\n--- 8. a ban (Patch 633)")
+ADMIN_ENV = {"SURFD_ADMIN_SECRET": "s" * 48, "SURFD_ADMIN_INSECURE_COOKIE": "1"}
+
+
+def fresh_admin(linked="1"):
+    """fresh(), with the admin panel on.  -> (module, a signed-in client, csrf)."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import admin as adm
+    os.environ.update(ADMIN_ENV, SURFD_ADMIN_HASH=adm.hash_password("correct horse", n=2 ** 10))
+    m = fresh(linked)
+    c = m.app.test_client()
+    page = c.get("/admin/login").get_data(as_text=True)
+    token = page.split('name="csrf" value="')[1].split('"')[0]
+    c.post("/admin/login", data={"csrf": token, "password": "correct horse"})
+    page = c.get("/admin/accounts")
+    token = page.get_data(as_text=True).split('name="csrf" value="')[1].split('"')[0]
+    return m, c, token, page.status_code
+
+
+def ban(c, token, sid, action="ban", note="speed hack, replay 12", seen=None):
+    form = {"csrf": token, "steamid": sid, "action": action, "note": note}
+    if seen is not None:
+        form["seen"] = str(seen)
+    r = c.post("/admin/api/ban", data=form)
+    body = r.get_json() or {}
+    return r.status_code, body.get("ok"), body.get("message") or body.get("error")
+
+
+def tiers_of(m, sid):
+    return sorted(rows(m, "SELECT leg, tier, millis FROM runs WHERE player = ?", (sid,)))
+
+
+def public(m, rid):
+    """What the public routes say of the board and of one recording.  No file
+    is on disk here, so a recording that IS public answers "no recording on
+    this node" and one that is not answers as if there were no such row."""
+    c = m.app.test_client()
+    b = c.get("/api/board?map=surf_test").get_json() or {}
+    w = c.get("/board/api/map?map=surf_test").get_json() or {}
+    return ([r.get("ms") for r in b.get("rows", [])], [r.get("ms") for r in w.get("rows", [])],
+            (c.get("/board/api/run/%d" % rid).get_json() or {}).get("error"),
+            (c.get("/api/replay/%d" % rid).get_json() or {}).get("error") == "no such replay")
+
+
+m, c, token, page_status = fresh_admin()
+account(m, SID, "Lex")
+account(m, SID2, "Other")
+linked(m, PUB1, SID)
+linked(m, PUB2, SID2, "g2")
+submit(m, GUID1, 5000, PUB1, rec=leaf(5000, GUID1))
+submit(m, GUID1, 900, PUB1, leg=2, runid="r5000")
+submit(m, GUID1, 4000, PUB1, flags=512)                 # uncertifiable: community, the account's
+submit(m, GUID2, 6000, PUB2, rec=leaf(6000, GUID2))
+run_sql(m, "INSERT INTO runs (map, track, leg, tier, style, player, name, ticks, tickrate, millis,"
+           " flags, node, runid, submitted, replay_id) VALUES ('surf_test', 0, 0, 'momentum',"
+           " 'clean', ?, 'Lex', 4800, 100, 48000, 0, 'import', '', ?, 0)", (SID, NOW))
+RID = rows(m, "SELECT id FROM replays WHERE player = ?", (SID,))[0][0]
+RID2 = rows(m, "SELECT id FROM replays WHERE player = ?", (SID2,))[0][0]
+BEFORE = tiers_of(m, SID)
+check("CONTROL before a ban both accounts are on the boards and their recordings are public",
+      (page_status, public(m, RID)[:3], public(m, RID2)[2], public(m, RID)[3]),
+      (200, ([50000, 60000], [50000, 60000], "no recording on this node"),
+       "no recording on this node", False))
+anon = m.app.test_client()
+check("a ban is the signed-in admin's, with the page's token, a SteamID and a reason",
+      (anon.post("/admin/api/ban", data={"csrf": token, "steamid": SID, "action": "ban",
+                                         "note": "x"}).status_code,
+       ban(c, "forged", SID)[:2], ban(c, token, SID, note="")[:2], ban(c, token, "12345")[:2],
+       ban(c, token, "12345678901234567")[:2],          # seventeen digits, not a SteamID64
+       ban(c, token, SID, action="erase")[:2], ban(c, token, GUID1)[:2],
+       rows(m, "SELECT banned_at FROM accounts WHERE steamid = ?", (SID,)), tiers_of(m, SID) == BEFORE),
+      (401, (400, False), (400, False), (400, False), (400, False), (400, False), (400, False),
+       [(0,)], True))
+check("a ban sets the account's rows and recordings aside, on every board it stood on",
+      (ban(c, token, SID),
+       tiers_of(m, SID),
+       rows(m, "SELECT tier FROM replays WHERE player = ?", (SID,)),
+       rows(m, "SELECT banned_at > 0, ban_note FROM accounts WHERE steamid = ?", (SID,))),
+      ((200, True, "account %s banned: 3 board rows and 1 recordings set aside" % SID),
+       [(0, "banned:community", 40000), (0, "banned:ranked", 50000), (0, "momentum", 48000),
+        (2, "banned:ranked", 9000)],
+       [("banned:ranked",)], [(1, "speed hack, replay 12")]))
+check("...so no board lists them, the run page and the recording answer as if there were none, "
+      "and the other account's stand",
+      (public(m, RID), public(m, RID2)[2:]),
+      (([60000], [60000], "no such run", True), ("no recording on this node", False)))
+check("...an imported row under the same SteamID is another board's record and stays",
+      rows(m, "SELECT millis FROM runs WHERE player = ? AND tier = 'momentum'", (SID,)), [(48000,)])
+check("...and its next run is not stored (Patch 629), on any tier",
+      (answer(submit(m, GUID1, 4500, PUB1))[1::2], len(tiers_of(m, SID))), ((False, "banned"), 4))
+listed = {a["steamid"]: a for a in (c.get("/admin/api/accounts").get_json() or {}).get("accounts", [])}
+check("the admin's list says who is banned, why, and how many rows are set aside",
+      ([(k, bool(v["banned"]), v["note"], v["installs"], v["shown"], v["hidden"])
+        for k, v in sorted(listed.items())], anon.get("/admin/api/accounts").status_code),
+      ([(SID, True, "speed hack, replay 12", 1, 0, 3), (SID2, False, "", 1, 1, 0)], 401))
+at = rows(m, "SELECT banned_at FROM accounts WHERE steamid = ?", (SID,))[0][0]
+run_sql(m, "UPDATE accounts SET banned_at = 77 WHERE steamid = ?", (SID,))
+check("a ban on a banned account keeps its date and takes the newer note; nothing moves twice",
+      (ban(c, token, SID, note="and alt accounts")[2],
+       rows(m, "SELECT banned_at, ban_note FROM accounts WHERE steamid = ?", (SID,))),
+      ("account %s banned: 0 board rows and 0 recordings set aside (it already was; the note "
+       "is replaced)" % SID,
+       [(77, "and alt accounts")]))
+check("an action that is neither ban nor unban is refused, and a banned account stays banned",
+      (ban(c, token, SID, action="erase")[:2],
+       rows(m, "SELECT banned_at FROM accounts WHERE steamid = ?", (SID,))), ((400, False), [(77,)]))
+# A review of a banned account's recording re-derives its row INSIDE the set-aside family.
+sub = rows(m, "SELECT submitted FROM replays WHERE id = ?", (RID,))[0][0]
+r1 = c.post("/admin/api/review", data={"csrf": token, "rid": str(RID), "action": "reject",
+                                       "submitted": str(sub), "note": "n"}).get_json() or {}
+mid = tiers_of(m, SID)
+r2 = c.post("/admin/api/review", data={"csrf": token, "rid": str(RID), "action": "clear",
+                                       "submitted": str(sub)}).get_json() or {}
+check("a review of a banned account's recording puts nothing back on a board",
+      (r1.get("ok"), r2.get("ok"), [t for t in mid if t[1] in ("ranked", "community")],
+       [t for t in tiers_of(m, SID) if t[1] in ("ranked", "community")], public(m, RID)[:2]),
+      (True, True, [], [], ([60000], [60000])))
+# Something stored under the SteamID on a plain tier while it was banned (it
+# should not be): the unban keeps the faster of the two.
+run_sql(m, "INSERT INTO runs (map, track, leg, tier, style, player, name, ticks, tickrate, millis,"
+           " flags, node, runid, submitted, replay_id) VALUES ('surf_test', 0, 0, 'ranked',"
+           " 'clean', ?, 'Lex', 5500, 100, 55000, 0, 'p27510', 'rX', ?, 0)", (SID, NOW))
+run_sql(m, "INSERT INTO runs (map, track, leg, tier, style, player, name, ticks, tickrate, millis,"
+           " flags, node, runid, submitted, replay_id) VALUES ('surf_test', 0, 2, 'ranked',"
+           " 'clean', ?, 'Lex', 800, 100, 8000, 0, 'p27510', 'rY', ?, 0)", (SID, NOW))
+run_sql(m, "INSERT INTO runs (map, track, leg, tier, style, player, name, ticks, tickrate, millis,"
+           " flags, node, runid, submitted, replay_id) VALUES ('surf_test', 0, 0, 'community',"
+           " 'clean', ?, 'Lex', 4000, 100, 40000, 0, 'p27510', 'rZ', ?, 0)", (SID, NOW))
+BEFORE = [(0, "community", 40000), (0, "momentum", 48000), (0, "ranked", 50000), (2, "ranked", 8000)]
+check("an unban puts every row and recording back where it stood, keeping the faster where a "
+      "row is in the way (main: the returning row; the stage: the one in the way; an exact "
+      "tie: the earlier, as the board orders)",
+      (ban(c, token, SID, action="unban", note="appeal upheld"),
+       tiers_of(m, SID), rows(m, "SELECT tier FROM replays WHERE player = ?", (SID,)),
+       rows(m, "SELECT banned_at, ban_note FROM accounts WHERE steamid = ?", (SID,)),
+       public(m, RID), rows(m, "SELECT runid FROM runs WHERE player = ? AND tier = 'community'",
+                            (SID,))),
+      ((200, True, "account %s unbanned: 2 board rows and 1 recordings back" % SID),
+       BEFORE, [("ranked",)], [(0, "appeal upheld")],
+       ([50000, 60000], [50000, 60000], "no recording on this node", False), [("r4000",)]))
+check("...and its next run is stored again",
+      answer(submit(m, GUID1, 4950, PUB1))[1:4], (True, "ranked", ""))
+SID9 = "76561198000000077"
+check("a SteamID that never signed in can be banned before it does; an unban of nobody is "
+      "refused",
+      (ban(c, token, "76561198000000078", action="unban")[:2], ban(c, token, SID9)[:2],
+       rows(m, "SELECT name, banned_at > 0 FROM accounts WHERE steamid = ?", (SID9,)),
+       rows(m, "SELECT COUNT(*) FROM accounts WHERE steamid = '76561198000000078'")),
+      ((400, False), (200, True), [("", 1)], [(0,)]))
+import accounts as _acc   # noqa: E402
+conn = sqlite3.connect(m._db)
+plan = " ".join(r[3] for r in conn.execute(
+    "EXPLAIN QUERY PLAN SELECT rowid FROM runs WHERE player = ? AND tier NOT IN ('momentum', 'ksf')"
+    " AND NOT tier LIKE 'banned:%'", (SID,)))
+conn.close()
+check("the rows of one account are found off the index of non-imported rows, not by reading "
+      "three million imported ones", "runs_live" in plan, True)
+
+m, c, token, _ = fresh_admin("0")
+account(m, SID, "Lex")
+linked(m, PUB1, SID)
+submit(m, GUID1, 5000, PUB1)
+check("with ranked-means-linked OFF a ban is recorded and the page says what it does not do: "
+      "the install's rows are its guid's and stay",
+      (ban(c, token, SID)[:2], board(m),
+       (c.get("/admin/api/accounts").get_json() or {}).get("ranked_linked"),
+       rows(m, "SELECT banned_at > 0 FROM accounts WHERE steamid = ?", (SID,))),
+      ((200, True), [("ranked", GUID1, 50000)], False, [(1,)]))
+
+print("\n--- 8b. a ban, a review and a run in flight (Patch 633's review)")
+
+
+def wrec(m, ticks, guid, runid, leg=0):
+    """A minimal honest recording where replay_file() looks, so the replay is
+    BOUND to its file and a reject of it is a reject of the run."""
+    d = os.path.join(m.RUNS_DIR, "surf_test", m.leg_dir(0, leg))
+    os.makedirs(d, exist_ok=True)
+    name = leaf(ticks, guid)
+    with open(os.path.join(d, name), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("FTESURF-REC 9\nmap surf_test\ntrack 0\nleg %d\nowner Proto\nrunid %s\n"
+                 "tickrate 0.01\nclock counted\nflags 0         \nbegin\n" % (leg, runid))
+        fh.write("end %d 0 0 0 0 0 0 0 0 0 1\n" % ticks)
+    return name
+
+
+def review(m, c, token, rid, action):
+    sub = rows(m, "SELECT submitted FROM replays WHERE id = ?", (rid,))[0][0]
+    return (c.post("/admin/api/review", data={"csrf": token, "rid": str(rid), "action": action,
+                                              "submitted": str(sub), "note": "n"}).get_json()
+            or {}).get("ok")
+
+
+def stage_board(m):
+    r = m.app.test_client().get("/api/board?map=surf_test&leg=2").get_json() or {}
+    return [x.get("ms") for x in r.get("rows", [])]
+
+
+def staged():
+    """An account with a recorded main run and a stage time of that run, and
+    somebody else's stage time beside it."""
+    m, c, token, _ = fresh_admin()
+    account(m, SID, "Lex")
+    account(m, SID2, "Other")
+    linked(m, PUB1, SID)
+    linked(m, PUB2, SID2, "g2")
+    submit(m, GUID1, 5000, PUB1, rec=wrec(m, 5000, GUID1, "r5000"))
+    submit(m, GUID1, 900, PUB1, leg=2, runid="r5000")
+    submit(m, GUID2, 950, PUB2, leg=2, runid="r6000")
+    rid = rows(m, "SELECT id FROM replays WHERE player = ?", (SID,))[0][0]
+    return m, c, token, rid
+
+
+def stages_of(m):
+    return sorted(rows(m, "SELECT tier FROM runs WHERE player = ? AND leg = 2", (SID,)))
+
+
+m, c, token, rid = staged()
+got = [rows(m, "SELECT bound FROM replays WHERE id = ?", (rid,)), review(m, c, token, rid, "reject"),
+       stages_of(m), stage_board(m), review(m, c, token, rid, "clear"), stages_of(m), stage_board(m)]
+check("CONTROL with no ban, a reject of a run parks its stage time and a clear restores it",
+      got, [[(1,)], True, [("ranked@r5000",)], [9500], True, [("ranked",)], [9000, 9500]])
+m, c, token, rid = staged()
+got = [ban(c, token, SID)[1], review(m, c, token, rid, "reject"), stages_of(m),
+       ban(c, token, SID, action="unban")[1], stages_of(m), stage_board(m)]
+check("a reject made WHILE BANNED parks the stage time inside the set-aside rows, so the unban "
+      "does not put it on the board", got,
+      [True, True, [("banned:ranked@r5000",)], True, [("ranked@r5000",)], [9500]])
+m, c, token, rid = staged()
+got = [review(m, c, token, rid, "reject"), ban(c, token, SID)[1], stages_of(m),
+       review(m, c, token, rid, "clear"), stages_of(m),
+       ban(c, token, SID, action="unban")[1], stages_of(m), stage_board(m)]
+check("a reject cleared WHILE BANNED restores it there, so the unban shows it", got,
+      [True, True, [("banned:ranked@r5000",)], True, [("banned:ranked",)], True, [("ranked",)],
+       [9000, 9500]])
+conn = sqlite3.connect(m._db)
+conn.row_factory = sqlite3.Row
+ban(c, token, SID)
+banned_counts = m.stage_counts(conn, rid)
+conn.close()
+check("the admin's stage counts read a banned run's rows where they are", banned_counts, (1, 0, 0))
+
+# The recording behind an account's stage rows (kind 'evidence') has no tier.
+EV = "20260918-142825-0-p27510"
+m, c, token, rid = staged()
+submit(m, GUID1, 800, PUB1, leg=3, runid=EV)
+os.makedirs(os.path.join(m.EVIDENCE_DIR, "surf_test"), exist_ok=True)
+with open(os.path.join(m.EVIDENCE_DIR, "surf_test", EV + ".rec"), "w", newline="\n") as fh:
+    fh.write("FTESURF-REC 9\nmap surf_test\ntrack 0\nstartseg 0\nleg 0\ntickrate 0.01\n"
+             "movetickrate 0.01\nclock counted\nowner Proto\nrunid %s\nflags 0         \n"
+             "begin\nstagepost 2 800\nabandon 4000\nend 4000 4000 0 0 4000 4 1 0 1 0\n" % EV)
+conn = m.connect()
+indexed = m.index_evidence(conn)["indexed"]
+conn.close()
+ev = rows(m, "SELECT id, tier FROM replays WHERE kind = 'evidence'")
+
+
+def fetch(m, rid, client=None):
+    r = (client or m.app.test_client()).get("/api/replay/%d" % rid)
+    return r.status_code, (r.get_json() or {}).get("error") if r.is_json else len(r.get_data())
+
+
+anon = m.app.test_client()
+pre = (indexed, [t for _i, t in ev], fetch(m, rid)[0], fetch(m, ev[0][0])[0] if ev else None)
+run_sql(m, "INSERT INTO replays (map, map_dir, track, leg, tier, style, player, name, ticks,"
+           " tickrate, millis, flags, node, runid, leaf, bytes, submitted, kind) VALUES ('surf_test',"
+           " 'surf_test', 0, 0, 'momentum', 'clean', ?, 'Lex', 4800, 100, 48000, 0, 'import', '',"
+           " '0004800_lex-00000000_run.rec', 10, ?, 'momentum')", (SID, NOW))
+demo = rows(m, "SELECT id FROM replays WHERE kind = 'momentum'")[0][0]
+ban(c, token, SID)
+detail = (c.get("/admin/api/run/%d" % rid).get_json() or {})
+got = (pre, fetch(m, rid), fetch(m, ev[0][0]) if ev else None,
+       detail.get("download"), c.get("/admin/api/run/%d/file" % rid).status_code,
+       len(c.get("/admin/api/run/%d/file" % rid).get_data()) > 50,
+       anon.get("/admin/api/run/%d/file" % rid).status_code, fetch(m, demo)[1] == "no such replay")
+check("a banned account's recordings, the one behind its stage rows too, answer the public as "
+      "if there were none; the admin's own route still hands the file over",
+      got, ((1, [""], 200, 200), (404, "no such replay"), (404, "no such replay"),
+            "/admin/api/run/%d/file" % rid, 200, True, 401, False))
+ban(c, token, SID, action="unban")
+check("...and both are public again after the unban",
+      (fetch(m, rid)[0], fetch(m, ev[0][0])[0] if ev else None), (200, 200))
+
+# A ban committed between a run's identity being read and its row being written.
+m, c, token, rid = staged()
+ban(c, token, SID)
+real = m.accounts.run_identity
+m.accounts.run_identity = lambda *a, **k: ("", SID)        # as it read BEFORE the ban
+late = answer(submit(m, GUID1, 4800, PUB1, rec=wrec(m, 4800, GUID1, "r4800")))[:3]
+m.accounts.run_identity = real
+check("a run filed across a ban ends set aside with the rest: no row, no recording on a tier "
+      "anybody reads",
+      (late[0], sorted(set(t for (t,) in rows(m, "SELECT tier FROM runs WHERE player = ?", (SID,)))),
+       sorted(set(t for (t,) in rows(m, "SELECT tier FROM replays WHERE player = ?", (SID,)))),
+       [x for x in board(m)]),
+      (200, ["banned:ranked"], ["banned:ranked"], []))
+m, c, token, rid = staged()
+m.accounts.run_identity, real = (lambda *a, **k: ("", SID)), m.accounts.run_identity
+kept = answer(submit(m, GUID1, 4800, PUB1))[1:3]
+m.accounts.run_identity = real
+check("CONTROL the same post for an account that is not banned stands on the ranked board",
+      (kept, board(m)), ((True, "ranked"), [("ranked", SID, 48000)]))
+
+# The late pass reads the ban again once it holds the lock.
+class Unbanned(object):
+    """A connection whose first BEGIN IMMEDIATE finds an unban just committed."""
+    def __init__(self, conn, path):
+        self.conn, self.path, self.done = conn, path, False
+
+    def execute(self, sql, *a):
+        if sql == "BEGIN IMMEDIATE" and not self.done:
+            self.done = True
+            other = sqlite3.connect(self.path)
+            other.execute("UPDATE accounts SET banned_at = 0 WHERE steamid = ?", (SID,))
+            other.commit()
+            other.close()
+        return self.conn.execute(sql, *a)
+
+    def __enter__(self):
+        return self.conn.__enter__()
+
+    def __exit__(self, *a):
+        return self.conn.__exit__(*a)
+
+
+m, c, token, rid = staged()
+run_sql(m, "UPDATE accounts SET banned_at = 5 WHERE steamid = ?", (SID,))    # banned, nothing moved
+conn = sqlite3.connect(m._db)
+m._ban_late(Unbanned(conn, m._db), SID)
+conn.close()
+check("an unban that commits while the late pass waits for the lock is not followed by a "
+      "set-aside", sorted(set(t for (t,) in rows(m, "SELECT tier FROM runs WHERE player = ?", (SID,)))),
+      ["ranked"])
+run_sql(m, "UPDATE accounts SET banned_at = 5 WHERE steamid = ?", (SID,))
+conn = sqlite3.connect(m._db)
+m._ban_late(conn, SID)
+conn.close()
+check("CONTROL with the ban still standing the same pass sets the rows aside",
+      sorted(set(t for (t,) in rows(m, "SELECT tier FROM runs WHERE player = ?", (SID,)))),
+      ["banned:ranked"])
+
+# A start finds what a late pass missed.
+m, c, token, rid = staged()
+run_sql(m, "UPDATE accounts SET banned_at = 5 WHERE steamid = ?", (SID,))    # banned, nothing moved
+m2 = fresh(home=m._home)
+check("a start sets aside what a banned account still has on a tier readers name, and "
+      "leaves everybody else's",
+      (sorted(set(t for (t,) in rows(m2, "SELECT tier FROM runs WHERE player = ?", (SID,)))),
+       rows(m2, "SELECT tier FROM replays WHERE player = ?", (SID,)),
+       sorted(set(t for (t,) in rows(m2, "SELECT tier FROM runs WHERE player = ?", (SID2,))))),
+      (["banned:ranked"], [("banned:ranked",)], ["ranked"]))
+m, c, token, rid = staged()
+m2 = fresh(home=m._home)
+check("CONTROL a start with nobody banned moves nothing",
+      sorted(set(t for (t,) in rows(m2, "SELECT tier FROM runs"))), ["ranked"])
+m, c, token, rid = staged()
+ban(c, token, SID, note="the reason")
+ban(c, token, SID, action="unban", note="")
+check("an unban with an empty note box keeps the ban's reason",
+      rows(m, "SELECT banned_at, ban_note FROM accounts WHERE steamid = ?", (SID,)),
+      [(0, "the reason")])
+
+# What the page showed, and what the admin is told.
+at = lambda: rows(m, "SELECT banned_at FROM accounts WHERE steamid = ?", (SID,))[0][0]
+got = [ban(c, token, SID, action="unban", seen=0)[:2], ban(c, token, SID, action="unban")[:2],
+       ban(c, token, SID, seen=0)[:2]]
+stamp = at()
+got += [ban(c, token, SID, seen=0)[0], ban(c, token, SID, action="unban", seen=stamp + 1)[0], at() == stamp,
+        ban(c, token, SID, action="unban", seen=stamp)[:2], at()]
+check("a row's button carries the state the page showed, and a stale one is refused; an unban "
+      "of an account that is not banned is refused, and writes nothing",
+      got, [(400, False), (400, False), (200, True), 409, 409, True, (200, True), 0])
+check("a ban of a SteamID nobody has signed in with says so",
+      ban(c, token, "76561198000000055")[2],
+      "nobody has signed in as 76561198000000055: banned in advance (check the number)")
+check("a blueprint with no ban functions has no ban routes, and the other pages no dead link",
+      ("/admin/accounts" in c.get("/admin/runs").get_data(as_text=True),
+       "{% if have_bans %}" in open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                 "templates", "admin_runs.html")).read()),
+      (True, True))
+
+# The release's map-record file is made from the same table.
+import contextlib          # noqa: E402
+import io as _io           # noqa: E402
+import pathlib             # noqa: E402
+TOOLS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools")
+if not os.path.isfile(os.path.join(TOOLS, "mapwr.py")):
+    # A copy of surfd/ alone (tools/accounts_mutants.py makes one a mutant):
+    # not a pass, and it says so.
+    print("skip the map-record file names its tiers too: NOT MEASURED, no tools/ beside this copy")
+else:
+    sys.path.insert(0, TOOLS)
+    import mapwr               # noqa: E402
+
+    def map_records(m):
+        out = _io.StringIO()
+        with contextlib.redirect_stdout(out):
+            exec(mapwr.REMOTE % {"db": pathlib.Path(m._db).as_uri()[len("file:"):]}, {})
+        return [l for l in out.getvalue().splitlines() if l.startswith("wr surf_test ")]
+
+    m, c, token, rid = staged()
+    before = map_records(m)
+    ban(c, token, SID)
+    check("the map-record file names its tiers too: a banned account's time is no map's best",
+          (before, map_records(m)), (["wr surf_test 50000 ranked Proto"], []))
+
+for k in list(ADMIN_ENV) + ["SURFD_ADMIN_HASH"]:
+    os.environ.pop(k, None)
+
 logging.shutdown()                      # Windows: the log files are held open
 for h in HOMES:
     shutil.rmtree(h, ignore_errors=True)

@@ -645,6 +645,138 @@ def ranked_now(conn, imported):
     return moved, recs
 
 
+# A BANNED ACCOUNT'S ROWS (Patch 633, ROADMAP 14.3 c) stand on "banned:" + the
+# tier they stood on, in `runs` and in `replays`.  Every reader names its tiers,
+# so nothing lists them and nothing ranks against them, and none needs a
+# filter.  Review goes on working inside the set-aside family: re-standing
+# keys on a replay's own tier, and stage parking asks which family the player
+# is in (surfd._family).  Kept, not deleted: an unban strips the prefix.
+# Imported tiers are other boards' own records and are left alone.
+BAN_TIER = "banned:"
+BAN_NOTE_MAX = 200
+
+
+def ban_rows(conn, steamid, banned, imported):
+    """Move account `steamid`'s rows and recordings off (`banned`) or back onto
+    the tiers readers name.  Inside the caller's transaction; never commits.
+    Where the destination already holds that board's row the FASTER is kept
+    (it should not: a banned account's runs are not stored).
+    -> (board rows moved, recordings moved)."""
+    not_imported = "tier NOT IN (%s)" % ", ".join("'%s'" % t for t in imported)
+    held = "tier LIKE 'banned:%'"
+    rows = conn.execute(
+        "SELECT rowid, map, track, leg, tier, style, millis, submitted FROM runs"
+        " WHERE player = ? AND " + not_imported +
+        " AND " + ("NOT " if banned else "") + held, (steamid,)).fetchall()
+    moved = 0       # rows moved; one dropped for a faster row in the way is not
+    for rowid, mapname, track, leg, tier, style, ms, at in rows:
+        dest = BAN_TIER + tier if banned else tier[len(BAN_TIER):]
+        inway = conn.execute(
+            "SELECT rowid, millis, submitted FROM runs WHERE map = ? AND track = ? AND leg = ?"
+            " AND tier = ? AND style = ? AND player = ? AND rowid <> ?",
+            (mapname, track, leg, dest, style, steamid, rowid)).fetchone()
+        if inway is not None and (inway[1], inway[2]) <= (ms, at):     # the board's order
+            conn.execute("DELETE FROM runs WHERE rowid = ?", (rowid,))
+            continue
+        if inway is not None:
+            conn.execute("DELETE FROM runs WHERE rowid = ?", (inway[0],))
+        conn.execute("UPDATE runs SET tier = ? WHERE rowid = ?", (dest, rowid))
+        moved += 1
+    if banned:
+        recs = conn.execute(
+            "UPDATE replays SET tier = 'banned:' || tier WHERE player = ? AND kind = 'run'"
+            " AND " + not_imported + " AND NOT " + held, (steamid,)).rowcount
+    else:
+        recs = conn.execute(
+            "UPDATE replays SET tier = substr(tier, %d) WHERE player = ? AND kind = 'run'"
+            " AND %s" % (len(BAN_TIER) + 1, held), (steamid,)).rowcount
+    return moved, recs
+
+
+class BanStale(ValueError):
+    """The account is not in the state the admin's page showed."""
+
+
+def set_ban(conn, steamid, banned, note, now, imported, seen=None):
+    """Ban or unban one account, by SteamID, with a note (the admin's).  A
+    SteamID that has never signed in can be banned: it gets its row here, and
+    signing in later finds it banned.  Inside the caller's transaction.
+    `seen`: the `banned_at` the page showed for it (a row's button), or None
+    (a typed SteamID).  -> (was banned, board rows moved, recordings moved,
+    the row is new); raises ValueError on a SteamID that is not one, an unban
+    of nobody or of an account that is not banned, and BanStale when the
+    account has changed since `seen`."""
+    if not steam.is_steamid64(steamid):
+        raise ValueError("not a SteamID64")
+    note = (note or "")[:BAN_NOTE_MAX]
+    row = conn.execute("SELECT banned_at FROM accounts WHERE steamid = ?", (steamid,)).fetchone()
+    if seen is not None and seen != (row[0] if row is not None else 0):
+        raise BanStale("that account has changed since the page showed it -- reload")
+    if not banned and (row is None or not row[0]):
+        raise ValueError("no such account" if row is None else "that account is not banned")
+    new = row is None
+    if new:
+        conn.execute("INSERT INTO accounts (steamid, created_at) VALUES (?, ?)", (steamid, now))
+    was = bool(row[0]) if row is not None else False
+    if banned:
+        # A ban already standing keeps its date; the note is the newest word.
+        conn.execute("UPDATE accounts SET banned_at = CASE WHEN banned_at > 0 THEN banned_at"
+                     " ELSE ? END, ban_note = ? WHERE steamid = ?", (now, note, steamid))
+    else:
+        # An unban with nothing in the note box keeps the ban's own reason.
+        conn.execute("UPDATE accounts SET banned_at = 0, ban_note = CASE WHEN ? <> '' THEN ?"
+                     " ELSE ban_note END WHERE steamid = ?", (note, note, steamid))
+    moved, recs = ban_rows(conn, steamid, banned, imported)
+    return was, moved, recs, new
+
+
+def bans_now(conn, imported):
+    """EVERY START: nothing of a banned account stands on a tier a reader names.
+    The late pass after a run filed across a ban (surfd._ban_late) can fail to
+    get the lock, or die before it runs, and nothing else repeats it.  Costs
+    one read of `accounts` when nobody is banned.  The lock first, then the
+    list, as ranked_now.  -> (board rows moved, recordings moved)."""
+    if conn.execute("SELECT 1 FROM accounts WHERE banned_at > 0 LIMIT 1").fetchone() is None:
+        return 0, 0
+    not_imported = "tier NOT IN (%s)" % ", ".join("'%s'" % t for t in imported)
+    stray = ("SELECT DISTINCT player FROM %s WHERE " + not_imported +
+             " AND tier NOT LIKE 'banned:%%' AND %s"
+             " player IN (SELECT steamid FROM accounts WHERE banned_at > 0)")
+    find = lambda: sorted({r[0] for q in (stray % ("runs", ""), stray % ("replays", "kind = 'run' AND"))
+                           for r in conn.execute(q)})
+    if not find():
+        return 0, 0
+    if conn.in_transaction:
+        conn.commit()
+    conn.execute("BEGIN IMMEDIATE")
+    moved = recs = 0
+    for sid in find():
+        n, m = ban_rows(conn, sid, True, imported)
+        moved, recs = moved + n, recs + m
+    conn.commit()
+    return moved, recs
+
+
+def ban_list(conn, imported):
+    """Every account, for the admin's page: banned first, then newest seen."""
+    not_imported = "tier NOT IN (%s)" % ", ".join("'%s'" % t for t in imported)
+    # One pass over the index of our own rows, not two per account.
+    counts = {r[0]: (r[1], r[2]) for r in conn.execute(
+        "SELECT player, SUM(tier NOT LIKE 'banned:%'), SUM(tier LIKE 'banned:%') FROM runs"
+        " WHERE " + not_imported + " GROUP BY player")}
+    out = []
+    for r in conn.execute(
+            "SELECT a.steamid, a.name, a.seen_at, a.created_at, a.banned_at, a.ban_note,"
+            " (SELECT COUNT(*) FROM keylinks k WHERE k.steamid = a.steamid) AS installs"
+            " FROM accounts a ORDER BY a.banned_at > 0 DESC, a.seen_at DESC, a.steamid"
+            " LIMIT 500"):
+        shown, hidden = counts.get(r[0], (0, 0))
+        out.append({"steamid": r[0], "name": r[1], "seen": r[2], "created": r[3],
+                    "banned": r[4], "note": r[5], "installs": r[6], "shown": shown,
+                    "hidden": hidden})
+    return out
+
+
 def file_digest(path, seen):
     """SHA-256 of a file as hex; ABSENT if there is no such file; None if
     there is one and it could not be read whole and unchanged (so what it

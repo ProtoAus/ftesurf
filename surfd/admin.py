@@ -66,7 +66,7 @@ import threading
 import time
 
 from flask import (Blueprint, Response, current_app, jsonify, redirect,
-                   render_template, request, session, url_for)
+                   render_template, request, send_file, session, url_for)
 
 import recplot
 from rcon import (Rcon, RconError, RconThrottled, RconBlocked, clean_reply,
@@ -150,6 +150,7 @@ ASSOCIATION_SQL_STEPS = 100000
 JOURNAL_METRICS_MAX = 8192
 COUNTS_METRICS_MAX = 512
 RID_TEXT = re.compile(r"^[0-9]{1,18}$")
+STEAMID_TEXT = re.compile(r"^[0-9]{17}$")
 # C0/C1 controls and bidi overrides; a note is shown to the owner only, via textContent.
 NOTE_JUNK = re.compile("[\x00-\x1f\x7f-\x9f\u200e\u200f\u2028\u2029"
                        "\u202a-\u202e\u2066-\u2069]")
@@ -1141,7 +1142,7 @@ def tail_file(path, lines=LOG_TAIL_LINES):
 # --------------------------------------------------------------------------
 
 def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
-                    runs=None, disk=None):
+                    runs=None, disk=None, bans=None):
     """Create and configure the /admin blueprint, or return None if disabled.
 
     `app` is configured here rather than by the caller because the cookie
@@ -1365,7 +1366,8 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
         return render_template("admin.html", csrf=csrf_token(),
                                tiers=fleet.tiers(),
                                have_rcon=bool(rcon_password),
-                               have_runs=runs is not None)
+                               have_runs=runs is not None,
+                               have_bans=bans is not None)
 
     @bp.get("/api/state")
     def state():
@@ -1645,7 +1647,8 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
             if not logged_in():
                 return redirect(url_for("admin.login_form"))
             return render_template("admin_runs.html", csrf=csrf_token(),
-                                   states=list(RUN_STATES))
+                                   states=list(RUN_STATES),
+                                   have_bans=bans is not None)
 
         @bp.get("/run/<int:rid>")
         def run_page(rid):
@@ -1653,7 +1656,8 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 return redirect(url_for("admin.login_form"))
             return render_template("admin_run.html", csrf=csrf_token(), rid=rid,
                                    tiers=fleet.tiers(),
-                                   have_rcon=bool(rcon_password))
+                                   have_rcon=bool(rcon_password),
+                                   have_bans=bans is not None)
 
         @bp.get("/api/runs")
         def runs_list():
@@ -1748,7 +1752,10 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 "review": review, "verdicts": verdicts, "verdict_history": verdict_history,
                 "receipt": rcpt, "key": key,
                 "similarity": similarity,
-                "download": "/api/replay/%d" % rid,
+                # The panel's own route: the public one answers 404 for a
+                # banned account's recording (Patch 633), and the game's
+                # `replay online` below fetches that public one.
+                "download": "/admin/api/run/%d/file" % rid,
                 "watch": ["map %s" % row["map_dir"], "board_replay %d" % rid,
                           "replay online %d" % rid],
             })
@@ -1775,6 +1782,25 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                     "outside": "the file resolves outside the run tree",
                 }.get(why, "no file on this node")}), 404
             return jsonify(recplot.parse(path))
+
+        @bp.get("/api/run/<int:rid>/file")
+        def run_file(rid):
+            if not logged_in():
+                return jsonify({"ok": False, "error": "not logged in"}), 401
+            conn = db_connect()
+            try:
+                row = conn.execute("SELECT map_dir, track, leg, leaf, kind"
+                                   " FROM replays WHERE id = ?", (rid,)).fetchone()
+            finally:
+                conn.close()
+            path = replay_file(row)[0] if row is not None else None
+            if path is None:
+                return jsonify({"ok": False, "error": "no file on this node"}), 404
+            try:
+                return send_file(path, mimetype="application/octet-stream",
+                                 as_attachment=True, download_name=row["leaf"])
+            except OSError:             # gone between the check and the read
+                return jsonify({"ok": False, "error": "no file on this node"}), 404
 
         @bp.post("/api/review")
         @control
@@ -1895,6 +1921,83 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 "key %s…" % pub[:12] if pub else "unsigned runs", {
                     "accept": "accepted", "reject": "rejected",
                     "clear": "decision cleared"}[action])
+
+    # ---- accounts and bans (Patch 633; only when surfd injects them) ------
+
+    if bans is not None:
+        @bp.get("/accounts")
+        def accounts_page():
+            if not logged_in():
+                return redirect(url_for("admin.login_form"))
+            return render_template("admin_accounts.html", csrf=csrf_token(),
+                                   have_runs=runs is not None)
+
+        @bp.get("/api/accounts")
+        def accounts_list():
+            if not logged_in():
+                return jsonify({"ok": False, "error": "not logged in"}), 401
+            conn = db_connect()
+            try:
+                rows = bans["ban_list"](conn, bans["imported"])
+            except sqlite3.Error as exc:
+                log.exception("admin accounts db error: %s", exc)
+                return jsonify({"ok": False, "error": "storage error"}), 500
+            finally:
+                conn.close()
+            return jsonify({"ok": True, "accounts": rows,
+                            "ranked_linked": bool(bans["ranked_linked"])})
+
+        @bp.post("/api/ban")
+        @control
+        def ban_action():
+            steamid = request.form.get("steamid", "").strip()
+            if not STEAMID_TEXT.match(steamid):
+                raise AdminError("steamid must be a 17-digit SteamID64")
+            action = request.form.get("action", "")
+            if action not in ("ban", "unban"):
+                raise AdminError("unknown action %r" % action[:32])
+            note = clean_note(request.form.get("note", ""))
+            if action == "ban" and not note:
+                raise AdminError("a ban needs a note saying why")
+            # A row's button says what the page showed (`banned_at`, 0 for not
+            # banned): the list re-sorts after every action, and a second click
+            # must not act on whoever is under it now.  A typed SteamID has none.
+            seen = request.form.get("seen", "").strip()
+            if seen and not RID_TEXT.match(seen):
+                raise AdminError("seen must be the ban time the page showed")
+            conn = db_connect()
+            try:
+                with conn:
+                    # The lock first: the rows are listed, then moved.
+                    conn.execute("BEGIN IMMEDIATE")
+                    try:
+                        was, moved, recs, new = bans["set_ban"](
+                            conn, steamid, action == "ban", note, int(time.time()),
+                            bans["imported"], int(seen) if seen else None)
+                    except ValueError as exc:
+                        if type(exc).__name__ == "BanStale":
+                            raise RunChanged(str(exc))
+                        raise AdminError(str(exc))
+            except sqlite3.Error as exc:
+                log.exception("admin %s of account %s failed: %s", action, steamid, exc)
+                raise AdminError("storage error")
+            finally:
+                conn.close()
+            log.warning("admin: account %s %s (%s; %d board rows, %d recordings moved;"
+                        " note %r) (from %s)", steamid,
+                        "banned" if action == "ban" else "unbanned",
+                        "NO ACCOUNT ON RECORD, banned in advance" if new
+                        else "was banned" if was else "was not banned",
+                        moved, recs, note, client_ip())
+            if action == "ban":
+                if new:
+                    return ("nobody has signed in as %s: banned in advance (check the number)"
+                            % steamid)
+                return ("account %s banned: %d board rows and %d recordings set aside%s"
+                        % (steamid, moved, recs,
+                           " (it already was; the note is replaced)" if was else ""))
+            return ("account %s unbanned: %d board rows and %d recordings back"
+                    % (steamid, moved, recs))
 
     @bp.after_request
     def harden(resp):

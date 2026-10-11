@@ -11,6 +11,25 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — banning a Steam account (Patch 633)
+
+The admin panel has a third tab, **Accounts** (`/admin/accounts`): everybody
+who has signed in through Steam, with how many installs and board rows each
+has. To ban: press Ban on a row (it fills in the SteamID at the top), type a
+reason, press the blue Ban. Pasting a SteamID64 at the top works too, also
+for somebody who has never signed in (it then says "banned in advance", so a
+mistyped number shows). Unban is the row's button, and asks first.
+
+- **What a ban does.** The account's times and recordings leave every board
+  (kept, and back on an unban), its next runs are not stored, and its game is
+  told "banned from the leaderboards" when it connects.
+- **Try it:** ban your own account with the note "test": your times should
+  leave the in-game board and the site within a minute (the players list can
+  take five), and the game should say you are banned when you next connect.
+  Unban, and everything should be back exactly as it was.
+- A banned run's recording still downloads from its run page in the panel,
+  but its in-game watch commands will say the replay does not exist.
+
 ## 00. 11 Oct — "Could not load the board (HTTP 504)" on the site (Patch 634)
 
 You reported it. The front page's map list took 12 seconds to build on the Pi

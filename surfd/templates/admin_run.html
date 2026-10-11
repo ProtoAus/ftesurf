@@ -10,7 +10,7 @@
 <body>
 <header>
   <h1>FTESurf admin</h1>
-  <nav class="nav"><a href="/admin/">Fleet</a><a href="/admin/runs" aria-current="page">Runs</a></nav>
+  <nav class="nav"><a href="/admin/">Fleet</a><a href="/admin/runs" aria-current="page">Runs</a>{% if have_bans %}<a href="/admin/accounts">Accounts</a>{% endif %}</nav>
   <span class="spacer"></span>
   <form method="post" action="/admin/logout" style="margin:0">
     <input type="hidden" name="csrf" value="{{ csrf }}">

@@ -1528,6 +1528,10 @@ def migrate():
             if moved != (0, 0):
                 log.info("ranked means linked: moved %d board row(s) and %d recording(s)"
                          " that were not an account's to the community tier", *moved)
+        moved = accounts.bans_now(conn, TIERS_IMPORTED)
+        if moved != (0, 0):
+            log.warning("a banned account had %d board row(s) and %d recording(s) on a"
+                        " tier readers name; set aside", *moved)
         log.info("ranked rows need a linked Steam account: %s",
                  "yes" if RANKED_LINKED else "NO (SURFD_RANKED_LINKED=0)")
         if version == started:
@@ -2698,6 +2702,17 @@ def _stage_refill(db, row, base):
         restand(db, rec["id"])
 
 
+def _family(db, player):
+    """The two tiers `player`'s own rows stand on: TIERS, or their set-aside
+    forms while the account is banned (accounts.BAN_TIER; Patch 633).  A ban
+    moves every row at once and stores none after, so it is one or the other."""
+    row = db.execute("SELECT banned_at FROM accounts WHERE steamid = ?",
+                     (player,)).fetchone()
+    if row is not None and row[0]:
+        return tuple(accounts.BAN_TIER + t for t in TIERS)
+    return TIERS
+
+
 def restage(db, rid, park_only=False):
     """Park or restore the stage rows of replay `rid`'s run, to match whether a
     reject on any replay of that run is current.  The caller's transaction.
@@ -2709,7 +2724,8 @@ def restage(db, rid, park_only=False):
     # with what a restore set aside (review round 4).
     rep = db.execute("SELECT map, track, leg, tier, style, player, kind"
                      " FROM replays WHERE id = ?", (rid,)).fetchone()
-    if rep is not None and rep["kind"] == "run" and rep["tier"] in TIERS:
+    fam = _family(db, rep["player"]) if rep is not None else TIERS
+    if rep is not None and rep["kind"] == "run" and rep["tier"] in fam:
         _stage_refill(db, rep, rep["tier"])
     run = _stage_run(db, rid)
     if run is None:
@@ -2720,7 +2736,7 @@ def restage(db, rid, park_only=False):
         for row in db.execute(
                 "SELECT * FROM runs WHERE map = ? AND track = ? AND leg > 0"
                 " AND replay_id = 0 AND player = ? AND runid = ? AND tier IN (?, ?)",
-                run + TIERS).fetchall():
+                run + fam).fetchall():
             base = row["tier"]
             parked += _stage_move(db, row, base + tag)
             _stage_refill(db, row, base)       # moved or beaten, the slot is empty
@@ -2728,7 +2744,7 @@ def restage(db, rid, park_only=False):
         for row in db.execute(
                 "SELECT * FROM runs WHERE map = ? AND track = ? AND player = ?"
                 " AND runid = ? AND tier IN (?, ?)",
-                run + tuple(t + tag for t in TIERS)).fetchall():
+                run + tuple(t + tag for t in fam)).fetchall():
             base = row["tier"][:-len(tag)]
             live = _stage_slot(db, row, base)
             if live is not None and ((live["millis"], live["submitted"])
@@ -2766,10 +2782,11 @@ def stage_counts(db, rid):
     run = _stage_run(db, rid)
     if run is None:
         return None
-    tags = tuple(t + "@" + run[3] for t in TIERS)
+    fam = _family(db, run[2])
+    tags = tuple(t + "@" + run[3] for t in fam)
     q = ("SELECT COUNT(*) FROM runs WHERE map = ? AND track = ? AND leg > 0"
          " AND replay_id = 0 AND player = ? AND runid = ? AND tier IN (?, ?)")
-    return (db.execute(q, run + TIERS).fetchone()[0],
+    return (db.execute(q, run + fam).fetchone()[0],
             db.execute(q, run + tags).fetchone()[0],
             db.execute("SELECT COUNT(*) FROM runs WHERE map = ? AND track = ?"
                        " AND leg > 0 AND replay_id = 0 AND player = ? AND runid = ?"
@@ -3443,6 +3460,13 @@ def submit_run():
     except sqlite3.Error as exc:
         log.exception("run db error from %s: %s", src, exc)
         return fail(500, "storage error")
+    finally:
+        # A BAN COMMITTED BETWEEN THE IDENTITY READ AND THIS WRITE (Patch 633's
+        # review: 7 of 40 with a large recording in flight) found nothing to
+        # set aside, and the row landed after it.  After the commit, on every
+        # way out: whichever of the two committed first, the row ends set aside.
+        if RANKED_LINKED and player != install:
+            _ban_late(db, player)
 
     # AFTER THE COMMIT, deliberately: the row this run just wrote has to be in
     # the table for `of` to count it, and for the run to not be ranked ahead of
@@ -3462,6 +3486,30 @@ def submit_run():
                     "rank": rank, "of": of, "rep": rid, "tier": tier,
                     "prevms": prev["millis"] if prev is not None else 0,
                     "why": acct_why})
+
+
+def _ban_late(db, player):
+    """Set aside what a banned account's run stored after its ban (see the
+    `finally` in submit_run).  Never raises: the run is already answered."""
+    sql = "SELECT banned_at FROM accounts WHERE steamid = ?"
+    try:
+        row = db.execute(sql, (player,)).fetchone()
+        if row is None or not row[0]:
+            return                      # the ordinary run: one read, no lock
+        moved = recs = 0
+        with db:
+            db.execute("BEGIN IMMEDIATE")
+            # AGAIN, UNDER THE LOCK: an unban that committed while this waited
+            # for it would be followed by a full set-aside of an account that
+            # is not banned (the final check of this patch).
+            row = db.execute(sql, (player,)).fetchone()
+            if row is not None and row[0]:
+                moved, recs = accounts.ban_rows(db, player, True, TIERS_IMPORTED)
+        if moved or recs:
+            log.warning("account %s was banned while a run of its was being filed:"
+                        " %d board rows, %d recordings set aside", player, moved, recs)
+    except sqlite3.Error as exc:
+        log.exception("late ban pass for %s failed: %s", player, exc)
 
 
 @app.get("/api/board")
@@ -3964,15 +4012,23 @@ def replay(rid):
     try:
         db = get_db()
         row = db.execute(
-            "SELECT map_dir, track, leg, leaf, kind, bytes FROM replays"
-            " WHERE id = ?",
+            "SELECT map_dir, track, leg, leaf, kind, bytes,"
+            " COALESCE((SELECT a.banned_at FROM accounts a"
+            "            WHERE a.steamid = replays.player), 0) AS owner_banned"
+            " FROM replays WHERE id = ?",
             (rid,),
         ).fetchone()
     except sqlite3.Error as exc:
         log.exception("replay db error: %s", exc)
         return fail(500, "storage error")
 
-    if row is None:
+    # A banned account's recording (Patch 633) is kept, and the admin reads it
+    # at /admin/api/run/<id>/file; to everybody else its id names nothing, as
+    # its board row does.  BY OWNER, not by tier: the recording behind its
+    # stage rows (kind 'evidence') has no tier, and a sweep files more of
+    # those after the ban.  An imported demo is another board's and stays.
+    if row is None or (
+            row["owner_banned"] and row["kind"] in ("run", "evidence")):
         return fail(404, "no such replay")
 
     leaf = row["leaf"]
@@ -4912,7 +4968,11 @@ def _register_admin():
                                        restage=restage, stage_counts=stage_counts,
                                        public_state=public_state,
                                        rank_of=rank_of, leg_dir=leg_dir,
-                                       max_errors=VERIFY_MAX_ERRORS))
+                                       max_errors=VERIFY_MAX_ERRORS),
+                             bans=dict(set_ban=accounts.set_ban,
+                                       ban_list=accounts.ban_list,
+                                       imported=TIERS_IMPORTED,
+                                       ranked_linked=RANKED_LINKED))
     except Exception as exc:                       # pragma: no cover
         log.exception("admin panel failed to configure: %s", exc)
         return

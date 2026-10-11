@@ -26,6 +26,10 @@ commit   c543d688ad16a871753fa9525c23487f437741a5
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-625
 patch    634
+# Patch 633: bans by Steam account (ROADMAP 14.3 c). The admin panel's Accounts page
+# bans and unbans a SteamID with a note; a banned account's rows and recordings stand
+# on `banned:<tier>`, which no reader names, and come back on an unban. surfd only: no
+# engine source, QuakeC, recorder or Build change (commit and tag above stay).
 # Patch 634: the site's maps list answers inside the proxy's five seconds. One count
 # in surfd's `_web_maps_body` became two that each have an index (12 s -> about 2 s on
 # the Pi; the first visitor after each minute's cache had been shown "HTTP 504").
