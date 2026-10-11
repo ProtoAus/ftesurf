@@ -4668,6 +4668,17 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   S and on the bottom edge). A rig window is 640x480 unless the cfg sets
   `vid_width`/`vid_height` before its first wait; the panel halves its scale
   when it would not fit, so the cfg asks for 1600x900.
+- DEPLOYED 2026-10-11 from `2570367`: csprogs `9ab0442f` only (qwprogs
+  `e9c95065` and menu.dat were already these bytes in all three places). Both
+  Windows installs 01:43:06Z, with `cfg/default.cfg` `922605a3` (the one before
+  kept as `default.cfg.pre630-20261011T014306Z`); the Pi 01:43:53Z with nobody
+  on, all 12 lobby processes started 01:43:55Z to 01:44:03Z (read from the
+  host), and `pi_lobby_smoke.py` on lobby 1 was served this csprogs and drew
+  the board. `.prev` is Patch 629's csprogs (`6ddb3e37`) in all three places.
+  surfd's "account proofs must name game code" line still named the pair before
+  at 01:45:30Z: `accounts.py`'s `game_code` re-reads the two files at each proof
+  and logs when the pair changes, and no proof had arrived (the smoke's client
+  has no key).
 
 ### SUI theme, the board and the gallery (Patches 606, 607) — 2026-10-10
 

@@ -13,6 +13,11 @@ to be wrong.
 
 ## 00. 11 Oct — your HUD list, part 1: sizes and modes (Patch 630)
 
+Published 11 Oct 01:41 UTC (12:41 here). Live since 01:43 UTC on both installs
+(csprogs, and `cfg/default.cfg` for the two new settings) and 01:44 UTC on all
+twelve lobbies. Each replaced file has a copy beside it: `.prev`, and
+`default.cfg.pre630-20261011T014306Z`.
+
 From your list of 11 Oct ("I have a list of Hud edits I want made!"). The rest
 of the list follows in later patches; this is the hud_edit sizes and modes.
 
