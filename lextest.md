@@ -11,6 +11,21 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — the mouse wheel scrolls the board (Patch 646)
+
+From your message ("load more than 1 page of KSF records"). In the game the
+board fetches its next 100 rows when you scroll near the end of the list, and
+the wheel did nothing there: the only way down was dragging the thin bar.
+1. **TAB, then right mouse to pin it, cursor over the list, wheel.** It
+   scrolls a row a notch; near the bottom the next 100 rows arrive, up to
+   1,000. The same over the track list on the left and the Local list.
+2. **Held with TAB only (no cursor), or the cursor off the lists**: the wheel
+   is still your jump, as before. Please check wheel-hopping feels unchanged.
+- Measured in a test rig on a 130-row board: 100 rows became 130 by wheel
+  alone. I could not feel it with a real wheel.
+- How many KSF rows there are to scroll to is the Pi's crawl (Patch 644,
+  which lands on its own), not this.
+
 ## 00. 11 Oct — Steam pictures in the game (Patch 640)
 
 From your list. A linked player's Steam picture is drawn before their name:

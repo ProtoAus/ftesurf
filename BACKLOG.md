@@ -5,6 +5,29 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## The board's wheel: what Patch 646 left -- 2026-10-11
+
+From its one review (read, not run) and what the arm does not reach.
+
+- **Not measured: the Local list, the track list, a replay under the board,
+  a real wheel.** `p646wheel.py` turns the wheel over the Online list only
+  (`scores status` prints that list's top row and no other's; its fixture has
+  three tracks, so the track list cannot scroll). The other two lists move by
+  the same lines. With a replay open the board is a second sui bracket and the
+  replay's `sui_end` empties the input buffer first, which is why the wheel
+  moves the offset itself (`Scores_InputEvent`): read, never run with a replay.
+- **On a narrow window a notch over the docked room list scrolls the Online
+  list under it.** `sui_hover_index` matches at any depth; the native table
+  excludes that rectangle (cl_scores_native.qc:572) and this does not.
+- **A board pinned by accident takes the wheel.** MOUSE2 during a TAB peek
+  pins (a jump can do it); until TAB is let go, a notch with the remembered
+  cursor over a list scrolls it and is not a jump. That state already takes
+  both buttons and the view.
+- **With rewind open, the board's list takes the notch before rewind's own
+  ten-row step** (cl_main.qc asks the board first).
+- **A notch at the top or the bottom of a list is still taken**, and does
+  nothing.
+
 ## Rounded corners: what Patch 642 left -- 2026-10-11
 
 - **A mask's name could be redefined after billions of draws.** The engine
@@ -3660,15 +3683,10 @@ right way up.
   None of Lex's 20 cached replays was an import at the re-import. Fix before a
   second rewrite: put the file's size or a version in the board row and
   refetch on a mismatch.
-- **THE COMBINED BOARD IS UNUSABLE ON A BUSY MAP.** It merges every tier by
-  time and the client fetches one page of `OB_MAXROW` 64 with NO offset
-  (`Online_Fetch` sends `limit` and never `skip`). On `surf_utopia` main, 221
-  imported rows are faster than this server's best, so a local row lands at
-  rank 222 and is simply not in the page. The merge is correct; the paging is
-  the hole, and it will bite the ranked board too once any map has 65 rows.
-  Found only by testing against the LIVE board -- the local fixture had 2
-  ranked against 1 imported and interleaved perfectly. `lextest.md` 2h(f)
-  puts the three fixes to the operator.
+- **The every-game board stops at 1,000 rows** (`OB_MAXROW`). It pages
+  (Patch 474) and the wheel reaches the pages (Patch 646), but a row past
+  rank 1,000 of a busy map's merged list is still not reachable in the game;
+  the site's "Show more" is.
 
 - **The import is being deployed now** (2026-09-28); until this entry says
   otherwise, check the host rather than this file. What ships: the `.rec`

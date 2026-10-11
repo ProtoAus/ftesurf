@@ -2317,6 +2317,8 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		else
 			Scores_Cell(lp, SBK_OWNER, d, Scores_StandingWord(), SBC_GOOD, 0.9);
 	}
+	if (pick)                   // Patch 646: the row a real click landed on
+		dprint(sprintf("scores: click row %g\n", pick - 1));
 	// Patch 395: `scores olpick`, a click minus the hit test.
 	if (!pick)
 	if (rec_sb_olpick > 0)
@@ -3315,7 +3317,7 @@ void() Scores_Toggle =
 */
 float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 {
-	local float native;
+	local float native, notch;
 	/*
 	  PATCH 341: THE PIN.  MOUSE2 while the held board is up toggles the pinned
 	  state -- the one press that makes the scoreboard stay.  Swallowed, so the
@@ -3358,6 +3360,32 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 
 	if (evtype == IE_KEYDOWN || evtype == IE_KEYUP)
 	{
+		// Patch 646.  The wheel scrolls a list, and scrolling is what asks for the
+		// next page.  Only pinned and over one of the three lists: both notches
+		// are bound to +jump (cl_entview.qc's wheel block has that story).  The
+		// offset is moved here and not through sui's input buffer: a replay under
+		// the board has a bracket of its own, whose sui_end empties that buffer
+		// before this panel reads it.
+		if (scanx == K_MWHEELUP || scanx == K_MWHEELDOWN)
+		{
+			if (!rec_sb_open)
+				return FALSE;
+			// sui re-tests the hover only on motion, and a tab or a leg changed
+			// by key puts another list under a resting cursor.
+			_sui_mouse_move(_cursor_position, FALSE);
+			notch = (evtype == IE_KEYDOWN) ? rec_sb_rowh : 0;
+			if (scanx == K_MWHEELUP)
+				notch = 0 - notch;
+			if (sui_hover_index("sb_online") >= 0)
+				rec_sb_oscroll_y = max(0, rec_sb_oscroll_y + notch);
+			else if (sui_hover_index("sb_runs") >= 0)
+				rec_sb_scroll_y = max(0, rec_sb_scroll_y + notch);
+			else if (sui_hover_index("sb_legs") >= 0)
+				rec_sb_legscroll_y = max(0, rec_sb_legscroll_y + notch);
+			else
+				return FALSE;
+			return TRUE;
+		}
 		if (scanx == K_MOUSE1 || scanx == K_MOUSE2)
 		{
 			// Patch 635: swallowed either way, but handed to the controls only while
@@ -3366,7 +3394,15 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 			// or every line of the list (the review; the room list's rows have
 			// tested rec_sb_open for the same reason since they were made).
 			if (rec_sb_open)
+			{
+				// Patch 646: the row under the cursor NOW.  After a wheel scroll
+				// with the mouse still, the hover named the row that had been there
+				// and the click went to it (cl_entview.qc's press, the same bug).
+				if (evtype == IE_KEYDOWN)
+				if (scanx == K_MOUSE1)
+					_sui_mouse_move(_cursor_position, FALSE);
 				sui_input_event(evtype, scanx, chary, devid);
+			}
 			return TRUE;
 		}
 
@@ -3798,6 +3834,8 @@ void() Scores_Status =
 	// that drew no source tag and the old sentence.
 	print(sprintf("  list %g  tier %s  holds %g\n", Scores_ImpState(), Scores_TierOf(),
 	              Scores_ImpTotal()));
+	// Patch 646: the online list's top row, which a wheel notch moves by one.
+	print(sprintf("  scroll %g\n", floor(rec_sb_oscroll_y / max(1, rec_sb_rowh))));
 	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
 		print(sprintf("  foot \"%s\"\n", Scores_FootLine()));
 	if (shown)
