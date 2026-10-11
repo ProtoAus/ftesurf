@@ -8312,7 +8312,7 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   together under real use.
 - **THE GAME'S PLAYER LOOKUPS (Patch 662) ARE THE SITE'S, AND COST WHAT THE
   SITE'S COST.** `/api/board?players=` walks the in-memory directory once a
-  request (about 20 ms for 67,000 entries on a laptop in its review, 12 ms
+  request (about 20 ms for 67,000 entries on this desktop in its review, 12 ms
   on the Pi itself; under the GIL, so four threads do not make four searches
   faster), and
   `?player=` is `_profile_rows`: the first answer for a wide profile is
