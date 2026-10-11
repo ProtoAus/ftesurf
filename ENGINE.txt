@@ -25,7 +25,20 @@ commit   c543d688ad16a871753fa9525c23487f437741a5
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-625
-patch    630
+patch    631
+# Patch 631: the Boarding window's two energies are levels -- the speedometer's e as it
+# stood coming onto the ramp and coming off it -- where they were the touchdown's cost
+# and the ride's gain (the owner's list: "your current position in energy, not how much
+# you lost/gained on the ramp"). Each is read against the zero in force when it was
+# taken, as a Segments row is, so a later jump does not restate it; a replay shows the
+# enter level (it has no leave row, as before) against the viewer's zero now.
+# On a listen server, or with little latency, the frame a board is noticed on is not yet
+# clipped: the Segments column read the Jump/Air row a whole board cost too high there
+# and took it off the Ramp row (139e for 42e). Column and window now weigh in how much of
+# the clip that frame's velocity shows. A new map or a closed replay no longer draws the
+# last board. `boarding` prints the window, the column's last rows and that fraction.
+# csprogs only: no engine source, server QC, recorder, evidence, ranking, default or
+# Build change (commit and tag above stay).
 # Patch 630: hud_edit, the first of the owner's list of 11 Oct. Speed's energy size and
 # Timer's subtext size are rows of size boxes like an element's own Size row (the energy
 # offers the speedometer's four sizes). Speed gains `Shows`: the speed, both, or the

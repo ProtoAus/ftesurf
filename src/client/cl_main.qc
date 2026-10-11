@@ -2201,6 +2201,8 @@ float(string cmd) CSQC_ConsoleCommand =
 		return TRUE;
 	if (MPad_ConsoleCommand(cmd))
 		return TRUE;
+	if (Boarding_ConsoleCommand(cmd))   // Patch 631: `boarding`, the window as text
+		return TRUE;
 	// Patch 393: the strafe bar's last drawn error and fill.
 	if (argv(0) == "hud_strafe_probe")
 	{

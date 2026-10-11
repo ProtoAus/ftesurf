@@ -17,6 +17,12 @@
   So they move here, paired: enter above leave, the same two columns in both rows,
   and a fade that is theirs rather than the Board panel's.
 
+  PATCH 631.  The two energies are LEVELS now -- the speedometer's `e` as it stood
+  at the enter and at the leave -- where they were the touchdown's cost and the
+  ride's gain ("the energy is supposed to be your current position in energy, not
+  how much you lost/gained on the ramp").  The cost is the Board panel's line and
+  the gain the Segments column's ramp row.
+
   WHAT STAYS BEHIND.  The Board panel keeps the segment-gain line and the grade,
   and it loses the `contact` and `leaving` halves that move here -- deliberately,
   because two panels printing one number is the failure mode cl_hud.qc's own
@@ -96,6 +102,7 @@ void() Boarding_RegisterCvars =
 
 	registercvar("hud_boarding_enter", "1", CVAR_ARCHIVE);
 	registercvar("hud_boarding_leave", "1", CVAR_ARCHIVE);
+	registercommand("boarding");    // Patch 631; free: grepped the engine and src
 	/*
 	  BUILD 66: hud_boarding_kept and hud_boarding_ramp are NOT registered any
 	  more -- their rows moved to the Board panel as hud_board_kept and
@@ -131,6 +138,26 @@ void() Boarding_ReadCvars =
   Returns the y to draw the next row at, so a caller that skips a row skips its
   space with it rather than leaving a gap where an option used to be.
 */
+// The zero a level is read against: its own, stamped when it was taken.  In a
+// replay the viewer's, now, as the speedometer beside it: a replayed stamp is the
+// zero of wherever the cursor was a frame before (the review: one board read
+// 2285e, 44.8e and 3560e by where the seek came from).
+float(float own) BD_Zero =
+{
+	return rec_wt_on ? HUD_EnergyRef() : own;
+};
+
+// ...and whether there is a level to print: stamped, and in a replay the
+// viewer's zero has to have an answer now.
+float(float ok) BD_Known =
+{
+	if (!ok)
+		return FALSE;
+	if (rec_wt_on)
+		return HUD_ZeroKnown();
+	return TRUE;
+};
+
 float(vector p, float y, float sz, float lh, string label, string val,
       vector col, float a) BD_Row =
 {
@@ -158,10 +185,8 @@ float(vector p, float y, float sz, float lh, string label, string val,
 void(vector scr, float stacky) Boarding_Draw =
 {
 	local vector p, bp, col;
-	// Build 66: eref is gone.  It was computed with a three-line essay and never
-	// referenced -- this window prints deltas and raw speeds, so there was no
-	// absolute for a reference to be subtracted from.  The essay had been copied
-	// from HUD_DrawSeq, where the value IS used.
+	// Each level carries the zero stamped with it (board_eref, leave_eref -- Patch
+	// 631); BD_Zero says when the viewer's is read in its place.
 	local float sz, lh, y, a, la, bw;
 	local float haveenter, haveleave;
 	local string s;
@@ -214,15 +239,19 @@ void(vector scr, float stacky) Boarding_Draw =
 	Font_Set(ui_font_mono);
 
 	/*
-	  ENTER.  The speed you arrived at, and what the touchdown took off you.
+	  ENTER.  The speed you arrived at, and the energy you arrived with.
 
 	  board_speedin_h is horizontal, matching the speedometer rather than the 3D
 	  speed the energy is built from -- "how fast was I going" is the horizontal
-	  question on a surf map.  board_losse is a MAGNITUDE and is negated here,
-	  because on this row it is a change and its sign is the information: every
-	  touchdown costs, and a column of unsigned numbers under a heading that also
-	  carries gains would read as if some of them were gains.
+	  question on a surf map.
+
+	  Patch 631: the energy is the LEVEL, the speedometer's `e` as it stood coming
+	  in, where this row used to print what the touchdown took (the Board panel's
+	  cost line is that number).  Read against the zero in force then, as a
+	  Segments row is (seq_eref); the speedometer's colour, because it is its
+	  number.
 	*/
+	col = '0.75 0.85 1.00';
 	if (haveenter)
 	{
 		if (bd_cv_units != 1)
@@ -233,25 +262,20 @@ void(vector scr, float stacky) Boarding_Draw =
 		}
 		if (bd_cv_units >= 1)
 		{
-			s = sprintf("%+de", rint(0 - board_losse));
+			s = BD_Known(board_eok) ? sprintf("%de", rint(HUD_Round(board_ein - BD_Zero(board_eref)))) : "--";
 			/*
 			  The label is blank on the second line of a stacked pair: it is the
 			  same row in a second unit, not a second row, and repeating "enter"
 			  would make the window look like it had four readings instead of two.
 			*/
 			y = BD_Row(p, y, sz, lh, (bd_cv_units >= 2) ? "" : "enter", s,
-			           '1.00 0.62 0.34', a * ((bd_cv_units >= 2) ? 0.75 : 1));
+			           col, a * ((bd_cv_units >= 2) ? 0.75 : 1));
 			if (stringwidth(s, TRUE, [sz, sz]) > bw) bw = stringwidth(s, TRUE, [sz, sz]);
 		}
 	}
 
-	/*
-	  LEAVE.  The speed you came off at, and what the whole ride was worth.
-
-	  leave_de is signed and can genuinely be either: a good line on a steep face
-	  gains, and a ride taken too flat loses.  Coloured by its sign for that reason
-	  rather than fixed like the enter row, which cannot be positive.
-	*/
+	// LEAVE.  The speed you came off at, and the energy you came off with: the
+	// level again (Patch 631), or `--` where no ride was open to take it from.
 	if (haveleave)
 	{
 		if (bd_cv_units != 1)
@@ -262,8 +286,7 @@ void(vector scr, float stacky) Boarding_Draw =
 		}
 		if (bd_cv_units >= 1)
 		{
-			col = (leave_de >= 0) ? '0.55 0.95 0.55' : '1.00 0.55 0.20';
-			s   = sprintf("%+de", rint(leave_de));
+			s = BD_Known(leave_eok) ? sprintf("%de", rint(HUD_Round(leave_e - BD_Zero(leave_eref)))) : "--";
 			y = BD_Row(p, y, sz, lh, (bd_cv_units >= 2) ? "" : "leave", s, col,
 			           la * ((bd_cv_units >= 2) ? 0.75 : 1));
 			if (stringwidth(s, TRUE, [sz, sz]) > bw) bw = stringwidth(s, TRUE, [sz, sz]);
@@ -317,4 +340,31 @@ void(vector scr, float stacky) Boarding_Draw =
 	if (bw < sz * 10)
 		bw = sz * 10;
 	HUD_Rect("boarding", [bp_x - bw * 0.5, bp_y, 0], [bw, y - bp_y, 0], bp);
+};
+
+// `boarding`: the window's four numbers as text, with what each level is made of
+// and how long ago it was stamped (a drawn row has no other read), then the
+// Segments column's last rows: an air row ends on the enter's level and a ramp
+// row on the leave's, by another route.  Patch 631.
+float(string cmd) Boarding_ConsoleCommand =
+{
+	local float i;
+	local vector ss;
+
+	if (argv(0) != "boarding")
+		return FALSE;
+	for (i = max(0, seq_n - 6); i < seq_n; i = i + 1)
+		print(sprintf("boarding: row %g kind %g level %.1f\n", i, seq_kind[i],
+		              seq_eend[i] - seq_eref[i]));
+	print(sprintf("boarding: enter %.1f u/s %.1fe (raw %.2f ref %.2f) ok %g cost %.1f age %.2f\n",
+	              board_speedin_h, board_ein - BD_Zero(board_eref), board_ein, BD_Zero(board_eref),
+	              BD_Known(board_eok), board_losse, board_time ? board_now - board_time : -1));
+	print(sprintf("boarding: leave %.1f u/s %.1fe (raw %.2f ref %.2f) ok %g age %.2f\n",
+	              leave_speed, leave_e - BD_Zero(leave_eref), leave_e, BD_Zero(leave_eref),
+	              BD_Known(leave_eok), leave_time ? board_now - leave_time : -1));
+	// The speedometer's own e now: before a board it is what the enter must read.
+	ss = HUD_SplitSample();
+	print(sprintf("boarding: zero now %.2f e now %.1f clip seen %.3f raw %.3f\n", HUD_EnergyRef(),
+	              ss_y, board_seen, board_seenraw));
+	return TRUE;
 };

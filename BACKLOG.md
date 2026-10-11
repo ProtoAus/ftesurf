@@ -5,6 +5,41 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## The Boarding window: what Patch 631 left -- 2026-10-11
+
+- **A replay has no leave row.** `cl_watch.qc:Watch_BoardApply` sets
+  `leave_time = 0` ("left blank rather than stale"): the leave is the falling
+  edge of ramp contact, which no record carries. The build pass does see it
+  (`Board_Frame`'s leave edge), so a table like `rec_wt_bde` could hold each
+  ride's leave speed and level. Falsifier: `cfg/test/p631boarding.cfg`'s replay
+  steps print `leave ... age -1.00`; with the table, a step paused after a ride
+  must print that ride's Ramp row level.
+- **After a seek, a replay's Segments rows are read against a zero from where
+  the seek came from.** Paused at 8.9 s in `cfg/test/p492voy.rec`
+  (hud_energy_ref 1) the newest Air row reads 2285e, the speedometer 3507 and
+  the Boarding window 3560 (enter, 53 above the speedometer: that board's
+  cost). The window reads the viewer's zero now since Patch 631; the rows keep
+  the one stamped when they were applied. The review's reading of the cause,
+  not re-derived: `Watch_SeqApply` stamps inside `Watch_Sample`, before
+  `HUD_UpdateJumpRef` has moved the zero for the frame sought to, and never
+  re-stamps while `k == rec_wt_bdshown`; applying the frame a second time after
+  a seek would be the cheapest repair. Falsifier: that arm's `replay 8.9` step,
+  `boarding: row` against `boarding: zero now`, reached from two different
+  earlier seeks.
+- **The two-tick allowance in `cl_board.qc:Board_ClipSeen` is from one run.** A
+  drawn body 1.7 ticks behind the arrival read 48.6 for 42.3 before it; a body
+  more than two behind would read high again by `stepe*f*(2-f)`, and a true
+  blend under f 0.039 now reads low by up to 7.4e on that ramp (the Ramp row's
+  gain high by the same). Neither seen in six listen-server rides (`raw` 0.009,
+  0.033 twice, a true blend at 0.249, and two that read 0 before `raw` was
+  printed). Falsifier: `boarding`'s `clip seen ... raw ...` on a listen server
+  at other frame rates (`cl_maxfps 100` in the arm).
+- **A ride that ends on the ground within 0.08 s draws `leave <speed> / --`**
+  (the review's finding, from the code). Not run.
+- **A board under the grading thresholds (100 u/s, 25 u/s into the plane) is
+  treated differently live and in a replay** (the review, by the code). Not run;
+  nor was the window after a save-lock load.
+
 ## hud_edit sizes and modes: what Patch 630 left -- 2026-10-11
 
 From its one review; the numbers are that review's runs at 1600x900 unless said.

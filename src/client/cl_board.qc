@@ -24,6 +24,7 @@
 // --- what the last board cost -----------------------------------------------
 float  board_time;          // cltime it happened; 0 = nothing yet this map
 float  board_seq;           // last run_boardcount we acted on
+float  board_resync;        // Patch 631: adopt the counter on the next live frame (Board_ResetRun)
 float  board_speedin;       // 3D speed going in
 float  board_speedin_h;     // horizontal speed going in -- the "contact" readout
 float  board_kept;          // 0..100, the "how perfect" number
@@ -42,16 +43,21 @@ vector board_dv;            // the signed XYZ you lost
 float  board_approach;      // degrees off the normal; 90 = perfect
 float  board_grade;         // 0 perfect .. 4 terrible
 float  board_rampdeg;       // how steep the ramp was
+// Patch 631, for the Boarding window: the raw energy you arrived with, and the
+// zero in force then.  Stamped, as seq_eref is: a later jump must not restate it.
+// board_eok: there is one (a replay cut from mid-run has boards it never walked).
+// board_seen: Board_ClipSeen on the frame it was taken; board_seenraw: the same
+// before its two-tick allowance.  Both for `boarding`.
+float  board_ein, board_eref, board_eok, board_seen, board_seenraw;
 
 // --- leaving ----------------------------------------------------------------
 float  board_riding;        // last frame's run_rampcontact
 float  leave_time;          // cltime we came off a ramp
 float  leave_speed;         // horizontal speed at that instant
-// Build 65, for the Boarding window: the raw energy at that instant, and what the
-// whole ride was worth.  Raw for the same reason seq_eend is -- the drawer applies
-// the live reference, so every absolute on the HUD shares one zero.
-float  leave_e;
-float  leave_de;
+// Build 65, for the Boarding window: the raw energy at that instant.  Patch 631:
+// with the zero in force then (leave_eref, as seq_eref), and leave_eok says a
+// ride was open to take it from.  The ride's own gain is the Segments column's.
+float  leave_e, leave_eref, leave_eok;
 
 /*
 ===========================================================================
@@ -216,6 +222,10 @@ void() HUD_ClearEnergyHistory;
 // NOT respelled locally: the whole argument for factoring HUD_EnergyRef out in
 // build 19 was that two copies of that choice drift the moment either moves.
 float() HUD_EnergyRef;
+// Patch 631: and whether that zero has an answer (the Boarding window's stamps).
+// A prototype and not the body: ui_anchor_manual is cl_hud.qc's, and a name used
+// here before that file declares it crashes fteqcc with no output at all.
+float() HUD_ZeroKnown;
 
 /*
 ===========================================================================
@@ -2557,9 +2567,42 @@ float(float newkind, float e, vector vel, float gravity) Board_SegmentEnd =
   every single tick.  The airborne-first gate in the engine is the real
   filter; these two only reject the trivial.
 */
+/*
+  PATCH 631 -- HOW MUCH OF A BOARD'S CLIP THIS FRAME'S VELOCITY ALREADY SHOWS, 0..1.
+
+  The counter and its latched pair are the newest packet's; the drawn body can be
+  a net frame behind them (cl_predict_extrapolate 0), so `vel` on the frame the
+  counter moves may still be the arrival's.  One fall held at 42.3e, cost 96.7:
+  0 on a listen server, 0.495 dedicated, 0.990 behind 120 ms.  Build 39's
+  "e + stepe" assumed 1 and read 139 on the first.  With f of the into-plane
+  speed gone, (2f - f*f) of the cost is gone from `e`.  A recording's sample is
+  the board's own tick: 1.
+
+  Two corrections, each from a failing run (AGENT_NOTES, "The Boarding window's
+  levels"): vin is latched half a tick of gravity past the tick the drawn state
+  ended on, and a body up to two ticks earlier in its fall is the arrival, not a
+  shallow blend.
+*/
+float(vector vin, vector vel, vector n, float gravity) Board_ClipSeen =
+{
+	local float a, r;
+
+	if (rec_wt_build)
+		return 1;
+	a = vin * n + 0.5 * gravity * Board_Tick() * n_z;
+	if (a == 0)
+		return 1;
+	r = (vel * n) / a;
+	board_seenraw = 1 - r;
+	if (r >= 1 - 2 * gravity * Board_Tick() * fabs(n_z) / fabs(a))
+		return 0;
+	return 1 - bound(0, r, 1);
+};
+
 void(vector org, vector vel, float onground) Board_Frame =
 {
 	local float seq, riding, kind, gravity, e, dt, boarded, eb;
+	local float bf, epost;          // Patch 631: Board_ClipSeen, and the energy once clipped
 	local vector n, vin, vb;
 
 	/*
@@ -2584,6 +2627,14 @@ void(vector org, vector vel, float onground) Board_Frame =
 		board_now = cltime;
 		Seq_Frame();
 		seq    = getstatf(STAT_FS_BOARDCOUNT);
+		// Patch 631: after a reset the counter is wherever the server has got to (a
+		// listen server keeps it across maps: 4, the old plane still latched, 0.43 s
+		// into the next), so it is adopted, not read as a board.
+		if (board_resync)
+		{
+			board_resync = FALSE;
+			board_seq = seq;
+		}
 		riding = getstatf(STAT_FS_RAMPCONTACT);
 	}
 
@@ -2681,7 +2732,17 @@ void(vector org, vector vel, float onground) Board_Frame =
 		}
 
 		if (vlen(vin) >= 100 && fabs(vin * n) >= 25 && n != '0 0 0')
+		{
 			Board_Compute(vin, n);
+			// Patch 631: what you arrived with is this frame's energy plus the part
+			// of the clip it already shows -- the value the air segment closes at
+			// below.
+			bf = Board_ClipSeen(vin, vel, n, gravity);
+			board_seen = bf;
+			board_ein  = Strafe_Energy(org, vel, gravity) + board_stepe * bf * (2 - bf);
+			board_eref = HUD_EnergyRef();
+			board_eok  = HUD_ZeroKnown();
+		}
 	}
 
 	// Leaving: the falling edge of ramp contact.  wrlines has no equivalent
@@ -2711,21 +2772,19 @@ void(vector org, vector vel, float onground) Board_Frame =
 		  ride.  `e` is likewise not computed until a few lines below, so this calls
 		  Strafe_Energy itself with the same three arguments that call will use.
 
-		  The same (e - seg_e0) + carry the committed row is built from, so the
-		  window and the segment column cannot report one ride two ways.  Guarded on
-		  the segment actually being the ramp: a leave edge with no open ramp segment
-		  is a restore or a build pass, and a delta against somebody else's e0 is
-		  worse than no number.
+		  Guarded on the segment actually being the ramp: a leave edge with no open
+		  ramp segment is a restore or a build pass.
+
+		  Patch 631: the window prints the level held here against the zero in
+		  force here, not the ride's gain (leave_de, which went: the Segments
+		  column's ramp row is that number).  The guard stays: a restore's position
+		  and anchor arrive on different frames (the hold essay in HUD_DrawSpeed).
 		*/
-		if (seg_kind == SEG_RAMP && seg_valid)
+		leave_eok = (seg_kind == SEG_RAMP && seg_valid && HUD_ZeroKnown());
+		if (leave_eok)
 		{
-			leave_e  = Strafe_Energy(org, vel, gravity);
-			leave_de = (leave_e - seg_e0) + seg_carry_de;
-		}
-		else
-		{
-			leave_e  = 0;
-			leave_de = 0;
+			leave_e    = Strafe_Energy(org, vel, gravity);
+			leave_eref = HUD_EnergyRef();
 		}
 	}
 	board_riding = riding;
@@ -2917,6 +2976,7 @@ void(vector org, vector vel, float onground) Board_Frame =
 		*/
 		eb = e;
 		vb = vel;
+		epost = e;                  // Patch 631: see the board block below
 
 		/*
 		  BUILD 88 -- A LANDING IS NOTICED ONE FRAME LATE, AND THAT COSTS THE
@@ -2952,14 +3012,22 @@ void(vector org, vector vel, float onground) Board_Frame =
 			// bisection rule every behaviour change in this project follows --
 			// and here it is also the only way to see the ten units, since the
 			// error lives in the difference between the two.
+			// Patch 631: ... and `e` holds only part of the clip when the drawn body is
+			// behind the counter (Board_ClipSeen).  The air closes at the arrival's
+			// energy and the ramp opens a whole cost under it, wherever `e` is between
+			// the two; with the clip all in, both lines are build 39's to the bit.
 			if (cvar("hud_board_exact") || !cvar_string("hud_board_exact"))
-				eb = e + board_stepe;
+			{
+				bf = Board_ClipSeen(vin, vel, n, gravity);
+				eb = e + board_stepe * bf * (2 - bf);
+				epost = e - board_stepe * (1 - bf) * (1 - bf);
+			}
 			else
 				eb = Strafe_Energy(org, vin, gravity);
 
 			if (seq_board)
 			{
-				seg_bd_de   = e - eb;       // -(v.n)^2 / 2g, exactly, since build 39
+				seg_bd_de   = epost - eb;   // -(v.n)^2 / 2g, exactly, since build 39
 				seg_bd_v    = vlen(vel);    // post-clip, see seg_bd_v
 				seg_bd_pend = TRUE;
 			}
@@ -3176,7 +3244,7 @@ void(vector org, vector vel, float onground) Board_Frame =
 		*/
 		if (seg_bd_pend)
 		if (kind == SEG_RAMP)
-			seg_e0 = e;
+			seg_e0 = epost;             // Patch 631: `e` once the whole clip is in it
 	}
 
 	/*
@@ -3327,6 +3395,9 @@ void() Board_ResetRun =
 	board_time = board_seq = 0;
 	leave_time = leave_speed = 0;
 	board_riding = 0;
+	board_eok = leave_eok = FALSE;          // Patch 631
+	if (!rec_wt_build)
+		board_resync = TRUE;                // see Board_Frame
 
 	// Build 25: and the held ramp contact, which is measured against a clock that
 	// has just restarted.  It would expire on its own (see Board_RampHold), but a

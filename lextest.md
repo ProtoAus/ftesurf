@@ -11,6 +11,38 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — your HUD list, part 2: Boarding (Patch 631)
+
+"The entering and leaving units 'both' is supposed to display the horizontal
+velocity you had when you entered or left the ramp, and the energy is supposed
+to be your current position in energy, not how much you lost/gained."
+
+- **Boarding now reads, for example, `enter 260u/s / 42e` and `leave 590u/s /
+  -54e`**: the speed going in and coming off, and under each the `e` you held
+  at that moment (the same number the Segments column shows as that row's
+  energy). `energy` alone shows just the two levels. The window is off in your
+  config (`hud_boarding 0`); it is under Boarding in hud_edit.
+- What the touchdown cost is still the Board panel's `board -97e`, and what the
+  ride was worth is the Segments column's Ramp row.
+- **The Segments column changes too, on a server on your own machine or a near
+  one.** For that same ride it read Jump 139e (+97e), Board 42e (-97e), Ramp
+  -54e (-96e), and the Board panel `ramp -96e`: the touchdown's cost was added
+  to the jump and then taken off the ramp. It now reads Jump 42e (-0e), Board
+  -55e (-97e), Ramp -54e (+1e) and `ramp +1e`, within 1e of that on a local
+  server, a dedicated one and one 120 ms away.
+- Changing map, or closing a replay, no longer leaves the last board's numbers
+  in the window.
+
+Yours to look at:
+1. The enter level is what you ARRIVED with, before the touchdown took its
+   cost (it pairs with the enter speed, which is also from before the clip).
+   If you meant what you held just after landing, say so: it is one line.
+2. A jump after the ride moves the speedometer's zero; the two levels keep the
+   zero they were taken against, like the Segments rows.
+3. In a replay the window shows the enter pair only (it never had a leave row
+   there), read against the speedometer's zero where you are paused. The
+   Segments rows beside it can disagree after a seek: BACKLOG.
+
 ## 00. 11 Oct — your HUD list, part 1: sizes and modes (Patch 630)
 
 Published 11 Oct 01:41 UTC (12:41 here). Live since 01:43 UTC on both installs

@@ -4621,6 +4621,58 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+### The Boarding window's levels (Patch 631) — 2026-10-11
+
+- THE WINDOW'S ENERGIES ARE LEVELS WITH THEIR OWN ZERO. `board_ein` is what you
+  arrived with (the value the air segment closes at, so the Jump/Air row's
+  `Energy now` is the same number), `leave_e` the energy on the frame the ride
+  ends (the Ramp row's); `board_eref` and `leave_eref` are `HUD_EnergyRef()`
+  taken then, and `board_eok`/`leave_eok` say that zero had an answer
+  (`HUD_ZeroKnown`; `--` is drawn when it had none). `boarding` prints both, what
+  each is made of, how long ago, the zero and the speedometer's e now, and the
+  Segments column's last six rows.
+- LIVE, THE FRAME A BOARD IS NOTICED ON IS NOT THE CLIPPED FRAME. The counter and
+  its latched pair are the newest packet's; the drawn body can be a net frame
+  behind (`cl_predict_extrapolate 0`). `Board_ClipSeen` is the part of the
+  into-plane speed `vel` has already lost, f: the arrival is `e + stepe*f*(2-f)`
+  and the ramp opens at `e - stepe*(1-f)^2`, so the Board row is the cost exactly
+  whatever f is. One fall held at 42.3e in flight, cost 96.7, twelve rides with
+  this rule: f 0.000 on a listen server (once 0.249), 0.495 dedicated, 0.990
+  behind `sv_minping 120`; the enter read 42.1 to 43.2. Build 39's column and
+  the first cut of this patch assumed 1, and on the listen server read the Air
+  row 139.0 for 42.3, the Board row 42.3 for -54.4, and the Ramp row's change
+  -96.3 for about 0.
+- TWO CORRECTIONS INSIDE IT, EACH FROM A FAILING RUN. (1) vin is latched after
+  StartGravity, half a tick of gravity past the tick the drawn state ended on:
+  against bare `vin*n` a listen-server run read 45.9. (2) A drawn body earlier
+  in its fall is short of the arrival's into-plane speed by a tick of gravity per
+  tick it trails, and is not part way through the clip: 0.5 and 1.7 ticks behind
+  read 44.1 and 48.6. Within two ticks' worth (f under 0.039 on that ramp) it is
+  the arrival: the shipped build's listen ride printed `raw 0.033` and read 42.3.
+  `boarding` prints f and the value before that allowance (`raw`).
+- A REPLAY NEVER RUNS `Board_Frame` AT THE CURSOR. `Watch_BoardApply` calls
+  `Board_Compute` on the newest board record at or before the clock, so anything
+  `Board_Frame` stamps beside that call is the BUILD PASS's last board: the first
+  cut drew one stale level (-22751e) at every seek. The level comes from
+  `rec_wt_bde`, filled by the build pass on the sample after each `board` record
+  (f is 1 there: a sample is the board's own tick), and is read against the
+  viewer's zero NOW (`BD_Zero`). A stamp taken when the board was applied
+  depended on where the seek came from. A replay still has no leave row.
+- A RESET ADOPTS THE COUNTER. A listen server keeps `STAT_FS_BOARDCOUNT` across
+  maps (4, the old plane still latched, 0.43 s into the next), and the first cut
+  drew that as a board; closing a replay did the same with the replay's last.
+  `Board_ResetRun` sets `board_resync` (live only) and `Watch_SeqRestore` calls
+  `Board_ResetContact()`.
+- THE ARM, ON THREE SERVERS. `tools/runlines_smoke.py
+  ftesurf/cfg/test/p631boarding.cfg --mount --output-dir <owned dir>`; again with
+  `--dedicated --map surf_kitsune --server-arg "+set run_startjitter 0"`; again
+  with `--server-arg "+set sv_minping 120"` added; then
+  `tools/test_p631boarding.py <log> <log> <log>`. The enter is graded against
+  the speedometer's e printed in flight BEFORE the board. The first cut's checks
+  compared the window with the Segments column, which made the same mistake,
+  and passed at 139. A build with f fixed at 1, no resync and a stamped replay
+  zero fails 5 of 11 on a listen server.
+
 ### hud_edit: second sizes, what the speedometer shows, the keys' size (Patch 630) — 2026-10-11
 
 - `HE_OptDef` HAS TWO MORE KINDS. `s` is a second text size drawn like an

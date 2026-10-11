@@ -444,6 +444,11 @@ vector rec_wt_bdn[WT_BDMAX];     // the latched arrival plane
 vector rec_wt_bdv[WT_BDMAX];     // the PRE-clip velocity
 float  rec_wt_bdn_n;
 float  rec_wt_bdover;            // events the file had that would not fit
+// Patch 631: the raw energy each board arrived with (board_ein's value), taken
+// by the build pass on the sample after its record; WT_NOLEVEL where the pass
+// did not walk it.  memalloc'd: csprogs is at fteqcc's global limit.
+#define WT_NOLEVEL -1000000000
+float *rec_wt_bde;
 
 /*
   THE SEGMENT COLUMN, built once and then only counted into.
@@ -2684,6 +2689,10 @@ void() Watch_SeqRestore =
 	// replay was up, and its e0 was measured before it.  Same call a save-load
 	// makes, for the same reason.
 	Board_Warped();
+	// Patch 631: and the build pass left ITS board counter and ride flag behind,
+	// so the first live frame read the difference as a board and a leave: the
+	// Board panel showed the player's last board again, on whatever map.
+	Board_ResetContact();
 };
 
 /*
@@ -2705,6 +2714,7 @@ void() Watch_SeqRestore =
 void() Watch_BuildSeq =
 {
 	local float i, fl, n, t, bk;
+	local float bi, pendb, gravity;     // Patch 631: rec_wt_bde's cursor
 	local vector org, vel;
 	local string s;
 
@@ -2759,6 +2769,15 @@ void() Watch_BuildSeq =
 	// to do with the file being read.  See the split in cl_board.qc.
 	Board_ResetRun();
 
+	if (!rec_wt_bde)
+		rec_wt_bde = memalloc(sizeof(float) * WT_BDMAX);
+	for (i = 0; i < WT_BDMAX; i = i + 1)
+		rec_wt_bde[i] = WT_NOLEVEL;
+	bi = 0;
+	pendb = -1;
+	gravity = serverkeyfloat("sv_gravity");
+	if (gravity < 1) gravity = 800;
+
 	bk = 0;
 	for (i = rec_wt_bline; i < rec_wt_recn; i = i + 1)
 	{
@@ -2774,6 +2793,20 @@ void() Watch_BuildSeq =
 					board_ov_seq   = stof(argv(2));
 					board_ov_bnorm = [stof(argv(3)), stof(argv(4)), stof(argv(5))];
 					board_ov_bvel  = [stof(argv(6)), stof(argv(7)), stof(argv(8))];
+
+					// Its row of the table: the same two strings, so equal floats.
+					t = stof(argv(1));
+					pendb = -1;
+					while (bi < rec_wt_bdn_n)
+					{
+						if (rec_wt_bdt[bi] == t)
+						if (rec_wt_bdc[bi] == board_ov_seq)
+						{
+							pendb = bi;
+							break;
+						}
+						bi = bi + 1;
+					}
 				}
 			}
 			continue;
@@ -2809,6 +2842,15 @@ void() Watch_BuildSeq =
 		if (bk < rec_wt_bkln)
 		if (rec_wt_bkl[bk] == i)
 			Board_LineBroke();
+
+		// The sample of the tick the board happened on: what Board_Frame stamps
+		// live (board_ein), here for every board whether or not it is graded.
+		if (pendb >= 0)
+		{
+			rec_wt_bde[pendb] = Strafe_Energy(org, vel, gravity)
+			                  + Board_StepE(board_ov_bvel, board_ov_bnorm);
+			pendb = -1;
+		}
 
 		Board_Frame(org, vel, (fl & WT_F_ONGROUND) ? TRUE : FALSE);
 		if (board_ov_now > rec_wt_bt1)
@@ -2996,6 +3038,17 @@ void() Watch_BoardApply =
 	board_now = rec_wt_bdt[k];
 	Board_Compute(rec_wt_bdv[k], rec_wt_bdn[k]);
 	board_now = rec_wt_time;
+
+	// Patch 631: the level it arrived with, from the build pass.  Its zero is read
+	// when it is drawn (BD_Zero): a stamp taken here depends on the seek.
+	board_eok = FALSE;
+	if (rec_wt_bde)
+	if (rec_wt_bde[k] != WT_NOLEVEL)
+	{
+		board_ein  = rec_wt_bde[k];
+		board_eref = HUD_EnergyRef();
+		board_eok  = TRUE;
+	}
 
 	// `leaving` has no record of its own -- it is the falling edge of ramp
 	// contact, which the sample stream carries -- and reproducing it would want a

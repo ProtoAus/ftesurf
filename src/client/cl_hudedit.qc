@@ -463,7 +463,7 @@ string(string id, float row) HE_OptDef =
 		                     "|What you came off it with.";
 		// Build 66: Kept % and Ramp angle moved to the Board pane with their rows.
 		if (row == 2) return "hud_boarding_units|Units|c|0 1 2|u/s;energy;both"
-		                     "|Read the pair as speed, as height, or both stacked.";
+		                     "|The speed you entered and left with, the energy you held there (the e by the speed), or both stacked.";
 		/*
 		  NO ZERO IN THE FADE LISTS, and it is not an oversight.  Board_Alpha is
 		  `if (when <= 0 || life <= 0.1) return 0`, so a fade of 0 does not mean

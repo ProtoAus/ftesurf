@@ -1803,6 +1803,17 @@ float() HUD_EnergyRef =
 	return ui_anchor_z;
 };
 
+// Patch 631: whether that zero has an answer.  The speedometer prints `-- no
+// start zone` when it has none; the Boarding window's levels print `--`.
+float() HUD_ZeroKnown =
+{
+	if (ui_anchor_manual)
+		return TRUE;
+	if (ui_cv_energyref)
+		return TRUE;
+	return (ui_anchor_zone >= 0);
+};
+
 /*
 ===========================================================================
   BUILD 39 -- ONE CLOCK.
