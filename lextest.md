@@ -13,6 +13,8 @@ to be wrong.
 
 ## 00. 11 Oct — banning a Steam account (Patch 633)
 
+Live since 11 Oct 03:16 UTC.
+
 The admin panel has a third tab, **Accounts** (`/admin/accounts`): everybody
 who has signed in through Steam, with how many installs and board rows each
 has. To ban: press Ban on a row (it fills in the SteamID at the top), type a

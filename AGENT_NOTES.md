@@ -7337,6 +7337,17 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   each, before it shows a hundred of them, and the owner's account has 2,029.
   No review round: a read-only route, six lines, its answer compared with the
   old query's on the live file.
+- **DEPLOYED 11 Oct 2026, 03:16:10 UTC (FTESurf `04a6ea0`, Patch 633), surfd
+  only**: `accounts.py`, `admin.py`, `surfd.py`, the four admin templates and
+  two tests; the staged suites pass on the Pi (`test_ranked` 95 checks);
+  backup `surfd.db.bak-04a6ea0-20261011-141333`; reload with 0 players. Read
+  back: the commit's blobs (`f8b4cb8` / `10905ce` / `891c627`), no ERROR or
+  Traceback after the reload by position in the log, `ranked rows need a
+  linked Steam account: yes`, `/admin/accounts` 302 to the login and the
+  three new API routes 401 without a session, the boards as they were (21
+  ranked rows, nobody banned, the first maps build 2.05 s). NOT DONE ON THE
+  FLEET: a ban. It needs the owner's panel password and an account to ban;
+  lextest has the try (his own account, note "test", then unban).
 - **RANKED-MEANS-LINKED SWITCHED ON, 11 Oct 2026, 02:14:18 UTC** (the owner:
   "yes"). No code moved: the Pi's `surfd.env` line `SURFD_RANKED_LINKED` went
   from 0 to 1 and surfd was reloaded. BEFORE THE LINE, in this order and with
