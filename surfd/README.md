@@ -128,7 +128,12 @@ POST /api/run         (application/x-www-form-urlencoded)   -- schema 3
     map       map name, <=64 chars of [A-Za-z0-9_.+-]; REFUSED if longer
     track     0 main, 1+ bonus            (sh_zones.qc: zone_track)  REQUIRED
     leg       0 the full track, k stage k (sh_defs.qc:  FS_LegOf)    REQUIRED
-    player    stable player id, the board key
+    player    the install's guid.  The board key only while ranked-means-
+              linked is off; with it on (below) a linked install's row is its
+              ACCOUNT's and this names the recording alone
+    pub       Patch 629: the 64-hex key this connection proved to surfd
+              (/api/account, or a link's confirm), as the lobby remembers it;
+              absent when it proved none.  Read only with ranked-means-linked on
     name      display name at the time of the run
     ticks     1..1e8, the run's tick count
     tickrate  1..10000, in HERTZ (66.6667), NOT seconds per tick
@@ -853,6 +858,54 @@ POST /api/account  key, node, ip, nonce, pub, sig, server, keyed, game
   -> {"acct":1,"linked":0[,"why":"proof"|"server"|"game"|"later"]}
    | {"acct":1,"linked":1,"name","banned"}
 ```
+
+RANKED MEANS LINKED (Patch 629; `SURFD_RANKED_LINKED`, on unless it is `0`).
+`/api/run` resolves `pub` in `keylinks`. A linked key: the row's `player` is
+the account's SteamID64 on whatever tier the run earns, and `installs` (schema
+16) notes the guid and key it came from, once a run and at most 64 an account.
+No account (`why: unlinked`) or no proven key (`why: unproven`): a run that
+asked for the ranked board is stored on the community one. A banned account's
+key: nothing is stored, `stored: false`, `why: banned` (a ban is read at every
+post; it does not follow the person to another key, which is 14.3 c). Every
+answer to a run carries `why` (empty when where it landed is the run's own
+doing). The recording's leaf is still checked against the GUID's digest.
+
+ONE IDENTITY A RUN. The first post of a `runid` reads the link and pins the
+answer in `runpins` (run id, map, track, install -> player, why, and for an
+account the key that earned it); every later post of that run from that
+install gets the pin, whatever has been linked or unlinked since. A link
+therefore ranks the NEXT run. AN ACCOUNT'S PIN IS ITS KEY'S: a later post of
+that run that does not carry the same `pub` is not stored at all (`stored:
+false`, `why: held`): not under the account, which it has not earned, and
+not under the guid, which would split the run. The lobby says "not
+submitted". A post with no run id is read
+as it arrives. A pin not used for ninety days goes at a start.
+
+AN INSTALL IS NEVER NAMED LIKE AN ACCOUNT. `player` in the form is the guid
+its client sent. One shaped like a SteamID64 is a 400 in both modes; with the
+setting on it must be 32 lowercase hex, which is what the engine makes (or
+that with `:N`, a second seat on one machine). So a
+17-digit `player` on a non-imported row can only have been written for an
+account. `pub`, like `runid` and `rec`, is ignored from a source outside
+`SURFD_TRUSTED`.
+
+`/api/account` says `ranked: 1` in every answer to a verified proof while the
+setting is on, and a linked key's answer (and a confirm's) carries `who`:
+`sha256(steamid)[:8]`, the mark the game puts on that account's rows
+(`*phash`). With the setting off neither is sent and the lobby marks by guid.
+
+THE MOVE. At EVERY start with the setting on (the service's and each cron
+tool's: a marker for "done" was flipped by whichever started first), ranked
+rows whose `player` is not in `accounts` move to the community tier with
+their hidden copies and recordings (`accounts.ranked_now`); where the same
+install already has a community row there the faster is kept. It takes the
+write lock before it reads its list, and reads `runs_live`, an index of the
+rows that are no imported tier's, so a start with nothing to move scans
+nothing. THAT INDEX IS BUILT AT SCHEMA 16: one scan of `runs` under the write
+lock, once. One way: turning the setting off puts nothing back. With it off
+nothing moves and a run is its guid's, as before.
+The lobby's word for the key is trusted as the lobby is: a proof names the
+server, the key and the game code, not the connection.
 
 AN INSTALL IS ITS SIGNING KEY. The four `/api` routes need the shared key and
 a `SURFD_TRUSTED` source; all but `/api/link/wait` also carry a signature by

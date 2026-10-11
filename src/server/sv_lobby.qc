@@ -185,6 +185,17 @@
 .float   lobby_sq_oldleg;
 .float   lobby_sq_oldflags;
 .float   lobby_sq_told;         // TF_UNCERT reasons already said for stage rows (this map)
+.float   lobby_acct_told;       // Patch 629: 1 unlinked, 2 unproven, 4 banned, 8 held: said this connection
+// Patch 629: the key the connection had proved when the run in hand got its id
+// (SV_RecOpen), or that it was parked under (sv_resume.qc); zoned.  A run is
+// posted under a key only while that is still the connection's: a paused run
+// picked up by another key, or a run begun before its proof landed, is nobody's.
+.string  run_pub;
+.float   run_own;               // ...and that id was minted on THIS connection, not picked up
+// Whether surfd ranks by account (its /api/account answers say, sv_account.qc):
+// 0 not heard yet this map, 1 it does, 2 it does not and rows are under guids.
+float    acct_mode;
+#define LOBBY_NOANSWER  -1      // Lobby_RunReply's code for a request that got no answer
 // The run's id, the .rec header's `runid`; written by SV_RecOpen (sv_timer.qc,
 // which compiles after this file), zoned there.
 .string  rec_rec_rid;
@@ -1730,8 +1741,8 @@ void() Lobby_Frame =
 			  cl_pcolour is the OWNER's mirror, on change only: the customizer
 			  reads it to mark the swatch the server actually resolved, which is
 			  not necessarily the one asked for (a taken colour falls through to
-			  the random pick).  The slot id rides the *phash infokey, set once
-			  at connect in Lobby_ClientConnect; this one can change
+			  the random pick).  The slot id rides the *phash infokey, set by
+			  Account_Mark at connect and when an account answers; this one can change
 			  mid-connection when somebody leaves, so it rides the loop.
 			*/
 			forceinfokey(p, "tc", ftos(Lobby_TcOf(p.lobby_colour)));
@@ -1995,6 +2006,14 @@ float(string body) Lobby_Directed =
 // heartbeat's and the run's counters reach in a map's life, and it answers them.
 #define ACCT_ID_BASE 8000000
 void(float reqid, float code, string body) Account_Reply;
+// Patch 629 (sv_account.qc): the key a connection proved, and why it has none.
+string(entity e) Account_ProvenKey;
+string(entity e) Account_UnprovenWhy;
+float(entity e) Account_UnprovenSettled;
+float() Account_On;
+void(entity e, string who) Account_Mark;
+float(string s, float n) SV_RecIsHex;       // sv_timer.qc
+float(string g) Lobby_GuidOk;               // below, beside Lobby_RunKey
 
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
@@ -2539,10 +2558,9 @@ void(float reqid, float code, string body) Lobby_RunReply =
 	local entity who;
 	local int   root;
 	local float rank, of, stored, prevms, tier, isstage, isold, strk, sleg, sfl, u;
-	local string key;
+	local string key, awhy;
 
-	if (!code)
-		lobby_run_ok = lobby_run_ok + 1;
+	local float okv;
 
 	/*
 	  THE SUBMITTER, IF THEY ARE STILL HERE.  world means nobody is waiting on
@@ -2606,8 +2624,28 @@ void(float reqid, float code, string body) Lobby_RunReply =
 	tier   = WRT_RANKED;
 	if (json_get_string(json_find_object_child(root, "tier")) == "community")
 		tier = WRT_COMMUNITY;
+	// Patch 629: "" (the run's own standing), or whose it is not: unproven,
+	// unlinked, banned.  Matched below, never printed.
+	awhy   = strcat(json_get_string(json_find_object_child(root, "why")));
+	okv    = json_get_float(json_find_object_child(root, "ok"));
 	if (root)
 		json_free(root);
+	// For the finish card: unranked for want of an account, not for the run.
+	if (awhy == "unlinked")
+		tier = WRT_NOACCOUNT;
+	if (awhy == "unproven")
+		tier = WRT_NOACCOUNT;
+	// A request that never connected arrives as code 0 with NOTHING in it
+	// (httpclient.c; sv_account.qc met it first), and a cut-off one with half
+	// a body: neither read as "the directory took the run".  Every answer
+	// surfd has ever given a run says `ok`.
+	if (!code)
+	if (!okv)
+		code = LOBBY_NOANSWER;
+	if (!code)
+	if (awhy != "banned")
+	if (awhy != "held")
+		lobby_run_ok = lobby_run_ok + 1;
 
 	if (who != world)
 	{
@@ -2624,7 +2662,32 @@ void(float reqid, float code, string body) Lobby_RunReply =
 		  runs were rejected while the rows went up on the board behind them.
 		  See WR_STORED in sh_defs.qc.
 		*/
-		if (!code)
+		if (!code && awhy == "banned")
+		{
+			// Not stored, on any board: surfd's word, said once a connection.
+			if (!isold)
+				Lobby_RankAnswer(who, key, WR_NOBOARD, 0, 0, 0, 0, 0);
+			if (!(who.lobby_acct_told & 4))
+			{
+				who.lobby_acct_told = who.lobby_acct_told | 4;
+				sprint(who, PRINT_CHAT, "^1board:^7 that Steam account is banned from the "
+				       "leaderboards. This run was not submitted\n");
+			}
+		}
+		else if (!code && awhy == "held")
+		{
+			// Not stored either: the run is a Steam account's, and this post did
+			// not carry that account's key (a paused run picked up without it).
+			if (!isold)
+				Lobby_RankAnswer(who, key, WR_NOBOARD, 0, 0, 0, 0, 0);
+			if (!(who.lobby_acct_told & 8))
+			{
+				who.lobby_acct_told = who.lobby_acct_told | 8;
+				sprint(who, PRINT_CHAT, "^1board:^7 this run was begun under a Steam account "
+				       "that this game has not proved it is. It was not submitted\n");
+			}
+		}
+		else if (!code)
 		{
 			if (!isold)                 // an older stage: *srank is the newer one's
 			{
@@ -2644,7 +2707,34 @@ void(float reqid, float code, string body) Lobby_RunReply =
 			  of them would bury the messages that matter -- including the
 			  two below.
 			*/
+			// Patch 629: on the community board because it is nobody's.  Once a
+			// connection per reason, whether or not this run moved a row.
+			if (awhy == "unlinked")
+			if (!(who.lobby_acct_told & 1))
+			{
+				who.lobby_acct_told = who.lobby_acct_told | 1;
+				sprint(who, PRINT_CHAT, "^5board:^7 ^3unranked^7: this install is not linked "
+				       "to a Steam account. Type ^3link^7 in the console and your next run "
+				       "ranks\n");
+			}
+			if (awhy == "unproven")
+			if (!(who.lobby_acct_told & 2))
+			{
+				// Said once, once the reason is the connection's settled one.
+				if (Account_UnprovenSettled(who))
+					who.lobby_acct_told = who.lobby_acct_told | 2;
+				// A connection that HAS proved its key: then it is the run that
+				// has none (begun before the proof, or paused under another).
+				if (Account_ProvenKey(who) != "")
+					sprint(who, PRINT_CHAT, "^5board:^7 ^3unranked^7: this run began before this "
+					       "game was checked, or was paused by a game with another key. "
+					       "Your next run ranks\n");
+				else
+					sprint(who, PRINT_CHAT, sprintf("^5board:^7 ^3unranked^7: %s\n",
+					                                Account_UnprovenWhy(who)));
+			}
 			if (stored)
+			if (awhy == "")
 			{
 				if (tier == WRT_COMMUNITY && isstage)
 				{
@@ -2718,13 +2808,19 @@ void(float reqid, float code, string body) Lobby_RunReply =
 	lobby_run_seen     = TRUE;
 	lobby_run_lastcode = code;
 
-	if (!code)
+	if (!code && awhy == "banned")
+		print("^3board:^7 directory took nothing from a banned account\n");
+	else if (!code && awhy == "held")
+		print("^3board:^7 directory took nothing: an account's run, posted without its key\n");
+	else if (!code)
 		print(sprintf("^2board:^7 directory stored a run (rank %g of %g, %s)\n",
-		              rank, of, (tier == WRT_COMMUNITY) ? "community" : "ranked"));
+		              rank, of, (tier == WRT_RANKED) ? "ranked" : "community"));
 	else if (code == 204)
 		print("^3board:^7 run has no board (practice or cheated) -- not an error\n");
 	else if (code == 403)
 		print("^1board:^7 directory refused the key -- this server cannot rank runs\n");
+	else if (code == LOBBY_NOANSWER)
+		print("^1board:^7 the directory did not answer a run\n");
 	else
 		print(sprintf("^1board:^7 directory returned %g (%s)\n", code, body));
 };
@@ -2759,7 +2855,7 @@ string(entity e, float track, float leg, float ticks, float flags,
        string rec, float recbytes, float rectrunc) Lobby_RunBody =
 {
 	local string url, key, body, guid, nm;
-	local float rate;
+	local float rate, mine;
 
 	// Registered at the read, like every other cvar in this file, and for the
 	// reason Lobby_Heartbeat gives: this can be reached before worldspawn.
@@ -2805,14 +2901,21 @@ string(entity e, float track, float leg, float ticks, float flags,
 	  centerprint -- the finish card owns the screen at this moment and a
 	  message competing with it would be read as part of the result.
 	*/
+	// 32 hex is what the engine makes (an MD4).  Anything else is a client's own
+	// spelling, and surfd files nothing under one (Patch 629: an install must
+	// not be nameable like an account).
 	guid = infokey(e, "guid");
-	if (guid == "")
+	if (!Lobby_GuidOk(guid))
 	{
 		if (!e.lobby_said_noid)
 		{
 			e.lobby_said_noid = TRUE;
-			sprint(e, PRINT_HIGH, "^1board:^7 this server cannot identify you, "
-			         "so your times are not being submitted (sv_guidkey).\n");
+			if (guid == "")
+				sprint(e, PRINT_HIGH, "^1board:^7 this server cannot identify you, "
+				         "so your times are not being submitted (sv_guidkey).\n");
+			else
+				sprint(e, PRINT_HIGH, "^1board:^7 this game's id is not one FTESurf makes, "
+				         "so your times are not being submitted.\n");
 		}
 		return "";
 	}
@@ -2927,6 +3030,22 @@ string(entity e, float track, float leg, float ticks, float flags,
 	// The run's id (the .rec header's runid): joins a stage row to its run.
 	if (e.rec_rec_rid != "")
 		body = sprintf("%s&runid=%s", body, uri_escape(e.rec_rec_rid));
+	// Patch 629: the key this connection proved (64 hex of ours, or nothing),
+	// when it is also the key the run began under (run_pub; a run with no id
+	// has no record of that and is its connection's).  surfd ranks the run
+	// under that key's Steam account, if it has one.
+	// A run made over more than one session is never "its connection's": it
+	// has an earlier hand on it whether or not it has an id (an unrecorded
+	// resume has none).
+	mine = FALSE;
+	if (e.rec_rec_rid == "")
+	if (!(flags & TF_MULTISESSION))
+		mine = TRUE;
+	if (!strcmp(e.run_pub, Account_ProvenKey(e)))
+		mine = TRUE;
+	if (mine)
+	if (Account_ProvenKey(e) != "")
+		body = strcat(body, "&pub=", Account_ProvenKey(e));
 	return body;
 };
 
@@ -3360,6 +3479,42 @@ void() Lobby_Cycle =
 	Lobby_CycleGo(per, nxt);
 };
 
+// Patch 629: a guid as the engine makes one: an MD4 as 32 hex, and for a
+// second seat on one machine that with `:N` after it (sv_main.c).  surfd's
+// accounts._GUID is the same test.
+float(string g) Lobby_GuidOk =
+{
+	local string seat;
+
+	if (SV_RecIsHex(g, 32))
+		return TRUE;
+	if (strlen(g) < 34)
+		return FALSE;
+	if (strlen(g) > 35)
+		return FALSE;
+	if (!SV_RecIsHex(substring(g, 0, 32), 32))
+		return FALSE;
+	if (substring(g, 32, 1) != ":")
+		return FALSE;
+	seat = substring(g, 33, 2);
+	if (stof(seat) < 0)
+		return FALSE;
+	if (strcmp(seat, sprintf("%d", stof(seat))))
+		return FALSE;
+	return TRUE;
+};
+
+// Patch 629: the key a run is posted under (run_pub), set where a run gets its
+// id and where a paused one is picked up.
+void(entity e, string k) Lobby_RunKey =
+{
+	if (e.run_pub != "")
+		strunzone(e.run_pub);
+	e.run_pub = "";
+	if (k != "")
+		e.run_pub = strzone(k);
+};
+
 void(entity p) Lobby_ClientConnect =
 {
 
@@ -3368,6 +3523,7 @@ void(entity p) Lobby_ClientConnect =
 	// rather than in Lobby_AvatarSpawn because it must happen even when
 	// avatars are off, or turning them on later inherits a stale index.
 	p.lobby_colour = 0;
+	p.lobby_acct_told = 0;          // Patch 629: a new connection has been told nothing
 
 	/*
 	  PATCH 340: THE PLAYER HASH, published to its owner once per connection.
@@ -3389,7 +3545,10 @@ void(entity p) Lobby_ClientConnect =
 	  read back in cl_results.qc with getplayerkeyvalue) and has no latch in
 	  it anywhere.
 	*/
-	forceinfokey(p, "*phash", FS_GuidId(infokey(p, "guid")));
+	// Patch 629: Account_Mark, which knows whether the board is by account.
+	Account_Mark(p, "");
+	Lobby_RunKey(p, "");            // ...and no run of this connection has a key yet
+	p.run_own = FALSE;
 
 	// The colour mirror re-sends on the next 1 Hz pass, whichever colour the
 	// re-roll lands on; 0 is not a palette index, so the compare always fires.

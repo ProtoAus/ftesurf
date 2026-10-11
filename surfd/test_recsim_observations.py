@@ -8,6 +8,10 @@ import sys
 import unittest
 from unittest import mock
 
+# The board's own mechanics, with a run under its submitter's id: Patch 629's
+# ranked-means-linked is off here, and test_ranked.py has it on.
+os.environ.setdefault("SURFD_RANKED_LINKED", "0")
+
 import admin
 import test_admin as at
 import test_sweep as suite

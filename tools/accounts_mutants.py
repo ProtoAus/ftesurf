@@ -318,6 +318,96 @@ M = [
     ("old-links-dropped", A, 'return conn.execute("DELETE FROM %s" % OLD_LINKS).rowcount',
      'return conn.execute("DROP TABLE %s" % OLD_LINKS).rowcount'),
     ("links-made", "surfd.py", "        gone = accounts.links_now(conn)\n", "        gone = 0\n"),
+    # Patch 629: ranked means linked (test_ranked.py).
+    ("rank-linked", A, "        live = (sid, \"\") if state == RANK_LINKED else (install, state)",
+     "        live = (install, \"\") if state == RANK_LINKED else (install, state)"),
+    ("rank-banned", A, "        if state == RANK_BANNED:\n            return RANK_BANNED, sid\n", ""),
+    ("rank-banned-since", A, "        if row is None or row[0]:\n            return RANK_BANNED, player",
+     "        if row is None:\n            return RANK_BANNED, player"),
+    ("rank-nobody", "surfd.py", "        if acct_why:\n            tier = TIER_COMMUNITY\n",
+     "        if acct_why:\n            tier = TIER_RANKED\n"),
+    ("rank-why", "surfd.py", "                    \"why\": acct_why})\n\n\n@app.get(\"/api/board\")",
+     "                    \"why\": \"\"})\n\n\n@app.get(\"/api/board\")"),
+    ("rank-why-own", "surfd.py", "        if acct_why and tier != TIER_RANKED:\n            acct_why = \"\"",
+     "        if False:\n            acct_why = \"\""),
+    ("rank-key-shape", A, "    if not _HEX64.fullmatch(pub or \"\"):\n        return RANK_UNPROVEN, \"\"",
+     "    if not pub:\n        return RANK_UNPROVEN, \"\""),
+    ("rank-ban-read", A, "    return (RANK_BANNED if row[1] else RANK_LINKED), row[0]",
+     "    return RANK_LINKED, row[0]"),
+    ("rank-leaf", "surfd.py", "want = hashlib.sha256(install.encode(\"utf-8\", \"replace\")).hexdigest()[:8]",
+     "want = hashlib.sha256(player.encode(\"utf-8\", \"replace\")).hexdigest()[:8]"),
+    ("rank-switch-on", "surfd.py", "RANKED_LINKED = (setting(\"SURFD_RANKED_LINKED\") or \"1\").strip() != \"0\"",
+     "RANKED_LINKED = True"),
+    ("rank-switch-off", "surfd.py", "RANKED_LINKED = (setting(\"SURFD_RANKED_LINKED\") or \"1\").strip() != \"0\"",
+     "RANKED_LINKED = (setting(\"SURFD_RANKED_LINKED\") or \"0\").strip() != \"0\""),
+    # ...one identity a run
+    ("pin-read", A, "            pin = pinned()              # whoever pinned it first",
+     "            pin = None                  # whoever pinned it first"),
+    ("pin-kept", A, "    pin = pinned() if runid else None", "    pin = None"),
+    ("pin-install", A, "    if pin is not None and pin[0] == install:", "    if pin is not None:"),
+    ("pin-write", A, "        if runid and pin is None:\n            db.execute(\"INSERT OR IGNORE INTO runpins",
+     "        if False:\n            db.execute(\"INSERT OR IGNORE INTO runpins"),
+    ("pin-prune", A, "    conn.execute(\"DELETE FROM runpins WHERE at < ?\", (int(time.time()) - PIN_KEEP,))\n", ""),
+    ("pin-runid-untrusted", "surfd.py", "        log.warning(\"ignoring runid from untrusted source %s\", src)\n        runid = \"\"\n\n    # WHOSE",
+     "        log.warning(\"ignoring runid from untrusted source %s\", src)\n\n    # WHOSE"),
+    # ...an install is never named like an account; the key is a lobby's word
+    ("guid-steamid", A, "    if steam.is_steamid64(guid) or (guid.isdigit() and len(guid) == 17):\n        return False\n",
+     ""),
+    ("guid-digits", A, "    if steam.is_steamid64(guid) or (guid.isdigit() and len(guid) == 17):",
+     "    if steam.is_steamid64(guid):"),
+    ("guid-shape", A, "    return bool(_GUID.fullmatch(guid)) if strict else True", "    return True"),
+    ("guid-strict-off", A, "    return bool(_GUID.fullmatch(guid)) if strict else True",
+     "    return bool(_GUID.fullmatch(guid))"),
+    ("pub-untrusted", "surfd.py", "            log.warning(\"ignoring pub from untrusted source %s\", src)\n            pub = \"\"",
+     "            log.warning(\"ignoring pub from untrusted source %s\", src)"),
+    # ...the move
+    ("rank-move-all", A, "        \" AND (tier = 'ranked' OR tier LIKE 'ranked@%' OR tier LIKE 'ranked^%')\"\n"
+     "        \" AND \" + SQL_NOT_ACCOUNT).fetchall()",
+     "        \" AND (tier = 'ranked' OR tier LIKE 'ranked@%' OR tier LIKE 'ranked^%')\"\n"
+     "        ).fetchall()"),
+    ("rank-move-shape", A, "SQL_NOT_ACCOUNT = \"player NOT IN (SELECT steamid FROM accounts)\"",
+     "SQL_NOT_ACCOUNT = \"NOT (length(player) = 17 AND player GLOB '7656119*')\""),
+    ("rank-move-tags", A, "(tier = 'ranked' OR tier LIKE 'ranked@%' OR tier LIKE 'ranked^%')",
+     "(tier = 'ranked')"),
+    ("rank-move-recs", A, "        \"UPDATE replays SET tier = 'community' WHERE tier = 'ranked' AND kind = 'run'\"",
+     "        \"UPDATE replays SET tier = 'community' WHERE 0 AND tier = 'ranked' AND kind = 'run'\""),
+    ("rank-move-better", A, "        if there is not None and there[1] <= millis:", "        if False:"),
+    ("rank-move-worse", A, "        if there is not None and there[1] <= millis:", "        if there is not None:"),
+    ("rank-move-off", "surfd.py", "        if RANKED_LINKED:\n            moved = accounts.ranked_now(conn, TIERS_IMPORTED)",
+     "        if True:\n            moved = accounts.ranked_now(conn, TIERS_IMPORTED)"),
+    ("rank-move-never", "surfd.py", "        if RANKED_LINKED:\n            moved = accounts.ranked_now(conn, TIERS_IMPORTED)",
+     "        if False:\n            moved = accounts.ranked_now(conn, TIERS_IMPORTED)"),
+    ("rank-move-lock", A, "    conn.execute(\"BEGIN IMMEDIATE\")\n    moved = 0\n", "    moved = 0\n"),
+    ("rank-move-index", A, "return (\"CREATE INDEX IF NOT EXISTS runs_live ON runs (tier, player) WHERE tier NOT IN (%s)\"",
+     "return (\"CREATE INDEX IF NOT EXISTS runs_live ON runs (tier, player) WHERE tier IN (%s)\""),
+    ("pin-key", A, "        if not why and not (pub and _same(pub, pin[3])):\n            return RANK_HELD, player",
+     "        if False:\n            return RANK_HELD, player"),
+    ("pin-key-empty", A, "        if not why and not (pub and _same(pub, pin[3])):",
+     "        if not why and pub and not _same(pub, pin[3]):"),
+    ("pin-key-kept", A, "                        pub if state == RANK_LINKED else \"\"))",
+     "                        \"\"))"),
+    ("pin-refresh", A, "        if now - pin[4] > 86400:", "        if False:"),
+    ("pin-upgrade", A, "    if \"pub\" not in {r[1] for r in conn.execute(\"PRAGMA table_info(runpins)\")}:",
+     "    if False:"),
+    ("pin-upgrade-kept", A, "                raise\n        conn.execute(\"DELETE FROM runpins\")",
+     "                raise"),
+    ("held-why", "surfd.py", "                            \"why\": accounts.RANK_HELD})",
+     "                            \"why\": accounts.RANK_UNPROVEN})"),
+    ("pin-held-stored", "surfd.py", "        if acct_why == accounts.RANK_HELD:", "        if False:"),
+    ("guid-seat", A, "_GUID = re.compile(r\"[0-9a-f]{32}(:[0-9]{1,2})?\")", "_GUID = re.compile(r\"[0-9a-f]{32}\")"),
+    ("rank-install", A, "    if live is not None and not why and player == live[0]:\n        note_install(",
+     "    if False:\n        note_install("),
+    ("rank-install-once", A, "    if live is not None and not why and player == live[0]:",
+     "    if not why:"),
+    ("rank-install-cap", A, "(steamid,)).fetchone()[0] >= INSTALLS_MAX:", "(steamid,)).fetchone()[0] < 0:"),
+    ("rank-name", "surfd.py", "or (install if player == install else \"player\")", "or install"),
+    ("rank-ext", "surfd.py", "    ext = web_ext(TIER_MOMENTUM if me[\"mom\"] else TIER_KSF if me[\"ksf\"] else me[\"src\"], player)",
+     "    ext = web_ext(me[\"src\"], player)"),
+    ("rank-who", A, "return hashlib.sha256(steamid.encode(\"ascii\", \"replace\")).hexdigest()[:8]",
+     "return hashlib.sha256(steamid.encode(\"ascii\", \"replace\")).hexdigest()[:12]"),
+    ("rank-who-off", A, "        if d.ranked_linked:\n            mode[\"who\"] = who_of(row[\"steamid\"])",
+     "        if True:\n            mode[\"who\"] = who_of(row[\"steamid\"])"),
+    ("rank-mode-said", A, "        mode = {\"ranked\": 1} if d.ranked_linked else {}", "        mode = {}"),
     ("game-seal-asked", A, "        if not known:\n            return known\n        return signed(",
      "        return signed("),
     ("game-partial", A, "return None if unknown or not ours_now else False",
@@ -406,6 +496,9 @@ EXPECT -= {"expiry-pre", "spent-pre"}
 # has no `shown`), by its empty seal's shape, and by that seal not being the
 # opener.
 EXPECT |= {"attach-start", "seal-shape", "attached-opener"}
+# What run_identity reads back after its own insert differs from what it
+# inserted only when two posts of one run arrive together: no suite races that.
+EXPECT |= {"pin-read"}
 BY = {m[0]: m for m in M}
 
 
@@ -445,10 +538,15 @@ def run(item):
     # and whatever it leaves has to die with this copy.
     tmp = os.path.join(dst, "tmp")
     os.makedirs(tmp)
-    p = subprocess.run([sys.executable, "test_accounts.py"], cwd=dst,
-                       env=dict(os.environ, TEMP=tmp, TMP=tmp, TMPDIR=tmp,
-                                ACCOUNTS_TEST_TOOLS=os.path.dirname(os.path.abspath(__file__))),
-                       capture_output=True, text=True, errors="replace")
+    # test_accounts.py, and then test_ranked.py (Patch 629: whose row a run is)
+    # for a mutant the first lets through.
+    for suite in ("test_accounts.py", "test_ranked.py"):
+        p = subprocess.run([sys.executable, suite], cwd=dst,
+                           env=dict(os.environ, TEMP=tmp, TMP=tmp, TMPDIR=tmp,
+                                    ACCOUNTS_TEST_TOOLS=os.path.dirname(os.path.abspath(__file__))),
+                           capture_output=True, text=True, errors="replace")
+        if p.returncode != 0:
+            break
     fails = [l[5:70].strip() for l in p.stdout.splitlines() if l.startswith("FAIL")]
     crash = p.returncode != 0 and "FAILURE(S)" not in p.stdout
     shutil.rmtree(dst)

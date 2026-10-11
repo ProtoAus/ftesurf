@@ -52,6 +52,10 @@ import sqlite3
 import sys
 import tempfile
 
+# The board's own mechanics, with a run under its submitter's id: Patch 629's
+# ranked-means-linked is off here, and test_ranked.py has it on.
+os.environ.setdefault("SURFD_RANKED_LINKED", "0")
+
 FAILED = []
 
 
@@ -725,16 +729,20 @@ conn.execute(
 conn.commit()
 conn.close()
 
+# Patch 629: an install cannot be NAMED like an account, so this post, which
+# had to spell the SteamID as its `player` to match the leaf's digest, is not
+# filed at all.  (An account's own post is under its install's digest, which
+# is not the imported leaf's: test_ranked.py.)  The adoption guard it used to
+# reach stays in submit_run behind that.
 got = submit(m, player=SID, name="Mom", rec=mleaf, ticks=4108)
-check("a post naming an imported leaf does not adopt its tier",
-      got.get("tier") if isinstance(got, dict) else got, "ranked")
+check("a post naming an imported leaf under the importer's id is refused",
+      got, "HTTP 400")
 check("...and files no momentum-tier board row of its own",
       rows(m, "SELECT 1 FROM runs WHERE player=? AND tier='momentum'"
            " AND node<>'import'", (SID,)), [])
 ranked = one(m, "SELECT replay_id FROM runs WHERE player=? AND tier='ranked'",
              (SID,))
-check("...it files the run on the ranked board, with no demo link",
-      (ranked is not None, ranked["replay_id"] if ranked else None), (True, 0))
+check("...and files no ranked row either", ranked, None)
 imp = one(m, "SELECT millis, submitted, replay_id, node FROM runs"
           " WHERE player=? AND tier='momentum'", (SID,))
 check("...and the imported row keeps its time, stamp, node and demo link",

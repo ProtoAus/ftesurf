@@ -25,7 +25,13 @@ commit   c543d688ad16a871753fa9525c23487f437741a5
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-625
-patch    628
+patch    629
+# Patch 629: a ranked row needs a linked Steam account (ROADMAP 14.3 a). The lobby sends,
+# with each run, the key its connection proved; surfd stores a linked key's run under the
+# account's SteamID64, sends anybody else's to the community tier with the reason, and
+# takes nothing from a banned account. One setting, SURFD_RANKED_LINKED, on unless 0; the
+# Pi runs with 0 until the owner turns it on. qwprogs and surfd (schema 16); no engine
+# source, csprogs, recorder, evidence or Build change (commit and tag above stay).
 # Patch 628: a recording's off-ramp mark sits at the ramp's own edge. The ramp bit says
 # the mover clipped a ramp during a tick, and its sample is where that tick ended, past
 # the lip more often than not. With the map loaded the viewer asks where the hull was

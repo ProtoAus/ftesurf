@@ -22,9 +22,11 @@
   compiled into csprogs), so it carries the same table and the same warning:
   edit Lobby_PaletteRGB, edit this, re-run mkavatarfx.py --check.
 
-  THE PLAYER HASH.  *phash is forceinfokey'd once per connection by
-  Lobby_ClientConnect: FS_GuidId(guid), the same 8 hex chars the run
-  filenames carry.  It survives renames -- records follow the hash, not the
+  THE PLAYER HASH.  *phash is forceinfokey'd by the server (sv_account.qc,
+  Account_Mark): FS_GuidId(guid), the same 8 hex chars the run filenames
+  carry, or since Patch 629 surfd's digest of the linked account while the
+  board is by account (empty for a player with none, and it changes when a
+  link is made).  It survives renames -- records follow the hash, not the
   name -- and it is the handle a per-hash effect table would key on.
   Displayed, per the ask; consumed by nothing yet.  The name field here
   writes the engine's `name` cvar through the console command, which is the
@@ -976,7 +978,8 @@ void(vector scr) Av_Draw =
 	  cvar_string reads the latch.  "" is a server without sv_guidkey (a
 	  listen server, or a lobby that cannot rank): the runs are then filed by
 	  name-and-slot and saying "no id" beats an empty box that looks like a
-	  rendering bug.
+	  rendering bug.  Since Patch 629 it is also a player with no linked
+	  Steam account while the board is by account: no id there either.
 	*/
 	hash = getplayerkeyvalue(player_localnum, "*phash");
 

@@ -56,12 +56,13 @@ vector pl_panelpos, pl_panelsize; //Visible room rect for native-table hit exclu
   The source is the online board (cl_online.qc), absorbed into our own table
   the moment a reply lands -- ob_* is a SINGLE table overwritten by every
   fetch, so anything the room list wants to keep has to be copied out.  The
-  match key is the row's `player` field, which surfd stores as the submitter's
-  raw guid (surfd.py: "the 8 hex in the middle are sha256(guid)[:8] and
-  `player` IS that guid"): FS_GuidId of it is exactly the *phash string
-  Lobby_ClientConnect publishes, so a row finds its player through the hash
-  and NOT through the name -- a rename mid-session does not move anybody's
-  time, which is the same property the run files have.
+  match key is the row's `player` field: the submitter's guid, or (Patch 629,
+  while surfd ranks by account) the SteamID64 of the account the run's key is
+  linked to.  FS_GuidId of it is the *phash string the server publishes for
+  that player (sv_account.qc, Account_Mark: surfd's digest of the account for
+  a linked player, the guid's while rows are under guids), so a row finds its
+  player through the hash and NOT through the name -- a rename mid-session
+  does not move anybody's time, which is the same property the run files have.
 
   A listen server, or a lobby the directory does not know, fetches nothing
   and the list degrades to join order with no medals -- honest about there

@@ -344,6 +344,8 @@ void() ClientDisconnect =
 
 	// Multi-Session: park a long run before the teardown below throws it away.
 	SV_MsDisconnect(self);
+	Lobby_RunKey(self, "");             // Patch 629: after the park, which writes it
+	self.run_own = FALSE;
 	SV_WatchRelease(self);              // Patch 477: or its view entity outlives the slot
 	SV_ViewEyeDetach(self);             // round 26: a ghost's too (the release returns without a pin)
 	self.run_inserver = FALSE;          // round 27

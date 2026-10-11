@@ -4911,6 +4911,10 @@ void(entity e) SV_RecOpen =
 		e.rec_rec_rid = strzone(sprintf("%s-%g", strftime(TRUE, "%Y%m%d-%H%M%S"),
 		                                e.run_t_slot));
 	SV_RecPut(e, strcat("runid ", e.rec_rec_rid));
+	// Patch 629: the key this run is posted under is the one proved by now
+	// (sv_lobby.qc, run_pub).  Not in the recording: it is the lobby's note.
+	Lobby_RunKey(e, Account_ProvenKey(e));
+	e.run_own = TRUE;               // ...and the id is this connection's own
 
 	// Patch 416: after `runid`, which it hashes.  The header's nonce is session
 	// one's; a resume writes its own into the body.  See SV_RecNonce.

@@ -1285,9 +1285,6 @@ pressed.
   number no longer crosses the wire: the game sends a digest of it with its
   own opener, so a number typed into a game that did not start that link is
   worth nothing to whoever reads the connection.
-- STILL TO DO IN (a): the lobby keeps "could not be checked" apart from "not
-  linked" for the whole map and asks again; today a lost connect proof is
-  silence (BACKLOG).
 - STILL TO DO, AN ENGINE PATCH OF ITS OWN: the download cache. A lobby should
   name the csprogs it serves by a hash that cannot be collided and the client
   should run no other; until then our lobby's box can be somebody else's
@@ -1313,27 +1310,85 @@ is not the migration of a board: it is thirteen rows.
 
 **Then, in three patches, each reviewed and deployed on its own.**
 
-- **(a) A ranked row needs a linked account.** The lobby remembers the key
-  surfd proved for each connection and sends it with the run. `submit_run`
-  looks it up in `keylinks`: linked, the row is stored under the SteamID64 with
-  the guid in a new `install` column (the leaf digest and the receipt joins
-  read that); not linked, the run goes to the community tier, which no board
-  lists, and the lobby tells the player to link; banned, it is not stored. A
-  reinstall or a second machine then improves the same row, and a player's
-  Momentum and KSF rows are theirs on the profile page with no more work. At
-  deploy the thirteen guid rows leave the ranked tier, after the deploy's
-  database backup.
+- **(a) A ranked row needs a linked account: BUILT, Patch 629, and NOT
+  SWITCHED ON.** The lobby remembers the key surfd verified for each
+  connection (the connect's proof, or a link's confirm) and sends it with the
+  run. `submit_run` looks it up in `keylinks`: linked, the row is the
+  account's SteamID64, on every tier, and a reinstall or a second machine
+  improves the same row; not linked or not proven, a run that asked for the
+  ranked board lands on the community one, which no board lists, and the
+  answer says which (`why`), which the lobby tells the player once a
+  connection; a banned account's key gets nothing stored. The recording is
+  still named for the install (the leaf's digest is checked against the
+  guid), and which installs an account has run from is kept beside the board
+  (`installs`, schema 16), in no answer. A connection the directory has said
+  nothing about is asked again by the lobby, and "could not be checked" has
+  its own words.
+  WHAT ITS FIRST REVIEW CHANGED, each with a reproduction: A RUN HAS ONE
+  IDENTITY, pinned by surfd at its first post (`runpins`) and kept to its
+  finish, because every join from a board row to its recording is on the
+  player and a link, an unlink or a late proof mid-run split one run in two;
+  so a link ranks the NEXT run. The lobby posts a run under a key only if it
+  is the key the run began under (`run_pub`, kept in a paused run's `ms.txt`),
+  so a paused run picked up under another key is nobody's. AN INSTALL IS
+  NEVER NAMED LIKE AN ACCOUNT: the guid is whatever a client sends, so a run
+  whose guid is shaped like a SteamID64 is refused in both modes, and with
+  the switch on a guid is 32 hex or refused; "an account's row" is then who
+  is in `accounts`, not what an id looks like (the first cut matched a prefix
+  half the SteamID range does not have). The key is taken only from a
+  trusted lobby. The board's mark for "your" row (`*phash`) is surfd's digest
+  of the account for a linked player and NOTHING for anybody else while surfd
+  ranks by account (a guid's digest is its client's to choose).
+  AND ITS SECOND: an account's pin keeps the key that earned it, and a later
+  post of that run without that key is NOT STORED (it had been given the
+  account: a paused run is offered to whoever presents its guid). A paused run
+  parked under a key is picked up, or dropped, only by a connection that has
+  proved that key, while the board is by account. A run begun in the first
+  seconds of a map, before the proof lands, takes the key when it does. The
+  move runs at every start with the switch on, takes the write lock BEFORE it
+  reads its list (two starts at once deleted what one had moved) and reads an
+  index of the non-imported rows (`runs_live`, made at schema 16). The finish
+  card says "no Steam account linked", not "not certified".
+  BEFORE THE SWITCH GOES ON, beside the owner's link (done 10 Oct 23:36 UTC)
+  and a release: TWO THINGS ARE STILL KEYED ON THE GUID, which a client
+  chooses and other servers are handed. Save slots (`data/saves/<map>/@<guid>`):
+  a segmented run can be built on another install's saves and posts under the
+  loader's account. Recording names (the leaf carries the guid's digest): a
+  game presenting another's guid, with the same name and an exact tie on the
+  same board, overwrites that recording's file and the row loses its badge.
+  Both want the proven key in place of the guid, and their own review.
+  A THIRD, FROM THE LAST CHECK: paused-run slots (`data/resume/<map>/@<guid>`)
+  are the guid's too. The lobby refuses to pick up or drop one parked under a
+  key the connection has not proved (by the slot's key, also before surfd has
+  been heard on the map), but the thirty-second grace timer still drops a
+  refused slot once a fresh run goes on, and a slot the player cannot take
+  blocks nothing else only because of that. File the slot under the key and
+  the gate goes away.
+  AT SWITCH-ON (the owner, 11 Oct: "yea sure move them to my steam id"): his
+  rows under his old guid go to his account by hand, with a backup, BEFORE
+  the first start with the setting on (which would move them to community).
+  ONE SETTING, `SURFD_RANKED_LINKED`: on unless it is `0`. Deployed with `0`
+  on the Pi, so nothing changed for anybody; turning it on is deleting that
+  line and reloading, and at that start the ranked rows that are not an
+  account's (thirteen, the owner's old install) move to the community tier.
+  Before it is turned on: the owner links (lextest), and a release carries
+  the 625 engine, because until then no other player CAN link and every run
+  of theirs would be unranked.
 - **(b) The sweeper holds a ranked run whose receipt key is not one of its
   account's** (Patch 422's flag, made a gate), and one with no verified
   receipt at all once (a) has shown how many honest runs that is.
+  FIRST, from (a)'s review: the flag as it stands is wrong for every linked
+  player. A key's "first player" is the install's own guid from before it
+  linked, so the first linked runs read `shared`, and a second PC's read
+  `new` (`admin.py` `_KEY_*`, `sweep.bind_key`). Judge a key against the
+  account's own (`keylinks`, `installs`) before the flag holds anything.
 - **(c) Bans.** Admin: ban and unban by SteamID with a note. A banned
   account's rows leave every public board (kept, not deleted), its installs
   are told at connect, and (a) already refuses its runs.
 
 **Unknowns.** How many honest ranked runs have no verified receipt
 (Multi-Session and segmented runs can have none): thirteen rows are not a
-sample, so (b) counts for a week before it holds anything. What the in-game
-board uses to mark "your" row once `player` is a SteamID.
+sample, so (b) counts for a week before it holds anything.
 **Size.** (a) is large and the riskiest, being the submit path: full review
 rounds.
 

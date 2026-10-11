@@ -83,6 +83,47 @@ fixed are here.
   lobby's number are). It comes down the same connection; a courtesy.
 - **A lobby that is busy drops a proof without a word**, so the box waits out
   its timer. Say "busy".
+- **A run set before its install was linked stays unranked**, and so does the
+  rest of a run in progress when the link is made or the proof lands (Patch
+  629 pins a run's identity at its first post). Adopting an install's
+  community rows at the link would want the same care as a submit; the lobby
+  says "your next run ranks".
+- **A connect proof now decides ranking, on budgets anybody can spend** (Patch
+  629's review, measured against the test client): a few dozen addresses
+  sending unsigned proofs use the minute's signature checks and the next
+  honest connect is told "later"; the lobby asks again up to eight times a
+  spawn. Runs meanwhile are unranked. The budgets are 615's; what rides on
+  them is new.
+- **A ban is on a key's account, not on a person** until 14.3 (c): an unlinked
+  or unproven game, or one linked to another account, still lands on the
+  community tier.
+- **The mark for "your" row is 32 bits of an unsalted digest of the SteamID**,
+  on every client in the lobby: it names a linked player's account to anyone
+  who enumerates ids, before they have a ranked row. `/api/board` gives the
+  SteamID of every ranked row outright, and still the raw GUID of every
+  community row.
+- **A paused run parked under a key is not handed to a game with another**
+  (Patch 629, `key` in `ms.txt`; `tools/p615link.py`'s P checks drive it).
+  Left: the grace timer (`SV_MsFrame`) drops a slot the connection was
+  refused once a fresh run is thirty seconds old; the refusal before surfd
+  has been heard on a map is traced, not driven; a slot parked before 629
+  has no key, resumes freely and can only finish unranked. Filing the slot
+  under the key (ROADMAP 14.3 a) retires all three.
+- **`Lobby_GuidOk` and surfd's `_GUID` agree by construction, not by test**:
+  a seat suffix the lobby takes and surfd refuses is a 400 on every post.
+- **SAVE SLOTS AND RECORDING NAMES ARE STILL KEYED ON THE GUID** (ROADMAP 14.3
+  a has both, as gates before ranked-means-linked is switched on). A guid is
+  the client's to choose and is handed to any server with the fleet's key.
+- **A ban that lands mid-run leaves that run's earlier stage rows standing**
+  with no recording to judge them by (the finish is refused whole). 14.3 (c)
+  hides a banned account's rows; until then they show.
+- **A run id is local time to the second, slot and port**: a clock stepped
+  back repeats one, and a repeated id under another install is read live at
+  every post (so it can still split on a link made mid-run).
+- **A ranked row's name is still the name typed in the game**, not the Steam
+  persona (14.4), and an unlinked install's community rows are under its guid.
+- **The board's mark for a player follows a link made on THIS connection.**
+  Unlinked or moved from the site meanwhile, it is stale until the reconnect.
 - **A press is inferred, not read from the OS** (engine, `in_real_held`): a
   key physically held through a focus change, or an X11 repeat whose release
   arrives alone, can count as a second press. Windows says "repeat" in the

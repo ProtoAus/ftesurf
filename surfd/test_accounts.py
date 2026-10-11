@@ -116,7 +116,7 @@ GAME = hashlib.sha256(GAME_BYTES).hexdigest()   # what an honest client's proof 
 
 
 def fresh(board_url=BOARD, steam_key="STEAMKEY", home=None, hosts="127.0.0.1",
-          public_host=None, tools=TOOLS):
+          public_host=None, tools=TOOLS, ranked="0"):
     home = home or tempfile.mkdtemp(prefix="surfd-acct-")
     if home not in HOMES:
         HOMES.append(home)
@@ -139,6 +139,9 @@ def fresh(board_url=BOARD, steam_key="STEAMKEY", home=None, hosts="127.0.0.1",
     if os.path.exists(served + ".prev"):
         os.remove(served + ".prev")
     os.environ["SURFD_GAME_CODE"] = served + "," + served + ".prev"
+    # The link, not what ranks on it: Patch 629's switch is off here but for
+    # the one section that asks what the answers add with it on.
+    os.environ["SURFD_RANKED_LINKED"] = ranked
     os.environ["SURFD_TOOLS"] = tools
     if hosts:
         os.environ["SURFD_LINK_HOSTS"] = hosts
@@ -380,9 +383,9 @@ print("\n--- 1. schema ----------------------------------------------------")
 m = fresh()
 names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table'")}
 check("a fresh database has the four account tables", sorted(names & set(TABLES)), TABLES)
-check("...and is stamped schema 15, without 12's guid-keyed `links`",
+check("...and is stamped the head schema, without 12's guid-keyed `links`",
       (rows(m, "PRAGMA user_version")[0][0], m.SCHEMA_VERSION, "links" in names),
-      (15, 15, False))
+      (16, 16, False))
 
 # An 11 database: the same file with the tables gone and the stamp put back.
 home = m._home
@@ -393,7 +396,7 @@ conn.close()
 m = fresh(home=home)
 names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table'")}
 check("a schema-11 database gains them on the next start",
-      (sorted(names & set(TABLES)), rows(m, "PRAGMA user_version")[0][0]), (TABLES, 15))
+      (sorted(names & set(TABLES)), rows(m, "PRAGMA user_version")[0][0]), (TABLES, 16))
 
 # A 12 database as Patch 612 left it: `links` present, no `keylinks`.
 LINKS_12 = """
@@ -417,7 +420,7 @@ check("a schema-12 database swaps its empty `links` for `keylinks`, and codes le
       ("links" in names, "keylinks" in names, rows(m, "PRAGMA user_version")[0][0],
        "claim" in [r[1] for r in rows(m, "PRAGMA table_info(linkcodes)")],
        "shown" in [r[1] for r in rows(m, "PRAGMA table_info(linkcodes)")]),
-      (False, True, 15, True, True))
+      (False, True, 16, True, True))
 conn = sqlite3.connect(m._test_db)
 conn.executescript(accounts.SQL + LINKS_12 + "INSERT INTO links (player, steamid, linked_at)"
                    " VALUES ('g', '%s', 1); DROP TABLE keylinks; PRAGMA user_version=12;" % SID)
@@ -425,7 +428,7 @@ conn.close()
 m = fresh(home=home)
 check("...but a `links` somebody filled is left as it was",
       (rows(m, "SELECT player FROM links"), rows(m, "PRAGMA user_version")[0][0]),
-      ([("g",)], 15))
+      ([("g",)], 16))
 
 # gunicorn and a cron tool do start together on a deploy, and a script commits
 # between its statements.  So: an 11 database, and at each CREATE of the
@@ -443,8 +446,9 @@ def finish_elsewhere(what):
         other.executescript(accounts.SQL)
         accounts.upgrade_13(other)
         accounts.upgrade_14(other)
+        other.execute(accounts.live_index(m.TIERS_IMPORTED))
         accounts.links_now(other)
-        other.execute("PRAGMA user_version=15")
+        other.execute("PRAGMA user_version=16")
         other.commit()
         RACED[-1][1] = what
     finally:
@@ -469,7 +473,8 @@ def racing_connect():
 
 
 outcomes = []
-for at in range(1, 7):                  # step 12 has four CREATEs, links_now two
+for at in range(1, 11):                 # step 12 has four CREATEs, 16 one, links_now four,
+                                        # and the board's own index once more at every start
     conn = sqlite3.connect(m._test_db)
     conn.executescript("".join("DROP TABLE IF EXISTS %s;" % t for t in TABLES + ["links"])
                        + "PRAGMA user_version=11;")
@@ -484,13 +489,14 @@ for at in range(1, 7):                  # step 12 has four CREATEs, links_now tw
     finally:
         m.connect = real_connect
 names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table'")}
-check("another process finishing the account steps at any of their six statements breaks neither",
+check("another process finishing the account steps at any of their ten statements breaks neither",
       (outcomes, sorted(names & set(TABLES)), "links" in names,
        rows(m, "PRAGMA user_version")[0][0]),
-      (["ok"] * 6, TABLES, False, 15))
-check("...and those six were the statements raced: each table, and each index by its table",
+      (["ok"] * 10, TABLES, False, 16))
+check("...and those ten were the statements raced: each table, and each index by its table",
       [r[1] for r in RACED],
-      ["accounts", "linkcodes", "linkcodes", "linknonces", "keylinks", "keylinks"])
+      ["accounts", "linkcodes", "linkcodes", "linknonces", "runs", "keylinks", "keylinks",
+       "installs", "runpins", "runs"])
 
 print("\n--- 2. off unless SURFD_BOARD_URL is set -------------------------")
 
@@ -1706,7 +1712,7 @@ conn.close()
 m = fresh(home=home)
 cols = [r[1] for r in rows(m, "PRAGMA table_info(linkcodes)")]
 check("a schema-13 database gains both columns on the next start",
-      ("shown" in cols, "seal" in cols, rows(m, "PRAGMA user_version")[0][0]), (True, True, 15))
+      ("shown" in cols, "seal" in cols, rows(m, "PRAGMA user_version")[0][0]), (True, True, 16))
 conn = sqlite3.connect(m._test_db)
 conn.executescript("ALTER TABLE linkcodes DROP COLUMN seal; PRAGMA user_version=13;")
 conn.close()
@@ -1745,11 +1751,11 @@ conn.execute(OLD_ROW, (PUB1, SID, "guid-1", "p27510", START))
 conn.commit()
 conn.close()
 m = fresh(home=home)
-check("a schema-14 database loses its links on the way to 15, and keeps its accounts",
+check("a schema-14 database loses its links on the way to the head, and keeps its accounts",
       (count(m, "linkkeys"), "keylinks" in tables(m), keys(m), count(m, "accounts"),
        rows(m, "SELECT COUNT(*) FROM accounts WHERE banned_at > 0"),
        hello(m, KEY1).get("linked"), rows(m, "PRAGMA user_version")[0][0]),
-      (0, True, [], 2, [(1,)], 0, 15))
+      (0, True, [], 2, [(1,)], 0, 16))
 link(m, KEY1, code_of(signin(m, ip="198.51.100.73")))
 m = fresh(home=home)
 check("...a link made at 15 survives the next start", [k[:2] for k in keys(m)], [(PUB1[:8], SID)])
@@ -1773,10 +1779,27 @@ conn.close()
 m = fresh(home=home)
 check("a database stamped 15 with no link table gets one at the next start, and links",
       ("keylinks" in tables(m), rows(m, "PRAGMA user_version")[0][0],
-       link(m, KEY1, code_of(signin(m, ip="198.51.100.77")))), (True, 15, YES))
+       link(m, KEY1, code_of(signin(m, ip="198.51.100.77")))), (True, 16, YES))
 m = fresh()
 check("a fresh database has no table for older code, and starting twice is no trouble",
       ("linkkeys" in tables(m), "linkkeys" in tables(fresh(home=m._home))), (False, False))
+
+# RANKED MEANS LINKED ON (Patch 629): the answers say so, and a linked key's
+# carries the mark the game puts on that account's rows.
+m = fresh(ranked="1")
+WHO = accounts.who_of(SID)
+code = code_of(signin(m, ip="198.51.100.79"))
+check("with ranked-means-linked on, a connect nobody linked is told the mode and no mark",
+      hello(m, KEY1), {"acct": 1, "linked": 0, "ranked": 1})
+ask(m, KEY1, code)
+check("...a confirm answers the account's mark",
+      confirm(m, KEY1, code), dict(YES, ranked=1, who=WHO))
+check("...and so does the connect after it; a refused proof is told neither",
+      (hello(m, KEY1, nonce="cd" * 16), hello(m, KEY1, nonce="ef" * 16, signed="ab" * 16)),
+      ({"acct": 1, "linked": 1, "name": "Lex", "banned": 0, "ranked": 1, "who": WHO},
+       {"acct": 1, "linked": 0, "why": "proof"}))
+check("the mark is SHA-256 of the SteamID, 8 hex: FS_GuidId of a ranked row's player",
+      WHO, hashlib.sha256(SID.encode()).hexdigest()[:8])
 
 # THE GAME CODE A PROOF NAMES.  surfd reads what its lobbies serve.
 m = fresh()

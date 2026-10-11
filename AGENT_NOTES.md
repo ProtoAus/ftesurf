@@ -6761,6 +6761,72 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   is refused in words the box prints. A link also lives in `keylinks` now:
   the first cut stamped rows of `linkkeys`, and older code's upsert left the
   stamp on a row it re-linked.
+- **RANKED MEANS LINKED IS A SETTING (Patch 629), AND THE SUITES SAY WHICH SIDE
+  THEY TEST.** `SURFD_RANKED_LINKED` is read at import; anything but `0` is
+  on. The ten suites that post runs to test the board's own mechanics carry
+  `os.environ.setdefault("SURFD_RANKED_LINKED", "0")` under their imports and
+  post runs under any `player` they like; `test_ranked.py` has it on. A NEW
+  SUITE THAT POSTS RUNS MUST PICK: with neither, its runs all land on the
+  community board and its ranked assertions fail in a way that reads like a
+  board bug. The mutant tool runs `test_ranked.py` after `test_accounts.py`.
+  In the rig (`p615link.py`) the lobby's own probe run, fired by
+  `rcon lobby_run_probe 1`, shows what the lobby SENDS (`RUNS`), and a
+  scripted body in surfd's place (`SCRIPT`) shows what it SAYS to each `why`;
+  a clean stored finish is not driven there (the probe is cheated on purpose:
+  a clean one would be a forgery tool), so the row itself is `test_ranked`'s.
+  THE Pi RUNS WITH `SURFD_RANKED_LINKED=0` UNTIL THE OWNER SAYS: check
+  surfd's start line `ranked rows need a linked Steam account: ...`.
+  THE LINE GOES INTO `surfd.env` BEFORE THE CODE DOES. The default is on, and
+  every cron tool imports surfd and so runs its start: the first tick after
+  the new file lands would move the ranked board with the line still absent.
+- **629'S FIRST REVIEW, THREE LENSES, ALL THREE FOUND THE SAME ROOT AND EACH A
+  DIFFERENT EDGE OF IT.** Identity was read per post, so one run could be
+  split between a guid and an account (pinned per run now: `runpins`, and the
+  lobby's `run_pub`). The guid is whatever a client sends, and it shared a
+  column with SteamIDs (never nameable alike now, both modes). "Is a
+  SteamID" was a prefix that half the range does not have (who is in
+  `accounts` now). The move ran at every import under the write lock (once a
+  switch-on now). What made this findable: the older suites all ran with the
+  switch off, so nothing exercised a stage, a reject or a recording under an
+  account until the reviewers did. `test_ranked.py` has those cases now.
+  MEASURED IN THE RIG: a run that got its id on the connection is posted with
+  that id and its key; with the latch line compiled out of `sv_timer.qc` the
+  same check fails with the id and NO key.
+  A PAUSED RUN'S KEY IS DRIVEN BY THE ARM (its P checks, main mode): leaving
+  parks the run with its key; with the slot's `key` line rewritten to another
+  key the same connection is refused `!resume` and `!discard` and the slot
+  stays; with the line put back it prints "run resumed ... session 2". The rig's
+  server is not a lobby, so the slot is `@local` and only client 1's: the arm
+  waits out the zombie slot before it reconnects (it came back as client 2 the
+  first time, and "no paused run" looked like a refusal to a loose needle).
+  NOT DRIVEN: the gate before surfd has been heard on a map (traced).
+- **629'S SECOND ROUND.** The pin gave an account to any later post on the
+  same guid, key or no key (it keeps the key now, and a post without it is not
+  stored). The one-time move could be raced by two starts into DELETING what
+  it moved, and its "done" marker could be flipped by a cron tool before the
+  service restarted (every start now, lock first, off an index). A run begun
+  before the proof landed could never rank (the lobby adopts the key for a
+  run it minted itself).
+- **fteqcc DIES WITH A SEGMENTATION FAULT, AND NO OUTPUT, ON A FUNCTION CALLED
+  BEFORE ANY DECLARATION OF IT.** `build.ps1` says only "fteqcc failed on
+  sv_progs.src". Lobby_GuidOk was defined 500 lines below its first call; a
+  prototype above fixed it. Bisect by what was added last, not by the three
+  expressions that look exotic (which is where the first twenty minutes went).
+- **THE RIG ARM FAILS WHEN THE OWNER IS PLAYING.** Two of eight main-mode runs
+  on 11 Oct failed in the link steps with keys dropped or thirty seconds
+  late: `Get-Process ftesurf64` showed the owner's own game up on a live
+  lobby since five minutes before the first. Three of three passed once it
+  was closed. Look for his game before a run, and before believing a failure.
+  The arm now puts the desktop's clipboard back if one of its sign-in
+  addresses is what it left there.
+- **629'S LAST CHECK.** A file an earlier cut had started on had `runpins`
+  without its key column and answered 500 to every run with an id (the start
+  adds it and drops those pins). A post surfd holds back answers `why: held`
+  and the lobby says "not submitted" (it had said "unranked: no Steam account
+  linked" to somebody who had one).
+- **SCHEMA 16 BUILDS AN INDEX ON `runs`** (`runs_live`): one scan of three
+  million rows under the write lock, once, at the first start of the new
+  code. Deploy with nobody on a lobby; a run posted in those seconds waits.
 - **625'S THIRD ROUND FOUND NO WAY TO A WRONG LINK, AND STILL CHANGED THINGS.**
   Engine: the address a VM may sign for is noted when its SERVERDATA arrives,
   with whether that was a live connection, so a VM made in demo playback or

@@ -554,6 +554,7 @@
 #define WR_STORED       4       // accepted, but the answer carried no position
 #define WR_UNRANKED     5       // CLIENT-ONLY, never on the wire: an answer that
                                 // landed on the community tier (Results_KeyRank)
+#define WR_NOACCOUNT    6       // CLIENT-ONLY too: ...because the run is no account's
 
 /*
   PATCH 355: THREE TRAILING FIELDS, and the reader requires only the first seven,
@@ -567,6 +568,7 @@
 */
 #define WRT_RANKED      0
 #define WRT_COMMUNITY   1
+#define WRT_NOACCOUNT   2       // Patch 629: community, for want of a linked Steam account
 
 /*
   PATCH 372: THE MAP CLOCK AND ITS VOTES, as serverinfo (sv_vote.qc Vote_Publish

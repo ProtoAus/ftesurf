@@ -11,6 +11,44 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — ranked times need a linked Steam account (Patch 629): built, OFF
+
+See AGENT_NOTES for its DEPLOYED line. It is on the Pi behind one setting,
+switched off, so nothing has changed for anybody yet.
+
+- **What it does when on.** A finished run is ranked under the Steam account
+  the game is linked to. A reinstall or a second PC then improves the same
+  row. A game that is not linked still has its run kept, off the boards, and
+  is told once: "unranked: this install is not linked to a Steam account.
+  Type link in the console and your next run ranks". A link ranks the NEXT
+  run, not the one in progress. A game whose key is linked to a banned
+  account has its runs refused; making a ban follow the person is stage 3 (c).
+- **Your thirteen old rows** (two maps and eleven stages, all your old
+  install) leave the ranked boards the moment it is switched on. They are
+  kept, unlisted. Your next linked runs start the boards again.
+- **Why it is off.** (1) Nobody but your two installs has the engine that can
+  link, so until a release goes out every other player's runs would be
+  unranked. (2) Two things on the lobby are still filed under the game's old
+  id, which a modified game can choose: save slots, and the names of
+  recordings. With accounts on the board those want moving to the proven key
+  first (ROADMAP 14.3 a lists them). You HAVE linked with the new box (10 Oct
+  23:36 UTC, twenty seconds from Enter to linked), so that part is done.
+- **The times you set since then** (surf_beginner, and the old thirteen) are
+  under the old id. You said to move them to your Steam ID (11 Oct): that is
+  done by hand, with a backup, at switch-on. Nothing for you to do.
+- **To turn it on:** delete the line `SURFD_RANKED_LINKED=0` from
+  `/srv/nvme/surfd/surfd.env` on the Pi and reload surfd, or tell me to. To
+  turn it back off, put the line back and reload; rows already moved stay
+  where they are.
+- **What becomes visible.** A ranked row's id on the in-game board data is
+  the SteamID (it was the install's GUID), and every player in a lobby carries
+  a short mark derived from their SteamID once linked. Steam IDs are public;
+  say if you would rather they were not shown until names and pictures (14.4).
+- **Not checked by me:** a real finished run landing under your Steam name on
+  a live lobby. The pieces are each tested (the site with fake accounts, the
+  lobby with a rig), not the whole with a person. A paused (multi-session)
+  run resumed under a different game key is posted unranked: read, not run.
+
 ## 00. 11 Oct — demo line labels: three changes (Patches 626, 627, 628)
 
 Published 10 Oct 23:14 UTC (10:14 on the 11th here). Live since 23:15 UTC on

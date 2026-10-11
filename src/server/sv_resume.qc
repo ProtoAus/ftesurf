@@ -38,6 +38,7 @@ float  ms_lines, ms_bytes, ms_n, ms_padn, ms_cp, ms_in, ms_pk, ms_warp, ms_ride;
 float  ms_pm, ms_pe, ms_portal, ms_pauses, ms_rsess, ms_posts, ms_pinned, ms_full;
 float  ms_stseg, ms_sttick, ms_starmed, ms_legzone, ms_legtrack, ms_legseg;
 string ms_why, ms_mapcrc, ms_zonecrc, ms_zonerule, ms_rec, ms_rid;
+string ms_key;                  // Patch 629: the key the parked run was begun under, or ""
 vector ms_org, ms_ang;
 
 /*
@@ -116,6 +117,9 @@ void(entity e, float ticks, string why, string mode, float bytes) SV_MsWriteMeta
 	fputs(f, sprintf("recsess %d %d %d %d\n", e.rec_rec_pauses, e.rec_rec_sess, e.rec_rec_posts, e.rec_rec_full));
 	if (e.rec_rec_rid != "")
 		fputs(f, sprintf("runid %s\n", e.rec_rec_rid));
+	// Patch 629: whose run this is, for whoever picks it up (Lobby_RunBody).
+	if (e.run_pub != "")
+		fputs(f, sprintf("key %s\n", e.run_pub));
 	fclose(f);
 };
 
@@ -131,7 +135,7 @@ float(string path) SV_MsReadMeta =
 	ms_bytes = -1;
 	ms_stseg = ms_legzone = -1;
 	ms_sttick = ms_starmed = ms_legtrack = ms_legseg = 0;
-	ms_why = ms_mapcrc = ms_zonecrc = ms_zonerule = ms_rid = "";
+	ms_why = ms_mapcrc = ms_zonecrc = ms_zonerule = ms_rid = ms_key = "";
 	ms_rec = "none";
 	ms_org = ms_ang = '0 0 0';
 
@@ -156,6 +160,11 @@ float(string path) SV_MsReadMeta =
 		else if (k == "rec")       ms_rec = argv(1);
 		else if (k == "recbytes")  ms_bytes = stof(argv(1));
 		else if (k == "runid")     ms_rid = argv(1);
+		else if (k == "key")
+		{
+			if (SV_RecIsHex(argv(1), 64))
+				ms_key = argv(1);
+		}
 		else if (k == "zonerule")
 		{
 			if (n >= 4)
@@ -488,6 +497,35 @@ void(entity e) SV_MsCountdown =
 	SV_MsKeySet(e, sprintf("C %g", cvar("run_resume_countdown")));
 };
 
+// Patch 629: TRUE (and says why) when the slot just read (ms_key) was parked
+// under a key this connection has not proved, while the board is by account.
+//
+// BY THE SLOT'S KEY, and only a board that is known to be by guid (acct_mode 2,
+// or a lobby with no directory) lets a keyed slot go to anybody: "surfd has
+// not been heard yet this map" is "cannot tell", and a slot picked up then was
+// consumed and its posts refused (the last review).
+float(entity e) SV_MsForeign =
+{
+	if (ms_key == "")
+		return FALSE;
+	if (acct_mode == 2)
+		return FALSE;
+	if (!Account_On())
+		return FALSE;
+	if (!strcmp(ms_key, Account_ProvenKey(e)))
+		return FALSE;
+	if (Account_ProvenKey(e) != "")
+		sprint(e, PRINT_HIGH, "^5resume:^7 that run was paused by a game with another key. "
+		       "It stays where it is\n");
+	else if (!Account_UnprovenSettled(e))
+		sprint(e, PRINT_HIGH, "^5resume:^7 the leaderboard is still checking this game. "
+		       "Try again in a moment\n");
+	else
+		sprint(e, PRINT_HIGH, sprintf("^5resume:^7 %s. The paused run stays where it is\n",
+		                              Account_UnprovenWhy(e)));
+	return TRUE;
+};
+
 void(entity e) SV_MsAccept =
 {
 	local string claim;
@@ -520,6 +558,11 @@ void(entity e) SV_MsAccept =
 		sprint(e, PRINT_HIGH, "^5resume:^7 the paused run is gone (another server resumed it?)\n");
 		return;
 	}
+	// Patch 629: a paused run is offered on the guid, which is not a secret.
+	// While the board is by account, one parked under a key is picked up only
+	// by a connection that has proved that key; the slot stays as it is.
+	if (SV_MsForeign(e))
+		return;
 	// The claim.  POSIX rename is atomic, so a second lobby's fails here.
 	claim = SV_MsPath(e, SV_MsClaimLeaf());
 	fremove(claim);
@@ -625,6 +668,12 @@ void(entity e) SV_MsRecAttach =
 {
 	local float ok;
 	local string oldroot;
+
+	// Patch 629, BEFORE ANY OF THE RETURNS BELOW: a picked-up run keeps the key
+	// it was parked under, id or no id (an unrecorded one has none), and is
+	// posted under a key only if that is the connection's too (Lobby_RunBody).
+	Lobby_RunKey(e, ms_key);
+	e.run_own = FALSE;
 
 	/*
 	  Patch 416: THE ANSWER BIT GOES DOWN BEFORE ANY OF THE RETURNS BELOW.
@@ -1030,6 +1079,10 @@ void(entity e) SV_MsDiscardCmd =
 		sprint(e, PRINT_HIGH, "^5resume:^7 no paused run on this map\n");
 		return;
 	}
+	// Patch 629: nor dropped by a game that could not pick it up.
+	if (SV_MsReadMeta(SV_MsPath(e, "ms.txt")))
+	if (SV_MsForeign(e))
+		return;
 	SV_MsDiscardOffer(e, "you dropped it");
 };
 

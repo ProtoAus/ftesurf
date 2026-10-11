@@ -166,9 +166,68 @@ def start_surfd(rig, port, hosts, foreign=False):
     def steam_says_yes(url, data=None, timeout=None):
         return b"ns:http://specs.openid.net/auth/2.0\nis_valid:true\n"
     surfd.STEAM_HTTP = steam_says_yes
+    answer_runs(surfd)
     server = make_server("127.0.0.1", port, surfd.app, threaded=True)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, home / "p615.db"
+
+
+def clipboard(put=None):
+    """The desktop's text clipboard: read it, or (`put`) set it.  The rig's
+    client copies each sign-in address it makes, and the desktop is the
+    owner's: main() puts back what was there if an address of ours is what is
+    left.  None when it cannot be read (or holds no text)."""
+    cmd = ["powershell", "-NoProfile", "-Command"]
+    try:
+        if put is None:
+            r = subprocess.run(cmd + ["Get-Clipboard -Raw"], capture_output=True, text=True,
+                               timeout=20, errors="replace")
+            return r.stdout.rstrip("\r\n") if r.returncode == 0 else None
+        subprocess.run(cmd + ["Set-Clipboard -Value ([Console]::In.ReadToEnd())"], input=put,
+                       text=True, timeout=20, check=True)
+        return put
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+# Patch 629.  RUNS: every /api/run form this rig's surfd was sent.  SCRIPT: a
+# body to answer the next one with, in place of surfd's own answer.
+RUNS, SCRIPT = [], []
+RCON = "p615rcon"
+
+
+def answer_runs(surfd):
+    real = surfd.app.view_functions["submit_run"]
+
+    def recorded():
+        from flask import Response, request
+        RUNS.append(dict(request.form))
+        if SCRIPT:
+            return Response(SCRIPT.pop(0), status=200, mimetype="application/json")
+        return real()
+    surfd.app.view_functions["submit_run"] = recorded
+
+
+def probed(send, answer=None, timeout=20):
+    """Have the lobby post its probe run (sv_lobby.qc: one synthetic CHEATED
+    run of the player on it, which surfd answers 204 and never stores).
+    `answer`: what the directory says in surfd's place.  -> the form posted."""
+    n = len(RUNS)
+    SCRIPT[:] = [] if answer is None else [answer]
+    send("rcon lobby_run_probe 1")
+    end = time.time() + timeout
+    while len(RUNS) <= n and time.time() < end:
+        time.sleep(0.2)
+    time.sleep(1.5)                         # the answer, and the lobby's lines about it
+    return RUNS[n] if len(RUNS) > n else None
+
+
+def said(why, stored=True, tier="community"):
+    """surfd's answer to a run, as JSON, with its Patch 629 reason."""
+    import json
+    return json.dumps({"ok": True, "stored": stored, "best": 12340, "rank": 1 if stored else 0,
+                       "of": 1 if stored else 0, "rep": 0, "tier": tier, "prevms": 0,
+                       "why": why})
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -431,6 +490,14 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
               (opened, bool(cl.wait("does not know this server by the address")), key(),
                rows("SELECT used_at, claim FROM linkcodes WHERE code = '%s'" % c1)),
               (True, True, [], [(0, "")]))
+        keys.press("esc")
+        f = probed(send, said("unproven"))
+        check("R  a run posted on a connection whose proof was refused carries NO key, and "
+              "the lobby says which refusal",
+              (f is not None and f.get("pub"), f is not None and len(f.get("player", "")),
+               bool(cl.wait("unranked: the leaderboard does not know this server by the "
+                            "address", 10))),
+              (None, 32, True))
         return
 
     check("A  the connect's proof was answered unasked: not linked, and the prompt came up",
@@ -684,6 +751,51 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
           (bool(sv.wait(hello % (1, ""), 45)),
            bool(cl.wait("this install is linked to Third", 15))), (True, True))
 
+    # R: ranked means linked (Patch 629).  The connection has proved its key.
+    lines = ("unranked: this install is not linked to a Steam account",
+             "unranked: this run began before this game was checked, or was paused",
+             "banned from the leaderboards. This run was not submitted",
+             "the leaderboard did not take your run")
+    f = probed(send)
+    check("R  a run posted on a connection that proved a key carries THAT key, beside the "
+          "install's guid, and surfd's own answer to it says none of the account lines",
+          (f is not None and [f.get("pub")], f is not None and len(f.get("player", "")),
+           [w for w in lines if w in cl.text()]),
+          ([r[0] for r in rows("SELECT pub FROM keylinks")], 32, []))
+    heard = []
+    for answer in (said("unlinked"), said("unproven"), said("banned", stored=False, tier="ranked"),
+                   ""):
+        probed(send, answer)
+        heard.append([w in cl.text() for w in lines])
+    check("R  ...and to each thing surfd can say of a run the lobby says its own line, once: "
+          "not linked, not checked, banned, no answer",
+          heard, [[True, False, False, False], [True, True, False, False],
+                  [True, True, True, False], [True, True, True, True]])
+    probed(send, said("unlinked"))
+    check("R  ...and does not say it twice on one connection, nor took any of those for a "
+          "stored run",
+          ([cl.text().count(w) for w in lines], sv.text().count("the directory did not answer")),
+          ([1, 1, 1, 1], 1))
+    import accounts
+    marks = re.findall(r"is marked '([0-9a-f]*)' on the board", sv.text())
+    guid8 = hashlib.sha256(f.get("player", "").encode()).hexdigest()[:8] if f else "?"
+    check("R  the board's mark: NONE on a lobby with a directory until the account's own (a "
+          "guid's digest is its client's to choose, and never shown here)",
+          (marks[:1], guid8 in marks, marks[-1:]), ([""], False, [accounts.who_of(SIDS[2])]))
+
+    # A run with an id of its own: walk out of the start, so the recorder mints
+    # one, and post the probe on it.  It is posted under the key the run BEGAN
+    # under (run_pub), which here is the connection's.
+    send("+forward")
+    time.sleep(2.5)
+    send("-forward")
+    time.sleep(1.0)
+    f = probed(send)
+    check("R  a run that got its id on this connection is posted with that id and the key "
+          "it began under",
+          (f is not None and bool(f.get("runid")), f is not None and [f.get("pub")]),
+          (True, [r[0] for r in rows("SELECT pub FROM keylinks")]))
+
     used = dict(rows("SELECT code, used_by FROM linkcodes"))
     pub16 = rows("SELECT substr(pub, 1, 16) FROM keylinks")
     check("surfd holds one key, for the third account, from this lobby",
@@ -692,6 +804,45 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
           " the typed first and the fourth are not",
           ([used.get(c) for c in (started, c2, c3)] == [pub16[0][0]] * 3 if pub16 else None,
            used.get(c1), used.get(c4)), (True, "superseded", ""))
+
+    # A paused run is its key's (sv_resume.qc, SV_MsForeign).  The run above is
+    # still going: leaving parks it with the key it began under.  Come back,
+    # and the SAME slot is refused while its `key` line names another key
+    # (CONTROL: this connection, this lobby, one line of one file changed) and
+    # picked up once the line is its own again.
+    # The slot's folder is the guid's on a lobby and `@local` on this rig's
+    # server (SV_MsKey), so it is found, not named.
+    held_at = cl.path.parent.parent / "data" / "resume" / a.map
+    mine = (rows("SELECT pub FROM keylinks") or [("",)])[0][0]
+    send("rcon run_resume_min 0")
+    time.sleep(1.0)
+    send("disconnect")
+    parked = sv.wait(r"resume: parked ", 15)
+    slots = sorted(held_at.glob("*/save000/ms.txt"))
+    slot = slots[0] if len(slots) == 1 else held_at / "none" / "ms.txt"
+    meta = slot.read_text(errors="replace") if slot.is_file() else ""
+    check("P  leaving parks the run with the key it began under",
+          (bool(parked), re.findall(r"(?m)^key ([0-9a-f]+)$", meta)), (True, [mine]))
+    if mine and ("key " + mine) in meta:
+        slot.write_text(meta.replace("key " + mine, "key " + "ab" * 32), newline="\n")
+        time.sleep(6.0)                     # the slot it left is a zombie's for two seconds,
+        send("connect 127.0.0.1:%d" % gport)    # and `@local` is client 1's alone
+        offered = cl.wait(r"your run here is paused at", 60)
+        proved = sv.wait(r"kind 1 answered for client 1: answered 1 ok [01] linked 1", 40)
+        send("say !resume")
+        no1 = cl.wait(r"that run was paused by a game with another key", 15)
+        send("say !discard")
+        no2 = cl.wait(r"that run was paused by a game with another key", 15)
+        check("P  CONTROL the slot under ANOTHER key is neither picked up nor dropped by this "
+              "game, and stays",
+              (bool(offered), bool(proved), bool(no1), bool(no2), slot.is_file()),
+              (True, True, True, True, True))
+        slot.write_text(meta, newline="\n")
+        send("say !resume")
+        took = cl.wait(r"resume: run resumed at [0-9:.]+ -- session 2", 30)
+        check("P  under its own key the same slot is picked up, and the run goes on",
+              (bool(took), slot.is_file(), "that run was paused by" in cl.text()[cl.at:]),
+              (True, False, False))
 
 
 def main():
@@ -719,6 +870,7 @@ def main():
     rig, gd, junctions = build_rig(a)
     print("rig", rig)
     server = client = web = None
+    held = clipboard()
     try:
         if a.receipt:
             return receipt_arm(a, rig, gd)
@@ -755,6 +907,7 @@ def main():
              "+set", "sv_maxdownloadrate", "0",
              "+set", "lobby_master", "http://127.0.0.1:%d" % hport,
              "+set", "lobby_master_key", KEY, "+set", "lobby_master_rate", "30",
+             "+set", "rcon_password", RCON,     # the lobby's probe run is a server cvar
              "+map", a.map], cwd=a.content, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(4)
         if server.poll() is not None:
@@ -790,6 +943,7 @@ def main():
             # Keys reach game code only while nothing else has the keyboard, and
             # a client nobody is sitting at still has its menu up from boot.
             send("closemenu")
+            send("rcon_password " + RCON)
             link_arm(a, send, Keys(client.pid), cl, sv, db, gport, codes)
         check("no VM error or unknown command in the client's log",
               [w for w in ("Unknown command", "QC VM error", "Cannot call", "stack overflow")
@@ -813,6 +967,10 @@ def main():
                 process.wait(timeout=10)
         if web is not None:
             web.shutdown()
+        now = clipboard()
+        if held is not None and now is not None and now != held and "board/link?k=" in now:
+            clipboard(held)
+            print("\nthe desktop's clipboard held one of this rig's addresses; put back what was there")
         for path in junctions:
             if not path.lstat().st_file_attributes & 0x400:
                 raise RuntimeError("refusing removal: not our junction: %s" % path)

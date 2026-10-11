@@ -33,6 +33,10 @@ import sqlite3
 import sys
 import tempfile
 
+# The board's own mechanics, with a run under its submitter's id: Patch 629's
+# ranked-means-linked is off here, and test_ranked.py has it on.
+os.environ.setdefault("SURFD_RANKED_LINKED", "0")
+
 FAILED = []
 
 

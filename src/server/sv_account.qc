@@ -62,7 +62,9 @@
 #define ACCT_POLL_MISS  20      // ...and after a wait surfd never answered
 #define ACCT_STARTLIFE  600     // s a start is waited on: a code's life (surfd CODE_TTL)
 #define ACCT_WAIT       5       // s a proof is waited for (a round trip and a signature)
-#define ACCT_HELLOS     3       // nonces one connection may ask for
+#define ACCT_HELLOS     8       // nonces one connection is given: its own ask, and the lobby's re-asks
+#define ACCT_REHELLO    30      // s before the lobby asks again a client it has no answer about
+#define ACCT_SETTLE     20      // s after a connect in which "has not asked yet" is not "cannot ask"
 #define ACCT_GAP        3       // s between one player's codes
 #define ACCT_PINLIFE    90      // s the question stays open
 #define ACCT_RQLIFE     15      // s an unanswered question blocks the next
@@ -91,6 +93,19 @@
 .float  acct_last;              // when this player last sent a code
 .float  acct_hellos;
 .float  acct_here;              // ClientConnect has run for THIS connection
+// Patch 629: the key surfd verified a proof from on THIS connection, zoned, or
+// "".  Sent with the run (sv_lobby.qc); surfd says whose account it is then.
+.string acct_pub;
+.string acct_rq_pub;            // ...and the key in the proof that is out, zoned
+.float  acct_fail;              // why there is none yet: ACCT_F_*
+.float  acct_since;             // when this connection began
+.string acct_who;               // surfd's mark for a linked account's rows, zoned
+#define ACCT_F_NONE     0       // nothing has failed (or nothing was tried)
+#define ACCT_F_SILENT   1       // the directory did not answer
+#define ACCT_F_LATER    2       // ...or could not check right now
+#define ACCT_F_PROOF    3       // the proof was refused: signature, shape
+#define ACCT_F_SERVER   4       // ...or names an address the directory does not know
+#define ACCT_F_GAME     5       // ...or game code that is not this lobby's
 float   acct_rq_next;
 float() Account_NextId;
 
@@ -153,8 +168,19 @@ void(entity e) Account_Connect =
 		strunzone(e.acct_nonce);
 	if (e.acct_scode != "")
 		strunzone(e.acct_scode);
+	if (e.acct_pub != "")
+		strunzone(e.acct_pub);
+	if (e.acct_rq_pub != "")
+		strunzone(e.acct_rq_pub);
 	e.acct_nonce  = "";
 	e.acct_scode  = "";
+	if (e.acct_who != "")
+		strunzone(e.acct_who);
+	e.acct_pub    = "";
+	e.acct_rq_pub = "";
+	e.acct_who    = "";
+	e.acct_fail   = ACCT_F_NONE;
+	e.acct_since  = time;
 	Account_Drop(e);
 	e.acct_want   = 0;
 	e.acct_rq     = 0;
@@ -224,6 +250,103 @@ string(string s) Account_Quoted =
 	s = strreplace("\n", "", s);
 	s = strreplace("\r", "", s);
 	return s;
+};
+
+// Patch 629, for sv_lobby.qc (which is compiled first and holds the prototypes).
+// The key this connection proved, or "": what a run is submitted under.
+string(entity e) Account_ProvenKey =
+{
+	if (!e.acct_here)
+		return "";
+	return e.acct_pub;
+};
+
+// Why a run of this connection's has no proven key, in words for its player.
+// Whether "no key yet" is this connection's settled state: its game has asked,
+// or has had the time to.  Until then the reason is not latched (sv_lobby.qc).
+float(entity e) Account_UnprovenSettled =
+{
+	if (e.acct_hellos)
+		return TRUE;
+	return (time - e.acct_since > ACCT_SETTLE);
+};
+
+string(entity e) Account_UnprovenWhy =
+{
+	if (!e.acct_hellos)
+	if (Account_UnprovenSettled(e))
+		return "this game has not proved which install it is. An FTESurf from before "
+		       "Steam linking cannot: update it to rank";
+	if (e.acct_fail == ACCT_F_SERVER)
+		return "the leaderboard does not know this server by the address you joined it on";
+	if (e.acct_fail == ACCT_F_GAME)
+		return "this game is not running this lobby's own game code";
+	if (e.acct_fail == ACCT_F_PROOF)
+		return "this game's proof of its install was refused";
+	return "the leaderboard has not been able to check this install yet";
+};
+
+// The board's mark for this player's rows (`*phash`, read by cl_online.qc and
+// cl_players.qc): a ranked row is under the ACCOUNT, so a linked player's mark
+// is surfd's digest of that (`who`), and anybody else's is their guid's.
+//
+// TWO NAMESPACES, NEVER BOTH.  An account's mark is surfd's word; a guid's is a
+// digest of a string its client chose, and eight hex of one can be made to
+// equal anybody's.  So while surfd ranks by account (acct_mode 1) only a
+// linked player has a mark at all, and while it ranks by guid (2, or not yet
+// heard) the mark is the guid's as it always was.
+void(entity e, string who) Account_Mark =
+{
+	local float byguid;
+
+	// By guid when surfd says rows are under guids, or there is no surfd.
+	byguid = FALSE;
+	if (acct_mode == 2)
+		byguid = TRUE;
+	if (acct_mode == 0)
+	if (!Account_On())
+		byguid = TRUE;
+	if (byguid)
+		forceinfokey(e, "*phash", FS_GuidId(infokey(e, "guid")));
+	else if (acct_mode != 1)
+		forceinfokey(e, "*phash", "");  // surfd not heard yet this map
+	else if (SV_RecIsHex(who, FS_WHO_IDLEN))
+		forceinfokey(e, "*phash", who);
+	else
+		forceinfokey(e, "*phash", "");  // not linked
+	dprint(sprintf("^5account:^7 client %g is marked '%s' on the board\n", num_for_edict(e),
+	              infokey(e, "*phash")));
+};
+
+// surfd said which way it ranks.  The first word of a map re-marks everybody:
+// a guid's mark set before it must not outlive it.
+void(float ranked) Account_Mode =
+{
+	local entity p;
+	local float m;
+
+	m = ranked ? 1 : 2;
+	if (m == acct_mode)
+		return;
+	acct_mode = m;
+	// Every connection, whatever it has become since (an observer is not a
+	// "player" by classname and kept its connect-time mark: the review).
+	p = findfloat(world, acct_here, TRUE);
+	while (p)
+	{
+		Account_Mark(p, p.acct_who);
+		p = findfloat(p, acct_here, TRUE);
+	}
+};
+
+// A run this connection began before its proof landed (the first seconds of
+// every map) takes the key now: nobody else's hand has been on it.  A paused
+// run picked up here keeps the key it was parked under (run_own is false).
+void(entity e) Account_OwnRun =
+{
+	if (e.run_own)
+	if (e.run_pub == "")
+		Lobby_RunKey(e, e.acct_pub);
 };
 
 // `cmd acct_hello`: the client's game code is up and asks for its nonce.
@@ -354,6 +477,19 @@ void(entity e, string code) Account_Start =
 */
 void(entity e) Account_Think =
 {
+	// Patch 629: a connection the directory has said nothing about is asked
+	// again, by itself, while its client is one that answers (it sent the
+	// first ask).  A run submitted meanwhile is nobody's (sv_lobby.qc).
+	// Not while a link is in hand (its box is waiting on a round trip), and
+	// Account_Busy, not acct_rq: only that gives up on a request never answered.
+	if (e.acct_state == ACCT_UNKNOWN)
+	if (e.acct_hellos)
+	if (e.acct_hellos < ACCT_HELLOS)
+	if (e.acct_tag == "")
+	if (e.acct_pin == "")
+	if (time - e.acct_want_t > ACCT_REHELLO)
+	if (!Account_Busy(e))
+		Account_Hello(e);
 	if (!e.acct_poll_end)
 		return;
 	if (time > e.acct_poll_end)
@@ -550,6 +686,10 @@ void(entity e, string kindarg, string pub, string keyed, string sig, string svna
 		return;
 	if (keyed != "1")
 		keyed = "0";
+	// The key this proof is by: the connection's, once surfd has verified it.
+	if (e.acct_rq_pub != "")
+		strunzone(e.acct_rq_pub);
+	e.acct_rq_pub = strzone(pub);
 
 	// Seven values, then the kind's own (sprintf takes eight).  `ip` is what
 	// THIS server saw: surfd's per-player limits are keyed on it, not the guid.
@@ -629,8 +769,8 @@ void(float reqid, float code, string body) Account_Reply =
 {
 	local entity who;
 	local int    root;
-	local float  kind, answered, ok, linked, banned;
-	local string why, nm, a, b, st, cd;
+	local float  kind, answered, ok, linked, banned, rmode;
+	local string why, nm, a, b, st, cd, mark;
 
 	who = findfloat(world, acct_rq, reqid);
 	if (who == world)
@@ -655,6 +795,8 @@ void(float reqid, float code, string body) Account_Reply =
 	b        = strcat(json_get_string(json_find_object_child(root, "to")));
 	st       = strcat(json_get_string(json_find_object_child(root, "state")));
 	cd       = strcat(json_get_string(json_find_object_child(root, "code")));
+	mark     = strcat(json_get_string(json_find_object_child(root, "who")));
+	rmode    = json_get_float(json_find_object_child(root, "ranked"));
 	if (root)
 		json_free(root);
 	if (code)
@@ -706,13 +848,40 @@ void(float reqid, float code, string body) Account_Reply =
 			Account_Drop(who);
 			Account_Note(who, "silent");
 		}
+		else
+			who.acct_fail = ACCT_F_SILENT;
 		return;
 	}
 	if (kind == ACCT_HELLO)
 	{
 		if (why != "")
-			return;                     // could not be checked: not "not linked"
+		{
+			// Could not be checked: not "not linked".  Kept apart, for the
+			// run this connection submits meanwhile (Account_UnprovenWhy).
+			who.acct_fail = ACCT_F_LATER;
+			if (why == "proof")
+				who.acct_fail = ACCT_F_PROOF;
+			if (why == "server")
+				who.acct_fail = ACCT_F_SERVER;
+			if (why == "game")
+				who.acct_fail = ACCT_F_GAME;
+			return;
+		}
+		// surfd verified that proof: its key is this connection's.
+		if (who.acct_pub != "")
+			strunzone(who.acct_pub);
+		who.acct_pub  = strzone(who.acct_rq_pub);
+		who.acct_fail = ACCT_F_NONE;
 		Account_Is(who, linked, banned, nm);
+		if (who.acct_who != "")
+			strunzone(who.acct_who);
+		who.acct_who = "";
+		if (linked)
+		if (SV_RecIsHex(mark, FS_WHO_IDLEN))
+			who.acct_who = strzone(mark);
+		Account_Mode(rmode);
+		Account_Mark(who, who.acct_who);
+		Account_OwnRun(who);
 		Account_Say(who);
 		// For the client's prompt: 1 not linked, 2 linked, 3 banned.
 		stuffcmd(who, sprintf("acct_is %g\n", who.acct_state));
@@ -756,9 +925,34 @@ void(float reqid, float code, string body) Account_Reply =
 	Account_Drop(who);
 	if (ok)
 	{
+		// The confirm's proof was verified too, under a key press: its key is
+		// this connection's from here (the same one, from an honest client).
+		if (who.acct_pub != "")
+			strunzone(who.acct_pub);
+		who.acct_pub  = strzone(who.acct_rq_pub);
+		who.acct_fail = ACCT_F_NONE;
 		Account_Is(who, TRUE, banned, nm);
+		if (who.acct_who != "")
+			strunzone(who.acct_who);
+		who.acct_who = "";
+		if (SV_RecIsHex(mark, FS_WHO_IDLEN))
+			who.acct_who = strzone(mark);
+		Account_Mode(rmode);            // a link can be the first word of a map
+		Account_Mark(who, who.acct_who);
+		Account_OwnRun(who);
 		stuffcmd(who, sprintf("acct_note linked \"%s\"\n", Account_Quoted(nm)));
 		return;
 	}
 	Account_Refused(who, why);
+};
+
+/*
+  A QW SPECTATOR IS NOT A PLAYER TO ClientConnect, and the engine copies a
+  connect packet's userinfo in whole, star keys with it: a spectator slot
+  kept whatever `*phash` its client sent, and the room list drew another
+  account's best beside it (Patch 629's review; true before it too).
+*/
+void() SpectatorConnect =
+{
+	forceinfokey(self, "*phash", "");
 };

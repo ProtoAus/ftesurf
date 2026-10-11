@@ -45,6 +45,10 @@ import sys
 import tempfile
 import threading
 
+# The board's own mechanics, with a run under its submitter's id: Patch 629's
+# ranked-means-linked is off here, and test_ranked.py has it on.
+os.environ.setdefault("SURFD_RANKED_LINKED", "0")
+
 FAILED = []
 
 
@@ -183,7 +187,7 @@ def user_version(mod):
 # surfd.SCHEMA_VERSION (6 -> 7 went unbumped here for a day, and 9 -> 10 broke
 # three arms that know nothing about a similarity sample -- the (g) and (h)
 # upgrade races and the v7-to-head check -- which is the warning working).
-HEAD_SCHEMA = 15
+HEAD_SCHEMA = 16
 
 print("\n--- 1. schema -----------------------------------------------------")
 

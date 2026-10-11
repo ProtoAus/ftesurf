@@ -177,6 +177,51 @@ CREATE INDEX IF NOT EXISTS keylinks_steamid ON keylinks (steamid);
 """
 OLD_LINKS = "linkkeys"
 
+# Schema 16 (Patch 629): which installs an account has ranked runs from.  A
+# ranked row is under the account's SteamID, so the guid that names the run's
+# recording and the key that proved the connection are kept here, beside the
+# board and out of every answer surfd gives.
+SQL_INSTALLS = """
+CREATE TABLE IF NOT EXISTS installs (
+    steamid  TEXT    NOT NULL,
+    install  TEXT    NOT NULL,
+    pub      TEXT    NOT NULL,
+    first_at INTEGER NOT NULL,
+    last_at  INTEGER NOT NULL,
+    runs     INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (steamid, install, pub)
+);
+CREATE TABLE IF NOT EXISTS runpins (
+    runid  TEXT    NOT NULL,
+    map    TEXT    NOT NULL,
+    track  INTEGER NOT NULL,
+    install TEXT   NOT NULL,
+    player TEXT    NOT NULL,
+    why    TEXT    NOT NULL,
+    at     INTEGER NOT NULL,
+    pub    TEXT    NOT NULL DEFAULT '',
+    PRIMARY KEY (runid, map, track)
+);
+"""
+# runpins: A RUN HAS ONE IDENTITY, decided at its first post and kept for every
+# later one (its stages, its finish, a resumed session's).  Whose a run is was
+# first read at EACH post, and a link, an unlink or a late proof in the middle
+# split one run between a guid and an account: every join from a board row to
+# its recording is on (player, runid), so a reject then left the other half
+# standing and its evidence was never indexed (three reviewers, each with a
+# reproduction).  A change of account takes effect at the next run.
+# AN ACCOUNT'S PIN KEEPS THE KEY THAT EARNED IT (`pub`), and a later post of
+# that run is the account's only if it carries that key: the second review
+# finished a paused run of somebody's from another connection on the same
+# guid, with no key at all, and the pin handed it the account.  Such a post
+# is not stored (RANK_HELD): storing it under the guid would split the run.
+INSTALLS_MAX = 64        # installs noted per account; past it a new one is not
+PIN_KEEP = 90 * 86400    # s a run's identity is kept (a paused run can be weeks old)
+# What the engine sends as an install's guid: an MD4, as hex (cl_main.c).  An
+# account row's `player` is a SteamID64, 17 digits, so the two cannot meet.
+# (A split-screen seat's is the first seat's with `:N` after it, sv_main.c.)
+_GUID = re.compile(r"[0-9a-f]{32}(:[0-9]{1,2})?")
+
 CODE_TTL = 600           # s a code can be redeemed for
 CODE_KEEP = 86400        # s a spent or superseded code's row is kept
 CODE_LIVE_MAX = 500      # unredeemed codes outstanding; past it sign-in waits
@@ -418,7 +463,17 @@ def links_now(conn):
     lived in before Patch 625 is empty.  Nothing is copied.  Accounts and
     their bans stay.  Safe twice and from two processes.  -> how many old
     rows went."""
-    conn.executescript(SQL_KEYS)
+    conn.executescript(SQL_KEYS + SQL_INSTALLS)
+    if "pub" not in {r[1] for r in conn.execute("PRAGMA table_info(runpins)")}:
+        # A file an earlier cut of Patch 629 started on: its pins have no key,
+        # so they go with the upgrade (an account's would be held for ever).
+        try:
+            conn.execute("ALTER TABLE runpins ADD COLUMN pub TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column" not in str(exc):
+                raise
+        conn.execute("DELETE FROM runpins")
+    conn.execute("DELETE FROM runpins WHERE at < ?", (int(time.time()) - PIN_KEEP,))
     try:
         return conn.execute("DELETE FROM %s" % OLD_LINKS).rowcount
     except sqlite3.OperationalError as exc:
@@ -428,6 +483,166 @@ def links_now(conn):
 
 
 ABSENT = "absent"
+
+# Whose a run is, for the ranked board (ranked_as).
+RANK_LINKED, RANK_BANNED, RANK_UNLINKED, RANK_UNPROVEN = "linked", "banned", "unlinked", "unproven"
+RANK_HELD = "held"       # an account's run, posted without the key it began under: not stored
+# "Not an account's row", as SQL.  BY WHO IS AN ACCOUNT, not by what a SteamID
+# looks like: the first cut matched a prefix, and half the SteamID64 range
+# does not begin with it.  It can be trusted because no install can be NAMED
+# like an account (install_ok, on every post in both modes).
+SQL_NOT_ACCOUNT = "player NOT IN (SELECT steamid FROM accounts)"
+
+
+def install_ok(guid, strict):
+    """True if `guid` may name an install's rows.  Never anything shaped like
+    a SteamID64: the guid is whatever a client sends, and one that spelled an
+    account's id wrote that account's rows.  `strict` (ranked-means-linked on):
+    only what the engine makes, 32 hex."""
+    if steam.is_steamid64(guid) or (guid.isdigit() and len(guid) == 17):
+        return False
+    return bool(_GUID.fullmatch(guid)) if strict else True
+
+
+def who_of(steamid):
+    """How the game marks "your" row: the digest FS_GuidId (sh_defs.qc) takes
+    of a board row's `player`, here of the SteamID a ranked row is under."""
+    return hashlib.sha256(steamid.encode("ascii", "replace")).hexdigest()[:8]
+
+
+def ranked_as(db, pub):
+    """(RANK_*, steamid) for a run whose connection proved `pub`: the lobby's
+    word for the key, which surfd checked at that connect (/api/account).
+    WHOEVER RELAYS A WHOLE CONNECTION WEARS ITS KEY: the proof names the
+    server, the key and the game code, not the connection (BACKLOG)."""
+    if not _HEX64.fullmatch(pub or ""):
+        return RANK_UNPROVEN, ""
+    row = db.execute(
+        "SELECT k.steamid, a.banned_at FROM keylinks k"
+        " JOIN accounts a ON a.steamid = k.steamid WHERE k.pub = ?", (pub,)).fetchone()
+    if row is None:
+        return RANK_UNLINKED, ""
+    return (RANK_BANNED if row[1] else RANK_LINKED), row[0]
+
+
+def note_install(db, steamid, install, pub, now):
+    """An account's run came from this install, under this key.  Once a run
+    (run_identity calls it when it pins one), and no more than INSTALLS_MAX
+    installs an account: a guid is the client's to choose."""
+    if db.execute("UPDATE installs SET last_at = ?, runs = runs + 1 WHERE steamid = ?"
+                  " AND install = ? AND pub = ?", (now, steamid, install, pub)).rowcount:
+        return
+    if db.execute("SELECT COUNT(*) FROM installs WHERE steamid = ?",
+                  (steamid,)).fetchone()[0] >= INSTALLS_MAX:
+        return
+    db.execute("INSERT OR IGNORE INTO installs (steamid, install, pub, first_at, last_at, runs)"
+               " VALUES (?, ?, ?, ?, ?, 1)", (steamid, install, pub, now, now))
+
+
+def run_identity(db, runid, mapname, track, install, pub, now):
+    """(why, player) for one post of a run: "" and the account's SteamID64, or
+    RANK_UNLINKED / RANK_UNPROVEN and the install's guid, or RANK_BANNED, or
+    RANK_HELD (nothing is to be stored).
+
+    DECIDED ONCE A RUN (runpins has why).  The first post of a runid reads the
+    link as it stands and pins the answer with the key that earned it; every
+    later post of that run gets the pin, whatever has been linked or unlinked
+    since, and an ACCOUNT's pin only when the post carries that same key.  A
+    post with no runid (an unrecorded run) is read live each time.  A ban is
+    read live always: it bites on the run that is arriving.  The caller
+    commits."""
+    def pinned():
+        return db.execute("SELECT install, player, why, pub, at FROM runpins WHERE runid = ?"
+                          " AND map = ? AND track = ?", (runid, mapname, track)).fetchone()
+
+    live = None                         # (player, why) as the link stands now
+    pin = pinned() if runid else None
+    if pin is None or pin[0] != install:
+        state, sid = ranked_as(db, pub)
+        if state == RANK_BANNED:
+            return RANK_BANNED, sid
+        live = (sid, "") if state == RANK_LINKED else (install, state)
+        if runid and pin is None:
+            db.execute("INSERT OR IGNORE INTO runpins (runid, map, track, install, player, why,"
+                       " at, pub) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                       (runid, mapname, track, install, live[0], live[1], now,
+                        pub if state == RANK_LINKED else ""))
+            pin = pinned()              # whoever pinned it first: two posts can arrive together
+    # A pin is ITS INSTALL'S (a lobby mints a run id per player): one seen
+    # under another install is read on its own, and the pin is left alone.
+    if pin is not None and pin[0] == install:
+        player, why = pin[1], pin[2]
+        if not why and not (pub and _same(pub, pin[3])):
+            return RANK_HELD, player    # an account's run, and not its key: see runpins
+        if now - pin[4] > 86400:
+            # A paused run lives for weeks: its pin is kept from its last post.
+            db.execute("UPDATE runpins SET at = ? WHERE runid = ? AND map = ? AND track = ?",
+                       (now, runid, mapname, track))
+    else:
+        player, why = live
+    if live is not None and not why and player == live[0]:
+        note_install(db, player, install, pub, now)
+    if not why:
+        row = db.execute("SELECT banned_at FROM accounts WHERE steamid = ?",
+                         (player,)).fetchone()
+        if row is None or row[0]:
+            return RANK_BANNED, player      # banned since, or an account that is gone
+    return why, player
+
+
+def live_index(imported):
+    """DDL for the index ranked_now reads: the rows that are NOT an imported
+    tier's, a few thousand beside millions.  `imported`: surfd's tier names."""
+    return ("CREATE INDEX IF NOT EXISTS runs_live ON runs (tier, player) WHERE tier NOT IN (%s)"
+            % ", ".join("'%s'" % t for t in imported))
+
+
+def ranked_now(conn, imported):
+    """EVERY START WITH RANKED-MEANS-LINKED ON: a ranked row is an account's.
+    A row under anything that is not one (an install's guid: from before Patch
+    629, or from a spell with the switch off) leaves the ranked tier for the
+    community one, which no board lists, with its hidden and set-aside copies
+    and its recordings.  Where the same install already has a community row
+    on that board the FASTER one is kept.  ONE WAY: nothing here knows
+    afterwards which rows it moved.
+
+    EVERY start, of the service and of every tool that imports it: a marker
+    saying "moved" was flipped by whichever came first, and rows the other
+    stored afterwards stayed (the second review).  So it has to cost nothing
+    when there is nothing to move, which is what `runs_live` is for.  THE
+    WRITE LOCK FIRST, THEN THE LIST: two starts that both read the list and
+    then wrote each found, at the destination, the row the other had just
+    moved there, took it for a community row in the way, and deleted it.
+    -> (board rows moved, recordings moved)."""
+    not_imported = "tier NOT IN (%s)" % ", ".join("'%s'" % t for t in imported)
+    if conn.in_transaction:
+        conn.commit()
+    conn.execute("BEGIN IMMEDIATE")
+    moved = 0
+    rows = conn.execute(
+        "SELECT rowid, map, track, leg, tier, style, player, millis FROM runs"
+        " WHERE " + not_imported +
+        " AND (tier = 'ranked' OR tier LIKE 'ranked@%' OR tier LIKE 'ranked^%')"
+        " AND " + SQL_NOT_ACCOUNT).fetchall()
+    for rowid, mapname, track, leg, tier, style, player, millis in rows:
+        dest = "community" + tier[len("ranked"):]
+        there = conn.execute(
+            "SELECT rowid, millis FROM runs WHERE map = ? AND track = ? AND leg = ?"
+            " AND tier = ? AND style = ? AND player = ? AND rowid <> ?",
+            (mapname, track, leg, dest, style, player, rowid)).fetchone()
+        if there is not None and there[1] <= millis:
+            conn.execute("DELETE FROM runs WHERE rowid = ? AND tier = ?", (rowid, tier))
+        else:
+            if there is not None:
+                conn.execute("DELETE FROM runs WHERE rowid = ? AND tier = ?", (there[0], dest))
+            conn.execute("UPDATE runs SET tier = ? WHERE rowid = ? AND tier = ?",
+                         (dest, rowid, tier))
+        moved += 1
+    recs = conn.execute(
+        "UPDATE replays SET tier = 'community' WHERE tier = 'ranked' AND kind = 'run'"
+        " AND " + SQL_NOT_ACCOUNT).rowcount
+    conn.commit()
+    return moved, recs
 
 
 def file_digest(path, seen):
@@ -708,12 +923,18 @@ def register(app, d):
         if why:
             return game({"linked": 0, "why": why})
         row = d.get_db().execute(
-            "SELECT a.name, a.banned_at FROM keylinks k"
+            "SELECT a.name, a.banned_at, k.steamid FROM keylinks k"
             " JOIN accounts a ON a.steamid = k.steamid WHERE k.pub = ?",
             (pub,)).fetchone()
+        # With ranked-means-linked on the answer says so (`ranked`), and a
+        # linked key's carries `who`: how the game marks that account's rows
+        # (who_of).  Off, rows are under guids and the lobby marks by guid.
+        mode = {"ranked": 1} if d.ranked_linked else {}
         if row is None:
-            return game({"linked": 0})
-        return game(dict(account_json(row), linked=1))
+            return game(dict(mode, linked=0))
+        if d.ranked_linked:
+            mode["who"] = who_of(row["steamid"])
+        return game(dict(account_json(row), linked=1, **mode))
 
     def live_code(db, now, tag):
         """The unspent, unexpired code this digest is of, or "".  A TYPED code
@@ -778,7 +999,9 @@ def register(app, d):
             " steamid = excluded.steamid, player = excluded.player,"
             " node = excluded.node, linked_at = excluded.linked_at",
             (pub, row["steamid"], player, node, now))
-        return (dict(account_json(row), ok=1), row["steamid"],
+        return (dict(account_json(row), ok=1,
+                     **({"ranked": 1, "who": who_of(row["steamid"])} if d.ranked_linked else {})),
+                row["steamid"],
                 old["steamid"] if moving else "")
 
     def link_call():

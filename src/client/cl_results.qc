@@ -430,6 +430,9 @@ float(string raw, float track, float leg, float ticks, __inout float rank,
 	if (tier == WRT_COMMUNITY)
 	if (st == WR_RANKED || st == WR_STORED)
 		return WR_UNRANKED;
+	if (tier == WRT_NOACCOUNT)
+	if (st == WR_RANKED || st == WR_STORED)
+		return WR_NOACCOUNT;
 
 	rank = stof(argv(5));
 	of   = stof(argv(6));
@@ -477,6 +480,9 @@ string(float wst, float wrank, float wof, float flags) Results_WorldNote =
 			why = "not certified";
 		return strcat("--  unranked: ", why);
 	}
+	// Patch 629: the run itself was fine; the game has no Steam account behind it.
+	if (wst == WR_NOACCOUNT)
+		return "--  unranked: no Steam account linked (type link)";
 
 	// Deliberately shown.  The gap between finishing and the directory
 	// answering is the moment the player is asking "did that count?", and an

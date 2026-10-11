@@ -308,6 +308,15 @@ void(float tail) Bn_PlaceRaw =
 		ui_bn_plc = RSC_DIM;
 		return;
 	}
+	if (st == WR_NOACCOUNT)
+	{
+		// Patch 629: nothing wrong with the run.
+		ui_bn_pl1 = "UNRANKED";
+		ui_bn_pl2 = "no Steam account linked";
+		ui_bn_plc = BNC_UNRANKED;
+		ui_bn_pl2c = BNC_UNRANKED;
+		return;
+	}
 	if (st == WR_UNRANKED)
 	{
 		ui_bn_pl1 = "UNRANKED";

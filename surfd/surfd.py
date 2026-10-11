@@ -440,7 +440,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 
 # --------------------------------------------------------------------------
@@ -644,6 +644,13 @@ def setting(name, default=None):
 
 
 PUBLIC_HOST = load_public_host(setting("SURFD_PUBLIC_HOST"))
+# RANKED MEANS LINKED (Patch 629, ROADMAP 14.3 a).  On unless the setting is
+# "0": a ranked row is stored under the SteamID of the account the run's
+# connection proved a key of, and a run with no such account goes to the
+# community tier.  Off, a run is its submitter's guid, as it was.  A SETTING
+# so that the day it goes live, and the day it has to come back, is one line
+# in surfd.env and a reload, not a deploy.
+RANKED_LINKED = (setting("SURFD_RANKED_LINKED") or "1").strip() != "0"
 TRUSTED_SOURCES = load_trusted(
     setting("SURFD_TRUSTED", "127.0.0.0/8,::1/128,192.168.0.0/16,10.0.0.0/8")
 )
@@ -1496,11 +1503,33 @@ def migrate():
             conn.commit()
             version = 15
 
+        if version < 16:
+            # SCHEMA 16: `installs` and `runpins` (accounts.py, Patch 629),
+            # made by accounts.links_now below like the link table, and an
+            # index of the rows that are not an imported tier's, which
+            # ranked_now reads.  ONE SCAN OF `runs` UNDER THE WRITE LOCK, here
+            # and once: deploy it when nobody is on a lobby.  Nothing moves
+            # here: which rows are ranked is ranked_now's, and only when
+            # ranked-means-linked is on.
+            conn.execute(accounts.live_index(TIERS_IMPORTED))
+            conn.execute("PRAGMA user_version=16")
+            conn.commit()
+            version = 16
+
         verdict_metrics(conn)
         gone = accounts.links_now(conn)
         conn.commit()
         if gone:
             log.info("dropped %d link(s) made before a key press could be proven", gone)
+        conn.execute(accounts.live_index(TIERS_IMPORTED))   # a 16 file from an earlier cut
+        conn.commit()
+        if RANKED_LINKED:
+            moved = accounts.ranked_now(conn, TIERS_IMPORTED)
+            if moved != (0, 0):
+                log.info("ranked means linked: moved %d board row(s) and %d recording(s)"
+                         " that were not an account's to the community tier", *moved)
+        log.info("ranked rows need a linked Steam account: %s",
+                 "yes" if RANKED_LINKED else "NO (SURFD_RANKED_LINKED=0)")
         if version == started:
             log.info("schema already at version %d (db=%s)", version, DB_PATH)
         else:
@@ -2877,7 +2906,14 @@ def submit_run():
     if tier == TIER_RANKED and not certifiable(flags):
         tier = TIER_COMMUNITY
 
-    name = clean_text(request.form.get("name")) or player
+    # AN INSTALL IS NEVER NAMED LIKE AN ACCOUNT, in either mode (Patch 629):
+    # `player` arrives as the install's guid, which is whatever its client
+    # sent, and a ranked row's key is now a SteamID64.
+    install = player
+    if not accounts.install_ok(install, RANKED_LINKED):
+        log.warning("run from %s names its install %r; refused", src, install[:40])
+        return fail(400, "bad player")
+
     node = clean_text(request.form.get("node")) or "?"
     runid = clean_text(request.form.get("runid"))
     if runid and not is_trusted(src, TRUSTED_SOURCES):
@@ -2885,6 +2921,51 @@ def submit_run():
         # lobby's evidence file backs (index_evidence).
         log.warning("ignoring runid from untrusted source %s", src)
         runid = ""
+
+    # WHOSE RUN IT IS (Patch 629).  The lobby also sends the key this run's
+    # connection proved; if that key is an account's, the row is the
+    # ACCOUNT's, on every tier, so a reinstall or a second machine improves
+    # the same row.  With no account a run that asked for the ranked board
+    # lands on the community one and the answer says why; a banned account's
+    # run is not stored.  ONCE A RUN: accounts.run_identity pins it.  The key
+    # is a TRUSTED lobby's word, like `runid` and `rec`: surfd verified a
+    # proof for nobody else.
+    acct_why = ""
+    if RANKED_LINKED:
+        pub = request.form.get("pub") or ""
+        if pub and not is_trusted(src, TRUSTED_SOURCES):
+            log.warning("ignoring pub from untrusted source %s", src)
+            pub = ""
+        try:
+            with get_db() as conn:
+                acct_why, player = accounts.run_identity(
+                    conn, runid, mapname, track, install, pub, now)
+        except sqlite3.Error as exc:
+            log.exception("run identity db error from %s: %s", src, exc)
+            return fail(500, "storage error")
+        if acct_why == accounts.RANK_BANNED:
+            log.info("run from %s is a banned account's (%s); not stored", src, player)
+            return jsonify({"ok": True, "stored": False, "best": 0, "rank": 0, "of": 0,
+                            "rep": 0, "tier": tier, "prevms": 0, "why": acct_why})
+        if acct_why == accounts.RANK_HELD:
+            # An account's run, posted without the key it began under (a paused
+            # run picked up elsewhere, a proof not yet landed).  Not stored: not
+            # under the account, which this post has not earned, and not under
+            # the guid, which would split the run.  `why: held`: the lobby says
+            # "not submitted", which is not what it says of an unranked run.
+            log.info("run %s from %s is %s's, and this post does not carry its key;"
+                     " not stored", runid, src, player)
+            return jsonify({"ok": True, "stored": False, "best": 0, "rank": 0, "of": 0,
+                            "rep": 0, "tier": TIER_COMMUNITY, "prevms": 0,
+                            "why": accounts.RANK_HELD})
+        if acct_why and tier != TIER_RANKED:
+            acct_why = ""               # not ranked for the run's own reasons
+
+        if acct_why:
+            tier = TIER_COMMUNITY
+
+    # Never the guid beside an account's id: a name that cleans to nothing.
+    name = clean_text(request.form.get("name")) or (install if player == install else "player")
 
     millis = int(round(ticks * 1000.0 / tickrate))
 
@@ -2955,7 +3036,9 @@ def submit_run():
     # pins both as acceptable, so their absence is a configuration, not a claim.
     # The file check below is what guards them -- it needs no digest.
     if leaf and shape.group("digest"):
-        want = hashlib.sha256(player.encode("utf-8", "replace")).hexdigest()[:8]
+        # The file is named for the INSTALL (FS_PlayerSeg hashes the guid),
+        # whoever's account the row is under.
+        want = hashlib.sha256(install.encode("utf-8", "replace")).hexdigest()[:8]
         if shape.group("digest") != want:
             log.warning("rec leaf %r carries digest %s, not this player's %s,"
                         " from %s; dropping the leaf",
@@ -3308,7 +3391,7 @@ def submit_run():
                 best = prev["millis"] if prev is not None else 0
                 return jsonify({"ok": True, "stored": False, "best": best,
                                 "rank": 0, "of": 0, "rep": 0, "tier": tier,
-                                "prevms": best})
+                                "prevms": best, "why": acct_why})
 
             # A rejected recording never takes a board row back: a re-post of
             # it (a key holder's) is filed and answered, not stood.
@@ -3324,7 +3407,7 @@ def submit_run():
                             if prev is not None else (0, 0))
                 return jsonify({"ok": True, "stored": False, "best": best,
                                 "rank": rank, "of": of, "rep": rid, "tier": tier,
-                                "prevms": best})
+                                "prevms": best, "why": acct_why})
 
             if prev is None:
                 if full if full is not None else _runs_full(db, leg):
@@ -3349,7 +3432,7 @@ def submit_run():
                 return jsonify(
                     {"ok": True, "stored": False, "best": prev["millis"],
                      "rank": rank, "of": of, "rep": rid, "tier": tier,
-                     "prevms": prev["millis"]}
+                     "prevms": prev["millis"], "why": acct_why}
                 )
 
             db.execute(
@@ -3377,7 +3460,8 @@ def submit_run():
     )
     return jsonify({"ok": True, "stored": True, "best": millis,
                     "rank": rank, "of": of, "rep": rid, "tier": tier,
-                    "prevms": prev["millis"] if prev is not None else 0})
+                    "prevms": prev["millis"] if prev is not None else 0,
+                    "why": acct_why})
 
 
 @app.get("/api/board")
@@ -4677,7 +4761,9 @@ def web_player(handle):
                     "style": r["style"], "name": r["name"], "ms": r["millis"],
                     "when": r["submitted"], "rep": r["replay_id"] or 0,
                     "r": rk, "of": of})
-    ext = web_ext(me["src"], player)
+    # By the tiers the person HAS rows on, not the one the page leads with: a
+    # ranked row took a Momentum or KSF player's links away (Patch 629's review).
+    ext = web_ext(TIER_MOMENTUM if me["mom"] else TIER_KSF if me["ksf"] else me["src"], player)
     return _json({"v": 1, "t": now, "who": handle, "name": me["name"],
                   "src": me["src"], "n": me["n"], "maps": me["maps"],
                   "last": me["last"], "wr": wr, "wrc": wrc, "top10": top10,
@@ -4837,7 +4923,8 @@ accounts.register(app, types.SimpleNamespace(
     rate_key=rate_key, is_trusted=lambda ip: is_trusted(ip, TRUSTED_SOURCES),
     secret=lambda: SECRET, setting=setting, fail=fail, game_json=game_json,
     clean_text=clean_text, http=lambda *a, **k: STEAM_HTTP(*a, **k),
-    public_host=lambda: PUBLIC_HOST, resolve=lambda name: RESOLVE(name)))
+    public_host=lambda: PUBLIC_HOST, resolve=lambda name: RESOLVE(name),
+    ranked_linked=RANKED_LINKED))
 
 migrate()
 log.info("surfd ready (db=%s ttl=%ds cap=%d nodes)", DB_PATH, LOBBY_TTL, MAX_NODES)
