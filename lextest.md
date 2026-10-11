@@ -13,6 +13,10 @@ to be wrong.
 
 ## 00. 11 Oct — your HUD list, part 3: Run lines (Patch 632)
 
+Live since 11 Oct 03:52 UTC (14:52 here) on both installs (csprogs and
+`cfg/default.cfg`) and on all twelve lobbies. Each replaced file has a copy
+beside it: `.prev`, and `default.cfg.pre632-20261011T035137Z`.
+
 "Remove the players nearby/fade options ... 'Labels' all on, or one or the
 other ... your line in a nice blue colour, and everyone else you turn on in a
 range of green to red based on who has the best time ... change the colour of

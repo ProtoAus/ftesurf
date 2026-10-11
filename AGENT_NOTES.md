@@ -4690,6 +4690,14 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   "a reading when asked" passed on one flat colour: it sampled the line along
   the start platform, where every sample is 260 u/s, so it could not tell a
   line with no range from a constant speed. It samples after the ramp now.
+- DEPLOYED 2026-10-11 from `6f936bc`: csprogs `6dc6e7b3` and
+  `cfg/default.cfg` `b9480a1e` (qwprogs `e9c95065` and menu.dat were already
+  these bytes in all three places). Both Windows installs 03:51:37Z with
+  nothing running (the default.cfg before kept as
+  `default.cfg.pre632-20261011T035137Z`); the Pi 03:52:17Z with nobody on, all
+  12 lobby processes started 03:52:19Z to 03:52:28Z (read from the host), and
+  `pi_lobby_smoke.py` was served this csprogs and drew the board. `.prev` is
+  Patch 631's csprogs (`1a27aa8f`) in all three places.
 
 ### The Boarding window's levels (Patch 631) — 2026-10-11
 
