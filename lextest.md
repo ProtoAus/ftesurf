@@ -18,6 +18,8 @@ resolution, the Play button worst. Every rounded box was one small picture of
 a corner, 8 pixels across, stretched to whatever size was asked. Now the game
 draws each corner from a picture made at exactly that size, so a 100 pixel
 corner has the same one-pixel smooth edge as a 6 pixel one.
+- **Live since 11 Oct 10:09 UTC (21:09 here)** on both installs (the game and
+  the menu) and on all twelve lobbies. Restart the game to get it.
 - **Yours to look at:** the Play button in the map list, the big panels, the
   board's pills. I measured a test box in the game and looked at the menu's
   buttons; I could not get the test rig past the first-run page to the Play

@@ -4668,6 +4668,11 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   `ui_strip_test masks`.
 - csprogs: 130,609 of fteqcc's 131,072 global definitions. The per-radius
   tables are memalloc'd for that reason.
+- DEPLOYED 11 Oct from `6713cd3`: csprogs `30f816bb` and menu.dat `6db94852`
+  to both installs at 10:08Z with no game running (the copy took the rig lock
+  and waited out a peer's run), csprogs to the Pi at 10:09Z with nobody on.
+  Twelve lobbies restarted and read back; a fresh client on a lobby was
+  served it and drew the board. `.prev` is Patch 641's pair.
 
 ### A config on the HUD's old defaults is moved, once (Patch 641) — 2026-10-11
 
