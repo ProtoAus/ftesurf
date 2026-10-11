@@ -7652,6 +7652,21 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **DEPLOYED 11 Oct 2026, 12:01-12:05 UTC (FTESurf `5d3d98f`, Patch 647):
+  menu.dat on both Windows installs, one file of surfd.** Under the rig lock,
+  no game running, 12:01:42Z: `menu.dat` `9dc45991`, the bytes the arm ran on,
+  and its line table into `C:\FTESurf` and `C:\FTEQuake`, the old pair kept
+  as `.prev` (`6db94852`), read back with a second tool; csprogs `e9371ed5`
+  (Patch 646's) and qwprogs untouched, and nothing to the Pi's progs: a
+  dedicated server has no menu. surfd: `accounts.py` `d2d6508` by
+  `surfd-deploy.ps1` (the Pi's was main's `5ddfeba`), its suite green there,
+  reload 12:04:37Z, backup `data/surfd.db.bak-5d3d98f-20261011-230200`; the
+  maps list (6.8 s cold) and a player page asked for once; 0 error or warning
+  lines in the 74 since the reload. READ BACK through proto.bar: the sign-in
+  page says the Steam name and avatar are shown with the times, in the game
+  too. NOT SEEN ON A REAL FIRST BOOT: both installs hold a consent file, so
+  the new screens were seen only in rigs; a fresh install of the next
+  release is the first.
 - **THE FIRST-BOOT SCREENS (Patch 647): HOW THEY ARE LOOKED AT AND DRIVEN.**
   `ui_strip_test screen terms` and `screen steam` put either screen up, and
   `screen fit` prints the terms panel against the window. NO WORD ANSWERS A

@@ -24,9 +24,11 @@ game ... and also clean up that screen").
    the sign-in page in your browser (Steam's page is one click on, and the
    number it gives is typed back into the game, as before). "Not now" (or
    Esc) skips it, and the game does not ask again that session.
-- **To see it you need a fresh install, or to move `ftesurf\data\consent.txt`
-  aside** (that file is your answer; put it back after). You are already
-  linked, so on your install the lobby will simply know you.
+- **Live on both of your installs since 12:02 UTC.** To see it you need a
+  fresh install (release 0.1.24 has it), or to move
+  `ftesurf\data\consent.txt` aside (that file is your answer; put it back
+  after). You are already linked, so on your install the lobby will simply
+  know you.
 - It is not one press: the engine only signs a link in the game, on a
   lobby, under a real key press, so the menu can only take you there. A
   link started from the menu is an engine change; say if you want it.
