@@ -320,7 +320,7 @@ void() Timer_RegisterCvars =
 {
 	registercvar("hud_timer",   "1", CVAR_ARCHIVE);
 	registercvar("hud_timer_x", "0.5", CVAR_ARCHIVE);
-	registercvar("hud_timer_y", "0.035", CVAR_ARCHIVE);
+	registercvar("hud_timer_y", "0.0405", CVAR_ARCHIVE);
 
 	// Seconds a stage split stays up.  Four is about as long as a stage
 	// transition takes to stop mattering.
@@ -362,10 +362,12 @@ void() Timer_RegisterCvars =
 	  0.045 rather than 0.018 is the "not the corner" half: at 1920 that is 86 px
 	  of inset instead of 35, which reads as a block placed in the upper left
 	  rather than one pushed against the frame.
+	  Patch 637: 0.0695/0.1784 is where the owner has it; the arithmetic above is
+	  build 21's.
 	*/
 	registercvar("hud_splits",   "1", CVAR_ARCHIVE);
-	registercvar("hud_splits_x", "0.045", CVAR_ARCHIVE);	// build 21, was 0.018 (hard against the edge)
-	registercvar("hud_splits_y", "0.20", CVAR_ARCHIVE);	// build 21, was 0.5; the block is CENTRED on this
+	registercvar("hud_splits_x", "0.0695", CVAR_ARCHIVE);	// Patch 637 (build 21 had 0.045, off the edge)
+	registercvar("hud_splits_y", "0.1784", CVAR_ARCHIVE);	// Patch 637 (build 21 had 0.20); the block is CENTRED on this
 
 	// Build 19: the speed and energy you crossed each gate with.  0 puts the
 	// block back to three columns, which is the pre-19 width.
@@ -920,7 +922,7 @@ float(vector scr, float state, float ticks, float flags, float pb,
 	/*
 	  BUILD 24: OUT FROM UNDER THE PLAYBACK CHROME.
 
-	  hud_timer_y is 0.035, so the clock sits about 38 px down on a 1080p window
+	  hud_timer_y was 0.035 (0.0405 since Patch 637), so the clock sits about 38 px down on a 1080p window
 	  and the replay bar occupies the top ~70 -- the run clock and the "stage 5/6"
 	  line underneath it were being drawn straight through the scrub bar.
 

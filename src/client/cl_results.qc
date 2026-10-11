@@ -193,7 +193,7 @@ void() Results_RegisterCvars =
 	*/
 	registercvar("hud_results", "1", CVAR_ARCHIVE);
 
-	registercvar("hud_results_x", "0.72", CVAR_ARCHIVE);
+	registercvar("hud_results_x", "0.7792", CVAR_ARCHIVE);
 	registercvar("hud_results_y", "0.50", CVAR_ARCHIVE);
 
 	/*

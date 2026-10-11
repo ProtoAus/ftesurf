@@ -11,6 +11,48 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — your HUD list, part 5: your layout is the default (Patch 637)
+
+"make my current hud settings, the default hud settings for the game... this is
+just the default template."
+
+- **A new player's HUD is yours**, taken from your saved config as it stood at
+  13:31 on 11 Oct: 42 settings moved, and the speed, its energy and the strafe
+  trainer draw at your sizes. Your own game does not change, because your
+  config already holds all of it.
+- **To see it as a new player would:** `hud_edit`, then click `reset all`
+  twice (it asks first). Your layout should stay where it is; only the
+  editor's own window goes back to its corner.
+
+One thing to decide:
+- **Players who already have a saved config get only part of it.** The game
+  saves 16 of these settings in everyone's config even when untouched (where
+  the timer, splits, Segments, run graph and results sit, the run graph's
+  plots, how far ahead a ticked line shows), so for them those 16 stay as
+  they were while the other 26 change. Say if you want their untouched ones moved to yours as
+  well; it is a small one-time change I have not made.
+
+What came along with it, in case any was not meant for the template:
+1. **Off by default now:** the Boarding window; the numbers on run lines (you
+   had asked for those on by default in Patch 451); the Segments column's
+   absolute, percent and unit columns; the Board readout's segment, ramp and
+   word rows; the strafe bar's rates, why and best.
+2. **Board and Boarding sit where you dragged them**, no longer stacked under
+   the strafe bar, and the editor's reset puts them there. Board's top edge is
+   the middle of the screen: if its "Segment line" is switched back on, that
+   line is drawn through the crosshair.
+3. **Speed, its energy and the strafe trainer are your sizes** (64, 48 and 20
+   px at `hud_scale 2`) and still grow with `hud_scale`.
+4. Also yours now: the live numbers update every frame; run lines fade out at
+   12000 units (was 6000) and a ticked board line shows 4 seconds ahead (was
+   8); the Run graph shows both plots; the mouse pad spans 360 degrees with a
+   1 second trail.
+5. **A small window brings your panels together.** At 1600x900 nothing
+   overlaps. At 1280x720 the Segments column reaches 18 px into the strafe
+   bar and the Board readout sits 21 px over the Speed number (the editor's
+   rectangles, measured): your places are fractions of the screen and the
+   panels are a fixed number of pixels.
+6. Not taken: where the editor's own window sits.
 ## 00. 11 Oct — your in-game name is your Steam name (Patch 638)
 
 Live since 11 Oct 05:33 UTC. From your list. On a lobby, a few seconds after you join from a linked game,

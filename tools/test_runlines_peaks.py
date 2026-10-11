@@ -58,7 +58,7 @@ turns stand clear is by the construction above.
 The log is tools/runlines_smoke.py's, from ftesurf/cfg/test/runlines_peaks.cfg:
 the client must mark each file exactly as above -- time, sample, place, speed --
 mark the two identically (`~` aside), mark a board line of each the same from
-its window's start (apex 1 aside), read `hud_lines_nums` as 2 with nothing set,
+its window's start (apex 1 aside), read `hud_lines_nums` as the 2 the cfg sets,
 and queue some tops and bottoms for drawing with their numbers (the `lndm`
 trace: it says a label was issued, not that it reached the screen).
 
@@ -451,9 +451,10 @@ class Game(unittest.TestCase):
             compare(self, got, expected(FIXTURES[foreign], board=True), "%s board line" % name.lower(),
                     shift=SEED + 1)
 
-    def test_labels_are_on_by_default_and_drawn(self):
+    def test_labels_are_on_and_drawn(self):
+        # Patch 637: the cfg sets 2 itself; labels are off by default since then.
         sec = self.subject.s["NATIVE"]
-        self.assertEqual(sec.nums, "2", "hud_lines_nums does not read 2 by default")
+        self.assertEqual(sec.nums, "2", "hud_lines_nums does not read the 2 the cfg sets")
         peaks = [lab for k, lab in sec.drawn if k in (E_APEX, E_TROUGH)]
         print("\n  drawn in the frames traced: %d marks, %d of them tops and bottoms (%d with a number)"
               % (len(sec.drawn), len(peaks), sum(1 for p in peaks if p != "-")))

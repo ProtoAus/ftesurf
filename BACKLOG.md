@@ -5,6 +5,64 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## The owner's layout as the defaults: what Patch 637 left -- 2026-10-11
+
+- **A player who has saved a config keeps 16 of the 42 old defaults.** The
+  engine saves every archived name the game code alone registers, at its
+  default too, so the saved line holds the old value and `registercvar` leaves
+  it: the places of timer, splits, Segments, run graph, debug, video menu, net
+  and results, `hud_lines_order` and `hud_linegraph_plots`. The other 26 move
+  with `default.cfg`, so such a player gets a mix (not looked at). The tree has
+  moved a saved old default before, by its exact value (`con_textfont`,
+  `Font_Init`); whether other players' untouched settings should be moved to
+  the owner's is his call (lextest). Falsifier: before `map`, `seta hud_timer_y
+  0.035`; read it after the map.
+- **"reset" on one setting can still write an old default** on such a config
+  (`HE_ResetCvar` reads `cvar_defstring`, which is the saved value there).
+  "reset all" has literals for the two that are not positions.
+- **A client on the release before, in a lobby serving this game code:** with
+  a saved config nothing moves by itself (the old default.cfg holds 26, the
+  saved file 16), but the editor's "reset" writes the new places over the old
+  file's switches: Board at the centre with its segment line still on, which is
+  drawn through the crosshair. A fresh install of that release gets 16 new and
+  26 old (looked at once: nothing default-on overlaps at 1600x900). The next
+  release carries the new default.cfg.
+- **Board's first row is on the crosshair when it is switched on.** Board's top
+  edge is the screen's centre now (`cl_hud.qc:HUD_DrawBoard`); the row there
+  is the segment line, off by default. Falsifier: `set hud_board_seg 1`, ride
+  a ramp, look.
+- **Board and Boarding cannot be re-attached from the editor.** Their default
+  was the -1/-1 sentinel (stacked under the strafe bar, under Board) and the
+  editor's "reset" was the way back to it; it writes the owner's place now, so
+  a player who moved only the strafe bar finds Board left at the centre.
+  Console: `hud_board_x -1; hud_board_y -1`, the same for `hud_boarding_`.
+- **Smaller windows and larger hud_scale bring his panels together.** Measured
+  with the editor's rectangles at 1280x720: Segments and the strafe bar (18 x
+  58 px), Board and Speed (52 x 21 px); none at 1600x900. By the review's
+  arithmetic, not run: Segments meets the strafe bar under 1333 px of width
+  (the old place cleared down to 1040) and by 78 px at hud_scale 3 on 1600.
+  Falsifier: `vid_width 1280`, `vid_height 720`, a fresh config, `hud_edit on`,
+  `hud_edit ui`.
+- **Panels that are off by default land on ones that are on** (stand-in boxes,
+  1600x900): debug over splits, net 10 px into map info, Boarding 7 px into
+  Board. The strafe trainer at his place and size does not fit under y 536 on
+  900 lines once a jump has three detail rows: the panel is lifted up to 81 px
+  onto the Segments column (the review's arithmetic; the trainer is off by
+  default). The results card covers the run graph when both are up.
+- **The editor draws the results card's outline from its corner**, and the
+  card is centred on its setting and clamped (`cl_results.qc`): at his x the
+  outline runs 11 px off a 1600 px screen while the card does not.
+- **Arms that read a HUD default without setting it were not swept.** 42
+  defaults moved and `cfg/test` holds 1,121 cfgs. `runlines_peaks.cfg` was the
+  one found (it graded the label default; it sets it now, and its log on this
+  build reads 2 with 31 labels issued; `test_runlines_peaks.py` itself wants
+  a log of the build before Patch 627 as its control, which was not rebuilt).
+  Not looked at: the run-line graders whose cfgs set neither `hud_lines_nums`
+  nor `hud_seq_units` (edge, livelag, segbreak, seglive, reset, p502segments).
+- **Not measured:** the layout at any other window size or hud_scale; the mix
+  an existing player gets; the reset check against a build with one stale
+  literal; what `hud_watch_path_far 12000` costs on a long line.
+
 ## The TAB board's filter and LINE heading: what Patch 635 left -- 2026-10-11
 
 - **Under about 760 px of window the board is clipped sooner than before.** The
@@ -2907,7 +2965,8 @@ The full requested feature plan and delivery order are in ROADMAP.md section 12.
   door at 2010 u/s in one run: the server teleported and the kinematic rule
   told the column.
 - **Tops and bottoms on a line: what Patch 627 left open.** The marks exist
-  on a ramp now and are on by default (`cl_lines.qc:Line_Peak`). Open:
+  on a ramp now and are on by default (`cl_lines.qc:Line_Peak`; off by
+  default since Patch 637). Open:
   (1) A turn is read off a STRAIGHT LINE in vz between two samples. In the
   air that is exact. On a ramp, and above all across a landing (vz jumps at
   the instant of contact, not over the tick), it is a reading: up to a tick

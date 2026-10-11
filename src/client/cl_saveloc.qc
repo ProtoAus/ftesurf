@@ -180,8 +180,8 @@ void() SaveLoc_RegisterCvars =
 	*/
 	registercvar("rec_savelock",   "1");
 
-	registercvar("hud_saveloc_x", "0.018", CVAR_ARCHIVE);
-	registercvar("hud_saveloc_y", "0.34", CVAR_ARCHIVE);
+	registercvar("hud_saveloc_x", "0.0333", CVAR_ARCHIVE);
+	registercvar("hud_saveloc_y", "0.3695", CVAR_ARCHIVE);
 
 	/*
 	  Both do their work on the SERVER, and an unknown console command does

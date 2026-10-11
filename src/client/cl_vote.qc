@@ -26,8 +26,8 @@ float  vt_boxtop;
 
 void() Vote_RegisterCvars =
 {
-	registercvar("hud_vote_x", "0.018", CVAR_ARCHIVE);
-	registercvar("hud_vote_y", "0.30",  CVAR_ARCHIVE);
+	registercvar("hud_vote_x", "0.0333", CVAR_ARCHIVE);
+	registercvar("hud_vote_y", "0.4028",  CVAR_ARCHIVE);
 	registercommand("vote");
 	vt_id = -1;
 };

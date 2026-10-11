@@ -1719,7 +1719,8 @@ publicly WITH its fix, not before it.
   that is a brush entity or a prop (abstains, by reading).
 - Patch 627: THE TOPS AND BOTTOMS. A line now marks the top of each arc and
   the bottom of each ride (speed, energy, time), and they are on by default:
-  `hud_lines_nums 2` in `default.cfg` and `registercvar`. Until now a turn
+  `hud_lines_nums 2` in `default.cfg` and `registercvar` (until Patch 637:
+  labels are off by default since, the owner's layout). Until now a turn
   was looked for only between two AIR samples and only once |vz| had reached
   40 -- so no bottom on a ramp was ever marked, which is where a surf run's
   bottoms are. `Line_Peak` (`cl_lines.qc`): a turn is where vz crossed zero
@@ -4623,6 +4624,65 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   mixer entirely, so there is nothing to analyse there.
 
 ## Pitfalls discovered the hard way
+
+### The HUD's defaults are the owner's layout (Patch 637) — 2026-10-11
+
+- 42 SETTINGS MOVED, ALL THE EDITOR'S. From the owner's saved config, the names
+  `hud_edit` owns and no other line of it (`cl_hudedit.qc`: `HE_Add`, `HE_Text`,
+  `HE_OptDef`, the fixed five). A default lives in up to four places that must
+  agree: the `registercvar`, the `set` in `cfg/default.cfg` and in
+  `cfg/defaultuser.cfg` where there is one, and for a position the literal in
+  `HE_Default`. `tools/test_p637defaults.py` reads them from the tree.
+- A NAME ONLY THE GAME CODE REGISTERS IS SAVED BY EVERY CONFIG, AT ITS DEFAULT
+  TOO. The engine writes each archived name on save (the review's count in a
+  fresh rig's own saved file: 39 of 40 such names it never touched are there,
+  and 0 of the 3 `default.cfg` names looked for). So 16 of the 42 (the positions `default.cfg` does
+  not list, `hud_lines_order`, `hud_linegraph_plots`) reach a new install only:
+  an install that has saved once keeps the old value, and reads it as the
+  default. The other 26 move with `default.cfg`. Not migrated: BACKLOG has the
+  precedent (`con_textfont`) and the question is the owner's.
+- THREE SIZES MOVED IN THE DRAWER, NOT IN THE CVAR, which is `cl_timer.qc`'s
+  build 66 argument: the speed's own size is 32 units (was 24), its energy's 24
+  (16), the trainer's 10 (8), so they are his 64, 48 and 20 px at hud_scale 2,
+  still follow hud_scale, and reach a config that saved 0. The first cut made
+  the cvars 64, 48 and 20 and the review turned that down. `HE_Text`'s base and
+  the trainer's stand-in box in `HE_Add` moved with them. With timer, segments,
+  banner and run graph that is seven sizes he holds as pixels and the game
+  leaves automatic.
+- "RESET ALL" WRITES TWO MORE LITERALS (`hud_lines_order 4`,
+  `hud_linegraph_plots 3`), as Patch 632 did for its colour rows: for a name a
+  saved config created, `cvar_defstring` is the saved value.
+- BOARD AND BOARDING ARE PLACED, NOT STACKED. Their default was the -1/-1
+  sentinel (under the strafe bar, under Board); it is a coordinate now and the
+  editor's "reset" writes that. -1/-1 still attaches them, from the console.
+  Board's top edge is the screen's centre: its first row, the segment line,
+  ships off, and switched on it is drawn through the crosshair.
+- OFF THAT WERE ON: Boarding, run-line labels (`hud_lines_nums 0`; Patch 451
+  had turned them on at his asking), the Segments column's absolute, percent
+  and unit columns, three Board rows, three strafe-bar rows. His layout, as
+  asked; lextest lists them for him.
+- AN ARM WRITTEN BEFORE THIS THAT READS A HUD DEFAULT WITHOUT SETTING IT reads
+  another value now. `runlines_peaks.cfg` graded "labels are 2 with nothing
+  set" and sets it itself now; this list's three arms set what they read; the
+  1,121 cfgs under `cfg/test` were not swept. Set what you depend on.
+- THE ARM (`cfg/test/p637defaults.cfg`, a fresh overlay): it boots on the 42
+  values and on the other 99 unchanged; setting his whole saved layout by hand
+  (80 names) moves none of the editor's 20 rectangles; the 42 put back on
+  their old defaults move them; "reset all" brings all 141 and the rectangles
+  back. 11 of 11; the build before fails the four that rest on the defaults.
+  It cannot see a saved config, nor a panel's real size where the editor
+  draws a stand-in box (every panel that is not up at spawn). Two boxes are
+  left out of its on-screen check and named: results (listed from its corner,
+  drawn from its centre) and the trainer, whose box at his place runs 7 px
+  past a 900-line screen where the drawer lifts the panel.
+- A FRESH GAME'S SCREENSHOT IS NOT THE SAME TWICE: the sky moves, so 626,860
+  of 1,440,000 pixels differed between two builds whose HUD was identical.
+  The speed and its energy were compared below the sky (rows 552 to 900: no
+  pixel differs between the first cut's absolute 64 and 48 and the drawer's
+  32 and 24 units at hud_scale 2).
+- `hud_edit off` SAVES THE LAYOUT: in a rig, to the overlay's own ftesurf.cfg.
+  The owner's file was read through a script that takes the editor's names
+  only, and its modification time was the same after the runs.
 
 ### The TAB board: every game by default, a filter switch and slider, the LINE heading (Patch 635) — 2026-10-11
 

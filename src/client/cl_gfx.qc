@@ -65,12 +65,12 @@ void() Gfx_WaterSupport =
 
 void() Gfx_RegisterCvars =
 {
-	registercvar("hud_gfx_x", "0.018", CVAR_ARCHIVE);
+	registercvar("hud_gfx_x", "0.0333", CVAR_ARCHIVE);
 	// Header + six rows + four verbs + a footer is a tall block; 0.10 is the
 	// highest start that still clears the timer, and it has to clear the strafe
 	// bar at the bottom.  Paging keeps this height fixed however many settings
-	// the table grows to.
-	registercvar("hud_gfx_y", "0.10", CVAR_ARCHIVE);
+	// the table grows to.  Patch 637: 0.338, where the owner has it.
+	registercvar("hud_gfx_y", "0.338", CVAR_ARCHIVE);
 
 	// Bindable, so it does not have to live on one key we chose.
 	registercommand("gfx_menu");

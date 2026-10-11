@@ -298,7 +298,7 @@ void(string id, vector pos, vector size, vector anchor) HUD_Rect =
                 line, which genuinely ARE recomputed every rendered frame from
                 time-windowed rings (HUD_UpdateTurn, Strafe_PlaneBest).
 
-  hud_update -1, the default, latches once per INPUT FRAME -- a clientcommandframe
+  hud_update -1, the default until Patch 637 made it 0, latches once per INPUT FRAME -- a clientcommandframe
   edge, which advances at cl_netfps 66.6667, the same rate the player's body
   advances and the same rate the stats come back at.  So all four readouts change
   together instead of two of them running ahead of the other two.  0 is the old
@@ -915,7 +915,8 @@ void() HUD_RegisterCvars =
 	                         `deg`, leaving the numbers.
 
 	  Every one of them 1, so the panel out of the box is build 65 plus the ramp
-	  angle it gained from the window next to it.
+	  angle it gained from the window next to it.  (Until Patch 637: seg, ramp and
+	  words are 0 out of the box now, the owner's layout.)
 
 	  THE ROW SLOTS ARE STILL RESERVED WHEN A PART IS OFF -- p_y steps past them
 	  regardless.  That is deliberate and it is the same argument the fade's
@@ -923,12 +924,12 @@ void() HUD_RegisterCvars =
 	  window stacked under it, and a height that changed as parts were switched
 	  would move that window.  Switching a row off makes it blank, not absent.
 	*/
-	registercvar("hud_board_seg",   "1", CVAR_ARCHIVE);
+	registercvar("hud_board_seg",   "0", CVAR_ARCHIVE);
 	registercvar("hud_board_grade", "1", CVAR_ARCHIVE);
 	registercvar("hud_board_kept",  "1", CVAR_ARCHIVE);
 	registercvar("hud_board_cost",  "1", CVAR_ARCHIVE);
-	registercvar("hud_board_ramp",  "1", CVAR_ARCHIVE);
-	registercvar("hud_board_words", "1", CVAR_ARCHIVE);
+	registercvar("hud_board_ramp",  "0", CVAR_ARCHIVE);
+	registercvar("hud_board_words", "0", CVAR_ARCHIVE);
 
 	/*
 	  BUILD 34 -- the open segment's provisional rows.
@@ -973,12 +974,12 @@ void() HUD_RegisterCvars =
 	  there are.
 	*/
 	registercvar("hud_seq",      "1", CVAR_ARCHIVE);
-	registercvar("hud_seq_x",    "-0.25", CVAR_ARCHIVE);	// offset from screen centre; build 13, was -0.055 (on the strafe bar)
-	registercvar("hud_seq_y",    "0.5", CVAR_ARCHIVE);	// the block is CENTRED on this, not hung below it
+	registercvar("hud_seq_x",    "-0.1951", CVAR_ARCHIVE);	// offset from screen centre; Patch 637 (build 13 had -0.25, off the strafe bar)
+	registercvar("hud_seq_y",    "0.483", CVAR_ARCHIVE);	// the block is CENTRED on this, not hung below it
 	registercvar("hud_seq_rows", "10");
 	// Build 18: the % of the available air gain each airtime took.  Air rows
 	// only -- see the note in HUD_DrawSeq.
-	registercvar("hud_seq_pct",  "1", CVAR_ARCHIVE);
+	registercvar("hud_seq_pct",  "0", CVAR_ARCHIVE);
 
 	/*
 	  BUILD 20 -- what the rows are measured in.
@@ -986,7 +987,7 @@ void() HUD_RegisterCvars =
 	    0   u/s, the build 19 string exactly.  What that energy was WORTH at the
 	        speed you left with, which is the honest way to compare a gain
 	        against a speedometer.
-	    1   energy, in world units of height (default).
+	    1   energy, in world units of height (the default until Patch 637; 0 since).
 
 	  Energy is the default because it is what the row is actually made of: the
 	  percentage beside it has always been an energy ratio, and the figure to its
@@ -1015,7 +1016,7 @@ void() HUD_RegisterCvars =
 	  energy plus a translation rather than a third unit: the board panel and the
 	  single-line readout keep saying energy and are unaffected.
 	*/
-	registercvar("hud_seq_units", "1", CVAR_ARCHIVE);
+	registercvar("hud_seq_units", "0", CVAR_ARCHIVE);
 
 	/*
 	  BUILD 65 -- THE SEGMENT ROW'S PARTS, each its own switch.
@@ -1027,14 +1028,15 @@ void() HUD_RegisterCvars =
 	  five columns (hud_seq_pct is the fifth and predates this).  All default ON,
 	  because the row they compose is the row that was asked for; turning one off
 	  is a narrowing, and a HUD that shipped pre-narrowed would hide the feature
-	  from anyone who never opens the editor.
+	  from anyone who never opens the editor.  (Patch 637 ships abs and pct off all
+	  the same: the owner's own layout is the template.)
 
 	  hud_seq_name and hud_seq_abs are NEW COLUMNS rather than switches over
 	  existing ones -- build 64 had no name and no absolute -- so 0 on either is
 	  the only way back to build 64's row, and that is exactly what they are for.
 	*/
 	registercvar("hud_seq_name",  "1", CVAR_ARCHIVE);
-	registercvar("hud_seq_abs",   "1", CVAR_ARCHIVE);
+	registercvar("hud_seq_abs",   "0", CVAR_ARCHIVE);
 	registercvar("hud_seq_delta", "1", CVAR_ARCHIVE);
 	registercvar("hud_seq_time",  "1", CVAR_ARCHIVE);
 
@@ -1192,8 +1194,8 @@ void() HUD_RegisterCvars =
 	                         1 "+3 u/s/tick"
 	                         2 "+3 u/s per tick at best"  (build 65 exactly)
 
-	  ALL THREE DEFAULT TO BUILD 65, which is this project's rule for anything
-	  that changes a reading.  They are separate cvars rather than one because the
+	  ALL THREE DEFAULT TO BUILD 65 (until Patch 637: all three ship 0, the owner's
+	  layout), which is this project's rule for anything that changes a reading.  They are separate cvars rather than one because the
 	  numbers and the explanation are noise to different people: somebody who
 	  steers by the fill wants the digits gone and the reason kept, and somebody
 	  who already knows why their ramp is ungradeable wants the opposite.
@@ -1201,18 +1203,18 @@ void() HUD_RegisterCvars =
 	  ARCHIVE on all three -- they are layout, and layout is the thing hud_edit
 	  exists to make stick.
 	*/
-	registercvar("hud_strafe_rates", "1", CVAR_ARCHIVE);
-	registercvar("hud_strafe_why",   "1", CVAR_ARCHIVE);
-	registercvar("hud_strafe_best",  "2", CVAR_ARCHIVE);
+	registercvar("hud_strafe_rates", "0", CVAR_ARCHIVE);
+	registercvar("hud_strafe_why",   "0", CVAR_ARCHIVE);
+	registercvar("hud_strafe_best",  "0", CVAR_ARCHIVE);
 
 	// CVAR_ARCHIVE from build 31 on every value the layout editor can write.
 	// See the essay beside registercvar in cl_defs.qc: on an install that has a
 	// default.cfg the flag is inert and `seta` from the editor is what actually
 	// persists these, but a cvar that is MEANT to survive a quit should say so
 	// where it is declared rather than only in the code that happens to write it.
-	registercvar("hud_speed_x",  "0.5",   CVAR_ARCHIVE); registercvar("hud_speed_y",  "0.68", CVAR_ARCHIVE);
+	registercvar("hud_speed_x",  "0.5",   CVAR_ARCHIVE); registercvar("hud_speed_y",  "0.6269", CVAR_ARCHIVE);
 	registercvar("hud_strafe_x", "0.5",   CVAR_ARCHIVE); registercvar("hud_strafe_y", "0.42", CVAR_ARCHIVE);
-	registercvar("hud_debug_x",  "0.012", CVAR_ARCHIVE); registercvar("hud_debug_y",  "0.30", CVAR_ARCHIVE);
+	registercvar("hud_debug_x",  "0.0333", CVAR_ARCHIVE); registercvar("hud_debug_y",  "0.0405", CVAR_ARCHIVE);
 
 	// x = 0 means "auto": right-hand side, with the gap to the screen edge
 	// measured from the gap to the floor rather than guessed as a fraction.
@@ -1230,14 +1232,16 @@ void() HUD_RegisterCvars =
 	  bar" -- build 30's behaviour exactly, including the part that matters,
 	  which is that the panel follows the bar's own bottom edge as the bar
 	  changes height rather than sitting at a constant offset from it.  Dragging
-	  it writes real fractions and detaches it; `hud_edit` offers re-attach, and
-	  setting either back to -1 by hand does the same thing.
+	  it writes real fractions and detaches it; `hud_edit`'s reset re-attached it
+	  until Patch 637 made the default a place, and setting both back to -1 by hand
+	  still does.
 
 	  Both axes share one test.  Detaching only the y would leave the panel
 	  tracking a bar it is no longer under, which is not a state worth being
 	  able to reach by accident.
 	*/
-	registercvar("hud_board_x",  "-1", CVAR_ARCHIVE); registercvar("hud_board_y",  "-1", CVAR_ARCHIVE);
+	// Patch 637: the default is the owner's place; -1/-1 still stacks it under the bar.
+	registercvar("hud_board_x",  "0.5", CVAR_ARCHIVE); registercvar("hud_board_y",  "0.5", CVAR_ARCHIVE);
 
 	/*
 	  BUILD 31 -- how often the four live numbers are allowed to CHANGE, and in
@@ -1247,10 +1251,10 @@ void() HUD_RegisterCvars =
 	  and hud_update is the fix for the strafe cells (which really are recomputed
 	  every rendered frame).
 
-	    hud_update   0 = every frame, -1 = per server snapshot (default), N = N Hz
+	    hud_update   0 = every frame (default since Patch 637), -1 = per server snapshot, N = N Hz
 	    hud_round    0 = off, or 1 (default, a no-op) / 2 / 5
 	*/
-	registercvar("hud_update",   "-1", CVAR_ARCHIVE);
+	registercvar("hud_update",   "0", CVAR_ARCHIVE);
 	registercvar("hud_round",    "1",  CVAR_ARCHIVE);
 
 	/*
@@ -2075,9 +2079,12 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 		ui_prev_speed = sp;
 	}
 
-	// Build 65: hud_speed_size overrides, or 0 keeps 24*hud_scale.  p_y advances by
+	// Build 65: hud_speed_size overrides, or 0 keeps 32*hud_scale.  p_y advances by
 	// `sz` below, so the panel's own height follows the size with no second edit.
-	sz = HUD_Size("hud_speed_size", 24 * ui_cv_scale);
+	// Patch 637: 32, was 24 (the owner's layout: 64 px at hud_scale 2).  The N
+	// moved and not the cvar's default, for the reason cl_timer.qc's build 66 note
+	// gives; hud_energy_size (24, was 16) and hud_trainer_size (10, was 8) likewise.
+	sz = HUD_Size("hud_speed_size", 32 * ui_cv_scale);
 	p  = [scr_x * ui_cv_speedpos_x, scr_y * ui_cv_speedpos_y, 0];
 	bp = p;                     // the anchor, kept -- p walks down the panel
 
@@ -2154,7 +2161,7 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 		  So it is `hud_energy 2` rather than deleted.
 
 		  Build 20: the board rows were the other reason to keep it, and they are
-		  in ENERGY now by default (hud_seq_units).  At the shipped settings this
+		  in ENERGY now by default (hud_seq_units; u/s since Patch 637).  At the shipped settings this
 		  readout and that column finally share a unit and can be added.
 
 		  Sign-carried, never clamped: below the start you ARE below the start,
@@ -2248,7 +2255,7 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 		// and "make the energy line bigger" is not "make the speedometer bigger".
 		// It is the reason hud_energy_size is not on he_cvsize like the others --
 		// one element, two text sizes, and the editor puts this one in Speed's pane.
-		esz = HUD_Size("hud_energy_size", 16 * ui_cv_scale);
+		esz = HUD_Size("hud_energy_size", 24 * ui_cv_scale);
 		tw  = stringwidth(s, TRUE, [Font_Px(esz), Font_Px(esz)]);
 		if (tw > bw) bw = tw;
 		bh = bh + esz;
@@ -5950,7 +5957,8 @@ void(vector scr) HUD_Draw =
 	if (cvar("hud_seq")) HUD_DrawSeq(scr);
 
 	// Build 65.  Last, so it sits over the world and under nothing that matters --
-	// there is no panel at dead centre by design, so ordering against the others is
+	// there was no panel at dead centre by design (Patch 637 puts Board's top edge
+	// there; its first row, the segment line, ships off), so ordering against the others is
 	// academic, but a sight drawn under a readout would be the one case where it is
 	// not.  It self-gates on hud_crosshair; see HUD_DrawCrosshair.
 	HUD_DrawCrosshair(scr);

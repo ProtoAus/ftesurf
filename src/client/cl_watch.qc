@@ -5738,7 +5738,7 @@ void() Watch_RegisterCvars =
 	// How far an imported run's line is pulled toward blue: 0 off, 1 all blue.
 	// A blend, so it composes with the five readings rather than replacing them.
 	registercvar("hud_watch_path_foreign", "0.55", CVAR_ARCHIVE);
-	registercvar("hud_watch_path_far", "6000", CVAR_ARCHIVE);  // fade out by here, 0 never
+	registercvar("hud_watch_path_far", "12000", CVAR_ARCHIVE);  // fade out by here, 0 never
 	registercvar("hud_watch_path_probe", "0");
 
 	registercvar("hud_watch_idle_speed", "20", CVAR_ARCHIVE);

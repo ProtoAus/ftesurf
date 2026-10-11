@@ -26,6 +26,18 @@ commit   c543d688ad16a871753fa9525c23487f437741a5
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-625
 patch    638
+# Patch 637: the HUD's defaults are the owner's own layout of 11 Oct (his list: "make my
+# current hud settings, the default hud settings for the game"). 42 of the settings
+# hud_edit owns start on his values: where the elements sit, Boarding off, run-line labels
+# off, the Segments column without its absolute, percent and unit columns, the Board
+# readout without its segment, ramp and word rows, the strafe bar without rates, why and
+# best, the Run graph on both plots, the mouse pad over 360 degrees with a one second
+# trail, readouts updated every frame. The speed, its energy and the strafe trainer draw
+# at his sizes (64, 48 and 20 px at hud_scale 2): the drawers' own sizes moved, so they
+# still follow hud_scale and reach a config that saved the old automatic. A saved config
+# keeps what it holds; hud_edit's "reset" and "reset all" return to these.
+# csprogs, ftesurf/cfg/default.cfg and defaultuser.cfg: no engine source, server QC,
+# recorder, evidence, ranking or Build change (commit and tag above stay).
 # Patch 638: a linked player's in-game name is their Steam name. The lobby forces the
 # userinfo name from the account once surfd has answered the connect proof and drops
 # that player's own `setinfo name`; surfd files an account's rows under the name and

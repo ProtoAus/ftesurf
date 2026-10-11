@@ -124,8 +124,8 @@ void() NM_RegisterCvars =
 	// Default 0.  This is a diagnostic, not a HUD panel, and the house rule is
 	// that a solo session is byte-identical to before the feature existed.
 	registercvar("hud_net",   "0", CVAR_ARCHIVE);
-	registercvar("hud_net_x", "0.78", CVAR_ARCHIVE);
-	registercvar("hud_net_y", "0.30", CVAR_ARCHIVE);
+	registercvar("hud_net_x", "0.7616", CVAR_ARCHIVE);
+	registercvar("hud_net_y", "0.02", CVAR_ARCHIVE);
 };
 
 /*

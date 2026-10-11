@@ -48,8 +48,8 @@ void() MPad_RegisterCvars =
 	registercvar("hud_mouse",       "1",   CVAR_ARCHIVE);
 	registercvar("hud_mouse_x",     "-1",  CVAR_ARCHIVE);   // -1: attached left of the keys
 	registercvar("hud_mouse_y",     "-1",  CVAR_ARCHIVE);
-	registercvar("hud_mouse_span",  "90",  CVAR_ARCHIVE);   // degrees edge to edge; height 10/16
-	registercvar("hud_mouse_trail", "0.5", CVAR_ARCHIVE);   // seconds, 0 = dot only
+	registercvar("hud_mouse_span",  "360",  CVAR_ARCHIVE);   // degrees edge to edge; height 10/16
+	registercvar("hud_mouse_trail", "1", CVAR_ARCHIVE);   // seconds, 0 = dot only
 	registercommand("mousepad");    // free: grepped the engine, plugins and src
 };
 
@@ -62,7 +62,7 @@ void(float ev, float dx, float dy) MPad_Track =
 	ui_mp_nev = ui_mp_nev + 1;
 };
 
-float() MPad_Span = { local float s; s = cvar("hud_mouse_span"); if (s < 5) s = 90; return s; };
+float() MPad_Span = { local float s; s = cvar("hud_mouse_span"); if (s < 5) s = 360; return s; };
 float() MPad_Life = { return bound(0, cvar("hud_mouse_trail"), 2); };
 
 void() MPad_Reset =

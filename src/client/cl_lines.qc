@@ -3147,11 +3147,11 @@ void() Line_RegisterCvars =
 	// Complete labels by default; opt into the old sparse overlap policy.
 	registercvar("hud_lines_declutter", "0", CVAR_ARCHIVE);
 	registercvar("hud_lines_telealpha", "0.3", CVAR_ARCHIVE);
-	// Patch 451: the numbers.  ON by default (Lex, asked when they were off):
-	// a line you have to switch on twice is a line most people never see.
-	// 1 = on the contact marks; 2 adds the peaks, which is dense on a bhop run;
-	// 3 (Patch 632) the peaks alone.
-	registercvar("hud_lines_nums",    "2", CVAR_ARCHIVE);    // Patch 627: the tops and bottoms too
+	// Patch 451: the numbers.  1 = on the contact marks; 2 adds the peaks, which
+	// is dense on a bhop run; 3 (Patch 632) the peaks alone.  OFF by default since
+	// Patch 637, the owner's own layout as the template; 451 had turned them on at
+	// his asking and 627 made that 2.
+	registercvar("hud_lines_nums",    "0", CVAR_ARCHIVE);
 	// Patch 632: your line and the others, each 0 speed, 1 gain, 2 contact, 3 energy,
 	// 4 air control, or 5 its plain colour (blue; by time).  hud_watch_path_color,
 	// the one setting they replace, is no longer read: a saved value of it would
@@ -3178,7 +3178,7 @@ void() Line_RegisterCvars =
 	registercvar("hud_lines_win",    "0", CVAR_ARCHIVE);
 	// Patch 624: seconds of each ticked board line shown ahead of where the viewer is
 	// along it (and a quarter of that behind); 0 is everything within hud_watch_path_far.
-	registercvar("hud_lines_order",  "8", CVAR_ARCHIVE);
+	registercvar("hud_lines_order",  "4", CVAR_ARCHIVE);
 	registercvar("hud_lines_winf",   "0", CVAR_ARCHIVE);
 };
 

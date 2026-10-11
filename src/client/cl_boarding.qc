@@ -66,7 +66,7 @@ void() Boarding_RegisterCvars =
 	  below are non-zero, so this is the case the rule exists for rather than a
 	  formality.
 	*/
-	registercvar("hud_boarding",       "1", CVAR_ARCHIVE);
+	registercvar("hud_boarding",       "0", CVAR_ARCHIVE);
 
 	/*
 	  -1 IS A SENTINEL, NOT A COORDINATE, and it is hud_board_x's exactly: it means
@@ -78,8 +78,9 @@ void() Boarding_RegisterCvars =
 	  Dragging it in `hud_edit` writes real fractions and it stops following.  Both
 	  axes are tested together; half-detached is not a state worth reaching.
 	*/
-	registercvar("hud_boarding_x",    "-1", CVAR_ARCHIVE);
-	registercvar("hud_boarding_y",    "-1", CVAR_ARCHIVE);
+	// Patch 637: the default is the owner's place; -1/-1 still stacks it under Board.
+	registercvar("hud_boarding_x",    "0.6646", CVAR_ARCHIVE);
+	registercvar("hud_boarding_y",    "0.5", CVAR_ARCHIVE);
 
 	registercvar("hud_boarding_size",  "0", CVAR_ARCHIVE);
 

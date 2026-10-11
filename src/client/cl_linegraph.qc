@@ -279,9 +279,9 @@ void() LineGraph_Register =
 	registercvar("hud_linegraph_live", "1", CVAR_ARCHIVE);     // Patch 622: your own run on the graphs
 	// Patch 610. Under the map info, clear of the key block the old bottom-right
 	// panel covered. 1 speed, 2 energy, 3 both.
-	registercvar("hud_linegraph_x", "0.99", CVAR_ARCHIVE);
-	registercvar("hud_linegraph_y", "0.30", CVAR_ARCHIVE);
-	registercvar("hud_linegraph_plots", "1", CVAR_ARCHIVE);
+	registercvar("hud_linegraph_x", "0.9667", CVAR_ARCHIVE);
+	registercvar("hud_linegraph_y", "0.3435", CVAR_ARCHIVE);
+	registercvar("hud_linegraph_plots", "3", CVAR_ARCHIVE);
 	registercvar("hud_linegraph_size", "0", CVAR_ARCHIVE);
 	// Patch 614: the panel's plots through the ui_imgui plugin where it is loaded.
 	registercvar("ui_native_graphs", "1", CVAR_ARCHIVE);

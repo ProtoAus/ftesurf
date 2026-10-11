@@ -44,7 +44,7 @@ float  ui_he_snapx, ui_he_snapy;// the lines snapped to this frame, -1 = none
   would start dragging whatever panel happens to be under the cursor, which is
   the opposite of what pressing a button should do.  But four of the ten
   elements live in the left margin (splits 0.045, debug 0.012, and both menus at
-  0.018) and the panel has to live somewhere, so with it fixed in place those
+  0.018, as shipped then) and the panel has to live somewhere, so with it fixed in place those
   four were unreachable: the first run of this editor could not drag the split
   list, the save menu or the video menu at all.
 
@@ -287,14 +287,14 @@ void() HE_BuildTable =
 	// among the LISTED rows rather than after the hidden block -- see he_listed:
 	// the list loop skips hidden rows, so the two orders only agree while the
 	// listed ones stay contiguous at the top.
-	HE_Add("trainer", "Strafe trainer", "hud_trainer_x", "hud_trainer_y", "hud_trainer", 0, HEA_CT, 156, 146);
-	HE_Text("hud_trainer_size",  "16 20 24 28",  8);     // UI; 16 at hud_scale 2
+	HE_Add("trainer", "Strafe trainer", "hud_trainer_x", "hud_trainer_y", "hud_trainer", 0, HEA_CT, 195, 183);  // Patch 637: 156x146 at the 8-unit text
+	HE_Text("hud_trainer_size",  "16 20 24 28", 10);     // UI; 20 at hud_scale 2 (Patch 637)
 	HE_Add("board",   "Board",      "hud_board_x",   "hud_board_y",   "hud_board",    0, HEA_CT,  120,  52);
 	HE_Text("hud_board_size",    "16 20 24 28", 10);     // mono from build 65; 20 today
 	HE_Add("boarding","Boarding",   "hud_boarding_x","hud_boarding_y","hud_boarding", 0, HEA_CT,  150,  44);
 	HE_Text("hud_boarding_size", "16 20 24 28", 10);     // mono; 20 shipped
 	HE_Add("speed",   "Speed",      "hud_speed_x",   "hud_speed_y",   "hud_speed",    0, HEA_CT,   70,  40);
-	HE_Text("hud_speed_size",    "40 48 64 80", 24);     // display; 48 today
+	HE_Text("hud_speed_size",    "40 48 64 80", 32);     // display; 64 at hud_scale 2 (Patch 637)
 	HE_Add("banner",  "Banner",     "hud_banner_x",  "hud_banner_y",  "hud_banner",   0, HEA_CT,  300,  50);
 	HE_Text("hud_banner_size",   "40 48 64 80", 32);     // the unit (hero = 32u); 64 at scale 2
 	// Patch 385: listed for its options only -- the banner sits where it sits.
@@ -1850,31 +1850,35 @@ void(vector scr) HUD_EditDraw =
   and hud_seq_x -0.25 are where builds 13 and 21 put them BY HAND to stop the
   split list and the segment column overlapping, and a "reset" that restored an
   older layout would recreate a bug that was fixed once already.
+  Patch 637: the list is the owner's own layout of 11 Oct, those two included.
+  board's and boarding's pairs were the -1 sentinel; -1/-1 still attaches them,
+  from the console.
 */
 void(float r) HE_Default =
 {
 	local string id;
 	id = he_id[r];
 
-	if (id == "timer")   localcmd("seta hud_timer_x 0.5\nseta hud_timer_y 0.035\n");
-	if (id == "splits")  localcmd("seta hud_splits_x 0.045\nseta hud_splits_y 0.20\n");
-	if (id == "seq")     localcmd("seta hud_seq_x -0.25\nseta hud_seq_y 0.5\n");
+	if (id == "timer")   localcmd("seta hud_timer_x 0.5\nseta hud_timer_y 0.0405\n");
+	if (id == "splits")  localcmd("seta hud_splits_x 0.0695\nseta hud_splits_y 0.1784\n");
+	if (id == "seq")     localcmd("seta hud_seq_x -0.1951\nseta hud_seq_y 0.483\n");
 	if (id == "strafe")  localcmd("seta hud_strafe_x 0.5\nseta hud_strafe_y 0.42\n");
-	if (id == "trainer") localcmd("seta hud_trainer_x 0.28\nseta hud_trainer_y 0.27\n");
-	if (id == "graph")   localcmd("seta hud_linegraph_x 0.99\nseta hud_linegraph_y 0.30\n");
-	if (id == "board")   localcmd("seta hud_board_x -1\nseta hud_board_y -1\n");
-	if (id == "speed")   localcmd("seta hud_speed_x 0.5\nseta hud_speed_y 0.68\n");
+	if (id == "trainer") localcmd("seta hud_trainer_x 0.2833\nseta hud_trainer_y 0.5963\n");
+	if (id == "graph")   localcmd("seta hud_linegraph_x 0.9667\nseta hud_linegraph_y 0.3435\n");
+	if (id == "board")   localcmd("seta hud_board_x 0.5\nseta hud_board_y 0.5\n");
+	if (id == "speed")   localcmd("seta hud_speed_x 0.5\nseta hud_speed_y 0.6269\n");
 	if (id == "banner")  localcmd("seta hud_banner_x 0.5\nseta hud_banner_y 0.25\n");
 	if (id == "keys")    localcmd("seta hud_keys_x 0\nseta hud_keys_y 0.84\n");
-	if (id == "debug")   localcmd("seta hud_debug_x 0.012\nseta hud_debug_y 0.30\n");
-	if (id == "saveloc") localcmd("seta hud_saveloc_x 0.018\nseta hud_saveloc_y 0.34\n");
-	if (id == "gfx")     localcmd("seta hud_gfx_x 0.018\nseta hud_gfx_y 0.10\n");
-	if (id == "vote")    localcmd("seta hud_vote_x 0.018\nseta hud_vote_y 0.30\n");
+	if (id == "debug")   localcmd("seta hud_debug_x 0.0333\nseta hud_debug_y 0.0405\n");
+	if (id == "saveloc") localcmd("seta hud_saveloc_x 0.0333\nseta hud_saveloc_y 0.3695\n");
+	if (id == "gfx")     localcmd("seta hud_gfx_x 0.0333\nseta hud_gfx_y 0.338\n");
+	if (id == "vote")    localcmd("seta hud_vote_x 0.0333\nseta hud_vote_y 0.4028\n");
 	if (id == "mapinfo") localcmd("seta hud_mapinfo_x 0.99\nseta hud_mapinfo_y 0.02\n");
 	if (id == "specby")  localcmd("seta hud_specby_x 0.99\nseta hud_specby_y 0.18\n");
 
 	/*
-	  BUILD 65.  boarding's pair is the -1 SENTINEL and not a coordinate, exactly as
+	  BUILD 65 (until Patch 637, see above HE_Default).  boarding's pair is the -1
+	  SENTINEL and not a coordinate, exactly as
 	  board's is: it means "stay stacked under the board panel", which is where it
 	  belongs and which no fraction can express, because the panel above it changes
 	  height as its rows fade in and out.  Both axes together -- half-detached is
@@ -1883,9 +1887,9 @@ void(float r) HE_Default =
 	  crosshair has no position and so has no reset; HUD_EditDraw does not offer the
 	  chip for it, and this is the other half of that.
 	*/
-	if (id == "boarding") localcmd("seta hud_boarding_x -1\nseta hud_boarding_y -1\n");
-	if (id == "net")      localcmd("seta hud_net_x 0.78\nseta hud_net_y 0.30\n");
-	if (id == "results")  localcmd("seta hud_results_x 0.72\nseta hud_results_y 0.50\n");
+	if (id == "boarding") localcmd("seta hud_boarding_x 0.6646\nseta hud_boarding_y 0.5\n");
+	if (id == "net")      localcmd("seta hud_net_x 0.7616\nseta hud_net_y 0.02\n");
+	if (id == "results")  localcmd("seta hud_results_x 0.7792\nseta hud_results_y 0.50\n");
 	if (id == "mouse")    localcmd("seta hud_mouse_x -1\nseta hud_mouse_y -1\n");  // Patch 390: attached
 
 	ui_he_dirty = TRUE;
@@ -1966,6 +1970,9 @@ void() HE_ResetAll =
 	// what it found (measured on release 0.1.23's default.cfg, the review).
 	localcmd("seta cl_playerfade 1\nseta cl_playerfade_near 32\nseta cl_playerfade_far 128\n");
 	localcmd("seta hud_lines_color_own 5\nseta hud_lines_color_others 5\n");
+	// Patch 637: the two settings it moved that only the game code registers and
+	// that are not positions (those are HE_Default's), for the same reason.
+	localcmd("seta hud_lines_order 4\nseta hud_linegraph_plots 3\n");
 
 	// And the panel itself, which can be dragged into a corner like anything else.
 	HE_ResetCvar("hud_edit_panel_x");

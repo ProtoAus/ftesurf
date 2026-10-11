@@ -1105,7 +1105,7 @@ void(vector scr) Trn_Draw =
 		return;
 
 	Font_Set(ui_font_ui);
-	sz  = Font_Px(HUD_Size("hud_trainer_size", 8 * ui_cv_scale));
+	sz  = Font_Px(HUD_Size("hud_trainer_size", 10 * ui_cv_scale));
 	u   = sz / 8;
 	hsz = Font_Px(6 * u);
 	w   = 156 * u;
@@ -1368,8 +1368,10 @@ void() Trn_RegisterCvars =
 	  647..847 at hud_scale 2 on a 2560x1494 buffer -- not where its cvars read.
 	  0.28/0.27 puts this at 537..897 x 403..633, which clears the splits block
 	  above it, the segments column below it, and the whole centre stack.
+	  Patch 637: 0.2833/0.5963 is where the owner has it; the collisions above
+	  were measured against the layout before his.
 	*/
-	registercvar("hud_trainer_x", "0.28", CVAR_ARCHIVE);
-	registercvar("hud_trainer_y", "0.27", CVAR_ARCHIVE);
+	registercvar("hud_trainer_x", "0.2833", CVAR_ARCHIVE);
+	registercvar("hud_trainer_y", "0.5963", CVAR_ARCHIVE);
 	Trn_Clear();
 };

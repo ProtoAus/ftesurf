@@ -122,7 +122,7 @@ float  rec_wt_tickrate;          // the .rec's own `tickrate` header key
 /*
   The bottom edge of the playback chrome, in pixels, or 0 when it is not up.
 
-  The timer panel is centred at hud_timer_y 0.035 and the chrome sits across the
+  The timer panel is centred at hud_timer_y 0.0405 (0.035 until Patch 637) and the chrome sits across the
   top of the screen, so on any window they overlap -- the run clock and the
   "stage 5/6" line were drawn straight through the scrub bar.  Timer_DrawPanel
   moves down by whatever this says rather than by a constant, because the panel's
