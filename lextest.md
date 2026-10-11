@@ -39,6 +39,8 @@ a few sizes, drift and fade out.
   its numbers say. Fixing it makes all of them fainter, and they were tuned
   by eye as they are. Not changed. BACKLOG, "Blended particles are drawn
   twice a frame".
+- **Live since 11 Oct 14:53 UTC (12 Oct, 01:53 here)** on both installs and
+  all twelve lobbies. Restart the game to get it.
 
 ## 00. 12 Oct — up to sixty-four run lines (Patch 649)
 

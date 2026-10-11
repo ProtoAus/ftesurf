@@ -4629,6 +4629,16 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   0.028, HL2 and CS:S alike).
 - `vid_restart` TAKES 8 s ON THE RIG, so an arm that reads 10 s after it has
   seen 2 s of motes: read twice and grade the rise (315, then 981).
+- DEPLOYED 12 Oct (UTC 11 Oct) from `7e37d30`, main's tip, so with Patch 649
+  under it: csprogs `88986a28`, the file the arm passed on, to the Pi at
+  14:53Z with 12 lobby rows and 0 players, and to both installs at 14:53:36Z
+  with no game running, under the rig lock. Twelve lobbies restarted, hashes
+  read back from the host. `tools/pi_lobby_smoke.py` on 27510 at 14:54Z: the
+  client was served a csprogs hashing `88986a28`, drew the board, no QC error.
+  `.prev` is 649's `95f30046`. The Pi's qwprogs was swapped for itself
+  (`35fda5eb`, the same source compiled a day after `76e00522`); the installs'
+  qwprogs, menu.dat and the exes did not change. The smoke grades the board:
+  no client has looked at a mote on a lobby.
 
 ## The milk visualizer (Patch 467)
 
