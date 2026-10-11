@@ -62,6 +62,7 @@ W.KSF_MIN = 1
 W.MOM_MIN = 0            # the fixture worlds are a handful of maps
 W.GET_DELAY = 0.0
 W.FLOOR_GB = 0           # this box's free space is not under test (the Pi's /tmp has 4 GB)
+W.KSF_LOCK = os.path.join(HOME, "ksfwatch.lock")    # not the live crawl's
 os.makedirs(os.path.dirname(S.RUNS_DIR))    # the game's data folder: without one, played() cannot tell
 REAL_CONNECT = S.connect
 REAL_TIME = time.time
@@ -162,6 +163,7 @@ class World(object):
         self.stuck = False      # the surf list ignores `skip`
         self.hook = None        # f(name), called as a CDN file is asked for
         self.zhook = None       # f(name), called as its zones are asked for
+        self.khook = None       # f(url), called at every request to ksf.surf
 
     def row(self, n):
         m = self.mom[n]
@@ -217,6 +219,8 @@ class World(object):
             if isinstance(body, int):
                 raise http(url, body)
             return Resp(body, self.lie.get(n), self.drip.get(n, 0))
+        if url.startswith(W.KSF_BASE) and self.khook:
+            self.khook(url)
         if url == W.KSF_BASE + "/maps":
             if "ksf" in self.down:
                 raise http(url, 500)
@@ -562,6 +566,84 @@ def case_limits_on_a_reply():
           (rc, lib(maps), strikes(state), REAL_TIME() - t0 < 2.5,
            sorted(state_of(state)["back"])),
           (0, ["surf_kk.bsp"], [], True, ["surf_slow:" + sha(bsp("slow"))[:12]]))
+
+
+def case_turns_with_the_crawl():
+    # ksfimport --watch talks to the same host: never beside it, never while
+    # it is parked after a refusal.
+    def asked_ksf(w):
+        return sorted(u for u in w.asked if u.startswith(W.KSF_BASE))
+
+    mom, ksf = {"surf_m1": M("m1")}, {"surf_k1": Z("surf_k1", "k1")}
+    pf = os.path.join(S.DATA_DIR, "ksf", ".refused")
+    os.makedirs(os.path.dirname(pf), exist_ok=True)
+    w, maps, state = setup(mom, ksf)
+    with io.open(pf, "w", encoding="utf-8") as fh:
+        json.dump({"at": int(REAL_TIME()) - 60, "until": int(REAL_TIME()) + 3600, "n": 1,
+                   "why": "no answer: The read operation timed out"}, fh)
+    rc = tick(maps, state, "--go")
+    check("while KSF's crawl is parked after a refusal, KSF is asked nothing; Momentum's "
+          "map still lands", (rc, asked_ksf(w), lib(maps)), (0, [], ["surf_m1.bsp", "zones"]))
+    with io.open(pf, "w", encoding="utf-8") as fh:
+        json.dump({"at": int(REAL_TIME()) - 7200, "until": int(REAL_TIME()) - 60, "n": 1,
+                   "why": "x"}, fh)
+    tick(maps, state, "--go")
+    check("...and once the park is over it is asked again",
+          (asked_ksf(w), lib(maps)),
+          ([W.KSF_BASE + "/files/surf_k1.zip", W.KSF_BASE + "/maps"],
+           ["surf_k1.bsp", "surf_m1.bsp", "zones"]))
+    os.remove(pf)
+
+    # The crawl is refused after the page was read: the archives are left too.
+    w, maps, state = setup({}, {"surf_k3": Z("surf_k3", "k3")})
+
+    def refused_meanwhile(url):
+        with io.open(pf, "w", encoding="utf-8") as fh:
+            json.dump({"at": int(REAL_TIME()), "until": int(REAL_TIME()) + 3600, "n": 1,
+                       "why": "HTTP 429"}, fh)
+    w.khook = refused_meanwhile
+    rc = tick(maps, state, "--go")
+    check("a park that begins after the page was read stops the archives as well, "
+          "and strikes nothing", (rc, asked_ksf(w), lib(maps), strikes(state)),
+          (0, [W.KSF_BASE + "/maps"], [], []))
+    os.remove(pf)
+
+    try:
+        import fcntl
+    except ImportError:
+        SKIPPED.append("turns with the crawl's lock (no flock)")
+        return
+    w, maps, state = setup(mom, ksf)
+    keep, W.KSF_WAIT = W.KSF_WAIT, 0
+    crawl = open(W.KSF_LOCK, "a")
+    fcntl.flock(crawl.fileno(), fcntl.LOCK_EX)
+    try:
+        rc = tick(maps, state, "--go")
+    finally:
+        crawl.close()
+    check("while the crawl holds its lock KSF is asked nothing, and nothing is struck",
+          (rc, asked_ksf(w), strikes(state)), (0, [], []))
+    tick(maps, state, "--go")
+    W.KSF_WAIT = keep
+    check("...and with the lock free it is", lib(maps), ["surf_k1.bsp", "surf_m1.bsp", "zones"])
+
+    # Its own requests hold that lock: a crawl tick starting meanwhile is skipped.
+    w, maps, state = setup({}, {"surf_k2": Z("surf_k2", "k2")})
+    seen = []
+
+    def probe(url):
+        fh = open(W.KSF_LOCK, "a")
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            seen.append("free")
+        except OSError:
+            seen.append("held")
+        finally:
+            fh.close()
+    w.khook = probe
+    tick(maps, state, "--go")
+    check("the lock is held during every request to KSF (the page and the archive)",
+          seen, ["held", "held"])
 
 
 def case_bad_names_and_shapes():
@@ -1375,6 +1457,7 @@ def case_mapscan():
 
 def main():
     for case in (case_plan_and_install, case_bad_files, case_page_scan, case_limits_on_a_reply,
+                 case_turns_with_the_crawl,
                  case_bad_names_and_shapes, case_hosts,
                  case_held_builds, case_first_zones, case_variants, case_zones_and_limits,
                  case_extra_and_lock, case_mapscan):

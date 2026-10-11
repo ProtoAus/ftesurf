@@ -69,6 +69,7 @@ all (a block page) is the host's: no strike, and the file goes to the back of
 the next run.  A transfer cut short is nobody's strike either.
 """
 import argparse
+import contextlib
 import faulthandler
 import hashlib
 import http.client
@@ -126,6 +127,8 @@ MAX_MEM = 1536 << 20        # this process's address space: a reply at the cap p
                             # to ~200 MB, a run's own work is under 100
 FILE_SECONDS = 1800     # one download: a host dripping bytes must not hold the lock
 OPEN_SECONDS = 120      # until a reply's headers: no read clock covers that wait
+KSF_LOCK = "/tmp/surfd-ksfwatch.lock"   # what the crawl's cron line holds for a tick
+KSF_WAIT = 300          # s to wait for that tick to end before leaving KSF for the run
 API_SECONDS = 120       # ...nor one reply
 RUN_SECONDS = 3 * 3600  # nothing is started after this; cron runs it again
 FLOOR_GB = 20           # momgrab's floor on the same disk
@@ -245,6 +248,46 @@ def opened(url):
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM, old)
+
+
+@contextlib.contextmanager
+def ksf_turn():
+    """One of us at a time on ksf.surf.  ksfimport --watch crawls it every five
+    minutes under KSF_LOCK, and a refusal parks that crawl for six hours,
+    doubling: on 11 Oct its request timed out while the first fill was
+    downloading archives beside it.  Held for one request; the crawl's
+    `flock -n` skips a tick that starts meanwhile.  Linux only."""
+    try:
+        import fcntl
+        fh = open(KSF_LOCK, "a")
+    except (ImportError, OSError):
+        fh = None
+    try:
+        t0 = time.time()
+        while fh is not None:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.time() - t0 >= KSF_WAIT:
+                    raise Refused("its crawl is on it: not asked beside that")
+                time.sleep(2)
+        yield
+    finally:
+        if fh is not None:
+            fh.close()
+
+
+def ksf_parked(now):
+    """-> why KSF must not be asked now, or "".  The crawl's own rule is that a
+    refusal is not retried until its park ends; a second tool asking the same
+    host in that time is the retry."""
+    park = _load(os.path.join(S.DATA_DIR, "ksf", ".refused"))
+    if isinstance(park, dict) and type(park.get("until")) in (int, float) and now < park["until"]:
+        return "it refused its crawl (%s): nothing asked until %s" % (
+            str(park.get("why"))[:80],
+            time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(park["until"])))
+    return ""
 
 
 class Pacer:
@@ -904,7 +947,10 @@ def run(a):
     except Refused as e:
         said.append("momentum: NOT READ (%s)" % e)
     try:
-        ksf = ksf_list(pacer)
+        if ksf_parked(now):
+            raise Refused(ksf_parked(now))
+        with ksf_turn():
+            ksf = ksf_list(pacer)
         read.add("ksf")
     except Refused as e:
         said.append("ksf: NOT READ (%s)" % e)
@@ -1055,7 +1101,10 @@ def run(a):
     def ksf_get(url, leaf, member, part):
         zp = os.path.join(a.state, "tmp", leaf + ".zip")
         try:
-            got = download(url, zp, magic=b"PK")
+            if ksf_parked(int(time.time())):    # the crawl was refused meanwhile
+                raise Refused(ksf_parked(int(time.time())))
+            with ksf_turn():
+                got = download(url, zp, magic=b"PK")
             return zip_bsp(zp, member, part) if got[0] == "ok" else got
         finally:
             _rm(zp)

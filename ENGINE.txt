@@ -25,7 +25,7 @@ commit   65bf6f4640fa17ac2c3cb79d7725226e55ce645b
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-645
-patch    647
+patch    650
 # Patch 645: run lines, their marks and the HUD graph's curves are drawn by the engine
 # (six CSQC builtins, engine/client/pr_csqc_lines.inc) where QC built every segment. The
 # picture is the same, pixel for pixel, and eight ticked lines add 0.9 ms to a frame's

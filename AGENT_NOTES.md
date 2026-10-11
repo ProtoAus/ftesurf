@@ -8669,6 +8669,17 @@ blind fallback in `ui_map_backdrop` alive for as long as it lived.
   deploy 7 of 149 were Forward main boards; in the first tick after it, 8 of
   10. 367 of 450 main boards held one page at 12:43Z (372 of 448 that
   morning): at 8 new pages a tick, about a day and a half to 200 rows each.
+- **TWO TOOLS, ONE HOST (Patch 650).** The KSF crawl parked itself at
+  13:31Z on 11 Oct ("read operation timed out": six hours, doubling each
+  time) while 644's fill was downloading archives from ksf.surf, 13:28Z to
+  13:36Z. It had also timed out the day before with no watcher running, so
+  the cause is not shown; the overlap is, and at 20 archives every six hours
+  it would have recurred. `mapwatch.py` now holds the crawl's own lock for
+  each request to ksf.surf (`/tmp/surfd-ksfwatch.lock`, the one the crawl's
+  cron line takes with `flock -n`, so a tick starting meanwhile is skipped),
+  waits `KSF_WAIT` for a tick in progress, and asks KSF nothing while
+  `data/ksf/.refused` says the crawl is parked. The lock cases need flock:
+  "skipped" on Windows, graded on the Pi, where six mutants fail.
 - `mapscan.py --go` from `C:\FTESurf` at 13:40Z: the Pi's catalogue 1,647
   names, 37 the roster did not have; 319 Beta names sent; `mapdl.txt` 1,787
   rows (1,279 in the 0.1.24 archive, 705 lines before that).

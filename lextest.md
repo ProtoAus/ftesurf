@@ -109,7 +109,9 @@ new map: the six-hourly scan on this PC only wrote a list.
   Pi's crawl spent its budget on stage boards. It now fills every map's main
   board first, to 200 rows, and a map somebody opens to 1,000. Same request
   rate, so about a day and a half to get round. The wheel (below) is how you
-  scroll to them.
+  scroll to them. KSF's site timed out on that crawl at 13:31 UTC on 11 Oct
+  and it pauses itself six hours after a refusal, so it starts again at
+  19:31 UTC; Patch 650 stops the map watcher talking to KSF beside it.
 
 **Please look.**
 1. **Map list, CS:S and Momentum libraries.** It offers 1,787 maps now (1,279
