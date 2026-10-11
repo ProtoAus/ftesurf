@@ -7631,6 +7631,28 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **DEPLOYED 11 Oct 2026, 10:31-10:32 UTC (FTESurf `c3dde39`, Patch 640):
+  csprogs, the Pi's twelve lobbies and both Windows installs.** Under the rig
+  lock. `build.ps1 -Pi` at 12 rows and 0 players: `csprogs.dat` `b01acd53`,
+  the bytes the arm ran on (`.prev` `30f816bb`), `qwprogs.dat` `76e00522`
+  swapped for itself; twelve units active. Windows, 10:32:22Z, no game
+  running: `csprogs.dat` and its line table into `C:\FTESurf` and
+  `C:\FTEQuake`, the old pair kept as `.prev`, read back with a second tool.
+  LOOKED AT, LIVE, 10:37Z: a private rig of the installed files (a key of
+  its own, not linked) joined `play.proto.bar:27520` on surf_beginner and
+  opened the Online list on FTESurf rows: the owner's row with HIS Steam
+  picture before the name, the cache "asked 1 got 1", no error in the log;
+  so the game-facing vhost passes `?avatar=` to surfd for a real mark too.
+  NOT SEEN: a picture in the room list or beside a run line (each needs a
+  linked player on the lobby: lextest asks the owner to look).
+  THE PI'S DATABASE BACKUPS, the same day, on the owner's word ("if they are
+  redundant, yes"): eight superseded deploy snapshots removed at 09:29Z
+  (8.0 GiB), after `quick_check ok` on the two kept, `bak-b8c2c5d` (the
+  newest) and `bak-pre629on` (the last before his rows changed owner). Left:
+  `prewipe492` (the only copy of the 173 baseline rows wiped on 5 Oct) and
+  `bak-ac-safe-observers` (another session's). A read-only open of a WAL
+  database still writes `-shm` and `-wal` beside it: open copies with
+  `immutable=1`, or a listing leaves two files a backup.
 - **A TEXTURE FROM `r_uploadimage` IS NOT WHAT `drawpic(name)` DRAWS (Patch
   640).** drawpic's default shader is `program default2d#PREMUL` and loads its
   picture with `IF_PREMULTIPLYALPHA` (`gl_shader.c:8270`, Shader_Default2D);

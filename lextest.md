@@ -22,8 +22,11 @@ From your list. A linked player's Steam picture is drawn before their name:
    linked keep the square.
 3. **A ticked run line.** Tick the line box on one of your own rows that has
    a replay: the name on the line in the world has your picture before it.
+- **Live since 10:32 UTC** on every lobby and both of your installs. I saw
+  number 1 for real: a test client on the surf_beginner lobby shows your
+  picture before "Proto" on the FTESurf list.
 - The picture arrives a second or two after the board opens (one is fetched
-  at a time), and is kept until you close the game.
+  at a time), and is kept for the map.
 - **I measured 1 in a test rig, off a screenshot. 2 and 3 I could not see
   without a linked player on a lobby: please look, and tell me if either is
   missing, misplaced or the wrong size.**
