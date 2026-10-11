@@ -28,8 +28,10 @@ def check(what, got, want):
     ok = got == want
     if not ok:
         FAILS.append(what)
-    print("%s %-74s %s" % ("ok  " if ok else "FAIL", what[:74],
-                           "" if ok else "%r  want %r" % (got, want)))
+    line = "%s %-74s %s" % ("ok  " if ok else "FAIL", what[:74],
+                            "" if ok else "%r  want %r" % (got, want))
+    enc = sys.stdout.encoding or "utf-8"
+    print(line.encode(enc, "backslashreplace").decode(enc))
 
 
 def fresh(linked="1", home=None):
@@ -496,9 +498,10 @@ account(m, SID, "Lex")
 linked(m, PUB1, SID)
 submit(m, GUID1, 5000, PUB1, name="  ")
 submit(m, GUID2, 5001, None, name="  ")
-check("a name that cleans to nothing is not the guid beside an account's id",
+check("a lobby name that cleans to nothing: an account's row is under its Steam name "
+      "(Patch 638), an install's under its guid",
       rows(m, "SELECT tier, name FROM runs ORDER BY tier"),
-      [("community", GUID2), ("ranked", "player")])
+      [("community", GUID2), ("ranked", "Lex")])
 for i in range(m.accounts.INSTALLS_MAX + 6):
     submit(m, "%032x" % (i + 1), 4000 + i, PUB1, runid="cap%d" % i)
 check("an account's ledger of installs stops at its cap, and the runs still land",
@@ -516,6 +519,20 @@ body = r.get_json() or {}
 check("a player with imported rows keeps their outbound id on the profile once they have a "
       "ranked row", (r.status_code, body.get("ext"), body.get("by_tier", {}).get("ranked", 0) > 0),
       (200, SID, True))
+# ...by the tiers the rows are on, not because the account is linked (Patch 636
+# publishes a linked account's by a second rule, which hid a mutant of this
+# one): a SteamID with a ranked row and an imported one and NO account.
+ORPHAN = "76561198000000031"
+for tier, ms in (("ranked", 41000), ("momentum", 40500)):
+    run_sql(m, "INSERT INTO runs (map, track, leg, tier, style, player, name, ticks, tickrate,"
+               " millis, flags, node, runid, submitted, replay_id) VALUES ('surf_test', 0, 0, ?,"
+               " 'clean', ?, 'Orphan', ?, 100, ?, 0, 'x', '', 2, 0)", (tier, ORPHAN, ms // 10, ms))
+m.people_reset()
+body = m.app.test_client().get(
+    "/board/api/player/" + hashlib.sha256(ORPHAN.encode()).hexdigest()[:m.WEB_HANDLE_LEN],
+    environ_base={"REMOTE_ADDR": "127.0.0.1"}).get_json() or {}
+check("...and that is by the tier the imported row is on, account or no account",
+      (body.get("ext"), body.get("src")), (ORPHAN, "ranked"))
 
 print("\n--- 7. the game's mark for an account's rows")
 import accounts     # noqa: E402  (after the path is set)
@@ -926,10 +943,142 @@ else:
     before = map_records(m)
     ban(c, token, SID)
     check("the map-record file names its tiers too: a banned account's time is no map's best",
-          (before, map_records(m)), (["wr surf_test 50000 ranked Proto"], []))
+          (before, map_records(m)), (["wr surf_test 50000 ranked Lex"], []))
 
 for k in list(ADMIN_ENV) + ["SURFD_ADMIN_HASH"]:
     os.environ.pop(k, None)
+
+print("\n--- 9. an account's name (Patch 638)")
+m = fresh()
+account(m, SID, "Lex")
+account(m, SID2, "")                    # signed in with no profile key: no name
+linked(m, PUB1, SID)
+linked(m, PUB2, SID2, "g2")
+submit(m, GUID1, 5000, PUB1, name="SomethingElse", rec=leaf(5000, GUID1))
+submit(m, GUID2, 5100, PUB2, name="Typed")
+submit(m, GUID3, 5200, None, name="Unlinked")
+submit(m, GUID2, 900, PUB2, name="  ", leg=2, runid="r5100")
+check("an account's row and recording are under its Steam name, whatever the lobby called "
+      "the player; an account with none, and an install with no account, keep the lobby's",
+      (rows(m, "SELECT player, name FROM runs WHERE leg = 0 ORDER BY millis"),
+       rows(m, "SELECT name FROM replays")),
+      ([(SID, "Lex"), (SID2, "Typed"), (GUID3, "Unlinked")], [("Lex",)]))
+check("...and where neither the account nor the lobby has a name, it is not the guid beside "
+      "an account's id",
+      rows(m, "SELECT name FROM runs WHERE leg = 2"), [("player",)])
+import accounts as A   # noqa: E402
+conn = sqlite3.connect(m._db)
+check("the lobby is told whether the name is the account's own",
+      (A.account_named("Lex"), A.account_named(""), A.account_named("^^^"),
+       A.account_name(conn, SID), A.account_name(conn, SID2), A.account_name(conn, "7" * 17)),
+      (True, False, False, "Lex", "", ""))
+conn.close()
+
+import steamsync       # noqa: E402
+import steam as ST     # noqa: E402
+ASKED = []
+
+
+def fake_steam(names, fail=False, picture="ab" * 20, many=None):
+    """Steam's summaries, for a test.  `many`: what a request for more than one
+    id raises (a reply too big, or unreadable); single ids are answered."""
+    def http(url, data=None, timeout=0):
+        ASKED.append(url)
+        if fail:
+            raise ST.Unavailable("status 503")
+        ids = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["steamids"][0].split(",")
+        if many and len(ids) > 1:
+            raise ST.Unavailable(many)
+        return json.dumps({"response": {"players": [
+            dict({"steamid": i, "personaname": names[i]},
+                 **({"avatarhash": picture} if picture else {}))
+            for i in ids if i in names]}}).encode()
+    return http
+
+
+import json            # noqa: E402
+import urllib.parse    # noqa: E402
+run_sql(m, "INSERT INTO runs (map, track, leg, tier, style, player, name, ticks, tickrate, millis,"
+           " flags, node, runid, submitted, replay_id) VALUES ('surf_test', 0, 0, 'momentum',"
+           " 'clean', ?, 'LexOnMomentum', 4800, 100, 48000, 0, 'import', '', ?, 0)", (SID, NOW))
+conn = sqlite3.connect(m._db)
+out = []
+run_sql(m, "UPDATE runs SET name = 'Old' WHERE player = ? AND tier = 'ranked'", (SID,))
+dry = steamsync.sync(conn, "k", fake_steam({SID: "Lexington", SID2: "Second"}), False, 100,
+                     out=out.append)
+check("a dry run says what it would rename (two names, and the one row not under its "
+      "account's present name) and writes nothing",
+      (dry, rows(m, "SELECT name FROM accounts ORDER BY steamid"),
+       rows(m, "SELECT name FROM runs WHERE player = ? AND tier = 'ranked'", (SID,))),
+      ((2, 2, 1), [("Lex",), ("",)], [("Old",)]))
+done = steamsync.sync(conn, "k", fake_steam({SID: "Lexington", SID2: "Second"}), True, 100,
+                      out=out.append)
+check("a changed Steam name renames the account and its own rows and recordings; a row "
+      "imported under the same SteamID keeps the name its board published",
+      (done, rows(m, "SELECT name, avatar <> '' FROM accounts ORDER BY steamid"),
+       rows(m, "SELECT tier, name FROM runs WHERE player IN (?, ?) AND leg = 0 ORDER BY tier, millis",
+            (SID, SID2)),
+       rows(m, "SELECT name FROM replays")),
+      ((2, 2, 3), [("Lexington", 1), ("Second", 1)],
+       [("momentum", "LexOnMomentum"), ("ranked", "Lexington"), ("ranked", "Second")],
+       [("Lexington",)]))
+wrote = conn.total_changes
+again = steamsync.sync(conn, "k", fake_steam({SID: "Lexington", SID2: "Second"}), True, 100,
+                       out=out.append)
+wrote = conn.total_changes - wrote
+blank = steamsync.sync(conn, "k", fake_steam({SID: "", SID2: "Second"}), True, 100, out=out.append)
+down = steamsync.sync(conn, "k", fake_steam({}, fail=True), True, 100, out=out.append)
+check("nothing changed is nothing written; a blank from Steam keeps the name we have; Steam "
+      "being down is one line and no change",
+      (again, wrote, blank, down, rows(m, "SELECT name FROM accounts ORDER BY steamid"),
+       [o for o in out if "did not answer" in o] != [], any("k" == u for u in ASKED)),
+      ((2, 0, 0), 0, (2, 0, 0), (0, 0, 0), [("Lexington",), ("Second",)], True, False))
+conn.close()
+m.people_reset()
+listed = {p["name"] for p in (m.app.test_client().get("/board/api/players").get_json()
+                              or {}).get("players", [])}
+check("the site lists an account under its Steam name, not under the alias of the row it "
+      "filed last (an imported one here)",
+      ("Lexington" in listed, "LexOnMomentum" in listed), (True, False))
+check("the lobby now makes that the second account's name too",
+      A.account_named(rows(m, "SELECT name FROM accounts WHERE steamid = ?", (SID2,))[0][0]), True)
+conn = sqlite3.connect(m._db)
+# THE ROWS FOLLOW THE ACCOUNT, not only a change this pass saw: a row filed
+# before Patch 638 under the game's own name, and Steam saying nothing new.
+run_sql(m, "UPDATE runs SET name = 'Proto' WHERE player = ? AND tier = 'ranked'", (SID,))
+old_rows = steamsync.sync(conn, "k", fake_steam({SID: "Lexington", SID2: "Second"}), True, 100,
+                          out=out.append)
+check("a row filed under another name before this patch is renamed by the next pass, though "
+      "Steam's name did not change",
+      (old_rows, rows(m, "SELECT name FROM runs WHERE player = ? AND tier = 'ranked'", (SID,))),
+      ((2, 0, 1), [("Lexington",)]))
+# A reply with no picture is not "no picture"; a name no game can show does not
+# relabel a history "player"; the engine's reserved names are not held.
+nopic = steamsync.sync(conn, "k", fake_steam({SID: "Lexington", SID2: "Second2"}, picture=""),
+                       True, 100, out=out.append)
+kept = rows(m, "SELECT name, avatar <> '' FROM accounts WHERE steamid = ?", (SID2,))
+stars = steamsync.sync(conn, "k", fake_steam({SID: "\u2605\u2605\u2605", SID2: "Second2"}),
+                       True, 100, out=out.append)
+check("a reply with no picture keeps the one we have; a Steam name no game can show is "
+      "stored and renames nothing",
+      (nopic, kept, stars, A.account_name(conn, SID),
+       rows(m, "SELECT DISTINCT name FROM runs WHERE player = ? AND tier = 'ranked'", (SID,))),
+      ((2, 1, 2), [("Second2", 1)], (2, 1, 0), "", [("Lexington",)]))
+check("a name the engine would turn into \"unnamed\" (it reads leet, drops spaces, and looks "
+      "for console anywhere) is not one the lobby holds a player to",
+      [A.account_named(n) for n in ("Console!", "c0ns0le", "Falcon Soleil", "xX_Console_Xx",
+                                    "Consul", "Lex")],
+      [False, False, False, False, True, True])
+# A reply that cannot be read is these ids' problem, not Steam's: they are
+# asked one by one, and the accounts behind them are still reached.
+ASKED[:] = []
+split = steamsync.sync(conn, "k", fake_steam({SID: "Lex", SID2: "Second2"},
+                                             many="oversized reply"), True, 100, out=out.append)
+check("a reply too big to read is asked again an account at a time, and nobody behind it "
+      "is left out",
+      (split, len(ASKED), rows(m, "SELECT name FROM accounts WHERE steamid = ?", (SID,))),
+      ((2, 1, 1), 3, [("Lex",)]))
+conn.close()
 
 logging.shutdown()                      # Windows: the log files are held open
 for h in HOMES:

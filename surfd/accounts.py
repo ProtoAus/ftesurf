@@ -757,6 +757,38 @@ def bans_now(conn, imported):
     return moved, recs
 
 
+def _engine_reserved(name):
+    """True where the engine would make "unnamed" of `name`: its test is "the
+    name, read as leet and without spaces, CONTAINS console" (sv_main.c
+    SV_DeDupeName over common.c deleetstring, ported byte for byte), wider
+    than game_name's "is console".  "Falcon Soleil" is one."""
+    out = []
+    for b in name.encode("utf-8", "replace"):
+        if b == 0xff:
+            continue
+        c = chr(b & 0x7f if b >= 0xa0 else b)
+        c = {"3": "e", "4": "a", "0": "o", "1": "l", "7": "l"}.get(c, c).lower()
+        if c not in "_ ~":
+            out.append(c)
+    return "console" in "".join(out)
+
+
+def account_named(raw):
+    """True when an account's stored Steam name is one a game can show AND the
+    engine will keep: the lobby holds a player to it (Patch 638)."""
+    if not raw:
+        return False
+    name = game_name(raw)
+    return name != "player" and not _engine_reserved(name)
+
+
+def account_name(db, steamid):
+    """The name an account's rows are filed under: its Steam name made safe for
+    the game, or "" when it has none (surfd then keeps the lobby's word)."""
+    row = db.execute("SELECT name FROM accounts WHERE steamid = ?", (steamid,)).fetchone()
+    return game_name(row[0]) if row is not None and account_named(row[0]) else ""
+
+
 def ban_counts_sql(imported):
     """Rows shown and set aside, per player of our own tiers.  `+player`: with
     an index by player there (Patch 636), a bare GROUP BY player left the
@@ -913,8 +945,11 @@ def register(app, d):
         return bool(secret and key and _same(key, secret)) and d.is_trusted(src)
 
     def account_json(row):
-        # Name and ban, and nothing a lobby has no use for yet.
-        return {"name": game_name(row["name"]), "banned": 1 if row["banned_at"] else 0}
+        # Name and ban, and nothing a lobby has no use for yet.  `named`: the
+        # name is the account's own and not game_name's stand-in for none, so
+        # the lobby may make it the player's name (Patch 638).
+        return {"name": game_name(row["name"]), "banned": 1 if row["banned_at"] else 0,
+                "named": 1 if account_named(row["name"]) else 0}
 
     def verifier():
         """tools/ed25519, found the way sweep.py finds it.  None if it is not there."""

@@ -25,7 +25,12 @@ commit   c543d688ad16a871753fa9525c23487f437741a5
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-625
-patch    636
+patch    638
+# Patch 638: a linked player's in-game name is their Steam name. The lobby forces the
+# userinfo name from the account once surfd has answered the connect proof and drops
+# that player's own `setinfo name`; surfd files an account's rows under the name and
+# `steamsync.py` (cron) keeps it current. qwprogs + surfd: no engine source, csprogs,
+# menu, recorder or Build change (commit and tag above stay).
 # Patch 635: the TAB board, from the owner's list of 11 Oct. The Online list is every
 # game's by default: FTESurf, Momentum and KSF times in time order, each imported row
 # marked with its source. Right of the tabs a filter switch and a three-stop slider

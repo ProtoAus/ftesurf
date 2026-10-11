@@ -371,7 +371,7 @@ def unspent(m):
 
 
 PUB1, PUB2, PUB3 = (ed25519.publickey(k).hex() for k in (KEY1, KEY2, KEY3))
-YES = {"acct": 1, "ok": 1, "name": "Lex", "banned": 0}
+YES = {"acct": 1, "ok": 1, "name": "Lex", "banned": 0, "named": 1}
 
 
 def no(why, **more):
@@ -1108,7 +1108,7 @@ check("a code for an account banned since it was asked for does not link",
 check("...and is not spent by the attempt",
       rows(m, "SELECT used_at FROM linkcodes WHERE code = ?", (bare(code),)), [(0,)])
 check("a banned account's install is told so when it connects", hello(m, KEY2),
-      {"acct": 1, "linked": 1, "name": "Other", "banned": 1})
+      {"acct": 1, "linked": 1, "name": "Other", "banned": 1, "named": 1})
 # KEY2 was talked into a stranger's code, and the stranger got banned.
 code = code_of(signin(m, sid=SID, ip="198.51.100.24"))
 check("...and its owner can still take it back to their own account",
@@ -1128,7 +1128,7 @@ before = verified(m)
 check("a key nobody linked", hello(m, bytes([9]) * 32), {"acct": 1, "linked": 0})
 check("...was checked before that was said", verified(m) - before, 1)
 check("a linked key, and nothing about the account but its name and standing",
-      hello(m, KEY1), {"acct": 1, "linked": 1, "name": "Lex", "banned": 0})
+      hello(m, KEY1), {"acct": 1, "linked": 1, "name": "Lex", "banned": 0, "named": 1})
 check("a signature over some other nonce (a replayed connect)",
       hello(m, KEY1, nonce="cd" * 16, signed="ab" * 16), {"acct": 1, "linked": 0, "why": "proof"})
 check("an ASK's or a run's signature over the lobby's nonce: the wrong kind",
@@ -1796,7 +1796,7 @@ check("...a confirm answers the account's mark",
       confirm(m, KEY1, code), dict(YES, ranked=1, who=WHO))
 check("...and so does the connect after it; a refused proof is told neither",
       (hello(m, KEY1, nonce="cd" * 16), hello(m, KEY1, nonce="ef" * 16, signed="ab" * 16)),
-      ({"acct": 1, "linked": 1, "name": "Lex", "banned": 0, "ranked": 1, "who": WHO},
+      ({"acct": 1, "linked": 1, "name": "Lex", "banned": 0, "named": 1, "ranked": 1, "who": WHO},
        {"acct": 1, "linked": 0, "why": "proof"}))
 check("the mark is SHA-256 of the SteamID, 8 hex: FS_GuidId of a ranked row's player",
       WHO, hashlib.sha256(SID.encode()).hexdigest()[:8])

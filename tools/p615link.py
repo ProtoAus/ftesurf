@@ -805,6 +805,29 @@ def link_arm(a, send, keys, cl, sv, db, gport, codes):
           ([used.get(c) for c in (started, c2, c3)] == [pub16[0][0]] * 3 if pub16 else None,
            used.get(c1), used.get(c4)), (True, "superseded", ""))
 
+    # Patch 638: a linked player's name is their Steam account's.  The lobby
+    # says what the engine made of the name it forced (its dprint), and a
+    # client's own `name` is dropped before the engine sees it: no "Imposter"
+    # may reach the server's log.
+    named = re.findall(r"is named '([^']*)' \(its account's '([^']*)'\)", sv.text())
+    send("name Imposter")
+    told = cl.wait(r"your name here is your Steam name", 15)
+    time.sleep(2.5)
+    check("N  the lobby names a linked player from the account, each account in turn, and a "
+          "client's own `name` changes nothing and is told why",
+          (named[-1:] if named else None, len({n[1] for n in named}) >= 2, bool(told),
+           "Imposter" in sv.text()),
+          ([("Third", "Third")], True, True, False))
+    # The engine renames on two more spellings (the review): its own `name`
+    # command, and a `setinfo` behind a comment, which the engine's tokenizer
+    # skips and QuakeC's tokenize() takes for the command word.
+    send("cmd name Imposter2")
+    time.sleep(2.0)
+    send("cmd /**/setinfo name Imposter3")
+    time.sleep(2.5)
+    check("N  ...nor does the engine's own `name` command, nor a setinfo behind a comment",
+          [w for w in ("Imposter2", "Imposter3") if w in sv.text()], [])
+
     # A paused run is its key's (sv_resume.qc, SV_MsForeign).  The run above is
     # still going: leaving parks it with the key it began under.  Come back,
     # and the SAME slot is refused while its `key` line names another key

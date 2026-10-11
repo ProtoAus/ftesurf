@@ -11,6 +11,28 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — your in-game name is your Steam name (Patch 638)
+
+From your list. On a lobby, a few seconds after you join from a linked game,
+your name becomes your Steam name, for everybody there and on the boards. It
+changes nothing in your own settings, so on other servers you are who you
+were.
+- **Check:** join from `C:\FTESurf`. Within about ten seconds the scoreboard
+  and chat show your Steam name. Type `name Something` in the console: it
+  should answer "your name here is your Steam name" and nothing should
+  change. From the unlinked install (`C:\FTEQuake`) your name is whatever you
+  set, as before.
+- Change your name on Steam and it follows within half an hour, at your
+  next connect; your times on the boards are renamed too (the 21 filed
+  under "Proto" are renamed by the first half-hourly pass after the deploy).
+- If somebody is already on the lobby under your Steam name you are
+  "(1)Name" until they leave. A Steam name with "console" hidden in it
+  (the engine reads "Falcon Soleil" that way) is not applied: you keep the
+  name your game has.
+- Not yet: the first few seconds after joining still show the old name (the
+  "joined" line too), and the name box in the player customizer still lets
+  you type, then ignores it.
+
 ## 00. 11 Oct — your HUD list, part 4: the TAB board (Patch 635)
 
 Live since 11 Oct 04:43 UTC (15:43 here) on both installs and on all twelve

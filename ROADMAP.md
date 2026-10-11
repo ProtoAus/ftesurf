@@ -1427,6 +1427,21 @@ tier which maps are done and which are not.
 
 ### 14.4 Name and picture, on the site and in the game
 
+**THE NAME: BUILT, Patch 638.** Once surfd has answered a connect proof with
+a linked account that has a name, the lobby forces the player's userinfo
+name to it (`forceinfokey`: silent, this server only, the player's saved name
+untouched) and holds it: a `setinfo name` from that player is dropped in
+`SV_ParseClientCommand` with one line saying why, and one that slips past as
+an encoded key is put back within the second. A link moved to another account
+mid-connection renames. surfd files an account's rows and recordings under
+the account's name whatever the lobby sent, lists the account under it, and
+`steamsync.py` (cron, half-hourly) asks Steam again and renames the
+account's own rows when the name has changed. LEFT: the first seconds of a
+connection, before the proof is answered, are under the game's own name
+(the join line too); the customizer's name field does not say it is held;
+the terms screen still says "under the name you are playing as" (menu.dat,
+with the first-boot work); the picture.
+
 **The owner's order, 11 Oct:** the in-game name follows the Steam name; the
 Steam picture beside the name on the boards, the players list and run lines;
 the sign-in moves into the first-boot screens, which get tidied.

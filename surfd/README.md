@@ -847,6 +847,15 @@ on main clean, else main segmented, else its first board. Rows are
 every 60 s. Every `/board/` response carries a strict CSP (no inline script or
 style) and sets no cookie, except the Steam sign-in below.
 
+THE NAME (Patch 638). `/api/account` answers `named: 1` when the account's
+stored Steam name is one a game can show (`accounts.account_named`), and the
+lobby then makes it the player's name. `submit_run` files an account's row
+under `accounts.account_name` whatever name the lobby sent; the directory
+lists an account under it. `steamsync.py [--go]` (cron) asks Steam for fifty
+accounts a request and, where a name changed, renames the account's rows in
+`runs` and `replays` on our tiers; imported rows keep the alias their board
+published. It needs `SURFD_STEAM_KEY` and prints nothing of it.
+
 ## Steam accounts (/board/link)
 
 `accounts.py` and `steam.py`, schema 15. STORE-ONLY: nothing that ranks,

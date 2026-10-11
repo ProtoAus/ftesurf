@@ -2997,6 +2997,13 @@ def submit_run():
 
     # Never the guid beside an account's id: a name that cleans to nothing.
     name = clean_text(request.form.get("name")) or (install if player == install else "player")
+    # An account's rows are under its Steam name (Patch 638), whatever the
+    # lobby called the player in the seconds before it had heard who it was.
+    if player != install:
+        try:
+            name = accounts.account_name(get_db(), player) or name
+        except sqlite3.Error as exc:
+            log.exception("account name db error from %s: %s", src, exc)
 
     millis = int(round(ticks * 1000.0 / tickrate))
 
@@ -4534,6 +4541,11 @@ def _people_build(db):
         rows[r["player"]] = {"n": r["n"], "maps": r["maps"], "last": r["last"],
                              "ranked": r["ranked"], "mom": r["mom"],
                              "ksf": r["ksf"], "name": r["name"] or ""}
+    # An account is listed under its Steam name, not under whichever of its
+    # rows was filed last (an imported row carries another site's alias).
+    for sid, raw in db.execute("SELECT steamid, name FROM accounts WHERE name <> ''"):
+        if sid in rows and accounts.account_named(raw):
+            rows[sid]["name"] = accounts.game_name(raw)
     main_maps = {r[0] for r in db.execute(
         "SELECT DISTINCT map FROM runs WHERE track=0 AND leg=0 AND tier IN (?,?,?)",
         (TIER_RANKED, TIER_MOMENTUM, TIER_KSF))}

@@ -7466,6 +7466,53 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **THE STEAM NAME IS THE NAME (Patch 638): WHAT THE ENGINE DOES WITH A FORCED
+  NAME.** Read in the engine before a line was written (`pr_cmds.c`
+  PF_ForceInfoKey, `sv_main.c` SV_ExtractFromUserinfo, `sv_user.c`
+  SV_SetInfo_f): `forceinfokey(e, "name", x)` sets userinfo and `netname`
+  without the "changed their name" line and without touching the client's
+  cvar; the engine may alter x (a "(1)" before a duplicate, "unnamed" for a
+  name with "console" in it, a cut at 31 bytes), so the lobby latches what
+  the engine MADE and forces again only when `netname` has moved off it; a
+  client `setinfo name` overwrites a forced name, and the QC hook the engine
+  has for that (`UserInfo_Changed`) runs after the fact, so the lobby drops
+  the command in `SV_ParseClientCommand` instead. `Account_Is` drops the
+  latch each time surfd says who the connection is: without that a link moved
+  to another account kept the last account's name (found by the arm's own
+  first run, not by reading).
+  MEASURED IN THE RIG (`p615link.py`, the N check): the lobby's own line names
+  each account in turn, a client `name Imposter` is answered and never
+  reaches the server's log. CONTROL: a build with the drop compiled out
+  (qwprogs `b5bc58e1` against `38b7f0d6`) fails that one check, 41 of 42,
+  with "Imposter" in the log.
+  A fresh worktree has no `src/fteqcc64.exe` (it is not tracked): copy it in
+  before a control build, or `build.ps1` says only "fteqcc not found".
+  ITS REVIEW (one reviewer: evidence, abuse, breakage) found nothing that
+  loses a recording, fails a check, misattributes a run or moves a rank: a
+  recording's leaf is built once at close, `owner` is unbound, and nothing
+  compares a name with one stored earlier. What it found was about the name:
+  THE DROP TESTED ONE SPELLING OF A RENAME AND THE ENGINE TAKES THREE
+  (`setinfo name`, its own `name` command, and a `setinfo` behind a comment
+  that the engine's tokenizer skips and `tokenize()` takes for the command
+  word): the test is `Account_IsRename` on `tokenize_console` now, before
+  the function's own tokenize. `steamsync` renamed rows only on a change it
+  saw itself, so every row filed before the patch, and a name a sign-in
+  wrote first, stayed stale for good: the rows follow the account now, each
+  pass. surfd's reserved-word test was "is console" and the engine's is
+  "contains console, read as leet, spaces dropped" ("Falcon Soleil"): ported
+  byte for byte, and the lobby puts back the player's own name and lets go
+  if the engine still answers "unnamed". A "(1)" before a name somebody had
+  first is retried every fifteen seconds. A reply with no picture kept
+  blanking the stored one; a reply that cannot be read stopped every pass at
+  the same fifty accounts.
+  THE FULL SWEEP ON THIS PATCH CAUGHT A MUTANT ORPHANED BY THE LAST ONE:
+  `rank-ext` survived because Patch 636 publishes a linked account's Steam
+  id by a second rule; 636 changed `surfd.py` and ran `test_web.py` and the
+  lint, not the sweep. A patch that touches a file the sweep mutates runs
+  the sweep.
+  A FAILING CHECK THAT PRINTS A NAME OUTSIDE THE CONSOLE'S CODE PAGE RAISED
+  IN `print()`: the sweep called it "killed by a crash", which is a kill for
+  the wrong reason. `test_ranked.py`'s `check()` escapes what it prints.
 - **DEPLOYED 11 Oct 2026, 04:16:58 UTC (FTESurf `32c3b3b`, Patch 636), surfd
   and its website**: `accounts.py`, `momboards.py`, `surfd.py`, the three
   `web/` files and two tests through `surfd-deploy.ps1` (staged suites pass

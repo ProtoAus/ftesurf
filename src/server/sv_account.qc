@@ -100,6 +100,13 @@
 .float  acct_fail;              // why there is none yet: ACCT_F_*
 .float  acct_since;             // when this connection began
 .string acct_who;               // surfd's mark for a linked account's rows, zoned
+// Patch 638: a linked player's name here is their Steam account's.
+.float  acct_named;             // surfd says the account has a name of its own
+.string acct_forced;            // what the engine made of the name forced, zoned; "" = none
+.float  acct_name_t;            // when the name is next looked at
+.float  acct_name_told;         // said once why `name` does nothing
+.float  acct_bare_t;            // when a "(1)" before the name is next tried without
+void(entity e) Account_NameNow;  // below Account_Think, which calls it
 #define ACCT_F_NONE     0       // nothing has failed (or nothing was tried)
 #define ACCT_F_SILENT   1       // the directory did not answer
 #define ACCT_F_LATER    2       // ...or could not check right now
@@ -188,6 +195,12 @@ void(entity e) Account_Connect =
 	e.acct_last   = 0;
 	e.acct_hellos = 0;
 	Account_SetName(e, "");
+	e.acct_named  = FALSE;
+	if (e.acct_forced != "")
+		strunzone(e.acct_forced);
+	e.acct_forced = "";
+	e.acct_name_told = FALSE;
+	e.acct_bare_t = 0;
 	e.acct_here   = TRUE;
 };
 
@@ -477,6 +490,11 @@ void(entity e, string code) Account_Start =
 */
 void(entity e) Account_Think =
 {
+	if (time >= e.acct_name_t)
+	{
+		e.acct_name_t = time + 1;
+		Account_NameNow(e);
+	}
 	// Patch 629: a connection the directory has said nothing about is asked
 	// again, by itself, while its client is one that answers (it sent the
 	// first ask).  A run submitted meanwhile is nobody's (sv_lobby.qc).
@@ -731,7 +749,113 @@ void(entity e, string kindarg, string pub, string keyed, string sig, string svna
 	}
 };
 
-void(entity who, float linked, float banned, string nm) Account_Is =
+/*
+  THE STEAM NAME IS THE NAME (Patch 638).  forceinfokey rewrites the userinfo
+  name and netname without announcing it, for this server only: the player's
+  own saved name is untouched.  THE ENGINE MAY ALTER WHAT IT IS GIVEN (a "(1)"
+  before a name somebody here already has, "unnamed" for one with "console" in
+  it, a cut at 31 bytes), so what is latched is what the engine MADE, and the
+  name is forced again only when it has moved off that: an unconditional force
+  each second would never match and would re-send the name to everybody.
+  A client's own `setinfo name` is dropped before the engine sees it
+  (sv_player.qc); one sent as an encoded key gets past that and is put back
+  here within the second.
+*/
+void(entity e) Account_NameNow =
+{
+	local string was;
+
+	if (!e.acct_named)
+		return;
+	if (e.acct_name == "")
+		return;
+	if (e.acct_forced != "")
+	if (!strcmp(e.netname, e.acct_forced))
+	{
+		// Held, and where the engine put it.  If that is not the bare name
+		// (somebody here had it first, so this player is "(1)Name"), the
+		// bare name is tried again now and then: the other may have left.
+		if (!strcmp(e.netname, e.acct_name))
+			return;
+		if (time < e.acct_bare_t)
+			return;
+	}
+	e.acct_bare_t = time + 15;
+	was = strcat(e.netname);
+	forceinfokey(e, "name", e.acct_name);
+	// THE ENGINE WOULD NOT HAVE IT (its reserved-word test is wider than
+	// surfd's, which now ports it; this is the second lock): nobody is held
+	// under "unnamed".  The name the player came with goes back.
+	if (e.netname == "unnamed")
+	if (strcmp(e.acct_name, "unnamed"))
+	{
+		forceinfokey(e, "name", was);
+		e.acct_named = FALSE;
+		if (e.acct_forced != "")
+			strunzone(e.acct_forced);
+		e.acct_forced = "";
+		dprint(sprintf("account: client %g keeps '%s': the engine refused its account's "
+		               "name\n", num_for_edict(e), e.netname));
+		return;
+	}
+	if (e.acct_forced != "")
+		strunzone(e.acct_forced);
+	e.acct_forced = strzone(e.netname);
+	if (strcmp(was, e.netname))
+		dprint(sprintf("account: client %g is named '%s' (its account's '%s')\n",
+		               num_for_edict(e), e.netname, e.acct_name));
+};
+
+/*
+  IS THIS CLIENT COMMAND A RENAME?  By THE ENGINE'S OWN TOKENS: tokenize()
+  takes a comment for the command word where the engine skips it, so a rename
+  behind one reached the engine and not this test (the review).  The engine
+  renames on three spellings: `setinfo name x`; its own `name x` command; and
+  a userinfo key sent encoded, which decodes to anything, so a key that does
+  not begin with a plain character is refused too.  Clobbers argv: call it
+  BEFORE the caller's own tokenize.
+*/
+float(string cmd) Account_IsRename =
+{
+	local float n, hit;
+	local string c, k;
+
+	n = tokenize_console(cmd);
+	c = strtolower(argv(0));
+	k = strtolower(argv(1));
+	hit = FALSE;
+	if (c == "name")
+		hit = TRUE;
+	if (c == "setinfo")
+	if (n >= 2)
+	{
+		if (k == "name")
+			hit = TRUE;
+		if (str2chr(k, 0) > 126)
+			hit = TRUE;
+	}
+	return hit;
+};
+
+float(entity e) Account_NameHeld =
+{
+	if (!e.acct_named)
+		return FALSE;
+	if (e.acct_forced == "")
+		return FALSE;
+	return TRUE;
+};
+
+void(entity e) Account_NameTell =
+{
+	if (e.acct_name_told)
+		return;
+	e.acct_name_told = TRUE;
+	sprint(e, PRINT_HIGH, "^5steam:^7 your name here is your Steam name. Change it on "
+	       "Steam and it follows\n");
+};
+
+void(entity who, float linked, float banned, string nm, float named) Account_Is =
 {
 	who.acct_state = ACCT_NONE;
 	if (linked)
@@ -740,6 +864,19 @@ void(entity who, float linked, float banned, string nm) Account_Is =
 	if (banned)
 		who.acct_state = ACCT_BANNED;
 	Account_SetName(who, linked ? nm : "");
+	// A banned account keeps the name its game came with.
+	who.acct_named = FALSE;
+	if (who.acct_state == ACCT_LINKED)
+	if (named)
+		who.acct_named = TRUE;
+	// surfd has just said who this is: the latch is dropped, so a link moved
+	// to another account mid-connection renames (the name there now is the
+	// LAST account's, and matched the latch).  A force of the same name is the
+	// engine's no-op.
+	if (who.acct_forced != "")
+		strunzone(who.acct_forced);
+	who.acct_forced = "";
+	Account_NameNow(who);
 };
 
 // surfd's refusal, as one of the box's words.  `why` is surfd's text: it is
@@ -769,7 +906,7 @@ void(float reqid, float code, string body) Account_Reply =
 {
 	local entity who;
 	local int    root;
-	local float  kind, answered, ok, linked, banned, rmode;
+	local float  kind, answered, ok, linked, banned, rmode, named;
 	local string why, nm, a, b, st, cd, mark;
 
 	who = findfloat(world, acct_rq, reqid);
@@ -797,6 +934,7 @@ void(float reqid, float code, string body) Account_Reply =
 	cd       = strcat(json_get_string(json_find_object_child(root, "code")));
 	mark     = strcat(json_get_string(json_find_object_child(root, "who")));
 	rmode    = json_get_float(json_find_object_child(root, "ranked"));
+	named    = json_get_float(json_find_object_child(root, "named"));
 	if (root)
 		json_free(root);
 	if (code)
@@ -872,7 +1010,7 @@ void(float reqid, float code, string body) Account_Reply =
 			strunzone(who.acct_pub);
 		who.acct_pub  = strzone(who.acct_rq_pub);
 		who.acct_fail = ACCT_F_NONE;
-		Account_Is(who, linked, banned, nm);
+		Account_Is(who, linked, banned, nm, named);
 		if (who.acct_who != "")
 			strunzone(who.acct_who);
 		who.acct_who = "";
@@ -931,7 +1069,7 @@ void(float reqid, float code, string body) Account_Reply =
 			strunzone(who.acct_pub);
 		who.acct_pub  = strzone(who.acct_rq_pub);
 		who.acct_fail = ACCT_F_NONE;
-		Account_Is(who, TRUE, banned, nm);
+		Account_Is(who, TRUE, banned, nm, named);
 		if (who.acct_who != "")
 			strunzone(who.acct_who);
 		who.acct_who = "";

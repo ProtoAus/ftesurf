@@ -73,6 +73,23 @@ From its one review; measured there unless said.
 - **Not measured:** the nine older arms that set the colouring were read, not
   run; the reset literals on an install with an older default.cfg (the arm's
   rig has this patch's, where the reset worked before them too).
+## The Steam name in the game: what Patch 638 left -- 2026-10-11
+
+- **The first seconds of a connection are under the game's own name**: the proof is
+  answered 3 to 7 s after the join, so the join line and a run begun at once carry
+  the local name in the recording's `owner` line (surfd's row is the account's
+  name regardless). `cl_avatar.qc`'s name field still accepts typing and does not
+  say the name is held. A `setinfo` whose key does not start with a plain
+  character is dropped for a held player; any rename that still got past is
+  put back within the second, after the engine's rename line has been shown.
+  Whoever is on the lobby first under a linked player's name keeps it: the
+  account's holder is "(1)Name" until the other leaves (retried every 15 s).
+  `game_name` drops combining marks, so a Thai or Devanagari Steam name is
+  held in a mutilated form. A ban or unlink learned mid-connection ends the
+  hold and leaves the name where it was. The terms screen
+  says "under the name you are playing as" (menu.dat; with the first-boot work).
+  `steamsync.py` runs from cron: a new box needs the crontab line.
+
 ## The site under three million imported rows -- 2026-10-11
 
 - **The site after Patch 636.** A player page's first view is still the ranks:

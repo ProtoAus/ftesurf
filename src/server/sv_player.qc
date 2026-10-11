@@ -855,6 +855,15 @@ void(string cmd) SV_ParseClientCommand =
 	local float  cmdargc, go, won, wvoid, wrw, wser, wst0, wtk, wsq;
 	local vector was;
 
+	// Patch 638: a linked player's name is their Steam account's.  A rename
+	// is dropped here, so the engine neither applies nor announces it
+	// (sv_account.qc, Account_IsRename: before this function's own tokenize).
+	if (Account_NameHeld(self))
+	if (Account_IsRename(cmd))
+	{
+		Account_NameTell(self);
+		return;
+	}
 	cmdargc = tokenize(cmd);
 	c = argv(0);
 	// The client can queue localcmd behind an already-buffered raw cmd. Its
