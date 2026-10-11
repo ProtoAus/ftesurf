@@ -7158,6 +7158,48 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **DEPLOYED 11 Oct 2026, 01:31-01:38 UTC (FTESurf `061fa8d`, Patch 629),
+  SWITCHED OFF: surfd, the Pi's twelve lobbies, both Windows installs' progs.**
+  No engine change. In this order:
+  01:31:52Z `SURFD_RANKED_LINKED=0` appended to the Pi's `surfd.env` (copy
+  kept as `surfd.env.pre629-20261011T013152Z`, mode 600), BEFORE any 629 code
+  was on the host: the code's default is on and every cron tool imports
+  surfd. The service's process has no `SURFD_*` in its environment, so it and
+  the cron tools both read that file.
+  surfd, `-Ref 061fa8d -Only` its fourteen changed python files: the staged
+  suites pass on the Pi, `test_ranked` among them (added to the script's
+  list); backup `surfd.db.bak-061fa8d-20261011-123213`; reload, `surfd ready`
+  01:34:53Z. Read back: blobs `da2d40b` / `d2dfdd9` (the commit's), schema
+  16, `runs_live` present, `runpins` with its `pub` column, the log line
+  `ranked rows need a linked Steam account: NO (SURFD_RANKED_LINKED=0)`, and
+  the board as it was: 21 ranked rows of one install, 1 link, 0 pins, 0
+  installs, also after the 01:35 cron sweep had imported the new module.
+  THE INDEX BUILD TOOK SEVEN SECONDS (01:34:46 to 01:34:53) AND COST ONE
+  HEARTBEAT: the outgoing worker logged `heartbeat db error ... database is
+  locked` once. 0 players at the time.
+  Lobbies, `build.ps1 -Pi` from the worktree at `061fa8d`, 12 rows and 0
+  players: `qwprogs.dat` `e9c95065`, `csprogs.dat` `6ddb3e37` (the bytes the
+  rig arm ran on), previous pair kept as `.prev` (`bc25c080` / `848c654e`),
+  twelve units active since 01:36:22Z to 01:36:30Z. `menu.dat` unchanged
+  (`e5604321`).
+  Live check, 01:37:23Z: the installed client in a private rig (its own key,
+  no key pressed) joined `play.proto.bar:27510`, its connect proof was
+  answered (not linked, the prompt came up), and surfd's game-code line now
+  reads `6ddb3e37` with `848c654e` before it. THAT CHECK POSTS NO RUN: with
+  the switch off the run path is the old one by construction (`if
+  RANKED_LINKED:` in `submit_run`), and the owner's next finish is its first
+  live use.
+  Windows, 01:38:33Z: both installs' `qwprogs.dat` and `csprogs.dat` and
+  their line tables, by a copy that refuses unless the installed file is the
+  previous main's build and no installed game is running (it waited out a
+  peer's rig client); each previous file kept as `.prev`; read back with a
+  second tool.
+  Roll back: `.prev` over each progs file and restart the lobbies; the
+  `.pre061fa8d-20261011-123213` copies over surfd's files and a reload
+  (schema 16 is two tables and an index the Patch 625 code never reads).
+  TO SWITCH ON: not before ROADMAP 14.3 (a)'s gates. Then, in this order:
+  back up; move the owner's guid rows to his account by hand (he asked for
+  that); set the line to 1; reload; read the log line and the board.
 - **DEPLOYED 10 Oct 2026, 22:07-22:10 UTC (FTESurf `e31cce8`, engine
   `c543d688a` = tag `patch-625`, Patch 625): surfd, the Pi's twelve lobbies,
   both Windows installs, progs AND engine.** Over Patch 622's pair

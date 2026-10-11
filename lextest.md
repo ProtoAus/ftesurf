@@ -13,8 +13,11 @@ to be wrong.
 
 ## 00. 11 Oct — ranked times need a linked Steam account (Patch 629): built, OFF
 
-See AGENT_NOTES for its DEPLOYED line. It is on the Pi behind one setting,
-switched off, so nothing has changed for anybody yet.
+Deployed 11 Oct 01:31-01:38 UTC (surfd, the twelve lobbies, both installs),
+behind one setting, switched off, so nothing has changed for anybody yet.
+The one thing to look at now: play a run on a lobby as usual. It should
+finish, rank and show on the board exactly as before (your 21 rows are
+untouched). If a finish says anything about a Steam account, tell me.
 
 - **What it does when on.** A finished run is ranked under the Steam account
   the game is linked to. A reinstall or a second PC then improves the same
