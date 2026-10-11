@@ -286,6 +286,18 @@ _SCANNED = "people.at"   # in the pictures' directory: its mtime is the last rea
 # test_ranked.py holds the plan.
 PEOPLE_SQL = ("SELECT DISTINCT +player FROM runs WHERE tier IN (%s) AND length(player) = 17"
               " AND +player GLOB '7656119[0-9]*'")
+# steam.py gives a profile 1.5 s, which is a sign-in's patience: a player is
+# waiting.  Nobody waits for this pass, and its first live run ended at the
+# fourth batch of a hundred on that clock (11 Oct 2026; the next run's hundred
+# all answered).
+PEOPLE_TIMEOUT = 10
+
+
+def patient(http):
+    """`http`, given PEOPLE_TIMEOUT whatever its caller asks for."""
+    def get(url, data=None, timeout=None):
+        return http(url, data, timeout=PEOPLE_TIMEOUT)
+    return get
 
 
 def people(conn, key, http, go, limit, out=print, directory=None, now=None):
@@ -355,7 +367,7 @@ def people(conn, key, http, go, limit, out=print, directory=None, now=None):
     asked = differ = 0
     for at in range(0, len(ids), BATCH):
         chunk = ids[at:at + BATCH]
-        got = ask(key, chunk, http, out)
+        got = ask(key, chunk, patient(http), out)
         if got is None:
             break
         try:

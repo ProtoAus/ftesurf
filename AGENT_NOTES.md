@@ -7979,6 +7979,27 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **DEPLOYED 11 Oct 2026, 16:22-16:25 UTC (FTESurf `1142049`, Patch 660):
+  surfd.** `surfd.py` and `steamsync.py` by `surfd-deploy.ps1`, the whole
+  suite green on the Pi first (`test_ranked` with its Pillow), backup
+  `data/surfd.db.bak-1142049-20261012-032236`, reload 16:25:23Z, the maps
+  list (6.3 s cold) and a player page asked once, table `boardpics` there.
+  THE FIRST PASSES, BY HAND UNDER THE CRON'S OWN LOCK. Dry: 67,259 players,
+  8.0 s, 49 MB. Real, 16:26Z: all of them read in, and Steam went quiet on
+  the FOURTH batch of fifty: `steam.py` gives a profile 1.5 s, which is a
+  sign-in's patience, and the pass ended at 150 asked, 149 pictures kept,
+  50 s. The next, 16:28Z: 5,000 asked, 4,786 distinct pictures named, 200
+  fetched (its budget that once), 125 s. So the pass has its own ten seconds
+  now (`PEOPLE_TIMEOUT`, the commit after this patch's, steamsync.py alone,
+  no reload).
+  SEEN LIVE, 16:32Z: surf_beginner's Momentum board, first 50 rows, 1 with
+  `av` in the game's answer and on the site's (351 pictures were on disk of
+  67,259 players), about 70 s after the pass that fetched it: the stamp, the
+  thread, the next 60-second table. That row's picture is served, 1,828
+  bytes. 0 error or warning lines in the service's 1,001 since the reload.
+  NOT SEEN: a picture on an imported row IN THE GAME (the game's answer
+  carries `av`; no client has drawn one), and the fill finishing: at 5,000
+  players and 1,500 pictures a half hour it is a day's worth.
 - **PICTURES FOR THE IMPORTED ROWS' PLAYERS (Patch 660): WHAT RUNS, AND WHAT
   THE NUMBERS WERE.** `steamsync.py` (cron, :07 and :37) has two more
   defaults, `--people 5000` and `--pictures 1500`: Steam is asked about that

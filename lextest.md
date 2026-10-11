@@ -14,7 +14,9 @@ to be wrong.
 ## 00. 12 Oct — a Steam picture for everyone on the boards (Patch 660)
 
 From your list ("scan for all the people in the leaderboard and save their DP
-to the nanopi ... update it once a day").
+to the nanopi ... update it once a day"). **Live on the Pi since 16:25 UTC
+(03:25 here) on 11 Oct**, and filling: 351 pictures of 67,259 players after
+its first two passes.
 1. **Who.** Every player of a Momentum or KSF row: 67,259 of them. The Pi
    asks Steam about 5,000 each half hour and fetches 1,500 pictures each
    half hour, so the boards fill over about a day; after that each player is

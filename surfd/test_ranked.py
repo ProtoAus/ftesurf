@@ -1336,10 +1336,13 @@ else:
     PICS = {IM1: PA, IM2: PB, SID: PS}      # IM3: Steam knows nothing of it
     WHOLE = []
 
+    WAITS = []
+
     def steam_says(table, fail=False):
         def http(url, data=None, timeout=0):
             ids = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["steamids"][0].split(",")
             WHOLE.append(ids)
+            WAITS.append(timeout)
             if fail:
                 raise ST.Unavailable("status 503")
             return json.dumps({"response": {"players": [
@@ -1379,9 +1382,12 @@ else:
           (people(PICS, True, T2, limit=2), WHOLE, held(), there("people.at"), stamp_at()),
           ((4, 4, 2, 2), [[SID, IM1]],
            [(SID, PS, T2), (IM1, PA, T2), (IM2, "", 0), (IM3, "", 0)], True, T2))
-    check("the next pass asks the rest; one Steam says nothing of is still marked asked",
-          (people(PICS, True, T2 + 1800), WHOLE[1:], held()[2:]),
-          ((4, 0, 2, 1), [[IM2, IM3]], [(IM2, PB, T2 + 1800), (IM3, "", T2 + 1800)]))
+    check("the next pass asks the rest; one Steam says nothing of is still marked asked; "
+          "Steam is given this pass's patience, not a sign-in's",
+          (people(PICS, True, T2 + 1800), WHOLE[1:], held()[2:], set(WAITS),
+           steamsync.PEOPLE_TIMEOUT > ST.PROFILE_TIMEOUT),
+          ((4, 0, 2, 1), [[IM2, IM3]], [(IM2, PB, T2 + 1800), (IM3, "", T2 + 1800)],
+           {steamsync.PEOPLE_TIMEOUT}, True))
     n = len(WHOLE)
     check("nobody is asked about twice in a day, by the pass's own clock, and a pass that "
           "changes nothing does not tell surfd it did",
