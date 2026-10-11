@@ -4768,7 +4768,17 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   touch the .c that includes it. For the final build delete
   `release\m_mgw64\*.o` and `sv_mingw64\*.o` first and read the stamp back out
   of the binary. No header moved, so the plugins were not rebuilt.
-- csprogs: 129,741 definitions.
+- csprogs: 129,741 definitions (118,347 once Patch 643 was under it).
+- DEPLOYED 11 Oct: the client `03989f66` and server `25071c74`, both stamped
+  `git-7216-patch-645-0-g65bf6f464`, into both installs at 12:57Z; csprogs
+  `f40d4069` (with 643's) to both installs 12:58Z and the Pi 12:58:48Z, nobody
+  on, twelve lobbies restarted and read back; a fresh client with the new
+  engine was served it and drew the board. Engine main had moved under the
+  stamped commit, so it went in by a merge (`aa153267a`), not a rebase. The
+  0.1.24 release, cut in the same hour from `580a640`, carries the 625 engine:
+  the release session and this one agreed "whichever is ready first", and the
+  release was. The tree whose `engine\release` matches the installs is this
+  task's `eng` worktree (the installed hl2 and ui_imgui plugins copied in).
 
 ### The board's lists take the mouse wheel (Patch 646) — 2026-10-11
 

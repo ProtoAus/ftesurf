@@ -61,6 +61,11 @@ game was building every piece of every line in its script code, each frame.
 That loop now lives in the engine, as your injectable's did. The lines, their
 marks and the little run graph look exactly as before; I compared the two ways
 pixel for pixel.
+- **Live since 11 Oct 12:59 UTC (23:59 here)** in `C:\FTESurf` and
+  `C:\FTEQuake` (new engine and game code) and on all twelve lobbies. Restart
+  the game to get it. The 0.1.24 download of the same hour was cut just
+  before this and has the older engine: a copy unpacked from it draws lines
+  the old way until the next release.
 - **What it buys, measured on this laptop:** eight ticked lines used to add
   3.3 ms to every frame and now add 0.9. With whole lines (`hud_lines_order 0`)
   7.7 ms became 2.5.
