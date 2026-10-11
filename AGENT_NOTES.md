@@ -4600,6 +4600,12 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   above. Client only (no server file, plugin or header moved). Stamp
   `git-7229-patch-658-0-g7501a6cce`, sha256 `4faa7ff4`; the DLL list from
   `objdump -p` is the installed binary's.
+- DEPLOYED 11 Oct 16:58Z (12 Oct here): that client as `C:\FTESurftesurf64.exe`
+  and `C:\FTEQuaketeqw64.exe`, no game running, under the rig lock; `.prev`
+  is the patch-645 client `03989f66` in both. The arm had passed on those very
+  bytes, and the run-line session's `tools/test_p645lines.py` read 28 of 28 on
+  them. `fteqwsv64.exe`, the plugins, the progs and the Pi were not touched;
+  the Linux client is not built.
 
 ### func_dustmotes in the game (Patch 648) -- 2026-10-12
 

@@ -24,8 +24,8 @@ but only drawn 1 obviously."
 - **Brighter is a separate thing, and yours to say.** Nothing got brighter in
   this patch. Tell me which should be brighter (dust clouds? smoke? bubbles?)
   and I turn their strength up. The new dust motes are Patch 657.
-- It needs the new engine file in your install, copied in while the game
-  is closed. The line under this one says when that happened.
+- **Live since 11 Oct 16:58 UTC (12 Oct, 03:58 here)** in both installs: a new
+  engine file, so restart the game. Lobbies need nothing.
 
 ## 00. 12 Oct — a Steam picture for everyone on the boards (Patch 660)
 
