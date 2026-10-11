@@ -5313,12 +5313,30 @@ def game_player(raw, now):
     a wide profile is _profile_rows' seconds, like the site's.
     A MARK ONLY WHILE THE BOARD IS BY ACCOUNT, as game_avatar: otherwise it
     is the digest of a string a client chose, and one row filed under a chosen
-    one would make another player's mark nobody's."""
+    one would make another player's mark nobody's.
+
+    TWO MORE FORMS (Patch 665), of the same player and the same rows:
+    `&ct=<tier>` (a difficulty tier's number, or `u` for the unrated) is that
+    tier's maps, the ones the player has finished first, each with their
+    fastest main time; the site's /board/api/player/<h>/maps, a tier at a
+    time and paged, because the unrated alone are eight hundred.
+    `&on=<map>` is the player's rows on one map, every leg, main track first:
+    what a board's search shows of somebody.  A second build shows its map's
+    imported rows, as its board does (_board_scope).  `ct` is read first where
+    both are given."""
     raw = raw or ""
     if not re.fullmatch(r"[0-9a-f]{8}|[0-9a-f]{%d}" % WEB_HANDLE_LEN, raw):
         return fail(400, "bad player")
     if len(raw) == 8 and not RANKED_LINKED:
         return fail(404, "no such player")
+    ct = request.args.get("ct")
+    if ct is not None and not re.fullmatch(r"[1-9][0-9]?|u", ct):
+        return fail(400, "bad tier")
+    on = None
+    if ct is None and request.args.get("on") is not None:
+        on = clean_map(request.args.get("on"))
+        if not on:
+            return fail(400, "bad map")
     offset = clamp_int(request.args.get("offset"), 0, MAX_RUNS, 0)
     limit = clamp_int(request.args.get("limit"), 1, GAME_PROFILE_MAX, GAME_PROFILE_ROWS)
     try:
@@ -5339,8 +5357,35 @@ def game_player(raw, now):
     except sqlite3.Error as exc:
         log.exception("game player db error: %s", exc)
         return fail(500, "storage error")
-    wr, wrc, top10, comp = _profile_figures(ranked, main_maps)
+    if ct is not None:
+        groups, rated = _tier_maps(ranked, main_maps)
+        maps = groups.get(None if ct == "u" else int(ct), {"maps": []})["maps"]
+        maps = [m for m in maps if "ms" in m] + [m for m in maps if "ms" not in m]
+        out = []
+        for m in maps[offset:offset + limit]:
+            row = {"map": m["map"], "have": m["have"]}
+            if "ms" in m:
+                row["ms"], row["tr"], row["s"] = m["ms"], m["tr"], m["s"]
+            out.append(row)
+        return Response(game_json(
+            {"v": 1, "t": now, "who": handle, "name": me["name"], "ct": ct, "rated": 1 if rated else 0,
+             "done": sum(1 for m in maps if "ms" in m), "offset": offset, "total": len(maps),
+             "limit": limit, "maps": out}), status=200, mimetype="application/json")
     bsp, _zoned = map_index()
+    if on is not None:
+        base = variant_base(on) or on
+        mine = [(r, rk, of) for r, rk, of in ranked
+                if r["map"] == (base if r["tier"] in TIERS_IMPORTED else on)]
+        mine.sort(key=lambda x: (x[0]["track"], x[0]["leg"], x[0]["millis"], x[0]["tier"],
+                                 x[0]["style"]))
+        return Response(game_json(
+            {"v": 1, "t": now, "who": handle, "name": me["name"], "on": bsp.get(on, on),
+             "av": 1 if player in have else 0, "total": len(mine),
+             "rows": [{"track": r["track"], "leg": r["leg"], "tr": r["tier"], "style": r["style"],
+                       "ms": r["millis"], "when": r["submitted"], "r": rk, "of": of}
+                      for r, rk, of in mine[:GAME_PROFILE_MAX]]}),
+            status=200, mimetype="application/json")
+    wr, wrc, top10, comp = _profile_figures(ranked, main_maps)
     rows = [{"map": bsp.get(r["map"], r["map"]), "track": r["track"], "leg": r["leg"],
              "tr": r["tier"], "style": r["style"], "ms": r["millis"],
              "when": r["submitted"], "r": rk, "of": of}
@@ -5355,27 +5400,11 @@ def game_player(raw, now):
         status=200, mimetype="application/json")
 
 
-@app.get("/board/api/player/<handle>/maps")
-def web_player_maps(handle):
-    """Every map the site holds a main board for, by difficulty tier, with
-    whether this player has finished it and in which game (Patch 636).  The
-    same rule and the same denominator as the profile's bars (_completion): a
-    map is finished when its main track is, in any game and any style."""
-    now = int(time.time())
-    if not rate_ok(rate_key(), now, WEB_RATE_MAX, "web"):
-        return fail(429, "rate limited")
-    if not re.fullmatch(r"[0-9a-f]{%d}" % WEB_HANDLE_LEN, handle or ""):
-        return fail(400, "bad player")
-    try:
-        db = get_db()
-        player = player_of(db, handle, now)
-        if player is None:
-            return fail(404, "no such player")
-        _by_handle, _people_list, main_maps, _at = _people_current(db, now)
-        ranked = _profile_rows(db, player, now)
-    except sqlite3.Error as exc:
-        log.exception("web player maps db error: %s", exc)
-        return fail(500, "storage error")
+def _tier_maps(ranked, main_maps):
+    """({tier or None: {"tier", "of", "done", "maps": [...]}}, rated) for one
+    player's _profile_rows: every map the site holds a main board for, by
+    difficulty tier (None is unrated), each with the player's fastest main
+    time where they have one.  The site's lists and the game's are this."""
     best = {}                   # map -> [fastest main time, its game, {games}, its style]
     for r, _rk, _of in ranked:
         if r["track"] or r["leg"]:
@@ -5399,7 +5428,32 @@ def web_player_maps(handle):
         g["of"] += 1
         g["done"] += 1 if mine is not None else 0
         g["maps"].append(row)
-    return _json({"v": 1, "t": now, "who": handle, "rated": tiers is not None,
+    return groups, tiers is not None
+
+
+@app.get("/board/api/player/<handle>/maps")
+def web_player_maps(handle):
+    """Every map the site holds a main board for, by difficulty tier, with
+    whether this player has finished it and in which game (Patch 636).  The
+    same rule and the same denominator as the profile's bars (_completion): a
+    map is finished when its main track is, in any game and any style."""
+    now = int(time.time())
+    if not rate_ok(rate_key(), now, WEB_RATE_MAX, "web"):
+        return fail(429, "rate limited")
+    if not re.fullmatch(r"[0-9a-f]{%d}" % WEB_HANDLE_LEN, handle or ""):
+        return fail(400, "bad player")
+    try:
+        db = get_db()
+        player = player_of(db, handle, now)
+        if player is None:
+            return fail(404, "no such player")
+        _by_handle, _people_list, main_maps, _at = _people_current(db, now)
+        ranked = _profile_rows(db, player, now)
+    except sqlite3.Error as exc:
+        log.exception("web player maps db error: %s", exc)
+        return fail(500, "storage error")
+    groups, rated = _tier_maps(ranked, main_maps)
+    return _json({"v": 1, "t": now, "who": handle, "rated": rated,
                   "tiers": [groups[k] for k in sorted(k for k in groups if k is not None)],
                   "unrated": groups.get(None)}, "max-age=30")
 

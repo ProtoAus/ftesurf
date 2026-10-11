@@ -8,8 +8,15 @@ Each mutant is ONE textual edit to surfd/steam.py, accounts.py or surfd.py in a
 throwaway copy of the surfd tree, and the suite must fail on it.  One line per
 mutant, then the count; exit 1 if a mutant survives that should not, or if a
 mutant's text no longer matches the source (BAD MUTANT: the code moved, so move
-the mutant with it).  About four minutes; nothing outside the temp dir is
+the mutant with it).  About half an hour; nothing outside the temp dir is
 written.
+
+EVERY SUITE RUNS ONCE ON AN UNMUTATED COPY FIRST, in the sweep's own
+environment, and the sweep stops (exit 2) if one fails there: a suite that
+fails by itself "kills" every mutant, and a crash counts as a kill, so
+without that control nothing says the sweep cannot measure (Patches 662 to
+665 ran so).  ACCOUNTS_MUTANTS_ONLY=<prefix> sweeps the mutants whose names
+start with it and says so in the count.
 
 A mutant's text must be in the file exactly ONCE.  Where two functions share a
 line, a fifth element names the one meant ("def link_return("): the edit is
@@ -808,9 +815,9 @@ M += [
      "        marks[h[:8]] = None if h[:8] in marks else h",
      "        marks[h[:8]] = h"),
     ("gp-figures", "surfd.py",
-     "    wr, wrc, top10, comp = _profile_figures(ranked, main_maps)\n    bsp, _zoned = map_index()\n"
+     "    wr, wrc, top10, comp = _profile_figures(ranked, main_maps)\n"
      '    rows = [{"map"',
-     "    wrc, wr, top10, comp = _profile_figures(ranked, main_maps)\n    bsp, _zoned = map_index()\n"
+     "    wrc, wr, top10, comp = _profile_figures(ranked, main_maps)\n"
      '    rows = [{"map"'),
     ("gp-disp", "surfd.py",
      '    rows = [{"map": bsp.get(r["map"], r["map"]), "track": r["track"], "leg": r["leg"],',
@@ -860,6 +867,41 @@ M += [
     ("gp-upper", "surfd.py",
      'if not re.fullmatch(r"[0-9a-f]{8}|[0-9a-f]{%d}" % WEB_HANDLE_LEN, raw):',
      'if not re.fullmatch(r"[0-9a-fA-F]{8}|[0-9a-fA-F]{%d}" % WEB_HANDLE_LEN, raw):'),
+    # Patch 665: a tier's maps, and a player's rows on one map.
+    ("gp-ct-first", "surfd.py",
+     '        maps = [m for m in maps if "ms" in m] + [m for m in maps if "ms" not in m]',
+     "        maps = list(maps)"),
+    ("gp-ct-tier", "surfd.py",
+     '        maps = groups.get(None if ct == "u" else int(ct), {"maps": []})["maps"]',
+     '        maps = groups.get(None, {"maps": []})["maps"]'),
+    ("gp-ct-page", "surfd.py",
+     "        for m in maps[offset:offset + limit]:",
+     "        for m in maps[:limit]:"),
+    ("gp-ct-shape", "surfd.py",
+     'if ct is not None and not re.fullmatch(r"[1-9][0-9]?|u", ct):',
+     'if ct is not None and not re.fullmatch(r"[0-9]+|u|U", ct):'),
+    ("gp-ct-done", "surfd.py",
+     '             "done": sum(1 for m in maps if "ms" in m), "offset": offset, "total": len(maps),',
+     '             "done": 0, "offset": offset, "total": len(maps),'),
+    ("gp-ct-time", "surfd.py",
+     '                row["ms"], row["tr"], row["s"] = m["ms"], m["tr"], m["s"]',
+     '                row["ms"], row["tr"], row["s"] = 0, m["tr"], m["s"]'),
+    ("gp-on-map", "surfd.py",
+     '                if r["map"] == (base if r["tier"] in TIERS_IMPORTED else on)]',
+     "                if True]"),
+    ("gp-on-base", "surfd.py",
+     "        base = variant_base(on) or on",
+     "        base = on"),
+    ("gp-on-sort", "surfd.py",
+     '        mine.sort(key=lambda x: (x[0]["track"], x[0]["leg"], x[0]["millis"], x[0]["tier"],\n'
+     '                                 x[0]["style"]))',
+     "        pass"),
+    ("gp-on-total", "surfd.py",
+     '             "av": 1 if player in have else 0, "total": len(mine),',
+     '             "av": 1 if player in have else 0, "total": 0,'),
+    ("gp-on-bad", "surfd.py",
+     '            return fail(400, "bad map")',
+     "            on = None"),
     ("gp-av", "surfd.py",
      '         "av": 1 if player in have else 0, "completion": comp,\n         "offset": offset,'
      ' "total": len(ranked), "limit": limit, "rows": rows}),',
@@ -889,6 +931,40 @@ EXPECT |= {"attach-start", "seal-shape", "attached-opener"}
 # inserted only when two posts of one run arrive together: no suite races that.
 EXPECT |= {"pin-read"}
 BY = {m[0]: m for m in M}
+
+
+TOOLS = os.path.dirname(os.path.abspath(__file__))
+
+
+def suites_for(name):
+    """test_accounts.py, and then test_ranked.py (Patch 629: whose row a run is)
+    for a mutant the first lets through.  The gp- mutants (Patch 662, the
+    game's lookups) are test_web.py's alone."""
+    return ("test_web.py",) if name.startswith("gp-") else ("test_accounts.py", "test_ranked.py")
+
+
+def run_suites(dst, suites):
+    """`suites` in the copy `dst`, until one fails: -> that process, or the last."""
+    # A private temp dir: a mutant that crashes the suite skips its cleanup,
+    # and whatever it leaves has to die with this copy.
+    tmp = os.path.join(dst, "tmp")
+    os.makedirs(tmp)
+    env = dict(os.environ, TEMP=tmp, TMP=tmp, TMPDIR=tmp, ACCOUNTS_TEST_TOOLS=TOOLS)
+    # THE TOOLS PATH IS test_web.py's ALONE (it imports from there), and it is
+    # THIS FILE'S directory, whatever the surfd tree was called by.  Patch 662
+    # set it for every suite, and test_accounts.py's "a host with no
+    # ed25519.py" check takes tools/ off sys.path to make its host: with the
+    # path here as well the module still imported, the check failed on
+    # UNMUTATED code, and it "killed" every mutant, 173 of them by itself alone.
+    env.pop("PYTHONPATH", None)
+    if suites == ("test_web.py",):
+        env["PYTHONPATH"] = TOOLS
+    for suite in suites:
+        p = subprocess.run([sys.executable, suite], cwd=dst, env=env,
+                           capture_output=True, text=True, errors="replace")
+        if p.returncode != 0:
+            break
+    return p
 
 
 def run(item):
@@ -923,22 +999,7 @@ def run(item):
             src = src.replace(old, new)
         with open(path, "w", encoding="utf-8", newline="") as fh:
             fh.write(src)
-    # A private temp dir: a mutant that crashes the suite skips its cleanup,
-    # and whatever it leaves has to die with this copy.
-    tmp = os.path.join(dst, "tmp")
-    os.makedirs(tmp)
-    # test_accounts.py, and then test_ranked.py (Patch 629: whose row a run is)
-    # for a mutant the first lets through.  The gp- mutants (Patch 662, the
-    # game's lookups) are test_web.py's alone, which imports from tools/.
-    suites = ("test_web.py",) if name.startswith("gp-") else ("test_accounts.py", "test_ranked.py")
-    for suite in suites:
-        p = subprocess.run([sys.executable, suite], cwd=dst,
-                           env=dict(os.environ, TEMP=tmp, TMP=tmp, TMPDIR=tmp,
-                                    PYTHONPATH=os.path.join(os.path.dirname(SRC), "tools"),
-                                    ACCOUNTS_TEST_TOOLS=os.path.dirname(os.path.abspath(__file__))),
-                           capture_output=True, text=True, errors="replace")
-        if p.returncode != 0:
-            break
+    p = run_suites(dst, suites_for(name))
     fails = [l[5:70].strip() for l in p.stdout.splitlines() if l.startswith("FAIL")]
     crash = p.returncode != 0 and "FAILURE(S)" not in p.stdout and " failed" not in p.stdout
     shutil.rmtree(dst)
@@ -948,9 +1009,21 @@ def run(item):
         len(fails), " + crash" if crash else "", "; ".join(fails[:2]))
 
 
+ONLY = os.environ.get("ACCOUNTS_MUTANTS_ONLY", "")
+SWEPT = [m for m in M if m[0].startswith(ONLY)]
 try:
+    for suites in sorted({suites_for(m[0]) for m in SWEPT}):
+        dst = os.path.join(SCRATCH, "unmutated-" + suites[0])
+        shutil.copytree(SRC, dst, ignore=shutil.ignore_patterns("__pycache__"))
+        p = run_suites(dst, suites)
+        shutil.rmtree(dst)
+        if p.returncode != 0:
+            print("THE SWEEP CANNOT MEASURE: %s fails on UNMUTATED code here.  Its last lines:"
+                  % " then ".join(suites))
+            print("\n".join("  " + l for l in (p.stdout + p.stderr).splitlines()[-12:]))
+            sys.exit(2)
     with concurrent.futures.ThreadPoolExecutor(6) as pool:
-        results = list(pool.map(run, M))
+        results = list(pool.map(run, SWEPT))
 finally:
     shutil.rmtree(SCRATCH, ignore_errors=True)
 bad = []
@@ -959,7 +1032,8 @@ for name, verdict in results:
     survived = verdict == "SURVIVED"
     if verdict.startswith("BAD") or survived != (name in EXPECT):
         bad.append(name)
-print("\n%d mutants, %d killed, %d survive alone as expected, unexpected: %s" % (
-    len(results), sum(1 for _, v in results if v.startswith("killed")),
+print("\n%d mutants%s, %d killed, %d survive alone as expected, unexpected: %s" % (
+    len(results), (" (those named %s*, of %d)" % (ONLY, len(M))) if ONLY else "",
+    sum(1 for _, v in results if v.startswith("killed")),
     sum(1 for n, v in results if v == "SURVIVED" and n in EXPECT), bad or "none"))
 sys.exit(1 if bad else 0)

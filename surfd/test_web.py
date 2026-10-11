@@ -1535,6 +1535,82 @@ def main():
            get(m, "/board/api/players", ip="203.0.113.63").status_code),
           (True, 429, 429, 200))
 
+    # ---- Patch 665: a tier's maps, and a player's rows on one map ---------------
+    g5 = lambda q: gget("player=%s&%s" % (hw, q), ip="203.0.113.64")
+    sm = body(get(m, "/board/api/player/" + hw + "/maps"))
+    cut = lambda rows: [(x["map"], x.get("ms"), x.get("tr"), x.get("s"), x["have"]) for x in rows]
+    first = lambda rows: [x for x in rows if "ms" in x] + [x for x in rows if "ms" not in x]
+    t2 = ([t for t in sm["tiers"] if t["tier"] == 2] + [{"maps": [], "of": -1, "done": -1}])[0]
+    gt = body(g5("ct=2"))
+    check("H  a tier's maps for the game are the site's for that tier: the map, the player's fastest "
+          "main time on it and its game",
+          (cut(gt.get("maps", [])), gt.get("total"), gt.get("done"), gt.get("rated"), gt.get("ct"),
+           len(t2["maps"]) > 0),
+          (cut(t2["maps"]), t2["of"], t2["done"], 1, "2", True))
+    su = sm["unrated"]["maps"]
+    gu = body(g5("ct=u&limit=200"))
+    check("H  the unrated are `u`, the finished ones FIRST and then the rest, each in the site's order "
+          "(control: the site's own order is not that, and both kinds are there)",
+          (cut(gu.get("maps", [])), gu.get("total"), gu.get("done"),
+           cut(su) != cut(first(su)), 0 < sm["unrated"]["done"] < sm["unrated"]["of"]),
+          (cut(first(su)), sm["unrated"]["of"], sm["unrated"]["done"], True, True))
+    check("...a finished row is its map, time, game and style; an unfinished one its map; neither "
+          "names the games or an identity",
+          (sorted(set().union(*[set(x) for x in gu.get("maps", [{}]) if "ms" in x])),
+           sorted(set().union(*[set(x) for x in gu.get("maps", [{}]) if "ms" not in x])),
+           W in json.dumps(gu)),
+          (["have", "map", "ms", "s", "tr"], ["have", "map"], False))
+    check("...paged by offset and limit, as the breakdown's rows are",
+          (cut(body(g5("ct=u&offset=1&limit=2")).get("maps", [])),
+           [body(g5("ct=u&limit=" + v)).get("limit") for v in ("0", "999999", "x")]),
+          (cut(first(su))[1:3], [1, m.GAME_PROFILE_MAX, m.GAME_PROFILE_ROWS]))
+    none = body(g5("ct=9"))
+    check("H  a tier that is no tier is refused; one nobody has maps in is an empty answer",
+          ([g5("ct=" + v).status_code for v in ("x", "123", "-1", "", "U", "0", "07")],
+           (none.get("maps"), none.get("total"), none.get("done"))),
+          ([400, 400, 400, 400, 400, 400, 400], ([], 0, 0)))
+    real_tsv = m.MOMTRACKS_PATH
+    m.MOMTRACKS_PATH = os.path.join(os.environ["SURFD_HOME"], "no-such.tsv")
+    m.people_reset()
+    try:
+        bare = (body(g5("ct=2")), body(g5("ct=u&limit=200")),
+                body(get(m, "/board/api/player/" + hw + "/maps")))
+    finally:
+        m.MOMTRACKS_PATH = real_tsv
+        m.people_reset()
+    check("H  with no catalogue nothing is rated: a numbered tier is empty and says so, and `u` is "
+          "every map, as the site's list is",
+          ((bare[0].get("rated"), bare[0].get("maps")), bare[1].get("rated"), bare[1].get("total"),
+           bare[2]["rated"]),
+          ((0, []), 0, bare[2]["unrated"]["of"], False))
+
+    go = body(g5("on=surf_a"))
+    legs = lambda rows: [(x["track"], x["leg"], x["ms"], x["r"], x["of"], x["tr"], x["when"], x["style"])
+                         for x in rows]
+    mine = sorted(legs([x for x in sp["rows"] if x["map"] == "surf_a"]))
+    check("N  a player's rows on one map: every leg of it, the main track first, then its stages, "
+          "then the bonuses (control: three legs, and the page's own order is another)",
+          (legs(go.get("rows", [])), go.get("on"), go.get("who"), sorted(go.get("rows", [{}])[0]),
+           len(mine), legs([x for x in sp["rows"] if x["map"] == "surf_a"]) != mine,
+           W in json.dumps(go), go.get("total")),
+          (mine, "surf_a", hw, ["leg", "ms", "of", "r", "style", "tr", "track", "when"], 3, True, False, 3))
+    check("...a map they have one time on, a map they have none on, and a name that is no map",
+          (legs(body(g5("on=surf_c")).get("rows", []))[0][:3] if body(g5("on=surf_c")).get("rows") else None,
+           body(g5("on=surf_nowhere")).get("rows"), g5("on=bad%20name!").status_code),
+          ((0, 0, 50000), [], 400))
+    with m._maps_lock:
+        m._variants["at"], m._variants["of"] = m.time.monotonic(), {"surf_a_css": "surf_a"}
+    try:
+        second = legs(body(g5("on=surf_a_css")).get("rows", []))
+    finally:
+        with m._maps_lock:
+            m._variants["at"], m._variants["of"] = m.time.monotonic(), {}
+    check("N  a second build shows its map's imported rows, as its board does; a name that is no "
+          "second build shows its own, which are none",
+          (second, legs(body(g5("on=surf_a_css")).get("rows", []))), (mine, []))
+    check("N  the plain breakdown is what it was beside the two new forms",
+          [gp2 for gp2 in [body(g5("limit=200"))] if gp2.get("rows") is not None][0]["total"], sp["total"])
+
     print("\n%d failed" % len(FAILED))
     for f in FAILED:
         print("  " + f)

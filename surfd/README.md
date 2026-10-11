@@ -901,6 +901,19 @@ board row's `player`): the first eight of the same digest, answered only
 while `SURFD_RANKED_LINKED` is on and only where one directory player has it.
 400 `bad player`, 404 `no such player`. Names go out as UTF-8.
 
+**Two more forms of `?player=<who>` (Patch 665).** `&ct=<tier>` (a number, or
+`u` for the unrated) answers `{"v","t","who","name","ct","rated","done",
+"offset","total","limit","maps":[{"map","have","ms"?,"tr"?,"s"?}]}`: that
+difficulty tier's maps among those the site holds a main board for, the ones
+the player has finished first (each with their fastest main time, its game
+and its style), then the rest, each group in the site's order; `have` is 1
+where this site hosts the map. It is `/board/api/player/<h>/maps` a tier at a
+time (`_tier_maps` is both). 400 `bad tier`. `&on=<map>` answers `{"v","t",
+"who","name","on","av","rows":[{"track","leg","tr","style","ms","when","r",
+"of"}]}`: that player's rows on one map, the main track first, then its
+stages, then the bonuses; a second build shows its map's imported rows, as
+its board does. 400 `bad map`. `ct` is read first where both are given.
+
 ## Steam accounts (/board/link)
 
 `accounts.py` and `steam.py`, schema 15. STORE-ONLY: nothing that ranks,
