@@ -25,7 +25,17 @@ commit   c543d688ad16a871753fa9525c23487f437741a5
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-625
-patch    629
+patch    630
+# Patch 630: hud_edit, the first of the owner's list of 11 Oct. Speed's energy size and
+# Timer's subtext size are rows of size boxes like an element's own Size row (the energy
+# offers the speedometer's four sizes). Speed gains `Shows`: the speed, both, or the
+# energy alone (hud_speed_show). Run graph and Strafe trainer offer 16 20 24 28 where they
+# offered 8 12 16 20. Mouse gains `Size`, S M L XL (hud_keys_size 1 1.25 1.5 2), for the
+# mouse pad and the key block together; S is the size they were.
+# A config saved with the energy line off opens on `Shows: speed`.
+# csprogs, ftesurf/cfg/default.cfg and defaultuser.cfg (two new settings, at the old
+# look): no engine source, server QC, recorder, evidence, ranking or Build change
+# (commit and tag above stay).
 # Patch 629: a ranked row needs a linked Steam account (ROADMAP 14.3 a). The lobby sends,
 # with each run, the key its connection proved; surfd stores a linked key's run under the
 # account's SteamID64, sends anybody else's to the community tier with the reason, and

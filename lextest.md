@@ -11,6 +11,35 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — your HUD list, part 1: sizes and modes (Patch 630)
+
+From your list of 11 Oct ("I have a list of Hud edits I want made!"). The rest
+of the list follows in later patches; this is the hud_edit sizes and modes.
+
+- **Speed**: `Energy` is a row of size boxes (40 48 64 80, the same four as the
+  speed's own). `Shows` picks speed / both / energy; the energy alone is drawn
+  where the speed was, at the energy's size. `Energy as` is units or u/s.
+- **Timer**: `Subtext` is a row of size boxes (12 16 20 24).
+- **Run graph** and **Strafe trainer**: sizes 16 20 24 28.
+- **Mouse**: `Size` S M L XL, for the mouse pad and the key block together.
+  S is what you had.
+
+A config saved with the energy line off (the old `Energy line: off`) opens on
+`Shows: speed`, which draws the same.
+
+Yours to look at:
+1. L and XL in your own layout. A larger block grows up and to the left and
+   keeps its gaps to the screen's edges; that is measured at the default
+   position, which is where yours is. Had you dragged the keys, a larger block
+   would grow right and down from where you put it, and can leave the screen
+   (BACKLOG).
+2. The energy alone, at 64 or 80, while you move. It keeps its `e` and its pale
+   blue; say if it should take the speed's gain and loss colours instead.
+3. A click on the lit size box goes back to auto, as the Size row always did;
+   the label then reads `Energy auto` or `Subtext auto`.
+4. I said a saved size of 8 or 12 would become 16. It does not: those sizes were
+   never a default (the default is auto, 16 px at your scale), so a saved 8 or
+   12 was somebody's choice and still draws until they click a box.
 ## 00. 11 Oct — ranked times need a linked Steam account (Patch 629): built, OFF
 
 Deployed 11 Oct 01:31-01:38 UTC (surfd, the twelve lobbies, both installs),

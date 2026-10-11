@@ -288,7 +288,7 @@ void() HE_BuildTable =
 	// the list loop skips hidden rows, so the two orders only agree while the
 	// listed ones stay contiguous at the top.
 	HE_Add("trainer", "Strafe trainer", "hud_trainer_x", "hud_trainer_y", "hud_trainer", 0, HEA_CT, 156, 146);
-	HE_Text("hud_trainer_size",  "8 12 16 20",   8);     // UI; 16 at hud_scale 2
+	HE_Text("hud_trainer_size",  "16 20 24 28",  8);     // UI; 16 at hud_scale 2
 	HE_Add("board",   "Board",      "hud_board_x",   "hud_board_y",   "hud_board",    0, HEA_CT,  120,  52);
 	HE_Text("hud_board_size",    "16 20 24 28", 10);     // mono from build 65; 20 today
 	HE_Add("boarding","Boarding",   "hud_boarding_x","hud_boarding_y","hud_boarding", 0, HEA_CT,  150,  44);
@@ -305,7 +305,7 @@ void() HE_BuildTable =
 	// Patch 610: the HUD's run graph. It draws only while a line is ticked, so the
 	// outline here is usually the nominal one.
 	HE_Add("graph",   "Run graph",  "hud_linegraph_x", "hud_linegraph_y", "hud_linegraph", 0, HEA_RT, 150, 80);
-	HE_Text("hud_linegraph_size", "8 12 16 20",  8);     // UI; 16 at hud_scale 2
+	HE_Text("hud_linegraph_size", "16 20 24 28", 8);     // UI; 16 at hud_scale 2
 	// Patch 390: -1/-1 = attached left of the key block; a drag detaches it.
 	HE_Add("mouse",   "Mouse",      "hud_mouse_x",   "hud_mouse_y",   "hud_mouse",    0, HEA_LT,   83,  52);
 	/*
@@ -393,6 +393,10 @@ void() HE_BuildTable =
               which one it is on, because a slider over three named states is
               worse than a button that says where it is (the argument the
               calm-numbers pair already makes below).
+          s   Patch 630: a second text size, as the element's own size row draws
+              one.  values are the pixel sizes (four at most), names unused.
+              0 is auto: the lit box clicked again.
+          b   Patch 630: boxes, one per value, names "S;M;L;XL".  No auto.
 
   Returns "" to end the element's list.  Rows are asked for in order and the
   first "" stops the walk, so a gap in the numbering would silently truncate a
@@ -495,29 +499,17 @@ string(string id, float row) HE_OptDef =
 
 	if (id == "speed")
 	{
-		/*
-		  Energy is the speedometer's second line and stays welded to it, so its
-		  three-state and its reference live in THIS pane rather than in a row of
-		  their own.  hud_energy_size is the one size in the tree that is not on
-		  he_cvsize, for exactly that reason: one element, two text sizes.
-		*/
-		if (row == 0) return "hud_energy|Energy line|c|0 1 2|off;units;u/s"
-		                     "|The e figure under the speedometer: height you could still trade for speed.";
-		/*
-		  Build 66: 64 added -- "make energy be allowed to switch to 64 font size".
-		  It is a rung of FONT_DISPLAY_SIZES, so it snaps rather than resampling.
-
-		  AND `auto` IS IN THE LIST NOW, which build 65 left out and the first
-		  capture run of this build caught on screen.  The default is 0, meaning
-		  "follow hud_scale"; 0 matched none of the offered values, so HE_OptIndex
-		  returned -1 and the chip fell back to printing the raw number -- a button
-		  reading `0` under a line drawn at 32 px.  That fallback is right for a
-		  value somebody typed at the console and wrong for the shipped default,
-		  and the fix is to stop pretending 0 is not one of the choices.
-		*/
-		if (row == 1) return "hud_energy_size|Energy size|c|0 32 40 48 64|auto;32;40;48;64"
-		                     "|Text size of that second line. auto follows the HUD scale.";
-		if (row == 2) return "hud_energy_ref|Zero at|c|0 1|start zone;last jump"
+		// Energy is the speedometer's second line, so what is shown, its unit, its
+		// size and its reference live in this pane.  Patch 630: hud_energy 0 (the
+		// old "off") is no longer offered; HUD_DrawSpeed still honours it.
+		if (row == 0) return "hud_speed_show|Shows|c|0 1 2|speed;both;energy"
+		                     "|The speed, the speed with the energy under it, or the energy alone.";
+		if (row == 1) return "hud_energy|Energy as|c|1 2|units;u/s"
+		                     "|The e figure as a height in units, or as the speed that height is worth.";
+		// The speedometer's own four rungs (FONT_DISPLAY_SIZES), so the two can match.
+		if (row == 2) return "hud_energy_size|Energy|s|40 48 64 80|"
+		                     "|Text size of the energy line in pixels. Click the lit one to go back to auto.";
+		if (row == 3) return "hud_energy_ref|Zero at|c|0 1|start zone;last jump"
 		                     "|What counts as zero energy: where the run began, or where you last left the ground.";
 		return "";
 	}
@@ -554,12 +546,6 @@ string(string id, float row) HE_OptDef =
 		return "";
 	}
 
-	/*
-	  BUILD 66.  The timer had no pane at all until now -- "never had a setting to
-	  change the font size of the Subtext".  It is a cycle rather than a second
-	  he_cvsize row for the reason hud_energy_size is: one element, two text
-	  sizes, and he_cvsize holds one.
-	*/
 	if (id == "banner")
 	{
 		if (row == 0) return "hud_banner_stages|Stage banners|t||"
@@ -575,10 +561,10 @@ string(string id, float row) HE_OptDef =
 
 	if (id == "timer")
 	{
-		// `auto` first, and it is the default -- see the note on hud_energy_size
-		// about why leaving 0 out of the list makes the chip print a bare `0`.
-		if (row == 0) return "hud_timer_sub_size|Subtext size|c|0 12 16 20 24|auto;12;16;20;24"
-		                     "|Size of the status and pb lines under the clock. auto follows the HUD scale.";
+		// One element, two text sizes: he_cvsize holds the clock's, this row the
+		// lines under it (Patch 630: as boxes, like hud_energy_size).
+		if (row == 0) return "hud_timer_sub_size|Subtext|s|12 16 20 24|"
+		                     "|Size of the status and pb lines under the clock, in pixels. Click the lit one to go back to auto.";
 		// BUILD 86: the pace colour.  A row here and not only a cvar, because
 		// HE_ResetAll walks these rows -- a switch left out of the list is one the
 		// reset button cannot recover.
@@ -648,9 +634,12 @@ string(string id, float row) HE_OptDef =
 
 	if (id == "mouse")
 	{
-		if (row == 0) return "hud_mouse_span|Width|c|45 90 180 360|45;90;180;360"
+		// Patch 630: one size for the pad and the key block, which sit together.
+		if (row == 0) return "hud_keys_size|Size|b|1 1.25 1.5 2|S;M;L;XL"
+		                     "|How big the mouse pad and the key block beside it are drawn. S is the old size.";
+		if (row == 1) return "hud_mouse_span|Width|c|45 90 180 360|45;90;180;360"
 		                     "|Degrees of turn from edge to edge. The height is 10/16 of it.";
-		if (row == 1) return "hud_mouse_trail|Trail|c|0 0.25 0.5 1|off;0.25s;0.5s;1s"
+		if (row == 2) return "hud_mouse_trail|Trail|c|0 0.25 0.5 1|off;0.25s;0.5s;1s"
 		                     "|How long the line behind the dot takes to fade.";
 		return "";
 	}
@@ -758,8 +747,13 @@ vector(float r, vector scr) HE_AnchorOf =
 	// park the placeholder somewhere visible and let the first drag write real
 	// values, which is the documented way out of both.  hud_keys_x 0 is put
 	// where auto-right actually lands rather than at the left edge.
+	// Patch 630: where HUD_KeysGeom draws it, as the mouse row below (a guessed
+	// 0.86 left a hidden block's XL placeholder hanging 32 px off the right edge).
 	if (he_id[r] == "keys" && x == 0)
-		x = 0.86;
+	{
+		HUD_KeysGeom(scr);
+		return ui_kb_org;
+	}
 	// Patch 390: attached, the placeholder sits where MPad_Geom draws.
 	if (he_id[r] == "mouse")
 	if (x < 0 || y < 0)
@@ -1104,6 +1098,8 @@ void(vector scr) HUD_EditDraw =
 			// so a switched-off or faded-out panel is still something you can grab.
 			a  = HE_AnchorOf(i, scr);
 			sz = [he_nw[i] * sc, he_nh[i] * sc, 0];
+			if (he_id[i] == "keys" || he_id[i] == "mouse")
+				sz = sz * ui_cv_keysmul;        // Patch 630: hud_keys_size
 			p  = HE_BoxOf(i, a, sz);
 		}
 
@@ -1592,6 +1588,46 @@ void(vector scr) HUD_EditDraw =
 			otip = Gfx_Field(def, 5, "|");     // build 66; "" on rows without one
 
 			sui_fill([x, y, 0], [w, rowh, 0], HEC_PANE, 0.5, 0);
+
+			// Patch 630: boxes at the size row's own geometry.  A text size (s) names
+			// its state in the label, as that row does: no box is lit at auto.  Only
+			// the word, where that row has the size too: "Subtext 16 auto" ended 4 px
+			// short of the first box at a 900-line window.
+			if (okind == "s" || okind == "b")
+			{
+				cur = cvar(ocv);
+				s = olab;
+				if (okind == "s")
+				{
+					if (cur >= 1) s = sprintf("%s %g", olab, cur);
+					else          s = strcat(olab, " auto");
+				}
+				sui_native_text([ox, y + (rowh - 7 * psc) * 0.5, 0], s,
+				         7 * psc, HEC_DIM, 0.9);
+
+				k = tokenize(oval);
+				if (k > 4) k = 4;
+				for (n = 0; n < k; n = n + 1)
+				{
+					tokenize(oval);             // every pass: see the size row
+					s  = argv(n);
+					bx = ox + ow * 0.30 + (ow * 0.70 / k) * n;
+					if (HE_Chip(strcat("he_o_", ocv, s),
+					            [bx, y + 1 * psc, 0],
+					            [ow * 0.70 / k - 2 * psc, rowh - 4 * psc, 0],
+					            (okind == "b") ? Gfx_Field(onam, n, ";") : s,
+					            cur == stof(s), psc, otip))
+					{
+						if (okind == "s" && cur == stof(s))
+							s = "0";
+						localcmd(sprintf("seta %s %s\n", ocv, s));
+						ui_he_dirty = TRUE;
+					}
+				}
+				y = y + rowh;
+				continue;
+			}
+
 			sui_native_text([ox, y + (rowh - 7 * psc) * 0.5, 0], olab,
 			         7 * psc, HEC_DIM, 0.9);
 

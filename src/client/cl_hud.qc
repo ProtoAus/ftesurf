@@ -23,6 +23,8 @@ float  ui_cv_scale;
 float ui_rw_on, ui_rw_was, ui_rw_time, ui_rw_tick, ui_rw_ref, ui_rw_refok, ui_rw_track, ui_rw_velok;
 vector ui_rw_vel, ui_rw_org;
 float  ui_cv_speed, ui_cv_keys, ui_cv_debug, ui_cv_energy, ui_cv_energyref;
+float  ui_cv_speedshow;     // Patch 630: 0 speed, 1 both, 2 the energy alone
+float  ui_cv_keysmul;       // Patch 630: hud_keys_size, 1..2; the mouse pad follows
 float  ui_cv_predicted;     // build 39: read the predicted state, not the stats
 float  ui_cv_strict;        // build 39: no ramp plane means no target, not a wrong one
 float  ui_cv_strafe, ui_cv_board, ui_cv_boardfade;
@@ -722,6 +724,8 @@ void() HUD_ReadCvars =
 
 	ui_cv_speed     = cvar("hud_speed");
 	ui_cv_energy    = cvar("hud_energy");
+	ui_cv_speedshow = cvar("hud_speed_show");
+	ui_cv_keysmul   = bound(1, cvar("hud_keys_size"), 2);
 	ui_cv_energyref = cvar("hud_energy_ref");
 	ui_cv_predicted = cvar("hud_predicted");
 	ui_cv_strict    = cvar("hud_strafe_strict");
@@ -780,6 +784,16 @@ void() HUD_RegisterCvars =
 	registercvar("hud_scale",   "2", CVAR_ARCHIVE);
 	registercvar("hud_speed",   "1", CVAR_ARCHIVE);
 	registercvar("hud_energy",  "1", CVAR_ARCHIVE);
+	registercvar("hud_speed_show", "1", CVAR_ARCHIVE);  // Patch 630
+	// "Off" was hud_energy 0 until Patch 630 and the pane no longer offers it: a
+	// config saved that way is moved, once, to hud_speed_show 0, which draws the
+	// same.  (Left alone the pane read `both` over a speed with no energy.)
+	if (!cvar("hud_energy"))
+	{
+		localcmd("seta hud_energy 1\n");
+		if (cvar("hud_speed_show") == 1)
+			localcmd("seta hud_speed_show 0\n");
+	}
 	registercvar("hud_energy_ref", "1");
 
 	/*
@@ -873,6 +887,7 @@ void() HUD_RegisterCvars =
 	registercvar("hud_strafe",  "1", CVAR_ARCHIVE);
 	registercvar("hud_board",   "1", CVAR_ARCHIVE);
 	registercvar("hud_keys",    "1", CVAR_ARCHIVE);
+	registercvar("hud_keys_size", "1", CVAR_ARCHIVE);   // Patch 630: 1 1.25 1.5 2
 
 	// OFF by default now.  It is a physics debugger, not a surf HUD, and it
 	// sits over the left third of the screen.
@@ -2029,6 +2044,7 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 	local float sp, sz, e, erel, veq, gravity, gain, ref, nozone;
 	local float bw, bh, tw, esz;
 	local float ehold;              // build 65: the restore/park hold
+	local float wants, wante;       // Patch 630: the speed line, the energy line
 	local vector p, bp;
 	local string s;
 
@@ -2057,18 +2073,32 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 	if (ui_hl_tick)
 		ui_hl_speed = sp;
 
+	// Patch 630: hud_speed_show picks the speed, both, or the energy alone.  The
+	// energy is your own anchor's (Patch 385), so a watched player shows a speed
+	// whatever is picked; hud_energy 0 still means no energy line under the speed.
+	wante = FALSE;
+	if (!spc_hud)
+	if (ui_cv_speedshow >= 2 || (ui_cv_speedshow >= 1 && ui_cv_energy))
+		wante = TRUE;
+	wants = (ui_cv_speedshow < 2 || !wante);
+
 	// Bebas for the one number you look at while moving.  The "+0.0" delta
 	// and the peak are gone, but the delta still COLOURS the number -- that
 	// was never the thing in the way, and it is how Momentum's own
 	// speedometer reads too.
 	Font_Set(ui_font_display);
-	s  = (ui_rw_on && !ui_rw_velok) ? "--" : sprintf("%d", rint(HUD_Round(ui_hl_speed)));
-	bw = stringwidth(s, TRUE, [Font_Px(sz), Font_Px(sz)]);
-	bh = sz;
-	HUD_TextC(p, s, sz, HUD_GainColor(gain), 1);
-	p_y = p_y + sz;
+	bw = 0;
+	bh = 0;
+	if (wants)
+	{
+		s  = (ui_rw_on && !ui_rw_velok) ? "--" : sprintf("%d", rint(HUD_Round(ui_hl_speed)));
+		bw = stringwidth(s, TRUE, [Font_Px(sz), Font_Px(sz)]);
+		bh = sz;
+		HUD_TextC(p, s, sz, HUD_GainColor(gain), 1);
+		p_y = p_y + sz;
+	}
 
-	if (ui_cv_energy && !spc_hud)       // Patch 385: your anchor, not the watched player's
+	if (wante)
 	{
 		gravity = serverkeyfloat("sv_gravity");
 		if (gravity < 1) gravity = 800;
@@ -4667,24 +4697,39 @@ float  ui_kb_newer;             // which of them went down last: -1 A, 1 D, 0 un
 
 void(vector scr) HUD_KeysGeom =
 {
-	local float pad, was;
+	local float pad, was, m, h1;
 
-	ui_kb_k   = 16 * ui_cv_scale;
-	ui_kb_gap = 2 * ui_cv_scale;
-	ui_kb_bw  = 4 * ui_cv_scale;    // the +left / +right bars
+	m = ui_cv_keysmul;              // Patch 630: hud_keys_size
+	if (m < 1)
+		m = 1;                      // read before HUD_ReadCvars has run
+	ui_kb_k   = 16 * ui_cv_scale * m;
+	ui_kb_gap = 2 * ui_cv_scale * m;
+	ui_kb_bw  = 4 * ui_cv_scale * m;        // the +left / +right bars
 	was = ui_font_cur;
 	Font_Set(ui_font_ui);
+	// Snapped to the ladder once, at size S, then scaled: snapped per size the
+	// duck/jump row came out 64 px under 96 px keys (XL at hud_scale 3; the
+	// ladder stops at 32).
 	ui_kb_lsz = Font_Px(8 * ui_cv_scale);
+	h1 = 36 * ui_cv_scale + ui_kb_lsz * 2;  // the block's height at size S
+	ui_kb_lsz = ui_kb_lsz * m;
 	Font_Set(was);
 
+	// The floor gap is the size-S block's under hud_keys_y.  Auto x repeats it on
+	// the right, and a larger block keeps both gaps: it grows up and to the left
+	// (with no gap to keep, up from the screen's bottom edge).
 	ui_kb_org_y = scr_y * ui_cv_keyspos_y;
-	pad = scr_y - (ui_kb_org_y + 2 * (ui_kb_k + ui_kb_gap) + ui_kb_lsz * 2);
+	pad = scr_y - (ui_kb_org_y + h1);
 	if (pad < 0)
 		pad = 0;
 	if (ui_cv_keyspos_x > 0)
 		ui_kb_org_x = scr_x * ui_cv_keyspos_x;
 	else
+	{
 		ui_kb_org_x = scr_x - pad - 3 * (ui_kb_k + ui_kb_gap) - ui_kb_bw;
+		if (m > 1)
+			ui_kb_org_y = scr_y - pad - (2 * (ui_kb_k + ui_kb_gap) + ui_kb_lsz * 2);
+	}
 
 	ui_kb_pos  = [ui_kb_org_x - ui_kb_bw - ui_kb_gap, ui_kb_org_y, 0];
 	ui_kb_size = [3 * (ui_kb_k + ui_kb_gap) + 2 * ui_kb_bw + ui_kb_gap,

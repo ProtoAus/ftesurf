@@ -346,7 +346,7 @@ void(vector scr) MPad_Draw =
 
 	drawsetcliparea(o_x + px, o_y + py, wh_x - 2 * px, wh_y - 2 * py);
 	life = MPad_Life();
-	t = max(px, ui_cv_scale);
+	t = max(px, ui_cv_scale * ui_cv_keysmul);       // Patch 630: with the box
 	Line_PxFrame();
 	Line_Width(t / px);
 	if (life > 0)
@@ -393,7 +393,7 @@ void(vector scr) MPad_Draw =
 	}
 
 	// The dot, with a copy across any edge it straddles.
-	ds = max(2 * px, floor(3 * ui_cv_scale / px + 0.5) * px);
+	ds = max(2 * px, floor(3 * ui_cv_scale * ui_cv_keysmul / px + 0.5) * px);
 	q = [o_x + ui_mp_pos_x * wh_x - ds * 0.5, o_y + ui_mp_pos_y * wh_y - ds * 0.5, 0];
 	sx = 0;  sy = 0;
 	if (q_x < o_x) sx = wh_x;  else if (q_x + ds > o_x + wh_x) sx = -wh_x;

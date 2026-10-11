@@ -5,6 +5,38 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## hud_edit sizes and modes: what Patch 630 left -- 2026-10-11
+
+From its one review; the numbers are that review's runs at 1600x900 unless said.
+
+- **A key block at a position of its own, or a detached mouse pad, can leave
+  the screen at L or XL.** Only the automatic position grows up and left
+  (`cl_hud.qc:HUD_KeysGeom`); a dragged block grows right and down from its
+  anchor: XL from 1420,756 ends 76 px past the right edge and 64 past the
+  bottom, and a detached pad's bottom was 964 of 900 (`cl_mouse.qc:MPad_Geom`).
+  Falsifier: `hud_keys_x 0.8875`, `hud_keys_y 0.84`, `hud_keys_size 2`,
+  `hud_edit on`, `hud_edit status`: the keys row's box must end inside the
+  window.
+- **In a 720-line window the whole editor panel halves when Speed is open.**
+  The pane has five rows where it had four, so the panel is 742 px tall at full
+  scale (was 712). `cl_hudedit.qc:HUD_EditDraw`, the `panh > scr_y` test.
+  Segments and Run lines already did this.
+- **`hud_scale 1`, size M: a 2.5 px gap, drawn as 2 and 3.** The block's cells
+  are not rounded to whole units (`HUD_KeysGeom`); at hud_scale 2 every size is
+  whole.
+- **A plain click on the key block in the editor ends its automatic position**
+  (the first held frame writes `hud_keys_x`), and Keys has no row, so no reset
+  chip of its own: `hud_edit reset` or `reset all`. Read, not run; older than
+  this patch, which makes the automatic position matter more.
+- **`hud_keys_size` over 2, typed, draws as XL with no box lit.** Read.
+- **`tools/p610ui.py` still shoots the trainer and the graph at 12 px**, a size
+  the editor no longer offers (the cvar still takes it).
+- **A second-size row at auto does not say the size in force** (`Energy auto`,
+  where the element's own row says `size 48 auto`): the longer label did not
+  fit beside four boxes.
+- Not run by anyone: the trainer at 24 and 28 px; the energy alone while
+  spectating or on a rewind cursor (read: the speed is drawn there).
+
 ## Steam sign-in: what the review left -- 2026-10-10
 
 Patch 612's two review rounds, `surfd/accounts.py` unless said. The first

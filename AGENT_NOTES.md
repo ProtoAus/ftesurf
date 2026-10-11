@@ -4621,6 +4621,54 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+### hud_edit: second sizes, what the speedometer shows, the keys' size (Patch 630) — 2026-10-11
+
+- `HE_OptDef` HAS TWO MORE KINDS. `s` is a second text size drawn like an
+  element's own size row (values = up to four pixel sizes, 0 = auto, the lit box
+  clicked again clears it); `b` is a plain row of boxes (values, names). Their
+  chips are `he_o_<cvar><value>`, one per box, where a toggle or a cycle has one
+  `he_o_<cvar>`. An `s` label says `<Label> auto` or `<Label> 20`, not the size
+  in force: "Subtext 16 auto" ended 4 px short of the first box.
+- `hud_edit status` PRINTS `not drawn` FOR EVERY ROW WHILE THE EDITOR IS CLOSED:
+  the drawers publish their boxes only while it is open (`0 rect(s) live`). An
+  arm that grades a drawn box opens the editor first; `tools/test_p630hud.py`
+  reported five checks as NOT MEASURED until its cfg did.
+- THE SPEEDOMETER DRAWS WHAT `hud_speed_show` SAYS (0 speed, 1 both, 2 the energy
+  alone). `hud_energy 0`, the old "off", is no longer offered by the editor. A
+  config SAVED that way is moved at load (`HUD_RegisterCvars`: `hud_energy 1`,
+  and `hud_speed_show 0` if it was 1), because left alone the pane read `Shows:
+  both` and `Energy as: 0` over a speed with no energy, and clicking `Shows`
+  went energy, speed, speed (the review ran it). Set in a session it still
+  means no energy line under the speed, so cfgs that set it look as they did;
+  at `hud_speed_show 2` the energy is drawn in units regardless. A watched
+  player has no energy of yours to show, so spectating draws the speed in every
+  mode.
+- `hud_keys_size` (1, 1.25, 1.5, 2) SCALES THE KEY BLOCK, AND THE MOUSE PAD IS CUT
+  FROM THE BLOCK'S HEIGHT. At auto placement (`hud_keys_x 0`) the block keeps the
+  size-1 floor gap and the same gap on the right, so it grows up and to the
+  left; where size 1 has no floor gap (hud_scale 3 in a 900-line window: it
+  already ends at 912) a larger block stands on the bottom edge. A dragged
+  block, or a detached pad, grows right and down from its anchor and is not
+  kept on screen (BACKLOG). The duck/jump row's unit is snapped to the font
+  ladder ONCE, at size 1, and multiplied: snapped per size, XL at hud_scale 3
+  was 384x280 with a 64 px row under 96 px keys, not twice 192x156. At size 1
+  the geometry is the old one (both builds print 128x104 at 1432,756 and the
+  pad 166x104 at 1262,756 in a 1600x900 window).
+- `waitms` COUNTS FROM THE FRAME'S START (the review, `cmd.c:278`), so a
+  screenshot or a long dump earlier in the same batch eats it: the first run's
+  "Mouse pane at S" shot was the Run graph pane, one frame rendered between the
+  two dumps, and I had not looked at that one. `wait 4` after the wait fixes it.
+- THE ARM: `python tools/runlines_smoke.py ftesurf/cfg/test/p630hud.cfg
+  --output-dir <owned dir>`, then `python tools/test_p630hud.py <rig>/ftesurf/
+  logs/runlines_smoke.log`. Clicks are `hud_edit ui hover <id>` and
+  `hud_edit ui down|up mouse1`; each write is read back with the engine's own
+  cvar print. 41 checks. The build before the patch failed 21 of the 34 the
+  first cut of the cfg reached; the commit before the review's fixes fails the
+  four they are for (the saved-off config's two reads, XL at hud_scale 3 twice
+  S and on the bottom edge). A rig window is 640x480 unless the cfg sets
+  `vid_width`/`vid_height` before its first wait; the panel halves its scale
+  when it would not fit, so the cfg asks for 1600x900.
+
 ### SUI theme, the board and the gallery (Patches 606, 607) — 2026-10-10
 
 - LOOK AT THE PANELS WITH `tools/ui_gallery.py`. One isolated rig, one arm per
