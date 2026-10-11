@@ -881,6 +881,246 @@ float()  Lob_JoinWaitAt = { return lj_wat; };
 float()  Lob_JoinUntil  = { return lj_until; };
 
 /*
+===========================================================================
+  THE MAP LIST FROM THE DIRECTORY.  Patch 652.
+
+  data/mapdl.txt ships, so a map the Pi fetched yesterday reached a player's
+  list with the next release.  The directory serves the same grammar for what
+  it holds now (surfd /api/board?maps=1, written by mapwatch.py); a copy is
+  kept in MDL_FILE and ui_dl_load reads it in preference.
+
+  WHAT ARRIVES IS A STRANGER'S TEXT.  lobby_dir is a cvar, and a name in this
+  file goes on to a download path, a join query and `map`.  So nothing is
+  saved as it came: each row is rebuilt from fields that each passed their own
+  test, and a body that is not this grammar from its first line saves nothing.
+
+  Asked once per run of the menu, from the picker, behind Lob_Poll's consent
+  test (the same disclosure to the same host).
+===========================================================================
+*/
+#define MDL_FILE     "data/mapdl.net.txt"
+#define MDL_TMP      "data/mapdl.net.tmp"
+#define MDL_HEAD     "FTESURF-MAPDL 1\n"
+#define MDL_MAXLEN   1000000         // 1,857 rows are 110 KB
+#define MDL_MAXLINES 20000
+#define MDL_MAXROWS  8000
+#define MDL_NAMECH   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+#define MDL_DIGITS   "0123456789"
+
+#define MDLS_IDLE    0
+#define MDLS_ASKED   1
+#define MDLS_SAVED   2          // a list was written
+#define MDLS_SAME    3          // the list this install already had
+#define MDLS_NONE    4          // refused, or not a list
+
+float  mdl_req;                 // 0 when nothing is outstanding
+float  mdl_state;
+float  mdl_rows;                // rows the saved list holds
+float  mdl_bad;                 // rows the reply held that were not kept
+
+void() ui_maplist_changed;      // m_main.qc: the picker reloads its list
+
+float() Mdl_State = { return mdl_state; };
+float() Mdl_Rows  = { return mdl_rows; };
+
+// 1..maxlen characters, every one of them in `ok`.
+float(string s, string ok, float maxlen) Mdl_Made =
+{
+	local float i, n;
+
+	n = strlen(s);
+	if (n < 1 || n > maxlen)
+		return FALSE;
+	for (i = 0; i < n; i = i + 1)
+		if (strstrofs(ok, substring(s, i, 1)) < 0)
+			return FALSE;
+	return TRUE;
+};
+
+// One line of a reply -> the row to save, or "".  tokenize()s.
+string(string ln) Mdl_Row =
+{
+	local float n;
+
+	// Ten columns, or eleven; more are a later grammar's, and are not kept.
+	n = tokenize(ln);
+	if (n < 10)
+		return "";
+	if (argv(0) != "dl")
+		return "";
+	if (!Mdl_Made(argv(1), MDL_NAMECH, 64))
+		return "";
+	if (argv(2) != "surf")
+	if (argv(2) != "bhop")
+		return "";
+	if (argv(3) != "k")
+	if (argv(3) != "m")
+	if (argv(3) != "km")
+	if (argv(3) != "-")
+		return "";
+	if (!Mdl_Made(argv(4), MDL_DIGITS, 2))
+		return "";
+	if (!Mdl_Made(argv(5), MDL_DIGITS, 8))
+		return "";
+	if (!Mdl_Made(argv(6), "0123456789-", 10))
+		return "";
+	if (argv(7) != "0")
+	if (argv(7) != "1")
+		return "";
+	if (!Mdl_Made(argv(8), MDL_DIGITS, 2))
+		return "";
+	if (!Mdl_Made(argv(9), MDL_DIGITS, 2))
+		return "";
+	if (n >= 11)
+	if (!Mdl_Made(argv(10), MDL_NAMECH, 64))
+		return "";
+	// In pieces: a varargs call carries eight parameters.
+	ln = sprintf("dl %s %s %s %s %s", argv(1), argv(2), argv(3), argv(4), argv(5));
+	ln = sprintf("%s %s %s %s %s", ln, argv(6), argv(7), argv(8), argv(9));
+	if (n >= 11)
+		ln = strcat(ln, " ", argv(10));
+	return strcat(ln, "\n");
+};
+
+void() Mdl_Ask =
+{
+	local string dir;
+
+	if (mdl_state != MDLS_IDLE)
+		return;
+	if (cvar("rec_terms") < FS_TERMS_ONLINE)
+		return;
+	dir = cvar_string("lobby_dir");
+	if (dir == "")
+		return;
+	mdl_state = MDLS_ASKED;
+	mdl_req = Lob_NextReq();
+	if (!uri_get(strcat(dir, "/api/board?maps=1"), mdl_req))
+	{
+		mdl_req = 0;
+		mdl_state = MDLS_NONE;
+	}
+};
+
+// From URI_Get_Callback.  TRUE when the id was this request's.
+float(float reqid, float code, string body) Mdl_Reply =
+{
+	local filestream fh;
+	local strbuf keep;
+	local float len, rows, bad, lines, i;
+	local string ln, row, stamp, had;
+
+	if (!mdl_req)
+		return FALSE;
+	if (reqid != mdl_req)
+		return FALSE;
+	mdl_req = 0;
+	mdl_state = MDLS_NONE;
+	mdl_rows = mdl_bad = 0;
+
+	if (code)
+	{
+		print(sprintf("^5maplist:^7 the directory answered %g -- the list this install has stands\n", code));
+		return TRUE;
+	}
+	len = strlen(body);
+	if (len > MDL_MAXLEN || substring(body, 0, strlen(MDL_HEAD)) != MDL_HEAD)
+	{
+		print(sprintf("^5maplist:^7 a reply of %g bytes that is not a map list -- nothing saved\n", len));
+		return TRUE;
+	}
+
+	// The same bytes as last time are the same list: nothing to write or reload.
+	stamp = strcat("# net ", ftos(len), " ", ftos(crc16(FALSE, body)));
+	had = "";
+	fh = fopen(MDL_FILE, FILE_READ);
+	if (fh >= 0)
+	{
+		fgets(fh);
+		had = fgets(fh);
+		fclose(fh);
+	}
+	if (had == stamp)
+	{
+		mdl_state = MDLS_SAME;
+		print("^5maplist:^7 the directory's list is the one saved\n");
+		return TRUE;
+	}
+
+	/*
+	  THROUGH A FILE: ONE WRITE, THEN THE ENGINE'S OWN LINE READER.  The first
+	  cut walked the body with strstrofs and substring, and each of those is a
+	  strlen of the WHOLE body in the engine (pr_bgcmd.c): a megabyte of short
+	  lines was minutes inside this one callback (the review's arithmetic).
+	  The lines read are counted, kept or not, so nothing here is unbounded.
+	*/
+	fh = fopen(MDL_TMP, FILE_WRITE);
+	if (fh < 0)
+	{
+		print(strcat("^5maplist:^7 could not write ", MDL_TMP, "\n"));
+		return TRUE;
+	}
+	fputs(fh, body);
+	fclose(fh);
+	fh = fopen(MDL_TMP, FILE_READ);
+	if (fh < 0)
+		return TRUE;
+	keep = buf_create();
+	rows = bad = lines = 0;
+	fgets(fh);                          // the header, tested above
+	for (ln = fgets(fh); ln != ""; ln = fgets(fh))
+	{
+		lines = lines + 1;
+		if (lines > MDL_MAXLINES || rows >= MDL_MAXROWS)
+			break;
+		if (substring(ln, 0, 1) == "#")
+			continue;
+		row = "";
+		if (strlen(ln) <= 400)
+			row = Mdl_Row(ln);
+		if (row != "")
+		{
+			bufstr_set(keep, rows, row);
+			rows = rows + 1;
+		}
+		else
+			bad = bad + 1;
+	}
+	fclose(fh);
+	fh = fopen(MDL_TMP, FILE_WRITE);    // a stranger's megabyte is not left on disk
+	if (fh >= 0)
+		fclose(fh);
+	mdl_bad = bad;
+
+	// A list with no row that passed replaces nothing: saved, it would hide
+	// the list the release shipped (ui_dl_load reads this file first).
+	if (!rows)
+	{
+		buf_del(keep);
+		print(sprintf("^5maplist:^7 no row of the directory's list could be kept (%g read) -- nothing saved\n", bad));
+		return TRUE;
+	}
+	fh = fopen(MDL_FILE, FILE_WRITE);
+	if (fh < 0)
+	{
+		buf_del(keep);
+		print(strcat("^5maplist:^7 could not write ", MDL_FILE, "\n"));
+		return TRUE;
+	}
+	fputs(fh, MDL_HEAD);
+	fputs(fh, strcat(stamp, "\n"));
+	for (i = 0; i < rows; i = i + 1)
+		fputs(fh, bufstr_get(keep, i));
+	fclose(fh);
+	buf_del(keep);
+	mdl_rows = rows;
+	mdl_state = MDLS_SAVED;
+	print(sprintf("^5maplist:^7 saved %g map(s) from the directory, %g row(s) not kept\n", rows, bad));
+	ui_maplist_changed();
+	return TRUE;
+};
+
+/*
   The one URI_Get_Callback in the menu progs.
 
   The engine finds it by NAME (pr_bgcmd.c:6003) and there can be exactly one,
@@ -912,6 +1152,8 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 
 	// Before the poll's test, which is a bare inequality and would swallow it.
 	if (Mlb_Reply(reqid, responsecode, resourcebody))
+		return;
+	if (Mdl_Reply(reqid, responsecode, resourcebody))
 		return;
 
 	if (reqid != lb_req)

@@ -213,6 +213,25 @@ pixel for pixel.
   what is still expensive (`hud_lines_nums 2` on whole lines costs about 4 ms
   by itself), so fifty lines also needs those made cheaper.
 
+## 00. 12 Oct — one row per map with a MOM / CS:S switch; the map list updates itself (Patch 652)
+
+From your reply ("please build it"; "great idea").
+1. **Map list, a map both games have** (surf_ace, surf_beginner, surf_rookie
+   ...): its row has two small cells, MOM and CS:S, where the source word
+   was. Click CS:S: the button on the right becomes that build's (Download
+   the first time), `start` hosts it, and the choice is remembered. Click
+   MOM to go back. 20 maps have the switch today; more as the Pi fetches
+   them.
+2. **The CS:S build has a timer and both games' boards** (Patch 651, below).
+3. **The list fetches itself.** When you open the map list the game asks the
+   Pi for its current list (one small request), so a map the Pi fetched this
+   morning is offered without a new release. Searching a map by its `_css`
+   name finds its row.
+- The CS:S library chip lists these rows too.
+- Measured in a test rig with made-up maps and a real mouse click on each
+  cell; I looked at one screenshot of it. I have not seen it with your real
+  library: please look at a few rows.
+
 ## 00. 12 Oct — CS:S builds have timers and both games' times; maps follow Momentum (Patch 651)
 
 From your reply. This is the server half; the switch in the map list is

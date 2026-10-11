@@ -8814,6 +8814,40 @@ blind fallback in `ui_map_backdrop` alive for as long as it lived.
   other boards to 100 and every map's main board to 200 in one class by
   depth, then the rest. The request rate is unchanged (10 per 5 minutes).
 
+### One row per map with a Momentum / CS:S switch; the menu fetches its list (Patch 652) -- 2026-10-12
+
+The menu half of Patch 651 (below). ROADMAP 8 asked for builds under one
+name; this is two names on one row, which needed no engine or server change.
+
+- **THE FOLD** (`ui_dl_load`, m_main.qc). A list row with a tenth column is a
+  second build of the map named there, and goes onto that map's row:
+  `ms_var` (plain row -> the build's row), `ms_varof` (the reverse;
+  `ui_refilter` leaves that row out), `ms_pick` ("1" = CS:S chosen, kept in
+  `data/mapbuild.txt`). `ui_eff(row)` is the row whose FILE an action is
+  about: Play, Download, start, the leaderboard panel, the player's own time
+  and the headcount read through it; the name, tier, picture and best known
+  time stay the plain map's. A build whose map is not listed keeps its row.
+- **A REPLY FROM `lobby_dir` IS A STRANGER'S TEXT** (`Mdl_Reply`, m_lobby.qc).
+  Every row is rebuilt from fields that each passed their own test, and a
+  name is `[A-Za-z0-9_-]{1,64}`: it goes on to a download path, a join query
+  and `map`. A list with no row that passes saves nothing (saved, it would
+  hide the shipped one: `ui_dl_load` reads `data/mapdl.net.txt` first).
+- **`strstrofs` AND `substring` ARE A strlen OF THE WHOLE STRING EACH** in
+  the engine (pr_bgcmd.c). The first cut walked the reply with them: by the
+  review's arithmetic two megabytes of short lines was 340 s inside one
+  callback. The reply is written to a file once and read back with `fgets`.
+- **A VARARGS CALL CARRIES EIGHT PARAMETERS**: fteqcc warns ("More than 8
+  parameters on varargs function") and the row is built in two sprintfs.
+- **TO DRIVE IT**: `ui_build <map> [mom|css]` (the switch's twin, and its
+  controls' names for `ui_hover @<id>` + `ui_mouse`), `ui_mapnet [ask|sel]`
+  (the fetch; what start would launch), `ui_find <text>` (the search).
+  `tools/p652builds.py` is the arm, on p615link's rig with surfd in process.
+  A rig has no mapmeta, so no row has a tier to the list's mind: set
+  `ui_maps_showall 1` or it draws "no matches".
+- **A RIG WAITER TAKES THE LOCK LAST.** Mine took `rig.lock` and then waited
+  for a quiet machine, and sat on it while the owner played (11 Oct 15:25Z).
+  Quiet first, then the lock, then one more look.
+
 ### Two builds of one map: zones, boards, and the list the game fetches (Patch 651) -- 2026-10-11
 
 Lex's reply to 644's report: follow Momentum's updates; copy Momentum's zones

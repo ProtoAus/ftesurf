@@ -209,6 +209,13 @@ not; whether ksf.surf exposes map screenshots.
 
 ## 8. One row per map, with a Momentum / CS:S toggle
 
+**12 Oct: delivered another way (Patches 644, 651, 652).** KSF's build is
+its own file, `<name>_css`, with its own zone file (the plain map's, where
+the two builds fit) and its own native board; the map list folds it into the
+plain map's row behind a MOM / CS:S switch, and the board shows both games'
+times on both. No variant path in the engine, no board keyed by build. What
+is below is the original plan, kept for what it says about the mount order.
+
 **Today.** Duplicates already merge into one "MOM CSS" row
 (m_main.qc:2184-2250), but which BSP loads is decided by the mount order
 (`ftesurf/maps` > Momentum > cstrike); the Pi serves one build per name; zones,

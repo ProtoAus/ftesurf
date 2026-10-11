@@ -142,6 +142,15 @@ From its one review (read, not run) and what the arm does not reach.
   only its own rows. A renamed BSP loses its baked cubemaps and soundscape:
   both are looked up by the file's basename (engine
   `plugins/hl2/mod_vbsp.c:10825-10860`, `cl_soundscape.qc:644`).
+- **The switch, what Patch 652 left** (its review, read not run). The
+  headcount on a row is the chosen build's alone; the row shows the plain
+  map's best time beside the chosen build's own; a choice is dropped when
+  its map leaves the list; `lobby_dir` decides a row's size and what it is a
+  build of, so it can show "re-get" on an installed map or fold one row
+  under another (it cannot name a file: downloads are `sv_dlURL`'s); the
+  saved list is not tied to the directory it came from; a blank line ends
+  `data/mapbuild.txt`'s reader. Not measured: what `ui_maplist_changed`'s
+  reload costs on a full library.
 - **What `zonefit.py` cannot see** (the 651 review, run on built pairs): a
   world rearranged inside the same box, a name on an entity that is not a
   destination, `teleDestPos` regions, and a file naming no destination at

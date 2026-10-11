@@ -398,6 +398,18 @@ float  ms_wrcount;
   that, and ui_meta_load consults it only where Momentum said nothing.
 */
 strbuf ms_dltier;
+/*
+  Patch 652: two builds of one map on ONE row.  The list names a second build
+  in a tenth column (`of`), and ui_dl_load folds it into the row of the map it
+  is a build of.  ms_var, on the PLAIN row: the row index of its CS:S build.
+  ms_varof, on that build's row: the plain row (ui_refilter then leaves the
+  row out).  ms_pick, on the plain row: "1" where the player chose the CS:S
+  build, kept in data/mapbuild.txt.  All "" where they do not apply.
+*/
+strbuf ms_var, ms_varof, ms_pick;
+float  ms_nvar;                 // rows that carry a second build
+float  ms_bswrow, ms_bswidx;    // the row whose switch was drawn last, and its
+                                // place in the view: `ui_build` names the control
 // The personal-best report last printed, so reopening the screen stays quiet.
 string ms_pbnote;
 // gettime(0) when run_pb_load last ran, for ui_create_open's latch.  0 = never.
@@ -2099,10 +2111,14 @@ void() ui_dl_load =
 {
 	local filestream fh;
 	local hashtable byname;
-	local string ln, nm, key;
+	local string ln, nm, key, of;
 	local float i, n, row, appended, badged, stale;
 
-	fh = fopen("data/mapdl.txt", FILE_READ);
+	// Patch 652: the list fetched from the directory (m_lobby.qc Mdl_Reply,
+	// which wrote it row by row), else the one the release shipped.
+	fh = fopen(MDL_FILE, FILE_READ);
+	if (fh < 0)
+		fh = fopen("data/mapdl.txt", FILE_READ);
 	if (fh < 0)
 		return;
 
@@ -2124,10 +2140,16 @@ void() ui_dl_load =
 
 		nm = argv(1);
 		key = strtolower(nm);
+		// The map this row is a second build OF (Patch 652); read now, argv
+		// does not survive the calls below.
+		of = "";
+		if (n >= 11)
+			of = argv(10);
 		row = hash_get(byname, key, -1, EV_FLOAT);
 
 		if (row >= 0)
 		{
+			bufstr_set(ms_varof, row, of);
 			// Already on disk.  Whether it turned up recently enough to badge.
 			if (argv(7) == "1")
 			{
@@ -2293,6 +2315,9 @@ void() ui_dl_load =
 		bufstr_set(ms_new, ms_count, argv(7));
 		bufstr_set(ms_dlkb, ms_count, argv(5));
 		bufstr_set(ms_dltier, ms_count, argv(4));
+		bufstr_set(ms_var, ms_count, "");
+		bufstr_set(ms_varof, ms_count, of);
+		bufstr_set(ms_pick, ms_count, "");
 		hash_add(byname, key, ms_count, HASH_REPLACE | EV_FLOAT);
 		ms_count = ms_count + 1;
 		// COUNTED BY WHAT THE ROW WILL DRAW, not by "a line was read".  ms_dlcount
@@ -2307,7 +2332,58 @@ void() ui_dl_load =
 			badged = badged + 1;
 	}
 	fclose(fh);
+
+	/*
+	  Patch 652: fold a second build into the row of the map it is a build of.
+	  ms_varof holds that map's NAME until here and its row from here on.  A
+	  build whose map is not in the list, or is itself a second build, keeps a
+	  row of its own.  The plain row answers the CS:S library too: that is the
+	  build the switch on it offers.
+	*/
+	ms_nvar = 0;
+	for (i = 0; i < ms_count; i = i + 1)
+	{
+		nm = bufstr_get(ms_varof, i);
+		if (nm == "")
+			continue;
+		row = hash_get(byname, strtolower(nm), -1, EV_FLOAT);
+		if (row < 0 || row == i || row >= ms_count)
+			row = -1;
+		else if (bufstr_get(ms_varof, row) != "" || bufstr_get(ms_var, row) != "")
+			row = -1;
+		if (row < 0)
+		{
+			bufstr_set(ms_varof, i, "");
+			continue;
+		}
+		bufstr_set(ms_varof, i, ftos(row));
+		bufstr_set(ms_var, row, ftos(i));
+		if (ui_isgamemode(bufstr_get(ms_name, row)))
+			bufstr_set(ms_lst, row, ftos(stof(bufstr_get(ms_lst, row)) | SRC_BIT_CSS));
+		ms_nvar = ms_nvar + 1;
+	}
+	// Which build each such row plays: the player's own choices.
+	fh = fopen("data/mapbuild.txt", FILE_READ);
+	if (fh >= 0)
+	{
+		while ((ln = fgets(fh)) != "")
+		{
+			if (tokenize(ln) != 2)
+				continue;
+			if (argv(0) != "css")
+				continue;
+			// Kept on a row with no second build today (ui_eff ignores it
+			// there): the choice then outlives a list that lacks the build.
+			row = hash_get(byname, strtolower(argv(1)), -1, EV_FLOAT);
+			if (row >= 0)
+				bufstr_set(ms_pick, row, "1");
+		}
+		fclose(fh);
+	}
 	hash_destroytab(byname);
+	if (ms_nvar > 0)
+		print(sprintf("FTESurf: %g map(s) have a CS:S build beside Momentum's -- one row, a switch\n",
+		              ms_nvar));
 
 	ms_dlcount = appended;
 	ms_dlstale = stale;
@@ -2583,6 +2659,19 @@ void() ui_load_maps =
 	ms_dltier = buf_create();
 	for (float t = 0; t < ms_count; t++)
 		bufstr_add(ms_dltier, "0", TRUE);
+	// Patch 652, sized the same way and for the same reason.
+	if (ms_var >= 0)   buf_del(ms_var);
+	if (ms_varof >= 0) buf_del(ms_varof);
+	if (ms_pick >= 0)  buf_del(ms_pick);
+	ms_var = buf_create();
+	ms_varof = buf_create();
+	ms_pick = buf_create();
+	for (float t = 0; t < ms_count; t++)
+	{
+		bufstr_add(ms_var, "", TRUE);
+		bufstr_add(ms_varof, "", TRUE);
+		bufstr_add(ms_pick, "", TRUE);
+	}
 
 	// BEFORE ui_meta_load, not after: it appends rows to ms_name, and
 	// ui_meta_load builds its byname hash from ms_name and then fills the tier
@@ -2698,8 +2787,17 @@ void() ui_refilter =
 		*/
 		if (!(ms_modes & ui_cat_bit(stof(bufstr_get(ms_catv, i)))))
 			continue;
-		if (q != "" && strstrofs(strtolower(bufstr_get(ms_name, i)), q) < 0)
+		// Patch 652: a second build is on its map's row, behind the switch.
+		if (bufstr_get(ms_varof, i) != "")
 			continue;
+		if (q != "" && strstrofs(strtolower(bufstr_get(ms_name, i)), q) < 0)
+		{
+			// ...unless it is the name of the build folded into this row.
+			if (bufstr_get(ms_var, i) == "")
+				continue;
+			if (strstrofs(strtolower(bufstr_get(ms_name, stof(bufstr_get(ms_var, i)))), q) < 0)
+				continue;
+		}
 
 		// Tier is a plain equality, and 0 in ms_tierv means UNTIERED rather than
 		// tier zero -- so an untiered map answers only the "any" filter and never
@@ -2966,11 +3064,161 @@ void(string arg) ui_browse_print =
 	}
 };
 
+/*
+  Patch 652.  THE ROW WHOSE FILE A ROW'S ACTIONS ARE ABOUT: its CS:S build
+  where one is folded in and chosen, else itself.  What a row SHOWS -- name,
+  tier, picture, the best known time -- stays the plain map's; what it PLAYS,
+  fetches, hosts and counts players on goes through here.
+*/
+float(float row) ui_eff =
+{
+	if (row < 0 || row >= ms_count)
+		return row;
+	if (bufstr_get(ms_pick, row) == "1")
+	if (bufstr_get(ms_var, row) != "")
+		return stof(bufstr_get(ms_var, row));
+	return row;
+};
+
 string() ui_selected_name =
 {
 	if (ms_selected < 0 || ms_selected >= ms_count)
 		return "";
-	return bufstr_get(ms_name, ms_selected);
+	return bufstr_get(ms_name, ui_eff(ms_selected));
+};
+
+// Choose a row's build (css 1, Momentum's 0) and remember every choice.
+void(float row, float css) ui_pick_set =
+{
+	local filestream fh;
+	local float i;
+
+	if (row < 0 || row >= ms_count)
+		return;
+	if (bufstr_get(ms_var, row) == "")
+		return;
+	bufstr_set(ms_pick, row, css ? "1" : "");
+	fh = fopen("data/mapbuild.txt", FILE_WRITE);
+	if (fh >= 0)
+	{
+		fputs(fh, "# the build the map list plays where a map has two; written by the menu\n");
+		for (i = 0; i < ms_count; i = i + 1)
+			if (bufstr_get(ms_pick, i) == "1")
+				fputs(fh, sprintf("css %s\n", bufstr_get(ms_name, i)));
+		fclose(fh);
+	}
+	print(sprintf("ui_build: %s plays %s\n", bufstr_get(ms_name, row),
+	              bufstr_get(ms_name, ui_eff(row))));
+};
+
+// `ui_build <map> [mom|css]`: the switch's headless twin, and its report.
+void(string mp, string pick) ui_build_print =
+{
+	local float i, row, v;
+
+	if (ms_name < 0 || !ms_count)
+		ui_load_maps();             // only when nothing is loaded: a reload moves rows
+	row = -1;
+	for (i = 0; i < ms_count; i = i + 1)
+		if (strtolower(bufstr_get(ms_name, i)) == strtolower(mp))
+			row = i;
+	if (row < 0)
+	{
+		print(sprintf("ui_build: %s is not in the list (%g rows, %g with two builds)\n",
+		              mp, ms_count, ms_nvar));
+		return;
+	}
+	if (bufstr_get(ms_var, row) == "")
+	{
+		print(sprintf("ui_build: %s has one build%s (%g rows, %g with two builds)\n",
+		              bufstr_get(ms_name, row),
+		              (bufstr_get(ms_varof, row) != "") ? ", and is folded into another row" : "",
+		              ms_count, ms_nvar));
+		return;
+	}
+	if (pick == "css")
+		ui_pick_set(row, 1);
+	else if (pick == "mom")
+		ui_pick_set(row, 0);
+	v = stof(bufstr_get(ms_var, row));
+	// Two prints: a varargs call carries eight parameters.
+	print(sprintf("ui_build: %s builds mom have %s, css %s have %s kb %s;",
+	              bufstr_get(ms_name, row), bufstr_get(ms_have, row),
+	              bufstr_get(ms_name, v), bufstr_get(ms_have, v), bufstr_get(ms_dlkb, v)));
+	if (ms_bswrow == row)
+		print(sprintf(" switch [cs_bmom%g] [cs_bcss%g];", ms_bswidx, ms_bswidx));
+	print(sprintf(" pick %s; plays %s; lists %g\n",
+	              (bufstr_get(ms_pick, row) == "1") ? "css" : "mom",
+	              bufstr_get(ms_name, ui_eff(row)), stof(bufstr_get(ms_lst, row))));
+};
+
+/*
+  The switch itself: two cells on the row's second line, the chosen build
+  filled.  Registered after the row's own element, so a click here is the
+  switch's and not the row's (the action column's rule).  -> the width taken.
+*/
+#define BSW_W   44
+#define BSW_H   18
+#define BSW_SZ  '12 12 0'
+
+float(vector pos, float row, float idx) ui_build_switch =
+{
+	local float css, k, hov;
+	local string id, lbl;
+	local vector p;
+
+	css = (bufstr_get(ms_pick, row) == "1");
+	ms_bswrow = row;
+	ms_bswidx = idx;
+	for (k = 0; k < 2; k = k + 1)
+	{
+		p = [pos_x + k * (BSW_W + 2), pos_y];
+		id = strcat(k ? "cs_bcss" : "cs_bmom", ftos(idx));
+		lbl = k ? "CS:S" : "MOM";
+		sui_action_element(p, [BSW_W, BSW_H], id, sui_noop);
+		hov = sui_is_hovered(id);
+		sui_roundbox(p, [BSW_W, BSW_H], 5,
+		             (k == css) ? COL_ACCENT : (hov ? COL_ROW_HOVER : COL_ROW), 1);
+		sui_text([p_x + (BSW_W - stringwidth(lbl, TRUE, BSW_SZ)) * 0.5, p_y + 3], BSW_SZ,
+		         lbl, (k == css) ? SUI_THEME_WELL : COL_DIM, 1, 0);
+		if (hov)
+			sui_tooltip_for(id, k ? "Play KSF's Counter-Strike: Source build of this map."
+			                      : "Play Momentum Mod's build of this map.", 2);
+		if (sui_is_released(id))
+		{
+			ms_selected = row;
+			if (k != css)
+				ui_pick_set(row, k);
+		}
+	}
+	return 2 * BSW_W + 2 + 10;
+};
+
+// m_lobby.qc's Mdl_Reply saved a new list: read it, and keep what was picked.
+void() ui_maplist_changed =
+{
+	local string keep;
+	local float i;
+
+	if (ms_name < 0 || !ms_count)
+		return;                     // never loaded: the next open reads the new file
+	keep = "";
+	if (ms_selected >= 0 && ms_selected < ms_count)
+		keep = strzone(bufstr_get(ms_name, ms_selected));
+	ui_load_maps();
+	ui_refilter();
+	// Each lobby's cached row was an index into the old list.
+	for (i = 0; i < Lob_Count(); i = i + 1)
+		Lob_SetRow(i, -2);
+	ms_selected = -1;
+	if (keep != "")
+	{
+		for (i = 0; i < ms_count; i = i + 1)
+			if (bufstr_get(ms_name, i) == keep)
+				ms_selected = i;
+		strunzone(keep);
+	}
+	ms_bgfor = -2;
 };
 
 /*
@@ -6522,9 +6770,9 @@ void(vector screensize) screen_create =
 	string mhd;
 	if (ms_nhidden > 0)
 		mhd = sprintf("map  %s(%g of %g -- %g more under show all)", SUI_ESC_MUTED,
-		              ms_viewcount, ms_count, ms_nhidden);
+		              ms_viewcount, ms_count - ms_nvar, ms_nhidden);
 	else
-		mhd = sprintf("map  %s(%g of %g)", SUI_ESC_MUTED, ms_viewcount, ms_count);
+		mhd = sprintf("map  %s(%g of %g)", SUI_ESC_MUTED, ms_viewcount, ms_count - ms_nvar);
 	sui_text([16, y], SZ_LABEL, mhd, COL_DIM, 1, 0);
 
 	/*
@@ -6792,6 +7040,8 @@ void(vector screensize) screen_create =
 			for (float idx = sui_list_item(rp); idx > -1; idx = sui_list_item(rp))
 			{
 				float real = stof(bufstr_get(ms_view, idx));
+				float er = ui_eff(real);           // Patch 652: the build this row plays
+				float bsw = 0;                     // width its build switch takes
 				string rid = strcat("cs_row", ftos(idx));
 				vector rs  = [ls_x - 14, ROW_H];
 
@@ -6936,7 +7186,8 @@ void(vector screensize) screen_create =
 				// once a mode is picked it is redundant -- and a column that is
 				// usually redundant still costs width on every row.
 				local string sub, smode, mdep;
-				sub = ui_srcname(stof(bufstr_get(ms_src, real)));
+				// Two builds: the switch says where it comes from (drawn below).
+				sub = (bufstr_get(ms_var, real) != "") ? "" : ui_srcname(stof(bufstr_get(ms_src, real)));
 				smode = ui_mode_name(stof(bufstr_get(ms_modev, real)));
 				if (smode != "")
 					sub = sprintf("%s  %s|^7  %s", sub, SUI_ESC_MUTED, smode);
@@ -6978,11 +7229,11 @@ void(vector screensize) screen_create =
 				local float mtw, mpop, mpopw;
 				local string mpopt;
 
-				mpb = bufstr_get(ms_pbv, real);
+				mpb = bufstr_get(ms_pbv, er);
 				if (mpb != "")
 				{
 					mtime = Time_TickString(stof(mpb), ui_map_tick(real));
-					if (bufstr_get(ms_pblob, real) != "")
+					if (bufstr_get(ms_pblob, er) != "")
 						mtime = strcat(SUI_ESC_MUTED, "lobby  ^7", mtime);
 				}
 				else
@@ -7014,7 +7265,7 @@ void(vector screensize) screen_create =
 				  right-aligned item on the lower line would draw through the
 				  time on exactly the rows that have both.
 				*/
-				mpop  = ui_map_players(real);
+				mpop  = ui_map_players(er);
 				mpopt = "";
 				mpopw = 0;
 				if (mpop >= 0)
@@ -7036,8 +7287,10 @@ void(vector screensize) screen_create =
 				  the half that answers "why is this map here at all" -- is the
 				  half that survives.
 				*/
-				sui_text([rp_x + 126, rp_y + 26], SZ_ROW,
-				         ui_fit_text(sub, rs_x - 134 - ROW_RPAD - dlg - mtw - mpopw,
+				if (bufstr_get(ms_var, real) != "")
+					bsw = ui_build_switch([rp_x + 126, rp_y + 25], real, idx);
+				sui_text([rp_x + 126 + bsw, rp_y + 26], SZ_ROW,
+				         ui_fit_text(sub, rs_x - 134 - ROW_RPAD - dlg - mtw - mpopw - bsw,
 				                     SZ_ROW),
 				         COL_DIM, 1, 0);
 
@@ -7091,7 +7344,7 @@ void(vector screensize) screen_create =
 				  and the answer is mutually exclusive by construction, because
 				  ms_have is one value: "1" plays, "2" replaces, "0" fetches.
 				*/
-				if (dlg > 0 && bufstr_get(ms_have, real) == "1")
+				if (dlg > 0 && bufstr_get(ms_have, er) == "1")
 				{
 					vector pp = [rp_x + rs_x - 4 - dlg, rp_y + 8];
 					vector ps = [dlg - 4, ROW_H - 16];
@@ -7125,14 +7378,14 @@ void(vector screensize) screen_create =
 						ui_launch();
 					}
 				}
-				else if (dlg > 0 && bufstr_get(ms_have, real) != "1")
+				else if (dlg > 0 && bufstr_get(ms_have, er) != "1")
 				{
 					vector gp = [rp_x + rs_x - 4 - dlg, rp_y + 8];
 					vector gs = [dlg - 4, ROW_H - 16];
 					string gid = strcat("cs_dl", ftos(idx));
-					string mnm = bufstr_get(ms_name, real);
+					string mnm = bufstr_get(ms_name, er);
 					float  mine = (dl_name == mnm);
-					float  wrong = (bufstr_get(ms_have, real) == "2");
+					float  wrong = (bufstr_get(ms_have, er) == "2");
 
 					if (mine && dl_state == DL_ACTIVE)
 					{
@@ -7169,8 +7422,8 @@ void(vector screensize) screen_create =
 						         gh ? COL_TEXT : COL_ACCENT, 1, 0);
 						sui_text([gp_x + DL_PAD, gp_y + 18], SZ_ROW,
 						         wrong ? strcat(SUI_ESC_WARN, "re-get ",
-						                        ui_dl_size(stof(bufstr_get(ms_dlkb, real))))
-						               : ui_dl_size(stof(bufstr_get(ms_dlkb, real))),
+						                        ui_dl_size(stof(bufstr_get(ms_dlkb, er))))
+						               : ui_dl_size(stof(bufstr_get(ms_dlkb, er))),
 						         COL_DIM, 1, 0);
 						if (sui_is_released(gid))
 							ui_dl_start(mnm, wrong);
@@ -7261,6 +7514,8 @@ void() m_init =
 	ms_catv = ms_pblob = -1;
 	ms_have = ms_new = ms_dlkb = -1;
 	ms_wr = ms_dltier = ms_dataq = ms_deps = -1;
+	ms_var = ms_varof = ms_pick = -1;
+	ms_bswrow = -1;
 	// The saved value is read in ui_create_open, beside its registercvar.
 	ms_showall = ms_applied_showall = 0;
 	ms_selected = -1;
@@ -7295,6 +7550,9 @@ void() m_init =
 
 	registercommand("ui_maplist");
 	registercommand("ui_browse");
+	registercommand("ui_build");
+	registercommand("ui_mapnet");
+	registercommand("ui_find");
 	registercommand("ui_prejoin");
 	registercommand("ui_join");
 	registercommand("ui_strip_test");
@@ -7451,6 +7709,7 @@ void(vector screensize) m_draw =
 		  poll does not depend on where in the layout the rows ended up.
 		*/
 		Lob_Poll();
+		Mdl_Ask();                  // Patch 652: the directory's map list, once a run
 		float acts = _action_elements_index;
 		screen_create(screensize);
 
@@ -7695,6 +7954,49 @@ float(string cmd) m_consolecommand =
 	if (argv(0) == "ui_browse")
 	{
 		ui_browse_print(argv(1));
+		return TRUE;
+	}
+
+	if (argv(0) == "ui_build")
+	{
+		// strzoned: ui_build_print loads the list, which tokenizes.
+		local string bmap, bpick;
+		bmap = strzone(argv(1));
+		bpick = strzone(argv(2));
+		ui_build_print(bmap, bpick);
+		strunzone(bmap);
+		strunzone(bpick);
+		return TRUE;
+	}
+
+	if (argv(0) == "ui_find")
+	{
+		// The search box's test twin: what the list holds for a query.
+		ms_query = strzone(argv(1));
+		ui_refilter();
+		print(sprintf("ui_find: %s view %g first %s\n", ms_query, ms_viewcount,
+		              (ms_viewcount > 0) ? bufstr_get(ms_name, stof(bufstr_get(ms_view, 0))) : "-"));
+		strunzone(ms_query);
+		ms_query = "";
+		ui_refilter();
+		return TRUE;
+	}
+
+	if (argv(0) == "ui_mapnet")
+	{
+		// The directory's list: where the fetch stands, and `ui_mapnet ask`.
+		// `ui_mapnet sel`: the map `start` would launch (ui_launch's own reader).
+		if (argv(1) == "sel")
+		{
+			print(sprintf("ui_mapnet: start plays %s\n", ui_selected_name()));
+			return TRUE;
+		}
+		if (argv(1) == "ask")
+		{
+			mdl_state = MDLS_IDLE;
+			Mdl_Ask();
+		}
+		print(sprintf("ui_mapnet: state %g rows %g not kept %g\n", Mdl_State(), Mdl_Rows(), mdl_bad));
 		return TRUE;
 	}
 
