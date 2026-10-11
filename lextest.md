@@ -29,6 +29,8 @@ in source."
   doubles their light on every map; then load the map again. `-1`, the
   default, is per map.
 - I could not put this beside Source. Tell me if they still do not pop.
+- **Live since 11 Oct 19:40 UTC (12 Oct, 06:40 here)** on both installs and
+  all twelve lobbies. Restart the game to get it.
 
 ## 00. 12 Oct — smoke over fires, fires on their floor, and how far they show (Patch 656)
 

@@ -4604,6 +4604,16 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   slope from the mote's luminance and drew `0 128 255`'s red at 0.140 on
   white for 0.422, worse than the 0.236 it replaced, with the old arm's
   colour check retired in the same commit. Judge a coloured row per channel.
+- DEPLOYED 12 Oct (UTC 11 Oct) from `35510e0`, main's tip: csprogs `c7596c74`,
+  the file the arm passed on, to the Pi at 19:40:26Z with 12 lobby rows and 0
+  players, and to both installs at 19:40:27Z with no game running, under the
+  rig lock. Twelve lobbies restarted, hashes read back from the host.
+  `tools/pi_lobby_smoke.py` on 27510 at 19:40Z: the client was served a
+  csprogs hashing `c7596c74`, drew the board, no QC error. `.prev` is 663's
+  follow-up `9fc0940b`. The Pi's qwprogs was swapped for the same bytes
+  (`35fda5eb`); the installs' qwprogs, menu.dat, default.cfg and the exes did
+  not change. The smoke grades the board: no client has looked at a mote on
+  a lobby.
 
 ### env_fire's smoke, floor and reach (Patch 656) -- 2026-10-12
 
