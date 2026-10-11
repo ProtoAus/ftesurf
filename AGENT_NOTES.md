@@ -7652,6 +7652,36 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **RELEASED 11 Oct 2026, 12:24-12:28 UTC: 0.1.24** (QC build 89, game
+  `580a640`, Windows and Linux; the owner asked for one "so players can
+  test"). The engine is Patch 625's, the one both installs run: stamp
+  `git-7182-patch-625-0-gc543d688a`, exe `183faf44`, plugins `66042d85` and
+  `ab7b0512`; the Linux drop is a build of that commit, gates all PASS.
+  Progs: qwprogs `76e00522`, csprogs `e9371ed5` (Patch 646's), menu.dat
+  `9dc45991` (Patch 647's), each equal by hash to a clean build of the
+  release commit. `ftesurf-0.1.24.7z` 40,942,415 bytes, sha256 `fb696694`;
+  `ftesurf-0.1.24-linux-x86_64.tar.xz` 40,601,152 bytes, sha256 `2a58e573`.
+  CHECKED AFTER: both downloaded back from dl.proto.bar and equal to the
+  receipt and to proto.bar's version.json; the Windows one unpacked: 805
+  files, those six hashes, `mapdl.txt` 1283 lines (705 before: a
+  `mapscan.py --go` ran first, the Pi serving 1349 maps), and no consent
+  file, key, config, recording or `.prev` in it.
+  NOT IN IT: Patches 643, 644, 645, 648 and 649, none on FTESurf main when it
+  was cut. "engine patch 647" in the receipt is the patch LOG's number, not
+  the binary's: `-FteRoot` was a tree at ftequakers `4e1ba6988`, the last
+  commit before 645 changed engine source, because the script reads that
+  number from the tree's ENGINE_PATCHES.md and gate 3 from its
+  `engine\release`.
+  NOT DONE: a first boot of the unpacked archive. The owner's game was up
+  from 12:10Z and no second client was opened beside it.
+  WHAT COST A RUN: `ftesurf\gfx\fonts\*.ttf.prev` trips the deny list (moved
+  aside, put back after); the main checkout has to BE the release commit (it
+  was 101 behind, its five stray files byte-equal to main's); and a shell
+  left sitting in `release\stage-0.1.24` after reading the dry run stopped
+  the real run at [5], AFTER it had written VERSION, so the rerun goes
+  without `-Bump`. None of the release's steps opens a game or writes the
+  install: they do not take the rig lock, and waiting on it with the owner's
+  game up only blocks the other sessions.
 - **DEPLOYED 11 Oct 2026, 12:01-12:05 UTC (FTESurf `5d3d98f`, Patch 647):
   menu.dat on both Windows installs, one file of surfd.** Under the rig lock,
   no game running, 12:01:42Z: `menu.dat` `9dc45991`, the bytes the arm ran on,

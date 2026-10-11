@@ -11,6 +11,21 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — release 0.1.24 is on proto.bar/ftesurf
+
+You asked for a release "so players can test". It is out, Windows and Linux,
+on the engine both of your installs run (Patch 625's). In it since 0.1.23:
+everything from Patch 495 to 647 that is on main, the Steam work included
+(sign-in, names, pictures, the first-boot screens).
+- **Not in it:** the fire and dust effects (643, 648), the map watcher (644),
+  run lines drawn by the engine (645) and more than eight of them (649).
+  None was on main yet; they ride the next one.
+- **What only you can do:** unpack it somewhere new and start it. That is
+  the first real first boot of "Before you play" and "Sign in with Steam":
+  I had them only in test rigs, and your game was running when the release
+  went out, so I did not open a second one beside it.
+- The map browser in it offers 1,279 maps to download (the list held 705).
+
 ## 00. 11 Oct — the first-boot screens (Patch 647)
 
 From your list ("make the sign in process happen when you first boot the
