@@ -41,7 +41,8 @@ just the default template."
   twice (it asks first). Your layout should stay where it is; only the
   editor's own window goes back to its corner.
 
-Players who already had a saved config (Patch 641, you said "do it"): at their
+Players who already had a saved config (Patch 641, you said "do it"; live since
+11 Oct 09:05 UTC, 20:05 here, on both installs and all twelve lobbies): at their
 next start, every HUD setting of theirs that is still exactly on the old default
 moves to yours, once, and the console says how many. What they changed stays, and
 an element they moved on either axis stays where they put it. It cannot tell a

@@ -4654,6 +4654,13 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   three starts. 9 of 9; the build before fails 7 of them. It also reads the
   config the game then saves. A fresh overlay on this build says nothing and
   passes Patch 637's arm (11 of 11).
+- DEPLOYED 2026-10-11 from `475d313`: csprogs `05b3a6ff` (qwprogs `76e00522`
+  and menu.dat were already these bytes in all three places; no cfg). Both
+  Windows installs 09:04:45Z with nothing running; the Pi 09:05:30Z with
+  nobody on, all 12 lobby processes started 09:05:32Z to 09:05:40Z (read from
+  the host), and `pi_lobby_smoke.py`'s fresh client was served this csprogs,
+  drew the board and printed no move line. `.prev` is Patch 637's csprogs
+  (`154fe49e`) in all three places.
 
 ### The HUD's defaults are the owner's layout (Patch 637) — 2026-10-11
 
