@@ -4680,6 +4680,16 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   The speed and its energy were compared below the sky (rows 552 to 900: no
   pixel differs between the first cut's absolute 64 and 48 and the drawer's
   32 and 24 units at hud_scale 2).
+- DEPLOYED 2026-10-11 from `423c081`: csprogs `154fe49e` and
+  `cfg/default.cfg` `c09e0b3e` (qwprogs `76e00522` and menu.dat were already
+  these bytes in all three places). Both Windows installs 05:44:43Z with
+  nothing running (the default.cfg before kept as
+  `default.cfg.pre637-20261011T054443Z`); the Pi 05:45:58Z with nobody on, all
+  12 lobby processes started 05:46:00Z to 05:46:09Z (read from the host), and
+  `pi_lobby_smoke.py` was served this csprogs and drew the board. `.prev` is
+  Patch 635's csprogs (`b2b6de57`) in all three places. The owner's saved
+  config was rewritten at 05:11Z, after the patch was made from it: none of
+  the editor's 141 settings in it had changed.
 - `hud_edit off` SAVES THE LAYOUT: in a rig, to the overlay's own ftesurf.cfg.
   The owner's file was read through a script that takes the editor's names
   only, and its modification time was the same after the runs.

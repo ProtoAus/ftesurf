@@ -13,6 +13,10 @@ to be wrong.
 
 ## 00. 11 Oct — your HUD list, part 5: your layout is the default (Patch 637)
 
+Live since 11 Oct 05:46 UTC (16:46 here) on both installs (csprogs and
+`cfg/default.cfg`) and on all twelve lobbies. Each replaced file has a copy
+beside it: `.prev`, and `default.cfg.pre637-20261011T054443Z`.
+
 "make my current hud settings, the default hud settings for the game... this is
 just the default template."
 
