@@ -78,7 +78,16 @@ float av_my;
 float av_drag;                  // title bar held
 vector av_dragofs;
 float av_namefocus;
-float av_saidsz;                // the type-scale line is said once per open
+// Patch 663: the panel is a profile.  Its two pages, whose breakdown is up
+// ("" the player's own), and what the page last drew at.
+#define AV_TAB_LOOK  0
+#define AV_TAB_STATS 1
+float  av_tab;
+string av_other;
+float  av_hint;                 // the small label size, for Av_Slider
+float  av_rowh;                 // a results row, for the wheel
+float  av_saidtab;              // the page said once what it is showing
+vector av_dbg;                  // the first trail swatch as last drawn, for `hud_player status`
 string av_tbsent;               // last topcolor/bottomcolor pushed; see Av_PushHalves
 float av_half;                  // which part the sliders edit: 0 belt, 1 body
 string av_name_text;
@@ -351,23 +360,23 @@ void(string id, vector pos, vector sz, float maxv, float val, string label,
 	// 6, not 5: 5 * hud_scale 2 is 10, which ties between rungs 8 and 12 and
 	// Font_Px breaks ties downward -- so every slider label and value used to
 	// come out at 8 while the panel around them was 12.  See Av_Draw.
-	lab = Font_Px(6 * ui_cv_scale);
-	lw  = ceil(lab * 5.5);
-	vw  = ceil(lab * 5.5);
+	lab = av_hint;
+	lw  = ceil(lab * 4.5);
+	vw  = ceil(lab * 4.5);
 	tw  = sz_x - lw - vw;
-	kw  = ceil(sz_y * 0.5);
+	kw  = ceil(sz_y * 0.8);
 
-	sui_text([pos_x, pos_y + (sz_y - lab) * 0.5], [lab, lab], label,
-	         '0.65 0.65 0.7', 1, 0);
-	sui_fill([pos_x + lw, pos_y + sz_y * 0.5 - ceil(sz_y * 0.18)],
-	         [tw, ceil(sz_y * 0.36)], '0.12 0.14 0.18', 1, 0);
+	sui_text([pos_x, pos_y + (sz_y - lab) * 0.5], [lab, lab], label, SUI_THEME_DIM, 1, 0);
+	sui_roundbox([pos_x + lw, pos_y + sz_y * 0.5 - ceil(sz_y * 0.14)],
+	             [tw, ceil(sz_y * 0.28)], sz_y * 0.14, SUI_THEME_WELL, 1);
 	if (val > 0)
-		sui_fill([pos_x + lw, pos_y + sz_y * 0.5 - ceil(sz_y * 0.18)],
-		         [tw * (val / maxv), ceil(sz_y * 0.36)], '0.30 0.45 0.62', 1, 0);
-	sui_fill([pos_x + lw + (tw - kw) * (val / maxv), pos_y], [kw, sz_y],
-	         '0.90 0.93 0.98', 1, 0);
-	sui_text([pos_x + lw + tw + 4, pos_y + (sz_y - lab) * 0.5], [lab, lab],
-	         vtxt, '0.55 0.55 0.58', 1, 0);
+		sui_roundbox([pos_x + lw, pos_y + sz_y * 0.5 - ceil(sz_y * 0.14)],
+		             [max(ceil(sz_y * 0.28), tw * (val / maxv)), ceil(sz_y * 0.28)], sz_y * 0.14,
+		             SUI_THEME_ACCENT, 0.7);
+	sui_roundbox([pos_x + lw + (tw - kw) * (val / maxv), pos_y + (sz_y - kw) * 0.5], [kw, kw],
+	             kw * 0.5, (sui_is_hovered(id) || sui_is_held(id)) ? '1 1 1' : SUI_THEME_TEXT, 1);
+	sui_text([pos_x + lw + tw + lab * 0.6, pos_y + (sz_y - lab) * 0.5], [lab, lab],
+	         vtxt, SUI_THEME_MUTED, 1, 0);
 	sui_slidercontrol(id, [pos_x + lw, pos_y], [tw, sz_y], [0, maxv, divs],
 	                  val, cb);
 };
@@ -523,6 +532,8 @@ void() Av_Close =
 	av_open = FALSE;
 	av_drag = FALSE;
 	av_namefocus = FALSE;
+	Profile_Reset();
+	sui_keys_forget();
 	UI_CursorRelease(UIC_AVATAR);
 };
 
@@ -543,14 +554,29 @@ void() Av_Open =
 	if (av_open)
 		return;
 	av_open = TRUE;
-	av_saidsz = FALSE;              // say the type scale again for this open
-	// Seed the name field from the live name so the field is never a lie.
+	av_saidtab = FALSE;
+	av_other = "";
 	av_name_text = getplayerkeyvalue(player_localnum, "name");
 	av_name_caret = strlen(av_name_text);
-	// ...and the sliders from what is actually worn, custom or palette.
 	av_rgb = Av_MyMark() * 255;
 	av_half = 0;
+	av_namefocus = FALSE;
+	Profile_Reset();
+	Profile_Stale(60);
+	sui_keys_forget();
 	UI_CursorClaim(UIC_AVATAR);
+};
+
+// Open on somebody's breakdown: a search row's handle or a board row's mark.
+void(string who) Av_OpenAt =
+{
+	Av_Open();
+	if (!av_open)
+		return;
+	av_other = who;
+	av_tab = AV_TAB_STATS;
+	av_namefocus = FALSE;
+	av_saidtab = FALSE;
 };
 
 void() Av_Toggle =
@@ -741,26 +767,18 @@ void(entity g) Av_GhostDress =
 */
 float(string id, vector pos, float sz, float idx, float on, float want) Av_Swatch =
 {
-	local vector c;
-
 	sui_action_element(pos, [sz, sz], id, sui_noop);
-	c = Av_PaletteRGB(idx);
-	sui_fill(pos, [sz, sz], c, on ? 1 : (want ? 0.8 : 0.4), 0);
-	sui_border_box(pos, [sz, sz], on ? 2 : 1,
-	               (on || sui_is_hovered(id)) ? '1 1 1' : '0.2 0.2 0.24',
-	               1, 0);
+	if (on || sui_is_hovered(id))
+		sui_roundbox(pos - '2 2 0', [sz + 4, sz + 4], sz * 0.3 + 2, on ? SUI_THEME_TEXT : SUI_THEME_EDGE_HI, 1);
+	sui_roundbox(pos, [sz, sz], sz * 0.3, Av_PaletteRGB(idx), on ? 1 : (want ? 0.85 : 0.6));
 	return sui_is_released(id);
 };
 
-float(string id, vector pos, vector sz, string label, float on) Av_Chip =
+// A section's small heading.  -> the y under it.
+float(vector pos, string s) Av_Head =
 {
-	sui_action_element(pos, sz, id, sui_noop);
-	sui_fill(pos, sz, on ? '0.22 0.34 0.48' : (sui_is_hovered(id) ? '0.14 0.14 0.18' : '0.09 0.09 0.12'), 1, 0);
-	sui_border_box(pos, sz, 1, on ? '0.5 0.8 1' : '0.28 0.30 0.36', 1, 0);
-	sui_text([pos_x + 8, pos_y + (sz_y - Font_Px(6 * ui_cv_scale)) * 0.5],
-	         [Font_Px(6 * ui_cv_scale), Font_Px(6 * ui_cv_scale)], label,
-	         on ? '1 1 1' : '0.65 0.65 0.7', 1, 0);
-	return sui_is_released(id);
+	sui_text(pos, [av_hint, av_hint], s, SUI_THEME_MUTED, 1, 0);
+	return pos_y + av_hint + ceil(av_hint * 0.6);
 };
 
 /*
@@ -831,126 +849,61 @@ void(vector rpos, vector rsz) Av_Preview =
 	  cl_defs.qc:714 says as much on VF_FOV's own declaration: "consider using
 	  afov instead".
 	*/
-	setproperty(VF_AFOV, 50);
+	setproperty(VF_AFOV, 36);       // Patch 663: the body fills the card's column
 	addentity(av_prev);
 	renderscene();
 };
 
+/*
+  Patch 663: THE PROFILE.  One card in the UI's look: who you are (the name and
+  picture a linked account plays under), a search for any player, and two
+  pages: the customizer, and a breakdown like the site's player page
+  (cl_profile.qc).  Picking a player from the search shows theirs.
+
+  The title strip is the handle, and it is registered FIRST: of the elements
+  under the cursor sui answers for the last, so the field and the chips on the
+  strip win.  The type steps down until the card fits the window.
+*/
 void(vector scr) Av_Draw =
 {
-	local vector p, sz;
-	local float i, x, y, sw, fx, want, got, eff, askt, pad, tsz, ttl, hint;
-	local float barh, fw, fh, pvw, pvx, pvy, pvh, slh, stop;
-	local float segs, lit, stripw, striph;      // the trail strip, below
-	local vector tv, bv;                        // the two halves, as 0..255
-	local float rqttl, rqtsz, rqhnt;            // the sizes ASKED for, pre-snap
-	local string nm, hash, s, rgbstr, markstr;
+	local vector p, sz, tv, bv;
+	local float i, x, y, y0, sw, fx, want, got, eff, askt, pad, tsz, ttl, hint, sc, me;
+	local float hh, pic, fw, fh, lw, slh, stop, segw, tabh, segs, lit, stripw, striph, chw, link;
+	local string nm, mark, s, rgbstr, markstr;
 
 	// The board is the older modal and draws over this; see Av_Open.
 	if (!av_open || rec_sb_open)
 		return;
 
+	Profile_Frame();
 	sui_begin(scr_x, scr_y);
-
-	/*
-	  ONE TYPE SCALE, snapped to the font's baked ladder the way every other
-	  panel does (Font_Px, cl_hud.qc's essay): raw pixel sizes resample off
-	  the nearest bake and read soft, which is exactly the complaint the
-	  first cut of this panel earned.
-
-	  Font_Set FIRST, AND THAT IS THE FIX: this panel shipped with the closing
-	  Font_Reset (below) and no opener, so it drew in whatever face the previous
-	  drawer left -- FONT_DEFAULT, the 8 px bitmap, because every other panel ends
-	  by resetting.  Font_Px then matched no ladder and handed the request straight
-	  back (sh_font.qc:184), so the sizes were raw as well and the snap this
-	  comment describes never ran.  cl_hud.qc:2741 is the same bug in the sequence
-	  block, with the same one-line fix.
-	*/
-	/*
-	  THE THREE ASKS ARE RUNGS OF THE UI LADDER AT hud_scale 2, ON PURPOSE:
-	  20 / 16 / 12 against "8 12 16 20 24 28 32".  They used to be 16/12/10, and
-	  the 10 was the problem -- it is EXACTLY equidistant from 8 and 12, and
-	  Font_Px breaks the tie with a strict `<` that keeps the first rung it saw,
-	  so the hint text and every slider label silently came out at 8.  Nobody
-	  chose 8; a tie did.  12 is the floor now and nothing here asks for a size
-	  the ladder has to move.
-	*/
 	Font_Set(ui_font_ui);
-	rqttl = 10 * ui_cv_scale;
-	rqtsz =  8 * ui_cv_scale;
-	rqhnt =  6 * ui_cv_scale;
-	ttl  = Font_Px(rqttl);
-	tsz  = Font_Px(rqtsz);
-	hint = Font_Px(rqhnt);
+	sc = ui_cv_scale;
+	if (sc < 1)
+		sc = 1;
+	while (sc > 1 && (Font_Px(8 * sc) * 46 > scr_x - 8 || Font_Px(8 * sc) * 38 > scr_y - 8))
+		sc = sc - 0.5;
+	ttl  = Font_Px(10 * sc);
+	tsz  = Font_Px(8 * sc);
+	hint = Font_Px(6 * sc);
+	av_hint = hint;
+	av_rowh = ceil(tsz * 1.75);
+	pad = tsz;
+	pic = tsz * 3;
+	hh  = pad * 2 + pic;
+	fw  = tsz * 14;
+	fh  = ceil(tsz * 1.9);
+	link = FALSE;
 
-	/*
-	  ONCE PER OPEN, so the fix above is answerable from a LOG and not only from
-	  pixels -- this tree has shipped a panel whose every reported number was its
-	  own and correct while nothing was on screen at all.  The face slot proves
-	  the .ttf loaded (0 is the bitmap fallback) and the three sizes prove the
-	  snap ran: at hud_scale 2 a working snap reads 16/12/8, and the unsnapped
-	  request this panel used to draw at read 16/12/10.
-	  AT hud_scale 1 ALL THREE COLLAPSE TO 8, because the UI ladder's lowest rung
-	  is 8 and it steps in fours -- the type hierarchy here exists at scale 2 and
-	  up.  That is a property of the ladder, not of these constants, and it was
-	  hidden for as long as Font_Px was returning the request unchanged.
-	*/
-	if (!av_saidsz)
-	{
-		av_saidsz = TRUE;
-		dprint(sprintf("hud_player: face %g, snapped %g/%g/%g at hud_scale %g\n",
-		               ui_font_ui, ttl, tsz, hint, ui_cv_scale));
-		/*
-		  AND SAY SO WHEN A SIZE HAD TO MOVE.  Font_Px snapping is invisible --
-		  it returns a number and nothing records that the number is not the one
-		  asked for -- so an off-ladder constant added later reads as a soft
-		  block with no cause.  A second print rather than more arguments:
-		  fteqcc drops the ninth parameter of a varargs call silently, which is
-		  a bug this same patch fixed one file over.
-		*/
-		if (ttl != rqttl || tsz != rqtsz || hint != rqhnt)
-			dprint(sprintf("hud_player: asked %g/%g/%g -- OFF THE LADDER, so at "
-			               "least one block is a resample\n",
-			               rqttl, rqtsz, rqhnt));
-	}
-
-	pad = ceil(tsz * 1.0);
-	sw  = ceil(tsz * 2.2);
-	// PATCH 341: taller -- the RGB sliders and the effect sliders are rows the
-	// chip grid never had, and the footer wraps instead of leaking.
-	sz  = [ceil(tsz * 25), ceil(tsz * 40)];
-	pvw = ceil(sz_x * 0.62);              // the preview viewport's width
-	p   = [cvar("hud_player_x") * scr_x - sz_x * 0.5,
-	       cvar("hud_player_y") * scr_y - sz_y * 0.5];
-	// Clamped with the PREVIEW's footprint counted: the panel plus its
-	// viewport beside it is the thing that has to fit, not the panel alone.
+	sz = [min(scr_x - 8, tsz * 46), min(scr_y - 8, tsz * 38)];
+	p  = [cvar("hud_player_x") * scr_x - sz_x * 0.5, cvar("hud_player_y") * scr_y - sz_y * 0.5];
+	// The handle is where the card will be drawn: clamped as it is, below.
+	if (p_x + sz_x > scr_x - 4) p_x = scr_x - 4 - sz_x;
+	if (p_y + sz_y > scr_y - 4) p_y = scr_y - 4 - sz_y;
 	if (p_x < 4) p_x = 4;
 	if (p_y < 4) p_y = 4;
-	if (p_x + sz_x + 6 + pvw > scr_x - 4)
-		p_x = scr_x - 4 - pvw - 6 - sz_x;
-	if (p_x < 4) p_x = 4;
-	if (p_y + sz_y > scr_y - 4) p_y = scr_y - 4 - sz_y;
-	pvx = p_x + sz_x + 6;
-
-	sui_fill(p, sz, '0.05 0.05 0.07', 0.94, 0);
-
-	/*
-	  THE TITLE BAR IS THE HANDLE.  sui_is_held on it plus the mouse position
-	  Av_InputEvent stores is the whole drag: grab offsets once on the press,
-	  then every absolute move rewrites the two placement cvars.  cvar_set
-	  rather than a QC global so the position is archived like every other
-	  hud_*_x/y and survives a restart.
-	*/
-	barh = ttl + pad * 2;
-	sui_action_element([p_x, p_y], [sz_x, barh], "av_drag", sui_noop);
-	/*
-	  sui_is_HELD, not sui_is_released, and that is why the panel could not be
-	  dragged at all.  Release fires on the frame the button goes UP
-	  (sui_sys.qc:345), so the old form armed the drag as the grab ENDED and the
-	  sui_click_held test below cleared it again on the same frame.  The hold list
-	  is latched at mouse-down and never rebuilt from hover (sui_sys.qc:433), so
-	  this stays true when the cursor outruns the bar.
-	*/
+	sui_action_element(p, [sz_x, hh], "av_drag", sui_noop);
+	// sui_is_HELD: release fires as the grab ends (the first cut could not be dragged).
 	if (sui_is_held("av_drag"))
 	{
 		if (!av_drag)
@@ -961,341 +914,304 @@ void(vector scr) Av_Draw =
 	}
 	else
 		av_drag = FALSE;
-
 	if (av_drag)
 	{
 		cvar_set("hud_player_x", ftos((av_mx - av_dragofs_x + sz_x * 0.5) / scr_x));
 		cvar_set("hud_player_y", ftos((av_my - av_dragofs_y + sz_y * 0.5) / scr_y));
-		p = [cvar("hud_player_x") * scr_x - sz_x * 0.5,
-		     cvar("hud_player_y") * scr_y - sz_y * 0.5];
+		p = [cvar("hud_player_x") * scr_x - sz_x * 0.5, cvar("hud_player_y") * scr_y - sz_y * 0.5];
+	}
+	if (p_x + sz_x > scr_x - 4) p_x = scr_x - 4 - sz_x;
+	if (p_y + sz_y > scr_y - 4) p_y = scr_y - 4 - sz_y;
+	if (p_x < 4) p_x = 4;
+	if (p_y < 4) p_y = 4;
+	p = [floor(p_x), floor(p_y)];
+	sui_style_panel(p, sz, ceil(pad * 0.75), 0.98);
+
+	// ---- who
+	me = (av_other == "");
+	// The lobby's mark for this player: an account's while the board is by account.
+	mark = getplayerkeyvalue(player_localnum, "*phash");
+	if (!me)
+		Profile_Show(av_other);
+	else if (av_tab == AV_TAB_STATS && mark != "")
+		Profile_Show(mark);
+	if (me)
+	{
+		nm = getplayerkeyvalue(player_localnum, "name");
+		Profile_Face([p_x + pad, p_y + pad], pic, mark, mark != "", nm);
+	}
+	else
+	{
+		nm = (pf_state == PFS_OK) ? pf_name : "";
+		Profile_Face([p_x + pad, p_y + pad], pic, substring(pf_handle, 0, 8),
+		             pf_state == PFS_OK && pf_av, nm);
+	}
+	x = p_x + pad * 2 + pic;
+	sui_text([x, p_y + pad + 2], [ttl, ttl],
+	         Chat_Fit(UI_NameShow(nm, 0), sz_x - pad * 4 - pic - fw, ttl), SUI_THEME_TEXT, 1, 0);
+	y = p_y + pad + ttl + ceil(hint * 0.9);
+	chw = ceil(hint * 8);
+	if (me)
+	{
+		// What the lobby last said of this install (acct_is, cl_account.qc): words only.
+		s = "This server keeps no accounts";
+		tv = SUI_THEME_MUTED;
+		if (acct_cl_is == 2) { s = "Steam account linked"; tv = SUI_THEME_GOOD; }
+		else if (acct_cl_is == 3) { s = "This Steam account is banned here"; tv = SUI_THEME_BAD; }
+		else if (acct_cl_is == 1) s = "Not linked to Steam";
+		sui_text([x, y + 2], [hint, hint], s, tv, 1, 0);
+		if (acct_cl_is == 1)
+		if (Profile_Chip("av_link", [x + stringwidth(s, TRUE, [hint, hint]) + hint, y - 2],
+		                 [chw, ceil(hint * 1.9)], "Link Steam", hint, FALSE))
+			link = TRUE;
+	}
+	else
+	{
+		s = "";
+		if (pf_state == PFS_OK)
+		{
+			s = Profile_TierTag(pf_src);
+			if (Profile_Age(pf_last) != "")
+				s = strcat(s, "   last time ", Profile_Age(pf_last), (Profile_Age(pf_last) == "today") ? "" : " ago");
+		}
+		sui_text([x, y + 2], [hint, hint], s, SUI_THEME_MUTED, 1, 0);
+		if (Profile_Chip("av_back", [x + stringwidth(s, TRUE, [hint, hint]) + hint, y - 2],
+		                 [chw, ceil(hint * 1.9)], "Back to me", hint, FALSE))
+		{
+			av_other = "";
+			av_saidtab = FALSE;
+		}
+	}
+	Profile_Field("pf_qa", [p_x + sz_x - pad - fw, p_y + pad], [fw, fh], tsz);
+	sui_fill([p_x + pad, p_y + hh], [sz_x - pad * 2, 1], SUI_THEME_EDGE, 1, 0);
+
+	// ---- the two pages
+	y = p_y + hh + ceil(pad * 0.75);
+	tabh = ceil(tsz * 1.9);
+	segw = tsz * 7;
+	if (me)
+	{
+		sui_roundbox([p_x + pad, y], [segw * 2, tabh], tabh * 0.5, SUI_THEME_WELL, 1);
+		// NOT av_t0 and av_t1: the trail's swatches are av_t1 to av_t12, and a
+		// press on the red one turned the page instead (663's review).
+		if (Profile_Seg("av_pg0", [p_x + pad, y], [segw, tabh], "Customize", tsz, av_tab == AV_TAB_LOOK))
+			av_tab = AV_TAB_LOOK;
+		if (Profile_Seg("av_pg1", [p_x + pad + segw, y], [segw, tabh], "Stats", tsz, av_tab == AV_TAB_STATS))
+		{
+			av_tab = AV_TAB_STATS;
+			av_namefocus = FALSE;
+		}
+	}
+	else
+		sui_text([p_x + pad, y + (tabh - hint) * 0.5], [hint, hint], "STATS", SUI_THEME_MUTED, 1, 0);
+	y0 = y + tabh + ceil(pad * 0.75);
+	if (!av_saidtab)
+	{
+		av_saidtab = TRUE;
+		dprint(sprintf("hud_player: page %g of %s, card %gx%g at %g,%g, rows of %g\n",
+		               me ? av_tab : AV_TAB_STATS, me ? "me" : av_other, sz_x, sz_y, p_x, p_y, tsz));
 	}
 
-	// ---- who am I ------------------------------------------------------
-	nm   = getplayerkeyvalue(player_localnum, "name");
-	/*
-	  The hash, off the star infokey Lobby_ClientConnect forceinfokeys -- the
-	  *wrank channel (cl_results.qc), because a stuffed `set` latches and
-	  cvar_string reads the latch.  "" is a server without sv_guidkey (a
-	  listen server, or a lobby that cannot rank): the runs are then filed by
-	  name-and-slot and saying "no id" beats an empty box that looks like a
-	  rendering bug.  Since Patch 629 it is also a player with no linked
-	  Steam account while the board is by account: no id there either.
-	*/
-	hash = getplayerkeyvalue(player_localnum, "*phash");
-
-	sui_text([p_x + pad, p_y + pad], [ttl, ttl], "player", '0.35 0.75 1', 1, 0);
-
-	y = p_y + pad * 2 + ttl;
-
-	// The name field: sui's own text input, fed by Av_InputEvent while it has
-	// focus.  Enter commits through the engine's `name` command -- the one
-	// channel that updates userinfo mid-connection.
-	fw = sz_x - pad * 2;
-	fh = ceil(tsz * 1.8);
-	sui_text_input("av_name", [p_x + pad, y], [fw, fh], av_name_text, av_name_caret);
-	if (sui_is_last_clicked("av_name"))
-		av_namefocus = TRUE;
-	sui_fill([p_x + pad, y], [fw, fh], '0.09 0.09 0.12', 1, 0);
-	sui_border_box([p_x + pad, y], [fw, fh], 1,
-	               av_namefocus ? '0.5 0.8 1' : '0.28 0.30 0.36', 1, 0);
-	sui_text([p_x + pad + 6, y + (fh - tsz) * 0.5], [tsz, tsz],
-	         av_name_text == "" ? "your name" : av_name_text,
-	         av_name_text == "" ? '0.4 0.4 0.44' : '1 1 1', 1, 0);
-	y = y + fh + 4;
-
-	if (hash == "")
-		sui_text([p_x + pad, y], [hint, hint],
-		         "hash: none -- this server has no player ids",
-		         '0.55 0.55 0.58', 1, 0);
-	else
-		sui_text([p_x + pad, y], [hint, hint],
-		         strcat("hash: ", hash), '0.55 0.55 0.58', 1, 0);
-	y = y + hint + 2;
-	y = Av_Wrap(p_x + pad, y, sz_x - pad * 2, hint,
-	            "your times follow the hash, not the name",
-	            '0.4 0.4 0.44');
-	y = y + pad - 2;
-
-	// ---- colour ---------------------------------------------------------
-	got  = cvar("cl_pcolour");          // the server's answer (float read)
-	/*
-	  ...and the index the PARTICLES will really use, which off a lobby is not the
-	  server's answer at all: Av_Dress falls back to the nearest entry, so a panel
-	  reporting `got` said "particles: plain" while the trail came out rose.  The
-	  swatch marks stay on `got`, because an unlit swatch is honest about there
-	  being no server pick to show.
-	*/
-	eff  = got;
-	if (eff < 1 || eff > AV_COLOURS)
-		eff = Av_NearestColour(Av_MyRGB());
-	want = Av_MyInfo("lobbycolor");     // your ask (0 = auto)
-	rgbstr = getplayerkeyvalue(player_localnum, "lobbyrgb");
-
-	sui_text([p_x + pad, y], [tsz, tsz], "colour", '0.65 0.65 0.7', 1, 0);
-	y = y + tsz + 4;
-	x = p_x + pad;
-	for (i = 1; i <= AV_COLOURS; i = i + 1)
+	if (!me || av_tab == AV_TAB_STATS)
 	{
-		if (Av_Swatch(sprintf("av_c%g", i), [x, y], sw, i, got == i,
-		              want == i && rgbstr == ""))
+		if (me && mark == "")
 		{
-			Av_SetInfo("lobbycolor", i);
+			sui_text([p_x + pad, y0 + hint], [tsz, tsz],
+			         (acct_cl_is == 1) ? "Link your Steam account to have a profile here"
+			                           : "This server keeps no profile for you",
+			         SUI_THEME_DIM, 1, 0);
+			if (acct_cl_is == 1)
+			if (Profile_Chip("av_link2", [p_x + pad, y0 + hint + tsz * 2], [tsz * 7, tabh], "Link Steam", tsz, FALSE))
+				link = TRUE;
+		}
+		else
+			Profile_DrawStats([p_x + pad, y0], [sz_x - pad * 2, p_y + sz_y - pad - y0], ttl, tsz, hint);
+	}
+	else
+	{
+		lw = floor((sz_x - pad * 3) * 0.6);
+		x  = p_x + pad;
+		y  = y0;
+		sw = floor((lw - 11 * 6) / 12);
+		if (sw > tsz * 2)
+			sw = tsz * 2;
+		slh = ceil(tsz * 1.25);
+
+		// ---- name: Enter commits through the engine's `name` command, the one
+		// channel that updates userinfo mid-connection.
+		y = Av_Head([x, y], "NAME");
+		sui_text_metrics(ceil(tsz * 0.7), [tsz, tsz]);
+		sui_text_input("av_name", [x, y], [lw, fh], av_name_text, av_name_caret);
+		if (sui_is_held("av_name") || sui_is_clicked("av_name"))
+		{
+			if (!av_namefocus)
+				Profile_TookNone();
+			av_namefocus = TRUE;
+		}
+		Profile_FieldLook("av_name", [x, y], [lw, fh], tsz, av_name_text, av_name_caret, "your name",
+		                  av_namefocus, ceil(tsz * 0.5), ceil(tsz * 0.7));
+		y = y + fh + ceil(hint * 0.5);
+		y = Av_Wrap(x, y, lw, hint, "Enter to set. Linked accounts use their Steam name.",
+		            SUI_THEME_MUTED);
+		y = y + ceil(pad * 0.6);
+
+		// ---- colour
+		got  = cvar("cl_pcolour");          // the server's answer (float read)
+		// ...and the index the PARTICLES really use: off a lobby Av_Dress falls
+		// back to the nearest entry. The swatch marks stay on `got`.
+		eff  = got;
+		if (eff < 1 || eff > AV_COLOURS)
+			eff = Av_NearestColour(Av_MyRGB());
+		want = Av_MyInfo("lobbycolor");     // your ask (0 = auto)
+		rgbstr = getplayerkeyvalue(player_localnum, "lobbyrgb");
+		chw = ceil(hint * 6.5);
+		if (Profile_Chip("av_cauto", [x + lw - chw, y - 3], [chw, ceil(hint * 1.8)], "Random", hint,
+		                 want == 0 && rgbstr == ""))
+		{
+			Av_SetInfo("lobbycolor", 0);
 			Av_ClearRGB();
 		}
-		x = x + sw + 4;
-		if (i == 6)
+		y = Av_Head([x, y], "COLOUR");
+		y = y + 3;
+		for (i = 1; i <= AV_COLOURS; i = i + 1)
 		{
-			x = p_x + pad;
-			y = y + sw + 4;
+			if (Av_Swatch(sprintf("av_c%g", i), [x + (i - 1) * (sw + 6), y], sw, i, got == i,
+			              want == i && rgbstr == ""))
+			{
+				// A palette pick is whole-body: it clears both parts and lobbyrgb.
+				Av_SetInfo("lobbycolor", i);
+				Av_ClearRGB();
+			}
 		}
-	}
-	if (Av_Chip("av_cauto", [p_x + sz_x - pad - sw * 3, y - sw - 4 + 3],
-	            [sw * 3, tsz * 1.6], "random", want == 0 && rgbstr == ""))
-	{
-		Av_SetInfo("lobbycolor", 0);
-		Av_ClearRGB();
-	}
-	y = y + sw + 4;                 // row 2's bottom, before the sliders
+		y = y + sw + ceil(pad * 0.6);
 
-	/*
-	  PATCH 457: WHICH PART THE SLIDERS EDIT.
-
-	  The body wears a plus-cross and the two are coloured independently (the
-	  engine's shirt and pants overlay, driven by topcolor/bottomcolor through
-	  .colormap), so the three sliders below need to say which part they are
-	  moving.  "plain" clears the MARK, which makes the cross take the body's own
-	  colour and vanish -- that is the fallback chain in Av_MyMark, and it is what
-	  "one colour" means here.
-
-	  The SWATCHES above stay whole-body: a palette pick clears both parts as
-	  well as lobbyrgb, because a quick colour pick meaning "the cross only"
-	  would surprise everybody.
-	*/
-	markstr = getplayerkeyvalue(player_localnum, "lobbymark");
-	x = sz_x - pad * 2;
-	if (Av_Chip("av_hmark", [p_x + pad, y], [x * 0.34, tsz * 1.6], "belt",
-	            av_half == 0))
-	{
-		av_half = 0;
-		av_rgb = Av_MyMark() * 255;
-	}
-	if (Av_Chip("av_hbody", [p_x + pad + x * 0.35, y], [x * 0.34, tsz * 1.6],
-	            "body", av_half == 1))
-	{
-		av_half = 1;
-		av_rgb = Av_MyBody() * 255;
-	}
-	/*
-	  "plain" clears the MARK, not the body: an unset mark takes the body's own
-	  colour and the cross disappears, which is the one-colour look.  Clearing
-	  the body instead would have left the cross standing on a default.
-	*/
-	if (Av_Chip("av_hplain", [p_x + pad + x * 0.70, y], [x * 0.30, tsz * 1.6],
-	            "plain", markstr == ""))
-	{
-		localcmd("setinfo lobbymark \"\"\n");
-		av_half = 1;
-		av_rgb = Av_MyBody() * 255;
-	}
-	y = y + tsz * 1.6 + 4;
-
-	/*
-	  PATCH 341: THE RGB SLIDERS, under the swatches rather than instead of
-	  them.  The swatches are the twelve hues the particles exist in; the
-	  sliders are the exact body colour, which colormod carries fine and the
-	  pre-generated trail and motes cannot -- so a custom triple wears itself
-	  on the model and the nearest palette entry in its particles, its chat
-	  name and everybody's swatch, and the wearing line says so out loud.
-	  Picking a swatch clears lobbyrgb: a palette pick is a palette pick.
-	*/
-	slh = ceil(tsz * 1.5);
-	/*
-	  PATCH 341bis: THE THIRD COMPONENT IS A DIVISION COUNT, not a step size
-	  (sui_sys.qc:1166: rint(ratio * steps) / steps).  [0, 255, 1] quantised
-	  every drag to 0 or 255 -- "the sliders only give 0 or 255" -- because one
-	  division IS the whole range.  255 divisions for the colour bytes, 2 for
-	  the three-stop trail, 1 for the binaries.
-	*/
-	Av_Slider("av_r", [p_x + pad, y], [sz_x - pad * 2, slh], 255, av_rgb_x,
-	          "r", ftos(floor(av_rgb_x + 0.5)), Av_SetR, 255);
-	y = y + slh + 2;
-	Av_Slider("av_g", [p_x + pad, y], [sz_x - pad * 2, slh], 255, av_rgb_y,
-	          "g", ftos(floor(av_rgb_y + 0.5)), Av_SetG, 255);
-	y = y + slh + 2;
-	Av_Slider("av_b", [p_x + pad, y], [sz_x - pad * 2, slh], 255, av_rgb_z,
-	          "b", ftos(floor(av_rgb_z + 0.5)), Av_SetB, 255);
-	y = y + slh + 4;
-
-	/*
-	  PATCH 457: the line describes the BODY, which is two halves now, and names
-	  the particle colour separately because that one is still a palette entry --
-	  the trail and mote blocks are generated per colour and cannot be tinted.
-	*/
-	tv = Av_MyMark() * 255;
-	bv = Av_MyBody() * 255;
-	if (markstr != "")
-		s = sprintf("belt %g %g %g / body %g %g %g -- particles: %s",
-		            floor(tv_x + 0.5), floor(tv_y + 0.5), floor(tv_z + 0.5),
-		            floor(bv_x + 0.5), floor(bv_y + 0.5), floor(bv_z + 0.5),
-		            Av_ColourName(eff));
-	else if (rgbstr != "" || getplayerkeyvalue(player_localnum, "lobbybody") != "")
-		s = sprintf("body %g %g %g -- particles: %s",
-		            floor(tv_x + 0.5), floor(tv_y + 0.5), floor(tv_z + 0.5),
-		            Av_ColourName(eff));
-	else if (got >= 1 && got <= AV_COLOURS)
-		s = sprintf("body %s  (%g/12 taken)", Av_ColourName(got), got);
-	else
-		s = "body: server's pick";
-	sui_text([p_x + pad, y], [hint, hint], Chat_Fit(s, sz_x - pad * 2, hint),
-	         '0.55 0.55 0.58', 1, 0);
-	y = y + hint + pad;
-
-	// ---- effects: three sliders, off through full -----------------------
-	sui_text([p_x + pad, y], [tsz, tsz], "effects", '0.65 0.65 0.7', 1, 0);
-	y = y + tsz + 4;
-
-	fx = Av_MyInfo("lobbyfx");
-	stop = (fx & AV_FX_TRAIL) ? Av_TrailLen() + 1 : 0;
-	Av_Slider("av_fx1", [p_x + pad, y], [sz_x - pad * 2, slh], AV_TRAILN, stop,
-	          "trail", stop == 0 ? "off" : Av_TrailLenName(stop - 1),
-	          Av_FxTrail, AV_TRAILN);
-	y = y + slh + 2;
-	Av_Slider("av_fx2", [p_x + pad, y], [sz_x - pad * 2, slh], 1,
-	          (fx & AV_FX_MOTES) ? 1 : 0, "motes",
-	          (fx & AV_FX_MOTES) ? "on" : "off", Av_FxMotes, 1);
-	y = y + slh + 2;
-	Av_Slider("av_fx3", [p_x + pad, y], [sz_x - pad * 2, slh], 1,
-	          (fx & AV_FX_GLOW) ? 1 : 0, "glow",
-	          (fx & AV_FX_GLOW) ? "on" : "off", Av_FxGlow, 1);
-	y = y + slh + 2;
-	/*
-	  The odd one out, and labelled so: every other control here is a setinfo
-	  that changes how OTHER people see you.  This one is a cvar that changes
-	  only what you see, so it says "mine" rather than naming an effect.
-	*/
-	Av_Slider("av_fx4", [p_x + pad, y], [sz_x - pad * 2, slh], 1,
-	          cvar("cl_trailself") ? 1 : 0, "see mine",
-	          cvar("cl_trailself") ? "shown" : "hidden", Av_FxSelf, 1);
-	y = y + slh + pad;
-
-	// ---- trail colour ------------------------------------------------------
-	sui_text([p_x + pad, y], [tsz, tsz], "trail colour", '0.65 0.65 0.7', 1, 0);
-	y = y + tsz + 4;
-	askt = Av_MyInfo("lobbytrail");
-	x = p_x + pad;
-	for (i = 1; i <= AV_COLOURS; i = i + 1)
-	{
-		if (Av_Swatch(sprintf("av_t%g", i), [x, y], sw * 0.7, i,
-		              askt == i || (askt == 0 && eff == i), askt == i))
-			Av_SetInfo("lobbytrail", i);
-		x = x + sw * 0.7 + 4;
-		if (i == 6)
+		// ---- which part the sliders edit (Patch 457: the body wears a cross)
+		markstr = getplayerkeyvalue(player_localnum, "lobbymark");
+		chw = ceil(hint * 5.5);
+		if (Profile_Chip("av_hmark", [x, y], [chw, ceil(hint * 1.9)], "Belt", hint, av_half == 0))
 		{
-			x = p_x + pad;
-			y = y + sw * 0.7 + 4;
+			av_half = 0;
+			av_rgb = Av_MyMark() * 255;
 		}
+		if (Profile_Chip("av_hbody", [x + chw + 6, y], [chw, ceil(hint * 1.9)], "Body", hint, av_half == 1))
+		{
+			av_half = 1;
+			av_rgb = Av_MyBody() * 255;
+		}
+		// "One colour" clears the MARK: the cross takes the body's colour and is gone.
+		if (Profile_Chip("av_hplain", [x + lw - chw * 1.7, y], [chw * 1.7, ceil(hint * 1.9)], "One colour",
+		                 hint, markstr == ""))
+		{
+			localcmd("setinfo lobbymark \"\"\n");
+			av_half = 1;
+			av_rgb = Av_MyBody() * 255;
+		}
+		y = y + ceil(hint * 1.9) + 6;
+		// The third figure of a slider is a DIVISION COUNT (Patch 341bis).
+		Av_Slider("av_r", [x, y], [lw, slh], 255, av_rgb_x, "Red", ftos(floor(av_rgb_x + 0.5)), Av_SetR, 255);
+		y = y + slh + 2;
+		Av_Slider("av_g", [x, y], [lw, slh], 255, av_rgb_y, "Green", ftos(floor(av_rgb_y + 0.5)), Av_SetG, 255);
+		y = y + slh + 2;
+		Av_Slider("av_b", [x, y], [lw, slh], 255, av_rgb_z, "Blue", ftos(floor(av_rgb_z + 0.5)), Av_SetB, 255);
+		y = y + slh + 4;
+		// The body is two parts; the particles are still a palette entry.
+		tv = Av_MyMark() * 255;
+		bv = Av_MyBody() * 255;
+		if (markstr != "")
+			s = sprintf("belt %g %g %g, body %g %g %g, particles %s",
+			            floor(tv_x + 0.5), floor(tv_y + 0.5), floor(tv_z + 0.5),
+			            floor(bv_x + 0.5), floor(bv_y + 0.5), floor(bv_z + 0.5), Av_ColourName(eff));
+		else if (rgbstr != "" || getplayerkeyvalue(player_localnum, "lobbybody") != "")
+			s = sprintf("body %g %g %g, particles %s",
+			            floor(tv_x + 0.5), floor(tv_y + 0.5), floor(tv_z + 0.5), Av_ColourName(eff));
+		else if (got >= 1 && got <= AV_COLOURS)
+			s = sprintf("body %s", Av_ColourName(got));
+		else
+			s = "body: the server's pick";
+		sui_text([x, y], [hint, hint], Chat_Fit(s, lw, hint), SUI_THEME_MUTED, 1, 0);
+		y = y + hint + ceil(pad * 0.7);
+
+		// ---- effects
+		y = Av_Head([x, y], "EFFECTS");
+		fx = Av_MyInfo("lobbyfx");
+		stop = (fx & AV_FX_TRAIL) ? Av_TrailLen() + 1 : 0;
+		Av_Slider("av_fx1", [x, y], [lw, slh], AV_TRAILN, stop, "Trail",
+		          stop == 0 ? "off" : Av_TrailLenName(stop - 1), Av_FxTrail, AV_TRAILN);
+		y = y + slh + 6;
+		chw = floor((lw - 12) / 3);
+		if (Profile_Chip("av_fx2", [x, y], [chw, ceil(hint * 1.9)], "Motes", hint, (fx & AV_FX_MOTES) != 0))
+			Av_FxMotes((fx & AV_FX_MOTES) ? 0 : 1);
+		if (Profile_Chip("av_fx3", [x + chw + 6, y], [chw, ceil(hint * 1.9)], "Glow", hint, (fx & AV_FX_GLOW) != 0))
+			Av_FxGlow((fx & AV_FX_GLOW) ? 0 : 1);
+		// The odd one out: a cvar that changes only what YOU see.
+		if (Profile_Chip("av_fx4", [x + (chw + 6) * 2, y], [chw, ceil(hint * 1.9)], "See my own", hint,
+		                 cvar("cl_trailself") != 0))
+			Av_FxSelf(cvar("cl_trailself") ? 0 : 1);
+		y = y + ceil(hint * 1.9) + ceil(pad * 0.7);
+
+		// ---- trail colour
+		askt = Av_MyInfo("lobbytrail");
+		chw = ceil(hint * 8);
+		if (Profile_Chip("av_tauto", [x + lw - chw, y - 3], [chw, ceil(hint * 1.8)], "Match body", hint, askt == 0))
+			Av_SetInfo("lobbytrail", 0);
+		y = Av_Head([x, y], "TRAIL COLOUR");
+		y = y + 3;
+		sw = floor(sw * 0.7);
+		for (i = 1; i <= AV_COLOURS; i = i + 1)
+		{
+			if (i == 1)
+				av_dbg = [x, y, sw];
+			if (Av_Swatch(sprintf("av_t%g", i), [x + (i - 1) * (sw + 6), y], sw, i,
+			              askt == i || (askt == 0 && eff == i), askt == i))
+				Av_SetInfo("lobbytrail", i);
+		}
+		y = y + sw + 8;
+		// A REPRESENTATION of the trail, to scale: the 3D preview cannot draw
+		// particles (it renders with no world; r_surf.c:4014).
+		striph = ceil(hint * 0.5);
+		if (fx & AV_FX_TRAIL)
+		{
+			segs = ceil(lw / 4);
+			stripw = lw / segs;
+			lit = segs * (Av_TrailLen() + 1) / AV_TRAILN;
+			for (i = 0; i < lit; i = i + 1)
+				sui_fill([x + i * stripw, y], [stripw + 1, striph],
+				         Av_PaletteRGB(askt >= 1 ? askt : eff), (1 - i / lit) * 0.85, 0);
+		}
+		else
+			sui_fill([x, y + striph * 0.5], [lw, 1], SUI_THEME_EDGE, 1, 0);
+
+		sui_text([x, p_y + sz_y - pad - hint], [hint, hint], "This is how other players see you.",
+		         SUI_THEME_MUTED, 1, 0);
+
+		// ---- the body, standing on the card beside its controls
+		Av_Preview([p_x + pad * 2 + lw, y0], [sz_x - pad * 3 - lw, p_y + sz_y - pad - y0]);
 	}
-	if (Av_Chip("av_tauto", [p_x + pad + 7 * (sw * 0.7 + 4), y - sw * 0.7 - 4 + 1],
-	            [sw * 3, tsz * 1.6], "match", askt == 0))
-		Av_SetInfo("lobbytrail", 0);
-	y = y + sw * 0.7 + 4;
 
-	/*
-	  THE TRAIL STRIP, AND IT EXISTS BECAUSE THE 3D PREVIEW CANNOT SHOW ONE.
-	  P_DrawParticles is inside `if (!(r_refdef.flags & RDF_NOWORLDMODEL))`
-	  (r_surf.c:4014) and the stage renders with VF_DRAWWORLD 0, which sets
-	  exactly that flag -- so the panel built to preview your effects could never
-	  draw the two that are made of particles, and the body oscillates to animate
-	  a ribbon nothing was drawing.  Measured, not inferred: p457av's shots have
-	  lobbyfx 3 set and no particle anywhere in the viewport.
-
-	  A REPRESENTATION, NOT A RENDER, and the panel says "to scale" rather than
-	  pretending otherwise: the colour is the one the blocks are generated in and
-	  the drawn length is the stop's share of the longest, which is the pair you
-	  are actually choosing between.  Bright at the left, where the body would
-	  be, fading out along the tail the way the real alphadelta does.
-	*/
-	striph = ceil(tsz * 0.6);
-	if (fx & AV_FX_TRAIL)
-	{
-		// One segment per ~4 px of panel rather than a fixed 30: at 30 the
-		// blocks were wide enough for the alpha steps to read as banding.
-		segs = ceil((sz_x - pad * 2) / 4);
-		stripw = (sz_x - pad * 2) / segs;
-		lit = segs * (Av_TrailLen() + 1) / AV_TRAILN;
-		for (i = 0; i < lit; i = i + 1)
-			sui_fill([p_x + pad + i * stripw, y], [stripw + 1, striph],
-			         Av_PaletteRGB(askt >= 1 ? askt : eff),
-			         (1 - i / lit) * 0.85, 0);
-	}
-	else
-		sui_fill([p_x + pad, y + striph * 0.5], [sz_x - pad * 2, 1],
-		         '0.18 0.18 0.22', 1, 0);
-	y = y + striph + 4;
-
-	/*
-	  PATCH 341: THE FOOTER WRAPS.  It used to be two fixed lines written for a
-	  wider panel than this one, and the first of them ran straight out over
-	  the border -- the panel is a fixed width and the sentence is not, so the
-	  sentence yields.
-	*/
-	Av_Wrap(p_x + pad, p_y + sz_y - hint * 3 - 8, sz_x - pad * 2, hint,
-	        "how you look to OTHERS -- drag the title bar to move this, esc closes",
-	        '0.4 0.4 0.44');
-
-	// ---- the preview, in its own viewport beside the panel ---------------
-	/*
-	  THE VIEWPORT'S HEIGHT COMES FROM ITS OWN WIDTH, not from the panel's.
-
-	  It was 72% of the panel height, which was tolerable while the panel was
-	  480 units tall and became "weirdly tall" at 640 -- a 248-wide frame 460
-	  tall, nearly 1:2.  A portrait frame half again as tall as it is wide holds
-	  a standing body with margin and stops tracking a number it has nothing to
-	  do with.  Still clamped to the screen below, which is what Patch 341 added
-	  it for: a panel dragged low used to push the model's feet off the display.
-	*/
-	pvh = ceil(pvw * 1.5);
-	if (pvh > sz_y)
-		pvh = sz_y;
-	if (pvh < tsz * 6)
-		pvh = tsz * 6;
-	/*
-	  CENTRED ON THE PANEL, not anchored to its top.  While the rect had a frame
-	  around it the anchor was the thing that read as deliberate; with the frame
-	  gone it just left the body floating up by the panel's first few rows, a
-	  third of the way down a 640-unit panel.  Clamped to the screen afterwards,
-	  which is what Patch 341 put the clamp here for -- a panel dragged low must
-	  not push the model's feet off the display.
-	*/
-	pvy = p_y + ceil((sz_y - pvh) * 0.5);
-	if (pvy < 4)
-		pvy = 4;
-	if (pvy + pvh > scr_y - 4)
-		pvy = scr_y - 4 - pvh;
-	/*
-	  NO BACKDROP AND NO FRAME: the body stands beside the panel, not in a box.
-
-	  Both existed and both are deliberately gone.  VF_DRAWWORLD 0 draws the body
-	  and nothing else and renderscene does not clear the colour buffer, so this
-	  rect shows whatever the MAIN view already drew there -- which is why a fill
-	  was added in the first place.  Lex's call after seeing it framed: "remove
-	  the window behind the player display".  So the trade is stated rather than
-	  hidden: the body now reads against live map geometry, which is busier than
-	  a flat fill, and the rect is invisible so nothing marks where it clips.
-	  Put the two lines back if it ever reads badly on a bright map.
-	*/
-	Av_Preview([pvx, pvy], [pvw, pvh]);
-
-	sui_border_box(p, sz, 1, '0.28 0.30 0.36', 1, 0);
+	// The search's list, LAST: over everything, and the element sui answers for.
+	Profile_Drop([p_x + sz_x - pad - max(fw, tsz * 18), p_y + pad + fh + 4], max(fw, tsz * 18), tsz, hint);
 	Font_Reset();
 	sui_end();
+
+	s = Profile_TakePick();
+	if (s != "")
+	{
+		av_other = s;
+		av_namefocus = FALSE;
+		av_saidtab = FALSE;
+	}
+	if (link)
+	{
+		// The link box asks for its own Enter: only a real key starts a link.
+		Av_Close();
+		localcmd("link\n");
+	}
 };
 
 /*
-  The panel's input, shaped like Scores_InputEvent with two additions: the
-  absolute mouse position is STORED (the drag reads it a frame later), and
-  while the name field has focus every key goes to sui's text input first so
-  the field actually types.
+  The panel's input.  The mouse is sui's; the absolute position is also STORED
+  (the drag reads it a frame later).  A field that has the keyboard gets every
+  key as it comes (sui_text_event): the search first, then the name.
 */
 float(float evtype, float scanx, float chary, float devid) Av_InputEvent =
 {
@@ -1309,54 +1225,61 @@ float(float evtype, float scanx, float chary, float devid) Av_InputEvent =
 		sui_input_event(evtype, scanx, chary, devid);
 		return TRUE;
 	}
+	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP)
+		return FALSE;
 
-	if (evtype == IE_KEYDOWN || evtype == IE_KEYUP)
+	if (Profile_FieldEvent(evtype, scanx, chary))
+		return TRUE;
+	if (Profile_Wheel(evtype, scanx, av_rowh))
+		return TRUE;
+	if (scanx == K_MOUSE1 || scanx == K_MOUSE2)
 	{
-		if (scanx == K_MOUSE1 || scanx == K_MOUSE2)
-		{
-			sui_input_event(evtype, scanx, chary, devid);
-			// A click is also how the name field gains and loses focus:
-			// whichever element sui saw clicked last is the answer.
-			if (evtype == IE_KEYDOWN)
-				av_namefocus = sui_is_last_clicked("av_name");
-			return TRUE;
-		}
 		if (evtype == IE_KEYDOWN)
-		{
-			if (scanx == K_ESCAPE)
-			{
-				if (av_namefocus)
-				{
-					av_namefocus = FALSE;   // first ESC leaves the field
-					return TRUE;
-				}
-				Av_Close();
-				return TRUE;
-			}
-			if (av_namefocus)
-			{
-				if (scanx == K_ENTER)
-				{
-					// Commit through the engine's name command -- the one
-					// channel that updates userinfo mid-connection -- via the
-					// same quoted-cvar route the chat draft uses, so a name with
-					// spaces or a semicolon arrives as exactly what was typed.
-					if (strtrim(av_name_text) != "")
-						Chat_RunSafe("name", strtrim(av_name_text));
-					av_namefocus = FALSE;
-					return TRUE;
-				}
-				sui_input_event(evtype, scanx, chary, devid);
-				return TRUE;
-			}
-		}
-		else if (av_namefocus)
-		{
-			sui_input_event(evtype, scanx, chary, devid);
-			return TRUE;
-		}
+		if (scanx == K_MOUSE1)
+			_sui_mouse_move(_cursor_position, FALSE);
+		sui_input_event(evtype, scanx, chary, devid);
+		// A press is also how the name field loses the keyboard: its own draw
+		// gives it back when the press was on it.
+		if (evtype == IE_KEYDOWN)
+			av_namefocus = FALSE;
+		return TRUE;
 	}
-	return FALSE;
+	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE)
+	{
+		if (av_namefocus)
+		{
+			av_namefocus = FALSE;           // first ESC leaves the field
+			Profile_TookNone();
+		}
+		else if (av_other != "")
+		{
+			av_other = "";
+			av_saidtab = FALSE;
+		}
+		else
+			Av_Close();
+		return TRUE;
+	}
+	if (!av_namefocus)
+		return FALSE;
+	// Only the releases of keys the field took the press of (Profile_Took).
+	if (evtype == IE_KEYUP)
+	{
+		sui_text_event(evtype, scanx, chary, "av_name", av_name_text, av_name_caret);
+		return Profile_TookUp(scanx);
+	}
+	Profile_Took(scanx);
+	if (scanx == K_ENTER || scanx == K_KP_ENTER)
+	{
+		// Through the quoted-cvar route the chat draft uses, so a name with
+		// spaces or a semicolon arrives as exactly what was typed.
+		if (strtrim(av_name_text) != "")
+			Chat_RunSafe("name", strtrim(av_name_text));
+		av_namefocus = FALSE;
+		return TRUE;
+	}
+	sui_text_event(evtype, scanx, chary, "av_name", av_name_text, av_name_caret);
+	return TRUE;
 };
 
 /*
@@ -1373,6 +1296,30 @@ float(string cmd) Av_ConsoleCommand =
 		Av_Open();
 	else if (argv(1) == "close")
 		Av_Close();
+	else if (argv(1) == "stats")            // Patch 663: the breakdown page, the player's own
+	{
+		Av_OpenAt("");
+		av_tab = AV_TAB_STATS;
+	}
+	else if (argv(1) == "view")             // ...somebody's, by handle or mark
+		Av_OpenAt(argv(2));
+	else if (argv(1) == "find")             // ...and the search, as if typed
+	{
+		Av_Open();
+		if (av_open)
+			Profile_Type(argv(2));
+	}
+	else if (argv(1) == "scroll")           // ...and the results, by rows
+		pf_scroll_y = max(0, stof(argv(2)) * av_rowh);
+	else if (argv(1) == "status")
+		print(strcat(sprintf("hud_player: open %g page %g view \"%s\" breakdown %g of \"%s\" rows %g/%g",
+		                     av_open, av_tab, av_other, pf_state, pf_who, pf_rn, pf_total),
+		             sprintf("  search %g of \"%s\" found %g  lobby says %g", pf_s_state, pf_q_for, pf_s_n,
+		                     acct_cl_is),
+		             sprintf("  field %g,%g %gx%g on %gx%g keys %g", pf_f_p_x, pf_f_p_y, pf_f_sz_x, pf_f_sz_y,
+		                     pf_f_scr_x, pf_f_scr_y, pf_q_focus),
+		             sprintf("  board %g  trail %s at %g,%g %g\n", rec_sb_open,
+		                     getplayerkeyvalue(player_localnum, "lobbytrail"), av_dbg_x, av_dbg_y, av_dbg_z)));
 	else
 		Av_Toggle();
 	return TRUE;

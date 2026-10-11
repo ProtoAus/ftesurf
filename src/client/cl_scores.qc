@@ -2647,6 +2647,41 @@ float() Scores_NativeRowPick =
 
 // Everything after a board's own drawing, shared by both layouts: the room list
 // inside the bracket, the bracket's end, then the hand-offs.
+// Patch 663: the player search (cl_profile.qc), on the title row of a PINNED
+// board: a held one has no cursor.  Its list is drawn last in the bracket and
+// a picked player is handed to the profile, which this board closes for.
+vector sb_pfp;                  // the field, as drawn this frame
+float  sb_pfw;                  // ...and its width; 0 is no field
+float  sb_pfme;                 // "my profile" was pressed this frame
+void() Scores_SearchDrop =
+{
+	local float dw;
+
+	if (!sb_pfw)
+		return;
+	Font_Set(ui_font_ui);
+	dw = max(sb_pfw, rec_sb_cw * 30);
+	Profile_Drop([sb_pfp_x + sb_pfw - dw, sb_pfp_y + ceil(rec_sb_szrow * 1.9) + 4], dw, sb_szui, rec_sb_szhead);
+};
+float() Scores_SearchPick =
+{
+	local string who;
+
+	who = Profile_TakePick();
+	if (who == "" && !sb_pfme)
+		return FALSE;
+	sb_pfme = FALSE;
+	// The card will not open over these (Av_Open): the board stays, and says why.
+	if (ui_he_open || rec_wt_open)
+	{
+		print("leaderboard: close the replay or the editor, then a profile can open\n");
+		return FALSE;
+	}
+	Scores_Close();
+	Av_OpenAt(who);                 // "" is the player's own
+	return TRUE;
+};
+
 void(vector p, vector sz, float pad, vector scr, float pick) Scores_Finish =
 {
 	local string s;
@@ -2664,10 +2699,13 @@ void(vector p, vector sz, float pad, vector scr, float pick) Scores_Finish =
 	// Patch 635: the room list asks for its own board with its own request now
 	// (cl_players.qc), so nothing here says whether the store is spoken for.
 	Players_Panel(p, sz, pad, scr);
+	Scores_SearchDrop();
 
 	sui_end();
 	Font_Reset();
 
+	if (Scores_SearchPick())
+		return;
 	if (Scores_SpecHandOff())
 		return;
 
@@ -3094,9 +3132,26 @@ void(vector scr) Scores_Draw =
 
 	// ---- the header: the map, and its clock on the title's baseline ---------
 	Font_Set(ui_font_ui);
-	Scores_Text([x0 + pad, y0 + pad], rec_sb_sztitle,
-	            (serverkey("map") != "") ? serverkey("map") : "no map", SUI_THEME_TEXT, 1);
-	Scores_DrawClock([x0 + pad, y0 + pad], x0 + w - pad);
+	s = (serverkey("map") != "") ? serverkey("map") : "no map";
+	Scores_Text([x0 + pad, y0 + pad], rec_sb_sztitle, s, SUI_THEME_TEXT, 1);
+	sb_pfw = 0;
+	if (rec_sb_open)
+	{
+		Profile_Frame();
+		sb_pfw = min(rec_sb_cw * 26, w - pad * 5 - chipw - stringwidth(s, TRUE, [rec_sb_sztitle, rec_sb_sztitle]));
+		if (sb_pfw < rec_sb_cw * 14)
+			sb_pfw = 0;             // no room beside this map's name
+	}
+	if (sb_pfw)
+	{
+		sb_pfp = [x0 + w - pad - sb_pfw, y0 + pad - 3];
+		Profile_Field("pf_qb", sb_pfp, [sb_pfw, tabh], sb_szui);
+		// ...and the way to the player's own profile, beside it.
+		if (Scores_Chip("sb_me", [sb_pfp_x - pad * 0.5 - chipw, sb_pfp_y + (tabh - chiph) * 0.5], [chipw, chiph],
+		                "my profile", FALSE))
+			sb_pfme = TRUE;
+	}
+	Scores_DrawClock([x0 + pad, y0 + pad], x0 + w - pad - (sb_pfw ? sb_pfw + chipw + pad * 1.5 : 0));
 
 	if (zone_count <= 0)
 	{
@@ -3105,8 +3160,11 @@ void(vector scr) Scores_Draw =
 		            "this map has no zone file, so it has no legs and no times",
 		            SUI_THEME_DIM, 1);
 		Players_Panel(p, sz, pad, scr);   // Patch 340: the room list is not about zones
+		Scores_SearchDrop();
 		sui_end();
 		Font_Reset();
+		if (Scores_SearchPick())
+			return;
 		Scores_SpecHandOff();
 		return;
 	}
@@ -3313,6 +3371,8 @@ void() Scores_Close =
 	rec_sb_wantleg = 0;
 	rec_sb_olpick  = 0;
 	sc_held = FALSE;          // PATCH 341: esc closes even mid-hold
+	Profile_Reset();          // Patch 663: the search field goes with the board
+	sui_keys_forget();
 
 	if (!rec_sb_open)
 		return;
@@ -3352,6 +3412,7 @@ void() Scores_Open =
 	// Re-read the folder every time it opens; a pin from the hold keeps the
 	// player's place (-2, Patch 357).
 	rec_sb_legbuilt = sc_held ? -2 : -1;
+	Profile_Reset();
 	UI_CursorClaim(UIC_SCORES);
 };
 
@@ -3409,6 +3470,14 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 
 	if (!rec_sb_open && !sc_held)
 		return FALSE;
+
+	// Patch 663: the search field first. While it has the keyboard a key is
+	// text, not a bind and not this board's own arrows or ESC.
+	if (rec_sb_open)
+	if (evtype == IE_KEYDOWN || evtype == IE_KEYUP)
+	if (Profile_FieldEvent(evtype, scanx, chary))
+		return TRUE;
+
 	native = Scores_NativeInput(evtype, scanx, chary, devid);
 	if (native < 0) return FALSE;
 	if (native > 0) return TRUE;
@@ -3568,6 +3637,13 @@ float(string cmd) Scores_ConsoleCommand =
 	}
 	if (argv(0) == "-showscores")
 	{
+		// Patch 663: a pinned board whose search field has the keyboard stays.
+		// Its player let go of the key to type; ESC or the key again closes it.
+		if (rec_sb_open && (pf_q_focus || pf_q_open))
+		{
+			sc_held = FALSE;
+			return TRUE;
+		}
 		Scores_Close();
 		return TRUE;
 	}
@@ -3735,6 +3811,13 @@ float(string cmd) Scores_ConsoleCommand =
 		// fixtures still type this.
 		else if (argv(1) == "tier")
 			print("scores: the board shows ranked times only (Patch 355)\n");
+		else if (argv(1) == "find")         // Patch 663: the search field's twin (no keyboard)
+		{
+			if (rec_sb_open)
+				Profile_Type(argv(2));
+		}
+		else if (argv(1) == "me")           // ...and the "my profile" chip's
+			sb_pfme = rec_sb_open;
 		else if (argv(1) == "refresh")
 		{
 			/*

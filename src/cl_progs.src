@@ -165,6 +165,10 @@ client/cl_steampic.qc
 // dead buttons), so all three sit before cl_scores.qc and after everything
 // they read.
 client/cl_chat.qc
+// Patch 663: a player's breakdown and the player search. After cl_online.qc
+// (its request ids), cl_steampic.qc and cl_chat.qc (Chat_Fit); before the two
+// panels that show it, cl_avatar.qc and cl_scores.qc.
+client/cl_profile.qc
 client/cl_avatar.qc
 // Patch 383: lobby bodies from the pose stream (CSQC_Ent_Update/Remove).  After
 // cl_avatar.qc (Av_ColourModRGB, Av_PaletteRGB) and cl_netmon.qc (getdeltacount);

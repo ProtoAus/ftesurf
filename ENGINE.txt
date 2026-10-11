@@ -25,7 +25,14 @@ commit   7501a6ccebb2d2b7f2f3a7f0127e86680f3cefb3
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-658
-patch    662
+patch    663
+# Patch 663: `hud_player` is a profile. One card in the UI's look: the player's name and
+# picture (a linked account's Steam ones on a ranked lobby), whether the game is linked, a
+# search for any player, and two pages: the customizer, laid out again, and a breakdown like
+# the site's player page (surfd's Patch 662). The leaderboard has the same search on a pinned
+# board, and "my profile". P opens the card (cfg/default.cfg). New src/client/cl_profile.qc;
+# sui_text_event gives a game panel's text field its keys as they come. QC and one bind: no
+# engine source, no server code, no surfd change.
 # Patch 655: text fields (src/sui_sys.qc, both VMs) place the caret under a click, select by
 # drag, Shift+arrows/Home/End and Ctrl+A, draw the selection, and copy and cut it. NO FIELD
 # PASTES in either VM: a server can run the menu VM's console commands, so nothing a field

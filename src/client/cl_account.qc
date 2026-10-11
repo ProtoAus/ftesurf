@@ -857,6 +857,7 @@ float(string cmd) Account_ConsoleCommand =
 	*/
 	if (argv(0) == "acct_is")
 	{
+		acct_cl_is = stof(argv(1));     // Patch 663: the profile's words (cl_profile.qc)
 		// 1 = this install is not linked.  Offered once a game, and only to a
 		// screen with no box on it.
 		if (argv(1) == "1")
@@ -917,7 +918,10 @@ float(string cmd) Account_ConsoleCommand =
 				return TRUE;
 		}
 		if (argv(1) == "linked")
+		{
+			acct_cl_is = 2;             // Patch 663: the profile says so at once, not at the next map
 			Account_UiEnd(TRUE, sprintf("This game is now linked to %s.", Account_Plain(argv(2))));
+		}
 		else if (argv(1) == "banned")
 			Account_UiEnd(FALSE, "That Steam account is banned from the leaderboards.");
 		else if (argv(1) == "slow")

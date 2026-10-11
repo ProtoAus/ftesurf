@@ -1545,6 +1545,30 @@ void(string id, vector pos, vector size, __inout string text, __inout float curs
 	}
 };
 
+#ifndef MENU    // the game VM's: the menu's fields are their frame's only bracket
+// Patch 663: A KEY FOR A FIELD WHOSE OWNER HANDS IT KEYS AS THEY COME.  A game
+// panel is not always its frame's only bracket, and every sui_end empties the
+// key buffer: a replay's chrome drawn first ate what a later panel's field was
+// to read.  The owner calls this from its input handler while `id` has its
+// keyboard, and does NOT also give that key to sui_input_event; sui_text_input
+// still draws the field and owns its mouse.
+void(float evtype, float scanx, float chary, string id, __inout string text, __inout float cursor) sui_text_event =
+{
+	_sui_mods_track(evtype, scanx);
+	if (evtype != IE_KEYDOWN)
+		return;
+	if (_sui_sel_id != id)
+	{
+		_sui_sel_id = id;
+		_sui_sel_anchor = -1;
+		_sui_sel_drag = FALSE;
+		_sui_sel_known = FALSE;
+	}
+	_sui_in_mods = _sui_mods;
+	sui_handle_text_input(chary, scanx, text, cursor);
+};
+#endif
+
 // `id` has the keyboard this frame: it drew, and took a click's claim or the
 // keyboard's (TAB).  For the field's own ring, caret and selection: asking only
 // whether it was clicked last left a field focused by TAB drawing none.

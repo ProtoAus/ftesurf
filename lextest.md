@@ -56,6 +56,38 @@ but only drawn 1 obviously."
 - **Live since 11 Oct 16:58 UTC (12 Oct, 03:58 here)** in both installs: a new
   engine file, so restart the game. Lobbies need nothing.
 
+## 00. 12 Oct — your profile: P opens it (Patch 663)
+
+From your list ("upgrade this menu to show your steam name, steam picture,
+and allow you to customize your player ... a tab for your player breakdown
+like the website page but in game ... a search bar you can type in any
+player").
+1. **Press P** (or `hud_player`). One card in the UI's look. At the top your
+   picture and name (your Steam ones on a ranked lobby), whether this game is
+   linked to Steam, with a Link Steam button if it is not, and a search box.
+   Drag the top strip to move it; Esc closes.
+2. **Customize** is the old panel's controls laid out again: name, colour,
+   belt / body / one colour with the three sliders, trail, motes, glow, see
+   my own, trail colour. Your body stands beside them, bigger than it was.
+3. **Stats** is the site's player page: times, first places (and how many of
+   them somebody else contested), top tens, maps, maps finished, a bar for
+   each difficulty tier, then your results, best first. The list scrolls and
+   brings more as you reach its end.
+4. **Search players**: type a name. Up to twelve players, the exact name
+   first, with their pictures. Click one, or Enter for the first, or the
+   arrow keys to choose. Their breakdown opens; "Back to me" or Esc returns.
+5. **On the leaderboard** (TAB, then right-click for a cursor): the same
+   search box on the title row, and "my profile" beside it. Picking a player
+   closes the board and opens their breakdown. Once you have clicked in the
+   box you can let go of TAB while you type.
+6. The boxes select, copy and cut as the menus' do (Patch 655). No paste.
+- **Yours to look at, on a lobby:** your own Stats page, a search for a name
+  you know, the body's size, and whether P is the key you want.
+- **Known:** a player with thousands of times takes a second or two the
+  first time (the Pi ranks every row); a list's pictures arrive one every
+  second and a half; a name with colour codes shows its codes, as on the
+  board; a result is not a link yet (no "watch", no jump to that map).
+
 ## 00. 12 Oct — text boxes: a caret you can place, selection, copy and cut (Patch 655)
 
 From your list ("full text support, highlighting, copy, paste"). **In your

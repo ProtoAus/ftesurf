@@ -8158,6 +8158,35 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **THE PROFILE (Patch 663): ITS PIECES, AND TWO TRAPS IT WAS BUILT ROUND.**
+  `cl_profile.qc` holds the two asks (`player=`, `players=`), their answers
+  and three pieces a panel draws INSIDE ITS OWN BRACKET: `Profile_Field`,
+  `Profile_Drop` (last in the bracket: of the elements under the cursor sui
+  answers for the last one registered, which is how a list lies over other
+  controls) and `Profile_DrawStats`. `hud_player` and the leaderboard both
+  use them; a picked player is `Profile_TakePick()`.
+  A FIELD IN A GAME PANEL TAKES ITS KEYS AS THEY COME (`sui_text_event`),
+  not through sui's buffer: every `sui_end` in a frame empties that, and a
+  replay's chrome drawn first ate them. Do not also hand that key to
+  `sui_input_event`. AND IT SWALLOWS ONLY THE RELEASES OF KEYS IT TOOK THE
+  PRESS OF (`Profile_Took`): the engine returns before a bind's release when
+  game code takes a key-up (keys.c:3860), so a strafe key held as the box
+  took the keyboard stayed down for good.
+  A RIG CLIENT THAT IS TO ASK A BOARD NEEDS `+set lobby_dir <its own surfd>`
+  AND A CONSENT FILE AT VERSION 4: without the first its asks go to the real
+  Pi, without the second none is made (Patch 653's own rig has neither, so
+  its picture step measured nothing). `tools/p663profile.py` seeds its
+  surfd's database directly, plants a four-colour picture, wraps surfd's
+  `game_player` to count asks and to lie, and drives the panel by its
+  console twins (`hud_player stats|view|find|scroll|status`, `scores
+  find|me`); `hud_player status` is the line it grades. A CONSOLE TWIN GIVES
+  NO FIELD THE KEYBOARD: only a press does (class Mouse, which moves the
+  desktop's pointer). TWO TRAPS IN THAT ARM'S FIRST CUT: a picture must be
+  planted BEFORE the game first asks for its mark (a miss is remembered
+  fifteen minutes), and an alias run under `developer 1` is three log lines,
+  not one.
+  csprogs: 118,807 global definitions with this patch (448 more), of
+  fteqcc's 131,072.
 - **DEPLOYED 11 Oct 2026, 18:20-18:21 UTC (FTESurf `498a1bc`, Patch 655):
   csprogs and menu.dat.** `build.ps1 -Pi` from the pushed tree, nobody on
   any of the 12 lobbies: csprogs `a9c734555bf1b558` (qwprogs `35fda5eb`

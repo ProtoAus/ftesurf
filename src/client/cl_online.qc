@@ -147,6 +147,8 @@ float(float reqid, float code, string bdy) ZoneDL_Reply;
 float(float reqid, float code, string bdy) Players_BoardReply;
 // Patch 640, cl_steampic.qc: and a Steam picture's.
 float(float reqid, float code, string bdy) SteamPic_Reply;
+// Patch 663, cl_profile.qc: a player's breakdown and the player search.
+float(float reqid, float code, string bdy) Profile_Reply;
 
 float  ob_state;
 float  ob_req;             // uri request id in flight; 0 = none
@@ -1512,6 +1514,8 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 	if (Players_BoardReply(reqid, responsecode, resourcebody))
 		return;
 	if (SteamPic_Reply(reqid, responsecode, resourcebody))
+		return;
+	if (Profile_Reply(reqid, responsecode, resourcebody))
 		return;
 
 	if (ob_more_req)

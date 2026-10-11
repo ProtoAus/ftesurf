@@ -5,6 +5,37 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## The profile: what Patch 663 left -- 2026-10-12
+
+- **A result row does nothing.** The site's links to "watch" and to that
+  map's board have no twin: a replay of another map needs that map loaded.
+- **The header's "linked" is the lobby's last `acct_is`**, which anybody can
+  stuff; it only chooses words. The mark and the breakdown are the lobby's
+  own (`*phash`).
+- **No drill-down from a tier's bar** to its maps (the site's "finished" and
+  "not yet" lists).
+- **A name's colour codes are shown raw** in the title, as on the board.
+- **The board's box needs a pinned board** (right-click under TAB): a held
+  board has no cursor.
+- **Pictures in a list come one every 1.5 s** (the picture cache's pace, one
+  ask at a time), and the cache holds 32.
+- **With a replay under the board, the board's rows and chips, and this
+  list, take no clicks**: the replay's bracket ends first and its `sui_end`
+  empties the release list. The field's KEYS work there (`sui_text_event`).
+  Older than this patch; a pick with a replay or the editor up leaves the
+  board and says why.
+- **A list replaced between a press and its release** picks the new row
+  (rows are numbered, not named).
+- **A player who links and opens the card before Steam's picture has reached
+  surfd** sees their initial for fifteen minutes: the picture cache
+  remembers a miss that long (`SP_MISS`).
+- **Each rest of the search text replaces the ask in flight**; the wheel
+  over the results or the list is theirs (it was `+jump`); F9 to F11 are
+  swallowed while a field has the keyboard.
+- **Only 200 of a player's rows** are ever held; the list says "the first
+  200 of N".
+- ftesurf-5b, 12 Oct.
+
 ## Text fields: what Patch 655 left -- 2026-10-12
 
 - **PASTE NEEDS THE ENGINE.** The menu VM's and the game VM's registered
