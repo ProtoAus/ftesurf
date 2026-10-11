@@ -8868,6 +8868,16 @@ name; this is two names on one row, which needed no engine or server change.
 - **A RIG WAITER TAKES THE LOCK LAST.** Mine took `rig.lock` and then waited
   for a quiet machine, and sat on it while the owner played (11 Oct 15:25Z).
   Quiet first, then the lock, then one more look.
+- DEPLOYED 11 Oct from `123c70e`: menu.dat `b4b46b6e` to both installs at
+  16:33:40Z with no game running, under the rig lock (`.prev` is 647's
+  `9dc45991`); nothing to the Pi, a server has no menu. THEN RUN ONCE ON THE
+  OWNER'S OWN INSTALL (16:40Z, `cfg_save_auto 0`, nothing picked or played):
+  `maplist: saved 1787 map(s) from the directory, 0 row(s) not kept`; 20
+  rows folded; `ui_build surf_ace` knew `surf_ace_css` (not installed, 18,088
+  KB); the libraries count 1,189 both, 1,172 Momentum, 996 CS:S; with
+  "rookie" typed by real keys the one row drew the switch. Looked at: that
+  screenshot, MOM lit beside "KSF 2". `ftesurf.cfg` was not written;
+  `data/mapdl.net.txt` is the menu's own and stays.
 
 ### Two builds of one map: zones, boards, and the list the game fetches (Patch 651) -- 2026-10-11
 

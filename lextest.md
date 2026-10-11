@@ -231,8 +231,12 @@ From your reply ("please build it"; "great idea").
    name finds its row.
 - The CS:S library chip lists these rows too.
 - Measured in a test rig with made-up maps and a real mouse click on each
-  cell; I looked at one screenshot of it. I have not seen it with your real
-  library: please look at a few rows.
+  cell, then run once on your own install without picking anything: it
+  fetched the Pi's 1,787 rows, folded 20 maps, and drew the switch on
+  surf_rookie. I did not click a switch or download a CS:S build on your
+  install: that part is yours to try.
+- **Live since 11 Oct 16:33 UTC (12 Oct 03:33 here)** on both installs.
+  Restart the game to get it. Other players get it with the next release.
 
 ## 00. 12 Oct — CS:S builds have timers and both games' times; maps follow Momentum (Patch 651)
 
