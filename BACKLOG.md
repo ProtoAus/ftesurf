@@ -154,6 +154,41 @@ From its one review; measured there unless said.
 - **Not measured:** the nine older arms that set the colouring were read, not
   run; the reset literals on an install with an older default.cfg (the arm's
   rig has this patch's, where the reset worked before them too).
+## Steam pictures in the game: what Patch 640 left -- 2026-10-11
+
+- **Two of the three places are not measured in a rig.** `tools/p640pics.py`
+  reads the TAB board's row off a screenshot. The room list and the run-line
+  name call the same `SteamPic_Draw` with a mark from `*phash` and from the
+  ticked row, and each needs a LINKED player on a lobby to show anything:
+  the link rig (`p615link.py`) could seed a picture and screenshot them.
+- **Where a name is drawn and no picture is:** the opt-in native table
+  (`cl_scores_native.qc`), the chatbox, the results screen, the spectate bar;
+  and the Online list in a window too narrow for the slot (owner column
+  under 15 character widths).
+- **The room list's voice icon is the missing-texture checker on a client
+  without the install's content** (`gfx/thumbnails/speaking_off`, drawn by
+  cl_players.qc; ftesurf-0f's smoke of a clean client on a Pi lobby, 09:06Z
+  and 10:1xZ on 11 Oct, before this patch). Not looked into: what a clean
+  client ships or downloads.
+- **From the review, not fixed:** a server that rotates `*phash` every frame
+  makes a client ask 40 times a minute (the gap bounds it; a third of the
+  board's budget). `SteamPic_Of` compares strings slot by slot, up to about
+  370 statements a row a frame: marks held as ints would compare in plain QC.
+  The reply names no mark; ids from a per-map random base stand in for that
+  (surfd could echo the mark in the header line). A directory that swallows
+  requests whole still costs one engine HTTP thread a quarter of an hour (of
+  four, for good): the engine's client wants a timeout of its own.
+- **Every ask is a board request** on surfd (120 a minute an address): a
+  lobby of thirty linked players is thirty asks, 1.5 s apart, once. A path
+  and a budget of its own wait on the game-facing vhost (root). A picture
+  changed on Steam is not seen until the next map: the cache has no expiry
+  for a picture it holds, and 32 slots (the 33rd mark in view has none).
+- **A second game window on the desktop can stop a rig's client drawing at
+  all** (two of this patch's runs, beside another session's arm: a black
+  screenshot and every console line answered in one burst). The arm waits
+  for the board's own status line, so such a run fails instead of passing on
+  nothing; what stalls the client was not looked into.
+
 ## Steam pictures: what Patch 639 left -- 2026-10-11
 
 - **Only accounts have pictures** (anyone who has signed in with Steam here,
@@ -161,8 +196,7 @@ From its one review; measured there unless said.
   would answer for it, but that is 66,000 profiles. The game's copy rides
   `/api/board?avatar=` and spends the board's 120 a minute: give it a path
   and a bucket of its own when the game-facing vhost is next edited (root);
-  until then the game half has to cache and pace. The game does not draw
-  them yet (ROADMAP 14.4).
+  until then the game half caches and paces (Patch 640).
 - **A changed picture is no picture until the next half-hourly sync.**
   Sign-in stores the new hash at once and its file is not there yet, while
   the old file is still on disk: serve that one meanwhile. A browser keeps a

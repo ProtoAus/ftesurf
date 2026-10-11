@@ -1448,13 +1448,32 @@ unbanned account's avatar once, by Steam's hash of it, into `data/avatars`:
 The site draws it beside the name wherever a row says `av`: an account's
 rows on any board (their imported ones too, same SteamID), their
 page, the players list; `/board/avatar/<handle>` serves it from this origin.
-THE GAME HALF IS NEXT: `/api/board?avatar=<mark>` already serves the text
-copy (it rides the board route because the address the game talks to
-forwards a fixed list of paths and changing that needs root); the client
-fetches it with `uri_get`, uploads the pixels (`r_uploadimage`) and draws it
-on the TAB board's rows, the players list and run-line name labels. Imported
-players with no account have no picture (their SteamIDs are known; fetching
-66,000 profiles is a different job).
+Imported players with no account have no picture (their SteamIDs are known;
+fetching 66,000 profiles is a different job).
+
+**THE PICTURE, GAME HALF: BUILT, Patch 640.** `cl_steampic.qc`: a cache of 32
+pictures by the 8-hex mark (a lobby's `*phash`, or `FS_GuidId` of a board
+row's `player`). A mark something drew in the last 3 s is asked for at
+`/api/board?avatar=<mark>` (it rides the board route because the address the
+game talks to forwards a fixed list of paths), one request at a time, 1.5 s
+apart, under the board's own consent and `lobby_dir` rules; a mark with no
+picture (a 404) is not asked again for 15 minutes; a 429 or a 5xx keeps the
+mark wanted and pauses all asking a minute, three in a row end it for the
+map; nothing is asked while a request is unanswered, however long (the
+engine has four HTTP threads and no timeout), a late answer is still taken,
+and one slower than 20 s holds asking off for 15 minutes across maps
+(`_steampic_hold`). A renderer restart (F11) fetches the held ones again.
+The reply's hex becomes 32 x 32
+RGBA with the corners rounded in the alpha, `r_uploadimage` takes it, and a
+shader of the cache's own draws it (drawpic's default would not: AGENT_NOTES).
+DRAWN: before the name on the TAB board's Online rows (a row says `av`; one
+picture on a board and every name moves over, so they stay a column), in
+the room list where the colour square was (the colour stays as a bar under
+it), and before the name on a ticked run line. The row pinned under the
+Online list moves over with the names and wears the player's own. Not at an
+owner column under 15 character widths (an 800 px window has 12): no
+pictures there. NOT YET: the opt-in native table, chat, the results screen
+(BACKLOG).
 
 **The owner's order, 11 Oct:** the in-game name follows the Steam name; the
 Steam picture beside the name on the boards, the players list and run lines;

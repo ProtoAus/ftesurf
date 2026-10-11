@@ -39,6 +39,7 @@ void(string rendererdescription) CSQC_RendererRestarted =
 	Milk_Invalidate();
 	Gfx_WaterSupport();
 	_sui_rnd_forget();              // Patch 642: the corner masks went with the renderer
+	SteamPic_Lost();                // Patch 640: its textures and shaders went with it
 };
 
 // Before renderscene, every frame; ticks only when the sim is due.

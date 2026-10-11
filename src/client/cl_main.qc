@@ -1432,6 +1432,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// and a gap in the sidecar would read as a camera that teleported.
 	Rec_ViewFrame();
 	Account_Frame();                // Patch 615: here, not with the HUD, which a menu skips
+	SteamPic_Frame();               // Patch 640
 
 	// Same lazy-reload idiom Zone_Draw uses: cheap string compare every frame,
 	// work only on an actual map change.

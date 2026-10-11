@@ -11,6 +11,27 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — Steam pictures in the game (Patch 640)
+
+From your list. A linked player's Steam picture is drawn before their name:
+1. **TAB, Online list.** Your rows (FTESurf, Momentum and KSF ones) show your
+   picture; every name on that board moves over a little so they still line
+   up. A board with nobody linked on it looks as it did.
+2. **TAB, the room list on the right.** Your picture is where your colour
+   square was, with the colour as a thin bar under it. Players who have not
+   linked keep the square.
+3. **A ticked run line.** Tick the line box on one of your own rows that has
+   a replay: the name on the line in the world has your picture before it.
+- The picture arrives a second or two after the board opens (one is fetched
+  at a time), and is kept until you close the game.
+- **I measured 1 in a test rig, off a screenshot. 2 and 3 I could not see
+  without a linked player on a lobby: please look, and tell me if either is
+  missing, misplaced or the wrong size.**
+- Pressing F11 (or any video restart) drops them for a second or two while
+  they are fetched again. In a very narrow window (about 800 px) the Online
+  list shows none, to leave the names their room.
+- Not yet: chat, the results screen, the spectate bar.
+
 ## 00. 11 Oct — rounded corners stay sharp at any size (Patch 642)
 
 From your message: small corners looked fine, big ones blurry and low

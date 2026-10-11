@@ -453,7 +453,12 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 
 		// Colour swatch: the exact worn rgb (`lrgb`, Patch 341), which for a
 		// palette player IS the palette entry -- one source, no nearest-lie.
-		sui_fill([xx, y + 7], [12, 12], Av_WornRGB(j), 1, 0);
+		// Patch 640: a linked player's Steam picture in its place, the colour a
+		// bar under it.  *phash is "" for anyone not linked.
+		if (SteamPic_Draw([xx - 1, y + 4], 14, getplayerkeyvalue(j, "*phash"), 1))
+			sui_fill([xx - 1, y + 19], [14, 2], Av_WornRGB(j), 1, 0);
+		else
+			sui_fill([xx, y + 7], [12, 12], Av_WornRGB(j), 1, 0);
 		xx = xx + 16;
 
 		// The name, in the chat colour -- the same rule the chatbox uses, so

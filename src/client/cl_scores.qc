@@ -60,11 +60,13 @@ float  sc_held;                  // PATCH 341: +showscores is down right now
 string rec_sb_legmap;            // the map rec_sb_leg* describes; "" = none
 float  rec_sb_legzoned;          // it holds a strzone that has to be given back
 
-// The rows for the selected leg.
-float  rec_sb_rowticks[SB_MAXROW];
-float  rec_sb_rowtag[SB_MAXROW];         // RT_*
-float  rec_sb_rowflags[SB_MAXROW];       // header `flags`, or -1 when absent
-float  rec_sb_rowver[SB_MAXROW];         // FTESURF-REC version
+// The rows for the selected leg.  Patch 640: memalloc'd by Scores_RegisterCvars,
+// not global arrays: these four were 1,024 of csprogs' 131,039 definitions, and
+// fteqcc's table holds 131,072.
+float  *rec_sb_rowticks;
+float  *rec_sb_rowtag;                   // RT_*
+float  *rec_sb_rowflags;                 // header `flags`, or -1 when absent
+float  *rec_sb_rowver;                   // FTESURF-REC version
 float  rec_sb_rown;
 float  rec_sb_rowgen;            //Local generation, including same-path replacement.
 float  rec_sb_rowover;                   // files the leg had that would not fit
@@ -1104,6 +1106,7 @@ void(vector pos, float sz, vector col, float a) Scores_Tick =
 float sb_colx[9];
 float sb_colr[9];               // right-aligned
 float sb_colon[9];              // drawn at this window width
+float sb_avpad;                 // Patch 640: the owner column's picture slot; 0 on a board with none
 
 // One cell of a row, at its column's place and alignment.
 void(vector lp, float col, float d, string text, vector c, float a) Scores_Cell =
@@ -1217,6 +1220,7 @@ float  sb_ln_llegread;           // Patch 437: the handle, mirrored per frame be
 float sb_ln_momfetch;
 float sb_ln_momsent[SB_LNMAX], sb_ln_momdue[SB_LNMAX];
 string sb_ln_get[SB_LNMAX], sb_ln_name[SB_LNMAX];
+string sb_ln_who[SB_LNMAX];           // Patch 640: the row's picture mark (ob_bwho), or null
 float  sb_ln_fetch;                   // the line the replay fetch is for, + 1
 float  rec_sb_lnpick;                 // a row's box clicked this frame, row + 1
 
@@ -1263,7 +1267,8 @@ void(float i) Scores_LineFree =
 	}
 	if (sb_ln_get[i]) strunzone(sb_ln_get[i]);
 	if (sb_ln_name[i]) strunzone(sb_ln_name[i]);
-	sb_ln_get[i] = sb_ln_name[i] = __NULL__;
+	if (sb_ln_who[i]) strunzone(sb_ln_who[i]);
+	sb_ln_get[i] = sb_ln_name[i] = sb_ln_who[i] = __NULL__;
 	sb_ln_momsent[i] = sb_ln_momdue[i] = 0;
 	Line_Clear(i + 1);
 	if (sb_ln_key[i])  strunzone(sb_ln_key[i]);
@@ -1310,6 +1315,8 @@ void(float row) Scores_LineToggle =
 		sb_ln_rep[i] = Online_RowRep(row);
 		sb_ln_leg[i] = Online_RowLeg(row);
 		sb_ln_name[i] = strzone(bufstr_get(ob_bname, row));
+		if (bufstr_get(ob_bwho, row) != "")
+			sb_ln_who[i] = strzone(bufstr_get(ob_bwho, row));
 		if (bufstr_get(ob_bget, row) != "")
 			sb_ln_get[i] = strzone(bufstr_get(ob_bget, row));
 		if (sb_ln_rep[i] < 1)
@@ -1929,7 +1936,7 @@ string(float idx) Scores_OnlineName =
 		else if (Online_WhyString(idx) == "ksf")
 			s = strcat("[ksf] ", s);
 	}
-	return Chat_Fit(s, sb_colx[SBK_TIME] - sb_colx[SBK_OWNER] - rec_sb_cw * 9.5,
+	return Chat_Fit(s, sb_colx[SBK_TIME] - sb_colx[SBK_OWNER] - rec_sb_cw * 9.5 - sb_avpad,
 	                Font_Px(rec_sb_szrow));
 };
 
@@ -2078,6 +2085,15 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		if (ref == 0 || ob_ms[i] < ref)
 			ref = ob_ms[i];
 
+	// Patch 640: one Steam picture on the board and every name moves over, so
+	// the names stay a column.  Only where 15 character widths are the name's
+	// to begin with (the review: 1024 x 768 at hud_scale 2 has 16.6, 800 x 600
+	// has 12, where the slot would be a third of every name).
+	sb_avpad = 0;
+	if (ob_anyav)
+	if (sb_colx[SBK_TIME] - sb_colx[SBK_OWNER] - rec_sb_cw * 9.5 >= rec_sb_cw * 15)
+		sb_avpad = rec_sb_rowh - 4 + ceil(rec_sb_cw * 0.6);
+
 	// Patch 357.  The player's own row, pinned under the list when the finish
 	// just set ranks past the page (OB_MAXROW); then the one-time seek to it.
 	pinned = Scores_StandingOutside();
@@ -2181,7 +2197,15 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		ncol = SBC_TEXT;
 		if (idx == ob_mine)
 			ncol = SBC_GOOD;
-		Scores_Cell(lp, SBK_OWNER, d, Scores_OnlineName(idx), ncol, 0.9);
+		if (sb_avpad)
+		{
+			SteamPic_Draw([lp_x + sb_colx[SBK_OWNER], lp_y + 2], rec_sb_rowh - 4,
+			              bufstr_get(ob_bwho, idx), 1);
+			Scores_Text([lp_x + sb_colx[SBK_OWNER] + sb_avpad, d], rec_sb_szrow,
+			            Scores_OnlineName(idx), ncol, 0.9);
+		}
+		else
+			Scores_Cell(lp, SBK_OWNER, d, Scores_OnlineName(idx), ncol, 0.9);
 
 		/*
 		  WHETHER THERE IS ANYTHING BEHIND THIS ROW TO OPEN -- build 68.
@@ -2280,7 +2304,18 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 			Scores_Cell(lp, SBK_TIME, d,
 			            Time_MsString((int)rec_sb_finbest), SBC_TEXT, 1);
 		Font_Set(ui_font_ui);
-		Scores_Cell(lp, SBK_OWNER, d, Scores_StandingWord(), SBC_GOOD, 0.9);
+		if (sb_avpad)
+		{
+			// Patch 640: in line with the names above it, behind the player's own.
+			SteamPic_Draw([lp_x + sb_colx[SBK_OWNER], lp_y + 2], rec_sb_rowh - 4,
+			              getplayerkeyvalue(player_localnum, "*phash"), 1);
+			Scores_Text([lp_x + sb_colx[SBK_OWNER] + sb_avpad, d], rec_sb_szrow,
+			            Chat_Fit(Scores_StandingWord(),
+			                     sb_colx[SBK_TIME] - sb_colx[SBK_OWNER] - rec_sb_cw * 9.5 - sb_avpad,
+			                     Font_Px(rec_sb_szrow)), SBC_GOOD, 0.9);
+		}
+		else
+			Scores_Cell(lp, SBK_OWNER, d, Scores_StandingWord(), SBC_GOOD, 0.9);
 	}
 	// Patch 395: `scores olpick`, a click minus the hit test.
 	if (!pick)
@@ -3619,6 +3654,11 @@ float(string cmd) Scores_ConsoleCommand =
 		}
 		// `scores` on its own toggles the board, which makes it useless for
 		// asking what the board holds.  This asks without touching anything.
+		else if (argv(1) == "pics")
+		{
+			SteamPic_Status();          // Patch 640; and not the status dump below
+			return TRUE;
+		}
 		else if (argv(1) == "status")
 		{
 			Scores_Refresh();
@@ -3861,6 +3901,10 @@ void() Scores_RegisterCvars =
 	  worse than not trying.
 	*/
 	registercommand("scores");
+	rec_sb_rowticks = memalloc(sizeof(float) * SB_MAXROW);
+	rec_sb_rowtag = memalloc(sizeof(float) * SB_MAXROW);
+	rec_sb_rowflags = memalloc(sizeof(float) * SB_MAXROW);
+	rec_sb_rowver = memalloc(sizeof(float) * SB_MAXROW);
 	// Patch 437: the harness handle, mirrored per frame below.
 	registercvar("sb_ln_lineleg", "0");
 	// Patch 635: the Online list's filter switch and its slider's stop (0 FTESurf,

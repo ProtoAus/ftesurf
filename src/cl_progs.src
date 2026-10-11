@@ -148,6 +148,10 @@ client/cl_online.qc
 // URI_Get_Callback, so it cannot live in cl_zones.qc (line 103, far above).
 // cl_zones.qc forward-declares the one function it calls back into.
 client/cl_zonedl.qc
+// Patch 640: Steam pictures.  After cl_online.qc (Online_NextReq, and its
+// URI_Get_Callback branches here); before cl_players.qc, cl_scores.qc and
+// cl_linegraph.qc, which draw them.
+client/cl_steampic.qc
 // Patch 340, player customization.  Three files, one direction of dependency:
 // cl_chat (the CSQC_Parse_Print hook, the ring, the silence list) needs nothing
 // but sh_font; cl_avatar (the `hud_player` customizer, the palette mirror,

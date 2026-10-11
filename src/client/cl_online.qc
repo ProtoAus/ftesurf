@@ -145,6 +145,8 @@ void() Players_AbsorbBoard;
 float(float reqid, float code, string bdy) ZoneDL_Reply;
 // Patch 635, cl_players.qc: the room list's own request, answered the same way.
 float(float reqid, float code, string bdy) Players_BoardReply;
+// Patch 640, cl_steampic.qc: and a Steam picture's.
+float(float reqid, float code, string bdy) SteamPic_Reply;
 
 float  ob_state;
 float  ob_req;             // uri request id in flight; 0 = none
@@ -264,6 +266,8 @@ float  *ob_ver;
 float  ob_bget;            // strbuf: NanoPi Momentum demo handle per row
 float  ob_bname;           // strbuf: display name per row
 float  ob_bplayer;         // strbuf: stable player id per row
+float  ob_bwho;            // strbuf: the player's 8-hex mark where the row says `av`, else ""
+float  ob_anyav;           // a held row has one: the owner column makes room (cl_scores.qc)
 
 /*
   The row store, allocated once.  Ten OB_MAXROW-float GLOBAL arrays took csprogs
@@ -370,6 +374,7 @@ void() Online_FreeHave =
 void() Online_Clear =
 {
 	ob_n = 0;
+	ob_anyav = FALSE;
 	ob_t = 0;
 	ob_cnt_ranked = 0;
 	ob_cnt_community = 0;
@@ -535,7 +540,17 @@ void(float i, float row) Online_RowSet =
 
 	bufstr_set(ob_bget, i, json_get_string(json_find_object_child(row, "get")));
 	bufstr_set(ob_bname,   i, json_get_string(json_find_object_child(row, "name")));
-	bufstr_set(ob_bplayer, i, json_get_string(json_find_object_child(row, "player")));
+	s = json_get_string(json_find_object_child(row, "player"));
+	bufstr_set(ob_bplayer, i, s);
+	// Patch 640: `av` is surfd saying this player has a Steam picture to fetch.
+	// The mark is a digest, so it is made here and not once a frame.
+	if (json_get_float(json_find_object_child(row, "av")))
+	{
+		bufstr_set(ob_bwho, i, FS_GuidId(s));
+		ob_anyav = TRUE;
+	}
+	else
+		bufstr_set(ob_bwho, i, "");
 };
 
 // Row i's source: its own on a merged board (`tr`), else the board's tier.
@@ -616,6 +631,8 @@ void(string body) Online_Parse =
 		ob_bname = buf_create();
 	if (!ob_bplayer)
 		ob_bplayer = buf_create();
+	if (!ob_bwho)
+		ob_bwho = buf_create();
 
 	Online_Clear();
 
@@ -1493,6 +1510,8 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 		return;
 	// Patch 635: and the room list's own board (cl_players.qc), the same way.
 	if (Players_BoardReply(reqid, responsecode, resourcebody))
+		return;
+	if (SteamPic_Reply(reqid, responsecode, resourcebody))
 		return;
 
 	if (ob_more_req)

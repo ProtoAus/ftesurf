@@ -244,6 +244,15 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   arrays took it to 131,418 and the build died with `Too many globals`, reported
   as `Error in client/cl_main.qc on line 0`. Big tables go in `memalloc`'d memory
   (`cl_lines.qc`, `cl_online.qc` `Online_Alloc`), not in global arrays.
+  WHAT IS COUNTED IS DEFINITIONS (`numglobaldefs`, the 6th int of the .dat's
+  header; `qccmain.c:2425` against `MAX_GLOBALS = 1<<17`), one per array
+  element and one per LOCAL, not globals memory (184,579 words, no limit near).
+  Patch 637's csprogs held 131,039: 33 to spare, and a 61-definition patch
+  died. Patches 640 and 641 moved six float tables out (1,024 and 510); it
+  is 129,663 after both and 642. `-max_globals` on the command line would lift it and
+  the engine has no such table, but about nineteen `tools/*.py` compile
+  `cl_progs.src` themselves and would not have the flag: keep moving tables.
+  `float *a, *b;` declares b a `float**`: one declarator a line.
 - QC-only change → default build is enough. Treat "0 warnings" as the bar, but
   check whether a warning is yours: this tree usually carries other people's
   uncommitted work (`cl_hud.qc:2007`, a 9-arg sprintf, is a standing example).
@@ -7622,6 +7631,56 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **A TEXTURE FROM `r_uploadimage` IS NOT WHAT `drawpic(name)` DRAWS (Patch
+  640).** drawpic's default shader is `program default2d#PREMUL` and loads its
+  picture with `IF_PREMULTIPLYALPHA` (`gl_shader.c:8270`, Shader_Default2D);
+  the upload makes its texture without (`RT_IMAGEFLAGS`), and
+  `Image_FindTexture` matches on that bit. So drawpic made a SECOND texture
+  of the same name, failed to load it from disk and drew the engine's
+  missing-texture checker, dull red and black, 2 x 2: beside a fixture that
+  was itself four quadrants, which is why the cut looked nearly right by
+  eye and only the colours gave it away. Register a shader of your own after
+  the upload (`cl_steampic.qc`: `program default2d`, `clampmap <name>`,
+  `blendfunc blend`). Pixels are ints in memory order r, g, b, a; read hex
+  four digits at a time (`stoh` of eight would not fit a signed int).
+  INSIDE A SUI FRAME USE `sui_pic`: a list row's position is its frame's, and
+  the first cut's drawpic put the picture nowhere a screenshot could find.
+  THREE CUTS, ONE COUNTER: the cache's own line said "asked 1 got 1, state 3"
+  for all three (csprogs `99da5072` nothing on screen, `fafda76b` the
+  checker, `cde8f65a` the picture); only `tools/p640pics.py`'s reading of
+  the screenshot told them apart (0, 0 and 117 quadrant matches).
+  `set lobby_dir http://...` from a console line is cut at `//`: quote it.
+  A MINIMISED CLIENT (p615link's `wShowWindow = 7`) DREW NOTHING in two runs
+  of five; a second game window up beside it did the same to a shown one.
+  AND IT IS ALL GONE AFTER `vid_restart` OR F11 (`fullscreen_toggle`):
+  `R_ShutdownRenderer` runs `Shader_Shutdown` and `Image_Shutdown`, the VM
+  lives on, and `CSQC_RendererRestarted` (cl_milk.qc) is the one place to drop
+  what was held. A name drawn BEFORE its re-upload gets drawpic's default
+  shader and keeps it: `R_LoadShader` returns the shader a name already has
+  and ignores the script it is handed (`gl_shader.c:8609`). The review traced
+  it; `p640pics.py`'s V step reproduced it on the build before the fix (cache
+  "1 of 1", 0 quadrant matches after the restart) and passes after (2 of 2,
+  127 matches).
+- **THE ENGINE'S HTTP CLIENT HAS FOUR THREADS AND NO TIMEOUT** (`httpclient.c`,
+  `MAXDOWNLOADTHREADS 4`; only a 0.1 s select). Every `uri_get` from any VM
+  takes one, and a request to a host that never answers holds it for the
+  session: the fourth such stops the board, replay fetches, zone downloads
+  and the menu's lobby list together. So an unanswered request is not
+  given up on and replaced (`cl_steampic.qc` asks nothing while one is out,
+  takes a late answer, and holds off across maps after a slow one), and a
+  429 pauses the asker instead of moving on to the next thing to ask.
+  MEASURED IN THE RIG with surfd made slow and busy (`p640pics.py --slow 25`,
+  `--busy 1`): one request and the picture drawn 25 s on; a 429, the mark
+  still wanted, the second request 60 s later, drawn. The reviewer's offline
+  VM, same build before the last touches: a directory that never answers, 1
+  request in ten minutes (it was 6 in 100 s); 429s with 24 marks on screen,
+  3 requests in three minutes and no mark written off (it was all 24 in
+  36 s, each for 15 minutes).
+  REQUEST IDS RESTART AT 1 IN EVERY VM (`Online_NextReq`), and the engine's
+  stale-reply test compares a spawncount nothing in CSQC changes
+  (`pr_bgcmd.c:6139`): a reply slower than a map load arrives in the next VM
+  under an id that is live again. `Players_BoardReply` checks the reply's
+  map for this; a reply with nothing to check needs ids of its own.
 - **DEPLOYED 11 Oct 2026, 08:49-08:52 UTC (FTESurf `b8c2c5d`, Patch 639):
   surfd only.** Six files by `surfd-deploy.ps1` (`surfd.py` `ed55301`,
   `accounts.py` `5ddfeba`, `admin.py` `2a1a3bc`, `steamsync.py` `78c9f0a`,

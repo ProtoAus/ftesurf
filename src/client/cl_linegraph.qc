@@ -2004,8 +2004,9 @@ float(float s, float b, float i, float f) LineGraph_LabelAt =
 
 void() LineGraph_WorldLabels =
 {
-	local float s, i, j, k, n, b, d, e, best, stride, bi, f, sz, f0, dir, us, ulo, uhi, ci, cbest, ia, ib;
+	local float s, i, j, k, n, b, d, e, best, stride, bi, f, sz, f0, dir, us, ulo, uhi, ci, cbest, ia, ib, pw;
 	local vector q, at, p0, seg, aw, vs;
+	local string img;
 	for (s = 0; s < LG_SLOTS; s = s + 1) lg_lab_on[s] = FALSE;
 	if (!cvar("hud_linegraph_labels")) return;
 	f0 = ui_font_cur;
@@ -2022,7 +2023,12 @@ void() LineGraph_WorldLabels =
 		b = s * LN_CAP;
 		// The text is drawn up and to the right of its point (below).
 		lgl_lo = [vs_x * 0.02, vs_y * 0.06 + sz + 6, 0];
-		lgl_hi = [vs_x * 0.98 - 6 - stringwidth(LineGraph_Name(s), TRUE, [sz, sz]), vs_y * 0.86, 0];
+		// Patch 640: room for the row's Steam picture before the name.
+		pw = 0;
+		if (s > 0)
+		if (sb_ln_who[s - 1])
+			pw = sz + 4;
+		lgl_hi = [vs_x * 0.98 - 6 - pw - stringwidth(LineGraph_Name(s), TRUE, [sz, sz]), vs_y * 0.86, 0];
 		if (lgl_hi_x < lgl_lo_x) continue;
 		ia = LG_Ia(s);
 		ib = LG_Ib(s);
@@ -2161,6 +2167,16 @@ void() LineGraph_WorldLabels =
 		lg_lab_w[s] = aw;
 		lg_lab_q[s] = at;
 		q = at + [6, 0 - sz - 6];
+		if (pw)
+		{
+			// drawpic, as the name beside it is a raw drawstring: screen positions.
+			img = SteamPic_Of(sb_ln_who[s - 1]);
+			if (img != "")
+			{
+				drawpic(q, img, [sz, sz], '1 1 1', 0.95, 0);
+				q_x = q_x + pw;
+			}
+		}
 		// Over sky or a pale wall the colour alone is not enough.
 		drawstring(q + [ln_px, ln_px], LineGraph_Name(s), [sz, sz], '0 0 0', 0.7, 0);
 		// Patch 632: beside a line in a plain colour the name wears that colour (the

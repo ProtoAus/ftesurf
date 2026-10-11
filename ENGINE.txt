@@ -26,6 +26,13 @@ commit   c543d688ad16a871753fa9525c23487f437741a5
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-625
 patch    642
+# Patch 640: Steam profile pictures in the game. The client fetches a linked player's
+# picture from surfd as text (/api/board?avatar=<mark>, Patch 639), uploads the pixels
+# and draws it before the name: on the TAB board's Online rows, in the room list (where
+# the colour square was) and on a ticked run line's name. One ask at a time, 1.5 s apart,
+# remembered; nothing is asked before the online terms are accepted. The local board's
+# four row tables moved to memalloc (csprogs was 33 definitions from fteqcc's table).
+# csprogs only: no engine source, server QC, recorder, evidence, ranking or Build change.
 # Patch 642: a rounded corner is drawn from a mask made at its own pixel radius, where
 # one 8 px mask was stretched to every size. Buttons, pills and panels keep a one-pixel
 # antialiased edge however large they are, and a rounded box sits on whole pixels. The
