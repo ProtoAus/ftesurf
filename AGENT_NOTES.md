@@ -4833,6 +4833,21 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   rig's window (382 pixels). The arms' "holds still" control then says not
   measured, which is the right answer and not a failure.
 - csprogs: 117,320 definitions.
+- DEPLOYED 11 Oct UTC (the 12th here) from `512870b`: csprogs `95f30046` to
+  both installs at 14:36Z with no game running (`.prev` is 645's `f40d4069`),
+  and with qwprogs to the Pi at 14:37Z, nobody on, twelve lobbies restarted
+  and read back; a fresh client on a lobby was served it and drew the board.
+  No engine, menu.dat or cfg. The Pi's qwprogs became `35fda5eb`: the same
+  source as the installs' `76e00522` built after midnight, one header byte
+  (fteqcc's compile date, offset 115), which is also all that differs in
+  menu.dat. A hash that matches nothing may be that; diff the bytes.
+- SHIPPED WITH A FAULT, FOUND AT 14:49Z: an engine before patch-645 (the
+  0.1.24 download) draws these by the QC loop, six to ten vertices a segment
+  into one batch, and dies when a batch reaches 32768 (the fault 645 fixed).
+  The arm on a copy of the 625 exe: eight lines draw, the client dies as the
+  fortieth is added. Every check before the deploy ran on the 645 engine; the
+  old one had been run with eight lines only. A limit that is raised is a
+  limit to re-run on every engine that is out. Patch 654 keeps eight there.
 
 ### Run lines drawn by the engine (Patch 645) — 2026-10-11
 

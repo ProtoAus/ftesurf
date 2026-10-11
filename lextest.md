@@ -65,6 +65,15 @@ ticks every row in the list that has a recording, up to that many.
 - **Yours to look at:** surf with a full list ticked. I measured with the
   camera on a replay and a short walk; I have not measured a real run at
   speed beside sixty-four lines.
+- **Live since 11 Oct 14:37 UTC (12 Oct 01:37 here)** in `C:\FTESurf`,
+  `C:\FTEQuake` and on all twelve lobbies. Restart the game to get it.
+- **A fault of mine, found twelve minutes after it went live:** the copy
+  unpacked from the 0.1.24 download has the older engine, and that engine
+  closes when about forty lines are ticked (measured: it died as the fortieth
+  was added). Eight was safe there, which is why nobody met it before. Patch
+  654 keeps that engine at eight; until it is in, do not tick a long list in
+  the Desktop copy. `C:\FTESurf` and `C:\FTEQuake` have the new engine and are
+  not affected.
 
 ## 00. 11 Oct — release 0.1.24 is on proto.bar/ftesurf
 
