@@ -27,13 +27,12 @@ everything from Patch 495 to 647 that is on main, the Steam work included
   been seen in test rigs: unpack it somewhere new and take "play online" to
   see that one.
 - The map browser in it offers 1,279 maps to download (the list held 705).
-- **The Linux download may not survive its first run.** I published it
-  without starting it (only the Windows one was started). An hour later
-  another session read, in the engine, that the Linux client gives the game
-  code 32 MB of memory and the run-line tables need more, which would stop
-  the game the first time a line is drawn. Read, not yet measured; they are
-  measuring it and have a one-line fix. If it holds, the Linux half needs a
-  0.1.25. Windows is not affected.
+- **The Linux download was published without being started** (only the
+  Windows one was). For an hour this item said it might not survive its first
+  run, over a 32 MB memory limit read in the engine; that reading was wrong
+  (64-bit Linux gets the same 2 GB as Windows, one function further up), and
+  no fault is known. A first Linux boot with a run line is queued by another
+  session; until it reports, the Linux half is simply untested.
 
 ## 00. 11 Oct — the first-boot screens (Patch 647)
 
