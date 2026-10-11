@@ -7291,6 +7291,19 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   LEFT: the list is still built inside a request, about 2 s once a minute
   (BACKLOG); a player page reads `runs` by `player` with no index, 0.6 s of a
   full scan before its ranks.
+  DEPLOYED 11 Oct 2026, 02:46:48 UTC (FTESurf `234a488`), surfd only:
+  `surfd.py` and `test_web.py`, the staged suites pass on the Pi, backup
+  `surfd.db.bak-234a488-20261011-134417`, reload, 0 players. Read back: blob
+  `3ebe67a`, `ranked rows need a linked Steam account: yes`, and the route
+  timed on the host: 5.94 s for the FIRST build after the reload (cold: one
+  visitor after each surfd restart can still see a 504, so ask for the route
+  once after a deploy), 0.005 s from the cache, 1.95 s for the rebuild after
+  the cache lapsed, the body the same 73,898 bytes as before; 0.08 s through
+  the public address. THE PLAYER PAGE WAS 3.95 s IN THE SAME READ (2.0 s an
+  hour earlier): it asks `rank_of` for EVERY row a player has, two counts
+  each, before it shows a hundred of them, and the owner's account has 2,029.
+  No review round: a read-only route, six lines, its answer compared with the
+  old query's on the live file.
 - **DEPLOYED 11 Oct 2026, 01:31-01:38 UTC (FTESurf `061fa8d`, Patch 629),
   SWITCHED OFF: surfd, the Pi's twelve lobbies, both Windows installs' progs.**
   No engine change. In this order:

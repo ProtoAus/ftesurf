@@ -17,9 +17,11 @@ You reported it. The front page's map list took 12 seconds to build on the Pi
 and the web server gives up at 5; it is cached for a minute, so whoever came
 first after that minute got the error and a reload worked. One query was the
 cause (not today's changes: it has been like this since the Momentum import).
-It now builds in about 2 seconds. **Check:** open proto.bar/ftesurf/board a
-few times, a couple of minutes apart: no 504, at worst a two-second wait.
-Player pages still take about 2 seconds; that is next if it bothers you.
+It now builds in about 2 seconds (live since 11 Oct 02:47 UTC). **Check:**
+open proto.bar/ftesurf/board a few times, a couple of minutes apart: no 504,
+at worst a two-second wait. Player pages with thousands of imported times
+(yours has 2,029) still take 2 to 4 seconds, which is close to the limit:
+that is the next thing to speed up, say if you see a 504 there.
 
 ## 00. 11 Oct — your HUD list, part 2: Boarding (Patch 631)
 
