@@ -8181,6 +8181,13 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   offer is not drawn, and while the card is up or a search field has the
   keyboard it takes no key. The arm now opens the card with the offer
   pending (check O); the build that was live fails it.
+  THAT FIX DEPLOYED 19:21 UTC (FTESurf `fa50eb5`): csprogs
+  `9fc0940b9ba83594` on the Pi (12 lobbies restarted, nobody on; `.prev`
+  `221cbebf`) and in both installs at 19:21:20Z, read back twice; menu.dat
+  and default.cfg as they were. `pi_lobby_smoke.py` at 19:25Z on release
+  0.1.24's engine: served `9fc0940b`, the board drew, no QC error.
+  NOT SEEN: the card opened by a linked player on a real lobby (the rig's
+  linked one was on its own surfd), and P pressed by a hand.
 - **THE PROFILE (Patch 663): ITS PIECES, AND TWO TRAPS IT WAS BUILT ROUND.**
   `cl_profile.qc` holds the two asks (`player=`, `players=`), their answers
   and three pieces a panel draws INSIDE ITS OWN BRACKET: `Profile_Field`,
