@@ -5,6 +5,28 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## The game's player search and breakdown: what Patch 662 left -- 2026-10-12
+
+From its review; none stops it.
+- **A mark two directory players share opens neither by mark** (404 by
+  design; about one such pair is expected among 67,000). One of them who
+  links and asks for their own breakdown is told there are no times. The
+  search still finds both by handle.
+- **Marks are counted over directory players only.** An account with no
+  rows whose mark equals a directory player's is answered with that
+  player's breakdown. `avatars()` counts over every account for this.
+- **Every search walks the directory** (it stops early only on a full answer
+  of exact names, or no text). The site's does too. A minimum length or a
+  short per-text cache if the game's use ever shows on the Pi.
+- **Four asks for one cold wide profile rank it four times**: `_profile_rows`
+  shares nothing in flight. The site's page has the same.
+- **gunicorn listens on 0.0.0.0:8084**, where the `board` and `web` buckets
+  are separate budgets for the same work; through nginx both vhosts share
+  one zone.
+- **A reply's `n`, `maps` and `by_tier` are the directory's** (up to five
+  minutes old) beside live `total` and `rows`. The site's page has the same.
+- ftesurf-5b, 12 Oct.
+
 ## Pictures for everyone on the boards: what Patch 660 left -- 2026-10-12
 
 - **The game holds 32 pictures** (`SP_MAX`, cl_steampic.qc). A ranked board

@@ -886,6 +886,21 @@ game-facing vhost forwards a fixed list of paths; it spends the board's
 bucket. `/board/avatar` has its own (`WEB_AVATAR_MAX`, 600 a minute: a board
 page is up to 50 pictures).
 
+**The game's player search and breakdown (Patch 662)** ride `/api/board` for
+the same reason and spend the same bucket. `?players=<text>` answers
+`{"v","t","q","players":[{"who","name","n","maps","src","av"?}]}`: at most
+twelve players of the site's directory whose plain name holds the text, a
+name that IS the text first, then names starting with it, then the rest, each
+most times first; no text is the top twelve. `?player=<who>` answers the
+site's player page without its links out: `who`, `name`, `src`, `n`, `maps`,
+`last`, `wr`, `wrc`, `top10`, `by_tier`, `av`, `completion`, `offset`,
+`total`, `limit` (50, at most 200) and `rows` of `map`, `track`, `leg`, `tr`,
+`style`, `ms`, `when`, `r`, `of`. `<who>` is a search row's 12-hex `who`, or
+the game's own 8-hex mark for a player (a lobby's `*phash`, `FS_GuidId` of a
+board row's `player`): the first eight of the same digest, answered only
+while `SURFD_RANKED_LINKED` is on and only where one directory player has it.
+400 `bad player`, 404 `no such player`. Names go out as UTF-8.
+
 ## Steam accounts (/board/link)
 
 `accounts.py` and `steam.py`, schema 15. STORE-ONLY: nothing that ranks,

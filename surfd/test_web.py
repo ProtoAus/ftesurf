@@ -1371,6 +1371,170 @@ def main():
           ("'?offset=0&limit=' + want" in js, "'?offset=' + P.shown" in js),
           (True, False))
 
+    # ---- Patch 662: the game's search and breakdown, on /api/board -----------
+    # An address of their own: every ask here spends the board's bucket.
+    gget = lambda q, ip="203.0.113.62": get(m, "/api/board?" + q, ip=ip)
+    found = lambda q: body(gget("players=" + q)).get("players", [{"name": "NO ANSWER"}])
+    hw = m.web_handle(W)
+    site = body(get(m, "/board/api/players"))
+    g = found("")
+    check("G  the game's search with no query is the directory's first rows, in its order",
+          ([x.get("who") for x in g], 0 < len(g) <= m.GAME_SEARCH_MAX),
+          ([x["who"] for x in site["players"]][:m.GAME_SEARCH_MAX], True))
+    check("...a row is a handle, a name and three figures, and no identity",
+          (sorted(set().union(*[set(x) for x in g])), W in json.dumps(g)),
+          (["maps", "n", "name", "src", "who"], False))
+    check("...the figures the site's row has, and the text asked for comes back plain",
+          ([(x["name"], x["n"], x["maps"], x["src"]) for x in g],
+           body(gget("players=%5E1WI%20de"))["q"]),
+          ([(x["name"], x["n"], x["maps"], x["src"]) for x in site["players"]][:m.GAME_SEARCH_MAX],
+           "wi de"))
+    # The more times, the earlier in the directory: the exact name has the fewest.
+    for sid, name, maps in (("76561198000008001", "the zed", ("surf_a", "surf_b", "surf_c")),
+                            ("76561198000008002", "Zedder", ("surf_a", "surf_b")),
+                            ("76561198000008003", "^2zed", ("surf_c",))):
+        for mp in maps:
+            imported(m, mp, sid, name, 8000 + int(sid[-1]), "ksf")
+    check("G  a name that IS the query leads, then names starting with it, then the rest "
+          "(the directory's own order is the reverse here), through colour codes and case",
+          ([x["name"] for x in found("ZED")],
+           [x["name"] for x in body(get(m, "/board/api/players?q=zed"))["players"]]),
+          (["^2zed", "Zedder", "the zed"], ["the zed", "Zedder", "^2zed"]))
+    for k in range(m.GAME_SEARCH_MAX + 2):
+        imported(m, "surf_c", "765611980000090%02d" % k, "cap%02d" % k, 9000 + k, "ksf")
+    imported(m, "surf_c", "76561198000009099", "handicap", 9999, "ksf")
+    check("G  one answer names GAME_SEARCH_MAX players, the better matches of more",
+          [x["name"] for x in found("cap")], ["cap%02d" % k for k in range(m.GAME_SEARCH_MAX)])
+    check("...and a miss is 200 with nothing",
+          (gget("players=nobodyhere").status_code, found("nobodyhere")), (200, []))
+    # More exact matches than an answer holds: the walk stops at the last of them.
+    for k in range(m.GAME_SEARCH_MAX):
+        imported(m, "surf_c", "765611980000095%02d" % k, "Twin", 9500 + k, "ksf")
+    imported(m, "surf_c", "76561198000009599", "twin", 9599, "ksf")
+    walked = []
+
+    class Counted(list):
+        def __iter__(self):
+            for e in list.__iter__(self):
+                walked.append(e["who"])
+                yield e
+    real_people = m.web_people
+    m.web_people = lambda db, now: (lambda bh, lst: (bh, Counted(lst)))(*real_people(db, now))
+    try:
+        twins = found("twin")
+        n_walked = len(walked)
+        del walked[:]
+        found("nobodyhere")
+        n_all = len(walked)
+    finally:
+        m.web_people = real_people
+    check("G  a full answer of exact names ends the walk: it read a part of the directory, "
+          "a miss all of it",
+          (len(twins), sorted(set(x["name"].lower() for x in twins)), 0 < n_walked < n_all),
+          (m.GAME_SEARCH_MAX, ["twin"], True))
+    # A name that is not ASCII goes out as itself: the engine's reader misdraws \uXXXX.
+    imported(m, "surf_c", "76561198000009700", "Fl\u00f8ppy\u2122", 9700, "ksf")
+    raw = gget("players=fl").get_data()
+    check("G  a name goes out as UTF-8, never as an escape",
+          ("Fl\u00f8ppy\u2122".encode("utf-8") in raw, b"\\u" in raw,
+           "Fl\u00f8ppy\u2122".encode("utf-8") in gget("player=" + m.web_handle("76561198000009700")).get_data()),
+          (True, False, True))
+
+    tsv = os.path.join(os.environ["SURFD_HOME"], "momtracks662.tsv")
+    with open(tsv, "w") as fh:
+        fh.write("# map\tmapid\ttier\tgamemode\ttrackType\ttrackNum\n")
+        fh.write("surf_a\t1\t2\t1\t0\t1\n")
+        fh.write("surf_b\t2\t4\t1\t0\t1\n")
+    m.MOMTRACKS_PATH = tsv
+    m.people_reset()
+    sp = body(get(m, url + "?offset=0&limit=5000"))
+    gp = body(gget("player=" + hw + "&limit=200"))
+    if "rows" not in gp:                    # not an answer: every check below says so
+        gp = dict({k: None for k in sp}, rows=[{}])
+    same = ("who", "name", "src", "n", "maps", "last", "wr", "wrc", "top10", "by_tier",
+            "completion", "total")
+    check("G  a breakdown's figures are the site's page's (control: its firsts and its "
+          "contested firsts differ, and its completion is a table)",
+          ([gp[k] for k in same], sp["wr"] != sp["wrc"],
+           [(t["tier"], t["done"], t["of"]) for t in (sp["completion"] or {}).get("tiers", [])]),
+          ([sp[k] for k in same], True, [(2, 1, 1), (4, 1, 1)]))
+    check("...its rows are that page's in order, the map as the site spells it",
+          [(x["map"], x["track"], x["leg"], x["tr"], x["ms"], x["r"], x["of"], x["when"], x["style"])
+           for x in gp["rows"]],
+          [(x["disp"], x["track"], x["leg"], x["tr"], x["ms"], x["r"], x["of"], x["when"], x["style"])
+           for x in sp["rows"]])
+    check("...and it carries no link out, no identity and no replay id",
+          (sorted(k for k in ("ext", "ksfid", "momid") if k in gp), W in json.dumps(gp),
+           sorted(gp["rows"][0])),
+          ([], False, ["leg", "map", "ms", "of", "r", "style", "tr", "track", "when"]))
+    import accounts as acct
+    kicks = []
+    real_linked, real_kick = m.RANKED_LINKED, m._people_kick
+    m.RANKED_LINKED = True
+    try:
+        by_mark = body(gget("player=" + acct.who_of(W))).get("who")
+        m._people_kick = lambda now: kicks.append(now)
+        fresh_miss = (gget("player=" + "0" * 8).status_code, len(kicks))
+        m.time.now += m.WEB_PEOPLE_FLOOR + 1    # past the floor, well inside the directory's life
+        old_miss = (gget("player=" + "0" * 8).status_code, len(kicks))
+    finally:
+        m.RANKED_LINKED, m._people_kick = real_linked, real_kick
+    check("G  a mark nobody has is a 404 that refreshes the directory once it is past its floor, "
+          "as a handle's miss does (a new player's own mark)", (fresh_miss, old_miss), ((404, 0), (404, 1)))
+    check("G  the game's 8-hex mark (accounts.who_of, the handle's first eight) finds the same "
+          "player while the board is by account, and nobody while it is not",
+          (acct.who_of(W) == hw[:8], by_mark, gget("player=" + hw[:8]).status_code,
+           gget("player=" + hw).status_code),
+          (True, hw, 404, 200))
+    check("...paged by offset and limit: GAME_PROFILE_ROWS by default, GAME_PROFILE_MAX at most",
+          ([x["map"] for x in body(gget("player=%s&offset=1&limit=2" % hw)).get("rows", [])],
+           [body(gget("player=%s&limit=%s" % (hw, v))).get("limit") for v in ("0", "999999", "x")],
+           [body(gget("player=%s&offset=%s" % (hw, v))).get("offset") for v in ("-4", "x", "99999999")]),
+          ([x["disp"] for x in sp["rows"][1:3]],
+           [1, m.GAME_PROFILE_MAX, m.GAME_PROFILE_ROWS], [0, 0, m.MAX_RUNS]))
+    check("G  a handle nobody has; then three that are no handle and no mark (nine hex, "
+          "not hex, capitals): 404, 400, 400, 400",
+          [gget("player=" + v).status_code for v in ("0" * 12, "0" * 9, "nothex!!", hw.upper())],
+          [404, 400, 400, 400])
+    check("G  a mark two players share is nobody's; a mark one has is theirs",
+          m._people_marks({"aaaaaaaa1111": 1, "aaaaaaaa2222": 2, "aaaaaaaa3333": 3,
+                           "bbbbbbbb4444": 4}),
+          {"bbbbbbbb": "bbbbbbbb4444"})
+    real_av = m.avatars
+    m.avatars = lambda now, db=None: {"at": now, "site": {}, "handle": {},
+                                      "game": {W: "ab" * 20}, "who": {}}
+    try:
+        with_pic = ([x.get("av", 0) for x in found("wide")],
+                    body(gget("player=" + hw)).get("av"), found("cap00")[0].get("av", 0))
+    finally:
+        m.avatars = real_av
+    check("G  a player whose picture the game can have says so, in a search row and a "
+          "breakdown; another does not, and nobody does without one",
+          (with_pic, [x.get("av", 0) for x in found("wide")],
+           body(gget("player=" + hw)).get("av")),
+          (([1], 1, 0), [0], 0))
+    check("G  the ordinary board, a picture and the map list still answer on that route",
+          (len(api_board(m, "surf_b", tier="momentum")["rows"]), gget("avatar=00000000").status_code,
+           gget("maps=1").status_code in (200, 404), "rows" in body(gget("map=surf_b&tier=momentum"))),
+          (3, 404, True, True))
+
+    def broken(*_a, **_k):
+        raise sqlite3.OperationalError("database is locked")
+    real_cur, real_people = m._people_current, m.web_people
+    m._people_current = m.web_people = broken
+    try:
+        codes = [gget("players=x").status_code, gget("player=" + hw).status_code]
+    finally:
+        m._people_current, m.web_people = real_cur, real_people
+    check("G  a database that cannot be read is a 500 the game can parse, both ways", codes, [500, 500])
+    spent = [gget("players=x", ip="203.0.113.63").status_code for _ in range(m.RUN_RATE_MAX + 1)]
+    check("G  both spend the board's bucket: its 121st ask in a minute is refused, for either, "
+          "and the site's own search is not",
+          (spent[:-1] == [200] * m.RUN_RATE_MAX, spent[-1],
+           gget("player=" + hw, ip="203.0.113.63").status_code,
+           get(m, "/board/api/players", ip="203.0.113.63").status_code),
+          (True, 429, 429, 200))
+
     print("\n%d failed" % len(FAILED))
     for f in FAILED:
         print("  " + f)

@@ -25,7 +25,12 @@ commit   7501a6ccebb2d2b7f2f3a7f0127e86680f3cefb3
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-658
-patch    661
+patch    662
+# Patch 662: two lookups for the game on surfd's /api/board: `players=<text>` is a name
+# search over the site's player directory (twelve rows, the exact name first) and
+# `player=<handle or 8-hex mark>` one player's breakdown (the site's player page without its
+# links out). surfd/surfd.py only: no table, no schema, no QC, no engine source, and the
+# site's own replies are what they were. Patch 663 is the game's half.
 # Patch 661: what is written on the run lines. Every ticked line has its name, in the
 # line's own colour (the ninth line on had none). A mark's numbers stay at their mark:
 # the nearest to the eye has the room and the others fade out until there is some

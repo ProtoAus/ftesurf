@@ -8097,6 +8097,20 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **THE GAME'S PLAYER LOOKUPS (Patch 662) ARE THE SITE'S, AND COST WHAT THE
+  SITE'S COST.** `/api/board?players=` walks the in-memory directory once a
+  request (about 20 ms for 67,000 entries on a laptop, under the GIL: four
+  threads do not make four searches faster; measured in its review), and
+  `?player=` is `_profile_rows`: the first answer for a wide profile is
+  seconds on the Pi, kept for two minutes. The proxy gives 5 s; the game asks
+  once more by itself after an answer that never came (Patch 663).
+  A PLAYER IS FOUND BY A 12-HEX HANDLE OR BY THE GAME'S 8-HEX MARK, which is
+  the handle's first eight (`accounts.who_of(x) == web_handle(x)[:8]`, held by
+  a check). By mark only while the board is by account, and only where ONE
+  directory player has it: two who share a mark are found by handle (the
+  search gives it) and never by mark.
+  `tools/accounts_mutants.py` now runs `test_web.py` for its `gp-` mutants,
+  with `tools/` on the path (that suite imports from it).
 - **DEPLOYED 11 Oct 2026, 16:22-16:25 UTC (FTESurf `1142049`, Patch 660):
   surfd.** `surfd.py` and `steamsync.py` by `surfd-deploy.ps1`, the whole
   suite green on the Pi first (`test_ranked` with its Pillow), backup

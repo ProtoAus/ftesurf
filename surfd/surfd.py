@@ -3620,6 +3620,10 @@ def board():
         return game_avatar(request.args.get("avatar"), now)
     if request.args.get("maps") is not None:        # Patch 651: see game_maplist
         return game_maplist()
+    if request.args.get("players") is not None:     # Patch 662: see game_players
+        return game_players(request.args.get("players"), now)
+    if request.args.get("player") is not None:      # ...and game_player
+        return game_player(request.args.get("player"), now)
 
     mapname = clean_map(request.args.get("map"))
     if not mapname:
@@ -4764,6 +4768,9 @@ WEB_HANDLE_LEN = 12
 WEB_PEOPLE_TTL = 300     # s the player directory is reused
 WEB_PEOPLE_FLOOR = 30    # s; a miss may not rebuild more often than this
 WEB_SEARCH_MAX = 60      # players one search returns
+GAME_SEARCH_MAX = 12     # ...and one /api/board?players= answer names
+GAME_PROFILE_ROWS = 50   # rows one /api/board?player= answer carries
+GAME_PROFILE_MAX = 200   # ...and the most it may be asked for
 WEB_PROFILE_ROWS = 100   # rows on one profile page
 WEB_PROFILE_MAX = 5000   # cap on `limit`; the largest real profile is 2,575 rows
 WEB_RUN_MAX = 30         # run-path fetches per RATE_WINDOW per source
@@ -4938,17 +4945,39 @@ def _people_held():
                 _people.get("main_maps", set()), _people["at"])
 
 
+def _people_marks(by_handle):
+    """{8-hex mark: handle} where one player alone has the mark.  The game
+    knows a player by that mark (`*phash`, FS_GuidId of a board row's player),
+    which is the handle's first eight: one digest, two lengths."""
+    marks = {}
+    for h in by_handle:
+        marks[h[:8]] = None if h[:8] in marks else h
+    return {m: h for m, h in marks.items() if h}
+
+
 def _people_install(by_handle, lst, main_maps, at):
     """Install unless the directory in memory is newer; True if installed.  A
     held stamp ahead of the clock is not newer, or no rebuild could replace it
     until the clock caught up."""
+    # Outside the lock, sixty-seven thousand each: the game's marks, and each
+    # handle's entry (a profile walked the list for its own: 15 ms for a
+    # player at its end, in 662's review).
+    by_mark = _people_marks(by_handle)
+    entry = {e["who"]: e for e in lst}
     with _people_lock:
         if at < _people["at"] <= time.time():
             return False
         _people["at"] = at
         _people["by_handle"], _people["list"] = by_handle, lst
-        _people["main_maps"] = main_maps
+        _people["main_maps"], _people["by_mark"] = main_maps, by_mark
+        _people["entry"] = entry
         return True
+
+
+def _people_entry(handle):
+    """The directory's row for a handle, or None."""
+    with _people_lock:
+        return _people.get("entry", {}).get(handle)
 
 
 def _people_save(by_handle, lst, main_maps, at):
@@ -5072,7 +5101,7 @@ def people_reset():
     profile_forget()
     with _people_lock:
         _people["at"], _people["by_handle"], _people["list"] = -1e9, {}, []
-        _people["main_maps"] = set()
+        _people["main_maps"], _people["by_mark"], _people["entry"] = set(), {}, {}
     try:
         os.remove(PEOPLE_SNAPSHOT)
     except OSError:
@@ -5224,6 +5253,108 @@ def profile_forget():
         _prof.clear()
 
 
+def _profile_figures(ranked, main_maps):
+    """(first places, contested ones, top tens, completion) of _profile_rows'
+    rows: the site's page and the game's breakdown lead with the same four.
+
+    A FIRST PLACE ON A BOARD OF ONE IS NOT A RECORD, and on an imported
+    archive most stage boards have exactly one row -- the only person we hold
+    a time for.  Counting those made a profile read "35 records" where 34 of
+    them were boards nobody else is on.  `wr` stays the raw count; `wrc` is
+    the contested one and is what the page leads with."""
+    wr = sum(1 for _r, rk, _of in ranked if rk == 1)
+    wrc = sum(1 for _r, rk, of in ranked if rk == 1 and of > 1)
+    top10 = sum(1 for _r, rk, of in ranked if 1 <= rk <= 10 and of > 1)
+    done = {r["map"] for r, _rk, _of in ranked if r["track"] == 0 and r["leg"] == 0}
+    return wr, wrc, top10, _completion(done, main_maps, map_tiers())
+
+
+def game_players(raw, now):
+    """A name search for the game (Patch 662): web_players' directory and its
+    plain-text match, GAME_SEARCH_MAX rows.  A name that IS the query comes
+    first, then names that start with it, then the rest, each most times first
+    (the directory's order): twelve rows have no page two to find "lex" on.
+    ON /api/board (`?players=<q>`) for game_avatar's reason, and it spends the
+    board's bucket."""
+    q = web_plain(clean_text(raw, 64) or "").lower()
+    try:
+        db = get_db()
+        by_handle, people = web_people(db, now)
+        have = avatars(now, db)["game"]
+    except sqlite3.Error as exc:
+        log.exception("game players db error: %s", exc)
+        return fail(500, "storage error")
+    ranks = ([], [], [])
+    for e in people:
+        key = e["key"]
+        if q and q not in key:
+            continue
+        r = 2 if not q or not key.startswith(q) else 0 if key == q else 1
+        if len(ranks[r]) < GAME_SEARCH_MAX:
+            ranks[r].append(e)
+        elif not q or r == 0:
+            break                           # nothing later can come before these
+    out = []
+    for e in (ranks[0] + ranks[1] + ranks[2])[:GAME_SEARCH_MAX]:
+        row = {"who": e["who"], "name": e["name"], "n": e["n"], "maps": e["maps"],
+               "src": e["src"]}
+        if by_handle.get(e["who"]) in have:
+            row["av"] = 1
+        out.append(row)
+    return Response(game_json({"v": 1, "t": now, "q": q, "players": out}),
+                    status=200, mimetype="application/json")
+
+
+def game_player(raw, now):
+    """One player's breakdown for the game (Patch 662): web_player's figures
+    and rows without its links out.  `raw` is a search row's `who`, or the
+    8-hex mark the game knows a player by, where one player alone has it.
+    ON /api/board (`?player=`) for game_avatar's reason.  Its first answer for
+    a wide profile is _profile_rows' seconds, like the site's.
+    A MARK ONLY WHILE THE BOARD IS BY ACCOUNT, as game_avatar: otherwise it
+    is the digest of a string a client chose, and one row filed under a chosen
+    one would make another player's mark nobody's."""
+    raw = raw or ""
+    if not re.fullmatch(r"[0-9a-f]{8}|[0-9a-f]{%d}" % WEB_HANDLE_LEN, raw):
+        return fail(400, "bad player")
+    if len(raw) == 8 and not RANKED_LINKED:
+        return fail(404, "no such player")
+    offset = clamp_int(request.args.get("offset"), 0, MAX_RUNS, 0)
+    limit = clamp_int(request.args.get("limit"), 1, GAME_PROFILE_MAX, GAME_PROFILE_ROWS)
+    try:
+        db = get_db()
+        _by_handle, _people_list, main_maps, at = _people_current(db, now)
+        handle = raw
+        if len(raw) == 8:
+            with _people_lock:
+                handle = _people.get("by_mark", {}).get(raw)
+            if handle is None and not _within(at, now, WEB_PEOPLE_FLOOR):
+                _people_kick(now)           # player_of's rule for a miss: a new player's own mark
+        player = player_of(db, handle, now) if handle else None
+        me = _people_entry(handle) if player is not None else None
+        if me is None:
+            return fail(404, "no such player")
+        ranked = _profile_rows(db, player, now)
+        have = avatars(now, db)["game"]
+    except sqlite3.Error as exc:
+        log.exception("game player db error: %s", exc)
+        return fail(500, "storage error")
+    wr, wrc, top10, comp = _profile_figures(ranked, main_maps)
+    bsp, _zoned = map_index()
+    rows = [{"map": bsp.get(r["map"], r["map"]), "track": r["track"], "leg": r["leg"],
+             "tr": r["tier"], "style": r["style"], "ms": r["millis"],
+             "when": r["submitted"], "r": rk, "of": of}
+            for r, rk, of in ranked[offset:offset + limit]]
+    return Response(game_json(
+        {"v": 1, "t": now, "who": handle, "name": me["name"], "src": me["src"],
+         "n": me["n"], "maps": me["maps"], "last": me["last"],
+         "wr": wr, "wrc": wrc, "top10": top10,
+         "by_tier": {"ranked": me["ranked"], "momentum": me["mom"], "ksf": me["ksf"]},
+         "av": 1 if player in have else 0, "completion": comp,
+         "offset": offset, "total": len(ranked), "limit": limit, "rows": rows}),
+        status=200, mimetype="application/json")
+
+
 @app.get("/board/api/player/<handle>/maps")
 def web_player_maps(handle):
     """Every map the site holds a main board for, by difficulty tier, with
@@ -5290,8 +5421,8 @@ def web_player(handle):
         player = player_of(db, handle, now)
         if player is None:
             return fail(404, "no such player")
-        _by_handle, people, main_maps, _at = _people_current(db, now)
-        me = next((e for e in people if e["who"] == handle), None)
+        _by_handle, _people_list, main_maps, _at = _people_current(db, now)
+        me = _people_entry(handle)
         if me is None:                       # raced the rebuild; the row is gone
             return fail(404, "no such player")
         ranked = _profile_rows(db, player, now)
@@ -5304,16 +5435,7 @@ def web_player(handle):
         log.exception("web player db error: %s", exc)
         return fail(500, "storage error")
 
-    # A FIRST PLACE ON A BOARD OF ONE IS NOT A RECORD, and on an imported
-    # archive most stage boards have exactly one row -- the only person we hold
-    # a time for.  Counting those made a profile read "35 records" where 34 of
-    # them were boards nobody else is on.  `wr` stays the raw count; `wrc` is
-    # the contested one and is what the page leads with.
-    wr = sum(1 for _r, rk, _of in ranked if rk == 1)
-    wrc = sum(1 for _r, rk, of in ranked if rk == 1 and of > 1)
-    top10 = sum(1 for _r, rk, of in ranked if 1 <= rk <= 10 and of > 1)
-    done = {r["map"] for r, _rk, _of in ranked if r["track"] == 0 and r["leg"] == 0}
-    comp = _completion(done, main_maps, map_tiers())
+    wr, wrc, top10, comp = _profile_figures(ranked, main_maps)
 
     bsp, _zoned = map_index()
     out = []

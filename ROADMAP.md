@@ -1503,7 +1503,8 @@ paste is an engine gate); Steam pictures for everyone on the boards, kept on
 the Pi and refreshed daily (BUILT, Patch 660: 67,259 SteamIDs that day, the
 first fill a day of half-hourly runs); `hud_player` as a profile with the Steam name and picture, the
 customizer, a breakdown like the site's player page, and a player search
-there and on the leaderboard (NOT BUILT).
+there and on the leaderboard (surfd's half BUILT, Patch 662: the search and
+the breakdown as parameters of `/api/board`; the game's half is Patch 663).
 
 **THE FIRST BOOT: BUILT, Patch 647.** `screen_terms` is one rounded panel
 with two cards, "On this machine" and "Public lobbies", their text wrapped

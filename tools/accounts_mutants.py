@@ -767,6 +767,106 @@ M = [
     ("schema-step", "surfd.py", "conn.executescript(accounts.SQL)", "pass"),
     ("schema-14", "surfd.py", "accounts.upgrade_14(conn)", "pass"),
 ]
+M += [
+    # Patch 662: the game's player search and breakdown (surfd/test_web.py).
+    ("gp-route-players", "surfd.py",
+     '    if request.args.get("players") is not None:     # Patch 662: see game_players',
+     "    if False:"),
+    ("gp-route-player", "surfd.py",
+     '    if request.args.get("player") is not None:      # ...and game_player',
+     "    if False:"),
+    ("gp-order", "surfd.py",
+     "        r = 2 if not q or not key.startswith(q) else 0 if key == q else 1",
+     "        r = 2"),
+    ("gp-exact", "surfd.py",
+     "        r = 2 if not q or not key.startswith(q) else 0 if key == q else 1",
+     "        r = 2 if not q or not key.startswith(q) else 1"),
+    ("gp-cap", "surfd.py",
+     "    for e in (ranks[0] + ranks[1] + ranks[2])[:GAME_SEARCH_MAX]:",
+     "    for e in ranks[0] + ranks[1] + ranks[2]:"),
+    ("gp-miss", "surfd.py",
+     "        if q and q not in key:\n            continue\n        r = 2 if",
+     "        r = 2 if"),
+    ("gp-plain", "surfd.py",
+     '    q = web_plain(clean_text(raw, 64) or "").lower()\n    try:\n        db = get_db()\n'
+     "        by_handle, people = web_people(db, now)",
+     '    q = clean_text(raw, 64) or ""\n    try:\n        db = get_db()\n'
+     "        by_handle, people = web_people(db, now)"),
+    ("gp-search-av", "surfd.py",
+     '        if by_handle.get(e["who"]) in have:\n            row["av"] = 1',
+     '        if e["who"] in have:\n            row["av"] = 1'),
+    ("gp-search-av-all", "surfd.py",
+     '        if by_handle.get(e["who"]) in have:\n            row["av"] = 1',
+     '        row["av"] = 1'),
+    ("gp-shape", "surfd.py",
+     'if not re.fullmatch(r"[0-9a-f]{8}|[0-9a-f]{%d}" % WEB_HANDLE_LEN, raw):',
+     'if not re.fullmatch(r"[0-9a-f]{8,%d}" % WEB_HANDLE_LEN, raw):'),
+    ("gp-mark", "surfd.py",
+     '                handle = _people.get("by_mark", {}).get(raw)',
+     "                handle = None"),
+    ("gp-mark-shared", "surfd.py",
+     "        marks[h[:8]] = None if h[:8] in marks else h",
+     "        marks[h[:8]] = h"),
+    ("gp-figures", "surfd.py",
+     "    wr, wrc, top10, comp = _profile_figures(ranked, main_maps)\n    bsp, _zoned = map_index()\n"
+     '    rows = [{"map"',
+     "    wrc, wr, top10, comp = _profile_figures(ranked, main_maps)\n    bsp, _zoned = map_index()\n"
+     '    rows = [{"map"'),
+    ("gp-disp", "surfd.py",
+     '    rows = [{"map": bsp.get(r["map"], r["map"]), "track": r["track"], "leg": r["leg"],',
+     '    rows = [{"map": r["map"].upper(), "track": r["track"], "leg": r["leg"],'),
+    ("gp-offset", "surfd.py",
+     "            for r, rk, of in ranked[offset:offset + limit]]",
+     "            for r, rk, of in ranked[:limit]]"),
+    ("gp-limit", "surfd.py",
+     '    limit = clamp_int(request.args.get("limit"), 1, GAME_PROFILE_MAX, GAME_PROFILE_ROWS)',
+     '    limit = clamp_int(request.args.get("limit"), 1, WEB_PROFILE_MAX, WEB_PROFILE_ROWS)'),
+    ("gp-gate", "surfd.py",
+     "    if len(raw) == 8 and not RANKED_LINKED:",
+     "    if False:"),
+    ("gp-kick", "surfd.py",
+     "                _people_kick(now)           # player_of's rule for a miss: a new player's own mark",
+     "                pass"),
+    ("gp-stop", "surfd.py",
+     "        elif not q or r == 0:",
+     "        elif not q:"),
+    ("gp-utf8-search", "surfd.py",
+     '    return Response(game_json({"v": 1, "t": now, "q": q, "players": out}),',
+     '    return Response(json.dumps({"v": 1, "t": now, "q": q, "players": out}),'),
+    ("gp-utf8-player", "surfd.py",
+     '    return Response(game_json(\n        {"v": 1, "t": now, "who": handle, "name": me["name"], "src": me["src"],',
+     '    return Response(json.dumps(\n        {"v": 1, "t": now, "who": handle, "name": me["name"], "src": me["src"],'),
+    ("gp-row-n", "surfd.py",
+     '        row = {"who": e["who"], "name": e["name"], "n": e["n"], "maps": e["maps"],',
+     '        row = {"who": e["who"], "name": e["name"], "n": 0, "maps": e["maps"],'),
+    ("gp-row-src", "surfd.py",
+     '        row = {"who": e["who"], "name": e["name"], "n": e["n"], "maps": e["maps"],\n'
+     '               "src": e["src"]}',
+     '        row = {"who": e["who"], "name": e["name"], "n": e["n"], "maps": e["maps"],\n'
+     '               "src": "ranked"}'),
+    ("gp-q", "surfd.py",
+     '    return Response(game_json({"v": 1, "t": now, "q": q, "players": out}),',
+     '    return Response(game_json({"v": 1, "t": now, "q": raw, "players": out}),'),
+    ("gp-when", "surfd.py",
+     '             "when": r["submitted"], "r": rk, "of": of}\n'
+     "            for r, rk, of in ranked[offset:offset + limit]]",
+     '             "when": 0, "r": rk, "of": of}\n'
+     "            for r, rk, of in ranked[offset:offset + limit]]"),
+    ("gp-offclamp", "surfd.py",
+     '    offset = clamp_int(request.args.get("offset"), 0, MAX_RUNS, 0)\n'
+     '    limit = clamp_int(request.args.get("limit"), 1, GAME_PROFILE_MAX, GAME_PROFILE_ROWS)',
+     '    offset = max(0, int(request.args.get("offset") or 0))\n'
+     '    limit = clamp_int(request.args.get("limit"), 1, GAME_PROFILE_MAX, GAME_PROFILE_ROWS)'),
+    ("gp-upper", "surfd.py",
+     'if not re.fullmatch(r"[0-9a-f]{8}|[0-9a-f]{%d}" % WEB_HANDLE_LEN, raw):',
+     'if not re.fullmatch(r"[0-9a-fA-F]{8}|[0-9a-fA-F]{%d}" % WEB_HANDLE_LEN, raw):'),
+    ("gp-av", "surfd.py",
+     '         "av": 1 if player in have else 0, "completion": comp,\n         "offset": offset,'
+     ' "total": len(ranked), "limit": limit, "rows": rows}),',
+     '         "av": 1, "completion": comp,\n         "offset": offset,'
+     ' "total": len(ranked), "limit": limit, "rows": rows}),'),
+]
+
 PAIRS = {"spent-all": ("spent-pre", "spent-read", "spent-write"),
          "replay-both": ("replay-read", "replay-write"),
          "expiry-both": ("expiry", "expiry-pre"),
@@ -828,16 +928,19 @@ def run(item):
     tmp = os.path.join(dst, "tmp")
     os.makedirs(tmp)
     # test_accounts.py, and then test_ranked.py (Patch 629: whose row a run is)
-    # for a mutant the first lets through.
-    for suite in ("test_accounts.py", "test_ranked.py"):
+    # for a mutant the first lets through.  The gp- mutants (Patch 662, the
+    # game's lookups) are test_web.py's alone, which imports from tools/.
+    suites = ("test_web.py",) if name.startswith("gp-") else ("test_accounts.py", "test_ranked.py")
+    for suite in suites:
         p = subprocess.run([sys.executable, suite], cwd=dst,
                            env=dict(os.environ, TEMP=tmp, TMP=tmp, TMPDIR=tmp,
+                                    PYTHONPATH=os.path.join(os.path.dirname(SRC), "tools"),
                                     ACCOUNTS_TEST_TOOLS=os.path.dirname(os.path.abspath(__file__))),
                            capture_output=True, text=True, errors="replace")
         if p.returncode != 0:
             break
     fails = [l[5:70].strip() for l in p.stdout.splitlines() if l.startswith("FAIL")]
-    crash = p.returncode != 0 and "FAILURE(S)" not in p.stdout
+    crash = p.returncode != 0 and "FAILURE(S)" not in p.stdout and " failed" not in p.stdout
     shutil.rmtree(dst)
     if p.returncode == 0:
         return name, "SURVIVED"
