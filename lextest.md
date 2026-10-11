@@ -11,6 +11,35 @@ to be wrong.
 
 ---
 
+## 00. 12 Oct — the 92 maps, and bhop_eazy (Patch 664)
+
+From your message: "do both!"
+- **The 92 maps are followed now**: 17 builds and 75 zone files on the Pi
+  are Momentum's current ones. 64 were Momentum saving the same zones again
+  with new bunnyhop regions; those are taken by rule from now on. The other
+  28 are taken on your word, as the exact zones I read: 20 had no zones here
+  at all, 8 changed inside.
+- **Three worth a run**, because their zones really changed: surf_anzchamps
+  (a cancel region moved), surf_santorini (two checkpoints are taller),
+  surf_summit (its cancel regions redrawn).
+- **A run parked on any of those maps will not resume**: its zones are not
+  the ones it was parked under.
+- **bhop_eazy is Momentum's current build**, on the Pi and in C:\FTESurf. The
+  platforms are bhop blocks (stand on one too long and you are sent back),
+  and it is one run with three checkpoints where it was four stages. Start
+  and end are where they were. I have not played it: say if it feels wrong.
+- C:\FTEQuake has no copy of its own and reads Momentum's folder, which
+  still holds the old build; the map list there should offer a re-get. Not
+  opened to check.
+- **To have the old one back on this PC**: copy
+  `ftesurf\maps\.old\bhop_eazy.07320480e924.bsp` over
+  `ftesurf\maps\bhop_eazy.bsp` and
+  `ftesurf\maps\zones\local\.old\bhop_eazy.0d413404a764.json` over
+  `ftesurf\maps\zones\local\bhop_eazy.json`. The Pi would then differ, and
+  the game would say so.
+- 14 more CS:S builds came in on the same run: 34 maps have a second build
+  timed by their map's zones.
+
 ## 00. 12 Oct — rain and snow volumes (Patch 668)
 
 From your message: "Do you think you could add func_precipitation?"

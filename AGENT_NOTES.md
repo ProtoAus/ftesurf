@@ -9472,6 +9472,24 @@ Lex, of the 92 maps `--updates` could not follow and of bhop_eazy: "do both".
   in `maps/.old/` and `zones/online/.old/`. For an arm that needs it, copy
   both over `maps\bhop_eazy.bsp` and `maps\zones\local\bhop_eazy.json`,
   and put Momentum's back after.
+- DEPLOYED 11 Oct (UTC): `b15ab86` to `/srv/nvme/surfd` at 23:24Z
+  (mapwatch.py alone, no reload; the suite 0 failed on the Pi), with
+  `data/mapwatch/approved.json` (28 keys) and `state.json.pre664` beside the
+  state. One run by hand, 23:27 to 23:35Z: 17 builds replaced, 69 zone files
+  replaced and 6 written. Read back against the replies saved at 22:10Z: of
+  the 92, every build is the published one and every zone file the bytes
+  read then; no strike is left (92 before); 91 of the site's copies follow
+  (one is the shipped set's own file); 76 zone files and 48 builds are kept
+  aside. A throwaway server loads what was counted: `zones(sv)` 24 on
+  surf_ace (12 before), 23 on surf_arcade, 35 on surf_santorini, 46 on
+  surf_zeitgeist, 64 on surf_fortress. The same run took 14 more `_css`
+  builds: 1,871 maps held, 1,016 with a zone file, 34 second builds timed by
+  their map's. bhop_eazy waited for lobby 27540 to leave it and went in on
+  a second run at 23:41Z; this PC's copy and its `zones\local` file at
+  23:42Z, the Pi's two files by hash. `pm_dettest` after, on the Pi's live
+  library and with `C:\FTEQuake\fteqwsv64.exe` on the installed files: the
+  seven lines equal (mapcrc 7f53da5d, trace f7958b04dbcd1008, tick
+  93e8615d81c26325, srctrace de0ed3421db7e9d1).
 
 ### One row per map with a Momentum / CS:S switch; the menu fetches its list (Patch 652) -- 2026-10-12
 
