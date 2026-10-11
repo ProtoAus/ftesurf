@@ -7795,8 +7795,13 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   commit before 645 changed engine source, because the script reads that
   number from the tree's ENGINE_PATCHES.md and gate 3 from its
   `engine\release`.
-  NOT DONE: a first boot of the unpacked archive. The owner's game was up
-  from 12:10Z and no second client was opened beside it.
+  A FIRST BOOT OF THE UNPACKED DOWNLOAD, 12:51Z (it waited for the owner's
+  game to close): the archive's own exe from its own directory, nothing
+  answered. LOOKED AT: "Before you play" comes up by itself, both cards, the
+  fonts and the three buttons drawn; by its own print the panel is 1240 x 781
+  at 16 px in a 1920 x 1111 window. No consent file was written; the boot
+  wrote its log, the screenshots and `installed.lst`. NOT PRESSED THERE:
+  either answer, so the Steam offer was not seen from the download.
   WHAT COST A RUN: `ftesurf\gfx\fonts\*.ttf.prev` trips the deny list (moved
   aside, put back after); the main checkout has to BE the release commit (it
   was 101 behind, its five stray files byte-equal to main's); and a shell

@@ -20,10 +20,12 @@ everything from Patch 495 to 647 that is on main, the Steam work included
 - **Not in it:** the fire and dust effects (643, 648), the map watcher (644),
   run lines drawn by the engine (645) and more than eight of them (649).
   None was on main yet; they ride the next one.
-- **What only you can do:** unpack it somewhere new and start it. That is
-  the first real first boot of "Before you play" and "Sign in with Steam":
-  I had them only in test rigs, and your game was running when the release
-  went out, so I did not open a second one beside it.
+- **First boot, from the download:** once you had closed your game I
+  unpacked the published archive somewhere new and started it. "Before you
+  play" comes up by itself and reads right (looked at, 1920 wide). I pressed
+  nothing, the answers being yours, so "Sign in with Steam" has still only
+  been seen in test rigs: unpack it somewhere new and take "play online" to
+  see that one.
 - The map browser in it offers 1,279 maps to download (the list held 705).
 
 ## 00. 11 Oct — the first-boot screens (Patch 647)
