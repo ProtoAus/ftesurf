@@ -33,6 +33,9 @@ From your message: "Do you think you could add func_precipitation?"
 - `vbsp_emit_precip 0` switches it off.
 - This one needs no baked files: every player gets it from the lobbies, and
   it is tested on the engine the 0.1.24 download ships.
+- **Live since 11 Oct 23:10 UTC (12 Oct, 10:10 here)** on the lobbies and in
+  both installs; the brighter surf_tensor2 rain in `C:\FTESurf` only (the other
+  install has no particle files). Restart the game to get it.
 - **Machine**: every number in this file's items for Patches 656, 657, 659
   and 668 was measured on your PC (i9-9900K, RTX 2080 SUPER).
 

@@ -4629,6 +4629,20 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   10 s after a `vid_restart` that takes 12 on that engine (four seconds
   later the motes were back; the arm now reads it then). 668 was run there
   before it went.
+- DEPLOYED 12 Oct (UTC 11 Oct) from `1eca438`, main's tip: csprogs `ddf40c04`,
+  the file the arm passed on, to the Pi with 12 lobby rows and 0 players
+  (read back 23:10:14Z) and to both installs at 23:10:15Z with no game
+  running, under the rig lock. Twelve lobbies restarted;
+  `tools/pi_lobby_smoke.py` on 27510 was served that csprogs, drew the board,
+  no QC error. `.prev` is 669's `cbc72b32` in all three. Then `tools/pcf.py
+  --map surf_tensor2` and `--map surf_boreas` over `C:\FTESurf\ftesurf`:
+  `particles/surf_tensor2.cfg` is `1b8d2e83` (was `e42ae639`), byte-equal to
+  the file the arm ran on; `surf_boreas.cfg` `bb277920` and
+  `data/mapparticles.txt` `6c1f06ec` came out as they were. The three from
+  before are in the task root, `tmp/bake-installed-before`. The Pi's qwprogs
+  was swapped for the same bytes (`35fda5eb`); the installs' qwprogs,
+  menu.dat, default.cfg and the exes were not touched. The smoke grades the
+  board: no client has looked at rain or snow on a lobby.
 
 ### Rain: a sprite trail placed drop by drop (Patch 659) -- 2026-10-12
 
@@ -4699,7 +4713,7 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   rig lock. Twelve lobbies restarted, hashes read back from the host;
   `tools/pi_lobby_smoke.py` on 27510 at 21:13Z was served that csprogs, drew
   the board, no QC error. `.prev` is 657's `c7596c74`. Then `tools/pcf.py
-  --map surf_tensor2` and `--map surf_boreas` over `C:\FTESurftesurf`:
+  --map surf_tensor2` and `--map surf_boreas` over `C:\FTESurf\ftesurf`:
   `particles/surf_tensor2.cfg` `e42ae639`, `surf_boreas.cfg` `bb277920`,
   `data/mapparticles.txt` `6c1f06ec`, each byte-equal to the file the arm ran
   on (they were `0ffb08be`, `ebc0f495`, `17cb909e`; those three are kept in
@@ -4846,8 +4860,8 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   above. Client only (no server file, plugin or header moved). Stamp
   `git-7229-patch-658-0-g7501a6cce`, sha256 `4faa7ff4`; the DLL list from
   `objdump -p` is the installed binary's.
-- DEPLOYED 11 Oct 16:58Z (12 Oct here): that client as `C:\FTESurftesurf64.exe`
-  and `C:\FTEQuaketeqw64.exe`, no game running, under the rig lock; `.prev`
+- DEPLOYED 11 Oct 16:58Z (12 Oct here): that client as `C:\FTESurf\ftesurf64.exe`
+  and `C:\FTEQuake\fteqw64.exe`, no game running, under the rig lock; `.prev`
   is the patch-645 client `03989f66` in both. The arm had passed on those very
   bytes, and the run-line session's `tools/test_p645lines.py` read 28 of 28 on
   them. `fteqwsv64.exe`, the plugins, the progs and the Pi were not touched;
