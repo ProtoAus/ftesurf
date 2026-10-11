@@ -1440,7 +1440,21 @@ account's own rows when the name has changed. LEFT: the first seconds of a
 connection, before the proof is answered, are under the game's own name
 (the join line too); the customizer's name field does not say it is held;
 the terms screen still says "under the name you are playing as" (menu.dat,
-with the first-boot work); the picture.
+with the first-boot work).
+
+**THE PICTURE, SITE HALF: BUILT, Patch 639.** `steamsync.py` fetches each
+unbanned account's avatar once, by Steam's hash of it, into `data/avatars`:
+`<hash>.jpg` (Steam's 64 px file) and `<hash>.txt` (32 x 32 RGBA as text).
+The site draws it beside the name wherever a row says `av`: an account's
+rows on any board (their imported ones too, same SteamID), their
+page, the players list; `/board/avatar/<handle>` serves it from this origin.
+THE GAME HALF IS NEXT: `/api/board?avatar=<mark>` already serves the text
+copy (it rides the board route because the address the game talks to
+forwards a fixed list of paths and changing that needs root); the client
+fetches it with `uri_get`, uploads the pixels (`r_uploadimage`) and draws it
+on the TAB board's rows, the players list and run-line name labels. Imported
+players with no account have no picture (their SteamIDs are known; fetching
+66,000 profiles is a different job).
 
 **The owner's order, 11 Oct:** the in-game name follows the Steam name; the
 Steam picture beside the name on the boards, the players list and run lines;

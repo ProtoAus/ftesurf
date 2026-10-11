@@ -11,6 +11,17 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — Steam pictures on the site (Patch 639)
+
+From your list. On proto.bar/ftesurf/board a linked player's Steam picture
+is beside their name: on every board row of theirs (their Momentum and KSF
+rows too), on their player page, and in the players list. Players who have
+never signed in with Steam on the site have none yet.
+- **Check:** your own rows and page show your Steam picture within half an
+  hour of the deploy (the sync runs at :07 and :37).
+- In the game: not yet. That is the next patch (the TAB board, the players
+  list and run-line names).
+
 ## 00. 11 Oct — your HUD list, part 5: your layout is the default (Patch 637)
 
 Live since 11 Oct 05:46 UTC (16:46 here) on both installs (csprogs and

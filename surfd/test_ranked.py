@@ -1080,6 +1080,246 @@ check("a reply too big to read is asked again an account at a time, and nobody b
       ((2, 1, 1), 3, [("Lex",)]))
 conn.close()
 
+print("\n--- 10. Steam pictures (Patch 639)")
+try:
+    from PIL import Image as _Image
+except ImportError:
+    _Image = None
+if _Image is None:
+    print("skip Steam pictures: NOT MEASURED, Pillow is not on this box")
+else:
+    import io as _bio
+
+    def _pic(kind, size=(64, 64)):
+        buf = _bio.BytesIO()
+        _Image.new("RGB", size, (200, 30, 30)).save(
+            buf, kind, **({"quality": 90} if kind == "JPEG" else {}))
+        return buf.getvalue()
+
+    JPEG, PNG = _pic("JPEG"), _pic("PNG")
+    CUT = JPEG[:len(JPEG) // 2]             # the right first bytes, cut short on the way
+    HA, HB, HC, HD, HE = ("aa" * 20, "bb" * 20, "cc" * 20, "dd" * 20, "ee" * 20)
+    SID3, SID4, SID5, SID6 = ("76561198000000003", "76561198000000004", "76561198000000005",
+                              "76561198000000006")
+    m, c, token, _ = fresh_admin()
+    for sid, nm, h in ((SID, "Lex", HA), (SID2, "Other", HB), (SID3, "Cut", HC),
+                       (SID4, "Odd", "../../surfd"), (SID5, "Refused", HD), (SID6, "Png", HE)):
+        account(m, sid, nm)
+        run_sql(m, "UPDATE accounts SET avatar = ? WHERE steamid = ?", (h, sid))
+    linked(m, PUB1, SID)
+    linked(m, PUB3, SID3, "g3")
+    submit(m, GUID1, 5000, PUB1)
+    submit(m, GUID2, 5100, None)
+    submit(m, GUID3, 5200, PUB3)
+    FETCHED, said = [], []
+    conn = sqlite3.connect(m._db)
+
+    def pic_http(url, data=None, timeout=0):
+        FETCHED.append(url)
+        if HC in url:
+            return CUT
+        if HD in url:
+            raise ST.Unavailable("status 404")
+        if HE in url:
+            return PNG                      # a picture, and not the kind this serves it as
+        return JPEG
+
+    def throttled(url, data=None, timeout=0):
+        FETCHED.append(url)
+        raise ST.Unavailable("status 429")
+
+    def files(d=None):
+        d = d or m.AVATAR_DIR
+        return sorted(os.listdir(d)) if os.path.isdir(d) else []
+
+    def named(h):
+        return [f for f in files() if f.startswith(h)]
+
+    def a_pass(http, go, now, d=None):
+        try:
+            return steamsync.pictures(conn, http, go, out=said.append,
+                                      directory=d or m.AVATAR_DIR, now=now)
+        except OSError as exc:
+            return ("RAISED", type(exc).__name__)
+
+    T0, DAY = 2000000000, steamsync.BAD_RETRY
+    check("a dry run counts the pictures to fetch and the game copies to make, asks Steam "
+          "for nothing and writes nothing",
+          (a_pass(pic_http, False, T0), FETCHED, files()), ((5, 5, 5, 0), [], []))
+    check("each picture is fetched by Steam's hash of it and kept once it has been opened; "
+          "one cut short on the way, one Steam will not give and one that is not a JPEG are "
+          "not kept and do not stop the pass; a stored value that is no hash is never asked "
+          "for",
+          (a_pass(pic_http, True, T0), files(), FETCHED[:1],
+           sorted(u.rsplit("/", 1)[1][:2] for u in FETCHED), any(".." in u for u in FETCHED)),
+          ((5, 2, 2, 0),
+           [HA + ".jpg", HA + ".txt", HB + ".jpg", HB + ".txt", HC + ".bad", HD + ".bad",
+            HE + ".bad"], ["https://avatars.steamstatic.com/" + HA + "_medium.jpg"],
+           ["aa", "bb", "cc", "dd", "ee"], False))
+    n = len(FETCHED)
+    again = a_pass(pic_http, True, T0 + 3600)
+    n1 = len(FETCHED) - n
+    later = a_pass(pic_http, True, T0 + DAY + 1)
+    n2 = len(FETCHED) - n
+    a_pass(pic_http, True, T0 + DAY + 3600)
+    check("a kept picture is never fetched again; one that was not kept is asked for again "
+          "after a day and not before, by the pass's own clock",
+          (again, n1, later, n2, len(FETCHED) - n), ((5, 0, 0, 0), 0, (5, 0, 0, 0), 3, 3))
+    T1 = T0 + DAY + 7200
+    form = open(os.path.join(m.AVATAR_DIR, HA + ".txt")).read().split("\n")
+    check("the game's copy is a header and 32 rows of 32 RGBA pixels in hex: opaque, and the "
+          "colour of the picture",
+          (form[0], len(form), {len(r) for r in form[1:33]}, form[33], form[1][6:8],
+           int(form[1][0:2], 16) > 170, int(form[1][2:4], 16) < 70),
+          ("FTESURF-AVATAR 1 32 32", 34, {256}, "", "ff", True, True))
+    check("a picture over 1024 px a side, or bytes that are no picture, have no game copy "
+          "(CONTROL: one of 1024 px has)",
+          (steamsync.game_form(_pic("JPEG", (1025, 8))), steamsync.game_form(b"\xff\xd8\xffjunk"),
+           (steamsync.game_form(_pic("JPEG", (1024, 8))) or "")[:22]),
+          (None, None, "FTESURF-AVATAR 1 32 32"))
+
+    for name in (HA + ".jpg", HA + ".txt", HB + ".txt"):
+        os.remove(os.path.join(m.AVATAR_DIR, name))
+    n = len(FETCHED)
+    check("Steam's picture host throttling ends the pass at the first picture asked for, in "
+          "one line, and marks nothing as not to be had",
+          (a_pass(throttled, True, T1), len(FETCHED) - n,
+           len([x for x in said if "did not answer" in x]), named(HA), named(HB)),
+          ((5, 0, 0, 0), 1, 1, [], [HB + ".jpg"]))
+    check("...and the next pass has it, and the game copy that pass never reached",
+          (a_pass(pic_http, True, T1), named(HA), named(HB)),
+          ((5, 1, 2, 0), [HA + ".jpg", HA + ".txt"], [HB + ".jpg", HB + ".txt"]))
+
+    STALE = ("11" * 20 + ".jpg", "11" * 20 + ".txt", "22" * 20 + ".bad", "keep.me", "notes.jpg")
+    for name in STALE:
+        open(os.path.join(m.AVATAR_DIR, name), "wb").close()
+    check("files of a picture no account names any more are removed by a real pass and not "
+          "by a dry one, and nothing that is not this tool's own is touched",
+          (a_pass(pic_http, False, T1), [f for f in STALE if f in files()] == list(STALE),
+           a_pass(pic_http, True, T1), [f for f in STALE if f in files()]),
+          ((5, 0, 0, 0), True, (5, 0, 0, 3), ["keep.me", "notes.jpg"]))
+
+    D2 = m.AVATAR_DIR + ".second"
+    os.makedirs(D2)
+    with open(os.path.join(D2, HA + ".jpg"), "wb") as fh:
+        fh.write(CUT)
+    check("a file already kept that will not open is removed and marked, where a game copy "
+          "was to be made of it",
+          (a_pass(lambda url, data=None, timeout=0: JPEG, True, T1, D2),
+           [f for f in files(D2) if f.startswith(HA)]), ((5, 4, 4, 0), [HA + ".bad"]))
+
+    os.remove(os.path.join(m.AVATAR_DIR, HA + ".txt"))
+    os.remove(os.path.join(m.AVATAR_DIR, HB + ".txt"))
+    real_replace = os.replace
+
+    def no_room(src, dst):
+        if HA in str(dst):
+            raise OSError(28, "No space left on device")
+        return real_replace(src, dst)
+    os.replace = no_room
+    try:
+        hurt = a_pass(pic_http, True, T1)
+    finally:
+        os.replace = real_replace
+    check("a picture whose file cannot be written is said and passed over, the one after it "
+          "is still done, and no half-written file is left",
+          (hurt, named(HB), len([x for x in said if "could not be read or written" in x]),
+           [f for f in files() if f.endswith(".tmp")]),
+          ((5, 0, 1, 0), [HB + ".jpg", HB + ".txt"], 1, []))
+    a_pass(pic_http, True, T1)
+    conn.close()
+
+    m.people_reset()
+    m.avatars_reset()
+    anon = m.app.test_client()
+
+    def handle(player):
+        return hashlib.sha256(player.encode()).hexdigest()[:m.WEB_HANDLE_LEN]
+
+    def first(url):
+        return ((anon.get(url).get_json() or {}).get("rows") or [{}])[0].get("av")
+    h1, hb, h2, h3 = handle(SID), handle(SID2), handle(GUID2), handle(SID3)
+    WHO1 = A.who_of(SID)
+    r = anon.get("/board/avatar/" + h1)
+    check("the site gets a player's picture from this origin, by its handle for them, as a "
+          "JPEG a browser may not read as anything else",
+          (r.status_code, r.mimetype, r.get_data() == JPEG, r.headers.get("Cache-Control"),
+           r.headers.get("X-Content-Type-Options")),
+          (200, "image/jpeg", True, "public, max-age=3600", "nosniff"))
+    check("...also for an account with no time on any board (the player directory has never "
+          "heard of it), and nothing for an install with no account, an account whose "
+          "picture was not kept, an unknown handle or a path",
+          [anon.get("/board/avatar/" + x).status_code for x in (hb, h2, h3, "0" * 12, "..%2f..%2fx")],
+          [200, 404, 404, 404, 404])
+    r = anon.get("/api/board?avatar=" + WHO1)
+    check("the game gets its copy by the mark a lobby gives the player, on the board's own "
+          "route",
+          (r.status_code, r.mimetype, r.get_data(as_text=True).split("\n")[0]),
+          (200, "text/plain", "FTESURF-AVATAR 1 32 32"))
+    check("...and nothing for a mark nobody has, a malformed one, or an account whose "
+          "picture was not kept",
+          [anon.get("/api/board?avatar=" + x).status_code
+           for x in ("0" * 8, "zz", WHO1 + "00", A.who_of(SID3))], [404, 404, 404, 404])
+    game = {r["player"]: r.get("av") for r in (anon.get("/api/board?map=surf_test").get_json()
+                                               or {}).get("rows", [])}
+    comm = anon.get("/api/board?map=surf_test&tier=community").get_json() or {}
+    site = {r["who"]: r.get("av") for r in (anon.get("/board/api/map?map=surf_test").get_json()
+                                            or {}).get("rows", [])}
+    check("a board row says its player has a picture, in the game's answer and the site's; a "
+          "row whose player has none carries no such key",
+          (game, ["av" in r for r in comm.get("rows", [])], site),
+          ({SID: 1, SID3: None}, [False], {h1: 1, h3: None}))
+    prof = anon.get("/board/api/player/" + h1).get_json() or {}
+    listed = {p["who"]: p.get("av") for p in (anon.get("/board/api/players").get_json()
+                                              or {}).get("players", [])}
+    check("...and so do a player's page and the players list",
+          (prof.get("av"), listed.get(h1), listed.get(h3)), (1, 1, None))
+
+    os.remove(os.path.join(m.AVATAR_DIR, HA + ".txt"))
+    m.avatars_reset()
+    check("with the site's file there and the game's copy not, the site's row says `av`, the "
+          "game's does not, and the game's route has nothing",
+          (first("/board/api/map?map=surf_test"), first("/api/board?map=surf_test"),
+           anon.get("/api/board?avatar=" + WHO1).status_code), (1, None, 404))
+    conn = sqlite3.connect(m._db)
+    a_pass(pic_http, True, T1)
+    conn.close()
+    m.avatars_reset()
+    check("CONTROL with the copy back the game is told again",
+          first("/api/board?map=surf_test"), 1)
+
+    codes = {anon.get("/board/avatar/" + h1).status_code for _ in range(m.WEB_SHOT_MAX + 1)}
+    check("pictures have a budget of their own: more of them than a minute's map screenshots "
+          "are all answered, and a screenshot after them is not refused",
+          (codes, anon.get("/board/shot/surf_test").status_code == 429), ({200}, False))
+
+    check("a ban from the admin's page stops the picture being served at once, and an unban "
+          "starts it again",
+          (ban(c, token, SID)[1], anon.get("/board/avatar/" + h1).status_code,
+           anon.get("/api/board?avatar=" + WHO1).status_code,
+           ban(c, token, SID, action="unban")[1],
+           anon.get("/board/avatar/" + h1).status_code), (True, 404, 404, True, 200))
+
+    real_who = A.who_of
+    A.who_of = lambda sid: "abcdef01" if sid in (SID, SID3) else real_who(sid)
+    m.avatars_reset()
+    clash = (anon.get("/api/board?avatar=abcdef01").status_code, first("/api/board?map=surf_test"),
+             anon.get("/board/avatar/" + h1).status_code)
+    A.who_of = real_who
+    m.avatars_reset()
+    check("an account whose 8-hex mark another account shares, pictured or not, has no "
+          "picture in the game (it could not tell them apart); the site, which knows them by "
+          "handle, still has it", clash, (404, None, 200))
+
+    keep, m.RANKED_LINKED = m.RANKED_LINKED, False
+    off = anon.get("/api/board?avatar=" + WHO1).status_code
+    m.RANKED_LINKED = keep
+    check("with the board by install and not by account a mark is the digest of a string its "
+          "client chose, and the game's route answers nothing (CONTROL: back on, it does)",
+          (off, anon.get("/api/board?avatar=" + WHO1).status_code), (404, 200))
+    for k in list(ADMIN_ENV) + ["SURFD_ADMIN_HASH"]:
+        os.environ.pop(k, None)
+
 logging.shutdown()                      # Windows: the log files are held open
 for h in HOMES:
     shutil.rmtree(h, ignore_errors=True)

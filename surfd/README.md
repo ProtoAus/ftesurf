@@ -856,6 +856,36 @@ accounts a request and, where a name changed, renames the account's rows in
 `runs` and `replays` on our tiers; imported rows keep the alias their board
 published. It needs `SURFD_STEAM_KEY` and prints nothing of it.
 
+PICTURES (Patch 639). `steamsync.py` also fetches each unbanned account's
+Steam picture once, by Steam's own hash of it, into `AVATAR_DIR`
+(`SURFD_AVATARS`, default `data/avatars`): `<hash>.jpg` as Steam serves it at
+64 px, and `<hash>.txt`, a header line `FTESURF-AVATAR 1 32 32` and 32 lines
+of 32 RGBA pixels in hex (needs Pillow; without it only the site has
+pictures). A picture is kept only once Pillow has opened it. One that could
+not be had (Steam would not give that hash, a body cut short, not a JPEG)
+leaves `<hash>.bad` and is asked for again after a day; Steam's host
+throttling or not answering ends the pass and marks nothing. Files of a hash
+no unbanned account names are removed at the end of a pass. `avatars()` is
+who has one on disk, rebuilt each minute and at once when the admin's page
+bans or unbans; a banned account has none (a browser that already has the
+file keeps it up to an hour).
+
+```
+GET /board/avatar/<handle>      image/jpeg, by the site's handle; 404, no placeholder
+GET /api/board?avatar=<mark>    text/plain, the game's copy, by the 8-hex mark
+```
+
+Rows of `/api/board`, `/board/api/map` and the players list, and a player's
+page, carry `av: 1` where the player has a picture and NO KEY where they do
+not, so a board with no pictured account on it is byte for byte what it was.
+The game's rows say it only where the `.txt` is on disk and the account's
+8-hex mark is no other account's, and `?avatar=` answers only while
+`SURFD_RANKED_LINKED` is on (off, a mark is the digest of a string the
+client chose). The game's route is a parameter of `/api/board` because the
+game-facing vhost forwards a fixed list of paths; it spends the board's
+bucket. `/board/avatar` has its own (`WEB_AVATAR_MAX`, 600 a minute: a board
+page is up to 50 pictures).
+
 ## Steam accounts (/board/link)
 
 `accounts.py` and `steam.py`, schema 15. STORE-ONLY: nothing that ranks,

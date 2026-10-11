@@ -7536,6 +7536,30 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **STEAM PICTURES, THE SERVICE HALF (Patch 639): WHAT WAS LOOKED AT FIRST.**
+  On the Pi: Pillow 12.3 and ImageMagick's `convert` are there; Steam's
+  picture host answers `https://avatars.steamstatic.com/<hash>.jpg` (32 px,
+  1.6 KB), `_medium.jpg` (64 px, 3.5 KB) and `_full.jpg` (184 px, 13.7 KB)
+  for the hash `accounts.avatar` already held. THE GAME-FACING ADDRESS
+  FORWARDS A FIXED LIST OF PATHS (`/etc/nginx/snippets/surfd.conf`:
+  `/api/board`, `/api/replay/`, `/api/momentum/`, `/api/join`,
+  `/lobbies.json`, `/health`; everything else is the vhost's own 404, asked
+  and answered), and `proto` may `sudo` nothing but the lobby units, so a new
+  path for the game cannot be opened from here: the game's copy is
+  `/api/board?avatar=<mark>`. In the engine (the survey of 11 Oct): JPEG and
+  PNG decode, but a URL as a pic name is broken by this fork's own `//`
+  collapse in `COM_CleanUpPath`, and `uri_get` hands QuakeC a string, so a
+  binary body stops at its first NUL: hence RGBA as hex text, which QuakeC
+  can parse and `r_uploadimage` takes.
+  LOOKED AT: the fixture site with two drawn pictures, in a headless
+  browser, the board and a player page.
+  ONE REVIEW, ELEVEN FINDINGS, NONE A WAY OUT OF THE DIRECTORY. The two worth
+  keeping: `steam.Unavailable` is BOTH "the host is down" and "status 404 for
+  this one object", and a pass that broke on either stopped at the same
+  refused hash every half hour, in sorted order, for good (`_refused` splits
+  them; a 429 is the host). And a body cut short on the way has a JPEG's
+  first bytes and `resp.read()` returns it without a word: keep nothing
+  Pillow has not opened.
 - **DEPLOYED 11 Oct 2026, 05:31-05:33 UTC (FTESurf `36bd989`, Patch 638):
   surfd, the Pi's twelve lobbies, both Windows installs' qwprogs.** surfd
   first (`accounts.py`, `surfd.py`, the new `steamsync.py`, two tests; the

@@ -25,7 +25,12 @@ commit   c543d688ad16a871753fa9525c23487f437741a5
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-625
-patch    638
+patch    639
+# Patch 639: Steam profile pictures, the service and website half. steamsync.py keeps
+# each account's picture under surfd (Steam's 64 px JPEG, and a 32 x 32 RGBA copy
+# as text for the game to draw later); the site shows it beside the name on boards,
+# player pages and the players list. surfd and its website only: no engine source,
+# QuakeC, recorder, ranking or Build change.
 # Patch 637: the HUD's defaults are the owner's own layout of 11 Oct (his list: "make my
 # current hud settings, the default hud settings for the game"). 42 of the settings
 # hud_edit owns start on his values: where the elements sit, Boarding off, run-line labels

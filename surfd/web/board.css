@@ -169,6 +169,9 @@ table.runs { width: 100%; border-collapse: collapse; margin-top: 6px; font-size:
 .runs tr.grp:first-child td { padding-top: 6px; }
 .runs td.act .watch + .watch { margin-left: 6px; }
 .plink { text-decoration: none; }
+.av { width: 20px; height: 20px; border-radius: 4px; vertical-align: -5px; margin-right: 7px; background: var(--row); }
+.av-big { width: 44px; height: 44px; border-radius: 8px; vertical-align: -9px; margin-right: 12px; }
+.req a .av { align-self: center; margin-right: 0; flex: none; }
 .plink:hover { text-decoration: underline; }
 .watch {
   font-size: 12px; text-decoration: none; border: 1px solid var(--border);

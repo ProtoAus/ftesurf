@@ -1983,6 +1983,8 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 raise AdminError("storage error")
             finally:
                 conn.close()
+            if bans.get("changed"):
+                bans["changed"]()       # its picture stops, or starts, being served now
             log.warning("admin: account %s %s (%s; %d board rows, %d recordings moved;"
                         " note %r) (from %s)", steamid,
                         "banned" if action == "ban" else "unbanned",

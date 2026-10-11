@@ -773,6 +773,12 @@ def _engine_reserved(name):
     return "console" in "".join(out)
 
 
+def avatar_ok(h):
+    """True for Steam's own name of a picture: 40 lowercase hex.  The file
+    names under surfd's AVATAR_DIR are this and nothing else."""
+    return isinstance(h, str) and re.fullmatch(r"[0-9a-f]{40}", h) is not None
+
+
 def account_named(raw):
     """True when an account's stored Steam name is one a game can show AND the
     engine will keep: the lobby holds a player to it (Patch 638)."""

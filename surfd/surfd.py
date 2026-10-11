@@ -3553,6 +3553,9 @@ def board():
     if not rate_ok(src, now, RUN_RATE_MAX, "board"):
         return fail(429, "rate limited")
 
+    if request.args.get("avatar") is not None:      # Patch 639: see game_avatar
+        return game_avatar(request.args.get("avatar"), now)
+
     mapname = clean_map(request.args.get("map"))
     if not mapname:
         return fail(400, "bad map")
@@ -3591,6 +3594,14 @@ def board():
                 and len(rows) < limit
                 and any(counts.get(t, 0) for t in TIERS_IMPORTED)):
             note_want(db, mapname)
+        # `av` ONLY ON A ROW WHOSE PLAYER HAS A PICTURE THE GAME CAN FETCH
+        # (Patch 639: its text copy is on disk), so every other row, and every
+        # board with no such player on it, keeps its bytes (test_momindex.py
+        # holds the ranked board to that).
+        pics = avatars(now, db)["game"]
+        for row in rows:
+            if row["player"] in pics:
+                row["av"] = 1
     except sqlite3.Error as exc:
         # Same contract as lobbies.json: the client must always get parseable
         # JSON with a rows array, so a storage fault reads as an empty board
@@ -4107,6 +4118,119 @@ WEB_RATE_MAX = 120       # API reads per RATE_WINDOW per source, bucket "web"
 WEB_SHOT_DIR = os.environ.get("SURFD_WEBSHOTS",
                               os.path.join(DATA_DIR, "webshots"))
 WEB_SHOT_MAX = 240       # shot fetches per RATE_WINDOW per source
+# STEAM PICTURES (Patch 639).  steamsync.py keeps one file a picture here,
+# named by Steam's own hash of it: <hash>.jpg as Steam serves it (64 px), for
+# the site, and <hash>.txt, 32 x 32 RGBA as text, for the game (which can
+# fetch text and upload pixels, and cannot load a remote image).  Served from
+# this origin because the board's CSP is `img-src 'self'`.
+AVATAR_DIR = os.environ.get("SURFD_AVATARS", os.path.join(DATA_DIR, "avatars"))
+AVATAR_TTL = 60          # s the table of who has a picture is reused
+WEB_AVATAR_MAX = 600     # picture fetches per RATE_WINDOW per source: a board page is 50
+_av_none = {"at": -1e9, "site": {}, "game": {}, "who": {}, "handle": {}}
+_av = _av_none
+
+
+def avatars(now, db=None):
+    """Who has a picture on disk, for every unbanned account, as one table
+    swapped whole each AVATAR_TTL:
+      site    {steamid: hash}   the .jpg is there (the site's rows)
+      handle  {the site's handle: hash}   the same, for /board/avatar
+      game    {steamid: hash}   the .txt is there too (the game's rows)
+      who     {the game's 8-hex mark: hash}   the same, for ?avatar=
+    A MARK TWO ACCOUNTS SHARE NAMES NEITHER (it is 32 bits, and the game
+    could not tell them apart), counted over every account and not only the
+    pictured ones: the first cut served A's picture for a pictureless B.
+    A connection is taken only to rebuild."""
+    global _av
+    cur = _av
+    if 0 <= now - cur["at"] < AVATAR_TTL:
+        return cur
+    db = db or get_db()
+    new = {"at": now, "site": {}, "game": {}, "who": {}, "handle": {}}
+    marks = {}
+    for sid, h, banned in db.execute("SELECT steamid, avatar, banned_at FROM accounts").fetchall():
+        if not sid:
+            continue
+        mark = accounts.who_of(sid)
+        marks[mark] = marks.get(mark, 0) + 1
+        if banned or not accounts.avatar_ok(h):
+            continue
+        base = os.path.join(AVATAR_DIR, h)
+        if not os.path.isfile(base + ".jpg"):
+            continue
+        new["site"][sid] = h
+        new["handle"][web_handle(sid)] = h
+        if os.path.isfile(base + ".txt"):
+            new["game"][sid] = h
+    for sid, h in list(new["game"].items()):
+        mark = accounts.who_of(sid)
+        if marks[mark] > 1:
+            del new["game"][sid]
+        else:
+            new["who"][mark] = h
+    _av = new
+    return new
+
+
+def avatars_reset():
+    """Forget who has a picture: a ban just landed (the admin's route), or a
+    test moved a file."""
+    global _av
+    _av = _av_none
+
+
+def _avatar_file(h, ext, mimetype):
+    try:
+        with open(os.path.join(AVATAR_DIR, h + ext), "rb") as fh:
+            data = fh.read()
+    except OSError:
+        return fail(404, "not found")
+    resp = Response(data, status=200, mimetype=mimetype)
+    # An hour: a player who changes their picture on Steam gets a new hash at
+    # the next sync, and the handle then names another file.
+    resp.headers["Cache-Control"] = "public, max-age=3600"
+    resp.add_etag()
+    return resp.make_conditional(request)
+
+
+@app.get("/board/avatar/<handle>")
+def web_avatar(handle):
+    """A player's Steam picture, by the site's handle for them.  No placeholder
+    on a miss (see web_shot): the page asks only for rows that say `av`.  By
+    the picture table's own handles, not the player directory's: that one is
+    five minutes behind a new player, and asking it started its rebuild."""
+    now = int(time.time())
+    if not rate_ok(rate_key(), now, WEB_AVATAR_MAX, "avatar"):
+        return fail(429, "rate limited")
+    if not re.fullmatch(r"[0-9a-f]{%d}" % WEB_HANDLE_LEN, handle or ""):
+        return fail(404, "not found")
+    try:
+        h = avatars(now)["handle"].get(handle)
+    except sqlite3.Error as exc:
+        log.exception("web avatar db error: %s", exc)
+        return fail(500, "storage error")
+    if not h:
+        return fail(404, "not found")
+    return _avatar_file(h, ".jpg", "image/jpeg")
+
+
+def game_avatar(who, now):
+    """The game's form of a picture, by the 8-hex mark a lobby gives a linked
+    player (`*phash`) and a board row's player hashes to.  ON /api/board
+    (`?avatar=<mark>`) AND NOT A PATH OF ITS OWN: the address the game talks to
+    forwards a fixed list of paths, and adding one needs root on the host.
+    Only while the board is by account: otherwise a lobby's mark is the digest
+    of a string its client chose."""
+    if not RANKED_LINKED or not re.fullmatch(r"[0-9a-f]{8}", who or ""):
+        return fail(404, "not found")
+    try:
+        h = avatars(now)["who"].get(who)
+    except sqlite3.Error as exc:
+        log.exception("game avatar db error: %s", exc)
+        return fail(500, "storage error")
+    if not h:
+        return fail(404, "not found")
+    return _avatar_file(h, ".txt", "text/plain")
 WEB_MAPS_TTL = 60        # seconds the serialized maps list is reused
 WEB_PAGE = 50            # rows per /board/api/map call
 WEB_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; "
@@ -4373,6 +4497,7 @@ def web_map():
         n = sum(counts[t] for t in TIER_EXPAND.get(tier, (tier,)))
         rows = board_rows(db, mapname, track, leg, tier, style,
                           WEB_PAGE, offset)
+        pics = avatars(now, db)["site"]
     except sqlite3.Error as exc:
         log.exception("web map db error: %s", exc)
         return fail(500, "storage error")
@@ -4381,6 +4506,8 @@ def web_map():
     for row in rows:
         row["who"] = web_handle(row["player"])
         row["ext"] = web_ext(row.get("tr", tier), row["player"])
+        if row["player"] in pics:
+            row["av"] = 1               # /board/avatar/<who> has their picture
         del row["player"]
     tiers = map_tiers()
     out = {"v": 1, "t": now, "map": mapname,
@@ -4747,6 +4874,13 @@ def web_players():
             "last": e["last"], "src": e["src"], "ranked": e["ranked"],
             "mom": e["mom"], "ksf": e["ksf"]}
            for e in hits[:WEB_SEARCH_MAX]]
+    try:
+        pics = avatars(now)["handle"]
+    except sqlite3.Error:
+        pics = {}
+    for e in out:
+        if e["who"] in pics:
+            e["av"] = 1
     return _json({"v": 1, "t": now, "q": q, "n": len(hits),
                   "limit": WEB_SEARCH_MAX, "players": out}, "max-age=30")
 
@@ -4940,6 +5074,7 @@ def web_player(handle):
         ranked = _profile_rows(db, player, now)
         linked = db.execute("SELECT 1 FROM accounts WHERE steamid = ? AND banned_at = 0",
                             (player,)).fetchone() is not None
+        pics = avatars(now, db)["site"]
         momid = db.execute("SELECT momid FROM momusers WHERE steamid = ?",
                            (player,)).fetchone() if me["mom"] else None
     except sqlite3.Error as exc:
@@ -4980,6 +5115,7 @@ def web_player(handle):
                               "ksf": me["ksf"]},
                   "ext": ext, "ksfid": steam2(ext) if ext and me["ksf"] else None,
                   "momid": momid[0] if momid else None,
+                  "av": 1 if player in pics else 0,
                   "completion": comp, "offset": offset, "total": len(ranked),
                   "limit": limit, "rows": out}, "max-age=30")
 
@@ -5118,7 +5254,8 @@ def _register_admin():
                              bans=dict(set_ban=accounts.set_ban,
                                        ban_list=accounts.ban_list,
                                        imported=TIERS_IMPORTED,
-                                       ranked_linked=RANKED_LINKED))
+                                       ranked_linked=RANKED_LINKED,
+                                       changed=avatars_reset))
     except Exception as exc:                       # pragma: no cover
         log.exception("admin panel failed to configure: %s", exc)
         return

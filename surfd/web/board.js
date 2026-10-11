@@ -154,6 +154,21 @@
     return a;
   }
   function steamUrl(id) { return 'https://steamcommunity.com/profiles/' + encodeURIComponent(id); }
+
+  // A player's Steam picture, from this site's own copy (the page may load
+  // images from nowhere else).  Only for a row surfd says has one (`av`), so
+  // nothing here asks for a picture that is not there.
+  function avatar(who, cls) {
+    var i = el('img', cls || 'av');
+    i.alt = '';
+    i.loading = 'lazy';
+    i.decoding = 'async';
+    // A picture that will not load (gone since the row was built, or this
+    // address is over its budget) leaves no broken-image box.
+    i.addEventListener('error', function () { if (i.parentNode) { i.parentNode.removeChild(i); } });
+    i.src = 'avatar/' + encodeURIComponent(who);
+    return i;
+  }
   function ksfUrl(id) { return 'https://ksf.surf/players/' + encodeURIComponent(id); }
   function momUrl(id) { return 'https://dashboard.momentum-mod.org/profile/' + encodeURIComponent(id); }
   function boardUrl(tier, map) {
@@ -370,6 +385,7 @@
       var tr = el('tr', tier !== 'ranked' ? 'foreign' : '');
       tr.appendChild(el('td', 'num', r.r));
       var who = el('td', 'name');
+      if (r.av) { who.appendChild(avatar(r.who)); }
       who.appendChild(link('plink', '#p=' + r.who, plain(r.name)));
       // Which game, where the board holds more than one.
       if (v.tier === 'combined' || v.tier === 'imported') {
@@ -670,6 +686,7 @@
     var li = el('li');
     var a = el('a');
     a.href = '#p=' + p.who;
+    if (p.av) { a.appendChild(avatar(p.who)); }
     a.appendChild(el('span', 'who', plain(p.name) || '(no name)'));
     var chip = srcChip(p.src);
     if (chip) { a.appendChild(chip); }
@@ -719,7 +736,9 @@
   function renderProfile(body) {
     document.title = plain(body.name) + ' · FTESurf';
     var h = $('ptitle');
-    h.textContent = plain(body.name) || '(no name)';
+    h.textContent = '';
+    if (body.av) { h.appendChild(avatar(body.who, 'av av-big')); }
+    h.appendChild(document.createTextNode(plain(body.name) || '(no name)'));
     var sub = $('psub');
     sub.textContent = '';
     var chip = srcChip(body.src);

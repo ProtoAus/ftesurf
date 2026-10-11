@@ -131,6 +131,23 @@ From its one review; measured there unless said.
 - **Not measured:** the nine older arms that set the colouring were read, not
   run; the reset literals on an install with an older default.cfg (the arm's
   rig has this patch's, where the reset worked before them too).
+## Steam pictures: what Patch 639 left -- 2026-10-11
+
+- **Only accounts have pictures** (anyone who has signed in with Steam here,
+  linked game or not). An imported row's player is a SteamID too, and Steam
+  would answer for it, but that is 66,000 profiles. The game's copy rides
+  `/api/board?avatar=` and spends the board's 120 a minute: give it a path
+  and a bucket of its own when the game-facing vhost is next edited (root);
+  until then the game half has to cache and pace. The game does not draw
+  them yet (ROADMAP 14.4).
+- **A changed picture is no picture until the next half-hourly sync.**
+  Sign-in stores the new hash at once and its file is not there yet, while
+  the old file is still on disk: serve that one meanwhile. A browser keeps a
+  picture an hour, a banned account's included. Accounts whose 8-hex mark
+  collides have no picture in the game. A picture built to be slow costs
+  Pillow seconds (the reviewer measured 4.3 s for a 65 KB progressive file);
+  one Pillow then refuses is retried daily, not each pass.
+
 ## The Steam name in the game: what Patch 638 left -- 2026-10-11
 
 - **The first seconds of a connection are under the game's own name**: the proof is
