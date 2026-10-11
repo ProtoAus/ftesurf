@@ -4634,6 +4634,27 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+### The board's lists take the mouse wheel (Patch 646) — 2026-10-11
+
+- SUI RE-TESTS THE HOVER ONLY ON MOTION. A list scrolled under a resting
+  cursor keeps the old hover, so a click went to the row that HAD been there.
+  `_sui_mouse_move(_cursor_position, FALSE)` before the test re-reads it
+  (`Scores_InputEvent`, at a notch and at a MOUSE1 press).
+- A SECOND SUI BRACKET EMPTIES THE INPUT BUFFER. With a replay under the board
+  the replay's `sui_end` runs first, so an event queued for sui never reaches
+  the board's lists. The notch moves the list's offset itself. Read by the
+  review, never run with a replay.
+- BOTH NOTCHES ARE BOUND TO `+jump`: the wheel is taken only pinned and over
+  a list. `tools/p646wheel.py` drives it with `hud_edit ui hover <id>` and
+  `vote key 516|515`, and grades `took`, `scores status`'s `scroll N` and the
+  dprint `scores: click row N`; four one-edit builds fail it.
+- DEPLOYED 11 Oct from `088bb6a`: csprogs `e9371ed5` to both installs at
+  11:40Z with no game running (under the rig lock, after a peer's run), and
+  to the Pi at 11:41Z with nobody on. Twelve lobbies restarted; hashes read
+  back from the host, twelve heartbeats after. No client was connected to a
+  lobby to see it served. `.prev` is Patch 640's `b01acd53`; qwprogs and
+  menu.dat did not change.
+
 ### Rounded corners from masks made at their own size (Patch 642) — 2026-10-11
 
 - THE BLUR WAS ONE 8-TEXEL CORNER STRETCHED. `gfx/ui/roundmask.png` is 32x32

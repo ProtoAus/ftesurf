@@ -25,6 +25,8 @@ the wheel did nothing there: the only way down was dragging the thin bar.
   alone. I could not feel it with a real wheel.
 - How many KSF rows there are to scroll to is the Pi's crawl (Patch 644,
   which lands on its own), not this.
+- **Live since 11 Oct 11:41 UTC (22:41 here)** on both installs and all twelve
+  lobbies. Restart the game to get it.
 
 ## 00. 11 Oct — Steam pictures in the game (Patch 640)
 
