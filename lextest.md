@@ -17,8 +17,10 @@ From your list. On proto.bar/ftesurf/board a linked player's Steam picture
 is beside their name: on every board row of theirs (their Momentum and KSF
 rows too), on their player page, and in the players list. Players who have
 never signed in with Steam on the site have none yet.
-- **Check:** your own rows and page show your Steam picture within half an
-  hour of the deploy (the sync runs at :07 and :37).
+- **Live since 08:52 UTC:** your page (proto.bar/ftesurf/board, Players,
+  Proto) shows your Steam picture; so do your rows on any map's board.
+- A picture you change on Steam follows within half an hour (the sync runs
+  at :07 and :37), and your browser may keep the old one up to an hour.
 - In the game: not yet. That is the next patch (the TAB board, the players
   list and run-line names).
 

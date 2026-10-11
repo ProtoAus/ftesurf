@@ -7536,6 +7536,25 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **DEPLOYED 11 Oct 2026, 08:49-08:52 UTC (FTESurf `b8c2c5d`, Patch 639):
+  surfd only.** Six files by `surfd-deploy.ps1` (`surfd.py` `ed55301`,
+  `accounts.py` `5ddfeba`, `admin.py` `2a1a3bc`, `steamsync.py` `78c9f0a`,
+  `web/board.js` `c777b6e`, `web/board.css` `6467544`; the Pi's six equalled
+  origin/main's before, and the commit's after), its suite green on the Pi,
+  reload 08:51:57Z, backup `data/surfd.db.bak-b8c2c5d-20261011-194917`. One
+  hand pass of `steamsync.py --go` under cron's lock, 08:52:43Z: 1 picture
+  fetched, 1 game copy made (`data/avatars`, mode 700). READ BACK:
+  `/board/avatar/<handle>` 200 `image/jpeg` 3,540 bytes through proto.bar,
+  with `nosniff` and the CSP; `/api/board?avatar=<mark>` 200, 8,247 bytes, a
+  header and 32 rows of 256; the player page says `av: 1`; play.proto.bar
+  forwards the parameter (an unknown mark is surfd's own 404); 0 error or
+  warning lines among the 187 since the reload; the live player page in a
+  headless browser shows the picture. The first player page and the first
+  maps list after the reload took 7.3 s and 7.1 s on the Pi (asked for once
+  here, then 0.05 s): past nginx's 5 s, so ask for both after every reload.
+  No lobby restart, no client files. The Pi holds 9 of the deploy script's
+  database backups (9.1 GiB) and 26 hand-made (2.7 GiB), 108 GiB free: not
+  pruned, the owner's call.
 - **STEAM PICTURES, THE SERVICE HALF (Patch 639): WHAT WAS LOOKED AT FIRST.**
   On the Pi: Pillow 12.3 and ImageMagick's `convert` are there; Steam's
   picture host answers `https://avatars.steamstatic.com/<hash>.jpg` (32 px,
