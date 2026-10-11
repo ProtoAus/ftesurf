@@ -13,6 +13,9 @@ to be wrong.
 
 ## 00. 11 Oct — your HUD list, part 4: the TAB board (Patch 635)
 
+Live since 11 Oct 04:43 UTC (15:43 here) on both installs and on all twelve
+lobbies (csprogs only). The file it replaced is beside it as `.prev`.
+
 "I want the leaderboard to show all combined, and then the filter on the right,
 to be like a slider, with a filter toggle switch." And from the list: "tick
 on/off all of the demos you have of a stage/main by maybe clicking on the

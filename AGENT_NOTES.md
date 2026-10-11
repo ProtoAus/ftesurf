@@ -4691,6 +4691,15 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   grader that takes "the last board print of the section" took a later
   command's three times here (`scores open` after the held board was the
   third).
+- DEPLOYED 2026-10-11 from `8286948`: csprogs `b2b6de57` (qwprogs `e9c95065`
+  and menu.dat were already these bytes in all three places; no cfg change).
+  Both Windows installs 04:41:35Z with nothing running; the Pi 04:42:53Z with
+  nobody on, all 12 lobby processes started 04:42:55Z to 04:43:04Z (read from
+  the host), and `pi_lobby_smoke.py` was served this csprogs and drew the
+  board (its Local tab: the smoke does not open Online). The live surfd
+  answered `tier=combined` for three maps in 25 to 63 ms, one request each
+  over the LAN, where `imported` took 37 to 57. `.prev` is Patch 632's
+  csprogs (`6dc6e7b3`) in all three places.
 
 ### Run lines: a colour for your line, one for the others, a fourth Labels state (Patch 632) — 2026-10-11
 
