@@ -5086,6 +5086,12 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   be surfd's decision about an account, never a lobby's or a client's word,
   and an upload must not go live by arriving; the accounts session's
   conditions are in this task's private notes, not here.
+- DEPLOYED 11 Oct UTC (the 12th here) from `79425a5`: csprogs `cbc72b32`
+  (119,995 definitions) to the Pi at 22:45:13Z, nobody on, twelve lobbies
+  restarted and read back, and to both installs at 22:47:44Z with no game
+  running; `.prev` is 659's `e04ccb61` in all three. qwprogs, menu.dat,
+  default.cfg and the exes untouched. A client on the 625 exe joined a lobby,
+  was served it and drew the board. The arm had run on that exe first.
 
 ### What is written on the run lines (Patch 661) — 2026-10-12
 

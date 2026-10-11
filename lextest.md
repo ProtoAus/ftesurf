@@ -274,6 +274,9 @@ same code by command and by name; it could not test the clicks themselves.
 Also the feel of pulling the height, and whether the default grid of 16 is
 right.
 
+**Live since 11 Oct 22:47 UTC (12 Oct 09:47 here)** in `C:\FTESurf`,
+`C:\FTEQuake` and on all twelve lobbies. Restart the game, then `zone_edit`.
+
 ## 00. 12 Oct — names on every line, labels that stay put, energy as the speedo (Patch 661)
 
 From your message after trying twenty-odd lines. Four things changed:
