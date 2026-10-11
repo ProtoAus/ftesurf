@@ -5,6 +5,35 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Run lines drawn by the engine: what Patch 645 left -- 2026-10-11
+
+- **Eight lines at most, and each still costs QC.** Per frame, eight lines in
+  a window add 0.92 ms where they added 3.35; whole lines 2.49, and 6.29 with
+  `hud_lines_nums 2`, most of that the labels' own QC (`Line_Marks`,
+  `Line_Label`, the declutter). Also per line and still QC: the follow search
+  (`Line_Follow`), three `Line_Find` a draw, the names
+  (`LineGraph_WorldLabels`, 5% of the profiled QC frame for eight). The owner's
+  injectable drew fifty; `SB_LNMAX` 8 and `LN_SLOTS` 11 stand, and the sample
+  tables are 3.25 MiB a slot.
+- **An engine before 645 still dies at 32768 polygon vertices** on the QC
+  path: released clients until the next release. Falsifier: eight board
+  lines, `hud_lines_order 0`, `hud_watch_path_px 3`.
+- **Two older flaws beside the flush fix, left** (engine `pr_csqc.c`):
+  `CSQC_PolyFlush` rewinds `cl_numstrisidx` to the VERTEX origin, and
+  `PF_R_PolygonEnd` moves the carried polygon with `memcpy` where the ranges
+  can overlap. The review read them; neither was reproduced.
+- **Not compared: a line appearing.** The arm needs a still picture, so every
+  sample's birth is older than `hud_lines_reveal` and its factor is 1; a wrong
+  birth index or clock would pass. Nor a second pixel ratio, nor the mouse
+  pad's trail.
+- **Before the first line exists the engine path is off** (`ln_nath` is set in
+  `Line_Alloc`, at the first `Line_Begin`): the mouse pad's trail and a graph
+  with nothing loaded draw the QC way until then. The same picture.
+- **Unexplained, measured once:** with `ui_native_graphs 1` the HUD graph cost
+  0.45 ms a frame more than with 0 (three samples each, 5.77 against 5.33 ms)
+  while the plugin's owner never opened (`ui_imgui_status` opens=0). Before
+  this patch; not looked at since.
+
 ## The board's wheel: what Patch 646 left -- 2026-10-11
 
 From its one review (read, not run) and what the arm does not reach.

@@ -52,6 +52,27 @@ game ... and also clean up that screen").
 - Tell me if the wording on either screen reads wrong to you: it is the
   text people agree to.
 
+## 00. 11 Oct — run lines cost about a quarter of what they did (Patch 645)
+
+From your message: eight lines drain your fps, your injectable drew fifty. The
+game was building every piece of every line in its script code, each frame.
+That loop now lives in the engine, as your injectable's did. The lines, their
+marks and the little run graph look exactly as before; I compared the two ways
+pixel for pixel.
+- **What it buys, measured on this laptop:** eight ticked lines used to add
+  3.3 ms to every frame and now add 0.9. With whole lines (`hud_lines_order 0`)
+  7.7 ms became 2.5.
+- **It needs the new engine**, which is in both installs. Older clients keep
+  drawing the old way with the same picture.
+- **Also fixed:** the game could crash outright with many long, wide lines on
+  screen (eight whole lines at `hud_watch_path_px 3` did it every time).
+- **Yours to look at:** your own line while you surf, the ticked lines, the
+  marks on them and the run graph. To compare by eye or by frame rate,
+  `hud_lines_native 0` in the console is the old way and `1` the new.
+- **Not done yet: more than eight lines.** That is the next patch. Labels are
+  what is still expensive (`hud_lines_nums 2` on whole lines costs about 4 ms
+  by itself), so fifty lines also needs those made cheaper.
+
 ## 00. 11 Oct — the mouse wheel scrolls the board (Patch 646)
 
 From your message ("load more than 1 page of KSF records"). In the game the

@@ -877,6 +877,12 @@ void(vector p, float base, float sx, float sy, float energy, vector r, float s, 
 	if (!n) return;
 	Plot_Strip(wpx, LineGraph_Colour(s), 0.95);
 	k = (energy * LG_SLOTS + s) * LG_POLYMAX * 3;
+	if (ln_nat)
+	{
+		// Patch 645: the loop below, in the engine (cl_lines.qc, "THE STRIP, NATIVELY").
+		lines_strip2d(&lg_poly[k], n, [p_x, base, lg_v0], [sx, 0 - sy, r_x], LineGraph_Colour(s), 0.95);
+		return;
+	}
 	for (i = 0; i < n; i = i + 1)
 	{
 		if (lg_poly[k + 2]) Plot_StripEnd();

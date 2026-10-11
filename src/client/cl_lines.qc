@@ -332,6 +332,75 @@ float  ln_dtint;                // the draw's blend strength, 0 = none
 float  ln_tintd[LN_SLOTS];      // ... as each slot was last drawn (Patch 632)
 #define LN_FGNCOL  '0.25 0.45 1.00'
 
+/*
+  Patch 645: THE STRIP, NATIVELY.  Line_Feed, Line_Q and Line_Emit are about a
+  microsecond a segment in QC (250 instructions, 14 builtin calls): eight lines
+  and their graph were 3 ms a frame.  The engine has the same code in C
+  (engine/client/pr_csqc_lines.inc) writing the same fans into the same batch.
+  THE QC BELOW STAYS, for an engine without the builtins and as the reference:
+  a change to one is a change to the other (tools/test_p645lines.py draws both
+  and compares the pixels).  hud_lines_native 0 draws the QC way.
+  LP_* is lines_draw's parameter block and must match the enum there.
+*/
+void(float hw, float cw, float pk, float px) lines_width = #0;
+void(vector a, vector sa, vector ca, float la, vector b, vector sb, vector cb, float lb) lines_segment = #0;
+float(float *pts, float n, vector org, vector scale, vector rgb, float alpha) lines_strip2d = #0;
+void(vector *pos, vector *col, float *t, float *brk, float *born, float samples, float bornsamples) lines_arrays = #0;
+void(vector *cc, float *cr, float *cerr, vector *gc, float *gr, float chunks, float groups, float levels) lines_lod = #0;
+float(float *parm, float count) lines_draw = #0;
+#define LP_VERSION   0
+#define LP_BASE      1
+#define LP_FIRST     2
+#define LP_LAST      3
+#define LP_COUNT     4
+#define LP_PUBLISHED 5
+#define LP_FLAGS     6          // 1 demo reveal, 2 births, 4 window, 8 ln_cfade
+#define LP_BORNBASE  7
+#define LP_CHUNKBASE 8
+#define LP_GROUPBASE 9
+#define LP_TPLAY     10
+#define LP_AHEAD     11
+#define LP_ALPHA     12
+#define LP_TINT      13
+#define LP_PHEAD     14
+#define LP_TINTCOL   17
+#define LP_WINA      20
+#define LP_WINB      21
+#define LP_WINKA     22
+#define LP_WINKB     23
+#define LP_REVEAL    24
+#define LP_CLTIME    25
+#define LP_EYE       26
+#define LP_FWD       29
+#define LP_RT        32
+#define LP_UP        35
+#define LP_TX        38
+#define LP_TY        39
+#define LP_KX        40
+#define LP_KY        41
+#define LP_TOLK      42
+#define LP_FAR       43
+#define LP_FADEK     44
+#define LP_CHUNK     45
+#define LP_GROUP     46
+#define LP_LEVELS    47
+#define LP_NEAR      48
+#define LP_GUARD     49
+#define LP_SUBPX     50
+#define LP_NPT       51
+#define LP_NSEG      52
+#define LP_NWILD     53
+#define LP_NCLIP     54
+#define LP_BBMIN     55
+#define LP_BBMAX     57
+#define LP_FIRSTPT   59
+#define LP_CFADE     61
+#define LP_SIZE      62
+float  ln_nath;                 // the engine has the builtins and was told where the samples are
+float  ln_nat;                  // ... and this frame draws with them
+float  ln_natn, ln_natno;       // passes it drew, and refused, since start (`lines native`)
+float  *ln_np;
+
 void() Line_Alloc =
 {
 	if (ln_pos)
@@ -376,6 +445,14 @@ void() Line_Alloc =
 	ln_rcv  = memalloc(sizeof(vector) * LN_SLOTS * 2);
 	ln_cell = memalloc(sizeof(float) * LN_CELLS);
 	ln_lcell = memalloc(sizeof(float) * LN_CELLS);
+	if (checkbuiltin(lines_draw))
+	{
+		lines_arrays(ln_pos, ln_col, ln_t, ln_brk, ln_born, LN_SLOTS * LN_CAP, 3 * LN_CAP);
+		lines_lod(ln_cc, ln_cr, ln_cerr, ln_gc, ln_gr, LN_SLOTS * LN_CAP / LN_CHUNK,
+		          LN_SLOTS * LN_CAP / LN_CHUNK / LN_GROUP, LN_LEVELS);
+		ln_np = memalloc(sizeof(float) * LP_SIZE);
+		ln_nath = TRUE;
+	}
 };
 
 // The birth arena holds only demo/live slots, not the eight static board lines.
@@ -1776,6 +1853,8 @@ void(float w) Line_Width =
 	ln_pk = min(1, w);
 	ln_hw = (max(w, 1) * 0.5 + 0.5) * ln_px;
 	ln_cw = (max(w, 1) * 0.5 - 0.5) * ln_px;
+	if (ln_nath)
+		lines_width(ln_hw, ln_cw, ln_pk, ln_px);    // the engine's copy, for every native emitter
 };
 
 void() Line_PxFrame =
@@ -1787,6 +1866,8 @@ void() Line_PxFrame =
 	ln_px = 1;
 	if (ps_x > 0)
 		ln_px = vs_x / ps_x;
+	// In brackets: QC's `=` binds tighter than `&&`, and bare this was (ln_nat = ln_nath).
+	ln_nat = (ln_nath && cvar("hud_lines_native"));
 };
 
 // One segment a->b, sides sa/sb (unit, times the mitre factor).  Fans whose
@@ -1795,6 +1876,11 @@ void(vector a, vector sa, vector ca, float la, vector b, vector sb, vector cb, f
 {
 	local vector oa, ob, ia, ib;
 
+	if (ln_nat)
+	{
+		lines_segment(a, sa, ca, la, b, sb, cb, lb);
+		return;
+	}
 	oa = sa * ln_hw;
 	ob = sb * ln_hw;
 	R_BeginPolygon("", DRAWFLAG_TWOSIDED, TRUE);
@@ -2288,6 +2374,32 @@ void() Line_ViewFrame =
 	for (s = LN_S_TRAIL; s < LN_SLOTS; s = s + 1)
 		if (ln_n[s] > ln_published[s])
 			Line_Paint(s, ln_cmown, ln_published[s]);
+	// Patch 645: the frame's half of lines_draw's block (Line_Native has the slot's).
+	if (ln_nat)
+	{
+		ln_np[LP_VERSION] = 1;
+		ln_np[LP_REVEAL] = ln_reveal;
+		ln_np[LP_CLTIME] = cltime;
+		ln_np[LP_EYE] = ln_eye_x;  ln_np[LP_EYE + 1] = ln_eye_y;  ln_np[LP_EYE + 2] = ln_eye_z;
+		ln_np[LP_FWD] = ln_fwd_x;  ln_np[LP_FWD + 1] = ln_fwd_y;  ln_np[LP_FWD + 2] = ln_fwd_z;
+		ln_np[LP_RT] = ln_rt_x;    ln_np[LP_RT + 1] = ln_rt_y;    ln_np[LP_RT + 2] = ln_rt_z;
+		ln_np[LP_UP] = ln_up_x;    ln_np[LP_UP + 1] = ln_up_y;    ln_np[LP_UP + 2] = ln_up_z;
+		ln_np[LP_TX] = ln_tx;
+		ln_np[LP_TY] = ln_ty;
+		ln_np[LP_KX] = ln_kx;
+		ln_np[LP_KY] = ln_ky;
+		ln_np[LP_TOLK] = ln_tolk;
+		ln_np[LP_FAR] = ln_far;
+		ln_np[LP_FADEK] = ln_fadek;
+		ln_np[LP_CHUNK] = LN_CHUNK;
+		ln_np[LP_GROUP] = LN_GROUP;
+		ln_np[LP_LEVELS] = LN_LEVELS;
+		ln_np[LP_NEAR] = LN_NEAR;
+		ln_np[LP_GUARD] = LN_GUARD;
+		ln_np[LP_SUBPX] = LN_SUBPX;
+		c = LN_FGNCOL;
+		ln_np[LP_TINTCOL] = c_x;   ln_np[LP_TINTCOL + 1] = c_y;   ln_np[LP_TINTCOL + 2] = c_z;
+	}
 };
 
 // A sphere against the view: -1 outside the frustum or past hud_watch_path_far,
@@ -2919,6 +3031,57 @@ float(float s) Line_SlotPx =
 	return w;
 };
 
+// Patch 645: Line_Draw's loop over slot s, in the engine.  FALSE: it refused (nothing
+// drawn) and the QC loop runs.  ln_db, ln_dn, ln_da and ln_dtint are Line_Draw's.
+float(float s, float ia, float ib, float tplay, vector phead, float ahead) Line_Native =
+{
+	local float f;
+
+	f = (s == 0) ? 3 : ((s >= LN_S_TRAIL) ? 2 : 0);
+	if (ln_winon) f = f + 4;
+	if (ln_cfade) f = f + 8;
+	ln_np[LP_BASE] = ln_db;
+	ln_np[LP_FIRST] = ia;
+	ln_np[LP_LAST] = ib;
+	ln_np[LP_COUNT] = ln_dn;
+	ln_np[LP_PUBLISHED] = ln_published[s];
+	ln_np[LP_FLAGS] = f;
+	ln_np[LP_BORNBASE] = (s == 0 || s >= LN_S_TRAIL) ? Line_BirthBase(s) : 0;
+	ln_np[LP_CHUNKBASE] = s * LN_CAP / LN_CHUNK;
+	ln_np[LP_GROUPBASE] = s * LN_CAP / LN_CHUNK / LN_GROUP;
+	ln_np[LP_TPLAY] = tplay;
+	ln_np[LP_AHEAD] = ahead;
+	ln_np[LP_ALPHA] = ln_da;
+	ln_np[LP_TINT] = ln_dtint;
+	ln_np[LP_PHEAD] = phead_x;  ln_np[LP_PHEAD + 1] = phead_y;  ln_np[LP_PHEAD + 2] = phead_z;
+	ln_np[LP_WINA] = ln_wina;
+	ln_np[LP_WINB] = ln_winb;
+	ln_np[LP_WINKA] = ln_winka;
+	ln_np[LP_WINKB] = ln_winkb;
+	ln_np[LP_NPT] = ln_npt;
+	ln_np[LP_NSEG] = ln_nseg;
+	ln_np[LP_NWILD] = ln_nwild;
+	ln_np[LP_NCLIP] = ln_nclip;
+	ln_np[LP_BBMIN] = ln_bbmin_x;    ln_np[LP_BBMIN + 1] = ln_bbmin_y;
+	ln_np[LP_BBMAX] = ln_bbmax_x;    ln_np[LP_BBMAX + 1] = ln_bbmax_y;
+	ln_np[LP_FIRSTPT] = ln_first_x;  ln_np[LP_FIRSTPT + 1] = ln_first_y;
+	if (!lines_draw(ln_np, LP_SIZE))
+	{
+		ln_natno = ln_natno + 1;    // counted: the QC loop then draws the same picture
+		return FALSE;
+	}
+	ln_npt = ln_np[LP_NPT];
+	ln_nseg = ln_np[LP_NSEG];
+	ln_nwild = ln_np[LP_NWILD];
+	ln_nclip = ln_np[LP_NCLIP];
+	ln_bbmin_x = ln_np[LP_BBMIN];    ln_bbmin_y = ln_np[LP_BBMIN + 1];
+	ln_bbmax_x = ln_np[LP_BBMAX];    ln_bbmax_y = ln_np[LP_BBMAX + 1];
+	ln_first_x = ln_np[LP_FIRSTPT];  ln_first_y = ln_np[LP_FIRSTPT + 1];
+	ln_cfade = ln_np[LP_CFADE];
+	ln_natn = ln_natn + 1;
+	return TRUE;
+};
+
 /*
   Slot s over its shown range.  tplay: points after it draw at `ahead` (0 stops
   the line at the playhead, which phead marks); a board line passes a tplay past
@@ -2974,6 +3137,9 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 	c = 0;
 	ce = -1;
 	ge = -1;
+	if (ln_nat)
+	if (Line_Native(s, ia, ib, tplay, phead, ahead))
+		i = ib + 1;                 // the engine drew it: nothing left for the loop
 	while (i <= ib)
 	{
 		// Unbuilt tail: up to TR_BUILD-1 (15) samples in live capture. No stale
@@ -3180,6 +3346,9 @@ void() Line_RegisterCvars =
 	// along it (and a quarter of that behind); 0 is everything within hud_watch_path_far.
 	registercvar("hud_lines_order",  "4", CVAR_ARCHIVE);
 	registercvar("hud_lines_winf",   "0", CVAR_ARCHIVE);
+	// Patch 645: 0 draws lines and plots with the QC loop on an engine that has the
+	// native one (the comparison, and the way back).  Not saved.
+	registercvar("hud_lines_native", "1");
 };
 
 // Advanced settings stay addressable by their archived names.
@@ -3201,6 +3370,16 @@ float() Line_Console =
 			              s, ln_fo_i[s], ln_t[s * LN_CAP + ln_fo_i[s]], ln_fo_d[s], ln_fo_n[s], ln_fo_mv[s]));
 			print(sprintf(" window %.4f %.4f\n", ln_fo_ta[s], ln_fo_tb[s]));
 		}
+		return TRUE;
+	}
+	if (argv(1) == "native")
+	{
+		print(sprintf("lines: native builtins %g in use %g passes %g refused %g\n",
+		              ln_nath, ln_nat, ln_natn, ln_natno));
+		// the last drawer's counters, which both ways must agree on
+		print(sprintf("lines: last points %g segments %g wild %g clipped %g\n",
+		              ln_npt, ln_nseg, ln_nwild, ln_nclip));
+		print(sprintf("lines: last box %g %g %g %g\n", ln_bbmin_x, ln_bbmin_y, ln_bbmax_x, ln_bbmax_y));
 		return TRUE;
 	}
 	print("lines: independent switches (0 off, 1 on):\n"

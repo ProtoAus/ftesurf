@@ -4696,6 +4696,67 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+### Run lines drawn by the engine (Patch 645) — 2026-10-11
+
+- WHERE EIGHT LINES' TIME WENT (`set r_speeds 2`, `r_speeds_dump`, bucket
+  `QC UpdateView`; `pr_enable_profiling` + `profile_csqc`): the per-segment QC,
+  `Line_Feed` -> `Line_Q` -> `Line_Emit`, 250 instructions and 14 builtin
+  calls, and the HUD graph's `Plot_Q` through the same emitter. The ImGui
+  plugin is not in that path: only the OPEN graph panel goes through it, the
+  HUD's small one is always QC (`LineGraph_Hud`).
+- THE ENGINE HAS THE SAME CODE IN C (`engine/client/pr_csqc_lines.inc`):
+  `lines_draw` is `Line_Draw`'s loop, `lines_segment`/`lines_width` are
+  `Line_Emit`, `lines_strip2d` a plot's curve; `lines_arrays` and `lines_lod`
+  register the sample and LOD arrays once (`Line_Alloc`). QC KEEPS ITS LOOP,
+  for an engine without the builtins (`checkbuiltin(lines_draw)`) and as the
+  reference: A CHANGE TO ONE IS A CHANGE TO THE OTHER, and `LP_*` in
+  `cl_lines.qc` is the enum in the .inc. `hud_lines_native 0` draws the QC way.
+  `lines native` prints builtins, in use, passes, refused, and the last
+  drawer's points, segments, wild, clipped and screen box.
+- MEASURED, one process and view (1600x900, the same run in eight slots, QC
+  time a frame, no board line 2.49 ms): a window with marks and graph 5.84 ms
+  the QC way, 3.41 the engine's; without the graph 4.61 and 2.92; whole lines
+  with the graph 10.16 and 4.98; whole with labels (`hud_lines_nums 2`) 13.47
+  and 8.78. What is left is QC that is not per segment: labels most of all.
+- THE ARM (`cfg/test/p645lines.cfg`, `tools/test_p645lines.py`, run with
+  `runlines_smoke.py --client <engine>`): each view the QC way, the engine's,
+  the QC way again. 28 of 28; seven paused views exact in every pixel and
+  count. It fails on an engine with one alpha term dropped (123 pixels in the
+  window view).
+- QC's `=` BINDS TIGHTER THAN `&&`. `ln_nat = ln_nath && cvar(...)` stored
+  `ln_nath`: the switch was dead, both shots were the engine's, and the first
+  run read 0 pixels different. Only the check that each mode says who drew
+  caught it. Bracket the right-hand side; keep that check in any A/B arm.
+- A REFUSED PASS LOOKS LIKE A PASS: `lines_draw` returning 0 makes QC draw the
+  reference picture. It is counted (`refused`) and the arm wants 0.
+- EIGHT COPIES OF ONE RUN HIDE EACH OTHER: board lines draw at 0.85 over the
+  replay's own, so only the top ones are measured, and a wrong slot base that
+  lands in another loaded slot reads the same data. The arm has the replay's
+  line alone and one board slot alone for that (the review).
+- surf_voyager under a paused replay is EXACTLY still (0 of 255 between
+  frames). surf_dune is not, even with `vbsp_emit 0`: thousands of pixels move
+  by 1 and a few by more, so the live view is compared on the line's own
+  pixels. After `say !m`, 2.5 s of `+forward` walks off the start, the fall
+  ends the run and the player is put back at the start looking along the line.
+- THE 32768 CRASH IS UPSTREAM'S. `PF_R_PolygonEnd` flushes the batch itself
+  at 32768 vertices or a flags change, `CSQC_PolyFlush` clears
+  `csqc_poly_shader`, and the next `R_BeginPolygon` flushed the carried
+  polygon with a NULL shader (`GLBE_DrawMesh_List` + 0x16). Eight whole lines
+  at `hud_watch_path_px 3` reach it; the installed 625 client died there. A
+  rig client that crashes appends to `C:\FTESurf\crashaddr.txt`, its working
+  directory: resolve an rva with `nm -n` on `engine\release\fteqw64.exe.db`
+  (the .exe is stripped, and statics are missing from the table).
+- THE ENGINE BUILD THAT WORKED, in a worktree of the engine at its main: from
+  pwsh with `C:\msys64\ucrt64\bin;C:\msys64\usr\bin` first on PATH and TMP/TEMP
+  `C:\msys64\tmp`, `make -j6 -C <wt>\engine m-rel FTE_TARGET=win64
+  ARCHLIBS=C:/msys64/home/Lex/fteqw/engine/libs-x86_64-w64-mingw32
+  SVN_VERSION=git-<rev-list count + 29>-<describe --long> SVN_DATE=<%cs>`,
+  then `sv-rel` the same. 93 s and 43 s clean. An .inc is not a dependency:
+  touch the .c that includes it. For the final build delete
+  `release\m_mgw64\*.o` and `sv_mingw64\*.o` first and read the stamp back out
+  of the binary. No header moved, so the plugins were not rebuilt.
+- csprogs: 129,741 definitions.
+
 ### The board's lists take the mouse wheel (Patch 646) — 2026-10-11
 
 - SUI RE-TESTS THE HOVER ONLY ON MOTION. A list scrolled under a resting
