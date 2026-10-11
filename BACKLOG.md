@@ -1135,15 +1135,34 @@ as proof that every source path was built into it. No FPS improvement is claimed
   - **A volume is culled by distance** (its bounding sphere past twice
     DistMax), Source's by PVS. A mote deeper than DistMax draws nothing either
     way; twice covers the corner of a 16:9 screen to fov 100.
-  - **The blend is a straight line where linear light is a curve.** Exact over
-    a 0.25 grey and over white (`Emit_MoteShader`). Measured on surf_dune's
-    wall, a white mote at alpha 0.087: 0.023 over on a 0.37 channel, 0.029
-    under on 0.17, 0.103 under on 0.04, so motes are fainter than Source's
-    against near-black. A saturated colour's absent channel is under-shown on
-    a wall brighter than 0.25: `0 128 255` drew red 0.132 where linear light
-    gives 0.167 on 0.40. A read of the framebuffer, or a linear one, is the
-    only cure.
-  - **No fog term** in the shader: a mote in a fogged map is not fogged.
+  - **The blend is a straight line where linear light is a curve.** Since
+    Patch 657 it is exact over black, exact over white for a grey mote, and
+    BRIGHTER between: a white mote at alpha 0.087 reads 0.576 on a 0.37 wall
+    where linear light gives 0.468, at 0.43 it is 0.796 for 0.723, at 0.85
+    0.956 for 0.937 (`tools/p657bright.py`, GREY). Patch 648 had it exact
+    over a 0.25 grey and 0.137 under on black (0.192 for 0.329); the owner
+    asked for the brightness. **One alpha is one slope for three channels**,
+    and 3,737 of the library's 5,297 volumes are coloured (1,919 strongly):
+    the slope is midway between what the brightest and the dimmest channel
+    want, so `0 128 255` at 0.85 draws 0.249 0.715 1 on white where linear
+    light gives 0.422 0.610 1, and 0.091 0.557 1 on 0.37 for 0.156 0.485
+    0.937. (648 drew that red 0.236 and 0.127.) A read of the framebuffer, a
+    linear one, or dual-source blending is the only cure.
+  - **The exposure is Source's ceiling, held, and the motes' alone.** A mote
+    is lit by what Source's auto-exposure CAN reach on the map
+    (`Emit_Exposure`: the logic_auto's SetAutoExposureMax, else 2 on a map
+    with HDR lighting, 1 without), not by what it would settle at in the
+    view; a ceiling outside 1..2 is held to it (44 of the 144 HDR maps with
+    motes and a ceiling set one under 1, 14 one over 2). Source scales the
+    WALL by the same number and this frame does not, so on an HDR map a mote
+    stands out from its wall more than Source's does. 219 of the 487 maps
+    with motes are HDR. A ceiling set by anything but OnMapSpawn (seven
+    outputs in the library) is not followed. A map over 128 MiB is not read
+    (QC can only read a file whole) and is lit at 1: 46 maps with motes,
+    some of them HDR. `vbsp_emit_exposure` overrides. Fire, smoke and rain
+    do not take it, and Source scales those too.
+  - **No fog term** in the shader: a mote in a fogged map is not fogged, and
+    Source's is (UnlitGeneric; 93 of the 487 maps with motes enable fog).
   - **The engine carries every mote to LifetimeMax**, undrawn past its own
     life: `r_partinfo` counts LifetimeMax where Source has the mean alive
     (1.25 times at 9 to 15 s, 1.5 at 1 to 3).

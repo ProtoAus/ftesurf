@@ -26,6 +26,13 @@ commit   7501a6ccebb2d2b7f2f3a7f0127e86680f3cefb3
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-658
 patch    663
+# Patch 657: func_dustmotes are brighter. Their blend is exact for linear light on a
+# black wall (it was 0.14 under there) and brighter than it on a grey one, and a mote
+# is lit by the exposure Source's HDR can reach on the map: the logic_auto's
+# SetAutoExposureMax, else 2 with HDR lighting, 1 without, held to 1..2.
+# vbsp_emit_exposure overrides (-1 the map's, 1 Source without HDR). csprogs only: no
+# engine source, server QC, surfd, recorder, evidence, ranking, default or Build change
+# (commit and tag above stay).
 # Patch 663: `hud_player` is a profile. One card in the UI's look: the player's name and
 # picture (a linked account's Steam ones on a ranked lobby), whether the game is linked, a
 # search for any player, and two pages: the customizer, laid out again, and a breakdown like

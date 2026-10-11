@@ -4569,6 +4569,42 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   happen is rolling a DEPLOYED build back, and that is read off the installs'
   and the Pi's hashes, not off git.
 
+### How bright a mote is (Patch 657) -- 2026-10-12
+
+- WHERE: `src/client/cl_emit.qc`, `Emit_Exposure` / `Emit_MapHDR` in front of
+  `Emit_MoteShader`; one shader an exposure (`ftesurf_mote<exposure * 100>`).
+  `emit_list` says `motes are lit at exposure N: <why>`;
+  `vbsp_emit_exposure` (-1 the map's, 1 Source without HDR) is read at load.
+- QC's `fread`, `fseek` AND `fsize` EACH LOAD THE WHOLE FILE on first use
+  (`pr_bgcmd.c`, FRIK_FILE_READ_DELAY; a failed allocation is a Sys_Error).
+  The first cut guarded a 495 MiB map with `fsize`, which read all of it to
+  answer; the review read the builtin. `search_begin` and
+  `search_getfilesize` ask the file system. 872 bytes of a map's header still
+  cost its 24 MB (median), so the read is skipped unless the answer turns on
+  it, and the arm counts the `qcfopen("maps/<map>.bsp"` lines.
+- A WALL OF ONE KNOWN COLOUR: from the void over a map, looking straight up,
+  nothing is drawn, and `r_clear 1` with `r_clearcolour` paints what is. A
+  Frozen mote holds its alpha for 11 s, so one row is photographed over
+  black, a grey and white (`cfg/test/p657bright.cfg`). The HUD's "Air:" line
+  and the crosshair are in that frame: the blob finder's box stays clear of
+  the first and its 40-pixel floor drops the second.
+- A CHECK THAT A THING IS NOT THERE NEEDS SOMETHING THAT IS. "A white mote on
+  white is not there" passed on a frame with no motes at all; the blue row
+  beside it is now part of the same check.
+- A MAP'S EXPOSURE CEILING IS A logic_auto OUTPUT, not a key of the
+  env_tonemap_controller: `"OnMapSpawn" "tonemap,SetAutoExposureMax,1.2,0,-1"`,
+  the commas 0x1b in newer maps (surf_dune) and commas in older (surf_tensor2).
+  surf_dune's is 1.2; this file's earlier "max default 2" read its Min.
+- UnlitGeneric's PIXEL SHADER IS `vertexlit_and_unlit_generic_ps20b.fxc`
+  (`unlitgeneric_dx9.cpp:198`), whose :481 ends in a fog term and
+  TONEMAP_SCALE_LINEAR. `unlitgeneric_ps20b.fxc` says TONEMAP_SCALE_NONE and
+  is debugnormalmap's.
+- 71% OF THE LIBRARY'S MOTE VOLUMES ARE COLOURED (3,737 of 5,297), and a blend
+  with one alpha has one slope for three channels. The first cut took the
+  slope from the mote's luminance and drew `0 128 255`'s red at 0.140 on
+  white for 0.422, worse than the 0.236 it replaced, with the old arm's
+  colour check retired in the same commit. Judge a coloured row per channel.
+
 ### env_fire's smoke, floor and reach (Patch 656) -- 2026-10-12
 
 - WHERE: `src/client/cl_emit.qc`, `Emit_SmokeSpec` / `Emit_SmokeBlock` /

@@ -11,6 +11,25 @@ to be wrong.
 
 ---
 
+## 00. 12 Oct — brighter dust motes (Patch 657)
+
+From your message: "I think they look not as bright as source, they really pop
+in source."
+- Two things held them down. (1) On a dark wall our blend drew a faint mote
+  at about 60% of what Source's arithmetic gives. It is exact on black now,
+  and a white or grey mote is never fainter than Source's on any wall.
+  (2) Source multiplies motes by its HDR exposure and we did not. On a map
+  with HDR lighting they are now lit at the brightest that map lets Source
+  go: 2 on surf_shade, 1.2 on surf_dune, 1 on a map without HDR lighting.
+- Know this about (2): Source brightens its whole picture by that number and
+  we brighten only the motes. Against our darker walls they stand out MORE
+  than Source's do on those maps. If that is too much, say so.
+- **Please look**: surf_shade's spawn is the clearest before and after (they
+  were barely there). `vbsp_emit_exposure 1` is Source without HDR and `2`
+  doubles their light on every map; then load the map again. `-1`, the
+  default, is per map.
+- I could not put this beside Source. Tell me if they still do not pop.
+
 ## 00. 12 Oct — smoke over fires, fires on their floor, and how far they show (Patch 656)
 
 From your message: "can you draw the smoke? idk what that last part means and

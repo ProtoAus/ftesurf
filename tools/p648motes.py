@@ -32,10 +32,8 @@ for every pixel, whatever the wall looks like.  From that map, per mote:
            the ring just outside it there is coverage towards its corners (the
            round falloff runs to 1.17 h) and none towards its sides.  The engine
            turns an r_part particle to a random angle unless the block says not to.
-  COLOUR   row D is 0 128 255 and row W is white at Alpha 26.  At the middle
-           of each, every channel is compared with what linear light gives over
-           THAT wall pixel.  W is the faint pale mote on a mid wall, which is
-           where a straight-line blend is furthest from the curve.
+  (COLOUR  moved to tools/p657bright.py with Patch 657, which reads rows like
+           D and W over walls of one flat colour.)
   POOL     Source keeps 2,048 old-style particles alive in the whole world
            (particle_iterators.h:20).  On surf_psychedelia, whose three stacked
            volumes ask for 7,200, the engine's own count (r_partinfo) is read
@@ -60,7 +58,8 @@ taken out (`mote.x * depth` written as `mote.x * 150.0`), which is a mote of a
 fixed size in the world -- the old blocks' kind -- and the pool's scale left at 1
 (`dm_thr = DM_POOL / dm_alive` deleted).  SIZE must then fail at 330, and P's count.
 And a second one: the block's `rotation 0` deleted and the blend put back on its
-first anchors (black and white).  UPRIGHT must fail, and row W's COLOUR.
+first anchors (black and white).  UPRIGHT must fail.  (Row W's COLOUR failed
+too; Patch 657 took those anchors on purpose and that check went with it.)
 """
 import argparse
 import hashlib
@@ -188,23 +187,6 @@ def row(bare, shot, name):
 
 def mean(xs, key):
     return sum(x[key] for x in xs) / len(xs)
-
-
-def middle(bare, shot, name, i, channel):
-    """The pixel of a coloured mote where `channel` moved most, as (wall rgb, shot rgb)."""
-    cx, cy = bare.centre(name, i)
-    best, at = -1.0, None
-    for y in range(int(cy) - 5, int(cy) + 6):
-        for x in range(int(cx) - 5, int(cx) + 6):
-            d = abs(shot.rgb(x, y)[channel] - bare.rgb(x, y)[channel])
-            if d > best:
-                best, at = d, (x, y)
-    return bare.rgb(*at), shot.rgb(*at)
-
-
-def linear_light(colour, a, wall):
-    """Source's blend: a of the mote over the wall, summed in linear light."""
-    return tuple((a * (c ** 2.2) + (1 - a) * (d ** 2.2)) ** (1 / 2.2) for c, d in zip(colour, wall))
 
 
 def sprite_integral():
@@ -377,24 +359,6 @@ def main():
     check("UPRIGHT  a mote's square is the screen's, not turned",
           corner >= 2.0 and side <= 0.1 * corner,
           "outside the square of a size-300 mote: %.2f px of coverage towards its corners, %.2f towards its sides" % (corner, side))
-
-    # ---- colour: each channel against linear light over the wall pixel it is on
-    for name, colour, alpha, channel, tol in (("D", (0, 128 / 255.0, 1.0), a_peak, 2, 0.09),
-                                              ("W", (1.0, 1.0, 1.0), a_peak * 26 / 255.0, 1, 0.05)):
-        err, walls, shots, wants = [0.0] * 3, [0.0] * 3, [0.0] * 3, [0.0] * 3
-        n = ROWS[name][2]
-        for i in range(n):
-            wall, shot = middle(m0, m2, name, i, channel)
-            want = linear_light(colour, alpha, wall)
-            for c in range(3):
-                err[c] += (shot[c] - want[c]) / n
-                walls[c] += wall[c] / n
-                shots[c] += shot[c] / n
-                wants[c] += want[c] / n
-        judged = [c for c in range(3) if walls[c] >= 0.15]
-        check("COLOUR  row %s is linear light's over this wall%s" % (name, "" if len(judged) == 3 else " (channels on a wall under 0.15 not judged)"),
-              bool(judged) and all(abs(err[c]) <= tol for c in judged),
-              "  ".join("%s wall %.2f drawn %.3f linear %.3f" % ("RGB"[c], walls[c], shots[c], wants[c]) for c in range(3)))
 
     print("PASS" if ok else "FAIL")
     return 0 if ok else 1

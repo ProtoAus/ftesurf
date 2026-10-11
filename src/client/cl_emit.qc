@@ -1108,27 +1108,184 @@ float  dm_fresh;                // Emit_MoteLook made a look in this call
 string dm_why;                  // "" = Source's motes; else why the orbs draw
 float *em_life;                 // [EM_MAX] a Source mote's mean life; 0 for anything else
 
-/*
-  Two things about the blend.  It is ONE / ONE_MINUS_SRC_ALPHA with both factors
-  computed, because Source blends in linear light and this framebuffer does not
-  (see Emit_FlameShader).  What linear light gives is a curve over the wall's
-  brightness and this blend is a straight line, so it is made exact at two
-  walls: a 0.25 grey, per channel, and white, for a grey of the mote's
-  brightness -- so a pale mote can never darken a bright wall.  The first cut
-  was exact on black instead, and a white mote at alpha 0.087 measured 0.108 too
-  bright on a 0.37 wall; this is 0.023 over there and 0.10 under on a 0.04 one
-  (the arm's row W).  A black mote is exact on any wall, which is what the rest
-  of the ruler uses.
+#define EM_BSPREAD 134217728    // 62 of the library's maps are larger, 46 of them with motes
 
-  `sort additive`, not the bucket a blendalpha particle gets by default: the
-  engine draws that one (unlitdecal) twice a frame, and a mote meant to cover
-  0.85 measured 0.975.  BACKLOG, "blended particles are drawn twice".
+float  em_expo;                 // what a mote's light is multiplied by on this map
+float  em_expokind;             // why: 0 the cvar, 1 no HDR, 2 the map's ceiling, 3 Source's,
+                                // 4 the map file was not read, 5 no motes here
+float  em_expoceil;
+float  em_hdr;                  // Emit_MapHDR's answer for em_hdrkey
+float  em_hdrmb;                // and the file's size, MiB
+string em_hdrkey;
+
+// 1: the map's HDR lighting is what is drawn; 0: it has none or LDR is chosen
+// (mod_vbsp.c's own test, lumps 53 and 8 of the header); -1: not read.
+// fread, fseek and fsize each load the WHOLE file on first use (pr_bgcmd.c,
+// FRIK_FILE_READ_DELAY), so the size is asked of the file system and a map
+// over EM_BSPREAD is left alone.
+float(string mname) Emit_MapHDR =
+{
+	local float fh, sh, sz;
+	local int *h;
+	local string k;
+
+	k = sprintf("%s %g", mname, cvar("hl2_favour_ldr"));
+	if (em_hdrkey == k)
+		return em_hdr;
+	if (em_hdrkey)
+		strunzone(em_hdrkey);
+	em_hdrkey = strzone(k);
+	em_hdr = -1;
+	sz = 0;
+	sh = search_begin(sprintf("maps/%s.bsp", mname), TRUE, TRUE);
+	if (sh >= 0)
+	{
+		if (search_getsize(sh) > 0)
+			sz = search_getfilesize(sh, 0);
+		search_end(sh);
+	}
+	em_hdrmb = sz / 1048576;
+	if (sz <= 0 || sz > EM_BSPREAD)
+		return em_hdr;
+	fh = fopen(sprintf("maps/%s.bsp", mname), FILE_READ);
+	if (fh < 0)
+		return em_hdr;
+	h = memalloc(1032);
+	if (fread(fh, h, 1032i) == 1032i)
+	if (h[0] == 0x50534256i)
+	{
+		em_hdr = 0;
+		if (h[215] > 0i)
+		if (!(cvar("hl2_favour_ldr") && h[35] > 0i))
+			em_hdr = 1;
+	}
+	memfree(h);
+	fclose(fh);
+	return em_hdr;
+};
+
+/*
+  What a mote's light is multiplied by.  Source scales every pixel by its
+  exposure (FinalOutput's TONEMAP_SCALE_LINEAR, UnlitGeneric and SpriteCard
+  alike) and this frame has none, so the motes take the most Source's can reach
+  on the map and nothing else does: the ceiling a logic_auto sets ("OnMapSpawn"
+  "tonemap,SetAutoExposureMax,1.2,0,-1", the commas 0x1b in newer maps), else
+  Source's own 2, and 1 where no HDR lighting is drawn.  Held to 1..2: a
+  ceiling under 1 darkens Source's whole frame, and the wall behind the mote is
+  not darkened here.  The map file is read only when the answer turns on it.
+*/
+void(string mname) Emit_Exposure =
+{
+	local string tok, key;
+	local float hdr, got, v, d, at, motes;
+
+	em_expoceil = 0;
+	em_expo = cvar("vbsp_emit_exposure");
+	if (em_expo >= 0)
+	{
+		em_expo = rint(bound(0.25, em_expo, 8) * 100) / 100;
+		em_expokind = 0;
+		return;
+	}
+	got = motes = FALSE;
+	at = -1;
+	v = 0;
+	getentitytoken(0);
+	while ((tok = getentitytoken()) != "")
+	{
+		if (tok != "{")
+			continue;
+		while ((key = getentitytoken()) != "" && key != "}")
+		{
+			tok = getentitytoken();
+			key = strtolower(key);
+			if (key == "classname")
+			{
+				if (tok == "func_dustmotes")
+					motes = TRUE;
+				continue;
+			}
+			if (key != "onmapspawn")
+				continue;
+			if (tokenizebyseparator(strreplace(chr2str(27), ",", tok), ",") < 4)
+				continue;
+			if (strtolower(argv(1)) != "setautoexposuremax")
+				continue;
+			// The latest wins, and of two at one delay the FIRST listed:
+			// Source puts each new action in front of the list (cbase.cpp:384).
+			d = stof(argv(3));
+			if (d <= at)
+				continue;
+			at = d;
+			v = stof(argv(2));
+			got = TRUE;
+		}
+	}
+	em_expo = 1;
+	em_expokind = 5;
+	if (!motes)
+		return;
+	em_expokind = 2;
+	em_expoceil = v;
+	if (got)
+	if (v <= 1)
+		return;
+	hdr = Emit_MapHDR(mname);
+	if (hdr < 0)
+		em_expokind = 4;
+	else if (!hdr)
+		em_expokind = 1;
+	else if (got)
+		em_expo = rint(min(v, 2) * 100) / 100;
+	else
+	{
+		em_expo = 2;
+		em_expokind = 3;
+	}
+};
+
+string() Emit_ExposureWhy =
+{
+	if (em_expokind == 0)
+		return "vbsp_emit_exposure says so";
+	if (em_expokind == 1)
+		return "no HDR lighting is drawn";
+	if (em_expokind == 2)
+		return sprintf("the map sets its ceiling to %g%s", em_expoceil,
+		               (em_expoceil < 1 || em_expoceil > 2) ? ", held to 1..2" : "");
+	if (em_expokind == 3)
+		return "HDR lighting, and Source's ceiling is 2";
+	if (em_expokind == 5)
+		return "the map has no func_dustmotes";
+	if (em_hdrmb * 1048576 > EM_BSPREAD)
+		return sprintf("the map file is %g MiB and is not read", rint(em_hdrmb));
+	return "the map file's header could not be read";
+};
+
+// One shader an exposure: shaderforname hands back the one it has by that name.
+string() Emit_MoteName =
+{
+	return sprintf("ftesurf_mote%g", rint(em_expo * 100));
+};
+
+/*
+  The blend is ONE / ONE_MINUS_SRC_ALPHA with both factors computed, because
+  Source blends in linear light and this framebuffer does not (see
+  Emit_FlameShader).  Linear light is a curve over the wall's brightness and
+  this is a straight line: exact on a black wall for any colour, exact on a
+  white one for a grey mote, and brighter between (white at alpha 0.087 is
+  0.108 over on a 0.37 wall).  Patch 648 had the low anchor on a 0.25 grey,
+  0.023 over there and 0.14 under on black, which is where a mote is seen; the
+  owner asked for the brightness (Patch 657).  One alpha is one slope for three
+  channels, so a coloured mote's is set midway between what its brightest and
+  its dimmest channel want: BACKLOG has what that costs on a pale wall.
 */
 void() Emit_MoteShader =
 {
-	shaderforname("ftesurf_mote",
+	shaderforname(Emit_MoteName(), strcat(
 		"{\nglslprogram\n{\n"
-		"!!ver 110\n"
+		"!!ver 110\n",
+		sprintf("#define GAIN float(%g)\n", em_expo),
 		"varying vec2 q;\n"         // across the engine's quad, -1..1, in its own frame
 		"varying vec3 ev;\n"        // eye space
 		"varying vec3 mote;\n"      // size / depth, life, age
@@ -1177,16 +1334,16 @@ void() Emit_MoteShader =
 		" vec2 p = vec2(d.x - d.y, d.x + d.y) * 0.7071;\n"
 		" a *= 0.25 * (tap(p + vec2(0.125, 0.375), he) + tap(p + vec2(-0.375, 0.125), he)\n"
 		"  + tap(p + vec2(-0.125, -0.375), he) + tap(p + vec2(0.375, -0.125), he));\n"
-		// 0.0474 is 0.25 ^ 2.2: the darker of the two walls the line is exact on.
-		" vec3 c = pow(look.rgb, vec3(2.2)) * a;\n"
-		" float ml = dot(c, vec3(0.3, 0.59, 0.11));\n"
-		" float g = (1.0 - a) * 0.0474;\n"
-		" float k = (pow(ml + 1.0 - a, 0.4545) - pow(ml + g, 0.4545)) / 0.75;\n"
-		" gl_FragColor = vec4(max(pow(c + g, vec3(0.4545)) - 0.25 * k, 0.0), 1.0 - k);\n"
+		// k is what the wall keeps: per channel, linear light's answer on white less the mote's on black.
+		" vec3 c = pow(look.rgb, vec3(2.2)) * a * GAIN;\n"
+		" vec3 s = pow(c, vec3(0.4545));\n"
+		" vec3 kk = pow(c + 1.0 - a, vec3(0.4545)) - s;\n"
+		" float k = 0.5 * (max(kk.r, max(kk.g, kk.b)) + min(kk.r, min(kk.g, kk.b)));\n"
+		" gl_FragColor = vec4(s, 1.0 - k);\n"
 		"}\n#endif\n"
 		"}\nsort additive\ncull disable\n"
 		"{\nmap $whiteimage\nblendfunc gl_one gl_one_minus_src_alpha\nrgbgen vertex\nalphagen vertex\nnodepth\n}\n"
-		"polygonoffset\nsurfaceparm noshadows\nsurfaceparm nodlight\n}\n");
+		"polygonoffset\nsurfaceparm noshadows\nsurfaceparm nodlight\n}\n"));
 };
 
 // Why this client draws the orbs instead, or "".
@@ -1233,10 +1390,11 @@ void(float i) Emit_MoteDefine =
 	nm = sprintf("ftesurf_dm%g", i);
 
 	// ftos, not %g: these are whole numbers past six digits.
-	s = sprintf("r_part %s\n{\ntexture ftesurf_mote\ntype normal\nblend blendalpha\nscalefactor 0\nscale %g\nrotation 0\nrgbf %g %g %s\nrgbrandf %g %g 0\n",
-	            nm, sc, smin, lmin,
+	s = sprintf("r_part %s\n{\ntexture %s\ntype normal\nblend blendalpha\nscalefactor 0\nscale %g\nrotation 0\n",
+	            nm, Emit_MoteName(), sc);
+	s = strcat(s, sprintf("rgbf %g %g %s\nrgbrandf %g %g 0\n", smin, lmin,
 	            ftos(stof(argv(0)) + stof(argv(1)) * 256 + stof(argv(2)) * 65536),
-	            smax - smin, lmax - lmin);
+	            smax - smin, lmax - lmin));
 	s = strcat(s, sprintf("alpha 0\nalphadelta 1\ndie %g\ncount 1\nspawnmode box\nspawnorg 0\nveladd %g\n",
 	            lmax, stof(argv(9)) ? 0 : 1));
 	s = strcat(s, sprintf("tcoords %s %s %s %s\n}\n",
@@ -1346,6 +1504,9 @@ void() Emit_RegisterCvars =
 	// func_dustmotes as Source draws them (Emit_MoteWhy); 0 keeps the
 	// ftesurf_dustmote orbs.  Read at map load.
 	registercvar("vbsp_emit_motes",   "1", CVAR_ARCHIVE);
+	// What the motes' light is multiplied by: -1 is the map's (Emit_Exposure),
+	// 1 Source without HDR.  Read at map load.
+	registercvar("vbsp_emit_exposure", "-1", CVAR_ARCHIVE);
 	registercvar("vbsp_emit_embers",  "1", CVAR_ARCHIVE);
 	registercvar("vbsp_emit_bubbles", "1", CVAR_ARCHIVE);
 	registercvar("vbsp_emit_fire",    "1", CVAR_ARCHIVE);
@@ -1850,6 +2011,7 @@ void() Emit_LoadForMap =
 	*/
 	em_drawn = 0;
 
+	Emit_Exposure(mname);
 	// Before the walk: the entity loop looks each effect_name up in this.
 	Emit_PsysLoad(mname);
 
@@ -2975,6 +3137,7 @@ void() Emit_List =
 				if (particleeffectquery(dm_fx[k], 0) != "")
 					tot = tot + 1;
 			print(sprintf("  func_dustmotes: Source's motes, %g looks asked, %g answering\n", dm_n, tot));
+			print(sprintf("  motes are lit at exposure %g: %s\n", em_expo, Emit_ExposureWhy()));
 			print(sprintf("  motes in range would keep %g alive; Source's pool is %g, so %.3f of them spawn\n",
 			              rint(dm_alive), DM_POOL, dm_thr));
 			if (dm_over)
