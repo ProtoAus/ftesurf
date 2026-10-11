@@ -68,6 +68,25 @@ the wheel did nothing there: the only way down was dragging the thin bar.
   which lands on its own), not this.
 - **Live since 11 Oct 11:41 UTC (22:41 here)** on both installs and all twelve
   lobbies. Restart the game to get it.
+## 00. 11 Oct — fire that looks like Source's (Patch 643)
+
+From your message: the scrolling HL2 fire was not showing, only the orbs.
+- **Nothing was lost.** The earlier work was the engine half (stepping a flame
+  sheet, Patch 531, in your game since) and test rigs. It was never joined to
+  the game, which is why you still saw orbs. This patch joins it.
+- **surf_anubis: the brazier bowls burn.** A real flame, bright in the middle,
+  with a few sparks. Big bowls (the 21 of size 128) burn bigger.
+- **surf_dune: each brazier has a small flame** in its glowing bowl.
+- **Please look and tell me:** is the flame the right size and brightness next
+  to what you remember from Source? I could not put the two side by side.
+- **Still orbs, on purpose for now:** the wall torches on surf_anubis. They are
+  a different kind of object, and in Source they are puffs too, not flames.
+- **Not drawn yet:** the smoke over a fire (Dune's braziers smoke in Source),
+  and Dune's other 42 fires, which come from the map's own particle file.
+- It needs Counter-Strike: Source or Half-Life 2 installed, which is where the
+  flame picture comes from. Without them the orbs stay. `emit_list` in the
+  console says which you have and why.
+- To see the old look again: `vbsp_emit_flame 0`, then load the map again.
 
 ## 00. 11 Oct — Steam pictures in the game (Patch 640)
 

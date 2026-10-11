@@ -51,6 +51,8 @@ client/cl_fog.qc
 // from CSQC_Init, Emit_LoadFromWorld from CSQC_WorldLoaded and Emit_Frame from
 // CSQC_UpdateView.  Like cl_fog.qc it needs nothing from anyone, so beside its
 // three siblings is early enough.
+// Patch 643: the frame table of Source's fire atlas, written by tools/flamesheet.py.
+client/cl_flamesheet.qc
 client/cl_emit.qc
 // Build 66.  A FIFTH independent walk of the same entity lump -- the decals,
 // sprites, fog and emitters are the other four, and no one of the five reads

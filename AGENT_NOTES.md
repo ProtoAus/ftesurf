@@ -4499,6 +4499,63 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   No product emitter, generated assets, owner install or fleet changed. Keep
   BACKLOG's integration/budget/compatibility/ship-set gates open.
 
+### env_fire in the game (Patch 643) -- 2026-10-11
+
+- `cl_emit.qc` draws `env_fire` as Source's `env_fire_tiny/_small/_medium/_large`
+  (`floor(firesize / 36)`, `c_fire_smoke.cpp:167`): the system, its `_b` child
+  and its embers, numbers out of `particles/fire_01.pcf`. EVERYTHING IS TEXT IN
+  CSPROGS: the r_part blocks go through `localcmd`, the shader is an inline
+  `glslprogram` in `shaderforname`, the frame table is the generated
+  `cl_flamesheet.qc`. A lobby hands a player csprogs.dat, never `particles/` or
+  `glsl/`. `emit_list` says which rule chose the look (`Emit_FlameWhy`).
+- THE ATLAS IS NEVER SHIPPED. It is drawn from the mounted game: Counter-Strike:
+  Source's and Half-Life 2's copies are one file (VTF 7.3, 5,601,084 bytes),
+  Momentum's is another (7.6, 1,160,144), and all three carry the same sheet --
+  `tools/flamesheet.py` refuses to write the table otherwise. `fs_addons.txt`'s
+  `steam:Momentum Mod Playtest/momentum` does not reach Momentum's `mount/`
+  vpks, so the game draws CS:S's.
+- `whichpack` ANSWERS "" FOR A FILE INSIDE A MOUNTED GAME'S .vpk, found or not.
+  The first probe said "no mounted game carries the atlas" while `flocate`
+  found it in `cstrike_pak_dir.vpk`. `search_begin` + `search_getsize` (as
+  `cl_banner.qc` probes a sound) answers both ways: measured present with the
+  mounts, absent with the CS:S and HL2 lines taken out of `fs_addons.txt`.
+- SOURCE BLENDS SPRITECARD IN LINEAR LIGHT; THIS FRAMEBUFFER BLENDS IN GAMMA
+  SPACE. Premultiplying in gamma space drew a fire that was mostly not there:
+  a quarter-covered layer adds a quarter where linear light adds half. The
+  shader writes the linear sum's own encoding and a destination factor that is
+  exact on black and on a 0.6 grey (`Emit_FlameShader`). Other Source
+  translucents that look thin here may be the same thing.
+- A BURST OF SCREENSHOTS STARVES THE EMITTER. Each shot stalls the client,
+  `Emit_Frame` will not catch a stall up, and a flame lives 1.2-1.75 s: six
+  shots 150 ms apart showed one full fire and five thin ones, and read as a bug
+  in the emission. 2.5 s apart every shot is full.
+- A COUNTER OF INTENT, AGAIN: with `texanim clamp` written as `texanim static`
+  every line of the arm still passes (the effects exist and answer the engine's
+  query) and the brazier's pictures hold a sixteenth of the flame
+  (`tools/p643fire.py`: mean 214 flame-bright pixels against 3,349). A
+  sequence's FIRST frame is a small flame, so the tiny and large fires only
+  halve: each group of shots has its own bar, set between the two builds.
+- THE COMMAND BUFFER HOLDS 64 KB AND DROPS WHAT DOES NOT FIT, whole, with one
+  console line (`Cbuf_AddText: overflow`, `cmd_maxbuffersize`). A size class
+  of fire is 14-16 KB of r_part text; the two maps with all four classes
+  (`surf_classics2`, `surf_road_to_hell`) are 61 KB. That fitted when sent in
+  one go (measured, with 4 KB to spare), and is sent a class a frame
+  (`Emit_FlameStep`) so the next thing added to it does not find the edge.
+- `!!ver 100-450` IS NOT A RANGE. The engine reads two numbers with `strtol`
+  (`gl_shader.c`, the `!!ver` branch), the second comes out as -450, and the
+  program is built at the minimum: `#version 110`. A range is `!!ver 100 450`.
+  The embedded shaders say `!!ver 110`, which is what was tested.
+- A SPRITE'S SIZE IS ITS TEXTURE'S. Source's embers are radius 1-3 of
+  `particle_glow_05`, down to half brightness at 0.12 of the sprite;
+  `ftesurf_dot` is at 0.37. At equal radius they drew the old orbs back.
+- A WORKTREE IS NOT A RIG UNTIL IT HAS WHAT GIT DOES NOT: `ftesurf/particles/*`
+  and `data/mapparticles.txt` (untracked, see BACKLOG), `fs_addons.txt`, the exe
+  and plugins, the built .dat. Without the first the log says `couldn't exec
+  particles/ftesurf.cfg` every second and nothing else is wrong.
+- A DRIVER STARTS THE GAME `SW_SHOWMINNOACTIVE` (`STARTUPINFO.wShowWindow = 7`).
+  `-WindowStyle Minimized` handed to the exe, as older drivers do, is ignored:
+  the window opens in front of the owner and the run prints focus lines.
+
 ## The milk visualizer (Patch 467)
 
 - `src/milk_sys.qc` (both VMs, like sui_sys.qc) is a MilkDrop-style feedback

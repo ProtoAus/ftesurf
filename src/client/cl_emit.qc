@@ -162,22 +162,46 @@
 float  em_fx[EM_FX_N];          // particleeffectnum handles, taken once at init
 
 // ------------------------------------------------------------------ emitters
-vector em_mins[EM_MAX];         // the spawn box, world space
-vector em_size[EM_MAX];         // maxs - mins
-vector em_mid[EM_MAX];          // its centre, for the cull
-vector em_vel[EM_MAX];          // base velocity, passed as pointparticles' dir
-float  em_jit[EM_MAX];          // extra omnidirectional speed, per particle
-float  em_rad[EM_MAX];          // cull radius, precomputed
-float  em_dist[EM_MAX];         // the entity's own DistMax
-float  em_rate[EM_MAX];         // EMISSIONS per second (not particles)
-float  em_burst[EM_MAX];        // particles per emission -- 1 except for sparks
-float  em_eff[EM_MAX];          // index into em_fx
-float  em_kind[EM_MAX];
-float  em_acc[EM_MAX];          // fractional emission accumulator
-float  em_want[EM_MAX];         // this frame's demand; 0 means culled
-float  em_lit[EM_MAX];          // fire only: may carry a dlight
-float  em_ltacc[EM_MAX];
+// EM_MAX each, in memalloc'd memory (Emit_Alloc): as global arrays these were
+// 11,520 of csprogs' 131,072 definitions, which sat 516 from the limit.
+vector *em_mins;                // the spawn box, world space
+vector *em_size;                // maxs - mins
+vector *em_mid;                 // its centre, for the cull
+vector *em_vel;                 // base velocity, passed as pointparticles' dir
+float  *em_jit;                 // extra omnidirectional speed, per particle
+float  *em_rad;                 // cull radius, precomputed
+float  *em_dist;                // the entity's own DistMax
+float  *em_rate;                // EMISSIONS per second (not particles)
+float  *em_burst;               // particles per emission -- 1 except for sparks
+float  *em_eff;                 // index into em_fx; EK_PSYS: the handle itself;
+                                // a sheet fire: its size class (see em_flfx)
+float  *em_kind;
+float  *em_acc;                 // fractional emission accumulator
+float  *em_want;                // this frame's demand; 0 means culled
+float  *em_lit;                 // fire only: may carry a dlight
+float  *em_ltacc;
 float  em_n;
+
+void() Emit_Alloc =
+{
+	if (em_mins)
+		return;
+	em_mins  = memalloc(sizeof(vector) * EM_MAX);
+	em_size  = memalloc(sizeof(vector) * EM_MAX);
+	em_mid   = memalloc(sizeof(vector) * EM_MAX);
+	em_vel   = memalloc(sizeof(vector) * EM_MAX);
+	em_jit   = memalloc(sizeof(float) * EM_MAX);
+	em_rad   = memalloc(sizeof(float) * EM_MAX);
+	em_dist  = memalloc(sizeof(float) * EM_MAX);
+	em_rate  = memalloc(sizeof(float) * EM_MAX);
+	em_burst = memalloc(sizeof(float) * EM_MAX);
+	em_eff   = memalloc(sizeof(float) * EM_MAX);
+	em_kind  = memalloc(sizeof(float) * EM_MAX);
+	em_acc   = memalloc(sizeof(float) * EM_MAX);
+	em_want  = memalloc(sizeof(float) * EM_MAX);
+	em_lit   = memalloc(sizeof(float) * EM_MAX);
+	em_ltacc = memalloc(sizeof(float) * EM_MAX);
+};
 
 // ------------------------------------------------------------------ counters
 float  em_seen[EK_N];           // found in the lump
@@ -217,6 +241,7 @@ string vbsp_em_map;             // lazy-reload latch, as cl_sprites.qc:115 uses.
                                 // only if the entity lump opened -- see there.
 float  em_throttle;             // last frame's budget scale, for the report
 float  em_demand;               // last frame's unthrottled demand
+float  em_fpsn, em_fpst;        // frames since, and the time of, the last emit_list
 
 void() Emit_LoadForMap;
 
@@ -490,6 +515,304 @@ vector(float i) Emit_PsysVel =
 };
 
 /*
+===========================================================================
+  env_fire the way Source draws it (Patch 643).
+
+  C_FireSmoke::Start (c_fire_smoke.cpp:165-190) picks ONE particle system by
+  floor(firesize / 36): env_fire_tiny, _small, _medium or _large, all four in
+  particles/fire_01.pcf.  Each is two layers of animated sprites cut from one
+  atlas (the system and its _b child) plus a few embers.  The numbers below are
+  those systems' own, read out of the .pcf with tools/pcf_resources.py.
+
+  NOTHING HERE IS A FILE.  The effects and the shader are text this progs hands
+  the engine, because a lobby gives a player csprogs.dat but not particles/ or
+  glsl/ (cl_playerfade.qc has the same reason).  The atlas is Valve's and is
+  never shipped: it is drawn from whichever mounted game carries it, and with
+  none mounted env_fire stays on the ftesurf_fire orbs.
+
+  NOT DRAWN: the *_smoke systems Source adds unless spawnflags 2 (39% of the
+  library's fires), env_fire_random_puff, and the blend between two frames.
+===========================================================================
+*/
+#define FL_SLOTS       13       // per size class: 6 + 6 flame effects, 1 embers
+#define FL_ATLAS       "materials/particle/fire_burning_character/fire_burning_character.vtf"
+
+float *em_flfx;                 // [4 * FL_SLOTS] handles, filled as classes are defined
+float  em_flwant;               // size classes this map's fires use, a bit each
+float  em_flmask;               // those of them defined so far (Emit_FlameStep)
+string em_flwhy;                // "" = this map's env_fire use the sheet; else why not
+
+// The system (layer 0, sequences 3-5) and its _b child (layer 1, sequences 0-2):
+//   radius min max | alpha min max | grey min max | rotation +- | spawn disc |
+//   lift of the centre in radii | rise | rise jitter xy z | acceleration up | fps
+string(float cls, float layer) Emit_FlameSpec =
+{
+	if (!layer)
+	{
+		if (cls == 0) return "16 20  80 180  155 189   8   7  0.25  10    16 6     70  20";
+		if (cls == 1) return "16 24  80 180  155 189   8  10  0.25  11.5  16 7.5   80  20";
+		if (cls == 2) return "16 32  80 180  177 222   8  19  0.3   22    16 10   115  27";
+		return               "24 32  80 180  161 222   8  20  0.3   20.5  24 8    100  20";
+	}
+	if (cls == 0) return "8 24   100 180  146 189  24   6  0.5    8     0 4     80  15";
+	if (cls == 1) return "24 32  100 180  146 189  24  12  0.475  38.5  0 14.5  70  15";
+	if (cls == 2) return "32 48  100 180  158 189  24  18  0.5    36    0 12   120  15";
+	return               "32 48  120 180  156 194  24  18  0.45   72    0 24    90  14";
+};
+
+// Particles a second: the system, its _b child, its embers.
+vector(float cls) Emit_FlameRates =
+{
+	if (cls == 0) return '8 8 3';
+	if (cls == 1) return '9 8 3';
+	if (cls == 2) return '17 7 8';
+	return '17 12 8';
+};
+
+/*
+  One layer, one sequence, one way round.  "lifetime from sequence" makes the
+  life the sequence's length at the layer's frame rate, so `die` is fixed and
+  the vertex alpha (1 falling to 0 at death) is the fraction of life left.
+
+  THE COLOUR CHANNELS ARE NOT A COLOUR.  pointparticles carries nothing per
+  particle, so the block randomises them and the shader reads them: red is the
+  particle's alpha ("Alpha Random"), green its grey tint ("Color Random"), blue
+  the layer's mean radius in units (for $startfadesize).
+
+  A sprite's half-side is 0.2652 * scale at scalefactor 1 and rotation 45
+  (particles/ftesurf.cfg, UNITS), so scale is the radius times 3.771.
+*/
+string(float cls, float layer, float seq, float flip, string nm) Emit_FlameBlock =
+{
+	local float rmin, rmax, rmid, die, fps;
+	local string s;
+
+	tokenize(Emit_FlameSpec(cls, layer));
+	rmin = stof(argv(0));
+	rmax = stof(argv(1));
+	rmid = (rmin + rmax) * 0.5;
+	fps  = stof(argv(13));
+	die  = Emit_FlameFrames(seq) / fps;
+
+	s = sprintf("r_part %s\n{\ntexture ftesurf_flame\ntype normal\nblend blendalpha\nscalefactor 1\nscale %g %g\nrotation %g %g\n",
+	            nm, rmin * 3.771, rmax * 3.771, 45 - stof(argv(6)), 45 + stof(argv(6)));
+	s = strcat(s, sprintf("rgb %g %g %g\nrgbrand %g %g 0\nalpha 1\nalphadelta %g\ndie %g\ncount 1\n",
+	            stof(argv(2)), stof(argv(4)), rmid,
+	            stof(argv(3)) - stof(argv(2)), stof(argv(5)) - stof(argv(4)), -1 / die, die));
+	// veladd 0: the direction pointparticles is handed carries nothing here.
+	s = strcat(s, sprintf("spawnmode ball\nspawnorg %g 0\norgbias 0 0 %g\nveladd 0\nvelbias 0 0 %g\nvelwrand %g %g %g\ngravity %g\n",
+	            stof(argv(7)), stof(argv(8)) * rmid, stof(argv(9)),
+	            stof(argv(10)), stof(argv(10)), stof(argv(11)), -stof(argv(12))));
+	return strcat(s, sprintf("texanim clamp %g\n", fps), Emit_FlameRows(seq, flip), "}\n");
+};
+
+// env_embers_tiny/_small/_medium/_large: glowing specks thrown up off the flame.
+//   life min max | spawn ball | height | rise | acceleration up
+// Radius 1-3 in Source, of particle/particle_glow_05, whose glow is down to half
+// at 0.12 of the sprite; ftesurf_dot is at 0.37 (both measured), so a third of
+// the size draws the same speck.  At full size they were the old orbs again.
+string(float cls, string nm) Emit_EmberBlock =
+{
+	local string s;
+
+	if (cls == 0)      s = "0.5 1   8  32  35  10";
+	else if (cls == 1) s = "0.5 2   8  44  35  20";
+	else if (cls == 2) s = "0.5 2  24  40  25  30";
+	else               s = "0.5 2  48  48  25  40";
+	tokenize(s);
+	// No alphadelta: the engine then fades it to nothing over its own life.
+	s = sprintf("r_part %s\n{\ntexture ftesurf_dot\nblend adda\nscalefactor 1\nscale 1.25 3.75\nrgb 169 16 16\nrgbrand 69 188 2\nrgbrandsync 1\nalpha 1\ndie %g %g\ncount 1\n",
+	            nm, stof(argv(0)), stof(argv(1)));
+	return strcat(s, sprintf("spawnmode ball\nspawnorg %g %g\norgbias 0 0 %g\nveladd 0\nvelbias 0 0 %g\nvelwrand 15 15 13\ngravity %g\nflurry 20\n}\n",
+	            stof(argv(2)) * 0.5, stof(argv(2)), stof(argv(3)), stof(argv(4)), -stof(argv(5))));
+};
+
+/*
+  Source's SpriteCard with $addself (fire_env_fire.vmt: $addself 1,
+  $overbrightfactor 2.15, $startfadesize .425, $endfadesize .525), as
+  spritecard_ps20b.fxc:139 and :173-178 compute it: the texture premultiplied
+  by its alpha and the particle's, then added to itself, drawn ONE /
+  ONE_MINUS_SRC_ALPHA.
+
+  SOURCE BLENDS THAT IN LINEAR LIGHT AND THIS FRAMEBUFFER DOES NOT.  Measured:
+  with the colour premultiplied in gamma space the same sprites drew a fire that
+  was mostly not there, because a quarter-covered layer adds a quarter where
+  linear light adds half.  So the colour goes out as the linear sum's own
+  encoding, and the destination factor is the one that makes the blend exact on
+  black and on a mid-grey of 0.6 (0.325 linear); between and beyond those it is
+  close, and a pile of layers levels off instead of burning out.
+
+  Registered again on every map load and every repair: a renderer restart
+  forgets a shader made this way.
+*/
+void() Emit_FlameShader =
+{
+	shaderforname("ftesurf_flame",
+		"{\nglslprogram\n{\n"
+		"!!ver 110\n"
+		"!!samps img=0\n"
+		"varying vec2 tc;\n"
+		"varying vec4 vc;\n"
+		"varying float dist;\n"
+		"#ifdef VERTEX_SHADER\n"
+		"attribute vec2 v_texcoord;\n"
+		"attribute vec4 v_colour;\n"
+		"void main()\n{\n"
+		" tc = v_texcoord;\n"
+		" vc = v_colour;\n"
+		" gl_Position = ftetransform();\n"
+		" dist = gl_Position.w;\n"
+		"}\n#endif\n"
+		"#ifdef FRAGMENT_SHADER\n"
+		"void main()\n{\n"
+		" vec4 t = texture2D(s_img, tc);\n"
+		// "Alpha Fade Out Random": over the last quarter of the life.
+		" float a = vc.r * clamp(vc.a * 4.0, 0.0, 1.0);\n"
+		// $startfadesize/$endfadesize: a sprite wider than the view fades out.
+		" float r = vc.b * 255.0;\n"
+		" a *= clamp((dist - r / 0.525) / (r / 0.425 - r / 0.525), 0.0, 1.0);\n"
+		" float pa = t.a * a;\n"
+		" vec3 c = pow(t.rgb, vec3(2.2)) * (2.15 * pa * (1.0 + 2.15 * a)) * pow(vc.g, 2.2);\n"
+		" float m = dot(c, vec3(0.3, 0.59, 0.11));\n"
+		" float k = (pow(0.325 * (1.0 - pa) + m, 0.4545) - pow(m, 0.4545)) / 0.6;\n"
+		" gl_FragColor = vec4(pow(c, vec3(0.4545)), 1.0 - k);\n"
+		"}\n#endif\n"
+		"}\nsort additive\ncull disable\n"
+		"{\nmap " FL_ATLAS "\nblendfunc gl_one gl_one_minus_src_alpha\nrgbgen vertex\nalphagen vertex\nnodepth\n}\n"
+		"polygonoffset\nsurfaceparm noshadows\nsurfaceparm nodlight\n}\n");
+};
+
+// Why this client cannot draw the sheet, or "" when it can.  The atlas is
+// looked for the way cl_banner.qc looks for a sound: whichpack answers "" for a
+// file inside a mounted game's .vpk, found or not (measured on this atlas).
+string() Emit_FlameWhy =
+{
+	local float h, n;
+
+	if (!cvar("vbsp_emit_flame"))
+		return "vbsp_emit_flame is 0";
+	if (!checkextension("FTE_PART_TEXANIM"))
+		return "this engine has no stepped particle sheets (Patch 531)";
+	if (!Milk_Supported())
+		return "the renderer is not OpenGL";
+	// The extension only says the scripted system was compiled in.
+	if (cvar_string("r_particlesystem") != "script")
+		return "r_particlesystem is not script";
+	n = 0;
+	h = search_begin(FL_ATLAS, TRUE, TRUE);
+	if (h >= 0)
+	{
+		n = search_getsize(h);
+		search_end(h);
+	}
+	if (n <= 0)
+		return "no mounted game carries the fire atlas (Half-Life 2 or Counter-Strike: Source)";
+	return "";
+};
+
+// Define size class cls's effects.  Slots 0-5 are the system's three sequences
+// each way round, 6-11 the _b child's, 12 the embers.  env_fire_tiny's system
+// draws sequence 3 alone, so its six slots share two effects.
+void(float cls) Emit_FlameDefine =
+{
+	local float s, seq, layer;
+	local string nm;
+
+	if (!em_flfx)
+		em_flfx = memalloc(sizeof(float) * 4 * FL_SLOTS);
+	for (s = 0; s < 12; s = s + 1)
+	{
+		layer = (s >= 6);
+		seq = floor((s - layer * 6) / 2);
+		if (!layer)
+			seq = (cls == 0) ? 3 : seq + 3;
+		nm = sprintf("ftesurf_fl%g%s%g%s", cls, layer ? "b" : "a", seq, (s & 1) ? "f" : "");
+		if (cls || layer || s < 2)
+			localcmd(Emit_FlameBlock(cls, layer, seq, s & 1, nm));
+		em_flfx[cls * FL_SLOTS + s] = particleeffectnum(nm);
+	}
+	nm = sprintf("ftesurf_fl%ge", cls);
+	localcmd(Emit_EmberBlock(cls, nm));
+	em_flfx[cls * FL_SLOTS + 12] = particleeffectnum(nm);
+	dprint(sprintf("emit: flame class %g defined\n", cls));
+};
+
+/*
+  ONE CLASS A FRAME, from Emit_Frame.  A class is 14-16 KB of text and the
+  command buffer drops, whole and with one console line, whatever does not fit
+  under cmd_maxbuffersize (65536; cmd.c, Cbuf_AddText).  surf_classics2 and
+  surf_road_to_hell use all four classes, 61 KB: sent in one go at map load it
+  fitted (measured, 52 of 52 effects), with 4 KB to spare and nothing else of
+  this file's in the buffer.  A fire whose class is not defined yet emits into
+  nothing for those few frames, which is harmless.
+
+  The shader goes first, and only here: a map with no env_fire never asks for
+  the atlas.  TRUE when it defined something -- the caller then leaves the
+  repair's probe alone for a second, because an effect defined this frame does
+  not answer particleeffectquery until the engine has drawn one.
+*/
+float() Emit_FlameStep =
+{
+	local float cls, bit;
+
+	if (em_flwant == em_flmask)
+		return FALSE;
+	for (cls = 0; cls < 4; cls = cls + 1)
+	{
+		bit = pow(2, cls);
+		if (em_flwant & bit)
+		if (!(em_flmask & bit))
+		{
+			if (!em_flmask)
+				Emit_FlameShader();
+			Emit_FlameDefine(cls);
+			em_flmask = em_flmask | bit;
+			return TRUE;
+		}
+	}
+	return FALSE;
+};
+
+// A renderer restart or an unload took the effects: forget them, and
+// Emit_FlameStep puts them back.  TRUE when it forgot something.
+//
+// Asked of the flame's OWN effect, not of ftesurf_dustmote_0: a client with no
+// particles/ftesurf.cfg fails that probe every second for ever, and a repair
+// hung on it defined 26 blocks again every second (measured: 39 times in one
+// run of the arm), each time emptying them of live flames.
+float() Emit_FlameRepair =
+{
+	local float cls;
+
+	if (!em_flmask)
+		return FALSE;
+	for (cls = 0; cls < 4; cls = cls + 1)
+		if (em_flmask & pow(2, cls))
+			break;
+	if (particleeffectquery(em_flfx[cls * FL_SLOTS], 0) != "")
+		return FALSE;
+	em_flmask = 0;
+	return TRUE;
+};
+
+// The effect for the next particle of a sheet fire of size class cls.
+float(float cls) Emit_FlameSlot =
+{
+	local vector v;
+	local float r, s;
+
+	v = Emit_FlameRates(cls);
+	r = random() * (v_x + v_y + v_z);
+	if (r < v_x)
+		s = floor(random() * 5.999);
+	else if (r < v_x + v_y)
+		s = 6 + floor(random() * 5.999);
+	else
+		s = 12;
+	return em_flfx[cls * FL_SLOTS + s];
+};
+
+/*
   Taken ONCE, at init, and never again -- including across map changes.
 
   particleeffectnum returns a stable handle even when the lookup fails, because
@@ -523,6 +846,9 @@ void() Emit_RegisterCvars =
 	registercvar("vbsp_emit_embers",  "1", CVAR_ARCHIVE);
 	registercvar("vbsp_emit_bubbles", "1", CVAR_ARCHIVE);
 	registercvar("vbsp_emit_fire",    "1", CVAR_ARCHIVE);
+	// env_fire from Source's own flame sheet where the client can draw it
+	// (Emit_FlameWhy); 0 keeps the ftesurf_fire orbs.  Read at map load.
+	registercvar("vbsp_emit_flame",   "1", CVAR_ARCHIVE);
 	registercvar("vbsp_emit_spark",   "1", CVAR_ARCHIVE);
 	// Off by default: a churning approximation of a static haze, on 45 maps.
 	registercvar("vbsp_emit_smoke",   "0", CVAR_ARCHIVE);
@@ -730,7 +1056,9 @@ void() Emit_LoadForMap =
 	local float  ssize, esize, jetlen, spread, initst;
 	local float  i, k, bucket, eff, kind, jit, burst;
 	local string effname;
-	local float  ps, j, pchild, opened;
+	local float  ps, j, pchild, opened, fcls;
+
+	Emit_Alloc();
 
 	// NOT written to vbsp_em_map here.  The latch is taken at the end of the
 	// walk, and only if the entity lump actually opened -- see the note there.
@@ -744,6 +1072,8 @@ void() Emit_LoadForMap =
 	em_n = 0;
 	em_any = 0;
 	em_frozen = em_clamped = em_over = em_child = 0;
+	em_flwant = em_flmask = 0;
+	em_flwhy = Emit_FlameWhy();
 	i = 0;
 	while (i < EK_N)
 	{
@@ -1136,6 +1466,10 @@ void() Emit_LoadForMap =
 				em_off[kind] = em_off[kind] + 1;
 				continue;
 			}
+			// Source's choice of system, from the size as written.
+			fcls = floor(firesize / 36);
+			if (fcls < 0) fcls = 0;
+			if (fcls > 3) fcls = 3;
 			if (firesize <= 0) firesize = 64;
 			if (firesize > 512) firesize = 512;     // 2782 occurs; it is not a flame
 
@@ -1182,6 +1516,16 @@ void() Emit_LoadForMap =
 			vel = '0 0 1' * (firesize * 0.55);
 			jit = firesize * 0.18;
 			eff = FX_FIRE;
+			if (em_flwhy == "")
+			{
+				// The sheet: every particle starts from the entity's origin and
+				// the effect spreads it.  eff is the size class, as -1 - class.
+				em_flwant = em_flwant | pow(2, fcls);
+				bmin = bmax = org;
+				col = Emit_FlameRates(fcls);
+				rate = col_x + col_y + col_z;
+				eff = -1 - fcls;
+			}
 		}
 		else if (kind == EK_SPARK)
 		{
@@ -1461,6 +1805,7 @@ void() Emit_Frame =
 	local float wdust, wember, wbubble, wfire, wspark, wsmoke, wstack, wpsys;
 	local vector eye, v;
 
+	em_fpsn = em_fpsn + 1;
 	if (!cvar("vbsp_emit"))
 		return;
 
@@ -1538,12 +1883,19 @@ void() Emit_Frame =
 		em_drawn = 1;
 		em_reload_t = time + 1;
 	}
+	if (Emit_FlameStep())
+		em_reload_t = time + 1;
 	if (time > em_reload_t && cvar("vbsp_emit_heal"))
 	{
 		em_reload_t = time + 1;
+		k = Emit_FlameRepair();
 		if (particleeffectquery(em_fx[FX_DUSTMOTE], 0) == "")
 		{
 			localcmd("exec particles/ftesurf.cfg\n");
+			k = TRUE;
+		}
+		if (k)
+		{
 			em_reload = em_reload + 1;
 			return;                 // the cbuf has not drained yet
 		}
@@ -1669,6 +2021,8 @@ void() Emit_Frame =
 				// picks a point inside the entity's brush.
 				if (em_kind[i] == EK_PSYS)
 					pointparticles(em_eff[i], em_mid[i], v, 1);
+				else if (em_eff[i] < 0)
+					pointparticles(Emit_FlameSlot(-1 - em_eff[i]), em_mid[i], '0 0 1', 1);
 				else
 					pointparticles(em_fx[em_eff[i]], Emit_PointIn(i), v, 1);
 				n = n - 1;
@@ -1784,6 +2138,32 @@ void() Emit_List =
 
 	print(sprintf("  demand %g/sec, budget %g, throttle %.3f\n",
 	              em_demand, cvar("vbsp_emit_budget"), em_throttle));
+
+	// env_fire: the sheet or the orbs, and which rule chose.  A class counts as
+	// answering only once one of its effects answers the engine's own query.
+	if (em_seen[EK_FIRE])
+	{
+		if (em_flwhy != "")
+			print(sprintf("  env_fire: orbs, because %s\n", em_flwhy));
+		else
+		{
+			tot = 0;
+			for (k = 0; k < 4 * FL_SLOTS; k = k + 1)
+				if (em_flmask & pow(2, floor(k / FL_SLOTS)))
+				if (particleeffectquery(em_flfx[k], 0) != "")
+					tot = tot + 1;
+			print(sprintf("  env_fire: flame sheet, size classes %g (1 tiny 2 small 4 medium 8 large), %g of their %g effects answering\n",
+			              em_flwant, tot, FL_SLOTS * ((em_flwant & 1) + (em_flwant & 2) / 2 + (em_flwant & 4) / 4 + (em_flwant & 8) / 8)));
+		}
+	}
+
+	// What a class costs, as an A/B: cl_maxfps 0, emit_list, wait, emit_list.
+	k = gettime(0);
+	if (em_fpst && k > em_fpst)
+		print(sprintf("  %g frames in %.2f s since the last emit_list, %.1f a second\n",
+		              em_fpsn, k - em_fpst, em_fpsn / (k - em_fpst)));
+	em_fpst = k;
+	em_fpsn = 0;
 
 	/*
 	  The handles -- AND THEY CANNOT TELL YOU WHETHER THE EFFECT RESOLVED.

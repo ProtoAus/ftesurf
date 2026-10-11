@@ -789,36 +789,43 @@ as proof that every source path was built into it. No FPS improvement is claimed
   `VMF_BGRA4444=19` unsupported. Correctly generated particle scripts cannot fix
   this. Falsifier: decode BGRA4444 channel/alpha fixtures exactly, load the real
   smoke texture with no fallback, and inspect emitted smoke against Source.
-- **Fire still uses generic orbs or unanimated sheets.** Lex identified
-  `surf_dune`/`surf_anubis`. `src/client/cl_emit.qc:Emit_LoadForMap` maps
-  `env_fire` to the generic `FX_FIRE`; its smoke-stack approximation does not
-  select the authored material. `tools/pcf.py:translate` emits a texture stem
-  but no VTF sheet frame selection; native `engine/client/p_script.c`'s
-  `tcoords`/`atlas` select a static cell at spawn, not animation over its life.
-  Patch 531 supplies separate native texframe/texanim stepping with bounded
-  arbitrary UV tables, lifetime/loop/clamp and a compiled-backend extension.
-  It is only the renderer prerequisite: product emitters/bake/installed bytes
-  are unchanged. Native colored-atlas and actual Dune/Anubis sheet controls act
-  in isolation; full map budgets, Source parity and deployment are not accepted.
-  Dune has 65 env_fire and 42 PCF fire instances (21 dune_fire_medium_03,
-  13 fire_medium_02, 8 fire_medium_02_nosmoke); Anubis has 161 env_fire and
-  498 env_smokestack. All Anubis stacks name particle/SmokeStack.vmt, a
-  ParticleSphere material: do not reinterpret every yellow stack as atlas fire.
-  Dune's custom flame selects sequence 2 of fire_particle_4, a 16-frame
-  sequence in VTF resource 0x10. Its SpriteCard VMT asks for addself .75 and
-  overbrightfactor 3.5; neither is equivalent to merely checking $additive.
-  A private single-pass, four-sprites/site, UV-stepped prototype produced
-  visible flames with bloom off, but is NOT a shipped or Source-exact loader.
-  Falsifier for the product fix: resolve the shared env_fire libraries as well
-  as embedded PCFs; consume authored UVs/timing/sequence and size/flags; preserve
-  child graph references and report unsupported material/operators. Verify
-  frozen-pose frame-only pixel changes, a repeated no-effect control, real
-  map return/cold load and archived off/low settings. Enforce visible-site,
-  sprite and overdraw budgets/LOD. Compare CPU/GPU costs against the ACTUAL
-  current emitter path, not just a matching-count polygon glow control;
-  production shared-PCF resolution, smoke/embers, old-client support and ship-set
-  checks remain open. Do not add mandatory full-screen bloom, depth captures or
-  dynamic-light/shadow passes to obtain a cheap bright flame.
+- **Source fire: what Patch 643 does not draw.** `env_fire` is Source's own
+  `env_fire_tiny/_small/_medium/_large` now (two flame layers and embers out of
+  the mounted atlas, `src/client/cl_emit.qc:Emit_FlameDefine`). Still open:
+  - **Smoke.** 5,300 of the library's 13,529 start-on fires are not smokeless
+    (spawnflags 2 clear), `surf_dune`'s 65 among them, and Source adds
+    `env_fire_*_smoke` to those: `particle/smoke1` and `vistasmokev1` sheets,
+    radius growing 5-7x, colour fading to grey. Falsifier: a Dune brazier
+    beside Momentum's.
+  - **Don't drop (spawnflags 16) is read as a light switch.** A fire WITHOUT it
+    is traced 1024 down and burns on what it hits (`fire.cpp:701`); 4,309 fires
+    on 85 maps (`surf_ace`, `surf_1day`, ...). `Emit_LoadForMap` draws every
+    fire at its origin and uses bit 16 for `em_lit`; Source's glow switch is 32.
+    Falsifier: one such fire's flame height against its floor, traced and not.
+  - **`info_particle_system` fires.** `surf_dune`'s 42 (`dune_fire_medium_03`,
+    `fire_medium_02`) have no bake; `tools/pcf.py:translate` writes no sheet
+    table and reads the first embedded PCF only. `tools/pcf_resources.py`
+    resolves the whole graph read-only (61 libraries for Dune, no errors) and is
+    what a bake should consume. Dune's flame is sequence 2 of `fire_particle_4`,
+    `$addself .75`, `$overbrightfactor 3.5`.
+  - **`surf_anubis`'s 498 torches** are `env_smokestack` on
+    `particle/SmokeStack.vmt` (a ParticleSphere) and still draw as orb jets
+    beside the new braziers. Not atlas fire in Source either.
+  - `env_fire_random_puff` (small fires, 0.07 a second), `$blendframes` and
+    `env_fire_large`'s fade to black are not drawn.
+  - **Cost is measured on one machine.** RTX 2080 SUPER, 1920x1111, one brazier
+    200 units away and about 48 fires inside the cull (1,116 live flame
+    particles at 23 a fire): 1,193 and 1,229 frames a second with no fire, 1,046
+    and 1,066 with the sheet, 1,122 and 1,139 with the orbs (two runs; a third
+    on a busy machine read 528 against 517, so one run is not a measurement).
+    The laptop's Intel GPU is not measured, and it is where overdraw costs.
+- **`ftesurf/particles/` is not in git.** `.gitignore`'s allow-list has no line
+  for it, so the hand-written `ftesurf.cfg`, `ftesurf_src.cfg` and
+  `ftesurf_avatar.cfg` (and the two baked maps) exist only in this install and
+  in release archives; `C:\FTEQuake` has no copy at all. A fresh clone draws no
+  Source particles and says `couldn't exec particles/ftesurf.cfg` once a
+  second. Falsifier: `git ls-files ftesurf/particles` lists the seven files and
+  a worktree's client loads a map without that line.
 - **Water's depth fog/capture budget remains incomplete.** Patch 523 adds
   capture-free mode 4 and repairs cheap reflection tint/view frame/signed scroll.
   Mode 1 still captures refraction; mode 2 captures refraction/reflection.

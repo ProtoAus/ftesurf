@@ -33,6 +33,15 @@ patch    647
 # asks for Enter. One sentence on surfd's sign-in page says what a link shows.
 # menu.dat and surfd/accounts.py: no engine source, server QC, csprogs, recorder,
 # evidence, ranking or Build change.
+# Patch 643: env_fire is drawn the way Source draws it. The size picks one of
+# env_fire_tiny, _small, _medium and _large (floor(firesize / 36)); each is two layers
+# of animated flame out of Valve's own atlas, read from the player's mounted game, plus
+# embers. The effects and the shader are text inside csprogs, so a lobby delivers them.
+# With no mounted atlas, an engine before Patch 531, a renderer other than OpenGL or
+# vbsp_emit_flame 0, the old orbs draw and emit_list says which. cl_emit.qc's fifteen
+# per-emitter arrays moved to memalloc (11,400 of csprogs' definitions back).
+# csprogs only: no engine source, server QC, surfd, recorder, evidence, ranking, default
+# or Build change (commit and tag above stay).
 # Patch 640: Steam profile pictures in the game. The client fetches a linked player's
 # picture from surfd as text (/api/board?avatar=<mark>, Patch 639), uploads the pixels
 # and draws it before the name: on the TAB board's Online rows, in the room list (where
