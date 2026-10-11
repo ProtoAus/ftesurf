@@ -87,6 +87,60 @@ pixel for pixel.
   what is still expensive (`hud_lines_nums 2` on whole lines costs about 4 ms
   by itself), so fifty lines also needs those made cheaper.
 
+## 00. 11 Oct — every KSF and Momentum map, and new ones as they come out (Patch 644)
+
+From your message. What I found, what runs now, what is not done.
+
+**What I found.** The Pi was serving 767 maps of the 1,753 we list: half of
+KSF's (465 of 929) and a third of Momentum's (379 of 1,164). The restore
+after the 5 Oct delete had stopped at `surf_k`, and nothing ever fetched a
+new map: the six-hourly scan on this PC only wrote a list.
+
+**What runs now.**
+- The Pi holds 1,857 maps: every Momentum Main and Unlisted map (758), every
+  Beta map (319), and 951 of the 952 on KSF's site (one has no download
+  there). 586 went back up from this PC; a watcher on the Pi fetched 488.
+- That watcher runs every six hours for good. It reads Momentum's own list
+  and KSF's own site and downloads any map we lack, with Momentum's zones.
+  KSF's site lists 952 maps; the Drive and sheet you linked stop at 929, and
+  the OuiSURF GitHub page is that same Drive.
+- Beta maps: Momentum shows that list only to a signed-in game, so it comes
+  from this PC's Momentum install when the six-hourly scan runs.
+- KSF records: most KSF main boards held one page (20 rows), because the
+  Pi's crawl spent its budget on stage boards. It now fills every map's main
+  board first, to 200 rows, and a map somebody opens to 1,000. Same request
+  rate, so about a day and a half to get round. The wheel (below) is how you
+  scroll to them.
+
+**Please look.**
+1. **Map list, CS:S and Momentum libraries.** It offers 1,787 maps now (1,279
+   in the 0.1.24 download, about 700 before). Pick one you never had and
+   host it: it should download and, if it is a Momentum map, have a timer.
+   Other players get the longer list with the next release.
+
+**Half of them have no timer, and that is not new.** 937 of the 1,857 have
+start and end zones. KSF publishes no zones, so 482 of its own maps load and
+cannot be timed; so do 198 Beta maps (Momentum only gives zones for approved
+maps) and 45 approved ones.
+
+**Not done, and yours to decide.**
+- **A CS:S or Momentum version of one map.** Not built as a switch. Where
+  both have a map by one name the Pi keeps Momentum's file under that name,
+  and now also fetches KSF's own file as `<name>_css` (20 are in, about 380
+  to compare, 20 every six hours). Each shows as its own row in the CS:S
+  library and has no timer yet: it needs zones fitted to it. I did not take
+  those files from your Counter-Strike folder: of six I compared, three were
+  a third version.
+- **Map updates are off.** 49 maps we hold are older than Momentum's current
+  file (bhop_eazy among them). Replacing one changes what its times were set
+  on, so the watcher reports them and leaves them. Say if it should follow.
+- **A new map reaches other players only with a release**, because the map
+  list ships inside the game. A list the game fetches itself is the piece
+  that would make "future maps" automatic for everyone.
+- The bonus-tier sheet is not read.
+- **Live since 11 Oct 12:38 UTC (23:38 here)** on the Pi. Nothing in the game
+  changed for this.
+
 ## 00. 11 Oct — the mouse wheel scrolls the board (Patch 646)
 
 From your message ("load more than 1 page of KSF records"). In the game the

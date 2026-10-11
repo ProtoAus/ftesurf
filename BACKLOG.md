@@ -76,11 +76,20 @@ From its one review (read, not run) and what the arm does not reach.
   ships; the Pi writes no list of its own. Wanted: the watcher writes it, a
   public route serves it (nginx: needs the owner's sudo, `maps.nginx` is a
   list of locations) and the menu fetches it as `cl_zonedl.qc` fetches zones.
-- **This PC's six-hourly scan runs `C:\FTESurf\tools\mapscan.py`,** and that
-  checkout was 100 commits behind origin/main on 11 Oct, with uncommitted
-  files of its own. Until it is brought up, the task's `mapdl.txt` has no row
-  for a map only KSF's site lists or for a `_css` build, and sends no Beta
-  list. Check: `data/mapscan.log` says "the Pi's catalogue: N names".
+- **This PC's six-hourly scan runs `C:\FTESurf\tools\mapscan.py`,** whatever
+  that checkout holds (`ed14d91` since 11 Oct; nothing keeps it at main). An
+  old one writes no row for a map only KSF's site lists or for a `_css`
+  build, and sends no Beta list. Check: `data/mapscan.log` says "the Pi's
+  catalogue: N names".
+- **Half the library has no clock.** 920 of the 1,857 maps held on 11 Oct
+  have no zone file: 482 of the 549 only KSF lists (KSF publishes none), 198
+  of the 319 Beta maps (Momentum's zone query answers 401 for a submission;
+  a PC that has played one can copy its file up with `tools/mapsync.py`), 45
+  approved, and 195 of the 231 neither list names. Six of those 45 are zones that did not hash to `zoneHash`
+  (surf_bewatermyfriend, surf_colum_up, surf_fortress, surf_het,
+  surf_meridional, surf_reytx): `zone_bytes` could not rebuild the published
+  bytes from the reply. Check one: `python3 mapwatch.py --go --max 0` prints
+  `not had` and `state.json` holds `z:<name>:<hash>`.
 - **A new map has no tier row, picture or stage count** until
   `tools/mapmeta.py` is run by hand: the scan does not run it, because a
   re-run has lost rows ("Re-running `tools/mapmeta.py` LOSES DATA", below).

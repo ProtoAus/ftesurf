@@ -8639,4 +8639,32 @@ blind fallback in `ui_map_backdrop` alive for as long as it lived.
   (`catalogue.json` is what `mapscan.py` reads back); log
   `logs/mapwatch.log`. About 10 list requests a run when nothing is new.
 - **THE SCAN ON THIS PC RUNS `C:\FTESurf\tools\mapscan.py`**, and that
-  checkout is not kept at origin/main: the task runs whatever is there.
+  checkout is not kept at origin/main: the task runs whatever is there. It
+  was 101 commits behind until the 0.1.24 release moved it on 11 Oct, and was
+  fast-forwarded to `ed14d91` after the fill.
+- DEPLOYED 11 Oct from `ed14d91`: `mapwatch.py` and `ksfimport.py` to
+  `/srv/nvme/surfd` at 12:38Z by `surfd-deploy.ps1 -Only ... -NoBackup
+  -NoReload` (the whole suite ran in the stage first). The first live run
+  installed three maps: mode 0644, zones with them, `play.proto.bar/maps/
+  bhop_25.bsp` 206, the client's zone URL the same bytes, and a throwaway
+  headless server printed `zones(sv): 4 on bhop_25 (maps/zones/online)`.
+- THE FILL, 12:40Z to 13:36Z (`--max 600 --max-gb 40 --zones 500 --variants
+  20`): 340 requests, 505 downloads, 485 maps and 20 `_css` builds, 11.5 GB,
+  54 MB of memory, no refusal. After it: 1,857 BSPs, every file 0644, no
+  leftover; held 758 of 758 approved, 319 of 319 Beta, 951 of KSF's 952 (one
+  has no archive); a dry run says `new: 0`. 382 names are still to compare
+  for a `_css` build, 20 a run. The crontab line went in at 12:40Z (the one
+  before it is `data/mapwatch/crontab.pre644`).
+- A MAP HELD IS NOT A MAP TIMED. 937 of the 1,857 have a zone file (871 in
+  `zones/online`, 66 local): 713 of the 758 approved, 121 of the 319 Beta, 67
+  of the 549 KSF lists alone. Six approved maps' zones did not hash to
+  `zoneHash` and were not written (surf_bewatermyfriend, surf_colum_up,
+  surf_fortress, surf_het, surf_meridional, surf_reytx); 84 held zone files
+  differ from the published one and were left.
+- THE CRAWL ORDER, SEEN: of the boards fetched in the two hours before the
+  deploy 7 of 149 were Forward main boards; in the first tick after it, 8 of
+  10. 367 of 450 main boards held one page at 12:43Z (372 of 448 that
+  morning): at 8 new pages a tick, about a day and a half to 200 rows each.
+- `mapscan.py --go` from `C:\FTESurf` at 13:40Z: the Pi's catalogue 1,647
+  names, 37 the roster did not have; 319 Beta names sent; `mapdl.txt` 1,787
+  rows (1,279 in the 0.1.24 archive, 705 lines before that).
