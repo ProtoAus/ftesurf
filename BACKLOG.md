@@ -5,6 +5,44 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Run lines by time: what Patch 632 left -- 2026-10-11
+
+From its one review; measured there unless said.
+
+- **A line is ranked by its window's last sample, not by the run's time.**
+  `cl_lines.qc:Line_Time`. An import whose samples stop short of its finish
+  ranks by its length: `cfg/test/momflag.rec` ends at 24.12 s (`end 1608`) and
+  holds samples to 3.18 s. One fixture; how many live imports are like it was
+  not counted. A native file's last sample is a tick before its finish, an
+  unfinished demo ranks by how far it got. The repair is the run's own time per
+  slot (the `end` record, or the window's bounds for a stage). Falsifier: that
+  file and `runlines_peaks.rec` with the same leg, `replay colours`, the `lnce`
+  place.
+- **`reset all` restores a saved value, not the shipped one, for a row that only
+  `registercvar` creates, on an install whose default.cfg predates the row.**
+  `cl_hudedit.qc:HE_ResetCvar` reads `cvar_defstring`, and a saved `seta` line
+  that runs before the game code makes the saved value the default. Patch 632
+  wrote literals for its own five; every other such row is as it was.
+  Falsifier: a config with `seta <row's setting> <non-default>`, a default.cfg
+  without that `set` line, `hud_edit resetall`, read the setting.
+- **The Run graph's curves and legend keep the graph's palette**, so a line
+  that is red on the map (ranked last) can be mint green in the graph; run 1
+  is sky blue there, the colour of your own line on the map
+  (`cl_linegraph.qc:LineGraph_Colour`, `cl_plot.qc:Plot_Series`). The name
+  beside the line on the map follows the line since this patch. lextest.
+- **"speed" on your own line: a new attempt's first quarter second** (16
+  samples, until its first `Line_End`) is drawn against the other speed lines'
+  range, or the fast end's green when there is none. Read from the code.
+- **A chip is drawn unlit at value 0** (`cl_hudedit.qc:1671`), so `speed`
+  looks switched off on both colour rows. The old row did the same.
+- **One run's labels read a different E in slot 0 and in a board slot** (E -672
+  against E -1297 at one mark, `p632_same.png` of the arm). Older than this
+  patch; not looked into.
+- **`hud_watch_path_color` typed at the console** is accepted in silence on a
+  config that ever saved it and is an unknown command on a fresh install.
+- **Not measured:** the nine older arms that set the colouring were read, not
+  run; the reset literals on an install with an older default.cfg (the arm's
+  rig has this patch's, where the reset worked before them too).
 ## The site under three million imported rows -- 2026-10-11
 
 - **The site's maps list is built inside a request** (Patch 634 took it from 12 s

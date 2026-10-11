@@ -242,7 +242,8 @@ waitms 250
 screenshot vf_empty.png
 set hud_watch_path_px 6
 set hud_watch_path_far 0
-set hud_watch_path_color 0
+set hud_lines_color_others 0
+set hud_lines_color_own 0
 set hud_lines_marks 0
 set hud_lines_nums 0
 set hud_trail 0

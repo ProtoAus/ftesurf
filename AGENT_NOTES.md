@@ -4621,6 +4621,76 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+### Run lines: a colour for your line, one for the others, a fourth Labels state (Patch 632) — 2026-10-11
+
+- TWO GROUPS, ONE SETTING EACH. `hud_lines_color_own` colours the live trail's
+  two slots, `hud_lines_color_others` slot 0 (the open demo) and the board's
+  1..8. 0..4 are the five readings `hud_watch_path_color` had; 5
+  (`LN_CM_PLAIN`, both defaults) is the group's plain colour: `LN_OWNCOL` blue,
+  or the line's place by time. `cl_lines.qc:Line_Mode` maps a slot to its group.
+- BY TIME IS OVER THE LINES SHOWN, LEG BY LEG (`Line_Rank`, every frame, nine
+  slots). A slot's time is its window's end less the clock the window counts
+  from (`ln_start`), so a stage line ranks by the stage's time, and only
+  against lines of its own track and leg: a ticked line outlives the leg the
+  board showed, and a stage beside a whole run placed first whatever the runs
+  were. Equal times share a place (a run both watched and ticked is one run in
+  two slots, and came out red over green). Not ranked: a hidden group
+  (`hud_lines_board 0`, `hud_watch_path 0` or path mode 0, where no drawer
+  draws the demo) and a line with nothing in its window. One line alone is green.
+- `hud_watch_path_color` IS NO LONGER REGISTERED OR READ. The editor writes
+  `seta` on every click and a saved value pins a setting against a new default,
+  so the new look went under new names. A config that had chosen gain, contact,
+  energy or air control (1..4) keeps it for both groups, once: the old name is
+  then set to 0, or the next start would undo a later choice of plain. Nine
+  test cfgs and `tools/visual_fades_smoke.py` set both new names where they
+  set the old one. The five readings are what they were: 574 points of
+  `p492voy.rec` in each, the old name on the build before against the new
+  names on this one, 0 differ.
+- YOUR OWN LINE HAD NO SPEED RANGE, before this patch too. Only `Line_Range`
+  set `ln_lo/ln_hi` and nothing calls it for the trail, so "speed" over your
+  line alone was one flat red (58 of 58 points, the review; the old default
+  did the same). `Line_End` now takes the trail's range (`Line_SpeedRange`),
+  and the shared ramp is over the lines that are in the speed colouring, not
+  every line that is on. A new attempt is not on until its first `Line_End`
+  (16 samples).
+- AN IMPORTED LINE'S BLUE TINT (`hud_watch_path_foreign`) is over a reading
+  only: a plain colour pulled toward blue would say neither. `replay colours`
+  prints `lncr <ramp lo> <hi> <slot lo> <hi> <on>` and ends `lnce <mode>
+  <ranked> <place> <tint> <of> <age>`: the tint is what the slot was last DRAWN
+  with (`ln_tintd`; `ln_col` is before the blend), `of` the lines of its leg,
+  `age` the seconds since a drawer reached it, -1 never.
+- `hud_lines_nums 3` is the tops and bottoms alone: a contact keeps its chevron
+  and gives up its number, unless it IS one. Patch 627 folds a turn within a
+  sample of a contact mark into that mark (1 of 11 bottoms of `p492voy.rec`, 2
+  of 5 of `runlines_peaks.rec`); `ln_efd` flags the mark, `Line_LabelOn` is the
+  one gate, and `replay marks` prints it per mark (`lng`) with the flagged ones
+  (`lnf`). The chip's order is off, contacts, peaks, both (0 1 3 2).
+- A NAME BESIDE A LINE wears the line's plain colour (`cl_linegraph.qc`); the
+  graph's own curves and legend keep the graph's palette (lextest).
+- THE NEARBY-PLAYER ROWS left the pane (`cl_playerfade`, `_near`, `_far`:
+  console only, and `lines` says so with `seta`). `HE_ResetAll` resets them and
+  the two colour rows with LITERALS: on an install whose default.cfg predates a
+  setting, the saved `seta` line creates it first, its "default" is then the
+  saved value (`registercvar` leaves an existing name alone), and
+  `HE_ResetCvar` writes back what it found (the review, on release 0.1.23's
+  default.cfg). Every row that only `registercvar` creates has this; BACKLOG.
+- fteqcc DIES WITH NO OUTPUT (exit 0xC0000005) ON A NAME DECLARED TWICE. Here
+  `vector ln_pc[LN_SLOTS]` beside an older `vector ln_pp, ln_pc;`; in Patch 631
+  a function in `cl_board.qc` naming a global that `cl_hud.qc`, a later file,
+  declares. `build.ps1` shows nothing: run `fteqcc64.exe -srcfile cl_progs.src`
+  in `src/` with its output to a file, and add the new declarations back one
+  at a time.
+- THE ARM. `tools/runlines_smoke.py ftesurf/cfg/test/p632lines.cfg --mount
+  --output-dir <owned dir>`, then `tools/test_p632lines.py <log>`: 38 checks
+  (a saved colouring carried over, reset all, the pane's rows and clicks, your
+  line under three colourings, lines by time on one leg, on two, tied, watched
+  and ticked, hidden; the import's tint; labels). A place's colour is worked
+  out in the grader from the place. A build with the review's six fixes taken
+  out fails the 8 checks for them and cannot be measured on 1. The first cut's
+  "a reading when asked" passed on one flat colour: it sampled the line along
+  the start platform, where every sample is 260 u/s, so it could not tell a
+  line with no range from a constant speed. It samples after the ramp now.
+
 ### The Boarding window's levels (Patch 631) — 2026-10-11
 
 - THE WINDOW'S ENERGIES ARE LEVELS WITH THEIR OWN ZERO. `board_ein` is what you

@@ -2163,7 +2163,11 @@ void() LineGraph_WorldLabels =
 		q = at + [6, 0 - sz - 6];
 		// Over sky or a pale wall the colour alone is not enough.
 		drawstring(q + [ln_px, ln_px], LineGraph_Name(s), [sz, sz], '0 0 0', 0.7, 0);
-		drawstring(q, LineGraph_Name(s), [sz, sz], LineGraph_Colour(s), 0.95, 0);
+		// Patch 632: beside a line in a plain colour the name wears that colour (the
+		// graph's own was mint green on a line ranked last and drawn red).
+		drawstring(q, LineGraph_Name(s), [sz, sz],
+		           (Line_Mode(s) < LN_CM_PLAIN) ? LineGraph_Colour(s)
+		             : ((s >= LN_S_TRAIL) ? LN_OWNCOL : ln_rk[s]), 0.95, 0);
 	}
 	Font_Set(f0);
 };

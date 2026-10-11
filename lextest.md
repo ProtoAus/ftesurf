@@ -11,6 +11,44 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — your HUD list, part 3: Run lines (Patch 632)
+
+"Remove the players nearby/fade options ... 'Labels' all on, or one or the
+other ... your line in a nice blue colour, and everyone else you turn on in a
+range of green to red based on who has the best time ... change the colour of
+your line and everyone elses seperately."
+
+- **hud_edit, Run lines** has ten rows. Gone from it: Nearby players, Hidden
+  within, Opaque beyond (still `cl_playerfade`, `cl_playerfade_near` and
+  `cl_playerfade_far` in the console, and "reset all" still resets them).
+- **Labels**: off, contacts, peaks, both. `peaks` is new: numbers at the top
+  of each arc and the bottom of each ride only; a contact mark keeps its
+  chevron without a number.
+- **Your line** and **Other lines**, a row each: its plain colour, or speed,
+  gain, contact, energy, air control. The defaults are yours blue and the
+  others by time: the fastest green, the slowest red, yellow between, one line
+  alone green. "Others" is the open demo and every ticked board line; hiding
+  the demo or the board's lines re-ranks what is left.
+- Your saved `hud_watch_path_color 0` is no longer read, so you get the new
+  colours without touching anything. Your labels stay off (`hud_lines_nums 0`
+  in your config).
+
+Yours to look at:
+1. The blue, and the green to yellow to red ramp. Say if you want others.
+2. At the defaults an imported (Momentum) line is coloured by its time like
+   any other. The pull toward blue that used to mark it applies only when the
+   others are on speed, gain, contact, energy or air control.
+3. The Run graph's curves and legend keep the graph's own colours, so a run's
+   colour on the map and in the graph differ (the name drawn beside a line on
+   the map does follow the line). Say if the graph should match too.
+4. Lines are ranked against lines of the same stage or main only, and equal
+   times share a colour: a run you are watching and have also ticked is one
+   colour, not two.
+5. `Your line: speed` used to draw one flat red when no other line was on (the
+   old default did too); it is coloured over your own run's range now.
+6. A config that had the old single setting on gain, contact, energy or air
+   control keeps that for both rows. Speed, the old default, becomes the new
+   blue / by time: it cannot be told from never having chosen.
 ## 00. 11 Oct — banning a Steam account (Patch 633)
 
 Live since 11 Oct 03:16 UTC.
@@ -1416,13 +1454,13 @@ Two defaults were my choice and are worth disagreeing with if they read badly:
 | Try | What it should do |
 |---|---|
 | `hud_lines_win 6` then `hud_lines_winf 2` | show only 6 s of run behind you and 2 s ahead, instead of the whole line. This is the "follow the run, not the room" mode and it is OFF by default |
-| `hud_watch_path_color 2` | ground amber, ramp cyan, air pale |
-| `hud_watch_path_color 3` | energy gained or lost, green to red, against the most air strafing can physically add |
-| `hud_watch_path_color 4` | air control: green where your turn rate matched the target for that moment, red where it did not, **grey where there is no answer** |
+| `hud_lines_color_others 2` (your own line: `hud_lines_color_own`; one setting, `hud_watch_path_color`, until Patch 632) | ground amber, ramp cyan, air pale |
+| `hud_lines_color_others 3` | energy gained or lost, green to red, against the most air strafing can physically add |
+| `hud_lines_color_others 4` | air control: green where your turn rate matched the target for that moment, red where it did not, **grey where there is no answer** |
 | `hud_lines_nums 2` | numbers at the peaks too (where vertical speed turns over). Dense on a bhop run |
 | `c` (hud_edit) → "Run lines" | all 21 settings with tooltips, no console needed |
 
-**The one to look at hardest is `hud_watch_path_color 4`.** It is the strafe
+**The one to look at hardest is `hud_lines_color_others 4`.** It is the strafe
 bar's own grade, computed per sample — so the line and the bar should never
 disagree about one moment. If you find a stretch where the line says green and
 the bar says otherwise while you sit on that frame, that is a real finding and
@@ -1833,7 +1871,8 @@ measuring.
 
 **a) The blue tint reads as lavender, not as a glow, and I am not sure it is
 enough.** `hud_watch_path_foreign 0.55` pulls an imported line's colour toward
-blue. It composes with `hud_watch_path_color` rather than replacing it, which is
+blue. It composes with the five readings (`hud_lines_color_others` 0 to 4 since
+Patch 632; not with a plain colour) rather than replacing them, which is
 the part I am confident about — a Momentum line can still be read for speed or
 contact AND say where it came from. But blending red toward blue makes mud
 rather than light, and against `surf_4am`'s orange it is subtle. Compare
@@ -2881,7 +2920,7 @@ that actually touched the ramp.
   the stamp can be one tick late).
 - Its numbers are the exit's own now, so an exit speed can read differently
   from before.
-- With the contact colouring (`hud_watch_path_color 2`) the ramp colour ends
+- With the contact colouring (`hud_lines_color_others 2`) the ramp colour ends
   at the same place.
 - Your own live line behind a ping is section 14.
 

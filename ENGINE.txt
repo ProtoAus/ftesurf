@@ -26,6 +26,15 @@ commit   c543d688ad16a871753fa9525c23487f437741a5
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-625
 patch    634
+# Patch 632: hud_edit's Run lines pane, from the owner's list of 11 Oct. Your own line and
+# the other lines (the open demo, the ticked board lines) are coloured separately, each a
+# plain colour or one of the five readings: yours blue, the others by time, the fastest
+# green and the slowest red (hud_lines_color_own / _others, both 5). Labels gains "peaks",
+# the tops and bottoms alone (hud_lines_nums 3). The three nearby-player rows left the
+# pane for the console. hud_watch_path_color is no longer read: a saved value of it would
+# have kept the new look from anyone who had ever clicked its chip.
+# csprogs, ftesurf/cfg/default.cfg and defaultuser.cfg: no engine source, server QC,
+# recorder, evidence, ranking or Build change (commit and tag above stay).
 # Patch 633: bans by Steam account (ROADMAP 14.3 c). The admin panel's Accounts page
 # bans and unbans a SteamID with a note; a banned account's rows and recordings stand
 # on `banned:<tier>`, which no reader names, and come back on an unban. surfd only: no

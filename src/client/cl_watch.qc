@@ -5111,11 +5111,12 @@ void() Watch_Status =
 	              rec_wt_p2first_x, rec_wt_p2first_y));
 	print(sprintf("  path %g pts projected  %g draws  speed %.0f..%.0f  colour %g"
 	              "  foreign %g tint %.2f\n",
-	              rec_wt_p2pts, ln_frames, ln_slo, ln_shi, ln_cmode,
+	              rec_wt_p2pts, ln_frames, ln_slo, ln_shi, Line_Mode(0),
 	              // The line's OWN state and the blend it last drew with, not a
 	              // re-read of the cvar: an arm that graded the cvar would pass
 	              // against a build where the tint never reached the emitter.
-	              Line_IsForeign(0), ln_dtint));   // Patch 432; foreign: momentum import
+	              // Patch 632: slot 0's own (ln_dtint is whichever slot drew last).
+	              Line_IsForeign(0), ln_tintd[0]));  // Patch 432; foreign: momentum import
 	if (rec_wt_foreign)
 		print(sprintf("  import    momquality %.4f of %.0f u/s%s\n",
 		              rec_wt_momq, rec_wt_momceil,
@@ -5309,6 +5310,12 @@ float(string cmd) Watch_ConsoleCommand =
 			// Its numbers as the draw pass would write them (the last frame's
 			// switches): a camera shows a few marks, this is every one.
 			print(sprintf("lnml %g \"%s\"\n", i, Line_Label(sl, i)));
+			// Patch 632, on lines of their own (older readers index lnm's columns):
+			// whether the draw pass would give this mark its numbers at the last
+			// frame's hud_lines_nums, and a contact mark that is also a top or bottom.
+			print(sprintf("lng %g %g %g\n", i, ln_ek[b + i], Line_LabelOn(sl, i)));
+			if (ln_efd[b + i])
+				print(sprintf("lnf %g %g %.4f\n", i, ln_ek[b + i], ln_et[b + i]));
 		}
 		// The energy zero this slot's labels are measured from, said out loud:
 		// a grader that took it from the same place the code did could not
@@ -5362,7 +5369,10 @@ float(string cmd) Watch_ConsoleCommand =
 		              ln_mv_accel, ln_mv_maxspeed, ln_mv_aircap, ln_mv_gravity));
 		print(sprintf("lnmv2 %g %g %g %g\n", ln_mv_gfric, ln_mv_stopspeed,
 		              ln_mv_duck, ln_mv_ghold));
-		print(sprintf("lncb %g %g %g %g\n", sl, ln_cmode, ln_n[sl], track));
+		print(sprintf("lncb %g %g %g %g\n", sl, Line_Mode(sl), ln_n[sl], track));
+		// Patch 632: the speed ramp's range as last drawn, the slot's own, and whether
+		// the slot is on (a live trail is drawn before its first Line_End, and is not).
+		print(sprintf("lncr %.1f %.1f %.1f %.1f %g\n", ln_slo, ln_shi, ln_lo[sl], ln_hi[sl], ln_on[sl]));
 		for (i = 0; i < ln_n[sl]; i = i + track)
 		{
 			ep = ln_col[sl * LN_CAP + i];
@@ -5370,7 +5380,12 @@ float(string cmd) Watch_ConsoleCommand =
 			              ln_t[sl * LN_CAP + i], ep_x, ep_y, ep_z,
 			              ln_q[sl * LN_CAP + i]));
 		}
-		print(sprintf("lnce %g\n", ln_cmode));
+		// Patch 632: and, for a line coloured by time, its place among those shown;
+		// the blend toward blue the slot was drawn with (ln_col is before it); how
+		// many lines of its leg it is ranked among; and how long ago a drawer last
+		// drew it, -1 never (a hidden slot is ranked by nobody and tinted by nothing).
+		print(sprintf("lnce %g %g %g %g %g %.3f\n", Line_Mode(sl), ln_rkin[sl], ln_rkpos[sl],
+		              ln_tintd[sl], ln_rkof[sl], ln_drawf[sl] ? cltime - ln_drawf[sl] : -1));
 		return TRUE;
 	}
 	// Patch 449: the Segments column's own rows, for the containment check --
@@ -5718,9 +5733,10 @@ void() Watch_RegisterCvars =
 	// The board's ticked lines and your own run's; -1 follows hud_watch_path_px.
 	registercvar("hud_watch_path_px_board", "-1", CVAR_ARCHIVE);
 	registercvar("hud_watch_path_px_trail", "-1", CVAR_ARCHIVE);
-	registercvar("hud_watch_path_color", "0", CVAR_ARCHIVE);   // 0 speed, 1 gain/loss
+	// hud_watch_path_color went with Patch 632: hud_lines_color_own / _others
+	// (Line_RegisterCvars) are read instead, and why not under the old name.
 	// How far an imported run's line is pulled toward blue: 0 off, 1 all blue.
-	// A blend, so it composes with hud_watch_path_color rather than replacing it.
+	// A blend, so it composes with the five readings rather than replacing them.
 	registercvar("hud_watch_path_foreign", "0.55", CVAR_ARCHIVE);
 	registercvar("hud_watch_path_far", "6000", CVAR_ARCHIVE);  // fade out by here, 0 never
 	registercvar("hud_watch_path_probe", "0");

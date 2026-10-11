@@ -596,15 +596,19 @@ string(string id, float row) HE_OptDef =
 		if (row == 0) return "hud_trail|Player line|t|||Your own run. Saves and rewind retain the attached prefix.";
 		if (row == 1) return "hud_watch_path|Demo line|t|||The demo currently open in the replay viewer.";
 		if (row == 2) return "hud_lines_board|Board lines|t|||Show selected leaderboard lines without forgetting the selection.";
-		if (row == 11) return "hud_lines_order|Board lines show|c|0 4 8 16|all near;next 4 s;next 8 s;next 16 s|Only the stretch of each ticked run that comes next from where you are, so a later part of the route does not show through a wall.";
-		if (row == 3) return "hud_lines_nums|Labels|c|0 1 2|off;contacts;+ peaks|Numbers at surface contacts; peaks adds the top of each arc and the bottom of each ride.";
-		if (row == 4) return "hud_watch_path_color|Colour by|c|0 1 2 3 4|speed;gain;contact;energy;air control|Advanced controls: lines help in the console.";
-		if (row == 5) return "hud_watch_path_px|Thickness|c|1 2 3 4 6|1 px;2 px;3 px;4 px;6 px|Default width. Player and board width overrides remain console settings.";
-		if (row == 6) return "hud_watch_path_far|Visible for|c|0 3000 6000 12000|forever;3000;6000;12000|Units of distance. Fades over the last third.";
-		if (row == 7) return "hud_lines_reveal|Chunk fade|c|0 0.09 0.18 0.36|instant;fast;smooth;slow|Continuous sample-age fade, without chunk steps. Seconds; never changes the run clock.";
-		if (row == 8) return "cl_playerfade|Nearby players|t|||Dither nearby lobby bodies away; surviving pixels keep normal colours and depth.";
-		if (row == 9) return "cl_playerfade_near|Hidden within|c|0 16 32 64|0;16;32;64|Camera distance in units. Bodies are fully hidden this close.";
-		if (row == 10) return "cl_playerfade_far|Opaque beyond|c|64 128 192 256|64;128;192;256|Camera distance in units. Bodies are fully opaque this far away.";
+		if (row == 3) return "hud_lines_order|Board lines show|c|0 4 8 16|all near;next 4 s;next 8 s;next 16 s|Only the stretch of each ticked run that comes next from where you are, so a later part of the route does not show through a wall.";
+		// Patch 632: 3 is the tops and bottoms alone; listed third, so the chip
+		// goes off, contacts, peaks, both.
+		if (row == 4) return "hud_lines_nums|Labels|c|0 1 3 2|off;contacts;peaks;both|Numbers at surface contacts, at the top of each arc and the bottom of each ride, or at both.";
+		// Patch 632: one colouring for your own line and one for the others; 5 is
+		// each group's plain colour and the default.
+		if (row == 5) return "hud_lines_color_own|Your line|c|5 0 1 2 3 4|blue;speed;gain;contact;energy;air control|The line of the run you are making: plain blue, or coloured by one of five readings of the run.";
+		if (row == 6) return "hud_lines_color_others|Other lines|c|5 0 1 2 3 4|by time;speed;gain;contact;energy;air control|The open demo and the ticked board lines. by time: the fastest green, the slowest red.";
+		if (row == 7) return "hud_watch_path_px|Thickness|c|1 2 3 4 6|1 px;2 px;3 px;4 px;6 px|Default width. Player and board width overrides remain console settings.";
+		if (row == 8) return "hud_watch_path_far|Visible for|c|0 3000 6000 12000|forever;3000;6000;12000|Units of distance. Fades over the last third.";
+		if (row == 9) return "hud_lines_reveal|Chunk fade|c|0 0.09 0.18 0.36|instant;fast;smooth;slow|Continuous sample-age fade, without chunk steps. Seconds; never changes the run clock.";
+		// Patch 632: the nearby-player fade (cl_playerfade, _near, _far) left this
+		// pane for the console; HE_ResetAll still resets the three.
 		return "";
 	}
 
@@ -1953,6 +1957,15 @@ void() HE_ResetAll =
 	HE_ResetCvar("hud_scale");
 	HE_ResetCvar("hud_crosshair");
 	HE_ResetCvar("hud_font_outline");       // Patch 440: the text effect's chip
+
+	// Patch 632: rows of the Run lines pane until then, so a value set from it is
+	// not stranded now that only the console reaches them.  LITERALS, like the
+	// two colour rows': on an install whose default.cfg predates a setting, the
+	// saved `seta` line creates it first and its "default" is the saved value
+	// (registercvar leaves an existing name alone), so HE_ResetCvar wrote back
+	// what it found (measured on release 0.1.23's default.cfg, the review).
+	localcmd("seta cl_playerfade 1\nseta cl_playerfade_near 32\nseta cl_playerfade_far 128\n");
+	localcmd("seta hud_lines_color_own 5\nseta hud_lines_color_others 5\n");
 
 	// And the panel itself, which can be dragged into a corner like anything else.
 	HE_ResetCvar("hud_edit_panel_x");

@@ -7,9 +7,10 @@
   w px line box-filtered onto pixels is a trapezoid, full across w - 1 px and
   falling to 0 over a pixel each side (a 1 px line: a 2 px tent), so each
   segment is a fan whose outer vertices carry alpha 0.  Joints share mitred
-  vertices, so a bend neither overlaps nor gaps.  Colour is speed, red (slow)
-  through yellow to green (fast) over the shown lines' own range, or gain/loss
-  (hud_watch_path_color 1).  A teleport is a break: a square at each end and a
+  vertices, so a bend neither overlaps nor gaps.  Colour is per group since Patch
+  632 (hud_lines_color_own for the live trail, _others for the rest): a plain
+  colour, or a reading such as speed, red (slow) through yellow to green (fast)
+  over the shown lines' own range.  A teleport is a break: a square at each end and a
   faint dashed line between.  A segment longer than LN_SUBPX on screen is
   subdivided along a Catmull-Rom through its neighbours.
 
@@ -112,6 +113,7 @@ float  *ln_bk;                  // break indices, LN_BKCAP a slot
 
 // The marks: one entry each, position and velocity carried, never an index.
 float  *ln_ek;                  // LN_E_*
+float  *ln_efd;                 // Patch 632: a contact mark a top or bottom was folded into
 float  *ln_es;                  // the contact pair it came from, from * 4 + to
 float  *ln_et;                  // the run clock it landed on
 vector *ln_ep;
@@ -279,9 +281,20 @@ float  ln_far, ln_fadek;          // hud_watch_path_far, and 1 / its fade's leng
 float  ln_cfade;                 // the last sphere tested reaches into the fade
 float  ln_px;                   // one physical pixel, virtual units
 float  ln_hw, ln_cw, ln_pk;     // outer / full-alpha half widths, peak alpha
-float  ln_slo, ln_shi, ln_sinv, ln_cmode;
+float  ln_slo, ln_shi, ln_sinv;
+// Patch 632: your own line (the live trail's two slots) and the others (the demo
+// and the board's) are coloured separately.  0..4 are the five readings of the
+// run; 5 is the group's plain colour: LN_OWNCOL, or the line's place by time.
+float  ln_cmown, ln_cmoth;
+#define LN_CM_PLAIN 5
+#define LN_OWNCOL  '0.30 0.65 1.00'
+vector ln_rk[LN_SLOTS];          // an other line's colour by time, this frame
+float  ln_rkin[LN_SLOTS], ln_rkpos[LN_SLOTS];    // it is ranked; its place, 0 the fastest
+float  ln_rkof[LN_SLOTS];        // ... among this many lines of its leg
+float  ln_drawf[LN_SLOTS];       // cltime the slot was last drawn (0 never), for `replay colours`
+vector ln_plain[LN_SLOTS];       // the plain colour the slot was last painted
 float  ln_gen, ln_cgen;          // lines built, and as of the last recolour
-float  ln_cslo, ln_cshi, ln_ccmode;
+float  ln_cslo, ln_cshi, ln_ccown, ln_ccoth;
 float  ln_nseg, ln_nclip, ln_nwild, ln_npt;  // the last Line_Draw, for status
 vector ln_bbmin, ln_bbmax, ln_first;
 float  ln_frames;               // Watch_Path2D calls, to divide profile_csqc by
@@ -303,7 +316,7 @@ float  ln_db, ln_dn, ln_da;     // the slot being drawn: base, points, alpha
   game (tools/momimport.py; the `foreign` key in its .rec header) is drawn with
   its colour pulled toward blue.
 
-  A TINT AND NOT A SIXTH hud_watch_path_color, which was the obvious shape and
+  A TINT AND NOT A SIXTH READING OF THE RUN, which was the obvious shape and
   is the wrong one: a mode REPLACES the colouring, so an imported line could be
   identified or it could be read for speed, gain, contact, energy or air
   control, never both.  Blending composes with all five, so the thing the line
@@ -316,6 +329,7 @@ float  ln_db, ln_dn, ln_da;     // the slot being drawn: base, points, alpha
 float  ln_fgn[LN_SLOTS];        // slot holds a foreign run
 float  ln_inf[LN_SLOTS];        // where its ramp contact came from, INF_* (cl_infer.qc)
 float  ln_dtint;                // the draw's blend strength, 0 = none
+float  ln_tintd[LN_SLOTS];      // ... as each slot was last drawn (Patch 632)
 #define LN_FGNCOL  '0.25 0.45 1.00'
 
 void() Line_Alloc =
@@ -345,6 +359,7 @@ void() Line_Alloc =
 	// 1.28 MiB for every slot's marks, against 2.25 MiB for ONE more per-point
 	// float array.  Nothing about a mark is per point, which is the argument.
 	ln_ek   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
+	ln_efd  = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
 	ln_es   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
 	ln_et   = memalloc(sizeof(float) * LN_SLOTS * LN_EVCAP);
 	ln_ep   = memalloc(sizeof(vector) * LN_SLOTS * LN_EVCAP);
@@ -376,6 +391,7 @@ void(float s) Line_Clear =
 	ln_on[s] = FALSE;
 	ln_n[s]  = 0;
 	ln_published[s] = 0;
+	ln_tintd[s] = ln_drawf[s] = 0;
 	ln_g[s] = ln_start[s] = 0;
 	ln_track[s] = ln_leg[s] = -1;
 	ln_graphgen[s] = ln_graphgen[s] + 1;
@@ -697,6 +713,7 @@ void(float i, float j) Line_EvSwap =
 	local vector p;
 
 	f = ln_ek[i];   ln_ek[i]  = ln_ek[j];   ln_ek[j]  = f;
+	f = ln_efd[i];  ln_efd[i] = ln_efd[j];  ln_efd[j] = f;
 	f = ln_es[i];   ln_es[i]  = ln_es[j];   ln_es[j]  = f;
 	f = ln_et[i];   ln_et[i]  = ln_et[j];   ln_et[j]  = f;
 	p = ln_ep[i];   ln_ep[i]  = ln_ep[j];   ln_ep[j]  = p;
@@ -727,6 +744,7 @@ void(float s, float k, float sub, float t, vector o, vector v, float si, float t
 				if (ln_ek[b + i] != LN_E_TROUGH)
 				{
 					ln_ek[b + j]  = ln_ek[b + i];
+					ln_efd[b + j] = ln_efd[b + i];
 					ln_ei[b + j]  = ln_ei[b + i];
 					ln_ec[b + j]  = ln_ec[b + i];
 					ln_es[b + j]  = ln_es[b + i];
@@ -750,6 +768,7 @@ void(float s, float k, float sub, float t, vector o, vector v, float si, float t
 		}
 	}
 	ln_ek[b + n]  = k;
+	ln_efd[b + n] = FALSE;
 	ln_es[b + n]  = sub;
 	ln_et[b + n]  = t;
 	ln_ep[b + n]  = o;
@@ -774,6 +793,45 @@ void(float s, float k, float sub, float t, vector o, vector v, float si, float t
 void(float s, float k, float sub, float t, vector o, vector v) Line_Ev =
 {
 	Line_EvAt(s, k, sub, t, o, v, ln_nsamp[s], t);
+};
+
+// Whether mark e of slot s carries its numbers at this frame's hud_lines_nums.
+// Patch 632: at 3 a contact keeps its chevron and gives up its number, unless it
+// is itself a top or a bottom (Line_EvFold).  `replay marks` prints this too.
+float(float s, float e) Line_LabelOn =
+{
+	local float k;
+
+	if (!ln_numon)
+		return FALSE;
+	if (ln_numon != 3)
+		return TRUE;
+	k = ln_ek[s * LN_EVCAP + e];
+	if (k == LN_E_APEX || k == LN_E_TROUGH)
+		return TRUE;
+	return ln_efd[s * LN_EVCAP + e];
+};
+
+// Patch 632: the contact mark on sample si or the one before IS the top or bottom
+// that was folded into it (Line_Peak's `here`).  At hud_lines_nums 3 it is the
+// only place that turn's number can go: 1 of 11 bottoms of p492voy.rec and 2 of 5
+// of runlines_peaks.rec are landings (the review's count).
+void(float s, float si) Line_EvFold =
+{
+	local float b, i;
+
+	b = s * LN_EVCAP;
+	for (i = ln_evn[s] - 1; i >= 0; i = i - 1)
+	{
+		if (ln_ei[b + i] < si - 1)
+			return;                     // marks are in time order: none further back
+		if (ln_ek[b + i] <= LN_E_JUMP)
+		if (ln_ei[b + i] == si || ln_ei[b + i] == si - 1)
+		{
+			ln_efd[b + i] = TRUE;
+			return;
+		}
+	}
 };
 
 // One sample.  brk: the segment from the previous sample is a teleport.
@@ -979,6 +1037,8 @@ void(float s, float z) Line_PeakFar =
 		return;
 	if (!ln_pkcov[s])
 		Line_EvAt(s, ln_pkk[s], 0, ln_pkt[s], w, ln_pkv[s], ln_pki[s], ln_pkc[s]);
+	else
+		Line_EvFold(s, ln_pki[s]);
 	ln_pklast[s] = ln_pkk[s];
 	ln_pkz[s]    = w_z;
 	ln_pkk[s]    = 0;
@@ -1257,6 +1317,43 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 	Line_Add(s, o, vlen([v_x, v_y, 0]), v_z, q, t, brk);
 };
 
+/*
+  Slot s's speed range over points ia..ib at or after tsc: mean +- 2 sd inside
+  min..max.  A stop after a teleport or a restart put min at 0 and drew a whole
+  stage one green (p432shot).
+*/
+void(float s, float ia, float ib, float tsc) Line_SpeedRange =
+{
+	local float b, i, v, n, sum, sq, mn, mx, sd;
+
+	b = s * LN_CAP;
+	n = sum = sq = 0;
+	mn = 99999;
+	mx = 0;
+	for (i = ia; i <= ib; i = i + 1)
+	{
+		if (ln_t[b + i] < tsc)
+			continue;
+		v = ln_spd[b + i];
+		mn = min(mn, v);
+		mx = max(mx, v);
+		sum = sum + v;
+		sq = sq + v * v;
+		n = n + 1;
+	}
+	ln_lo[s] = 0;
+	ln_hi[s] = 1;
+	if (n > 0)
+	{
+		v = sum / n;
+		sd = sqrt(max(0, sq / n - v * v));
+		ln_lo[s] = max(mn, v - 2 * sd);
+		ln_hi[s] = min(mx, v + 2 * sd);
+		if (ln_hi[s] <= ln_lo[s])
+			ln_hi[s] = ln_lo[s] + 1;
+	}
+};
+
 // The tables drawing needs: chunk spheres, the break list, the gain.
 void(float s) Line_End =
 {
@@ -1265,6 +1362,11 @@ void(float s) Line_End =
 
 	b = s * LN_CAP;
 	n = ln_n[s];
+	// Patch 632: your own line has a speed range too.  Only Line_Range set one and
+	// nothing calls it for the trail, so "speed" over your line alone was 0..0 and
+	// every point the slow end's red (58 of 58 on a 116-point line, the review).
+	if (s >= LN_S_TRAIL)
+		Line_SpeedRange(s, 0, n - 1, -99999999);
 	// One demo fade, not a stagger restarted every chunk. Live births belong
 	// to sample arrival in Line_Add; bulk rebuilds never reset their ages.
 	if (s == 0)
@@ -1653,45 +1755,15 @@ float(float s, float t) Line_Find =
 	return lo;
 };
 
-/*
-  Show [ta, tb] of slot s.  The colour range is its speeds at or after tsc, mean
-  +- 2 sd inside min..max: a stop after a teleport or a restart put min at 0 and
-  drew a whole stage one green (p432shot).
-*/
+// Show [ta, tb] of slot s; its colour range is its speeds at or after tsc
+// (Line_SpeedRange).
 void(float s, float ta, float tb, float tsc) Line_Range =
 {
-	local float b, i, v, n, sum, sq, mn, mx, sd;
-
-	b = s * LN_CAP;
 	ln_start[s] = tsc;
 	ln_graphgen[s] = ln_graphgen[s] + 1;
 	ln_ia[s] = Line_Find(s, ta);
 	ln_ib[s] = Line_Find(s, tb + 0.0001) - 1;
-	n = sum = sq = 0;
-	mn = 99999;
-	mx = 0;
-	for (i = ln_ia[s]; i <= ln_ib[s]; i = i + 1)
-	{
-		if (ln_t[b + i] < tsc)
-			continue;
-		v = ln_spd[b + i];
-		mn = min(mn, v);
-		mx = max(mx, v);
-		sum = sum + v;
-		sq = sq + v * v;
-		n = n + 1;
-	}
-	ln_lo[s] = 0;
-	ln_hi[s] = 1;
-	if (n > 0)
-	{
-		v = sum / n;
-		sd = sqrt(max(0, sq / n - v * v));
-		ln_lo[s] = max(mn, v - 2 * sd);
-		ln_hi[s] = min(mx, v + 2 * sd);
-		if (ln_hi[s] <= ln_lo[s])
-			ln_hi[s] = ln_lo[s] + 1;
-	}
+	Line_SpeedRange(s, ln_ia[s], ln_ib[s], tsc);
 };
 
 // ---- the anti-aliased strip ---------------------------------------------------
@@ -1865,11 +1937,11 @@ void(vector w, vector c, float a) Line_Pt =
 
 // Point i's colour: speed red -> yellow -> green over the shown range, or
 // gain (u/s per s) grey -> green, loss grey -> red, full at 800.
-vector(float i) Line_Col =
+vector(float i, float m) Line_Col =
 {
 	local float f;
 
-	if (ln_cmode == 1)
+	if (m == 1)
 	{
 		f = bound(-1, ln_gain[i] / 800, 1);
 		if (f >= 0)
@@ -2007,13 +2079,115 @@ void(float s) Line_ColQuality =
 		ln_col[b + i] = HUD_QualityColor(ln_q[b + i]);
 };
 
+// The colouring a slot is drawn in: its group's.
+float(float s) Line_Mode =
+{
+	return (s >= LN_S_TRAIL) ? ln_cmown : ln_cmoth;
+};
+
+// A shown line's time: its window's end less the clock its window counts from
+// (Line_Range), so a stage line is the stage's time and a run the run's.
+float(float s) Line_Time =
+{
+	return ln_t[s * LN_CAP + ln_ib[s]] - ln_start[s];
+};
+
+float() Watch_PathMode;         // cl_watch.qc: 1 or 2 when a drawer draws the demo's line
+
+/*
+  BY TIME: the fastest of the other lines green, the slowest red, the rest
+  between through yellow (the speed ramp's three colours, turned round).  Over the
+  lines that are being shown, so hiding the demo or the board's lines re-ranks
+  what is left; one line alone is green.  Nine slots: every frame, no cache.
+
+  Among lines of ONE LEG: a stage's time beside a whole run's says nothing about
+  either (measured: stage 2 of a file placed ahead of the same file whole), and a
+  ticked line outlives the leg the board showed when it was ticked.  Equal times
+  share a place: a run both watched and ticked is one run in two slots, and the
+  review's lone run came out red over green.
+*/
+void() Line_Rank =
+{
+	local float s, o, n, r, t, f, demo, board;
+
+	demo  = cvar("hud_watch_path");
+	if (demo)
+	{
+		f = Watch_PathMode();
+		demo = (f == 1 || f == 2);
+	}
+	board = cvar("hud_lines_board");
+	for (s = 0; s < LN_S_TRAIL; s = s + 1)
+	{
+		ln_rkin[s] = FALSE;
+		if (!ln_on[s])
+			continue;
+		if (ln_n[s] < 1)
+			continue;
+		if (ln_ib[s] < ln_ia[s])
+			continue;                   // nothing of it in its window: no time to read
+		if (!(s ? board : demo))
+			continue;
+		ln_rkin[s] = TRUE;
+	}
+	for (s = 0; s < LN_S_TRAIL; s = s + 1)
+	{
+		r = 0;
+		n = 0;
+		if (ln_rkin[s])
+		{
+			t = Line_Time(s);
+			for (o = 0; o < LN_S_TRAIL; o = o + 1)
+			{
+				if (!ln_rkin[o])
+					continue;
+				if (ln_track[o] != ln_track[s] || ln_leg[o] != ln_leg[s])
+					continue;           // another leg's line: another list
+				n = n + 1;
+				if (o != s)
+				if (Line_Time(o) < t)
+					r = r + 1;
+			}
+		}
+		ln_rkpos[s] = r;
+		ln_rkof[s]  = n;
+		f = (n > 1) ? r / (n - 1) : 0;
+		if (f < 0.5)
+			ln_rk[s] = '0.30 1.00 0.35' + ('0.70 -0.10 -0.13' * (f * 2));
+		else
+			ln_rk[s] = '1.00 0.90 0.22' + ('0.00 -0.68 0.00' * ((f - 0.5) * 2));
+	}
+};
+
+// Slot s's colours from point `from` on, in mode m.  Contact, energy and air
+// control are whole-slot walks whatever `from` says (see Line_ViewFrame).
+void(float s, float m, float from) Line_Paint =
+{
+	local float i, b;
+	local vector c;
+
+	if (m == 2) { Line_ColContact(s); return; }
+	if (m == 3) { Line_ColEnergy(s);  return; }
+	if (m == 4) { Line_ColQuality(s); return; }
+	b = s * LN_CAP;
+	if (m >= LN_CM_PLAIN)
+	{
+		c = (s >= LN_S_TRAIL) ? LN_OWNCOL : ln_rk[s];
+		for (i = b + from; i < b + ln_n[s]; i = i + 1)
+			ln_col[i] = c;
+		return;
+	}
+	for (i = b + from; i < b + ln_n[s]; i = i + 1)
+		ln_col[i] = Line_Col(i, m);
+};
+
 // ---- per frame ------------------------------------------------------------------
 
 // The view the lines are projected against, and the shared colour range.
 void() Line_ViewFrame =
 {
-	local vector fov;
-	local float s, i;
+	local vector fov, c;
+	local float s, m, dirty;
 
 	Line_PxFrame();
 	ln_wpx  = cvar("hud_watch_path_px");
@@ -2036,7 +2210,8 @@ void() Line_ViewFrame =
 	ln_tolk = LN_PXERR * ln_tx / max(1, fov_x * 0.5);
 	ln_far  = cvar("hud_watch_path_far");
 	ln_fadek = (ln_far > 0) ? 3 / ln_far : 0;       // fades over its last third
-	ln_cmode = cvar("hud_watch_path_color");
+	ln_cmown = bound(0, cvar("hud_lines_color_own"), LN_CM_PLAIN);
+	ln_cmoth = bound(0, cvar("hud_lines_color_others"), LN_CM_PLAIN);
 	// The marks, read once a frame beside the rest.
 	ln_mkon     = cvar("hud_lines_marks");
 	ln_mkland   = cvar("hud_lines_land");
@@ -2066,53 +2241,53 @@ void() Line_ViewFrame =
 	ln_cellnx = min(64, floor(fov_x / ln_mkgap) + 1);
 	ln_cellny = min(LN_CELLS / max(1, ln_cellnx), floor(fov_y / ln_mkgap) + 1);
 	ln_cellgen = ln_cellgen + 1;
+	// The speed ramp's range, over the lines that are coloured by speed: a line in
+	// another colouring does not move it (Patch 632).
 	ln_slo = 99999;
 	ln_shi = 0;
 	for (s = 0; s < LN_SLOTS; s = s + 1)
 		if (ln_on[s])
+		if (Line_Mode(s) == 0)
 		{
 			ln_slo = min(ln_slo, ln_lo[s]);
 			ln_shi = max(ln_shi, ln_hi[s]);
 		}
+	if (ln_shi < ln_slo)
+	{
+		ln_slo = 0;                 // nothing is coloured by speed
+		ln_shi = 1;
+	}
 	ln_sinv = (ln_shi > ln_slo) ? 1 / (ln_shi - ln_slo) : 0;
 
-	// The colours, once per change of range, mode or line (not per frame).
-	if (ln_gen != ln_cgen || ln_slo != ln_cslo || ln_shi != ln_cshi || ln_cmode != ln_ccmode)
-	{
-		for (s = 0; s < LN_SLOTS; s = s + 1)
-			if (ln_on[s])
+	// The colours, once per change of range, mode or line (not per frame); and a
+	// line coloured by time again when its place among the shown lines moves.
+	Line_Rank();
+	dirty = (ln_gen != ln_cgen || ln_slo != ln_cslo || ln_shi != ln_cshi
+	         || ln_cmown != ln_ccown || ln_cmoth != ln_ccoth);
+	for (s = 0; s < LN_SLOTS; s = s + 1)
+		if (ln_on[s])
+		{
+			m = Line_Mode(s);
+			c = (s >= LN_S_TRAIL) ? LN_OWNCOL : ln_rk[s];
+			if (m < LN_CM_PLAIN)
+				c = '0 0 0';
+			if (dirty || c != ln_plain[s])
 			{
-				// Two of the modes are whole-slot walks rather than per-point
-				// functions: contact reads the mark list, and energy needs a
-				// window either side of the point.
-				if (ln_cmode == 2)
-					Line_ColContact(s);
-				else if (ln_cmode == 3)
-					Line_ColEnergy(s);
-				else if (ln_cmode == 4)
-					Line_ColQuality(s);
-				else
-					for (i = s * LN_CAP; i < s * LN_CAP + ln_n[s]; i = i + 1)
-						ln_col[i] = Line_Col(i);
+				Line_Paint(s, m, 0);
+				ln_plain[s] = c;
 			}
-		ln_cgen = ln_gen;
-		ln_cslo = ln_slo;
-		ln_cshi = ln_shi;
-		ln_ccmode = ln_cmode;
-	}
+		}
+	ln_cgen = ln_gen;
+	ln_cslo = ln_slo;
+	ln_cshi = ln_shi;
+	ln_ccown = ln_cmown;
+	ln_ccoth = ln_cmoth;
 	// Only the small live tail changes between bulk rebuilds. Do not invalidate
 	// the eight static board colour caches on every arrival. Contact/energy
 	// retain their existing whole-slot classifiers rather than guessing a kind.
 	for (s = LN_S_TRAIL; s < LN_SLOTS; s = s + 1)
 		if (ln_n[s] > ln_published[s])
-		{
-			if (ln_cmode == 2) Line_ColContact(s);
-			else if (ln_cmode == 3) Line_ColEnergy(s);
-			else if (ln_cmode == 4) Line_ColQuality(s);
-			else
-				for (i = s * LN_CAP + ln_published[s]; i < s * LN_CAP + ln_n[s]; i = i + 1)
-					ln_col[i] = Line_Col(i);
-		}
+			Line_Paint(s, ln_cmown, ln_published[s]);
 };
 
 // A sphere against the view: -1 outside the frustum or past hud_watch_path_far,
@@ -2658,7 +2833,8 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 		{
 			// A peak is where vz turned over.  It gets no chevron -- there is
 			// no contact to mark -- so it appears only when the numbers are on
-			// and it is the number that is the point (hud_lines_nums 2).
+			// and it is the number that is the point (hud_lines_nums 2, or 3 for
+			// these alone).
 			if (ln_numon < 2)
 				continue;
 			c = '0.75 0.80 0.95';
@@ -2692,7 +2868,7 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 		// glyph, so a mark can keep its chevron and lose its number rather
 		// than the pair of them overprinting a neighbour.
 		lab = "";
-		if (ln_numon)
+		if (Line_LabelOn(s, e))
 		{
 			lab = Line_Label(s, e);
 			if (lab != "")
@@ -2778,7 +2954,14 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 	ln_dn = ln_n[s];
 	ln_da = alpha;
 	// Read per draw, not per point: the cvar cannot change inside one line.
-	ln_dtint = ln_fgn[s] ? bound(0, cvar("hud_watch_path_foreign"), 1) : 0;
+	// Patch 632: over one of the five readings only.  A plain colour is the line's
+	// own (blue, or its place by time); pulled toward blue it would say neither.
+	ln_dtint = 0;
+	if (ln_fgn[s])
+	if (Line_Mode(s) < LN_CM_PLAIN)
+		ln_dtint = bound(0, cvar("hud_watch_path_foreign"), 1);
+	ln_tintd[s] = ln_dtint;         // for `replay colours`: ln_col is before the blend
+	ln_drawf[s] = cltime;           // ... and a slot no drawer reached has neither
 	// Per slot: Line_Width writes globals every emitter reads, the teleport
 	// dashes below included, and one frame draws up to eleven slots.
 	wpx = Line_SlotPx(s);
@@ -2944,6 +3127,8 @@ void() Line_FrameEnd =
 */
 void() Line_RegisterCvars =
 {
+	local float i;
+
 	registercommand("lines");
 	registercvar("hud_lines_reveal", "0.18", CVAR_ARCHIVE);
 	registercvar("hud_lines_board", "1", CVAR_ARCHIVE);
@@ -2964,8 +3149,23 @@ void() Line_RegisterCvars =
 	registercvar("hud_lines_telealpha", "0.3", CVAR_ARCHIVE);
 	// Patch 451: the numbers.  ON by default (Lex, asked when they were off):
 	// a line you have to switch on twice is a line most people never see.
-	// 1 = on the contact marks; 2 adds the peaks, which is dense on a bhop run.
+	// 1 = on the contact marks; 2 adds the peaks, which is dense on a bhop run;
+	// 3 (Patch 632) the peaks alone.
 	registercvar("hud_lines_nums",    "2", CVAR_ARCHIVE);    // Patch 627: the tops and bottoms too
+	// Patch 632: your line and the others, each 0 speed, 1 gain, 2 contact, 3 energy,
+	// 4 air control, or 5 its plain colour (blue; by time).  hud_watch_path_color,
+	// the one setting they replace, is no longer read: a saved value of it would
+	// have kept these defaults from anyone who had ever clicked its chip.
+	registercvar("hud_lines_color_own",    "5", CVAR_ARCHIVE);
+	registercvar("hud_lines_color_others", "5", CVAR_ARCHIVE);
+	// A config that had chosen gain, contact, energy or air control keeps it, for
+	// both groups, once (the old name is then put back to 0 so the next start
+	// does not undo a later choice of plain).  Speed, the old default, does not:
+	// it cannot be told from never having chosen.
+	i = cvar("hud_watch_path_color");
+	if (i >= 1 && i <= 4)
+		localcmd(sprintf("seta hud_lines_color_own %g\nseta hud_lines_color_others %g\n"
+		                 "seta hud_watch_path_color 0\n", i, i));
 	registercvar("hud_lines_speed",   "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_energy",  "1", CVAR_ARCHIVE);
 	registercvar("hud_lines_vz",      "0", CVAR_ARCHIVE);
@@ -3007,7 +3207,7 @@ float() Line_Console =
 	      "  hud_trail 1       player line\n"
 	      "  hud_watch_path 1  open demo line\n"
 	      "  hud_lines_board 1 selected board lines\n"
-	      "Labels: hud_lines_nums 0/1/2 (off/contacts/+ tops and bottoms)\n"
+	      "Labels: hud_lines_nums 0/1/2/3 (off/contacts/both/tops and bottoms)\n"
 	      "  hud_lines_speed/energy/vz/delta/time/names 0/1\n"
 	      "  ~ before a number: a ramp edge inferred on an imported run\n"
 	      "  hud_lines_marks/land/leave/jump/stitch 0/1\n"
@@ -3015,14 +3215,17 @@ float() Line_Console =
 	      "  hud_lines_numsize 12, hud_lines_size 4, hud_lines_gap 40\n"
 	      "  hud_lines_declutter 0 (all labels); 1 (sparse overlaps)\n"
 	      "  hud_lines_ref 0/1 (HUD/run start), hud_seq_units 0/1/2\n"
-	      "Style: hud_watch_path_color 0..4, hud_watch_path_far 6000\n"
+	      "Style: hud_lines_color_own / _others 0..4 (speed/gain/contact/energy/\n"
+	      "    air control) or 5 (blue; by time), hud_watch_path_far 6000\n"
 	      "  hud_watch_path_px 1, _px_trail / _px_board -1 (inherit)\n"
 	      "  hud_watch_path_ahead 1, hud_watch_path_foreign 0.55\n"
 	      "  hud_lines_telealpha 0.3 (faded dashed teleport joins)\n"
 	      "  hud_lines_win/winf 0 (whole line), or seconds behind/ahead\n"
 	      "  hud_lines_order 8 (board lines: seconds ahead of you; 0 all near)\n"
 	      "  hud_trail_prev 1, hud_trail_fade 1 (seconds)\n"
-	      "  hud_lines_reveal 0.18 (chunk reveal seconds; 0 instant)\n");
+	      "  hud_lines_reveal 0.18 (chunk reveal seconds; 0 instant)\n"
+	      "Nearby players (use seta, or it is not saved): cl_playerfade 1,\n"
+	      "  cl_playerfade_near 32 (hidden within), cl_playerfade_far 128 (opaque beyond)\n");
 	return TRUE;
 };
 
