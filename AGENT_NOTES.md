@@ -4802,6 +4802,14 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   exe before 645>`). On the 645 engine the same build is 11 of 11.
 - THE LESSON IS IN 649'S NOTES: a limit that is raised is re-run on every
   engine that is out, not on the newest.
+- DEPLOYED 11 Oct UTC from `884d171`: csprogs `827dece4` (649, 648 and this;
+  117,452 definitions) to the Pi at 15:13:07Z, nobody on, twelve lobbies
+  restarted and read back, and to both installs at 15:13:51Z with no game
+  running; `.prev` is 648's `88986a28` in all three. A fresh client on a lobby
+  was served it and drew the board. So a 625-engine client on a lobby could
+  be closed by a long list from 14:37:27Z to 15:13:07Z, 35 min 40 s; nobody
+  was on a lobby at either deploy, and nothing here says whether anyone
+  joined between.
 
 ### Sixty-four run lines (Patch 649) — 2026-10-12
 

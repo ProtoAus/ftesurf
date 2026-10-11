@@ -56,6 +56,8 @@ time until this fix went out, with nobody on a lobby when it went out.
 - **For players, sixty-four lines (and the cheaper drawing) arrive with the
   next release**, which needs the new engine in it. That is the release
   session's call and yours.
+- **Live since 11 Oct 15:13 UTC (12 Oct 02:13 here)** on all twelve lobbies
+  and in `C:\FTESurf` and `C:\FTEQuake`.
 
 ## 00. 12 Oct — up to sixty-four run lines (Patch 649)
 
@@ -87,10 +89,10 @@ ticks every row in the list that has a recording, up to that many.
 - **A fault of mine, found twelve minutes after it went live:** the copy
   unpacked from the 0.1.24 download has the older engine, and that engine
   closes when about forty lines are ticked (measured: it died as the fortieth
-  was added). Eight was safe there, which is why nobody met it before. Patch
-  654 keeps that engine at eight; until it is in, do not tick a long list in
-  the Desktop copy. `C:\FTESurf` and `C:\FTEQuake` have the new engine and are
-  not affected.
+  was added). Eight was safe there, which is why nobody met it before. It
+  could only happen on a lobby (offline that copy runs its own older game
+  code), from 14:37 to 15:13 UTC, when Patch 654 (the item above) went out.
+  `C:\FTESurf` and `C:\FTEQuake` have the new engine and were not affected.
 
 ## 00. 11 Oct — release 0.1.24 is on proto.bar/ftesurf
 
