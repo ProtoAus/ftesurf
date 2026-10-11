@@ -11,6 +11,27 @@ to be wrong.
 
 ---
 
+## 00. 12 Oct — rain like Source's (Patch 659)
+
+From your message: "rain in source is brighter, thinner, faster, and longer."
+- surf_tensor2's rain is Source's streak now: 1 unit wide (ours were 5.7)
+  and 80 long, blended the way Source blends, which lifts a faint streak,
+  and at Source's 800 drops a second where a pool rule and a budget had left
+  us 68. At the spawn that is 50 to 90 streaks in view where there were 7
+  to 12.
+- **Faster: I changed nothing.** Our drops already fell at Source's 1,000 to
+  3,000 units a second plus gravity. I think the fat short shape read as
+  slow. Tell me if it still does.
+- It costs less than the old rain did, because the engine no longer checks
+  every drop against the map every frame (numbers in BACKLOG).
+- **Please look** at surf_tensor2's spawn: too dense, too faint, too bright?
+- **Not done, and bigger than this**: `func_precipitation`, Source's other
+  rain and snow, is not drawn at all. It is on 72 maps and is most maps'
+  only rain. Say if you want it next.
+- This needs the map's particle files baked again, which is done in
+  `C:\FTESurf`. `C:\FTEQuake` has no particle files at all and never drew
+  rain. Other players get it with the next release archive.
+
 ## 00. 12 Oct — brighter dust motes (Patch 657)
 
 From your message: "I think they look not as bright as source, they really pop

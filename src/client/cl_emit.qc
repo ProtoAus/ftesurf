@@ -181,6 +181,7 @@ float  *em_want;                // this frame's demand; 0 means culled
 float  *em_lit;                 // fire only: may carry a dlight
 float  *em_ltacc;
 float  *em_drop;                // fire only: 1 = Source lights it on what is under it
+float  *em_trail;               // EK_PSYS only: 1 = a sprite trail, on the trails' own budget
 float  em_n;
 
 void() Emit_Alloc =
@@ -203,6 +204,7 @@ void() Emit_Alloc =
 	em_lit   = memalloc(sizeof(float) * EM_MAX);
 	em_ltacc = memalloc(sizeof(float) * EM_MAX);
 	em_drop  = memalloc(sizeof(float) * EM_MAX);
+	em_trail = memalloc(sizeof(float) * EM_MAX);
 };
 void() Emit_AllocLife;
 
@@ -377,9 +379,18 @@ vector ps_wvel[PS_MAX];         // WORLD frame: wind and terminal speed, unrotat
 float  ps_jit[PS_MAX];          // isotropic random_speed, for em_jit
 string ps_parent[PS_MAX];       // "" on a stand-alone line; the parent's name on a child link
 float  ps_dist[PS_MAX];
+float  ps_trail[PS_MAX];        // a render_sprite_trail this file places drop by drop:
+float  ps_trate[PS_MAX];        //   the index's `trail` line.  Source's emission rate,
+vector ps_tbox[PS_MAX];         //   half the spawn box,
+vector ps_tspread[PS_MAX];      //   half the speed's range (local frame),
+float  ps_tgrav[PS_MAX];        //   gravity, half a streak's length (0: 0.05 s of travel),
+float  ps_thalf[PS_MAX];
+float *ps_tfx;                  //   and [PS_MAX * TRAIL_N] its blocks by life
 float  ps_n;
 float  ps_links;                // how many of ps_n are child links
 float  ps_zoned;                // ps_name[]/ps_parent[] hold strzone handles to give back
+
+void() Emit_TrailForget;
 
 void() Emit_PsysFree =
 {
@@ -393,6 +404,157 @@ void() Emit_PsysFree =
 	ps_zoned = FALSE;
 	ps_n = 0;
 	ps_links = 0;
+	Emit_TrailForget();
+};
+
+#define TRAIL_SHADER "ftesurf_trail/"   // tools/pcf.py has these by the same names
+#define TRAIL_CORE   "0.25"             // 1 / TRAIL_QUAD: the streak's share of its quad's width
+#define TRAIL_N      20                 // a trail system's blocks <map>_<system>_t<k>, whose
+#define TRAIL_T0     0.04               // lives are TRAIL_T0 * TRAIL_RATIO ^ k
+#define TRAIL_RATIO  1.25
+#define TRAIL_REACH  4096               // how far a drop is traced for what it lands on
+#define EM_TRAIL_BUDGET 2400            // drops a second, all trail emitters in range
+#define EM_TRAIL_BURST  64              // and in one frame from one emitter: 800 a second at 12.5
+
+float  em_trdemand;             // last frame: what the trails in range asked for
+float  em_trthrottle;
+float  em_trn;                  // trail emitters on this map
+#define TRAIL_MATS 4
+string em_trmat[TRAIL_MATS];    // this map's trail materials, for Emit_PsysRepair
+float  em_trmats;
+float  em_psprobe;              // the first baked system emitting here: its block's handle
+float  em_psfixes;              // times Emit_PsysRepair sent the map's blocks again
+float  em_trmade, em_trlife;    // drops since the map loaded, and the sum of their lives
+float  em_trsolid, em_trshort, em_trfar;    // born in something; too near what they land on; nothing in reach
+
+/*
+  A render_sprite_trail's material as Source draws it (rain): UnlitGeneric,
+  blended in linear light by the motes' line (Emit_MoteShader).  The engine's
+  quad is four streak widths wide and the streak is drawn inside it by how much
+  of each pixel it covers, so one a third of a pixel wide is a faint line and
+  not a row of dots.  A spark's S runs along it; Source's U runs across.
+  `sort additive` is what makes the engine batch it, and only the batched
+  draw reads a fixed length (R_AddTSparkParticle).  No exposure, no fog: BACKLOG.
+  A client or a bake from before Patch 659 never asks for this shader: the
+  system's own block names the material.
+*/
+void(string mat) Emit_TrailShader =
+{
+	shaderforname(strcat(TRAIL_SHADER, mat), strcat(
+		"{\nglslprogram\n{\n"
+		"!!ver 110\n!!samps img=0\n"
+		"varying vec2 tc;\n"
+		"varying vec4 vc;\n"
+		"#ifdef VERTEX_SHADER\n"
+		"attribute vec2 v_texcoord;\n"
+		"attribute vec4 v_colour;\n"
+		"void main()\n{\n"
+		" tc = v_texcoord;\n"
+		" vc = v_colour;\n"
+		" gl_Position = ftetransform();\n"
+		"}\n#endif\n"
+		"#ifdef FRAGMENT_SHADER\n"
+		"void main()\n{\n"
+		// pw: the streak's width in pixels; d: this pixel's distance from its middle
+		" float u = (tc.y - 0.5) / " TRAIL_CORE ";\n"
+		" float pw = " TRAIL_CORE " / max(length(vec2(dFdx(tc.y), dFdy(tc.y))), 0.000001);\n"
+		" float d = u * pw;\n"
+		" float cov = clamp(min(d + 0.5, 0.5 * pw) - max(d - 0.5, -0.5 * pw), 0.0, 1.0);\n"
+		// Narrower than two pixels, a pixel's middle is mostly outside the streak and the
+		// texture's edge is empty: take the whole texture's mean (its 1x1 mip) instead.
+		" vec4 t = mix(texture2D(s_img, vec2(0.5, tc.x), 8.0), texture2D(s_img, vec2(clamp(u + 0.5, 0.0, 1.0), tc.x)), clamp(pw - 1.0, 0.0, 1.0));\n"
+		" float a = clamp(vc.a * t.a, 0.0, 1.0) * cov;\n"
+		" vec3 c = pow(vc.rgb * t.rgb, vec3(2.2)) * a;\n"
+		" vec3 s = pow(c, vec3(0.4545));\n"
+		" vec3 kk = pow(c + 1.0 - a, vec3(0.4545)) - s;\n"
+		" float k = 0.5 * (max(kk.r, max(kk.g, kk.b)) + min(kk.r, min(kk.g, kk.b)));\n"
+		" gl_FragColor = vec4(s, 1.0 - k);\n"
+		"}\n#endif\n"
+		"}\nsort additive\ncull disable\n"
+		"{\nmap materials/", mat, ".vtf\nblendfunc gl_one gl_one_minus_src_alpha\nrgbgen vertex\nalphagen vertex\nnodepth\n}\n"
+		"surfaceparm noshadows\nsurfaceparm nodlight\n}\n"));
+};
+
+// The index's `trail` line, read after the psys lines (tools/pcf.py has the columns).
+void() Emit_TrailNote =
+{
+	local float j, rate, grav;
+	local vector b, sp;
+	local string sysname, mat;
+
+	local float half;
+
+	// Another bake's lives: leave the system to its own block.
+	if (stof(argv(12)) != TRAIL_N || fabs(stof(argv(13)) - TRAIL_T0) > 0.0001 || fabs(stof(argv(14)) - TRAIL_RATIO) > 0.0001)
+		return;
+	half = stof(argv(15));
+	sysname = argv(2);
+	mat = argv(3);
+	rate = stof(argv(4));
+	b = [stof(argv(5)), stof(argv(6)), stof(argv(7))];
+	sp = [stof(argv(8)), stof(argv(9)), stof(argv(10))];
+	grav = stof(argv(11));
+	for (j = 0; j < ps_n; j = j + 1)
+		if (ps_name[j] == sysname)
+		{
+			ps_trail[j] = TRUE;
+			ps_trate[j] = rate;
+			ps_tbox[j] = b;
+			ps_tspread[j] = sp;
+			ps_tgrav[j] = grav;
+			ps_thalf[j] = half;
+		}
+	for (j = 0; j < em_trmats; j = j + 1)
+		if (em_trmat[j] == mat)
+			break;
+	if (j >= em_trmats)
+	if (em_trmats < TRAIL_MATS)
+	{
+		em_trmat[em_trmats] = strzone(mat);
+		em_trmats = em_trmats + 1;
+	}
+	Emit_TrailShader(mat);
+};
+
+void() Emit_TrailForget =
+{
+	while (em_trmats > 0)
+	{
+		em_trmats = em_trmats - 1;
+		strunzone(em_trmat[em_trmats]);
+	}
+};
+
+/*
+  As Emit_MoteRepair: a renderer restart takes every block the map's own
+  config made, and the trail shaders.  Asked of the first baked system that
+  emits here (a system nothing names never has its handles taken), and three
+  times a map at most: a config without the block would otherwise be sent
+  again every second, and each time frees every live particle of the map's.
+*/
+float() Emit_PsysRepair =
+{
+	local float i;
+
+	if (!em_psprobe || em_psfixes >= 3)
+		return FALSE;
+	if (particleeffectquery(em_psprobe, 0) != "")
+		return FALSE;
+	em_psfixes = em_psfixes + 1;
+	for (i = 0; i < em_trmats; i = i + 1)
+		Emit_TrailShader(em_trmat[i]);
+	localcmd(sprintf("exec particles/%s.cfg\n", vbsp_em_map));
+	return TRUE;
+};
+
+void(float ps, string mname) Emit_TrailHandles =
+{
+	local float k;
+
+	if (!ps_tfx)
+		ps_tfx = memalloc(sizeof(float) * PS_MAX * TRAIL_N);
+	for (k = 0; k < TRAIL_N; k = k + 1)
+		ps_tfx[ps * TRAIL_N + k] = particleeffectnum(sprintf("%s_%s_t%g", mname, ps_name[ps], k));
 };
 
 // `mname`, not `mapname`: there is a global of that name and shadowing it is
@@ -416,16 +578,21 @@ void(string mname) Emit_PsysLoad =
 		if (!l)
 			break;
 		n = tokenize(l);
+		if (n == 16)
+		if (argv(0) == "trail")
+		if (argv(1) == mname)
+			Emit_TrailNote();
 		if (n < 10)
 			continue;
 		if (argv(0) != "psys" || argv(1) != mname)
 			continue;
 		if (ps_n >= PS_MAX)
-			break;
+			continue;               // not break: the trail lines come after
 		ps_name[ps_n] = strzone(argv(2));
 		ps_rate[ps_n] = stof(argv(3));
 		ps_vel[ps_n]  = [stof(argv(4)), stof(argv(5)), stof(argv(6))];
 		ps_dist[ps_n] = stof(argv(9));
+		ps_trail[ps_n] = 0;
 		// The build-53 columns.  Absent on an older bake: no offset, nothing
 		// in the world frame, no jitter, no parent -- what build 52 read.
 		ps_ofs[ps_n]  = '0 0 0';
@@ -1633,6 +1800,9 @@ float(vector col) Emit_Bucket =
   seconds, and folding that into a rate would lose the burstiness that is the
   entire visual.
 */
+// A trail emitter keeps the rate the index gives it; vbsp_emit_ratemax is the dust's.
+void(float i, float rate, float ps) Emit_TrailMark;
+
 // Returns the emitter's index, or -1 when it was not added.
 float(vector bmin, vector bmax, vector vel, float jit, float rate, float burst,
      float dist, float eff, float kind) Emit_Add =
@@ -1682,10 +1852,81 @@ float(vector bmin, vector bmax, vector vel, float jit, float rate, float burst,
 	em_life[i]  = 0;
 	em_ltacc[i] = random();
 	em_drop[i]  = 0;
+	em_trail[i] = 0;
 
 	em_n = em_n + 1;
 	em_live[kind] = em_live[kind] + 1;
 	return i;
+};
+
+void(float i, float rate, float ps) Emit_TrailMark =
+{
+	em_trail[i] = ps + 1;
+	em_trn = em_trn + 1;
+	if (em_rate[i] < rate)
+	{
+		em_rate[i] = rate;
+		em_clamped = em_clamped - 1;
+	}
+};
+
+/*
+  One drop of a trail system (rain).  Source kills a drop on what it hits, and
+  the engine can only do that by tracing every drop every frame: at Source's
+  800 a second, 1,500 of them took 650 frames a second to 133.  So a drop is
+  traced ONCE, here, along the way it will fall, and sent out as the block
+  whose life ends on what it hits.  The time it has over that life (up to a
+  fifth of its fall) it has already fallen: a lower start, and faster.  The
+  streak reaches half its length ahead of the drop and the engine draws a
+  particle once more in the frame it dies, so the fall is cut short by both:
+  the head touches and the streak is gone, and none pokes through a thin roof.
+*/
+void(float i) Emit_TrailDrop =
+{
+	local float ps, sp, d, g, vz, t, k, s;
+	local vector b, p, v;
+
+	ps = em_trail[i] - 1;
+	b = ps_tbox[ps];
+	p = em_mid[i] + [b_x * (random() * 2 - 1), b_y * (random() * 2 - 1), b_z * (random() * 2 - 1)];
+	b = ps_tspread[ps];
+	v = em_vel[i] + [b_x * (random() * 2 - 1), b_y * (random() * 2 - 1), b_z * (random() * 2 - 1)];
+	sp = vlen(v);
+	if (sp < 1)
+		return;
+	traceline(p, p + v * (TRAIL_REACH / sp), TRUE, world);
+	if (trace_startsolid)
+	{
+		em_trsolid = em_trsolid + 1;        // born inside something: Source's dies there too
+		return;
+	}
+	if (trace_fraction >= 1)
+		em_trfar = em_trfar + 1;
+	d = ps_thalf[ps];
+	if (!d)
+		d = 0.05 * sp;
+	d = trace_fraction * TRAIL_REACH - d - sp * frametime;
+	g = ps_tgrav[ps];
+	vz = -v_z;
+	t = d / sp;
+	if (g > 0)
+	if (vz > 0)
+		t = (sqrt(vz * vz + 2 * g * d * vz / sp) - vz) / g;
+	if (d <= 0 || t < TRAIL_T0)
+	{
+		em_trshort = em_trshort + 1;
+		return;
+	}
+	k = floor(log(t / TRAIL_T0) / log(TRAIL_RATIO));
+	if (k >= TRAIL_N)
+		k = TRAIL_N - 1;
+	s = t - TRAIL_T0 * pow(TRAIL_RATIO, k);
+	p = p + v * s;
+	p_z = p_z - 0.5 * g * s * s;
+	v_z = v_z - g * s;
+	em_trmade = em_trmade + 1;
+	em_trlife = em_trlife + t - s;
+	pointparticles(ps_tfx[ps * TRAIL_N + k], p, v, 1);
 };
 
 /*
@@ -1859,7 +2100,7 @@ void() Emit_LoadForMap =
 	local float  ssize, esize, jetlen, spread, initst;
 	local float  i, k, bucket, eff, kind, jit, burst;
 	local string effname;
-	local float  ps, j, pchild, opened, fcls;
+	local float  ps, j, pchild, opened, fcls, tj;
 
 	Emit_Alloc();
 	Emit_AllocLife();
@@ -1874,6 +2115,9 @@ void() Emit_LoadForMap =
 		em_ratemax = EM_RATE_MAX;
 
 	em_n = 0;
+	em_trn = 0;
+	em_trmade = em_trlife = em_trsolid = em_trshort = em_trfar = 0;
+	em_psprobe = em_psfixes = 0;
 	em_any = 0;
 	em_frozen = em_clamped = em_over = em_child = 0;
 	em_flwant = em_flmask = 0;
@@ -2030,6 +2274,7 @@ void() Emit_LoadForMap =
 		rate = dist = spd = frozen = 0;
 		smin = smax = lmin = lmax = fall = 0;
 		look = -1;
+		ps = -1;
 		alpha = 255;
 		spawnflags = disabled = 0;
 		density = freq = current = 0;
@@ -2534,12 +2779,19 @@ void() Emit_LoadForMap =
 			jit  = ps_jit[ps];
 			burst = 1;
 			rate = ps_rate[ps];
+			if (ps_trail[ps])
+			{
+				rate = ps_trate[ps];
+				Emit_TrailHandles(ps, mname);
+			}
 			dist = ps_dist[ps];
 			// UNDERSCORE, NOT A DOT.  A dot would send this back through the
 			// auto-load path Emit_PsysLoad exists to avoid; with no dot the
 			// effect is found by plain name out of what we exec'd
 			// (p_script.c:649-660).  tools/pcf.py names the blocks to match.
 			eff  = particleeffectnum(strcat(mname, "_", effname));
+			if (!em_psprobe)
+				em_psprobe = eff;
 			// The one number that separates "we never looked it up" from "the
 			// cfg did not parse": an unresolved handle emits nothing and is
 			// otherwise completely silent.  The velocity is printed because it
@@ -2562,9 +2814,15 @@ void() Emit_LoadForMap =
 			{
 				if (ps_parent[j] != effname)
 					continue;
-				Emit_Add(org + ps_ofs[j], org + ps_ofs[j], Emit_PsysVel(j), ps_jit[j],
-				         ps_rate[j], 1, ps_dist[j],
+				tj = Emit_Add(org + ps_ofs[j], org + ps_ofs[j], Emit_PsysVel(j), ps_jit[j],
+				         ps_trail[j] ? ps_trate[j] : ps_rate[j], 1, ps_dist[j],
 				         particleeffectnum(strcat(mname, "_", ps_name[j])), kind);
+				if (tj >= 0)
+				if (ps_trail[j])
+				{
+					Emit_TrailHandles(j, mname);
+					Emit_TrailMark(tj, ps_trate[j], j);
+				}
 				em_child = em_child + 1;
 				dprint(sprintf("emit: psys %s_%s child of %s rate %g\n",
 				               mname, ps_name[j], effname, ps_rate[j]));
@@ -2574,6 +2832,9 @@ void() Emit_LoadForMap =
 		j = Emit_Add(bmin, bmax, vel, jit, rate, burst, dist, eff, kind);
 		if (j >= 0)
 		{
+			if (ps >= 0)
+			if (ps_trail[ps])
+				Emit_TrailMark(j, rate, ps);
 			if (look >= 0)
 				em_life[j] = (lmin + lmax) * 0.5;
 			if (kind == EK_FIRE)
@@ -2794,6 +3055,8 @@ void() Emit_Frame =
 		k = Emit_FlameRepair();
 		if (Emit_MoteRepair())
 			k = TRUE;
+		if (Emit_PsysRepair())
+			k = TRUE;
 		if (particleeffectquery(em_fx[FX_DUSTMOTE], 0) == "")
 		{
 			localcmd("exec particles/ftesurf.cfg\n");
@@ -2830,6 +3093,7 @@ void() Emit_Frame =
 
 	// ---- pass 1: cull, and total the demand
 	em_demand = 0;
+	em_trdemand = 0;
 	dm_alive = 0;
 	mdem = 0;
 	em_flin = em_flthin = 0;
@@ -2897,10 +3161,15 @@ void() Emit_Frame =
 			mdem = mdem + em_rate[i] * em_burst[i];
 			dm_alive = dm_alive + em_rate[i] * em_life[i];
 		}
+		else if (em_trail[i])
+			em_trdemand = em_trdemand + em_want[i];
 		else
 			em_demand = em_demand + em_want[i] * em_burst[i];
 		i = i + 1;
 	}
+	em_trthrottle = 1;
+	if (em_trdemand > EM_TRAIL_BUDGET)
+		em_trthrottle = EM_TRAIL_BUDGET / em_trdemand;
 
 	// Source's pool, as a scale on every mote volume: a full pool refuses each
 	// volume's spawns alike.  surf_psychedelia asks for 144,000 alive.  Before
@@ -2926,9 +3195,12 @@ void() Emit_Frame =
 			continue;
 		}
 
-		em_acc[i] = em_acc[i] + em_want[i] * thr * (em_life[i] ? dm_thr : 1) * ft;
-		if (em_acc[i] > EM_BURST_MAX)
-			em_acc[i] = EM_BURST_MAX;
+		if (em_trail[i])
+			em_acc[i] = em_acc[i] + em_want[i] * em_trthrottle * ft;
+		else
+			em_acc[i] = em_acc[i] + em_want[i] * thr * (em_life[i] ? dm_thr : 1) * ft;
+		if (em_acc[i] > (em_trail[i] ? EM_TRAIL_BURST : EM_BURST_MAX))
+			em_acc[i] = em_trail[i] ? EM_TRAIL_BURST : EM_BURST_MAX;
 
 		n = floor(em_acc[i]);
 		if (n >= 1)
@@ -2938,7 +3210,9 @@ void() Emit_Frame =
 			// them, so the accumulator's own EM_BURST_MAX is not a particle
 			// bound on its own.  Four emissions is already more than anything
 			// in the library asks for in one frame.
+			// (A trail is 800 a second: 13 a frame at 60.)
 			if (n > 4)
+			if (!em_trail[i])
 				n = 4;
 			n = n * em_burst[i];
 			while (n > 0)
@@ -2954,7 +3228,9 @@ void() Emit_Frame =
 				// is the entity origin, which is the control point the .pcf's
 				// box is measured from.  Everything else indexes em_fx and
 				// picks a point inside the entity's brush.
-				if (em_kind[i] == EK_PSYS)
+				if (em_trail[i])
+					Emit_TrailDrop(i);
+				else if (em_kind[i] == EK_PSYS)
 					pointparticles(em_eff[i], em_mid[i], v, 1);
 				else if (em_eff[i] < 0)
 				{
@@ -3087,6 +3363,14 @@ void() Emit_List =
 
 	print(sprintf("  demand %g/sec, budget %g, throttle %.3f\n",
 	              em_demand, cvar("vbsp_emit_budget"), em_throttle));
+	if (em_trn)
+		print(sprintf("  sprite trails: %g emitters, those in range asking %g/sec of %g, throttle %.3f\n",
+		              em_trn, em_trdemand, EM_TRAIL_BUDGET, em_trthrottle));
+	if (em_trmade + em_trsolid + em_trshort)
+		print(sprintf("  drops: %g made, mean life %.2f s, %g of them with nothing to land on in %g units; %g born inside something, %g too near the ground\n",
+		              em_trmade, em_trmade ? em_trlife / em_trmade : 0, em_trfar, TRAIL_REACH, em_trsolid, em_trshort));
+	if (em_psfixes)
+		print(sprintf("  the map's own blocks were sent again %g time(s) (a renderer restart takes them; 3 at most)\n", em_psfixes));
 
 	// env_fire: the sheet or the orbs, and which rule chose.  A class counts as
 	// answering only once one of its effects answers the engine's own query.

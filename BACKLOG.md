@@ -1092,6 +1092,59 @@ as proof that every source path was built into it. No FPS improvement is claimed
     and 848 with 108 fires in reach, 919 and 758 with the 22 there were. The
     runs differ by more than the builds do. The laptop's Intel GPU is not
     measured, and smoke is the kind of overdraw it pays for.
+- **Source rain: what Patch 659 does not draw.** A `render_sprite_trail` whose
+  material is `particle/rain` (surf_tensor2's thirteen systems) is Source's
+  streak now: 1 unit wide, 80 long, at Source's rate, each drop traced once
+  where it is made and given the life that ends where it lands
+  (`src/client/cl_emit.qc`, `Emit_TrailDrop`; `tools/pcf.py`, `TRAIL_*`). Open:
+  - **`func_precipitation` is not drawn at all**: 373 volumes on 72 maps (168
+    of rain on 37, 201 of snow on 41). It is Source's other rain and most
+    maps' only one.
+  - **Only `particle/rain` takes the new draw** (`TRAIL_BLENDED`).
+    surf_boreas' four trails are `particle/particle_glow_03`, whose .vmt
+    nobody has read, and keep the engine's own spark. A trail's drop blocks
+    carry no drag, alpha fade, colour range or growth (the tool counts them).
+  - **What a drop lands on is CSQC's trace**: the world, its static props
+    and the glare test's brush copies (`cl_sprites.qc`), not Source's
+    MASK_SOLID. At the default `vbsp_glare_brush` rain stops on brushes that
+    are drawn and not solid, where Source's falls through (145 of
+    surf_tensor2's 160 func_brush are never solid, and 10 of its 11 rain
+    columns hold one); at 0 it falls through solid brush entities. Not a
+    brush the map has since moved, either. `Emit_DropFires` stands the copies
+    down for its traces; a drop a frame cannot.
+  - **Where a drop ends**: its fall is cut short by half the streak and one
+    frame of travel, so the head touches and nothing pokes through a thin
+    roof; at 30 frames a second that is up to 130 units above the ground. A
+    drop born inside something is not made (Source's dies at once): a fifth
+    of surf_tensor2's spawn box, most of it over the sky's ceiling. One that
+    would fall further than 4,096 units ends there, and one that would fall
+    longer than 3.5 s starts late, in mid air.
+  - **Wind is a constant drift.** Source's `gravity [400 200 -800]`
+    accelerates a drop sideways; the bake gives it the mean drift of a fall
+    through the box, and a drop's one trace runs straight along its first
+    velocity.
+  - **No exposure and no fog.** UnlitGeneric takes both in Source;
+    surf_tensor2's exposure ceiling is 1.4.
+  - **The spawn box is not turned with its entity**, and the speed's spread
+    is taken in world axes. Every rain entity in the library is unrotated.
+  - **An emitter is culled by distance from its box's middle** (the system's
+    `maximum draw distance`, 6000): the far corner of a box 10,000 wide
+    stops raining while you stand in it.
+  - **Across a streak** Source maps `rain.vtf` over 1 unit with its own mip;
+    here the texture is across it, the edge is pixel coverage, and under two
+    pixels the texture's mean stands in. Not compared with Source.
+  - **Fall speed is unchanged**: it was already Source's 1,000 to 3,000 a
+    second plus gravity. What read as slow was the shape.
+  - **`ftesurf/particles/surf_tensor2.cfg` and `data/mapparticles.txt` are
+    not in git and not sent by a lobby**: a player has this rain only from a
+    release archive baked after the patch. Until then the client draws the
+    old rain from the old files (measured: the same seven to twelve streaks).
+  - **Cost is measured on one machine.** RTX 2080 SUPER, 1920x1111, uncapped,
+    surf_tensor2's spawn, two runs each, alternating: 666 and 662 frames a
+    second with this rain, 574 and 555 with the old (whose 130 drops the
+    engine traced every frame), 832 with the map's systems off. The first
+    cut emitted Source's rate through the engine's traces: 133. The laptop's
+    Intel GPU is not measured.
 - **`ftesurf/particles/` is not in git.** `.gitignore`'s allow-list has no line
   for it, so the hand-written `ftesurf.cfg`, `ftesurf_src.cfg` and
   `ftesurf_avatar.cfg` (and the two baked maps) exist only in this install and

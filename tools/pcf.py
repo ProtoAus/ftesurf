@@ -120,6 +120,22 @@ KNOWN = {
 }
 
 # render_sprite_trail draws a stretched streak; PT_TEXTUREDSPARK is FTE's.
+#
+# RAIN (Patch 659).  A trail whose material is in TRAIL_BLENDED gets TRAIL_N more
+# blocks, <map>_<name>_t0.., and a `trail` line in the index.  cl_emit.qc places
+# those drop by drop (Emit_TrailDrop): it traces each one once, to where it will
+# land, and uses the block whose life ends there -- lives of TRAIL_T0 *
+# TRAIL_RATIO ^ k, no spawn box and no collision.  The system's own block and
+# psys line stay as they were, for a client from before the patch.  Why: Source
+# emits the nominal rate (a drop killed by what it hits never lives its 10 s, so
+# the pool does not fill), and at that rate the engine's per-frame trace of
+# every drop took 650 frames a second to 133.
+# cl_emit.qc has these five by the same names.
+TRAIL_SHADER = "ftesurf_trail/"
+TRAIL_QUAD = 4.0
+TRAIL_N, TRAIL_T0, TRAIL_RATIO = 20, 0.04, 1.25
+# UnlitGeneric, $translucent, not $additive: read a material's .vmt before adding it.
+TRAIL_BLENDED = ("particle/rain",)
 # render_animated_sprites is an ordinary camera-facing billboard.
 RENDERER_TYPE = {
     "render_sprite_trail": "texturedspark",
@@ -330,13 +346,16 @@ def translate(d, e, unknown, mapname):
         a_hi = float(ar.get("alpha_max", 255)) / 255.0
     else:
         a_lo = a_hi = (float(col[3]) / 255.0 if len(col) > 3 else 1.0)
-    alpha = (a_lo + a_hi) * 0.5
-    alpharand = abs(a_hi - a_lo) * 0.5
+    # A floor and a range: the engine draws alpha + alpharand * frandom()
+    # (p_script.c, P_RunParticleEffectState).  Until Patch 659 this wrote the
+    # middle and half the range, which is the upper half of what Source draws.
+    alpha = min(a_lo, a_hi)
+    alpharand = abs(a_hi - a_lo)
 
     alphadelta = 0.0
     if find(d, e, "operators", "Alpha Fade Out Random") or \
        find(d, e, "operators", "Alpha Fade and Decay"):
-        alphadelta = -alpha / max(die_hi, 0.05)
+        alphadelta = -(a_lo + a_hi) * 0.5 / max(die_hi, 0.05)
 
     # Alpha Fade In Random ramps each particle's alpha from 0 to its own value
     # over a per-particle random time ("fade in time min"/"max", a fraction of
@@ -711,6 +730,40 @@ def translate(d, e, unknown, mapname):
         L.append("\tclipbounce -1\t\t// Source: kill particle on collision")
     L.append("}")
 
+    # A streak is `radius` WIDE (a sprite is that across HALF of it) and a tenth
+    # of a second of its travel long, between "min length" and "max length"
+    # (C_OP_RenderSpritesTrail).  The quad is TRAIL_QUAD of that width and the
+    # shader (Emit_TrailShader) draws the streak inside it, so one narrower than
+    # a pixel is still a line.  `stretchfactor -n` is a fixed half-length, read
+    # only by the batched draw that shader's sort selects (R_AddTSparkParticle).
+    trail = None
+    if rend and rend[0].get("functionName") == "render_sprite_trail" and mat.lower() in TRAIL_BLENDED:
+        lmax = float(rend[0].get("max length", 2000.0))
+        slow = max(0.0, sum(v * v for v in basevel) ** 0.5 - sum(v * v for v in spread) ** 0.5)
+        half = lmax * 0.5 if slow * 0.1 >= lmax else 0.0
+        if not half:
+            unknown["(sprite trail: length follows speed, not clamped to max length)"] += 1
+        # What the system's own block carries and these do not.
+        for what, there in (("drag", drag > 0.001), ("an alpha fade", alphadelta < -0.001),
+                            ("a colour range", bool(rgbrand)), ("growth", abs(scaledelta) > 0.001)):
+            if there:
+                unknown["(sprite trail: %s is not carried into the drop blocks)" % what] += 1
+        tq = (r_lo * s_birth * TRAIL_QUAD, r_hi * s_birth * TRAIL_QUAD)
+        V = ['\ttexture "%s%s"' % (TRAIL_SHADER, mat), "\ttype texturedspark"]
+        if half:
+            V.append("\tstretchfactor -%.4g" % half)
+        V.append("\tscale %.3g %.3g" % tq if abs(tq[1] - tq[0]) > 0.01 else "\tscale %.3g" % tq[0])
+        V += ["\tscalefactor 1", "\trgb %d %d %d" % tuple(rgb), "\talpha %.3g" % alpha]
+        if alpharand > 0.005:
+            V.append("\talpharand %.3g" % alpharand)
+        V += ["\tcount 1", "\tveladd 1"]
+        if abs(grav) > 0.01:
+            V.append("\tgravity %.6g" % grav)
+        for k in range(TRAIL_N):
+            L += ["", "r_part %s_%s_t%d" % (mapname, name, k), "{"] + V + \
+                 ["\tdie %.4g" % (TRAIL_T0 * TRAIL_RATIO ** k), "}"]
+        trail = dict(material=mat, rate=nominal, box=list(box), spread=list(spread), grav=grav, half=half)
+
     # CHILDREN.  A DmeParticleSystemDefinition's 'children' are systems Source
     # starts at the same control points the moment the parent starts
     # (particles.h:1550-1554 forwards the orientation to every child, and the
@@ -731,7 +784,7 @@ def translate(d, e, unknown, mapname):
 
     rt = dict(name=name, rate=rate, vel=basevel, wvel=worldvel, ofs=ofs,
               jit=jit, maxp=int(maxp), die=die_hi, maxdist=maxdist,
-              nominal=nominal, children=children)
+              nominal=nominal, children=children, trail=trail)
     return "\n".join(L), rt
 
 
@@ -854,6 +907,18 @@ def main():
         idx.append(psline(rt, "-"))
     for parent, rt in edges:
         idx.append(psline(rt, parent))
+    # trail <map> <name> <material> <rate> <box x y z> <speed spread x y z> <gravity>
+    #       <n> <t0> <ratio> <half a streak's length, 0 = 0.05 s of travel>
+    # Sixteen words, after the psys lines.  A client from before Patch 659 skips
+    # them: their first word is not psys.
+    for rt in runtime:
+        t = rt["trail"]
+        if t:
+            idx.append("trail %s %s %s %.4g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %d %.4g %.4g %.4g" % (
+                mapname, rt["name"], t["material"], t["rate"],
+                t["box"][0], t["box"][1], t["box"][2],
+                t["spread"][0], t["spread"][1], t["spread"][2], t["grav"],
+                TRAIL_N, TRAIL_T0, TRAIL_RATIO, t["half"]))
 
     print("%s: %d systems translated, %d skipped, %d child links" % (
         mapname, len(blocks), len(skipped), len(edges)))

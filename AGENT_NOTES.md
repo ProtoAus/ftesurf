@@ -4569,6 +4569,70 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   happen is rolling a DEPLOYED build back, and that is read off the installs'
   and the Pi's hashes, not off git.
 
+### Rain: a sprite trail placed drop by drop (Patch 659) -- 2026-10-12
+
+- WHERE: `tools/pcf.py` writes, for a trail whose material is in
+  `TRAIL_BLENDED`, twenty more blocks a system (`<map>_<name>_t<k>`, lives
+  0.04 * 1.25^k) and a `trail` line in `data/mapparticles.txt`;
+  `src/client/cl_emit.qc` reads it (`Emit_TrailNote`), makes the streak's
+  shader (`Emit_TrailShader`, `ftesurf_trail/<material>`) and places each
+  drop (`Emit_TrailDrop`). `emit_list` has two lines: `sprite trails:` and
+  `drops:`. The system's own block and psys line are untouched, so an old
+  client with new files, or a new client with old files, draws the old rain.
+- THE ENGINE TRACES EVERY CLIPPED PARTICLE EVERY FRAME. `clipbounce` in a
+  block means a traceline a particle a frame (`r_particle_tracelimit` is
+  0x7fffffff), about 4 microseconds each on the desktop: Source's 800 drops a
+  second, 1,550 alive, took 650 frames a second to 133. `r_partinfo` marks
+  such a type `(+traceline)`. The old rain's 130 drops, with the map's other
+  systems, read 565 where the map without any read 787.
+- A DROP THAT MEETS NOTHING LIVES ITS WHOLE `die`. The engine's trace did not
+  stop a drop at the sky's floor, so most of the old rain's drops were under
+  the map for ten seconds, traced.
+- THE FIX IS ONE TRACE A DROP: QC picks the point and the speed, traces along
+  the fall, and uses the block whose life is the largest not over the fall
+  time; the time left over the drop has "already fallen" (a lower start, and
+  faster). Nothing to trace afterwards.
+- WHEN THE COUNT WENT DOWN, THE SUBJECT'S OWN COUNTERS SAID WHY. The second
+  cut held 256 particles where the first held 1,500 and the arm failed its
+  count. `drops: made / born inside something / mean life` showed lives of
+  0.42 s and a fifth of the box inside something: the first cut's 1,500 were
+  mostly under the map. The threshold was the wrong thing, not the rain.
+- A REPAIR THAT ASKS A HANDLE NOBODY TOOK REPAIRS FOR EVER. The first repair
+  after a renderer restart probed the first trail system in the INDEX, which
+  on surf_tensor2 no entity names: its handles were never taken, the slot
+  read 0, the query read "", and the map's config was sent again every
+  second, each time freeing every live particle of its 280 blocks. The arm
+  passed (a drop lives 0.4 s). The review read it; `Emit_PsysRepair` asks the
+  first system that EMITS, three times a map at most, and the arm grades
+  `reloads`. (It also brings a baked map's blocks back after `vid_restart`,
+  which nothing did before.)
+- A TEXTURE'S EDGE IS EMPTY. A streak under a pixel wide puts most pixels'
+  middles outside it; clamping the lookup there read `rain.vtf`'s outer
+  columns, alpha 0, and the streak drew as dots: 8 to 15% of the rain's
+  pixels in blobs under 8, against 1.5% with the texture's mean (its 1x1
+  mip, `texture2D(..., 8.0)`) standing in under two pixels.
+- A SPARK'S `scale` IS ITS FULL WIDTH (`R_AddTSparkParticle`), where a
+  sprite's is 4*sqrt(2) times its half-width: `pcf.py` had one number for
+  both and rain was 5.66 wide. `stretchfactor -n` is a fixed half-length and
+  only the batched draw reads it; a shader that sorts `blend` (any .vmt
+  material) gets `GL_DrawTexturedSparkParticle`, which draws from the
+  particle to 0.05 s of its travel ahead.
+- THE ENGINE DRAWS A PARTICLE ONCE MORE IN THE FRAME IT DIES (killed on
+  `die < particletime`, then moved and drawn, time advanced after), and a
+  spark's quad is centred on it: a drop given exactly its fall time shows a
+  frame of travel and half a streak past the surface.
+- `rain.vtf` IS A 32x32 GREY BLOB (0.506, alpha to 0.84), not a line: the
+  streak's shape is the quad's.
+- `alpha` AND `alpharand` ARE A FLOOR AND A RANGE (`alpha + alpharand *
+  frandom()`). `pcf.py` wrote the middle and half the range since it was
+  written: every baked system drew the upper half of Source's alpha.
+- A PNG SCREENSHOT STALLS EMISSION: frames longer than 0.25 s are clamped,
+  so the drops made between two `emit_list`s that bracket two shots read 455
+  a second, not 608. The arm's tie divides by what was made, not the rate.
+- THE BAKED FILES ARE THE TOOL'S: `python tools/pcf.py --map <map>` writes
+  `particles/<map>.cfg` and `data/mapparticles.txt` in `C:\FTESurf\ftesurf`.
+  Neither is in git or sent by a lobby; `C:\FTEQuake` has neither.
+
 ### How bright a mote is (Patch 657) -- 2026-10-12
 
 - WHERE: `src/client/cl_emit.qc`, `Emit_Exposure` / `Emit_MapHDR` in front of

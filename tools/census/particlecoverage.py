@@ -37,6 +37,8 @@ def baked_index(path):
         if len(fields) == 3 and fields[0] == 'particles':
             int(fields[2])  # map-level line count, not an effect definition
             continue
+        if fields[0] == 'trail':
+            continue    # Patch 659: how cl_emit.qc places a rain system's drops, not a system
         if len(fields) != 18 or fields[0] != 'psys':
             raise ValueError('expected current 18-column psys index: ' + line)
         if fields[17] == '-':
