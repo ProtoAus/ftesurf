@@ -959,19 +959,28 @@ as proof that every source path was built into it. No FPS improvement is claimed
   Source particles and says `couldn't exec particles/ftesurf.cfg` once a
   second. Falsifier: `git ls-files ftesurf/particles` lists the seven files and
   a worktree's client loads a map without that line.
-- **Blended particles are drawn twice a frame (engine).** `GLBE_SubmitMeshes`
-  loops `i <= stop` (`gl_backend.c:6715` at `65bf6f464`) and `GLBE_DrawWorld`
-  calls it with `(PORTAL, SEETHROUGH+1)` and then `(SEETHROUGH+1, NEAREST)`
-  (`:7656`, `:7698`), so the bucket after SEETHROUGH, which is UNLITDECAL, goes
-  through both. The script particle system's default shaders for `blend
-  blendalpha` (and four more, `p_script.c:800-940`) are `sort unlitdecal`.
-  Measured with Patch 648's ruler: a black mote meant to cover 0.85 of a pixel
-  covered 0.975, and one meant for 0.67 covered 0.887, which are `1 - (1 - a)^2`;
-  on `sort additive` the same motes read 0.839 and 0.665. Stock FTE has the same
-  lines. NOT FIXED: every `blendalpha` effect in `particles/ftesurf.cfg` (the old
-  motes, dust clouds, smoke) was tuned by eye over the double draw, so fixing it
-  makes each of them fainter by its own alpha. The owner's call. Falsifier: the
-  ruler with a `sort unlitdecal` shader reads 0.85.
+- **Blended particles are drawn once: what engine Patch 658 left.** The GL
+  renderer drew the UNLITDECAL bucket twice a frame (`gl_backend.c`,
+  `GLBE_DrawWorld`); it is drawn once now, and the script particle system's
+  default shaders write what two blends left (`defaultsprite#TWICE`,
+  `#TWICEC`), so nothing tuned changed (`tools/p658once.py`). Still open:
+  - **`alpha` in a default-shader effect is not the alpha drawn.** `blend
+    blendalpha` at alpha a covers `a * (2 - a)`: 0.5 is 0.75. That is the look
+    every effect in `particles/ftesurf.cfg` was tuned at, kept on purpose. An
+    effect that names a shader of its own (the flame, the smoke, the motes) is
+    drawn at what it says.
+  - **`r_lightprepass 1`** (off by default) still submits that bucket twice,
+    and with the permutation a particle there is too strong: (1 - a)^4.
+  - **A scene with no world** drew the bucket once all along and is now
+    stronger by the permutation.
+  - **`blend blendcolour`** has no single-blend equivalent and is drawn once at
+    what it says: fainter than before. No effect of ours uses it.
+  - **Two draws were not always equal.** With `r_shadow_realtime_world 1`, or a
+    dynamic light on the wall behind a particle, the first draw differed from
+    the second and the single draw differs from both by that. Neither is the
+    owner's setting.
+  - **Other renderers** ignore the permutation and never drew twice. **The
+    Linux client** carries 658 from its next build, at release.
 - **Source dust motes: what Patch 648 does not draw.** `func_dustmotes` is
   `c_func_dust.cpp`'s own mote now (`src/client/cl_emit.qc`, the Patch 648
   section): 5,297 volumes on 487 of the library's 1,349 maps. Still open:

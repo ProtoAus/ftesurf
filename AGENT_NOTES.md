@@ -4569,6 +4569,38 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   happen is rolling a DEPLOYED build back, and that is read off the installs'
   and the Pi's hashes, not off git.
 
+### Blended particles are drawn once (engine Patch 658) -- 2026-10-12
+
+- WHAT WAS WRONG. `GLBE_SubmitMeshes(batches, start, stop)` INCLUDES `stop`
+  (the D3D and Vulkan loops stop before theirs). `GLBE_DrawWorld` submitted
+  PORTAL..SEETHROUGH+1, drew the lights, then SEETHROUGH+1..NEAREST: the bucket
+  after SEETHROUGH, UNLITDECAL, went through both. Only the script particle
+  system's default shaders sort there (`p_script.c`, the templates for blend,
+  blendcolour, invmoda, invmodc, subtract).
+- WHAT 658 DOES. The first submit stops at SEETHROUGH. The templates ask for
+  `program defaultsprite#TWICE` (alpha becomes a * (2 - a)) or `#TWICEC`
+  (colour, c * (2 - c)), which is exactly what two blends left; clamped to 1
+  first. Beams and fans were drawn once all along (the render queue) and keep
+  the plain program under `<texture>_blend1`.
+- `#NAME` AFTER A PROGRAM NAME IS A `#define`, with no `!!` line needed
+  (`gl_shader.c`, the program-name parser). The built-in programs live twice:
+  `engine/shaders/glsl/*.glsl` and as string literals in `engine/gl/r_bishaders.h`.
+  Edit both; the header is what is compiled, and no rule regenerates it.
+- THE ARM, `tools/p658once.py`: six still dots over a wall photographed bare.
+  The one that counts draws is P, a shader with the OLD template text: 0.549 of
+  the wall left on 658 (one draw of a sprite 0.914 opaque: 0.543), 0.306 on the
+  645 engine (two: 0.295). P is graded against the sprite file's own alpha:
+  the first cut compared it with the default shader's dot, and "T is P squared"
+  is true for ANY number of draws.
+- IT DOES NOT SEE beams, fans, subtract, invmoda, blendcolour, fog, another
+  renderer. `tools/test_p645lines.py` is the check that a backend change left
+  the engine-drawn run lines alone; it needs surf_voyager and a recording that
+  are not in `C:\FTESurf` (ask the run-line session, or read its header).
+- THE BUILD, in a worktree of ftequakers main: the recipe under Patch 645
+  above. Client only (no server file, plugin or header moved). Stamp
+  `git-7229-patch-658-0-g7501a6cce`, sha256 `4faa7ff4`; the DLL list from
+  `objdump -p` is the installed binary's.
+
 ### func_dustmotes in the game (Patch 648) -- 2026-10-12
 
 - WHERE IT IS: `src/client/cl_emit.qc`, the Patch 648 section. One r_part block

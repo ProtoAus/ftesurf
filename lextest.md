@@ -11,6 +11,22 @@ to be wrong.
 
 ---
 
+## 00. 12 Oct — see-through particles are drawn once (engine Patch 658)
+
+You asked: "is this the only way to make them brighter? I want them brighter,
+but only drawn 1 obviously."
+- **Drawn once now.** The engine drew every ordinary see-through particle
+  (dust clouds, smoke puffs, bubbles, the old motes) twice a frame. That was a
+  bug in the OpenGL renderer, not a way of making them bright.
+- **They look exactly as they did.** How strong a particle is, is one number;
+  the one draw now writes what the two used to add up to. Measured on a dot
+  over a wall: the same to a hundredth.
+- **Brighter is a separate thing, and yours to say.** Nothing got brighter in
+  this patch. Tell me which should be brighter (dust clouds? smoke? bubbles?)
+  and I turn their strength up. The new dust motes are Patch 657.
+- It needs the new engine file in your install, copied in while the game
+  is closed. The line under this one says when that happened.
+
 ## 00. 12 Oct — a Steam picture for everyone on the boards (Patch 660)
 
 From your list ("scan for all the people in the leaderboard and save their DP
@@ -79,11 +95,7 @@ a few sizes, drift and fade out.
 - **Still the old orbs:** dust CLOUDS (the big soft ones, e.g. the snow haze
   on surf_boreas). Different object, and Source draws those large.
 - To see the old motes again: `vbsp_emit_motes 0`, then load the map again.
-- **Your call:** the engine draws every ordinary see-through particle twice a
-  frame (dust clouds, smoke puffs, the old motes), so each is stronger than
-  its numbers say. Fixing it makes all of them fainter, and they were tuned
-  by eye as they are. Not changed. BACKLOG, "Blended particles are drawn
-  twice a frame".
+- The engine drawing see-through particles twice: fixed, see Patch 658 above.
 - **Live since 11 Oct 14:53 UTC (12 Oct, 01:53 here)** on both installs and
   all twelve lobbies. Restart the game to get it.
 
