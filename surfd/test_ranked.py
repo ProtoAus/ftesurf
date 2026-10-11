@@ -1130,7 +1130,9 @@ else:
 
     def files(d=None):
         d = d or m.AVATAR_DIR
-        return sorted(os.listdir(d)) if os.path.isdir(d) else []
+        # (steamsync's two stamps, Patch 660, are not pictures)
+        return sorted(f for f in os.listdir(d) if f not in ("board.at", "people.at")) \
+            if os.path.isdir(d) else []
 
     def named(h):
         return [f for f in files() if f.startswith(h)]
@@ -1317,6 +1319,288 @@ else:
     check("with the board by install and not by account a mark is the digest of a string its "
           "client chose, and the game's route answers nothing (CONTROL: back on, it does)",
           (off, anon.get("/api/board?avatar=" + WHO1).status_code), (404, 200))
+    # --- Patch 660: the players of imported rows, who are nobody's account ---
+    import time
+    IM1, IM2, IM3, IM4 = ("76561198000000101", "76561198000000102", "76561198000000103",
+                          "76561198000000104")
+    PA, PB, PA2, PS = "a1" * 20, "b2" * 20, "a9" * 20, "c3" * 20
+    ROW = ("INSERT INTO runs (map, track, leg, tier, style, player, name, ticks, tickrate, millis,"
+           " flags, node, runid, submitted, replay_id) VALUES ('surf_test', 0, 0, ?, 'clean', ?, ?,"
+           " ?, 100, ?, 0, 'import', '', ?, 0)")
+    for who, tier, ms in ((IM1, "momentum", 47000), (IM2, "ksf", 47100), (IM3, "momentum", 47200),
+                          ("an old name", "momentum", 47300), (GUID2, "ksf", 47400)):
+        run_sql(m, ROW, (tier, who, "n" + who[-3:], ms // 10, ms, NOW))
+    run_sql(m, ROW.replace("INSERT INTO", "INSERT OR IGNORE INTO"),
+            ("momentum", SID, "LexThere", 4690, 46900, NOW))
+    conn = sqlite3.connect(m._db)
+    PICS = {IM1: PA, IM2: PB, SID: PS}      # IM3: Steam knows nothing of it
+    WHOLE = []
+
+    def steam_says(table, fail=False):
+        def http(url, data=None, timeout=0):
+            ids = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["steamids"][0].split(",")
+            WHOLE.append(ids)
+            if fail:
+                raise ST.Unavailable("status 503")
+            return json.dumps({"response": {"players": [
+                dict({"steamid": i, "personaname": "p"}, **({"avatarhash": table[i]} if table[i] else {}))
+                for i in ids if i in table]}}).encode()
+        return http
+
+    def people(table, go, now, limit=100, fail=False):
+        return steamsync.people(conn, "k", steam_says(table, fail), go, limit, out=said.append,
+                                directory=m.AVATAR_DIR, now=now)
+
+    def held():
+        return [tuple(r) for r in conn.execute(
+            "SELECT steamid, avatar, asked_at FROM boardpics ORDER BY steamid")]
+
+    def there(name):
+        return os.path.exists(os.path.join(m.AVATAR_DIR, name))
+
+    def stamp_at():
+        return os.path.getmtime(os.path.join(m.AVATAR_DIR, "board.at"))
+
+    plan = " ".join(str(r[3]) for r in conn.execute(
+        "EXPLAIN QUERY PLAN " + steamsync.PEOPLE_SQL % "'momentum', 'ksf'"))
+    check("the boards are read for their players along the primary key's index, which holds "
+          "the tier and the player, and not along the players' index with a lookup a row",
+          ("runs_player" in plan, "sqlite_autoindex_runs_1" in plan), (False, True))
+
+    T2 = T1 + 100000
+    was = stamp_at()
+    check("a dry pass over the imported rows counts their players by SteamID (a name and an "
+          "install's guid are not one; an account's SteamID is), says who it would ask, asks "
+          "Steam nothing and writes nothing",
+          (people(PICS, False, T2), WHOLE, held(), there("people.at"), stamp_at() == was),
+          ((4, 4, 4, 0), [], [], False, True))
+    check("a real pass keeps them and asks about no more than its limit, the never-asked "
+          "first, in one request; surfd is told that something changed",
+          (people(PICS, True, T2, limit=2), WHOLE, held(), there("people.at"), stamp_at()),
+          ((4, 4, 2, 2), [[SID, IM1]],
+           [(SID, PS, T2), (IM1, PA, T2), (IM2, "", 0), (IM3, "", 0)], True, T2))
+    check("the next pass asks the rest; one Steam says nothing of is still marked asked",
+          (people(PICS, True, T2 + 1800), WHOLE[1:], held()[2:]),
+          ((4, 0, 2, 1), [[IM2, IM3]], [(IM2, PB, T2 + 1800), (IM3, "", T2 + 1800)]))
+    n = len(WHOLE)
+    check("nobody is asked about twice in a day, by the pass's own clock, and a pass that "
+          "changes nothing does not tell surfd it did",
+          (people(PICS, True, T2 + 3600), len(WHOLE) - n, stamp_at()), ((4, 0, 0, 0), 0, T2 + 1800))
+    run_sql(m, ROW, ("momentum", IM4, "late", 4750, 47500, NOW))
+    check("a player imported since the boards were last read is not known until a day after "
+          "that read; and a limit of nothing does nothing at all",
+          (people(PICS, True, T2 + 7200)[:2], people(PICS, True, T2 + 86400 - 10)[:2],
+           people(PICS, True, T2 + 86400 + 1, limit=0), there("people.at"), len(held())),
+          ((4, 0), (4, 0), (0, 0, 0, 0), True, 4))
+    down = people(PICS, True, T2 + 86400 + 5, fail=True)
+    check("Steam not answering ends the pass and marks nobody asked (the new player is kept)",
+          (down, [r[2] for r in held()]),
+          ((5, 1, 0, 0), [T2, T2, T2 + 1800, T2 + 1800, 0]))
+    LATER = dict(PICS, **{IM1: PA2, IM2: "", IM4: ""})
+    check("a day on they are asked again: a changed picture is taken, a reply with no "
+          "picture keeps the one we have",
+          (people(LATER, True, T2 + 86400 + 2000),
+           [(r[0], r[1]) for r in held()]),
+          ((5, 0, 5, 1), [(SID, PS), (IM1, PA2), (IM2, PB), (IM3, ""), (IM4, "")]))
+
+    IM6 = "76561198000000106"
+    T4 = T2 + 3 * 86400
+    run_sql(m, ROW, ("ksf", IM6, "passing", 4760, 47600, NOW))
+    came = people({}, True, T4)[:2]
+    run_sql(m, "DELETE FROM runs WHERE player = ?", (IM6,))
+    stays = (people({}, True, T4 + 3600)[0], IM6 in [r[0] for r in held()])
+    left = (people({}, True, T4 + 86400 + 1)[0], IM6 in [r[0] for r in held()])
+    check("a player who is on no imported board any more is forgotten at the next read of "
+          "the boards, a day on, and not before", (came, stays, left),
+          ((6, 1), (6, True), (5, False)))
+    keep = held()
+    conn.execute("DELETE FROM boardpics")
+    conn.commit()
+    again = people({}, True, T4 + 86400 + 60)       # the read's stamp is a minute old
+    check("an empty table is filled by the pass that finds it, whatever the stamp says (a "
+          "database restored beside a kept directory)", (again[:2], len(held())), ((5, 5), 5))
+    conn.execute("DELETE FROM boardpics")
+    conn.executemany("INSERT INTO boardpics (steamid, avatar, asked_at) VALUES (?, ?, ?)", keep)
+    conn.commit()
+
+    conn.execute("UPDATE boardpics SET asked_at = 0 WHERE steamid = ?", (IM4,))
+    conn.commit()
+    conn.execute("PRAGMA busy_timeout=50")
+    other = sqlite3.connect(m._db)
+    other.execute("BEGIN IMMEDIATE")
+    said[:] = []
+    busy = people(PICS, True, T4 + 86400 + 120)
+    other.rollback()
+    other.close()
+    conn.execute("PRAGMA busy_timeout=5000")
+    check("a database another writer holds ends the pass in one line, with nobody marked "
+          "asked who could not be written",
+          (busy[2], len([x for x in said if "busy" in x]),
+           [r[2] for r in held() if r[0] == IM4]), (0, 1, [0]))
+    conn.execute("UPDATE boardpics SET avatar = ?, asked_at = ? WHERE steamid = ?", (PA, T2, IM1))
+    conn.execute("UPDATE boardpics SET asked_at = ? WHERE steamid = ?", (T2, IM4))
+    conn.commit()
+
+    # At T1, when the accounts' three pictures that could not be kept are still
+    # marked: what is asked for below is the imported players' alone.
+    def a_board_pass(budget):
+        return steamsync.pictures(conn, pic_http, True, out=said.append, directory=m.AVATAR_DIR,
+                                  now=T1, budget=budget)
+
+    FETCHED[:] = []
+    was = stamp_at()
+    first_pass = a_board_pass(2)
+    told = (was != T1, stamp_at())
+    got1 = [u.rsplit("/", 1)[1][:40] for u in FETCHED]
+    second = a_board_pass(2)
+    check("their pictures are fetched after the accounts', no more than the pass's budget "
+          "asked for, the rest by the next pass, and none of them is pruned as nobody's; a "
+          "pass that fetched tells surfd",
+          (first_pass[1], got1, second[1], [u.rsplit("/", 1)[1][:40] for u in FETCHED[2:]],
+           second[3], sorted(f[:40] for f in files() if f.endswith(".txt") and f[:2] in ("a1", "b2", "c3")),
+           told),
+          (2, [PA, PB], 1, [PS], 0, [PA, PB, PS], (True, T1)))
+    os.remove(os.path.join(m.AVATAR_DIR, PB + ".txt"))
+    os.remove(os.path.join(m.AVATAR_DIR, PS + ".jpg"))
+    os.remove(os.path.join(m.AVATAR_DIR, PS + ".txt"))
+    n = len(FETCHED)
+    spent = a_board_pass(0)
+    check("with the budget spent a picture already here still gets its game copy (that asks "
+          "nobody for anything), and one to fetch waits",
+          (spent[1], spent[2], len(FETCHED) - n, named(PB), named(PS)),
+          (0, 1, 0, [PB + ".jpg", PB + ".txt"], []))
+    a_board_pass(5)
+    STRAY = "99" * 20 + ".jpg"
+    open(os.path.join(m.AVATAR_DIR, STRAY), "wb").close()
+    conn.execute("INSERT INTO boardpics (steamid) VALUES ('76561198000000109')")
+    conn.commit()
+    early = a_board_pass(5)[3], STRAY in files()
+    conn.execute("DELETE FROM boardpics WHERE steamid = '76561198000000109'")
+    conn.commit()
+    check("nothing is pruned while an imported player has never been asked about (their "
+          "picture's files would read as nobody's); once all have been, a stray file goes",
+          (early, a_board_pass(5)[3], STRAY in files()), ((0, True), 1, False))
+    conn.close()
+
+    def fresh():
+        m.board_avatars_reset()
+        m.avatars_reset()
+
+    def table(at):
+        with m.app.app_context():
+            return m.avatars(at)
+
+    fresh()
+    hi1, hi2, hi3 = handle(IM1), handle(IM2), handle(IM3)
+    PD = "d4" * 20
+    run_sql(m, "UPDATE boardpics SET avatar = ? WHERE steamid = ?", (PD, IM4))
+    run_sql(m, "INSERT INTO boardpics (steamid, avatar, asked_at) VALUES (?, 'surfd', 1)",
+            ("76561198000000105",))
+    with open(os.path.join(m.AVATAR_DIR, "surfd.jpg"), "wb") as fh:
+        fh.write(JPEG)                      # the file a stored value that is no hash names
+    hi4, hi5 = handle(IM4), handle("76561198000000105")
+
+    def site_av(h):
+        return {r["who"]: r.get("av") for r in (anon.get("/board/api/map?map=surf_test&tier=momentum")
+                                                .get_json() or {}).get("rows", [])}.get(h, "no row")
+
+    def game_av(sid):
+        return {r["player"]: r.get("av") for r in (anon.get("/api/board?map=surf_test&tier=momentum")
+                                                   .get_json() or {}).get("rows", [])}.get(sid, "no row")
+
+    fresh()
+    nofile = (anon.get("/board/avatar/" + hi4).status_code, site_av(hi4),
+              anon.get("/api/board?avatar=" + A.who_of(IM4)).status_code,
+              anon.get("/board/avatar/" + hi5).status_code)
+    with open(os.path.join(m.AVATAR_DIR, PD + ".jpg"), "wb") as fh:
+        fh.write(JPEG)
+    fresh()
+    siteonly = (anon.get("/board/avatar/" + hi4).status_code, site_av(hi4),
+                anon.get("/api/board?avatar=" + A.who_of(IM4)).status_code, game_av(IM4))
+    os.remove(os.path.join(m.AVATAR_DIR, PD + ".jpg"))
+    os.remove(os.path.join(m.AVATAR_DIR, "surfd.jpg"))
+    run_sql(m, "UPDATE boardpics SET avatar = '' WHERE steamid = ?", (IM4,))
+    run_sql(m, "DELETE FROM boardpics WHERE steamid = '76561198000000105'")
+    fresh()
+    check("an imported player whose picture is not on disk yet has none anywhere and no row "
+          "says so, nor has one whose stored value is no hash though a file of that name is "
+          "there; with the site's file there and the game's copy not, the site and its row "
+          "have it and the game and its row do not",
+          (nofile, siteonly), ((404, None, 404, 404), (200, 1, 404, None)))
+    check("an imported row's player has a picture on the site by handle and in the game by "
+          "mark, and the row says so; one Steam knew nothing of has none",
+          ([anon.get("/board/avatar/" + x).status_code for x in (hi1, hi2, hi3)],
+           [anon.get("/api/board?avatar=" + A.who_of(x)).status_code for x in (IM1, IM2, IM3)],
+           game_av(IM1), game_av(IM3), game_av("an old name")),
+          ([200, 200, 404], [200, 200, 404], 1, None, None))
+    check("an account's SteamID on an imported row is the account's: the picture is the "
+          "account's own",
+          (anon.get("/board/avatar/" + h1).status_code,
+           table(int(time.time()))["site"].get(SID) == HA), (200, True))
+    held_table = m._avb["people"]
+    banned = (ban(c, token, SID)[1], anon.get("/board/avatar/" + h1).status_code,
+              anon.get("/api/board?avatar=" + WHO1).status_code,
+              anon.get("/board/avatar/" + hi1).status_code, m._avb["people"] is held_table,
+              ban(c, token, SID, action="unban")[1])
+    check("a banned account gets no picture by the imported road either, an imported "
+          "player's is still served, and the ban's own reset leaves the imported players' "
+          "table the one that was held", banned, (True, 404, 404, 200, True, True))
+
+    real_who = A.who_of
+    A.who_of = lambda sid: "abcdef02" if sid in (IM1, IM2) else real_who(sid)
+    fresh()
+    two = (anon.get("/api/board?avatar=abcdef02").status_code,
+           [anon.get("/board/avatar/" + x).status_code for x in (hi1, hi2)])
+    A.who_of = lambda sid: "abcdef03" if sid in (IM1, SID2) else real_who(sid)
+    fresh()
+    acct = (anon.get("/api/board?avatar=abcdef03").get_data(as_text=True)[:14], game_av(IM1))
+    A.who_of = real_who
+    fresh()
+    check("two imported players who share a mark have no picture in the game and keep the "
+          "site's; one who shares an account's mark has none there either, and the mark "
+          "stays the account's",
+          (two, acct, anon.get("/api/board?avatar=" + A.who_of(IM1)).status_code),
+          ((404, [200, 200]), ("FTESURF-AVATAR", None), 200))
+
+    # The table's own life: built once, kept while steamsync's stamp is still,
+    # rebuilt on a thread when it moves.
+    fresh()
+    t0 = int(time.time())
+    cold = table(t0)
+    by0 = m._avb["by"]
+    run_sql(m, "UPDATE boardpics SET avatar = ? WHERE steamid = ?", (PB, IM3))
+    quiet = table(t0 + m.AVATAR_TTL + 1)
+    m.board_avatars_wait()                          # had that look started a rebuild, it is done
+    still = table(t0 + 2 * m.AVATAR_TTL + 2)
+    steamsync.changed(m.AVATAR_DIR, t0 + 500)
+    table(t0 + 3 * m.AVATAR_TTL + 3)                # the look that finds the stamp moved
+    m.board_avatars_wait()
+    moved = table(t0 + 4 * m.AVATAR_TTL + 4)
+    check("the imported players' table is built once, by the first look; kept while "
+          "steamsync's stamp is still, whatever the database says (CONTROL: the accounts' "
+          "part is rebuilt meanwhile); and rebuilt on a thread of its own when the stamp moves",
+          (IM3 in cold["site"], by0 == "boardpics", IM3 in quiet["site"], IM3 in still["site"],
+           still["at"] > quiet["at"] > t0, moved["site"].get(IM3), m._avb["by"]),
+          (False, False, False, False, True, PB, "boardpics"))
+    real_build = m._board_build
+
+    def no_build(conn):
+        raise OSError("the directory could not be listed")
+    run_sql(m, "UPDATE boardpics SET avatar = '' WHERE steamid = ?", (IM2,))
+    m._board_build = no_build
+    steamsync.changed(m.AVATAR_DIR, t0 + 900)
+    table(t0 + 5 * m.AVATAR_TTL + 5)
+    m.board_avatars_wait()
+    kept = table(t0 + 6 * m.AVATAR_TTL + 6)
+    m.board_avatars_wait()                          # that look tried again, and failed again
+    m._board_build = real_build
+    table(t0 + 7 * m.AVATAR_TTL + 7)
+    m.board_avatars_wait()
+    back = table(t0 + 8 * m.AVATAR_TTL + 8)
+    check("a rebuild that fails keeps the table that was held, and the next look tries again",
+          (IM2 in kept["site"], IM3 in kept["site"], IM2 in back["site"]), (True, True, False))
+    fresh()
+
     for k in list(ADMIN_ENV) + ["SURFD_ADMIN_HASH"]:
         os.environ.pop(k, None)
 

@@ -5,6 +5,18 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Pictures for everyone on the boards: what Patch 660 left -- 2026-10-12
+
+- **The game holds 32 pictures** (`SP_MAX`, cl_steampic.qc). A ranked board
+  never showed that many; an imported one can. More slots are memalloc'd
+  tables, not definitions.
+- **A banned account's imported rows show no picture**, where every other
+  row on that board has one: it says the account is banned. Serving the
+  picture for those rows alone would undo it. From 660's review.
+- **Imported players' names are not refreshed**, only pictures: a row keeps
+  the name its board published.
+- ftesurf-5b, 12 Oct.
+
 ## The link box: what Patch 653 left -- 2026-10-12
 
 - **A click before the cursor has moved is nobody's.** The engine says where

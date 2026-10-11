@@ -11,6 +11,23 @@ to be wrong.
 
 ---
 
+## 00. 12 Oct — a Steam picture for everyone on the boards (Patch 660)
+
+From your list ("scan for all the people in the leaderboard and save their DP
+to the nanopi ... update it once a day").
+1. **Who.** Every player of a Momentum or KSF row: 67,259 of them. The Pi
+   asks Steam about 5,000 each half hour and fetches 1,500 pictures each
+   half hour, so the boards fill over about a day; after that each player is
+   asked about once a day, and a changed picture follows within a day or so.
+2. **Where you see it.** The site's map pages and player pages, and the
+   game's Momentum and KSF boards: the same picture slot a linked player has.
+   Nothing changed in the game or the site for it; the rows just say so now.
+3. **Linked players** are still refreshed every half hour, as before.
+- **Yours to look at:** a Momentum board on the site tomorrow. Today most
+  rows will still be bare.
+- **Known:** the game keeps 32 pictures at a time; a long Momentum page can
+  ask for more than that and will swap them as you scroll.
+
 ## 00. 12 Oct — the Link Steam box (Patch 653)
 
 From your list after trying 0.1.24. **Live since 15:43 UTC (02:43 here)**

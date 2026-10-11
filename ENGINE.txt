@@ -25,7 +25,14 @@ commit   65bf6f4640fa17ac2c3cb79d7725226e55ce645b
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-645
-patch    654
+patch    660
+# Patch 660: Steam pictures for the players of imported rows (Momentum's and KSF's), who
+# are no account of ours: steamsync.py reads the boards for their SteamIDs once a day, asks
+# Steam about 5000 a run and fetches 1500 pictures a run; surfd holds them beside the
+# accounts' under the same rules, in a table built off the request path. A board row of
+# theirs carries `av`, on the site and in the game.
+# surfd/steamsync.py and surfd/surfd.py (one table by CREATE TABLE IF NOT EXISTS, no schema
+# bump): no engine source, QC, recorder, evidence, ranking or Build change.
 # Patch 653: the Link Steam box is drawn in the Dusk look; from the Enter that starts a
 # link it has the mouse, and a click on the sign-in address opens the page again (a click
 # beside the box gives the mouse back); the code and the page's number are drawn one glyph

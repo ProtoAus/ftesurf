@@ -1086,6 +1086,14 @@ def receipts_v8(conn):
 VERIFY_MAX_ERRORS = 3
 
 
+# What Steam last said of an imported row's player: their picture's hash, and
+# when they were asked about (0: never).  steamsync.py makes it too, for a
+# pass that runs before this service has been restarted onto it.
+BOARDPICS_DDL = ("CREATE TABLE IF NOT EXISTS boardpics ("
+                 "steamid TEXT PRIMARY KEY, avatar TEXT NOT NULL DEFAULT '', "
+                 "asked_at INTEGER NOT NULL DEFAULT 0)")
+
+
 def migrate():
     """Create/upgrade the schema on start. Safe to run every boot.
 
@@ -1536,6 +1544,9 @@ def migrate():
         # importer keeps beside the SteamID (momboards.py).
         conn.execute("CREATE TABLE IF NOT EXISTS momusers ("
                      "steamid TEXT PRIMARY KEY, momid INTEGER NOT NULL)")
+        # Patch 660: Steam's picture for a board row's player who is no account
+        # of ours (steamsync.people).  Not a schema bump, for momusers' reason.
+        conn.execute(BOARDPICS_DDL)
         conn.commit()
         if RANKED_LINKED:
             moved = accounts.ranked_now(conn, TIERS_IMPORTED)
@@ -4181,8 +4192,117 @@ WEB_SHOT_MAX = 240       # shot fetches per RATE_WINDOW per source
 AVATAR_DIR = os.environ.get("SURFD_AVATARS", os.path.join(DATA_DIR, "avatars"))
 AVATAR_TTL = 60          # s the table of who has a picture is reused
 WEB_AVATAR_MAX = 600     # picture fetches per RATE_WINDOW per source: a board page is 50
+BOARD_STAMP = "board.at"    # in AVATAR_DIR: steamsync touches it when a pass changed the imported players' part
 _av_none = {"at": -1e9, "site": {}, "game": {}, "who": {}, "handle": {}}
 _av = _av_none
+_avb_lock = threading.Lock()
+_avb_cold = threading.Lock()
+_avb = {"stamp": None, "people": {}, "marks": {}, "busy": False, "by": "", "thread": None}
+
+
+def _board_stamp():
+    """steamsync's word that the imported players' pictures changed: the
+    stamp file's mtime, or -1 while there is none."""
+    try:
+        return os.path.getmtime(os.path.join(AVATAR_DIR, BOARD_STAMP))
+    except OSError:
+        return -1.0
+
+
+def _board_build(conn):
+    """Patch 660.  (people, marks) for the players of IMPORTED rows, who are
+    nobody's account here (steamsync.people asked Steam about them): `people`
+    {steamid: (hash, the site's handle, the game's mark, the game's copy is
+    there)} where the picture's .jpg is on disk, and `marks` {mark: how many
+    of them share it}.  TENS OF THOUSANDS OF THEM: one directory listing and
+    two digests a player, about 0.4 s.  Raises where the directory or the
+    table cannot be read: the caller keeps the table it holds."""
+    people, marks = {}, {}
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table'"
+                    " AND name = 'boardpics'").fetchone() is None:
+        return people, marks                # a database from before the table
+    names = set(os.listdir(AVATAR_DIR)) if os.path.isdir(AVATAR_DIR) else set()
+    for sid, h in conn.execute("SELECT steamid, avatar FROM boardpics WHERE avatar <> ''"):
+        if not accounts.avatar_ok(h) or h + ".jpg" not in names:
+            continue
+        mark = accounts.who_of(sid)
+        people[sid] = (h, web_handle(sid), mark, h + ".txt" in names)
+        marks[mark] = marks.get(mark, 0) + 1
+    return people, marks
+
+
+def _board_install(people, marks, stamp):
+    with _avb_lock:
+        _avb.update(people=people, marks=marks, stamp=stamp,
+                    by=threading.current_thread().name)
+
+
+def _board_kick(stamp):
+    """Rebuild that table on a thread, at most one at a time (_people_kick's
+    shape); the one held is served meanwhile."""
+    with _avb_lock:
+        if _avb["busy"]:
+            return
+        _avb["busy"] = True
+
+    def work():
+        try:
+            conn = connect()
+            try:
+                built = _board_build(conn)
+            finally:
+                conn.close()
+            _board_install(*built, stamp=stamp)
+        except Exception:
+            # The stamp is not taken: the next look finds it moved and tries again.
+            log.exception("imported players' pictures: the table was not rebuilt")
+        finally:
+            with _avb_lock:
+                _avb["busy"] = False
+
+    try:
+        thread = threading.Thread(target=work, name="boardpics", daemon=True)
+        _avb["thread"] = thread
+        thread.start()
+    except Exception:
+        log.exception("imported players' pictures: rebuild not started")
+        with _avb_lock:
+            _avb["busy"] = False
+
+
+def _board_avatars(db):
+    """(people, marks) as held.  NEVER BUILT BY EVERY REQUEST THAT FINDS IT OLD:
+    the first cut did, and four board requests arriving together each spent 4
+    to 5 s on it (its review; the proxy gives 5).  It is built once in the
+    first request of a process that needs it, the others waiting for that one,
+    and after that on a thread, only when steamsync's stamp has moved."""
+    stamp = _board_stamp()
+    if _avb["stamp"] is None:
+        with _avb_cold:
+            if _avb["stamp"] is None:
+                try:
+                    _board_install(*_board_build(db), stamp=stamp)
+                except (OSError, sqlite3.Error) as exc:
+                    # Nothing held and nothing stamped: the next rebuild tries again.
+                    log.warning("imported players' pictures: the table was not built (%s)", exc)
+    elif stamp != _avb["stamp"]:
+        _board_kick(stamp)
+    with _avb_lock:
+        return _avb["people"], _avb["marks"]
+
+
+def board_avatars_wait(timeout=30):
+    """For a test: let a rebuild that is running finish."""
+    thread = _avb.get("thread")
+    if thread is not None:
+        thread.join(timeout)
+
+
+def board_avatars_reset():
+    """For a test: forget the imported players' table (the next look builds it)."""
+    board_avatars_wait()
+    with _avb_lock:
+        _avb.update(stamp=None, people={}, marks={}, by="")
 
 
 def avatars(now, db=None):
@@ -4195,6 +4315,10 @@ def avatars(now, db=None):
     A MARK TWO ACCOUNTS SHARE NAMES NEITHER (it is 32 bits, and the game
     could not tell them apart), counted over every account and not only the
     pictured ones: the first cut served A's picture for a pictureless B.
+    AND THE IMPORTED ROWS' PLAYERS (Patch 660, _board_avatars), under the same
+    rule: a SteamID that is an account here is the account's, banned or not,
+    and never theirs by the other road.  Their part is copied in, not built,
+    here: 0.05 s for sixty-seven thousand.
     A connection is taken only to rebuild."""
     global _av
     cur = _av
@@ -4203,9 +4327,11 @@ def avatars(now, db=None):
     db = db or get_db()
     new = {"at": now, "site": {}, "game": {}, "who": {}, "handle": {}}
     marks = {}
+    ours = set()
     for sid, h, banned in db.execute("SELECT steamid, avatar, banned_at FROM accounts").fetchall():
         if not sid:
             continue
+        ours.add(sid)
         mark = accounts.who_of(sid)
         marks[mark] = marks.get(mark, 0) + 1
         if banned or not accounts.avatar_ok(h):
@@ -4223,13 +4349,26 @@ def avatars(now, db=None):
             del new["game"][sid]
         else:
             new["who"][mark] = h
+    people, shared = _board_avatars(db)
+    for sid, (h, handle, mark, game) in people.items():
+        if sid in ours:
+            continue
+        new["site"][sid] = h
+        new["handle"].setdefault(handle, h)
+        # One mark, one player: among the imported players, and against every
+        # account (whose marks are counted above whether or not it has a picture).
+        if not game or shared[mark] > 1 or mark in marks:
+            continue
+        new["game"][sid] = h
+        new["who"][mark] = h
     _av = new
     return new
 
 
 def avatars_reset():
     """Forget who has a picture: a ban just landed (the admin's route), or a
-    test moved a file."""
+    test moved a file.  The imported players' table stays: a ban is an
+    account's, and `ours` above is read from the accounts each time."""
     global _av
     _av = _av_none
 

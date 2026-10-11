@@ -1493,8 +1493,8 @@ in lextest and the patch log): the link box in the UI's look with a cursor
 and a clickable address, and cells for what is typed (BUILT, Patch 653);
 text fields that select, copy and paste (Patch 655: in test; game code's
 paste is an engine gate); Steam pictures for everyone on the boards, kept on
-the Pi and refreshed daily (67,258 SteamIDs on the boards that day; NOT
-BUILT); `hud_player` as a profile with the Steam name and picture, the
+the Pi and refreshed daily (BUILT, Patch 660: 67,259 SteamIDs that day, the
+first fill a day of half-hourly runs); `hud_player` as a profile with the Steam name and picture, the
 customizer, a breakdown like the site's player page, and a player search
 there and on the leaderboard (NOT BUILT).
 

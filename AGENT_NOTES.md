@@ -7979,6 +7979,22 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **PICTURES FOR THE IMPORTED ROWS' PLAYERS (Patch 660): WHAT RUNS, AND WHAT
+  THE NUMBERS WERE.** `steamsync.py` (cron, :07 and :37) has two more
+  defaults, `--people 5000` and `--pictures 1500`: Steam is asked about that
+  many board players a run (none twice in a day) and that many pictures are
+  asked for. 67,259 SteamIDs on the boards, so the first fill is about a day
+  of runs. Its state: table `boardpics`, and two stamps in `data/avatars`:
+  `people.at` (the last read of the boards) and `board.at`, which surfd
+  watches: IT REBUILDS ITS TABLE OF THEM WHEN THAT FILE'S TIME MOVES AND NOT
+  OTHERWISE, on a thread. A table changed by hand is not seen until
+  `steamsync.changed()` or a restart.
+  THE BOARDS' READ IS `SELECT DISTINCT +player`: without the `+` sqlite
+  walks `runs_player` with a lookup a row, 35.1 s on the Pi against 11.4 s
+  (measured read-only on the live file). It is the shape the Patch 636 note
+  on that index warns of; `tools/plan_audit.py` before the next one.
+  NOTHING IS PRUNED WHILE A BOARD PLAYER HAS NEVER BEEN ASKED ABOUT, so a
+  directory outlives a restored database for the day its refill takes.
 - **DEPLOYED 11 Oct 2026, 15:42 UTC (FTESurf `8a6a117`, Patch 653): csprogs,
   the Pi's twelve lobbies and both Windows installs.** FIRST ON THE ENGINE
   THE 0.1.24 DOWNLOAD HAS (a copy of the 625 exe, `--client`): `p653box.py`
