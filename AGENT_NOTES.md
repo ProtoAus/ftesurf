@@ -7466,6 +7466,32 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **DEPLOYED 11 Oct 2026, 05:31-05:33 UTC (FTESurf `36bd989`, Patch 638):
+  surfd, the Pi's twelve lobbies, both Windows installs' qwprogs.** surfd
+  first (`accounts.py`, `surfd.py`, the new `steamsync.py`, two tests; the
+  staged suites pass on the Pi; backup `surfd.db.bak-36bd989-20261011-162839`;
+  `surfd ready` 05:31:17Z; the commit's blobs read back, no error since the
+  reload). A crontab line for `steamsync.py --go` at minutes 7 and 37 (the
+  old crontab kept as `crontab.pre638-*` beside surfd); its dry run and then
+  a real pass asked Steam for the one account and renamed nothing: THE
+  OWNER'S ROWS WERE ALREADY UNDER HIS STEAM NAME, which is the name his game
+  had. Lobbies, `build.ps1 -Pi` at `36bd989`, 12 rows and 0 players:
+  `qwprogs.dat` `76e00522` (the bytes the arm ran on), `csprogs.dat`
+  `b2b6de57`, byte for byte Patch 635's, so the swap replaced it with itself
+  and `csprogs.dat.prev` is `b2b6de57` too now; twelve units active since
+  05:32:48Z to 05:32:57Z. Windows, 05:33:20Z: `qwprogs.dat` and its line
+  table into both installs, no game running, the previous `e9c95065` kept as
+  `.prev`, read back with a second tool. Live check 05:33:47Z: the installed
+  client in a private rig (a key of its own, no key pressed) joined
+  `play.proto.bar:27510` and had its proof answered, not linked, the prompt
+  up, no error. NOT MEASURED ON THE FLEET: a name being forced, which needs
+  a linked game; the owner's next connect is the first (lextest has the
+  check). ALSO READ THAT HOUR, 05:09:39Z: the owner's stage time on surf_666
+  stored `tier=ranked` under his account, the first live run through Patch
+  629's path. THE FIRST MAPS-LIST BUILD AFTER THIS RELOAD TOOK 6.48 s.
+  Roll back: `qwprogs.dat.prev` over the file and a lobby restart; the
+  `.pre36bd989-*` copies over surfd's files and a reload; remove the cron
+  line (nothing else reads `named`, and an old lobby ignores it).
 - **THE STEAM NAME IS THE NAME (Patch 638): WHAT THE ENGINE DOES WITH A FORCED
   NAME.** Read in the engine before a line was written (`pr_cmds.c`
   PF_ForceInfoKey, `sv_main.c` SV_ExtractFromUserinfo, `sv_user.c`
