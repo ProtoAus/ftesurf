@@ -49,8 +49,12 @@ KSF's on 3 of 6 maps.
 ZONES GIVEN TO A SECOND BUILD (Lex, 11 Oct: "copy a momentum mod zones if the
 map has a momentum mod version of the map").  A <name>_css that is KSF's
 archive, or a port named <name>_<one of PORTS>, that Momentum does not list
-itself and that has no zone file of its own takes the published zone file of
-<name> -- when zonefit.py says the two builds share a coordinate frame, the
+itself and that has no zone file of its own takes the zone file this box
+times <name> by, where <name> is held at the build Momentum publishes -- that
+file whether or not it hashes to zoneHash: for 92 maps on 11 Oct Momentum's
+own zones did not (re-saved in January with a new `globalRegions.allowBhop`,
+the hash left as it was) -- when zonefit.py says the two builds share a
+coordinate frame, the
 target has every restart point the file names, and it carries no timer
 triggers of its own.  Not otherwise: a zone is a world polygon, and 5 of the
 71 pairs the PC tool measured in September were different maps sharing a
@@ -1382,6 +1386,7 @@ def run(a):
     # Zones for approved maps already held at the published build: absent, or
     # (with --updates) not the published file.
     zw, zasked, zdiff, zwait = {}, 0, 0, 0
+    atbuild = set()                         # zone stems of maps held at the published build
     zidx.update(stems(zdir, ".json"))       # what arrived while the maps were coming
     for k in sorted(mom, key=lambda k: (back.get("z:%s:%s" % (k, (mom[k]["zh"] or "")[:12]), 0), k)):
         r = mom[k]
@@ -1394,6 +1399,7 @@ def run(a):
             cur = zsha(k)
             if cur is None:
                 continue
+            atbuild.add(zidx[k])
             if cur == r["zh"]:
                 if zidx[k] not in verified:
                     verified.append(zidx[k])
@@ -1430,13 +1436,13 @@ def run(a):
             count("one arrived meanwhile: left", zw)
         _save(sp, st)
     # ZONES GIVEN TO A SECOND BUILD (the module docstring).  The donor is an
-    # approved map whose zone file is the published one at the published build
-    # (`verified`); the target is held, is not Momentum's own, and has no zone
+    # approved map held at the published build, with the zone file this box
+    # times it by; the target is held, is not Momentum's own, and has no zone
     # file anywhere the server reads.
     given, nofit = table("given"), table("nofit")
     local = stems(os.path.join(os.path.dirname(os.path.dirname(os.path.normpath(S.RUNS_DIR))),
                                "maps", "zones", "local"), ".json")
-    donors = set(verified)
+    donors = set(verified) | atbuild
 
     def donor_of(t):
         if t in made:

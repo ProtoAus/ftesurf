@@ -869,6 +869,21 @@ def case_given_zones():
           "another frame they are taken back (moved aside)", zlist(maps),
           [".old", "surf_e.json"])
 
+    # A donor at the published build whose zone file is not the published
+    # bytes (Momentum's hash did not match its own zones for 92 maps) still
+    # gives the file this box times it by.
+    mom = {"surf_u": {"bsp": build(b"mom"), "zones": gz2, "tier": 1}}
+    w, maps, state = setup(mom, {}, held=[("surf_u", mom["surf_u"]["bsp"]),
+                                          ("surf_u_fix", build(b"fix"))])
+    os.makedirs(os.path.join(maps, "zones", "online"))
+    with open(os.path.join(maps, "zones", "online", "surf_u.json"), "wb") as fh:
+        fh.write(raw)
+    tick(maps, state, "--go")
+    check("a map at the published build gives the zone file it is timed by here, "
+          "published bytes or not",
+          (zfile(maps, "surf_u") == raw, zfile(maps, "surf_u_fix") == raw, given(state)),
+          (True, True, ["surf_u_fix"]))
+
     # A donor held at another build than the published one gives nothing: its
     # zone file is not known to be that build's.
     mom = {"surf_d": {"bsp": build(b"mom"), "zones": gz, "tier": 1}}
