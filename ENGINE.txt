@@ -25,7 +25,14 @@ commit   7501a6ccebb2d2b7f2f3a7f0127e86680f3cefb3
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-658
-patch    663
+patch    669
+# Patch 669: a zone editor in the game, part one. `zone_edit` opens a panel of the map's
+# zones by track; a zone is placed by aiming while flying (MOUSE1 a floor corner, MOUSE1
+# the opposite one, look up for the height, MOUSE1) on a 16-unit grid or the surface as
+# hit, and Save writes Momentum's zone JSON where both VMs already read first, so a
+# hosted game times with it at the next map load. Nothing is sent to a lobby: publishing
+# is part two. csprogs only: no engine source, server QC, surfd, recorder, evidence,
+# ranking, default or Build change (commit and tag above stay).
 # Patch 659: rain (a render_sprite_trail on particle/rain) as Source draws it: 1 unit
 # wide and 80 long where it was 5.66 wide, blended in linear light, at Source's 800
 # drops a second. The client places each drop, traces it once and gives it the life

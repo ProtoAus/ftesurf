@@ -334,6 +334,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	MPad_RegisterCvars();           // Patch 390, the mouse pad
 	HE_MigrateDefaults();           // Patch 641: after every HUD registration above
 	Ev_Register();                  // build 54, the trigger/entity inspector
+	ZoneEdit_Register();            // Patch 669, the zone editor
 	MilkSky_Init();                 // Patch 467, the visualizer sky
 
 	// Not a cvar registration: this VM is new, and a strbuf handle carried over
@@ -1160,6 +1161,11 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (Ev_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
 
+	// Patch 669: the zone editor, its panel or its placing (MOUSE1, MOUSE2, the wheel).
+	if (ui_ze_state)
+		if (ZoneEdit_InputEvent(evtype, scanx, chary, devid))
+			return TRUE;
+
 	/*
 	  BUILD 48: the results card, and it sits AHEAD of the leaderboard because it
 	  is drawn in front of it.  Input order is the reverse of draw order and the
@@ -1591,6 +1597,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// and the default shader is depth-tested, so this is what makes a zone
 	// behind a wall correctly disappear behind it.
 	Zone_Draw();
+	ZoneEdit_Draw3D();              // Patch 669: the editor's own lines, and its aim, in the same window
 
 	// The map's sprites, in the same window and for the same reason -- these are
 	// world objects, and one behind a wall has to be hidden by it.  Costs one
@@ -1845,6 +1852,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  the editor's and ahead of the card's to match.
 		*/
 		Ev_Panel(scr);
+		ZoneEdit_Panel(scr);            // Patch 669: it and the inspector refuse each other's cursor
 		LineGraph_Draw(scr);
 
 		/*
@@ -2270,5 +2278,7 @@ float(string cmd) CSQC_ConsoleCommand =
 	// player, so it belongs to SSQC, which parses the same zone file with the
 	// same code and therefore numbers the zones identically.  Leaving it
 	// unregistered lets the console forward it to the server.
+	if (ZoneEdit_ConsoleCommand(cmd))       // Patch 669
+		return TRUE;
 	return Zone_ConsoleCommand(cmd);
 };

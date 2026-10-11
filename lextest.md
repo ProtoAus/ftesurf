@@ -230,6 +230,50 @@ a few sizes, drift and fade out.
 - **Live since 11 Oct 14:53 UTC (12 Oct, 01:53 here)** on both installs and
   all twelve lobbies. Restart the game to get it.
 
+## 00. 12 Oct — a zone editor in the game, part one (Patch 669)
+
+You asked for Momentum's zone editor: a panel, then fly and place the corners
+with the mouse. This is the editor itself. Getting a map's zones onto the
+lobbies is part two and waits on your two answers (who is an admin, and what
+happens on a map that already has times).
+
+**How to use it**
+- Console: `zone_edit` (or give it a key, e.g. `bind z zone_edit`). The panel
+  takes the mouse. ESC closes it.
+- Pick a track at the top (main, b1, b2 ..., `+b3` starts a new bonus).
+- `+ start`, `+ stage`, `+ checkpt`, `+ end`: the panel lets go of the mouse
+  and you place the zone. Fly with noclip (V), aim the crosshair at the floor:
+  **MOUSE1** first corner, **MOUSE1** the opposite corner, **look up** to pull
+  the height, **MOUSE1** to finish. MOUSE2 steps back, the wheel changes the
+  grid, ESC returns to the panel.
+- Grid chips 1 8 16 32 64, or `surf` to take the surface exactly as hit.
+- Click a zone in the list to select it (it turns white in the world):
+  `re-place` it, `delete` it, or stand where a restart should put you and
+  press `spawn here` (a new start or stage spawns you in its middle).
+- `save` (lit once something has changed) writes
+  `ftesurf\data\maps\zones\local\<map>.json` in Momentum's own zone format.
+  Load the map again (`restart`) and YOUR game times with those zones. On
+  somebody else's server a saved file only changes what you see, and there a
+  save needs a real click on the button (a server can type console commands
+  for a player, so the command alone is refused).
+- `drop my file` is the way back: your saved copy goes and the map's own
+  zones return.
+- Anyone can type `zone_edit`; it only ever changes their own view and their
+  own hosted game. Say if you want it hidden from non-admins once admins exist.
+
+**What it does not do yet** (BACKLOG has the list): publish to the lobbies;
+zones that are not boxes (a zone from a file keeps its shape, a new one is a
+box); moving one corner or one face; changing a zone's place in the course
+(a new stage goes after the last, a new checkpoint at the end of the selected
+zone's segment); map settings such as the speed cap; making cancel or bhop
+regions.
+
+**Yours to look at, because a test rig has no mouse:** the real MOUSE1 /
+MOUSE2 / wheel while placing, and clicking the panel. The rig pressed the
+same code by command and by name; it could not test the clicks themselves.
+Also the feel of pulling the height, and whether the default grid of 16 is
+right.
+
 ## 00. 12 Oct — names on every line, labels that stay put, energy as the speedo (Patch 661)
 
 From your message after trying twenty-odd lines. Four things changed:

@@ -1,0 +1,1692 @@
+/*
+===========================================================================
+  Patch 669: THE ZONE EDITOR, part one -- make and move zones in the game.
+
+  The owner, 12 Oct 2026: Momentum's zone editor lets you "noclip around using
+  your mouse on the world to place the corners ... it usually snaps to 16 unit
+  grid, or the actual world geometry, you lay the floor and then pull it
+  upwards for height", and about 870 KSF-only maps have no zones at all.
+
+  WHAT IT EDITS is this client's own zone table (sh_zones.qc), the one
+  cl_zones.qc draws.  Nothing is sent anywhere.  `Save` writes Momentum's zone
+  JSON as maps/zones/local/<map>.json, which QC's fopen puts under
+  ftesurf/data/ (cl_zonedl.qc's note) and which both VMs already read FIRST:
+  so on your own hosted game the next map load times with it, and on somebody
+  else's server it only changes what YOU are shown.  A hosted game posts no
+  times (sv_lobby.qc, "Ranked = official servers only"), and a lobby's zones
+  are its own files: no route from here to the board.  Getting a file to the
+  lobbies is part two and is not in this file.
+
+  TWO MODES, as Momentum has them.  The PANEL holds the mouse: tracks, the
+  zones of one in course order, add / re-place / delete, grid and snap, save.
+  PLACING gives the mouse back: you fly (V is noclip) and aim with the
+  crosshair; MOUSE1 sets the first floor corner, then the opposite one, then
+  you look up to pull the height and click again.  MOUSE2 steps back, the
+  wheel changes the grid, ESC returns to the panel.  A new zone is an
+  axis-aligned box; a zone that came from a file keeps whatever ring it has.
+
+  THE TYPE OF A CHECKPOINT REGION IS ITS POSITION IN THE FILE (Zone_AddTrack),
+  so the table is renumbered after every change: stages 1..n with no gap, the
+  end one past the last, checkpoint ordinals 1.. across the track in course
+  order.  A new stage goes after the last one and a new checkpoint at the end
+  of the selected zone's segment.
+
+  NOT HERE YET (BACKLOG): rings that are not boxes, moving one corner, a
+  zone's order in its track, map settings such as the speed cap, cancel and
+  bhop regions (they are listed and can be deleted, not made).
+===========================================================================
+*/
+
+#define UIC_ZONEEDIT 256            // cl_hud.qc's cursor register: the next free bit
+
+#define ZE_OFF    0
+#define ZE_PANEL  1                 // the mouse is the panel's
+#define ZE_A      2                 // placing: the first floor corner
+#define ZE_B      3                 // the opposite corner
+#define ZE_H      4                 // the height
+
+#define ZEB_M1    1
+#define ZEB_M2    2
+#define ZEB_WUP   4
+#define ZEB_WDN   8
+
+#define ZE_REACH  16384             // how far the aim is traced
+#define ZE_MINH   16                // a zone is at least this tall
+#define ZE_MAXH   16384             // and at most this
+
+// The Dusk look's own colours (sh_ui.qc); the box being placed has one of its own.
+#define ZEC_PANEL SUI_THEME_PANEL
+#define ZEC_LINE  SUI_THEME_EDGE
+#define ZEC_TEXT  SUI_THEME_TEXT
+#define ZEC_DIM   SUI_THEME_MUTED
+#define ZEC_HOT   SUI_THEME_HOVER
+#define ZEC_SEL   SUI_THEME_ACCENT
+#define ZEC_WARN  SUI_THEME_WARN
+#define ZEC_NEW   '1.00 0.95 0.35'
+
+float  ui_ze_state;                 // ZE_*
+float  ze_track;                    // the track the panel shows: 0 main, 1.. a bonus
+float  ze_sel;                      // the selected zone, -1 none
+float  ze_dirty;                    // changed since the last save or load
+string ze_map;                      // the map the edits belong to
+float  ze_grid;                     // snap, units
+float  ze_snap;                     // 1 the grid, 0 the surface as hit
+float  ze_btn;                      // presses this file took (a release goes where its press went)
+float  ze_mouse_seen;
+vector ze_mouse;
+vector ze_panel_p, ze_panel_s;
+float  ze_scroll;
+
+// The zone being placed.
+float  ze_ntype, ze_nseg, ze_ncp;   // what it will be
+float  ze_replace;                  // the zone it replaces, -1 a new one
+vector ze_a, ze_b;                  // the floor's two corners (z of ze_a is the floor)
+float  ze_h;                        // its height while it is pulled
+vector ze_hit;                      // where the aim meets the world, snapped
+float  ze_hitok;
+float  ze_hitz;                     // ...and its height as hit, before the snap
+float  ze_floor;                    // the first corner's: where a new start's spawn stands
+float  ze_rsig;                     // the table when a re-place began (count and points)
+float  ze_real_t;                   // cltime of the last MOUSE1 release a DEVICE made in the panel
+float  ze_click, ze_back;           // asked for by the input handler, done in the draw pass
+string ze_press;                    // `zone_edit press <id>`: that element counts as clicked once
+string ze_note;                     // one line for the panel's foot
+float  ze_note_t;
+float  ze_saved_n;                  // zones in the last file written (the status line)
+
+void(string s) ZoneEdit_Note =
+{
+	if (ze_note != "")
+		strunzone(ze_note);
+	ze_note = strzone(s);
+	ze_note_t = cltime;
+	print(sprintf("^5zone_edit^7: %s\n", s));
+};
+
+string(float z) ZoneEdit_Label =
+{
+	local float t;
+
+	t = zone_type[z];
+	if (t == ZONE_START)      return "start";
+	if (t == ZONE_END)        return "end";
+	if (t == ZONE_STAGE)      return sprintf("stage %g", zone_seg[z] + 1);
+	if (t == ZONE_CHECKPOINT) return sprintf("checkpoint %g", zone_cp[z]);
+	return Zone_TypeName(t);
+};
+
+/*
+===========================================================================
+  The table, kept in the shape the file gives it
+===========================================================================
+*/
+
+// A zone's place in its track's course: its segment, then start or stage before
+// the checkpoints in it, then the checkpoint's ordinal.
+float(float z) ZoneEdit_Order =
+{
+	local float t;
+
+	t = zone_type[z];
+	if (t == ZONE_END)
+		return 900000;
+	if (t == ZONE_CHECKPOINT)
+		return zone_seg[z] * 1000 + 1 + zone_cp[z];
+	return zone_seg[z] * 1000;
+};
+
+/*
+  Stages 1..n with no gap, the end one past the last, checkpoints 1.. along the
+  course.  Regions of one checkpoint share an ordinal and keep sharing it.  A
+  checkpoint whose stage went falls back into the stage before.
+
+  Worked out into ze_tmp and ze_st FROM THE OLD NUMBERS and only then written
+  back.  The first cut renumbered in place, marking a moved row with a negative
+  segment, and its second stage's pass then read those marks as "before every
+  stage": with two stages or more every checkpoint from the first stage on
+  landed in stage 1 (found by the review; the arm's course had one stage).
+*/
+#define ZE_STAGES 64
+float ze_tmp[ZONE_MAX];             // a row's new segment, then a checkpoint's sort weight
+float ze_st[ZE_STAGES];             // the track's old stage segments, ascending, no repeats
+
+void(float track) ZoneEdit_RenumberTrack =
+{
+	local float z, i, n, lo, last, c, top;
+
+	// A stage with no segment (a legacy BSP trigger without its `stage` key) cannot be
+	// segment 0, which is the start's: it goes after the last stage there is.
+	top = 0;
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_track[z] == track)
+		if (zone_seg[z] > top)
+			top = zone_seg[z];
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_track[z] == track)
+		if (zone_type[z] == ZONE_STAGE)
+		if (zone_seg[z] < 1)
+			zone_seg[z] = top + 1;
+
+	// The stages' old segments in order.
+	n = 0;
+	last = 0;
+	while (n < ZE_STAGES)
+	{
+		lo = 0;
+		for (z = 0; z < zone_count; z = z + 1)
+			if (zone_track[z] == track)
+			if (zone_type[z] == ZONE_STAGE)
+			if (zone_seg[z] > last)
+			if (!lo || zone_seg[z] < lo)
+				lo = zone_seg[z];
+		if (!lo)
+			break;
+		ze_st[n] = lo;
+		n = n + 1;
+		last = lo;
+	}
+
+	// A row's new segment: how many stages start at or before its old one.
+	for (z = 0; z < zone_count; z = z + 1)
+	{
+		ze_tmp[z] = 0;
+		if (zone_track[z] != track)
+			continue;
+		if (zone_type[z] == ZONE_END)
+			ze_tmp[z] = n + 1;
+		else if (zone_type[z] == ZONE_STAGE || zone_type[z] == ZONE_CHECKPOINT)
+		{
+			c = 0;
+			for (i = 0; i < n; i = i + 1)
+				if (ze_st[i] <= zone_seg[z])
+					c = i + 1;
+			ze_tmp[z] = c;
+		}
+	}
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_track[z] == track)
+		if (zone_type[z] <= ZONE_CHECKPOINT)
+			zone_seg[z] = ze_tmp[z];
+
+	// Checkpoints: by new segment, then the ordinal they had (a half is "after that one").
+	for (z = 0; z < zone_count; z = z + 1)
+	{
+		ze_tmp[z] = -1;
+		if (zone_track[z] == track)
+		if (zone_type[z] == ZONE_CHECKPOINT)
+			ze_tmp[z] = zone_seg[z] * 10000 + max(0, zone_cp[z]);
+	}
+	c = 0;
+	last = -1;
+	while (1)
+	{
+		lo = -1;
+		for (z = 0; z < zone_count; z = z + 1)
+			if (ze_tmp[z] > last)
+			if (lo < 0 || ze_tmp[z] < lo)
+				lo = ze_tmp[z];
+		if (lo < 0)
+			break;
+		c = c + 1;
+		for (z = 0; z < zone_count; z = z + 1)
+			if (ze_tmp[z] == lo)
+				zone_cp[z] = c;
+		last = lo;
+	}
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_track[z] == track)
+		if (zone_type[z] != ZONE_CHECKPOINT)
+		if (zone_type[z] <= ZONE_END || zone_type[z] == ZONE_STAGE)
+			zone_cp[z] = 0;
+};
+
+// Where the file puts a zone: the tracks in order, each in course order, then the regions
+// that belong to no track.  Under 2^24, so a float holds it exactly.
+float(float z) ZoneEdit_Key =
+{
+	if (zone_type[z] > ZONE_CHECKPOINT)
+		return 14000000 + zone_type[z];
+	return zone_track[z] * 1000000 + ZoneEdit_Order(z);
+};
+
+void(float i, float j) ZoneEdit_Swap =
+{
+	local float f;
+	local vector v;
+	local string s;
+
+	f = zone_type[i];    zone_type[i]    = zone_type[j];    zone_type[j]    = f;
+	f = zone_track[i];   zone_track[i]   = zone_track[j];   zone_track[j]   = f;
+	f = zone_seg[i];     zone_seg[i]     = zone_seg[j];     zone_seg[j]     = f;
+	f = zone_cp[i];      zone_cp[i]      = zone_cp[j];      zone_cp[j]      = f;
+	f = zone_first[i];   zone_first[i]   = zone_first[j];   zone_first[j]   = f;
+	f = zone_npts[i];    zone_npts[i]    = zone_npts[j];    zone_npts[j]    = f;
+	f = zone_bottom[i];  zone_bottom[i]  = zone_bottom[j];  zone_bottom[j]  = f;
+	f = zone_top[i];     zone_top[i]     = zone_top[j];     zone_top[j]     = f;
+	f = zone_td_kind[i]; zone_td_kind[i] = zone_td_kind[j]; zone_td_kind[j] = f;
+	f = zone_td_yaw[i];  zone_td_yaw[i]  = zone_td_yaw[j];  zone_td_yaw[j]  = f;
+	v = zone_td_pos[i];  zone_td_pos[i]  = zone_td_pos[j];  zone_td_pos[j]  = v;
+	s = zone_td_name[i]; zone_td_name[i] = zone_td_name[j]; zone_td_name[j] = s;
+};
+
+/*
+  After any change: the numbering, the FILE'S ORDER, each zone's bounds, the hash.
+  The order matters because the hash walks the table: a course built out of order would
+  hash one way on screen and another once it had been through a file.  An insertion sort,
+  so regions of one checkpoint keep the order they had, and a table that came from a file
+  does not move at all.
+*/
+void() ZoneEdit_Touch =
+{
+	local float z, t, top, j;
+
+	top = 0;
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_track[z] > top)
+			top = zone_track[z];
+	for (t = 0; t <= top; t = t + 1)
+		ZoneEdit_RenumberTrack(t);
+	for (z = 1; z < zone_count; z = z + 1)
+		for (j = z; j > 0; j = j - 1)
+		{
+			if (ZoneEdit_Key(j - 1) <= ZoneEdit_Key(j))
+				break;
+			ZoneEdit_Swap(j - 1, j);
+			if (ze_sel == j)
+				ze_sel = j - 1;
+			else if (ze_sel == j - 1)
+				ze_sel = j;
+		}
+	for (z = 0; z < zone_count; z = z + 1)
+		Zone_Finish(z);
+	Zone_Hash();
+	ze_dirty = TRUE;
+};
+
+void(float z) ZoneEdit_Remove =
+{
+	local float i, f, n;
+
+	if (z < 0 || z >= zone_count)
+		return;
+	f = zone_first[z];
+	n = zone_npts[z];
+	for (i = f; i + n < zone_ptcount; i = i + 1)
+		zone_pt[i] = zone_pt[i + n];
+	zone_ptcount = zone_ptcount - n;
+	if (zone_td_name[z] != "")
+		strunzone(zone_td_name[z]);
+	for (i = z; i + 1 < zone_count; i = i + 1)
+	{
+		zone_type[i]    = zone_type[i + 1];
+		zone_track[i]   = zone_track[i + 1];
+		zone_seg[i]     = zone_seg[i + 1];
+		zone_cp[i]      = zone_cp[i + 1];
+		zone_first[i]   = zone_first[i + 1];
+		zone_npts[i]    = zone_npts[i + 1];
+		zone_bottom[i]  = zone_bottom[i + 1];
+		zone_top[i]     = zone_top[i + 1];
+		zone_td_kind[i] = zone_td_kind[i + 1];
+		zone_td_pos[i]  = zone_td_pos[i + 1];
+		zone_td_yaw[i]  = zone_td_yaw[i + 1];
+		zone_td_name[i] = zone_td_name[i + 1];
+	}
+	zone_count = zone_count - 1;
+	zone_td_name[zone_count] = "";
+	zone_td_kind[zone_count] = ZTD_NONE;
+	for (i = 0; i < zone_count; i = i + 1)
+		if (zone_first[i] > f)
+			zone_first[i] = zone_first[i] - n;
+};
+
+// A box from two opposite floor corners.  Returns its index, -1 when the table is full.
+float(float type, float track, float seg, float cpn, vector a, vector b, float bottom, float top) ZoneEdit_AddBox =
+{
+	local float z;
+	local vector mn, mx;
+
+	if (zone_count >= ZONE_MAX || zone_ptcount + 4 > ZONE_MAX_POINTS)
+		return -1;
+	mn = [min(a_x, b_x), min(a_y, b_y), 0];
+	mx = [max(a_x, b_x), max(a_y, b_y), 0];
+	z = zone_count;
+	zone_type[z]    = type;
+	zone_track[z]   = track;
+	zone_seg[z]     = seg;
+	zone_cp[z]      = cpn;
+	zone_first[z]   = zone_ptcount;
+	zone_npts[z]    = 4;
+	zone_bottom[z]  = bottom;
+	zone_top[z]     = top;
+	zone_td_kind[z] = ZTD_NONE;
+	zone_td_pos[z]  = '0 0 0';
+	zone_td_yaw[z]  = 0;
+	zone_td_name[z] = "";
+	zone_pt[zone_ptcount + 0] = [mn_x, mn_y, 0];
+	zone_pt[zone_ptcount + 1] = [mx_x, mn_y, 0];
+	zone_pt[zone_ptcount + 2] = [mx_x, mx_y, 0];
+	zone_pt[zone_ptcount + 3] = [mn_x, mx_y, 0];
+	zone_ptcount = zone_ptcount + 4;
+	zone_count = zone_count + 1;
+	Zone_Finish(z);
+	return z;
+};
+
+// Where `!r` puts you for a start or a stage: the middle of its floor, facing `yaw`.
+void(float z, float yaw) ZoneEdit_DestCentre =
+{
+	local float i, n;
+	local vector c;
+
+	n = zone_npts[z];
+	c = '0 0 0';
+	for (i = 0; i < n; i = i + 1)
+		c = c + zone_pt[zone_first[z] + i];
+	c = c * (1 / max(1, n));
+	if (zone_td_name[z] != "")
+		strunzone(zone_td_name[z]);
+	zone_td_name[z] = "";
+	zone_td_kind[z] = ZTD_POS;
+	zone_td_pos[z]  = [c_x, c_y, zone_bottom[z]];
+	zone_td_yaw[z]  = yaw;
+};
+
+float(float track, float type) ZoneEdit_Has =
+{
+	local float z;
+
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_track[z] == track)
+		if (zone_type[z] == type)
+			return TRUE;
+	return FALSE;
+};
+
+/*
+===========================================================================
+  tables -> JSON, the shape Zone_LoadJson reads back
+===========================================================================
+*/
+// Nine significant digits bring a float back exactly; three decimals did not (a top that
+// is bottom + height moved by 0.001 on its way through a file, which the hash prints).
+string(float v) ZoneEdit_Num =
+{
+	if (v == rint(v))
+		return sprintf("%.0f", v);
+	return sprintf("%.9g", v);
+};
+
+void(filestream f, float z) ZoneEdit_WriteRegion =
+{
+	local float i, n, first;
+	local vector p;
+	local string nm;
+
+	first = zone_first[z];
+	n = zone_npts[z];
+	fputs(f, "{\"points\":[");
+	for (i = 0; i < n; i = i + 1)
+	{
+		p = zone_pt[first + i];
+		fputs(f, sprintf("%s[%s,%s]", i ? "," : "", ZoneEdit_Num(p_x), ZoneEdit_Num(p_y)));
+	}
+	fputs(f, sprintf("],\"bottom\":%s,\"height\":%s", ZoneEdit_Num(zone_bottom[z]),
+	                 ZoneEdit_Num(zone_top[z] - zone_bottom[z])));
+	if (zone_td_kind[z] == ZTD_POS)
+	{
+		p = zone_td_pos[z];
+		fputs(f, sprintf(",\"teleDestPos\":[%s,%s,%s],\"teleDestYaw\":%s", ZoneEdit_Num(p_x),
+		                 ZoneEdit_Num(p_y), ZoneEdit_Num(p_z), ZoneEdit_Num(zone_td_yaw[z])));
+	}
+	else if (zone_td_kind[z] == ZTD_NAME)
+	{
+		// A targetname from the BSP: the two characters a JSON string cannot hold bare.
+		nm = strreplace("\\", "\\\\", zone_td_name[z]);
+		nm = strreplace("\"", "\\\"", nm);
+		fputs(f, sprintf(",\"teleDestTargetname\":\"%s\"", nm));
+	}
+	fputs(f, "}");
+};
+
+// Every region that matches, comma separated; seg or cpn -1 is "any".
+float(filestream f, float type, float track, float seg, float cpn) ZoneEdit_WriteRegions =
+{
+	local float z, n;
+
+	n = 0;
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_type[z] == type)
+		if (zone_track[z] == track)
+		if (seg < 0 || zone_seg[z] == seg)
+		if (cpn < 0 || zone_cp[z] == cpn)
+		{
+			if (n)
+				fputs(f, ",");
+			ZoneEdit_WriteRegion(f, z);
+			n = n + 1;
+		}
+	return n;
+};
+
+void(filestream f, float track) ZoneEdit_WriteTrack =
+{
+	local float z, nseg, si, c, last;
+
+	nseg = 1;       // segments[0] is always there: it holds the start
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_track[z] == track)
+		if (zone_type[z] == ZONE_STAGE || zone_type[z] == ZONE_CHECKPOINT)
+		if (zone_seg[z] + 1 > nseg)
+			nseg = zone_seg[z] + 1;
+	fputs(f, "{\"zones\":{\"segments\":[");
+	for (si = 0; si < nseg; si = si + 1)
+	{
+		// checkpoints[0] is the segment's own start: the start zone, or a stage.
+		fputs(f, si ? ",{\"checkpoints\":[{\"regions\":[" : "{\"checkpoints\":[{\"regions\":[");
+		ZoneEdit_WriteRegions(f, si ? ZONE_STAGE : ZONE_START, track, si, -1);
+		fputs(f, "]}");
+		last = 0;
+		while (1)
+		{
+			c = 0;
+			for (z = 0; z < zone_count; z = z + 1)
+				if (zone_track[z] == track)
+				if (zone_type[z] == ZONE_CHECKPOINT)
+				if (zone_seg[z] == si)
+				if (zone_cp[z] > last)
+				if (!c || zone_cp[z] < c)
+					c = zone_cp[z];
+			if (!c)
+				break;
+			fputs(f, ",{\"regions\":[");
+			ZoneEdit_WriteRegions(f, ZONE_CHECKPOINT, track, si, c);
+			fputs(f, "]}");
+			last = c;
+		}
+		fputs(f, "]}");
+	}
+	fputs(f, "],\"end\":{\"regions\":[");
+	ZoneEdit_WriteRegions(f, ZONE_END, track, -1, -1);
+	fputs(f, "]}}}");
+};
+
+// The whole table to `path` (under data/, where QC writes).  FALSE: it could not be opened.
+float(string path) ZoneEdit_WriteFile =
+{
+	local filestream f;
+	local float t, top, z;
+
+	f = fopen(path, FILE_WRITE);
+	if (f < 0)
+		return FALSE;
+	top = 0;
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_track[z] > top)
+			top = zone_track[z];
+	fputs(f, "{\"formatVersion\":1,\"tracks\":{\"main\":");
+	ZoneEdit_WriteTrack(f, 0);
+	fputs(f, ",\"bonuses\":[");
+	for (t = 1; t <= top; t = t + 1)
+	{
+		if (t > 1)
+			fputs(f, ",");
+		ZoneEdit_WriteTrack(f, t);      // a bonus number with nothing in it keeps its place
+	}
+	fputs(f, "]},\"globalRegions\":{\"cancel\":[");
+	ZoneEdit_WriteRegions(f, ZONE_CANCEL, 0, -1, -1);
+	fputs(f, "],\"allowBhop\":[");
+	ZoneEdit_WriteRegions(f, ZONE_BHOP, 0, -1, -1);
+	fputs(f, "],\"overbounce\":[");
+	ZoneEdit_WriteRegions(f, ZONE_OVERBOUNCE, 0, -1, -1);
+	fputs(f, "]}}\n");
+	fclose(f);
+	return TRUE;
+};
+
+/*
+  WHO MAY WRITE A FILE.  Every `zone_edit` word is a console command, and a server can
+  type a console command for a player (cl_main.qc, Patch 617): a host could have made
+  zones on a joining client and saved them, and that client would then have drawn them on
+  that map everywhere and timed its own games with them (the review).  So a file is
+  written or removed only when this client IS the server (the netchan's own address,
+  cl_replay.qc's test turned round: anything it cannot read is NOT ours), or when a
+  device has just clicked in the panel (cl_input_real, which no command can set).
+*/
+float() ZoneEdit_Hosting =
+{
+	return strstrofs(serverkey("ip"), "QLoopBack", 0) >= 0;
+};
+
+float() ZoneEdit_MayWrite =
+{
+	if (ZoneEdit_Hosting())
+		return TRUE;
+	if (ze_real_t > 0)
+	if (cltime - ze_real_t < 1)
+		return TRUE;
+	return FALSE;
+};
+
+/*
+  Save.  The table is written BESIDE the file's name, read back, and replaces the old
+  file only if it reads back as what is on screen: the same count and the same crc.  (The
+  first cut removed the old file first and looked afterwards.)  An unchanged table is not
+  written: one press would pin the map to this machine's copy for nothing.
+*/
+void(float force) ZoneEdit_Save =
+{
+	local string path, part, was;
+	local filestream f;
+	local float n, ok;
+
+	if (ze_map == "" || ze_map != zone_mapname)
+	{
+		ZoneEdit_Note("no map to save zones for");
+		return;
+	}
+	if (!zone_count)
+	{
+		// A file that yields no zones is refused by the loader, and the next source is read:
+		// an empty save would bring the old zones back, not remove them.
+		ZoneEdit_Note("nothing to save: there are no zones (an empty file would be ignored)");
+		return;
+	}
+	if (!ZoneEdit_MayWrite())
+	{
+		ZoneEdit_Note("on someone else's server, save with a click on the panel's save button");
+		return;
+	}
+	if (!ze_dirty)
+	if (!force)
+	{
+		ZoneEdit_Note("nothing has changed since these zones were read");
+		return;
+	}
+	ZoneEdit_Touch();
+	path = strcat("maps/zones/local/", ze_map, ".json");
+	part = strcat(path, ".part");
+	if (!ZoneEdit_WriteFile(part))
+	{
+		ZoneEdit_Note(sprintf("could not write %s", part));
+		return;
+	}
+	n = zone_count;
+	was = strzone(zone_crc);
+	ok = Zone_LoadJson(part, ZSRC_LOCAL);
+	if (ok)
+		Zone_Hash();
+	if (!ok || zone_count != n || zone_crc != was)
+	{
+		// Not what was on screen: the old file stays as it is.
+		fremove(part);
+		strunzone(was);
+		if (!ok)
+		{
+			// Nothing came back, and the loader may have emptied the table: what the
+			// map had before is read again.  The edits are lost, and that is said.
+			zone_mapname = "";
+			Zone_LoadForMap();
+			ze_dirty = FALSE;
+			ze_sel = -1;
+			ZoneEdit_Note("NOT SAVED: the file did not read back; the zones are as they were on disk");
+		}
+		else
+		{
+			ze_dirty = TRUE;
+			ze_sel = -1;
+			ZoneEdit_Note("NOT SAVED: the file read back differently; what is on screen now is what it read as");
+		}
+		return;
+	}
+	strunzone(was);
+	// Windows will not rename over a file (cl_zonedl.qc): clear the target first.  Only a
+	// copy under data/ can be removed from here; a shipped file is simply read after ours.
+	f = fopen(path, FILE_READ);
+	if (f >= 0)
+	{
+		fclose(f);
+		fremove(path);
+	}
+	if (frename(part, path) != 0)
+	{
+		fremove(part);
+		ze_dirty = TRUE;
+		ZoneEdit_Note(sprintf("NOT SAVED: could not put the file at data/%s", path));
+		return;
+	}
+	ze_saved_n = zone_count;
+	ze_dirty = FALSE;
+	ze_sel = -1;
+	ZoneEdit_Note(sprintf("saved %g zones to data/%s (crc %s)", zone_count, path, zone_crc));
+};
+
+// The way back from a save: this machine's own copy goes, and the map's zones are read
+// again from wherever they come next (a release's file, Momentum's, the BSP).
+void() ZoneEdit_Forget =
+{
+	local string path;
+
+	if (ze_map == "" || ze_map != zone_mapname)
+		return;
+	if (!ZoneEdit_MayWrite())
+	{
+		ZoneEdit_Note("on someone else's server, use the panel's own button for this");
+		return;
+	}
+	path = strcat("maps/zones/local/", ze_map, ".json");
+	fremove(path);
+	zone_mapname = "";
+	Zone_LoadForMap();
+	ze_dirty = FALSE;
+	ze_sel = -1;
+	ZoneEdit_Note(sprintf("this machine's own file is gone: %g zones now, from %s", zone_count,
+	                      Zone_SourceName(zone_source)));
+};
+
+/*
+===========================================================================
+  Placing
+===========================================================================
+*/
+vector(vector v) ZoneEdit_SnapV =
+{
+	local float g;
+
+	if (!ze_snap)
+		return v;
+	g = max(1, ze_grid);
+	// The floor goes DOWN to the grid, never up: a zone whose bottom is above the floor
+	// is one the feet are never in, and the server arms a start on the feet.
+	return [rint(v_x / g) * g, rint(v_y / g) * g, floor(v_z / g) * g];
+};
+
+// Where the crosshair meets the world.  The world model only: a CSQC trace falls
+// through brush entities (cl_soundscape.qc), so aim at solid map, not at a door.
+void() ZoneEdit_Aim =
+{
+	local vector eye;
+
+	eye = getproperty(VF_ORIGIN);
+	makevectors(getproperty(VF_ANGLES));
+	traceline(eye, eye + v_forward * ZE_REACH, MOVE_NOMONSTERS, world);
+	ze_hitok = (trace_fraction < 1 && !trace_startsolid);
+	ze_hitz = trace_endpos_z;
+	ze_hit = ZoneEdit_SnapV(trace_endpos);
+	if (!ze_snap)
+		ze_hit_z = ze_hit_z - 1;        // the surface as hit: a hair under it, for the same reason
+};
+
+// The height the view is pulling: where the aim passes nearest the vertical through the
+// second corner.  Looking level across the floor gives the least, looking up gives more.
+float() ZoneEdit_Pull =
+{
+	local vector eye, d, w;
+	local float a, b, c, e, den, t, z, g;
+
+	eye = getproperty(VF_ORIGIN);
+	makevectors(getproperty(VF_ANGLES));
+	d = v_forward;
+	// Closest approach of the ray eye + s d to the line ze_b + t up.
+	w = eye - [ze_b_x, ze_b_y, ze_a_z];
+	a = d * d;
+	b = d_z;
+	c = 1;
+	e = w_z;
+	den = a * c - b * b;
+	if (den < 0.0001)
+		return ze_h;                    // looking straight up or down: keep what it was
+	t = (a * e - b * (d * w)) / den;
+	z = t;
+	g = max(1, ze_grid);
+	if (ze_snap)
+		z = rint(z / g) * g;
+	if (z < ZE_MINH)
+		z = ZE_MINH;
+	if (z > ZE_MAXH)
+		z = ZE_MAXH;
+	return z;
+};
+
+// What else has the mouse, "" nothing: the inspector's list (cl_entview.qc), and any
+// claim in the cursor register that is not ours.  Two sui brackets in one frame and the
+// later one owns every click, so this editor does not share the screen with any of them.
+string() ZoneEdit_Blocker =
+{
+	local float others;
+
+	if (ui_he_open)   return "the layout editor";
+	if (rec_sb_open)  return "the leaderboard";
+	if (rec_wt_open)  return "a replay";
+	if (ui_rs_cursor) return "the results card";
+	if (ui_ev_cursor) return "the entity inspector";
+	// Subtraction, not &~ (UI_CursorRelease's reason).
+	others = UI_CursorHeld() - (UI_CursorHeld() & UIC_ZONEEDIT);
+	if (others)
+		return sprintf("the panel holding the mouse (cursor claims %g)", others);
+	return "";
+};
+
+void() ZoneEdit_ToPanel =
+{
+	local string why;
+
+	ze_click = ze_back = FALSE;
+	ui_ze_state = ZE_PANEL;
+	why = ZoneEdit_Blocker();
+	if (why != "")
+	{
+		ui_ze_state = ZE_OFF;
+		print(sprintf("^3zone_edit^7: close %s first%s\n", why,
+		              ze_dirty ? " (your unsaved zones are still on screen)" : ""));
+		return;
+	}
+	ze_mouse_seen = FALSE;
+	ze_btn = 0;
+	sui_reset_actions();
+	activate_mouse_cursor();
+	UI_CursorClaim(UIC_ZONEEDIT);
+};
+
+void() ZoneEdit_ToPlacing =
+{
+	UI_CursorRelease(UIC_ZONEEDIT);
+	ze_click = ze_back = FALSE;
+	ze_btn = 0;
+	ui_ze_state = ZE_A;
+};
+
+// The panel's "+ start" and its fellows: what the new zone will be, then off to place it.
+void(float type) ZoneEdit_Begin =
+{
+	local float z, s, c;
+
+	if (zone_count >= ZONE_MAX || zone_ptcount + 4 > ZONE_MAX_POINTS)
+	{
+		ZoneEdit_Note(sprintf("the table is full (%g zones, %g points)", zone_count, zone_ptcount));
+		return;
+	}
+	if (type == ZONE_START || type == ZONE_END)
+	if (ZoneEdit_Has(ze_track, type))
+	{
+		ZoneEdit_Note(sprintf("this track has %s: select it and re-place it, or delete it first",
+		                      (type == ZONE_START) ? "a start" : "an end"));
+		return;
+	}
+	ze_replace = -1;
+	ze_ntype = type;
+	ze_nseg = 0;
+	ze_ncp = 0;
+	// The last segment the track has: a new stage is the one after it.
+	s = 0;
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_track[z] == ze_track)
+		if (zone_type[z] == ZONE_STAGE)
+		if (zone_seg[z] > s)
+			s = zone_seg[z];
+	if (type == ZONE_STAGE)
+		ze_nseg = s + 1;
+	if (type == ZONE_END)
+		ze_nseg = s + 1;
+	if (type == ZONE_CHECKPOINT)
+	{
+		// In the selected zone's segment, after the checkpoints that segment has; with
+		// nothing selected, in the last one.  A half is "after ordinal c": renumbered at once.
+		ze_nseg = s;
+		if (ze_sel >= 0 && ze_sel < zone_count)
+		if (zone_track[ze_sel] == ze_track)
+		if (zone_type[ze_sel] != ZONE_END)
+			ze_nseg = zone_seg[ze_sel];
+		c = 0;
+		for (z = 0; z < zone_count; z = z + 1)
+			if (zone_track[z] == ze_track)
+			if (zone_type[z] == ZONE_CHECKPOINT)
+			if (zone_seg[z] <= ze_nseg)
+			if (zone_cp[z] > c)
+				c = zone_cp[z];
+		ze_ncp = c + 0.5;
+	}
+	ZoneEdit_ToPlacing();
+};
+
+void(float z) ZoneEdit_BeginReplace =
+{
+	if (z < 0 || z >= zone_count)
+		return;
+	ze_replace = z;
+	ze_rsig = zone_count * 4096 + zone_ptcount;
+	ze_ntype = zone_type[z];
+	ze_nseg = zone_seg[z];
+	ze_ncp = zone_cp[z];
+	ZoneEdit_ToPlacing();
+};
+
+// The third click: the box joins the table.
+void() ZoneEdit_Commit =
+{
+	local float z, kind, yaw, track;
+	local vector pos, ang;
+	local string nm;
+
+	ang = getproperty(VF_ANGLES);
+	track = ze_track;
+	kind = ZTD_NONE;
+	pos = '0 0 0';
+	yaw = 0;
+	nm = "";
+	if (ze_replace >= 0)
+	if (ze_replace >= zone_count || ze_rsig != zone_count * 4096 + zone_ptcount)
+	{
+		// The table is not the one the re-place began on (a reload, a zone download
+		// landing): row ze_replace is somebody else now.
+		ze_replace = -1;
+		ZoneEdit_Note("the zones changed while you were placing: nothing was replaced");
+		ZoneEdit_ToPanel();
+		return;
+	}
+	if (ze_replace >= 0)
+	{
+		// The zone keeps what it was and where it sends you; only its box changes.
+		track = zone_track[ze_replace];
+		kind = zone_td_kind[ze_replace];
+		pos = zone_td_pos[ze_replace];
+		yaw = zone_td_yaw[ze_replace];
+		if (zone_td_name[ze_replace] != "")
+			nm = strzone(zone_td_name[ze_replace]);
+		ZoneEdit_Remove(ze_replace);
+	}
+	z = ZoneEdit_AddBox(ze_ntype, track, ze_nseg, ze_ncp, ze_a, ze_b, ze_a_z, ze_a_z + ze_h);
+	if (z < 0)
+	{
+		if (nm != "")
+			strunzone(nm);
+		ze_replace = -1;
+		ZoneEdit_Touch();               // a removed row left the others' bounds stale
+		ZoneEdit_Note("the table is full");
+		ZoneEdit_ToPanel();
+		return;
+	}
+	if (ze_replace >= 0)
+	{
+		zone_td_kind[z] = kind;
+		zone_td_pos[z] = pos;
+		zone_td_yaw[z] = yaw;
+		zone_td_name[z] = nm;
+	}
+	else if (ze_ntype == ZONE_START || ze_ntype == ZONE_STAGE)
+	{
+		ZoneEdit_DestCentre(z, rint(ang_y));
+		// On the floor as it was hit: the bottom may be a grid step under it, and a
+		// spawn inside the floor is one the server has to dig out.
+		pos = zone_td_pos[z];
+		pos_z = max(pos_z, ze_floor + 1);
+		zone_td_pos[z] = pos;
+	}
+	ze_sel = z;                     // before the sort: it follows the row
+	ZoneEdit_Touch();
+	ZoneEdit_Note(sprintf("%s %s: %g x %g, %g tall", (ze_replace >= 0) ? "re-placed" : "added",
+	                      ZoneEdit_Label(ze_sel), fabs(ze_b_x - ze_a_x), fabs(ze_b_y - ze_a_y), ze_h));
+	ze_replace = -1;
+	ZoneEdit_ToPanel();
+};
+
+// One MOUSE1 while placing, taken in the draw pass where the aim is this frame's.
+void() ZoneEdit_Click =
+{
+	if (ui_ze_state == ZE_A)
+	{
+		if (!ze_hitok)
+			return;
+		ze_a = ze_hit;
+		ze_b = ze_hit;
+		ze_floor = ze_hitz;
+		ze_h = max(ZE_MINH, ze_grid * 4);
+		ui_ze_state = ZE_B;
+	}
+	else if (ui_ze_state == ZE_B)
+	{
+		if (!ze_hitok)
+			return;
+		if (ze_hit_x == ze_a_x || ze_hit_y == ze_a_y)
+		{
+			ZoneEdit_Note("the second corner is in line with the first: the floor needs a width and a depth");
+			return;
+		}
+		ze_b = [ze_hit_x, ze_hit_y, ze_a_z];
+		ui_ze_state = ZE_H;
+	}
+	else if (ui_ze_state == ZE_H)
+		ZoneEdit_Commit();
+};
+
+// MOUSE2: one step back, and out to the panel from the first.
+void() ZoneEdit_Back =
+{
+	if (ui_ze_state == ZE_H)
+		ui_ze_state = ZE_B;
+	else if (ui_ze_state == ZE_B)
+		ui_ze_state = ZE_A;
+	else if (ui_ze_state == ZE_A)
+	{
+		ze_replace = -1;
+		ZoneEdit_ToPanel();
+	}
+};
+
+/*
+===========================================================================
+  Drawing
+===========================================================================
+*/
+void(vector a, vector b, float bottom, float top, vector col, float alpha) ZoneEdit_DrawBox =
+{
+	local vector p0, p1, p2, p3, up;
+
+	p0 = [min(a_x, b_x), min(a_y, b_y), bottom];
+	p1 = [max(a_x, b_x), min(a_y, b_y), bottom];
+	p2 = [max(a_x, b_x), max(a_y, b_y), bottom];
+	p3 = [min(a_x, b_x), max(a_y, b_y), bottom];
+	up = [0, 0, top - bottom];
+	Zone_Line(p0, p1, col, alpha);
+	Zone_Line(p1, p2, col, alpha);
+	Zone_Line(p2, p3, col, alpha);
+	Zone_Line(p3, p0, col, alpha);
+	if (top > bottom)
+	{
+		Zone_Line(p0 + up, p1 + up, col, alpha);
+		Zone_Line(p1 + up, p2 + up, col, alpha);
+		Zone_Line(p2 + up, p3 + up, col, alpha);
+		Zone_Line(p3 + up, p0 + up, col, alpha);
+		Zone_Line(p0, p0 + up, col, alpha);
+		Zone_Line(p1, p1 + up, col, alpha);
+		Zone_Line(p2, p2 + up, col, alpha);
+		Zone_Line(p3, p3 + up, col, alpha);
+	}
+};
+
+// In the world pass, after Zone_Draw (cl_main.qc): the whole table whatever zone_draw
+// says, the selected zone, and the box being placed.  The aim is taken HERE, in the
+// frame it is drawn in, and a click the input handler asked for is answered here.
+void() ZoneEdit_Draw3D =
+{
+	local float z, g;
+	local vector eye, c;
+
+	if (!ui_ze_state)
+		return;
+	if (ze_map != zone_mapname || serverkey("map") != ze_map)
+	{
+		// The map changed under the editor: the table is the new map's.
+		if (ui_ze_state == ZE_PANEL)
+			UI_CursorRelease(UIC_ZONEEDIT);
+		ui_ze_state = ZE_OFF;
+		if (ze_dirty)
+			print("^3zone_edit^7: the map changed; the unsaved zones are gone\n");
+		ze_dirty = FALSE;
+		return;
+	}
+	// Every zone, whatever zone_draw, its type switches and its distance say (Zone_Draw may
+	// have drawn some already: a second pass over a line changes nothing you can see).
+	eye = getproperty(VF_ORIGIN);
+	for (z = 0; z < zone_count; z = z + 1)
+		Zone_DrawOne(z, (z == ze_sel) ? '1 1 1' : zone_cv_typecol[zone_type[z]], 1, eye);
+	if (ui_ze_state < ZE_A)
+		return;
+
+	if (ZoneEdit_Blocker() != "")
+	{
+		ze_click = ze_back = FALSE;     // another panel is up: its clicks are its own
+		return;
+	}
+	ZoneEdit_Aim();
+	if (ui_ze_state == ZE_H)
+		ze_h = ZoneEdit_Pull();
+	if (ze_back)
+	{
+		ze_back = FALSE;
+		ZoneEdit_Back();
+	}
+	if (ze_click)
+	{
+		ze_click = FALSE;
+		ZoneEdit_Click();
+	}
+	if (ui_ze_state < ZE_A)
+		return;
+
+	// The aim: a small cross on the floor at the snapped point.
+	if (ze_hitok && ui_ze_state != ZE_H)
+	{
+		g = max(4, ze_grid * 0.5);
+		c = [ze_hit_x, ze_hit_y, ze_hitz + 0.5];
+		Zone_Line(c - [g, 0, 0], c + [g, 0, 0], ZEC_NEW, 1);
+		Zone_Line(c - [0, g, 0], c + [0, g, 0], ZEC_NEW, 1);
+		Zone_Line(c, c + [0, 0, g * 2], ZEC_NEW, 1);
+	}
+	if (ui_ze_state == ZE_B)
+	{
+		if (ze_hitok)
+			ZoneEdit_DrawBox(ze_a, ze_hit, ze_floor + 0.5, ze_floor + 0.5, ZEC_NEW, 1);
+	}
+	else if (ui_ze_state == ZE_H)
+	{
+		ZoneEdit_DrawBox(ze_a, ze_b, ze_a_z, ze_a_z + ze_h, ZEC_NEW, 1);
+		// And its outline on the floor itself: the bottom may be a grid step under it.
+		ZoneEdit_DrawBox(ze_a, ze_b, ze_floor + 0.5, ze_floor + 0.5, ZEC_NEW, 1);
+	}
+};
+
+// A button: its box, its word, and whether it was clicked this frame.
+// A click on element `id`: the mouse's, or `zone_edit press <id>` (an arm has no mouse).
+float(string id) ZoneEdit_Clicked =
+{
+	if (ze_press != "")
+	if (ze_press == id)
+	{
+		strunzone(ze_press);
+		ze_press = "";
+		return TRUE;
+	}
+	return sui_is_clicked(id);
+};
+
+float(vector p, vector s, string id, string word, float tsz, vector col) ZoneEdit_Button =
+{
+	local float w;
+
+	sui_action_element(p, s, id, sui_noop);
+	sui_style_box(p, s, 4, sui_is_hovered(id) ? SUI_THEME_HOVER
+	                : ((col == ZEC_SEL) ? SUI_THEME_SELECTED : SUI_THEME_CHIP),
+	              (col == ZEC_SEL) ? SUI_THEME_EDGE_HI : SUI_THEME_EDGE, 1);
+	w = stringwidth(word, TRUE, [tsz, tsz]);
+	sui_text(p + [max(4, (s_x - w) * 0.5), (s_y - tsz) * 0.5], [tsz, tsz], word, col, 1, 0);
+	return ZoneEdit_Clicked(id);
+};
+
+void(vector scr) ZoneEdit_Panel =
+{
+	local vector p, tp, lp, rs;
+	local float w, h, pad, tsz, rsz, rowh, bw, z, n, i, k, best, bo, o, a, top, lastk, cut;
+	local string s, id;
+
+	if (!ui_ze_state)
+		return;
+	if (ui_ze_state == ZE_PANEL)
+	{
+		s = ZoneEdit_Blocker();
+		if (s != "")
+		{
+			UI_CursorRelease(UIC_ZONEEDIT);
+			ui_ze_state = ZE_OFF;
+			print(sprintf("^3zone_edit^7: closed -- %s opened%s\n", s,
+			              ze_dirty ? "; your unsaved zones are still on screen" : ""));
+			return;
+		}
+	}
+
+	Font_Set(ui_font_ui);
+	pad  = 8 * ui_cv_scale;
+	tsz  = Font_Px(9 * ui_cv_scale);
+	rsz  = Font_Px(8 * ui_cv_scale);
+	rowh = rsz + 6 * ui_cv_scale;
+
+	if (ui_ze_state >= ZE_A)
+	{
+		// Placing: the mouse is the game's.  One line of what the next click does.
+		if (ui_ze_state == ZE_A)
+			s = "MOUSE1 first floor corner";
+		else if (ui_ze_state == ZE_B)
+			s = sprintf("MOUSE1 opposite corner  (%g x %g)", fabs(ze_hit_x - ze_a_x), fabs(ze_hit_y - ze_a_y));
+		else
+			s = sprintf("look up to pull the height (%g), MOUSE1 to finish", ze_h);
+		s = sprintf("%s %s:  %s   -   MOUSE2 back   wheel grid %g   V noclip   ESC panel",
+		            (ze_replace >= 0) ? "re-placing" : "placing",
+		            (ze_ntype == ZONE_START) ? "start" : ((ze_ntype == ZONE_END) ? "end"
+		              : ((ze_ntype == ZONE_STAGE) ? "stage" : "checkpoint")), s, ze_grid);
+		w = stringwidth(s, TRUE, [tsz, tsz]) + pad * 2;
+		p = [(scr_x - w) * 0.5, scr_y * 0.72];
+		// drawfill, not a styled box: that needs a sui bracket, and a second bracket in a
+		// frame takes the clicks from whichever panel drew before it.
+		drawfill(p - [1, 1], [w + 2, tsz + pad + 2], SUI_THEME_EDGE, 0.9, 0);
+		drawfill(p, [w, tsz + pad], SUI_THEME_PANEL, 0.95, 0);
+		drawstring(p + [pad, pad * 0.5], s, [tsz, tsz],
+		           (ze_hitok || ui_ze_state == ZE_H) ? ZEC_TEXT : ZEC_WARN, 1, 0);
+		if (!ze_hitok && ui_ze_state != ZE_H)
+			drawstring(p + [pad, pad * 0.5 + tsz + pad], "aim at the map: nothing solid under the crosshair",
+			           [rsz, rsz], ZEC_WARN, 1, 0);
+		Font_Reset();
+		return;
+	}
+
+	w = 330 * ui_cv_scale;
+	if (w > scr_x * 0.5 - 32 * ui_cv_scale)
+		w = scr_x * 0.5 - 32 * ui_cv_scale;
+	h = scr_y - 110 * ui_cv_scale;
+	if (h < rowh * 14)
+		h = min(scr_y - 16, rowh * 14);
+	p = [scr_x - w - 16 * ui_cv_scale, 56 * ui_cv_scale, 0];
+	if (p_y + h > scr_y - 8)
+		p_y = max(8, scr_y - 8 - h);
+	ze_panel_p = p;
+	ze_panel_s = [w, h, 0];
+
+	sui_begin(scr_x, scr_y);
+	sui_action_element(p, [w, h], "ze_bg", sui_noop);
+	sui_style_panel(p, [w, h], 8, 0.96);
+	drawsetcliparea(p_x, p_y, w, h);
+
+	tp = p + [pad, pad];
+	sui_text(tp, [tsz, tsz], sprintf("zone editor  -  %s%s", ze_map, ze_dirty ? "  (not saved)" : ""),
+	         ze_dirty ? ZEC_WARN : ZEC_TEXT, 1, 0);
+	tp_y = tp_y + tsz + pad * 0.5;
+	sui_text(tp, [rsz, rsz], sprintf("%g zones, from %s%s", zone_count, Zone_SourceName(zone_source),
+	                                (serverkey("board") == "ranked") ? "; this server times with its own" : ""),
+	         ZEC_DIM, 1, 0);
+	tp_y = tp_y + rsz + pad;
+
+	// Tracks: main, each bonus there is, and the next one.
+	top = 0;
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_track[z] > top)
+			top = zone_track[z];
+	if (ze_track > top + 1)
+		ze_track = top + 1;
+	bw = 34 * ui_cv_scale;
+	lp = tp;
+	for (i = 0; i <= top + 1 && i <= 12; i = i + 1)
+	{
+		id = strcat("ze_t", ftos(i));
+		s = (i == 0) ? "main" : ((i > top) ? sprintf("+b%g", i) : sprintf("b%g", i));
+		if (lp_x + bw > p_x + w - pad)
+		{
+			lp_x = tp_x;
+			lp_y = lp_y + rowh + 2;
+		}
+		if (ZoneEdit_Button(lp, [bw, rowh], id, s, rsz, (i == ze_track) ? ZEC_SEL : ZEC_TEXT))
+		{
+			ze_track = i;
+			ze_sel = -1;
+		}
+		lp_x = lp_x + bw + 4;
+	}
+	tp_y = lp_y + rowh + pad;
+
+	// What can be added to this track.
+	bw = (w - pad * 2 - 12) / 4;
+	if (ZoneEdit_Button(tp, [bw, rowh], "ze_as", "+ start", rsz, ZoneEdit_Has(ze_track, ZONE_START) ? ZEC_DIM : ZEC_TEXT))
+		ZoneEdit_Begin(ZONE_START);
+	if (ZoneEdit_Button(tp + [bw + 4, 0], [bw, rowh], "ze_ag", "+ stage", rsz, ZEC_TEXT))
+		ZoneEdit_Begin(ZONE_STAGE);
+	if (ZoneEdit_Button(tp + [(bw + 4) * 2, 0], [bw, rowh], "ze_ac", "+ checkpt", rsz, ZEC_TEXT))
+		ZoneEdit_Begin(ZONE_CHECKPOINT);
+	if (ZoneEdit_Button(tp + [(bw + 4) * 3, 0], [bw, rowh], "ze_ae", "+ end", rsz, ZoneEdit_Has(ze_track, ZONE_END) ? ZEC_DIM : ZEC_TEXT))
+		ZoneEdit_Begin(ZONE_END);
+	tp_y = tp_y + rowh + pad;
+	if (ui_ze_state != ZE_PANEL)
+	{
+		// A button above took the mouse away: this frame's panel ends here.
+		drawresetcliparea();
+		sui_end();
+		Font_Reset();
+		return;
+	}
+
+	// The track's zones in course order (selection sort by ZoneEdit_Order, drawn as found),
+	// then the regions that belong to no track, on the main page.
+	n = 0;
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_track[z] == ze_track)
+			n = n + 1;
+	rs = [w - pad * 2, (p_y + h - pad) - tp_y - rowh * 5.2, 0];
+	lastk = -1;
+	bo = -1;
+	cut = 0;
+	lp = tp;
+	for (i = 0; i < n; i = i + 1)
+	{
+		// The next zone of the track after (bo, lastk) in (order, index).
+		best = -1;
+		k = 0;
+		for (z = 0; z < zone_count; z = z + 1)
+			if (zone_track[z] == ze_track)
+			{
+				o = ZoneEdit_Order(z);
+				if (zone_type[z] > ZONE_CHECKPOINT)
+					o = 9500000 + zone_type[z];
+				if (o < bo || (o == bo && z <= lastk))
+					continue;
+				if (best < 0 || o < k)
+				{
+					best = z;
+					k = o;
+				}
+			}
+		if (best < 0)
+			break;
+		bo = k;
+		lastk = best;
+		if (i < ze_scroll)
+			continue;
+		if (lp_y + rowh * 2 > tp_y + rs_y)
+		{
+			cut = cut + 1;              // the last row is kept for saying so
+			continue;
+		}
+		z = best;
+		id = strcat("ze_z", ftos(z));
+		sui_action_element(lp, [rs_x, rowh], id, sui_noop);
+		if (z == ze_sel)
+			sui_style_box(lp, [rs_x, rowh], 3, SUI_THEME_SELECTED, SUI_THEME_EDGE_HI, 1);
+		else if (sui_is_hovered(id))
+			sui_style_box(lp, [rs_x, rowh], 3, SUI_THEME_HOVER, SUI_THEME_HOVER, 1);
+		sui_fill(lp + [3, 3], [3, rowh - 6], zone_cv_typecol[zone_type[z]], 1, 0);
+		sui_text(lp + [12, (rowh - rsz) * 0.5], [rsz, rsz], ZoneEdit_Label(z),
+		         (z == ze_sel) ? ZEC_SEL : ZEC_TEXT, 1, 0);
+		sui_text(lp + [rs_x * 0.45, (rowh - rsz) * 0.5], [rsz, rsz],
+		         sprintf("%g pts  z %g..%g%s", zone_npts[z], zone_bottom[z], zone_top[z],
+		                 ((zone_type[z] == ZONE_START || zone_type[z] == ZONE_STAGE) && zone_td_kind[z] == ZTD_NONE)
+		                   ? "  no spawn" : ""), ZEC_DIM, 1, 0);
+		if (ZoneEdit_Clicked(id))
+			ze_sel = (ze_sel == z) ? -1 : z;
+		lp_y = lp_y + rowh;
+	}
+	if (!n)
+		sui_text(lp, [rsz, rsz], "no zones on this track yet", ZEC_DIM, 1, 0);
+	else if (cut)
+		sui_text([tp_x + rs_x * 0.45, tp_y + rs_y - rowh + (rowh - rsz) * 0.5], [rsz, rsz],
+		         sprintf("%g more: the wheel scrolls", cut), ZEC_WARN, 1, 0);
+	tp_y = tp_y + rs_y + pad * 0.5;
+
+	// The selected zone.
+	bw = (w - pad * 2 - 8) / 3;
+	a = (ze_sel >= 0 && ze_sel < zone_count);
+	// `k`: the selection is a start or a stage.  Nested ifs, not a && : QC evaluates both
+	// sides, and zone_type[-1] is a bounds failure that takes the whole VM down.
+	k = FALSE;
+	if (a)
+	if (zone_type[ze_sel] == ZONE_START || zone_type[ze_sel] == ZONE_STAGE)
+		k = TRUE;
+	if (ZoneEdit_Button(tp, [bw, rowh], "ze_rp", "re-place", rsz, a ? ZEC_TEXT : ZEC_DIM))
+	if (a)
+		ZoneEdit_BeginReplace(ze_sel);
+	if (ZoneEdit_Button(tp + [bw + 4, 0], [bw, rowh], "ze_sp", "spawn here", rsz, k ? ZEC_TEXT : ZEC_DIM))
+	if (k)
+	{
+		// Where you stand and the way you face is where `!r` will put you.
+		if (zone_td_name[ze_sel] != "")
+			strunzone(zone_td_name[ze_sel]);
+		zone_td_name[ze_sel] = "";
+		zone_td_kind[ze_sel] = ZTD_POS;
+		zone_td_pos[ze_sel] = pmove_org;
+		lp = getproperty(VF_ANGLES);
+		zone_td_yaw[ze_sel] = rint(lp_y);
+		ZoneEdit_Touch();
+		ZoneEdit_Note(sprintf("%s: spawn set where you stand", ZoneEdit_Label(ze_sel)));
+	}
+	if (ZoneEdit_Button(tp + [(bw + 4) * 2, 0], [bw, rowh], "ze_dl", "delete", rsz, a ? ZEC_WARN : ZEC_DIM))
+	if (a)
+	{
+		ZoneEdit_Note(sprintf("deleted %s", ZoneEdit_Label(ze_sel)));
+		ZoneEdit_Remove(ze_sel);
+		ze_sel = -1;
+		ZoneEdit_Touch();
+	}
+	tp_y = tp_y + rowh + 4;
+
+	// Grid and snap.
+	bw = (w - pad * 2 - 20) / 6;
+	for (i = 0; i < 5; i = i + 1)
+	{
+		k = (i == 0) ? 1 : ((i == 1) ? 8 : ((i == 2) ? 16 : ((i == 3) ? 32 : 64)));
+		if (ZoneEdit_Button(tp + [(bw + 4) * i, 0], [bw, rowh], strcat("ze_g", ftos(k)), ftos(k), rsz,
+		                    (ze_grid == k && ze_snap) ? ZEC_SEL : ZEC_TEXT))
+		{
+			ze_grid = k;
+			ze_snap = TRUE;
+		}
+	}
+	if (ZoneEdit_Button(tp + [(bw + 4) * 5, 0], [bw, rowh], "ze_gs", "surf", rsz, ze_snap ? ZEC_TEXT : ZEC_SEL))
+		ze_snap = !ze_snap;
+	tp_y = tp_y + rowh + 4;
+
+	bw = (w - pad * 2 - 12) / 4;
+	if (ZoneEdit_Button(tp, [bw, rowh], "ze_sv", "save", rsz, ze_dirty ? ZEC_SEL : ZEC_DIM))
+		ZoneEdit_Save(FALSE);
+	if (ZoneEdit_Button(tp + [bw + 4, 0], [bw, rowh], "ze_rl", "reload", rsz, ZEC_TEXT))
+	{
+		zone_mapname = "";
+		Zone_LoadForMap();
+		ze_dirty = FALSE;
+		ze_sel = -1;
+		ZoneEdit_Note(sprintf("reloaded: %g zones from %s", zone_count, Zone_SourceName(zone_source)));
+	}
+	// "my file": the copy a save left on this machine, and the way back from one.
+	if (ZoneEdit_Button(tp + [(bw + 4) * 2, 0], [bw, rowh], "ze_fg", "drop my file", rsz,
+	                    (zone_source == ZSRC_LOCAL) ? ZEC_WARN : ZEC_DIM))
+		ZoneEdit_Forget();
+	if (ZoneEdit_Button(tp + [(bw + 4) * 3, 0], [bw, rowh], "ze_cl", "close", rsz, ZEC_TEXT))
+	{
+		UI_CursorRelease(UIC_ZONEEDIT);
+		ui_ze_state = ZE_OFF;
+		if (ze_dirty)
+			print("^3zone_edit^7: closed with unsaved zones; they stay on screen until the map changes\n");
+	}
+	tp_y = tp_y + rowh + 4;
+
+	a = 1 - (cltime - ze_note_t) / 6;
+	if (ze_note != "" && a > 0)
+		sui_text(tp, [rsz, rsz], ze_note, SUI_THEME_GOOD, min(1, a * 3), 0);
+	else if (serverkey("board") != "ranked")
+		sui_text(tp, [rsz, rsz], "saved zones time your own game after the map is loaded again", ZEC_DIM, 1, 0);
+	else
+		sui_text(tp, [rsz, rsz], "saved zones change what you see here, not this server's timing", ZEC_DIM, 1, 0);
+
+	drawresetcliparea();
+	sui_end();
+	Font_Reset();
+};
+
+/*
+===========================================================================
+  Input.  cl_main.qc asks this before the entity inspector.
+===========================================================================
+*/
+float(float evtype, float scanx, float chary, float devid) ZoneEdit_InputEvent =
+{
+	local float b, onpanel;
+
+	if (!ui_ze_state)
+		return FALSE;
+
+	if (ui_ze_state == ZE_PANEL)
+	{
+		if (evtype == IE_MOUSEABS)
+		{
+			ze_mouse = [scanx, chary];
+			ze_mouse_seen = TRUE;
+			sui_input_event(evtype, scanx, chary, devid);
+			return TRUE;
+		}
+		if (evtype != IE_KEYDOWN && evtype != IE_KEYUP)
+			return FALSE;
+		onpanel = (ze_mouse_seen && is_2dpoint_in_bbox(ze_mouse, ze_panel_p, ze_panel_s));
+		if (scanx == K_MOUSE1)
+		{
+			if (evtype == IE_KEYDOWN)
+			{
+				ze_btn = ze_btn | ZEB_M1;
+				if (ze_mouse_seen)
+					_sui_mouse_move(ze_mouse, FALSE);
+				sui_input_event(evtype, scanx, chary, devid);
+				return TRUE;
+			}
+			if (!(ze_btn & ZEB_M1))
+				return FALSE;
+			ze_btn = ze_btn - ZEB_M1;
+			if (cl_input_real)
+				ze_real_t = cltime;         // a device let go of MOUSE1 over our panel
+			sui_input_event(evtype, scanx, chary, devid);
+			return TRUE;
+		}
+		if (scanx == K_MWHEELUP || scanx == K_MWHEELDOWN)
+		{
+			b = (scanx == K_MWHEELUP) ? ZEB_WUP : ZEB_WDN;
+			if (evtype == IE_KEYDOWN)
+			{
+				if (!onpanel)
+					return FALSE;
+				ze_btn = ze_btn | b;
+				ze_scroll = max(0, ze_scroll + ((scanx == K_MWHEELUP) ? -2 : 2));
+				return TRUE;
+			}
+			if (!(ze_btn & b))
+				return FALSE;
+			ze_btn = ze_btn - b;
+			return TRUE;
+		}
+		if (evtype == IE_KEYDOWN && scanx == K_ESCAPE)
+		{
+			UI_CursorRelease(UIC_ZONEEDIT);
+			ui_ze_state = ZE_OFF;
+			print("^5zone_edit^7: off\n");
+			return TRUE;
+		}
+		return FALSE;
+	}
+
+	// Placing: the mouse looks, and four keys are ours -- unless another panel is up, whose
+	// clicks must not place corners.  A release still follows its press.
+	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP)
+		return FALSE;
+	if (evtype == IE_KEYDOWN)
+	if (ZoneEdit_Blocker() != "")
+		return FALSE;
+	b = 0;
+	if (scanx == K_MOUSE1)          b = ZEB_M1;
+	else if (scanx == K_MOUSE2)     b = ZEB_M2;
+	else if (scanx == K_MWHEELUP)   b = ZEB_WUP;
+	else if (scanx == K_MWHEELDOWN) b = ZEB_WDN;
+	if (b)
+	{
+		if (evtype == IE_KEYUP)
+		{
+			if (!(ze_btn & b))
+				return FALSE;
+			ze_btn = ze_btn - b;
+			return TRUE;
+		}
+		ze_btn = ze_btn | b;
+		if (b == ZEB_M1)
+			ze_click = TRUE;
+		else if (b == ZEB_M2)
+			ze_back = TRUE;
+		else
+		{
+			// 1 2 4 8 16 32 64, a notch at a time.
+			if (b == ZEB_WUP)
+				ze_grid = min(64, ze_grid * 2);
+			else
+				ze_grid = max(1, ze_grid / 2);
+			ze_snap = TRUE;
+		}
+		return TRUE;
+	}
+	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE)
+	{
+		ze_replace = -1;
+		ZoneEdit_ToPanel();
+		return TRUE;
+	}
+	return FALSE;
+};
+
+/*
+===========================================================================
+  Commands
+===========================================================================
+*/
+void() ZoneEdit_Open =
+{
+	if (ui_ze_state)
+		return;
+	if (serverkey("map") == "" || zone_mapname != serverkey("map"))
+	{
+		print("^3zone_edit^7: no map loaded\n");
+		return;
+	}
+	if (ze_map != zone_mapname)
+	{
+		if (ze_map != "")
+			strunzone(ze_map);
+		ze_map = strzone(zone_mapname);
+		ze_dirty = FALSE;
+		ze_track = 0;
+	}
+	ze_sel = -1;
+	ze_replace = -1;
+	ze_scroll = 0;
+	if (ze_grid < 1)
+	{
+		ze_grid = 16;
+		ze_snap = TRUE;
+	}
+	ZoneEdit_ToPanel();
+	if (ui_ze_state)
+		print("^5zone_edit^7: add a zone from the panel, then aim and click; ESC closes\n");
+};
+
+void() ZoneEdit_Status =
+{
+	local float z;
+	local vector p;
+
+	print(sprintf("zone_edit: state %g map %s zones %g points %g dirty %g crc %s\n", ui_ze_state,
+	              (ze_map != "") ? ze_map : "-", zone_count, zone_ptcount, ze_dirty,
+	              (zone_crc != "") ? zone_crc : "-"));
+	print(sprintf("zone_edit: track %g sel %g grid %g snap %g source %s\n", ze_track, ze_sel, ze_grid,
+	              ze_snap, Zone_SourceName(zone_source)));
+	print(sprintf("zone_edit: placing type %g seg %g cp %g a %g %g %g", ze_ntype, ze_nseg, ze_ncp,
+	              ze_a_x, ze_a_y, ze_a_z));
+	print(sprintf(" b %g %g h %g hit %g %g %g ok %g\n", ze_b_x, ze_b_y, ze_h, ze_hit_x, ze_hit_y,
+	              ze_hit_z, ze_hitok));
+	// (sprintf takes eight arguments at most: three prints a zone, one line.)
+	for (z = 0; z < zone_count; z = z + 1)
+	{
+		print(sprintf("zone_edit: zone %g %s track %g seg %g cp %g pts %g", z, Zone_TypeName(zone_type[z]),
+		              zone_track[z], zone_seg[z], zone_cp[z], zone_npts[z]));
+		p = zone_zmins[z];
+		print(sprintf(" z %g %g box %g %g", zone_bottom[z], zone_top[z], p_x, p_y));
+		p = zone_zmaxs[z];
+		print(sprintf(" %g %g", p_x, p_y));
+		p = zone_td_pos[z];
+		// The destination too: Zone_Hash does not cover it, so only this line can show a save kept it.
+		print(sprintf(" td %g %g %g %g %g [%s]\n", zone_td_kind[z], p_x, p_y, p_z, zone_td_yaw[z],
+		              zone_td_name[z]));
+	}
+};
+
+/*
+  zone_edit                 open or close
+  zone_edit save [force] | forget | status      force: write an unchanged table too
+  zone_edit add <start|end|stage|checkpoint> <track> <x1> <y1> <x2> <y2> <bottom> <height>
+  zone_edit del <n> | sel <n> | track <n>
+  zone_edit place <start|end|stage|checkpoint>     as the panel's + buttons
+  zone_edit click | back                            as MOUSE1 and MOUSE2 while placing
+  The last three are how an arm drives the same code the mouse does.
+*/
+float(string cmd) ZoneEdit_ConsoleCommand =
+{
+	local float n, t, z;
+	local string a;
+
+	n = tokenize(cmd);
+	if (argv(0) != "zone_edit")
+		return FALSE;
+	a = argv(1);
+	if (n == 1)
+	{
+		if (ui_ze_state)
+		{
+			if (ui_ze_state == ZE_PANEL)
+				UI_CursorRelease(UIC_ZONEEDIT);
+			ui_ze_state = ZE_OFF;
+			print("^5zone_edit^7: off\n");
+		}
+		else
+			ZoneEdit_Open();
+		return TRUE;
+	}
+	if (a == "status")
+	{
+		ZoneEdit_Status();
+		return TRUE;
+	}
+	if (!ui_ze_state)
+	{
+		print("^3zone_edit^7: open it first (zone_edit)\n");
+		return TRUE;
+	}
+	t = -1;
+	if (argv(2) == "start")           t = ZONE_START;
+	else if (argv(2) == "end")        t = ZONE_END;
+	else if (argv(2) == "stage")      t = ZONE_STAGE;
+	else if (argv(2) == "checkpoint") t = ZONE_CHECKPOINT;
+	if (ui_ze_state >= ZE_A)
+	if (a != "click")
+	if (a != "back")
+	{
+		print("^3zone_edit^7: finish or cancel the zone being placed first (click, back)\n");
+		return TRUE;
+	}
+	if (a == "save")
+		ZoneEdit_Save(argv(2) == "force");
+	else if (a == "forget")
+		ZoneEdit_Forget();
+	else if (a == "track")
+	{
+		ze_track = bound(0, stof(argv(2)), 12);
+		ze_sel = -1;
+	}
+	else if (a == "sel")
+		ze_sel = (stof(argv(2)) >= 0 && stof(argv(2)) < zone_count) ? stof(argv(2)) : -1;
+	else if (a == "del")
+	{
+		z = stof(argv(2));
+		if (argv(2) != "" && z >= 0 && z < zone_count)
+		{
+			ZoneEdit_Remove(z);
+			ze_sel = -1;
+			ZoneEdit_Touch();
+		}
+	}
+	else if (a == "place" && t >= 0)
+	{
+		if (ui_ze_state == ZE_PANEL)
+			ZoneEdit_Begin(t);
+	}
+	else if (a == "press" && argv(2) != "")
+	{
+		// The panel's own branch runs it on its next frame: ze_as + start, ze_ag + stage,
+		// ze_ac + checkpoint, ze_ae + end, ze_t<n> a track, ze_z<n> a row, ze_rp re-place,
+		// ze_sp spawn here, ze_dl delete, ze_g<n> the grid, ze_gs surface, ze_sv save,
+		// ze_rl reload, ze_cl close.
+		if (ze_press != "")
+			strunzone(ze_press);
+		ze_press = strzone(argv(2));
+	}
+	else if (a == "click")
+		ze_click = (ui_ze_state >= ZE_A);
+	else if (a == "back")
+		ze_back = (ui_ze_state >= ZE_A);
+	else if (a == "add" && t >= 0 && n >= 10)
+	{
+		ze_track = bound(0, stof(argv(3)), 12);
+		if ((t == ZONE_START || t == ZONE_END) && ZoneEdit_Has(ze_track, t))
+			print("^3zone_edit^7: that track has one\n");
+		else
+		{
+			// As the panel would number it: ZoneEdit_Begin's choice, without leaving the panel.
+			ZoneEdit_Begin(t);
+			if (ui_ze_state >= ZE_A)
+			{
+				ze_a = [stof(argv(4)), stof(argv(5)), stof(argv(8))];
+				ze_b = [stof(argv(6)), stof(argv(7)), stof(argv(8))];
+				ze_floor = stof(argv(8)) - 1;       // by command the floor is the bottom given
+				ze_h = bound(ZE_MINH, stof(argv(9)), ZE_MAXH);
+				ZoneEdit_Commit();
+			}
+		}
+	}
+	else
+		print("zone_edit [save [force]|forget|status|track n|sel n|del n|place type|click|back|press id|"
+		      "add type track x1 y1 x2 y2 bottom height]\n");
+	return TRUE;
+};
+
+void() ZoneEdit_Register =
+{
+	registercommand("zone_edit");
+	ze_sel = -1;
+	ze_replace = -1;
+	ze_grid = 16;
+	ze_snap = TRUE;
+};

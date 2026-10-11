@@ -114,6 +114,56 @@ From its review; none stops it.
   (Patch 617: the wait leaves the game its keys), and odd beside a cursor.
 - ftesurf-5b, from Patch 653's review of 12 Oct.
 
+## The zone editor: what Patch 669 left -- 2026-10-12
+
+- **PART TWO, publishing to the lobbies, is not built and waits on the owner**:
+  who is an admin (accounts have a ban flag and no role; `/admin` is a separate
+  password login), and what happens on a map that already has times (a changed
+  zone table leaves the board's rows as they are). AGENT_NOTES, "The zone
+  editor", has where a published file would have to go.
+- **Not tested: the real mouse.** A rig has none. The arm runs MOUSE1's and
+  MOUSE2's code by command (`zone_edit click`, `back`) and each panel button's
+  branch by name (`zone_edit press <id>`); sui's hit test on the panel, the key
+  events while placing, and a release going where its press went were read,
+  not run.
+- **A new zone is a box.** A zone from a file keeps its ring (they run to 64
+  points), and `re-place` turns it into a box.
+- **No moving one corner or one face**, and no changing a zone's place in the
+  course: a new stage goes after the last, a new checkpoint at the end of the
+  selected zone's segment. To insert a stage in the middle, re-place the ones
+  after it.
+- **No map settings.** Momentum's editor also holds the map's speed cap; here
+  the movement cvars are per-map cfg files the engine executes, which QC
+  cannot write where the engine looks.
+- **Cancel, bhop and overbounce regions** are listed on the main page and can
+  be deleted, not made. `safeHeight` and the other keys the parser ignores are
+  not written back, so a Momentum file saved here loses them (the game never
+  read them).
+- **The aim is the world model only.** A CSQC trace falls through brush
+  entities (doors, func_brush floors): a corner on one lands on what is behind
+  it.
+- **A saved file is a `zones/local` file** on that machine and wins there
+  over a later release's or Momentum's update of that map, until `drop my
+  file` removes it. Nothing tells a player months later that a map's zones
+  are their own old save.
+- **The editor is everyone's**, not an admin's: `zone_edit` is a command any
+  player can type (no key, no menu entry). It changes that player's own view
+  and their own hosted game. Whether it should hide behind the admin check
+  once part two has one is the owner's call.
+- **cl_entview.qc:1801 has the precedence slip this patch made and fixed**:
+  `onpanel = ev_mouse_seen && is_2dpoint_in_bbox(...)` stores `ev_mouse_seen`,
+  so once the mouse has moved the wheel scrolls the inspector's list anywhere
+  on screen and never reaches the game. Read, not run; not fixed here.
+- **Two legacy stage triggers with no `stage` key become one stage** of two
+  regions when saved (each goes "after the last"). No map was checked for it.
+- **Review fixes with no check of their own**: a re-place whose table changed
+  under it, the yield to other panels, the 9-digit numbers, the height cap,
+  a device's click as the licence to save on somebody else's server (the arm
+  shows the refusals; a real click it cannot make).
+- **The table can be replaced under an open editor** when a zone download for
+  a map that had none lands (cl_zonedl.qc re-reads it), and by a map change;
+  unsaved zones are lost with a line in the console.
+
 ## Labels on the run lines: what Patch 661 left -- 2026-10-12
 
 - **Not measured: a real crowd.** The arm's twenty lines are one run, which

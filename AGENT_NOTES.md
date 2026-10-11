@@ -5003,6 +5003,90 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+### The zone editor, part one (Patch 669) — 2026-10-12
+
+- THE OWNER'S ASK: Momentum's zone editor in the game, for admins, because the
+  CS:S maps need zones (about 870 KSF-only maps have none, and a few `_css`
+  builds are offset from their Momentum twin). PART ONE is the editor and a
+  saved file. PART TWO, an admin publishing to the lobbies, is NOT built: it
+  waits on two decisions of his (who is an admin; maps that already have
+  times).
+- IT IS ONE CLIENT FILE, `src/client/cl_zoneedit.qc`, AND NO SERVER CHANGE.
+  It edits this client's own zone table (sh_zones.qc's arrays, the ones
+  cl_zones.qc draws) and `save` writes `maps/zones/local/<map>.json`. QC's
+  fopen puts a write under `ftesurf/data/` and reads data/ first, so that is
+  `ftesurf\data\maps\zones\local\`, and both VMs already read
+  `maps/zones/local` before anything else: a hosted game times with it at the
+  next map load with no code of its own. qwprogs is byte-identical.
+- WHY THAT CANNOT REACH THE BOARD: a lobby's zones are its own files on the
+  Pi, and a hosted game posts no times (sv_lobby.qc, "Ranked = official
+  servers only"). On somebody else's server a saved file changes only what
+  that player is SHOWN.
+- THE TABLE IS KEPT IN THE FILE'S SHAPE AFTER EVERY CHANGE (`ZoneEdit_Touch`):
+  a region's type is its POSITION in the file, so stages are renumbered 1..n,
+  the end is one past the last, checkpoint ordinals run 1.. along the track,
+  and the rows are sorted into file order, because `Zone_Hash` walks the table
+  and an unsorted course would hash one way on screen and another once saved.
+  A table that came from a file does not move.
+- `Zone_Hash` DOES NOT COVER A ZONE'S DESTINATION, so "same crc" does not show
+  a save kept `teleDestTargetname`: the arm compares `zone_edit status`'s
+  zone lines, which print it.
+- A NEW START OR STAGE GETS `teleDestPos`: the middle of its floor, facing the
+  way you looked; `spawn here` sets it to where you stand. A KSF map has no
+  `info_teleport_destination` to name.
+- `&&` EVALUATES BOTH SIDES, AND `zone_type[-1]` ENDS THE SESSION. The first
+  run died opening the panel ("Progs boundcheck failed", Host_EndGame) on
+  `a && zone_type[ze_sel] == ...` with nothing selected. Nested ifs.
+- WHO MAY WRITE A FILE (`ZoneEdit_MayWrite`). Every `zone_edit` word is a
+  console command, and a server can type one for a player (Patch 617). So a
+  file is written or removed only when this client IS the server
+  (`serverkey("ip")` holds `QLoopBack`; unreadable is NOT ours, the reverse of
+  cl_replay.qc's default) or a device has just let go of MOUSE1 over the
+  panel (`cl_input_real`). On a dedicated server five ways of asking by
+  command are each refused in words and nothing is written (`p669remote.cfg`).
+  Zones made by command are still drawn until the map changes: a server can
+  already draw what it likes on its own players' screens.
+- SAVE WRITES BESIDE THE NAME, READS THAT BACK, AND ONLY THEN REPLACES: the
+  same count and the same crc as the screen, or the old file stays. An
+  unchanged table is not written (`save force` does), and `drop my file`
+  (`zone_edit forget`) removes this machine's copy and reads the map's zones
+  again: a save is a `zones/local` file and would otherwise win there for good.
+- THE FLOOR GOES DOWN TO THE GRID, NEVER UP, and a new start's spawn stands on
+  the floor as it was HIT. Rounded to nearest, a bottom could sit half a grid
+  over the floor, and the server arms a start on a point test of the feet
+  (`run_zone_hull 1`): a start nobody could arm.
+- THE ONE REVIEW found those three and: every checkpoint after the first stage
+  falling into stage 1 once a track had two (an in-place renumber reading its
+  own marks; now worked out from the old numbers into `ze_tmp`); a height
+  written to three decimals moving a top by 0.001; a re-place removing the
+  wrong row after a reload; the wheel taken everywhere (`x = a && b` again:
+  cl_entview.qc:1801 has the same line and is NOT fixed here); no yield to
+  the leaderboard or the layout editor; a second sui bracket for the hint.
+  The arm's course had one stage; it has two now, and the reviewed build
+  fails five of its eight checks.
+- THE PANEL holds the mouse through the cursor register (`UIC_ZONEEDIT` 256);
+  PLACING gives it back and takes MOUSE1, MOUSE2 and the wheel only, each
+  release going where its press went. The aim is traced and a click answered
+  in the draw pass (`ZoneEdit_Draw3D`, after `Zone_Draw`), the frame it is
+  drawn in.
+- THE ARM (`cfg/test/p669zoneedit.cfg`, `tools/test_p669zoneedit.py`) has no
+  mouse: `zone_edit click` / `back` are MOUSE1's and MOUSE2's code,
+  `zone_edit press <id>` makes the panel's branch for one element run, and
+  `zone_edit add ...` builds by command. Eight checks on a hosted game: the
+  map's own zones saved and read back line for line; the panel's buttons; a
+  zone placed with the aim; an empty table refused; a two-stage course in
+  file order; a stage deleted; the hosted game's own server and client
+  stating the saved crc after the map loads again; the way back. 8 of 8 on
+  csprogs `cbc72b32`, on the patch-658 client and on the 625 exe; one more on
+  a dedicated server (above).
+- FOR PART TWO, what the other sessions said: zones are files by map name,
+  `zones/local` on the Pi is the one place the watcher never writes and the
+  server reads first, and the site's zones folder is what clients fetch
+  ("Zone files: what ships, what is fetched" above). Who is an admin has to
+  be surfd's decision about an account, never a lobby's or a client's word,
+  and an upload must not go live by arriving; the accounts session's
+  conditions are in this task's private notes, not here.
+
 ### What is written on the run lines (Patch 661) — 2026-10-12
 
 - THE OWNER'S FOUR ASKS, after trying twenty-odd lines: a name on every line
