@@ -11,6 +11,33 @@ to be wrong.
 
 ---
 
+## 00. 12 Oct — smoke over fires, fires on their floor, and how far they show (Patch 656)
+
+From your message: "can you draw the smoke? idk what that last part means and
+also look into the ent_ to see if there's other values ... about draw distance".
+- **Smoke.** A fire the mapper did not tick "Smokeless" has Source's smoke
+  over it now: 39% of all fires, every one on surf_dune and surf_road_to_hell.
+  It is dark and thin, so what you see is the wall behind the flame getting
+  darker; it shows best in front of something bright.
+- **"Fires Source drops to the floor".** A mapper puts the fire entity where
+  it is easy to grab, often in the air above a bowl. Unless they tick "Don't
+  drop", Source moves the fire straight down until it lands on something, and
+  burns there. We drew it hanging where the entity was. Now it lands, as in
+  Source: 4,309 fires on 85 maps. On surf_classics2 all 233 moved, most by a
+  hand's width, the big ones by 565 units; on surf_lost2 all 178 land on
+  their pedestals, 24 units down.
+- **Draw distance.** I read the entity and Valve's fire files. An env_fire
+  has NO draw-distance value: Source burns every fire on the map, at any
+  range. The 4,000-unit limit was ours. It is 10,000 now, the one number
+  Valve's files do carry (on the large smoke), and far fires use fewer
+  particles so near ones keep theirs. Dust motes do have one (DistMax) and
+  it was already read. Fog: Source does not fog fire or smoke at all (its
+  sprite shader switches fog off), so they show through fog there and here.
+- **Please look and tell me:** is the smoke too thin or too strong? I could
+  not put it beside Source. Medium and large smoke is a flat grey where
+  Source's has cloud detail in it (BACKLOG).
+- To turn the smoke off: `vbsp_emit_firesmoke 0`, then load the map again.
+
 ## 00. 12 Oct — see-through particles are drawn once (engine Patch 658)
 
 You asked: "is this the only way to make them brighter? I want them brighter,

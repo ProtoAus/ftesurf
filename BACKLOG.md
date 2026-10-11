@@ -978,19 +978,42 @@ as proof that every source path was built into it. No FPS improvement is claimed
   `VMF_BGRA4444=19` unsupported. Correctly generated particle scripts cannot fix
   this. Falsifier: decode BGRA4444 channel/alpha fixtures exactly, load the real
   smoke texture with no fallback, and inspect emitted smoke against Source.
-- **Source fire: what Patch 643 does not draw.** `env_fire` is Source's own
-  `env_fire_tiny/_small/_medium/_large` now (two flame layers and embers out of
-  the mounted atlas, `src/client/cl_emit.qc:Emit_FlameDefine`). Still open:
-  - **Smoke.** 5,300 of the library's 13,529 start-on fires are not smokeless
-    (spawnflags 2 clear), `surf_dune`'s 65 among them, and Source adds
-    `env_fire_*_smoke` to those: `particle/smoke1` and `vistasmokev1` sheets,
-    radius growing 5-7x, colour fading to grey. Falsifier: a Dune brazier
-    beside Momentum's.
-  - **Don't drop (spawnflags 16) is read as a light switch.** A fire WITHOUT it
-    is traced 1024 down and burns on what it hits (`fire.cpp:701`); 4,309 fires
-    on 85 maps (`surf_ace`, `surf_1day`, ...). `Emit_LoadForMap` draws every
-    fire at its origin and uses bit 16 for `em_lit`; Source's glow switch is 32.
-    Falsifier: one such fire's flame height against its floor, traced and not.
+- **Source fire: what Patches 643 and 656 do not draw.** `env_fire` is Source's
+  own `env_fire_tiny/_small/_medium/_large`, with `env_fire_*_smoke` over the
+  fires that are not Smokeless, lit where Source lights it and seen to 10,000
+  units (`src/client/cl_emit.qc`, `Emit_FlameDefine`, `Emit_SmokeSpec`,
+  `Emit_DropFires`). Open:
+  - **The smoke is an approximation in four places.** (1) A puff grows in a
+    straight line where "Radius Scale" is a bias curve on a random radius and
+    life: the mean puff is a fifth too wide half way, the smallest
+    longest-lived one ends 41% too wide. (2) `vistasmokev1.vmt` lays the alpha
+    of one sequence over the COLOUR of another, zoomed and animated; the second
+    is drawn as its mean colour, so medium and large smoke is flat grey where
+    Source's has cloud in it. (3) The twist force, the drag, the rotation's
+    oscillation and "Velocity Noise" being coherent are not drawn. (4) "Alpha
+    Fade and Decay"'s curve is in the closed particle library and is a
+    smoothstep here. Also: no `$depthblend` (a large puff is cut by the floor
+    in a hard line where Source softens it), and the size fade takes the
+    distance at each pixel where Source takes the sprite's middle. Falsifier:
+    a medium fire beside Momentum's.
+  - **A fire with no floor within 1024 units** stays at its entity; Source
+    lights it 1024 below. So does one whose entity is inside something solid.
+    `emit_list` counts both (0 and 0 of surf_classics2's 233).
+  - **What the drop can meet** (`Emit_DropFires`): the world, its static
+    props, and the brush entities that are solid when the map starts. Not
+    `prop_dynamic`, and not a brush after the map has moved or toggled it.
+    surf_delight's 349 fires each stand beside a static torch prop that may
+    stop the line first: not looked at. Not measured against Source anywhere.
+  - **Reach is a constant, and far fires are thinner.** 10,000 units, at
+    `2000 / distance` of the particles past 2,000. Source has no limit but its
+    PVS, at full density (only the large smoke's two systems say 10,000). On
+    surf_anubis that is 108 fires in reach of the spawn where 22 were, asking
+    1,854 particles a second of a budget of 2,000 with the torches in; near 14
+    of its 161 braziers the budget is passed and everything thins to 0.69.
+    `vbsp_emit_lights N` now lights the first N of those in reach.
+  - **Smoke is always under its own flame, and under glass.** Its shader
+    sorts into a bucket drawn before the blended surfaces, so a pane between
+    the eye and a fire is drawn over smoke in front of it too.
   - **`info_particle_system` fires.** `surf_dune`'s 42 (`dune_fire_medium_03`,
     `fire_medium_02`) have no bake; `tools/pcf.py:translate` writes no sheet
     table and reads the first embedded PCF only. `tools/pcf_resources.py`
@@ -999,15 +1022,19 @@ as proof that every source path was built into it. No FPS improvement is claimed
     `$addself .75`, `$overbrightfactor 3.5`.
   - **`surf_anubis`'s 498 torches** are `env_smokestack` on
     `particle/SmokeStack.vmt` (a ParticleSphere) and still draw as orb jets
-    beside the new braziers. Not atlas fire in Source either.
+    beside the braziers. Not atlas fire in Source either.
   - `env_fire_random_puff` (small fires, 0.07 a second), `$blendframes` and
     `env_fire_large`'s fade to black are not drawn.
-  - **Cost is measured on one machine.** RTX 2080 SUPER, 1920x1111, one brazier
-    200 units away and about 48 fires inside the cull (1,116 live flame
-    particles at 23 a fire): 1,193 and 1,229 frames a second with no fire, 1,046
-    and 1,066 with the sheet, 1,122 and 1,139 with the orbs (two runs; a third
-    on a busy machine read 528 against 517, so one run is not a measurement).
-    The laptop's Intel GPU is not measured, and it is where overdraw costs.
+  - **Cost is measured on one machine.** RTX 2080 SUPER, 1920x1111, uncapped.
+    The flame (643), one brazier 200 units away and about 48 fires inside the
+    cull: 1,193 and 1,229 frames a second with no fire, 1,046 and 1,066 with
+    the sheet, 1,122 and 1,139 with the orbs (a third run on a busy machine
+    read 528 against 517, so one run is not a measurement). Smoke and reach
+    (656), two runs a build, alternating: a medium fire's smoke in view 1,079
+    and 1,140 with it, 1,187 and 1,104 without; surf_anubis's first spawn 869
+    and 848 with 108 fires in reach, 919 and 758 with the 22 there were. The
+    runs differ by more than the builds do. The laptop's Intel GPU is not
+    measured, and smoke is the kind of overdraw it pays for.
 - **`ftesurf/particles/` is not in git.** `.gitignore`'s allow-list has no line
   for it, so the hand-written `ftesurf.cfg`, `ftesurf_src.cfg` and
   `ftesurf_avatar.cfg` (and the two baked maps) exist only in this install and

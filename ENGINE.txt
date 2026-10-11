@@ -26,6 +26,14 @@ commit   7501a6ccebb2d2b7f2f3a7f0127e86680f3cefb3
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-658
 patch    662
+# Patch 656: env_fire, the rest of what Source draws. A fire that is not Smokeless has
+# its smoke (env_fire_tiny/_small/_medium/_large_smoke, off Valve's two smoke sheets,
+# read from the mounted game); a fire without "Don't drop" is lit where a line 1024
+# down from its entity ends, on the world or a solid brush entity, as fire.cpp does
+# it; the glow flag is 32, not 16; and fires are seen to 10,000 units where 4,000 was
+# the limit, thinning past 2,000. vbsp_emit_firesmoke 0 turns the smoke off.
+# csprogs only: no engine source, server QC, surfd, recorder, evidence, ranking, default
+# or Build change (commit and tag above stay).
 # Patch 662: two lookups for the game on surfd's /api/board: `players=<text>` is a name
 # search over the site's player directory (twelve rows, the exact name first) and
 # `player=<handle or 8-hex mark>` one player's breakdown (the site's player page without its

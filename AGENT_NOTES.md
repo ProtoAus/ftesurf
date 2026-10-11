@@ -4569,6 +4569,58 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   happen is rolling a DEPLOYED build back, and that is read off the installs'
   and the Pi's hashes, not off git.
 
+### env_fire's smoke, floor and reach (Patch 656) -- 2026-10-12
+
+- WHERE: `src/client/cl_emit.qc`, `Emit_SmokeSpec` / `Emit_SmokeBlock` /
+  `Emit_SmokeShader` (slots 13-16 of a size class) and `Emit_DropFires`; the
+  two sheets' frames are `cl_smokesheet.qc`, written by `tools/smokesheet.py
+  <game>_dir.vpk ...`. `vbsp_emit_firesmoke 0` is the fire without it.
+  `emit_list` has five env_fire lines: sheet, smoke, reach, light, floor.
+- A SMOKE EFFECT WHOSE SHADER DID NOT COMPILE STILL ANSWERS, and draws a red
+  square. `%g` writes `1` for 1.0 and GLSL 1.10 will not multiply an int by a
+  float: three of five smoke shaders failed while `emit_list` said "10 of 10
+  smoke effects answering". The constants go in as `float(%g)`, and the arm
+  counts "compilation error" lines.
+- SPRITECARD IS NOT FOGGED: `spritecard_ps20b.fxc:184` ends in
+  `PIXEL_FOG_TYPE_NONE`. The first cut fogged flame and smoke "as Source
+  would"; the review read the shader. (An inline GLSL program CAN take the
+  frame's fog, `!!permu FOG` and `#include "sys/fog.h"`, and UnlitGeneric,
+  the motes' shader, is fogged.)
+- fteqcc DIES WITHOUT A WORD ON A GLOBAL USED ABOVE ITS DECLARATION when the
+  use is a pointer assignment: exit 0xC0000005, no error line, and `build.ps1`
+  prints only "fteqcc failed on cl_progs.src". It was `em_drop =
+  memalloc(...)` in Emit_Alloc, 350 lines over `float *em_drop;`. Bisect by
+  change block against the last commit that built.
+- THE DROP MUST MEET SOURCE'S SOLIDS, NOT cl_sprites.qc'S OCCLUDERS. Those are
+  SOLID_BSP copies made for the glare test: absent at `vbsp_glare_brush 0`,
+  and at its default they include func_illusionary. `Emit_DropFires` stands
+  them down, stands up tier 1 of `Sprite_OccluderTier` with func_brush's
+  Solidity, traces, and puts everything back. `.solid` alone is not seen until
+  `setorigin` links the entity again. Without the brush entities surf_lost2
+  reads "107 lit (mean 778), 71 with nothing"; with them "178 lit (mean 24)".
+- TWO SHADERS IN ONE SORT BUCKET ARE DRAWN IN THE ENGINE'S RUN-LIST ORDER,
+  which is whichever particle type last went from empty to not. The smoke
+  shader is `sort banner`, a bucket before the flame's `additive`.
+- A VTF'S IMAGE COMES AFTER ITS SHEET. The largest mip is the LAST thing in the
+  file; "header, thumbnail, then mips" read vistasmokev1's colour as 0.55 where
+  it is 0.33 (`tools/sparkleshape.py`'s `top_mip` is right only for a .vtf with
+  no sheet, which sparkles is).
+- `tcoords s1 t1 s2 t2 1 <n> <stride>` picks one of n frames across the sheet
+  for each particle (`p_script.c`, the tcoords branch). smoke1's six stills are
+  one block that way.
+- SMOKE IS SEEN AS DARKENING, AND ONLY OVER A STILL BACKGROUND. The arm takes
+  the same shots with and without and compares a box over the flame with one
+  beside it (dust off: the side box is equal to the hundredth). Over
+  surf_road_to_hell's lava every pixel differs between any two frames, AND
+  LAVA IS FLAME-COLOURED: a far-fire check that counted flame-bright pixels
+  looking down on that map read 3,600 with no fire in it. The reach stage
+  compares fire on with fire off instead: 32 pixels at 6,000 units, 0 before.
+- `traceline` AT MAP LOAD HITS THE WORLD and its static props: 233 of
+  surf_classics2's 233 fires found a floor (mean 15 units down, most 565).
+- A CAMERA IN THE VOID SEES IN. `setpos` far above a map with `noclip` looks
+  through the backs of its ceilings: how the reach stage sees a fire from
+  6,000 units with nothing to walk on.
+
 ### Blended particles are drawn once (engine Patch 658) -- 2026-10-12
 
 - WHAT WAS WRONG. `GLBE_SubmitMeshes(batches, start, stop)` INCLUDES `stop`

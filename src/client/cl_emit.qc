@@ -180,6 +180,7 @@ float  *em_acc;                 // fractional emission accumulator
 float  *em_want;                // this frame's demand; 0 means culled
 float  *em_lit;                 // fire only: may carry a dlight
 float  *em_ltacc;
+float  *em_drop;                // fire only: 1 = Source lights it on what is under it
 float  em_n;
 
 void() Emit_Alloc =
@@ -201,6 +202,7 @@ void() Emit_Alloc =
 	em_want  = memalloc(sizeof(float) * EM_MAX);
 	em_lit   = memalloc(sizeof(float) * EM_MAX);
 	em_ltacc = memalloc(sizeof(float) * EM_MAX);
+	em_drop  = memalloc(sizeof(float) * EM_MAX);
 };
 void() Emit_AllocLife;
 
@@ -531,17 +533,38 @@ vector(float i) Emit_PsysVel =
   never shipped: it is drawn from whichever mounted game carries it, and with
   none mounted env_fire stays on the ftesurf_fire orbs.
 
-  NOT DRAWN: the *_smoke systems Source adds unless spawnflags 2 (39% of the
-  library's fires), env_fire_random_puff, and the blend between two frames.
+  SMOKE (Patch 656).  Unless spawnflags 2, Start asks for env_fire_<size>_smoke
+  instead (c_fire_smoke.cpp:173-186), which is the same flame as its child under
+  a column of smoke: Emit_SmokeSpec.  39% of the library's fires.
+
+  NOT DRAWN: env_fire_random_puff, and the blend between two frames.
 ===========================================================================
 */
-#define FL_SLOTS       13       // per size class: 6 + 6 flame effects, 1 embers
+#define FL_SLOTS       17       // per size class: 6 + 6 flame effects, 1 embers, 2 + 2 smoke
 #define FL_ATLAS       "materials/particle/fire_burning_character/fire_burning_character.vtf"
+#define FL_SMOKE1      "materials/particle/smoke1/smoke1.vtf"
+#define FL_VISTA       "materials/particle/vistasmokev1/vistasmokev1.vtf"
+#define FL_REACH       10000    // a fire emits to here: Source has no limit but PVS (the
+                                // systems say 100000), env_fire_large_smoke and _smoke_b
+                                // alone say 10000
+#define FL_NEAR        2000     // and past here it thins, as 1 / distance
+#define FL_DROPSOLIDS  2048     // brush entities stood up for Emit_DropFires' traces
 
 float *em_flfx;                 // [4 * FL_SLOTS] handles, filled as classes are defined
 float  em_flwant;               // size classes this map's fires use, a bit each
 float  em_flmask;               // those of them defined so far (Emit_FlameStep)
 string em_flwhy;                // "" = this map's env_fire use the sheet; else why not
+string em_smwhy;                // "" = and their smoke is drawn; else why not
+float  em_smwant;               // size classes with a fire that smokes, a bit each
+float  em_flsmoke;              // sheet fires with smoke
+float  em_flglow;               // fires without spawnflags 32, No glow
+.float em_dropsolid;            // a brush entity stood up for the drop traces
+float  em_fldropwant;           // fires without spawnflags 16
+float  em_fldrop, em_fldropsum, em_fldropmax;   // of them, moved, and how far
+float  em_flnofloor;            // with no floor within 1024, left where they are
+float  em_flinside;             // whose entity is inside something solid, left too
+float  em_fldropover;           // brush entities past FL_DROPSOLIDS, not stood up
+float  em_flin, em_flthin;      // last frame: sheet fires in reach, and those thinned
 
 // The system (layer 0, sequences 3-5) and its _b child (layer 1, sequences 0-2):
 //   radius min max | alpha min max | grey min max | rotation +- | spawn disc |
@@ -629,11 +652,164 @@ string(float cls, string nm) Emit_EmberBlock =
 };
 
 /*
+  The end of a fragment shader for a sprite Source alpha-blends, given c (its
+  colour in linear light times its alpha) and a: the straight line
+  Emit_MoteShader's comment explains.  No fog: SpriteCard draws without it
+  (spritecard_ps20b.fxc:184, PIXEL_FOG_TYPE_NONE).
+*/
+#define EM_BLEND_LINE \
+	" float ml = dot(c, vec3(0.3, 0.59, 0.11));\n" \
+	" float g = (1.0 - a) * 0.0474;\n" \
+	" float k = (pow(ml + 1.0 - a, 0.4545) - pow(ml + g, 0.4545)) / 0.75;\n" \
+	" gl_FragColor = vec4(max(pow(c + g, vec3(0.4545)) - 0.25 * k, 0.0), 1.0 - k);\n"
+
+/*
+  env_fire_tiny_smoke, _small_smoke, _medium_smoke, _large_smoke and (layer 1)
+  env_fire_large_smoke_b, out of particles/fire_01.pcf:
+    sheet (0 smoke1, 1 vistasmokev1) | radius min max | scale at the end of its
+    life | alpha min max, of 255 | life min max | where the fade out starts |
+    colour 1 | colour 2 | the colour it fades to | that fade's start and end |
+    centre up | spawn disc across, up | rise | rise jitter xy, z | acceleration
+    up | frames a second | $startfadesize $endfadesize (the .vmt's: smoke1's
+    as Half-Life 2 and Momentum have it; Counter-Strike: Source's says .9 1.3)
+  The lifts and rises are the systems' several position and velocity terms
+  summed ("Position Within Sphere", "Position Modify Offset", "Velocity Noise").
+*/
+string(float cls, float layer) Emit_SmokeSpec =
+{
+	if (layer)
+		return "1  18 24  5  120 140  3 4  0.5   255 131 9  255 120 0   52 50 50  0.2 0.6  60  24 12  48.5  12 11.5  45  20    1 1.4";
+	if (cls == 0) return "0  12 19  7   40 60   2 3  0.5   255 131 9  194 108 32  28 24 21  0.1 0.7  25   4 7   25    0 3     35  0     0.7 1.1";
+	if (cls == 1) return "0  12 19  7   40 60   3 4  0.5   255 131 9  194 108 32  28 24 21  0.1 0.7  28   4 4   25    0 3     35  0     0.7 1.1";
+	if (cls == 2) return "1  12 19  7   60 70   3 4  0.65  255 131 9  194 108 32  98 98 98  0.1 0.5  40  24 16  25    0 3     75  20    1 1.4";
+	return               "1  18 24  5   90 100  3 4  0.5   255 131 9  194 108 32  59 58 56  0.1 0.8  80  48 32  56.5  12 9.5   75  12.8  1 1.4";
+};
+
+// Smoke particles a second: the system's, and env_fire_large_smoke_b's.
+vector(float cls) Emit_SmokeRates =
+{
+	return (cls == 3) ? '2 4 0' : '4 0 0';
+};
+
+/*
+  One smoke effect.  smoke1 is six still pictures and `tcoords` picks one at
+  random; vistasmokev1 is a 16-frame loop, sequence seq.
+
+  As the flames, the colour channels carry what the shader needs: red the life,
+  green a random number for "Color Random", blue the alpha, alpha the age.  The
+  engine holds a puff to the longest life and the shader ends it at its own.
+
+  THE GROWTH IS A STRAIGHT LINE where Source's "Radius Scale" is a bias curve
+  (0.4) on a random radius and a random life: `scaledelta` takes the mean radius
+  to its end scale in the mean life.  The mean puff ends right and is a fifth
+  too wide half way; the smallest, longest-lived one ends 41% too wide and the
+  largest, shortest-lived 26% too narrow.
+*/
+string(float cls, float layer, float seq, string nm) Emit_SmokeBlock =
+{
+	local float rmin, rmax, lmin, lmax, vista;
+	local string s;
+
+	tokenize(Emit_SmokeSpec(cls, layer));
+	vista = stof(argv(0));
+	rmin = stof(argv(1));
+	rmax = stof(argv(2));
+	lmin = stof(argv(6));
+	lmax = stof(argv(7));
+
+	s = sprintf("r_part %s\n{\ntexture ftesurf_smoke%g%g\ntype normal\nblend blendalpha\nscalefactor 1\nscale %g %g\nscaledelta %g\n",
+	            nm, cls, layer, rmin * 3.771, rmax * 3.771,
+	            3.771 * (rmin + rmax) * 0.5 * (stof(argv(3)) - 1) / ((lmin + lmax) * 0.5));
+	s = strcat(s, sprintf("rgbf %g 0 %g\nrgbrandf %g 1 %g\nalpha 0\nalphadelta 1\ndie %g\ncount 1\n",
+	            lmin, stof(argv(4)) / 255, lmax - lmin, (stof(argv(5)) - stof(argv(4))) / 255, lmax));
+	s = strcat(s, sprintf("spawnmode ball\nspawnorg %g %g\norgbias 0 0 %g\nveladd 0\nvelbias 0 0 %g\n",
+	            stof(argv(21)), stof(argv(22)), stof(argv(20)), stof(argv(23))));
+	s = strcat(s, sprintf("velwrand %g %g %g\ngravity %g\n",
+	            stof(argv(24)), stof(argv(24)), stof(argv(25)), -stof(argv(26))));
+	if (!vista)
+		return strcat(s, "tcoords " SM1_TCOORDS "\n}\n");
+	return strcat(s, sprintf("texanim loop %g\n", stof(argv(27))), Emit_VistaRows(seq), "}\n");
+};
+
+/*
+  SpriteCard, alpha blended (smoke1.vmt, vistasmokev1.vmt): the texture times
+  the particle's colour, premultiplied.  The particle's colour is "Color
+  Random" fading to the system's grey ("Color Fade"), its alpha "Alpha Random"
+  under "Alpha Fade and Decay" (in over the first 0.15 of the life; that
+  operator's curve is in the closed particle library, a smoothstep here).
+
+  vistasmokev1.vmt is $dualsequence with $sequence_blend_mode 1: the ALPHA of
+  sequences 0-3 over the COLOUR of sequences 4-9, zoomed and slowly animated
+  (spritecard_ps20b.fxc, COMBINE_MODE_USE_FIRST_AS_ALPHA_MASK_ON_SECOND).  The
+  second picture is drawn as its mean colour, SMV_GREY.
+
+  $startfadesize / $endfadesize as spritecard_vs20.fxc:187-202: radius over
+  distance, off the particle's colour as well as its alpha.  The radius is read
+  off the quad the engine made, and the distance is this fragment's where
+  Source's is the sprite's middle.  The blend is the motes' (Emit_MoteShader).
+
+  `sort banner` is only a bucket drawn before the flame's: Source draws a
+  system's children after it, so its flame is over its smoke.  In one bucket the
+  order was the engine's run list, and smoke settled on top.
+
+  NOT DRAWN: $depthblend (both materials soften where a puff meets a wall or
+  the floor; here a large puff is cut by them in a hard line).
+*/
+void(float cls, float layer) Emit_SmokeShader =
+{
+	local string s;
+	local float vista;
+
+	tokenize(Emit_SmokeSpec(cls, layer));
+	vista = stof(argv(0));
+	// float(): %g writes 1 for 1.0, and GLSL 1.10 will not multiply an int by a float.
+	s = sprintf("#define FOUT float(%g)\n#define SFS float(%g)\n#define EFS float(%g)\n#define CELL float(%g)\n#define CF0 float(%g)\n#define CF1 float(%g)\n",
+	            stof(argv(8)), stof(argv(28)), stof(argv(29)), vista ? SMV_CELL : SM1_CELL, stof(argv(18)), stof(argv(19)));
+	s = strcat(s, sprintf("#define C1 vec3(%g, %g, %g)\n#define C2 vec3(%g, %g, %g)\n",
+	            stof(argv(9)) / 255, stof(argv(10)) / 255, stof(argv(11)) / 255,
+	            stof(argv(12)) / 255, stof(argv(13)) / 255, stof(argv(14)) / 255));
+	s = strcat(s, sprintf("#define CE vec3(%g, %g, %g)\n", stof(argv(15)) / 255, stof(argv(16)) / 255, stof(argv(17)) / 255),
+	            vista ? "#define TEXRGB vec3(" SMV_GREY ")\n" : "#define TEXRGB t.rgb\n");
+	s = strcat("{\nglslprogram\n{\n!!ver 110\n!!samps img=0\n", s,
+		"varying vec2 tc;\n"
+		"varying vec4 vc;\n"
+		"varying vec3 ev;\n"
+		"#ifdef VERTEX_SHADER\n"
+		"attribute vec2 v_texcoord;\n"
+		"attribute vec4 v_colour;\n"
+		"uniform mat4 m_modelview;\n"
+		"void main()\n{\n"
+		" tc = v_texcoord;\n"
+		" vc = v_colour;\n"
+		" ev = (m_modelview * vec4(v_position, 1.0)).xyz;\n"
+		" gl_Position = ftetransform();\n"
+		"}\n#endif\n"
+		"#ifdef FRAGMENT_SHADER\n"
+		"void main()\n{\n"
+		" float f = vc.a / vc.r;\n"
+		" if (f >= 1.0)\n"
+		"  discard;\n"
+		" vec4 t = texture2D(s_img, tc);\n"
+		" float a = vc.b * smoothstep(0.0, 0.15, f) * (1.0 - smoothstep(FOUT, 1.0, f)) * t.a;\n"
+		" float l = length(ev);\n"
+		" float rad = 0.5 * CELL / max(length(vec2(dFdx(tc.x), dFdy(tc.x))), 0.000001) * length(vec2(dFdx(ev.x), dFdy(ev.x)));\n"
+		" float sf = 1.0 - clamp((rad - SFS * l) / ((EFS - SFS) * l), 0.0, 1.0);\n"
+		" a *= sf;\n"
+		" vec3 c = pow(mix(mix(C1, C2, vc.g), CE, clamp((f - CF0) / (CF1 - CF0), 0.0, 1.0)) * TEXRGB * sf, vec3(2.2)) * a;\n"
+		EM_BLEND_LINE
+		"}\n#endif\n"
+		"}\nsort banner\ncull disable\n{\nmap ");
+	shaderforname(sprintf("ftesurf_smoke%g%g", cls, layer), strcat(s, vista ? FL_VISTA : FL_SMOKE1,
+		"\nblendfunc gl_one gl_one_minus_src_alpha\nrgbgen vertex\nalphagen vertex\nnodepth\n}\n"
+		"polygonoffset\nsurfaceparm noshadows\nsurfaceparm nodlight\n}\n"));
+};
+
+/*
   Source's SpriteCard with $addself (fire_env_fire.vmt: $addself 1,
   $overbrightfactor 2.15, $startfadesize .425, $endfadesize .525), as
   spritecard_ps20b.fxc:139 and :173-178 compute it: the texture premultiplied
   by its alpha and the particle's, then added to itself, drawn ONE /
-  ONE_MINUS_SRC_ALPHA.
+  ONE_MINUS_SRC_ALPHA, and without fog (:184, PIXEL_FOG_TYPE_NONE).
 
   SOURCE BLENDS THAT IN LINEAR LIGHT AND THIS FRAMEBUFFER DOES NOT.  Measured:
   with the colour premultiplied in gamma space the same sprites drew a fire that
@@ -711,9 +887,39 @@ string() Emit_FlameWhy =
 	return "";
 };
 
+// Why a sheet fire's smoke is not drawn, or "".  Both sheets or neither: one
+// answer for the whole map is what emit_list can say.
+string() Emit_SmokeWhy =
+{
+	local float h, n;
+
+	if (!cvar("vbsp_emit_firesmoke"))
+		return "vbsp_emit_firesmoke is 0";
+	n = 0;
+	h = search_begin(FL_SMOKE1, TRUE, TRUE);
+	if (h >= 0)
+	{
+		n = search_getsize(h);
+		search_end(h);
+	}
+	h = search_begin(FL_VISTA, TRUE, TRUE);
+	if (h >= 0)
+	{
+		n = n * search_getsize(h);
+		search_end(h);
+	}
+	else
+		n = 0;
+	if (n <= 0)
+		return "no mounted game carries the two smoke sheets";
+	return "";
+};
+
 // Define size class cls's effects.  Slots 0-5 are the system's three sequences
 // each way round, 6-11 the _b child's, 12 the embers.  env_fire_tiny's system
-// draws sequence 3 alone, so its six slots share two effects.
+// draws sequence 3 alone, so its six slots share two effects.  13 and 14 are
+// the smoke (vistasmokev1's two loops, or smoke1 twice), 15 and 16
+// env_fire_large_smoke_b's.
 void(float cls) Emit_FlameDefine =
 {
 	local float s, seq, layer;
@@ -721,6 +927,23 @@ void(float cls) Emit_FlameDefine =
 
 	if (!em_flfx)
 		em_flfx = memalloc(sizeof(float) * 4 * FL_SLOTS);
+	// Only for a class with a fire that smokes: surf_anubis has none.
+	if (em_smwant & pow(2, cls))
+	{
+		for (layer = 0; layer < 2; layer = layer + 1)
+		{
+			if (layer && cls != 3)
+				break;
+			Emit_SmokeShader(cls, layer);
+			for (seq = 0; seq < 2; seq = seq + 1)
+			{
+				nm = sprintf("ftesurf_fl%gs%g%g", cls, layer, (cls < 2) ? 0 : seq);
+				if (cls >= 2 || !seq)
+					localcmd(Emit_SmokeBlock(cls, layer, seq, nm));
+				em_flfx[cls * FL_SLOTS + 13 + layer * 2 + seq] = particleeffectnum(nm);
+			}
+		}
+	}
 	for (s = 0; s < 12; s = s + 1)
 	{
 		layer = (s >= 6);
@@ -796,20 +1019,26 @@ float() Emit_FlameRepair =
 	return TRUE;
 };
 
-// The effect for the next particle of a sheet fire of size class cls.
-float(float cls) Emit_FlameSlot =
+// The effect for the next particle of a sheet fire of size class cls, with or
+// without its smoke.
+float(float cls, float smoke) Emit_FlameSlot =
 {
-	local vector v;
+	local vector v, w;
 	local float r, s;
 
 	v = Emit_FlameRates(cls);
-	r = random() * (v_x + v_y + v_z);
+	w = smoke ? Emit_SmokeRates(cls) : '0 0 0';
+	r = random() * (v_x + v_y + v_z + w_x + w_y);
 	if (r < v_x)
 		s = floor(random() * 5.999);
 	else if (r < v_x + v_y)
 		s = 6 + floor(random() * 5.999);
-	else
+	else if (r < v_x + v_y + v_z)
 		s = 12;
+	else if (r < v_x + v_y + v_z + w_x)
+		s = 13 + floor(random() * 1.999);
+	else
+		s = 15 + floor(random() * 1.999);
 	return em_flfx[cls * FL_SLOTS + s];
 };
 
@@ -1123,6 +1352,8 @@ void() Emit_RegisterCvars =
 	// env_fire from Source's own flame sheet where the client can draw it
 	// (Emit_FlameWhy); 0 keeps the ftesurf_fire orbs.  Read at map load.
 	registercvar("vbsp_emit_flame",   "1", CVAR_ARCHIVE);
+	// The smoke Source puts over a fire that is not Smokeless.  Read at map load.
+	registercvar("vbsp_emit_firesmoke", "1", CVAR_ARCHIVE);
 	registercvar("vbsp_emit_spark",   "1", CVAR_ARCHIVE);
 	// Off by default: a churning approximation of a static haze, on 45 maps.
 	registercvar("vbsp_emit_smoke",   "0", CVAR_ARCHIVE);
@@ -1289,10 +1520,142 @@ float(vector bmin, vector bmax, vector vel, float jit, float rate, float burst,
 	em_lit[i]   = 0;
 	em_life[i]  = 0;
 	em_ltacc[i] = random();
+	em_drop[i]  = 0;
 
 	em_n = em_n + 1;
 	em_live[kind] = em_live[kind] + 1;
 	return i;
+};
+
+/*
+  WHERE A FIRE BURNS (Patch 656).  Unless spawnflags 16, "Don't drop", a fire
+  that starts on is lit where a line 1024 down from its entity ends
+  (fire.cpp:701-709, from Activate): 4,309 of the library's fires, on 85 maps,
+  hang above their bowl or floor.
+
+  THE LINE MUST MEET WHAT SOURCE'S MEETS, which is the world, its static props
+  and the brush entities that are solid when the map starts.  This VM's world
+  has the first two.  cl_sprites.qc's occluder copies are the wrong set twice
+  over -- absent at vbsp_glare_brush 0, and at its default they include what is
+  drawn and not solid (func_illusionary; surf_delight's 349 fires stopped on
+  those) -- so they are stood down for the pass and this file stands up its
+  own: Sprite_OccluderTier's tier 1 with func_brush's Solidity read the same
+  way.  surf_lost2's 178 fires land on func_brush pedestals 24 units under them.
+
+  Source's line ends 1024 below when it meets nothing.  Such a fire is left
+  where it is and counted, as is one whose entity is inside something solid.
+  Not stood up: prop_dynamic, and a brush as it is after the map has moved it.
+*/
+void() Emit_DropFires =
+{
+	local entity e, nxt;
+	local string tok, key, cn, model;
+	local vector org;
+	local float i, k, n, solidity, hassolidity, startdisabled;
+
+	if (!em_fldropwant)
+		return;
+
+	// .solid alone is not seen until the entity is linked again.
+	for (e = findfloat(world, spr_occluder, TRUE); e; e = findfloat(e, spr_occluder, TRUE))
+	{
+		e.solid = SOLID_NOT;
+		setorigin(e, e.origin);
+	}
+
+	n = 0;
+	getentitytoken(0);
+	while ((tok = getentitytoken()) != "")
+	{
+		if (tok != "{")
+			continue;
+		cn = model = "";
+		org = '0 0 0';
+		solidity = startdisabled = 0;
+		hassolidity = FALSE;
+		while ((key = getentitytoken()) != "" && key != "}")
+		{
+			tok = getentitytoken();
+			if      (key == "classname") cn = tok;
+			else if (key == "model")     model = tok;
+			else if (key == "origin")    org = Sprite_ParseVec(tok);
+			else if (key == "solidity"      || key == "Solidity")
+			{
+				solidity = stof(tok);
+				hassolidity = TRUE;
+			}
+			else if (key == "startdisabled" || key == "StartDisabled")
+				startdisabled = stof(tok);
+		}
+		if (substring(model, 0, 1) != "*")
+			continue;
+		if (Sprite_OccluderTier(cn) != 1)
+			continue;
+		if (cn == "func_brush")
+		{
+			if ((!hassolidity || solidity == 0) && startdisabled)
+				continue;
+			if (hassolidity && solidity == 1)
+				continue;
+		}
+		if (n >= FL_DROPSOLIDS)
+		{
+			em_fldropover = em_fldropover + 1;
+			continue;
+		}
+		// Solid before setmodel, which is what links it (Sprite_AddOccluder).
+		e = spawn();
+		e.em_dropsolid = TRUE;
+		e.solid = SOLID_BSP;
+		e.movetype = MOVETYPE_NONE;
+		setmodel(e, model);
+		setorigin(e, org);
+		e.drawmask = 0;
+		n = n + 1;
+	}
+
+	for (i = 0; i < em_n; i = i + 1)
+	{
+		if (!em_drop[i])
+			continue;
+		org = em_mid[i];
+		traceline(org, org - '0 0 1024', TRUE, world);
+		if (trace_startsolid)
+			em_flinside = em_flinside + 1;
+		else if (trace_fraction >= 1)
+			em_flnofloor = em_flnofloor + 1;
+		else
+		{
+			k = org_z - trace_endpos_z;
+			if (k > 256)
+				dprint(sprintf("emit: env_fire at %v is lit %g below it\n", org, k));
+			em_fldrop = em_fldrop + 1;
+			em_fldropsum = em_fldropsum + k;
+			if (k > em_fldropmax)
+				em_fldropmax = k;
+			org = em_mins[i];
+			org_z = org_z - k;
+			em_mins[i] = org;
+			org = em_mid[i];
+			org_z = org_z - k;
+			em_mid[i] = org;
+		}
+	}
+
+	// The next one is found before this one goes: Sprite_FreeOccluders.
+	e = findfloat(world, em_dropsolid, TRUE);
+	while (e)
+	{
+		nxt = findfloat(e, em_dropsolid, TRUE);
+		remove(e);
+		e = nxt;
+	}
+	for (e = findfloat(world, spr_occluder, TRUE); e; e = findfloat(e, spr_occluder, TRUE))
+	{
+		e.solid = SOLID_BSP;
+		setorigin(e, e.origin);
+	}
+	dprint(sprintf("emit: %g brush entities stood up for %g fires' drop\n", n, em_fldropwant));
 };
 
 /*
@@ -1354,6 +1717,9 @@ void() Emit_LoadForMap =
 	em_frozen = em_clamped = em_over = em_child = 0;
 	em_flwant = em_flmask = 0;
 	em_flwhy = Emit_FlameWhy();
+	em_smwhy = Emit_SmokeWhy();
+	em_smwant = em_flsmoke = em_flglow = 0;
+	em_fldropwant = em_fldrop = em_fldropsum = em_fldropmax = em_flnofloor = em_flinside = em_fldropover = 0;
 	Emit_MoteFree();
 	dm_why = Emit_MoteWhy();
 	i = 0;
@@ -1871,6 +2237,17 @@ void() Emit_LoadForMap =
 				col = Emit_FlameRates(fcls);
 				rate = col_x + col_y + col_z;
 				eff = -1 - fcls;
+				// With its smoke, classes -5 to -8: spawnflags 2 is Smokeless.
+				if (!(spawnflags & 2))
+				if (em_smwhy == "")
+				{
+					col = Emit_SmokeRates(fcls);
+					rate = rate + col_x + col_y;
+					eff = eff - 4;
+					em_flsmoke = em_flsmoke + 1;
+					em_smwant = em_smwant | pow(2, fcls);
+				}
+				dist = FL_REACH;
 			}
 		}
 		else if (kind == EK_SPARK)
@@ -2039,14 +2416,24 @@ void() Emit_LoadForMap =
 				em_life[j] = (lmin + lmax) * 0.5;
 			if (kind == EK_FIRE)
 			{
-				// bit 16 is "don't drop light", set on 66%.
-				if (!(spawnflags & 16))
+				// 32 is No glow (fire.cpp:785).  This read 16, which is Don't
+				// drop: Emit_DropFires.
+				if (!(spawnflags & 32))
+				{
 					em_lit[j] = 1;
+					em_flglow = em_flglow + 1;
+				}
+				if (!(spawnflags & 16))
+				{
+					em_drop[j] = 1;
+					em_fldropwant = em_fldropwant + 1;
+				}
 			}
 		}
 	}
 
 	remove(probe);
+	Emit_DropFires();
 
 	/*
 	  THE LATCH, AFTER THE WALK AND ONLY IF THE LUMP OPENED.  It used to be the
@@ -2283,6 +2670,7 @@ void() Emit_Frame =
 	em_demand = 0;
 	dm_alive = 0;
 	mdem = 0;
+	em_flin = em_flthin = 0;
 	i = 0;
 	while (i < em_n)
 	{
@@ -2329,13 +2717,26 @@ void() Emit_Frame =
 			}
 		}
 		em_want[i] = em_rate[i];
+		// A sheet fire reaches as far as Source's and thins on the way, so the
+		// hundred in range on surf_anubis do not cost the near ones their flame.
+		if (k == EK_FIRE)
+		if (em_eff[i] < 0)
+		{
+			em_flin = em_flin + 1;
+			d = vlen(em_mid[i] - eye);
+			if (d > FL_NEAR)
+			{
+				em_want[i] = em_rate[i] * FL_NEAR / d;
+				em_flthin = em_flthin + 1;
+			}
+		}
 		if (em_life[i])
 		{
 			mdem = mdem + em_rate[i] * em_burst[i];
 			dm_alive = dm_alive + em_rate[i] * em_life[i];
 		}
 		else
-			em_demand = em_demand + em_rate[i] * em_burst[i];
+			em_demand = em_demand + em_want[i] * em_burst[i];
 		i = i + 1;
 	}
 
@@ -2394,7 +2795,11 @@ void() Emit_Frame =
 				if (em_kind[i] == EK_PSYS)
 					pointparticles(em_eff[i], em_mid[i], v, 1);
 				else if (em_eff[i] < 0)
-					pointparticles(Emit_FlameSlot(-1 - em_eff[i]), em_mid[i], '0 0 1', 1);
+				{
+					// -1 to -4 are the size classes, -5 to -8 the same with smoke.
+					k = -1 - em_eff[i];
+					pointparticles(Emit_FlameSlot(k & 3, k >= 4), em_mid[i], '0 0 1', 1);
+				}
 				else if (em_life[i])
 				{
 					// A Source mote: RandomVector(-SpeedMax, SpeedMax), FallSpeed
@@ -2463,7 +2868,7 @@ void() Emit_Frame =
 */
 void() Emit_List =
 {
-	local float k, tot;
+	local float k, tot, sm;
 
 	print(sprintf("^3emit:^7 map %s, %g emitters, %g effect handles\n",
 	              vbsp_em_map, em_n, EM_FX_N));
@@ -2529,14 +2934,34 @@ void() Emit_List =
 			print(sprintf("  env_fire: orbs, because %s\n", em_flwhy));
 		else
 		{
-			tot = 0;
+			// Slots 0-12 of a class are its flame and embers, 13-16 its smoke.
+			tot = sm = 0;
 			for (k = 0; k < 4 * FL_SLOTS; k = k + 1)
 				if (em_flmask & pow(2, floor(k / FL_SLOTS)))
 				if (particleeffectquery(em_flfx[k], 0) != "")
-					tot = tot + 1;
+				{
+					if (k - floor(k / FL_SLOTS) * FL_SLOTS < 13)
+						tot = tot + 1;
+					else
+						sm = sm + 1;
+				}
 			print(sprintf("  env_fire: flame sheet, size classes %g (1 tiny 2 small 4 medium 8 large), %g of their %g effects answering\n",
-			              em_flwant, tot, FL_SLOTS * ((em_flwant & 1) + (em_flwant & 2) / 2 + (em_flwant & 4) / 4 + (em_flwant & 8) / 8)));
+			              em_flwant, tot, 13 * ((em_flwant & 1) + (em_flwant & 2) / 2 + (em_flwant & 4) / 4 + (em_flwant & 8) / 8)));
+			if (em_smwhy != "")
+				print(sprintf("  env_fire: no smoke, because %s\n", em_smwhy));
+			else if (!em_flsmoke)
+				print("  env_fire: no smoke, because every fire here is Smokeless\n");
+			else
+				print(sprintf("  env_fire: smoke over %g fires, %g of %g smoke effects answering\n", em_flsmoke, sm,
+				              2 * ((em_smwant & 1) + (em_smwant & 2) / 2 + (em_smwant & 4) / 4) + (em_smwant & 8) / 2));
+			print(sprintf("  env_fire: %g in reach (%g units), %g of them past %g and thinned\n",
+			              em_flin, FL_REACH, em_flthin, FL_NEAR));
 		}
+		print(sprintf("  env_fire: %g may carry a light (no spawnflags 32)\n", em_flglow));
+		print(sprintf("  env_fire: %g without Don't drop: %g lit on what is under them (mean %g, most %g units), %g with nothing within 1024, %g inside something\n",
+		              em_fldropwant, em_fldrop, em_fldrop ? rint(em_fldropsum / em_fldrop) : 0, rint(em_fldropmax), em_flnofloor, em_flinside));
+		if (em_fldropover)
+			print(sprintf("  ^1%g brush entities past %g were not stood up for the drop^7\n", em_fldropover, FL_DROPSOLIDS));
 	}
 
 	if (em_seen[EK_DUST])
