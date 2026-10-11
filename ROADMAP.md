@@ -1364,9 +1364,10 @@ is not the migration of a board: it is thirteen rows.
   refused slot once a fresh run goes on, and a slot the player cannot take
   blocks nothing else only because of that. File the slot under the key and
   the gate goes away.
-  AT SWITCH-ON (the owner, 11 Oct: "yea sure move them to my steam id"): his
-  rows under his old guid go to his account by hand, with a backup, BEFORE
-  the first start with the setting on (which would move them to community).
+  SWITCHED ON 11 Oct 2026 02:14 UTC, on the owner's word, with those three
+  still open ("this is development"; every ranked row was his own). His rows
+  went to his account by hand first, with a backup (AGENT_NOTES has the
+  record). They are still to do before the game has other ranked players.
   ONE SETTING, `SURFD_RANKED_LINKED`: on unless it is `0`. Deployed with `0`
   on the Pi, so nothing changed for anybody; turning it on is deleting that
   line and reloading, and at that start the ranked rows that are not an

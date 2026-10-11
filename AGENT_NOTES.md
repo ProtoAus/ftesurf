@@ -7337,6 +7337,28 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   each, before it shows a hundred of them, and the owner's account has 2,029.
   No review round: a read-only route, six lines, its answer compared with the
   old query's on the live file.
+- **RANKED-MEANS-LINKED SWITCHED ON, 11 Oct 2026, 02:14:18 UTC** (the owner:
+  "yes"). No code moved: the Pi's `surfd.env` line `SURFD_RANKED_LINKED` went
+  from 0 to 1 and surfd was reloaded. BEFORE THE LINE, in this order and with
+  0 players: a backup (`data/surfd.db.bak-pre629on-20261011T021343Z`, mode
+  600, `quick_check` ok); then, as he had asked, his own rows moved by hand
+  from his install's old id to his account in one IMMEDIATE transaction (21
+  board rows, all `ranked`; 7 recording rows; one `installs` row), refused
+  unless there was exactly one link and the only owner of non-imported rows
+  was that link's install. Done the other way round the first start would
+  have moved them to community. Read back: the log line `ranked rows need a
+  linked Steam account: yes`, 21 ranked rows of one account, nothing moved by
+  the start, `/health` ok, no ERROR or Traceback after the reload BY POSITION
+  IN THE LOG (a filter on the timestamp column also passed five old undated
+  Traceback lines, which is how I came to count by line number).
+  WHAT IT SHOWED AT ONCE: his account also holds 2,008 imported Momentum rows
+  under the same SteamID, and after the player directory's five-minute cache
+  his page lists both under one handle (`by_tier` ranked 21, momentum 2008).
+  NOT MEASURED AT THE SWITCH: a finished run stored under an account on the
+  live fleet; the owner's next finish is the first.
+  To switch off: the line to 0 and a reload. Rows stay where they are.
+  `pubkeys.player` still names his install's old id, so the admin's key
+  flags read his older recordings as another player's key (ROADMAP 14.3 b).
 - **DEPLOYED 11 Oct 2026, 01:31-01:38 UTC (FTESurf `061fa8d`, Patch 629),
   SWITCHED OFF: surfd, the Pi's twelve lobbies, both Windows installs' progs.**
   No engine change. In this order:
@@ -7376,9 +7398,7 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   Roll back: `.prev` over each progs file and restart the lobbies; the
   `.pre061fa8d-20261011-123213` copies over surfd's files and a reload
   (schema 16 is two tables and an index the Patch 625 code never reads).
-  TO SWITCH ON: not before ROADMAP 14.3 (a)'s gates. Then, in this order:
-  back up; move the owner's guid rows to his account by hand (he asked for
-  that); set the line to 1; reload; read the log line and the board.
+  (Switched on forty minutes later, on the owner's word: the entry above.)
 - **DEPLOYED 10 Oct 2026, 22:07-22:10 UTC (FTESurf `e31cce8`, engine
   `c543d688a` = tag `patch-625`, Patch 625): surfd, the Pi's twelve lobbies,
   both Windows installs, progs AND engine.** Over Patch 622's pair

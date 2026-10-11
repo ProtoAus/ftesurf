@@ -111,13 +111,18 @@ Yours to look at:
 4. I said a saved size of 8 or 12 would become 16. It does not: those sizes were
    never a default (the default is auto, 16 px at your scale), so a saved 8 or
    12 was somebody's choice and still draws until they click a box.
-## 00. 11 Oct — ranked times need a linked Steam account (Patch 629): built, OFF
+## 00. 11 Oct — ranked times need a linked Steam account (Patch 629): ON
 
-Deployed 11 Oct 01:31-01:38 UTC (surfd, the twelve lobbies, both installs),
-behind one setting, switched off, so nothing has changed for anybody yet.
-The one thing to look at now: play a run on a lobby as usual. It should
-finish, rank and show on the board exactly as before (your 21 rows are
-untouched). If a finish says anything about a Steam account, tell me.
+Switched on 11 Oct 02:14 UTC, on your "yes". Your 21 times moved to your
+Steam account first, with a backup.
+- **Play a run from `C:\FTESurf`** (the install you linked): it should
+  finish and rank as usual, and show on your profile on the site beside
+  your 2,008 Momentum times, which joined it by themselves (same SteamID).
+  This is the first real finish through the new path: if it says anything
+  about being unranked, tell me the exact line.
+- **Your other install (`C:\FTEQuake`) is not linked**: a finish there says
+  "unranked: no Steam account linked (type link)" and stays off the boards
+  until you type `link` in its console once.
 
 - **What it does when on.** A finished run is ranked under the Steam account
   the game is linked to. A reinstall or a second PC then improves the same
@@ -129,16 +134,12 @@ untouched). If a finish says anything about a Steam account, tell me.
 - **Your thirteen old rows** (two maps and eleven stages, all your old
   install) leave the ranked boards the moment it is switched on. They are
   kept, unlisted. Your next linked runs start the boards again.
-- **Why it is off.** (1) Nobody but your two installs has the engine that can
-  link, so until a release goes out every other player's runs would be
-  unranked. (2) Two things on the lobby are still filed under the game's old
-  id, which a modified game can choose: save slots, and the names of
-  recordings. With accounts on the board those want moving to the proven key
-  first (ROADMAP 14.3 a lists them). You HAVE linked with the new box (10 Oct
-  23:36 UTC, twenty seconds from Enter to linked), so that part is done.
-- **The times you set since then** (surf_beginner, and the old thirteen) are
-  under the old id. You said to move them to your Steam ID (11 Oct): that is
-  done by hand, with a backup, at switch-on. Nothing for you to do.
+- **Still open, and yours to know about.** (1) Nobody but your two installs
+  has the engine that can link, so until a release goes out every other
+  player's runs are unranked. (2) Three things on the lobby are still filed
+  under the game's old id, which a modified game can choose: save slots,
+  paused runs, and the names of recordings (ROADMAP 14.3 a). Fine while every
+  ranked row is yours; to do before other people rank.
 - **To turn it on:** delete the line `SURFD_RANKED_LINKED=0` from
   `/srv/nvme/surfd/surfd.env` on the Pi and reload surfd, or tell me to. To
   turn it back off, put the line back and reload; rows already moved stay
