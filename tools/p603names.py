@@ -48,7 +48,7 @@ MODE = {'utf8_enable': 0, 'com_parseutf8': 1}
 
 def config(port, sets):
     return '\n'.join([
-        'cfg_save_auto 0', 'set log_enable 1', 'set log_dir logs', 'set log_name perf', 'set log_readable 1',
+        'cfg_save_auto 0', 'set sb_filter 1', 'set sb_filter_src 0', 'set log_enable 1', 'set log_dir logs', 'set log_name perf', 'set log_readable 1',
         'set cl_idlefps 0', 'set cl_maxfps 100', 'set vid_vsync 0', 'set vid_conautoscale 0', 'set vid_conwidth 1920',
         'set vid_conheight 1080', 'set hud_scale 2', 'set developer 0', 'set name P603Names', 'set cl_run_upload 0',
         'set cl_board_url ""', *(f'set {k} {v}' for k, v in sets.items()), 'waitms 1500', 'menu_restart', 'waitms 700', 'ui_close', 'plug_load ui_imgui',

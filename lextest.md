@@ -11,6 +11,42 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — your HUD list, part 4: the TAB board (Patch 635)
+
+"I want the leaderboard to show all combined, and then the filter on the right,
+to be like a slider, with a filter toggle switch." And from the list: "tick
+on/off all of the demos you have of a stage/main by maybe clicking on the
+'Line' tab."
+
+- **Online shows every game together.** FTESurf, Momentum and KSF times in one
+  list in time order. A time from another game says `momentum` or `ksf` in the
+  WHY column (on a narrow window, `[mom]` or `[ksf]` in front of the name).
+  The Imported tab is gone.
+- **The filter is right of the tabs**: a `filter` switch and a slider with
+  three stops, FTESurf, Momentum, KSF. Switch off: every game. Press a stop
+  and the switch turns on and the list is that game alone. Both are
+  remembered between sessions. Segmented is ours alone and has no filter.
+- **Click the LINE heading** to tick the lines of the list on screen from the
+  top, up to the eight there is room for; click it again to untick them. The
+  footer says what the click did. On Local that is your own runs of that
+  stage or main; on Online, the rows that say `watch`.
+- **After a finish** the board opens at your own row, as before. In the
+  combined list, if that row is past the hundred the list holds, a row pinned
+  under the list reads `<your name>   FTESurf #<rank>`.
+
+Yours to look at:
+1. The look of the switch and slider. The slider stays on screen, dim, while
+   the switch is off: it shows the stop the switch returns to.
+2. In the combined list the `#` counts every game, so a KSF time can be number
+   1 and your FTESurf rank is a different number. Only the pinned row says the
+   FTESurf rank.
+3. The LINE heading leaves `Get demo` rows alone: each of those asks the
+   server to fetch a demo from Momentum, and one click would queue eight. With
+   some rows already ticked the first click unticks them; the second ticks
+   from the top.
+4. Dragging the knob was built and not tested; pressing a stop was.
+5. Where older notes in this file say "Imported tab", read: Online with the
+   filter on Momentum or KSF.
 ## 00. 11 Oct — the site: every game on one board, and whole-player pages (Patch 636)
 
 Live since 11 Oct 04:17 UTC. Your list of 11 Oct. On proto.bar/ftesurf/board:

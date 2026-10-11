@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Acted private board-render controls for removing the misleading compare chip."""
+"""Acted private board-render controls for removing the misleading compare chip.
+
+RETIRED by Patch 635: the Imported tab whose `sb_t3` chip this counts is gone (the Online
+list holds every game, behind a filter), so the source patch below no longer applies.  Kept
+as the record of Patch 536's arm; tools/p635board.py is the board's arm now.
+"""
 import argparse
 from pathlib import Path
 import re

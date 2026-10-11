@@ -75,9 +75,18 @@ float  pl_bn;
 string pl_bmap;                 // the map the fetch was asked for
 float  pl_basked;               // and that we asked at all
 float  pl_bgen;                 // ob_gen the room list last asked at (Patch 357)
-// Set by Scores_Draw: the board wants a DIFFERENT online board, so the room
-// list must not take the shared ob_* store from it with a fetch of its own.
-float  pl_boardbusy;
+/*
+  Patch 635: THE ROOM LIST ASKS FOR ITS OWN BOARD, with its own request.  It
+  used to borrow the TAB board's store and wait whenever the board wanted
+  another query (pl_boardbusy).  The board's Online list is every game merged
+  now, which is always another query: waiting left this list with no times
+  (measured: 0 best times beside a merged list holding both ranked rows), and
+  taking turns in one store blanked the board for a round trip.  The answer
+  fills pl_b* and nothing else.
+*/
+float  pl_req;                  // uri id in flight; 0 = none
+float  pl_sent;                 // cltime it went out
+float  pl_wait;                 // cltime before which a failed ask is not repeated
 
 // The room list's colours, from the shared theme (sh_ui.qc).
 #define PLC_DIM   SUI_THEME_DIM
@@ -99,45 +108,107 @@ vector(float r) Pl_Medal =
 	return '0 0 0';
 };
 
+// One row of a main, ranked, clean board into the table: player hash, ticks.
+void(string id, float t) Players_Note =
+{
+	local float j;
+
+	if (id == "" || t <= 0)
+		return;
+	j = 0;
+	while (j < pl_bn)
+	{
+		if (strcmp(bufstr_get(pl_bid, j), id) == 0)
+			break;
+		j = j + 1;
+	}
+	if (j < pl_bn)
+	{
+		if (t < pl_bticks[j])
+			pl_bticks[j] = t;             // best of whatever we have seen
+	}
+	else if (pl_bn < PL_BMAX)
+	{
+		bufstr_set(pl_bid, pl_bn, id);
+		pl_bticks[pl_bn] = t;
+		pl_bn = pl_bn + 1;
+	}
+};
+
 void() Players_AbsorbBoard =
 {
-	local float i, j, t;
-	local string id;
+	local float i;
 
 	// Only a reply that describes THIS map's main leg, ranked, clean -- the
-	// board the room list asked for.  Anything else in ob_* is some other
-	// leg's truth and would rank people by a time they set elsewhere.
+	// board the room list wants.  Anything else in ob_* is some other leg's
+	// truth, or other games' times, and would rank people by those.
 	if (!Online_Describes(0, 0, OB_TIER, "clean"))
 		return;
 
 	for (i = 0; i < ob_n; i = i + 1)
-	{
-		id = FS_GuidId(bufstr_get(ob_bplayer, i));
-		if (id == "")
-			continue;
-		t = ob_ticks[i];
-		if (t <= 0)
-			continue;
+		Players_Note(FS_GuidId(bufstr_get(ob_bplayer, i)), ob_ticks[i]);
+};
 
-		j = 0;
-		while (j < pl_bn)
+// Ask surfd for this map's main, ranked, clean board, for the table above.
+// TRUE if a request went out.  The consent and lobby_dir rules are Online_Fetch's.
+float() Players_Ask =
+{
+	local string dir, map;
+
+	if (pl_req || cltime < pl_wait)
+		return FALSE;
+	if (ui_consent_ver < FS_TERMS_ONLINE)
+	if (cvar("rec_terms") < FS_TERMS_ONLINE)
+		return FALSE;
+	dir = cvar_string("lobby_dir");
+	map = serverkey("map");
+	if (dir == "" || map == "")
+		return FALSE;
+	pl_req = Online_NextReq();
+	if (!uri_get(sprintf("%s/api/board?map=%s&track=0&leg=0&tier=%s&style=clean&limit=%g",
+	                     dir, uri_escape(map), OB_TIER, OB_PAGE), pl_req))
+	{
+		pl_req = 0;
+		pl_wait = cltime + OB_RETRY_SECS;
+		return FALSE;
+	}
+	pl_sent = cltime;
+	return TRUE;
+};
+
+// Its answer (URI_Get_Callback).  TRUE when the id was this request's.
+float(float reqid, float code, string body) Players_BoardReply =
+{
+	local float root, rows, row, n, i;
+
+	if (!pl_req)
+		return FALSE;
+	if (reqid != pl_req)
+		return FALSE;
+	pl_req = 0;
+	root = 0;
+	if (!code)                          // 0 is success (cl_online.qc, trap 1)
+		root = json_parse(body);
+	if (!root)
+	{
+		pl_basked = FALSE;              // once more, after the wait
+		pl_wait = cltime + OB_RETRY_SECS;
+		return TRUE;
+	}
+	// A map change since it was asked: another map's times are not this one's.
+	if (!strcasecmp(json_get_string(json_find_object_child(root, "map")), serverkey("map")))
+	{
+		rows = json_find_object_child(root, "rows");
+		n = min(json_get_length(rows), OB_PAGE);
+		for (i = 0; i < n; i = i + 1)
 		{
-			if (strcmp(bufstr_get(pl_bid, j), id) == 0)
-				break;
-			j = j + 1;
-		}
-		if (j < pl_bn)
-		{
-			if (t < pl_bticks[j])
-				pl_bticks[j] = t;         // best of whatever tiers we have seen
-		}
-		else if (pl_bn < PL_BMAX)
-		{
-			bufstr_set(pl_bid, pl_bn, id);
-			pl_bticks[pl_bn] = t;
-			pl_bn = pl_bn + 1;
+			row = json_get_child_at_index(rows, i);
+			Players_Note(FS_GuidId(json_get_string(json_find_object_child(row, "player"))),
+			             json_get_float(json_find_object_child(row, "ticks")));
 		}
 	}
+	json_free(root);
+	return TRUE;
 };
 
 // The absorbed best for a player hash, or 0 for "no row we have seen".
@@ -196,21 +267,29 @@ void(vector bp, vector bsz, float pad, vector scr) Players_Panel =
 		pl_basked = FALSE;
 		pl_bn = 0;                      // another map's times are not this one's
 	}
-	// The board's own main/clean fetch serves the room list; otherwise ask,
-	// again after a finish made the store stale, but never mid-flight and
-	// never out from under a board showing another leg.
+	// The board's own main/ranked/clean fetch serves the room list when that is
+	// what the board is showing; otherwise ask with our own request (Patch 635),
+	// and again after a finish made the times stale.
 	Online_Poll();
+	if (pl_req)
+	if (cltime - pl_sent > OB_DEADLINE)
+	{
+		pl_req = 0;                     // never answered; nothing under us times out
+		pl_basked = FALSE;
+		pl_wait = cltime + OB_RETRY_SECS;
+	}
 	if (Online_Asked(0, 0, OB_TIER, "clean", TRUE))
 	{
 		pl_basked = TRUE;               // asked at this gen: its backoff is the board's
 		pl_bgen = ob_gen;
 	}
-	else if ((!pl_basked || pl_bgen != ob_gen) && ob_state != OBS_FETCH
-	         && !pl_boardbusy)
+	else if (!pl_basked || pl_bgen != ob_gen)
 	{
-		pl_basked = TRUE;
-		pl_bgen = ob_gen;
-		Online_Fetch(0, 0, OB_TIER, "clean");
+		if (Players_Ask())
+		{
+			pl_basked = TRUE;
+			pl_bgen = ob_gen;
+		}
 	}
 
 	rh = PL_RH;

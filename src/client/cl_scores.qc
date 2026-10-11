@@ -146,9 +146,27 @@ float  rec_sb_best;              // the fastest CLEAN time on this leg, or 0
 #define SB_T_ONLINE    0
 #define SB_T_SEGMENT   1
 #define SB_T_LOCAL     2
-#define SB_T_MOMENTUM  3   // every imported board; see OB_TIER_IMP in cl_online.qc
 
 float rec_sb_tab;                // SB_T_*
+
+/*
+  Patch 635: THE ONLINE LIST IS EVERY GAME'S TIMES, and Imported is no longer a
+  tab (the owner, 11 Oct: "show all combined, and then the filter on the right,
+  to be like a slider, with a filter toggle switch").  It is surfd's merged
+  board -- ranked, Momentum and KSF in time order, each row carrying its tier --
+  until the filter switch is on, and then one game's alone: sb_filter, and
+  sb_filter_src 0 FTESurf, 1 Momentum, 2 KSF, both saved.
+  rec_sb_imponly is `scores tab imported`, both imports without ours: a console
+  handle the older arms use, for the session and on no control.
+*/
+float rec_sb_imponly;
+float rec_sb_lnall;              // the LINE heading clicked this frame (Scores_LineAll)
+// What that click did, in the footer for a few seconds in place of the count: when
+// it ticks nothing (every slot held elsewhere) nothing else on the board says so.
+string rec_sb_note;              // strzoned
+float  rec_sb_noteat;
+vector rec_sb_notectx;           // the leg, tab and list it was said about
+float  sb_ln_quiet;              // Scores_LineAll is toggling: one line said, not one each
 
 /*
   The ledger id this board is waiting on, or 0.  Build 66, step R5.
@@ -204,13 +222,95 @@ string() Scores_StyleOf = { return (rec_sb_tab == SB_T_SEGMENT) ? "segmented" : 
   carries -- so the momentum tab asks for "clean" and StyleOf already answers
   that for any tab that is not SB_T_SEGMENT.
 */
+// Patch 635: what the online list holds.  0 ours alone; 1 every game merged; 2
+// Momentum alone; 3 KSF alone; 4 both imports without ours (rec_sb_imponly).
+// Segmented is always ours: an imported run is clean by definition (above).
+#define SB_IMP_OFF   0
+#define SB_IMP_ALL   1
+#define SB_IMP_MOM   2
+#define SB_IMP_KSF   3
+#define SB_IMP_ONLY  4
+float() Scores_ImpState =
+{
+	local float f;
+
+	if (rec_sb_tab != SB_T_ONLINE)
+		return SB_IMP_OFF;
+	if (rec_sb_imponly)
+		return SB_IMP_ONLY;
+	if (cvar("sb_filter") <= 0)
+		return SB_IMP_ALL;
+	f = rint(cvar("sb_filter_src"));
+	if (f == 1) return SB_IMP_MOM;
+	if (f == 2) return SB_IMP_KSF;
+	return SB_IMP_OFF;
+};
+
+// What the LINE heading did: said once on the console, and in the footer for four
+// seconds while the board still shows the list it was said about.
+void(string s) Scores_Note =
+{
+	if (rec_sb_note)
+		strunzone(rec_sb_note);
+	rec_sb_note = strzone(s);
+	rec_sb_noteat = cltime;
+	rec_sb_notectx = [rec_sb_leg, rec_sb_tab, Scores_ImpState()];
+	print(sprintf("scores: lines: %s\n", s));
+};
+
+// Every assignment of the tab goes through here: the console's list does not
+// outlive the tab it was asked on (it leaked through the arrow keys, the review).
+void(float tab) Scores_TabSet =
+{
+	rec_sb_tab = tab;
+	rec_sb_imponly = FALSE;
+};
+
 string() Scores_TierOf =
 {
-	if (rec_sb_tab != SB_T_MOMENTUM)
-		return OB_TIER;
-	// OB_TIER_IMP and not OB_TIER_MOM: one tab shows every foreign board, each
-	// row saying which it came from, so a third source needs no fifth chip.
-	return OB_TIER_IMP;             // imported never silently interleaves native rows
+	local float f;
+
+	f = Scores_ImpState();
+	if (f == SB_IMP_ALL)  return OB_TIER_BOTH;
+	if (f == SB_IMP_MOM)  return OB_TIER_MOM;
+	if (f == SB_IMP_KSF)  return OB_TIER_KSF;
+	if (f == SB_IMP_ONLY) return OB_TIER_IMP;
+	return OB_TIER;
+};
+
+// The filter switch and its slider, as a control or the console sets them.
+// cvar_set and not a queued `seta`: it takes effect in the frame of the click.
+void(float on, float src) Scores_ImpSet =
+{
+	rec_sb_imponly = FALSE;
+	cvar_set("sb_filter", on ? "1" : "0");
+	cvar_set("sb_filter_src", ftos(bound(0, rint(src), 2)));
+	rec_sb_oscroll = '0 0 0';
+};
+
+// The rows surfd holds for the list on screen; the page shown may be fewer.
+float() Scores_ImpTotal =
+{
+	local float f;
+
+	f = Scores_ImpState();
+	if (f == SB_IMP_ALL)  return ob_cnt_ranked + ob_cnt_imported;
+	if (f == SB_IMP_MOM)  return ob_cnt_mom;
+	if (f == SB_IMP_KSF)  return ob_cnt_ksf;
+	if (f == SB_IMP_ONLY) return ob_cnt_imported;
+	return ob_cnt_ranked;
+};
+
+// What the list holds, in the footer's words.
+string() Scores_ImpWord =
+{
+	local float f;
+
+	f = Scores_ImpState();
+	if (f == SB_IMP_MOM)  return "Momentum";
+	if (f == SB_IMP_KSF)  return "KSF";
+	if (f == SB_IMP_ONLY) return "imported";
+	return Scores_StyleOf();           // ours, or every game's (the footer adds which)
 };
 
 /*
@@ -289,8 +389,29 @@ float() Scores_FinishedOnline =
 float() Scores_StandingOutside =
 {
 	if (!Scores_FinishedOnline()) return FALSE;
-	if (ob_mine >= 0 || rec_sb_finrank <= 0 || ob_n <= 0) return FALSE;
+	if (rec_sb_finrank <= 0 || ob_n <= 0) return FALSE;
+	// Patch 635: on a list that is not ours alone the rank cannot be held against
+	// the rows' numbers (they count every game), so the standing is pinned
+	// whenever the run's own row is not among the rows held, and says whose
+	// rank it is (Scores_StandingWord).
+	if (Scores_ImpState() != SB_IMP_OFF)
+	{
+		if (ob_mine < 0) return TRUE;       // nested: || does not short-circuit
+		return (Online_RowSrc(ob_mine) != OB_SRC_OURS);
+	}
+	if (ob_mine >= 0) return FALSE;
 	return rec_sb_finrank > ob_rank[ob_n - 1];
+};
+
+// The pinned row's name cell: under a list of every game, whose rank the number is.
+string() Scores_StandingWord =
+{
+	local string s;
+
+	s = getplayerkeyvalue(player_localnum, "name");
+	if (Scores_ImpState() == SB_IMP_OFF)
+		return s;
+	return sprintf("%s   FTESurf #%g", s, rec_sb_finrank);
 };
 
 float() Scores_OnlineSeekReady =
@@ -324,16 +445,16 @@ void() Scores_ApplyFollow =
 	{
 		if (rec_sb_tab != SB_T_LOCAL)
 			rec_sb_tabauto = TRUE;
-		rec_sb_tab = SB_T_LOCAL;    // on no online board this player can see
+		Scores_TabSet(SB_T_LOCAL);  // on no online board this player can see
 	}
 	else if (c == RC_SEGMENT)
 	{
-		rec_sb_tab = SB_T_SEGMENT;
+		Scores_TabSet(SB_T_SEGMENT);
 		rec_sb_tabauto = FALSE;
 	}
 	else if (c == RC_CLEAN)
 	{
-		rec_sb_tab = SB_T_ONLINE;
+		Scores_TabSet(SB_T_ONLINE);
 		rec_sb_tabauto = FALSE;
 	}                               // practice/cheated: no board; leave the tab
 };
@@ -1167,7 +1288,8 @@ void(float row) Scores_LineToggle =
 	if (i >= 0)
 	{
 		Scores_LineFree(i);
-		print(sprintf("scores: line %g off\n", i + 1));
+		if (!sb_ln_quiet)
+			print(sprintf("scores: line %g off\n", i + 1));
 		return;
 	}
 	for (i = 0; i < SB_LNMAX; i = i + 1)
@@ -1211,7 +1333,91 @@ void(float row) Scores_LineToggle =
 		sb_ln_path[i] = strzone(bufstr_get(rec_sb_bpath, row));
 		sb_ln_name[i] = strzone(bufstr_get(rec_sb_bowner, row));
 	}
-	print(sprintf("scores: line %g on: %s\n", i + 1, key));
+	if (!sb_ln_quiet)
+		print(sprintf("scores: line %g on: %s\n", i + 1, key));
+};
+
+// A row the LINE heading ticks: shown, with a recording here or on surfd.
+float(float row) Scores_LineAllRow =
+{
+	if (Scores_LineKey(row) == "")
+		return FALSE;
+	if (Scores_IsOnline())
+		return (Online_RowRep(row) > 0);
+	return Scores_Passes(row);
+};
+
+/*
+  Patch 635: THE LINE HEADING, one click for the list on screen.  With any of its
+  rows ticked it unticks those; with none it ticks from the top, the rows
+  Scores_LineAllRow passes, until the SB_LNMAX slots are full.  A Momentum row
+  that still has to be requested ("Get demo") is left to its own box: eight of
+  those from one click is eight jobs on a queue that fetches six demos a run.
+*/
+void() Scores_LineAll =
+{
+	local float n, row, i, any, added, left;
+
+	if (rec_sb_leg < 0 || rec_sb_leg >= rec_sb_legn)
+		return;
+	n = rec_sb_rown;
+	if (Scores_IsOnline())
+	{
+		// The store may still hold another leg's rows (cl_online.qc, trap 3).
+		if (!Online_Shows(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
+		                  Scores_TierOf(), Scores_StyleOf()))
+		{
+			Scores_Note("this list has not arrived yet -- nothing changed");
+			return;
+		}
+		n = ob_n;
+	}
+
+	// One sentence for the click (Scores_Note), not one a line: with the console's
+	// notify lines on, eight of them covered the title and the tabs.
+	sb_ln_quiet = TRUE;
+	any = 0;
+	for (row = 0; row < n; row = row + 1)
+		if (Scores_LineKey(row) != "")
+		if (Scores_LineFind(Scores_LineKey(row)) >= 0)
+		{
+			Scores_LineToggle(row);
+			any = any + 1;
+		}
+	if (any)
+	{
+		sb_ln_quiet = FALSE;
+		Scores_Note(sprintf("%g unticked", any));
+		return;
+	}
+
+	added = left = 0;
+	for (row = 0; row < n; row = row + 1)
+	{
+		if (!Scores_LineAllRow(row))
+			continue;
+		for (i = 0; i < SB_LNMAX; i = i + 1)
+			if (sb_ln_st[i] == SBL_FREE)
+				break;
+		if (i >= SB_LNMAX)
+		{
+			left = left + 1;            // every slot holds a line: counted, for the sentence
+			continue;
+		}
+		Scores_LineToggle(row);
+		added = added + 1;
+	}
+	sb_ln_quiet = FALSE;
+	if (!added && left)
+		Scores_Note(sprintf("all %g slots hold lines of other lists -- `scores lines clear` drops them",
+		                    SB_LNMAX));
+	else if (left)
+		Scores_Note(sprintf("%g ticked, the first of %g with a recording (%g at most)",
+		                    added, added + left, SB_LNMAX));
+	else if (!added)
+		Scores_Note("no row of this list has a recording to draw");
+	else
+		Scores_Note(sprintf("%g ticked", added));
 };
 
 /*
@@ -1702,6 +1908,32 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 };
 
 /*
+  An online row's name as its cell draws it (`scores status` prints it too).
+  Patch 635: another game's row says so at any width -- its word is the WHY
+  column's, the first a narrow window drops, and then it goes in front of the
+  name -- and the whole is cut to the owner column: a 16-character name with
+  its tag ran over the time and changed how it read (1:06.990 as 2:06.990, the
+  review).  The UI face must be set: the cut is measured.
+*/
+string(float idx) Scores_OnlineName =
+{
+	local string s;
+
+	s = UI_NameShow(bufstr_get(ob_bname, idx), 0);
+	if (s == "")
+		s = "unknown";
+	if (!sb_colon[SBK_TAG])
+	{
+		if (Online_WhyString(idx) == "momentum")
+			s = strcat("[mom] ", s);
+		else if (Online_WhyString(idx) == "ksf")
+			s = strcat("[ksf] ", s);
+	}
+	return Chat_Fit(s, sb_colx[SBK_TIME] - sb_colx[SBK_OWNER] - rec_sb_cw * 9.5,
+	                Font_Px(rec_sb_szrow));
+};
+
+/*
   surfd's board -- the tier AND the style the tab names (Scores_TierOf,
   Scores_StyleOf).
 
@@ -1825,7 +2057,7 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 	{
 		lp = [rp_x, rp_y + rec_sb_szhead + pad];
 		Scores_Text(lp, rec_sb_szrow,
-		            sprintf("no %s times on this leg yet", Scores_StyleOf()),
+		            sprintf("no %s times on this leg yet", Scores_ImpWord()),
 		            SBC_DIM, 1);
 		return -1;
 	}
@@ -1852,7 +2084,10 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 	if (pinned) rs_y = rs_y - rec_sb_rowh;
 	if (Scores_OnlineSeekReady())
 	{
+		// Patch 635: to the run's own row, not to the same account's Momentum or
+		// KSF time, which is the one a merged list holds first.
 		if (ob_mine >= 0)
+		if (Online_RowSrc(ob_mine) == OB_SRC_OURS)
 			rec_sb_oscroll_y = max(0, (ob_mine - 2) * rec_sb_rowh);
 		rec_sb_seek = FALSE;
 	}
@@ -1943,12 +2178,10 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 
 		Font_Set(ui_font_ui);
 
-		s = UI_NameShow(bufstr_get(ob_bname, idx), 0);
 		ncol = SBC_TEXT;
 		if (idx == ob_mine)
 			ncol = SBC_GOOD;
-		Scores_Cell(lp, SBK_OWNER, d,
-		            (s != "") ? s : "unknown", ncol, 0.9);
+		Scores_Cell(lp, SBK_OWNER, d, Scores_OnlineName(idx), ncol, 0.9);
 
 		/*
 		  WHETHER THERE IS ANYTHING BEHIND THIS ROW TO OPEN -- build 68.
@@ -2041,13 +2274,13 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		Scores_RowFill(lp, rs_x - pad * 0.5, SBC_SEL, 0.45);
 		d = lp_y + (rec_sb_rowh - rec_sb_szrow) * 0.5;
 		Font_Set(ui_font_mono);
-		Scores_RankCell(lp, d, rec_sb_finrank, 1, TRUE);
+		if (Scores_ImpState() == SB_IMP_OFF)
+			Scores_RankCell(lp, d, rec_sb_finrank, 1, TRUE);
 		if (rec_sb_finbest > 0)
 			Scores_Cell(lp, SBK_TIME, d,
 			            Time_MsString((int)rec_sb_finbest), SBC_TEXT, 1);
 		Font_Set(ui_font_ui);
-		Scores_Cell(lp, SBK_OWNER, d,
-		            getplayerkeyvalue(player_localnum, "name"), SBC_GOOD, 0.9);
+		Scores_Cell(lp, SBK_OWNER, d, Scores_StandingWord(), SBC_GOOD, 0.9);
 	}
 	// Patch 395: `scores olpick`, a click minus the hit test.
 	if (!pick)
@@ -2261,14 +2494,16 @@ string() Scores_CountLine =
 		                 Scores_TierOf(), Scores_StyleOf()))
 		{
 			s = sprintf("%g %s time(s) on %s", ob_n,
-			            Scores_StyleOf(), Scores_LegName(rec_sb_leg));
-			if (ob_cnt_ranked > ob_n)
-				s = sprintf("%s  (top %g of %g shown)", s, ob_n, ob_cnt_ranked);
+			            Scores_ImpWord(), Scores_LegName(rec_sb_leg));
+			if (Scores_ImpState() == SB_IMP_ALL)
+				s = strcat(s, ", every game");
+			if (Scores_ImpTotal() > ob_n)
+				s = sprintf("%s  (top %g of %g shown)", s, ob_n, Scores_ImpTotal());
 			if (ob_state == OBS_FETCH)
 				s = strcat(s, "   refreshing...");
 		}
 		else
-			s = sprintf("%s on %s", Scores_StyleOf(), Scores_LegName(rec_sb_leg));
+			s = sprintf("%s on %s", Scores_ImpWord(), Scores_LegName(rec_sb_leg));
 	}
 	else
 	{
@@ -2279,6 +2514,16 @@ string() Scores_CountLine =
 	}
 
 	return s;
+};
+
+// The footer's left sentence: the count, or for four seconds what the LINE heading did.
+string() Scores_FootLine =
+{
+	if (rec_sb_note)
+	if (cltime - rec_sb_noteat < 4)
+	if (rec_sb_notectx == [rec_sb_leg, rec_sb_tab, Scores_ImpState()])
+		return strcat("lines: ", rec_sb_note);
+	return Scores_CountLine();
 };
 
 // A click the native table reported, or `scores olpick` when the legacy online
@@ -2318,14 +2563,8 @@ void(vector p, vector sz, float pad, vector scr, float pick) Scores_Finish =
 	  function just computed because it anchors to it; cl_players.qc's header
 	  has the rest.
 	*/
-	// Nested, never && around an index (QC evaluates both sides).
-	pl_boardbusy = Scores_IsOnline();
-	if (rec_sb_tab == SB_T_ONLINE)
-	if (rec_sb_leg >= 0)
-	if (rec_sb_leg < rec_sb_legn)
-	if (rec_sb_legtrack[rec_sb_leg] == 0)
-	if (rec_sb_legnum[rec_sb_leg] == 0)
-		pl_boardbusy = FALSE;
+	// Patch 635: the room list asks for its own board with its own request now
+	// (cl_players.qc), so nothing here says whether the store is spoken for.
 	Players_Panel(p, sz, pad, scr);
 
 	sui_end();
@@ -2346,6 +2585,12 @@ void(vector p, vector sz, float pad, vector scr, float pick) Scores_Finish =
 	{
 		Scores_LineToggle(rec_sb_lnpick - 1);
 		rec_sb_lnpick = 0;
+		return;
+	}
+	if (rec_sb_lnall)                   // Patch 635: the LINE heading
+	{
+		rec_sb_lnall = FALSE;
+		Scores_LineAll();
 		return;
 	}
 
@@ -2504,6 +2749,118 @@ float(float ow) Scores_Need =
 	return max(a, b);
 };
 
+/*
+  Patch 635: THE ONLINE LIST'S FILTER -- a switch, and a slider with a stop for
+  each game (the owner: "the filter on the right, to be like a slider, with a
+  filter toggle switch").  Off, the list is every game's and the slider waits,
+  dim, on the stop it was left at; a press on a stop turns the filter on there,
+  and the knob follows a drag.  Drawn right-aligned at xr in the header row.
+*/
+// Measured from the labels as drawn, not counted in mono characters: the small
+// type stops at 12 px while cw goes on shrinking with the rows.
+float() Scores_FilterStep =
+{
+	return ceil(stringwidth("Momentum", TRUE, [rec_sb_szhead, rec_sb_szhead]) + rec_sb_szhead * 0.9);
+};
+float() Scores_FilterLab =
+{
+	return ceil(stringwidth("filter", TRUE, [rec_sb_szhead, rec_sb_szhead]) + rec_sb_szhead * 0.7);
+};
+float() Scores_FilterW =
+{
+	// "filter", the switch, a gap, the three stops
+	return Scores_FilterLab() + ceil(ceil(rec_sb_szhead * 1.2) * 1.9) + ceil(rec_sb_szhead * 0.8)
+	     + Scores_FilterStep() * 3;
+};
+
+void(float xr, float y, float h) Scores_FilterDraw =
+{
+	local float st, on, stop, sp, x, th, tw, yt, i, a, sx, kx, r, tx, lw;
+	local string s, id;
+	local vector c;
+
+	st = Scores_ImpState();
+	on = (st != SB_IMP_ALL);
+	stop = bound(0, rint(cvar("sb_filter_src")), 2);
+	if (st == SB_IMP_ONLY)
+		stop = -1;                      // the console's list: on no stop
+	a  = on ? 1 : 0.45;
+	sp = Scores_FilterStep();
+	sx = xr - sp * 3;                   // the three stops' hit areas, sp wide each
+	// Its own height where the tab row is shorter than a knob over a label, centred
+	// on the row as the refresh chip is: on the 8 px board (hud_scale 1, 16 px
+	// tabs, 12 px labels) the knob sat on the word.
+	if (h < rec_sb_szhead * 2)
+	{
+		y = y - floor((rec_sb_szhead * 2 - h) * 0.5);
+		h = rec_sb_szhead * 2;
+	}
+	// The track's centre line, two clear rows above the labels: a short row gets
+	// a smaller knob (at 24 px the full one shared a row with the capitals' tops).
+	r  = max(3, floor(rec_sb_szhead * 0.42));
+	if (h < rec_sb_szhead * 2 + 4)
+		r = r - 1;
+	yt = y + min(floor(h * 0.30), h - rec_sb_szhead - r - 3);
+
+	// The stops first: a press on one is that game, and a drag carries the knob.
+	for (i = 0; i < 3; i = i + 1)
+	{
+		id = strcat("sb_src", ftos(i));
+		sui_action_element([sx + sp * i, y], [sp, h], id, sui_noop);
+		if (sui_is_clicked(id) || sui_is_held(id))
+		{
+			tx = bound(0, floor((_cursor_position_x - sx) / sp), 2);
+			if (!on || tx != stop)
+			{
+				Scores_ImpSet(TRUE, tx);
+				on = TRUE;
+				stop = tx;
+				a = 1;
+			}
+		}
+	}
+	sui_roundbox([sx + sp * 0.5, yt - 2], [sp * 2, 4], 2, SUI_THEME_WELL, a);
+	for (i = 0; i < 3; i = i + 1)
+	{
+		id = strcat("sb_src", ftos(i));
+		kx = sx + sp * (i + 0.5);
+		s = "FTESurf";
+		if (i == 1) s = "Momentum";
+		if (i == 2) s = "KSF";
+		c = SUI_THEME_DIM;
+		if (on && i == stop)
+			c = SUI_THEME_ACCENT;
+		else if (sui_is_hovered(id))
+			c = SUI_THEME_TEXT;
+		sui_roundbox([kx - 2, yt - 2], [4, 4], 2, SUI_THEME_EDGE_HI, a);
+		if (i == stop)
+			sui_roundbox([kx - r, yt - r], [r * 2, r * 2], r, on ? SUI_THEME_ACCENT : SUI_THEME_DIM, 1);
+		Scores_Text([kx - stringwidth(s, TRUE, [rec_sb_szhead, rec_sb_szhead]) * 0.5,
+		             y + h - rec_sb_szhead - 1], rec_sb_szhead, s, c, (on || sui_is_hovered(id)) ? 1 : 0.6);
+	}
+
+	// The switch, left of the slider: off is every game.
+	th = ceil(rec_sb_szhead * 1.2);
+	tw = ceil(th * 1.9);
+	x  = sx - ceil(rec_sb_szhead * 0.8) - tw;
+	lw = Scores_FilterLab();
+	sui_action_element([x - lw, y], [tw + lw, h], "sb_flt", sui_noop);
+	sui_roundbox([x, y + floor((h - th) * 0.5)], [tw, th], th * 0.5, on ? SBC_SEL : SBC_PANEL, 1);
+	kx = on ? (x + tw - th + 2) : (x + 2);
+	sui_roundbox([kx, y + floor((h - th) * 0.5) + 2], [th - 4, th - 4], (th - 4) * 0.5,
+	             on ? SUI_THEME_ACCENT : SUI_THEME_DIM, 1);
+	s = "filter";
+	Scores_Text([x - lw, y + floor((h - rec_sb_szhead) * 0.5)], rec_sb_szhead, s,
+	            (on || sui_is_hovered("sb_flt")) ? SUI_THEME_TEXT : SUI_THEME_DIM, 1);
+	if (sui_is_released("sb_flt"))
+	{
+		if (st == SB_IMP_ONLY)
+			rec_sb_imponly = FALSE;     // back to what is saved; nothing is written
+		else
+			Scores_ImpSet(!on, stop);
+	}
+};
+
 void(vector scr) Scores_Draw =
 {
 	local vector p, sz, rp, rs, lp;
@@ -2532,11 +2889,9 @@ void(vector scr) Scores_Draw =
 	if (scale > 16) scale = 16;         // an absurd value would make the type, and the loop below, infinite
 	bs = min(scale, scr_y / 432);       // a short window gets smaller type...
 	if (bs < 1) bs = 1;
-	// The imported tab only where there is one: ob_cnt_imported is the last
-	// fetch's count, and a fourth tab that is always empty is worse than none.
+	// Three sources.  Patch 635 made the fourth a switch beside them on Online; it
+	// and its filter fit in the room the Local tab's four chips need anyway.
 	n = 3;
-	if (ob_cnt_imported > 0 || rec_sb_tab == SB_T_MOMENTUM)
-		n = 4;
 
 	/*
 	  WHAT FITS, tried in the order a player would choose. Steps 0-2: every column
@@ -2578,7 +2933,10 @@ void(vector scr) Scores_Draw =
 		have  = scr_x - pad * 2 - roomw - (pad * 3 + sidew) - pad * 0.5;
 		// The header row holds the tabs, a gap and four filter chips whatever the
 		// table needs: its inner width is the table's plus 1.5 pad and the sidebar.
-		floorw = segw * n + pad + (chipw + 6) * 4 - 6 - (pad * 1.5 + sidew);
+		// (Patch 635: or Online's filter and its refresh chip, when that is wider.)
+		floorw = segw * n + pad
+		       + max((chipw + 6) * 4 - 6, Scores_FilterW() + ceil(pad * 0.75) + chipw)
+		       - (pad * 1.5 + sidew);
 
 		sb_colon[SBK_TAG]  = TRUE;
 		sb_colon[SBK_DATE] = TRUE;
@@ -2648,7 +3006,6 @@ void(vector scr) Scores_Draw =
 		Scores_Text([x0 + pad, y0 + pad * 2 + rec_sb_sztitle], sb_szui,
 		            "this map has no zone file, so it has no legs and no times",
 		            SUI_THEME_DIM, 1);
-		pl_boardbusy = FALSE;             // no legs: no online board to protect
 		Players_Panel(p, sz, pad, scr);   // Patch 340: the room list is not about zones
 		sui_end();
 		Font_Reset();
@@ -2662,26 +3019,19 @@ void(vector scr) Scores_Draw =
 	sui_roundbox([x0 + pad, ytabs], [segw * n, tabh], tabh * 0.5, SUI_THEME_WELL, 1);
 	if (Scores_Seg("sb_t0", [x0 + pad, ytabs], [segw, tabh], "Online", rec_sb_tab == SB_T_ONLINE))
 	{
-		rec_sb_tab = SB_T_ONLINE;
+		Scores_TabSet(SB_T_ONLINE);
 		rec_sb_tabauto = FALSE;         // the player chose; the follow leaves it
 	}
 	if (Scores_Seg("sb_t1", [x0 + pad + segw, ytabs], [segw, tabh], "Segmented",
 	               rec_sb_tab == SB_T_SEGMENT))
 	{
-		rec_sb_tab = SB_T_SEGMENT;
+		Scores_TabSet(SB_T_SEGMENT);
 		rec_sb_tabauto = FALSE;
 	}
 	if (Scores_Seg("sb_t2", [x0 + pad + segw * 2, ytabs], [segw, tabh], "Local",
 	               rec_sb_tab == SB_T_LOCAL))
 	{
-		rec_sb_tab = SB_T_LOCAL;
-		rec_sb_tabauto = FALSE;
-	}
-	if (n == 4)
-	if (Scores_Seg("sb_t3", [x0 + pad + segw * 3, ytabs], [segw, tabh], "Imported",
-	               rec_sb_tab == SB_T_MOMENTUM))
-	{
-		rec_sb_tab = SB_T_MOMENTUM;
+		Scores_TabSet(SB_T_LOCAL);
 		rec_sb_tabauto = FALSE;
 	}
 
@@ -2725,6 +3075,10 @@ void(vector scr) Scores_Draw =
 			Online_Fetch(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
 			             Scores_TierOf(), Scores_StyleOf());
 	}
+
+	// Patch 635: the filter, on Online, left of the refresh chip.
+	if (rec_sb_tab == SB_T_ONLINE)
+		Scores_FilterDraw(x - ceil(pad * 0.75), ytabs, tabh);
 
 	sui_fill([x0 + pad, ytabs + tabh + pad * 0.5], [w - pad * 2, 1], SUI_THEME_EDGE, 1, 0);
 	yhead = ytabs + tabh + pad;
@@ -2780,7 +3134,20 @@ void(vector scr) Scores_Draw =
 		// `lobby` say what they are.
 		if (online)
 			Scores_HeadCell(rp, SBK_TAG, "WHY");
-		Scores_HeadCell(rp, SBK_LINE, "LINE");
+		// Patch 635: the heading is a control -- every line of this list, on or off
+		// (Scores_LineAll, after sui_end like a row's own box).
+		if (sb_colon[SBK_LINE])
+		{
+			// As wide as the word: 4.5 mono characters was narrower than it at the
+			// smallest type, and the E did not click (the review).
+			sui_action_element([rp_x + sb_colx[SBK_LINE] - 4, rp_y - 4],
+			                   [stringwidth("LINE", TRUE, [Font_Px(rec_sb_szhead), Font_Px(rec_sb_szhead)]) + 8,
+			                    rec_sb_szhead + 8], "sb_lnall", sui_noop);
+			Scores_Text([rp_x + sb_colx[SBK_LINE], rp_y], rec_sb_szhead, "LINE",
+			            sui_is_hovered("sb_lnall") ? SUI_THEME_TEXT : SUI_THEME_MUTED, 1);
+			if (sui_is_released("sb_lnall"))
+				rec_sb_lnall = TRUE;
+		}
 
 		// A local time is divided by THIS map's server tick; an online row
 		// carries the rate it was set at, which is what surfd ranked it by.
@@ -2798,7 +3165,6 @@ void(vector scr) Scores_Draw =
 	yfoot = ylist + listh + ceil(pad * 0.75);
 	sui_fill([x0 + pad, ylist + listh + floor(pad * 0.3)], [w - pad * 2, 1], SUI_THEME_EDGE, 1, 0);
 	Font_Set(ui_font_ui);
-	Scores_Text([x0 + pad, yfoot], rec_sb_szhead, Scores_CountLine(), SUI_THEME_DIM, 1);
 	x = Scores_Hint(x0 + w - pad, yfoot, "tab", "close");
 	if (online)
 	{
@@ -2808,6 +3174,11 @@ void(vector scr) Scores_Draw =
 	}
 	else
 		x = Scores_Hint(x, yfoot, "click", "watch a run");
+	// Patch 635: after the hints, and cut to the room they leave.  The sentence
+	// is longer now ("... every game  (top 100 of 129 shown)") and ran under the
+	// keycaps on a small window (the review, 1024x576 and under).
+	Scores_Text([x0 + pad, yfoot], rec_sb_szhead,
+	            Chat_Fit(Scores_FootLine(), x - (x0 + pad), Font_Px(rec_sb_szhead)), SUI_THEME_DIM, 1);
 
 	// Where a run set here goes. On EVERY tab, Local included: that is where
 	// "why are my times only here" gets asked. Under the counts, not beside
@@ -2954,7 +3325,13 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 	{
 		if (scanx == K_MOUSE1 || scanx == K_MOUSE2)
 		{
-			sui_input_event(evtype, scanx, chary, devid);
+			// Patch 635: swallowed either way, but handed to the controls only while
+			// the board is PINNED.  A held board has no cursor, and a press there
+			// re-fired whichever control the cursor last rested on: the saved filter,
+			// or every line of the list (the review; the room list's rows have
+			// tested rec_sb_open for the same reason since they were made).
+			if (rec_sb_open)
+				sui_input_event(evtype, scanx, chary, devid);
 			return TRUE;
 		}
 
@@ -2995,14 +3372,14 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 			if (scanx == K_LEFTARROW)
 			{
 				if (rec_sb_tab > SB_T_ONLINE)
-					rec_sb_tab = rec_sb_tab - 1;
+					Scores_TabSet(rec_sb_tab - 1);
 				rec_sb_tabauto = FALSE;
 				return TRUE;
 			}
 			if (scanx == K_RIGHTARROW)
 			{
 				if (rec_sb_tab < SB_T_LOCAL)
-					rec_sb_tab = rec_sb_tab + 1;
+					Scores_TabSet(rec_sb_tab + 1);
 				rec_sb_tabauto = FALSE;
 				return TRUE;
 			}
@@ -3171,11 +3548,28 @@ float(string cmd) Scores_ConsoleCommand =
 		*/
 		else if (argv(1) == "tab")
 		{
-			if (argv(2) == "segmented")  rec_sb_tab = SB_T_SEGMENT;
-			else if (argv(2) == "local") rec_sb_tab = SB_T_LOCAL;
-			else if (argv(2) == "imported") rec_sb_tab = SB_T_MOMENTUM;
-			else                         rec_sb_tab = SB_T_ONLINE;
+			if (argv(2) == "segmented")  Scores_TabSet(SB_T_SEGMENT);
+			else if (argv(2) == "local") Scores_TabSet(SB_T_LOCAL);
+			else                         Scores_TabSet(SB_T_ONLINE);
+			// Patch 635: the tab is gone; the word still asks for both imports
+			// without ours (older arms type it), for this session and on no control.
+			rec_sb_imponly = (argv(2) == "imported");
 			rec_sb_tabauto = FALSE;
+		}
+		// Patch 635: the Online list's filter, as its switch and slider set it:
+		// `all` (off: every game), or `ftesurf`, `momentum`, `ksf`.
+		else if (argv(1) == "source")
+		{
+			if (argv(2) == "ftesurf")       Scores_ImpSet(TRUE, 0);
+			else if (argv(2) == "momentum") Scores_ImpSet(TRUE, 1);
+			else if (argv(2) == "ksf")      Scores_ImpSet(TRUE, 2);
+			else                            Scores_ImpSet(FALSE, cvar("sb_filter_src"));
+		}
+		else if (argv(1) == "lineall")      // the LINE heading's click
+		{
+			Scores_Refresh();
+			Scores_LineAll();
+			return TRUE;
 		}
 		// `oscroll <row>`: the online list scrolled to that row, as a wheel would
 		// -- the paging trigger reads the scroll and no config can turn a wheel.
@@ -3357,6 +3751,22 @@ void() Scores_Status =
 		shown = Online_Shows(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
 		                     Scores_TierOf(), Scores_StyleOf());
 	print(sprintf("  shows %g   room list: %g best time(s)\n", shown, pl_bn));
+	// Patch 635: what the online list holds (0 ours, 1 every game, 2 Momentum, 3 KSF,
+	// 4 both imports), the tier asked for, how many rows surfd has for it; then the
+	// footer's sentence and the first rows' names AS DRAWN (Scores_OnlineName, with
+	// the last frame's columns): an arm that read only the store passed a build
+	// that drew no source tag and the old sentence.
+	print(sprintf("  list %g  tier %s  holds %g\n", Scores_ImpState(), Scores_TierOf(),
+	              Scores_ImpTotal()));
+	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
+		print(sprintf("  foot \"%s\"\n", Scores_FootLine()));
+	if (shown)
+	{
+		Font_Set(ui_font_ui);
+		for (i = 0; i < ob_n && i < 12; i = i + 1)
+			print(sprintf("  drawn %g \"%s\"\n", i, Scores_OnlineName(i)));
+		Font_Reset();
+	}
 	print(sprintf("  follow %g leg %g/%g ticks %g  seek %g wait %g  rank %g\n",
 	              rec_sb_finpend, rec_sb_fintrack, rec_sb_finleg, rec_sb_finticks,
 	              rec_sb_seek, rec_sb_finwait, rec_sb_finrank));
@@ -3453,6 +3863,10 @@ void() Scores_RegisterCvars =
 	registercommand("scores");
 	// Patch 437: the harness handle, mirrored per frame below.
 	registercvar("sb_ln_lineleg", "0");
+	// Patch 635: the Online list's filter switch and its slider's stop (0 FTESurf,
+	// 1 Momentum, 2 KSF).  Saved: a switch is a setting, a tab a place.
+	registercvar("sb_filter", "0", CVAR_ARCHIVE);
+	registercvar("sb_filter_src", "0", CVAR_ARCHIVE);
 	registercvar("ui_native_scores", "0", CVAR_ARCHIVE);
 	registercvar("ui_native_scores_font", "13", CVAR_ARCHIVE);
 

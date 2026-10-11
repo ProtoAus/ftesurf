@@ -5,6 +5,36 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## The TAB board's filter and LINE heading: what Patch 635 left -- 2026-10-11
+
+- **Under about 760 px of window the board is clipped sooner than before.** The
+  header's floor (`cl_scores.qc:Scores_Draw`, `floorw`) now holds the switch
+  and the slider: at the smallest type it needs about 757 px of window where
+  the four chips needed about 600. From the code's arithmetic; 640x480 was not
+  run (1024x576 was, at hud_scale 1 to 4). Falsifier: `vid_width 640`, `scores
+  open`, `hud_edit ui`: the `sb_*` rects against the panel's.
+- **A finish can follow to a list that has no row of ours.** With the filter
+  on Momentum or KSF, `Scores_ApplyFollow` still lands on Online; the pinned
+  `FTESurf #N` row is what says where the run went. By the code: not run.
+  Falsifier: `scores source ksf`, then the Patch 357 hooks (`scores note 0 0
+  <ticks> 0`, `scores landed`) on a server whose `board` key is `ranked`.
+- **The LINE heading unticks before it completes.** With one row of the list
+  ticked a click unticks that one; a second click ticks from the top. It
+  unticks only rows of the list on screen: a line ticked on another leg, tab
+  or filter keeps its slot, and with all eight held that way the heading says
+  so and ticks none (measured). `scores lines clear` drops them all.
+- **The native table has no switch, slider or LINE heading** (`ui_native_scores
+  1` draws its own header): `scores source` and `scores lineall` only. Not run
+  with this patch; its rows are the same store.
+- **The room list at hud_scale 4 draws "you" under the ping** (1600x900 and
+  1024x576). Seen on both cuts of this patch, whose only change to the room
+  list is its board request; the build before was not looked at.
+- **Not measured:** a drag of the slider's knob (the arm presses the stops); a
+  ticked Online line downloading (the arm's surfd holds no recordings, so its
+  two lines fail to fetch by design); the twenty older arms given `sb_filter
+  1` (read, not rerun); names outside Latin in the cut; the owner's own window
+  size and notify settings.
+
 ## Run lines by time: what Patch 632 left -- 2026-10-11
 
 From its one review; measured there unless said.
@@ -3190,11 +3220,13 @@ lextest.md. Left open, none of it a wrong action:
     bar between the plots are lextest items.
 - **The board on a small window.** It never draws under the room list while
   anything else can give: type steps, then columns, then a narrower list. Past
-  that (under about 790 px wide at hud_scale 2, wider with the Imported tab or
-  a larger hud_scale) it shrinks its type toward 8 px; under about 600 px even
-  that does not fit, the table's last columns clip and the room list docks over
-  the board. The fit depends on the tab count, so the Imported tab appearing
-  can move it one step. Only 640x480 was looked at down there. In the docked
+  that (under about 790 px wide at hud_scale 2, wider with a larger hud_scale)
+  it shrinks its type toward 8 px; under about 600 px even that does not fit,
+  the table's last columns clip and the room list docks over the board. (Patch
+  635 left three tabs on every map, so the fit no longer moves with the tab
+  count, and put Online's filter switch and slider in the header: the 600 px
+  is about 760 now, by arithmetic; the entry at the top.) Only 640x480 was
+  looked at down there, before that patch. In the docked
   state clicks in the list's gaps and on your own row still fall through to the
   board rows under it (the dock's old behaviour, now rare), and under about 450
   px the filter chips reach the source tabs.

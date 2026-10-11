@@ -2898,7 +2898,10 @@ See `tools/OFFRAMP_CONTACT.md`; private diagnostic builds NEVER ship.
 
 ## Imported runs: Momentum Mod and KSF
 
-- Patch 536 removes the misleading imported-board Compare chip and its
+- (Patch 635 has since taken the Imported tab out: the Online list asks for
+  the combined tier unless its filter is on. "The TAB board: every game by
+  default".)
+  Patch 536 removes the misleading imported-board Compare chip and its
   rec_sb_mixboth state. Scores_TierOf returns imported for the imported tab,
   ranked for native; no silent interleaving. Combined read API/database rules
   remain intact and this is not a live/frame comparator. Private
@@ -4620,6 +4623,74 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   mixer entirely, so there is nothing to analyse there.
 
 ## Pitfalls discovered the hard way
+
+### The TAB board: every game by default, a filter switch and slider, the LINE heading (Patch 635) — 2026-10-11
+
+- THE ONLINE LIST IS EVERY GAME'S UNLESS FILTERED (the owner, 11 Oct: "show all
+  combined, and then the filter on the right, to be like a slider, with a
+  filter toggle switch"). `cl_scores.qc:Scores_ImpState` is the one mapping and
+  `Scores_TierOf` the wire word: 1 the merged list (`combined`, surfd's own
+  merge, each row's tier in `tr`), the default; 0, 2 and 3 one game (`ranked`,
+  `momentum`, `ksf`: no `tr`, so `Online_RowSrc` falls back to the board's
+  tier); 4 both imports without ours (`imported`). Segmented is always ours: an
+  imported run is clean. The Imported tab is gone.
+- SAVED AS `sb_filter` (the switch) AND `sb_filter_src` (the stop: 0 FTESurf, 1
+  Momentum, 2 KSF), archived, written with `cvar_set` in the frame of the
+  click. Off, the slider waits dim on its stop; a press on a stop turns the
+  filter on there. Console: `scores source all|ftesurf|momentum|ksf`. State 4
+  is `scores tab imported`, a session global on no control (`rec_sb_imponly`)
+  that every tab change clears (`Scores_TabSet`); p474page, p545mom and
+  p603http type it.
+- AN ARM THAT OPENS THE BOARD NOW GETS THE MERGED LIST. Twenty older cfgs and
+  tools were given `set sb_filter 1` / `set sb_filter_src 0` (ours alone, the
+  board they were written against): read, not rerun. A new arm that wants the
+  ranked board pins the same two.
+- THE ROOM LIST ASKS FOR ITS OWN BOARD (`cl_players.qc:Players_Ask`,
+  `Players_BoardReply`). It read the Online tab's store when that held (main,
+  ranked, clean), which is now the exception; it still does when it can. One
+  request a map and board generation, `OB_RETRY_SECS` after a failure.
+- "MY ROW" IS OUR ROW. One account can hold a ranked time and an imported one:
+  `Online_FindMine` prefers the ranked row, and the finish seek goes only to
+  it. When a merged list does not hold it (past the page of 100) the row
+  pinned under the list says `<name>   FTESurf #<rank>` and draws no rank
+  cell: the `#` column there counts every game. Measured through a
+  server-side seam in a scratch tree (a listen server's client has no
+  account): the first cut took row 1 of 71, the same account's KSF time, this
+  takes row 65.
+- A HELD BOARD TAKES NO CLICK. `Scores_InputEvent` still swallows mouse1 but
+  hands it to the controls only while pinned: held, it re-fired whichever
+  control the cursor last rested on.
+- THE LINE HEADING (`sb_lnall`, `scores lineall`, `Scores_LineAll`): with any
+  row of the list on screen ticked it unticks those; with none it ticks from
+  the top the rows with a recording here or on surfd, until the eight slots
+  are full. One sentence says what it did, on the console and in the footer
+  for four seconds (`Scores_Note`). A Momentum row that still says "Get demo"
+  is left to its own box: eight of those from one click is eight jobs on a
+  queue that fetches six demos a run.
+- NAMES AND THE FOOTER ARE CUT TO THEIR ROOM (`Chat_Fit`): a tagged name ran
+  into the time and changed how it read, and the count ran under the key
+  hints. The slider's stops are spaced from `stringwidth` of the labels, which
+  stop at 12 px while `rec_sb_cw` shrinks with the rows; on the 8 px board the
+  slider takes its own height (`Scores_FilterDraw`), or the knob sits on the
+  word. That one was found in a frame at 1024x576, hud_scale 1, not by a check.
+- THE ARM RUNS THE REAL surfd. `tools/p635board.py --output-dir <owned dir>`
+  starts this checkout's surfd in a thread (port 27634, a scratch database:
+  main two ranked, three Momentum, four KSF, so a total read from the wrong
+  count is a different number; bonus 1 ranked only; bonus 2 130 rows), puts
+  ten Local recordings in the overlay and grades 52 checks from `scores
+  status`, which prints the footer's sentence and the first rows' names AS
+  DRAWN. A build with seven faults planted fails the ten checks for them and
+  no other. `runlines_smoke.py --put` takes plain paths under `data/` only: the
+  first cut's could reach the install through the overlay's junctions.
+- A CHECK THAT LOOKS FOR A REQUEST AMONG "THE FIRST THREE" COUNTS THE NEXT
+  STEP'S. The room list's request was graded that way and passed the build
+  that never made it: the FTESurf stop's click asks for the same board. It is
+  graded by the room list's own count (`room list: N best time(s)`).
+- IN A CFG, THE MARKER GOES BEFORE THE CLICK, and before any `scores <word>`
+  whose shared tail prints the status: a click prints on the next frame, and a
+  grader that takes "the last board print of the section" took a later
+  command's three times here (`scores open` after the held board was the
+  third).
 
 ### Run lines: a colour for your line, one for the others, a fourth Labels state (Patch 632) — 2026-10-11
 

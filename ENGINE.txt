@@ -26,6 +26,16 @@ commit   c543d688ad16a871753fa9525c23487f437741a5
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-625
 patch    636
+# Patch 635: the TAB board, from the owner's list of 11 Oct. The Online list is every
+# game's by default: FTESurf, Momentum and KSF times in time order, each imported row
+# marked with its source. Right of the tabs a filter switch and a three-stop slider
+# (FTESurf, Momentum, KSF) narrow it to one game (sb_filter, sb_filter_src; surfd's
+# combined, ranked, momentum and ksf tiers, which it already served). The Imported tab is
+# gone. A click on the LINE heading ticks the lines of the list on screen from the top, up
+# to the eight slots, or unticks them. The room list asks for its own ranked board, and a
+# board that is only held takes no click.
+# csprogs only: no engine source, server QC, surfd, recorder, evidence, ranking, default
+# or Build change (commit and tag above stay).
 # Patch 636: the site shows one person across every game. A map's board is every
 # game's times with a filter per game; a player page links to their Steam, Momentum
 # Mod and KSF profiles and lists, per difficulty tier, the maps they have and have

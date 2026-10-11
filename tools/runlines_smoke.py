@@ -29,6 +29,9 @@ def main():
                     help='copy a control recording into the overlay, never alter its source')
     ap.add_argument('--also', action='append', default=[], metavar='NAME=PATH',
                     help='another recording, copied to cfg/test/NAME in the overlay')
+    ap.add_argument('--put', action='append', default=[], metavar='REL=PATH',
+                    help='a file copied to REL under the overlay\'s game directory, e.g. '
+                         'data/runs/<map>/main/0004000_run.rec: a Local board row')
     ap.add_argument('--mount', action='store_true',
                     help='mount the default list of other games (fs_addons.default.txt), so a map that '
                          'lives in one of them loads; an overlay has no fs_addons.txt of its own')
@@ -83,6 +86,30 @@ def main():
                 raise ValueError('--also wants NAME=PATH, NAME a bare file name: %s' % pair)
             target = gd / 'cfg/test' / name
             target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+        for pair in a.put:
+            # ONLY under the overlay's own data/, spelled exactly.  The content folders
+            # beside it are JUNCTIONS into the install, and Windows finds a folder under
+            # any case, a trailing dot or its short name: `Maps/x`, `maps./x` and
+            # `PARTIC~1/x` all wrote through one into the install's copy (the review of
+            # Patch 635, on a fake install).  So a list of names to refuse is not a guard:
+            # one name is allowed, and no component on the way may be a link.
+            rel, _, source = pair.partition('=')
+            parts = pathlib.PurePosixPath(rel).parts
+            if (not source or len(parts) < 2 or parts[0] != 'data'
+                    or any(p in ('.', '..') or p != p.strip(' .') or set(p) & set(':\\~*?"<>|')
+                           for p in parts)):
+                raise ValueError('--put wants REL=PATH with REL under data/ in the game '
+                                 'directory, plain names only: %s' % pair)
+            walk = gd
+            for part in parts[:-1]:
+                walk = walk / part
+                if walk.exists() and (walk.is_symlink() or walk.lstat().st_file_attributes & 0x400):
+                    raise ValueError('--put: %s is a link, not a folder of this overlay' % walk)
+            target = gd.joinpath(*parts)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if target.is_dir():
+                raise ValueError('--put: %s is a directory' % target)
             shutil.copyfile(source, target)
         cfg = a.cfg if a.cfg.is_absolute() else ROOT / a.cfg
         target = gd / 'cfg/test/runlines_smoke.cfg'

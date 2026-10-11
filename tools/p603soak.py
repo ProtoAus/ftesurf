@@ -42,7 +42,7 @@ def warm(cycles):
 
 
 def config(arm, port, cycles, hold, sets=(), waits=(400, 200, 200)):
-    lines = ['cfg_save_auto 0', *(f'set {k} {v}' for k, v in sets), 'set log_enable 1', 'set log_dir logs', 'set log_name perf', 'set log_readable 1',
+    lines = ['cfg_save_auto 0', 'set sb_filter 1', 'set sb_filter_src 0', *(f'set {k} {v}' for k, v in sets), 'set log_enable 1', 'set log_dir logs', 'set log_name perf', 'set log_readable 1',
              'set cl_idlefps 0', 'set cl_maxfps 100', 'set vid_vsync 0', 'set r_speeds 2',
              'set pr_enable_profiling 0', 'set vid_conautoscale 0', 'set vid_conwidth 1920',
              'set vid_conheight 1080', 'set hud_scale 2', 'set gl_conback 0', 'set scr_conalpha 0',

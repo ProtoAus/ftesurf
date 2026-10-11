@@ -147,7 +147,7 @@ def config(a, size, port, http_port, native):
     def shot(name, wait=600):
         return [f'waitms {wait}', 'screenshot ' + name, 'waitms 250']
 
-    lines = ['cfg_save_auto 0', 'log_enable 1', 'log_dir logs', 'log_name gallery',
+    lines = ['cfg_save_auto 0', 'set sb_filter 1', 'set sb_filter_src 0', 'log_enable 1', 'log_dir logs', 'log_name gallery',
              'con_notifytime 0', 'con_notifylines 0', 'developer 0', 'cl_idlefps 0',
              'cl_maxfps 100', 'vid_vsync 0', 'scr_consize 0', 'set fs_missingwarn 0',
              'r_fullbright 1',

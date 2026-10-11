@@ -165,8 +165,9 @@ void(float id, float row, float type, float value, string label) Scores_NativeCe
 
 string() Scores_NativeContext =
 {
-	return sprintf("%s|%g|%g|%g|%g", rec_sb_legmap, rec_sb_leg, rec_sb_tab,
-		rec_sb_filter, Scores_IsOnline() ? 0 : rec_sb_rowgen);
+	//Patch 635: and which list Online holds (its filter), once a tab's own.
+	return sprintf("%s|%g|%g|%g|%g|%g", rec_sb_legmap, rec_sb_leg, rec_sb_tab,
+		rec_sb_filter, Scores_IsOnline() ? 0 : rec_sb_rowgen, Scores_ImpState());
 };
 
 string(float row) Scores_NativeKey =
@@ -380,7 +381,8 @@ float(vector p, vector sz) Scores_NativeDraw =
 		if (!Online_Shows(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
 			Scores_TierOf(), Scores_StyleOf())) { Scores_NativeClose(); return FALSE; }
 	}
-	context = sprintf("%s|%g|%g|%g", rec_sb_legmap, rec_sb_leg, rec_sb_tab, rec_sb_filter);
+	context = sprintf("%s|%g|%g|%g|%g", rec_sb_legmap, rec_sb_leg, rec_sb_tab, rec_sb_filter,
+		Scores_ImpState());
 	if (strcmp(context, scn_context) != 0)
 	{
 		if (strcmp(scn_context, "")) strunzone(scn_context);
@@ -415,12 +417,15 @@ float(vector p, vector sz) Scores_NativeDraw =
 		if (n > 0)
 		if (Scores_OnlineSeekReady())
 		{
-			if (ob_mine >= 0) scn_page = floor(ob_mine / scn_pagesize) * scn_pagesize;
+			//Patch 635: the run's own row (a merged list holds the account's imports too).
+			if (ob_mine >= 0)
+				if (Online_RowSrc(ob_mine) == OB_SRC_OURS)
+					scn_page = floor(ob_mine / scn_pagesize) * scn_pagesize;
 			seekdone = TRUE;
 		}
 		if (Scores_StandingOutside())
 		{
-			standing = sprintf("Your standing #%g", rec_sb_finrank);
+			standing = sprintf((Scores_ImpState() == SB_IMP_OFF) ? "Your standing #%g" : "Your FTESurf standing #%g", rec_sb_finrank);
 			if (rec_sb_finbest > 0) standing = strcat(standing, "  ", Time_MsString((int)rec_sb_finbest));
 			standing = strcat(standing, "  ", getplayerkeyvalue(player_localnum, "name"));
 		}

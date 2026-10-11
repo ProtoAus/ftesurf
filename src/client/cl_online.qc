@@ -143,6 +143,8 @@ void() Players_AbsorbBoard;
 // cl_zonedl.qc, which compiles after this file because it needs Online_NextReq.
 // Returns TRUE when the reply was one of its own -- see URI_Get_Callback.
 float(float reqid, float code, string bdy) ZoneDL_Reply;
+// Patch 635, cl_players.qc: the room list's own request, answered the same way.
+float(float reqid, float code, string bdy) Players_BoardReply;
 
 float  ob_state;
 float  ob_req;             // uri request id in flight; 0 = none
@@ -289,7 +291,8 @@ void() Online_Alloc =
 // report the other tier without asking for it.
 float  ob_cnt_ranked;
 float  ob_cnt_community;
-float  ob_cnt_imported;   // every imported tier's rows summed; 0 hides the tab
+float  ob_cnt_imported;   // every imported tier's rows summed; 0 hides the switch
+float  ob_cnt_mom, ob_cnt_ksf;  // Patch 635: each source's own, for the footer's total
 
 /*
   PAGING.  A later page is its own request with its own id and never touches
@@ -535,18 +538,47 @@ void(float i, float row) Online_RowSet =
 	bufstr_set(ob_bplayer, i, json_get_string(json_find_object_child(row, "player")));
 };
 
-// The local player's row among slots [from, to), or -1.
+// Row i's source: its own on a merged board (`tr`), else the board's tier.
+float(float i) Online_RowSrc =
+{
+	if (i < 0 || i >= ob_n)
+		return OB_SRC_OURS;
+	if (ob_src[i] != OB_SRC_OURS)
+		return ob_src[i];
+	if (ob_have_tier == OB_TIER_MOM)
+		return OB_SRC_MOM;
+	if (ob_have_tier == OB_TIER_KSF)
+		return OB_SRC_KSF;
+	return OB_SRC_OURS;
+};
+
+/*
+  The local player's row among slots [from, to), or -1.
+
+  Patch 635: OURS FIRST.  A linked account's ranked rows and its Momentum and KSF
+  rows are filed under one SteamID64, so on a merged board the first match by
+  time can be the account's KSF time: the review seeded that, and a finish
+  seeked to and lit row 1 with the run just set at row 65.  An imported row is
+  the answer only where no row of ours is held.
+*/
 float(float from, float to) Online_FindMine =
 {
-	local float i;
+	local float i, imp;
 	local string s;
 
 	s = getplayerkeyvalue(player_localnum, "*phash");
-	if (s != "")
-		for (i = from; i < to; i = i + 1)
-			if (!strcmp(FS_GuidId(bufstr_get(ob_bplayer, i)), s))
+	if (s == "")
+		return -1;
+	imp = -1;
+	for (i = from; i < to; i = i + 1)
+		if (!strcmp(FS_GuidId(bufstr_get(ob_bplayer, i)), s))
+		{
+			if (Online_RowSrc(i) == OB_SRC_OURS)
 				return i;
-	return -1;
+			if (imp < 0)
+				imp = i;
+		}
+	return imp;
 };
 
 /*
@@ -597,6 +629,8 @@ void(string body) Online_Parse =
 	// the number deciding whether to draw it should not be an addition this
 	// side has to remember to redo when a third source lands.
 	ob_cnt_imported  = json_get_float(json_find_object_child(counts, "imported"));
+	ob_cnt_mom       = json_get_float(json_find_object_child(counts, OB_TIER_MOM));
+	ob_cnt_ksf       = json_get_float(json_find_object_child(counts, OB_TIER_KSF));
 
 	// The reply's own clock, which the age column is measured against.
 	ob_t = json_get_float(json_find_object_child(root, "t"));
@@ -723,8 +757,16 @@ void(float code, string body) Online_ParseMore =
 			n = ob_more_lim;
 		for (i = 0; i < n; i = i + 1)
 			Online_RowSet(ob_n + i, json_get_child_at_index(rows, i));
+		// A row of ours on this page takes over from an imported one held before it.
 		if (ob_mine < 0)
 			ob_mine = Online_FindMine(ob_n, ob_n + n);
+		else if (Online_RowSrc(ob_mine) != OB_SRC_OURS)
+		{
+			i = Online_FindMine(ob_n, ob_n + n);
+			if (i >= 0)
+			if (Online_RowSrc(i) == OB_SRC_OURS)
+				ob_mine = i;
+		}
 		ob_n = ob_n + n;
 		// Not Players_AbsorbBoard: the room list wants the first page's best
 		// times, and it rescans every row held on each call.
@@ -1448,6 +1490,9 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 	// before the board test for the same reason the replay branch does -- the
 	// board test below is a bare inequality and would swallow anything left.
 	if (ZoneDL_Reply(reqid, responsecode, resourcebody))
+		return;
+	// Patch 635: and the room list's own board (cl_players.qc), the same way.
+	if (Players_BoardReply(reqid, responsecode, resourcebody))
 		return;
 
 	if (ob_more_req)

@@ -77,7 +77,7 @@ def config(a, size, port, http_port, native):
 
     def pmark(name, wait=350):          # ...with the plugin's own counters beside the panel's
         return mark(name, wait) + (['ui_imgui_status'] if loaded else [])
-    lines = ['cfg_save_auto 0', 'log_enable 1', 'log_dir logs', 'log_name gallery',
+    lines = ['cfg_save_auto 0', 'set sb_filter 1', 'set sb_filter_src 0', 'log_enable 1', 'log_dir logs', 'log_name gallery',
              'con_notifytime 0', 'con_notifylines 0', 'developer 0', 'cl_idlefps 0',
              f'cl_maxfps {0 if arm == "cost" else 250}', 'vid_vsync 0', 'scr_consize 0', 'set fs_missingwarn 0',
              'r_fullbright 1', 'vid_srgb 0', 'v_gamma 1', 'v_contrast 1', 'v_brightness 0',

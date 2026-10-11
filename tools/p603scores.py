@@ -58,7 +58,7 @@ def compile_client(rig):
 def config(arm, port):
     width, height = (960, 540) if arm == 'native2' else (1920, 1080)
     scale = 1.5 if arm == 'native2' else 3
-    lines = ['cfg_save_auto 0', 'log_enable 1', 'log_dir logs', 'log_name scores',
+    lines = ['cfg_save_auto 0', 'set sb_filter 1', 'set sb_filter_src 0', 'log_enable 1', 'log_dir logs', 'log_name scores',
              'con_notifytime 0', 'con_notifylines 0', 'developer 0', 'cl_idlefps 0',
              'cl_maxfps 100', 'vid_vsync 0', 'vid_fullscreen 0', 'vid_winmaximize 0',
              'vid_width 1920', 'vid_height 1080', 'vid_conautoscale 0',
