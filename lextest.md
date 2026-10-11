@@ -11,6 +11,32 @@ to be wrong.
 
 ---
 
+## 00. 12 Oct — up to sixty-four run lines (Patch 649)
+
+From your message: eight was the most you could tick, your injectable drew
+fifty. You can tick sixty-four now. Clicking the LINE heading on the board
+ticks every row in the list that has a recording, up to that many.
+- **What it costs, measured on this laptop:** sixty-four lines add 1.9 ms to a
+  frame. Eight used to add 3.3 before yesterday's engine change, and add 0.8
+  now.
+- **The first eight you tick are the detailed ones:** marks and numbers on
+  them, and the lines in the first eight places have their names and are in
+  the run graph. Lines nine and up are drawn as plain lines. With marks on all
+  sixty-four the marks alone cost more than the lines, and fifty lines of
+  them cover the view. `hud_lines_marked 64` in the console puts marks on
+  every line if you want to see it.
+- **Ticking many online rows takes time:** the server allows twenty recordings
+  a minute per player, so a list nobody has downloaded before fills in at
+  about one line every four seconds (four minutes for sixty-four). A box shows
+  an amber square while its line waits. Rows you have watched or ticked before
+  are instant. I worked this pace out from the server's settings; I did not
+  tick sixty-four fresh rows against the live server.
+- **A run longer than about two minutes** is drawn with less detail when it is
+  in places nine and up (it is thinned to fit); the first eight keep it all.
+- **Yours to look at:** surf with a full list ticked. I measured with the
+  camera on a replay and a short walk; I have not measured a real run at
+  speed beside sixty-four lines.
+
 ## 00. 11 Oct — release 0.1.24 is on proto.bar/ftesurf
 
 You asked for a release "so players can test". It is out, Windows and Linux,

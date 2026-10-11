@@ -26,6 +26,14 @@ commit   65bf6f4640fa17ac2c3cb79d7725226e55ce645b
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-645
 patch    650
+# Patch 649: sixty-four run lines can be ticked where eight could. The first eight ticked
+# carry marks and numbers (hud_lines_marked); the lines in places 1..8 have names and are
+# in the run graph; the rest are lines. A line in places 9..64 holds 8192 samples and a
+# longer run is thinned to fit. Sixty-four lines add 1.9 ms to a frame's QC, less than
+# eight did before Patch 645. Downloads for ticked online rows are paced to the server's
+# twenty a minute, and a live run no longer repaints every ticked line four times a second.
+# csprogs only: no engine source, server QC, surfd, recorder, evidence, ranking, default
+# or Build change (commit and tag above stay).
 # Patch 645: run lines, their marks and the HUD graph's curves are drawn by the engine
 # (six CSQC builtins, engine/client/pr_csqc_lines.inc) where QC built every segment. The
 # picture is the same, pixel for pixel, and eight ticked lines add 0.9 ms to a frame's

@@ -5,6 +5,36 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Sixty-four run lines: what Patch 649 left -- 2026-10-12
+
+- **Names and the run graph are places 1..8, whatever is ticked.** Marks go
+  to the first eight DRAWN, but `cl_linegraph.qc` is eleven slots: untick the
+  first eight of twenty and the twelve left have marks on eight, names and
+  graph on none, until a row is ticked again (it takes the lowest free place).
+  The cure is a map from graph place to slot there, or moving a line down.
+- **Not measured: the downloads against the live limiter.** The pacing is
+  read from surfd's source and the Pi's nginx file and modelled; no rig ticked
+  sixty-four uncached online rows. A watch click in the same minute shares
+  the server's twenty. Falsifier: an empty cache, a list of thirty or more
+  replays, the LINE heading, count the "asked for a pause" lines (none
+  expected) and the red boxes.
+- **Not measured at frame rate: a live run beside sixty-four lines.** The arm
+  counts repaints (none) during a walk with eight lines; the cost tables are
+  1.25 s averages under a paused camera. A colouring by speed still repaints
+  every line coloured that way when the live run's speed range grows.
+- **The tables are 68.9 MiB, made at the first line of each map** (the first
+  run start, with the trail on): 17 and 23 ms in two rig runs here, one
+  frame's hitch (`lines native` prints it). The marks' tables are 12.6 MiB of
+  it, 10.5 for lines that carry none by default.
+- **A run over about two minutes loses detail in places 9..64**: thinned to
+  half, then to a quarter, until it fits 8192 samples. Marks are kept; two
+  teleports inside one kept step draw as one. The store was read back (one
+  18,252-sample run, 4,563 kept); a thinned line's PICTURE was not graded.
+- **The 645 arm's `demo0` view can read "not measured"** while the owner moves
+  the mouse over the rig's window (the replay bar's close button lights).
+- **Sixty-four whole lines (`hud_lines_order 0`) add 4.5 ms**, and labels on
+  the first eight another 1.4. What is left is QC a line and a mark.
+
 ## Run lines drawn by the engine: what Patch 645 left -- 2026-10-11
 
 - **Eight lines at most, and each still costs QC.** Per frame, eight lines in

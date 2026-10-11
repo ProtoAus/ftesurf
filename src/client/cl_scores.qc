@@ -1193,7 +1193,7 @@ float(string id, vector pos, vector sz, string label, float on) Scores_Chip =
   of its run (Patch 395) draws only that stage.
 ===========================================================================
 */
-#define SB_LNMAX   8
+#define SB_LNMAX   64                 // Patch 649: board line i is slot LN_BOARDSLOT(i) (cl_lines.qc)
 #define SBL_FREE   0
 #define SBL_FETCH  1                  // waiting for its download
 #define SBL_QUEUE  2                  // the file is here, waiting for the builder
@@ -1201,12 +1201,12 @@ float(string id, vector pos, vector sz, string label, float on) Scores_Chip =
 #define SBL_ON     4
 #define SBL_FAIL   5
 
-string sb_ln_key[SB_LNMAX];           // strzoned; "l:<path>" or "r<rep>:<leg>"
-string sb_ln_path[SB_LNMAX];          // strzoned; an online one's once it is cached
-string sb_ln_hint[SB_LNMAX];          // strzoned; an online one's cache folder
-float  sb_ln_rep[SB_LNMAX];
-float  sb_ln_leg[SB_LNMAX];
-float  sb_ln_st[SB_LNMAX];
+string *sb_ln_key;           // strzoned; "l:<path>" or "r<rep>:<leg>"
+string *sb_ln_path;          // strzoned; an online one's once it is cached
+string *sb_ln_hint;          // strzoned; an online one's cache folder
+float  *sb_ln_rep;
+float  *sb_ln_leg;
+float  *sb_ln_st;
 /*
   Patch 437: a line's leg, added to the row's.  The board passes 0 for every LOCAL
   row (a local board has no leg column to derive one from), so a stage window is
@@ -1218,10 +1218,25 @@ float  sb_ln_st[SB_LNMAX];
 float  sb_ln_llegread;           // Patch 437: the handle, mirrored per frame below
 #define SBL_MOM 6
 float sb_ln_momfetch;
-float sb_ln_momsent[SB_LNMAX], sb_ln_momdue[SB_LNMAX];
-string sb_ln_get[SB_LNMAX], sb_ln_name[SB_LNMAX];
-string sb_ln_who[SB_LNMAX];           // Patch 640: the row's picture mark (ob_bwho), or null
+float *sb_ln_momsent;
+float *sb_ln_momdue;
+string *sb_ln_get;
+string *sb_ln_name;
+string *sb_ln_who;           // Patch 640: the row's picture mark (ob_bwho), or null
 float  sb_ln_fetch;                   // the line the replay fetch is for, + 1
+/*
+  Patch 649: THE DOWNLOADS ARE PACED TO THE SERVER'S LIMIT.  One address gets twenty
+  recordings a minute (surfd REPLAY_RATE_MAX; nginx 20r/m, burst 5: read off the Pi
+  on 11 Oct), a refusal is a 429, and a 429 used to be the line's end.  Eight ticks
+  rarely met it; the LINE heading can now ask for sixty-four.  So a line's download
+  spends a token: three to start with, one more every four seconds (fifteen a
+  minute, which leaves a watch its own), and a 429 empties them and puts the line
+  back in the queue, four times before it is given up.
+*/
+#define SBL_BURST  3
+#define SBL_EVERY  4
+float  sb_ln_tok, sb_ln_tokt;
+float  *sb_ln_try;                    // 429s this line has been through
 float  rec_sb_lnpick;                 // a row's box clicked this frame, row + 1
 
 // The current tab's row as a line key, "" when nothing is behind it.
@@ -1256,7 +1271,7 @@ float(string key) Scores_LineFind =
 void(float i) Scores_LineFree =
 {
 	if (wt_lj_phase)
-	if (wt_lj_slot == i + 1)
+	if (wt_lj_slot == LN_BOARDSLOT(i))
 		Watch_LineJobStop();
 	if (sb_ln_fetch == i + 1)
 		sb_ln_fetch = 0;
@@ -1269,8 +1284,8 @@ void(float i) Scores_LineFree =
 	if (sb_ln_name[i]) strunzone(sb_ln_name[i]);
 	if (sb_ln_who[i]) strunzone(sb_ln_who[i]);
 	sb_ln_get[i] = sb_ln_name[i] = sb_ln_who[i] = __NULL__;
-	sb_ln_momsent[i] = sb_ln_momdue[i] = 0;
-	Line_Clear(i + 1);
+	sb_ln_momsent[i] = sb_ln_momdue[i] = sb_ln_try[i] = 0;
+	Line_Clear(LN_BOARDSLOT(i));
 	if (sb_ln_key[i])  strunzone(sb_ln_key[i]);
 	if (sb_ln_path[i]) strunzone(sb_ln_path[i]);
 	if (sb_ln_hint[i]) strunzone(sb_ln_hint[i]);
@@ -1358,8 +1373,11 @@ float(float row) Scores_LineAllRow =
   Patch 635: THE LINE HEADING, one click for the list on screen.  With any of its
   rows ticked it unticks those; with none it ticks from the top, the rows
   Scores_LineAllRow passes, until the SB_LNMAX slots are full.  A Momentum row
-  that still has to be requested ("Get demo") is left to its own box: eight of
-  those from one click is eight jobs on a queue that fetches six demos a run.
+  that still has to be requested ("Get demo") is left to its own box: a click's
+  worth of those is that many jobs on a queue that fetches six demos a run.
+  Patch 649: the slots are sixty-four, so one click can ask surfd for sixty-four
+  recordings; they come at the server's pace (the block over sb_ln_tok), about
+  four minutes for a list nobody has cached.
 */
 void() Scores_LineAll =
 {
@@ -1439,6 +1457,8 @@ void() Scores_LinesFrame =
 	// the call site because a line job is queued from this frame and the value has
 	// to be the one asked for, not one a previous frame latched.
 	sb_ln_llegread = cvar("sb_ln_lineleg");
+	sb_ln_tok = min(SBL_BURST, sb_ln_tok + (cltime - sb_ln_tokt) / SBL_EVERY);
+	sb_ln_tokt = cltime;
 	Online_MomPoll();
 	if (sb_ln_momfetch)
 	{
@@ -1481,17 +1501,17 @@ void() Scores_LinesFrame =
 		k = Watch_LineJobStep();
 		if (k)
 		{
-			i = wt_lj_slot - 1;
+			i = LN_BOARDINDEX(wt_lj_slot);
 			sb_ln_st[i] = (k > 0) ? SBL_ON : SBL_FAIL;
 			print(sprintf("scores: line %g %s (%g points, %g teleports)\n", i + 1,
-			              (k > 0) ? "drawn" : "failed", ln_n[i + 1], ln_bkn[i + 1]));
+			              (k > 0) ? "drawn" : "failed", ln_n[LN_BOARDSLOT(i)], ln_bkn[LN_BOARDSLOT(i)]));
 		}
 	}
 	else
 		for (i = 0; i < SB_LNMAX; i = i + 1)
 			if (sb_ln_st[i] == SBL_QUEUE)
 			{
-				sb_ln_st[i] = Watch_LineJobStart(i + 1, sb_ln_path[i],
+				sb_ln_st[i] = Watch_LineJobStart(LN_BOARDSLOT(i), sb_ln_path[i],
 			                                 sb_ln_leg[i] + sb_ln_llegread)
 				              ? SBL_BUILD : SBL_FAIL;
 				break;
@@ -1513,10 +1533,22 @@ void() Scores_LinesFrame =
 		}
 		else if (Online_ReplayState() != ORS_FETCH)
 		{
-			sb_ln_st[i] = SBL_FAIL;
 			sb_ln_fetch = 0;
-			print(sprintf("^3scores:^7 line %g: the download failed (%g).\n", i + 1,
-			              Online_ReplayCode()));
+			if (Online_ReplayCode() == 429 && sb_ln_try[i] < 4)
+			{
+				// The server's limiter, not this line: wait twelve seconds and ask again.
+				sb_ln_try[i] = sb_ln_try[i] + 1;
+				sb_ln_st[i] = SBL_FETCH;
+				sb_ln_tok = -2;
+				print(sprintf("scores: line %g: the server asked for a pause (try %g of 4)\n",
+				              i + 1, sb_ln_try[i]));
+			}
+			else
+			{
+				sb_ln_st[i] = SBL_FAIL;
+				print(sprintf("^3scores:^7 line %g: the download failed (%g).\n", i + 1,
+				              Online_ReplayCode()));
+			}
 			if (!rec_sb_wantrep)
 				Online_ReplayClear();
 		}
@@ -1524,9 +1556,12 @@ void() Scores_LinesFrame =
 	}
 	if (rec_sb_wantrep || Online_ReplayState() == ORS_FETCH)
 		return;
+	if (sb_ln_tok < 1)
+		return;                             // Patch 649: no token yet (the block over sb_ln_tok)
 	for (i = 0; i < SB_LNMAX; i = i + 1)
 		if (sb_ln_st[i] == SBL_FETCH)
 		{
+			sb_ln_tok = sb_ln_tok - 1;
 			if (Online_ReplayFetchIn(sb_ln_rep[i], sb_ln_hint[i]))
 				sb_ln_fetch = i + 1;
 			else
@@ -1564,12 +1599,17 @@ void() Scores_LinesPin =
 // After renderscene, beside the replay's path.
 void() Scores_LinesDraw =
 {
-	local float i, ahead;
+	local float i, ahead, n;
 
 	if (!cvar("hud_lines_board"))
 		return;
-	if (!Scores_LinesOn())
+	n = 0;
+	for (i = 0; i < SB_LNMAX; i = i + 1)
+		if (sb_ln_st[i] == SBL_ON)
+			n = n + 1;
+	if (!n)
 		return;
+	Line_FollowScale(n);            // Patch 649: past eight, each line's search is thinned
 	Line_ViewFrame();
 	Line_StatsReset();
 	// Patch 449: a board line has no playhead, so no window.  Never inferred
@@ -1579,12 +1619,14 @@ void() Scores_LinesDraw =
 	ahead = cvar("hud_lines_order");
 	Line_WindowOff();
 	Line_FollowFrame();
+	ln_mkrank = 0;
 	for (i = 0; i < SB_LNMAX; i = i + 1)
 		if (sb_ln_st[i] == SBL_ON)
 		{
 			if (ahead > 0)
-				Line_FollowWindow(i + 1, ahead);
-			Line_Draw(i + 1, 99999999, '0 0 0', 1, 0.85);
+				Line_FollowWindow(LN_BOARDSLOT(i), ahead);
+			Line_Draw(LN_BOARDSLOT(i), 99999999, '0 0 0', 1, 0.85);
+			ln_mkrank = ln_mkrank + 1;      // Patch 649: marks on the first hud_lines_marked drawn
 		}
 	Line_WindowOff();
 };
@@ -1592,7 +1634,7 @@ void() Scores_LinesDraw =
 // `scores lines`: the table.
 void() Scores_LinesStatus =
 {
-	local float i;
+	local float i, s;
 	local string w;
 
 	for (i = 0; i < SB_LNMAX; i = i + 1)
@@ -1605,16 +1647,17 @@ void() Scores_LinesStatus =
 		else if (sb_ln_st[i] == SBL_QUEUE) w = "queued";
 		else if (sb_ln_st[i] == SBL_BUILD) w = "building";
 		else if (sb_ln_st[i] == SBL_ON)    w = "drawn";
-		if (!ln_on[i + 1])
+		s = LN_BOARDSLOT(i);
+		if (!ln_on[s])
 		{
 			print(sprintf("  line %g %s  %s\n", i + 1, w, sb_ln_key[i]));
 			continue;
 		}
 		print(sprintf("  line %g %s  %s  %g pts (%g shown) ", i + 1, w, sb_ln_key[i],
-		              ln_n[i + 1], ln_ib[i + 1] - ln_ia[i + 1] + 1),
-		      sprintf("%g tele  t %.4f..%.4f  speed %.0f..%.0f\n", ln_bkn[i + 1],
-		              ln_t[(i + 1) * LN_CAP + ln_ia[i + 1]], ln_t[(i + 1) * LN_CAP + ln_ib[i + 1]],
-		              ln_lo[i + 1], ln_hi[i + 1]));
+		              ln_n[s], ln_ib[s] - ln_ia[s] + 1),
+		      sprintf("%g tele  t %.4f..%.4f  speed %.0f..%.0f\n", ln_bkn[s],
+		              ln_t[LN_B(s) + ln_ia[s]], ln_t[LN_B(s) + ln_ib[s]],
+		              ln_lo[s], ln_hi[s]));
 	}
 	w = "";
 	for (i = 0; i < SB_LNMAX; i = i + 1)
@@ -3943,6 +3986,19 @@ void() Scores_RegisterCvars =
 	rec_sb_rowtag = memalloc(sizeof(float) * SB_MAXROW);
 	rec_sb_rowflags = memalloc(sizeof(float) * SB_MAXROW);
 	rec_sb_rowver = memalloc(sizeof(float) * SB_MAXROW);
+	// Patch 649: the line slots' tables, sixty-four of each.
+	sb_ln_key = memalloc(sizeof(string) * SB_LNMAX);
+	sb_ln_path = memalloc(sizeof(string) * SB_LNMAX);
+	sb_ln_hint = memalloc(sizeof(string) * SB_LNMAX);
+	sb_ln_rep = memalloc(sizeof(float) * SB_LNMAX);
+	sb_ln_leg = memalloc(sizeof(float) * SB_LNMAX);
+	sb_ln_st = memalloc(sizeof(float) * SB_LNMAX);
+	sb_ln_momsent = memalloc(sizeof(float) * SB_LNMAX);
+	sb_ln_momdue = memalloc(sizeof(float) * SB_LNMAX);
+	sb_ln_get = memalloc(sizeof(string) * SB_LNMAX);
+	sb_ln_name = memalloc(sizeof(string) * SB_LNMAX);
+	sb_ln_who = memalloc(sizeof(string) * SB_LNMAX);
+	sb_ln_try = memalloc(sizeof(float) * SB_LNMAX);
 	// Patch 437: the harness handle, mirrored per frame below.
 	registercvar("sb_ln_lineleg", "0");
 	// Patch 635: the Online list's filter switch and its slider's stop (0 FTESurf,

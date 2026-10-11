@@ -27,10 +27,21 @@
 // 0 the replay, 1..8 the board's, 9 and 10 the live trail's pair (cl_trail.qc,
 // Patch 475 -- two so a finished run can fade while the next one builds over it).
 // 3.25 MiB a slot at LN_CAP, counted off Line_Alloc's own arenas.
-#define LN_SLOTS   11
+#define LN_SLOTS   67           // 0 the replay, 1..8 board lines, 9 and 10 the live run, 11..66 more
 #define LN_S_BOARD 1            // the first board slot and the first trail slot,
 #define LN_S_TRAIL 9            // which pick a slot's width (Line_SlotPx)
+#define LN_S_MORE  11           // Patch 649: the first of the fifty-six further board slots
 #define LN_CAP     65536        // samples a slot holds (16 min at 66 Hz); past it, halved
+#define LN_CAP2    8192         // ... and a further board slot (2 min at 66 Hz; the same halving)
+#define LN_TOTAL   (LN_S_MORE * LN_CAP + (LN_SLOTS - LN_S_MORE) * LN_CAP2)
+// A slot's first sample in the arenas, its capacity, and whether it is the live run's.
+// Slots under LN_S_MORE are where they always were, so LN_B(s) still holds for those.
+#define LN_B(s)    (((s) < LN_S_MORE) ? (s) * LN_CAP : LN_S_MORE * LN_CAP + ((s) - LN_S_MORE) * LN_CAP2)
+#define LN_C(s)    (((s) < LN_S_MORE) ? LN_CAP : LN_CAP2)
+#define LN_TRAIL(s) ((s) >= LN_S_TRAIL && (s) < LN_S_MORE)
+// Board line i of the scoreboard's (0 the first) is this slot.
+#define LN_BOARDSLOT(i) (((i) < LN_S_TRAIL - LN_S_BOARD) ? (i) + LN_S_BOARD : (i) + LN_S_MORE - (LN_S_TRAIL - LN_S_BOARD))
+#define LN_BOARDINDEX(s) (((s) < LN_S_TRAIL) ? (s) - LN_S_BOARD : (s) - LN_S_MORE + (LN_S_TRAIL - LN_S_BOARD))
 #define LN_CHUNK   32
 #define LN_GROUP   16           // chunks a group sphere covers
 #define LN_BKCAP   512          // teleports marked per slot
@@ -88,15 +99,19 @@
 */
 
 vector *ln_pos;
-string ln_owner[LN_SLOTS];
-float ln_g[LN_SLOTS], ln_g_assumed[LN_SLOTS], ln_start[LN_SLOTS], ln_graphgen[LN_SLOTS];
+string *ln_owner;
+float *ln_g;
+float *ln_g_assumed;
+float *ln_start;
+float *ln_graphgen;
 // Patch 622: the track and leg a slot's shown window is (leg 0 the whole run, k stage k), for
 // the graph to set the live run against; -1 until a loader says (Line_Leg).
-float ln_track[LN_SLOTS], ln_leg[LN_SLOTS];
+float *ln_track;
+float *ln_leg;
 float  *ln_spd;
 float  *ln_t;
 float  *ln_born;                // visual publication time, demo and two live slots
-float  ln_published[LN_SLOTS];
+float  *ln_published;
 float  ln_reveal;               // seconds: chunk/playhead reveal, 0 is immediate
 float  *ln_brk;                 // 1: no segment from the previous point (a teleport)
 float  *ln_gain;
@@ -135,14 +150,18 @@ vector *ln_rcv;
   Only a recording's two scanners hand in the plane (Line_Plane); the live line
   does not, and keeps the last-contact stamp.
 */
-float  ln_xi[LN_SLOTS * 4];     // sample ordinal, -1 none
-float  ln_xt[LN_SLOTS * 4], ln_xd[LN_SLOTS * 4];             // clock, ducked
-vector ln_xo[LN_SLOTS * 4], ln_xv[LN_SLOTS * 4], ln_xn[LN_SLOTS * 4];   // where, how fast, the face
-vector ln_cn[LN_SLOTS];         // this sample's plane, and whether one was handed in
-float  ln_cd[LN_SLOTS], ln_chave[LN_SLOTS];
-float  ln_xon[LN_SLOTS];        // hud_lines_edge as the slot's build began, and the file has planes
-float  ln_xq[LN_SLOTS];         // a sample in this hold's gap could not be read: the leave abstains
-float  ln_xhow[LN_SLOTS * 4];   // leaves: as stamped, edge after [0], edge before [0], edge after [2]
+float  *ln_xi;     // sample ordinal, -1 none
+float  *ln_xt;             // clock, ducked
+float  *ln_xd;
+vector *ln_xo;   // where, how fast, the face
+vector *ln_xv;
+vector *ln_xn;
+vector *ln_cn;         // this sample's plane, and whether one was handed in
+float  *ln_cd;
+float  *ln_chave;
+float  *ln_xon;        // hud_lines_edge as the slot's build began, and the file has planes
+float  *ln_xq;         // a sample in this hold's gap could not be read: the leave abstains
+float  *ln_xhow;   // leaves: as stamped, edge after [0], edge before [0], edge after [2]
 vector ln_hitn;                 // Line_OnRamp's face
 entity ln_probe;                // ...and the entity its trace is made as
 vector ln_exo, ln_exv;          // Line_Edge's answer: where, how fast,
@@ -154,36 +173,44 @@ float  ln_ext, ln_exi;          // when, and the sample it is counted on
 // glare pass links walk-through brush copies as SOLID_BSP (cl_sprites.qc).
 #define LN_XMOVE   3
 
-float  ln_n[LN_SLOTS];
-float  ln_bkn[LN_SLOTS];
-float  ln_step[LN_SLOTS];       // build decimation: keep every step-th sample
-float  ln_skip[LN_SLOTS];
-float  ln_pbrk[LN_SLOTS];       // a break carried from a dropped sample
-float  ln_on[LN_SLOTS];
-float  ln_ia[LN_SLOTS], ln_ib[LN_SLOTS];     // the shown index range
-float  ln_lo[LN_SLOTS], ln_hi[LN_SLOTS];     // its speed range
+float  *ln_n;
+float  *ln_bkn;
+float  *ln_step;       // build decimation: keep every step-th sample
+float  *ln_skip;
+float  *ln_pbrk;       // a break carried from a dropped sample
+float  *ln_on;
+float  *ln_ia;     // the shown index range
+float  *ln_ib;
+float  *ln_lo;     // its speed range
+float  *ln_hi;
 
-float  ln_evn[LN_SLOTS];        // marks held
-float  ln_evcut[LN_SLOTS];      // the peaks were dropped to make room
-float  ln_evdrop[LN_SLOTS];     // marks lost past the cap even so
-float  ln_pkind[LN_SLOTS];      // the contact kind of the last sample, -1 unknown
-float  ln_ron[LN_SLOTS];        // the ramp hold's two variables, this slot's own
-float  ln_rlast[LN_SLOTS];
-float  ln_gjmp[LN_SLOTS];       // +jump seen anywhere in the ground phase
-float  ln_pvz[LN_SLOTS];
-vector ln_po[LN_SLOTS], ln_pv[LN_SLOTS];     // the sample before: where, how fast
+float  *ln_evn;        // marks held
+float  *ln_evcut;      // the peaks were dropped to make room
+float  *ln_evdrop;     // marks lost past the cap even so
+float  *ln_pkind;      // the contact kind of the last sample, -1 unknown
+float  *ln_ron;        // the ramp hold's two variables, this slot's own
+float  *ln_rlast;
+float  *ln_gjmp;       // +jump seen anywhere in the ground phase
+float  *ln_pvz;
+vector *ln_po;     // the sample before: where, how fast
+vector *ln_pv;
 // The tops and bottoms (Line_Peak): the last one marked and its height (or
 // where the count began), and the turn waiting for the body to move clear of it.
-float  ln_pklast[LN_SLOTS], ln_pkz[LN_SLOTS];
-float  ln_pkk[LN_SLOTS];        // its kind, 0 none waiting
-float  ln_pkcov[LN_SLOTS];      // a contact mark on its sample already shows it
-float  ln_phere[LN_SLOTS];      // the sample before carried a contact mark
-float  ln_pkt[LN_SLOTS], ln_pki[LN_SLOTS], ln_pkc[LN_SLOTS];     // time, sample, edge clock
-vector ln_pko[LN_SLOTS], ln_pkv[LN_SLOTS];
-float  ln_nsamp[LN_SLOTS];      // samples this slot has classified
-float  ln_tick[LN_SLOTS];       // the recording's own tick, for the ceiling
-float  ln_pyaw[LN_SLOTS], ln_pt[LN_SLOTS];   // the sample before: yaw, clock
-float  ln_gsince[LN_SLOTS];     // when the current ground phase began
+float  *ln_pklast;
+float  *ln_pkz;
+float  *ln_pkk;        // its kind, 0 none waiting
+float  *ln_pkcov;      // a contact mark on its sample already shows it
+float  *ln_phere;      // the sample before carried a contact mark
+float  *ln_pkt;     // time, sample, edge clock
+float  *ln_pki;
+float  *ln_pkc;
+vector *ln_pko;
+vector *ln_pkv;
+float  *ln_nsamp;      // samples this slot has classified
+float  *ln_tick;       // the recording's own tick, for the ceiling
+float  *ln_pyaw;   // the sample before: yaw, clock
+float  *ln_pt;
+float  *ln_gsince;     // when the current ground phase began
 
 /*
   THE MOVEMENT SETTINGS THE GRADE IS MEASURED AGAINST.
@@ -218,19 +245,24 @@ float  ln_winon, ln_wina, ln_winb, ln_winka, ln_winkb;
 #define LN_FO_FRESH 0.5         // seconds a restart's forget lasts: the stats lead the view by a frame or more
 #define LN_FO_SPOTS 24          // stretches near the eye one look can weigh
 #define LN_FO_READ  4096        // samples one look may read one by one; past it the 512 stand for the rest
-float  ln_fo_i[LN_SLOTS];       // the cursor
-float  ln_fo_gen[LN_SLOTS];     // ln_graphgen of the line it is on, + 1; 0 = none
-float  ln_fo_d[LN_SLOTS];       // units from the eye to its sample
-float  ln_fo_at[LN_SLOTS];      // cltime of the last look at the whole line
-float  ln_fo_n[LN_SLOTS], ln_fo_mv[LN_SLOTS];   // looks made, and those that moved the cursor (`lines order`)
-float  ln_fo_ta[LN_SLOTS], ln_fo_tb[LN_SLOTS];  // the window this frame's draw was given
-float  ln_fo_wt[LN_SLOTS];      // cltime of the frame it was given in: only that frame's is one
+float  *ln_fo_i;       // the cursor
+float  *ln_fo_gen;     // ln_graphgen of the line it is on, + 1; 0 = none
+float  *ln_fo_d;       // units from the eye to its sample
+float  *ln_fo_at;      // cltime of the last look at the whole line
+float  *ln_fo_n;   // looks made, and those that moved the cursor (`lines order`)
+float  *ln_fo_mv;
+float  *ln_fo_ta;  // the window this frame's draw was given
+float  *ln_fo_tb;
+float  *ln_fo_wt;      // cltime of the frame it was given in: only that frame's is one
+float  *ln_fo_jump;             // Patch 649: the viewer was moved away from this cursor: look, do not wait
 float  ln_fo_si[LN_FO_SPOTS], ln_fo_sd[LN_FO_SPOTS];    // a look's stretches: the nearest sample of each, its distance
 float  ln_fo_clock, ln_fo_state;    // the timer last frame
 float  ln_fo_fresh;             // cltime until which a restart leaves no cursor believed
 
 // The marks' own frame state: the cvars, read once, and the declutter grid.
 float  ln_mkon, ln_mkland, ln_mkleave, ln_mkjump, ln_mkstitch;
+float  ln_mkmax;                // hud_lines_marked: the first this many drawn board lines carry marks
+float  ln_mkrank;               // ... and the place among them of the one being drawn
 float  ln_mkpx, ln_mkgap, ln_declutter;
 // Line widths, px, read once a frame: the replay's, the board's, your own run's.
 float  ln_wpx, ln_wpxb, ln_wpxt;
@@ -241,7 +273,8 @@ float  ln_wpx, ln_wpxb, ln_wpxt;
 float  ln_numon, ln_numspeed, ln_numenergy, ln_numvz, ln_numdelta, ln_numtime;
 float  ln_numref, ln_numsize, ln_grav, ln_units, ln_names;
 float  ln_labsz;                // the size the labels are measured and drawn at, see Line_Marks
-float  ln_z0[LN_SLOTS], ln_v20[LN_SLOTS];       // the slot's first sample: z, v.v
+float  *ln_z0;       // the slot's first sample: z, v.v
+float  *ln_v20;
 float  ln_nlab;                 // labels queued, this Line_Draw
 float  ln_labover;              // ...and the ones past LN_LABMAX
 
@@ -271,6 +304,7 @@ float  *ln_lcell;               // and the labels' own grid, see Line_Claim
 float  ln_cellgen, ln_cellnx, ln_cellny;
 vector ln_qmk;                  // Line_ProjPt's answer (a second return)
 float  ln_nmk;                  // marks drawn, this Line_Draw
+float  ln_nmkf;                 // ... and since Line_StatsReset (`lines native`: the gate's count)
 float  ln_trmk;                 // `replay marktrace`: frames left to print
 
 // per frame
@@ -288,12 +322,21 @@ float  ln_slo, ln_shi, ln_sinv;
 float  ln_cmown, ln_cmoth;
 #define LN_CM_PLAIN 5
 #define LN_OWNCOL  '0.30 0.65 1.00'
-vector ln_rk[LN_SLOTS];          // an other line's colour by time, this frame
-float  ln_rkin[LN_SLOTS], ln_rkpos[LN_SLOTS];    // it is ranked; its place, 0 the fastest
-float  ln_rkof[LN_SLOTS];        // ... among this many lines of its leg
-float  ln_drawf[LN_SLOTS];       // cltime the slot was last drawn (0 never), for `replay colours`
-vector ln_plain[LN_SLOTS];       // the plain colour the slot was last painted
-float  ln_gen, ln_cgen;          // lines built, and as of the last recolour
+vector *ln_rk;          // an other line's colour by time, this frame
+float  *ln_rkin;    // it is ranked; its place, 0 the fastest
+float  *ln_rkpos;
+float  *ln_rkof;        // ... among this many lines of its leg
+float  *ln_rkt;                 // Patch 649: the time it was ranked on
+float  ln_rksum;                // ... and a sum over all of them: the ranks stand while it does
+float  *ln_drawf;       // cltime the slot was last drawn (0 never), for `replay colours`
+vector *ln_plain;       // the plain colour the slot was last painted
+// Patch 649: a slot's build count, and as of ITS last recolour.  This was one count for
+// all slots, so the live run's Line_End (every sixteen samples, four times a second)
+// repainted every ticked line from its first sample: sixty-four lines' worth of it.
+float  *ln_sgen;
+float  *ln_scgen;
+float  ln_npaint;               // whole repaints of lines that are not the live run's (`lines native`)
+float  ln_allocms;              // what Line_Alloc took, ms
 float  ln_cslo, ln_cshi, ln_ccown, ln_ccoth;
 float  ln_nseg, ln_nclip, ln_nwild, ln_npt;  // the last Line_Draw, for status
 vector ln_bbmin, ln_bbmax, ln_first;
@@ -310,6 +353,7 @@ float  ln_ra1;
 float  ln_hp, ln_pi, ln_pd, ln_pa;
 vector ln_pp, ln_pc;
 float  ln_db, ln_dn, ln_da;     // the slot being drawn: base, points, alpha
+float  ln_ds;                   // ... and its number (a base no longer says which slot)
 
 /*
   PROVENANCE, AS A TINT RATHER THAN A COLOUR MODE.  A run imported from another
@@ -326,10 +370,10 @@ float  ln_db, ln_dn, ln_da;     // the slot being drawn: base, points, alpha
   brightness the mode produced -- so a fast stretch of an imported line is still
   visibly faster than a slow one.
 */
-float  ln_fgn[LN_SLOTS];        // slot holds a foreign run
-float  ln_inf[LN_SLOTS];        // where its ramp contact came from, INF_* (cl_infer.qc)
+float  *ln_fgn;        // slot holds a foreign run
+float  *ln_inf;        // where its ramp contact came from, INF_* (cl_infer.qc)
 float  ln_dtint;                // the draw's blend strength, 0 = none
-float  ln_tintd[LN_SLOTS];      // ... as each slot was last drawn (Patch 632)
+float  *ln_tintd;      // ... as each slot was last drawn (Patch 632)
 #define LN_FGNCOL  '0.25 0.45 1.00'
 
 /*
@@ -401,29 +445,118 @@ float  ln_nat;                  // ... and this frame draws with them
 float  ln_natn, ln_natno;       // passes it drew, and refused, since start (`lines native`)
 float  *ln_np;
 
+// Patch 649: the per-slot tables.  Allocated, because csprogs has no global definitions to
+// spare for one of each a slot (AGENT_NOTES, "CSPROGS SITS AT FTEQCC'S GLOBAL LIMIT").
+// Line_RegisterCvars calls this before anything can read one.
+void() Line_AllocSlots =
+{
+	if (ln_n)
+		return;
+	ln_owner = memalloc(sizeof(string) * LN_SLOTS);
+	ln_g = memalloc(sizeof(float) * LN_SLOTS);
+	ln_g_assumed = memalloc(sizeof(float) * LN_SLOTS);
+	ln_start = memalloc(sizeof(float) * LN_SLOTS);
+	ln_graphgen = memalloc(sizeof(float) * LN_SLOTS);
+	ln_track = memalloc(sizeof(float) * LN_SLOTS);
+	ln_leg = memalloc(sizeof(float) * LN_SLOTS);
+	ln_published = memalloc(sizeof(float) * LN_SLOTS);
+	ln_xi = memalloc(sizeof(float) * LN_SLOTS * 4);
+	ln_xt = memalloc(sizeof(float) * LN_SLOTS * 4);
+	ln_xd = memalloc(sizeof(float) * LN_SLOTS * 4);
+	ln_xo = memalloc(sizeof(vector) * LN_SLOTS * 4);
+	ln_xv = memalloc(sizeof(vector) * LN_SLOTS * 4);
+	ln_xn = memalloc(sizeof(vector) * LN_SLOTS * 4);
+	ln_cn = memalloc(sizeof(vector) * LN_SLOTS);
+	ln_cd = memalloc(sizeof(float) * LN_SLOTS);
+	ln_chave = memalloc(sizeof(float) * LN_SLOTS);
+	ln_xon = memalloc(sizeof(float) * LN_SLOTS);
+	ln_xq = memalloc(sizeof(float) * LN_SLOTS);
+	ln_xhow = memalloc(sizeof(float) * LN_SLOTS * 4);
+	ln_n = memalloc(sizeof(float) * LN_SLOTS);
+	ln_bkn = memalloc(sizeof(float) * LN_SLOTS);
+	ln_step = memalloc(sizeof(float) * LN_SLOTS);
+	ln_skip = memalloc(sizeof(float) * LN_SLOTS);
+	ln_pbrk = memalloc(sizeof(float) * LN_SLOTS);
+	ln_on = memalloc(sizeof(float) * LN_SLOTS);
+	ln_ia = memalloc(sizeof(float) * LN_SLOTS);
+	ln_ib = memalloc(sizeof(float) * LN_SLOTS);
+	ln_lo = memalloc(sizeof(float) * LN_SLOTS);
+	ln_hi = memalloc(sizeof(float) * LN_SLOTS);
+	ln_evn = memalloc(sizeof(float) * LN_SLOTS);
+	ln_evcut = memalloc(sizeof(float) * LN_SLOTS);
+	ln_evdrop = memalloc(sizeof(float) * LN_SLOTS);
+	ln_pkind = memalloc(sizeof(float) * LN_SLOTS);
+	ln_ron = memalloc(sizeof(float) * LN_SLOTS);
+	ln_rlast = memalloc(sizeof(float) * LN_SLOTS);
+	ln_gjmp = memalloc(sizeof(float) * LN_SLOTS);
+	ln_pvz = memalloc(sizeof(float) * LN_SLOTS);
+	ln_po = memalloc(sizeof(vector) * LN_SLOTS);
+	ln_pv = memalloc(sizeof(vector) * LN_SLOTS);
+	ln_pklast = memalloc(sizeof(float) * LN_SLOTS);
+	ln_pkz = memalloc(sizeof(float) * LN_SLOTS);
+	ln_pkk = memalloc(sizeof(float) * LN_SLOTS);
+	ln_pkcov = memalloc(sizeof(float) * LN_SLOTS);
+	ln_phere = memalloc(sizeof(float) * LN_SLOTS);
+	ln_pkt = memalloc(sizeof(float) * LN_SLOTS);
+	ln_pki = memalloc(sizeof(float) * LN_SLOTS);
+	ln_pkc = memalloc(sizeof(float) * LN_SLOTS);
+	ln_pko = memalloc(sizeof(vector) * LN_SLOTS);
+	ln_pkv = memalloc(sizeof(vector) * LN_SLOTS);
+	ln_nsamp = memalloc(sizeof(float) * LN_SLOTS);
+	ln_tick = memalloc(sizeof(float) * LN_SLOTS);
+	ln_pyaw = memalloc(sizeof(float) * LN_SLOTS);
+	ln_pt = memalloc(sizeof(float) * LN_SLOTS);
+	ln_gsince = memalloc(sizeof(float) * LN_SLOTS);
+	ln_fo_i = memalloc(sizeof(float) * LN_SLOTS);
+	ln_fo_gen = memalloc(sizeof(float) * LN_SLOTS);
+	ln_fo_d = memalloc(sizeof(float) * LN_SLOTS);
+	ln_fo_at = memalloc(sizeof(float) * LN_SLOTS);
+	ln_fo_n = memalloc(sizeof(float) * LN_SLOTS);
+	ln_fo_mv = memalloc(sizeof(float) * LN_SLOTS);
+	ln_fo_ta = memalloc(sizeof(float) * LN_SLOTS);
+	ln_fo_tb = memalloc(sizeof(float) * LN_SLOTS);
+	ln_fo_wt = memalloc(sizeof(float) * LN_SLOTS);
+	ln_z0 = memalloc(sizeof(float) * LN_SLOTS);
+	ln_v20 = memalloc(sizeof(float) * LN_SLOTS);
+	ln_rk = memalloc(sizeof(vector) * LN_SLOTS);
+	ln_rkin = memalloc(sizeof(float) * LN_SLOTS);
+	ln_rkpos = memalloc(sizeof(float) * LN_SLOTS);
+	ln_rkof = memalloc(sizeof(float) * LN_SLOTS);
+	ln_rkt = memalloc(sizeof(float) * LN_SLOTS);
+	ln_fo_jump = memalloc(sizeof(float) * LN_SLOTS);
+	ln_sgen = memalloc(sizeof(float) * LN_SLOTS);
+	ln_scgen = memalloc(sizeof(float) * LN_SLOTS);
+	ln_drawf = memalloc(sizeof(float) * LN_SLOTS);
+	ln_plain = memalloc(sizeof(vector) * LN_SLOTS);
+	ln_fgn = memalloc(sizeof(float) * LN_SLOTS);
+	ln_inf = memalloc(sizeof(float) * LN_SLOTS);
+	ln_tintd = memalloc(sizeof(float) * LN_SLOTS);
+};
+
 void() Line_Alloc =
 {
 	if (ln_pos)
 		return;
-	ln_pos  = memalloc(sizeof(vector) * LN_SLOTS * LN_CAP);
-	ln_spd  = memalloc(sizeof(float) * LN_SLOTS * LN_CAP);
-	ln_t    = memalloc(sizeof(float) * LN_SLOTS * LN_CAP);
+	ln_allocms = gettime(1);        // Patch 649: 68.9 MiB now (36.7 before): `lines native` says how long
+	ln_pos  = memalloc(sizeof(vector) * LN_TOTAL);
+	ln_spd  = memalloc(sizeof(float) * LN_TOTAL);
+	ln_t    = memalloc(sizeof(float) * LN_TOTAL);
 	ln_born = memalloc(sizeof(float) * 3 * LN_CAP);
-	ln_brk  = memalloc(sizeof(float) * LN_SLOTS * LN_CAP);
-	ln_gain = memalloc(sizeof(float) * LN_SLOTS * LN_CAP);
+	ln_brk  = memalloc(sizeof(float) * LN_TOTAL);
+	ln_gain = memalloc(sizeof(float) * LN_TOTAL);
 	// +2.25 MiB, and the only per-point array the marks and the numbers did
 	// not need: energy is z + |v|^2/2g and ln_spd is the HORIZONTAL speed, so
 	// without this the colour would be energy with the vertical left out --
 	// wrong exactly where a surf line is interesting.
-	ln_vz   = memalloc(sizeof(float) * LN_SLOTS * LN_CAP);
-	ln_q    = memalloc(sizeof(float) * LN_SLOTS * LN_CAP);
-	ln_col  = memalloc(sizeof(vector) * LN_SLOTS * LN_CAP);
-	ln_cerr = memalloc(sizeof(float) * LN_SLOTS * LN_CAP / LN_CHUNK * LN_LEVELS);
-	ln_cc   = memalloc(sizeof(vector) * LN_SLOTS * LN_CAP / LN_CHUNK);
-	ln_cr   = memalloc(sizeof(float) * LN_SLOTS * LN_CAP / LN_CHUNK);
-	ln_cbk  = memalloc(sizeof(float) * LN_SLOTS * LN_CAP / LN_CHUNK);
-	ln_gc   = memalloc(sizeof(vector) * LN_SLOTS * LN_CAP / LN_CHUNK / LN_GROUP);
-	ln_gr   = memalloc(sizeof(float) * LN_SLOTS * LN_CAP / LN_CHUNK / LN_GROUP);
+	ln_vz   = memalloc(sizeof(float) * LN_TOTAL);
+	ln_q    = memalloc(sizeof(float) * LN_TOTAL);
+	ln_col  = memalloc(sizeof(vector) * LN_TOTAL);
+	ln_cerr = memalloc(sizeof(float) * LN_TOTAL / LN_CHUNK * LN_LEVELS);
+	ln_cc   = memalloc(sizeof(vector) * LN_TOTAL / LN_CHUNK);
+	ln_cr   = memalloc(sizeof(float) * LN_TOTAL / LN_CHUNK);
+	ln_cbk  = memalloc(sizeof(float) * LN_TOTAL / LN_CHUNK);
+	ln_gc   = memalloc(sizeof(vector) * LN_TOTAL / LN_CHUNK / LN_GROUP);
+	ln_gr   = memalloc(sizeof(float) * LN_TOTAL / LN_CHUNK / LN_GROUP);
 	ln_bk   = memalloc(sizeof(float) * LN_SLOTS * LN_BKCAP);
 	// 1.28 MiB for every slot's marks, against 2.25 MiB for ONE more per-point
 	// float array.  Nothing about a mark is per point, which is the argument.
@@ -447,12 +580,13 @@ void() Line_Alloc =
 	ln_lcell = memalloc(sizeof(float) * LN_CELLS);
 	if (checkbuiltin(lines_draw))
 	{
-		lines_arrays(ln_pos, ln_col, ln_t, ln_brk, ln_born, LN_SLOTS * LN_CAP, 3 * LN_CAP);
-		lines_lod(ln_cc, ln_cr, ln_cerr, ln_gc, ln_gr, LN_SLOTS * LN_CAP / LN_CHUNK,
-		          LN_SLOTS * LN_CAP / LN_CHUNK / LN_GROUP, LN_LEVELS);
+		lines_arrays(ln_pos, ln_col, ln_t, ln_brk, ln_born, LN_TOTAL, 3 * LN_CAP);
+		lines_lod(ln_cc, ln_cr, ln_cerr, ln_gc, ln_gr, LN_TOTAL / LN_CHUNK,
+		          LN_TOTAL / LN_CHUNK / LN_GROUP, LN_LEVELS);
 		ln_np = memalloc(sizeof(float) * LP_SIZE);
 		ln_nath = TRUE;
 	}
+	ln_allocms = (gettime(1) - ln_allocms) * 1000;
 };
 
 // The birth arena holds only demo/live slots, not the eight static board lines.
@@ -923,12 +1057,12 @@ void(float s, vector o, float spd, float vz, float q, float t, float brk) Line_A
 		ln_skip[s] = ln_skip[s] - 1;
 		return;
 	}
-	b = s * LN_CAP;
+	b = LN_B(s);
 	n = ln_n[s];
-	if (n >= LN_CAP)
+	if (n >= LN_C(s))
 	{
 		// Past the cap: keep the even points, a dropped one's break on the next.
-		for (i = 0; i < LN_CAP / 2; i = i + 1)
+		for (i = 0; i < LN_C(s) / 2; i = i + 1)
 		{
 			j = b + 2 * i;
 			ln_pos[b + i] = ln_pos[j];
@@ -936,16 +1070,16 @@ void(float s, vector o, float spd, float vz, float q, float t, float brk) Line_A
 			ln_vz[b + i]  = ln_vz[j];
 			ln_q[b + i]   = ln_q[j];
 			ln_t[b + i]   = ln_t[j];
-			if (s == 0 || s >= LN_S_TRAIL)
+			if (s == 0 || LN_TRAIL(s))
 				ln_born[Line_BirthBase(s) + i] = ln_born[Line_BirthBase(s) + 2 * i];
 			ln_brk[b + i] = ln_brk[j];
 			if (i > 0)
 			if (ln_brk[j - 1])
 				ln_brk[b + i] = TRUE;
 		}
-		if (ln_brk[b + LN_CAP - 1])
+		if (ln_brk[b + LN_C(s) - 1])
 			ln_pbrk[s] = TRUE;
-		n = LN_CAP / 2;
+		n = LN_C(s) / 2;
 		ln_published[s] = ceil(ln_published[s] / 2);
 		ln_step[s] = ln_step[s] * 2;
 	}
@@ -955,7 +1089,7 @@ void(float s, vector o, float spd, float vz, float q, float t, float brk) Line_A
 	ln_vz[b + n]  = vz;
 	ln_q[b + n]   = q;
 	ln_t[b + n]   = t;
-	if (s >= LN_S_TRAIL)
+	if (LN_TRAIL(s))
 		ln_born[Line_BirthBase(s) + n] = cltime;
 	// The newest point can draw before the bulk tables' four-sample rebuild.
 	ln_brk[b + n] = (n > 0 && ln_pbrk[s]);
@@ -1403,7 +1537,7 @@ void(float s, float ia, float ib, float tsc) Line_SpeedRange =
 {
 	local float b, i, v, n, sum, sq, mn, mx, sd;
 
-	b = s * LN_CAP;
+	b = LN_B(s);
 	n = sum = sq = 0;
 	mn = 99999;
 	mx = 0;
@@ -1437,12 +1571,12 @@ void(float s) Line_End =
 	local float b, n, c, i, i0, i1, j0, j1, k, dt;
 	local vector mn, mx, p;
 
-	b = s * LN_CAP;
+	b = LN_B(s);
 	n = ln_n[s];
 	// Patch 632: your own line has a speed range too.  Only Line_Range set one and
 	// nothing calls it for the trail, so "speed" over your line alone was 0..0 and
 	// every point the slow end's red (58 of 58 on a 116-point line, the review).
-	if (s >= LN_S_TRAIL)
+	if (LN_TRAIL(s))
 		Line_SpeedRange(s, 0, n - 1, -99999999);
 	// One demo fade, not a stagger restarted every chunk. Live births belong
 	// to sample arrival in Line_Add; bulk rebuilds never reset their ages.
@@ -1475,9 +1609,9 @@ void(float s) Line_End =
 			if (ln_brk[b + i])
 				k = TRUE;
 		}
-		ln_cc[s * LN_CAP / LN_CHUNK + c]  = (mn + mx) * 0.5;
-		ln_cr[s * LN_CAP / LN_CHUNK + c]  = vlen(mx - mn) * 0.5;
-		ln_cbk[s * LN_CAP / LN_CHUNK + c] = k;
+		ln_cc[LN_B(s) / LN_CHUNK + c]  = (mn + mx) * 0.5;
+		ln_cr[LN_B(s) / LN_CHUNK + c]  = vlen(mx - mn) * 0.5;
+		ln_cbk[LN_B(s) / LN_CHUNK + c] = k;
 	}
 	for (c = 0; c * LN_CHUNK * LN_GROUP < n; c = c + 1)
 	{
@@ -1491,8 +1625,8 @@ void(float s) Line_End =
 			if (p_y < mn_y) mn_y = p_y;  if (p_y > mx_y) mx_y = p_y;
 			if (p_z < mn_z) mn_z = p_z;  if (p_z > mx_z) mx_z = p_z;
 		}
-		ln_gc[s * LN_CAP / LN_CHUNK / LN_GROUP + c] = (mn + mx) * 0.5;
-		ln_gr[s * LN_CAP / LN_CHUNK / LN_GROUP + c] = vlen(mx - mn) * 0.5;
+		ln_gc[LN_B(s) / LN_CHUNK / LN_GROUP + c] = (mn + mx) * 0.5;
+		ln_gr[LN_B(s) / LN_CHUNK / LN_GROUP + c] = vlen(mx - mn) * 0.5;
 	}
 
 	// Gain, u/s per s, over up to two samples each side within the same piece.
@@ -1522,11 +1656,11 @@ void(float s) Line_End =
 	{
 		i0 = c * LN_CHUNK;
 		i1 = min(n, i0 + LN_CHUNK) - 1;
-		k = (s * LN_CAP / LN_CHUNK + c) * LN_LEVELS;
+		k = (LN_B(s) / LN_CHUNK + c) * LN_LEVELS;
 		for (j0 = 1; j0 <= LN_LEVELS; j0 = j0 + 1)
 		{
 			dt = 0;
-			if (ln_cbk[s * LN_CAP / LN_CHUNK + c])
+			if (ln_cbk[LN_B(s) / LN_CHUNK + c])
 				dt = 99999;
 			else
 			{
@@ -1546,7 +1680,7 @@ void(float s) Line_End =
 	ln_ia[s] = 0;
 	ln_ib[s] = n - 1;
 	ln_on[s] = (n >= 2);
-	ln_gen = ln_gen + 1;
+	ln_sgen[s] = ln_sgen[s] + 1;
 };
 
 /*
@@ -1582,10 +1716,26 @@ void() Line_WindowOff =
 // for LN_FO_FRESH, so the stretch taken is the earliest and not the one nearest in time
 // to where the last run had got to. Not for one frame: the stats arrive before the view
 // does, and a forget spent where the viewer still was took the old place's stretch.
+/*
+  Patch 649: THE FOLLOW SEARCH'S COST IS PER LINE, so past eight lines it is
+  thinned: with n drawn, a look at a whole line comes every LN_FO_EVERY * n/8
+  seconds (64 lines: 2 s each, 32 looks a second in all as with eight) and the
+  cursor is tracked over LN_FO_NEAR * 8/n samples either side, 12 at least.
+  Up to eight lines nothing changes.  Scores_LinesDraw says how many.
+*/
+float  ln_fo_scale, ln_fo_near, ln_fo_budget;
+#define LN_FO_JUMP  512         // units further in one frame than any speed carries a viewer
+void(float lines) Line_FollowScale =
+{
+	ln_fo_scale = max(1, ceil(lines / 8));
+	ln_fo_near = max(12, floor(LN_FO_NEAR / ln_fo_scale));
+};
+
 void() Line_FollowFrame =
 {
 	local float clock, state;
 
+	ln_fo_budget = 4;               // Patch 649: looks a moved viewer may ask for this frame
 	clock = getstatf(STAT_FS_TIMERTICKS);
 	state = getstatf(STAT_FS_TIMERSTATE);
 	if (clock < ln_fo_clock || (state == TS_ARMED && ln_fo_state != TS_ARMED))
@@ -1623,7 +1773,7 @@ float(float s) Line_Follow =
 	local float open, obi, obk, mseg, left;
 	local vector p, pp, pn;
 
-	b  = s * LN_CAP;
+	b  = LN_B(s);
 	ia = ln_ia[s];
 	ib = ln_ib[s];
 	if (!ln_on[s] || ib < ia)
@@ -1639,8 +1789,8 @@ float(float s) Line_Follow =
 		// so it walks through a stop in the recording instead of resting at its start
 		// (a 9 s stop left nothing drawn ahead of the viewer). A line's own teleport is
 		// two neighbouring samples, so the cursor crosses it with the viewer.
-		lo = max(ia, ln_fo_i[s] - LN_FO_NEAR);
-		hi = min(ib, ln_fo_i[s] + LN_FO_NEAR);
+		lo = max(ia, ln_fo_i[s] - ln_fo_near);
+		hi = min(ib, ln_fo_i[s] + ln_fo_near);
 		best = 99999999;
 		bi = lo;
 		for (i = lo; i <= hi; i = i + 1)
@@ -1652,18 +1802,41 @@ float(float s) Line_Follow =
 				bi = i;
 			}
 		}
+		// Patch 649: the viewer was moved (a fail back to a stage start, a saveloc):
+		// the samples round the cursor are suddenly far.  Asked for a look now.
+		if (ln_fo_scale > 1)
+		if (best > ln_fo_d[s] + LN_FO_JUMP)
+			ln_fo_jump[s] = TRUE;
 		ln_fo_i[s] = bi;
 		ln_fo_d[s] = best;
 		tprev = ln_t[b + bi];
-		k = prev ? LN_FO_EVERY : LN_FO_SOON;
-		if (cltime >= ln_fo_at[s])
-		if (cltime - ln_fo_at[s] < k)
-			return tprev;
+		k = (prev ? LN_FO_EVERY : LN_FO_SOON) * ln_fo_scale;
+		if (ln_fo_scale > 1)
+		{
+			// Past eight lines a slot looks once an interval AT ITS OWN SIXTEENTH of
+			// it, whenever it last looked: measured from the last look, the first
+			// restart put every line's look on one frame for good (the review's
+			// model: fifty on one frame every two seconds).  A moved viewer's look
+			// does not wait for it, four lines a frame.
+			j = (s - 16 * floor(s / 16)) / 16;
+			if (ln_fo_jump[s] && ln_fo_budget > 0)
+				ln_fo_budget = ln_fo_budget - 1;
+			else if (floor(cltime / k - j) == floor(ln_fo_at[s] / k - j))
+				return tprev;
+		}
+		else
+		{
+			if (cltime >= ln_fo_at[s])
+			if (cltime - ln_fo_at[s] < k)
+				return tprev;
+		}
 	}
 	// The whole line. 512 samples of it say how near it comes... (A slot's first look is
 	// back-dated by its number, so eight lines do not all look on one frame.)
 	ln_fo_at[s] = cltime;
+	ln_fo_jump[s] = FALSE;
 	if (!have)
+	if (ln_fo_scale <= 1)
 		ln_fo_at[s] = cltime - s * 0.03;
 	ln_fo_n[s] = ln_fo_n[s] + 1;
 	stride = max(1, ceil((ib - ia + 1) / 512));
@@ -1818,7 +1991,7 @@ float(float s, float t) Line_Find =
 {
 	local float b, lo, hi, m;
 
-	b = s * LN_CAP;
+	b = LN_B(s);
 	lo = 0;
 	hi = ln_n[s];
 	while (lo < hi)
@@ -2053,7 +2226,7 @@ void(float s) Line_ColContact =
 	local float b, e, n, i, k, upto, sub;
 	local vector c;
 
-	b = s * LN_CAP;
+	b = LN_B(s);
 	n = s * LN_EVCAP;
 	// Before the first contact mark the run was in that mark's `from` state.
 	k = -1;
@@ -2117,7 +2290,7 @@ void(float s) Line_ColEnergy =
 	local float b, i, j0, j1, dt, f, p, e0, e1;
 	local vector o;
 
-	b = s * LN_CAP;
+	b = LN_B(s);
 	// pm_maxairspeed, not a literal 30: the grade in Line_Grade reads the
 	// server's, and two air caps in one file is how the line would come to
 	// disagree with itself on a server that changed it.
@@ -2160,7 +2333,7 @@ void(float s) Line_ColQuality =
 {
 	local float b, i;
 
-	b = s * LN_CAP;
+	b = LN_B(s);
 	for (i = 0; i < ln_n[s]; i = i + 1)
 		ln_col[b + i] = HUD_QualityColor(ln_q[b + i]);
 };
@@ -2168,14 +2341,14 @@ void(float s) Line_ColQuality =
 // The colouring a slot is drawn in: its group's.
 float(float s) Line_Mode =
 {
-	return (s >= LN_S_TRAIL) ? ln_cmown : ln_cmoth;
+	return (LN_TRAIL(s)) ? ln_cmown : ln_cmoth;
 };
 
 // A shown line's time: its window's end less the clock its window counts from
 // (Line_Range), so a stage line is the stage's time and a run the run's.
 float(float s) Line_Time =
 {
-	return ln_t[s * LN_CAP + ln_ib[s]] - ln_start[s];
+	return ln_t[LN_B(s) + ln_ib[s]] - ln_start[s];
 };
 
 float() Watch_PathMode;         // cl_watch.qc: 1 or 2 when a drawer draws the demo's line
@@ -2203,9 +2376,15 @@ void() Line_Rank =
 		demo = (f == 1 || f == 2);
 	}
 	board = cvar("hud_lines_board");
-	for (s = 0; s < LN_S_TRAIL; s = s + 1)
+	// Patch 649: who is ranked and on what time, and a sum that moves when any of it does.
+	// With sixty-five slots the pairing below is 4,225 turns, so it is done on a change
+	// and not every frame.
+	f = 0;
+	for (s = 0; s < LN_SLOTS; s = s + 1)
 	{
 		ln_rkin[s] = FALSE;
+		if (LN_TRAIL(s))
+			continue;                   // the live run's own: not ranked among the others
 		if (!ln_on[s])
 			continue;
 		if (ln_n[s] < 1)
@@ -2215,15 +2394,20 @@ void() Line_Rank =
 		if (!(s ? board : demo))
 			continue;
 		ln_rkin[s] = TRUE;
+		ln_rkt[s] = Line_Time(s);
+		f = f + (s + 1) * (ln_rkt[s] + 3 * ln_track[s] + 7 * ln_leg[s] + 11);
 	}
-	for (s = 0; s < LN_S_TRAIL; s = s + 1)
+	if (f == ln_rksum)
+		return;
+	ln_rksum = f;
+	for (s = 0; s < LN_SLOTS; s = s + 1)
 	{
 		r = 0;
 		n = 0;
 		if (ln_rkin[s])
 		{
-			t = Line_Time(s);
-			for (o = 0; o < LN_S_TRAIL; o = o + 1)
+			t = ln_rkt[s];
+			for (o = 0; o < LN_SLOTS; o = o + 1)
 			{
 				if (!ln_rkin[o])
 					continue;
@@ -2231,7 +2415,7 @@ void() Line_Rank =
 					continue;           // another leg's line: another list
 				n = n + 1;
 				if (o != s)
-				if (Line_Time(o) < t)
+				if (ln_rkt[o] < t)
 					r = r + 1;
 			}
 		}
@@ -2255,10 +2439,10 @@ void(float s, float m, float from) Line_Paint =
 	if (m == 2) { Line_ColContact(s); return; }
 	if (m == 3) { Line_ColEnergy(s);  return; }
 	if (m == 4) { Line_ColQuality(s); return; }
-	b = s * LN_CAP;
+	b = LN_B(s);
 	if (m >= LN_CM_PLAIN)
 	{
-		c = (s >= LN_S_TRAIL) ? LN_OWNCOL : ln_rk[s];
+		c = (LN_TRAIL(s)) ? LN_OWNCOL : ln_rk[s];
 		for (i = b + from; i < b + ln_n[s]; i = i + 1)
 			ln_col[i] = c;
 		return;
@@ -2273,7 +2457,7 @@ void(float s, float m, float from) Line_Paint =
 void() Line_ViewFrame =
 {
 	local vector fov, c;
-	local float s, m, dirty;
+	local float s, m, dirty, rd;
 
 	Line_PxFrame();
 	ln_wpx  = cvar("hud_watch_path_px");
@@ -2300,6 +2484,7 @@ void() Line_ViewFrame =
 	ln_cmoth = bound(0, cvar("hud_lines_color_others"), LN_CM_PLAIN);
 	// The marks, read once a frame beside the rest.
 	ln_mkon     = cvar("hud_lines_marks");
+	ln_mkmax    = cvar("hud_lines_marked");
 	ln_mkland   = cvar("hud_lines_land");
 	ln_mkleave  = cvar("hud_lines_leave");
 	ln_mkjump   = cvar("hud_lines_jump");
@@ -2348,22 +2533,27 @@ void() Line_ViewFrame =
 	// The colours, once per change of range, mode or line (not per frame); and a
 	// line coloured by time again when its place among the shown lines moves.
 	Line_Rank();
-	dirty = (ln_gen != ln_cgen || ln_slo != ln_cslo || ln_shi != ln_cshi
-	         || ln_cmown != ln_ccown || ln_cmoth != ln_ccoth);
+	// Patch 649: each for its own reason.  A colouring chosen anew repaints every line;
+	// the speed ramp moving repaints the lines coloured by speed (Line_Col is its only
+	// reader); a line built again repaints that line.
+	dirty = (ln_cmown != ln_ccown || ln_cmoth != ln_ccoth);
+	rd = (ln_slo != ln_cslo || ln_shi != ln_cshi);
 	for (s = 0; s < LN_SLOTS; s = s + 1)
 		if (ln_on[s])
 		{
 			m = Line_Mode(s);
-			c = (s >= LN_S_TRAIL) ? LN_OWNCOL : ln_rk[s];
+			c = (LN_TRAIL(s)) ? LN_OWNCOL : ln_rk[s];
 			if (m < LN_CM_PLAIN)
 				c = '0 0 0';
-			if (dirty || c != ln_plain[s])
+			if (dirty || ln_sgen[s] != ln_scgen[s] || (rd && m == 0) || c != ln_plain[s])
 			{
 				Line_Paint(s, m, 0);
 				ln_plain[s] = c;
+				ln_scgen[s] = ln_sgen[s];
+				if (!LN_TRAIL(s))
+					ln_npaint = ln_npaint + 1;
 			}
 		}
-	ln_cgen = ln_gen;
 	ln_cslo = ln_slo;
 	ln_cshi = ln_shi;
 	ln_ccown = ln_cmown;
@@ -2371,7 +2561,7 @@ void() Line_ViewFrame =
 	// Only the small live tail changes between bulk rebuilds. Do not invalidate
 	// the eight static board colour caches on every arrival. Contact/energy
 	// retain their existing whole-slot classifiers rather than guessing a kind.
-	for (s = LN_S_TRAIL; s < LN_SLOTS; s = s + 1)
+	for (s = LN_S_TRAIL; s < LN_S_MORE; s = s + 1)
 		if (ln_n[s] > ln_published[s])
 			Line_Paint(s, ln_cmown, ln_published[s]);
 	// Patch 645: the frame's half of lines_draw's block (Line_Native has the slot's).
@@ -2438,7 +2628,7 @@ float(float s, float c) Line_ChunkStep =
 {
 	local float k, tol, l;
 
-	k = s * LN_CAP / LN_CHUNK + c;
+	k = LN_B(s) / LN_CHUNK + c;
 	tol = Line_Sphere(ln_cc[k], ln_cr[k]);
 	if (tol < 0)
 		return 0;
@@ -2464,7 +2654,7 @@ float(float s, float i, float t, float tplay, float ahead) Line_Reveal =
 		f = bound(0, (tplay - t) / ln_reveal, 1);
 		a = ahead + (1 - ahead) * f;
 	}
-	if (s == 0 || s >= LN_S_TRAIL)
+	if (s == 0 || LN_TRAIL(s))
 	{
 		if (ln_published[s] > 0)
 		{
@@ -2488,7 +2678,7 @@ void(float i, float st, float tplay, vector phead, float ahead) Line_Feed =
 	c = ln_col[b + i];
 	if (ln_dtint)
 		c = c + (LN_FGNCOL - c) * ln_dtint;
-	a = Line_Reveal(b / LN_CAP, i, ln_t[b + i], tplay, ahead) * ln_da;
+	a = Line_Reveal(ln_ds, i, ln_t[b + i], tplay, ahead) * ln_da;
 	// The fade is by distance, as the cull is (review: by depth it cut hard at
 	// the screen's sides); only a chunk reaching into it pays the vlen.
 	if (ln_cfade)
@@ -2511,7 +2701,7 @@ void(float i, float st, float tplay, vector phead, float ahead) Line_Feed =
 			f = (tplay - ln_t[b + ln_pi]) / max(0.0001, ln_t[b + i] - ln_t[b + ln_pi]);
 			k = ln_da;
 			if (ln_reveal > 0)
-				k = Line_Reveal(b / LN_CAP, i, tplay, tplay, ahead) * ln_da;
+				k = Line_Reveal(ln_ds, i, tplay, tplay, ahead) * ln_da;
 			Line_Pt(phead, ln_pc + (c - ln_pc) * f, k);
 			if (ahead <= 0)
 			{
@@ -2908,7 +3098,7 @@ string(float s, float e) Line_Label =
 */
 void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Marks =
 {
-	local float b, n, e, k, al, t0, t1, lw, f0;
+	local float b, n, e, k, k2, al, t0, t1, lw, f0;
 	local vector p, c, q, lp;
 	local string lab;
 
@@ -2924,7 +3114,7 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 	f0 = ui_font_cur;
 	Font_Set(ui_font_dispsm);
 	ln_labsz = Font_Px(ln_numsize * 4 / 3);
-	b = s * LN_CAP;
+	b = LN_B(s);
 	n = s * LN_EVCAP;
 	t0 = ln_t[b + ia];
 	t1 = ln_t[b + ib];
@@ -2954,7 +3144,12 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 		else
 			continue;                   // a break: the teleport pass owns it
 		p = ln_ep[n + e];
-		al = Line_Reveal(s, Line_Find(s, ln_et[n + e]), ln_et[n + e], tplay, ahead) * alpha;
+		// Patch 649: the sample's index is only read for a birth (the replay's line and the
+		// live run's); a board line's mark does not pay the search for it.
+		k2 = 0;
+		if (s == 0 || LN_TRAIL(s))
+			k2 = Line_Find(s, ln_et[n + e]);
+		al = Line_Reveal(s, k2, ln_et[n + e], tplay, ahead) * alpha;
 		if (ln_fadek > 0)
 			al = al * bound(0, (ln_far - vlen(p - ln_eye)) * ln_fadek, 1);
 		if (ln_winon)
@@ -3022,7 +3217,7 @@ float(float s) Line_SlotPx =
 	local float w;
 
 	w = -1;
-	if (s >= LN_S_TRAIL)
+	if (LN_TRAIL(s))
 		w = ln_wpxt;
 	else if (s >= LN_S_BOARD)
 		w = ln_wpxb;
@@ -3037,7 +3232,7 @@ float(float s, float ia, float ib, float tplay, vector phead, float ahead) Line_
 {
 	local float f;
 
-	f = (s == 0) ? 3 : ((s >= LN_S_TRAIL) ? 2 : 0);
+	f = (s == 0) ? 3 : ((LN_TRAIL(s)) ? 2 : 0);
 	if (ln_winon) f = f + 4;
 	if (ln_cfade) f = f + 8;
 	ln_np[LP_BASE] = ln_db;
@@ -3046,9 +3241,9 @@ float(float s, float ia, float ib, float tplay, vector phead, float ahead) Line_
 	ln_np[LP_COUNT] = ln_dn;
 	ln_np[LP_PUBLISHED] = ln_published[s];
 	ln_np[LP_FLAGS] = f;
-	ln_np[LP_BORNBASE] = (s == 0 || s >= LN_S_TRAIL) ? Line_BirthBase(s) : 0;
-	ln_np[LP_CHUNKBASE] = s * LN_CAP / LN_CHUNK;
-	ln_np[LP_GROUPBASE] = s * LN_CAP / LN_CHUNK / LN_GROUP;
+	ln_np[LP_BORNBASE] = (s == 0 || LN_TRAIL(s)) ? Line_BirthBase(s) : 0;
+	ln_np[LP_CHUNKBASE] = LN_B(s) / LN_CHUNK;
+	ln_np[LP_GROUPBASE] = LN_B(s) / LN_CHUNK / LN_GROUP;
 	ln_np[LP_TPLAY] = tplay;
 	ln_np[LP_AHEAD] = ahead;
 	ln_np[LP_ALPHA] = ln_da;
@@ -3093,14 +3288,14 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 	local vector p0, p1;
 
 	if (!ln_on[s])
-		if (s < LN_S_TRAIL || ln_n[s] < 2)
+		if (!LN_TRAIL(s) || ln_n[s] < 2)
 			return;
-	b  = s * LN_CAP;
+	b  = LN_B(s);
 	ia = ln_ia[s];
 	ib = ln_ib[s];
 	// Expose each new live sample, keeping expensive spheres/LOD batched.
 	// A deliberately cut shown range must not be extended.
-	if (s >= LN_S_TRAIL)
+	if (LN_TRAIL(s))
 	if (ib == ln_published[s] - 1)
 		ib = ln_n[s] - 1;
 	// The window narrows the shown range; the cut it was set inside still wins.
@@ -3114,6 +3309,7 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 	if (ahead <= 0)
 		ib = min(ib, Line_Find(s, tplay));   // the first point past the playhead
 	ln_db = b;
+	ln_ds = s;
 	ln_dn = ln_n[s];
 	ln_da = alpha;
 	// Read per draw, not per point: the cvar cannot change inside one line.
@@ -3156,7 +3352,7 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 		{
 			g  = floor(i / (LN_CHUNK * LN_GROUP));
 			ge = min(min(ib, ln_published[s] - 1), (g + 1) * LN_CHUNK * LN_GROUP - 1);
-			k  = s * LN_CAP / LN_CHUNK / LN_GROUP + g;
+			k  = LN_B(s) / LN_CHUNK / LN_GROUP + g;
 			if (Line_Sphere(ln_gc[k], ln_gr[k]) < 0)
 			{
 				Line_RunEnd();
@@ -3240,10 +3436,25 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 	}
 
 	// Patch 449.  The glyph stroke is its own width, and the slot's is put back.
-	Line_Width(ln_mkpx * 0.5);
+	// Patch 649: a board line past the first hud_lines_marked (eight) DRAWN is a line
+	// only (ln_mkrank: its place among the drawn ones, from Scores_LinesDraw; by its
+	// place among the drawn and not by its slot, or unticking the first eight of
+	// twenty would leave twelve lines with no marks).  Marks and their numbers are QC
+	// a mark, half of sixty-four lines' cost when all had them (2.2 of 4.2 ms a
+	// frame), and fifty lines of them cover the view.
 	ln_nmk = ln_nlab = 0;
-	Line_Marks(s, ia, ib, tplay, ahead, alpha);
-	Line_Width(wpx);
+	k = TRUE;
+	if (s >= LN_S_BOARD)
+	if (!LN_TRAIL(s))
+	if (ln_mkrank >= ln_mkmax)
+		k = FALSE;
+	if (k)
+	{
+		Line_Width(ln_mkpx * 0.5);
+		Line_Marks(s, ia, ib, tplay, ahead, alpha);
+		Line_Width(wpx);
+		ln_nmkf = ln_nmkf + ln_nmk;
+	}
 
 	// Two prints and not one: fteqcc caps a varargs call at eight and drops
 	// the rest silently.  Every number here was computed by the pass above.
@@ -3295,6 +3506,7 @@ void() Line_RegisterCvars =
 {
 	local float i;
 
+	Line_AllocSlots();
 	registercommand("lines");
 	registercvar("hud_lines_reveal", "0.18", CVAR_ARCHIVE);
 	registercvar("hud_lines_board", "1", CVAR_ARCHIVE);
@@ -3346,6 +3558,10 @@ void() Line_RegisterCvars =
 	// along it (and a quarter of that behind); 0 is everything within hud_watch_path_far.
 	registercvar("hud_lines_order",  "4", CVAR_ARCHIVE);
 	registercvar("hud_lines_winf",   "0", CVAR_ARCHIVE);
+	// Patch 649: of the ticked lines (sixty-four at most now), the first this many have
+	// marks and numbers; the rest are lines.  The graph and the names are the first
+	// eight's whatever this says.
+	registercvar("hud_lines_marked", "8", CVAR_ARCHIVE);
 	// Patch 645: 0 draws lines and plots with the QC loop on an engine that has the
 	// native one (the comparison, and the way back).  Not saved.
 	registercvar("hud_lines_native", "1");
@@ -3362,12 +3578,12 @@ float() Line_Console =
 	if (argv(1) == "order")
 	{
 		print(sprintf("lines: order %g eye %.1f %.1f %.1f\n", cvar("hud_lines_order"), ln_eye_x, ln_eye_y, ln_eye_z));
-		for (s = LN_S_BOARD; s < LN_S_TRAIL; s = s + 1)
+		for (s = LN_S_BOARD; s < LN_SLOTS; s = s + 1)
 		{
-			if (!ln_on[s])
+			if (!ln_on[s] || LN_TRAIL(s))
 				continue;
 			print(sprintf("lines: order slot %g cursor %g t %.4f at %.1f u searches %g moved %g",
-			              s, ln_fo_i[s], ln_t[s * LN_CAP + ln_fo_i[s]], ln_fo_d[s], ln_fo_n[s], ln_fo_mv[s]));
+			              s, ln_fo_i[s], ln_t[LN_B(s) + ln_fo_i[s]], ln_fo_d[s], ln_fo_n[s], ln_fo_mv[s]));
 			print(sprintf(" window %.4f %.4f\n", ln_fo_ta[s], ln_fo_tb[s]));
 		}
 		return TRUE;
@@ -3380,6 +3596,9 @@ float() Line_Console =
 		print(sprintf("lines: last points %g segments %g wild %g clipped %g\n",
 		              ln_npt, ln_nseg, ln_nwild, ln_nclip));
 		print(sprintf("lines: last box %g %g %g %g\n", ln_bbmin_x, ln_bbmin_y, ln_bbmax_x, ln_bbmax_y));
+		print(sprintf("lines: last marks %g of the first %g lines\n", ln_nmkf, ln_mkmax));
+		print(sprintf("lines: repainted %g times (the live run's own not counted); tables made in %.1f ms\n",
+		              ln_npaint, ln_allocms));
 		return TRUE;
 	}
 	print("lines: independent switches (0 off, 1 on):\n"
@@ -3410,7 +3629,7 @@ float() Line_Console =
 
 void() Line_StatsReset =
 {
-	ln_nseg = ln_nclip = ln_nwild = ln_npt = 0;
+	ln_nseg = ln_nclip = ln_nwild = ln_npt = ln_nmkf = 0;
 	ln_bbmin = '99999 99999 0';
 	ln_bbmax = '-99999 -99999 0';
 	ln_first = '0 0 0';

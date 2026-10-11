@@ -4709,6 +4709,70 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+### Sixty-four run lines (Patch 649) — 2026-10-12
+
+- SLOTS 0..10 ARE WHERE THEY WERE (0 the replay, 1..8 board lines, 9 and 10 the
+  live run), each with its 65536-sample store; slots 11..66 are fifty-six more
+  board lines of 8192 samples. `LN_B(s)` is a slot's first sample in the shared
+  arenas, `LN_C(s)` its capacity, `LN_TRAIL(s)` "9 or 10", `LN_BOARDSLOT(i)`
+  the scoreboard's line i (0..63). `s * LN_CAP` is still right for a slot under
+  11, which is why `cl_trail.qc`, `cl_rewind.qc` and `cl_linegraph.qc` did not
+  change; generic code must use `LN_B`. The run graph and the name labels are
+  `LG_SLOTS` 11: places 1..8 only.
+- THE PER-SLOT TABLES ARE ALLOCATED (`Line_AllocSlots`, first thing in
+  `Line_RegisterCvars`; `sb_ln_*` in `Scores_RegisterCvars`): seventy-five
+  arrays of 67 would not fit fteqcc's global definitions. One pointer a
+  declaration line (`float *a, *b;` makes b a pointer to a pointer).
+- ONE memalloc IS 16 MiB AT MOST (`pr_bgcmd.c PF_memalloc`), and `ln_pos` and
+  `ln_col` are 13.5 MiB each: that, not memory, is what stops at fifty-six
+  more slots of 8192. The tables are 68.9 MiB in all (36.7 before), made at
+  the first `Line_Begin` of a map.
+- ONLY THE FIRST EIGHT DRAWN CARRY MARKS (`hud_lines_marked`, by place among
+  the drawn lines, `ln_mkrank`, not by slot: untick the first eight of twenty
+  and the next eight have them). With marks on all sixty-four they were half
+  the cost, 2.2 of 4.2 ms.
+- THREE THINGS THAT WERE PER LINE OR PER PAIR AND DID NOT SHOW AT EIGHT:
+  `Line_Rank` paired every line with every other each frame (now on a change
+  of who is ranked or on what time); every `Line_End` bumped one count, so the
+  live run's build, four times a second, repainted every ticked line from its
+  first sample (now a count a slot, `ln_sgen`); and the follow search looked
+  at each whole line every 0.25 s (now every 0.25 s x lines/8, each slot at
+  its own sixteenth of the interval whenever it last looked, and at once, four
+  lines a frame, when the viewer is moved away from a cursor: `ln_fo_jump`).
+  Up to eight lines the search is as it was.
+- MEASURED on the 645 engine (QC time a frame, 1600x900, a paused replay,
+  2.11 ms with no board line): eight lines 2.93, sixteen 3.03, thirty-two
+  3.33, sixty-four 4.02; sixty-four whole lines 6.64; with marks on all
+  sixty-four and the search unthinned it was 6.57 against 2.35.
+- THE SERVER LIMITS RECORDINGS TO TWENTY A MINUTE AN ADDRESS (surfd
+  `REPLAY_RATE_MAX`; nginx `surfdreplay` 20r/m burst 5, read off the Pi) and
+  says 429. The line downloads spend tokens (`sb_ln_tok`: three, one more
+  every four seconds) and a 429 puts the line back, four times. Sixty-four
+  uncached online lines take about four minutes.
+- THE ARM (`cfg/test/p649lines.cfg`, `tools/test_p649lines.py`): eight then
+  sixty-four of one run (exactly eight times the segments, the same marks);
+  the viewer moved 25 s along the run and all sixty-four cursors with it half
+  a second on; the replay playing; a line alone in slot 5, 42 and 66 the same
+  picture; a 65th refused; and on surf_dune a walk that builds the live line
+  without repainting the eight. 11 of 11 on csprogs `95f30046`; with the
+  one-count repaint put back the last check fails, 48 repaints in five builds
+  of the live line against 0. `lines native` prints the repaint count and what
+  the tables took to make (17 and 23 ms in those two runs).
+- A PRIVATE CHECK, not in the arm (it needs a recording over two minutes): an
+  18,252-sample run is 18,252 points in slot 5 and 4,563 in a new slot, with
+  the same 823 marks; its 113 teleports draw as 90 there, two that fall
+  inside one kept step becoming one.
+- NOT A FAULT, AND IT COST AN HOUR: "the Linux client's VM is 32 MiB". Three
+  readers took it from `initlib.c PR_Configure`; the caller hands it
+  `PR_ReadBytesString`, which makes -1 into 2 GiB on 64-bit Linux too
+  (`pr_bgcmd.c:132`). The 0.1.24 Linux client then drew a line in the rig.
+  Read the caller before the callee's default.
+- THE REPLAY BAR'S CLOSE BUTTON LIGHTS UNDER THE REAL MOUSE: a 20x20 box that
+  differs between two shots of one view when the owner's mouse is over the
+  rig's window (382 pixels). The arms' "holds still" control then says not
+  measured, which is the right answer and not a failure.
+- csprogs: 117,320 definitions.
+
 ### Run lines drawn by the engine (Patch 645) — 2026-10-11
 
 - WHERE EIGHT LINES' TIME WENT (`set r_speeds 2`, `r_speeds_dump`, bucket

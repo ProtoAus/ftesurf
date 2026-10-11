@@ -5292,11 +5292,11 @@ float(string cmd) Watch_ConsoleCommand =
 		sl = stof(argv(2));                  // slot, default 0 (the replay)
 		b = sl * LN_EVCAP;
 		print(sprintf("lnmb %g %g %g %g %.4f %.4f %s\n", sl, ln_evn[sl], ln_evcut[sl],
-		              ln_evdrop[sl], ln_n[sl] ? ln_t[sl * LN_CAP] : 0,
-		              ln_n[sl] ? ln_t[sl * LN_CAP + ln_n[sl] - 1] : 0, rec_wt_path));
+		              ln_evdrop[sl], ln_n[sl] ? ln_t[LN_B(sl)] : 0,
+		              ln_n[sl] ? ln_t[LN_B(sl) + ln_n[sl] - 1] : 0, rec_wt_path));
 		for (i = 0; i < ln_bkn[sl]; i = i + 1)
 			print(sprintf("lnk %g %.4f\n", ln_bk[sl * LN_BKCAP + i],
-			              ln_t[sl * LN_CAP + ln_bk[sl * LN_BKCAP + i]]));
+			              ln_t[LN_B(sl) + ln_bk[sl * LN_BKCAP + i]]));
 		for (i = 0; i < ln_evn[sl]; i = i + 1)
 		{
 			ep = ln_ep[b + i];
@@ -5375,10 +5375,10 @@ float(string cmd) Watch_ConsoleCommand =
 		print(sprintf("lncr %.1f %.1f %.1f %.1f %g\n", ln_slo, ln_shi, ln_lo[sl], ln_hi[sl], ln_on[sl]));
 		for (i = 0; i < ln_n[sl]; i = i + track)
 		{
-			ep = ln_col[sl * LN_CAP + i];
+			ep = ln_col[LN_B(sl) + i];
 			print(sprintf("lnc %g %.4f %.3f %.3f %.3f %.4f\n", i,
-			              ln_t[sl * LN_CAP + i], ep_x, ep_y, ep_z,
-			              ln_q[sl * LN_CAP + i]));
+			              ln_t[LN_B(sl) + i], ep_x, ep_y, ep_z,
+			              ln_q[LN_B(sl) + i]));
 		}
 		// Patch 632: and, for a line coloured by time, its place among those shown;
 		// the blend toward blue the slot was drawn with (ln_col is before it); how
