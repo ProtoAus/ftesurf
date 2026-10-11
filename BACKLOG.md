@@ -177,6 +177,34 @@ From its one review; measured there unless said.
 - **Not measured:** the nine older arms that set the colouring were read, not
   run; the reset literals on an install with an older default.cfg (the arm's
   rig has this patch's, where the reset worked before them too).
+## The first-boot screens: what Patch 647 left -- 2026-10-11
+
+- **Signing in is still a join and five steps.** The offer joins a lobby;
+  the game's box there wants Enter; that opens the sign-in page; Steam's
+  own page is a click on from it; the number it gives is typed back. The
+  engine signs a link only in the game, on a lobby, under a key press: a
+  link from the menu needs engine work (a menu-side start, and the nonce
+  without a lobby).
+- **The offer is made once, after the terms.** A player who agreed before
+  this patch and never linked is asked by the game's own box, once a
+  session, as before; nothing in the main menu leads back to the offer
+  (`link` in the console does). The menu does not know whether the install
+  is linked: the game could leave it a note.
+- **The offer's join waves the name gate through** (the Steam name becomes
+  the name once linked). A player who then declines in the game, or whose
+  engine cannot link, is on a public lobby under the factory name: Patch
+  340's case, for that one connect.
+- **An 800 x 600 window does not fit the terms even at 12 px**: the two
+  cards run under the button strip and there is no scroll. 1280 x 720 and
+  1024 x 768 fit (`ui_strip_test screen fit` prints the panel against the
+  window).
+- **`ui_key` and `ui_click` still drive every other button in the menu**
+  (they are the harnesses' hands). The terms' answers and the offer's
+  sign-in refuse them; whether a server's stufftext can reach
+  menu-registered commands at all is not measured.
+- The first lobby with room in the directory's (port) order is the one
+  joined, whatever its tier.
+
 ## Steam pictures in the game: what Patch 640 left -- 2026-10-11
 
 - **Two of the three places are not measured in a rig.** `tools/p640pics.py`
@@ -241,8 +269,7 @@ From its one review; measured there unless said.
   account's holder is "(1)Name" until the other leaves (retried every 15 s).
   `game_name` drops combining marks, so a Thai or Devanagari Steam name is
   held in a mutilated form. A ban or unlink learned mid-connection ends the
-  hold and leaves the name where it was. The terms screen
-  says "under the name you are playing as" (menu.dat; with the first-boot work).
+  hold and leaves the name where it was.
   `steamsync.py` runs from cron: a new box needs the crontab line.
 
 ## The site under three million imported rows -- 2026-10-11

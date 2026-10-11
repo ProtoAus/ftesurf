@@ -126,6 +126,9 @@
 // so everything this file calls into it is prototyped here.
 #define SCREEN_VISUALS  4
 #define SCREEN_MUSIC    5
+// Patch 647: the Steam sign-in, offered once, straight after the terms are
+// taken with public lobbies on.  It has a "not now": an offer, not a gate.
+#define SCREEN_STEAM    6
 void() MM_Init;
 float() MM_Active;
 void(vector screensize) MM_Frame;
@@ -642,50 +645,11 @@ float(string path) ui_file_exists =
   reminder.
 ===========================================================================
 */
-string(float i) rec_terms_line =
-{
-	if (i ==  0) return "FTESurf times your runs, and it keeps a file for each one.";
-	if (i ==  1) return "";
-	if (i ==  2) return "^3What is recorded, while a run's clock is going:";
-	if (i ==  3) return "  your position, velocity and view angles, about 66 times a second";
-	if (i ==  4) return "  which movement keys you are holding, once per drawn frame";
-	if (i ==  5) return "  a journal of raw mouse and keyboard events, with timings";
-	if (i ==  6) return "";
-	if (i ==  7) return "^3Where it goes, playing on your own:";
-	if (i ==  8) return "  files under this game's own data folder, on this machine.";
-	if (i ==  9) return "  ^2Nothing about a run leaves this machine^7 -- there is no upload.";
-	if (i == 10) return "";
-	if (i == 11) return "^3Public lobbies, if you turn them on with the button below:";
-	if (i == 12) return "  the other people on the map see your position and view angle,";
-	if (i == 13) return "  and you see theirs. Voice and text chat reach everyone there.";
-	if (i == 14) return "  ^1Your finish time is uploaded^7 to ^9play.proto.bar^7 and appears on";
-	if (i == 15) return "  a public leaderboard, under the name you are playing as.";
-	if (i == 16) return "  ^1That server also keeps its own recording of the run^7 -- positions,";
-	if (i == 17) return "  velocities and angles -- which anyone can download from the board.";
-	if (i == 18) return "  Your raw mouse and keyboard journal is ^2NOT^7 uploaded. It, and a";
-	if (i == 19) return "  copy of your lobby times, stay in this game's data folder here.";
-	if (i == 20) return "  That same host answers the map picker, so it sees your IP while";
-	if (i == 21) return "  the picker is open, as does any lobby you join.";
-	if (i == 22) return "";
-	if (i == 23) return "^3What it is for:";
-	if (i == 24) return "  replaying your runs, and telling a real run from a scripted one.";
-	if (i == 25) return "";
-	if (i == 26) return "^3What is deliberately NOT recorded:";
-	if (i == 27) return "  anything you type. While the console or a menu has focus the";
-	if (i == 28) return "  journal keeps the timing of a keypress but drops which key it";
-	if (i == 29) return "  was, so a password typed in the console cannot end up in a file.";
-	if (i == 30) return "  Nothing outside this game's window is watched, ever.";
-	if (i == 31) return "";
-	if (i == 32) return "^3Turning it off:";
-	// rec_hid, NOT fs_hid.  The cvar was renamed in build 46 with the rest of the
-	// fs_ -> rec_ move (sh_defs.qc:1409 is the forward), and this line went on
-	// naming the old one -- so the single actionable instruction on the consent
-	// screen told the reader to set a cvar that nothing reads.  Found by looking
-	// at the rendered screen, which is the only place it was visible.
-	if (i == 33) return "  ^9rec_hid 0^7 stops the raw input journal. Runs recorded without it";
-	if (i == 34) return "  are marked as such rather than passing as runs that had one.";
-	return "";
-};
+/*
+  Patch 647: the text is two columns now (ui_terms_col, over screen_terms).
+  The essay below is about the 35 lines it was, and numbers them so; its rule
+  is the new text's rule.
+*/
 /*
   29, not 30.  The line that used to sit at 16 read "lobby_dir is empty by
   default; while it is, nothing is sent."  It was removed in the same edit that
@@ -780,7 +744,7 @@ string(float i) rec_terms_line =
   5 px clear.  The IP disclosure used to be made twice (once for the lobby, once
   for the picker) and is now made once, which paid for two of the three new lines.
 */
-#define FS_TERMS_LINES 35
+// (FS_TERMS_LINES was here until Patch 647.)
 
 float ms_consent;       // the FS_TERMS_VERSION on disk; 0 = none
 
@@ -3375,10 +3339,16 @@ float(string s) ui_name_default =
   the headless developer surface, and a name dialog no script can answer
   would deadlock every bootcheck run ever taken.
 */
+float ui_name_skip;     // Patch 647: one connect goes through as it is (ui_steam_go)
 float(float resume, float arg) ui_name_gate =
 {
 	if (cvar("ui_bootcheck"))
 		return FALSE;
+	if (ui_name_skip)
+	{
+		ui_name_skip = FALSE;
+		return FALSE;
+	}
 	if (!ui_name_default(cvar_string("name")))
 		return FALSE;
 
@@ -3625,8 +3595,9 @@ float(string a) ui_host_allowed =
 	if (h == "")
 		return FALSE;
 
-	// tokenize() clobbers argv globally. Safe here: ui_connect is the only
-	// caller and does not read argv afterwards.
+	// tokenize() clobbers argv globally. Its callers (ui_connect, the join
+	// tick, ui_steam_pick) do not read argv afterwards; ui_para tokenizes its
+	// own text after any of them.
 	n = tokenize(list);
 	for (i = 0; i < n; i = i + 1)
 		if (strtolower(argv(i)) == h)
@@ -4975,129 +4946,420 @@ void(vector screensize) ui_map_backdrop =
 };
 
 /*
-  The terms screen.  No "back", by design -- the only two ways off it are
-  accepting and quitting, because "later" is not a state this can be in: the very
-  next thing the player does is load a map, and that is the thing being consented
-  to.
+  A paragraph wrapped to `w` px.  Returns its height; with `draw` FALSE it only
+  measures, so a panel can be sized from its text before anything is drawn.
+  The lines are gathered and then drawn: argv is tokenize's, not ours to hold
+  across other calls.
 */
+#define UI_PARA_MAX 12
+string ui_para_ln[UI_PARA_MAX];
+float(vector pos, float w, vector sz, float pitch, string text, vector col, float draw) ui_para =
+{
+	local float n, i, k;
+	local string line, next;
+
+	n = tokenizebyseparator(text, " ");
+	line = "";
+	k = 0;
+	for (i = 0; i < n; i = i + 1)
+	{
+		next = (line == "") ? argv(i) : strcat(line, " ", argv(i));
+		if (line != "")
+		if (k < UI_PARA_MAX - 1)
+		if (stringwidth(next, TRUE, sz) > w)
+		{
+			ui_para_ln[k] = line;
+			k = k + 1;
+			next = argv(i);
+		}
+		line = next;
+	}
+	if (line != "")
+	{
+		ui_para_ln[k] = line;
+		k = k + 1;
+	}
+	if (draw)
+		for (i = 0; i < k; i = i + 1)
+			sui_text([pos_x, pos_y + i * pitch], sz, ui_para_ln[i], col, 1, 0);
+	return k * pitch;
+};
+
+// The two screens' text size.  16 px, or 12 where 16 does not fit the window:
+// both are on the UI face's baked ladder (sh_font.qc); the first cut's 15 was
+// drawn resampled, and at 15 the panel was 790 px tall in a 720 px window.
+vector tm_sz;
+float  tm_pitch;
+void(float big) ui_tm_size =
+{
+	tm_sz    = big ? '16 16 0' : '12 12 0';
+	tm_pitch = big ? 20 : 15;
+};
+
+#define TM_GAP    7             // under a paragraph
+#define TM_HEAD   10            // over a heading that is not a column's first
+
+float tm_y;                     // how far down its column the text has got
+
+void(vector p, float draw, string h) ui_tm_head =
+{
+	if (tm_y > 0)
+		tm_y = tm_y + TM_HEAD;
+	if (draw)
+		sui_text([p_x, p_y + tm_y], tm_sz, h, COL_ACCENT, 1, 0);
+	tm_y = tm_y + tm_pitch + 3;
+};
+
+void(vector p, float w, float draw, string t, vector col) ui_tm_par =
+{
+	tm_y = tm_y + ui_para([p_x, p_y + tm_y], w, tm_sz, tm_pitch, t, col, draw) + TM_GAP;
+};
+
+void(vector p, float w, float draw, string t) ui_tm_dot =
+{
+	if (draw)
+		sui_roundbox([p_x + 3, p_y + tm_y + floor(tm_pitch * 0.5) - 3], '4 4 0', 2, SUI_THEME_MUTED, 1);
+	tm_y = tm_y + ui_para([p_x + 16, p_y + tm_y], w - 16, tm_sz, tm_pitch, t, COL_TEXT, draw) + 3;
+};
+
+/*
+  THE TERMS (Patch 647: two columns of wrapped paragraphs; they were 35
+  hand-broken lines).  Column 0 is the game on its own, column 1 what public
+  lobbies add.  Returns the column's height; `draw` FALSE measures.
+
+  The rule is the essay's over FS_TERMS_LINES: DISCLOSE ONLY WHAT THE SHIPPED
+  CODE DOES TODAY.  What this cut changed, each because the code had:
+    - "about 66 times a second": a bhop map ticks at 100 (sv_main.qc);
+    - "under the name you are playing as": since Patches 629 and 638 a ranked
+      time is filed under a linked Steam account, by its Steam name;
+    - the Steam paragraphs: what a link stores (surfd's `accounts`, `keylinks`
+      and `installs`) and shows (638 the name, 639 and 640 the picture, 636
+      the profile link and the other games' records);
+    - "the leaderboards and players' pictures": the game asks play.proto.bar
+      for both (cl_online.qc, cl_steampic.qc), not for the map picker only.
+  FS_TERMS_ONLINE is NOT bumped: nothing new leaves the machine of a player
+  who does not link, and linking is its own act on its own page.
+*/
+float(float c, vector p, float w, float draw) ui_terms_col =
+{
+	tm_y = 0;
+	if (c == 0)
+	{
+		ui_tm_head(p, draw, "What is recorded, while a run's clock is going");
+		ui_tm_dot(p, w, draw, "your position, velocity and view angles, on every tick of the game's clock (66 or 100 a second)");
+		ui_tm_dot(p, w, draw, "which movement keys you are holding, once per drawn frame");
+		ui_tm_dot(p, w, draw, "a journal of raw mouse and keyboard events, with timings");
+		ui_tm_head(p, draw, "Where it goes");
+		ui_tm_par(p, w, draw, "Files under this game's own data folder, on this machine.", COL_TEXT);
+		ui_tm_par(p, w, draw, "Playing on your own, nothing about a run leaves this machine: there is no upload.", SUI_THEME_GOOD);
+		ui_tm_head(p, draw, "What it is for");
+		ui_tm_par(p, w, draw, "Replaying your runs, and telling a real run from a scripted one.", COL_TEXT);
+		ui_tm_head(p, draw, "What is never recorded");
+		ui_tm_par(p, w, draw, "Anything you type. While the console or a menu has focus the journal keeps the timing of a keypress and drops which key it was, so a password typed in the console cannot end up in a file. Nothing outside this game's window is watched, ever.", COL_TEXT);
+		ui_tm_head(p, draw, "Turning it off");
+		ui_tm_par(p, w, draw, "rec_hid 0 stops the raw input journal. Runs recorded without it are marked as such, rather than passing as runs that had one.", COL_TEXT);
+	}
+	else
+	{
+		ui_tm_head(p, draw, "What the other players get");
+		ui_tm_par(p, w, draw, "The people on the map see your position and view angle, and you see theirs. Voice and text chat reach everyone there.", COL_TEXT);
+		ui_tm_head(p, draw, "What is uploaded");
+		ui_tm_par(p, w, draw, "Your finish time goes to play.proto.bar and appears on a public leaderboard. That server also keeps its own recording of the run (positions, velocities and angles), which anyone can download from the board.", SUI_THEME_WARN);
+		ui_tm_par(p, w, draw, "Your raw mouse and keyboard journal is NOT uploaded. It, and a copy of your lobby times, stay in this game's data folder here.", COL_TEXT);
+		ui_tm_par(p, w, draw, "play.proto.bar answers the map picker, the leaderboards and players' pictures, so it sees your IP address while you use them, as does any lobby you join.", COL_TEXT);
+		ui_tm_head(p, draw, "Steam");
+		ui_tm_par(p, w, draw, "A ranked time needs a Steam account linked to this game. You sign in on Steam's own page in your browser; the game never sees your password. play.proto.bar keeps your Steam ID, name and profile picture and, for this install, the key and id that name it, where and when it was linked, and when and how often it sends ranked runs.", COL_TEXT);
+		ui_tm_par(p, w, draw, "Once linked, your Steam name is your name on lobbies, and it and your picture are shown with your times, in the game and on proto.bar, where they link to your Steam profile and sit beside your Momentum Mod and KSF records.", COL_TEXT);
+		ui_tm_par(p, w, draw, "Without a link your lobby times are still kept and shown, unranked, under this install's own id and the name you are playing as.", COL_TEXT);
+	}
+	return tm_y - TM_GAP;
+};
+
+/*
+  The terms screen.  No "back", by design -- the only ways off it are an
+  answer and quitting, because "later" is not a state this can be in: the very
+  next thing the player does is load a map, and that is the thing being
+  consented to.
+
+  Patch 647 redrew it: one panel, two cards, sized FROM the wrapped text
+  (measured, then drawn), three buttons.  What build 22 to 270 learned here
+  still holds and is kept in the layout rather than in essays:
+    - both answers are always drawn; "offline" is a real answer and is the
+      first element, so it is the keyboard's default;
+    - the buttons are ALWAYS on screen.  The text drops to 12 px where 16 does
+      not fit; in a window too short even for that the buttons and the
+      footnote sit on a strip of their own along the bottom edge (there is no
+      ESC off this screen);
+    - AN ANSWER IS THE PLAYER'S HAND.  `ui_key` and `ui_click` are console
+      commands, and a console line can be somebody else's: for a moment after
+      either the answers do nothing and say why;
+    - taking the online answer goes on to the Steam offer (screen_steam).
+*/
+#define TM_PAD   28
+#define TM_CARD  16
+float ui_steam_t0;      // when the Steam offer went up: how long to wait for the lobby list
+float ui_synth_t;       // when ui_key or ui_click last fed the menu an event; 0 never
+float ui_tm_ph, ui_tm_w, ui_tm_two, ui_tm_sx, ui_tm_sy;     // the terms as last laid out, for ui_strip_test
+
+float() ui_synth =
+{
+	if (ui_synth_t > 0)
+	if (time - ui_synth_t < 1.5)
+		return TRUE;
+	return FALSE;
+};
+
 void(vector screensize) screen_terms =
 {
-	local vector p;
-	local float i, y, ph, foot, btn;
+	local vector p, q;
+	local float w, colw, two, ha, hb, cards, ph, by, x, head, big, strip;
+	local string lab, lead, foot;
 
 	ui_backdrop(screensize);
 
-	/*
-	  The panel is sized FROM the text rather than guessed at: 26 lines at a 15 px
-	  pitch is 390 px, and the first cut used a 500 px box, which put the accept
-	  button straight through the last three lines of "Turning it off".  A terms
-	  screen with its own text obscured by the button that accepts it is not a
-	  detail -- it is the one screen where the reader has to be able to read
-	  everything before the control that says they did.
-
-	  PATCH 270 MADE THAT COMMENT TRUE.  It described a panel that had been sized
-	  from the text ONCE, by hand, and then written down as the constants 580,
-	  486 and 516 -- so adding the four lines about public lobbies would have
-	  reproduced the exact bug the comment exists to warn about, and reproduced
-	  it in the one screen where it matters most.  Derived now, so the next
-	  person to add a line gets a taller box instead of a covered sentence:
-
-	      text     starts at +72, FS_TERMS_LINES at a 15 px pitch
-	      footer   24 px below the last line
-	      button   30 px below the footer
-	      panel    34 px below the button
-
-	  At 33 lines (build 57) that is 685 px, leaving a 35 px margin at 720p --
-	  the smallest window this is expected to run in, and the case the map
-	  picker's own clamp exists for.  Anything much past ~34 lines needs a
-	  scroll rather than a bigger box, and the honest fix at that point is
-	  shorter terms; there is room for about one more.
-
-	  The three buttons are 24..254, 270..500 and 516..616 inside a 640 px
-	  panel, so they do not overlap and the rightmost keeps a 24 px margin.
-	*/
-	foot = 72 + FS_TERMS_LINES * 15 + 24;
-	btn  = foot + 30;
-	ph   = btn + 30 + 34;
-
-	p = [floor(screensize_x * 0.5) - 320, floor(screensize_y * 0.5 - ph * 0.5)];
-
-	/*
-	  CLAMPED, because deriving the height from the text made this reachable.
-
-	  Centring a 625 px panel in a window shorter than that puts p_y negative,
-	  which pushes the BUTTON ROW below the bottom edge.  On this screen that is
-	  not a cosmetic clip: there is deliberately no ESC route out of the terms,
-	  and m_draw forces the screen back every frame while consent is missing --
-	  so a fresh install in a short window has no reachable control at all and
-	  the game cannot be started.  Quitting and editing a config is not a way
-	  out for the player this screen exists to protect.
-
-	  Two clamps.  The first pins the panel to the top so the text is read from
-	  its beginning rather than its middle; the second floats the buttons up
-	  from the bottom edge if the panel still overflows.  Text can be clipped --
-	  the reader can resize -- but the control that accepts must always be
-	  on screen, and must never sit ON the text it is accepting.
-	*/
-	if (p_y < 0)
-		p = [p_x, 0];
-
-	if (p_y + btn + 30 > screensize_y)
+	lead = "FTESurf times your runs and keeps a file for each one. This is what is recorded, and where it goes.";
+	foot = "Your answer is kept in a file on this machine. It is a record that you agreed, not a lock.";
+	w = min(1240, screensize_x - 32);
+	two = (w >= 700);
+	colw = two ? floor((w - TM_PAD * 2 - 16) * 0.5) - TM_CARD * 2 : w - TM_PAD * 2 - TM_CARD * 2;
+	// At 16 px, and again at 12 where that is taller than the window.
+	ha = hb = ph = head = cards = 0;
+	for (big = 1; big >= 0; big = big - 1)
 	{
-		btn = screensize_y - 30 - 8 - p_y;
-		if (btn < foot + 8)
-			btn = foot + 8;         // never over the last line of the terms
+		ui_tm_size(big);
+		head = 66 + ui_para('0 0 0', w - TM_PAD * 2, tm_sz, tm_pitch, lead, COL_DIM, FALSE) + 14;
+		ha = ui_terms_col(0, '0 0 0', colw, FALSE);
+		hb = ui_terms_col(1, '0 0 0', colw, FALSE);
+		x = tm_pitch + 14 + TM_CARD * 2;           // a card's own title and padding
+		cards = two ? max(ha, hb) + x : ha + hb + 2 * x + 12;
+		ph = head + cards + 12 + tm_pitch + 14 + 34 + 24;
+		if (ph <= screensize_y - 16)
+			break;
 	}
+	ui_tm_ph = ph;
+	ui_tm_w = w;
+	ui_tm_two = two;
+	ui_tm_sx = screensize_x;
+	ui_tm_sy = screensize_y;
 
-	sui_fill(p, [640, ph], COL_PANEL, 0.94, 0);
-	sui_border_box(p, [640, ph], 1, COL_BORDER, 1, 0);
+	p = [floor((screensize_x - w) * 0.5), floor((screensize_y - ph) * 0.5)];
+	if (p_y < 8)
+		p_y = 8;
+
+	sui_style_box(p, [w, ph], 16, SUI_THEME_PANEL, SUI_THEME_EDGE, 0.97);
 
 	Font_Set(ui_font_display);
-	sui_text([p_x + 24, p_y + 22], SZ_TITLE, "Before you play", COL_ACCENT, 1, 0);
+	sui_text([p_x + TM_PAD, p_y + 22], SZ_TITLE, "Before you play", COL_TEXT, 1, 0);
 	Font_Set(ui_font_ui);
+	ui_para([p_x + TM_PAD, p_y + 66], w - TM_PAD * 2, tm_sz, tm_pitch, lead, COL_DIM, TRUE);
 
-	y = p_y + 72;
-	for (i = 0; i < FS_TERMS_LINES; i = i + 1)
+	// The two cards: side by side, or one under the other in a narrow window.
+	q = [p_x + TM_PAD, p_y + head];
+	x = tm_pitch + 14;
+	by = two ? max(ha, hb) : ha;
+	sui_style_box(q, [colw + TM_CARD * 2, by + x + TM_CARD * 2], 12, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
+	sui_text([q_x + TM_CARD, q_y + TM_CARD], tm_sz, "ON THIS MACHINE", COL_DIM, 1, 0);
+	ui_terms_col(0, [q_x + TM_CARD, q_y + TM_CARD + x], colw, TRUE);
+	if (two)
+		q = [q_x + colw + TM_CARD * 2 + 16, q_y];
+	else
+		q = [q_x, q_y + ha + x + TM_CARD * 2 + 12];
+	by = two ? max(ha, hb) : hb;
+	sui_style_box(q, [colw + TM_CARD * 2, by + x + TM_CARD * 2], 12, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
+	sui_text([q_x + TM_CARD, q_y + TM_CARD], tm_sz, "PUBLIC LOBBIES", COL_DIM, 1, 0);
+	sui_text([q_x + TM_CARD + stringwidth("PUBLIC LOBBIES", TRUE, tm_sz) + 10, q_y + TM_CARD],
+	         tm_sz, "only if you turn them on below", SUI_THEME_MUTED, 1, 0);
+	ui_terms_col(1, [q_x + TM_CARD, q_y + TM_CARD + x], colw, TRUE);
+
+	// The footnote and the buttons' row; on a strip of their own where the
+	// panel runs off the screen even at 12 px.
+	by = p_y + ph - 24 - 34;
+	strip = (by + 34 + 10 > screensize_y);
+	if (strip)
 	{
-		sui_text([p_x + 24, y], SZ_LABEL, rec_terms_line(i), COL_TEXT, 1, 0);
-		y = y + 15;
+		by = screensize_y - 34 - 10;
+		sui_fill([p_x, by - tm_pitch - 18], [w, 34 + tm_pitch + 28], SUI_THEME_PANEL, 1, 0);
+		sui_fill([p_x, by - tm_pitch - 18], [w, 1], SUI_THEME_EDGE, 1, 0);
+	}
+	sui_text([p_x + TM_PAD, by - tm_pitch - 10], tm_sz, foot, SUI_THEME_MUTED, 1, 0);
+
+	// Placed from their labels' widths (ui_button grows to fit one): at fixed
+	// widths the first cut drew one over the other.
+	lab = (ms_consent >= FS_TERMS_VERSION) ? "Not now: stay offline" : "I understand: play offline";
+	ha = stringwidth("I understand: play online", TRUE, SZ_LABEL) + 28;
+	hb = stringwidth(lab, TRUE, SZ_LABEL) + 28;
+	if (ui_button("tm_accept", [p_x + w - TM_PAD - ha - 12 - hb, by], [hb, 34], lab))
+	{
+		if (ui_synth())
+			print("menu: the terms take a real key or click, not ui_key or ui_click\n");
+		else
+			ui_consent_write(FS_TERMS_VERSION);
 	}
 
-	sui_text([p_x + 24, p_y + foot], SZ_LABEL,
-	         "^9This is a record that you agreed, kept on your own machine. It is not a lock.",
-	         COL_DIM, 1, 0);
+	if (ui_button("tm_online", [p_x + w - TM_PAD - ha, by], [ha, 34],
+	              "I understand: play online", TRUE))
+	{
+		if (ui_synth())
+			print("menu: the terms take a real key or click, not ui_key or ui_click\n");
+		else
+		{
+			ui_consent_write(FS_TERMS_ONLINE);
+			// Written, or the gate in m_draw has the terms straight back up.
+			if (ms_consent >= FS_TERMS_ONLINE)
+			if (!cvar("ui_bootcheck"))
+			{
+				menu_screen = SCREEN_STEAM;
+				ui_steam_t0 = time;
+				print("menu: the terms are taken with lobbies on; the Steam sign-in is offered\n");
+			}
+		}
+	}
 
-	/*
-	  TWO ACCEPT BUTTONS, ALWAYS BOTH DRAWN, and the left one is the default.
-
-	  There used to be one accept plus a "not now" that appeared only for
-	  someone who had already accepted an earlier version.  On a fresh install
-	  that condition is false, so a new player had a single button -- and it
-	  stamped FS_TERMS_ONLINE, opting them into contacting a server.  The lower
-	  tier existed in the file format and in three gates and was unreachable
-	  from the only screen that can grant it.
-
-	  Now the tier is the choice, not a side effect of which button happened to
-	  be visible.  Left grants the offline game and nothing else; right adds
-	  lobbies.  A player who takes the left one keeps playing immediately, with
-	  every online path still shut, and can come back through the row
-	  Lob_Blocked draws in the map picker whenever they want the other half.
-
-	  For a version-1 player arriving here from a lobby row, the left button is
-	  still the "not now" it was: ui_consent_write refuses to downgrade, so it
-	  writes nothing new and just closes the screen.  The label says so.
-	*/
-	if (ui_button("tm_accept", [p_x + 24, p_y + btn], [230, 30],
-	              (ms_consent >= FS_TERMS_VERSION) ? "not now -- keep playing offline"
-	                                               : "I understand -- play offline"))
-		ui_consent_write(FS_TERMS_VERSION);
-
-	if (ui_button("tm_online", [p_x + 270, p_y + btn], [230, 30],
-	              "...and turn on public lobbies"))
-		ui_consent_write(FS_TERMS_ONLINE);
-
-	if (ui_button("tm_exit", [p_x + 516, p_y + btn], [100, 30], "exit"))
+	if (ui_button("tm_exit", [p_x + TM_PAD, by], [72, 34], "Quit"))
 		localcmd("quit\n");
+};
+
+/*
+  Patch 647: the Steam sign-in, offered where the owner asked for it, "when you
+  first boot the game, like the screen that tells you, you will be recorded".
+
+  A LINK IS MADE IN THE GAME, ON A LOBBY, UNDER A KEY PRESS (cl_account.qc,
+  Patch 625): the lobby asks surfd whose install this is, and the engine signs
+  only while a real key is going down.  The menu has neither.  So this screen
+  does the part it can: it says what a link is and what the steps are, joins a
+  lobby, and the box that comes up there by itself ("press Enter to link your
+  Steam account") is the next thing the player sees.  From there it is the
+  flow as it was: Enter opens the sign-in page, Steam's own page is a click
+  on from it, and the number that page shows is typed back into the game.
+
+  The lobby is the directory's first with room whose address this build would
+  join by hand anyway; the screen's sentence and the button's deed ask the
+  same function.  The name gate is waved through for this one connect: the
+  Steam name becomes the name once linked (Patch 638).
+*/
+float() ui_steam_pick =
+{
+	local float i, full;
+
+	for (i = 0; i < Lob_Count(); i = i + 1)
+	{
+		full = (Lob_Max(i) > 0);
+		if (full)
+			full = (Lob_Players(i) >= Lob_Max(i));
+		if (!full)
+		if (ui_addr_ok(Lob_Addr(i)))
+		if (ui_host_allowed(Lob_Addr(i)))
+			return i;
+	}
+	return -1;
+};
+
+void() ui_steam_go =
+{
+	local float i;
+
+	i = ui_steam_pick();
+	if (i < 0)
+		return;
+	// The map list is PLAY's to load and a first boot has not been there:
+	// without it ui_connect cannot see that the lobby's map is missing here,
+	// and would connect without fetching it (ui_prejoin).
+	if (ms_count == 0)
+		ui_load_maps();
+	print(sprintf("menu: Steam sign-in: joining %s, %g maps known, where the game asks for Enter\n",
+	              Lob_Addr(i), ms_count));
+	menu_screen = SCREEN_MAIN;      // what ESC out of the game comes back to
+	ui_name_skip = TRUE;
+	ui_connect(i);
+	ui_name_skip = FALSE;
+};
+
+// "Not now", and ESC.  Declining an offer that could be taken also tells the
+// game not to raise its own box this session (cl_account.qc offers a link once
+// a session, on the first lobby).  With no lobby to sign in on nothing was
+// declined, and the game still offers it: the screen says so.
+void() ui_steam_later =
+{
+	menu_screen = SCREEN_MAIN;
+	if (ui_steam_pick() < 0)
+	{
+		print("menu: Steam sign-in: no lobby to sign in on; the game offers it on the first one\n");
+		return;
+	}
+	print("menu: Steam sign-in: not now\n");
+	// `set`, since the game has not registered the cvar yet.
+	localcmd("set _acct_prompted 1\n");
+};
+
+// What a link gets the player, as the offer's card.  Returns its height; `draw`
+// FALSE measures (ui_terms_col's way).
+float(vector p, float w, float draw) ui_steam_card =
+{
+	tm_y = 0;
+	ui_tm_head(p, draw, "Your times are ranked");
+	ui_tm_par(p, w, draw, "Runs on public lobbies count on the leaderboard, under your account.", COL_TEXT);
+	ui_tm_head(p, draw, "Your Steam name and picture");
+	ui_tm_par(p, w, draw, "Shown with your times, in the game and on proto.bar, beside your Momentum Mod and KSF records.", COL_TEXT);
+	return tm_y - TM_GAP;
+};
+
+void(vector screensize) screen_steam =
+{
+	local vector p;
+	local float w, ph, y, pick, waited, card, noteh;
+	local string note;
+
+	ui_backdrop(screensize);
+	ui_tm_size(screensize_y >= 560);
+
+	// What happens on the press, said before it; or why there is no press.
+	pick = ui_steam_pick();
+	waited = time - ui_steam_t0;
+	if (pick >= 0)
+		note = "You join a lobby, and the game asks you to press Enter there. That opens proto.bar in your browser, where you sign in on Steam's own page and are given a number to type back into the game. The game never sees your password.";
+	else if (Lob_Count() == 0 && waited < 8)
+		note = "Looking for a lobby to sign in on...";
+	else
+		note = "No lobby can take you just now. The game offers this again the first time you join one.";
+
+	w = min(620, screensize_x - 32);
+	card = ui_steam_card('0 0 0', w - TM_PAD * 2 - TM_CARD * 2, FALSE) + TM_CARD * 2;
+	noteh = ui_para('0 0 0', w - TM_PAD * 2, tm_sz, tm_pitch, note, SUI_THEME_MUTED, FALSE);
+	ph = 108 + card + 14 + max(noteh, tm_pitch * 3) + 18 + 34 + TM_PAD;
+	p = [floor((screensize_x - w) * 0.5), floor((screensize_y - ph) * 0.5)];
+	if (p_y < 8)
+		p_y = 8;
+
+	sui_style_box(p, [w, ph], 16, SUI_THEME_PANEL, SUI_THEME_EDGE, 0.97);
+
+	Font_Set(ui_font_display);
+	sui_text([p_x + TM_PAD, p_y + 24], SZ_TITLE, "Sign in with Steam", COL_TEXT, 1, 0);
+	Font_Set(ui_font_ui);
+	sui_text([p_x + TM_PAD, p_y + 68], tm_sz,
+	         "Link this game to your Steam account, once.", COL_DIM, 1, 0);
+
+	y = p_y + 108;
+	sui_style_box([p_x + TM_PAD, y], [w - TM_PAD * 2, card], 12, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
+	ui_steam_card([p_x + TM_PAD + TM_CARD, y + TM_CARD], w - TM_PAD * 2 - TM_CARD * 2, TRUE);
+	ui_para([p_x + TM_PAD, y + card + 14], w - TM_PAD * 2, tm_sz, tm_pitch, note,
+	        (pick < 0 && waited >= 8) ? SUI_THEME_WARN : SUI_THEME_MUTED, TRUE);
+
+	y = p_y + ph - TM_PAD - 34;
+	if (pick >= 0)
+	{
+		if (ui_button("st_later", [p_x + w - TM_PAD - 200 - 12 - 100, y], [100, 34], "Not now"))
+			ui_steam_later();
+		if (ui_button("st_go", [p_x + w - TM_PAD - 200, y], [200, 34], "Sign in with Steam", TRUE))
+		{
+			if (ui_synth())
+				print("menu: the sign-in takes a real key or click, not ui_key or ui_click\n");
+			else
+				ui_steam_go();
+		}
+	}
+	else if (ui_button("st_later", [p_x + w - TM_PAD - 120, y], [120, 34],
+	                   (Lob_Count() == 0 && waited < 8) ? "Not now" : "Continue"))
+		ui_steam_later();
 };
 
 /*
@@ -5925,7 +6187,7 @@ float() ui_create_esc =
   line before the engine knows the size.
   ui_strip_test <ok|fail|nolobby> -- that outcome and its pulse.
   ui_strip_test <esc|back> -- what that key or button does on the create screen.
-  ui_strip_test screen <create|main>, ui_strip_test off.
+  ui_strip_test screen <create|main|terms|steam|fit>, ui_strip_test off.
 */
 void(string what, string arg) ui_strip_test =
 {
@@ -5994,6 +6256,23 @@ void(string what, string arg) ui_strip_test =
 	}
 	else if (what == "screen")
 	{
+		// Patch 647: the two first-boot screens, to look at.  Neither word
+		// answers a screen: an answer is a click or a key on it.
+		if (arg == "terms" || arg == "steam")
+		{
+			print(sprintf("ui_strip_test: screen %s\n", arg));
+			menu_screen = (arg == "terms") ? SCREEN_TERMS : SCREEN_STEAM;
+			ui_steam_t0 = time;
+			return;
+		}
+		// ...and how the terms were last laid out: the panel against the window.
+		if (arg == "fit")
+		{
+			print(sprintf("ui_strip_test: terms panel %g x %g, text %g px, %s, window %g x %g\n",
+			              ui_tm_w, ui_tm_ph, tm_sz_x, ui_tm_two ? "two columns" : "one column",
+			              ui_tm_sx, ui_tm_sy));
+			return;
+		}
 		print(sprintf("ui_strip_test: screen %s\n", (arg == "create") ? "create" : "main"));
 		if (arg == "create")
 		{
@@ -7155,6 +7434,11 @@ void(vector screensize) m_draw =
 
 	if (menu_screen == SCREEN_TERMS)
 		screen_terms(screensize);
+	else if (menu_screen == SCREEN_STEAM)
+	{
+		Lob_Poll();                 // Patch 647: the offer joins one (consent is online by now)
+		screen_steam(screensize);
+	}
 	else if (menu_screen == SCREEN_NAME)
 		screen_name(screensize);
 	else if (menu_screen == SCREEN_CREATE)
@@ -7348,6 +7632,13 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 			*/
 			if (menu_screen == SCREEN_TERMS)
 				return TRUE;
+
+			// Patch 647: the Steam offer is an offer; ESC is its "not now".
+			if (menu_screen == SCREEN_STEAM)
+			{
+				ui_steam_later();
+				return TRUE;
+			}
 
 			// Patch 340: the name screen HAS a cancel -- unlike the terms --
 			// and ESC is it.  Back to the screen the gate interrupted; the
@@ -7584,6 +7875,7 @@ float(string cmd) m_consolecommand =
 
 	if (argv(0) == "ui_key")
 	{
+		ui_synth_t = time;          // Patch 647: not the player's hand (screen_terms)
 		/*
 		  ONE SYNTHETIC KEYPRESS THROUGH THE MENU'S OWN HANDLER.
 
@@ -7725,6 +8017,7 @@ float(string cmd) m_consolecommand =
 
 	if (argv(0) == "ui_click")
 	{
+		ui_synth_t = time;          // Patch 647: not the player's hand (screen_terms)
 		/*
 		  ONE MOUSE CLICK AT AN ABSOLUTE POSITION.
 

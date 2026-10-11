@@ -1424,9 +1424,11 @@ def register(app, d):
             "<p><a class=\"go\" href=\"link/steam%s\">Sign in with Steam</a></p>\n"
             "<p class=\"fine\">Steam tells FTESurf your public Steam ID, and "
             "FTESurf reads your public name and avatar. No password and nothing "
-            "private reaches this site. Your times are shown on the public "
-            "leaderboard with a link to your Steam profile, beside any times "
-            "you hold on Momentum Mod and KSF under the same Steam account.</p>" % (
+            "private reaches this site. Your Steam name and avatar are shown "
+            "with your times, in the game and on the public leaderboard, with "
+            "a link to your Steam profile and beside any times you hold on "
+            "Momentum Mod and KSF under the same Steam account. On FTESurf's "
+            "lobbies your Steam name is your name.</p>" % (
                 "You started this from the game. Sign in, and this page "
                 "gives you a number to type into it."
                 if k else

@@ -545,6 +545,11 @@ check("the first page is html, uncached, under the board's CSP",
       (200, "text/html", "no-store", True))
 check("...links to the sign-in and its own stylesheet, relatively",
       ('href="link/steam"' in text(r), 'href="link.css"' in text(r)), (True, True))
+check("...and says BEFORE the sign-in what a link shows: the Steam name and avatar with the "
+      "times, in the game too, and the name on lobbies (Patches 638 to 640 made them true)",
+      ("Your Steam name and avatar are shown with your times, in the game and on the public "
+       "leaderboard" in " ".join(text(r).split()),
+       "lobbies your Steam name is your name" in " ".join(text(r).split())), (True, True))
 r2 = get(m, "/board/link.css", ip="198.51.100.77")
 check("...which is served, as a stylesheet, and asks for no script",
       (r2.status_code, r2.mimetype, "<script" in text(r)), (200, "text/css", False))

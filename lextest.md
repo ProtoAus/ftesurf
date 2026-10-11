@@ -11,6 +11,30 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — the first-boot screens (Patch 647)
+
+From your list ("make the sign in process happen when you first boot the
+game ... and also clean up that screen").
+1. **"Before you play"** is one panel with two cards now, "On this machine"
+   and "Public lobbies", instead of a wall of 35 lines. The wording says what
+   Steam changed: ranked times need a linked account, your Steam name and
+   picture are shown with them.
+2. **Choosing "play online" goes on to "Sign in with Steam".** Pressing it
+   joins a lobby, and the game's own box there asks for Enter, which opens
+   the sign-in page in your browser (Steam's page is one click on, and the
+   number it gives is typed back into the game, as before). "Not now" (or
+   Esc) skips it, and the game does not ask again that session.
+- **To see it you need a fresh install, or to move `ftesurf\data\consent.txt`
+  aside** (that file is your answer; put it back after). You are already
+  linked, so on your install the lobby will simply know you.
+- It is not one press: the engine only signs a link in the game, on a
+  lobby, under a real key press, so the menu can only take you there. A
+  link started from the menu is an engine change; say if you want it.
+- The text is 16 px on a big window and 12 px where 16 would not fit
+  (1280 x 720 gets 12). Say if 12 reads too small to you.
+- Tell me if the wording on either screen reads wrong to you: it is the
+  text people agree to.
+
 ## 00. 11 Oct — the mouse wheel scrolls the board (Patch 646)
 
 From your message ("load more than 1 page of KSF records"). In the game the

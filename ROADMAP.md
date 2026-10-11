@@ -1438,9 +1438,7 @@ the account's name whatever the lobby sent, lists the account under it, and
 `steamsync.py` (cron, half-hourly) asks Steam again and renames the
 account's own rows when the name has changed. LEFT: the first seconds of a
 connection, before the proof is answered, are under the game's own name
-(the join line too); the customizer's name field does not say it is held;
-the terms screen still says "under the name you are playing as" (menu.dat,
-with the first-boot work).
+(the join line too); the customizer's name field does not say it is held.
 
 **THE PICTURE, SITE HALF: BUILT, Patch 639.** `steamsync.py` fetches each
 unbanned account's avatar once, by Steam's hash of it, into `data/avatars`:
@@ -1474,6 +1472,36 @@ Online list moves over with the names and wears the player's own. Not at an
 owner column under 15 character widths (an 800 px window has 12): no
 pictures there. NOT YET: the opt-in native table, chat, the results screen
 (BACKLOG).
+
+**THE FIRST BOOT: BUILT, Patch 647.** `screen_terms` is one rounded panel
+with two cards, "On this machine" and "Public lobbies", their text wrapped
+to the cards (`ui_para`, measured first so the panel is sized from it) and
+brought up to the code: a tick is 66 or 100 a second; a ranked time is filed
+under a linked Steam account, by its name, with its picture; what a link
+stores; that the game asks play.proto.bar for boards and pictures. The text
+is 16 px, or 12 where 16 would not fit the window (both on the UI face's
+baked ladder; the panel is 1240 px wide at most). Three buttons, the offline
+answer still the keyboard's default, the online one drawn as the way
+forward; in a window too short even at 12 px they and the footnote sit on a
+strip of their own along the bottom edge. AN ANSWER IS THE PLAYER'S HAND:
+for a moment after the harness commands `ui_key` or `ui_click` feed the
+menu an event, the two answers and the offer's sign-in do nothing and say
+why. Taking the online answer goes to `screen_steam`, an offer with a "not
+now" (ESC too): it joins the directory's first lobby with room that this
+build would join by hand (`ui_steam_pick`; `ui_connect`'s gates, the map
+list loaded first so a missing map is fetched, the name gate waved through
+once, since the Steam name becomes the name), and the box the game raises
+there by itself asks for Enter. Declining an offer that could be taken also
+tells the game not to raise that box this session; with no lobby to sign in
+on, nothing is declined and the game still offers it. THE REST OF THE STEPS
+STAY: a link is signed by the engine in the game, on a lobby, under a real
+key press (Patch 625), and the menu has none of the three, so after the
+join it is Enter, the sign-in page, Steam's own page a click on from it,
+and a number typed back; a link started from the menu is an engine patch.
+surfd's sign-in page now says before the sign-in that the Steam name and
+avatar are shown with the times, in the game too, and that the Steam name
+is the name on lobbies. `FS_TERMS_ONLINE` is not bumped: nothing new leaves
+the machine of a player who does not link.
 
 **The owner's order, 11 Oct:** the in-game name follows the Steam name; the
 Steam picture beside the name on the boards, the players list and run lines;

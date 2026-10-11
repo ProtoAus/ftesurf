@@ -7652,6 +7652,43 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **THE FIRST-BOOT SCREENS (Patch 647): HOW THEY ARE LOOKED AT AND DRIVEN.**
+  `ui_strip_test screen terms` and `screen steam` put either screen up, and
+  `screen fit` prints the terms panel against the window. NO WORD ANSWERS A
+  SCREEN, and nothing typed may: a console line can be a server's stufftext,
+  and the terms' answer is a consent. That held for the new words and NOT
+  for two old ones: `ui_key` and `ui_click` are console commands that feed
+  the menu real-looking events (the harnesses' hands), and through them a
+  line could press the online answer. Since this patch the two answers and
+  the offer's sign-in do nothing for 1.5 s after either (`ui_synth`); every
+  other button still takes them. `tools/p647boot.py` answers as a player
+  does, with real keys on the client's own window (p615link's `Keys`): Enter
+  on a fresh terms screen is the DEFAULT button, offline; D (`+moveright`,
+  the menu cursor's "right") then Enter is online. Its three modes on
+  menu.dat `9dc45991`: sign-in 8 of 8 (tier 4 on disk, the offer, the map
+  list loaded before the join, the join of the rig's lobby under the factory
+  name, the game's own box asking for Enter), `--later` 6 of 6 (ESC: no
+  join, `_acct_prompted` 1), `--offline` 4 of 4 (tier 1, no offer, the
+  directory asked nothing).
+  THE MENU LAYS OUT IN THE 2D RESOLUTION, NOT THE WINDOW'S: `vid_width` and
+  `vid_restart` did not move the rig's window (three "sizes", one 1920 x 1111
+  frame each), `vid_conautoscale 0; vid_conwidth W; vid_conheight H` gives
+  the layout that size at once. Measured so: 1920 x 1080, panel 1240 x 781
+  at 16 px; 1280 x 720, 1240 x 641 at 12 px; 1024 x 768, 992 x 656 at 12 px.
+  The first cut was 15 px text in a 1040 px panel, 790 px tall: it did not
+  fit 720p, and I had looked at it at one size only. 15 px is not on the UI
+  face's baked ladder either (`sh_font.qc`: 8 12 16 20 24 28 32).
+  THE MAP LIST IS `ui_create_open`'S TO LOAD, and a first boot has not
+  opened PLAY: `ui_connect`'s map check (`ui_prejoin`) reads an empty list
+  as "nothing to fetch". A join from anywhere else loads it first. In a rig
+  the list is empty anyway (its maps are in no mounted game), so the arm
+  grades the loader's own line falling between the offer and the join.
+  A RIG'S SECOND LAUNCH RIGHT AFTER ITS FIRST DREW NOTHING once (flat black
+  screenshots while its log said the commands ran): a script that looks at
+  screenshots counts their colours and launches again. THE BACKDROP'S
+  IN-WORLD PANEL KEEPS ITS LAST DRAWING on a screen that does not draw it
+  (PLAY / VISUALS behind the offer, reached by the test word from the main
+  menu; empty on a real first boot, which has never drawn it).
 - **DEPLOYED 11 Oct 2026, 10:31-10:32 UTC (FTESurf `c3dde39`, Patch 640):
   csprogs, the Pi's twelve lobbies and both Windows installs.** Under the rig
   lock. `build.ps1 -Pi` at 12 rows and 0 players: `csprogs.dat` `b01acd53`,
