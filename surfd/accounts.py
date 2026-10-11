@@ -757,13 +757,19 @@ def bans_now(conn, imported):
     return moved, recs
 
 
+def ban_counts_sql(imported):
+    """Rows shown and set aside, per player of our own tiers.  `+player`: with
+    an index by player there (Patch 636), a bare GROUP BY player left the
+    small index of our own rows for a walk of every row in the table."""
+    not_imported = "tier NOT IN (%s)" % ", ".join("'%s'" % t for t in imported)
+    return ("SELECT player, SUM(tier NOT LIKE 'banned:%'), SUM(tier LIKE 'banned:%') FROM runs"
+            " WHERE " + not_imported + " GROUP BY +player")
+
+
 def ban_list(conn, imported):
     """Every account, for the admin's page: banned first, then newest seen."""
-    not_imported = "tier NOT IN (%s)" % ", ".join("'%s'" % t for t in imported)
     # One pass over the index of our own rows, not two per account.
-    counts = {r[0]: (r[1], r[2]) for r in conn.execute(
-        "SELECT player, SUM(tier NOT LIKE 'banned:%'), SUM(tier LIKE 'banned:%') FROM runs"
-        " WHERE " + not_imported + " GROUP BY player")}
+    counts = {r[0]: (r[1], r[2]) for r in conn.execute(ban_counts_sql(imported))}
     out = []
     for r in conn.execute(
             "SELECT a.steamid, a.name, a.seen_at, a.created_at, a.banned_at, a.ban_note,"
@@ -1377,7 +1383,9 @@ def register(app, d):
             "<p><a class=\"go\" href=\"link/steam%s\">Sign in with Steam</a></p>\n"
             "<p class=\"fine\">Steam tells FTESurf your public Steam ID, and "
             "FTESurf reads your public name and avatar. No password and nothing "
-            "private reaches this site.</p>" % (
+            "private reaches this site. Your times are shown on the public "
+            "leaderboard with a link to your Steam profile, beside any times "
+            "you hold on Momentum Mod and KSF under the same Steam account.</p>" % (
                 "You started this from the game. Sign in, and this page "
                 "gives you a number to type into it."
                 if k else

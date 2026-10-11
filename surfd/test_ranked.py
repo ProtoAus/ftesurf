@@ -677,8 +677,9 @@ plan = " ".join(r[3] for r in conn.execute(
     "EXPLAIN QUERY PLAN SELECT rowid FROM runs WHERE player = ? AND tier NOT IN ('momentum', 'ksf')"
     " AND NOT tier LIKE 'banned:%'", (SID,)))
 conn.close()
-check("the rows of one account are found off the index of non-imported rows, not by reading "
-      "three million imported ones", "runs_live" in plan, True)
+check("the rows of one account are found off an index (by player since Patch 636, or the "
+      "one of non-imported rows), not by reading three million imported ones",
+      "runs_player" in plan or "runs_live" in plan, True)
 
 m, c, token, _ = fresh_admin("0")
 account(m, SID, "Lex")

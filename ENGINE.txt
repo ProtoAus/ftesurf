@@ -25,7 +25,13 @@ commit   c543d688ad16a871753fa9525c23487f437741a5
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-625
-patch    634
+patch    636
+# Patch 636: the site shows one person across every game. A map's board is every
+# game's times with a filter per game; a player page links to their Steam, Momentum
+# Mod and KSF profiles and lists, per difficulty tier, the maps they have and have
+# not finished in any of the three. surfd and its website only (a `runs` index by
+# player, the Momentum importer keeps Momentum's user number): no engine source,
+# QuakeC, recorder, ranking or Build change.
 # Patch 632: hud_edit's Run lines pane, from the owner's list of 11 Oct. Your own line and
 # the other lines (the open demo, the ticked board lines) are coloured separately, each a
 # plain colour or one of the five readings: yours blue, the others by time, the fastest

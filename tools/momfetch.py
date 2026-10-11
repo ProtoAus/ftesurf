@@ -258,7 +258,11 @@ def parse_board(doc):
         # steamID is a STRING on purpose: a SteamID64 does not survive a JSON
         # number, which is a double and loses the low digits above 2^53.
         sid = u.get("steamID")
+        # Momentum's own user number: its dashboard addresses a profile by it
+        # (/profile/<id>) and by nothing else, a SteamID there is a 404.
+        uid = u.get("id")
         out.append({
+            "uid": uid if isinstance(uid, int) and not isinstance(uid, bool) and uid > 0 else 0,
             "rank": e.get("rank") if isinstance(e.get("rank"), int) else 0,
             "time": float(t),
             "hash": h,

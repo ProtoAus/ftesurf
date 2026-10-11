@@ -7386,6 +7386,45 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **THE SITE, PATCH 636: WHAT WAS MEASURED, AND ONE THING THAT DID NOT WORK.**
+  A player page for an account with 2,029 rows, timed on the Pi part by
+  part: the read of `runs` by player 0.6 s warm and 4.66 s cold (no index:
+  `runs_player` is the fix), the rows ahead 0.54 s, the board sizes 0.71 s,
+  2,029 empty statements 0.005 s. I REWROTE THE RANK AS TWO INDEX RANGES IN
+  ONE STATEMENT AND IT BOUGHT NOTHING: 1.29 s against 1.27 s on the live
+  file, the same answer on every row, so `rank_of` is as it was and the page
+  holds a player's ranked rows for two minutes instead. The widest profile
+  has 2,626 rows. Cached board sizes would take the 0.71 s (BACKLOG).
+  MOMENTUM'S PROFILE ADDRESS is `/profile/<their user number>`: read in
+  their website's source (`pages/profile/routes.ts`, `Number(params.get
+  ('id'))`), not guessed; the board files kept only the SteamID, so the
+  number arrives as `momwatch` refreshes each board.
+  AND THE INDEX, BUILT ON THE LIVE FILE BEFORE ITS REVIEW, MADE TWO OTHER
+  STATEMENTS SLOWER FOR 27 MINUTES (03:34 to 04:01 UTC, 11 Oct). I took "an
+  index only adds a faster path" for true. With `runs_player` there and no
+  `sqlite_stat1`, sqlite answered the two statements that GROUP BY player by
+  walking it in order with a table lookup a row: the site's directory build
+  34.2 s for 8.0 s, the admin's account counts 14.4 s for 0.00 s, both
+  measured on the Pi when the reviewer's report said to look. Dropped at
+  once; both statements say `GROUP BY +player` now and `test_web.py` holds
+  their plans. `tools/plan_audit.py "<CREATE INDEX ...>"` is the check that
+  would have caught it: it traces every statement the suites run on the
+  table and prints the ones whose plan moves (34 here, 5 of them walks of
+  the new index, 2 of those the service's own). Run it BEFORE an index goes
+  near the live file.
+  THE REVIEW (one lens set: leak, wrong, break, script) ALSO FOUND the held
+  page dropped by `submit_run` alone, so a banned account's times stayed on
+  its page for the two minutes and a run landing while the ranks were
+  counted could be overwritten by the list from before it: an entry now
+  carries a mark of the player's own rows (count, summed times, newest,
+  summed recording ids), read off the index on every hit. Nothing under
+  script injection: no `innerHTML`, every outbound address percent-encoded.
+  THE PAGES WERE LOOKED AT: a fixture served on localhost and three
+  screenshots from a headless browser (the board, one game's filter, a
+  profile with a tier open through `&ct=2`). `test_web.py` gained hand
+  mutants in the task root, not a tool: 17 of 17 killed on the final code,
+  after two checks the first run showed were missing (a stage time is not a
+  finished map; a negative Momentum number is not kept).
 - **"COULD NOT LOAD THE BOARD (HTTP 504)" WAS ONE QUERY (Patch 634).** The
   owner saw it on the site's front page on 11 Oct. Timed on the Pi, route by
   route: `/board/api/maps` 12.06 s, every other route under 0.2 s except a

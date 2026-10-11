@@ -11,6 +11,26 @@ to be wrong.
 
 ---
 
+## 00. 11 Oct — the site: every game on one board, and whole-player pages (Patch 636)
+
+Your list of 11 Oct. On proto.bar/ftesurf/board:
+- **A map page** opens on **All games**: FTESurf, Momentum Mod and KSF times
+  ranked together, each row tagged FTE / MOM / KSF, with a button per game to
+  filter. Old links to a map now open All games too.
+- **A player page** has links to the Steam, Momentum Mod and KSF profiles
+  (the Momentum one appears over the next day or two, as the importer
+  refetches boards: Momentum addresses a profile by its own number, which we
+  did not keep until now), and under "Maps finished, by difficulty" each
+  tier is a button: click it for the maps finished (with the time and which
+  game) and the maps not yet. The address then carries `&ct=<tier>`, so it
+  can be shared.
+- Player pages load in about a second, and instantly on a second look.
+- **Check:** your own page (Players, search Proto): Steam link, 21 FTESurf
+  and 2,008 Momentum times, tier lists that match what you know you have
+  finished. Tell me a map it gets wrong.
+- The sign-in page now says a linked account's Steam profile is linked from
+  its player page.
+
 ## 00. 11 Oct — your HUD list, part 3: Run lines (Patch 632)
 
 Live since 11 Oct 03:52 UTC (14:52 here) on both installs (csprogs and

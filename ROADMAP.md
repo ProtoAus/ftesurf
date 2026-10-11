@@ -1400,7 +1400,46 @@ sample, so (b) counts for a week before it holds anything.
 **Size.** (a) is large and the riskiest, being the submit path: full review
 rounds.
 
+### 14.3b The site: one person, every game — BUILT, Patch 636
+
+The owner, 11 Oct, once his own Momentum times had joined his FTESurf rows by
+themselves (an imported row's `player` is a SteamID64, and since Patch 629 a
+linked account's ranked rows are too): one board per map with every game's
+times and a filter per game; a player page with everything finished in all
+three, links to the Steam, Momentum Mod and KSF profiles, and per difficulty
+tier which maps are done and which are not.
+- **The board.** `tier` on `/board/api/map` takes `momentum` and `ksf` beside
+  `ranked`, `imported` and `combined`; the page's filter is All games /
+  FTESurf / Momentum Mod / KSF and a link with no `tier` opens All games (it
+  opened ours alone). The API's own default is unchanged.
+- **The player.** `/board/api/player/<handle>/maps` lists every map with a
+  main board by tier, with the time and the games it was finished in; the
+  page opens a tier's list on a click, and `&ct=<tier>` in the address links
+  to it. `ext` (the Steam profile) is published for a linked, unbanned
+  account as well as for an imported player, and the sign-in page says so.
+  `momid` is Momentum's own user number, which is how its dashboard
+  addresses a profile; the importer keeps it from each board it refreshes.
+- **Its cost.** A player page read `runs` by player with no index (0.6 s
+  warm, 4.7 s cold on the Pi); `runs_player` is that index. A player's ranked
+  rows are held two minutes, while their own rows are what they were.
+  The index first went onto the live file ahead of its review and slowed two
+  other statements for 27 minutes (AGENT_NOTES; `tools/plan_audit.py`).
+
 ### 14.4 Name and picture, on the site and in the game
+
+**The owner's order, 11 Oct:** the in-game name follows the Steam name; the
+Steam picture beside the name on the boards, the players list and run lines;
+the sign-in moves into the first-boot screens, which get tidied.
+SURVEYED THAT DAY (three read-only passes): the lobby already has the name
+(`acct_name`) and the engine lets server QC force a userinfo name
+(`forceinfokey`), which a client `setinfo` undoes unless
+`SV_ParseClientCommand` drops it; `accounts.avatar` is Steam's 40-hex hash,
+written at sign-in and read by nothing; the game fetches no image today, and
+the engine's own URL-image path looks broken by its `//` collapse, so the
+plan is small RGBA pictures as text over `uri_get` into `r_uploadimage`; the
+menu cannot start a link (the builtins are CSQC's and need a key press
+there), so first boot is terms, then a Steam screen that joins a lobby with
+the link box already open.
 
 **Build.** A cron tool refreshes names and caches avatar images under surfd
 (the board's CSP is `img-src 'self'`, so the site cannot hotlink Steam's).

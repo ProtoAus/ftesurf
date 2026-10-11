@@ -819,8 +819,27 @@ GET /board/api/map?map=&track=&leg=&style=&offset=
       "track","leg","style","n","offset","limit":50,"rows":[..]}
 ```
 
-RANKED ONLY, like the in-game board since Patch 355: community runs are never
-counted or listed, and a `tier` parameter (old links) is ignored. `wr` is the
+```
+GET /board/api/player/<handle>        one player: stats, links, rows
+GET /board/api/player/<handle>/maps   every map with a main board, by tier,
+  -> {"tiers":[{"tier","of","done","maps":[{"map","have","ms","tr","games"}]}],
+      "unrated":{..}|null,"rated":bool}     `ms` only where finished
+```
+
+`tier` on `/board/api/map` (Patch 636): `ranked` (the default, and what any
+other word falls to), `momentum`, `ksf`, `imported` (both) or `combined`
+(all three); the page asks for `combined` unless its address names one. A
+player's `ext` is their SteamID64 where it is already public: an imported
+player's, and a linked, unbanned account's. `momid` is Momentum's own user
+number (`momusers`, filled by `momboards.py` from boards fetched since Patch
+636). One player's ranked rows are held 120 s (`_profile_rows`) while a mark
+of their own rows is unchanged (their run, a ban, a review and an import all
+change it); the read by player uses `runs_player`. THAT INDEX IS WHY
+`_PEOPLE_SQL` AND `accounts.ban_counts_sql` SAY `GROUP BY +player`: without
+the plus sqlite walks the index in order, 34 s for 8 on the Pi.
+`tools/plan_audit.py` lists what a new index would move.
+
+COMMUNITY RUNS ARE NEVER COUNTED OR LISTED (Patch 355). `wr` is the
 main clean board's row 1 (`BOARD_ORDER`). With no board parameters a map opens
 on main clean, else main segmented, else its first board. Rows are
 `/api/board`'s minus `player`. Both API routes share the `web` rate bucket

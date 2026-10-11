@@ -305,6 +305,7 @@ def main():
 
     seen = boards = empty = skipped = nodate = 0
     rows = []
+    uids = {}           # steamid -> Momentum's user number (Patch 636), where the file has it
     wrote = 0
     dlo = dhi = None
     for p in files:
@@ -345,6 +346,9 @@ def main():
             demo = r.get("hash") or ""
             if not isinstance(demo, str) or not re.fullmatch(r"[0-9a-f]{40}", demo):
                 demo = ""
+            uid = r.get("uid")
+            if isinstance(uid, int) and not isinstance(uid, bool) and 0 < uid < 2 ** 53:
+                uids[sid] = uid
             rows.append((mp, track, leg, sid,
                          S.clean_text(r.get("alias") or "?") or "?",
                          int(round(ms / 1000.0 / tick)), 1.0 / tick, ms, when, demo))
@@ -374,6 +378,16 @@ def main():
 
     wrote += flush(conn, rows)
     print("board rows set    %d" % wrote)
+    if uids:
+        # For the site's link to a player's Momentum profile.  A board file
+        # fetched before Patch 636 has no numbers; they arrive as momwatch
+        # refreshes each board.
+        with conn:
+            conn.executemany(
+                "INSERT INTO momusers (steamid, momid) VALUES (?, ?)"
+                " ON CONFLICT (steamid) DO UPDATE SET momid = excluded.momid"
+                " WHERE momid <> excluded.momid", sorted(uids.items()))
+        print("momentum user ids %d" % len(uids))
 
     # ONLY NOW, and only on --go: a dry run has written nothing and must not
     # claim to have indexed anything, and a crash above leaves the old mark so

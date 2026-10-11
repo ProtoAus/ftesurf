@@ -587,6 +587,22 @@ def main():
           [(0, 0, 2, 3)])
     check("no board response ever names a player id",
           "player" in json.dumps(c), False)
+    # Patch 636: the site filters the one board by game.
+    mo = body(get(m, "/board/api/map?map=bhop_eazy&tier=momentum"))
+    ks = body(get(m, "/board/api/map?map=bhop_eazy&tier=ksf"))
+    check("one game's board is that game's rows, counted and ranked among themselves",
+          ((mo["tier"], mo["n"], [(x["r"], x["name"]) for x in mo["rows"]]),
+           (ks["tier"], ks["n"], [(x["r"], x["name"]) for x in ks["rows"]])),
+          (("momentum", 2, [(1, "MomOne"), (2, "MomTwo")]), ("ksf", 1, [(1, "KsfOne")])))
+    check("...the counts beside it are every game's, so the filter can show them",
+          (mo["counts"]["ranked"], mo["counts"]["momentum"], mo["counts"]["ksf"]), (2, 2, 1))
+    check("...and each board says how many rows each imported game has, for the style tabs",
+          [(b["style"], b["n"], b["ni"], b["nm"], b["nk"]) for b in mo["boards"]],
+          [("clean", 2, 3, 2, 1)])
+    check("...and a tier nobody may read by name still falls to ours",
+          (body(get(m, "/board/api/map?map=bhop_eazy&tier=community"))["tier"],
+           body(get(m, "/board/api/map?map=bhop_eazy&tier=banned:ranked"))["tier"]),
+          ("ranked", "ranked"))
 
     # An imported-only map is listed and marked unplayable rather than hidden.
     imported(m, "surf_gone", "76561198000000004", "MomThree", 4000, "momentum")
@@ -610,6 +626,23 @@ def main():
           "and not our own ranked rows",
           (marked, mp["bhop_eazy"]["reps"], mp["bhop_eazy"]["imp"], mp["surf_gone"]["reps"],
            mp["surf_gone"]["imp"]), (2, 2, 3, 1, 1))
+
+    # Patch 636: the fetcher keeps Momentum's own user number beside the SteamID.
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                    "tools"))
+    import momfetch
+    doc = {"totalCount": 3, "data": [
+        {"replayHash": "ab" * 20, "time": 30.5, "rank": 1,
+         "user": {"id": 4321, "steamID": "76561198000000001", "alias": "MomOne"}},
+        {"replayHash": "cd" * 20, "time": 31.5, "rank": 2,
+         "user": {"id": "77", "steamID": "76561198000000002", "alias": "MomTwo"}},
+        {"replayHash": "ef" * 20, "time": 32.5, "rank": 3,
+         "user": {"steamID": "76561198000000003", "alias": "NoId"}},
+        {"replayHash": "01" * 20, "time": 33.5, "rank": 4,
+         "user": {"id": -5, "steamID": "76561198000000004", "alias": "Minus"}}]}
+    check("a board row keeps Momentum's user number when it is one, and 0 when it is not",
+          [(r["steamid"][-1], r["uid"]) for r in momfetch.parse_board(doc)[1]],
+          [("1", 4321), ("2", 0), ("3", 0), ("4", 0)])
 
     # ---- search ------------------------------------------------------------
     s = body(get(m, "/board/api/players"))
@@ -817,6 +850,136 @@ def main():
           comp["untiered"] >= 1, True)
     check("...and the overall figure is maps, not rows",
           (comp["done"], comp["of"] >= 5), (1, True))
+
+    # Patch 636: WHICH maps, per tier, in whichever game.
+    mm = body(get(m, "/board/api/player/" + h1 + "/maps"))
+    by = {t["tier"]: t for t in mm["tiers"]}
+    check("the maps list is the bars' own table: the same tiers, counts and rule",
+          ([(t["tier"], t["done"], t["of"]) for t in mm["tiers"]], mm["rated"]),
+          ([(x["tier"], x["done"], x["of"]) for x in comp["tiers"]], True))
+    check("...a finished map carries the time and the game it was finished in; one not "
+          "finished carries neither",
+          ([(x["map"], x.get("ms"), x.get("tr"), x.get("games")) for x in by[2]["maps"]],
+           [(x["map"], x.get("ms")) for x in by[5]["maps"]]),
+          ([("bhop_eazy", 30000, "ranked", ["ranked"]), ("surf_kitsune", None, None, None)],
+           [("surf_lux", None)]))
+    check("...unrated maps are a group of their own, and one we hold only imported times "
+          "for says it cannot be played here",
+          ([x["map"] for x in mm["unrated"]["maps"] if x["map"] == "surf_gone"],
+           [x["have"] for x in mm["unrated"]["maps"] if x["map"] == "surf_gone"]),
+          (["surf_gone"], [0]))
+    # MomOne finished bhop_eazy in Momentum; give the same SteamID a KSF time
+    # and a slower one of ours: one map, three games, the fastest named.
+    imported(m, "bhop_eazy", "76561198000000001", "MomOne", 2700, "ksf")
+    imported(m, "bhop_eazy", "76561198000000001", "MomOne", 3900, "ranked")
+    m.people_reset()
+    one_map = [x for t in body(get(m, "/board/api/player/" + m.web_handle("76561198000000001")
+                                   + "/maps"))["tiers"] for x in t["maps"] if x["map"] == "bhop_eazy"]
+    check("a map finished in all three games is one finished map, with each game named and "
+          "the fastest time",
+          [(x["ms"], x["tr"], x["games"], x["s"]) for x in one_map],
+          [(27000, "ksf", ["ksf", "momentum", "ranked"], "clean")])
+    submit(m, "surf_kitsune", "p1", 900, leg=2, rec="")
+    stage = [x for t in body(get(m, "/board/api/player/" + h1 + "/maps"))["tiers"]
+             for x in t["maps"] if x["map"] == "surf_kitsune"]
+    check("a stage time is not a finished map",
+          ([x.get("ms") for x in stage],
+           [x["leg"] for x in body(get(m, "/board/api/player/" + h1))["rows"]
+            if x["map"] == "surf_kitsune"]), ([None], [2]))
+    check("an unknown or malformed handle has no maps list",
+          (get(m, "/board/api/player/" + "0" * 12 + "/maps").status_code,
+           get(m, "/board/api/player/nothex/maps").status_code), (404, 400))
+
+    # The profile's links.  A linked account's Steam profile is its own to
+    # show; an install's guid is still never published; Momentum's link needs
+    # Momentum's own user number, which the importer keeps.
+    conn = sqlite3.connect(m._test_db)
+    conn.execute("INSERT INTO accounts (steamid, name, created_at) VALUES"
+                 " ('76561198000000042', 'Linked', 1800000000)")
+    conn.execute("INSERT INTO accounts (steamid, name, created_at, banned_at) VALUES"
+                 " ('76561198000000043', 'Out', 1800000000, 5)")
+    conn.execute("INSERT INTO momusers (steamid, momid) VALUES ('76561198000000001', 4321)")
+    conn.commit()
+    conn.close()
+    imported(m, "bhop_eazy", "76561198000000042", "Linked", 3300, "ranked")
+    imported(m, "bhop_eazy", "76561198000000043", "Out", 3400, "ranked")
+    m.people_reset()
+    prof = lambda who: body(get(m, "/board/api/player/" + m.web_handle(who)))
+    check("a linked account with only our rows links to its Steam profile; a banned one, "
+          "and an install's guid, do not",
+          (prof("76561198000000042")["ext"], prof("76561198000000043")["ext"], prof("p1")["ext"]),
+          ("76561198000000042", None, None))
+    check("a Momentum player links to their Momentum profile once the importer has their "
+          "number, and a player with no Momentum rows never does",
+          (prof("76561198000000001")["momid"], prof("76561198000000042")["momid"],
+           prof("76561198000000002")["momid"]), (4321, None, None))
+
+    conn = sqlite3.connect(m._test_db)
+    plan = " ".join(x[3] for x in conn.execute(
+        "EXPLAIN QUERY PLAN SELECT map FROM runs WHERE player = ? AND tier IN (?,?,?)",
+        ("t1", "ranked", "momentum", "ksf")))
+    conn.close()
+    check("a player's rows are found by an index, not by reading the table",
+          "runs_player" in plan, True)
+    # ...and that index must not become the way the two statements that GROUP
+    # BY player are answered: on the Pi that was 34 s for 8, and 14 s for 0.
+    conn = sqlite3.connect(m._test_db)
+    plans = [" ".join(x[3] for x in conn.execute("EXPLAIN QUERY PLAN " + sql, args))
+             for sql, args in ((m._PEOPLE_SQL, ("a", "b", "c", "a", "b", "c")),
+                               (m.accounts.ban_counts_sql(m.TIERS_IMPORTED), ()))]
+    conn.close()
+    check("the directory's build and the admin's account counts do not walk the index by "
+          "player; the counts stay on the small index of our own rows",
+          (["runs_player" in p for p in plans], "runs_live" in plans[1]), ([False, False], True))
+
+    # A player's own run shows on their page at once; somebody else's, which
+    # moves a rank, within the page's hold.
+    first = [(x["map"], x["r"]) for x in prof("p1")["rows"]]
+    submit(m, "bhop_eazy", "zed", 2000)             # ahead of p1
+    held = [(x["map"], x["r"]) for x in prof("p1")["rows"]]
+    submit(m, "bhop_eazy", "p1", 1900)              # p1's own, faster still
+    own = [(x["map"], x["ms"], x["r"]) for x in prof("p1")["rows"]]
+    check("a page is held for its two minutes when another player's run moves a rank, and "
+          "rebuilt by the player's own next run",
+          (held == first, own[0][:2]), (True, ("bhop_eazy", 19000)))
+    # Anything that changes the player's OWN rows rebuilds it: a ban, a review,
+    # an import.  (Dropped from submit_run alone, a banned account's times
+    # stayed on its page for the two minutes.)
+    who = "76561198000000042"
+    before = [(x["map"], x["ms"]) for x in prof(who)["rows"]]
+    conn = sqlite3.connect(m._test_db)
+    with conn:
+        m.accounts.set_ban(conn, who, True, "test", int(m.time.now), m.TIERS_IMPORTED)
+    conn.close()
+    banned = prof(who)
+    listed = [x for t in body(get(m, "/board/api/player/" + m.web_handle(who) + "/maps"))["tiers"]
+              for x in t["maps"] if x.get("tr")]
+    check("a ban takes an account's times off its page and its maps list at once, with its "
+          "Steam link",
+          (before, banned["rows"], banned["ext"], listed),
+          ([("bhop_eazy", 33000)], [], None, []))
+    conn = sqlite3.connect(m._test_db)
+    with conn:
+        m.accounts.set_ban(conn, who, False, "", int(m.time.now), m.TIERS_IMPORTED)
+    conn.close()
+    check("...and an unban puts them back at once",
+          [(x["map"], x["ms"]) for x in prof(who)["rows"]], before)
+    # A rank that could not be counted is not held.
+    real_rank = m.rank_of
+    m.rank_of = lambda *a: (0, 0)
+    bad = [(x["r"], x["of"]) for x in prof("p2")["rows"]]
+    m.rank_of = real_rank
+    good = [(x["r"], x["of"]) for x in prof("p2")["rows"]]
+    check("a rank that could not be counted is shown once and not held",
+          (bad[:1], good[0][1] > 0), ([(0, 0)], True))
+    # The pages held are bounded by rows, not by players.
+    keep, m.WEB_PROFILE_HELD = m.WEB_PROFILE_HELD, 3
+    m.profile_forget()
+    for w in ("p1", "p2", "76561198000000001", "76561198000000002", "76561198000000042"):
+        prof(w)
+    held_rows = sum(len(v[2]) for v in m._prof.values())
+    m.WEB_PROFILE_HELD = keep
+    check("the pages held are bounded by their rows", held_rows <= 3, True)
     m.time.now += m.WEB_MAPS_TTL + 1       # the maps body is cached for a minute
     check("the maps list now reports a difficulty",
           {x["map"]: x.get("mt") for x in body(get(m, "/board/api/maps"))["maps"]}

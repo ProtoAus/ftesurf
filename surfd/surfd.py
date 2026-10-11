@@ -1522,6 +1522,20 @@ def migrate():
         if gone:
             log.info("dropped %d link(s) made before a key press could be proven", gone)
         conn.execute(accounts.live_index(TIERS_IMPORTED))   # a 16 file from an earlier cut
+        # Patch 636.  A player's page read `runs` by player with no index: 0.6 s
+        # of a full scan warm and 4.7 s cold on the Pi, of nginx's 5.  4.8 s to
+        # build there, under the write lock: deploy with nobody on.
+        # AN INDEX IS NOT ONLY A FASTER PATH.  Built on the live file ahead of
+        # its review, it moved the two statements that GROUP BY player onto a
+        # walk of it with a table lookup a row: the directory build went from
+        # 8.0 s to 34.2 s and the admin's account counts from 0.00 to 14.4 s.
+        # Both say `+player` now (_PEOPLE_SQL, accounts.ban_counts_sql) and a
+        # test holds their plans.  Before the next index: tools/plan_audit.py.
+        conn.execute("CREATE INDEX IF NOT EXISTS runs_player ON runs (player)")
+        # Momentum addresses a profile by its own user number, which the
+        # importer keeps beside the SteamID (momboards.py).
+        conn.execute("CREATE TABLE IF NOT EXISTS momusers ("
+                     "steamid TEXT PRIMARY KEY, momid INTEGER NOT NULL)")
         conn.commit()
         if RANKED_LINKED:
             moved = accounts.ranked_now(conn, TIERS_IMPORTED)
@@ -4098,7 +4112,7 @@ WEB_DEFAULT_BOARDS = ((0, 0, STYLE_CLEAN), (0, 0, STYLE_SEGMENTED))
 # Which tiers a public caller may ask for by name.  `ranked` is still what
 # an absent parameter means, so every link shared before this existed opens
 # the board it opened then.
-WEB_READ_TIERS = (TIER_RANKED, TIER_IMPORTED, TIER_COMBINED)
+WEB_READ_TIERS = (TIER_RANKED, TIER_IMPORTED, TIER_COMBINED) + TIERS_IMPORTED
 
 _web_lock = threading.Lock()
 _web_maps = {"at": None, "body": b""}
@@ -4301,7 +4315,8 @@ def web_map():
     mapname = clean_map(request.args.get("map"))
     if not mapname:
         return fail(400, "bad map")
-    # `tier` IS a parameter now -- but only the three names in WEB_READ_TIERS,
+    # `tier` IS a parameter now -- but only the names in WEB_READ_TIERS (ours,
+    # one imported game's, both, or everything: Patch 636's filter),
     # and ANYTHING ELSE STILL FALLS TO RANKED rather than failing.  That is not
     # laxness about typos: the route shipped ignoring this parameter outright,
     # so links carrying `tier=community` exist and test_web.py pins that they
@@ -4325,14 +4340,18 @@ def web_map():
         # The board LIST counts every readable tier per leg, so the leg tabs
         # can show a stage that only imported times exist for.  `n` is the
         # ranked count, kept under its old name, and `ni` the imported one.
+        # `nm` and `nk` are one imported game's rows each (Patch 636: under
+        # one game's filter the style tabs counted both).
         boards = [{"track": r["track"], "leg": r["leg"], "style": r["style"],
-                   "n": r["nr"], "ni": r["nim"]} for r in db.execute(
+                   "n": r["nr"], "ni": r["nim"], "nm": r["nm"], "nk": r["nim"] - r["nm"]}
+                  for r in db.execute(
             "SELECT track, leg, style,"
             "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS nr,"
-            "       SUM(CASE WHEN tier IN (?,?) THEN 1 ELSE 0 END) AS nim"
+            "       SUM(CASE WHEN tier IN (?,?) THEN 1 ELSE 0 END) AS nim,"
+            "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS nm"
             "  FROM runs WHERE map=? AND tier IN (?,?,?)"
             " GROUP BY 1, 2, 3 HAVING nr + nim > 0 ORDER BY 1, 2, 3",
-            (TIER_RANKED,) + TIERS_IMPORTED + (mapname, TIER_RANKED)
+            (TIER_RANKED,) + TIERS_IMPORTED + (TIER_MOMENTUM, mapname, TIER_RANKED)
             + TIERS_IMPORTED).fetchall()]
         if not boards and not (mapname in bsp and mapname in zoned):
             return fail(404, "no such map")
@@ -4488,6 +4507,17 @@ def map_tiers(now=None):
     return tier
 
 
+# `+player`: with runs_player there, a bare GROUP BY player walks that index in
+# order and looks every row up (34 s for 8; see where the index is made).
+_PEOPLE_SQL = (
+    "SELECT player, COUNT(*) AS n, COUNT(DISTINCT map) AS maps,"
+    "       MAX(submitted) AS last, name,"
+    "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS ranked,"
+    "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS mom,"
+    "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS ksf"
+    "  FROM runs WHERE tier IN (?,?,?) GROUP BY +player")
+
+
 def _people_build(db):
     """(by_handle, list, main_maps) -- ONE pass over `runs` for the directory,
     plus the maps holding a main board for the completion table.
@@ -4498,12 +4528,7 @@ def _people_build(db):
     build (16.0 s against 6.2 s on the Pi, 57,475 players, 5 Oct)."""
     rows = {}
     for r in db.execute(
-            "SELECT player, COUNT(*) AS n, COUNT(DISTINCT map) AS maps,"
-            "       MAX(submitted) AS last, name,"
-            "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS ranked,"
-            "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS mom,"
-            "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS ksf"
-            "  FROM runs WHERE tier IN (?,?,?) GROUP BY player",
+            _PEOPLE_SQL,
             (TIER_RANKED, TIER_MOMENTUM, TIER_KSF,
              TIER_RANKED, TIER_MOMENTUM, TIER_KSF)).fetchall():
         rows[r["player"]] = {"n": r["n"], "maps": r["maps"], "last": r["last"],
@@ -4682,6 +4707,7 @@ def player_of(db, handle, now):
 
 def people_reset():
     """Drop the directory, its snapshot and the difficulty catalogue.  For tests."""
+    profile_forget()
     with _people_lock:
         _people["at"], _people["by_handle"], _people["list"] = -1e9, {}, []
         _people["main_maps"] = set()
@@ -4761,6 +4787,123 @@ def _row_group(track, leg):
     return 2 if leg > 0 else (1 if track > 0 else 0)
 
 
+WEB_PROFILE_TTL = 120    # s one player's ranked rows are reused
+WEB_PROFILE_HELD = 30000 # rows held across every player (about 1 KB each)
+_prof_lock = threading.Lock()
+_prof = {}               # player -> (built at, their rows' mark, [(row, rank, of)])
+_PROF_MARK = ("SELECT COUNT(*), TOTAL(millis), MAX(submitted), TOTAL(replay_id) FROM runs"
+              " WHERE player=? AND tier IN (?,?,?)")
+
+
+def _profile_rows(db, player, now):
+    """[(row, rank, of)] for every row `player` has on a tier the site reads:
+    main tracks, then bonuses, then stages, each by people beaten.
+
+    HELD FOR WEB_PROFILE_TTL, WHILE THE PLAYER'S OWN ROWS ARE WHAT THEY WERE.
+    A rank is two counts per row, and the widest profile has 2,626 rows:
+    1.3 s on the Pi for one of 2,029 (0.54 s the rows ahead, 0.71 s the board
+    sizes; writing the first as index ranges changed neither figure).  The
+    page, its "show more" and its maps list all read this.  THE MARK is read
+    off runs_player on every hit (0.02 s) and taken BEFORE the rows: a run of
+    the player's own, a ban, a review, an import, or a run that landed while
+    the ranks were being counted, all change it, and the entry is rebuilt.
+    (The first cut dropped the entry from submit_run alone, and a banned
+    account's times stayed on its page for the two minutes.)  Somebody else's
+    run moving a rank shows within the TTL."""
+    tiers = (TIER_RANKED, TIER_MOMENTUM, TIER_KSF)
+    mark = tuple(db.execute(_PROF_MARK, (player,) + tiers).fetchone())
+    with _prof_lock:
+        hit = _prof.get(player)
+        if hit is not None and hit[1] == mark and 0 <= now - hit[0] < WEB_PROFILE_TTL:
+            return hit[2]
+    mine = db.execute(
+        "SELECT map, track, leg, tier, style, name, millis, ticks, submitted,"
+        "       replay_id FROM runs WHERE player=? AND tier IN (?,?,?)",
+        (player, TIER_RANKED, TIER_MOMENTUM, TIER_KSF)).fetchall()
+    # rank_of per row over the board index, NOT one window over every board
+    # the player is on: a 2,575-row Momentum profile took 52.8 s that way on
+    # the Pi (5 Oct).  One rule for the rank either way: rank_of counts what
+    # BOARD_AHEAD says, which /api/board's BOARD_ORDER pages by.
+    ranked = []
+    for r in mine:
+        rk, of = rank_of(db, r["map"], r["track"], r["leg"], r["tier"],
+                         r["style"], r["millis"], r["submitted"], player)
+        ranked.append((dict(r), rk, of))
+    # Within a group, PEOPLE BEATEN, not placing and not board size.  Both of the
+    # obvious orderings were tried against a real profile and both put nonsense
+    # at the top: rank led with #1 of 1 (a stage board nobody else is on), and
+    # board size led with #501 of 501, dead last on the busiest board.
+    ranked.sort(key=lambda x: (_row_group(x[0]["track"], x[0]["leg"]),
+                               -(x[2] - x[1]), x[1], x[0]["millis"], x[0]["map"]))
+    if any(of == 0 for _r, _rk, of in ranked):
+        return ranked                   # a rank that could not be counted is not held
+    with _prof_lock:
+        _prof.pop(player, None)
+        held = sum(len(v[2]) for v in _prof.values()) + len(ranked)
+        for old in sorted(_prof, key=lambda k: _prof[k][0]):
+            if held <= WEB_PROFILE_HELD:
+                break
+            held -= len(_prof.pop(old)[2])
+        if len(ranked) <= WEB_PROFILE_HELD:
+            _prof[player] = (now, mark, ranked)
+    return ranked
+
+
+def profile_forget():
+    """Drop every held page.  For tests (people_reset)."""
+    with _prof_lock:
+        _prof.clear()
+
+
+@app.get("/board/api/player/<handle>/maps")
+def web_player_maps(handle):
+    """Every map the site holds a main board for, by difficulty tier, with
+    whether this player has finished it and in which game (Patch 636).  The
+    same rule and the same denominator as the profile's bars (_completion): a
+    map is finished when its main track is, in any game and any style."""
+    now = int(time.time())
+    if not rate_ok(rate_key(), now, WEB_RATE_MAX, "web"):
+        return fail(429, "rate limited")
+    if not re.fullmatch(r"[0-9a-f]{%d}" % WEB_HANDLE_LEN, handle or ""):
+        return fail(400, "bad player")
+    try:
+        db = get_db()
+        player = player_of(db, handle, now)
+        if player is None:
+            return fail(404, "no such player")
+        _by_handle, _people_list, main_maps, _at = _people_current(db, now)
+        ranked = _profile_rows(db, player, now)
+    except sqlite3.Error as exc:
+        log.exception("web player maps db error: %s", exc)
+        return fail(500, "storage error")
+    best = {}                   # map -> [fastest main time, its game, {games}, its style]
+    for r, _rk, _of in ranked:
+        if r["track"] or r["leg"]:
+            continue
+        cur = best.setdefault(r["map"], [r["millis"], r["tier"], set(), r["style"]])
+        if r["millis"] < cur[0]:
+            cur[0], cur[1], cur[3] = r["millis"], r["tier"], r["style"]
+        cur[2].add(r["tier"])
+    bsp, zoned = map_index()
+    playable = set(bsp) & set(zoned)
+    tiers = map_tiers()
+    groups = {}
+    for key in sorted(set(main_maps) | playable, key=lambda k: bsp.get(k, k).lower()):
+        row = {"map": bsp.get(key, key), "have": 1 if key in playable else 0}
+        mine = best.get(key)
+        if mine is not None:
+            row["ms"], row["tr"], row["s"] = mine[0], mine[1], mine[3]
+            row["games"] = sorted(mine[2])
+        t = tiers.get(key) if tiers is not None else None
+        g = groups.setdefault(t, {"tier": t, "of": 0, "done": 0, "maps": []})
+        g["of"] += 1
+        g["done"] += 1 if mine is not None else 0
+        g["maps"].append(row)
+    return _json({"v": 1, "t": now, "who": handle, "rated": tiers is not None,
+                  "tiers": [groups[k] for k in sorted(k for k in groups if k is not None)],
+                  "unrated": groups.get(None)}, "max-age=30")
+
+
 @app.get("/board/api/player/<handle>")
 def web_player(handle):
     now = int(time.time())
@@ -4782,20 +4925,11 @@ def web_player(handle):
         me = next((e for e in people if e["who"] == handle), None)
         if me is None:                       # raced the rebuild; the row is gone
             return fail(404, "no such player")
-        mine = db.execute(
-            "SELECT map, track, leg, tier, style, name, millis, ticks, submitted,"
-            "       replay_id FROM runs WHERE player=? AND tier IN (?,?,?)",
-            (player, TIER_RANKED, TIER_MOMENTUM, TIER_KSF)).fetchall()
-        # rank_of's two counts per row over the board index, NOT one window over
-        # every board the player is on: a 2,575-row Momentum profile took 52.8 s
-        # that way on the Pi and ~0.5 s this way (5 Oct), and nginx gives the
-        # request 5.  One rule for the rank either way: rank_of reads
-        # BOARD_AHEAD, which /api/board's BOARD_ORDER pages by.
-        ranked = []
-        for r in mine:
-            rk, of = rank_of(db, r["map"], r["track"], r["leg"], r["tier"],
-                             r["style"], r["millis"], r["submitted"], player)
-            ranked.append((r, rk, of))
+        ranked = _profile_rows(db, player, now)
+        linked = db.execute("SELECT 1 FROM accounts WHERE steamid = ? AND banned_at = 0",
+                            (player,)).fetchone() is not None
+        momid = db.execute("SELECT momid FROM momusers WHERE steamid = ?",
+                           (player,)).fetchone() if me["mom"] else None
     except sqlite3.Error as exc:
         log.exception("web player db error: %s", exc)
         return fail(500, "storage error")
@@ -4808,12 +4942,6 @@ def web_player(handle):
     wr = sum(1 for _r, rk, _of in ranked if rk == 1)
     wrc = sum(1 for _r, rk, of in ranked if rk == 1 and of > 1)
     top10 = sum(1 for _r, rk, of in ranked if 1 <= rk <= 10 and of > 1)
-    # Within a group, PEOPLE BEATEN, not placing and not board size.  Both of the
-    # obvious orderings were tried against a real profile and both put nonsense
-    # at the top: rank led with #1 of 1 (a stage board nobody else is on), and
-    # board size led with #501 of 501, dead last on the busiest board.
-    ranked.sort(key=lambda x: (_row_group(x[0]["track"], x[0]["leg"]),
-                               -(x[2] - x[1]), x[1], x[0]["millis"], x[0]["map"]))
     done = {r["map"] for r, _rk, _of in ranked if r["track"] == 0 and r["leg"] == 0}
     comp = _completion(done, main_maps, map_tiers())
 
@@ -4827,13 +4955,19 @@ def web_player(handle):
                     "r": rk, "of": of})
     # By the tiers the person HAS rows on, not the one the page leads with: a
     # ranked row took a Momentum or KSF player's links away (Patch 629's review).
+    # AND A LINKED ACCOUNT'S (Patch 636): it signed in through Steam to be on
+    # these boards under its Steam name, and the sign-in page says its profile
+    # is linked here.  An install's guid is still never one.
     ext = web_ext(TIER_MOMENTUM if me["mom"] else TIER_KSF if me["ksf"] else me["src"], player)
+    if ext is None and linked and accounts.steam.is_steamid64(player):
+        ext = player
     return _json({"v": 1, "t": now, "who": handle, "name": me["name"],
                   "src": me["src"], "n": me["n"], "maps": me["maps"],
                   "last": me["last"], "wr": wr, "wrc": wrc, "top10": top10,
                   "by_tier": {"ranked": me["ranked"], "momentum": me["mom"],
                               "ksf": me["ksf"]},
                   "ext": ext, "ksfid": steam2(ext) if ext and me["ksf"] else None,
+                  "momid": momid[0] if momid else None,
                   "completion": comp, "offset": offset, "total": len(ranked),
                   "limit": limit, "rows": out}, "max-age=30")
 

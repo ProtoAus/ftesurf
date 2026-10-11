@@ -70,7 +70,7 @@
       + 'is reconstructed from their demo and is lower fidelity than ours.'],
     ksf: ['KSF', 'Imported from the KSF Counter-Strike: Source servers. Time '
       + 'only — KSF publishes no demo we can read.'],
-    ranked: ['OURS', 'Set on an official FTESurf server and re-simulated here.']
+    ranked: ['FTE', 'Set on an official FTESurf server and re-simulated here.']
   };
 
   function srcChip(tier) {
@@ -130,9 +130,11 @@
     return o;
   }
 
+  // A board is EVERY GAME'S times unless the link names one (Patch 636): a
+  // link with no `tier` used to open ours alone.
   function hashFor(map, track, leg, style, tier) {
     return '#m=' + encodeURIComponent(map) + '&t=' + track + '&l=' + leg +
-      '&s=' + style + (tier && tier !== 'ranked' ? '&tier=' + tier : '');
+      '&s=' + style + (tier && tier !== 'combined' ? '&tier=' + tier : '');
   }
 
   function link(cls, href, text) {
@@ -142,8 +144,8 @@
   }
 
   // Outbound links in one place.  Momentum's profiles take Momentum's own user
-  // number, which no board row carries (/profile/<steamid> is their 404), so a
-  // player links to Steam, as Momentum's own dashboard does; KSF addresses its
+  // number (/profile/<steamid> is their 404): surfd sends it as `momid` once
+  // its importer has seen the player on a refreshed board.  KSF addresses its
   // players by STEAM_0 id (`ksfid`, from surfd).  A row links to its board on
   // the site it came from.
   function outLink(href, text) {
@@ -153,6 +155,7 @@
   }
   function steamUrl(id) { return 'https://steamcommunity.com/profiles/' + encodeURIComponent(id); }
   function ksfUrl(id) { return 'https://ksf.surf/players/' + encodeURIComponent(id); }
+  function momUrl(id) { return 'https://dashboard.momentum-mod.org/profile/' + encodeURIComponent(id); }
   function boardUrl(tier, map) {
     if (tier === 'ksf') { return 'https://ksf.surf/maps/' + encodeURIComponent(map) + '/records'; }
     if (tier === 'momentum') { return 'https://dashboard.momentum-mod.org/maps/' + encodeURIComponent(map); }
@@ -313,8 +316,8 @@
     location.hash = hashFor(v.map, track, leg, style, tier);
   }
 
-  var TIER_TABS = [['ranked', 'Ours'], ['imported', 'Imported'],
-                   ['combined', 'Combined']];
+  var TIER_TABS = [['combined', 'All games'], ['ranked', 'FTESurf'],
+                   ['momentum', 'Momentum Mod'], ['ksf', 'KSF']];
 
   function renderTabs(v, counts) {
     var legs = $('legs'), styles = $('styles'), srcs = $('srcs');
@@ -338,7 +341,9 @@
     v.boards.forEach(function (b) {
       if (b.track === v.track && b.leg === v.leg) {
         here[b.style] = v.tier === 'ranked' ? b.n
-          : v.tier === 'imported' ? n0(b.ni) : b.n + n0(b.ni);
+          : v.tier === 'combined' ? b.n + n0(b.ni)
+          : v.tier === 'momentum' ? n0(b.nm)
+          : v.tier === 'ksf' ? n0(b.nk) : n0(b.ni);
       }
     });
     ['clean', 'segmented'].concat(KSF_STYLES.filter(function (s) {
@@ -348,10 +353,11 @@
         function () { go(v, v.track, v.leg, s, v.tier); }));
     });
 
-    var imp = n0(counts.momentum) + n0(counts.ksf);
-    [['ranked', n0(counts.ranked)], ['imported', imp],
-     ['combined', n0(counts.ranked) + imp]].forEach(function (p, i) {
-      srcs.appendChild(tabButton(TIER_TABS[i][1], p[1], p[0] === v.tier,
+    var cnt = { ranked: n0(counts.ranked), momentum: n0(counts.momentum),
+                ksf: n0(counts.ksf) };
+    cnt.combined = cnt.ranked + cnt.momentum + cnt.ksf;
+    TIER_TABS.forEach(function (p) {
+      srcs.appendChild(tabButton(p[1], cnt[p[0]], p[0] === v.tier,
         function () { go(v, v.track, v.leg, v.style, p[0]); }));
     });
   }
@@ -365,7 +371,8 @@
       tr.appendChild(el('td', 'num', r.r));
       var who = el('td', 'name');
       who.appendChild(link('plink', '#p=' + r.who, plain(r.name)));
-      if (v.tier !== 'ranked') {
+      // Which game, where the board holds more than one.
+      if (v.tier === 'combined' || v.tier === 'imported') {
         var c = srcChip(r.tr || 'ranked');
         if (c) { who.appendChild(c); }
       }
@@ -388,7 +395,7 @@
   function renderMap(body) {
     var v = {
       map: body.disp, key: body.map, track: body.track, leg: body.leg,
-      style: body.style, tier: body.tier || 'ranked',
+      style: body.style, tier: body.tier || 'combined',
       boards: body.boards || [], total: body.n || 0, shown: 0, best: 0,
       // THE SERVER'S PAGE SIZE, NOT OURS.  `more` stops when a page comes back
       // short, so a PAGE that disagreed with surfd's WEB_PAGE would end the
@@ -439,7 +446,7 @@
         '&leg=' + encodeURIComponent(h.l || '0') +
         '&style=' + encodeURIComponent(h.s || 'clean');
     }
-    if (h.tier) { q += '&tier=' + encodeURIComponent(h.tier); }
+    q += '&tier=' + encodeURIComponent(h.tier || 'combined');
     return q + (offset ? '&offset=' + offset : '');
   }
 
@@ -717,8 +724,9 @@
     sub.textContent = '';
     var chip = srcChip(body.src);
     if (chip) { sub.appendChild(chip); }
-    if (body.ksfid) { sub.appendChild(outLink(ksfUrl(body.ksfid), 'KSF profile ↗')); }
     if (body.ext) { sub.appendChild(outLink(steamUrl(body.ext), 'Steam profile ↗')); }
+    if (body.momid) { sub.appendChild(outLink(momUrl(body.momid), 'Momentum Mod profile ↗')); }
+    if (body.ksfid) { sub.appendChild(outLink(ksfUrl(body.ksfid), 'KSF profile ↗')); }
     if (body.last) { sub.appendChild(el('span', 'why', 'last time ' + ago(body.last))); }
 
     var st = $('pstats');
@@ -767,21 +775,38 @@
     } else {
       $('compnote').hidden = true;
       wrap.hidden = c.tiers.length === 0;
+      // `&ct=<tier>` (or `u`, the unrated maps) in the address opens that
+      // tier's maps, so "which tier 3 maps has she left" is a link.
+      var want = readHash().ct;
       c.tiers.forEach(function (t) {
-        var row = el('div', 'crow');
+        var row = el('button', 'crow cbtn');
+        row.type = 'button';
+        row.setAttribute('aria-expanded', 'false');
         var lbl = el('span', 'ck', 'Tier ' + t.tier);
-        lbl.title = 'Momentum difficulty tier ' + t.tier;
+        lbl.title = 'Momentum difficulty tier ' + t.tier + ': show the maps';
         row.appendChild(lbl);
         row.appendChild(bar(t.done, t.of));
         row.appendChild(el('span', 'cv', t.done + ' / ' + t.of));
         comp.appendChild(row);
+        var box = el('div', 'cmaps');
+        box.hidden = true;
+        comp.appendChild(box);
+        row.addEventListener('click', function () { toggleTier(body.who, t.tier, row, box); });
+        if (want === String(t.tier)) { window.setTimeout(function () { row.click(); }, 0); }
       });
       if (c.untiered) {
-        var note = el('div', 'crow crow-dim');
+        var note = el('button', 'crow crow-dim cbtn');
+        note.type = 'button';
+        note.setAttribute('aria-expanded', 'false');
         note.appendChild(el('span', 'ck', 'Unrated'));
         note.appendChild(el('span', 'cfree',
           c.untiered + ' maps carry no difficulty tier'));
         comp.appendChild(note);
+        var ubox = el('div', 'cmaps');
+        ubox.hidden = true;
+        comp.appendChild(ubox);
+        note.addEventListener('click', function () { toggleTier(body.who, null, note, ubox); });
+        if (want === 'u') { window.setTimeout(function () { note.click(); }, 0); }
       }
     }
 
@@ -790,6 +815,67 @@
                    multi: ['ranked', 'momentum', 'ksf']
                      .filter(function (k) { return n0(bt[k]) > 0; }).length > 1 };
     profileRows(body, state.prof.page);
+  }
+
+  // WHICH MAPS, per difficulty tier: finished (in which game, with the time)
+  // and not yet.  One request for the whole list, the first time a tier is
+  // opened, kept for the profile on screen.
+  function tierMaps(handle) {
+    var P = state.prof;
+    if (!P.maps) { P.maps = get('api/player/' + encodeURIComponent(handle) + '/maps'); }
+    return P.maps;
+  }
+
+  function mapList(title, maps, done) {
+    var wrap = el('div', 'cgroup');
+    wrap.appendChild(el('h4', 'cgh', title + ' ' + maps.length));
+    var ul = el('ul', 'cml');
+    maps.forEach(function (m) {
+      var li = el('li', done ? 'cm done' : (m.have ? 'cm' : 'cm away'));
+      li.appendChild(link('plink', hashFor(m.map, 0, 0, m.s || 'clean'), m.map));
+      if (done) {
+        li.appendChild(el('span', 'ct', fmt(m.ms)));
+        (m.games || []).forEach(function (g) {
+          var c = srcChip(g);
+          if (c) { li.appendChild(c); }
+        });
+      } else if (!m.have) {
+        li.title = 'Not installed on the FTESurf servers';
+      }
+      ul.appendChild(li);
+    });
+    wrap.appendChild(ul);
+    return wrap;
+  }
+
+  function toggleTier(handle, tier, row, box) {
+    var open = box.hidden;
+    box.hidden = !open;
+    row.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (history.replaceState) {
+      history.replaceState(null, '', '#p=' + encodeURIComponent(handle) +
+        (open ? '&ct=' + (tier === null ? 'u' : tier) : ''));
+    }
+    if (!open || box.firstChild) { return; }
+    box.appendChild(el('p', 'cwait', 'Loading…'));
+    var P = state.prof;
+    tierMaps(handle).then(function (body) {
+      if (state.prof !== P) { return; }
+      var g = tier === null ? body.unrated
+        : (body.tiers || []).filter(function (t) { return t.tier === tier; })[0];
+      box.textContent = '';
+      if (!g) { box.appendChild(el('p', 'cwait', 'No maps in this tier')); return; }
+      // Finished is "has a game", as surfd counts it, not "has a time above 0".
+      var done = g.maps.filter(function (m) { return !!m.tr; });
+      var left = g.maps.filter(function (m) { return !m.tr; });
+      box.appendChild(mapList('Finished', done, true));
+      box.appendChild(mapList('Not yet', left, false));
+    }, function (e) {
+      if (state.prof !== P) { return; }
+      P.maps = null;
+      box.textContent = '';
+      box.appendChild(el('p', 'cwait', e.message));
+    });
   }
 
   // surfd sorts main tracks first, then bonuses, then stages (best first within
@@ -822,8 +908,7 @@
       pos.appendChild(el('span', 'of', ' / ' + r.of));
       tr.appendChild(pos);
       var mp = el('td', 'name');
-      mp.appendChild(link('plink', hashFor(r.disp, r.track, r.leg, r.style,
-        r.tr === 'ranked' ? 'ranked' : 'combined'), r.disp));
+      mp.appendChild(link('plink', hashFor(r.disp, r.track, r.leg, r.style), r.disp));
       // Only when the profile actually spans sources: a chip on every row of a
       // single-source profile is noise that says the same thing 100 times.
       if (multi) {

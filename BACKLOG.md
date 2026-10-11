@@ -45,6 +45,16 @@ From its one review; measured there unless said.
   rig has this patch's, where the reset worked before them too).
 ## The site under three million imported rows -- 2026-10-11
 
+- **The site after Patch 636.** A player page's first view is still the ranks:
+  1.3 s for 2,029 rows, 0.71 s of it counting each board's size; one grouped pass
+  gives every size in 1.42 s and could ride the directory's background build.
+  Momentum profile links appear only as boards are refetched (the old files have
+  no user number). A KSF link is shown only where we hold KSF rows.
+  `tools/accounts_mutants.py` does not run `test_web.py`. A LINKED ACCOUNT'S
+  HANDLE IS NOT A SECRET FOR ITS STEAMID: it is 12 hex of a digest over an id
+  space of 2^32, so anybody can walk it back; an install's guid has no such
+  shortcut. The maps list shows a player's fastest main time in any style;
+  the bars and that list are cached by a browser for thirty seconds each.
 - **The site's maps list is built inside a request** (Patch 634 took it from 12 s
   to about 2 s): serve the last body and rebuild on a thread, as the player
   directory does (`_people_kick`); `test_web.py` section 3 pins the rebuild as
