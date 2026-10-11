@@ -47,6 +47,7 @@ def check(label, got, want):
 HOME = tempfile.mkdtemp(prefix="surfd-mapwatch-")
 os.environ.update(SURFD_HOME=HOME, SURFD_DB=os.path.join(HOME, "test.db"),
                   SURFD_RUNS=os.path.join(HOME, "game", "data", "runs"))
+import contextlib        # noqa: E402
 import surfd as S        # noqa: E402
 import mapwatch as W     # noqa: E402
 import test_zonefit as TZ   # noqa: E402  (vbsp, zones: files of the real shape)
@@ -807,10 +808,11 @@ def case_given_zones():
     aside = os.path.join(maps, "zones", "online", ".old")
     check("...and then they are moved aside, kept, and no longer recorded as given; the "
           "site keeps its own file of that name (it never was ours)",
-          (zfile(maps, "surf_p_fix"), [read(os.path.join(aside, f)) == raw2
-                                       for f in os.listdir(aside)], given(state),
-           read(os.path.join(site, "surf_p_fix.json"))),
-          (None, [True], ["surf_p_csgo", "surf_p_go"], b'{"shipped":"another"}'))
+          (zfile(maps, "surf_p_fix"),
+           [f for f in os.listdir(aside) if read(os.path.join(aside, f)) == raw2],
+           given(state), read(os.path.join(site, "surf_p_fix.json"))),
+          (None, ["surf_p_fix.%s.json" % sha(raw2)[:12]], ["surf_p_csgo", "surf_p_go"],
+           b'{"shipped":"another"}'))
     # The same again where the site's copy IS the file given: it goes too.
     swap("surf_p_go", build(b"go, moved", mins=(-3000, -4096, -512)))
     had = os.path.exists(os.path.join(site, "surf_p_go.json"))
@@ -1265,7 +1267,7 @@ def case_held_builds():
           "zones, is struck for it, and is not even downloaded",
           (read(os.path.join(maps, "surf_zbad.bsp")) == old, read(os.path.join(zd, "surf_zbad.json")),
            w.asked_for("surf_zbad"), [s for s in strikes(state) if s[1] == "surf_zbad"]),
-          (True, b"{}", [], [("zones", "surf_zbad", 1, "zonehash")]))
+          (True, b"{}", [], [("zones", "surf_zbad", 1, "zoneshape")]))
     check("...nor is one that publishes no zones where a zone file is held",
           (read(os.path.join(maps, "surf_zgone.bsp")) == old, w.asked_for("surf_zgone")), (True, []))
     check("a map a lobby is on waits, and is not downloaded to find that out",
@@ -1334,13 +1336,512 @@ def case_kept_build():
     mom = {"bhop_eazy": M("published now"), "surf_other": M("published now too")}
     w, maps, state = setup(mom, {}, held=[("bhop_eazy", bsp("the gate's build")),
                                           ("surf_other", bsp("an older build"))])
-    tick(maps, state, "--go", "--updates")
-    check("--updates replaces a build that is not the published one, and never the map "
-          "the engine gate compares",
+    keep, W.KEEP_BUILD = W.KEEP_BUILD, ("bhop_eazy",)
+    try:
+        tick(maps, state, "--go", "--updates")
+    finally:
+        W.KEEP_BUILD = keep
+    check("--updates replaces a build that is not the published one, and never a map "
+          "named in KEEP_BUILD",
           (sha(read(os.path.join(maps, "bhop_eazy.bsp"))) == sha(bsp("the gate's build")),
            sha(read(os.path.join(maps, "surf_other.bsp"))) == sha(mom["surf_other"]["bsp"]),
            [u for u in w.files() if uuid_of("bhop_eazy") in u], zlist(maps)),
           (True, True, [], ["surf_other.json"]))
+    tick(maps, state, "--go", "--updates")
+    check("...and with the name off that list (as shipped: nothing is on it) the map follows",
+          (W.KEEP_BUILD, sha(read(os.path.join(maps, "bhop_eazy.bsp"))) == sha(mom["bhop_eazy"]["bsp"])),
+          ((), True))
+
+
+def case_unhashed_zones():
+    # Momentum's zoneHash is not the hash of its own zones for some maps (92 on
+    # 12 Oct 2026): it saved them again and left the hash behind.
+    old = TZ.zones(end=(1500, 0))                           # the zone file held
+
+    def resave(zb=old, stamp=2, bhop=((100, 100),), **more):
+        z = json.loads(zb.decode())
+        z["dataTimestamp"] = stamp
+        z["globalRegions"] = {"allowBhop": [TZ.region(x, y) for x, y in bhop]}
+        z.update(more)
+        return z
+
+    def canon(z):
+        return json.dumps(z, separators=(",", ":"), ensure_ascii=False).encode()
+
+    listed = json.loads(TZ.zones(end=(1000, 0)).decode())  # what zoneHash names: neither
+    zh = sha(ztext(listed).encode())
+    stale = {"bsp": build(b"u"), "zones": listed, "tier": 1}
+    sent = resave()
+    now = int(REAL_TIME())
+
+    def world(name, zf=old, held=True, served=sent, bsp_held=None, st=None, m=None):
+        """A map whose zones do not hash: held or not, with zone file `zf`."""
+        m = m or stale
+        w, maps, state = setup({name: dict(m)}, {},
+                               held=[(name, bsp_held or m["bsp"])] if held else [])
+        if zf is not None:
+            os.makedirs(zdir_of(maps))
+            with open(os.path.join(zdir_of(maps), name + ".json"), "wb") as fh:
+                fh.write(zf)
+        if st is not None:
+            os.makedirs(state)
+            with io.open(os.path.join(state, "state.json"), "w", encoding="utf-8") as fh:
+                json.dump(st, fh)
+        w.zonefix = {name: served if isinstance(served, str) else ztext(served)}
+        return w, maps, state
+
+    def un(state):
+        return {k: (v["zh"] == zh, v["sha"][:8]) for k, v in
+                state_of(state).get("unhashed", {}).items()}
+
+    def age(state, k, days):
+        st = state_of(state)
+        st["unhashed"][k]["at"] -= days * 86400
+        with io.open(os.path.join(state, "state.json"), "w", encoding="utf-8") as fh:
+            json.dump(st, fh)
+
+    def aside(maps):
+        try:
+            return sorted(os.listdir(os.path.join(zdir_of(maps), ".old")))
+        except OSError:
+            return []
+
+    def zkey(name):
+        return "z:%s:%s" % (name, zh[:12])
+
+    def struck(name, why="zonehash"):
+        return {"later": {zkey(name): [3, now, why]}}
+
+    def approve(state, doc):
+        os.makedirs(state, exist_ok=True)
+        with io.open(os.path.join(state, "approved.json"), "w", encoding="utf-8") as fh:
+            json.dump(doc, fh)
+
+    def start_with(**more):
+        """The zone file held, its start region given `more`."""
+        z = json.loads(old.decode())
+        z["tracks"]["main"]["zones"]["segments"][0]["checkpoints"][0]["regions"][0].update(more)
+        return ztext(z).encode()
+
+    def kept(name, zb):
+        return "%s.%s.json" % (name, sha(zb)[:12])
+
+    # ---- the file held, saved again: taken, by a run with --updates
+    w, maps, state = world("surf_un")
+    tick(maps, state, "--go")
+    check("zones that do not hash are not even asked for by a run without --updates",
+          (zfile(maps, "surf_un") == old, len(w.zone_asks())), (True, 0))
+    tick(maps, state, "--go", "--updates")
+    check("zones that do not hash but are the file held, saved again, are taken: written as "
+          "this parse of them, recorded, and the file they replace kept aside",
+          (zfile(maps, "surf_un") == canon(sent), strikes(state), un(state), aside(maps),
+           read(os.path.join(zdir_of(maps), ".old", kept("surf_un", old))) == old),
+          (True, [], {"surf_un": (True, sha(canon(sent))[:8])}, [kept("surf_un", old)], True))
+    n = len(w.zone_asks())
+    tick(maps, state, "--go", "--updates")
+    check("...and are not asked for again the next run", len(w.zone_asks()) - n, 0)
+    zp = os.path.join(zdir_of(maps), "surf_un.json")
+    os.utime(zp, (1000000000, 1000000000))
+    age(state, "surf_un", 8)
+    tick(maps, state, "--go", "--updates")
+    check("...but after UNHASHED_DAYS they are: the same zones are nothing to write, and the "
+          "file is not touched",
+          (len(w.zone_asks()) - n, zfile(maps, "surf_un") == canon(sent),
+           int(os.stat(zp).st_mtime)), (1, True, 1000000000))
+    n = len(w.zone_asks())
+    tick(maps, state, "--go", "--updates")
+    check("...and that reading counts from then", len(w.zone_asks()) - n, 0)
+    w.zonefix = {"surf_un": ztext(resave(stamp=3))}
+    age(state, "surf_un", 8)
+    tick(maps, state, "--go", "--updates")
+    check("a later re-save that moved only the stamp is nothing to write either",
+          (len(w.zone_asks()) - n, zfile(maps, "surf_un") == canon(sent),
+           int(os.stat(zp).st_mtime), un(state)),
+          (1, True, 1000000000, {"surf_un": (True, sha(canon(sent))[:8])}))
+    more = resave(stamp=4, bhop=((100, 100), (300, 300)))
+    w.zonefix = {"surf_un": ztext(more)}
+    age(state, "surf_un", 8)
+    n, said = len(w.zone_asks()), io.StringIO()
+    with contextlib.redirect_stdout(said):
+        tick(maps, state, "--go")
+    check("an aged reading is not asked again by a run that could not replace it, and is not "
+          "called a difference",
+          (len(w.zone_asks()) - n, "differ" in said.getvalue(),
+           zfile(maps, "surf_un") == canon(sent)), (0, False, True))
+    tick(maps, state, "--go", "--updates")
+    check("one that changed globalRegions is taken by a run with --updates, the file before "
+          "it kept aside too",
+          (zfile(maps, "surf_un") == canon(more), un(state), aside(maps)),
+          (True, {"surf_un": (True, sha(canon(more))[:8])},
+           sorted([kept("surf_un", old), kept("surf_un", canon(sent))])))
+    age(state, "surf_un", -3650)
+    n = len(w.zone_asks())
+    tick(maps, state, "--go", "--updates")
+    check("a reading dated in the future is not believed: asked for again",
+          len(w.zone_asks()) - n, 1)
+    fixed = json.loads(TZ.zones(end=(1200, 0)).decode())
+    w.mom["surf_un"]["zones"] = fixed           # new zones, and their hash IS theirs
+    w.zonefix = {}
+    n = len(w.zone_asks())
+    tick(maps, state, "--go", "--updates")
+    check("a new zoneHash is asked for at once, whatever was read under the old one; zones "
+          "that hash are written as sent, and the record goes",
+          (len(w.zone_asks()) - n, zfile(maps, "surf_un") == ztext(fixed).encode(), un(state)),
+          (1, True, {}))
+
+    w, maps, state = world("surf_ue")
+    tick(maps, state, "--go", "--updates")
+    zp = os.path.join(zdir_of(maps), "surf_ue.json")
+    with open(zp, "wb") as fh:
+        fh.write(old)                           # somebody puts the file from before back
+    n = len(w.zone_asks())
+    tick(maps, state, "--go", "--updates")
+    check("a file changed since it was read is not the one read: asked for again at once, "
+          "and put back",
+          (len(w.zone_asks()) - n, read(zp) == canon(sent)), (1, True))
+
+    w, maps, state = world("surf_ub", bsp_held=build(b"older"))
+    tick(maps, state, "--go", "--updates")
+    check("a build that is not the published one is replaced, with zones taken that way",
+          (sha(read(os.path.join(maps, "surf_ub.bsp"))) == sha(stale["bsp"]),
+           zfile(maps, "surf_ub") == canon(sent), sorted(un(state)), aside(maps)),
+          (True, True, ["surf_ub"], [kept("surf_ub", old)]))
+
+    # ---- nothing held vouches for them: not taken
+    other = TZ.zones(end=(1700, 0))
+    three = [(1, [(1, "zonetiming")]), (2, [(2, "zonetiming")]), (3, [(3, "zonetiming")]),
+             (3, [(3, "zonetiming")]), (3, [(3, "zonetiming")])]
+    for label, kw, want in (("a map that is new here", dict(held=False, zf=None), ["surf_nt.bsp"]),
+                            ("a map held with no zone file", dict(zf=None), ["surf_nt.bsp"]),
+                            ("a zone file held that times the map otherwise", dict(zf=other),
+                             ["surf_nt.bsp", "zones"])):
+        w, maps, state = world("surf_nt", **kw)
+        seen = []
+        for _ in range(5):
+            tick(maps, state, "--go", "--updates")
+            seen.append((len(w.zone_asks()), [s[2:] for s in strikes(state)]))
+        check("zones that do not hash for %s are not taken: struck three times, then left"
+              % label,
+              (lib(maps), zfile(maps, "surf_nt") == kw["zf"], un(state), aside(maps), seen),
+              (want, True, {}, [], three))
+    w, maps, state = world("surf_nb", zf=other, bsp_held=build(b"older"))
+    olds = sha(read(os.path.join(maps, "surf_nb.bsp")))
+    tick(maps, state, "--go", "--updates")
+    check("...nor is a build replaced for zones like that: old build, and no download",
+          (sha(read(os.path.join(maps, "surf_nb.bsp"))) == olds, w.files(), strikes(state)),
+          (True, [], [("zones", "surf_nb", 1, "zonetiming")]))
+
+    # ---- approved.json: the very zones a person looked at, by map and zoneHash
+    yes = {zkey("surf_ap"): sha(canon(sent))}
+    w, maps, state = world("surf_ap", zf=None)
+    approve(state, yes)
+    tick(maps, state, "--go")
+    check("zones a person approved are taken with no file here to compare, and "
+          "approved.json is only read",
+          (zfile(maps, "surf_ap") == canon(sent), strikes(state), sorted(un(state)),
+           json.load(io.open(os.path.join(state, "approved.json"), encoding="utf-8"))),
+          (True, [], ["surf_ap"], yes))
+    w.zonefix = {"surf_ap": ztext(resave(TZ.zones(end=(1800, 0)), stamp=5))}
+    age(state, "surf_ap", 8)
+    tick(maps, state, "--go", "--updates")
+    check("...and only those: other zones under the same zoneHash later are not taken",
+          (zfile(maps, "surf_ap") == canon(sent), strikes(state)),
+          (True, [("zones", "surf_ap", 1, "zonetiming")]))
+    w, maps, state = world("surf_ad", zf=other)
+    approve(state, {zkey("surf_ad"): sha(canon(sent))})
+    tick(maps, state, "--go", "--updates")
+    check("approved zones replace a zone file that times the map otherwise, which is kept "
+          "aside",
+          (zfile(maps, "surf_ad") == canon(sent), aside(maps),
+           read(os.path.join(zdir_of(maps), ".old", kept("surf_ad", other))) == other),
+          (True, [kept("surf_ad", other)], True))
+    w, maps, state = world("surf_ab", zf=None, bsp_held=build(b"older"))
+    approve(state, {zkey("surf_ab"): sha(canon(sent))})
+    tick(maps, state, "--go", "--updates")
+    check("approved zones let their build be replaced, and come with it",
+          (sha(read(os.path.join(maps, "surf_ab.bsp"))) == sha(stale["bsp"]),
+           zfile(maps, "surf_ab") == canon(sent)), (True, True))
+    for served, want in ((sent, (["surf_an.bsp", "zones"], [], ["surf_an"])),
+                         (resave(TZ.zones(end=(1500, 0), dest="nowhere")),
+                          (["surf_an.bsp"], [("zones", "surf_an", 1, "zonebuild")], []))):
+        w, maps, state = world("surf_an", zf=None, held=False, served=served)
+        approve(state, {zkey("surf_an"): sha(canon(served))})
+        tick(maps, state, "--go")
+        check("approved zones of a map that is new here are measured on the build it "
+              "installs: %s" % ("taken" if not want[1] else "a restart point it lacks, not taken"),
+              (lib(maps), strikes(state), sorted(un(state))), want)
+    timing = [("zones", "surf_na", 1, "zonetiming")]
+    for label, doc, st, want in (
+            ("approved as other zones", {zkey("surf_na"): sha(canon(more))}, None, timing),
+            ("approved under another zoneHash", {"z:surf_na:000000000000": sha(canon(sent))},
+             None, timing),
+            ("named in an approved.json that is a list", [zkey("surf_na")], None, timing),
+            ("whose approval is not a hash", {zkey("surf_na"): 5}, None, timing),
+            ("struck for its hash alone before this version (asked again, by its rules)",
+             None, struck("surf_na"), timing),
+            ("struck three times for something else (not asked)", None,
+             struck("surf_na", why="HTTP 404"), [("zones", "surf_na", 3, "HTTP")])):
+        w, maps, state = world("surf_na", zf=None, st=st)
+        if doc is not None:
+            approve(state, doc)
+        tick(maps, state, "--go")
+        check("a zone file %s is not taken" % label,
+              (zfile(maps, "surf_na"), strikes(state)), (None, want))
+
+    # ---- the reply must be of the version the list named
+    for label, move in (("another map", lambda w, n: w.ids.__setitem__(n, 987654)),
+                        ("another build", lambda w, n: w.mom[n].__setitem__("hash", "f" * 40)),
+                        ("another zoneHash", lambda w, n: w.mom[n].__setitem__(
+                            "zones", json.loads(TZ.zones(end=(1100, 0)).decode())))):
+        w, maps, state = world("surf_vr")
+        w.zhook = lambda n, w=w, move=move: move(w, n)
+        tick(maps, state, "--go", "--updates")
+        check("zones without their hash in a reply that names %s than the list did are not "
+              "taken; no strike, it goes to the back" % label,
+              (zfile(maps, "surf_vr") == old, strikes(state), un(state),
+               sorted(state_of(state)["back"])), (True, [], {}, [zkey("surf_vr")]))
+
+    # ---- ...and a file the game loads whole
+    reg = TZ.region(100, 100)
+
+    def with_global(g):
+        return dict(resave(), globalRegions=g)
+
+    for label, served, cap in (
+            ("globalRegions that is a list", with_global([reg]), {}),
+            ("an allowBhop that is no list", with_global({"allowBhop": {"points": 1}}), {}),
+            ("a cancel region of two points",
+             with_global({"cancel": [dict(reg, points=reg["points"][:2])]}), {}),
+            ("an allowBhop region whose points are not numbers",
+             with_global({"allowBhop": [dict(reg, points=[["a", "b"]] * 3)]}), {}),
+            ("an overbounce region that is not finite",
+             with_global({"overbounce": [dict(reg, bottom=float("nan"))]}), {}),
+            ("an allowBhop region a billion units out",
+             with_global({"allowBhop": [dict(reg, bottom=1e9)]}), {}),
+            ("a cancel region with a coordinate that is text",
+             with_global({"cancel": [dict(reg, points=[[100, 100], ["164", 100], [164, 164]])]}),
+             {}),
+            ("a cancel region with a later vertex that is text nan",
+             with_global({"cancel": [dict(reg, points=[[100, 100], ["nan", "nan"], [164, 164]])]}),
+             {}),
+            ("an allowBhop region with a point that is text",
+             with_global({"allowBhop": [dict(reg, points=[[100, 100], [164, 100], "12"])]}), {}),
+            ("an allowBhop region whose height is text",
+             with_global({"allowBhop": [dict(reg, height="128")]}), {}),
+            ("an overbounce region whose bottom is true",
+             with_global({"overbounce": [dict(reg, bottom=True)]}), {}),
+            ("an allowBhop region whose height is true",
+             with_global({"allowBhop": [dict(reg, height=True)]}), {}),
+            ("a stamp that is not finite", resave(stamp=float("inf")), {}),
+            ("more regions than the game loads", sent, {"GAME_ZONES": 2}),
+            ("more points than the game loads", sent, {"GAME_POINTS": 11}),
+            ("more bytes than a zone file", sent, {"MAX_ZONE_BYTES": 300})):
+        w, maps, state = world("surf_sh", served=served)
+        keep = {k: getattr(W, k) for k in cap}
+        for k, v in cap.items():
+            setattr(W, k, v)
+        try:
+            tick(maps, state, "--go", "--updates")
+        finally:
+            for k, v in keep.items():
+                setattr(W, k, v)
+        check("zones without their hash with %s are not taken%s"
+              % (label, " (the cap lowered to %r here)" % list(cap.values())[0] if cap else ""),
+              (zfile(maps, "surf_sh") == old, strikes(state), un(state)),
+              (True, [("zones", "surf_sh", 1, "zoneshape")], {}))
+    main = sent["tracks"]["main"]
+    two = json.loads(ztext(sent))
+    two["tracks"]["main"]["zones"]["segments"][0]["checkpoints"][0]["regions"][0]["points"] = \
+        reg["points"][:2]
+    for label, z in (("a start whose x is the text 9000_0e-9",
+                      resave(start_with(points=[["9000_0e-9", 0], [64, 0], [64, 64]]))),
+                     ("a restart position that is not three numbers",
+                      resave(start_with(teleDestPos=[1e30, "x", {}]))),
+                     ("a restart yaw that is text", resave(start_with(teleDestYaw="north"))),
+                     ("a restart name that is a number", resave(start_with(teleDestTargetname=7))),
+                     ("no end", dict(sent, tracks={"main": {"zones": {
+                         "segments": main["zones"]["segments"]}}})),
+                     ("no start", dict(sent, tracks={"main": {"zones": {
+                         "segments": [], "end": main["zones"]["end"]}}})),
+                     ("a start of two points", two),
+                     ("only a bonus", dict(sent, tracks={"main": {"zones": {}},
+                                                         "bonuses": [main]}))):
+        w, maps, state = world("surf_ns", zf=None, served=z)
+        approve(state, {zkey("surf_ns"): sha(canon(z))})
+        tick(maps, state, "--go")
+        check("approved zones with %s are not a zone file: nothing written, struck" % label,
+              (zlist(maps), strikes(state), un(state)),
+              ([], [("zones", "surf_ns", 1, "zoneshape")], {}))
+
+    # ---- what is written is the document that was checked
+    tr, gl = ztext(json.loads(old.decode())["tracks"]), ztext(sent["globalRegions"])
+    twice = ('{"tracks":{"main":{"zones":{}}},"formatVersion":1,"dataTimestamp":2,'
+             '"globalRegions":%s,"tracks":%s}' % (gl, tr))
+    w, maps, state = world("surf_dk", served=twice)
+    tick(maps, state, "--go", "--updates")
+    got = zfile(maps, "surf_dk")
+    check("a reply that names `tracks` twice is written with the one that was checked, once",
+          (got.count(b'"tracks"'), got == canon(json.loads(twice))), (1, True))
+    w, maps, state = world("surf_ek", served=ztext(sent).replace('"tracks"', '"tr\\u0061cks"', 1))
+    tick(maps, state, "--go", "--updates")
+    check("...and a key written with an escape is written plainly",
+          zfile(maps, "surf_ek") == canon(sent), True)
+
+    # ---- measured on the build
+    out = TZ.zones(end=(9000, 0))
+    for label, zf, served in (
+            ("an end outside the world", out, resave(out)),
+            ("an end outside the world and nothing but the stamp new", out,
+             dict(json.loads(out.decode()), dataTimestamp=2)),
+            ("a start outside the world", TZ.zones(start=(9000, 0), end=(1500, 0)), None),
+            ("a restart point the build lacks", TZ.zones(end=(1500, 0), dest="nowhere"), None)):
+        w, maps, state = world("surf_ob", zf=zf, served=served or resave(zf))
+        tick(maps, state, "--go", "--updates")
+        check("zones without their hash with %s are not this build's: the file held stays, "
+              "nothing is recorded" % label,
+              (zfile(maps, "surf_ob") == zf, strikes(state), un(state), aside(maps)),
+              (True, [("zones", "surf_ob", 1, "zonebuild")], {}, []))
+    for where, want in (([9000, 0, 0], [("zones", "surf_op", 1, "zonebuild")]), ([10, 10, 10], [])):
+        zf = start_with(teleDestPos=where, teleDestYaw=90)
+        w, maps, state = world("surf_op", zf=zf, served=resave(zf))
+        tick(maps, state, "--go", "--updates")
+        check("zones without their hash with a restart position at %s: outside the world "
+              "they are not this build's, inside they are taken" % (where,),
+              (zfile(maps, "surf_op") == (zf if want else canon(resave(zf))), strikes(state)),
+              (True, want))
+    staged = dict(stale, bsp=build(b"s", names=("start_dest", "stage2")))
+    for where, want in (((9000, 0), [("zones", "surf_os", 1, "zonebuild")]), ((500, 0), [])):
+        zf = TZ.zones(end=(1500, 0), stage=where)
+        w, maps, state = world("surf_os", zf=zf, served=resave(zf), m=staged)
+        tick(maps, state, "--go", "--updates")
+        check("zones without their hash with a stage at %s: outside the world they are not "
+              "this build's, inside they are taken" % (where,),
+              (zfile(maps, "surf_os") == (zf if want else canon(resave(zf))), strikes(state)),
+              (True, want))
+    w, maps, state = world("surf_om", m=dict(stale, bsp=bsp("no world in it")))
+    tick(maps, state, "--go", "--updates")
+    check("...and on a build that cannot be read they could not be measured: nothing "
+          "written, and said apart",
+          (zfile(maps, "surf_om") == old, strikes(state), un(state)),
+          (True, [("zones", "surf_om", 1, "zonemeasure")], {}))
+    w, maps, state = setup({"surf_oh": {"bsp": bsp("no world in it"),
+                                        "zones": json.loads(old.decode()), "tier": 1}}, {})
+    tick(maps, state, "--go")
+    check("zones that DO hash are written whatever the build reads as (as before)",
+          (zfile(maps, "surf_oh") == ztext(json.loads(old.decode())).encode(), strikes(state)),
+          (True, []))
+    newer = dict(stale, bsp=build(b"newer", names=()))
+    w, maps, state = world("surf_or", bsp_held=stale["bsp"], m=newer)
+    seen = []
+    for _ in range(5):
+        tick(maps, state, "--go", "--updates")
+        seen.append((len(w.zone_asks()), len([u for u in w.files() if uuid_of("surf_or") in u]),
+                     [s[2:] for s in strikes(state)]))
+    check("a build whose zones would not be its own is not replaced, and is struck run after "
+          "run until it is left: three requests, three downloads, no more",
+          (sha(read(os.path.join(maps, "surf_or.bsp"))) == sha(stale["bsp"]),
+           zfile(maps, "surf_or") == old, [f for f in os.listdir(maps) if f.endswith(".part")],
+           seen),
+          (True, True, [], [(1, 1, [(1, "zonebuild")]), (2, 2, [(2, "zonebuild")]),
+                            (3, 3, [(3, "zonebuild")]), (3, 3, [(3, "zonebuild")]),
+                            (3, 3, [(3, "zonebuild")])]))
+    w, maps, state = world("surf_oq", zf=out, served=resave(out))
+    seen = []
+    for _ in range(5):
+        tick(maps, state, "--go", "--updates")
+        seen.append((len(w.zone_asks()), [s[2:] for s in strikes(state)]))
+    check("...and so is a zone file held: three requests, no more",
+          seen, [(1, [(1, "zonebuild")]), (2, [(2, "zonebuild")]), (3, [(3, "zonebuild")]),
+                 (3, [(3, "zonebuild")]), (3, [(3, "zonebuild")])])
+    w, maps, state = world("surf_b2")
+    tick(maps, state, "--go", "--updates")
+    b2 = build(b"another build of it", names=())
+    w.mom["surf_b2"]["bsp"] = b2
+    with open(os.path.join(maps, "surf_b2.bsp"), "wb") as fh:
+        fh.write(b2)
+    n = len(w.zone_asks())
+    tick(maps, state, "--go", "--updates")
+    check("what was read on one build is not believed on another: asked for again at once, "
+          "and measured there",
+          (len(w.zone_asks()) - n, strikes(state)), (1, [("zones", "surf_b2", 1, "zonebuild")]))
+
+    # ---- a zone file is kept aside before it is replaced, or it is not replaced
+    for label, kw, hashed in (("a zone file held", {}, False),
+                              ("the zone file of a build to replace", dict(bsp_held=build(b"older")),
+                               False),
+                              ("a zone file whose zones DO hash", {}, True)):
+        w, maps, state = world("surf_kf", **kw)
+        if hashed:
+            w.mom["surf_kf"]["zones"], w.zonefix = sent, {}
+        with open(os.path.join(zdir_of(maps), ".old"), "wb") as fh:
+            fh.write(b"not a folder")
+        olds = sha(read(os.path.join(maps, "surf_kf.bsp")))
+        tick(maps, state, "--go", "--updates")
+        check("where zones/online/.old cannot take a file, %s is left, with its build, and "
+              "nothing is asked for" % label,
+              (zfile(maps, "surf_kf") == old, sha(read(os.path.join(maps, "surf_kf.bsp"))) == olds,
+               len(w.zone_asks()), w.files(), strikes(state)), (True, True, 0, [], []))
+    w, maps, state = world("surf_kc")
+    real_link = os.link
+
+    def no_links(src, dst):
+        if os.path.basename(os.path.dirname(dst)) == ".old" and dst.endswith(".json"):
+            raise OSError("no links on this disk")
+        return real_link(src, dst)
+    os.link = no_links
+    try:
+        tick(maps, state, "--go", "--updates")
+    finally:
+        os.link = real_link
+    check("where a zone file cannot be linked aside it is copied",
+          (zfile(maps, "surf_kc") == canon(sent), aside(maps),
+           read(os.path.join(zdir_of(maps), ".old", kept("surf_kc", old))) == old),
+          (True, [kept("surf_kc", old)], True))
+    w, maps, state = world("surf_kd", bsp_held=build(b"older"))
+    olds, real_mk = sha(read(os.path.join(maps, "surf_kd.bsp"))), os.makedirs
+
+    def no_old(path, *a, **kw):
+        if os.path.basename(path) == ".old" and "zones" in path:
+            raise OSError("no room for a folder")
+        return real_mk(path, *a, **kw)
+    os.makedirs = no_old
+    try:
+        tick(maps, state, "--go", "--updates")
+    finally:
+        os.makedirs = real_mk
+    check("where the zone file cannot be kept at the moment of the swap, the build is left "
+          "too: old build, old zones, no part",
+          (sha(read(os.path.join(maps, "surf_kd.bsp"))) == olds, zfile(maps, "surf_kd") == old,
+           [f for f in os.listdir(maps) if f.endswith(".part")]), (True, True, []))
+    w, maps, state = world("surf_km", zf=None, bsp_held=build(b"older"))
+    approve(state, {zkey("surf_km"): sha(canon(sent))})
+    came = b'{"arrived":"meanwhile"}'
+
+    def arrives(name):
+        os.makedirs(zdir_of(maps), exist_ok=True)
+        with open(os.path.join(zdir_of(maps), "surf_km.json"), "wb") as fh:
+            fh.write(came)
+    w.hook = arrives
+    tick(maps, state, "--go", "--updates")
+    check("a zone file that arrives while its build is downloading is kept aside too",
+          (zfile(maps, "surf_km") == canon(sent), aside(maps),
+           read(os.path.join(zdir_of(maps), ".old", kept("surf_km", came))) == came),
+          (True, [kept("surf_km", came)], True))
+
+    # ---- state of another shape
+    w, maps, state = setup({"surf_st": {"bsp": build(b"u"), "zones": json.loads(old.decode()),
+                                        "tier": 1}}, {})
+    os.makedirs(state)
+    with io.open(os.path.join(state, "state.json"), "w", encoding="utf-8") as fh:
+        json.dump({"later": {"z:a:b": "text", "c": [1], "d": [1, "when", "why"], "e": None,
+                             "f": [3, float("inf"), "HTTP 404"],
+                             "z:ok:abc": [3, now, "HTTP 404"]},
+                   "back": {"q": "text", "r": float("inf"), "ok": now}, "unhashed": [1]}, fh)
+    rc = tick(maps, state, "--go")
+    check("strikes of another shape in state.json are dropped, not raised on",
+          (rc, sorted(state_of(state)["later"]), sorted(state_of(state)["back"]), lib(maps),
+           state_of(state)["unhashed"]),
+          (0, ["z:ok:abc"], ["ok"], ["surf_st.bsp", "zones"], {}))
 
 
 def case_first_zones():
@@ -1559,12 +2060,12 @@ def case_first_zones():
     w.zonefix = {"surf_zt": ztext(zones_of("wrong"))}
     tick(maps, state, "--go")
     check("a new map whose zones fail is asked for them once that run, not twice",
-          (len(w.zone_asks()), strikes(state)), (1, [("zones", "surf_zt", 1, "zonehash")]))
+          (len(w.zone_asks()), strikes(state)), (1, [("zones", "surf_zt", 1, "zoneshape")]))
     w, maps, state = setup({"surf_u0": M("u0"), "surf_u1": M("u1")}, {})
     w.zonefix = {"surf_u0": '{"name":"\\ud800 half a character"}'}
     rc = tick(maps, state, "--go")
     check("zones that cannot even be written as bytes are that map's: struck, and the run goes on",
-          (rc, zlist(maps), strikes(state)), (0, ["surf_u1.json"], [("zones", "surf_u0", 1, "zonehash")]))
+          (rc, zlist(maps), strikes(state)), (0, ["surf_u1.json"], [("zones", "surf_u0", 1, "zoneshape")]))
 
 
 def case_variants():
@@ -1642,8 +2143,9 @@ def case_zones_and_limits():
     w.zonefix = {"surf_z2": ztext(zones_of("somebody else's"))}
     tick(maps, state, "--go", "--max", "2")
     check("--max 2 takes two maps", lib(maps), ["surf_z1.bsp", "surf_z2.bsp", "zones"])
-    check("zones that do not hash to zoneHash are not written, and that is counted once",
-          (zlist(maps), strikes(state)), (["surf_z1.json"], [("zones", "surf_z2", 1, "zonehash")]))
+    check("zones that neither hash to zoneHash nor have a zone file's shape are not "
+          "written, and that is counted once",
+          (zlist(maps), strikes(state)), (["surf_z1.json"], [("zones", "surf_z2", 1, "zoneshape")]))
     w.zonefix = {}
     tick(maps, state, "--go", "--zones", "0")
     check("--zones 0 asks for no held map's zones; a map installed now gets its own at once",
@@ -1805,6 +2307,7 @@ def case_mapscan():
 def main():
     for case in (case_plan_and_install, case_bad_files, case_page_scan, case_limits_on_a_reply,
                  case_turns_with_the_crawl, case_given_zones, case_map_list, case_kept_build,
+                 case_unhashed_zones,
                  case_bad_names_and_shapes, case_hosts,
                  case_held_builds, case_first_zones, case_variants, case_zones_and_limits,
                  case_extra_and_lock, case_mapscan):

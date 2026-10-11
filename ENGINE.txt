@@ -26,6 +26,14 @@ commit   7501a6ccebb2d2b7f2f3a7f0127e86680f3cefb3
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-658
 patch    669
+# Patch 664: zones Momentum publishes under a zoneHash that is not theirs (92 maps). The
+# Pi's surfd/mapwatch.py takes them where they are the zone file held, saved again (the same
+# `tracks`), or where data/mapwatch/approved.json names the very bytes (Lex: 28 maps); it
+# reads them as the game does, writes a re-dump, measures them on the build, and keeps a
+# replaced zone file in zones/online/.old. bhop_eazy is no longer kept at the build held: it
+# follows Momentum's (func_bhop platforms, one segment with three checkpoints). mapwatch.py
+# and its test only: no engine source, QC, surfd.py, schema, recorder, evidence, ranking,
+# default or Build change (commit and tag above stay).
 # Patch 668: func_precipitation. Type 0, rain, and type 3, snowfall, are drawn the way
 # c_effects.cpp draws them: rain 0.35 units wide and a tenth of a second long at 425,
 # renderamt / 255 * 0.001 a square unit a second in the 1500 square round the player,

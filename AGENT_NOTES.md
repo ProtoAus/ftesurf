@@ -9424,6 +9424,55 @@ blind fallback in `ui_map_backdrop` alive for as long as it lived.
   other boards to 100 and every map's main board to 200 in one class by
   depth, then the rest. The request rate is unchanged (10 per 5 minutes).
 
+### Zones whose hash is not theirs, and bhop_eazy follows Momentum (Patch 664) -- 2026-10-12
+
+Lex, of the 92 maps `--updates` could not follow and of bhop_eazy: "do both".
+
+- **A REPLY THAT DOES NOT HASH IS TAKEN ONLY AS THE ZONE FILE HELD, SAVED
+  AGAIN** (`surfd/mapwatch.py`, the module docstring; `zone_ask`): the same
+  `tracks`, key for key. Measured on all 92 on 11 Oct, 22:10Z: 64 are that,
+  each with new `globalRegions.allowBhop` and none with a changed cancel
+  region; 8 changed inside the tracks (a `bhopEnabled` flag on 6, real edits
+  on surf_anzchamps, surf_santorini and surf_summit); 20 have no zone file
+  here. The 3-map sample the note below rested on was right about 64 of them.
+- **THE OTHER 28 ARE `data/mapwatch/approved.json`**: `{"z:<map>:<first 12 of
+  zoneHash>": "<sha1 of the bytes to be written>"}`. A person writes it, the
+  watcher only reads it, and a key is good for those bytes alone. The value
+  is the SHA1 of `json.dumps(zones, separators=(",", ":"),
+  ensure_ascii=False)`. A key already struck three times (`zonetiming`) also
+  needs its `later` entry taken out of state.json, under
+  `/tmp/surfd-mapwatch.lock`. A file that does not parse (a BOM) approves
+  nothing and says nothing.
+- **WHAT IS WRITTEN IS A RE-DUMP, READ THE WAY THE GAME READS IT**
+  (`zone_regions`). The engine's `json_get_float` runs `atof` over a string,
+  so `"9000_0e-9"` is 9000 to the game and 0.00009 to `float()`; its
+  `json_find_object_child` takes the FIRST of two keys where Python keeps the
+  last. So a number must be a JSON number, a region three points,
+  `teleDestPos` three numbers inside the world. Every one of the 985 zone
+  files held and the 92 replies passes; 105 regions held use a position. A
+  cancel region whose box is over the start is NOT a fault: 21 held files
+  have one.
+- **A REPLACED ZONE FILE IS KEPT** in `zones/online/.old/<stem>.<sha12>.json`,
+  before its build is swapped; where `.old` is not a folder nothing held is
+  asked for. The 14 replaced on 11 Oct (651) were not kept.
+- **A re-save moves `zone_crc`** (it covers every region, allowBhop
+  included): a run parked on one of those maps no longer resumes.
+- **bhop_eazy IS MOMENTUM'S BUILD, AND NOT THE SAME MAP TO AN ARM.**
+  4ddeea8cc0fa against 07320480e924: every collision and geometry lump byte
+  for byte the same; 188 `func_door` platforms are 188 `func_bhop`; the
+  published zones make its three STAGES three checkpoints of one segment
+  (the same boxes, start and end) and add a cancel region. `pm_dettest` on
+  both builds, on the Pi and on Windows: all seven lines equal but `mapcrc`
+  (676de275, now 7f53da5d). The gate's Windows side is
+  `C:\FTEQuake\fteqwsv64.exe`; `C:\FTESurf\fteqwsv64.exe` is from 28 Sep
+  and prints no `srctrace`. 91 of the 246 arms and tools that name bhop_eazy
+  mention stages and 24 use `pm_verify`: none was rerun. The old pair is
+  kept, on this PC as `ftesurf\maps\.old\bhop_eazy.07320480e924.bsp` and
+  `ftesurf\maps\zones\local\.old\bhop_eazy.0d413404a764.json`, on the Pi
+  in `maps/.old/` and `zones/online/.old/`. For an arm that needs it, copy
+  both over `maps\bhop_eazy.bsp` and `maps\zones\local\bhop_eazy.json`,
+  and put Momentum's back after.
+
 ### One row per map with a Momentum / CS:S switch; the menu fetches its list (Patch 652) -- 2026-10-12
 
 The menu half of Patch 651 (below). ROADMAP 8 asked for builds under one
@@ -9520,14 +9569,14 @@ the game fetches its own map list. The menu half is Patch 652.
   held (surf_ace, surf_crush, surf_grassland) differ in `dataTimestamp` (now
   January 2026) and a new `globalRegions.allowBhop` and in nothing else: a
   re-save on their side that left the hash behind. So for those maps
-  `--updates` cannot have the zones: 75 zone files and 17 builds stay as they
-  are, struck three times and then left 30 days. The donor of a second build
+  `--updates` could not have the zones (75 zone files and 17 builds) until
+  Patch 664, above, which measured all 92. The donor of a second build
   is therefore the file the plain map is TIMED BY here, at the published
   build, hashed or not (4ceeca5): that gave surf_ace_css, surf_beginner_css,
   surf_lovetunnel_css, surf_rookie_css and surf_whiteout_css their clocks.
-- **bhop_eazy IS NOT UPDATED** (`KEEP_BUILD`): the engine gate compares
-  `pm_dettest` on it between the Pi and Windows, and both hold 07320480e924
-  where Momentum publishes 4ddeea8cc0fa. Update it on both or on neither.
+- **bhop_eazy WAS NOT UPDATED until Patch 664** (above): the engine gate
+  compares `pm_dettest` on it between the Pi and Windows, and both held
+  07320480e924 where Momentum publishes 4ddeea8cc0fa.
 - DEPLOYED 11 Oct: `610c1b0` to `/srv/nvme/surfd` (surfd.py, mapwatch.py,
   zonefit.py; SIGHUP, "surfd ready" 15:19:13Z), then `4ceeca5` (mapwatch.py,
   no reload, 15:34Z). Two runs by hand with `--updates` (15:20Z, 15:35Z): 31

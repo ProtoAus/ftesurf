@@ -319,15 +319,24 @@ From its one review (read, not run) and what the arm does not reach.
   destination, `teleDestPos` regions, and a file naming no destination at
   all, which rests on the world's mins (22 of 549 zone files). Check a pair:
   `python tools/census/zonefit.py <name>=<name>_css`.
-- **`--updates` cannot follow 92 maps**, because Momentum's zoneHash is not
-  the hash of its own zones for them (AGENT_NOTES, "zoneHash DOES NOT MATCH"):
-  17 builds and 75 zone files stay as held. The three compared changed only
-  `dataTimestamp` and `globalRegions.allowBhop`, so a rule that takes the
-  published zones where their `tracks` equal the file held would cover most.
-  Check: `state.json`'s `later` has 92 `z:<name>:<hash>` keys.
-- **bhop_eazy is kept at the build the engine gate uses** (`KEEP_BUILD` in
-  mapwatch.py); Momentum's current build is another. Changing it means the
-  PC's copy too, and the fixtures under `data/saves/bhop_eazy`.
+- **Zones without their hash, what Patch 664 left** (its three reviews; none
+  of it has an instance in the 985 files held or the 92 replies). A re-save
+  may add or move a `globalRegions.cancel` region unreviewed. "The same
+  tracks" is Python's reading of the HELD file: one with a key twice, an
+  escaped key or loose whitespace is read otherwise by the game (all 919
+  online files are compact, with no backslash). A restart name outside
+  ASCII is compared as latin-1. Where `.old` is a folder that cannot take a
+  file, a build to replace is downloaded and dropped every run and a zone
+  file asked for every run, with no strike; a zone file arriving mid-download
+  then leaves the new build on it. An `approved.json` nested past Python's
+  recursion limit ends the run. "Inside the world" is zonefit's overlap
+  with the box plus 64. `ts_rookie` and `what_is_this` hold zones that fail
+  that measure on their own maps.
+- **bhop_eazy's arms.** Since 664 it is one segment with three checkpoints
+  and `func_bhop` platforms (AGENT_NOTES, "bhop_eazy IS MOMENTUM'S BUILD").
+  No arm that assumes four stages or its doors was rerun or changed.
+  `C:\FTEQuake` has no copy of its own and reads Momentum's folder, which
+  holds the old build until Momentum or the menu's re-get replaces it.
 - **A second build whose map is a Beta map has no clock** (surf_techsune_css,
   surf_tensor2_css on 11 Oct): Beta zones need a signed-in request.
 - **The board believes the catalogue.** `variant_base()` takes any `of` row

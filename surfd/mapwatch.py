@@ -29,8 +29,33 @@ world-readable (importing surfd sets umask 077; nginx serves this directory)
 and linked into place only while the name is still free.
 
 ZONES ARE THE TIMING RULE, so they are written narrowly: Momentum's own, from
-/v1/maps/<id>?expand=currentVersionWithZones, only when the bytes hash to
-zoneHash (the file the game writes: surf_skyhaven, 7,407 bytes, the same SHA1),
+/v1/maps/<id>?expand=currentVersionWithZones, as the bytes that hash to
+zoneHash (the file the game writes: surf_skyhaven, 7,407 bytes, the same SHA1)
+-- or, where nothing in the reply hashes to it (92 maps on 12 Oct 2026:
+Momentum saved their zones again, with a new dataTimestamp and globalRegions,
+and left zoneHash behind), the reply's zones when they are THE ZONE FILE HELD,
+SAVED AGAIN: the same `tracks`, key for key.  So nothing about where a run
+starts, passes a stage or ends is taken on trust, only what the re-save put
+outside them: globalRegions, which that day meant new allowBhop regions in
+all 64 and no change to a cancel region (the one kind there that can end a
+run).  That was 64 of the 92.  The other 28 (8 with a change inside
+the tracks, 20 with no zone file here to compare) are Lex's word of 12 Oct,
+"do both", and no rule: <state>/approved.json, which a person writes and this
+only reads, gives each as its key (z:<map>:<12 of zoneHash>) and the SHA1 of
+the very zones that were looked at, and only those bytes are taken for it.
+In both cases the reply must be of the version the list named (id, bspHash,
+zoneHash) and a file the game loads whole (zone_shaped: every number a JSON
+number, read as the game reads it), and on the build itself every start, end
+and stage lies inside the world and every restart point is a targetname or a
+position there; a build that cannot be read is "could not be measured", and
+nothing is written.  What is written is this parse of the zones written out again, never
+the reply's own text: the file is the document that was checked.  Any other
+map with no zone file held, or whose tracks have changed, is left and struck
+(`zonetiming`): that needs its hash, or a person.  Zones taken this way are
+recorded in state.json (`unhashed`, with the build they were measured on),
+asked for again every UNHASHED_DAYS by a run with --updates, and replaced only
+when more than the timestamp has changed.  A zone file this replaces is kept
+in zones/online/.old/, as a replaced build is in maps/.old/.  All of it
 only for a map held AT THE BUILD that row publishes (zones are world
 coordinates), never under maps/zones/local, which the server reads first, and
 never while a lobby is on the map or the lobbies cannot be heard.  A name that
@@ -96,6 +121,7 @@ import http.client
 import io
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -160,10 +186,13 @@ VARIANT = "_css"        # one of mapmeta.py's ALIAS_SUFFIXES: tier, picture and 
 # ports among mapmeta.py's ALIAS_SUFFIXES.  `_v2`, `_new` and `_redux` are maps.
 PORTS = ("ksf", "fix", "fixed", "go", "csgo", "njv", "mom")     # _css: only KSF's archive
 NEW_DAYS = 14           # tools/mapscan.py's: how long a row wears the New badge
-# Builds --updates leaves alone, and why.  bhop_eazy: the engine gate compares
-# `pm_dettest` on it between this box and Windows (AGENT_NOTES, Pi operations),
-# and on 11 Oct both held 07320480e924 where Momentum publishes 4ddeea8cc0fa.
-KEEP_BUILD = ("bhop_eazy",)
+# Builds --updates leaves alone, by name.  None now: bhop_eazy was here (the
+# engine gate compares `pm_dettest` on it between this box and Windows) until
+# Lex had it moved to Momentum's build on both, 12 Oct.
+KEEP_BUILD = ()
+UNHASHED_DAYS = 7       # zones taken without their hash are asked for again this often
+MAX_ZONE_BYTES = 256 << 10  # the largest zone file held is 60 KB
+GAME_ZONES, GAME_POINTS = 256, 2048     # sh_zones.qc:102: past these it skips regions
 WANT_DAYS = 14          # ksfimport's: a map viewed this recently goes first
 
 # fullmatch, never match with a `$`: that passes "name\n".
@@ -672,7 +701,8 @@ def write_file(path, raw, fresh=False):
 
 def sweep_leftovers(maps, state, site=""):
     """A killed run's .part files and archives: ours by name, and the lock is held."""
-    for d in (maps, os.path.join(maps, "zones", "online"), os.path.join(maps, ".old"), site):
+    for d in (maps, os.path.join(maps, "zones", "online"), os.path.join(maps, ".old"),
+              os.path.join(maps, "zones", "online", ".old"), site):
         try:
             for f in os.listdir(d):
                 if f.startswith(".mapwatch.") and f.endswith(".part"):
@@ -769,37 +799,148 @@ def zip_bsp(zp, name, part, cap=MAX_MAP_BYTES):
         return ("ok", sha.hexdigest(), n)
 
 
+def zone_regions(zones):
+    """-> [(tag, box, restart name, restart position, points)] of every region
+    the game reads from `zones` -- the tracks', then globalRegions' as
+    "g:<list>" -- or None where its reading and this one could part.  A number
+    must be a JSON number: the game reads a string there with atof, which
+    takes "9000_0e-9" for 9000 where float() makes 0.00009 of it."""
+    def num(v):
+        return type(v) in (int, float) and v == v and abs(v) < 1e7
+
+    try:
+        regs = list(zonefit.regions(zones))
+        g = zones.get("globalRegions")
+        if g is not None and not isinstance(g, dict):
+            return None
+        for name in ("cancel", "allowBhop", "overbounce"):      # sh_zones.qc:1429
+            lst = (g or {}).get(name)
+            if lst is None:
+                continue
+            if not isinstance(lst, list):
+                return None
+            regs += [("g:" + name, reg) for reg in lst]
+    except (AttributeError, TypeError, ValueError, KeyError, IndexError, RecursionError):
+        return None
+    out = []
+    for tag, reg in regs:
+        if not isinstance(reg, dict):
+            return None
+        pts, b, h = reg.get("points"), reg.get("bottom", 0), reg.get("height", 0)
+        if (not isinstance(pts, list) or len(pts) < 3 or not num(b) or not num(h)
+                or not all(isinstance(p, list) and len(p) >= 2 and num(p[0]) and num(p[1])
+                           for p in pts)):
+            return None
+        name, pos, yaw = (reg.get(k) for k in ("teleDestTargetname", "teleDestPos",
+                                               "teleDestYaw"))
+        # sh_zones.qc:1277: a position of three numbers wins over the name.
+        if ((name is not None and not isinstance(name, str))
+                or (yaw is not None and not num(yaw))
+                or (pos is not None and not (isinstance(pos, list) and len(pos) >= 3
+                                             and all(num(v) for v in pos[:3])))):
+            return None
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        out.append((tag, ((min(xs), min(ys), b), (max(xs), max(ys), b + h)), name or None,
+                    tuple(pos[:3]) if pos else None, len(pts)))
+    return out
+
+
+def zone_shaped(zones):
+    """Whether `zones` is a file the game loads whole and could time a map by:
+    a start and an end on the main track; every region it reads a polygon of
+    JSON numbers (zone_regions); no more regions or points than it loads.
+    What a reply must be at least, where its hash cannot say what it is.  (Not
+    "no cancel region over the start": 21 of the 985 zone files held have one
+    whose box is.)"""
+    regs = zone_regions(zones)
+    if regs is None or len(regs) > GAME_ZONES or sum(r[4] for r in regs) > GAME_POINTS:
+        return False
+    return {r[0] for r in regs} >= {"main:start", "main:end"}
+
+
+def zone_parts(raw):
+    """-> (the tracks, everything but dataTimestamp) of a zone file's bytes, or
+    None.  The first is what times a map; the second is the file but for the
+    stamp a re-save moves."""
+    try:
+        z = json.loads(raw.decode("utf-8-sig"))
+    except (ValueError, RecursionError, UnicodeDecodeError, AttributeError):
+        return None
+    if not isinstance(z, dict) or not isinstance(z.get("tracks"), dict):
+        return None
+    return z["tracks"], {k: v for k, v in z.items() if k != "dataTimestamp"}
+
+
+def zone_on_build(raw, bsp):
+    """Whether zones are `bsp`'s as far as the two files can show: every start,
+    end and stage inside its world, every restart point of the tracks one of
+    its targetnames or a position inside it (zonefit.fit's measures, on one
+    build).  -> True, False, or None when the build cannot be read."""
+    w = zonefit.world(bsp)
+    if w is None:
+        return None
+    try:
+        regs = zone_regions(json.loads(raw.decode("utf-8-sig")))
+    except (ValueError, RecursionError, UnicodeDecodeError, AttributeError):
+        return False
+    if regs is None:
+        return False
+
+    def inside(lo, hi):
+        return not any(hi[a] < w[0][a] - zonefit.SLACK or lo[a] > w[1][a] + zonefit.SLACK
+                       for a in range(3))
+
+    for tag, box, name, pos, _n in regs:
+        if tag.startswith("g:"):
+            continue
+        if ((name and name not in w[2]) or (pos and not inside(pos, pos))
+                or (tag.endswith(("start", "end", "stage")) and not inside(box[0], box[1]))):
+            return False
+    return True
+
+
 def zone_bytes(text, doc, want):
-    """The zones of one /v1/maps/<id> reply as the bytes whose SHA1 is `want`, or
-    None.  The slice of the reply itself first, then a compact re-dump: either
-    is kept only on the hash."""
+    """-> (bytes, hashed) for the zones of one /v1/maps/<id> reply, or None.
+    `hashed`: those bytes' SHA1 is `want` -- the slice of the reply itself
+    first, then a compact re-dump.  Where neither is: this parse of them
+    written out again (a repeated key, an escaped one or a NaN in the reply is
+    then not in the file), when it is zone-shaped and of a zone file's size."""
     cv = doc.get("currentVersion") if isinstance(doc, dict) else None
     zones = cv.get("zones") if isinstance(cv, dict) else None
     if not isinstance(zones, dict):
         return None
     dec = json.JSONDecoder()
+    sent = None
     for m in re.finditer(r'"zones":', text):
         try:
             o, end = dec.raw_decode(text, m.end())
         except (ValueError, RecursionError):
             continue
         if o == zones:
-            raw = text[m.end():end].encode("utf-8", "replace")
-            if hashlib.sha1(raw).hexdigest() == want:
-                return raw
+            sent = text[m.end():end].encode("utf-8", "replace")
+            if hashlib.sha1(sent).hexdigest() == want:
+                return sent, True
             break
     for asc in (False, True):
         raw = json.dumps(zones, separators=(",", ":"),
                          ensure_ascii=asc).encode("utf-8", "replace")
         if hashlib.sha1(raw).hexdigest() == want:
-            return raw
-    return None
+            return raw, True
+    if not zone_shaped(zones):
+        return None
+    try:
+        canon = json.dumps(zones, separators=(",", ":"), ensure_ascii=False,
+                           allow_nan=False).encode("utf-8")
+    except (ValueError, RecursionError, UnicodeEncodeError):
+        return None
+    return (canon, False) if len(canon) <= MAX_ZONE_BYTES else None
 
 
 def zone_fetch(pacer, r):
-    """The published zone bytes of approved map `r`, or None when the reply's
-    zones are not the ones zoneHash names.  Raises Refused -- also for a reply
-    with no zones in it at all, which is the host's and not this map's."""
+    """-> (the zone bytes of approved map `r`, whether they hash to zoneHash,
+    None), or (None, False, why) when the reply's zones are neither that nor
+    fit to be taken without it.  Raises Refused -- also for a reply with no
+    zones in it at all, which is the host's and not this map's."""
     text = pacer.text("%s/maps/%d?expand=currentVersionWithZones" % (MOM_API, r["id"]))
     try:
         doc = json.loads(text)
@@ -808,7 +949,15 @@ def zone_fetch(pacer, r):
     cv = doc.get("currentVersion") if isinstance(doc, dict) else None
     if not isinstance(cv, dict) or not isinstance(cv.get("zones"), dict):
         raise Refused("a reply with no zones in it")
-    return zone_bytes(text, doc, r["zh"])
+    got = zone_bytes(text, doc, r["zh"])
+    if got is None:
+        return None, False, "zoneshape"
+    # Without the hash, the reply must be of the version the list named.
+    if not got[1] and (doc.get("id") != r["id"]
+                       or str(cv.get("bspHash")).lower() != r["sha"]
+                       or str(cv.get("zoneHash")).lower() != r["zh"]):
+        return None, False, "zoneversion"
+    return got[0], got[1], None
 
 
 # --------------------------------------------------------------------------
@@ -991,10 +1140,30 @@ def run(a):
         return st[key]
     later = table("later")                  # key -> [strikes, when, why]
     back = table("back")                    # key -> when its host last refused on it
+    for k in [k for k, w in later.items()
+              if not (isinstance(w, list) and len(w) == 3 and type(w[0]) is int
+                      and type(w[1]) in (int, float) and math.isfinite(w[1])
+                      and isinstance(w[2], str))]:
+        del later[k]
+    for k in [k for k, t in back.items() if type(t) not in (int, float) or not math.isfinite(t)]:
+        del back[k]
     for k in [k for k, w in later.items() if now - w[1] > 2 * RETRY_DAYS * 86400]:
         del later[k]                        # the file left the lists long ago
     for k in [k for k, t in back.items() if now - t > RETRY_DAYS * 86400]:
         del back[k]
+    # A zone file struck for its hash alone is asked for again: 664 takes it.
+    # A zone file struck for its hash alone, before 664, is asked for again.
+    for k in [k for k, w in later.items() if k.startswith("z:") and w[2].startswith("zonehash")]:
+        del later[k]
+    # <state>/approved.json (the module docstring): zone key -> the SHA1 of the
+    # zones a person approved for it.  Read here, never written.
+    approved = _load(os.path.join(a.state, "approved.json"))
+    approved = approved if isinstance(approved, dict) else {}
+    # map -> {"zh", "b", "sha", "at"}: zones taken as sent, for that zoneHash, on that build
+    unhashed = table("unhashed")
+    unv = {}                    # maps whose zones came unhashed THIS run -> (zoneHash, build,
+                                #   whether they are the file held but for its stamp)
+    keeping = {}
     hp = os.path.join(a.state, "hash.json")
     hashes = _load(hp)
     hashes = {k: v for k, v in hashes.items() if isinstance(v, list)} \
@@ -1188,8 +1357,9 @@ def run(a):
     def zone_ask(k, r, zkey):
         """-> the published bytes, or None; what went wrong is recorded here."""
         ztried.add(k)
+        unv.pop(k, None)
         try:
-            raw = zone_fetch(pacer, r)
+            raw, hashed, why = zone_fetch(pacer, r)
         except Refused as e:
             if e.code == 404:
                 again(zkey, "HTTP 404")
@@ -1198,13 +1368,59 @@ def run(a):
             return None
         except Exception as e:          # see take()
             print("  %s: %s: %s" % (zkey, type(e).__name__, e))
-            raw = None
+            raw, hashed, why = None, False, "zoneshape"
+        if raw is None and why == "zoneversion":
+            # The list and this reply name different versions: the host's
+            # moment, not this map's.  No strike; it goes to the back.
+            back[zkey] = now
+            print("  %s: the reply is of another version than the list named: another run" % zkey)
+            return None
         if raw is None:
-            again(zkey, "zonehash")
-        else:
+            again(zkey, why)
+            return None
+        if hashed:
             later.pop(zkey, None)
             back.pop(zkey, None)
+            return raw
+        # Without its hash, only as the zone file held, saved again (the
+        # module docstring).  Its strikes stand until zone_fits has measured.
+        try:
+            with open(os.path.join(zdir, zidx[k] + ".json"), "rb") as fh:
+                held = fh.read(MAX_ZONE_BYTES + 1)
+        except (KeyError, OSError):
+            held = None
+        new, old = zone_parts(raw), zone_parts(held)
+        if ((not new or not old or new[0] != old[0])
+                and approved.get(zkey) != hashlib.sha1(raw).hexdigest()):
+            again(zkey, "zonetiming")
+            print("  %s: zones that do not hash to zoneHash, and %s: left"
+                  % (zkey, "no zone file is held to compare them with" if held is None
+                     else "they do not time the map as the file held does"))
+            return None
+        unv[k] = (r["zh"], r["sha"], bool(new and old and new[1] == old[1]))
         return raw
+
+    def zone_fits(k, raw, bsp, zkey, d=tally):
+        """Zones that came without their hash are measured on the build they
+        are for before anything is written; what failed is recorded here."""
+        if k not in unv:
+            return True
+        try:
+            v = zone_on_build(raw, bsp)
+        except Exception as e:          # see take(): one file must not end every run
+            print("  %s: %s: %s" % (zkey, type(e).__name__, e))
+            v = None
+        if v:
+            later.pop(zkey, None)
+            back.pop(zkey, None)
+            return True
+        del unv[k]
+        again(zkey, "zonebuild" if v is False else "zonemeasure")
+        print("  %s: zones without their hash %s: left"
+              % (zkey, "are not this build's" if v is False else "could not be measured on the build"))
+        count("zones without their hash are not this build's: left" if v is False
+              else "zones without their hash could not be measured on the build: left", d)
+        return False
 
     def zsha(k):
         try:
@@ -1213,15 +1429,63 @@ def run(a):
         except (OSError, KeyError):
             return None
 
+    def can_keep():
+        """Whether zones/online/.old can take a file.  Asked before anything
+        is asked for that would replace a zone file held."""
+        if "ok" not in keeping:
+            p = os.path.join(zdir, ".old")
+            keeping["ok"] = os.path.isdir(p) or not os.path.lexists(p)
+            if not keeping["ok"]:
+                print("  %s is not a folder: no zone file held is replaced this run" % p)
+        return keeping["ok"]
+
+    def zone_keep(path, stem, raw=None):
+        """The zone file at `path` kept in .old under its hash, as a replaced
+        build is: what timed a map is not thrown away.  -> False when it could
+        not be kept, and then it is not replaced."""
+        try:
+            with open(path, "rb") as fh:
+                had = fh.read()
+        except FileNotFoundError:
+            return True
+        except OSError as e:
+            print("  %s: the zone file held cannot be read (%s): left" % (stem, e))
+            return False
+        if had == raw:
+            return True
+        keep = os.path.join(zdir, ".old", "%s.%s.json" % (stem, hashlib.sha1(had).hexdigest()[:12]))
+        try:
+            os.makedirs(os.path.dirname(keep), exist_ok=True)
+            if not os.path.exists(keep):
+                try:
+                    os.link(path, keep)
+                except OSError:
+                    tmp = os.path.join(zdir, ".old", ".mapwatch.%s.part" % stem)
+                    shutil.copy2(path, tmp)
+                    os.replace(tmp, keep)
+        except OSError as e:
+            print("  %s: the zone file held could not be kept aside (%s): left" % (stem, e))
+            return False
+        return True
+
     def zone_put(k, raw, replace):
         """A FIRST zone file only while the name is free: one that arrived since
-        the listing (mapsync copies them) is somebody's, and is kept."""
+        the listing (mapsync copies them) is somebody's, and is kept.  One it
+        replaces -- the file listed, or one that arrived since -- is kept
+        aside first."""
         zstem = zidx.get(k) or inv[k]       # never a second spelling of one name
         old = zsha(k) if replace else None
+        if replace and not zone_keep(os.path.join(zdir, zstem + ".json"), zstem, raw):
+            return False
         if not write_file(os.path.join(zdir, zstem + ".json"), raw, fresh=not replace):
             return False
         zidx[k] = zstem
         verified.append(zstem)
+        if k in unv:
+            unhashed[k] = {"zh": unv[k][0], "b": unv[k][1],
+                           "sha": hashlib.sha1(raw).hexdigest(), "at": now}
+        else:
+            unhashed.pop(k, None)
         # What clients fetch follows a file this replaced, where it WAS that
         # file: one that differs there is the shipped set's, and is kept.
         if old and a.site_zones and os.path.isdir(a.site_zones):
@@ -1258,6 +1522,9 @@ def run(a):
             if not quiet(key):
                 count("in play, or cannot tell: waits")
                 continue
+            if key in zidx and not can_keep():
+                count("its zone file cannot be kept aside: build left")
+                continue
             if r["zh"]:
                 raw = zone_ask(key, r, zkey)
                 if raw is None:
@@ -1275,9 +1542,22 @@ def run(a):
             continue
         final = os.path.join(a.maps, (stem or name) + ".bsp")
         if stem is not None:
+            if raw is not None and not zone_fits(key, raw, part, zkey):
+                _rm(part)
+                count("its zones cannot be had: build left")
+                _save(sp, st)
+                continue
             if not quiet(key):          # again: the download took its time
                 _rm(part)
                 count("came into play meanwhile: waits")
+                _save(sp, st)
+                continue
+            # Its zone file is kept aside BEFORE the build is swapped: a build
+            # goes in with its zones or not at all.
+            if (raw is not None and key in zidx
+                    and not zone_keep(os.path.join(zdir, zidx[key] + ".json"), zidx[key], raw)):
+                _rm(part)
+                count("its zone file cannot be kept aside: build left")
                 _save(sp, st)
                 continue
             # Linked aside, not moved: the name is never without a file.
@@ -1309,7 +1589,8 @@ def run(a):
             if (r["src"] == "mom" and r["zh"] and key not in zidx and "api" not in dead
                     and not waiting(zkey) and unplayed(key) and quiet(key)):
                 raw = zone_ask(key, r, zkey)
-                if raw is not None and quiet(key) and unplayed(key, True) and quiet(key):
+                if (raw is not None and zone_fits(key, raw, final, zkey)
+                        and quiet(key) and unplayed(key, True) and quiet(key)):
                     zone_put(key, raw, False)
         else:
             count("the name was taken meanwhile: left")
@@ -1400,7 +1681,15 @@ def run(a):
             if cur is None:
                 continue
             atbuild.add(zidx[k])
-            if cur == r["zh"]:
+            # The published file: by its hash, or -- taken without one -- as it
+            # was last sent for this zoneHash and measured on this build, until
+            # a run that may replace it is due to ask again.
+            u = unhashed.get(k)
+            known = (isinstance(u, dict) and u.get("zh") == r["zh"] and u.get("b") == r["sha"]
+                     and u.get("sha") == cur)
+            recent = (known and type(u.get("at")) in (int, float)
+                      and 0 <= now - u["at"] < UNHASHED_DAYS * 86400)
+            if cur == r["zh"] or recent or (known and not a.updates):
                 if zidx[k] not in verified:
                     verified.append(zidx[k])
                 continue
@@ -1414,6 +1703,9 @@ def run(a):
             continue
         if waiting(zkey) or "api" in dead:
             continue
+        if cur and not can_keep():
+            count("the zone file held cannot be kept aside: left", zw)
+            continue
         # Any zone file changes what the map's next load times by: never while
         # a lobby is on it (a run in progress is in no list played() reads).
         if not quiet(k):
@@ -1426,6 +1718,16 @@ def run(a):
         raw = zone_ask(k, r, zkey)
         if raw is None:
             count("not had", zw)
+        elif not zone_fits(k, raw, os.path.join(a.maps, inv[k] + ".bsp"), zkey, zw):
+            pass
+        elif cur and (hashlib.sha1(raw).hexdigest() == cur or (k in unv and unv[k][2])):
+            # Asked again, and they are the zones held (but for the stamp a
+            # re-save moves): nothing to write.
+            if k in unv:
+                unhashed[k] = {"zh": unv[k][0], "b": unv[k][1], "sha": cur, "at": now}
+            if zidx[k] not in verified:
+                verified.append(zidx[k])
+            count("as last read", zw)
         elif not quiet(k) or (cur is None and not unplayed(k, True)) or not quiet(k):
             # Lobbies on both sides of the history read: one that came during
             # the request is seen before it can slip a run past that read.
