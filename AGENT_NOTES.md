@@ -7386,6 +7386,25 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **DEPLOYED 11 Oct 2026, 04:16:58 UTC (FTESurf `32c3b3b`, Patch 636), surfd
+  and its website**: `accounts.py`, `momboards.py`, `surfd.py`, the three
+  `web/` files and two tests through `surfd-deploy.ps1` (staged suites pass
+  on the Pi, backup `surfd.db.bak-32c3b3b-20261011-151414`, reload, 0
+  players), and `tools/momfetch.py` copied by hand to the Pi's flat
+  `/srv/nvme/surfd/momfetch.py`, where `momwatch` loads it from (the deploy
+  script stages `tools/` for the suite only); refused unless the copy there
+  was the previous blob, the old one kept as `.pre32c3b3b-*`. The start
+  built `runs_player` itself. Read back on the host: the commit's blobs, no
+  ERROR or Traceback since the reload by position, and THE TWO PLANS THAT
+  MOVED ARE WHERE THEY WERE: the directory build `SCAN runs; USE TEMP B-TREE
+  FOR GROUP BY` (11.2 s on that read; 8.0 s an hour before), the admin's
+  account counts off `runs_live` in 0.00 s. The owner's player page 1.61 s
+  the first time and 0.03 s the second; its maps list 0.02 s and the same
+  ten tiers as its bars (58 of 65 in tier 1 ... 0 of 1 in tier 10, 454
+  unrated); surf_beginner 7,859 rows on All games, 1 / 7,652 / 206 by game;
+  the public `board.js` is the new one. `momusers` is empty until `momwatch`
+  refetches a board. THE FIRST MAPS-LIST BUILD AFTER THIS RELOAD TOOK 4.95 s,
+  against nginx's 5: ask for `/board/api/maps` once after every surfd reload.
 - **THE SITE, PATCH 636: WHAT WAS MEASURED, AND ONE THING THAT DID NOT WORK.**
   A player page for an account with 2,029 rows, timed on the Pi part by
   part: the read of `runs` by player 0.6 s warm and 4.66 s cold (no index:

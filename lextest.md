@@ -13,7 +13,7 @@ to be wrong.
 
 ## 00. 11 Oct — the site: every game on one board, and whole-player pages (Patch 636)
 
-Your list of 11 Oct. On proto.bar/ftesurf/board:
+Live since 11 Oct 04:17 UTC. Your list of 11 Oct. On proto.bar/ftesurf/board:
 - **A map page** opens on **All games**: FTESurf, Momentum Mod and KSF times
   ranked together, each row tagged FTE / MOM / KSF, with a button per game to
   filter. Old links to a map now open All games too.
