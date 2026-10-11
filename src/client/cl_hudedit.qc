@@ -2011,6 +2011,78 @@ void() HUD_EditRegisterCvars =
 	registercvar("hud_edit_panel_y", "0.080", CVAR_ARCHIVE);
 };
 
+/*
+  Patch 641: A CONFIG SAVED BEFORE PATCH 637 KEEPS ITS OLD HUD DEFAULTS.  The
+  engine saves every archived name the game code alone registers, at its default
+  too; "reset" in this editor wrote the rest with `seta`; and an older release's
+  default.cfg sets them.  In each case the name exists before registercvar and
+  the new default never lands (AGENT_NOTES, "The HUD's defaults are the owner's
+  layout").  Once a config, every one of the 42 still EXACTLY its old default
+  becomes the new one: a place only when BOTH its axes are, which is an element
+  nobody moved.  Called after every registration, because reading a name first
+  would create it empty.  It cannot tell a value chosen back onto the old
+  default from one never touched.
+*/
+float(string cv, float was) HE_Still = { return fabs(cvar(cv) - was) < 0.00005; };
+
+float(string cvx, float wasx, string nowx, string cvy, float wasy, string nowy) HE_MovePair =
+{
+	if (!HE_Still(cvx, wasx)) return 0;
+	if (!HE_Still(cvy, wasy)) return 0;
+	localcmd(sprintf("seta %s %s\nseta %s %s\n", cvx, nowx, cvy, nowy));
+	return 1;
+};
+
+float(string cv, float was, string now) HE_MoveOne =
+{
+	if (!HE_Still(cv, was)) return 0;
+	localcmd(sprintf("seta %s %s\n", cv, now));
+	return 1;
+};
+
+void() HE_MigrateDefaults =
+{
+	local float n;
+
+	registercvar("hud_layout_rev", "0", CVAR_ARCHIVE);
+	if (cvar("hud_layout_rev") >= 637)
+		return;
+	n = HE_MovePair("hud_timer_x", 0.5, "0.5", "hud_timer_y", 0.035, "0.0405");
+	n += HE_MovePair("hud_splits_x", 0.045, "0.0695", "hud_splits_y", 0.20, "0.1784");
+	n += HE_MovePair("hud_seq_x", -0.25, "-0.1951", "hud_seq_y", 0.5, "0.483");
+	n += HE_MovePair("hud_trainer_x", 0.28, "0.2833", "hud_trainer_y", 0.27, "0.5963");
+	n += HE_MovePair("hud_board_x", -1, "0.5", "hud_board_y", -1, "0.5");
+	n += HE_MovePair("hud_boarding_x", -1, "0.6646", "hud_boarding_y", -1, "0.5");
+	n += HE_MovePair("hud_speed_x", 0.5, "0.5", "hud_speed_y", 0.68, "0.6269");
+	n += HE_MovePair("hud_linegraph_x", 0.99, "0.9667", "hud_linegraph_y", 0.30, "0.3435");
+	n += HE_MovePair("hud_debug_x", 0.012, "0.0333", "hud_debug_y", 0.30, "0.0405");
+	n += HE_MovePair("hud_saveloc_x", 0.018, "0.0333", "hud_saveloc_y", 0.34, "0.3695");
+	n += HE_MovePair("hud_gfx_x", 0.018, "0.0333", "hud_gfx_y", 0.10, "0.338");
+	n += HE_MovePair("hud_vote_x", 0.018, "0.0333", "hud_vote_y", 0.30, "0.4028");
+	n += HE_MovePair("hud_net_x", 0.78, "0.7616", "hud_net_y", 0.30, "0.02");
+	n += HE_MovePair("hud_results_x", 0.72, "0.7792", "hud_results_y", 0.5, "0.5");
+	n += HE_MoveOne("hud_boarding", 1, "0");
+	n += HE_MoveOne("hud_seq_abs", 1, "0");
+	n += HE_MoveOne("hud_seq_pct", 1, "0");
+	n += HE_MoveOne("hud_seq_units", 1, "0");
+	n += HE_MoveOne("hud_board_seg", 1, "0");
+	n += HE_MoveOne("hud_board_ramp", 1, "0");
+	n += HE_MoveOne("hud_board_words", 1, "0");
+	n += HE_MoveOne("hud_strafe_rates", 1, "0");
+	n += HE_MoveOne("hud_strafe_why", 1, "0");
+	n += HE_MoveOne("hud_strafe_best", 2, "0");
+	n += HE_MoveOne("hud_lines_order", 8, "4");
+	n += HE_MoveOne("hud_lines_nums", 2, "0");
+	n += HE_MoveOne("hud_watch_path_far", 6000, "12000");
+	n += HE_MoveOne("hud_linegraph_plots", 1, "3");
+	n += HE_MoveOne("hud_mouse_span", 90, "360");
+	n += HE_MoveOne("hud_mouse_trail", 0.5, "1");
+	n += HE_MoveOne("hud_update", -1, "0");
+	localcmd("seta hud_layout_rev 637\n");
+	if (n)
+		print(sprintf("hud: %g element(s) and setting(s) still on the old defaults now follow the new layout\n", n));
+};
+
 void() HUD_EditStatus =
 {
 	local float i, r;

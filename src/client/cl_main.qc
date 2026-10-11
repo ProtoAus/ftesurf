@@ -332,6 +332,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Body_RegisterCvars();           // Patch 383, the pose stream's bodies
 	Spec_RegisterCvars();           // Patch 385, spectate
 	MPad_RegisterCvars();           // Patch 390, the mouse pad
+	HE_MigrateDefaults();           // Patch 641: after every HUD registration above
 	Ev_Register();                  // build 54, the trigger/entity inspector
 	MilkSky_Init();                 // Patch 467, the visualizer sky
 

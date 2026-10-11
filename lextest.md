@@ -41,13 +41,11 @@ just the default template."
   twice (it asks first). Your layout should stay where it is; only the
   editor's own window goes back to its corner.
 
-One thing to decide:
-- **Players who already have a saved config get only part of it.** The game
-  saves 16 of these settings in everyone's config even when untouched (where
-  the timer, splits, Segments, run graph and results sit, the run graph's
-  plots, how far ahead a ticked line shows), so for them those 16 stay as
-  they were while the other 26 change. Say if you want their untouched ones moved to yours as
-  well; it is a small one-time change I have not made.
+Players who already had a saved config (Patch 641, you said "do it"): at their
+next start, every HUD setting of theirs that is still exactly on the old default
+moves to yours, once, and the console says how many. What they changed stays, and
+an element they moved on either axis stays where they put it. It cannot tell a
+setting someone deliberately put back on the old default from one never touched.
 
 What came along with it, in case any was not meant for the template:
 1. **Off by default now:** the Boarding window; the numbers on run lines (you

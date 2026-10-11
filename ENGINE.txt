@@ -25,7 +25,15 @@ commit   c543d688ad16a871753fa9525c23487f437741a5
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-625
-patch    639
+patch    641
+# Patch 641: a config that still holds the HUD's old defaults is moved to the owner's
+# layout (Patch 637's), once. A setting saved at exactly its old default, by the engine,
+# by hud_edit's reset or by an older release's default.cfg, becomes the new one; an
+# element's place only when both its axes are still the old ones. What a player changed is
+# left, and so is anything typed back afterwards (hud_layout_rev marks the config). One
+# console line says how many moved.
+# csprogs only: no engine source, server QC, surfd, recorder, evidence, ranking, default
+# or Build change (commit and tag above stay).
 # Patch 639: Steam profile pictures, the service and website half. steamsync.py keeps
 # each account's picture under surfd (Steam's 64 px JPEG, and a 32 x 32 RGBA copy
 # as text for the game to draw later); the site shows it beside the name on boards,

@@ -7,26 +7,19 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## The owner's layout as the defaults: what Patch 637 left -- 2026-10-11
 
-- **A player who has saved a config keeps 16 of the 42 old defaults.** The
-  engine saves every archived name the game code alone registers, at its
-  default too, so the saved line holds the old value and `registercvar` leaves
-  it: the places of timer, splits, Segments, run graph, debug, video menu, net
-  and results, `hud_lines_order` and `hud_linegraph_plots`. The other 26 move
-  with `default.cfg`, so such a player gets a mix (not looked at). The tree has
-  moved a saved old default before, by its exact value (`con_textfont`,
-  `Font_Init`); whether other players' untouched settings should be moved to
-  the owner's is his call (lextest). Falsifier: before `map`, `seta hud_timer_y
-  0.035`; read it after the map.
-- **"reset" on one setting can still write an old default** on such a config
-  (`HE_ResetCvar` reads `cvar_defstring`, which is the saved value there).
+- **The move to the owner's layout cannot tell a chosen old default from an
+  untouched one** (Patch 641, `cl_hudedit.qc:HE_MigrateDefaults`). A player
+  who had switched Boarding back on, or put run-line labels back on 2, has it
+  moved once with everyone else's; a value typed back afterwards stays. A
+  config pinned on a default OLDER than the last one is not moved at all
+  (`hud_lines_nums 1`, the default from 27 Sep to 10 Oct; places from before
+  builds 13 and 21). Not measured: a real config from an older release (the
+  arm's `seta` lines stand in for one), and how the moved elements sit beside
+  ones a player placed.
+- **"reset" on one setting can still write an old default** in the session a
+  config is moved in, and on a client whose default.cfg is an older release's
+  (`HE_ResetCvar` reads `cvar_defstring`, which is the old value there).
   "reset all" has literals for the two that are not positions.
-- **A client on the release before, in a lobby serving this game code:** with
-  a saved config nothing moves by itself (the old default.cfg holds 26, the
-  saved file 16), but the editor's "reset" writes the new places over the old
-  file's switches: Board at the centre with its segment line still on, which is
-  drawn through the crosshair. A fresh install of that release gets 16 new and
-  26 old (looked at once: nothing default-on overlaps at 1600x900). The next
-  release carries the new default.cfg.
 - **Board's first row is on the crosshair when it is switched on.** Board's top
   edge is the screen's centre now (`cl_hud.qc:HUD_DrawBoard`); the row there
   is the segment line, off by default. Falsifier: `set hud_board_seg 1`, ride

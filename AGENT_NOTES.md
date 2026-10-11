@@ -4625,6 +4625,36 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+### A config on the HUD's old defaults is moved, once (Patch 641) — 2026-10-11
+
+- THE OLD DEFAULT IS PINNED THREE WAYS, not one. The engine saves every
+  archived name only the game code registers (16 of Patch 637's 42); the
+  editor's "reset" and "reset all" wrote the others with `seta`; and an older
+  release's default.cfg sets them, or lacks them so that a save pins them
+  (0.1.13 has no line for `hud_lines_nums` and the trainer's place, 0.1.7 for
+  six more: the review's reading of those releases' files). The first cut moved
+  the 16 and would have left such players a mix, so `HE_MigrateDefaults`
+  (`cl_hudedit.qc`) covers all 42: once a config (`hud_layout_rev` 637,
+  archived), a setting still EXACTLY its old default becomes the new one, a
+  place only when both its axes are.
+- IT CANNOT TELL "PUT BACK ON THE OLD DEFAULT" FROM "NEVER TOUCHED" and moves
+  both. Once the mark is written, a value typed back is left alone.
+- CALLED AFTER EVERY HUD REGISTRATION (`CSQC_Init`, after
+  `MPad_RegisterCvars`): reading a name before its `registercvar` creates it
+  empty and the default never lands.
+- IT SAYS WHAT IT DID: one console line with the count, nothing on a fresh
+  install. The arm grades that number as well as the values.
+- csprogs WAS 12 DEFINITIONS FROM FTEQCC'S LIMIT (131,060 of 131,072 with the
+  first cut; the count is the sixth int of the .dat's header). `ui_ehist_e` and
+  `ui_ehist_t`, two 256-float rings in `cl_hud.qc`, are memalloc'd in
+  `HUD_RegisterCvars` now: 130,556.
+- THE ARM (`cfg/test/p641migrate.cfg`, graded by `tools/test_p641migrate.py`
+  against `tools/p637_tables.py`): `seta` lines before the map stand for the
+  old config, and `map` again restarts the game code, so one process holds
+  three starts. 9 of 9; the build before fails 7 of them. It also reads the
+  config the game then saves. A fresh overlay on this build says nothing and
+  passes Patch 637's arm (11 of 11).
+
 ### The HUD's defaults are the owner's layout (Patch 637) — 2026-10-11
 
 - 42 SETTINGS MOVED, ALL THE EDITOR'S. From the owner's saved config, the names
@@ -4639,8 +4669,8 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   and 0 of the 3 `default.cfg` names looked for). So 16 of the 42 (the positions `default.cfg` does
   not list, `hud_lines_order`, `hud_linegraph_plots`) reach a new install only:
   an install that has saved once keeps the old value, and reads it as the
-  default. The other 26 move with `default.cfg`. Not migrated: BACKLOG has the
-  precedent (`con_textfont`) and the question is the owner's.
+  default. The other 26 move with `default.cfg`. Patch 641 moves a config
+  that is still on the old ones (the section above).
 - THREE SIZES MOVED IN THE DRAWER, NOT IN THE CVAR, which is `cl_timer.qc`'s
   build 66 argument: the speed's own size is 32 units (was 24), its energy's 24
   (16), the trainer's 10 (8), so they are his 64, 48 and 20 px at hud_scale 2,

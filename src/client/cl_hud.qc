@@ -700,8 +700,10 @@ string ui_anchor_map;
 // the rate limiter in HUD_EnergyRate, which is what makes the span a function
 // of hud_strafe_window instead of a function of your frame rate.
 #define EWIN 256
-float  ui_ehist_e[EWIN];
-float  ui_ehist_t[EWIN];
+// Patch 641: memalloc'd in HUD_RegisterCvars, not arrays -- csprogs was 12 global
+// definitions from fteqcc's 131,072 (AGENT_NOTES, "CSPROGS SITS AT FTEQCC'S GLOBAL LIMIT").
+float  *ui_ehist_e;
+float  *ui_ehist_t;
 float  ui_ehist_head;       // next slot to write, wrapped -- NOT a total count,
 float  ui_ehist_len;        // because a float counter loses integer precision
                             // past 2^24 and this runs every frame
@@ -781,6 +783,8 @@ void() HUD_ReadCvars =
 
 void() HUD_RegisterCvars =
 {
+	ui_ehist_e = memalloc(sizeof(float) * EWIN);    // zeroed, as the arrays were
+	ui_ehist_t = memalloc(sizeof(float) * EWIN);
 	registercvar("hud_scale",   "2", CVAR_ARCHIVE);
 	registercvar("hud_speed",   "1", CVAR_ARCHIVE);
 	registercvar("hud_energy",  "1", CVAR_ARCHIVE);
