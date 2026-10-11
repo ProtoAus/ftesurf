@@ -4889,6 +4889,14 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   1.6%). Grep a new global's name before declaring it; it is `lg_lab_frame`.
 - THIS PC IS THE DESKTOP (i9-9900K, RTX 2080 SUPER). 645's and 649's notes
   said "this laptop" in two lextest items; the owner corrected it.
+- DEPLOYED 11 Oct UTC from `497527d`: csprogs `6cb9b6c2` (118,136
+  definitions) to the Pi at 17:15:58Z, nobody on, twelve lobbies restarted
+  and read back; csprogs and `cfg/default.cfg` (+10 -5, the one before kept as
+  `default.cfg.pre661-*`) to both installs at 17:18:20Z with no game running;
+  `.prev` is 653's `84eaeec6` in all three. A fresh client on a lobby was
+  served it and drew the board. It had been run on the 625 exe first, at
+  twenty lines asked (eight given there), which is the check 649 skipped.
+  The installed engine that day was the patch-658 client.
 
 ### An engine before 645 keeps eight run lines (Patch 654) — 2026-10-12
 

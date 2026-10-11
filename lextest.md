@@ -131,6 +131,12 @@ which by design shows one name and one number):
 And a correction: I wrote "measured on this laptop" in two earlier items. Every
 test of mine ran on this PC, the 9900K and the 2080 SUPER. Fixed below.
 
+**Live since 11 Oct 17:18 UTC (12 Oct 04:18 here)** in `C:\FTESurf`,
+`C:\FTEQuake` and on all twelve lobbies. Restart the game to get it. What it
+costs here: sixty-four lines with all their names 2.1 ms a frame (1.9 before,
+with eight names); numbers on the first eight lines add 0.1 ms where they
+added 1.4, because they stop at 3000 units.
+
 ## 00. 12 Oct — the 0.1.24 download keeps eight lines (Patch 654)
 
 My sixty-four-line change went to the lobbies before I had run it on the
