@@ -7979,6 +7979,23 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **DEPLOYED 11 Oct 2026, 15:42 UTC (FTESurf `8a6a117`, Patch 653): csprogs,
+  the Pi's twelve lobbies and both Windows installs.** FIRST ON THE ENGINE
+  THE 0.1.24 DOWNLOAD HAS (a copy of the 625 exe, `--client`): `p653box.py`
+  14 of 14 there too, the check Patch 649 went out without. Then, under the
+  rig lock with no game running, `build.ps1 -Pi` at 12 rows and 0 players:
+  `csprogs.dat` `84eaeec6`, the bytes the arms ran on (`.prev` `827dece4`,
+  Patch 654's), `qwprogs.dat` `35fda5eb` swapped for itself, twelve lobbies
+  restarted. Windows, 15:42:50Z: `csprogs.dat` and its line table into
+  `C:\FTESurf` and `C:\FTEQuake`, the old pair kept as `.prev`, read back
+  with a second tool. LIVE, 15:46Z: `pi_lobby_smoke.py` on
+  `play.proto.bar:27510` was served `84eaeec6`, drew the board, no QC error.
+  The first try, queued behind the owner's game, REFUSED ITSELF: main had
+  moved under it twice in ten minutes (two notes-only commits), and the
+  deploy script wants the tree to be origin/main. Fetch and fast-forward
+  right before, not when the deploy is queued.
+  NOT SEEN LIVE: the box itself on a lobby (the owner is linked: `link` in
+  the console raises it), and a picture in the room list at its new size.
 - **THE LINK BOX'S MOUSE (Patch 653), AND HOW A RIG CLICKS.**
   `tools/p653box.py --progs <build> --output-dir <owned dir>`: p615link's
   rig, about 100 s, screenshots of every state to look at.

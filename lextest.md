@@ -13,8 +13,11 @@ to be wrong.
 
 ## 00. 12 Oct — the Link Steam box (Patch 653)
 
-From your list after trying 0.1.24. You are linked already, so to see it:
-type `link` in the console, close the console, press Enter.
+From your list after trying 0.1.24. **Live since 15:43 UTC (02:43 here)**
+on all twelve lobbies and in both of your installs; restart the game. You
+are linked already, so to see it: type `link` in the console, close the
+console, press Enter. Players on the 0.1.24 download get it from the lobby
+too (it ran on that engine before it went up).
 1. **The look.** The box is the same rounded panel as the rest of the UI,
    with key caps for Enter and Esc where the grey footer line was.
 2. **The mouse.** After Enter the box has the cursor. The proto.bar address
