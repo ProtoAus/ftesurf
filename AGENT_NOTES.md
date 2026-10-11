@@ -7838,8 +7838,21 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `PR_ReadBytesString(pr_csqc_memsize)`, and `common/pr_bgcmd.c:132-145`
   turns the default -1 into 2 GiB on 64-bit Linux as on Windows, so that
   branch is never reached there (ftesurf-0f found it while checking how the
-  cure's "256m" would parse). Still not measured either way: a Linux boot
-  that draws a line; ftesurf-0f has one queued on this release's stage.
+  cure's "256m" would parse).
+  THEN MEASURED, BY ftesurf-0f (its log read here), 14:02Z: this release's
+  Linux stage copied whole into the Debian rig and started as `rig-run.sh`
+  starts it, offline. Stamp `git-7182-patch-625-0-gc543d688a`,
+  `pr_csqc_memsize` "-1", `map bhop_eazy` loads, a 4,418-point board line is
+  queued and drawn ("1 drawn, 15 segments last frame"), exit 0, and no
+  addressable-memory line. That is ONE boot under WSLg, one map, one line:
+  not a lobby, not a player's run, not a real Linux desktop.
+  AND THE 625 ENGINE ON THE LOBBIES' CSPROGS (`f40d4069`, Patches 643 and
+  645, live half an hour after the release), 13:46Z, also ftesurf-0f's: no
+  engine line builtins, eight lines drawn the QC way, no error line; its
+  picture differs from the 645 engine's QC-way picture only in the replay
+  bar's close button, which lights under the real mouse. NOT RUN: a 0.1.24
+  client joining a live lobby since that deploy (this session's smoke was
+  queued behind the owner's game and stopped for low memory).
   WHAT COST A RUN: `ftesurf\gfx\fonts\*.ttf.prev` trips the deny list (moved
   aside, put back after); the main checkout has to BE the release commit (it
   was 101 behind, its five stray files byte-equal to main's); and a shell

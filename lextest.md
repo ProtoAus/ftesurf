@@ -31,8 +31,9 @@ everything from Patch 495 to 647 that is on main, the Steam work included
   Windows one was). For an hour this item said it might not survive its first
   run, over a 32 MB memory limit read in the engine; that reading was wrong
   (64-bit Linux gets the same 2 GB as Windows, one function further up), and
-  no fault is known. A first Linux boot with a run line is queued by another
-  session; until it reports, the Linux half is simply untested.
+  no fault is known. Another session has since started it once (in WSL,
+  offline): it loads a map and draws a board line. Not yet seen: a lobby, a
+  run of your own, or a real Linux desktop.
 
 ## 00. 11 Oct — the first-boot screens (Patch 647)
 
