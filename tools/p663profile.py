@@ -15,6 +15,8 @@ LOOK AT THEM.  THE DESKTOP'S POINTER IS MOVED for each click and put back
     --control   the build is the one tmp recipe in the patch's notes makes (five
                 lines put back as they were before the review): X, K, U, G and Y fail
 
+  O  the link offer is still up when the card opens: it is not drawn over the
+     card, and Enter in the search is the search's, not a link's
   C  the panel opens on Customize and draws
   S  `hud_player stats`: this player is not linked, so there is no breakdown to ask for
   X  a click on the first trail colour sets it and stays on Customize
@@ -270,8 +272,6 @@ def main():
         mouse = Mouse(keys)
         cl.wait("press Enter to link your Steam account", 30)
         time.sleep(1.0)
-        keys.press("esc")                       # the link prompt: later
-        time.sleep(0.5)
         send('bind g "echo gamekey-g"')
         send('alias +p663h "echo held-down"')
         send('alias -p663h "echo held-up"')
@@ -310,19 +310,40 @@ def main():
                 st = status()
             return st
 
+        # O: the offer that came up by itself is still up (it stays forty seconds).
+        send("hud_player open", 1.0)
+        shot("p663_0_offer_and_card")
+        send("hud_player find zed", 0.5)
+        until(lambda s: s[7] == "2")
+        click_field()
+        keys.press("enter")
+        st = until(lambda s: s[3] == "2", 8)
+        L.check("O  with the link offer still up, Enter in the search is the search's: that player's "
+                "breakdown opens, and no link is started",
+                (st and st[2], cl.text().count("sign in at")), (handle(ZED), 0))
+        keys.press("esc")                       # back to this player...
+        time.sleep(0.3)
+        keys.press("esc")                       # ...the card closed...
+        time.sleep(0.6)
+        keys.press("esc")                       # ...and the offer, which is the keys' again: later
+        time.sleep(0.6)
+        L.check("O  with the card closed the offer takes Esc again",
+                cl.text().count("not linked. Type"), 1)
+
         send("hud_player open", 1.0)
         st = status()
-        L.check("C  the panel opens on Customize, nobody's breakdown asked for, and draws",
-                (st and st[:5], bool(shot("p663_1_customize"))), (("1", "0", "", "0", ""), True))
+        L.check("C  the panel opens on Customize, on this player, and draws",
+                (st and st[:3], bool(shot("p663_1_customize"))), (("1", "0", ""), True))
         click(st, float(st[20]) + float(st[22]) * 0.5, float(st[21]) + float(st[22]) * 0.5)
         time.sleep(0.6)
         after = status()
         L.check("X  a click on the first trail colour sets it, and the page is still Customize",
                 (st[19], after and (after[1], after[19])), ("", ("0", "1")))
-        send("hud_player stats", 1.0)
+        asked = len(ASKS)
+        send("hud_player stats", 1.5)
         st = status()
         L.check("S  the Stats page of a player who is not linked asks for nothing (the lobby gave no mark)",
-                (st and st[:5], bool(shot("p663_2_stats_unlinked"))), (("1", "1", "", "0", ""), True))
+                (st and st[:3], len(ASKS) - asked, bool(shot("p663_2_stats_unlinked"))), (("1", "1", ""), 0, True))
 
         send("hud_player find zed", 0.5)
         st = until(lambda s: s[7] == "2")

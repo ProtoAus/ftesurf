@@ -651,6 +651,13 @@ float(float evtype, float scanx, float chary) Account_InputEvent =
 	slot = Account_Press(scanx);
 	if (!acct_ui)
 		return FALSE;
+	// Patch 663: the offer that came up by itself yields to the profile card
+	// and to a search field with the keyboard. Enter there is theirs: it
+	// started a link, and opened a browser, under a search (seen on a live
+	// lobby). The card has its own Link Steam.
+	if (acct_ui == ACCT_UI_PROMPT)
+	if (av_open || pf_q_focus)
+		return FALSE;
 	if (getkeybind(scanx) == "toggleconsole")
 		return FALSE;
 	if (Account_Light())
@@ -1058,6 +1065,8 @@ void(vector scr) Account_Draw =
 	acct_ui_ls = '0 0 0';
 	if (!acct_ui)
 		return;
+	if (acct_ui == ACCT_UI_PROMPT && av_open)
+		return;                         // Patch 663: not over the profile card (see Account_InputEvent)
 
 	// Its own call: the box is drawn under a menu and the console too, where
 	// the HUD's did not run this frame.

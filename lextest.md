@@ -61,7 +61,10 @@ but only drawn 1 obviously."
 From your list ("upgrade this menu to show your steam name, steam picture,
 and allow you to customize your player ... a tab for your player breakdown
 like the website page but in game ... a search bar you can type in any
-player").
+player"). **In your install and on the lobbies since 19:02 UTC (06:02 here)
+on 11 Oct.** Seen once against the real leaderboard from a test player on a
+lobby: your own page (2,051 times, your picture, ten tier bars) and a search
+for `lex`.
 1. **Press P** (or `hud_player`). One card in the UI's look. At the top your
    picture and name (your Steam ones on a ranked lobby), whether this game is
    linked to Steam, with a Link Steam button if it is not, and a search box.

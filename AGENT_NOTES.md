@@ -8158,6 +8158,29 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **DEPLOYED 11 Oct 2026, 19:02 UTC (FTESurf `de74859`, Patch 663): csprogs
+  and default.cfg; AND WHAT THE FIRST LIVE LOOK FOUND.** `build.ps1 -Pi`
+  from the pushed tree, nobody on any of the 12 lobbies: csprogs
+  `221cbebf62381187` (qwprogs `35fda5eb` swapped for itself), all 12
+  restarted, `.prev` is 655's `a9c73455`. Both installs at 19:02:50Z, no
+  game running, under the rig lock, read back twice: csprogs `221cbebf`,
+  and `cfg\default.cfg` `1029ff976654671c` (661's `28801b17` kept beside it
+  as `default.cfg.pre663-20261011T190250Z`). menu.dat is not this patch's:
+  `sui_text_event` is compiled for the game VM alone so that it stays
+  `10cba3c1`. `pi_lobby_smoke.py` at 19:04Z on the engine release 0.1.24
+  shipped: served `221cbebf`, the board drew, no QC error.
+  A RIG CLIENT ON LOBBY 27510 AT 19:05Z, READING THE REAL DIRECTORY through
+  play.proto.bar (a consent file and the real `lobby_dir`; read-only asks,
+  as any player's): the owner's own breakdown by his mark, 50 rows of 2,051
+  and 100 after a scroll, his real picture at the card's head, ten tier
+  bars; a search for `lex`, twelve names, the exact one first.
+  IT ALSO FOUND WHAT THE ARM COULD NOT, because the arm dismissed it first:
+  the Link Steam offer that comes up by itself for an unlinked player drew
+  OVER the card and took Enter from the search (a link started under a
+  pick). Fixed in the commit after the patch's: while the card is up the
+  offer is not drawn, and while the card is up or a search field has the
+  keyboard it takes no key. The arm now opens the card with the offer
+  pending (check O); the build that was live fails it.
 - **THE PROFILE (Patch 663): ITS PIECES, AND TWO TRAPS IT WAS BUILT ROUND.**
   `cl_profile.qc` holds the two asks (`player=`, `players=`), their answers
   and three pieces a panel draws INSIDE ITS OWN BRACKET: `Profile_Field`,
