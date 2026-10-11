@@ -155,7 +155,8 @@
   data/mapparticles.txt, which the same tool writes.
 */
 #define EK_PSYS         8
-#define EK_N            9
+#define EK_PRECIP       9       // func_precipitation: not an emitter, see Emit_PrecipFrame
+#define EK_N            10
 
 #define PS_MAX         64       // baked systems per map.  tensor2 has 20.
 
@@ -337,6 +338,7 @@ string(float k) Emit_KindName =
 	if (k == EK_SPARK)  return "env_spark";
 	if (k == EK_SMOKE)  return "func_smokevolume";
 	if (k == EK_STACK)  return "env_smokestack";
+	if (k == EK_PRECIP) return "func_precipitation";
 	return "info_particle_system";
 };
 
@@ -423,7 +425,7 @@ float  em_trn;                  // trail emitters on this map
 string em_trmat[TRAIL_MATS];    // this map's trail materials, for Emit_PsysRepair
 float  em_trmats;
 float  em_psprobe;              // the first baked system emitting here: its block's handle
-float  em_psfixes;              // times Emit_PsysRepair sent the map's blocks again
+float  em_psfixes, em_psfixrun; // times Emit_PsysRepair sent the map's blocks again; and in a row
 float  em_trmade, em_trlife;    // drops since the map loaded, and the sum of their lives
 float  em_trsolid, em_trshort, em_trfar;    // born in something; too near what they land on; nothing in reach
 
@@ -438,11 +440,12 @@ float  em_trsolid, em_trshort, em_trfar;    // born in something; too near what 
   A client or a bake from before Patch 659 never asks for this shader: the
   system's own block names the material.
 */
-void(string mat) Emit_TrailShader =
+void(string nm, string mat, float apow) Emit_StreakShader =
 {
-	shaderforname(strcat(TRAIL_SHADER, mat), strcat(
+	shaderforname(nm, strcat(
 		"{\nglslprogram\n{\n"
-		"!!ver 110\n!!samps img=0\n"
+		"!!ver 110\n!!samps img=0\n",
+		sprintf("#define APOW float(%g)\n", apow),
 		"varying vec2 tc;\n"
 		"varying vec4 vc;\n"
 		"#ifdef VERTEX_SHADER\n"
@@ -463,7 +466,10 @@ void(string mat) Emit_TrailShader =
 		// Narrower than two pixels, a pixel's middle is mostly outside the streak and the
 		// texture's edge is empty: take the whole texture's mean (its 1x1 mip) instead.
 		" vec4 t = mix(texture2D(s_img, vec2(0.5, tc.x), 8.0), texture2D(s_img, vec2(clamp(u + 0.5, 0.0, 1.0), tc.x)), clamp(pw - 1.0, 0.0, 1.0));\n"
-		" float a = clamp(vc.a * t.a, 0.0, 1.0) * cov;\n"
+		// APOW: c_effects.cpp:430-436 scales a tracer's alpha by its width in pixels where
+		// that is under one, then raises it to r_rainalphapow.  1 for a particle system's trail.
+		" float m = min(pw, 1.0);\n"
+		" float a = pow(clamp(vc.a * m, 0.0, 1.0), APOW) / max(m, 0.0001) * t.a * cov;\n"
 		" vec3 c = pow(vc.rgb * t.rgb, vec3(2.2)) * a;\n"
 		" vec3 s = pow(c, vec3(0.4545));\n"
 		" vec3 kk = pow(c + 1.0 - a, vec3(0.4545)) - s;\n"
@@ -473,6 +479,11 @@ void(string mat) Emit_TrailShader =
 		"}\nsort additive\ncull disable\n"
 		"{\nmap materials/", mat, ".vtf\nblendfunc gl_one gl_one_minus_src_alpha\nrgbgen vertex\nalphagen vertex\nnodepth\n}\n"
 		"surfaceparm noshadows\nsurfaceparm nodlight\n}\n"));
+};
+
+void(string mat) Emit_TrailShader =
+{
+	Emit_StreakShader(strcat(TRAIL_SHADER, mat), mat, 1);
 };
 
 // The index's `trail` line, read after the psys lines (tools/pcf.py has the columns).
@@ -529,17 +540,23 @@ void() Emit_TrailForget =
   As Emit_MoteRepair: a renderer restart takes every block the map's own
   config made, and the trail shaders.  Asked of the first baked system that
   emits here (a system nothing names never has its handles taken), and three
-  times a map at most: a config without the block would otherwise be sent
+  times in a row at most: a config without the block would otherwise be sent
   again every second, and each time frees every live particle of the map's.
 */
 float() Emit_PsysRepair =
 {
 	local float i;
 
-	if (!em_psprobe || em_psfixes >= 3)
+	if (!em_psprobe)
 		return FALSE;
 	if (particleeffectquery(em_psprobe, 0) != "")
+	{
+		em_psfixrun = 0;
 		return FALSE;
+	}
+	if (em_psfixrun >= 3)
+		return FALSE;
+	em_psfixrun = em_psfixrun + 1;
 	em_psfixes = em_psfixes + 1;
 	for (i = 0; i < em_trmats; i = i + 1)
 		Emit_TrailShader(em_trmat[i]);
@@ -1674,6 +1691,8 @@ void() Emit_RegisterCvars =
 	// What the motes' light is multiplied by: -1 is the map's (Emit_Exposure),
 	// 1 Source without HDR.  Read at map load.
 	registercvar("vbsp_emit_exposure", "-1", CVAR_ARCHIVE);
+	// func_precipitation's rain and snowfall (Emit_PrecipFrame).
+	registercvar("vbsp_emit_precip", "1", CVAR_ARCHIVE);
 	registercvar("vbsp_emit_embers",  "1", CVAR_ARCHIVE);
 	registercvar("vbsp_emit_bubbles", "1", CVAR_ARCHIVE);
 	registercvar("vbsp_emit_fire",    "1", CVAR_ARCHIVE);
@@ -1930,6 +1949,409 @@ void(float i) Emit_TrailDrop =
 };
 
 /*
+===========================================================================
+  func_precipitation the way Source draws it (Patch 668).  c_effects.cpp.
+
+  Type 0 is RAIN.  Every volume emits, each frame, in the part of itself
+  within 750 units of the player in x and y, from 512 over his feet at most
+  (:618-660), renderamt / 255 * 0.001 drops a square unit a second (:1275),
+  falling at 425 with up to 130 sideways (:533, :1289); a drop is 0.35 wide
+  and a tenth of a second of its travel long, at alpha 0.4 ^ 0.8 (:535, :165,
+  :167, :436), on particle/rain.  Where the drop will pass the player's height
+  Source asks once whether anything but sky is over it (:1303-1330), and so
+  does this, without a surface flag to read (Emit_RainDrop).
+
+  Type 3 is SNOWFALL, one manager a map (:2103-2430): 500 flakes a second
+  times renderamt a hundred, 500 alive at most, in a cube of 256 (and half the
+  player's speed) round a point ahead of him while he stands in a volume,
+  within 1024 of that point while he does not.  A flake falls at 37 to 52,
+  is 2 units across shrinking to nothing, and goes from alpha 0.1 to 1.
+
+  A particle the engine must kill where it lands is traced every frame (Patch
+  659), so a drop is traced once here and sent out on the block whose life ends
+  there: Emit_TrailDrop's ladder.  A flake is gone by its size before it lands,
+  so its block is the longest life not over its own and it starts where it is.
+
+  NOT AS SOURCE.  A drop falls to what is under it, or 512 under the lower of
+  the player's feet and where it started; Source's ends at the height of the
+  player's middle (:1338).  The point the sky is asked over is where the drop
+  will be at that height; Source's is a second of its drift away (:1323).
+  Rain is held to PR_RAIN_BUDGET drops a second over all volumes and 64 a
+  frame from one.  A flake keeps its speed; Source's loses 1 a second (:1761).
+  NOT DRAWN: snow of type 1 (none in the library), ash and the particle rains
+  (types 2 and 4 to 7), wind, func_precipitation_blocker, splashes, the
+  snowfall's far "ray" flakes.
+===========================================================================
+*/
+#define PR_MAX      64          // volumes kept a map; surf_apollonian has 56
+#define PR_RAIN_N   24          // the rain's blocks: lives PR_RAIN_T0 * PR_RAIN_R ^ k, to 8.5 s
+#define PR_RAIN_T0  0.05
+#define PR_RAIN_R   1.25
+#define PR_SNOW_N   32          // the snow's: to 28 s
+#define PR_SNOW_T0  0.1
+#define PR_SNOW_R   1.2
+#define PR_SNOW_MAX 500         // r_SnowParticles
+#define PR_RAIN_BUDGET 2400     // drops a second, every volume together
+#define PR_RAIN_BELOW 512       // and how far under the player's feet one is followed
+#define PR_SHADER_RAIN "ftesurf_precip/particle/rain"
+#define PR_SHADER_SNOW "ftesurf_precip/particle/snow"
+
+vector pr_min[PR_MAX];
+vector pr_max[PR_MAX];
+float  pr_type[PR_MAX];         // 0 rain, 3 snowfall
+float  pr_amt[PR_MAX];          // renderamt
+float  pr_acc[PR_MAX];          // rain: the part of a drop carried to the next frame
+float  pr_n, pr_rain, pr_snow;  // volumes kept, and of each kind
+float  pr_other, pr_over;       // of a type not drawn; past PR_MAX
+float *pr_fx;                   // [PR_RAIN_N + PR_SNOW_N] the blocks' handles
+float *pr_die;                  // [PR_SNOW_MAX] when each live flake ends: Source's cap
+float  pr_sacc;                 // snow: the part of a flake carried over
+float  pr_rdemand, pr_rthr;     // last frame: drops a second asked, and the budget's scale
+float  pr_rmade, pr_rroof, pr_rsky, pr_rsolid, pr_rshort, pr_rlife;
+float  pr_smade, pr_ssolid, pr_sfull, pr_sin;
+float  pr_fixes, pr_fixrun;     // times the blocks were made again; and in a row, unanswered
+string trace_surfacename;       // the engine fills this for a progs that declares it (pr_csqc.c)
+float  pr_act[PR_MAX];          // snow: the volumes the sphere reaches this frame
+float  pr_nact;
+
+void(vector bmin, vector bmax, float ptype, float amt) Emit_PrecipAdd =
+{
+	if (ptype != 0 && ptype != 3)
+	{
+		pr_other = pr_other + 1;
+		return;
+	}
+	if (pr_n >= PR_MAX)
+	{
+		pr_over = pr_over + 1;
+		return;
+	}
+	pr_min[pr_n] = bmin;
+	pr_max[pr_n] = bmax;
+	pr_type[pr_n] = ptype;
+	// A byte in Source (m_clrRender.a): surf_beginner's 300 is 44.
+	pr_amt[pr_n] = floor(fabs(amt)) & 255;
+	pr_acc[pr_n] = 0;
+	dprint(sprintf("emit: func_precipitation %g, type %g renderamt %g, %v to %v\n", pr_n, ptype, amt, bmin, bmax));
+	pr_n = pr_n + 1;
+	if (ptype == 0)
+		pr_rain = pr_rain + 1;
+	else
+		pr_snow = pr_snow + 1;
+};
+
+// The two shaders and the blocks, at map load and again after a renderer restart.
+void() Emit_PrecipDefine =
+{
+	local float k, t;
+	local string s;
+
+	if (!pr_n)
+		return;
+	if (!pr_fx)
+	{
+		pr_fx = memalloc(sizeof(float) * (PR_RAIN_N + PR_SNOW_N));
+		pr_die = memalloc(sizeof(float) * PR_SNOW_MAX);
+	}
+	if (pr_rain)
+	{
+		Emit_StreakShader(PR_SHADER_RAIN, "particle/rain", 0.8);
+		for (k = 0; k < PR_RAIN_N; k = k + 1)
+		{
+			// scale: four streak widths (Emit_TrailShader).  stretchfactor: 0.05 s each way.
+			s = sprintf("r_part ftesurf_prain_t%g\n{\ntexture %s\ntype texturedspark\nstretchfactor 0.05\nscale 1.4\nscalefactor 1\n",
+			            k, PR_SHADER_RAIN);
+			// alphadelta 0: with none, a block fades to nothing over its life (p_script.c:2452).
+			s = strcat(s, sprintf("rgb 255 255 255\nalpha 0.4\nalphadelta 0\ncount 1\nveladd 1\ndie %g\n}\n", PR_RAIN_T0 * pow(PR_RAIN_R, k)));
+			localcmd(s);
+			pr_fx[k] = particleeffectnum(sprintf("ftesurf_prain_t%g", k));
+		}
+	}
+	if (pr_snow)
+	{
+		// The motes' blend (Emit_MoteShader) over particle/snow, an UnlitGeneric like rain's.
+		shaderforname(PR_SHADER_SNOW,
+			"{\nglslprogram\n{\n"
+			"!!ver 110\n!!samps img=0\n"
+			"varying vec2 tc;\n"
+			"varying vec4 vc;\n"
+			"varying float depth;\n"
+			"#ifdef VERTEX_SHADER\n"
+			"attribute vec2 v_texcoord;\n"
+			"attribute vec4 v_colour;\n"
+			"uniform mat4 m_modelview;\n"
+			"void main()\n{\n"
+			" tc = v_texcoord;\n"
+			" vc = v_colour;\n"
+			" depth = -(m_modelview * vec4(v_position, 1.0)).z;\n"
+			" gl_Position = ftetransform();\n"
+			"}\n#endif\n"
+			"#ifdef FRAGMENT_SHADER\n"
+			"void main()\n{\n"
+			" vec4 t = texture2D(s_img, tc);\n"
+			// particles_simple.cpp:224: gone at 16 units in front of the eye, whole at 64.
+			" float a = clamp(vc.a * t.a, 0.0, 1.0) * clamp((depth - 16.0) / 48.0, 0.0, 1.0);\n"
+			" vec3 c = pow(vc.rgb * t.rgb, vec3(2.2)) * a;\n"
+			" vec3 s = pow(c, vec3(0.4545));\n"
+			" vec3 kk = pow(c + 1.0 - a, vec3(0.4545)) - s;\n"
+			" float k = 0.5 * (max(kk.r, max(kk.g, kk.b)) + min(kk.r, min(kk.g, kk.b)));\n"
+			" gl_FragColor = vec4(s, 1.0 - k);\n"
+			"}\n#endif\n"
+			"}\nsort additive\ncull disable\n"
+			"{\nmap materials/particle/snow.vtf\nblendfunc gl_one gl_one_minus_src_alpha\nrgbgen vertex\nalphagen vertex\nnodepth\n}\n"
+			"surfaceparm noshadows\nsurfaceparm nodlight\n}\n");
+		for (k = 0; k < PR_SNOW_N; k = k + 1)
+		{
+			// 5.66: a sprite of half-width 1 (tools/pcf.py's QUAD).  It is nothing, and
+			// opaque, as its life ends (r_SnowStartSize 1, EndSize 0, alpha 25 to 255).
+			t = PR_SNOW_T0 * pow(PR_SNOW_R, k);
+			s = sprintf("r_part ftesurf_psnow_t%g\n{\ntexture %s\ntype normal\nscale 5.66\nscalefactor 1\nscaledelta %g\n",
+			            k, PR_SHADER_SNOW, -5.66 / t);
+			s = strcat(s, sprintf("rgb 150 175 200\nalpha 0.098\nalphadelta %g\ncount 1\nveladd 1\ndie %g\n}\n", 0.902 / t, t));
+			localcmd(s);
+			pr_fx[PR_RAIN_N + k] = particleeffectnum(sprintf("ftesurf_psnow_t%g", k));
+		}
+	}
+};
+
+// As Emit_MoteRepair, and three times in a row at most (Emit_PsysRepair has why).
+float() Emit_PrecipRepair =
+{
+	if (!pr_n || !pr_fx)
+		return FALSE;
+	if (particleeffectquery(pr_fx[pr_rain ? 0 : PR_RAIN_N], 0) != "")
+	{
+		pr_fixrun = 0;
+		return FALSE;
+	}
+	if (pr_fixrun >= 3)
+		return FALSE;
+	pr_fixrun = pr_fixrun + 1;
+	pr_fixes = pr_fixes + 1;
+	Emit_PrecipDefine();
+	return TRUE;
+};
+
+// One drop, somewhere in the rectangle lo..hi at height top.
+void(vector lo, vector hi, float top, float centre) Emit_RainDrop =
+{
+	local vector p, q, v;
+	local float t, k, s, sp, d;
+
+	v = [(random() * 2 - 1) * 130, (random() * 2 - 1) * 130, -425];
+	p = [lo_x + random() * (hi_x - lo_x), lo_y + random() * (hi_y - lo_y), top];
+	// Where it passes the player's height: is the sky open over that?  A point inside
+	// something there is not a no (Source's trace out of a brush runs on): the drop
+	// lands on top of it.
+	t = fabs(top - centre) / 425;
+	q = [p_x + v_x * t, p_y + v_y * t, centre];
+	traceline(q, p, TRUE, world);
+	if (trace_allsolid)
+	{
+		pr_rsolid = pr_rsolid + 1;
+		return;
+	}
+	if (trace_fraction < 1)
+	{
+		// Source reads SURF_SKY (:1310).  That flag does not come through a VBSP trace
+		// (trace_surfaceflags is 0 on a sky side); the plugin's name for the side does.
+		if (substring(strtolower(trace_surfacename), 0, 4) != "sky/")
+		{
+			pr_rroof = pr_rroof + 1;
+			return;
+		}
+		pr_rsky = pr_rsky + 1;
+		p = trace_endpos;
+	}
+	// And down to what it lands on.  Its head is 0.05 s ahead of it and the engine
+	// draws it once more in the frame it dies (Emit_TrailDrop).
+	sp = vlen(v);
+	d = (p_z - (min(centre - 36, top) - PR_RAIN_BELOW)) * sp / 425;
+	traceline(p, p + v * (d / sp), TRUE, world);
+	if (trace_startsolid)
+	{
+		pr_rsolid = pr_rsolid + 1;
+		return;
+	}
+	d = trace_fraction * d - 0.05 * sp - sp * frametime;
+	t = d / sp;
+	if (d <= 0 || t < PR_RAIN_T0)
+	{
+		pr_rshort = pr_rshort + 1;
+		return;
+	}
+	k = floor(log(t / PR_RAIN_T0) / log(PR_RAIN_R));
+	if (k >= PR_RAIN_N)
+		k = PR_RAIN_N - 1;
+	s = t - PR_RAIN_T0 * pow(PR_RAIN_R, k);
+	pr_rmade = pr_rmade + 1;
+	pr_rlife = pr_rlife + t - s;
+	pointparticles(pr_fx[k], p + v * s, v, 1);
+};
+
+// One flake at p, in volume i.  FALSE when Source's 500 are all alive.
+float(vector p, float i) Emit_SnowFlake =
+{
+	local vector v, lo;
+	local float t, k, j;
+
+	for (j = 0; j < PR_SNOW_MAX; j = j + 1)
+		if (pr_die[j] <= time)
+			break;
+	if (j >= PR_SNOW_MAX)
+	{
+		pr_sfull = pr_sfull + 1;
+		return FALSE;
+	}
+	v = [(random() * 2 - 1) * 5, (random() * 2 - 1) * 5, -(25 + random() * 10) * 1.5];
+	lo = pr_min[i];
+	t = (p_z - lo_z) / (0.1 - v_z);
+	if (t <= 0)
+		return TRUE;
+	traceline(p, p + v * t, TRUE, world);
+	if (trace_startsolid)
+	{
+		pr_ssolid = pr_ssolid + 1;
+		return TRUE;
+	}
+	t = t * trace_fraction;
+	if (t < PR_SNOW_T0)
+		return TRUE;
+	k = floor(log(t / PR_SNOW_T0) / log(PR_SNOW_R));
+	if (k >= PR_SNOW_N)
+		k = PR_SNOW_N - 1;
+	pr_die[j] = time + PR_SNOW_T0 * pow(PR_SNOW_R, k);      // what the engine holds, so 500 is its count
+	pr_smade = pr_smade + 1;
+	pointparticles(pr_fx[PR_RAIN_N + k], p, v, 1);
+	return TRUE;
+};
+
+// Is p in volume i's box?
+float(vector p, float i) Emit_PrecipIn =
+{
+	local vector lo, hi;
+
+	lo = pr_min[i];
+	hi = pr_max[i];
+	if (p_x < lo_x || p_x > hi_x || p_y < lo_y || p_y > hi_y || p_z < lo_z || p_z > hi_z)
+		return FALSE;
+	return TRUE;
+};
+
+void(vector eye, float ft) Emit_PrecipFrame =
+{
+	local float i, j, n, top, centre, pass, spd, radius, rate, tried;
+	local vector feet, lo, hi, a, b, emit, p, fwd;
+
+	pr_rdemand = 0;
+	if (!pr_n || !pr_fx || !cvar("vbsp_emit_precip"))
+		return;
+	feet = eye - '0 0 64';
+	centre = feet_z + 36;
+
+	// ---- rain: first what every volume asks, for the budget, then each one's drops
+	pr_rthr = 1;
+	for (pass = 0; pass < 2 && pr_rain; pass = pass + 1)
+	{
+		for (i = 0; i < pr_n; i = i + 1)
+		{
+			if (pr_type[i])
+				continue;
+			a = pr_min[i];
+			b = pr_max[i];
+			lo = [max(a_x, feet_x - 750), max(a_y, feet_y - 750), 0];
+			hi = [min(b_x, feet_x + 750), min(b_y, feet_y + 750), 0];
+			top = min(b_z, feet_z + 512);
+			if (hi_x <= lo_x || hi_y <= lo_y)
+				continue;
+			rate = (hi_x - lo_x) * (hi_y - lo_y) * min(pr_amt[i] / 255 * 0.001, 0.01);
+			if (!pass)
+			{
+				pr_rdemand = pr_rdemand + rate;
+				continue;
+			}
+			pr_acc[i] = pr_acc[i] + rate * pr_rthr * min(ft, 0.075);
+			n = floor(pr_acc[i]);
+			pr_acc[i] = pr_acc[i] - n;
+			if (n > EM_TRAIL_BURST)
+				n = EM_TRAIL_BURST;
+			while (n > 0)
+			{
+				Emit_RainDrop(lo, hi, top, centre);
+				n = n - 1;
+			}
+		}
+		if (pr_rdemand > PR_RAIN_BUDGET)
+			pr_rthr = PR_RAIN_BUDGET / pr_rdemand;
+	}
+
+	// ---- snowfall: one manager for all of it
+	if (!pr_snow)
+		return;
+	spd = vlen(pmove_vel);
+	makevectors(getproperty(VF_ANGLES));
+	fwd = [v_forward_x, v_forward_y, 0];
+	emit = eye + fwd * (64 + spd * 0.4) + pmove_vel * 1.25;
+	pr_sin = FALSE;
+	for (i = 0; i < pr_n; i = i + 1)
+		if (pr_type[i] == 3)
+		if (Emit_PrecipIn(eye, i))
+			pr_sin = TRUE;
+	radius = pr_sin ? 256 + spd * 0.5 : 1024;
+	// The volumes the sphere reaches; the first one's renderamt is the rate (:2203).
+	pr_nact = 0;
+	for (i = 0; i < pr_n; i = i + 1)
+	{
+		if (pr_type[i] != 3)
+			continue;
+		a = pr_min[i];
+		b = pr_max[i];
+		p = [bound(a_x, emit_x, b_x), bound(a_y, emit_y, b_y), bound(a_z, emit_z, b_z)];
+		if (vlen(p - emit) > radius)
+			continue;
+		pr_act[pr_nact] = i;
+		pr_nact = pr_nact + 1;
+	}
+	if (!pr_nact)
+		return;
+	rate = bound(0, pr_amt[pr_act[0]], 100);
+	rate = rate ? PR_SNOW_MAX * rate * 0.01 : PR_SNOW_MAX;
+	pr_sacc = pr_sacc + rate * ft;
+	j = 0;
+	for (tried = 0; pr_sacc >= 1 && tried < 64; tried = tried + 1)
+	{
+		pr_sacc = pr_sacc - 1;
+		if (pr_sin)
+		{
+			// Anywhere in the cube; a flake only where that is in a volume the sphere reaches.
+			p = emit + [(random() * 2 - 1) * radius, (random() * 2 - 1) * radius, (random() * 2 - 1) * radius];
+			for (n = 0; n < pr_nact; n = n + 1)
+				if (Emit_PrecipIn(p, pr_act[n]))
+					break;
+			if (n < pr_nact)
+			if (!Emit_SnowFlake(p, pr_act[n]))
+				break;
+		}
+		else
+		{
+			// Anywhere in the next of those volumes; a flake only where that is in the sphere.
+			i = pr_act[j];
+			j = j + 1;
+			if (j >= pr_nact)
+				j = 0;
+			a = pr_min[i];
+			b = pr_max[i];
+			p = [a_x + random() * (b_x - a_x), a_y + random() * (b_y - a_y), a_z + random() * (b_z - a_z)];
+			if (vlen(p - emit) < radius)
+			if (!Emit_SnowFlake(p, i))
+				break;
+		}
+	}
+	if (pr_sacc > 1)
+		pr_sacc = 1;
+};
+
+/*
   WHERE A FIRE BURNS (Patch 656).  Unless spawnflags 16, "Don't drop", a fire
   that starts on is lit where a line 1024 down from its entity ends
   (fire.cpp:701-709, from Activate): 4,309 of the library's fires, on 85 maps,
@@ -2100,7 +2522,7 @@ void() Emit_LoadForMap =
 	local float  ssize, esize, jetlen, spread, initst;
 	local float  i, k, bucket, eff, kind, jit, burst;
 	local string effname;
-	local float  ps, j, pchild, opened, fcls, tj;
+	local float  ps, j, pchild, opened, fcls, tj, ptype, ramt;
 
 	Emit_Alloc();
 	Emit_AllocLife();
@@ -2117,7 +2539,9 @@ void() Emit_LoadForMap =
 	em_n = 0;
 	em_trn = 0;
 	em_trmade = em_trlife = em_trsolid = em_trshort = em_trfar = 0;
-	em_psprobe = em_psfixes = 0;
+	em_psprobe = em_psfixes = em_psfixrun = 0;
+	pr_n = pr_rain = pr_snow = pr_other = pr_over = pr_sacc = pr_fixes = pr_fixrun = 0;
+	pr_rmade = pr_rroof = pr_rsky = pr_rsolid = pr_rshort = pr_rlife = pr_smade = pr_ssolid = pr_sfull = 0;
 	em_any = 0;
 	em_frozen = em_clamped = em_over = em_child = 0;
 	em_flwant = em_flmask = 0;
@@ -2281,6 +2705,8 @@ void() Emit_LoadForMap =
 		firesize = maxdelay = magnitude = traillen = mspeed = 0;
 		ssize = esize = jetlen = spread = 0;
 		initst = 1;             // env_smokestack's default is ON; 2378 of 2443
+		ptype = 0;
+		ramt = 255;
 		                        // write it explicitly and 10 write 0
 
 		while ((key = getentitytoken()) != "" && key != "}")
@@ -2341,6 +2767,8 @@ void() Emit_LoadForMap =
 			else if (key == "jetlength")     jetlen = stof(tok);
 			else if (key == "spreadspeed")   spread = stof(tok);
 			else if (key == "initialstate")  initst = stof(tok);
+			else if (key == "preciptype")    ptype = stof(tok);
+			else if (key == "renderamt")     ramt = stof(tok);
 		}
 
 		if (cn == "")
@@ -2357,6 +2785,7 @@ void() Emit_LoadForMap =
 		else if (cn == "func_smokevolume") kind = EK_SMOKE;
 		else if (cn == "env_smokestack")   kind = EK_STACK;
 		else if (cn == "info_particle_system") kind = EK_PSYS;
+		else if (cn == "func_precipitation") kind = EK_PRECIP;
 		if (kind < 0)
 			continue;
 
@@ -2393,6 +2822,14 @@ void() Emit_LoadForMap =
 			setmodel(probe, mdl);
 			bmin = probe.mins;
 			bmax = probe.maxs;
+		}
+		if (kind == EK_PRECIP)
+		{
+			// setmodel's box is a unit larger each way than the brush, and a brush
+			// drawn up to a ceiling would start every drop inside it.
+			Emit_PrecipAdd(bmin + org + '1 1 1', bmax + org - '1 1 1', ptype, ramt);
+			em_live[kind] = em_live[kind] + 1;
+			continue;
 		}
 
 		vel = '0 0 0';
@@ -2857,6 +3294,7 @@ void() Emit_LoadForMap =
 
 	remove(probe);
 	Emit_DropFires();
+	Emit_PrecipDefine();
 
 	/*
 	  THE LATCH, AFTER THE WALK AND ONLY IF THE LUMP OPENED.  It used to be the
@@ -2986,7 +3424,7 @@ void() Emit_Frame =
 		return;
 	}
 
-	if (!em_n)
+	if (!em_n && !pr_n)
 		return;
 
 	/*
@@ -3057,6 +3495,8 @@ void() Emit_Frame =
 			k = TRUE;
 		if (Emit_PsysRepair())
 			k = TRUE;
+		if (Emit_PrecipRepair())
+			k = TRUE;
 		if (particleeffectquery(em_fx[FX_DUSTMOTE], 0) == "")
 		{
 			localcmd("exec particles/ftesurf.cfg\n");
@@ -3076,6 +3516,7 @@ void() Emit_Frame =
 		ft = 0.25;                      // a hitch is not a licence to emit
 
 	eye = getproperty(VF_ORIGIN);
+	Emit_PrecipFrame(eye, ft);
 	dscale = cvar("vbsp_emit_dist");
 	budget = cvar("vbsp_emit_budget");
 	lights = cvar("vbsp_emit_lights");
@@ -3341,7 +3782,7 @@ void() Emit_List =
 	if (em_child)
 		print(sprintf("  %g child system(s) started with their baked parent\n", em_child));
 	if (!em_any)
-		print("  none of the eight classes on this map\n");
+		print("  none of the nine classes on this map\n");
 
 	// Frozen is no longer a skip -- build 51 emits them at 1 u/s instead of
 	// dropping them -- so it is reported as a note and NOT subtracted below.
@@ -3370,7 +3811,24 @@ void() Emit_List =
 		print(sprintf("  drops: %g made, mean life %.2f s, %g of them with nothing to land on in %g units; %g born inside something, %g too near the ground\n",
 		              em_trmade, em_trmade ? em_trlife / em_trmade : 0, em_trfar, TRAIL_REACH, em_trsolid, em_trshort));
 	if (em_psfixes)
-		print(sprintf("  the map's own blocks were sent again %g time(s) (a renderer restart takes them; 3 at most)\n", em_psfixes));
+		print(sprintf("  the map's own blocks were sent again %g time(s) (a renderer restart takes them)\n", em_psfixes));
+	if (em_seen[EK_PRECIP])
+	{
+		print(sprintf("  func_precipitation: %g of rain, %g of snowfall, %g of a kind not drawn (ash, particle rain), %g past %g\n",
+		              pr_rain, pr_snow, pr_other, pr_over, PR_MAX));
+		if (pr_rain)
+		{
+			print(sprintf("  rain: asking %g/sec of %g, throttle %.3f; %g drops made, mean life %.2f s\n",
+			              rint(pr_rdemand), PR_RAIN_BUDGET, pr_rthr, pr_rmade, pr_rmade ? pr_rlife / pr_rmade : 0));
+			print(sprintf("  rain: %g refused under a roof, %g started under the sky, %g born inside something, %g too near the ground\n",
+			              pr_rroof, pr_rsky, pr_rsolid, pr_rshort));
+		}
+		if (pr_snow)
+			print(sprintf("  snow: the eye is %s a volume; %g flakes made, %g born inside something, %g refused with %g alive\n",
+			              pr_sin ? "in" : "outside", pr_smade, pr_ssolid, pr_sfull, PR_SNOW_MAX));
+		if (pr_fixes)
+			print(sprintf("  its blocks were made again %g time(s)\n", pr_fixes));
+	}
 
 	// env_fire: the sheet or the orbs, and which rule chose.  A class counts as
 	// answering only once one of its effects answers the engine's own query.

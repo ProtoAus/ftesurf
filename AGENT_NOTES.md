@@ -4569,6 +4569,67 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   happen is rolling a DEPLOYED build back, and that is read off the installs'
   and the Pi's hashes, not off git.
 
+### func_precipitation: rain and snowfall (Patch 668) -- 2026-10-12
+
+- WHERE: `src/client/cl_emit.qc`, the section "func_precipitation the way
+  Source draws it": `Emit_PrecipAdd` at map load, `Emit_PrecipDefine` (two
+  shaders, 24 rain blocks `ftesurf_prain_t<k>`, 32 snow blocks
+  `ftesurf_psnow_t<k>`), `Emit_PrecipFrame` every frame, `Emit_RainDrop`,
+  `Emit_SnowFlake`. Volumes are not emitters: their own arrays (`pr_*`), kind
+  `EK_PRECIP` for the report only. `emit_list` has a line for the volumes,
+  two for rain and one for snow; `developer 1` prints each volume's box at
+  load. `vbsp_emit_precip 0` is off, read every frame.
+- SOURCE'S RAIN IS NOT A PARTICLE SYSTEM'S RAIN. `func_precipitation` type 0
+  is 0.35 wide, a tenth of a second long at 425 a second (45 units), 880 a
+  second in a 1,500 square that follows the player; surf_tensor2's
+  `info_particle_system` rain (Patch 659) is 1 wide, 80 long, 1,000 to 3,000
+  a second, in fixed boxes. Both are `particle/rain`.
+- THE LIBRARY HAS NO TYPE 1. Its "snow" is type 3, SNOWFALL, a different
+  thing in `c_effects.cpp`: one manager for the map (`CSnowFallManager`),
+  500 flakes alive at most, spawned round the player. An earlier count in
+  this file called the 201 "snow".
+- THE SKY IS IN A SIDE'S NAME, AND I HAD CONCLUDED IT WAS NOWHERE. A VBSP
+  trace's `trace_surfaceflags` is 0 on a sky side, and from TWO hits whose
+  sides I had not identified (one was a metal ceiling) I wrote "a trace names
+  no surface" and built a second trace instead: from what was hit, up and out
+  of the world; something over it a roof, nothing the sky. The arm passed, on
+  a map with no sky over its volume. The review modelled the brushes of 36
+  rain maps: a fifth of sky ceilings have a brush over them and a tenth of
+  roofs have none. `trace_surfacename` exists for a progs that DECLARES it
+  (`pr_csqc.c`; it is not in `cl_defs.qc`), and the plugin names a sky side
+  `sky/...` (the name is cut at 15 characters). On surf_misc the old test
+  read 355 starts "under the sky" under `metal/train_met`; this reads 0.
+- A BLOCK WITH NO `alphadelta` LINE FADES TO NOTHING OVER ITS LIFE
+  (`p_script.c:2452`, "use old behavior"): `alpha 0.4` alone is a ramp from
+  0.4 to 0. With lives that end on the ground that halved the rain, and
+  Patch 659's drop blocks had the same hole. `alphadelta 0` holds it.
+- SOURCE'S TRACE OUT OF A BRUSH RUNS ON. The point where a drop passes the
+  player's height is often inside something (a wall, a hill); refusing those
+  drops left no rain over anything taller than the player. Only a trace that
+  is solid all the way is a no.
+- `setmodel`'s BOX IS A UNIT LARGER EACH WAY THAN THE BRUSH (6778 for the
+  lump's 6777): a volume drawn up to a ceiling starts every drop inside it.
+- `renderamt` IS A BYTE in Source (`SetRenderColorA(atoi)`): six rain volumes
+  say 300, 400 or 550 and mean 44, 144 and 38.
+- A MAP WITH NOTHING BUT PRECIPITATION HAS NO EMITTER: `Emit_Frame` returned
+  at `if (!em_n)` before anything ran. It tests `pr_n` too.
+- GLOBALS USED BY `Emit_LoadForMap` MUST BE ABOVE IT. The section first sat in
+  front of `Emit_Frame`; fteqcc said "Unknown value" (it did not crash this
+  time: these were reads in expressions, not a pointer assignment).
+- A REPAIR'S CAP IS ON REPAIRS IN A ROW. "Three times a map" (Patch 659's
+  `Emit_PsysRepair`, copied here) left an effect off after the third
+  `vid_restart` on one map; the count now starts again when the handle
+  answers.
+- THE RELEASE'S ENGINE, AFTER THE FACT. Patches 656, 657 and 659 went to the
+  lobbies without a run on the engine the 0.1.24 download ships (patch-625,
+  `183faf44`, kept by 0f in `hud3-20261011T0836Z/artifacts/eng625`); the
+  note about that is in this file and I missed it. Run afterwards with the
+  lobby's csprogs `e04ccb61`: `p659rain.py` 18 of 18, `p657bright.py` and
+  `p656fire.py` pass, `p648motes.py` all but "the looks answer again", read
+  10 s after a `vid_restart` that takes 12 on that engine (four seconds
+  later the motes were back; the arm now reads it then). 668 was run there
+  before it went.
+
 ### Rain: a sprite trail placed drop by drop (Patch 659) -- 2026-10-12
 
 - WHERE: `tools/pcf.py` writes, for a trail whose material is in

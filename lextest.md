@@ -11,6 +11,31 @@ to be wrong.
 
 ---
 
+## 00. 12 Oct — rain and snow volumes (Patch 668)
+
+From your message: "Do you think you could add func_precipitation?"
+- Done: Source's rain volumes (37 maps) and snowfall volumes (41 maps) are
+  drawn the way `c_effects.cpp` draws them.
+- **Rain**: fine streaks, 0.35 units wide and about 45 long, 880 a second in
+  the 1,500-unit square round you at the usual setting, from the sky or 512
+  over your head, and none under a roof. Try surf_zion (the heaviest),
+  surf_misc, surf_beyer2.
+- **Snow**: Source's 500 flakes round you, bluish white, shrinking as they
+  fall; a wider scatter when you are outside the volume looking in. Try
+  surf_voyager, surf_christmas, surf_frost, surf_iceworld.
+- One thing is not Source's: our drops fall to the ground, or 512 under you.
+  Source's stop at the height of your own middle, so looking down from a
+  ledge there you see none. Say if you want it Source's way.
+- **surf_tensor2's rain (Patch 659) is brighter than this morning's**: its
+  drops were fading to nothing as they fell, which Source's do not. Found by
+  this patch's review; fixed with it.
+- Not drawn: ash (3 maps), wind, splashes on water.
+- `vbsp_emit_precip 0` switches it off.
+- This one needs no baked files: every player gets it from the lobbies, and
+  it is tested on the engine the 0.1.24 download ships.
+- **Machine**: every number in this file's items for Patches 656, 657, 659
+  and 668 was measured on your PC (i9-9900K, RTX 2080 SUPER).
+
 ## 00. 12 Oct — rain like Source's (Patch 659)
 
 From your message: "rain in source is brighter, thinner, faster, and longer."

@@ -1140,16 +1140,19 @@ as proof that every source path was built into it. No FPS improvement is claimed
     (656), two runs a build, alternating: a medium fire's smoke in view 1,079
     and 1,140 with it, 1,187 and 1,104 without; surf_anubis's first spawn 869
     and 848 with 108 fires in reach, 919 and 758 with the 22 there were. The
-    runs differ by more than the builds do. The laptop's Intel GPU is not
-    measured, and smoke is the kind of overdraw it pays for.
+    runs differ by more than the builds do. That is the owner's PC (i9-9900K,
+    RTX 2080 SUPER) and no other machine.
 - **Source rain: what Patch 659 does not draw.** A `render_sprite_trail` whose
   material is `particle/rain` (surf_tensor2's thirteen systems) is Source's
   streak now: 1 unit wide, 80 long, at Source's rate, each drop traced once
   where it is made and given the life that ends where it lands
   (`src/client/cl_emit.qc`, `Emit_TrailDrop`; `tools/pcf.py`, `TRAIL_*`). Open:
-  - **`func_precipitation` is not drawn at all**: 373 volumes on 72 maps (168
-    of rain on 37, 201 of snow on 41). It is Source's other rain and most
-    maps' only one.
+  - **`func_precipitation`** is Patch 668's: the next item.
+  - **Every other baked system still fades to nothing over its life** where
+    Source holds its alpha: a block with no `alphadelta` line does
+    (`p_script.c:2452`), and `tools/pcf.py` writes one only for a system with
+    a fade operator. The rain's drop blocks say `alphadelta 0` since Patch
+    668; until then this rain faded over its fall too.
   - **Only `particle/rain` takes the new draw** (`TRAIL_BLENDED`).
     surf_boreas' four trails are `particle/particle_glow_03`, whose .vmt
     nobody has read, and keep the engine's own spark. A trail's drop blocks
@@ -1193,8 +1196,45 @@ as proof that every source path was built into it. No FPS improvement is claimed
     surf_tensor2's spawn, two runs each, alternating: 666 and 662 frames a
     second with this rain, 574 and 555 with the old (whose 130 drops the
     engine traced every frame), 832 with the map's systems off. The first
-    cut emitted Source's rate through the engine's traces: 133. The laptop's
-    Intel GPU is not measured.
+    cut emitted Source's rate through the engine's traces: 133. The owner's
+    PC again, and no other machine.
+- **Source precipitation: what Patch 668 does not draw.** `func_precipitation`
+  type 0, rain (168 volumes on 37 maps), and type 3, snowfall (201 on 41), are
+  `c_effects.cpp`'s (`src/client/cl_emit.qc`, `Emit_PrecipFrame`). Open:
+  - **Ash and the particle rains**: types 2 and 5 (4 volumes on 3 maps) are
+    counted in `emit_list` and not drawn; the library has none of types 1, 4,
+    6 or 7.
+  - **A drop is followed further than Source's.** Source ends a drop at the
+    height of the player's middle (`:1338`); here it falls to what is under
+    it, or 512 under the lower of his feet and where it started. Looking down
+    from a ledge there is rain where Source has none.
+  - **The sky is known by its side's name.** Source lets a drop start under
+    `SURF_SKY` and refuses it under anything else. A VBSP trace here carries
+    no such flag (`trace_surfaceflags` reads 0 on a sky side); it does carry
+    the plugin's name for the side, `sky/...`, in `trace_surfacename`, which
+    `cl_emit.qc` declares. What names nothing (a displacement, a prop) is a
+    roof. The first cut asked instead whether anything was OVER what was
+    hit: counted over the brushes of 36 rain maps by the review, that calls a
+    fifth of the sky's ceilings roofs and a tenth of the roofs sky.
+  - **What the traces meet** is CSQC's world, static props and the glare
+    test's brush copies, as the rain of Patch 659: not `MASK_SOLID_BRUSHONLY`.
+  - **Wind** (`env_wind`, `cl_windspeed`), **`func_precipitation_blocker`**,
+    **splashes on water**, and the snowfall's far "ray" flakes are not drawn.
+    Rain is held to 2,400 drops a second over all volumes and 64 a frame
+    from one; a flake does not lose Source's 1 unit a second of speed.
+  - **A flake's fade runs up to a fifth fast**: its size and alpha ramps are a
+    block's, and the block is the longest life not over the flake's own (32
+    of them, to 28 s). A flake under a pixel is whatever the rasteriser
+    makes of it.
+  - **A snow volume is "in reach" by its box alone**; Source also asks the PVS.
+  - **On surf_misc the flame's repair fires once in the first seconds**
+    ("flame class 1 defined" twice, `reloads 1`), with and without this
+    patch; not on surf_road_to_hell or surf_dune. Not looked into.
+  - **Cost.** The owner's PC (i9-9900K, RTX 2080 SUPER), 1920x1111, uncapped,
+    two readings each: surf_zion's rain, the heaviest in the library
+    (renderamt 255: 2,250 drops a second, about 2,700 alive), 1,036 and
+    1,033 frames a second against 1,541 and 1,554 with it off, a third of a
+    millisecond a frame; surf_voyager's snow 547 and 542 against 559 and 568.
 - **`ftesurf/particles/` is not in git.** `.gitignore`'s allow-list has no line
   for it, so the hand-written `ftesurf.cfg`, `ftesurf_src.cfg` and
   `ftesurf_avatar.cfg` (and the two baked maps) exist only in this install and
@@ -1281,7 +1321,7 @@ as proof that every source path was built into it. No FPS improvement is claimed
   - **`emit_list`'s "answering"** can count the last map's block of the same
     name for the frame before this map's is read.
   - **`func_dustcloud`** (529 in the library) is untouched and still orbs.
-  - **Cost on the laptop's Intel GPU** is not measured.
+  - **Cost** is measured on the owner's PC (i9-9900K, RTX 2080 SUPER) only.
 - **Water's depth fog/capture budget remains incomplete.** Patch 523 adds
   capture-free mode 4 and repairs cheap reflection tint/view frame/signed scroll.
   Mode 1 still captures refraction; mode 2 captures refraction/reflection.

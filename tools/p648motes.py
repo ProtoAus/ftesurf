@@ -40,8 +40,9 @@ for every pixel, whatever the wall looks like.  From that map, per mote:
            once the longest life has passed.  The engine carries every particle
            to LifetimeMax (15 s) where a mote lives 12 on average, so a full
            pool reads 2,048 * 15 / 12 there.
-  RESTART  after vid_restart the looks answer again, and four seconds later the
-           engine holds more motes than it did.
+  RESTART  after vid_restart the looks answer again (read 14 s after it: the
+           restart itself takes 8 to 12), and the engine holds more motes
+           than it did at 10 s.
 
 And the subject's own lines: the three looks the map's volumes ask for, all
 answering the engine's query; and, with vbsp_emit_motes 0, the reason for the orbs.
@@ -262,10 +263,12 @@ def main():
           "%d by r_partinfo, which is %d of Source's kind alive; a full pool is %d"
           % (held, round(held / POOL_HELD), POOL))
     r = st.get("R restart", [])
-    m = first(r, r"func_dustmotes: Source's motes, (\d+) looks asked, (\d+) answering")
+    t = st.get("T refill", [])
+    # Read at T: the restart itself takes 8 to 12 s of the 10 waited (12 on the patch-625 engine).
+    pat = r"func_dustmotes: Source's motes, (\d+) looks asked, (\d+) answering"
+    m = first(t, pat) or first(r, pat)
     check("R  after vid_restart the looks answer again",
           bool(m) and m.group(1) == "3" and m.group(2) == "3", m.group(0) if m else "no line")
-    t = st.get("T refill", [])
     check("R  and the volumes are filling", engine_count(t) >= engine_count(r) + 300,
           "%d by r_partinfo, then %d four seconds on" % (engine_count(r), engine_count(t)))
     o = st.get("O orbs", [])

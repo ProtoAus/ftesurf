@@ -756,7 +756,9 @@ def translate(d, e, unknown, mapname):
         V += ["\tscalefactor 1", "\trgb %d %d %d" % tuple(rgb), "\talpha %.3g" % alpha]
         if alpharand > 0.005:
             V.append("\talpharand %.3g" % alpharand)
-        V += ["\tcount 1", "\tveladd 1"]
+        # With no alphadelta line a block fades to nothing over its life
+        # (p_script.c:2452), and these lives end on the ground.
+        V += ["\talphadelta 0", "\tcount 1", "\tveladd 1"]
         if abs(grav) > 0.01:
             V.append("\tgravity %.6g" % grav)
         for k in range(TRAIL_N):
