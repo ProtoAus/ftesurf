@@ -37,6 +37,8 @@ also look into the ent_ to see if there's other values ... about draw distance".
   not put it beside Source. Medium and large smoke is a flat grey where
   Source's has cloud detail in it (BACKLOG).
 - To turn the smoke off: `vbsp_emit_firesmoke 0`, then load the map again.
+- **Live since 11 Oct 18:14 UTC (12 Oct, 05:14 here)** on both installs and
+  all twelve lobbies. Restart the game to get it.
 
 ## 00. 12 Oct — see-through particles are drawn once (engine Patch 658)
 

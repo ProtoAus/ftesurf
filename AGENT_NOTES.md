@@ -4620,6 +4620,15 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 - A CAMERA IN THE VOID SEES IN. `setpos` far above a map with `noclip` looks
   through the backs of its ceilings: how the reach stage sees a fire from
   6,000 units with nothing to walk on.
+- DEPLOYED 12 Oct (UTC 11 Oct) from `87c63c8`, main's tip: csprogs `bc2b938e`,
+  the file the arm passed on, to the Pi at 18:14:05Z with 12 lobby rows and 0
+  players, and to both installs in the same second with no game running,
+  under the rig lock. Twelve lobbies restarted, hashes read back from the
+  host. `tools/pi_lobby_smoke.py` on 27510 at 18:14Z: the client was served a
+  csprogs hashing `bc2b938e`, drew the board, no QC error. `.prev` is 661's
+  `6cb9b6c2`. The Pi's qwprogs was swapped for the same bytes (`35fda5eb`);
+  the installs' qwprogs, menu.dat and the exes did not change. The smoke
+  grades the board: no client has looked at a fire on a lobby.
 
 ### Blended particles are drawn once (engine Patch 658) -- 2026-10-12
 
