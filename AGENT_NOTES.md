@@ -8158,6 +8158,19 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **DEPLOYED 11 Oct 2026, 18:20-18:21 UTC (FTESurf `498a1bc`, Patch 655):
+  csprogs and menu.dat.** `build.ps1 -Pi` from the pushed tree, nobody on
+  any of the 12 lobbies: csprogs `a9c734555bf1b558` (qwprogs `35fda5eb`
+  swapped for itself), all 12 restarted, `.prev` is 656's `bc2b938e`. Both
+  installs at 18:21Z, no game running, under the rig lock, each read back
+  twice: csprogs `a9c73455` (`.prev` `bc2b938e`) and menu.dat
+  `10cba3c146bab74f` (`.prev` 652's `b4b46b6e`). The deploy build is byte
+  for byte what the arms ran on.
+  `pi_lobby_smoke.py` at 18:22Z on the engine release 0.1.24 shipped
+  (`183faf44`), lobby 27510: served `a9c73455`, the board drew, no QC
+  error.
+  NOT SEEN ON A LIVE LOBBY: a text field (the game has none with a
+  selection until Patch 663; the menu's were looked at in the rig, at 1:1).
 - **TEXT FIELDS (Patch 655): HOW TO HAVE ONE, AND WHY NONE PASTES.**
   A field calls `sui_text_metrics(<text's x in the box>, <its size>)` just
   before `sui_text_input`, draws `sui_text_selection` between its box and

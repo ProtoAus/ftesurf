@@ -58,7 +58,8 @@ but only drawn 1 obviously."
 
 ## 00. 12 Oct — text boxes: a caret you can place, selection, copy and cut (Patch 655)
 
-From your list ("full text support, highlighting, copy, paste").
+From your list ("full text support, highlighting, copy, paste"). **In your
+install and on the lobbies since 18:21 UTC (05:21 here) on 11 Oct.**
 1. **In the menus** (the name box, the map search): a click puts the caret
    where you clicked and a drag selects. Shift+arrows, Shift+Home/End and
    Ctrl+A select too, and the selection is drawn. Ctrl+C copies it, Ctrl+X
