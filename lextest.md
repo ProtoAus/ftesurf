@@ -13,6 +13,9 @@ to be wrong.
 
 ## 00. 11 Oct — your HUD list, part 2: Boarding (Patch 631)
 
+Live since 11 Oct 02:36 UTC (13:36 here) on both installs and 02:37 UTC on all
+twelve lobbies; csprogs only, the one before kept beside it as `.prev`.
+
 "The entering and leaving units 'both' is supposed to display the horizontal
 velocity you had when you entered or left the ramp, and the energy is supposed
 to be your current position in energy, not how much you lost/gained."

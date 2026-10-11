@@ -4672,6 +4672,12 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   compared the window with the Segments column, which made the same mistake,
   and passed at 139. A build with f fixed at 1, no resync and a stamped replay
   zero fails 5 of 11 on a listen server.
+- DEPLOYED 2026-10-11 from `d43a0c2`: csprogs `1a27aa8f` only (qwprogs
+  `e9c95065` and menu.dat were already these bytes in all three places). Both
+  Windows installs 02:35:57Z; the Pi 02:37:08Z with nobody on, all 12 lobby
+  processes started 02:37:11Z to 02:37:19Z (read from the host), and
+  `pi_lobby_smoke.py` was served this csprogs and drew the board. `.prev` is
+  Patch 630's csprogs (`9ab0442f`) in all three places.
 
 ### hud_edit: second sizes, what the speedometer shows, the keys' size (Patch 630) — 2026-10-11
 
