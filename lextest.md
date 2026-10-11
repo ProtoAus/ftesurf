@@ -31,6 +31,8 @@ From your message: "rain in source is brighter, thinner, faster, and longer."
 - This needs the map's particle files baked again, which is done in
   `C:\FTESurf`. `C:\FTEQuake` has no particle files at all and never drew
   rain. Other players get it with the next release archive.
+- **Live since 11 Oct 21:13 UTC (12 Oct, 08:13 here)** in `C:\FTESurf`
+  (the lobbies serve the new client too). Restart the game to get it.
 
 ## 00. 12 Oct — brighter dust motes (Patch 657)
 

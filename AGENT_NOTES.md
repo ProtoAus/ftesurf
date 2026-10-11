@@ -4632,6 +4632,20 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 - THE BAKED FILES ARE THE TOOL'S: `python tools/pcf.py --map <map>` writes
   `particles/<map>.cfg` and `data/mapparticles.txt` in `C:\FTESurf\ftesurf`.
   Neither is in git or sent by a lobby; `C:\FTEQuake` has neither.
+- DEPLOYED 12 Oct (UTC 11 Oct) from `a68e411`, main's tip: csprogs `e04ccb61`,
+  the file the arm passed on, to the Pi at 21:13:22Z with 12 lobby rows and 0
+  players, and to both installs at 21:13:23Z with no game running, under the
+  rig lock. Twelve lobbies restarted, hashes read back from the host;
+  `tools/pi_lobby_smoke.py` on 27510 at 21:13Z was served that csprogs, drew
+  the board, no QC error. `.prev` is 657's `c7596c74`. Then `tools/pcf.py
+  --map surf_tensor2` and `--map surf_boreas` over `C:\FTESurftesurf`:
+  `particles/surf_tensor2.cfg` `e42ae639`, `surf_boreas.cfg` `bb277920`,
+  `data/mapparticles.txt` `6c1f06ec`, each byte-equal to the file the arm ran
+  on (they were `0ffb08be`, `ebc0f495`, `17cb909e`; those three are kept in
+  the task root, `tmp/bake-installed-before`). `C:\FTEQuake` has no particle
+  files and was given none. The Pi's qwprogs was swapped for the same bytes
+  (`35fda5eb`); menu.dat, default.cfg and the exes did not change. The smoke
+  grades the board: no client has looked at rain on a lobby.
 
 ### How bright a mote is (Patch 657) -- 2026-10-12
 
