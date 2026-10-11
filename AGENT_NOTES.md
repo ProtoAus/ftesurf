@@ -8097,10 +8097,27 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **DEPLOYED 11 Oct 2026, 17:35-17:38 UTC (FTESurf `2999820`, Patch 662):
+  surfd.** `surfd.py` alone by `surfd-deploy.ps1` (the live file was main's
+  before it, `f833ec74`, checked first), the suite green on the Pi, backup
+  `data/surfd.db.bak-2999820-20261012-043548`, reload 17:38:35Z, the maps
+  list (5.8 s cold) and a player page (1.8 s) asked once.
+  MEASURED ON THE PI, 17:39Z, on 127.0.0.1:8084: `players=` with no text
+  0.006 s, `lex` 0.013 s, `a` 0.012 s, a name nobody has 0.012 s (twelve rows
+  or none; 67,000 entries walked in the last three). `player=` for the
+  widest profile (2,626 rows) 1.52 s the first time and 0.026 s the second,
+  0.027 s by its 8-hex mark, 0.029 s for 200 rows (24,653 bytes); the
+  owner's by his mark 0.019 s (the site's page had asked for it); a handle
+  nobody has 404, a malformed one 400. THROUGH `play.proto.bar`: a search
+  0.17 s, that profile 0.10 s. 0 error or warning lines in the service's 89
+  since the reload.
+  NOT SEEN: the game asking (Patch 663 is not deployed), and the two
+  together under real use.
 - **THE GAME'S PLAYER LOOKUPS (Patch 662) ARE THE SITE'S, AND COST WHAT THE
   SITE'S COST.** `/api/board?players=` walks the in-memory directory once a
-  request (about 20 ms for 67,000 entries on a laptop, under the GIL: four
-  threads do not make four searches faster; measured in its review), and
+  request (about 20 ms for 67,000 entries on a laptop in its review, 12 ms
+  on the Pi itself; under the GIL, so four threads do not make four searches
+  faster), and
   `?player=` is `_profile_rows`: the first answer for a wide profile is
   seconds on the Pi, kept for two minutes. The proxy gives 5 s; the game asks
   once more by itself after an answer that never came (Patch 663).
