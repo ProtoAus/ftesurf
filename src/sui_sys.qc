@@ -421,11 +421,13 @@ void(vector pos, float is_mouse = TRUE) _sui_mouse_move =
 
 // JERK ALERT: hard to pass input params for it without them just being the globals
 // ... so it just straight up uses the globals... optimization
+float _sui_hold_mouse;           // Patch 655: the press now held, or last let go, was the mouse's own
 float(float is_mouse = TRUE) _sui_mouse1_down =
 {
 	if (is_mouse)
 		activate_mouse_cursor();
 
+	_sui_hold_mouse = is_mouse;     // Patch 655: a confirm key's "press" is not a drag in a text field
 	// Cheap but it should work...
 	_cursor_click = _cursor_position;
 	_cursor_relative_click = _cursor_relative_hover;
@@ -662,6 +664,7 @@ string _sui_binding_command_name;
 struct _input_t {
 	float char;
 	float scan;
+	float mods;     // Patch 655: SUI_MOD_* as they were when the event came
 };
 const float MAX_INPUTS = 64;
 
@@ -671,6 +674,39 @@ float _input_length;
 float sui_text_input_focused;  // TRUE when a text field has focus — suppresses WASD nav
 string sui_text_input_focused_id; // which one, so a panel going away can drop it
 string _sui_field_focus;        // the field the KEYBOARD claimed: sui_field_focus
+
+/*
+  Patch 655: ONE SELECTION, in the field that has the keyboard: anchor to caret,
+  -1 for none.  Only a field that said where its text is (sui_text_metrics)
+  holds one: nobody could see another's.
+  THE MODIFIERS are this VM's own key events, stored with each buffered key, so
+  a chord is judged by what was held when ITS key came.  A chord is Ctrl
+  without Alt (AltGr is Ctrl+Alt to Windows) and is known BY ITS CONTROL CODE
+  (1, 3, 22, 24: Windows and X11 make one, and only while Ctrl really is
+  down), or, where a key came with no character at all, by the key under a
+  Ctrl this VM saw go down.  A letter that arrives as a letter is typed: a
+  Ctrl whose release went to somebody else cannot turn typing into cuts.
+  NO FIELD PASTES, IN EITHER VM.  The game VM's code is the server's, and
+  upstream gives it no clipboard_get.  The menu VM has one, and commands a
+  server can run reach its fields and its buttons; three cuts of a gate failed
+  their reviews.  What it would take is the engine's to do: ENGINE_PATCHES,
+  Patch 655, and BACKLOG.
+*/
+#define SUI_MOD_SHIFT 1
+#define SUI_MOD_CTRL  2
+#define SUI_MOD_ALT   4
+void(float cliptype, string text) clipboard_set = #0:clipboard_set;
+float  _sui_mods;               // SUI_MOD_* down now, by this VM's key events
+float  _sui_in_mods;            // ...and as they were for the key sui_get_input last gave
+var float _sui_sel_anchor = -1; // the selection's fixed end in the focused field, or -1
+string _sui_sel_id;             // ...and which field that is
+float  _sui_sel_known;          // ...and whether it said where its text is
+float  _sui_sel_seen;           // ...and the frame it last drew with the keyboard in
+float  _sui_cur_t, _sui_prev_t; // gettime(0) of the last two frames a bracket began in
+float  _sui_sel_drag;           // the mouse is held from a press in that field
+float  _sui_tm_on;              // the next sui_text_input knows where its text is
+float  _sui_tm_x;               // ...its origin, from the field's left edge
+vector _sui_tm_size;            // ...and the size it is drawn at
 
 /*
   THE KEYBOARD CANNOT REACH A TEXT FIELD, AND THE FIELD CANNOT TELL.
@@ -718,6 +754,31 @@ string() sui_field_focused =
 	return _sui_field_focus;
 }
 
+// The keyboard has been somebody else's: a modifier's release may have gone to
+// them, and a selection is not the next visit's.  An owner calls it when its
+// panel opens and when it closes.
+void() sui_keys_forget =
+{
+	_sui_mods = 0;
+	_sui_sel_anchor = -1;
+	_sui_sel_drag = FALSE;
+};
+
+// A modifier going down or up, by this VM's own key events.
+void(float evtype, float scanx) _sui_mods_track =
+{
+	local float bit;
+	bit = 0;
+	if (scanx == K_LSHIFT || scanx == K_RSHIFT) bit = SUI_MOD_SHIFT;
+	if (scanx == K_LCTRL || scanx == K_RCTRL) bit = SUI_MOD_CTRL;
+	if (scanx == K_LALT || scanx == K_RALT) bit = SUI_MOD_ALT;
+	if (!bit)
+		return;
+	_sui_mods = _sui_mods - (_sui_mods & bit);
+	if (evtype == IE_KEYDOWN)
+		_sui_mods = _sui_mods | bit;
+};
+
 // Drop the claim.  A panel going away calls this so its field cannot take it on a
 // later draw; the flag itself needs no clearing here, because sui_begin does that
 // every frame whether or not anyone asks.
@@ -741,6 +802,7 @@ float(__inout float char, __inout float scan) sui_get_input =
 	
 	char = _input_buffer[_input_index].char;
 	scan = _input_buffer[_input_index].scan;
+	_sui_in_mods = _input_buffer[_input_index].mods;
 	_input_index++;
 	
 	return TRUE;
@@ -807,6 +869,7 @@ float(float char, float scan) _sui_add_input =
 	}
 	_input_buffer[_input_length].char = char;
 	_input_buffer[_input_length].scan = scan;
+	_input_buffer[_input_length].mods = _sui_mods;
 	_input_length += 1;
 	return TRUE;
 };
@@ -968,24 +1031,101 @@ string() sui_listen_text_input =
 	return "";
 };
 
+// The caret goes to `to`; with Shift (as it was when this key came) the selection
+// stretches there from where the caret was, without it any selection ends.
+void(float to, __inout float cursor) _sui_caret_to =
+{
+	if ((_sui_in_mods & SUI_MOD_SHIFT) && _sui_sel_known)
+	{
+		if (_sui_sel_anchor < 0)
+			_sui_sel_anchor = cursor;
+	}
+	else
+		_sui_sel_anchor = -1;
+	cursor = to;
+	if (_sui_sel_anchor == cursor)
+		_sui_sel_anchor = -1;
+};
+
+// The selection is cut out of `text`.  -> there was one.
+float(__inout string text, __inout float cursor) _sui_sel_delete =
+{
+	float a, b;
+	if (_sui_sel_anchor < 0 || _sui_sel_anchor == cursor)
+	{
+		_sui_sel_anchor = -1;
+		return FALSE;
+	}
+	a = min(_sui_sel_anchor, cursor);
+	b = max(_sui_sel_anchor, cursor);
+	text = strcat(substring(text, 0, a), substring(text, b, strlen(text)));
+	cursor = a;
+	_sui_sel_anchor = -1;
+	return TRUE;
+};
+
 void(float char, float scan, __inout string text, __inout float cursor) sui_handle_text_input =
 {
 	float maxlen = 128;
-	
+	float chord, a, b, shift;
+
 	string prev = text;
 	string pre_cursor, post_cursor;
 	float length = strlen(prev);
-	if (char > 31 && char < 128) //an actual input
+	cursor = bound(0, cursor, length);
+	if (_sui_sel_anchor > length)
+		_sui_sel_anchor = -1;
+	shift = (_sui_in_mods & SUI_MOD_SHIFT);
+
+	// A chord's letter, or 0 (the rule is over the state).  Backspace, Tab,
+	// Enter and Escape are control codes too, and are not chords.
+	chord = 0;
+	if (!(_sui_in_mods & SUI_MOD_ALT))
 	{
+		if (char == 1 || char == 3 || char == 22 || char == 24)
+			chord = char + 96;
+		else if (char == 0 && (_sui_in_mods & SUI_MOD_CTRL) && scan >= 'a' && scan <= 'z')
+			chord = scan;
+	}
+	if (chord)
+	{
+		a = min(_sui_sel_anchor, cursor);
+		b = max(_sui_sel_anchor, cursor);
+		if (chord == 'a' && _sui_sel_known)
+		{
+			_sui_sel_anchor = 0;
+			cursor = length;
+			if (!length)
+				_sui_sel_anchor = -1;
+		}
+		else if ((chord == 'c' || chord == 'x') && _sui_sel_anchor >= 0 && a != b)
+		{
+			// A cut with nowhere to put it would only lose the text.
+			if (checkbuiltin(clipboard_set))
+			{
+				clipboard_set(0, substring(prev, a, b - a));
+				if (chord == 'x')
+					_sui_sel_delete(text, cursor);
+			}
+		}
+		// Ctrl+V is nobody's: no field pastes (the note over the state).
+		return;
+	}
+	if (char > 31 && char < 127) //an actual input, typed or pasted
+	{
+		_sui_sel_delete(text, cursor);
+		prev = text;
+		length = strlen(prev);
 		if (length >= maxlen) return;
 		pre_cursor = substring(prev, 0, cursor);
 		post_cursor = substring(prev, cursor, length);
-		
+
 		text = sprintf("%s%s%s", pre_cursor, chr2str(char), post_cursor);
 		cursor += 1;
 	}
 	else if (char == 8) // backspace
 	{
+		if (_sui_sel_delete(text, cursor)) return;
 		if (cursor <= 0) return;
 		pre_cursor = substring(prev, 0, cursor - 1);
 		post_cursor = substring(prev, cursor, length);
@@ -995,6 +1135,7 @@ void(float char, float scan, __inout string text, __inout float cursor) sui_hand
 	}
 	else if (scan == K_DEL)
 	{
+		if (_sui_sel_delete(text, cursor)) return;
 		if (cursor >= length) return;
 		pre_cursor = substring(prev, 0, cursor);
 		post_cursor = substring(prev, cursor + 1, length);
@@ -1005,17 +1146,27 @@ void(float char, float scan, __inout string text, __inout float cursor) sui_hand
 		// Commit and deselect...
 		// Let's try a hack..
 		_last_clicked_action_count = 0;
+		_sui_sel_anchor = -1;
 	}
 	else if (scan == K_LEFTARROW)
 	{
-		cursor -= 1;
-		cursor = max(0, cursor);
+		// Without Shift a selection collapses to its own left edge.
+		if (!shift && _sui_sel_anchor >= 0)
+			_sui_caret_to(min(_sui_sel_anchor, cursor), cursor);
+		else
+			_sui_caret_to(max(0, cursor - 1), cursor);
 	}
 	else if (scan == K_RIGHTARROW)
 	{
-		cursor += 1;
-		cursor = min(strlen(prev), cursor);
+		if (!shift && _sui_sel_anchor >= 0)
+			_sui_caret_to(max(_sui_sel_anchor, cursor), cursor);
+		else
+			_sui_caret_to(min(length, cursor + 1), cursor);
 	}
+	else if (scan == K_HOME)
+		_sui_caret_to(0, cursor);
+	else if (scan == K_END)
+		_sui_caret_to(length, cursor);
 };
 
 void(float maxlen, __inout string text, __inout float cursor) sui_cap_input_length =
@@ -1090,6 +1241,7 @@ float(float evtype, float scanx, float chary, float devid) sui_input_event =
 		return FALSE;
 		break;
 	case IE_KEYDOWN:
+		_sui_mods_track(evtype, scanx);
 		vector keydir = sui_input_dir(scanx);
 		// We are binding, always swallow
 		if (_sui_binding_command != "")
@@ -1106,6 +1258,7 @@ float(float evtype, float scanx, float chary, float devid) sui_input_event =
 		return mouse_hit || sui_block_input_fn(scanx, chary);
 		break;
 	case IE_KEYUP:
+		_sui_mods_track(evtype, scanx);
 		if (_sui_binding_command != "")
 		{
 			_sui_do_keybind(scanx, _sui_binding_command);
@@ -1140,6 +1293,11 @@ void(float width, float height) sui_begin =
 	_sui_draw_initialized = TRUE;
 	sui_text_input_focused = FALSE;
 	sui_text_input_focused_id = "";
+	if (gettime(0) != _sui_cur_t)
+	{
+		_sui_prev_t = _sui_cur_t;
+		_sui_cur_t = gettime(0);
+	}
 	
 	sui_reset_frame();
 	sui_push_frame([0, 0], [width, height]);
@@ -1278,18 +1436,106 @@ float(string id, vector pos, vector size, vector minmaxsteps, float value, void(
 	return newvalue;
 };
 
+// Where the next sui_text_input's text is drawn: its origin from the field's
+// left edge and its size, in the font that is set now.  With it a click puts the
+// caret under the cursor, a drag selects and the keyboard may select; without it
+// a click goes to the end and nothing is ever selected.
+void(float text_x, vector fontsize) sui_text_metrics =
+{
+	_sui_tm_on   = TRUE;
+	_sui_tm_x    = text_x;
+	_sui_tm_size = fontsize;
+};
+
+// The caret position nearest `x`, measured from the text's origin.
+float(string text, float x, vector fontsize) _sui_text_index =
+{
+	float i, n, w, pw;
+	n = strlen(text);
+	pw = 0;
+	for (i = 1; i <= n; i++)
+	{
+		w = stringwidth(substring(text, 0, i), TRUE, fontsize);
+		if (x < (pw + w) * 0.5)
+			return i - 1;
+		pw = w;
+	}
+	return n;
+};
+
 void(string id, vector pos, vector size, __inout string text, __inout float cursor) sui_text_input =
 {
+	float focus, at, known;
+	vector o;
+
+	known = _sui_tm_on;
+	_sui_tm_on = FALSE;
 	sui_action_element(pos, size, id, sui_noop);
+	if (!known)
 	if (sui_is_clicked(id)) cursor = strlen(text);
 	/*
 	  THE FIELD TAKES THE KEYBOARD'S CLAIM HERE, on its own draw, which is the
 	  only place that knows the field is actually on screen.  A claim made by a key
 	  handler is already one frame stale by the time the input buffer is read, and
 	  sui_begin has cleared the flag -- see the essay over sui_field_focus.
+	  A press zeroes "last clicked" until the release: while it is held on the
+	  field the field still has the keyboard.
 	*/
-	if (sui_is_last_clicked(id)
-	    || (_sui_field_focus != "" && strcmp(_sui_field_focus, id) == 0))
+	focus = (sui_is_last_clicked(id) || sui_is_held(id)
+	    || (_sui_field_focus != "" && strcmp(_sui_field_focus, id) == 0));
+	if (focus)
+	{
+		if (_sui_sel_id != id || (_sui_sel_seen != _sui_cur_t && _sui_sel_seen != _sui_prev_t))
+		{
+			// Another field's selection is not this one's, nor is this field's own
+			// from before it last lost the keyboard.  BY FRAME, not by the clock:
+			// the first cut gave it half a second, and a screenshot's stall under
+			// a held selection dropped it (the arm's own shots found that).
+			// The modifiers stand: this VM has had the keys all along.
+			_sui_sel_id = id;
+			_sui_sel_anchor = -1;
+			_sui_sel_drag = FALSE;
+		}
+		_sui_sel_seen = _sui_cur_t;
+		_sui_sel_known = known;
+		if (!known)
+			_sui_sel_anchor = -1;
+	}
+	if (known)
+	{
+		// The mouse: a press puts the caret under it, holding on stretches a
+		// selection from there (Shift held, from where the caret was).  The
+		// MOUSE'S press: Enter over a field is a press to sui too.
+		if (sui_is_held(id) && _sui_hold_mouse)
+		{
+			o = pos;
+			sui_transform_box(o, size);
+			at = _sui_text_index(text, _cursor_position_x - o_x - _sui_tm_x, _sui_tm_size);
+			if (!_sui_sel_drag)
+			{
+				_sui_sel_drag = TRUE;
+				_sui_sel_anchor = (_sui_mods & SUI_MOD_SHIFT)
+					? ((_sui_sel_anchor < 0) ? cursor : _sui_sel_anchor) : at;
+			}
+			cursor = at;
+		}
+		else if (_sui_sel_drag && _sui_sel_id == id)
+		{
+			_sui_sel_drag = FALSE;
+			if (_sui_sel_anchor == cursor || !focus)
+				_sui_sel_anchor = -1;       // a click and not a drag, or let go off the field
+		}
+		else if (sui_is_clicked(id) && _sui_hold_mouse)
+		{
+			// Pressed and let go between two draws (a tap, a slow frame): the
+			// caret goes where the press was.
+			o = pos;
+			sui_transform_box(o, size);
+			cursor = _sui_text_index(text, _cursor_click_x - o_x - _sui_tm_x, _sui_tm_size);
+			_sui_sel_anchor = -1;
+		}
+	}
+	if (focus)
 	{
 		sui_text_input_focused = TRUE;
 		sui_text_input_focused_id = id;
@@ -1297,6 +1543,31 @@ void(string id, vector pos, vector size, __inout string text, __inout float curs
 		float scan = 0;
 		while(sui_get_input(char, scan)) sui_handle_text_input(char, scan, text, cursor);
 	}
+};
+
+// `id` has the keyboard this frame: it drew, and took a click's claim or the
+// keyboard's (TAB).  For the field's own ring, caret and selection: asking only
+// whether it was clicked last left a field focused by TAB drawing none.
+float(string id) sui_text_has_focus =
+{
+	return sui_text_input_focused && sui_text_input_focused_id == id;
+};
+
+// The focused field's selection, as a fill behind its text: call it between the
+// field's box and its text, in the text's font.  -> something is selected.
+float(string id, vector textpos, vector fontsize, string text, float cursor, vector color, float alpha) sui_text_selection =
+{
+	float a, b, x0, x1;
+	if (_sui_sel_anchor < 0 || _sui_sel_id != id)
+		return FALSE;
+	a = bound(0, min(_sui_sel_anchor, cursor), strlen(text));
+	b = bound(0, max(_sui_sel_anchor, cursor), strlen(text));
+	if (a == b)
+		return FALSE;
+	x0 = stringwidth(substring(text, 0, a), TRUE, fontsize);
+	x1 = stringwidth(substring(text, 0, b), TRUE, fontsize);
+	sui_fill([textpos_x + x0, textpos_y - 1], [x1 - x0, fontsize_y + 2], color, alpha, 0);
+	return TRUE;
 };
 
 

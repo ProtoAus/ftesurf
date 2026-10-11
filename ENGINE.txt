@@ -26,6 +26,12 @@ commit   7501a6ccebb2d2b7f2f3a7f0127e86680f3cefb3
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-658
 patch    662
+# Patch 655: text fields (src/sui_sys.qc, both VMs) place the caret under a click, select by
+# drag, Shift+arrows/Home/End and Ctrl+A, draw the selection, and copy and cut it. NO FIELD
+# PASTES in either VM: a server can run the menu VM's console commands, so nothing a field
+# sees says the player meant a paste (BACKLOG has what the engine would have to do). Also the
+# link box's code box closing 45 s after the last key it took, and ui_mouse stamping
+# ui_synth_t as ui_key and ui_click do. QC only: no engine source, no server code.
 # Patch 656: env_fire, the rest of what Source draws. A fire that is not Smokeless has
 # its smoke (env_fire_tiny/_small/_medium/_large_smoke, off Valve's two smoke sheets,
 # read from the mounted game); a fire without "Don't drop" is lit where a line 1024

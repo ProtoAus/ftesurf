@@ -25,6 +25,9 @@ the engine printed themselves (the box's lines are developer prints):
 
 Screenshots of each state go to --output-dir: LOOK AT THEM.  A build without
 Patch 653 fails G, C and O (run it against the installed progs to see).
+
+    --idle   Patch 655: P and T, then I: the code box with a letter in it closes
+             by itself 45 s from its last key (a build before 655 fails I)
 """
 import argparse
 import pathlib
@@ -92,6 +95,8 @@ def main():
     ap.add_argument("--server", type=pathlib.Path, default=pathlib.Path("C:/FTEQuake/fteqwsv64.exe"))
     ap.add_argument("--output-dir", type=pathlib.Path)
     ap.add_argument("--map", default="bhop_eazy")
+    ap.add_argument("--idle", action="store_true",
+                    help="Patch 655: stop after T and wait for the typed code's box to close by itself")
     a = ap.parse_args()
     a.client = a.client or a.content / "ftesurf64.exe"
     a.progs = a.progs.resolve()
@@ -200,6 +205,13 @@ def main():
         L.check("T  a typed code's box draws its cells and does not take the mouse",
                 (bool(opened), bool(shot("p653_1b_code")), said("steam: the box has the mouse")),
                 (True, True, 0))
+        if a.idle:
+            # Patch 655: with a letter in it the box used to wait for ever.
+            t0 = time.time()
+            closed = cl.wait("steam: the code box closed, 45 s from the last key it took", 60)
+            L.check("I  a code box with a letter in it closes by itself, 45 s from the last key it took",
+                    (bool(closed), 40 < time.time() - t0 < 50), (True, True))
+            return 1 if L.FAILED else 0
         keys.press("esc")
         time.sleep(3.2)                         # the lobby's gap between one player's asks
         send("link")

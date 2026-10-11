@@ -8158,6 +8158,24 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **TEXT FIELDS (Patch 655): HOW TO HAVE ONE, AND WHY NONE PASTES.**
+  A field calls `sui_text_metrics(<text's x in the box>, <its size>)` just
+  before `sui_text_input`, draws `sui_text_selection` between its box and
+  its text, and asks `sui_text_has_focus(id)` for its ring and caret. Without
+  metrics it is what it was (a click goes to the end, nothing is selected).
+  A panel calls `sui_keys_forget()` when it opens and closes.
+  A CHORD IS ITS CONTROL CODE (1, 3, 24; Windows makes it from the real
+  keyboard state): an arm feeds `ui_key c down 3`; a POSTED Ctrl plus a
+  posted letter is typed, by design (a Ctrl whose release was missed looks
+  like that). `tools/p655text.py`'s class Chord shows a real one to the
+  engine, for one press.
+  NO FIELD READS THE CLIPBOARD, AND `clipboard_get` IS IN NEITHER .dat (that
+  arm checks the bytes). Do not add it back from QC: the menu's `ui_*`
+  commands run from a server (read from the engine; the private checkpoint
+  `steam-accounts-20261010.md` has the reasoning and the three failed
+  gates), so "a key the engine delivered" proves a key and not who arranged
+  what it lands on. BACKLOG has the engine change that would allow it.
+  `ui_mouse` now stamps `ui_synth_t` as `ui_key` and `ui_click` do.
 - **DEPLOYED 11 Oct 2026, 17:35-17:38 UTC (FTESurf `2999820`, Patch 662):
   surfd.** `surfd.py` alone by `surfd-deploy.ps1` (the live file was main's
   before it, `f833ec74`, checked first), the suite green on the Pi, backup

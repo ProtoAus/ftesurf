@@ -56,6 +56,28 @@ but only drawn 1 obviously."
 - **Live since 11 Oct 16:58 UTC (12 Oct, 03:58 here)** in both installs: a new
   engine file, so restart the game. Lobbies need nothing.
 
+## 00. 12 Oct — text boxes: a caret you can place, selection, copy and cut (Patch 655)
+
+From your list ("full text support, highlighting, copy, paste").
+1. **In the menus** (the name box, the map search): a click puts the caret
+   where you clicked and a drag selects. Shift+arrows, Shift+Home/End and
+   Ctrl+A select too, and the selection is drawn. Ctrl+C copies it, Ctrl+X
+   cuts it, typing replaces it. TAB gives the box the keyboard as before, and
+   the box now shows that it has it.
+2. **In the game** the same comes with the profile panel's boxes (Patch 663).
+3. **The link box**: a code box you typed into and left closes by itself
+   after 45 seconds. It used to stay until Esc.
+- **NO PASTE, on purpose: Ctrl+V does nothing in any box.** Your clipboard is
+  whatever you last copied anywhere (a password, an address). Game code comes
+  from whichever server you join, and a server can also drive the menus with
+  console commands. Three designs for "paste only when YOU meant it" were
+  each broken in review; the last could put the menu's name box under your
+  own crouch + noclip and press Continue for you. Nothing was shipped that
+  did this.
+- **Yours to decide:** paste needs a change in the ENGINE (servers kept away
+  from the menu's test commands, and for boxes in the game an engine-drawn
+  "paste?" prompt). It would ride the next release. Say if you want it.
+
 ## 00. 12 Oct — a Steam picture for everyone on the boards (Patch 660)
 
 From your list ("scan for all the people in the leaderboard and save their DP

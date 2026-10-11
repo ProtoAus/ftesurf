@@ -97,7 +97,7 @@
 #define ACCT_UI_ARM     0.6     // s the question ignores keys after it appears
 #define ACCT_UI_PATIENCE 20     // s waited for the lobby (it gives surfd 15)
 #define ACCT_UI_LINGER  8       // s an ending stays up
-#define ACCT_UI_IDLE    45      // s an untouched, empty code box stays up
+#define ACCT_UI_IDLE    45      // s a code box stays up after its last key
 #define ACCT_UI_OWED    60      // s a late answer to a confirm is still shown
 #define ACCT_UI_KN      16      // keys down at once that are followed
 
@@ -193,9 +193,7 @@ string(string old, string s) Account_Keep =
 	return strzone(s);
 };
 
-// 0 is the ctrl+V clipboard (sys.h).  Declared here since Patch 619: this file
-// compiles before cl_entview.qc, which also copies with it.
-void(float cliptype, string text) clipboard_set = #0:clipboard_set;
+// clipboard_set is declared in sui_sys.qc (0 is the ctrl+V clipboard, sys.h).
 
 // A code as surfd issues one: ACCT_CODELEN of its alphabet.
 float(string s) Account_IsCode =
@@ -342,9 +340,13 @@ float(float chary) Account_Type =
 		return FALSE;
 	if (strstrofs(ACCT_ALPHABET, chr2str(chary)) < 0)
 		return FALSE;
+	// The idle clock is a key that CHANGED the box: W, A, S and D are in the
+	// alphabet, and a full box that took them as use never closed (655's review).
 	if (strlen(acct_ui_buf) < ACCT_CODELEN)
+	{
 		acct_ui_buf = Account_Keep(acct_ui_buf, strcat(acct_ui_buf, chr2str(chary)));
-	acct_ui_t = cltime;
+		acct_ui_t = cltime;
+	}
 	return TRUE;
 };
 
@@ -371,11 +373,16 @@ void() Account_Frame =
 	if (acct_ui == ACCT_UI_NOTE)
 	if (cltime - acct_ui_t > ACCT_UI_LINGER)
 		Account_UiClose();
-	// Opened and never typed in: a box a server opened must not sit on the keys.
+	// A box a server opened must not sit on the keys, typed in or not: its
+	// clock is the last key that changed it, or Enter.  Patch 655: it waited
+	// for ever once a letter was in, and `link` then a movement key is how one
+	// gets in (653's review).
 	if (acct_ui == ACCT_UI_CODE)
-	if (acct_ui_buf == "")
 	if (cltime - acct_ui_t > ACCT_UI_IDLE)
+	{
+		dprint("steam: the code box closed, 45 s from the last key it took\n");
 		Account_UiClose();
+	}
 	if (acct_ui == ACCT_UI_PROMPT)
 	if (cltime - acct_ui_t > ACCT_UI_PROMPTLIFE)
 		Account_UiClose();
@@ -490,8 +497,10 @@ void() Account_Backspace =
 		return;
 	}
 	if (acct_ui_buf != "")
+	{
 		acct_ui_buf = Account_Keep(acct_ui_buf, substring(acct_ui_buf, 0, strlen(acct_ui_buf) - 1));
-	acct_ui_t = cltime;
+		acct_ui_t = cltime;
+	}
 };
 
 // The box is up and is NOT the keyboard's owner: Enter and Esc are its.
@@ -796,6 +805,7 @@ float(float evtype, float scanx, float chary) Account_InputEvent =
 		if (strlen(acct_ui_buf) != ACCT_CODELEN)
 		{
 			acct_ui_bad = cltime;
+			acct_ui_t = cltime;         // Enter on a short code is somebody using the box
 			print(sprintf("^5steam:^7 a code is %g characters, and the box has %g\n",
 			              ACCT_CODELEN, strlen(acct_ui_buf)));
 			return TRUE;

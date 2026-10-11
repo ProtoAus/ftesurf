@@ -903,12 +903,15 @@ void(vector pos, vector size, float focus) ui_field_box =
 void(string id, vector pos, vector size, __inout string text,
      __inout float cursor, string placeholder) ui_field =
 {
+	sui_text_metrics(6, SZ_LABEL);  // Patch 655: the caret goes where the click was, and a drag selects
 	sui_text_input(id, pos, size, text, cursor);
 
-	float focus = sui_is_last_clicked(id);
+	float focus = sui_text_has_focus(id);
 	ui_field_box(pos, size, focus);
 
 	vector tp = [pos_x + 6, pos_y + (size_y - SZ_LABEL_H) * 0.5];
+	if (focus)
+		sui_text_selection(id, tp, SZ_LABEL, text, cursor, SUI_THEME_SELECTED, 1);
 	if (text == "" && !focus)
 		sui_text(tp, SZ_LABEL, placeholder, COL_DIM, 1, 0);
 	else
@@ -940,12 +943,15 @@ void(string id, vector pos, vector size, __inout string text,
 void(string id, vector pos, vector size, __inout string text,
      __inout float cursor, string placeholder, string sel) ui_field_sel =
 {
+	sui_text_metrics(6, SZ_LABEL);
 	sui_text_input(id, pos, size, text, cursor);
 
-	float focus = sui_is_last_clicked(id);
+	float focus = sui_text_has_focus(id);
 	ui_field_box(pos, size, focus);
 
 	vector tp = [pos_x + 6, pos_y + (size_y - SZ_LABEL_H) * 0.5];
+	if (focus)
+		sui_text_selection(id, tp, SZ_LABEL, text, cursor, SUI_THEME_SELECTED, 1);
 
 	if (sel != "")
 		sui_text([pos_x + size_x - 6 - stringwidth(sel, TRUE, SZ_LABEL), tp_y],
@@ -7748,6 +7754,7 @@ void() m_open =
 {
 	setkeydest(2);
 	menu_active = TRUE;
+	sui_keys_forget();      // Patch 655: a modifier let go while the game had the keys
 	MM_Open();
 
 	// The list is always open now (there is no ms_open any more), so all this
@@ -7777,6 +7784,7 @@ void() m_close =
 
 	setkeydest(0);
 	menu_active = FALSE;
+	sui_keys_forget();
 };
 
 // A renderer restart destroys every render target (pr_menu.c:3499 looks this
@@ -7814,8 +7822,8 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 	  handler anywhere in src/), so it is free and it is the key a player expects.
 	  ONE FIELD PER SCREEN, and a ring over one element means "focus the field",
 	  which is all a one-field screen can do honestly -- a shift+TAB backwards
-	  walk would need a modifier state nothing here tracks, and inventing one for
-	  a ring of one would be a claim the code cannot keep.  A screen with no field
+	  walk over a ring of one would be a claim the code cannot keep (sui tracks
+	  Shift since Patch 655; nothing here reads it).  A screen with no field
 	  leaves the focus alone rather than clearing it, so TAB is inert there.
 	*/
 	if (evtype == IE_KEYDOWN && !used && scanx == K_TAB)
@@ -8155,6 +8163,10 @@ float(string cmd) m_consolecommand =
 			*/
 			print(sprintf("ui_name: field %S caret %g\n", ui_name_field,
 			              ui_name_caret));
+		else if (argv(1) == "sel")
+			// Patch 655: sui's one selection (its anchor, -1 none) and the
+			// modifiers it believes are down.
+			print(sprintf("ui_name: sel %g mods %g\n", _sui_sel_anchor, _sui_mods));
 		else if (argv(1) == "screen")
 		{
 			// Force the screen up regardless of the current name, for the
@@ -8425,6 +8437,9 @@ float(string cmd) m_consolecommand =
 	if (argv(0) == "ui_mouse")
 	{
 		local float mtook;
+		// Patch 655: a click by this command is no more the player's hand than
+		// ui_click's (Patch 647 stamped that one and ui_key, and left this door).
+		ui_synth_t = time;
 		mtook = Menu_InputEvent((argv(1) == "down") ? IE_KEYDOWN : IE_KEYUP, K_MOUSE1, 0, 0);
 		print(sprintf("ui_mouse: %s took %g  cursor %g %g\n", argv(1), mtook,
 		              _cursor_position_x, _cursor_position_y));

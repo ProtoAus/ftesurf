@@ -101,7 +101,7 @@
   The first argument is a clipboardtype_t (sys.h:81-85): 0 is CBT_CLIPBOARD, the
   ctrl+V target, and 1 is the X11-style selection buffer.
 */
-// clipboard_set itself is declared in cl_account.qc, which compiles first.
+// clipboard_set itself is declared in sui_sys.qc, which compiles first.
 #define EV_CLIPBOARD 0
 
 // ------------------------------------------------------------------- state

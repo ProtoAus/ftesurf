@@ -5,6 +5,32 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Text fields: what Patch 655 left -- 2026-10-12
+
+- **PASTE NEEDS THE ENGINE.** The menu VM's and the game VM's registered
+  console commands run from a server's stuffed text and from its game code:
+  `MP_ConsoleCommand_f` has no `Cmd_IsInsecure` test and the per-command
+  restriction lets a higher exec level through. So a server can open the
+  menu, choose its screen, place its cursor and focus and press its buttons,
+  and nothing a field sees says a paste was the player's. Wanted, in order:
+  (1) those commands refused from insecure levels unless registered as
+  server-runnable (this also covers Patch 647's terms and Steam answers
+  against a cursor a console command parked under a real click, which the
+  1.5 s `ui_synth` window does not); (2) then `clipboard_get` in the menu VM
+  for a key the engine delivered, with `utf8_decode`'s six-byte form testing
+  its last byte first (X11 can hand it a cut-short one); (3) for the game
+  VM, an engine-drawn prompt or game code the engine can tell is ours.
+  Three cuts of a QC-side gate failed their reviews.
+- **`^` colour codes in a field** make the caret and the selection jump:
+  widths are measured with codes read, and the name box takes codes.
+- **A long text runs out of its box**: no clip, no scroll.
+- **`in_builtinkeymap 1`**: Ctrl+letter arrives as the letter, so chords
+  are typed. Left and right modifiers share one bit.
+- **A drag let go outside the box** drops the selection.
+- **The TAB note in `Menu_InputEvent` says TAB is bound to nothing**; it is
+  `+showscores` in default.cfg (the menu has the keys, so it works).
+- ftesurf-5b, 12 Oct.
+
 ## The game's player search and breakdown: what Patch 662 left -- 2026-10-12
 
 From its review; none stops it.
