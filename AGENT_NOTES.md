@@ -2717,6 +2717,14 @@ real write/read/load/hold. Corrected subject 98/0; old one-token gate mutant
 QC pointer declarations need separate statements (`local float *a; local float
 *b;`), not `local float *a, *b;`: fteqcc treats the latter second declarator as a
 pointer-to-pointer. `lobby_enable` is a cvar, not a QC global; test with cvar_set.
+P682 publication/deployment: `tools/p682deployment.md`. A concurrent published
+release-tooling commit was integrated in a separate clean source tree; unchanged
+QC/fixture inputs and byte-identical3 VMs proved review provenance. The standard
+empty12-lobby guard and program-only swap/restarts ACTED; dual Windows and fleet
+destination/.prev hashes, unchanged native/config/data guards and two fresh-cache
+served-CSQC board smokes ACTED. SSH lacks journal visibility: do not grade that
+probe as a clean journal. Screenshots show the board but known missing-map
+material behind it; not map completeness or native/prediction acceptance.
 
 
 - **Request/native captions (P560).** Fractional display, sampled wire request

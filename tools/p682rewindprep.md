@@ -113,6 +113,15 @@ Final frozen-commit proofs, independent reviews, existing load/reset controls,
 reader/corpus checks and publication/deployment states are recorded in that
 root's checkpoint; none are implied merely by the initial subject result.
 
+## Publication and development deployment
+
+Both independent review lenses and the bounded two-token fix re-review completed.
+Published product `0a66924dd0f250d48cb417dcb1f048e9e035f2b6` has identical QC/fixture
+inputs and program bytes to reviewed `093b390`; concurrent published release
+tooling was integrated without source-policy drift. Exact clean-tree builds,
+dual Windows/fleet destination hashes, rollback and acted served-CSQC smoke are
+recorded in [p682deployment.md](p682deployment.md). No native consumer was enabled.
+
 ## Remaining prerequisite
 
 Prepare cold/replay/new-save-only/replacement branches only with explicit
