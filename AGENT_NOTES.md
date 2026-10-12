@@ -626,6 +626,16 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   live readout that moved is a measurement, one picture is not.
   A minimized harness draws slowly: wait ~500 ms after a change before
   `screenshot` (100 ms captured the previous state in p390mouse).
+- WORLD CATCH-UP (P681): `sv_perfdump` counts world ticks, NOT player-mover
+  substeps. On a spawned local bhop player at 20 FPS, native default limit 3
+  measured 603/202 ticks/frames, ruleset default 8 measured 1012/203; the 100 FPS
+  old-default control was 1009/1008. Surf's unchanged local world defaults are
+  `sv_mintic 0`, `sv_maxtic 0.1` (one world tick/frame at 20 FPS), while its
+  player mover still has `pm_ticrate 0.015`. Do not infer a 66.667 Hz world loop
+  from that player cvar. Keep a real spawned local player: SV_Physics forces
+  0.1-second idle steps when nobody plays. `tools/p681ticks.py` uses isolated
+  configs/data and the actual default assignment; it is not an input or ranked
+  movement accuracy test.
 - MOUSE: `spectate look <dx> <dy>` pushes one IE_MOUSEDELTA through the input
   chain; `mousepad` counts the deltas it saw. Real ones can reach a starting
   harness window, so a mouse arm checks that count before it counts.

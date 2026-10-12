@@ -25,7 +25,10 @@ commit   263d176862ccfd55fc3a82d5b65e20159d64a011
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-679
-patch    680
+patch    681
+# Patch 681: default sv_limittics 8 gives local/listen-server world simulation
+# enough catch-up budget for 100 Hz bhop at 20 render FPS. Tickrates and mouse
+# interpolation are unchanged; no native engine pin/tag or QC Build change.
 # Patch 680: inert canonical map/stage/bonus/latched and save-backed reset/zone
 # policies. Shared read-only destination/selection halves retain live operations;
 # reset clears speed/carrier, preserves ground/duck/Source history and optional aim.
