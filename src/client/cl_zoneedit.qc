@@ -1147,6 +1147,42 @@ float(string id) ZoneEdit_Clicked =
 	return sui_is_clicked(id);
 };
 
+// Control IDs also serve the shared HUD-editor hover probe.
+string(string id) ZoneEdit_Tip =
+{
+	if (id == "ze_as") return "Place this track's start zone. The timer arms here and starts when you leave. Each track has one start; select it and Re-place to move it.";
+	if (id == "ze_ag") return "Place the next stage start in this track. Stages divide the course into timed segments and are numbered in order.";
+	if (id == "ze_ac") return "Place a checkpoint in the selected zone's segment, or the last segment if none is selected. Checkpoints record progress without starting a new stage.";
+	if (id == "ze_ae") return "Place this track's finish zone. Entering it ends the run. Each track has one end; select it and Re-place to move it.";
+	if (id == "ze_rp") return "Select a zone, then redraw its floor and height. Its track, type and course position stay the same. Right-click steps back; Esc returns to the panel.";
+	if (id == "ze_sp") return "For a selected start or stage, use your current position and facing as its restart spawn. Stand at a safe point inside the zone first.";
+	if (id == "ze_resetspawn") return "For a selected start or stage, remove its custom spawn and use the zone's default floor point. Concave zones keep a safe point inside the outline.";
+	if (id == "ze_dl") return "Remove the selected zone from your edits. Stages and checkpoints are renumbered. Nothing is written to disk until Save zones.";
+	if (id == "ze_shape") return "Choose Box or Polygon for new and re-placed zones. A box uses two opposite floor corners; a polygon uses an outline closed with Enter or a click on its first corner. Both have a flat floor and vertical height.";
+	if (id == "ze_edges") return "Snap placement near existing zone corners and edges on the same floor. Corners take priority. This does not snap to the map's brush edges.";
+	if (id == "ze_xyz") return "Round the selected zone's outline and vertical bounds to the chosen grid. Works in the panel; an invalid or collapsed outline is refused.";
+	if (id == "ze_gs") return "Use the world surface as hit instead of rounding placement to the grid. This is a snapping option, not the Surf gamemode. Click again to restore grid snapping.";
+	if (id == "ze_sv") return "Save the zones to this map's local JSON file on your machine. Reload the map to use them for timing in your hosted game. This does not upload zones or change a lobby's timing or times.";
+	if (id == "ze_rl") return "Discard unsaved zone edits and read this map's zones again. Your saved local file takes priority; use Discard local file to stop using that override.";
+	if (id == "ze_fg") return "Delete this map's saved local zone override and reload the underlying zones. Unsaved zone edits are lost too. Map properties are separate and are not removed.";
+	if (id == "ze_settings") return "Edit local Surf/Bhop presets, speed cap, gravity and air acceleration for this map. Save settings and reload the hosted map to apply them; public lobbies are unchanged.";
+	if (id == "ze_look") return "Give the mouse back to aiming and flying without closing the editor. Your jump-bound key returns the cursor to this window; V toggles noclip.";
+	if (id == "ze_cl") return "Close the editor without saving. Unsaved zone edits stay in memory until the map changes; reopen the editor to continue or save them.";
+	if (id == "ze_mode_surf") return "Stage Surf mode: 66.67 Hz physics and air acceleration 150. Keeps your chosen speed cap and gravity. Save settings and reload your hosted map to apply.";
+	if (id == "ze_mode_bhop") return "Stage Bhop mode: 100 Hz physics and air acceleration 1000. Keeps your chosen speed cap and gravity. Save settings and reload your hosted map to apply.";
+	if (id == "ze_ms0") return "Speed cap: limits movement velocity, not ordinary walking speed. Higher values allow faster surfing or bhopping. Enter 1 to 100000; Apply stages the value, Save settings and map reload make it active locally.";
+	if (id == "ze_ms1") return "Gravity: downward acceleration in map units per second squared. Lower values give longer, higher jumps. Enter 1 to 10000; this map's saved setting applies only after a hosted map reload.";
+	if (id == "ze_ms2") return "Air acceleration: how strongly movement input changes your velocity while airborne. Surf presets 150; Bhop presets 1000. Enter 0 to 10000; save and reload the hosted map to apply.";
+	if (id == "ze_msapply") return "Validate the number and stage it in this properties panel. Enter does the same. This does not save to disk or change the active physics yet.";
+	if (id == "ze_mssave") return "Save this map's mode and three numeric properties locally, including the active text field. Requires the P673+ engine and a hosted map reload to apply. Does not change public lobbies or upload anything.";
+	if (id == "ze_msback") return "Return to the zone tools without saving properties. Use Save settings first: reopening properties reads the saved values, not your unsaved changes.";
+	if (id == "ze_t0") return "Show the main course. Tracks have separate starts, stages, checkpoints and finishes.";
+	if (substring(id, 0, 4) == "ze_t") return "Show a bonus course. A +b tab is the next unused bonus track; select it and add zones to build that course.";
+	if (substring(id, 0, 4) == "ze_z") return "Select this zone to re-place, delete or snap it. Double-click teleports to it only when your zone table matches the server's. The row shows outline points and bottom/top heights.";
+	if (substring(id, 0, 4) == "ze_g") return "Enable grid snapping at this spacing in map units. Affects placement and Snap selected XYZ. The mouse wheel also changes the grid while placing.";
+	return "";
+};
+
 float(vector p, vector s, string id, string word, float tsz, vector col) ZoneEdit_Button =
 {
 	local float w;
@@ -1157,6 +1193,7 @@ float(vector p, vector s, string id, string word, float tsz, vector col) ZoneEdi
 	              (col == ZEC_SEL) ? SUI_THEME_EDGE_HI : SUI_THEME_EDGE, 1);
 	w = stringwidth(word, TRUE, [tsz, tsz]);
 	sui_text(p + [max(4, (s_x - w) * 0.5), (s_y - tsz) * 0.5], [tsz, tsz], word, col, 1, 0);
+	if (ze_cursor) sui_tooltip_for(id, ZoneEdit_Tip(id), ui_cv_scale);
 	return ZoneEdit_Clicked(id);
 };
 
@@ -1166,6 +1203,8 @@ void(vector scr) ZoneEdit_Panel =
 	local float w, h, pad, tsz, rsz, rowh, bw, z, n, i, k, best, bo, o, a, top, lastk, cut;
 	local string s, id, title, controls;
 
+	if (!ui_ze_state || !ze_cursor)
+		if (substring(sui_tip_id, 0, 3) == "ze_") sui_tooltip_reset();
 	if (!ui_ze_state)
 		return;
 	if (ui_ze_state == ZE_PANEL)
@@ -1175,6 +1214,7 @@ void(vector scr) ZoneEdit_Panel =
 		{
 			UI_CursorRelease(UIC_ZONEEDIT);
 			ui_ze_state = ZE_OFF;
+			if (substring(sui_tip_id, 0, 3) == "ze_") sui_tooltip_reset();
 			print(sprintf("^3zone_edit^7: closed -- %s opened%s\n", s,
 			              ze_dirty ? "; your unsaved zones are still on screen" : ""));
 			return;
@@ -1361,6 +1401,7 @@ void(vector scr) ZoneEdit_Panel =
 		         sprintf("%g pts  z %g..%g%s", zone_npts[z], zone_bottom[z], zone_top[z],
 		                 ((zone_type[z] == ZONE_START || zone_type[z] == ZONE_STAGE) && zone_td_kind[z] == ZTD_NONE)
 		                   ? "  auto spawn" : ""), ZEC_DIM, 1, 0);
+		if (ze_cursor) sui_tooltip_for(id, ZoneEdit_Tip(id), ui_cv_scale);
 		if (ZoneEdit_Clicked(id)) ZoneEdit_RowClick(z);
 		lp_y = lp_y + rowh;
 	}

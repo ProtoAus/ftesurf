@@ -371,6 +371,20 @@ a few sizes, drift and fade out.
 - **Live since 11 Oct 14:53 UTC (12 Oct, 01:53 here)** on both installs and
   all twelve lobbies. Restart the game to get it.
 
+## 00. 12 Oct — zone-editor hover help (Patch 676)
+
+Open `zone_edit` and hold the mouse over a button for about 0.35 seconds:
+- Tools, track tabs, zone rows, Box/Polygon, snapping, file actions and cursor
+  controls explain what they do. Surface explicitly differs from Surf mode.
+- Map properties: hover Surf/Bhop, the numeric values **or their labels**, the
+  active number field, Apply, Save settings and Back. Help explains the units,
+  accepted ranges, local-only behavior and when staged/saved settings apply.
+- Judge the wording and readability with your normal HUD scale. Check the help
+  disappears when moving away, holding a mouse button, switching to Look/fly,
+  closing the editor or losing focus. Existing `hud_edit` help should still work.
+- Physical mouse delivery and whether the explanations answer your questions
+  remain human acceptance; automated hovers do not establish either.
+
 ## 00. 12 Oct — organized zone editor and mode presets (Patch 673)
 
 On a newly hosted map with the P673+ native engine, open `zone_edit`:

@@ -5231,6 +5231,22 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+### Zone-editor hover controls (Patch 676) — 2026-10-12
+
+- Use the shared SUI tooltip path, not a second renderer/timer. Clear only `ze_`
+  tips when this panel is off or its cursor is released; unconditional reset in
+  the inactive panel would erase the HUD editor's later-frame hover timer.
+- A delay control must first move the pointer away and let the old candidate
+  clear. The real initial cursor had already hovered Box for 0.35 seconds before
+  the synthetic first hover, so an early visible tip did not disprove the delay.
+- `hud_edit ui hover` moves SUI's pointer but not zone_edit's cached pointer;
+  use `zone_edit pointer` before a held-mouse acting control. Its routed result
+  is logged as `sui_event`, not `sui_key`. Keep the required malformed settings
+  overlay for the older P671 regression or its invalid-file arm cannot act.
+- P676 fixtures retain pre-claim P675 echo/screenshot names after a concurrent
+  native claim. New product sources preserve published P674 and P675 work;
+  this help-only change does not build/deploy a different native engine.
+
 ### Zone editor organization and presets (Patch 673) — 2026-10-12
 
 - The old `surf` button was SURFACE tracing, not a gamemode. Renamed Surface;

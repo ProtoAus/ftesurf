@@ -378,6 +378,7 @@ void(vector p, float w, float y, float rowh, float tsz) ZoneEdit_SettingsDraw =
 {
 	local float i;
 	local vector fp;
+	local string id, tip;
 	ZoneEdit_Text([p_x + 8, y + 4], tsz, "MAP PROPERTIES  /  local game only; reload to apply", ZEC_DIM);
 	y = y + rowh * 1.4;
 	if (ZoneEdit_Button([p_x + 8, y], [w * 0.48 - 8, rowh], "ze_mode_surf", "Surf", tsz, ze_mode == 1 ? ZEC_SEL : ZEC_TEXT)) ZoneEdit_SettingMode(1);
@@ -387,8 +388,12 @@ void(vector p, float w, float y, float rowh, float tsz) ZoneEdit_SettingsDraw =
 	y = y + rowh * 1.4;
 	for (i = 0; i < MAPSET_COUNT; i = i + 1)
 	{
+		id = sprintf("ze_ms%g", i);
+		tip = ZoneEdit_Tip(id);
+		sui_action_element([p_x + 8, y], [w * 0.56 - 8, rowh - 3], sprintf("ze_msl%g", i), sui_noop);
+		if (ze_cursor) sui_tooltip_for(sprintf("ze_msl%g", i), tip, ui_cv_scale);
 		ZoneEdit_Text([p_x + 8, y + 6], tsz, MapSet_Label(i), ZEC_TEXT);
-		if (ZoneEdit_Button([p_x + w * 0.56, y], [w * 0.40, rowh - 3], sprintf("ze_ms%g", i),
+		if (ZoneEdit_Button([p_x + w * 0.56, y], [w * 0.40, rowh - 3], id,
 			ftos(ze_values[i]), tsz, ze_field == i ? ZEC_SEL : ZEC_TEXT)) ZoneEdit_SettingEdit(i);
 		y = y + rowh;
 	}
@@ -398,6 +403,7 @@ void(vector p, float w, float y, float rowh, float tsz) ZoneEdit_SettingsDraw =
 		sui_style_box(fp, [w * 0.66, rowh - 3, 0], 4, SUI_THEME_WELL, SUI_THEME_EDGE_HI, 1);
 		sui_text_metrics(tsz * 0.5, [tsz, tsz]);
 		sui_text_input("ze_value", fp, [w * 0.66, rowh - 3, 0], ze_text, ze_caret);
+		if (ze_cursor) sui_tooltip_for("ze_value", ZoneEdit_Tip(sprintf("ze_ms%g", ze_field)), ui_cv_scale);
 		ZoneEdit_Text(fp + [tsz * 0.5, 5, 0], tsz, ze_text, ZEC_TEXT);
 		if (sui_text_has_focus("ze_value"))
 			drawfill(fp + [tsz * 0.5 + stringwidth(substring(ze_text, 0, ze_caret), TRUE, [tsz, tsz]), 4, 0],

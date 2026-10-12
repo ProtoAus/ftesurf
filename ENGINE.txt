@@ -25,7 +25,11 @@ commit   67ccaf17ba3b8d8afdc4d1bf247330f3827fff15
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-675
-patch    675
+patch    676
+# Patch 676: zone-editor mouse hover help uses hud_edit's shared delayed/wrapped
+# tooltips for tools, tracks, zone rows and all map properties/inputs. Surface vs
+# Surf, local-only saves, staged values and reload requirements are explained.
+# No engine pin/tag, physics, stored-time or Build-number change.
 # Patch 675: typed exact uint32 sequence words in P672 replay and scoped native
 # SSQC PreThink command identity/provenance/duration/piece offset. Synthetic,
 # legacy, budget-mutated and incomplete contexts are unavailable; physics unchanged.
