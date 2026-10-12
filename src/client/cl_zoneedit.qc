@@ -1,5 +1,9 @@
 /*
 ===========================================================================
+  Patch 671 extends this editor: jump/cursor switching, title dragging, XYZ
+  snapping, simple polygon outlines, and six local map settings. Steam roles
+  and publishing are separate: no identity or rights inferred from names.
+
   Patch 669: THE ZONE EDITOR, part one -- make and move zones in the game.
 
   The owner, 12 Oct 2026: Momentum's zone editor lets you "noclip around using
@@ -44,11 +48,14 @@
 #define ZE_A      2                 // placing: the first floor corner
 #define ZE_B      3                 // the opposite corner
 #define ZE_H      4                 // the height
+#define ZE_P      5                 // polygon outline
+#define ZE_MAXPTS 64
 
 #define ZEB_M1    1
 #define ZEB_M2    2
 #define ZEB_WUP   4
 #define ZEB_WDN   8
+#define ZEB_ENTER 16
 
 #define ZE_REACH  16384             // how far the aim is traced
 #define ZE_MINH   16                // a zone is at least this tall
@@ -71,7 +78,6 @@ float  ze_dirty;                    // changed since the last save or load
 string ze_map;                      // the map the edits belong to
 float  ze_grid;                     // snap, units
 float  ze_snap;                     // 1 the grid, 0 the surface as hit
-float  ze_btn;                      // presses this file took (a release goes where its press went)
 float  ze_mouse_seen;
 vector ze_mouse;
 vector ze_panel_p, ze_panel_s;
@@ -93,6 +99,35 @@ string ze_press;                    // `zone_edit press <id>`: that element coun
 string ze_note;                     // one line for the panel's foot
 float  ze_note_t;
 float  ze_saved_n;                  // zones in the last file written (the status line)
+
+float ze_cursor, ze_drag, ze_positioned;
+vector ze_drag_offset, ze_window;
+float ze_poly, ze_np, ze_edges, ze_close;
+vector *ze_pts;
+float ze_lastrow, ze_lastclick;
+float ze_settings, ze_field, ze_caret;
+string ze_text;
+float ze_values[MAPSET_COUNT];
+float *ze_field_keys;
+
+float() ZoneEdit_PolygonValid;
+void() ZoneEdit_PolygonClick;
+void() ZoneEdit_PolygonClose;
+void() ZoneEdit_PolygonGhost;
+vector(vector p) ZoneEdit_EdgeSnap;
+float(float top) ZoneEdit_Height;
+vector(float z) ZoneEdit_Interior;
+float() ZoneEdit_AddPolygon;
+void() ZoneEdit_SnapSelected;
+void(float z) ZoneEdit_RowClick;
+void() ZoneEdit_ToggleMouse;
+void() ZoneEdit_SettingsOpen;
+void(float i) ZoneEdit_SettingEdit;
+void() ZoneEdit_SettingApply;
+void(float evtype, float scan, float char) ZoneEdit_FieldKey;
+void() ZoneEdit_SettingsSave;
+void(vector p, float w, float y, float rowh, float tsz) ZoneEdit_SettingsDraw;
+void(vector p) ZoneEdit_DragStart;
 
 void(string s) ZoneEdit_Note =
 {
@@ -383,6 +418,7 @@ void(float z, float yaw) ZoneEdit_DestCentre =
 	for (i = 0; i < n; i = i + 1)
 		c = c + zone_pt[zone_first[z] + i];
 	c = c * (1 / max(1, n));
+	if (!Zone_XYInRing(z, c_x, c_y)) c = ZoneEdit_Interior(z);
 	if (zone_td_name[z] != "")
 		strunzone(zone_td_name[z]);
 	zone_td_name[z] = "";
@@ -712,6 +748,7 @@ void() ZoneEdit_Aim =
 	ze_hitok = (trace_fraction < 1 && !trace_startsolid);
 	ze_hitz = trace_endpos_z;
 	ze_hit = ZoneEdit_SnapV(trace_endpos);
+	if (ze_edges && ze_hitok) ze_hit = ZoneEdit_EdgeSnap(ze_hit);
 	if (!ze_snap)
 		ze_hit_z = ze_hit_z - 1;        // the surface as hit: a hair under it, for the same reason
 };
@@ -721,7 +758,7 @@ void() ZoneEdit_Aim =
 float() ZoneEdit_Pull =
 {
 	local vector eye, d, w;
-	local float a, b, c, e, den, t, z, g;
+	local float a, b, c, e, den, t;
 
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
@@ -736,15 +773,7 @@ float() ZoneEdit_Pull =
 	if (den < 0.0001)
 		return ze_h;                    // looking straight up or down: keep what it was
 	t = (a * e - b * (d * w)) / den;
-	z = t;
-	g = max(1, ze_grid);
-	if (ze_snap)
-		z = rint(z / g) * g;
-	if (z < ZE_MINH)
-		z = ZE_MINH;
-	if (z > ZE_MAXH)
-		z = ZE_MAXH;
-	return z;
+	return ZoneEdit_Height(ze_a_z + t);
 };
 
 // What else has the mouse, "" nothing: the inspector's list (cl_entview.qc), and any
@@ -770,7 +799,8 @@ void() ZoneEdit_ToPanel =
 {
 	local string why;
 
-	ze_click = ze_back = FALSE;
+	ze_click = ze_back = ze_close = FALSE;
+	ze_cursor = TRUE;
 	ui_ze_state = ZE_PANEL;
 	why = ZoneEdit_Blocker();
 	if (why != "")
@@ -781,7 +811,6 @@ void() ZoneEdit_ToPanel =
 		return;
 	}
 	ze_mouse_seen = FALSE;
-	ze_btn = 0;
 	sui_reset_actions();
 	activate_mouse_cursor();
 	UI_CursorClaim(UIC_ZONEEDIT);
@@ -790,9 +819,12 @@ void() ZoneEdit_ToPanel =
 void() ZoneEdit_ToPlacing =
 {
 	UI_CursorRelease(UIC_ZONEEDIT);
-	ze_click = ze_back = FALSE;
-	ze_btn = 0;
-	ui_ze_state = ZE_A;
+	ze_click = ze_back = ze_close = FALSE;
+	ze_cursor = FALSE;
+	ze_drag = FALSE;
+	ze_np = 0;
+	if (!ze_pts) ze_pts = memalloc(sizeof(vector) * ZE_MAXPTS);
+	ui_ze_state = ze_poly ? ZE_P : ZE_A;
 };
 
 // The panel's "+ start" and its fellows: what the new zone will be, then off to place it.
@@ -854,6 +886,7 @@ void(float z) ZoneEdit_BeginReplace =
 		return;
 	ze_replace = z;
 	ze_rsig = zone_count * 4096 + zone_ptcount;
+	if (zone_npts[z] != 4) ze_poly = TRUE;
 	ze_ntype = zone_type[z];
 	ze_nseg = zone_seg[z];
 	ze_ncp = zone_cp[z];
@@ -867,6 +900,12 @@ void() ZoneEdit_Commit =
 	local vector pos, ang;
 	local string nm;
 
+	ze_h = ZoneEdit_Height(ze_a_z + ze_h);
+	if (ze_poly)
+	{
+		if (!ZoneEdit_PolygonValid()) { ZoneEdit_Note("Invalid outline; unchanged"); return; }
+		if (zone_ptcount + ze_np > ZONE_MAX_POINTS) { ZoneEdit_Note("Point table full; unchanged"); return; }
+	}
 	ang = getproperty(VF_ANGLES);
 	track = ze_track;
 	kind = ZTD_NONE;
@@ -894,7 +933,9 @@ void() ZoneEdit_Commit =
 			nm = strzone(zone_td_name[ze_replace]);
 		ZoneEdit_Remove(ze_replace);
 	}
-	z = ZoneEdit_AddBox(ze_ntype, track, ze_nseg, ze_ncp, ze_a, ze_b, ze_a_z, ze_a_z + ze_h);
+	if (ze_poly) z = ZoneEdit_AddPolygon();
+	else z = ZoneEdit_AddBox(ze_ntype, track, ze_nseg, ze_ncp, ze_a, ze_b, ze_a_z, ze_a_z + ze_h);
+	if (z >= 0) zone_track[z] = track;
 	if (z < 0)
 	{
 		if (nm != "")
@@ -932,14 +973,15 @@ void() ZoneEdit_Commit =
 // One MOUSE1 while placing, taken in the draw pass where the aim is this frame's.
 void() ZoneEdit_Click =
 {
-	if (ui_ze_state == ZE_A)
+	if (ui_ze_state == ZE_P) ZoneEdit_PolygonClick();
+	else if (ui_ze_state == ZE_A)
 	{
 		if (!ze_hitok)
 			return;
 		ze_a = ze_hit;
 		ze_b = ze_hit;
 		ze_floor = ze_hitz;
-		ze_h = max(ZE_MINH, ze_grid * 4);
+		ze_h = ZoneEdit_Height(ze_a_z + max(ZE_MINH, ze_grid * 4));
 		ui_ze_state = ZE_B;
 	}
 	else if (ui_ze_state == ZE_B)
@@ -961,8 +1003,13 @@ void() ZoneEdit_Click =
 // MOUSE2: one step back, and out to the panel from the first.
 void() ZoneEdit_Back =
 {
-	if (ui_ze_state == ZE_H)
-		ui_ze_state = ZE_B;
+	if (ui_ze_state == ZE_P)
+	{
+		if (ze_np > 0) ze_np = ze_np - 1;
+		else { ze_replace = -1; ZoneEdit_ToPanel(); }
+	}
+	else if (ui_ze_state == ZE_H)
+		ui_ze_state = ze_poly ? ZE_P : ZE_B;
 	else if (ui_ze_state == ZE_B)
 		ui_ze_state = ZE_A;
 	else if (ui_ze_state == ZE_A)
@@ -1016,8 +1063,8 @@ void() ZoneEdit_Draw3D =
 	if (ze_map != zone_mapname || serverkey("map") != ze_map)
 	{
 		// The map changed under the editor: the table is the new map's.
-		if (ui_ze_state == ZE_PANEL)
-			UI_CursorRelease(UIC_ZONEEDIT);
+		UI_CursorRelease(UIC_ZONEEDIT);
+		ze_cursor = ze_drag = FALSE;
 		ui_ze_state = ZE_OFF;
 		if (ze_dirty)
 			print("^3zone_edit^7: the map changed; the unsaved zones are gone\n");
@@ -1037,14 +1084,20 @@ void() ZoneEdit_Draw3D =
 		ze_click = ze_back = FALSE;     // another panel is up: its clicks are its own
 		return;
 	}
+	if (ze_cursor)
+	{
+		if (ze_poly) ZoneEdit_PolygonGhost();
+		return;
+	}
 	ZoneEdit_Aim();
 	if (ui_ze_state == ZE_H)
-		ze_h = ZoneEdit_Pull();
+		ze_h = ZoneEdit_Height(ze_a_z + ZoneEdit_Pull());
 	if (ze_back)
 	{
 		ze_back = FALSE;
 		ZoneEdit_Back();
 	}
+	if (ze_close && ui_ze_state == ZE_P) { ze_close = FALSE; ZoneEdit_PolygonClose(); }
 	if (ze_click)
 	{
 		ze_click = FALSE;
@@ -1053,6 +1106,7 @@ void() ZoneEdit_Draw3D =
 	if (ui_ze_state < ZE_A)
 		return;
 
+	if (ze_poly) { ZoneEdit_PolygonGhost(); return; }
 	// The aim: a small cross on the floor at the snapped point.
 	if (ze_hitok && ui_ze_state != ZE_H)
 	{
@@ -1079,6 +1133,7 @@ void() ZoneEdit_Draw3D =
 // A click on element `id`: the mouse's, or `zone_edit press <id>` (an arm has no mouse).
 float(string id) ZoneEdit_Clicked =
 {
+	if (!ze_cursor && ze_press == "") return FALSE;
 	if (ze_press != "")
 	if (ze_press == id)
 	{
@@ -1129,10 +1184,12 @@ void(vector scr) ZoneEdit_Panel =
 	rsz  = Font_Px(8 * ui_cv_scale);
 	rowh = rsz + 6 * ui_cv_scale;
 
-	if (ui_ze_state >= ZE_A)
+	if (ui_ze_state >= ZE_A && !ze_cursor)
 	{
 		// Placing: the mouse is the game's.  One line of what the next click does.
-		if (ui_ze_state == ZE_A)
+		if (ui_ze_state == ZE_P)
+			s = sprintf("click corners (%g); Enter / first corner closes; jump: window", ze_np);
+		else if (ui_ze_state == ZE_A)
 			s = "MOUSE1 first floor corner";
 		else if (ui_ze_state == ZE_B)
 			s = sprintf("MOUSE1 opposite corner  (%g x %g)", fabs(ze_hit_x - ze_a_x), fabs(ze_hit_y - ze_a_y));
@@ -1166,6 +1223,11 @@ void(vector scr) ZoneEdit_Panel =
 	p = [scr_x - w - 16 * ui_cv_scale, 56 * ui_cv_scale, 0];
 	if (p_y + h > scr_y - 8)
 		p_y = max(8, scr_y - 8 - h);
+	if (ze_drag) ze_window = _cursor_position - ze_drag_offset;
+	if (ze_positioned) p = ze_window;
+	p_x = bound(8, p_x, max(8, scr_x - w - 8));
+	p_y = bound(8, p_y, max(8, scr_y - h - 8));
+	ze_window = p;
 	ze_panel_p = p;
 	ze_panel_s = [w, h, 0];
 
@@ -1182,6 +1244,12 @@ void(vector scr) ZoneEdit_Panel =
 	                                (serverkey("board") == "ranked") ? "; this server times with its own" : ""),
 	         ZEC_DIM, 1, 0);
 	tp_y = tp_y + rsz + pad;
+	if (ze_settings)
+	{
+		ZoneEdit_SettingsDraw(p, w, tp_y, rowh, rsz);
+		sui_text([p_x + pad, p_y + h - rowh], [rsz, rsz], ze_note, ZEC_WARN, 1, 0);
+		drawresetcliparea(); sui_end(); Font_Reset(); return;
+	}
 
 	// Tracks: main, each bonus there is, and the next one.
 	top = 0;
@@ -1221,7 +1289,7 @@ void(vector scr) ZoneEdit_Panel =
 	if (ZoneEdit_Button(tp + [(bw + 4) * 3, 0], [bw, rowh], "ze_ae", "+ end", rsz, ZoneEdit_Has(ze_track, ZONE_END) ? ZEC_DIM : ZEC_TEXT))
 		ZoneEdit_Begin(ZONE_END);
 	tp_y = tp_y + rowh + pad;
-	if (ui_ze_state != ZE_PANEL)
+	if (!ze_cursor && ui_ze_state >= ZE_A)
 	{
 		// A button above took the mouse away: this frame's panel ends here.
 		drawresetcliparea();
@@ -1236,7 +1304,7 @@ void(vector scr) ZoneEdit_Panel =
 	for (z = 0; z < zone_count; z = z + 1)
 		if (zone_track[z] == ze_track)
 			n = n + 1;
-	rs = [w - pad * 2, (p_y + h - pad) - tp_y - rowh * 5.2, 0];
+	rs = [w - pad * 2, (p_y + h - pad) - tp_y - rowh * 7.2, 0];
 	lastk = -1;
 	bo = -1;
 	cut = 0;
@@ -1285,8 +1353,7 @@ void(vector scr) ZoneEdit_Panel =
 		         sprintf("%g pts  z %g..%g%s", zone_npts[z], zone_bottom[z], zone_top[z],
 		                 ((zone_type[z] == ZONE_START || zone_type[z] == ZONE_STAGE) && zone_td_kind[z] == ZTD_NONE)
 		                   ? "  no spawn" : ""), ZEC_DIM, 1, 0);
-		if (ZoneEdit_Clicked(id))
-			ze_sel = (ze_sel == z) ? -1 : z;
+		if (ZoneEdit_Clicked(id)) ZoneEdit_RowClick(z);
 		lp_y = lp_y + rowh;
 	}
 	if (!n)
@@ -1348,6 +1415,20 @@ void(vector scr) ZoneEdit_Panel =
 		ze_snap = !ze_snap;
 	tp_y = tp_y + rowh + 4;
 
+	bw = (w - pad * 2 - 8) / 3;
+	if (ZoneEdit_Button(tp, [bw, rowh], "ze_shape", ze_poly ? "polygon" : "box", rsz, ze_poly ? ZEC_SEL : ZEC_TEXT))
+	{
+		if (ui_ze_state == ZE_PANEL) ze_poly = !ze_poly;
+		else ZoneEdit_Note("Finish/cancel this outline before changing shape");
+	}
+	if (ZoneEdit_Button(tp + [bw + 4, 0], [bw, rowh], "ze_edges", "edge snap", rsz, ze_edges ? ZEC_SEL : ZEC_TEXT)) ze_edges = !ze_edges;
+	if (ZoneEdit_Button(tp + [(bw + 4) * 2, 0], [bw, rowh], "ze_xyz", "snap XYZ", rsz, ZEC_TEXT))
+		if (ui_ze_state == ZE_PANEL) ZoneEdit_SnapSelected();
+	tp_y = tp_y + rowh + 4;
+	bw = (w - pad * 2 - 4) / 2;
+	if (ZoneEdit_Button(tp, [bw, rowh], "ze_settings", "map settings", rsz, ZEC_TEXT)) ZoneEdit_SettingsOpen();
+	if (ZoneEdit_Button(tp + [bw + 4, 0], [bw, rowh], "ze_look", "look / resume", rsz, ZEC_TEXT)) ZoneEdit_ToggleMouse();
+	tp_y = tp_y + rowh + 4;
 	bw = (w - pad * 2 - 12) / 4;
 	if (ZoneEdit_Button(tp, [bw, rowh], "ze_sv", "save", rsz, ze_dirty ? ZEC_SEL : ZEC_DIM))
 		ZoneEdit_Save(FALSE);
@@ -1366,6 +1447,8 @@ void(vector scr) ZoneEdit_Panel =
 	if (ZoneEdit_Button(tp + [(bw + 4) * 3, 0], [bw, rowh], "ze_cl", "close", rsz, ZEC_TEXT))
 	{
 		UI_CursorRelease(UIC_ZONEEDIT);
+		ze_cursor = ze_drag = FALSE;
+		ze_field = -1; sui_text_unfocus();
 		ui_ze_state = ZE_OFF;
 		if (ze_dirty)
 			print("^3zone_edit^7: closed with unsaved zones; they stay on screen until the map changes\n");
@@ -1390,110 +1473,112 @@ void(vector scr) ZoneEdit_Panel =
   Input.  cl_main.qc asks this before the entity inspector.
 ===========================================================================
 */
+// Ownership records the press, not today's bind/mode. Releases survive a
+// toggle, close, rebind or map change; releases of earlier game presses pass.
+#define ZE_KEYCOUNT 2048
 float(float evtype, float scanx, float chary, float devid) ZoneEdit_InputEvent =
 {
-	local float b, onpanel;
+	local float owned, onpanel, valid;
 
-	if (!ui_ze_state)
-		return FALSE;
-
-	if (ui_ze_state == ZE_PANEL)
+	valid = (scanx >= 0 && scanx < ZE_KEYCOUNT);
+	owned = 0;
+	if (ze_field_keys && valid) owned = ze_field_keys[scanx];
+	if (evtype == IE_KEYUP)
 	{
-		if (evtype == IE_MOUSEABS)
-		{
-			ze_mouse = [scanx, chary];
-			ze_mouse_seen = TRUE;
-			sui_input_event(evtype, scanx, chary, devid);
-			return TRUE;
-		}
-		if (evtype != IE_KEYDOWN && evtype != IE_KEYUP)
-			return FALSE;
-		onpanel = (ze_mouse_seen && is_2dpoint_in_bbox(ze_mouse, ze_panel_p, ze_panel_s));
+		if (!owned) return FALSE;
+		ze_field_keys[scanx] = 0;
+		if (owned == 4) ZoneEdit_FieldKey(evtype, scanx, chary);
 		if (scanx == K_MOUSE1)
 		{
-			if (evtype == IE_KEYDOWN)
+			onpanel = (ze_mouse_seen && is_2dpoint_in_bbox(ze_mouse, ze_panel_p, ze_panel_s));
+			if (owned == 1 && ui_ze_state && ze_cursor && !ze_drag)
 			{
-				ze_btn = ze_btn | ZEB_M1;
-				if (ze_mouse_seen)
-					_sui_mouse_move(ze_mouse, FALSE);
+				if (cl_input_real && onpanel) ze_real_t = cltime;
 				sui_input_event(evtype, scanx, chary, devid);
-				return TRUE;
 			}
-			if (!(ze_btn & ZEB_M1))
-				return FALSE;
-			ze_btn = ze_btn - ZEB_M1;
-			if (cl_input_real)
-				ze_real_t = cltime;         // a device let go of MOUSE1 over our panel
-			sui_input_event(evtype, scanx, chary, devid);
+			ze_drag = FALSE;
+		}
+		return TRUE;
+	}
+	if (!ui_ze_state) return FALSE;
+	if (evtype == IE_MOUSEABS && ze_cursor)
+	{
+		ze_mouse = [scanx, chary]; ze_mouse_seen = TRUE;
+		sui_input_event(evtype, scanx, chary, devid);
+		return TRUE;
+	}
+	if (evtype != IE_KEYDOWN || !valid) return FALSE;
+	if (ZoneEdit_Blocker() != "") return FALSE;
+	if (owned && !(owned == 4 && ze_cursor && ze_settings && ze_field >= 0)) return TRUE;
+	if (!ze_field_keys)
+	{
+		ze_field_keys = memalloc(sizeof(float) * ZE_KEYCOUNT);
+		memfill8(ze_field_keys, 0i, sizeof(float) * ZE_KEYCOUNT);
+	}
+
+	if (!owned)
+	if (Keys_BindHas(Keys_BindNow(scanx), "+jump"))
+	{
+		ze_field_keys[scanx] = 3;
+		ZoneEdit_ToggleMouse();
+		return TRUE;
+	}
+	if (ze_cursor && ze_settings && ze_field >= 0)
+	if (scanx != K_MOUSE1 && scanx != K_MOUSE2 && scanx != K_MWHEELUP && scanx != K_MWHEELDOWN)
+	{
+		ze_field_keys[scanx] = 4;
+		if (scanx == K_ESCAPE) { ze_field = -1; sui_text_unfocus(); }
+		else if (scanx == K_ENTER || scanx == K_KP_ENTER) ZoneEdit_SettingApply();
+		else ZoneEdit_FieldKey(evtype, scanx, chary);
+		return TRUE;
+	}
+	if (scanx == K_ESCAPE)
+	{
+		ze_field_keys[scanx] = 5;
+		if (ze_cursor)
+		{
+			UI_CursorRelease(UIC_ZONEEDIT); ui_ze_state = ZE_OFF;
+			ze_cursor = ze_drag = FALSE; ze_field = -1; sui_text_unfocus();
+		}
+		else { ze_replace = -1; ZoneEdit_ToPanel(); }
+		return TRUE;
+	}
+	if (ze_cursor)
+	{
+		onpanel = (ze_mouse_seen && is_2dpoint_in_bbox(ze_mouse, ze_panel_p, ze_panel_s));
+		if (!onpanel) return FALSE;
+		if (scanx == K_MOUSE1)
+		{
+			ze_field_keys[scanx] = 1;
+			_sui_mouse_move(ze_mouse, FALSE);
+			ZoneEdit_DragStart(ze_panel_p);
+			if (!ze_drag) sui_input_event(evtype, scanx, chary, devid);
 			return TRUE;
 		}
 		if (scanx == K_MWHEELUP || scanx == K_MWHEELDOWN)
 		{
-			b = (scanx == K_MWHEELUP) ? ZEB_WUP : ZEB_WDN;
-			if (evtype == IE_KEYDOWN)
-			{
-				if (!onpanel)
-					return FALSE;
-				ze_btn = ze_btn | b;
-				ze_scroll = max(0, ze_scroll + ((scanx == K_MWHEELUP) ? -2 : 2));
-				return TRUE;
-			}
-			if (!(ze_btn & b))
-				return FALSE;
-			ze_btn = ze_btn - b;
-			return TRUE;
-		}
-		if (evtype == IE_KEYDOWN && scanx == K_ESCAPE)
-		{
-			UI_CursorRelease(UIC_ZONEEDIT);
-			ui_ze_state = ZE_OFF;
-			print("^5zone_edit^7: off\n");
+			ze_field_keys[scanx] = 1;
+			if (!ze_settings) ze_scroll = max(0, ze_scroll + ((scanx == K_MWHEELUP) ? -2 : 2));
 			return TRUE;
 		}
 		return FALSE;
 	}
-
-	// Placing: the mouse looks, and four keys are ours -- unless another panel is up, whose
-	// clicks must not place corners.  A release still follows its press.
-	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP)
-		return FALSE;
-	if (evtype == IE_KEYDOWN)
-	if (ZoneEdit_Blocker() != "")
-		return FALSE;
-	b = 0;
-	if (scanx == K_MOUSE1)          b = ZEB_M1;
-	else if (scanx == K_MOUSE2)     b = ZEB_M2;
-	else if (scanx == K_MWHEELUP)   b = ZEB_WUP;
-	else if (scanx == K_MWHEELDOWN) b = ZEB_WDN;
-	if (b)
+	if (ui_ze_state < ZE_A) return FALSE;
+	if (scanx == K_ENTER || scanx == K_KP_ENTER)
 	{
-		if (evtype == IE_KEYUP)
-		{
-			if (!(ze_btn & b))
-				return FALSE;
-			ze_btn = ze_btn - b;
-			return TRUE;
-		}
-		ze_btn = ze_btn | b;
-		if (b == ZEB_M1)
-			ze_click = TRUE;
-		else if (b == ZEB_M2)
-			ze_back = TRUE;
+		if (ui_ze_state != ZE_P) return FALSE;
+		ze_field_keys[scanx] = 6; ze_close = TRUE; return TRUE;
+	}
+	if (scanx == K_MOUSE1 || scanx == K_MOUSE2 || scanx == K_MWHEELUP || scanx == K_MWHEELDOWN)
+	{
+		ze_field_keys[scanx] = 2;
+		if (scanx == K_MOUSE1) ze_click = TRUE;
+		else if (scanx == K_MOUSE2) ze_back = TRUE;
 		else
 		{
-			// 1 2 4 8 16 32 64, a notch at a time.
-			if (b == ZEB_WUP)
-				ze_grid = min(64, ze_grid * 2);
-			else
-				ze_grid = max(1, ze_grid / 2);
+			ze_grid = bound(1, ze_grid * ((scanx == K_MWHEELUP) ? 2 : 0.5), 64);
 			ze_snap = TRUE;
 		}
-		return TRUE;
-	}
-	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE)
-	{
-		ze_replace = -1;
-		ZoneEdit_ToPanel();
 		return TRUE;
 	}
 	return FALSE;
@@ -1524,6 +1609,10 @@ void() ZoneEdit_Open =
 	ze_sel = -1;
 	ze_replace = -1;
 	ze_scroll = 0;
+	ze_lastrow = -1;
+	ze_lastclick = -999;
+	ze_settings = FALSE;
+	ze_field = -1;
 	if (ze_grid < 1)
 	{
 		ze_grid = 16;
@@ -1542,6 +1631,7 @@ void() ZoneEdit_Status =
 	print(sprintf("zone_edit: state %g map %s zones %g points %g dirty %g crc %s\n", ui_ze_state,
 	              (ze_map != "") ? ze_map : "-", zone_count, zone_ptcount, ze_dirty,
 	              (zone_crc != "") ? zone_crc : "-"));
+	print(sprintf("zone_edit: cursor %g polygon %g corners %g window %g %g\n", ze_cursor, ze_poly, ze_np, ze_window_x, ze_window_y));
 	print(sprintf("zone_edit: track %g sel %g grid %g snap %g source %s\n", ze_track, ze_sel, ze_grid,
 	              ze_snap, Zone_SourceName(zone_source)));
 	print(sprintf("zone_edit: placing type %g seg %g cp %g a %g %g %g", ze_ntype, ze_nseg, ze_ncp,
@@ -1577,6 +1667,7 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 {
 	local float n, t, z;
 	local string a;
+	local vector zv;
 
 	n = tokenize(cmd);
 	if (argv(0) != "zone_edit")
@@ -1586,8 +1677,9 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 	{
 		if (ui_ze_state)
 		{
-			if (ui_ze_state == ZE_PANEL)
-				UI_CursorRelease(UIC_ZONEEDIT);
+			UI_CursorRelease(UIC_ZONEEDIT);
+			ze_cursor = ze_drag = FALSE;
+			ze_field = -1; sui_text_unfocus();
 			ui_ze_state = ZE_OFF;
 			print("^5zone_edit^7: off\n");
 		}
@@ -1611,8 +1703,7 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 	else if (argv(2) == "stage")      t = ZONE_STAGE;
 	else if (argv(2) == "checkpoint") t = ZONE_CHECKPOINT;
 	if (ui_ze_state >= ZE_A)
-	if (a != "click")
-	if (a != "back")
+	if (a != "click" && a != "back" && a != "mouse" && a != "point" && a != "close" && a != "height" && a != "grid")
 	{
 		print("^3zone_edit^7: finish or cancel the zone being placed first (click, back)\n");
 		return TRUE;
@@ -1657,6 +1748,45 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 		ze_click = (ui_ze_state >= ZE_A);
 	else if (a == "back")
 		ze_back = (ui_ze_state >= ZE_A);
+	else if (a == "edgeprobe")
+	{
+		zv = ZoneEdit_EdgeSnap([stof(argv(2)), stof(argv(3)), stof(argv(4))]);
+		print(sprintf("zone_edit: edge snap %g %g %g\n", zv_x, zv_y, zv_z));
+	}
+	else if (a == "pointer")
+	{
+		// Synthetic cursor probe; never marks cl_input_real or authorizes a save.
+		ZoneEdit_InputEvent(IE_MOUSEABS, stof(argv(2)), stof(argv(3)), 0);
+	}
+	else if (a == "mouse") ZoneEdit_ToggleMouse();
+	else if (a == "shape") ze_poly = (argv(2) == "polygon");
+	else if (a == "point")
+	{
+		if (ui_ze_state == ZE_P && n == 5)
+		{
+			ze_hit = [stof(argv(2)), stof(argv(3)), stof(argv(4))];
+			ze_hitz = ze_hit_z; ze_hitok = TRUE; ZoneEdit_PolygonClick();
+		}
+	}
+	else if (a == "close") { if (ui_ze_state == ZE_P) ZoneEdit_PolygonClose(); }
+	else if (a == "height") { if (ui_ze_state == ZE_H) ze_h = ZoneEdit_Height(ze_a_z + stof(argv(2))); }
+	else if (a == "grid") { ze_grid = bound(1, stof(argv(2)), 64); ze_snap = (argv(3) != "surface"); }
+	else if (a == "snapxyz") ZoneEdit_SnapSelected();
+	else if (a == "row")
+	{
+		z = stof(argv(2)); if (z >= 0 && z < zone_count) ZoneEdit_RowClick(z);
+	}
+	else if (a == "settings") ZoneEdit_SettingsOpen();
+	else if (a == "setting")
+	{
+		for (z = 0; z < MAPSET_COUNT; z = z + 1)
+			if (strcmp(argv(2), MapSet_Name(z)) == 0)
+			{
+				ZoneEdit_SettingEdit(z); strunzone(ze_text); ze_text = strzone(argv(3));
+				ZoneEdit_SettingApply(); break;
+			}
+	}
+	else if (a == "savesettings") ZoneEdit_SettingsSave();
 	else if (a == "add" && t >= 0 && n >= 10)
 	{
 		ze_track = bound(0, stof(argv(3)), 12);
@@ -1685,6 +1815,7 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 void() ZoneEdit_Register =
 {
 	registercommand("zone_edit");
+	ze_field = -1;
 	ze_sel = -1;
 	ze_replace = -1;
 	ze_grid = 16;

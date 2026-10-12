@@ -16,6 +16,33 @@ things correctly; they are documentation, not the implementation.
 
 ---
 
+## Zone editor
+
+On a locally hosted map, run `zone_edit` to open the editor.
+
+- Your key bound to `+jump` switches between looking/flying and the window's
+  mouse cursor, without discarding a partly drawn zone. Drag the title to move
+  the window. V is the existing noclip toggle.
+- Select **box** or **polygon**, then `+ start`, `+ stage`, `+ check` or `+ end`.
+  For a polygon, aim at the floor and click its corners. Enter (or clicking the
+  first corner again) closes the outline; look up to pull the height and click
+  to finish. MOUSE2 undoes a corner/step. Simple concave outlines work; crossed
+  outlines and holes do not. Up to 64 corners.
+- Grid snaps X, Y and Z. **Snap XYZ** snaps an existing selected ring and both
+  its floor and top; it refuses a grid that would collapse/cross the outline.
+  **Edge snap** targets nearby existing zone corners/edges, not BSP mesh edges.
+- Single-click a list row to select it; double-click to teleport to its server
+  zone. A changed draft must be saved and the hosted map reloaded first.
+- **Map settings** edits max velocity, gravity, air/ground acceleration, max
+  ground speed and friction. Save locally, then reload the map. This needs the
+  Patch 671+ engine; older binaries do not apply the saved overrides. Previous
+  settings stay in `.prev`. Dedicated/public lobbies ignore these local files.
+
+Zones save under `ftesurf/data/maps/zones/local/`; settings under
+`ftesurf/data/maps/settings/local/`. They stay on this machine. Steam-based
+admin permissions and reviewed NanoPi uploads are **not enabled yet**; see
+[ROADMAP.md](ROADMAP.md). No upload or admin access is granted by display name.
+
 ## What you need
 
 **Windows x64, and Linux x86_64 as a beta** (`ftesurf.sh`). The build script is

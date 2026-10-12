@@ -5114,6 +5114,44 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+### Zone editor extensions (Patch 671) — 2026-10-12
+
+- A QC `cvar_set` plus a success toast DOES NOT implement map settings: the
+  engine's movement lock restores its canonical value before movement. The
+  rejected first experiment saved 6000 but surf_voyager still reported effective
+  10000/150. The real loader is `SV_LoadEditorRuleset`, in sv_phys.c's existing
+  pre-lock map-ruleset window. It reads only six numeric allowlisted values from
+  `data/maps/settings/local/<map>.cfg`, validates the entire bounded file, and
+  replaces existing canonical entries (the lookup uses the FIRST matching
+  entry). It never runs a cfg, and dedicated/public lobbies never read it.
+  Existing clear/load/lock machinery restores each next map's own defaults.
+- `frename` does not replace an existing file on Windows. Settings read back
+  the candidate, move the predecessor to `.prev`, then put the candidate in
+  place; failed replacement attempts restore the predecessor. The control
+  must save TWO distinct values and inspect `.prev`, not only create a file.
+- `vote key <scan> <down> [char]` now accepts an optional character code. Scan
+  127 with char 0 does NOT test text backspace; the sui editor takes char 8.
+  All probes keep `cl_input_real` false. Synthetic pointer/release/button
+  branches must not authorize writing on somebody else's server.
+- Press ownership survives mode changes, editor close, map changes and bind
+  changes. Owned key-ups are routed before other panels, even with the editor
+  off; releases of game presses before opening pass through. Numeric text is
+  re-zoned after sui edits so a later free never targets a temporary string.
+- Polygon authoring reuses the existing Momentum XY ring + Z band. Simple
+  concave outlines work, no holes/sloping caps. Crossed/touching nonadjacent
+  edges and collapsed grids are refused before replacing a selected zone.
+  A concave zone's default spawn must be INSIDE its ring, not its box/mean.
+  Corner snapping takes priority over a nearer edge projection; Z proximity
+  rejects snapping to a zone on a different floor. BSP edges are not exposed.
+- The fixture protocol retains `P670` labels, but files/reader are `p671*`:
+  another session published P670 during testing. Rebased on inspected QC
+  feab052 and engine bd6cf6d91; no peer dirty files are included. Never reuse a
+  guessed NoDeploy directory: parse/verify the actual compiler output and make
+  staging failure fatal before launching a rig.
+- Physical mouse/keyboard delivery is NOT verified by handler probes. Human
+  acceptance stays in lextest.md; Steam identity/role and NanoPi publication
+  policy stay in ROADMAP.md. No name-derived privilege or upload was added.
+
 ### The zone editor, part one (Patch 669) — 2026-10-12
 
 - THE OWNER'S ASK: Momentum's zone editor in the game, for admins, because the

@@ -7,6 +7,7 @@ shared/sh_font.qc
 shared/sh_nativeui.qc
 shared/sh_json.qc
 shared/sh_zones.qc
+shared/sh_mapsettings.qc
 shared/sh_portal.qc
 shared/sh_strafe.qc
 // Patch 378: sampled-motion interpolation, one speller for cl_watch.qc and the
@@ -240,6 +241,7 @@ client/cl_entview.qc
 // Patch 669: the zone editor.  After cl_zones.qc (the table's renderer and its
 // loader), cl_hud.qc (the cursor register) and sui; before cl_main.qc, which calls it.
 client/cl_zoneedit.qc
+client/cl_zoneedit_extra.qc
 client/cl_linegraph.qc
 // Patch 467: the visualizer sky.  Needs milk_sys.qc (above, beside sui_sys.qc)
 // and the pmove_* globals; cl_main.qc calls MilkSky_Init/_WorldLoaded/_Frame,

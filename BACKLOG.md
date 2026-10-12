@@ -165,20 +165,13 @@ From its review; none stops it.
   password login), and what happens on a map that already has times (a changed
   zone table leaves the board's rows as they are). AGENT_NOTES, "The zone
   editor", has where a published file would have to go.
-- **Not tested: the real mouse.** A rig has none. The arm runs MOUSE1's and
-  MOUSE2's code by command (`zone_edit click`, `back`) and each panel button's
-  branch by name (`zone_edit press <id>`); sui's hit test on the panel, the key
-  events while placing, and a release going where its press went were read,
-  not run.
-- **A new zone is a box.** A zone from a file keeps its ring (they run to 64
-  points), and `re-place` turns it into a box.
+- **Real mouse acceptance remains human-only** in lextest.md. Patch 671 runs
+  synthetic input ownership/releases, header hit/drag/clamp, polygon placement,
+  cursor toggles and numeric editing, but never injects OS input into a session.
 - **No moving one corner or one face**, and no changing a zone's place in the
   course: a new stage goes after the last, a new checkpoint at the end of the
   selected zone's segment. To insert a stage in the middle, re-place the ones
   after it.
-- **No map settings.** Momentum's editor also holds the map's speed cap; here
-  the movement cvars are per-map cfg files the engine executes, which QC
-  cannot write where the engine looks.
 - **Cancel, bhop and overbounce regions** are listed on the main page and can
   be deleted, not made. `safeHeight` and the other keys the parser ignores are
   not written back, so a Momentum file saved here loses them (the game never

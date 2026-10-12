@@ -1,5 +1,27 @@
 # ROADMAP.md — maps, demos, run lines and rewind
 
+## Requested: Steam-authorized zone publication to the NanoPi (2026-10-12)
+
+Patch 671 adds the local editor controls, polygon authoring and six local map
+settings. The owner also requested making Proto an admin by Steam identity and
+uploading zones to the NanoPi R6C. This part remains unbuilt pending:
+
+- Proto's exact SteamID64/profile URL, confirmed by the owner. Do not infer it
+  from a display name, repository owner, sample GUID or an unverified search.
+- The publication rule: review versus immediate activation, and treatment of
+  existing times when zone geometry or movement rules change. Do not delete or
+  silently relabel existing times. Recommended: reviewed versioned drafts.
+
+Use the existing authenticated Steam-account proof path with a server-side role
+and revocation, not client cvars, GUIDs, display names or embedded SSH/admin
+secrets. Upload a draft with bounded geometry/settings validation and a map/hash
+revision check. Explicit review/activation must update surfd's authoritative
+zone layer, lobby files and clients consistently, preserve rollback/provenance,
+and retain the existing evidence/ranked-policy contract. An upload is not a
+publication. Read the Pi operations and private evidence design before building
+this workflow. Local editing remains available without granting fleet rights.
+
+
 ## Body prediction for reset, load and rewind — requested 12 Oct 2026
 
 **Today.** `say !r`, !m/!s/!b and zone_reset/restart/goto place the body in

@@ -315,6 +315,30 @@ a few sizes, drift and fade out.
 - **Live since 11 Oct 14:53 UTC (12 Oct, 01:53 here)** on both installs and
   all twelve lobbies. Restart the game to get it.
 
+## 00. 12 Oct — zone editor controls and polygons (Patch 671)
+
+Automated probes cover input routing/owned releases, dragging/clamping, a
+partly drawn polygon surviving cursor toggles, numeric editing, actual server
+teleports and engine-level map settings. They do not prove OS mouse delivery.
+On a hosted map with the P671+ engine:
+
+- Use your actual jump-bound key to switch look/cursor, including while holding
+  MOUSE1 or editing a number. Hold jump: no repeated toggles, stuck buttons or
+  accidental jumps. Close while holding a taken key, then let it go.
+- Drag the title to every screen edge, including after changing HUD scale/window
+  size. Click and double-click actual list rows: one selects, two teleport.
+- Make an L-shaped outline, close it with Enter and by clicking its first
+  corner, pull its height, then save/reload. Check floor/top Z at several grids;
+  try edge snap near an existing corner and half way along its edge. Holes and
+  slanted tops are not supported; the floor trace still ignores brush entities.
+- Type/paste values in Map settings, reject bad/out-of-range values, save twice,
+  then reload. Max velocity must be the new effective value, not merely a save
+  toast. Loading another map must restore that map's normal rules.
+
+Steam admin and NanoPi publishing remain pending identity/policy in ROADMAP.
+Windows engines are held while another session's games are running; no game
+was killed for these tests. Do not expect settings to apply on an older engine.
+
 ## 00. 12 Oct — a zone editor in the game, part one (Patch 669)
 
 You asked for Momentum's zone editor: a panel, then fly and place the corners

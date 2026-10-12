@@ -1114,6 +1114,9 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	*/
 	Vote_Track(evtype, scanx);      // Patch 372: observes only -- the draft below swallows key-ups
 	MPad_Track(evtype, scanx, chary);   // Patch 390: observes only -- the draft swallows deltas
+	// A release of the editor's press is still its own after closing/changing modes.
+	if (evtype == IE_KEYUP)
+		if (ZoneEdit_InputEvent(evtype, scanx, chary, devid)) return TRUE;
 	if (Chat_InputEvent(evtype, scanx, chary, devid))
 		return TRUE;
 
@@ -1161,10 +1164,9 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (Ev_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
 
-	// Patch 669: the zone editor, its panel or its placing (MOUSE1, MOUSE2, the wheel).
-	if (ui_ze_state)
-		if (ZoneEdit_InputEvent(evtype, scanx, chary, devid))
-			return TRUE;
+	// Patch 671: the editor also owns jump toggles and their releases.
+	if (ZoneEdit_InputEvent(evtype, scanx, chary, devid))
+		return TRUE;
 
 	/*
 	  BUILD 48: the results card, and it sits AHEAD of the leaderboard because it
@@ -2061,10 +2063,11 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (argv(0) == "vote")
 	if (argv(1) == "key")
 	{
-		local float vk_scan, vk_down, vk_took;
+		local float vk_scan, vk_down, vk_took, vk_char;
 		vk_scan = stof(argv(2));
 		vk_down = stof(argv(3));
-		vk_took = CL_InputEvent(vk_down ? IE_KEYDOWN : IE_KEYUP, vk_scan, 0, 0);
+		vk_char = stof(argv(4));   // optional character code; absent is 0 (old probes)
+		vk_took = CL_InputEvent(vk_down ? IE_KEYDOWN : IE_KEYUP, vk_scan, vk_char, 0);
 		print(sprintf("vote key: scan %g down %g took %g pick %g capture %g saves %g\n",
 		              vk_scan, vk_down, vk_took, vt_pick, Vote_Capturing(),
 		              getstatf(STAT_FS_SAVECOUNT)));

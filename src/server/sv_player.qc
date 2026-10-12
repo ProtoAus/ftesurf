@@ -1316,6 +1316,22 @@ void(string cmd) SV_ParseClientCommand =
 	// CSQC first (Patch 185); CSQC writes its sidecar and then forwards here.
 	if (c == "rec_retry")   { SV_RetryPoint(self);                        return; }
 
+	if (c == "zone_edit_goto")
+	{
+		if (!zone_loaded) SV_ZoneFrame();
+		if (cmdargc != 3 || zone_crc == "" || strcmp(argv(2), zone_crc) != 0)
+		{
+			sprint(self, PRINT_HIGH, "zone_edit_goto: zones differ; save/reload your hosted map first\n");
+			return;
+		}
+		if (SV_MsBusy(self)) return;
+		self.run_t_wantstage1 = FALSE;
+		was = self.origin;
+		SV_ZoneGotoAng(stof(argv(1)), 0, 0, FALSE);
+		SV_RewindWarped(self, was);
+		return;
+	}
+
 	if (c == "zone_goto")
 	{
 		/*
