@@ -5246,6 +5246,24 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 - P676 fixtures retain pre-claim P675 echo/screenshot names after a concurrent
   native claim. New product sources preserve published P674 and P675 work;
   this help-only change does not build/deploy a different native engine.
+- Product `90790c5`, clean committed build zero warnings and identical tested
+  bytes. File-only dual Windows csprogs swap at 06:19:01 UTC; each P674 predecessor
+  retained as `.prev`, identical qwprogs/menu hash-skipped. Protected native,
+  owner/default/config files' hashes and mtimes unchanged. No owner game stopped.
+  Fleet `build.ps1 -Pi` passed the fresh twelve-row zero-player gate, hash-checked
+  and swapped the pair, then restarted all twelve by 06:20:42 UTC. Remote hashes
+  match, health/heartbeats twelve with zero players at 06:28 UTC. New csprogs
+  `7d3954d9eb25152d6`; unchanged qwprogs `7598b0da1cd90ebd`, menu `d111ec13ee2827f4`.
+- Fresh live connections using both installed client/program pairs show Surface
+  and Map properties help and close dismissal without runtime errors. Live probe
+  must set `ui_tooltip_delay` after CSQC registers it, and explicitly synthesize
+  focus with `in_focusgrab 0` to avoid the secondary window's real foreground
+  correction. This is synthetic focus/hover acceptance, not OS device delivery.
+  First failed probes and final acted controls are retained, not relabelled pass.
+- Source proof, staging and raw control/runtime evidence deliberately retained at
+  `C:/FTESurf-worktrees/zetips-01a12ea0/` for wording/acceptance comparison; OWNER.md
+  and CHECKPOINT.md give ownership, exact commands and retirement criteria.
+  No owned game/server process remains. This root has no native build outputs.
 
 ### Zone editor organization and presets (Patch 673) — 2026-10-12
 

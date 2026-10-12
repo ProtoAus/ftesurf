@@ -385,6 +385,13 @@ Open `zone_edit` and hold the mouse over a button for about 0.35 seconds:
 - Physical mouse delivery and whether the explanations answer your questions
   remain human acceptance; automated hovers do not establish either.
 
+DEPLOYED 12 Oct: both Windows installs at 06:19:01 UTC; all twelve idle lobbies
+updated/restarted by 06:20:42 UTC. Fresh connections with both installed clients
+showed Surface and Map properties help, then dismissed it on close. Hashes match
+product `90790c5`; only Windows csprogs changed, its predecessor is `.prev`.
+Restart the game/reconnect to load the new code. No owner process was stopped,
+config/default/native file changed, or stored time changed by this help feature.
+
 ## 00. 12 Oct — organized zone editor and mode presets (Patch 673)
 
 On a newly hosted map with the P673+ native engine, open `zone_edit`:
