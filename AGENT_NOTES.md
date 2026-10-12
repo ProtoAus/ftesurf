@@ -6056,6 +6056,37 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   `pi_lobby_smoke.py` was served this csprogs and drew the board. `.prev` is
   Patch 631's csprogs (`1a27aa8f`) in all three places.
 
+### Run/demo label ink and autohop marks (Patch 677) — 2026-10-12
+
+- `Line_LabelText` uses inline yellow (`^xFF3`) speed and green (`^x4F6`)
+  energy fields; queue the numeric label on white and measure `stringwidth`
+  with colour parsing ON. Keep `Line_Label` and `lndm` plain for existing
+  readers. One queued string retains one HUD_Text/shadow pass, not one per
+  field. Energy stays green when its units are speed-equivalent.
+- Peaks remain height turns, not a new energy/speed detector. Standalone tops
+  are closed pink up-triangles and bottoms closed purple down-triangles;
+  existing nums switches and contact-folding still govern visibility.
+- `Line_LandIsHop` suppresses INK ONLY: ground landing, immediate next event a
+  jump from ground, sample-index gap <=1, jump ink on. No table deletion: mark
+  and numeric dumps, energy deltas, Segments and recorded data keep both events.
+  Several samples on ground, ramp contact, walking off, and jump-off settings
+  retain the contact symbol.
+- Acting pair: `tools/test_p677labels.py --write <owned fixtures>` generates
+  native/imported authored hop files; run `p677labels.cfg` via
+  `tools/runlines_smoke.py` with `--csqc`, `--ssqc`, `--output-dir` (must exist)
+  and `--also p677hop.rec=... --also p677hop_mom.rec=...`. Grade with `--log`
+  and `--control-log`: 7/7 including board ink, table preservation, switches,
+  colour pixels and triangle direction. The three change checks fail on control.
+- First harness cut set measured QC cvars BEFORE map spawn: shipped config/init
+  replaced them, `lng` was zero, and an open replay alone did NOT prove label
+  ink acted. Set controls AFTER map/menu init. Log rows have timestamp prefixes;
+  normalize them before anchoring regexes. Map stars were yellow and defeated a
+  whole-screen colour count: sample the clear label above the first ramp-leave
+  projection instead, and require speed-only/energy-only negative colour arms.
+- `build.ps1 -NoDeploy` currently prints its actual `rig/build-nodeploy-*`
+  output directory: read that path; do not take unchanged install progs as the
+  build output. Source/build ownership and runtime evidence are separate.
+
 ### The Boarding window's levels (Patch 631) — 2026-10-11
 
 - THE WINDOW'S ENERGIES ARE LEVELS WITH THEIR OWN ZERO. `board_ein` is what you

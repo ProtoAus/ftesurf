@@ -3079,6 +3079,28 @@ void(vector q, float up, float n, vector c, float al) Line_Chev =
 	}
 };
 
+// A closed triangle, pointing up at an arc's top and down at a ride's bottom.
+void(vector q, float up, vector c, float al) Line_Triangle =
+{
+	local float w, h, pass, a;
+	local vector tip, left, right, col;
+
+	w = ln_mkpx * ln_px;
+	h = w;
+	tip = q - [0, up * h, 0];
+	left = q + [0 - w, up * h, 0];
+	right = q + [w, up * h, 0];
+	for (pass = 0; pass < 2; pass = pass + 1)
+	{
+		Line_Width(ln_mkpx * 0.5 + (pass ? 0 : 2));
+		col = pass ? c : '0 0 0';
+		a = pass ? al : al * 0.6;
+		Line_Seg2D(left, tip, col, a, col, a);
+		Line_Seg2D(tip, right, col, a, col, a);
+		Line_Seg2D(right, left, col, a, col, a);
+	}
+};
+
 // The stitch: two bars, the dark edge Line_Square draws.  A save state came
 // back here, so the run either side of it was not flown in one go.
 void(vector q, vector c, float al) Line_Bars =
@@ -3096,10 +3118,8 @@ void(vector q, vector c, float al) Line_Bars =
 };
 
 /*
-  ONE MARK'S NUMBERS, as a single string.
-
-  One string and one HUD_Text, never one per number: every HUD_Text carries its
-  own shadow pass (HUD_TextDraw), so a call per number multiplies the draws.
+  ONE MARK'S NUMBERS, as a single string. Inline colours keep one HUD_Text
+  and one shadow pass; diagnostic readers retain the plain-text form.
 
   hud_lines_names 1 says what each number is -- "701 u/s  E -28  vz +120  dE +12
   1.23 s" -- with two spaces between fields so a name never reads as the previous
@@ -3111,7 +3131,7 @@ void(vector q, vector c, float al) Line_Bars =
   comparable between two recordings of the same map -- the reason it is the
   default on a line, where the watching player's anchor means nothing.
 */
-string(float s, float e) Line_Label =
+string(float s, float e, float colour) Line_LabelText =
 {
 	local float b, ev, en, ref, de;
 	local vector ep;                // an array element is not swizzleable
@@ -3144,10 +3164,16 @@ string(float s, float e) Line_Label =
 		t = sprintf("%.0f", ev);
 		if (ln_names)
 			t = strcat(t, " u/s");
+		if (colour)
+			t = strcat("^xFF3", t, "^7");
 	}
 	if (ln_numenergy)
-		t = strcat(t, (t != "") ? sep : "",
-		           HUD_SeqAbsTight(en - ref, ln_grav, ln_units, ln_names));
+	{
+		f = HUD_SeqAbsTight(en - ref, ln_grav, ln_units, ln_names);
+		if (colour)
+			f = strcat("^x4F6", f, "^7");
+		t = strcat(t, (t != "") ? sep : "", f);
+	}
 	if (ln_numvz)
 	{
 		if (ln_names)
@@ -3179,6 +3205,29 @@ string(float s, float e) Line_Label =
 	if (floor(ln_es[b + e] / 4) == SEG_RAMP || (ln_es[b + e] & 3) == SEG_RAMP)
 		t = strcat("~", t);
 	return t;
+};
+
+string(float s, float e) Line_Label =
+{
+	return Line_LabelText(s, e, FALSE);
+};
+
+// One sampled ground contact followed immediately by takeoff: the jump says both.
+// Keep the table intact for labels, Segments and diagnostics; suppress only ink.
+float(float s, float e) Line_LandIsHop =
+{
+	local float b;
+
+	if (!ln_mkjump || e + 1 >= ln_evn[s])
+		return FALSE;
+	b = s * LN_EVCAP;
+	if ((ln_es[b + e] & 3) != SEG_NONE)
+		return FALSE;
+	if (ln_ek[b + e + 1] != LN_E_JUMP)
+		return FALSE;
+	if (floor(ln_es[b + e + 1] / 4) != SEG_NONE)
+		return FALSE;
+	return ln_ei[b + e + 1] - ln_ei[b + e] <= 1;
 };
 
 /*
@@ -3217,19 +3266,19 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 			break;
 		k = ln_ek[n + e];
 		c = '1 1 1';                    // fteqcc cannot see the chain covers it
-		if (k == LN_E_LAND)   { if (!ln_mkland)   continue; c = '1.00 0.62 0.20'; }
+		if (k == LN_E_LAND)
+		{
+			if (!ln_mkland || Line_LandIsHop(s, e)) continue;
+			c = '1.00 0.62 0.20';
+		}
 		else if (k == LN_E_LEAVE)  { if (!ln_mkleave)  continue; c = '0.92 0.95 1.00'; }
 		else if (k == LN_E_JUMP)   { if (!ln_mkjump)   continue; c = '0.35 0.85 1.00'; }
 		else if (k == LN_E_STITCH) { if (!ln_mkstitch) continue; c = '0.72 0.74 0.78'; }
 		else if (k == LN_E_APEX || k == LN_E_TROUGH)
 		{
-			// A peak is where vz turned over.  It gets no chevron -- there is
-			// no contact to mark -- so it appears only when the numbers are on
-			// and it is the number that is the point (hud_lines_nums 2, or 3 for
-			// these alone).
 			if (ln_numon < 2)
 				continue;
-			c = '0.75 0.80 0.95';
+			c = (k == LN_E_APEX) ? '1.00 0.35 0.65' : '0.70 0.40 1.00';
 		}
 		else
 			continue;                   // a break: the teleport pass owns it
@@ -3255,7 +3304,7 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 		if (k == LN_E_STITCH)
 			Line_Bars(q, c, al);
 		else if (k == LN_E_APEX || k == LN_E_TROUGH)
-			Line_Square(p, c, al * 0.8);    // a peak is a dot: the number is the point
+			Line_Triangle(q, (k == LN_E_APEX) ? 1 : -1, c, al);
 		else
 			Line_Chev(q, (k == LN_E_LAND) ? -1 : 1,
 			          (k == LN_E_JUMP) ? 2 : 1, c, al);
@@ -3273,16 +3322,16 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 			if (ln_labfadek > 0)
 				la = la * bound(0, (ln_labfar - d) * ln_labfadek, 1);
 			if (la > 0)
-				lab = Line_Label(s, e);
+				lab = Line_LabelText(s, e, TRUE);
 			if (lab != "")
 			{
 				lp = q + [6 * ln_px, 0 - (ln_labsz + 4) * ln_px, 0];
-				lw = stringwidth(lab, FALSE, [ln_labsz, ln_labsz]);
+				lw = stringwidth(lab, TRUE, [ln_labsz, ln_labsz]);
 				Line_LabelPlace(lp, lw);
 				lp = ln_labelpos;
 				if (Line_ClaimSpan(lp, lw))
 				{
-					if (Line_LabelQueue(lp, lab, c, la, lw, ln_labsz, d, n + e))
+					if (Line_LabelQueue(lp, lab, '1 1 1', la, lw, ln_labsz, d, n + e))
 						ln_nlab = ln_nlab + 1;
 				}
 				else
@@ -3291,7 +3340,7 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 		}
 		if (ln_trmk > 0)
 			print(sprintf("lndm %g %g %.4f %.1f %.1f %s\n", s, k, ln_et[n + e],
-			              q_x, q_y, (lab != "") ? strcat("\"", lab, "\"") : "-"));
+			              q_x, q_y, (lab != "") ? strcat("\"", Line_Label(s, e), "\"") : "-"));
 	}
 	Font_Set(f0);
 };

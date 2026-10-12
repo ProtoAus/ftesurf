@@ -25,7 +25,12 @@ commit   67ccaf17ba3b8d8afdc4d1bf247330f3827fff15
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-675
-patch    676
+patch    677
+# Patch 677: run/demo mark labels use yellow speed and green energy ink. Arc tops
+# are pink up-triangles; ride bottoms are purple down-triangles. A one-sample
+# ground touch followed by a jump draws only the jump (contact assumed). Ordinary
+# landings/ramp contacts and the underlying mark/Segments tables are unchanged.
+# No engine pin/tag, physics, recording/evidence, default or Build-number change.
 # Patch 676: zone-editor mouse hover help uses hud_edit's shared delayed/wrapped
 # tooltips for tools, tracks, zone rows and all map properties/inputs. Surface vs
 # Surf, local-only saves, staged values and reload requirements are explained.
