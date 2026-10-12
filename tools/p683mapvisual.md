@@ -99,7 +99,52 @@ The crash's full lifetime cause is not established by these controls.
 
 ## Delivery status
 
-Engine/game commits, clean-commit build and development deployment are pending
-at this initial evidence entry. No release or QC Build-number bump is requested.
-Exact published SHAs and destination/live verification will be appended only
-after those distinct steps complete.
+Product code: engine `6b6c8ab6805d7d295884048f4bb07386c8d0b38a`, tag `patch-683`;
+game `791123cc173678d7533fb6d3472af032e7e11e7d`. Both exact SHAs pushed to main.
+A subsequent documentation-only commit records the observations below; native
+pin stays on the tested code commit. No release or QC Build-number bump.
+
+Clean inspected worktrees built with pwsh7 `src/build.ps1 -Engine -Full -NoDeploy
+-Jobs 8`, owned FteRoot/make wrapper. Exact-commit native glyph actor passes.
+A separate owned detached parent `f0eadea54` full build used identical flags:
+423 warning lines in each, zero new normalized messages. Syntax/path-normalizer
+failures were retained as failed comparison-tool arms, then corrected; the final
+`p683-warning-comparison.json` is the accepted result, not those failures.
+
+At **2026-10-12T18:08:20Z**, 19 native/plugin/VM destinations in both Windows
+installs hash-match the tested clean build; their immediate predecessors are
+retained/hash-checked as `.prev`. Twelve protected config/manifest observations
+remain hash+mtime unchanged. No owner process was stopped. Primary client is
+`C:/FTESurf/ftesurf64.exe`; secondary client/server are `C:/FTEQuake/fteqw64.exe`
+and `fteqwsv64.exe`; all five companion plugins plus three VMs ship as a pair.
+
+Normal `build.ps1 -Jobs 8 -Pi` from the clean game commit produced zero warnings,
+byte-identical programs. Fresh directory guard proved all twelve lobbies empty;
+no PiForce. Both progs were staged/read back/swapped while retaining `.prev`, and
+all twelve units restarted. menu.dat is Windows-local, never sent to lobbies.
+
+| Program | Deployed SHA256 |
+| --- | --- |
+| qwprogs.dat | `796d65a027b7f9831a04ecea72c3b93c1b11b8237d140f3c7aab6933ce5e52bd` |
+| csprogs.dat | `3e33342c3296afde1bece3f581830665ebb153535b2dd68108a882365ce4e669` |
+| Windows menu.dat | `f13f792cb416ff0752ce51c1ac2cd0520e462a0f9a7c314b18caae2492e407c1` |
+
+Post-Pi independent Windows readback still matches all 19 recorded targets.
+At **18:17:03Z**, independent fleet readback proves twelve active PIDs, each
+responding on its expected UDP socket, expected progs and predecessor hashes,
+health OK and twelve empty directory rows. Native/plugin mappings are present;
+Linux native/plugin were not shipped by this progs-only operation.
+
+Each actual installed Windows engine/menu pair separately joined lobby 27510
+from a fresh owned rig without CSQC. Both downloaded `6dbf6df8.dat` with the exact
+served CSQC hash, drew board cols8/type14, reached their end markers and exited
+normally with zero QC errors / zero smoke failures. Both screenshots inspected.
+The two temporary smoke players are disconnected; no terms accepted or run
+submitted. Client integration smoke does not upgrade the physical secret-button,
+water-in-view or mist-brightness limits into passes.
+
+Compact logs/screenshots/build hashes/rollback records remain under the owned
+root. Original engine checkout's uncommitted work was not merged, stashed,
+reverted or deployed. Disposable warning-control build is retired only after
+its source/ignored inventory is verified; retained failed diagnostic/native
+fixtures are explicitly marked for remaining visual follow-ups in OWNER.md.

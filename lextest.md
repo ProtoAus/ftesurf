@@ -13,8 +13,10 @@ to be wrong.
 
 ## 00. 12 Oct — Source map visuals (Patch 683)
 
-Tested in the owned rig; clean-commit build/deployment status is recorded in
-`tools/p683mapvisual.md`, not implied by this list. Restart after native updates.
+Clean committed P683 deployed to both Windows installs; server progs deployed
+to twelve development lobbies at 2026-10-12T18:08Z. Both installed client/menu
+pairs passed served-CSQC/board smoke. `tools/p683mapvisual.md` records exact
+hashes and limits. Restart after native updates.
 
 - Kitsune rainbow walls should be absent normally. Trigger the actual secret:
   they should appear and later disappear. The dedicated target fan-out fixture
