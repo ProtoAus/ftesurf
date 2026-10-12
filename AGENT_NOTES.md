@@ -8483,6 +8483,47 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **DEPLOYED 12 Oct 2026, 02:28 to 02:29 UTC (FTESurf `3fdd401`, Patch 667;
+  engine `17b11bc13`, tag `patch-667`): THE CLIENT EXE, menu.dat AND csprogs.**
+  The engine commit was stamped before ftequakers main moved (Patch 670's log
+  entry), so it is MERGED there (`91465d783`), not rebased: the binary names
+  `g17b11bc13`. Stamp `git-7249-patch-667-0-g17b11bc13`, sha256 `72feb6d5`,
+  built clean in this session's `eng` worktree by the recipe under Patch 645.
+  Lobbies, 02:28Z: `build.ps1 -Pi` from the pushed tree, nobody on, csprogs
+  `a7810a87` hash-verified on the Pi and all 12 restarted. THAT csprogs IS
+  PATCH 670's CLIENT CODE WITH 667 ON IT (670 was pushed and put on the Pi by
+  its own session at 02:08Z, `e2f8a9c1`, which is now `.prev`); qwprogs
+  `915dfa31` went up as the same bytes 670 had put there.
+  Windows, 02:29:26Z, no game running, under the rig lock: both installs'
+  csprogs `a7810a87` (`.prev` `ce9e7607`) and menu.dat `a87b88ca` (`.prev`
+  `10cba3c1`), and the client as `C:\FTESurf\ftesurf64.exe` and
+  `C:\FTEQuake\fteqw64.exe` (`.prev` the patch-658 client `4faa7ff4`).
+  `fteqwsv64.exe`, the plugins and default.cfg untouched.
+  FOR PATCH 670's SESSION: its Windows half was "pending quiet" with a guarded
+  script. The installs now hold 670's client code inside `a7810a87`, so that
+  script's csprogs guard will refuse, rightly. THE INSTALLS' qwprogs IS STILL
+  `76e00522`, NOT 670's `915dfa31`: a game hosted from this PC predicts its
+  boosters the old way (670's own note: an older server is all-unknown and
+  fails closed). That file is 670's to place.
+  ON THE STAMPED BYTES, before the installs: p667paste 16 of 16, p655text 17
+  of 17, p663profile 38 of 38, p653box 14 of 14, p647boot 8 of 8; on release
+  0.1.24's client p663profile 38 of 38 and p667paste's control. After: the
+  lobby smoke on 27510 was served `a7810a87` and drew the board on 0.1.24's
+  client and on the new one, and `test_p645lines.py` read 28 of 28 on the
+  installed files (give `runlines_smoke.py` an ABSOLUTE --output-dir: a
+  relative one timed out with no log, the client having been given a basedir
+  that was not there).
+  TWO ARMS' POINTER CLICKS FAILED TWICE ON THESE BYTES AND IT WAS THE OWNER'S
+  MOUSE: he had just closed his game. `GetLastInputInfo` (scratch
+  `tmp/idle.ps1` in this session's task root) said the desktop had been in use
+  until the minute the second run ended; with it idle both passed. Posted
+  messages and SetCursorPos do not count as input there, so the figure is the
+  owner's alone: read it before and after any arm that moves the pointer.
+  The same hour the keyboard-only arms passed throughout.
+  NOT SEEN: the owner pasting; a release (0.1.24's players have no paste).
+  ROLLBACK: the three `.prev` files in each install (exe, menu.dat, csprogs),
+  as a set: the old menu.dat on the new exe is fine, the new menu.dat on the
+  old exe pastes nothing. Lobbies: `csprogs.dat.prev` is 670's own build.
 - **PASTE (Patch 667): THE ENGINE ASKS, AND A CONSOLE LINE'S LEVEL IS NOT A
   WALL.** QC never reads the clipboard. A field calls `sui_paste_ask` (the
   game's `clipboard_get`) or the menu's `clipboard_paste` under a V or an

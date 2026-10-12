@@ -160,7 +160,9 @@ but only drawn 1 obviously."
 ## 00. 12 Oct — paste (Patch 667)
 
 From your list, and your "do it!" to the engine change it needed.
-**NOT LIVE AS THIS IS WRITTEN: the deployment's own line follows.**
+**In your install since 02:29 UTC on 12 Oct (13:29 here): a new engine file,
+so restart the game.** Run by a test player in a game and in the menu, with
+real key presses; not yet by you.
 1. **In the main menu, with no game running** (the name box, the map
    search): Ctrl+V or Shift+Insert pastes. One line of what you copied.
 2. **In a game** (the link box's four digits or its code, the profile's
