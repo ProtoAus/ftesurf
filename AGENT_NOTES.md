@@ -3751,6 +3751,33 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+**Fleet catch-up — 2026-10-12.**
+
+- Clean product `1f60e35` and pinned native `263d17686`/P679 are now live on all
+  twelve lobbies, including the previously pending P677 CSQC. New native/plugin
+  pair built in an owned ARM root, not shared p349build; both map dettests match
+  Windows on all 19 normalized lines, two verifier compatibility controls PASS.
+  All12 fresh `/proc/PID/exe` hashes, mapped plugins, UDP sockets, version and
+  `sv_limittics 8` readbacks proved at10:58:29Z. Fresh unseeded client downloaded
+  exact CSQC and drew8cols/type14; screenshot inspected, no QC errors. Player
+  files/protected configs unchanged. P678/P680 prep remains inert; backend was
+  already current. Full hashes, rollback and limits: `tools/lobby-catchup-20261012.md`.
+- Linux dedicated harnesses must pass the actual owned `default.fmf` path to
+  `-manifest`, not bare `ftesurf`: a same-name directory can reach
+  `FS_Manifest_ReadSystem` and abort with an invalid enormous allocation before
+  logging starts. Windows happened to reject that directory at open. Explicit
+  file path passed the same ARM build's acting controls. This is a harness
+  correction, not a product fix; the unchecked path is recorded in BACKLOG.
+- A clean isolated native engine cannot read Source BSPs until its **matching
+  hl2 plugin** is built beside it. Successful sv-rel alone is not a Source-map
+  gate. `plugins-rel` also needs zip for embedded metadata; the catch-up extracted
+  the package under its owned root, without altering system packages. Preserve
+  failed build evidence and actually rerun the complete target/gate.
+- `-NoDeploy -Pi` is intentionally rejected. Use the clean worktree's documented
+  `build.ps1 -Pi` path, inspect actual destination behavior, then verify both
+  Windows installs explicitly instead of assuming the isolated root is the
+  canonical install. All three clean-built VMs now hash-match in both installs.
+
 - **THIS FLEET IS A DEVELOPMENT FLEET AND THE OWNER WANTS CHANGES DEPLOYED.**
   Standing instruction from the operator, 2026-09-27, in their words: *"we are in
   development and I WANT changes to be deployed or else I can't test it. You will

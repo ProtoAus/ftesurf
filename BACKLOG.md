@@ -5,6 +5,20 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Linux manifest path validation — found during lobby catch-up, 2026-10-12
+
+- A dedicated Linux harness that passes a directory as `-manifest` can abort
+  before normal logging with an invalid enormous BZ_Malloc request. Site:
+  `engine/common/fs.c:FS_Manifest_ReadSystem`, which opens the supplied path and
+  allocates `VFS_GETLEN(f)+1` without validating a regular readable file/bounded
+  length; caller `server/sv_main.c:SV_Init`. Reproduced on the clean ARM P679
+  build; the same build passed native gates using an explicit owned default.fmf
+  file. Production lobby units do not use this argument and were unaffected.
+  Falsifier: in a minimal owned Linux rig, directory/unreadable/invalid-length
+  cases reject cleanly without allocation/abort; a real manifest still starts
+  and reaches its acted completion. Fix with measured file/length controls, not
+  a silent harness pass or an assumption that Windows open semantics apply.
+
 ## surf_666 authored texture references still missing — 2026-10-12
 
 - P679 restores automatic HL2 base content from Momentum, not every authored
