@@ -1,5 +1,51 @@
 # AGENT_NOTES.md
 
+## Patch 674 — UI/maps deployment checkpoint, 12 Oct 2026
+
+- Product `79c3599`, deployed tree `61d291d` (merges published P673 docs only),
+  engine documentation `7b0972d57`. Clean proof build at the inspected commit:
+  all three QC programs zero warnings; source/preservation guards pass and the
+  output hashes equal the tested subject. No engine source/pin, server QC,
+  evidence/ranking/schema/default or Build-number change.
+- Backend 05:51 UTC: `surfd-deploy.ps1 -Ref 61d291d -Only
+  @("surfd/surfd.py","surfd/test_web.py")`; all 17 staged suites pass on the
+  NanoPi (momgrab's unavailable MTV conversion fixture explicitly skipped).
+  Both installed files hash-match. surfd.py sha256 `b9101630701f1ce2`, worker
+  reloaded, `/health` healthy with 12 lobbies. Database rollback retained as
+  `data/surfd.db.bak-61d291d-20261012-164812` (mode 600); file predecessors
+  `*.pre61d291d-20261012-164812`. No backup pruning. Live HTTP positive known-name
+  filter preserves the account/rank and echoes the query; negative nonmatch
+  has zero rows/counts. Last 100 app-log lines: zero ERROR/WARNING/Traceback.
+- Windows 05:55:21–05:55:25 UTC: file-only deployment from the clean proof to
+  BOTH installs, hashes read back independently. csprogs `444f921987a6b317`,
+  menu `d111ec13ee2827f4`, each previous pair retained as `.prev`; unchanged
+  qwprogs `7598b0da1cd90ebd`. No executable/plugin, process, config, fixture or
+  default touched. The already-running owner's client is not restarted and
+  does not prove the new local UI ran; restart for the new menu/local client.
+  Eleven staged variant-zone donations rechecked FIT against each install's
+  preferred BSP and copied with exclusive missing-only creation. Primary's
+  existing 609 local files (including edited bhop_eazy) hash-identical; secondary
+  previously had no local JSONs. Both now have the eleven additions.
+- PENDING: the fleet's csprogs is still `825c2b46d41aa8a2` (P673). A live row
+  reports one player on 27520; no upload/swap/restart/force was attempted. Public
+  lobby connections therefore still receive the old scoreboard client code.
+  Finish `build.ps1 -Pi` from the clean proof only once all 12 rows are present
+  and zero-player, then verify hashes/heartbeats and runtime.
+- Runtime limits: fallback whole-board filter/count/rank/clear, missing/stale
+  echo rejection, held-TAB refusal and LINE/WATCH arms passed. Owner/map/wheel
+  assertions needed harness corrections and the complete rerun is blocked by
+  the foreign client; native actions, paste and final tier pixels remain open
+  in lextest. Never treat their source guards as runtime acceptance.
+- Harness lessons: wait for CSQC spawn before finding the HWND; acknowledge
+  each console dispatch, especially after screenshots (the engine blocks on
+  their writes). Fixture account marks use FS_GuidId's eight characters, not
+  twelve; stop WATCH with `replay stop`, not an invented `replay close`. Search
+  roster requests use `/api/board?players=`, not only `/api/players`.
+- Retained owned task root: `C:/FTESurf-worktrees/ui-maps-20261012T0335Z/`;
+  `proof/` is the clean inspected deploy tree for the pending fleet step.
+  OWNER.md/CHECKPOINT.md and artifacts hold build/runtime/hash/preservation
+  evidence. No task processes remain; do not retire the proof before that step.
+
 Detailed working notes, moved out of pi.dev's always-loaded AGENTS.md. The short
 AGENTS.md is the startup contract; read relevant sections here BEFORE changing
 that subsystem. Older references to AGENTS.md's detailed sections refer here.
