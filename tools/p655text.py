@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""p655text.py -- a menu text field's caret, selection, copy and cut; and that nothing pastes (Patch 655).
+"""p655text.py -- a menu text field's caret, selection, copy, cut and (Patch 667) paste.
 
     python tools/p655text.py --progs <build dir> --output-dir <owned dir>
 
@@ -18,8 +18,11 @@ would have given).  For the one press that must be a keyboard's own, Ctrl+V,
 this process's input state is attached to the game's (class Chord), so the
 engine's own ToUnicode makes the 22.
 
-  N  NOTHING PASTES: not a keyboard's Ctrl+V, not Shift+Insert, not a fed 22;
-     and neither VM's code names the engine's clipboard_get at all.
+  N  PASTE IS THE ENGINE'S (Patch 667).  On a client whose exe has the menu's
+     clipboard_paste: a keyboard's Ctrl+V and Shift+Insert put the clipboard's
+     FIRST LINE in the field, and a Ctrl+V fed by the console does not (it is
+     nobody's key).  On an older client nothing pastes, as Patch 655 shipped.
+     The menu's code names clipboard_paste and never the stock clipboard_get.
 """
 import argparse
 import pathlib
@@ -174,17 +177,27 @@ def main():
         press("end")
         L.check("E  End without Shift ends the selection", state(), ("surfer", 6, -1))
 
-        L.clipboard("PASTED")
+        pastes = b"clipboard_paste" in a.client.read_bytes()
+        print("  this client's exe %s the menu's paste builtin" % ("has" if pastes else "does not have"))
+        L.clipboard("PASTED\nnot this line")
+        fed("v", 22)                            # the console's Ctrl+V: nobody's key
+        fedst = state()
         Chord(keys).ctrl(post, "v")             # a keyboard's own Ctrl+V: control code 22
         real = state()
         press("shift", "ins")
-        fed("v", 22)
-        dats = {n: (a.progs / n).read_bytes() for n in ("menu.dat", "csprogs.dat")}
-        L.check("N  NOTHING PASTES: a keyboard's Ctrl+V, Shift+Insert and a fed Ctrl+V leave the field "
-                "as it was, and neither VM's code names clipboard_get (control: both name clipboard_set)",
-                (real, state(), [n for n, b in sorted(dats.items()) if b"clipboard_get" in b],
-                 [n for n, b in sorted(dats.items()) if b"clipboard_set" in b]),
-                (("surfer", 6, -1), ("surfer", 6, -1), [], ["csprogs.dat", "menu.dat"]))
+        menu = (a.progs / "menu.dat").read_bytes()
+        L.check("N  a keyboard's Ctrl+V pastes the clipboard's first line and Shift+Insert pastes it "
+                "again, on an engine that gives the menu a paste; a Ctrl+V fed by the console never "
+                "does; the menu's code names clipboard_paste and not clipboard_get",
+                (fedst, real, state(), b"clipboard_paste" in menu, b"clipboard_get" in menu),
+                (("surfer", 6, -1),
+                 ("surferPASTED", 12, -1) if pastes else ("surfer", 6, -1),
+                 ("surferPASTEDPASTED", 18, -1) if pastes else ("surfer", 6, -1), True, False))
+        if pastes:
+            shot("p667_1_pasted")
+            fed("a", 1)                         # back to what the checks below start from
+            keys.type("surfer")
+            time.sleep(0.4)
 
         fed("a", 1)
         L.check("A  Ctrl+A selects everything", state(), ("surfer", 6, 0))
@@ -192,14 +205,17 @@ def main():
         keys.type("xyz")
         time.sleep(0.3)
         L.check("R  typing replaces the selection", state(), ("xyz", 3, -1))
+        L.clipboard("q")
         press("ctrl", "v")
-        L.check("V  a Ctrl this VM saw and a V that arrives as a letter (a Ctrl whose release was "
-                "missed looks so) is typed", state(), ("xyzv", 4, -1))
+        four = "xyzq" if pastes else "xyzv"
+        L.check("V  a Ctrl and a V the ENGINE saw go down are a paste chord whatever character came "
+                "with the V (the engine is the judge: the letter is not also typed); on an engine "
+                "with no paste that V is a letter", state(), (four, 4, -1))
         press("shift", "home")
-        L.check("H  Shift+Home selects back to the start", state(), ("xyzv", 0, 4))
+        L.check("H  Shift+Home selects back to the start", state(), (four, 0, 4))
         L.clipboard("not what was cut")
         fed("x", 24)
-        L.check("X  Ctrl+X cuts it to the clipboard", (state(), L.clipboard()), (("", 0, -1), "xyzv"))
+        L.check("X  Ctrl+X cuts it to the clipboard", (state(), L.clipboard()), (("", 0, -1), four))
 
         keys.type("dragme")
         time.sleep(0.4)
@@ -264,7 +280,7 @@ def main():
             client.wait(timeout=15)
         except (OSError, subprocess.TimeoutExpired):
             pass
-        for s in sorted((gd / "screenshots").glob("p655_*")):
+        for s in sorted(list((gd / "screenshots").glob("p655_*")) + list((gd / "screenshots").glob("p667_*"))):
             shutil.copyfile(s, a.output_dir / s.name)
             print("kept", a.output_dir / s.name)
         return 1 if L.FAILED else 0

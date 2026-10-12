@@ -136,6 +136,9 @@ def main():
     check('numeric field edits survive jump; owned Enter repeat', field,
           'scan 127 down 1 took 1' in field and 'scan 127 down 0 took 1' in field and
           'maxvelocity 600\n' in field and len(re.findall(r'scan 13 down 1 took 1', field)) == 2)
+    check('paste delivery reuses focused-field route (no OS clipboard read)', field,
+          'synthetic paste took 0' in field and 'synthetic paste took 1' in field and
+          'maxvelocity 600\n' in field)
     check('settings update preserves predecessor file', (game / 'data/maps/settings/local/surf_voyager.cfg').is_file(),
           'sv_maxvelocity 6000\n' in file_text(game / 'data/maps/settings/local/surf_voyager.cfg') and
           (game / 'data/maps/settings/local/surf_voyager.cfg.prev').is_file() and

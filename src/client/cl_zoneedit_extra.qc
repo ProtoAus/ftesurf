@@ -256,6 +256,17 @@ void(float evtype, float scan, float char) ZoneEdit_FieldKey =
 	if (was != "") strunzone(was);
 };
 
+// Reuse P667's engine-approved paste delivery; only the active field takes it.
+// This edits text, never a bind/cvar/file and never a physical-input save proof.
+float(float c) ZoneEdit_Paste =
+{
+	if (c < 32 || c > 126) return FALSE;
+	if (!ui_ze_state || !ze_cursor || !ze_settings || ze_field < 0) return FALSE;
+	if (!sui_text_has_focus("ze_value") || ZoneEdit_Blocker() != "") return FALSE;
+	ZoneEdit_FieldKey(IE_KEYDOWN, 0, c);
+	return TRUE;
+};
+
 void(float i) ZoneEdit_SettingEdit =
 {
 	ze_field = i;

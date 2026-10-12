@@ -31,6 +31,14 @@ patch    671
 # local per-map movement settings applied through the engine's canonical ruleset loader.
 # Dedicated/public lobbies ignore editor settings. Steam admin/publishing needs identity
 # and review policy. No Build, recorder, evidence-format or ranked-policy change.
+# Patch 667: paste. QC is given clipboard text by the engine and by nothing else: a field asks
+# under Ctrl+V or Shift+Ins, and with a server connected the engine asks the player in a
+# prompt of its own ("Paste N characters from your clipboard?  Y: paste, any other key: no")
+# before one line of it comes as CSIE_PASTE events; with nobody about the menu pastes at once.
+# An engine without the two builtins (release 0.1.24's) pastes nothing. The P671 pin above
+# includes P667's engine work (pr_clcmd.c, pr_csqc.c, pr_menu.c, keys.c, cmd.c, textedit.c,
+# cl_screen.c, common.c); menu.dat and csprogs go with it. P667 itself changed no server QC, surfd,
+# recorder, evidence, ranking, default or Build change.
 # Patch 666: the game's half of 665. In hud_player's Stats a difficulty tier's bar opens that
 # tier's maps for whoever is on show, the finished ones first with their times ("Unrated" is
 # a bar too), and the tier stays on show for the next player searched. The leaderboard's

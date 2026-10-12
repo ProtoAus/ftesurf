@@ -686,16 +686,26 @@ string _sui_field_focus;        // the field the KEYBOARD claimed: sui_field_foc
   down), or, where a key came with no character at all, by the key under a
   Ctrl this VM saw go down.  A letter that arrives as a letter is typed: a
   Ctrl whose release went to somebody else cannot turn typing into cuts.
-  NO FIELD PASTES, IN EITHER VM.  The game VM's code is the server's, and
-  upstream gives it no clipboard_get.  The menu VM has one, and commands a
-  server can run reach its fields and its buttons; three cuts of a gate failed
-  their reviews.  What it would take is the engine's to do: ENGINE_PATCHES,
-  Patch 655, and BACKLOG.
+  PASTE IS THE ENGINE'S TO GIVE (Patch 667; 655 shipped none: three QC gates
+  failed their reviews).  A field asks under a V or an Insert going down and
+  gets nothing back but whether it was a paste chord: the engine is the judge
+  of that, reads the clipboard itself and ASKS THE PLAYER in a prompt of its
+  own (pr_clcmd.c), and a yes comes as IE_PASTE events.  Game code asks with
+  clipboard_get, the menu with clipboard_paste; the menu alone is answered at
+  once, and only while no server is connected.  NEITHER BUILTIN IS IN AN
+  OLDER ENGINE, and there a field pastes nothing.
 */
 #define SUI_MOD_SHIFT 1
 #define SUI_MOD_CTRL  2
 #define SUI_MOD_ALT   4
+const float IE_PASTE = 8;       // (0, character, device): one character of a paste
 void(float cliptype, string text) clipboard_set = #0:clipboard_set;
+#ifdef MENU
+float() clipboard_paste = #0:clipboard_paste;
+#else
+float(float cliptype) clipboard_get = #0:clipboard_get;
+#endif
+string _sui_paste;              // pasted text, until the field with the keyboard draws
 float  _sui_mods;               // SUI_MOD_* down now, by this VM's key events
 float  _sui_in_mods;            // ...and as they were for the key sui_get_input last gave
 var float _sui_sel_anchor = -1; // the selection's fixed end in the focused field, or -1
@@ -759,6 +769,7 @@ string() sui_field_focused =
 // panel opens and when it closes.
 void() sui_keys_forget =
 {
+	_sui_paste = "";
 	_sui_mods = 0;
 	_sui_sel_anchor = -1;
 	_sui_sel_drag = FALSE;
@@ -778,6 +789,30 @@ void(float evtype, float scanx) _sui_mods_track =
 	if (evtype == IE_KEYDOWN)
 		_sui_mods = _sui_mods | bit;
 };
+
+// One character the engine handed over as a paste: the field that has the
+// keyboard takes it when it next draws (sui_text_input), and sui_end drops
+// what nobody took.  A field's text is ASCII.
+#define SUI_PASTE_MAX 256
+void(float c) sui_paste_char =
+{
+	if (c < 32 || c > 126)
+		return;
+	if (strlen(_sui_paste) < SUI_PASTE_MAX)
+		_sui_paste = strcat(_sui_paste, chr2str(c));
+};
+
+#ifndef MENU
+// The game VM's ask, from a key handler UNDER a V or an Insert going down.  THE
+// ENGINE IS THE ONLY JUDGE of the chord and of the key being a device's; on
+// yes it asks the player.  -> it was a paste chord: the key is not text.
+float() sui_paste_ask =
+{
+	if (!checkbuiltin(clipboard_get))
+		return FALSE;
+	return clipboard_get(0);
+};
+#endif
 
 // Drop the claim.  A panel going away calls this so its field cannot take it on a
 // later draw; the flag itself needs no clearing here, because sui_begin does that
@@ -1108,7 +1143,8 @@ void(float char, float scan, __inout string text, __inout float cursor) sui_hand
 					_sui_sel_delete(text, cursor);
 			}
 		}
-		// Ctrl+V is nobody's: no field pastes (the note over the state).
+		// Ctrl+V is asked about before a key gets here (Patch 667): by
+		// sui_text_event in the game, by Menu_InputEvent in the menu.
 		return;
 	}
 	if (char > 31 && char < 127) //an actual input, typed or pasted
@@ -1329,6 +1365,7 @@ void() sui_end =
 	_release_action_count = 0;
 	// empty input buffer
 	sui_clear_input();
+	_sui_paste = "";            // a paste no field took is nobody's next frame
 };
 
 
@@ -1542,6 +1579,20 @@ void(string id, vector pos, vector size, __inout string text, __inout float curs
 		float char = 0;
 		float scan = 0;
 		while(sui_get_input(char, scan)) sui_handle_text_input(char, scan, text, cursor);
+		if (_sui_paste != "")
+		{
+			// Patch 667: over the selection, and no longer than a field holds.
+			// sui_handle_text_input's guards first: this may be the frame's only edit.
+			cursor = bound(0, cursor, strlen(text));
+			if (_sui_sel_anchor > strlen(text))
+				_sui_sel_anchor = -1;
+			_sui_sel_delete(text, cursor);
+			cursor = bound(0, cursor, strlen(text));
+			_sui_paste = substring(_sui_paste, 0, max(0, 128 - strlen(text)));
+			text = strcat(substring(text, 0, cursor), _sui_paste, substring(text, cursor, strlen(text)));
+			cursor = cursor + strlen(_sui_paste);
+			_sui_paste = "";
+		}
 	}
 };
 
@@ -1557,6 +1608,9 @@ void(float evtype, float scanx, float chary, string id, __inout string text, __i
 	_sui_mods_track(evtype, scanx);
 	if (evtype != IE_KEYDOWN)
 		return;
+	if (scanx == 'v' || scanx == K_INS)
+	if (sui_paste_ask())
+		return;                         // Patch 667: the owner hears IE_PASTE, if the player says yes
 	if (_sui_sel_id != id)
 	{
 		_sui_sel_id = id;

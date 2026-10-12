@@ -157,6 +157,33 @@ but only drawn 1 obviously."
 - **Live since 11 Oct 16:58 UTC (12 Oct, 03:58 here)** in both installs: a new
   engine file, so restart the game. Lobbies need nothing.
 
+## 00. 12 Oct — paste (Patch 667)
+
+From your list, and your "do it!" to the engine change it needed.
+**In your install since 02:29 UTC on 12 Oct (13:29 here): a new engine file,
+so restart the game.** Run by a test player in a game and in the menu, with
+real key presses; not yet by you.
+1. **In the main menu, with no game running** (the name box, the map
+   search): Ctrl+V or Shift+Insert pastes. One line of what you copied.
+2. **In a game** (the link box's four digits or its code, the profile's
+   search and name, chat): Ctrl+V and the ENGINE asks, in a small box of its
+   own: "Paste N characters from your clipboard?  Y: paste, any other key:
+   no". Press Y and it is in. Anything else, Enter included, is no.
+3. **Why it asks in a game and not in the menu.** In a game the code that
+   runs is whichever server's you joined, and your clipboard is whatever you
+   last copied anywhere. Ctrl is crouch and V is noclip, so the two can come
+   together by accident; Enter is the chat key, so yes is not Enter. The box
+   says how many characters and not which, in case you are streaming.
+4. The menu opened over a game asks too.
+- **It is a new engine file, so restart the game.** Players on release
+  0.1.24 get everything else of today from the lobbies but NO paste until a
+  release carries this engine: say if you want 0.1.25 cut.
+- **Yours to look at:** paste the four digits when you next link; and
+  whether the Y box suits you (it is in the console's lettering, not the
+  UI's look: say so and I restyle it).
+- **Known:** accented letters and other alphabets are not pasted (the boxes
+  are plain text); under four frames a second the box cannot be said yes to.
+
 ## 00. 12 Oct — tiers that open, and a player's times on this map (Patches 665, 666)
 
 From your reply ("some ability to select the tiers to see what maps you have
@@ -239,9 +266,7 @@ install and on the lobbies since 18:21 UTC (05:21 here) on 11 Oct.**
   each broken in review; the last could put the menu's name box under your
   own crouch + noclip and press Continue for you. Nothing was shipped that
   did this.
-- **Yours to decide:** paste needs a change in the ENGINE (servers kept away
-  from the menu's test commands, and for boxes in the game an engine-drawn
-  "paste?" prompt). It would ride the next release. Say if you want it.
+- **Decided 12 Oct ("do it!"): paste is Patch 667, at the top of this file.**
 
 ## 00. 12 Oct — a Steam picture for everyone on the boards (Patch 660)
 

@@ -125,6 +125,7 @@ void() ZoneEdit_SettingsOpen;
 void(float i) ZoneEdit_SettingEdit;
 void() ZoneEdit_SettingApply;
 void(float evtype, float scan, float char) ZoneEdit_FieldKey;
+float(float c) ZoneEdit_Paste;
 void() ZoneEdit_SettingsSave;
 void(vector p, float w, float y, float rowh, float tsz) ZoneEdit_SettingsDraw;
 void(vector p) ZoneEdit_DragStart;
@@ -1748,6 +1749,8 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 		ze_click = (ui_ze_state >= ZE_A);
 	else if (a == "back")
 		ze_back = (ui_ze_state >= ZE_A);
+	else if (a == "pasteprobe")
+		print(sprintf("zone_edit: synthetic paste took %g\n", ZoneEdit_Paste(stof(argv(2)))));
 	else if (a == "edgeprobe")
 	{
 		zv = ZoneEdit_EdgeSnap([stof(argv(2)), stof(argv(3)), stof(argv(4))]);
