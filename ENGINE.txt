@@ -29,6 +29,12 @@ patch    681
 # Patch 681: default sv_limittics 8 gives local/listen-server world simulation
 # enough catch-up budget for 100 Hz bhop at 20 render FPS. Tickrates and mouse
 # interpolation are unchanged; no native engine pin/tag or QC Build change.
+# P681 config-only deployed 2026-10-12 09:23 UTC from product e8407bb:
+# both Windows default.cfg hashes cbc2191087785c19; all 11 native/program/
+# owner-config hash+mtime guards unchanged. Pi received only the authored
+# three-line hunk (platform-specific defaults preserved), hash 9df79b3d2e388975.
+# All 12 live lobbies read back sv_limittics 8; no restart/player interruption.
+# No native binaries or generated programs deployed, including peer P680 QC.
 # Patch 680: inert canonical map/stage/bonus/latched and save-backed reset/zone
 # policies. Shared read-only destination/selection halves retain live operations;
 # reset clears speed/carrier, preserves ground/duck/Source history and optional aim.
