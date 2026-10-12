@@ -8447,6 +8447,30 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **DEPLOYED 12 Oct 2026, 00:15 to 00:23 UTC (FTESurf `4519bdb` and `0464e0f`,
+  Patches 665 and 666): surfd, then csprogs.** surfd: `surfd-deploy.ps1 -Ref
+  4519bdb -Only` surfd.py and test_web.py, the whole suite green on the Pi,
+  backup `data/surfd.db.bak-4519bdb-20261012-111517`, both files hash-matched,
+  `surfd ready` 00:18:04Z; asked once on the host: the maps list (1,370 rows,
+  6.0 s cold), a search, a breakdown, `ct=1` (65 maps), `ct=u`, `on=` (four
+  legs), the site's maps list; no error line. THE UNRATED COUNT MOVED UNDER
+  THE CHECK: 845 at 00:18Z and 953 five minutes later, as the map index took
+  in what Patch 664's watcher had fetched that hour; two players asked
+  together agree.
+  csprogs, 00:20Z: `build.ps1 -Pi` from the pushed tree, nobody on any of the
+  12 lobbies, `ce9e7607` hash-verified on the Pi (qwprogs `35fda5eb` swapped
+  for itself), all restarted; both Windows installs 00:20:12Z under the rig
+  lock, guard on Patch 668's `ddf40c04`, which is `.prev`. menu.dat
+  (`10cba3c1`), default.cfg and the exes untouched.
+  LIVE, on the engine 0.1.24 shipped (`183faf44`): `pi_lobby_smoke.py --addr
+  play.proto.bar:27510` was served `ce9e7607` and drew the board; then a test
+  player on that lobby (scratch `tmp/p666_live.py` in this session's task
+  root) opened the most-timed player's tier 2 (105 of 117 finished, a hundred
+  held), the unrated (71 of 952) and their seven times on surf_kitsune in the
+  board. NOT SEEN: a person doing any of it by hand.
+  ROLLBACK: lobbies and installs, the `.prev` csprogs (668's), which asks
+  neither new form; surfd, the two `*.pre4519bdb-20261012-111517` files and
+  SIGHUP.
 - **THE PROFILE'S TIER LISTS AND THE BOARD'S PLAYER VIEW (Patch 666).**
   cl_profile.qc holds two more asks beside the breakdown's: `Profile_Tier*`
   (`pf_ct`, one tier's maps for whoever `pf_who` is, a hundred a page, a

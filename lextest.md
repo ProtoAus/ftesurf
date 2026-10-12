@@ -162,8 +162,10 @@ but only drawn 1 obviously."
 From your reply ("some ability to select the tiers to see what maps you have
 and havent finished, with your times! same for others with search! no search
 for +showscores leaderboard? I want to see results for the map, from that
-user, see their times."). **NOT LIVE AS THIS IS WRITTEN: the deployment's own
-line follows.**
+user, see their times."). **In your install and on the lobbies since 00:20
+UTC on 12 Oct (11:20 here).** Seen once against the real leaderboard from a
+test player on a lobby: a real player's tier 2 (105 of 117 finished), the
+unrated list, and their seven times on surf_kitsune inside the board.
 1. **P, Stats: click a tier's bar.** Its maps take the results' place: the
    ones finished first, each with the fastest time on its main track, then
    the ones not yet. "Unrated" is a bar too (the maps nobody has given a
