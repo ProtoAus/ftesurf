@@ -1506,7 +1506,9 @@ first fill a day of half-hourly runs); `hud_player` as a profile with the Steam 
 customizer, a breakdown like the site's player page, and a player search
 there and on the leaderboard (BUILT: surfd's half is Patch 662, the search
 and the breakdown as parameters of `/api/board`; the game's is Patch 663,
-P opens it).
+P opens it; and from his reply the same day, Patches 665 and 666: a tier's
+bar opens its maps with the times, for anybody searched too, and the
+leaderboard's search shows a picked player's times on the map being played).
 
 **THE FIRST BOOT: BUILT, Patch 647.** `screen_terms` is one rounded panel
 with two cards, "On this machine" and "Public lobbies", their text wrapped

@@ -24,6 +24,10 @@ LOOK AT THEM.  THE DESKTOP'S POINTER IS MOVED for each click and put back
      the one whose name IS the text first
   K  ...and that console line gave the field NO keyboard: a bound key still runs
   E  a click on the field, then Enter, takes the first: the breakdown is theirs
+  D  Patch 666: a click on a difficulty tier's bar lists that tier's maps for
+     the player on show, the finished ones first with their times; the bar
+     again gives the results back; the unrated come a page at a time; the
+     tier stays on show for the next player; a card opened again is on results
   V  `hud_player view <8-hex mark>` finds a player by the game's own mark
   M  a wide profile: fifty rows at first, and the rest when the list is scrolled
   G  a page that brings nothing, and a page that fails: asked for once, and three
@@ -34,8 +38,11 @@ LOOK AT THEM.  THE DESKTOP'S POINTER IS MOVED for each click and put back
      release runs
   N  a handle nobody has: said so, and nothing is asked again
   W  a name that is no handle is not asked about at all
-  B  the board: `scores find cap` on a pinned board lists players; a click on
-     the field and Enter closes the board and opens the profile on the first
+  B  the board: `scores find cap` on a pinned board lists players
+  H  Patch 666: a click on the field and Enter shows the first one's times on
+     THIS MAP in the board's table's place (the board stays, no card opens);
+     a time's row opens the board of its leg; "Whole profile" closes the
+     board and opens the card on that player
   Y  letting go of the scoreboard key while that field has the keyboard leaves
      the board up
   P  a player whose picture surfd holds: it is drawn in the search's list, and
@@ -72,8 +79,8 @@ def handle(player):
     return hashlib.sha256(player.encode("ascii")).hexdigest()[:12]
 
 
-def seed(db):
-    """The board this arm reads: -> rows per player."""
+def seed(db, here):
+    """The board this arm reads (`here` is the rig's own map): -> rows per player."""
     now = int(time.time())
     conn = sqlite3.connect(str(db))
     rows = []
@@ -90,6 +97,9 @@ def seed(db):
     run("surf_beginner", ZEDDER, "Zedder", 47000)
     run("surf_kitsune", ZED, "^2zed", 180250, tier="ksf", days=1)
     run("surf_kitsune", ZEDDER, "Zedder", 150000, tier="ksf")
+    run(here, ZED, "^2zed", 31000)          # Patch 666: three legs of the map this rig is on
+    run(here, ZED, "^2zed", 8000, leg=1)
+    run(here, ZED, "^2zed", 12000, track=1)
     for k in range(14):
         run("surf_beginner", "765611980000090%02d" % k, "cap%02d" % k, 50000 + k * 100)
     for k in range(120):                    # a wide profile: one row a map
@@ -207,8 +217,14 @@ def main():
         import os
         os.environ["SURFD_MOMTRACKS"] = str(tsv)
         web, db = L.start_surfd(rig, hport, "127.0.0.1")
-        have = seed(db)
+        have = seed(db, a.map)
         plant_picture(db, ZED)
+        # What surfd itself says of the unrated, for D (its own checks are test_web.py's).
+        import urllib.request
+        with urllib.request.urlopen("http://127.0.0.1:%d/api/board?player=%s&ct=u&limit=1"
+                                    % (hport, handle(ZED)), timeout=20) as r:
+            unrated = json.loads(r.read().decode("utf-8"))
+        print("  surfd: %d unrated maps for zed, %d finished" % (unrated["total"], unrated["done"]))
         lie()
         common = ["-basedir", str(rig), "-manifest", str(rig / "default.fmf"),
                   "+set", "cfg_save_auto", "0", "+set", "log_enable", "1", "+set", "log_dir", "logs"]
@@ -380,6 +396,65 @@ def main():
                  bool(spans[1][1]) and 16 <= spans[1][1][0] <= 24),
                 (True, True, True, True))
 
+        # D: a tier's maps.  0 the tier, 1 its answer, 2-3 maps held/of, 4 finished, 5-8 the first bar
+        TR = re.compile(r'  tier "([^"]*)" (\d) maps (\d+)/(\d+) done (\d+)  bar (-?[\d.]+),(-?[\d.]+) '
+                        r'([\d.]+)x([\d.]+)')
+        SAID = re.compile(r"profile: tier (\S+) of (\w+): (\d+) maps of (\d+) held, (\d+) finished, "
+                          r"first (\S+) (\d+)")
+
+        def tier(test=None, timeout=12):
+            end = time.time() + timeout
+            while True:
+                st = status()
+                got = TR.findall(cl.text())
+                t = got[-1] if got else None
+                if st and t and (test is None or test(t)):
+                    return st, t
+                if time.time() > end:
+                    return st, t
+                time.sleep(0.5)
+
+        st, t = tier()
+        click(st, float(t[5]) + float(t[7]) * 0.5, float(t[6]) + float(t[8]) * 0.5)
+        st, t = tier(lambda t: t[1] == "2")
+        said = SAID.findall(cl.text())
+        # Tier 1 is utopia, beginner and every sixth wide map: 22, of which zed has finished two.
+        L.check("D  a click on the first tier's bar lists its maps for the player on show: all 22, "
+                "the two finished first, the first of them with its time",
+                (t and t[:5], said[-1:]),
+                (("1", "2", "22", "22", "2"),
+                 [("1", handle(ZED), "22", "22", "2", "surf_beginner", "45500")]))
+        time.sleep(0.6)
+        shot("p666_1_tier")
+        click(st, float(t[5]) + float(t[7]) * 0.5, float(t[6]) + float(t[8]) * 0.5)
+        st, t = tier(lambda t: t[0] == "", 5)
+        L.check("D  ...and the bar again gives the results back", (t and t[0], st and st[5]),
+                ("", str(have[ZED])))
+        send("hud_player tier u", 0.5)
+        st, t = tier(lambda t: t[1] == "2")
+        first = t and t[:5]
+        send("hud_player scroll 95", 0.5)
+        st, t = tier(lambda t: t[2] == str(min(200, unrated["total"])))
+        L.check("D  the unrated come a hundred at a time, the rest as the list is scrolled (surfd "
+                "says %d, %d finished)" % (unrated["total"], unrated["done"]),
+                (unrated["total"] > 100, first, t and t[:5]),
+                (True, ("u", "2", "100", str(unrated["total"]), str(unrated["done"])),
+                 ("u", "2", str(unrated["total"]), str(unrated["total"]), str(unrated["done"]))))
+        shot("p666_2_unrated")
+        send("hud_player tier 1", 0.5)
+        tier(lambda t: t[0] == "1" and t[1] == "2")
+        send("hud_player view " + handle(ZEDDER), 0.5)
+        st, t = tier(lambda t: t[1] == "2" and SAID.findall(cl.text())[-1][1] == handle(ZEDDER))
+        L.check("D  the tier stays on show for the next player: Zedder's tier 1, asked for after "
+                "their breakdown landed",
+                (st and st[4], t and t[:5], SAID.findall(cl.text())[-1]),
+                (handle(ZEDDER), ("1", "2", "22", "22", "2"),
+                 ("1", handle(ZEDDER), "22", "22", "2", "surf_beginner", "47000")))
+        send("hud_player close", 0.5)
+        send("hud_player view " + handle(ZED), 0.8)
+        st, t = tier(lambda t: t[0] == "", 5)
+        L.check("D  a card opened again is on the results", t and t[0], "")
+
         send("hud_player view " + handle(ZEDDER)[:8], 0.5)
         st = until(lambda s: s[3] == "2" and s[4] == handle(ZEDDER)[:8])
         said = re.findall(r"profile: (\w+) is (\w+), (\d+) times", cl.text())
@@ -470,7 +545,8 @@ def main():
         time.sleep(0.5)
         L.check("ESC goes back to this player, then closes the panel", status()[:3], ("0", "1", ""))
 
-        send("+showscores", 0.5)                # the scoreboard key held...
+        send("+showscores", 1.5)                # the scoreboard key held...
+        shot("p666_3_held_board")               # LOOK: the field is there, and says what gives it a cursor
         send("scores open", 1.5)                # ...and the board pinned
         send("scores find cap", 0.5)
         st = until(lambda s: s[7] == "2" and s[8] == "cap")
@@ -483,16 +559,99 @@ def main():
         up = status()
         L.check("Y  letting go of the scoreboard key while the field has the keyboard leaves the board up",
                 (st and st[17], up and (up[18], up[17])), ("1", ("1", "1")))
+        # H: a picked player's times on this map.  0 who, 1 the answer, 2 times, 3-6 "Whole profile", 7-10 the first row
+        ON = re.compile(r'  showing "(\w+)" on this map: answer (\d), (\d+) times  chip (-?[\d.]+),(-?[\d.]+) '
+                        r'([\d.]+)x([\d.]+)  row (-?[\d.]+),(-?[\d.]+) ([\d.]+)x([\d.]+)')
+        LEG = re.compile(r'scores: (\S+) on \S+  leg (\d+)/(\d+) "([^"]*)"')
+
+        def board(test=None, timeout=10):
+            """-> (the board's state and leg, the player it shows or None), as `scores status` prints them."""
+            end = time.time() + timeout
+            while True:
+                n = cl.text().count("scores: ")
+                send("scores status", 0.3)
+                cl.count("scores: ", n + 1, 5)
+                time.sleep(0.2)
+                text = cl.text()
+                legs = list(LEG.finditer(text))
+                on = ON.findall(text[legs[-1].start():]) if legs else []
+                got = (legs[-1].groups() if legs else None, on[-1] if on else None)
+                if test is None or test(got) or time.time() > end:
+                    return got
+                time.sleep(0.4)
+
+        cap0 = handle("76561198000009000")
         keys.press("enter")
+        leg, on = board(lambda g: g[1] and g[1][1] == "2")
+        st = status()
+        L.check("H  Enter in the board's search shows the first one's times on this map, in the board: "
+                "the board stays, no card opens, and this player has none here",
+                (st and (st[0], st[18]), leg and leg[0], on and on[:3]), (("0", "1"), "pinned", (cap0, "2", "0")))
+        shot("p666_4_on_nobody_here")
+        send("scores on " + handle(ZED), 0.5)
+        leg, on = board(lambda g: g[1] and g[1][0] == handle(ZED) and g[1][1] == "2")
+        said = re.findall(r"profile: (\w+) on (\S+): (\d+) times, first leg (-?\d+)/(-?\d+) in (\d+)", cl.text())
+        L.check("H  zed has three times on this map: every leg, the main track first",
+                (on and on[:3], said[-1:]),
+                ((handle(ZED), "2", "3"), [(handle(ZED), a.map, "3", "0", "0", "31000")]))
+        time.sleep(4.0)                         # the picture is asked for when it first draws
+        shot("p666_5_on_zed")
+        send("+showscores", 0.4)                # the scoreboard key, pressed and let go...
+        send("-showscores", 0.6)
+        leg, on = board()
+        L.check("H  ...a pinned board showing somebody's times stays up when the scoreboard key is let go",
+                (leg and leg[0], on and on[0]), ("pinned", handle(ZED)))
+        if not on:                              # a build that shut it: the checks below still run
+            send("scores open", 1.0)
+            send("scores on " + handle(ZED), 0.5)
+            board(lambda g: g[1] and g[1][1] == "2")
+        send("scores tab segmented", 0.6)       # the source moved by a console word (a key does the same)
+        leg, gone = board(lambda g: g[1] is None, 5)
+        send("scores tab online", 0.6)
+        L.check("H  ...and a source or a leg chosen by any road gives the table back", gone, None)
+        # This map's legs, by name: which board a time's row opens depends on them.
+        names = []
+        for i in range(int(leg[2]) if leg else 0):
+            send("scores leg %d" % i, 0.3)
+            names.append((board()[0] or ("", "", "", "?"))[3])
+        send("scores leg 0", 0.3)
+        print("  this map's legs: %s" % names)
+        # zed's three times, in the view's order, and the last of them this map has a leg for
+        other = [(n, r) for r, n in enumerate(("main", "stage 1", "bonus 1")) if r and n in names][-1:]
+        moved = gone = None
+        if other:
+            send("scores on " + handle(ZED), 0.5)
+            leg, on = board(lambda g: g[1] and g[1][1] == "2")
+            st = status()
+            click(st, float(on[7]) + float(on[9]) * 0.5, float(on[8]) + float(on[10]) * (other[0][1] + 0.5))
+            moved, gone = board(lambda g: g[1] is None, 5)
+        else:
+            print("  CANNOT MEASURE which leg a time's row opens: this map has the main track only")
+        send("scores on " + handle(ZED), 0.5)
+        leg, on = board(lambda g: g[1] and g[1][1] == "2")
+        st = status()                           # ...and the first row is the main track's
+        click(st, float(on[7]) + float(on[9]) * 0.5, float(on[8]) + float(on[10]) * 0.5)
+        back, gone2 = board(lambda g: g[1] is None, 5)
+        L.check("H  a click on a time gives the table back on that time's own board: %s, then the "
+                "main track's" % (other[0][0] if other else "(no other leg on this map)"),
+                (other and (gone, moved and moved[3]), gone2, back and (back[1], back[3]), back and back[0]),
+                (other and (None, other[0][0]), None, ("1", "main"), "pinned"))
+        send("scores on " + handle(ZED), 0.5)
+        leg, on = board(lambda g: g[1] and g[1][1] == "2")
+        st = status()
+        click(st, float(on[3]) + float(on[5]) * 0.5, float(on[4]) + float(on[6]) * 0.5)
         st = until(lambda s: s[0] == "1" and s[3] == "2")
-        L.check("B  Enter closes the board and opens the profile on the first of them",
-                st and (st[:5], st[18]),
-                (("1", "1", handle("76561198000009000"), "2", handle("76561198000009000")), "0"))
+        L.check("H  \"Whole profile\" closes the board and opens the card on that player",
+                st and (st[:5], st[18]), (("1", "1", handle(ZED), "2", handle(ZED)), "0"))
         shot("p663_9_from_board")
         keys.press("esc")
         time.sleep(0.3)
         keys.press("esc")
         time.sleep(0.5)
+        asked = len(ASKS)                       # the card is shut, and the breakdown held is still zed's
+        send("hud_player tier 2", 1.5)
+        L.check("D  a tier named on the console with no card up asks surfd for nothing",
+                (status()[0], len(ASKS) - asked), ("0", 0))
         send("scores open", 1.0)
         send("scores me", 0.8)
         L.check("B  the board's \"my profile\" closes it and opens this player's own page",
@@ -533,11 +692,19 @@ def main():
         send("+showscores", 3.0)
         room = shot("p663_11_room")
         send("-showscores", 0.5)
-        found = []
-        for img in (room, card):
+        # The board's table has a picture of its own now (zed's time on this map,
+        # Patch 666's rows): the room list is measured right of the board.
+        found, side, cut = [], None, 0
+        if room:
+            from PIL import Image
+            whole = Image.open(room)
+            cut = int(whole.size[0] * 0.6)
+            side = a.output_dir / "p663_11_room_right.png"
+            whole.crop((cut, 0, whole.size[0], whole.size[1])).save(side)
+        for img, off in ((side, cut), (card, 0)):
             n, box, size = PIC.quadrants(img) if img else (0, None, None)
             found.append((n > 0, (box[2] - box[0], box[3] - box[1]) if box else None,
-                          round(box[0] / size[0], 2) if box else None))
+                          round((off + box[0]) / (off + size[0]), 2) if box else None))
             print("  the four-colour picture in %s: %d matches, their corners span %s of %s"
                   % (img and img.name, n, box, size))
         # A picture's top-left quadrant is half its side: matching corners fill a little under that.

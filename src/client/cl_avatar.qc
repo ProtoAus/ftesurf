@@ -563,6 +563,7 @@ void() Av_Open =
 	av_namefocus = FALSE;
 	Profile_Reset();
 	Profile_Stale(60);
+	Profile_TierShow(-2);           // Patch 666: the card opens on the results
 	sui_keys_forget();
 	UI_CursorClaim(UIC_AVATAR);
 };
@@ -1309,8 +1310,24 @@ float(string cmd) Av_ConsoleCommand =
 		if (av_open)
 			Profile_Type(argv(2));
 	}
-	else if (argv(1) == "scroll")           // ...and the results, by rows
-		pf_scroll_y = max(0, stof(argv(2)) * av_rowh);
+	else if (argv(1) == "scroll")           // ...and the results (or the tier's maps), by rows
+	{
+		if (pf_ct != "")
+			pf_ct_scroll_y = max(0, stof(argv(2)) * av_rowh);
+		else
+			pf_scroll_y = max(0, stof(argv(2)) * av_rowh);
+	}
+	else if (argv(1) == "tier")             // Patch 666: a tier's bar; `u` the unrated, `off` the results
+	{
+		if (!av_open)
+			return TRUE;                    // no card, no ask: a console line is not a reason for one
+		if (argv(2) == "u")
+			Profile_TierShow(-1);
+		else if (argv(2) == "off" || argv(2) == "")
+			Profile_TierShow(-2);
+		else
+			Profile_TierShow(stof(argv(2)));
+	}
 	else if (argv(1) == "status")
 		print(strcat(sprintf("hud_player: open %g page %g view \"%s\" breakdown %g of \"%s\" rows %g/%g",
 		                     av_open, av_tab, av_other, pf_state, pf_who, pf_rn, pf_total),
@@ -1318,8 +1335,12 @@ float(string cmd) Av_ConsoleCommand =
 		                     acct_cl_is),
 		             sprintf("  field %g,%g %gx%g on %gx%g keys %g", pf_f_p_x, pf_f_p_y, pf_f_sz_x, pf_f_sz_y,
 		                     pf_f_scr_x, pf_f_scr_y, pf_q_focus),
-		             sprintf("  board %g  trail %s at %g,%g %g\n", rec_sb_open,
-		                     getplayerkeyvalue(player_localnum, "lobbytrail"), av_dbg_x, av_dbg_y, av_dbg_z)));
+		             sprintf("  board %g  trail %s at %g,%g %g", rec_sb_open,
+		                     getplayerkeyvalue(player_localnum, "lobbytrail"), av_dbg_x, av_dbg_y, av_dbg_z),
+		             // Patch 666, at the end: an older arm reads the line up to here.
+		             sprintf("  tier \"%s\" %g maps %g/%g done %g", pf_ct, pf_ct_state, pf_ct_n, pf_ct_total,
+		                     pf_ct_done),
+		             sprintf("  bar %g,%g %gx%g\n", pf_bar_p_x, pf_bar_p_y, pf_bar_sz_x, pf_bar_sz_y)));
 	else
 		Av_Toggle();
 	return TRUE;

@@ -62,6 +62,30 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   `+showscores` in default.cfg (the menu has the keys, so it works).
 - ftesurf-5b, 12 Oct.
 
+## A tier's maps and a player's times on the map: what Patches 665 and 666 left -- 2026-10-12
+
+From their reviews; none stops them.
+- **A time's row opens its leg, not its game.** The source filter (FTESurf,
+  Momentum, KSF) stays as it was, so an imported time can open a board
+  narrowed to ours and not be on it. Local becomes Online.
+- **On a held board the map's clock has the pinned board's room**: the
+  search field is drawn there now, so a long "next map" line is cut sooner.
+- **The source buttons, the filter and refresh stay above somebody's
+  times.** A source pressed gives the table back; the filter does nothing
+  to the view.
+- **"Not hosted here" is the site's map index**, not what this install has.
+- **A console word still asks once a call** when its argument changes
+  (`scores on <who>`, `hud_player tier` with the card up): `scores refresh`
+  has the same shape.
+- **A second build is two things in the two answers** (665). `&on=<x>_css`
+  includes its map's imported rows, as its board does; a tier's list files a
+  time under the row's own map, as the site's list does, so the same time is
+  missing beside `x_css` there. One rule for both, once somebody says which.
+- **`&on=` is cut at 200 rows and says its `total`**; the game holds 96 and
+  does not say when it was cut. A map with that many legs and games has not
+  been seen.
+- ftesurf-5b, 12 Oct.
+
 ## The game's player search and breakdown: what Patch 662 left -- 2026-10-12
 
 From its review; none stops it.

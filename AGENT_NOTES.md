@@ -8447,6 +8447,55 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **THE PROFILE'S TIER LISTS AND THE BOARD'S PLAYER VIEW (Patch 666).**
+  cl_profile.qc holds two more asks beside the breakdown's: `Profile_Tier*`
+  (`pf_ct`, one tier's maps for whoever `pf_who` is, a hundred a page, a
+  thousand held) and `Profile_On*` (`pf_on_who` on `pf_on_map`, 96 rows). A
+  TIER STAYS ON SHOW for the next player and is asked for when their
+  breakdown lands: surfd has their rows ranked by then, and asked beside it
+  the Pi would rank them twice. The card opens on the results.
+  The board draws `Profile_DrawOn` in its table's place while `pf_on_who` is
+  set, and gives the table back when the leg or the source moves BY ANY ROAD
+  (`sb_on_leg`, `sb_on_tab`, compared at draw: the arrows, `scores leg` and
+  the finish's follow moved them under the view in the first cut).
+  A PICK IS ITS FRAME'S ONLY HAND-OFF (`Scores_SearchPick` returns TRUE). The
+  first cut returned FALSE and the table's own row pick ran under the
+  search's list: the native table takes a press anywhere in its rect.
+  THE ARM READS THE MAP'S LEGS (`scores leg <i>`, then `scores status`). It
+  assumed bhop_eazy's four stages and a bonus on the day Patch 664 replaced
+  that build with one segment; on a map with the main track only it prints
+  CANNOT MEASURE for which leg a time's row opens.
+  `hud_player status` says `tier "<t>" <answer> maps <held>/<of> done <n>
+  bar x,y wxh` AT ITS END (663's checks read the line up to there), `scores
+  status` a `showing "<who>" on this map` line with the chip's and the first
+  row's rectangles; `hud_player tier <n|u|off>` and `scores on [who]` are the
+  console's twins, the first only with the card up.
+  THE THREE FIXES FROM ITS REVIEW EACH FAIL ON THE BUILD BEFORE THEM (csprogs
+  `7ca649ad`: 35 of 38), which is how their checks were shown to measure.
+- **`tools/accounts_mutants.py` LIED FROM PATCH 662 UNTIL 665, AND ITS OWN
+  LINES SAID SO.** 662 gave every suite `PYTHONPATH=tools` (test_web.py
+  imports from there). test_accounts.py's "a host with no ed25519.py" check
+  makes its host by taking `tools/` off `sys.path`; with the path in the
+  environment as well the module still imported, the check failed on
+  UNMUTATED code, and the sweep called every mutant killed: 173 of them by
+  that check alone, the eleven expected survivors among them. Seen in 665
+  because eleven "unexpected" names had all died of one check; measured on
+  the unmutated suite (0 failures without the variable, that one with it).
+  The path is test_web.py's alone now (and this file's own directory: built
+  from the argument, `python tools/accounts_mutants.py surfd` pointed it at
+  nothing, test_web.py died on its import, and a crash counted as a kill:
+  665's review, then measured). EVERY SUITE NOW RUNS ONCE UNMUTATED FIRST, in
+  the sweep's own environment, and the sweep stops if one fails there. A
+  whole sweep reads 428 mutants, 417 killed, 11 survive alone as expected.
+  READ WHICH CHECK KILLED, NOT ONLY THAT ONE DID: one name across many
+  mutants is the environment. It takes about 27 minutes with six workers now
+  that a mutant the first suite lets through runs the second;
+  `ACCOUNTS_MUTANTS_ONLY=gp-` sweeps the mutants of one prefix (two minutes).
+- **THE GAME'S TIER LIST AND PLAYER-ON-A-MAP (Patch 665)** are two more forms
+  of `/api/board?player=`: `&ct=` and `&on=` (surfd/README.md has the
+  replies). Both read `_profile_rows`, so they cost what the breakdown costs
+  and little more while it is held. `_tier_maps` is the site's
+  `/board/api/player/<h>/maps` as well: change one and the other moves.
 - **DEPLOYED 11 Oct 2026, 19:02 UTC (FTESurf `de74859`, Patch 663): csprogs
   and default.cfg; AND WHAT THE FIRST LIVE LOOK FOUND.** `build.ps1 -Pi`
   from the pushed tree, nobody on any of the 12 lobbies: csprogs

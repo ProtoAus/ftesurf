@@ -2647,28 +2647,77 @@ float() Scores_NativeRowPick =
 
 // Everything after a board's own drawing, shared by both layouts: the room list
 // inside the bracket, the bracket's end, then the hand-offs.
-// Patch 663: the player search (cl_profile.qc), on the title row of a PINNED
-// board: a held one has no cursor.  Its list is drawn last in the bracket and
-// a picked player is handed to the profile, which this board closes for.
+// Patch 663: the player search (cl_profile.qc), on the title row.  Its list is
+// drawn last in the bracket.  Patch 666: a HELD board shows the field as well,
+// as the look alone (it has no cursor) with what gives it one; and a picked
+// player's times on THIS MAP take the table's place (Profile_DrawOn).  "my
+// profile" and that view's own chip hand over to the profile, which this
+// board closes for.
 vector sb_pfp;                  // the field, as drawn this frame
 float  sb_pfw;                  // ...and its width; 0 is no field
 float  sb_pfme;                 // "my profile" was pressed this frame
+float  sb_onact;                // what Profile_DrawOn said was let go of this frame
+float  sb_on_leg, sb_on_tab;    // the leg and the source the board was on when that view opened
 void() Scores_SearchDrop =
 {
 	local float dw;
 
-	if (!sb_pfw)
+	if (!sb_pfw || !rec_sb_open)    // a held board draws the field's look and no list
 		return;
 	Font_Set(ui_font_ui);
 	dw = max(sb_pfw, rec_sb_cw * 30);
 	Profile_Drop([sb_pfp_x + sb_pfw - dw, sb_pfp_y + ceil(rec_sb_szrow * 1.9) + 4], dw, sb_szui, rec_sb_szhead);
 };
+// `who`'s times on this map, in the table's place, until the board is asked
+// for again: Scores_Draw gives the table back when the leg or the source moves.
+void(string who) Scores_OnShow =
+{
+	Profile_OnShow(who, serverkey("map"));
+	sb_on_leg = rec_sb_leg;
+	sb_on_tab = rec_sb_tab;
+};
+
+// -> something was handed off: NOTHING ELSE IS on that frame.  A pick that
+// returned FALSE let the table's own row pick run under the list (its review:
+// the native table takes a press anywhere in its rect).
 float() Scores_SearchPick =
 {
 	local string who;
+	local float act, i;
+	local float *f;
 
-	who = Profile_TakePick();
-	if (who == "" && !sb_pfme)
+	act = sb_onact;
+	sb_onact = 0;
+	who = "";
+	if (rec_sb_open)
+		who = Profile_TakePick();
+	if (who != "")
+	{
+		Scores_OnShow(who);
+		return TRUE;
+	}
+	if (act == 1)
+	{
+		Profile_OnClear();
+		return TRUE;
+	}
+	if (act >= 3)
+	{
+		// A time's leg, where this map's zones have one, on the online board
+		// (these are its times).
+		f = pf_on_f;
+		for (i = 0; i < rec_sb_legn; i = i + 1)
+			if (rec_sb_legtrack[i] == f[(act - 3) * PF_RF])
+			if (rec_sb_legnum[i] == f[(act - 3) * PF_RF + 1])
+				rec_sb_leg = i;
+		if (rec_sb_tab == SB_T_LOCAL)
+			Scores_TabSet(SB_T_ONLINE);
+		Profile_OnClear();
+		return TRUE;
+	}
+	if (act == 2)
+		who = (pf_on_handle != "") ? pf_on_handle : pf_on_who;
+	else if (!sb_pfme)
 		return FALSE;
 	sb_pfme = FALSE;
 	// The card will not open over these (Av_Open): the board stays, and says why.
@@ -3134,21 +3183,24 @@ void(vector scr) Scores_Draw =
 	Font_Set(ui_font_ui);
 	s = (serverkey("map") != "") ? serverkey("map") : "no map";
 	Scores_Text([x0 + pad, y0 + pad], rec_sb_sztitle, s, SUI_THEME_TEXT, 1);
-	sb_pfw = 0;
 	if (rec_sb_open)
-	{
 		Profile_Frame();
-		sb_pfw = min(rec_sb_cw * 26, w - pad * 5 - chipw - stringwidth(s, TRUE, [rec_sb_sztitle, rec_sb_sztitle]));
-		if (sb_pfw < rec_sb_cw * 14)
-			sb_pfw = 0;             // no room beside this map's name
-	}
+	sb_pfw = min(rec_sb_cw * 26, w - pad * 5 - chipw - stringwidth(s, TRUE, [rec_sb_sztitle, rec_sb_sztitle]));
+	if (sb_pfw < rec_sb_cw * 14)
+		sb_pfw = 0;                 // no room beside this map's name
 	if (sb_pfw)
 	{
 		sb_pfp = [x0 + w - pad - sb_pfw, y0 + pad - 3];
-		Profile_Field("pf_qb", sb_pfp, [sb_pfw, tabh], sb_szui);
+		if (rec_sb_open)
+			Profile_Field("pf_qb", sb_pfp, [sb_pfw, tabh], sb_szui);
+		else
+			Profile_FieldLook("pf_qb", sb_pfp, [sb_pfw, tabh], sb_szui, "", 0,
+			                  Chat_Fit("Right-click to search players", sb_pfw - tabh, sb_szui), FALSE,
+			                  tabh * 0.5, ceil(tabh * 0.45));
 		// ...and the way to the player's own profile, beside it.
 		if (Scores_Chip("sb_me", [sb_pfp_x - pad * 0.5 - chipw, sb_pfp_y + (tabh - chiph) * 0.5], [chipw, chiph],
 		                "my profile", FALSE))
+		if (rec_sb_open)
 			sb_pfme = TRUE;
 	}
 	Scores_DrawClock([x0 + pad, y0 + pad], x0 + w - pad - (sb_pfw ? sb_pfw + chipw + pad * 1.5 : 0));
@@ -3156,6 +3208,10 @@ void(vector scr) Scores_Draw =
 	if (zone_count <= 0)
 	{
 		Scores_NativeClose();
+		if (pf_on_who != "")            // Patch 666: imported times need no zones here
+			sb_onact = Profile_DrawOn([x0 + pad, y0 + pad * 2 + rec_sb_sztitle + tabh],
+			                          [w - pad * 2, h - pad * 3 - rec_sb_sztitle - tabh], sb_szui, rec_sb_szhead);
+		else
 		Scores_Text([x0 + pad, y0 + pad * 2 + rec_sb_sztitle], sb_szui,
 		            "this map has no zone file, so it has no legs and no times",
 		            SUI_THEME_DIM, 1);
@@ -3173,22 +3229,27 @@ void(vector scr) Scores_Draw =
 	// On a row of their own, not beside the title: a map name has no width limit.
 	ytabs = y0 + pad + rec_sb_sztitle + ceil(pad * 0.75);
 	sui_roundbox([x0 + pad, ytabs], [segw * n, tabh], tabh * 0.5, SUI_THEME_WELL, 1);
+	// A source or a leg chosen is the board asked for again: a player's times
+	// (Patch 666) give the table back.
 	if (Scores_Seg("sb_t0", [x0 + pad, ytabs], [segw, tabh], "Online", rec_sb_tab == SB_T_ONLINE))
 	{
 		Scores_TabSet(SB_T_ONLINE);
 		rec_sb_tabauto = FALSE;         // the player chose; the follow leaves it
+		Profile_OnClear();
 	}
 	if (Scores_Seg("sb_t1", [x0 + pad + segw, ytabs], [segw, tabh], "Segmented",
 	               rec_sb_tab == SB_T_SEGMENT))
 	{
 		Scores_TabSet(SB_T_SEGMENT);
 		rec_sb_tabauto = FALSE;
+		Profile_OnClear();
 	}
 	if (Scores_Seg("sb_t2", [x0 + pad + segw * 2, ytabs], [segw, tabh], "Local",
 	               rec_sb_tab == SB_T_LOCAL))
 	{
 		Scores_TabSet(SB_T_LOCAL);
 		rec_sb_tabauto = FALSE;
+		Profile_OnClear();
 	}
 
 	// A segment clicked this frame has just changed the source. The chips, the
@@ -3259,7 +3320,10 @@ void(vector scr) Scores_Draw =
 		            Scores_LegName(idx),
 		            on ? SUI_THEME_ACCENT : (hot ? SUI_THEME_TEXT : SUI_THEME_DIM), 1);
 		if (sui_is_released(rid))
+		{
 			rec_sb_leg = idx;
+			Profile_OnClear();
+		}
 	}
 	sui_list_view_end();
 	// Patch 610: the comparison panel, and the switch for the graph the HUD keeps
@@ -3273,8 +3337,22 @@ void(vector scr) Scores_Draw =
 	// ---- the runs --------------------------------------------------------------
 	rp = [x0 + pad * 2 + sidew, yhead];
 	rs = [tablew, listh];
-	native = Scores_NativeDraw(rp, [rs_x, rs_y + rec_sb_szhead + pad * 0.5]);
-	if (!native)
+	// The leg or the source moved since (a key, a console word, the finish's
+	// follow): that is the board asked for.
+	if (pf_on_who != "")
+	if (rec_sb_leg != sb_on_leg || rec_sb_tab != sb_on_tab)
+		Profile_OnClear();
+	native = FALSE;
+	if (pf_on_who == "")
+		native = Scores_NativeDraw(rp, [rs_x, rs_y + rec_sb_szhead + pad * 0.5]);
+	if (pf_on_who != "")
+	{
+		// Patch 666: somebody picked from the search, in the table's place.
+		Scores_NativeClose();
+		sb_onact = Profile_DrawOn(rp, [rs_x, rs_y + rec_sb_szhead + pad * 0.5], sb_szui, rec_sb_szhead);
+		pick = -1;
+	}
+	else if (!native)
 	{
 		Font_Set(ui_font_ui);
 		Scores_HeadCell(rp, SBK_RANK, "#");
@@ -3334,7 +3412,8 @@ void(vector scr) Scores_Draw =
 	// is longer now ("... every game  (top 100 of 129 shown)") and ran under the
 	// keycaps on a small window (the review, 1024x576 and under).
 	Scores_Text([x0 + pad, yfoot], rec_sb_szhead,
-	            Chat_Fit(Scores_FootLine(), x - (x0 + pad), Font_Px(rec_sb_szhead)), SUI_THEME_DIM, 1);
+	            Chat_Fit((pf_on_who != "") ? "a time opens its leg's board" : Scores_FootLine(),
+	                     x - (x0 + pad), Font_Px(rec_sb_szhead)), SUI_THEME_DIM, 1);
 
 	// Where a run set here goes. On EVERY tab, Local included: that is where
 	// "why are my times only here" gets asked. Under the counts, not beside
@@ -3372,6 +3451,7 @@ void() Scores_Close =
 	rec_sb_olpick  = 0;
 	sc_held = FALSE;          // PATCH 341: esc closes even mid-hold
 	Profile_Reset();          // Patch 663: the search field goes with the board
+	Profile_OnClear();        // ...and Patch 666's view of who it found
 	sui_keys_forget();
 
 	if (!rec_sb_open)
@@ -3413,6 +3493,7 @@ void() Scores_Open =
 	// player's place (-2, Patch 357).
 	rec_sb_legbuilt = sc_held ? -2 : -1;
 	Profile_Reset();
+	Profile_OnClear();
 	UI_CursorClaim(UIC_SCORES);
 };
 
@@ -3506,7 +3587,9 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 			notch = (evtype == IE_KEYDOWN) ? rec_sb_rowh : 0;
 			if (scanx == K_MWHEELUP)
 				notch = 0 - notch;
-			if (sui_hover_index("sb_online") >= 0)
+			if (sui_hover_index("pf_onrows") >= 0)
+				pf_on_scroll_y = max(0, pf_on_scroll_y + notch);
+			else if (sui_hover_index("sb_online") >= 0)
 				rec_sb_oscroll_y = max(0, rec_sb_oscroll_y + notch);
 			else if (sui_hover_index("sb_runs") >= 0)
 				rec_sb_scroll_y = max(0, rec_sb_scroll_y + notch);
@@ -3639,7 +3722,8 @@ float(string cmd) Scores_ConsoleCommand =
 	{
 		// Patch 663: a pinned board whose search field has the keyboard stays.
 		// Its player let go of the key to type; ESC or the key again closes it.
-		if (rec_sb_open && (pf_q_focus || pf_q_open))
+		// Patch 666: and one showing who that search found.
+		if (rec_sb_open && (pf_q_focus || pf_q_open || pf_on_who != ""))
 		{
 			sc_held = FALSE;
 			return TRUE;
@@ -3818,6 +3902,13 @@ float(string cmd) Scores_ConsoleCommand =
 		}
 		else if (argv(1) == "me")           // ...and the "my profile" chip's
 			sb_pfme = rec_sb_open;
+		else if (argv(1) == "on")           // Patch 666: a search pick's twin; alone, "back to board"
+		{
+			if (rec_sb_open && argv(2) != "")
+				Scores_OnShow(argv(2));
+			else
+				Profile_OnClear();
+		}
 		else if (argv(1) == "refresh")
 		{
 			/*
@@ -3934,6 +4025,10 @@ void() Scores_Status =
 	                          : (sc_held ? "held" : "closed"),
 	              (rec_sb_legmap != "") ? rec_sb_legmap : "-",
 	              rec_sb_leg + 1, rec_sb_legn, Scores_LegName(rec_sb_leg)));
+	if (pf_on_who != "")
+		print(strcat(sprintf("  showing \"%s\" on this map: answer %g, %g times", pf_on_who, pf_on_state, pf_on_n),
+		             sprintf("  chip %g,%g %gx%g", pf_on_cp_x, pf_on_cp_y, pf_on_csz_x, pf_on_csz_y),
+		             sprintf("  row %g,%g %gx%g\n", pf_on_rp_x, pf_on_rp_y, pf_on_rsz_x, pf_on_rsz_y)));
 
 	/*
 	  `cols` and `type` are the LAST DRAWN FRAME's table: how many columns it had

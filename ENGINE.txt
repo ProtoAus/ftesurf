@@ -26,6 +26,19 @@ commit   7501a6ccebb2d2b7f2f3a7f0127e86680f3cefb3
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-658
 patch    669
+# Patch 666: the game's half of 665. In hud_player's Stats a difficulty tier's bar opens that
+# tier's maps for whoever is on show, the finished ones first with their times ("Unrated" is
+# a bar too), and the tier stays on show for the next player searched. The leaderboard's
+# search field is drawn on a held board, with what gives it a cursor, and a picked player's
+# times on the map being played take the table's place: a time opens its leg's board, "Whole
+# profile" the card. csprogs only (cl_profile.qc, cl_avatar.qc, cl_scores.qc): no engine
+# source, server QC, surfd, recorder, evidence, ranking, default or Build change.
+# Patch 665: two more forms of surfd's /api/board?player=<who>, for the game: `&ct=<n|u>` is
+# one difficulty tier's maps for that player (`u` the unrated), the ones finished first with
+# the fastest main time, paged; `&on=<map>` is that player's rows on one map, every leg. The
+# site's /board/api/player/<h>/maps and the first are one function now. surfd/surfd.py and its
+# test only: no table, no schema, no QC, no engine source (commit and tag above stay).
+# tools/accounts_mutants.py gives the tools path to test_web.py alone. Patch 666 is the game's.
 # Patch 664: zones Momentum publishes under a zoneHash that is not theirs (92 maps). The
 # Pi's surfd/mapwatch.py takes them where they are the zone file held, saved again (the same
 # `tracks`), or where data/mapwatch/approved.json names the very bytes (Lex: 28 maps); it

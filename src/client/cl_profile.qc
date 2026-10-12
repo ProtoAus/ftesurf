@@ -6,8 +6,13 @@
   name search.  This file holds both asks and their answers, and the three
   pieces a panel draws inside its own sui bracket: the search field, the list
   of names under it, and the breakdown.  hud_player (cl_avatar.qc) shows all
-  three; the leaderboard (cl_scores.qc) has the field and hands a picked
-  player over.
+  three; the leaderboard (cl_scores.qc) has the field and shows a picked
+  player's times on its map.
+
+  Patch 666 (surfd's 665): `player=<who>&ct=<tier>` is one difficulty tier's
+  maps for a player, the finished ones first, and `player=<who>&on=<map>` their
+  times on one map.  A tier's bar in the breakdown opens the first; the
+  leaderboard's search shows the second in its table's place.
 
   THE FIELD'S KEYS ARE TAKEN AS THEY COME (sui_text_event), not from sui's
   buffer: see that function.  ROWS LIVE IN memalloc'd TABLES, as the board's
@@ -77,6 +82,29 @@ float *pf_rf;               // PF_ROWS * PF_RF
 vector pf_scroll;
 float  pf_said;             // the answer's own line was printed (once an answer)
 
+// ---- one tier's maps, of whoever the breakdown is of
+#define PF_CTROWS   1000    // maps held of one tier (the unrated are eight hundred)
+#define PF_CTPAGE   100     // ...and asked for at a time
+#define PF_CF       3       // floats a map: ms (0 is not finished), its game, the site has the map
+string pf_ct;               // the tier on show: "" none, "u" the unrated, else its number
+float  pf_ct_state, pf_ct_req, pf_ct_sent, pf_ct_code, pf_ct_got, pf_ct_again;
+float  pf_ct_more_req, pf_ct_more_sent, pf_ct_more_at, pf_ct_more_n;
+float  pf_ct_n, pf_ct_total, pf_ct_done;
+float  pf_ct_bmap;          // strbuf: a row's map
+float *pf_ct_f;             // PF_CTROWS * PF_CF
+vector pf_ct_scroll;
+
+// ---- one player's times on one map
+#define PF_ONROWS   96
+string pf_on_who, pf_on_map;    // asked for: a handle or a mark, and the map
+string pf_on_name, pf_on_handle;
+float  pf_on_state, pf_on_req, pf_on_sent, pf_on_code, pf_on_again, pf_on_n, pf_on_av;
+float *pf_on_f;             // PF_ONROWS * PF_RF
+vector pf_on_scroll;
+// Where three of these controls were last drawn, on the screen, for the status
+// lines an arm clicks by: the first tier's bar, "Whole profile", the first time.
+vector pf_bar_p, pf_bar_sz, pf_on_cp, pf_on_csz, pf_on_rp, pf_on_rsz;
+
 // What the lobby last said of this install (cl_account.qc's `acct_is`, which
 // compiles later): 1 not linked, 2 linked, 3 banned, 0 never said.  ANYONE CAN
 // STUFF IT, so it only ever chooses words on the profile.
@@ -88,6 +116,9 @@ void() Profile_Alloc =
 		return;
 	pf_rf = memalloc(sizeof(float) * PF_ROWS * PF_RF);
 	pf_bmap = buf_create();
+	pf_ct_f = memalloc(sizeof(float) * PF_CTROWS * PF_CF);
+	pf_ct_bmap = buf_create();
+	pf_on_f = memalloc(sizeof(float) * PF_ONROWS * PF_RF);
 	pf_s_sel = -1;
 };
 
@@ -203,6 +234,59 @@ void() Profile_Ask =
 	pf_sent = cltime;
 };
 
+// The maps of the tier on show, for whoever the breakdown is of.
+void() Profile_TierAsk =
+{
+	local float g;
+
+	pf_ct_req = 0;
+	pf_ct_more_req = 0;
+	pf_ct_more_at = 0;
+	pf_ct_more_n = 0;
+	pf_ct_n = 0;
+	pf_ct_total = 0;
+	pf_ct_done = 0;
+	pf_ct_scroll = '0 0 0';
+	pf_ct_state = PFS_NONE;
+	if (pf_ct == "")
+		return;
+	if (!Profile_IsWho(pf_who))
+	{
+		pf_ct_state = PFS_FAIL;
+		pf_ct_code = 404;
+		return;
+	}
+	g = Profile_Gate();
+	if (g)
+	{
+		pf_ct_state = g;
+		return;
+	}
+	pf_ct_req = Profile_Get(sprintf("%s/api/board?player=%s&ct=%s&limit=%g", cvar_string("lobby_dir"),
+	                                pf_who, pf_ct, PF_CTPAGE));
+	pf_ct_state = pf_ct_req ? PFS_ASK : PFS_FAIL;
+	pf_ct_code = 0;
+	pf_ct_sent = cltime;
+};
+
+// `t`: a tier's number, -1 the unrated, anything else none (the results again).
+void(float t) Profile_TierShow =
+{
+	local string s;
+
+	Profile_Alloc();
+	s = "";
+	if (t == -1)
+		s = "u";
+	else if (t >= 0 && t < 100)
+		s = ftos(floor(t));
+	if (s == pf_ct && pf_ct_state == PFS_ASK)
+		return;                         // asked, and not answered yet: once
+	pf_ct = s;
+	pf_ct_again = FALSE;
+	Profile_TierAsk();
+};
+
 // `who`: a search row's handle, or the 8-hex mark the game knows a player by.
 void(string who) Profile_Show =
 {
@@ -210,7 +294,11 @@ void(string who) Profile_Show =
 	// Called every frame the breakdown is up: a failed ask is not asked again here.
 	if (who == pf_who)
 	if (pf_state != PFS_NONE)
+	{
+		if (pf_state == PFS_OK && pf_ct != "" && pf_ct_state == PFS_NONE)
+			Profile_TierAsk();          // a tier's list let go stale (Profile_Stale)
 		return;
+	}
 	pf_who = who;
 	pf_rn = 0;
 	pf_total = 0;
@@ -219,6 +307,13 @@ void(string who) Profile_Show =
 	pf_scroll = '0 0 0';
 	pf_again = 0;
 	pf_said = FALSE;
+	// The tier on show stays on show for the next player: its list is asked
+	// for when their breakdown lands (surfd has their rows ranked by then).
+	pf_ct_req = 0;
+	pf_ct_more_req = 0;
+	pf_ct_n = 0;
+	pf_ct_state = PFS_NONE;
+	pf_ct_again = FALSE;
 	Profile_Ask();
 };
 
@@ -230,6 +325,81 @@ void(float age) Profile_Stale =
 		pf_state = PFS_NONE;
 	if (pf_state == PFS_FAIL && pf_code != 404)
 		pf_state = PFS_NONE;
+	if (pf_ct_state == PFS_OK && cltime - pf_ct_got > age)
+		pf_ct_state = PFS_NONE;
+	if (pf_ct_state == PFS_FAIL && pf_ct_code != 404)
+	{
+		pf_ct_state = PFS_NONE;
+		pf_ct_again = FALSE;
+	}
+};
+
+// The tier's next page, on Profile_More's clock.
+void() Profile_TierMore =
+{
+	if (pf_ct_state != PFS_OK || pf_ct_more_req)
+		return;
+	if (pf_ct_n >= pf_ct_total || pf_ct_n >= PF_CTROWS)
+		return;
+	if (pf_ct_more_n >= PF_MORETRIES || cltime < pf_ct_more_at)
+		return;
+	if (Profile_Gate())
+		return;
+	pf_ct_more_n = pf_ct_more_n + 1;
+	pf_ct_more_at = cltime + PF_MOREWAIT;
+	pf_ct_more_req = Profile_Get(sprintf("%s/api/board?player=%s&ct=%s&offset=%g&limit=%g",
+	                                     cvar_string("lobby_dir"), pf_who, pf_ct, pf_ct_n,
+	                                     min(PF_CTPAGE, PF_CTROWS - pf_ct_n)));
+	pf_ct_more_sent = cltime;
+};
+
+// One player's times on one map.
+void() Profile_OnAsk =
+{
+	local float g;
+
+	pf_on_req = 0;
+	pf_on_n = 0;
+	if (!Profile_IsWho(pf_on_who) || pf_on_map == "")
+	{
+		pf_on_state = PFS_FAIL;
+		pf_on_code = 404;
+		return;
+	}
+	g = Profile_Gate();
+	if (g)
+	{
+		pf_on_state = g;
+		return;
+	}
+	pf_on_req = Profile_Get(sprintf("%s/api/board?player=%s&on=%s", cvar_string("lobby_dir"),
+	                                pf_on_who, uri_escape(pf_on_map)));
+	pf_on_state = pf_on_req ? PFS_ASK : PFS_FAIL;
+	pf_on_code = 0;
+	pf_on_sent = cltime;
+};
+
+void(string who, string map) Profile_OnShow =
+{
+	Profile_Alloc();
+	if (who == pf_on_who && map == pf_on_map && pf_on_state == PFS_ASK)
+		return;                         // asked, and not answered yet: once
+	pf_on_who = who;
+	pf_on_map = map;
+	pf_on_name = "";
+	pf_on_handle = "";
+	pf_on_av = 0;
+	pf_on_again = FALSE;
+	pf_on_scroll = '0 0 0';
+	Profile_OnAsk();
+};
+
+void() Profile_OnClear =
+{
+	pf_on_who = "";
+	pf_on_req = 0;
+	pf_on_n = 0;
+	pf_on_state = PFS_NONE;
 };
 
 /*
@@ -280,11 +450,22 @@ void() Profile_SearchAsk =
 // map are cut to PF_TEXT, and a map's colour codes are taken out (a name's are
 // UI_NameShow's when it is drawn).
 
+// One row's PF_RF floats.
+void(float row, float *f, float at) Profile_RowF =
+{
+	f[at]     = json_get_float(json_find_object_child(row, "track"));
+	f[at + 1] = json_get_float(json_find_object_child(row, "leg"));
+	f[at + 2] = Profile_Tier(json_get_string(json_find_object_child(row, "tr")));
+	f[at + 3] = json_get_float(json_find_object_child(row, "ms"));
+	f[at + 4] = json_get_float(json_find_object_child(row, "when"));
+	f[at + 5] = json_get_float(json_find_object_child(row, "r"));
+	f[at + 6] = json_get_float(json_find_object_child(row, "of"));
+};
+
 // -> rows taken.
 float(float root) Profile_Rows =
 {
-	local float rows, n, i, row, at, took;
-	local float *f;
+	local float rows, n, i, row, took;
 
 	rows = json_find_object_child(root, "rows");
 	n = json_get_length(rows);
@@ -292,15 +473,7 @@ float(float root) Profile_Rows =
 	for (i = 0; i < n && pf_rn < PF_ROWS; i = i + 1)
 	{
 		row = json_get_child_at_index(rows, i);
-		at = pf_rn * PF_RF;
-		f = pf_rf;
-		f[at]     = json_get_float(json_find_object_child(row, "track"));
-		f[at + 1] = json_get_float(json_find_object_child(row, "leg"));
-		f[at + 2] = Profile_Tier(json_get_string(json_find_object_child(row, "tr")));
-		f[at + 3] = json_get_float(json_find_object_child(row, "ms"));
-		f[at + 4] = json_get_float(json_find_object_child(row, "when"));
-		f[at + 5] = json_get_float(json_find_object_child(row, "r"));
-		f[at + 6] = json_get_float(json_find_object_child(row, "of"));
+		Profile_RowF(row, pf_rf, pf_rn * PF_RF);
 		bufstr_set(pf_bmap, pf_rn, strdecolorize(substring(
 			json_get_string(json_find_object_child(row, "map")), 0, PF_TEXT)));
 		pf_rn = pf_rn + 1;
@@ -369,6 +542,121 @@ void(string bdy) Profile_Parse =
 		dprint(sprintf("profile: %s is %s, %g times, %g firsts, %g rows of %g held\n",
 		               pf_who, pf_handle, pf_n, pf_wr, pf_rn, pf_total));
 	}
+	if (pf_ct != "")
+		Profile_TierAsk();
+};
+
+// -> maps taken.
+float(float root) Profile_TierRows =
+{
+	local float rows, n, i, row, at, took;
+	local float *f;
+
+	rows = json_find_object_child(root, "maps");
+	n = json_get_length(rows);
+	took = 0;
+	f = pf_ct_f;
+	for (i = 0; i < n && pf_ct_n < PF_CTROWS; i = i + 1)
+	{
+		row = json_get_child_at_index(rows, i);
+		at = pf_ct_n * PF_CF;
+		f[at]     = json_get_float(json_find_object_child(row, "ms"));    // absent: not finished
+		f[at + 1] = Profile_Tier(json_get_string(json_find_object_child(row, "tr")));
+		f[at + 2] = json_get_float(json_find_object_child(row, "have"));
+		bufstr_set(pf_ct_bmap, pf_ct_n, strdecolorize(substring(
+			json_get_string(json_find_object_child(row, "map")), 0, PF_TEXT)));
+		pf_ct_n = pf_ct_n + 1;
+		took = took + 1;
+	}
+	return took;
+};
+
+void(string bdy, float more) Profile_TierParse =
+{
+	local float root, ok;
+	local float *f;
+	local string h;
+
+	root = json_parse(bdy);
+	h = json_get_string(json_find_object_child(root, "who"));
+	// Of the player and the tier on show, or it is an older ask's answer.
+	ok = (root && strlen(h) == 12 && Profile_IsWho(h) && substring(h, 0, strlen(pf_who)) == pf_who);
+	if (ok)
+		ok = (json_get_string(json_find_object_child(root, "ct")) == pf_ct);
+	if (ok && more)
+		ok = (json_get_float(json_find_object_child(root, "offset")) == pf_ct_n);
+	if (!ok)
+	{
+		if (root)
+			json_free(root);
+		if (!more)
+		{
+			pf_ct_state = PFS_FAIL;
+			pf_ct_code = -1;
+		}
+		return;
+	}
+	pf_ct_total = json_get_float(json_find_object_child(root, "total"));
+	pf_ct_done  = json_get_float(json_find_object_child(root, "done"));
+	if (!more)
+	{
+		pf_ct_n = 0;
+		Profile_TierRows(root);
+		pf_ct_state = PFS_OK;
+		pf_ct_got = cltime;
+	}
+	else if (Profile_TierRows(root) > 0)
+	{
+		pf_ct_more_n = 0;
+		pf_ct_more_at = 0;
+	}
+	else
+		pf_ct_total = pf_ct_n;          // a page of nothing was the end, whatever it says
+	json_free(root);
+	if (pf_ct_total < pf_ct_n)
+		pf_ct_total = pf_ct_n;
+	f = pf_ct_f;
+	dprint(sprintf("profile: tier %s of %s: %g maps of %g held, %g finished, first %s %g\n", pf_ct, pf_who,
+	               pf_ct_n, pf_ct_total, pf_ct_done, (pf_ct_n > 0) ? bufstr_get(pf_ct_bmap, 0) : "-",
+	               (pf_ct_n > 0) ? f[0] : 0));
+};
+
+void(string bdy) Profile_OnParse =
+{
+	local float root, rows, n, i;
+	local float *f;
+	local string h;
+
+	root = json_parse(bdy);
+	h = json_get_string(json_find_object_child(root, "who"));
+	if (!root || strlen(h) != 12 || !Profile_IsWho(h) || substring(h, 0, strlen(pf_on_who)) != pf_on_who
+	    || strtolower(json_get_string(json_find_object_child(root, "on"))) != strtolower(pf_on_map))
+	{
+		if (root)
+			json_free(root);
+		pf_on_state = PFS_FAIL;
+		pf_on_code = -1;
+		return;
+	}
+	pf_on_handle = h;
+	pf_on_name = substring(json_get_string(json_find_object_child(root, "name")), 0, PF_TEXT);
+	pf_on_av   = json_get_float(json_find_object_child(root, "av"));
+	n = json_get_float(json_find_object_child(root, "t"));
+	if (n > 0)
+		pf_t = n;                       // Profile_Age's clock, which a breakdown on show reads too
+	rows = json_find_object_child(root, "rows");
+	n = json_get_length(rows);
+	f = pf_on_f;
+	pf_on_n = 0;
+	for (i = 0; i < n && pf_on_n < PF_ONROWS; i = i + 1)
+	{
+		Profile_RowF(json_get_child_at_index(rows, i), f, pf_on_n * PF_RF);
+		pf_on_n = pf_on_n + 1;
+	}
+	json_free(root);
+	pf_on_state = PFS_OK;
+	dprint(sprintf("profile: %s on %s: %g times, first leg %g/%g in %g\n", pf_on_handle, pf_on_map, pf_on_n,
+	               (pf_on_n > 0) ? f[0] : -1, (pf_on_n > 0) ? f[1] : -1, (pf_on_n > 0) ? f[3] : 0));
 };
 
 void(string bdy) Profile_ParseMore =
@@ -471,6 +759,40 @@ float(float reqid, float code, string bdy) Profile_Reply =
 			Profile_ParseHits(bdy);
 		return TRUE;
 	}
+	if (pf_ct_req)
+	if (reqid == pf_ct_req)
+	{
+		pf_ct_req = 0;
+		if (code)
+		{
+			pf_ct_state = PFS_FAIL;
+			pf_ct_code = code;
+		}
+		else
+			Profile_TierParse(bdy, FALSE);
+		return TRUE;
+	}
+	if (pf_ct_more_req)
+	if (reqid == pf_ct_more_req)
+	{
+		pf_ct_more_req = 0;
+		if (!code)
+			Profile_TierParse(bdy, TRUE);
+		return TRUE;
+	}
+	if (pf_on_req)
+	if (reqid == pf_on_req)
+	{
+		pf_on_req = 0;
+		if (code)
+		{
+			pf_on_state = PFS_FAIL;
+			pf_on_code = code;
+		}
+		else
+			Profile_OnParse(bdy);
+		return TRUE;
+	}
 	return FALSE;
 };
 
@@ -513,6 +835,46 @@ void() Profile_Frame =
 	if (pf_more_req)
 	if (cltime - pf_more_sent > PF_DEADLINE)
 		pf_more_req = 0;
+	// The two asks of Patch 666, by the same rules: a deadline, then one more ask.
+	if (pf_ct_state == PFS_ASK)
+	if (cltime - pf_ct_sent > PF_DEADLINE)
+	{
+		pf_ct_req = 0;
+		pf_ct_state = PFS_FAIL;
+		pf_ct_code = 0;
+	}
+	if (pf_ct_state == PFS_FAIL)
+	if (!pf_ct_again)
+	if (pf_ct_code <= 0 || pf_ct_code >= 500)
+	if (cltime - pf_ct_sent > PF_RETRY)
+	{
+		pf_ct_again = TRUE;
+		Profile_TierAsk();
+	}
+	if (pf_ct_more_req)
+	if (cltime - pf_ct_more_sent > PF_DEADLINE)
+		pf_ct_more_req = 0;
+	if (pf_ct_state == PFS_NOTERMS || pf_ct_state == PFS_NODIR)
+	if (!Profile_Gate())
+		Profile_TierAsk();
+	if (pf_on_state == PFS_ASK)
+	if (cltime - pf_on_sent > PF_DEADLINE)
+	{
+		pf_on_req = 0;
+		pf_on_state = PFS_FAIL;
+		pf_on_code = 0;
+	}
+	if (pf_on_state == PFS_FAIL)
+	if (!pf_on_again)
+	if (pf_on_code <= 0 || pf_on_code >= 500)
+	if (cltime - pf_on_sent > PF_RETRY)
+	{
+		pf_on_again = TRUE;
+		Profile_OnAsk();
+	}
+	if (pf_on_state == PFS_NOTERMS || pf_on_state == PFS_NODIR)
+	if (!Profile_Gate())
+		Profile_OnAsk();
 	// The terms accepted since: what was refused for want of them is asked now.
 	if (pf_state == PFS_NOTERMS || pf_state == PFS_NODIR)
 	if (!Profile_Gate())
@@ -860,6 +1222,224 @@ void(vector p, vector sz, string big, string note, string small, float tsz, floa
 	sui_text([p_x + hint, p_y + sz_y - hint - ceil(hint * 0.6)], [hint, hint], small, SUI_THEME_MUTED, 1, 0);
 };
 
+// An ask's state where its answer would be drawn.  -> "Try again" was pressed.
+float(vector p, float tsz, float hint, float state, float code, float again, string none, string id) Profile_Waiting =
+{
+	local string s;
+
+	s = "Asking the leaderboard...";
+	if (state == PFS_NOTERMS) s = "Accept the online terms (in the main menu) to see this";
+	else if (state == PFS_NODIR) s = "This game has no leaderboard address";
+	else if (state == PFS_FAIL)
+	{
+		if (code == 404) s = none;
+		else if (again || (code > 0 && code < 500))
+		{
+			s = (code == 429) ? "Too many asks: wait a minute, then try again" : "The leaderboard did not answer";
+			sui_text([p_x, p_y + hint], [tsz, tsz], s, SUI_THEME_DIM, 1, 0);
+			return Profile_Chip(id, [p_x, p_y + hint + tsz * 2], [tsz * 6, tsz * 1.9], "Try again", hint, FALSE);
+		}
+	}
+	sui_text([p_x, p_y + hint], [tsz, tsz], s, SUI_THEME_DIM, 1, 0);
+	return FALSE;
+};
+
+// The maps of the tier on show, in the results' place: the finished ones
+// first, each with the player's fastest time on its main track.
+void(vector p, vector sz, float tsz, float hint) Profile_DrawTier =
+{
+	local float i, x, y, rowh, at, chw, games;
+	local float *f;
+	local string s;
+	local vector lp;
+
+	Font_Set(ui_font_ui);
+	y = p_y;
+	s = (pf_ct == "u") ? "UNRATED MAPS" : sprintf("TIER %s MAPS", pf_ct);
+	if (pf_ct_state == PFS_OK)
+		s = sprintf("%s   %g of %g finished", s, pf_ct_done, pf_ct_total);
+	sui_text([p_x, y], [hint, hint], s, SUI_THEME_MUTED, 1, 0);
+	chw = ceil(hint * 7);
+	if (Profile_Chip("pf_ctback", [p_x + sz_x - tsz - chw, y - ceil(hint * 0.5)], [chw, ceil(hint * 1.9)],
+	                 "All results", hint, FALSE))
+	{
+		Profile_TierShow(-2);
+		return;
+	}
+	y = y + hint + ceil(hint * 0.9);
+	sui_fill([p_x, y], [sz_x, 1], SUI_THEME_EDGE, 1, 0);
+	y = y + 2;
+	if (pf_ct_state != PFS_OK)
+	{
+		if (Profile_Waiting([p_x, y], tsz, hint, pf_ct_state, pf_ct_code, pf_ct_again, "No such player", "pf_ctretry"))
+		{
+			pf_ct_again = TRUE;             // by hand from here
+			Profile_TierAsk();
+		}
+		return;
+	}
+	if (pf_ct_n <= 0)
+	{
+		sui_text([p_x, y + hint], [tsz, tsz], "No maps in this tier", SUI_THEME_DIM, 1, 0);
+		return;
+	}
+	games = ((pf_bt_ours > 0) + (pf_bt_mom > 0) + (pf_bt_ksf > 0) > 1);
+	rowh = ceil(tsz * 1.75);
+	sui_list_view_begin("pf_ctrows", [p_x, y], [sz_x, p_y + sz_y - y], [sz_x - tsz, rowh], pf_ct_n, pf_ct_scroll,
+	                    [0, ceil(tsz * 0.6)]);
+	f = pf_ct_f;
+	lp = '0 0 0';
+	for (i = sui_list_item(lp); i > -1; i = sui_list_item(lp))
+	{
+		at = i * PF_CF;
+		if (i - floor(i / 2) * 2)
+			sui_fill(lp, [sz_x - tsz, rowh], SUI_THEME_WELL, 0.45, 0);
+		sui_roundbox([lp_x + tsz * 0.5, lp_y + (rowh - ceil(hint * 0.6)) * 0.5], [ceil(hint * 0.6), ceil(hint * 0.6)],
+		             hint * 0.3, (f[at] > 0) ? SUI_THEME_GOOD : SUI_THEME_CHIP, 1);
+		s = Chat_Fit(bufstr_get(pf_ct_bmap, i), sz_x - tsz * 16, tsz);
+		sui_text([lp_x + tsz * 1.6, lp_y + (rowh - tsz) * 0.5], [tsz, tsz], s,
+		         (f[at] > 0) ? SUI_THEME_TEXT : SUI_THEME_DIM, 1, 0);
+		x = lp_x + tsz * 1.6 + stringwidth(s, TRUE, [tsz, tsz]) + tsz * 0.6;
+		if (f[at] > 0)
+		{
+			if (games)
+				sui_text([x, lp_y + (rowh - hint) * 0.5 + 1], [hint, hint], Profile_TierTag(f[at + 1]),
+				         (f[at + 1] == PFT_OURS) ? SUI_THEME_ACCENT : SUI_THEME_ACCENT2, 1, 0);
+			Font_Set(ui_font_mono);
+			s = Time_MsString((int)f[at]);
+			sui_text([lp_x + sz_x - tsz * 2 - stringwidth(s, TRUE, [tsz, tsz]), lp_y + (rowh - tsz) * 0.5],
+			         [tsz, tsz], s, SUI_THEME_TEXT, 1, 0);
+			Font_Set(ui_font_ui);
+		}
+		else
+		{
+			s = (f[at + 2] > 0) ? "not yet" : "not yet, not hosted here";
+			sui_text([lp_x + sz_x - tsz * 2 - stringwidth(s, TRUE, [hint, hint]), lp_y + (rowh - hint) * 0.5],
+			         [hint, hint], s, SUI_THEME_MUTED, 1, 0);
+		}
+		if (i >= pf_ct_n - 10)
+			Profile_TierMore();
+	}
+	sui_list_view_end();
+};
+
+/*
+  One player's times on the map asked about (Profile_OnShow), in its owner's
+  bracket: who, then a row a leg.  -> 0, or what was let go of: 1 back, 2 the
+  whole profile, 3 + i row i (its track and leg are pf_on_f's).
+*/
+float(vector p, vector sz, float tsz, float hint) Profile_DrawOn =
+{
+	local float i, x, y, rowh, pic, act, at, r, chw, chh, games, hot, c1, c2;
+	local float *f;
+	local string s, rid;
+	local vector lp, col, bo, bs;
+
+	act = 0;
+	Font_Set(ui_font_ui);
+	pic = ceil(tsz * 2.3);
+	chh = ceil(hint * 1.9);
+	chw = ceil(hint * 8);
+	Profile_Face(p, pic, substring((pf_on_handle != "") ? pf_on_handle : pf_on_who, 0, 8), pf_on_av, pf_on_name);
+	s = (pf_on_name != "") ? UI_NameShow(pf_on_name, 0) : "...";
+	sui_text([p_x + pic + tsz * 0.7, p_y + floor((pic - tsz - hint - 3) * 0.5)], [tsz, tsz],
+	         Chat_Fit(s, sz_x - pic - tsz * 2 - chw * 2, tsz), SUI_THEME_TEXT, 1, 0);
+	sui_text([p_x + pic + tsz * 0.7, p_y + floor((pic - tsz - hint - 3) * 0.5) + tsz + 3], [hint, hint],
+	         Chat_Fit(strcat("times on ", pf_on_map), sz_x - pic - tsz * 2 - chw * 2, hint), SUI_THEME_MUTED, 1, 0);
+	if (Profile_Chip("pf_onback", [p_x + sz_x - chw, p_y + (pic - chh) * 0.5], [chw, chh], "Back to board", hint, FALSE))
+		act = 1;
+	if (Profile_Chip("pf_onall", [p_x + sz_x - chw * 2 - 6, p_y + (pic - chh) * 0.5], [chw, chh], "Whole profile",
+	                 hint, FALSE))
+		act = 2;
+	bo = [p_x + sz_x - chw * 2 - 6, p_y + (pic - chh) * 0.5];
+	bs = [chw, chh];
+	sui_transform_box(bo, bs);
+	pf_on_cp = bo;
+	pf_on_csz = bs;
+	pf_on_rsz = '0 0 0';
+	y = p_y + pic + hint;
+	rowh = ceil(tsz * 1.75);
+	Font_Set(ui_font_mono);
+	c1 = ceil(tsz * 0.6 * 11);                              // "#1234 /5678"
+	c2 = ceil(tsz * 0.6 * 6);                               // "365d"
+	Font_Set(ui_font_ui);
+	sui_text([p_x + tsz * 0.5, y], [hint, hint], "LEG", SUI_THEME_MUTED, 1, 0);
+	sui_text([p_x + sz_x - tsz * 3 - c2 - c1 - stringwidth("TIME", TRUE, [hint, hint]), y], [hint, hint], "TIME",
+	         SUI_THEME_MUTED, 1, 0);
+	sui_text([p_x + sz_x - tsz * 2 - c2 - c1, y], [hint, hint], "PLACE", SUI_THEME_MUTED, 1, 0);
+	sui_text([p_x + sz_x - tsz * 2 - stringwidth("AGO", TRUE, [hint, hint]), y], [hint, hint], "AGO", SUI_THEME_MUTED, 1, 0);
+	y = y + hint + ceil(hint * 0.5);
+	sui_fill([p_x, y], [sz_x, 1], SUI_THEME_EDGE, 1, 0);
+	y = y + 2;
+	if (pf_on_state != PFS_OK)
+	{
+		if (Profile_Waiting([p_x + tsz * 0.5, y], tsz, hint, pf_on_state, pf_on_code, pf_on_again,
+		                    "No times on the leaderboard yet", "pf_onretry"))
+		{
+			pf_on_again = TRUE;
+			Profile_OnAsk();
+		}
+		return act;
+	}
+	if (pf_on_n <= 0)
+	{
+		sui_text([p_x + tsz * 0.5, y + hint], [tsz, tsz], "No times on this map", SUI_THEME_DIM, 1, 0);
+		return act;
+	}
+	f = pf_on_f;
+	games = 0;
+	for (i = 1; i < pf_on_n; i = i + 1)
+		if (f[i * PF_RF + 2] != f[2])
+			games = 1;
+	sui_list_view_begin("pf_onrows", [p_x, y], [sz_x, p_y + sz_y - y], [sz_x - tsz, rowh], pf_on_n, pf_on_scroll,
+	                    [0, ceil(tsz * 0.6)]);
+	lp = '0 0 0';
+	for (i = sui_list_item(lp); i > -1; i = sui_list_item(lp))
+	{
+		at = i * PF_RF;
+		r = f[at + 5];
+		rid = sprintf("pf_on%g", i);
+		sui_action_element(lp, [sz_x - tsz, rowh], rid, sui_noop);
+		if (!i)
+		{
+			bo = lp;
+			bs = [sz_x - tsz, rowh];
+			sui_transform_box(bo, bs);
+			pf_on_rp = bo;
+			pf_on_rsz = bs;
+		}
+		hot = sui_is_hovered(rid);
+		if (hot)
+			sui_roundbox(lp + '0 1 0', [sz_x - tsz, rowh - 2], ceil(tsz * 0.4), SUI_THEME_HOVER, 1);
+		else if (i - floor(i / 2) * 2)
+			sui_fill(lp, [sz_x - tsz, rowh], SUI_THEME_WELL, 0.45, 0);
+		s = Profile_Leg(f[at], f[at + 1]);
+		sui_text([lp_x + tsz * 0.5, lp_y + (rowh - tsz) * 0.5], [tsz, tsz], s, SUI_THEME_TEXT, 1, 0);
+		if (games)
+			sui_text([lp_x + tsz * 1.1 + stringwidth(s, TRUE, [tsz, tsz]), lp_y + (rowh - hint) * 0.5 + 1],
+			         [hint, hint], Profile_TierTag(f[at + 2]),
+			         (f[at + 2] == PFT_OURS) ? SUI_THEME_ACCENT : SUI_THEME_ACCENT2, 1, 0);
+		s = Profile_Age(f[at + 4]);
+		sui_text([lp_x + sz_x - tsz * 2 - stringwidth(s, TRUE, [hint, hint]), lp_y + (rowh - hint) * 0.5],
+		         [hint, hint], s, SUI_THEME_MUTED, 1, 0);
+		Font_Set(ui_font_mono);
+		x = lp_x + sz_x - tsz * 2 - c2 - c1;
+		col = (r == 1) ? SUI_THEME_WARN : ((r <= 10) ? SUI_THEME_TEXT : SUI_THEME_DIM);
+		s = sprintf("#%g", r);
+		sui_text([x, lp_y + (rowh - tsz) * 0.5], [tsz, tsz], s, col, 1, 0);
+		sui_text([x + stringwidth(s, TRUE, [tsz, tsz]) + tsz * 0.3, lp_y + (rowh - hint) * 0.5 + 1],
+		         [hint, hint], sprintf("/%g", f[at + 6]), SUI_THEME_MUTED, 1, 0);
+		s = Time_MsString((int)f[at + 3]);
+		sui_text([x - tsz - stringwidth(s, TRUE, [tsz, tsz]), lp_y + (rowh - tsz) * 0.5], [tsz, tsz], s,
+		         SUI_THEME_TEXT, 1, 0);
+		Font_Set(ui_font_ui);
+		if (sui_is_released(rid))
+			act = 3 + i;
+	}
+	sui_list_view_end();
+	return act;
+};
+
 /*
   The breakdown of whoever Profile_Show last named, in its owner's bracket.
   `ttl` the headline figures' size, `tsz` the rows', `hint` the small labels'.
@@ -869,9 +1449,10 @@ void(vector p, vector sz, string big, string note, string small, float tsz, floa
 void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 {
 	local float i, x, y, w, tw, th, n, cols, rowh, lh, c0, c1, c2, c3, bw, at, r, retry;
+	local float tier, td, tof, rest, on, hot;
 	local float *f;
-	local string s;
-	local vector lp, col;
+	local string s, rid;
+	local vector lp, col, bo, bs;
 
 	if (pf_state != PFS_OK)
 	{
@@ -928,30 +1509,73 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 	}
 	y = y + th + hint;
 
-	// ---- maps finished, by difficulty: two columns of bars
+	// ---- maps finished, by difficulty: two columns of bars, and a last one for
+	// the maps nobody has rated.  A BAR IS A CONTROL (Patch 666): its tier's
+	// maps take the results' place, and the bar again gives them back.
 	if (pf_c_has && pf_c_n > 0)
 	{
 		cols = (sz_x > tsz * 34) ? 2 : 1;
-		lh = ceil(hint * 1.7);
-		w = floor((sz_x - (cols - 1) * tsz * 1.5) / cols);
-		c0 = ceil(hint * 4.2);                              // "Tier 10"
+		lh = ceil(hint * 1.9);
+		w = floor((sz_x - (cols - 1) * tsz * 1.5) / cols) - hint;
+		c0 = ceil(hint * 4.6);                              // "Unrated"
 		c1 = ceil(hint * 4.5);                              // "123/456"
 		Font_Set(ui_font_ui);
-		for (i = 0; i < pf_c_n; i = i + 1)
+		n = pf_c_n + ((pf_c_unt > 0) ? 1 : 0);
+		rest = pf_c_done;
+		for (i = 0; i < n; i = i + 1)
 		{
-			x = p_x + (i - floor(i / cols) * cols) * (w + tsz * 1.5);
+			if (i < pf_c_n)
+			{
+				tier = pf_c_tier[i];
+				td = pf_c_td[i];
+				tof = pf_c_to[i];
+				rest = rest - td;
+				s = sprintf("Tier %g", tier);
+			}
+			else
+			{
+				tier = -1;
+				td = max(0, rest);                      // finished, and in no tier
+				tof = pf_c_unt;
+				s = "Unrated";
+			}
+			x = p_x + hint * 0.5 + (i - floor(i / cols) * cols) * (w + hint + tsz * 1.5);
 			lp = [x, y + floor(i / cols) * lh];
-			sui_text(lp, [hint, hint], sprintf("Tier %g", pf_c_tier[i]), SUI_THEME_DIM, 1, 0);
+			rid = sprintf("pf_ct%g", i);
+			on = (pf_ct == ((tier < 0) ? "u" : ftos(tier)));
+			sui_action_element([lp_x - hint * 0.5, lp_y - ceil(hint * 0.4)], [w + hint, lh], rid, sui_noop);
+			if (!i)
+			{
+				bo = [lp_x - hint * 0.5, lp_y - ceil(hint * 0.4)];
+				bs = [w + hint, lh];
+				sui_transform_box(bo, bs);
+				pf_bar_p = bo;
+				pf_bar_sz = bs;
+			}
+			hot = sui_is_hovered(rid);
+			if (on || hot)
+				sui_roundbox([lp_x - hint * 0.5, lp_y - ceil(hint * 0.4)], [w + hint, lh], ceil(hint * 0.5),
+				             on ? SUI_THEME_SELECTED : SUI_THEME_HOVER, 1);
+			sui_text(lp, [hint, hint], s, on ? SUI_THEME_ACCENT : (hot ? SUI_THEME_TEXT : SUI_THEME_DIM), 1, 0);
 			bw = w - c0 - c1 - hint;
-			sui_roundbox([lp_x + c0, lp_y + hint * 0.25], [bw, ceil(hint * 0.5)], hint * 0.25, SUI_THEME_WELL, 1);
-			if (pf_c_td[i] > 0 && pf_c_to[i] > 0)
+			sui_roundbox([lp_x + c0, lp_y + hint * 0.25], [bw, ceil(hint * 0.5)], hint * 0.25,
+			             (on || hot) ? SUI_THEME_CHIP : SUI_THEME_WELL, 1);
+			if (td > 0 && tof > 0)
 				sui_roundbox([lp_x + c0, lp_y + hint * 0.25],
-				             [max(ceil(hint * 0.5), bw * min(1, pf_c_td[i] / pf_c_to[i])), ceil(hint * 0.5)],
-				             hint * 0.25, (pf_c_td[i] >= pf_c_to[i]) ? SUI_THEME_GOOD : SUI_THEME_ACCENT, 1);
-			s = sprintf("%g/%g", pf_c_td[i], pf_c_to[i]);
-			sui_text([lp_x + w - stringwidth(s, TRUE, [hint, hint]), lp_y], [hint, hint], s, SUI_THEME_MUTED, 1, 0);
+				             [max(ceil(hint * 0.5), bw * min(1, td / tof)), ceil(hint * 0.5)],
+				             hint * 0.25, (td >= tof) ? SUI_THEME_GOOD : SUI_THEME_ACCENT, 1);
+			s = sprintf("%g/%g", td, tof);
+			sui_text([lp_x + w - stringwidth(s, TRUE, [hint, hint]), lp_y], [hint, hint], s,
+			         (on || hot) ? SUI_THEME_TEXT : SUI_THEME_MUTED, 1, 0);
+			if (sui_is_released(rid))
+				Profile_TierShow(on ? -2 : tier);
 		}
-		y = y + ceil(pf_c_n / cols) * lh + hint;
+		y = y + ceil(n / cols) * lh + hint;
+	}
+	if (pf_ct != "")
+	{
+		Profile_DrawTier([p_x, y], [sz_x, p_y + sz_y - y], tsz, hint);
+		return;
 	}
 
 	// ---- results, best first
@@ -1022,12 +1646,21 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 // only one (the board's wheel has the note).  -> it scrolled.
 float(float evtype, float scanx, float rowh) Profile_Wheel =
 {
+	local float d;
+
 	if (scanx != K_MWHEELUP && scanx != K_MWHEELDOWN)
 		return FALSE;
 	_sui_mouse_move(_cursor_position, FALSE);
-	if (sui_hover_index("pf_rows") < 0)
-		return FALSE;
+	d = 0;
 	if (evtype == IE_KEYDOWN)
-		pf_scroll_y = max(0, pf_scroll_y + ((scanx == K_MWHEELUP) ? 0 - rowh * 3 : rowh * 3));
+		d = (scanx == K_MWHEELUP) ? 0 - rowh * 3 : rowh * 3;
+	if (sui_hover_index("pf_rows") >= 0)
+		pf_scroll_y = max(0, pf_scroll_y + d);
+	else if (sui_hover_index("pf_ctrows") >= 0)
+		pf_ct_scroll_y = max(0, pf_ct_scroll_y + d);
+	else if (sui_hover_index("pf_onrows") >= 0)
+		pf_on_scroll_y = max(0, pf_on_scroll_y + d);
+	else
+		return FALSE;
 	return TRUE;
 };

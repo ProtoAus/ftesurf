@@ -157,6 +157,32 @@ but only drawn 1 obviously."
 - **Live since 11 Oct 16:58 UTC (12 Oct, 03:58 here)** in both installs: a new
   engine file, so restart the game. Lobbies need nothing.
 
+## 00. 12 Oct — tiers that open, and a player's times on this map (Patches 665, 666)
+
+From your reply ("some ability to select the tiers to see what maps you have
+and havent finished, with your times! same for others with search! no search
+for +showscores leaderboard? I want to see results for the map, from that
+user, see their times."). **NOT LIVE AS THIS IS WRITTEN: the deployment's own
+line follows.**
+1. **P, Stats: click a tier's bar.** Its maps take the results' place: the
+   ones finished first, each with the fastest time on its main track, then
+   the ones not yet. "Unrated" is a bar too (the maps nobody has given a
+   tier). The bar again, or "All results", goes back.
+2. **Search somebody while a tier is open:** the list becomes theirs, the
+   same tier.
+3. **TAB:** the search box is on the board while you hold the key, and says
+   to right-click. Right-click, click the box, type a name, pick one.
+4. **Their times on this map** take the table's place: every leg they have
+   a time on (main, stages, bonuses), the time, their place and how long
+   ago. Click a time for that leg's board; "Whole profile" opens their card;
+   "Back to board" returns. It stays up when you let go of TAB.
+- **Yours to look at, on a lobby:** your own tiers, somebody else's, and a
+  search from the board on a map you both have times on.
+- **Known:** a map the site has no file for says "not hosted here"; the
+  unrated list is hundreds long and arrives a hundred at a time as you
+  scroll; while somebody's times are up the row of source buttons above
+  still shows, and pressing one gives the table back.
+
 ## 00. 12 Oct — your profile: P opens it (Patch 663)
 
 From your list ("upgrade this menu to show your steam name, steam picture,
