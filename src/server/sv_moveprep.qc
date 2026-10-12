@@ -3,7 +3,8 @@
  * predict. No production caller. Timer/recorder/placement remain authoritative.
  * Use Alloc/Free; output owns its identity strings. Reuse clears old output.
  * A READY answer describes this call only: no content/connection epoch or
- * persistent cache is supplied here. See tools/p678moveprep.md and p680zoneprep.md.
+ * persistent cache is supplied here. See tools/p678moveprep.md, p680zoneprep.md
+ * and p682rewindprep.md.
  */
 #define MP_READY 1
 #define MP_MISSING 2
@@ -14,6 +15,7 @@
 #define MP_RELEASE 2
 #define MP_ZONE 3
 #define MP_RESET 4
+#define MP_REWIND 5
 #define MP_DEST_ZONE 1
 #define MP_DEST_SAVE 2
 #define MP_KEEP 0
@@ -42,6 +44,7 @@ typedef struct
 	string map, owner, zone_hash;
 	float block, id, seq, ticks;
 	float zone, destination_source, destination_fallback;
+	float ring_base, ring_serial; // call-local rewind source, NOT a reuse/connection epoch
 	vector origin, velocity, angles, release_velocity;
 	float origin_policy, velocity_policy, angle_policy, mode_policy;
 	float ground_policy, carrier_policy, gravity_policy, jump_policy;
@@ -274,6 +277,94 @@ float(entity e, float id, float seq, moveprep_t *out) SV_MovePrepLoad =
 	out->source_preserve = MP_SRC_ALL - out->source_clear - out->source_replace;
 	out->held = (e.rec_sl_hold != 0);
 	if (out->held) out->velocity = '0 0 0';
+	out->version = 1;
+	return MP_READY;
+};
+
+// The row writer/read-back rounds movement to four decimals, even for a warm
+// prefix. This is its numerical policy, not a replacement save-state writer.
+float(float v) MP_SaveDecimal =
+{
+	return stof(sprintf("%.4f", v));
+};
+
+// P682: successful fresh warm `sl_saveat ... go` ends on a save-lock hold.
+// Pure save, cold/forked prefix and previous-go replacement paths abstain.
+// READY is BODY POLICY ONLY: no ID/sequence reservation, prefix/copy/file promise,
+// prediction permission or future reuse claim. Every check is bounded/read-only.
+float(entity e, float t, vector near, float usenear, float go, moveprep_t *out) SV_MovePrepRewind =
+{
+	local float slot, blk, b, i, r, mode;
+	local float *m;
+	local vector org, vel, ang;
+	SV_MovePrepClear(out);
+	if (!out) return MP_REFUSED;
+	if (e == world) return MP_REFUSED;
+	slot = num_for_edict(e);
+	if (slot < 1 || slot > FS_MAXPLAYERS || slot > FS_SLCLIENTS || strcmp(e.classname, "player")) return MP_REFUSED;
+	if (!e.run_inserver) return MP_REFUSED;
+	if (!(t >= 0 && t < 16777216 && t == floor(t))) return MP_REFUSED;
+	if (!(usenear == FALSE || usenear == TRUE) || !(go == FALSE || go == TRUE)) return MP_REFUSED;
+	if (usenear)
+	if (!SV_SaveOriginSane(near)) return MP_REFUSED;
+	if (!go) return MP_UNSUPPORTED; // saving alone does not move a body
+	if (e.run_pmhold || e.run_sp_phase || e.rec_gh_on || e.run_ms_phase) return MP_UNSUPPORTED;
+	if (e.rec_sl_hold) return MP_REFUSED;
+	if (!(e.rw_pin == TRUE && e.rec_wt_hold == TRUE && e.rec_wt_pin > 0
+		&& e.rec_wt_pin < 16777216 && e.rec_wt_pin == floor(e.rec_wt_pin))) return MP_REFUSED;
+	mode = e.rec_wt_holdmove ? e.rec_wt_holdmove : MOVETYPE_WALK;
+	if (mode != MOVETYPE_WALK || e.movetype != MOVETYPE_NONE) return MP_UNSUPPORTED;
+	if (!SV_SaveLocAllowed(e, TRUE)) return MP_REFUSED;
+	if (!(min(SL_TOKRATE, e.rec_sl_tok + (time - e.rec_sl_tokt) * SL_TOKRATE) >= 1)) return MP_REFUSED;
+	blk = SL_Blk(e);
+	if (!(blk >= 0 && blk <= FS_SLCLIENTS && blk == floor(blk))) return MP_REFUSED;
+	if (!SL_Fresh(e, blk)) return MP_STALE;
+	if (SL_Sweeper(blk)) return MP_REFUSED;
+	if (!rec_sl_org || !rec_sl_vel || !rec_sl_pit || !rec_sl_yaw || !rec_sl_duck
+		|| !rec_sl_id || !rec_sl_seq || !rec_sl_tick) return MP_STALE;
+	if (!(rec_sl_nb[blk] >= 0 && rec_sl_nb[blk] <= SL_Cap(blk)
+		&& rec_sl_nb[blk] == floor(rec_sl_nb[blk]))) return MP_STALE;
+	if (!(rec_sl_ns[blk] >= 0 && rec_sl_ns[blk] < 16777215 && rec_sl_ns[blk] == floor(rec_sl_ns[blk]))) return MP_STALE;
+	if (rec_sl_nb[blk] == SL_Cap(blk) || e.rw_goid || e.rw_goseq) return MP_UNSUPPORTED;
+	for (i = 0; i < rec_sl_nb[blk]; i += 1)
+	{
+		r = SL_Base(blk) + i;
+		if (!(rec_sl_id[r] >= 1 && rec_sl_id[r] <= FS_MAXSAVES && rec_sl_id[r] == floor(rec_sl_id[r]))) return MP_STALE;
+		if (!(rec_sl_seq[r] >= 0 && rec_sl_seq[r] < 16777216 && rec_sl_seq[r] == floor(rec_sl_seq[r]))) return MP_STALE;
+	}
+	b = SV_RewindSelectRead(e, t, near, usenear);
+	if (b == -1) return MP_MISSING;
+	if (b < 0) return MP_STALE;
+	m = rw_slot[slot];
+	// No cut-chain walk or prefix read here. A sample from before a cut, an
+	// ended recorder or an older attachment is unavailable to this warm slice.
+	if (!(m[b+18] >= 0 && m[b+18] < 16777216 && m[b+18] == floor(m[b+18]))) return MP_STALE;
+	if (e.run_t_state != TS_RUNNING || !(e.run_t_flags & TF_RECORDING) || !(m[b+18] & TF_RECORDING)) return MP_UNSUPPORTED;
+	if (!(e.rec_rec_gen >= 0 && e.rec_rec_gen < 16777216 && e.rec_rec_gen == floor(e.rec_rec_gen))) return MP_STALE;
+	if (!(e.rec_rec_serial > 0 && e.rec_rec_serial < 16777216 && e.rec_rec_serial == floor(e.rec_rec_serial))) return MP_STALE;
+	if (m[b+33] != e.rec_rec_serial || m[b+34] != e.rec_rec_gen) return MP_STALE;
+	if (!(m[b+29] > 0 && m[b+29] <= e.rec_rec_lines && m[b+29] == floor(m[b+29]))) return MP_STALE;
+	org = [m[b+1], m[b+2], m[b+3]];
+	vel = [m[b+4], m[b+5], m[b+6]];
+	ang = [m[b+7], m[b+8], 0];
+	if (!SV_SaveOriginSane(org) || !MP_Vector(vel) || !(vlen(vel) <= 32768)
+		|| !MP_Vector(ang) || !(fabs(ang_x) <= 360) || !(fabs(ang_y) <= 360)
+		|| !(m[b+9] == 0 || m[b+9] == 1)) return MP_REFUSED;
+	org = [MP_SaveDecimal(org_x), MP_SaveDecimal(org_y), MP_SaveDecimal(org_z)];
+	vel = [MP_SaveDecimal(vel_x), MP_SaveDecimal(vel_y), MP_SaveDecimal(vel_z)];
+	ang = [MP_SaveDecimal(ang_x), MP_SaveDecimal(ang_y), 0];
+	if (!SV_SaveOriginSane(org)) return MP_REFUSED;
+	out->subject = e; out->map = strzone(mapname); out->owner = strzone(infokey(e, "guid"));
+	out->kind = MP_REWIND; out->block = blk; out->ticks = m[b];
+	out->ring_base = b; out->ring_serial = m[b+33];
+	out->origin = org; out->origin_policy = MP_SET;
+	out->velocity = '0 0 0'; out->velocity_policy = MP_SET; out->release_velocity = vel;
+	out->angles = ang; out->angle_policy = MP_SET;
+	out->forceduck = m[b+9] ? FD_DUCK : FD_STAND; out->forceduck_policy = MP_SET;
+	out->held = TRUE; out->mode = MOVETYPE_NONE; out->mode_policy = MP_SET;
+	out->ground_policy = MP_CLEAR; out->carrier_policy = MP_CLEAR;
+	out->source_clear = MP_SRC_ducktime | MP_SRC_ducking; out->source_replace = MP_SRC_ducked;
+	out->source_preserve = MP_SRC_ALL - out->source_clear - out->source_replace;
 	out->version = 1;
 	return MP_READY;
 };

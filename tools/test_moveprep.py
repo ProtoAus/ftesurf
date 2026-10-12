@@ -28,7 +28,7 @@ def check_source_contract(engine):
     if not fields or fields != policies:
         raise ValueError(f'Source policy drift: missing={fields-policies}, extra={policies-fields}')
     for forbidden in ('CSQC_PredictPlayerPreMove', 'SV_MovePrepLoad(', 'SV_MovePrepRelease(',
-                      'SV_MovePrepZone(', 'SV_MovePrepReset('):
+                      'SV_MovePrepZone(', 'SV_MovePrepReset(', 'SV_MovePrepRewind('):
         for path in (ROOT / 'src').rglob('*.qc'):
             if path.name == 'sv_moveprep.qc' or path.parent.name == 'defs':
                 continue

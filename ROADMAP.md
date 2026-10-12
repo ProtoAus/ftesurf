@@ -70,8 +70,13 @@ using shared canonical destination and start-save selection; map/stage/bonus,
 latched/save-backed restart and explicit zone angles have acting live parity.
 Reset keeps immediate ground/duck/history while clearing speed/carrier. These
 are current-call answers, NOT lifecycle epochs, cache/admission or a native
-snapshot. Rewind builders and lifecycle epochs remain next, followed by the
-request/baseline protocol. See `tools/p680zoneprep.md`.
+snapshot. See `tools/p680zoneprep.md`. Patch 682 adds shared bounded ring
+selection and an inert current-attachment/same-generation warm held-go body
+policy, with four-decimal save-row normalization and acting legacy go/release
+parity. It does not reserve a save or prove persistence/attachment; cold,
+ended/forked, pure-save, full-list and prior-go replacement paths abstain.
+These missing branches and lifecycle epochs remain prerequisites, followed by
+request/native-admission/baseline protocol. See `tools/p682rewindprep.md`.
 
 **Implementation boundaries (source audit, 2026-10-12; operation protocol unbuilt).**
 
@@ -115,7 +120,9 @@ request/baseline protocol. See `tools/p680zoneprep.md`.
   canonical operation result at that logical boundary. Do not pretend an
   arbitrary reliable stringcmd is already a usercmd-correlated placement.
 - `Rewind_Go` in `client/cl_rewind.qc` sends `sl_goview` or `sl_saveat ... go`;
-  `SV_SaveLocCreateAt`/`SV_RewindFind` choose native snapshots on the server.
+  `SV_SaveLocCreateAt`/`SV_RewindFind` choose retained server body/save-state
+  samples, not complete native snapshots. P682 shares the actual half-second
+  spatial/latest-past selector and prepares the bounded warm held-go branch.
   A trail/view point is not an interchangeable native snapshot. Warm and
   persisted/cold rewind both need prepared descriptors tied to run identity
   and native tick, including near/at-rest selection. A cold descriptor must

@@ -85,10 +85,6 @@ entity() SV_SelectSpawnPoint =
 // client can tell whose stats it is being sent (a spectator gets the target's).
 .float run_statowner;
 
-// Patch 477 review round 27: placed in the server -- set at the end of the
-// spawn, cleared at a disconnect (the engine's own `spawn` clears every field).
-.float run_inserver;
-
 void() PutClientInServer =
 {
 	local entity spot;

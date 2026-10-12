@@ -3063,6 +3063,9 @@ void(entity e, float b) SV_RewindStateSample;
 // 2026-10-03 (`sv_meminfo` over rcon, all 12 lobbies): 6.8-9.6 MB used of 2 GB
 // reserved -- PR_ReadBytesString gives 64-bit Linux 2 GB for the default
 // pr_ssqc_memsize -1 (pr_bgcmd.c).  A failed memalloc is SV_Error.
+// Patch 477 r27: set after spawn, cleared on disconnect/engine spawn. Declared
+// before movement preparation (P682); sv_player.qc remains its lifecycle owner.
+.float run_inserver;
 float  *rw_slot[FS_MAXPLAYERS + 1];  // memalloc'd per slot on first use, kept
 .float rw_n;                    // samples held
 .float rw_head;                 // next write
@@ -3173,18 +3176,24 @@ void(entity e) SV_RewindSample =
   Without, the latest at or before `t` and within RW_NEAR of it.  FALSE if
   none qualifies.
 */
-float(entity e, float t, vector near, float usenear) SV_RewindFind =
+// Select-only read half: physical row base >= 0, -1 missing, -2 bad domain.
+// No allocation, publication, I/O or metadata writes; Find owns rw_* below.
+float(entity e, float t, vector near, float usenear) SV_RewindSelectRead =
 {
 	local float s, k, i, best, d, bd, w;
 	local float *m;
 
+	if (e == world) return -2;
 	s = num_for_edict(e);
-	if (s < 1 || s > FS_MAXPLAYERS || e.rw_n < 1)
-		return FALSE;
-	if (!(t == t))                  // round 14: a NaN tick passes every window test
-		return FALSE;
-	if (!rw_slot[s])                // nested, as array reads are: see SV_SaveLocHoldVel
-		return FALSE;
+	if (s < 1 || s > FS_MAXPLAYERS) return -2;
+	if (!(t > -16777216 && t < 16777216)) return -2;
+	if (!(usenear == FALSE || usenear == TRUE)) return -2;
+	if (usenear)
+	if (!SV_SaveOriginSane(near)) return -2;
+	if (!(e.rw_n >= 0 && e.rw_n <= RW_CAP && e.rw_n == floor(e.rw_n))) return -2;
+	if (e.rw_n == 0) return -1;
+	if (!(e.rw_head >= 0 && e.rw_head < RW_CAP && e.rw_head == floor(e.rw_head))) return -2;
+	if (!rw_slot[s]) return -1;
 	m = rw_slot[s];
 	w = (run_t_tick > 0) ? RW_NEAR / run_t_tick : 33;
 	best = -1;
@@ -3192,6 +3201,7 @@ float(entity e, float t, vector near, float usenear) SV_RewindFind =
 	for (k = 0; k < e.rw_n; k = k + 1)
 	{
 		i = ((e.rw_head - 1 - k + RW_CAP) % RW_CAP) * RW_STRIDE;
+		if (!(m[i] >= 0 && m[i] < 16777216 && m[i] == floor(m[i]))) return -2;
 		if (usenear)
 		{
 			if (fabs(m[i] - t) > w)
@@ -3212,8 +3222,16 @@ float(entity e, float t, vector near, float usenear) SV_RewindFind =
 				best = i;
 		}
 	}
-	if (best < 0)
-		return FALSE;
+	return best;
+};
+
+float(entity e, float t, vector near, float usenear) SV_RewindFind =
+{
+	local float best;
+	local float *m;
+	best = SV_RewindSelectRead(e, t, near, usenear);
+	if (best < 0) return FALSE;
+	m = rw_slot[num_for_edict(e)];
 	rw_statebase = best;
 	rw_t   = m[best];
 	rw_o   = [m[best + 1], m[best + 2], m[best + 3]];

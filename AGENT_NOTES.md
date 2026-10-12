@@ -2684,6 +2684,36 @@ See `tools/OFFRAMP_CONTACT.md`; private diagnostic builds NEVER ship.
 
 ## Rewind (Patch 477)
 
+P682's warm-go preparation is inert. See `tools/p682rewindprep.md` for supported
+current-recording/same-generation pin and all explicit unavailable branches.
+Shared `SV_RewindSelectRead` is bounded and effect-free; `SV_RewindFind` still
+publishes globals. This selector uses a +/- half-second SPATIAL window, then
+tick-distance/newest ties, or latest-past without near. It never clamps to the
+ring head. The predecessor handoff audit's Peek/Alloc/count names were not in
+source; reread the real function before planning a test from that audit.
+
+Four-decimal row write/read normalization is movement policy even on a warm
+rewind prefix. Rewind pitch is not the start-save reset clamp. Successful go
+ends held (NONE, zero live velocity) with normalized sample release velocity;
+READY describes only that body policy, not file/copy/attachment success, a
+reserved save ID/sequence, a future epoch or prediction permission. Pure-save,
+cold/ended/forked attachment, full-list and prior-go replacement abstain. No
+production consumer, native admission, baseline reconciliation or Build bump.
+
+The dedicated cfg must run the real go fixture DURING the walked recording.
+A three-second walk plus waits on surf_dune fell back into the start and rearmed;
+that failed prerequisite was not a movement result. Invoke at about 1.1 seconds
+without an extra post-walk wait. A copied player edict used as test snapshot
+must have a non-player classname: otherwise `SV_RewindAlone` correctly sees the
+snapshot as a second connected player and withholds the replaceable go ID.
+P682 retains both failed rigs and grades only a complete real recorder/pin/
+write/read/load/hold/release actor. Initial subject 91/0; weakened spatial and
+held-velocity controls have 7/91 and 2/91 named expected assertion failures.
+QC pointer declarations need separate statements (`local float *a; local float
+*b;`), not `local float *a, *b;`: fteqcc treats the latter second declarator as a
+pointer-to-pointer. `lobby_enable` is a cvar, not a QC global; test with cvar_set.
+
+
 - **Request/native captions (P560).** Fractional display, sampled wire request
   and acknowledged native clock are separate. `Rewind_ResumeInfo` states the
   sampled request while browsing, waiting while pending, and native/request/
