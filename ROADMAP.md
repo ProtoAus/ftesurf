@@ -41,12 +41,86 @@ history consistently; reconcile success, refusal, stale destination, competing
 requests and release from hold. Server timer and run classification remain
 server-owned. Chat, binds and console paths must use the same operation.
 
+**Implementation boundaries (source audit, 2026-10-12; still unbuilt).**
+
+- The existing hook is **after** `PM_PlayerMove`:
+  `CL_PredictUsercmd` in the engine's `client/cl_pred.c` calls
+  `CSQC_PredictPlayerMove` on the resulting state. Its write-back covers
+  origin, velocity, angles, onground and jump-held, not a full placement or
+  hold/release transition. A command operation needs a replayable boundary
+  before the command's movement, not an apply-once render-frame latch. Do
+  not change the trigger hook's existing post-move semantics to obtain it.
+- `SaveLoc_LoadKey`/`SaveLoc_Camera` in `client/cl_saveloc.qc` confirm
+  the camera-only path: prediction writes `VF_ORIGIN` and view angles; it
+  does not seed the engine's `player_state_t`. `SV_SaveLocSync` currently
+  mirrors the **cursor row's origin and angles**, not a complete load
+  descriptor for all rows. The load, navigation and auto-hold gestures
+  therefore need an invalidated, server-prepared cache, not merely another
+  consumer of `STAT_FS_SLORG`.
+- `SaveLoc_Cmd` and `SaveLoc_Camera` use `STAT_FS_SLACK`, a processed-command
+  count. `rec_sl_holdack` and `Rewind_Answer` use that same count. It identifies
+  neither the input boundary at which placement occurred nor the
+  authoritative body snapshot that includes it. **Do not retire a predicted
+  operation just because its ACK arrived.** Replaying from an older body
+  baseline would then omit the operation and jump back. Retire only when
+  a matching connection/map generation and operation-bearing baseline
+  cover it. ACK-before-body, body-before-ACK, duplicates and reordered
+  delivery all need explicit controls.
+- The zone paths are not just `zone_goto`. `SV_ZoneChatCommand` resolves the
+  timer leg and may choose a start save (`SV_SaveLocPickInZone`) for `!r`;
+  `SV_ZoneMoveAt` otherwise obtains the server's prepared spawn. Cache that
+  **resolved choice**, including the save and zone generations, and route
+  chat, zone commands and the save-backed restart through the same request.
+  The client must not infer the server's leg or substitute a raw zone centre.
+- `SV_SaveLocLoad`, `SV_SaveLocRelease`, `SV_SaveApplyState` and
+  `SV_SaveLocHoldVel` in `server/sv_saveloc.qc` jointly own placement,
+  restored velocity, duck state, carrier clearing and hold movement.
+  `PlayerPreThink` runs per usercmd, but `PlayerPostThink` runs per packet.
+  The native `SV_RunCmd` path does not currently expose a command-sequence
+  interface to these SSQC handlers. Add the operation boundary in the
+  engine; do not pretend an arbitrary reliable stringcmd is already a
+  usercmd-correlated placement.
+- `Rewind_Go` in `client/cl_rewind.qc` sends `sl_goview` or `sl_saveat ... go`;
+  `SV_SaveLocCreateAt`/`SV_RewindFind` choose native snapshots on the server.
+  A trail/view point is not an interchangeable native snapshot. Warm and
+  persisted/cold rewind both need prepared descriptors tied to run identity
+  and native tick, including near/at-rest selection. A cold descriptor must
+  be fetched before it can support an instantaneous selection; a missing
+  descriptor must be an explicit preparation/fallback state, never a guessed
+  player move dressed as successful prediction.
+
+**Implementation order.** First establish a typed operation and per-command
+boundary shared by native SSQC execution and replay of the local predicted
+chain. Give each request a connection/map generation, monotonically ordered
+request ID, intended input boundary and server-owned descriptor generation.
+The result must identify acceptance/refusal, the actual application boundary
+and the canonical movement state. Keep queued operations bounded without
+silently evicting an unacknowledged move. A late application may legitimately
+correct prediction; keep that correction observable instead of suppressing it.
+
+Enumerate the semantics for every touched/carried field: origin, velocity,
+angles, hull/duck transition, move/hold mode, onground/jump, carrier/basevelocity,
+gravity and `pmsourcestate_t` (including fixed-tick carry, buttons, stamina and
+ladder state). Decide which are preserved, restored or cleared consistently on
+both sides. This is **not** permission to zero the mover state on every warp or
+to migrate save/recording formats speculatively. Then add cache publication and
+invalidation, hook every caller above, and only then replace the view-only
+anticipation. Timer transitions, recorder writes and rank eligibility stay
+server-owned. An ordering model or a compile is not verification of the live
+movement paths.
+
 **Falsifiers.** Dedicated socket, acting baseline and subject at 0/100/200 ms
 added delay: map/stage/bonus restart, !r with and without a start save, all save
 slot gestures, held load/release, warm and cold rewind resume, rejection and
 rapid repeated requests. Check predicted body, acknowledged body, velocity,
 angles, duck/ground and the next moving commands, not camera arrival alone.
 Map identity and a complete destination/state snapshot are prerequisites.
+Add lost/retried requests, ACK/body delivery in both orders, newer requests
+overtaking earlier ACKs, map/reconnect changes, stale save/zone/run descriptors
+and a full operation queue. Measure the predicted body **before the ACK** as
+well as after it. Separate expected reconciliation under genuine late execution
+or refusal from an ordinary accepted-path snapback; keep prediction errors
+observable. An ordering model alone does not pass these runtime falsifiers.
 
 **Status.** Audited; this unified operation is NOT implemented or deployed by
 P670. Do not describe resets/rewind as fully client-predicted on that patch.
