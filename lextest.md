@@ -340,6 +340,31 @@ a few sizes, drift and fade out.
 - **Live since 11 Oct 14:53 UTC (12 Oct, 01:53 here)** on both installs and
   all twelve lobbies. Restart the game to get it.
 
+## 00. 12 Oct — organized zone editor and mode presets (Patch 673)
+
+On a newly hosted map with the P673+ native engine, open `zone_edit`:
+- Judge the grouped list/selection/construction/file layout, at normal and
+  smaller window sizes. The Surface button is surface tracing, not Surf mode.
+  Check the rounded placement hint matches the rest of the interface.
+- Set a start/stage spawn somewhere different; Reset spawn, ordinary save and
+  map reload. Teleport back: the default should be inside the zone, including
+  an L-shaped ring, not its missing corner. Named map destinations can be reset.
+- Map properties: choose Bhop, set a speed cap, save and reload. Bhop must use
+  100 Hz / AA1000. Choose Surf, save and reload: 66.67 Hz / AA150. Keep the cap.
+  Ground acceleration/ground speed/friction are not fields. Gravity/AA can
+  still be adjusted for maps needing them; other maps restore their own rules.
+- Try physical jump/cursor switching, title drag, list double-click, numeric
+  typing and OS clipboard approval/delivery. Synthetic probes do not prove them.
+
+Final full clean tagged native controls: new27/27, P67129/29, P6698/8,
+including 15 freshly acting loader arms and exact subject dedicated executable.
+The published P672 seam's ten unit groups also pass. Both viewport screenshots
+inspected; native compiler warning set unchanged, QC zero warnings. Deployment
+provenance is in the task checkpoint/engine patch record. Steam identity and reviewed times-choice policy
+are confirmed, but privileged reviewed upload/activation remains unbuilt.
+Windows native/progs deployment is held while the owner's game runs; no game
+will be killed to unblock it. No existing times are deleted by these controls.
+
 ## 00. 12 Oct — zone editor controls and polygons (Patch 671)
 
 Automated probes cover input routing/owned releases, dragging/clamping, a

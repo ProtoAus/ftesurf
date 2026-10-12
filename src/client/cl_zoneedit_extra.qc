@@ -222,11 +222,41 @@ void() ZoneEdit_ToggleMouse =
 	ZoneEdit_Note(ze_cursor ? "Mouse: window (jump to look)" : "Mouse: look (jump for window)");
 };
 
+void() ZoneEdit_ResetSpawn =
+{
+	local vector p;
+	if (ze_sel < 0 || ze_sel >= zone_count) return;
+	if (zone_type[ze_sel] != ZONE_START && zone_type[ze_sel] != ZONE_STAGE) return;
+	if (zone_td_name[ze_sel] != "") strunzone(zone_td_name[ze_sel]);
+	zone_td_name[ze_sel] = "";
+	zone_td_kind[ze_sel] = ZTD_NONE;
+	zone_td_pos[ze_sel] = '0 0 0'; zone_td_yaw[ze_sel] = 0;
+	// The server's NONE fallback is the bounds centre. Concave rings can put
+	// that outside: retain an explicit safe zone-derived floor point instead.
+	p = zone_centre[ze_sel]; p_z = zone_bottom[ze_sel] + 2;
+	if (!Zone_PointInside(ze_sel, p))
+	{
+		p = ZoneEdit_Interior(ze_sel);
+		zone_td_kind[ze_sel] = ZTD_POS; zone_td_pos[ze_sel] = p;
+	}
+	ZoneEdit_Touch();
+	ZoneEdit_Note(sprintf("%s: spawn reset to the zone's default", ZoneEdit_Label(ze_sel)));
+};
+
+void(float mode) ZoneEdit_SettingMode =
+{
+	if (!ze_settings || (mode != 1 && mode != 2)) return;
+	ze_field = -1; sui_text_unfocus();
+	ze_mode = mode; ze_values[2] = mode == 2 ? 1000 : 150;
+	ZoneEdit_Note(mode == 2 ? "Bhop staged: 100 Hz / air accel 1000; save & reload" : "Surf staged: 66.67 Hz / air accel 150; save & reload");
+};
+
 void() ZoneEdit_SettingsOpen =
 {
 	local float i, fh, n, bytes;
 	local string line;
 	for (i = 0; i < MAPSET_COUNT; i = i + 1) ze_values[i] = cvar(MapSet_Name(i));
+	ze_mode = cvar("pm_ticrate") < 0.012 ? 2 : 1;
 	bytes = 0; fh = fopen(MapSet_Path(ze_map), FILE_READ);
 	if (fh >= 0)
 	{
@@ -236,6 +266,8 @@ void() ZoneEdit_SettingsOpen =
 			if (bytes > 4096) break;
 			n = tokenize(line);
 			if (n != 2) continue;
+			if (strcmp(argv(0), "gamemode") == 0)
+			if (strcmp(argv(1), "1") == 0 || strcmp(argv(1), "2") == 0) ze_mode = stof(argv(1));
 			for (i = 0; i < MAPSET_COUNT; i = i + 1)
 				if (strcmp(argv(0), MapSet_Name(i)) == 0)
 				if (MapSet_Valid(i, stof(argv(1)))) ze_values[i] = stof(argv(1));
@@ -301,12 +333,14 @@ void() ZoneEdit_SettingsSave =
 	path = MapSet_Path(ze_map); part = strcat(path, ".new");
 	fh = fopen(part, FILE_WRITE);
 	if (fh < 0) { ZoneEdit_Note("Could not write map settings"); return; }
+	fputs(fh, sprintf("gamemode %g\n", ze_mode));
 	for (i = 0; i < MAPSET_COUNT; i = i + 1)
 		fputs(fh, sprintf("%s %.9g\n", MapSet_Name(i), ze_values[i]));
 	fclose(fh);
 	fh = fopen(part, FILE_READ);
 	if (fh < 0) { ZoneEdit_Note("Could not read back settings; old file kept"); return; }
-	ok = TRUE;
+	line = fgets(fh);
+	ok = (tokenize(line) == 2 && strcmp(argv(0), "gamemode") == 0 && stof(argv(1)) == ze_mode);
 	for (i = 0; i < MAPSET_COUNT; i = i + 1)
 	{
 		line = fgets(fh);
@@ -331,7 +365,7 @@ void() ZoneEdit_SettingsSave =
 			{ ZoneEdit_Note("Settings restore failed: previous file is in .prev"); return; }
 		fremove(part); ZoneEdit_Note("Settings rename failed; previous settings restored"); return;
 	}
-	ZoneEdit_Note("Saved locally; P671+ engine and map reload required");
+	ZoneEdit_Note("Saved locally; P673+ engine and map reload required");
 	print(sprintf("zone_edit: settings saved %s maxvelocity %g\n", MapSet_Path(ze_map), ze_values[0]));
 };
 
@@ -344,8 +378,13 @@ void(vector p, float w, float y, float rowh, float tsz) ZoneEdit_SettingsDraw =
 {
 	local float i;
 	local vector fp;
-	ZoneEdit_Text([p_x + 8, y + 4], tsz, "Local only (P671+ engine); reload to apply", ZEC_DIM);
+	ZoneEdit_Text([p_x + 8, y + 4], tsz, "MAP PROPERTIES  /  local game only; reload to apply", ZEC_DIM);
+	y = y + rowh * 1.4;
+	if (ZoneEdit_Button([p_x + 8, y], [w * 0.48 - 8, rowh], "ze_mode_surf", "Surf", tsz, ze_mode == 1 ? ZEC_SEL : ZEC_TEXT)) ZoneEdit_SettingMode(1);
+	if (ZoneEdit_Button([p_x + w * 0.5, y], [w * 0.48 - 8, rowh], "ze_mode_bhop", "Bhop", tsz, ze_mode == 2 ? ZEC_SEL : ZEC_TEXT)) ZoneEdit_SettingMode(2);
 	y = y + rowh;
+	ZoneEdit_Text([p_x + 8, y + 4], tsz, ze_mode == 2 ? "100 Hz  /  preset air accel 1000" : "66.67 Hz  /  preset air accel 150", ZEC_DIM);
+	y = y + rowh * 1.4;
 	for (i = 0; i < MAPSET_COUNT; i = i + 1)
 	{
 		ZoneEdit_Text([p_x + 8, y + 6], tsz, MapSet_Label(i), ZEC_TEXT);
@@ -356,7 +395,7 @@ void(vector p, float w, float y, float rowh, float tsz) ZoneEdit_SettingsDraw =
 	if (ze_field >= 0)
 	{
 		fp = [p_x + 8, y, 0];
-		drawfill(fp, [w * 0.66, rowh - 3, 0], ZEC_LINE, 1, 0);
+		sui_style_box(fp, [w * 0.66, rowh - 3, 0], 4, SUI_THEME_WELL, SUI_THEME_EDGE_HI, 1);
 		sui_text_metrics(tsz * 0.5, [tsz, tsz]);
 		sui_text_input("ze_value", fp, [w * 0.66, rowh - 3, 0], ze_text, ze_caret);
 		ZoneEdit_Text(fp + [tsz * 0.5, 5, 0], tsz, ze_text, ZEC_TEXT);
@@ -370,7 +409,9 @@ void(vector p, float w, float y, float rowh, float tsz) ZoneEdit_SettingsDraw =
 	if (ZoneEdit_Button([p_x + w * 0.5, y], [w * 0.48 - 8, rowh - 3], "ze_msback", "Back to zones", tsz, ZEC_TEXT))
 	{ ze_settings = FALSE; ze_field = -1; sui_text_unfocus(); }
 	y = y + rowh;
-	ZoneEdit_Text([p_x + 8, y + 4], tsz, "Upload/admin: pending Steam ID & policy", ZEC_DIM);
+	ZoneEdit_Text([p_x + 8, y + 4], tsz, "Defaults: ground movement stays map-authored", ZEC_DIM);
+	y = y + rowh;
+	ZoneEdit_Text([p_x + 8, y + 4], tsz, "Upload: not enabled yet; reviewed publication planned", ZEC_DIM);
 };
 
 void(vector p) ZoneEdit_DragStart =

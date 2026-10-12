@@ -33,10 +33,17 @@ On a locally hosted map, run `zone_edit` to open the editor.
   **Edge snap** targets nearby existing zone corners/edges, not BSP mesh edges.
 - Single-click a list row to select it; double-click to teleport to its server
   zone. A changed draft must be saved and the hosted map reloaded first.
-- **Map settings** edits max velocity, gravity, air/ground acceleration, max
-  ground speed and friction. Save locally, then reload the map. This needs the
-  Patch 671+ engine; older binaries do not apply the saved overrides. Previous
-  settings stay in `.prev`. Dedicated/public lobbies ignore these local files.
+- **Set spawn** uses your position; **Reset spawn** restores the zone-derived
+  default, kept inside concave rings. Selection/spawn, construction/snap and
+  file actions are grouped; the placement hint uses shared rounded UI styling.
+- **Surface** means snap to the aimed surface instead of the grid; it does
+  not select Surf movement.
+- **Map properties** has **Surf/Bhop** presets, speed cap, gravity and optional
+  air acceleration. Surf uses 66.67 Hz / AA150; Bhop uses 100 Hz / AA1000.
+  A preset keeps your speed cap and gravity. Save then **reload the map**.
+  This needs the Patch 673+ native engine; older binaries do not apply the new
+  mode file. Previous settings stay in `.prev`. Ground rules remain map-authored,
+  not editor fields. Dedicated/public lobbies ignore local properties.
 
 Zones save under `ftesurf/data/maps/zones/local/`; settings under
 `ftesurf/data/maps/settings/local/`. They stay on this machine. Steam-based

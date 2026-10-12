@@ -4,13 +4,13 @@
 
 Patch 671 adds the local editor controls, polygon authoring and six local map
 settings. The owner also requested making Proto an admin by Steam identity and
-uploading zones to the NanoPi R6C. This part remains unbuilt pending:
-
-- Proto's exact SteamID64/profile URL, confirmed by the owner. Do not infer it
-  from a display name, repository owner, sample GUID or an unverified search.
-- The publication rule: review versus immediate activation, and treatment of
-  existing times when zone geometry or movement rules change. Do not delete or
-  silently relabel existing times. Recommended: reviewed versioned drafts.
+uploading zones to the NanoPi R6C. This part remains unbuilt. On 12 Oct the
+owner confirmed Proto's Steam identity and chose reviewed activation, with an
+explicit per-publication choice for existing times (default keep). Identity
+confirmation is not itself a live privilege grant. Do not infer authority from
+a display name, repository owner, sample GUID or unverified client claims.
+Show geometry/rules revisions and the times choice during review; never delete
+or silently relabel existing times automatically.
 
 Use the existing authenticated Steam-account proof path with a server-side role
 and revocation, not client cvars, GUIDs, display names or embedded SSH/admin

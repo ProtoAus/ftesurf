@@ -1,30 +1,24 @@
 /* Local editor overrides, numeric data only. Public lobbies never load these.
    Names and limits are shared by the editor and server; not arbitrary cvars. */
-#define MAPSET_COUNT 6
+#define MAPSET_COUNT 3
 
 string(float i) MapSet_Name =
 {
 	if (i == 0) return "sv_maxvelocity";
 	if (i == 1) return "sv_gravity";
-	if (i == 2) return "sv_airaccelerate";
-	if (i == 3) return "sv_accelerate";
-	if (i == 4) return "sv_maxspeed";
-	return "sv_friction";
+	return "sv_airaccelerate";
 };
 
 string(float i) MapSet_Label =
 {
-	if (i == 0) return "Max velocity";
+	if (i == 0) return "Speed cap";
 	if (i == 1) return "Gravity";
-	if (i == 2) return "Air acceleration";
-	if (i == 3) return "Ground acceleration";
-	if (i == 4) return "Max ground speed";
-	return "Friction";
+	return "Air acceleration";
 };
 
 float(float i) MapSet_Min =
 {
-	if (i == 0 || i == 4) return 1;
+	if (i == 0) return 1;
 	if (i == 1) return 1;
 	return 0;
 };
@@ -32,8 +26,7 @@ float(float i) MapSet_Min =
 float(float i) MapSet_Max =
 {
 	if (i == 0) return 100000;
-	if (i == 1 || i == 4) return 10000;
-	if (i == 5) return 100;
+	if (i == 1) return 10000;
 	return 10000;
 };
 

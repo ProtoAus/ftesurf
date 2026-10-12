@@ -37,6 +37,8 @@ def main():
                          'lives in one of them loads; an overlay has no fs_addons.txt of its own')
     ap.add_argument('--port', type=int, default=27619)
     ap.add_argument('--dedicated', action='store_true')
+    ap.add_argument('--server', type=pathlib.Path, default=pathlib.Path('C:/FTEQuake/fteqwsv64.exe'),
+                    help='with --dedicated: exact inspected server executable (default second install)')
     ap.add_argument('--map', default='surf_dune', help='with --dedicated: the map the server starts')
     ap.add_argument('--server-arg', action='append', default=[],
                     help='with --dedicated: extra server arguments, e.g. "+set sv_minping 120"')
@@ -130,7 +132,7 @@ def main():
         common = ['-basedir', str(rig), '-manifest', str(rig / 'default.fmf')]
         if a.dedicated:
             extra = [word for arg in a.server_arg for word in shlex.split(arg)]
-            server = subprocess.Popen(['C:/FTEQuake/fteqwsv64.exe', *common, '+sv_public', '0',
+            server = subprocess.Popen([str(a.server), *common, '+sv_public', '0',
                                        '-port', str(a.port), '+log_enable', '1', '+log_name',
                                        'runlines_server', *extra, '+map', a.map], cwd=a.content,
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

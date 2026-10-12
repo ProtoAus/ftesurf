@@ -65,7 +65,7 @@
 #define ZEC_PANEL SUI_THEME_PANEL
 #define ZEC_LINE  SUI_THEME_EDGE
 #define ZEC_TEXT  SUI_THEME_TEXT
-#define ZEC_DIM   SUI_THEME_MUTED
+#define ZEC_DIM   SUI_THEME_DIM
 #define ZEC_HOT   SUI_THEME_HOVER
 #define ZEC_SEL   SUI_THEME_ACCENT
 #define ZEC_WARN  SUI_THEME_WARN
@@ -105,7 +105,7 @@ vector ze_drag_offset, ze_window;
 float ze_poly, ze_np, ze_edges, ze_close;
 vector *ze_pts;
 float ze_lastrow, ze_lastclick;
-float ze_settings, ze_field, ze_caret;
+float ze_settings, ze_field, ze_caret, ze_mode;
 string ze_text;
 float ze_values[MAPSET_COUNT];
 float *ze_field_keys;
@@ -128,6 +128,8 @@ void(float evtype, float scan, float char) ZoneEdit_FieldKey;
 float(float c) ZoneEdit_Paste;
 void() ZoneEdit_SettingsSave;
 void(vector p, float w, float y, float rowh, float tsz) ZoneEdit_SettingsDraw;
+void(float mode) ZoneEdit_SettingMode;
+void() ZoneEdit_ResetSpawn;
 void(vector p) ZoneEdit_DragStart;
 
 void(string s) ZoneEdit_Note =
@@ -1162,7 +1164,7 @@ void(vector scr) ZoneEdit_Panel =
 {
 	local vector p, tp, lp, rs;
 	local float w, h, pad, tsz, rsz, rowh, bw, z, n, i, k, best, bo, o, a, top, lastk, cut;
-	local string s, id;
+	local string s, id, title, controls;
 
 	if (!ui_ze_state)
 		return;
@@ -1196,21 +1198,25 @@ void(vector scr) ZoneEdit_Panel =
 			s = sprintf("MOUSE1 opposite corner  (%g x %g)", fabs(ze_hit_x - ze_a_x), fabs(ze_hit_y - ze_a_y));
 		else
 			s = sprintf("look up to pull the height (%g), MOUSE1 to finish", ze_h);
-		s = sprintf("%s %s:  %s   -   MOUSE2 back   wheel grid %g   V noclip   ESC panel",
-		            (ze_replace >= 0) ? "re-placing" : "placing",
-		            (ze_ntype == ZONE_START) ? "start" : ((ze_ntype == ZONE_END) ? "end"
-		              : ((ze_ntype == ZONE_STAGE) ? "stage" : "checkpoint")), s, ze_grid);
-		w = stringwidth(s, TRUE, [tsz, tsz]) + pad * 2;
-		p = [(scr_x - w) * 0.5, scr_y * 0.72];
-		// drawfill, not a styled box: that needs a sui bracket, and a second bracket in a
-		// frame takes the clicks from whichever panel drew before it.
-		drawfill(p - [1, 1], [w + 2, tsz + pad + 2], SUI_THEME_EDGE, 0.9, 0);
-		drawfill(p, [w, tsz + pad], SUI_THEME_PANEL, 0.95, 0);
-		drawstring(p + [pad, pad * 0.5], s, [tsz, tsz],
-		           (ze_hitok || ui_ze_state == ZE_H) ? ZEC_TEXT : ZEC_WARN, 1, 0);
+		title = sprintf("%s %s  /  %s", (ze_replace >= 0) ? "RE-PLACING" : "PLACING",
+			Zone_TypeName(ze_ntype), ze_poly ? "polygon" : "box");
+		controls = sprintf("MOUSE2 back  /  wheel grid %g  /  V noclip  /  ESC panel", ze_grid);
+		rsz = min(rsz, max(8, scr_x / 80));
+		w = max(stringwidth(s, TRUE, [rsz, rsz]), stringwidth(controls, TRUE, [rsz, rsz]));
+		w = min(scr_x - pad * 2, max(w, stringwidth(title, TRUE, [rsz, rsz])) + pad * 2);
+		h = rsz * 3 + pad * 3;
+		if (!ze_hitok && ui_ze_state != ZE_H) h = h + rsz + pad * 0.5;
+		p = [(scr_x - w) * 0.5, min(scr_y * 0.72, scr_y - h - pad), 0];
+		// Raw SUI chrome, in these draw coordinates: no second input bracket.
+		_sui_round_draw(p + '-2 -1 0', [w + 4, h + 4, 0], 7, '0 0 0', 0.22);
+		_sui_round_draw(p, [w, h, 0], 6, SUI_THEME_EDGE_HI, 1);
+		_sui_round_draw(p + '1 1 0', [w - 2, h - 2, 0], 5, SUI_THEME_CHIP, 1);
+		drawstring(p + [pad, pad, 0], title, [rsz, rsz], SUI_THEME_ACCENT, 1, 0);
+		drawstring(p + [pad, pad * 1.5 + rsz, 0], s, [rsz, rsz], ZEC_TEXT, 1, 0);
+		drawstring(p + [pad, pad * 2 + rsz * 2, 0], controls, [rsz, rsz], ZEC_DIM, 1, 0);
 		if (!ze_hitok && ui_ze_state != ZE_H)
-			drawstring(p + [pad, pad * 0.5 + tsz + pad], "aim at the map: nothing solid under the crosshair",
-			           [rsz, rsz], ZEC_WARN, 1, 0);
+			drawstring(p + [pad, pad * 2.5 + rsz * 3, 0], "Aim at the map: nothing solid under the crosshair",
+				[rsz, rsz], ZEC_WARN, 1, 0);
 		Font_Reset();
 		return;
 	}
@@ -1305,7 +1311,8 @@ void(vector scr) ZoneEdit_Panel =
 	for (z = 0; z < zone_count; z = z + 1)
 		if (zone_track[z] == ze_track)
 			n = n + 1;
-	rs = [w - pad * 2, (p_y + h - pad) - tp_y - rowh * 7.2, 0];
+	rs = [w - pad * 2, (p_y + h - pad) - tp_y - rowh * 9.9, 0];
+	sui_style_box(tp - '3 3 0', rs + '6 6 0', 5, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
 	lastk = -1;
 	bo = -1;
 	cut = 0;
@@ -1353,7 +1360,7 @@ void(vector scr) ZoneEdit_Panel =
 		sui_text(lp + [rs_x * 0.45, (rowh - rsz) * 0.5], [rsz, rsz],
 		         sprintf("%g pts  z %g..%g%s", zone_npts[z], zone_bottom[z], zone_top[z],
 		                 ((zone_type[z] == ZONE_START || zone_type[z] == ZONE_STAGE) && zone_td_kind[z] == ZTD_NONE)
-		                   ? "  no spawn" : ""), ZEC_DIM, 1, 0);
+		                   ? "  auto spawn" : ""), ZEC_DIM, 1, 0);
 		if (ZoneEdit_Clicked(id)) ZoneEdit_RowClick(z);
 		lp_y = lp_y + rowh;
 	}
@@ -1364,8 +1371,8 @@ void(vector scr) ZoneEdit_Panel =
 		         sprintf("%g more: the wheel scrolls", cut), ZEC_WARN, 1, 0);
 	tp_y = tp_y + rs_y + pad * 0.5;
 
-	// The selected zone.
-	bw = (w - pad * 2 - 8) / 3;
+	// Inspector: selection and spawn actions, separate from construction tools.
+	bw = (w - pad * 2 - 12) / 4;
 	a = (ze_sel >= 0 && ze_sel < zone_count);
 	// `k`: the selection is a start or a stage.  Nested ifs, not a && : QC evaluates both
 	// sides, and zone_type[-1] is a bounds failure that takes the whole VM down.
@@ -1373,10 +1380,15 @@ void(vector scr) ZoneEdit_Panel =
 	if (a)
 	if (zone_type[ze_sel] == ZONE_START || zone_type[ze_sel] == ZONE_STAGE)
 		k = TRUE;
-	if (ZoneEdit_Button(tp, [bw, rowh], "ze_rp", "re-place", rsz, a ? ZEC_TEXT : ZEC_DIM))
+	s = "SELECT A ZONE  /  double-click to teleport";
+	if (a) s = strcat("SELECTED  /  ", ZoneEdit_Label(ze_sel));
+	if (k) s = strcat(s, zone_td_kind[ze_sel] == ZTD_NONE ? "  /  automatic spawn" : "  /  custom spawn");
+	sui_text(tp, [rsz, rsz], s, ZEC_DIM, 1, 0);
+	tp_y = tp_y + rowh;
+	if (ZoneEdit_Button(tp, [bw, rowh], "ze_rp", "Re-place", rsz, a ? ZEC_TEXT : ZEC_DIM))
 	if (a)
 		ZoneEdit_BeginReplace(ze_sel);
-	if (ZoneEdit_Button(tp + [bw + 4, 0], [bw, rowh], "ze_sp", "spawn here", rsz, k ? ZEC_TEXT : ZEC_DIM))
+	if (ZoneEdit_Button(tp + [bw + 4, 0], [bw, rowh], "ze_sp", "Set spawn", rsz, k ? ZEC_TEXT : ZEC_DIM))
 	if (k)
 	{
 		// Where you stand and the way you face is where `!r` will put you.
@@ -1390,7 +1402,9 @@ void(vector scr) ZoneEdit_Panel =
 		ZoneEdit_Touch();
 		ZoneEdit_Note(sprintf("%s: spawn set where you stand", ZoneEdit_Label(ze_sel)));
 	}
-	if (ZoneEdit_Button(tp + [(bw + 4) * 2, 0], [bw, rowh], "ze_dl", "delete", rsz, a ? ZEC_WARN : ZEC_DIM))
+	if (ZoneEdit_Button(tp + [(bw + 4) * 2, 0], [bw, rowh], "ze_resetspawn", "Reset spawn", rsz, k ? ZEC_TEXT : ZEC_DIM))
+		ZoneEdit_ResetSpawn();
+	if (ZoneEdit_Button(tp + [(bw + 4) * 3, 0], [bw, rowh], "ze_dl", "Delete", rsz, a ? SUI_THEME_BAD : ZEC_DIM))
 	if (a)
 	{
 		ZoneEdit_Note(sprintf("deleted %s", ZoneEdit_Label(ze_sel)));
@@ -1398,9 +1412,21 @@ void(vector scr) ZoneEdit_Panel =
 		ze_sel = -1;
 		ZoneEdit_Touch();
 	}
-	tp_y = tp_y + rowh + 4;
+	tp_y = tp_y + rowh + pad;
 
-	// Grid and snap.
+	// Construction: shape, existing-zone edge snapping, and explicit XYZ snap.
+	sui_text(tp, [rsz, rsz], "CONSTRUCTION  /  shape & snapping", ZEC_DIM, 1, 0);
+	tp_y = tp_y + rowh;
+	bw = (w - pad * 2 - 8) / 3;
+	if (ZoneEdit_Button(tp, [bw, rowh], "ze_shape", ze_poly ? "Polygon" : "Box", rsz, ze_poly ? ZEC_SEL : ZEC_TEXT))
+	{
+		if (ui_ze_state == ZE_PANEL) ze_poly = !ze_poly;
+		else ZoneEdit_Note("Finish/cancel this outline before changing shape");
+	}
+	if (ZoneEdit_Button(tp + [bw + 4, 0], [bw, rowh], "ze_edges", "Edge snap", rsz, ze_edges ? ZEC_SEL : ZEC_TEXT)) ze_edges = !ze_edges;
+	if (ZoneEdit_Button(tp + [(bw + 4) * 2, 0], [bw, rowh], "ze_xyz", "Snap selected XYZ", rsz, a ? ZEC_TEXT : ZEC_DIM))
+		if (ui_ze_state == ZE_PANEL) ZoneEdit_SnapSelected();
+	tp_y = tp_y + rowh + 4;
 	bw = (w - pad * 2 - 20) / 6;
 	for (i = 0; i < 5; i = i + 1)
 	{
@@ -1412,28 +1438,15 @@ void(vector scr) ZoneEdit_Panel =
 			ze_snap = TRUE;
 		}
 	}
-	if (ZoneEdit_Button(tp + [(bw + 4) * 5, 0], [bw, rowh], "ze_gs", "surf", rsz, ze_snap ? ZEC_TEXT : ZEC_SEL))
+	if (ZoneEdit_Button(tp + [(bw + 4) * 5, 0], [bw, rowh], "ze_gs", "Surface", rsz, ze_snap ? ZEC_TEXT : ZEC_SEL))
 		ze_snap = !ze_snap;
-	tp_y = tp_y + rowh + 4;
+	tp_y = tp_y + rowh + pad;
 
+	// File actions are one group; navigation is a separate footer.
 	bw = (w - pad * 2 - 8) / 3;
-	if (ZoneEdit_Button(tp, [bw, rowh], "ze_shape", ze_poly ? "polygon" : "box", rsz, ze_poly ? ZEC_SEL : ZEC_TEXT))
-	{
-		if (ui_ze_state == ZE_PANEL) ze_poly = !ze_poly;
-		else ZoneEdit_Note("Finish/cancel this outline before changing shape");
-	}
-	if (ZoneEdit_Button(tp + [bw + 4, 0], [bw, rowh], "ze_edges", "edge snap", rsz, ze_edges ? ZEC_SEL : ZEC_TEXT)) ze_edges = !ze_edges;
-	if (ZoneEdit_Button(tp + [(bw + 4) * 2, 0], [bw, rowh], "ze_xyz", "snap XYZ", rsz, ZEC_TEXT))
-		if (ui_ze_state == ZE_PANEL) ZoneEdit_SnapSelected();
-	tp_y = tp_y + rowh + 4;
-	bw = (w - pad * 2 - 4) / 2;
-	if (ZoneEdit_Button(tp, [bw, rowh], "ze_settings", "map settings", rsz, ZEC_TEXT)) ZoneEdit_SettingsOpen();
-	if (ZoneEdit_Button(tp + [bw + 4, 0], [bw, rowh], "ze_look", "look / resume", rsz, ZEC_TEXT)) ZoneEdit_ToggleMouse();
-	tp_y = tp_y + rowh + 4;
-	bw = (w - pad * 2 - 12) / 4;
-	if (ZoneEdit_Button(tp, [bw, rowh], "ze_sv", "save", rsz, ze_dirty ? ZEC_SEL : ZEC_DIM))
+	if (ZoneEdit_Button(tp, [bw, rowh], "ze_sv", "Save zones", rsz, ze_dirty ? ZEC_SEL : ZEC_DIM))
 		ZoneEdit_Save(FALSE);
-	if (ZoneEdit_Button(tp + [bw + 4, 0], [bw, rowh], "ze_rl", "reload", rsz, ZEC_TEXT))
+	if (ZoneEdit_Button(tp + [bw + 4, 0], [bw, rowh], "ze_rl", "Reload zones", rsz, ZEC_TEXT))
 	{
 		zone_mapname = "";
 		Zone_LoadForMap();
@@ -1442,10 +1455,13 @@ void(vector scr) ZoneEdit_Panel =
 		ZoneEdit_Note(sprintf("reloaded: %g zones from %s", zone_count, Zone_SourceName(zone_source)));
 	}
 	// "my file": the copy a save left on this machine, and the way back from one.
-	if (ZoneEdit_Button(tp + [(bw + 4) * 2, 0], [bw, rowh], "ze_fg", "drop my file", rsz,
+	if (ZoneEdit_Button(tp + [(bw + 4) * 2, 0], [bw, rowh], "ze_fg", "Discard local file", rsz,
 	                    (zone_source == ZSRC_LOCAL) ? ZEC_WARN : ZEC_DIM))
 		ZoneEdit_Forget();
-	if (ZoneEdit_Button(tp + [(bw + 4) * 3, 0], [bw, rowh], "ze_cl", "close", rsz, ZEC_TEXT))
+	tp_y = tp_y + rowh + 4;
+	if (ZoneEdit_Button(tp, [bw, rowh], "ze_settings", "Map properties", rsz, ZEC_TEXT)) ZoneEdit_SettingsOpen();
+	if (ZoneEdit_Button(tp + [bw + 4, 0], [bw, rowh], "ze_look", "Look / fly", rsz, ZEC_TEXT)) ZoneEdit_ToggleMouse();
+	if (ZoneEdit_Button(tp + [(bw + 4) * 2, 0], [bw, rowh], "ze_cl", "Close", rsz, ZEC_TEXT))
 	{
 		UI_CursorRelease(UIC_ZONEEDIT);
 		ze_cursor = ze_drag = FALSE;
@@ -1780,6 +1796,8 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 		z = stof(argv(2)); if (z >= 0 && z < zone_count) ZoneEdit_RowClick(z);
 	}
 	else if (a == "settings") ZoneEdit_SettingsOpen();
+	else if (a == "mode") ZoneEdit_SettingMode(argv(2) == "bhop" ? 2 : 1);
+	else if (a == "resetspawn") ZoneEdit_ResetSpawn();
 	else if (a == "setting")
 	{
 		for (z = 0; z < MAPSET_COUNT; z = z + 1)

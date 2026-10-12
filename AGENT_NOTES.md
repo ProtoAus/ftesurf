@@ -5151,6 +5151,51 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## Pitfalls discovered the hard way
 
+### Zone editor organization and presets (Patch 673) — 2026-10-12
+
+- The old `surf` button was SURFACE tracing, not a gamemode. Renamed Surface;
+  Surf/Bhop is a separate properties selector. It stages AA150/1000 and mode
+  1/2, leaving selected speed/gravity; native hosted mode selection uses the
+  WHOLE validated file before the existing mode pipeline. Three visible keys
+  plus gamemode are complete new files; old complete six-key files remain
+  readable. Removed ground fields are not removed from map-authored config.
+- A mode toast/cvar write is not proof: acting reload controls must read
+  `movement` source and pm_ticrate + sv_mintic + sv_maxtic + run_starthop.
+  Measured Bhop .01/1000 and Surf .015/150, including Surf overriding forced
+  Bhop, chosen cap6000 kept, and next unedited map restoring defaults. Dedicated
+  tests use runlines_smoke's explicit `--server` to avoid the older installed
+  native server masquerading as the subject.
+- Reset removes destination name/coordinates. A NONE spawn falls back to the
+  native bounds centre, which can be OUTSIDE a concave ring: keep an explicit
+  safe interior floor point in that case. Tests prove setter acted first,
+  ordinary save/reload preserves reset, concave point is not in the cut-out,
+  and an empty selection does not invent a zone. CRC excludes destinations;
+  inspect full td status and serialized teleDestPos, not CRC alone.
+- Placement chrome uses `_sui_round_draw` in its existing raw draw coordinates,
+  shared tooltip colors/rounding, three text lines and screen-bounded width.
+  Do not open a second SUI input bracket. List/selection/construction/file
+  groups retain the original probe IDs and title drag/window clamp contract.
+- Harness false starts: a cfg launched before renderer/map/menu warm-up can
+  lose map/UI commands. Use the existing 1500 ms startup + waitmap60 + spawn
+  wait, menu_restart then ui_close; logging is log_dir/log_name, NOT log_file.
+  Explicit quit/completion is required. Screenshots taken in the same command
+  frame as a synthetic press can show the OLD button selection/value: wait
+  after save before capturing. Native loader manifest `exit=0` is a provenance
+  gate in the old reader, not an inferred cvar pass; preserve it at generation.
+- Pre-claim candidate counts: new 27/27, P67129/29, P6698/8. Fifteen native
+  loader arms freshly acted, including command-looking mode/canary, duplicates,
+  fractional/partial mode and legacy controls. Final source incorporates the
+  separately published P672 header seam and gets a full native rebuild; no
+  fixture/consumer is activated in production. Final full tagged native
+  `57bfa6bd3` controls also pass new27/27 + P67129/29 + P6698/8, with all 15
+  loader arms freshly rerun and exact subject dedicated binary. Published
+  P672 seam's ten production-slice unit groups pass. Native warning comparison
+  must normalize line/column numbers: pr_csqc.c's existing array-address warning
+  moved with P672, it was not newly introduced. Compiler warning set unchanged;
+  only pre-existing Make peer-target diagnostics remain. Physical input is not
+  proved. The 82 tracked per-map cfgs set none of sv_accelerate/maxspeed/friction;
+  that census is not a claim about every community map.
+
 ### Zone editor extensions (Patch 671) — 2026-10-12
 
 - A QC `cvar_set` plus a success toast DOES NOT implement map settings: the
