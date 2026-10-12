@@ -1528,9 +1528,9 @@ pictures there. NOT YET: the opt-in native table, chat, the results screen
 **THE OWNER'S LIST OF 12 OCT, after trying release 0.1.24** (his words are
 in lextest and the patch log): the link box in the UI's look with a cursor
 and a clickable address, and cells for what is typed (BUILT, Patch 653);
-text fields that select, copy and cut (BUILT, Patch 655; NO PASTE in
-either VM until the engine keeps servers off the menu's console commands:
-BACKLOG); Steam pictures for everyone on the boards, kept on
+text fields that select, copy and cut (BUILT, Patch 655) and paste (BUILT,
+Patch 667, an engine change: while a server is connected the engine asks
+the player first); Steam pictures for everyone on the boards, kept on
 the Pi and refreshed daily (BUILT, Patch 660: 67,259 SteamIDs that day, the
 first fill a day of half-hourly runs); `hud_player` as a profile with the Steam name and picture, the
 customizer, a breakdown like the site's player page, and a player search

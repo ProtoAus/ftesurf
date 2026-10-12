@@ -1413,6 +1413,23 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 {
 	local float took;
 
+	/*
+	  Patch 667: ONE CHARACTER OF A PASTE, from the engine after the player said
+	  yes to its prompt (pr_csqc.c).  Text for whichever field has the keyboard
+	  and for nothing else: it is no key, so it runs no bind and goes down no
+	  chain.  In the keys' own order: the link box, a chat draft, then a panel.
+	*/
+	if (evtype == IE_PASTE)
+	{
+		if (chary < 32 || chary > 126)
+			return TRUE;                // the fields are ASCII
+		if (Account_Paste(chary)) return TRUE;
+		if (Chat_Paste(chary)) return TRUE;
+		if (Profile_Paste(chary)) return TRUE;
+		Av_Paste(chary);
+		return TRUE;
+	}
+
 	cl_input_real = TRUE;
 	took = CL_InputEvent(evtype, scanx, chary, devid);
 	cl_input_real = FALSE;

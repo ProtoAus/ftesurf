@@ -316,8 +316,12 @@ def main():
             # The link box's own rectangle (it is centred, from 56% down), so the
             # HUD's moving parts are not in the comparison.
             crop = (int(w * 0.36), int(h * 0.55), int(w * 0.64), int(h * 0.80))
+            # By more than 24 of 255: the panel is not quite opaque, and where the view
+            # moves by itself (bhop_eazy's build of 12 Oct does) the scene shows through
+            # it by a few levels, over the whole rectangle.
             box = ImageChops.difference(Image.open(s0).convert("RGB").crop(crop),
-                                        Image.open(s4).convert("RGB").crop(crop)).getbbox()
+                                        Image.open(s4).convert("RGB").crop(crop)
+                                        ).convert("L").point(lambda v: 255 if v > 24 else 0).getbbox()
             if box:
                 # what changed must be a short band round the box's middle: the four cells
                 moved = (round((crop[0] + (box[0] + box[2]) / 2) / w, 2), box[2] - box[0] < 0.1 * w,

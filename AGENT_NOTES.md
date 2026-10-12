@@ -8483,6 +8483,42 @@ clock-boundary falsifier is recorded in BACKLOG.md.
   `*.pre2dd135a-20261011-024936` files and SIGHUP. Database backups: this
   deploy's `surfd.db.bak-2dd135a-20261011-024936`; the Patch 615 one was
   removed after it, the owner having asked for the redundant ones to go.
+- **PASTE (Patch 667): THE ENGINE ASKS, AND A CONSOLE LINE'S LEVEL IS NOT A
+  WALL.** QC never reads the clipboard. A field calls `sui_paste_ask` (the
+  game's `clipboard_get`) or the menu's `clipboard_paste` under a V or an
+  Insert going down; the engine judges the chord (its own key state and
+  `IN_RealKeyDown`), reads the clipboard itself, and with a server connected
+  or a demo playing puts ONE PROMPT for both VMs (`pr_clcmd.c`): yes is a
+  device's Y after 0.35 s of drawn frames, anything else a no. A yes comes
+  as `IE_PASTE` (8) events: `CSQC_InputEvent` hands each character to the
+  link box, a chat draft, the profile's field or the name, in that order;
+  `Menu_InputEvent` to `sui_paste_char`, and the field that draws with the
+  keyboard takes it. With nobody about the menu is answered at once.
+  A NEW BOX GETS PASTE BY (1) asking under `scanx == 'v' || scanx == K_INS`
+  and returning if the ask says chord, and (2) a branch in `CSQC_InputEvent`'s
+  IE_PASTE block. Do not read a control code 22 yourself: the engine is the
+  only judge.
+  THE FIRST DESIGN WAS WRONG, AND ITS REVIEW SAID SO: "keep servers off the
+  menu's console commands, then the menu may paste" (655's note). The
+  refusal is there (`MP_ConsoleCommand`, for registered commands and for the
+  unknown words cmd.c offers it), but an alias could carry a server's text
+  to the player's level (closed in `cmd.c`), and nobody has shown the other
+  roads shut. So that gate is called hardening wherever it is described, and
+  the clipboard has the prompt. The private checkpoint has the conditions.
+  ON AN ENGINE BEFORE 667 (release 0.1.24's) both builtins are missing:
+  `checkbuiltin` says so, nothing asks, and the V is a letter. The arms tell
+  which exe they were given by `clipboard_paste` in its bytes.
+  RIG FACTS. A posted Ctrl+V is a chord to the ENGINE (it reads its own key
+  state) though the character with it is a plain v. On a listen server the
+  console's `stuffcmd <name> <text>` IS stuffed text at the server's level
+  (its "safe list" refuses only `;` and newlines). `aliaslevel` clamps to 29
+  from the console, so an alias cannot stand in for a server. The menu over
+  a game wants `togglemenu` before `ui_name screen`. RUN THE ENGINE BUILD
+  AND AN ARM IN SEPARATE SHELLS: the build puts msys first on PATH and
+  `python` becomes msys's.
+  A rig that types `ui_*` on stdin, in a config or on the command line is
+  the player's level and is unaffected; one that had a server or game code
+  run a menu word would be refused (none did: src, cfg and tools searched).
 - **DEPLOYED 12 Oct 2026, 00:15 to 00:23 UTC (FTESurf `4519bdb` and `0464e0f`,
   Patches 665 and 666): surfd, then csprogs.** surfd: `surfd-deploy.ps1 -Ref
   4519bdb -Only` surfd.py and test_web.py, the whole suite green on the Pi,

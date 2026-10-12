@@ -1020,10 +1020,24 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 		return TRUE;
 	}
 
+	if (scanx == 'v' || scanx == K_INS)
+	if (sui_paste_ask())                // Patch 667: Chat_Paste gets what the player allows
+		return TRUE;
+
 	// Printable characters only; the draft is capped so a held key cannot
 	// grow it past what say itself would take.
 	if (chary >= 32 && chary < 127 && strlen(chat_buf) < CHAT_DRAFT_MAX)
 		chat_buf = strcat(chat_buf, chr2str(chary));
+	return TRUE;
+};
+
+// Patch 667: one pasted character, into a draft being typed.  -> the draft's.
+float(float c) Chat_Paste =
+{
+	if (!chat_typing)
+		return FALSE;
+	if (strlen(chat_buf) < CHAT_DRAFT_MAX)
+		chat_buf = strcat(chat_buf, chr2str(c));
 	return TRUE;
 };
 

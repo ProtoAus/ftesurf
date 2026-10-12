@@ -704,9 +704,13 @@ float(float evtype, float scanx, float chary) Account_InputEvent =
 			              : (acct_ui_copied ? " (copied: paste it into your browser)" : "")));
 			return TRUE;
 		}
-		// Asked for with `link` (not free): a code's first letter.
+		// Asked for with `link` (not free): a code's first letter, or (Patch
+		// 667) a paste of the whole of one.
 		acct_ui_buf = Account_Keep(acct_ui_buf, "");
 		acct_ui_bad = 0;
+		if (scanx == 'v' || scanx == K_INS)
+		if (sui_paste_ask())
+			return TRUE;                    // a code box when a character comes: Account_Paste
 		if (Account_Type(chary))
 			Account_UiSet(ACCT_UI_CODE);
 		return TRUE;
@@ -777,6 +781,9 @@ float(float evtype, float scanx, float chary) Account_InputEvent =
 				Account_Confirm();
 				return TRUE;
 			}
+			if (scanx == 'v' || scanx == K_INS)
+			if (sui_paste_ask())            // Patch 667: Account_Paste gets what the player allows
+				return TRUE;
 			if (chary >= '0')
 			if (chary <= '9')
 			if (strlen(acct_ui_no) < ACCT_NOLEN)
@@ -835,8 +842,39 @@ float(float evtype, float scanx, float chary) Account_InputEvent =
 		print("^5steam:^7 code sent\n");
 		return TRUE;
 	}
+	if (scanx == 'v' || scanx == K_INS)
+	if (sui_paste_ask())
+		return TRUE;
 	Account_Type(chary);
 	return TRUE;
+};
+
+// Patch 667: one character of a paste the player allowed (the engine's prompt),
+// for the number or the code being typed.  Enter is still a key.  -> the box's.
+float(float c) Account_Paste =
+{
+	if (acct_ui == ACCT_UI_ASK && acct_ui_num)
+	{
+		if (cltime - acct_ui_t < ACCT_UI_ARM)
+			return TRUE;                    // as for a typed digit: the box has only just come up
+		if (c >= '0' && c <= '9' && strlen(acct_ui_no) < ACCT_NOLEN)
+			acct_ui_no = Account_Keep(acct_ui_no, strcat(acct_ui_no, chr2str(c)));
+		return TRUE;
+	}
+	if (acct_ui == ACCT_UI_CODE)
+	{
+		Account_Type(c);
+		return TRUE;
+	}
+	// The box asked for with `link`, nothing typed yet: a code's first
+	// character opens it, pasted as typed.  (A no leaves the box as it was.)
+	if (acct_ui == ACCT_UI_PROMPT && !Account_Light() && !av_open && !pf_q_focus)
+	{
+		if (Account_Type(c))
+			Account_UiSet(ACCT_UI_CODE);
+		return TRUE;
+	}
+	return FALSE;
 };
 
 // A name the lobby sent, for drawing: no colour or link markup, and not long.

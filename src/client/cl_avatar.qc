@@ -1283,6 +1283,15 @@ float(float evtype, float scanx, float chary, float devid) Av_InputEvent =
 	return TRUE;
 };
 
+// Patch 667: one pasted character, into the name.  -> the field had the keyboard.
+float(float c) Av_Paste =
+{
+	if (!av_open || !av_namefocus)
+		return FALSE;
+	sui_text_event(IE_KEYDOWN, 0, c, "av_name", av_name_text, av_name_caret);
+	return TRUE;
+};
+
 /*
   The console half: `hud_player` toggles the panel, and open/close exist for
   the same reason `scores open` does -- a panel no config can reach is a panel

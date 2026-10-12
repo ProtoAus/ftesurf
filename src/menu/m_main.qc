@@ -7797,6 +7797,21 @@ void() Menu_RendererRestarted =
 
 float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 {
+	// Patch 667: paste.  ASKED FOR UNDER THE KEY, where a field had the keyboard
+	// on the last frame: the engine is the judge of the chord, and the line
+	// comes as IE_PASTE events, at once with no server connected and after its
+	// own question to the player otherwise (sui_sys.qc has the rest).
+	if (evtype == IE_PASTE)
+	{
+		sui_paste_char(chary);
+		return TRUE;
+	}
+	if (evtype == IE_KEYDOWN && (scanx == 'v' || scanx == K_INS))
+	if (sui_text_focus())
+	if (checkbuiltin(clipboard_paste))
+	if (clipboard_paste())
+		return TRUE;                    // a paste chord: not also a letter
+
 	// The in-world panels: sui hit-tests in the panel's own pixels, so the
 	// cursor is traced through the 3D camera onto the panel first.  A no-op on
 	// every screen that is not on a panel.

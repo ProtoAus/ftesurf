@@ -1181,6 +1181,15 @@ float(float evtype, float scanx, float chary) Profile_FieldEvent =
 	return TRUE;
 };
 
+// Patch 667: one pasted character, as if typed.  -> the field had the keyboard.
+float(float c) Profile_Paste =
+{
+	if (!pf_q_focus)
+		return FALSE;
+	Profile_FieldEvent(IE_KEYDOWN, 0, c);
+	return TRUE;
+};
+
 // The console's twin of typing into the field, for a headless arm: the text
 // and its list.  NOT THE KEYBOARD: a console line can be a server's, and a
 // field that took it would take whatever the player typed next (its review).
