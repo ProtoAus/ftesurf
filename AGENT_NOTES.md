@@ -6086,6 +6086,16 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 - `build.ps1 -NoDeploy` currently prints its actual `rig/build-nodeploy-*`
   output directory: read that path; do not take unchanged install progs as the
   build output. Source/build ownership and runtime evidence are separate.
+- WINDOWS DEPLOYED 2026-10-12 06:45:15Z from clean committed `b5a704f`, subject
+  bytes identical: both csprogs `d6b4d81e8c64261d`, P676 predecessors in `.prev`.
+  Unchanged SSQC/menu skipped; 23 protected native/config hashes/mtimes stable.
+  Each installed engine/program pair passes the isolated 7/7. No owner process
+  stopped. FLEET PENDING: `build.ps1 -Pi` refused one active player among 12
+  rows, before upload/swap/restart. At 06:48:53Z still one player and remote
+  csprogs still P676 `7d3954d9eb25152d`; never bypass the gate. Safe next step:
+  once every active lobby is verifiably empty, build/deploy inspected product
+  `b5a704f` from a clean tree and check remote hashes/live behavior.
+  Retained evidence/staging: `C:/FTESurf-worktrees/labels-677-20261012T0623/`.
 
 ### The Boarding window's levels (Patch 631) — 2026-10-11
 

@@ -11,6 +11,24 @@ to be wrong.
 
 ---
 
+## 00. 12 Oct — run/demo label colours and markers (Patch 677)
+
+Both Windows installs have the verified client at 06:45:15 UTC; prior csprogs
+kept in `.prev`. Lobby deployment is PENDING because one player is online:
+no lobby restarted and remote clients still receive P676. Local restart/map
+reload uses the new local code; reconnecting to the unchanged lobby will not.
+
+- With run-line numbers enabled, speed should be yellow and energy green,
+  including energy shown in speed-equivalent units. Are these shades readable?
+- Arc tops should be pink upward triangles and ride bottoms purple downward
+  triangles instead of squares. Existing peak/number visibility switches remain.
+- A one-tick autohop should show only the jump marker. An ordinary landing or
+  ramp contact should still have its contact marker. Try a real live hop once
+  the lobby build has been safely updated; the machine checks use authored
+  native/imported replay and board fixtures, not physical live input.
+- Machine checks: all QC zero warnings, acting-pair 7/7 with pixel checks,
+  unchanged mark/numeric/Segments tables; both installed program pairs 7/7.
+
 ## 00. 12 Oct — scoreboard/profile navigation and map tiers (Patch 674)
 
 **Delivered:** backend live 05:51 UTC; menu/client files and eleven FIT zones in
