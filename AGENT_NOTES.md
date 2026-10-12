@@ -26,11 +26,14 @@
   preferred BSP and copied with exclusive missing-only creation. Primary's
   existing 609 local files (including edited bhop_eazy) hash-identical; secondary
   previously had no local JSONs. Both now have the eleven additions.
-- PENDING: the fleet's csprogs is still `825c2b46d41aa8a2` (P673). A live row
-  reports one player on 27520; no upload/swap/restart/force was attempted. Public
-  lobby connections therefore still receive the old scoreboard client code.
-  Finish `build.ps1 -Pi` from the clean proof only once all 12 rows are present
-  and zero-player, then verify hashes/heartbeats and runtime.
+- Fleet DEPLOYED 06:03 UTC: the initial one-player gate cleared; all 12 rows
+  present and zero-player. `build.ps1 -Jobs 8 -Pi` from CLEAN proof/src at
+  `61d291d`, zero warnings, no force. Uploaded .new hashes checked before swap;
+  live qwprogs `7598b0da1cd90ebd`, csprogs `444f921987a6b317`, .prev retained
+  (csprogs predecessor `825c2b46d41aa8a2`). All 12 units restarted successfully.
+  Independent remote hash readback matches, every unit active, 12 fresh
+  zero-player heartbeats (age0–5s), and all 12 actual UDP status sockets answer.
+  No new engine/config/default or zone files shipped to the lobbies.
 - Runtime limits: fallback whole-board filter/count/rank/clear, missing/stale
   echo rejection, held-TAB refusal and LINE/WATCH arms passed. Owner/map/wheel
   assertions needed harness corrections and the complete rerun is blocked by
@@ -42,9 +45,10 @@
   twelve; stop WATCH with `replay stop`, not an invented `replay close`. Search
   roster requests use `/api/board?players=`, not only `/api/players`.
 - Retained owned task root: `C:/FTESurf-worktrees/ui-maps-20261012T0335Z/`;
-  `proof/` is the clean inspected deploy tree for the pending fleet step.
-  OWNER.md/CHECKPOINT.md and artifacts hold build/runtime/hash/preservation
-  evidence. No task processes remain; do not retire the proof before that step.
+  `proof/` is the inspected deployed tree. OWNER.md/CHECKPOINT.md and artifacts
+  hold build/runtime/hash/preservation evidence. No task processes remain.
+  Retained for incomplete UI acceptance and unique parent evidence; inspect
+  ignored paths and shared-content junctions before retiring disposable copies.
 
 Detailed working notes, moved out of pi.dev's always-loaded AGENTS.md. The short
 AGENTS.md is the startup contract; read relevant sections here BEFORE changing

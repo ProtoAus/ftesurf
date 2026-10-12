@@ -15,9 +15,9 @@ to be wrong.
 
 **Delivered:** backend live 05:51 UTC; menu/client files and eleven FIT zones in
 both Windows installs 05:55 UTC, read-back hashes verified and `.prev` retained.
-Restart for the new local UI. **Fleet client code is still P673:** a lobby has a
-player, so no fleet swap/restart was attempted. On a public lobby you still get
-that old scoreboard code until the safe zero-player fleet deployment finishes.
+**Fleet delivered 06:03 UTC** once all 12 rows became zero-player: program
+hashes read back, all 12 units active with fresh heartbeats and UDP responses.
+Restart/reconnect for the new UI; the already-running client was not interrupted.
 
 - On a pinned Online board, click a player's **name** to open that account's
   profile; duplicate names should open different accounts. WATCH and LINE remain
