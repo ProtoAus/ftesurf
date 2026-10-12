@@ -163,6 +163,14 @@ PATTERNISH = re.compile(r"[*?<>]|\.\.\.|\s")
 # The literal must EQUAL the key.
 DENY_EXACT = {
     "maps/": "A search root, not a file (m_main.qc's map enumeration).",
+    "maps/%s.bsp": "Mounted or runtime-downloaded Source map; Emit_MapHDR reads "
+                     "its header, with unknown-HDR fallback. BSPs never ship.",
+    "data/mapdl.net.txt": "Mdl_Reply's validated runtime directory cache; "
+                          "ui_dl_load falls back to shipped data/mapdl.txt.",
+    "data/mapdl.net.tmp": "Mdl_Reply's runtime reply-parsing scratch, written "
+                          "before reading and truncated afterwards.",
+    "data/mapbuild.txt": "Player's alternate map-build preferences, persisted "
+                         "by ui_pick_set; absence keeps the default build.",
     "sound/": "A search root, not a file (cl_banner.qc's Bn_SndPath).",
     "maps/surf_666.bsp": "Harness literal (cl_board.qc test path), not content.",
     "maps/surf_kitsune.bsp": "Harness literal (cl_hud.qc test path), not content.",
@@ -182,6 +190,9 @@ DENY_PREFIX = {
                          "(tools/zoneinstall.py). Not ours to ship.",
     "maps/zones/dl": "cl_zonedl.qc's HTTP fetch sandbox. Written at runtime into "
                      "data/, and tried LAST of the three sources by design.",
+    "maps/settings/local/": "Player-authored editor overrides and transaction "
+                            "siblings; QC writes into data/maps/settings/local, "
+                            "native hosted games only. Not shipped rulesets.",
     "sound/ftesurf/": "The mod's own banner sounds. cl_banner.qc's comment beside "
                       "the registercvar says it plainly: \"none ship yet; a "
                       "missing one is skipped silently\". ftesurf/sound/ does not "
@@ -518,7 +529,7 @@ def main():
 def mutate(n):
     """The falsifier.  A gate nobody has watched fire is not a gate."""
     base, dirs, globs = resolve_shipset()
-    if n >= len(globs):
+    if n < 0 or n >= len(globs):
         print("only %d ship globs; --mutate %d is out of range" % (len(globs), n))
         return 2
     g = globs[n]
@@ -537,10 +548,10 @@ def mutate(n):
         for line, lit, prefix, suffix in qc_literals(path):
             for cand in candidates(lit):
                 call = enclosing_call(prefix)
-                for fset, dset, tag in ((base, dirs, "base"), (hid, hdirs, "mutant")):
-                    v, why = classify(cand, call, fset, dset, suffix)
-                    if tag == "mutant" and v == "MISS":
-                        found.append((cand, line, why))
+                before, _ = classify(cand, call, base, dirs, suffix)
+                after, why = classify(cand, call, hid, hdirs, suffix)
+                if before == "SHIPPED" and after == "MISS":
+                    found.append((cand, line, why))
     if not found:
         print("NOT CAUGHT: hiding %s produced no MISS -- no QC literal depends on"
               % g["path"])

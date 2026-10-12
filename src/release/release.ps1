@@ -250,7 +250,8 @@ $ShipGlobs = @(
     @{ Path = 'ftesurf/models';         Filter = '*' }
     @{ Path = 'ftesurf/particles';      Filter = '*' }
     @{ Path = 'ftesurf/scripts';        Filter = '*' }
-    @{ Path = 'ftesurf/gfx/fonts';      Filter = '*' }
+    # Keep the three font faces and both OFL notices, never install backup copies.
+    @{ Path = 'ftesurf/gfx/fonts';      Filter = '*'; Deny = @('*.prev') }
     @{ Path = 'ftesurf/gfx/mapthumbs';  Filter = '*.png' }
     @{ Path = 'ftesurf/gfx/crosshairs'; Filter = '*.png' }
     # Patch 467: the 2x1 placeholder that makes `r_skybox milk` register the
@@ -313,6 +314,9 @@ $DenyPatterns = @(
     '(^|/)qkey$'
     '(^|/)identity\.'
     '(^|/)consent\.txt$'               # shipping it pre-accepts the terms
+    '^ftesurf/data/mapdl\.net\.(txt|tmp)$' # runtime directory cache and reply scratch
+    '^ftesurf/data/mapbuild\.txt$'     # player's chosen map builds
+    '^ftesurf/(data/)?maps/settings/local/' # player-authored local editor overrides
     '^ftesurf/ftesurf\.cfg$'           # NOT particles/ftesurf.cfg -- see above
     '(^|/)lobby_local\.cfg$'           # SURFD_KEY
     '(^|/)installed\.lst$'

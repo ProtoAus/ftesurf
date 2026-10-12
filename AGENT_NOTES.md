@@ -5248,6 +5248,39 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   qwprogs, menu.dat and the exes did not change. The smoke grades the board:
   no client has looked at a mote on a lobby.
 
+### Release shipguard lifecycle controls — 2026-10-12
+
+Six literal misses were not release baselines: `maps/%s.bsp` is mounted or
+runtime-downloaded content (`Emit_MapHDR`); `data/mapdl.net.txt/.tmp` are the
+menu's validated network cache/parsing scratch (`Mdl_Reply`); `data/mapbuild.txt`
+is player build preference state (`ui_pick_set`); `maps/settings/local/` is the
+editor's own overrides/transaction files (`MapSet_Path`, `ZoneEdit_SettingsSave`,
+native `SV_LoadEditorRuleset`). Four exact exclusions and one trailing-slash
+prefix express those lifecycles. Do not exempt all maps/data or read-mode opens:
+shipped `data/mapdl.txt` is the cache's fallback, and local zone JSON is a release
+baseline distinct from local editor settings. Runtime cache/preferences and both
+VFS/physical local-settings spellings are also archive/stage-denied.
+
+A mutation could say CAUGHT merely because an unrelated literal already missed.
+`shipguard.py --mutate` now requires SHIPPED -> MISS for the same literal after
+hiding the chosen glob; invalid/negative indices refuse. `test_shipguard.py`
+requires actual thumbnail/local-zone omission flips, all five menu snapshots,
+neighboring path/read-mode boundaries, and a pre-existing MISS which cannot
+satisfy a cfg-glob mutation. Use an owned fresh `--work-root`.
+
+The first all-gates preview then correctly refused three `.ttf.prev` copies
+seeded from the install by `release_tree.py`. The font glob now denies `*.prev`;
+all three original faces and both OFL notices remain shipped, and disk backups
+are untouched. Do not weaken the global backup tripwire or hide this failure by
+cleaning the install. `test_release_deny.ps1 -WorkRoot <owned-fresh-root>` extracts
+the production policy/function, allows a real baseline stage/archive, and
+individually refuses seven runtime/backup/case-variant paths in physical fixtures.
+Measured Windows: 12 shipguard controls, real deny fixtures, and an isolated
+network-mocked full pack passed. Mocked R2 calls are not service access proof;
+no Linux compile/runtime, production publication or deployment is claimed by
+this tooling fix. Literal coverage still excludes computed/engine-convention
+assets; zero MISS is not proof of a complete product archive.
+
 ## The milk visualizer (Patch 467)
 
 - `src/milk_sys.qc` (both VMs, like sui_sys.qc) is a MilkDrop-style feedback
