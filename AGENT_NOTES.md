@@ -4593,9 +4593,9 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   `Counter-Strike Global Offensive/csgo` copy also remains; this is also the
   CS2 `csgo_legacy` beta layout. Before P679 FTESurf named only that older
   folder in `tools/mapdeps.py:ADDONS`.
-- `fs_addons.default.txt` mounts standalone HL2, not Momentum's shared pack.
-  The dependency scanner also assumes HL2 in `MOUNTED`, so it cannot diagnose
-  a player's absent base pack. With only Momentum/momentum and CS:S mounted,
+- Before P679, `fs_addons.default.txt` mounted standalone HL2, not Momentum's
+  shared pack. The dependency scanner assumed HL2 in `MOUNTED` and could not
+  diagnose a player's absent base pack. With only Momentum/momentum and CS:S mounted,
   surf_666 reported **31 unresolved materials** and checkerboard walls/ceiling.
   Adding Momentum/mount at boot resolved brickfloor001a.vmt and
   concretefloor014a.vtf from hl2_dir.vpk; screenshots restored those surfaces,
@@ -4627,6 +4627,22 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   live searchpath instead. Set fs_hidesyspaths explicitly: 0 changes screenshot
   messages from $basedir to absolute paths. Match the artifact suffix and
   verify the PNG itself. Failed first arms are retained, not relabelled passes.
+- P679 Windows deployment UTC **2026-10-12T08:07:50Z**: engine
+  `263d176862ccfd55fc3a82d5b65e20159d64a011` / annotated `patch-679`, paired QC
+  source `c82f843643612a25ab76a1288e0251038af9cd82`. Committed clean full build
+  stamped `git-7270-patch-679-0-g263d17686`; client SHA256
+  `f193852bad80bc2ef86a63237abf8e2d24dce55a03952d981996671978b24cbd`.
+  Both Windows installs received the client and all five native plugins;
+  C:/FTEQuake also received the paired dedicated server. All 13 destination
+  hashes verified, predecessors in .prev. Actual installed EXEs were then
+  launched against owned no-HL2 fixtures using copies of installed progs;
+  both consumed Momentum's pack and restored the tested surfaces (logs/PNGs
+  inspected). Owner configs, mount lists, progs and mapdeps stayed byte-identical.
+  No NanoPi/Linux deploy, release archive or QC Build bump. A tester using an
+  older download still needs an updated client. Compact evidence and the
+  original control-native set are retained at
+  `C:/FTESurf-worktrees/sourceauto-761b9b44`; no owner/peer process was killed. Disposable-copy retirement status is in
+  that root's OWNER.md.
 
 ## Missing-asset art (Patch 534) -- 2026-10-07
 
