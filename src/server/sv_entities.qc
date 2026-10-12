@@ -1814,6 +1814,17 @@ void(entity t, string param) SV_IOAddOutput =
 		dprint(sprintf("^3entity I/O: AddOutput '%s' is not implemented\n", k));
 };
 
+// Continuous pushes publish their shared gate, not their movement. A late
+// join gets a full state; SendFlags changes use the engine's loss/retry path.
+float(entity to, float changed) SV_TrigStateSend =
+{
+	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
+	WriteByte(MSG_ENTITY, ENTWIRE_TRIGSTATE);
+	WriteShort(MSG_ENTITY, stof(substring(self.model, 1, -1)));
+	WriteByte(MSG_ENTITY, self.solid != SOLID_NOT);
+	return TRUE;
+};
+
 void(entity t, float on) SV_IOEnable =
 {
 	if (!on)
@@ -1840,6 +1851,8 @@ void(entity t, float on) SV_IOEnable =
 	// Both spellings are read everywhere else through SV_Key2, so both are
 	// written here; leaving the other one set would re-disable on the next read.
 	t.StartDisabled = t.startdisabled = !on;
+	if (t.SendEntity == SV_TrigStateSend)
+		t.SendFlags = 1;
 
 	/*
 	  Patch 256.  A logic_timer stops its own think when it finds itself
@@ -6230,6 +6243,12 @@ void() trigger_push =
 	self.movetype = MOVETYPE_NONE;
 	self.solid = SOLID_BSPTRIGGER;
 	self.touch = trigger_push_touch;
+	if (!(self.spawnflags & SF_PUSH_ONCE))
+	{
+		self.SendEntity = SV_TrigStateSend;
+		self.SendFlags = 1;
+		self.pvsflags = PVSF_IGNOREPVS;
+	}
 
 	/*
 	  FTESurf Patch 256.  StartDisabled, which this class never read.

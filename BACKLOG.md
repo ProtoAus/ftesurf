@@ -5,6 +5,26 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Trigger prediction follow-up — Patch 670, 2026-10-12
+
+- **The first booster command can still correct by 6 units.** On dedicated
+  surf_deoa, after the test warp to (6180,-1444,-668), the acting OFF control
+  emitted 49 repeated ~6-unit errors; ON emitted one at entry and none of that
+  train after it, at zero and 100 ms added delay. `cl_triggers.qc:TG_FirePush`,
+  the engine's carrier-ring seeding and server touch ordering remain the sites.
+  Distinguish a warp/entry state seam from the now-fixed sustained missing
+  push. Falsifier: cross the real brush from an acknowledged normal-moving
+  position at several network rates, without setpos or another server warp;
+  compare the first predicted carrier with the same command's server state.
+- **Gate snapshots are authoritative, not foresight.** Delayed/shared push
+  Enable/Disable now reaches every client, but a gate changed by another player
+  in flight can still reconcile. Test actual packet loss/reordering and two
+  players entering/leaving/re-entering the cooldown under delay before claiming
+  zero corrections at every transition. Only 100 ms added delay, reconnect,
+  an older server's fail-closed fallback and an observer's gate changes were
+  exercised by P670. Once pushes, speed/name rewrites and movement outputs
+  retain their old conservative demotion.
+
 ## The profile: what Patch 663 left -- 2026-10-12
 
 - **A result row does nothing.** The site's links to "watch" and to that

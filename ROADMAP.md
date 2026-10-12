@@ -1,5 +1,35 @@
 # ROADMAP.md — maps, demos, run lines and rewind
 
+## Body prediction for reset, load and rewind — requested 12 Oct 2026
+
+**Today.** `say !r`, !m/!s/!b and zone_reset/restart/goto place the body in
+`SV_ZoneChatCommand` / `SV_ZoneMoveAt`. SaveLoc_LoadKey anticipates only slot 2's
+camera (`rec_sl_pred`); other slot gestures, hold release and rewind go await
+the server. Rewind's cursor/countdown camera is not predicted player physics.
+On surf_hourglass `!r` resolves to (104,0,800); the BSP teleport resolves to
+(104,0,969). The tested teleport predicted without a correction after the
+noclip+jump bypass was released; a requested reset still corrected. P670 fixes
+surf_deoa's sustained booster error, not these command warps.
+
+**Build.** One acknowledged warp operation for every command road, correlated
+with the input command and request, using the authoritative destination and
+complete movement state. Apply it in the engine's replayed prediction chain,
+not only the rendered camera. Clear/restore the push carrier and movement
+history consistently; reconcile success, refusal, stale destination, competing
+requests and release from hold. Server timer and run classification remain
+server-owned. Chat, binds and console paths must use the same operation.
+
+**Falsifiers.** Dedicated socket, acting baseline and subject at 0/100/200 ms
+added delay: map/stage/bonus restart, !r with and without a start save, all save
+slot gestures, held load/release, warm and cold rewind resume, rejection and
+rapid repeated requests. Check predicted body, acknowledged body, velocity,
+angles, duck/ground and the next moving commands, not camera arrival alone.
+Map identity and a complete destination/state snapshot are prerequisites.
+
+**Status.** Audited; this unified operation is NOT implemented or deployed by
+P670. Do not describe resets/rewind as fully client-predicted on that patch.
+
+
 Lex's requests of 4 Oct 2026, read against the code as it stands (three surveys
 of the menu, the line and replay code, and the KSF/Momentum/Pi data paths), with
 what to build, in what order, and what needs a decision. Work happens on branch

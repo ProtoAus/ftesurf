@@ -314,8 +314,21 @@ void(entity b) Body_Free =
 		pb_tr_ent = world;
 };
 
+.float pb_trigwire, pb_trigmodel, pb_trigon;
+
+void() Body_TrigSeed =
+{
+	local entity e;
+
+	for (e = nextent(world); e; e = nextent(e))
+		if (e.pb_trigwire)
+			Trig_NetState(e.pb_trigmodel, 1, e.pb_trigon);
+};
+
 void() CSQC_Ent_Remove =
 {
+	if (self.pb_trigwire)
+		Trig_NetState(self.pb_trigmodel, 0, 0);
 	if (self.pb_head)
 		Body_Free(self);
 	remove(self);
@@ -582,9 +595,21 @@ void(float isnew) CSQC_Ent_Update =
 {
 	local float f;
 
+	f = readbyte();
+	if (f & ENTWIRE_TYPED)
+	{
+		f = readbyte();
+		if (f == ENTWIRE_TRIGSTATE)
+		{
+			self.pb_trigwire = 1;
+			self.pb_trigmodel = readshort();
+			self.pb_trigon = readbyte();
+			Trig_NetState(self.pb_trigmodel, 1, self.pb_trigon);
+		}
+		return;
+	}
 	if (isnew || !self.pb_head)
 		Body_New(self);
-	f = readbyte();
 	if (f & PB_LOOK)
 		Body_ReadLook(self);
 	if (f & PB_POSE)

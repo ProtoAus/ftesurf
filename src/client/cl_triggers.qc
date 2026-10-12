@@ -42,6 +42,11 @@
     * trigger_setspeed's OnThink/Interval re-application is treated as
       enter-edge; Only EveryTick re-applies per command, as on the server.
 
+  Continuous pushes with shared Enable/Disable writers use server gate
+  snapshots (Patch 670), including delayed cooldowns and other players' IO.
+  Until a snapshot exists they stay server-only. Speed/name rewrites, once
+  retirement and movement outputs still require the original proof.
+
   THE ENTER-EDGE ACROSS CHAIN RESTARTS was the one genuinely new problem.
   The prediction chain replays every unacked command on every rendered
   frame, so per-command state must be REBUILT per chain, not carried -- but
@@ -106,6 +111,7 @@
 #define TG_SOLID_BSPTRIGGER 22
 
 // pmove.h pmtype_t; PM_SPECTATOR is what MOVETYPE_NOCLIP becomes.
+#define TG_PM_OLD_SPECTATOR 1
 #define TG_PM_SPECTATOR 2
 // QW puts +jump on buttons bit 1 (button2 server-side).
 #define TG_BUTTON_JUMP  2
@@ -435,6 +441,8 @@ float  tg_io_clock;             // chain-local seconds, for the end grace
 float  tg_io_tbase;             // PERSISTENT: clock value at the last ack
 float  tg_iotime0;              // client time at load, for mapspawn delays
 float  tg_c_event, tg_c_iodem, tg_c_sdok, tg_c_ioown, tg_c_iogated;
+.float tg_netgate, tg_netready, tg_neton;
+void() Body_TrigSeed;       // cl_body: retain snapshots across mirror reloads
 string tg_io_esc;
 
 float(string lk) TG_IOEvOf =
@@ -589,6 +597,10 @@ void(float slot, float val, float seq, float o) TG_IOPush =
 float(float i, float seq) TG_IOEff =
 {
 	local float e;
+	// Server snapshots own delayed/shared gates. No stream (older server)
+	// means no prediction, not a guess that the trigger is enabled.
+	if (tg_ent[i].tg_netgate)
+		return tg_ent[i].tg_netready && tg_ent[i].tg_neton;
 	if (!tg_io_gated[i])
 		return 1;
 	for (e = ior_n - 1; e >= 0; e = e - 1)
@@ -739,6 +751,27 @@ void(float i, float why) TG_DemoteIO =
 	tg_bmax[i] = '-1 -1 -1';
 };
 
+// Brush submodel numbers are shared by the BSP on both sides. State arrives
+// on the existing CSQC entity stream, including changes caused by OTHER
+// players. The callback's REMOVE revokes readiness as well as enabled state.
+void(float modelnum, float ready, float on) Trig_NetState =
+{
+	local float i;
+	local string modelname;
+
+	modelname = sprintf("*%g", modelnum);
+	for (i = 0; i < tg_n; i = i + 1)
+		if (tg_kind[i] == TG_PUSH)
+			if (!strcmp(tg_ent[i].model, modelname))
+			{
+				tg_ent[i].tg_netready = ready;
+				tg_ent[i].tg_neton = on;
+				if (cvar("cl_trigdebug"))
+					print(sprintf("trig: server gate #%g %s ready %g on %g\n",
+					              i, modelname, ready, on));
+			}
+};
+
 void() TG_IOResolve =
 {
 	local float s, o, pass, changed, ok, hit;
@@ -758,6 +791,16 @@ void() TG_IOResolve =
 		if (tg_kind[s] && TG_IOOwnerBad(s))
 			TG_DemoteIO(s, TG_SK_IO);
 
+	// Zero-delay gates are shared too. A push follows authoritative state,
+	// not just this seat's output chain. Never widen a truncated graph.
+	if (!io_over)
+		for (s = 0; s < tg_n; s = s + 1)
+			if (tg_kind[s] == TG_PUSH && !(tg_flags[s] & TG_SF_PUSH_ONCE))
+				for (o = 0; o < io_n; o = o + 1)
+					if (io_inp[o] == IN_EN || io_inp[o] == IN_DIS)
+						if (TG_IOHits(o, s))
+							tg_ent[s].tg_netgate = 1;
+
 	pass = 0;
 	changed = TRUE;
 	while (changed && pass < 16)
@@ -775,11 +818,16 @@ void() TG_IOResolve =
 					continue;
 				if (TG_IOHits(o, s))
 				{
+					// Only enabled state is networked; speed rewrites, names,
+					// once retirement and player movement remain unmirrorable.
+					if (tg_ent[s].tg_netgate)
+						if (io_inp[o] == IN_EN || io_inp[o] == IN_DIS)
+							continue;
 					hit = TRUE;
 					break;
 				}
 			}
-			if (!hit && tg_sd[s])
+			if (!hit && tg_sd[s] && !tg_ent[s].tg_netgate)
 			{
 				ok = FALSE;
 				for (o = 0; o < io_n; o = o + 1)
@@ -920,7 +968,8 @@ float(float i, float seq) TG_FireTeleport =
 
 	// SV_TeleportBypassed: noclip ALONE still teleports; noclip + jump is the
 	// "I am flying to look at something" bypass.
-	if (predmove_pmtype == TG_PM_SPECTATOR && (predmove_buttons & TG_BUTTON_JUMP))
+	if ((predmove_pmtype == TG_PM_OLD_SPECTATOR ||
+	     predmove_pmtype == TG_PM_SPECTATOR) && (predmove_buttons & TG_BUTTON_JUMP))
 		return 0;
 	if (getstatf(STAT_HEALTH) <= 0)
 		return 0;
@@ -1015,7 +1064,8 @@ float(float i, float seq) TG_FirePush =
 	local vector dir, push;
 	local float  spd, l;
 
-	if (predmove_pmtype == TG_PM_SPECTATOR)
+	if (predmove_pmtype == TG_PM_OLD_SPECTATOR ||
+	    predmove_pmtype == TG_PM_SPECTATOR)
 		return 0;
 	if (!(tg_flags[i] & (TG_SF_TRIGGER_CLIENTS | TG_SF_TRIGGER_ALL)))
 		return 0;
@@ -1081,7 +1131,8 @@ float(float i, float seq) TG_FireSpeed =
 	local vector vel, dir, aang;
 	local float  enter, cur, hmode, vmode, hspeed, vspeed;
 
-	if (predmove_pmtype == TG_PM_SPECTATOR)
+	if (predmove_pmtype == TG_PM_OLD_SPECTATOR ||
+	    predmove_pmtype == TG_PM_SPECTATOR)
 		return 0;
 	TG_IOEdge(i, seq);
 
@@ -1675,6 +1726,7 @@ void() Trig_LoadForMap =
 	}
 
 	TG_IOResolve();
+	Body_TrigSeed();
 
 	tg_map = serverkey("map");
 	print(sprintf("trig: %s -- %g teleports, %g pushes, %g setspeeds predicted\n",
@@ -1735,6 +1787,10 @@ float(string cmd) Trig_ConsoleCommand =
 			              (tg_sk_why[i] == TG_SK_OVER) ? "over cap" :
 			              (tg_sk_why[i] == TG_SK_IO) ? "io-wired" : "no brush",
 			              tg_sk_cls[i], tg_sk_name[i]));
+		for (i = 0; i < tg_n; i = i + 1)
+			if (tg_ent[i].tg_netgate)
+				print(sprintf("trig: server-gated #%g %s ready %g on %g\n",
+				              i, tg_ent[i].model, tg_ent[i].tg_netready, tg_ent[i].tg_neton));
 		print(sprintf("trig: IO %g rows%s; %g gated, %g predicted-disabled, %g ring entries\n",
 		              io_n, io_over ? " (TABLE FULL)" : "", tg_c_iogated,
 		              tg_c_sdok, ior_n));
