@@ -169,6 +169,7 @@ void() StartFrame =
 		zone_entsready = TRUE;
 	}
 
+	SV_BrushRenderTestFrame();
 	SV_UpdateMovementServerInfo();
 	SV_ZoneFrame();
 

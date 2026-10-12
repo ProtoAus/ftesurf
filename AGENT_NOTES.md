@@ -4751,6 +4751,33 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   `C:/FTESurf-worktrees/sourceauto-761b9b44`; no owner/peer process was killed. Disposable-copy retirement status is in
   that root's OWNER.md.
 
+## Source material cache/opacity controls (Patch 683)
+
+- One VTF can be both a 2D emissive image and a frame-array animation in the
+  same map. Include concrete target type in texture cache identity. Preserve
+  request-side ANY as a wildcard after upload resolves its concrete type;
+  pending ANY cannot satisfy a concrete target. Resource-status callers that
+  ask about any texture view must explicitly use ANY.
+- A program variant name proves requested defines, not successful sampling.
+  Demise's mask-only shader rendered the scaled glyph; sampling its smoke
+  image removed it. `r_imagelist smokeanimated` then proved the wrong shared
+  2D_ARRAY object. With type-separated caching, native 2D and 331-layer views
+  both load and the builtin glyph appears. Keep a unique sentinel plus mask
+  probe before interpreting a black/inactive sampler as authored colour.
+- Frame-zero VTF retention still has to traverse every stored frame per mip.
+  Test both environment-map layouts and all-frame arrays. Additive ONE/ONE
+  opacity must mask RGB; changing only output alpha is inert. Absent WVT
+  texture2 does not justify inverse alpha: Source's hasBaseTexture2 gate leaves
+  direct vertex opacity. Preserve entity and authored vertex opacity in new
+  reflection programs as well as material ALPHA.
+- New GLSL files need the hand-maintained hl2 Makefile list plus regenerated
+  builtin header. Compile generatebuiltinsl.c from a relative path to avoid
+  embedding an owned task path in the public generated banner.
+- Cold process restoration is safer than an empty r_remapshader target. Chained
+  live VFS/remap diagnostics crashed; separate old/new fs_restart controls did
+  not. Cause remains in BACKLOG. Long bridge command lines are rejected at
+  240 bytes; split them and inspect ACTED probe output, not only command exit.
+
 ## Missing-asset art (Patch 534) -- 2026-10-07
 
 - `R2D_Init` requests the diffuse fallback as `no_texture`, with replacement

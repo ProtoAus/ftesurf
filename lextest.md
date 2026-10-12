@@ -11,6 +11,22 @@ to be wrong.
 
 ---
 
+## 00. 12 Oct — Source map visuals (Patch 683)
+
+Tested in the owned rig; clean-commit build/deployment status is recorded in
+`tools/p683mapvisual.md`, not implied by this list. Restart after native updates.
+
+- Kitsune rainbow walls should be absent normally. Trigger the actual secret:
+  they should appear and later disappear. The dedicated target fan-out fixture
+  and matching-camera Alpha75/Alpha0 pixels pass; physical button activation
+  did not ACT in the harness and is not claimed as verified.
+- Demise should show the red spawn glyph/text, not just cloudy red floor.
+  Reflection-only red ramps should remain dark rather than gain a white base.
+- Hades2 portal labels should not erase the glow/background behind them.
+- Mist vertex-alpha fade acts; compare its look with your Source reference.
+  Remaining exact brightness/background seam work is in BACKLOG, not declared
+  finished. No per-map product texture remap was used to hide the differences.
+
 ## 00. 12 Oct — run/demo label colours and markers (Patch 677)
 
 Both Windows installs have the verified client at 06:45:15 UTC; prior csprogs

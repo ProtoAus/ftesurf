@@ -164,6 +164,7 @@ void() SUB_Null   = { };
 .float  modelscale;
 .float  rendermode;
 .float  renderamt;
+.string rendercolor;
 .vector teleportoffset;
 
 // Patch 194, linked_portal_door.  Every one of the library's 443 instances
@@ -1825,6 +1826,46 @@ float(entity to, float changed) SV_TrigStateSend =
 	return TRUE;
 };
 
+// Source kRenderTransAlpha (4) is normal alpha blending, not additive.
+// Native alpha 0 means opaque (sv_ents.c); exact zero needs EF_NODRAW.
+void(entity t) SV_BrushRenderState =
+{
+	local float hidden;
+
+	if (t.classname != "func_brush")
+		return;
+	if (t.rendermode == 4)
+		t.alpha = bound(0, t.renderamt, 255) / 255;
+	else if (t.rendermode == 0)
+		t.alpha = 1;
+
+	hidden = (SV_Key2(t.StartDisabled, t.startdisabled) ||
+	          t.rendermode == RENDERMODE_NONE ||
+	          (t.rendermode == 4 && t.renderamt <= 0));
+	if (hidden)
+		t.effects = t.effects | EF_NODRAW;
+	else
+		t.effects = t.effects - (t.effects & EF_NODRAW);
+};
+
+void(entity t) SV_BrushRenderInit =
+{
+	local vector color;
+
+	if (t.rendercolor != "")
+	{
+		color = stov(t.rendercolor) / 255;
+		color_x = bound(0, color_x, 1);
+		color_y = bound(0, color_y, 1);
+		color_z = bound(0, color_z, 1);
+		// Native all-zero colormod means white. Nonzero sub-byte tint encodes black.
+		if (color == '0 0 0')
+			color_x = 0.001;
+		t.colormod = color;
+	}
+	SV_BrushRenderState(t);
+};
+
 void(entity t, float on) SV_IOEnable =
 {
 	if (!on)
@@ -1851,6 +1892,7 @@ void(entity t, float on) SV_IOEnable =
 	// Both spellings are read everywhere else through SV_Key2, so both are
 	// written here; leaving the other one set would re-disable on the next read.
 	t.StartDisabled = t.startdisabled = !on;
+	SV_BrushRenderState(t);
 	if (t.SendEntity == SV_TrigStateSend)
 		t.SendFlags = 1;
 
@@ -3432,9 +3474,14 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		if (in == "fadeout") { SV_AmbientStop(t); return; }
 	}
 
-	// Cosmetic and deliberately no-ops: honouring them would mean a render
-	// pipeline these entities do not have.  Named rather than censused so the
-	// census keeps meaning "nobody has looked at this".
+	if (in == "alpha" && t.classname == "func_brush")
+	{
+		t.renderamt = bound(0, stof(pm), 255);
+		SV_BrushRenderState(t);
+		return;
+	}
+
+	// Other classes and Color inputs still have no native render-state adapter.
 	if (in == "color" || in == "alpha")
 		return;
 
@@ -6689,13 +6736,89 @@ void() func_brush =
 
 	self.solid = solid_now ? SOLID_BSP : SOLID_NOT;
 
-	if (dis)
-		self.effects = self.effects | EF_NODRAW;
+	SV_BrushRenderInit(self);
 
 	// Build 37.  "Toggle with Enable/Disable" is what solidity 0 has always
 	// SAID, and until entity I/O existed there was nothing that could toggle
 	// it -- a func_brush with StartDisabled was gone for the whole map.
 	self.vbsp_io_solid = SOLID_BSP;
+};
+
+void(entity t, float step) SV_BrushRenderTestReport =
+{
+	print(sprintf("brush-test: step %g model %s mode %g amt %g alpha %.6f",
+		step, t.model, t.rendermode, t.renderamt, t.alpha),
+		sprintf(" solid %g hidden %g disabled %g\n", t.solid,
+		!!(t.effects & EF_NODRAW), SV_Key2(t.StartDisabled, t.startdisabled)));
+};
+
+// Opt-in server-cvar fixture: real target fan-out, never a client command.
+void() SV_BrushRenderTestFrame =
+{
+	local float step;
+	local entity o, t, saved_self;
+
+	registercvar("vbsp_brush_test", "0");
+	step = cvar("vbsp_brush_test");
+	if (!step)
+		return;
+	cvar_set("vbsp_brush_test", "0");
+	if (mapname != "surf_kitsune" || step < 1 || step > 12)
+	{
+		print("brush-test: rejected (requires surf_kitsune, step 1..12)\n");
+		return;
+	}
+	o = spawn();
+	o.vbsp_io_target = "kitsune";
+	if (step == 2 || step == 5)
+	{
+		o.vbsp_io_input = "Alpha";
+		o.vbsp_io_param = "75";
+	}
+	if (step == 3 || step == 7)
+	{
+		o.vbsp_io_input = "Alpha";
+		o.vbsp_io_param = "0";
+	}
+	if (step == 4 || step == 8) o.vbsp_io_input = "Disable";
+	if (step == 6 || step == 9) o.vbsp_io_input = "Enable";
+	if (step < 10)
+	{
+		if (step != 1)
+			SV_IODeliver(o, world);
+		t = world;
+		while ((t = find(t, targetname, "kitsune")))
+			SV_BrushRenderTestReport(t, step);
+	}
+	else
+	{
+		// Spawn controls use real brush setup, but exist only during this call.
+		t = spawn();
+		t.classname = "func_brush";
+		t.targetname = "__brush_test_control";
+		t.model = "*48";
+		t.solidity = SOLIDITY_ALWAYS;
+		if (step == 11) t.renderamt = 0;
+		if (step == 12) t.rendermode = RENDERMODE_NONE;
+		saved_self = self;
+		self = t;
+		func_brush();
+		self = saved_self;
+		print(sprintf("brush-test: control-initial %g mode %g alpha %.6f solid %g hidden %g\n",
+			step, t.rendermode, t.alpha, t.solid, !!(t.effects & EF_NODRAW)));
+		o.vbsp_io_target = t.targetname;
+		o.vbsp_io_input = "Alpha";
+		o.vbsp_io_param = "0";
+		if (step == 12) o.vbsp_io_param = "75";
+		SV_IODeliver(o, world);
+		o.vbsp_io_input = "Disable";
+		SV_IODeliver(o, world);
+		o.vbsp_io_input = "Enable";
+		SV_IODeliver(o, world);
+		SV_BrushRenderTestReport(t, step);
+		remove(t);
+	}
+	remove(o);
 };
 
 /*

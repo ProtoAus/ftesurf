@@ -5,6 +5,32 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Demise remaining Source visual parity — P683, 2026-10-12
+
+- The native spawn glyph and additive vertex-alpha mist fade now ACT, but
+  background brightness/seams still differ from the supplied Source images.
+  Sites: `plugins/hl2/glsl/vmt/animated.glsl`, affected packed skybox/transition
+  materials and VBSP sky/displacement lighting. A no-mist diagnostic remap did
+  not establish that the remaining dark background seam is caused by mist.
+  Falsifier: fixed stationary camera, cold matching assets, identify the exact
+  surface with acted material isolation, then compare native/reference coverage
+  and lighting independently. Do not invert displacement alpha or replace
+  authored flow/texture data just to approximate one screenshot.
+- A proper water-in-view regression camera remains pending; resolved water/glass
+  pass masks at Monster Jam's spawn are not water pixel acceptance.
+
+## Live shader-remap lifetime crash — observed during P683 diagnostics
+
+- Owned subject client crashed after a late-created diagnostic shader followed
+  by chained `fs_restart; flushshaders; r_remapshader`, and after an empty target
+  supplied as a remap reset. Site: shader registration/remapping plus live VFS
+  reload lifetime; full cause unknown. Separate old/new fs_restart/flushshaders
+  arms stayed alive, so the filesystem command alone is not a demonstrated cause.
+  Falsifier: owned identical old/new native pairs, cold vs late shader creation,
+  valid/identity/empty targets and separated vs chained commands; reject invalid
+  targets without dereferencing or leaving stale shader/image/program pointers.
+  Preserve the failed arms. No owner game/config was changed.
+
 ## Linux manifest path validation — found during lobby catch-up, 2026-10-12
 
 - A dedicated Linux harness that passes a directory as `-manifest` can abort

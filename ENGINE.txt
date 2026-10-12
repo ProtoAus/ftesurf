@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   263d176862ccfd55fc3a82d5b65e20159d64a011
+commit   6b6c8ab6805d7d295884048f4bb07386c8d0b38a
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,14 @@ commit   263d176862ccfd55fc3a82d5b65e20159d64a011
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-679
-patch    682
+tag      patch-683
+patch    683
+# Patch 683: Source brush zero-opacity/Enable/Disable, explicit material depth
+# masks, concrete texture-target cache identity with request ANY, VTF frame
+# traversal, default brush emissive mapping and reflection/additive opacity.
+# Native glyph and rainbow off/on/off controls pass; exact mist brightness,
+# physical secret-button acceptance and water-in-view gate remain in follow-ups.
+# tools/p683mapvisual.md records build/deployment separately. No QC Build bump.
 # Patch 682: inert canonical warm rewind-go movement policy. Shared bounded
 # ring selection retains live publication; held/release body matches row decimal
 # normalization. Cold/forked/full/replacement paths abstain; no ID reservation,
