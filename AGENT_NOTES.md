@@ -5195,6 +5195,15 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   only pre-existing Make peer-target diagnostics remain. Physical input is not
   proved. The 82 tracked per-map cfgs set none of sv_accelerate/maxspeed/friction;
   that census is not a claim about every community map.
+- DEPLOYED P673 QC `3d17ade4` / native tag-source `57bfa6bd3`: all 12 idle Pi
+  lobbies restarted 05:20:12..21 UTC with csprogs `825c2b46`, qwprogs `7598b0da`
+  (qw bytes unchanged), old pair kept; Pi native unchanged. Windows gate held
+  for the owner's game, then passed naturally: 19 native/progs/plugin destinations
+  verified at 05:23:09 UTC (client `e9bbd6f3`, dedicated `c6e4cede`). Installed
+  hosted checks new27/27 with fresh identical-byte loader controls, installed
+  dedicated guards pass; fresh lobby client downloaded exact `825c2b46` and
+  drew board cols8/type14. Owner/default config hashes/mtimes unchanged. No game
+  was killed, no role/upload/time mutation, no Build or release increment.
 
 ### Zone editor extensions (Patch 671) — 2026-10-12
 
