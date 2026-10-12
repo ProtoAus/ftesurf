@@ -1,9 +1,9 @@
 /*
  * Inert movement POLICY descriptors, not native snapshots or permission to
- * predict. No production caller. Timer/recorder/placement remain in saveloc.
+ * predict. No production caller. Timer/recorder/placement remain authoritative.
  * Use Alloc/Free; output owns its identity strings. Reuse clears old output.
  * A READY answer describes this call only: no content/connection epoch or
- * persistent cache is supplied here. See tools/p677moveprep.md.
+ * persistent cache is supplied here. See tools/p678moveprep.md and p680zoneprep.md.
  */
 #define MP_READY 1
 #define MP_MISSING 2
@@ -12,6 +12,10 @@
 #define MP_UNSUPPORTED 5
 #define MP_LOAD 1
 #define MP_RELEASE 2
+#define MP_ZONE 3
+#define MP_RESET 4
+#define MP_DEST_ZONE 1
+#define MP_DEST_SAVE 2
 #define MP_KEEP 0
 #define MP_SET 1
 #define MP_CLEAR 2
@@ -35,12 +39,13 @@ typedef struct
 {
 	float version, kind;
 	entity subject;
-	string map, owner;
+	string map, owner, zone_hash;
 	float block, id, seq, ticks;
+	float zone, destination_source, destination_fallback;
 	vector origin, velocity, angles, release_velocity;
 	float origin_policy, velocity_policy, angle_policy, mode_policy;
 	float ground_policy, carrier_policy, gravity_policy, jump_policy;
-	float mode, forceduck, held;
+	float mode, forceduck, forceduck_policy, held;
 	int source_preserve, source_clear, source_replace;
 } moveprep_t;
 
@@ -50,6 +55,7 @@ void(moveprep_t *out) SV_MovePrepClear =
 		return;
 	if (strcmp(out->map, "")) strunzone(out->map);
 	if (strcmp(out->owner, "")) strunzone(out->owner);
+	if (strcmp(out->zone_hash, "")) strunzone(out->zone_hash);
 	memfill8(out, 0i, sizeof(moveprep_t));
 };
 
@@ -261,6 +267,7 @@ float(entity e, float id, float seq, moveprep_t *out) SV_MovePrepLoad =
 	out->release_velocity = rec_sl_vel[r];
 	out->angles = [rec_sl_pit[r], rec_sl_yaw[r], 0]; out->angle_policy = MP_SET;
 	out->forceduck = rec_sl_duck[r] ? FD_DUCK : FD_STAND;
+	out->forceduck_policy = MP_SET;
 	out->ground_policy = MP_CLEAR; out->carrier_policy = MP_CLEAR;
 	out->source_clear = MP_SRC_ducktime | MP_SRC_ducking;
 	out->source_replace = MP_SRC_ducked;
@@ -293,5 +300,131 @@ float(entity e, float id, float seq, moveprep_t *out) SV_MovePrepRelease =
 	out->release_velocity = rec_sl_vel[r];
 	out->mode = mode; out->mode_policy = MP_SET;
 	out->version = 1;
+	return MP_READY;
+};
+
+// P680: preparation never loads zones, releases pins or changes a timer.
+float(entity e) MP_ZoneContext =
+{
+	local float slot;
+	if (e == world) return MP_REFUSED;
+	slot = num_for_edict(e);
+	if (slot < 1 || slot > FS_SLCLIENTS || strcmp(e.classname, "player")) return MP_REFUSED;
+	if (!zone_loaded) return MP_STALE;
+	if (!(zone_count >= 0 && zone_count <= ZONE_MAX && zone_count == floor(zone_count))) return MP_STALE;
+	if (e.run_pmhold || e.run_sp_phase || e.rec_wt_hold || e.rec_gh_on || e.run_ms_phase)
+		return MP_UNSUPPORTED;
+	if (e.rec_sl_hold)
+	{
+		if (e.rec_sl_holdmove != 0 && e.rec_sl_holdmove != MOVETYPE_WALK) return MP_UNSUPPORTED;
+	}
+	else if (e.movetype != MOVETYPE_WALK && e.movetype != MOVETYPE_NOCLIP) return MP_UNSUPPORTED;
+	return MP_READY;
+};
+
+float(entity e, float z, vector org, float yaw, float pit, float haveyaw, moveprep_t *out)
+	MP_ZonePolicy =
+{
+	if (!SV_SaveOriginSane(org) || !MP_Vector([pit, yaw, 0])) return MP_REFUSED;
+	out->subject = e; out->map = strzone(mapname);
+	out->zone_hash = strzone(zone_crc); // identity hint only, NOT a lifecycle epoch
+	out->zone = z; out->destination_source = MP_DEST_ZONE;
+	out->origin = org; out->origin_policy = MP_SET;
+	out->velocity = '0 0 0'; out->velocity_policy = MP_SET;
+	out->carrier_policy = MP_CLEAR;
+	// setorigin/TimerWarped do not clear onground; the NEXT move categorizes it.
+	out->ground_policy = MP_KEEP; out->source_preserve = MP_SRC_ALL;
+	if (haveyaw)
+	{
+		out->angles = [pit, yaw, 0]; out->angle_policy = MP_SET;
+	}
+	if (e.rec_sl_hold)
+	{
+		out->mode = MOVETYPE_WALK; out->mode_policy = MP_SET;
+	}
+	out->version = 1;
+	return MP_READY;
+};
+
+// zone_goto: explicit angles override the destination's yaw exactly as live QC.
+float(entity e, float z, float setang, float yaw, float pit, moveprep_t *out) SV_MovePrepZone =
+{
+	local float status, haveyaw, fallback, unusedyaw;
+	local vector org;
+	SV_MovePrepClear(out);
+	if (!out) return MP_REFUSED;
+	status = MP_ZoneContext(e);
+	if (status != MP_READY) return status;
+	if (!(z >= 0 && z < zone_count && z == floor(z))) return MP_MISSING;
+	if (!(setang == 0 || setang == 1)) return MP_REFUSED;
+	if (!(zone_td_kind[z] == ZTD_NONE || zone_td_kind[z] == ZTD_POS || zone_td_kind[z] == ZTD_NAME))
+		return MP_UNSUPPORTED;
+	if (!MP_Vector([pit, yaw, 0])) return MP_REFUSED;
+	if (setang)
+	{
+		org = SV_ZoneDestRead(e, z, unusedyaw, haveyaw, fallback);
+		haveyaw = TRUE;
+	}
+	else
+	{
+		org = SV_ZoneDestRead(e, z, yaw, haveyaw, fallback);
+		pit = 0;
+	}
+	status = MP_ZonePolicy(e, z, org, yaw, pit, haveyaw, out);
+	if (status != MP_READY) return status;
+	out->kind = MP_ZONE; out->destination_fallback = fallback;
+	return MP_READY;
+};
+
+// Chat/zone_reset/restart: freshly scanned cached rows, NOT a new file read.
+// A stale list cannot answer whether !r should prefer a save: explicit STALE.
+float(entity e, string word, float n, moveprep_t *out) SV_MovePrepReset =
+{
+	local float status, z, blk, row, yaw, pit, haveyaw, fallback, pick;
+	local vector org;
+	SV_MovePrepClear(out);
+	if (!out) return MP_REFUSED;
+	status = MP_ZoneContext(e);
+	if (status != MP_READY) return status;
+	if (strcmp(word, "!r") && strcmp(word, "!m") && strcmp(word, "!s") && strcmp(word, "!b"))
+		return MP_REFUSED;
+	if (!(n > -10000000 && n < 10000000 && n == floor(n))) return MP_REFUSED;
+	z = SV_ZoneRequestZone(e, word, n);
+	if (!(z >= 0 && z < zone_count && z == floor(z))) return MP_MISSING;
+	pick = FALSE; row = -1; pit = yaw = fallback = blk = 0; org = '0 0 0';
+	if (!strcmp(word, "!r"))
+	if (e.run_leg_zone >= 0 && e.run_leg_zone < zone_count)
+	if (!SV_TimerWouldRestartSeg(e, z))
+	{
+		blk = SL_Blk(e);
+		// The existing quiet gate is read-only; reuse it without scan/allocation.
+		if (SV_SaveLocAllowed(e, TRUE))
+		{
+			if (!rec_sl_org || !rec_sl_pit || !rec_sl_yaw || !rec_sl_id || !rec_sl_seq || !rec_sl_tick)
+				return MP_STALE;
+			if (!(rec_sl_nb[blk] >= 0 && rec_sl_nb[blk] <= SL_Cap(blk)
+				&& rec_sl_nb[blk] == floor(rec_sl_nb[blk]))) return MP_STALE;
+			if (!SL_Fresh(e, blk)) return MP_STALE;
+			pick = SV_SaveLocPickInZoneRead(e, z, org, yaw, pit, row);
+		}
+	}
+	if (pick)
+		haveyaw = TRUE;
+	else
+	{
+		if (!(zone_td_kind[z] == ZTD_NONE || zone_td_kind[z] == ZTD_POS || zone_td_kind[z] == ZTD_NAME))
+			return MP_UNSUPPORTED;
+		org = SV_ZoneDestRead(e, z, yaw, haveyaw, fallback);
+		pit = 0; // a post-snap refused save must not leak its pitch into fallback
+	}
+	status = MP_ZonePolicy(e, z, org, yaw, pit, haveyaw, out);
+	if (status != MP_READY) return status;
+	out->kind = MP_RESET; out->destination_fallback = fallback;
+	if (pick)
+	{
+		out->destination_source = MP_DEST_SAVE; out->block = blk;
+		out->id = rec_sl_id[row]; out->seq = rec_sl_seq[row];
+		if (blk > 0) out->owner = strzone(infokey(e, "guid"));
+	}
 	return MP_READY;
 };

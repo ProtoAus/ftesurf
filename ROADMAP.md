@@ -65,8 +65,13 @@ Patch 678 adds **inert save-load / hold-release movement-policy preparation**:
 stable id/seq, freshly checked movement content and explicit KEEP/SET/CLEAR for
 all carried Source fields. It is not a native snapshot, generation-safe cache,
 operation request/admission or baseline protocol; normal prediction is still
-disabled. Reset/rewind builders and lifecycle epochs remain next. See
-`tools/p678moveprep.md`.
+disabled. See `tools/p678moveprep.md`. Patch 680 adds inert reset/zone policies
+using shared canonical destination and start-save selection; map/stage/bonus,
+latched/save-backed restart and explicit zone angles have acting live parity.
+Reset keeps immediate ground/duck/history while clearing speed/carrier. These
+are current-call answers, NOT lifecycle epochs, cache/admission or a native
+snapshot. Rewind builders and lifecycle epochs remain next, followed by the
+request/baseline protocol. See `tools/p680zoneprep.md`.
 
 **Implementation boundaries (source audit, 2026-10-12; operation protocol unbuilt).**
 

@@ -277,22 +277,31 @@ float(float track, float seg) SV_ZoneFindLeg =
 */
 #define ZONE_SNAP_DROP  1024
 
-vector(float n, __out float yaw, __out float haveyaw) SV_ZoneDest =
+// P680: shared read-only resolution. trace_* are builtin scratch outputs;
+// player/zone state and diagnostics belong to the live wrapper below.
+#define ZDEST_MISSING 1
+#define ZDEST_VOID 2
+#define ZDEST_SOLID 3
+vector(entity who, float n, __out float yaw, __out float haveyaw, __out float fallback)
+	SV_ZoneDestRead =
 {
 	local vector c, dest, down, snapped;
 	local entity e;
+	local float kind;
 
+	fallback = 0;
+	kind = zone_td_kind[n];
 	yaw = 0;
 	haveyaw = FALSE;
 	dest = '0 0 0';         // fteqcc cannot see that the ZTD_NONE arm returns first
 
-	if (zone_td_kind[n] == ZTD_POS)
+	if (kind == ZTD_POS)
 	{
 		dest = zone_td_pos[n];
 		yaw = zone_td_yaw[n];
 		haveyaw = TRUE;
 	}
-	else if (zone_td_kind[n] == ZTD_NAME)
+	else if (kind == ZTD_NAME)
 	{
 		e = find(world, targetname, zone_td_name[n]);
 		if (e)
@@ -337,13 +346,12 @@ vector(float n, __out float yaw, __out float haveyaw) SV_ZoneDest =
 		}
 		else
 		{
-			dprint(sprintf("zones: no info_teleport_destination '%s' for zone %g\n",
-			               zone_td_name[n], n));
-			zone_td_kind[n] = ZTD_NONE;     // do not look again on every teleport
+			fallback = ZDEST_MISSING;
+			kind = ZTD_NONE;
 		}
 	}
 
-	if (zone_td_kind[n] == ZTD_NONE)
+	if (kind == ZTD_NONE)
 	{
 		/*
 		  The old behaviour, still correct for the 34 legacy maps and for any
@@ -396,7 +404,7 @@ vector(float n, __out float yaw, __out float haveyaw) SV_ZoneDest =
 	  did not need it.
 	*/
 	down = dest - [0, 0, ZONE_SNAP_DROP];
-	tracebox(dest, PM_HULL_MINS, PM_HULL_MAXS, down, FALSE, self);
+	tracebox(dest, PM_HULL_MINS, PM_HULL_MAXS, down, FALSE, who);
 	snapped = trace_endpos;
 
 	/*
@@ -424,12 +432,11 @@ vector(float n, __out float yaw, __out float haveyaw) SV_ZoneDest =
 	// this wrong by one would put agtricks back in the void, quietly.
 	if (dest_z - snapped_z >= ZONE_SNAP_DROP)
 	{
-		dprint(sprintf("zones: no floor within %g units under zone %g, using the raw destination\n",
-		               ZONE_SNAP_DROP, n));
+		fallback = ZDEST_VOID;
 		return dest + '0 0 1';
 	}
 
-	tracebox(snapped, PM_HULL_MINS, PM_HULL_MAXS, snapped, FALSE, self);
+	tracebox(snapped, PM_HULL_MINS, PM_HULL_MAXS, snapped, FALSE, who);
 	if (!trace_startsolid && !trace_allsolid)
 		return snapped;
 
@@ -439,14 +446,31 @@ vector(float n, __out float yaw, __out float haveyaw) SV_ZoneDest =
 	// the mapper's own point is the better answer (the FGD's wording is "placed
 	// directly on the ground below this point IF POSSIBLE").
 	snapped = snapped + '0 0 1';
-	tracebox(snapped, PM_HULL_MINS, PM_HULL_MAXS, snapped, FALSE, self);
+	tracebox(snapped, PM_HULL_MINS, PM_HULL_MAXS, snapped, FALSE, who);
 	if (trace_startsolid || trace_allsolid)
 	{
-		dprint(sprintf("zones: ground snap for zone %g lands solid, using the raw destination\n", n));
+		fallback = ZDEST_SOLID;
 		return dest + '0 0 1';
 	}
 
 	return snapped;
+};
+
+vector(float n, __out float yaw, __out float haveyaw) SV_ZoneDest =
+{
+	local vector dest;
+	local float fallback;
+	dest = SV_ZoneDestRead(self, n, yaw, haveyaw, fallback);
+	if (fallback == ZDEST_MISSING)
+	{
+		dprint(sprintf("zones: no info_teleport_destination '%s' for zone %g\n", zone_td_name[n], n));
+		zone_td_kind[n] = ZTD_NONE; // live path alone caches a missing target
+	}
+	else if (fallback == ZDEST_VOID)
+		dprint(sprintf("zones: no floor within %g units under zone %g, using the raw destination\n", ZONE_SNAP_DROP, n));
+	else if (fallback == ZDEST_SOLID)
+		dprint(sprintf("zones: ground snap for zone %g lands solid, using the raw destination\n", n));
+	return dest;
 };
 
 /*
@@ -1314,6 +1338,17 @@ float(entity e, float n) SV_TimerWouldRestartSeg;
 float(entity e, float z, __out vector org, __out float yaw, __out float pit)
 	SV_SaveLocPickInZone;
 
+// P680: resolve the same leg without touching the timer's stage-1 request.
+float(entity e, string word, float n) SV_ZoneRequestZone =
+{
+	if (!strcmp(word, "!m")) return SV_ZoneFindLeg(0, 0);
+	if (!strcmp(word, "!s")) return SV_ZoneFindLeg(0, max(1, n) - 1);
+	if (!strcmp(word, "!b")) return SV_ZoneFindLeg(max(1, n), 0);
+	if (e.run_leg_zone >= 0 && e.run_leg_zone < zone_count)
+		return e.run_leg_zone;
+	return SV_ZoneFindLeg(e.run_leg_track, e.run_leg_seg);
+};
+
 void(string word, float n) SV_ZoneChatCommand =
 {
 	local float track, seg, z;
@@ -1332,6 +1367,7 @@ void(string word, float n) SV_ZoneChatCommand =
 		return;
 	}
 
+	z = SV_ZoneRequestZone(self, word, n);
 	if (word == "!m")
 	{
 		track = 0;  seg = 0;  what = "start of the map";
@@ -1418,7 +1454,6 @@ void(string word, float n) SV_ZoneChatCommand =
 		}
 	}
 
-	z = SV_ZoneFindLeg(track, seg);
 	if (z < 0)
 	{
 		sprint(self, PRINT_HIGH, sprintf("^3%s: this map has no %s\n", word, what));

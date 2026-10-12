@@ -11,7 +11,7 @@ calls these builders; no descriptor/request is transmitted, admitted or applied.
 `SV_MovePrepRelease(player, stable_id, sequence, out)` clear previous output,
 then return READY, MISSING, STALE, REFUSED or UNSUPPORTED. Only READY sets
 `out->version = 1`. Use `SV_MovePrepFree(out)`, not raw `memfree`; the descriptor
-owns its zoned map and owner strings. Never copy the struct's string ownership
+owns its zoned map, owner and (since P680) zone-hash strings. Never copy the struct's string ownership
 or pass arbitrary/uninitialized memory. Independent outputs do not alias.
 
 Preparation resolves the existing fresh player block using **id + sequence**,
@@ -67,7 +67,9 @@ The last three rows explicitly cover **all 12 fields of pmsourcestate_t**;
 Future native fields must cause a failing contract check, not silent omission.
 This descriptor is NOT a serialized pmsourcestate_t seed. Its KEEP policies
 require the real baseline's carried state; zero output storage does not mean
-zero native history. BODY/DUCK/CLEARCARRIER intentions do not perform an edit.
+zero native history. Since P680, `forceduck_policy` is explicit: load SETs the
+completed stance; release KEEP retains it. BODY/DUCK/CLEARCARRIER intentions
+do not perform an edit.
 
 ## Freshness limit / remaining prerequisites
 
@@ -78,9 +80,10 @@ promise is made. Do not use this result later or send it to a client until an
 owned epoch/invalidation and transport contract exists. This deliberately
 avoids mistaking an unchanged sequence for unchanged movement file content.
 
-Reset and rewind-go canonical builders, generation invalidation, exact-P675
-bounded usercmd admission and PEXT2_REPLACEMENTDELTAS operation-bearing BODY
-baseline reconciliation remain unbuilt. STAT_FS_SLACK/processed-count ACKs
+P680 adds current-call canonical reset/zone builders; see `tools/p680zoneprep.md`.
+Rewind-go preparation, generation invalidation, exact-P675 bounded usercmd
+admission and PEXT2_REPLACEMENTDELTAS operation-bearing BODY baseline
+reconciliation remain unbuilt. STAT_FS_SLACK/processed-count ACKs
 cannot retire an operation. No new save/evidence format, recording time,
 ranked policy, native engine binary, pin/tag or qcbuild number is introduced.
 The development installs and fleet were not swapped for this inert slice.

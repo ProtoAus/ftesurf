@@ -27,7 +27,8 @@ def check_source_contract(engine):
     policies = set(re.findall(r'^#define MP_SRC_(\w+) \d+i$', module, re.M)) - {'ALL'}
     if not fields or fields != policies:
         raise ValueError(f'Source policy drift: missing={fields-policies}, extra={policies-fields}')
-    for forbidden in ('CSQC_PredictPlayerPreMove', 'SV_MovePrepLoad(', 'SV_MovePrepRelease('):
+    for forbidden in ('CSQC_PredictPlayerPreMove', 'SV_MovePrepLoad(', 'SV_MovePrepRelease(',
+                      'SV_MovePrepZone(', 'SV_MovePrepReset('):
         for path in (ROOT / 'src').rglob('*.qc'):
             if path.name == 'sv_moveprep.qc' or path.parent.name == 'defs':
                 continue

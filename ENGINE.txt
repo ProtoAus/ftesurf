@@ -25,7 +25,12 @@ commit   263d176862ccfd55fc3a82d5b65e20159d64a011
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-679
-patch    679
+patch    680
+# Patch 680: inert canonical map/stage/bonus/latched and save-backed reset/zone
+# policies. Shared read-only destination/selection halves retain live operations;
+# reset clears speed/carrier, preserves ground/duck/Source history and optional aim.
+# No production consumer, lifecycle epoch, request/baseline, rewind or instant-move
+# activation. No native pin/tag, evidence, defaults or QC Build-number change.
 # Patch 679: automatically find Momentum's shared HL2 pack; no separate HL2
 # install needed when Momentum is installed. Only hl2_dir.vpk is mounted, not
 # other-game placeholders. Both CS2's csgo_legacy beta and standalone CS:GO

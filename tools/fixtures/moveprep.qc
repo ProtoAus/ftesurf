@@ -65,7 +65,7 @@ void(entity e) MPT_Run =
 	status = SV_MovePrepLoad(e, 1, 7, d);
 	MPT_Check(status == MP_READY && d->version == 1 && d->kind == MP_LOAD, "load READY acted");
 	MPT_Check(d->origin == '11 22 333' && d->velocity == '123 234 345'
-		&& d->angles == '-12 87 0' && d->forceduck == FD_DUCK, "load payload");
+		&& d->angles == '-12 87 0' && d->forceduck == FD_DUCK && d->forceduck_policy == MP_SET, "load payload");
 	MPT_Check(d->origin_policy == MP_SET && d->velocity_policy == MP_SET
 		&& d->angle_policy == MP_SET && d->mode_policy == MP_KEEP
 		&& d->ground_policy == MP_CLEAR && d->carrier_policy == MP_CLEAR, "load body policies");
@@ -166,7 +166,7 @@ void(entity e) MPT_Run =
 	e.v_angle = '44 55 0'; e.angles = '44 55 0';
 	MPT_Check(SV_MovePrepRelease(e, 1, 7, d) == MP_READY && d->kind == MP_RELEASE
 		&& d->source_preserve == MP_SRC_ALL && d->source_clear == 0i && d->source_replace == 0i
-		&& d->origin_policy == MP_KEEP && d->angle_policy == MP_KEEP && d->forceduck == 0
+		&& d->origin_policy == MP_KEEP && d->angle_policy == MP_KEEP && d->forceduck_policy == MP_KEEP
 		&& d->ground_policy == MP_KEEP && d->carrier_policy == MP_KEEP, "release keeps aim and complete native history");
 	MPT_Check(d->mode == MOVETYPE_WALK && d->mode_policy == MP_SET && d->velocity == '123 234 345', "release payload");
 	e.rec_sl_holdrow = -1;
@@ -236,5 +236,8 @@ void(entity e) MPT_Run =
 void(string cmd) SV_ParseClientCommand =
 {
 	if (!strcmp(cmd, "moveprep_test")) { MPT_Run(self); return; }
+#ifdef ZONEPREP_FIXTURE
+	if (!strcmp(cmd, "zoneprep_test")) { ZPT_Run(self); return; }
+#endif
 	MP_TestOriginalCommand(cmd);
 };

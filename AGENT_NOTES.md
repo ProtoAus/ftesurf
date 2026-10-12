@@ -1,5 +1,32 @@
 # AGENT_NOTES.md
 
+## Patch 680 — inert reset preparation and measured harness pitfalls, 12 Oct 2026
+
+- `setorigin` only relinks; `SV_TimerWarped` does not clear ground. Canonical
+  reset preserves the immediate groundentity/FL_ONGROUND and completed duck;
+  the next move categorizes it. Save-load has different ground-clearing policy.
+  Never derive a reset policy from save-load just because both teleport.
+- Read-only canonical destination/save selection still updates trace_* scratch.
+  Live wrappers alone retain missing-target diagnostics/cache and save scans.
+- A copied client/server exe needs its matching sibling native plugins. Without
+  hl2, mounted Source BSPs report unrecognised VBSP; without mounts, dune is absent.
+  Neither failure is an acting movement control. Freeze plugin hashes too.
+- This fteqcc crashes (3221225477) on `d->angles_x` through a struct pointer.
+  Isolated one-factor compiler controls: whole-vector comparison and typed or
+  untyped null arguments compile 0 warnings; direct component access crashes.
+- A short solid box lets the downward trace escape to its floor. The initial
+  solid-fallback fixture failed 1/64. A tall 4096-u box acts across the complete
+  drop; real startsolid plus actual live fallback parity passes. Do not bless
+  an unacted fallback branch just because its final origin looks reasonable.
+- A start-save can pass selection and fail post-snap occupancy. Zone fallback
+  must discard its saved pitch too: an acted 2/71 mismatch became 71/0 with
+  explicit fallback pitch zero. First high-slab fixture had no eligible row
+  (1/71 actor failed), so its green fallback assertions were NOT evidence.
+  Build the slab around actual point/hull occupancy; those rules are map-latched.
+- See tools/p680zoneprep.md for 71/0 reset controls, 66/0 load/release regression,
+  acting negative controls and explicit non-activation limits. Source-only slice;
+  no new install/fleet/native/Build or recorded-evidence deployment claim.
+
 ## Patch 674 — UI/maps deployment checkpoint, 12 Oct 2026
 
 - Product `79c3599`, deployed tree `61d291d` (merges published P673 docs only),

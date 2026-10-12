@@ -5248,8 +5248,10 @@ void() SV_SaveLocFrame =
   NEWEST BY seq, not by index or slot: ids are stable and lowest-free
   (SV_SaveFreeID), so slot 2 can be newer than slot 7.
 */
-float(entity e, float z, __out vector org, __out float yaw, __out float pit)
-	SV_SaveLocPickInZone =
+// P680: shared selection/trace half; caller owns policy and scan freshness.
+// No scan/allocation/stuffcmd/file/timer work. trace_* remain builtin scratch.
+float(entity e, float z, __out vector org, __out float yaw, __out float pit, __out float row)
+	SV_SaveLocPickInZoneRead =
 {
 	local float i, blk, base, cnt, bestseq;
 	local vector o, mn, mx, down;
@@ -5257,24 +5259,13 @@ float(entity e, float z, __out vector org, __out float yaw, __out float pit)
 	org = '0 0 0';
 	yaw = 0;
 	pit = 0;
+	row = -1;
 
 	if (z < 0 || z >= zone_count)
 		return FALSE;
-	if (e.run_ms_phase)
-		return FALSE;		// a resume owns the part file; let !r do its old thing
-
-	// The policy gates ALWAYS, the scan only when stale.  They are a cvar and an
-	// infokey; the directory read is the expensive half and `!r` is a held key.
-	// See SV_SaveLocAllowed for what skipping them silently turned off.
-	if (!SV_SaveLocAllowed(e, TRUE))	// quiet: this is asking, not being told
+	if (!rec_sl_org)
 		return FALSE;
-
-	SV_SaveLocAlloc();
 	blk = SL_Blk(e);
-	if (!SL_Fresh(e, blk))
-		if (!SV_SaveLocBegin(e, TRUE))
-			return FALSE;
-
 	base = SL_Base(blk);
 	cnt  = rec_sl_nb[blk];
 
@@ -5298,6 +5289,7 @@ float(entity e, float z, __out vector org, __out float yaw, __out float pit)
 			continue;
 
 		bestseq = rec_sl_seq[base + i];
+		row     = base + i;
 		org     = o;
 		yaw     = rec_sl_yaw[base + i];
 		// Clamped: an edited `angles` pitch reaches the wire, because fixangle
@@ -5368,6 +5360,22 @@ float(entity e, float z, __out vector org, __out float yaw, __out float pit)
 	*/
 	org = SV_SaveZonePoint(z, org);
 	return SV_ZoneOcc(z, org, mn, mx);
+};
+
+float(entity e, float z, __out vector org, __out float yaw, __out float pit)
+	SV_SaveLocPickInZone =
+{
+	local float blk, row;
+	org = '0 0 0'; yaw = pit = 0;
+	if (z < 0 || z >= zone_count) return FALSE;
+	if (e.run_ms_phase) return FALSE;
+	// Keep the existing gate/scan side effects in the live picker only.
+	if (!SV_SaveLocAllowed(e, TRUE)) return FALSE;
+	SV_SaveLocAlloc();
+	blk = SL_Blk(e);
+	if (!SL_Fresh(e, blk))
+		if (!SV_SaveLocBegin(e, TRUE)) return FALSE;
+	return SV_SaveLocPickInZoneRead(e, z, org, yaw, pit, row);
 };
 
 // Patch 428: a window, not the whole list -- 999 rows of this overflow the
