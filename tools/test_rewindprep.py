@@ -8,7 +8,7 @@ import subprocess
 
 from test_moveprep import ROOT, check_source_contract
 
-CHECKS = 91  # Exact complete acting suite; updated only with fixture changes.
+CHECKS = 98  # Exact complete acting suite; updated only with fixture changes.
 FAULTS = ('SV_Error:', 'Host_Error:', 'runaway loop', 'Program error',
           'Unknown command', 'QC VM error', 'Cannot call', 'stack overflow')
 
@@ -26,6 +26,10 @@ def build(out, weak):
             name = 'sv_saveloc.qc'
             old = 'd = vlen([m[i + 1], m[i + 2], m[i + 3]] - near);'
             new = 'd = fabs(m[i] - t); // test-only weakened spatial selection'
+        elif weak == 'rate':
+            name = 'sv_moveprep.qc'
+            old = 'if (!(min(SL_TOKRATE, e.rec_sl_tok + (time - e.rec_sl_tokt) * SL_TOKRATE) >= 2)) return MP_REFUSED;'
+            new = old.replace('>= 2', '>= 1')
         else:
             name = 'sv_moveprep.qc'
             old = "out->velocity = '0 0 0'; out->velocity_policy = MP_SET; out->release_velocity = vel;"
@@ -71,8 +75,9 @@ def grade(server, client, weak):
     if failed != len(re.findall(r'REWINDPREP FAIL ', server)):
         raise ValueError('Failure marker/count mismatch')
     if weak:
-        required = ('spatial window winner beats nearer tick' if weak == 'selection'
-                    else 'actual go held release velocity parity')
+        required = {'selection': 'spatial window winner beats nearer tick',
+                    'held': 'actual go held release velocity parity',
+                    'rate': 'one token pre-dispatch go refused without charge'}[weak]
         if not failed or ('REWINDPREP FAIL ' + required) not in server:
             raise ValueError('Required one-factor detector did not fire')
         print(f'PASS negative {weak} control detected: {failed}/{checks} expected assertion failures')
@@ -88,7 +93,7 @@ def main():
     p.add_argument('--engine', type=pathlib.Path)
     p.add_argument('--log', type=pathlib.Path)
     p.add_argument('--client-log', type=pathlib.Path)
-    p.add_argument('--weak', choices=('selection', 'held'))
+    p.add_argument('--weak', choices=('selection', 'held', 'rate'))
     a = p.parse_args()
     if a.engine:
         check_source_contract(a.engine)

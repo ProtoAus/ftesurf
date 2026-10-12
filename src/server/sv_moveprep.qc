@@ -315,7 +315,9 @@ float(entity e, float t, vector near, float usenear, float go, moveprep_t *out) 
 	mode = e.rec_wt_holdmove ? e.rec_wt_holdmove : MOVETYPE_WALK;
 	if (mode != MOVETYPE_WALK || e.movetype != MOVETYPE_NONE) return MP_UNSUPPORTED;
 	if (!SV_SaveLocAllowed(e, TRUE)) return MP_REFUSED;
-	if (!(min(SL_TOKRATE, e.rec_sl_tok + (time - e.rec_sl_tokt) * SL_TOKRATE) >= 1)) return MP_REFUSED;
+	// Pre-dispatch go pays one general sl_* charge plus one go charge. Read
+	// both here; do not spend tokens or change the authoritative rate gate.
+	if (!(min(SL_TOKRATE, e.rec_sl_tok + (time - e.rec_sl_tokt) * SL_TOKRATE) >= 2)) return MP_REFUSED;
 	blk = SL_Blk(e);
 	if (!(blk >= 0 && blk <= FS_SLCLIENTS && blk == floor(blk))) return MP_REFUSED;
 	if (!SL_Fresh(e, blk)) return MP_STALE;

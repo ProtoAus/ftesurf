@@ -2707,8 +2707,13 @@ without an extra post-walk wait. A copied player edict used as test snapshot
 must have a non-player classname: otherwise `SV_RewindAlone` correctly sees the
 snapshot as a second connected player and withholds the replaceable go ID.
 P682 retains both failed rigs and grades only a complete real recorder/pin/
-write/read/load/hold/release actor. Initial subject 91/0; weakened spatial and
-held-velocity controls have 7/91 and 2/91 named expected assertion failures.
+write/read/load/hold/release actor. Independent review found a missed rate
+boundary despite initial 91/0: sl_saveat go pays the general sl_* charge AND
+a second go charge in the same dispatcher call. Pre-dispatch preparation must
+require TWO tokens without spending either, not one. One-token and just-below-
+two actors leave the real pin/body/list unchanged; exactly-two goes through
+real write/read/load/hold. Corrected subject 98/0; old one-token gate mutant
+4/98, spatial 7/98 and held-velocity 2/98 named expected assertion failures.
 QC pointer declarations need separate statements (`local float *a; local float
 *b;`), not `local float *a, *b;`: fteqcc treats the latter second declarator as a
 pointer-to-pointer. `lobby_enable` is a cvar, not a QC global; test with cvar_set.

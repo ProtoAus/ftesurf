@@ -184,6 +184,28 @@ void(entity e) RPT_Run =
 	e.rec_sl_tok = 0; e.rec_sl_tokt = time;
 	RPT_Check(SV_MovePrepRewind(e, tick, near, TRUE, TRUE, d) == MP_REFUSED
 		&& e.rec_sl_tok == 0 && e.rec_sl_tokt == time, "rate refusal without bucket mutation");
+	// Two same-time acting refusals expose the general + go double charge.
+	e.rec_sl_tok = 2; SV_MovePrepRewind(e, tick, near, TRUE, TRUE, d);
+	e.rec_sl_tok = 1;
+	RPT_Check(SV_MovePrepRewind(e, tick, near, TRUE, TRUE, d) == MP_REFUSED
+		&& e.rec_sl_tok == 1 && e.rec_sl_tokt == time, "one token pre-dispatch go refused without charge");
+	RPT_Invalid(d, "one token clears READY");
+	MP_TestOriginalCommand(sprintf("sl_saveat %d %.4f %.4f %.4f go", tick, near_x, near_y, near_z));
+	RPT_Check(e.rec_sl_tok == 0 && rec_sl_nb[blk] == 0 && rec_sl_ns[blk] == ns && e.rw_pin
+		&& e.rec_wt_hold && !e.rec_sl_hold && e.origin == snap.origin
+		&& e.rec_rec_serial == snap.rec_rec_serial && e.rec_rec_gen == snap.rec_rec_gen,
+		"one token authoritative go refusal actor");
+	e.rec_sl_tok = 2; SV_MovePrepRewind(e, tick, near, TRUE, TRUE, d);
+	e.rec_sl_tok = 1.99999988; e.rec_sl_tokt = time;
+	RPT_Check(SV_MovePrepRewind(e, tick, near, TRUE, TRUE, d) == MP_REFUSED
+		&& e.rec_sl_tok < 2 && e.rec_sl_tok > 1 && e.rec_sl_tokt == time,
+		"just below two tokens go refused without charge");
+	RPT_Invalid(d, "below two tokens clears READY");
+	MP_TestOriginalCommand(sprintf("sl_saveat %d %.4f %.4f %.4f go", tick, near_x, near_y, near_z));
+	RPT_Check(e.rec_sl_tok < 1 && e.rec_sl_tok > 0 && rec_sl_nb[blk] == 0 && rec_sl_ns[blk] == ns
+		&& e.rw_pin && e.rec_wt_hold && !e.rec_sl_hold && e.origin == snap.origin
+		&& e.rec_rec_serial == snap.rec_rec_serial && e.rec_rec_gen == snap.rec_rec_gen,
+		"below two tokens authoritative go refusal actor");
 	e.rec_sl_tok = snap.rec_sl_tok; e.rec_sl_tokt = snap.rec_sl_tokt;
 	e.rec_wt_holdmove = MOVETYPE_NOCLIP; RPT_Check(SV_MovePrepRewind(e, tick, near, TRUE, TRUE, d) == MP_UNSUPPORTED, "non walk release unsupported"); e.rec_wt_holdmove = 0;
 	RPT_Check(SV_MovePrepRewind(e, tick, near, TRUE, TRUE, d) == MP_READY, "zero stored mode means walk"); e.rec_wt_holdmove = snap.rec_wt_holdmove;
@@ -211,9 +233,12 @@ void(entity e) RPT_Run =
 	RPT_Check(SV_MovePrepRewind(world, tick, near, TRUE, TRUE, d) == MP_REFUSED, "world refused"); RPT_Invalid(d, "world clears payload");
 	RPT_Check(SV_MovePrepRewind(e, tick, near, TRUE, TRUE, (moveprep_t *)0i) == MP_REFUSED, "null output refused");
 	// Actual save-write/read/load/hold dispatch, not applying a descriptor.
-	RPT_Check(SV_MovePrepRewind(e, tick, near, TRUE, TRUE, d) == MP_READY, "final actual body READY before legacy go");
+	e.rec_sl_tok = 2; e.rec_sl_tokt = time;
+	RPT_Check(SV_MovePrepRewind(e, tick, near, TRUE, TRUE, d) == MP_READY
+		&& e.rec_sl_tok == 2 && e.rec_sl_tokt == time, "exactly two tokens READY without charge before legacy go");
 	org = d->origin; vel = d->release_velocity; ang = d->angles;
 	MP_TestOriginalCommand(sprintf("sl_saveat %d %.4f %.4f %.4f go", tick, near_x, near_y, near_z));
+	RPT_Check(e.rec_sl_tok == 0 && e.rec_sl_tokt == time, "exactly two tokens authoritative double charge actor");
 	RPT_Check(FS_SlopOp(e.rec_sl_slop) == SLOP_LOADED && e.rec_sl_hold && rec_sl_nb[blk] == 1
 		&& e.rw_goid > 0 && !e.rw_pin && !e.rec_wt_hold, "legacy write read load hold go actor");
 	RPT_Check(e.origin == org && e.v_angle == ang && e.angles == ang && e.run_forceduck == d->forceduck

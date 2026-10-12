@@ -34,7 +34,8 @@ origin contract; an unused near vector is not a gate.
 `SV_MovePrepRewind(e, tick, near, usenear, go, out)` clears the old descriptor
 before any check. It only describes a successful fresh warm held `go` from a
 spawned player slot, positively acknowledged rewind/watch pin, walking release
-mode, quiet save gate and available rate token, fresh attributed non-full list,
+mode, quiet save gate and at least TWO available rate tokens (general sl_*
+charge plus the go-specific charge), fresh attributed non-full list,
 and current recording attachment/generation with a valid retained sample mark.
 No ID, sequence, list row or file is reserved: descriptor id/seq remain zero.
 
@@ -76,7 +77,8 @@ snapshot, and no native movement/renderer/input/evidence source changed.
 ## Acting tests
 
 Build an owned overlay with `python tools/test_rewindprep.py --engine <engine>
---out <owned-output>`; weak variants add `--weak selection` or `--weak held`.
+--out <owned-output>`; weak variants add `--weak selection`, `--weak held`,
+or `--weak rate`.
 Use `tools/runlines_smoke.py` with `ftesurf/cfg/test/p682rewindprep.cfg`, a real
 dedicated server, an owned mounted overlay, and explicit server cvars
 `rec_stream 0`, `rec_enable 1`, `lobby_enable 0` and a non-secret fixture-only
@@ -90,9 +92,15 @@ It also probes cold/no-allocation, stale ownership/no-scan, full/no-delete,
 rate/no-charge, malformed rows, old/forked/ended attachments, IEEE NaN/infinity,
 READY invalidation, identity and body/movement-policy mutation controls.
 
-Initial final subject: **91 checks, 0 failed**. One-factor spatial mutant:
-**7/91 expected failures**, including `spatial window winner beats nearer tick`.
-One-factor held-velocity mutant: **2/91 expected failures**, including
+Reviewed candidate subject was **91/0**, but independent source review found
+that its rate gate admitted one token even though the actual go dispatch charges
+twice. No publication followed. Final corrected subject: **98 checks, 0 failed**,
+including same-time one-token and just-below-two-token authoritative refusals,
+no preparation bucket mutation/output leakage, and exactly-two-token actual go.
+One-factor rollback to the old one-token gate: **4/98 expected failures**,
+including `one token pre-dispatch go refused without charge`. Spatial mutant:
+**7/98 expected failures**, including `spatial window winner beats nearer tick`.
+Held-velocity mutant: **2/98 expected failures**, including
 `actual go held release velocity parity`. These are acting assertion failures,
 not absent output or crashes. Grading requires the exact complete count, one
 completion, matching failure markers, client CSQC/completion, and no runtime
