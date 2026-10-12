@@ -51,6 +51,17 @@ protocol or hold-release/rewind frontend is activated yet.** See
 `tools/p672predinput.md`. Complete server-prepared descriptors and body-baseline
 coverage below remain required; the processed save ACK is still insufficient.
 
+**Native identity progress (Patch 675).** Native SSQC PreThink now optionally
+exposes exact two-word uint32 identity, logical executed duration and native
+piece/offset, scoped to the callback and cleared afterward. Decoded QW input
+is distinguished from FTE timestamp-derived execution and unavailable/synthetic
+calls. P672's local callback also reseeds exact identity words. The existing
+lossy `input_sequence` bridge was already present; it was not a sufficient
+operation interface. Server integer subdivision is preserved and still differs
+from P672 client subdivision. Acting dedicated QW/FTE/old-server and native
+unit controls verify this bounded prerequisite, **not admission, complete
+movement descriptors or baseline reconciliation**. See `tools/p675cmdcontext.md`.
+
 **Implementation boundaries (source audit, 2026-10-12; operation protocol unbuilt).**
 
 - The existing trigger hook is **after** `PM_PlayerMove`:
@@ -87,10 +98,11 @@ coverage below remain required; the processed save ACK is still insufficient.
   `SV_SaveLocHoldVel` in `server/sv_saveloc.qc` jointly own placement,
   restored velocity, duck state, carrier clearing and hold movement.
   `PlayerPreThink` runs per usercmd, but `PlayerPostThink` runs per packet.
-  The native `SV_RunCmd` path does not currently expose a command-sequence
-  interface to these SSQC handlers. Add the operation boundary in the
-  engine; do not pretend an arbitrary reliable stringcmd is already a
-  usercmd-correlated placement.
+  The native path already filled lossy float `input_sequence` via
+  `SV_SetSSQCInputs`; P675 adds exact scoped identity/provenance/timing for
+  native SSQC PreThink. These handlers still need request admission and a
+  canonical operation result at that logical boundary. Do not pretend an
+  arbitrary reliable stringcmd is already a usercmd-correlated placement.
 - `Rewind_Go` in `client/cl_rewind.qc` sends `sl_goview` or `sl_saveat ... go`;
   `SV_SaveLocCreateAt`/`SV_RewindFind` choose native snapshots on the server.
   A trail/view point is not an interchangeable native snapshot. Warm and
