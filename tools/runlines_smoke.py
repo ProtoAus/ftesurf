@@ -25,6 +25,8 @@ def main():
     ap.add_argument('--content', type=pathlib.Path, default=pathlib.Path('C:/FTESurf'))
     ap.add_argument('--client', type=pathlib.Path, help='Explicit installed client for compatibility controls')
     ap.add_argument('--output-dir', type=pathlib.Path)
+    ap.add_argument('--ssqc', type=pathlib.Path, help='Explicit test fixture qwprogs.dat (copied, never swapped)')
+    ap.add_argument('--csqc', type=pathlib.Path, help='Explicit test fixture csprogs.dat (copied, never swapped)')
     ap.add_argument('--recording', type=pathlib.Path,
                     help='copy a control recording into the overlay, never alter its source')
     ap.add_argument('--also', action='append', default=[], metavar='NAME=PATH',
@@ -66,7 +68,8 @@ def main():
                                check=True, capture_output=True)
                 junctions.append(target)
         for name in ('qwprogs.dat', 'csprogs.dat', 'menu.dat'):
-            shutil.copyfile(ROOT / 'ftesurf' / name, gd / name)
+            source = {'qwprogs.dat': a.ssqc, 'csprogs.dat': a.csqc}.get(name)
+            shutil.copyfile(source or ROOT / 'ftesurf' / name, gd / name)
             print(name, hashlib.sha256((gd / name).read_bytes()).hexdigest())
         shutil.copyfile(ROOT / 'ftesurf/fs_addons.default.txt', gd / 'fs_addons.default.txt')
         if a.mount:
@@ -146,7 +149,7 @@ def main():
             raise RuntimeError('No client log: control did not act')
         text = log.read_text(errors='replace')
         if 'FTESurf CSQC loaded' not in text or 'RUNLINES COMPLETE' not in text:
-            raise RuntimeError('Client did not complete the control')
+            raise RuntimeError(f'Client did not complete the control (exit {client.returncode})')
         bad = ('Unknown command', 'QC VM error', 'Cannot call', 'stack overflow')
         if any(word in text for word in bad):
             raise RuntimeError('Runtime errors in retained log')

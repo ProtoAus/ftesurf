@@ -140,6 +140,36 @@ routine — do not hesitate when a change needs it.
   still only processed-command count. Do not claim instant hold release or
   retire an operation from that ACK. No evidence, ranked or Build change.
 
+## Native SSQC command context (P675, 2026-10-12)
+
+- `SV_SetSSQCInputs` ALREADY populated float `input_sequence` before native
+  PreThink; absence of a safe exact operation interface was not absence of any
+  bridge. P675 exposes exact low/high 16-bit words on server and P672 client.
+  Do not recombine into float32, treat sequence 0 as an unavailable sentinel,
+  or equate identity with admission, an epoch, an ACK or body-baseline coverage.
+- The six optional typed `input_cmd_*` globals are scoped ONLY to native SSQC
+  PreThink and cleared afterward. Kind 1 decoded QW/redundancy is distinct from
+  kind 2 FTE timestamp-derived duration; repeats/legacy paths and budget-mutated
+  commands are unavailable. Incomplete/wrong-type exports never partly opt in.
+- P672 fractional-half splitting is CLIENT behavior. SERVER retains integer
+  truncation/half/remainder splitting (51 -> 25+26; 50.5 -> 25+25). Native
+  server offsets describe actual execution, not universal client/server piece
+  equivalence. This prerequisite does not change movement/evidence semantics.
+- An SSQC wrapper fixture must rename hooks AFTER fixed system defs: insert
+  `cmdcontext_begin.qc` before `sv_player.qc`, append `cmdcontext.qc`. Global
+  `-DPlayerPreThink`/`-DStartFrame` renaming failed compiler system-def check
+  Q208, zero warnings notwithstanding. Separate output, never a product include.
+- `runlines_smoke.py --server/--ssqc/--csqc` selects exact engines and COPIES
+  fixture progs into an owned overlay; no install or staging swap required.
+  Follow the reread acting P672 config and use `--mount`; initial candidate
+  setups exited before completion (including retained P672 client control).
+  No causal renderer/network repair or silent/failed pass is claimed.
+- Actual-source units plus dedicated QW, FTE and old-server controls ACT; missing
+  callback/frame-clear and injected stale metadata fail the grader. High words/
+  wrap and recovery routing are unit/source coverage, not a forced loss/order
+  runtime matrix. Complete descriptors, admission and baseline reconciliation
+  remain next; normal CSQC still exports no P672 consumer. `p675cmdcontext.md`.
+
 ## pi.dev startup contract
 
 Start pi.dev from `C:\FTESurf` (or `pwsh -NoProfile -File

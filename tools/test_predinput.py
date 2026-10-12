@@ -47,6 +47,7 @@ static struct {
  int CSQC_PredictPlayerPreMove;
  float *predinput_apply, *predinput_origin, *predinput_velocity;
  float *predinput_onground, *predinput_pmtype, *predinput_forceduck;
+ float *predinput_sequence_lo, *predinput_sequence_hi;
  float *predmove_basevel;
 } csqcg;
 #define PRED_BVEL_RING 256
@@ -59,6 +60,8 @@ static float offsets[256], durations[256];
 static int arm_after_first;
 static float apply_override, invalid_value, seenmsecs[256], firstpostorigin[3];
 static int invalid_field;
+static float seqlo, seqhi;
+static unsigned int test_sequence;
 static model_t model;
 
 void VARGS Con_DPrintf(const char *fmt, ...) {invalids++;}
@@ -69,6 +72,9 @@ static void TestExecute(void) {
  durations[npre]=test_globals[OFS_PARM2]*1000;
  npre++;
  assert(apply == 0); // must not retain previous VM output
+ if(csqcg.predinput_sequence_lo) assert(seqlo==(test_sequence&0xffffu));
+ if(csqcg.predinput_sequence_hi) assert(seqhi==(test_sequence>>16));
+ seqlo=seqhi=-999; // read-only metadata writes cannot survive the next replay/piece
  if(csqcg.predinput_origin) assert(memcmp(org,pmove.origin,sizeof(org))==0);
  if(csqcg.predinput_velocity) assert(memcmp(vel,pmove.velocity,sizeof(vel))==0);
  if(csqcg.predinput_onground) assert(ground==pmove.onground);
@@ -134,6 +140,8 @@ static void Reset(void) {
  csqcg.predinput_origin=org;csqcg.predinput_velocity=vel;
  csqcg.predinput_onground=&ground;csqcg.predinput_pmtype=&mode;
  csqcg.predinput_forceduck=&duck;csqcg.predmove_basevel=bv;
+ csqcg.predinput_sequence_lo=&seqlo;csqcg.predinput_sequence_hi=&seqhi;
+ seqlo=seqhi=-999;test_sequence=7;
  cl_predict_qchook.ival=1;cl_pred_localchain=true;model.loadstate=MLS_LOADED;
  cl.worldmodel=&model;cl.gamespeed=1;movevars.ticrate=.015f;
  npre=npost=moved=invalids=transitions=arm_after_first=0;action=0;
@@ -142,7 +150,7 @@ static void Reset(void) {
  pred_bvring[0][6].held[0]=1000; // visible cash-out control, deliberately unarmed
 }
 static void Run(float msec,player_state_t *from,player_state_t *to) {
- usercmd_t u;memset(&u,0,sizeof(u));u.msec=msec;u.sequence=7;
+ usercmd_t u;memset(&u,0,sizeof(u));u.msec=msec;u.sequence=test_sequence;
  CL_PredictUsercmd(0,1,from,to,&u);
  assert(u.msec==msec); // HOLD must never rewrite network input
 }
@@ -153,6 +161,16 @@ int main(void) {
  Reset();p=Baseline();Run(10,&p,&q);
  assert(npre==1&&npost==1&&q.origin[0]>10&&q.pm_type==PM_NONE);
  puts("PASS no-op callback cash-out control acted");
+ {
+  unsigned int seqs[]={0,65535,65536,16777217u,0x80000001u,0xffffffffu};
+  for(i=0;i<sizeof(seqs)/sizeof(seqs[0]);i++) {
+   Reset();test_sequence=seqs[i];p=Baseline();Run(101,&p,&q);Run(101,&p,&r);
+   assert(npre>2); // seeded exact words asserted in every real bridge invocation
+  }
+  Reset();csqcg.predinput_sequence_lo=csqcg.predinput_sequence_hi=NULL;
+  p=Baseline();Run(101,&p,&q);assert(npre>2);
+ }
+ puts("PASS exact uint32 identity words, replay reseeding and absent-word compatibility");
  Reset();p=Baseline();cl_predict_qchook.ival=0;Run(10,&p,&q);assert(npre==0&&q.origin[0]<1);
  Reset();p=Baseline();csqcg.CSQC_PredictPlayerPreMove=0;Run(10,&p,&q);assert(npre==0&&q.origin[0]>10);
  Reset();p=Baseline();cl_pred_localchain=false;Run(10,&p,&q);assert(npre==0&&npost==0);
@@ -193,7 +211,7 @@ int main(void) {
  Reset();p=Baseline();action=8;pred_bvring[0][6].armed=true;pred_bvring[0][6].held[2]=5;
  Run(10,&p,&q);assert(pred_bvring[0][7].used&&!pred_bvring[0][7].armed&&pred_bvring[0][7].held[2]==0);
  assert(npost==0);action=0;
- {usercmd_t u;memset(&u,0,sizeof(u));u.sequence=8;u.msec=10;CL_PredictUsercmd(0,1,&q,&r,&u);}
+ {usercmd_t u;memset(&u,0,sizeof(u));test_sequence=8;u.sequence=8;u.msec=10;CL_PredictUsercmd(0,1,&q,&r,&u);}
  assert(r.velocity[0]>1000&&r.velocity[2]==q.velocity[2]);
  Reset();p=Baseline();action=9;arm_after_first=1;Run(51,&p,&q);
  assert(pred_bvring[0][7].held[0]==20&&!pred_bvring[0][7].armed&&pred_bvring[0][7].held[2]==0);
