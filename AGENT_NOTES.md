@@ -5151,6 +5151,23 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 - Physical mouse/keyboard delivery is NOT verified by handler probes. Human
   acceptance stays in lextest.md; Steam identity/role and NanoPi publication
   policy stay in ROADMAP.md. No name-derived privilege or upload was added.
+- DEPLOYED from published QC `2c540555` after the context handoff: all 12 Pi
+  lobbies restarted at 2026-10-12 03:39:01..11 UTC, zero players, remote progs
+  hashes verified (`7598b0da` qwprogs, `6080b34d` csprogs), old pair in `.prev`.
+  Pi engine unchanged. Both Windows installs verified at 03:40:54 UTC with
+  native source/tag `dbcaa17a7` / `patch-671`: client `8fe38e11`, dedicated
+  `d29b8242`, all five plugins and all three progs; menu `a87b88ca`.
+  Installed hosted/dedicated P671 controls: 29/29, including the nine retained
+  loader arms on identical native bytes (not newly rerun); P669 hosted: 8/8.
+  A fresh lobby-1 client downloaded `6080b34d` and drew an 8-column/type-14
+  board. Owner/default config hashes and mtimes unchanged; no peer game killed.
+- The inherited staging manifest still held pre-paste `8339e1e` outputs;
+  rebuild the exact final source, do not merely relabel that manifest. The
+  normal build and NoDeploy build of final QC produced identical progs here.
+  `build.ps1:Deploy` updates only hl2/ui_imgui in the primary install even when
+  cod/box3d/ode already exist. Finish those three from the same native build;
+  hash-skip already correct destinations so retries preserve original `.prev`.
+  The canonical build-script follow-up is in BACKLOG.md.
 
 ### The zone editor, part one (Patch 669) — 2026-10-12
 

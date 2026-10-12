@@ -361,8 +361,12 @@ On a hosted map with the P671+ engine:
   toast. Loading another map must restore that map's normal rules.
 
 Steam admin and NanoPi publishing remain pending identity/policy in ROADMAP.
-Windows engines are held while another session's games are running; no game
-was killed for these tests. Do not expect settings to apply on an older engine.
+Deployed 12 Oct at 03:40:54 UTC to both Windows installs (P671 engine and
+progs); the client/server progs also reached all 12 development lobbies.
+Installed hosted/dedicated controls pass, as does a fresh lobby download/board
+smoke. No peer game was killed or owner config changed. The physical gestures
+above, including OS clipboard delivery, still need your acceptance. Local map
+settings do not apply to dedicated/public lobbies or an older engine.
 
 ## 00. 12 Oct — a zone editor in the game, part one (Patch 669)
 

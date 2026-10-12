@@ -5,6 +5,17 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Primary-install optional plugins — found during P671 deployment
+
+- `src/build.ps1:Deploy` refreshes hl2/ui_imgui in the primary install but
+  leaves existing cod/box3d/ode DLLs there from an older native build; the
+  second install gets all five. The 12 Oct P671 deployment explicitly paired
+  all five in both installs, but the canonical script still has this gap.
+  Falsifier: an isolated primary fixture containing older optional DLLs,
+  `-Engine` from a clean inspected source, then hash every installed plugin
+  against that build's native outputs. Test NoDeploy and both destinations;
+  never use a live install as the deliberately stale fixture.
+
 ## Trigger prediction follow-up — Patch 670, 2026-10-12
 
 - **The first booster command can still correct by 6 units.** On dedicated
