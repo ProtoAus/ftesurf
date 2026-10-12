@@ -238,7 +238,7 @@ void(float row, float slot) Scores_NativeRow =
 		if (classification == RC_CLEAN)
 			if (rec_sb_rowflags[row] > 0) runword = FS_RunKindName(rec_sb_rowflags[row]);
 		why = "";
-		replay = "";
+		replay = "watch";
 		if (rec_sb_rowtag[row] == RT_LOBBY)
 		{
 			if (rec_sb_rowflags[row] > 0) why = FS_CertWhy(rec_sb_rowflags[row]);
@@ -292,7 +292,7 @@ void(float row, float slot) Scores_NativeRow =
 	Scores_NativeCell(token * 16 + 2, token, 1, 0, timeword);
 	Scores_NativeCell(token * 16 + 3, token, 1, 0, gap);
 	Scores_NativeCell(token * 16 + 4, token, usable ? 2 : 1, 0, name);
-	Scores_NativeCell(token * 16 + 5, token, 1, 0, replay);
+	Scores_NativeCell(token * 16 + 5, token, usable ? 2 : 1, 0, replay);
 	Scores_NativeCell(token * 16 + 6, token, 1, 0, age);
 	Scores_NativeCell(token * 16 + 7, token, 1, 0, runword);
 	Scores_NativeCell(token * 16 + 8, token, 1, 0, why);
@@ -383,6 +383,7 @@ float(vector p, vector sz) Scores_NativeDraw =
 	}
 	context = sprintf("%s|%g|%g|%g|%g", rec_sb_legmap, rec_sb_leg, rec_sb_tab, rec_sb_filter,
 		Scores_ImpState());
+	context = strcat(context, "|", ob_name);
 	if (strcmp(context, scn_context) != 0)
 	{
 		if (strcmp(scn_context, "")) strunzone(scn_context);
@@ -536,7 +537,13 @@ float(vector p, vector sz) Scores_NativeDraw =
 			}
 		if (pick < 0) continue;
 		role = actionid - actionrow * 16;
-		if (role == 4) { scn_pick = pick; break; }
+		if (role == 4)
+		{
+			if (Scores_IsOnline()) sb_ownerpick = pick;
+			else print("leaderboard: local rows have no stable account identity; use player search\n");
+			break;
+		}
+		if (role == 5) { scn_pick = pick; break; }
 		if (role == 9)
 		{
 			rec_sb_lnpick = pick + 1;

@@ -11,6 +11,31 @@ to be wrong.
 
 ---
 
+## 00. 12 Oct — scoreboard/profile navigation and map tiers (Patch 674)
+
+- On a pinned Online board, click a player's **name** to open that account's
+  profile; duplicate names should open different accounts. WATCH and LINE remain
+  separate actions. A held-only TAB board still has no clickable cursor.
+- Type a name in the board search. The table should contain matching rows from
+  the entire selected board, not just the first hundred. The displayed ranks
+  are their places on the complete board. Clear the field to restore the list.
+- In a profile's Stats or tier-map list, click a **map name**. It should open
+  that map's menu board, with its source/track/leg/style, not launch the map or
+  change the server you are on. Unfinished maps should browse the clean board.
+- Create Server: read **MOM Tn** in blue above **KSF Tn** in white. Unknown
+  sources stay `-`; suggestions are tooltip prose, not punctuation. The tier
+  filter should match either known source. Imported maps already installed on
+  this PC should not disappear merely because they have no timer metadata.
+- The downloaded Momentum census found all 1,748 maps already in both lists.
+  Eleven geometry-FIT zone donations fill missing files; existing files and
+  the edited bhop_eazy are not replaced. Try surf_fortress_ksf or surf_eon_fix.
+- Machine checks: zero-warning control/subject builds, backend and source-bound
+  guards, and fallback whole-board/filter-echo/held-TAB/LINE/WATCH runtime arms.
+  Owner/profile-map/wheel runtime assertions required harness corrections and
+  have not all been rerun: another game client started and blocked the gate.
+  Native scoreboard actions, clipboard/paste and final tier pixels remain for
+  acceptance. Nothing here claims that reading source proves those UI actions.
+
 ## 00. 12 Oct — the 92 maps, and bhop_eazy (Patch 664)
 
 From your message: "do both!"

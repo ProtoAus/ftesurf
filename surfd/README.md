@@ -171,6 +171,17 @@ GET /api/board?map=&track=&leg=&tier=&style=&limit=&offset=
                    "ms":..,"flags":..,"when":..,"rep":..,"run":..,"ver":0|1}]}
 ```
 
+An optional `&name=<text>` filters this map/track/leg/style board by a literal,
+case-insensitive substring of the player's plain display name (Quake colour
+codes ignored). The query is control-cleaned, capped at 64 characters, then
+decoloured and trimmed. Active filters add `"name":<cleaned query>` to the
+reply, preserving its case; matching itself uses lowercase. Missing or empty
+queries retain the unfiltered response form. `r` remains the player's place
+on the **complete selected board**, not a renumbered match. `counts` count
+matches per source and `offset` pages the matches, so neither the last rank
+nor the unfiltered total determines whether another filtered page exists.
+A sparse filtered page does not queue imported-board top-ups.
+
 `rep` is a row in `replays`, or 0 when nothing is indexed for that row.
 `run` (schema 6) is, for a stage row (leg > 0) with `rep` 0, the replay of the
 run it was set in -- the leg-0 replay with the same `runid`, map, track and

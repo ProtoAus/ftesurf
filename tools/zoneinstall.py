@@ -44,7 +44,8 @@ Refuses by default and prints the plan; pass --go to write.  Idempotent.
 Usage:
   python tools/zoneinstall.py                     # show the plan
   python tools/zoneinstall.py --go
-  python tools/zoneinstall.py --donations-only --go
+  python tools/zoneinstall.py --donations-only --only-missing --go
+  python tools/zoneinstall.py --gamedir <staging-gamedir> --go
   python tools/zoneinstall.py --verify            # hash every file against the manifest
 """
 import argparse, hashlib, os, shutil, sys
@@ -81,18 +82,27 @@ def sha(path):
     return h.hexdigest()[:16]
 
 
+def display_path(path):
+    """Prefer checkout-relative diagnostics, including cross-drive gamedirs."""
+    try:
+        return os.path.relpath(path, ROOT)
+    except ValueError:
+        return os.path.abspath(path)
+
+
 def read_manifest():
     out = {}
     if not os.path.exists(MANIFEST):
         return out
-    for ln in open(MANIFEST, encoding="utf-8"):
-        ln = ln.strip()
-        if not ln or ln.startswith("#"):
-            continue
-        f = ln.split()
-        if len(f) >= 4:
-            out[f[0]] = {"kind": f[1], "donor": f[2], "hash": f[3],
-                         "verdict": f[4] if len(f) > 4 else "-"}
+    with open(MANIFEST, encoding="utf-8") as fh:
+        for ln in fh:
+            ln = ln.strip()
+            if not ln or ln.startswith("#"):
+                continue
+            f = ln.split()
+            if len(f) >= 4:
+                out[f[0]] = {"kind": f[1], "donor": f[2], "hash": f[3],
+                             "verdict": f[4] if len(f) > 4 else "-"}
     return out
 
 
@@ -162,9 +172,20 @@ def main():
                     help="only the builds that have no zones at all")
     ap.add_argument("--force", action="store_true",
                     help="overwrite files that differ from the manifest (YOUR EDITS)")
+    ap.add_argument("--only-missing", action="store_true",
+                    help="add missing zones only; never replace an existing file")
+    ap.add_argument("--gamedir", default=os.path.join(ROOT, "ftesurf"),
+                    help="zone output gamedir and target BSP override directory")
     ap.add_argument("--verify", action="store_true",
                     help="hash every installed file against the manifest and stop")
     a = ap.parse_args()
+    if a.only_missing and a.force:
+        ap.error("--only-missing and --force are mutually exclusive")
+    global DEST, MANIFEST
+    game = os.path.abspath(a.gamedir)
+    DEST = os.path.join(game, "maps", "zones", "local")
+    MANIFEST = os.path.join(game, "maps", "zones", "manifest.txt")
+    zonefit.GAMEMAPS = os.path.join(game, "maps")
 
     if not os.path.isdir(MOMMAPS):
         raise SystemExit("no Momentum maps dir at %s (set MOMENTUM_DIR)" % MOMMAPS)
@@ -174,7 +195,7 @@ def main():
     if a.verify:
         if not man:
             print("no manifest at %s -- nothing has been installed by this tool"
-                  % os.path.relpath(MANIFEST, ROOT))
+                  % display_path(MANIFEST))
             return 0
         edited, missing, ok = [], [], 0
         for name, r in sorted(man.items()):
@@ -199,9 +220,12 @@ def main():
         return 0
 
     mirrors, donations, refused = plan(a.donations_only)
+    if a.only_missing:
+        mirrors = [r for r in mirrors if not os.path.exists(os.path.join(DEST, r[0] + ".json"))]
+        donations = [r for r in donations if not os.path.exists(os.path.join(DEST, r[0] + ".json"))]
 
     print("zoneinstall -- MOM=%s" % MOM)
-    print("             dest %s" % os.path.relpath(DEST, ROOT))
+    print("             dest %s" % display_path(DEST))
     print()
     print("  mirror    %4d  each map's own zone file, made editable" % len(mirrors))
     print("  donation  %4d  builds with no zones of their own" % len(donations))
@@ -229,6 +253,11 @@ def main():
         dst = os.path.join(DEST, name + ".json")
         kind = "mirror" if base == "self" else "donation"
         if os.path.exists(dst):
+            if a.only_missing:
+                # Recheck at the write boundary: the plan may have aged.
+                print("  keeping existing %s.json (--only-missing)" % name)
+                kept += 1
+                continue
             cur = sha(dst)
             known = man.get(name)
             if known is None:
@@ -245,7 +274,16 @@ def main():
                 rows[name] = {"kind": kind, "donor": base, "hash": cur,
                               "verdict": verdict}
                 continue
-        shutil.copyfile(src, dst)
+        if a.only_missing:
+            try:
+                with open(src, "rb") as source, open(dst, "xb") as target:
+                    shutil.copyfileobj(source, target)
+            except FileExistsError:
+                print("  keeping existing %s.json (--only-missing)" % name)
+                kept += 1
+                continue
+        else:
+            shutil.copyfile(src, dst)
         rows[name] = {"kind": kind, "donor": base, "hash": sha(dst),
                       "verdict": verdict}
         wrote += 1
@@ -254,8 +292,8 @@ def main():
     n = len([f for f in os.listdir(DEST) if f.lower().endswith(".json")])
     print()
     print("wrote %d, unchanged %d, kept yours %d" % (wrote, skipped, kept))
-    print("%s now holds %d .json" % (os.path.relpath(DEST, ROOT), n))
-    print("manifest %s (%d rows)" % (os.path.relpath(MANIFEST, ROOT), len(rows)))
+    print("%s now holds %d .json" % (display_path(DEST), n))
+    print("manifest %s (%d rows)" % (display_path(MANIFEST), len(rows)))
     return 0
 
 

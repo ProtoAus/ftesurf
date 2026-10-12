@@ -2515,22 +2515,30 @@ def _board_scope(mapname, base, col):
             (mapname, base) + TIERS_IMPORTED + (base, mapname))
 
 
-def board_counts(db, mapname, track, leg, style, base=None):
+def _board_name_key(name):
+    return web_plain(clean_text(name)).lower()
+
+
+def board_counts(db, mapname, track, leg, style, base=None, name=""):
     """Row counts per tier of one board: {"ranked": n, "community": n, ...}."""
     counts = {TIER_RANKED: 0, TIER_COMMUNITY: 0}
     for t in TIERS_IMPORTED:
         counts[t] = 0
     scope, sargs = _board_scope(mapname, base, "")
+    match, nargs = "", ()
+    if name:
+        db.create_function("board_name_key", 1, _board_name_key, deterministic=True)
+        match, nargs = " AND instr(board_name_key(name), ?) > 0", (name,)
     for row in db.execute(
             "SELECT tier, COUNT(*) AS n FROM runs"
-            " WHERE " + scope + " AND track=? AND leg=? AND style=? GROUP BY tier",
-            sargs + (track, leg, style)).fetchall():
+            " WHERE " + scope + " AND track=? AND leg=? AND style=?" + match + " GROUP BY tier",
+            sargs + (track, leg, style) + nargs).fetchall():
         if row["tier"] in counts:
             counts[row["tier"]] = row["n"]
     return counts
 
 
-def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None):
+def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, name=""):
     """One board page in BOARD_ORDER, as /api/board's row dicts (`ver` last)."""
     rows = []
     scope, sargs = _board_scope(mapname, base, "r.")
@@ -2545,18 +2553,28 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None):
         args = tuple(expand)
     else:
         where, args = ("r.tier=?", (tier,))
-    for i, row in enumerate(db.execute(
-            "SELECT r.rowid, r.momdemo, r.player, r.name, r.ticks, r.tickrate, r.millis, r.flags,"
+    rank = "ROW_NUMBER() OVER (ORDER BY " + BOARD_ORDER + ") AS board_rank, " if name else ""
+    query = ("SELECT " + rank + "r.rowid, r.momdemo, r.player, r.name, r.ticks, r.tickrate, r.millis, r.flags,"
             "       r.submitted, r.replay_id, r.tier AS rtier, "
             + _PARENT_SQL + " AS prun, "
             + VER_SQL + " AS ver"
             "  FROM runs r"
             " WHERE " + scope + " AND r.track=? AND r.leg=? AND " + where
-            + " AND r.style=?"
-            " ORDER BY " + BOARD_ORDER + " LIMIT ? OFFSET ?",
-            sargs + (track, leg) + args + (style, limit, offset)).fetchall()):
+            + " AND r.style=?")
+    qargs = sargs + (track, leg) + args + (style,)
+    if name:
+        db.create_function("board_name_key", 1, _board_name_key, deterministic=True)
+        # Rank the indexed board scope before filtering; pagination counts only
+        # matches, but `r` still names the place on the complete selected board.
+        query = ("SELECT * FROM (" + query
+                 + ") WHERE instr(board_name_key(name), ?) > 0 ORDER BY board_rank")
+        qargs += (name,)
+    else:
+        query += " ORDER BY " + BOARD_ORDER
+    query += " LIMIT ? OFFSET ?"
+    for i, row in enumerate(db.execute(query, qargs + (limit, offset)).fetchall()):
         rows.append({
-            "r": offset + i + 1,
+            "r": row["board_rank"] if name else offset + i + 1,
             "player": row["player"],
             "name": row["name"],
             "ticks": row["ticks"],
@@ -3647,6 +3665,8 @@ def board():
     limit = clamp_int(request.args.get("limit"), 1, BOARD_LIMIT_MAX,
                       BOARD_LIMIT_DEF)
     offset = clamp_int(request.args.get("offset"), 0, MAX_RUNS, 0)
+    name_query = web_plain(clean_text(request.args.get("name"), 64)).strip()
+    name = name_query.lower()
 
     rows = []
     counts = {}
@@ -3654,13 +3674,13 @@ def board():
         db = get_db()
         # Both tiers' counts, so the client can say "no ranked times yet, 37
         # community" without mixing trust levels in one list.
-        counts = board_counts(db, mapname, track, leg, style, base)
-        rows = board_rows(db, mapname, track, leg, tier, style, limit, offset, base)
+        counts = board_counts(db, mapname, track, leg, style, base, name)
+        rows = board_rows(db, mapname, track, leg, tier, style, limit, offset, base, name)
         # A short page of an imported board is a player at the end of what we
         # hold: queue the map for the KSF and Momentum top-ups (ksfimport.py
         # --watch, momwatch --want).  Only a board we already hold rows for,
         # so a sweep of invented names fills nothing; see note_want.
-        if (tier in TIERS_IMPORTED + (TIER_IMPORTED, TIER_COMBINED)
+        if (not name and tier in TIERS_IMPORTED + (TIER_IMPORTED, TIER_COMBINED)
                 and len(rows) < limit
                 and any(counts.get(t, 0) for t in TIERS_IMPORTED)):
             note_want(db, base or mapname)      # the crawls know the plain name
@@ -3699,6 +3719,7 @@ def board():
                 + [(t, counts.get(t, 0)) for t in TIERS_IMPORTED]),
             "offset": offset,
             "rows": rows,
+            **({"name": name_query} if name else {}),
         }
     )
     return Response(body, status=200, mimetype="application/json")

@@ -2023,11 +2023,13 @@ string(float idx) Scores_OnlineName =
 
   Only the fourth is "no times".
 */
+var float sb_ownerpick = -1;
+
 float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 {
 	local vector lp, ncol;
 	local float idx, hot, d, ref, i, track, leg, pick, pinned, demo_slot;
-	local string s, rid;
+	local string s, rid, ownerid;
 
 	if (rec_sb_leg < 0 || rec_sb_leg >= rec_sb_legn)
 		return -1;
@@ -2255,8 +2257,13 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 
 		Font_Set(ui_font_ui);
 
+		ownerid = strcat("sb_owner", ftos(idx));
+		sui_action_element([lp_x + sb_colx[SBK_OWNER], lp_y],
+		                   [max(1, sb_colx[SBK_TIME] - sb_colx[SBK_OWNER] - rec_sb_cw * 9.5), rec_sb_rowh], ownerid, sui_noop);
 		ncol = SBC_TEXT;
-		if (idx == ob_mine)
+		if (sui_is_hovered(ownerid)) ncol = SBC_HOT;
+		if (sui_is_released(ownerid)) { sb_ownerpick = idx; pick = 0; }
+		if (idx == ob_mine && !sui_is_hovered(ownerid))
 			ncol = SBC_GOOD;
 		if (sb_avpad)
 		{
@@ -2754,7 +2761,27 @@ void(vector p, vector sz, float pad, vector scr, float pick) Scores_Finish =
 	Font_Reset();
 
 	if (Scores_SearchPick())
+	{
+		sb_ownerpick = -1;
+		rec_sb_lnpick = rec_sb_lnall = rec_sb_graphpick = 0;
 		return;
+	}
+	if (sb_ownerpick >= 0)
+	{
+		s = strzone(FS_GuidId(bufstr_get(ob_bplayer, sb_ownerpick)));
+		sb_ownerpick = -1;
+		rec_sb_lnpick = rec_sb_lnall = rec_sb_graphpick = sb_pfme = sb_onact = 0;
+		Profile_TakePick();
+		if (rec_sb_open)
+		{
+			if (ui_he_open || rec_wt_open)
+				print("leaderboard: close the replay or the editor, then a profile can open\n");
+			else if (s == "") print("leaderboard: this row has no account identity\n");
+			else { Scores_Close(); Av_OpenAt(s); }
+		}
+		strunzone(s);
+		return;
+	}
 	if (Scores_SpecHandOff())
 		return;
 

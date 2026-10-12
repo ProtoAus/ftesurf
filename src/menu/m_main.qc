@@ -150,6 +150,8 @@ void(string mapname, float t) Mlb_Open;
 void(string why) Mlb_Close;
 void(vector screensize) Mlb_Draw;
 void() Mlb_TestCommand;
+void() Mlb_Command;
+void() Mlb_Poll;
 
 /*
   Map source, derived from the searchpath a BSP came out of.
@@ -321,10 +323,10 @@ vector ms_scroll;
 
   Three parallel buffers again, for the same reason ms_name/ms_src are:
 
-    ms_tierv   the tier alone, as a string.  Split out because ui_refilter runs
-               over every map on every keystroke and must not tokenize 2200 rows
-               to answer "is this tier 4".  0 means untiered -- there is no tier 0,
-               so the sentinel cannot collide with a real value.
+    ms_tierv   the legacy primary tier, including the collapsed download fallback,
+               for quality and sort order. Independent ms_momtier/ms_ksftier
+               buffers answer the filter without tokenizing every row.
+               0 means untiered -- there is no tier 0.
     ms_modev   the gamemode id, as Momentum numbers it.  0 means unknown, and
                Momentum has no gamemode 0 either.  Read for the row's detail
                line and once per load by ui_cat_load; since build 57 the
@@ -339,6 +341,10 @@ vector ms_scroll;
   stages, which would be a lie.
 */
 strbuf ms_tierv;
+// Independently sourced display/filter values; ms_tierv retains legacy quality/sort.
+strbuf ms_momtier;
+strbuf ms_ksftier;
+strbuf ms_momtsrc; // Provenance of the selected MOM value, not a skipped suggestion.
 strbuf ms_modev;
 strbuf ms_meta;
 
@@ -1348,8 +1354,8 @@ string(string f) ui_mapname =
    data/mapmeta.txt -- tier, counts and thumbnail cell, joined onto the map list.
   ---------------------------------------------------------------------------
 
-  Field order inside the packed ms_meta string.  The tier is NOT in here -- it
-  lives in ms_tierv on its own so ui_refilter can read it without tokenizing.
+  Field order inside the packed ms_meta string. The primary tier is NOT in here;
+  it lives in ms_tierv, with independently sourced filter values kept alongside.
 */
 #define MT_LINEAR   0
 #define MT_STAGES   1
@@ -1360,7 +1366,8 @@ string(string f) ui_mapname =
 /*
   Where the tier came from -- mapmeta.txt column 10, added in build 17.
 
-  "rank" is a ranked leaderboard tier.
+  "rank" is a ranked leaderboard tier. Source provenance stays in the tooltip;
+  both source labels use fixed colours, without punctuation marks.
 
   "sugg" is a SUGGESTION, from a map still in Momentum's Unlisted or Beta
   sections, where no ranking exists yet and the number is what the submitter and
@@ -1388,7 +1395,7 @@ string(string f) ui_mapname =
 */
 #define MT_TSRC     6
 // KSF's own tier, mapmeta.txt column 11 (ROADMAP 7), "-" when KSF has none or
-// the file predates it.  Drawn under the chip, never merged into ms_tierv.
+// the file predates it. Captured in ms_ksftier, never merged into ms_tierv.
 #define MT_KTIER    7
 
 /*
@@ -1400,6 +1407,16 @@ string(string f) ui_mapname =
   silent and looks like bad data rather than a bug.  Establishing the length
   first makes misalignment impossible regardless of what the file contains.
 */
+// Independent source tiers have no zero, fractional or out-of-range values.
+string(string value) ui_source_tier =
+{
+	local float tier;
+	tier = stof(value);
+	if (tier >= 1 && tier <= 10 && tier == floor(tier))
+		return ftos(tier);
+	return "0";
+};
+
 void() ui_meta_load =
 {
 	local filestream fh;
@@ -1425,7 +1442,7 @@ void() ui_meta_load =
 	if (fh < 0)
 	{
 		print("^3FTESurf: data/mapmeta.txt missing -- run tools\\mapmeta.py then "
-		      "tools\\mapthumbs.py.  No tiers, counts or thumbnails.\n");
+		      "tools\\mapthumbs.py.  No metadata counts or thumbnails.\n");
 		return;
 	}
 
@@ -1452,6 +1469,36 @@ void() ui_meta_load =
 		// stof("-") is 0, and there is neither a tier 0 nor a gamemode 0, so the
 		// sentinel is free in both columns.
 		bufstr_set(ms_tierv, row, argv(2));
+		// Local roster aliases inherit a different map's tier; network rows name
+		// their own catalogue map. Neither alias metadata nor local inference is MOM.
+		if (!strcmp(argv(10), "alias"))
+		{
+			if (!strcmp(bufstr_get(ms_momtsrc, row), "local"))
+			{
+				bufstr_set(ms_momtier, row, "0");
+				bufstr_set(ms_momtsrc, row, "");
+			}
+		}
+		else if (stof(ui_source_tier(argv(2))) > 0)
+		{
+			if (n >= 11 && !strcmp(argv(10), "ksf"))
+				bufstr_set(ms_ksftier, row, ui_source_tier(argv(2)));
+			else
+			{
+				local float usemom;
+				usemom = TRUE;
+				if (!strcmp(argv(10), "sugg"))
+					usemom = (stof(bufstr_get(ms_momtier, row)) <= 0);
+				if (usemom)
+				{
+					bufstr_set(ms_momtier, row, ui_source_tier(argv(2)));
+					bufstr_set(ms_momtsrc, row, (n >= 11) ? argv(10) : "-");
+				}
+			}
+		}
+		if (n >= 12)
+			if (stof(ui_source_tier(argv(11))) > 0)
+				bufstr_set(ms_ksftier, row, ui_source_tier(argv(11)));
 		bufstr_set(ms_modev, row, argv(9));
 
 		// argv(10) only when it is there.  The `n < 10` guard above is what makes
@@ -2118,11 +2165,12 @@ void() ui_dl_load =
 	local filestream fh;
 	local hashtable byname;
 	local string ln, nm, key, of;
-	local float i, n, row, appended, badged, stale;
+	local float i, n, row, appended, badged, stale, network;
 
 	// Patch 652: the list fetched from the directory (m_lobby.qc Mdl_Reply,
 	// which wrote it row by row), else the one the release shipped.
 	fh = fopen(MDL_FILE, FILE_READ);
+	network = (fh >= 0);
 	if (fh < 0)
 		fh = fopen("data/mapdl.txt", FILE_READ);
 	if (fh < 0)
@@ -2197,6 +2245,9 @@ void() ui_dl_load =
 			// Momentum has no record of has the same hole, and this file is the
 			// only place a tier for it exists.  ui_meta_load picks it up.
 			bufstr_set(ms_dltier, row, argv(4));
+			bufstr_set(ms_momtier, row, (n >= 9) ? ui_source_tier(argv(8)) : "0");
+			bufstr_set(ms_ksftier, row, (n >= 10) ? ui_source_tier(argv(9)) : "0");
+			bufstr_set(ms_momtsrc, row, network ? "network" : "local");
 
 			/*
 			  AND SO DOES THE LIBRARY, which is the fix for "I see like 30 surf
@@ -2321,6 +2372,9 @@ void() ui_dl_load =
 		bufstr_set(ms_new, ms_count, argv(7));
 		bufstr_set(ms_dlkb, ms_count, argv(5));
 		bufstr_set(ms_dltier, ms_count, argv(4));
+		bufstr_set(ms_momtier, ms_count, (n >= 9) ? ui_source_tier(argv(8)) : "0");
+		bufstr_set(ms_ksftier, ms_count, (n >= 10) ? ui_source_tier(argv(9)) : "0");
+		bufstr_set(ms_momtsrc, ms_count, network ? "network" : "local");
 		bufstr_set(ms_var, ms_count, "");
 		bufstr_set(ms_varof, ms_count, of);
 		bufstr_set(ms_pick, ms_count, "");
@@ -2663,8 +2717,20 @@ void() ui_load_maps =
 	*/
 	if (ms_dltier >= 0) buf_del(ms_dltier);
 	ms_dltier = buf_create();
+	// Independent manifest columns are indexed after compaction, just like ms_dltier.
+	if (ms_momtier >= 0) buf_del(ms_momtier);
+	if (ms_ksftier >= 0) buf_del(ms_ksftier);
+	if (ms_momtsrc >= 0) buf_del(ms_momtsrc);
+	ms_momtier = buf_create();
+	ms_ksftier = buf_create();
+	ms_momtsrc = buf_create();
 	for (float t = 0; t < ms_count; t++)
+	{
 		bufstr_add(ms_dltier, "0", TRUE);
+		bufstr_add(ms_momtier, "0", TRUE);
+		bufstr_add(ms_ksftier, "0", TRUE);
+		bufstr_add(ms_momtsrc, "", TRUE);
+	}
 	// Patch 652, sized the same way and for the same reason.
 	if (ms_var >= 0)   buf_del(ms_var);
 	if (ms_varof >= 0) buf_del(ms_varof);
@@ -2805,26 +2871,31 @@ void() ui_refilter =
 				continue;
 		}
 
-		// Tier is a plain equality, and 0 in ms_tierv means UNTIERED rather than
-		// tier zero -- so an untiered map answers only the "any" filter and never
-		// gets swept into a numbered one.  This reads ms_tierv rather than
-		// tokenizing ms_meta because it runs over every map on every keystroke.
-		if (ms_tier != 0 && stof(bufstr_get(ms_tierv, i)) != ms_tier)
+		// Either independently sourced tier matches; legacy collapsed values name neither.
+		if (ms_tier != 0 && stof(bufstr_get(ms_momtier, i)) != ms_tier
+		    && stof(bufstr_get(ms_ksftier, i)) != ms_tier)
 			continue;
 
 		// The library switch.  ms_lst, not ms_src -- see ms_srcf.
 		if (ms_srcf != 0 && !(stof(bufstr_get(ms_lst, i)) & ms_srcf))
 			continue;
 
-		// ROADMAP 10: neither a picture nor a tier waits behind "show all", but a
-		// search lists every match.  Last, so ms_nhidden counts only rows the
-		// filters above let through.
+		// Installed surf/bhop maps remain playable without metadata. Other bare
+		// rows wait behind show all/search; the intentional filters above still apply.
 		if (q == "")
 		if (!ms_showall)
 		if (stof(bufstr_get(ms_dataq, i)) == DQ_BARE)
 		{
-			ms_nhidden++;
-			continue;
+			local string movementname;
+			movementname = strtolower(bufstr_get(ms_name, i));
+			if (!(bufstr_get(ms_have, i) == "1"
+			      && (stof(bufstr_get(ms_src, i)) & (SRC_BIT_MOM | SRC_BIT_CSS))
+			      && (substring(movementname, 0, 5) == "surf_"
+			          || substring(movementname, 0, 5) == "bhop_")))
+			{
+				ms_nhidden++;
+				continue;
+			}
 		}
 
 		bufstr_add(ms_view, ftos(i), TRUE);
@@ -6643,7 +6714,7 @@ void(vector screensize) screen_create =
 		// Built only for the chip under the cursor: one string a frame, not eleven.
 		if (sui_is_hovered(tid))
 			sui_tooltip_for(tid, (f == 0) ? "Maps of every tier, and the untiered ones."
-			                : sprintf("Only tier %g maps. 1 is the easiest, 10 the hardest.", f), 2);
+			                : sprintf("Maps with MOM or KSF tier %g. 1 is the easiest, 10 the hardest.", f), 2);
 
 		if (sui_is_released(tid))
 			ms_tier = f;
@@ -7087,63 +7158,22 @@ void(vector screensize) screen_create =
 					mpage   = (argv(MT_PAGE)   == "-") ? -1 : stof(argv(MT_PAGE));
 					mcell   = (argv(MT_CELL)   == "-") ? -1 : stof(argv(MT_CELL));
 				}
-				if (mn > MT_TSRC)
-					mtsrc = argv(MT_TSRC);
-				if (mn > MT_KTIER)
-					mktier = argv(MT_KTIER);
+				mtsrc = bufstr_get(ms_momtsrc, real);
 
 				ui_thumb([rp_x + 3, rp_y + 2], [78, 44], mpage, mcell);
 
-				/*
-				  Tier chip.  "--" for untiered, never "T0": 649 of the installed
-				  maps are CS:S community maps Momentum has no record of, and
-				  saying nothing is the honest answer for them.
-
-				  A MARK RATHER THAN A COLOUR ALONE, in both non-ranked cases:
-				  the distinction has to survive a screenshot and a colour-blind
-				  reader, and "what does the dim one mean" is a question a
-				  punctuation mark answers on its own.
-
-				    T9   ranked, or an override -- someone stated it
-				    T9?  a SUGGESTION, from the Unlisted/Beta sections
-				    T9~  inherited from this map without its port suffix
-				    --   nothing knows
-
-				  The two marks are deliberately different shapes: "?" is "nobody
-				  has ranked this yet", "~" is "this is probably that map".  See
-				  MT_TSRC.
-				*/
-				mtier = bufstr_get(ms_tierv, real);
-				// The marks below, in words, for the row under the cursor.
+				mtier = bufstr_get(ms_momtier, real);
+				mktier = bufstr_get(ms_ksftier, real);
 				if (hot)
 				if (stof(mtier) > 0)
 				{
-					if (mtsrc == "alias")
-						sui_tooltip_for(rid, "T~  the tier of the same map without its port suffix -- probably this one's.", 2);
-					else if (mtsrc == "sugg")
-						sui_tooltip_for(rid, "T?  a suggested tier: nobody has ranked this map yet.", 2);
-					else if (mtsrc == "ksf")
-						sui_tooltip_for(rid, "Tk  KSF's tier, another community's scale.", 2);
+					if (!strcmp(mtsrc, "sugg"))
+						sui_tooltip_for(rid, "MOM suggested tier: this map has not been ranked yet.", 2);
 				}
-				if (stof(mtier) > 0 && mtsrc == "alias")
-					sui_text([rp_x + 90, rp_y + 6], SZ_ROW,
-					         strcat("T", mtier, "~"), COL_DIM, 0.85, 0);
-				else if (stof(mtier) > 0 && mtsrc == "sugg")
-					sui_text([rp_x + 90, rp_y + 6], SZ_ROW,
-					         strcat("T", mtier, "?"), COL_DIM, 0.85, 0);
-				else if (stof(mtier) > 0 && mtsrc == "ksf")
-					sui_text([rp_x + 90, rp_y + 6], SZ_ROW,
-					         strcat("T", mtier, "k"), COL_DIM, 0.85, 0);
-				else if (stof(mtier) > 0)
-					sui_text([rp_x + 90, rp_y + 6], SZ_ROW,
-					         strcat("T", mtier), ui_tier_col(stof(mtier)), 1, 0);
-				else
-					sui_text([rp_x + 90, rp_y + 6], SZ_ROW, "--", COL_DIM, 0.6, 0);
-				// KSF's tier under the chip (ROADMAP 7): another community's scale,
-				// so labelled and kept apart.  A ksf row's chip already is KSF's.
-				if (mtsrc != "ksf" && stof(mktier) > 0)
-					sui_text([rp_x + 90, rp_y + 28], '12 12 0',
-					         strcat("KSF ", mktier), COL_DIM, 0.85, 0);
+				sui_text([rp_x + 90, rp_y + 6], '12 12 0',
+				         (stof(mtier) > 0) ? strcat("MOM T", mtier) : "MOM -", '0.25 0.55 1', 1, 0);
+				sui_text([rp_x + 90, rp_y + 28], '12 12 0',
+				         (stof(mktier) > 0) ? strcat("KSF T", mktier) : "KSF -", '1 1 1', 1, 0);
 
 				/*
 				  The best time anyone is known to have set, on the NAME's line and
@@ -7173,8 +7203,8 @@ void(vector screensize) screen_create =
 				}
 
 				mnmf = ui_fit_text(bufstr_get(ms_name, real),
-				                   rs_x - 134 - ROW_RPAD - dlg - wrw, SZ_ROW);
-				sui_text([rp_x + 126, rp_y + 4], SZ_ROW, mnmf,
+				                   rs_x - 170 - ROW_RPAD - dlg - wrw, SZ_ROW);
+				sui_text([rp_x + 162, rp_y + 4], SZ_ROW, mnmf,
 				         (on || hot) ? COL_ACCENT : COL_TEXT, 1, 0);
 
 				// NEW means "a sweep saw this name appear", not "recently
@@ -7183,7 +7213,7 @@ void(vector screensize) screen_create =
 				// Measured off the FITTED name: against the full one it drew
 				// detached, past the end of a name that had been cut.
 				if (bufstr_get(ms_new, real) == "1")
-					sui_text([rp_x + 130 + stringwidth(mnmf, TRUE, SZ_ROW),
+					sui_text([rp_x + 166 + stringwidth(mnmf, TRUE, SZ_ROW),
 					          rp_y + 4], SZ_ROW, strcat(SUI_ESC_GOOD, "NEW"), COL_TEXT, 1, 0);
 
 				// Second line: where it came from, what it is, then how it is
@@ -7260,8 +7290,8 @@ void(vector screensize) screen_create =
 				  The colour carries the difference between "people are here" and
 				  "a server is here and it is empty" while the WORDS stay the
 				  same, so the eye parses one shape down the list and the number
-				  is the thing that changes.  Same reasoning as the tier chip's
-				  "T9?" -- except here the two states are a measured count and
+				  is the thing that changes.  Unlike the suggested tier's tooltip,
+				  here the two states are a measured count and
 				  another measured count, so a punctuation mark would be
 				  inventing a distinction the data does not have.
 
@@ -7294,9 +7324,9 @@ void(vector screensize) screen_create =
 				  half that survives.
 				*/
 				if (bufstr_get(ms_var, real) != "")
-					bsw = ui_build_switch([rp_x + 126, rp_y + 25], real, idx);
-				sui_text([rp_x + 126 + bsw, rp_y + 26], SZ_ROW,
-				         ui_fit_text(sub, rs_x - 134 - ROW_RPAD - dlg - mtw - mpopw - bsw,
+					bsw = ui_build_switch([rp_x + 162, rp_y + 25], real, idx);
+				sui_text([rp_x + 162 + bsw, rp_y + 26], SZ_ROW,
+				         ui_fit_text(sub, rs_x - 170 - ROW_RPAD - dlg - mtw - mpopw - bsw,
 				                     SZ_ROW),
 				         COL_DIM, 1, 0);
 
@@ -7516,7 +7546,7 @@ void() m_init =
 	Lob_Init();
 
 	ms_name = ms_src = ms_lst = -1;
-	ms_tierv = ms_modev = ms_meta = ms_pbv = -1;
+	ms_tierv = ms_momtier = ms_ksftier = ms_momtsrc = ms_modev = ms_meta = ms_pbv = -1;
 	ms_catv = ms_pblob = -1;
 	ms_have = ms_new = ms_dlkb = -1;
 	ms_wr = ms_dltier = ms_dataq = ms_deps = -1;
@@ -7563,6 +7593,9 @@ void() m_init =
 	registercommand("ui_join");
 	registercommand("ui_strip_test");
 	registercommand("ui_board_test");
+	registercommand("ui_board");
+	registercvar("ui_board_request", "", 0);
+	cvar_set("ui_board_request", "");
 	// Patch 498.  THE KEYBOARD CANNOT REACH A TEXT FIELD: sui moves its cursor by
 	// hit test, so with the mouse parked off a field no key this VM consumes can
 	// focus one -- and sui_text_input_focused, the flag that suppresses the WASD
@@ -7648,6 +7681,8 @@ void(vector screensize) m_draw =
 	// as in-flight, and the row would never turn back into a playable map.
 	Dl_Tick();
 	ui_prejoin_tick();
+
+	Mlb_Poll();
 
 	// m_draw is called EVERY frame whether or not the menu has focus
 	// (menu.c:168-176), so the gate is ours to enforce.
@@ -8070,6 +8105,7 @@ float(string cmd) m_consolecommand =
 	}
 
 	// ROADMAP 9: the leaderboard button's twin; m_board.qc has the forms.
+	if (argv(0) == "ui_board") { Mlb_Command(); return TRUE; }
 	if (argv(0) == "ui_board_test")
 	{
 		Mlb_TestCommand();

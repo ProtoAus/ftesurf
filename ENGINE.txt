@@ -25,7 +25,13 @@ commit   57bfa6bd32af30eb4b2847b9a9840f5d385a46ff
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-673
-patch    673
+patch    674
+# Patch 674: online owner names open stable-account profiles; profile map names
+# browse scoped menu boards without changing the server map. Name filtering asks
+# the complete selected board before pagination and preserves original ranks.
+# Create-server rows show independent MOM/KSF tiers and installed imported maps.
+# Eleven FIT zone donations fill missing local files only. No engine source/pin,
+# server QC, recorder, evidence, ranking, default or Build change.
 # Patch 673: grouped zone tools, Surface snap label, reset to safe default spawn,
 # shared rounded placement hint, and hosted Surf/Bhop presets (66.67/100 Hz,
 # AA150/1000). Three editable numeric properties; whole-file mode/numeric

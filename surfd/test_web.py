@@ -320,7 +320,100 @@ class Shim(object):
         return getattr(self._real, name)
 
 
+def board_name_filter():
+    print("--- optional game board name filter --")
+    m = fresh()
+    submit(m, "surf_filter", "seed", 1)
+    conn = sqlite3.connect(m._test_db)
+    conn.execute("DELETE FROM runs WHERE map='surf_filter'")
+    names = {205: "^1Mi^x0f0XeD Target", 208: "Other MIXED target", 209: "100%_O'Reilly",
+             210: "x' OR 1=1 --", 211: "^&f0ÉCLAIR", 212: "a" * 64}
+    for i in range(1, 213):
+        conn.execute(
+            "INSERT INTO runs (map,track,leg,tier,style,player,name,ticks,tickrate,"
+            "millis,flags,node,runid,submitted) VALUES ('surf_filter',0,0,'ranked',"
+            "'clean',?,?,?,100,?,0,'fixture','fixture',1800000000)",
+            ("fixture-%03d" % i, names.get(i, "Unrelated"), i, i * 10))
+    conn.commit()
+    conn.close()
+    ask = lambda **kw: api_board(m, "surf_filter", **kw)
+    control = ask(limit=2)
+    check("F control actually has a full first page", [r["r"] for r in control["rows"]], [1, 2])
+    first = ask(name="^2mIxEd", limit=1)
+    second = ask(name="mixed", limit=1, offset=1)
+    check("F active filter echoes cleaned query identity", first.get("name"), "mIxEd")
+    spaced = ask(name="^2 mixed ^1")
+    check("F trim follows decolorization for ASCII client query",
+          (spaced.get("name"), [r["r"] for r in spaced["rows"]]), ("mixed", [205, 208]))
+    unicode_query = ask(name="^2 éCLAIR ^1")
+    check("F Unicode query echo preserves case while matching is insensitive",
+          (unicode_query.get("name"), [r["r"] for r in unicode_query["rows"]]), ("éCLAIR", [211]))
+    check("F no-match active filter still echoes name", ask(name="nobody").get("name"), "nobody")
+    check("F absent/empty filter has no name metadata", ("name" in ask(), "name" in ask(name="")),
+          (False, False))
+    check("F decolored case-insensitive match below page one keeps rank",
+          [(r["r"], r["name"]) for r in first["rows"]], [(205, names[205])])
+    check("F offset pages matches, not full-board rows", (second["offset"],
+          [r["r"] for r in second["rows"]]), (1, [208]))
+    check("F filtered ranked count", first["counts"]["ranked"], 2)
+    for q, ranks in [("nobody", []), ("%", [209]), ("_", [209]), ("O'Reilly", [209]),
+                     ("x' OR 1=1 --", [210]), ("éclair", [211]), ("a" * 64 + "discard", [212])]:
+        answer = ask(name=q)
+        check("F literal/bounded substring " + q, ([r["r"] for r in answer["rows"]],
+              answer["counts"]["ranked"]), (ranks, len(ranks)))
+    with m.app.app_context():
+        full = m.board_rows(m.get_db(), "surf_filter", 0, 0, "ranked", "clean", 1, 204)
+    check("F matching row's other fields stay identical", first["rows"], full)
+    raw = lambda **kw: m.app.test_client().get("/api/board", query_string={
+        "map": "surf_filter", "limit": 2, **kw}).get_data()
+    check("F clearing name restores exact bytes", (raw(name=""), raw(name=" ^1 ")),
+          (raw(), raw()))
+
+    # Both foreign sources live under the base, native runs under the variant.
+    submit(m, "surf_filter_css", "local", 10, name="^3Mixed local", track=1, leg=2)
+    submit(m, "surf_filter_css", "segment", 5, name="Mixed segment", track=1, leg=2,
+           flags=m.TF_SEGMENT)
+    imported(m, "surf_filter", "mom-fast", "Unrelated", 2, "momentum", track=1, leg=2)
+    imported(m, "surf_filter", "mom", "^4Mixed MOM", 20, "momentum", track=1, leg=2)
+    imported(m, "surf_filter", "ksf", "^5mIXed KSF", 30, "ksf", track=1, leg=2)
+    imported(m, "surf_filter", "wrong-leg", "Mixed wrong leg", 1, "ksf", track=1, leg=3)
+    with m._maps_lock:
+        m._variants["at"], m._variants["of"] = m.time.monotonic(), {"surf_filter_css": "surf_filter"}
+    m.avatars = lambda now, db: {"game": {"mom"}}
+    wants = []
+    m.note_want = lambda db, name: wants.append(name)
+    vask = lambda **kw: api_board(m, "surf_filter_css", track=1, leg=2, **kw)
+    unfiltered = vask(tier="combined")
+    bad_all = get(m, "/api/board?map=surf_filter_css&track=1&leg=2&tier=all")
+    check("F all is UI vocabulary, not a wire tier", (bad_all.status_code, body(bad_all)["error"]),
+          (400, "bad tier"))
+    combined = get(m, "/api/board?map=surf_filter_css&track=1&leg=2&tier=combined")
+    combined_body = body(combined)
+    check("F combined wire tier returns all three sources", (combined.status_code,
+          combined_body["tier"], sorted({r["tr"] for r in combined_body["rows"]})),
+          (200, "combined", ["ksf", "momentum", "ranked"]))
+    wants.clear()
+    for tier, ranks in [("ranked", [1]), ("momentum", [2]), ("ksf", [1]),
+                        ("imported", [2, 3]), ("combined", [2, 3, 4])]:
+        answer = vask(tier=tier, name="mixed")
+        check("F variant/stage source rank " + tier, [r["r"] for r in answer["rows"]], ranks)
+        check("F variant/stage filtered counts " + tier, answer["counts"],
+              {"ranked": 1, "community": 0, "imported": 2, "momentum": 1, "ksf": 1})
+        if tier == "combined":
+            check("F merged row payload/source unchanged", answer["rows"], unfiltered["rows"][1:])
+            check("F matching avatar flag survives", answer["rows"][1].get("av"), 1)
+    check("F style scope remains segmented", [r["name"] for r in
+          vask(tier="combined", style="segmented", name="mixed")["rows"]], ["Mixed segment"])
+    check("F other track cannot leak", api_board(m, "surf_filter_css", track=0,
+          leg=2, tier="combined", name="mixed")["rows"], [])
+    vask(tier="imported", name="nobody")
+    check("F sparse/no-match filtered pages do not request topups", wants, [])
+    vask(tier="imported")
+    check("F unfiltered actual imported end still requests topup", wants, ["surf_filter"])
+
+
 def main():
+    board_name_filter()
     import admin
     pw_hash = admin.hash_password("pw", n=2 ** 10)
 

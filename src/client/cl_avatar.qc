@@ -1194,6 +1194,7 @@ void(vector scr) Av_Draw =
 	Font_Reset();
 	sui_end();
 
+	if (Profile_BoardNavigate()) { Av_Close(); return; }
 	s = Profile_TakePick();
 	if (s != "")
 	{

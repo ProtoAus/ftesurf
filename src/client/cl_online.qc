@@ -209,6 +209,9 @@ float  ob_t;
   the rows it stores; never by the drawing code, which asks what the STORED
   rows describe (ob_have_*).  Keeping the two apart is trap 3 above.
 */
+string() Profile_BoardQuery;
+float() Profile_BoardReady;
+string ob_name, ob_q_name, ob_have_name;
 string ob_q_map;
 float  ob_q_track, ob_q_leg;
 string ob_q_tier, ob_q_style;
@@ -352,6 +355,7 @@ void() Online_FreeQuery =
 {
 	if (!ob_q_zoned)
 		return;
+	strunzone(ob_q_name);
 	strunzone(ob_q_map);
 	strunzone(ob_q_tier);
 	strunzone(ob_q_style);
@@ -362,6 +366,7 @@ void() Online_FreeHave =
 {
 	if (!ob_have_zoned)
 		return;
+	strunzone(ob_have_name);
 	strunzone(ob_have_map);
 	strunzone(ob_have_tier);
 	strunzone(ob_have_style);
@@ -466,6 +471,7 @@ float(float track, float leg, string tier, string style) Online_Fetch =
 		return FALSE;
 
 	Online_FreeQuery();
+	ob_q_name = strzone(ob_name);
 	ob_q_map   = strzone(mname);
 	ob_q_tier  = strzone(tier);
 	ob_q_style = strzone(style);
@@ -484,6 +490,7 @@ float(float track, float leg, string tier, string style) Online_Fetch =
 	url = sprintf("%s/api/board?map=%s&track=%g&leg=%g&tier=%s&style=%s&limit=%g",
 	              dir, uri_escape(mname), track, leg,
 	              uri_escape(tier), uri_escape(style), OB_PAGE);
+	if (ob_name != "") url = strcat(url, "&name=", uri_escape(ob_name));
 	ob_more_req = 0;            // a new board supersedes any append in flight
 
 	/*
@@ -626,6 +633,15 @@ void(string body) Online_Parse =
 		return;
 	}
 
+	if (strcmp(ob_q_name, Profile_BoardQuery()) || strcmp(ob_q_name, ob_name) || strcmp(json_get_string(json_find_object_child(root, "name")), ob_q_name))
+	{
+		json_free(root);
+		ob_state = OBS_FAIL;
+		ob_code = -1;
+		ob_retry_at = 0;
+		print("leaderboard: name filter reply missing or stale; no matches shown\n");
+		return;
+	}
 	Online_Alloc();
 	if (!ob_bget)
 		ob_bget = buf_create();
@@ -665,6 +681,7 @@ void(string body) Online_Parse =
 	// surfd lowercases the map (surfd.py clean_map); keep our spelling when that
 	// is all that differs, or Online_Describes never matches a capitalised map.
 	s = json_get_string(json_find_object_child(root, "map"));
+	ob_have_name = strzone(ob_q_name);
 	ob_have_map   = strzone((s == "" || !strcasecmp(s, ob_q_map)) ? ob_q_map : s);
 	s = json_get_string(json_find_object_child(root, "tier"));
 	ob_have_tier  = strzone(s == "" ? ob_q_tier : s);
@@ -700,7 +717,7 @@ void(string body) Online_Parse =
 	  next fetch of any other leg overwrites whole.  The prototype is at the
 	  top of this file: cl_online compiles before cl_players.
 	*/
-	Players_AbsorbBoard();
+	if (ob_have_name == "") Players_AbsorbBoard();
 
 	/*
 	  json_free MUST only be called on the root (sh_json.qc: it maps to
@@ -736,6 +753,7 @@ float() Online_FetchMore =
 	                     dir, uri_escape(ob_have_map), ob_have_track, ob_have_leg,
 	                     uri_escape(ob_have_tier), uri_escape(ob_have_style)),
 	             sprintf("&limit=%g&offset=%g", ob_more_lim, ob_n));
+	if (ob_have_name != "") url = strcat(url, "&name=", uri_escape(ob_have_name));
 	ob_more_req = Online_NextReq();
 	ob_more_epoch = ob_epoch;
 	if (!uri_get(url, ob_more_req))
@@ -765,6 +783,12 @@ void(float code, string body) Online_ParseMore =
 	if (!root)
 	{
 		ob_more_wait = cltime + OB_RETRY_SECS;
+		return;
+	}
+	if (strcmp(ob_have_name, Profile_BoardQuery()) || strcmp(ob_have_name, ob_name) || strcmp(json_get_string(json_find_object_child(root, "name")), ob_have_name))
+	{
+		json_free(root);
+		ob_more = FALSE;
 		return;
 	}
 	rows = json_find_object_child(root, "rows");
@@ -1569,7 +1593,7 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 // when `current`).  Patch 357: the room list and Online_Shows ask it.
 float(float track, float leg, string tier, string style, float current) Online_Asked =
 {
-	if (!ob_q_zoned)
+	if (!ob_q_zoned || strcmp(ob_q_name, ob_name))
 		return FALSE;
 	if (strcmp(ob_q_map, serverkey("map")) || ob_q_track != track
 	    || ob_q_leg != leg || strcmp(ob_q_tier, tier) || strcmp(ob_q_style, style))
@@ -1607,7 +1631,7 @@ void() Online_Poll =
 
 float(float track, float leg, string tier, string style) Online_Describes =
 {
-	if (ob_state != OBS_OK || !ob_have_zoned)
+	if (ob_state != OBS_OK || !ob_have_zoned || strcmp(ob_have_name, ob_name))
 		return FALSE;
 	return (ob_have_map   == serverkey("map") &&
 	        ob_have_track == track && ob_have_leg == leg &&
@@ -1621,7 +1645,7 @@ float(float track, float leg, string tier, string style) Online_Shows =
 {
 	if (ob_state == OBS_OK)
 		return Online_Describes(track, leg, tier, style);
-	if (!ob_have_zoned)
+	if (!ob_have_zoned || strcmp(ob_have_name, ob_name))
 		return FALSE;
 	if (strcmp(ob_have_map, serverkey("map")) || ob_have_track != track
 	    || ob_have_leg != leg || strcmp(ob_have_tier, tier)
@@ -1654,13 +1678,22 @@ float(float track, float leg, string tier, string style) Online_Shows =
 */
 float(float track, float leg, string tier, string style) Online_Need =
 {
+	if (strcmp(ob_name, Profile_BoardQuery()))
+	{
+		strunzone(ob_name);
+		ob_name = strzone(Profile_BoardQuery());
+		Online_Clear();
+		ob_req = 0;
+		ob_state = OBS_IDLE;
+	}
+	if (!Profile_BoardReady()) return FALSE;
 	Online_Poll();                      // the deadline (see Online_Poll)
 	if (ob_state == OBS_FETCH)
 	{
 		return FALSE;                   // one in flight; let it land
 	}
 
-	if (ob_q_zoned)
+	if (ob_q_zoned && !strcmp(ob_q_name, ob_name))
 	if (ob_q_map   == serverkey("map") &&
 	    ob_q_track == track && ob_q_leg == leg &&
 	    ob_q_tier  == tier  && ob_q_style == style)

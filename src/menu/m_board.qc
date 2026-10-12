@@ -44,6 +44,8 @@ int(int node) json_get_integer = #0:json_get_integer;
 const int MLB_DAYSECS = 86400;
 
 float  mlb_open;
+float mlb_track, mlb_leg, mlb_browsing;
+string mlb_style, mlb_source;
 string mlb_map;               // strzoned while open
 float  mlb_tab, mlb_lasttab;
 float  mlb_state, mlb_code;   // mlb_code: HTTP status, or Mlb_Why's own (<= 0, 900s)
@@ -64,6 +66,7 @@ strbuf mlb_bdate;
 
 string(float t) Mlb_Tier =
 {
+	if (!strcmp(mlb_source, "all")) return "combined";
 	if (t == MLB_T_KSF) return "ksf";
 	if (t == MLB_T_MOM) return "momentum";
 	return "ranked";
@@ -81,6 +84,12 @@ float(float t) Mlb_TabCount =
 	if (t == MLB_T_KSF) return mlb_cksf;
 	if (t == MLB_T_MOM) return mlb_cmom;
 	return mlb_cours;
+};
+
+float() Mlb_BoardCount =
+{
+	if (!strcmp(mlb_source, "all")) return mlb_cksf + mlb_cmom + mlb_cours;
+	return Mlb_TabCount(mlb_tab);
 };
 
 // "KSF  26", "FTESurf  none", or the bare name until a reply has counted.
@@ -107,6 +116,7 @@ float(string s) Mlb_TabOf =
 
 string() Mlb_Source =
 {
+	if (!strcmp(mlb_source, "all")) return "All games: FTESurf, Momentum Mod, KSF";
 	if (mlb_tab == MLB_T_KSF) return "KSF (ksf.surf), Counter-Strike: Source -- times only";
 	if (mlb_tab == MLB_T_MOM) return "Momentum Mod's own leaderboard, imported";
 	return "ranked runs on FTESurf's public lobbies";
@@ -276,8 +286,9 @@ float(float append) Mlb_Fetch =
 		lim = min(MLB_PAGE, MLB_MAXROW - mlb_n);
 	}
 	tier = Mlb_Tier(mlb_tab);
-	url = sprintf("%s/api/board?map=%s&track=0&leg=0&tier=%s&style=clean&limit=%g&offset=%g",
-	              dir, uri_escape(mlb_map), tier, lim, off);
+	url = strcat(sprintf("%s/api/board?map=%s&track=%g&leg=%g&tier=%s&style=%s",
+	              dir, uri_escape(mlb_map), mlb_track, mlb_leg, tier, uri_escape(mlb_style)),
+	              sprintf("&limit=%g&offset=%g", lim, off));
 	id = Lob_NextReq();
 	if (!uri_get(url, id))
 	{
@@ -344,8 +355,10 @@ void() Mlb_Retry =
 
 void(float t) Mlb_SetTab =
 {
-	if (!mlb_open || t == mlb_tab)
-		return;
+	if (!mlb_open) return;
+	if (t == mlb_tab && mlb_source == "") return;
+	strunzone(mlb_source);
+	mlb_source = "";
 	Mlb_ClearRows();
 	mlb_tab = mlb_lasttab = t;
 	print(sprintf("^5board:^7 tab %s\n", Mlb_Tier(t)));
@@ -364,6 +377,9 @@ void(string why) Mlb_Close =
 	buf_del(mlb_btime);
 	buf_del(mlb_bdate);
 	print(sprintf("^5board:^7 closed %s (%s)\n", mlb_map, why));
+	strunzone(mlb_style);
+	strunzone(mlb_source);
+	mlb_source = "";
 	strunzone(mlb_map);
 	mlb_map = "";
 	mlb_open = FALSE;
@@ -377,7 +393,7 @@ void(string mapname, float t) Mlb_Open =
 		t = mlb_lasttab;
 	if (mlb_open)
 	{
-		if (!strcmp(mapname, mlb_map))
+		if (!strcmp(mapname, mlb_map) && mlb_track == 0 && mlb_leg == 0 && mlb_style == "clean")
 		{
 			Mlb_SetTab(t);
 			return;
@@ -385,6 +401,7 @@ void(string mapname, float t) Mlb_Open =
 		Mlb_Close("another map");
 	}
 
+	if (!mlb_browsing) { mlb_track = mlb_leg = 0; mlb_style = strzone("clean"); }
 	mlb_map   = strzone(mapname);
 	mlb_brank = buf_create();
 	mlb_bname = buf_create();
@@ -462,6 +479,12 @@ void(float id, float code, string body, float append) Mlb_Page =
 		return;
 	}
 
+	if (strcasecmp(json_get_string(json_find_object_child(root, "map")), mlb_map) ||
+	    strcmp(json_get_string(json_find_object_child(root, "tier")), Mlb_Tier(mlb_tab)) ||
+	    strcmp(json_get_string(json_find_object_child(root, "style")), mlb_style) ||
+	    json_get_float(json_find_object_child(root, "track")) != mlb_track ||
+	    json_get_float(json_find_object_child(root, "leg")) != mlb_leg)
+	{ json_free(root); Mlb_Fail(id, -1, append); return; }
 	cnt = json_find_object_child(root, "counts");
 	mlb_cksf  = json_get_float(json_find_object_child(cnt, "ksf"));
 	mlb_cmom  = json_get_float(json_find_object_child(cnt, "momentum"));
@@ -549,10 +572,13 @@ float(float reqid, float code, string body) Mlb_Reply =
 	return FALSE;
 };
 
-// The deadline nothing under us has.  A late reply is then dropped by id.
+// Called even without menu focus: consume browse data and expire pending replies.
+void() Mlb_PollRequest;
 void() Mlb_Poll =
 {
 	local float id;
+
+	Mlb_PollRequest();
 
 	if (mlb_req)
 	if (time - mlb_sent > MLB_DEADLINE)
@@ -622,9 +648,9 @@ void(vector rp, float rw) Mlb_DrawTail =
 	}
 	else if (mlb_mreq || (mlb_more && mlb_n < MLB_MAXROW))
 		sui_text(tp, SZ_ROW, "loading...", COL_DIM, 1, 0);
-	else if (mlb_more && Mlb_TabCount(mlb_tab) > mlb_n)
+	else if (mlb_more && Mlb_BoardCount() > mlb_n)
 		sui_text(tp, SZ_ROW, sprintf("the first %g of %g -- the list stops there",
-		                             mlb_n, Mlb_TabCount(mlb_tab)), COL_DIM, 1, 0);
+		                             mlb_n, Mlb_BoardCount()), COL_DIM, 1, 0);
 	else
 		sui_text(tp, SZ_ROW, "end of the list", COL_DIM, 1, 0);
 };
@@ -692,10 +718,10 @@ void(vector screensize) Mlb_Draw =
 	if (ui_button("mlb_close", [w - 100, 12], [84, 30], "close"))
 		closeit = TRUE;
 
-	cw = stringwidth("  main track", TRUE, SZ_HEAD);
+	cw = stringwidth(sprintf("  %s track %g leg %g %s", Mlb_Tier(mlb_tab), mlb_track, mlb_leg, mlb_style), TRUE, SZ_HEAD);
 	s  = ui_fit_text(mlb_map, w - 132 - cw, SZ_HEAD);
 	sui_text([16, 14], SZ_HEAD, s, COL_ACCENT, 1, 0);
-	sui_text([16 + stringwidth(s, TRUE, SZ_HEAD), 14], SZ_HEAD, "  main track", COL_DIM, 1, 0);
+	sui_text([16 + stringwidth(s, TRUE, SZ_HEAD), 14], SZ_HEAD, sprintf("  %s track %g leg %g %s", Mlb_Tier(mlb_tab), mlb_track, mlb_leg, mlb_style), COL_DIM, 1, 0);
 
 	x = 16;
 	for (t = 0; t < MLB_NTABS; t = t + 1)
@@ -772,7 +798,7 @@ void(vector screensize) Mlb_Draw =
 	         COL_DIM, 1, 0);
 	if (mlb_state == MLBS_OK)
 	{
-		s = sprintf("%g of %g", mlb_n, Mlb_TabCount(mlb_tab));
+		s = sprintf("%g of %g", mlb_n, Mlb_BoardCount());
 		sui_text([w - 16 - stringwidth(s, TRUE, SZ_LABEL), h - 30], SZ_LABEL, s, COL_DIM, 1, 0);
 	}
 
@@ -799,7 +825,7 @@ void() Mlb_Status =
 	print(sprintf("^5board:^7 open: %s tab %s, %s (code %g)\n", mlb_map,
 	              Mlb_Tier(mlb_tab), st, mlb_code));
 	print(sprintf("^5board:^7   held %g of %g, more %g; out: first id %g, next id %g; next failed %g (code %g)\n",
-	              mlb_n, Mlb_TabCount(mlb_tab), mlb_more, mlb_req, mlb_mreq, mlb_mfail, mlb_mcode));
+	              mlb_n, Mlb_BoardCount(), mlb_more, mlb_req, mlb_mreq, mlb_mfail, mlb_mcode));
 	print(sprintf("^5board:^7   counts known %g: ksf %g momentum %g ranked %g; top row %g\n",
 	              mlb_known, mlb_cksf, mlb_cmom, mlb_cours, floor(mlb_scroll_y / MLB_ROW_H)));
 	if (mlb_n > 0)
@@ -908,4 +934,80 @@ void() Mlb_TestCommand =
 	if (sc >= 0)
 		Mlb_Scroll(sc);
 	strunzone(mapname);
+};
+
+// Untrusted browse data never becomes a console command or launch request.
+float(string value, float limit) Mlb_ScopeNumber =
+{
+	local float i, c;
+	if (value == "" || strlen(value) > 3) return FALSE;
+	for (i = 0; i < strlen(value); i = i + 1)
+	{
+		c = str2chr(value, i);
+		if (c < 48 || c > 57) return FALSE;
+	}
+	return stof(value) <= limit;
+};
+float(string map, string source, string track, string leg, string style) Mlb_Browse =
+{
+	local float i, c, t, tr, lg, allsource;
+	local string savedmap, savedstyle;
+	if (map == "" || strlen(map) > 64) return FALSE;
+	for (i = 0; i < strlen(map); i = i + 1)
+	{
+		c = str2chr(map, i);
+		if (!(c >= 48 && c <= 57) && !(c >= 65 && c <= 90) && !(c >= 97 && c <= 122) && c != 95 && c != 45) return FALSE;
+	}
+	if (strcmp(source, "ranked") && strcmp(source, "momentum") && strcmp(source, "ksf") && strcmp(source, "all")) return FALSE;
+	if (strcmp(style, "clean") && strcmp(style, "segmented")) return FALSE;
+	if (!Mlb_ScopeNumber(track, 64) || !Mlb_ScopeNumber(leg, 256)) return FALSE;
+	allsource = !strcmp(source, "all");
+	t = allsource ? MLB_T_OURS : Mlb_TabOf(source);
+	tr = stof(track); lg = stof(leg);
+	savedmap = strzone(map); savedstyle = strzone(style);
+	Mlb_Close("browse");
+	if (allsource) mlb_source = strzone("all");
+	if (!menu_active) m_open();
+	menu_screen = SCREEN_CREATE;
+	ui_create_open();
+	mlb_track = tr; mlb_leg = lg; mlb_style = strzone(savedstyle);
+	mlb_browsing = TRUE;
+	Mlb_Open(savedmap, t);
+	mlb_browsing = FALSE;
+	strunzone(savedmap); strunzone(savedstyle);
+	return TRUE;
+};
+
+void() Mlb_PollRequest =
+{
+	local string payload;
+	local float i, c, valid;
+	if (cvar_string("ui_board_request") == "") return;
+	payload = strzone(cvar_string("ui_board_request"));
+	cvar_set("ui_board_request", "");
+	if (strlen(payload) > 128)
+	{
+		strunzone(payload);
+		print("board: rejected browse request\n");
+		return;
+	}
+	valid = TRUE;
+	for (i = 0; i < strlen(payload); i = i + 1)
+	{
+		c = str2chr(payload, i);
+		if (!(c >= 48 && c <= 57) && !(c >= 65 && c <= 90) && !(c >= 97 && c <= 122) && c != 95 && c != 45 && c != 32) valid = FALSE;
+	}
+	if (valid)
+	if (tokenize(payload) == 5)
+		valid = Mlb_Browse(argv(0), argv(1), argv(2), argv(3), argv(4));
+	else valid = FALSE;
+	if (!valid) print("board: rejected browse request\n");
+	strunzone(payload);
+};
+
+// Trusted manual command shares validation and browse behavior, not token replay.
+void() Mlb_Command =
+{
+	if (argv(6) != "") return;
+	Mlb_Browse(argv(1), argv(2), argv(3), argv(4), argv(5) == "" ? "clean" : argv(5));
 };

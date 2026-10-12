@@ -30,7 +30,7 @@
 #define PF_MOREWAIT 2       // s between asks for a next page
 #define PF_MORETRIES 3      // asks for a page that bring nothing, before it is left alone
 #define PF_TEXT     64      // characters kept of a name or a map from an answer
-#define PF_RF       7       // floats a row: track, leg, tier, ms, when, rank, of
+#define PF_RF       8       // floats a row: track, leg, tier, ms, when, rank, of, segmented
 
 #define PFS_NONE    0
 #define PFS_ASK     1
@@ -85,7 +85,7 @@ float  pf_said;             // the answer's own line was printed (once an answer
 // ---- one tier's maps, of whoever the breakdown is of
 #define PF_CTROWS   1000    // maps held of one tier (the unrated are eight hundred)
 #define PF_CTPAGE   100     // ...and asked for at a time
-#define PF_CF       3       // floats a map: ms (0 is not finished), its game, the site has the map
+#define PF_CF       4       // floats a map: ms, game, have, segmented
 string pf_ct;               // the tier on show: "" none, "u" the unrated, else its number
 float  pf_ct_state, pf_ct_req, pf_ct_sent, pf_ct_code, pf_ct_got, pf_ct_again;
 float  pf_ct_more_req, pf_ct_more_sent, pf_ct_more_at, pf_ct_more_n;
@@ -232,6 +232,42 @@ void() Profile_Ask =
 	pf_state = pf_req ? PFS_ASK : PFS_FAIL;
 	pf_code = 0;
 	pf_sent = cltime;
+};
+
+// Copy browse data while rows live; publish only after the owner's SUI bracket.
+void() Profile_Unfocus;
+string pf_boardrequest;
+void(string map, float tier, float track, float leg, float segmented) Profile_BoardPick =
+{
+	local float i, c;
+	local string source, payload;
+	if (map == "" || strlen(map) > 64 || track < 0 || track > 64 || leg < 0 || leg > 256 || floor(track) != track || floor(leg) != leg) return;
+	for (i = 0; i < strlen(map); i = i + 1)
+	{
+		c = str2chr(map, i);
+		if (!(c >= 48 && c <= 57) && !(c >= 65 && c <= 90) && !(c >= 97 && c <= 122) && c != 95 && c != 45) return;
+	}
+	source = (tier == PFT_MOM) ? "momentum" : ((tier == PFT_KSF) ? "ksf" : "ranked");
+	payload = sprintf("%s %s %g %g %s", map, source, track, leg, segmented ? "segmented" : "clean");
+	if (strlen(payload) > 128) return;
+	strunzone(pf_boardrequest);
+	pf_boardrequest = strzone(payload);
+};
+float() Profile_BoardNavigate =
+{
+	if (pf_boardrequest == "") return FALSE;
+	cvar_set("ui_board_request", pf_boardrequest);
+	if (strcmp(cvar_string("ui_board_request"), pf_boardrequest))
+	{
+		strunzone(pf_boardrequest);
+		pf_boardrequest = "";
+		print("profile: browse request unavailable; keeping the card open\n");
+		return FALSE;
+	}
+	strunzone(pf_boardrequest);
+	pf_boardrequest = "";
+	Profile_Unfocus();
+	return TRUE;
 };
 
 // The maps of the tier on show, for whoever the breakdown is of.
@@ -460,6 +496,7 @@ void(float row, float *f, float at) Profile_RowF =
 	f[at + 4] = json_get_float(json_find_object_child(row, "when"));
 	f[at + 5] = json_get_float(json_find_object_child(row, "r"));
 	f[at + 6] = json_get_float(json_find_object_child(row, "of"));
+	f[at + 7] = !strcmp(json_get_string(json_find_object_child(row, "style")), "segmented");
 };
 
 // -> rows taken.
@@ -563,6 +600,7 @@ float(float root) Profile_TierRows =
 		f[at]     = json_get_float(json_find_object_child(row, "ms"));    // absent: not finished
 		f[at + 1] = Profile_Tier(json_get_string(json_find_object_child(row, "tr")));
 		f[at + 2] = json_get_float(json_find_object_child(row, "have"));
+		f[at + 3] = (f[at] > 0 && !strcmp(json_get_string(json_find_object_child(row, "s")), "segmented"));
 		bufstr_set(pf_ct_bmap, pf_ct_n, strdecolorize(substring(
 			json_get_string(json_find_object_child(row, "map")), 0, PF_TEXT)));
 		pf_ct_n = pf_ct_n + 1;
@@ -1257,7 +1295,7 @@ float(vector p, float tsz, float hint, float state, float code, float again, str
 // first, each with the player's fastest time on its main track.
 void(vector p, vector sz, float tsz, float hint) Profile_DrawTier =
 {
-	local float i, x, y, rowh, at, chw, games;
+	local float i, x, y, rowh, at, chw, games, mapw;
 	local float *f;
 	local string s;
 	local vector lp;
@@ -1305,7 +1343,12 @@ void(vector p, vector sz, float tsz, float hint) Profile_DrawTier =
 			sui_fill(lp, [sz_x - tsz, rowh], SUI_THEME_WELL, 0.45, 0);
 		sui_roundbox([lp_x + tsz * 0.5, lp_y + (rowh - ceil(hint * 0.6)) * 0.5], [ceil(hint * 0.6), ceil(hint * 0.6)],
 		             hint * 0.3, (f[at] > 0) ? SUI_THEME_GOOD : SUI_THEME_CHIP, 1);
-		s = Chat_Fit(bufstr_get(pf_ct_bmap, i), sz_x - tsz * 16, tsz);
+		mapw = max(1, sz_x - tsz * 16);
+		sui_action_element([lp_x + tsz * 1.6, lp_y], [mapw, rowh], strcat("pf_ctmap", ftos(i)), sui_noop);
+		if (sui_is_hovered(strcat("pf_ctmap", ftos(i)))) sui_fill(lp, [sz_x - tsz, rowh], SUI_THEME_HOVER, 0.5, 0);
+		if (sui_is_released(strcat("pf_ctmap", ftos(i))))
+			Profile_BoardPick(bufstr_get(pf_ct_bmap, i), f[at + 1], 0, 0, f[at + 3]);
+		s = Chat_Fit(bufstr_get(pf_ct_bmap, i), mapw, tsz);
 		sui_text([lp_x + tsz * 1.6, lp_y + (rowh - tsz) * 0.5], [tsz, tsz], s,
 		         (f[at] > 0) ? SUI_THEME_TEXT : SUI_THEME_DIM, 1, 0);
 		x = lp_x + tsz * 1.6 + stringwidth(s, TRUE, [tsz, tsz]) + tsz * 0.6;
@@ -1633,6 +1676,10 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 		sui_text([lp_x + sz_x - tsz * 2 - stringwidth(s, TRUE, [hint, hint]), lp_y + (rowh - hint) * 0.5],
 		         [hint, hint], s, SUI_THEME_MUTED, 1, 0);
 		// the map, then its leg where it is not the main track, then the game where there are several
+		sui_action_element([lp_x + c0, lp_y], [max(1, c1 - tsz * 9), rowh], strcat("pf_map", ftos(i)), sui_noop);
+		if (sui_is_hovered(strcat("pf_map", ftos(i)))) sui_fill(lp, [sz_x - tsz, rowh], SUI_THEME_HOVER, 0.5, 0);
+		if (sui_is_released(strcat("pf_map", ftos(i))))
+			Profile_BoardPick(bufstr_get(pf_bmap, i), f[at + 2], f[at], f[at + 1], f[at + 7]);
 		s = Chat_Fit(bufstr_get(pf_bmap, i), c1 - tsz * 9, tsz);
 		sui_text([lp_x + c0, lp_y + (rowh - tsz) * 0.5], [tsz, tsz], s, SUI_THEME_TEXT, 1, 0);
 		x = lp_x + c0 + stringwidth(s, TRUE, [tsz, tsz]) + tsz * 0.6;
@@ -1673,3 +1720,9 @@ float(float evtype, float scanx, float rowh) Profile_Wheel =
 		return FALSE;
 	return TRUE;
 };
+
+string() Profile_BoardQuery =
+{
+	return strtolower(strtrim(strdecolorize(substring(pf_q, 0, 64))));
+};
+float() Profile_BoardReady = { return cltime - pf_q_t >= PF_WAIT; };
