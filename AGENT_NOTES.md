@@ -4590,8 +4590,9 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   its external CS:GO mount is appid **4465480**, CS:GO Legacy (Source 1).
   CS2's `game/csgo` Source 2 content is not that pack. The standalone legacy
   install on this machine is `steamapps/common/csgo legacy/csgo`; the older
-  `Counter-Strike Global Offensive/csgo` copy also remains. FTESurf currently
-  names only the older folder in `tools/mapdeps.py:ADDONS`.
+  `Counter-Strike Global Offensive/csgo` copy also remains; this is also the
+  CS2 `csgo_legacy` beta layout. Before P679 FTESurf named only that older
+  folder in `tools/mapdeps.py:ADDONS`.
 - `fs_addons.default.txt` mounts standalone HL2, not Momentum's shared pack.
   The dependency scanner also assumes HL2 in `MOUNTED`, so it cannot diagnose
   a player's absent base pack. With only Momentum/momentum and CS:S mounted,
@@ -4609,9 +4610,23 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   with Momentum's HL2 pack and legacy CS:GO still missed CS:S paths. Three
   texture references remained unresolved even with CS:S plus standalone HL2;
   the restored screenshots still contained some checkerboards. Do not promise
-  that mounting fixes every surface. Automatic fallback/migration is unfixed;
-  mounting the whole mount/ directory also loads its other-game placeholder
-  VPKs, which must not outrank real optional game content in a permanent fix.
+  that mounting fixes every surface. P679 now mounts only hl2_dir.vpk
+  automatically after configured addons, including for existing mount lists;
+  old Momentum/mount dependency specs also select only that pack. No owner
+  fs_addons.txt rewrite or generated mapdeps refresh is required. Other-game
+  placeholder VPKs are excluded. The scanner treats this as base content.
+- P679 resolves both CS:GO Source 1 folder aliases by checking pak01_dir.vpk,
+  not merely whether CS2's install directory exists. Explicit Steam-root
+  overrides precede registry/VDF installs across both aliases; requested layout
+  wins when both exist. Hermetic tests compile the actual resolver function.
+  The Windows primary-library file probe must return the absolute game
+  directory, not its relative probe filename (the old empty-filename probes
+  concealed this bug). Modern-only CS2 is not claimed as supported.
+- Harness action traps: boot mounting can precede log_enable, so do not demand
+  its startup dprint as the positive control; prove file consumption and the
+  live searchpath instead. Set fs_hidesyspaths explicitly: 0 changes screenshot
+  messages from $basedir to absolute paths. Match the artifact suffix and
+  verify the PNG itself. Failed first arms are retained, not relabelled passes.
 
 ## Missing-asset art (Patch 534) -- 2026-10-07
 

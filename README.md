@@ -70,10 +70,10 @@ the priority ordering and why it is what it is.
 
 | Game | Why |
 |---|---|
-| Momentum Mod Playtest | The map library — 1,308 BSPs, 1,108 of them `surf_*` |
+| Momentum Mod Playtest | The map library, plus its bundled HL2 base content, found automatically |
 | Counter-Strike: Source | The materials and models most surf maps reference |
-| Half-Life 2 | Shared Source base content — skyboxes, dev textures, common props |
-| CS:GO *(legacy Source 1 branch)* and TF2 | Optional. 334 of 1,409 maps want one of these; they are mounted **per map** by `fs_automount`, never at boot — mounting them at boot costs 13 seconds of every launch |
+| Half-Life 2 | Optional when Momentum is installed: its bundled HL2 pack already supplies shared Source content |
+| CS:GO *(CS2's `csgo_legacy` beta or standalone CS:GO Legacy)* and TF2 | Optional, mounted **per map** by `fs_automount`. Both CS:GO Source 1 install layouts are discovered automatically; modern CS2's Source 2 assets are not a replacement |
 
 ---
 

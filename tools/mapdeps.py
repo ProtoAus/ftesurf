@@ -78,12 +78,23 @@ LUMP_TEXDATA_STRDATA = 43
 LUMP_TEXDATA_STRTABLE = 44
 LUMP_GAME_LUMP = 35
 
-#The packs fs_addons.txt mounts at boot, in its own priority order.  A file
-#found in any of these is not a dependency on anything -- it is just there.
+def source_csgo_root(steam_common):
+    """Source 1 beta or standalone Legacy; never CS2's game/csgo directory."""
+    for folder in ("Counter-Strike Global Offensive", "csgo legacy"):
+        root = os.path.join(steam_common, folder, "csgo")
+        if os.path.isfile(os.path.join(root, "pak01_dir.vpk")):
+            return root
+    #An absent pack remains an empty Pack, as with the other optional games.
+    return os.path.join(steam_common, "Counter-Strike Global Offensive", "csgo")
+
+
+#The configured base games, followed by the engine's automatic Momentum HL2
+#pack, in runtime priority order. An absent standalone HL2 install is OK.
 MOUNTED = [
     ("momentum", os.path.join(STEAM, "Momentum Mod Playtest", "momentum")),
     ("cstrike",  os.path.join(STEAM, "Counter-Strike Source", "cstrike")),
     ("hl2",      os.path.join(STEAM, "Half-Life 2", "hl2")),
+    ("mount",    os.path.join(STEAM, "Momentum Mod Playtest", "mount")),
 ]
 
 #The packs it does NOT, and the fs_automount spec that mounts each.
@@ -104,25 +115,14 @@ MOUNTED = [
 ADDONS = [
     ("tf2",  os.path.join(STEAM, "Team Fortress 2", "tf"),
      "steam:Team Fortress 2/tf"),
-    ("csgo", os.path.join(STEAM, "Counter-Strike Global Offensive", "csgo"),
+    ("csgo", source_csgo_root(STEAM),
      "steam:Counter-Strike Global Offensive/csgo"),
     ("portal2", os.path.join(STEAM, "Portal 2", "portal2"),
      "steam:Portal 2/portal2"),
     ("portal", os.path.join(STEAM, "Portal", "portal"),
      "steam:Portal/portal"),
-    #Momentum Mod's OWN content mount, and the second time a missing candidate here
-    #was mistaken for missing content (see Portal 2 above).  momentum/gameinfo.txt
-    #mounts `game mount/hl2_dir.vpk`, a 35,474-file bundle of HL2 plus both episodes,
-    #and fs_addons.txt said that directory "ships empty" -- it does not.  So every
-    #episode-only prop fell into the "-" bucket: surf_fantasy's pine trees, ferns,
-    #stumps and fallen trees (126 of its 2345 static props, measured 2026-09-09) were
-    #filed as unfixable while this pack had every one of them.  Chosen over
-    #`steam:Half-Life 2/ep2`, which has them too at identical checksums, because the
-    #map library IS this install: anyone who has the maps has the mount, and nobody
-    #needs to own a second game.  Last, like every addition, so no existing
-    #attribution moves.
-    ("mount", os.path.join(STEAM, "Momentum Mod Playtest", "mount"),
-     "steam:Momentum Mod Playtest/mount"),
+    #P679: Momentum's shared HL2 pack is now automatic base content (MOUNTED).
+    #Pack indexes *_dir.vpk only, not Momentum's other-game placeholder VPKs.
 ]
 
 #The VMT keys plugins/hl2/mat_vmt.c actually turns into a texture load, at

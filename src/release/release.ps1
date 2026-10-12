@@ -1051,12 +1051,14 @@ your sensitivity first.  A fresh install has no ftesurf.cfg.
     or Momentum content -- it reads your own installs at runtime, so without
     them the map browser is empty:
 
-        Momentum Mod Playtest     the map library (1,308 maps)
+        Momentum Mod Playtest     maps and its bundled HL2 content (found automatically)
         Counter-Strike: Source    materials and models most surf maps use
-        Half-Life 2               shared Source content, skyboxes, dev textures
 
+    A separate Half-Life 2 install is optional when Momentum is installed.
     Optional, mounted per map and only when a map needs them:
-        Counter-Strike: Global Offensive (legacy Source 1 branch), Team Fortress 2
+        CS:GO (CS2's csgo_legacy beta or standalone CS:GO Legacy), Team Fortress 2
+    Both CS:GO Source 1 layouts are found automatically. Modern CS2's Source 2
+    game/csgo content is not an interchangeable asset pack.
 
 3.  Run ftesurf.bat.  The engine takes its game folder from the working
     directory rather than from the .exe's location, and the .bat sets it -- so

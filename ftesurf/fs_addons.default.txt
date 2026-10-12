@@ -8,6 +8,10 @@
 steam:Momentum Mod Playtest/momentum
 steam:Counter-Strike Source/cstrike
 steam:Half-Life 2/hl2
+// Momentum's bundled mount/hl2_dir.vpk is also found automatically; separate HL2
+// is not required when Momentum is installed. Other-game placeholder packs are excluded.
+// CS:GO's Source 1 content is found in the CS2 csgo_legacy beta or standalone
+// CS:GO Legacy install. Modern CS2 game/csgo assets are not interchangeable.
 // CS:GO and TF2 are mounted automatically for the maps that need them (fs_automount).
 // Uncommenting them mounts them always and adds about 9 s to every launch.
 //steam:Counter-Strike Global Offensive/csgo
