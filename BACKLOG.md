@@ -5,19 +5,21 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
-## Demise remaining Source visual parity — P683, 2026-10-12
+## Demise remaining Source brightness parity — P683, 2026-10-12
 
-- The native spawn glyph and additive vertex-alpha mist fade now ACT, but
-  background brightness/seams still differ from the supplied Source images.
-  Sites: `plugins/hl2/glsl/vmt/animated.glsl`, affected packed skybox/transition
-  materials and VBSP sky/displacement lighting. A no-mist diagnostic remap did
-  not establish that the remaining dark background seam is caused by mist.
-  Falsifier: fixed stationary camera, cold matching assets, identify the exact
-  surface with acted material isolation, then compare native/reference coverage
-  and lighting independently. Do not invert displacement alpha or replace
-  authored flow/texture data just to approximate one screenshot.
-- A proper water-in-view regression camera remains pending; resolved water/glass
-  pass masks at Monster Jam's spawn are not water pixel acceptance.
+- Native glyph and mist vertex-alpha controls ACT; mountains remain darker than
+  the supplied Source reference. The former horizontal "background seam" was
+  the HUD strafe bar: `hud_strafe 0` removes it with native materials. Mist-hidden
+  fog A/B/A acts: mountain crop MAD21.684/255, repeat MAD0. Authored black skyroom
+  fog is end11250/start50 (world45000/200, scale4). This identifies a strong fog
+  contribution, not matched Source fog parity. Sites: `src/client/cl_fog.qc`
+  (`Fog_EmitSky`), engine built-in `sys/fog.h`, VMT transition/sky materials.
+  Known linear/gamma-space fog approximations need a matched Source-settings
+  control before changing them. Falsifier: stationary matching camera/assets
+  and pinned fog/sRGB/HDR settings in both renderers; compare static mountain
+  regions, not scrolling mist phase. Do not disable authored fog, invert
+  displacement alpha or remap textures/flow as a product workaround. The
+  water-in-view gate is now closed; see `tools/p683mapvisual.md` continuation.
 
 ## Live shader-remap lifetime crash — observed during P683 diagnostics
 

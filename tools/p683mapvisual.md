@@ -87,9 +87,10 @@ header/type diagnostics; actual compilation is the build verdict.
 Render modes 1..5 share an alpha approximation, not every Source compositing
 mode. The Kitsune fixture verifies the same target fan-out and output handling,
 not a successful native secret-button press: attempts at its physical button did
-not ACT. That remains a human check. Reference fog/brightness parity and a proper
-water-in-view regression gate remain separate. No map-specific product texture
-remap or redistributed Source content is added.
+not ACT. Physical secret-button acceptance is now excluded at Lex's direction,
+not upgraded to a pass. Reference fog/brightness parity remains separate; the
+water-in-view regression gate passed in the continuation below. No map-specific
+product texture remap or redistributed Source content is added.
 
 A late-added diagnostic shader plus chained live fs_restart/remap and an empty
 remap-reset attempt crashed the owned client; retained as failed harness arms.
@@ -148,3 +149,75 @@ root. Original engine checkout's uncommitted work was not merged, stashed,
 reverted or deployed. Disposable warning-control build is retired only after
 its source/ignored inventory is verified; retained failed diagnostic/native
 fixtures are explicitly marked for remaining visual follow-ups in OWNER.md.
+
+## Checkpoint continuation — 2026-10-12T22:04Z
+
+Documentation/acceptance only: product SHAs, patch pin, installed binaries,
+progs, configs and fleet deployment remain unchanged. Lex noted the mist scrolls
+and excluded physical Kitsune rainbow-wall activation. Scrolling animation phase
+is not an exact reference-pixel criterion.
+
+### Demise: false seam closed; brightness narrowed
+
+- At body `-11520 -3968 14976`, angles `0 0 0`, 1280x800, the horizontal dark
+  band persists with both mist materials hidden, with black-fade hidden and
+  with uniquely coloured snow/rock replacements. It disappears with
+  `hud_strafe 0`; a cold native-material toggle restores it with `hud_strafe 1`.
+  Its y336 track agrees with `hud_strafe_y 0.42` and `HUD_DrawStrafe`'s alpha0.55
+  track fill. The former "background seam" is HUD, not a renderer defect.
+- Native mountains are still darker than the supplied Source screenshot.
+  Both mist materials mapped to a pre-boot diagnostic invisible shader,
+  `hud_strafe 0`, native mountain materials: fog A/B/A changes a static mountain
+  crop by MAD21.684/255; the A/A repeat is pixel-identical there. Readback:
+  world black fog end45000/start200, skyroom end11250/start50, scale4,
+  `r_fog_linear 1`, `vid_srgb 0`, gamma/contrast1, no fullbright/lightmap override.
+  Fog makes a strong contribution; this is NOT proof of matched Source settings
+  or the complete cause of the reference difference. `cl_fog.qc` documents
+  linear/gamma-space versus Source's squared/linear-light approximations.
+  Keep brightness parity open; no authored-fog disable or texture workaround.
+
+### Water: in-view regression gate closed
+
+Read-only BSP scouting identified `bhop_monster_jam` face11428, authored
+`LIQUIDS/MILITIAWATER`, z8000 rectangle x0..1024/y13568..14080. The nominal center
+camera sees a narrow solid walkway, so actual water crops are explicit:
+
+- Body `256 13824 8128`, clamped viewangles `89 0 0`: `hl2_water 3 -> 0 -> 3`
+  visibly switches the water beside the walkway. Crop `(100,160)-(380,600)`:
+  123200/123200 pixels change, MAD53.746/255; 3/3 repeat is pixel-identical.
+  Readback switches `vmt/flatdither#WATER=1` to `vmt/watersheet` and back.
+- Camera moved beside the walkway to body `256 13664 8128`, same angles:
+  current and retained pre-P683 native/plugin/VM pairs have matching mounts,
+  `hl2_water` modes1/2/3 and `r_refractreflect_scale 0.5`. Water crop
+  `(500,160)-(850,480)` has 112000 pixels: modes1/3 pixel-identical; mode2 has
+  exactly one channel differing by1 in one pixel. Opaque crop
+  `(100,160)-(420,480)` is identical in all three modes. Live1/2 pass readback
+  includes `vmt/water#DEPTH`; live screenshots inspected for both pairs.
+- This is a bounded before/after product-pair regression, not an engine-only
+  one-factor test: the retained control also has pre-P683 VMs. It does not
+  claim Source water parity, underwater fog/physics, oblique capture-depth
+  accuracy or that reflection mode2 must differ from mode1 at this near-normal
+  view. Mode3 is cheap dither, not live reflection/refraction.
+
+### Reproduction and retained limits
+
+Owned root `C:/FTESurf-worktrees/mapvisual-01a13061`: `artifacts/continue-plan.md`
+pre-registers falsifiers; `continue-water-scout.md` records BSP evidence.
+`continue-pixels.py`, `continue-pixels.json` and `continue-pixels-output.txt`
+reproduce the crop measurements/hashes. `continue-demise-fog-final-*.txt`,
+`continue-water-mode*.txt`, `continue-water-live*.txt` and
+`continue-water-control*.txt` hold accepted readbacks; PNGs are under
+`subject/ftesurf/screenshots/continue-*` and the matching control directory.
+The invisible/colour shader was installed before boot, then retained as
+`artifacts/continue-isolation.shader` and removed from the rig after shutdown.
+
+Failed arms are preserved: first fog remaps denied because cheats reset across
+restart; second fog retry rejected its280-byte console line (limit240), so it
+never hid the mist/set the HUD/camera and is NOT accepted. Final rerun splits
+commands and reads back the acted probe/fog/HUD state. A water depth-cvar guess
+(`r_depthstenciltextures`) was unknown and did not act; mode1/2 acceptance uses
+actual authored `#DEPTH` pass masks and pixels, not that nonexistent setting.
+Pixel script's first run emitted a Pillow getdata deprecation; corrected to
+get_flattened_data and reran without warnings. No product build was needed.
+Both continuation bridges stopped normally; fixture/data/config observations
+were unchanged. Only continuation-owned diagnostic files/processes touched.

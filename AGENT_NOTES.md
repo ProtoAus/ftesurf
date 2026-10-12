@@ -1,5 +1,34 @@
 # AGENT_NOTES.md
 
+## P683 visual continuation — 12 Oct 2026
+
+- Demise's apparent horizontal background seam was the HUD strafe bar, not
+  mist/sky geometry. Pre-boot invisible mist, black-fade and colour sentinel
+  controls left it; `hud_strafe 0` removed it, cold native `1` restored it.
+  y336 at1280x800 agrees with `hud_strafe_y 0.42`. Disable HUD tracks before
+  classifying a world seam; do not diagnose one from a screenshot alone.
+- Mist-hidden native-mountain fog A/B/A: crop MAD21.684/255, repeatMAD0. Authored
+  black world fog45000/200 becomes skyroom11250/50 at scale4. This identifies
+  fog contribution, not Source-settings parity or a reason to ship fog off.
+  Scrolling mist phase cannot be an exact reference-frame gate. Compare static
+  regions with fog/sRGB/HDR pinned before changing the known fog approximation.
+- Water-in-view old/current P683 product pairs pass on `bhop_monster_jam` at
+  body256/13664/8128, angles89/0/0. Water crop500,160..850,480: modes1/3 identical,
+  mode2 one channel off by1 in one pixel; adjacent opaque crop identical in all
+  modes. A separate3/0/3 water actor changes all123200 wet pixels (MAD53.746),
+  repeats exactly. The BSP center camera512/13824/8128 sees a narrow walkway:
+  choose wet crops explicitly. Near-normal mode1/2 equality does not prove
+  oblique depth accuracy or underwater fog/physics; control VMs predate P683.
+- `conbridge send` rejects lines longer than240 bytes. A redirected error plus
+  shell `;` let a280-byte preparation fail while later screenshots still ran.
+  Treat that arm as failed; split commands, inspect preparation outputs before
+  capture, and verify acted shader/cvar readbacks. Cheats reset on restart;
+  a remap is denied until the owned server enables them again. No empty remap
+  reset/VFS chain needed: cold boot and retirement restore native materials.
+- Physical Kitsune secret-button acceptance is excluded at Lex's direction,
+  not upgraded to a pass. Normal Alpha0/rainbow-hidden evidence remains valid.
+  Details/retained failed arms: `tools/p683mapvisual.md` continuation section.
+
 ## Patch 680 — inert reset preparation and measured harness pitfalls, 12 Oct 2026
 
 - `setorigin` only relinks; `SV_TimerWarped` does not clear ground. Canonical

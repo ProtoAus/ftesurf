@@ -18,16 +18,17 @@ to twelve development lobbies at 2026-10-12T18:08Z. Both installed client/menu
 pairs passed served-CSQC/board smoke. `tools/p683mapvisual.md` records exact
 hashes and limits. Restart after native updates.
 
-- Kitsune rainbow walls should be absent normally. Trigger the actual secret:
-  they should appear and later disappear. The dedicated target fan-out fixture
-  and matching-camera Alpha75/Alpha0 pixels pass; physical button activation
-  did not ACT in the harness and is not claimed as verified.
+- Kitsune rainbow walls should be absent normally. Dedicated target fan-out and
+  matching-camera Alpha75/Alpha0 pixels pass. Physical secret-button activation
+  is explicitly excluded at Lex's direction, not claimed as verified.
 - Demise should show the red spawn glyph/text, not just cloudy red floor.
   Reflection-only red ramps should remain dark rather than gain a white base.
 - Hades2 portal labels should not erase the glow/background behind them.
-- Mist vertex-alpha fade acts; compare its look with your Source reference.
-  Remaining exact brightness/background seam work is in BACKLOG, not declared
-  finished. No per-map product texture remap was used to hide the differences.
+- Mist vertex-alpha fade acts; judge its overall look, not a frame-for-frame
+  match to the scrolling Source mist. The apparent horizontal seam was the HUD
+  strafe bar, not a renderer defect. Remaining mountain brightness/fog parity
+  is in BACKLOG. Water-in-view old/current regression pixels pass. No authored
+  fog disable or per-map product texture remap was shipped as a workaround.
 
 ## 00. 12 Oct — run/demo label colours and markers (Patch 677)
 
