@@ -6,6 +6,42 @@ that subsystem. Older references to AGENTS.md's detailed sections refer here.
 Keep new operational findings here, not in the startup brief. No historical
 findings were removed in the split.
 
+## Patch 670 — shared booster gates and reset prediction, 12 Oct 2026
+
+- surf_deoa's nine 400-u/s boosters have DUPLICATE OnEndTouch keys: !self
+  Disable at zero delay and !self Enable after one second. A lossy entity dict
+  shows only Enable and suggests an unsafe no-op fix. Use bsplib.read_pairs.
+  The old client demoted all nine; the 6-unit train is 400 * 0.015, not a map
+  tolerance issue. P670 receives authoritative continuous-push gate state on
+  the CSQC entity stream, including other players' gate changes. Unknown state
+  stays server-only. Once/speed/name/movement-write demotion stays conservative.
+- Acting dedicated controls at (6180,-1444,-668): OFF had 49 repeated ~6-unit
+  errors, ON one entry seam and no sustained train; the ON result survived
+  100 ms added packet delay. Peer gate on/off/on, independent avatar samples,
+  reconnect and the older server's all-unknown fail-closed arm acted. Actual
+  loss/reordering and shared re-entry under delay are NOT verified; BACKLOG.
+- surf_hourglass's tested map teleport landed at (104,0,969); noclip+jump
+  bypassed it and releasing jump predicted it without a correction. !r used
+  (104,0,800) and still corrected. That distinguishes a server-command reset
+  from a map teleport; it does NOT establish what caused the operator's exact
+  historical seq 630. Camera anticipation in save/rewind is not body prediction.
+  The requested acknowledged reset/load/rewind operation is unbuilt (ROADMAP).
+- `build.ps1 -NoDeploy -Pi` is refused BEFORE compilation. For an isolated Pi
+  deployment, use the inspected clean worktree's normal output paths and `-Pi`
+  without `-NoDeploy`; verify those paths/hashes against the tested artifacts.
+  Never point it at uncommitted peer source. P670's pair was byte-identical.
+- DEPLOYED to the twelve empty Pi lobbies, completed by 02:08:08Z: qwprogs
+  `915dfa31bf20917c`, csprogs `e2f8a9c144201116`, `.prev` kept, all restarted,
+  remote hashes read back. A fresh isolated client on 27510 loaded CSQC on
+  surf_kitsune, received push *64 ready/on and ran the prediction hook. HUD
+  screenshot inspected (missing imported materials in the overlay are not a
+  renderer acceptance). No terms accepted or ranked run submitted by the smoke.
+- WINDOWS NOT DEPLOYED: the quiet-before-lock check found other sessions'
+  live engines and refused before touching either install. Do not stop those
+  processes. Source is pushed as 25746cb; pair and guarded deployment script
+  retained under C:\FTESurf-worktrees\prediction-20261012-0125 pending quiet.
+
+
 Working notes for coding-agent sessions in this repo. Read CONTRIBUTING.md too
 (git identity, `git clean -x`, line endings, `.src` ordering).
 pi.dev subagent setup and its read-only smoke workflow are documented in
