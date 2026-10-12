@@ -25,7 +25,11 @@ commit   67ccaf17ba3b8d8afdc4d1bf247330f3827fff15
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-675
-patch    677
+patch    678
+# Patch 678: inert server-only save-load / hold-release movement-policy builders.
+# Stable id/seq + independently reread movement content; explicit preservation of
+# every carried Source field. No production consumer, cached epoch, admission,
+# baseline reconciliation, instant movement, engine pin/tag or Build change.
 # Patch 677: run/demo mark labels use yellow speed and green energy ink. Arc tops
 # are pink up-triangles; ride bottoms are purple down-triangles. A one-sample
 # ground touch followed by a jump draws only the jump (contact assumed). Ordinary

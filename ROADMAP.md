@@ -61,6 +61,12 @@ operation interface. Server integer subdivision is preserved and still differs
 from P672 client subdivision. Acting dedicated QW/FTE/old-server and native
 unit controls verify this bounded prerequisite, **not admission, complete
 movement descriptors or baseline reconciliation**. See `tools/p675cmdcontext.md`.
+Patch 678 adds **inert save-load / hold-release movement-policy preparation**:
+stable id/seq, freshly checked movement content and explicit KEEP/SET/CLEAR for
+all carried Source fields. It is not a native snapshot, generation-safe cache,
+operation request/admission or baseline protocol; normal prediction is still
+disabled. Reset/rewind builders and lifecycle epochs remain next. See
+`tools/p678moveprep.md`.
 
 **Implementation boundaries (source audit, 2026-10-12; operation protocol unbuilt).**
 

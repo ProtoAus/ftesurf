@@ -170,6 +170,39 @@ routine — do not hesitate when a change needs it.
   runtime matrix. Complete descriptors, admission and baseline reconciliation
   remain next; normal CSQC still exports no P672 consumer. `p675cmdcontext.md`.
 
+## Inert movement preparation (P678, 2026-10-12)
+
+- `server/sv_moveprep.qc` is a server-only policy builder with NO normal caller
+  or client export. READY is an immediate preparation result, not permission,
+  native snapshot, connection/content epoch, cached freshness or baseline ACK.
+  Caller owns Alloc/Free output and zoned identity strings; tokenize scratch is
+  shared, so a future command caller must retokenize before resuming argv use.
+- Save load requires id+seq in a fresh scoped block AND reread origin, velocity,
+  pitch, yaw, duck, ticks and sequence matching the row. A matching sequence
+  alone is not content identity. Strict numeric/required/duplicate-key checks
+  and bounded input abstain conservatively. Rewound rows resolve rwvel;
+  demoted rows remain movement-only, not recorder permission.
+- Release resolves current holdrow (both block bounds), not selected cursor or
+  disk. It preserves current aim and all native Source fields. Load's completed
+  duck clears ducking/ducktime, replaces ducked, preserves remaining history;
+  ground/carrier clear but gravity/jump history do not reset. The contract test
+  enumerates all 12 pmsourcestate_t fields from the actual header.
+- `cl_sendguid 1` is required for this fixture's attributed-player controls.
+  `forceinfokey(..., "guid", ...)` does NOT alter engine infokey("guid"); an
+  initial owner/block fixture failed 3/52 before reaching the intended guards.
+  Final subject: 66/0; weak READY override: 23/66 fail as expected. Ordinary
+  Load/Hold/Release parity acts; no native collision/baseline/network claim.
+- FTEQCC pointer locals: separate `local T *a; local T *b;` declarations.
+  `local T *a, *b;` made b a double pointer in this measured fixture. Windows
+  absolute include filenames in .src stopped at drive colon; use relative
+  includes (absolute output filename is supported). Retain failed logs.
+- Normal VMs/fixtures compile at zero warnings. Reader 306/0; inspected reader
+  unchanged, corpus 270 recs/91 views/170 existing faults. No engine source,
+  pin/tag, save/evidence format, Build, owner/peer install or fleet swap. Next:
+  generation lifecycle + reset/rewind builders, exact P675 bounded admission,
+  PEXT2_REPLACEMENTDELTAS operation-bearing body-baseline reconciliation.
+  Do not activate instant movement beforehand. Contract: p678moveprep.md.
+
 ## pi.dev startup contract
 
 Start pi.dev from `C:\FTESurf` (or `pwsh -NoProfile -File
