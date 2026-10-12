@@ -4551,6 +4551,35 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   Depth fog/capture sharing, other menu rows, glass and particle coverage retain
   their own acting-control gates in BACKLOG; this water patch does not close them.
 
+## Source base content without a separate HL2 install — 2026-10-12
+
+- `momentum/gameinfo.txt` mounts `mount/hl2_dir.vpk` shipped with Momentum;
+  its external CS:GO mount is appid **4465480**, CS:GO Legacy (Source 1).
+  CS2's `game/csgo` Source 2 content is not that pack. The standalone legacy
+  install on this machine is `steamapps/common/csgo legacy/csgo`; the older
+  `Counter-Strike Global Offensive/csgo` copy also remains. FTESurf currently
+  names only the older folder in `tools/mapdeps.py:ADDONS`.
+- `fs_addons.default.txt` mounts standalone HL2, not Momentum's shared pack.
+  The dependency scanner also assumes HL2 in `MOUNTED`, so it cannot diagnose
+  a player's absent base pack. With only Momentum/momentum and CS:S mounted,
+  surf_666 reported **31 unresolved materials** and checkerboard walls/ceiling.
+  Adding Momentum/mount at boot resolved brickfloor001a.vmt and
+  concretefloor014a.vtf from hl2_dir.vpk; screenshots restored those surfaces,
+  without any Half-Life 2 path. A separate HL2 arm restored them too.
+- Existing-install workaround: `fs_load "steam:Momentum Mod Playtest/mount"`,
+  then **quit and restart FTESurf**. Verified that fs_load saved the mount and
+  a fresh process resolved the same files. A map reload alone kept the old
+  missing-material warning and some checker shaders: locating a file after
+  mounting does not prove previously generated shaders were replaced.
+- This removes the separate HL2 requirement only when Momentum is installed.
+  It does not make CS:GO a substitute for all CS:S assets: the offline scan
+  with Momentum's HL2 pack and legacy CS:GO still missed CS:S paths. Three
+  texture references remained unresolved even with CS:S plus standalone HL2;
+  the restored screenshots still contained some checkerboards. Do not promise
+  that mounting fixes every surface. Automatic fallback/migration is unfixed;
+  mounting the whole mount/ directory also loads its other-game placeholder
+  VPKs, which must not outrank real optional game content in a permanent fix.
+
 ## Missing-asset art (Patch 534) -- 2026-10-07
 
 - `R2D_Init` requests the diffuse fallback as `no_texture`, with replacement

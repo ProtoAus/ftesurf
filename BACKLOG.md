@@ -5,6 +5,26 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Source base-content mounting without standalone HL2 — 2026-10-12
+
+- `ftesurf/fs_addons.default.txt` mounts Half-Life 2 but not Momentum's bundled
+  `mount/hl2_dir.vpk`; `tools/mapdeps.py:MOUNTED` assumes HL2 is present when
+  generating dependencies. A player with Momentum and CS:S but no separate
+  HL2 therefore gets missing base materials on surf_666. Boot-mounting
+  Momentum's pack restores the tested walls/ceiling without standalone HL2.
+  Falsifier: an isolated install with no Half-Life 2 mount, same surf_666 BSP
+  and camera; prove brickfloor001a.vmt/concretefloor014a.vtf resolve from
+  Momentum and inspect pixels, then compare with the missing-pack control.
+  Existing installs need a migration; avoid mounting other-game placeholder
+  VPKs ahead of real optional packs. See AGENT_NOTES.md's Source base-content
+  section for the verified fs_load + restart workaround and remaining misses.
+- `tools/mapdeps.py:ADDONS` and generated CS:GO specs name only
+  `Counter-Strike Global Offensive/csgo`. Momentum now names standalone
+  CS:GO Legacy appid 4465480, installed as `csgo legacy/csgo` on this machine.
+  Falsifier: a Steam-library fixture with only that legacy install, no older
+  CS:GO directory; a map requiring its assets must resolve it automatically.
+  Do not substitute CS2's Source 2 `game/csgo` pack.
+
 ## Primary-install optional plugins — found during P671 deployment
 
 - `src/build.ps1:Deploy` refreshes hl2/ui_imgui in the primary install but
