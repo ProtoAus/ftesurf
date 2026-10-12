@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   dbcaa17a7a49bdaee33656c80fd968b76ac40d6c
+commit   392a03c5d19881dcf949d5d13231d755cb64da0b
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,12 @@ commit   dbcaa17a7a49bdaee33656c80fd968b76ac40d6c
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-671
-patch    671
+tag      patch-672
+patch    672
+# Patch 672: optional replayed native pre-input seam, validated body/mode/completed-
+# duck edits and carrier/held-piece handling. Normal client QC does NOT export the
+# hook yet: reset/load/hold-release/rewind operation protocol remains unbuilt.
+# Test-only callback: tools/fixtures/predinput.qc. No evidence, ranked or Build change.
 # Patch 671: XYZ grid, jump-bound view/cursor toggle, draggable zone-editor panel,
 # double-click matching server zones, simple polygon outlines extruded in Z, and six
 # local per-map movement settings applied through the engine's canonical ruleset loader.

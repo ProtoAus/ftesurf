@@ -53,6 +53,43 @@ essays, not in source files. See CLAUDE.md for the comment-style rules.
 Beta phase, not release: building, deploying and restarting the Pi lobbies are
 routine — do not hesitate when a change needs it.
 
+## Patch 672 — native pre-input seam, not command prediction (12 Oct 2026)
+
+- Optional `CSQC_PredictPlayerPreMove` is before carrier cash-out and movement;
+  existing `CSQC_PredictPlayerMove` remains the post-trigger hook. Staged
+  `predinput_apply` defaults to zero every replay invocation. BODY/MODE/DUCK/
+  HOLD/CLEARCARRIER validate selected fields atomically. Normal QC exports no
+  callback yet. Contract/reproduction: `tools/p672predinput.md`.
+- **usercmd.msec is float.** 51 ms splits into 25.5 ms pieces, not 25+26.
+  Native offsets must be float throughout recursion and the QC bridge. The
+  first candidate's integer offset failed an acting budget control; fixed.
+  A zero-offset transition is once per logical REPLAY, never once per render
+  lifetime. Existing >500 ms clamp is unchanged.
+- **Skipping held touches must not skip carrier state commit.** The first
+  candidate saved the ring only through the post-hook, allowing stale armed/Z
+  state or no state at the next command. `CSQC_PredictSaveBaseVel` is now shared
+  by post-hook and held pieces; held-only and mixed-split controls act.
+- HOLD is zero native command duration, NOT universally frozen physics,
+  zero velocity, PM_NONE, carrier clearing, full Source restore, server timer
+  freeze or save-style MOVETYPE_NONE. The helper preserves unselected fields;
+  later real mover housekeeping is still allowed. Runtime reads entry values
+  BEFORE fixture writes to prove next-piece origin/mode, not requested output.
+- The host test compiles extracted production functions with real headers and
+  explicit VM/linear-mover doubles. It is not collision or network acceptance.
+  Direct invalid arms compare entire mover/carrier bytes; replay comparison
+  covers the fields actually written by CL prediction, not uninitialized or
+  unrelated members of `player_state_t`. Restricted discovery is source-reviewed.
+- Dedicated runtime BODY/HOLD/no-op controls act; disabled silence is paired
+  with a native prediction-trace heartbeat and re-enabled callback. The fixture
+  on an older engine is ignored while legacy triggers act. Test-only CSQC must
+  never be appended to the production `.src` or deployed. Initial early
+  `ui_close` failed before menu init and is retained, not accepted; this fixture
+  makes no HUD/menu claim and omits that command.
+- Requests/descriptors, generation scoping, SSQC admission/application and
+  operation-bearing body-baseline coverage remain NEXT. `STAT_FS_SLACK` is
+  still only processed-command count. Do not claim instant hold release or
+  retire an operation from that ACK. No evidence, ranked or Build change.
+
 ## pi.dev startup contract
 
 Start pi.dev from `C:\FTESurf` (or `pwsh -NoProfile -File

@@ -41,15 +41,26 @@ history consistently; reconcile success, refusal, stale destination, competing
 requests and release from hold. Server timer and run classification remain
 server-owned. Chat, binds and console paths must use the same operation.
 
-**Implementation boundaries (source audit, 2026-10-12; still unbuilt).**
+**Native progress (Patch 672).** The engine now has an optional replayed
+`CSQC_PredictPlayerPreMove` boundary before carrier consumption and input,
+validated body/mode/completed-duck edits, zero-duration restrictions, carrier
+clearing and fractional split offsets. The post-move trigger hook is unchanged.
+Acting native units and a dedicated test-only CSQC fixture verify the seam;
+normal QC does not export the new callback. **No command destination, request
+protocol or hold-release/rewind frontend is activated yet.** See
+`tools/p672predinput.md`. Complete server-prepared descriptors and body-baseline
+coverage below remain required; the processed save ACK is still insufficient.
 
-- The existing hook is **after** `PM_PlayerMove`:
+**Implementation boundaries (source audit, 2026-10-12; operation protocol unbuilt).**
+
+- The existing trigger hook is **after** `PM_PlayerMove`:
   `CL_PredictUsercmd` in the engine's `client/cl_pred.c` calls
   `CSQC_PredictPlayerMove` on the resulting state. Its write-back covers
   origin, velocity, angles, onground and jump-held, not a full placement or
   hold/release transition. A command operation needs a replayable boundary
-  before the command's movement, not an apply-once render-frame latch. Do
-  not change the trigger hook's existing post-move semantics to obtain it.
+  before the command's movement, not an apply-once render-frame latch. P672
+  supplies that native seam, not the operation protocol. Do not change the
+  trigger hook's existing post-move semantics to obtain it.
 - `SaveLoc_LoadKey`/`SaveLoc_Camera` in `client/cl_saveloc.qc` confirm
   the camera-only path: prediction writes `VF_ORIGIN` and view angles; it
   does not seed the engine's `player_state_t`. `SV_SaveLocSync` currently
