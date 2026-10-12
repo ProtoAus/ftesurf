@@ -362,8 +362,10 @@ The published P672 seam's ten unit groups also pass. Both viewport screenshots
 inspected; native compiler warning set unchanged, QC zero warnings. Deployment
 provenance is in the task checkpoint/engine patch record. Steam identity and reviewed times-choice policy
 are confirmed, but privileged reviewed upload/activation remains unbuilt.
-Windows native/progs deployment is held while the owner's game runs; no game
-will be killed to unblock it. No existing times are deleted by these controls.
+DEPLOYED 12 Oct at 05:23:09 UTC to both Windows installs (native/progs/all
+five plugins); 12 development lobbies received progs at 05:20:12..21 UTC.
+Installed hosted/dedicated controls and exact live CSQC/board download pass.
+Owner/default configs unchanged; no peer game killed or existing time deleted.
 
 ## 00. 12 Oct — zone editor controls and polygons (Patch 671)
 
