@@ -125,6 +125,10 @@ board_bell.wav 8e116a78dbd0d4b1d37854de3a7f42220ee79825f4751081068ffb87fd0a6123
 Canonical shipguard also passes after source/assets arrive. Config defaults are
 archived source; existing owner settings/config are not overwritten. Retained
 small logs/metrics/PCM/screenshots and verified binaries live under the owned
-task's `artifacts/`; disposable worktrees/build copies and linked overlays are
-retired after the source/metadata are preserved. The canonical engine checkout's
-pre-existing modified documentation and unrelated untracked file remain untouched.
+task's `artifacts/`; copied source/runtime trees and all worktree registrations
+are retired after verified recovery archives preserve ignored artifacts and
+unique evidence. Only the empty, unregistered Windows-locked directory
+`C:/FTESurf-worktrees/boardfx-1013043332/engine/` remains; no process with uncertain
+ownership was killed to remove it. OWNER.md records the retention/cleanup state.
+The canonical engine checkout's pre-existing modified documentation and unrelated
+untracked file remain untouched.

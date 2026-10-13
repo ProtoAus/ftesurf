@@ -279,8 +279,8 @@ def main():
     runner = once(runner, "ROOT = pathlib.Path(__file__).resolve().parent.parent", f"ROOT = pathlib.Path({str(CONTENT)!r})")
     runner = once(runner, "source = {'qwprogs.dat': a.ssqc, 'csprogs.dat': a.csqc}.get(name)",
                   "source = {'qwprogs.dat': a.ssqc, 'csprogs.dat': a.csqc, 'menu.dat': a.csqc.parent / 'menu.dat'}.get(name)")
-    # Sound is a shared junction in the general runner. Omit it, then copy just
-    # the three authored cues into this writable local overlay before launch.
+    # Copy only the three authored cues, never personal sounds. If the general
+    # runner later adds a shared sound junction, omit it before this local copy.
     runner = once(runner, "        for name in CONTENT_DIRS:\n", "        for name in CONTENT_DIRS:\n            if name == 'sound': continue\n")
     cue_dir = ROOT / "ftesurf/sound/ftesurf"
     runner = once(runner, "        client = subprocess.Popen(",
