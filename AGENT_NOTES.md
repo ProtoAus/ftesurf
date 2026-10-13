@@ -5683,12 +5683,60 @@ bound, not required to export that string. Their source/archive hashes and the
 real bootstrap --help/wrapper actors were verified, with no new compiler payloads.
 Clean pinned Linux BUILDINFO/gates and release-preview/archive acceptance remain.
 
-### Signed updater release/publication contract — 2026-10-13 (not yet shipped)
+### First production-signed BOTH-platform release — 0.1.25, 2026-10-13
 
-The wrapper lane is reviewed separately; `release.ps1` now prepares signed feeds
-from its archive-verified stages, not from an installed player tree. This is
-source preparation, NOT a clean production release, Patch/Build/pin/commit or
-public-storage claim.
+Published `0.1.25+b89.p687`; receipt build UTC 2026-10-13T08:45:33Z:
+QC source `efe3b2ecac206a63c398f7cc71a00c3803da83c4`, native source
+`3688683ff245431ac515a37bd63997c5fd7e56d8`, separate bootstrap source
+`5c60f697c635a8b82affdcd46f51a50aedd3d280`. Build remains owner Build 89;
+no new product patch, engine pin move, key rotation or P688 shipment. Linux
+remains beta/unranked and the combined measured glibc floor is 2.30.
+
+The real `release.ps1 -Bump patch -DryRun -BuildNumber 89 -Linux <clean drop>
+-FirstUpdateFeed -LauncherRoot <clean bootstrap> -FteRoot <clean engine>` passed
+without gate overrides, followed by the same production invocation with
+`-VerifyFull` and without `-DryRun`. The existing private seed matches the
+unchanged pinned public key; no secret bytes were logged. Both platforms are
+present in the signed feed: 1,637 entries, 755 unique objects. All referenced
+objects were uploaded and downloaded/hash-verified before the locked first-feed
+check and atomic site swap. Both complete archives round-trip SHA256 matched;
+public page/feed bytes and feed Cache-Control no-cache matched. Already-installed
+nginx was byte-identical; no sudo, reload, lobby restart or player-install change.
+
+- Windows: `https://dl.proto.bar/ftesurf/ftesurf-0.1.25.7z`, 42,381,944 bytes,
+  SHA256 `8597d4b330662115dceab13ff042f72185cfb74784ac88384bc7b71825333d60`.
+- Linux: `https://dl.proto.bar/ftesurf/ftesurf-0.1.25-linux-x86_64.tar.xz`,
+  42,225,560 bytes, SHA256
+  `039e9bce31b6563305e7ae7f8e8c9edd8b16faa69b57d9bd959d8c9e8baa6aef`.
+- Feed: `https://proto.bar/ftesurf/update.json`, SHA256
+  `1568a34c99ffca799db6ddb70dee9fde941d38038f7bdff32afbedd99386bb9f`.
+
+Exact production archives/stages have 821 Windows and 818 Linux files, including
+separate bootstrap/notices. Acted controls prove offline/opt-out argv forwarding,
+protected settings/mounts/zones/recording sentinels, zero unwanted HTTP, normal
+engine exits and no remaining owned descendants. The actual Windows archive also
+installs one changed signed loopback content object, preserving its bootstrap.
+The tested signed preview differs from final staging ONLY in VERSION.txt's
+UTC metadata; complete file/byte comparison binds the other final contents.
+Linux archive mode/owner checks and private tmpfs/Xvfb/loopback namespace avoid
+repairing the extracted product or changing shared WSL sockets. Do not credit
+these loopback controls as default-HTTPS native-menu handoff acceptance.
+
+Retained evidence: `C:/FTESurf-worktrees/update-20261012T074529Z/artifacts/`
+`coherent-publication-{dryrun-verdict-03,live-verdict-04,final-binding-04}.json`
+and production logs, with exact-archive results under that root's rig. Initial
+fixture-key rejection remains retained, not relabelled a pass. The deployed
+publish.sh's pre-existing retention sort unexpectedly pruned unsigned 0.1.24's
+page instead of the oldest page; immutable archives and signed-feed history
+remain. A read-only GNU-sort falsifier reproduced it; BACKLOG.md records the
+separate unfixed retention defect. Do not blanket-clean those live pages.
+
+### Signed updater release/publication contract — 2026-10-13
+
+The wrapper lane is reviewed separately; `release.ps1` prepares signed feeds
+from its archive-verified stages, not from an installed player tree. These are
+the source/publication rules; the production acceptance above is separate
+measured evidence, not implied by preparing a feed.
 
 - Every release (including `-DryRun`) chooses `-FirstUpdateFeed` OR an explicit
   `-PreviousUpdateFeed <saved signed update.json>`. First feed needs `-Linux`
