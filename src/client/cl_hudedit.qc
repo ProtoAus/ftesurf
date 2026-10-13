@@ -939,11 +939,10 @@ void() HUD_EditOpen =
 	if (ui_he_open)
 		return;
 
-	// It would draw over both and take their clicks; rather than layer three
-	// owners of one cursor, refuse and say which one is in the way.
-	if (rec_wt_open || rec_sb_open)
+	// The board is a peer modal. Playback chrome yields to this editor.
+	if (rec_sb_open)
 	{
-		print("^3hud_edit^7: close the replay or the scoreboard first\n");
+		print("^3hud_edit^7: close the scoreboard first\n");
 		return;
 	}
 
@@ -1054,9 +1053,9 @@ void(vector scr) HUD_EditDraw =
 	if (!ui_he_open)
 		return;
 
-	// Either of these can be opened from a bind while this is up.  They own the
-	// cursor and draw over everything; step aside rather than fight for it.
-	if (rec_wt_open || rec_sb_open)
+	// A board opened from a bind takes the cursor. Playback instead yields
+	// its chrome to the editor; it does not close the editor.
+	if (rec_sb_open)
 	{
 		HUD_EditClose();
 		return;

@@ -2728,9 +2728,9 @@ float() Scores_SearchPick =
 		return FALSE;
 	sb_pfme = FALSE;
 	// The card will not open over these (Av_Open): the board stays, and says why.
-	if (ui_he_open || rec_wt_open)
+	if (ui_he_open)
 	{
-		print("leaderboard: close the replay or the editor, then a profile can open\n");
+		print("leaderboard: close the editor, then a profile can open\n");
 		return FALSE;
 	}
 	Scores_Close();
@@ -2774,8 +2774,8 @@ void(vector p, vector sz, float pad, vector scr, float pick) Scores_Finish =
 		Profile_TakePick();
 		if (rec_sb_open)
 		{
-			if (ui_he_open || rec_wt_open)
-				print("leaderboard: close the replay or the editor, then a profile can open\n");
+			if (ui_he_open)
+				print("leaderboard: close the editor, then a profile can open\n");
 			else if (s == "") print("leaderboard: this row has no account identity\n");
 			else { Scores_Close(); Av_OpenAt(s); }
 		}

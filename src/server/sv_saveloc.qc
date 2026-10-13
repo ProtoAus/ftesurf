@@ -3346,7 +3346,8 @@ float(entity e, float t, vector near, float usenear, float go, float view) SV_Sa
 
 	if (!SV_SaveLocBegin(e, FALSE))
 		return FALSE;
-	if (e.run_pmhold)
+	// A viewed pose is a practice-only snapshot; it never reads the held body.
+	if (e.run_pmhold && !view)
 	{
 		sprint(e, PRINT_HIGH, "^3rewind: stop spectating first\n");
 		return FALSE;
@@ -4280,11 +4281,10 @@ void(entity e, float on) SV_WatchHold =
 		       "^3replay: let go of the save-lock key first\n");
 		return;
 	}
-	if (e.run_pmhold)                   // Patch 382
-	{
-		sprint(e, PRINT_HIGH, "^3replay: stop spectating first\n");
-		return;
-	}
+	// Switching viewers is one server command: restore the spectator's body
+	// before the replay takes its own pin, without a countdown between owners.
+	if (e.run_pmhold)
+		SV_SpecRelease(e, "replay");
 
 	e.rec_wt_hold     = TRUE;
 	e.rec_wt_holdmove = e.movetype;

@@ -546,9 +546,9 @@ void() Av_Open =
 	  is the long version.  The board wins because it is the older modal; the
 	  customizer says so instead of drawing a panel that cannot be clicked.
 	*/
-	if (rec_sb_open || ui_he_open || rec_wt_open)
+	if (rec_sb_open || ui_he_open)
 	{
-		print("hud_player: close the leaderboard / editor / replay first\n");
+		print("hud_player: close the leaderboard / editor first\n");
 		return;
 	}
 	if (av_open)

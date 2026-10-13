@@ -1046,6 +1046,8 @@ float() Rewind_Console =
 float(float a) Rewind_NormalAngle = { return a - 360 * floor((a + 180) / 360); };
 
 // The command route used by both digit keys and bound save-lock commands.
+string() Spec_SaveCommand; // cl_spectate.qc owns the body-stream pose.
+
 string() SaveLoc_SaveCommand =
 {
 	Trail_ReplayClear();
@@ -1073,6 +1075,8 @@ string() SaveLoc_SaveCommand =
 		               sprintf("%.6f %.6f %.6f", rec_wt_vel_x, rec_wt_vel_y, rec_wt_vel_z),
 		               Rewind_NormalAngle(rec_wt_pitch), Rewind_NormalAngle(rec_wt_yaw), rec_wt_ducked);
 	}
+	if (Spec_Active())
+		return Spec_SaveCommand();
 	return "sl_save";
 };
 

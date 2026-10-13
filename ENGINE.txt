@@ -25,7 +25,10 @@ commit   6b6c8ab6805d7d295884048f4bb07386c8d0b38a
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-683
-patch    683
+patch    684
+# Patch 684: normal viewer controls, front-modal SUI arbitration, watched-pose
+# saves, crosshair/rewind key HUD, and Dusk demo-player styling. QC only;
+# the native commit/tag above stay pinned to P683.
 # Patch 683: Source brush zero-opacity/Enable/Disable, explicit material depth
 # masks, concrete texture-target cache identity with request ANY, VTF frame
 # traversal, default brush emissive mapping and reflection/additive opacity.

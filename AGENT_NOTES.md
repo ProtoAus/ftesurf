@@ -1,5 +1,28 @@
 # AGENT_NOTES.md
 
+## Patch 684 — viewer controls and shared SUI ownership (13 Oct 2026)
+
+- A later front panel can draw valid hit boxes yet have dead buttons: an earlier
+  replay `sui_end` cleared its release queue. Suppress the background playback
+  bracket while another modal owns the cursor; do not stop the camera/HUD/clock.
+  The native board's front-input gate must also ignore the background watch claim.
+  Actual line/replay clicks, not console twins, are the acting control.
+- A mouse motion that wakes SUI returns before rebuilding hover. Replay must
+  re-test the current hit list on mouse-down, just as the board does. The new
+  clock Play/Pause click exposed this: down/up were taken but had no held/released
+  ID until that refresh. Keep an actual first-click arm, not just a paused cvar.
+- Spectator pose saves use the existing untimed view-snapshot path. The pose
+  helper belongs in cl_spectate (body-stream declarations are later than rewind);
+  cl_rewind calls a prototype, not those later globals. Test a real second client
+  whose watched position differs from the parked body, plus load and exclusive-pin
+  readback. Preserve missing-pose refusal and the native server-history gate.
+- `tools/viewer_ui_smoke.py` owns only thin source/runtime overlays beneath an
+  OWNER.md root; its synthetic key lives only in the isolated server cfg. Real
+  lobby saves otherwise refuse at the identity prerequisite. `waitmap`, post-spawn
+  menu_restart/ui_close and a delay after the final server probe are prerequisites,
+  not optional timing polish. Its two clients are stopped only by owned handles.
+
+
 ## P683 visual continuation — 12 Oct 2026
 
 - Demise's apparent horizontal background seam was the HUD strafe bar, not

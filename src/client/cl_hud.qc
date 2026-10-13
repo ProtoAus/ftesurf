@@ -3384,9 +3384,8 @@ string() HUD_MapStages =
   decision about aiming, not about how big the HUD's text is, and tying it to a
   cvar people change for legibility would move the thing they aim with.
 
-  DRAWN LAST, over the world and under the panels, and suppressed in a replay and
-  a ghost exactly as the engine's is -- a crosshair over someone else's run is
-  pointing at nothing.
+  DRAWN LAST, over the world and under the panels. Viewed runs keep the player's
+  configured crosshair; only the ghost's detached camera suppresses it.
 ===========================================================================
 */
 string(float n) HUD_CrosshairPic =
@@ -3406,10 +3405,8 @@ void(vector scr) HUD_DrawCrosshair =
 	if (n < 1)
 		return;                     // the engine's, or none; see the essay above
 
-	// The two states the engine's own crosshair is already suppressed for.  Kept
-	// in step with cl_main.qc's VF_DRAWCROSSHAIR line by hand, which is the same
-	// arrangement that line has always had with rec_wt_on / rec_gh_on.
-	if (rec_wt_on || rec_gh_on || spc_cam)
+	// Viewed runs keep the normal HUD; only the ghost's detached camera hides it.
+	if (rec_gh_on)
 		return;
 
 	pic = HUD_CrosshairPic(n);
@@ -5675,6 +5672,8 @@ void(vector scr) HUD_Draw =
 		if (ui_cv_speed) HUD_DrawSpeed(scr, ui_rw_vel, ui_rw_org);
 		if (ui_cv_mapinfo) HUD_DrawMapInfo(scr);
 		HUD_DrawSubmitWarn(scr);
+		HUD_DrawCrosshair(scr);
+		if (ui_cv_keys) HUD_DrawKeys(scr);
 		ui_lasttime = cltime;
 		return;
 	}
@@ -5945,12 +5944,13 @@ void(vector scr) HUD_Draw =
 	// exists to protect.  It has its own rec_wt_on guard.
 	HUD_DrawSubmitWarn(scr);
 
-	// Patch 385: watching, the same cut -- the strafe bar, board and segments
-	// are fed by your own body's machine, and the crosshair is not your aim.
+	// No ground plane/input stream: keep only telemetry the viewed body carries.
+	// Layout and controls are still the normal HUD's.
 	if ((rec_wt_on && !rec_wt_v4) || spc_hud)
 	{
 		if (ui_cv_keys)  HUD_DrawKeys(scr);
 		if (ui_cv_debug) HUD_DrawDebug(scr, vel, onground, gnorm, mtype);
+		HUD_DrawCrosshair(scr);
 		return;
 	}
 

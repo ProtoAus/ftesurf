@@ -1197,7 +1197,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 
 	// A viewer must not swallow the engine bind which opens the board, or
 	// the save-lock's digit keys. The open board still takes priority above.
-	if (rec_wt_open || rw_on)
+	if (rec_wt_open || rw_on || Spec_Active())
 	if (evtype == IE_KEYDOWN || evtype == IE_KEYUP)
 	{
 		if (!strcmp(getkeybind(scanx), "+showscores"))
@@ -1205,7 +1205,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (evtype == IE_KEYDOWN)
 		if (Vote_Key(scanx))
 			return TRUE;
-		if (scanx == '1' || scanx == '2' || scanx == 'z')
+		if (rec_sl_open || scanx == '1' || scanx == '2' || scanx == 'z')
 		if (SaveLoc_Key(scanx, evtype == IE_KEYDOWN))
 			return TRUE;
 	}
@@ -1536,14 +1536,11 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	  the only value that now falls through to the engine.  See HUD_DrawCrosshair,
 	  whose own `if (n < 1) return` is correct for both new states without change.
 
-	  The replay/ghost terms are unchanged and HUD_DrawCrosshair repeats them, by
-	  hand, for its own path.  Two tests rather than one shared flag because they
-	  run in different files at different points in the frame, and a crosshair that
-	  appeared in a replay would be pointing at somebody else's aim.
+	  Viewed runs keep the configured HUD crosshair too. Only the ghost's
+	  detached camera suppresses it, matching HUD_DrawCrosshair.
 	*/
 	setproperty(VF_DRAWCROSSHAIR,
-	            (rec_wt_on || rec_gh_on || getstatf(STAT_FS_SPEC) > 0
-	             || cvar("hud_crosshair") >= 0) ? 0 : 1);
+	            (rec_gh_on || cvar("hud_crosshair") >= 0) ? 0 : 1);
 
 	// The recorded camera, over the top of whatever the engine put in the
 	// refdef.  After clearscene, which resets both properties.
@@ -1884,9 +1881,8 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  is filled by HUD_Draw, Timer_Draw, SaveLoc_Draw and Gfx_Draw above -- it
 		  would be editing last frame's layout from anywhere earlier.
 
-		  It refuses to open while a replay or the scoreboard is up and closes
-		  itself if one appears, so the two sui_begin/sui_end brackets on this line
-		  can never nest.
+		  It refuses the scoreboard; playback keeps running but yields its SUI
+		  bracket to this editor, so the two cannot clear each other's clicks.
 		*/
 		HUD_EditDraw(scr);
 		HUD_EditRoundTest(scr);     // Patch 642's arm; draws only while asked

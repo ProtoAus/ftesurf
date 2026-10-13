@@ -53,7 +53,10 @@ float() Scores_NativeFront =
 	if (chat_typing) return FALSE;
 	held = UI_CursorHeld();
 	if (held & UIC_SCORES) held = held - UIC_SCORES;
-	if (held) return FALSE; //Replay input precedes scores too.
+	// The pinned board is in front of the viewer, just as legacy Scores_InputEvent is.
+	if (rec_sb_open)
+	if (held & UIC_WATCH) held = held - UIC_WATCH;
+	if (held) return FALSE;
 	if (!NUI_GameFocus()) return FALSE;
 	return TRUE;
 };

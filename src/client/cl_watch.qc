@@ -3820,13 +3820,6 @@ float(string path) Watch_Open =
 	leg = rec_wt_wantleg;           // Patch 431: taken whatever happens below
 	rec_wt_wantleg = 0;
 
-	// Patch 385: the server refuses the pin under spectate (a pending one too), and
-	// both would own the camera.
-	if (Spec_Active())
-	{
-		print("^3replay:^7 stop spectating first\n");
-		return FALSE;
-	}
 	// Patch 477 review round 10: nor under a save-lock hold, which the server's
 	// pin refuses -- the replay would run over a body nobody holds once the hold
 	// lets go.  The rewind hands its pin over only while browsing.
@@ -4134,14 +4127,9 @@ void(float r) Watch_SetRate =
   So: two font sizes, both snapped, and every vertical is a sum of those two plus
   named padding.  The panel's height is what its contents came to.
 
-  THE MONO FACE, WHICH IS THE GOOGLE ONE ON DISK.  gfx/fonts/GoogleMed.ttf is
-  Google Sans Code Medium and every glyph in it advances exactly 0.6 em -- see
-  the ladder essay in sh_font.qc.  For a panel whose entire top line is a CLOCK
-  that is not a preference: with a proportional face the elapsed time shifts
-  sideways as the digits change under it, and at 1x that is a readout that
-  jitters four times a second.  Fixed pitch also makes the width of a line
-  computable from its character count, which is what lets the layout below fit
-  itself to the window instead of hoping.
+  The current UI face, like the board. Title and clock widths are measured,
+  not inferred from character counts. The clock keeps its right edge anchored
+  at the close button while the timeline and speed controls share the row.
 */
 #define WT_PAD   10                 // panel edge to content, both axes
 #define WT_GAP    6                 // between the three rows
@@ -4187,7 +4175,7 @@ void(vector scr) Watch_Chrome =
 	if (wsc < 0.5) wsc = 0.5;       // below this the hint is unreadable anyway
 	if (wsc > 4)   wsc = 4;         // above it the panel is wider than any window
 
-	Font_Set(ui_font_mono);
+	Font_Set(ui_font_ui);
 	small = Font_Px(8 * ui_cv_scale * wsc);
 	tiny  = Font_Px(7 * ui_cv_scale * wsc);
 	cw    = small * 0.6;            // this face's advance, exactly
@@ -4200,26 +4188,28 @@ void(vector scr) Watch_Chrome =
 	  about whether it is "unknown".
 	*/
 	s = (rec_wt_owner != "") ? UI_NameShow(rec_wt_owner, 0) : "unknown";
-	stitle = sprintf("%s   %s%s", s, Time_TickString(rec_wt_endticks, rec_wt_tickrate),
+	stitle = sprintf("Demo  %s   %s%s", s, Time_TickString(rec_wt_endticks, rec_wt_tickrate),
 	                 rec_wt_abandon ? " (abandoned)" : "");
-	sclock = sprintf("%s / %s   %.2fx%s",
+	sclock = sprintf("%s / %s   %.2fx  %s",
 	                 Time_TickString(Watch_ClockTicks(), rec_wt_tickrate),
 	                 Time_TickString(rec_wt_endticks, rec_wt_tickrate),
-	                 rec_wt_rate, rec_wt_paused ? "  paused" : "");
+	                 rec_wt_rate, rec_wt_paused ? "Play" : "Pause");
 	// Patch 431: a cut reads in the stage's own time (negative in the lead-in).
 	if (rec_wt_wincut)
 	{
-		stitle = sprintf("%s   stage %g", s, rec_wt_winseg + 1);
-		sclock = sprintf("%s / %s   %.2fx%s",
+		stitle = sprintf("Demo  %s   stage %g", s, rec_wt_winseg + 1);
+		sclock = sprintf("%s / %s   %.2fx  %s",
 		                 Time_TickString((rec_wt_time - rec_wt_wint0) / rec_wt_tickrate,
 		                                 rec_wt_tickrate),
 		                 Time_TickString((rec_wt_wint1 - rec_wt_wint0) / rec_wt_tickrate,
 		                                 rec_wt_tickrate),
-		                 rec_wt_rate, rec_wt_paused ? "  paused" : "");
+		                 rec_wt_rate, rec_wt_paused ? "Play" : "Pause");
 	}
 
 	wtitle = stringwidth(stitle, TRUE, [small, small]);
+	Font_Set(ui_font_mono);             // stable-width clock, like the board's time column
 	wclock = stringwidth(sclock, TRUE, [small, small]);
+	Font_Set(ui_font_ui);
 	bw     = small + 4;             // the close button is square on the row height
 
 	/*
@@ -4245,14 +4235,13 @@ void(vector scr) Watch_Chrome =
 	// a panel being 8 px out on a cvar change is not worth a second layout pass.
 	rec_wt_chromebot = p_y + h;
 
-	sui_fill(p, sz, '0.03 0.04 0.06', 0.88, 0);
-	sui_border_box(p, sz, 1, '0.30 0.55 0.85', 0.9, 0);
+	sui_style_panel(p, sz, 8 * wsc, 0.98);
 
 	// --- the title line ---------------------------------------------------
 	y  = p_y + pad;
 	bx = p_x + w - pad - bw;
 
-	drawstring([p_x + pad, y], stitle, [small, small], '0.90 0.93 0.98', 1, 0);
+	sui_text([p_x + pad, y], [small, small], stitle, SUI_THEME_TEXT, 1, 0);
 
 	/*
 	  Where we are, against how long it is -- RIGHT-ALIGNED off the close button
@@ -4269,14 +4258,26 @@ void(vector scr) Watch_Chrome =
 	xs = bx - gap - wclock;
 	if (xs < p_x + pad + wtitle + gap)
 		xs = p_x + pad + wtitle + gap;
-	drawstring([xs, y], sclock, [small, small],
-	           rec_wt_paused ? '1.00 0.82 0.20' : '0.65 0.70 0.78', 1, 0);
+	sui_action_element([xs - 2, y - 2], [wclock + 4, small + 4], "wt_pause", sui_noop);
+	if (sui_is_hovered("wt_pause"))
+		sui_roundbox([xs - 2, y - 2], [wclock + 4, small + 4], 4 * wsc, SUI_THEME_HOVER, 1);
+	Font_Set(ui_font_mono);
+	sui_text([xs, y], [small, small], sclock,
+	         rec_wt_paused ? SUI_THEME_WARN : SUI_THEME_DIM, 1, 0);
+	Font_Set(ui_font_ui);
+	if (sui_is_released("wt_pause"))
+	{
+		Watch_NavClear();
+		rec_wt_paused = !rec_wt_paused;
+	}
 
 	// --- the close button, top right --------------------------------------
 	sui_action_element([bx, y - 2], [bw, bw], "wt_x", sui_noop);
-	if (sui_is_hovered("wt_x"))
-		sui_fill([bx, y - 2], [bw, bw], '0.55 0.15 0.15', 1, 0);
-	drawstring([bx + (bw - cw) * 0.5, y], "X", [small, small], '1 1 1', 1, 0);
+	sui_style_box([bx, y - 2], [bw, bw], 4 * wsc,
+	              sui_is_hovered("wt_x") ? SUI_THEME_BAD_BG : SUI_THEME_CHIP,
+	              SUI_THEME_EDGE, 1);
+	sui_text([bx + (bw - stringwidth("X", TRUE, [small, small])) * 0.5, y],
+	         [small, small], "X", SUI_THEME_TEXT, 1, 0);
 	if (sui_is_released("wt_x"))
 	{
 		Watch_Stop();
@@ -4302,10 +4303,10 @@ void(vector scr) Watch_Chrome =
 	th = floor(6 * wsc);                  // the track's own thickness
 	kw = floor(4 * wsc);                  // and the width of a slider knob
 
-	sui_fill([p_x + pad, y + (small + 4) * 0.5 - th * 0.5], [bw, th],
-	         '0.12 0.14 0.18', 1, 0);
-	sui_fill([p_x + pad, y + (small + 4) * 0.5 - th * 0.5], [bw * sp, th],
-	         '0.35 0.72 1.00', 1, 0);
+	sui_roundbox([p_x + pad, y + (small + 4) * 0.5 - th * 0.5], [bw, th],
+	             th * 0.5, SUI_THEME_WELL, 1);
+	sui_roundbox([p_x + pad, y + (small + 4) * 0.5 - th * 0.5], [bw * sp, th],
+	             th * 0.5, SUI_THEME_ACCENT, 1);
 
 	/*
 	  The t = 0 mark: everything left of it is the approach the padding ring
@@ -4334,7 +4335,7 @@ void(vector scr) Watch_Chrome =
 	if (rec_wt_vt1 > xa)
 		sui_fill([p_x + pad + bw * ((xa - rec_wt_vt0) / (rec_wt_vt1 - rec_wt_vt0)) - kw * 0.5,
 		          y + (small + 4) * 0.5 + th * 0.5 + 1],
-		         [kw * 0.5, floor(3 * wsc)], '1.00 0.82 0.20', 0.9, 0);
+		         [kw * 0.5, floor(3 * wsc)], SUI_THEME_WARN, 0.9, 0);
 
 	/*
 	  THE DEAD AIR, IN RED.  Build 43.
@@ -4367,7 +4368,7 @@ void(vector scr) Watch_Chrome =
 		if (xb - xa < 1)
 			xb = xa + 1;
 		sui_fill([p_x + pad + xa, y + (small + 4) * 0.5 - th * 0.5],
-		         [xb - xa, th], '0.85 0.25 0.25', 0.9, 0);
+		         [xb - xa, th], SUI_THEME_BAD, 0.9, 0);
 	}
 
 	/*
@@ -4385,19 +4386,20 @@ void(vector scr) Watch_Chrome =
 	  kind of object.  Clamped a knob's width inside either end so it is still
 	  wholly on the bar at t0 and t1 rather than half outside the panel.
 	*/
-	sui_fill([p_x + pad + bound(0, bw * sp, bw) - kw * 0.5, y], [kw, small + 4],
-	         '0.90 0.93 0.98', 1, 0);
+	sui_roundbox([p_x + pad + bound(0, bw * sp, bw) - kw * 0.5, y], [kw, small + 4],
+	             kw * 0.5, SUI_THEME_TEXT, 1);
 
 	sui_slidercontrol("wt_scrub", [p_x + pad, y], [bw, small + 4],
 	                  [0, 1, 0], sp, Watch_ScrubTo);
 
 	// --- the speed slider -------------------------------------------------
 	xs = p_x + w - pad - sw;
-	sui_fill([xs, y + (small + 4) * 0.5 - th * 0.5], [sw, th], '0.12 0.14 0.18', 1, 0);
+	sui_roundbox([xs, y + (small + 4) * 0.5 - th * 0.5], [sw, th],
+	             th * 0.5, SUI_THEME_WELL, 1);
 	sui_fill([xs + sw * 0.5 - kw * 0.25, y + 1], [kw * 0.5, small + 2],
-	         '0.55 0.58 0.65', 1, 0);
-	sui_fill([xs + sw * rec_wt_slider - kw * 0.5, y], [kw, small + 4],
-	         '0.90 0.93 0.98', 1, 0);
+	         SUI_THEME_MUTED, 1, 0);
+	sui_roundbox([xs + sw * rec_wt_slider - kw * 0.5, y], [kw, small + 4],
+	             kw * 0.5, SUI_THEME_ACCENT2, 1);
 	sui_slidercontrol("wt_speed", [xs, y], [sw, small + 4],
 	                  [0, 1, 0], rec_wt_slider, Watch_SetSpeed);
 
@@ -4445,15 +4447,15 @@ void(vector scr) Watch_Chrome =
 	skx = p_x + w - pad - skw;
 
 	sui_action_element([skx, y - 2], [skw, tiny + 4], "wt_skip", sui_noop);
-	if (sui_is_hovered("wt_skip"))
-		sui_fill([skx, y - 2], [skw, tiny + 4], '0.16 0.20 0.26', 1, 0);
+	sui_roundbox([skx, y - 2], [skw, tiny + 4], (tiny + 4) * 0.5,
+	             sui_is_hovered("wt_skip") ? SUI_THEME_HOVER : SUI_THEME_CHIP, 1);
 
 	// Green only when it is both on AND has something to do.  On with nothing to
 	// skip is a true statement about the switch and a misleading one about the
 	// run, so it reads as dim -- the same distinction the KIND column makes
 	// between "clean" and "--".
-	drawstring([skx + pad * 0.5, y], s, [tiny, tiny],
-	           (skon && rec_wt_idn > 0) ? '0.45 0.85 0.50' : '0.40 0.42 0.48', 1, 0);
+	sui_text([skx + pad * 0.5, y], [tiny, tiny], s,
+	         (skon && rec_wt_idn > 0) ? SUI_THEME_GOOD : SUI_THEME_DIM, 1, 0);
 
 	if (sui_is_released("wt_skip"))
 		localcmd(skon ? "hud_watch_skipidle 0\n" : "hud_watch_skipidle 1\n");
@@ -4466,9 +4468,9 @@ void(vector scr) Watch_Chrome =
 		skx = skx - gap - xb;
 		skw = skw + gap + xb;
 		sui_action_element([skx, y - 2], [xb, tiny + 4], "wt_cut", sui_noop);
-		if (sui_is_hovered("wt_cut"))
-			sui_fill([skx, y - 2], [xb, tiny + 4], '0.16 0.20 0.26', 1, 0);
-		drawstring([skx + pad * 0.5, y], s, [tiny, tiny], '0.55 0.75 0.95', 1, 0);
+		sui_roundbox([skx, y - 2], [xb, tiny + 4], (tiny + 4) * 0.5,
+		             sui_is_hovered("wt_cut") ? SUI_THEME_HOVER : SUI_THEME_CHIP, 1);
+		sui_text([skx + pad * 0.5, y], [tiny, tiny], s, SUI_THEME_ACCENT, 1, 0);
 		if (sui_is_released("wt_cut"))
 			Watch_SetCut(!rec_wt_wincut);
 	}
@@ -4484,7 +4486,7 @@ void(vector scr) Watch_Chrome =
 		s = "space  arrows/strafe  esc";
 	if (stringwidth(s, TRUE, [tiny, tiny]) > w - pad * 2 - skw - gap)
 		s = "";
-	drawstring([p_x + pad, y], s, [tiny, tiny], '0.45 0.48 0.55', 1, 0);
+	sui_text([p_x + pad, y], [tiny, tiny], s, SUI_THEME_DIM, 1, 0);
 
 	Font_Reset();
 };
@@ -4537,8 +4539,8 @@ float rec_wt_fps;                // the VIEWER's frame rate, smoothed
 // One row: label left, value right-aligned inside the panel's width.
 void(vector p, float w, float sz, float cw, string k, string v) Watch_InfoRow =
 {
-	drawstring([p_x, p_y], k, [sz, sz], '0.52 0.56 0.64', 1, 0);
-	drawstring([p_x + w - strlen(v) * cw, p_y], v, [sz, sz], '0.86 0.90 0.96', 1, 0);
+	sui_text([p_x, p_y], [sz, sz], k, SUI_THEME_DIM, 1, 0);
+	sui_text([p_x + w - stringwidth(v, TRUE, [sz, sz]), p_y], [sz, sz], v, SUI_THEME_TEXT, 1, 0);
 };
 
 /*
@@ -4580,8 +4582,7 @@ void(vector scr) Watch_Info =
 	if (p_y + h > scr_y - 12)
 		p_y = scr_y - 12 - h;       // a short window pushes it up rather than off
 
-	sui_fill(p, [w + WT_PAD * 2, h], '0.03 0.04 0.06', 0.82, 0);
-	sui_border_box(p, [w + WT_PAD * 2, h], 1, '0.30 0.55 0.85', 0.55, 0);
+	sui_style_panel(p, [w + WT_PAD * 2, h], 8 * ui_cv_scale, 0.98);
 
 	p_x = p_x + WT_PAD;
 	y   = p_y + WT_PAD;
@@ -4765,6 +4766,11 @@ void(vector scr) Watch_Draw =
 		rec_wt_chromebot = 0;
 		return;
 	}
+
+	// SUI has one click queue/hit list. A front modal must consume it, not
+	// the playback chrome behind it. The camera, HUD and clock keep running.
+	if (ui_cursor_claims & ~UIC_WATCH)
+		return;
 
 	sui_begin(scr_x, scr_y);
 	Watch_Chrome(scr);
@@ -4953,6 +4959,10 @@ float(float evtype, float scanx, float chary, float devid) Watch_InputEvent =
 		// The primary mouse buttons remain the chrome's, even if rebound.
 		if (scanx == K_MOUSE1 || scanx == K_MOUSE2)
 		{
+			// Opening a viewer can leave SUI's mouse asleep, or a reflow can
+			// move the controls under a resting pointer. Test the hit now.
+			if (evtype == IE_KEYDOWN)
+				_sui_mouse_move(_cursor_position, FALSE);
 			sui_input_event(evtype, scanx, chary, devid);
 			return TRUE;
 		}

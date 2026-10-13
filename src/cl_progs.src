@@ -216,9 +216,9 @@ client/cl_account.qc
 // Patch 390: the mouse pad.  After cl_watch.qc and cl_spectate.qc (rec_wt_*,
 // spc_tang) and cl_hud.qc (HUD_KeysGeom); before cl_hudedit.qc and cl_main.qc.
 client/cl_mouse.qc
-// LAST BEFORE cl_main.qc.  Build 31.  The layout editor refuses to share the
-// screen with a replay, the leaderboard or the results card, so it needs
-// rec_wt_open (cl_watch.qc) and ui_rs_cursor (cl_results.qc); it also consumes
+// LAST BEFORE cl_main.qc. The layout editor is modal above playback, and
+// refuses the leaderboard or results card. It needs ui_rs_cursor
+// (cl_results.qc); it also consumes
 // the rect registry, which has to live in cl_hud.qc because every drawer calls
 // into it.  After all of them is the only position that satisfies both, and it
 // needs nothing from cl_main.qc.

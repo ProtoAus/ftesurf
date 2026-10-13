@@ -11,6 +11,23 @@ to be wrong.
 
 ---
 
+## 00. 13 Oct — viewer HUD, controls and demo styling (Patch 684)
+
+Automated two-client dedicated-socket controls pass: actual board line/replay
+clicks, player pause click, saves/loads from demo/rewind/spectator, editor/profile
+opening during playback and exclusive spectator-to-demo pin handoff. Demo,
+spectator, rewind, board and editor screenshots inspected at 1920-wide.
+
+- Judge the Dusk demo panel at your HUD scale, with long names and stage cuts.
+  Clock Play/Pause, scrub, speed and skip-still should remain readable/hittable.
+- While watching, open the leaderboard, enable other run lines and pick another
+  demo. Opening a modal hides the background player controls, not playback/HUD.
+- Save the viewed position, then load it to return there. Spectator/demo snapshot
+  saves do not grant the watched run's timed prefix. Try your custom save binds.
+- Check imported recordings and third/free spectator cameras. Missing recorded
+  inputs/contact planes still do not acquire your parked body's analytical HUD;
+  crosshair, speed, timer, saves, keys and available lines keep their own settings.
+
 ## 00. 12 Oct — Source map visuals (Patch 683)
 
 Clean committed P683 deployed to both Windows installs; server progs deployed
