@@ -4958,6 +4958,22 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   excluded. Artifacts ordinary-quiet-20261013/, tools/p690ordinary.md. No broader
   map/moving-camera/frame-tail/promotion/default2 claim; several setup changes
   together do not establish what caused the previous scene drift.
+- Additional-map stationary eligibility is NOT a performance matrix. Existing
+  Tensor2/Demise fullframes still change with the actual quiet HUD/input settings,
+  fixed rendered eye/aim, cache0 and314/315 advancing ordinary draws. Tensor2 mode1/
+  mode2 repeats change286088/283347 pixels in lower water-area bounds; Demise's
+  valid retry changes24701/21166 in upper sky-area bounds. No masks/time freezing
+  or causal shader-defect claim. Known-stable Kitsune positive repeats exactly,
+  HUD16215 pixels/exact return. Both extra stations are INELIGIBLE for the exact
+  stationary gate, so no production A/B/A timing there. New p690stationprobe.py
+  separates INVALID evidence from valid-but-INELIGIBLE; normal/-O controls cover
+  ticket/wait/camera/state/closure and one-pixel drift. tools/p690stationprobe.md.
+  Demise first cmd setpos printed the target but settled about1.1 units off it:
+  exclude, don't widen tolerance. A separately frozen retry split noclip activation
+  from placement, placed again after settling and checked body BEFORE PNG/cost;
+  same target passed. Root cause of initial placement drift remains unknown.
+  Timer may be running on a stationary renderer station; correct world, ZERO
+  velocity and protected fixture restoration matter, not assumed idle/armed.
 - Stale r_waterinfo MarkLeaves age is NOT cache-action proof. Q1BSP_MarkLeaves
   common/q1bsp.c:2227 returns same-cluster cvis BEFORE marktime at2275. Actual
   stationary cache0 reported wanted0/inuse0 plus stale14.1s/false causal cache

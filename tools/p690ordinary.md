@@ -136,6 +136,18 @@ logs/PNGs and original hashes retained; only explicitly verified duplicate backu
 may retire. A fresh read-only review and regression/closure results are recorded
 in the continuation checkpoint, separately from commit/push state.
 
+## Additional-map eligibility follow-up
+
+The published quiet result above remains Kitsune-only. A separate diagnostic
+probe of existing Tensor2 and Demise stations found full-frame scene changes
+with fixed rendered cameras and advancing uncached draws. Neither qualifies for
+this EXACT stationary protocol; no production P688/merged/P688-return timing
+was run there. The first Demise attempt is invalid wrong-camera evidence and
+remains excluded; its separately preregistered settled-camera retry is valid
+but ineligible. See [p690stationprobe.md](p690stationprobe.md) for native pixel
+counts, fixed-state/action controls, and the eligibility-only CLI contract.
+This does not identify a renderer defect or expand performance/default2 claims.
+
 ## Earlier native experiment — 2026-10-13, EXCLUDED
 
 Owned evidence: `C:/FTESurf-worktrees/mapvisual-01a13061/artifacts/ordinary-cost-20261013/`.
