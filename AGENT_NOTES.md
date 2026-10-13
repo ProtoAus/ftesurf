@@ -6468,6 +6468,11 @@ assets; zero MISS is not proof of a complete product archive.
   Ground/bhops and `Board_ResetRun` preserve the streak; only a non-perfect
   graded board clears it, or `Board_Clear` for a new map/VM. Sound Off/Mute still
   tracks it. Controls and original WAV generator: `tools/p686_board_feedback.md`.
+- New loose sound directories must be present **before** a lobby's filesystem
+  scan/restart. P686's first progs-only restart could not serve subsequently
+  copied WAVs; a guarded restart after copying made fresh unseeded clients fetch
+  all three exact cues. HTTP-mirror 404 is not the server-download result: prove
+  the fallback files/hashes too, and do not claim an HTTP deployment from that.
 - Splitting a mono grade into per-glyph drawstrings and summing their measured
   advances moved its percentage suffix **one pixel** versus the original whole
   string. Keep the suffix in its original centered whole-string draw, replacing
