@@ -4931,12 +4931,33 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   A0.4second bridge read captured partial dumps in34/38 replies even though full
   records exist in raw logs: require a unique ticket and footer before grading.
   Six/eight Kitsune fullframe repeats changed1016..3900 pixels; no new mask was
-  allowed. Timer/mapinfo/minimap stayed visible behind guessed HUD names; inspect
+  allowed. Timer/mapinfo/mouse-pad stayed visible behind guessed HUD names; inspect
   actual registered names, but scene deltas do not prove HUD causation. Archived
   excluded timing diagnostics also show P688 mode1 return cost+37.57%, above the
   frozen20% drift guard. Timing slowdown ACTS5x cadence/59x refresh; that does not
   rescue unstable controls. Serialize native timing against detector/corpus/hash
   work and prove quiet A/B/A returns. No product bug/fix/default2 acceptance.
+- Quiet ordinary follow-up passes ONLY the fixed Kitsune cache0 GL station.
+  src/client/cl_mouse.qc:MPad_Draw's lower-right square is hud_mouse, not a
+  minimap; hud_timer/hud_mapinfo are registered panel controls. Disable/read
+  these plus explicit input/prediction/HDR state, and prove the actual on/off/on
+  channel. Short probe changes16215 HUD pixels, exact return and both fullframe
+  repeats across r_speeds0/2/0, counters advance314/315 ordinary draws.
+  New schema2 reader requires current unique BEGIN/END-or-footer primary records
+  and hash-bound successful completion waits with exact timestamped-primary
+  completion binding and unique witness paths, never fixed-short-read recovery.
+  BLOCKING serialized capture, no concurrent parent/child detector/hash/corpus
+  work:78 complete samples/17 exact PNGs; mode2 acts12065, default/diagnostic/
+  return parity exact. Six medians P688/merged/return: mode1 753.410/730.220/
+  692.195us, mode2 785.760/762.495/677.520us adjusted refresh. Both-controls1.20
+  and return[.80,1.20] unchanged; -8.13%/-13.78% return drift is within guard,
+  NOT identical load or a speedup. All cadence medians9.9995..10.0015ms; slowdown
+  acts5x/65.34x; WGL-return is not GPU/display, refresh is not whole-host time.
+  All owned stopsrc0/native8/fixtures/install hashes restored. New controls74
+  offline rejections/6 synthetic positives under normal/-O. Old failures stay
+  excluded. Artifacts ordinary-quiet-20261013/, tools/p690ordinary.md. No broader
+  map/moving-camera/frame-tail/promotion/default2 claim; several setup changes
+  together do not establish what caused the previous scene drift.
 - Stale r_waterinfo MarkLeaves age is NOT cache-action proof. Q1BSP_MarkLeaves
   common/q1bsp.c:2227 returns same-cluster cvis BEFORE marktime at2275. Actual
   stationary cache0 reported wanted0/inuse0 plus stale14.1s/false causal cache

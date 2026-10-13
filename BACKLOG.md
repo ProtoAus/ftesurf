@@ -57,14 +57,18 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   controls. This is two synthetic BSP29 maps, not representative all-map coverage.
   Remaining falsifier: arbitrary model/sprite/weapon and rotated-brush native
   overlaps, representative portal/reflection captures, additional supported-map
-  cache0/1 opaque preservation and same-camera ordinary frame times. New ordinary
-  attempt is REJECTED, not a green: tools/p690ordinary.py/p690ordinary.md require
-  complete100-frame dumps plus separate128-swap cadence rings, stable fullframe
-  repeats and <=20% A/B/A control drift. Kitsune repeated-frame deltas1016..3900
-  pixels and P688 mode1 return cost+37.57% falsified acceptance;34/38 short console
-  reads also missed dump footers. Falsifier: actual registered HUD/input controls,
-  unique tickets/complete reports, and quiet serialized P688/merged/P688-return
-  with exact pixels/stable control timings. Do not mask/trim the failed matrix.
+  cache0/1 opaque preservation and representative ordinary frame times/tails.
+  One quiet fixed Kitsune cache0 ordinary gate now PASSES, not broad promotion:
+  tools/p690ordinary.py/p690ordinary.md schema2 bind78 complete ticketed samples,
+  17 exact PNGs, six100-frame service groups and separate128-swap cadence rings.
+  Mode2 acts12065 pixels. Serialized P688/merged/P688-return uses actual registered
+  HUD/input controls; both-control1.20 and return[.80,1.20] limits unchanged.
+  Adjusted refresh medians P688/merged/return: mode1 753.410/730.220/692.195us;
+  mode2 785.760/762.495/677.520us. Returns differ-8.13%/-13.78%, not a speedup
+  or equal-load claim. Native slowdown/return acts. Earlier unstable/partial/
+  +37.57%-drift matrix stays EXCLUDED; no masks/trim/archive rescue. Remaining
+  timing falsifier: additional representative maps and moving-camera/tail captures
+  with these same pixel/report/action/return controls, not cap100 cadence alone.
   Source temporal-cache support needs a separate generation/data-interface implementation and actual
   cached-path GPU/visual/perf controls; toggling a cvar cannot certify it.
   Coarse/recursive records, intersecting geometry and uncertain pairs retain

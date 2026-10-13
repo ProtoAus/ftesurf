@@ -21,6 +21,14 @@ SETTINGS = dict(r_temporalscenecache=0, r_wateralpha_extendpvs=0, r_novis=0,
     hl2_translucent=1, hl2_refract=2, fov=100, vid_srgb=0, r_renderscale=2,
     vid_vsync=0, gl_finish=0, cl_idlefps=0, cl_maxfps=100, sys_framepacing=2,
     sys_framepacing_drain=2, r_speeds=0)
+QUIET_SETTINGS = {
+    **{key: 0 for key in ('hud_timer', 'hud_mapinfo', 'hud_mouse', 'hud_energy',
+        'hud_board', 'hud_specby', 'hud_debug', 'hud_seq', 'hud_strafe', 'hud_keys',
+        'hud_speed', 'hud_crosshair', 'hud_chat', 'sensitivity', 'm_yaw', 'm_pitch',
+        'in_windowed_mouse', 'r_hdr_irisadaptation', 'r_hdr_framebuffer', 'cl_nopred',
+        'cl_netfps')},
+    'cl_predict_extrapolate': 1, 'cl_predict_timenudge': .5,
+}
 CAMERA = (-14986.3, -14484.8, 772.3, 19.3, 125.6, 0)
 EYE = (-14986.237, -14484.737, 836.362)
 
@@ -68,7 +76,10 @@ def cadence(text):
 def cost(text):
     text = clean(text)
     blocks = re.findall(r'---- r_speeds_dump \(us/frame, (\d+)-frame average\) ----\n(.*?)---- end r_speeds_dump ----', text, re.S)
-    require(len(blocks) == 1 and int(blocks[0][0]) == 100, 'cost: needs exactly one full100-frame block')
+    require(len(blocks) == 1 and int(blocks[0][0]) == 100
+            and len(re.findall(r'^---- r_speeds_dump ', text, re.M)) == 1
+            and text.splitlines().count('---- end r_speeds_dump ----') == 1,
+            'cost: needs exactly one full100-frame block')
     pairs = re.findall(r'^\s*([-+\w.]+) ([^\n]+)$', blocks[0][1], re.M)
     values = {}
     for v, label in pairs:
@@ -91,9 +102,9 @@ def cost(text):
                 fingerprint=tuple(sorted(values.items())))
 
 
-def mode_state(row):
+def mode_state(row, quiet=False):
     require(row['arm'] in ALL_ARMS and type(row['mode']) is int and row['mode'] in (1, 2), 'unknown mode identity')
-    expected = dict(SETTINGS, r_blendsort=row['mode'])
+    expected = dict(SETTINGS, **(QUIET_SETTINGS if quiet else {}), r_blendsort=row['mode'])
     if row['phase'] == 'slow':
         expected.update(sys_framepacing=4, cl_maxfps=20)
     require(row['phase'] in ('ordinary', 'slow', 'timing-return'), 'unknown phase')
@@ -126,12 +137,46 @@ def stats(rows, metric):
     return out
 
 
+def sample_record(root, row, schema):
+    """Schema2 binds a complete current-send primary to a hashed completion wait."""
+    raw = blob(root, row).read_text()
+    text = clean(raw)
+    if schema == 2:
+        ticket = f"{row['arm']}_m{row['mode']}_{row['metric']}_{row['phase']}_{row['rep']}"
+        require(row.get('ticket') == ticket, 'wrong sample ticket identity')
+        begin = 'MV14_BEGIN_' + ticket
+        end = '---- end r_speeds_dump ----' if row['metric'] == 'cost' else 'MV14_END_' + ticket
+        lines = [line for line in text.splitlines() if line.strip()]
+        require(lines and lines[0] == begin and lines[-1] == end
+                and lines.count(begin) == lines.count(end) == 1
+                and len(re.findall(r'^MV14_BEGIN_', text, re.M)) == 1,
+                'missing/duplicate/unbounded sample ticket')
+        witness = row.get('wait')
+        require(isinstance(witness, dict), 'missing sample wait witness')
+        start = finite(witness.get('start'), 'sample wait start', positive=True)
+        stop = finite(witness.get('end'), 'sample wait end', positive=True)
+        require(start == row['start'] and start < stop <= row['end'], 'sample wait interval mismatch')
+        wait = blob(root, witness).read_text().strip()
+        match = re.fullmatch(r'MATCH cl after \d+(?:\.\d+)? s: (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d '
+                + re.escape(end) + ')', wait)
+        require(match is not None, 'sample completion wait did not act')
+        require(match[1] == [line for line in raw.splitlines() if line.strip()][-1],
+                'sample completion witness/primary mismatch')
+    if row['metric'] == 'cadence':
+        require('r_speeds_dump' not in text, 'cost report in cadence-only sample')
+    return text
+
+
 def grade(root):
     import numpy as np
     from PIL import Image
     root = Path(root)
     data = json.loads((root / 'capture.json').read_text())
-    require(type(data['schema']) is int and data['schema'] == 1 and data['restored'] is True, 'missing restoration closure')
+    schema = data['schema']
+    require(type(schema) is int and schema in (1, 2) and data['restored'] is True, 'missing restoration closure')
+    if schema == 2:
+        require(all(re.fullmatch(r'[0-9a-f]{64}', str(data.get(k, ''))) for k in
+                ('protocol_sha256', 'driver_sha256')), 'missing quiet protocol/driver provenance')
     before = json.loads((root / 'before.json').read_text())
     restoration = json.loads((root / 'restoration.json').read_text())
     require(restoration['restored'] is True and all(before[k] == restoration[k]
@@ -150,7 +195,7 @@ def grade(root):
     states = [(r['arm'], r['mode'], r['phase']) for r in data['modes']]
     require(len(states) == len(set(states)) and set(states) == expected_states, 'missing/duplicate mode state')
     for row in data['modes']:
-        mode_state(row)
+        mode_state(row, quiet=schema == 2)
     actors = {}
     for row in data['actors']:
         key = row['mode'], row['rep']
@@ -208,7 +253,11 @@ def grade(root):
         end = finite(row['end'], 'sample end', positive=True)
         require(end > start and start > previous_end, 'invalid/overlapping command interval')
         previous_end = end
-        text = blob(root, row).read_text()
+        text = sample_record(root, row, schema)
+        if schema == 2:
+            witness_path = row['wait']['path']
+            require(witness_path not in paths, 'reused sample completion witness path')
+            paths.add(witness_path)
         speeds = re.findall(r'"r_speeds" is "([^"\n]+)"', text)
         require(speeds == ['0' if row['metric'] == 'cadence' else '2'] and 'Effective' not in text,
                 'wrong sampled r_speeds (never accept3/GPU finishes)')
@@ -243,7 +292,8 @@ def grade(root):
     require(slow_cad > 3 and slow_cost > 3 and all(v > 20000 for v in summary['merged/m2/cost/slow']['pacing_us']), 'native timing slowdown did not act')
     returned = summary['merged/m2/cadence/timing-return']['median'] / summary['merged/m2/cadence/ordinary']['median']
     require(.80 <= returned <= LIMIT, 'failed timing-control cadence return')
-    return dict(verdict='PASS bounded ordinary stationary cadence/service cost', groups=summary,
+    return dict(verdict='PASS bounded ordinary stationary cadence/service cost', capture_schema=schema,
+                protocol_sha256=data.get('protocol_sha256'), driver_sha256=data.get('driver_sha256'), groups=summary,
                 comparisons=comparisons, mode2_acted_pixels=acted,
                 control=dict(cadence_ratio=slow_cad, cost_ratio=slow_cost, cadence_return_ratio=returned),
                 receipts={name: sha(root / name) for name in ('capture.json', 'before.json', 'restoration.json')},
