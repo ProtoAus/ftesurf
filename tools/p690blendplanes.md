@@ -116,6 +116,12 @@ failed/unstable arms distinct rather than treating them as passing evidence.
   is recorded, not repaired. Initial Q1 cross-binary mode1 differences are not
   default-parity evidence; the exact Kitsune controls above supply that evidence.
 
+A later [native sprite-overlap fixture](p690spritefixture.md) adds bounded exact
+production P688/merged/P688-return preservation: one SPR32 billboard is visibly
+active in9,216pixels; its on/return images are exact across both modes/arms.
+Sprite-off mode2 correction acts20,604pixels. This is native overlap preservation,
+not correct inherited sprite ordering or arbitrary sprite certification.
+
 Remaining unmeasured scope: hardware tessellation, external-projection runtime,
 arbitrary model/sprite/weapon native certification and broad all-map/GPU/perf
 coverage. Portable rejection/submission guards are not a substitute for GPU tests.

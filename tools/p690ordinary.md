@@ -190,6 +190,10 @@ index/processes were untouched. Hardware: RTX2080SUPER, NVIDIA591.86, Windows GL
   sweep hit a protected fixture and was retained as a setup failure; no save-tree
   repair or clean sweep is claimed, and raw private paths/fault text are not exported.
 
+A later [sprite/world-alpha fixture](p690spritefixture.md) adds one bounded native
+production overlap-preservation result without a timing matrix. It does not expand
+this fixed-station cost gate or certify arbitrary sprite ordering.
+
 **Remaining falsifiers:** representative additional-map/moving-camera ordinary
 cost and tails, native arbitrary model/sprite/weapon/rotated-brush overlaps,
 portal/reflection captures, and supported-map cached opaque preservation. The

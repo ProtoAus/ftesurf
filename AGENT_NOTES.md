@@ -4974,6 +4974,17 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   same target passed. Root cause of initial placement drift remains unknown.
   Timer may be running on a stationary renderer station; correct world, ZERO
   velocity and protected fixture restoration matter, not assumed idle/armed.
+- Bounded sprite/world preservation now has native production P688/merged/P688-
+  return coverage: one generated SPR32 billboard via prop_dynamic,24 fullframe
+  PNGs. env_sprite is removed by this QC, not a sprite fixture. Set gl_blendsprites1
+  BEFORE map load; verify actual defaultsprite blend shader and rendered green
+  footprint9216pixels. Sprite-on repeats/returns and both production modes are
+  exact; sprite-off mode2 correction acts20604pixels. Merged mode2's on/off delta
+  includes world reorder, so it is NOT pure sprite area. Preservation does not
+  prove inherited ordering correct; no diagnostic admission/eye counter, animated/
+  arbitrary sprite/model/weapon/portal/performance/default2 claim. Generator writes
+  only fresh owned artifacts; native fixture/native8/config/data/install closure
+  is separate. tools/p690spritefixture.md; artifacts/sprite-overlap-20261013/.
 - Stale r_waterinfo MarkLeaves age is NOT cache-action proof. Q1BSP_MarkLeaves
   common/q1bsp.c:2227 returns same-cluster cvis BEFORE marktime at2275. Actual
   stationary cache0 reported wanted0/inuse0 plus stale14.1s/false causal cache
