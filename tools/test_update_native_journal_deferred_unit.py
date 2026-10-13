@@ -23,7 +23,12 @@ def scratch():
     root = Path(os.environ['FTESURF_TEST_SCRATCH']).resolve(strict=True)
     assert root.is_dir() and not root.is_symlink()
     with tempfile.TemporaryDirectory(prefix='deferred-units-', dir=root) as d:
-        yield Path(d)
+        try:
+            yield Path(d)
+        finally:
+            # Only mocked synthetic unit fixtures are disposable after assertions.
+            cold.UNCONFIRMED_PHASES.difference_update({p for p in cold.UNCONFIRMED_PHASES
+                if Path(p).is_relative_to(Path(d))})
 
 
 def executable(path, code=b'\x48\x83\xec\x28\xc3'):
@@ -221,8 +226,11 @@ class DeferredGateTests(unittest.TestCase):
                 with self.assertRaisesRegex(AssertionError, 'unconfirmed'):
                     gate.ensure_retirable()
                 self.assertTrue(dest.exists())
-                self.assertFalse((evidence / 'process.json').exists())
-                k.TerminateJobObject.assert_called_once_with('unit-owned-job', 91)
+                receipt = json.loads((evidence / 'process.json').read_text())
+                self.assertEqual(receipt['status'], 'FAIL')
+                self.assertFalse(receipt['full_export'])
+                self.assertIn('export_error', receipt)
+                native.TerminateJobObject.assert_called_once_with('unit-owned-job', 91)
             finally:
                 gate.UNCONFIRMED_PHASES.discard(phase)
 

@@ -22,7 +22,8 @@ from urllib.parse import urlsplit
 
 import updatefeed
 from test_update_handoff import owned_job
-from test_update_native_journal import ensure_retirable, run_native, sha, source_lock
+from test_update_native_journal import (UNCONFIRMED_PHASES, ensure_retirable, preflight_paths,
+    run_native, sha, snapshot, source_lock, stop_win_job, wait_win_job_empty)
 from test_update_native_recovery import digest
 from test_update_native_windows_unreadable import ExclusiveHTTPServer, busy_port_control, kernel32
 
@@ -39,6 +40,7 @@ def destination_lock(path):
 
 
 def live(engine, dest, evidence, kind, expect_before, rows):
+    UNCONFIRMED_PHASES.add(evidence)
     cfg = dest / 'ftesurf/cfg/test/live-journal.cfg'
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text('cfg_save_auto 0\ncl_idlefps 0\ncl_maxfps 100\ncon_savehistory 0\n'
@@ -51,6 +53,7 @@ def live(engine, dest, evidence, kind, expect_before, rows):
             '+set', 'cfg_save_auto', '0', '+set', 'vid_renderer', 'headless', '+exec', 'cfg/test/live-journal.cfg']
     receipt = {'status': 'FAIL', 'kind': kind}
     process = job = None
+    contained = exported = False
     def logs():
         return '\n'.join(p.read_text(errors='replace') for p in dest.rglob('journal-live*.log'))
     def wait(actor):
@@ -94,6 +97,9 @@ def live(engine, dest, evidence, kind, expect_before, rows):
                         assert (dest / path).read_bytes() == rows['old']
                     assert json.loads((meta / 'state.json').read_text()) == rows['ledger']
                     assert not (meta / 'installed.json').exists()
+                # An active client holds an exclusive updater lock; full export is
+                # after containment in finally, not during this same-process retry.
+                (evidence / 'initial-refused.log').write_text(logs(), encoding='utf-8')
                 send('update_check force')
                 # Check is asynchronous: require a fresh second available actor.
                 until = time.monotonic() + 30
@@ -120,54 +126,65 @@ def live(engine, dest, evidence, kind, expect_before, rows):
             process.wait(timeout=30)
             text = logs()
             assert process.returncode == 0 and 'JOURNAL_LIVE_DONE' in text
-            class Accounting(ctypes.Structure):
-                _fields_ = [('times', ctypes.c_int64 * 4), ('faults', w.DWORD),
-                            ('total', w.DWORD), ('active', w.DWORD), ('terminated', w.DWORD)]
-            accounting = Accounting()
-            k = ctypes.WinDLL('kernel32', use_last_error=True)
-            k.QueryInformationJobObject.argtypes = [w.HANDLE, ctypes.c_int, w.LPVOID, w.DWORD, w.LPVOID]
-            assert k.QueryInformationJobObject(job, 1, ctypes.byref(accounting), ctypes.sizeof(accounting), None)
-            receipt['job_active_before_cleanup'] = accounting.active
-            assert accounting.active == 0
+            wait_win_job_empty(job, receipt, 'job_active_before_cleanup')
+            contained = True
             receipt['status'] = 'PASS'
+    except BaseException as error:
+        receipt.update(status='FAIL', error=repr(error))
+        raise
     finally:
-        if process:
-            receipt.update(pid=process.pid, exit=process.poll())
         try:
-            for p in dest.rglob('journal-live*.log'):
-                shutil.copyfile(p, evidence / p.name)
-            (evidence / 'process.json').write_text(json.dumps(receipt, indent=2) + '\n')
-        finally:
             if job:
-                assert kernel32().CloseHandle(job), ctypes.get_last_error()
-            if process and process.poll() is None:
-                process.terminate()
+                natural = contained
+                contained = False
+                if not natural:
+                    stop_win_job(job, process, receipt)
+                else:
+                    wait_win_job_empty(job, receipt, 'job_active_after_cleanup')
+                contained = True
+            elif process and process.poll() is None:
+                process.terminate()  # job setup failed while client was suspended
                 process.wait(timeout=10)
-            if process and process.stdin:
-                process.stdin.close()
+                contained = True
+        except BaseException as error:
+            receipt.update(status='FAIL', containment_error=repr(error))
+            raise
+        finally:
+            try:
+                for p in dest.rglob('journal-live*.log'):
+                    shutil.copyfile(p, evidence / p.name)
+                snapshot(dest, evidence / 'state')
+                exported = True
+            except BaseException as error:
+                receipt.update(status='FAIL', export_error=repr(error))
+                raise
+            finally:
+                try:
+                    if job:
+                        assert kernel32().CloseHandle(job), ctypes.get_last_error()
+                    if process and process.stdin:
+                        process.stdin.close()
+                except BaseException as error:
+                    receipt.update(status='FAIL', handle_cleanup_error=repr(error))
+                    raise
+                finally:
+                    if process:
+                        receipt.update(pid=process.pid, exit=process.poll())
+                    receipt.update(full_export=exported, containment_confirmed=contained)
+                    (evidence / 'process.json').write_text(json.dumps(receipt, indent=2) + '\n')
+                if contained and exported:
+                    UNCONFIRMED_PHASES.discard(evidence)
 
 
 def retire_runtime(root, evidence, result, dest=None):
     """Export failed-state evidence first; cleanup failure can never retain PASS."""
     try:
         if dest:
-            for p in dest.rglob('*.log'):
-                target = evidence / 'failed-final-state' / p.relative_to(dest)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(p, target)
-            meta = dest / '.ftesurf-updater'
-            for pattern in ('*.json', '*.tmp'):
-                for p in meta.rglob(pattern):
-                    target = evidence / 'failed-final-state/metadata' / p.relative_to(meta)
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copyfile(p, target)
-            pending = meta / 'ingame/staged'
-            target = evidence / 'failed-final-state/staging.json'
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(json.dumps({p.name: digest(p.read_bytes())
-                for p in pending.glob('*') if p.is_file()}, indent=2))
+            snapshot(dest, evidence / 'failed-final-state')
         ensure_retirable()
-        shutil.rmtree(root)  # retain runtime if failed-state export/containment raises
+        result.update(runtime_retired=False, retirement_authorized=True)
+        (evidence / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
+        shutil.rmtree(root)  # retain runtime if export/containment/receipt raises
     except BaseException as error:
         result.update(status='FAIL', retirement_error=repr(error))
         raise
@@ -186,9 +203,8 @@ def main():
     ap.add_argument('--expect-before', action='store_true')
     a = ap.parse_args()
     assert os.name == 'nt'
-    root, evidence = a.runtime_root.absolute(), a.evidence.absolute()
+    root, evidence = preflight_paths(a.runtime_root, a.evidence)
     engine = a.engine.resolve(strict=True)
-    assert not root.exists() and not evidence.exists()
     signed = a.feed.read_bytes()
     manifest = updatefeed.verify(signed)
     mirror = urlsplit(manifest['mirrors'][0])
@@ -270,12 +286,10 @@ def main():
             assert json.loads((meta / 'state.json').read_text())['version'] == manifest['version']
             for path, data in guards.items():
                 assert (dest / path).read_bytes() == data, path
-            for p in meta.rglob('*.json'):
-                target = evidence / kind / 'final-metadata' / p.relative_to(meta)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(p, target)
+            snapshot(dest, evidence / kind / 'final')
             result['passed'].append(kind)
             print('PASS', kind, flush=True)
+            ensure_retirable()
             shutil.rmtree(dest)
             dest = None
         result['status'] = 'PASS'
@@ -283,13 +297,18 @@ def main():
         result['error'] = repr(error)
         raise
     finally:
-        if server:
-            server.shutdown()
-            server.server_close()
-            thread.join(timeout=10)
-            assert not thread.is_alive()
-        result['http_thread_stopped'] = thread is None or not thread.is_alive()
-        retire_runtime(root, evidence, result, dest)
+        try:
+            if server:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=10)
+                assert not thread.is_alive()
+            result['http_thread_stopped'] = thread is None or not thread.is_alive()
+        except BaseException as error:
+            result.update(status='FAIL', server_cleanup_error=repr(error))
+            raise
+        finally:
+            retire_runtime(root, evidence, result, dest)
 
 
 if __name__ == '__main__':

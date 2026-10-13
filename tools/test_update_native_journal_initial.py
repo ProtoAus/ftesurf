@@ -22,7 +22,7 @@ from urllib.parse import urlsplit
 import updatefeed
 from test_update_handoff import owned_job
 from test_update_native_journal import (UNCONFIRMED_PHASES, PENDING_ERROR,
-    ensure_retirable, run_native, sha, stop_win_job, wait_win_job_empty)
+    ensure_retirable, publication_snapshot, run_native, sha, stop_win_job, wait_win_job_empty)
 from test_update_native_journal_deferred import helper_identity, pe_text
 from test_update_native_journal_interrupt import preflight_paths, snapshot
 from test_update_native_journal_live import retire_runtime
@@ -198,7 +198,7 @@ def live(engine, helper, binding, dest, phase, mode, rows, inspect):
                     assert 'update: installed' not in text
                     send('update_info; echo JOURNAL_INITIAL_REFUSED')
                     assert 'update state : error' in wait('JOURNAL_INITIAL_REFUSED')
-                    snapshot(dest, phase / 'failed-publication')
+                    publication_snapshot(dest, phase / 'failed-publication')
                     inspect('failed-publication')
                     send('update_check force')
                     until = time.monotonic() + 30
@@ -230,7 +230,9 @@ def live(engine, helper, binding, dest, phase, mode, rows, inspect):
     finally:
         try:
             if job:
-                if not contained:
+                natural = contained
+                contained = False
+                if not natural:
                     stop_win_job(job, process, receipt)
                 else:
                     wait_win_job_empty(job, receipt, 'job_active_after_cleanup')
@@ -241,23 +243,30 @@ def live(engine, helper, binding, dest, phase, mode, rows, inspect):
             receipt.update(status='FAIL', cleanup_error=repr(error))
             raise
         finally:
-            if process:
-                receipt.update(helper_pid=process.pid, helper_exit=process.poll())
-            (phase / 'process.json').write_text(json.dumps(receipt, indent=2) + '\n')
-            if job:
-                assert kernel32().CloseHandle(job), ctypes.get_last_error()
-            if process and process.poll() is None:
-                process.terminate()
-                process.wait(timeout=10)
-            if process and process.stdin:
-                process.stdin.close()
+            try:
+                if job:
+                    assert kernel32().CloseHandle(job), ctypes.get_last_error()
+                if process and process.poll() is None:
+                    process.terminate()
+                    process.wait(timeout=10)
+                if process and process.stdin:
+                    process.stdin.close()
+            except BaseException as error:
+                receipt.update(status='FAIL', handle_cleanup_error=repr(error))
+                raise
+            finally:
+                if process:
+                    receipt.update(helper_pid=process.pid, helper_exit=process.poll())
+                receipt.update(full_export=exported, containment_confirmed=contained)
+                (phase / 'process.json').write_text(json.dumps(receipt, indent=2) + '\n')
             if contained and exported:
                 UNCONFIRMED_PHASES.discard(phase)
 
 
 def full_snapshot(dest, target):
     """Never let optional/final export failure fall through to partial retirement."""
-    guard = target / 'full-snapshot-guard'
+    guard = target / 'caller-full-snapshot-guard'
+    assert guard not in UNCONFIRMED_PHASES, 'previous caller export to this target is unconfirmed'
     UNCONFIRMED_PHASES.add(guard)
     snapshot(dest, target)
     UNCONFIRMED_PHASES.discard(guard)

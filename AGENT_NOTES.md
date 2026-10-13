@@ -6003,6 +6003,41 @@ protection. See tools/p692native_journal_initial.md. Deferred live interruption,
 power-loss/flush ordering, staged orphan GC and canonical/fleet delivery remain
 separate; test-only tooling does not bump ENGINE.txt or product tags.
 
+### Native journal shared export/retirement guards — 2026-10-13
+
+Legacy cold/live/deferred callers can grade AFTER managed content has landed.
+Metadata/stage-only fallback is not preservation of those actual destination
+bytes. Shared snapshot now exports raw metadata INCLUDING .tmp/logs, staged
+identities and SHA256 of ALL regular runtime files (not only ftesurf), under an
+independent export/receipt guard. A failed target refuses reuse before writing,
+so an implicit finally retry cannot overwrite its FAIL/release its guard. A
+complete separately named fallback cannot erase the earlier failed guard.
+Checked scandir traversal propagates root/subtree listing errors and checks
+links/reparse points before descent; Python3.10 rglob silently suppresses some
+PermissionErrors and otherwise certified incomplete/empty inventories. Both
+omission and same-target-release controls ACT on frozen04 and refuse on fixed05. Process guards separately require containment, full
+export and receipt write; natural Windows success observes job0 BEFORE and AFTER
+cleanup without termination. Unknown containment/export/receipt retains runtime
+and FAIL. Fresh resolved runtime/evidence roots must be disjoint before creation.
+
+An active client exclusively byte-locks `.ftesurf-updater/install.lock` in
+QKU_FSLock. Three native attempts to full-read an active runtime failed and
+correctly retained fixtures with job0; releasing a journal source lock did NOT
+release the install lock. Active initial-refusal capture explicitly excludes
+ONLY that exact control file and emits active_export true/full_export FALSE.
+Unreadable metadata/content/stage still fails. Full post-containment export is
+separate/mandatory; no broad PermissionError swallow or inferred lock hash.
+
+Fresh frozen old/subject reruns:10 native matrices,94 PASS phase receipts with
+both observed job0 censuses,130 full inventories,528 raw byte-hash checks, two
+explicit non-full active captures;69 Windows client-free tests (including actual
+duplicate callsite one-shot failures/listing denial). Separate legacy harness
+has3Windows passes/4POSIX-only skips; no new Linux execution claim. Acting mock
+baseline/current post-mutation grader refuses both: old fallback loses content
+identities, hardened runner preserves them. This is test-only, trusted synthetic
+roots, not a hostile path-swap/hardlink or power-loss certificate. Do not rewrite
+older receipt strengths. Commands/limits: tools/native_journal_evidence.md.
+
 ### Default HTTPS native/menu drivers and real return census — P689, 2026-10-13
 
 `tools/test_update_default_https.py` uses the exact archived real bootstrap and

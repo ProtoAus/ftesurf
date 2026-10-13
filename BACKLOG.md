@@ -41,6 +41,10 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   and fresh all-old startup/direct cold completion/corrupt refusal+repair;
   `tools/p692native_journal_initial.md`. Both engines have equal initial-boundary
   safety because no prior authority exists; this is not a P692 regression claim.
+  Shared cold/live/deferred/interruption harness failure-evidence lifecycle is
+  now hardened: full post-containment runtime identities, guarded export/receipt
+  failures and independently observed pre/post-cleanup job0 on fresh matrices;
+  `tools/native_journal_evidence.md`. This does not strengthen historical receipts.
   Deferred live-journal interruption remains a separate open coverage gate, not
   a claimed implementation defect. No hostile ancestor-swap/hardlink guarantee
   is claimed.

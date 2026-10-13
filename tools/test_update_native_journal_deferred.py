@@ -24,7 +24,8 @@ from urllib.parse import urlsplit
 
 import updatefeed
 from test_update_handoff import owned_job
-from test_update_native_journal import PENDING_ERROR, UNCONFIRMED_PHASES, ensure_retirable, run_native, sha
+from test_update_native_journal import (PENDING_ERROR, UNCONFIRMED_PHASES, ensure_retirable,
+    preflight_paths, run_native, sha, snapshot, stop_win_job)
 from test_update_native_journal_live import destination_lock, retire_runtime
 from test_update_native_recovery import digest
 from test_update_native_windows_unreadable import ExclusiveHTTPServer, busy_port_control, kernel32
@@ -101,25 +102,6 @@ def wait_job_empty(job, receipt, key):
             assert count == 0, 'owned job did not quiesce'
             return
         time.sleep(0.01)
-
-
-def snapshot(dest, target):
-    """Export logs, authority and object identities before any fixture retirement."""
-    meta = dest / '.ftesurf-updater'
-    target.mkdir(parents=True, exist_ok=True)
-    for pattern in ('*.json', '*.tmp'):
-        for p in meta.rglob(pattern):
-            assert p.is_file() and not p.is_symlink()
-            out = target / 'metadata' / p.relative_to(meta)
-            out.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(p, out)
-    for p in dest.rglob('*.log'):
-        out = target / 'logs' / p.relative_to(dest)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(p, out)
-    stage = meta / 'ingame/staged'
-    (target / 'staging.json').write_text(json.dumps({p.name: digest(p.read_bytes())
-        for p in stage.glob('*') if p.is_file()}, indent=2) + '\n')
 
 
 def live(engine, helper, binding, dest, evidence, mode, before, rows):
@@ -206,29 +188,44 @@ def live(engine, helper, binding, dest, evidence, mode, before, rows):
     finally:
         # Kill only this job on failure; verify its census while handle is still valid.
         try:
-            if job and not contained:
-                k = kernel32()
-                k.TerminateJobObject.argtypes = [w.HANDLE, w.UINT]
-                assert k.TerminateJobObject(job, 91), ctypes.get_last_error()
-                if process:
-                    process.wait(timeout=10)
-                wait_job_empty(job, receipt, 'job_active_after_cleanup')
-                contained = True
-            receipt['helper_pid'] = process.pid if process else None
-            receipt['helper_exit'] = process.poll() if process else None
-            snapshot(dest, evidence / 'state')
-            (evidence / 'process.json').write_text(json.dumps(receipt, indent=2) + '\n')
-            exported = True
-        finally:
             if job:
-                assert kernel32().CloseHandle(job), ctypes.get_last_error()
-            if process and process.poll() is None:
-                process.terminate()
+                natural = contained
+                contained = False
+                if not natural:
+                    stop_win_job(job, process, receipt)
+                else:
+                    wait_job_empty(job, receipt, 'job_active_after_cleanup')
+                contained = True
+            elif process and process.poll() is None:
+                process.terminate()  # job setup failed while helper was suspended
                 process.wait(timeout=10)
-            if process and process.stdin:
-                process.stdin.close()
-            if contained and exported:
-                UNCONFIRMED_PHASES.discard(phase)
+                contained = True
+        except BaseException as error:
+            receipt.update(status='FAIL', containment_error=repr(error))
+            raise
+        finally:
+            try:
+                snapshot(dest, evidence / 'state')
+                exported = True
+            except BaseException as error:
+                receipt.update(status='FAIL', export_error=repr(error))
+                raise
+            finally:
+                try:
+                    if job:
+                        assert kernel32().CloseHandle(job), ctypes.get_last_error()
+                    if process and process.stdin:
+                        process.stdin.close()
+                except BaseException as error:
+                    receipt.update(status='FAIL', handle_cleanup_error=repr(error))
+                    raise
+                finally:
+                    receipt.update(helper_pid=process.pid if process else None,
+                        helper_exit=process.poll() if process else None,
+                        full_export=exported, containment_confirmed=contained)
+                    (evidence / 'process.json').write_text(json.dumps(receipt, indent=2) + '\n')
+                if contained and exported:
+                    UNCONFIRMED_PHASES.discard(phase)
 
 
 def main():
@@ -243,8 +240,7 @@ def main():
     assert os.name == 'nt'
     engine, symbols = (p.resolve(strict=True) for p in (a.engine, a.symbols))
     helper, helper_sha256 = helper_identity(a.helper)
-    root, evidence = a.runtime_root.absolute(), a.evidence.absolute()
-    assert not root.exists() and not evidence.exists()
+    root, evidence = preflight_paths(a.runtime_root, a.evidence)
     binding = bind_writer(engine, symbols, a.nm, a.objdump)
     signed = a.feed.read_bytes()
     manifest = updatefeed.verify(signed)

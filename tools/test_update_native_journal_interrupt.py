@@ -20,29 +20,12 @@ import updatefeed
 from test_ingame_update import owned_error
 from test_update_handoff import owned_job
 from test_update_native_journal import (ACTOR, PENDING_ERROR, UNCONFIRMED_PHASES,
-    ensure_retirable, run_native, sha, stop_win_job, wait_win_job_empty)
-from test_update_native_journal_deferred import helper_identity, pe_text, snapshot as journal_snapshot
+    ensure_retirable, preflight_paths, run_native, sha, snapshot, stop_win_job, wait_win_job_empty)
+from test_update_native_journal_deferred import helper_identity, pe_text
 from test_update_native_journal_live import retire_runtime
 from test_update_native_recovery import digest
 
 EXHAUSTED = 'Update cannot finish while files are held open'
-
-
-def preflight_paths(runtime, evidence):
-    runtime, evidence = (p.resolve() for p in (runtime, evidence))
-    assert not (runtime.is_relative_to(evidence) or evidence.is_relative_to(runtime)), 'runtime/evidence must be disjoint'
-    assert not runtime.exists() and not evidence.exists(), 'fresh owned paths required'
-    return runtime, evidence
-
-
-def snapshot(dest, target):
-    journal_snapshot(dest, target)
-    identities = {}
-    for p in (dest / 'ftesurf').rglob('*'):
-        assert not p.is_symlink(), 'linked synthetic fixture'
-        if p.is_file():
-            identities[p.relative_to(dest).as_posix()] = sha(p.read_bytes())
-    (target / 'runtime-files.sha256.json').write_text(json.dumps(identities, indent=2) + '\n')
 
 
 def bind_commit(engine, symbols, nm, objdump, before):
@@ -177,7 +160,9 @@ def interrupt(engine, helper, binding, dest, phase, mode):
     finally:
         try:
             if job:
-                if not contained:
+                natural = contained
+                contained = False
+                if not natural:
                     stop_win_job(job, process, receipt)
                 else:
                     wait_win_job_empty(job, receipt, 'job_active_after_cleanup')
@@ -188,16 +173,22 @@ def interrupt(engine, helper, binding, dest, phase, mode):
             receipt.update(status='FAIL', cleanup_error=repr(error))
             raise
         finally:
-            if process:
-                receipt.update(helper_pid=process.pid, helper_exit=process.poll())
-            (phase / 'process.json').write_text(json.dumps(receipt, indent=2) + '\n')
-            if job:
-                k = ctypes.WinDLL('kernel32', use_last_error=True)
-                k.CloseHandle.argtypes = [w.HANDLE]
-                assert k.CloseHandle(job)
-            if process and process.poll() is None:
-                process.terminate()
-                process.wait(timeout=10)
+            try:
+                if job:
+                    k = ctypes.WinDLL('kernel32', use_last_error=True)
+                    k.CloseHandle.argtypes = [w.HANDLE]
+                    assert k.CloseHandle(job)
+                if process and process.poll() is None:
+                    process.terminate()
+                    process.wait(timeout=10)
+            except BaseException as error:
+                receipt.update(status='FAIL', handle_cleanup_error=repr(error))
+                raise
+            finally:
+                if process:
+                    receipt.update(helper_pid=process.pid, helper_exit=process.poll())
+                receipt.update(full_export=exported, containment_confirmed=contained)
+                (phase / 'process.json').write_text(json.dumps(receipt, indent=2) + '\n')
             if contained and exported:
                 UNCONFIRMED_PHASES.discard(phase)
 

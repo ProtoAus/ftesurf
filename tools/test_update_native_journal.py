@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import time
 
@@ -28,6 +29,93 @@ UNCONFIRMED_PHASES = set()
 
 def ensure_retirable():
     assert not UNCONFIRMED_PHASES, 'client containment or evidence export unconfirmed: ' + str(UNCONFIRMED_PHASES)
+
+
+def preflight_paths(runtime, evidence):
+    runtime, evidence = (p.resolve() for p in (runtime, evidence))
+    assert not (runtime.is_relative_to(evidence) or evidence.is_relative_to(runtime)), 'runtime/evidence must be disjoint'
+    assert not runtime.exists() and not evidence.exists(), 'fresh owned paths required'
+    return runtime, evidence
+
+
+def snapshot(dest, target):
+    """Guard complete current-state export independently of process/log receipts."""
+    return _snapshot(dest, target, active=False)
+
+
+def publication_snapshot(dest, target):
+    """Active initial-refusal capture; explicitly NOT a full retirement certificate.
+
+    QKU_FSLock byte-locks install.lock while the client is alive. Only that exact
+    control file is excluded, never an unreadable authority/content/staging file.
+    """
+    return _snapshot(dest, target, active=True)
+
+
+def _checked_files(directory):
+    # pathlib.rglob suppresses listing PermissionError in Python 3.10. Never let
+    # an unreadable subtree become an incomplete successful inventory.
+    with os.scandir(directory) as listing:
+        entries = sorted(listing, key=lambda entry: entry.name)
+    for entry in entries:
+        p = directory / entry.name
+        info = p.lstat()
+        assert not stat.S_ISLNK(info.st_mode) and not (getattr(info, 'st_file_attributes', 0) & 0x400), 'linked synthetic fixture'
+        if stat.S_ISDIR(info.st_mode):
+            yield from _checked_files(p)
+        else:
+            assert stat.S_ISREG(info.st_mode), 'non-regular synthetic file'
+            yield p
+
+
+def _snapshot(dest, target, active):
+    assert not target.resolve().is_relative_to(dest.resolve()), 'evidence inside runtime'
+    guards = {target / 'active-snapshot-guard', target / 'full-snapshot-guard'}
+    assert not guards.intersection(UNCONFIRMED_PHASES), 'previous export to this target is unconfirmed; use a fresh evidence target'
+    guard = target / ('active-snapshot-guard' if active else 'full-snapshot-guard')
+    UNCONFIRMED_PHASES.add(guard)
+    complete = False
+    receipt = dict(status='FAIL', full_export=False, active_export=False, excluded_paths=[])
+    try:
+        assert dest.is_dir() and not dest.is_symlink() and not (getattr(dest.lstat(), 'st_file_attributes', 0) & 0x400), 'missing or linked synthetic runtime'
+        target.mkdir(parents=True, exist_ok=True)
+        identities, staging = {}, {}
+        meta = dest / '.ftesurf-updater'
+        for p in _checked_files(dest):
+            relative = p.relative_to(dest).as_posix()
+            receipt['export_path'] = relative
+            if active and relative == '.ftesurf-updater/install.lock':
+                receipt['excluded_paths'].append(relative)
+                continue
+            data = p.read_bytes()
+            identities[relative] = sha(data)
+            if p.is_relative_to(meta) and p.suffix in ('.json', '.tmp'):
+                out = target / 'metadata' / p.relative_to(meta)
+            elif p.suffix == '.log':
+                out = target / 'logs' / p.relative_to(dest)
+            else:
+                out = None
+            if out:
+                out.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(p, out)
+                assert out.read_bytes() == data, 'exported bytes differ: ' + relative
+            if p.parent == meta / 'ingame/staged':
+                staging[p.name] = digest(data)
+        inventory = 'active-runtime-files.sha256.json' if active else 'all-runtime-files.sha256.json'
+        for name, value in [('staging.json', staging), (inventory, identities),
+                ('runtime-files.sha256.json', {p: h for p, h in identities.items() if p.startswith('ftesurf/')})]:
+            (target / name).write_text(json.dumps(value, indent=2) + '\n')
+        receipt.update(status='PASS', full_export=not active, active_export=active, file_count=len(identities))
+        complete = True
+    except BaseException as error:
+        receipt['error'] = repr(error)
+        raise
+    finally:
+        receipt['guard_retained'] = not complete
+        target.mkdir(parents=True, exist_ok=True)
+        (target / ('active-export.json' if active else 'full-export.json')).write_text(json.dumps(receipt, indent=2) + '\n')
+        if complete:
+            UNCONFIRMED_PHASES.discard(guard)
 
 
 def win_job_active(job):
@@ -183,44 +271,52 @@ def run_native(engine, dest, phase, error=None, fault=None, library=None):
         for path, data in protected.items():
             assert (dest / path).read_bytes() == data, path
         receipt['status'] = 'PASS'
+    except BaseException as error:
+        receipt.update(status='FAIL', error=repr(error))
+        raise
     finally:
         exported = contained = False
         try:
-            # Also export when owned_error, wait, or the pre-cleanup census raised.
-            export_game_logs(dest, phase)
-            exported = True
+            if job:
+                if receipt.get('job_active_before_cleanup') != 0:
+                    stop_win_job(job, process, receipt)
+                else:
+                    wait_win_job_empty(job, receipt, 'job_active_after_cleanup')
+            if process:
+                if os.name == 'posix':
+                    stop_posix_group(process)
+                    receipt['group_active_after_cleanup'] = False
+                elif process.poll() is None:
+                    process.terminate()
+                    process.wait(timeout=10)
+            contained = True
         except BaseException as error:
-            receipt.update(status='FAIL', export_error=repr(error))
+            receipt.update(status='FAIL', containment_error=repr(error))
             raise
         finally:
             try:
-                if job:
-                    k = ctypes.WinDLL('kernel32', use_last_error=True)
-                    k.CloseHandle.argtypes = [ctypes.c_void_p]
-                    try:
-                        if receipt.get('job_active_before_cleanup') != 0:
-                            stop_win_job(job, process, receipt)
-                        else:
-                            wait_win_job_empty(job, receipt, 'job_active_after_cleanup')
-                    finally:
-                        assert k.CloseHandle(job)
-                if process:
-                    if os.name == 'posix':
-                        stop_posix_group(process)
-                        receipt['group_active_after_cleanup'] = False
-                    elif process.poll() is None:
-                        process.terminate()
-                        process.wait(timeout=10)
-                contained = True
+                export_game_logs(dest, phase)
+                snapshot(dest, phase / 'state')
+                exported = True
             except BaseException as error:
-                receipt.update(status='FAIL', containment_error=repr(error))
+                receipt.update(status='FAIL', export_error=repr(error))
                 raise
             finally:
-                if process:
-                    receipt.update(pid=process.pid, exit=process.poll())
-                if master is not None:
-                    os.close(master)
-                (phase / 'process.json').write_text(json.dumps(receipt, indent=2) + '\n')
+                try:
+                    if process:
+                        receipt.update(pid=process.pid, exit=process.poll())
+                    if master is not None:
+                        os.close(master)
+                    if job:
+                        k = ctypes.WinDLL('kernel32', use_last_error=True)
+                        k.CloseHandle.argtypes = [ctypes.c_void_p]
+                        assert k.CloseHandle(job)
+                except BaseException as error:
+                    receipt.update(status='FAIL', handle_cleanup_error=repr(error))
+                    raise
+                finally:
+                    receipt.update(full_export=exported, containment_confirmed=contained)
+                    (phase / 'process.json').write_text(json.dumps(receipt, indent=2) + '\n')
                 if exported and contained:
                     UNCONFIRMED_PHASES.discard(phase)
 
@@ -258,9 +354,8 @@ def main():
     ap.add_argument('--fault-library', type=Path)
     ap.add_argument('--expect-before', action='store_true')
     a = ap.parse_args()
-    root, evidence = a.runtime_root.absolute(), a.evidence.absolute()
+    root, evidence = preflight_paths(a.runtime_root, a.evidence)
     engine = a.engine.resolve(strict=True)
-    assert not root.exists() and not evidence.exists(), 'fresh owned paths required'
     if os.name == 'posix':
         assert os.geteuid() != 0, 'unprivileged POSIX runtime required'
         assert a.fault_library and a.fault_library.is_file()
@@ -318,16 +413,6 @@ def main():
             (meta / 'ingame/staged' / files[later]['hash']).write_bytes(b'corrupt pending object\n')
             return dest, meta, ledger
 
-        def snapshot(meta, phase):
-            phase.mkdir(parents=True, exist_ok=True)
-            for p in meta.rglob('*'):
-                if p.is_file() and p.suffix in ('.json', '.tmp'):
-                    target = phase / 'metadata' / p.relative_to(meta)
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copyfile(p, target)
-            (phase / 'staging.json').write_text(json.dumps({p.name: digest(p.read_bytes()) for p in
-                (meta / 'ingame/staged').iterdir() if p.is_file()}, indent=2))
-
         def passed(name):
             result['passed'].append(name)
             print('PASS', name, flush=True)
@@ -349,7 +434,7 @@ def main():
                 else:
                     run_native(engine, dest, phase, error=expected,
                                fault=None if mode == 'none' else mode, library=a.fault_library)
-                snapshot(meta, phase)
+                snapshot(dest, phase / 'state')
                 assert (dest / content).read_bytes() == payload[content], 'recovery install never ACTED'
                 assert (dest / zone).read_bytes() == edited and (dest / later).read_bytes() == old
                 state = json.loads((meta / 'state.json').read_text())
@@ -370,7 +455,7 @@ def main():
                 if not committed:
                     phase = evidence / name / 'still-corrupt'
                     run_native(engine, dest, phase, error=None if a.expect_before else PENDING_ERROR)
-                    snapshot(meta, phase)
+                    snapshot(dest, phase / 'state')
                     assert (dest / later).read_bytes() == old and (dest / zone).read_bytes() == edited
                     assert not (meta / 'installed.json').exists()
                     if a.expect_before:
@@ -384,13 +469,14 @@ def main():
                 (meta / 'ingame/staged' / files[later]['hash']).write_bytes(payload[later])
                 phase = evidence / name / 'repaired'
                 run_native(engine, dest, phase)
-                snapshot(meta, phase)
+                snapshot(dest, phase / 'state')
                 state = json.loads((meta / 'state.json').read_text())
                 assert (dest / later).read_bytes() == payload[later] and (dest / zone).read_bytes() == edited
                 assert state['version'] == manifest['version'] and state['files'][later] == files[later]['hash']
                 assert state['files'][zone] == ledger['files'][zone]
                 assert not journal.exists() and (meta / 'installed.json').read_bytes() == signed
                 passed(name + ': repaired recovery completes and starts')
+                ensure_retirable()
                 shutil.rmtree(dest)
                 dest = None
         result['status'] = 'PASS'
@@ -398,7 +484,7 @@ def main():
     except BaseException as error:
         result['error'] = repr(error)
         if dest is not None:
-            snapshot(dest / '.ftesurf-updater', evidence / 'failed-final-state')
+            snapshot(dest, evidence / 'failed-final-state')
         safe_to_retire = True  # only after failed-state evidence exported successfully
         raise
     finally:

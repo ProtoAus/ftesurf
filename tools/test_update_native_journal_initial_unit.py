@@ -185,7 +185,7 @@ class InitialTests(unittest.TestCase):
     def test_final_full_snapshot_failure_retains_guard(self):
         with scratch() as root:
             target=root/'final'
-            guard=target/'full-snapshot-guard'
+            guard=target/'caller-full-snapshot-guard'
             try:
                 with patch.object(gate,'snapshot',side_effect=OSError('acted final export failure')):
                     with self.assertRaises(OSError):
