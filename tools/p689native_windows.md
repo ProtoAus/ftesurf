@@ -13,6 +13,13 @@ record predictions, owned paths/processes and retention. QC starting HEAD/origin
 `9c7737643edb65dc9dc3aa09016f4ae9b92edad6`. Canonical peer changes are untouched.
 Prior update/nrecover roots are read-only inputs, not cleanup targets.
 
+During publication the peer advanced QC to `839cf9578d2190df13b5cdc9829ecb83ee38de2a`
+and engine notes to `27c58e07a993636aa6d5f75064174518c8cea5c2`, recording its own
+integrated dual-Windows delivery. Those inspected documentation-only histories
+are preserved, not redeployed or certified by this continuation. No harness or
+native product source changed in the merge; ENGINE.txt changes here narrow only
+the completed gate comments, not the peer's pin, patch counter or delivery record.
+
 External native clients come from P689's retained, clean controlled builds:
 
 | Input | Source / SHA-256 |

@@ -4917,6 +4917,25 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   no new compiler payloads. Three QC programs have zero warnings. P690 fresh
   exact-stamp station reproduces all retained six-yaw counts/default parity.
   See tools/p690blendplanes.md for SHA-bound source/bundle and delivery status.
+- Integrated a8e705787 P689+P690 was clean-built and delivered native-only to
+  both Windows installs at2026-10-13 11:10 UTC:13 native targets with .prev and
+  immutable rollback, actual installed exe/DLL-path/map smokes,9310 protected
+  files unchanged by path/size/hash/mtime. Defaults stay1; no own progs/config/
+  Build/Pi/release change. Fresh merged48-shot station reproduces six-yaw parity
+  and ACT counts; eight signed cold recovery controls pass. Existing water/
+  cache/program/timing arms retain their original build attribution.
+- Preserve ODE tar mtimes when seeding a build. Fresh cp made the archive newer
+  than the shared library and triggered a dependency-cache rebuild (NOT a
+  read-only input):1041 extra ODE warnings/13 payloads, native74/45 unchanged,
+  full compiler1115. Never restore/delete a potentially shared cache to hide
+  this. Parallel plugin warning lines interleave; attribute file/payload rather
+  than subtracting a contiguous log range. Plugins have no embedded SHA stamp.
+- Box3D and ODE are exclusive active physics plugins. Test loaded native paths
+  in separate plug_close/plug_load phases, not simultaneous availability.
+  ui_imgui requires client interfaces and should refuse a dedicated server.
+  Retain mistaken smoke arms; corrected expectations are not product fixes.
+  Signed recovery controls require their exact fixture/feed hash, not merely
+  an arbitrary retained update.json: wrong fixtures can block in a modal error.
 - Number claim raced a native-recovery session during long builds: sorter
   b59026cc2 initially used P689, while peer c325d045/tag patch-689 was created.
   Tag-create failed but a wrongly chained push still exported the pre-existing
