@@ -5,16 +5,25 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
-## Signed updater remaining release/recovery gates — P687, 2026-10-13
+## Release page retention sorts oldest-first — 2026-10-13
 
-- Whole updater source and four acted staged-file/recovery blockers are fixed;
-  clean source commits are not release/deployment acceptance. Sites:
-  src/release/{release.ps1,linux-pack.sh,bootstrap.ps1,linux-bootstrap.sh},
-  tools/linux/build.sh and bootstrap source pin. Falsifier: clean inspected
-  native/launcher commits with truthful matching stamps, Bullseye gates/BUILDINFO,
-  full `-Bump patch -DryRun` preview, archive/source/notice hashes and real wrapper
-  acceptance; production signing/feed/site publication and destination/live hashes
-  are separate authorized operations. Preserve P686's board-sound ship set.
+- Site: `src/release/publish.sh`, the final release-retention pipeline. GNU sort
+  treats the explicit `n` on each key as a per-key override: the later global
+  `-r` does not reverse those keys. The pipeline consequently retains the oldest
+  five pages, not the newest five. First signed publication of 0.1.25 removed
+  the immediately preceding unsigned 0.1.24 page; its immutable R2 archive is
+  still available. Current page and signed feed passed public verification;
+  signed-feed history is separately protected and was not deleted.
+- Falsifier: pipe six increasing semvers (0.1.0, 0.1.1, 0.1.2, 0.1.3, 0.1.24,
+  0.1.25) through `sort -t. -k1,1n -k2,2n -k3,3n -r`; the measured output is
+  ascending. Verify corrected sorting retains newest pages and prunes only an
+  eligible oldest page in an owned synthetic site, preserving current and
+  signed-feed history. Do not repair/prune the live site as a test.
+
+## Signed updater remaining native recovery gates — P687, 2026-10-13
+
+- Clean BOTH-platform preview, real archive controls and first production-signed
+  feed/site publication are now closed by 0.1.25+b89.p687; see AGENT_NOTES.md.
 - Historical native QKU_FSPreserveFile/QKU_ReplayJournal limitations remain:
   failed hashing conflates missing vs unreadable protected files; mixed-pending
   rewrites can retain objects for resolved entries. Falsifiers: existing mode000
