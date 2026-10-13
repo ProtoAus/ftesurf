@@ -129,6 +129,11 @@
 // Patch 647: the Steam sign-in, offered once, straight after the terms are
 // taken with public lobbies on.  It has a "not now": an offer, not a gate.
 #define SCREEN_STEAM    6
+#define SCREEN_UPDATE   7
+void() MU_Init;
+void() MU_Poll;
+void(vector screensize) MU_Screen;
+void(vector pos) MU_Link;
 void() MM_Init;
 float() MM_Active;
 void(vector screensize) MM_Frame;
@@ -712,15 +717,10 @@ float(string path) ui_file_exists =
   was never told which host that is.  play.proto.bar is written out rather than "a directory": a
   hostname the reader can look up is a disclosure, a category is not.
 
-  ⚠ NOT MENTIONED, DELIBERATELY, AND IT MUST BE ADDED WITH THE CODE THAT MAKES
-  IT TRUE: dl.proto.bar.  engine/common/qkupdate.c ships update_enabled 1,
-  update_autocheck 1 and update_manifest_url https://dl.proto.bar/... -- but
-  nothing anywhere calls `update_check`, so FTESurf contacts it zero times.
-  Writing it here now would be the exact mistake above, in the same edit that
-  fixes it.  Whoever wires the updater bumps FS_TERMS_ONLINE and adds the line in
-  that change, not before.  (It was to have taken 4; build 77 needed that number
-  for a disclosure about code that had ALREADY shipped, which outranks a
-  reservation held for code that has not.  The updater takes 5.)
+  Automatic updates now have their own explicit permission, shared with the
+  launcher. No update request occurs before that choice. They check proto.bar
+  and download from dl.proto.bar; the screen names both hosts and says what is
+  sent. FS_TERMS_ONLINE takes 5 with this new optional endpoint disclosure.
 
   33 SINCE BUILD 57, and this line is that rule kept rather than broken: it
   arrived in the same change as the code that makes it true.  Line 17 says a
@@ -5381,6 +5381,8 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_par(p, w, draw, "Replaying your runs, and telling a real run from a scripted one.", COL_TEXT);
 		ui_tm_head(p, draw, "What is never recorded");
 		ui_tm_par(p, w, draw, "Anything you type. While the console or a menu has focus the journal keeps the timing of a keypress and drops which key it was, so a password typed in the console cannot end up in a file. Nothing outside this game's window is watched, ever.", COL_TEXT);
+		ui_tm_head(p, draw, "Optional automatic updates");
+		ui_tm_par(p, w, draw, "Updates have a separate on/off choice. If enabled, FTESurf checks proto.bar and downloads game-owned files from dl.proto.bar. Those services see your IP address; settings, recordings and mounted game assets are not uploaded. Disable updates from the main menu's Updates panel.", COL_TEXT);
 		ui_tm_head(p, draw, "Turning it off");
 		ui_tm_par(p, w, draw, "rec_hid 0 stops the raw input journal. Runs recorded without it are marked as such, rather than passing as runs that had one.", COL_TEXT);
 	}
@@ -7535,6 +7537,7 @@ void() m_init =
 	registercvar("rec_terms", "0", 0);
 	ms_consent = ui_consent_read();
 	cvar_set("rec_terms", ftos(ms_consent));
+	MU_Init();
 	if (ms_consent < FS_TERMS_VERSION)
 		menu_screen = SCREEN_TERMS;
 
@@ -7731,7 +7734,10 @@ void(vector screensize) m_draw =
 	if (Mlb_IsOpen())
 		Mlb_Close("left the create screen");
 
-	if (menu_screen == SCREEN_TERMS)
+	MU_Poll();
+	if (menu_screen == SCREEN_UPDATE)
+		MU_Screen(screensize);
+	else if (menu_screen == SCREEN_TERMS)
 		screen_terms(screensize);
 	else if (menu_screen == SCREEN_STEAM)
 	{
@@ -8003,6 +8009,17 @@ float(string cmd) m_consolecommand =
 {
 	tokenize(cmd);
 
+	if (strcmp(argv(0), "ui_updates") == 0)
+	{
+		menu_screen = SCREEN_UPDATE;
+		m_open();
+		return TRUE;
+	}
+	if (strcmp(argv(0), "ui_update_probe") == 0)
+	{
+		print(sprintf("ui_update_probe: consent=%g state=%s screen=%g client=%g\n", cvar("update_consent"), cvar_string("update_state"), menu_screen, clientstate()));
+		return TRUE;
+	}
 	if (argv(0) == "ui_maplist")
 	{
 		ui_maplist_print(argv(1));

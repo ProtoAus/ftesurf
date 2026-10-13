@@ -3,7 +3,11 @@
 #
 #    .\src\release\release.ps1 -SetupSite       # FIRST TIME ONLY: push the Pi-side
 #                                               # files so install.sh exists to sudo
-#    .\src\release\release.ps1 -DryRun          # stage + pack + verify, publish nothing
+#    .\src\release\release.ps1 -DryRun -PreviousUpdateFeed <saved-update.json> -PreviousUpdateObjects <objects-dir>
+#    First feed: -FirstUpdateFeed -Linux <drop> instead of prior inputs (both platforms).
+#    Subsequent Windows-only feeds preserve Linux descriptors AND cached object bytes.
+#    UpdateSeedFile is file-only (FTESURF_UPDATE_SEED_FILE or private default); never echo key bytes.
+#    The remaining examples also need those explicit update policy inputs.
 #    .\src\release\release.ps1                  # full release at the current VERSION
 #    .\src\release\release.ps1 -Bump patch      # 0.1.0 -> 0.1.1, then full release
 #    .\src\release\release.ps1 -Build -Bump minor
@@ -104,6 +108,13 @@ param(
 
     [string] $OutDir,
     [string] $FteRoot  = $(if ($env:FTESURF_FTEROOT) { $env:FTESURF_FTEROOT } else { 'C:\msys64\home\Lex\fteqw' }),
+    # Explicit source: never package an arbitrary bootstrap from a player install.
+    [string] $LauncherRoot = $env:FTESURF_LAUNCHERROOT,
+    # No inferred live feed or update rollback/Force override. Retained platforms need bytes.
+    [switch] $FirstUpdateFeed,
+    [string] $PreviousUpdateFeed,
+    [string] $PreviousUpdateObjects,
+    [string] $UpdateSeedFile = $(if ($env:FTESURF_UPDATE_SEED_FILE) { $env:FTESURF_UPDATE_SEED_FILE } else { 'C:/FTESurf-private/keys/ftesurf-updates/seed' }),
     [string] $PiHost   = $(if ($env:FTESURF_PIHOST)  { $env:FTESURF_PIHOST }  else { 'proto@192.168.1.102' }),
     [string] $SiteRoot = '/srv/nvme/ftesurf-site',
     [string] $SiteUrl  = 'https://proto.bar/ftesurf',
@@ -115,7 +126,8 @@ param(
     # A tools\linux build drop: fteqw64, fteplug_hl2_amd64.so, BUILDINFO.txt.
     [string]   $Linux,
     [string]   $LinuxDistro = $(if ($env:FTESURF_WSL_DISTRO) { $env:FTESURF_WSL_DISTRO } else { 'Ubuntu-22.04' }),
-    [string[]] $LinuxNeededAllow = @('libc.so.6', 'libm.so.6', 'libdl.so.2', 'libpthread.so.0', 'librt.so.1', 'ld-linux-x86-64.so.2', 'libz.so.1')
+    [string]   $LinuxBuildChroot = '/srv/ftebuild-bullseye',
+    [string[]] $LinuxNeededAllow = @('libc.so.6', 'libm.so.6', 'libdl.so.2', 'libpthread.so.0', 'librt.so.1', 'ld-linux-x86-64.so.2', 'libz.so.1', 'libgcc_s.so.1')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -168,6 +180,8 @@ function Native ($exe, [string[]]$argv, [string]$what) {
     return $out
 }
 . (Join-Path $PSScriptRoot 'releaselib.ps1')
+. (Join-Path $PSScriptRoot 'bootstrap.ps1')
+. (Join-Path $PSScriptRoot 'updatefeed.ps1')
 
 # =============================================================================
 #  THE SHIP SET
@@ -346,8 +360,8 @@ $DenyPatterns = @(
 #  Windows stage, so both archives carry the same game bytes. $LinuxDeny is
 #  applied on top of $DenyPatterns, and only to the Linux tree.
 $LinuxTop  = 'FTESurf'
-$LinuxExec = @('ftesurf64', 'ftesurf.sh')
-$LinuxRequired = @('ftesurf64', 'fteplug_hl2_amd64.so', 'ftesurf.sh', 'default.fmf', 'LICENSE',
+$LinuxExec = @('ftesurf64', 'ftesurf.sh', 'ftesurf-launcher')
+$LinuxRequired = @('ftesurf64', 'fteplug_hl2_amd64.so', 'ftesurf.sh', 'ftesurf-launcher', 'notices/bootstrap.txt', 'default.fmf', 'LICENSE',
     'INSTALL.txt', 'VERSION.txt', 'SOURCE.txt', 'ftesurf/csprogs.dat', 'ftesurf/qwprogs.dat', 'ftesurf/menu.dat',
     'ftesurf/fs_addons.default.txt', 'ftesurf/fs_addons.txt', 'ftesurf/cfg/default.cfg')
 $LinuxTokenNames = @('LINUX_URL', 'LINUX_FILENAME', 'LINUX_SIZE_HUMAN', 'LINUX_SIZE_BYTES', 'LINUX_SHA256', 'LINUX_GLIBC', 'LINUX_ENGINE')
@@ -396,6 +410,10 @@ function Get-BwLimit {
 #  0.  PREFLIGHT
 # =============================================================================
 Step 'Preflight'
+if (-not $SetupSite) {
+    if ($FirstUpdateFeed.IsPresent -eq [bool]$PreviousUpdateFeed) { Fail 'choose -FirstUpdateFeed OR -PreviousUpdateFeed explicitly' }
+    if ($FirstUpdateFeed -and -not $Linux) { Fail 'first update feed requires verified Windows AND Linux stages (-Linux)' }
+}
 foreach ($p in @($SurfDir, $SrcDir, $RelDir)) {
     if (-not (Test-Path -LiteralPath $p)) { Fail "missing directory: $p" }
 }
@@ -630,6 +648,12 @@ Info "engine patch $enginePatch (documentary: $headingCount headings in ENGINE_P
 # =============================================================================
 Step 'Gates'
 $Overrides = @()
+$bootstrapSource = Get-BootstrapSource $LauncherRoot
+if ($bootstrapSource.dirty_source.Count) {
+    if (-not $AllowDirty) { Fail 'uncommitted bootstrap source; commit it first or explicitly use -AllowDirty for isolated verification' }
+    Warn 'uncommitted bootstrap source -> allowed by -AllowDirty; source fingerprint recorded'
+    $Overrides += 'AllowDirty:bootstrap'
+}
 
 # --- resolve the ship set now; two gates need it ----------------------------
 $shipRel = [System.Collections.Generic.List[string]]::new()
@@ -922,6 +946,26 @@ if ($Linux) {
 # =============================================================================
 #  4.  STAGE
 # =============================================================================
+Step 'Build separately delivered Rust bootstrap'
+$bootstrap = Build-Bootstrap $bootstrapSource
+$linuxBootstrap = if ($Linux) { Build-Bootstrap $bootstrapSource $LinuxDistro $LinuxBuildChroot } else { $null }
+if ($Linux) {
+    # The bootstrap can raise the advertised glibc floor above the engine's.
+    if (-not (Test-ElfX64 $linuxBootstrap.binary)) { Fail 'Linux bootstrap is not an x86-64 ELF file' }
+    $bootstrapGlibcs = @(); $bootstrapNeeded = @()
+    foreach ($l in (Invoke-Wsl @('sh', $LinuxPackWsl, 'inspect', (WslPath $linuxBootstrap.binary)) 'inspect Linux bootstrap')) {
+        if ($l -cmatch '^N \S+ (\S+)$') { $bootstrapNeeded += $Matches[1] }
+        elseif ($l -cmatch '^G \S+ GLIBC_([0-9.]+)$') { $bootstrapGlibcs += $Matches[1] }
+    }
+    if (-not $bootstrapGlibcs.Count) { Fail 'Linux bootstrap has no measured glibc floor' }
+    $extra = @($bootstrapNeeded | Where-Object { $LinuxNeededAllow -notcontains $_ })
+    if ($extra.Count) { Fail "Linux bootstrap needs $($extra -join ', ') (not in -LinuxNeededAllow)" }
+    $lxNeeded['ftesurf-launcher'] = $bootstrapNeeded
+    $lxGlibc = Assert-BootstrapGlibc (@($lxGlibc) + $bootstrapGlibcs)
+    if ([version]$lxGlibc -gt [version]$lxHostGlibc) { Fail 'Linux bootstrap needs a newer glibc than the build/test host' }
+    Good "Linux bootstrap: dependencies allowed, combined glibc floor $lxGlibc"
+}
+
 Step 'Stage'
 $StageDir = Join-Path $StageRoot "stage-$Ver"
 # The marker lives BESIDE the stage, never inside it. Inside, it would have to
@@ -952,6 +996,17 @@ foreach ($rel in $shipRel) {
     Copy-Item -LiteralPath $srcFile -Destination $dstFile -Force
     $staged++; $stagedBytes += (Get-Item -LiteralPath $dstFile).Length
 }
+Copy-Item -LiteralPath $bootstrap.binary -Destination (Join-Path $StageDir 'ftesurf-launcher.exe')
+if ((Get-FileHash -LiteralPath (Join-Path $StageDir 'ftesurf-launcher.exe') -Algorithm SHA256).Hash -ne $bootstrap.provenance.sha256) {
+    Fail 'staged bootstrap changed since its build'
+}
+
+$noticeArgs = @((Join-Path $SurfDir 'tools/bootstrap_notices.py'), '--launcher-root', $bootstrapSource.root,
+    '--output', (Join-Path $StageDir 'notices/bootstrap.txt'), '--target', $bootstrap.provenance.target)
+if ($Linux) { $noticeArgs += @('--target', $linuxBootstrap.provenance.target) }
+Native 'python' $noticeArgs 'bootstrap notices' | Out-Null
+$bootstrap.provenance['notices_sha256'] = (Get-FileHash -LiteralPath (Join-Path $StageDir 'notices/bootstrap.txt') -Algorithm SHA256).Hash
+
 # Gate 3 hashed the three binaries before they were copied.  A deploy in between (another
 # session's, on a shared machine) would ship a file nothing compared, under the old hash.
 foreach ($b in $skewSet) {
@@ -1030,6 +1085,9 @@ built            $stamp
 QuakeC build     $qcBuild
 engine patch     $engineLabel
 git HEAD         $GitShort  $GitHeadSub
+bootstrap commit $($bootstrap.provenance.commit)
+bootstrap source sha256 $($bootstrap.provenance.source_sha256)
+ftesurf-launcher.exe  sha256 $($bootstrap.provenance.sha256)
 ftesurf64.exe        sha256 $hExeLocal
 fteplug_hl2_x64.dll  sha256 $hDllLocal
 fteplug_ui_imgui_x64.dll  sha256 $hImgLocal
@@ -1068,11 +1126,20 @@ your sensitivity first.  A fresh install has no ftesurf.cfg.
     Both CS:GO Source 1 layouts are found automatically. Modern CS2's Source 2
     game/csgo content is not an interchangeable asset pack.
 
-3.  Run ftesurf.bat.  The engine takes its game folder from the working
-    directory rather than from the .exe's location, and the .bat sets it -- so
-    a shortcut pointing straight at ftesurf64.exe from somewhere else stops at
-    a mod list.  The mounts above are already configured in ftesurf/fs_addons.txt
-    and need no first-run step.
+3.  Start ftesurf.bat. It runs the signed-update bootstrap when present.
+    The first terminal launch asks permission before checking; without a
+    terminal, the first launch starts the installed game without a bootstrap
+    check or saved permission. Enable updates in the game's Updates pane.
+    ftesurf-launcher.exe --offline skips the bootstrap check without changing
+    saved permission; the game's own auto-check still follows that permission.
+    ftesurf.bat uses the engine directly only if the bootstrap is absent.
+    To forward engine options: ftesurf.bat -window +map <mapname>.
+
+    The launcher is a separate bootstrap, NOT self-updated by the normal
+    feed. To upgrade it, exit both game and launcher, then extract a newer
+    official archive into this folder. Do not replace a running launcher.
+    Starting the engine .exe from the wrong working directory stops at a mod list.
+    The mounts are configured in ftesurf/fs_addons.txt; no first-run step.
 
 4.  If a Steam game is not found, type  fs_steamlibs  in the console.  It prints
     where the engine looked and how each mount resolved.  To add a library:
@@ -1086,21 +1153,27 @@ previously recorded run times.
 
 Licence: GPLv2 or later, see LICENSE.  The three fonts in ftesurf/gfx/fonts are
 SIL OFL 1.1, see ftesurf/gfx/fonts/FONTS.md.  fteplug_ui_imgui_x64.dll is built
-with Dear ImGui and ImPlot (MIT): see THIRD-PARTY.txt.
+with Dear ImGui and ImPlot (MIT): see THIRD-PARTY.txt. The Rust bootstrap is
+MIT; its full license and dependency notices are in notices/bootstrap.txt.
 "@.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
 
 [System.IO.File]::WriteAllText((Join-Path $StageDir 'SOURCE.txt'), @"
 FTESurf $Ver -- source
 ======================
 
-FTESurf is GPLv2 or later.  See LICENSE for the full text.
+The game and engine are GPLv2 or later. See LICENSE for the full text.
+The separate Rust bootstrap is MIT; see notices/bootstrap.txt, which also
+contains the original license/notice texts for its locked dependencies.
 
   game (QuakeC)   https://github.com/ProtoAus/ftesurf
   engine fork     https://github.com/ProtoAus/ftequakers   branch main
+  Rust bootstrap  https://github.com/ProtoAus/Quakers-Launcher   (MIT)
 
 This release was built from:
   QuakeC build $qcBuild, git $GitShort
   engine patch $engineLabel
+  bootstrap commit $($bootstrap.provenance.commit)
+  bootstrap source sha256 $($bootstrap.provenance.source_sha256)
 
 Stock FTEQW will not run this game: the Source movement module
 (engine/common/pm_source.c) and the hl2 plugin's .phy collision, VTF/VMT
@@ -1304,12 +1377,13 @@ if ($onlyArchive.Count -or $onlyStage.Count) {
     if ($onlyStage.Count)   { $m += "`n    staged but NOT in archive:`n" + (($onlyStage | ForEach-Object { "      $_" }) -join "`n") }
     Fail $m
 }
-foreach ($must in @('ftesurf64.exe', 'fteplug_hl2_x64.dll', 'fteplug_ui_imgui_x64.dll', 'THIRD-PARTY.txt',
-        'default.fmf', 'ftesurf.bat', 'LICENSE',
+foreach ($must in @('ftesurf64.exe', 'ftesurf-launcher.exe', 'fteplug_hl2_x64.dll', 'fteplug_ui_imgui_x64.dll', 'THIRD-PARTY.txt',
+        'default.fmf', 'ftesurf.bat', 'LICENSE', 'notices/bootstrap.txt',
         'ftesurf/csprogs.dat', 'ftesurf/qwprogs.dat', 'ftesurf/menu.dat',
         'ftesurf/fs_addons.default.txt', 'ftesurf/cfg/default.cfg')) {
     if (-not $setA.Contains($must)) { Fail "archive is missing a required file: $must" }
 }
+Assert-BootstrapEntries $inArchive 'win64'
 Good "$($inArchive.Count) entries, identical to the stage, all required files present"
 
 # =============================================================================
@@ -1336,6 +1410,8 @@ if ($Linux) {
     Set-Content -LiteralPath $LxMarker -Value "ftesurf linux release stage $Ver" -NoNewline
 
     Copy-Item -LiteralPath (Join-Path $StageDir 'ftesurf') -Destination $LxTree -Recurse
+    Copy-Item -LiteralPath (Join-Path $StageDir 'notices') -Destination $LxTree -Recurse
+    $linuxBootstrap.provenance['notices_sha256'] = $bootstrap.provenance.notices_sha256
     foreach ($f in @('default.fmf', 'LICENSE')) { Copy-Item -LiteralPath (Join-Path $StageDir $f) -Destination $LxTree }
     # SOURCE.txt names the engine patch; the Linux binary's comes from its own commit.
     $lxSrc = [System.IO.File]::ReadAllText((Join-Path $StageDir 'SOURCE.txt'))
@@ -1343,6 +1419,10 @@ if ($Linux) {
     $lxSrc = [regex]::Replace($lxSrc, '(?m)^  engine patch .*$', $lxSrcLine.Replace('$', '$$'))
     if (-not $lxSrc.Contains($lxSrcLine)) { Fail 'Linux SOURCE.txt: no engine patch line to replace' }
     [System.IO.File]::WriteAllText((Join-Path $LxTree 'SOURCE.txt'), $lxSrc, (New-Object System.Text.UTF8Encoding $false))
+    Copy-Item -LiteralPath $linuxBootstrap.binary -Destination (Join-Path $LxTree 'ftesurf-launcher')
+    if ((Get-FileHash -LiteralPath (Join-Path $LxTree 'ftesurf-launcher') -Algorithm SHA256).Hash -ne $linuxBootstrap.provenance.sha256) {
+        Fail 'staged Linux bootstrap changed since its build'
+    }
     Copy-Item -LiteralPath $lxExe  -Destination (Join-Path $LxTree 'ftesurf64')
     Copy-Item -LiteralPath $lxPlug -Destination (Join-Path $LxTree 'fteplug_hl2_amd64.so')
     # A CR after the shebang is "bad interpreter: /bin/sh^M".
@@ -1365,6 +1445,9 @@ engine revision  $($lxBinRev -join ' ')
 engine built     $($bi.Built)  $($bi.Builder)  $($bi.Cc)
 glibc needed     $lxGlibc or newer
 git HEAD         $GitShort  $GitHeadSub
+bootstrap commit $($linuxBootstrap.provenance.commit)
+bootstrap source sha256 $($linuxBootstrap.provenance.source_sha256)
+ftesurf-launcher      sha256 $($linuxBootstrap.provenance.sha256)
 ftesurf64             sha256 $hLxExe
 fteplug_hl2_amd64.so  sha256 $hLxPlug
 csprogs.dat           sha256 $($lxDat['csprogs.dat'])
@@ -1406,9 +1489,20 @@ yours), OpenGL, and an X11 or Wayland desktop.
     version, then install.  FTESurf only reads its maps; you never start it.
     Optional, mounted per map only when needed: CS:GO (legacy), TF2.
 
-3.  Run  ./ftesurf.sh  (or  ./ftesurf.sh <mapname>).  It changes to its own
-    folder first, so a launcher or symlink pointing at it works from anywhere.
+3.  Run ./ftesurf.sh (or ./ftesurf.sh <mapname>). It runs the signed-update
+    bootstrap when present. The first terminal launch asks permission before
+    checking. The first desktop launch without a terminal starts the installed
+    game without a bootstrap check or saved permission; enable updates in the
+    game's Updates pane. Later launches follow the saved permission.
+    ./ftesurf-launcher --offline skips the bootstrap check without changing
+    permission; the game's own auto-check still follows that permission.
+    Engine options are forwarded, for example:
+        ./ftesurf.sh -window +map <mapname>
+    The script uses the engine directly only if the bootstrap is absent.
     Starting ftesurf64 directly from another folder stops at a mod list.
+
+    The bootstrap is not self-updated through the ordinary feed. Exit both
+    game and launcher, then extract a newer official archive to upgrade it.
 
 4.  If a Steam game is not found, type  fs_steamlibs  in the console: it
     prints where the engine looked and how each mount resolved.  Native,
@@ -1424,7 +1518,8 @@ ftesurf/logs/qconsole.log.
 
 Alpha software: physics fixes between builds can invalidate recorded times.
 Licence: GPLv2 or later, see LICENSE.  The three fonts in ftesurf/gfx/fonts are
-SIL OFL 1.1, see ftesurf/gfx/fonts/FONTS.md.
+SIL OFL 1.1, see ftesurf/gfx/fonts/FONTS.md. The Rust bootstrap is MIT;
+its full license and dependency notices are in notices/bootstrap.txt.
 "@.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
 
     $lxFiles = @(Get-ChildItem -LiteralPath $LxTree -Recurse -File)
@@ -1462,6 +1557,7 @@ SIL OFL 1.1, see ftesurf/gfx/fonts/FONTS.md.
     # Relative to FTESurf/: the anchored ^ftesurf/ftesurf\.cfg$ would miss FTESurf/ftesurf/ftesurf.cfg.
     $arcRel = @($lxEntries | Where-Object { $_.Type -eq '-' -and $_.Path.StartsWith("$LinuxTop/") } | ForEach-Object { $_.Path.Substring($LinuxTop.Length + 1) })
     Test-Deny $arcRel 'the packed Linux archive' $LinuxDeny
+    Assert-BootstrapEntries $arcRel 'linux64'
     foreach ($must in $LinuxRequired) { if ($arcRel -cnotcontains $must) { $prob += "missing required file $LinuxTop/$must" } }
     foreach ($l in @($vr | Where-Object { $_.StartsWith('L ') })) { $prob += "ldd: $($l.Substring(2))" }
     if ($prob.Count) { Fail ("the Linux archive does not match its stage:`n" + (($prob | ForEach-Object { "      $_" }) -join "`n")) }
@@ -1469,7 +1565,16 @@ SIL OFL 1.1, see ftesurf/gfx/fonts/FONTS.md.
 }
 
 # =============================================================================
-#  8.  RECEIPT
+#  8.  SIGNED UPDATES: only the archive-verified stages above are publisher inputs.
+# =============================================================================
+Step 'Generate signed update feed from verified stages'
+$updateFeed = New-UpdateFeed -Tool (Join-Path $SurfDir 'tools/updatefeed.py') -WindowsStage $StageDir `
+    -LinuxStage $(if ($Linux) { $LxTree } else { '' }) -Output (Join-Path $OutDir ("update-$Ver-" + [guid]::NewGuid().ToString('N'))) `
+    -Version $Ver -Mirror "$DlBase/$Prefix/update" -SeedFile $UpdateSeedFile `
+    -First:$FirstUpdateFeed -Previous $PreviousUpdateFeed -PreviousObjects $PreviousUpdateObjects
+
+# =============================================================================
+#  8b. RECEIPT (archive provenance, distinct from the signed feed)
 # =============================================================================
 Step 'Receipt'
 function FileSha ($rel) { (Get-FileHash -LiteralPath (Join-Path $SurfDir $rel) -Algorithm SHA256).Hash }
@@ -1479,6 +1584,8 @@ $receipt = [ordered]@{
     built_utc    = $nowUtc.ToString('yyyy-MM-ddTHH:mm:ssZ')
     archive      = [ordered]@{ name = $ArchiveName; bytes = $ArchiveBytes; sha256 = $ArchiveSha; md5 = $ArchiveMd5; url = $ArchiveUrl }
     qc           = [ordered]@{ build = $qcBuild; build_commit = $qcCommit; head = $GitHead; head_subject = $GitHeadSub; dirty_shipping = $dirtyShipping }
+    bootstrap    = $bootstrap.provenance
+    update_feed  = [ordered]@{ sha256 = $updateFeed.FeedSha; previous_sha256 = $updateFeed.PreviousSha }
     engine       = [ordered]@{
         patch_doc                = $enginePatch
         patch_applies_to_binary  = $patchAppliesToBinary
@@ -1510,6 +1617,7 @@ if ($Linux) {
         archive   = [ordered]@{ name = $LinuxArchiveName; bytes = $LinuxArchiveBytes; sha256 = $LinuxArchiveSha; md5 = $LinuxArchiveMd5; url = $LinuxArchiveUrl }
         platform  = 'linux-x86_64'
         beta      = $true
+        bootstrap = $linuxBootstrap.provenance
         glibc_min = $lxGlibc
         needed    = @($lxNeeded.Values | ForEach-Object { $_ } | Sort-Object -Unique)
         packed_on = "$lxHostOs (WSL $LinuxDistro)"
@@ -1679,6 +1787,7 @@ if ($DryRun) {
     Write-Host "`n=== DRY RUN COMPLETE ===" -ForegroundColor Cyan
     Info "archive   $ArchivePath"
     Info "receipt   $ReceiptPath"
+    Info "signed update feed  $($updateFeed.Root) (locally verified; remote verification not run)"
     Info "would publish to  $ArchiveUrl"
     if ($Linux) { Info "linux     $LinuxArchivePath"; Info "would publish to  $LinuxArchiveUrl" }
     Info "would deploy page to  $SiteUrl"
@@ -1878,6 +1987,15 @@ if (-not $SkipUpload) {
 }
 
 # =============================================================================
+#  9b. IMMUTABLE UPDATE OBJECTS: full closure, including retained platform bytes.
+# =============================================================================
+if (-not $SkipUpload -or -not $SkipSite) {
+    Step 'Publish and round-trip verify every referenced update object'
+    $updateProof = Publish-UpdateObjects -Feed $updateFeed -Destination "${Remote}:$Bucket/$Prefix/update/objects" `
+        -Limit (Get-BwLimit) -SkipPut:$SkipUpload
+}
+
+# =============================================================================
 #  10.  DEPLOY THE PAGE
 #
 #  The page was RENDERED back at step 9b, deliberately before the -DryRun exit,
@@ -1929,6 +2047,13 @@ refusing to deploy a page for an archive that is not published.
         Good "published Linux archive matches this run (md5 $LinuxArchiveMd5)"
     }
 
+    # Feed advertisement happens only after full object verification, even with -SkipUpload.
+    $feedPath = Join-Path $updateFeed.Root 'update.json'
+    if ((Get-FileHash -LiteralPath $feedPath -Algorithm SHA256).Hash.ToLower() -cne $updateFeed.FeedSha) {
+        Fail 'generated update feed changed before site deployment'
+    }
+    Copy-Item -LiteralPath $feedPath -Destination (Join-Path $pageDir 'update.json')
+    Copy-Item -LiteralPath $updateProof -Destination (Join-Path $pageDir 'update-verified.json')
     $sshOpts = @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10')
 
     # Always push the Pi-side files, so the installed snippet can never silently
@@ -1937,6 +2062,10 @@ refusing to deploy a page for an archive that is not published.
     if ($LASTEXITCODE -ne 0) { Fail "cannot reach $PiHost over ssh" }
     foreach ($f in @('ftesurf.nginx', 'install.sh', 'publish.sh')) {
         & scp @sshOpts -q (Join-Path $RelDir $f) "${PiHost}:$SiteRoot/$f"
+        if ($LASTEXITCODE -ne 0) { Fail "scp $f failed" }
+    }
+    foreach ($f in @('updatefeed.py', 'ed25519.py')) {
+        & scp @sshOpts -q (Join-Path $SurfDir "tools/$f") "${PiHost}:$SiteRoot/$f"
         if ($LASTEXITCODE -ne 0) { Fail "scp $f failed" }
     }
     # NOT "$pageDir\*": scp does not glob, and on Windows the literal string is
@@ -1957,7 +2086,7 @@ refusing to deploy a page for an archive that is not published.
         & scp @sshOpts -q $pf "${PiHost}:$SiteRoot/.incoming/$Ver/$pfName"
         if ($LASTEXITCODE -ne 0) { Fail "scp $pfName failed" }
     }
-    & ssh @sshOpts $PiHost "chmod +x '$SiteRoot/publish.sh' '$SiteRoot/install.sh' && sh '$SiteRoot/publish.sh' '$Ver'" 2>&1 | ForEach-Object { Info $_ }
+    & ssh @sshOpts $PiHost "chmod +x '$SiteRoot/publish.sh' '$SiteRoot/install.sh' && sh '$SiteRoot/publish.sh' '$Ver' '$($updateFeed.PreviousSha)' '$SiteRoot'" 2>&1 | ForEach-Object { Info $_ }
     if ($LASTEXITCODE -ne 0) { Fail 'publish.sh failed on the Pi' }
 
     # --- is the nginx snippet actually wired up? -----------------------------
@@ -1981,7 +2110,7 @@ refusing to deploy a page for an archive that is not published.
         Write-Host   "  cannot touch /etc/nginx. Run this once, on the Pi or over ssh:" -ForegroundColor Yellow
         Write-Host   "`n      ssh $PiHost" -ForegroundColor White
         Write-Host   "      sudo sh $SiteRoot/install.sh`n" -ForegroundColor White
-        Write-Host   "  Then re-run this script with -SkipUpload to finish the page." -ForegroundColor Yellow
+        Fail 'site swap completed but signed-feed release is not publicly verified; configure nginx and verify the exact feed before claiming publication'
     } else {
         $servedFile = Join-Path $env:TEMP "ftesurf-served-$Ver.html"
         $hdrFile2   = Join-Path $env:TEMP "ftesurf-served-$Ver.txt"
@@ -1999,6 +2128,7 @@ refusing to deploy a page for an archive that is not published.
         if ($h2 -notmatch '(?mi)^x-ftesurf-site:') {
             Warn 'the marker header is absent: the snippet is on disk but nginx has not reloaded it.'
             Warn "  ssh $PiHost 'sudo nginx -t && sudo systemctl reload nginx'"
+            Fail 'site swap completed but nginx has not reloaded; signed-feed release is not publicly verified'
         } else {
             $servedSha = (Get-FileHash -LiteralPath $servedFile -Algorithm SHA256).Hash
             # Compare hashes, not a substring: a page that lists previous releases
@@ -2006,6 +2136,16 @@ refusing to deploy a page for an archive that is not published.
             # passes on a stale page.
             if ($servedSha -ne $pageSha) { Fail "the page served at $SiteUrl does not match what was just deployed (sha256 $servedSha != $pageSha)" }
             Good "$SiteUrl serves the new page (sha256 verified byte for byte)"
+            $servedFeed = Join-Path $updateFeed.Root 'served-update.json'
+            $feedHeaders = Join-Path $updateFeed.Root 'served-update.headers'
+            Native 'curl.exe' @('-4', '-fsS', '-D', $feedHeaders, '-o', $servedFeed, "$SiteUrl/update.json") 'served update feed' | Out-Null
+            if ((Get-FileHash -LiteralPath $servedFeed -Algorithm SHA256).Hash.ToLower() -cne $updateFeed.FeedSha) {
+                Fail 'served update.json differs from the verified signed feed'
+            }
+            if ((Get-Content -LiteralPath $feedHeaders -Raw) -notmatch '(?mi)^cache-control:.*no-cache') {
+                Fail 'served update.json must revalidate (Cache-Control: no-cache)'
+            }
+            Good 'served signed update feed matches exactly and is no-cache'
         }
         Remove-Item -LiteralPath $servedFile, $hdrFile2 -Force -ErrorAction SilentlyContinue
     }

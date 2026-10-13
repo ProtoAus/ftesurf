@@ -5,6 +5,27 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Signed updater remaining release/recovery gates — P687, 2026-10-13
+
+- Whole updater source and four acted staged-file/recovery blockers are fixed;
+  clean source commits are not release/deployment acceptance. Sites:
+  src/release/{release.ps1,linux-pack.sh,bootstrap.ps1,linux-bootstrap.sh},
+  tools/linux/build.sh and bootstrap source pin. Falsifier: clean inspected
+  native/launcher commits with truthful matching stamps, Bullseye gates/BUILDINFO,
+  full `-Bump patch -DryRun` preview, archive/source/notice hashes and real wrapper
+  acceptance; production signing/feed/site publication and destination/live hashes
+  are separate authorized operations. Preserve P686's board-sound ship set.
+- Historical native QKU_FSPreserveFile/QKU_ReplayJournal limitations remain:
+  failed hashing conflates missing vs unreadable protected files; mixed-pending
+  rewrites can retain objects for resolved entries. Falsifiers: existing mode000
+  zone under an unprivileged native client versus truly missing zone; preserve
+  unreadable local bytes or refuse rather than claim a managed replacement, while
+  a missing zone still installs. Exercise addons-specific and native Linux replay,
+  an earlier successful row plus protected row plus corrupt/locked outstanding
+  row, honest ledger/version, retry journal and bounded staged-object retirement.
+  Current eight Windows cold-recovery arms cover readable zones and complete
+  recovery, not those cases. No hostile ancestor-swap/hardlink guarantee is claimed.
+
 ## OpenGL blendsort2 promotion gates — P685, 2026-10-13
 
 - Mode2 is verified/published/deployed as opt-in, default1 retained. Site:

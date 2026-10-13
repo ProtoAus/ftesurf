@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   f79ad12cc3ac3393188e7500592674454aedf97f
+commit   3688683ff245431ac515a37bd63997c5fd7e56d8
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,16 @@ commit   f79ad12cc3ac3393188e7500592674454aedf97f
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-685
-patch    686
+tag      patch-687
+patch    687
+# Patch 687: complete signed FTESurf native/menu/wrapper/bootstrap/feed source,
+# whole-job no-link part staging, restrictive POSIX execute repair, guarded
+# native enginetmp and replay preserving intervening local edits/ledger baselines.
+# Native8 before/8 subject, Rust37 Windows/38 Linux, QC zero warnings and acted
+# feed publication controls pass; independent review OK with notes. P686 sounds
+# remain allowlisted. Source pin/tag only: no QC Build/public version/release/feed
+# publication or canonical/fleet deployment claim. Clean pinned build/archive
+# and production-operation gates remain separate; see BACKLOG and AGENT_NOTES.
 # Patch 686: Perfect-board sounds with a ramp-only rising-pitch streak, plus
 # optional per-letter rainbow/bounce in the Board pane. QC/assets only; native
 # pin/tag and qcbuild unchanged. Controls/provenance: tools/p686_board_feedback.md.
@@ -576,7 +584,7 @@ qcbuild  89
 #     "Build NN" commit, or on release.ps1's -BuildNumber when there is no such
 #     commit in range -- the number is the operator's to state, the log is only
 #     where it used to be read from.
-date     2026-10-08
+date     2026-10-13
 
 # PATCH 569: AUTHENTICATED HISTORICAL SOURCE PROVENANCE. Bounded review shows
 # validated compared-buffer hashes/sizes or explicit legacy/unavailable state.

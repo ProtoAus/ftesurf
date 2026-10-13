@@ -71,7 +71,7 @@ verify)
 	tar -xJf "$a" -C "$t/x" || die "extract failed"
 	( cd "$t/x" && find "$top" -type f -exec sha256sum {} + ) > "$t/h" || die "sha256sum failed"
 	prefix H "$t/h"
-	for f in "$top/ftesurf64" "$top/fteplug_hl2_amd64.so"; do
+	for f in "$top/ftesurf64" "$top/fteplug_hl2_amd64.so" "$top/ftesurf-launcher"; do
 		[ -f "$t/x/$f" ] || continue
 		ldd "$t/x/$f" > "$t/l" 2>&1 || true
 		grep 'not found' "$t/l" > "$t/nf" || true

@@ -2,7 +2,7 @@
 # =============================================================================
 #  publish.sh -- swap a freshly-uploaded page into place.  NO SUDO.
 #
-#      sh /srv/nvme/ftesurf-site/publish.sh 0.1.0
+#      sh /srv/nvme/ftesurf-site/publish.sh 0.1.0 <prior-feed-sha256|none>
 #
 #  release.ps1 scp's the rendered page to $SITE/.incoming/<version>/ and then
 #  runs this.  Every path it touches is under /srv/nvme, which proto owns, so
@@ -20,8 +20,10 @@
 # =============================================================================
 set -eu
 
-SITE=/srv/nvme/ftesurf-site
+SITE="${3:-/srv/nvme/ftesurf-site}"
 KEEP=5
+PRIOR="${2:-}"
+case "$SITE" in /*) ;; *) echo 'site root must be absolute' >&2; exit 1 ;; esac
 
 V="${1:-}"
 # The version arrives from a Windows command line and lands next to `rm -rf`
@@ -39,6 +41,20 @@ DST="$SITE/releases/$V"
 
 [ -d "$IN" ]             || { echo "nothing staged at $IN" >&2; exit 1; }
 [ -f "$IN/index.html" ]  || { echo "$IN has no index.html -- refusing to publish an empty release" >&2; exit 1; }
+[ ! -L "$IN" ] && [ -z "$(find "$IN" -type l -print)" ] || { echo 'linked incoming tree refused' >&2; exit 1; }
+[ ! -e "$DST" ] && [ ! -L "$DST" ] || { echo 'release directory already exists; advance the version' >&2; exit 1; }
+if [ -e "$SITE/static" ] && [ ! -L "$SITE/static" ]; then
+    echo 'static exists and is not a symlink' >&2; exit 1
+fi
+
+# Serialize predecessor check AND swap; two concurrent releases cannot both win.
+exec 9>"$SITE/.publish.lock"
+flock -x 9
+python3 "$SITE/updatefeed.py" check-publication --feed "$IN/update.json" \
+    --receipt "$IN/update-verified.json" --version "$V" \
+    --previous "$SITE/static/update.json" --expected-previous "$PRIOR"
+# All immutable objects were downloaded and BLAKE2b-verified by release.ps1;
+# this receipt binds that gate to these exact signed feed bytes. No feed is live yet.
 
 # -----------------------------------------------------------------------------
 #  Permissions FIRST, and prove them.
@@ -60,18 +76,14 @@ if [ -n "$BAD" ]; then
 fi
 
 mkdir -p "$SITE/releases"
-# Republishing the same version is normal while iterating on the page.
-if [ -d "$DST" ]; then
-    case "$DST" in
-        "$SITE/releases/"*) rm -rf "$DST" ;;
-        *) echo "refusing to remove '$DST': not under $SITE/releases" >&2; exit 1 ;;
-    esac
-fi
+# Signed update releases are forward-only. Never delete/replace a prior release.
+[ ! -e "$DST" ] && [ ! -L "$DST" ] || { echo 'release directory already exists' >&2; exit 1; }
 # Same filesystem, so this is a rename(2): nothing ever serves a half-copied tree.
 mv "$IN" "$DST"
 
 # -----------------------------------------------------------------------------
-#  Atomic swap.  `mv -T` over an existing symlink is a rename(2), so there is no
+#  Atomic swap LAST: the page and signed update.json become visible together.
+#  `mv -T` over an existing symlink is a rename(2), so there is no
 #  instant at which `static` does not exist.  No open_file_cache is configured
 #  anywhere on this box, so nginx resolves the alias per request and picks the
 #  new target up immediately -- no reload needed.
@@ -97,6 +109,8 @@ ls -1 "$SITE/releases" 2>/dev/null \
   | tail -n +$((KEEP + 1)) \
   | while read -r old; do
         [ "$old" = "$CUR" ] && continue
+        # Feed history is not ordinary page scratch; object/history GC is owner-controlled.
+        [ -e "$SITE/releases/$old/update.json" ] && continue
         rm -rf "$SITE/releases/$old"
         echo "  pruned old release $old"
     done

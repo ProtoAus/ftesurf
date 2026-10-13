@@ -1,5 +1,5 @@
 #!/bin/sh
-# FTESurf launcher (Linux).
+# FTESurf startup (Linux): signed-update bootstrap, or engine-only if absent.
 #   ./ftesurf.sh                  start the game
 #   ./ftesurf.sh <map> [args...]  start on a map (as ftesurf.bat does)
 #   ./ftesurf.sh --debug [...]    also log the console to ftesurf/logs (ftesurf_debug.bat)
@@ -21,7 +21,15 @@ say() {
 # so cd to this script's real folder, through any symlink pointing at it.
 here=$(dirname -- "$(readlink -f -- "$0")") && cd -- "$here" || {
     echo "ftesurf.sh: cannot enter the folder this script is in" >&2; exit 1; }
-if [ ! -f ./ftesurf64 ]; then
+runner=./ftesurf64
+if [ -e ./ftesurf-launcher ] || [ -L ./ftesurf-launcher ]; then
+    if [ -L ./ftesurf-launcher ] || [ ! -f ./ftesurf-launcher ] || [ ! -x ./ftesurf-launcher ]; then
+        say "$here/ftesurf-launcher is not executable (or is a link).
+Extract the official archive onto a drive that allows running programs."
+        exit 1
+    fi
+    runner=./ftesurf-launcher
+elif [ ! -f ./ftesurf64 ]; then
     say "$here/ftesurf64 is missing.
 Extract the .tar.xz with tar or an archive manager."
     exit 1
@@ -51,6 +59,17 @@ if [ -n "$debug" ]; then
     echo "ftesurf.sh: console log: $here/ftesurf/logs/qconsole.log" >&2
 fi
 
+# Do not bypass a present bootstrap after a failure; it may be refusing a bad update.
+if [ "$runner" != ./ftesurf64 ]; then
+    # First desktop start has no terminal for consent; play without a check.
+    # Leave permission unset so the game's Updates pane can ask for opt-in.
+    if [ ! -t 0 ] && [ ! -e ./.ftesurf-updater/consent ] && [ ! -L ./.ftesurf-updater/consent ]; then
+        set -- --offline -- "$@"
+    else
+        set -- -- "$@"
+    fi
+fi
+
 # Sys_Error (sys_linux.c:655) and crash backtraces print to stderr, which a desktop launch
 # hides; append them to stderr.log. A crash also writes crash.log here (:1156).
 log=stderr.log
@@ -59,14 +78,14 @@ if { [ -f "$log" ] && [ -w "$log" ]; } || { [ ! -e "$log" ] && [ -w . ]; }; then
     printf '=== %s  ftesurf.sh %s\n' "$(date -u '+%Y-%m-%d %H:%M:%S UTC')" "$*" >> "$log"
     if [ -t 2 ]; then
         echo "ftesurf.sh: engine errors go to $here/$log" >&2
-        exec ./ftesurf64 "$@" 2>> "$log"
+        exec "$runner" "$@" 2>> "$log"
     fi
     # Desktop launch: no exec, so a failure the engine cannot report (old glibc, a crash,
     # no xmessage) still gets a dialog.  A normal quit is status 0.
-    ./ftesurf64 "$@" 2>> "$log"
+    "$runner" "$@" 2>> "$log"
     rc=$?
     [ $rc -eq 0 ] || say "FTESurf stopped (status $rc).
 See $here/$log and crash.log."
     exit $rc
 fi
-exec ./ftesurf64 "$@"
+exec "$runner" "$@"

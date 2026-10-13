@@ -1,4 +1,5 @@
-# release_dryrun.ps1 -Tree <scratch release tree> -FteRoot <engine checkout> -OutDir <dir>
+# release_dryrun.ps1 -Tree <scratch release tree> -FteRoot <engine checkout>
+#                    -LauncherRoot <Rust source tree> -OutDir <dir> [-Bump patch]
 #                    [-BuildNumber <n>] [-Extra <switch names>]
 #
 # Runs that tree's own src\release\release.ps1 -DryRun -NoLobbyCheck with every network tool it
@@ -11,8 +12,15 @@
 param(
     [Parameter(Mandatory)] [string] $Tree,
     [Parameter(Mandatory)] [string] $FteRoot,
+    [Parameter(Mandatory)] [string] $LauncherRoot,
+    [ValidateSet('patch', 'minor', 'major')] [string] $Bump,
     [Parameter(Mandatory)] [string] $OutDir,
     [int] $BuildNumber = 0,
+    [switch] $FirstUpdateFeed,
+    [string] $PreviousUpdateFeed,
+    [string] $PreviousUpdateObjects,
+    [Parameter(Mandatory)] [string] $UpdateSeedFile,
+    [string] $Linux,
     [string[]] $Extra = @()
 )
 $global:NetCalls = [System.Collections.Generic.List[string]]::new()
@@ -24,7 +32,13 @@ function curl.exe { $global:NetCalls.Add('curl.exe ' + ($args -join ' ')); $glob
 
 $code = 0
 try {
-    $params = @{ DryRun = $true; NoLobbyCheck = $true; FteRoot = $FteRoot; OutDir = $OutDir }
+    $params = @{ DryRun = $true; NoLobbyCheck = $true; FteRoot = $FteRoot; LauncherRoot = $LauncherRoot; OutDir = $OutDir }
+    $params['UpdateSeedFile'] = $UpdateSeedFile
+    $params['FirstUpdateFeed'] = $FirstUpdateFeed
+    if ($PreviousUpdateFeed) { $params['PreviousUpdateFeed'] = $PreviousUpdateFeed }
+    if ($PreviousUpdateObjects) { $params['PreviousUpdateObjects'] = $PreviousUpdateObjects }
+    if ($Linux) { $params['Linux'] = $Linux }
+    if ($Bump) { $params['Bump'] = $Bump }
     if ($BuildNumber -gt 0) { $params['BuildNumber'] = $BuildNumber }
     foreach ($e in $Extra) { $params[$e] = $true }
     & (Join-Path $Tree 'src\release\release.ps1') @params

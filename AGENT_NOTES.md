@@ -5595,6 +5595,387 @@ assets; zero MISS is not proof of a complete product archive.
 
 ## Pitfalls discovered the hard way
 
+### Complete updater source and staged-file controls — P687, 2026-10-13
+
+The whole native/menu/wrapper/bootstrap/feed source is one product change, not
+separate helper patches. Earlier paragraphs below record source-preparation
+phases, not current deployment. Source commits and native pins do not mean a
+production release, generated feed, updated bootstrap archive or installed game.
+No QC Build/public version bump or fleet/canonical deployment belongs to P687's
+source acceptance. Preserve P686's board sounds in the release allowlist.
+
+Four acted blockers were fixed: `.part` links/linked ancestors followed before
+or during object transport; native `state.json.enginetmp` links; replay overwrote
+zones edited after journaling; executable downloads widened 0600/0640 to 0755.
+Whole-batch FTESurf preflight and guarded no-follow regular-file opens precede
+transport/mutation. Only prepare_install adds execute bits, preserving read/write.
+Native replay shares the planner's protection decision for all rows before any
+replacement. Protected-only recovery commits the verified version with zero
+replacement records, never certifying the edited bytes. Ordinary Quakers policy
+is unchanged. Final-component no-follow/immediate ancestor checks do not claim
+hostile concurrent ancestor-swap or hardlink protection; see BACKLOG for remaining
+native coverage and unreadable-protected-file behavior.
+
+Measured controls: eight actual Windows native before arms reproduce overwrite
+and linked-temp external writes; eight subject arms pass, with player settings
+and recordings unchanged. tools/test_update_native_recovery.py accepts an existing
+signed fixture/object closure and invokes an external owned client engine; it
+needs no signing key. **Use a client, not -dedicated:** QKU_FSLock intentionally
+skips dedicated installs. Own its Windows job before resuming the suspended PID;
+read/dismiss only its fatal modal. Error windows can exist before static text:
+wait for nonempty expected rejection text, not an empty dialog or timeout.
+
+Locked-offline Rust passes 37 Windows/38 unique Linux tests, no warnings. Four
+pre-fix regressions fail; fresh/partial/local-complete positives ACT with real
+loopback counters. Linux umask077 is isolated in a repeated test-runner child
+(not another unique test): 0600/0640 stage modes become 0700/0750 on install.
+All agent tests use an explicit owned fixture root; ordinary cargo test supports
+bounded RAII temps, never skips absent environment settings.
+
+Build traps measured here: Makefile ARCHLIBS := overrides environment alone;
+pass ARCHLIBS explicitly as a make assignment (or MAKEFLAGS assignment). Stock
+plugins-rel may still fetch the ODE tarball even with cached libode.a; a dependency
+cache reference is not offline/read-only proof. Full removes objects, not every
+PCH: fresh task output avoids stale header/stamp mixtures. Windows-created .git
+worktree pointers contain C:/ paths and fail Linux discovery; use the inspected
+owned worktree gitdir explicitly, without changing shared Git config. Do not use
+production Linux build.sh for isolation: it targets shared /build source/cache.
+Private mount namespaces can bind source/root/cache read-only with task-only
+outputs, but dirty stamps/clock-skew warnings are not clean release BUILDINFO.
+Pin the startup Git executable before augmenting PATH: MSYS Git can miss Windows
+core.autocrlf=true and report every unchanged CRLF source file as modified.
+Instrumentation here saw the same 670 statuses before AND after compilation;
+Windows Git was clean, and all native input/static archive bytes+mtime matched.
+Do not reset/convert source to satisfy the wrong Git provider. Fresh clean P687
+Windows client/server/HL2/imgui and native bootstrap builds now pass; the actual
+client/server expose git-7281-patch-687-0-g3688683ff. Plugins are hash/compile-flag
+bound, not required to export that string. Their source/archive hashes and the
+real bootstrap --help/wrapper actors were verified, with no new compiler payloads.
+Clean pinned Linux BUILDINFO/gates and release-preview/archive acceptance remain.
+
+### Signed updater release/publication contract — 2026-10-13 (not yet shipped)
+
+The wrapper lane is reviewed separately; `release.ps1` now prepares signed feeds
+from its archive-verified stages, not from an installed player tree. This is
+source preparation, NOT a clean production release, Patch/Build/pin/commit or
+public-storage claim.
+
+- Every release (including `-DryRun`) chooses `-FirstUpdateFeed` OR an explicit
+  `-PreviousUpdateFeed <saved signed update.json>`. First feed needs `-Linux`
+  and BOTH supported stages. Later Windows-only releases preserve Linux files
+  and executable metadata; pass `-PreviousUpdateObjects <old output/objects>`
+  for distinct retained Linux objects. That cache is read-only, byte/hash checked;
+  missing/corrupt retained bytes refuse BEFORE a feed is written. Do not infer
+  a prior feed from a URL or silently drop a platform. Explicit empty bytes are
+  NOT absent input: verify every supplied predecessor, require an object payload,
+  and validate even a signed empty object before preparing new feed bytes.
+- Feed versions advance strictly. `-Force` is not an updater rollback or
+  same-version replacement override. The site validates the exact prior feed's
+  SHA256 under a publication lock; stale/racing prior input and first-feed-on-
+  existing-feed refuse without moving static. Existing release directories are
+  immutable too. A post-swap HTTP/route failure is a FAILED public-verification
+  gate: repair/verify the route and exact feed, do not blindly re-run same-version
+  publication or call the partially acted operation a success.
+- Signing uses `-UpdateSeedFile`, `FTESURF_UPDATE_SEED_FILE`, or the private default
+  seed PATH. Key bytes never appear in arguments, reports, archives or page files.
+  `tools/updatefeed.py` CLI keeps the production public key pinned. Synthetic
+  tests substitute only a helper copy's pin with the public RFC8032 test vector;
+  those logs are not real signing-key/HTTPS/storage acceptance.
+- After Windows and optional Linux stage/archive checks, a fresh
+  `dist/update-<version>-<unique>/` gets the feed, the FULL referenced object
+  closure, and `objects.txt`. Bootstrap remains excluded. The full closure is
+  important: the pre-fix helper preserved Linux descriptors but omitted the
+  Linux engine object, so a Windows-only upload was not enough. DryRun records
+  only LOCAL verification; no remote receipt or site advertisement is produced.
+  Fresh feed directories allow preview then actual release without reusing an
+  output object set; retain previous feed/cache for the next release.
+- `src/release/updatefeed.ps1` validates/regenerates inventory from signed bytes,
+  uses rclone `--immutable --checksum`, downloads JUST all referenced objects
+  into a fresh owned verification directory, and checks BLAKE2b-256 AND size for
+  every platform. `-SkipUpload` skips PUT only, never the complete round-trip
+  gate when publishing a page. Missing/corrupt/colliding objects refuse before
+  `update.json` is copied into the candidate page. Failed downloads are retained
+  for evidence; successful disposable downloads are removed after proof binding.
+- Pi receives the public-key-only publisher/Ed25519 helpers and page candidate.
+  `publish.sh` checks candidate signature/version, full-set verification receipt
+  bound to exact feed SHA256, and live prior hash BEFORE permission/move/swap.
+  Atomic `static` symlink replacement exposes page/feed together LAST. Ordinary
+  page pruning preserves signed-feed release directories; object/history GC
+  needs an explicit owner decision. The archive receipt includes feed/prior SHA256,
+  but is NOT the remote-object verification receipt. Public HTTP verification
+  requires byte-identical `update.json` and `Cache-Control: no-cache`.
+- Gates: `test_updatefeed.py --work-root <fresh owned root>` checks retained
+  bytes/rollback/descriptor policy; `test_update_publication.py --work-root
+  <fresh owned root> --control-tool <preserved pre-wiring updatefeed.py>
+  --prior-control-tool <preserved pre-prior-fix updatefeed.py>` executes
+  production PowerShell AST seams against byte-copying R2 mocks and actual
+  `publish.sh` in ephemeral WSL sites BELOW the owned fixture/evidence root,
+  with OWNER written before runtime population. DrvFS is not independent Unix
+  permission/mode proof. Positive arms assert exact object/feed/
+  static actors; negative arms assert no advertisement/static change. AST seam
+  tests do NOT run full clean BUILDINFO/archive/receipt production provenance,
+  real R2/HTTPS/SSH, native updater restart, or fleet/storage cutover.
+
+### Automatic update finalization preparation — 2026-10-13 (not yet shipped)
+
+- Preserve the full owned source before replay onto newer published bases. The
+  finalization-source-01 manifest binds 36 source files, refs/index/status and
+  mtimes; original task trees remain unchanged. Whole-file AGENT_NOTES hashes
+  legitimately differ after upstream notes: compare the exact owned +/- delta,
+  not a source overwrite. The isolated final-* worktrees integrate P683.
+- Normal wrappers select the bootstrap; only an absent bootstrap selects the
+  engine. An invoked-bootstrap failure NEVER retries the engine. Linux refuses
+  linked/non-executable bootstrap paths, including dangling links (`-e` alone
+  misses those). Preserve map/quoted-arg/cwd/stderr/status behavior with actors.
+- First non-terminal launch with absent consent needs explicit bootstrap
+  `--offline`, not auto-consent or an engine fallback. Leave permission unset;
+  in-game opt-in enables later checks. Terminal first launch keeps the prompt.
+  Windows probes Console.IsInputRedirected with built-in Windows PowerShell
+  only while consent is absent; failed probe conservatively skips the check.
+- Stored opt-out tests missed the fresh-desktop regression. Pre-fix real Rust
+  refused absent consent with non-terminal stdin; a separate dangling-bootstrap
+  control incorrectly ran the engine. Fixed controls add real fresh desktop and
+  POSIX pty consent, a Windows fresh-console routing actor, and link refusals.
+  Tiny engine actors prove wrapper/Rust spawn contracts, NOT native GUI,
+  production HTTPS, release archives, process census or timeout cleanup.
+- `--offline` skips only the bootstrap check. The native game's independent
+  auto-check follows saved permission; direct startup is not whole-client
+  offline. Generated INSTALL/page/launcher README must say so consistently.
+- Whole feature remains uncommitted/unshipped here. At the wrapper-only
+  checkpoint signed-feed publication was unwired; the subsequent source/mocked
+  publication lane is documented above, not production acceptance. The prior
+  reviewed Linux archive is a bounded dirty/test-stamped fixture, not production
+  BUILDINFO or clean integrated native-build evidence.
+
+### Automatic update controls — 2026-10-12 (not yet shipped)
+
+- Updater permission is `.ftesurf-updater/consent`, not player-consent data or
+  `installed.lst`. Drive the real Updates buttons through `ui_hover @mu_*` and
+  `ui_mouse down/up`; `ui_mouse` can report `took 0` even when the button ACTED.
+  Require the native state, permission bytes and HTTP/object counts as actors.
+  Reopen `ui_updates` and wait for drawing before EVERY click: one control
+  reached screen 0 after the wait, so its absent restart button never acted.
+- Enable/disable/re-enable in one process exposed the native auto-check latch:
+  re-enabling had remained idle without a second request. Opt-in resets that
+  latch. Successful retries also clear the native console's old error string.
+- Existing permission and install-lock guards did not cover `consent.tmp` or
+  the launcher executable itself. Real owned file-symlink controls showed the
+  old engine writing an outside permission target and spawning a linked exe;
+  the fixed paths refuse before either operation, keeping the current game.
+- Recovery uses the same signed policy and version floor as fresh updates.
+  A stale native signed journal actually rolled the fixture and ledger back;
+  both runtimes now refuse it. Rust recovery validates every pending path,
+  needed staged object, link/metadata path and readable ledger BEFORE live
+  replacement, and reuses planning to keep edited zones/custom mounts local.
+  A later forged path had previously changed an earlier valid live file.
+- Restart queues `quit` behind existing Cbuf text: a cfg-tail echo can print
+  before normal exit. It is not proof that restart failed. Use process exit,
+  exact fixed-local argv, a real Rust update actor and a fresh returning-engine
+  actor. Test-only adapters may add loopback flags; do not call that a shipped
+  bootstrap/default-public-feed test. A separate native-lock control proves
+  real `--wait-for-game` makes no request/permission write while blocked.
+- A missing bootstrap used to print only to the console, leaving the Updates
+  pane's generic restart text unchanged. Restart failures now publish through
+  read-only `update_error` while keeping the pending state/plan and retry button.
+  Inspect the actual pane PNG: a stored error alone does not prove it rendered.
+  Both content-restart and binary-handoff refusal controls draw download/place/
+  retry guidance; adding the test-only bootstrap in the SAME game and clicking
+  again clears the error and completes the real Rust/returning-engine chain.
+- Bind owned Windows clients to kill-on-close Job Objects before they can
+  create descendants. The adapter/launcher/returning-game chain must all exit
+  normally on success; failure cleanup closes only those jobs, never kills by
+  process name or an unverified descendant PID. The final control recorded
+  fourteen jobs and zero active descendants, followed by zero task-root exes.
+
+
+### POSIX bootstrap permissions — 2026-10-12 (not yet shipped)
+
+- Byte hashes do not prove an executable can run. Real Linux controls reproduced
+  archive adoption falsely printing ready for an engine at 0644; actual launch
+  failed Permission denied. Cold recovery after rename also cleared pending
+  before enabling execute. Verify the complete signed set, then repair modes
+  before committing metadata/clearing pending, even when no object is missing.
+- Permission repair retains read/write bits, adding execute for the owner and
+  existing readers (0640 -> 0750, not unconditional 0755). Signed exec flags
+  do not authorize chmod of protected edited zones/custom mounts. An unsigned
+  explicit-offline archive is not a permission-repair authority. Dry-run must
+  neither commit cold pending recovery nor chmod during signed-cache outage.
+- `tools/test_update_posix.py` has an acted fresh-download/argv control and a
+  `--expect-before` defect control. Subject: 17 acted arms, none skipped, including
+  real fixture launch after zero-download adoption/recovery and cached transport
+  outage, plus real unprivileged chmod failure retaining pending/no ready ledger.
+  Corrupt/link refusals retain pending and earlier modes; protected modes stay.
+  Initial pending rejection tests omitted loopback allowance and falsely passed
+  at mirror-policy decoding. Corrected tests require the intended error; separate
+  cache-outage corrupt/link controls actually reach preparation's contents guard.
+  The initial unprivileged fixture also failed at reading 0600 content; all signed
+  payloads must be readable to that child to prove chmod itself refused.
+  `test_update_launcher.py` also runs on Linux with real flock/symlinks; both
+  platforms' full shared suite and 24 Rust unit tests pass. The launcher builds
+  without warnings on Windows MSVC and WSL Ubuntu with locked dependencies.
+- Permission fixtures must be on a filesystem with real POSIX chmod semantics,
+  not unconfigured WSL drvfs. Runtime-only TemporaryDirectory contexts on ext4
+  retire fixtures after copying small evidence to the owned task root; cargo
+  output remains beneath that root. No native Linux engine/fork/exec handoff,
+  archived Linux release, glibc-floor or default-public-feed claim follows from
+  these synthetic fixture actors. Larger updater remains uncommitted/unshipped.
+
+### Bootstrap archive controls — 2026-10-12 (not yet shipped)
+
+- Build the separately delivered Rust bootstrap from an explicit inspected
+  `-LauncherRoot`, with locked dependencies and an explicit Windows/WSL host
+  target. Record source fingerprint (including untracked source), commit,
+  dirty status, compiler/target and binary hash; never select a stale executable
+  from the player's install. Real missing-source and file-link controls refuse;
+  same-commit source changes alter both fingerprint and dirty status.
+- The ordinary signed feed deliberately omits `ftesurf-launcher(.exe)`.
+  Archive upgrades of the bootstrap require exiting game AND launcher first;
+  there is no bootstrap self-update. License/dependency notices are required
+  archive entries too. Cargo metadata must be filtered by shipped target AND
+  traversed from its resolve root: its package list still includes unreachable
+  other-target crates. The first all-package notice attempt correctly failed
+  on an unused UEFI crate with no bundled license text; do not silently skip
+  missing notices for an actually selected dependency.
+- The real CLI has `--offline`, `--enable-updates`, and `--wait-for-game`,
+  NOT `--disable-updates` or `--wait`. It already waits for the engine's exit.
+  An initial archive driver invented those flags and failed at clap before
+  any engine actor; that was a harness failure, not a passing opt-out control.
+  Persistent opt-out is in the menu. `--offline` skips the launcher check
+  without changing stored permission; the native game's own auto-check still
+  reads that permission, so isolate the actors/counts before claiming no network.
+- Delivery fixture archive: inspect exact extracted hashes; physically remove
+  bootstrap/notices in separate negative archives and run the same production
+  required-entry helper. Launch the unmodified archived bootstrap, not an adapter,
+  from another cwd with install/cfg/argv containing spaces. Require real engine
+  actors, preserved argv/player sentinels and normal exits. Suspend the launcher,
+  assign its kill-on-close job, THEN resume, so even fast children are contained.
+  Four direct launch/update arms passed with zero remaining job descendants.
+- The full `-Bump patch -DryRun` (network-mocked) is STILL BLOCKED by current
+  shipguard's six existing QC asset-reference misses; see BACKLOG.md. The real
+  bootstrap fixture archive and direct signed loopback update are NOT a passed
+  production release, default-HTTPS native restart, Linux runtime, or publish.
+
+### Native POSIX updater/restart controls (2026-10-12, not yet shipped)
+
+- Run native Linux fixtures on ext4: DrvFS does not prove Unix execute-bit
+  behavior. Use bounded runtime-only gamedirs, not source/install copies;
+  capture allowlisted logs/PNGs to the owned task root and explicitly retire
+  fixtures after all owned process groups and orphan descendants are reaped.
+  Ubuntu/WSLg execution is NOT a bullseye/glibc-floor or Linux release proof.
+- POSIX `Sys_Error` execs xmessage when stderr is not a tty. A harness-owned
+  stderr PTY captures cold errors and permits exit without creating a modal.
+  Require the expected fatal text, nonzero exit and no gamedir log/mount actor;
+  never turn a timeout or missing display into a passing cold refusal.
+- `QKU_Restart_f`'s exec-error pipe must retry EINTR and accept ONLY EOF as
+  success. The prior `read(...) > 0` test incorrectly accepted negative reads.
+  A harness-only LD_PRELOAD interposer fired on the real restart pipe: the
+  pre-fix missing-interpreter click cleared its error instead of publishing
+  failure. Fixed EINTR/EIO controls retain restart state/error and complete a
+  same-game real Rust/returning-engine retry. A VALID-launcher EINTR control
+  separately proves actual retry/EOF success, not simply rejecting all errors.
+  Check FD_CLOEXEC preparation before fork and consume the child's write result.
+- Native/Rust flock parity needs more than one early snapshot. Keep the native
+  actor locked until an explicit harness release; repeatedly prove contention,
+  no HTTP requests, unchanged updater metadata and unchanged managed target.
+  The distinguishing loop observes two seconds, then requests native quit.
+- Failed-click probes can repeat stale stored errors. Require a fresh native
+  `update:` failure line within EACH bounded click segment, including missing
+  and non-executable cases that deliberately share the same error text. Gate
+  EACH click until Python installs and checks that exact fixture; bound the
+  diagnostic between its current armed/observed actors, not a prior actor.
+  A deliberately delayed driver (3 seconds, longer than the old fixed wait)
+  proves the non-executable click cannot advance while the fixture is missing.
+- Save the verdict AFTER process census, cleanup and retirement acceptance.
+  A live helper must not leave a PASS JSON followed by an assertion failure.
+  Continue cleanup across recorded owned groups, with bounded TERM/KILL and
+  orphan reaping; two actual TERM-ignoring helpers distinguish this behavior.
+  Keep FAIL evidence and the exact runtime path if safe retirement is blocked.
+- Keep permission fixtures in `tools/test_update_posix.py` and the actual
+  engine harness in `tools/test_update_native_posix.py`; they are distinct
+  contracts. A file-name collision in this continuation was corrected by
+  restoring the permission driver to its exact recorded SHA256 from the prior
+  whole-file slice, moving native code under a distinct name, and rerunning
+  all 17 permission controls plus the native lane.
+- Source-reviewed limitations remain: EOF assumes exec closed the pipe; child
+  death or failure to report exec error can also close it. Fcntl failure and
+  child-write interruption/error were source-reviewed, not fault-injected.
+  Stub Linux HL2 plugin/UI fixtures prove updater/menu behavior, not gameplay.
+
+### Linux bootstrap/archive controls (2026-10-13, not yet shipped)
+
+- Host compatibility is not the release floor. The prior bootstrap gate accepted
+  GLIBC_2.34 on Ubuntu/glibc 2.35 although the engine baseline is 2.31. Combine
+  engine/plugin and bootstrap requirements under a HARD 2.31 ceiling; measure
+  the ELF symbols, not only the host's libc. `test_bootstrap_linux.ps1` executes
+  the real release AST block, including engine-2.34/bootstrap-2.31 refusal and
+  the default `libgcc_s.so.1` allowance (Rust's compiler runtime).
+- `linux-bootstrap.sh` builds locked/offline with the host Rust compiler in
+  the existing Bullseye chroot. Private mount namespace, read-only shared
+  chroot/source/toolchain/registry, task-owned output/tmp/Cargo locks; no shared
+  /build rewrite or dependency-cache copy. Refuse existing builder submounts.
+  `--exec wslpath` preserves Windows backslashes; invoke login bash for rustup's
+  PATH and pass source/output paths as positional args, not shell interpolation.
+  Record the compiler actually used and execute the built bootstrap's --help on
+  libc 2.31. An inherited active mount and a root-chroot selection both refused
+  before Cargo in acted controls; namespace mounts vanished after exit.
+- Real delivery fixture: 816 regular files, exact archived/extracted bytes,
+  0755 directories/three executables and 0644 other entries, tar owner 0:0,
+  bootstrap/notices required independently of stage equality. The actual
+  production pack/verify and PowerShell policy refused physical missing-file,
+  wrong-mode and changed-notice tar mutants. Bind policy logs to both current
+  archive and verification-log SHA256: saved VERIFIED text alone previously
+  passed even if the physical archive was removed/replaced. Both falsifiers
+  now refuse BEFORE any policy PASS; parked original restored hash-identically.
+- Supply the observed loopback URL to EVERY Rust arm, not only the enabled
+  positive arm. Engine cfg update_manifest_url does not configure Rust. Prove
+  enabled consent stays 1 across --offline; resetting it to 0 before the arm
+  merely repeats stored opt-out. Disable the ENGINE's independent autocheck
+  explicitly to measure Rust's one-launch override; this is not evidence that
+  --offline suppresses native engine checks too. Missing --offline in the final
+  enabled-consent control fired the real-bootstrap HTTP-count falsifier.
+- Run unchanged extracted Rust/engine from unrelated cwd and installation/cfg/
+  argument paths containing spaces. WSLg GUI actors exited normally, preserved
+  bootstrap/engine and protected synthetic player sentinels, and applied exactly
+  one signed content object. Separately the same archived Rust -> real dedicated
+  engine ran under glibc 2.31 with private network namespace and unchanged
+  executable hashes. This is not GUI-on-2.31, gameplay, full release.ps1/receipt,
+  clean-source provenance, production HTTPS/publication or live deployment proof.
+- Notice checks compare reachable package inventory for the locked Linux build
+  and notice target (203 packages), not dependency edges/features or every license
+  body's text. Notices used actual Windows MSVC plus Linux GNU targets; the
+  unrelated Windows GNU target refused for a cached crate missing license text.
+  Use stdin=DEVNULL for unattended launch errors; terminal stdin prompts for Enter.
+
+### Updater startup and JSON string lengths (2026-10-12, isolated controls)
+
+- `COM_InitFilesystem` can return before the startup `FS_ChangeGame` selects its
+  manifest. `QKU_Init` may therefore register cvars BEFORE the recovery hook.
+  Profile/consent configuration must work in either order. Within `FS_ChangeGame`,
+  `fs_manifest` and `com_gamepath` are final before mounting, but
+  `FS_GetGamedir(true)` is not: it is assigned by the later path mount. Checking
+  that public gamedir at the recovery hook misclassified an FTESurf install and
+  incorrectly inherited Quakers' enabled permission. Real opt-out and positive
+  HTTP controls, not a zero-request observation alone, exposed this.
+- Menu builtin `clientstate()` returns **1** when disconnected, **2** when
+  connected, and **0** for a dedicated process; see `PF_clientstate`. Testing for
+  0 prevents the normal disconnected menu from acting.
+- `JSON_ReadBody` returns the RAW escaped body length, even when it writes a
+  decoded string; it is an allocation upper bound, not decoded byte count.
+  Comparing that return value to `strlen` rejected every normal signed envelope
+  containing escaped quotes. Reject decoded NULs explicitly and verify the exact
+  decoded bytes; do not change the shared JSON API to accommodate one reader.
+- `CVARFD`'s `enginevalue` starts as a static literal. The existing
+  `Cvar_SetEngineDefault` frees a non-null old enginevalue; do not call it on that
+  literal. The attempted use failed before runtime logging. Profile defaults in
+  the updater use static replacements, update defaultstr only if it still aliases
+  the old enginevalue, and preserve a non-default user value.
+- FTE's `in` timer stores its trailing `Cmd_Args` verbatim: use
+  `in 3 exec cfg/test/steps.cfg`, not `in 3 "exec cfg/test/steps.cfg"`.
+  The latter attempts a command whose name includes the quotes. Runtime fixtures
+  also need a frozen OLD stage; copying the changing publisher stage into later
+  subject installs can turn a download control into an already-current install.
+
+
 ### Zone-editor hover controls (Patch 676) — 2026-10-12
 
 - Use the shared SUI tooltip path, not a second renderer/timer. Clear only `ze_`

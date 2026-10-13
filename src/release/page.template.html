@@ -204,7 +204,7 @@
 
     <ol class="steps" data-reveal>
       <li><b>Extract.</b>Into a folder of its own. Nothing is written outside it.</li>
-      <li><b>Run <code>ftesurf.bat</code>.</b>It sets the game folder; a shortcut straight to the .exe stops at a mod list.</li>
+      <li><b>Run <code>ftesurf.bat</code>.</b>It starts the update bootstrap. The first terminal launch asks before checking for signed updates; without a terminal, the first launch starts the installed game without a bootstrap check or saved permission. Enable or disable updates in the game&rsquo;s Updates pane. A shortcut straight to the engine .exe stops at a mod list.</li>
       <li><b>Empty map list?</b>Type <code>fs_steamlibs</code> in the console to see where it looked. Add a library with <code>fs_steamlibs add D:\SteamLibrary</code>, then <code>fs_restart</code>.</li>
     </ol>
 
@@ -214,7 +214,7 @@
         <summary>On Linux (beta)</summary>
         <ul>
           <li>Extract it somewhere you own: <code>tar xf @@LINUX_FILENAME@@</code> makes a folder called <code>FTESurf</code>.</li>
-          <li>Run <code>./ftesurf.sh</code>. Engine errors go to <code>stderr.log</code>, a crash writes <code>crash.log</code>.</li>
+          <li>Run <code>./ftesurf.sh</code>. The first terminal launch asks before the bootstrap checks for signed updates. A first desktop launch without a terminal starts the installed game without that check or saved permission; enable updates in the game&rsquo;s Updates pane. Startup errors go to <code>stderr.log</code>, a crash writes <code>crash.log</code>.</li>
           <li>Momentum Mod Playtest has no Linux build: install it with Steam Play (Properties &rsaquo; Compatibility &rsaquo; a Proton version). FTESurf only reads its maps.</li>
           <li>Native, Flatpak and Snap Steam are found automatically; for another drive, <code>fs_steamlibs add /path/to/SteamLibrary</code> then <code>fs_restart</code>.</li>
           <li>Linux runs are not ranked during the beta.</li>

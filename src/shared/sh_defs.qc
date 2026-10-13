@@ -1064,7 +1064,9 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
   owed by code that has.  The updater takes 5, and the rule it was written to
   protect is unchanged: do not add the line ahead of the code.
 */
-#define FS_TERMS_ONLINE 4
+// Optional signed updates now contact proto.bar/dl.proto.bar, behind their own
+// explicit permission. The new disclosure and endpoint ship together.
+#define FS_TERMS_ONLINE 5
 
 #define TS_IDLE      0   // nothing armed
 #define TS_ARMED     1   // standing in the zone the run will start from

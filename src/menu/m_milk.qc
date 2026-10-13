@@ -1396,6 +1396,7 @@ void(float x, float y, float pitch) MM_MainItems =
 	}
 	if (MM_Item(3, "mm_quit", [x, y + pitch * 3], "QUIT", 0, -4))
 		localcmd("quit\n");
+	MU_Link([x + 4, y + pitch * 4 + 8]);
 };
 
 // The analyser strip, straight off the engine's image.
@@ -1430,7 +1431,7 @@ void(vector sz) MM_MainPanel =
 	if (sz_y - (y + 150 + pitch * 4) > 170)
 		MM_Spectrum([x, fy - 130], [sz_x - x * 2, 70]);
 	if (clientstate() == 2)
-		sui_text([x + 4, y + 150 + pitch * 4 + 8], SZ_LABEL,
+		sui_text([x + 4, y + 150 + pitch * 4 + 52], SZ_LABEL,
 		         sprintf("^9esc  back to %s", serverkey("map")), COL_DIM, 1, 0);
 };
 
@@ -1457,7 +1458,7 @@ void(vector screensize) MM_ScreenMain =
 	MM_MainItems(x, y, MM_ITEM_H);
 
 	if (clientstate() == 2)
-		sui_text([x + 4, y + MM_ITEM_H * 4 + 16], SZ_LABEL,
+		sui_text([x + 4, y + MM_ITEM_H * 4 + 52], SZ_LABEL,
 		         sprintf("^9esc  back to %s", serverkey("map")), COL_DIM, 1, 0);
 	else if (MM_Active())
 		sui_text([x + 4, screensize_y - 48], SZ_LABEL,
