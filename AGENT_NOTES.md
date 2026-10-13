@@ -5625,6 +5625,47 @@ assets; zero MISS is not proof of a complete product archive.
 
 ## Pitfalls discovered the hard way
 
+### Unreadable native protected files and partial-recovery retirement — P689, 2026-10-13
+
+`QKU_FSPreserveFile` must distinguish missing from failed hashing. A native
+unprivileged client overwrote existing mode000 local zones/mounts with signed
+bytes; an inaccessible zone ancestor caused late refusal after earlier content
+installed. Only OS-confirmed absence permits failed-hash replacement. Shared
+install/preserve/unreadable decisions now precede planner candidate compaction
+and whole-journal mutation; readable edits and genuinely missing files retain
+P687's policy. Classify before freeing/moving candidate paths, not midway through
+compaction where an early error can double-free the original array.
+
+Mixed-pending recovery may retire resolved objects only AFTER a successful
+unresolved-only journal rewrite, and only if no outstanding destination needs the
+same staged hash. Hash/size/no-link checks still govern removal: corrupt resolved
+objects and unrelated staged sentinels survive. A failed journal write refuses
+without retiring objects; the preexisting remove-then-rename crash gap is a
+separate BACKLOG gate. Never claim this as atomic journal replacement.
+
+`tools/test_update_native_recovery_posix.py` uses an actual retained signed
+Linux object closure and external client, no signing key/pin override. Run its
+driver AND client unprivileged on tmpfs/ext4, not DrvFS or root: prove mode000
+open and ancestor-search refusal before testing. Private mount/network namespaces
+avoid production HTTP and shared fixtures; +quit needs no graphics server.
+Sixteen before/subject arms prove overwritten/late-refusal/leaked-object actors,
+missing positives, shared hash retention, corrupt/unreferenced preservation,
+honest partial state/version, repaired retries, failed journal-open and exhaustion.
+Retain each partial/completed phase separately; reusing a phase directory erases
+the strongest staging evidence. Retry increments BEFORE the limit check, so a
+journal at attempts=3 refuses next launch rather than writing attempts=4.
+
+Failure evidence must use copyfile, not copytree/copystat onto DrvFS under an
+unprivileged uid: data copying can succeed while metadata setters raise EPERM.
+Record failure and actual runtime retirement in nested finally blocks, including
+when evidence export fails. The first expanded harness had both mistakes; those
+failed attempts remain failures, not passes. Windows native regression eight
+passes; clean control/subject Windows warnings match (259 occurrences); Linux
+subject no compiler warnings. Standalone clangd needs the configured UCRT DLL
+PATH, Windows TMP/TEMP and --tweaks=; completed zero-error check is separate from
+stale cached diagnostics. Commands/hashes/review: `tools/p689native_recovery.md`.
+Source acceptance is not a release or deployment; 0.1.25 remains P687.
+
 ### Complete updater source and staged-file controls — P687, 2026-10-13
 
 The whole native/menu/wrapper/bootstrap/feed source is one product change, not

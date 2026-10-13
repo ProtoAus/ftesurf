@@ -5,20 +5,24 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
-## Signed updater remaining native recovery gates — P687, 2026-10-13
+## Signed updater remaining native operation gates — P689, 2026-10-13
 
-- Clean BOTH-platform preview, real archive controls and first production-signed
-  feed/site publication are now closed by 0.1.25+b89.p687; see AGENT_NOTES.md.
-- Historical native QKU_FSPreserveFile/QKU_ReplayJournal limitations remain:
-  failed hashing conflates missing vs unreadable protected files; mixed-pending
-  rewrites can retain objects for resolved entries. Falsifiers: existing mode000
-  zone under an unprivileged native client versus truly missing zone; preserve
-  unreadable local bytes or refuse rather than claim a managed replacement, while
-  a missing zone still installs. Exercise addons-specific and native Linux replay,
-  an earlier successful row plus protected row plus corrupt/locked outstanding
-  row, honest ledger/version, retry journal and bounded staged-object retirement.
-  Current eight Windows cold-recovery arms cover readable zones and complete
-  recovery, not those cases. No hostile ancestor-swap/hardlink guarantee is claimed.
+- P689 closes unreadable-protected-file and resolved-object-retirement recovery
+  defects with unprivileged Linux actors, both row orders, zones/mounts, inaccessible
+  ancestors, corrupt/locked/shared-object partial recovery and repaired retries.
+  Existing Windows cold-recovery controls pass; `tools/p689native_recovery.md`.
+- Site: native QKU_Work_Check/menu handoff and QKU_FSPreserveFile Windows branch.
+  Falsifiers still needed: live unreadable-candidate planner refusal, an actual
+  default-HTTPS signed-feed native check/menu/restart, and Windows ACL/share-mode
+  unreadability before an earlier content row changes. Loopback routing, source
+  review and Linux cold recovery do not certify those distinct operations.
+- Site: QKU_ReplayJournal mixed-journal replacement still removes journal.json
+  before rename (pre-P689 behavior). Exercise a crash/rename failure at that gap;
+  original recovery authority must survive and next launch must not start a mixed
+  installation. P689 proves failed journal OPEN retains the original and all
+  staged objects, not crash-safe replacement. No hostile ancestor-swap/hardlink
+  guarantee is claimed. Release 0.1.25 remains P687; this work does not deploy
+  P689 recovery to any canonical/fleet binary or certify peer deployments.
 
 ## OpenGL blendsort2 promotion gates — P685, 2026-10-13
 
