@@ -226,6 +226,10 @@ $ShipGameFiles = @(
     'ftesurf/textures/no_texture.png'
     'ftesurf/gfx/env/missingtexture.png'
     'ftesurf/gfx/env/missing_error_palette.png'
+    # Original, reproducible Perfect-board feedback; never ship personal sounds.
+    'ftesurf/sound/ftesurf/board_dong.wav'
+    'ftesurf/sound/ftesurf/board_bong.wav'
+    'ftesurf/sound/ftesurf/board_bell.wav'
     # Shared SUI chrome: generated in-tree, not third-party artwork.
     'ftesurf/gfx/ui/roundmask.png'
 )

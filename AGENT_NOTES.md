@@ -6461,6 +6461,21 @@ assets; zero MISS is not proof of a complete product archive.
   `b5a704f` from a clean tree and check remote hashes/live behavior.
   Retained evidence/staging: `C:/FTESurf-worktrees/labels-677-20261012T0623/`.
 
+### Perfect-board presentation (Patch 686) — 2026-10-13
+
+- `Board_PerfectFeedback` belongs at the new **live graded ramp** counter edge,
+  not in `Board_Compute`: the latter also processes replay scans/restores.
+  Ground/bhops and `Board_ResetRun` preserve the streak; only a non-perfect
+  graded board clears it, or `Board_Clear` for a new map/VM. Sound Off/Mute still
+  tracks it. Controls and original WAV generator: `tools/p686_board_feedback.md`.
+- Splitting a mono grade into per-glyph drawstrings and summing their measured
+  advances moved its percentage suffix **one pixel** versus the original whole
+  string. Keep the suffix in its original centered whole-string draw, replacing
+  the seven Perfect glyphs with mono spaces. P686's isolated-backdrop screenshot
+  controls prove zero changed suffix pixels. Native software sound speed is
+  quantized to 1/64, so PCM pitch tests use the emitted quantized frequencies,
+  not exact equal-temperament frequencies inferred from the builtin arguments.
+
 ### The Boarding window's levels (Patch 631) — 2026-10-11
 
 - THE WINDOW'S ENERGIES ARE LEVELS WITH THEIR OWN ZERO. `board_ein` is what you

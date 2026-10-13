@@ -42,6 +42,7 @@ float  board_stepe;
 vector board_dv;            // the signed XYZ you lost
 float  board_approach;      // degrees off the normal; 90 = perfect
 float  board_grade;         // 0 perfect .. 4 terrible
+float  board_perfect_streak; // live ramp arrivals only; capped at one octave
 float  board_rampdeg;       // how steep the ramp was
 // Patch 631, for the Boarding window: the raw energy you arrived with, and the
 // zero in force then.  Stamped, as seq_eref is: a later jump must not restate it.
@@ -971,6 +972,31 @@ void(vector vin, vector n) Board_Compute =
 	board_rampdeg   = acos(fabs(no_z)) * DEG_PER_RAD;
 	board_grade     = Board_Grade(board_losspct, board_approach, speed);
 	board_time      = board_now;
+};
+
+// Called only at a new live, graded ramp arrival -- not by Board_Compute,
+// which also builds replay tables. Ground/hops and run resets leave it alone.
+void() Board_PerfectFeedback =
+{
+	local float mode, volume, pitch;
+	local string sample;
+
+	if (board_grade != 0)
+	{
+		board_perfect_streak = 0;
+		return;
+	}
+	board_perfect_streak = min(board_perfect_streak + 1, 13);
+	mode = floor(cvar("hud_board_sound"));
+	if (mode == 1) sample = "ftesurf/board_dong.wav";
+	else if (mode == 2) sample = "ftesurf/board_bong.wav";
+	else if (mode == 3) sample = "ftesurf/board_bell.wav";
+	else return;
+	volume = bound(0, cvar("hud_board_volume"), 1);
+	if (volume <= 0) return;
+	pitch = 100 * pow(2, (board_perfect_streak - 1) / 12);
+	sound(world, CHAN_AUTO, sample, volume, ATTN_NONE, pitch,
+	      SOUNDFLAG_NOSPACIALISE | SOUNDFLAG_NOREVERB);
 };
 
 /*
@@ -2734,6 +2760,7 @@ void(vector org, vector vel, float onground) Board_Frame =
 		if (vlen(vin) >= 100 && fabs(vin * n) >= 25 && n != '0 0 0')
 		{
 			Board_Compute(vin, n);
+			if (!rec_wt_build) Board_PerfectFeedback();
 			// Patch 631: what you arrived with is this frame's energy plus the part
 			// of the clip it already shows -- the value the air segment closes at
 			// below.
@@ -3435,6 +3462,7 @@ void() Board_ResetRun =
 void() Board_Clear =
 {
 	Board_ResetRun();
+	board_perfect_streak = 0;              // new map/VM, not a hop or run reset
 
 	/*
 	  And the snapshot, which belongs to the map it was taken on.  -1 rather than

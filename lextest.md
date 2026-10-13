@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P686 — Perfect-board sounds and animated letters
+
+Open `hud_edit board`: try Dong, Bong and Bell at the shipped 35% volume,
+then rainbow/bounce separately and together. Judge softness, tone and bounce
+amplitude during your normal surfing. Consecutive Perfect ramp boards raise
+pitch (one-octave cap); bhops preserve it; a non-perfect grade resets it. The
+percentage should stay still/normal-coloured. Automated live-event, PCM and
+pixel controls pass; subjective sound/animation feel still needs your ears/eyes.
+See `tools/p686_board_feedback.md` for settings and verification limits.
+
 Notes left for Lex. Everything here was either measured and needs a judgement
 call, or cannot be measured headlessly at all. Nothing in this file is a bug
 report: real defects go in BACKLOG.md, and this is the list of things a machine

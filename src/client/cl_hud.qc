@@ -30,6 +30,7 @@ float  ui_cv_strict;        // build 39: no ramp plane means no target, not a wr
 float  ui_cv_strafe, ui_cv_board, ui_cv_boardfade;
 // Build 66: the Board panel's four rows and its wording switch.
 float  ui_cv_bseg, ui_cv_bgrade, ui_cv_bkept, ui_cv_bcost, ui_cv_bramp, ui_cv_bwords;
+float  ui_cv_brainbow, ui_cv_bbounce;
 float  ui_cv_seqlive;       // build 34: provisional rows for the OPEN segment
 float  ui_cv_mapinfo, ui_cv_mappos_x, ui_cv_mappos_y;   // build 34: the top-right block
 float  ui_cv_mapclock;      // Patch 372: time left and the next map, in that block
@@ -744,6 +745,8 @@ void() HUD_ReadCvars =
 	// frame for values that cannot change inside one.
 	ui_cv_bseg      = cvar("hud_board_seg");
 	ui_cv_bgrade    = cvar("hud_board_grade");
+	ui_cv_brainbow  = cvar("hud_board_rainbow");
+	ui_cv_bbounce   = cvar("hud_board_bounce");
 	ui_cv_bkept     = cvar("hud_board_kept");
 	ui_cv_bcost     = cvar("hud_board_cost");
 	ui_cv_bramp     = cvar("hud_board_ramp");
@@ -931,6 +934,13 @@ void() HUD_RegisterCvars =
 	*/
 	registercvar("hud_board_seg",   "0", CVAR_ARCHIVE);
 	registercvar("hud_board_grade", "1", CVAR_ARCHIVE);
+	registercvar("hud_board_sound", "1", CVAR_ARCHIVE);
+	registercvar("hud_board_volume", "0.35", CVAR_ARCHIVE);
+	registercvar("hud_board_rainbow", "1", CVAR_ARCHIVE);
+	registercvar("hud_board_bounce", "1", CVAR_ARCHIVE);
+	precache_sound("ftesurf/board_dong.wav");
+	precache_sound("ftesurf/board_bong.wav");
+	precache_sound("ftesurf/board_bell.wav");
 	registercvar("hud_board_kept",  "1", CVAR_ARCHIVE);
 	registercvar("hud_board_cost",  "1", CVAR_ARCHIVE);
 	registercvar("hud_board_ramp",  "0", CVAR_ARCHIVE);
@@ -2304,6 +2314,39 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
   speed it took, which is the opposite of what three numbers under "cost" read
   as.
 */
+// Keep the same face, advance, font effects and fade as the ordinary grade.
+// Only Perfect splits into glyphs; the percentage/label suffix stays untouched.
+void(vector pos, string s, float sz, vector rgb, float a) HUD_BoardGrade =
+{
+	local float i, px, phase;
+	local vector p, col, center;
+	local string ch;
+
+	if (board_grade != 0 || !ui_cv_bgrade || (!ui_cv_brainbow && !ui_cv_bbounce))
+	{
+		HUD_TextC(pos, s, sz, rgb, a);
+		return;
+	}
+	center = pos;
+	px = Font_Px(sz);
+	pos_x = pos_x - stringwidth(s, TRUE, [px, px]) * 0.5;
+	for (i = 0; i < 7; i = i + 1)
+	{
+		ch = substring(s, i, 1);
+		phase = cltime * 0.65 - i * 0.09;
+		col = rgb;
+		if (ui_cv_brainbow) col = '0.15 0.15 0.15' + Milk_Rainbow(phase) * 0.85;
+		p = pos;
+		if (ui_cv_bbounce) p_y = p_y - fabs(sin(cltime * 9 - i * 0.7)) * px * 0.16;
+		HUD_Text(p, ch, sz, col, a);
+		pos_x = pos_x + stringwidth(ch, TRUE, [px, px]);
+	}
+	// Mono spaces retain the original full-string advance/raster rounding.
+	// Starting a separate suffix at the summed glyph widths moved it one pixel.
+	if (strlen(s) > 7)
+		HUD_TextC(center, strcat("       ", substring(s, 7, -1)), sz, rgb, a);
+};
+
 void(vector scr, float y) HUD_DrawBoard =
 {
 	local vector p, col, bp;
@@ -2467,7 +2510,7 @@ void(vector scr, float y) HUD_DrawBoard =
 		{
 			tw = stringwidth(s, TRUE, [Font_Px(sz), Font_Px(sz)]);
 			if (tw > bw) bw = tw;
-			HUD_TextC(p, s, sz, col, a);
+			HUD_BoardGrade(p, s, sz, col, a);
 		}
 		p_y = p_y + lh;
 

@@ -25,7 +25,10 @@ commit   f79ad12cc3ac3393188e7500592674454aedf97f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-685
-patch    685
+patch    686
+# Patch 686: Perfect-board sounds with a ramp-only rising-pitch streak, plus
+# optional per-letter rainbow/bounce in the Board pane. QC/assets only; native
+# pin/tag and qcbuild unchanged. Controls/provenance: tools/p686_board_feedback.md.
 # Patch 685: opt-in OpenGL per-face blend ordering, stable transformed-depth
 # stream, coarse cached-VBO/capture fallback and preserved batch descriptors.
 # Source scene caches are no longer globally forced off. Default blendsort1;

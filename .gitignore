@@ -244,6 +244,13 @@ __pycache__/
 !/ftesurf/data/
 !/ftesurf/gfx/
 !/ftesurf/glsl/
+!/ftesurf/sound/
+/ftesurf/sound/*
+!/ftesurf/sound/ftesurf/
+/ftesurf/sound/ftesurf/*
+!/ftesurf/sound/ftesurf/board_dong.wav
+!/ftesurf/sound/ftesurf/board_bong.wav
+!/ftesurf/sound/ftesurf/board_bell.wav
 !/ftesurf/models/
 !/ftesurf/textures/
 /ftesurf/textures/*

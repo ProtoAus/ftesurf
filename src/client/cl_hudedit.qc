@@ -496,6 +496,14 @@ string(string id, float row) HE_OptDef =
 		                     "|How long a reading stays up after the ramp. stay never fades.";
 		if (row == 7) return "hud_seq_units|Units|c|0 1 2|u/s;energy;both"
 		                     "|Shared with the segment column, so the two never disagree.";
+		if (row == 8) return "hud_board_sound|Perfect sound|c|0 1 2 3|Off;Dong;Bong;Bell"
+		                     "|Soft feedback for each Perfect ramp board. Pitch rises one semitone per Perfect, up to an octave. Only a non-perfect graded board resets it; bhops do not.";
+		if (row == 9) return "hud_board_volume|Sound volume|c|0 0.15 0.25 0.35 0.5 0.75 1|Mute;15%;25%;35%;50%;75%;100%"
+		                     "|Perfect-board volume, also scaled by master volume. Muting does not reset the streak.";
+		if (row == 10) return "hud_board_rainbow|Perfect rainbow|t||"
+		                     "|Cycle a different rainbow colour on each letter of Perfect. Other grades and the percentage keep their normal colours.";
+		if (row == 11) return "hud_board_bounce|Perfect bounce|t||"
+		                     "|Bounce the letters of Perfect individually. Other grades and the percentage stay still.";
 		return "";
 	}
 
