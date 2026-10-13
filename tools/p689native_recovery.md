@@ -163,9 +163,11 @@ read-only and are not cleanup targets.
 
 ## Not certified
 
-Live unreadable-candidate planning, actual default-HTTPS menu/restart handoff,
-Windows ACL/share-mode unreadability, hostile concurrent ancestor swaps/hardlink
-aliases, and crash-safe journal replacement remain separate BACKLOG falsifiers.
+The later Windows continuation in `tools/p689native_windows.md` closes live
+unreadable-candidate planning and leaf ACL/share-mode refusal with acted native
+controls. Actual default-HTTPS menu/restart handoff, Windows ancestor denial,
+hostile concurrent ancestor swaps/hardlink aliases, and crash-safe journal
+replacement remain separate falsifiers; no such guarantees are inferred.
 The preexisting remove-then-rename journal gap is NOT fixed by a guarded purge.
 No new native map/rendering/sorter correctness, release or deployment is inferred
 from these cold-recovery controls or from a source pin.

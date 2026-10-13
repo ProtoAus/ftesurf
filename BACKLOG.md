@@ -11,11 +11,12 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   defects with unprivileged Linux actors, both row orders, zones/mounts, inaccessible
   ancestors, corrupt/locked/shared-object partial recovery and repaired retries.
   Existing Windows cold-recovery controls pass; `tools/p689native_recovery.md`.
-- Site: native QKU_Work_Check/menu handoff and QKU_FSPreserveFile Windows branch.
-  Falsifiers still needed: live unreadable-candidate planner refusal, an actual
-  default-HTTPS signed-feed native check/menu/restart, and Windows ACL/share-mode
-  unreadability before an earlier content row changes. Loopback routing, source
-  review and Linux cold recovery do not certify those distinct operations.
+- Site: native QKU_Work_Check/menu handoff.
+  Remaining falsifier: actual default-HTTPS signed-feed native check/menu/restart.
+  Live protected-file refusal and Windows leaf ACL/share-mode cold refusal before
+  earlier content mutation now ACT before/subject; `tools/p689native_windows.md`.
+  These use a retained signed loopback feed and headless trusted commands, not
+  menu/restart/HTTPS acceptance. Ancestor denial remains Linux-only coverage.
 - Site: QKU_ReplayJournal mixed-journal replacement still removes journal.json
   before rename (pre-P689 behavior). Exercise a crash/rename failure at that gap;
   original recovery authority must survive and next launch must not start a mixed

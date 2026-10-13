@@ -5697,6 +5697,40 @@ valid only while a successfully opened same-map scan remains in flight.
 
 ## Pitfalls discovered the hard way
 
+### Windows native unreadability actors and loopback ownership — P689 continuation, 2026-10-13
+
+`tools/test_update_native_windows_unreadable.py` reuses an existing signed feed
+and verified object closure without a key/pin override. Repeat --objects when a
+retained synthetic feed added an object outside its production closure. Run a
+real client in a suspended owned job, not a dedicated server; explicit headless
+renderer and trusted -plugin stdin drive planning without claiming menu pixels.
+Both zones and mounts need existing readable-edit and genuinely missing controls.
+Consent is disk-seeded, not a writable cvar. Force checking avoids the version
+fast path; a single ordinary content delta proves planner/apply action. Refusal
+requires exact protected-path error, one feed request, zero object requests,
+unchanged metadata/managed bytes and a refused apply; echoes alone never pass.
+
+Windows share mode zero proves read error32; a leaf Everyone read-data DENY ACL
+proves error5. Both must first prove existence, then restore access after native
+exit. SetFileSecurity can clear SE_DACL_AUTO_INHERITED while preserving every
+ACE: compare actual DACL bytes/defaulted/protection, not whole descriptor bytes.
+The pre-fix engine replaces an ACL-denied file, discarding its deny ACE, so that
+control must require signed replacement and restored read access, NOT continuing
+read denial. Sharing locks also block replacement: old recovery changes ordinary
+content then refuses with Unfinished content update, not successful startup.
+Subject early refusal preserves either journal order and every staged object.
+Export each failed phase before retirement; never count its partial PASS arms as
+a completed acceptance run.
+
+Python HTTPServer defaults can enable SO_REUSEADDR. On Windows that can duplicate
+an occupied bind and interfere with a peer listener. Use SO_EXCLUSIVEADDRUSE,
+disable reuse, and require an owned ephemeral busy-port rejection BEFORE clients.
+The signed mirror port is not permission to steal a port or modify an envelope.
+Final paired native matrices: 16 expected-before + 16 subject; both bound to the
+same driver hash, no source patch/build/pin/deployment implied. Windows ancestor
+denial, actual default HTTPS/menu/restart and the journal rename crash gap remain
+separate gates; provenance and failure history: `tools/p689native_windows.md`.
+
 ### Unreadable native protected files and partial-recovery retirement — P689, 2026-10-13
 
 `QKU_FSPreserveFile` must distinguish missing from failed hashing. A native
