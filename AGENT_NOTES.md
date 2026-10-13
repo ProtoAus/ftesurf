@@ -5827,9 +5827,10 @@ Process interruption is NOT power loss. After-commit interruption can leave old
 resolved staged objects behind because the newly committed journal no longer
 names them; do not claim complete cleanup. A separate corrupt retry after that
 arm consumes attempt3, so direct repaired retry and corrupt-next-launch evidence
-must be separate fixtures if both are wanted. Native Windows interruption remains
-a coverage limit; the second-live-writer sharing failure is now acted in the
-test-only continuation described below. Retained
+must be separate fixtures if both are wanted. Native Windows cold replacement
+interruption now has an acted test-only continuation below. Initial/deferred live
+interruption remains separate coverage; the second-live-writer sharing failure
+is acted in its test-only continuation. Retained
 signed production and signed-loopback fixtures are different contracts: the old
 Windows recovery driver requires the synthetic updater_fixture row and a full
 union object closure, while new cold publication controls use ordinary crosshairs.
@@ -5875,6 +5876,32 @@ Both corrected matrices and a fresh repeat use immutable accepted external befor
 subject clients, with settings/recording/local-zone/unmanaged-asset sentinels;
 no mounted-content, Windows interruption, power-loss, default-HTTPS or deployment
 claim. See tools/p692native_journal_deferred.md for reproduction and limits.
+
+### Windows cold journal commit process interruption — P692, 2026-10-13
+
+`tools/p692native_journal_interrupt.md` closes cold pending-only Windows
+replacement process-interruption coverage, not power loss or initial/deferred
+live interruption. External test-only debugger binds immutable client/companion
+PE text, unique native call and exact return PC. P692's shared helper additionally
+requires inspected stack/tail shape and the cold caller. Restore original bytes
+and RIP, never simulate rename/register results. Observe real nonzero return,
+thread/RVA/path checks, owned exit86 and observed job0 before/after cleanup.
+Before-rename old client already unlinked full authority and next corrupt launch
+starts mixed; P692 retains byte-exact full journal/refuses. After-rename authority
+is pending-only attempt2 while all staged inputs still exist. Separate fresh
+repaired arm completes attempt3; corrupt arm publishes attempt3 and repaired next
+launch must refuse exhaustion without budget reset. Pending-only authority cannot
+name resolved objects: repaired after-commit fixture explicitly retains these
+orphans; no garbage-collection certificate. Settings/recording/edited local zone/
+unmanaged sentinels and partial ledger/completion envelopes are independently
+graded in both row orders.
+
+First helper rejected because only native path separators were normalized; also
+normalize expected argv paths. Preserve failed history/temp/log evidence. Native
+wrong-byte rejection remains FAIL (helper90/job0), though its rejection assertion
+passes. Timeout/export/containment negatives must retain retirement guards when
+unknown. Frozen native repeat/review and retained paths are in the task checkpoint
+under `C:/FTESurf-worktrees/wjcut-20261013T172400Z/artifacts/`.
 
 ### Default HTTPS native/menu drivers and real return census — P689, 2026-10-13
 
