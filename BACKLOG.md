@@ -21,13 +21,18 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   Live protected-file refusal and Windows leaf ACL/share-mode cold refusal before
   earlier content mutation ACT before/subject; `tools/p689native_windows.md`.
   Ancestor denial remains Linux-only coverage.
-- Site: QKU_ReplayJournal mixed-journal replacement still removes journal.json
-  before rename (pre-P689 behavior). Exercise a crash/rename failure at that gap;
-  original recovery authority must survive and next launch must not start a mixed
-  installation. P689 proves failed journal OPEN retains the original and all
-  staged objects, not crash-safe replacement. No hostile ancestor-swap/hardlink
-  guarantee is claimed. Release 0.1.25 remains P687; this work does not deploy
-  P689 recovery to any canonical/fleet binary or certify peer deployments.
+- P692 closes the remove-before-rename journal authority gap with real Windows
+  replacement failure and Linux process-interruption/rename-failure actors;
+  `tools/p692native_journal.md`. Remaining optional persistence site:
+  QKU_CommitJournal/QKU_ReplayJournal. Power-loss acceptance needs demonstrated
+  file-data and directory flush ordering; process interruption alone is not that
+  certificate. An after-commit interruption may strand resolved staged objects
+  before retirement; prove a bounded safe cleanup strategy before deleting any
+  unreferenced object. Windows process-interruption and failure specifically at
+  the deferred live journal commit remain uninjected coverage, not claimed
+  implementation defects. No hostile ancestor-swap/hardlink guarantee is claimed.
+  Release 0.1.25 remains P687; source acceptance does not deploy recovery to any
+  canonical/fleet binary or certify peer deployments.
 
 ## OpenGL blendsort2 promotion gates — P685/P690, 2026-10-13
 

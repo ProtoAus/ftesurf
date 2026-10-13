@@ -5755,6 +5755,51 @@ valid only while a successfully opened same-map scan remains in flight.
 
 ## Pitfalls discovered the hard way
 
+### Native recovery journal publication boundary — P692, 2026-10-13
+
+A failed journal OPEN does not exercise publication. Native replay used to close
+journal.tmp, remove journal.json, then rename. Windows held-source sharing refusal
+and Linux exact rename failure/interruption made the current client refuse but
+its next launch start mixed because replay reads only journal.json. P692 publishes
+with replace-existing rename without first unlinking that authority; both live
+writers and cold pending-only publication share the helper. Failed commit retains
+the old superset and all staged objects, allowing reclassification on replay.
+
+Windows failure fixture: precreate only owned journal.tmp; hold it readable with
+FILE_SHARE_READ|FILE_SHARE_WRITE but NOT FILE_SHARE_DELETE. Independently prove
+truncate/write works and MoveFileExW of that actual source fails error32. A folder
+write denial tests OPEN instead; a destination share denial can also prevent the
+old unlink, hiding the missing-authority control. Linux companion interposer
+matches the exact sibling rename, logs its native PID and forces EACCES/exit86
+before commit or only after successful real commit. No key/pin override required.
+
+Both row orders need an earlier installed content actor and preserved edited
+zone, old version/no offline completion certificate while content is pending.
+Every native launch has its own marker/log/error/exit and pre-cleanup job/group
+census; inherited markers cannot grade the next phase. New live Windows controls
+prove initial failure installs nothing then same-game retry, and a held ordinary
+destination proves deferred pending-only publication then cold completion.
+
+A reaped leader is NOT an empty POSIX group: terminate/confirm the recorded owned
+group even when process.poll already returns. Early timeout/modal/census failures
+must still export that launch's native log before any fixture deletion. Keep an
+unconfirmed-phase guard if containment/evidence fails; a failed retirement must
+write FAIL rather than preserving a prior PASS grade. Seven client-free negative
+tests exercise these branches on Linux, including a real owned surviving Python
+group member; Windows runs three applicable tests/four explicit POSIX skips.
+
+Process interruption is NOT power loss. After-commit interruption can leave old
+resolved staged objects behind because the newly committed journal no longer
+names them; do not claim complete cleanup. A separate corrupt retry after that
+arm consumes attempt3, so direct repaired retry and corrupt-next-launch evidence
+must be separate fixtures if both are wanted. Native Windows interruption and
+failure specifically at the second live commit remain coverage limits. Retained
+signed production and signed-loopback fixtures are different contracts: the old
+Windows recovery driver requires the synthetic updater_fixture row and a full
+union object closure, while new cold publication controls use ordinary crosshairs.
+See tools/p692native_journal.md for tests, failed setup attempts and source-only
+acceptance. Never equate this source pin with any installed/released binary.
+
 ### Default HTTPS native/menu drivers and real return census — P689, 2026-10-13
 
 `tools/test_update_default_https.py` uses the exact archived real bootstrap and
