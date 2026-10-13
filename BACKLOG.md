@@ -12,11 +12,15 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   ancestors, corrupt/locked/shared-object partial recovery and repaired retries.
   Existing Windows cold-recovery controls pass; `tools/p689native_recovery.md`.
 - Site: native QKU_Work_Check/menu handoff.
-  Remaining falsifier: actual default-HTTPS signed-feed native check/menu/restart.
+  Windows default-HTTPS signed-feed native consent/content/menu/engine-bootstrap
+  restart gate passed with real returning games; `tools/p689native_https.md`.
+  Linux default-HTTPS native check/menu/restart remains: current and one safe
+  content delta, default feed/pin, no insecure transport/policy override,
+  unchanged protected sentinels and acted menu/returning-game controls. Existing
+  Linux archive/offline/bootstrap or native loopback tests do not close it.
   Live protected-file refusal and Windows leaf ACL/share-mode cold refusal before
-  earlier content mutation now ACT before/subject; `tools/p689native_windows.md`.
-  These use a retained signed loopback feed and headless trusted commands, not
-  menu/restart/HTTPS acceptance. Ancestor denial remains Linux-only coverage.
+  earlier content mutation ACT before/subject; `tools/p689native_windows.md`.
+  Ancestor denial remains Linux-only coverage.
 - Site: QKU_ReplayJournal mixed-journal replacement still removes journal.json
   before rename (pre-P689 behavior). Exercise a crash/rename failure at that gap;
   original recovery authority must survive and next launch must not start a mixed

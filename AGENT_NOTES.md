@@ -5734,6 +5734,31 @@ valid only while a successfully opened same-map scan remains in flight.
 
 ## Pitfalls discovered the hard way
 
+### Default HTTPS native/menu drivers and real return census — P689, 2026-10-13
+
+`tools/test_update_default_https.py` uses the exact archived real bootstrap and
+public signed feed without URL/pin/insecure overrides. The receipt contains six
+critical hashes, not all 821 archive paths: bind the archive SHA/count/raw bytes,
+bootstrap/notices and complete signed Windows closure. External P689 initiator
+and archived returning P687 game are different provenance, not a P689 release.
+
+Windows parse captured argv with CommandLineToArgvW; require the entire fixed
+launcher/return vector, not substrings. Rust canonical executable argv has the
+Win32 extended drive prefix: normalize paths only, never allow added flags.
+Persist ALL captured exits/pre-cleanup census before grading, including initial
+nonzero exits. Product processes must exit0 and job be empty before closure;
+exact System32 conhost109 is separately retained as an OS broken-pipe teardown,
+not a product exit0 or permission to ignore other nonzero exits.
+
+Early independent `in` commands can show a title screen instead of Updates.
+After menu initialization, run a sequential cfg with draw waits, then demand
+screen7/client1 and individually named PNGs. Physical input can overwrite a
+synthetic SUI hover between frames: batch hover/down/up callbacks in one console
+command, without changing product input or blocking the owner's mouse. Offline
+negative graders reject title0, extra argv, bad exits and incomplete failure
+census. Attempts remain FAIL even when partial subjects acted; final full default
+HTTPS matrices pass. Limits/failure history: `tools/p689native_https.md`.
+
 ### Windows native unreadability actors and loopback ownership — P689 continuation, 2026-10-13
 
 `tools/test_update_native_windows_unreadable.py` reuses an existing signed feed
