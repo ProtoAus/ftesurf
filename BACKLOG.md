@@ -4890,6 +4890,24 @@ right way up.
   it is. The trigger is unreproduced: `SV_UpdateMovementServerInfo` publishes on
   the first frame whenever `sv_airaccelerate` is non-zero. Found by ftesurf-a1
   reading cl_hud.qc for Patch 462.
+- **A short save-load can append the old body's position to the restored visual
+  prefix before the loaded body arrives** (measured 2026-10-13, installed
+  programs). `cl_trail.qc:Trail_Take` rejects a first stitched sample during
+  `TR_SETTLE` only when it is more than `TR_JUMP` (128 units) from the loaded
+  `STAT_FS_SLORG`. A stationary load about 62 units away therefore accepted two
+  samples from the previous position at the restored clock, then returned to
+  the saved origin without a new break. The original prefix was intact: this
+  is a borrowed post-load tail/visual seam, not lost save history or corrupted
+  authoritative evidence. Fix the first post-load frame/body association without
+  inventing motion, dropping genuine counted stops, or retiming the recorder.
+  Falsifier: on an isolated safe platform, walk out of a small start region,
+  save A, move sideways and save/rewind further, then load stationary A and
+  immediately save again. Require A's complete raw prefix unchanged AND every
+  subsequent stationary sample at A's restored body, not the place just left.
+  Retain moving-save, short/long-load, held-go, genuine pause and cold-prefix
+  controls; the 2026-10-13 strict stationary-tail arm is red. The positive
+  save A/load A/save B/rewind-go/save C/fresh-load chain, native held-clock
+  control and trail-on/off draw contrast do not waive it.
 - **The live trail draws a teleport as one long segment, not a break.**
   `cl_trail.qc` feeds `Line_Point` with `brk 0` because it watches a body rather
   than reading a file, and the grammar block's rule is that a discontinuity found

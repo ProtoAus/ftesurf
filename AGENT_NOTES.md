@@ -1829,6 +1829,24 @@ publicly WITH its fix, not before it.
   the server write, at one client FPS, before the answer is consumed.
   `tools/test_p502segments.py --rig <retained rig>` falsifies stale-report,
   recorder, clock, board, load-event and loaded-body false greens.
+- 2026-10-13 installed-program check: save A -> load A -> save B -> timed
+  rewind/go -> save C retains every raw visual-prefix field through each
+  predecessor. Returning to A/B restores their own prefix; a fresh server and
+  client loading C and saving again retains C's entire accepted prefix. Timed
+  recording stays segmented, held countdown clock/history stay fixed, and a
+  matched trail-on/off view positively shows the restored line. This is not
+  arbitrary placement/replay-save promotion or a current fleet check.
+- Keep the distinct short-load seam defect visible: loading a stationary save
+  about 62 units away appended two pre-load-position samples after its intact
+  prefix, before the new body arrived. `Trail_Take`'s 128-unit settle guard does
+  not reject that displacement. The strict no-borrowed-tail check remains red;
+  prefix preservation is not a claim of seamless continuation (BACKLOG).
+- The inherited P502 cfg did not ACT its timed prerequisites against the current
+  installed surf_dune zones: the first save was ARMED and later forward legs
+  fell/reset. That failed rig is retained, not a suite pass. The focused checks
+  used an overlay-only smaller start region on the existing safe spawn platform
+  and proved a walked, running recorder before saving. Never modify shared zone
+  content or weaken the actor gate to make the historical cfg appear green.
 
 ### Similarity collector operational limits (P546–548, P551–553)
 
