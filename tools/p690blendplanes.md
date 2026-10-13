@@ -128,6 +128,16 @@ is REJECTED: yaw45 mode1 P688 initial/return world-pane order differs20,604pixel
 including with the brush OFF. Mode2 brush-ON subset matches and OFF correction
 acts20,604; this is not a relaxed accepted matrix. Reusable generation/tests and
 all frozen failure/closure evidence are retained; default1 stays unchanged.
+A separately frozen same-loaded-world angle0/45/0 follow-up uses existing
+poke_ssqc authoritative actor readbacks and54PNGs. P688 returns are now exact
+for all18 images; angle ON/OFF changes3,150/0pixels in every arm/mode. However,
+all10 mode1 cross-binary comparisons still differ20,604pixels. Mode2 ON matches
+and OFF correction acts, but the complete gate remains REJECTED, including a
+native onepixel control hidden by an existing failure and an invalid pane-only
+ON/OFF premise. Initial driver-hash metadata failure is retained separately;
+no manifest/gate was rewritten or observed subset accepted. Next gate is an
+acted, non-perturbing source-bound legacy batch-order/shader-resort diagnostic,
+not another arbitrary-model/default2/performance claim.
 
 Remaining unmeasured scope: hardware tessellation, external-projection runtime,
 arbitrary model/sprite/weapon native certification and broad all-map/GPU/perf

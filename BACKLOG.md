@@ -70,10 +70,19 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   but its full frozen gate is REJECTED: P688 mode1 yaw45 initial/return and
   world-only controls differ20604pixels. Mode2 ON subset is exact; OFF correction
   acts20604. tools/p690brushfixture.py/p690brushfixture.md preserve all failures.
-  Follow-up site: GLBE_SubmitBlendedFaces legacy mode1 interbatch order and native
-  actor-angle protocol. Falsifier: prove exact P688 world/control return (prefer
-  same-loaded-world angle action with observed actor state), then independently
-  freeze/replay default and mode2 preservation; no mask/widened gate/subset rescue.
+  Same-loaded-world angle0/45/0 follow-up now proves actor state/action and exact
+  P688 return on all18 PNGs; angle ON/OFF changes3150/0 in each arm/mode. All10
+  mode1 P688-vs-merged comparisons still differ20604pixels, so full preservation
+  remains REJECTED. First driver-metadata failure stays ungraded; V2 also retains
+  a hidden native onepixel control and invalid pane-only ON/OFF protocol premise.
+  Follow-up sites: Mod_ResortShaders/Shader_DoReload batch-list lifecycle and legacy
+  GLBE_SubmitMeshes sortlist order. Source list-prepend reversal is a lead, NOT
+  observed causation; mod_batchlist itself reparses shader bodies. Falsifier:
+  acted source-bound order/resort diagnostic with observer-OFF/ON/OFF pixel parity,
+  then exact P688/merged/P688-return same-world angle/mode/default preservation.
+  Separate brush action from world correction enabled by removing its barrier;
+  controls must add a NEW specific failure, not hide behind existing rejection.
+  No mask/widened gate/subset rescue or candidate mode1 bug attribution.
   Remaining falsifier: arbitrary model/sprite/weapon and rotated-brush native
   acceptance, representative portal/reflection captures, additional supported-map
   cache0/1 opaque preservation and representative ordinary frame times/tails.

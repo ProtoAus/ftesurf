@@ -1,11 +1,12 @@
 # P690 rotated inline-brush fixture — frozen native gate REJECTED
 
 A self-contained BSP29 fixture now binds a real production `func_wall` alpha
-pane to yaw0/yaw45 images. Rotation and entity drawing ACTED, but the complete
-P688/merged/P688-return preservation gate **failed its mode1 control return**.
-Do not relabel the matrix as accepted or blame the candidate for a baseline
-that did not return. No engine/QC build, patch, default, install or deployment
-changed. Mode2 observations below are a measured subset, not a replacement gate.
+pane to yaw0/yaw45 images. Rotation and entity drawing ACTED. The initial
+P688/merged/P688-return matrix **failed its mode1 control return**. A later
+same-loaded-world experiment makes that return exact, but still fails cross-binary
+mode1 parity. Neither matrix is accepted; the cause of the two legacy world orders
+remains unknown. No engine/QC build, patch, default, install or deployment changed.
+Mode2 observations below are measured subsets, not replacement gates.
 
 ## Reusable fixture tooling
 
@@ -112,11 +113,87 @@ raw/PNG/failure/diagnostic/exact-commit receipts retained; only inventoried
 current-created byte-identical backup/log duplicates may retire. Parent source
 review only; no independent verdict is claimed.
 
+## Same-loaded-world follow-up: return stabilized, default parity still rejected
+
+Retained evidence: `artifacts/brush-sameworld-20261013/` and separately versioned
+`artifacts/brush-sameworld-v2-20261013/` beneath the owned root above. The first
+54PNG attempt stopped/restored successfully but its checker rejected BEFORE
+pixels: inherited helper `Capture.__init__` recorded the helper's `__file__` hash
+as `driver_sha256`, not the subclass driver's hash. Original source/manifest/
+protocol/rejection remains unchanged and ungraded. V2 explicitly pins both
+subclass driver and inherited helper, with real-constructor/mock-helper-init and
+wrong-driver negative controls BEFORE launch. No captured manifest was repaired.
+
+Existing engine `poke_ssqc` supports numeric entity.field reads and vector
+assignment; no new diagnostic command or QC is needed. In an owned cheats-enabled
+server, discover the authored targetname, then read classname/model/targetname/
+origin/angles/avelocity before writing ONLY the verified actor's angles:
+
+```text
+poke_ssqc <verified-pane-edict>.angles = '0 45 0'
+poke_ssqc <verified-pane-edict>.angles
+```
+
+Do NOT assume an edict number or dump private/player fields. Here a bounded1..96
+targetname-only search found one `mv17_pane`, edict4 in each boot. Readbacks prove
+func_wall/model*1/origin272,0,64/avelocity0 and angles0/45/0. Each reply has a fresh
+end ticket and complete since-send raw receipt. One yaw0 map per boot stays loaded;
+NO map reload between angles. Mode1 then2 each capture ON repeats/OFF at angles
+0/45/0-return, then final mode1 ON/OFF return:54 full960x720 PNGs/42states from
+serialized exact P688/merged/P688-return, not a timing or diagnostic-binary run.
+
+| V2 exact fullframe comparison | Changed pixels |
+|---|---:|
+| Within-boot ON repeats and angle/mode returns | 0 |
+| Angle0 vs45, ON / OFF, every arm and mode | 3,150 / 0 |
+| P688 initial vs P688-return, all18 matching PNGs | **0** |
+| P688 vs merged, mode1 all10 matching PNGs | **20,604** |
+| P688 vs merged, mode2 ON all5 matching PNGs | 0 |
+| P688 vs merged, mode2 OFF all3 matching PNGs | **20,604** |
+
+The green footprints remain exactly9,216/[432,312,527,407]/96x96 at0 and
+6,532/[443,308,510,411]/68x104 at45. The stable P688 mode1 world-only centre is
+(64,0,127); merged is(127,0,64). Thus same-world angle action and P688 return now
+hold, but mode1 cross-binary preservation still does NOT. Do not infer a P690
+mode1 code defect: the cause of the batch-order difference is not established.
+
+The frozen V2 gate remains unchanged and rejects under normal/-O. Its native
+mode1 onepixel control is hidden by an existing failure on that comparison, so
+it cannot prove a NEW specific failure. A separately authored rejection report
+validates source/state/closure and enumerates13 failed frozen predicates:10
+mode1 comparisons plus3 merged-mode2 pane-only ON/OFF checks. The latter was an
+incorrect protocol premise: removing a barrier permits world reordering outside
+the pane, as already documented above; it is NOT a newly found product defect.
+Do not silently weaken that frozen gate. Six other planned native defect controls
+add specific failures; the hidden mode1 control remains explicitly UNPROVED.
+Synthetic all54-image positives and all seven specific controls pass normal/-O,
+including missing-matrix/within-boot-return and source-attribution controls; that
+is checker coverage, not accepted native evidence. Diagnostic reports/crops are
+labelled REJECTED, never a substitute gate or masked acceptance.
+
+Source lead ONLY: `Mod_ResortShaders` in engine/gl/gl_model.c prepends old batches
+into emptied buckets, reversing unchanged-key lists when called.
+`Shader_DoReload` invokes it if any live shader sort changes. Those call sites
+have NOT been observed/count-bound in these runs; neither causation nor a fix is
+proved. `mod_batchlist` calls `Shader_GetShaderBody`, which can reparse shaders;
+do not assume it is an inert order probe. Material inspection here ran AFTER all
+pixel states. Source diff at exact P688/merged refs leaves gl_model.c/r_surf.c and
+the mode1 submission branch unchanged; static reachability is not native parity.
+
+Both attempts' twelve owned processes quitrc0; original native8,1,223 protected
+fixture/config/data/content files and two canonical clients are restored/unchanged.
+The two staged resources and created maps directory return to absent. Unique
+source/protocol/raw/108PNGs/failures/receipts retained. Parent review only.
+
 ## Next gate
 
-Do not retry until a separately frozen protocol proves the mode1 P688 world
-returns. Prefer a same-loaded-world actor-angle control, with actual actor state
-and pixels observed, or establish the cause of the two legacy world orders.
+Before more preservation captures, source-bound diagnose legacy world-batch order
+and the shader-resort lifecycle WITHOUT changing order through the observer.
+Pre-register a default-only control proving the observer acts and does not change
+pixels, then exact P688/merged/P688-return same-world angle/mode returns. Distinguish
+real brush footprint from the separate expected world correction when OFF removes
+the barrier. Every native defect control must target a comparison whose required
+predicate is not already failing; a rejected subject cannot be its own falsifier.
 Do not widen the exact gate, mask the intersection or call mode2 subset agreement
 a completed arbitrary rotated-brush acceptance. Broader animated/oriented/lit
 sprites, alias/studio models, weapons/depthhack, portal/reflection captures and

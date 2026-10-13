@@ -4999,6 +4999,29 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   normal/-O rejection, all raw/PNGs and a separately labelled postcapture report;
   do not mask/widen/relabel. Next protocol must prove stable legacy world return
   (prefer same-loaded-world observed angle action) before native acceptance.
+- Same-loaded-world brush follow-up uses existing engine poke_ssqc numeric
+  entity.field/vector assignment, not a new QC command. Discover targetname,
+  verify classname/model/origin/angles/avelocity BEFORE writing only actor angles;
+  bind complete fresh ticketed raw replies and visible0/45/0 footprints. All18
+  P688 initial/return fullframes now exact, angle ON/OFF3150/0 in all modes/arms,
+  but all10 mode1 P688-vs-merged PNGs differ20604. Full gate remains REJECTED;
+  do not claim a candidate defect/root cause. Mod_ResortShaders prepends/reverses
+  lists when called, Shader_DoReload calls only after a live sort change; these
+  runs did not count-bind that lifecycle. mod_batchlist is not inert: it calls
+  Shader_GetShaderBody, which can reparse shaders. Observe after pixel states or
+  prove observer-OFF/ON/OFF parity before using an order diagnostic.
+- A subclass of a retained capture helper must explicitly pin ITS OWN __file__;
+  inherited __init__ resolves globals in the helper module. First54PNG attempt
+  restored but frozen checker rejected before pixels: driver_sha256=helper hash.
+  Retain failed source/manifest/protocol unchanged. Separately versioned V2 pins
+  subclass/helper independently; real constructor with mock helper-init and a
+  wrong-driver negative control prove metadata BEFORE launch. Never fix captured
+  manifests. The V2 native onepixel mode1 control was hidden by an already failing
+  comparison: record UNPROVED, not a passed control. Synthetic rejection does not
+  make it native. Frozen pane-only ON/OFF was also a protocol error: removing an
+  unsupported barrier enables world correction outside actor area. Keep original
+  rejection; explicitly diagnose this known control interaction, not product bug.
+  tools/p690brushfixture.md; artifacts/brush-sameworld[-v2]-20261013/.
 - Stale r_waterinfo MarkLeaves age is NOT cache-action proof. Q1BSP_MarkLeaves
   common/q1bsp.c:2227 returns same-cluster cvis BEFORE marktime at2275. Actual
   stationary cache0 reported wanted0/inuse0 plus stale14.1s/false causal cache
