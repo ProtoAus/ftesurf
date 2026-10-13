@@ -156,10 +156,11 @@ def retire_runtime(root, evidence, result, dest=None):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(p, target)
             meta = dest / '.ftesurf-updater'
-            for p in meta.rglob('*.json'):
-                target = evidence / 'failed-final-state/metadata' / p.relative_to(meta)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(p, target)
+            for pattern in ('*.json', '*.tmp'):
+                for p in meta.rglob(pattern):
+                    target = evidence / 'failed-final-state/metadata' / p.relative_to(meta)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(p, target)
             pending = meta / 'ingame/staged'
             target = evidence / 'failed-final-state/staging.json'
             target.parent.mkdir(parents=True, exist_ok=True)

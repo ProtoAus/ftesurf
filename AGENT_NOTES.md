@@ -5806,13 +5806,54 @@ Process interruption is NOT power loss. After-commit interruption can leave old
 resolved staged objects behind because the newly committed journal no longer
 names them; do not claim complete cleanup. A separate corrupt retry after that
 arm consumes attempt3, so direct repaired retry and corrupt-next-launch evidence
-must be separate fixtures if both are wanted. Native Windows interruption and
-failure specifically at the second live commit remain coverage limits. Retained
+must be separate fixtures if both are wanted. Native Windows interruption remains
+a coverage limit; the second-live-writer sharing failure is now acted in the
+test-only continuation described below. Retained
 signed production and signed-loopback fixtures are different contracts: the old
 Windows recovery driver requires the synthetic updater_fixture row and a full
 union object closure, while new cold publication controls use ordinary crosshairs.
 See tools/p692native_journal.md for tests, failed setup attempts and source-only
 acceptance. Never equate this source pin with any installed/released binary.
+
+### Windows deferred live journal fault debugger — P692 continuation, 2026-10-13
+
+A lock before the initial live writer is not a deferred-commit fault. The new
+native driver compares exact executable/companion PE text, finds the optimized
+writer and two direct callers, and checks both observed caller RVAs/thread/ordinal.
+It snapshots complete initial authority at the second writer, holds only that
+writer's source sibling with writes allowed/no delete sharing, then lets native
+OPEN/write/close/rename run. Exact pending-only temp, live error/state, one landed
+content row/partial ledger, byte-exact full authority and staged objects prove
+ACTED publication failure. Old control loses journal and starts mixed; current
+corrupt retry refuses at attempt2, repaired retry completes at attempt3. This is
+transient INT3 memory instrumentation, not a disk product patch or simulated API
+return. Independent rename probe32 is not a sampled product-thread TEB error.
+
+NEVER close CREATE_THREAD_DEBUG_EVENT.hThread early: ContinueDebugEvent at thread
+exit closes debugger-owned handles automatically. A reused handle number then
+let that automatic close destroy our journal source lock, producing native exit0
+but helper exit90/CloseHandle error6. Leave debug-event process/thread handles to
+their debugger lifecycle; separately acquired OpenThread/PROCESS_INFORMATION and
+image/DLL file handles have distinct ownership. Failed subject06 remains FAIL.
+Debug EXIT_PROCESS can precede final kernel/job exit accounting; a bounded natural
+zero census after raw exit is valid, killing a success arm to force zero is not.
+
+Cold failure cleanup must terminate and confirm the owned job empty BEFORE closing
+its kill-on-close handle or clearing the unconfirmed-phase guard. A dead leader
+alone is insufficient on Windows too. Failure exports must include journal.tmp,
+not just *.json: a preceding live snapshot does not preserve a later failed cold
+rewrite. Client-free negative controls exercise persistent cold job rejection,
+exact failed-temp export/FAIL retirement and early live export failure guard.
+Validate helper as a regular file and hash BEFORE creating runtime/evidence roots.
+The native wrong-prologue control refuses before startup and verifies owned job0.
+
+Signed-manifest order, not test destination order, defines the initial journal.
+Legacy direct repair can leave the failed temp orphan when it does not rewrite;
+export/grade that orphan rather than silently crediting complete native cleanup.
+Both corrected matrices and a fresh repeat use immutable accepted external before/
+subject clients, with settings/recording/local-zone/unmanaged-asset sentinels;
+no mounted-content, Windows interruption, power-loss, default-HTTPS or deployment
+claim. See tools/p692native_journal_deferred.md for reproduction and limits.
 
 ### Default HTTPS native/menu drivers and real return census — P689, 2026-10-13
 

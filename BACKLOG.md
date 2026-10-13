@@ -28,9 +28,12 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   file-data and directory flush ordering; process interruption alone is not that
   certificate. An after-commit interruption may strand resolved staged objects
   before retirement; prove a bounded safe cleanup strategy before deleting any
-  unreferenced object. Windows process-interruption and failure specifically at
-  the deferred live journal commit remain uninjected coverage, not claimed
-  implementation defects. No hostile ancestor-swap/hardlink guarantee is claimed.
+  unreferenced object. A test-only source-bound Windows debugger now injects real
+  sharing failure at the deferred live journal writer: old control loses authority
+  and starts mixed; P692 retains authority, refuses corrupt retry and completes
+  repair; `tools/p692native_journal_deferred.md`. Windows process-interruption
+  remains uninjected coverage, not a claimed implementation defect. No hostile
+  ancestor-swap/hardlink guarantee is claimed.
   Release 0.1.25 remains P687; source acceptance does not deploy recovery to any
   canonical/fleet binary or certify peer deployments.
 

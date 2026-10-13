@@ -30,6 +30,42 @@ def ensure_retirable():
     assert not UNCONFIRMED_PHASES, 'client containment or evidence export unconfirmed: ' + str(UNCONFIRMED_PHASES)
 
 
+def win_job_active(job):
+    from ctypes import wintypes as w
+    class Accounting(ctypes.Structure):
+        _fields_ = [('times', ctypes.c_int64 * 4), ('faults', w.DWORD),
+                    ('total', w.DWORD), ('active', w.DWORD), ('terminated', w.DWORD)]
+    k = ctypes.WinDLL('kernel32', use_last_error=True)
+    k.QueryInformationJobObject.argtypes = [w.HANDLE, ctypes.c_int, w.LPVOID, w.DWORD, w.LPVOID]
+    accounting = Accounting()
+    assert k.QueryInformationJobObject(job, 1, ctypes.byref(accounting), ctypes.sizeof(accounting), None)
+    return accounting.active
+
+
+def wait_win_job_empty(job, receipt, key, timeout=10):
+    # Debugger EXIT_PROCESS and leader wait can precede final job accounting.
+    until = time.monotonic() + timeout
+    counts = []
+    while True:
+        count = win_job_active(job)
+        counts.append(count)
+        if count == 0 or time.monotonic() >= until:
+            receipt[key] = count
+            receipt[key + '_observations'] = counts
+            assert count == 0, 'owned job did not quiesce'
+            return
+        time.sleep(0.01)
+
+
+def stop_win_job(job, process, receipt):
+    k = ctypes.WinDLL('kernel32', use_last_error=True)
+    k.TerminateJobObject.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+    assert k.TerminateJobObject(job, 91), ctypes.get_last_error()
+    if process and process.poll() is None:
+        process.wait(timeout=10)
+    wait_win_job_empty(job, receipt, 'job_active_after_cleanup')
+
+
 def group_active(pgid):
     try:
         os.killpg(pgid, 0)
@@ -85,7 +121,6 @@ def run_native(engine, dest, phase, error=None, fault=None, library=None):
     try:
         with (phase / 'output.log').open('wb') as out:
             if os.name == 'nt':
-                from ctypes import wintypes as w
                 from test_update_handoff import owned_job
                 from test_ingame_update import owned_error
                 process = subprocess.Popen(args, cwd=dest, env=env, stdin=subprocess.DEVNULL,
@@ -98,15 +133,7 @@ def run_native(engine, dest, phase, error=None, fault=None, library=None):
                 if error:
                     (phase / 'fatal.log').write_text(owned_error(process, error), encoding='utf-8')
                 process.wait(timeout=30)
-                class Accounting(ctypes.Structure):
-                    _fields_ = [('times', ctypes.c_int64 * 4), ('faults', w.DWORD),
-                                ('total', w.DWORD), ('active', w.DWORD), ('terminated', w.DWORD)]
-                accounting = Accounting()
-                k = ctypes.WinDLL('kernel32', use_last_error=True)
-                k.QueryInformationJobObject.argtypes = [w.HANDLE, ctypes.c_int, w.LPVOID, w.DWORD, w.LPVOID]
-                assert k.QueryInformationJobObject(job, 1, ctypes.byref(accounting), ctypes.sizeof(accounting), None)
-                receipt['job_active_before_cleanup'] = accounting.active
-                assert accounting.active == 0, 'owned descendant remains'
+                wait_win_job_empty(job, receipt, 'job_active_before_cleanup')
             else:
                 import errno
                 import pty
@@ -170,7 +197,13 @@ def run_native(engine, dest, phase, error=None, fault=None, library=None):
                 if job:
                     k = ctypes.WinDLL('kernel32', use_last_error=True)
                     k.CloseHandle.argtypes = [ctypes.c_void_p]
-                    assert k.CloseHandle(job)
+                    try:
+                        if receipt.get('job_active_before_cleanup') != 0:
+                            stop_win_job(job, process, receipt)
+                        else:
+                            wait_win_job_empty(job, receipt, 'job_active_after_cleanup')
+                    finally:
+                        assert k.CloseHandle(job)
                 if process:
                     if os.name == 'posix':
                         stop_posix_group(process)
