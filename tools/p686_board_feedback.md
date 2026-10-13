@@ -91,8 +91,44 @@ This is a presentation integration test with injected live stat arrivals, not
 new movement/physics proof. Human sound softness, preferred timbre, volume and
 bounce feel remain in `lextest.md`. No private player/evidence data is used.
 
-Deployment/provenance is recorded separately after clean commits and destination
-readbacks. An ordinary Pi progs swap preserves `.prev`; menu stays Windows-local.
-The three WAVs also require explicit dual-install/Pi copying, because the build
-script deploys programs, not arbitrary new assets. Config defaults are archived
-source; existing owner settings/config must not be overwritten to enable them.
+At **2026-10-13T05:19:28Z**, product `d18b5610d4cb0d07b24fa62c3b10f8bc27b55455`
+and engine documentation `5cb53c38aa426281ba80c887b7776ecc38ce077e` are committed
+and pushed. A clean product-tree `build.ps1 -Jobs 8 -Pi` passed with zero warnings,
+refused no safety gate, found all twelve lobbies empty, preserved `.prev` and
+restarted them. Both Windows installs have hash-matching qwprogs/csprogs/menu
+and all three cues; personal `ftesurf.cfg` files are unchanged. No native binary
+or plugin was rebuilt/deployed, and menu remains Windows-local.
+
+The three WAVs require explicit copying: build.ps1 ships programs, not arbitrary
+new assets. The initial Pi restart preceded the new sound directory, so its
+filesystem lookup did not see them. After copying and a guarded empty-fleet
+restart, fresh unseeded clients using **each installed Windows executable**
+separately downloaded the exact served CSQC and all three exact WAVs. Both Board
+pane screenshots were inspected, defaults read 1/0.35/1/1, and the passing logs
+have no command/VM errors. All twelve final nonzero PIDs, active units, UDP ports
+and fresh empty directory rows are verified. One early live client command
+arrived before CSQC spawn; a longer fresh arm passed. The current HTTP mirror
+returns 404 for these new cues, but engine-server download fallback is proven;
+no HTTP mirror/release deployment is claimed.
+
+Verified program/cue SHA256:
+
+```text
+qwprogs.dat    f427438dff25d08bd4d08428c9b2a4882f7549b00044898f92e9ad165dd639b6
+csprogs.dat    723501aad2045fd9dd7621f2ce4cef73952be4f43d3e6b7ce0116f466a5d9e66
+menu.dat       f13f792cb416ff0752ce51c1ac2cd0520e462a0f9a7c314b18caae2492e407c1
+board_dong.wav e30decfff2c4ba7401af5204c5a848e926a5d2cda4e68d6dee2823a40a8d4efe
+board_bong.wav f15633f3eb94da9abd9c399212810d0e8a3c41935fc26b0804e85c8b150de594
+board_bell.wav 8e116a78dbd0d4b1d37854de3a7f42220ee79825f4751081068ffb87fd0a6123
+```
+
+Canonical shipguard also passes after source/assets arrive. Config defaults are
+archived source; existing owner settings/config are not overwritten. Retained
+small logs/metrics/PCM/screenshots and verified binaries live under the owned
+task's `artifacts/`; copied source/runtime trees and all worktree registrations
+are retired after verified recovery archives preserve ignored artifacts and
+unique evidence. Only the empty, unregistered Windows-locked directory
+`C:/FTESurf-worktrees/boardfx-1013043332/engine/` remains; no process with uncertain
+ownership was killed to remove it. OWNER.md records the retention/cleanup state.
+The canonical engine checkout's pre-existing modified documentation and unrelated
+untracked file remain untouched.
