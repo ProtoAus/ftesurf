@@ -5,21 +5,6 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
-## Release page retention sorts oldest-first — 2026-10-13
-
-- Site: `src/release/publish.sh`, the final release-retention pipeline. GNU sort
-  treats the explicit `n` on each key as a per-key override: the later global
-  `-r` does not reverse those keys. The pipeline consequently retains the oldest
-  five pages, not the newest five. First signed publication of 0.1.25 removed
-  the immediately preceding unsigned 0.1.24 page; its immutable R2 archive is
-  still available. Current page and signed feed passed public verification;
-  signed-feed history is separately protected and was not deleted.
-- Falsifier: pipe six increasing semvers (0.1.0, 0.1.1, 0.1.2, 0.1.3, 0.1.24,
-  0.1.25) through `sort -t. -k1,1n -k2,2n -k3,3n -r`; the measured output is
-  ascending. Verify corrected sorting retains newest pages and prunes only an
-  eligible oldest page in an owned synthetic site, preserving current and
-  signed-feed history. Do not repair/prune the live site as a test.
-
 ## Signed updater remaining native recovery gates — P687, 2026-10-13
 
 - Clean BOTH-platform preview, real archive controls and first production-signed

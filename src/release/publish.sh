@@ -100,12 +100,13 @@ echo "published $V  ->  $(readlink "$SITE/static")"
 
 # -----------------------------------------------------------------------------
 #  Keep the last $KEEP releases so a rollback target always exists.  Sorted by
-#  parsed version, never by mtime: republishing an old version would reorder it.
+#  parsed version, never by mtime. Each numeric key needs its own reverse flag:
+#  explicit per-key options override a global -r in GNU sort.
 # -----------------------------------------------------------------------------
 CUR=$(readlink "$SITE/static" | sed 's|^releases/||')
 ls -1 "$SITE/releases" 2>/dev/null \
   | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
-  | sort -t. -k1,1n -k2,2n -k3,3n -r \
+  | sort -t. -k1,1nr -k2,2nr -k3,3nr \
   | tail -n +$((KEEP + 1)) \
   | while read -r old; do
         [ "$old" = "$CUR" ] && continue

@@ -5728,8 +5728,30 @@ and production logs, with exact-archive results under that root's rig. Initial
 fixture-key rejection remains retained, not relabelled a pass. The deployed
 publish.sh's pre-existing retention sort unexpectedly pruned unsigned 0.1.24's
 page instead of the oldest page; immutable archives and signed-feed history
-remain. A read-only GNU-sort falsifier reproduced it; BACKLOG.md records the
-separate unfixed retention defect. Do not blanket-clean those live pages.
+remain. A read-only GNU-sort falsifier reproduced it; the source fix and isolated
+controls are recorded below. Do not blanket-clean those live pages.
+
+### Release-page retention ordering — 2026-10-13
+
+GNU sort's explicit per-key `n` prevents a global `-r` from reversing those keys.
+`publish.sh` now uses `nr` on EACH major/minor/patch key. Current-page and signed-
+feed-history exclusions are unchanged; signed history can exceed the five-page
+limit. This tooling fix changes no product patch, engine pin, Build or version.
+
+`python3 -B tools/test_release_retention.py --work-root <fresh owned root>
+--control-publish <preserved old publish.sh>` runs the actual shell publisher with
+public RFC8032 fixtures, no network/production key. Twelve retention cases check
+exact survivor names/bytes, gate/swap/prune actors, each numeric component at the
+cutoff, current/signed history and non-semver sentinels; ten existing shell
+publication controls still pass. A seven-page old-source control removes 0.1.24;
+fixed source removes 0.1.0/0.1.1. With SIX pages, old code prunes nothing because
+only current 0.1.25 reaches the prune loop: the first harness expectation was
+wrong and retained as a failure. Oldest-first/no-pruning and three lexical-key
+mutants all fail the detector after publication acts. Synthetic runtime sites
+are retired. DrvFS tests do not prove independent Unix permissions or live
+HTTPS/storage. Source fix only: no live pruning, 0.1.24 page restoration, release,
+helper deployment, player-install change or lobby restart was performed.
+Evidence: `C:/FTESurf-worktrees/pageret-20261013T090939Z/` artifacts and rig.
 
 ### Signed updater release/publication contract — 2026-10-13
 
