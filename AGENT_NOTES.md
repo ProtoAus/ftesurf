@@ -5457,6 +5457,33 @@ assets; zero MISS is not proof of a complete product archive.
 
 ## The milk visualizer (Patch 467)
 
+**P688/P691 thumbnail lifecycle (2026-10-13):** atlas decoding can be asynchronous,
+but `data/mapmeta.txt` is a locally generated table, not a menu download. Caching
+the map key is not proof that its row was found: P688 never noticed later table
+publication/replacement on the same map. P691 retries misses after 5s and valid
+coordinates after 30s, reading at most 64 rows per active sky view. Keep old valid
+coordinates only during a same-map refresh; map changes clear them. Close streams
+on world load, renderer reset and sky disable. Strict digit tokens prevent `stof`
+turning bad page text into zero. `milk_skyinfo [refresh]` reports rows/maxbatch.
+
+`tools/test_soundsky_metadata.py --output-dir <owned-root>/artifacts/<arm>` changes
+only its private runlines overlay's metadata after live phase markers. Late row,
+1,025-row replacement, removal/malformed row, restart, off/on and automatic valid
+refresh all acted; compiled no-retry control failed late recovery. Screenshots
+show neutral/tan/olive/neutral. A cfg `wait 1` can allow two sky views before its
+next diagnostic (observed rows128), so it is NOT proof of one frame's file budget:
+measure actual per-call maxbatch (64) instead. Existing cached atlas bytes at the
+same filename are not force-refreshed by a metadata scan.
+
+Blank-line EOF pitfall measured by the P691 live fixture: `if (!ln)` still stops
+at a blank line (rows0), because QCC logical-not emits OP_NOT_S, which checks both
+null handle and empty content. The builtin contract's **`if not(string)`** means
+that QC syntax, not C-style `!string`. Use `if not (ln)` for the raw null-handle
+branch (default ifstring flag off); corrected late/restored fixtures read rows2
+and resolve the valid row. Both the failed run and corrected run are retained.
+A failed metadata fopen must also clear coordinates/palette: preserving them is
+valid only while a successfully opened same-map scan remains in flight.
+
 - `src/milk_sys.qc` (both VMs, like sui_sys.qc) is a MilkDrop-style feedback
   renderer on render targets: scene -> warp -> sprites -> bloom -> composite, one
   tick at a FIXED 60 Hz. `src/menu/m_milk.qc` owns the menu's raymarched space

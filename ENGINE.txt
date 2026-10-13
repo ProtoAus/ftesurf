@@ -25,7 +25,10 @@ commit   73322dff5b6898511d62ed775286b23a91b8aad0
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-688
-patch    688
+patch    691
+# Patch 691: bounded CSQC thumbnail metadata rescans recover late/changed rows,
+# reject malformed indices, and close interrupted scans on sky/reset transitions.
+# Existing native runtime pin/tag stay intact; no Build or public release bump.
 # Patch 688: explicit local Windows playback-output analysis (no microphone,
 # replay or capture files), bounded shared WASAPI lifecycle/source-reset, and
 # map-relative 3/6/12-depth visualizer sky with distinct thumbnail region tones.

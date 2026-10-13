@@ -16,7 +16,10 @@ space feels immense yet the motion stays subtle, like Monkey Ball worlds.
 Try visually different maps and check landmarks do not distract from ramps.
 Numerical depth/palette controls and native atlas/restart screenshots pass;
 subjective scale/art direction and broad performance still need your eyes.
-See `tools/soundsky.md` for verified controls and coverage limits.
+P691 now recovers late/regenerated thumbnail coordinates without changing maps;
+`milk_skyinfo` shows the live lookup, `milk_skyinfo refresh` requests an immediate
+rescan. Missing/changed/removed rows and sky off/on are automated, not another
+manual checklist. See `tools/soundsky.md` for verified controls and coverage limits.
 
 ## P686 — Perfect-board sounds and animated letters
 

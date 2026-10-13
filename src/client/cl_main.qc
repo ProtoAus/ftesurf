@@ -1920,6 +1920,11 @@ float(string cmd) CSQC_ConsoleCommand =
 	// next thing to run is very likely a command.  Nothing real is nested here.
 	cl_input_real = FALSE;
 	tokenize(cmd);
+	if (argv(0) == "milk_skyinfo")
+	{
+		MilkSky_Info();
+		return TRUE;
+	}
 
 	/*
 	  `retry` -- restart the map's entities without losing where you are.
