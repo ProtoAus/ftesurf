@@ -14,10 +14,10 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - Site: native QKU_Work_Check/menu handoff.
   Windows default-HTTPS signed-feed native consent/content/menu/engine-bootstrap
   restart gate passed with real returning games; `tools/p689native_https.md`.
-  Linux default-HTTPS native check/menu/restart remains: current and one safe
-  content delta, default feed/pin, no insecure transport/policy override,
-  unchanged protected sentinels and acted menu/returning-game controls. Existing
-  Linux archive/offline/bootstrap or native loopback tests do not close it.
+  Linux default-HTTPS native consent/current/content/engine-menu restart gate
+  passed with byte-exact archived Rust and real returning games: complete
+  fork/clone/exec/exit tree, unchanged protected sentinels, acted screen7 panes;
+  `tools/update_native_https_linux.md`. Source/test acceptance only, not a release.
   Live protected-file refusal and Windows leaf ACL/share-mode cold refusal before
   earlier content mutation ACT before/subject; `tools/p689native_windows.md`.
   Ancestor denial remains Linux-only coverage.

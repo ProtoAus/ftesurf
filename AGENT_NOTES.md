@@ -5839,6 +5839,46 @@ negative graders reject title0, extra argv, bad exits and incomplete failure
 census. Attempts remain FAIL even when partial subjects acted; final full default
 HTTPS matrices pass. Limits/failure history: `tools/p689native_https.md`.
 
+### Linux default HTTPS/menu and complete task trees — 2026-10-13
+
+`tools/test_update_default_https_posix.py` closes Linux consent/current/content/
+engine-menu restart with the unchanged production archive/feed and real Rust/
+returning game. External P692 initiator and returning P687 archive are different
+provenance: acceptance is not a deployment, release or new product patch. Use
+private PID/mount namespaces, tmpfs POSIX modes, private /tmp/Xvfb/HOME; no shared
+WSL GUI sockets or original player install. Five final PNGs require pixel review.
+
+Do not replace Windows jobs with process polling on Linux. strace follows fast
+fork/exec/orphan actors. Parse successful clone/fork IDs (including resumed
+records), require every referenced task trace/terminal outcome, exactly one
+initial root, full reachability and actual launcher ancestry for the return.
+An omitted thread-only trace otherwise false-passes even when executable count
+and final namespace are correct. Save raw exits and namespace/group observations
+BEFORE grading; every task/tracer exits0, no exception. Early failures need the
+same pre-containment snapshot. Terminate only owned tracees while keeping strace
+alive to record their terminal outcomes, then reap; an exited tracer/group leader
+alone does not prove its group is empty. Controls ACT these failures without clients.
+
+POSIX console logs echo typed commands before output. A marker substring can
+complete a wait before its probe executes: require a standalone timestamped echo
+line, not `echo HTTPS_MARKER...` in the input echo. Draw waits and screen7/client1
+still apply to the actual returning game; no injected restart argv or adapter.
+Bash-to-wsl.exe combined `> log 2>&1` capture overlaid unit-report prefixes in this
+lane even with unbuffered Python. Separate stdout/stderr files retained every test
+name and both acted FAIL JSONs. Preserve complete reports; do not infer a missing
+control from a truncated/overlaid combined transcript.
+
+Evidence allowlists need no-link checks on the scan root AND each ancestor/leaf
+before rglob/read/copy, not only descendants returned by rglob. A static linked
+export root otherwise copies its referent before retirement rejects it. Failed
+exports/retirement must retain FAIL and an independently verified persistent
+non-secret recovery bundle BEFORE tmpfs teardown. If recovery verification also
+fails, retain the explicitly owned namespace for recovery, not a dead tmpfs path;
+a marker alone cannot authorize discard. No identity.pfx/mounted-content export.
+Fifteen client-free controls, reviewed fixes and full final-byte native matrix:
+`tools/update_native_https_linux.md`. Recovery-blocked wrapper retention is
+source-reviewed only; successful recovery/export/retirement failure controls ACT.
+
 ### Windows native unreadability actors and loopback ownership — P689 continuation, 2026-10-13
 
 `tools/test_update_native_windows_unreadable.py` reuses an existing signed feed
