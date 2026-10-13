@@ -42,7 +42,12 @@ to be wrong.
 
 ---
 
-## 00. 13 Oct — Kitsune window ordering (Patch 685, opt-in)
+## 00. 13 Oct — Kitsune window ordering (P685/P690, opt-in)
+
+P690's conservative static-plane refinement passes bounded exact-source/native
+controls; install delivery is a separate gate. Once tools/p690blendplanes.md
+records BOTH destinations verified, restart and tour with the controls below.
+Do not assume the ENGINE.txt pin means your current executable was replaced.
 
 Engine-only P685 deployed to both Windows installs at 03:39:37Z, with matching
 plugin hashes and `.prev` rollback. Restart the client, then try `r_blendsort 2`.
