@@ -4923,6 +4923,20 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   both initial/return authored order witnesses; default/repeat comparisons exact.
   Offline p690cache.py plus test_p690cache.py reject33 acted bad-evidence controls
   under normal and -O. Two synthetic maps/one camera/GPU, not broader promotion.
+- Ordinary stationary-cost continuation was REJECTED, not a performance green.
+  tools/p690ordinary.md separates128-swap WGL-return cadence (r_speeds0) from
+  100-frame refresh service buckets (r_speeds2, subtract table overhead only).
+  r_speeds3 injects GPU finishes; REAL refresh+server still is not the whole host
+  frame. vid_wait queries print canonical vid_vsync; renderer must be explicit.
+  A0.4second bridge read captured partial dumps in34/38 replies even though full
+  records exist in raw logs: require a unique ticket and footer before grading.
+  Six/eight Kitsune fullframe repeats changed1016..3900 pixels; no new mask was
+  allowed. Timer/mapinfo/minimap stayed visible behind guessed HUD names; inspect
+  actual registered names, but scene deltas do not prove HUD causation. Archived
+  excluded timing diagnostics also show P688 mode1 return cost+37.57%, above the
+  frozen20% drift guard. Timing slowdown ACTS5x cadence/59x refresh; that does not
+  rescue unstable controls. Serialize native timing against detector/corpus/hash
+  work and prove quiet A/B/A returns. No product bug/fix/default2 acceptance.
 - Stale r_waterinfo MarkLeaves age is NOT cache-action proof. Q1BSP_MarkLeaves
   common/q1bsp.c:2227 returns same-cluster cvis BEFORE marktime at2275. Actual
   stationary cache0 reported wanted0/inuse0 plus stale14.1s/false causal cache

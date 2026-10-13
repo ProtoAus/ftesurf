@@ -343,3 +343,12 @@ not representative all-map coverage or performance. Additional supported-map
 coverage remains; Source needs an explicit generation/data-interface implementation
 and acted GPU/visual/performance controls before it can be an acceptance arm.
 Do not manufacture a pass by toggling cache1 on VBSP. Default1 remains retained.
+
+The [ordinary stationary cadence/service-cost attempt](p690ordinary.md) is now
+retained and **REJECTED**, not a new performance green. Production128-swap
+cadence and100-frame refresh buckets respond to a paced slowdown, but Kitsune
+fullframe repeats are unstable and P688 mode1 return service cost drifts37.57%,
+above the frozen20% guard. Short console reads also left34/38 cost replies
+incomplete; complete raw-log diagnostics remain excluded. The offline detector
+and acted rejection controls are published so these failures cannot silently
+become a pass. Stable quiet A/B/A/native completeness remains a promotion gate.
