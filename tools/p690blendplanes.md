@@ -93,9 +93,12 @@ failed/unstable arms distinct rather than treating them as passing evidence.
   candidate(127,64,0). Top and pass-local programmable alpha fixtures ACT and
   remain exact baseline in v3. Fixed-function deformation mode2 remains exact.
   These are not arbitrary model/sprite/weapon native certification.
-- Q1 cache1 is separately attributed to v2 `6a0f0414` (`native-fixtures`):
-  wanted1/inuse1 and stale MarkLeaves16..21s prove actual cache use. Admission
-  guards are unchanged in v3, but this is not a fresh v3 or Source-cache1 test.
+- Historical Q1 cache1 pixels are separately attributed to v2 `6a0f0414`
+  (`native-fixtures`). Its wanted1/inuse1 and stale MarkLeaves16..21s are NOT
+  direct cache-action proof: fixed-cluster ordinary rendering also returns
+  before that timestamp update. Admission guards are unchanged in v3; this is
+  not a fresh v3 or Source-cache1 test. New exact delivered supported-Q1
+  opaque/coarse-cache controls use postdraw actors; see [p690cache.md](p690cache.md).
 - `water-v3`: actual Source bhop_monster_jam, cache0, Full1 -> Dither3 -> Full-
   return1. Full is `vmt/water#LQWATER#DEPTH`/6 merged passes; Dither is
   `vmt/flatdither#WATER`/1 pass. All repeats and Full-return are exact; mode1vs2
@@ -331,7 +334,12 @@ and both installed client hashes stayed unchanged. No product patch, config/QC,
 fleet, release, default or deployment operation was part of this continuation.
 
 Promotion gates must separate **supported-map cached-path preservation** from
-**Source temporal-cache support**. The former still needs representative native
-coverage; the latter needs an explicit generation/data-interface implementation
+**Source temporal-cache support**. New [supported-Q1 controls](p690cache.md) bind
+96 exact P688/delivered-merged/diagnostic/P688-return frames: both modes,
+cache0/1/return0, actual postdraw cached/ordinary actors, complete opaque
+preservation and coarse cached-alpha preservation. Ordinary mode2 acts at20604
+pixels; all repeats/default comparisons are exact. This is two authored maps,
+not representative all-map coverage or performance. Additional supported-map
+coverage remains; Source needs an explicit generation/data-interface implementation
 and acted GPU/visual/performance controls before it can be an acceptance arm.
 Do not manufacture a pass by toggling cache1 on VBSP. Default1 remains retained.

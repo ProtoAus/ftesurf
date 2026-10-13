@@ -4915,6 +4915,27 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   mode2 changes12065 pixels per selected cache setting. This is ordinary Source
   submission, not a VBSP cache gate. New diagnostic Q1 proof does not relabel old
   v2 production-cache evidence. Artifacts: source-cache-20261013/grade_cache.py.
+- Supported-Q1 continuation now binds96 exact P688/delivered integrated/probe/
+  P688-return frames on two asset-free BSP29 maps. Both modes/cache0/1/return0
+  preserve every opaque pixel and coarse cached-alpha P688 output. Diagnostic
+  settled intervals prove cached-only470..476 draws versus ordinary-only469..480,
+  with exact production pixel/input parity. Ordinary mode2 acts20604 pixels and
+  both initial/return authored order witnesses; default/repeat comparisons exact.
+  Offline p690cache.py plus test_p690cache.py reject33 acted bad-evidence controls
+  under normal and -O. Two synthetic maps/one camera/GPU, not broader promotion.
+- Stale r_waterinfo MarkLeaves age is NOT cache-action proof. Q1BSP_MarkLeaves
+  common/q1bsp.c:2227 returns same-cluster cvis BEFORE marktime at2275. Actual
+  stationary cache0 reported wanted0/inuse0 plus stale14.1s/false causal cache
+  explanation; a proposed actor failed and was retained. Use postdraw counters
+  with actual-world/rendered-camera/production-image binding instead. Existing
+  historical stale-age-only positive evidence must not be relabelled draw proof.
+- Uncollidable authored BSP tests need explicit noclip after EACH map load.
+  Body0 alone fell thousands of units before the first PNG. An opaque blue quad
+  fully occluded the first fixture's red lost-geometry sentinel: exact frames
+  alone were insufficient. Reject zero authored red pixels; expose the red edge,
+  keep the failed96-frame matrix/generator and rerun. FTESurf actual rendered eye
+  at body0 is0.062,0.062,64.062 here, not assumed vanilla Quake22. Compare numeric
+  diagnostics, require exact stable production repeats and do not add a mask.
 - Before labeling a map-switch arm, prove model/map identity, not just body/zero
   velocity: missing Q1 map404 left the prior Source world running at origin0.
   Retain/exclude it. Re-read the exact station recipe: unrelated water-station

@@ -41,15 +41,34 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   generation); Q1 cache1 positive control ACTS. Exact Kitsune production selected-
   cache0/1/return0 repeats/default parity pass, mode2 acts at12,065 changed pixels.
   These Source pixels are ordinary-path evidence, not cached opaque support.
+  New supported-Q1 exact-production gate:96 authored opaque/alpha frames,
+  P688/delivered merged/diagnostic/P688-return, both modes/cache0/1/return0.
+  Opaque fullframes and coarse cached alpha are preserved; postdraw cache actors
+  are bound by exact diagnostic/production pixels. Ordinary mode2 acts20604
+  pixels; default parity/repeats exact. tools/p690cache.md and offline33-rejection
+  controls. This is two synthetic BSP29 maps, not representative all-map coverage.
   Remaining falsifier: arbitrary model/sprite/weapon and rotated-brush native
-  overlaps, representative portal/reflection captures, supported-map cache0/1
-  opaque preservation and same-camera ordinary frame times. Source temporal-cache
+  overlaps, representative portal/reflection captures, additional supported-map
+  cache0/1 opaque preservation and same-camera ordinary frame times. Source temporal-cache
   support needs a separate generation/data-interface implementation and actual
   cached-path GPU/visual/perf controls; toggling a cvar cannot certify it.
   Coarse/recursive records, intersecting geometry and uncertain pairs retain
   bounded fallback. No hardware tessellation/external-projection runtime or
   broad all-map claim. Do not promote default2 or credit timerefresh/static
   pixels as ordinary performance/capture certification.
+
+## Q1 water-info stale-age false cache attribution — 2026-10-13
+
+- Site: Q1BSP_MarkLeaves common/q1bsp.c:2227–2231 returns reused same-cluster
+  cvis before q1bsp_marktime at2275; r_waterinfo client/r_surf.c:3616–3620 prints
+  stale age as “scene cache is returning before it”. Delivered a8e705787 at a
+  stationary authored Q1 camera/cache0 showed wanted0/inuse0 and age14.1s.
+  Stale age and cache readback are NOT direct cached-draw actors; new postdraw
+  controls in tools/p690cache.md distinguish paths. Falsifier: supported-Q1 real
+  fixed-camera cache0/1/return0 and same-PVS reuse, diagnostic postdraw counters
+  increasing on their respective paths; production message must distinguish
+  invocation/reuse from temporal-cache bypass and avoid a false causal claim.
+  Diagnostic fix not implemented. Source r_waterinfo crash is a separate limit.
 
 ## Tensor water and cold-load diagnostics — 2026-10-13
 
