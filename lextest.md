@@ -17,6 +17,10 @@ Automated two-client dedicated-socket controls pass: actual board line/replay
 clicks, player pause click, saves/loads from demo/rewind/spectator, editor/profile
 opening during playback and exclusive spectator-to-demo pin handoff. Demo,
 spectator, rewind, board and editor screenshots inspected at 1920-wide.
+Clean committed `ea284a0` deployed to both Windows installs at 02:46:44Z;
+twelve development lobbies have the matching progs and retained rollback.
+Both installed engine/menu pairs downloaded the exact served client and passed
+the live board smoke. See tools/viewer_ui.md. Restart/reconnect to reload the VM.
 
 - Judge the Dusk demo panel at your HUD scale, with long names and stage cuts.
   Clock Play/Pause, scrub, speed and skip-still should remain readable/hittable.

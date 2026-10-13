@@ -66,4 +66,32 @@ remains 306/0; no recording grammar, receipt, verifier or movement rule changed.
 The existing missing-map-material warning is unrelated and was not repaired by
 this UI change. Owner acceptance at other scales, long names, imported recordings
 and third/free cameras remains in lextest.md. No new engine binary, native tag,
-QC Build-number or release is claimed. Deployment is recorded separately.
+QC Build-number or release is claimed.
+
+## Development deployment — 2026-10-13
+
+Product commit `ea284a017a17cbab159ee47712523aade4dd8f05`; engine changelog
+commit `74bebd2a9842bf1298473e321dc008084f9ff219`. Both exact SHAs pushed to main.
+A clean exact-product-commit QC build completed with zero warnings.
+
+At 02:46:44Z both Windows installs received all three programs with six matching
+destination hashes and verified `.prev` rollback files. Four protected owner/default
+configs hashed unchanged. No native executable/plugin was replaced.
+
+Guarded progs-only Pi deployment found all twelve lobbies empty, verified staged
+and live hashes, kept the prior pair and restarted the twelve active units. The
+02:49:49Z readback proves twelve active PID/matching UDP-socket actors, current
+programs and retained rollback. Health and the fresh directory both list twelve.
+
+| Program | Deployed SHA-256 |
+|---|---|
+| qwprogs.dat | f427438dff25d08bd4d08428c9b2a4882f7549b00044898f92e9ad165dd639b6 |
+| csprogs.dat | 99744087bd1b56f01b5e1aac42e63beaf9edd31d09608556a827eef7afaaf0cc |
+| menu.dat (Windows only) | f13f792cb416ff0752ce51c1ac2cd0520e462a0f9a7c314b18caae2492e407c1 |
+
+Each installed Windows engine/menu pair separately joined the live lobby from a
+fresh isolated client with no local CSQC. Both downloaded the exact deployed
+client hash, drew a cols8/type14 board, captured a screenshot and exited normally
+with zero QC/smoke errors. The screenshots were inspected. Owner game processes
+were not stopped. Reconnect/map reload is needed for an already-running client
+VM to pick up the newly served code; restart is the simplest local refresh.
