@@ -312,6 +312,10 @@ void() Milk_Invalidate = { milk_ready = FALSE; milk_rtsize = '0 0 0'; };
 void() Milk_Audio =
 {
 	milk_live = 0;
+	// Upload even when unavailable: native emits a blank spectrum/neutral wave.
+	// Otherwise an endpoint failure or source switch can freeze the last image.
+	if (milk_hasvis)
+		snd_visimage(MILK_SPEC, MILK_SPECBANDS);
 	// Nested, not &&: QC does not short-circuit, and calling a #0: builtin the
 	// engine lacks aborts the whole VM ("Builtin 0:snd_getvis not implemented").
 	if (milk_hasvis)
@@ -328,7 +332,6 @@ void() Milk_Audio =
 		milk_beat_treb = bound(0, milk_vis[10], 1);
 		milk_rms = milk_vis[11];
 		milk_live = 1;
-		snd_visimage(MILK_SPEC, MILK_SPECBANDS);
 		milk_kick = max(milk_kick * 0.86, milk_beat_bass * bound(0, (milk_bass - 1.3) / 0.9, 1));
 		milk_hit = max(milk_hit * 0.86, max(milk_kick, 0.8 * milk_beat_treb * bound(0, (milk_mid - 1.2) / 0.8, 1)));
 		return;

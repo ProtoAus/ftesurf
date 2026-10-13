@@ -21,6 +21,7 @@ skybox_milk
 			depthwrite
 		endif
 		map $rt:ms_out
+		map $rt:ms_palette
 	}
 }
 

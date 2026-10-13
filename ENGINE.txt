@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   3688683ff245431ac515a37bd63997c5fd7e56d8
+commit   73322dff5b6898511d62ed775286b23a91b8aad0
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,19 @@ commit   3688683ff245431ac515a37bd63997c5fd7e56d8
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-687
-patch    687
+tag      patch-688
+patch    688
+# Patch 688: explicit local Windows playback-output analysis (no microphone,
+# replay or capture files), bounded shared WASAPI lifecycle/source-reset, and
+# map-relative 3/6/12-depth visualizer sky with distinct thumbnail region tones.
+# VISUALS sky+audio controls; owner's visual defaults, saved preferences retained,
+# personal music selection excluded. Lazy thumbnail map-key lookup and blank
+# spectrum upload fix observed lifecycle faults. Native PCM/fallback, real tone /
+# game-only / silence / switch controls; sky pixel mutants and live atlas/restart
+# screenshots; 46 default readbacks. QC zero warnings; cold native warnings match
+# clean control 35 occurrences/26 payloads. Physical endpoint replacement, live
+# remote refusal, Linux runtime and subjective art/scale remain limits. No QC
+# Build/public version/release feed change. tools/soundsky.md records provenance.
 # Patch 687: complete signed FTESurf native/menu/wrapper/bootstrap/feed source,
 # whole-job no-link part staging, restrictive POSIX execute repair, guarded
 # native enginetmp and replay preserving intervening local edits/ledger baselines.

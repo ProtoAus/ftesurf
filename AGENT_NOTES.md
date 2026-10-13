@@ -5593,6 +5593,36 @@ assets; zero MISS is not proof of a complete product archive.
   `snd_fx_lowpass` is the menu's "muffle the game". OpenAL output bypasses the
   mixer entirely, so there is nothing to analyse there.
 
+### Windows-output/spatial sky verification (Patch 688)
+
+- `MilkSky_WorldLoaded` has valid world bounds but `serverkey("map")` was empty
+  in the acted dedicated Source-map fixture. An initial-only metadata lookup
+  silently leaves page/cell -1 forever. Cache a zoned name and resolve changed
+  live keys; reset it on world load. Final live atlas5/thumbnail RT pixels acted.
+- Keep `program milk_sky` INSIDE its pass, before both `$rt:` maps.
+  `Shaderpass_DefineMap` bundles successive maps only when `pass->prog` exists;
+  moving the program to shader scope overwrote the first map and left the second
+  sampler blank. A solid fragment probe acted, yet map colours were black.
+  Direct RT preview proved the thumbnail was valid: this was sampler binding,
+  not an image/renderer failure. Restore probes and verify the source diff.
+- The native shader diagnostic's `prog` counts shader->prog, NOT pass->prog.
+  `prog 0 passes 2` alone is not failed GLSL compilation. Inspect actual pixels.
+  WGL production-fragment controls certify geometry/tones, not in-game RT state.
+- `milk_bootcheck 1` needs a disconnected client to tick/fly its menu world. A
+  dedicated-map fixture timed out in the level; disconnecting before menu_restart
+  and togglemenu made the same screenshot control act. Keep its first failure.
+- Upload `snd_visimage` on unavailable data too: native supplies zero spectrum /
+  neutral waveform, whereas skipping the upload freezes a previously live image.
+- Windows output includes ANY ongoing default-device playback. A later quiet
+  rerun had nonzero external sound after the owned tone stopped, so it was not a
+  silence pass/failure. Do not mute/kill the owner's apps; retain the earlier
+  controlled quiet arm separately. Local source0 close/reset still acted.
+- Cold native control/subject at the inspected P687 base both had 35 compiler
+  warning occurrences / 26 distinct payloads, none new. Make peer-target warnings
+  are separate. PATH must include UCRT DLLs for clangd's GCC query; the first CLI
+  check failed system-header extraction. Correct PATH and `--tweaks=` gave zero
+  errors. Editor diagnostics without this task's compile database were fallback.
+
 ## Pitfalls discovered the hard way
 
 ### Complete updater source and staged-file controls — P687, 2026-10-13

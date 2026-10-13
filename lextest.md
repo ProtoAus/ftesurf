@@ -1,5 +1,23 @@
 # lextest.md — things waiting on a human
 
+## P688 — Windows sound and spatial, level-coloured sky
+
+Restart into the new engine, then VISUALS → sky + audio → Windows output.
+Play music normally outside the game; judge beat response/latency and whether
+it feels natural. Game mix restores the prior source. Windows output is opt-in,
+uses the default playback device and does not record/replay audio or use a mic.
+Try a default-output-device change when convenient; automated testing did not
+change/unplug your devices. Do not mistake other Windows playback for silence.
+
+Enable VISUALS → look → In-game sky → visualizer (your saved default stays off).
+Surf end to end: compare fixed/spatial perspective, original/map-thumbnail
+colours, horizon/zenith/nadir and large teleports. Judge whether the enclosing
+space feels immense yet the motion stays subtle, like Monkey Ball worlds.
+Try visually different maps and check landmarks do not distract from ramps.
+Numerical depth/palette controls and native atlas/restart screenshots pass;
+subjective scale/art direction and broad performance still need your eyes.
+See `tools/soundsky.md` for verified controls and coverage limits.
+
 ## P686 — Perfect-board sounds and animated letters
 
 Open `hud_edit board`: try Dong, Bong and Bell at the shipped 35% volume,

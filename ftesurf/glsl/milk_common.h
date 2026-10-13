@@ -15,7 +15,10 @@
 #define M_EVENT     w_user[9]   // x flash  y liquid  z speed 0..1  w big-kick pulse
 #define M_FOCUS     w_user[10]  // xy zoom centre (uv)  z sky: landing ring radius, menu: light-shaft strength  w reactivity
 #define M_EXTRA     w_user[11]  // xy present offset (uv)  z quality  w kaleidoscope segments
-// w_user[12..15] are the menu's panels -- see milk_panel.h.  The sky leaves them 0.
+// Slots 12..15 are VM-local: menu panels (milk_panel.h), or these sky inputs.
+#define M_SKYBOUNDS w_user[12] // xyz map center, w map diagonal (minimum 4096)
+#define M_SKYEYE    w_user[13] // xyz rendered eye, w parallax strength
+#define M_SKYPALETTE w_user[14] // x thumbnail palette strength; remaining slots reserved
 
 // Station anchors -- mirrored by MS_* in src/menu/m_milk.qc.
 #define ST_CUBE     vec3(0.0, 3.4, 0.0)

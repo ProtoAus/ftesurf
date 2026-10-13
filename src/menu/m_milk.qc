@@ -1024,6 +1024,10 @@ void() MM_MusicAuto =
 
 	if (mm_autoplayed)
 		return;
+	// Windows output already contains the user's music. Do not add our own.
+	if (cvar_type("snd_vis_source"))
+	if (cvar("snd_vis_source") == 1)
+		return;
 	mm_autoplayed = TRUE;
 	want = cvar_string("milk_menumusic");
 	if (want == "")
@@ -1049,21 +1053,23 @@ void() MM_MusicAuto =
 void() MM_Init =
 {
 	registercvar("milk_menu", "1", 32);         // 32 = CVAR_ARCHIVE
-	registercvar("milk_quality", "2", 32);
+	registercvar("milk_quality", "4", 32);
 	registercvar("milk_trails", "1", 32);
 	registercvar("milk_react", "1", 32);
 	registercvar("milk_sky", "0", 32);
 	registercvar("milk_menumusic", "auto", 32);
 	registercvar("milk_lowpass", "1", 32);
-	registercvar("milk_world", "monolith", 32);
-	registercvar("milk_panels", "1", 32);
+	registercvar("milk_world", "lattice", 32);
+	registercvar("milk_panels", "0", 32);
 	registercvar("milk_sfx", "1", 32);
-	registercvar("milk_grade", "1", 32);
-	registercvar("milk_streaks", "1", 32);     // kick streaks: 0 off, 1 menu, 2 menu and sky
-	registercvar("milk_res", "0", 32);         // the speed page: 1 native resolution
+	registercvar("milk_grade", "0", 32);
+	registercvar("milk_streaks", "2", 32);     // kick streaks: 0 off, 1 menu, 2 menu and sky
+	registercvar("milk_res", "1", 32);         // the speed page: 1 native resolution
 	registercvar("milk_fsr", "0", 32);         // 1 FSR 1 instead of the bilinear stretch
 	registercvar("milk_checker", "0", 32);     // 1 checkerboard raymarch
 	registercvar("milk_cone", "0", 32);        // 1 the coarse pre-pass
+	registercvar("milk_sky_parallax", "1", 32);
+	registercvar("milk_sky_palette", "1", 32);
 	registercvar("milk_bootcheck", "0", 0);
 	registercvar("milk_fakemouse", "", 0);
 	registercvar("milk_bcstation", "0", 0);
@@ -1554,16 +1560,57 @@ float(float x, float y, float pitch, float labelw) MM_SpeedRows =
 	return y + 60;
 };
 
+// Keep the extra sky/audio controls on their own page, not below a tall look page.
+float(float x, float y, float pitch, float labelw) MM_SkyRows =
+{
+	local float hit, supported;
+
+	hit = MM_ChipRow([x, y], "mv_depth", "Sky perspective", "fixed|spatial", cvar("milk_sky_parallax") ? 1 : 0, labelw);
+	if (hit >= 0)
+		MM_Seta("milk_sky_parallax", ftos(hit));
+	y += pitch;
+
+	hit = MM_ChipRow([x, y], "mv_pal", "Sky colours", "original|map thumbnail", cvar("milk_sky_palette") ? 1 : 0, labelw);
+	if (hit >= 0)
+		MM_Seta("milk_sky_palette", ftos(hit));
+	y += pitch;
+
+	supported = cvar_type("snd_vis_source");
+	if (supported)
+		supported = cvar("snd_vis_loopback_supported");
+	if (supported)
+	{
+		hit = MM_ChipRow([x, y], "mv_source", "Audio source", "game mix|Windows output", cvar("snd_vis_source") == 1 ? 1 : 0, labelw);
+		if (hit >= 0)
+		if (checkbuiltin(localcmd_local))
+		{
+			localcmd_local(sprintf("seta snd_vis_source %g\n", hit));
+			if (hit == 1)
+				MM_Play("");
+			else
+				mm_autoplayed = FALSE;
+		}
+		y += pitch;
+		sui_text([x, y + 8], SZ_LABEL, "^9Windows output listens to the default playback device; no recording or replay", COL_DIM, 1, 0);
+	}
+	else
+		sui_text([x, y + 8], SZ_LABEL, "^9Windows output analysis is unavailable in this engine", COL_DIM, 1, 0);
+	sui_text([x, y + 34], SZ_LABEL, "^9spatial depth and map colours apply when the visualizer sky is enabled", COL_DIM, 1, 0);
+	return y + 60;
+};
+
 float(float x, float y, float pitch, float labelw) MM_VisualsRows =
 {
 	local float cur, hit, sky;
 
-	hit = MM_ChipRow([x, y], "mv_pg", "Page", "look|speed", mm_vispage, labelw);
+	hit = MM_ChipRow([x, y], "mv_pg", "Page", "look|speed|sky + audio", mm_vispage, labelw);
 	if (hit >= 0)
 		mm_vispage = hit;
 	y += pitch;
 	if (mm_vispage == 1)
 		return MM_SpeedRows(x, y, pitch, labelw);
+	if (mm_vispage == 2)
+		return MM_SkyRows(x, y, pitch, labelw);
 
 	hit = MM_ChipRow([x, y], "mv_w", "Menu world", "lattice|monolith|vessel|fractal|shuffle", MM_WorldCur(), labelw);
 	if (hit >= 0)
