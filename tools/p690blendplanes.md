@@ -122,6 +122,13 @@ active in9,216pixels; its on/return images are exact across both modes/arms.
 Sprite-off mode2 correction acts20,604pixels. This is native overlap preservation,
 not correct inherited sprite ordering or arbitrary sprite certification.
 
+The later [rotated inline-brush fixture](p690brushfixture.md) binds an actual
+func_wall at yaw0/yaw45 (9,216/6,532 green pixels) but its frozen native gate
+is REJECTED: yaw45 mode1 P688 initial/return world-pane order differs20,604pixels,
+including with the brush OFF. Mode2 brush-ON subset matches and OFF correction
+acts20,604; this is not a relaxed accepted matrix. Reusable generation/tests and
+all frozen failure/closure evidence are retained; default1 stays unchanged.
+
 Remaining unmeasured scope: hardware tessellation, external-projection runtime,
 arbitrary model/sprite/weapon native certification and broad all-map/GPU/perf
 coverage. Portable rejection/submission guards are not a substitute for GPU tests.

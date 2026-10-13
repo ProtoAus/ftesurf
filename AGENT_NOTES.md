@@ -4985,6 +4985,20 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   arbitrary sprite/model/weapon/portal/performance/default2 claim. Generator writes
   only fresh owned artifacts; native fixture/native8/config/data/install closure
   is separate. tools/p690spritefixture.md; artifacts/sprite-overlap-20261013/.
+- P690 rotated func_wall continuation (tools/p690brushfixture.md) generated two
+  BSP29 maps identical except actor angles0/45. One local model*1 green pane at
+  origin272,0,64 acts: green footprint9216pixels/96x96 versus6532/68x104. Loaded
+  *1:<map>/one-green-surface batch, ordinary-alpha shader and on/off/on readbacks
+  bind the production actor; no fixture QC/build/diagnostic admission claim.
+  The complete48PNG frozen native matrix is REJECTED. Mode1 yaw45 initial P688
+  differs20604pixels from both merged and P688-return, including entity-OFF;
+  P688 mode1 world-only frames also differ across the yaw-map boots. Every
+  within-boot repeat/entity-return is exact; mode2 ON subset matches, and OFF
+  merged correction acts20604. A baseline that does not return cannot certify
+  default parity or attribute the difference to the candidate. Keep the original
+  normal/-O rejection, all raw/PNGs and a separately labelled postcapture report;
+  do not mask/widen/relabel. Next protocol must prove stable legacy world return
+  (prefer same-loaded-world observed angle action) before native acceptance.
 - Stale r_waterinfo MarkLeaves age is NOT cache-action proof. Q1BSP_MarkLeaves
   common/q1bsp.c:2227 returns same-cluster cvis BEFORE marktime at2275. Actual
   stationary cache0 reported wanted0/inuse0 plus stale14.1s/false causal cache

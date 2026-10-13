@@ -65,8 +65,17 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   are bound by exact diagnostic/production pixels. Ordinary mode2 acts20604
   pixels; default parity/repeats exact. tools/p690cache.md and offline33-rejection
   controls. This is two synthetic BSP29 maps, not representative all-map coverage.
+  One production SPR32 billboard preservation gate passes (tools/p690spritefixture.md).
+  New rotated func_wall fixture ACTS at yaw0/yaw45 (9216/6532 green pixels),
+  but its full frozen gate is REJECTED: P688 mode1 yaw45 initial/return and
+  world-only controls differ20604pixels. Mode2 ON subset is exact; OFF correction
+  acts20604. tools/p690brushfixture.py/p690brushfixture.md preserve all failures.
+  Follow-up site: GLBE_SubmitBlendedFaces legacy mode1 interbatch order and native
+  actor-angle protocol. Falsifier: prove exact P688 world/control return (prefer
+  same-loaded-world angle action with observed actor state), then independently
+  freeze/replay default and mode2 preservation; no mask/widened gate/subset rescue.
   Remaining falsifier: arbitrary model/sprite/weapon and rotated-brush native
-  overlaps, representative portal/reflection captures, additional supported-map
+  acceptance, representative portal/reflection captures, additional supported-map
   cache0/1 opaque preservation and representative ordinary frame times/tails.
   One quiet fixed Kitsune cache0 ordinary gate now PASSES, not broad promotion:
   tools/p690ordinary.py/p690ordinary.md schema2 bind78 complete ticketed samples,
