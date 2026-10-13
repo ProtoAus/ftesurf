@@ -172,10 +172,99 @@ Exact final native hashes:
 | fteplug_ode_x64.dll | 45a70b1553f75295282d135e505347631d73c0661ca31b69dcca8c5369bca6b0 |
 | fteplug_ui_imgui_x64.dll | f02b0e1118cd5eef153ff04a5e6bdf39b5179efefbf594c4debd5e15b71d4615 |
 
-**Windows delivery: pending/blocked.** Preflight found pre-existing native
-clients and dedicated servers using the canonical installs after the owned
-station had stopped. None was killed and no install binary/plugin/progs/config
-was swapped. Stage the exact bundle only when both installs are free, preserving
-`.prev`, verifying every destination hash and running each installed executable
-against an owned guarded fixture. No Pi/fleet or signed updater-feed change.
-A source commit/tag/pin is not proof that either installed executable runs P690.
+**Initial sorter-only publication: Windows delivery was blocked.** Preflight
+found pre-existing clients/servers in both canonical installs after the owned
+station stopped. None was killed and that arm swapped nothing. The historical
+7598 bundle above was not deployed. The later merged delivery below resolves
+this blocker without removing P689 recovery from the integrated runtime.
+A source commit/tag/pin alone remains insufficient proof of installed behavior.
+
+## Merged P689+P690 Windows delivery — 2026-10-13
+
+Built source: `a8e705787fad1b60661da5e8dd43c9138cc69b1b`, tag
+`patch-690-with-p689`, full executable stamp
+`git-690-a8e705787fad1b60661da5e8dd43c9138cc69b1b`. The four sorter/test files remain
+byte-identical to accepted P690; `qkupdate.c` is identical to accepted P689
+`c325d045`. Engine main `9c7737643` adds only P691 documentation after this
+integrated source. No uncommitted canonical source was used. Cold build used QC
+`8a14c577` only as the build driver; its generated progs were NOT deployed here.
+
+Evidence: `artifacts/plane-merged-20261013/` below the owned root above.
+`source-attestation.json`, `bundle.json` and the complete cold `native-build.txt`
+bind inputs/outputs. Both executables carry the exact full stamp. DLLs do not
+embed that stamp: their provenance is the cold compilation/header input plus
+output hash, not a claimed version string.
+
+Native warning payloads still match clean P688/P690 exactly: **74 occurrences /
+45 distinct payloads**, plus **349** Make grouped-target warnings. A build setup
+mistake copied the ODE0.16.5 tar without preserving mtime and triggered a rebuild
+in the shared dependency cache. That cache was therefore **not read-only**;
+1,041 additional ODE dependency warnings/13 payloads bring the full compiler
+count to **1,115**. `warnings-triage.json` attributes every added payload/file;
+parallel plugin compilation makes contiguous log-range subtraction incorrect.
+No cache restoration/deletion was attempted. Three QC programs compiled at zero
+warnings, but were only staged. The unsupported build parameter, attribution,
+DLL-stamp and wrong signed-fixture setup failures are retained and excluded.
+
+Fresh actual-C collector/plane gates and all 11 compile-and-act mutants pass.
+The merged client passes all eight signed Windows cold-recovery controls in
+`recovery-02/result.json`, using the exact published fixture hash
+`366a1d6b88dd562de2acce643d18288f8370dcf1f1a3225e35534df590be0368`.
+The positive case reports `NATIVE_RECOVERY_ACTED`; intervention/journal refusal
+cases preserve honest state. This is not live HTTPS/planner, ACL or crash-safe
+journal certification.
+
+`native-station/results.json`: fresh P688 versus integrated runtime, 48 exact
+repeats, six fullframe mode1 comparisons all zero. Mode2 ACTED counts reproduce
+12,065/8,931/12,277/12,016/16,900/15,244 exactly. Full commit/version and explicit
+settings/body/aim/zero velocity are checked; all eight subject native files are
+hash-restored and both bridge-owned runtimes stop rc0. Earlier native water,
+cache, authored geometry/program and timing arms remain attributed to their
+original builds above, not relabelled as new merged reruns.
+
+### Installed native set and live smoke
+
+At **2026-10-13 11:10:45 UTC**, `windows-deployment.json` records 13 verified
+native destinations: FTESurf client plus five DLLs; FTEQuake client/server plus
+five DLLs. This expands the stock build script's FTESurf DLL set (hl2/ui_imgui)
+to refresh its three existing physics/content DLLs as well. Every predecessor
+was backed up before the first live replacement. Every `.prev` and immutable
+`native-rollback/` file matches the predecessor hash. Canonical process guards
+ran before swaps; no existing owner/peer process was stopped, including the
+separate Desktop client. Configs, QC progs, player data and defaults were not
+changed by this delivery; no Pi/Linux, feed, release or Build-number operation.
+
+| Retained merged output | SHA-256 |
+|---|---|
+| fteqw64.exe (both installed clients) | aa1d9e1bc2f167520538bb24423c6e690081b943026186de79269d90b7944668 |
+| fteqwsv64.exe | 5807ff1858ac0eca3796baf459dcc463f412f39c95aabd91647735da9b1eed3e |
+| fteplug_hl2_x64.dll | 30857eb260b135c4b47a8b12dd22deb0e6f3513acb4246762b0a6a47e16bc1d9 |
+| fteplug_cod_x64.dll | c1b6c146923e7ea58bb8bb79666cced1677b7fab8dda701344cf850eef4475c3 |
+| fteplug_box3d_x64.dll | 845f113db7770a968f6823944a5e159e805c0ba80a1de5f398699e2d332e25ee |
+| fteplug_ode_x64.dll | 7f0de2b9aa68a0c2141e361995774cd7647c491d3d145ebe2aa5e740c69f46f9 |
+| fteplug_ui_imgui_x64.dll | b1c99a18fc58699f662ca106b6cd1452a637948785a44dc99de77651148dd841 |
+
+`installed-smoke-03/result.json` launches each actual installed client and the
+installed dedicated server against the owned guarded fixture, not owner data.
+Version readbacks match the exact integrated stamp and `r_blendsort 1 (default)`;
+real dedicated connection, Kitsune map, bridge body/timer and PNG-visible HUD ACT.
+OS loaded-module queries prove each DLL came from the corresponding canonical
+install directory. All five client DLLs and four server DLLs are checked across
+two physics phases: Box3D and ODE cannot be active together. Dedicated-server UI
+plugin refusal is expected because its client interfaces are absent. Initial
+smoke arms assumed simultaneous physics and server UI availability; they stop
+rc0 with guards unchanged, remain excluded, and are not product fixes. The
+corrected smoke stops every owned runtime rc0, with no guard changes. Plugin
+loading is not certification of every physics/content/UI feature.
+
+At **2026-10-13 11:16:55 UTC**, `delivery-final.json` records a full post-smoke
+recheck: all 13 native destinations/rollback files match; complete membership,
+size, SHA-256 and mtime of **9,310** protected config/progs/player-data files are
+unchanged. Receipt SHA-256:
+`dc2ea2f68607b24566d4cedb53ff0472c5af0e6688b94d4d1d3d47120857980d`.
+Installed smoke result SHA-256:
+`ea46bc1f59530e82536e29bcc5aadceec25c927deadc9cb24b4e466c4b1b6218`.
+A bounded independent source/bundle/installer review is OK with notes; its mapping
+clarification is fixed. Actual installed runtime and protected-tree acceptance
+remain distinct from that review. Defaults remain mode1; mode2 is still opt-in.
+All broader limits above remain unchanged.

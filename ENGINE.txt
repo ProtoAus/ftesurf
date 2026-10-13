@@ -38,14 +38,20 @@ patch    691
 # static/dynamic-barrier/unknown-world/program-alpha controls, exact six-yaw
 # default parity, Source Full/Dither and bounded timerefresh gates pass. Clean
 # P688/P690 full builds match74 compiler occurrences/45 payloads (zero new).
-# tools/p690blendplanes.md records exact build hashes and deployment status;
-# source pin is not a claim of Windows delivery. No QC Build/release/Pi change.
+# tools/p690blendplanes.md records exact build hashes and deployment status.
+# 2026-10-13 11:10 UTC: clean integrated a8e705787 native13 dual-Windows targets
+# deployed, .prev/immutable rollback verified; actual installed client/server/DLL
+# stamp/path/map smoke passes, default blendsort1. Post-smoke9310 protected files
+# retain path/size/hash/mtime. Native74/45 unchanged; separate ODE-cache rebuild
+# adds1041 dependency warnings (full1115). No own progs/config/Build/Pi/release swap.
+# A pin alone is not delivery proof; receipt details/limits stay in p690blendplanes.
 # Patch 689: native protected-file absence/readability preflight and bounded
 # mixed-recovery object retirement. Actual signed-feed Linux before/subject
 # controls, shared hashes, corrupt objects, honest partial ledger and repaired
 # retry; Windows recovery regressions and zero-new-warning controls pass.
-# Source pin/tag only; no QC Build/public version, release/feed or deployment
-# change. Live planner/HTTPS, Windows ACL and crash-safe journal gates remain.
+# Original P689 publication was source-only; later integrated native delivery
+# is recorded under P690 above. No QC Build/public version or release/feed change.
+# Live planner/HTTPS, Windows ACL and crash-safe journal gates remain.
 # tools/p689native_recovery.md records exact provenance and limitations.
 # Patch 688: explicit local Windows playback-output analysis (no microphone,
 # replay or capture files), bounded shared WASAPI lifecycle/source-reset, and
