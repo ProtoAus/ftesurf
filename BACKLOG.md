@@ -29,12 +29,19 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 - P685 is deployed opt-in; P690's conservative plane refinement has bounded
   exact-source/native acceptance, with delivery status in tools/p690blendplanes.md.
-  Default1 is retained. Sites: engine GLBE_SubmitBlendFaces/GLBE_BlendPlaneSort.
+  Default1 is retained. Sites: engine GLBE_SubmitBlendedFaces/GLBE_BlendPlaneSort.
   Static/dynamic-barrier/unknown-world/program-alpha fixtures and six-yaw Kitsune
-  default parity pass. Cache1 is separately attributed v2 Q1; Source water covers
-  cache0 Full/Dither/Full-return. Remaining falsifier: arbitrary model/sprite/
-  weapon and rotated-brush native overlaps, representative portal/reflection
-  captures, further cache0/1 opaque controls and same-camera ordinary frame times.
+  default parity pass. Production cache1 remains separately attributed v2 Q1;
+  Source water covers cache0 Full/Dither/Full-return. New merged-source diagnostic
+  counters prove Source cache1 NOT REACHED (VBSP fg_new is excluded by Surf_DrawWorld
+  generation); Q1 cache1 positive control ACTS. Exact Kitsune production selected-
+  cache0/1/return0 repeats/default parity pass, mode2 acts at12,065 changed pixels.
+  These Source pixels are ordinary-path evidence, not cached opaque support.
+  Remaining falsifier: arbitrary model/sprite/weapon and rotated-brush native
+  overlaps, representative portal/reflection captures, supported-map cache0/1
+  opaque preservation and same-camera ordinary frame times. Source temporal-cache
+  support needs a separate generation/data-interface implementation and actual
+  cached-path GPU/visual/perf controls; toggling a cvar cannot certify it.
   Coarse/recursive records, intersecting geometry and uncertain pairs retain
   bounded fallback. No hardware tessellation/external-projection runtime or
   broad all-map claim. Do not promote default2 or credit timerefresh/static
@@ -46,7 +53,9 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   an indistinguishable underlying ramp, and cold snapshots sometimes stalled.
   Sites: engine `GLBE_GenerateBatchTextures` and Source water fallback/context
   selection; `r_dynamic -1` substantially reduces this map's frame rate, while
-  cold cached Flat/cache1 did not reach screenshot acceptance. Exact cause is
+  cold cache1-requested Flat did not reach screenshot acceptance. At delivered
+  a8e705787, Source fg_new cannot enter temporal-cache generation; cache1 readback
+  is not cached action (tools/p690blendplanes.md). The Tensor stall/cost cause is
   unknown; existing P683 baseline also has a failed startup arm. Falsifier:
   same camera, cold/live Full/Flat, cache0/1, r_dynamic0/-1, pinned map/materials
   and an acted capture-input/state diagnostic. Grade completed frames and input

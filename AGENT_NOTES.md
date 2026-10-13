@@ -4878,9 +4878,13 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   The exact final build and accepted baseline both emitted the same74 compiler
   diagnostics with no new payloads. Keep cold failures/warnings separately;
   compare actual compiler diagnostics, not Make's repeated pattern warnings.
-- P685 ships default1 and opt-in2 only. Source cache1 remains selectable; a cache
-  readback/static screenshot is not a broad frame-time/capture pass. See
-  tools/p685blendsort.md and BACKLOG for remaining promotion gates.
+- P685 ships default1 and opt-in2 only. Source cache1 remains selectable but does
+  NOT activate temporal generation at delivered a8e705787: VBSP_LoadModel sets
+  fg_new, while Surf_DrawWorld admits only quake/halflife/quake3. Static brush
+  VBOs are not temporal caches. r_waterinfo's “in use” prints .ival, not branch
+  activity, and that command is unsafe on Source. See tools/p690blendplanes.md
+  for the postdraw-counter actor/positive controls; do not credit a readback or
+  matching Source screenshot as cache/performance/capture acceptance.
 
 ## Conservative blend-plane refinement and controls (Patch 690)
 
@@ -4903,6 +4907,20 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   1,501 Air-HUD pixels, explicitly PNG-triaged and post-masked; they were not
   silently ignored. Native water is cache0 Full/Dither/Full-return; cache1
   evidence is separately attributed v2 Q1, not a VBSP worker-cache claim.
+- Source cache reachability continuation: diagnostic-only post-BE_DrawWorld
+  main-view counters and actual rendered eye/angles prove cold/selected Source1
+  uses ordinary draws; staged Q1 cache1 ACTS and cache0/return restore ordinary
+  draws. Counters do not change decisions or production binaries. Exact retained
+  P688/merged production Kitsune cache0/1/return0 repeats/default parity pass;
+  mode2 changes12065 pixels per selected cache setting. This is ordinary Source
+  submission, not a VBSP cache gate. New diagnostic Q1 proof does not relabel old
+  v2 production-cache evidence. Artifacts: source-cache-20261013/grade_cache.py.
+- Before labeling a map-switch arm, prove model/map identity, not just body/zero
+  velocity: missing Q1 map404 left the prior Source world running at origin0.
+  Retain/exclude it. Re-read the exact station recipe: unrelated water-station
+  camera6235.4... is NOT sorter station -14986.3 -14484.8 772.3/19.3 125.6 0;
+  its animated pixels failed repeat parity. Corrected final station reproduces
+  12065 exactly. No mask or product correction was used to hide those failures.
 - The same baseline executable produced two legacy mode1 interbatch orders
   (20,402 A/A-return pixels) after restart/flush. Do not blame a candidate for
   that without A/B/A. Original Kitsune six-yaw mode1 is exact baseline/subject.

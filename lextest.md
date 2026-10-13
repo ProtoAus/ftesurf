@@ -60,10 +60,13 @@ work was shipped. Exact build, acted pixel/control gates and limits:
 - Watch portal/reflection/water surfaces, translucent models/sprites and weapon
   overlays for disappearance or new overlap problems. Those broader cases and
   performance remain gates before making mode2 the default.
-- Compare smoothness/FPS in the same camera/settings with modes1/2 and scene
-  cache0/1. Automated pixels are not a broad performance pass. Coarse cached
-  geometry and recursive capture records deliberately retain bounded fallback;
-  intersecting geometry still is not triangle-split.
+- Compare smoothness/FPS in the same camera/settings with modes1/2. On delivered
+  Source maps, selecting scene cache0/1 does NOT exercise different temporal
+  cache paths: VBSP fg_new is outside cache generation, source/runtime-proven in
+  tools/p690blendplanes.md. Cache0/1 FPS tests need a supported-map actor control;
+  do not credit matching Source pixels as cached action or a broad performance
+  pass. Coarse cached geometry and recursive capture records deliberately retain
+  bounded fallback; intersecting geometry still is not triangle-split.
 
 ## 00. 13 Oct — viewer HUD, controls and demo styling (Patch 684)
 

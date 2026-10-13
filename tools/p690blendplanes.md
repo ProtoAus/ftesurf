@@ -10,6 +10,8 @@ correct by this patch. Source envmap/model-lighting drafts are excluded.
 
 Enable with `r_blendsort 2`; compare `r_blendsort 1` at the same fixed camera.
 Leave other settings unchanged. `r_temporalscenecache` need not be globally off.
+On the delivered Source loader, selecting cache1 does **not** activate the temporal
+cache; see the reachability controls below. Static world VBOs are a different path.
 
 ## Implementation contract
 
@@ -268,3 +270,68 @@ A bounded independent source/bundle/installer review is OK with notes; its mappi
 clarification is fixed. Actual installed runtime and protected-tree acceptance
 remain distinct from that review. Defaults remain mode1; mode2 is still opt-in.
 All broader limits above remain unchanged.
+
+## Source temporal-cache reachability — 2026-10-13
+
+At the delivered integrated engine `a8e705787`, Source cache1 is **NOT REACHED**,
+not a passing cached-path gate. `plugins/hl2/mod_vbsp.c:10965–10966` assigns VBSP
+worlds `fg_new` and `MDLF_SOURCEBSP`; `engine/client/r_surf.c:3812` admits only
+`fg_quake`, `fg_halflife` and `fg_quake3` to temporal-cache generation. Source
+continues through `VBSP_PrepareFrame` and ordinary world submission even with
+an explicit cache1. The generator's unsupported-world branch is empty: changing
+only that admission condition would not implement Source cache support.
+A static brush VBO, a cache cvar readback, or `r_waterinfo`'s misleadingly named
+“in use” field (`.ival`, not draw activity) is not a cached-path witness.
+Do not invoke `r_waterinfo` on Source; its existing diagnostic crash is separate.
+
+New owned evidence: `artifacts/source-cache-20261013/`. A diagnostic-only build
+adds ticketed counters **after** ordinary/cached main-view `BE_DrawWorld` calls,
+plus model identity, requested/effective cvar and actual rendered eye/angles.
+It changes no cache decision, geometry, shader or default. It is derived from
+`a8e705787`, not identical production source, and was never installed. Full stamp:
+`git-690-a8e705787fad1b60661da5e8dd43c9138cc69b1b-mv11-cacheprobe`.
+Diagnostic client SHA-256:
+`e6c8b0fbf6fbfc54defc9298169c0f878603ca2adfe538e2547bd678cb3344bb`.
+The client-only build has 37 compiler-warning occurrences, no new message
+payload against the accepted full native baseline; it is not a zero-warning
+build or a fresh full plugin-build control.
+
+- `native-final`: cold Source1 and fixed-station cache0 -> cache1 -> return0,
+  both sorting modes. VBSP reports fromgame4, flags0x3480. Cached count remains
+  zero; settled cache1 samples add 232/233 ordinary submissions for modes1/2.
+  Actual rendered eye/angles are stable. Thus “cache1 enabled” would have been
+  a false action claim without this actor control.
+- `native-probe2`: separately staged BSP29/shader positive control, with actual
+  map identity required. Cache1 adds 234/231 cached submissions for modes1/2
+  and zero ordinary submissions between settled samples. Cache0/return add
+  ordinary submissions and zero cached submissions. Nonempty coloured fixture
+  pixels and exact repeats accompany the counters. This proves the probe can
+  observe real cached action; it is diagnostic-build evidence, not production
+  Q1-cache certification or arbitrary opaque Source support.
+- Exact retained production P688 and installed integrated P689+P690 bundles,
+  tested on the owned subject at Kitsune body
+  `-14986.3 -14484.8 772.3`, aim `19.3 125.6 0`, FOV100/960x720, with pinned
+  shader/refraction/prediction/mouse controls: all 36 PNGs repeat exactly.
+  Selected cache0/cache1/return0 match for each arm/mode. Mode1 cross-binary
+  comparison is zero; mode2 changes **12,065 pixels in each cache setting**,
+  reproducing the earlier bounded acted sorter result. The diagnostic images
+  also exactly match the corresponding production merged images. These are
+  ordinary-path Source pixels, not proof of Source cache or frame-time behavior.
+
+`grade_cache.py` freezes strict counters, image hashes/parity and exclusions in
+`CACHE_RESULTS.json` (SHA-256
+`47f606571cd38ad2551599d9c8a0a80b965c7fc6b81aadead5608b05d2190883`).
+First-run Q1 map404 stayed on Source and is excluded despite its label/zero body;
+earlier unrelated water-station Source pixels animate and are not parity
+acceptance. Two compiler tempdir setup failures occurred before compilation;
+PowerShell make succeeded. Failed attempts remain retained, not relabelled.
+All bridge-owned processes stopped rc0; eight subject native files were
+hash-restored, temporary fixture files/created map directory restored absent,
+and both installed client hashes stayed unchanged. No product patch, config/QC,
+fleet, release, default or deployment operation was part of this continuation.
+
+Promotion gates must separate **supported-map cached-path preservation** from
+**Source temporal-cache support**. The former still needs representative native
+coverage; the latter needs an explicit generation/data-interface implementation
+and acted GPU/visual/performance controls before it can be an acceptance arm.
+Do not manufacture a pass by toggling cache1 on VBSP. Default1 remains retained.
