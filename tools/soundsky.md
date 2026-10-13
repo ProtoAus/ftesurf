@@ -145,5 +145,31 @@ direction and feel while surfing is listed in `lextest.md`.
 
 Exact Windows client SHA256:
 `5c77bd8175b01da20989c33ac4839edc61bd0ba546c315863dbbf864068070f7`.
-Final destination hashes/UTC are recorded separately after deployment; a source
-commit or isolated screenshot is not proof of a live install/fleet change.
+
+## P691 deployment — 2026-10-13
+
+Feature commit `70e92c1` was integrated with published P690 documentation at exact
+clean QC source `1d4e3a75ffd73677b3a604d3a744342e7eca5740`. Engine patch record is
+`9c7737643`; no new native runtime was built or shipped. The original unpublished
+P689 claim was renumbered after concurrent P689/P690 publication, without changing
+or force-pushing anybody's history. The existing P690 source pin/tag is retained;
+it is not proof of native delivery.
+
+`build.ps1 -Jobs 8 -Pi` from that clean source compiled all three VMs with zero
+warnings. All 12 live lobby rows proved zero players before the swap; previous
+progs were kept as `.prev` and all 12 units restarted. Windows delivery at
+**2026-10-13T10:35:26Z** copied only the three inspected progs to both installs,
+keeping `.prev`; no native binaries, shaders, configs or tracked source were
+replaced. Canonical uncommitted visual work was left alone.
+
+Deployed CSQC SHA256 (same as the complete acted metadata subject):
+`4263647246709487775dae4d2aba9a74f43b09beb98950992ca24c7d2fffa2b8`.
+Both Windows destinations match. Fleet readback at **2026-10-13T10:37:35Z** confirms
+matching qwprogs/CSQC, 12 running units and 12 healthy zero-player lobby rows.
+A fresh client with no preseeded CSQC downloaded that exact hash from lobby1,
+drew an 8-column/type14 board, captured an inspected screenshot and exited zero
+with no QC error. That proves serving/live loading, not just remote file copies.
+The continuation's saved-profile hash and mtime remained unchanged.
+
+This is a development progs deployment, not a signed updater/feed, native P690
+release, Build-number decision or performance/art-direction certification.
