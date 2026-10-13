@@ -15,7 +15,8 @@ signed feed/site, canonical install or fleet deployment changed by this work.
 - Integrated accepted source: `a8e705787fad1b60661da5e8dd43c9138cc69b1b`,
   `patch-690-with-p689`. This is a merge/tag, **not another product patch**.
   Recovery source is identical to reviewed P689; peer renderer/tests are identical
-  to inspected P690. ENGINE.txt tracks the highest integrated entry, 690.
+  to inspected P690. Native integration ends at P690; ENGINE.txt also preserves
+  the later QC-only P691 counter/notes without inferring a new native build.
 
 The isolated roots contain no owner/peer uncommitted source. No claim about the
 peer's build/deployment is inferred from this merge or from the QC source pin.

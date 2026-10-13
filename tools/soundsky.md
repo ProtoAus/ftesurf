@@ -32,6 +32,8 @@ milk_sky 1
 r_skybox milk
 milk_sky_parallax 1     // 0 fixes the enclosing layers; values 0..1 scale translation
 milk_sky_palette 1      // 0 restores procedural colours
+milk_skyinfo            // Map, thumbnail coordinates and bounded-reader status
+milk_skyinfo refresh    // Re-read regenerated metadata immediately
 ```
 
 Windows capture is unavailable on non-Windows builds. The visualizer still
@@ -39,6 +41,49 @@ requires OpenGL. The output device must allow shared loopback; protected audio
 or an unavailable/exclusive endpoint can produce silence. Capture follows the
 Windows default playback device, not an arbitrary per-application output route.
 There is no microphone, per-app capture or microphone-monitoring feature.
+
+## Late or regenerated thumbnails (P691)
+
+The metadata table is generated locally by `tools/mapmeta.py` /
+`tools/mapthumbs.py`; it is not a menu download. Late atlas image decoding and
+late metadata publication are separate cases. The sky now retries unresolved
+metadata every five seconds and rechecks resolved coordinates every 30 seconds,
+without requiring a map reload. `milk_skyinfo refresh` starts an immediate scan.
+
+Lookup reads at most 64 rows per active sky view. A same-map refresh retains the
+previous valid palette until it resolves; absent/malformed coordinates then
+restore neutral colours. Map changes clear old coordinates immediately. World
+load, renderer restart and disabling the sky close any in-flight file. Re-enabling
+restarts an interrupted scan. Status reports `rows` and `maxbatch`, which is the
+largest actual row batch in the current scan, not an assumed frame count.
+
+Acted P691 controls in an isolated dedicated `surf_rookie` session:
+
+- Missing row → late row: neutral → tan sky, same map, no explicit refresh.
+- Replace coordinates behind 1,024 unrelated rows: tan → olive sky; 1,025 rows
+  resolved with measured `maxbatch 64`. Clearing the row restores neutral.
+- Non-numeric page is rejected rather than silently becoming page zero. File
+  disappearance clears stale colours; reappearance recovers without refresh.
+  Blank lines before the late/restored row are read rather than mistaken for EOF.
+- `vid_restart`, sky off during a scan, re-enable and automatic 30-second
+  successful-row refresh all recover. The off-state scan closes without reading.
+- Otherwise-identical compiled no-retry control is rejected specifically at
+  `META-RECOVERED`, with all writer phases and the client end marker acted.
+- All three QC programs compile at zero warnings; eight static production/mutant
+  contracts and the 17-default consistency check pass.
+
+Reproduce with an owned task-root output directory and installed P688+ native
+client/server/plugins:
+
+```text
+python tools/test_soundsky_metadata.py --output-dir <owned-artifact-folder>
+```
+
+The test edits only its private overlay's `data/mapmeta.txt`, never the install's
+metadata or player profile. Page 5 cells 0/1 and `surf_rookie` require the existing
+installed content. It keeps logs/screenshots/VM hash and a phase-action receipt.
+P691 changes CSQC, not capture or renderer code. The existing engine pin/tag
+is not moved by this patch; its tests ran on the P688 native runtime. No Build/public release bump is implied.
 
 ## Visual defaults
 

@@ -18,6 +18,16 @@ def check(audio, sky, material):
     assert re.search(r'if \(strcmp\(serverkey\("map"\), ms_thumb_map\)\)\s*\{\s*MilkSky_Thumbnail\(\);', frame)
     assert 'ms_thumb_map = want;' in sky and 'want = strzone(serverkey("map"));' in sky
     assert 'ms_thumb_map = "";' in sky
+    metadata = sky.split('void(float now) MilkSky_Metadata =', 1)[1].split('void()', 1)[0]
+    assert 'if (now < ms_thumb_next) return;' in metadata and 'MilkSky_Thumbnail();' in metadata
+    assert '#define MILK_META_ROWS 64' in sky
+    assert 'i < MILK_META_ROWS' in metadata, 'metadata must not scan the whole file per frame'
+    assert 'MilkSky_Index(argv(6))' in metadata and 'MilkSky_Index(argv(7))' in metadata
+    assert 'if not (ln)' in metadata, 'blank lines must not be treated as null EOF'
+    opened = sky.split('void() MilkSky_Thumbnail =', 1)[1].split('void(float page', 1)[0]
+    failed = opened.split('if (ms_thumb_file < 0)', 1)[1]
+    assert 'ms_thumb_page = ms_thumb_cell = -1;' in failed and 'ms_palette_next = 0;' in failed
+    assert 'MilkSky_ThumbnailClose();' in frame.split('now = gettime(0);', 1)[0]
     material = re.sub(r'//[^\n]*', '', material)
     assert re.search(r'surfaceparm sky\s*\{\s*program milk_sky[^{}]*map \$rt:ms_out\s*map \$rt:ms_palette', material), 'program must precede both maps INSIDE the pass'
 
@@ -40,6 +50,31 @@ class Contracts(unittest.TestCase):
 
     def test_initial_only_thumbnail_mutant(self):
         mutant = self.sky.replace('if (strcmp(serverkey("map"), ms_thumb_map))', 'if (FALSE)', 1)
+        self.assertNotEqual(mutant, self.sky)
+        with self.assertRaises(AssertionError):
+            check(self.audio, mutant, self.material)
+
+    def test_no_retry_mutant(self):
+        mutant = self.sky.replace('if (now < ms_thumb_next) return;', 'return;', 1)
+        self.assertNotEqual(mutant, self.sky)
+        with self.assertRaises(AssertionError):
+            check(self.audio, mutant, self.material)
+
+    def test_unbounded_scan_mutant(self):
+        mutant = self.sky.replace('i < MILK_META_ROWS', 'i < 1000000', 1)
+        self.assertNotEqual(mutant, self.sky)
+        with self.assertRaises(AssertionError):
+            check(self.audio, mutant, self.material)
+
+    def test_blank_is_eof_mutant(self):
+        mutant = self.sky.replace('if not (ln)', 'if (!ln)', 1)
+        self.assertNotEqual(mutant, self.sky)
+        with self.assertRaises(AssertionError):
+            check(self.audio, mutant, self.material)
+
+    def test_failed_open_keeps_stale_mutant(self):
+        stale = 'if (ms_thumb_file < 0)\n\t{\n\t\tms_thumb_page = ms_thumb_cell = -1;'
+        mutant = self.sky.replace(stale, 'if (ms_thumb_file < 0)\n\t{', 1)
         self.assertNotEqual(mutant, self.sky)
         with self.assertRaises(AssertionError):
             check(self.audio, mutant, self.material)

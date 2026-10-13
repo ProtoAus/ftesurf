@@ -25,7 +25,10 @@ commit   a8e705787fad1b60661da5e8dd43c9138cc69b1b
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-690-with-p689
-patch    690
+patch    691
+# Patch 691: bounded CSQC thumbnail metadata rescans recover late/changed rows,
+# reject malformed indices, and close interrupted scans on sky/reset transitions.
+# Existing native runtime pin/tag stay intact; no Build or public release bump.
 # Integrated pin: published P689 recovery + peer P690 sorter. The integration
 # tag names both without rewriting either public feature tag.
 # Patch 690: conservative bounded static-world plane refinement inside opt-in
