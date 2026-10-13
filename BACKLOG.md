@@ -5,6 +5,31 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## OpenGL blendsort2 promotion gates — P685, 2026-10-13
+
+- Mode2 is verified/published/deployed as opt-in, default1 retained. Site:
+  engine `GLBE_SubmitBlendFaces` and Source scene-cache controls. The acted
+  two-order/reverse native polygon oracle passes; legacy mixed control fails.
+  Remaining falsifier: matching mode1/2 pane/model/sprite/rotated-brush/weapon
+  overlaps plus representative portal/reflection/water captures, cache0/1
+  opaque preservation and same-camera frame times. Coarse cached records and
+  immediate recursive records deliberately are not per-face global guarantees.
+  Do not silently promote the default or credit static pixels as perf/capture
+  acceptance. Reproducible bounded evidence: `tools/p685blendsort.md`.
+
+## Tensor water and cold-load diagnostics — 2026-10-13
+
+- Owned normal-content Tensor runs stayed alive, but Full vs Flat water retained
+  an indistinguishable underlying ramp, and cold snapshots sometimes stalled.
+  Sites: engine `GLBE_GenerateBatchTextures` and Source water fallback/context
+  selection; `r_dynamic -1` substantially reduces this map's frame rate, while
+  cold cached Flat/cache1 did not reach screenshot acceptance. Exact cause is
+  unknown; existing P683 baseline also has a failed startup arm. Falsifier:
+  same camera, cold/live Full/Flat, cache0/1, r_dynamic0/-1, pinned map/materials
+  and an acted capture-input/state diagnostic. Grade completed frames and input
+  provenance; a timed-out or unchanged-output arm is not a water/perf pass or a
+  demonstrated sorter regression. No map-texture override is a product fix.
+
 ## Demise remaining Source brightness parity — P683, 2026-10-12
 
 - Native glyph and mist vertex-alpha controls ACT; mountains remain darker than

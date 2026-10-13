@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   6b6c8ab6805d7d295884048f4bb07386c8d0b38a
+commit   f79ad12cc3ac3393188e7500592674454aedf97f
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,14 @@ commit   6b6c8ab6805d7d295884048f4bb07386c8d0b38a
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-683
-patch    684
+tag      patch-685
+patch    685
+# Patch 685: opt-in OpenGL per-face blend ordering, stable transformed-depth
+# stream, coarse cached-VBO/capture fallback and preserved batch descriptors.
+# Source scene caches are no longer globally forced off. Default blendsort1;
+# mode2 remains opt-in pending broader capture/perf gates. Exact native build
+# and Windows engine-only dual deployment: tools/p685blendsort.md. No QC Build,
+# generated-program/config/Pi/Linux/release change; envmap-space draft excluded.
 # Patch 684: normal viewer controls, front-modal SUI arbitration, watched-pose
 # saves, crosshair/rewind key HUD, and Dusk demo-player styling. QC only;
 # the native commit/tag above stay pinned to P683.

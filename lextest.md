@@ -11,6 +11,24 @@ to be wrong.
 
 ---
 
+## 00. 13 Oct — Kitsune window ordering (Patch 685, opt-in)
+
+Engine-only P685 deployed to both Windows installs at 03:39:37Z, with matching
+plugin hashes and `.prev` rollback. Restart the client, then try `r_blendsort 2`.
+`r_blendsort 1` restores the legacy/default order. No fixture QC or envmap-space
+work was shipped. Exact build, acted pixel/control gates and limits:
+`tools/p685blendsort.md`.
+
+- Inspect Kitsune windows from your saves and from both sides while moving.
+  Plain window faces should no longer be ordered solely by material batch.
+- Watch portal/reflection/water surfaces, translucent models/sprites and weapon
+  overlays for disappearance or new overlap problems. Those broader cases and
+  performance remain gates before making mode2 the default.
+- Compare smoothness/FPS in the same camera/settings with modes1/2 and scene
+  cache0/1. Automated pixels are not a broad performance pass. Coarse cached
+  geometry and recursive capture records deliberately retain bounded fallback;
+  intersecting geometry still is not triangle-split.
+
 ## 00. 13 Oct — viewer HUD, controls and demo styling (Patch 684)
 
 Automated two-client dedicated-socket controls pass: actual board line/replay

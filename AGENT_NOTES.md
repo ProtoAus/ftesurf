@@ -4848,6 +4848,40 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   not. Cause remains in BACKLOG. Long bridge command lines are rejected at
   240 bytes; split them and inspect ACTED probe output, not only command exit.
 
+## OpenGL blend collector and visual harness (Patch 685)
+
+- A cached VBO batch deliberately has no CPU meshes; that is a coarse whole-
+  batch record, not an empty draw. Preserve original descriptor/cache pointers
+  and ranges when submitting individual mesh records. Scenetris require their
+  mesh vertex bounds: the world-wide batch bounds make different-depth polygons
+  tie. Stable sequence only resolves genuinely equal depths.
+- Fast-math can invalidate ordinary finite comparisons. The production blend
+  key guard uses bitwise IEEE exponent checks; the portable test runs normal/
+  HEXEN2 both with and without fast-math and requires three acted failing mutants.
+- Always pass absolute conbridge executable paths. A relative name resolved from
+  canonical cwd selected the old install rather than the newly staged subject;
+  identical basedir/plugin paths do not prove the client ACTED. Verify process
+  image hash and runtime version stamp, then compare the new bundle.
+- World-disabled polygon fixtures can render into an alpha target and be
+  normalized at compositing; RGB is not necessarily the simple background-over
+  result. Keep world rendering explicitly enabled, capture a fixture-off
+  background separately per mode, disable both native and HUD crosshairs, and
+  grade a registered crop. An unregistered fixture cvar needs explicit `set`
+  before it can safely be invoked as a command.
+- PowerShell unquoted drive-valued arguments and an inherited
+  MSYS2_ARG_CONV_EXCL can each produce an unacted build. Quote drive paths and
+  clear argument exclusion inside pwsh before it launches make/GCC. A worktree
+  `.git` is a file: the engine Makefile's directory probe emits an empty revision.
+  Pass an inspected SVN_VERSION/SVN_DATE in the owned build adapter and verify
+  runtime `version`; do not infer provenance from file time.
+- Cold ODE dependency compilation added upstream warnings to one full build.
+  The exact final build and accepted baseline both emitted the same74 compiler
+  diagnostics with no new payloads. Keep cold failures/warnings separately;
+  compare actual compiler diagnostics, not Make's repeated pattern warnings.
+- P685 ships default1 and opt-in2 only. Source cache1 remains selectable; a cache
+  readback/static screenshot is not a broad frame-time/capture pass. See
+  tools/p685blendsort.md and BACKLOG for remaining promotion gates.
+
 ## Missing-asset art (Patch 534) -- 2026-10-07
 
 - `R2D_Init` requests the diffuse fallback as `no_texture`, with replacement
