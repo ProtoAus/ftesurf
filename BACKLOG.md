@@ -20,17 +20,20 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   Current eight Windows cold-recovery arms cover readable zones and complete
   recovery, not those cases. No hostile ancestor-swap/hardlink guarantee is claimed.
 
-## OpenGL blendsort2 promotion gates — P685, 2026-10-13
+## OpenGL blendsort2 promotion gates — P685/P690, 2026-10-13
 
-- Mode2 is verified/published/deployed as opt-in, default1 retained. Site:
-  engine `GLBE_SubmitBlendFaces` and Source scene-cache controls. The acted
-  two-order/reverse native polygon oracle passes; legacy mixed control fails.
-  Remaining falsifier: matching mode1/2 pane/model/sprite/rotated-brush/weapon
-  overlaps plus representative portal/reflection/water captures, cache0/1
-  opaque preservation and same-camera frame times. Coarse cached records and
-  immediate recursive records deliberately are not per-face global guarantees.
-  Do not silently promote the default or credit static pixels as perf/capture
-  acceptance. Reproducible bounded evidence: `tools/p685blendsort.md`.
+- P685 is deployed opt-in; P690's conservative plane refinement has bounded
+  exact-source/native acceptance, with delivery status in tools/p690blendplanes.md.
+  Default1 is retained. Sites: engine GLBE_SubmitBlendFaces/GLBE_BlendPlaneSort.
+  Static/dynamic-barrier/unknown-world/program-alpha fixtures and six-yaw Kitsune
+  default parity pass. Cache1 is separately attributed v2 Q1; Source water covers
+  cache0 Full/Dither/Full-return. Remaining falsifier: arbitrary model/sprite/
+  weapon and rotated-brush native overlaps, representative portal/reflection
+  captures, further cache0/1 opaque controls and same-camera ordinary frame times.
+  Coarse/recursive records, intersecting geometry and uncertain pairs retain
+  bounded fallback. No hardware tessellation/external-projection runtime or
+  broad all-map claim. Do not promote default2 or credit timerefresh/static
+  pixels as ordinary performance/capture certification.
 
 ## Tensor water and cold-load diagnostics — 2026-10-13
 
