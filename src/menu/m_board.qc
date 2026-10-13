@@ -57,6 +57,9 @@ float  mlb_known, mlb_cksf, mlb_cmom, mlb_cours;   // `counts`, once a reply gav
 float  mlb_tzoff;             // s east of UTC when the panel opened
 vector mlb_scroll;
 float  mlb_going, mlb_goto;   // ui_board_test's scroll, held until the rows exist
+float  mlb_offset;           // first held row's offset, including a profile seek
+string mlb_focuswho;
+float  mlb_focusms, mlb_focusrank, mlb_focus; // picked identity/time, never display name
 float  mlb_drop[MLB_DROPS];
 float  mlb_dropi;
 strbuf mlb_brank;
@@ -238,6 +241,7 @@ void() Mlb_ClearRows =
 	mlb_state = MLBS_IDLE;
 	mlb_code = 0;
 	mlb_scroll = '0 0 0';
+	mlb_focus = -1;
 	mlb_going = FALSE;
 };
 
@@ -278,11 +282,11 @@ float(float append) Mlb_Fetch =
 		return FALSE;
 	}
 
-	off = 0;
+	off = mlb_offset;
 	lim = MLB_PAGE;
 	if (append)
 	{
-		off = mlb_n;
+		off = mlb_offset + mlb_n;
 		lim = min(MLB_PAGE, MLB_MAXROW - mlb_n);
 	}
 	tier = Mlb_Tier(mlb_tab);
@@ -360,6 +364,8 @@ void(float t) Mlb_SetTab =
 	strunzone(mlb_source);
 	mlb_source = "";
 	Mlb_ClearRows();
+	mlb_offset = mlb_focusrank = mlb_focusms = 0;
+	strunzone(mlb_focuswho); mlb_focuswho = "";
 	mlb_tab = mlb_lasttab = t;
 	print(sprintf("^5board:^7 tab %s\n", Mlb_Tier(t)));
 	Mlb_Fetch(FALSE);
@@ -382,6 +388,8 @@ void(string why) Mlb_Close =
 	mlb_source = "";
 	strunzone(mlb_map);
 	mlb_map = "";
+	strunzone(mlb_focuswho); mlb_focuswho = "";
+	mlb_offset = mlb_focusrank = mlb_focusms = 0;
 	mlb_open = FALSE;
 };
 
@@ -401,7 +409,12 @@ void(string mapname, float t) Mlb_Open =
 		Mlb_Close("another map");
 	}
 
-	if (!mlb_browsing) { mlb_track = mlb_leg = 0; mlb_style = strzone("clean"); }
+	if (!mlb_browsing)
+	{
+		mlb_track = mlb_leg = mlb_offset = mlb_focusrank = mlb_focusms = 0;
+		strunzone(mlb_focuswho); mlb_focuswho = "";
+		mlb_style = strzone("clean");
+	}
 	mlb_map   = strzone(mapname);
 	mlb_brank = buf_create();
 	mlb_bname = buf_create();
@@ -424,6 +437,10 @@ void(float i, int row) Mlb_Row =
 	local string s;
 
 	bufstr_set(mlb_brank, i, ftos(json_get_float(json_find_object_child(row, "r"))));
+	if (mlb_focuswho != "")
+	if (!strcmp(substring(digest_hex("SHA256", json_get_string(json_find_object_child(row, "player"))), 0, strlen(mlb_focuswho)), mlb_focuswho))
+	if (json_get_float(json_find_object_child(row, "ms")) == mlb_focusms)
+		mlb_focus = i;
 	s = json_get_string(json_find_object_child(row, "name"));
 	bufstr_set(mlb_bname, i, (s != "") ? s : "unknown");
 	bufstr_set(mlb_btime, i, Mlb_MsString(json_get_integer(json_find_object_child(row, "ms"))));
@@ -499,7 +516,7 @@ void(float id, float code, string body, float append) Mlb_Page =
 	got  = json_get_length(rows);
 	lim  = append ? mlb_mlim : MLB_PAGE;
 
-	if (off != mlb_n)
+	if (off != mlb_offset + mlb_n)
 	{
 		json_free(root);
 		print(sprintf("^5board:^7 reply id %g: %s offset %g, but %g rows are held -- page dropped\n",
@@ -524,6 +541,13 @@ void(float id, float code, string body, float append) Mlb_Page =
 	{
 		mlb_state = MLBS_OK;
 		mlb_code  = 0;
+		if (mlb_focus >= 0)
+		{
+			mlb_scroll_y = max(0, mlb_focus - 4) * MLB_ROW_H;
+			print(sprintf("^5board:^7 profile time at #%s (%g ms)\n", bufstr_get(mlb_brank, mlb_focus), mlb_focusms));
+		}
+		else if (mlb_focuswho != "")
+			print("^3board:^7 selected time changed or is no longer on this page; showing nearby ranks\n");
 	}
 
 	print(sprintf("^5board:^7 reply id %g: %s offset %g rows %g -- held %g, more %g\n",
@@ -612,7 +636,9 @@ void(vector rp, float i, float rw, float tr, float dr, float nw) Mlb_DrawRow =
 	local float ty;
 	local string s;
 
-	if (i & 1)
+	if (i == mlb_focus)
+		sui_fill(rp, [rw, MLB_ROW_H], SUI_THEME_SELECTED, 0.85, 0);
+	else if (i & 1)
 		sui_fill(rp, [rw, MLB_ROW_H], COL_ROW, 0.6, 0);
 	ty = rp_y + (MLB_ROW_H - SZ_LABEL_H) * 0.5;
 
@@ -732,6 +758,18 @@ void(vector screensize) Mlb_Draw =
 			Mlb_SetTab(t);
 	}
 
+	if (mlb_offset > 0)
+	{
+		if (ui_button("mlb_earlier", [w - 204, 56], [92, CHIP_H], "earlier")
+		    || ui_button("mlb_top", [w - 100, 56], [84, CHIP_H], "top"))
+		{
+			mlb_offset = sui_is_released("mlb_top") ? 0 : max(0, mlb_offset - MLB_PAGE);
+			strunzone(mlb_focuswho); mlb_focuswho = "";
+			mlb_focusrank = mlb_focusms = 0;
+			Mlb_ClearRows(); Mlb_Fetch(FALSE);
+		}
+	}
+
 	// Columns, right-aligned numbers in the mono face: rank, player, time, date.
 	ly = 56 + CHIP_H + 30;
 	ls = [w - 32, h - ly - 44];
@@ -824,6 +862,9 @@ void() Mlb_Status =
 	else if (mlb_state == MLBS_NODIR) st = "no lobby_dir";
 	print(sprintf("^5board:^7 open: %s tab %s, %s (code %g)\n", mlb_map,
 	              Mlb_Tier(mlb_tab), st, mlb_code));
+	print(sprintf("^5board:^7   offset %g, top #%g, profile requested #%g, selected #%g\n",
+	              mlb_offset, mlb_offset + floor(mlb_scroll_y / MLB_ROW_H) + 1, mlb_focusrank,
+	              (mlb_focus >= 0) ? stof(bufstr_get(mlb_brank, mlb_focus)) : 0));
 	print(sprintf("^5board:^7   held %g of %g, more %g; out: first id %g, next id %g; next failed %g (code %g)\n",
 	              mlb_n, Mlb_BoardCount(), mlb_more, mlb_req, mlb_mreq, mlb_mfail, mlb_mcode));
 	print(sprintf("^5board:^7   counts known %g: ksf %g momentum %g ranked %g; top row %g\n",
@@ -948,10 +989,21 @@ float(string value, float limit) Mlb_ScopeNumber =
 	}
 	return stof(value) <= limit;
 };
-float(string map, string source, string track, string leg, string style) Mlb_Browse =
+float(string value, float limit) Mlb_FocusNumber =
 {
-	local float i, c, t, tr, lg, allsource;
-	local string savedmap, savedstyle;
+	local float i, c;
+	if (value == "" || strlen(value) > 10) return FALSE;
+	for (i = 0; i < strlen(value); i = i + 1)
+	{
+		c = str2chr(value, i);
+		if (c < 48 || c > 57) return FALSE;
+	}
+	return (stof(value) >= 1 && stof(value) <= limit);
+};
+float(string map, string source, string track, string leg, string style, string rank, string who, string time_ms) Mlb_Browse =
+{
+	local float i, c, t, tr, lg, allsource, off, pickedms, pickedrank;
+	local string savedmap, savedstyle, savedwho;
 	if (map == "" || strlen(map) > 64) return FALSE;
 	for (i = 0; i < strlen(map); i = i + 1)
 	{
@@ -964,24 +1016,38 @@ float(string map, string source, string track, string leg, string style) Mlb_Bro
 	allsource = !strcmp(source, "all");
 	t = allsource ? MLB_T_OURS : Mlb_TabOf(source);
 	tr = stof(track); lg = stof(leg);
-	savedmap = strzone(map); savedstyle = strzone(style);
+	off = pickedms = pickedrank = 0;
+	if (who != "" || rank != "" || time_ms != "")
+	{
+		if ((strlen(who) != 8 && strlen(who) != 12) || !Mlb_FocusNumber(rank, 10000000) || !Mlb_FocusNumber(time_ms, 2147483647)) return FALSE;
+		for (i = 0; i < strlen(who); i = i + 1)
+		{
+			c = str2chr(who, i);
+			if (!(c >= 48 && c <= 57) && !(c >= 97 && c <= 102)) return FALSE;
+		}
+		pickedrank = stof(rank); pickedms = stof(time_ms);
+		off = max(0, pickedrank - 6);
+	}
+	savedmap = strzone(map); savedstyle = strzone(style); savedwho = strzone(who);
 	Mlb_Close("browse");
 	if (allsource) mlb_source = strzone("all");
 	if (!menu_active) m_open();
 	menu_screen = SCREEN_CREATE;
 	ui_create_open();
 	mlb_track = tr; mlb_leg = lg; mlb_style = strzone(savedstyle);
+	mlb_offset = off; mlb_focusrank = pickedrank; mlb_focusms = pickedms;
+	mlb_focuswho = strzone(savedwho);
 	mlb_browsing = TRUE;
 	Mlb_Open(savedmap, t);
 	mlb_browsing = FALSE;
-	strunzone(savedmap); strunzone(savedstyle);
+	strunzone(savedmap); strunzone(savedstyle); strunzone(savedwho);
 	return TRUE;
 };
 
 void() Mlb_PollRequest =
 {
 	local string payload;
-	local float i, c, valid;
+	local float i, c, valid, n;
 	if (cvar_string("ui_board_request") == "") return;
 	payload = strzone(cvar_string("ui_board_request"));
 	cvar_set("ui_board_request", "");
@@ -998,9 +1064,12 @@ void() Mlb_PollRequest =
 		if (!(c >= 48 && c <= 57) && !(c >= 65 && c <= 90) && !(c >= 97 && c <= 122) && c != 95 && c != 45 && c != 32) valid = FALSE;
 	}
 	if (valid)
-	if (tokenize(payload) == 5)
-		valid = Mlb_Browse(argv(0), argv(1), argv(2), argv(3), argv(4));
-	else valid = FALSE;
+	{
+		n = tokenize(payload);
+		if (n == 5 || n == 8)
+			valid = Mlb_Browse(argv(0), argv(1), argv(2), argv(3), argv(4), argv(5), argv(6), argv(7));
+		else valid = FALSE;
+	}
 	if (!valid) print("board: rejected browse request\n");
 	strunzone(payload);
 };
@@ -1009,5 +1078,5 @@ void() Mlb_PollRequest =
 void() Mlb_Command =
 {
 	if (argv(6) != "") return;
-	Mlb_Browse(argv(1), argv(2), argv(3), argv(4), argv(5) == "" ? "clean" : argv(5));
+	Mlb_Browse(argv(1), argv(2), argv(3), argv(4), argv(5) == "" ? "clean" : argv(5), "", "", "");
 };

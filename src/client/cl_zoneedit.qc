@@ -1,6 +1,6 @@
 /*
 ===========================================================================
-  Patch 671 extends this editor: jump/cursor switching, title dragging, XYZ
+  Patch 671 extends this editor: mouse/cursor switching, title dragging, XYZ
   snapping, simple polygon outlines, and six local map settings. Steam roles
   and publishing are separate: no identity or rights inferred from names.
 
@@ -1166,7 +1166,7 @@ string(string id) ZoneEdit_Tip =
 	if (id == "ze_rl") return "Discard unsaved zone edits and read this map's zones again. Your saved local file takes priority; use Discard local file to stop using that override.";
 	if (id == "ze_fg") return "Delete this map's saved local zone override and reload the underlying zones. Unsaved zone edits are lost too. Map properties are separate and are not removed.";
 	if (id == "ze_settings") return "Edit local Surf/Bhop presets, speed cap, gravity and air acceleration for this map. Save settings and reload the hosted map to apply them; public lobbies are unchanged.";
-	if (id == "ze_look") return "Give the mouse back to aiming and flying without closing the editor. Your jump-bound key returns the cursor to this window; V toggles noclip.";
+	if (id == "ze_look") return "Give the mouse back to aiming and flying without closing the editor. Mouse2 returns the cursor to this window; V toggles noclip.";
 	if (id == "ze_cl") return "Close the editor without saving. Unsaved zone edits stay in memory until the map changes; reopen the editor to continue or save them.";
 	if (id == "ze_mode_surf") return "Stage Surf mode: 66.67 Hz physics and air acceleration 150. Keeps your chosen speed cap and gravity. Save settings and reload your hosted map to apply.";
 	if (id == "ze_mode_bhop") return "Stage Bhop mode: 100 Hz physics and air acceleration 1000. Keeps your chosen speed cap and gravity. Save settings and reload your hosted map to apply.";
@@ -1231,7 +1231,7 @@ void(vector scr) ZoneEdit_Panel =
 	{
 		// Placing: the mouse is the game's.  One line of what the next click does.
 		if (ui_ze_state == ZE_P)
-			s = sprintf("click corners (%g); Enter / first corner closes; jump: window", ze_np);
+			s = sprintf("click corners (%g); Enter / first corner closes; Mouse2: back", ze_np);
 		else if (ui_ze_state == ZE_A)
 			s = "MOUSE1 first floor corner";
 		else if (ui_ze_state == ZE_B)
@@ -1574,8 +1574,10 @@ float(float evtype, float scanx, float chary, float devid) ZoneEdit_InputEvent =
 		memfill8(ze_field_keys, 0i, sizeof(float) * ZE_KEYCOUNT);
 	}
 
+	// Leave +jump binds alone, especially the wheel used to scroll this list.
+	// In look-mode placement Mouse2 still goes back; elsewhere it switches mouse.
 	if (!owned)
-	if (Keys_BindHas(Keys_BindNow(scanx), "+jump"))
+	if (scanx == K_MOUSE2 && (ze_cursor || ui_ze_state < ZE_A))
 	{
 		ze_field_keys[scanx] = 3;
 		ZoneEdit_ToggleMouse();
@@ -1690,6 +1692,7 @@ void() ZoneEdit_Status =
 	              (ze_map != "") ? ze_map : "-", zone_count, zone_ptcount, ze_dirty,
 	              (zone_crc != "") ? zone_crc : "-"));
 	print(sprintf("zone_edit: cursor %g polygon %g corners %g window %g %g\n", ze_cursor, ze_poly, ze_np, ze_window_x, ze_window_y));
+	print(sprintf("zone_edit: first list row %g\n", ze_scroll));
 	print(sprintf("zone_edit: track %g sel %g grid %g snap %g source %s\n", ze_track, ze_sel, ze_grid,
 	              ze_snap, Zone_SourceName(zone_source)));
 	print(sprintf("zone_edit: placing type %g seg %g cp %g a %g %g %g", ze_ntype, ze_nseg, ze_ncp,

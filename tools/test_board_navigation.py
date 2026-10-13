@@ -51,8 +51,9 @@ class BoardNavigation(unittest.TestCase):
 
     def test_profile_row_styles_and_tier_hit_width(self):
         p = source("src/client/cl_profile.qc")
-        self.assertIn('Profile_BoardPick(bufstr_get(pf_bmap, i), f[at + 2], f[at], f[at + 1], f[at + 7])', p)
-        self.assertIn('Profile_BoardPick(bufstr_get(pf_ct_bmap, i), f[at + 1], 0, 0, f[at + 3])', p)
+        self.assertIn('Profile_BoardPick(bufstr_get(pf_bmap, i), f[at + 2], f[at], f[at + 1], f[at + 7],', p)
+        self.assertIn('r, pf_handle, f[at + 3]);', p)
+        self.assertIn('Profile_BoardPick(bufstr_get(pf_ct_bmap, i), f[at + 1], 0, 0, f[at + 3], 0, "", 0)', p)
         self.assertIn('#define PF_RF       8', p)
         self.assertIn('#define PF_CF       4', p)
         self.assertIn('json_find_object_child(row, "style")', p)
@@ -75,7 +76,7 @@ class BoardNavigation(unittest.TestCase):
 
     def test_menu_mailbox_validation_poll_and_all_scope(self):
         b = source("src/menu/m_board.qc")
-        signature = 'float(string map, string source, string track, string leg, string style) Mlb_Browse ='
+        signature = 'float(string map, string source, string track, string leg, string style, string rank, string who, string time_ms) Mlb_Browse ='
         self.assertIn(signature, b)
         browse = b[b.index(signature):]
         for forbidden in ('changelevel', 'downloadmap', 'connect', 'ui_launch', 'localcmd'):
@@ -85,7 +86,7 @@ class BoardNavigation(unittest.TestCase):
         self.assertIn('Mlb_ScopeNumber(leg, 256)', browse)
         poll = b[b.index('void() Mlb_PollRequest ='):b.index('// Trusted manual command')]
         self.assertLess(poll.index('cvar_set("ui_board_request", "")'), poll.index('tokenize(payload)'))
-        self.assertIn('tokenize(payload) == 5', poll)
+        self.assertIn('n == 5 || n == 8', poll)
         self.assertIn('strlen(payload) > 128', poll)
         main = source("src/menu/m_main.qc")
         self.assertIn('registercvar("ui_board_request", "", 0);', main)
@@ -99,6 +100,21 @@ class BoardNavigation(unittest.TestCase):
         self.assertIn('mlb_cksf + mlb_cmom + mlb_cours', active)
         self.assertIn('Mlb_TabCount(mlb_tab)', active)
         self.assertIn('All games: FTESurf, Momentum Mod, KSF', b)
+
+    def test_profile_seek_offset_identity_and_paging(self):
+        b = source('src/menu/m_board.qc')
+        self.assertIn('off = max(0, pickedrank - 6);', b)
+        self.assertIn('off = mlb_offset + mlb_n;', b)
+        self.assertIn('off != mlb_offset + mlb_n', b)
+        self.assertIn('substring(digest_hex("SHA256", json_get_string(json_find_object_child(row, "player"))), 0, strlen(mlb_focuswho))', b)
+        self.assertIn('== mlb_focusms', b)
+        self.assertIn('i == mlb_focus', b)
+        self.assertIn('"mlb_earlier"', b)
+        self.assertIn('"mlb_top"', b)
+        p = source('src/client/cl_profile.qc')
+        self.assertIn('sui_action_element(lp, [sz_x - tsz, rowh], strcat("pf_map", ftos(i))', p)
+        s = source('src/client/cl_scores.qc')
+        self.assertIn('f[i + 5], pf_on_handle, f[i + 3]);', s)
 
 
 if __name__ == "__main__":

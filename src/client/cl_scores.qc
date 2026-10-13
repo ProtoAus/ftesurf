@@ -2710,16 +2710,13 @@ float() Scores_SearchPick =
 	}
 	if (act >= 3)
 	{
-		// A time's leg, where this map's zones have one, on the online board
-		// (these are its times).
+		// The same focused board as a time on the full profile, with its tier.
 		f = pf_on_f;
-		for (i = 0; i < rec_sb_legn; i = i + 1)
-			if (rec_sb_legtrack[i] == f[(act - 3) * PF_RF])
-			if (rec_sb_legnum[i] == f[(act - 3) * PF_RF + 1])
-				rec_sb_leg = i;
-		if (rec_sb_tab == SB_T_LOCAL)
-			Scores_TabSet(SB_T_ONLINE);
-		Profile_OnClear();
+		i = (act - 3) * PF_RF;
+		Profile_BoardPick(pf_on_map, f[i + 2], f[i], f[i + 1], f[i + 7],
+		                  f[i + 5], pf_on_handle, f[i + 3]);
+		if (Profile_BoardNavigate())
+			Scores_Close();
 		return TRUE;
 	}
 	if (act == 2)

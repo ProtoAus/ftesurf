@@ -1,5 +1,36 @@
 # AGENT_NOTES.md
 
+## Patch 693 — profile seeks, editor wheel and entity-pose rendering
+
+- A profile-time handoff now includes rank/handle/milliseconds after its five
+  scope tokens. Eight-character board marks and twelve-character profile handles
+  both work; match SHA256(player)'s same-length prefix AND milliseconds, not a
+  display name. The board's first offset is rank-6 (bounded at zero); every next
+  page/reply check includes that base. Scope/tab changes reset it. Keep earlier
+  and top navigation available after a distant seek.
+- The editor wheel only acts with the pointer inside its panel, and advances two
+  list rows per step. `zone_edit mouse` is a TOGGLE, not `mouse window` as a setter.
+  Test Mouse2 both ways and look-mode placement back. Jump-bound wheel and space
+  must not switch cursor ownership. `zone_edit status` exposes first list row.
+- A positive ent_view face census was NOT evidence of visible faces. The current
+  compressed tensor2 *36 model has local bounds [-48,-24,-64]..[48,24,64], while
+  its entity origin is far from zero. Original hull emission used model vertices
+  without the entity transform. P693 publishes precomputed poses and applies
+  translation/rotation only to entity brushes, never world clip brushes. Do not
+  guess the pose from old map coordinates; compare the native census origin to
+  the current QC pose record and inspect pixels. Source additive portal material
+  can make the red fill look pink; an interior red-tint crop, excluding boxes and
+  labels, distinguishes the subject from the original (554 vs 0 in the acted rig).
+- `tools/test_p693_ui.py` extends the isolated navigation rig with current consent
+  version/addon mounts, actual full/compact profile time picks, pointer-targeted
+  editor keys and viewer screenshots/censuses. Older base fixture consent4 and
+  missing addon mounts were setup failures, not product failures. It never saves
+  editor drafts through content junctions. `tools/test_entview_pose.py` compiles
+  actual native pose/emitter/AngleVectors under fast-math and rejects four acted
+  mutants; its fixed winding is NOT a BSP/GPU test. Source and deployment receipts
+  are separate. Historical fixture/artifact p692 labels predate a peer's published
+  P692; this task's one published patch claim is P693. See tools/p693ui.md.
+
 ## Patch 684 — viewer controls and shared SUI ownership (13 Oct 2026)
 
 - A later front panel can draw valid hit boxes yet have dead buttons: an earlier

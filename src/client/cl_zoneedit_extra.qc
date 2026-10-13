@@ -219,7 +219,7 @@ void() ZoneEdit_ToggleMouse =
 		UI_CursorRelease(UIC_ZONEEDIT);
 		if (sui_text_has_focus("ze_value")) sui_text_unfocus();
 	}
-	ZoneEdit_Note(ze_cursor ? "Mouse: window (jump to look)" : "Mouse: look (jump for window)");
+	ZoneEdit_Note(ze_cursor ? "Mouse: window (Mouse2 to look)" : "Mouse: look (Mouse2 for window)");
 };
 
 void() ZoneEdit_ResetSpawn =

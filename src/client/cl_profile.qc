@@ -237,7 +237,7 @@ void() Profile_Ask =
 // Copy browse data while rows live; publish only after the owner's SUI bracket.
 void() Profile_Unfocus;
 string pf_boardrequest;
-void(string map, float tier, float track, float leg, float segmented) Profile_BoardPick =
+void(string map, float tier, float track, float leg, float segmented, float rank, string who, float time_ms) Profile_BoardPick =
 {
 	local float i, c;
 	local string source, payload;
@@ -249,6 +249,8 @@ void(string map, float tier, float track, float leg, float segmented) Profile_Bo
 	}
 	source = (tier == PFT_MOM) ? "momentum" : ((tier == PFT_KSF) ? "ksf" : "ranked");
 	payload = sprintf("%s %s %g %g %s", map, source, track, leg, segmented ? "segmented" : "clean");
+	if (rank > 0 && Profile_IsWho(who) && time_ms > 0)
+		payload = strcat(payload, sprintf(" %.0f %s %.0f", rank, who, time_ms));
 	if (strlen(payload) > 128) return;
 	strunzone(pf_boardrequest);
 	pf_boardrequest = strzone(payload);
@@ -1347,7 +1349,7 @@ void(vector p, vector sz, float tsz, float hint) Profile_DrawTier =
 		sui_action_element([lp_x + tsz * 1.6, lp_y], [mapw, rowh], strcat("pf_ctmap", ftos(i)), sui_noop);
 		if (sui_is_hovered(strcat("pf_ctmap", ftos(i)))) sui_fill(lp, [sz_x - tsz, rowh], SUI_THEME_HOVER, 0.5, 0);
 		if (sui_is_released(strcat("pf_ctmap", ftos(i))))
-			Profile_BoardPick(bufstr_get(pf_ct_bmap, i), f[at + 1], 0, 0, f[at + 3]);
+			Profile_BoardPick(bufstr_get(pf_ct_bmap, i), f[at + 1], 0, 0, f[at + 3], 0, "", 0);
 		s = Chat_Fit(bufstr_get(pf_ct_bmap, i), mapw, tsz);
 		sui_text([lp_x + tsz * 1.6, lp_y + (rowh - tsz) * 0.5], [tsz, tsz], s,
 		         (f[at] > 0) ? SUI_THEME_TEXT : SUI_THEME_DIM, 1, 0);
@@ -1676,10 +1678,11 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 		sui_text([lp_x + sz_x - tsz * 2 - stringwidth(s, TRUE, [hint, hint]), lp_y + (rowh - hint) * 0.5],
 		         [hint, hint], s, SUI_THEME_MUTED, 1, 0);
 		// the map, then its leg where it is not the main track, then the game where there are several
-		sui_action_element([lp_x + c0, lp_y], [max(1, c1 - tsz * 9), rowh], strcat("pf_map", ftos(i)), sui_noop);
+		sui_action_element(lp, [sz_x - tsz, rowh], strcat("pf_map", ftos(i)), sui_noop);
 		if (sui_is_hovered(strcat("pf_map", ftos(i)))) sui_fill(lp, [sz_x - tsz, rowh], SUI_THEME_HOVER, 0.5, 0);
 		if (sui_is_released(strcat("pf_map", ftos(i))))
-			Profile_BoardPick(bufstr_get(pf_bmap, i), f[at + 2], f[at], f[at + 1], f[at + 7]);
+			Profile_BoardPick(bufstr_get(pf_bmap, i), f[at + 2], f[at], f[at + 1], f[at + 7],
+			                  r, pf_handle, f[at + 3]);
 		s = Chat_Fit(bufstr_get(pf_bmap, i), c1 - tsz * 9, tsz);
 		sui_text([lp_x + c0, lp_y + (rowh - tsz) * 0.5], [tsz, tsz], s, SUI_THEME_TEXT, 1, 0);
 		x = lp_x + c0 + stringwidth(s, TRUE, [tsz, tsz]) + tsz * 0.6;

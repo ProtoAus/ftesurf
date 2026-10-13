@@ -16,13 +16,23 @@ things correctly; they are documentation, not the implementation.
 
 ---
 
+## Player profiles and leaderboards
+
+Click a time's row in a player profile to open its map/track/leg, tier and style
+leaderboard around that time. The selected player's exact time is highlighted
+among its neighbors, including positions beyond the first thousand. **Earlier**
+loads preceding ranks; **top** returns to the beginning. Normal paging continues
+from that position. If the cached time has changed or disappeared, the board
+says so rather than highlighting a same-name player.
+
 ## Zone editor
 
 On a locally hosted map, run `zone_edit` to open the editor.
 
-- Your key bound to `+jump` switches between looking/flying and the window's
-  mouse cursor, without discarding a partly drawn zone. Drag the title to move
-  the window. V is the existing noclip toggle.
+- **Mouse2** switches between looking/flying and the window's mouse cursor.
+  While placing a zone in look mode it still undoes a corner/step. Jump-bound
+  keys (including the wheel) no longer switch the mouse; the wheel scrolls the
+  zone list. Drag the title to move the window. V is the existing noclip toggle.
 - Select **box** or **polygon**, then `+ start`, `+ stage`, `+ check` or `+ end`.
   For a polygon, aim at the floor and click its corners. Enter (or clicking the
   first corner again) closes the outline; look up to pull the height and click
@@ -49,6 +59,21 @@ Zones save under `ftesurf/data/maps/zones/local/`; settings under
 `ftesurf/data/maps/settings/local/`. They stay on this machine. Steam-based
 admin permissions and reviewed NanoPi uploads are **not enabled yet**; see
 [ROADMAP.md](ROADMAP.md). No upload or admin access is granted by display name.
+
+## Entity and clip-brush viewer
+
+`ent_view` shows map entities without taking the mouse. With the Patch 693+
+native client, teleport triggers have **red ordered-dither flat faces** at the
+map entity's actual position/rotation, not just a wire box. The hovered brush
+gets a denser fill. `ent_panel` opens the click-to-copy inspector.
+
+Nearby world **player-clip and monster-clip brushes** also show dithered collision
+faces. `ent_view_clips 0` hides that extra overlay; `ent_view_clips 1` restores it.
+`ent_view_dist` controls its range. Turning off `ent_view` removes the overlay.
+This needs retained brush collision data (including Source/VBSP); it does not
+turn every nodraw surface or static-prop collision mesh into a clip brush.
+Existing explicit `r_showbrushes` debug settings take precedence and are left
+unchanged. Drawing never changes collision or movement.
 
 ## What you need
 

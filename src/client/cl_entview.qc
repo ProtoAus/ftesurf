@@ -125,6 +125,7 @@ float  ev_over;                 // entities past EV_MAX
 
 strbuf ev_cn;                   // classname per entity, for O(1) access
 strbuf ev_mdl;                  // ...and its "*N", or "" for a point entity
+strbuf ev_pose;                 // native hull placement: model id, origin, angles
 
 .float  ev_mine;                // 1 on the edicts this file spawned
 .float  ev_row;                 // ...and which table row each one is
@@ -240,6 +241,11 @@ void() Ev_Free =
 	}
 
 	ev_head = world;
+	cvar_set("ent_view_active", "0");
+	cvar_set("ent_view_models", "");
+	cvar_set("ent_view_teleports", "");
+	cvar_set("ent_view_poses", "");
+	strunzone(ev_mdl_last); ev_mdl_last = "";
 
 	ev_hover_row = -1;
 	ev_card_row  = -1;
@@ -258,6 +264,7 @@ void() Ev_Free =
 		buf_del(ev_ix);
 		buf_del(ev_cn);
 		buf_del(ev_mdl);
+		buf_del(ev_pose);
 		ev_built = FALSE;
 	}
 
@@ -373,7 +380,7 @@ void(float row, string mdl, vector org) Ev_AddCopy =
 float() Ev_Build =
 {
 	local string tok, key, val, cn, mdl, map;
-	local vector org;
+	local vector org, ang;
 	local float first, count, isbrush, opened;
 
 	map = serverkey("map");
@@ -387,6 +394,7 @@ float() Ev_Build =
 	ev_ix  = buf_create();
 	ev_cn  = buf_create();
 	ev_mdl = buf_create();
+	ev_pose = buf_create();
 	ev_built = TRUE;
 	opened = FALSE;
 
@@ -398,7 +406,7 @@ float() Ev_Build =
 		opened = TRUE;
 
 		cn = mdl = "";
-		org = '0 0 0';
+		org = ang = '0 0 0';
 		first = buf_getsize(ev_k);
 		count = 0;
 
@@ -418,6 +426,8 @@ float() Ev_Build =
 			if      (key == "classname") cn  = val;
 			else if (key == "model")     mdl = val;
 			else if (key == "origin")    org = Sprite_ParseVec(val);
+			else if (key == "angles")    ang = Sprite_ParseVec(val);
+			else if (key == "angle")     ang_y = stof(val);
 		}
 
 		if (ev_n >= EV_MAX)
@@ -437,6 +447,8 @@ float() Ev_Build =
 		// both of every entity every frame and Ev_Key is a tokenize plus a scan.
 		bufstr_add(ev_cn,  cn, TRUE);
 		bufstr_add(ev_mdl, isbrush ? mdl : "", TRUE);
+		bufstr_add(ev_pose, isbrush ? sprintf("%g %.9g %.9g %.9g %.9g %.9g %.9g ",
+		           stof(substring(mdl, 1, strlen(mdl) - 1)), org_x, org_y, org_z, ang_x, ang_y, ang_z) : "", TRUE);
 		Ev_AddCopy(ev_n, mdl, org);
 		ev_n = ev_n + 1;
 	}
@@ -1110,7 +1122,7 @@ void() Ev_Draw =
 	local entity e;
 	local vector eye, fwd, mn, mx, mid, col, sp, vsize, mnear, mfar, mdir;
 	local float  maxd, rad, dd, alpha, drawn, budget, labels, row, hover;
-	local string cn, mdl;
+	local string cn, mdl, teleports, poses;
 
 	if (!ui_ev_open)
 	{
@@ -1122,14 +1134,19 @@ void() Ev_Draw =
 			ev_mdl_last = "";
 		}
 		cvar_set("ent_view_models", "");
+		cvar_set("ent_view_teleports", "");
+		cvar_set("ent_view_poses", "");
+		cvar_set("ent_view_active", "0");
 		return;
 	}
 	if (!Ev_Ready())
 		return;
+	cvar_set("ent_view_active", "1");
 
 	// QuakeC locals are not zeroed; fteqcc warns F302 if you forget.
 	drawn = 0;
 	ev_mdl_list = "";
+	teleports = poses = "";
 	ev_mdl_n = 0;
 	vsize = getproperty(VF_SCREENVSIZE);
 	eye = getproperty(VF_ORIGIN);
@@ -1307,6 +1324,9 @@ void() Ev_Draw =
 		{
 			ev_mdl_list = strcat(ev_mdl_list, sprintf("%g ", stof(substring(mdl, 1, strlen(mdl) - 1))));
 			ev_mdl_n = ev_mdl_n + 1;
+			poses = strcat(poses, bufstr_get(ev_pose, row));
+			if (!strcmp(substring(cn, 0, 16), "trigger_teleport"))
+				teleports = strcat(teleports, sprintf("%g ", stof(substring(mdl, 1, strlen(mdl) - 1))));
 		}
 
 		if (labels && ev_lab_n < EV_LABELS && (fwd * (mid - eye)) > 8)
@@ -1335,7 +1355,21 @@ void() Ev_Draw =
 	  set, but our comparison string has to outlive the frame that built it or
 	  every frame would look like a change.
 	*/
-	if (ev_mdl_list != ev_mdl_last)
+	// The hovered brush can sit past the in-view budget but still needs its pose/colour.
+	if (ev_hover_row >= 0)
+		poses = strcat(poses, bufstr_get(ev_pose, ev_hover_row));
+	if (strcmp(poses, cvar_string("ent_view_poses")))
+		cvar_set("ent_view_poses", poses);
+	if (ev_hover_row >= 0)
+	if (!strcmp(substring(bufstr_get(ev_cn, ev_hover_row), 0, 16), "trigger_teleport"))
+	{
+		mdl = bufstr_get(ev_mdl, ev_hover_row);
+		if (mdl != "")
+			teleports = strcat(teleports, sprintf("%g ", stof(substring(mdl, 1, strlen(mdl) - 1))));
+	}
+	if (strcmp(teleports, cvar_string("ent_view_teleports")))
+		cvar_set("ent_view_teleports", teleports);
+	if (strcmp(ev_mdl_list, ev_mdl_last))
 	{
 		if (ev_mdl_last != "")
 			strunzone(ev_mdl_last);
@@ -2026,6 +2060,10 @@ void() Ev_Register =
 	  is the only off-switch the engine side needs.
 	*/
 	registercvar("ent_view_models", "");
+	registercvar("ent_view_teleports", ""); // models whose exact faces are red
+	registercvar("ent_view_poses", "");     // brush coordinates are model-local
+	registercvar("ent_view_active", "0");  // owned publication, cleared when closed/reloaded
+	registercvar("ent_view_clips", "1");   // nearby world player/monster clip hulls
 };
 
 float(string cmd) Ev_ConsoleCommand =
@@ -2069,6 +2107,11 @@ float(string cmd) Ev_ConsoleCommand =
 		{
 			Ev_CursorOff();
 			Ev_HoverPublish("");
+			cvar_set("ent_view_active", "0");
+			cvar_set("ent_view_models", "");
+			cvar_set("ent_view_teleports", "");
+			cvar_set("ent_view_poses", "");
+			strunzone(ev_mdl_last); ev_mdl_last = "";
 		}
 		print(sprintf("^5ent_view^7: %s -- %g entities (%g brush, %g point)%s\n",
 		              ui_ev_open ? "on" : "off", ev_n, ev_brush_n, ev_point_n,
