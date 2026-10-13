@@ -4882,6 +4882,51 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   readback/static screenshot is not a broad frame-time/capture pass. See
   tools/p685blendsort.md and BACKLOG for remaining promotion gates.
 
+## Conservative blend-plane refinement and controls (Patch 690)
+
+- Fixed unsupported slots are not pairwise barriers: moving admitted faces
+  across a dynamic slot can invert their order against the dynamic geometry.
+  Reject the whole proposed permutation before writing when admitted-rank
+  distance differs from absolute-slot distance. Three admitted world faces
+  can still regress an unproven intersecting pair: retain baseline edges for
+  unknown overlapping pairs; disjoint projected pairs remain unconstrained.
+  Real painter cycles, budget exits and barrier exits must be atomic. Both
+  regressions ACTED in pre-fix actual-C collector and native authored controls.
+- Eligible blend-sort-bucket faces are not necessarily conventional alpha.
+  Non-programmable static geometry, actual finite planar vertices, standard
+  perspective and identity-world gates are the implemented scope. Per-face
+  caps exclude a record; admitted-face/total-vertex/pair-work caps abort the
+  stage. The pair-work counter does not bound the full admission scan.
+- Lock sensitivity/m_yaw/m_pitch/in_windowed_mouse for exact screenshots and
+  verify server body, aim and zero velocity. An earlier identical-settings
+  run moved the camera and is excluded. Cross-binary Source-water deltas were
+  1,501 Air-HUD pixels, explicitly PNG-triaged and post-masked; they were not
+  silently ignored. Native water is cache0 Full/Dither/Full-return; cache1
+  evidence is separately attributed v2 Q1, not a VBSP worker-cache claim.
+- The same baseline executable produced two legacy mode1 interbatch orders
+  (20,402 A/A-return pixels) after restart/flush. Do not blame a candidate for
+  that without A/B/A. Original Kitsune six-yaw mode1 is exact baseline/subject.
+  Mode2 changed-pixel counts prove action; frozen geometry supplies the order
+  oracle. Timerefresh/explicit-finish timing is not normal frame-time evidence.
+- Windows and MSYS Git have different autocrlf config; prepending the MSYS
+  toolchain PATH made a clean Windows worktree appear673 files dirty. Owned
+  build adapters use explicit Git-for-Windows for provenance checks. Compiler
+  PATH and artifact-directory prerequisites must precede parallel test arms.
+- Exact P688/P690 cold client/server/all-five-plugin builds both emit74 compiler
+  warnings/45 distinct message payloads plus349 Make grouped-target warnings,
+  no new compiler payloads. Three QC programs have zero warnings. P690 fresh
+  exact-stamp station reproduces all retained six-yaw counts/default parity.
+  See tools/p690blendplanes.md for SHA-bound source/bundle and delivery status.
+- Number claim raced a native-recovery session during long builds: sorter
+  b59026cc2 initially used P689, while peer c325d045/tag patch-689 was created.
+  Tag-create failed but a wrongly chained push still exported the pre-existing
+  peer tag. Reported immediately; no tag/history rewrite. Forward metadata-only
+  7598b4c4d assigns sorter P690/patch-690 and unchanged C is rebuilt/station-tested
+  with exact git-690 stamp. Do not infer the sorter source from patch-689. Tag
+  creation and peeled-SHA checks must succeed BEFORE any explicit tag push.
+- No default2, arbitrary model/sprite/weapon native, tessellation/external-matrix
+  runtime, Source envmap/model-lighting, QC Build or release claim.
+
 ## Missing-asset art (Patch 534) -- 2026-10-07
 
 - `R2D_Init` requests the diffuse fallback as `no_texture`, with replacement

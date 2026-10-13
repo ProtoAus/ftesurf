@@ -28,6 +28,15 @@ tag      patch-690-with-p689
 patch    690
 # Integrated pin: published P689 recovery + peer P690 sorter. The integration
 # tag names both without rewriting either public feature tag.
+# Patch 690: conservative bounded static-world plane refinement inside opt-in
+# OpenGL blendsort2; disjoint bounds unconstrained, uncertain overlapping-pair
+# baseline edges, cycles/budgets/unsupported-slot crossings abstain atomically.
+# Modes0/1 and default1 unchanged. Actual C helper/collector mutants ACT; native
+# static/dynamic-barrier/unknown-world/program-alpha controls, exact six-yaw
+# default parity, Source Full/Dither and bounded timerefresh gates pass. Clean
+# P688/P690 full builds match74 compiler occurrences/45 payloads (zero new).
+# tools/p690blendplanes.md records exact build hashes and deployment status;
+# source pin is not a claim of Windows delivery. No QC Build/release/Pi change.
 # Patch 689: native protected-file absence/readability preflight and bounded
 # mixed-recovery object retirement. Actual signed-feed Linux before/subject
 # controls, shared hashes, corrupt objects, honest partial ledger and repaired
