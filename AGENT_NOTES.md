@@ -5930,6 +5930,42 @@ passes. Timeout/export/containment negatives must retain retirement guards when
 unknown. Frozen native repeat/review and retained paths are in the task checkpoint
 under `C:/FTESurf-worktrees/wjcut-20261013T172400Z/artifacts/`.
 
+### Windows initial live journal publication controls — P692, 2026-10-13
+
+The first QKU_Apply journal has no prior authority. Before its rename, interruption
+leaves a complete attempt1 temp but ALL selected destinations and ledger old;
+acted next startup staying all-old is expected, not mixed-startup regression.
+Both old27c58e and subject195dc58e have that initial-boundary safety. Do not copy
+the old cold/deferred authority-loss expectation or fabricate prior authority.
+
+Use tools/native_journal_initial.c + test_update_native_journal_initial.py:
+match complete PE/companion text; source-bind first live caller, exact writer,
+real native call/return and same thread; validate native paths and flags/root.
+Subject frame/stack-probe target, tail wrappers, commit caller and direct/import
+instruction targets are checked before mutation. Restore original bytes/RIP; no
+native return spoof. The full attempt1 temp is copied at native pre, before any
+initial content installation. Source-lock AFTER writer completion permits
+writable OPEN but independently fails source rename32, then observes actual
+product return0; this is not a TEB-error sample or failed writer-OPEN gate.
+Preserve initial-error/stateerror/full temp/old ledger+destinations before
+releasing retry acceptance; the lock itself is released after actual rename
+failure. Same-game retry has separate markers/plans and exact HTTP counts.
+
+Owned pre/post interrupts use child86; helper0, exact raw event order, first
+writer/caller and observed job0 before AND after cleanup are mandatory. Before
+cold startup leaves the complete temp/all-old state unchanged. After commit,
+full attempt1 authority/temp consumed/all-old destinations seed separate fresh
+direct-completion and corrupt-refusal/attempt2-pending/repair cases. Never spend
+the same cold retry budget twice and label it a fresh fixture. Every arm exports
+metadata INCLUDING .tmp, staged identities, logs and full runtime-file hashes
+before retirement. Wrong-entry-byte native negative exits helper90 before startup;
+its phase remains FAIL with exact sentinel export/job0, even when the negative
+assertion passes. Equal/nested/existing resolved runtime/evidence roots refuse
+before creation. Trusted synthetic roots only, not hostile path-swap/hardlink
+protection. See tools/p692native_journal_initial.md. Deferred live interruption,
+power-loss/flush ordering, staged orphan GC and canonical/fleet delivery remain
+separate; test-only tooling does not bump ENGINE.txt or product tags.
+
 ### Default HTTPS native/menu drivers and real return census — P689, 2026-10-13
 
 `tools/test_update_default_https.py` uses the exact archived real bootstrap and

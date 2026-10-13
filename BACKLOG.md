@@ -36,9 +36,14 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   `tools/p692native_journal_interrupt.md`. The old pre-rename control starts mixed
   after authority loss; P692 retains full authority/refuses. Separate fresh
   post-rename repaired and corrupt/exhausted fixtures preserve the attempt budget.
-  Windows initial full-live-journal failure/interruption and deferred live-journal
-  interruption remain separate open coverage gates, not claimed implementation
-  defects. No hostile ancestor-swap/hardlink guarantee is claimed.
+  Windows initial full-live-journal failure/before/after interruption controls
+  now pass with full attempt1 native temps, real rename returns, same-game retry,
+  and fresh all-old startup/direct cold completion/corrupt refusal+repair;
+  `tools/p692native_journal_initial.md`. Both engines have equal initial-boundary
+  safety because no prior authority exists; this is not a P692 regression claim.
+  Deferred live-journal interruption remains a separate open coverage gate, not
+  a claimed implementation defect. No hostile ancestor-swap/hardlink guarantee
+  is claimed.
   Release 0.1.25 remains P687; source acceptance does not deploy recovery to any
   canonical/fleet binary or certify peer deployments.
 
