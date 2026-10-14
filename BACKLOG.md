@@ -19,6 +19,15 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   and bonus-4 examples. Reject malformed/oversized/unmatched files and preserve
   imported provenance. Never label these as native verified runs. No direct demo
   fetching, replay database association or game playback is shipped by P699.
+- Local approved-map zone/version reconciliation: Momentum Playtest held all
+  759 approved names but lacked JSON on 39 (including bhop). Exact BSP SHA256
+  comparison with the Pi held 38; only bhop_perspective matched and its checked
+  public zone was installed in both Windows gamedirs. Examples held:
+  surf_techslop, surf_everdark, surf_indecisive, surf_hellenic, surf_prevail.
+  Next falsifier: retrieve archived-version zones tied to the actual local BSP
+  hash, or ask the owner before replacing/downloading current map versions.
+  Do not imply that current server zones are correct merely by identical names.
+  Full hashes/candidate list: P699 owned artifacts/missing-approved.json.
 - Beta map zone coverage is separate: unapproved BSP lists do not guarantee
   published JSON. Missing/nonmatching zones are not made by renaming another
   build's file; only the existing measured compatibility gate may donate them.

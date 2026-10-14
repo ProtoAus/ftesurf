@@ -12007,6 +12007,12 @@ the game fetches its own map list. The menu half is Patch 652.
   online-only inspection found 198, three with embedded start+stop triggers.
   Beta download membership is not a promise of public API zones. Look in LOCAL
   as well as online/. Never copy a namesake zone across an unmeasured build.
+  Later LOCAL census is different: 759 approved held in Momentum Playtest,
+  39 missing JSON (including bhop); 38 BSP SHA256s differ from the Pi's builds.
+  Only bhop_perspective matched and passed zone_on_build; its public zone was
+  seeded to both Windows installs without overwriting anything. Do NOT turn
+  the fleet's complete approved coverage into a claim of local coverage.
+  Version reconciliation/archived zones for those 38 remain BACKLOG.
 - surfd's map index now recognizes bounded, valid BSP brush start/stop pairs;
   zonefit caches by path+mtime_ns+ctime_ns+size so replacements invalidate it.
   The menu says 'zones not listed' rather than asserting no timer exists when

@@ -65,6 +65,18 @@ had zones. Of **320 held beta/extra maps**, 199 lacked an indexed zone file.
 An online-only scan found 198 beta BSPs missing JSON, with three containing
 embedded Momentum timer start+stop brushes. LOCAL vs online is significant.
 Extra/beta BSP download membership alone does not prove zone publication.
+
+The later **local** census found a second cause: Momentum Mod Playtest has 759
+approved names, but 39 lack JSON (including bhop). Exact SHA256 comparison found
+**38 local BSPs differ from the server build**. Only bhop_perspective matched;
+its public JSON also passed zone_on_build and was seeded to both Windows
+installs with exclusive creation. No existing zones or BSPs were overwritten.
+Do not misstate the fleet's complete approved coverage as local coverage.
+Those 38 need archived zones tied to their actual build, or an owner-approved
+map-version refresh. A filename match is not safe zone provenance. Missing and
+comparison manifests remain in the owned artifacts; BACKLOG records the next
+falsifier. Personal online cache files were neither uploaded nor overwritten.
+
 Existing mapwatch approved-zone fetching and measured compatibility donations
 remain the authority; arbitrary beta zones cannot be invented by renaming files.
 
@@ -107,11 +119,60 @@ back. 'Exhausted' means KSF returned a short terminal page, not that the website
 has reached the end of its current cached rows. User refresh shows filed rows;
 fetching is deliberately asynchronous, not an unbounded web scrape.
 
-## Delivery
+## Delivery and remaining gate — 2026-10-14 UTC
 
-Source verification complete. Clean-commit deployment, NanoPi staged tests and
-live hashes/behaviour are separate gates; record their result here after they act.
-The native engine and QC Build number must not move for this task.
+- Product source is published through d0ed3a311e2a7624e8f0ca95e285d43b466c8735;
+  native docs entry 592ff12cb, with final receipt recorded separately. All 20
+  backend suites passed on the NanoPi after the final changes. Momgrab's external
+  .mtv conversion fixture was absent and remains its explicit skip.
+- Zero-warning QC build from the clean e7af8c3 tree (QC bytes unchanged by later
+  backend-only commits). At about 09:04Z `build.ps1 -Jobs 8 -Pi` swapped the fleet
+  pair with .prev and restarted all 12 empty lobbies. It did NOT deliver the two
+  canonical Windows gamedirs: those were separately hash-guarded and deployed
+  at 09:12:07Z, retaining .prev and changing no protected preferences.
+- Both Windows installs and fleet: qwprogs
+  `890fb0a08798d1d29b76c1aba31e32080cd8d273c3e8fe74f4061f7d31e25f94`,
+  csprogs `eb17be0d6b424c9f8005be345740a0ac6cbbe6dd738632a7d5251bdb2cc0b24a`.
+  Both Windows menu.dat:
+  `b07df1f95ba71db09ebbb0b35a6989a1e1597388a03466f313b9eae649eeb198`.
+- Six backend/web runtime files matched the final committed bytes; private DB
+  backup was owner-only, schema17 served after validated-master graceful HUP.
+  Existing live test-file drift was preserved; tests ran from the owned stage,
+  not by overwriting unrelated installed fixtures.
+- Real public game-endpoint POSTs returned 202 for previously unfiled prosurf
+  and monolith bonus4. The paced worker filed them; public web GETs then exposed
+  **7 prosurf / 5 monolith Bonus4 records**, both exhausted. Null main holds 17,
+  exhausted. Fixed-worker recovery also filed 33 old owed boards (1,159 row
+  upserts); the final 30-request tick filed 219 rows. Not all those extra rows
+  belong to the selected bonus boards: the automatic crawl shares the budget.
+- `tools/test_reccheck.py`: 306 checks, zero failed. Same captured bytes from 273
+  existing local recordings: baseline168 faults, subject168, delta0. Native
+  reader source is unchanged; no owner recording or sidecar was rewritten.
+- The nginx exact-route change passed an OWNED unprivileged nginx syntax test
+  and actual loopback proxy control: selected map POST202; other board POST403.
+  The duplicate text/html MIME warning pre-exists in the unchanged gzip block.
+  Owned proxy was stopped and its pidfile removed.
+- **Public website button activation is still blocked on owner sudo.** The
+  existing root nginx snippet remains unchanged and rejects POST403. The ready
+  template is `/srv/nvme/ftesurf-site/ftesurf.nginx` (old bytes preserved as
+  `.pre-p699`). Proto's passwordless rights cover lobby restarts, not nginx.
+  No alternate privileged path or public GET-side write workaround was used.
+
+On the Pi, after reviewing that one exact-route addition:
+
+```sh
+sudo cp -a /etc/nginx/snippets/ftesurf.conf /etc/nginx/snippets/ftesurf.conf.pre-p699
+sudo install -m 644 /srv/nvme/ftesurf-site/ftesurf.nginx /etc/nginx/snippets/ftesurf.conf
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Then repeat public POST + selected-style GET/row witnesses before claiming the
+website fetch button operational. Existing site style filters/record reads and
+the in-game fetch path are already deployed. P699 did not move native pin/tag,
+QC Build or release feeds. The final receipt tree preserves the peer's published
+P700 source/pin update; it was not built or shipped by this task. Retain owned
+Windows/NanoPi roots for evidence/rollback and
+pending nginx/zone-version decisions; no owned background test process remains.
 
 The first live worker exposed a missing integration arm: topup_step supplied a
 three-cell key where watch's common filing seam needs four cells including rows.
