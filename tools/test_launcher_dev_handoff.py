@@ -162,6 +162,14 @@ def main():
     write = bind('WriteConsoleInputW', [w.HANDLE, c.c_void_p, w.DWORD, c.POINTER(w.DWORD)], w.BOOL)
     open_process = bind('OpenProcess', [w.DWORD, w.BOOL, w.DWORD], w.HANDLE)
     wait = bind('WaitForSingleObject', [w.HANDLE, w.DWORD], w.DWORD)
+    class Coord(c.Structure):
+        _fields_ = [('X', w.SHORT), ('Y', w.SHORT)]
+    class Rect(c.Structure):
+        _fields_ = [('Left', w.SHORT), ('Top', w.SHORT), ('Right', w.SHORT), ('Bottom', w.SHORT)]
+    class Info(c.Structure):
+        _fields_ = [('size', Coord), ('cursor', Coord), ('attr', w.WORD), ('window', Rect), ('max', Coord)]
+    screen_info = bind('GetConsoleScreenBufferInfo', [w.HANDLE, c.POINTER(Info)], w.BOOL)
+    screen_text = bind('ReadConsoleOutputCharacterW', [w.HANDLE, w.LPWSTR, w.DWORD, Coord, c.POINTER(w.DWORD)], w.BOOL)
     console_pids = bind('GetConsoleProcessList', [c.POINTER(w.DWORD), w.DWORD], w.DWORD)
     terminate = bind('TerminateProcess', [w.HANDLE, w.UINT], w.BOOL)
     user.IsWindow.argtypes, user.IsWindow.restype = [w.HWND], w.BOOL
@@ -194,7 +202,7 @@ def main():
             cmd = [os.environ['COMSPEC'], '/c', str(d / 'ftesurf.bat'), '+map', 'fixture_map', 'space value']
         p = subprocess.Popen(cmd, cwd=root, env=env, creationflags=0x10 | 0x40, startupinfo=si)
         (d / 'owner.json').write_text(json.dumps({'launcher_pid': p.pid, 'synthetic': True, 'hidden': True}))
-        attached, hin, process = False, None, None
+        attached, hin, hout, process = False, None, None, None
         child_handles = []
         try:
             def attached_now():
@@ -207,12 +215,25 @@ def main():
             assert hwnd and not user.IsWindowVisible(hwnd), 'owned console must remain hidden'
             hin = create('CONIN$', 0xC0000000, 3, None, 3, 0, None)
             assert hin != c.c_void_p(-1).value
+            hout = create('CONOUT$', 0xC0000000, 3, None, 3, 0, None)
+            assert hout != c.c_void_p(-1).value
             if enter:
                 def raw():
+                    nonlocal hout
+                    current = create('CONOUT$', 0xC0000000, 3, None, 3, 0, None)
+                    assert current != c.c_void_p(-1).value
+                    assert close(hout)
+                    hout = current
                     value = w.DWORD()
                     assert mode(hin, c.byref(value))
                     assert p.poll() is None
-                    return value.value & 7 == 0
+                    info, count = Info(), w.DWORD()
+                    assert screen_info(hout, c.byref(info))
+                    length = info.size.X * min(400, info.size.Y - info.window.Top)
+                    chars = c.create_unicode_buffer(length + 1)
+                    assert screen_text(hout, chars, length, Coord(0, info.window.Top), c.byref(count))
+                    ready = 'Play World of Surf?' in chars.value or 'WORLD OF SURF is ready.' in chars.value
+                    return value.value & 7 == 0 and ready
                 wait_for(raw, 'interactive Enter prompt never acted')
                 # This fresh hidden console belongs only to this fixture. Register
                 # a batch-created launcher too, so a failure cannot orphan it.
@@ -247,8 +268,8 @@ def main():
                 assert p.wait(timeout=8) == 0, 'launcher did not exit after spawn'
                 assert wait(process, 0) == 258, 'actor died when launcher exited'
                 assert lines[1] == '0', 'actor inherited/created the launcher console'
-            assert close(hin)
-            hin = None
+            assert close(hin) and close(hout)
+            hin = hout = None
             assert free()
             attached = False
             wait_for(lambda: not user.IsWindow(hwnd), 'launcher-owned console stayed open')
@@ -257,6 +278,8 @@ def main():
         finally:
             if hin:
                 assert close(hin)
+            if hout:
+                assert close(hout)
             if attached:
                 assert free()
             stop.write_text('stop only this owned actor\n')

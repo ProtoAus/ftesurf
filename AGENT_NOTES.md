@@ -6784,6 +6784,29 @@ measured evidence, not implied by preparing a feed.
   tests do NOT run full clean BUILDINFO/archive/receipt production provenance,
   real R2/HTTPS/SSH, native updater restart, or fleet/storage cutover.
 
+### Launcher resize / continuous-screen controls — P708 (2026-10-14)
+
+- A default Windows Terminal host can ignore SetConsoleWindowInfo while returning
+  success; SetConsoleScreenBufferSize then fails87 and the actual viewport stays
+  120x30. Do not grade the requested size. Use a uniquely owned ConPTY with actual
+  ResizePseudoConsole and independently read back its viewport/cells.
+- A redirected harness can pass its valid standard API-pipe handles into a ConPTY
+  child even without handle inheritance. Temporarily clear only the helper's std
+  handles for CreateProcess, then restore all three in finally. Adding a separate
+  CREATE_NEW_CONSOLE is NOT the same ConPTY and can create a visible fixture.
+  CreateProcess failure must close the owned ConPTY/drain thread; no CLI fallback.
+- Open CONOUT$ again after alternate-screen activation; a handle opened before
+  the TUI can still name the old buffer. Raw mode alone does not mean a question
+  is rendered: wait for exact prompt text before injecting Enter/arrow controls.
+- Count concurrent requests frozen BEFORE bodies. A server callback can linger
+  after delivering its final byte while the client legally begins its next job;
+  callback overlap is not an extra download worker. Preserve failed counters.
+- Whole-workflow styling: require one actual VT1049 enter/leave pair, continuous
+  raw input, live black-cell/header resize checks and restored mode on exit.
+  The current P704 launcher is already detached; use the retained pre-P704
+  preview for a wait-defect control. ConPTY/actors are not physical-terminal or
+  native GUI/game acceptance. Controls/failure history: tools/p708launcher.md.
+
 ### Automatic update finalization preparation — 2026-10-13 (not yet shipped)
 
 - Preserve the full owned source before replay onto newer published bases. The
