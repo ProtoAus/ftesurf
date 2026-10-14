@@ -25,7 +25,26 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-703
-patch    708
+patch    712
+# Patch 712: show the strafe trainer in native/Momentum/KSF replay, sampling
+# recorded yaw and resolved side movement on the file clock. Pause/rate/seek
+# cannot age viewer input into grades; bounded catchup hides partial results.
+# Missing moves/contact/physics are explicit; imported keys never borrow the
+# current lobby's air-rate target. Engine source/pin/tag and QC Build unchanged.
+# Delivery excludes the unapproved P710 presentation candidate; see tools/p712trainer.md.
+# Patch 711: recover exact-current KSF imports from retained originals without
+# another upstream request; bounded keyed provenance/digest checks and local
+# repair during host cooldown. Equal-time seed ID/date replacements clear old
+# demos; unchanged/unknown seed identity does not revoke a valid board binding.
+# Offline controls/regressions only; no QC/native build, live install, cron,
+# engine pin/tag, QC Build or release change. See tools/p711ksfrecovery.md.
+# Patch 710: prepare compatible World of Surf game/menu/HUD/lobby and package
+# presentation. Manifest NAME only; WOS compact badges, consistent menu title
+# passes and old/new lobby prefix recognition. All three VMs compile with zero
+# warnings; frozen-source audits and signed-updater regressions pass. Source
+# candidate only: no art/layout/runtime/archive/live acceptance or deployment.
+# Engine source/binaries/pin/tag, QC Build, legacy identity/URLs/data unchanged.
+# Evidence and remaining gates: tools/p710presentation.md.
 # Patch 708: black slim launcher, four real transfers, small Up/Down Yes/No,
 # and one continuously styled screen through checks/download/install/play/errors.
 # Full logo remains at40x20; first install reads Download World of Surf? without

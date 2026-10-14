@@ -136,6 +136,24 @@ float  rec_wt_ksfver;
 // `momdemo`: an import written from its own demo -- per-tick velocity and real
 // ground flags, which is what inferring its ramp contact needs (cl_infer.qc).
 float  rec_wt_momdemo;
+// Patch 712: bounded trainer walk, independent of the render/interpolation cursors.
+#define WT_TRN_BUDGET 512
+// CSQC is at its global limit; keep this cursor/state in allocated storage.
+typedef struct {
+	float at, last, have, moves, split;
+	float aa, speed, cap;
+	float broke;
+} wt_trn_t;
+wt_trn_t *wt_trn;
+#define wt_trn_at wt_trn->at
+#define wt_trn_last wt_trn->last
+#define wt_trn_have wt_trn->have
+#define wt_trn_moves wt_trn->moves
+#define wt_trn_split wt_trn->split
+#define wt_trn_aa wt_trn->aa
+#define wt_trn_speed wt_trn->speed
+#define wt_trn_cap wt_trn->cap
+#define wt_trn_broke wt_trn->broke
 float  *rec_wt_inf;             // per buffer line: contact inferred at that sample
 /*
   `momquality <ratio> <ceiling> <lowconf>` on an imported run: how far its
@@ -1122,6 +1140,8 @@ void() Watch_Scan =
 	rec_wt_endticks = 0;
 	rec_wt_recflags = -1;
 	rec_wt_tickrate = 0;
+	if (!wt_trn) wt_trn = memalloc(sizeof(wt_trn_t));
+	wt_trn_moves = wt_trn_aa = wt_trn_speed = wt_trn_cap = 0;
 	mrate           = 0;
 	ver            = 0;
 	rec_wt_track    = 0;
@@ -1174,6 +1194,8 @@ void() Watch_Scan =
 			rec_wt_foreign = TRUE;
 			rec_wt_source = argv(1);
 		}
+		if (argv(0) == "moves")
+			wt_trn_moves = (argv(1) == "wishvel" || argv(1) == "keys" || argv(1) == "recorded" || argv(1) == "buttons");
 		if (argv(0) == "momdemo")     rec_wt_momdemo  = TRUE;
 		if (argv(0) == "demodata")    rec_wt_momdemo  = stof(argv(1)) > 0;
 		if (argv(0) == "ksfdemo" && n >= 5)
@@ -1189,6 +1211,12 @@ void() Watch_Scan =
 		if (argv(0) == "pmpin")
 		{
 			rec_wt_graphgravity = Line_HeaderGravity(s);
+			vp = strstrofs(s, " airaccelerate=");
+			if (vp >= 0) wt_trn_aa = stof(substring(s, vp + 15, 24));
+			vp = strstrofs(s, " maxspeed=");
+			if (vp >= 0) wt_trn_speed = stof(substring(s, vp + 10, 24));
+			vp = strstrofs(s, " maxairspeed=");
+			if (vp >= 0) wt_trn_cap = stof(substring(s, vp + 13, 24));
 			// The file's own eye heights (sv_user.c:111 pins both by name).
 			vp = strstrofs(s, " viewheight=");
 			vq = strstrofs(s, " duckviewheight=");
@@ -1201,6 +1229,9 @@ void() Watch_Scan =
 			}
 		}
 	}
+
+	if (!rec_wt_foreign)
+		wt_trn_moves = (ver >= 3);
 
 	/*
 	  `movetickrate` WINS, by the grammar block over SV_RecOpen: "A reader that
@@ -3780,6 +3811,8 @@ void() Watch_Stop =
 	Watch_NavClear();
 	rec_wt_open = FALSE;
 	rec_wt_on   = FALSE;
+	if (trn_demo) Trn_Clear();
+	trn_demo = trn_demo_ready = trn_demo_missing = trn_demo_restart = FALSE;
 	Watch_Free();
 	Timer_SplitsClear();
 
@@ -3996,6 +4029,9 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 		      "segment column stay off.  Runs recorded from build 24 carry them.\n");
 
 	Watch_Seek(rec_wt_vt0);
+	Trn_Clear();
+	trn_demo = trn_demo_restart = TRUE;
+	trn_demo_ready = FALSE;
 	if (rec_wt_winseg >= 0)
 		print(sprintf("replay: stage %g window %.4f..%.4f s from %.4f (ticks %g..%g, %s)\n",
 		              rec_wt_winseg + 1, rec_wt_wint0, rec_wt_wint1, rec_wt_time,
@@ -4849,6 +4885,98 @@ void(vector scr) Watch_Draw =
   Per frame
 ===========================================================================
 */
+// No extra whole-file pass in Watch_Open: large demos already approach its QC budget.
+void() Watch_Trainer =
+{
+	local float i, n, t, dt, fl, st, yaw, side, sp, rateok;
+	local vector vel;
+	local string s;
+
+	ui_trn_on = cvar("hud_trainer");
+	if (!ui_trn_on)
+	{
+		if (trn_haveyaw || trh_n) Trn_Clear();
+		trn_demo_restart = TRUE;
+		trn_demo_ready = FALSE;
+		return;
+	}
+	ui_trn_split = cvar("hud_trainer_split");
+	if (trn_demo_restart || wt_trn_split != ui_trn_split || rec_wt_time < wt_trn_last)
+	{
+		Trn_Clear();
+		trn_clock = 1;              // avoid the sampler's zero-time flick sentinel in the pad
+		wt_trn_at = rec_wt_rec0;
+		wt_trn_have = FALSE;
+		wt_trn_broke = 0;
+		wt_trn_split = ui_trn_split;
+		trn_demo_restart = FALSE;
+	}
+	trn_demo_missing = !wt_trn_moves;
+	trn_demo_ready = FALSE;
+	trn_demo_contact = (rec_wt_v4 && (!rec_wt_foreign || rec_wt_inf));
+	trn_tick = rec_wt_tickrate;
+	trn_cap = wt_trn_cap;
+	trn_haveaa = (wt_trn_aa > 0 && wt_trn_speed > 0 && wt_trn_cap > 0);
+	trn_gain = Strafe_AirGain(wt_trn_aa, wt_trn_speed, trn_tick, 1, trn_cap);
+	trn_binds = Strafe_CapBinds(wt_trn_aa, wt_trn_speed, trn_tick, 1, trn_cap);
+	rateok = (trn_demo_contact && trn_haveaa);
+	if (trn_demo_missing)
+		return;
+
+	for (i = 0; i < WT_TRN_BUDGET; i = i + 1)
+	{
+		if (wt_trn_at >= rec_wt_recn) break;
+		s = bufstr_get(rec_wt_rec, wt_trn_at);
+		n = tokenize(s);
+		if (!Watch_IsSample(s))
+		{
+			if (argv(0) == "warp" || argv(0) == "resume" || argv(0) == "retry")
+			{
+				Trn_Break();
+				wt_trn_have = FALSE;
+			}
+			wt_trn_at = wt_trn_at + 1;
+			continue;
+		}
+		t = stof(argv(WT_C_T));
+		if (t > rec_wt_time) break;
+		if (n < 14)
+		{
+			trn_demo_missing = TRUE;
+			Trn_Break();
+			return;
+		}
+		yaw = stof(argv(WT_C_YAW));
+		side = stof(argv(WT_C_MOVE + 1));
+		vel = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)), stof(argv(WT_C_VEL + 2))];
+		fl = Watch_Flags(wt_trn_at);
+		st = TRS_AIR;
+		if (fl & (WT_F_RAMP | WT_F_RAMPI)) st = TRS_RIDE;
+		if (fl & WT_F_ONGROUND) st = TRS_GROUND;
+		sp = vlen([vel_x, vel_y, 0]);
+		dt = trn_tick;
+		if (wt_trn_have) dt = t - wt_trn_last;
+		// Repeated clocks contain no elapsed motion. Gaps cannot pair unrelated gestures.
+		if (dt < 0 || dt > 0.25)
+		{
+			Trn_Break();
+			dt = trn_tick;
+		}
+		while (wt_trn_broke < rec_wt_bkln)
+		{
+			if (rec_wt_bkl[wt_trn_broke] > wt_trn_at) break;
+			if (rec_wt_bkl[wt_trn_broke] == wt_trn_at) Trn_Break();
+			wt_trn_broke = wt_trn_broke + 1;
+		}
+		if (dt > 0) Trn_Sample(dt, yaw, side, sp, st, rateok);
+		wt_trn_last = t;
+		wt_trn_have = TRUE;
+		wt_trn_at = wt_trn_at + 1;
+	}
+	// A budget cut exposes no stale grades; the next frame resumes this same cursor.
+	trn_demo_ready = (i < WT_TRN_BUDGET);
+};
+
 void(float navfocus) Watch_Frame =
 {
 	local float dt, i, dtcl, was;
@@ -4978,6 +5106,7 @@ void(float navfocus) Watch_Frame =
 	}
 
 	Watch_Sample();
+	Watch_Trainer();
 	rec_wt_on = TRUE;
 
 	// `replay trace frames`: turnrate is ui_turnrate, i.e. the previous frame's.
