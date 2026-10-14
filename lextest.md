@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+## P712 — strafe trainer while watching demos
+
+With `hud_trainer 1`, watch a native, Momentum or KSF replay. Judge the L/R
+bands, the mouse-flick marks and signed SYNC milliseconds at your normal HUD
+scale; pause, change speed and scrub both ways. Older/newer jump selection
+still works where contact is recorded. Positive sync is a late key swap,
+negative is early; a held key without a nearby flick is not a measured swap.
+Imports lacking their physics pin show key timing without an air-rate letter
+grade. KSF v2 lacks ground contact, so it shows a continuous keys-only span,
+not fabricated jumps. Missing movement data says Inputs not recorded.
+The recorded movement direction is not proof of physical keyboard/SOCD order;
+resolution is limited by the demo's own samples. Real fleet clips and your
+preferred panel placement remain human acceptance. See `tools/p712trainer.md`.
+
 ## P710 — compatible game and package presentation candidate (not deployed)
 
 P705 art still awaits your choice; P710 is source preparation, not permission to

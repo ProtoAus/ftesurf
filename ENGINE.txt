@@ -25,7 +25,13 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-703
-patch    711
+patch    712
+# Patch 712: show the strafe trainer in native/Momentum/KSF replay, sampling
+# recorded yaw and resolved side movement on the file clock. Pause/rate/seek
+# cannot age viewer input into grades; bounded catchup hides partial results.
+# Missing moves/contact/physics are explicit; imported keys never borrow the
+# current lobby's air-rate target. Engine source/pin/tag and QC Build unchanged.
+# Delivery excludes the unapproved P710 presentation candidate; see tools/p712trainer.md.
 # Patch 711: recover exact-current KSF imports from retained originals without
 # another upstream request; bounded keyed provenance/digest checks and local
 # repair during host cooldown. Equal-time seed ID/date replacements clear old

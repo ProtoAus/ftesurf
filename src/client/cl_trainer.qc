@@ -111,6 +111,8 @@ float trn_j_v0, trn_j_v1;       // horizontal speed at take-off / last in the ai
 float trn_j_n;                  // strafes made in THIS jump; the ring keeps TRN_MAXS
 float ui_trn_split;             // hud_trainer_split, refreshed with the movevars
 float trn_feed;                 // `trainer feed`: an arm's authored TRS_*, 0 = the server's
+// Patch 712: demos feed recorded commands, not the viewer's outgoing input.
+float trn_demo, trn_demo_ready, trn_demo_missing, trn_demo_contact, trn_demo_restart;
 
 // --- the strafe ring: the open jump's, in block 0 ---------------------------
 float trn_n;                    // strafes in the ring, 0..TRN_MAXS
@@ -544,29 +546,10 @@ void() Trn_View =
 	trv_v1 = trh_v1[k];
 };
 
-/*
-  ONE SAMPLE PER OUTGOING COMMAND.  Called from CSQC_Input_Frame AFTER
-  PreStrafe_InputFrame, so what is read is the usercmd as it will actually
-  leave -- if the prestrafe assist has dropped +forward, the trainer sees the
-  cmd the server will run rather than the key the hand is on.  The spectate,
-  replay and ghost branches above it all return before this, which is correct:
-  none of those three is the player strafing.
-*/
-void() Trn_InputFrame =
+// Shared command-clock sampler. Replay never uses interpolated render angles or wall time.
+void(float dt, float yaw, float side, float sp, float st, float rateok) Trn_Sample =
 {
-	local float yaw, d, dt, side, dir, rate, ideal, q, sp, air, i, ts, st, contact;
-
-	ui_trn_on = cvar("hud_trainer");
-	if (!ui_trn_on)
-	{
-		if (trn_n || trn_haveyaw)
-			Trn_Clear();
-		return;
-	}
-	Trn_ReadVars();
-
-	dt  = input_timelength;
-	yaw = input_angles_y;
+	local float d, dir, rate, ideal, q, air, i, ts, contact;
 
 	// The first sample after a clear, a map change or the panel being switched
 	// on has no previous yaw to difference.  Take the reference and nothing
@@ -587,11 +570,9 @@ void() Trn_InputFrame =
 		return;
 	trn_clock = trn_clock + dt;
 
-	sp  = Trn_Speed();
 	// Patch 621: a jump is free air. A ramp ends it as the ground does, so a surf run is
 	// its transfers and not one flight (106 recordings: one flight a run at the median,
 	// five jumps). hud_trainer_split 0 is the old rule, the ride inside the jump.
-	st  = Trn_State();
 	contact = (st == TRS_RIDE);
 	air = (st == TRS_AIR);
 	if (contact && !ui_trn_split)
@@ -634,7 +615,6 @@ void() Trn_InputFrame =
 	  cannot tell them apart.  It does not guess: a zero closes the strafe and
 	  shows on the timeline as a gap, which is the true reading either way.
 	*/
-	side = input_movevalues_y;
 	dir  = 0;
 	if (side > 0) dir =  1;
 	if (side < 0) dir = -1;
@@ -751,7 +731,7 @@ void() Trn_InputFrame =
 	  ramp reports the half it can stand behind.
 	*/
 	ideal = 0;
-	if (trn_binds && !contact)
+	if (rateok && trn_binds && !contact)
 		ideal = Strafe_IdealTurn(sp, trn_gain, trn_tick);
 
 	if (ideal > 0.001)
@@ -765,14 +745,11 @@ void() Trn_InputFrame =
 			trn_s_gdur[i] = trn_s_gdur[i] + dt;
 		}
 
-		// Holding the key against the turn.  sidemove > 0 (right) belongs with
-		// a NEGATIVE yaw rate; the pairing is the one thing a beginner gets
-		// backwards, and it is invisible in a quality number because a rate is
-		// unsigned.  Counted only once the turn is committed, or a tremor at
-		// the top of a flick would read as the whole strafe being wrong.
-		if (trn_tsign && trn_tsign != dir && rate >= TRN_TURNMIN)
-			trn_s_wrong[i] = trn_s_wrong[i] + dt;
 	}
+	// Key/turn agreement is measurable even when contact or the air target is unknown.
+	if (ideal > 0.001 || trn_demo)
+	if (!contact && trn_tsign && trn_tsign != dir && rate >= TRN_TURNMIN)
+		trn_s_wrong[i] = trn_s_wrong[i] + dt;
 
 	// The trace.  One slot per tick, so the graph IS the measurement and not a
 	// resample of it.  Oldest-drops, same reason as the strafe ring.
@@ -790,6 +767,31 @@ void() Trn_InputFrame =
 	trn_p_r[trn_p_n] = (ideal > 0.001) ? (rate / ideal) : -1;
 	trn_p_d[trn_p_n] = dir;
 	trn_p_n = trn_p_n + 1;
+};
+
+// Discontinuities discard the open span, not completed history.
+void() Trn_Break =
+{
+	trn_n = trn_p_n = trn_j_n = 0;
+	trn_dir = trn_tsign = trn_flip_t = trn_kdir = trn_kt = 0;
+	trn_pend = -1;
+	trn_haveyaw = trn_air = FALSE;
+};
+
+void() Trn_InputFrame =
+{
+	if (trn_demo)
+		return;
+	ui_trn_on = cvar("hud_trainer");
+	if (!ui_trn_on)
+	{
+		if (trn_n || trn_haveyaw)
+			Trn_Clear();
+		return;
+	}
+	Trn_ReadVars();
+	Trn_Sample(input_timelength, input_angles_y, input_movevalues_y,
+	           Trn_Speed(), Trn_State(), TRUE);
 };
 
 // ---------------------------------------------------------------------------
@@ -836,13 +838,14 @@ vector(float sync) Trn_SyncColour =
 */
 string() Trn_Coach =
 {
-	local float i, n, gd, esum, ssum, sn, wrong, q, worst;
+	local float i, n, gd, esum, ssum, sn, wrong, q, worst, dur;
 
-	n = 0; gd = 0; esum = 0; ssum = 0; sn = 0; wrong = 0;
+	n = 0; gd = 0; esum = 0; ssum = 0; sn = 0; wrong = 0; dur = 0;
 	worst = 1;
 	for (i = trv_a; i < trv_e; i = i + 1)
 	{
 		n = n + 1;
+		dur = dur + trn_s_dur[i];
 		gd    = gd + trn_s_gdur[i];
 		esum  = esum + trn_s_esum[i];
 		wrong = wrong + trn_s_wrong[i];
@@ -860,6 +863,13 @@ string() Trn_Coach =
 		return "no strafe yet";
 	if (gd <= 0.0001)
 	{
+		if (trn_demo)
+		{
+			if (wrong > dur * 0.2) return "key fights your turn";
+			if (sn && fabs(ssum / sn) > 0.020)
+				return sprintf("keys %+.0f ms from flick", ssum / sn * 1000);
+			return trn_demo_contact ? "Keys only: physics unknown" : "Keys only: contact unknown";
+		}
 		// The reasons a tick is ungradeable, named rather than merged into one
 		// refusal.  "I was not told" is not "the server is set too low", and
 		// neither is "you are on a ramp" -- see Trn_ReadVars on the fallback.
@@ -1097,11 +1107,7 @@ void(vector scr) Trn_Draw =
 	if (!cvar("hud_trainer"))
 		return;
 
-	// A replay and a spectated player are somebody else's hands, and this panel
-	// is about yours.  Both of those also stop Trn_InputFrame being reached at
-	// all (CSQC_Input_Frame returns above it), so the data behind the panel
-	// would be the last live jump -- stale, and captioned as if it were theirs.
-	if (rec_wt_on || getstatf(STAT_FS_SPEC))
+	if (getstatf(STAT_FS_SPEC) && !trn_demo)
 		return;
 
 	Font_Set(ui_font_ui);
@@ -1147,6 +1153,12 @@ void(vector scr) Trn_Draw =
 		h = h + 12 * u + rows * rh;
 	if (strip)
 		h = h + TRN_STRIP * u;
+	if (trn_demo)
+	if (trn_demo_missing || !trn_demo_ready)
+	{
+		q = -1;
+		h = (3 + PLOT_BAND + 14) * u;
+	}
 
 	bp = [cvar("hud_trainer_x") * scr_x, cvar("hud_trainer_y") * scr_y, 0];
 	p  = [floor(bp_x - w * 0.5), floor(bp_y), 0];
@@ -1161,9 +1173,20 @@ void(vector scr) Trn_Draw =
 	Plot_Panel(p, [w, h], u);
 
 	// --- the header: the jump's grade, which is only about the hands ---------
-	y = p_y + Plot_Header(p, w, u, sz, "Strafe trainer",
+	y = p_y + Plot_Header(p, w, u, sz, trn_demo ? "Demo trainer" : "Strafe trainer",
 	                      (q < 0) ? "-" : sprintf("%s  %.0f%%", Trn_Grade(q), q * 100),
 	                      Plot_Quality(q));
+	if (trn_demo)
+	if (trn_demo_missing || !trn_demo_ready)
+	{
+		Plot_Text([p_x + 6 * u, y + 3 * u], trn_demo_missing ? "Inputs not recorded" : "Reading demo inputs...", hsz, SUI_THEME_DIM, 1);
+		trn_box_p = p;
+		trn_box_s = [w, h, 0];
+		trn_box_u = u;
+		HUD_Rect("trainer", p, [w, h], bp);
+		Font_Reset();
+		return;
+	}
 	// A kept jump that is not the newest says how far back it is.
 	if (trv_num > 0)
 	if (trv_num < trh_seq)
@@ -1315,6 +1338,11 @@ float(string cmd) Trn_Command =
 	if (argv(1) == "status")
 	{
 		Trn_View();
+		print(sprintf("trainer: demo %g ready %g missing %g contact %g tick %.6f\n",
+		              trn_demo, trn_demo_ready, trn_demo_missing, trn_demo_contact, trn_tick));
+		for (i = trv_a; i < trv_e; i = i + 1)
+			print(sprintf("trainer: sample %g dir %g dur %.6f sync %.6f wrong %.6f graded %.6f q %.6f\n",
+			              i - trv_a, trn_s_dir[i], trn_s_dur[i], trn_s_sync[i], trn_s_wrong[i], trn_s_gdur[i], Trn_Q(i)));
 		print(sprintf("trainer: state %g open %g strafes %g kept %g newest %g pin %g show %g\n",
 		              Trn_State(), trn_air, trn_n, trh_n, trh_seq, trn_pin, trv_num));
 		print(sprintf("trainer: not kept short %g empty %g split %g fed %g\n",

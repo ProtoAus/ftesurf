@@ -8565,6 +8565,29 @@ measured evidence, not implied by preparing a feed.
   staged DLL while the rest was still being copied. `-BuildNumber 88` draws the
   drift warning with `qcbuild 89` in it, and a relative `-FteRoot` completes.
 
+### Demo trainer inputs (Patch 712)
+
+- REMOVING THE REPLAY HIDE IS NOT A FIX. The live sampler is downstream of the
+  replay/ghost input returns, so it would show the viewer's last jump. The shared
+  Trn_Sample consumes each file sample on its recorded clock, not Watch's
+  interpolated angles, viewer commands, playback multiplier or rendered dt.
+- DO NOT ADD ANOTHER WHOLE-FILE PASS TO WATCH_OPEN. Its existing inference/board
+  passes already approach the VM instruction budget on long files. The trainer
+  walks at most 512 records per frame; backwards seek rebuilds with an explicit
+  Reading demo inputs placeholder, never partially reconstructed grades.
+- IMPORTED INPUT IS NOT A PHYSICS PIN. Momentum and KSF movements can measure
+  key/flick timing without authentic air-rate parameters. Do not borrow server
+  cvars to award them a letter grade. KSF v2's buttons-1 proxy lacks ground:
+  keep its continuous input span and label contact unknown, not fake jumps.
+- THE OLD LIVE PIXEL ARM HAS A CONTROL FAILURE HERE. At 1280x720 Vulkan,
+  tools/p621trn.py finds 365 pixels in the retired strip rectangle in BOTH the
+  unmodified control and subject. Its numeric jump/history/timing assertions
+  pass. Do not repair unrelated HUD pixels or call this a full suite pass.
+- P710 IS AN EXPLICITLY WITHHELD PRESENTATION CANDIDATE. A clean origin/main
+  build can still include changes whose author forbids deployment. P712's
+  delivery snapshot uses the inspected pre-P710 runtime plus only this feature.
+  Public source retains both; do not silently ship the candidate from a rebase.
+
 ### The trainer's jumps and their history (Patch 621) — 2026-10-10
 
 - A JUMP IS FREE AIR. It was take-off to landing by the ground flag alone, and
