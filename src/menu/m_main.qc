@@ -418,6 +418,8 @@ strbuf ms_dltier;
   build, kept in data/mapbuild.txt.  All "" where they do not apply.
 */
 strbuf ms_var, ms_varof, ms_pick;
+strbuf ms_enabled, ms_zoned;     // per BUILD; network state overrides local file probes
+#define MAP_NOZONE_ESC "^xf66"
 float  ms_nvar;                 // rows that carry a second build
 float  ms_bswrow, ms_bswidx;    // the row whose switch was drawn last, and its
                                 // place in the view: `ui_build` names the control
@@ -2160,6 +2162,41 @@ float() ui_dl_kb_ready =
 	return dl_have_kb > 0;
 };
 
+void() ui_pool_load =
+{
+	local float i, d, j, found;
+	local string pat, nm;
+	local searchhandle h;
+	local hashtable zones;
+
+	if (ms_enabled >= 0) buf_del(ms_enabled);
+	if (ms_zoned >= 0) buf_del(ms_zoned);
+	ms_enabled = buf_create();
+	ms_zoned = buf_create();
+	zones = hash_createtab(4096, EV_FLOAT);
+	for (d = 0; d < 2; d++)
+	{
+		pat = (d == 0) ? "maps/zones/local/*.json" : "maps/zones/online/*.json";
+		h = search_begin(pat, 0, TRUE);
+		if (h < 0) continue;
+		for (j = 0; j < search_getsize(h); j++)
+		{
+			// Search returns paths: remove the known directory and .json suffix.
+			nm = strtolower(search_getfilename(h, j));
+			nm = substring(nm, strlen(pat) - 6, strlen(nm) - strlen(pat) + 1);
+			hash_add(zones, nm, 1, HASH_REPLACE | EV_FLOAT);
+		}
+		search_end(h);
+	}
+	for (i = 0; i < ms_count; i++)
+	{
+		bufstr_set(ms_enabled, i, "1");
+		found = hash_get(zones, strtolower(bufstr_get(ms_name, i)), 0, EV_FLOAT);
+		bufstr_set(ms_zoned, i, found ? "1" : "0");
+	}
+	hash_destroytab(zones);
+};
+
 void() ui_dl_load =
 {
 	local filestream fh;
@@ -2198,10 +2235,14 @@ void() ui_dl_load =
 		// does not survive the calls below.
 		of = "";
 		if (n >= 11)
+		if (argv(10) != "-")
 			of = argv(10);
 		row = hash_get(byname, key, -1, EV_FLOAT);
+		if (row < 0) row = ms_count;
+		bufstr_set(ms_enabled, row, (n >= 13) ? argv(12) : "1");
+		if (n >= 13) bufstr_set(ms_zoned, row, argv(11));
 
-		if (row >= 0)
+		if (row < ms_count)
 		{
 			bufstr_set(ms_varof, row, of);
 			// Already on disk.  Whether it turned up recently enough to badge.
@@ -2750,6 +2791,7 @@ void() ui_load_maps =
 	// and gamemode columns.  Run the other way round and every downloadable map
 	// would list as untiered, which is how a real tier 1 and "we have no idea"
 	// come to look identical.
+	ui_pool_load();
 	ui_dl_load();
 
 	ui_meta_load();
@@ -2862,6 +2904,11 @@ void() ui_refilter =
 		// Patch 652: a second build is on its map's row, behind the switch.
 		if (bufstr_get(ms_varof, i) != "")
 			continue;
+		if (bufstr_get(ms_enabled, i) == "0")
+		{
+			if (bufstr_get(ms_var, i) == "") continue;
+			if (bufstr_get(ms_enabled, stof(bufstr_get(ms_var, i))) == "0") continue;
+		}
 		if (q != "" && strstrofs(strtolower(bufstr_get(ms_name, i)), q) < 0)
 		{
 			// ...unless it is the name of the build folded into this row.
@@ -3151,8 +3198,9 @@ float(float row) ui_eff =
 {
 	if (row < 0 || row >= ms_count)
 		return row;
-	if (bufstr_get(ms_pick, row) == "1")
 	if (bufstr_get(ms_var, row) != "")
+	if (bufstr_get(ms_pick, row) == "1" || bufstr_get(ms_enabled, row) == "0")
+	if (bufstr_get(ms_enabled, stof(bufstr_get(ms_var, row))) != "0")
 		return stof(bufstr_get(ms_var, row));
 	return row;
 };
@@ -3161,6 +3209,7 @@ string() ui_selected_name =
 {
 	if (ms_selected < 0 || ms_selected >= ms_count)
 		return "";
+	if (bufstr_get(ms_enabled, ui_eff(ms_selected)) == "0") return "";
 	return bufstr_get(ms_name, ui_eff(ms_selected));
 };
 
@@ -3173,6 +3222,8 @@ void(float row, float css) ui_pick_set =
 	if (row < 0 || row >= ms_count)
 		return;
 	if (bufstr_get(ms_var, row) == "")
+		return;
+	if (bufstr_get(ms_enabled, css ? stof(bufstr_get(ms_var, row)) : row) == "0")
 		return;
 	bufstr_set(ms_pick, row, css ? "1" : "");
 	fh = fopen("data/mapbuild.txt", FILE_WRITE);
@@ -3191,7 +3242,7 @@ void(float row, float css) ui_pick_set =
 // `ui_build <map> [mom|css]`: the switch's headless twin, and its report.
 void(string mp, string pick) ui_build_print =
 {
-	local float i, row, v;
+	local float i, row, v, j, visible;
 
 	if (ms_name < 0 || !ms_count)
 		ui_load_maps();             // only when nothing is loaded: a reload moves rows
@@ -3204,6 +3255,19 @@ void(string mp, string pick) ui_build_print =
 		print(sprintf("ui_build: %s is not in the list (%g rows, %g with two builds)\n",
 		              mp, ms_count, ms_nvar));
 		return;
+	}
+	visible = FALSE;
+	for (j = 0; j < ms_viewcount; j++)
+		if (stof(bufstr_get(ms_view, j)) == row) visible = TRUE;
+	print(sprintf("ui_pool: %s enabled %s zones %s visible %g\n",
+	              bufstr_get(ms_name, row), bufstr_get(ms_enabled, row),
+	              bufstr_get(ms_zoned, row), visible));
+	if (bufstr_get(ms_var, row) != "")
+	{
+		v = stof(bufstr_get(ms_var, row));
+		print(sprintf("ui_pool: %s enabled %s zones %s linked %s\n",
+		              bufstr_get(ms_name, v), bufstr_get(ms_enabled, v),
+		              bufstr_get(ms_zoned, v), bufstr_get(ms_name, row)));
 	}
 	if (bufstr_get(ms_var, row) == "")
 	{
@@ -3225,7 +3289,7 @@ void(string mp, string pick) ui_build_print =
 	if (ms_bswrow == row)
 		print(sprintf(" switch [cs_bmom%g] [cs_bcss%g];", ms_bswidx, ms_bswidx));
 	print(sprintf(" pick %s; plays %s; lists %g\n",
-	              (bufstr_get(ms_pick, row) == "1") ? "css" : "mom",
+	              (ui_eff(row) != row) ? "css" : "mom",
 	              bufstr_get(ms_name, ui_eff(row)), stof(bufstr_get(ms_lst, row))));
 };
 
@@ -3244,7 +3308,7 @@ float(vector pos, float row, float idx) ui_build_switch =
 	local string id, lbl;
 	local vector p;
 
-	css = (bufstr_get(ms_pick, row) == "1");
+	css = (ui_eff(row) != row);
 	ms_bswrow = row;
 	ms_bswidx = idx;
 	for (k = 0; k < 2; k = k + 1)
@@ -3258,6 +3322,11 @@ float(vector pos, float row, float idx) ui_build_switch =
 		             (k == css) ? COL_ACCENT : (hov ? COL_ROW_HOVER : COL_ROW), 1);
 		sui_text([p_x + (BSW_W - stringwidth(lbl, TRUE, BSW_SZ)) * 0.5, p_y + 3], BSW_SZ,
 		         lbl, (k == css) ? SUI_THEME_WELL : COL_DIM, 1, 0);
+		if (bufstr_get(ms_enabled, k ? stof(bufstr_get(ms_var, row)) : row) == "0")
+		{
+			sui_text([p_x + 2, p_y + 3], BSW_SZ, "off", COL_DIM, 1, 0);
+			continue;
+		}
 		if (hov)
 			sui_tooltip_for(id, k ? "Play KSF's Counter-Strike: Source build of this map."
 			                      : "Play Momentum Mod's build of this map.", 2);
@@ -7206,6 +7275,8 @@ void(vector screensize) screen_create =
 
 				mnmf = ui_fit_text(bufstr_get(ms_name, real),
 				                   rs_x - 170 - ROW_RPAD - dlg - wrw, SZ_ROW);
+				if (bufstr_get(ms_zoned, er) != "1")
+					mnmf = strcat(MAP_NOZONE_ESC, mnmf);
 				sui_text([rp_x + 162, rp_y + 4], SZ_ROW, mnmf,
 				         (on || hot) ? COL_ACCENT : COL_TEXT, 1, 0);
 
@@ -7226,6 +7297,8 @@ void(vector screensize) screen_create =
 				local string sub, smode, mdep;
 				// Two builds: the switch says where it comes from (drawn below).
 				sub = (bufstr_get(ms_var, real) != "") ? "" : ui_srcname(stof(bufstr_get(ms_src, real)));
+				if (bufstr_get(ms_zoned, er) != "1")
+					sub = strcat(MAP_NOZONE_ESC, "no zones^7  ", sub);
 				smode = ui_mode_name(stof(bufstr_get(ms_modev, real)));
 				if (smode != "")
 					sub = sprintf("%s  %s|^7  %s", sub, SUI_ESC_MUTED, smode);
@@ -7554,6 +7627,7 @@ void() m_init =
 	ms_have = ms_new = ms_dlkb = -1;
 	ms_wr = ms_dltier = ms_dataq = ms_deps = -1;
 	ms_var = ms_varof = ms_pick = -1;
+	ms_enabled = ms_zoned = -1;
 	ms_bswrow = -1;
 	// The saved value is read in ui_create_open, beside its registercvar.
 	ms_showall = ms_applied_showall = 0;
@@ -7756,7 +7830,7 @@ void(vector screensize) m_draw =
 		  poll does not depend on where in the layout the rows ended up.
 		*/
 		Lob_Poll();
-		Mdl_Ask();                  // Patch 652: the directory's map list, once a run
+		Mdl_Ask();                  // live map pool, at most once a minute
 		float acts = _action_elements_index;
 		screen_create(screensize);
 
@@ -8069,6 +8143,7 @@ float(string cmd) m_consolecommand =
 		if (argv(1) == "ask")
 		{
 			mdl_state = MDLS_IDLE;
+			mdl_next = 0;
 			Mdl_Ask();
 		}
 		print(sprintf("ui_mapnet: state %g rows %g not kept %g\n", Mdl_State(), Mdl_Rows(), mdl_bad));

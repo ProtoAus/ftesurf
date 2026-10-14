@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow"><title>Map manifest · FTESurf admin</title>
+{% include "_admin_style.html" %}
+<style>
+  tr.enabled { background:#18281f; } tr.disabled { background:#191b20; color:#8b94a2; }
+  tr.nozone .mapname { color:#ff9d9d; } .mapname { font-weight:600; font-size:.95rem; }
+  td { padding:.65rem .5rem; } label { display:flex; flex-direction:column; gap:.2rem; }
+  .filters label { flex:1 1 8rem; } .filters select { width:100%; }
+  #message { min-height:1.5em; } .sub { font-size:.75rem; color:#8b94a2; overflow-wrap:anywhere; }
+</style>
+</head>
+<body>
+<header><h1>FTESurf admin</h1><nav class="nav"><a href="/admin/">Fleet</a><a href="/admin/maps" aria-current="page">Maps</a><a href="/admin/runs">Runs</a><a href="/admin/accounts">Accounts</a></nav>
+<span class="spacer"></span><form method="post" action="/admin/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Sign out</button></form></header>
+<main>
+<h2>Map manifest</h2>
+<p class="note">One row per installed build. MOM and KSF tiers are independent, as in Create Server.
+Enabled maps are highlighted. Disabling hides that build in the updated game menu and refuses new lobby requests;
+it does not delete maps, zones, times, or interrupt a running lobby. Manual console map commands and configured lobby rotations are not changed.</p>
+<p class="note">Red means <strong>no zone file</strong> on the server: the map can be played, but not timed.
+A related-build link shares imported boards, not native FTE records; zones are copied only after a separate compatibility check.</p>
+<div class="card" style="margin-top:1rem">
+<div class="row filters">
+<label>Search<input id="q" type="text" placeholder="Map or related build…" spellcheck="false"></label>
+<label>Pool<select id="pool"><option value="">All maps</option><option value="on">Enabled</option><option value="off">Disabled</option></select></label>
+<label>Mode<select id="mode"><option value="">All modes</option><option>surf</option><option>bhop</option></select></label>
+<label>Library<select id="source"><option value="">Both libraries</option><option value="m">Momentum</option><option value="k">KSF / CS:S</option></select></label>
+<label>Zones<select id="zones"><option value="">All</option><option value="yes">Has zones</option><option value="no">Missing zones</option></select></label>
+<label>Tier (either)<select id="tier"><option value="">All tiers</option>{% for t in range(1,11) %}<option value="{{ t }}">T{{ t }}</option>{% endfor %}<option value="0">Unrated</option></select></label>
+<label>Builds<select id="links"><option value="">All builds</option><option value="yes">Related builds</option></select></label>
+<label>Sort<select id="sort"><option value="name">Map / build group</option><option value="enabled">Enabled first</option><option value="disabled">Disabled first</option><option value="missing">Missing zones first</option><option value="mt">Momentum tier</option><option value="kt">KSF tier</option><option value="size">Size</option></select></label>
+</div>
+<div class="row"><button id="reload">Refresh</button><span id="counts" role="status"></span></div>
+<p id="message" class="note" role="status"></p>
+<div class="scroll"><table><thead><tr><th>Map / related build</th><th>MOM</th><th>KSF</th><th>Zones</th><th>Pool</th><th>Action</th></tr></thead><tbody id="rows"></tbody></table></div>
+<div class="row"><button id="prev">Previous</button><span id="page"></span><button id="next">Next</button></div>
+</div></main>
+<script>
+"use strict";
+const CSRF = {{ csrf | tojson }};
+const BOARD = {{ board_url | default('/board/') | tojson }};
+const $ = id => document.getElementById(id);
+let maps = [], filtered = [], page = 0, busy = false;
+const SIZE = 75;
+function cell(tr, text, cls) { const td = document.createElement('td'); td.textContent = text; if (cls) td.className = cls; tr.appendChild(td); return td; }
+function error(e) { $('message').textContent = e.message; $('message').className = 'note bad'; }
+async function request(url, options) {
+  const r = await fetch(url, Object.assign({credentials:'same-origin', cache:'no-store'}, options));
+  if (r.status === 401) { location.href = '/admin/login'; throw new Error('Sign in again'); }
+  const j = await r.json(); if (!r.ok || j.error) throw new Error(j.error || 'Request failed'); return j;
+}
+function filter() {
+  const q = $('q').value.trim().toLowerCase(), pool = $('pool').value, tier = $('tier').value;
+  const roots = new Set(maps.filter(m => m.of).map(m => m.of));
+  filtered = maps.filter(m => (!q || (m.map + ' ' + m.of).includes(q)) &&
+    (!pool || m.enabled === (pool === 'on')) && (!$('mode').value || m.mode === $('mode').value) &&
+    (!$('source').value || m.src.includes($('source').value)) &&
+    (!$('zones').value || m.zoned === ($('zones').value === 'yes')) &&
+    (tier === '' || (tier === '0' ? !m.mt && !m.kt : m.mt === +tier || m.kt === +tier)) &&
+    (!$('links').value || m.of || roots.has(m.map)));
+  const sort = $('sort').value;
+  function key(m) { return sort === 'enabled' ? +!m.enabled : sort === 'disabled' ? +m.enabled : sort === 'missing' ? +m.zoned : sort === 'mt' || sort === 'kt' ? (m[sort] || 11) : sort === 'size' ? -m.kb : 0; }
+  filtered.sort((a,b) => key(a)-key(b) || (a.of || a.map).localeCompare(b.of || b.map) || a.map.localeCompare(b.map));
+  page = Math.min(page, Math.max(0, Math.ceil(filtered.length/SIZE)-1)); draw();
+}
+function draw() {
+  $('rows').replaceChildren();
+  filtered.slice(page*SIZE, (page+1)*SIZE).forEach(m => {
+    const tr = document.createElement('tr'); tr.className = (m.enabled ? 'enabled' : 'disabled') + (m.zoned ? '' : ' nozone');
+    const td = cell(tr, ''); const a = document.createElement('a'); a.className = 'mapname'; a.textContent = m.disp;
+    a.href = BOARD.replace(/\/$/, '') + '/#m=' + encodeURIComponent(m.map); td.appendChild(a);
+    const sub = document.createElement('div'); sub.className = 'sub';
+    sub.textContent = [m.mode, m.src === 'km' ? 'MOM + KSF' : m.src === 'm' ? 'Momentum' : m.src === 'k' ? 'KSF / CS:S' : 'Other', m.kb ? (m.kb/1024).toFixed(1)+' MB' : '', m.of ? 'Related build of '+m.of : ''].filter(Boolean).join(' · '); td.appendChild(sub);
+    cell(tr, m.mt ? 'T'+m.mt : '—'); cell(tr, m.kt ? 'T'+m.kt : '—');
+    cell(tr, m.zoned ? 'Has zones' : 'NO ZONES', m.zoned ? '' : 'note bad');
+    cell(tr, m.enabled ? 'Enabled' : 'Disabled'); const action = cell(tr, '');
+    const button = document.createElement('button'); button.textContent = m.enabled ? 'Disable' : 'Enable'; button.className = m.enabled ? 'danger' : 'primary'; button.disabled = busy;
+    button.onclick = async () => {
+      busy = true; draw();
+      try { await request('/admin/api/maps', {method:'POST', body:new URLSearchParams({csrf:CSRF,map:m.map,enabled:m.enabled?'0':'1'})}); await load(); }
+      catch(e) { error(e); } finally { busy = false; draw(); }
+    }; action.appendChild(button); $('rows').appendChild(tr);
+  });
+  $('counts').textContent = filtered.length+' shown / '+maps.length+' installed · '+maps.filter(m => m.enabled).length+' enabled · '+maps.filter(m => !m.zoned).length+' missing zones';
+  $('page').textContent = 'Page '+(page+1)+' / '+Math.max(1, Math.ceil(filtered.length/SIZE));
+  $('prev').disabled = page === 0; $('next').disabled = (page+1)*SIZE >= filtered.length;
+}
+async function load() { try { const j = await request('/admin/api/maps'); maps = j.maps; $('message').textContent = ''; filter(); } catch(e) { error(e); throw e; } }
+['q','pool','mode','source','zones','tier','links','sort'].forEach(id => $(id).addEventListener(id === 'q' ? 'input' : 'change', () => {page=0; filter();}));
+$('prev').onclick = () => {page--; draw();}; $('next').onclick = () => {page++; draw();};
+$('reload').onclick = () => load().catch(() => {}); load().catch(() => {});
+</script></body></html>

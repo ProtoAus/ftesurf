@@ -1547,6 +1547,8 @@ def migrate():
         # Patch 660: Steam's picture for a board row's player who is no account
         # of ours (steamsync.people).  Not a schema bump, for momusers' reason.
         conn.execute(BOARDPICS_DDL)
+        import mapmanifest
+        conn.execute(mapmanifest.DDL)
         conn.commit()
         if RANKED_LINKED:
             moved = accounts.ranked_now(conn, TIERS_IMPORTED)
@@ -2212,6 +2214,13 @@ def join_map():
         return _join_reply(404, {"error": "that map is not installed on this server",
                                  "map": mapname})
 
+    import mapmanifest
+    try:
+        if mapname in mapmanifest.disabled(get_db()):
+            return _join_reply(403, {"error": "that map is disabled in the map pool",
+                                     "map": mapname})
+    except sqlite3.Error:
+        return _join_reply(503, {"error": "map pool unavailable"})
     timed = 1 if mapname in zoned else 0
 
     db = get_db()
@@ -2476,7 +2485,7 @@ def public_state(verdict, decision):
 # imported ones.  A native row stays with the build it was set on.
 VARIANTS_TTL = 120
 CATALOGUE_MAX = 8 << 20     # mapwatch's catalogue.json is 230 KB
-_variants = {"at": None, "of": {}}
+_variants = {"at": None, "of": {}, "ports": {}}
 
 
 def variant_base(mapname, now=None):
@@ -2490,18 +2499,26 @@ def variant_base(mapname, now=None):
         at = _variants["at"]
         if at is not None and 0 <= now - at < VARIANTS_TTL:
             return _variants["of"].get(mapname)
-    of = {}
+    of, ports = {}, {}
     try:
         with open(os.path.join(DATA_DIR, "mapwatch", "catalogue.json"), "rb") as fh:
             doc = json.loads(fh.read(CATALOGUE_MAX).decode("utf-8"))
         for k, row in doc["maps"].items():
             base = clean_map(row.get("of")) if isinstance(row, dict) else None
-            if base:
-                of[k] = base            # read by a cleaned name, so any other key is inert
+            if base and clean_map(k) == k and k != base:
+                of[k] = base
+                # A real KSF roster name carries its own imported records. A
+                # synthetic _css copy does not: its imports stay on the root.
+                if row.get("port") is True:
+                    ports[k] = base
+        of = {k: b for k, b in of.items() if b not in of}
+        ports = {k: b for k, b in ports.items() if k in of}
+        for b in set(of.values()):
+            of[b] = b
     except (OSError, ValueError, KeyError, AttributeError, TypeError, RecursionError):
-        of = {}
+        of, ports = {}, {}
     with _maps_lock:
-        _variants["at"], _variants["of"] = now, of
+        _variants["at"], _variants["of"], _variants["ports"] = now, of, ports
     return of.get(mapname)
 
 
@@ -2510,9 +2527,13 @@ def _board_scope(mapname, base, col):
     it is the text every board has always had."""
     if not base:
         return col + "map=?", (mapname,)
-    return ("%smap IN (?,?) AND %smap = CASE WHEN %stier IN (%s) THEN ? ELSE ? END"
-            % (col, col, col, ",".join("?" * len(TIERS_IMPORTED))),
-            (mapname, base) + TIERS_IMPORTED + (base, mapname))
+    imports = sorted({base} | {k for k, b in _variants["ports"].items() if b == base})
+    tiers = ",".join("?" * len(TIERS_IMPORTED))
+    names = ",".join("?" * len(imports))
+    return ("((%stier IN (%s) AND %smap IN (%s)) OR"
+            " (%stier NOT IN (%s) AND %smap=?))"
+            % (col, tiers, col, names, col, tiers, col),
+            TIERS_IMPORTED + tuple(imports) + TIERS_IMPORTED + (mapname,))
 
 
 def _board_name_key(name):
@@ -4444,21 +4465,17 @@ def game_maplist():
     reason: the address the game talks to forwards a fixed list of paths."""
     path = os.path.join(DATA_DIR, "mapwatch", "mapdl.txt")
     try:
-        st = os.stat(path)
-        sig = (st.st_mtime_ns, st.st_size)
-        if not 0 < st.st_size <= MAPLIST_MAX:
+        import mapmanifest
+        if os.stat(path).st_size > MAPLIST_MAX:
             return fail(404, "no map list")
-        with _maps_lock:
-            body = _maplist["body"] if _maplist["sig"] == sig else None
-        if body is None:
-            with open(path, "rb") as fh:
-                body = fh.read(MAPLIST_MAX)
-            with _maps_lock:
-                _maplist["sig"], _maplist["body"] = sig, body
-    except OSError:
+        bsp, zoned = map_index()
+        body = mapmanifest.game_list(path, get_db(), bsp, zoned)
+    except FileNotFoundError:
         return fail(404, "no map list")
+    except (OSError, ValueError, sqlite3.Error):
+        return fail(503, "map list unavailable")
     resp = Response(body, status=200, mimetype="text/plain")
-    resp.headers["Cache-Control"] = "max-age=300"
+    resp.headers["Cache-Control"] = "no-store"
     return resp
 
 
@@ -4714,6 +4731,8 @@ def web_map():
     offset = clamp_int(request.args.get("offset"), 0, MAX_RUNS, 0)
 
     bsp, zoned = map_index()
+    base = variant_base(mapname)
+    scope, scope_args = _board_scope(mapname, base, "")
     try:
         db = get_db()
         # The board LIST counts every readable tier per leg, so the leg tabs
@@ -4728,23 +4747,23 @@ def web_map():
             "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS nr,"
             "       SUM(CASE WHEN tier IN (?,?) THEN 1 ELSE 0 END) AS nim,"
             "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS nm"
-            "  FROM runs WHERE map=? AND tier IN (?,?,?)"
+            "  FROM runs WHERE " + scope + " AND tier IN (?,?,?)"
             " GROUP BY 1, 2, 3 HAVING nr + nim > 0 ORDER BY 1, 2, 3",
-            (TIER_RANKED,) + TIERS_IMPORTED + (TIER_MOMENTUM, mapname, TIER_RANKED)
-            + TIERS_IMPORTED).fetchall()]
+            (TIER_RANKED,) + TIERS_IMPORTED + (TIER_MOMENTUM,) + scope_args
+            + (TIER_RANKED,) + TIERS_IMPORTED).fetchall()]
         if not boards and not (mapname in bsp and mapname in zoned):
             return fail(404, "no such map")
         # AFTER the 404, so only a map we have just agreed exists is queued and
         # a sweep of invented names fills nothing.  See MAPWANT_SQL.
-        note_want(db, mapname)
+        note_want(db, base or mapname)
         if not any(raw.values()) and boards:
             have = [(b["track"], b["leg"], b["style"]) for b in boards]
             track, leg, style = next(
                 (d for d in WEB_DEFAULT_BOARDS if d in have), have[0])
-        counts = board_counts(db, mapname, track, leg, style)
+        counts = board_counts(db, mapname, track, leg, style, base)
         n = sum(counts[t] for t in TIER_EXPAND.get(tier, (tier,)))
         rows = board_rows(db, mapname, track, leg, tier, style,
-                          WEB_PAGE, offset)
+                          WEB_PAGE, offset, base)
         pics = avatars(now, db)["site"]
     except sqlite3.Error as exc:
         log.exception("web map db error: %s", exc)
@@ -4767,6 +4786,8 @@ def web_map():
            "offset": offset, "limit": WEB_PAGE, "rows": rows}
     if tiers is not None and mapname in tiers:
         out["mt"] = tiers[mapname]
+    if base:
+        out["builds"] = sorted(k for k, b in _variants["of"].items() if b == base and k in bsp)
     return _json(out, "max-age=15")
 
 
@@ -5666,6 +5687,7 @@ def _register_admin():
         # caller is.  One definition, injected.
         bp = build_blueprint(app, log, connect, LOBBY_TTL,
                              client_identity=client_identity, disk=disk_status,
+                             maps=dict(index=map_index, data=DATA_DIR, clean=clean_map),
                              runs=dict(replay_file=replay_file, restand=restand,
                                        restage=restage, stage_counts=stage_counts,
                                        public_state=public_state,

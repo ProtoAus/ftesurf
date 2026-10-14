@@ -2227,6 +2227,27 @@ def case_extra_and_lock():
     check("...and lines off the CDN, off the name rules or off surf/bhop install nothing",
           lib(maps), ["surf_app.bsp", "surf_beta.bsp", "surf_both.bsp"])
 
+    # Held extra/beta zones can seed a named port, but not a shifted course.
+    beta_build = TZ.vbsp((-4096, -4096, -4096), (4096, 4096, 4096), ("start_dest",))
+    shifted = TZ.vbsp((20000, 20000, 20000), (30000, 30000, 30000), ("start_dest",))
+    wb, mb, sb = setup({"surf_beta": {"bsp": beta_build, "zones": None, "tier": None}},
+                       {"surf_beta_ksf": Z("surf_beta_ksf", "port"),
+                        "surf_beta_fix": Z("surf_beta_fix", "shifted")},
+                       held=[("surf_beta", beta_build), ("surf_beta_ksf", beta_build),
+                             ("surf_beta_fix", shifted)])
+    wb.hidden = {"surf_beta"}
+    os.makedirs(sb)
+    lines(sb, "surf_beta %s %s%s.bsp" % (sha(beta_build), W.MOM_CDN, uuid_of("surf_beta")))
+    os.makedirs(os.path.join(mb, "zones", "online"))
+    with open(os.path.join(mb, "zones", "online", "surf_beta.json"), "wb") as fh:
+        fh.write(TZ.zones())
+    tick(mb, sb, "--go")
+    cb = json.load(io.open(os.path.join(sb, "catalogue.json"), encoding="utf-8"))["maps"]
+    check("held extra donor links KSF ports; compatible zones copy, shifted zones do not",
+          (cb["surf_beta_ksf"].get("of"), cb["surf_beta_ksf"].get("port"),
+           zfile(mb, "surf_beta_ksf") == TZ.zones(), zfile(mb, "surf_beta_fix")),
+          ("surf_beta", True, True, None))
+
     # ...even on a run where the CDN refuses the Beta file and KSF is answering.
     w3, maps3, state3 = setup({"surf_bk": {"bsp": bsp("beta's"), "zones": None, "tier": None}},
                               {"surf_bk": Z("surf_bk", "ksf's")})

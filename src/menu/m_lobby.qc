@@ -979,21 +979,31 @@ string(string ln) Mdl_Row =
 	ln = sprintf("%s %s %s %s %s", ln, argv(6), argv(7), argv(8), argv(9));
 	if (n >= 11)
 		ln = strcat(ln, " ", argv(10));
+	if (n >= 13)
+	{
+		if (argv(11) != "0" && argv(11) != "1") return "";
+		if (argv(12) != "0" && argv(12) != "1") return "";
+		ln = strcat(ln, " ", argv(11), " ", argv(12));
+	}
 	return strcat(ln, "\n");
 };
+
+float mdl_next;
 
 void() Mdl_Ask =
 {
 	local string dir;
 
-	if (mdl_state != MDLS_IDLE)
+	if (mdl_state == MDLS_ASKED)
 		return;
+	if (time < mdl_next) return;
 	if (cvar("rec_terms") < FS_TERMS_ONLINE)
 		return;
 	dir = cvar_string("lobby_dir");
 	if (dir == "")
 		return;
 	mdl_state = MDLS_ASKED;
+	mdl_next = time + 60;
 	mdl_req = Lob_NextReq();
 	if (!uri_get(strcat(dir, "/api/board?maps=1"), mdl_req))
 	{

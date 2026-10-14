@@ -1032,6 +1032,51 @@ def played():
 DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
+def held_extra_donors(extra, inv, zidx, zdir, maps_dir, hashes):
+    out = set()
+    for k, row in extra.items():
+        if k not in inv or k not in zidx:
+            continue
+        bsp = os.path.join(maps_dir, inv[k] + ".bsp")
+        if file_sha1(bsp, hashes) != row["sha"]:
+            continue
+        try:
+            with open(os.path.join(zdir, zidx[k] + ".json"), "rb") as fh:
+                raw = fh.read(MAX_ZONE_BYTES + 1)
+            if len(raw) > MAX_ZONE_BYTES:
+                continue
+            doc = json.loads(raw.decode("utf-8-sig"))
+            if zone_shaped(doc) and zone_on_build(raw, bsp) is True:
+                out.add(zidx[k])
+        except (OSError, ValueError, RecursionError, UnicodeDecodeError, OverflowError):
+            print("  %s: held beta zones could not be checked: not a donor" % k)
+    return out
+
+
+def link_ports(cat, inv, momentum_names):
+    """Related builds, not timer equivalence. Only real KSF roster names,
+    one port suffix, and a held Momentum root. Never strip version suffixes.
+    zonefit's independent geometry gate still decides whether zones transfer.
+    """
+    for name, row in cat.items():
+        if name not in inv or name in momentum_names or row.get("of") or "k" not in row.get("src", ""):
+            continue
+        for suffix in PORTS:
+            if not name.endswith("_" + suffix):
+                continue
+            base = name[:-len(suffix) - 1]
+            if base in momentum_names and base in inv:
+                row["of"], row["port"] = inv[base], True
+            break
+    # The display row can name KSF's independent rating even when KSF uses
+    # only its suffixed name. Conflicting ratings are not collapsed into one.
+    for base in momentum_names:
+        ratings = {r.get("ktier") for r in cat.values()
+                   if r.get("of", "").lower() == base and r.get("ktier")}
+        if base in cat and not cat[base].get("ktier") and len(ratings) == 1:
+            cat[base]["ktier"] = ratings.pop()
+
+
 def list_rows(maps_dir, inv, cat, seen, today, cutoff):
     """The map list's lines: data/mapdl.txt's grammar, which the menu reads
     (ui_dl_load) and tools/mapscan.py also writes --
@@ -1738,13 +1783,17 @@ def run(a):
             count("one arrived meanwhile: left", zw)
         _save(sp, st)
     # ZONES GIVEN TO A SECOND BUILD (the module docstring).  The donor is an
-    # approved map held at the published build, with the zone file this box
-    # times it by; the target is held, is not Momentum's own, and has no zone
+    # approved map, or checked extra, held at the published build, with the
+    # zone file this box times it by; the target is not Momentum's own and has no zone
     # file anywhere the server reads.
     given, nofit = table("given"), table("nofit")
     local = stems(os.path.join(os.path.dirname(os.path.dirname(os.path.normpath(S.RUNS_DIR))),
                                "maps", "zones", "local"), ".json")
     donors = set(verified) | atbuild
+    # Beta/extra maps have no API zoneHash. The owner's existing zones can
+    # still seed a port when the BSP matches extra.tsv AND the zones fit that
+    # donor build. Port geometry/restart names are checked independently below.
+    donors |= held_extra_donors(extra, inv, zidx, zdir, a.maps, hashes)
 
     def donor_of(t):
         if t in made:
@@ -1756,7 +1805,7 @@ def run(a):
 
     for t in sorted(inv):
         d = donor_of(t)
-        if (d is None or d not in mom or d not in inv or zidx.get(d) not in donors
+        if (d is None or (d not in mom and d not in extra) or d not in inv or zidx.get(d) not in donors
                 or t in names or t in extra or t in local):
             continue                    # `names`: Momentum's own map, usable row or not
         have = zsha(t) if t in zidx else None
@@ -1870,6 +1919,7 @@ def run(a):
                 and kv not in extra:
             cat[kv] = {"name": inv[kv], "mode": ksf[k]["mode"], "src": "k",
                        "ktier": ksf[k]["tier"], "of": inv[k]}
+    link_ports(cat, inv, names | set(extra))
     if len(read) == 2:
         _save(cp, {"at": now, "maps": cat, "momnames": sorted(names)})
     else:

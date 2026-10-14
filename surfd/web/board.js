@@ -425,6 +425,16 @@
     title.textContent = body.disp;
     var badge = mtBadge(body.mt);
     if (badge) { title.appendChild(document.createTextNode(' ')); title.appendChild(badge); }
+    if (body.builds && body.builds.length > 1) {
+      var builds = el('div', 'muted');
+      builds.appendChild(document.createTextNode('Related builds: '));
+      body.builds.forEach(function (name, i) {
+        if (i) { builds.appendChild(document.createTextNode(' · ')); }
+        builds.appendChild(link('', hashFor(name, v.track, v.leg, v.style, v.tier), name));
+      });
+      builds.title = 'Imported times are shared; native FTE times stay with the build they were set on.';
+      title.appendChild(builds);
+    }
     renderTabs(v, body.counts || {});
     $('rows').textContent = '';
     var rows = body.rows || [];

@@ -407,6 +407,41 @@ unset, surfd registers no `/admin` routes at all and behaves exactly as it did
 before the panel existed. `test_admin.py` asserts that first, because "off by
 default" is a claim until something checks it.
 
+### Map manifest and pool
+
+**Maps** in the admin navigation opens `/admin/maps`: a browser counterpart to
+Create Server, one row per installed build with MOM/KSF tiers, source, size,
+related build and zone-file status. Search and filter by pool state, mode,
+library, zones, tier and related builds; sort enabled/disabled first, missing
+zones, tier, name/group or size. Enabled rows are highlighted; missing-zone
+names are red. Actions require the existing admin session, CSRF token and
+same-origin checks.
+
+Enable/disable is per build and persists in `map_pool` in the directory DB.
+Missing policy entries default to enabled. Disabled rows stay in the game feed
+with an explicit flag (omitting them cannot disable an already mounted BSP).
+Updated game menus refresh this feed at most once per minute while open, hide
+disabled builds and refuse selecting a disabled side of a build switch. The
+join allocator refuses a disabled map even for an older client. This does not
+delete files/history, evict a current lobby, change configured rotations or
+prevent an explicit console `map` command. An offline client uses its last
+saved policy, or defaults enabled if it has never fetched one.
+
+The mapwatch catalogue is the common `of` link source. It links a real KSF
+roster name with a known port suffix to a held Momentum root (approved or
+extra/beta), never strips `_v2`/`_new`, and never guesses arbitrary `_css`
+names: synthetic `_css` builds still require the archive comparison. Both game
+and web boards share imported records across the group; native FTE records
+remain on the exact build. Related-build links are not proof of identical
+geometry. Zone transfer keeps its separate compatibility gate, preserves local
+and edited zones, and now admits a held beta donor only on its extra.tsv BSP
+hash with well-shaped zones that fit that donor's world/restart targets.
+
+Falsifiers: `python surfd/test_mappool.py`, `python surfd/test_variants.py`,
+`python surfd/test_mapwatch.py`; acting menu/filter controls:
+`python tools/mappool_smoke.py --qc-artifacts <NoDeploy output> --output-dir
+<owned task root>/menu` (screenshots retained, no install/player-data swaps).
+
 ### Turning it on
 
     cd /srv/nvme/surfd && ./setup_admin.sh

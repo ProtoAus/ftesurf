@@ -151,14 +151,15 @@ def main():
     with open(os.path.join(WATCH, "mapdl.txt"), "wb") as fh:
         fh.write(body)
     r = c.get("/api/board?maps=1", environ_base={"REMOTE_ADDR": "10.9.0.2"})
-    check("the list is served as it was written, as text, without a map being named",
-          (r.status_code, r.data == body, r.mimetype, r.headers.get("Cache-Control")),
-          (200, True, "text/plain", "max-age=300"))
+    check("the list carries per-build zone/pool flags without caching policy",
+          (r.status_code, r.data.endswith(body.splitlines()[-1] + b" - 0 1\n"),
+           r.mimetype, r.headers.get("Cache-Control")),
+          (200, True, "text/plain", "no-store"))
     with open(os.path.join(WATCH, "mapdl.txt"), "ab") as fh:
         fh.write(b"dl surf_new surf m 1 9 2026-10-12 1 1 0\n")
     os.utime(os.path.join(WATCH, "mapdl.txt"), ns=(10 ** 18, 10 ** 18))
     r = c.get("/api/board?maps=1", environ_base={"REMOTE_ADDR": "10.9.0.3"})
-    check("a list rewritten since is the one served", r.data.endswith(b"2026-10-12 1 1 0\n"), True)
+    check("a list rewritten since is the one served", r.data.endswith(b"2026-10-12 1 1 0 - 0 1\n"), True)
     keep, S.MAPLIST_MAX = S.MAPLIST_MAX, 16
     r = c.get("/api/board?maps=1", environ_base={"REMOTE_ADDR": "10.9.0.4"})
     S.MAPLIST_MAX = keep

@@ -625,6 +625,11 @@ class AdminError(Exception):
     """A control was refused. The message is shown to the admin verbatim."""
     status = 400
 
+    def __init__(self, message, status=None):
+        super().__init__(message)
+        if status is not None:
+            self.status = status
+
 
 class RunChanged(AdminError):
     """The replay was resubmitted since the page showed it."""
@@ -1142,7 +1147,7 @@ def tail_file(path, lines=LOG_TAIL_LINES):
 # --------------------------------------------------------------------------
 
 def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
-                    runs=None, disk=None, bans=None):
+                    runs=None, disk=None, bans=None, maps=None):
     """Create and configure the /admin blueprint, or return None if disabled.
 
     `app` is configured here rather than by the caller because the cookie
@@ -1369,6 +1374,34 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                                have_runs=runs is not None,
                                have_bans=bans is not None)
 
+    @bp.get("/maps")
+    def maps_page():
+        if not logged_in():
+            return redirect(url_for("admin.login_form"))
+        return render_template("admin_maps.html", csrf=csrf_token(),
+                               board_url=setting("SURFD_BOARD_URL", "/board/"))
+
+    @bp.get("/api/maps")
+    def api_maps():
+        if not logged_in():
+            return jsonify(error="not logged in"), 401
+        if maps is None:
+            return jsonify(error="map manifest unavailable"), 503
+        import mapmanifest
+        conn = None
+        try:
+            conn = db_connect()
+            bsp, zoned = maps["index"]()
+            rows = mapmanifest.manifest(os.path.join(maps["data"], "mapwatch", "mapdl.txt"),
+                                        conn, bsp, zoned)
+            return jsonify(maps=rows)
+        except (OSError, ValueError, sqlite3.Error):
+            log.exception("admin map manifest unavailable")
+            return jsonify(error="map manifest unavailable"), 503
+        finally:
+            if conn is not None:
+                conn.close()
+
     @bp.get("/api/state")
     def state():
         """Everything the page renders, as JSON. Polled by the panel."""
@@ -1480,6 +1513,34 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
                 return jsonify({"ok": False, "error": str(exc)}), 502
         wrapper.__name__ = fn.__name__
         return wrapper
+
+    @bp.post("/api/maps")
+    @control
+    def api_maps_set():
+        if maps is None:
+            raise AdminError("map manifest unavailable", 503)
+        name = maps["clean"](request.form.get("map"))
+        enabled = request.form.get("enabled")
+        if not name or enabled not in ("0", "1"):
+            raise AdminError("bad map or enabled flag")
+        bsp, _zoned = maps["index"]()
+        if name not in bsp:
+            raise AdminError("map is not installed", 404)
+        conn = None
+        try:
+            conn = db_connect()
+            with conn:
+                conn.execute("INSERT INTO map_pool(map,enabled,updated) VALUES(?,?,?)"
+                             " ON CONFLICT(map) DO UPDATE SET enabled=excluded.enabled,"
+                             " updated=excluded.updated", (name, int(enabled), int(time.time())))
+            log.info("admin map pool: %s %s", name, "enabled" if enabled == "1" else "disabled")
+            return "%s %s" % (name, "enabled" if enabled == "1" else "disabled")
+        except sqlite3.Error:
+            log.exception("admin map pool write failed")
+            raise AdminError("map pool write failed", 503)
+        finally:
+            if conn is not None:
+                conn.close()
 
     def need_rcon():
         if not rcon_password:

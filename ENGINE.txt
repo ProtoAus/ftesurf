@@ -25,7 +25,10 @@ commit   4148e72923e617a79bf8ed16474cc49143fb72fc
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-693
-patch    696
+patch    698
+# Patch 698: held Momentum/KSF port links in menu and web boards, checked beta
+# zone donors, red missing-zone labels and an authenticated admin pool manifest.
+# QC/web/tools only; engine commit/tag and qcbuild are unchanged.
 # Patch 696: remove the rejected wave illustration entirely; full-width centered
 # World of Surf logo and download progress only. Existing sheen/keys/guards intact.
 # Forty-two tests and six piped/six native-console regressions pass, including
