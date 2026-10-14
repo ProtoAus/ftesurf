@@ -5022,6 +5022,31 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   unsupported barrier enables world correction outside actor area. Keep original
   rejection; explicitly diagnose this known control interaction, not product bug.
   tools/p690brushfixture.md; artifacts/brush-sameworld[-v2]-20261013/.
+- Later passive lifecycle continuation (55PNGs/five boots) binds raw batches and
+  real reload/resort events at exact P688/merged sources, without shader-body/
+  parser/rebuild calls. Identical65-line additive observers; samples1..8, zero
+  overflow. Both observerOFF/ON/OFF sets and all11 production P688 returns exact.
+  Diagnostic P688 activation reload changes red/blue/green sort5->11; one actual
+  resort reverses blue/red/black into opaque black plus red/blue; mode1 center
+  (64,0,127). Diagnostic merged has no sort changes/resorts, blue/red order,
+  center(127,0,64). Observed diagnostic records, NOT production causality: each
+  diagnostic's nine mode1 PNGs differs20604pixels from its production boot,
+  so18 frozen transfer failures remain; mode2 exact. Within-boot observer parity
+  and identical source do NOT prove boot-time nonperturbation. Normal/-O reports
+  retain all18 failures plus NEW SPECIFIC native observer1bit/source/overflow/
+  footer/material controls. Earlier rejected protocols/manifests/gates unchanged.
+  tools/p690brushfixture.md; artifacts/brush-order-20261013/.
+- Minimal m-rel builds:37 inherited compiler warnings/0new plus222 Make grouped-
+  target warnings each, retained separately. First checker mixed the categories
+  and failed; source/log/failure retained. Shared ARCHLIBS hashes unchanged. Five
+  pairs quitrc0/native8/protected1223/install2/fixture absence restore; recorder
+  306/0 and corpus/reader/count/fault parity unchanged. Parent review only.
+  Next startup probe: -noworkers before initialization, worker_count AND
+  worker_status zero-live/pending ACTED replies, unchanged diagnostic/production/
+  P688-return with registration/rescan records. NOT run yet. Stable rebucketing
+  is a separate possible product investigation, not an accepted fix. No forced
+  resort/flush/reparse/retry selection, mask/widening/mode2 subset rescue or new
+  arbitrary rotated-brush/default2/performance/deployment acceptance.
 - Stale r_waterinfo MarkLeaves age is NOT cache-action proof. Q1BSP_MarkLeaves
   common/q1bsp.c:2227 returns same-cluster cvis BEFORE marktime at2275. Actual
   stationary cache0 reported wanted0/inuse0 plus stale14.1s/false causal cache

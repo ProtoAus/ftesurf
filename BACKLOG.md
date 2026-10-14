@@ -80,10 +80,19 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   remains REJECTED. First driver-metadata failure stays ungraded; V2 also retains
   a hidden native onepixel control and invalid pane-only ON/OFF protocol premise.
   Follow-up sites: Mod_ResortShaders/Shader_DoReload batch-list lifecycle and legacy
-  GLBE_SubmitMeshes sortlist order. Source list-prepend reversal is a lead, NOT
-  observed causation; mod_batchlist itself reparses shader bodies. Falsifier:
-  acted source-bound order/resort diagnostic with observer-OFF/ON/OFF pixel parity,
-  then exact P688/merged/P688-return same-world angle/mode/default preservation.
+  GLBE_SubmitMeshes sortlist order. A passive source-bound55PNG/five-boot diagnostic
+  now observes P688 activation sort5->11/resort1/red-blue and merged resort0/
+  blue-red, with their expected intersection colors. Samplers1..8/zero overflow
+  and observerOFF/ON/OFF exact; all11 production P688 returns exact. However,
+  each diagnostic's nine mode1 images differs20604pixels from its own production
+  capture:18 frozen transfer failures. Gate REJECTED; diagnostic lifecycle is NOT
+  production causality. Native controls add new specific failures; older rejected
+  protocols/receipts unchanged. mod_batchlist still reparses shader bodies.
+  Next falsifier: -noworkers before initialization, worker_count AND worker_status
+  zero-live/pending ACTED replies, bound material-registration/rescan sequencing
+  and exact unchanged diagnostic/production/P688-return default/mode/angle pixels.
+  NOT run yet. Stable rebucketing is a possible separate product investigation,
+  not a claimed fix; no forced resort/reparse/flush or favorable retry selection.
   Separate brush action from world correction enabled by removing its barrier;
   controls must add a NEW specific failure, not hide behind existing rejection.
   No mask/widened gate/subset rescue or candidate mode1 bug attribution.

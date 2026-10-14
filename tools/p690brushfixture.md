@@ -185,15 +185,59 @@ fixture/config/data/content files and two canonical clients are restored/unchang
 The two staged resources and created maps directory return to absent. Unique
 source/protocol/raw/108PNGs/failures/receipts retained. Parent review only.
 
+## Passive batch-order/lifecycle follow-up — transfer REJECTED
+
+A separately frozen five-boot capture binds raw loaded batches and real reload/
+resort events without Shader_GetShaderBody or mod_batchlist. Minimal m-rel
+P68873322dff/mergeda8e705787 diagnostic clients use an identical65-line additive
+observer. Bounded static receipts record reload reasons, sort changes and list
+order before/after actual resorts; the sampler only reads loaded fixture fields.
+No reparse, remap, pointer write or forced resort. Exact source/stamps/patches/
+binaries/compiler commands/raw/PNGs are retained, not deployed.
+
+The55-PNG production-P688/diagnostic-P688/production-merged/diagnostic-merged/
+production-P688-return matrix has valid source/state/fixture/closure receipts:
+
+- Both diagnostic boots have exact observerOFF/ON/OFF fullframe parity. Samples
+  1..8 ACT with zero overflow; order/events stay unchanged through yaw0/45/0 and
+  mode1/2/1. All11 production P688 returns are exact.
+- Diagnostic P688: CL_ParseServerData/ca_active reload changes red/blue/green
+  sort5->11. One actual resort reverses old bucket5 blue/red/black into bucket11
+  red/blue plus opaque black. Final mode1 intersection is(64,0,127).
+- Diagnostic merged: no sort changes or resorts. Final bucket11 blue/red gives
+  mode1 intersection(127,0,64). These are observed diagnostic lifecycle records,
+  not merely the earlier source-only prepend suspicion.
+- Nevertheless, EACH diagnostic's nine mode1 images differs20,604pixels from
+  its own production capture; both mode2 images are exact. The frozen gate is
+  **REJECTED with18 diagnostic-production transfer failures**. Within-boot
+  observer parity/exact P688 return cannot rescue it. Identical observer source
+  does not imply identical load lifecycle or prove boot-time nonperturbation.
+- Normal/`-O` grades give byte-identical valid JSON with all18 failures. Native
+  in-memory observer-onepixel/source/overflow/footer/missing-material controls
+  add NEW specific failures on holding predicates; original raw/PNGs unchanged.
+  No older rejected protocol/manifest/gate was rewritten.
+
+Builds each have37 inherited compiler warnings/zero NEW; all222 Make grouped-
+target warnings are retained separately. The first build checker mixed the two
+categories and failed; original source/log/failure retained. Shared dependency-
+cache hashes unchanged. Recorder306/0 and canonical corpus/reader/count/fault
+aggregates unchanged. All five owned client/server pairs quitrc0; native8,
+protected1223/install2 and absent fixture targets/directories restore. Parent
+review only; no engine/product/default/deployment/performance acceptance.
+
 ## Next gate
 
-Before more preservation captures, source-bound diagnose legacy world-batch order
-and the shader-resort lifecycle WITHOUT changing order through the observer.
-Pre-register a default-only control proving the observer acts and does not change
-pixels, then exact P688/merged/P688-return same-world angle/mode returns. Distinguish
-real brush footprint from the separate expected world correction when OFF removes
-the barrier. Every native defect control must target a comparison whose required
-predicate is not already failing; a rejected subject cannot be its own falsifier.
+Isolate shader/model startup sequencing, not a favorable order chosen by retries.
+Existing -noworkers applies before worker initialization; bind worker_count AND
+worker_status zero-live/pending replies, not the cvar request alone. Test unchanged
+diagnostic/production/P688-return and record whether material registration precedes
+activation rescan. That experiment is NOT run here. Stable rebucketing is a possible
+separate product investigation, not an accepted fix or permission to force a
+resort/flush/reparse during preservation testing. Mode1 causal transfer remains
+open. Distinguish real brush footprint from separate world correction enabled
+when OFF removes the barrier. Every native defect control must target a comparison
+whose required predicate is not already failing; a rejected subject cannot be
+its own falsifier.
 Do not widen the exact gate, mask the intersection or call mode2 subset agreement
 a completed arbitrary rotated-brush acceptance. Broader animated/oriented/lit
 sprites, alias/studio models, weapons/depthhack, portal/reflection captures and

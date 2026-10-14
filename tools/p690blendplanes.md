@@ -135,9 +135,17 @@ all10 mode1 cross-binary comparisons still differ20,604pixels. Mode2 ON matches
 and OFF correction acts, but the complete gate remains REJECTED, including a
 native onepixel control hidden by an existing failure and an invalid pane-only
 ON/OFF premise. Initial driver-hash metadata failure is retained separately;
-no manifest/gate was rewritten or observed subset accepted. Next gate is an
-acted, non-perturbing source-bound legacy batch-order/shader-resort diagnostic,
-not another arbitrary-model/default2/performance claim.
+no manifest/gate was rewritten or observed subset accepted. A later passive
+55PNG/five-boot observer now binds actual reload/resort/list order and exact
+within-boot observerOFF/ON/OFF pixels. Diagnostic P688 has activation sort5->11/
+resort1/red-blue; diagnostic merged resort0/blue-red. But each diagnostic's nine
+mode1 PNGs differs20,604pixels from its own production capture:18 transfer
+failures, frozen gate REJECTED. All11 production P688 returns and mode2 diagnostic/
+production pixels are exact; those cannot rescue boot-time causal transfer.
+Next startup-sequencing probe binds -noworkers with zero-worker/pending actor
+readbacks and unchanged-source production/diagnostic returns. Not run yet;
+no forced resort/reparse/flush, stable-rebucket fix or arbitrary-model/default2/
+performance acceptance is claimed. Details: [brush gate](p690brushfixture.md).
 
 Remaining unmeasured scope: hardware tessellation, external-projection runtime,
 arbitrary model/sprite/weapon native certification and broad all-map/GPU/perf
