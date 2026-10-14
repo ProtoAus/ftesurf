@@ -57,7 +57,11 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   a seeded reduced-authority control confirms the outside object still survives
   completion; `tools/native_staging_windows.md`. This gates existing safe
   retirement, NOT unreferenced deletion. No hostile ancestor-swap/hardlink
-  guarantee is claimed.
+  guarantee is claimed. The bounded full-superset/cleanup-only proposal and
+  executable process-cut falsifiers are in `tools/native_retirement_protocol.md`;
+  this is design/model acceptance only, NOT an implemented orphan fix. Real
+  retirement interruption/delete-failure and retained-generation handoff gates
+  remain open.
   Release 0.1.25 remains P687; source acceptance does not deploy recovery to any
   canonical/fleet binary or certify peer deployments.
 

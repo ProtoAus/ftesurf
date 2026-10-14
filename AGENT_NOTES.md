@@ -6187,6 +6187,40 @@ Accepted frozen02:11scenarios/22natural job0/full-export phases,22inventories/
 orphan deletion, file/directory flush, hostile-root or deployment acceptance.
 Contract/commands/provenance: `tools/native_staging_windows.md`.
 
+### Bounded restart-safe retirement proposal and process-cut model — 2026-10-14
+
+A reduced pending journal cannot recover resolved candidates after interruption;
+completion also unlinks authority before purge, and the void purge helper does
+not preserve removal outcomes. Closing only reduced publication is incomplete.
+The reviewed proposal retains the complete bounded signed transaction row set in
+one journal, recomputes resolution, retires only after publication/completion,
+then checks journal removal LAST. Failed/held/corrupt/unreadable stage candidates
+retain authority, not silent deletion or a broad storage scan. This can block
+future in-game updates indefinitely; do not overwrite retained generations.
+
+Cleanup-only retries of genuinely completed content must be nonfatal and not
+spend/reset content attempts. Exhausted UNRESOLVED content still refuses BEFORE
+mutation; moving the budget gate below installation is not a fix. An admitted
+content pass that completes but leaves cleanup outstanding must publish the
+bumped count. Legacy reduced/no-journal inputs cannot retroactively adopt orphans.
+
+`tools/update_retirement_protocol.py` is an in-memory executable proposal, not
+native code or a filesystem cleanup tool. Trusted signed tuples/protection
+classifications and real byte digests support independent survivor/shared-hash
+oracles. Tests enumerate168 process cuts (44 ordinary/shared +92 blocked/missing
++32 admitted-completion),
+require acted valid removal and retained pending/corrupt controls, and reject
+source-shaped legacy reduction/unlink actors. Full completion must reject every
+unreadable signed destination, including preserved/outside-reduced-journal paths:
+cached bytes are not proof of current readability. Compute expected shared pending
+hashes independently from fixture bytes/policy, never by calling the implementation's
+pending predicate; an always-empty mutation must still fail the oracle.
+They do NOT verify signatures,
+install content, prove disk durability, launcher behavior or native outcomes.
+Source seams/availability decision/native falsifiers:
+`tools/native_retirement_protocol.md`. The engine orphan follow-up remains open;
+no patch/pin/version bump, release or deployment is authorized by model acceptance.
+
 ### Default HTTPS native/menu drivers and real return census — P689, 2026-10-13
 
 `tools/test_update_default_https.py` uses the exact archived real bootstrap and
