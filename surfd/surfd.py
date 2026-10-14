@@ -4690,7 +4690,8 @@ def ksf_topup_request():
     conn = connect()
     try:
         conn.execute("PRAGMA busy_timeout=50")
-        body, code = ksftopup.enqueue(conn, (variant_base(mp) or mp, track, leg, style), now)
+        body, code = ksftopup.enqueue(conn, (variant_base(mp) or mp, track, leg, style), now,
+                                     os.path.join(DATA_DIR, 'ksf', 'maps'))
     except sqlite3.Error:
         return fail(503, "queue busy; try again")
     finally:
@@ -4825,7 +4826,8 @@ def web_map():
     out = {"v": 1, "t": now, "map": mapname,
            "disp": bsp.get(mapname, mapname), "boards": boards,
            "tier": tier, "counts": counts,
-           "ksf_topup": ksftopup.status(db, (base or mapname, track, leg, style)),
+           "ksf_topup": ksftopup.status(db, (base or mapname, track, leg, style),
+                                       os.path.join(DATA_DIR, 'ksf', 'maps')),
            "track": track, "leg": leg, "style": style, "n": n,
            "have": 1 if (mapname in bsp and mapname in zoned) else 0,
            "bsp": 1 if mapname in bsp else 0,

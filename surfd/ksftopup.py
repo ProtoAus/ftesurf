@@ -4,6 +4,9 @@ Forward is `clean` (KSF mode 0). No URL, player id, or filename is accepted.
 The importer acknowledges only AFTER filing the durable cached board rows.
 """
 
+import json
+import os
+
 SQL = """
 CREATE TABLE IF NOT EXISTS ksftopup (
     map TEXT NOT NULL, track INTEGER NOT NULL, leg INTEGER NOT NULL,
@@ -25,14 +28,45 @@ def count(db, key):
                       " AND style=? AND tier='ksf'", key).fetchone()[0]
 
 
-def status(db, key):
+def known_leg(db, key, cache=None):
+    if db.execute("SELECT 1 FROM runs WHERE map=? AND track=? AND leg=?"
+                  " AND tier='ksf' LIMIT 1", key[:3]).fetchone():
+        return True
+    # Bootstrap a not-yet-filed leg only from our importer's bounded public
+    # metadata cache, never a request-supplied count or an HTTP-side fetch.
+    if cache is None or not db.execute("SELECT 1 FROM runs WHERE map=?"
+                                      " AND tier='ksf' LIMIT 1", key[:1]).fetchone():
+        return False
+    try:
+        with open(os.path.join(cache, key[0] + '.json'), 'rb') as f:
+            raw = f.read(131073)
+        if len(raw) > 131072:
+            return False
+        doc = json.loads(raw)
+    except (OSError, ValueError, RecursionError):
+        return False
+    rows = doc if isinstance(doc, list) else [doc]
+    for row in rows:
+        if not isinstance(row, dict) or row.get('name') != key[0]:
+            continue
+        track, leg = key[1:3]
+        if track > 0:
+            n = row.get('b_count')
+            return leg == 0 and type(n) is int and 0 < track <= n <= 1000
+        n = row.get('cp_count')
+        return leg == 0 or (row.get('isLinear') is False and type(n) is int and 0 < leg <= n <= 1000)
+    return False
+
+
+def status(db, key, cache=None):
     row = db.execute("SELECT target, state, updated FROM ksftopup WHERE map=?"
                      " AND track=? AND leg=? AND style=?", key).fetchone()
     return {"state": row[1] if row else "idle", "target": row[0] if row else 0,
-            "updated": row[2] if row else 0, "held": count(db, key), "step": STEP}
+            "updated": row[2] if row else 0, "held": count(db, key), "step": STEP,
+            "eligible": known_leg(db, key, cache)}
 
 
-def enqueue(db, key, now):
+def enqueue(db, key, now, cache=None):
     """Called under the caller's short busy timeout; serialize cap/coalescing."""
     if key[3] not in STYLES:
         return None, 400
@@ -40,10 +74,9 @@ def enqueue(db, key, now):
         db.execute("BEGIN IMMEDIATE")
         # A real KSF leg, not arbitrary names from public requests. Empty style
         # boards on a known leg may be asked for, including their first page.
-        if not db.execute("SELECT 1 FROM runs WHERE map=? AND track=? AND leg=?"
-                          " AND tier='ksf' LIMIT 1", key[:3]).fetchone():
+        if not known_leg(db, key, cache):
             return None, 404
-        old = status(db, key)
+        old = status(db, key, cache)
         if old["state"] in ACTIVE:
             return old, 202
         if max(old["held"], old["target"]) >= MAX_ROWS:

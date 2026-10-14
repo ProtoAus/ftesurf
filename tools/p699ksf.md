@@ -27,7 +27,7 @@ Predictions were recorded in artifacts/PLAN.md before implementation.
 
 Windows controls:
 
-- `python surfd/test_ksftopup.py`: seven controls (including the proxy boundary and whole-worker recovery). No queued demand makes
+- `python surfd/test_ksftopup.py`: eight controls (including proxy, whole-worker recovery and cached-metadata bootstrap). No queued demand makes
   no requests; explicit demand files 120 -> 220 -> 247/exhausted. Duplicate
   requests do not multiply targets. A cut after fetch/before filing resumes the
   durable cursor. GET does not enqueue, POST does; 50ms lock refusal, global
@@ -89,7 +89,12 @@ remains zero; no native Watch/line or VERIFIED badge is advertised by this patch
 POST existing `/api/board` or `/board/api/map` with `ksfmore=1`, `map`, `track`,
 `leg`, `style`. The public site's nginx adds POST only at exact `/ftesurf/board/api/map`;
 other board routes stay GET-only. No caller-supplied URL/player/file. Known KSF leg only, including
-an empty selected style on that leg. Ten requests/minute/IP plus 64 active keys,
+an empty selected style on that leg. A first page for an unfiled leg may be
+bootstrapped from the importer's bounded, exact-name public metadata cache on a
+map already holding KSF records. Stages require isLinear=false, bonus/stage
+counts and track/leg combinations must match; no HTTP-side network lookup.
+This matters for the supplied prosurf/monolith bonus4 links, whose main records
+were present but bonus records had not yet been filed. Ten requests/minute/IP plus 64 active keys,
 100 source rows/request, 10,000-row per-board ceiling. Active keys coalesce.
 Exhausted boards can be retried after 24 hours. Alias resolution uses the same
 provenance-based variant_base as imported boards.

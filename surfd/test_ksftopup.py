@@ -6,6 +6,7 @@ import time
 import unittest
 import sqlite3
 import tempfile
+import json
 from pathlib import Path
 
 import test_ksfimport as T
@@ -135,6 +136,31 @@ class Topup(unittest.TestCase):
         self.assertEqual(Q.count(self.db, self.key), 120)
         self.assertTrue(all(z == 34 and mode == 2 for _, z, _, mode in T.pages(self.fake, modes=True)))
         self.assertEqual(Q.status(self.db, key)['state'], 'exhausted')
+
+    def test_cached_metadata_can_bootstrap_first_bonus_page(self):
+        cache = Path(tempfile.mkdtemp(prefix='ksf-metadata-', dir=T.HOME))
+        path = cache / 'surf_topup.json'
+        row = dict(name='surf_topup', isLinear=False, cp_count=5, b_count=4)
+        path.write_text(json.dumps([row]))
+        bonus = ('surf_topup', 4, 0, 'hsw')
+        self.assertEqual(Q.count(self.db, bonus), 0)
+        self.assertFalse(Q.known_leg(self.db, bonus))
+        self.assertTrue(Q.known_leg(self.db, bonus, str(cache)))
+        body, code = Q.enqueue(self.db, bonus, 100, str(cache))
+        self.assertEqual((code, body['held'], body['eligible']), (202, 0, True))
+        self.assertFalse(Q.known_leg(self.db, ('surf_topup', 5, 0, 'clean'), str(cache)))
+        self.assertFalse(Q.known_leg(self.db, ('surf_topup', 4, 1, 'clean'), str(cache)))
+        self.assertTrue(Q.known_leg(self.db, ('surf_topup', 0, 5, 'clean'), str(cache)))
+        row['isLinear'] = True
+        path.write_text(json.dumps([row]))
+        self.assertFalse(Q.known_leg(self.db, ('surf_topup', 0, 5, 'clean'), str(cache)))
+        row['name'] = 'surf_topup_similar'
+        path.write_text(json.dumps([row]))
+        self.assertFalse(Q.known_leg(self.db, bonus, str(cache)))
+        path.write_text(' ' * 131073)
+        self.assertFalse(Q.known_leg(self.db, bonus, str(cache)))
+        path.write_text('{')
+        self.assertFalse(Q.known_leg(self.db, bonus, str(cache)))
 
     def test_cap_lock_and_refusal(self):
         old = Q.MAX_ACTIVE

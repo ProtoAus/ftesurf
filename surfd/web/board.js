@@ -416,9 +416,7 @@
   function renderKsfTopup(v, body) {
     var box = $('ksftopup');
     box.textContent = '';
-    if (v.style === 'segmented' || !v.boards.some(function (b) {
-      return b.track === v.track && b.leg === v.leg && n0(b.nk) > 0;
-    })) { return; }
+    if (v.style === 'segmented' || !(body.ksf_topup || {}).eligible) { return; }
     var info = body.ksf_topup || { state: 'idle' };
     var button = tabButton('Fetch +100 KSF records', null, false, function () {
       button.disabled = true;
