@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   3951836bd36df2ed35031e2dd34c09592e8dd1c1
+commit   7cab4bdf64ee1e6e5c31064ff8665743c47944dd
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,14 @@ commit   3951836bd36df2ed35031e2dd34c09592e8dd1c1
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-700
-patch    700
+tag      patch-701
+patch    701
+# Patch 701: mixed same-material rear geometry no longer vetoes foreground
+# alpha-plane admission in default1. Existing per-face proof/slot/barrier/budget
+# protections remain. Seventy-two mixed-batch regressions, acting old-gate control
+# and full client compile pass with zero new warnings; independent review OK.
+# No fresh GPU/startup/performance, matching bundle or deployment claim.
+# QC Build unchanged. Verification/limits: tools/p700alphafix.md.
 # Patch 700: default OpenGL static-world plane ordering and history-independent
 # BSP shader rebucketing. Default1/workers/mode2 remain; fog/capture/program/
 # callback barriers preserved. Exact product-C regressions and full isolated

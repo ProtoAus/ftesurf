@@ -6031,6 +6031,19 @@ valid only while a successfully opened same-map scan remains in flight.
   check failed system-header extraction. Correct PATH and `--tweaks=` gave zero
   errors. Editor diagnostics without this task's compile database were fallback.
 
+## Renderer alpha admission — P701, 2026-10-14
+
+A shader-level alpha test is not enough: test real multi-mesh material batches.
+P700's default plane-admission loop rejected an entire batch if any mesh was
+rear/near-span, hiding otherwise provable Kitsune foreground planes. The initial
+one-face-per-batch fixture missed it. P701 preserves material/world/state guards
+but admits geometry per face through the existing bounded sorter. Real rear4029
+plus three panes,72 yaw/order/first-or-last rear cases, exact mode0 replay and
+intervening-slot fallback now pass; original/restored P700 veto ACT and fail.
+Full client compile has zero new warnings and no cache-file changes. Fresh GPU,
+startup and performance remain open; unsupported intervening commands still
+abstain. See tools/p700alphafix.md; no decoder/trace prerequisite or worker change.
+
 ## Pitfalls discovered the hard way
 
 ### Native recovery journal publication boundary — P692, 2026-10-13

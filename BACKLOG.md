@@ -195,6 +195,13 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   restored old source ACTS and fails. Full isolated Windows client build passes
   with zero new warnings. This does NOT infer worker-registration causality or
   credit the historical rejected native gates. See tools/p700alphafix.md.
+  P701 fixes the newly exposed admission hole: one rear/near-span mesh no longer
+  vetoes all foreground planes in its same-material batch. Real rear4029 plus
+  three frozen foreground panes pass72 same-batch/yaw/order cases; original P700
+  and restored whole-batch veto ACT and fail. Per-face geometry, stationary
+  unsupported slots/intervening-crossing fallback and material/view/budget gates
+  remain. Full isolated client compile adds zero warnings; independent review OK.
+  This resolves the source defect, not the still-open GPU/startup/perf gates.
   Next falsifier is the actual corrected product: fresh worker-enabled startup
   repeats and correct pane pixels, with old default order as an ACTED failing
   control. Require unchanged mode0/2, original callback/fog/multipass/capture
