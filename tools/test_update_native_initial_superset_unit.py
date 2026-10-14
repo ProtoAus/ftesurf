@@ -1,4 +1,5 @@
 """Initial full-row authority/namespace mutation falsifiers; no native launch."""
+import test_update_native_initial_superset as gate
 import copy
 import json
 import unittest
@@ -127,6 +128,49 @@ class InitialSupersetTests(unittest.TestCase):
             (meta / 'installed.json').write_bytes(b'wrong')
             with self.assertRaises(AssertionError):
                 grade(True, final)
+
+    def test_complete_metadata_namespace_rejects_outer_siblings_and_survivor_changes(self):
+        from test_update_native_journal_deferred_unit import scratch
+        import json
+        for complete in (False, True):
+            with scratch() as meta:
+                ledger = dict(version='v' if complete else 'old', files={'outside': 'known'})
+                stages = {} if complete else {'hash': b'staged'}
+                authority = None if complete else b'independently checked journal'
+                temp = b'exact failed journal temp'
+                expected = gate.METADATA_SENTINEL | {
+                    'consent': b'1\n', 'state.json': json.dumps(ledger).encode(),
+                    'install.lock': b'', 'ingame/manifest.json': b'signed',
+                    'ingame/journal.tmp': temp}
+                if complete:
+                    expected['installed.json'] = b'signed'
+                else:
+                    expected['ingame/journal.json'] = authority
+                    expected['ingame/staged/hash'] = b'staged'
+                for path, data in expected.items():
+                    target = meta / path
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(data)
+                def grade():
+                    gate.metadata_namespace(meta, b'signed', ledger, stages,
+                                            authority=authority, temp=temp, complete=complete)
+                grade()
+                # Refusal/exhaustion cannot adopt an unexpected seed survivor.
+                for path in ('state.json.enginetmp', 'state.json.tmp', 'installed.json.tmp',
+                             'arbitrary-new-sibling', 'ingame/unexpected.tmp'):
+                    (meta / path).write_bytes(b'unexpected')
+                    with self.subTest(complete=complete, added=path), self.assertRaises(AssertionError):
+                        grade()
+                    (meta / path).unlink()
+                for path, data in expected.items():
+                    (meta / path).unlink()
+                    with self.subTest(complete=complete, removed=path), self.assertRaises(AssertionError):
+                        grade()
+                    (meta / path).write_bytes(b'changed')
+                    with self.subTest(complete=complete, changed=path), self.assertRaises((AssertionError, ValueError)):
+                        grade()
+                    (meta / path).write_bytes(data)
+                grade()
 
 
 if __name__ == '__main__':

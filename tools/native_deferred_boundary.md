@@ -73,3 +73,34 @@ earlier runs are not promoted as final-source evidence. All synthetic runtimes r
 retained through independent review. Development compile/escaping failures and
 unit import failure logs are retained, not relabelled. Independent review remains
 required; no whole-product publication acceptance follows from this seam.
+
+## Integration complete-metadata follow-up (2026-10-14)
+
+The earlier raw04 evidence above remains bounded history. The integration
+follow-up additionally seeds `unrelated-metadata-sentinel.json` outside ingame
+and requires its byte-exact survival at seed, natural live exit and repaired
+completion. A lane-local predicate compares the entire updater metadata file
+namespace against independently expected survivors, including the naturally
+empty `install.lock`, consent, semantic full ledger/version, signed manifest and
+completion certificate, exact journal/failed temp and all stages. Ledger and
+journal content checks still derive from signed input and known operations;
+namespace inventory cannot authorize a new survivor. Native ledger/envelope temp
+paths are not seeded. Real `state.json.enginetmp`, `state.json.tmp`,
+`installed.json.tmp`, arbitrary additions and removed/changed unrelated sentinel
+must refuse, on partial and complete states. Legacy failed journal.tmp and
+resolved orphan expectations are unchanged; this is not retroactive cleanup.
+
+Use the exact retained `artifacts/raw/native_journal_deferred_boundary04.exe`
+(SHA256 d77d0222a4936596dec966cd68e6191551a8987f2f12db2024aff137a0a442be)
+without rebuilding it. Its C source and every historical helper/grader remain
+unchanged. Integration commands, sourcefreeze/phase audit and raw receipts live
+under `artifacts/integration` in the same task root. All matrices use the immutable
+`C:/FTESurf-worktrees/wjfinish-20261014T075250Z/artifacts/serialized-native.py`
+and task-local TMP/TEMP/FTESURF_TEST_SCRATCH, with 600s enclosing per-matrix bound.
+Fresh final-source `raw-before-02` and `raw-subject-02` each cover four cases/eight
+natural full-export phases. Earlier `*-01` integration matrices passed but bind
+CRLF working bytes before LF normalization; they are not final-source evidence.
+The two lane-local mutation methods bring integrated native units to 174 passes;
+recorder 306 checks and retirement-model 21 tests pass. Full-metadata acceptance
+still requires a fresh independent review; all original product/platform and
+power-loss exclusions above remain unchanged. Nothing is pushed or deployed.

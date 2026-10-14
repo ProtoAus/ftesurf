@@ -113,3 +113,37 @@ they are not represented as final-source six-case reruns. Final historical+new
 units:165 PASS. No optional explicit destination-repair/complete-only cleanup
 at3 claim; that is not needed to prove unresolved exhaustion. No native authority
 is authored or replaced by this harness after first publication.
+
+## Integration complete-metadata follow-up (2026-10-14)
+
+Earlier initial/exhaustion evidence above retains its original source bounds.
+The integration follow-up seeds an unrelated outer metadata sibling,
+`unrelated-metadata-sentinel.json`, and compares the entire metadata file namespace
+with independently expected survivors at seed, initial pre/post cuts, active
+source-lock refusal, natural successful live exit, partial replay, debit3,
+exhausted refusal and completion. It rejects real ledger/envelope temp siblings
+`state.json.enginetmp`, `state.json.tmp`, `installed.json.tmp`, arbitrary additions
+and removed/changed unrelated sentinel. Reserved native temp paths are not
+seeded. Ledger/version, certificate, manifest and authority content still require
+independent signed-input/known-operation checks; inventory cannot define allowed
+survivors. Exhaustion retains its whole byte-inventory equality check in addition
+to the independent survivor predicate, covering additions/removals/changes.
+
+The immutable initial actor's explicit active partial-export contract is the only
+`install.lock` exclusion. Every natural boundary requires the actual empty lock
+bytes, including the full post-exit source-lock/retry export. No historical actor
+or helper changes or rebuilds are needed: reuse the exact retained
+`artifacts/initial/native_journal_initial.exe`. Legacy journal.tmp retention and
+candidate discharge rules are not tightened or retrospectively reinterpreted.
+
+Fresh final-source evidence in the task root's `artifacts/integration`:
+`initial-before-02`/`initial-subject-02` each cover six cases/twelve phases;
+`exhaustion-before-02`/`exhaustion-subject-02` each cover two cases/ten phases.
+All use immutable serialized-native.py, task-local TMP/TEMP/FTESURF_TEST_SCRATCH
+and 600s enclosing bounds; exact argv files, raw exports/receipts and joined HTTP
+predictions are retained. Together with the raw lane these are 60 new final-source
+phases. Integration `*-01` passed but preceded LF normalization and is retained
+as earlier-byte history, not final-source evidence. Integrated native units:174;
+recorder checks:306; retirement-model tests:21. The first unit attempt's syntax
+errors remain a separate failure log. New full-metadata acceptance requires a
+fresh review; no broader product, Linux, power-loss, deploy or shipping claim.

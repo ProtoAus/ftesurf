@@ -13,7 +13,34 @@ from test_update_native_journal_deferred import helper_identity
 from test_update_native_publication_superset import (BEFORE, SUBJECT, prepare, grade_state,
     full_authority, mirror_server)
 from test_update_native_retirement_windows import inventory
+from test_update_native_journal import _checked_files
 from test_update_native_staging_windows import load_inputs, journal
+
+
+METADATA_SENTINEL = {'unrelated-metadata-sentinel.json': b'owned unrelated metadata; preserve byte-exact\n'}
+
+
+def metadata_namespace(meta, signed, ledger, stages, authority=None, temp=None,
+                       complete=False, active=False, seed=False):
+    # The ledger is checked semantically against known operations, never learned
+    # from inventory. Only the immutable initial actor's active capture omits lock.
+    expected = METADATA_SENTINEL | {'consent': b'1\n'}
+    if not seed:
+        expected['ingame/manifest.json'] = signed
+        if not active:
+            expected['install.lock'] = b''
+    expected.update({'ingame/staged/' + h: data for h, data in stages.items()})
+    if authority is not None:
+        expected['ingame/journal.json'] = authority
+    if temp is not None:
+        expected['ingame/journal.tmp'] = temp
+    if complete:
+        expected['installed.json'] = signed
+    actual = {p.relative_to(meta).as_posix(): p.read_bytes() for p in _checked_files(meta)
+              if not (active and p.relative_to(meta).as_posix() == 'install.lock')}
+    assert set(actual) == set(expected) | {'state.json'}, 'complete metadata namespace mismatch'
+    assert json.loads(actual.pop('state.json')) == ledger, 'independent ledger/version mismatch'
+    assert actual == expected, 'metadata survivor bytes mismatch'
 
 
 def initial_namespace(meta, signed, stages, authority=None, temp=None):
@@ -46,6 +73,7 @@ def exhaust_initial(engine, dest, meta, case, expected, ledger, signed, files, p
     grade_state(dest, meta, expected, ledger, signed, version)
     partial_authority(json.loads(authority.read_bytes()), files, paths, pending, version, before, 3)
     initial_namespace(meta, signed, stages, authority=authority.read_bytes())
+    metadata_namespace(meta, signed, ledger, stages, authority=authority.read_bytes())
     snapshot(dest, case / 'debit3')
     for repair in (False, True):
         if repair:
@@ -59,6 +87,7 @@ def exhaust_initial(engine, dest, meta, case, expected, ledger, signed, files, p
         grade_state(dest, meta, expected, ledger, signed, version)
         partial_authority(json.loads(authority.read_bytes()), files, paths, pending, version, before, 3)
         initial_namespace(meta, signed, stages, authority=authority.read_bytes())
+        metadata_namespace(meta, signed, ledger, stages, authority=authority.read_bytes())
     (case / 'exhaustion-oracle.json').write_text(json.dumps(dict(status='PASS',
         native_debits=[1, 2, 3], ordinary_exhaustion_unchanged=True,
         signed_stage_repair_still_exhausted=True, authority_authored_by_harness=False), indent=2))
@@ -102,6 +131,9 @@ def main():
             for name in scenarios:
                 mode = 'crash-after' if name.startswith('crash-after') else name
                 dest, meta, expected, ledger = prepare(root, name, payload, files, paths)
+                for sibling, data in METADATA_SENTINEL.items():
+                    (meta / sibling).write_bytes(data)
+                metadata_namespace(meta, signed, ledger, {}, seed=True)
                 case = evidence / name
                 case.mkdir()
                 snapshot(dest, case / 'seed')
@@ -114,6 +146,7 @@ def main():
                     raw = (case / 'live/initial-temp.json').read_bytes()
                     full_authority(json.loads(raw), files, paths, manifest['version'], 1)
                     initial_namespace(meta, signed, stages, temp=raw)
+                    metadata_namespace(meta, signed, ledger, stages, temp=raw, active=True)
                     (case / 'source-lock-boundary.json').write_text(json.dumps(dict(status='PASS',
                         authority_absent=True, attempts=1, stages={h: sha(b) for h, b in stages.items()}), indent=2))
                 live(engine, helper, binding, dest, case / 'live', mode, dict(url=url), inspect)
@@ -128,10 +161,14 @@ def main():
                     grade_state(dest, meta, expected, ledger, signed, manifest['version'])
                     initial_namespace(meta, signed, stages, authority=raw if mode == 'crash-after' else None,
                                       temp=raw if mode == 'crash-before' else None)
+                    metadata_namespace(meta, signed, ledger, stages,
+                                       authority=raw if mode == 'crash-after' else None,
+                                       temp=raw if mode == 'crash-before' else None)
                     if mode == 'crash-before':
                         cold_phase(engine, dest, case / 'cold-no-authority')
                         grade_state(dest, meta, expected, ledger, signed, manifest['version'])
                         initial_namespace(meta, signed, stages, temp=raw)
+                        metadata_namespace(meta, signed, ledger, stages, temp=raw)
                     else:
                         if 'corrupt' in name:
                             pending = paths[0] if name.endswith('first') else paths[-1]
@@ -148,6 +185,7 @@ def main():
                                                          pending, manifest['version'], a.expect_before)
                             del stages[files[content]['hash']]  # freshly installed by this cold pass, in both clients
                             initial_namespace(meta, signed, stages, authority=authority.read_bytes())
+                            metadata_namespace(meta, signed, ledger, stages, authority=authority.read_bytes())
                             snapshot(dest, case / 'partial')
                             if a.exhaustion_only:
                                 exhaust_initial(engine, dest, meta, case, expected, ledger, signed, files,
@@ -161,6 +199,7 @@ def main():
                     final_ledger = dict(version=manifest['version'], files={p: f['hash'] for p, f in files.items()})
                     grade_state(dest, meta, expected, final_ledger, signed, manifest['version'], True)
                     initial_namespace(meta, signed, {})
+                    metadata_namespace(meta, signed, final_ledger, {}, complete=True)
                 snapshot(dest, case / 'final')
                 (case / 'initial-oracle.json').write_text(json.dumps(dict(status='PASS', mode=mode,
                     original_attempt1_rows=True, legacy_partial_reduction_rejected=rejected), indent=2))

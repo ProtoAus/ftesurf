@@ -169,6 +169,33 @@ from test_update_native_publication_superset import (BEFORE, SUBJECT, full_autho
     stage_map, prepare, grade_state, mirror_server)
 from test_update_native_staging_windows import load_inputs, journal
 from test_update_native_retirement_windows import inventory
+from test_update_native_journal import _checked_files
+
+METADATA_SENTINEL = {'unrelated-metadata-sentinel.json': b'owned unrelated metadata; preserve byte-exact\n'}
+
+
+def metadata_namespace(meta, signed, ledger, stages, authority=None, temp=None,
+                       complete=False, active=False, seed=False):
+    # The ledger is checked semantically against known operations, never learned
+    # from inventory. Only the immutable initial actor's active capture omits lock.
+    expected = METADATA_SENTINEL | {'consent': b'1\n'}
+    if not seed:
+        expected['ingame/manifest.json'] = signed
+        if not active:
+            expected['install.lock'] = b''
+    expected.update({'ingame/staged/' + h: data for h, data in stages.items()})
+    if authority is not None:
+        expected['ingame/journal.json'] = authority
+    if temp is not None:
+        expected['ingame/journal.tmp'] = temp
+    if complete:
+        expected['installed.json'] = signed
+    actual = {p.relative_to(meta).as_posix(): p.read_bytes() for p in _checked_files(meta)
+              if not (active and p.relative_to(meta).as_posix() == 'install.lock')}
+    assert set(actual) == set(expected) | {'state.json'}, 'complete metadata namespace mismatch'
+    assert json.loads(actual.pop('state.json')) == ledger, 'independent ledger/version mismatch'
+    assert actual == expected, 'metadata survivor bytes mismatch'
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
@@ -206,6 +233,9 @@ def main():
                 for mode in ('source-lock', 'none'):
                     name = position + '-' + mode
                     dest, meta, expected, ledger = prepare(root, name, payload, files, paths)
+                    for sibling, data in METADATA_SENTINEL.items():
+                        (meta / sibling).write_bytes(data)
+                    metadata_namespace(meta, signed, ledger, {}, seed=True)
                     case = evidence / name
                     case.mkdir()
                     snapshot(dest, case / 'seed')
@@ -238,6 +268,8 @@ def main():
                         namespace['journal.tmp'] = native_temp
                     namespace.update({'staged/' + h: data for h, data in stages.items()})
                     assert inventory(meta / 'ingame') == namespace, 'unexpected temp/stage sibling at live boundary'
+                    metadata_namespace(meta, signed, ledger, stages, authority=authority.read_bytes(),
+                                       temp=native_temp if mode == 'source-lock' else None)
                     detected = False
                     try:
                         full_authority(json.loads(authority.read_bytes()), files, paths, manifest['version'], 1)
@@ -263,6 +295,8 @@ def main():
                     if a.expect_before and mode == 'source-lock':
                         namespace['journal.tmp'] = native_temp
                     assert inventory(meta / 'ingame') == namespace, 'unexpected repaired temp/stage sibling'
+                    metadata_namespace(meta, signed, ledger, survivors, complete=True,
+                                       temp=native_temp if a.expect_before and mode == 'source-lock' else None)
                     snapshot(dest, case / 'final')
                     result['cases'].append(name)
                     print('PASS deferred-boundary', name, 'before' if a.expect_before else 'subject', flush=True)
