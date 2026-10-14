@@ -6130,6 +6130,36 @@ assertion passes. No engine/product edit, new Linux/defaultHTTPS, hostile-root,
 power-loss or deployment claim. Contract/commands/limits:
 `tools/p692native_journal_deferred_interrupt.md`.
 
+### Windows authority-bounded staged retirement controls — 2026-10-14
+
+`tools/test_update_native_staging_windows.py` adds retained-signed-closure cold
+controls for the existing `QKU_ReplayJournal`/`QKU_FSPurgeObject` contract. Each
+three-row case runs pending-first/last: valid resolved objects ACT removal only
+after successful reduction; a hash shared with a held pending destination must
+survive reduction then disappear on repaired completion; real source-rename32
+retains full authority and ALL objects. Exact ledgers/tuples/budgets/certificates,
+protected bytes and stage maps are graded after natural pre/post-cleanup job0.
+A separately seeded reduced-authority control retains a resolved orphan through
+completion. It is not a new crash actor or permission to garbage-collect it.
+
+A wrong-size corrupt object only tests size checking: omitting the native hash
+comparison would still preserve it. Use a one-byte mutation of the signed bytes,
+assert equal size/unequal digest, and retain the wrong-size case separately.
+Unreferenced objects cannot independently falsify purge validation because the
+native purge helper never visits them. Valid resolved removal is the ACT arm.
+
+ThreadingHTTPServer defaults to daemon request workers; joining serve_forever's
+thread does NOT join those workers. A final counter sampled before shutdown can
+miss an already-accepted GET held before its increment. This driver makes
+workers non-daemon with block_on_close, bounds socket reads, and samples only
+AFTER context exit joins every accepted worker. An event-controlled real late
+handler falsifies early census. Zero GETs is signed-mirror scope, not all-network
+silence. Matrix01 predates these two review fixes and is not strengthened.
+Accepted frozen02:11scenarios/22natural job0/full-export phases,22inventories/
+81raw-byte hash checks;13client-free tests. Tooling only, no new engine patch,
+orphan deletion, file/directory flush, hostile-root or deployment acceptance.
+Contract/commands/provenance: `tools/native_staging_windows.md`.
+
 ### Default HTTPS native/menu drivers and real return census — P689, 2026-10-13
 
 `tools/test_update_default_https.py` uses the exact archived real bootstrap and

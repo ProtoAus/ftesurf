@@ -51,8 +51,13 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   `tools/p692native_journal_deferred_interrupt.md`. Old pre-rename loses authority
   and starts mixed; P692 retains full authority and refuses corrupt retry.
   Reduced authority still leaves the already installed live object's staged
-  copy orphaned; this is not a cleanup or power-loss certificate. No hostile
-  ancestor-swap/hardlink guarantee is claimed.
+  copy orphaned; this is not a cleanup or power-loss certificate. Windows native
+  authority-bounded retirement now independently passes valid removal, same-size
+  corrupt/wrong-size/shared retention, real rewrite-failure32 and repaired retries;
+  a seeded reduced-authority control confirms the outside object still survives
+  completion; `tools/native_staging_windows.md`. This gates existing safe
+  retirement, NOT unreferenced deletion. No hostile ancestor-swap/hardlink
+  guarantee is claimed.
   Release 0.1.25 remains P687; source acceptance does not deploy recovery to any
   canonical/fleet binary or certify peer deployments.
 
