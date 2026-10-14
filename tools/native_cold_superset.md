@@ -101,3 +101,27 @@ temp/certificate/stage. This does not newly interrupt the attempt3 publication
 itself or test completed-content cleanup-only admission at attempts3. Historical
 retirement tests remain their own evidence, not upgraded here. Raw failing product API return remains open.
 Independent review required before integration; no push/deploy authority.
+
+## Review oracle correction (follow-on, history preserved)
+
+P1: the lane-local complete metadata inventory now checks every regular leaf
+under `.ftesurf-updater`, including real `state.json.enginetmp`, `state.json.tmp`
+and `installed.json.tmp` namespaces. Expected names come only from the trusted
+seed and operation: empty native install.lock, independently derived ledger and
+journal semantics, signed envelope/certificate, explicit stage survivors and
+failed journal.tmp lifecycle. Independently seeded unrelated top-level and ingame
+`.tmp` siblings must survive byte-exact. Checks cover seed, failed/pre/post/
+uninterrupted publication, debit3, stage-only repair, exhausted refusal and
+completion. Exhaustion freezes all metadata bytes only after independently
+checking the debit3 namespace/semantics; stage-only repair updates only its named
+expected object. No candidate inventory admits a new name or survivor.
+
+P2: same-size corruption is checked against the existing signed BLAKE2b-256
+`digest`, not the unrelated SHA256 evidence digest. An unchanged signed payload
+must fail the bad-digest premise; its one-byte mutation passes. New mutation units
+reject each real temp and unexpected additions, changed/removed siblings at all
+boundaries, while admitting legacy named failed-temp survival and candidate
+discharge. Historical helpers/graders are not changed.
+
+Fresh post-fix native evidence uses before05/subject04, both rerun at final source,
+not relabelled earlier passes. Review remains required; this is no shipping claim.

@@ -14,6 +14,8 @@ from test_update_native_journal_deferred import helper_identity
 from test_update_native_publication_superset import (BEFORE, SUBJECT, prepare,
     grade_state, stage_map, full_authority, mirror_server)
 from test_update_native_staging_windows import load_inputs, journal
+from test_update_native_recovery import digest
+from test_update_native_retirement_windows import inventory
 
 
 def authority_grade(actual, files, paths, version, attempts, before, pending):
@@ -32,12 +34,42 @@ def stages_grade(dest, expected):
     assert stage_map(dest) == expected, 'exact stage leaves/siblings changed'
 
 
-def exhaustion_grade(dest, meta, expected, ledger, signed, version, authority_bytes, ledger_bytes, stages):
+def corrupt_grade(data, row):
+    assert len(data) == row['size'] and digest(data) != row['hash'], 'bad signed digest premise'
+
+
+def metadata_expected(seed, ledger, stages, authority=None, temp=None, installed=None, launched=True):
+    # Only the independently seeded fixture and expected operation admit names.
+    expected = {p: b for p, b in seed.items() if p not in
+                ('state.json', 'ingame/journal.json') and not p.startswith('ingame/staged/')}
+    expected['state.json'] = copy.deepcopy(ledger)
+    expected.update({'ingame/staged/' + p: b for p, b in stages.items()})
+    if launched:
+        expected['install.lock'] = b''
+    for p, value in (('ingame/journal.json', authority), ('ingame/journal.tmp', temp),
+                     ('installed.json', installed)):
+        if value is not None:
+            expected[p] = value
+    return expected
+
+
+def metadata_grade(meta, expected):
+    actual = inventory(meta)
+    assert actual.keys() == expected.keys(), 'complete updater metadata namespace changed'
+    for p, value in expected.items():
+        if isinstance(value, dict):
+            assert json.loads(actual[p]) == value, 'metadata semantic identity: ' + p
+        else:
+            assert actual[p] == value, 'metadata byte identity: ' + p
+
+
+def exhaustion_grade(dest, meta, expected, ledger, signed, version, authority_bytes, ledger_bytes, stages, metadata):
     grade_state(dest, meta, expected, ledger, signed, version)
     assert (meta / 'ingame/journal.json').read_bytes() == authority_bytes, 'exhausted authority mutated'
     assert (meta / 'state.json').read_bytes() == ledger_bytes, 'exhausted ledger bytes mutated'
     assert not (meta / 'ingame/journal.tmp').exists(), 'exhausted refusal created temp'
     stages_grade(dest, stages)
+    metadata_grade(meta, metadata)
 
 
 def main():
@@ -81,7 +113,7 @@ def main():
                     stage = meta / 'ingame/staged'; stage.mkdir(parents=True)
                     stages = {files[p]['hash']: payload[p] for p in paths}
                     bad = bytearray(payload[pending]); bad[0] ^= 1
-                    assert len(bad) == files[pending]['size'] and sha(bad) != files[pending]['hash']
+                    corrupt_grade(bad, files[pending])
                     stages[files[pending]['hash']] = bytes(bad)
                     # Unmanaged sibling must never be adopted or silently removed.
                     stages['cold-unmanaged.tmp'] = b'owned unrelated staged sibling\n'
@@ -89,6 +121,11 @@ def main():
                     (meta / 'ingame/manifest.json').write_bytes(signed)
                     original = json.dumps(journal(files, paths, manifest['version'], 1)).encode()
                     authority = meta / 'ingame/journal.json'; authority.write_bytes(original)
+                    for p in ('cold-unmanaged.tmp', 'ingame/cold-unmanaged.tmp'):
+                        (meta / p).write_bytes(b'owned unrelated metadata sibling\n')
+                    seed_metadata = inventory(meta)
+                    metadata_grade(meta, metadata_expected(seed_metadata, ledger, stages,
+                                   authority=original, launched=False))
                     snapshot(dest, case / 'seed')
                     lock_receipt = {}
                     if mode == 'source-lock':
@@ -114,6 +151,10 @@ def main():
                     if mode == 'none':
                         del partial_stages[files[resolved]['hash']]
                     stages_grade(dest, partial_stages)
+                    published = journal(files, [pending] if a.expect_before else paths, manifest['version'], 2)
+                    metadata_grade(meta, metadata_expected(seed_metadata, ledger, partial_stages,
+                        authority=published if committed else original,
+                        temp=None if committed else published))
                     (case / 'publication-oracle.json').write_text(json.dumps(dict(status='PASS',
                         native_authority_sha256=sha(native_bytes), legacy_full_oracle_rejected=rejected,
                         committed=committed, attempts=2, stages={h:sha(b) for h,b in partial_stages.items()}), indent=2))
@@ -129,17 +170,22 @@ def main():
                         if not a.expect_before:
                             del exhausted_stages[files[resolved]['hash']]
                         stages_grade(dest, exhausted_stages)
+                        metadata_grade(meta, metadata_expected(seed_metadata, ledger, exhausted_stages,
+                            authority=journal(files, [pending] if a.expect_before else paths, manifest['version'], 3)))
+                        # Capture exact bytes only AFTER independent namespace/semantic validation.
+                        exhausted_metadata = inventory(meta)
                         # Stage-only repair cannot reset content budget or install pending.
                         (stage / files[pending]['hash']).write_bytes(payload[pending])
                         exhausted_stages[files[pending]['hash']] = payload[pending]
+                        exhausted_metadata['ingame/staged/' + files[pending]['hash']] = payload[pending]
                         ledger_bytes = (meta / 'state.json').read_bytes()
                         (case / 'stage-only-repair.json').write_text(json.dumps(dict(path=pending,
                             sha256=sha(payload[pending]), attempts=3, authority_sha256=sha(debit))))
                         exhaustion_grade(dest, meta, expected, ledger, signed, manifest['version'],
-                                         debit, ledger_bytes, exhausted_stages)
+                                         debit, ledger_bytes, exhausted_stages, exhausted_metadata)
                         cold_phase(engine, dest, case / 'exhausted-stage-repaired', EXHAUSTED)
                         exhaustion_grade(dest, meta, expected, ledger, signed, manifest['version'],
-                                         debit, ledger_bytes, exhausted_stages)
+                                         debit, ledger_bytes, exhausted_stages, exhausted_metadata)
                         (case / 'exhaustion-oracle.json').write_text(json.dumps(dict(status='PASS',
                             attempts=3, authority_sha256=sha(debit), ledger_sha256=sha(ledger_bytes),
                             legacy_reduction=a.expect_before, pending_still_old=True,
@@ -168,6 +214,8 @@ def main():
                     if a.expect_before and mode == 'crash-after':
                         survivors[files[resolved]['hash']] = payload[resolved]
                     stages_grade(dest, survivors)
+                    metadata_grade(meta, metadata_expected(seed_metadata, complete_ledger, survivors,
+                        temp=native_bytes if a.expect_before and not committed else None, installed=signed))
                     snapshot(dest, case / 'final')
                     result['cases'].append(name)
                     print('PASS cold-superset', name, 'before' if a.expect_before else 'subject', flush=True)

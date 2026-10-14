@@ -108,19 +108,63 @@ class ColdSupersetTests(unittest.TestCase):
                 '.ftesurf-updater/ingame/staged/pending':b'repaired',
                 '.ftesurf-updater/ingame/staged/unmanaged.tmp':b'sibling'}
             for p,data in seed.items(): (dest/p).write_bytes(data)
+            metadata = cold.inventory(meta)
             def grade(): cold.exhaustion_grade(dest,meta,expected,ledger,b'signed','0.1.25',
-                                              authority,ledger_bytes,{'pending':b'repaired','unmanaged.tmp':b'sibling'})
+                                              authority,ledger_bytes,{'pending':b'repaired','unmanaged.tmp':b'sibling'},metadata)
             grade()
             for p,data in seed.items():
                 with self.subTest(path=p):
                     (dest/p).write_bytes(b'{}' if p.endswith('.json') else b'mutated')
                     with self.assertRaises(AssertionError): grade()
                     (dest/p).write_bytes(data)
-            for extra in ('ingame/journal.tmp','installed.json','ingame/staged/extra'):
+            for extra in ('ingame/journal.tmp','installed.json','ingame/staged/extra',
+                          'state.json.enginetmp','state.json.tmp','installed.json.tmp','extra.tmp'):
                 with self.subTest(extra=extra):
                     (meta/extra).write_bytes(b'new')
                     with self.assertRaises(AssertionError): grade()
                     (meta/extra).unlink()
+
+    def test_bad_digest_premise_rejects_unchanged_signed_payload(self):
+        payload = b'signed payload'
+        row = dict(size=len(payload), hash=cold.digest(payload))
+        with self.assertRaisesRegex(AssertionError, 'bad signed digest premise'):
+            cold.corrupt_grade(payload, row)
+        changed = bytearray(payload); changed[0] ^= 1
+        cold.corrupt_grade(changed, row)
+
+    def test_complete_metadata_namespace_mutants_at_every_boundary(self):
+        seed = {'consent':b'1\n', 'state.json':b'{}',
+                'ingame/manifest.json':b'signed', 'ingame/journal.json':b'original',
+                'unrelated.tmp':b'top sibling', 'ingame/unrelated.tmp':b'ingame sibling'}
+        for boundary in ('seed', 'source-lock', 'crash-before', 'crash-after',
+                         'none', 'debit3', 'exhaustion', 'before-complete', 'subject-complete'):
+            with self.subTest(boundary=boundary), tempfile.TemporaryDirectory(
+                    dir=os.environ['FTESURF_TEST_SCRATCH']) as tmp:
+                meta = Path(tmp)
+                complete = boundary.endswith('complete')
+                expected = cold.metadata_expected(seed, {'version':'old'}, {'sibling.tmp':b'stage'},
+                    authority=None if complete else {'attempts':3 if boundary in ('debit3','exhaustion') else 2},
+                    temp=b'failed temp' if boundary in ('source-lock','crash-before','before-complete') else None,
+                    installed=b'signed' if complete else None, launched=boundary != 'seed')
+                for p, value in expected.items():
+                    path = meta / p; path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(json.dumps(value).encode() if isinstance(value, dict) else value)
+                cold.metadata_grade(meta, expected)
+                for p in ('state.json.enginetmp','state.json.tmp','installed.json.tmp',
+                          'extra.tmp','ingame/extra.tmp','ingame/staged/extra.tmp'):
+                    with self.subTest(extra=p):
+                        (meta/p).write_bytes(b'unexpected')
+                        with self.assertRaises(AssertionError): cold.metadata_grade(meta, expected)
+                        (meta/p).unlink()
+                for p in expected:
+                    path=meta/p; original=path.read_bytes()
+                    with self.subTest(changed=p):
+                        path.write_bytes(b'mutated')
+                        with self.assertRaises((AssertionError, ValueError)): cold.metadata_grade(meta, expected)
+                    with self.subTest(removed=p):
+                        path.unlink()
+                        with self.assertRaises(AssertionError): cold.metadata_grade(meta, expected)
+                    path.write_bytes(original)
 
     def test_every_stage_survivor_removal_byte_change_and_extra_refuses(self):
         expected = {'a':b'signed', 'b':b'corrupt', 'unmanaged.tmp':b'sibling'}
