@@ -1,4 +1,9 @@
-# P690 rotated inline-brush fixture — frozen native gate REJECTED
+# P690 rotated inline-brush fixture — bounded zero-worker native PASS
+
+The original worker-enabled gates below remain **REJECTED**, unchanged. A new,
+separately frozen startup-controlled gate passes full-frame preservation/transfer
+under `-noworkers`; see [the zero-worker result](#zero-worker-startup-follow-up--bounded-native-pass).
+This does not repair/certify ordinary worker-enabled startup or promote default2.
 
 A self-contained BSP29 fixture now binds a real production `func_wall` alpha
 pane to yaw0/yaw45 images. Rotation and entity drawing ACTED. The initial
@@ -225,22 +230,108 @@ aggregates unchanged. All five owned client/server pairs quitrc0; native8,
 protected1223/install2 and absent fixture targets/directories restore. Parent
 review only; no engine/product/default/deployment/performance acceptance.
 
+## Zero-worker startup follow-up — bounded native PASS
+
+Evidence: `artifacts/brush-workers-20261014/` under the owned root above. One
+BLOCKING serialized six-boot attempt reuses the exact retained production and
+passive-diagnostic binaries; no rebuild, source/default modification or deployment.
+Boot order: default-worker P688 positive control (no PNG), production P688,
+diagnostic P688, production merged, diagnostic merged, production P688 return.
+The five measured arms use `-noworkers` on BOTH processes before initialization.
+Cache0,960x720 GL, fullbright1, identical world/camera/HUD/cadence controls remain
+explicit. Unique BEGIN/END tickets, raw hashes, actual MATCH cl/sv wait targets,
+nonreused receipt identities and ordered observer/state/PNG phase intervals bind
+worker readings to the correct process and phase. Cvar intent alone cannot pass.
+
+- Positive control: BOTH client/server report4 live workers,0 pending loader tasks.
+  Every one of210 measured-arm worker receipts reports worker_count0,live0,pending0
+  (42 per arm);2 positive-control rows bring the total to212. Snapshots occur at
+  boot, before every PNG/observer pair, and after the last PNG. `-noworkers` makes
+  loader work synchronous, not absent; it does not empty/prove away WG_MAIN or
+  all engine/driver threads.
+- ALL55 PNGs pass the preregistered exact full-frame gates: production/diagnostic
+  transfer at each state/mode, production P688 return, mode1 P688/merged
+  preservation, within-boot repeat and observerOFF/ON/OFF noninterference,
+  yaw0/45/0 return and mode2 ON parity. No pane mask, tolerance widening or
+  mode2-only subset rescue. Actor4 retains authoritative func_wall/*1 identity;
+  green footprints are9,216 pixels/[432,312,527,407] at yaw0 and6,532/
+  [443,308,510,411] at yaw45 in each measured arm. Yaw changes3,150 pixels.
+- Intentional mode2 OFF world correction still ACTS at20,604 pixels:
+  P688 center(127,0,64), merged(64,0,127). Mode1 OFF center(64,0,127), ON
+  (32,127,64) and mode2 ON(127,64,32) agree across all five arms. Removing the
+  brush permits world reordering; no unsupported pane-only premise is revived.
+- Both diagnostic boots now record activation sort5->11 for red/blue/green and
+  exactly ONE actual resort. Old bucket5 blue/red/black becomes opaque black
+  plus bucket11 red/blue; inline green remains independently bound. Each boot's
+  eight passive samples has21 events/zero overflow, unchanged events/resort/order
+  throughout yaw0/45/0 and mode1/2/1. These traces match production pixels here;
+  they do NOT prove the exact registration timing of uninstrumented production.
+- Frozen grade and in-memory negative replay both exit0 normally and under `-O`,
+  with byte-identical JSON,zero violations,4 NEW-specific pixel defect controls
+  and a36-control native semantic replay (including those four). These reject
+  missing/live/pending worker states, wrong receipt sides/reuse/phase, source
+  mismatch and
+  observer overflow/footer/missing material without changing native evidence.
+  Synthetic gates and real conbridge-argparse/native-stub safety regressions
+  also pass normally/`-O`. Preflight corrected a split `--server-args` parsing
+  bug, fail-open port query and receipt-side/phase reuse BEFORE freeze/launch.
+- All six owned client/server pairs quitrc0. Native8,protected1,223 files,two
+  canonical clients and absent fixture targets/directories restore. Recorder306/0;
+  corpus/reader digests and counts/faults unchanged (273 recordings,91 sidecars,
+  inherited168/5 faulted files,176 messages). No new compiler/build claim.
+  Source scout completed; review timed out with useful partial findings, fixed
+  and tested by parent before freeze. Final correction/result review is parent-only.
+
+This is a NEW bounded result, not a rescue of previous rejected protocols or
+proof that workers alone cause their failures. Extra status-ticket cadence and
+positive-control warmup also differ; only one fixed zero-worker sequence ran.
+No force-resort/reparse/flush, retry selection or observed subset acceptance.
+The existing ordinary worker-enabled mode1 boot-order confound remains OPEN.
+
+## Matched-cadence worker-enabled control — native REJECTED
+
+A second NEW preregistered six-boot capture (`artifacts/brush-workers-enabled-20261014/`)
+uses the same exact binaries, warmup, phase/ticket/sleep/PNG cadence and gates,
+omitting only the worker-disable flags and using fresh bridge/PNG names. One
+fixed attempt, not retry selection. All212 client/server receipts show default
+empty-auto worker_count,4 live workers,0 pending loader tasks. All55 state/PNG
+and16 observer samples have valid source/actual-side/phase/closure receipts.
+
+The unchanged complete gate **REJECTS18 predicates**: nine merged production/
+diagnostic mode1 transfers and nine production P688/merged mode1 comparisons,
+each20,604 pixels. Merged production OFF center(127,0,64), ON(64,127,32),
+versus its diagnostic/P688 OFF(64,0,127), ON(32,127,64). All11 P688 returns,
+within-boot repeats/observer parity, yaw returns and both mode2 transfers are
+exact; world correction still acts20,604. Both diagnostics AGAIN report one
+activation resort, sort5->11 and final red/blue order,21 events/eight stable
+samples. That cannot be assigned to the mismatching uninstrumented production.
+
+Normal/`-O` full grades exit1 with byte-identical VALID JSON retaining all18
+failures. Four native pixel controls add NEW SPECIFIC failures despite existing
+rejections; the44-control native replay exits0 normally/`-O` with all original
+failures preserved. Synthetic/real-argparse/native-stub controls pass normal/-O.
+All six owned pairs quitrc0; native8/protected1,223/install2 and fixture absence
+restore. Canonical corpus/reader/fault aggregates remain unchanged. No failed
+stdout was relabelled accepted JSON and neither frozen batch was rewritten.
+
+Across the two batches, ONLY merged production's nine mode1 images differ
+(20,604pixels each); the other46 images are exact. This is a diagnostic cross-
+batch observation, not a new acceptance subset. Matching cadence/warmup did not
+remove the enabled-worker failure in this run. Worker configuration is implicated,
+not proved the sole cause: batches ran zero-then-enabled, not randomized/time-
+aligned, and no uninstrumented production lifecycle trace is available.
+
 ## Next gate
 
-Isolate shader/model startup sequencing, not a favorable order chosen by retries.
-Existing -noworkers applies before worker initialization; bind worker_count AND
-worker_status zero-live/pending replies, not the cvar request alone. Test unchanged
-diagnostic/production/P688-return and record whether material registration precedes
-activation rescan. That experiment is NOT run here. Stable rebucketing is a possible
-separate product investigation, not an accepted fix or permission to force a
-resort/flush/reparse during preservation testing. Mode1 causal transfer remains
-open. Distinguish real brush footprint from separate world correction enabled
-when OFF removes the barrier. Every native defect control must target a comparison
-whose required predicate is not already failing; a rejected subject cannot be
-its own falsifier.
-Do not widen the exact gate, mask the intersection or call mode2 subset agreement
-a completed arbitrary rotated-brush acceptance. Broader animated/oriented/lit
-sprites, alias/studio models, weapons/depthhack, portal/reflection captures and
-moving/time-aligned ordinary service/tails remain OPEN; r_blendsort default stays1.
+At Mod_ResortShaders/Shader_DoReload and legacy GLBE_SubmitMeshes sortlist order,
+isolate actual worker-enabled registration/rescan sequencing without perturbing
+production. Matched ticket cadence/warmup is now tested, not an outstanding
+prerequisite; exact uninstrumented production/diagnostic/P688-return pixels still
+must pass. Stable rebucketing remains a separate possible product investigation,
+not a proved fix or permission to force resort during preservation testing.
+Do not widen the gate or hide a native defect control behind existing rejection.
+Broader animated/oriented/lit sprites, alias/studio models, weapons/depthhack,
+portal/reflection captures and moving/time-aligned ordinary service/tails remain
+OPEN; r_blendsort default stays1.
 See [the completed billboard lane](p690spritefixture.md) and
 [quiet ordinary scope](p690ordinary.md).

@@ -93,17 +93,37 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   capture:18 frozen transfer failures. Gate REJECTED; diagnostic lifecycle is NOT
   production causality. Native controls add new specific failures; older rejected
   protocols/receipts unchanged. mod_batchlist still reparses shader bodies.
-  Next falsifier: -noworkers before initialization, worker_count AND worker_status
-  zero-live/pending ACTED replies, bound material-registration/rescan sequencing
-  and exact unchanged diagnostic/production/P688-return default/mode/angle pixels.
-  NOT run yet. Stable rebucketing is a possible separate product investigation,
-  not a claimed fix; no forced resort/reparse/flush or favorable retry selection.
+  New2026-10-14 zero-worker startup gate PASSES all55 full-frame production/
+  diagnostic/P688-return images, mode1 preservation, observer parity and yaw0/45/0
+  return. Exact retained binaries/no rebuild: -noworkers before initialization on
+  BOTH processes; positive4-live/0-pending client+server and210 target receipts
+  count0/live0/pending0. Each diagnostic now has activation sort5->11/resort1/
+  red-blue,21 events/8 stable passive samples. Mode2 OFF correction still acts20604;
+  all gates/4 specific pixel controls/36-control replay pass normal/-O. Six owned
+  pairs/protected/native/fixture closure and recorder/corpus parity pass. Details
+  tools/p690brushfixture.md; earlier rejected gates remain unchanged.
+  This bounds the fixture under synchronous loaders, NOT an ordinary-startup fix
+  or workers-only causal proof (extra ticket cadence/warmup also differ).
+  Matched-cadence/warmup worker-enabled six-boot control is now RUN:212 replies
+  show4live/0pending; all55 state/PNG/16 observer receipts and closure valid. Gate
+  REJECTS18 (nine merged production/diagnostic mode1 transfers plus nine mode1
+  crossbinary comparisons,20604pixels each), normal/-O byte-identical validJSON.
+  All11 P688 returns/mode2 transfers/observer parity exact;4 new-specific pixel/
+  44-total replay controls ACT. Both diagnostic boots have resort1/red-blue,
+  which cannot describe the mismatching uninstrumented merged production boot.
+  Other46 crossbatch images match; no subset rescue. Worker config implicated,
+  NOT sole-cause proven (zero-then-enabled, no production lifecycle trace).
+  Next falsifier: nonperturbing actual worker-enabled registration/rescan trace
+  with exact production/diagnostic/P688-return pixels; matched cadence is no
+  longer an unrun prerequisite. Stable rebucketing remains separate unproved
+  product work; no forced resort/reparse/flush or favorable retry selection.
   Separate brush action from world correction enabled by removing its barrier;
   controls must add a NEW specific failure, not hide behind existing rejection.
   No mask/widened gate/subset rescue or candidate mode1 bug attribution.
-  Remaining falsifier: arbitrary model/sprite/weapon and rotated-brush native
-  acceptance, representative portal/reflection captures, additional supported-map
-  cache0/1 opaque preservation and representative ordinary frame times/tails.
+  Remaining falsifier: ordinary worker-enabled rotated-brush transfer, arbitrary
+  model/sprite/weapon native acceptance, representative portal/reflection captures,
+  additional supported-map cache0/1 opaque preservation and representative ordinary
+  frame times/tails.
   One quiet fixed Kitsune cache0 ordinary gate now PASSES, not broad promotion:
   tools/p690ordinary.py/p690ordinary.md schema2 bind78 complete ticketed samples,
   17 exact PNGs, six100-frame service groups and separate128-swap cadence rings.

@@ -142,10 +142,30 @@ resort1/red-blue; diagnostic merged resort0/blue-red. But each diagnostic's nine
 mode1 PNGs differs20,604pixels from its own production capture:18 transfer
 failures, frozen gate REJECTED. All11 production P688 returns and mode2 diagnostic/
 production pixels are exact; those cannot rescue boot-time causal transfer.
-Next startup-sequencing probe binds -noworkers with zero-worker/pending actor
-readbacks and unchanged-source production/diagnostic returns. Not run yet;
-no forced resort/reparse/flush, stable-rebucket fix or arbitrary-model/default2/
-performance acceptance is claimed. Details: [brush gate](p690brushfixture.md).
+A NEW separately frozen zero-worker startup gate now PASSES all55 fullframes:
+production/diagnostic/P688-return transfer, mode1 preservation, within-boot passive
+observer parity and yaw0/45/0 return. Exact retained binaries, no rebuild. Both
+processes receive -noworkers before initialization; a4-live/0-pending positive
+control and210 target count0/live0/pending0 receipts ACT, with actual cl/sv and
+phase binding. Both diagnostic boots now record activation sort5->11/resort1/
+red-blue,21 events/eight stable samples. Mode2 OFF correction still acts20,604.
+Normal/-O grades and4 pixel/36 total native replay controls pass; six owned pairs
+quitrc0 and protected/native/fixture/corpus closure passes. All earlier rejected
+protocols remain unchanged. This is bounded synchronous-loader fixture coverage,
+not ordinary worker-enabled startup repair or workers-only causality (ticket
+cadence/warmup also differ). No forced resort/reparse/flush, stable-rebucket fix,
+arbitrary-model/default2/performance/deployment claim. A second fixed55-image
+worker-enabled batch now holds the same cadence/warmup: all212 status receipts
+show4live/0pending, but nine merged production/diagnostic transfers and nine
+mode1 crossbinary comparisons differ20,604pixels. Normal/-O gate REJECTS18,
+while all4 NEW-specific pixel/44-total replay controls ACT; earlier frozen results
+stay unchanged. Both diagnostic boots again have resort1/red-blue; that is NOT
+a trace of the mismatching merged production boot. All other46 crossbatch images
+are exact and both mode2 transfers/P688 return hold, not a relaxed acceptance.
+All six owned pairs/native/protected/fixture/corpus closure pass. Worker setting
+is implicated but not sole-cause proven by two zero-then-enabled batches. Next
+is nonperturbing ordinary-worker registration/rescan sequencing, not another
+cadence-only probe. Details: [brush gate](p690brushfixture.md).
 
 Remaining unmeasured scope: hardware tessellation, external-projection runtime,
 arbitrary model/sprite/weapon native certification and broad all-map/GPU/perf

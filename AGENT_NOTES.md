@@ -5041,12 +5041,46 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   and failed; source/log/failure retained. Shared ARCHLIBS hashes unchanged. Five
   pairs quitrc0/native8/protected1223/install2/fixture absence restore; recorder
   306/0 and corpus/reader/count/fault parity unchanged. Parent review only.
-  Next startup probe: -noworkers before initialization, worker_count AND
-  worker_status zero-live/pending ACTED replies, unchanged diagnostic/production/
-  P688-return with registration/rescan records. NOT run yet. Stable rebucketing
-  is a separate possible product investigation, not an accepted fix. No forced
-  resort/flush/reparse/retry selection, mask/widening/mode2 subset rescue or new
-  arbitrary rotated-brush/default2/performance/deployment acceptance.
+  A separately frozen -noworkers follow-up now PASSES all55 exact production/
+  diagnostic/P688-return fullframes, mode1 preservation, observer parity and
+  yaw0/45/0 return. Both processes zeroed BEFORE worker initialization; default
+  positive has4 live/0pending on cl+sv and210 measured receipts showcount0/live0/
+  pending0. Bind actual MATCH cl/sv waits, unique tickets/raw paths and phase
+  intervals against observer/state/PNG, not just labels; boot receipt reuse is
+  not evidence of later or server state. Both diagnostics now show activation
+  sort5->11/resort1/red-blue,21 events/eight unchanged passive samples; mode2 OFF
+  correction still acts20604. Normal/-O frozen grades and4 pixel/36-total native
+  replay controls pass. Six owned pairs quitrc0/native8/protected1223/install2/
+  fixture absence restore; recorder306/0 and corpus hashes/counts/faults unchanged.
+  Exact retained binaries/no rebuild/default/deployment change. The previous
+  rejected gates stay immutable. This bounds a synchronous-loader fixture, NOT
+  ordinary-worker transfer or workers-only causality: ticket cadence/warmup also
+  differ. A second matched cadence/warmup six-boot worker-enabled capture now
+  ACTS212 replies4live/0pending, valid55PNG/16samples/closure, but gate REJECTS18:
+  nine merged production/diagnostic transfers and nine mode1 crossbinary images,
+  each20604. Normal/-O validJSON preserves all18;4 new-specific pixel/44-total
+  replay controls ACT despite preexisting failures. Both diagnostics still have
+  resort1/red-blue; never assign those events to mismatching merged production.
+  Other46 images crossbatch exact; both mode2 transfers/all11 P688 returns and
+  observer parity hold, not a subset acceptance. Six pairs/protected/native/
+  fixture/corpus closure pass. Worker setting implicated, NOT sole cause proved
+  (zero-then-enabled, no uninstrumented production lifecycle). Next isolate real
+  worker-enabled registration/rescan without diagnostic perturbation; cadence/
+  warmup match is now tested, not a remaining prerequisite.
+  Stable rebucketing remains separate unproved product work. No forced resort/
+  reparse/flush/retry selection, mask/widening/subset rescue or arbitrary model/
+  default2/performance acceptance. tools/p690brushfixture.md;
+  artifacts/brush-workers-20261014/, brush-workers-enabled-20261014/.
+- Before native launch, actually exercise extra argv through conbridge argparse
+  with dispatch stubbed. --server-args=-noworkers works; separate flag/value
+  tokens reject as expected-one-argument and can strand staged binaries if the
+  harness marks active too early. Only a PROVED predispatch parser failure plus
+  independent absent processes/registry can clear active for restoration; never
+  swallow an ambiguous launch/stop failure. Port guard needs rc0/explicit success
+  enumeration; suppressed errors/empty stdout are NOT an unoccupied port. Normal/
+  -O safety mutants caught these before the zero-worker fixture froze/launched.
+  Reviewer timed out with useful partial findings, parent corrected/tested;
+  no completed independent correction/result clearance or fallback claimed.
 - Stale r_waterinfo MarkLeaves age is NOT cache-action proof. Q1BSP_MarkLeaves
   common/q1bsp.c:2227 returns same-cluster cvis BEFORE marktime at2275. Actual
   stationary cache0 reported wanted0/inuse0 plus stale14.1s/false causal cache
