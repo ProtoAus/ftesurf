@@ -83,6 +83,45 @@ class ColdSupersetTests(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 cold.grade_state(dest,meta,{},ledger,b'signed','0.1.25',True)
 
+    def test_attempt3_full_rows_and_reduced_before_are_independent(self):
+        original = journal(self.files, self.paths, '0.1.25', 3)
+        self.assertFalse(cold.authority_grade(original, self.files, self.paths, '0.1.25', 3, False, 'last'))
+        for count in (1,2,4):
+            with self.subTest(count=count), self.assertRaises(AssertionError):
+                cold.authority_grade(journal(self.files,self.paths,'0.1.25',count),
+                                     self.files,self.paths,'0.1.25',3,False,'last')
+        reduced=journal(self.files,['last'],'0.1.25',3)
+        self.assertTrue(cold.authority_grade(reduced,self.files,self.paths,'0.1.25',3,True,'last'))
+        with self.assertRaises(AssertionError):
+            cold.authority_grade(reduced,self.files,self.paths,'0.1.25',3,False,'last')
+
+    def test_exhausted_refusal_rejects_authority_ledger_install_stage_and_temp_mutations(self):
+        with tempfile.TemporaryDirectory(dir=os.environ['FTESURF_TEST_SCRATCH']) as tmp:
+            dest=Path(tmp); meta=dest/'.ftesurf-updater'; stage=meta/'ingame/staged'; stage.mkdir(parents=True)
+            expected={'resolved':b'new','pending':b'old','protected':b'edit','unmanaged':b'guard'}
+            ledger=dict(version='0.1.24',files={'resolved':'a','pending':'old'})
+            ledger_bytes=json.dumps(ledger).encode()
+            authority=json.dumps(journal(self.files,self.paths,'0.1.25',3)).encode()
+            seed=expected | {'.ftesurf-updater/state.json':ledger_bytes,
+                '.ftesurf-updater/consent':b'1\n','.ftesurf-updater/ingame/manifest.json':b'signed',
+                '.ftesurf-updater/ingame/journal.json':authority,
+                '.ftesurf-updater/ingame/staged/pending':b'repaired',
+                '.ftesurf-updater/ingame/staged/unmanaged.tmp':b'sibling'}
+            for p,data in seed.items(): (dest/p).write_bytes(data)
+            def grade(): cold.exhaustion_grade(dest,meta,expected,ledger,b'signed','0.1.25',
+                                              authority,ledger_bytes,{'pending':b'repaired','unmanaged.tmp':b'sibling'})
+            grade()
+            for p,data in seed.items():
+                with self.subTest(path=p):
+                    (dest/p).write_bytes(b'{}' if p.endswith('.json') else b'mutated')
+                    with self.assertRaises(AssertionError): grade()
+                    (dest/p).write_bytes(data)
+            for extra in ('ingame/journal.tmp','installed.json','ingame/staged/extra'):
+                with self.subTest(extra=extra):
+                    (meta/extra).write_bytes(b'new')
+                    with self.assertRaises(AssertionError): grade()
+                    (meta/extra).unlink()
+
     def test_every_stage_survivor_removal_byte_change_and_extra_refuses(self):
         expected = {'a':b'signed', 'b':b'corrupt', 'unmanaged.tmp':b'sibling'}
         with patch.object(cold, 'stage_map', return_value=expected):

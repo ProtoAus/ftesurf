@@ -9,7 +9,7 @@ from pathlib import Path
 from test_update_native_journal import (preflight_paths, sha, snapshot, source_lock,
     PENDING_ERROR, REWRITE_ERROR, ensure_retirable)
 from test_update_native_journal_initial import cold_phase
-from test_update_native_journal_interrupt import bind_commit, interrupt
+from test_update_native_journal_interrupt import bind_commit, interrupt, EXHAUSTED
 from test_update_native_journal_deferred import helper_identity
 from test_update_native_publication_superset import (BEFORE, SUBJECT, prepare,
     grade_state, stage_map, full_authority, mirror_server)
@@ -30,6 +30,14 @@ def authority_grade(actual, files, paths, version, attempts, before, pending):
 
 def stages_grade(dest, expected):
     assert stage_map(dest) == expected, 'exact stage leaves/siblings changed'
+
+
+def exhaustion_grade(dest, meta, expected, ledger, signed, version, authority_bytes, ledger_bytes, stages):
+    grade_state(dest, meta, expected, ledger, signed, version)
+    assert (meta / 'ingame/journal.json').read_bytes() == authority_bytes, 'exhausted authority mutated'
+    assert (meta / 'state.json').read_bytes() == ledger_bytes, 'exhausted ledger bytes mutated'
+    assert not (meta / 'ingame/journal.tmp').exists(), 'exhausted refusal created temp'
+    stages_grade(dest, stages)
 
 
 def main():
@@ -66,7 +74,7 @@ def main():
             for pending in paths:
                 resolved = next(p for p in paths if p != pending)
                 position = 'pending-first' if pending == paths[0] else 'pending-last'
-                for mode in ('source-lock', 'crash-before', 'crash-after', 'none'):
+                for mode in ('source-lock', 'crash-before', 'crash-after', 'none', 'exhaustion'):
                     name = position + '-' + mode
                     dest, meta, expected, ledger = prepare(root, name, payload, files, paths)
                     case = evidence / name; case.mkdir()
@@ -88,11 +96,12 @@ def main():
                             cold_phase(engine, dest, case / 'fault', REWRITE_ERROR)
                         (case / 'source-probe.json').write_text(json.dumps(lock_receipt, indent=2))
                     else:
-                        interrupt(engine, helper, binding, dest, case / 'fault', mode)
+                        interrupt(engine, helper, binding, dest, case / 'fault',
+                                  'crash-after' if mode == 'exhaustion' else mode)
                     expected[resolved] = payload[resolved]
                     ledger['files'][resolved] = files[resolved]['hash']
                     grade_state(dest, meta, expected, ledger, signed, manifest['version'])
-                    committed = mode in ('none', 'crash-after')
+                    committed = mode in ('none', 'crash-after', 'exhaustion')
                     native = authority if committed else meta / 'ingame/journal.tmp'
                     native_bytes = native.read_bytes()
                     rejected = authority_grade(json.loads(native_bytes), files, paths,
@@ -108,6 +117,37 @@ def main():
                     (case / 'publication-oracle.json').write_text(json.dumps(dict(status='PASS',
                         native_authority_sha256=sha(native_bytes), legacy_full_oracle_rejected=rejected,
                         committed=committed, attempts=2, stages={h:sha(b) for h,b in partial_stages.items()}), indent=2))
+                    if mode == 'exhaustion':
+                        # The native next admission alone spends3; never patch authority.
+                        cold_phase(engine, dest, case / 'still-corrupt', PENDING_ERROR)
+                        grade_state(dest, meta, expected, ledger, signed, manifest['version'])
+                        debit = authority.read_bytes()
+                        authority_grade(json.loads(debit), files, paths, manifest['version'],
+                                        3, a.expect_before, pending)
+                        assert not (meta / 'ingame/journal.tmp').exists()
+                        exhausted_stages = copy.deepcopy(stages)
+                        if not a.expect_before:
+                            del exhausted_stages[files[resolved]['hash']]
+                        stages_grade(dest, exhausted_stages)
+                        # Stage-only repair cannot reset content budget or install pending.
+                        (stage / files[pending]['hash']).write_bytes(payload[pending])
+                        exhausted_stages[files[pending]['hash']] = payload[pending]
+                        ledger_bytes = (meta / 'state.json').read_bytes()
+                        (case / 'stage-only-repair.json').write_text(json.dumps(dict(path=pending,
+                            sha256=sha(payload[pending]), attempts=3, authority_sha256=sha(debit))))
+                        exhaustion_grade(dest, meta, expected, ledger, signed, manifest['version'],
+                                         debit, ledger_bytes, exhausted_stages)
+                        cold_phase(engine, dest, case / 'exhausted-stage-repaired', EXHAUSTED)
+                        exhaustion_grade(dest, meta, expected, ledger, signed, manifest['version'],
+                                         debit, ledger_bytes, exhausted_stages)
+                        (case / 'exhaustion-oracle.json').write_text(json.dumps(dict(status='PASS',
+                            attempts=3, authority_sha256=sha(debit), ledger_sha256=sha(ledger_bytes),
+                            legacy_reduction=a.expect_before, pending_still_old=True,
+                            stages={h:sha(b) for h,b in exhausted_stages.items()}), indent=2))
+                        snapshot(dest, case / 'final')
+                        result['cases'].append(name)
+                        print('PASS cold-superset', name, 'before' if a.expect_before else 'subject', flush=True)
+                        continue
                     # Repair object only; never replace native authority or temp.
                     (stage / files[pending]['hash']).write_bytes(payload[pending])
                     (case / 'repair-input.json').write_text(json.dumps(dict(path=pending,

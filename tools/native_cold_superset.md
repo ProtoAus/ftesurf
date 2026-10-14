@@ -29,10 +29,12 @@ actor/grader/result was edited or relabelled.
 
 ## Native boundary and checks
 
-Eight cases per binary: source-sharing failure, pre/post-publication process
-interruption and uninterrupted cold publication, each pending position. Eight
-fresh released/repaired ordinary cold phases follow without harness replacement
-of authority/temp. Both clients have atomic P692 publication; `--expect-before`
+Ten cases per binary: source-sharing failure, pre/post-publication process
+interruption, uninterrupted cold publication, and a fresh post-cut exhaustion
+branch, each pending position. Eight fresh released/repaired ordinary cold phases
+follow; exhaustion branches instead debit3 with a still-corrupt native startup,
+repair only staged input, then require actual unchanged exhausted refusal.
+No harness replacement of authority/temp. Both clients have atomic P692 publication; `--expect-before`
 names reduction, NOT the old unlink-before-rename client. Immutable
 `native_journal_interrupt.c` / `bind_commit(..., False)` binds full PE/companion
 text, inspected writer/frame and real cold caller/native pre/post call bytes.
@@ -69,13 +71,15 @@ python -B -m unittest discover -s tools -p test_update_native_cold_superset_unit
 python -B <READ-ONLY wjfinish artifacts/serialized-native.py> tools/test_update_native_cold_superset.py --engine <exact client> --symbols <matching .exe.db> --helper <owned helper> --feed <retained signed feed> --objects <closure-a> --objects <closure-b> --runtime-root <fresh runtime/cold/attempt> --evidence <fresh artifacts/cold/attempt> --serializer <same serialized-native.py> [--expect-before]
 ```
 
-Final frozen-source argv: artifacts/cold/{before03,subject02}-command.log.
-Earlier passing before02/subject01 predate two additional closure/certificate
-mutation units; executable driver/helper unchanged. Final combined units:168 PASS.
+Final frozen-source argv: artifacts/cold/{before04,subject03}-command.log.
+Each final matrix:10 cases/22 natural job0/full-export phases. Joined HTTP{}.
+Earlier passing before02/subject01 and before03/subject02 are bounded pre-debit
+history, not final closure. Final combined units:170 PASS.
 Their result.json bind821 selected rows/750 objects, source and executable hashes.
 Per-case fault/repair process.json, debug.jsonl, source-probe.json, seed/final and
 full phase metadata/inventory exports plus publication-oracle.json are review
-inputs. Runtime/cold/{before01,before02,before03,subject01,subject02} retained pending review.
+inputs. Runtime/cold/{before01,before02,before03,before04,subject01,subject02,subject03}
+retained pending review.
 Build01 direct gcc exit1 had empty output/no exe due missing UCRT DLL PATH.
 Supervisor authorized one same-compiler environment correction; build02 records
 compiler hash/version/argv/PATH and warning-clean exit0. No alternate provider.
@@ -84,8 +88,16 @@ compiler hash/version/argv/PATH and warning-clean exit0. No alternate provider.
 
 Process interruption only: NOT power loss, flush durability, Linux, hostile
 ancestors/hardlinks, initial/deferred caller acceptance, default public HTTPS,
-product publication or deployment. Same-size corruption acts as pending content;
-this extension does not newly measure attempts3 refusal/debit interruption or
-cleanup exhaustion. Those historical retirement tests are regression units,
-not upgraded native evidence here. Raw failing product API return remains open.
+product publication or deployment. Same-size corruption acts as pending content. Fresh exhaustion branches first
+observe attempt2 after successful-publication process interruption with all
+stages intact. Native still-corrupt startup alone publishes attempt3 (candidate
+original full rows, legacy exact pending-only reduction), refuses pending content
+and permits resolved-stage retirement only after publication. Stage-only repair
+then cannot admit another content install: actual exhaustion marker/nonzero exit,
+byte-identical authority and ledger, exact closure/version/consent/protected/
+unmanaged/stages, no temp and no certificate are mandatory. Mutation units
+reject attempts reset/over-debit, reduction, changes to every survivor and extra
+temp/certificate/stage. This does not newly interrupt the attempt3 publication
+itself or test completed-content cleanup-only admission at attempts3. Historical
+retirement tests remain their own evidence, not upgraded here. Raw failing product API return remains open.
 Independent review required before integration; no push/deploy authority.
