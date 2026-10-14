@@ -825,20 +825,18 @@ def topup_step(cache, idx, pacer, completed, fetched):
                 conn.close()
             continue
         doc = board_load(cache, mp, zone, mode)
-        try:
-            for _ in range(min(5, pacer.left())):
-                if not wants_more(_state(doc), target):
-                    break
-                doc, _ = board_page(cache, mp, zone, pacer, mode, idx=idx)
-        finally:
-            # Include even a previously cached board: importing its owed rows
-            # is the control that makes a recovered request genuinely act.
-            doc = board_load(cache, mp, zone, mode)
-            idx[_ikey(mp, zone, mode)] = _state(doc)
-            if (mp, zone, mode) not in fetched:
-                fetched.append((mp, zone, mode))
-            completed.append(((mp, track, leg, style), target,
-                              len(doc.get("rows", [])), bool(doc.get("done"))))
+        for _ in range(min(5, pacer.left())):
+            if not wants_more(_state(doc), target):
+                break
+            doc, _ = board_page(cache, mp, zone, pacer, mode, idx=idx)
+        # The common watch filing seam takes (map, zone, mode, rows), NOT a
+        # board key alone. Include cached rows too. On refusal leave completed
+        # and fetched untouched: owed markers recover any partial pages, and
+        # the failing board's strike must not be cleared as if it succeeded.
+        idx[_ikey(mp, zone, mode)] = _state(doc)
+        fetched.append((mp, zone, mode, doc.get("rows", [])))
+        completed.append(((mp, track, leg, style), target,
+                          len(doc.get("rows", [])), bool(doc.get("done"))))
 
 
 def finish_topups(completed):

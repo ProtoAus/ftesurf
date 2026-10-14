@@ -4,6 +4,8 @@ import os
 import struct
 import time
 import unittest
+import sqlite3
+import tempfile
 from pathlib import Path
 
 import test_ksfimport as T
@@ -67,6 +69,26 @@ class Topup(unittest.TestCase):
         self.assertEqual((Q.count(self.db, self.key), Q.status(self.db, self.key)['state']),
                          (247, 'exhausted'))
         self.assertEqual(Q.enqueue(self.db, self.key, int(time.time()))[0]['state'], 'exhausted')
+
+    def test_whole_watch_worker_files_before_acknowledgement(self):
+        maps = tempfile.mkdtemp(prefix='topup-maps-', dir=T.HOME)
+        Path(maps, 'surf_topup.bsp').touch()
+        Q.enqueue(self.db, self.key, 100)
+        write = K.write_rows
+        def fail_write(rows):
+            raise sqlite3.OperationalError('owned forced filing failure')
+        K.write_rows = fail_write
+        try:
+            self.assertEqual(T.tick(self.cache, maps, 12), 1)
+        finally:
+            K.write_rows = write
+        self.assertEqual(Q.count(self.db, self.key), 120)
+        self.assertEqual(Q.status(self.db, self.key)['state'], 'queued')
+        self.assertTrue(K.owed_boards(self.cache))
+        self.assertEqual(T.tick(self.cache, maps, 12), 0)
+        # The ordinary crawl shares the tick and finishes this small board.
+        self.assertEqual(Q.count(self.db, self.key), 247)
+        self.assertEqual(Q.status(self.db, self.key)['state'], 'done')
 
     def test_http_and_style_isolation(self):
         url = '/api/board?ksfmore=1&map=surf_topup&style=sw'

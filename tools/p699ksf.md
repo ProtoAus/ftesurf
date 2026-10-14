@@ -27,7 +27,7 @@ Predictions were recorded in artifacts/PLAN.md before implementation.
 
 Windows controls:
 
-- `python surfd/test_ksftopup.py`: six controls (including the proxy boundary). No queued demand makes
+- `python surfd/test_ksftopup.py`: seven controls (including the proxy boundary and whole-worker recovery). No queued demand makes
   no requests; explicit demand files 120 -> 220 -> 247/exhausted. Duplicate
   requests do not multiply targets. A cut after fetch/before filing resumes the
   durable cursor. GET does not enqueue, POST does; 50ms lock refusal, global
@@ -107,3 +107,12 @@ fetching is deliberately asynchronous, not an unbounded web scrape.
 Source verification complete. Clean-commit deployment, NanoPi staged tests and
 live hashes/behaviour are separate gates; record their result here after they act.
 The native engine and QC Build number must not move for this task.
+
+The first live worker exposed a missing integration arm: topup_step supplied a
+three-cell key where watch's common filing seam needs four cells including rows.
+The fetched cache/owed marker survived; no queue was acknowledged and no rows
+were lost. Fix the tuple contract and leave failed fetches out of successful
+refresh/strike-clearing lists. An exact old-function control now fails at that
+seam; the subject drives real --watch --go through a forced filing failure,
+retains the request/owed marker, then recovers and acknowledges after filing.
+Direct topup_step and HTTP/UI tests alone had not covered that seam.
