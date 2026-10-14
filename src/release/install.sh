@@ -1,6 +1,6 @@
 #!/bin/sh
 # =============================================================================
-#  install.sh -- ONE-TIME wiring for https://proto.bar/ftesurf.  Run as root:
+#  install.sh -- wire legacy /ftesurf and candidate /worldofsurf. Run as root:
 #
 #      sudo sh /srv/nvme/ftesurf-site/install.sh
 #
@@ -61,6 +61,12 @@ cp -p "$VHOST" "$BAK"
 echo "== backed up vhost -> $BAK =="
 
 echo "== installing snippet =="
+SNIP_BAK=""
+if [ -f "$SNIP" ]; then
+    SNIP_BAK="/etc/nginx/ftesurf.conf.bak-$TS"
+    cp -p "$SNIP" "$SNIP_BAK"
+    echo "   previous snippet -> $SNIP_BAK (restore with the vhost backup)"
+fi
 install -m 0644 -o root -g root "$SRC" "$SNIP"
 echo "   $SNIP  ($(wc -c < "$SNIP") bytes)"
 
@@ -111,7 +117,12 @@ chmod -R a+rX "$SITE"
 echo "== nginx -t =="
 if ! OUT=$(nginx -t 2>&1); then
     echo "$OUT" >&2
-    echo "FAILED: nginx -t did not pass. Restore with:  cp -p $BAK $VHOST && nginx -t" >&2
+    echo "FAILED: nginx -t did not pass; no reload performed." >&2
+    echo "Restore vhost: cp -p $BAK $VHOST" >&2
+    if [ -n "$SNIP_BAK" ]; then
+        echo "Restore snippet: cp -p $SNIP_BAK $SNIP" >&2
+    fi
+    echo "Then: nginx -t (and reload only after it passes)." >&2
     exit 1
 fi
 echo "$OUT"
@@ -130,14 +141,35 @@ AFTER=$(nginx -T 2>/dev/null | grep -c 'server_name proto.bar;' || true)
 echo "   server_name proto.bar count after: $AFTER  (must equal $BEFORE)"
 [ "$AFTER" = "$BEFORE" ] || { echo "FAILED: the server_name count changed -- a duplicate vhost got loaded" >&2; exit 1; }
 
-# The leaderboard proxy, through this nginx rather than public DNS.
-sleep 1
-BOARD=$(curl -s -o /dev/null -w '%{http_code}' --resolve proto.bar:443:127.0.0.1 \
-    https://proto.bar/ftesurf/board/api/maps || true)
-echo "   GET /ftesurf/board/api/maps -> $BOARD"
-[ "$BOARD" = "200" ] || { echo "FAILED: the leaderboard did not answer 200 -- is surfd deployed with /board/ (surfd/web/ beside surfd.py)?" >&2; exit 1; }
+# Probe both prefixes through this nginx, not public DNS. A filebrowser SPA
+# can answer 200 too: require the marker, JSON type and actual board envelope.
+PROBE=$(mktemp -d)
+trap 'rm -f "$PROBE/headers" "$PROBE/body"; rmdir "$PROBE"' EXIT
+trap 'exit 1' HUP INT TERM
+for BASE in ftesurf worldofsurf; do
+    curl --fail --silent --show-error --max-time 10 \
+        --resolve proto.bar:443:127.0.0.1 \
+        -D "$PROBE/headers" -o "$PROBE/body" \
+        "https://proto.bar/$BASE/board/api/maps"
+    python3 - "$PROBE/headers" "$PROBE/body" <<'PY'
+import json
+import pathlib
+import re
+import sys
+headers = pathlib.Path(sys.argv[1]).read_text().lower()
+if not re.search(r"^x-ftesurf-site:\s*1\s*$", headers, re.M):
+    sys.exit("FAILED: missing site marker (filebrowser fallback?)")
+if not re.search(r"^content-type:\s*application/json(?:[;\s]|$)", headers, re.M):
+    sys.exit("FAILED: board did not serve JSON")
+body = json.loads(pathlib.Path(sys.argv[2]).read_text())
+if not isinstance(body, dict) or body.get("v") != 1 or not isinstance(body.get("maps"), list):
+    sys.exit("FAILED: not the board maps envelope")
+PY
+    echo "   GET /$BASE/board/api/maps -> marked board JSON"
+done
 
 echo
-echo "Installed. Now re-run the release script, or if a page is already staged:"
-echo "    sh $SITE/publish.sh <version>"
-echo "Check:  curl -sI https://proto.bar/ftesurf/ | grep -i x-ftesurf-site"
+echo "Installed parallel routes; SURFD_BOARD_URL and release defaults are unchanged."
+echo "This is NOT the canonical-path/account cutover. See REBRANDING_PLAN.md."
+echo "If a page is already staged: sh $SITE/publish.sh <version>"
+echo "Check both paths: curl -sI https://proto.bar/worldofsurf/ | grep -i x-ftesurf-site"

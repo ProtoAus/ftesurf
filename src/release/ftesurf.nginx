@@ -1,5 +1,5 @@
 # =============================================================================
-#  ftesurf.nginx -- the download page at https://proto.bar/ftesurf
+#  ftesurf.nginx -- World of Surf website, legacy and candidate paths
 #
 #  NOT INSTALLED BY HAND.  install.sh copies this to
 #  /etc/nginx/snippets/ftesurf.conf and adds the one `include` line to
@@ -31,7 +31,7 @@
 
 # /ftesurf -> /ftesurf/  (the alias below only matches the trailing-slash form)
 location = /ftesurf {
-    return 301 https://$host/ftesurf/;
+    return 301 https://$host/ftesurf/$is_args$args;
 }
 
 location ^~ /ftesurf/ {
@@ -57,7 +57,7 @@ location ^~ /ftesurf/ {
     gzip_vary         on;
     gzip_min_length   512;
     gzip_comp_level   6;
-    gzip_types        text/html text/plain text/css application/json;
+    gzip_types        text/plain text/css application/json;
 
     # This page is a few KB, but releases/ holds every past version and LICENSE
     # is 17 KB.  limit_rate needs no shared zone, unlike limit_conn -- see below.
@@ -96,7 +96,7 @@ location = /ftesurf/BebasNeueRegular.ttf {
 # sets CSP, nosniff and Cache-Control; X-Real-IP (overwritten) is its per-client
 # rate key.
 location = /ftesurf/board {
-    return 301 https://$host/ftesurf/board/;
+    return 301 https://$host/ftesurf/board/$is_args$args;
 }
 
 # Only the selected-map API gains POST (bounded KSF demand). Keep every other
@@ -135,4 +135,77 @@ location ^~ /ftesurf/board/ {
     gzip_proxied      any;
     gzip_min_length   512;
     gzip_types        text/css application/javascript text/javascript application/json;
+}
+
+# P707: stage the future public base alongside the authoritative legacy base.
+# Same storage/backend and legacy install marker (release-tool contract). No old
+# redirect, account return-path change or update-feed identity switch here.
+# Keep these policies paired with /ftesurf/ above; test_site_routes.py exercises
+# this actual snippet with nginx, including the exact selected-map POST exception.
+location = /worldofsurf {
+    return 301 https://$host/worldofsurf/$is_args$args;
+}
+
+location ^~ /worldofsurf/ {
+    alias /srv/nvme/ftesurf-site/static/;
+    index index.html;
+    add_header X-FTESurf-Site "1" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Cache-Control "no-cache" always;
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 512;
+    gzip_comp_level 6;
+    gzip_types text/plain text/css application/json;
+    limit_rate_after 512k;
+    limit_rate 2m;
+}
+
+location = /worldofsurf/BebasNeueRegular.ttf {
+    alias /srv/nvme/ftesurf-site/static/BebasNeueRegular.ttf;
+    default_type font/ttf;
+    add_header X-FTESurf-Site "1" always;
+    add_header Cache-Control "public, max-age=2592000" always;
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 6;
+    gzip_types font/ttf;
+}
+
+location = /worldofsurf/board {
+    return 301 https://$host/worldofsurf/board/$is_args$args;
+}
+
+location = /worldofsurf/board/api/map {
+    limit_req zone=surfdboard burst=30 nodelay;
+    limit_req_status 429;
+    limit_except GET POST { deny all; }
+    proxy_pass http://127.0.0.1:8084/board/api/map;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout 5s;
+    add_header X-FTESurf-Site "1" always;
+}
+
+location ^~ /worldofsurf/board/ {
+    limit_req zone=surfdboard burst=30 nodelay;
+    limit_req_status 429;
+    limit_except GET { deny all; }
+    proxy_pass http://127.0.0.1:8084/board/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout 5s;
+    add_header X-FTESurf-Site "1" always;
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_min_length 512;
+    gzip_types text/css application/javascript text/javascript application/json;
 }

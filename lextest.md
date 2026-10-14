@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P707 — parallel website-path preparation (not installed)
+
+P705 art acceptance remains separate below. The new /worldofsurf route is only
+prepared in source; please approve a privileged parallel-routing deployment window
+before anyone changes nginx. No new live URL or canonical/Steam cutover is claimed.
+After a separately recorded target-host deployment and external HTTP checks, judge
+old/new page navigation, downloads and account linking/unlinking in a real HTTPS
+browser, including returning from Steam and the game opener. Starts under either
+prefix must still advertise the old callback in this preparation stage. Account
+base/default/social switching needs its own signed-return drain/transition gate.
+Local Windows/Linux nginx and fake Steam are not that acceptance. Commands/limits:
+`tools/p707sitepaths.md`; next steps: `REBRANDING_PLAN.md`.
+
 ## P706 — original and automatic KSF replays
 
 After the P706 client/backend delivery receipt is marked deployed, open the KSF

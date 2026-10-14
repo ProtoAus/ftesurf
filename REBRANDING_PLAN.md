@@ -31,6 +31,34 @@ Next: accept the art; prepare compatible game/engine presentation changes;
 then prove routing/accounts and signed-release compatibility before public
 cutover. Old `/ftesurf/` OG URLs remain intentional until the new route is real.
 
+### Stage 2 progress — P707 parallel-path preparation (2026-10-14)
+
+**Source preparation verified; not installed or a canonical-path cutover.**
+`src/release/ftesurf.nginx` now defines `/worldofsurf/` beside `/ftesurf/`, using
+one existing site directory and `/board/` backend. No legacy path is redirected
+away, no release/feed/client defaults change, and `SURFD_BOARD_URL` stays legacy.
+Both starts intentionally advertise the legacy callback. Account application,
+association database, signed formats, host cookies and service hosts are unchanged.
+Installer backs up the prior snippet and probes both paths for the site marker,
+JSON MIME and real board maps envelope, not a misleading filebrowser `200`.
+
+Real local nginx + isolated surfd: five integration groups pass (both prefixes,
+asset/feed bytes/MIME/cache, 404s, slash query preservation, exact upstream queries,
+method boundaries, overwritten IP headers, account callbacks/cookie attributes).
+Legacy-only acting control fails on missing new routes and query loss. Full mock
+regressions pass: 268 web, 400 legacy-base accounts, 400 future-base accounts, 350
+board and seven brand tests. Details, commands and limits: `tools/p707sitepaths.md`.
+These are local Windows/Linux nginx + mock checks, not live HTTP, real Steam/browser
+acceptance, a signed updater round-trip, human art acceptance or a release.
+
+**Next gate:** accept P705 art; approve the privileged parallel-routing deployment
+window, then run Linux `nginx -t` and external old/new HTTP/download/account
+checks. Keep the old base authoritative until a separately approved account
+transition drains old starts (600s configured start window, plus worker/config
+provenance) or explicitly tests old signed callbacks. Do not blindly redirect them.
+Canonical social links/defaults, game/native branding and updater bridge remain
+later work. No QC Build, engine binary/pin/tag, player data or live install changed.
+
 ## 1. Agreed identity and remaining decisions
 
 Use one consistent public identity rather than three interchangeable titles:
@@ -280,8 +308,10 @@ version progression or changing its legacy game identity.
 ### Account, consent, and compatibility requirements
 
 - Set the public board base to `https://proto.bar/worldofsurf/board` through
-  `SURFD_BOARD_URL`, and update OpenID realm/return behavior, public link text, the
+  `SURFD_BOARD_URL`, and update OpenID return behavior, public link text, the
   client account-link address, account documentation, and proxy paths together.
+  The current realm is origin-only (`https://proto.bar`) and does not change for
+  this same-host path move (`accounts.py:register`, `steam.py:precheck`).
   Do not change Steam domain registration merely for a path rename unless the
   actual integration requires it.
 - The HTTPS scheme and hostname stay the same. Existing secure host cookies use
@@ -291,7 +321,7 @@ version progression or changing its legacy game identity.
 - Existing Steam/account/key associations remain in the same backing database.
   Do not relink or regenerate them to achieve a cosmetic rename.
 - `SURFD_BOARD_URL` is a single configured public board base in the inspected code.
-  A same-host move still changes the realm/return path used by the sign-in flow.
+  A same-host move changes the signed return path, not the origin-only realm.
   Drain old in-flight sign-ins and send new starts to the canonical path, or
   implement/test explicit old-path callback handling. Do not blindly redirect a
   signed OpenID callback to a different return path and assume it remains valid.

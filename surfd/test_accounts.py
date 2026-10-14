@@ -39,7 +39,8 @@ import accounts     # noqa: E402  (stateless; surfd imports the same module)
 import ed25519      # noqa: E402
 import steam        # noqa: E402
 
-BOARD = "https://proto.bar/ftesurf/board"
+# Run the complete same-host path matrix without changing production defaults.
+BOARD = os.environ.get("ACCOUNTS_TEST_BOARD_URL", "https://proto.bar/ftesurf/board")
 SID = "76561198000000001"
 SID2 = "76561198000000002"
 START = 1800000000

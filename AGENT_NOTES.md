@@ -648,6 +648,21 @@ signed formats, player data and native/QC binaries remain intentional. Do not
 mistake local dual-prefix fixtures for live nginx/Steam transition proof.
 Source controls and failures: `tools/p705rebrand.md`.
 
+### World of Surf parallel website paths (P707)
+
+`tools/test_site_routes.py` runs the authored nginx snippet against isolated real
+surfd, with scoped addresses/temp paths and a distinct filebrowser fallback.
+Use a real nginx distribution plus Flask; --mime-types overrides its type table.
+Default POSIX daemonization detaches the serving master from Popen: retain it
+with `daemon off`, check pidfile == retained PID, reap it and check closed socket
+before removing the fixture. --lifecycle-control setup/shutdown are intentionally
+failing cleanup controls. No unproved/global cleanup; preserve blocked fixtures.
+Run test_accounts standalone with ACCOUNTS_TEST_BOARD_URL to exercise either
+configured public base. Dual HTTP routes do not mean dual signed callback bases:
+SURFD_BOARD_URL stays legacy in this prep, and Steam realm is origin-only while
+return_to is path-sensitive. No public/canonical switch follows from local mocks.
+Commands, both-platform controls, findings and remaining gates: tools/p707sitepaths.md.
+
 ## Run and test
 
 - Normal launch: `./ftesurf64.exe` (or `ftesurf.bat`).

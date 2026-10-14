@@ -25,7 +25,12 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-703
-patch    706
+patch    707
+# Patch 707: prepare parallel /worldofsurf and /ftesurf website routes; same
+# backend/storage, authoritative legacy account callback and release identities.
+# Real local nginx+surfd and full dual-base mock accounts pass. No live routing,
+# canonical-path cutover, engine pin/tag, QC Build or release change.
+# Verification/limits: tools/p707sitepaths.md.
 # Patch 706: original KSF CSS/66t v2/v3 binary playback and bounded advertised-demo
 # discovery/import. Exact current record bindings, retained originals, shared
 # crawler budget/lock/cooldown, imported Watch/line API; no native verification.
