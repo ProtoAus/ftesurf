@@ -32,7 +32,10 @@ FILE = re.compile(r'replay_css_[0-9]+_([0-3])_([0-9]+)_([0-9]+)\.rec\Z')
 BOARD = re.compile(r'([a-z0-9_]{1,64})/z([0-9]+)(?:m([1-3]))?\.json\Z')
 MAX_BYTES = 16 << 20
 MAX_QUEUE = 256
+MAX_RECOVER = 2
+MAX_PROVENANCE = 16 << 10
 SCAN = 32
+BINDING = ('map', 'track', 'leg', 'style', 'player', 'runid', 'millis', 'when', 'file')
 STYLES = {0: 'FW', 1: 'SW', 2: 'HSW', 3: 'BW'}
 
 
@@ -201,6 +204,50 @@ def atomic(path, data):
     os.replace(tmp, path)
 
 
+def provenance(job):
+    """Direct exact-job lookup; never scan an ever-growing original archive."""
+    identity = {k: job[k] for k in BINDING}
+    key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+    return Path(S.KSF_DIR) / '.originals' / ('job-' + key + '.json')
+
+
+def retained_digest(job):
+    """Only exact bounded provenance can authorize reuse of original bytes."""
+    path = provenance(job)
+    if path.parent.is_symlink() or path.is_symlink():
+        raise ValueError('KSF provenance is a link')
+    try:
+        with path.open('rb') as f:
+            data = f.read(MAX_PROVENANCE + 1)
+    except FileNotFoundError:
+        return None
+    if len(data) > MAX_PROVENANCE:
+        raise ValueError('KSF provenance exceeds byte cap')
+    try:
+        doc = json.loads(data)
+    except (ValueError, UnicodeError, RecursionError) as exc:
+        raise ValueError('invalid KSF provenance') from exc
+    if (not isinstance(doc, dict) or any(doc.get(k) != job[k] for k in BINDING)
+            or doc.get('game') != 'css66' or not isinstance(doc.get('sha256'), str)
+            or not re.fullmatch(r'[0-9a-f]{64}', doc['sha256'])):
+        raise ValueError('KSF provenance binding differs')
+    return doc['sha256']
+
+
+def retained_bytes(digest):
+    path = Path(S.KSF_DIR) / '.originals' / (digest + '.rec')
+    if path.parent.is_symlink() or path.is_symlink():
+        raise ValueError('KSF original is a link')
+    try:
+        with path.open('rb') as f:
+            data = f.read(MAX_BYTES + 1)
+    except FileNotFoundError:
+        return None
+    if len(data) > MAX_BYTES or hashlib.sha256(data).hexdigest() != digest:
+        raise ValueError('KSF original digest differs')
+    return data
+
+
 def install(conn, job, data):
     """File immutable original/provenance first, then atomically link exact PB."""
     if not current(conn, job):
@@ -231,9 +278,7 @@ def install(conn, job, data):
         raise ValueError('KSF archive directory is a link')
     atomic(original, data)
     atomic(directory / leaf, body)
-    provenance = original.with_name(info['sha256'] + '-' + hashlib.sha256(
-        job['runid'].encode()).hexdigest()[:16] + '.json')
-    atomic(provenance, json.dumps(
+    atomic(provenance(job), json.dumps(
         dict(job, sha256=info['sha256'], game='css66',
              upstream=K.KSF_BASE + '/api/replays/' + job['file'] + '?game=66t'),
         sort_keys=True).encode('utf-8'))
@@ -282,7 +327,7 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
     state['failed'] = dict(sorted(state['failed'].items(), key=lambda x: x[1])[-2048:])
     jobs = state['jobs']
     conn = S.connect()
-    made = linked = 0
+    made = linked = recovered = 0
     try:
         # Retain only queued/retryable current jobs; completed links rediscover
         # locally if lost. A saturated obsolete queue must not starve new maps.
@@ -292,9 +337,7 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
         K._save(sf, state)
         park = K._load(os.path.join(cache, '.refused')) or {}
         for key, job in list(jobs.items()):
-            if made >= min(2, max(0, maximum)):
-                break
-            if now < int(park.get('until') or 0) or job.get('retry', 0) > now:
+            if job.get('retry', 0) > now:
                 continue
             if ready(conn, job):
                 jobs.pop(key, None)
@@ -302,11 +345,23 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
             if not current(conn, job):
                 jobs.pop(key, None)
                 continue
-            # Sleep before FIRST request as well: the board crawler just acted.
-            time.sleep(max(3.0, delay))
-            made += 1
             try:
-                data = transport(download, job['file'])
+                data = None
+                digest = retained_digest(job)
+                if digest:
+                    if recovered >= MAX_RECOVER:
+                        continue
+                    recovered += 1  # Bound original reads, including corrupt/missing bytes.
+                    jobs[key] = jobs.pop(key)  # Persist fairness even for parked cache misses.
+                    data = retained_bytes(digest)
+                if data is None:
+                    if (made >= min(2, max(0, maximum))
+                            or now < int(park.get('until') or 0)):
+                        continue
+                    # Sleep before FIRST request: the board crawler just acted.
+                    time.sleep(max(3.0, delay))
+                    made += 1
+                    data = transport(download, job['file'])
                 rid = install(conn, job, data)
                 if rid:
                     linked += 1

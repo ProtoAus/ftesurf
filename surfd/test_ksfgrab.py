@@ -53,6 +53,9 @@ class Tests(unittest.TestCase):
     def setUp(self):
         self.cache = str(a.out / self._testMethodName)
         Path(self.cache).mkdir(exist_ok=True)
+        archive = patch.object(S, 'KSF_DIR', str(Path(self.cache) / 'ksfruns'))
+        archive.start()
+        self.addCleanup(archive.stop)
         for name in ('.refused', 'demos.json'):
             (Path(self.cache) / name).unlink(missing_ok=True)
         self.conn = S.connect()
@@ -209,8 +212,11 @@ class Tests(unittest.TestCase):
         job = G.candidate('surf_test', 0, 0, exact)
         rid = G.install(self.conn, job, binary())
         sid = int(job['player'])
-        for seconds in (.0604, .0601):
-            rec = dict(mapName='surf_test', time=seconds, date=1700000001, record_id=113)
+        for seconds, date, record_id in ((.0604,1700000001,113),
+                                         (.0601,1700000000,111),
+                                         (.0601,1699999999,112),
+                                         (.0601,0,None)):
+            rec = dict(mapName='surf_test', time=seconds, date=date, record_id=record_id)
             with patch.object(K, 'records', return_value=({'records':[rec]}, False)):
                 rows, _ = K.seed_mode(SimpleNamespace(max=1), {sid:'seed'}, {'surf_test'}, self.cache)
             self.assertEqual(rows[0]['seconds'], seconds)
@@ -227,6 +233,40 @@ class Tests(unittest.TestCase):
         rounded = dict(rows[0]); rounded.pop('seconds'); rounded['runid']=''; rounded['when']+=1
         K.write_rows([rounded])
         self.assertEqual(self.conn.execute('SELECT runid FROM runs').fetchone()[0], got['runid'])
+
+    def test_equal_time_seed_changed_record_invalidates_exact_binding(self):
+        for date, record_id in ((1700000001,111),(1700000000,112),(1700000001,113)):
+            with self.subTest(date=date,record_id=record_id):
+                self.conn.execute('DELETE FROM runs'); self.conn.commit()
+                exact = raw(time=.0601)
+                K.write_rows([K.rec_row('surf_test',0,0,exact)])
+                job = G.candidate('surf_test',0,0,exact)
+                rid = G.install(self.conn,job,binary())
+                rec = dict(mapName='surf_test',time=.0601,date=date,record_id=record_id)
+                with patch.object(K,'records',return_value=({'records':[rec]},False)):
+                    rows, _ = K.seed_mode(SimpleNamespace(max=1),{int(job['player']):'seed'},
+                                          {'surf_test'},self.cache)
+                K.write_rows(rows)
+                got = self.conn.execute('SELECT runid,replay_id,submitted FROM runs').fetchone()
+                self.assertEqual(got[:],(rows[0]['runid'],0,date))
+                self.assertFalse(G.current(self.conn,job))
+                self.assertIsNone(G.install(self.conn,job,binary()))
+                # An out-of-date cached board must not revive the superseded job.
+                self.board([exact])
+                with patch.object(G.time,'sleep') as sleep:
+                    self.assertEqual(G.tick(self.cache,maximum=0,
+                                           download=lambda f:self.fail('stale binding fetched')),(0,0))
+                    sleep.assert_not_called()
+                self.assertIsNotNone(self.conn.execute('SELECT id FROM replays WHERE id=?',
+                                                       (rid,)).fetchone())
+                # Matching authoritative board/file metadata restores Watch.
+                updated = raw(time=.0601,date=date,record_id=record_id,
+                              file='replay_css_5_0_7_%d.rec' % date)
+                K.write_rows([K.rec_row('surf_test',0,0,updated)])
+                self.board([updated])
+                with patch.object(G.time,'sleep'):
+                    self.assertEqual(G.tick(self.cache,download=lambda f:binary()),(1,1))
+                self.assertTrue(G.ready(self.conn,G.candidate('surf_test',0,0,updated)))
 
     def test_budget_reservation_and_shared_lock_in_main_path(self):
         seen = []
@@ -304,8 +344,11 @@ class Tests(unittest.TestCase):
         self.assertTrue(G.ready(self.conn,self.job))
         Path(path).unlink()  # This case's own synthetic normalized fixture only.
         self.assertFalse(G.ready(self.conn,self.job))
-        with patch.object(G.time,'sleep'):
-            self.assertEqual(G.tick(self.cache,maximum=1,download=lambda file:binary()),(1,1))
+        K._save(os.path.join(self.cache, '.refused'), dict(until=int(time.time()) + 3600))
+        with patch.object(G.time,'sleep') as sleep:
+            self.assertEqual(G.tick(self.cache,maximum=0,
+                                   download=lambda file:self.fail('retained original refetched')),(0,1))
+            sleep.assert_not_called()
         self.assertTrue(G.ready(self.conn,self.job))
         self.assertEqual(self.conn.execute('SELECT replay_id FROM runs').fetchone()[0],rid)
         self.assertEqual(K._load(os.path.join(self.cache,'demos.json'))['jobs'],{})
@@ -327,9 +370,169 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM replays').fetchone()[0],0)
         self.assertEqual(len(K._load(os.path.join(self.cache,'demos.json'))['jobs']),1)
         self.assertTrue(list((Path(S.KSF_DIR)/'surf_test/main').glob('*_run.rec')))
-        with patch.object(G.time,'sleep'):
-            self.assertEqual(G.tick(self.cache,download=lambda f:binary()),(1,1))
+        K._save(os.path.join(self.cache, '.refused'), dict(until=int(time.time()) + 3600))
+        with patch.object(G.time,'sleep') as sleep:
+            self.assertEqual(G.tick(self.cache,maximum=0,
+                                   download=lambda f:self.fail('interrupted original refetched')),(0,1))
+            sleep.assert_not_called()
         self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM replays').fetchone()[0],1)
+        self.assertEqual(K._load(os.path.join(self.cache,'demos.json'))['jobs'],{})
+
+    def test_retained_recovery_is_bounded_and_missing_original_uses_request_budget(self):
+        rows = [raw(playerID=20+i, steamID='STEAM_0:0:%d' % (20+i), record_id=200+i,
+                    file='replay_css_5_0_%d_1700000000.rec' % (20+i)) for i in range(3)]
+        K.write_rows([K.rec_row('surf_test',0,0,r) for r in rows])
+        self.board(rows)
+        ids = []
+        for r in rows:
+            job = G.candidate('surf_test',0,0,r)
+            rid = G.install(self.conn,job,binary())
+            ids.append(rid)
+            row = self.conn.execute('SELECT * FROM replays WHERE id=?',(rid,)).fetchone()
+            Path(S.replay_file(row)[0]).unlink()
+        with patch.object(G.time,'sleep') as sleep:
+            for linked in (2,1,0):
+                self.assertEqual(G.tick(self.cache,maximum=2,
+                                       download=lambda f:self.fail('local repair downloaded')),(0,linked))
+            sleep.assert_not_called()
+        self.assertEqual([r[0] for r in self.conn.execute(
+            "SELECT replay_id FROM runs WHERE map='surf_test' AND player<>? ORDER BY player",
+            (self.job['player'],))], ids)
+        # A retained binding without its bytes is a cache miss, not a new source.
+        rid = ids[0]
+        row = self.conn.execute('SELECT * FROM replays WHERE id=?',(rid,)).fetchone()
+        Path(S.replay_file(row)[0]).unlink()
+        for path in (Path(S.KSF_DIR)/'.originals').glob('*.rec'):
+            path.unlink()
+        calls = []
+        with patch.object(G.time,'sleep') as sleep:
+            self.assertEqual(G.tick(self.cache,maximum=0,
+                                   download=lambda f:self.fail('zero budget downloaded')),(0,0))
+            self.assertEqual(G.tick(self.cache,maximum=1,
+                                   download=lambda f:(calls.append(f),binary())[1]),(1,1))
+            sleep.assert_called_once_with(3.0)
+        self.assertEqual(calls,[rows[0]['file']])
+        self.assertEqual(self.conn.execute('SELECT replay_id FROM runs WHERE player=?',
+                                          (G.candidate('surf_test',0,0,rows[0])['player'],)).fetchone()[0],rid)
+
+    def test_missing_originals_cannot_starve_later_local_repair(self):
+        rows = [raw(playerID=40+i,steamID='STEAM_0:0:%d' % (40+i),record_id=400+i,
+                    file='replay_css_5_0_%d_1700000000.rec' % (40+i)) for i in range(3)]
+        K.write_rows([K.rec_row('surf_test',0,0,r) for r in rows])
+        self.board(rows)
+        for i, r in enumerate(rows):
+            data = bytearray(binary())
+            struct.pack_into('<f',data,len(data)-4,10+i)  # Distinct digest, same bookmark clock.
+            job = G.candidate('surf_test',0,0,r)
+            rid = G.install(self.conn,job,bytes(data))
+            row = self.conn.execute('SELECT * FROM replays WHERE id=?',(rid,)).fetchone()
+            Path(S.replay_file(row)[0]).unlink()
+            if i < 2:
+                digest = G.retained_digest(job)
+                (Path(S.KSF_DIR)/'.originals'/(digest+'.rec')).unlink()
+        K._save(os.path.join(self.cache,'.refused'),dict(until=int(time.time())+3600))
+        with patch.object(G.time,'sleep') as sleep:
+            for linked in (0,1):
+                with patch.object(G,'retained_bytes',wraps=G.retained_bytes) as reads:
+                    self.assertEqual(G.tick(self.cache,maximum=0,
+                                           download=lambda f:self.fail('parked local repair fetched')),(0,linked))
+                    self.assertEqual(reads.call_count,2)
+                state = K._load(os.path.join(self.cache,'demos.json'))
+            sleep.assert_not_called()
+        self.assertTrue(G.ready(self.conn,job))
+        self.assertEqual(len(state['jobs']),2)
+        self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM replays').fetchone()[0],3)
+
+    def test_retained_corruption_and_binding_mismatch_defer_without_fetch(self):
+        self.board([self.r])
+        rid = G.install(self.conn,self.job,binary())
+        row = self.conn.execute('SELECT * FROM replays WHERE id=?',(rid,)).fetchone()
+        Path(S.replay_file(row)[0]).unlink()
+        original = next((Path(S.KSF_DIR)/'.originals').glob('*.rec'))
+        good = original.read_bytes()
+        original.write_bytes(good[:-1] + bytes([good[-1] ^ 1]))  # same length, wrong digest
+        def no_fetch(file): self.fail('corrupt local archive reached downloader')
+        with patch.object(G.time,'sleep') as sleep:
+            self.assertEqual(G.tick(self.cache,download=no_fetch),(0,0))
+            sleep.assert_not_called()
+        self.assertFalse(G.ready(self.conn,self.job))
+        self.assertFalse((Path(self.cache)/'.refused').exists())
+        state = K._load(os.path.join(self.cache,'demos.json'))
+        self.assertEqual(next(iter(state['jobs'].values()))['strikes'],1)
+        original.write_bytes(good)
+        provenance = G.provenance(self.job)
+        doc = json.loads(provenance.read_text())
+        doc['player'] = '76561197960265999'
+        G.atomic(provenance,json.dumps(doc).encode())
+        later = time.time() + 86401
+        with patch.object(G.time,'time',return_value=later), patch.object(G.time,'sleep'):
+            self.assertEqual(G.tick(self.cache,download=no_fetch),(0,0))
+        self.assertFalse(G.ready(self.conn,self.job))
+        doc['player'] = self.job['player']
+        G.atomic(provenance,json.dumps(doc).encode())
+        with patch.object(G.time,'time',return_value=later+86401), patch.object(G.time,'sleep'):
+            self.assertEqual(G.tick(self.cache,maximum=0,download=no_fetch),(0,1))
+        self.assertTrue(G.ready(self.conn,self.job))
+
+    def test_retained_metadata_bounds_and_link_refusals(self):
+        G.install(self.conn,self.job,binary())
+        provenance = G.provenance(self.job)
+        good = provenance.read_bytes()
+        original = next((Path(S.KSF_DIR)/'.originals').glob('*.rec'))
+        digest = original.stem
+        self.assertEqual(G.retained_digest(self.job),digest)
+        self.assertEqual(G.retained_bytes(digest),binary())
+        for bad in (b'{', b'[]', b'\xff', b'['*2048+b']'*2048,
+                    b' ' * (G.MAX_PROVENANCE+1),
+                    good.replace(digest.encode(),b'../' + b'a'*61)):
+            with self.subTest(bad=bad[:20]):
+                G.atomic(provenance,bad)
+                with self.assertRaises(ValueError): G.retained_digest(self.job)
+        G.atomic(provenance,good)
+        # A real synthetic link control; never follow/delete an external target.
+        held = original.with_suffix('.held')
+        original.rename(held)
+        try:
+            original.symlink_to(held)
+            self.assertTrue(original.is_symlink())
+            with self.assertRaises(ValueError): G.retained_bytes(digest)
+            self.assertEqual(held.read_bytes(),binary())
+        finally:
+            if original.is_symlink(): original.unlink()
+            held.rename(original)
+        self.assertEqual(G.retained_bytes(digest),binary())
+        held = provenance.with_suffix('.held')
+        provenance.rename(held)
+        try:
+            provenance.symlink_to(held)
+            self.assertTrue(provenance.is_symlink())
+            with self.assertRaises(ValueError): G.retained_digest(self.job)
+            self.assertEqual(held.read_bytes(),good)
+        finally:
+            if provenance.is_symlink(): provenance.unlink()
+            held.rename(provenance)
+        self.assertEqual(G.retained_digest(self.job),digest)
+
+    def test_retained_original_never_rebinds_a_replacement_pb(self):
+        self.board([self.r])
+        rid = G.install(self.conn,self.job,binary())
+        newer = raw(time=.0599,record_id=112,date=1700000001,
+                    file='replay_css_5_0_7_1700000001.rec')
+        K.write_rows([K.rec_row('surf_test',0,0,newer)])
+        self.board([newer])
+        with patch.object(G.time,'sleep') as sleep:
+            self.assertEqual(G.tick(self.cache,maximum=0,
+                                   download=lambda f:self.fail('zero budget downloaded')),(0,0))
+            sleep.assert_not_called()
+        self.assertEqual(self.conn.execute('SELECT millis,replay_id FROM runs').fetchone()[:],(60,0))
+        self.assertIsNone(G.install(self.conn,self.job,binary()))
+        calls = []
+        with patch.object(G.time,'sleep'):
+            self.assertEqual(G.tick(self.cache,maximum=1,
+                                   download=lambda f:(calls.append(f),binary())[1]),(1,1))
+        self.assertEqual(calls,[newer['file']])
+        self.assertGreater(self.conn.execute('SELECT replay_id FROM runs').fetchone()[0],0)
+        self.assertIsNotNone(self.conn.execute('SELECT id FROM replays WHERE id=?',(rid,)).fetchone())
 
     def test_local_archive_error_is_not_a_host_refusal_and_three_strikes_retire(self):
         self.board([self.r])

@@ -68,7 +68,12 @@ official rounded millis/date and an identity containing upstream record ID,
 raw double seconds and advertised-file hash. A sub-millisecond faster PB or
 replacement/withdrawn file clears the old association. The seed path retains
 raw seconds and cannot erase a known unchanged exact binding with rounded-only
-metadata. Failed indexing leaves files and pending intent for recovery.
+metadata. A known equal-time replacement record ID/date still clears the old
+demo pending authoritative board/file metadata. Failed indexing leaves files
+and pending intent for recovery. P711 adds exact-keyed/hash-checked reuse of
+retained originals, capped at two original reads per tick even during host
+cooldown or with no network budget; see `p711ksfrecovery.md`. Older archives
+without the lookup metadata fall back to the existing budgeted download path.
 
 Indexed rows are kind/tier `ksf`, served from the separate normalized root by
 `/api/replay/N`; the existing `rep` -> cache -> board Watch/line flow needs no

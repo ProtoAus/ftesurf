@@ -1277,9 +1277,12 @@ def write_rows(rows):
                         if oldseconds and newseconds > oldseconds:
                             continue
                         if oldseconds and newseconds == oldseconds and r.get("binding") != "board":
-                            # The seed endpoint does not carry advertised-file
-                            # state. An unchanged time cannot revoke a known demo.
-                            continue
+                            # Seed lacks file metadata, not record identity. Keep
+                            # unknown/unchanged IDs, never a known replacement's demo.
+                            incoming = r.get("runid", "")
+                            if (not incoming or incoming.rsplit("-", 1)[0]
+                                    == previous["runid"].rsplit("-", 1)[0]):
+                                continue
                         if not oldseconds or newseconds == oldseconds:
                             if r["when"] < previous["submitted"]:
                                 continue

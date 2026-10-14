@@ -25,7 +25,13 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-703
-patch    710
+patch    711
+# Patch 711: recover exact-current KSF imports from retained originals without
+# another upstream request; bounded keyed provenance/digest checks and local
+# repair during host cooldown. Equal-time seed ID/date replacements clear old
+# demos; unchanged/unknown seed identity does not revoke a valid board binding.
+# Offline controls/regressions only; no QC/native build, live install, cron,
+# engine pin/tag, QC Build or release change. See tools/p711ksfrecovery.md.
 # Patch 710: prepare compatible World of Surf game/menu/HUD/lobby and package
 # presentation. Manifest NAME only; WOS compact badges, consistent menu title
 # passes and old/new lobby prefix recognition. All three VMs compile with zero

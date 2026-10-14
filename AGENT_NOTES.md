@@ -12232,3 +12232,32 @@ the game fetches its own map list. The menu half is Patch 652.
   import/top-up, board and replay suites also pass. Commands/evidence/limits:
   tools/ksf-deployment.md. No game/GPU tests, remote installation, reload, cron
   enablement, native source, product patch, engine pin/tag or QC Build change.
+
+### P711 — recover retained KSF originals without rebinding a stale PB
+
+- Interrupted indexing already retained bytes but the next tick fetched them
+  again; a missing normalized replay did the same. New installs publish bounded
+  `job-<exact-binding-sha256>.json` provenance beside digest-named originals.
+  Lookup includes map/course/style/player/runid/millis/date/advertised file;
+  verify metadata and complete original SHA256 before conversion, never scan
+  the archive or trust a path from JSON. Reuse remains subject to exact-current
+  checks before and inside the link transaction. Old unkeyed archives are a
+  cache miss, not an implicit migration/scan or identity authority.
+- Read/convert at most two retained originals per tick, including corrupt or
+  missing-byte attempts. A known third retained job waits rather than falling
+  through to a redundant download. Local repair runs with zero request allowance
+  and host cooldown; existing job retry times still apply. Persist admission
+  rotation even for missing bytes: two leading misses must not consume both
+  slots forever while a later intact original waits through a cooldown.
+  Missing bytes can use the normal remaining request allowance;
+  malformed/mismatched/deeply nested provenance, links or corrupt originals
+  defer locally without parking the host.
+- Equal raw seconds are NOT equal upstream record identity. Seed metadata lacks
+  the advertised file, but supplies record ID/date: unchanged/unknown identity
+  cannot revoke a valid known board binding; a different known current ID/date
+  clears it. Older/slower/rounded-only rows retain existing non-authority gates.
+  Regression splits formerly incorrect preservation of a replacement from the
+  genuinely unchanged-record control, and requires board metadata to restore it.
+- Source/offline checks, controls and limits: tools/p711ksfrecovery.md. No new
+  stage/CSS100 support, codec clock/map guard/native evidence semantics, game/GPU,
+  remote install, cron enablement, engine pin/tag or QC Build change.
