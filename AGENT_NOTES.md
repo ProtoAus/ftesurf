@@ -64,6 +64,31 @@
   mount that map's online alias; its first load timed out. Copy just the exact
   BSP plus JSON into the owned fixture, not a whole install or canonical map.
   Reader regex must match the actual `(maps/zones/local)` origin, not `(local)`.
+- DEPLOYED / VERIFIED by 2026-10-14 20:40:21Z: progs from clean QC 2d2aa6b,
+  all three in both Windows installs; seed checksum 8b0e6df8 in both. Pi qw/cs
+  hashes 39c5c945457003fd... / ad2bd7e5bb055b21...; build.ps1 -Pi proved all
+  twelve empty, kept .prev and restarted all; later all twelve answered UDP.
+  Backend matched seven-file caabd99 ship-set, full staged Linux suite passed
+  (MOMGRAB real sample absent/known skip), mode600 SQLite backup, same-master
+  graceful reload/health. First failed suite retained until successor accepted,
+  never waived. Live schema18 view queued; real shared-pacer tick filed five
+  source rows and advanced 1->6; normal cron reached21/four pages. Public HTTPS
+  JSON says partial and public JS hash matches. Do NOT call it a full archive.
+- R2 publisher runtime is intentionally retained at
+  `/srv/nvme/agent-work/pictures-coverage-d25cd9e/`: private config/state plus
+  publish-pictures.sh, publisher.lock/log, OWNER.md. A unique user-cron entry
+  every10min holds flock around250 JPEG then250 RGBA copies; transport upload
+  and full-body readback verify before publication. Existing cron lines were
+  preserved/checked. Continuous bootstrap process was stopped only after PID,
+  start-tick, PGID and cwd checks. This root is required by the scheduled job,
+  NOT abandoned scratch; migrate the service/cron before ever retiring it.
+  Seeding remains incomplete. Public CDN delivery was not switched or proved.
+- A failed search is not absence: actually retrieved public candidate indexes
+  from dPexxIAM/Momentum-surf-zones (201 legacy KV zones) and
+  InSelfControll/bhop-zones (mapzones SQL,873 names). They name15/14 surf/bhop
+  Beta gaps and5 old-build approved gaps; source names alone do NOT prove fit.
+  Keep conversion/build/trigger controls open in BACKLOG, never execute the
+  SQL or promote it by name. Live Beta missing count was196 by the later audit.
 
 
 ## Patch 693 — profile seeks, editor wheel and entity-pose rendering

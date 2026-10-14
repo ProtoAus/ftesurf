@@ -12,7 +12,9 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   storage, NOT public CDN delivery. Configure/prove the public reader route
   before changing `surfd.py:game_avatar/web_avatar`; a cold real game/browser
   fetch must reach R2, draw the expected picture, and fall back on a missing
-  object. NanoPi delivery remains the working origin meanwhile.
+  object. NanoPi delivery remains the working origin meanwhile. A persistent,
+  non-overlapping ten-minute job is seeding both picture groups; do not call
+  its incomplete catalogue a full backup or delete its owned runtime root.
 - `surfd/ksfprofile.py` queues daily, bounded, four-style main-map walks. It
   cannot promise an atomic upstream snapshot or report unavailable BSPs as
   playable: `unavailable` counts excluded records. No upstream deletions are
@@ -28,7 +30,15 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   JSON does. Do not donate the current Pi zones by name alone. Falsifier for
   closing: exact-build zones or an approved build update, with timer/trigger
   witnesses, for every missing name. Beta source publication may itself lack
-  zones; keep absent source distinct from a failed transfer.
+  zones; keep absent source distinct from a failed transfer. The live watcher
+  reduced Beta missing coverage to196 later in this audit.
+  Public candidates were actually located, not ruled out by a failed search:
+  `dPexxIAM/Momentum-surf-zones` (201 legacy KeyValues `.zon` files) and
+  `InSelfControll/bhop-zones` (public mapzones SQL,873 bhop names). Name matches:
+  15 surf/14 bhop Beta gaps, and5 of the36 old approved bhop gaps. These are
+  candidates, NOT verified zone donations. A converter must parse data only,
+  never execute downloaded SQL, and prove build/coordinate fit plus live
+  start/end/route controls before any authoritative local installation.
 
 ## KSF replay remaining track/build coverage — P706, 2026-10-14
 
