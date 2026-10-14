@@ -113,10 +113,25 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   Review's partial-read fix has source/core acceptance only: a >5MiB protected
   byte-lock failed-read/refusal/released-retirement native comparison is still
   required. A provider-failed worker's defective-client FAIL/guard is retained.
-  Before shipping qkupdate.c: extend initial/deferred/cold publication failure and
-  interruption actors to the full superset; prove retained-generation apply refuses
-  before downloads/manifest replacement; prove genuine launcher supersession/repair
-  acts without adopting outside orphans. These native/handoff gates remain open.
+  Separate native gates now prove retained-generation apply refuses before
+  downloads/manifest replacement (`tools/native_retained_apply.md`) and genuine
+  launcher supersession/repair acts without adopting outside orphans
+  (`tools/native_retirement_launcher.md`). New full-original-row publication
+  extensions cover initial and cold fault/interruption plus native debit3 and
+  stage-only-repair exhaustion refusal in both signed-order positions;
+  `tools/native_initial_superset.md` and `tools/native_cold_superset.md`.
+  The deferred raw-return gate observes actual held-source API0/success API1,
+  exact native paths/caller/thread, full prior authority and stage/temp survival;
+  `tools/native_deferred_boundary.md`. All three new oracles require complete
+  independently expected metadata namespaces, including outer ledger/envelope
+  temporary siblings and preserved unrelated sentinels. Before reductions and
+  orphans are acting characterization controls, not product acceptance.
+  These are reviewed tooling gates on retained binaries, not a published engine
+  candidate or deployment. The partial-read native comparison above remains
+  required. Failing cold product API return/path remains unobserved (probe32 and
+  actual rewrite refusal are not substitutes); no new attempt3-publication cut
+  or optional complete-content cleanup-only-at3 claim is made. Final inspected
+  product/source/binary/pins and clean deployment acceptance remain separate.
   Release 0.1.25 remains P687; source acceptance does not deploy recovery to any
   canonical/fleet binary or certify peer deployments.
 

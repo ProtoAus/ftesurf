@@ -17,6 +17,15 @@ class InitialSupersetTests(unittest.TestCase):
         self.paths = ['a', 'b']
         self.full = journal(self.files, self.paths, 'v', 1)
 
+    def test_corruption_uses_signed_digest_and_size(self):
+        valid = b'valid signed payload'
+        entry = dict(size=len(valid), hash=gate.digest(valid))
+        with self.assertRaisesRegex(AssertionError, 'bad signed digest premise'):
+            gate.corrupt_grade(valid, entry)
+        with self.assertRaisesRegex(AssertionError, 'bad signed digest premise'):
+            gate.corrupt_grade(valid[:-1], entry)
+        gate.corrupt_grade(bytes([valid[0] ^ 1]) + valid[1:], entry)
+
     def test_initial_full_rows_not_partial_or_reordered(self):
         full_authority(self.full, self.files, self.paths, 'v', 1)
         for rows in (self.full['files'][:1], self.full['files'][::-1], self.full['files']*2):

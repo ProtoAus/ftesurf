@@ -145,5 +145,23 @@ predictions are retained. Together with the raw lane these are 60 new final-sour
 phases. Integration `*-01` passed but preceded LF normalization and is retained
 as earlier-byte history, not final-source evidence. Integrated native units:174;
 recorder checks:306; retirement-model tests:21. The first unit attempt's syntax
-errors remain a separate failure log. New full-metadata acceptance requires a
-fresh review; no broader product, Linux, power-loss, deploy or shipping claim.
+errors remain a separate failure log. Independent review accepted the augmented
+raw/initial predicates at the recorded source. No broader product, Linux,
+power-loss, deploy or shipping claim.
+
+## Signed-digest guard correction
+
+The initial corrupted-input premise now calls `corrupt_grade`, using signed
+BLAKE2b-256 `digest` and size rather than comparing SHA256 evidence identities
+with object hashes. Unchanged valid input and wrong size refuse the premise;
+same-size one-byte corruption passes. Payload construction, native actor,
+metadata predicates and operation sequencing are unchanged.
+
+Fresh `artifacts/integration/digest-before-01` and `digest-subject-01` each
+exercise both signed-order corruption/exhaustion cases on this source, ten
+natural job0/full-export phases per binary. Earlier six-case/raw matrices retain
+their explicit earlier source bounds; they are not relabelled current-byte reruns.
+This targeted follow-up validates the corrected shared corruption premise and
+its native refusal/debit/exhaustion controls. Integrated native units:188;
+recorder checks:306; retirement-model tests:21. Review of the narrow correction
+and rebased/line-ending provenance is separately required before tooling push.

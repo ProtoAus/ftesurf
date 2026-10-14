@@ -15,6 +15,7 @@ from test_update_native_publication_superset import (BEFORE, SUBJECT, prepare, g
 from test_update_native_retirement_windows import inventory
 from test_update_native_journal import _checked_files
 from test_update_native_staging_windows import load_inputs, journal
+from test_update_native_recovery import digest
 
 
 METADATA_SENTINEL = {'unrelated-metadata-sentinel.json': b'owned unrelated metadata; preserve byte-exact\n'}
@@ -51,6 +52,10 @@ def initial_namespace(meta, signed, stages, authority=None, temp=None):
     if temp is not None:
         expected['journal.tmp'] = temp
     assert inventory(meta / 'ingame') == expected, 'exact initial authority/temp/full-stage namespace mismatch'
+
+
+def corrupt_grade(data, entry):
+    assert len(data) == entry['size'] and digest(data) != entry['hash'], 'bad signed digest premise'
 
 
 def partial_authority(actual, files, paths, pending, version, before, attempts=2):
@@ -174,7 +179,7 @@ def main():
                             pending = paths[0] if name.endswith('first') else paths[-1]
                             content = next(p for p in paths if p != pending)
                             bad = bytes([payload[pending][0] ^ 1]) + payload[pending][1:]
-                            assert len(bad) == files[pending]['size'] and sha(bad) != files[pending]['hash']
+                            corrupt_grade(bad, files[pending])
                             (meta / 'ingame/staged' / files[pending]['hash']).write_bytes(bad)
                             stages[files[pending]['hash']] = bad
                             cold_phase(engine, dest, case / 'cold-corrupt', error=PENDING_ERROR)
