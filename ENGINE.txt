@@ -25,7 +25,12 @@ commit   4148e72923e617a79bf8ed16474cc49143fb72fc
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-693
-patch    695
+patch    696
+# Patch 696: remove the rejected wave illustration entirely; full-width centered
+# World of Surf logo and download progress only. Existing sheen/keys/guards intact.
+# Forty-two tests and six piped/six native-console regressions pass, including
+# actual logo-color animation readback. Native P693 pin/tag and QC Build unchanged;
+# no live install/performance/release change. tools/p696logo.md.
 # Patch 695: replace rejected abstract launcher ramp/sun art with a plain ASCII
 # wave; equal-width rows preserve connected outline, steady curl/moving waterline.
 # Forty-two Rust tests and six piped/six hidden-console regressions pass.

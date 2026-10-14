@@ -1,23 +1,23 @@
 # lextest.md — things waiting on a human
 
-## P695 — plain ASCII wave World of Surf launcher artwork
+## P696 — World of Surf launcher logo/progress only
 
-P694's abstract ramp/sun/stars scene was rejected and is superseded. Launcher
-source/debug-preview acceptance only; live installs are NOT replaced while another
-bot runs performance tests. Use the NEW P695 preview binary's `--ui-demo`: inspect
-the plain ASCII wave beside the large SURF wordmark. Rows now center as one block;
-the curl stays readable while the tilde waterline moves. Judge whether this simpler
-wave works visually; no ramp, sun, stars or old tagline should remain.
+The owner rejected the illustrations and requested removal, not a replacement.
+Use the NEW P696 preview's `--ui-demo`: only the centered SURF/World of Surf logo
+and sample progress should appear. No wave, ramp, sun, stars or old tagline.
+The existing slow letter sheen remains; native header color readback proves it
+changes without moving letter geometry. Live installs remain unchanged while
+another bot runs performance tests.
 Enter or Esc closes the sample preview without a download or game launch.
 
 Judge the art/readability/motion in your actual Windows Terminal and classic
 console, then resize wide/compact. Check that no blinking cursor distracts from
-the scene and it is visible again afterward. Hidden native console tests proved
+the display and it is visible again afterward. Hidden native console tests proved
 animation, key cancellation and final screen/input/cursor restoration, but not
 visual cursor hiding while the private VT alternate buffer is active. The PNG/GIF
 previews are terminal-cell renders, not physical-desktop screenshots. No full game
 rename, Linux acceptance, official archive or live deployment is implied.
-Source/commands/NEW preview provenance: `tools/p695wave.md`.
+Source/commands/NEW preview provenance: `tools/p696logo.md`.
 
 ## P688 — Windows sound and spatial, level-coloured sky
 
