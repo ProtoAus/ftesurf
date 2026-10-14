@@ -28,9 +28,40 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   file-data and directory flush ordering; process interruption alone is not that
   certificate. An after-commit interruption may strand resolved staged objects
   before retirement; prove a bounded safe cleanup strategy before deleting any
-  unreferenced object. Windows process-interruption and failure specifically at
-  the deferred live journal commit remain uninjected coverage, not claimed
-  implementation defects. No hostile ancestor-swap/hardlink guarantee is claimed.
+  unreferenced object. A test-only source-bound Windows debugger now injects real
+  sharing failure at the deferred live journal writer: old control loses authority
+  and starts mixed; P692 retains authority, refuses corrupt retry and completes
+  repair; `tools/p692native_journal_deferred.md`. Windows cold replacement
+  before/after process-interruption controls now pass;
+  `tools/p692native_journal_interrupt.md`. The old pre-rename control starts mixed
+  after authority loss; P692 retains full authority/refuses. Separate fresh
+  post-rename repaired and corrupt/exhausted fixtures preserve the attempt budget.
+  Windows initial full-live-journal failure/before/after interruption controls
+  now pass with full attempt1 native temps, real rename returns, same-game retry,
+  and fresh all-old startup/direct cold completion/corrupt refusal+repair;
+  `tools/p692native_journal_initial.md`. Both engines have equal initial-boundary
+  safety because no prior authority exists; this is not a P692 regression claim.
+  Shared cold/live/deferred/interruption harness failure-evidence lifecycle is
+  now hardened: full post-containment runtime identities, guarded export/receipt
+  failures and independently observed pre/post-cleanup job0 on fresh matrices;
+  `tools/native_journal_evidence.md`. This does not strengthen historical receipts.
+  Deferred live-journal before/after process-interruption controls now pass
+  with both pending-row positions, real native return/call/thread actors, exact
+  partial state and independently fresh repaired/corrupt/exhausted budgets;
+  `tools/p692native_journal_deferred_interrupt.md`. Old pre-rename loses authority
+  and starts mixed; P692 retains full authority and refuses corrupt retry.
+  Reduced authority still leaves the already installed live object's staged
+  copy orphaned; this is not a cleanup or power-loss certificate. Windows native
+  authority-bounded retirement now independently passes valid removal, same-size
+  corrupt/wrong-size/shared retention, real rewrite-failure32 and repaired retries;
+  a seeded reduced-authority control confirms the outside object still survives
+  completion; `tools/native_staging_windows.md`. This gates existing safe
+  retirement, NOT unreferenced deletion. No hostile ancestor-swap/hardlink
+  guarantee is claimed. The bounded full-superset/cleanup-only proposal and
+  executable process-cut falsifiers are in `tools/native_retirement_protocol.md`;
+  this is design/model acceptance only, NOT an implemented orphan fix. Real
+  retirement interruption/delete-failure and retained-generation handoff gates
+  remain open.
   Release 0.1.25 remains P687; source acceptance does not deploy recovery to any
   canonical/fleet binary or certify peer deployments.
 
@@ -52,16 +83,79 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   are bound by exact diagnostic/production pixels. Ordinary mode2 acts20604
   pixels; default parity/repeats exact. tools/p690cache.md and offline33-rejection
   controls. This is two synthetic BSP29 maps, not representative all-map coverage.
-  Remaining falsifier: arbitrary model/sprite/weapon and rotated-brush native
-  overlaps, representative portal/reflection captures, additional supported-map
-  cache0/1 opaque preservation and same-camera ordinary frame times. New ordinary
-  attempt is REJECTED, not a green: tools/p690ordinary.py/p690ordinary.md require
-  complete100-frame dumps plus separate128-swap cadence rings, stable fullframe
-  repeats and <=20% A/B/A control drift. Kitsune repeated-frame deltas1016..3900
-  pixels and P688 mode1 return cost+37.57% falsified acceptance;34/38 short console
-  reads also missed dump footers. Falsifier: actual registered HUD/input controls,
-  unique tickets/complete reports, and quiet serialized P688/merged/P688-return
-  with exact pixels/stable control timings. Do not mask/trim the failed matrix.
+  One production SPR32 billboard preservation gate passes (tools/p690spritefixture.md).
+  New rotated func_wall fixture ACTS at yaw0/yaw45 (9216/6532 green pixels),
+  but its full frozen gate is REJECTED: P688 mode1 yaw45 initial/return and
+  world-only controls differ20604pixels. Mode2 ON subset is exact; OFF correction
+  acts20604. tools/p690brushfixture.py/p690brushfixture.md preserve all failures.
+  Same-loaded-world angle0/45/0 follow-up now proves actor state/action and exact
+  P688 return on all18 PNGs; angle ON/OFF changes3150/0 in each arm/mode. All10
+  mode1 P688-vs-merged comparisons still differ20604pixels, so full preservation
+  remains REJECTED. First driver-metadata failure stays ungraded; V2 also retains
+  a hidden native onepixel control and invalid pane-only ON/OFF protocol premise.
+  Follow-up sites: Mod_ResortShaders/Shader_DoReload batch-list lifecycle and legacy
+  GLBE_SubmitMeshes sortlist order. A passive source-bound55PNG/five-boot diagnostic
+  now observes P688 activation sort5->11/resort1/red-blue and merged resort0/
+  blue-red, with their expected intersection colors. Samplers1..8/zero overflow
+  and observerOFF/ON/OFF exact; all11 production P688 returns exact. However,
+  each diagnostic's nine mode1 images differs20604pixels from its own production
+  capture:18 frozen transfer failures. Gate REJECTED; diagnostic lifecycle is NOT
+  production causality. Native controls add new specific failures; older rejected
+  protocols/receipts unchanged. mod_batchlist still reparses shader bodies.
+  New2026-10-14 zero-worker startup gate PASSES all55 full-frame production/
+  diagnostic/P688-return images, mode1 preservation, observer parity and yaw0/45/0
+  return. Exact retained binaries/no rebuild: -noworkers before initialization on
+  BOTH processes; positive4-live/0-pending client+server and210 target receipts
+  count0/live0/pending0. Each diagnostic now has activation sort5->11/resort1/
+  red-blue,21 events/8 stable passive samples. Mode2 OFF correction still acts20604;
+  all gates/4 specific pixel controls/36-control replay pass normal/-O. Six owned
+  pairs/protected/native/fixture closure and recorder/corpus parity pass. Details
+  tools/p690brushfixture.md; earlier rejected gates remain unchanged.
+  This bounds the fixture under synchronous loaders, NOT an ordinary-startup fix
+  or workers-only causal proof (extra ticket cadence/warmup also differ).
+  Matched-cadence/warmup worker-enabled six-boot control is now RUN:212 replies
+  show4live/0pending; all55 state/PNG/16 observer receipts and closure valid. Gate
+  REJECTS18 (nine merged production/diagnostic mode1 transfers plus nine mode1
+  crossbinary comparisons,20604pixels each), normal/-O byte-identical validJSON.
+  All11 P688 returns/mode2 transfers/observer parity exact;4 new-specific pixel/
+  44-total replay controls ACT. Both diagnostic boots have resort1/red-blue,
+  which cannot describe the mismatching uninstrumented merged production boot.
+  Other46 crossbatch images match; no subset rescue. Worker config implicated,
+  NOT sole-cause proven (zero-then-enabled, no production lifecycle trace).
+  Exact-source audit now establishes main-thread material registration and
+  source-supported global same-band reversal: Mod_Batches_Generate prepends;
+  Shader_DoReload invokes Mod_ResortShaders if ANY used material changes sort;
+  resort checks only MLS_LOADED, reverses unchanged lists and clears scene cache.
+  Eleven complete-function/stub cases + six acting mutants pass C-O0/O2 and
+  Python normal/-O. A controlled world-before/after/unpublished rescan schedule
+  has opposite same-final-sort lists; NOT a trace of either production boot.
+  Offline unique whole-function machine-code matches recover production model
+  roots independently (candidate addresses differ0x1000), not live type/decoder
+  acceptance. tools/p690legacyorder.md records scope and prerequisites.
+  Next falsifier: fail-closed decoder controls, then late actual worker-enabled
+  production batch/material snapshot after failure manifests, with exact
+  readerOFF/ON/OFF/P688-return pixels. A late snapshot is NOT registration history
+  or GPU submission proof; a true lifecycle trace remains separate OPEN work.
+  Matched cadence is no longer an unrun prerequisite. Stable rebucketing remains
+  separate unproved product work; no forced resort/reparse/flush/favorable retry.
+  Separate brush action from world correction enabled by removing its barrier;
+  controls must add a NEW specific failure, not hide behind existing rejection.
+  No mask/widened gate/subset rescue or candidate mode1 bug attribution.
+  Remaining falsifier: ordinary worker-enabled rotated-brush transfer, arbitrary
+  model/sprite/weapon native acceptance, representative portal/reflection captures,
+  additional supported-map cache0/1 opaque preservation and representative ordinary
+  frame times/tails.
+  One quiet fixed Kitsune cache0 ordinary gate now PASSES, not broad promotion:
+  tools/p690ordinary.py/p690ordinary.md schema2 bind78 complete ticketed samples,
+  17 exact PNGs, six100-frame service groups and separate128-swap cadence rings.
+  Mode2 acts12065 pixels. Serialized P688/merged/P688-return uses actual registered
+  HUD/input controls; both-control1.20 and return[.80,1.20] limits unchanged.
+  Adjusted refresh medians P688/merged/return: mode1 753.410/730.220/692.195us;
+  mode2 785.760/762.495/677.520us. Returns differ-8.13%/-13.78%, not a speedup
+  or equal-load claim. Native slowdown/return acts. Earlier unstable/partial/
+  +37.57%-drift matrix stays EXCLUDED; no masks/trim/archive rescue. Remaining
+  timing falsifier: additional representative maps and moving-camera/tail captures
+  with these same pixel/report/action/return controls, not cap100 cadence alone.
   Source temporal-cache support needs a separate generation/data-interface implementation and actual
   cached-path GPU/visual/perf controls; toggling a cvar cannot certify it.
   Coarse/recursive records, intersecting geometry and uncertain pairs retain

@@ -112,8 +112,11 @@ persistence: no file-data/directory fsync or FlushFileBuffers ordering is
 certified. Windows has real replacement-failure coverage, not a separate native
 process-interruption injection. After-commit Linux interruption goes directly
 to repaired retry, not an additional still-corrupt retry that would consume its
-attempt budget. The live deferred writer's successful replacement is acted;
-a separate failure specifically at that second live commit is not injected.
+attempt budget. The original live controls above act successful replacement.
+A later test-only Windows continuation injects real source-sharing failure at
+that second writer, retains full authority on P692 and grades corrupt/repaired
+cold retries; see `p692native_journal_deferred.md`. Windows process-interruption
+coverage remains separate.
 
 Interruption after pending-only publication but before retirement can strand
 formerly resolved staged objects, because the next journal no longer names

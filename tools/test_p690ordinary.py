@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import datetime
 import json
 from pathlib import Path
 import subprocess
@@ -82,6 +83,24 @@ class OrdinaryTests(unittest.TestCase):
                                 path=name, sha256=g.sha(cls.root / name), start=clock, end=clock + .4))
                             clock += 9 if phase == 'slow' else 4
         cls.base = d
+        cls.quiet = copy.deepcopy(d)
+        cls.quiet.update(schema=2, protocol_sha256='a' * 64, driver_sha256='b' * 64)
+        for row in cls.quiet['modes']:
+            row['settings'] += '\n' + '\n'.join(f'"{k}" is "{v}"' for k, v in g.QUIET_SETTINGS.items())
+        for row in cls.quiet['samples']:
+            ticket = f"{row['arm']}_m{row['mode']}_{row['metric']}_{row['phase']}_{row['rep']}"
+            begin = 'MV14_BEGIN_' + ticket
+            end = '---- end r_speeds_dump ----' if row['metric'] == 'cost' else 'MV14_END_' + ticket
+            original = (cls.root / row['path']).read_text().removeprefix('SYNTHETIC\n')
+            name = 'quiet-' + row['path']
+            stamp = (datetime.datetime(2000, 1, 1) + datetime.timedelta(seconds=row['start'])).strftime('%Y-%m-%d %H:%M:%S')
+            completion = stamp + ' ' + end
+            primary = original + completion + '\n' if row['metric'] == 'cadence' else original.replace(end, completion)
+            (cls.root / name).write_text(begin + '\n' + primary)
+            wait = 'wait-' + row['path']
+            (cls.root / wait).write_text('MATCH cl after 0.10 s: ' + completion + '\n')
+            row.update(ticket=ticket, path=name, sha256=g.sha(cls.root / name), wait=dict(path=wait,
+                sha256=g.sha(cls.root / wait), start=row['start'], end=row['start'] + .2))
         cls.before = dict(subject=dict(g.HASHES['merged'], **{'ftesurf64.exe': g.HASHES['merged']['fteqw64.exe']}),
             installs={'synthetic-install-a': 'a' * 64, 'synthetic-install-b': 'b' * 64}, fixtures={'synthetic.cfg': 'c' * 64})
         (cls.root / 'before.json').write_text(json.dumps(cls.before))
@@ -105,8 +124,8 @@ class OrdinaryTests(unittest.TestCase):
         (self.root / 'capture.json').write_text(json.dumps(data) + '\n')
         return g.grade(self.root)
 
-    def reject(self, name, change, error):
-        d = copy.deepcopy(self.base)
+    def reject(self, name, change, error, base=None):
+        d = copy.deepcopy(self.base if base is None else base)
         change(d)
         with self.assertRaisesRegex(g.GateError, error) as caught:
             self.evidence(d)
@@ -196,6 +215,9 @@ class OrdinaryTests(unittest.TestCase):
             ('wrong-sampled-mode', 'cadence', 'mode: 2', 'mode: 4', 'pacing mode'),
             ('accepting-rspeeds3', 'cost', '"r_speeds" is "2"', '"r_speeds" is "3"', 'sampled r_speeds'),
             ('short-cost', 'cost', '100-frame average', '99-frame average', 'full100'),
+            ('missing-footer', 'cost', '---- end r_speeds_dump ----', 'PARTIAL', 'full100'),
+            ('duplicate-footer', 'cost', '---- end r_speeds_dump ----', '---- end r_speeds_dump ----\n---- end r_speeds_dump ----', 'full100'),
+            ('extra-partial-block', 'cost', '---- end r_speeds_dump ----', '---- end r_speeds_dump ----\n---- r_speeds_dump (us/frame, 100-frame average) ----', 'full100'),
             ('NaN-cost', 'cost', '800 Total refresh', 'nan Total refresh', 'finite number'),
             ('missing-world-draws', 'cost', '19 World Batches', '0 World Batches', 'draw activity'),
             ('missing-transparents', 'cost', '30 Transparent Batches', '0 Transparent Batches', 'draw activity'),
@@ -226,6 +248,60 @@ class OrdinaryTests(unittest.TestCase):
             for r in self.rows(d, metric='cadence', phase='timing-return'):
                 self.text(r, lambda t: cadence_text(avg=25))
         self.reject('failed-cadence-return', failed_return, 'cadence return')
+
+    def test_quiet_schema(self):
+        result = self.evidence(copy.deepcopy(self.quiet))
+        self.assertEqual(result['capture_schema'], 2)
+        self.results.append(dict(control='quiet-synthetic-positive', verdict='PASS_SYNTHETIC_ONLY'))
+        def reject(name, change, error):
+            self.reject(name, change, error, base=self.quiet)
+        reject('quiet-missing-provenance', lambda d: d.pop('protocol_sha256'), 'provenance')
+        reject('quiet-malformed-provenance', lambda d: d.update(driver_sha256='nan'), 'provenance')
+        reject('quiet-missing-hud-control', lambda d: d['modes'][0].update(settings=d['modes'][0]['settings'].replace('"hud_mouse" is "0"', '')), 'cvar hud_mouse')
+        reject('quiet-enabled-hud', lambda d: d['modes'][0].update(settings=d['modes'][0]['settings'].replace('"hud_timer" is "0"', '"hud_timer" is "1"')), 'wrong cvar hud_timer')
+        reject('quiet-wrong-prediction', lambda d: d['modes'][0].update(settings=d['modes'][0]['settings'].replace('"cl_predict_timenudge" is "0.5"', '"cl_predict_timenudge" is "0"')), 'wrong cvar cl_predict_timenudge')
+        reject('quiet-wrong-ticket', lambda d: d['samples'][0].update(ticket='stale'), 'ticket identity')
+        reject('quiet-missing-wait', lambda d: d['samples'][0].pop('wait'), 'wait witness')
+        reject('quiet-wait-hash-mismatch', lambda d: d['samples'][0]['wait'].update(sha256='0' * 64), 'hash mismatch')
+        reject('quiet-wait-before-send', lambda d: d['samples'][0]['wait'].update(start=d['samples'][0]['start'] - 1), 'wait interval')
+        reject('quiet-wait-after-read', lambda d: d['samples'][0]['wait'].update(end=d['samples'][0]['end'] + 1), 'wait interval')
+        for name, metric, change, error in (
+            ('quiet-missing-begin', 'cost', lambda t: t.replace('MV14_BEGIN_', 'NO_BEGIN_'), 'sample ticket'),
+            ('quiet-duplicate-begin', 'cost', lambda t: t.splitlines()[0] + '\n' + t, 'sample ticket'),
+            ('quiet-wrong-begin', 'cost', lambda t: t.replace('_ordinary_0', '_ordinary_1'), 'sample ticket'),
+            ('quiet-missing-footer', 'cost', lambda t: t.replace('---- end r_speeds_dump ----', ''), 'sample ticket'),
+            ('quiet-data-after-footer', 'cost', lambda t: t + 'OTHER_SAMPLE\n', 'sample ticket'),
+            ('quiet-missing-end', 'cadence', lambda t: t.replace('MV14_END_', 'NO_END_'), 'sample ticket'),
+            ('quiet-cost-in-cadence', 'cadence', lambda t: t.replace('sys_framepacing mode: 2', 'r_speeds_dump\nsys_framepacing mode: 2'), 'cadence-only')):
+            reject(name, lambda d, metric=metric, change=change: self.text(self.rows(d, metric=metric)[0], change), error)
+        reject('quiet-timeout-witness', lambda d: self.text(self.rows(d)[0]['wait'], lambda t: t.replace('MATCH cl', 'TIMEOUT cl')), 'wait did not act')
+        reject('quiet-wrong-footer-witness', lambda d: self.text(self.rows(d)[0]['wait'], lambda t: t.replace('---- end r_speeds_dump ----', 'MV14_END_other')), 'wait did not act')
+        reject('quiet-wrong-wait-timestamp', lambda d: self.text(self.rows(d)[0]['wait'], lambda t: t.replace('2000-', '2001-')), 'witness/primary mismatch')
+        def foreign(d, swapped=False, same_primary=False):
+            a, b = self.rows(d)[:2]
+            wa, wb = copy.deepcopy(a['wait']), copy.deepcopy(b['wait'])
+            b['wait'].update(path=wa['path'], sha256=wa['sha256'])
+            if swapped:
+                a['wait'].update(path=wb['path'], sha256=wb['sha256'])
+            if same_primary:
+                # Force matching completion text to independently exercise path reuse.
+                last = (self.root / a['path']).read_text().splitlines()[-1]
+                self.text(b, lambda t: '\n'.join(t.splitlines()[:-1]) + '\n' + last + '\n')
+        reject('quiet-foreign-valid-witness', foreign, 'witness/primary mismatch')
+        reject('quiet-swapped-valid-witnesses', lambda d: foreign(d, swapped=True), 'witness/primary mismatch')
+        reject('quiet-reused-witness-path', lambda d: foreign(d, same_primary=True), 'reused sample completion witness path')
+
+    def test_quiet_cli_under_optimization(self):
+        for valid in (True, False):
+            d = copy.deepcopy(self.quiet)
+            if not valid:
+                self.text(self.rows(d)[0], lambda t: t.replace('MV14_BEGIN_', 'NO_BEGIN_'))
+            (self.root / 'capture.json').write_text(json.dumps(d))
+            for flags in (['-B'], ['-B', '-O']):
+                p = subprocess.run([sys.executable, *flags, str(Path(g.__file__)), str(self.root)], capture_output=True, text=True)
+                self.assertEqual(p.returncode, 0 if valid else 1, p.stdout + p.stderr)
+                self.assertIn('PASS bounded ordinary' if valid else 'sample ticket', p.stdout)
+                self.results.append(dict(control=f'quiet-CLI-{valid}-' + '-'.join(flags), verdict='PASS_SYNTHETIC_ONLY' if valid else 'REJECTED_AS_EXPECTED', exit=p.returncode))
 
     def test_cli_under_optimization(self):
         (self.root / 'capture.json').write_text(json.dumps(self.base))

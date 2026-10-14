@@ -4943,6 +4943,33 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## OpenGL blend collector and visual harness (Patch 685)
 
+### Legacy list readiness/rescan seam (2026-10-14 source probe)
+
+`tools/test_p690legacyorder.py` compiles complete production batch-generation,
+rebucket and reload functions with controlled stubs, actual sort enum and acting
+mutants. Eleven cases/six mutants pass C-O0/O2 and Python normal/-O. Registration
+is WG_MAIN (`R_LoadShader` asserts it), not a worker shader-table race proved by
+`-noworkers`. Loader timing can alter queued GL callback/publication readiness.
+Initial batch head insertion and later global head-insertion rebucket can produce
+opposite final same-band lists. ANY used shader sort change triggers the global
+rebucket; `Mod_ResortShaders` checks MLS_LOADED only (no model-type guard), reverses
+unchanged lists, skips loading models and clears scene cache. Controlled built-
+before/after/not-published schedules are source counterexamples, not production
+histories. P688/merged registration source is identical after Git newline handling.
+
+The exact merged production's .db was retired. Earlier candidate COFF names lack
+type debug information and candidate model-root addresses are0x1000 different.
+Offline complete-function normalized matches independently recover actual model
+root RVAs; do not borrow diagnostic/candidate addresses or infer arbitrary type
+fields. `tools/p690legacyorder.md` documents machine-code scope and remaining
+fail-closed decoder/late-snapshot controls. No live observer acceptance yet.
+A late loaded-memory graph cannot reconstruct registration history or prove GPU
+submission order; `worker_status pending0` does not attest in-flight completion.
+Never use body-reading `mod_batchlist`, `mod_texturelist`, `r_showshader`,
+`shader_here` or `r_showshaders` as a lifecycle-neutral observer. No default2,
+product fix, native causality, deployment or performance claim from this probe.
+
+
 - A cached VBO batch deliberately has no CPU meshes; that is a coarse whole-
   batch record, not an empty draw. Preserve original descriptor/cache pointers
   and ranges when submitting individual mesh records. Scenetris require their
@@ -5024,12 +5051,156 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   A0.4second bridge read captured partial dumps in34/38 replies even though full
   records exist in raw logs: require a unique ticket and footer before grading.
   Six/eight Kitsune fullframe repeats changed1016..3900 pixels; no new mask was
-  allowed. Timer/mapinfo/minimap stayed visible behind guessed HUD names; inspect
+  allowed. Timer/mapinfo/mouse-pad stayed visible behind guessed HUD names; inspect
   actual registered names, but scene deltas do not prove HUD causation. Archived
   excluded timing diagnostics also show P688 mode1 return cost+37.57%, above the
   frozen20% drift guard. Timing slowdown ACTS5x cadence/59x refresh; that does not
   rescue unstable controls. Serialize native timing against detector/corpus/hash
   work and prove quiet A/B/A returns. No product bug/fix/default2 acceptance.
+- Quiet ordinary follow-up passes ONLY the fixed Kitsune cache0 GL station.
+  src/client/cl_mouse.qc:MPad_Draw's lower-right square is hud_mouse, not a
+  minimap; hud_timer/hud_mapinfo are registered panel controls. Disable/read
+  these plus explicit input/prediction/HDR state, and prove the actual on/off/on
+  channel. Short probe changes16215 HUD pixels, exact return and both fullframe
+  repeats across r_speeds0/2/0, counters advance314/315 ordinary draws.
+  New schema2 reader requires current unique BEGIN/END-or-footer primary records
+  and hash-bound successful completion waits with exact timestamped-primary
+  completion binding and unique witness paths, never fixed-short-read recovery.
+  BLOCKING serialized capture, no concurrent parent/child detector/hash/corpus
+  work:78 complete samples/17 exact PNGs; mode2 acts12065, default/diagnostic/
+  return parity exact. Six medians P688/merged/return: mode1 753.410/730.220/
+  692.195us, mode2 785.760/762.495/677.520us adjusted refresh. Both-controls1.20
+  and return[.80,1.20] unchanged; -8.13%/-13.78% return drift is within guard,
+  NOT identical load or a speedup. All cadence medians9.9995..10.0015ms; slowdown
+  acts5x/65.34x; WGL-return is not GPU/display, refresh is not whole-host time.
+  All owned stopsrc0/native8/fixtures/install hashes restored. New controls74
+  offline rejections/6 synthetic positives under normal/-O. Old failures stay
+  excluded. Artifacts ordinary-quiet-20261013/, tools/p690ordinary.md. No broader
+  map/moving-camera/frame-tail/promotion/default2 claim; several setup changes
+  together do not establish what caused the previous scene drift.
+- Additional-map stationary eligibility is NOT a performance matrix. Existing
+  Tensor2/Demise fullframes still change with the actual quiet HUD/input settings,
+  fixed rendered eye/aim, cache0 and314/315 advancing ordinary draws. Tensor2 mode1/
+  mode2 repeats change286088/283347 pixels in lower water-area bounds; Demise's
+  valid retry changes24701/21166 in upper sky-area bounds. No masks/time freezing
+  or causal shader-defect claim. Known-stable Kitsune positive repeats exactly,
+  HUD16215 pixels/exact return. Both extra stations are INELIGIBLE for the exact
+  stationary gate, so no production A/B/A timing there. New p690stationprobe.py
+  separates INVALID evidence from valid-but-INELIGIBLE; normal/-O controls cover
+  ticket/wait/camera/state/closure and one-pixel drift. tools/p690stationprobe.md.
+  Demise first cmd setpos printed the target but settled about1.1 units off it:
+  exclude, don't widen tolerance. A separately frozen retry split noclip activation
+  from placement, placed again after settling and checked body BEFORE PNG/cost;
+  same target passed. Root cause of initial placement drift remains unknown.
+  Timer may be running on a stationary renderer station; correct world, ZERO
+  velocity and protected fixture restoration matter, not assumed idle/armed.
+- Bounded sprite/world preservation now has native production P688/merged/P688-
+  return coverage: one generated SPR32 billboard via prop_dynamic,24 fullframe
+  PNGs. env_sprite is removed by this QC, not a sprite fixture. Set gl_blendsprites1
+  BEFORE map load; verify actual defaultsprite blend shader and rendered green
+  footprint9216pixels. Sprite-on repeats/returns and both production modes are
+  exact; sprite-off mode2 correction acts20604pixels. Merged mode2's on/off delta
+  includes world reorder, so it is NOT pure sprite area. Preservation does not
+  prove inherited ordering correct; no diagnostic admission/eye counter, animated/
+  arbitrary sprite/model/weapon/portal/performance/default2 claim. Generator writes
+  only fresh owned artifacts; native fixture/native8/config/data/install closure
+  is separate. tools/p690spritefixture.md; artifacts/sprite-overlap-20261013/.
+- P690 rotated func_wall continuation (tools/p690brushfixture.md) generated two
+  BSP29 maps identical except actor angles0/45. One local model*1 green pane at
+  origin272,0,64 acts: green footprint9216pixels/96x96 versus6532/68x104. Loaded
+  *1:<map>/one-green-surface batch, ordinary-alpha shader and on/off/on readbacks
+  bind the production actor; no fixture QC/build/diagnostic admission claim.
+  The complete48PNG frozen native matrix is REJECTED. Mode1 yaw45 initial P688
+  differs20604pixels from both merged and P688-return, including entity-OFF;
+  P688 mode1 world-only frames also differ across the yaw-map boots. Every
+  within-boot repeat/entity-return is exact; mode2 ON subset matches, and OFF
+  merged correction acts20604. A baseline that does not return cannot certify
+  default parity or attribute the difference to the candidate. Keep the original
+  normal/-O rejection, all raw/PNGs and a separately labelled postcapture report;
+  do not mask/widen/relabel. Next protocol must prove stable legacy world return
+  (prefer same-loaded-world observed angle action) before native acceptance.
+- Same-loaded-world brush follow-up uses existing engine poke_ssqc numeric
+  entity.field/vector assignment, not a new QC command. Discover targetname,
+  verify classname/model/origin/angles/avelocity BEFORE writing only actor angles;
+  bind complete fresh ticketed raw replies and visible0/45/0 footprints. All18
+  P688 initial/return fullframes now exact, angle ON/OFF3150/0 in all modes/arms,
+  but all10 mode1 P688-vs-merged PNGs differ20604. Full gate remains REJECTED;
+  do not claim a candidate defect/root cause. Mod_ResortShaders prepends/reverses
+  lists when called, Shader_DoReload calls only after a live sort change; these
+  runs did not count-bind that lifecycle. mod_batchlist is not inert: it calls
+  Shader_GetShaderBody, which can reparse shaders. Observe after pixel states or
+  prove observer-OFF/ON/OFF parity before using an order diagnostic.
+- A subclass of a retained capture helper must explicitly pin ITS OWN __file__;
+  inherited __init__ resolves globals in the helper module. First54PNG attempt
+  restored but frozen checker rejected before pixels: driver_sha256=helper hash.
+  Retain failed source/manifest/protocol unchanged. Separately versioned V2 pins
+  subclass/helper independently; real constructor with mock helper-init and a
+  wrong-driver negative control prove metadata BEFORE launch. Never fix captured
+  manifests. The V2 native onepixel mode1 control was hidden by an already failing
+  comparison: record UNPROVED, not a passed control. Synthetic rejection does not
+  make it native. Frozen pane-only ON/OFF was also a protocol error: removing an
+  unsupported barrier enables world correction outside actor area. Keep original
+  rejection; explicitly diagnose this known control interaction, not product bug.
+  tools/p690brushfixture.md; artifacts/brush-sameworld[-v2]-20261013/.
+- Later passive lifecycle continuation (55PNGs/five boots) binds raw batches and
+  real reload/resort events at exact P688/merged sources, without shader-body/
+  parser/rebuild calls. Identical65-line additive observers; samples1..8, zero
+  overflow. Both observerOFF/ON/OFF sets and all11 production P688 returns exact.
+  Diagnostic P688 activation reload changes red/blue/green sort5->11; one actual
+  resort reverses blue/red/black into opaque black plus red/blue; mode1 center
+  (64,0,127). Diagnostic merged has no sort changes/resorts, blue/red order,
+  center(127,0,64). Observed diagnostic records, NOT production causality: each
+  diagnostic's nine mode1 PNGs differs20604pixels from its production boot,
+  so18 frozen transfer failures remain; mode2 exact. Within-boot observer parity
+  and identical source do NOT prove boot-time nonperturbation. Normal/-O reports
+  retain all18 failures plus NEW SPECIFIC native observer1bit/source/overflow/
+  footer/material controls. Earlier rejected protocols/manifests/gates unchanged.
+  tools/p690brushfixture.md; artifacts/brush-order-20261013/.
+- Minimal m-rel builds:37 inherited compiler warnings/0new plus222 Make grouped-
+  target warnings each, retained separately. First checker mixed the categories
+  and failed; source/log/failure retained. Shared ARCHLIBS hashes unchanged. Five
+  pairs quitrc0/native8/protected1223/install2/fixture absence restore; recorder
+  306/0 and corpus/reader/count/fault parity unchanged. Parent review only.
+  A separately frozen -noworkers follow-up now PASSES all55 exact production/
+  diagnostic/P688-return fullframes, mode1 preservation, observer parity and
+  yaw0/45/0 return. Both processes zeroed BEFORE worker initialization; default
+  positive has4 live/0pending on cl+sv and210 measured receipts showcount0/live0/
+  pending0. Bind actual MATCH cl/sv waits, unique tickets/raw paths and phase
+  intervals against observer/state/PNG, not just labels; boot receipt reuse is
+  not evidence of later or server state. Both diagnostics now show activation
+  sort5->11/resort1/red-blue,21 events/eight unchanged passive samples; mode2 OFF
+  correction still acts20604. Normal/-O frozen grades and4 pixel/36-total native
+  replay controls pass. Six owned pairs quitrc0/native8/protected1223/install2/
+  fixture absence restore; recorder306/0 and corpus hashes/counts/faults unchanged.
+  Exact retained binaries/no rebuild/default/deployment change. The previous
+  rejected gates stay immutable. This bounds a synchronous-loader fixture, NOT
+  ordinary-worker transfer or workers-only causality: ticket cadence/warmup also
+  differ. A second matched cadence/warmup six-boot worker-enabled capture now
+  ACTS212 replies4live/0pending, valid55PNG/16samples/closure, but gate REJECTS18:
+  nine merged production/diagnostic transfers and nine mode1 crossbinary images,
+  each20604. Normal/-O validJSON preserves all18;4 new-specific pixel/44-total
+  replay controls ACT despite preexisting failures. Both diagnostics still have
+  resort1/red-blue; never assign those events to mismatching merged production.
+  Other46 images crossbatch exact; both mode2 transfers/all11 P688 returns and
+  observer parity hold, not a subset acceptance. Six pairs/protected/native/
+  fixture/corpus closure pass. Worker setting implicated, NOT sole cause proved
+  (zero-then-enabled, no uninstrumented production lifecycle). Next isolate real
+  worker-enabled registration/rescan without diagnostic perturbation; cadence/
+  warmup match is now tested, not a remaining prerequisite.
+  Stable rebucketing remains separate unproved product work. No forced resort/
+  reparse/flush/retry selection, mask/widening/subset rescue or arbitrary model/
+  default2/performance acceptance. tools/p690brushfixture.md;
+  artifacts/brush-workers-20261014/, brush-workers-enabled-20261014/.
+- Before native launch, actually exercise extra argv through conbridge argparse
+  with dispatch stubbed. --server-args=-noworkers works; separate flag/value
+  tokens reject as expected-one-argument and can strand staged binaries if the
+  harness marks active too early. Only a PROVED predispatch parser failure plus
+  independent absent processes/registry can clear active for restoration; never
+  swallow an ambiguous launch/stop failure. Port guard needs rc0/explicit success
+  enumeration; suppressed errors/empty stdout are NOT an unoccupied port. Normal/
+  -O safety mutants caught these before the zero-worker fixture froze/launched.
+  Reviewer timed out with useful partial findings, parent corrected/tested;
+  no completed independent correction/result clearance or fallback claimed.
 - Stale r_waterinfo MarkLeaves age is NOT cache-action proof. Q1BSP_MarkLeaves
   common/q1bsp.c:2227 returns same-cluster cvis BEFORE marktime at2275. Actual
   stationary cache0 reported wanted0/inuse0 plus stale14.1s/false causal cache
@@ -5899,13 +6070,249 @@ Process interruption is NOT power loss. After-commit interruption can leave old
 resolved staged objects behind because the newly committed journal no longer
 names them; do not claim complete cleanup. A separate corrupt retry after that
 arm consumes attempt3, so direct repaired retry and corrupt-next-launch evidence
-must be separate fixtures if both are wanted. Native Windows interruption and
-failure specifically at the second live commit remain coverage limits. Retained
+must be separate fixtures if both are wanted. Native Windows cold replacement
+interruption now has an acted test-only continuation below. Initial/deferred live
+interruption remains separate coverage; the second-live-writer sharing failure
+is acted in its test-only continuation. Retained
 signed production and signed-loopback fixtures are different contracts: the old
 Windows recovery driver requires the synthetic updater_fixture row and a full
 union object closure, while new cold publication controls use ordinary crosshairs.
 See tools/p692native_journal.md for tests, failed setup attempts and source-only
 acceptance. Never equate this source pin with any installed/released binary.
+
+### Windows deferred live journal fault debugger — P692 continuation, 2026-10-13
+
+A lock before the initial live writer is not a deferred-commit fault. The new
+native driver compares exact executable/companion PE text, finds the optimized
+writer and two direct callers, and checks both observed caller RVAs/thread/ordinal.
+It snapshots complete initial authority at the second writer, holds only that
+writer's source sibling with writes allowed/no delete sharing, then lets native
+OPEN/write/close/rename run. Exact pending-only temp, live error/state, one landed
+content row/partial ledger, byte-exact full authority and staged objects prove
+ACTED publication failure. Old control loses journal and starts mixed; current
+corrupt retry refuses at attempt2, repaired retry completes at attempt3. This is
+transient INT3 memory instrumentation, not a disk product patch or simulated API
+return. Independent rename probe32 is not a sampled product-thread TEB error.
+
+NEVER close CREATE_THREAD_DEBUG_EVENT.hThread early: ContinueDebugEvent at thread
+exit closes debugger-owned handles automatically. A reused handle number then
+let that automatic close destroy our journal source lock, producing native exit0
+but helper exit90/CloseHandle error6. Leave debug-event process/thread handles to
+their debugger lifecycle; separately acquired OpenThread/PROCESS_INFORMATION and
+image/DLL file handles have distinct ownership. Failed subject06 remains FAIL.
+Debug EXIT_PROCESS can precede final kernel/job exit accounting; a bounded natural
+zero census after raw exit is valid, killing a success arm to force zero is not.
+
+Cold failure cleanup must terminate and confirm the owned job empty BEFORE closing
+its kill-on-close handle or clearing the unconfirmed-phase guard. A dead leader
+alone is insufficient on Windows too. Failure exports must include journal.tmp,
+not just *.json: a preceding live snapshot does not preserve a later failed cold
+rewrite. Client-free negative controls exercise persistent cold job rejection,
+exact failed-temp export/FAIL retirement and early live export failure guard.
+Validate helper as a regular file and hash BEFORE creating runtime/evidence roots.
+The native wrong-prologue control refuses before startup and verifies owned job0.
+
+Signed-manifest order, not test destination order, defines the initial journal.
+Legacy direct repair can leave the failed temp orphan when it does not rewrite;
+export/grade that orphan rather than silently crediting complete native cleanup.
+Both corrected matrices and a fresh repeat use immutable accepted external before/
+subject clients, with settings/recording/local-zone/unmanaged-asset sentinels;
+no mounted-content, Windows interruption, power-loss, default-HTTPS or deployment
+claim. See tools/p692native_journal_deferred.md for reproduction and limits.
+
+### Windows cold journal commit process interruption — P692, 2026-10-13
+
+`tools/p692native_journal_interrupt.md` closes cold pending-only Windows
+replacement process-interruption coverage, not power loss or initial/deferred
+live interruption. External test-only debugger binds immutable client/companion
+PE text, unique native call and exact return PC. P692's shared helper additionally
+requires inspected stack/tail shape and the cold caller. Restore original bytes
+and RIP, never simulate rename/register results. Observe real nonzero return,
+thread/RVA/path checks, owned exit86 and observed job0 before/after cleanup.
+Before-rename old client already unlinked full authority and next corrupt launch
+starts mixed; P692 retains byte-exact full journal/refuses. After-rename authority
+is pending-only attempt2 while all staged inputs still exist. Separate fresh
+repaired arm completes attempt3; corrupt arm publishes attempt3 and repaired next
+launch must refuse exhaustion without budget reset. Pending-only authority cannot
+name resolved objects: repaired after-commit fixture explicitly retains these
+orphans; no garbage-collection certificate. Settings/recording/edited local zone/
+unmanaged sentinels and partial ledger/completion envelopes are independently
+graded in both row orders.
+
+First helper rejected because only native path separators were normalized; also
+normalize expected argv paths. Preserve failed history/temp/log evidence. Native
+wrong-byte rejection remains FAIL (helper90/job0), though its rejection assertion
+passes. Timeout/export/containment negatives must retain retirement guards when
+unknown. Frozen native repeat/review and retained paths are in the task checkpoint
+under `C:/FTESurf-worktrees/wjcut-20261013T172400Z/artifacts/`.
+
+### Windows initial live journal publication controls — P692, 2026-10-13
+
+The first QKU_Apply journal has no prior authority. Before its rename, interruption
+leaves a complete attempt1 temp but ALL selected destinations and ledger old;
+acted next startup staying all-old is expected, not mixed-startup regression.
+Both old27c58e and subject195dc58e have that initial-boundary safety. Do not copy
+the old cold/deferred authority-loss expectation or fabricate prior authority.
+
+Use tools/native_journal_initial.c + test_update_native_journal_initial.py:
+match complete PE/companion text; source-bind first live caller, exact writer,
+real native call/return and same thread; validate native paths and flags/root.
+Subject frame/stack-probe target, tail wrappers, commit caller and direct/import
+instruction targets are checked before mutation. Restore original bytes/RIP; no
+native return spoof. The full attempt1 temp is copied at native pre, before any
+initial content installation. Source-lock AFTER writer completion permits
+writable OPEN but independently fails source rename32, then observes actual
+product return0; this is not a TEB-error sample or failed writer-OPEN gate.
+Preserve initial-error/stateerror/full temp/old ledger+destinations before
+releasing retry acceptance; the lock itself is released after actual rename
+failure. Same-game retry has separate markers/plans and exact HTTP counts.
+
+Owned pre/post interrupts use child86; helper0, exact raw event order, first
+writer/caller and observed job0 before AND after cleanup are mandatory. Before
+cold startup leaves the complete temp/all-old state unchanged. After commit,
+full attempt1 authority/temp consumed/all-old destinations seed separate fresh
+direct-completion and corrupt-refusal/attempt2-pending/repair cases. Never spend
+the same cold retry budget twice and label it a fresh fixture. Every arm exports
+metadata INCLUDING .tmp, staged identities, logs and full runtime-file hashes
+before retirement. Wrong-entry-byte native negative exits helper90 before startup;
+its phase remains FAIL with exact sentinel export/job0, even when the negative
+assertion passes. Equal/nested/existing resolved runtime/evidence roots refuse
+before creation. Trusted synthetic roots only, not hostile path-swap/hardlink
+protection. See tools/p692native_journal_initial.md. Deferred live interruption,
+power-loss/flush ordering, staged orphan GC and canonical/fleet delivery remain
+separate; test-only tooling does not bump ENGINE.txt or product tags.
+
+### Native journal shared export/retirement guards — 2026-10-13
+
+Legacy cold/live/deferred callers can grade AFTER managed content has landed.
+Metadata/stage-only fallback is not preservation of those actual destination
+bytes. Shared snapshot now exports raw metadata INCLUDING .tmp/logs, staged
+identities and SHA256 of ALL regular runtime files (not only ftesurf), under an
+independent export/receipt guard. A failed target refuses reuse before writing,
+so an implicit finally retry cannot overwrite its FAIL/release its guard. A
+complete separately named fallback cannot erase the earlier failed guard.
+Checked scandir traversal propagates root/subtree listing errors and checks
+links/reparse points before descent; Python3.10 rglob silently suppresses some
+PermissionErrors and otherwise certified incomplete/empty inventories. Both
+omission and same-target-release controls ACT on frozen04 and refuse on fixed05. Process guards separately require containment, full
+export and receipt write; natural Windows success observes job0 BEFORE and AFTER
+cleanup without termination. Unknown containment/export/receipt retains runtime
+and FAIL. Fresh resolved runtime/evidence roots must be disjoint before creation.
+
+An active client exclusively byte-locks `.ftesurf-updater/install.lock` in
+QKU_FSLock. Three native attempts to full-read an active runtime failed and
+correctly retained fixtures with job0; releasing a journal source lock did NOT
+release the install lock. Active initial-refusal capture explicitly excludes
+ONLY that exact control file and emits active_export true/full_export FALSE.
+Unreadable metadata/content/stage still fails. Full post-containment export is
+separate/mandatory; no broad PermissionError swallow or inferred lock hash.
+
+Fresh frozen old/subject reruns:10 native matrices,94 PASS phase receipts with
+both observed job0 censuses,130 full inventories,528 raw byte-hash checks, two
+explicit non-full active captures;69 Windows client-free tests (including actual
+duplicate callsite one-shot failures/listing denial). Separate legacy harness
+has3Windows passes/4POSIX-only skips; no new Linux execution claim. Acting mock
+baseline/current post-mutation grader refuses both: old fallback loses content
+identities, hardened runner preserves them. This is test-only, trusted synthetic
+roots, not a hostile path-swap/hardlink or power-loss certificate. Do not rewrite
+older receipt strengths. Commands/limits: tools/native_journal_evidence.md.
+
+### Deferred live journal before/after process interruption — P692, 2026-10-14
+
+The second live writer is not the cold writer or initial full publication.
+Extend the external initial debugger only with an explicit second-caller and
+prior-authority snapshot pair. Restore/execute the first entry instruction by
+single-step, preserve its other flags, rearm entry, validate inspected initial
+then deferred callers on the same thread. At second entry require full attempt1
+native authority/first temp consumed; at pre-native rename save the complete
+pending-only attempt1 temp and validate real paths/root/flags/commit caller.
+Before interruption restores the original instruction/RIP; after requires the
+actual positive native result. Never force API results or infer ACT from timing.
+
+Hold either first or last selected signed row, prove the other row installed,
+exact partial old-version ledger/no certificate, both staged inputs and protected
+sentinels. Use fresh fixtures for direct repair, corrupt-then-repair and corrupt
+attempts2/3 then repaired exhaustion; do not consume/reset one shared budget.
+Old pre-rename loses authority and ACTS mixed-content startup; save/export that
+failure before explicit control-only initial-authority restoration. P692 keeps
+full authority/refuses corrupt retry. Post-rename both retain pending-only
+attempt1 authority and temp is gone. A reduced authority cannot retire the
+already installed live row's staged copy: observed orphan, not safe GC.
+
+Review found that live-boundary HTTP counts alone miss unexpected cold requests.
+Keep that receipt AND compare/store the unchanged exact counter after ALL cold
+branches, before PASS; repeated manifest/object and unknown cold GET negatives
+must discriminate. Accepted frozen02:20new native scenarios/56phases, plus both
+initial-regression matrices; combined74natural job0/full-export phases,
+106full inventories/482raw byte-hash checks,81client-free Windows passes.
+Wrong native byte exits90/job0 and retains FAIL/full sentinels; separate negative
+assertion passes. No engine/product edit, new Linux/defaultHTTPS, hostile-root,
+power-loss or deployment claim. Contract/commands/limits:
+`tools/p692native_journal_deferred_interrupt.md`.
+
+### Windows authority-bounded staged retirement controls — 2026-10-14
+
+`tools/test_update_native_staging_windows.py` adds retained-signed-closure cold
+controls for the existing `QKU_ReplayJournal`/`QKU_FSPurgeObject` contract. Each
+three-row case runs pending-first/last: valid resolved objects ACT removal only
+after successful reduction; a hash shared with a held pending destination must
+survive reduction then disappear on repaired completion; real source-rename32
+retains full authority and ALL objects. Exact ledgers/tuples/budgets/certificates,
+protected bytes and stage maps are graded after natural pre/post-cleanup job0.
+A separately seeded reduced-authority control retains a resolved orphan through
+completion. It is not a new crash actor or permission to garbage-collect it.
+
+A wrong-size corrupt object only tests size checking: omitting the native hash
+comparison would still preserve it. Use a one-byte mutation of the signed bytes,
+assert equal size/unequal digest, and retain the wrong-size case separately.
+Unreferenced objects cannot independently falsify purge validation because the
+native purge helper never visits them. Valid resolved removal is the ACT arm.
+
+ThreadingHTTPServer defaults to daemon request workers; joining serve_forever's
+thread does NOT join those workers. A final counter sampled before shutdown can
+miss an already-accepted GET held before its increment. This driver makes
+workers non-daemon with block_on_close, bounds socket reads, and samples only
+AFTER context exit joins every accepted worker. An event-controlled real late
+handler falsifies early census. Zero GETs is signed-mirror scope, not all-network
+silence. Matrix01 predates these two review fixes and is not strengthened.
+Accepted frozen02:11scenarios/22natural job0/full-export phases,22inventories/
+81raw-byte hash checks;13client-free tests. Tooling only, no new engine patch,
+orphan deletion, file/directory flush, hostile-root or deployment acceptance.
+Contract/commands/provenance: `tools/native_staging_windows.md`.
+
+### Bounded restart-safe retirement proposal and process-cut model — 2026-10-14
+
+A reduced pending journal cannot recover resolved candidates after interruption;
+completion also unlinks authority before purge, and the void purge helper does
+not preserve removal outcomes. Closing only reduced publication is incomplete.
+The reviewed proposal retains the complete bounded signed transaction row set in
+one journal, recomputes resolution, retires only after publication/completion,
+then checks journal removal LAST. Failed/held/corrupt/unreadable stage candidates
+retain authority, not silent deletion or a broad storage scan. This can block
+future in-game updates indefinitely; do not overwrite retained generations.
+
+Cleanup-only retries of genuinely completed content must be nonfatal and not
+spend/reset content attempts. Exhausted UNRESOLVED content still refuses BEFORE
+mutation; moving the budget gate below installation is not a fix. An admitted
+content pass that completes but leaves cleanup outstanding must publish the
+bumped count. Legacy reduced/no-journal inputs cannot retroactively adopt orphans.
+
+`tools/update_retirement_protocol.py` is an in-memory executable proposal, not
+native code or a filesystem cleanup tool. Trusted signed tuples/protection
+classifications and real byte digests support independent survivor/shared-hash
+oracles. Tests enumerate168 process cuts (44 ordinary/shared +92 blocked/missing
++32 admitted-completion),
+require acted valid removal and retained pending/corrupt controls, and reject
+source-shaped legacy reduction/unlink actors. Full completion must reject every
+unreadable signed destination, including preserved/outside-reduced-journal paths:
+cached bytes are not proof of current readability. Compute expected shared pending
+hashes independently from fixture bytes/policy, never by calling the implementation's
+pending predicate; an always-empty mutation must still fail the oracle.
+They do NOT verify signatures,
+install content, prove disk durability, launcher behavior or native outcomes.
+Source seams/availability decision/native falsifiers:
+`tools/native_retirement_protocol.md`. The engine orphan follow-up remains open;
+no patch/pin/version bump, release or deployment is authorized by model acceptance.
 
 ### Default HTTPS native/menu drivers and real return census — P689, 2026-10-13
 

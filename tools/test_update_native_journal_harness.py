@@ -159,13 +159,20 @@ class JournalHarnessTests(unittest.TestCase):
         dest.mkdir()
         (dest / 'native.log').write_bytes(b'owned native failure log\n')
         result = dict(status='FAIL')
-        with patch.object(live.shutil, 'copyfile', side_effect=OSError('failed-state export denial')), \
-             patch.object(live.shutil, 'rmtree') as remove:
-            with self.assertRaisesRegex(OSError, 'failed-state export denial'):
-                live.retire_runtime(root, evidence, result, dest)
-            remove.assert_not_called()
-        self.assertTrue((dest / 'native.log').exists())
-        self.assertEqual(json.loads((evidence / 'result.json').read_text())['status'], 'FAIL')
+        guard = evidence / 'failed-final-state/full-snapshot-guard'
+        try:
+            with patch.object(live.shutil, 'copyfile', side_effect=OSError('failed-state export denial')), \
+                 patch.object(live.shutil, 'rmtree') as remove:
+                with self.assertRaisesRegex(OSError, 'failed-state export denial'):
+                    live.retire_runtime(root, evidence, result, dest)
+                remove.assert_not_called()
+            self.assertTrue((dest / 'native.log').exists())
+            self.assertEqual(json.loads((evidence / 'result.json').read_text())['status'], 'FAIL')
+            self.assertIn(guard, cold.UNCONFIRMED_PHASES)
+        finally:
+            # This fixture has no native process; retire only this test's guard
+            # AFTER verifying production correctly blocked fixture destruction.
+            cold.UNCONFIRMED_PHASES.discard(guard)
 
     def test_unconfirmed_native_phase_prevents_runtime_deletion(self):
         root, evidence = self.retirement_fixture()

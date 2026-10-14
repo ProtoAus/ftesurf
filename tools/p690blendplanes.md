@@ -116,6 +116,57 @@ failed/unstable arms distinct rather than treating them as passing evidence.
   is recorded, not repaired. Initial Q1 cross-binary mode1 differences are not
   default-parity evidence; the exact Kitsune controls above supply that evidence.
 
+A later [native sprite-overlap fixture](p690spritefixture.md) adds bounded exact
+production P688/merged/P688-return preservation: one SPR32 billboard is visibly
+active in9,216pixels; its on/return images are exact across both modes/arms.
+Sprite-off mode2 correction acts20,604pixels. This is native overlap preservation,
+not correct inherited sprite ordering or arbitrary sprite certification.
+
+The later [rotated inline-brush fixture](p690brushfixture.md) binds an actual
+func_wall at yaw0/yaw45 (9,216/6,532 green pixels) but its frozen native gate
+is REJECTED: yaw45 mode1 P688 initial/return world-pane order differs20,604pixels,
+including with the brush OFF. Mode2 brush-ON subset matches and OFF correction
+acts20,604; this is not a relaxed accepted matrix. Reusable generation/tests and
+all frozen failure/closure evidence are retained; default1 stays unchanged.
+A separately frozen same-loaded-world angle0/45/0 follow-up uses existing
+poke_ssqc authoritative actor readbacks and54PNGs. P688 returns are now exact
+for all18 images; angle ON/OFF changes3,150/0pixels in every arm/mode. However,
+all10 mode1 cross-binary comparisons still differ20,604pixels. Mode2 ON matches
+and OFF correction acts, but the complete gate remains REJECTED, including a
+native onepixel control hidden by an existing failure and an invalid pane-only
+ON/OFF premise. Initial driver-hash metadata failure is retained separately;
+no manifest/gate was rewritten or observed subset accepted. A later passive
+55PNG/five-boot observer now binds actual reload/resort/list order and exact
+within-boot observerOFF/ON/OFF pixels. Diagnostic P688 has activation sort5->11/
+resort1/red-blue; diagnostic merged resort0/blue-red. But each diagnostic's nine
+mode1 PNGs differs20,604pixels from its own production capture:18 transfer
+failures, frozen gate REJECTED. All11 production P688 returns and mode2 diagnostic/
+production pixels are exact; those cannot rescue boot-time causal transfer.
+A NEW separately frozen zero-worker startup gate now PASSES all55 fullframes:
+production/diagnostic/P688-return transfer, mode1 preservation, within-boot passive
+observer parity and yaw0/45/0 return. Exact retained binaries, no rebuild. Both
+processes receive -noworkers before initialization; a4-live/0-pending positive
+control and210 target count0/live0/pending0 receipts ACT, with actual cl/sv and
+phase binding. Both diagnostic boots now record activation sort5->11/resort1/
+red-blue,21 events/eight stable samples. Mode2 OFF correction still acts20,604.
+Normal/-O grades and4 pixel/36 total native replay controls pass; six owned pairs
+quitrc0 and protected/native/fixture/corpus closure passes. All earlier rejected
+protocols remain unchanged. This is bounded synchronous-loader fixture coverage,
+not ordinary worker-enabled startup repair or workers-only causality (ticket
+cadence/warmup also differ). No forced resort/reparse/flush, stable-rebucket fix,
+arbitrary-model/default2/performance/deployment claim. A second fixed55-image
+worker-enabled batch now holds the same cadence/warmup: all212 status receipts
+show4live/0pending, but nine merged production/diagnostic transfers and nine
+mode1 crossbinary comparisons differ20,604pixels. Normal/-O gate REJECTS18,
+while all4 NEW-specific pixel/44-total replay controls ACT; earlier frozen results
+stay unchanged. Both diagnostic boots again have resort1/red-blue; that is NOT
+a trace of the mismatching merged production boot. All other46 crossbatch images
+are exact and both mode2 transfers/P688 return hold, not a relaxed acceptance.
+All six owned pairs/native/protected/fixture/corpus closure pass. Worker setting
+is implicated but not sole-cause proven by two zero-then-enabled batches. Next
+is nonperturbing ordinary-worker registration/rescan sequencing, not another
+cadence-only probe. Details: [brush gate](p690brushfixture.md).
+
 Remaining unmeasured scope: hardware tessellation, external-projection runtime,
 arbitrary model/sprite/weapon native certification and broad all-map/GPU/perf
 coverage. Portable rejection/submission guards are not a substitute for GPU tests.

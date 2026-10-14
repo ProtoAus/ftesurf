@@ -1,7 +1,8 @@
-# P690 ordinary stationary cadence/service gate — rejected native attempt
+# P690 ordinary stationary cadence/service gate — bounded native pass
 
-**No ordinary-render performance acceptance or default2 promotion.** This is an
-offline evidence detector and a retained, failed native experiment. The supported
+**One fixed-station ordinary-path gate passes; no broad performance or default2
+promotion.** The quiet capture below passes unchanged exact-pixel and20% timing
+limits. Earlier failed captures remain excluded. The supported
 [Q1 cache-preservation gate](p690cache.md) remains complete and separate.
 
 ## Detector and reproduction
@@ -16,8 +17,8 @@ python -B -O tools/test_p690ordinary.py --output <fresh-owned-root>/detector-tes
 python -B tools/p690ordinary.py <owned-capture-directory>
 ```
 
-The test output directory must be fresh and operator-owned. Nine test methods
-produce46 acted rejection receipts and3 synthetic positive/CLI receipts, passing
+The test output directory must be fresh and operator-owned. Eleven test methods
+produce74 acted rejection receipts and6 synthetic positive/CLI receipts, passing
 under normal and optimized Python. Synthetic receipts are NOT native performance
 proof. The CLI exits1 on incomplete/failed evidence, including under Python `-O`.
 The native driver is a retained, one-station operator script, not a public launcher.
@@ -27,6 +28,12 @@ The frozen gate requires:
   diagnostic draw-only probe, and P688-return. Probe timing never contributes.
 - OpenGL960x720; cache0; modes1/2; fixed Kitsune body/eye/aim and zero velocity;
   explicit FOV/render-scale/vsync/finish/frame-cap/pacing/material/PVS readbacks.
+  Quiet schema2 additionally requires actual registered HUD/input/prediction/HDR
+  settings and unique BEGIN/END-or-footer primary records with hash-bound successful
+  completion waits inside conservative send/read bounds. The wait's timestamped
+  completion line must exactly match its primary; witness paths cannot be reused.
+  Schema1 remains readable for historical evidence; it cannot satisfy the stronger
+  schema2 protocol.
   `vid_wait` is an alias: the actual readback is **vid_vsync**, not vid_wait.
 - Six independent groups per production arm/mode/metric. Cadence has a complete
   128-swap ring, with conservative command bounds proving successive rings do
@@ -82,7 +89,66 @@ preemption and other observer effects; they are not exclusive CPU or GPU counter
 No moving-camera, frame-tail, fullscreen/vsync, representative/all-map or default2
 performance claim is made.
 
-## Native experiment — 2026-10-13, EXCLUDED
+## Quiet native continuation — 2026-10-13, bounded PASS
+
+Owned evidence: `C:/FTESurf-worktrees/mapvisual-01a13061/artifacts/ordinary-quiet-20261013/`.
+Protocol frozen before launch in PREDICTIONS.md. Hardware remains RTX2080SUPER,
+NVIDIA591.86, Windows GL4.6. No engine/QC/binary/default/deployment changes.
+
+- Source controls: `src/client/cl_hud.qc:728–757` caches hud_timer/mapinfo;
+  `cl_mouse.qc:48,333–354` registers hud_mouse and draws the lower-right mouse-pad
+  box previously mislabelled a minimap. Actual HUD controls are disabled/read back,
+  alongside input0 and prior exact-station prediction settings. HDR is explicitly0.
+  Several settings changed together: no causal claim about earlier scene drift.
+- Short diagnostic probe: HUD on/off changes16,215 pixels; on/off/on return exact.
+  Both HUD-off full-frame repeats have0 changed pixels across two complete cost
+  dumps and the r_speeds0/2/0 observer round trip. Mainview ordinary counters
+  advance314/315 draws, cached0, exact eye/aim. This is not timing acceptance.
+- Full capture ran BLOCKING and serialized: diagnostic/P688/merged/P688-return;
+  no parent/subagent tests/builds/corpus/hash/image sweeps overlapped timing.
+  Owner/peer processes were not stopped; this is not OS-wide workload isolation.
+  All78 primary samples include unique current-send tickets and complete reports,
+  with78 hashed completion waits; no archive reconstruction. Six independent
+  groups per ordinary arm/mode/metric plus native slowdown/return controls.
+- All17 PNGs pass exact full-frame repeats, diagnostic/production binding,
+  default1 parity, P688 pixel return and timing-control pixel return. Mode2
+  acts at12,065 changed pixels. No masks, trims or widened thresholds.
+
+Median observer-adjusted refresh service (us; six groups each):
+
+| Mode | P688 initial | Merged | P688 return | Merged / initial | Merged / return | Return / initial |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 | 753.410 | 730.220 | 692.195 | 0.96922 | 1.05493 | 0.91875 |
+| 2 | 785.760 | 762.495 | 677.520 | 0.97039 | 1.12542 | 0.86225 |
+
+All four cadence/service comparisons pass the unchanged1.20 subject limit against
+BOTH controls and return[.80,1.20]. P688-return service differs by-8.13%/-13.78%:
+controls are within the guard, not identical, and the result is NOT a speedup claim.
+Ordinary cadence medians are9.9995–10.0015ms; raw group values/ranges/jitter and
+observer buckets remain in native-grade-final.json. The cap can hide regressions.
+
+The slowdown ACTS: cadence4.99975x, adjusted refresh65.34284x, paced bucket
+48.947–48.987ms/frame; cadence return1.00005x and pixel return exact. Slow groups do
+not contribute to ordinary acceptance. Reader CLI passes under normal and `-O`.
+All eight owned processes quitrc0; subject native8/config/data/content inventories
+hash-restored, installed client hashes unchanged. Evidence/source/predictions/raw
+logs/PNGs and original hashes retained; only explicitly verified duplicate backups
+may retire. A fresh read-only review and regression/closure results are recorded
+in the continuation checkpoint, separately from commit/push state.
+
+## Additional-map eligibility follow-up
+
+The published quiet result above remains Kitsune-only. A separate diagnostic
+probe of existing Tensor2 and Demise stations found full-frame scene changes
+with fixed rendered cameras and advancing uncached draws. Neither qualifies for
+this EXACT stationary protocol; no production P688/merged/P688-return timing
+was run there. The first Demise attempt is invalid wrong-camera evidence and
+remains excluded; its separately preregistered settled-camera retry is valid
+but ineligible. See [p690stationprobe.md](p690stationprobe.md) for native pixel
+counts, fixed-state/action controls, and the eligibility-only CLI contract.
+This does not identify a renderer defect or expand performance/default2 claims.
+
+## Earlier native experiment — 2026-10-13, EXCLUDED
 
 Owned evidence: `C:/FTESurf-worktrees/mapvisual-01a13061/artifacts/ordinary-cost-20261013/`.
 No binaries were built or deployed. Installed clients/defaults and peer source/
@@ -95,7 +161,7 @@ index/processes were untouched. Hardware: RTX2080SUPER, NVIDIA591.86, Windows GL
   rejects `unstable station repeat` under normal and optimized Python.** Six of
   eight before/after arm/mode pairs differ by1016–3900 full-frame pixels; probe1
   and merged2 happen to repeat exactly. No relaxation converted these into passes.
-- The setup also invoked guessed HUD names: timer/mapinfo/minimap remained visible.
+- The setup also invoked guessed HUD names: timer/mapinfo/mouse-pad remained visible.
   Inspect the actual registered QC HUD controls before a new capture. The changed
   pixels extend into scene geometry, so the HUD alone is NOT established as the
   cause. No product renderer bug or repair follows from this failed control.
@@ -124,8 +190,12 @@ index/processes were untouched. Hardware: RTX2080SUPER, NVIDIA591.86, Windows GL
   sweep hit a protected fixture and was retained as a setup failure; no save-tree
   repair or clean sweep is claimed, and raw private paths/fault text are not exported.
 
-**Next falsifier:** preregister a stable full-frame station with actual HUD/input
-controls; collect complete uniquely ticketed reports (wait for footer, not a fixed
-short console read), without concurrent builds/tests/hash sweeps; repeat quiet
-P688/merged/P688-return and require exact images AND <=20% return drift before
-crediting any ordinary performance result. Keep the promotion gate open.
+A later [sprite/world-alpha fixture](p690spritefixture.md) adds one bounded native
+production overlap-preservation result without a timing matrix. It does not expand
+this fixed-station cost gate or certify arbitrary sprite ordering.
+
+**Remaining falsifiers:** representative additional-map/moving-camera ordinary
+cost and tails, native arbitrary model/sprite/weapon/rotated-brush overlaps,
+portal/reflection captures, and supported-map cached opaque preservation. The
+single quiet station does not close these or promote default2. Keep the failed
+matrix excluded and the broader promotion gate open.
