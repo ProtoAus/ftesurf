@@ -3916,7 +3916,25 @@ float(string path) Watch_Open =
 		return FALSE;
 	}
 
-	if (rec_wt_map != "")
+	// KSF has only an external map-name binding, never a BSP digest. Do not
+	// fly its clip on another named map. Native/Momentum warning behavior stays.
+	if (strcmp(rec_wt_source, "ksf") == 0)
+	{
+		if (rec_wt_map == "")
+		{
+			print("^3replay: KSF import has no map binding -- refused\n");
+			Watch_Free();
+			return FALSE;
+		}
+		if (strcmp(rec_wt_map, serverkey("map")) != 0)
+		{
+			print(sprintf("^3replay: this run is on %s and you are on %s -- "
+			              "KSF playback refused\n", rec_wt_map, serverkey("map")));
+			Watch_Free();
+			return FALSE;
+		}
+	}
+	else if (rec_wt_map != "")
 	if (rec_wt_map != serverkey("map"))
 		print(sprintf("^3replay: this run is on %s and you are on %s -- "
 		              "the camera will fly through nothing\n",
