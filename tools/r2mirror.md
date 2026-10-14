@@ -31,8 +31,14 @@ The config names source directories (direct children only), not install copies:
 }
 ```
 
-Optional `avatars` accepts only 17-digit JPEG filenames. It does not copy the
-entire avatar cache, sidecar text or game-converted formats. Inputs/ancestors
+Optional `avatars` accepts Steam's actual 40-lowercase-hex JPEG filenames.
+`avatar_rgba` accepts only matching 40-hex `.txt` game copies from steamsync,
+not arbitrary text, stamps or `.bad` files. Both may name the same source
+cache directory. Their aliases are `avatars/<hash>.jpg` and
+`avatars/game/<hash>.txt`, NOT the site's player-handle route. No SteamIDs
+or account mappings are exported. For a separate picture-only publisher set
+`"manifest": "manifests/avatars.json"`; never overwrite another publisher's
+map manifest with a partial inventory. Each manifest must have one owner. Inputs/ancestors
 must not be symlinks/reparse points. Partials, subdirectories (including .old),
 zero-length files and unapproved filename/extension shapes are excluded.
 Register realistic `minimum_files` floors: a missing/emptied source must not
@@ -84,7 +90,10 @@ content-addressed body, preserving exact case:
 - `/ftesurf/maps/<name>.bsp` (connected client)
 - `/maps/<name>.bsp` (menu; map to the first path)
 - `/ftesurf/maps/zones/local/<name>.json`
-- `/board/shot/<name>.jpg` and optionally `/board/avatar/<steamid>.jpg`
+- `/board/shot/<name>.jpg`
+- `avatars/<hash>.jpg` and `avatars/game/<hash>.txt` (optional pictures).
+  The existing `/board/avatar/<handle>` and game `?avatar=<mark>` still resolve
+  identities at the origin; publishing a hash object does not change them.
 
 Do not make the name-only compatibility URL immutable. Test 404/netchan fallback,
 redirect handling, gzip, HEAD/ranges, the largest BSP, cold/warm delivery and

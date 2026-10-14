@@ -22,7 +22,8 @@ FORMATS = {
     "maps": (r"[A-Za-z0-9_-]+\.bsp", "ftesurf/maps/", "application/octet-stream"),
     "zones": (r"[A-Za-z0-9_-]+\.json", "ftesurf/maps/zones/local/", "application/json"),
     "mapshots": (r"[A-Za-z0-9_-]+\.jpg", "board/shot/", "image/jpeg"),
-    "avatars": (r"[0-9]{17}\.jpg", "board/avatar/", "image/jpeg"),
+    "avatars": (r"[0-9a-f]{40}\.jpg", "avatars/", "image/jpeg"),
+    "avatar_rgba": (r"[0-9a-f]{40}\.txt", "avatars/game/", "text/plain"),
 }
 
 
@@ -58,6 +59,8 @@ def load_config(path):
         raise ValueError("Expected a named rclone remote and explicit bucket")
     if not c.get("groups"):
         raise ValueError("No public source groups")
+    if not re.fullmatch(r"manifests/[a-z0-9_-]+\.json", c.get("manifest", "manifests/public.json")):
+        raise ValueError("Expected a manifest in the fixed public namespace")
     for name, directory in c["groups"].items():
         if name not in FORMATS:
             raise ValueError("Only allowlisted public asset groups are accepted")
@@ -294,7 +297,7 @@ def catalogue(db):
     return {"schema": 1, "generated_utc": utc(), "complete": status(db)["catalog_complete"], "assets": items}
 
 
-def publish(db, work, transport):
+def publish(db, work, transport, manifest="manifests/public.json"):
     doc = catalogue(db)
     fd, name = tempfile.mkstemp(prefix="catalogue-", suffix=".json", dir=work)
     path = Path(name)
@@ -303,8 +306,8 @@ def publish(db, work, transport):
         with os.fdopen(fd, "wb") as f:
             f.write(raw)
         sha = hashlib.sha256(raw).hexdigest()
-        transport.put(path, "manifests/public.json", sha, "application/json", immutable=False)
-        if transport.digest("manifests/public.json") != (sha, len(raw)):
+        transport.put(path, manifest, sha, "application/json", immutable=False)
+        if transport.digest(manifest) != (sha, len(raw)):
             raise TransferError("Catalogue body mismatch")
         return doc
     finally:
@@ -353,7 +356,7 @@ def main():
                 scan(db, config)
                 if a.command == "run":
                     _, failed = copy_pending(db, work, transport, a.group, a.limit)
-                    publish(db, work, transport)
+                    publish(db, work, transport, config.get("manifest", "manifests/public.json"))
                     print(json.dumps({"utc": utc(), "event": "catalogue", **status(db)}), flush=True)
                 else:
                     failed = 0

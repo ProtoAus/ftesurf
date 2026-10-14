@@ -71,6 +71,29 @@ class MirrorTests(unittest.TestCase):
         m.scan(self.db, self.config)
         self.assertEqual(m.status(self.db)["groups"]["maps"]["files"], 1)
 
+    def test_actual_hash_named_pictures_and_game_copies_only(self):
+        avatars = self.root / "avatars"
+        avatars.mkdir()
+        h = "ab" * 20
+        for name in (h + ".jpg", h + ".txt", h + ".bad", "people.at",
+                     "76561198000000001.jpg", "private.txt", h + ".jpg.part"):
+            (avatars / name).write_bytes(b"fixture")
+        c = {"groups": {"avatars": str(avatars), "avatar_rgba": str(avatars)}}
+        m.scan(self.db, c)
+        self.assertEqual(self.copy()[0], (2, 0))
+        doc = m.publish(self.db, self.work, self.t, "manifests/avatars.json")
+        self.assertEqual(set(doc["assets"]), {"avatars/" + h + ".jpg", "avatars/game/" + h + ".txt"})
+        self.assertIn("manifests/avatars.json", self.t.objects)
+        self.assertNotIn("manifests/public.json", self.t.objects)
+        self.assertEqual({p[2] for p in self.t.puts[:-1]}, {"image/jpeg", "text/plain"})
+
+    def test_manifest_path_is_allowlisted(self):
+        p = self.root / "config.json"
+        for bad in ("../private.json", "objects/maps/existing.bsp", "manifests/x.json\n"):
+            p.write_text(json.dumps({**self.config, "manifest": bad}))
+            with self.assertRaises(ValueError):
+                m.load_config(p)
+
     def test_symlink_file_is_not_an_asset(self):
         self.seed()
         try:
