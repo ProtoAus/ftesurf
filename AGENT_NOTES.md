@@ -50,6 +50,20 @@
   rollback to schema17 code requires resetting user_version to17 under normal
   deployment exclusion (the new table may remain), not restoring an old DB
   over newer player/run history. Engine pin/tag and QC Build are unchanged.
+- First staged Linux suite correctly refused to deploy: test_board still
+  pinned schema17, the account DDL race fixture counted11 instead of12 CREATE
+  boundaries, and the stage omitted src/release/ftesurf.nginx required by the
+  existing public-proxy test. Update the test's explicit head to18 and race
+  EVERY boundary including ksfprofiles; include the exact committed nginx
+  fixture in StageFiles, NEVER in deployed Files/Destinations. Keep the failed
+  suite evidence, rerun the whole suite rather than waive a failure. Matching
+  Windows board/account tests and the new stage-only allowlist control pass.
+- Restored bhop_perspective was driven in an isolated one-BSP fixture: SSQC
+  read10 zones from maps/zones/local, zone_goto reached the start, walking out
+  made cmd timer report running and recording1. A sparse content rig did not
+  mount that map's online alias; its first load timed out. Copy just the exact
+  BSP plus JSON into the owned fixture, not a whole install or canonical map.
+  Reader regex must match the actual `(maps/zones/local)` origin, not `(local)`.
 
 
 ## Patch 693 — profile seeks, editor wheel and entity-pose rendering

@@ -450,6 +450,7 @@ def finish_elsewhere(what):
         other.execute(accounts.live_index(m.TIERS_IMPORTED))
         accounts.links_now(other)
         other.executescript(m.ksftopup.SQL)
+        other.executescript(m.ksfprofile.SQL)
         other.execute("PRAGMA user_version=%d" % m.SCHEMA_VERSION)
         other.commit()
         RACED[-1][1] = what
@@ -475,10 +476,10 @@ def racing_connect():
 
 
 outcomes = []
-for at in range(1, 12):                 # step 12 four CREATEs, 16 one, 17 one, links_now four,
-                                        # and the board's own index once more at every start
+for at in range(1, 13):                 # step12 four,16 one,17 one,18 one,links_now four,
+                                        # plus the board's own index at every start
     conn = sqlite3.connect(m._test_db)
-    conn.executescript("".join("DROP TABLE IF EXISTS %s;" % t for t in TABLES + ["links"])
+    conn.executescript("".join("DROP TABLE IF EXISTS %s;" % t for t in TABLES + ["links", "ksfprofiles"])
                        + "PRAGMA user_version=11;")
     conn.close()
     RACED.append([at, "never raced"])
@@ -491,13 +492,13 @@ for at in range(1, 12):                 # step 12 four CREATEs, 16 one, 17 one, 
     finally:
         m.connect = real_connect
 names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table'")}
-check("another process finishing the account steps at any of their eleven statements breaks neither",
+check("another process finishing the account steps at any of their twelve statements breaks neither",
       (outcomes, sorted(names & set(TABLES)), "links" in names,
        rows(m, "PRAGMA user_version")[0][0]),
-      (["ok"] * 11, TABLES, False, m.SCHEMA_VERSION))
-check("...and those eleven were the statements raced: each table, and each index by its table",
+      (["ok"] * 12, TABLES, False, m.SCHEMA_VERSION))
+check("...and those twelve were the statements raced: each table, and each index by its table",
       [r[1] for r in RACED],
-      ["accounts", "linkcodes", "linkcodes", "linknonces", "runs", "ksftopup", "keylinks", "keylinks",
+      ["accounts", "linkcodes", "linkcodes", "linknonces", "runs", "ksftopup", "ksfprofiles", "keylinks", "keylinks",
        "installs", "runpins", "runs"])
 
 print("\n--- 2. off unless SURFD_BOARD_URL is set -------------------------")

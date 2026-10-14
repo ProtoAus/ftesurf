@@ -96,6 +96,13 @@ Get-SurfdDeployPlan @p | ConvertTo-Json -Depth 4
         self.assertEqual(set(p['Files']), self.ksf_set if 'surfd/ksfprofile.py' in self.ksf_set else {'surfd/surfd.py'})
         self.assertGreater(len(p['StageFiles']), len(p['Files']))
 
+    def test_public_proxy_configuration_is_test_input_not_a_ship_target(self):
+        p = self.plan()
+        self.assertIn('src/release/ftesurf.nginx', p['StageFiles'])
+        self.assertNotIn('src/release/ftesurf.nginx', p['Files'])
+        self.assertNotIn('src/release/ftesurf.nginx', p['Destinations'])
+        self.plan(only=['src/release/ftesurf.nginx'], succeeds=False)
+
     def test_unknown_paths_and_refs_refuse(self):
         for path in ('surfd/missing.py', '../surfd/surfd.py', 'tools/runlines_smoke.py',
                      'tools/test_ksfconvert.py', 'surfd'):

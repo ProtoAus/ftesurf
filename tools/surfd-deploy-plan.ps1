@@ -12,7 +12,7 @@ function Get-SurfdDeployPlan {
     if ($LASTEXITCODE -ne 0 -or "$commit" -notmatch '^[0-9a-f]{40}$') {
         throw "could not resolve -Ref '$Ref' to a commit"
     }
-    $tree = @(& git -C $Repo ls-tree -r $commit -- surfd tools src/shared)
+    $tree = @(& git -C $Repo ls-tree -r $commit -- surfd tools src/shared src/release/ftesurf.nginx)
     if ($LASTEXITCODE -ne 0) { throw "could not list commit $commit" }
     $modeByPath = @{}
     foreach ($entry in $tree) {
@@ -56,7 +56,9 @@ function Get-SurfdDeployPlan {
     }
     $files = @($files | Sort-Object -Unique)
     if (-not $files.Count) { throw "nothing to deploy at $commit" }
-    $extra = @($all | Where-Object { $_ -match '^(tools|src/shared)/.*\.py$' })
+    $extra = @($all | Where-Object {
+        $_ -match '^(tools|src/shared)/.*\.py$' -or $_ -eq 'src/release/ftesurf.nginx'
+    })
     # The test stage always contains the complete app, even with -Only. Tools
     # are staged beside surfd, but only the two allowlisted codecs may ship.
     $staged = @(@($suite) + @($extra) | Sort-Object -Unique)
