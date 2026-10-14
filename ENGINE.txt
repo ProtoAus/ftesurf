@@ -25,7 +25,13 @@ commit   4148e72923e617a79bf8ed16474cc49143fb72fc
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-693
-patch    693
+patch    694
+# Patch 694: animated World of Surf Rust launcher artwork/Enter pages, truthful
+# verified-file/content progress and staged-worker bars; raw-input transfer
+# cancellation restores terminal and drains workers before install/launch.
+# Tagline removed; safe --ui-demo and --ui-preview. Windows41 unit/six piped/six
+# hidden native-console controls pass. Launcher-only: engine pin/tag, QC Build,
+# public version/feed and live installs unchanged. tools/p694launcher.md.
 # Patch 693: profile time rows open a focused tier/style leaderboard neighborhood;
 # exact JSON integer ms survive full/compact rows and the decimal menu mailbox,
 # rejecting float32 collisions at 2^24/INT_MAX. Acted control/six subject witnesses
