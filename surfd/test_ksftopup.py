@@ -86,9 +86,10 @@ class Topup(unittest.TestCase):
         self.assertEqual(Q.status(self.db, self.key)['state'], 'queued')
         self.assertTrue(K.owed_boards(self.cache))
         self.assertEqual(T.tick(self.cache, maps, 12), 0)
-        # The ordinary crawl shares the tick and finishes this small board.
+        # The ordinary crawl shares the tick and finishes this small board;
+        # recovery therefore sees the cached terminal page, not just target220.
         self.assertEqual(Q.count(self.db, self.key), 247)
-        self.assertEqual(Q.status(self.db, self.key)['state'], 'done')
+        self.assertEqual(Q.status(self.db, self.key)['state'], 'exhausted')
 
     def test_http_and_style_isolation(self):
         url = '/api/board?ksfmore=1&map=surf_topup&style=sw'
