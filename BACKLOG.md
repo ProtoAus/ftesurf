@@ -78,9 +78,18 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   retirement, NOT unreferenced deletion. No hostile ancestor-swap/hardlink
   guarantee is claimed. The bounded full-superset/cleanup-only proposal and
   executable process-cut falsifiers are in `tools/native_retirement_protocol.md`;
-  this is design/model acceptance only, NOT an implemented orphan fix. Real
-  retirement interruption/delete-failure and retained-generation handoff gates
-  remain open.
+  published product authority is still unchanged, not a shipped orphan fix.
+  An isolated unpublished native candidate now passes a new20-scenario35-phase
+  cold matrix, held-stage/final-journal deletion controls, and real before/after
+  first-removal interruption in both orders with repaired attempt3 completion;
+  `tools/native_retirement_windows.md` and `tools/native_retirement_interrupt.md`.
+  Review's partial-read fix has source/core acceptance only: a >5MiB protected
+  byte-lock failed-read/refusal/released-retirement native comparison is still
+  required. A provider-failed worker's defective-client FAIL/guard is retained.
+  Before shipping qkupdate.c: extend initial/deferred/cold publication failure and
+  interruption actors to the full superset; prove retained-generation apply refuses
+  before downloads/manifest replacement; prove genuine launcher supersession/repair
+  acts without adopting outside orphans. These native/handoff gates remain open.
   Release 0.1.25 remains P687; source acceptance does not deploy recovery to any
   canonical/fleet binary or certify peer deployments.
 

@@ -6314,6 +6314,45 @@ Source seams/availability decision/native falsifiers:
 `tools/native_retirement_protocol.md`. The engine orphan follow-up remains open;
 no patch/pin/version bump, release or deployment is authorized by model acceptance.
 
+### Native full-superset retirement candidate and cold gates — 2026-10-14
+
+The protocol now has an isolated **unpublished** qkupdate.c candidate, not just a
+model. Three same-toolchain native client builds bind clean before caeb0b951,
+first candidate87326b33 and read-corrected7321da29 source; exact bindings stay in
+`C:/FTESurf-worktrees/wjnative-20261014T062856Z/artifacts/`. Each optimized build
+has37 compiler-warning occurrences, zero new; no canonical install/Pi/release,
+engine pin/tag, QC Build or product patch was changed by this tooling work.
+
+The NEW cold gate `tools/test_update_native_retirement_windows.py` independently
+checks20 scenarios/35 phases each for before and corrected subject: original
+superset rows, shared pending hashes, same/wrong-size corrupt retention, actual
+stage-delete and final-journal sharing denial32/release, completed-attempt3 versus
+unresolved exhaustion, persisted admitted-completion count, outside/reduced/no-
+journal boundaries and tuple/exec/duplicate/signature refusals. Fifteen unit
+falsifiers reject byte/policy/budget/survivor mutations. Historical graders are
+unchanged. Native exports require natural pre/post-cleanup job0 and separate
+semantic receipts; signed-mirror census occurs only after accepted workers join.
+
+`tools/test_update_native_retirement_interrupt.py` adds real FS_Remove pre/post
+process interruption for both row orders, exact zero/one removed object, retained
+survivor authority and repaired attempt3 completion. The external helper observes
+real return1 plus OS absence before terminating only its owned child86; it restores
+instructions/context, never supplies a file/API result. Sixteen units include
+ledger/version/hash, consent, whole signed closure and exact stage-map negatives.
+Review found the initial extension omitted intermediate ledger/closure checks;
+fixed source gets a fresh before03/subject02 pair, earlier evidence stays historical.
+`tools/native_retirement_{windows,interrupt}.md` describe scope and commands.
+
+Readability requires more than VFS_READ==0: Windows maps ReadFile failure to zero.
+Review found the first candidate could call unreadable protected bytes preserved;
+the corrected FTESurf hash helper requires counted bytes == opened-file length
+and successful VFS_CLOSE. This source correction/core rerun is NOT the requested
+native partial-read falsifier. That worker failed provider-side after a defective-
+client attempt; its FAIL/guard/runtime are retained, not passed, rerun or published.
+Native partial-read, live/deferred publication-interruption, retained-generation
+new-apply refusal and launcher supersession remain shipping blockers. Linux,
+hardlink/hostile-path swaps and power-loss/flush durability remain excluded.
+
 ### Default HTTPS native/menu drivers and real return census — P689, 2026-10-13
 
 `tools/test_update_default_https.py` uses the exact archived real bootstrap and
