@@ -5,6 +5,25 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## World of Surf launcher platform/input coverage — P694, 2026-10-14
+
+- Site: launcher `src/ftesurf_ui.rs` Screen/raw guards and `src/download.rs`
+  cancellation monitor. Windows hidden-console controls prove normal/Ctrl-C
+  return, input/main-screen restoration and final cursor visibility; the Win32
+  API reported visible during the private VT alternate buffer, so visual hiding
+  and direct hide-command emission remain unproven. Falsifier: owned physical
+  console/PTY, first prove screen entry and animated artwork ACT, observe/capture
+  cursor-hide and restoration across normal exit, Enter/Esc and terminal Ctrl-C.
+  Fix only if the actual rendered cursor persists; API readback alone is not proof.
+- Repeat on Linux with actual PTY terminal Ctrl-C, resize and restored termios/
+  main screen/cursor. Externally delivered signals, hard termination and a full
+  signed-bootstrap cancellation fixture were not tested; current install/launch
+  exclusion is source-proven plus an acted guarded slow loopback transfer, not
+  those broader claims. Keep production signing/rename/recovery gates unchanged.
+- Source acceptance, commands and limits: `tools/p694launcher.md`. Full game
+  rename, release archive/feed publication and canonical/fleet deployment remain
+  separate operations, not permission granted by this launcher artwork task.
+
 ## Signed updater remaining native operation gates — P689, 2026-10-13
 
 - P689 closes unreadable-protected-file and resolved-object-retirement recovery

@@ -1,5 +1,22 @@
 # lextest.md — things waiting on a human
 
+## P694 — animated World of Surf launcher artwork
+
+Launcher source/debug-preview acceptance only; live installs are NOT replaced
+while another bot runs performance tests. In the isolated P694 preview binary,
+run `ftesurf-launcher --ui-demo`: inspect the large SURF wordmark, neon light-band,
+twinkling stars, sun glow and moving ocean. The removed tagline must not appear.
+Enter or Esc closes the sample preview without a download or game launch.
+
+Judge the art/readability/motion in your actual Windows Terminal and classic
+console, then resize wide/compact. Check that no blinking cursor distracts from
+the scene and it is visible again afterward. Hidden native console tests proved
+animation, key cancellation and final screen/input/cursor restoration, but not
+visual cursor hiding while the private VT alternate buffer is active. The PNG/GIF
+previews are terminal-cell renders, not physical-desktop screenshots. No full game
+rename, Linux acceptance, official archive or live deployment is implied.
+Source/commands/preview provenance: `tools/p694launcher.md`.
+
 ## P688 — Windows sound and spatial, level-coloured sky
 
 Restart into the new engine, then VISUALS → sky + audio → Windows output.
