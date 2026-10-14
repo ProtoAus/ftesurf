@@ -56,11 +56,13 @@ code { font-family: var(--mono); font-size: 0.92em; }
   display: flex; align-items: center; gap: 26px;
 }
 .brand {
-  font-family: var(--display); font-size: 25px; line-height: 1; letter-spacing: .03em;
-  color: var(--text); padding-top: 3px; flex: none; text-decoration: none;
+  display: inline-flex; flex-direction: column; align-items: center;
+  font-family: var(--display); line-height: .95; letter-spacing: .03em;
+  color: var(--text); flex: none; text-decoration: none;
 }
 .brand:hover { color: var(--text); }
-.brand b { font-weight: 400; color: var(--accent); }
+.brand span { font-size: 11px; letter-spacing: .16em; }
+.brand b { font-size: 28px; font-weight: 400; color: var(--accent); }
 .links {
   display: flex; gap: 24px; flex: 1; min-width: 0;
   overflow-x: auto; scrollbar-width: none;
@@ -80,6 +82,12 @@ code { font-family: var(--mono); font-size: 0.92em; }
   .links a[data-tab="dl"] { display: none; }
 }
 @media (max-width: 400px) { .links a[data-tab="people"] { display: none; } }
+@media (max-width: 420px) {
+  .nav-in { gap: 12px; }
+  .links { gap: 12px; }
+  .links a, .pill { font-size: 12px; }
+  .pill { padding: 6px 12px; }
+}
 
 .mast { margin-bottom: 30px; }
 h1 { font-size: clamp(40px, 7vw, 64px); font-weight: 700; letter-spacing: -0.04em; line-height: 1.04; margin: 0; }

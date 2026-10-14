@@ -25,7 +25,10 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-703
-patch    704
+patch    705
+# Patch 705: World of Surf brand kit and web presentation candidate. Source-only;
+# native/QC identity, service routes, signed formats and player data stay intact.
+# No engine pin/tag, QC Build, release/feed or deployment change.
 # Patch 704: Windows Surf launcher exits after detached game spawn; source
 # checkouts skip public release updates instead of overwriting dev binaries.
 # Deploy the centered logo-only main source as an optimized 3.58 MB release,

@@ -629,6 +629,25 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   beside `ftesurf64.exe` (all git-ignored), and put mingw64\bin on PATH for
   `fteqcc64.exe` as well.
 
+### World of Surf art/web candidate (P705)
+
+Brand sources/gallery: `src/brand/`; exporter: `tools/brand_assets.py`.
+Use the pinned development-only fontTools/Pillow/Playwright recipe in its README,
+with an installed Chromium path. No runtime font/network dependency in the
+outlined SVGs. Edge can hang capturing a 16px viewport: render at >=256px then
+clip the native-size icon. A no-browser check covers SVG only, not PNG/ICO.
+The browser falsifier checks document AND nav scroll widths; the former alone
+missed cropped header text at 320px. Its board data/images are labelled samples.
+Do not import `surfd/test_accounts.py` as a fixture: it executes its suite on
+import, and a caller already exposing `tools/` in sys.path can confound its
+missing-verifier control. Run it standalone; the web preview uses `test_web`.
+For hash-route browser checks, `networkidle` is not a render-completion signal;
+await exact titles and the acting HTTP response/pressed control, not a stale DOM.
+P705 changes web presentation only: old OG/service paths, launch filenames,
+signed formats, player data and native/QC binaries remain intentional. Do not
+mistake local dual-prefix fixtures for live nginx/Steam transition proof.
+Source controls and failures: `tools/p705rebrand.md`.
+
 ## Run and test
 
 - Normal launch: `./ftesurf64.exe` (or `ftesurf.bat`).

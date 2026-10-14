@@ -61,11 +61,13 @@ code {
   display: flex; align-items: center; gap: 26px;
 }
 .brand {
-  font-family: var(--display); font-size: 25px; line-height: 1; letter-spacing: .03em;
-  color: var(--text); padding-top: 3px; flex: none;
+  display: inline-flex; flex-direction: column; align-items: center;
+  font-family: var(--display); line-height: .95; letter-spacing: .03em;
+  color: var(--text); flex: none;
 }
 .brand:hover { color: var(--text); }
-.brand b { font-weight: 400; color: var(--accent); }
+.brand span { font-size: 11px; letter-spacing: .16em; }
+.brand b { font-size: 28px; font-weight: 400; color: var(--accent); }
 .links {
   display: flex; gap: 24px; flex: 1; min-width: 0;
   overflow-x: auto; scrollbar-width: none;
@@ -85,6 +87,12 @@ code {
   .links a:first-child { display: none; }      /* the wordmark is the way home */
 }
 @media (max-width: 400px) { .links a[href$="#who="] { display: none; } }
+@media (max-width: 420px) {
+  .nav-in { gap: 12px; }
+  .links { gap: 12px; }
+  .links a, .pill { font-size: 12px; }
+  .pill { padding: 6px 12px; }
+}
 
 /* ---- type and layout ------------------------------------------------------ */
 .wrap { max-width: 1080px; margin: 0 auto; padding: 0 22px; }
@@ -138,6 +146,8 @@ h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -0.035em; }
 }
 .hero .wrap { position: relative; z-index: 1; text-align: center; width: 100%; }
 .hero .lede { margin-left: auto; margin-right: auto; }
+.hero-brand { width: min(540px, 100%); margin: 0 auto; }
+.hero-brand img { width: 100%; }
 .cta { display: flex; gap: 22px 28px; justify-content: center; align-items: center; flex-wrap: wrap; margin-top: 36px; }
 .btn {
   display: inline-flex; flex-direction: column; align-items: center; line-height: 1.2;

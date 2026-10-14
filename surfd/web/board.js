@@ -70,7 +70,7 @@
       + 'is reconstructed from their demo and is lower fidelity than ours.'],
     ksf: ['KSF', 'Imported from the KSF Counter-Strike: Source servers. Time '
       + 'only — KSF publishes no demo we can read.'],
-    ranked: ['FTE', 'Set on an official FTESurf server and re-simulated here.']
+    ranked: ['WOS', 'Set on an official World of Surf server and re-simulated here.']
   };
 
   function srcChip(tier) {
@@ -300,7 +300,7 @@
 
   function showList() {
     showOnly('list');
-    document.title = 'FTESurf Leaderboard';
+    document.title = 'World of Surf Leaderboard';
     tierRow();
     if (state.maps) { renderList(); return; }
     get('api/maps').then(function (body) {
@@ -332,7 +332,7 @@
     location.hash = hashFor(v.map, track, leg, style, tier);
   }
 
-  var TIER_TABS = [['combined', 'All games'], ['ranked', 'FTESurf'],
+  var TIER_TABS = [['combined', 'All games'], ['ranked', 'WOS'],
                    ['momentum', 'Momentum Mod'], ['ksf', 'KSF']];
 
   function renderTabs(v, counts) {
@@ -463,7 +463,7 @@
       page: body.limit || PAGE
     };
     state.view = v;
-    document.title = body.disp + ' · FTESurf Leaderboard';
+    document.title = body.disp + ' · World of Surf Leaderboard';
     var title = $('title');
     title.textContent = body.disp;
     var badge = mtBadge(body.mt);
@@ -475,7 +475,7 @@
         if (i) { builds.appendChild(document.createTextNode(' · ')); }
         builds.appendChild(link('', hashFor(name, v.track, v.leg, v.style, v.tier), name));
       });
-      builds.title = 'Imported times are shared; native FTE times stay with the build they were set on.';
+      builds.title = 'Imported times are shared; native WOS times stay with the build they were set on.';
       title.appendChild(builds);
     }
     renderTabs(v, body.counts || {});
@@ -619,7 +619,7 @@
 
   function renderRun(body, at) {
     var imported = body.tr !== 'ranked';
-    document.title = plain(body.name) + ' on ' + body.disp + ' · FTESurf';
+    document.title = plain(body.name) + ' on ' + body.disp + ' · World of Surf';
     var h = $('runtitle');
     h.textContent = '';
     h.appendChild(el('span', 'rt-time', fmt(body.ms)));
@@ -753,7 +753,7 @@
 
   function showPeople(q) {
     showOnly('people');
-    document.title = 'Players · FTESurf';
+    document.title = 'Players · World of Surf';
     var box = $('pq');
     if (box.value !== q) { box.value = q; }
     var seq = ++state.seq;
@@ -788,7 +788,7 @@
   }
 
   function renderProfile(body) {
-    document.title = plain(body.name) + ' · FTESurf';
+    document.title = plain(body.name) + ' · World of Surf';
     var h = $('ptitle');
     h.textContent = '';
     if (body.av) { h.appendChild(avatar(body.who, 'av av-big')); }
@@ -913,7 +913,7 @@
           if (c) { li.appendChild(c); }
         });
       } else if (!m.have) {
-        li.title = 'Not installed on the FTESurf servers';
+        li.title = 'Not installed on the World of Surf servers';
       }
       ul.appendChild(li);
     });
