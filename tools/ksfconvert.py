@@ -38,7 +38,7 @@ def interval(bookmarks, bonus):
     """One unambiguous start-exit and finish-entry, never full-file fallbacks.
 
     KSF bonus start/end share zone30+N. Named triggers distinguish them; the
-    unnamed legacy form requires an entry at/before the one exit and exactly
+    unclassified-target form requires an entry at/before the one exit and exactly
     one later entry (the plugin's second-entry rule). Stage imports are not
     supported by this converter yet.
     """
@@ -138,6 +138,9 @@ def convert(data, mapname, bonus=0, style='FW', owner='?', seconds=None):
             up, = struct.unpack_from('<f', data, p + 68)
             if not all(math.isfinite(v) and abs(v) < 1e7 for v in (fwd, side, up)):
                 raise ValueError('invalid analog move')
+        # FSI directions follow the serialized fixed-point commands. Sub-micro
+        # analog values round to zero, never to a phantom nonzero direction.
+        fwd, side, up = (float('%.6f' % v) for v in (fwd, side, up))
         keys |= (1 if fwd > 0 else 2 if fwd < 0 else 0)
         keys |= (8 if side > 0 else 4 if side < 0 else 0)
         out.write('ksfbuttons %d %d\n' % (i, b))

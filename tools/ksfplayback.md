@@ -1,4 +1,4 @@
-# KSF in-game playback (P701)
+# KSF in-game playback (P702)
 
 KSF CSS/66t v2/v3 binaries can now be converted to the existing imported replay
 player. This is camera/path playback, **not native physics verification**.
@@ -63,8 +63,10 @@ Then load `surf_null`, wait for spawn, close the menu, and run:
 replay cfg/ksfreplays/my_null.rec noview
 ```
 
-Use `--bonus N` for bonus N. Stage clips, CSS100t, CS:GO and other undocumented
-layouts are not supported. `--map`, `--style` (FW/SW/HSW/BW), course and owner
+Use `--bonus N` for bonus N. **CSS/66t origin is an operator precondition:** the
+binary prefix does not authenticate game/rate. Stage clips, CSS100t, CS:GO and
+other undocumented layouts are not supported; they cannot universally be
+distinguished from this prefix alone. `--map`, `--style` (FW/SW/HSW/BW), course and owner
 come from the exact external board/viewer row. The binary header does not name
 them; its kind and the filename's numeric fields are NOT identities. The owner
 is only a display alias. No Steam/GUID binding or board filing is claimed.
@@ -80,7 +82,8 @@ Input is bounded at 64 MiB; converted playback is bounded at 200,000 frames.
   style, no fabricated native integrity keys, journal, sidecar or warp evidence.
 - Initial start-zone entry followed by its exit establishes start. Main ends at
   zone99 entry. Bonus N uses zone30+N: named standard triggers disambiguate
-  start/end; the legacy unnamed form requires exactly one later entry. Multiple
+  start/end; the unclassified-target-name fallback requires exactly one later
+  entry (including nonempty names outside the documented numeric namespace). Multiple
   intervals, stages or missing boundaries are refused, never full-file timed.
 - Preserve pre-roll, rebase time to the start bookmark, include the finish
   sample, exclude post-roll. The displayed duration is the **bookmark clock**;
@@ -88,7 +91,9 @@ Input is bounded at 64 MiB; converted playback is bounded at 200,000 frames.
 - Position, velocity, pitch/yaw come from source floats. Raw Source button masks
   are preserved in additive `ksfbuttons <source-frame> <mask>` records. Native
   FSI directional keys mean resolved movement direction, not raw buttons.
-- v3's documented 18-cell layout preserves actual analog moves and ground bit0.
+- v3's documented 18-cell layout preserves actual analog moves to six decimal
+  places and ground bit0. Direction keys use those serialized values, so tiny
+  analog commands rounded to zero cannot leave phantom directions.
   The shared `demodata` capability enables the existing imported ramp inference
   only with recorded ground and per-tick velocity. Old `momdemo` still works.
 - v2 lacks recorded ground and analog move magnitudes. `moves buttons 1` is an
@@ -112,8 +117,10 @@ no overwrite. `python tools/test_ksfreplay_info.py` exercises the binary bounds.
 `python tools/test_reccheck.py` is unchanged.
 
 `tools/ksf_samples.json` records the twelve exact public sample bindings; it is
-not a trusted player-identity manifest. `tools/p701ksf_smoke.py --help` describes
+not a trusted player-identity manifest. `tools/p702ksf_smoke.py --help` describes
 the owned dedicated runtime harness. It compares source bytes independently,
 checks full on-tick camera traces, real render-frame playback, pause/seek/end,
-source labels and absence of invented `.view` angles. Test overlays do not write
+source labels and absence of invented `.view` angles. Active-replay replacement
+refusals prove immediate closed state/cursor release and actual restored body
+movement; missing map bindings are refused too. Test overlays do not write
 installed player data. Use a 600-second outer timeout for all three maps.

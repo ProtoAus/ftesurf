@@ -104,6 +104,17 @@ class Convert(unittest.TestCase):
         text, _ = C.convert(data, 'surf_test')
         self.assertEqual(rows(text)[0][10], '5')
 
+    def test_tiny_analog_directions_follow_written_precision(self):
+        for value in (1e-8, -1e-8, 5e-7, -5e-7):
+            data = bytearray(binary(3))
+            off = 24 + 12 + 3 * 524
+            struct.pack_into('<2f', data, off + 52, value, -value)
+            text, _ = C.convert(data, 'surf_test')
+            sample = rows(text)[0]
+            fwd, side = map(float, sample[11:13])
+            want = (1 if fwd > 0 else 2 if fwd < 0 else 0) | (8 if side > 0 else 4 if side < 0 else 0)
+            self.assertEqual(int(sample[10]) & 15, want)
+
     def test_owner_cannot_inject_header(self):
         text, _ = C.convert(binary(), 'surf_test', owner='Hi\nnonce bad\r"x"//foo')
         self.assertNotIn('\nnonce ', text)

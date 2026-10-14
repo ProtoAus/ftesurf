@@ -3923,6 +3923,7 @@ float(string path) Watch_Open =
 		if (rec_wt_map == "")
 		{
 			print("^3replay: KSF import has no map binding -- refused\n");
+			Watch_Stop();          // release a previous replay's pin/cursor too
 			Watch_Free();
 			return FALSE;
 		}
@@ -3930,6 +3931,7 @@ float(string path) Watch_Open =
 		{
 			print(sprintf("^3replay: this run is on %s and you are on %s -- "
 			              "KSF playback refused\n", rec_wt_map, serverkey("map")));
+			Watch_Stop();
 			Watch_Free();
 			return FALSE;
 		}
@@ -5113,6 +5115,8 @@ void() Watch_Status =
 	if (!rec_wt_open)
 	{
 		print("replay: nothing loaded\n");
+		print(sprintf("  watch state open %g on %g cursor %g\n",
+		              rec_wt_open, rec_wt_on, UI_CursorHeld()));
 		return;
 	}
 
