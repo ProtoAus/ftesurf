@@ -25,7 +25,7 @@ commit   3951836bd36df2ed35031e2dd34c09592e8dd1c1
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-700
-patch    700
+patch    701
 # Patch 700: default OpenGL static-world plane ordering and history-independent
 # BSP shader rebucketing. Default1/workers/mode2 remain; fog/capture/program/
 # callback barriers preserved. Exact product-C regressions and full isolated
@@ -39,6 +39,11 @@ patch    700
 # Patch 698: held Momentum/KSF port links in menu and web boards, checked beta
 # zone donors, red missing-zone labels and an authenticated admin pool manifest.
 # QC/web/tools only; engine commit/tag and qcbuild are unchanged.
+# P701: explicit CSS/66t KSF binary conversion and imported camera/path playback.
+# Unknown map build/duck body state remain visible; v2 moves are labelled unit
+# button-direction proxies, never measured analog or native verifier evidence.
+# Native recording/ranking and automatic KSF board Watch are unchanged.
+# Engine commit/tag and qcbuild unchanged. See tools/ksfplayback.md.
 # Patch 696: remove the rejected wave illustration entirely; full-width centered
 # World of Surf logo and download progress only. Existing sheen/keys/guards intact.
 # Forty-two tests and six piped/six native-console regressions pass, including
