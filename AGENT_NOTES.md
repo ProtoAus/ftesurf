@@ -3427,8 +3427,11 @@ material behind it; not map completeness or native/prediction acceptance.
   check is free: the ratio goes in the header as `momquality`. `Line_Range`'s
   mean ± 2 sd clamp keeps an outlier out of the colour ramp, so the visible cost
   is confined to the live speedometer at that instant.
-- **KSF is times only.** No demo URL, no Source `.dem` parser, nothing that
-  could become a `.rec`; `replay_id` is 0 and the board shows no `watch`.
+- **The KSF board importer remains times-only; local playback is separate.**
+  Patch 702 adds `tools/ksfconvert.py` for public CSS/66t v2/v3 binaries (not a
+  Source `.dem` parser), explicit external map/course/style bindings and the
+  existing imported `.rec` player. `replay_id` is still 0 on imported board rows;
+  automatic board Watch/download association is not implemented.
   `surfd/ksfimport.py --from-maps` pages every board of a map -- main, stages,
   bonuses -- off KSF's JSON API (its docstring has the routes and the two traps:
   a linear map's `cp_count` counts checkpoints, and the search is a typeahead).
@@ -3437,6 +3440,23 @@ material behind it; not map completeness or native/prediction acceptance.
   honest User-Agent, never automatic, a non-2xx reported as a refusal and
   nothing retried. Answers are cached, so a re-run costs nothing.
   `surfd/test_ksfimport.py` is the arm (no network; six mutants caught).
+- **KSF playback contracts (Patch 702).** `tools/ksfplayback.md` has the exact
+  console aliases/conversion commands. First frame integer is Source BUTTONS,
+  not entity flags; native FSI direction keys derive from movement. Preserve raw
+  masks separately. v2 `moves buttons 1` is a labelled unit-direction proxy,
+  not measured analog magnitude; opposing inputs cancel, no SOCD order guessed.
+  v2 ground is unavailable. v3 ground bit0 is shared by both public-viewer paths;
+  bit1 conflicts (ducked/teleport), so no native ducked/warp evidence is emitted.
+  `demodata` extends the old `momdemo` inference capability without certifying
+  an import. Bookmark clock and official row time are separate (up to one CSS
+  tick here). Main/bonus boundaries are required; no full-file/stage fallback.
+  The visible title states KSF style/build unknown, info import/not verified,
+  and imported hashes are never formatted as native dates. No native data filing.
+  Dedicated full source-frame traces matched all twelve public clips on three
+  installed maps; `p702ksf_smoke.py` also makes real-frame advancement act.
+  Synchronous multi-thousand-line traces consume an enqueued `waitms` deadline;
+  use `wait 60` and `replay trace frames 60` AFTER the synthetic trace instead.
+  All-map harness needs a 600-second outer timeout, or invoke one map at a time.
 - **A KSF time is a THIRD measurement.** CS:S physics, KSF's own zones, and
   their `mapName` is the PLAIN name (`surf_whiteout`, not `surf_whiteout_ksf`),
   so a matching name does not mean the same build, start or end.

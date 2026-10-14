@@ -128,6 +128,11 @@ string rec_wt_runid;
 // The `foreign` header key: this recording came from another game, so the
 // line is tinted and nothing here pretends it was timed by this server.
 float  rec_wt_foreign;
+string rec_wt_source;           // foreign source, retained for playback provenance
+string rec_wt_ksfstyle;
+float  rec_wt_ksfver;
+// `momdemo` / `demodata`: per-tick velocity and recorded ground capability, not
+// a native evidence or certification claim. The old Momentum key still works.
 // `momdemo`: an import written from its own demo -- per-tick velocity and real
 // ground flags, which is what inferring its ramp contact needs (cl_infer.qc).
 float  rec_wt_momdemo;
@@ -1127,6 +1132,9 @@ void() Watch_Scan =
 	rec_wt_map      = "";
 	rec_wt_runid    = "";
 	rec_wt_foreign  = FALSE;
+	rec_wt_source   = "";
+	rec_wt_ksfstyle = "?";
+	rec_wt_ksfver   = 0;
 	rec_wt_momdemo  = FALSE;
 	rec_wt_momq     = 0;
 	rec_wt_momceil  = 0;
@@ -1161,8 +1169,18 @@ void() Watch_Scan =
 		if (argv(0) == "owner")       rec_wt_owner    = UI_OwnerLine(s);
 		if (argv(0) == "flags")       rec_wt_recflags = stof(argv(1));
 		if (argv(0) == "runid")       rec_wt_runid    = argv(1);
-		if (argv(0) == "foreign")     rec_wt_foreign  = TRUE;
+		if (argv(0) == "foreign")
+		{
+			rec_wt_foreign = TRUE;
+			rec_wt_source = argv(1);
+		}
 		if (argv(0) == "momdemo")     rec_wt_momdemo  = TRUE;
+		if (argv(0) == "demodata")    rec_wt_momdemo  = stof(argv(1)) > 0;
+		if (argv(0) == "ksfdemo" && n >= 5)
+		{
+			rec_wt_ksfver = stof(argv(1));
+			rec_wt_ksfstyle = argv(4);
+		}
 		if (argv(0) == "momquality" && n >= 3)
 		{
 			rec_wt_momq    = stof(argv(1));
@@ -2032,6 +2050,7 @@ float() Watch_LineJobStep =
 					wt_lj_fgn = TRUE;
 				}
 				if (argv(0) == "momdemo")   wt_lj_momdemo = TRUE;
+				if (argv(0) == "demodata")  wt_lj_momdemo = stof(argv(1)) > 0;
 			}
 			continue;
 		}
@@ -3897,7 +3916,27 @@ float(string path) Watch_Open =
 		return FALSE;
 	}
 
-	if (rec_wt_map != "")
+	// KSF has only an external map-name binding, never a BSP digest. Do not
+	// fly its clip on another named map. Native/Momentum warning behavior stays.
+	if (strcmp(rec_wt_source, "ksf") == 0)
+	{
+		if (rec_wt_map == "")
+		{
+			print("^3replay: KSF import has no map binding -- refused\n");
+			Watch_Stop();          // release a previous replay's pin/cursor too
+			Watch_Free();
+			return FALSE;
+		}
+		if (strcmp(rec_wt_map, serverkey("map")) != 0)
+		{
+			print(sprintf("^3replay: this run is on %s and you are on %s -- "
+			              "KSF playback refused\n", rec_wt_map, serverkey("map")));
+			Watch_Stop();
+			Watch_Free();
+			return FALSE;
+		}
+	}
+	else if (rec_wt_map != "")
 	if (rec_wt_map != serverkey("map"))
 		print(sprintf("^3replay: this run is on %s and you are on %s -- "
 		              "the camera will fly through nothing\n",
@@ -3909,6 +3948,9 @@ float(string path) Watch_Open =
 	  this chain to that same ceiling, so the two agree to a rounding error
 	  by construction and a tighter bound would report arithmetic.
 	*/
+	if (strcmp(rec_wt_source, "ksf") == 0)
+		print("^3replay: KSF import -- map build and ducked body state unknown; "
+		      "bookmark clock, not a native verified run. v2 ground/moves unavailable.\n");
 	if (rec_wt_momq > 1.05)
 		print(sprintf("^3replay: this import peaks %.1fx over the %0.0f u/s the "
 		              "demo itself reports -- its PATH is sound and its speed "
@@ -4205,6 +4247,9 @@ void(vector scr) Watch_Chrome =
 		                                 rec_wt_tickrate),
 		                 rec_wt_rate, rec_wt_paused ? "Play" : "Pause");
 	}
+
+	if (strcmp(rec_wt_source, "ksf") == 0)
+		stitle = strcat(sprintf("KSF %s import (build unknown)  ", rec_wt_ksfstyle), stitle);
 
 	wtitle = stringwidth(stitle, TRUE, [small, small]);
 	Font_Set(ui_font_mono);             // stable-width clock, like the board's time column
@@ -4631,7 +4676,8 @@ void(vector scr) Watch_Info =
 	  shared classifier exists to keep in step; the third is cl_timer.qc's
 	  sub-label, which this same panel draws through Timer_DrawPanel.
 	*/
-	if (!rec_wt_v4)             s = "rec3  unknown";
+	if (rec_wt_foreign)         s = strcat(rec_wt_source, " import (not verified)");
+	else if (!rec_wt_v4)        s = "rec3  unknown";
 	else                       s = strcat("rec4  ",
 	                                      FS_RunKindName(rec_wt_flags));
 	Watch_InfoRow([p_x, y], w, sz, cw, "format", s);                        y = y + lh;
@@ -4656,7 +4702,7 @@ void(vector scr) Watch_Info =
 	Watch_InfoRow([p_x, y], w, sz, cw, "tag", FS_TagName(rec_wt_tag));       y = y + lh;
 
 	Watch_InfoRow([p_x, y], w, sz, cw, "recorded",
-	              Watch_RunDate(rec_wt_runid));                              y = y + lh;
+	              rec_wt_foreign ? "unknown (import)" : Watch_RunDate(rec_wt_runid));                              y = y + lh;
 
 	/*
 	  How big the two files are, in LINES rather than bytes: buf_getsize is free
@@ -5069,6 +5115,8 @@ void() Watch_Status =
 	if (!rec_wt_open)
 	{
 		print("replay: nothing loaded\n");
+		print(sprintf("  watch state open %g on %g cursor %g\n",
+		              rec_wt_open, rec_wt_on, UI_CursorHeld()));
 		return;
 	}
 
@@ -5128,9 +5176,17 @@ void() Watch_Status =
 	              // Patch 632: slot 0's own (ln_dtint is whichever slot drew last).
 	              Line_IsForeign(0), ln_tintd[0]));  // Patch 432; foreign: momentum import
 	if (rec_wt_foreign)
-		print(sprintf("  import    momquality %.4f of %.0f u/s%s\n",
-		              rec_wt_momq, rec_wt_momceil,
-		              rec_wt_momq > 1.05 ? "  ^3OVER ITS OWN CEILING^7" : ""));
+	{
+		print(sprintf("  import %s  per-tick ground/velocity %g  not native verified\n",
+		              rec_wt_source, rec_wt_momdemo));
+		if (strcmp(rec_wt_source, "ksf") == 0)
+			print(sprintf("  KSF v%g %s  map build unknown  duck state unknown  bookmark clock\n",
+			              rec_wt_ksfver, rec_wt_ksfstyle));
+		if (rec_wt_momceil > 0)
+			print(sprintf("  import    momquality %.4f of %.0f u/s%s\n",
+			              rec_wt_momq, rec_wt_momceil,
+			              rec_wt_momq > 1.05 ? "  ^3OVER ITS OWN CEILING^7" : ""));
+	}
 	// The line's own latched state beside the scan's numbers (tools/rampinfer.py
 	// prints the same four for the file).
 	print(sprintf("  ramp contact %s (line %g)  step %.2f  share %.3f of %g airborne pairs  ticks %g\n",

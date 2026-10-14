@@ -25,7 +25,12 @@ commit   7cab4bdf64ee1e6e5c31064ff8665743c47944dd
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-701
-patch    701
+patch    702
+# Patch 702: explicit CSS/66t KSF binary conversion and imported camera/path playback.
+# Unknown map build/duck body state remain visible; v2 moves are labelled unit
+# button-direction proxies, never measured analog or native verifier evidence.
+# Native recording/ranking and automatic KSF board Watch are unchanged.
+# Engine commit/tag and qcbuild unchanged by KSF. See tools/ksfplayback.md.
 # Patch 701: mixed same-material rear geometry no longer vetoes foreground
 # alpha-plane admission in default1. Existing per-face proof/slot/barrier/budget
 # protections remain. Seventy-two mixed-batch regressions, acting old-gate control
