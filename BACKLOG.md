@@ -96,44 +96,21 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   partial state and independently fresh repaired/corrupt/exhausted budgets;
   `tools/p692native_journal_deferred_interrupt.md`. Old pre-rename loses authority
   and starts mixed; P692 retains full authority and refuses corrupt retry.
-  Reduced authority still leaves the already installed live object's staged
-  copy orphaned; this is not a cleanup or power-loss certificate. Windows native
-  authority-bounded retirement now independently passes valid removal, same-size
-  corrupt/wrong-size/shared retention, real rewrite-failure32 and repaired retries;
-  a seeded reduced-authority control confirms the outside object still survives
-  completion; `tools/native_staging_windows.md`. This gates existing safe
-  retirement, NOT unreferenced deletion. No hostile ancestor-swap/hardlink
-  guarantee is claimed. The bounded full-superset/cleanup-only proposal and
-  executable process-cut falsifiers are in `tools/native_retirement_protocol.md`;
-  published product authority is still unchanged, not a shipped orphan fix.
-  An isolated unpublished native candidate now passes a new20-scenario35-phase
-  cold matrix, held-stage/final-journal deletion controls, and real before/after
-  first-removal interruption in both orders with repaired attempt3 completion;
-  `tools/native_retirement_windows.md` and `tools/native_retirement_interrupt.md`.
-  Review's partial-read fix has source/core acceptance only: a >5MiB protected
-  byte-lock failed-read/refusal/released-retirement native comparison is still
-  required. A provider-failed worker's defective-client FAIL/guard is retained.
-  Separate native gates now prove retained-generation apply refuses before
-  downloads/manifest replacement (`tools/native_retained_apply.md`) and genuine
-  launcher supersession/repair acts without adopting outside orphans
-  (`tools/native_retirement_launcher.md`). New full-original-row publication
-  extensions cover initial and cold fault/interruption plus native debit3 and
-  stage-only-repair exhaustion refusal in both signed-order positions;
-  `tools/native_initial_superset.md` and `tools/native_cold_superset.md`.
-  The deferred raw-return gate observes actual held-source API0/success API1,
-  exact native paths/caller/thread, full prior authority and stage/temp survival;
-  `tools/native_deferred_boundary.md`. All three new oracles require complete
-  independently expected metadata namespaces, including outer ledger/envelope
-  temporary siblings and preserved unrelated sentinels. Before reductions and
-  orphans are acting characterization controls, not product acceptance.
-  These are reviewed tooling gates on retained binaries, not a published engine
-  candidate or deployment. The partial-read native comparison above remains
-  required. Failing cold product API return/path remains unobserved (probe32 and
-  actual rewrite refusal are not substitutes); no new attempt3-publication cut
-  or optional complete-content cleanup-only-at3 claim is made. Final inspected
-  product/source/binary/pins and clean deployment acceptance remain separate.
-  Release 0.1.25 remains P687; source acceptance does not deploy recovery to any
-  canonical/fleet binary or certify peer deployments.
+  The bounded full-original-row/cleanup-only native retirement backlog is closed
+  by **P703**: source/tag/pin published, exact clean client delivered to both
+  Windows installs, installed-path failed-read/refusal/released-cleanup ACTs and
+  complete namespace acceptance. The fresh >5MiB shared-open/ReadFile33 comparison
+  rejects the defective source and proves corrected attempt3 refuses unchanged;
+  released cleanup preserves the edit. Retained-generation apply, launcher,
+  publication/debit/exhaustion and interruption controls are independently
+  reviewed; see `tools/p703native_retirement.md` and its linked gate records.
+  Historical provider/fixture FAILs and guards remain retained, never relabelled.
+  Remaining optional persistence sites/falsifiers: actual failing cold product
+  API return/path (probe32/refusal is not that observation), a new attempt3-
+  publication process cut, complete-content cleanup-only-at3 variants, power-loss
+  directory-flush behavior and hostile ancestor-swap/hardlink races. No broad
+  orphan sweep or such durability/security guarantee is claimed. Release0.1.25
+  remains the existing P687 archive; Linux/Pi/fleet binaries are unchanged.
 
 ## OpenGL blendsort2 promotion gates — P685/P690, 2026-10-13
 

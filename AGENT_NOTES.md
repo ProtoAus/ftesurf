@@ -6451,6 +6451,39 @@ Fifteen client-free controls, reviewed fixes and full final-byte native matrix:
 `tools/update_native_https_linux.md`. Recovery-blocked wrapper retention is
 source-reviewed only; successful recovery/export/retirement failure controls ACT.
 
+### Windows native bounded retirement completion — P703, 2026-10-14
+
+The historical provider-failed partial-read lane above remains FAIL/read-only.
+The operator explicitly authorized a fresh same-provider lane. New exact-source
+>5MiB valid protected JSON/whitespace, shared-open + ReadFile33 and full838-file/
+directory oracle discriminate blocked87326b from corrected7321da at attempts3;
+release ACTS journal/three-name retirement preserving the edit. Eleven portable
+mutations and a fresh independent raw-receipt review pass. Source and readlock
+reviews find no issues; `tools/native_retirement_readlock.md` is the bounded gate.
+
+P703 engine source/tag/pin and clean client binaries are now published/delivered
+to both Windows installs; `tools/p703native_retirement.md` records exact hashes,
+199 units, final build/PE-text binding, installed-path acceptance and limits.
+A peer claimed P702 during completion: the rejected push changed no remote ref;
+only our unpublished entry was renamed/rebased onto the peer's docs-only engine
+commits. Fetch again before pushing; never force the race away.
+
+Native build-directory fixtures have no adjacent plugin DLLs, canonical clients
+have five. Existing PM_PreparePackageList/PM_EnumeratedPlugin inventory those into
+synthetic installed.lst BEFORE recovery; a missing catalogue is therefore not a
+valid no-mutation baseline for an installed-path gate. The first delivery fixture
+FAIL/guard is retained. Fresh delivery-only fixtures independently author the
+exact deterministic five-plugin catalogue BEFORE launch and require its exact
+bytes in the unchanged full-namespace grader. No log/file exclusion, monkeypatch,
+canonical installed.lst edit or failed-run relabelling. Bind installed binary
+hash/PE text directly to the original clean build; output paths alone differ.
+
+Windows allows renaming a running client to a unique predecessor while its mapped
+image continues. Preserve that name and immutable backups plus .prev; never kill
+the owner's game to deploy. Disk/new-launch acceptance is NOT an assertion that
+the owner's current process has upgraded. This task changed only two client
+executables, not plugins/server/progs/defaults/player data, Pi/Linux or release.
+
 ### Windows native unreadability actors and loopback ownership — P689 continuation, 2026-10-13
 
 `tools/test_update_native_windows_unreadable.py` reuses an existing signed feed
