@@ -1,4 +1,40 @@
-# P700 — default alpha-order correction
+# P700/P701 — default alpha-order correction
+
+## P701 — mixed same-material batch admission
+
+P700 incorrectly required every mesh of an ordinary material batch to pass the
+plane-geometry proof. One rear/near-span mesh therefore blocked valid foreground
+panes sharing that material; Kitsune's grid_red uses precisely this shape.
+The initial36 dispatcher cases used separate one-face batches and missed it.
+
+P701 keeps batch material/static-world/state/CPU guards explicit and lets the
+existing bounded sorter admit geometry per face. Rejected faces stay in their
+baseline slots; crossing an intervening unsupported slot still aborts atomically.
+No cvar/default, workers, mode0/2, header/ABI, cache or other-backend change.
+
+Existing test_gl_blend_faces.py now adds72 single-material/single-batch cases:
+six recorded yaws x six pane orders x rear quad4029 in first/last slot. Correct
+foreground1235-first, stationary rear, intact original descriptors and exact
+mode0 full-range order pass normal/HEXEN2/fast-math/combined strict C variants.
+Original P700 compiled and ACTED before failing the new order assertion; the
+restored whole-batch veto is also an acting failure, among seven face controls.
+Existing plane and rebucket controls pass. Independent review approves the fix
+with conservative/native-acceptance limits. Full isolated Windows client compile
+adds zero compiler warning payloads;5890 cache files retain path/hash/size/mtime.
+
+Engine patch-701 source:7cab4bdf64ee1e6e5c31064ff8665743c47944dd.
+GPU/default pixel, startup-repeat and performance acceptance are still OPEN;
+unsupported intervening commands, intersections/cycles, programs/capture/dynamic
+and CPU-unavailable geometry remain deliberate conservative fallbacks. No deploy
+or QC Build bump. Historical NATIVE_PAUSED.md and rejected gates unchanged.
+
+Retained evidence under the existing task root:
+`artifacts/alpha-continue-20261014/`: baseline/fixed logs, source reviews, compile
+and cache receipts. Initial bundle packaging/recipe failures are retained and
+not accepted; matching server/plugin bundle is not claimed. This is a product
+source correction plus an extension of the existing test, not new tracing tooling.
+
+## P700 — original correction
 
 Actual renderer changes, not new tracing/tooling. Default remains `r_blendsort 1`;
 workers remain enabled. No QC Build bump, generated programs or release change.
