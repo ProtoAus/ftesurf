@@ -149,7 +149,7 @@ string(float t) Profile_TierTag =
 {
 	if (t == PFT_MOM) return "MOM";
 	if (t == PFT_KSF) return "KSF";
-	return "FTE";
+	return "WOS";
 };
 
 string(float track, float leg) Profile_Leg =

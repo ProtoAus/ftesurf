@@ -84,7 +84,7 @@ string(float t) Mlb_TabName =
 {
 	if (t == MLB_T_KSF) return "KSF";
 	if (t == MLB_T_MOM) return "Momentum";
-	return "FTESurf";
+	return "WOS";
 };
 
 float(float t) Mlb_TabCount =
@@ -124,17 +124,17 @@ float(string s) Mlb_TabOf =
 
 string() Mlb_Source =
 {
-	if (!strcmp(mlb_source, "all")) return "All games: FTESurf, Momentum Mod, KSF";
+	if (!strcmp(mlb_source, "all")) return "All games: World of Surf, Momentum Mod, KSF";
 	if (mlb_tab == MLB_T_KSF) return "KSF (ksf.surf), Counter-Strike: Source -- times only";
 	if (mlb_tab == MLB_T_MOM) return "Momentum Mod's own leaderboard, imported";
-	return "ranked runs on FTESurf's public lobbies";
+	return "ranked runs on World of Surf's public lobbies";
 };
 
 string() Mlb_EmptyLine =
 {
 	if (mlb_tab == MLB_T_KSF) return sprintf("KSF has no times on %s", mlb_map);
 	if (mlb_tab == MLB_T_MOM) return sprintf("Momentum Mod has no times on %s", mlb_map);
-	return sprintf("Nobody has set a time on %s on an FTESurf lobby yet", mlb_map);
+	return sprintf("Nobody has set a time on %s on a World of Surf lobby yet", mlb_map);
 };
 
 /*

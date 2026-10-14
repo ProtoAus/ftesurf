@@ -269,12 +269,14 @@ float(float i)   Lob_Max     = { return stof(bufstr_get(lb_maxv,  i)); };
   cfg/lobby/lobby1..5.cfg), so in a row of five the first eleven characters would say
   the same thing five times, in the ~140 px a cell has for text at 1280 wide.
 
-  Stripped ONLY when the name starts with exactly that, case aside: a lobby
+  Both "FTESurf -- " and "World of Surf -- " are stripped, case aside, only
+  with a non-empty suffix. Names from a mixed fleet stay distinguishable. A lobby
   somebody else runs keeps its name whole, because there is no other way to
   tell it from ours.  surfd fills an empty hostname with the node id before it
   publishes one, so the address fallback is for a directory that does not.
 */
 #define LB_NAME_PREFIX "ftesurf -- "
+#define LB_NAME_PREFIX_WOS "world of surf -- "
 
 string(float i) Lob_Title =
 {
@@ -283,9 +285,14 @@ string(float i) Lob_Title =
 
 	s  = bufstr_get(lb_name, i);
 	n  = strlen(s);
+	pl = strlen(LB_NAME_PREFIX_WOS);
+	if (n > pl)
+		if (!strcmp(strtolower(substring(s, 0, pl)), LB_NAME_PREFIX_WOS))
+			return substring(s, pl, n - pl);
+
 	pl = strlen(LB_NAME_PREFIX);
 	if (n > pl)
-		if (strtolower(substring(s, 0, pl)) == LB_NAME_PREFIX)
+		if (!strcmp(strtolower(substring(s, 0, pl)), LB_NAME_PREFIX))
 			s = substring(s, pl, n - pl);
 
 	if (s == "")

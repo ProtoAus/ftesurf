@@ -434,7 +434,7 @@ string() Scores_StandingWord =
 	s = getplayerkeyvalue(player_localnum, "name");
 	if (Scores_ImpState() == SB_IMP_OFF)
 		return s;
-	return sprintf("%s   FTESurf #%g", s, rec_sb_finrank);
+	return sprintf("%s   WOS #%g", s, rec_sb_finrank);
 };
 
 float() Scores_OnlineSeekReady =
@@ -3054,7 +3054,7 @@ void(float xr, float y, float h) Scores_FilterDraw =
 	{
 		id = strcat("sb_src", ftos(i));
 		kx = sx + sp * (i + 0.5);
-		s = "FTESurf";
+		s = "WOS";
 		if (i == 1) s = "Momentum";
 		if (i == 2) s = "KSF";
 		c = SUI_THEME_DIM;

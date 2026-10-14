@@ -5,7 +5,7 @@ float(float action) gameupdate = #0;
 float(float action) MU_Action =
 {
 	if (checkbuiltin(gameupdate)) return gameupdate(action);
-	print("Updates need the latest engine; start FTESurf through its launcher.\n");
+	print("Updates need the latest engine; start World of Surf through its launcher.\n");
 	return FALSE;
 };
 
@@ -88,7 +88,7 @@ void(vector screensize) MU_Screen =
 	ui_backdrop(screensize);
 	sui_fill([x, y], [w, 420], COL_PANEL, 0.95, 0);
 	sui_border_box([x, y], [w, 420], 1, COL_BORDER, 1, 0);
-	sui_text([x + 24, y + 20], SZ_TITLE, "FTESurf updates", COL_TEXT, 1, 0);
+	sui_text([x + 24, y + 20], SZ_TITLE, "World of Surf updates", COL_TEXT, 1, 0);
 	h = ui_para([x + 24, y + 62], w - 48, SZ_LABEL, 19,
 		"Optional automatic updates check proto.bar and download from dl.proto.bar. Those services see your IP address. Nothing is uploaded: your settings, recordings, mounted game assets and edited zones stay yours.", COL_DIM, TRUE);
 	y = y + 62 + h + 18;
@@ -108,7 +108,7 @@ void(vector screensize) MU_Screen =
 		return;
 	}
 	title = "Checking for updates";
-	detail = "The launcher checks all game-owned files before starting FTESurf.";
+	detail = "The launcher checks all game-owned files before starting World of Surf.";
 	if (strcmp(st, "uptodate") == 0) title = "You have the latest published update";
 	else if (strcmp(st, "available") == 0)
 	{
@@ -118,7 +118,7 @@ void(vector screensize) MU_Screen =
 	else if (strcmp(st, "downloading") == 0 || strcmp(st, "applying") == 0)
 	{
 		title = "Downloading and verifying the update";
-		detail = "Keep FTESurf open. A failed download leaves the installed files untouched.";
+		detail = "Keep World of Surf open. A failed download leaves the installed files untouched.";
 		frac = 0;
 		if (cvar("update_bytes") > 0) frac = bound(0, cvar("update_done_bytes") / cvar("update_bytes"), 1);
 		drawfill([x + 24, y + 100], [w - 48, 6], COL_BORDER, 1, 0);

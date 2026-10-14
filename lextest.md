@@ -1,5 +1,26 @@
 # lextest.md — things waiting on a human
 
+## P710 — compatible game and package presentation candidate (not deployed)
+
+P705 art still awaits your choice; P710 is source preparation, not permission to
+change your installations, saved settings or public lobbies. After that gate and
+an explicitly recorded isolated/dual-install delivery, judge the full WORLD OF
+SURF menu title, its halo/feedback in flat and in-world menus, and the 48px native
+font rung at narrow resolutions and normal/UI-scaled sizes. Check the map HUD's
+measured right edge, WOS online-board/profile/native-score labels, update/consent
+and account-error paragraphs with long map/player names and no clipping.
+
+Exercise a mixed lobby fixture: "FTESurf -- tier 1", "World of Surf -- tier 1"
+and case variants should show the same suffix, while unrelated and prefix-only
+names remain whole, and an empty hostname still shows its address. Production
+Lob_Title has compiled but has NOT been executed by P710's source tests.
+New lobby configs are not deployed; saved/custom hostnames must not be overwritten.
+Verify actual engine window/icon, generated package headings and Linux errors,
+fresh install and legacy launcher upgrade in the separate native/package gate.
+Entrypoints/archive roots/account/feed/data identity remain legacy deliberately;
+the canonical browser path and callback/defaults have not switched. Commands and
+remaining automation gates: `tools/p710presentation.md`, `REBRANDING_PLAN.md`.
+
 ## P707 — parallel website-path preparation (not installed)
 
 P705 art acceptance remains separate below. The new /worldofsurf route is only

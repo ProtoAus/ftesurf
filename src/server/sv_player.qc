@@ -221,7 +221,7 @@ void() PutClientInServer =
 	}
 	else
 	{
-		dprint("FTESurf: no spawn point in this map, using world origin\n");
+		dprint("WOS: no spawn point in this map, using world origin\n");
 		setorigin(self, '0 0 64');
 		self.angles = '0 0 0';
 	}

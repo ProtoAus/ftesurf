@@ -1080,7 +1080,7 @@ $stamp  = $nowUtc.ToString('yyyy-MM-dd HH:mm:ss') + ' UTC'
 $engineLabel = if ($patchAppliesToBinary) { "$enginePatch" } else { "$enginePatch (unverified against this binary)" }
 
 [System.IO.File]::WriteAllText((Join-Path $StageDir 'VERSION.txt'), @"
-FTESurf $Ver
+World of Surf $Ver
 built            $stamp
 QuakeC build     $qcBuild
 engine patch     $engineLabel
@@ -1100,7 +1100,7 @@ That hash is published beside the download, and in ftesurf-$Ver.json.
 "@.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
 
 [System.IO.File]::WriteAllText((Join-Path $StageDir 'INSTALL.txt'), @"
-FTESurf $Ver -- install
+World of Surf $Ver -- install
 =======================
 
 Upgrading from 0.1.9 or earlier: delete ftesurf\ftesurf.cfg once, after
@@ -1113,7 +1113,7 @@ your sensitivity first.  A fresh install has no ftesurf.cfg.
 1.  Extract this archive into a folder of its own.  There is no installer and
     nothing is written outside that folder.
 
-2.  Install these from Steam if you do not have them.  FTESurf ships NO Valve
+2.  Install these from Steam if you do not have them.  World of Surf ships NO Valve
     or Momentum content -- it reads your own installs at runtime, so without
     them the map browser is empty:
 
@@ -1158,7 +1158,7 @@ MIT; its full license and dependency notices are in notices/bootstrap.txt.
 "@.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
 
 [System.IO.File]::WriteAllText((Join-Path $StageDir 'SOURCE.txt'), @"
-FTESurf $Ver -- source
+World of Surf $Ver -- source
 ======================
 
 The game and engine are GPLv2 or later. See LICENSE for the full text.
@@ -1179,7 +1179,7 @@ Stock FTEQW will not run this game: the Source movement module
 (engine/common/pm_source.c) and the hl2 plugin's .phy collision, VTF/VMT
 material and static-prop lighting work exist only in that fork.
 
-FTESurf contains no Valve or Momentum Mod code and ships no Source assets.
+World of Surf contains no Valve or Momentum Mod code and ships no Source assets.
 "@.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
 
 # --- third-party notices (Patch 623) -------------------------------------------
@@ -1222,10 +1222,10 @@ if ($tpAt -ge 0) { for ($i = $tpAt; $i -lt $tpLines.Count; $i++) { if ($tpLines[
 if ($tpEnd -lt 0) { Fail "imstb_truetype.h does not end with its licence statement the way this script reads it" }
 $tpStb = (($tpLines[$tpAt..($tpEnd - 1)] | ForEach-Object { if ($_ -match '^-+$') { '' } else { $_ } }) -join "`n").Trim()
 $tp = @"
-FTESurf $Ver -- third-party software in fteplug_ui_imgui_x64.dll
+World of Surf $Ver -- third-party software in fteplug_ui_imgui_x64.dll
 ================================================================
 
-fteplug_ui_imgui_x64.dll draws the run graphs' plots.  It is part of the FTESurf
+fteplug_ui_imgui_x64.dll draws the run graphs' plots.  It is part of the World of Surf
 engine fork (GPLv2 or later: LICENSE, SOURCE.txt) and is built with the software
 below, whose own notices follow.  None of it is downloaded at run time.  This file
 is about that one DLL; it does not list what the engine itself is built with.
@@ -1436,7 +1436,7 @@ if ($Linux) {
     foreach ($d in @('csprogs.dat', 'qwprogs.dat', 'menu.dat')) { $lxDat[$d] = (Get-FileHash -LiteralPath (Join-Path $LxTree "ftesurf\$d") -Algorithm SHA256).Hash }
 
     [System.IO.File]::WriteAllText((Join-Path $LxTree 'VERSION.txt'), @"
-FTESurf $Ver for Linux x86_64 (beta)
+World of Surf $Ver for Linux x86_64 (beta)
 built            $stamp
 QuakeC build     $qcBuild
 engine patch     $lxLabel
@@ -1459,7 +1459,7 @@ That hash is published beside the download, and in ftesurf-$Ver.json.
 "@.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
 
     [System.IO.File]::WriteAllText((Join-Path $LxTree 'INSTALL.txt'), @"
-FTESurf $Ver for Linux (beta) -- install
+World of Surf $Ver for Linux (beta) -- install
 ========================================
 
 This is the first Linux build.  It is a BETA, tested only under WSL2 on
@@ -1478,7 +1478,7 @@ yours), OpenGL, and an X11 or Wayland desktop.
     be writable: your home folder works, /opt and /usr do not.  To upgrade,
     extract a newer archive in the same place; your settings and runs stay.
 
-2.  Install these from Steam if you do not have them.  FTESurf ships NO Valve
+2.  Install these from Steam if you do not have them.  World of Surf ships NO Valve
     or Momentum content -- it reads your own installs at runtime:
         Momentum Mod Playtest     the map library (1,308 maps)
         Counter-Strike: Source    materials and models most surf maps use
@@ -1486,7 +1486,7 @@ yours), OpenGL, and an X11 or Wayland desktop.
     Momentum Mod Playtest has no Linux version on Steam.  Install it anyway
     with Steam Play: right-click it > Properties > Compatibility, tick "Force
     the use of a specific Steam Play compatibility tool", pick a Proton
-    version, then install.  FTESurf only reads its maps; you never start it.
+    version, then install.  World of Surf only reads its maps; you never start it.
     Optional, mounted per map only when needed: CS:GO (legacy), TF2.
 
 3.  Run ./ftesurf.sh (or ./ftesurf.sh <mapname>). It runs the signed-update
@@ -2192,7 +2192,7 @@ if ($Prune -and -not $SkipUpload) {
 }
 
 # =============================================================================
-Write-Host "`n=== FTESurf $Ver released ===" -ForegroundColor Green
+Write-Host "`n=== World of Surf $Ver released ===" -ForegroundColor Green
 Info "download  $ArchiveUrl"
 Info "page      $SiteUrl"
 Info "size      $(HumanSize $ArchiveBytes)   sha256 $ArchiveSha"

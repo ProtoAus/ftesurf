@@ -288,7 +288,7 @@ string(entity e) Account_UnprovenWhy =
 {
 	if (!e.acct_hellos)
 	if (Account_UnprovenSettled(e))
-		return "this game has not proved which install it is. An FTESurf from before "
+		return "this game has not proved which install it is. An install from before "
 		       "Steam linking cannot: update it to rank";
 	if (e.acct_fail == ACCT_F_SERVER)
 		return "the leaderboard does not know this server by the address you joined it on";

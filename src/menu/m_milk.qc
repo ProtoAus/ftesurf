@@ -47,7 +47,8 @@
 #define MW_FRACTAL  3
 
 #define MM_TRACKS   48
-#define MM_TITLE_SZ '80 80 0'
+#define MM_TITLE_SZ '48 48 0'
+#define MM_TITLE "WORLD OF SURF"
 #define MM_ITEM_SZ  '48 48 0'
 #define MM_ITEM_H   64
 #define MM_TANFOV   0.60
@@ -959,7 +960,7 @@ void() MM_Sprites =
 	if (mm_titlecur_x >= 0)
 	{
 		Font_Set(ui_font_display);
-		drawstring(Milk_ToRT(mm_titlecur - mm_quadpos, mm_quad), "FTESURF",
+		drawstring(Milk_ToRT(mm_titlecur - mm_quadpos, mm_quad), MM_TITLE,
 		           MM_TITLE_SZ * (milk_rtsize_y / mm_quad_y), Milk_Pal(mm_hue + 0.1),
 		           0.10 + 0.12 * milk_hit * milk_react, 1);
 		Font_Set(ui_font_ui);
@@ -1378,9 +1379,9 @@ void(vector pos) MM_Title =
 		mm_titlepos = pos;
 	Font_Set(ui_font_display);
 	for (i = 0; i < 8; i++)
-		drawstring(pos + [cos(i * 0.785) * 3, sin(i * 0.785) * 3], "FTESURF", MM_TITLE_SZ,
+		drawstring(pos + [cos(i * 0.785) * 3, sin(i * 0.785) * 3], MM_TITLE, MM_TITLE_SZ,
 		           acc, 0.16 + 0.10 * milk_hit * milk_react, 1);
-	sui_text(pos, MM_TITLE_SZ, "FTESURF", '0.95 0.97 1', 1, 0);
+	sui_text(pos, MM_TITLE_SZ, MM_TITLE, '0.95 0.97 1', 1, 0);
 	Font_Set(ui_font_ui);
 };
 

@@ -56,8 +56,39 @@ window, then run Linux `nginx -t` and external old/new HTTP/download/account
 checks. Keep the old base authoritative until a separately approved account
 transition drains old starts (600s configured start window, plus worker/config
 provenance) or explicitly tests old signed callbacks. Do not blindly redirect them.
-Canonical social links/defaults, game/native branding and updater bridge remain
-later work. No QC Build, engine binary/pin/tag, player data or live install changed.
+Canonical social links/defaults, native branding and updater bridge remain later
+work. Game/package presentation source preparation is recorded in P710 below;
+its visual/runtime acceptance is still outstanding. No QC Build, engine
+binary/pin/tag, player data or live install changed.
+
+### Stage 2 and partial Stage 3 source candidate — P710, 2026-10-14 UTC
+
+Prepared, not deployed: manifest formal NAME, menu title/update/consent/help and
+console copy, HUD map title, WOS board/profile/native-score badges, local/server
+fallback hostnames and all 12 configured lobby hostnames. Lobby display accepts
+both old and new name prefixes; no directory, network or ranking identity changed.
+The exact old CSQC boot diagnostic is retained for active harness controls.
+Current README/service headings, generated release/install/legal headings and
+Linux wrapper errors use World of Surf while preserving truthful legacy commands,
+archive roots, paths, community references and FTEQW attribution.
+
+All three VMs compile with zero warnings; actual compiled string tables contain
+the new title/badges and legacy technical formats. Six frozen product-source audit
+tests and five package-source audit tests pass with acting old-source failures;
+seven web brand checks, 12 signed-updater synthetic-key tests and physical release
+deny checks remain green. These are source/compile/offline controls, NOT game/menu
+execution, art/layout acceptance, native icon/title rebuild, actual package or
+fresh-install/upgrade/live behavior. Clean-tree shipguard setup remains blocked
+on absent ignored generated content; it is not counted as a pass. Commands,
+inspected references and limits: `tools/p710presentation.md`; human checklist:
+`lextest.md`. Neither stage is marked complete by this preparation.
+
+**Next safe work:** accept P705 art and P710 game/menu/HUD copy at narrow sizes,
+then separately prepare native title/icon/wrapper packaging with the complete
+ship set. Before deployment, review whether saved player/server hostnames should
+remain owned (recommended: do not overwrite them). New browser-base/defaults,
+Steam callback transition and signed old-client update bridge still need their
+separate gates; keep the old endpoint/feed/technical game identity authoritative.
 
 ## 1. Agreed identity and remaining decisions
 

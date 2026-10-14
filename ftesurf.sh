@@ -40,7 +40,7 @@ which keep the executable bit, onto a drive that allows running programs (not no
 fi
 # Everything the game saves goes inside this folder (default.fmf: DISABLEHOMEDIR 1).
 if [ ! -w . ] || [ ! -w ftesurf ]; then
-    say "FTESurf cannot write to $here,
+    say "World of Surf cannot write to $here,
 so settings, runs and screenshots will not be saved.
 Move the FTESurf folder somewhere you own, such as your home folder."
 fi
@@ -84,7 +84,7 @@ if { [ -f "$log" ] && [ -w "$log" ]; } || { [ ! -e "$log" ] && [ -w . ]; }; then
     # no xmessage) still gets a dialog.  A normal quit is status 0.
     "$runner" "$@" 2>> "$log"
     rc=$?
-    [ $rc -eq 0 ] || say "FTESurf stopped (status $rc).
+    [ $rc -eq 0 ] || say "World of Surf stopped (status $rc).
 See $here/$log and crash.log."
     exit $rc
 fi

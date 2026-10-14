@@ -1355,7 +1355,7 @@ void(entity p) Lobby_AnnJoin =
 		return;                                 // the listen host is not welcomed to its own game
 	host = Lobby_Clean(cvar_string("hostname"));
 	if (host == "" || host == "unnamed")
-		host = "FTESurf";
+		host = "World of Surf";
 	sprint(p, PRINT_CHAT, sprintf("^5server:^7 welcome to %s -- on %s\n",
 	                              host, Lobby_Clean(mapname)));
 };
@@ -2914,7 +2914,7 @@ string(entity e, float track, float leg, float ticks, float flags,
 				sprint(e, PRINT_HIGH, "^1board:^7 this server cannot identify you, "
 				         "so your times are not being submitted (sv_guidkey).\n");
 			else
-				sprint(e, PRINT_HIGH, "^1board:^7 this game's id is not one FTESurf makes, "
+				sprint(e, PRINT_HIGH, "^1board:^7 this game's id is not one World of Surf makes, "
 				         "so your times are not being submitted.\n");
 		}
 		return "";

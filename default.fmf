@@ -4,7 +4,7 @@ FTEMANIFEST 1
 // See src/ for the QC source and build.ps1.
 
 GAME "FTESurf"
-NAME "FTESurf"
+NAME "World of Surf"
 PROTOCOLNAME "FTE-Quake ftesurf"
 BASEGAME "ftesurf"
 

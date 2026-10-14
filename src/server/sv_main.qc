@@ -853,5 +853,5 @@ void() worldspawn =
 	// client commands and player thinks, which come after this.
 	registercvar("run_spec_countdown", "3");
 
-	dprint("FTESurf: worldspawn\n");
+	dprint("WOS: worldspawn\n");
 };

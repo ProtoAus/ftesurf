@@ -1443,7 +1443,7 @@ void() ui_meta_load =
 	fh = fopen("data/mapmeta.txt", FILE_READ);
 	if (fh < 0)
 	{
-		print("^3FTESurf: data/mapmeta.txt missing -- run tools\\mapmeta.py then "
+		print("^3WOS: data/mapmeta.txt missing -- run tools\\mapmeta.py then "
 		      "tools\\mapthumbs.py.  No metadata counts or thumbnails.\n");
 		return;
 	}
@@ -1584,7 +1584,7 @@ void() ui_meta_load =
 	for (i = 0; i <= maxpage; i = i + 1)
 		precache_pic(strcat("gfx/mapthumbs/atlas", ftos(i)));
 
-	print(sprintf("FTESurf: mapmeta matched %g of %g maps, %g thumbnail page(s)"
+	print(sprintf("WOS: mapmeta matched %g of %g maps, %g thumbnail page(s)"
 	              ", %g tier(s) from KSF's roster\n",
 	              hit, ms_count, maxpage + 1, fb));
 
@@ -1594,7 +1594,7 @@ void() ui_meta_load =
 	  asking fopen which files exist; this says whether fopen can answer at all.
 	*/
 	if (!ui_file_exists("gfx/mapthumbs/atlas0.png"))
-		print("^3FTESurf: gfx/mapthumbs/atlas0.png not readable -- run "
+		print("^3WOS: gfx/mapthumbs/atlas0.png not readable -- run "
 		      "tools\\mapthumbs.py, and expect no thumbnails or backdrops.\n");
 };
 
@@ -1644,7 +1644,7 @@ void() ui_cat_load =
 				k = k + 1;
 		rep = sprintf("%s  %s %g", rep, ui_mode_label(s), k);
 	}
-	print(sprintf("FTESurf: gametypes --%s\n", rep));
+	print(sprintf("WOS: gametypes --%s\n", rep));
 };
 
 /*
@@ -1882,7 +1882,7 @@ void() run_pb_load =
 	// Once per CHANGE, not once per call: this now runs every time the create
 	// screen opens, and the same line every ESC is noise that buries the line
 	// that differs.
-	note = sprintf("FTESurf: %g personal-best files, %g lobby-best files, "
+	note = sprintf("WOS: %g personal-best files, %g lobby-best files, "
 	               "%g full-run times (%g of them from a lobby)\n",
 	               cnt, lcnt, times, ltimes);
 	if (note != ms_pbnote)
@@ -1958,7 +1958,7 @@ void() ui_wr_load =
 	hash_destroytab(byname);
 
 	ms_wrcount = hit;
-	print(sprintf("FTESurf: %g map(s) have a best time on record\n", hit));
+	print(sprintf("WOS: %g map(s) have a best time on record\n", hit));
 };
 
 /*
@@ -2075,7 +2075,7 @@ void() ui_deps_load =
 		say = sprintf("%s %s=%g", say, dep_lbl[i], dep_state[i]);
 	if (drop > 0)
 		say = sprintf("%s  (%g line(s) name a game past the %g-game table)", say, drop, DEP_MAX);
-	print(sprintf("FTESurf: %g map need(s) for an extra game;%s\n", hit, say));
+	print(sprintf("WOS: %g map need(s) for an extra game;%s\n", hit, say));
 };
 
 // The row's "needs" text: each game red when this PC lacks it, plain when it has
@@ -2483,15 +2483,15 @@ void() ui_dl_load =
 	}
 	hash_destroytab(byname);
 	if (ms_nvar > 0)
-		print(sprintf("FTESurf: %g map(s) have a CS:S build beside Momentum's -- one row, a switch\n",
+		print(sprintf("WOS: %g map(s) have a CS:S build beside Momentum's -- one row, a switch\n",
 		              ms_nvar));
 
 	ms_dlcount = appended;
 	ms_dlstale = stale;
-	print(sprintf("FTESurf: mapdl offers %g map(s) not installed here, %g new\n",
+	print(sprintf("WOS: mapdl offers %g map(s) not installed here, %g new\n",
 	              appended, badged));
 	if (stale > 0)
-		print(sprintf("FTESurf: %g installed map(s) are a DIFFERENT BUILD from the server's -- offering a re-get\n",
+		print(sprintf("WOS: %g installed map(s) are a DIFFERENT BUILD from the server's -- offering a re-get\n",
 		              stale));
 };
 
@@ -2547,7 +2547,7 @@ void() ui_data_load =
 		bufstr_set(ms_dataq, i, ftos(q));
 		n[q] += 1;
 	}
-	print(sprintf("FTESurf: data -- %g full, %g picture only, %g tier only, %g "
+	print(sprintf("WOS: data -- %g full, %g picture only, %g tier only, %g "
 	              "neither (listed when searched or under show all)\n",
 	              n[DQ_FULL], n[DQ_PICTURE], n[DQ_TIER], n[DQ_BARE]));
 };
@@ -2591,7 +2591,7 @@ void() ui_load_maps =
 	                              SB_FULLPACKAGEPATH | SB_ALLOWDUPES | SB_NAMESORT, TRUE);
 	if (h < 0)
 	{
-		print("^1FTESurf: map search failed -- no maps mounted?\n");
+		print("^1WOS: map search failed -- no maps mounted?\n");
 		return;
 	}
 
@@ -2727,16 +2727,16 @@ void() ui_load_maps =
 	ms_count = w;
 
 	if (hidden)
-		print(sprintf("FTESurf: %g maps hidden from the CS:GO/TF2 asset mounts "
+		print(sprintf("WOS: %g maps hidden from the CS:GO/TF2 asset mounts "
 		              "(ui_maps_assetmounts 1 to list them)\n", hidden));
 	if (unlisted)
-		print(sprintf("FTESurf: %g maps not listed -- in neither Momentum nor "
+		print(sprintf("WOS: %g maps not listed -- in neither Momentum nor "
 		              "Counter-Strike: Source\n", unlisted));
 
 	// The counts overlap now, deliberately: a map in both Momentum and CS:S is
 	// counted under both, because it is genuinely in both.  They no longer sum
 	// to the total, and that is the point.
-	print(sprintf("FTESurf: %g maps (%g duplicate entries coalesced) -- "
+	print(sprintf("WOS: %g maps (%g duplicate entries coalesced) -- "
 	              "momentum %g, counter-strike %g, other %g\n",
 	              ms_count, dupes,
 	              ms_nsrc[SRC_MOMENTUM], ms_nsrc[SRC_CSS], ms_nsrc[SRC_OTHER]));
@@ -3507,7 +3507,7 @@ void(string mapname) ui_launch_local =
 	// The name field went in build 57 (Lex).  This is a private, unlisted
 	// practice game, so a name had nowhere to be read.  Still SET rather than
 	// left alone, because the engine's own default is "unnamed".
-	cvar_set("hostname", "FTESurf");
+	cvar_set("hostname", "World of Surf");
 
 	localcmd("sv_public 0\n");
 	localcmd("deathmatch 1\n");
@@ -5451,7 +5451,7 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_head(p, draw, "What is never recorded");
 		ui_tm_par(p, w, draw, "Anything you type. While the console or a menu has focus the journal keeps the timing of a keypress and drops which key it was, so a password typed in the console cannot end up in a file. Nothing outside this game's window is watched, ever.", COL_TEXT);
 		ui_tm_head(p, draw, "Optional automatic updates");
-		ui_tm_par(p, w, draw, "Updates have a separate on/off choice. If enabled, FTESurf checks proto.bar and downloads game-owned files from dl.proto.bar. Those services see your IP address; settings, recordings and mounted game assets are not uploaded. Disable updates from the main menu's Updates panel.", COL_TEXT);
+		ui_tm_par(p, w, draw, "Updates have a separate on/off choice. If enabled, World of Surf checks proto.bar and downloads game-owned files from dl.proto.bar. Those services see your IP address; settings, recordings and mounted game assets are not uploaded. Disable updates from the main menu's Updates panel.", COL_TEXT);
 		ui_tm_head(p, draw, "Turning it off");
 		ui_tm_par(p, w, draw, "rec_hid 0 stops the raw input journal. Runs recorded without it are marked as such, rather than passing as runs that had one.", COL_TEXT);
 	}
@@ -5513,7 +5513,7 @@ void(vector screensize) screen_terms =
 
 	ui_backdrop(screensize);
 
-	lead = "FTESurf times your runs and keeps a file for each one. This is what is recorded, and where it goes.";
+	lead = "World of Surf times your runs and keeps a file for each one. This is what is recorded, and where it goes.";
 	foot = "Your answer is kept in a file on this machine. It is a record that you agreed, not a lock.";
 	w = min(1240, screensize_x - 32);
 	two = (w >= 700);
@@ -5953,11 +5953,11 @@ void() ui_dl_migrate_url =
 	if (cur == "")
 	{
 		localcmd(strcat("seta sv_dlURL \"", FS_MAPDL_URL, "\"\n"));
-		print(strcat("^3FTESurf: sv_dlURL was empty -- map downloads could "
+		print(strcat("^3WOS: sv_dlURL was empty -- map downloads could "
 		             "not have worked.  Set to ", FS_MAPDL_URL, "^7\n"));
 	}
 	else if (cur != FS_MAPDL_URL)
-		print(strcat("^3FTESurf: sv_dlURL is ", cur, "^3 -- leaving it alone. "
+		print(strcat("^3WOS: sv_dlURL is ", cur, "^3 -- leaving it alone. "
 		             "Reset it with: sv_dlURL \"", FS_MAPDL_URL, "\"^7\n"));
 
 	// Stamped whichever branch ran, so this is a one-shot either way.
@@ -6714,7 +6714,7 @@ void(vector pos, vector sz, string sel) ui_board_button =
 	sui_style_box(pos, sz, 7, hot ? COL_ROW_HOVER : COL_ROW, hot ? COL_ACCENT : SUI_THEME_EDGE, 1);
 	sui_text([pos_x + 8, pos_y + (sz_y - SZ_LABEL_H) * 0.5], SZ_LABEL, "leaderboard",
 	         hot ? COL_ACCENT : COL_TEXT, 1, 0);
-	sui_tooltip_for("cs_board", "The picked map's main-track times: KSF, Momentum Mod and FTESurf's own lobbies.", 2);
+	sui_tooltip_for("cs_board", "The picked map's main-track times: KSF, Momentum Mod and World of Surf's own lobbies.", 2);
 	if (sui_is_released("cs_board"))
 		Mlb_Open(sel, -1);
 };
@@ -7722,7 +7722,7 @@ void() m_init =
 
 	if (cvar("ui_bootcheck"))
 	{
-		print("^2FTESurf: menu.dat loaded\n");
+		print("^2World of Surf: menu.dat loaded\n");
 		ui_maplist_print("surf_kitsune");
 
 		if (cvar("ui_bootcheck") < 2)

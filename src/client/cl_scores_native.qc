@@ -429,7 +429,7 @@ float(vector p, vector sz) Scores_NativeDraw =
 		}
 		if (Scores_StandingOutside())
 		{
-			standing = sprintf((Scores_ImpState() == SB_IMP_OFF) ? "Your standing #%g" : "Your FTESurf standing #%g", rec_sb_finrank);
+			standing = sprintf((Scores_ImpState() == SB_IMP_OFF) ? "Your standing #%g" : "Your WOS standing #%g", rec_sb_finrank);
 			if (rec_sb_finbest > 0) standing = strcat(standing, "  ", Time_MsString((int)rec_sb_finbest));
 			standing = strcat(standing, "  ", getplayerkeyvalue(player_localnum, "name"));
 		}

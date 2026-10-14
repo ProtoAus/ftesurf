@@ -25,7 +25,14 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-703
-patch    708
+patch    710
+# Patch 710: prepare compatible World of Surf game/menu/HUD/lobby and package
+# presentation. Manifest NAME only; WOS compact badges, consistent menu title
+# passes and old/new lobby prefix recognition. All three VMs compile with zero
+# warnings; frozen-source audits and signed-updater regressions pass. Source
+# candidate only: no art/layout/runtime/archive/live acceptance or deployment.
+# Engine source/binaries/pin/tag, QC Build, legacy identity/URLs/data unchanged.
+# Evidence and remaining gates: tools/p710presentation.md.
 # Patch 708: black slim launcher, four real transfers, small Up/Down Yes/No,
 # and one continuously styled screen through checks/download/install/play/errors.
 # Full logo remains at40x20; first install reads Download World of Surf? without

@@ -371,7 +371,7 @@ void() Font_Init =
 	{
 		// Worth a real print rather than a dprint: everything still works,
 		// but it looks like build 2 and the reason is not otherwise visible.
-		print("^3FTESurf: TrueType fonts unavailable -- falling back to the 8px bitmap.\n");
+		print("^3WOS: TrueType fonts unavailable -- falling back to the 8px bitmap.\n");
 		print("^3         expected gfx/fonts/Roboto.ttf, BebasNeueRegular.ttf and GoogleMed.ttf\n");
 	}
 };

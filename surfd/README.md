@@ -1,4 +1,4 @@
-# surfd - FTESurf lobby directory
+# surfd - World of Surf lobby directory
 
 Minimal Flask + SQLite lobby directory. Game servers POST heartbeats; the
 game menu GETs a list of live lobbies.
