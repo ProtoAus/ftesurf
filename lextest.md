@@ -13,6 +13,23 @@ The tested null main and prosurf/monolith bonus-4 clips retain bookmark clocks;
 duck body/build identity remain unknown, and this is never native verification.
 Source, tests, automatic enable command and delivery status: tools/p706ksf.md.
 
+## P705 — World of Surf brand kit and web presentation candidate
+
+Open `src/brand/index.html` from the P705 source tree in a browser (no server or
+network required). Judge the dark/light/one-color wordmarks, tiny WOS icon and
+social card. The direction retains the existing dark/cyan typography; no new wave
+or tagline. The SVGs are outlined and the native ICO is exported, but the engine
+has not been rebuilt with it. World of Surf is the title; WOS is the short badge.
+
+Desktop/mobile web screenshots come from `tools/test_rebrand_browser.py` (command
+in `src/brand/README.md`), with clearly synthetic board data. Check the longer
+name in the header, hero, account light/dark copy and WOS source label at your
+normal scale. Automated 320/390/768/1440px and acting ranked-filter checks pass;
+your art acceptance is still required. This is source-only: old live pages,
+service paths, wrappers, update feeds, game binaries and player data have not
+been replaced. Routing/Steam callback transition and full package rename remain
+separate gates in `REBRANDING_PLAN.md`. Evidence: `tools/p705rebrand.md`.
+
 ## P698 — linked map picker and admin manifest
 
 Open Create Server in either updated Windows install; judge the red missing-zone

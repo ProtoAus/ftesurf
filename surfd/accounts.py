@@ -866,10 +866,10 @@ def _page(depth, title, inner, status=200):
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         '<meta name="color-scheme" content="light dark">\n'
         '<meta name="robots" content="noindex">\n'
-        '<title>%(title)s - FTESurf</title>\n'
+        '<title>%(title)s - World of Surf</title>\n'
         '<link rel="stylesheet" href="%(up)slink.css">\n</head>\n<body>\n'
         '<main class="card">\n'
-        '<a class="mark" href="%(up)s../">FTE<b>SURF</b></a>\n'
+        '<a class="mark" href="%(up)s../">World of <b>Surf</b></a>\n'
         '%(inner)s\n</main>\n</body>\n</html>\n'
     ) % {"title": html.escape(title), "up": up, "inner": inner}
     resp = Response(doc, status=status, mimetype="text/html")
@@ -1422,12 +1422,12 @@ def register(app, d):
             "<h1>Link your Steam account</h1>\n"
             "<p class=\"lede\">%s</p>\n"
             "<p><a class=\"go\" href=\"link/steam%s\">Sign in with Steam</a></p>\n"
-            "<p class=\"fine\">Steam tells FTESurf your public Steam ID, and "
-            "FTESurf reads your public name and avatar. No password and nothing "
+            "<p class=\"fine\">Steam tells World of Surf your public Steam ID, and "
+            "World of Surf reads your public name and avatar. No password and nothing "
             "private reaches this site. Your Steam name and avatar are shown "
             "with your times, in the game and on the public leaderboard, with "
             "a link to your Steam profile and beside any times you hold on "
-            "Momentum Mod and KSF under the same Steam account. On FTESurf's "
+            "Momentum Mod and KSF under the same Steam account. On World of Surf's "
             "lobbies your Steam name is your name.</p>" % (
                 "You started this from the game. Sign in, and this page "
                 "gives you a number to type into it."
@@ -1661,7 +1661,7 @@ def register(app, d):
             resp = _page(1, "Link Steam",
                          "<p class=\"who\">Signed in as <b>%s</b></p>\n"
                          "<h1>This account is banned</h1>\n<p class=\"lede\">This "
-                         "Steam account is banned from the FTESurf leaderboards.</p>"
+                         "Steam account is banned from the World of Surf leaderboards.</p>"
                          % who + installs_html(db, steamid, now, browser), 403)
         elif shown:
             log.info("link: account %s signed in for a link a game started", steamid)
@@ -1669,7 +1669,7 @@ def register(app, d):
                 "<p class=\"who\">Signed in as <b>%s</b></p>\n"
                 "<h1>Type this number into the game</h1>\n"
                 "<p class=\"linkcode\">%s</p>\n"
-                "<p class=\"lede\">Go back to FTESurf, type it into the "
+                "<p class=\"lede\">Go back to World of Surf, type it into the "
                 "<b>Link Steam</b> box and press <kbd>Enter</kbd>.</p>\n"
                 "<p class=\"fine\">Type it only into your own game, and give it to "
                 "nobody: whoever types it links their game to your Steam account. "
@@ -1684,7 +1684,7 @@ def register(app, d):
                 "<p class=\"lede\">That link is no longer waiting: it is more than "
                 "ten minutes old, was replaced by a newer one, or was already used "
                 "by another sign-in.</p>\n"
-                "<p class=\"fine\">In FTESurf, press Esc on the Link Steam box if it "
+                "<p class=\"fine\">In World of Surf, press Esc on the Link Steam box if it "
                 "is up, type <kbd>link</kbd> in the console, and use the new "
                 "address it gives you.</p>"
                 % who) + installs_html(db, steamid, now, browser, quiet=True))
@@ -1695,7 +1695,7 @@ def register(app, d):
                 "<h1>Type this code into the game</h1>\n"
                 "<p class=\"linkcode\">%s</p>\n"
                 "<ol class=\"steps\">\n"
-                "<li>Go back to FTESurf, on an official lobby.</li>\n"
+                "<li>Go back to World of Surf, on an official lobby.</li>\n"
                 "<li>No <b>Link Steam</b> box on screen? Open the console, type "
                 "<kbd>link</kbd>, press Enter, and close the console.</li>\n"
                 "<li>Type the code into the box and press <kbd>Enter</kbd>.</li>\n"

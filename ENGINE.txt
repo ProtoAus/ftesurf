@@ -30,6 +30,9 @@ patch    706
 # discovery/import. Exact current record bindings, retained originals, shared
 # crawler budget/lock/cooldown, imported Watch/line API; no native verification.
 # Verification/limits: tools/p706ksf.md. Engine commit/tag and QC Build unchanged.
+# Patch 705: World of Surf brand kit and web presentation candidate. Source-only;
+# native/QC identity, service routes, signed formats and player data stay intact.
+# No engine pin/tag, QC Build, release/feed or deployment change.
 # Patch 704: Windows Surf launcher exits after detached game spawn; source
 # checkouts skip public release updates instead of overwriting dev binaries.
 # Deploy the centered logo-only main source as an optimized 3.58 MB release,

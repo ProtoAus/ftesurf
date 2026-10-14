@@ -126,6 +126,7 @@ __pycache__/
 /.pi/workflows/*
 !/.pi/workflows/subagents-smoke.js
 !/README.md
+!/REBRANDING_PLAN.md
 !/LICENSE
 !/CONTRIBUTING.md
 # The coding-agent brief and its style appendix.  Un-ignored deliberately: `/*`
