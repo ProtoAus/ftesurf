@@ -82,6 +82,19 @@ python surfd/test_web.py
 python tools/test_surfd_deploy.py --ref <exact-commit> --out <owned-root>/artifacts/deploy -v
 ```
 
+## Committed gate and review
+
+Source candidate `d20b579fb6ace569227e700497755f876cce4489` is cleanly committed
+on top of inspected published `80618e5`. All **seven exact-commit deployment
+falsifier groups pass** (`deploy-final.log`), including the real flattened
+collector/index/Flask API suite at **23 tests, OK** (`deploy/flattened-collector.log`).
+Both missing-codec controls and collector/converter shell-failure controls act.
+No SSH or service/game/network process is started by those offline checks.
+A subsequent documentation-only verification receipt does not alter those source
+bytes. Independent reviewer identified the old seed bug and then the candidate's
+missing-byte fairness issue; both have acting controls and fixes. Targeted final
+closure returned **OK / PASS**, limited to read-only source/log inspection.
+
 No QC/native source or normalized format/codec change in this patch; no QC/native
 rebuild, engine pin/tag or QC Build bump. Main/bonus CSS66 only; stages, CSS100,
 unproven BSP identity and fleet delivery remain the existing explicit gates.
