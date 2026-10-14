@@ -28,7 +28,8 @@ if not (TOOLS / 'ksfconvert.py').is_file():
 sys.path.insert(0, str(TOOLS))
 import ksfconvert as C
 
-FILE = re.compile(r'replay_css_[0-9]+_([0-3])_([0-9]+)_([0-9]+)\.rec\Z')
+# Bound the advertised ASCII leaf before parsing numeric fields or making a URL.
+FILE = re.compile(r'(?=.{1,255}\Z)replay_css_[0-9]+_([0-3])_([0-9]+)_([0-9]+)\.rec\Z')
 BOARD = re.compile(r'([a-z0-9_]{1,64})/z([0-9]+)(?:m([1-3]))?\.json\Z')
 MAX_BYTES = 16 << 20
 MAX_QUEUE = 256
@@ -276,12 +277,14 @@ def install(conn, job, data):
         raise ValueError('KSF archive path escapes root')
     if directory.is_symlink() or (root / job['map']).is_symlink() or original.parent.is_symlink():
         raise ValueError('KSF archive directory is a link')
-    atomic(original, data)
-    atomic(directory / leaf, body)
+    # Intent first: any completed original must have a direct exact-job lookup,
+    # even if normalized publication is interrupted. Missing bytes retry safely.
     atomic(provenance(job), json.dumps(
         dict(job, sha256=info['sha256'], game='css66',
              upstream=K.KSF_BASE + '/api/replays/' + job['file'] + '?game=66t'),
         sort_keys=True).encode('utf-8'))
+    atomic(original, data)
+    atomic(directory / leaf, body)
     with conn:
         # Re-check inside the write transaction; an import could have won.
         conn.execute('BEGIN IMMEDIATE')

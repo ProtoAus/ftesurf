@@ -198,15 +198,21 @@ print('FLAT_CODEC_ACTED')'''
         self.assertGreaterEqual(int(count[1]), 16)
         self.assertIn('OK', r.stderr)
 
-    def suite_body(self):
+    @staticmethod
+    def posix(path):
+        if os.name == 'nt':
+            return run(['cygpath', '-u', str(path)]).stdout.strip()
+        return str(path)
+
+    def shell_body(self, marker):
         r = powershell('''
 $tokens=$null; $errors=$null
 $ast=[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $env:DEPLOY_TEST_TOOLS 'surfd-deploy.ps1'), [ref]$tokens, [ref]$errors)
 if ($errors.Count) { throw ($errors | Out-String) }
-$b=@($ast.FindAll({param($n) $n -is [System.Management.Automation.Language.StringConstantExpressionAst] -and $n.Value.Contains('cd STAGE/surfd')}, $true))
-if ($b.Count -ne 1) { throw 'expected exactly one test suite body' }
+$b=@($ast.FindAll({param($n) $n -is [System.Management.Automation.Language.StringConstantExpressionAst] -and $n.Value.Contains($env:DEPLOY_TEST_BODY_MARKER)}, $true))
+if ($b.Count -ne 1) { throw 'expected exactly one shell body' }
 @{Body=$b[0].Value} | ConvertTo-Json
-''')
+''', DEPLOY_TEST_BODY_MARKER=marker)
         self.assertEqual(r.returncode, 0, r.stdout+r.stderr)
         return json.loads(r.stdout.lstrip('\ufeff'))['Body']
 
@@ -239,7 +245,7 @@ sys.exit(int(os.environ.get('CONVERT_FAIL','0')))
             if os.name == 'nt':
                 return run(['cygpath', '-u', str(path)]).stdout.strip()
             return str(path)
-        body = self.suite_body().replace('STAGE', posix(stage))
+        body = self.shell_body('cd STAGE/surfd').replace('STAGE', posix(stage))
         shell = self.root/'suite.sh'
         shell.write_text(body, newline='\n')
         # Use the current Python interpreter, not an accidentally different
@@ -263,6 +269,126 @@ sys.exit(int(os.environ.get('CONVERT_FAIL','0')))
                     self.assertIn(acted, r.stdout)
             else:
                 self.assertIn('FAILED', r.stdout)
+
+    def test_publication_query_failure_refuses_before_transport_or_workspace(self):
+        repo, _, complete = self.fixture_repo()
+        for name in ('surfd-deploy.ps1', 'surfd-deploy-plan.ps1'):
+            shutil.copyfile(TOOLS/name, repo/'tools'/name)
+        marker = self.root/'transport-called'
+        workspaces = Path('C:/FTESurf-worktrees')
+        before = set(workspaces.glob('surfdship-*'))
+        r = powershell('''
+function ssh { Set-Content $env:DEPLOY_TEST_MARKER ssh; throw 'network forbidden' }
+function scp { Set-Content $env:DEPLOY_TEST_MARKER scp; throw 'network forbidden' }
+function New-Item { Set-Content $env:DEPLOY_TEST_MARKER workspace; throw 'workspace forbidden' }
+& (Join-Path $env:DEPLOY_TEST_REPO 'tools/surfd-deploy.ps1') -Ref $env:DEPLOY_TEST_REF
+''', DEPLOY_TEST_REPO=repo, DEPLOY_TEST_REF=complete, DEPLOY_TEST_MARKER=marker)
+        self.assertNotEqual(r.returncode, 0, r.stdout+r.stderr)
+        self.assertIn('could not establish publication', r.stdout+r.stderr)
+        self.assertFalse(marker.exists())
+        self.assertEqual(set(workspaces.glob('surfdship-*')), before)
+
+    def test_actual_destination_hash_refuses_text_filter_equivalence(self):
+        repo = self.root/'destination'
+        repo.mkdir()
+        git(repo, 'init', '-q')
+        (repo/'.gitattributes').write_text('*.py text eol=lf\n')
+        (repo/'app.py').write_bytes(b'print("fixture")\r\n')
+        git(repo, 'add', '--', '.gitattributes', 'app.py')
+        want = git(repo, 'rev-parse', ':app.py')
+        self.assertEqual(git(repo, 'hash-object', 'app.py'), want)  # Old filtered control ACTED.
+        self.assertNotEqual(git(repo, 'hash-object', '--no-filters', '--', 'app.py'), want)
+        body = self.shell_body('VERIFY_BAD=').replace('__REMOTE__', self.posix(repo))
+        body = body.replace('__MANIFEST__', 'app.py '+want)
+        shell = self.root/'verify.sh'
+        shell.write_text(body, newline='\n')
+        r = run(['sh', self.posix(shell)], check=False)
+        self.assertEqual(r.returncode, 1, r.stdout+r.stderr)
+        self.assertIn('VERIFY_BAD=1', r.stdout)
+        self.assertIn('DIFFERS app.py', r.stdout)
+        (repo/'app.py').write_bytes(b'print("fixture")\n')
+        r = run(['sh', self.posix(shell)])
+        self.assertIn('VERIFY_BAD=0', r.stdout)
+
+    def test_actual_reload_refuses_stale_workers_logs_master_and_health(self):
+        body = self.shell_body('SIGHUP_SENT=')
+        for scenario in ('fresh', 'draining', 'rotated', 'stale', 'historical', 'wrong-ready-pid',
+                         'master-changed', 'unhealthy', 'slow-health', 'ps-failed', 'signal-failed'):
+            remote = self.root/scenario
+            (remote/'logs').mkdir(parents=True)
+            (remote/'surfd.pid').write_text('100\n')
+            (remote/'step').write_text('0\n')
+            (remote/'elapsed').write_text('0\n')
+            (remote/'logs/surfd.log').write_text('old INFO [101] surfd ready (db=fixture)\n')
+            # All process/signal/HTTP actors are shell functions. No process is
+            # signalled, no socket is opened and fake sleeps never wait.
+            mocks = '''
+SCENARIO=__SCENARIO__
+cd __REMOTE__
+awk() {
+  if [ "${2-}" = /proc/uptime ]; then cat elapsed
+  else command awk "$@"; fi
+}
+ps() {
+  [ "$SCENARIO" != ps-failed ] || return 7
+  if [ "$1" = -o ]; then
+    echo 'gunicorn: master [surfd:app]'; return
+  fi
+  echo '100 1 gunicorn: master [surfd:app]'
+  step=$(cat step)
+  if [ "$step" = 0 ] || [ "$SCENARIO" = stale ]; then
+    echo '101 100 gunicorn: worker [surfd:app]'
+  else
+    if [ "$SCENARIO" = draining ] && [ "$step" = 1 ]; then
+      echo '101 100 gunicorn: worker [surfd:app]'
+    fi
+    echo '102 100 gunicorn: worker [surfd:app]'
+  fi
+}
+kill() {
+  echo SIGNAL_ACTED > signal
+  [ "$SCENARIO" != signal-failed ] || return 9
+}
+sleep() {
+  elapsed=$(cat elapsed); echo "$((elapsed+$1))" > elapsed
+  step=$(cat step); step=$((step+1)); echo "$step" > step
+  if [ "$step" = 1 ]; then
+    case "$SCENARIO" in
+      rotated) mv logs/surfd.log logs/surfd.log.1; echo 'new INFO [102] surfd ready (db=fixture)' > logs/surfd.log ;;
+      master-changed) echo 200 > surfd.pid ;;
+      historical|stale) ;;
+      wrong-ready-pid) echo 'new INFO [101] surfd ready (db=fixture)' >> logs/surfd.log ;;
+      *) echo 'new INFO [102] surfd ready (db=fixture)' >> logs/surfd.log ;;
+    esac
+  fi
+}
+curl() {
+  cat step > health-step
+  if [ "$SCENARIO" = slow-health ]; then
+    elapsed=$(cat elapsed); echo "$((elapsed+$3))" > elapsed
+    echo '{"ok":false}'
+  elif [ "$SCENARIO" = unhealthy ]; then echo '{"ok":false}'
+  else echo '{"ok":true}'; fi
+}
+'''.replace('__SCENARIO__', scenario).replace('__REMOTE__', self.posix(remote))
+            shell = remote/'reload.sh'
+            script = body.replace('__REMOTE__', self.posix(remote)).replace('__MASTER__', '100')
+            script = script.replace('cd REMOTE', 'cd '+self.posix(remote))  # Prior-script red control.
+            shell.write_text(mocks+script, newline='\n')
+            r = run(['sh', self.posix(shell)], check=False)
+            (args.out/('reload-'+scenario+'.log')).write_text(r.stdout+r.stderr)
+            with self.subTest(scenario=scenario):
+                self.assertLessEqual(int((remote/'elapsed').read_text()), 60)
+                if scenario in ('fresh', 'draining', 'rotated'):
+                    self.assertEqual(r.returncode, 0, r.stdout+r.stderr)
+                    self.assertIn('RELOAD_VERIFIED=100 worker=102', r.stdout)
+                    self.assertEqual(int((remote/'health-step').read_text()),
+                                     2 if scenario == 'draining' else 1)
+                else:
+                    self.assertNotEqual(r.returncode, 0, r.stdout+r.stderr)
+                    self.assertNotIn('RELOAD_VERIFIED=', r.stdout)
+                    if scenario not in ('unhealthy', 'slow-health'):
+                        self.assertFalse((remote/'health-step').exists())
 
     def test_powershell_sources_parse(self):
         r = powershell('''

@@ -157,6 +157,9 @@ try {
               "`n     (deploying the TREE is how another session's uncommitted work ships)")
     }
     $unpushed = & git log --oneline "origin/main..$commit" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Fail "could not establish publication against origin/main; fetch and inspect the ref first"
+    }
     if ($unpushed -and $AllowUnpushed) {
         Write-Host $unpushed
         Write-Host "  -AllowUnpushed: deploying $Ref, which is not on origin/main" -ForegroundColor Yellow
@@ -412,7 +415,7 @@ bad=0
 while read -r f want; do
   [ -n "$f" ] || continue
   if [ ! -f "$f" ]; then echo "ABSENT $f"; bad=$((bad+1)); continue; fi
-  got=$(git hash-object "$f")
+  got=$(git hash-object --no-filters -- "$f")
   if [ "$got" != "$want" ]; then echo "DIFFERS $f want=$want got=$got"; bad=$((bad+1)); fi
 done <<'MANIFEST'
 __MANIFEST__
@@ -431,55 +434,78 @@ Write-Host "  all $($dest.Count) files hash-match $sha" -ForegroundColor Green
 # ---- 6. reload, then verify -------------------------------------------------
 if (-not $NoReload) {
     Step "6. SIGHUP the master (never pid 0, never the unit)"
+    # The shipped service has ONE worker and a 20s graceful timeout. Require
+    # all old workers gone, one new direct child of the SAME master, that PID's
+    # fresh app-ready line, and health. Historical logs/global counts cannot act.
     $body = @'
-set -e
-cd REMOTE
+set -eu
+cd __REMOTE__
 P=$(cat surfd.pid)
-[ "$P" = "0" ] && { echo REFUSE_PID_ZERO; exit 1; }
-ps -o cmd= -p "$P" | grep -q 'surfd:app' || { echo REFUSE_NOT_SURFD; exit 1; }
+[ "$P" = "__MASTER__" ] && [ "$P" != 0 ] || { echo REFUSE_MASTER_CHANGED; exit 1; }
+master=$(ps -o cmd= -p "$P")
+case "$master" in *gunicorn*surfd:app*) ;; *) echo REFUSE_NOT_SURFD; exit 1 ;; esac
+workers() {
+  snapshot=$(ps -eo pid=,ppid=,cmd=) || return 1
+  printf '%s\n' "$snapshot" | awk -v m="$P" '$2==m && /gunicorn/ && /surfd:app/ {print $1}'
+}
+old=$(workers)
+[ -n "$old" ] || { echo REFUSE_NO_OLD_WORKER; exit 1; }
+log_id=$(stat -c '%d:%i' logs/surfd.log)
+lines=$(wc -l < logs/surfd.log)
+clock() { awk '{print int($1)}' /proc/uptime; }
+deadline=$(($(clock)+60))
 kill -HUP "$P"
 echo "SIGHUP_SENT=$P"
-sleep 8
-echo "--- app log tail ---"
-tail -8 logs/surfd.log
-echo "--- processes ---"
-ps -eo pid=,ppid=,cmd= | grep 'surfd:app' | grep -v grep | wc -l
-echo "--- health ---"
-curl -s -m 10 http://127.0.0.1:8084/health
-echo
+while [ "$(clock)" -lt "$deadline" ]; do
+  [ "$(cat surfd.pid)" = "$P" ] || { echo REFUSE_MASTER_CHANGED; exit 1; }
+  master=$(ps -o cmd= -p "$P")
+  case "$master" in *gunicorn*surfd:app*) ;; *) echo REFUSE_NOT_SURFD; exit 1 ;; esac
+  now=$(workers)
+  # No old direct child may still serve. Exactly one new child must remain.
+  count=$(printf '%s\n' "$now" | awk 'NF {n++} END {print n+0}')
+  stale=0
+  for w in $now; do
+    for previous in $old; do [ "$w" != "$previous" ] || stale=1; done
+  done
+  if [ "$count" = 1 ] && [ "$stale" = 0 ]; then
+    W=$now
+    # Rotation starts a fresh file; the new worker's PID still gates readiness.
+    offset=$((lines+1))
+    current_id=$(stat -c '%d:%i' logs/surfd.log)
+    current_lines=$(wc -l < logs/surfd.log)
+    if [ "$current_id" != "$log_id" ] || [ "$current_lines" -lt "$lines" ]; then offset=1; fi
+    if tail -n "+$offset" logs/surfd.log | grep -F " INFO [$W] surfd ready (" >/dev/null; then
+      remaining=$((deadline-$(clock)))
+      [ "$remaining" -gt 0 ] || break
+      timeout=$remaining
+      [ "$timeout" -le 5 ] || timeout=5
+      health=$(curl -fs -m "$timeout" http://127.0.0.1:8084/health) || health=''
+      if printf '%s\n' "$health" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' &&
+         [ "$(clock)" -le "$deadline" ]; then
+        echo "RELOAD_VERIFIED=$P worker=$W"
+        exit 0
+      fi
+    fi
+  fi
+  remaining=$((deadline-$(clock)))
+  [ "$remaining" -gt 0 ] || break
+  delay=$remaining
+  [ "$delay" -le 2 ] || delay=2
+  sleep "$delay"
+done
+echo REFUSE_RELOAD_TIMEOUT
+exit 1
 '@
-    $rel = Invoke-PiScript -Name "reload" -AllowFail -Body ($body -replace 'REMOTE', $Remote)
-    if ($rel -cmatch "REFUSE_") {
-        Fail "the reload was refused; the new files are in place but the OLD code is still serving"
+    $rel = Invoke-PiScript -Name "reload" -AllowFail -Body (
+        $body.Replace('__REMOTE__', $Remote).Replace('__MASTER__', $pidfile))
+    if ($script:PiExit -ne 0 -or $rel -cmatch "REFUSE_") {
+        Fail "reload not verified; installed files/backups and owned stage are retained; live code is unproven"
     }
-    if ($rel -cnotmatch "SIGHUP_SENT=$pidfile") { Fail "the master was not signalled" }
-    # `surfd ready` is the app's own boot line, and a SIGHUP only re-forks the
-    # WORKER, so heartbeats from the 12 lobbies push it out of any small tail of
-    # surfd.log.  The first cut reported a NOTE on a clean reload for that reason.
-    # Grep for it instead of tailing, and prove the reload by the worker's AGE:
-    # the master's pid must be unchanged and the worker's must be new.
-    $ready = Invoke-PiSsh -Cmd "grep 'surfd ready' '$Remote/logs/surfd.log' | tail -1"
-    Write-Host "  last boot line: $ready"
-    if ($ready -cnotmatch "surfd ready") {
-        Write-Host "  NOTE: no 'surfd ready' ever logged -- read logs/surfd.log before trusting this" -ForegroundColor Yellow
+    if ($rel -cnotmatch "SIGHUP_SENT=$pidfile" -or
+        $rel -cnotmatch "RELOAD_VERIFIED=$pidfile worker=\d+") {
+        Fail "reload did not prove the same master and a fresh ready replacement worker"
     }
-    # The reload must leave the MASTER's pid alone and give the WORKER a new one.
-    # Spelled as a shipped script: an earlier cut put a `$(...)` command
-    # substitution inside a double-quoted PowerShell argument, where the escaping
-    # collapsed and the remote bash tried to execute the pid as a command
-    # ("2479950: command not found") -- the check printed nothing and still passed.
-    $ageBody = @'
-M=$(cat REMOTE/surfd.pid)
-ps -o pid=,ppid=,etimes=,comm= -p "$M" --no-headers
-ps -eo pid=,ppid=,etimes=,comm= --no-headers | awk -v m="$M" '$2==m {print}'
-'@
-    $ages = Invoke-PiScript -Name "ages" -AllowFail -Body ($ageBody -replace 'REMOTE', $Remote)
-    $countLine = ($rel -split "`n") | Where-Object { $_ -match '^\d+$' } | Select-Object -Last 1
-    if ([int]$countLine -lt 2) {
-        Fail "only $countLine surfd:app process(es) after the reload -- expected a master and a worker"
-    }
-    if ($rel -notmatch '"ok"\s*:\s*true') { Fail "/health did not answer ok" }
-    Write-Host "  $countLine processes (master + worker), /health ok" -ForegroundColor Green
+    Write-Host "  same master, replacement worker ready, old workers retired, /health ok" -ForegroundColor Green
 }
 
 # ---- 7. the database backups: what they cost, and whose they are -----------

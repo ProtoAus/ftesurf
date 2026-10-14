@@ -702,14 +702,21 @@ def rec_row(mp, zone, mode, rec):
             "seconds": t, "binding": "board"}
 
 
-def board_rows(cache, mp, zone, mode):
-    return [r for r in (rec_row(mp, zone, mode, x)
-                        for x in board_load(cache, mp, zone, mode)["rows"]) if r]
+def board_rows(cache, mp, zone, mode, fresh=()):
+    live = {(r["player"], r["runid"]) for x in fresh if isinstance(x, dict)
+            for r in [rec_row(mp, zone, mode, x)] if r}
+    return [dict(r, binding="board" if r["runid"] and
+                 (r["player"], r["runid"]) in live else "cache")
+            for r in (rec_row(mp, zone, mode, x)
+                      for x in board_load(cache, mp, zone, mode)["rows"]) if r]
 
 
-def map_rows(cache, infos, modes=(0,)):
+def map_rows(cache, infos, modes=(0,), fetched=()):
     """Every cached board row as a run row, plus the count unusable, plus the
-    boards they come from."""
+    boards they come from. Only exact rows fetched THIS tick are authority."""
+    live = {(mp, z, m, r["player"], r["runid"]) for mp, z, m, page in fetched
+            for x in page if isinstance(x, dict)
+            for r in [rec_row(mp, z, m, x)] if r}
     rows, bad, boards = [], 0, []
     for mp in sorted(infos):
         for m in modes:
@@ -722,6 +729,8 @@ def map_rows(cache, infos, modes=(0,)):
                     if r is None:
                         bad += 1
                     else:
+                        r["binding"] = ("board" if r["runid"] and
+                                        (mp, z, m, r["player"], r["runid"]) in live else "cache")
                         rows.append(r)
     return rows, bad, boards
 
@@ -942,13 +951,16 @@ def watch_mode(args, have, cache):
     # not: filing only this tick's page and clearing its marker lost the pages
     # the earlier run never filed (review, 5 Oct).  The upsert is idempotent.
     owing = set(owed)
+    fresh = {}
+    for mp, z, m, page in fetched:
+        fresh.setdefault((mp, z, m), []).extend(page)
     rows, files = [], []
     for mp, z, m, page in fetched:
         b = (mp, z, m)
         if b not in owing:
             rows += [r for r in (rec_row(mp, z, m, rec) for rec in page) if r]
         elif b not in files:
-            rows += board_rows(cache, *b)       # every page this tick included
+            rows += board_rows(cache, *b, fresh=fresh[b])  # old pages stay cache-only
         if b not in files:
             files.append(b)
     # Boards owed and not fetched: whole, RECOVER_ROWS at a time, and never for
@@ -1085,6 +1097,7 @@ def maps_mode(args, have, cache):
     maps = [m for m in names if m in have]
     budget = KSF_REQ_DEFAULT if args.max is None else args.max
     pacer = Pacer(args.delay, budget)
+    fetched = []
     ixf = os.path.join(cache, "index.json")
     idx = _load(ixf)
     idx = idx if isinstance(idx, dict) else {}
@@ -1094,7 +1107,7 @@ def maps_mode(args, have, cache):
                             args.delay))
     try:
         infos, absent, left = sweep_maps(maps, cache, args.depth, pacer, args.modes,
-                                         idx=idx)
+                                         fetched=fetched, idx=idx)
     except Refused as e:
         print("  refused: %s -- stopping, nothing is retried" % e)
         # What the cache already holds is still good; read it with no budget.
@@ -1102,7 +1115,7 @@ def maps_mode(args, have, cache):
                                          args.modes, idx=idx)
     finally:
         _save(ixf, idx)
-    rows, bad, boards = map_rows(cache, infos, args.modes)
+    rows, bad, boards = map_rows(cache, infos, args.modes, fetched)
     kinds = [sum(1 for r in rows if (r["track"], r["leg"]) == (0, 0)),
              sum(1 for r in rows if r["leg"] > 0),
              sum(1 for r in rows if r["track"] > 0)]
@@ -1241,7 +1254,7 @@ def main():
         finish_topups(getattr(args, "_topups", []))
         clear_owed(cache, boards)
         print("board rows set  %d" % n)
-        if demo_max:
+        if args.watch and args.go and args.demos:
             import ksfgrab
             ksfgrab.tick(cache, demo_max, args.delay)
         return 0
@@ -1277,11 +1290,14 @@ def write_rows(rows):
                         if oldseconds and newseconds > oldseconds:
                             continue
                         if oldseconds and newseconds == oldseconds and r.get("binding") != "board":
-                            # Seed lacks file metadata, not record identity. Keep
-                            # unknown/unchanged IDs, never a known replacement's demo.
+                            # Cache-only ties cannot undo a known ID replacement;
+                            # only fresh exact board/file metadata can rebind it.
+                            # Seed lacks files, not IDs: unchanged/unknown keeps PB.
                             incoming = r.get("runid", "")
                             if (not incoming or incoming.rsplit("-", 1)[0]
-                                    == previous["runid"].rsplit("-", 1)[0]):
+                                    == previous["runid"].rsplit("-", 1)[0]
+                                    or (r.get("binding") == "cache"
+                                        and r["when"] <= previous["submitted"])):
                                 continue
                         if not oldseconds or newseconds == oldseconds:
                             if r["when"] < previous["submitted"]:

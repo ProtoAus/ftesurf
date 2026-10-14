@@ -12284,3 +12284,36 @@ the game fetches its own map list. The menu half is Patch 652.
 - Source/offline checks, controls and limits: tools/p711ksfrecovery.md. No new
   stage/CSS100 support, codec clock/map guard/native evidence semantics, game/GPU,
   remote install, cron enablement, engine pin/tag or QC Build change.
+
+### P713 — close KSF cache/CLI/publication and backend delivery gaps
+
+- **A cached board is not a newly fetched authority.** After a seed replaces a
+  known equal-raw-time/same-date record ID, an older owed board must not change
+  it back and make its old original linkable again. `board_rows`/`map_rows`
+  label cache-only rows; only exact row identities fetched THIS tick get board
+  authority, including mixed owed/fresh boards and `--from-maps`. No record-ID
+  monotonicity is inferred. Older/slower/rounded-only and unchanged/unknown seed
+  protections remain; fresh exact board/file metadata may restore the binding.
+- **Opted-in demo recovery is independent of its network reservation.** Real
+  `--watch --go --demos --max 0/1/2` still calls the collector with zero demo
+  requests, under the shared lock. Cold downloads remain bounded by the reserved
+  allowance. Publish exact-job provenance BEFORE original/normalized bytes so
+  a normalized-file write failure cannot strand a newly retained original.
+  Intent without completed original bytes uses the existing missing-byte path.
+- Cap the common advertised ASCII leaf at255 before integer conversion, queue
+  admission or request construction. A sub-cap board can otherwise carry a
+  5,000-digit player/date filename and abort the whole tick. Malformed rows must
+  not request/park the host or prevent the following valid row from linking.
+- **Delivery verification must act on the claimed state.** Ref-query failure is
+  not publication; use raw `git hash-object --no-filters --` at the destination.
+  Reload snapshots the inspected master's direct workers and waits bounded60s
+  for all old workers gone, exactly one new child, that PID's fresh ready line,
+  healthy response and successful remote exit. Track log rotation and a monotonic
+  deadline; cap health and sleep to remaining budget, not30 sleeps plus HTTP time.
+  Old health/global process counts/
+  historical boot lines cannot verify a replacement. Do not print app log tails.
+- Original-source red controls reproduce all six reviewer findings plus the
+  filename boundary. Repaired offline collector28, codec9 and delivery10 groups
+  pass; full backend regressions and exact final-commit checks are recorded in
+  tools/p713ksffinal.md. No upstream/game/GPU, installation/reload/cron, native
+  evidence, engine pin/tag or QC Build change. Live fleet acceptance is deferred.

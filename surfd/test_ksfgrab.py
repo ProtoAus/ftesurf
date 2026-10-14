@@ -85,6 +85,33 @@ class Tests(unittest.TestCase):
         G.discover(self.cache, state, self.conn)
         self.assertEqual(len(state['jobs']), 1)
 
+    def test_oversized_advertised_numbers_do_not_abort_valid_row(self):
+        malformed = [raw(file='replay_css_%s_0_7_1700000000.rec' % ('5' * 5000)),
+                     raw(file='replay_css_5_0_%s_1700000000.rec' % ('7' * 5000)),
+                     raw(file='replay_css_5_0_7_%s.rec' % ('1' * 5000))]
+        boundary = self.r['file'].replace('css_5_', 'css_' + '5' * 225 + '_')
+        self.assertEqual(len(boundary), 255)
+        self.assertIsNotNone(G.candidate('surf_test', 0, 0, raw(file=boundary)))
+        malformed.append(raw(file=boundary.replace('css_', 'css_5', 1)))
+        for r in malformed:
+            with self.subTest(file=r['file'][:40]):
+                self.assertIsNone(G.candidate('surf_test', 0, 0, r))
+                job = dict(self.job, file=r['file'], runid=K.record_key(r))
+                self.assertFalse(G.valid_job(job))
+                with patch.object(G.urllib.request, 'build_opener') as opener:
+                    with self.assertRaises(ValueError):
+                        G.fetch(r['file'])
+                    opener.assert_not_called()
+        self.board([*malformed, self.r])
+        with patch.object(G.time, 'sleep'), patch.object(G, 'fetch') as network:
+            def download(file):
+                self.assertEqual(file, self.r['file'])
+                return binary()
+            self.assertEqual(G.tick(self.cache, 2, download=download), (1, 1))
+            network.assert_not_called()
+        self.assertFalse((Path(self.cache) / '.refused').exists())
+        self.assertGreater(self.conn.execute('SELECT replay_id FROM runs').fetchone()[0], 0)
+
     def test_install_api_idempotent_no_native_promotion(self):
         # Real SQLite schema/API, not a stubbed index or reader.
         rid = G.install(self.conn, self.job, binary())
@@ -267,6 +294,95 @@ class Tests(unittest.TestCase):
                 with patch.object(G.time,'sleep'):
                     self.assertEqual(G.tick(self.cache,download=lambda f:binary()),(1,1))
                 self.assertTrue(G.ready(self.conn,G.candidate('surf_test',0,0,updated)))
+
+    def test_owed_cache_does_not_resurrect_same_date_seed_replacement(self):
+        self.board([self.r])
+        K.mark_owed(self.cache, 'surf_test', 0, 0)
+        rid = G.install(self.conn, self.job, binary())
+        replacement = raw(record_id=112, file=None)
+        seed = dict(K.rec_row('surf_test', 0, 0, replacement), binding='seed')
+        K.write_rows([seed])
+        K._save(os.path.join(self.cache, '.refused'), dict(until=int(time.time()) + 3600))
+        argv = ['ksfimport.py', '--watch', '--go', '--demos', '--cache', self.cache, '--max', '6']
+        with patch.object(sys, 'argv', argv), patch.object(K, 'playable_maps', return_value={'surf_test'}), \
+             patch.object(K, 'fetch', side_effect=AssertionError('board network forbidden')), \
+             patch.object(G, 'transport', side_effect=AssertionError('demo network forbidden')):
+            self.assertEqual(K.main(), 0)
+        self.assertEqual(self.conn.execute('SELECT runid,replay_id FROM runs').fetchone()[:],
+                         (seed['runid'], 0))
+        self.assertIsNotNone(self.conn.execute('SELECT id FROM replays WHERE id=?', (rid,)).fetchone())
+        # An ordinary cache-only/from-maps replay of A must also preserve B.
+        K.write_rows(K.board_rows(self.cache, 'surf_test', 0, 0))
+        self.assertEqual(self.conn.execute('SELECT runid,replay_id FROM runs').fetchone()[:],
+                         (seed['runid'], 0))
+        # A newly fetched exact B page is authority and can restore its demo.
+        updated = raw(record_id=112)
+        K.write_rows([K.rec_row('surf_test', 0, 0, updated)])
+        self.assertTrue(G.current(self.conn, G.candidate('surf_test', 0, 0, updated)))
+        self.assertGreater(G.install(self.conn, G.candidate('surf_test', 0, 0, updated), binary()), 0)
+
+    def test_main_zero_demo_reservation_still_repairs_retained_original(self):
+        self.board([self.r])
+        rid = G.install(self.conn, self.job, binary())
+        row = self.conn.execute('SELECT * FROM replays WHERE id=?', (rid,)).fetchone()
+        path, _ = S.replay_file(row)
+        K._save(os.path.join(self.cache, '.refused'), dict(until=int(time.time()) + 3600))
+        for maximum in (0, 1, 2):
+            Path(path).unlink()
+            argv = ['ksfimport.py', '--watch', '--go', '--demos', '--cache', self.cache,
+                    '--max', str(maximum)]
+            with patch.object(sys, 'argv', argv), patch.object(K, 'playable_maps', return_value={'surf_test'}), \
+                 patch.object(K, 'fetch', side_effect=AssertionError('board network forbidden')), \
+                 patch.object(G, 'transport', side_effect=AssertionError('demo network forbidden')), \
+                 patch.object(G.time, 'sleep') as sleep:
+                self.assertEqual(K.main(), 0)
+                self.assertTrue(G.ready(self.conn, self.job))
+                self.assertEqual(self.conn.execute('SELECT replay_id FROM runs').fetchone()[0], rid)
+                sleep.assert_not_called()
+
+    def test_normalized_publish_failure_keeps_original_recoverable(self):
+        self.board([self.r])
+        atomic = G.atomic
+        def fail_normalized(path, data):
+            if path.parent == Path(S.KSF_DIR) / 'surf_test' / 'main':
+                raise OSError('acted normalized publication failure')
+            return atomic(path, data)
+        with patch.object(G.time, 'sleep'), patch.object(G, 'atomic', side_effect=fail_normalized):
+            self.assertEqual(G.tick(self.cache, download=lambda f: binary()), (1, 0))
+        self.assertEqual(len(list((Path(S.KSF_DIR) / '.originals').glob('*.rec'))), 1)
+        future = int(time.time()) + 86401
+        K._save(os.path.join(self.cache, '.refused'), dict(until=future + 3600))
+        with patch.object(G.time, 'time', return_value=future), patch.object(G.time, 'sleep') as sleep:
+            self.assertEqual(G.tick(self.cache, maximum=0,
+                                   download=lambda f: self.fail('retained original refetched')), (0, 1))
+            sleep.assert_not_called()
+        self.assertTrue(G.ready(self.conn, self.job))
+        self.assertTrue(G.provenance(self.job).is_file())
+
+    def test_from_maps_skips_malformed_rows_and_marks_only_exact_fresh(self):
+        self.board([self.r, raw(time='0.06', steamID='STEAM_0:0:456')])
+        infos = {'surf_test': {}}
+        rows, bad, boards = K.map_rows(self.cache, infos)
+        self.assertEqual((len(rows), bad, boards), (1, 1, [('surf_test', 0, 0)]))
+        self.assertEqual(rows[0]['binding'], 'cache')
+        for invalid_fresh in (raw(time='0.06'), raw(steamID='STEAM_0:0:789')):
+            rows, _, _ = K.map_rows(self.cache, infos,
+                                   fetched=[('surf_test', 0, 0, [invalid_fresh])])
+            self.assertEqual(rows[0]['binding'], 'cache')
+            self.assertEqual(K.board_rows(self.cache, 'surf_test', 0, 0,
+                                         fresh=[invalid_fresh])[0]['binding'], 'cache')
+        rows, bad, _ = K.map_rows(self.cache, infos,
+                                 fetched=[('surf_test', 0, 0, [self.r])])
+        self.assertEqual((len(rows), bad, rows[0]['binding']), (1, 1, 'board'))
+        self.conn.execute('DELETE FROM runs'); self.conn.commit()
+        argv = ['ksfimport.py', '--from-maps', 'known', '--go', '--cache', self.cache, '--max', '0']
+        with patch.object(sys, 'argv', argv), patch.object(K, 'playable_maps', return_value={'surf_test'}), \
+             patch.object(K, 'known_ksf_maps', return_value=['surf_test']), \
+             patch.object(K, 'sweep_maps', return_value=(infos, 0, 0)), \
+             patch.object(K, 'fetch', side_effect=AssertionError('network forbidden')):
+            self.assertEqual(K.main(), 0)
+        self.assertEqual(self.conn.execute('SELECT runid,replay_id FROM runs').fetchone()[:],
+                         (self.job['runid'], 0))
 
     def test_budget_reservation_and_shared_lock_in_main_path(self):
         seen = []

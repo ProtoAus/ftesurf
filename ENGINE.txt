@@ -25,7 +25,14 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-703
-patch    712
+patch    713
+# Patch 713: cache-only KSF boards cannot resurrect a tied superseded demo;
+# opted-in zero-budget CLI ticks still repair originals, and publication intent
+# precedes bytes. Bound advertised leaves before integer parsing/requests.
+# Exact-commit backend delivery now refuses unproven publication, filtered
+# byte equivalence, stale workers and historical boot logs. Offline controls
+# only; no live install/reload/cron, engine pin/tag or QC Build change.
+# Verification and remaining gates: tools/p713ksffinal.md.
 # Patch 712: show the strafe trainer in native/Momentum/KSF replay, sampling
 # recorded yaw and resolved side movement on the file clock. Pause/rate/seek
 # cannot age viewer input into grades; bounded catchup hides partial results.

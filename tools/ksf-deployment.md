@@ -96,3 +96,19 @@ Native subagent tool was not exposed in this continuation; no independent-child
 review or alternate runner/provider is claimed. GPU/performance gates belong
 to the other bot. Live NanoPi staging, installation, worker reload and scheduler
 enablement are **not verified by these offline gates** and remain deferred.
+
+## P713 final-readiness follow-up
+
+The original seven-group snapshot above is historical. The current offline
+suite has10 groups, including fail-closed publication queries, raw installed
+bytes despite Git text filters, and the actual reload shell. Reload now requires
+the same master, all snapshotted old direct workers retired, one new worker,
+that PID's fresh app-ready line and health plus a successful remote exit.
+Log identity/offset handles rotation; a monotonic60s budget also limits health
+and sleep. Global counts, historical boot lines or old health cannot pass.
+
+Two read-only reviewers and pre-fix acted controls exposed/closed the collector
+and delivery gaps. The final collector has28 offline tests; exact-commit and
+flattened receipts, controls, commands and unverified live gates are recorded in
+`tools/p713ksffinal.md` and its owned checkpoint. Nothing here approves unrelated
+presentation/config/template/QC changes, a release or crawler enablement.
