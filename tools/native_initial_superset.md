@@ -88,3 +88,28 @@ warnings, bound compiler/helper hashes and argv in `helper-build02.log`.
 164 historical+new unit tests and recorder 306 checks pass. Review remains
 required; all runtime fixtures, including failure, are retained under the owned
 `runtime/initial/` for review and later explicitly verified retirement.
+
+## Separate debit/exhaustion follow-up
+
+`--exhaustion-only` selects ONLY two fresh crash-after-corrupt-exhaustion-first/
+last cases; it does not repeat or relabel the completed six-case matrices. Expected
+attempt1 rows remain independently signed and native-published. Fresh ordinary
+cold corrupt passes ACT partial installation/debit2 then refusal/debit3. At3,
+candidate keeps all original rows, before keeps reduced pending rows. Another
+ordinary startup must refuse exhaustion with exact full updater metadata/stage map,
+ledger/version/content/consent/protected/unmanaged closure unchanged. Repair ONLY
+the signed staged input (not native authority or destination): fresh startup must
+still refuse unresolved attempt3 unchanged, not silently install/reset its budget.
+Units reject reset/extra debit, version and row mutations at3 in both positions.
+
+Final executable source is frozen and compared in fresh
+`exhaustion-before01`/`exhaustion-subject01`, each PASS2 cases/10 natural pre+post
+job0/full-export phases. Exact joined mirror census is manifest2/object2 each;
+all eight cold phases per arm add no GETs. `exhaustion-preregister.md`, exact
+`exhaustion-*-command.txt`, result/source bindings and
+`exhaustion-validation-audit.json` preserve the acting predictions/results.
+The preceding before02/subject01 matrices retain their original source binding;
+they are not represented as final-source six-case reruns. Final historical+new
+units:165 PASS. No optional explicit destination-repair/complete-only cleanup
+at3 claim; that is not needed to prove unresolved exhaustion. No native authority
+is authored or replaced by this harness after first publication.

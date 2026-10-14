@@ -8,6 +8,7 @@ from pathlib import Path
 
 from test_update_native_journal import preflight_paths, sha, snapshot, ensure_retirable, PENDING_ERROR
 from test_update_native_journal_initial import bind_initial, live, cold_phase
+from test_update_native_journal_interrupt import EXHAUSTED
 from test_update_native_journal_deferred import helper_identity
 from test_update_native_publication_superset import (BEFORE, SUBJECT, prepare, grade_state,
     full_authority, mirror_server)
@@ -25,17 +26,42 @@ def initial_namespace(meta, signed, stages, authority=None, temp=None):
     assert inventory(meta / 'ingame') == expected, 'exact initial authority/temp/full-stage namespace mismatch'
 
 
-def partial_authority(actual, files, paths, pending, version, before):
-    expected = journal(files, [pending] if before else paths, version, 2)
+def partial_authority(actual, files, paths, pending, version, before, attempts=2):
+    expected = journal(files, [pending] if before else paths, version, attempts)
     assert actual == expected, 'partial replay original rows/attempts/version mismatch'
     rejected = False
     try:
-        full_authority(actual, files, paths, version, 2)
+        full_authority(actual, files, paths, version, attempts)
     except AssertionError:
         assert before
         rejected = True
     assert rejected == before, 'legacy reduction control failed to discriminate'
     return rejected
+
+
+def exhaust_initial(engine, dest, meta, case, expected, ledger, signed, files, paths,
+                    pending, version, before, stages, payload):
+    authority = meta / 'ingame/journal.json'
+    cold_phase(engine, dest, case / 'cold-corrupt-attempt3', error=PENDING_ERROR)
+    grade_state(dest, meta, expected, ledger, signed, version)
+    partial_authority(json.loads(authority.read_bytes()), files, paths, pending, version, before, 3)
+    initial_namespace(meta, signed, stages, authority=authority.read_bytes())
+    snapshot(dest, case / 'debit3')
+    for repair in (False, True):
+        if repair:
+            # Repair only signed stage input, never native authority or destination.
+            (meta / 'ingame/staged' / files[pending]['hash']).write_bytes(payload[pending])
+            stages[files[pending]['hash']] = payload[pending]
+        frozen = inventory(meta)
+        cold_phase(engine, dest, case / ('cold-exhausted-stage-repaired' if repair else 'cold-exhausted'),
+                   error=EXHAUSTED)
+        assert inventory(meta) == frozen, 'exhausted startup mutated native metadata/stages'
+        grade_state(dest, meta, expected, ledger, signed, version)
+        partial_authority(json.loads(authority.read_bytes()), files, paths, pending, version, before, 3)
+        initial_namespace(meta, signed, stages, authority=authority.read_bytes())
+    (case / 'exhaustion-oracle.json').write_text(json.dumps(dict(status='PASS',
+        native_debits=[1, 2, 3], ordinary_exhaustion_unchanged=True,
+        signed_stage_repair_still_exhausted=True, authority_authored_by_harness=False), indent=2))
 
 
 def main():
@@ -44,6 +70,7 @@ def main():
         ap.add_argument('--' + name, type=Path, required=True)
     ap.add_argument('--objects', type=Path, action='append', required=True)
     ap.add_argument('--expect-before', action='store_true')
+    ap.add_argument('--exhaustion-only', action='store_true', help='fresh bounded debit/exhaustion extension only')
     a = ap.parse_args()
     assert os.name == 'nt'
     engine, symbols = (p.resolve(strict=True) for p in (a.engine, a.symbols))
@@ -64,13 +91,15 @@ def main():
     hashes = {str(p): sha(p.read_bytes()) for p in sources}
     result = dict(status='FAIL', binding=binding, helper_sha256=helper_hash, sources=hashes,
                   signed_sha256=sha(signed), signed_rows=len(manifest['files']), selected_rows=len(files),
-                  objects=len({f['hash'] for f in manifest['files']}), cases=[])
+                  objects=len({f['hash'] for f in manifest['files']}), exhaustion_only=a.exhaustion_only, cases=[])
     expected_http = Counter()
     hits = Counter()
     try:
         with mirror_server(manifest, signed, payload, files) as (hits, url):
-            for name in ('none', 'source-lock', 'crash-before', 'crash-after-repaired',
-                         'crash-after-corrupt-first', 'crash-after-corrupt-last'):
+            scenarios = ('crash-after-corrupt-exhaustion-first', 'crash-after-corrupt-exhaustion-last') if a.exhaustion_only else (
+                'none', 'source-lock', 'crash-before', 'crash-after-repaired',
+                'crash-after-corrupt-first', 'crash-after-corrupt-last')
+            for name in scenarios:
                 mode = 'crash-after' if name.startswith('crash-after') else name
                 dest, meta, expected, ledger = prepare(root, name, payload, files, paths)
                 case = evidence / name
@@ -120,9 +149,14 @@ def main():
                             del stages[files[content]['hash']]  # freshly installed by this cold pass, in both clients
                             initial_namespace(meta, signed, stages, authority=authority.read_bytes())
                             snapshot(dest, case / 'partial')
-                            (meta / 'ingame/staged' / files[pending]['hash']).write_bytes(payload[pending])
-                        cold_phase(engine, dest, case / 'cold-completion')
-                if mode != 'crash-before':
+                            if a.exhaustion_only:
+                                exhaust_initial(engine, dest, meta, case, expected, ledger, signed, files,
+                                                paths, pending, manifest['version'], a.expect_before, stages, payload)
+                            else:
+                                (meta / 'ingame/staged' / files[pending]['hash']).write_bytes(payload[pending])
+                        if not a.exhaustion_only:
+                            cold_phase(engine, dest, case / 'cold-completion')
+                if mode != 'crash-before' and not a.exhaustion_only:
                     expected.update({p: payload[p] for p in paths})
                     final_ledger = dict(version=manifest['version'], files={p: f['hash'] for p, f in files.items()})
                     grade_state(dest, meta, expected, final_ledger, signed, manifest['version'], True)

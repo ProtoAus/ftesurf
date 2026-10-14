@@ -46,6 +46,21 @@ class InitialSupersetTests(unittest.TestCase):
                 partial_authority(journal(self.files, self.paths, 'v', 1),
                     self.files, self.paths, pending, 'v', False)
 
+    def test_debit3_authority_refuses_reset_or_extra_debit_both_positions(self):
+        for pending in self.paths:
+            for before in (False, True):
+                selected = [pending] if before else self.paths
+                full = journal(self.files, selected, 'v', 3)
+                self.assertEqual(partial_authority(full, self.files, self.paths, pending, 'v', before, 3), before)
+                for attempts in (0, 1, 2, 4):
+                    with self.assertRaises(AssertionError):
+                        partial_authority(full | {'attempts': attempts}, self.files, self.paths,
+                                          pending, 'v', before, 3)
+                for key, value in [('version', 'other'), ('files', [])]:
+                    with self.assertRaises(AssertionError):
+                        partial_authority(full | {key: value}, self.files, self.paths,
+                                          pending, 'v', before, 3)
+
     def test_namespace_authority_absence_full_stage_and_all_siblings(self):
         with scratch() as root:
             ingame = root / 'ingame'
