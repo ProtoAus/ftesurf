@@ -418,11 +418,16 @@ def main():
     p.add_argument('--client', type=Path, required=True)
     p.add_argument('--server', type=Path, required=True)
     p.add_argument('--port', type=int, default=27588)
-    p.add_argument('--budget', type=int, default=120)
+    p.add_argument('--budget', type=int, default=300,
+                   help='runtime deadline in seconds (1..300; excludes setup/cleanup)')
     mode = p.add_mutually_exclusive_group()
     mode.add_argument('--baseline', action='store_true')
     mode.add_argument('--precision-control', action='store_true')
     a = p.parse_args()
+    try:
+        rig.launch_options(a)
+    except ValueError as exc:
+        p.error(str(exc))
     try:
         a.output = owned_output(a.output_dir)
         receipt_path = plain_path(a.output / 'runtime-report.json')
@@ -430,7 +435,8 @@ def main():
     except (ValueError, OSError) as exc:
         p.error(str(exc))
     receipt = dict(mode='precision-control' if a.precision_control else ('baseline' if a.baseline else 'subject'),
-                   state='not_started', runtime_verified=False, images_verified=False)
+                   state='not_started', runtime_verified=False, images_verified=False,
+                   requested_port=a.port, requested_budget_seconds=a.budget)
     def save(initial=False):
         owned_output(a.output)
         plain_path(receipt_path)
@@ -452,7 +458,12 @@ def main():
         rig.Fixture, rig.Runtime, rig.overlay = Fixture, Runtime, overlay
         Runtime.baseline = a.baseline or a.precision_control
         report = rig.arm(a, a.progs, 'baseline' if Runtime.baseline else 'subject')
-        receipt.update(report)
+        receipt.update(report, requested_port=a.port)
+        if (any(type(report.get(key)) is not int for key in
+                ('requested_port', 'port', 'runtime_budget_seconds'))
+                or (report['requested_port'], report['port'], report['runtime_budget_seconds'])
+                != (a.port, a.port, a.budget)):
+            raise RuntimeError('effective launch port/budget differs from requested options')
         if input_hashes(a) != receipt['inputs_sha256']:
             raise RuntimeError('input artifacts changed during the arm')
         observations = json.loads((Path(report['rig']) / 'precision-observations.json').read_text())

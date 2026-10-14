@@ -28,6 +28,8 @@ import threading
 import time
 import unittest
 from urllib.parse import parse_qs, urlsplit
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -466,27 +468,48 @@ class Runtime:
         return self.results
 
 
+def launch_options(a):
+    """Validate before overlay/HTTP/process creation; absent port means auto."""
+    port = getattr(a, 'port', None)
+    if port is not None:
+        if type(port) is not int or not (port == 27510 or 27520 <= port <= 27620):
+            raise ValueError('dedicated lobby port must be 27510 or 27520..27620')
+    budget = getattr(a, 'budget', 300)
+    if type(budget) is not int or not 1 <= budget <= 300:
+        raise ValueError('runtime budget must be 1..300 seconds')
+    return port, budget
+
+
+def lobby_port(requested):
+    """Probe only the reservation when explicit; never silently substitute."""
+    candidates = (requested,) if requested is not None else range(27520, 27621)
+    for candidate in candidates:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            if hasattr(socket, 'SO_EXCLUSIVEADDRUSE'):
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            try:
+                probe.bind(('0.0.0.0', candidate))
+                return candidate
+            except OSError:
+                if requested is not None:
+                    raise Blocked('requested dedicated lobby port %d unavailable' % requested)
+    raise Blocked('no free dedicated lobby test port')
+
+
 def arm(a, progs, label):
     junctions = []
     server = client = web = None
     rig = None
+    requested_port, budget = launch_options(a)
     fixture = Fixture((ROOT / 'ftesurf/cfg/test/p492voy.rec').read_bytes())
     try:
         process_gate()  # gate before creating runtime overlay too
+        port = lobby_port(requested_port)
         rig, gd = overlay(a, progs, label, junctions)
+        launch = dict(requested_port=requested_port, port=port, runtime_budget_seconds=budget)
+        (rig / 'launch.json').write_text(json.dumps(launch, indent=2) + '\n')
         web = http_server(fixture)
         url = 'http://127.0.0.1:%d' % web.server_port
-        port = None
-        for candidate in range(27520, 27621):
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
-                try:
-                    probe.bind(('127.0.0.1', candidate))
-                    port = candidate
-                    break
-                except OSError:
-                    continue
-        if port is None:
-            raise Blocked('no free dedicated lobby test port')
         common = ['-basedir', str(rig), '-manifest', str(rig / 'default.fmf'), '+set', 'cfg_save_auto', '0',
                   '+set', 'log_enable', '1', '+set', 'log_dir', 'logs']
         process_gate()  # immediately before server launch
@@ -511,7 +534,7 @@ def arm(a, progs, label):
                                   cwd=a.content, stdin=subprocess.PIPE,
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         (rig / 'pids.json').write_text(json.dumps(dict(server=server.pid, client=client.pid)))
-        run = Runtime(client, gd, fixture, rig, time.monotonic() + 300)
+        run = Runtime(client, gd, fixture, rig, time.monotonic() + budget)
         if not run.log.wait('FTESurf CSQC loaded', 40):
             raise RuntimeError('socket spawn/CSQC load control did not act')
         from p615link import Keys
@@ -523,7 +546,7 @@ def arm(a, progs, label):
             if time.monotonic() >= end:
                 raise RuntimeError('scoreboard map/spawn control did not act')
         results = run.run()
-        return dict(label=label, rig=str(rig), results=results,
+        return dict(label=label, rig=str(rig), results=results, **launch,
                     native='not measured: production provider hit rectangles not available through SUI helper',
                     paste='not measured: no explicit clipboard fixture helper authorized')
     finally:
@@ -547,6 +570,83 @@ def arm(a, progs, label):
 
 
 class FixtureTests(unittest.TestCase):
+    def test_explicit_port_and_budget_reach_launch_and_deadline(self):
+        import tempfile
+        with tempfile.TemporaryDirectory(prefix='p693-launch-', dir=ROOT.parent / 'artifacts') as tmp:
+            rig = Path(tmp)
+            (rig / 'OWNER.md').write_text('Owned mock-launch fixture; no game processes.\n')
+            args = SimpleNamespace(port=27588, budget=37, server=rig / 'server.exe',
+                                   client=rig / 'client.exe', content=rig)
+            server, client, web = Mock(pid=1001), Mock(pid=1002), Mock(server_port=9999)
+            server.poll.return_value = client.poll.return_value = None
+            run = Mock()
+            run.section.return_value = MAP
+            run.run.return_value = []
+            with patch(__name__ + '.process_gate'), patch(__name__ + '.overlay', return_value=(rig, rig)), \
+                 patch(__name__ + '.http_server', return_value=web), \
+                 patch(__name__ + '.socket.socket') as socket_factory, \
+                 patch(__name__ + '.subprocess.Popen', side_effect=[server, client]) as popen, \
+                 patch(__name__ + '.Runtime', return_value=run) as runtime, \
+                 patch(__name__ + '.time.sleep'), patch(__name__ + '.time.monotonic', return_value=100), \
+                 patch('p615link.Keys'):
+                report = arm(args, rig, 'fixture')
+            probe = socket_factory.return_value.__enter__.return_value
+            probe.bind.assert_called_once_with(('0.0.0.0', 27588))
+            server_argv, client_argv = [call.args[0] for call in popen.call_args_list]
+            self.assertEqual(server_argv[server_argv.index('sv_port') + 1], '27588')
+            self.assertEqual(client_argv[client_argv.index('+connect') + 1], '127.0.0.1:27588')
+            self.assertEqual(runtime.call_args.args[-1], 137)
+            self.assertEqual((report['requested_port'], report['port'], report['runtime_budget_seconds']),
+                             (27588, 27588, 37))
+            self.assertEqual(json.loads((rig / 'launch.json').read_text()),
+                             dict(requested_port=27588, port=27588, runtime_budget_seconds=37))
+            server.terminate.assert_called_once()
+            client.terminate.assert_called_once()
+            web.shutdown.assert_called_once()
+            web.server_close.assert_called_once()
+
+    def test_busy_explicit_port_blocks_without_fallback_or_overlay(self):
+        args = SimpleNamespace(port=27588, budget=300)
+        with patch(__name__ + '.process_gate'), patch(__name__ + '.socket.socket') as sockets, \
+             patch(__name__ + '.overlay') as create, patch(__name__ + '.http_server') as web, \
+             patch(__name__ + '.subprocess.Popen') as popen:
+            sockets.return_value.__enter__.return_value.bind.side_effect = OSError('busy')
+            with self.assertRaisesRegex(Blocked, '27588 unavailable'):
+                arm(args, ROOT, 'fixture')
+            sockets.return_value.__enter__.return_value.bind.assert_called_once_with(('0.0.0.0', 27588))
+            create.assert_not_called()
+            web.assert_not_called()
+            popen.assert_not_called()
+
+    def test_legacy_auto_port_remains_bounded_and_records_default_budget(self):
+        self.assertEqual(launch_options(SimpleNamespace()), (None, 300))
+        with patch(__name__ + '.socket.socket') as sockets:
+            bind = sockets.return_value.__enter__.return_value.bind
+            bind.side_effect = [OSError('busy'), None]
+            self.assertEqual(lobby_port(None), 27521)
+            self.assertEqual([call.args[0] for call in bind.call_args_list],
+                             [('0.0.0.0', 27520), ('0.0.0.0', 27521)])
+            bind.reset_mock()
+            bind.side_effect = OSError('busy')
+            with self.assertRaisesRegex(Blocked, 'no free dedicated'):
+                lobby_port(None)
+            self.assertEqual(bind.call_count, 101)
+            self.assertEqual(bind.call_args.args[0], ('0.0.0.0', 27620))
+
+    def test_launch_option_limits_refuse_before_gate(self):
+        for port in (0, 27519, 27621, 27698, True, 27588.0):
+            with self.subTest(port=port), patch(__name__ + '.process_gate') as gate:
+                with self.assertRaisesRegex(ValueError, 'lobby port'):
+                    arm(SimpleNamespace(port=port), ROOT, 'fixture')
+                gate.assert_not_called()
+        for budget in (0, -1, 301, True, 3.0):
+            with self.subTest(budget=budget), patch(__name__ + '.process_gate') as gate:
+                with self.assertRaisesRegex(ValueError, 'runtime budget'):
+                    arm(SimpleNamespace(budget=budget), ROOT, 'fixture')
+                gate.assert_not_called()
+        for port in (27510, 27520, 27620):
+            self.assertEqual(launch_options(SimpleNamespace(port=port, budget=1)), (port, 1))
+
     def test_original_rank_filter_counts_paging_clear(self):
         f = Fixture()
         _, body, _ = f.answer('/api/board?name=late&limit=100')

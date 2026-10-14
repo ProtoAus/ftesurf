@@ -52,7 +52,7 @@ class DriverTests(unittest.TestCase):
         mutant[2]['passed'] = True
         self.assertFalse(ui.precision_control_acted(mutant, self.witness))
 
-    def run_main(self, mode=(), failure=None, gate=None, hashes=None):
+    def run_main(self, mode=(), failure=None, gate=None, hashes=None, effective=None):
         # Tool-managed bounded lifetime; no install/build copies or engine launch.
         ARTIFACTS.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='p693-driver-', dir=ARTIFACTS) as tmp:
@@ -69,12 +69,58 @@ class DriverTests(unittest.TestCase):
                 with patch.object(sys, 'argv', argv), patch.object(ui.rig, 'process_gate', side_effect=gate), \
                      patch.object(ui, 'input_hashes', side_effect=hashes or [dict(progs='exact'), dict(progs='exact')]), \
                      patch.object(ui.rig, 'arm', side_effect=failure,
-                                  return_value=dict(rig=str(arm), results=self.results)) as launch:
+                                  return_value=dict(rig=str(arm), results=self.results,
+                                                    **(effective if effective is not None else dict(
+                                                        requested_port=27588, port=27588,
+                                                        runtime_budget_seconds=300)))) as launch:
                     code = ui.main()
+                    self.last_launch_args = launch.call_args.args[0] if launch.called else None
                     report = json.loads((output / 'runtime-report.json').read_text())
                     return code, report, launch.call_count
             finally:
                 ui.rig.Fixture, ui.rig.Runtime, ui.rig.overlay, ui.Runtime.baseline = saved
+
+    def test_requested_port_and_budget_reach_arm_and_receipt(self):
+        code, report, launches = self.run_main(('--baseline', '--port', '27520', '--budget', '37'),
+            effective=dict(requested_port=27520, port=27520, runtime_budget_seconds=37))
+        self.assertEqual((code, report['state'], launches), (0, 'evidence_only', 1))
+        self.assertEqual((self.last_launch_args.port, self.last_launch_args.budget), (27520, 37))
+        self.assertEqual((report['requested_port'], report['requested_budget_seconds'],
+                          report['port'], report['runtime_budget_seconds']), (27520, 37, 27520, 37))
+
+    def test_missing_or_changed_effective_launch_options_refuse_acceptance(self):
+        good = dict(requested_port=27588, port=27588, runtime_budget_seconds=300)
+        mutants = [{}]
+        for key in good:
+            changed = dict(good)
+            changed[key] += 1
+            mutants.append(changed)
+            untyped = dict(good)
+            untyped[key] = float(good[key])
+            mutants.append(untyped)
+        for effective in mutants:
+            with self.subTest(effective=effective):
+                code, report, _ = self.run_main(('--baseline',), effective=effective)
+                self.assertEqual((code, report['state'], report['runtime_verified']), (1, 'failed', False))
+                self.assertIn('effective launch port/budget', report['error'])
+
+    def test_invalid_launch_options_refuse_before_output_or_gate(self):
+        for flags in (('--port', '27698'), ('--port', '27519'), ('--port', '27621'),
+                      ('--budget', '0'), ('--budget', '-1'), ('--budget', '301')):
+            with self.subTest(flags=flags), \
+                 tempfile.TemporaryDirectory(prefix='p693-driver-', dir=ARTIFACTS) as tmp:
+                root = Path(tmp)
+                (root / 'OWNER.md').write_text('Owned invalid-option fixture; no engines.\n')
+                output = root / 'out'
+                argv = ['test_p693_ui.py', '--output-dir', str(output), '--progs', str(root / 'progs'),
+                        '--client', str(root / 'client.exe'), '--server', str(root / 'server.exe'), *flags]
+                with patch.object(sys, 'argv', argv), patch.object(ui.rig, 'process_gate') as gate, \
+                     patch.object(ui.rig, 'arm') as launch, self.assertRaises(SystemExit) as error:
+                    ui.main()
+                self.assertEqual(error.exception.code, 2)
+                gate.assert_not_called()
+                launch.assert_not_called()
+                self.assertFalse(output.exists())
 
     def test_blocked_is_third_verdict_without_launch(self):
         code, report, launches = self.run_main(gate=ui.rig.Blocked('foreign engine fixture'))
