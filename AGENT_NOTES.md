@@ -1,5 +1,57 @@
 # AGENT_NOTES.md
 
+## P715/716 — Steam persistence, KSF profile positions and measured coverage
+
+- The picture origin already caches JPEGs AND32x32 RGBA text. R2's optional
+  allowlist must match actual40-hex filenames, not17-digit SteamIDs. Give an
+  independent picture publisher `manifests/avatars.json`; never replace the
+  map publisher's `manifests/public.json` with a picture-only inventory.
+  Authenticated readback is storage evidence, not a CDN cutover. R2 origin
+  delivery has deliberately NOT been switched by these patches.
+- `cl_steampic.qc` persists validated bodies in256 direct-mapped disk buckets
+  under the engine's client data sandbox. Full SHA256(origin + newline + mark)
+  plus UTC-day headers guard prefix collisions, stale data and other origins.
+  Cache hits must still rebuild renderer textures. p715pics proves cold-write,
+  warm fresh-VM and vid_restart zero-HTTP DRAW, and corrupt/expired/collision/
+  origin/non-hex misses with actual quadrant screenshots. Strictly validate
+  hex/newline bytes: stof of damaged hex may otherwise silently draw black.
+- KSF's `bestrecords/<n>` n is a START POSITION, not a requested record count.
+  Its own UI uses1,6,11,...; real replies say limit5, offset(n-1), total:null.
+  Critically, real valid records have `record_id:null`! Identify completions
+  by main map/style, preserve null identity, and never manufacture demo/board
+  authority. Existing PB writer rules remain responsible for ties/replays.
+  Manual seed heads now ask position1 and use a new head-cache filename.
+- Schema18 adds only `ksfprofiles`. Resolved game/site profile views enqueue
+  32 active players at most, coalesce pending work, and refresh completed walks
+  after24h. Queue writes wait50ms max; an importer lock cannot hang browsing.
+  ksfimport's existing shared lock, total request budget, pacing and host-wide
+  refusal park govern up to3 profile pages/tick, round-robin selected players.
+  Persist source first (fsync writable handle; Windows rejects fsync on rb),
+  file PBs FULL/idempotently, then checkpoint cursor. A repeated correctly
+  offset short/empty page ends that STYLE; all4 are needed for complete.
+  Wrong shape/offset, refusal, local failure or safety limit never says done.
+- Profile counts can grow while the crawl runs. Game/site show queued/partial
+  status and excluded-unavailable counts, not an instantaneous full-archive
+  promise. Reads never call KSF synchronously. The1000-row board cap and200-row
+  profile total cap were CLIENT limits, distinct from a200-row HTTP-page cap:
+  both client stores are now bounded10000 with the original small requests.
+  p716paging real CSQC held1050 board rows and1005 profile rows and observed
+  actual offset1000 requests. Its first too-fast fixed scroll loop stalled
+  at750; wait for append then scroll the NEW end instead of treating elapsed
+  sleeps as evidence. Final paging and P715 regression passed; screenshots read.
+- Coverage audit:759 approved Momentum maps on the Pi all have timing.197
+  installed Beta/extra maps do not. Windows missed37 approved timings, but36
+  have different BSP hashes; old matching BSPs on the Pi have no archived JSON.
+  Only bhop_perspective matched exactly and was restored missing-only to BOTH
+  Windows installs, preserving all existing local edits. Missing old-build
+  zones are not safely supplied by renaming the latest official JSON.
+- Deployment/rollback: ship app+ksfprofile+ksfimport together (planner enforces
+  this), and include test_ksfprofile in the Linux suite. Schema18 is additive;
+  rollback to schema17 code requires resetting user_version to17 under normal
+  deployment exclusion (the new table may remain), not restoring an old DB
+  over newer player/run history. Engine pin/tag and QC Build are unchanged.
+
+
 ## Patch 693 — profile seeks, editor wheel and entity-pose rendering
 
 - A profile-time handoff now includes rank/handle/milliseconds after its five

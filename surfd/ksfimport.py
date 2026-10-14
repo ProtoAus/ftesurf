@@ -118,6 +118,7 @@ if not logging.getLogger("surfd").handlers:
 
 import surfd as S       # noqa: E402  -- import-safe: app.run is __main__-guarded
 import ksftopup as KT
+import ksfprofile as KP
 
 # Player aliases are free Unicode from another game's API, and Windows'
 # default stdout is cp1252 -- so merely PRINTING a name can kill the tool
@@ -129,7 +130,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 KSF_BASE = "https://ksf.surf"
 KSF_DELAY_MS = 400         # wrlines' WR_API_DELAY_MS, same host, same reasoning
-KSF_TAKE = 25              # their own cap on bestrecords
+KSF_TAKE = 1               # first POSITION, not a limit; profile pages hold 5
 KSF_MAX_DEFAULT = 50       # players per invocation unless --max says otherwise
 
 # Consecutive "that id is not mine" answers before the sweep stops.  The reading
@@ -170,7 +171,7 @@ WANT_DAYS = 14             # a map viewed this recently is crawled first
 # then deeper.  Until 11 Oct a viewed map's every board went to its END first
 # (30 stages in 4 styles is thousands of requests): 372 of 448 main boards
 # held one page.
-WANT_FIRST = 1000          # cl_online.qc's OB_MAXROW
+WANT_FIRST = 1000          # shallow-board priority, NOT a storage/display cap
 WANT_REST = 100
 MAIN_FIRST = 200           # surfd.BOARD_LIMIT_MAX
 STRIKES = 3                # parks on one board before it is set aside
@@ -313,7 +314,7 @@ def fetch(url):
 
 def records(sid, cache_dir, paced):
     """One player's best records, from cache or from the host."""
-    cf = os.path.join(cache_dir, "%d.json" % sid)
+    cf = os.path.join(cache_dir, "%d-head.json" % sid)
     if os.path.exists(cf):
         with io.open(cf, encoding="utf-8") as fh:
             return json.load(fh), False
@@ -911,6 +912,9 @@ def watch_mode(args, have, cache):
         print("%d board(s) fetched and not yet filed: filing, not asking" % len(owed))
     else:
         try:
+            if getattr(args, 'go', False):
+                KP.step(sys.modules[__name__], cache, pacer, have, now,
+                        budget=min(3, max(1, args.max // 3)))
             cat = catalog_step(cache, pacer, now)
             names = set(cat["names"])
             try:
@@ -941,6 +945,10 @@ def watch_mode(args, have, cache):
             # board happened to be asked first (review, 5 Oct).
             if pacer.what and (e.code in (404, 500) or e.board):
                 strike(cache, idx, pacer.what, str(e))
+        except (OSError, sqlite3.Error) as e:
+            # Cached profile pages/cursors remain owed; local failures are not
+            # upstream refusals. Still file any existing board intent below.
+            print("profile/cache filing deferred: %s" % type(e).__name__)
         else:
             # Lifted only by an answer: a tick that asked nothing proves nothing.
             if park and pacer.made:

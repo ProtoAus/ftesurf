@@ -4012,6 +4012,11 @@ float(string cmd) Scores_ConsoleCommand =
 		}
 		// `scores` on its own toggles the board, which makes it useless for
 		// asking what the board holds.  This asks without touching anything.
+		else if (argv(1) == "more")
+		{
+			Online_FetchMore();         // same guarded append the scroll list uses
+			return TRUE;
+		}
 		else if (argv(1) == "pics")
 		{
 			SteamPic_Status();          // Patch 640; and not the status dump below

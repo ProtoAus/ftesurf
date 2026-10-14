@@ -40,11 +40,15 @@ function Get-SurfdDeployPlan {
     # each other; ksfconvert also imports ksfreplay_info. Do not permit a partial
     # P706 KSF ship-set. Older commits without ksfgrab retain their old layout.
     $added = @()
+    $ksfEntries = @('surfd/ksfgrab.py', 'surfd/ksfimport.py') + $codecs
+    if ($all -contains 'surfd/ksfprofile.py') {
+        # Schema18/app and the paced worker must move together, even -Only app.
+        $ksfEntries += @('surfd/surfd.py', 'surfd/ksfprofile.py')
+    }
     if ($all -contains 'surfd/ksfgrab.py' -and
-        (@($files | Where-Object {
-            $_ -in @('surfd/ksfgrab.py', 'surfd/ksfimport.py') + $codecs
-        }).Count -gt 0)) {
+        (@($files | Where-Object { $_ -in $ksfEntries }).Count -gt 0)) {
         $required = @('surfd/surfd.py', 'surfd/ksfimport.py', 'surfd/ksfgrab.py') + $codecs
+        if ($all -contains 'surfd/ksfprofile.py') { $required += 'surfd/ksfprofile.py' }
         foreach ($file in $required) {
             if ($all -notcontains $file) { throw "KSF runtime dependency '$file' is absent at $commit" }
             if ($files -notcontains $file) { $added += $file; $files += $file }

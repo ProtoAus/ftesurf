@@ -801,6 +801,18 @@
     if (body.momid) { sub.appendChild(outLink(momUrl(body.momid), 'Momentum Mod profile ↗')); }
     if (body.ksfid) { sub.appendChild(outLink(ksfUrl(body.ksfid), 'KSF profile ↗')); }
     if (body.last) { sub.appendChild(el('span', 'why', 'last time ' + ago(body.last))); }
+    var ks = body.ksf_sync || {}, kt = '';
+    if (ks.state === 'queued' || ks.state === 'partial') {
+      kt = 'KSF completion check in progress; refresh later';
+    } else if (ks.state === 'complete') {
+      kt = 'KSF main-map completions checked in FW / SW / HSW / BW';
+    } else if (n0((body.by_tier || {}).ksf)) {
+      kt = 'KSF completion list is not fully checked yet';
+    }
+    if (kt) {
+      if (n0(ks.unavailable)) { kt += '; ' + ks.unavailable + ' unavailable records excluded'; }
+      sub.appendChild(el('span', 'why', kt));
+    }
 
     var st = $('pstats');
     st.textContent = '';

@@ -37,6 +37,7 @@ from flask import Flask, Response, g, jsonify, request, send_file
 import accounts         # Steam accounts: schema 12 and its routes
 import zonefit          # bounded BSP entity/model reader for legacy timers
 import ksftopup         # bounded, board-scoped requests; no network in HTTP
+import ksfprofile       # resolved profile demand, paced by the same importer
 import recplot          # .rec -> plot data; stdlib only, never raises
 import steam            # the only module that asks Steam anything
 
@@ -444,7 +445,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 
 # --------------------------------------------------------------------------
@@ -1534,6 +1535,12 @@ def migrate():
             conn.execute("PRAGMA user_version=17")
             conn.commit()
             version = 17
+
+        if version < 18:
+            conn.executescript(ksfprofile.SQL)
+            conn.execute("PRAGMA user_version=18")
+            conn.commit()
+            version = 18
 
         verdict_metrics(conn)
         gone = accounts.links_now(conn)
@@ -5300,6 +5307,8 @@ def _profile_rows(db, player, now):
     (The first cut dropped the entry from submit_run alone, and a banned
     account's times stayed on its page for the two minutes.)  Somebody else's
     run moving a rank shows within the TTL."""
+    if accounts.steam.is_steamid64(player):
+        ksfprofile.enqueue(db, player, now)
     tiers = (TIER_RANKED, TIER_MOMENTUM, TIER_KSF)
     mark = tuple(db.execute(_PROF_MARK, (player,) + tiers).fetchone())
     with _prof_lock:
@@ -5488,6 +5497,7 @@ def game_player(raw, now):
          "wr": wr, "wrc": wrc, "top10": top10,
          "by_tier": {"ranked": me["ranked"], "momentum": me["mom"], "ksf": me["ksf"]},
          "av": 1 if player in have else 0, "completion": comp,
+         "ksf_sync": ksfprofile.status(db, player),
          "offset": offset, "total": len(ranked), "limit": limit, "rows": rows}),
         status=200, mimetype="application/json")
 
@@ -5607,7 +5617,8 @@ def web_player(handle):
                   "ext": ext, "ksfid": steam2(ext) if ext and me["ksf"] else None,
                   "momid": momid[0] if momid else None,
                   "av": 1 if player in pics else 0,
-                  "completion": comp, "offset": offset, "total": len(ranked),
+                  "completion": comp, "ksf_sync": ksfprofile.status(db, player),
+                  "offset": offset, "total": len(ranked),
                   "limit": limit, "rows": out}, "max-age=30")
 
 

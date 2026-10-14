@@ -5,6 +5,31 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Picture delivery and remaining completion/zone coverage — P715/716
+
+- `tools/r2mirror.py` now stages actual hash-named Steam JPEG/RGBA copies with
+  an independently owned picture manifest. Authenticated body readback proves
+  storage, NOT public CDN delivery. Configure/prove the public reader route
+  before changing `surfd.py:game_avatar/web_avatar`; a cold real game/browser
+  fetch must reach R2, draw the expected picture, and fall back on a missing
+  object. NanoPi delivery remains the working origin meanwhile.
+- `surfd/ksfprofile.py` queues daily, bounded, four-style main-map walks. It
+  cannot promise an atomic upstream snapshot or report unavailable BSPs as
+  playable: `unavailable` counts excluded records. No upstream deletions are
+  inferred from a walk. Falsifier: a resolved profile with an upstream-only
+  map must show its unavailable/in-progress caveat, not assert zero/completeness.
+  Boards/profile memory stores still have an explicit 10,000-row safety bound;
+  unusually larger lists need a sliding-window reader, not unbounded globals.
+- Zone coverage measured 14 Oct: all759 approved Momentum maps on the NanoPi
+  have JSON or embedded timing, but197 installed Beta/extra maps have neither.
+  Windows' older approved BSPs lacked37; one exact-hash file
+  (`bhop_perspective`) was restored missing-only to both installs. Remaining36
+  differ from the Pi build; their matching old BSPs exist there but no archived
+  JSON does. Do not donate the current Pi zones by name alone. Falsifier for
+  closing: exact-build zones or an approved build update, with timer/trigger
+  witnesses, for every missing name. Beta source publication may itself lack
+  zones; keep absent source distinct from a failed transfer.
+
 ## KSF replay remaining track/build coverage — P706, 2026-10-14
 
 - Sites: src/client/cl_ksf.qc, tools/ksfconvert.py, surfd/ksfgrab.py. Original
@@ -371,8 +396,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - **Each rest of the search text replaces the ask in flight**; the wheel
   over the results or the list is theirs (it was `+jump`); F9 to F11 are
   swallowed while a field has the keyboard.
-- **Only 200 of a player's rows** are ever held; the list says "the first
-  200 of N".
 - ftesurf-5b, 12 Oct.
 
 ## Text fields: what Patch 655 left -- 2026-10-12

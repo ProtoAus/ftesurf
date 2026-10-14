@@ -75,7 +75,7 @@ string(string mark) SP_DiskLoad =
 	local string key, hdr, body, line;
 	local float fh, i;
 	key = SP_DiskKey(mark);
-	if (key == "") return "";
+	if (!strlen(key)) return "";
 	fh = fopen(SP_DiskPath(key), FILE_READ);
 	if (fh < 0) return "";
 	if (fsize(fh) > SP_HEAD + SP_PX * SP_ROW + 128)
@@ -99,7 +99,7 @@ void(string mark, string body) SP_DiskStore =
 	local string key, dst, part;
 	local float fh;
 	key = SP_DiskKey(mark);
-	if (key == "") return;
+	if (!strlen(key)) return;
 	dst = SP_DiskPath(key);
 	part = strcat(dst, ".part");
 	fh = fopen(part, FILE_WRITE);
@@ -267,7 +267,7 @@ void() SteamPic_Frame =
 	sp_req = sp_base + sp_asked - floor(sp_asked / 4000) * 4000;
 	sp_reqslot = i;
 	cached = SP_DiskLoad(bufstr_get(sp_bmark, i));
-	if (cached != "")
+	if (strlen(cached))
 	{
 		SteamPic_Reply(sp_req, 0, cached);
 		if (sp_st[i] == SP_HAVE)
@@ -332,7 +332,7 @@ float(float reqid, float code, string bdy) SteamPic_Reply =
 		digit = substring(bdy, i, 1);
 		if (floor((i - SP_HEAD + 1) / SP_ROW) * SP_ROW == i - SP_HEAD + 1)
 		{
-			if (digit != "\n") return TRUE;
+			if (strcmp(digit, "\n")) return TRUE;
 		}
 		else if (strstrofs("0123456789abcdef", digit, 0) < 0) return TRUE;
 	}

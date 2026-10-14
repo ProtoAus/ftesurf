@@ -25,7 +25,13 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-703
-patch    715
+patch    716
+# Patch 716: resolved profile views queue a paced, resumable four-style KSF
+# main-map completion check. Correct bestrecords positions and null record IDs;
+# disclose pending/unavailable coverage. Client board/profile stores now hold
+# up to 10000 rows in small pages rather than stopping at 1000/200.
+# Additive surfd schema18; app/importer/profile module ship together. No engine
+# source/binary pin/tag or QC Build change. Full archive/CDN/zones not implied.
 # Patch 715: validated Steam pictures persist in 256 daily-expiring disk
 # buckets, keyed by directory origin and player mark. Restarts rebuild from
 # disk without another HTTP request; corrupt/stale/colliding copies miss.

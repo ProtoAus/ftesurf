@@ -20,7 +20,7 @@
 */
 
 #define PF_HITS     12      // players one search answer names (surfd's GAME_SEARCH_MAX)
-#define PF_ROWS     200     // rows held of one breakdown (surfd's GAME_PROFILE_MAX)
+#define PF_ROWS     10000   // bounded total held; GAME_PROFILE_MAX caps ONE reply
 #define PF_PAGE     50      // ...and asked for at a time
 #define PF_TIERS    12      // difficulty tiers a breakdown shows bars for
 #define PF_QMAX     32      // characters of search text
@@ -72,6 +72,7 @@ vector pf_f_scr;                // the screen the field was last drawn on
 string pf_name, pf_handle;
 float  pf_src, pf_n, pf_maps, pf_last, pf_wr, pf_wrc, pf_top10, pf_av, pf_total, pf_t;
 float  pf_bt_ours, pf_bt_mom, pf_bt_ksf;
+float  pf_ksfstate, pf_ksfskip; // 1 pending, 2 checked, 3 bounded/incomplete
 float  pf_c_has, pf_c_n, pf_c_done, pf_c_of, pf_c_unt;
 float  pf_c_tier[PF_TIERS];
 float  pf_c_td[PF_TIERS];
@@ -347,6 +348,8 @@ void(string who) Profile_Show =
 	pf_total = 0;
 	pf_name = "";
 	pf_handle = "";
+	pf_ksfstate = 0;
+	pf_ksfskip = 0;
 	pf_scroll = '0 0 0';
 	pf_again = 0;
 	pf_said = FALSE;
@@ -559,6 +562,13 @@ void(string bdy) Profile_Parse =
 	pf_bt_ours = json_get_float(json_find_object_child(c, "ranked"));
 	pf_bt_mom  = json_get_float(json_find_object_child(c, "momentum"));
 	pf_bt_ksf  = json_get_float(json_find_object_child(c, "ksf"));
+	c = json_find_object_child(root, "ksf_sync");
+	h = json_get_string(json_find_object_child(c, "state"));
+	pf_ksfstate = 0;
+	if (!strcmp(h, "queued") || !strcmp(h, "partial")) pf_ksfstate = 1;
+	if (!strcmp(h, "complete")) pf_ksfstate = 2;
+	if (!strcmp(h, "limited") || !strcmp(h, "busy")) pf_ksfstate = 3;
+	pf_ksfskip = json_get_float(json_find_object_child(c, "unavailable"));
 	// No catalogue on the server is `null`, and reads as a table of nothing.
 	c = json_find_object_child(root, "completion");
 	tiers = json_find_object_child(c, "tiers");
@@ -1570,6 +1580,17 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 		             SUI_THEME_GOOD);
 	}
 	y = y + th + hint;
+
+	if (pf_bt_ksf > 0 || pf_ksfstate > 0)
+	{
+		s = "KSF completions not fully checked yet";
+		if (pf_ksfstate == 1) s = "KSF completion check queued / in progress; reopen later";
+		if (pf_ksfstate == 2) s = "KSF completion check finished (FW / SW / HSW / BW)";
+		if (pf_ksfstate == 3) s = "KSF completion check incomplete; showing imported results";
+		if (pf_ksfskip > 0) s = sprintf("%s; %g unavailable records excluded", s, pf_ksfskip);
+		sui_text([p_x, y], [hint, hint], Chat_Fit(s, sz_x, hint), SUI_THEME_MUTED, 1, 0);
+		y = y + ceil(hint * 1.8);
+	}
 
 	// ---- maps finished, by difficulty: two columns of bars, and a last one for
 	// the maps nobody has rated.  A BAR IS A CONTROL (Patch 666): its tier's

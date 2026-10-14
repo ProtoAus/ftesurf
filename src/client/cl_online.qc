@@ -64,7 +64,7 @@
 */
 
 #define OB_PAGE    100     // rows one request asks for; surfd's own cap is 200
-#define OB_MAXROW  1000    // rows held: the first page, then more as the list scrolls
+#define OB_MAXROW  10000   // bounded row store; still fetched in 100-row pages
 #define OB_MOREAHEAD 20    // ask for the next page this many rows before the end
 #define OB_TIER    "ranked"   // the one tier any board draws; community holds demoted runs
 

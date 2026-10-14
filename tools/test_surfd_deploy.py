@@ -50,6 +50,9 @@ class Tests(unittest.TestCase):
             if not shutil.which(tool):
                 raise RuntimeError('required offline test tool absent: '+tool)
         cls.ref = git(REPO, 'rev-parse', '--verify', args.ref+'^{commit}')
+        cls.ksf_set = set(KSF_SET)
+        if run(['git', '-C', str(REPO), 'cat-file', '-e', cls.ref+':surfd/ksfprofile.py'], check=False).returncode == 0:
+            cls.ksf_set.add('surfd/ksfprofile.py')
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix=self._testMethodName+'-', dir=args.out)
@@ -74,23 +77,23 @@ Get-SurfdDeployPlan @p | ConvertTo-Json -Depth 4
     def test_full_and_selective_ksf_sets_and_flattened_destinations(self):
         full = self.plan()
         self.assertEqual(full['Commit'], self.ref)
-        self.assertTrue(KSF_SET <= set(full['Files']))
+        self.assertTrue(self.ksf_set <= set(full['Files']))
         self.assertEqual({f for f in full['Files'] if f.startswith('tools/')},
                          {'tools/ksfconvert.py', 'tools/ksfreplay_info.py'})
-        for entry in KSF_SET-{'surfd/surfd.py'}:
+        for entry in self.ksf_set-{'surfd/surfd.py'}:
             p = self.plan(only=[entry, entry])
-            self.assertEqual(set(p['Files']), KSF_SET)
-            self.assertEqual(len(p['Files']), 5)
+            self.assertEqual(set(p['Files']), self.ksf_set)
+            self.assertEqual(len(p['Files']), len(self.ksf_set))
             self.assertTrue(set(p['Files']) <= set(p['StageFiles']))
             self.assertIn('surfd/test_ksfgrab.py', p['StageFiles'])
             pairs = dict(zip(p['Files'], p['Destinations']))
             self.assertEqual(pairs['surfd/ksfgrab.py'], 'ksfgrab.py')
             self.assertEqual(pairs['tools/ksfconvert.py'], 'tools/ksfconvert.py')
-            self.assertEqual(set(p['AddedDependencies']), KSF_SET-{entry})
-        # Selecting the app alone is a normal narrowly scoped app change, not
-        # authority to replace all importers. The default plan ships all of them.
+            self.assertEqual(set(p['AddedDependencies']), self.ksf_set-{entry})
+        # Schema18 app/profile demand and its worker are one generation. Older
+        # commits still allow a narrowly scoped app-only deployment.
         p = self.plan(only=['surfd/surfd.py'])
-        self.assertEqual(p['Files'], ['surfd/surfd.py'])
+        self.assertEqual(set(p['Files']), self.ksf_set if 'surfd/ksfprofile.py' in self.ksf_set else {'surfd/surfd.py'})
         self.assertGreater(len(p['StageFiles']), len(p['Files']))
 
     def test_unknown_paths_and_refs_refuse(self):
@@ -117,7 +120,7 @@ function scp { Set-Content $env:DEPLOY_TEST_MARKER scp; throw 'network forbidden
         self.assertEqual(set(workspaces.glob('surfdship-*')), before)
         p = json.loads(r.stdout.lstrip('\ufeff'))
         self.assertEqual(p['Commit'], self.ref)
-        self.assertEqual(set(p['Files']), KSF_SET)
+        self.assertEqual(set(p['Files']), self.ksf_set)
 
     def fixture_repo(self):
         repo = self.root/'repo'
@@ -141,6 +144,16 @@ function scp { Set-Content $env:DEPLOY_TEST_MARKER scp; throw 'network forbidden
         write('tools/test_ksfconvert.py')
         complete = commit()
         return repo, legacy, complete
+
+    def test_profile_schema_app_and_importer_must_ship_together(self):
+        repo, legacy, complete = self.fixture_repo()
+        (repo/'surfd/ksfprofile.py').write_text('SQL = "profile fixture"\n')
+        git(repo, 'add', '--', 'surfd/ksfprofile.py')
+        git(repo, '-c', 'user.name=Offline fixture', '-c', 'user.email=fixture@example.invalid',
+            '-c', 'commit.gpgsign=false', 'commit', '-qm', 'profile generation')
+        for only in ('surfd/surfd.py', 'surfd/ksfimport.py', 'surfd/ksfprofile.py'):
+            self.assertEqual(set(self.plan(repo, 'HEAD', [only])['Files']), KSF_SET|{'surfd/ksfprofile.py'})
+        self.assertEqual(self.plan(repo, complete, ['surfd/surfd.py'])['Files'], ['surfd/surfd.py'])
 
     def test_legacy_ref_and_committed_dependency_not_working_tree(self):
         repo, legacy, complete = self.fixture_repo()
