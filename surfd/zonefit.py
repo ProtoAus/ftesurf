@@ -24,8 +24,10 @@ lump carries those names.  fit() -> (verdict, why):
 Only FIT is a yes.  Everything read here is bounded: these are files a
 stranger compiled.
 """
+import functools
 import json
 import lzma
+import os
 import re
 import struct
 
@@ -70,6 +72,47 @@ def _lump(fh, idx):
         return dec.decompress(raw[17:17 + lsize], max_length=actual)
     except (lzma.LZMAError, ValueError, MemoryError):
         return None
+
+
+def has_timer(path):
+    """The legacy loader can time a BSP without JSON. Cache by file identity,
+    not just name: mapwatch replaces builds atomically under the same name.
+    """
+    try:
+        st = os.stat(path)
+        return _has_timer(path, st.st_mtime_ns, st.st_ctime_ns, st.st_size)
+    except OSError:
+        return False
+
+
+@functools.lru_cache(maxsize=8192)
+def _has_timer(path, mtime, ctime, size):
+    try:
+        with open(path, "rb") as fh:
+            ents, models = _lump(fh, 0), _lump(fh, 14)
+    except OSError:
+        return False
+    if ents is None or models is None or len(models) % 48:
+        return False
+    found = set()
+    for entity in re.findall(rb'\{([^{}]*)\}', ents):
+        pairs = dict(re.findall(rb'"([^"\r\n]+)"\s*"([^"\r\n]*)"', entity))
+        cn = pairs.get(b"classname", b"")
+        if cn not in (b"trigger_momentum_timer_start", b"trigger_momentum_timer_stop"):
+            continue
+        model = pairs.get(b"model", b"")
+        if not re.fullmatch(rb"\*[1-9][0-9]{0,5}", model):
+            continue
+        idx = int(model[1:])
+        if idx >= len(models) // 48:
+            continue
+        box = struct.unpack_from("<6f", models, idx * 48)
+        if not all(v == v and abs(v) < 1e7 for v in box):
+            continue
+        if any(box[a] > box[a + 3] for a in range(3)):
+            continue
+        found.add(cn)
+    return len(found) == 2
 
 
 def world(path):

@@ -5,19 +5,14 @@
                             [--modes 0,1,2,3] [--max <requests>] [--delay <s>] [--go]
   python surfd/ksfimport.py --watch [--max <requests>] [--delay <s>] --go   (cron)
 
-TIMES ONLY, AND THAT IS A LIMIT OF THE SOURCE RATHER THAN A CHOICE.  KSF
-publishes no replay this project can USE: no Source .dem parser exists anywhere
-in this tree or in the wrlines reference, and nothing could turn one into a .rec.
-So a KSF row carries no recording, no line and no `watch` -- replay_id stays 0
-and nothing pretends otherwise.
-  CORRECTED 2026-09-29: this used to give as its first reason that "there is no
-  demo URL in any endpoint found", and that is false.
-  `/api/players/{id}/replays/{map}?game=css&mode=0` answers 200 with a per-zone
-  list carrying `recordId`, `time` and a `file` like
-  "replay_css_6201_0_712551_1790101734.rec".  Those are FILENAMES; no download
-  path has been located or tested, so "reachable" is unproven, and it is a shavit
-  .rec unrelated to this project's format.  The conclusion stands and one of its
-  reasons was wrong, which is worth more than the conclusion being right.
+TIMES ONLY IN THIS IMPORTER, NOT A LIMIT OF THE SOURCE. P699 corrected the
+previous claim that KSF offered no usable replay: the site's viewer links are
+HTML, and its raw CSS files are /api/replays/<filename>?game=66t. Twelve supplied
+files from surf_null/prosurf/monolith were downloaded and decoded (v2/v3).
+These are binary pose/velocity/bookmark files, not Source .dem or our text .rec.
+The public viewer describes the layout; tools/ksfreplay_info.py bounds/inspects
+it. A tested timer/style/map-aware playback conversion is still unbuilt (BACKLOG).
+Until then replay_id remains 0; do not advertise native watch/line/verification.
 
 TWO WAYS IN.  PLAYER-SEEDED (--seed/--from-boards): a player's best records,
 main track only, 25 each.  MAP-SEEDED (--from-maps): every board of a map, paged:
@@ -120,6 +115,7 @@ if not logging.getLogger("surfd").handlers:
     logging.getLogger("surfd").addHandler(_quiet)
 
 import surfd as S       # noqa: E402  -- import-safe: app.run is __main__-guarded
+import ksftopup as KT
 
 # Player aliases are free Unicode from another game's API, and Windows'
 # default stdout is cp1252 -- so merely PRINTING a name can kill the tool
@@ -803,6 +799,57 @@ def strike(cache, idx, key, why):
     _save(sf, st)
 
 
+def topup_step(cache, idx, pacer, completed, fetched):
+    """Explicit selected boards, same pacing/park, three boards/five pages each.
+    Main acknowledges only after write_rows; a crash leaves the request owed.
+    """
+    conn = S.connect()
+    try:
+        jobs = KT.pending(conn)
+    finally:
+        conn.close()
+    for mp, track, leg, style, target in jobs:
+        if pacer.left() <= 0:
+            break
+        mode = next((m for m, s in KSF_MODES.items() if s == style), None)
+        zone = leg if track == 0 else track + KSF_STAGES if leg == 0 else -1
+        info = map_info(mp, cache, pacer)
+        if info is None or zone not in zones_of(info) or mode is None:
+            conn = S.connect()
+            try:
+                with conn:
+                    conn.execute("UPDATE ksftopup SET state='unsupported',updated=?"
+                                 " WHERE map=? AND track=? AND leg=? AND style=? AND target=?",
+                                 (int(time.time()), mp, track, leg, style, target))
+            finally:
+                conn.close()
+            continue
+        doc = board_load(cache, mp, zone, mode)
+        try:
+            for _ in range(min(5, pacer.left())):
+                if not wants_more(_state(doc), target):
+                    break
+                doc, _ = board_page(cache, mp, zone, pacer, mode, idx=idx)
+        finally:
+            # Include even a previously cached board: importing its owed rows
+            # is the control that makes a recovered request genuinely act.
+            doc = board_load(cache, mp, zone, mode)
+            idx[_ikey(mp, zone, mode)] = _state(doc)
+            if (mp, zone, mode) not in fetched:
+                fetched.append((mp, zone, mode))
+            completed.append(((mp, track, leg, style), target,
+                              len(doc.get("rows", [])), bool(doc.get("done"))))
+
+
+def finish_topups(completed):
+    conn = S.connect()
+    try:
+        for key, target, cached, exhausted in completed:
+            KT.finish(conn, key, target, cached, exhausted, int(time.time()))
+    finally:
+        conn.close()
+
+
 def watch_mode(args, have, cache):
     """--watch: one unattended tick.  Returns (rows, the boards they file)."""
     now = int(time.time())
@@ -814,6 +861,7 @@ def watch_mode(args, have, cache):
     idx = idx if isinstance(idx, dict) else {}
     owed = owed_boards(cache)
     pacer = Pacer(args.delay, args.max)
+    args._topups = []
     fetched, refreshed, left, prio, maps = [], 0, 0, set(), set()
     if now < int(park.get("until") or 0):
         print("parked: refused (%s) at %s, nothing asked until %s"
@@ -832,6 +880,7 @@ def watch_mode(args, have, cache):
                 pass
             maps = {m for m in names if m in have}
             prio = wanted_maps(now) & maps
+            topup_step(cache, idx, pacer, args._topups, fetched)
             if cat["done"]:
                 refreshed = refresh_step(cache, idx, maps, prio, pacer,
                                          max(1, args.max // 4), now, fetched)
@@ -1158,6 +1207,7 @@ def main():
             # The boards stay owed, and the next --watch tick files them.
             print("write failed (%s): %d board(s) stay owed" % (e, len(boards)))
             return 1
+        finish_topups(getattr(args, "_topups", []))
         clear_owed(cache, boards)
         print("board rows set  %d" % n)
         return 0

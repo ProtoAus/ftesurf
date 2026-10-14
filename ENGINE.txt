@@ -25,7 +25,12 @@ commit   4148e72923e617a79bf8ed16474cc49143fb72fc
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-693
-patch    698
+patch    699
+# Patch 699: board-scoped paced KSF +100 requests; Forward/SW/HSW/BW selectors
+# in both game boards and on the web; count embedded brush timer zones, and
+# distinguish unlisted beta zones. Bounded public KSF replay inspector, not
+# native playback/conversion. Additive surfd schema 17; native pin/tag and
+# QC Build unchanged. Verification and limits: tools/p699ksf.md.
 # Patch 698: held Momentum/KSF port links in menu and web boards, checked beta
 # zone donors, red missing-zone labels and an authenticated admin pool manifest.
 # QC/web/tools only; engine commit/tag and qcbuild are unchanged.

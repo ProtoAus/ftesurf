@@ -385,7 +385,7 @@ names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table
 check("a fresh database has the four account tables", sorted(names & set(TABLES)), TABLES)
 check("...and is stamped the head schema, without 12's guid-keyed `links`",
       (rows(m, "PRAGMA user_version")[0][0], m.SCHEMA_VERSION, "links" in names),
-      (16, 16, False))
+      (m.SCHEMA_VERSION, m.SCHEMA_VERSION, False))
 
 # An 11 database: the same file with the tables gone and the stamp put back.
 home = m._home
@@ -396,7 +396,7 @@ conn.close()
 m = fresh(home=home)
 names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table'")}
 check("a schema-11 database gains them on the next start",
-      (sorted(names & set(TABLES)), rows(m, "PRAGMA user_version")[0][0]), (TABLES, 16))
+      (sorted(names & set(TABLES)), rows(m, "PRAGMA user_version")[0][0]), (TABLES, m.SCHEMA_VERSION))
 
 # A 12 database as Patch 612 left it: `links` present, no `keylinks`.
 LINKS_12 = """
@@ -420,7 +420,7 @@ check("a schema-12 database swaps its empty `links` for `keylinks`, and codes le
       ("links" in names, "keylinks" in names, rows(m, "PRAGMA user_version")[0][0],
        "claim" in [r[1] for r in rows(m, "PRAGMA table_info(linkcodes)")],
        "shown" in [r[1] for r in rows(m, "PRAGMA table_info(linkcodes)")]),
-      (False, True, 16, True, True))
+      (False, True, m.SCHEMA_VERSION, True, True))
 conn = sqlite3.connect(m._test_db)
 conn.executescript(accounts.SQL + LINKS_12 + "INSERT INTO links (player, steamid, linked_at)"
                    " VALUES ('g', '%s', 1); DROP TABLE keylinks; PRAGMA user_version=12;" % SID)
@@ -428,7 +428,7 @@ conn.close()
 m = fresh(home=home)
 check("...but a `links` somebody filled is left as it was",
       (rows(m, "SELECT player FROM links"), rows(m, "PRAGMA user_version")[0][0]),
-      ([("g",)], 16))
+      ([("g",)], m.SCHEMA_VERSION))
 
 # gunicorn and a cron tool do start together on a deploy, and a script commits
 # between its statements.  So: an 11 database, and at each CREATE of the
@@ -448,7 +448,8 @@ def finish_elsewhere(what):
         accounts.upgrade_14(other)
         other.execute(accounts.live_index(m.TIERS_IMPORTED))
         accounts.links_now(other)
-        other.execute("PRAGMA user_version=16")
+        other.executescript(m.ksftopup.SQL)
+        other.execute("PRAGMA user_version=%d" % m.SCHEMA_VERSION)
         other.commit()
         RACED[-1][1] = what
     finally:
@@ -473,7 +474,7 @@ def racing_connect():
 
 
 outcomes = []
-for at in range(1, 11):                 # step 12 has four CREATEs, 16 one, links_now four,
+for at in range(1, 12):                 # step 12 four CREATEs, 16 one, 17 one, links_now four,
                                         # and the board's own index once more at every start
     conn = sqlite3.connect(m._test_db)
     conn.executescript("".join("DROP TABLE IF EXISTS %s;" % t for t in TABLES + ["links"])
@@ -489,13 +490,13 @@ for at in range(1, 11):                 # step 12 has four CREATEs, 16 one, link
     finally:
         m.connect = real_connect
 names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table'")}
-check("another process finishing the account steps at any of their ten statements breaks neither",
+check("another process finishing the account steps at any of their eleven statements breaks neither",
       (outcomes, sorted(names & set(TABLES)), "links" in names,
        rows(m, "PRAGMA user_version")[0][0]),
-      (["ok"] * 10, TABLES, False, 16))
-check("...and those ten were the statements raced: each table, and each index by its table",
+      (["ok"] * 11, TABLES, False, m.SCHEMA_VERSION))
+check("...and those eleven were the statements raced: each table, and each index by its table",
       [r[1] for r in RACED],
-      ["accounts", "linkcodes", "linkcodes", "linknonces", "runs", "keylinks", "keylinks",
+      ["accounts", "linkcodes", "linkcodes", "linknonces", "runs", "ksftopup", "keylinks", "keylinks",
        "installs", "runpins", "runs"])
 
 print("\n--- 2. off unless SURFD_BOARD_URL is set -------------------------")
@@ -1717,7 +1718,7 @@ conn.close()
 m = fresh(home=home)
 cols = [r[1] for r in rows(m, "PRAGMA table_info(linkcodes)")]
 check("a schema-13 database gains both columns on the next start",
-      ("shown" in cols, "seal" in cols, rows(m, "PRAGMA user_version")[0][0]), (True, True, 16))
+      ("shown" in cols, "seal" in cols, rows(m, "PRAGMA user_version")[0][0]), (True, True, m.SCHEMA_VERSION))
 conn = sqlite3.connect(m._test_db)
 conn.executescript("ALTER TABLE linkcodes DROP COLUMN seal; PRAGMA user_version=13;")
 conn.close()
@@ -1760,7 +1761,7 @@ check("a schema-14 database loses its links on the way to the head, and keeps it
       (count(m, "linkkeys"), "keylinks" in tables(m), keys(m), count(m, "accounts"),
        rows(m, "SELECT COUNT(*) FROM accounts WHERE banned_at > 0"),
        hello(m, KEY1).get("linked"), rows(m, "PRAGMA user_version")[0][0]),
-      (0, True, [], 2, [(1,)], 0, 16))
+      (0, True, [], 2, [(1,)], 0, m.SCHEMA_VERSION))
 link(m, KEY1, code_of(signin(m, ip="198.51.100.73")))
 m = fresh(home=home)
 check("...a link made at 15 survives the next start", [k[:2] for k in keys(m)], [(PUB1[:8], SID)])
@@ -1784,7 +1785,7 @@ conn.close()
 m = fresh(home=home)
 check("a database stamped 15 with no link table gets one at the next start, and links",
       ("keylinks" in tables(m), rows(m, "PRAGMA user_version")[0][0],
-       link(m, KEY1, code_of(signin(m, ip="198.51.100.77")))), (True, 16, YES))
+       link(m, KEY1, code_of(signin(m, ip="198.51.100.77")))), (True, m.SCHEMA_VERSION, YES))
 m = fresh()
 check("a fresh database has no table for older code, and starting twice is no trouble",
       ("linkkeys" in tables(m), "linkkeys" in tables(fresh(home=m._home))), (False, False))

@@ -54,6 +54,8 @@ float  mlb_state, mlb_code;   // mlb_code: HTTP status, or Mlb_Why's own (<= 0, 
 float  mlb_req, mlb_sent;     // the first page in flight; 0 none
 float  mlb_mreq, mlb_msent, mlb_mlim;  // a later page in flight, and its limit
 float  mlb_mfail, mlb_mcode;  // a later page failed: the list's last row says why
+float mlb_kreq, mlb_kdead, mlb_kafter;
+string mlb_kstate;
 float  mlb_n, mlb_more;       // rows held; the last page came back full
 float  mlb_known, mlb_cksf, mlb_cmom, mlb_cours;   // `counts`, once a reply gave them
 float  mlb_tzoff;             // s east of UTC when the panel opened
@@ -238,7 +240,9 @@ void() Mlb_ClearRows =
 {
 	Mlb_Abandon(mlb_req);
 	Mlb_Abandon(mlb_mreq);
-	mlb_req = mlb_mreq = 0;
+	Mlb_Abandon(mlb_kreq);
+	mlb_req = mlb_mreq = mlb_kreq = 0;
+	strunzone(mlb_kstate); mlb_kstate = "";
 	mlb_n = mlb_more = 0;
 	mlb_mfail = mlb_mcode = 0;
 	mlb_state = MLBS_IDLE;
@@ -371,8 +375,50 @@ void(float t) Mlb_SetTab =
 	mlb_focusms = 0i;
 	strunzone(mlb_focuswho); mlb_focuswho = "";
 	mlb_tab = mlb_lasttab = t;
+	if (t != MLB_T_KSF)
+	if (!strcmp(mlb_style, "sw") || !strcmp(mlb_style, "hsw") || !strcmp(mlb_style, "bw"))
+	{
+		strunzone(mlb_style); mlb_style = strzone("clean");
+	}
 	print(sprintf("^5board:^7 tab %s\n", Mlb_Tier(t)));
 	Mlb_Fetch(FALSE);
+};
+
+string(float i) Mlb_StyleKey =
+{
+	if (i == 1) return "sw";
+	if (i == 2) return "hsw";
+	if (i == 3) return "bw";
+	return "clean";
+};
+
+void(string style) Mlb_SetStyle =
+{
+	if (strcmp(style, "clean") && strcmp(style, "sw") && strcmp(style, "hsw") && strcmp(style, "bw")) return;
+	Mlb_ClearRows();
+	mlb_offset = mlb_focusrank = 0;
+	mlb_focusms = 0i;
+	strunzone(mlb_focuswho); mlb_focuswho = "";
+	strunzone(mlb_source); mlb_source = "";
+	strunzone(mlb_style); mlb_style = strzone(style);
+	mlb_tab = mlb_lasttab = MLB_T_KSF;
+	Mlb_Fetch(FALSE);
+};
+
+void() Mlb_KsfMore =
+{
+	local string url;
+	if (!mlb_open || cvar("rec_terms") < FS_TERMS_ONLINE) return;
+	if (!strcmp(cvar_string("lobby_dir"), "") || !strcmp(mlb_style, "segmented")) return;
+	if (time < mlb_kafter) return;
+	if (mlb_kreq && time < mlb_kdead) return;
+	mlb_kreq = Lob_NextReq(); mlb_kdead = time + MLB_DEADLINE; mlb_kafter = time + 10;
+	url = sprintf("%s/api/board?ksfmore=1&map=%s&track=%g&leg=%g&style=%s",
+	              cvar_string("lobby_dir"), uri_escape(mlb_map), mlb_track, mlb_leg, uri_escape(mlb_style));
+	strunzone(mlb_kstate); mlb_kstate = strzone("asking");
+	if (uri_get(url, mlb_kreq, "application/json", "{}")) return;
+	mlb_kreq = 0;
+	strunzone(mlb_kstate); mlb_kstate = strzone("failed");
 };
 
 float() Mlb_IsOpen = { return mlb_open; };
@@ -573,10 +619,28 @@ void(float id, float code, string body, float append) Mlb_Page =
 */
 float(float reqid, float code, string body) Mlb_Reply =
 {
-	local float k;
+	local float k, root;
 
 	if (!reqid)
 		return FALSE;
+	if (mlb_kreq)
+	if (reqid == mlb_kreq)
+	{
+		mlb_kreq = 0;
+		strunzone(mlb_kstate); mlb_kstate = strzone("failed");
+		if (code == 0 || code == 202)
+		{
+			root = json_parse(body);
+			if (root >= 0)
+			{
+				strunzone(mlb_kstate);
+				mlb_kstate = strzone(substring(json_get_string(json_find_object_child(root, "state")), 0, 32));
+				json_free(root);
+			}
+		}
+		print(sprintf("^5board:^7 KSF top-up %s (code %g); refresh after the background crawl\n", mlb_kstate, code));
+		return TRUE;
+	}
 	if (mlb_req)
 	if (reqid == mlb_req)
 	{
@@ -777,8 +841,26 @@ void(vector screensize) Mlb_Draw =
 		}
 	}
 
+	x = 16;
+	for (t = 0; t < 4; t = t + 1)
+	{
+		id = strcat("mlb_style", ftos(t));
+		s = (t == 0) ? "FW" : strtoupper(Mlb_StyleKey(t));
+		x = x + ui_chip([x, 56 + CHIP_H + 8], id, s, !strcmp(mlb_style, Mlb_StyleKey(t))) + CHIP_GAP;
+		if (sui_is_released(id)) Mlb_SetStyle(Mlb_StyleKey(t));
+	}
+	if (ui_button("mlb_ksmore", [x + 8, 56 + CHIP_H + 8], [144, CHIP_H], "fetch +100 KSF"))
+		Mlb_KsfMore();
+	if (strcmp(mlb_kstate, ""))
+		sui_text([x + 160, 60 + CHIP_H + 8], SZ_LABEL,
+		         (mlb_kreq && time > mlb_kdead) ? "timed out" : mlb_kstate, COL_DIM, 1, 0);
+	if (ui_button("mlb_refresh", [w - 100, 56 + CHIP_H + 8], [84, CHIP_H], "refresh"))
+	{
+		Mlb_ClearRows(); Mlb_Fetch(FALSE);
+	}
+
 	// Columns, right-aligned numbers in the mono face: rank, player, time, date.
-	ly = 56 + CHIP_H + 30;
+	ly = 56 + CHIP_H * 2 + 38;
 	ls = [w - 32, h - ly - 44];
 	rw = ls_x - 14;
 	Font_Set(ui_font_mono);
@@ -933,6 +1015,17 @@ void() Mlb_TestCommand =
 		              (k == 2) ? "ended a join" : "left the create screen"));
 		return;
 	}
+	if (a == "ksfmore")
+	{
+		Mlb_KsfMore();
+		return;
+	}
+	if (a == "style")
+	{
+		if (mlb_open)
+			Mlb_SetStyle(argv(2));
+		return;
+	}
 	if (a == "retry")
 	{
 		if (!mlb_open)
@@ -1033,7 +1126,10 @@ float(string map, string source, string track, string leg, string style, string 
 		if (!(c >= 48 && c <= 57) && !(c >= 65 && c <= 90) && !(c >= 97 && c <= 122) && c != 95 && c != 45) return FALSE;
 	}
 	if (strcmp(source, "ranked") && strcmp(source, "momentum") && strcmp(source, "ksf") && strcmp(source, "all")) return FALSE;
-	if (strcmp(style, "clean") && strcmp(style, "segmented")) return FALSE;
+	if (strcmp(style, "clean") && strcmp(style, "segmented") && strcmp(style, "sw")
+	    && strcmp(style, "hsw") && strcmp(style, "bw")) return FALSE;
+	if (!strcmp(style, "sw") || !strcmp(style, "hsw") || !strcmp(style, "bw"))
+	if (strcmp(source, "ksf")) return FALSE;
 	if (!Mlb_ScopeNumber(track, 64) || !Mlb_ScopeNumber(leg, 256)) return FALSE;
 	allsource = !strcmp(source, "all");
 	t = allsource ? MLB_T_OURS : Mlb_TabOf(source);

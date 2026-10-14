@@ -35,6 +35,8 @@ import types
 from flask import Flask, Response, g, jsonify, request, send_file
 
 import accounts         # Steam accounts: schema 12 and its routes
+import zonefit          # bounded BSP entity/model reader for legacy timers
+import ksftopup         # bounded, board-scoped requests; no network in HTTP
 import recplot          # .rec -> plot data; stdlib only, never raises
 import steam            # the only module that asks Steam anything
 
@@ -440,7 +442,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 
 # --------------------------------------------------------------------------
@@ -1524,6 +1526,13 @@ def migrate():
             conn.commit()
             version = 16
 
+        if version < 17:
+            # Additive board-scoped KSF demand. No scan/rewrite of runs.
+            conn.executescript(ksftopup.SQL)
+            conn.execute("PRAGMA user_version=17")
+            conn.commit()
+            version = 17
+
         verdict_metrics(conn)
         gone = accounts.links_now(conn)
         conn.commit()
@@ -1803,6 +1812,9 @@ def _scan_maps():
             if zdir == ZONES_DIR:
                 log.warning("zone directory %s unreadable: %s", zdir, exc)
 
+    for key, stem in bsp.items():
+        if key not in zone and zonefit.has_timer(os.path.join(MAPS_DIR, stem + ".bsp")):
+            zone.add(key)
     return bsp, frozenset(zone)
 
 
@@ -3635,8 +3647,10 @@ def _ban_late(db, player):
         log.exception("late ban pass for %s failed: %s", player, exc)
 
 
-@app.get("/api/board")
+@app.route("/api/board", methods=["GET", "POST"])
 def board():
+    if request.method == "POST":
+        return ksf_topup_request()
     now = int(time.time())
 
     # rate_key() AND NOT request.remote_addr, BECAUSE THIS ENDPOINT IS PROXIED.
@@ -4660,6 +4674,35 @@ def web_maps():
     return resp
 
 
+def ksf_topup_request():
+    """POST the currently selected real KSF leg, never a caller-supplied URL."""
+    now = int(time.time())
+    if request.args.get("ksfmore") != "1":
+        return fail(400, "expected ksfmore=1")
+    if not rate_ok(rate_key(), now, 10, "ksftopup"):
+        return fail(429, "rate limited")
+    mp = clean_map(request.args.get("map"))
+    track = strict_int(request.args.get("track", "0"), 0, MAX_TRACK)
+    leg = strict_int(request.args.get("leg", "0"), 0, MAX_LEG)
+    style = request.args.get("style", STYLE_CLEAN)
+    if mp is None or track is None or leg is None or style not in ksftopup.STYLES:
+        return fail(400, "bad board")
+    conn = connect()
+    try:
+        conn.execute("PRAGMA busy_timeout=50")
+        body, code = ksftopup.enqueue(conn, (variant_base(mp) or mp, track, leg, style), now)
+    except sqlite3.Error:
+        return fail(503, "queue busy; try again")
+    finally:
+        conn.close()
+    if body is None:
+        return fail(code, "unknown KSF leg" if code == 404 else "queue full")
+    resp = jsonify(v=1, **body)
+    resp.status_code = code
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 WANT_WAIT_MS = 50       # see note_want
 
 
@@ -4702,8 +4745,10 @@ def note_want(db, mapname):
         log.debug("mapwant note failed for %s", mapname, exc_info=True)
 
 
-@app.get("/board/api/map")
+@app.route("/board/api/map", methods=["GET", "POST"])
 def web_map():
+    if request.method == "POST":
+        return ksf_topup_request()
     now = int(time.time())
     if not rate_ok(rate_key(), now, WEB_RATE_MAX, "web"):
         return fail(429, "rate limited")
@@ -4780,6 +4825,7 @@ def web_map():
     out = {"v": 1, "t": now, "map": mapname,
            "disp": bsp.get(mapname, mapname), "boards": boards,
            "tier": tier, "counts": counts,
+           "ksf_topup": ksftopup.status(db, (base or mapname, track, leg, style)),
            "track": track, "leg": leg, "style": style, "n": n,
            "have": 1 if (mapname in bsp and mapname in zoned) else 0,
            "bsp": 1 if mapname in bsp else 0,

@@ -11999,3 +11999,40 @@ the game fetches its own map list. The menu half is Patch 652.
   Windows admin's two rcon/cache timing failures reproduced on the unchanged
   e008c3b control. Node syntax checks are explicitly skipped if Node is absent
   on the Pi; the actual page's JS was exercised in Chrome on Windows.
+
+### P699 — zone coverage, explicit KSF top-up and binary replay format
+
+- Census at 07:53Z 14 Oct: all 759 approved Momentum BSPs held on the Pi had
+  zone files. Of 320 held beta/extra maps, 199 had no indexed zone file;
+  online-only inspection found 198, three with embedded start+stop triggers.
+  Beta download membership is not a promise of public API zones. Look in LOCAL
+  as well as online/. Never copy a namesake zone across an unmeasured build.
+- surfd's map index now recognizes bounded, valid BSP brush start/stop pairs;
+  zonefit caches by path+mtime_ns+ctime_ns+size so replacements invalidate it.
+  The menu says 'zones not listed' rather than asserting no timer exists when
+  its available catalogue cannot prove one. No personal zone files are fetched.
+- Schema 17 adds ksftopup. POST /api/board?ksfmore=1 or /board/api/map queues a
+  known KSF leg/style; GET remains read-only for this action. Canonicalize links
+  with variant_base. Active requests coalesce, 64 active keys globally, +100
+  source rows/request up to 10k/board. --watch consumes three keys/five pages
+  each under its existing request/delay/refusal park. Only finish_topups AFTER
+  write_rows; durable cached rows/owed markers recover a cut before filing.
+  Source exhaustion is not 'there are no more rows on our current UI page'.
+- FW is KSF mode0 / clean, SW=1, HSW=2, BW=3. Style is a separate board key,
+  not a verification class. The game's selectors force KSF for non-forward;
+  returning to another source resets clean. Website empty KSF-style tabs can
+  still ask for their first batch on a known leg. Bonus4 is zone34, not stage4.
+- FTE uri_get callback code for HTTP 202 is 202, NOT 0 (only 200 is normalized).
+  An acted POST had durably queued while the first UI callback falsely said
+  failed; positive runtime witnesses now pin both VMs' 202 acknowledgement.
+- The operator's KSF /replays/<map>/<file>.rec links are HTML viewers. CSS raw
+  bytes are /api/replays/<file>?game=66t. The public gokz/js/replayviewer.js
+  describes versions2/3: 4 int32 header cells; v3 adds frame/extension sizes;
+  524-byte bookmarks, then fixed-stride pose/angle/buttons/velocity frames.
+  All twelve supplied files decoded (3 v3, 9 v2). tools/ksfreplay_info.py is a
+  bounded OFFLINE inspector only. Frames include lead-in/out; header tick
+  count alone is not the advertised timed duration. Playback/conversion is
+  BACKLOG, not evidence that no usable public replay exists.
+- Tests/provenance/limits: tools/p699ksf.md. Chrome smoke uses real-time CDP
+  (Node's built-in WebSocket), an owned headless profile and explicit GUI state
+  waits. A hash changing is not proof that its next board has rendered yet.

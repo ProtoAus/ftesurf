@@ -5,6 +5,24 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## KSF binary replay playback import — P699, 2026-10-14
+
+- Sites: surfd/ksfimport.py (replay_id remains 0), Momentum-style conversion/
+  cl_replay reader. Raw CSS bytes are public at KSF `/api/replays/<filename>?game=66t`;
+  the operator's `/replays/<map>/<filename>` links are HTML viewers. Twelve supplied
+  null/prosurf/monolith files downloaded and decoded, v2/v3, using the public
+  viewer layout. `tools/ksfreplay_info.py` is a bounded inspector, not a converter.
+- Next falsifier: prove matching map/build, player, selected track/style and
+  advertised duration before conversion; derive timed frames from bookmarks
+  without counting pre/post-roll, retain tick interval and teleport discontinuities,
+  and compare native line/watch endpoints and duration to the KSF viewer on main
+  and bonus-4 examples. Reject malformed/oversized/unmatched files and preserve
+  imported provenance. Never label these as native verified runs. No direct demo
+  fetching, replay database association or game playback is shipped by P699.
+- Beta map zone coverage is separate: unapproved BSP lists do not guarantee
+  published JSON. Missing/nonmatching zones are not made by renaming another
+  build's file; only the existing measured compatibility gate may donate them.
+
 ## World of Surf launcher platform/input coverage — P694, 2026-10-14
 
 - Site: launcher `src/ftesurf_ui.rs` Screen/raw guards and `src/download.rs`

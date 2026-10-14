@@ -1481,10 +1481,66 @@ void(float code, string body) Online_MomReply =
 	json_free(root);
 };
 
+// Explicit demand is separate from paging our already-held rows. HTTP only
+// enqueues a selected KSF board; the paced importer does the network work.
+float ok_req, ok_dead, ok_after;
+string ok_state, ok_map, ok_style;
+float ok_track, ok_leg;
+float(float track, float leg, string style) Online_KsfMore =
+{
+	local string url, dir;
+	if (!Online_MomAllowed()) return FALSE;
+	if (cltime < ok_after) return FALSE;
+	if (ok_req && cltime < ok_dead) return FALSE;
+	dir = cvar_string("lobby_dir");
+	if (!strcmp(dir, "")) return FALSE;
+	strunzone(ok_map); ok_map = strzone(serverkey("map"));
+	strunzone(ok_style); ok_style = strzone(style);
+	ok_track = track; ok_leg = leg;
+	url = sprintf("%s/api/board?ksfmore=1&map=%s&track=%g&leg=%g&style=%s",
+	              dir, uri_escape(serverkey("map")), track, leg, uri_escape(style));
+	ok_req = Online_NextReq();
+	ok_dead = cltime + OB_DEADLINE;
+	ok_after = cltime + 10;
+	strunzone(ok_state); ok_state = strzone("asking");
+	if (uri_get(url, ok_req, "application/json", "{}")) return TRUE;
+	ok_req = 0;
+	strunzone(ok_state); ok_state = strzone("failed");
+	return FALSE;
+};
+
+string(float track, float leg, string style) Online_KsfState =
+{
+	if (strcmp(ok_map, serverkey("map")) || strcmp(ok_style, style)) return "";
+	if (track != ok_track || leg != ok_leg) return "";
+	if (ok_req && cltime > ok_dead) return "timed out";
+	return ok_state;
+};
+
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
 	local string fn;
+	local float kr;
 
+	if (ok_req)
+	if (reqid == ok_req)
+	{
+		ok_req = 0;
+		strunzone(ok_state); ok_state = strzone("failed");
+		// FTE rewrites 200 to 0, but preserves an accepted 202.
+		if (responsecode == 0 || responsecode == 202)
+		{
+			kr = json_parse(resourcebody);
+			if (kr >= 0)
+			{
+				strunzone(ok_state);
+				ok_state = strzone(substring(json_get_string(json_find_object_child(kr, "state")), 0, 32));
+				json_free(kr);
+			}
+		}
+		print(sprintf("scores: KSF top-up %s (code %g); refresh after the background crawl\n", ok_state, responsecode));
+		return;
+	}
 	if (om_req)
 	if (reqid == om_req)
 	{

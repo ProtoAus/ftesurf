@@ -96,7 +96,8 @@
   function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
   // KSF's styles sit beside our two (surfd.STYLES_KSF); tabbed only where held.
   var KSF_STYLES = ['sw', 'hsw', 'bw'];
-  var STYLE_NAMES = { sw: 'Sideways', hsw: 'Half-Sideways', bw: 'Backwards' };
+  var STYLE_NAMES = { clean: 'Forward (FW)', sw: 'Sideways (SW)',
+                      hsw: 'Half-Sideways (HSW)', bw: 'Backwards (BW)' };
   function styleName(s) { return STYLE_NAMES[s] || cap(s); }
 
   function showError(msg) {
@@ -362,18 +363,22 @@
       }
     });
     ['clean', 'segmented'].concat(KSF_STYLES.filter(function (s) {
-      return here[s] > 0 || s === v.style;
+      return v.tier === 'ksf' || here[s] > 0 || s === v.style;
     })).forEach(function (s) {
-      styles.appendChild(tabButton(styleName(s), here[s] || 0, s === v.style,
-        function () { go(v, v.track, v.leg, s, v.tier); }));
+      styles.appendChild(tabButton(styleName(s),
+        v.tier === 'ksf' && KSF_STYLES.indexOf(s) >= 0 && !here[s] ? null : here[s] || 0, s === v.style,
+        function () { go(v, v.track, v.leg, s,
+          KSF_STYLES.indexOf(s) >= 0 ? 'ksf' : v.tier); }));
     });
 
     var cnt = { ranked: n0(counts.ranked), momentum: n0(counts.momentum),
                 ksf: n0(counts.ksf) };
     cnt.combined = cnt.ranked + cnt.momentum + cnt.ksf;
     TIER_TABS.forEach(function (p) {
-      srcs.appendChild(tabButton(p[1], cnt[p[0]], p[0] === v.tier,
-        function () { go(v, v.track, v.leg, v.style, p[0]); }));
+      srcs.appendChild(tabButton(p[1],
+        KSF_STYLES.indexOf(v.style) >= 0 && p[0] !== 'ksf' ? null : cnt[p[0]], p[0] === v.tier,
+        function () { go(v, v.track, v.leg,
+          p[0] !== 'ksf' && KSF_STYLES.indexOf(v.style) >= 0 ? 'clean' : v.style, p[0]); }));
     });
   }
 
@@ -408,6 +413,46 @@
     });
   }
 
+  function renderKsfTopup(v, body) {
+    var box = $('ksftopup');
+    box.textContent = '';
+    if (v.style === 'segmented' || !v.boards.some(function (b) {
+      return b.track === v.track && b.leg === v.leg && n0(b.nk) > 0;
+    })) { return; }
+    var info = body.ksf_topup || { state: 'idle' };
+    var button = tabButton('Fetch +100 KSF records', null, false, function () {
+      button.disabled = true;
+      note.textContent = 'Queuing…';
+      var h = { m: v.key, t: v.track, l: v.leg, s: v.style, tier: v.tier };
+      fetch(mapQuery(h, 0) + '&ksfmore=1', { method: 'POST', credentials: 'omit',
+        headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(function (r) {
+        if (!r.ok) { throw new Error('KSF queue returned HTTP ' + r.status); }
+        return r.json();
+      }).then(function (r) {
+        if (state.view !== v) { return; }
+        note.textContent = r.state === 'exhausted' ? 'All currently available KSF records fetched.'
+          : r.state === 'limited' ? 'Per-board fetch limit reached.'
+          : 'Queued for the paced background crawl. Refresh in a few minutes.';
+      }, function (e) {
+        if (state.view !== v) { return; }
+        note.textContent = e.message; button.disabled = false;
+      });
+    });
+    button.disabled = ['queued', 'partial', 'limited'].indexOf(info.state) >= 0 ||
+      info.state === 'exhausted' && Date.now() / 1000 - n0(info.updated) < 86400;
+    var note = el('span', 'muted', info.state === 'exhausted'
+      ? 'All currently available KSF records fetched.'
+      : info.state === 'queued' || info.state === 'partial'
+      ? 'Queued for the background crawl. Refresh shortly.' : 'Fetches this leg/style into our database, not just this page.');
+    box.appendChild(button); box.appendChild(note);
+    box.appendChild(tabButton('Refresh', null, false, function () {
+      var h = { m: v.key, t: v.track, l: v.leg, s: v.style, tier: v.tier };
+      get(mapQuery(h, 0) + '&refresh=' + Date.now()).then(function (b) {
+        if (state.view === v) { renderMap(b); }
+      }, function (e) { if (state.view === v) { showError(e.message); } });
+    }));
+  }
+
   function renderMap(body) {
     var v = {
       map: body.disp, key: body.map, track: body.track, leg: body.leg,
@@ -436,6 +481,7 @@
       title.appendChild(builds);
     }
     renderTabs(v, body.counts || {});
+    renderKsfTopup(v, body);
     $('rows').textContent = '';
     var rows = body.rows || [];
     if (rows.length && rows[0].r === 1) { v.best = rows[0].ms; }

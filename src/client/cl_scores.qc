@@ -162,6 +162,14 @@ float rec_sb_tab;                // SB_T_*
   handle the older arms use, for the session and on no control.
 */
 float rec_sb_imponly;
+float rec_sb_ksfstyle;           // 0 Forward, 1 SW, 2 HSW, 3 BW; Online only
+string(float i) Scores_KsfName =
+{
+	if (i == 1) return "SW";
+	if (i == 2) return "HSW";
+	if (i == 3) return "BW";
+	return "FW";
+};
 float rec_sb_lnall;              // the LINE heading clicked this frame (Scores_LineAll)
 // What that click did, in the footer for a few seconds in place of the count: when
 // it ticks nothing (every slot held elsewhere) nothing else on the board says so.
@@ -212,7 +220,17 @@ float(float evtype, float scanx, float chary, float devid) Scores_NativeInput;
   always-empty board and look like a server with no times on it.
 */
 float() Scores_IsOnline = { return (rec_sb_tab != SB_T_LOCAL); };
-string() Scores_StyleOf = { return (rec_sb_tab == SB_T_SEGMENT) ? "segmented" : "clean"; };
+string() Scores_StyleOf =
+{
+	if (rec_sb_tab == SB_T_SEGMENT) return "segmented";
+	if (rec_sb_tab == SB_T_ONLINE)
+	{
+		if (rec_sb_ksfstyle == 1) return "sw";
+		if (rec_sb_ksfstyle == 2) return "hsw";
+		if (rec_sb_ksfstyle == 3) return "bw";
+	}
+	return "clean";
+};
 
 /*
   The other wire value, and it is a third tab's worth of difference in one
@@ -238,6 +256,7 @@ float() Scores_ImpState =
 
 	if (rec_sb_tab != SB_T_ONLINE)
 		return SB_IMP_OFF;
+	if (rec_sb_ksfstyle > 0) return SB_IMP_KSF;
 	if (rec_sb_imponly)
 		return SB_IMP_ONLY;
 	if (cvar("sb_filter") <= 0)
@@ -266,6 +285,7 @@ void(float tab) Scores_TabSet =
 {
 	rec_sb_tab = tab;
 	rec_sb_imponly = FALSE;
+	rec_sb_ksfstyle = 0;
 };
 
 string() Scores_TierOf =
@@ -285,6 +305,7 @@ string() Scores_TierOf =
 void(float on, float src) Scores_ImpSet =
 {
 	rec_sb_imponly = FALSE;
+	if (!on || src != 2) rec_sb_ksfstyle = 0;
 	cvar_set("sb_filter", on ? "1" : "0");
 	cvar_set("sb_filter_src", ftos(bound(0, rint(src), 2)));
 	rec_sb_oscroll = '0 0 0';
@@ -2334,7 +2355,7 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		{
 			i = FS_RunClass(ob_flags[idx]);
 			Scores_Cell(lp, SBK_KIND, d,
-			            FS_RunClassName(i),
+			            (rec_sb_ksfstyle > 0) ? Scores_KsfName(rec_sb_ksfstyle) : FS_RunClassName(i),
 			            (i == RC_CLEAN) ? SBC_GOOD : SBC_WARN, 0.85);
 		}
 
@@ -3190,7 +3211,7 @@ void(vector scr) Scores_Draw =
 	// state: a list a row taller on an old server would move for no visible reason.
 	chrome = pad + rec_sb_sztitle + ceil(pad * 0.75) + tabh + pad
 	       + rec_sb_szhead + pad * 0.5
-	       + ceil(pad * 0.75) + rec_sb_szhead * 2 + 6 + pad;
+	       + ceil(pad * 0.75) + rec_sb_szhead * 2 + 6 + pad + chiph + pad * 0.5;
 	rows  = bound(6, floor((scr_y * 0.86 - chrome) / rec_sb_rowh), 24);
 	listh = rows * rec_sb_rowh;
 	h = chrome + listh;
@@ -3321,6 +3342,35 @@ void(vector scr) Scores_Draw =
 	if (rec_sb_tab == SB_T_ONLINE)
 		Scores_FilterDraw(x - ceil(pad * 0.75), ytabs, tabh);
 
+	// A distinct style axis; SW/HSW/BW force KSF and never join Forward.
+	if (rec_sb_tab == SB_T_ONLINE)
+	{
+		x = x0 + pad;
+		yc = ytabs + tabh + pad * 0.5;
+		Scores_Text([x, yc + (chiph - rec_sb_szhead) * 0.5], rec_sb_szhead, "KSF style", SBC_DIM, 1);
+		x = x + rec_sb_cw * 10;
+		for (idx = 0; idx < 4; idx = idx + 1)
+		{
+			rid = strcat("sb_ks", ftos(idx));
+			if (Scores_Chip(rid, [x, yc], [chipw * 0.65, chiph], Scores_KsfName(idx), idx == rec_sb_ksfstyle))
+			{
+				Scores_ImpSet(TRUE, 2);
+				rec_sb_ksfstyle = idx;
+				rec_sb_oscroll = '0 0 0';
+				Profile_OnClear();
+			}
+			x = x + chipw * 0.65 + 4;
+		}
+		if (Scores_Chip("sb_ksmore", [x, yc], [chipw * 2, chiph], "fetch +100 KSF", FALSE))
+		if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
+			Online_KsfMore(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], Scores_StyleOf());
+		if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
+		{
+			s = Online_KsfState(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], Scores_StyleOf());
+			Scores_Text([x + chipw * 2 + pad, yc + (chiph - rec_sb_szhead) * 0.5], rec_sb_szhead, s, SBC_DIM, 1);
+		}
+	}
+	ytabs = ytabs + chiph + pad * 0.5;
 	sui_fill([x0 + pad, ytabs + tabh + pad * 0.5], [w - pad * 2, 1], SUI_THEME_EDGE, 1, 0);
 	yhead = ytabs + tabh + pad;
 	ylist = yhead + rec_sb_szhead + pad * 0.5;   // where both row drawers put their list
@@ -3880,6 +3930,19 @@ float(string cmd) Scores_ConsoleCommand =
 			else if (argv(2) == "momentum") Scores_ImpSet(TRUE, 1);
 			else if (argv(2) == "ksf")      Scores_ImpSet(TRUE, 2);
 			else                            Scores_ImpSet(FALSE, cvar("sb_filter_src"));
+		}
+		else if (argv(1) == "style")
+		{
+			Scores_TabSet(SB_T_ONLINE);
+			Scores_ImpSet(TRUE, 2);
+			if (argv(2) == "sw") rec_sb_ksfstyle = 1;
+			else if (argv(2) == "hsw") rec_sb_ksfstyle = 2;
+			else if (argv(2) == "bw") rec_sb_ksfstyle = 3;
+		}
+		else if (argv(1) == "ksfmore")
+		{
+			if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
+				Online_KsfMore(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], Scores_StyleOf());
 		}
 		else if (argv(1) == "lineall")      // the LINE heading's click
 		{

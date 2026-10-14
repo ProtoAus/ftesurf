@@ -7298,7 +7298,7 @@ void(vector screensize) screen_create =
 				// Two builds: the switch says where it comes from (drawn below).
 				sub = (bufstr_get(ms_var, real) != "") ? "" : ui_srcname(stof(bufstr_get(ms_src, real)));
 				if (bufstr_get(ms_zoned, er) != "1")
-					sub = strcat(MAP_NOZONE_ESC, "no zones^7  ", sub);
+					sub = strcat(MAP_NOZONE_ESC, "zones not listed^7  ", sub);
 				smode = ui_mode_name(stof(bufstr_get(ms_modev, real)));
 				if (smode != "")
 					sub = sprintf("%s  %s|^7  %s", sub, SUI_ESC_MUTED, smode);
