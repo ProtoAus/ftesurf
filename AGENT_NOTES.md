@@ -4850,6 +4850,33 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## OpenGL blend collector and visual harness (Patch 685)
 
+### Legacy list readiness/rescan seam (2026-10-14 source probe)
+
+`tools/test_p690legacyorder.py` compiles complete production batch-generation,
+rebucket and reload functions with controlled stubs, actual sort enum and acting
+mutants. Eleven cases/six mutants pass C-O0/O2 and Python normal/-O. Registration
+is WG_MAIN (`R_LoadShader` asserts it), not a worker shader-table race proved by
+`-noworkers`. Loader timing can alter queued GL callback/publication readiness.
+Initial batch head insertion and later global head-insertion rebucket can produce
+opposite final same-band lists. ANY used shader sort change triggers the global
+rebucket; `Mod_ResortShaders` checks MLS_LOADED only (no model-type guard), reverses
+unchanged lists, skips loading models and clears scene cache. Controlled built-
+before/after/not-published schedules are source counterexamples, not production
+histories. P688/merged registration source is identical after Git newline handling.
+
+The exact merged production's .db was retired. Earlier candidate COFF names lack
+type debug information and candidate model-root addresses are0x1000 different.
+Offline complete-function normalized matches independently recover actual model
+root RVAs; do not borrow diagnostic/candidate addresses or infer arbitrary type
+fields. `tools/p690legacyorder.md` documents machine-code scope and remaining
+fail-closed decoder/late-snapshot controls. No live observer acceptance yet.
+A late loaded-memory graph cannot reconstruct registration history or prove GPU
+submission order; `worker_status pending0` does not attest in-flight completion.
+Never use body-reading `mod_batchlist`, `mod_texturelist`, `r_showshader`,
+`shader_here` or `r_showshaders` as a lifecycle-neutral observer. No default2,
+product fix, native causality, deployment or performance claim from this probe.
+
+
 - A cached VBO batch deliberately has no CPU meshes; that is a coarse whole-
   batch record, not an empty draw. Preserve original descriptor/cache pointers
   and ranges when submitting individual mesh records. Scenetris require their

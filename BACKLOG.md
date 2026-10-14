@@ -118,10 +118,22 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   which cannot describe the mismatching uninstrumented merged production boot.
   Other46 crossbatch images match; no subset rescue. Worker config implicated,
   NOT sole-cause proven (zero-then-enabled, no production lifecycle trace).
-  Next falsifier: nonperturbing actual worker-enabled registration/rescan trace
-  with exact production/diagnostic/P688-return pixels; matched cadence is no
-  longer an unrun prerequisite. Stable rebucketing remains separate unproved
-  product work; no forced resort/reparse/flush or favorable retry selection.
+  Exact-source audit now establishes main-thread material registration and
+  source-supported global same-band reversal: Mod_Batches_Generate prepends;
+  Shader_DoReload invokes Mod_ResortShaders if ANY used material changes sort;
+  resort checks only MLS_LOADED, reverses unchanged lists and clears scene cache.
+  Eleven complete-function/stub cases + six acting mutants pass C-O0/O2 and
+  Python normal/-O. A controlled world-before/after/unpublished rescan schedule
+  has opposite same-final-sort lists; NOT a trace of either production boot.
+  Offline unique whole-function machine-code matches recover production model
+  roots independently (candidate addresses differ0x1000), not live type/decoder
+  acceptance. tools/p690legacyorder.md records scope and prerequisites.
+  Next falsifier: fail-closed decoder controls, then late actual worker-enabled
+  production batch/material snapshot after failure manifests, with exact
+  readerOFF/ON/OFF/P688-return pixels. A late snapshot is NOT registration history
+  or GPU submission proof; a true lifecycle trace remains separate OPEN work.
+  Matched cadence is no longer an unrun prerequisite. Stable rebucketing remains
+  separate unproved product work; no forced resort/reparse/flush/favorable retry.
   Separate brush action from world correction enabled by removing its barrier;
   controls must add a NEW specific failure, not hide behind existing rejection.
   No mask/widened gate/subset rescue or candidate mode1 bug attribution.
