@@ -178,19 +178,22 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   Offline unique whole-function machine-code matches recover production model
   roots independently (candidate addresses differ0x1000), not live type/decoder
   acceptance. tools/p690legacyorder.md records scope and prerequisites.
-  Next falsifier: fail-closed decoder controls, then late actual worker-enabled
-  production batch/material snapshot after failure manifests, with exact
-  readerOFF/ON/OFF/P688-return pixels. A late snapshot is NOT registration history
-  or GPU submission proof; a true lifecycle trace remains separate OPEN work.
-  Matched cadence is no longer an unrun prerequisite. Stable rebucketing remains
-  separate unproved product work; no forced resort/reparse/flush/favorable retry.
-  Separate brush action from world correction enabled by removing its barrier;
-  controls must add a NEW specific failure, not hide behind existing rejection.
-  No mask/widened gate/subset rescue or candidate mode1 bug attribution.
-  Remaining falsifier: ordinary worker-enabled rotated-brush transfer, arbitrary
-  model/sprite/weapon native acceptance, representative portal/reflection captures,
-  additional supported-map cache0/1 opaque preservation and representative ordinary
-  frame times/tails.
+  P700 now fixes two source-proven product defects instead of extending tracing:
+  unchanged same-band resort reversal/history-dependent BSP rebucketing, and the
+  absence of plane refinement in default1 ordinary static-world runs. Exact C
+  regressions prove repeated/split/merged-band history convergence and default
+  dispatch correction for all36 recorded Kitsune yaw/material permutations;
+  restored old source ACTS and fails. Full isolated Windows client build passes
+  with zero new warnings. This does NOT infer worker-registration causality or
+  credit the historical rejected native gates. See tools/p700alphafix.md.
+  Next falsifier is the actual corrected product: fresh worker-enabled startup
+  repeats and correct pane pixels, with old default order as an ACTED failing
+  control. Require unchanged mode0/2, original callback/fog/multipass/capture
+  behavior and no process/config damage; do not demand old incorrect default
+  pixels where P700 intentionally changes the world order. No further decoder,
+  trace or snapshot milestone is a prerequisite for this source correction.
+  Broader native model/sprite/weapon, portal/reflection, supported-map cache
+  preservation and ordinary frame-time/tail acceptance remain open.
   One quiet fixed Kitsune cache0 ordinary gate now PASSES, not broad promotion:
   tools/p690ordinary.py/p690ordinary.md schema2 bind78 complete ticketed samples,
   17 exact PNGs, six100-frame service groups and separate128-swap cadence rings.
