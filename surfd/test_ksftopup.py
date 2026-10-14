@@ -139,6 +139,14 @@ class Topup(unittest.TestCase):
 
 
 class EmbeddedZones(unittest.TestCase):
+    def test_public_proxy_opens_only_selected_map_post(self):
+        cfg = (Path(__file__).resolve().parents[1] / 'src/release/ftesurf.nginx').read_text()
+        exact = cfg.split('location = /ftesurf/board/api/map {', 1)[1].split('\n}', 1)[0]
+        rest = cfg.split('location ^~ /ftesurf/board/ {', 1)[1].split('\n}', 1)[0]
+        self.assertIn('limit_except GET POST { deny all; }', exact)
+        self.assertIn('proxy_pass            http://127.0.0.1:8084/board/api/map;', exact)
+        self.assertIn('limit_except GET { deny all; }', rest)
+
     def bsp(self, name, ents, model_count=3):
         path = Path(T.HOME) / (name + '.bsp')
         header = bytearray(zonefit.HDRSZ)
