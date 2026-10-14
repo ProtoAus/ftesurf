@@ -25,7 +25,12 @@ commit   4148e72923e617a79bf8ed16474cc49143fb72fc
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-693
-patch    694
+patch    695
+# Patch 695: replace rejected abstract launcher ramp/sun art with a plain ASCII
+# wave; equal-width rows preserve connected outline, steady curl/moving waterline.
+# Forty-two Rust tests and six piped/six hidden-console regressions pass.
+# Illustration-only: native P693 pin/tag and QC Build remain unchanged; no live
+# install, release/feed or performance-workload change. tools/p695wave.md.
 # Patch 694: animated World of Surf Rust launcher artwork/Enter pages, truthful
 # verified-file/content progress and staged-worker bars; raw-input transfer
 # cancellation restores terminal and drains workers before install/launch.

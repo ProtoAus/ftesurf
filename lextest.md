@@ -1,11 +1,13 @@
 # lextest.md — things waiting on a human
 
-## P694 — animated World of Surf launcher artwork
+## P695 — plain ASCII wave World of Surf launcher artwork
 
-Launcher source/debug-preview acceptance only; live installs are NOT replaced
-while another bot runs performance tests. In the isolated P694 preview binary,
-run `ftesurf-launcher --ui-demo`: inspect the large SURF wordmark, neon light-band,
-twinkling stars, sun glow and moving ocean. The removed tagline must not appear.
+P694's abstract ramp/sun/stars scene was rejected and is superseded. Launcher
+source/debug-preview acceptance only; live installs are NOT replaced while another
+bot runs performance tests. Use the NEW P695 preview binary's `--ui-demo`: inspect
+the plain ASCII wave beside the large SURF wordmark. Rows now center as one block;
+the curl stays readable while the tilde waterline moves. Judge whether this simpler
+wave works visually; no ramp, sun, stars or old tagline should remain.
 Enter or Esc closes the sample preview without a download or game launch.
 
 Judge the art/readability/motion in your actual Windows Terminal and classic
@@ -15,7 +17,7 @@ animation, key cancellation and final screen/input/cursor restoration, but not
 visual cursor hiding while the private VT alternate buffer is active. The PNG/GIF
 previews are terminal-cell renders, not physical-desktop screenshots. No full game
 rename, Linux acceptance, official archive or live deployment is implied.
-Source/commands/preview provenance: `tools/p694launcher.md`.
+Source/commands/NEW preview provenance: `tools/p695wave.md`.
 
 ## P688 — Windows sound and spatial, level-coloured sky
 
