@@ -25,7 +25,13 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-703
-patch    703
+patch    704
+# Patch 704: Windows Surf launcher exits after detached game spawn; source
+# checkouts skip public release updates instead of overwriting dev binaries.
+# Deploy the centered logo-only main source as an optimized 3.58 MB release,
+# not the stale 13.38 MB wave preview. Acting native Enter/console + signed
+# updater controls pass. No engine pin/tag, QC Build, release/feed or Pi change.
+# Verification and exact dev restoration: tools/p704launcher.md.
 # Patch 703: bounded Windows native recovery keeps original signed journal rows
 # through checked named-stage retirement, removes authority last, admits only
 # complete/readable cleanup-only exhausted retries, and blocks new retained apply.
