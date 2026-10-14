@@ -1,5 +1,24 @@
 # P712 — demo strafe trainer
 
+## Current presentation policy and combined delivery — 2026-10-14
+
+The operator has now approved P705/P710 design and deployment. Withholding
+statements in the historical P712 receipt below describe its earlier delivery
+policy, **not the current authorization**. A clean combined delivery preserves
+these exact trainer/watch files plus approved presentation:
+`0303a987f0120159c8707ae25e16f930ba31009c` on
+`agent/rebrand4-approved-presentation-trainer-delivery`.
+
+Zero-warning build and actual installed-SSQC/menu reader-acted hidden control
+versus complete P712 subject pass; pixels show both World of Surf and the demo
+trainer. Client-only rollout at 18:10Z reached both Windows installs and all 12
+empty/restarted lobbies, with exact served-download/board witnesses. Current
+CSQC is `af01a4eb20f16ad2149bf26309c188b75fe43dfaffd4f370019299ab9d556dae`;
+SSQC/menu/configs and native components stayed unchanged. Do not restore the
+historical P712-only client merely to reapply the superseded withholding policy.
+No new product patch or main-source reversal. Details/limits/rollback:
+`tools/rebrand-deployment.md`.
+
 ## Behavior
 
 `hud_trainer 1` now displays the trainer while watching the game's native,

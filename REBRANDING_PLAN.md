@@ -1,11 +1,12 @@
 # FTESurf -> World of Surf: rename and migration plan
 
-Status: **P705 stage-1 presentation candidate implemented and locally verified;
-owner art acceptance and live cutover are pending**. The owner has approved the
-World of Surf identity and `https://proto.bar/worldofsurf/` as the canonical website.
-The first stage changes brand art and web presentation sources only. No native/QC
-build, public release, deployment, service routing, signed identity or player-data
-migration has been performed. Evidence: `tools/p705rebrand.md`.
+Status: **P705/P710 design approved; game presentation deployed to both Windows
+installs and the twelve-lobby development fleet on 2026-10-14 UTC. Public canonical
+path/release cutover is not complete.** The owner has approved the World of Surf
+identity, existing design and `https://proto.bar/worldofsurf/` as the canonical
+website. The source-preparation checkpoints below preserve their original limits;
+the superseding deployment checkpoint and `tools/rebrand-deployment.md` distinguish
+what is now live. No signed identity, player-data migration or Build/version bump.
 
 ## Implementation checkpoint — 2026-10-14 (P705)
 
@@ -90,6 +91,44 @@ remain owned (recommended: do not overwrite them). New browser-base/defaults,
 Steam callback transition and signed old-client update bridge still need their
 separate gates; keep the old endpoint/feed/technical game identity authoritative.
 
+### Approved design and development deployment — 2026-10-14 UTC
+
+The operator approved the P705/P710 design and deployment. Exact clean game
+commit `80618e52e50bff713ad6b645511308c00d4c0ccd` compiled all three VMs without
+warnings. At 17:20Z the qw/cs pair and hostname-only lobby configs were deployed
+to all 12 empty active lobbies; at 17:23Z all three VMs and the formal manifest
+were hash-verified in both Windows installs. No native binary/plugin was replaced,
+no saved player hostname/preference was reset, and later peer commits were not
+silently included. Rollback copies remain. A concurrent P712 rollout restored
+older client labels under the prior withholding policy; approved composition
+`0303a98` preserves its exact trainer/watch feature plus the new presentation.
+Its zero-warning build, actual installed-SSQC/menu synthetic trainer control and
+subject pass. At 18:10Z only that combined client was deployed to both Windows
+installs and twelve empty/restarted lobbies; the new live download matches
+`af01a4eb...`. Server/menu/configs and native binaries stayed unchanged.
+
+Actual old/new menu pixels show FTESURF versus WORLD OF SURF; flat/milk station,
+consent and UI-scale images were reviewed at 1280x720. The real 800x600 screenshot
+confirms BACKLOG's pre-existing no-scroll consent overflow, not narrow-consent
+acceptance. A fresh unseeded client downloaded the exact deployed CSQC from the
+live fleet, drew the Local board and new HUD title, and reached its acting marker
+with no QC errors. An Online-shell control shows WOS and correctly blocks data
+without online consent; it does not prove native table rows or account linking.
+
+The existing `/ftesurf/` landing page and its board/account presentation are now
+World of Surf: four hash-verified backend presentation files, an acted graceful
+worker reload, and a separately tested/reviewed no-release static transaction
+(`90d2566`). All 20 static files have exact-byte/MIME witnesses; original release
+history and signed feed/version/receipt bytes stayed unchanged. No functional
+backend/schema/identity/environment, signing, archive or version was replaced.
+
+External old/new path controls still show `/worldofsurf/` is the unrelated
+filebrowser fallback. Authenticated nginx installation/test/reload remains needed;
+HTTP 200 is not route acceptance. The guarded operator candidate/script are staged
+outside served roots. Keep the legacy site/feed/callback base unchanged meanwhile.
+Exact source, hashes, commands, retained failures, rollback and remaining
+web/native/package gates: `tools/rebrand-deployment.md`.
+
 ## 1. Agreed identity and remaining decisions
 
 Use one consistent public identity rather than three interchangeable titles:
@@ -118,9 +157,9 @@ is not an incomplete public rebrand. Changing every occurrence in one pass is un
       website, not an interim address. No new domain purchase or DNS migration.
 - [ ] Choose whether launch includes only the public rebrand (recommended) or also
       the higher-risk on-disk migration in section 8.
-- [ ] Approve a visual direction: reuse the existing dark/cyan identity and current
-      World of Surf launcher wordmark, or commission a new identity. No redesign
-      is required just to rename the game.
+- [x] Approve the P705/P710 design: existing dark/cyan identity, World of Surf
+      wordmark and compatible game/web presentation (operator, 2026-10-14).
+      This does not waive native/package/runtime compatibility gates.
 - [ ] Decide whether to rename the public game GitHub repository at launch or later.
       The engine fork and shared launcher repository do not need renaming.
 - [ ] Choose a launch window and a legacy endpoint support policy. Recommend at

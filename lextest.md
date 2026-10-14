@@ -14,12 +14,14 @@ The recorded movement direction is not proof of physical keyboard/SOCD order;
 resolution is limited by the demo's own samples. Real fleet clips and your
 preferred panel placement remain human acceptance. See `tools/p712trainer.md`.
 
-## P710 — compatible game and package presentation candidate (not deployed)
+## P710 — compatible game presentation (deployed; native/package gates remain)
 
-P705 art still awaits your choice; P710 is source preparation, not permission to
-change your installations, saved settings or public lobbies. After that gate and
-an explicitly recorded isolated/dual-install delivery, judge the full WORLD OF
-SURF menu title, its halo/feedback in flat and in-world menus, and the 48px native
+The operator approved the P705/P710 design and deployment on 2026-10-14.
+Approved P710 presentation plus the exact P712 trainer client is now in both
+Windows installs and all twelve lobbies;
+provenance and limits are in `tools/rebrand-deployment.md`. Automated old/new
+flat and in-world menu images at 1280x720 show WORLD OF SURF; your everyday
+interaction/layout judgement is still useful. Judge its halo/feedback and the 48px native
 font rung at narrow resolutions and normal/UI-scaled sizes. Check the map HUD's
 measured right edge, WOS online-board/profile/native-score labels, update/consent
 and account-error paragraphs with long map/player names and no clipping.
@@ -28,7 +30,9 @@ Exercise a mixed lobby fixture: "FTESurf -- tier 1", "World of Surf -- tier 1"
 and case variants should show the same suffix, while unrelated and prefix-only
 names remain whole, and an empty hostname still shows its address. Production
 Lob_Title has compiled but has NOT been executed by P710's source tests.
-New lobby configs are not deployed; saved/custom hostnames must not be overwritten.
+The hostname-only default lobby configs are deployed; saved/custom player
+hostnames were not overwritten. Actual live discovery names and HUD title were
+observed, but the mixed-case/unrelated-name fixture remains a separate gate.
 Verify actual engine window/icon, generated package headings and Linux errors,
 fresh install and legacy launcher upgrade in the separate native/package gate.
 Entrypoints/archive roots/account/feed/data identity remain legacy deliberately;
@@ -37,9 +41,10 @@ remaining automation gates: `tools/p710presentation.md`, `REBRANDING_PLAN.md`.
 
 ## P707 — parallel website-path preparation (not installed)
 
-P705 art acceptance remains separate below. The new /worldofsurf route is only
-prepared in source; please approve a privileged parallel-routing deployment window
-before anyone changes nginx. No new live URL or canonical/Steam cutover is claimed.
+P705 art and deployment are approved. The new /worldofsurf route is still only
+prepared in source: target-host nginx install/test/reload requires authenticated
+sudo, which the agent does not have. The filebrowser fallback is not route
+acceptance. No new live URL or canonical/Steam cutover is claimed.
 After a separately recorded target-host deployment and external HTTP checks, judge
 old/new page navigation, downloads and account linking/unlinking in a real HTTPS
 browser, including returning from Steam and the game opener. Starts under either
@@ -73,10 +78,10 @@ Desktop/mobile web screenshots come from `tools/test_rebrand_browser.py` (comman
 in `src/brand/README.md`), with clearly synthetic board data. Check the longer
 name in the header, hero, account light/dark copy and WOS source label at your
 normal scale. Automated 320/390/768/1440px and acting ranked-filter checks pass;
-your art acceptance is still required. This is source-only: old live pages,
-service paths, wrappers, update feeds, game binaries and player data have not
-been replaced. Routing/Steam callback transition and full package rename remain
-separate gates in `REBRANDING_PLAN.md`. Evidence: `tools/p705rebrand.md`.
+your art acceptance was recorded on 2026-10-14. The original P705 evidence is
+source-only; current live deployment state is `tools/rebrand-deployment.md`.
+Routing/Steam callback transition, native icons and full package rename remain
+separate gates in `REBRANDING_PLAN.md`. Original evidence: `tools/p705rebrand.md`.
 
 ## P698 — linked map picker and admin manifest
 
