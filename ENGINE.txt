@@ -25,7 +25,14 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-703
-patch    710
+patch    712
+# Patch 712: show the strafe trainer in native/Momentum/KSF replay, sampling
+# recorded yaw and resolved side movement on the file clock. Pause/rate/seek
+# cannot age viewer input into grades; bounded catchup hides partial results.
+# Missing moves/contact/physics are explicit; imported keys never borrow the
+# current lobby's air-rate target. Engine source/pin/tag and QC Build unchanged.
+# This delivery composes exact P712 client code with operator-approved P710
+# presentation; no P711 functionality. See tools/rebrand-deployment.md on main.
 # Patch 710: prepare compatible World of Surf game/menu/HUD/lobby and package
 # presentation. Manifest NAME only; WOS compact badges, consistent menu title
 # passes and old/new lobby prefix recognition. All three VMs compile with zero
