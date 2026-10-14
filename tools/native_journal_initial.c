@@ -1,4 +1,4 @@
-// Test-only x64 debugger: initial full live journal publication, not power loss.
+// Test-only x64 debugger: initial/deferred live publication, not power loss.
 #ifndef UNICODE
 #define UNICODE
 #endif
@@ -64,15 +64,17 @@ int wmain(int argc, wchar_t **argv)
 	DEBUG_EVENT ev;
 	uintptr_t base = 0, entry = 0, pre = 0, post = 0, caller;
 	BYTE originals[3], trap = 0xcc;
-	DWORD hits = 0, writer = 0, code = 90;
-	BOOL loader = FALSE, exited = FALSE, killed = FALSE;
+	DWORD hits = 0, writer = 0, code = 90, calls = 0, stepping = 0;
+	BOOL loader = FALSE, exited = FALSE, killed = FALSE, deferred;
+	DWORD saved_flags = 0;
 	HANDLE lock = NULL;
 	const wchar_t *engine = _wgetenv(L"OWNED_JOURNAL_ENGINE");
 	wchar_t *command = _wgetenv(L"OWNED_JOURNAL_COMMAND");
 	wchar_t source[1024], dest[1024], probe[1024];
 	ULONGLONG deadline = GetTickCount64() + 120000;
-	// entry/pre/post RVAs+bytes, initial caller, commit caller, ABI, dir, events, snapshot, mode.
-	if (argc != 14 || !engine || !command) return 91;
+	// Default initial ABI; optional deferred caller + initial-authority snapshot.
+	if ((argc != 14 && argc != 16) || !engine || !command) return 91;
+	deferred = argc == 16;
 	check(!wcscmp(argv[13], L"none") || !wcscmp(argv[13], L"source-lock") || !wcscmp(argv[13], L"crash-before") || !wcscmp(argv[13], L"crash-after"), "known mode");
 	check(!wcscmp(argv[9], L"wide") || !wcscmp(argv[9], L"fs"), "known ABI");
 	events = _wfopen(argv[11], L"wx");
@@ -123,30 +125,60 @@ int wmain(int argc, wchar_t **argv)
 		else if (ev.dwDebugEventCode == EXIT_PROCESS_DEBUG_EVENT)
 		{
 			code = ev.u.ExitProcess.dwExitCode;
-			fprintf(events, "{\"event\":\"exit\",\"pid\":%lu,\"code\":%lu,\"hits\":%lu}\n", pi.dwProcessId, code, hits);
+			fprintf(events, "{\"event\":\"exit\",\"pid\":%lu,\"code\":%lu,\"hits\":%lu,\"calls\":%lu}\n", pi.dwProcessId, code, hits, calls);
 			exited = TRUE;
 		}
 		else if (ev.dwDebugEventCode == EXCEPTION_DEBUG_EVENT)
 		{
 			DWORD ex = ev.u.Exception.ExceptionRecord.ExceptionCode;
 			uintptr_t at = (uintptr_t)ev.u.Exception.ExceptionRecord.ExceptionAddress;
-			if (ex == EXCEPTION_BREAKPOINT && !killed && ((hits == 0 && at == entry) || (hits == 1 && at == pre) || (hits == 2 && at == post)))
+			if (ex == EXCEPTION_SINGLE_STEP && stepping == ev.dwThreadId)
+			{
+				HANDLE thread = OpenThread(THREAD_GET_CONTEXT|THREAD_SET_CONTEXT, FALSE, ev.dwThreadId);
+				CONTEXT ctx = {0};
+				check(thread != NULL, "open stepping thread");
+				ctx.ContextFlags = CONTEXT_CONTROL;
+				check(GetThreadContext(thread, &ctx), "get step context");
+				ctx.EFlags = (ctx.EFlags & ~0x100u) | (saved_flags & 0x100u);
+				memory(entry, &trap, 1, TRUE);
+				check(SetThreadContext(thread, &ctx), "restore trap flag");
+				check(CloseHandle(thread), "close stepping thread");
+				stepping = 0;
+			}
+			else if (ex == EXCEPTION_BREAKPOINT && !killed && !stepping && ((hits == 0 && at == entry) || (hits == 1 && at == pre) || (hits == 2 && at == post)))
 			{
 				HANDLE thread = OpenThread(THREAD_GET_CONTEXT|THREAD_SET_CONTEXT, FALSE, ev.dwThreadId);
 				CONTEXT ctx = {0};
 				check(thread != NULL, "open stopped thread");
 				ctx.ContextFlags = CONTEXT_CONTROL|CONTEXT_INTEGER;
 				check(GetThreadContext(thread, &ctx), "get stopped context");
-				check(!writer || writer == ev.dwThreadId, "same initial writer thread");
+				check(!writer || writer == ev.dwThreadId, "same live writer thread");
 				writer = ev.dwThreadId;
 				memory(at, &originals[hits], 1, TRUE);
 				ctx.Rip = at;
 				if (hits == 0)
 				{
+					calls++;
+					check(calls <= (deferred ? 2u : 1u), "live writer ordinal");
 					memory(ctx.Rsp, &caller, sizeof(caller), FALSE);
-					check(caller == base + wcstoull(argv[7], NULL, 16), "inspected initial live caller");
-					fprintf(events, "{\"event\":\"writer\",\"ordinal\":1,\"rva\":%llu,\"thread\":%lu,\"caller_rva\":%llu}\n", (unsigned long long)(at-base), writer, (unsigned long long)(caller-base));
-					memory(pre, &trap, 1, TRUE);
+					check(caller == base + wcstoull(argv[calls == 1 ? 7 : 14], NULL, 16), "inspected live caller");
+					fprintf(events, "{\"event\":\"writer\",\"ordinal\":%lu,\"rva\":%llu,\"thread\":%lu,\"caller_rva\":%llu}\n", calls, (unsigned long long)(at-base), writer, (unsigned long long)(caller-base));
+					if (deferred && calls == 1)
+					{
+						saved_flags = ctx.EFlags;
+						check(!(saved_flags & 0x100u), "untraced first writer");
+						ctx.EFlags |= 0x100u;
+						stepping = ev.dwThreadId;
+					}
+					else
+					{
+						if (deferred)
+						{
+							check(CopyFileW(dest, argv[15], TRUE), "snapshot full prior authority");
+							check(GetFileAttributesW(source) == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND, "first temp consumed");
+						}
+						memory(pre, &trap, 1, TRUE);
+					}
 				}
 				else if (hits == 1)
 				{
@@ -159,9 +191,12 @@ int wmain(int argc, wchar_t **argv)
 						memory(ctx.Rsp + 0x1848, &caller, sizeof(caller), FALSE);
 						check(caller == base + wcstoull(argv[8], NULL, 16), "inspected live commit caller");
 					}
-					check(GetFileAttributesW(dest) == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND, "initial authority absent");
-					check(CopyFileW(source, argv[12], TRUE), "snapshot complete initial temp");
-					fprintf(events, "{\"event\":\"before\",\"rva\":%llu,\"thread\":%lu,\"paths_verified\":true,\"authority_absent\":true}\n", (unsigned long long)(at-base), writer);
+					if (deferred && wide)
+						check(GetFileAttributesW(dest) != INVALID_FILE_ATTRIBUTES, "prior authority retained before replace");
+					else
+						check(GetFileAttributesW(dest) == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND, "authority absent before rename");
+					check(CopyFileW(source, argv[12], TRUE), "snapshot complete native temp");
+					fprintf(events, "{\"event\":\"before\",\"rva\":%llu,\"thread\":%lu,\"paths_verified\":true,\"authority_absent\":%s}\n", (unsigned long long)(at-base), writer, deferred && wide ? "false" : "true");
 					if (!wcscmp(argv[13], L"source-lock"))
 					{
 						HANDLE writable;
@@ -183,8 +218,8 @@ int wmain(int argc, wchar_t **argv)
 					fprintf(events, "{\"event\":\"after\",\"rva\":%llu,\"thread\":%lu,\"native_result\":%lu}\n", (unsigned long long)(at-base), writer, (DWORD)ctx.Rax);
 					if (lock) { check(CloseHandle(lock), "release source lock after actual failure"); lock = NULL; }
 				}
-				hits++;
-				check(SetThreadContext(thread, &ctx), "restore unchanged context");
+				if (!stepping) hits++;
+				check(SetThreadContext(thread, &ctx), "restore native context");
 				check(CloseHandle(thread), "close stopped thread");
 				if ((!wcscmp(argv[13], L"crash-before") && hits == 2) || (!wcscmp(argv[13], L"crash-after") && hits == 3))
 				{
@@ -205,5 +240,6 @@ int wmain(int argc, wchar_t **argv)
 	check(CloseHandle(child), "close child");
 	child = NULL;
 	check(fclose(events) == 0, "close receipt");
-	return killed ? (code == 86 ? 0 : 92) : (hits == 3 && code == 0 ? 0 : 92);
+	return calls == (deferred ? 2u : 1u) && !stepping && hits == (wcscmp(argv[13], L"crash-before") ? 3u : 2u) &&
+		(killed ? code == 86 : code == 0) ? 0 : 92;
 }

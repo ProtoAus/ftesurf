@@ -1,14 +1,16 @@
 # Native journal runner evidence lifecycle — 2026-10-13
 
 Test-harness hardening only. No engine/QC/product change, patch/pin/build/version
-bump, deployment, release, signing-key or default-HTTPS claim. Deferred live
-journal interruption and file-data/directory-flush power-loss acceptance remain
-separate open gates.
+bump, deployment, release, signing-key or default-HTTPS claim. The 2026-10-14
+follow-up closes deferred live process-interruption coverage separately in
+`p692native_journal_deferred_interrupt.md`; file-data/directory-flush power-loss
+acceptance remains open. The historical results below are not strengthened.
 
 ## Contract
 
 `test_update_native_journal.snapshot` is the shared **post-containment** exporter
-for cold, legacy live, deferred live, cold interruption and initial live drivers.
+for cold, legacy live, deferred live, cold interruption, initial live and deferred
+live interruption drivers.
 It captures current bytes/identities, not the intended final state:
 
 - Raw updater `.json` **and `.tmp`** metadata and all runtime `.log` files.
@@ -126,7 +128,8 @@ python -B -m unittest discover -s tools -p test_update_native_journal*_unit.py -
 
 Native inputs/commands remain the driver-specific contracts in
 `p692native_journal.md`, `p692native_journal_deferred.md`,
-`p692native_journal_interrupt.md` and `p692native_journal_initial.md`.
+`p692native_journal_interrupt.md`, `p692native_journal_initial.md` and the separate
+`p692native_journal_deferred_interrupt.md` follow-up.
 The task artifacts retain exact commands, signed-fixture paths, frozen sources,
 source/helper/binary hashes, failed histories, raw audits and review dispositions.
 No helper belongs in a shipped client/archive.

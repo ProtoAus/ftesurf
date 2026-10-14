@@ -45,9 +45,14 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   now hardened: full post-containment runtime identities, guarded export/receipt
   failures and independently observed pre/post-cleanup job0 on fresh matrices;
   `tools/native_journal_evidence.md`. This does not strengthen historical receipts.
-  Deferred live-journal interruption remains a separate open coverage gate, not
-  a claimed implementation defect. No hostile ancestor-swap/hardlink guarantee
-  is claimed.
+  Deferred live-journal before/after process-interruption controls now pass
+  with both pending-row positions, real native return/call/thread actors, exact
+  partial state and independently fresh repaired/corrupt/exhausted budgets;
+  `tools/p692native_journal_deferred_interrupt.md`. Old pre-rename loses authority
+  and starts mixed; P692 retains full authority and refuses corrupt retry.
+  Reduced authority still leaves the already installed live object's staged
+  copy orphaned; this is not a cleanup or power-loss certificate. No hostile
+  ancestor-swap/hardlink guarantee is claimed.
   Release 0.1.25 remains P687; source acceptance does not deploy recovery to any
   canonical/fleet binary or certify peer deployments.
 

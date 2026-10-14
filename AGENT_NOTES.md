@@ -6063,6 +6063,39 @@ identities, hardened runner preserves them. This is test-only, trusted synthetic
 roots, not a hostile path-swap/hardlink or power-loss certificate. Do not rewrite
 older receipt strengths. Commands/limits: tools/native_journal_evidence.md.
 
+### Deferred live journal before/after process interruption — P692, 2026-10-14
+
+The second live writer is not the cold writer or initial full publication.
+Extend the external initial debugger only with an explicit second-caller and
+prior-authority snapshot pair. Restore/execute the first entry instruction by
+single-step, preserve its other flags, rearm entry, validate inspected initial
+then deferred callers on the same thread. At second entry require full attempt1
+native authority/first temp consumed; at pre-native rename save the complete
+pending-only attempt1 temp and validate real paths/root/flags/commit caller.
+Before interruption restores the original instruction/RIP; after requires the
+actual positive native result. Never force API results or infer ACT from timing.
+
+Hold either first or last selected signed row, prove the other row installed,
+exact partial old-version ledger/no certificate, both staged inputs and protected
+sentinels. Use fresh fixtures for direct repair, corrupt-then-repair and corrupt
+attempts2/3 then repaired exhaustion; do not consume/reset one shared budget.
+Old pre-rename loses authority and ACTS mixed-content startup; save/export that
+failure before explicit control-only initial-authority restoration. P692 keeps
+full authority/refuses corrupt retry. Post-rename both retain pending-only
+attempt1 authority and temp is gone. A reduced authority cannot retire the
+already installed live row's staged copy: observed orphan, not safe GC.
+
+Review found that live-boundary HTTP counts alone miss unexpected cold requests.
+Keep that receipt AND compare/store the unchanged exact counter after ALL cold
+branches, before PASS; repeated manifest/object and unknown cold GET negatives
+must discriminate. Accepted frozen02:20new native scenarios/56phases, plus both
+initial-regression matrices; combined74natural job0/full-export phases,
+106full inventories/482raw byte-hash checks,81client-free Windows passes.
+Wrong native byte exits90/job0 and retains FAIL/full sentinels; separate negative
+assertion passes. No engine/product edit, new Linux/defaultHTTPS, hostile-root,
+power-loss or deployment claim. Contract/commands/limits:
+`tools/p692native_journal_deferred_interrupt.md`.
+
 ### Default HTTPS native/menu drivers and real return census — P689, 2026-10-13
 
 `tools/test_update_default_https.py` uses the exact archived real bootstrap and
