@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import struct
+import subprocess
 import sys
 import unittest
 from unittest.mock import patch
@@ -25,6 +26,7 @@ os.environ.update(SURFD_HOME=str(a.out), SURFD_DB=str(a.out/'test.db'))
 import surfd as S
 import ksfimport as K
 import ksfgrab as G
+import ksfprofile as P
 
 
 def binary(version=2):
@@ -59,6 +61,8 @@ class Tests(unittest.TestCase):
         for name in ('.refused', 'demos.json'):
             (Path(self.cache) / name).unlink(missing_ok=True)
         self.conn = S.connect()
+        self.conn.execute('DELETE FROM ksfprofiles')
+        self.conn.execute('DELETE FROM ksf_unbound')
         self.conn.execute('DELETE FROM runs')
         self.conn.execute('DELETE FROM replays')
         self.conn.commit()
@@ -71,6 +75,128 @@ class Tests(unittest.TestCase):
 
     def board(self, rows):
         K._save(K.board_path(self.cache, 'surf_test', 0), dict(rows=rows, done=True))
+
+    def profile_unbound_pb(self):
+        self.conn.execute('DELETE FROM ksf_unbound')
+        self.conn.execute('DELETE FROM runs'); self.conn.commit()
+        a = raw(time=.0601)
+        job = G.candidate('surf_test', 0, 0, a)
+        K.write_rows([K.rec_row('surf_test', 0, 0, a)])
+        rid = G.install(self.conn, job, binary())
+        self.assertTrue(G.ready(self.conn, job))
+        page = dict(records=[dict(mapName='surf_test', time=.0599, date=a['date'],
+                                  record_id=None, stage_id=None, zone_id=None)],
+                    pagination=dict(offset=0, limit=5), total=None)
+        self.conn.execute('DELETE FROM ksfprofiles'); self.conn.commit()
+        self.assertEqual(P.enqueue(self.conn, job['player'], 1000)['state'], 'queued')
+        with patch.object(K, 'fetch', return_value=json.dumps(page)) as fetch:
+            pacer = K.Pacer(0, 1)
+            self.assertEqual(P.step(K, self.cache, pacer, {'surf_test'}, 1001, 1), 1)
+            self.assertEqual(fetch.call_count, 1)
+        row = self.conn.execute("SELECT * FROM runs WHERE map='surf_test' AND track=0 AND style='clean'").fetchone()
+        self.assertEqual((row['millis'], row['runid'], row['replay_id']), (60, '', 0))
+        self.assertEqual(row['submitted'], a['date'])
+        self.board([a])
+        return a, job, rid
+
+    def test_null_profile_pb_refuses_stale_filing_and_retained_repair(self):
+        a, job, _ = self.profile_unbound_pb()
+        self.assertEqual(K.write_rows(K.board_rows(self.cache, 'surf_test', 0, 0)), 0)
+        self.assertEqual(G.tick(self.cache, maximum=0, download=lambda f:self.fail('stale fetched')), (0, 0))
+        self.assertFalse(G.current(self.conn, job))
+
+    def test_null_profile_pb_refuses_legacy_backfill_without_filing(self):
+        _, job, _ = self.profile_unbound_pb()
+        self.assertEqual(G.tick(self.cache, maximum=0, download=lambda f:self.fail('legacy fetched')), (0, 0))
+        self.assertFalse(G.current(self.conn, job))
+
+    def test_null_profile_fresh_matching_binding_and_raw_precision(self):
+        a, oldjob, _ = self.profile_unbound_pb()
+        self.assertEqual(K.write_rows([K.rec_row('surf_test', 0, 0, a)]), 0)
+        b = raw(time=.0599, record_id=222)
+        newjob = G.candidate('surf_test', 0, 0, b)
+        self.assertEqual(K.write_rows([K.rec_row('surf_test', 0, 0, b)]), 1)
+        self.assertTrue(G.current(self.conn, newjob))
+        G.install(self.conn, newjob, binary())
+        self.assertTrue(G.ready(self.conn, newjob))
+        self.assertEqual(K.write_rows([K.rec_row('surf_test', 0, 0, a)]), 0)
+        self.assertFalse(G.current(self.conn, oldjob))
+        self.assertEqual(self.conn.execute('SELECT count(*) FROM ksf_unbound').fetchone()[0], 0)
+
+    def test_schema18_unknown_precision_blocks_cache_until_fresh_board(self):
+        a, oldjob, _ = self.profile_unbound_pb()
+        before = [tuple(r) for r in self.conn.execute('SELECT * FROM runs')]
+        # Actual schema18 shape: runs + profiles, no precision/authority table.
+        self.conn.executescript('DROP TABLE ksf_unbound; PRAGMA user_version=18;')
+        S.migrate()
+        marker = self.conn.execute('SELECT seconds,millis,submitted FROM ksf_unbound').fetchone()
+        self.assertEqual(tuple(marker), (None, 60, a['date']))
+        self.assertEqual([tuple(r) for r in self.conn.execute('SELECT * FROM runs')], before)
+        self.assertEqual(K.write_rows(K.board_rows(self.cache, 'surf_test', 0, 0)), 0)
+        self.assertEqual(G.tick(self.cache, maximum=0, download=lambda f:self.fail('migrated fetched')), (0, 0))
+        self.assertFalse(G.current(self.conn, oldjob))
+        b = raw(time=.0599, record_id=222)
+        self.assertEqual(K.write_rows([K.rec_row('surf_test', 0, 0, b)]), 1)
+        j = G.candidate('surf_test', 0, 0, b)
+        G.install(self.conn, j, binary())
+        self.assertTrue(G.ready(self.conn, j))
+        self.assertEqual(self.conn.execute('SELECT count(*) FROM ksf_unbound').fetchone()[0], 0)
+        self.assertEqual(K.write_rows([K.rec_row('surf_test', 0, 0, a)]), 0)
+
+    def test_unbound_marker_scope_isolation_and_legacy_bootstrap(self):
+        # Same-map different style, bonus, leg and player, plus another map,
+        # cannot suppress the genuine pre-P704 main/clean/player bootstrap.
+        contexts = [('surf_test', 0, 2, raw(record_id=None)),
+                    ('surf_test', K.KSF_STAGES+1, 0, raw(record_id=None)),
+                    ('surf_test', 1, 0, raw(record_id=None)),
+                    ('surf_test', 0, 0, raw(record_id=None, steamID='STEAM_0:0:124')),
+                    ('surf_other', 0, 0, raw(record_id=None))]
+        for mp, zone, mode, rec in contexts:
+            self.assertEqual(K.write_rows([K.rec_row(mp, zone, mode, rec)]), 1)
+        markers = [tuple(r) for r in self.conn.execute('SELECT * FROM ksf_unbound ORDER BY map,track,leg,style,player')]
+        self.assertEqual(len(markers), 5)
+        G.install(self.conn, self.job, binary())
+        self.conn.execute("UPDATE runs SET runid='',replay_id=0 WHERE map='surf_test' AND track=0 AND leg=0 AND style='clean' AND player=?",
+                          (self.job['player'],)); self.conn.commit()
+        self.board([self.r])
+        self.assertEqual(G.tick(self.cache, maximum=0, download=lambda f:self.fail('legacy fetched')), (0, 1))
+        self.assertTrue(G.ready(self.conn, self.job))
+        self.assertEqual([tuple(r) for r in self.conn.execute('SELECT * FROM ksf_unbound ORDER BY map,track,leg,style,player')], markers)
+
+    def test_null_profile_marker_malformed_fails_closed(self):
+        _, job, _ = self.profile_unbound_pb()
+        for assignment in ("seconds='broken'", 'seconds=1e999', 'submitted=0',
+                           'submitted=submitted+1', 'seconds=.0611'):
+            with self.subTest(assignment=assignment):
+                self.conn.execute('UPDATE ksf_unbound SET seconds=.0599,submitted=1700000000')
+                self.conn.execute('UPDATE ksf_unbound SET '+assignment); self.conn.commit()
+                self.assertEqual(K.write_rows([K.rec_row('surf_test', 0, 0, raw(time=.0599, record_id=222))]), 0)
+                self.assertEqual(G.tick(self.cache, maximum=0, download=lambda f:self.fail('malformed fetched')), (0, 0))
+                self.assertFalse(G.current(self.conn, job))
+
+    def test_unbound_marker_pb_transaction_rolls_back_after_pb_write(self):
+        seen = []
+        before = tuple(self.conn.execute('SELECT * FROM runs').fetchone())
+        self.conn.executescript("""
+            CREATE TRIGGER observe_unbound AFTER UPDATE ON runs WHEN NEW.runid=''
+            BEGIN SELECT pb_seen(NEW.runid,NEW.millis); END;
+            CREATE TRIGGER abort_marker BEFORE INSERT ON ksf_unbound
+            BEGIN SELECT RAISE(ABORT,'acted marker failure'); END;
+        """)
+        real = S.connect
+        def connect():
+            db = real()
+            db.create_function('pb_seen', 2, lambda runid, ms:seen.append((runid, ms)))
+            return db
+        try:
+            with patch.object(S, 'connect', side_effect=connect):
+                with self.assertRaisesRegex(sqlite3.IntegrityError, 'acted marker failure'):
+                    K.write_rows([K.rec_row('surf_test', 0, 0, raw(time=.0599, record_id=None))])
+            self.assertEqual(seen, [('', 60)])
+            self.assertEqual(tuple(self.conn.execute('SELECT * FROM runs').fetchone()), before)
+            self.assertEqual(self.conn.execute('SELECT count(*) FROM ksf_unbound').fetchone()[0], 0)
+        finally:
+            self.conn.executescript('DROP TRIGGER observe_unbound; DROP TRIGGER abort_marker;')
 
     def test_advertised_only_and_exact_context(self):
         self.assertIsNotNone(self.job)
@@ -580,6 +706,163 @@ class Tests(unittest.TestCase):
             self.assertEqual(self.conn.execute('SELECT replay_id FROM runs WHERE player=?',
                                               (job['player'],)).fetchone()[0], rid)
 
+    def active_deferral_ledger(self, now):
+        rows = [raw(playerID=20000+i, steamID='STEAM_0:0:%d' % (20000+i),
+                    record_id=200000+i, file='replay_css_5_0_%d_1700000000.rec' % (20000+i))
+                for i in range(G.MAX_FAILED)]
+        K.write_rows([K.rec_row('surf_ledger', 0, 0, r) for r in rows])
+        return {'surf_ledger|0|0|' + G.candidate('surf_ledger', 0, 0, r)['runid']:
+                dict(retry=now-1, strikes=1) for r in rows}
+
+    def protected_overflow(self):
+        rows = [raw(playerID=8000+i, steamID='STEAM_0:0:%d' % (8000+i),
+                    record_id=80000+i, file='replay_css_5_0_%d_1700000000.rec' % (8000+i))
+                for i in range(259)]
+        K.write_rows([K.rec_row('surf_protected', 0, 0, r) for r in rows])
+        K._save(K.board_path(self.cache, 'surf_protected', 0), dict(rows=rows, done=True))
+        now = int(time.time())
+        jobs = {}
+        for i, r in enumerate(rows[:256]):
+            j = G.candidate('surf_protected', 0, 0, r)
+            jobs['surf_protected|0|0|' + j['runid']] = dict(
+                j, status='queued', retry=now+3600 if i % 3 == 0 else now-1,
+                strikes=1 if i % 3 == 1 else 0)
+            G.atomic(G.provenance(j), json.dumps(dict(j, game='css66', sha256='0'*64)).encode())
+        K._save(os.path.join(self.cache, 'demos.json'), dict(jobs=jobs))
+        K._save(os.path.join(self.cache, '.refused'), dict(until=now+3600))
+        for r in rows[256:]:
+            j = G.candidate('surf_protected', 0, 0, r)
+            rid = G.install(self.conn, j, binary())
+            replay = self.conn.execute('SELECT * FROM replays WHERE id=?', (rid,)).fetchone()
+            Path(S.replay_file(replay)[0]).unlink()
+        return rows, jobs, now
+
+    def test_fully_protected_queue_repairs_overflow_across_restart(self):
+        rows, jobs, now = self.protected_overflow()
+        reads_total = linked = 0
+        with patch.object(G.time, 'sleep') as sleep:
+            for _ in range(6):
+                with patch.object(G, 'retained_bytes', wraps=G.retained_bytes) as reads:
+                    made, count = G.tick(self.cache, maximum=0,
+                                         download=lambda f:self.fail('overflow fetched'))
+                self.assertEqual(made, 0)
+                self.assertLessEqual(reads.call_count, 2)
+                reads_total += reads.call_count
+                linked += count
+                state = K._load(os.path.join(self.cache, 'demos.json'))
+                self.assertEqual(state['jobs'], jobs)
+            sleep.assert_not_called()
+        self.assertGreater(reads_total, 0)  # Acted queued missing-byte control even on base.
+        self.assertEqual(linked, 3)
+        for r in rows[256:]:
+            self.assertTrue(G.ready(self.conn, G.candidate('surf_protected', 0, 0, r)))
+
+    def test_overflow_deferrals_capacity_corruption_and_replacement(self):
+        rows, jobs, now = self.protected_overflow()
+        sf = os.path.join(self.cache, 'demos.json')
+        targets = [G.candidate('surf_protected', 0, 0, r) for r in rows[256:]]
+        keys = ['surf_protected|0|0|' + j['runid'] for j in targets]
+        # All three candidates share this synthetic original. Wrong bytes must
+        # act as local failures, never as a request or host refusal.
+        original = Path(S.KSF_DIR)/'.originals'/(G.retained_digest(targets[0])+'.rec')
+        original.write_bytes(b'corrupt')
+        park = K._load(os.path.join(self.cache, '.refused'))
+        with patch.object(G.time, 'sleep') as sleep:
+            for strike in range(1, 4):
+                at = now + (strike-1)*86401
+                with patch.object(G.time, 'time', return_value=at):
+                    for _ in range(3):
+                        with patch.object(G, 'retained_bytes', wraps=G.retained_bytes) as reads:
+                            G.tick(self.cache, maximum=0, download=lambda f:self.fail('local fetched'))
+                        self.assertLessEqual(reads.call_count, 2)
+                    state = K._load(sf)
+                    self.assertEqual(state['jobs'], jobs)
+                    for key in keys:
+                        if strike < 3:
+                            self.assertEqual(state['failed'][key], dict(retry=at+86400, strikes=strike))
+                        else:
+                            self.assertEqual(state['failed'][key], at+7*86400)
+                    with patch.object(G, 'install', wraps=G.install) as install:
+                        G.tick(self.cache, maximum=0)
+                        install.assert_not_called()
+            sleep.assert_not_called()
+        self.assertEqual(K._load(os.path.join(self.cache, '.refused')), park)
+        # Ledger saturation declines new overflow, without dropping current history.
+        ledger = self.active_deferral_ledger(now)
+        K._save(sf, dict(jobs=jobs, failed=ledger))
+        original.write_bytes(binary())
+        with patch.object(G, 'install', wraps=G.install) as install:
+            G.tick(self.cache, maximum=0)
+            install.assert_not_called()
+        self.assertEqual(K._load(sf)['failed'], ledger)
+        # Retiring one obsolete exact deferral makes capacity reusable.
+        obsolete = next(iter(ledger))
+        self.conn.execute("DELETE FROM runs WHERE map='surf_ledger' AND runid=?",
+                          (obsolete.split('|', 3)[3],))
+        self.conn.commit()
+        with patch.object(G, 'install', wraps=G.install) as install:
+            made, linked = G.tick(self.cache, maximum=0)
+            self.assertEqual(made, 0)
+            self.assertGreater(linked, 0)
+            self.assertGreater(install.call_count, 0)
+        ledger.pop(obsolete)
+        self.assertEqual(K._load(sf)['failed'], ledger)
+        # Missing overflow bytes do not request; cursor moves across restart.
+        K._save(sf, dict(jobs=jobs))
+        original.unlink()
+        G.tick(self.cache, maximum=0, download=lambda f:self.fail('missing overflow fetched'))
+        self.assertIn(K._load(sf)['overflow_cursor'], keys)
+        original.write_bytes(binary())
+        self.conn.execute("UPDATE runs SET runid='replaced', replay_id=0 WHERE player=?",
+                          (targets[0]['player'],))
+        self.conn.commit()
+        for _ in range(4):
+            G.tick(self.cache, maximum=0, download=lambda f:self.fail('replacement fetched'))
+        self.assertFalse(G.ready(self.conn, targets[0]))
+        self.assertTrue(all(G.ready(self.conn, j) for j in targets[1:]))
+
+    def test_overflow_strikes_transfer_to_queue_after_obsolete_progress(self):
+        rows, jobs, now = self.protected_overflow()
+        j = G.candidate('surf_protected', 0, 0, rows[256])
+        key = 'surf_protected|0|0|' + j['runid']
+        sf = os.path.join(self.cache, 'demos.json')
+        for held in jobs.values():
+            held['retry'] = now+3600
+        K._save(sf, dict(jobs=jobs, failed={key:dict(retry=now-1, strikes=2)}))
+        # Obsolete queue members are retired before admission, and an expired
+        # overflow retry transfers its strike history into the freed slot.
+        self.conn.execute("DELETE FROM runs WHERE player=?", (next(iter(jobs.values()))['player'],))
+        self.conn.commit()
+        with patch.object(G, 'install', side_effect=ValueError('acted transferred third strike')):
+            G.tick(self.cache, maximum=0)
+        state = K._load(sf)
+        self.assertIsInstance(state['failed'][key], int)
+        self.assertGreaterEqual(state['failed'][key], now+7*86400)
+        self.assertNotIn(key, state['jobs'])
+        self.assertLessEqual(len(state['jobs']), G.MAX_QUEUE)
+
+    def test_full_deferral_ledger_keeps_terminal_job_without_fourth_attempt(self):
+        self.board([self.r])
+        now = int(time.time())
+        key = 'surf_test|0|0|' + self.job['runid']
+        ledger = self.active_deferral_ledger(now)
+        sf = os.path.join(self.cache, 'demos.json')
+        K._save(sf, dict(jobs={key:dict(self.job, retry=0, strikes=2)}, failed=ledger))
+        with patch.object(G.time, 'time', return_value=now), patch.object(G.time, 'sleep'),              patch.object(G, 'install', side_effect=ValueError('acted third strike')) as install:
+            G.tick(self.cache, download=lambda f:binary())
+            self.assertEqual(install.call_count, 1)
+        state = K._load(sf)
+        self.assertEqual(state['failed'], ledger)
+        self.assertEqual(state['jobs'][key]['retry'], now+7*86400)
+        self.assertTrue(state['jobs'][key]['terminal'])
+        for at in (now+1, now+7*86400):
+            with patch.object(G.time, 'time', return_value=at),                  patch.object(G, 'retained_bytes') as reads, patch.object(G, 'install') as install:
+                G.tick(self.cache, download=lambda f:self.fail('fourth attempt'))
+                reads.assert_not_called()
+                install.assert_not_called()
+        self.assertEqual(K._load(sf)['jobs'], {})
+        self.assertEqual(K._load(sf)['failed'], ledger)
+
     def test_warm_missing_file_requeues_and_recovers_same_index(self):
         self.board([self.r])
         rid=G.install(self.conn,self.job,binary())
@@ -621,6 +904,159 @@ class Tests(unittest.TestCase):
             sleep.assert_not_called()
         self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM replays').fetchone()[0],1)
         self.assertEqual(K._load(os.path.join(self.cache,'demos.json'))['jobs'],{})
+
+    def test_legacy_overcapacity_refuses_without_save_until_expiry(self):
+        self.board([self.r])
+        now = int(time.time())
+        sf = Path(self.cache)/'demos.json'
+        for count in (G.MAX_FAILED+2, G.MAX_FAILED+G.MAX_QUEUE):
+            with self.subTest(count=count):
+                ledger = {'legacy%d' % i:now+7*86400 for i in range(count)}
+                K._save(str(sf), dict(jobs={}, failed=ledger))
+                before = sf.read_bytes()
+                with patch.object(G.time, 'time', return_value=now), \
+                     patch.object(S, 'connect') as connect, \
+                     patch.object(K, '_save', wraps=K._save) as save, \
+                     patch.object(G, 'retained_bytes') as reads, \
+                     patch.object(G, 'install') as install, patch.object(G.time, 'sleep') as sleep:
+                    self.assertEqual(G.tick(self.cache, maximum=0,
+                                           download=lambda f:self.fail('overcapacity fetched')), (0, 0))
+                    connect.assert_not_called()
+                    save.assert_not_called()
+                    reads.assert_not_called()
+                    install.assert_not_called()
+                    sleep.assert_not_called()
+                self.assertEqual(sf.read_bytes(), before)
+                self.assertFalse((Path(self.cache)/'.refused').exists())
+                with patch.object(G.time, 'time', return_value=now+7*86400+1), \
+                     patch.object(K, '_save', wraps=K._save) as save:
+                    self.assertEqual(G.tick(self.cache, maximum=0,
+                                           download=lambda f:self.fail('expired legacy fetched')), (0, 0))
+                    self.assertGreater(save.call_count, 0)
+                state = K._load(str(sf))
+                self.assertEqual(state['failed'], {})
+                self.assertEqual(len(state['jobs']), 1)  # Automatic normal discovery resumes.
+
+    def test_overflow_deferrals_reconcile_obsolete_ready_and_current(self):
+        rows, jobs, now = self.protected_overflow()
+        extra = raw(playerID=9000, steamID='STEAM_0:0:9000', record_id=90000,
+                    file='replay_css_5_0_9000_1700000000.rec')
+        rows.append(extra)
+        K.write_rows([K.rec_row('surf_protected', 0, 0, extra)])
+        K._save(K.board_path(self.cache, 'surf_protected', 0), dict(rows=rows, done=True))
+        targets = [G.candidate('surf_protected', 0, 0, r) for r in rows[256:]]
+        keys = ['surf_protected|0|0|' + j['runid'] for j in targets]
+        G.install(self.conn, targets[1], binary())  # Satisfied deferral's real file acts.
+        G.install(self.conn, targets[3], binary())
+        replay = self.conn.execute('SELECT p.* FROM replays p JOIN runs r ON r.replay_id=p.id'
+                                   ' WHERE r.player=?', (targets[3]['player'],)).fetchone()
+        Path(S.replay_file(replay)[0]).unlink()
+        self.conn.execute('DELETE FROM runs WHERE player=?', (targets[0]['player'],))
+        self.conn.commit()
+        failed = {key:dict(retry=now-1, strikes=1) for key in keys}
+        failed[keys[2]] = dict(retry=now+3600, strikes=2)
+        sf = os.path.join(self.cache, 'demos.json')
+        K._save(sf, dict(jobs=jobs, failed=failed))
+        with patch.object(G, 'install', side_effect=ValueError('acted expired retry')) as install:
+            G.tick(self.cache, maximum=0, download=lambda f:self.fail('reconcile fetched'))
+            self.assertEqual(install.call_count, 1)
+        state = K._load(sf)
+        self.assertNotIn(keys[0], state['failed'])
+        self.assertNotIn(keys[1], state['failed'])
+        self.assertTrue(G.ready(self.conn, targets[1]))
+        self.assertEqual(state['failed'][keys[2]], failed[keys[2]])
+        self.assertEqual(state['failed'][keys[3]]['strikes'], 2)
+        self.assertEqual(state['jobs'], jobs)
+
+    def test_overflow_cursor_progresses_across_64_board_windows(self):
+        now = int(time.time())
+        jobs = {}
+        held = [raw(playerID=30000+i, steamID='STEAM_0:0:%d' % (30000+i),
+                    record_id=300000+i, file='replay_css_5_0_%d_1700000000.rec' % (30000+i))
+                for i in range(G.MAX_QUEUE)]
+        K.write_rows([K.rec_row('surf_window00', 0, 0, r) for r in held])
+        for r in held:
+            j = G.candidate('surf_window00', 0, 0, r)
+            jobs['surf_window00|0|0|'+j['runid']] = dict(j, retry=now+3600, strikes=1)
+        healthy = []
+        for index in range(64):
+            mp = 'surf_window%02d' % index
+            rows = held[:] if index == 0 else []
+            if index in (0, 1, 2, 32, 33, 34):
+                r = raw(playerID=40000+index, steamID='STEAM_0:0:%d' % (40000+index),
+                        record_id=400000+index,
+                        file='replay_css_5_0_%d_1700000000.rec' % (40000+index))
+                rows.append(r)
+                K.write_rows([K.rec_row(mp, 0, 0, r)])
+                j = G.candidate(mp, 0, 0, r)
+                data = bytearray(binary())
+                struct.pack_into('<f', data, len(data)-4, 10+index)
+                rid = G.install(self.conn, j, bytes(data))
+                replay = self.conn.execute('SELECT * FROM replays WHERE id=?', (rid,)).fetchone()
+                Path(S.replay_file(replay)[0]).unlink()
+                if index in (0, 1, 32, 33):
+                    (Path(S.KSF_DIR)/'.originals'/(G.retained_digest(j)+'.rec')).unlink()
+                else:
+                    healthy.append(j)
+            K._save(K.board_path(self.cache, mp, 0), dict(rows=rows, done=True))
+        sf = os.path.join(self.cache, 'demos.json')
+        K._save(sf, dict(jobs=jobs))
+        K._save(os.path.join(self.cache, '.refused'), dict(until=now+3600))
+        child_code = '''import json, sys
+from pathlib import Path
+import ksfgrab as G
+import ksfprofile as P
+import ksfimport as K
+counts = [0, 0]
+read, load = G.retained_bytes, K._load
+def original(digest):
+    counts[0] += 1
+    return read(digest)
+def board(path):
+    if str(path).endswith('.json') and Path(path).name != 'demos.json':
+        counts[1] += 1
+    return load(path)
+def forbidden(*args):
+    raise AssertionError('restart tick fetched or slept')
+G.retained_bytes, K._load, G.time.sleep = original, board, forbidden
+made, linked = G.tick(sys.argv[1], maximum=0, download=forbidden)
+print('RESTART_COUNTS='+json.dumps([made, linked, *counts]))
+'''
+        env = dict(os.environ, SURFD_KSF_RUNS=str((Path(self.cache)/'ksfruns').resolve()),
+                   SURFD_HOME=str(Path(a.out).resolve()), SURFD_DB=str((a.out/'test.db').resolve()))
+        reads_total = links = restarts = 0
+        with patch.object(G.time, 'sleep') as sleep:
+            for tick in range(16):
+                if tick % 2:
+                    result = subprocess.run([sys.executable, '-c', child_code,
+                                             str(Path(self.cache).resolve())],
+                                            cwd=Path(G.__file__).parent, env=env,
+                                            text=True, capture_output=True, timeout=30)
+                    self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+                    witness = next(line for line in result.stdout.splitlines()
+                                   if line.startswith('RESTART_COUNTS='))
+                    made, linked, read_count, board_count = json.loads(witness.split('=', 1)[1])
+                    restarts += 1
+                else:
+                    with patch.object(G, 'retained_bytes', wraps=G.retained_bytes) as reads, \
+                         patch.object(K, '_load', wraps=K._load) as loads:
+                        made, linked = G.tick(self.cache, maximum=0,
+                                             download=lambda f:self.fail('window repair fetched'))
+                    read_count = reads.call_count
+                    board_count = sum(str(c.args[0]).endswith('.json')
+                                      and Path(c.args[0]).name != 'demos.json'
+                                      for c in loads.call_args_list)
+                self.assertEqual(made, 0)
+                self.assertLessEqual(read_count, G.MAX_RECOVER)
+                self.assertLessEqual(board_count, G.SCAN)
+                reads_total += read_count
+                links += linked
+                self.assertEqual(K._load(sf)['jobs'], jobs)
+            sleep.assert_not_called()
+        self.assertEqual(restarts, 8)
+        self.assertGreater(reads_total, 0)  # Missing originals must actually consume slots.
+        self.assertEqual(links, 2)
+        self.assertTrue(all(G.ready(self.conn, j) for j in healthy))
 
     def test_retained_recovery_is_bounded_and_missing_original_uses_request_budget(self):
         rows = [raw(playerID=20+i, steamID='STEAM_0:0:%d' % (20+i), record_id=200+i,

@@ -12424,9 +12424,10 @@ the game fetches its own map list. The menu half is Patch 652.
   at most two provenance-present candidates by replacing only cold intents
   with no retry/strike metadata. Presence is scheduling only; bounded exact
   provenance, digest and PB/transaction checks still authorize bytes. Retained
-  and deferred intents are protected, not forcibly evicted; a fully protected
-  queue's conditional-admission limit stays in BACKLOG.md. Queue256 and two
-  original reads/request caps are unchanged.
+  and deferred intents are protected, not forcibly evicted. P717 later closes
+  fully protected admission with a bounded local overflow lane; a genuinely
+  full active deferral ledger still conditionally refuses unknown work. Queue256
+  and two original reads/request caps are unchanged.
 - Original-source controls fail at the intended stale-binding and cold256
   guards; cold255 and real fresh A are positive witnesses. Repaired collector31
   and top-up8 pass; final source/read-only review and exact-commit evidence live
@@ -12450,3 +12451,50 @@ the game fetches its own map list. The menu half is Patch 652.
   post-ACK cleanup failure warns and records accepted/cleanup-unconfirmed with
   the exact inspection path. Transport failure may follow successful removal;
   never claim retained logs without confirming they still exist.
+
+### P717 — retained repair through protected queues and rotating board windows
+
+- Cold-only admission is insufficient when all256 intents already hold protected
+  retry/strike/provenance. A <=2 transient local-only overflow lane shares the
+  original read/conversion cap2 with queued work; missing bytes never fetch.
+- One global row cursor across SCAN32 windows repeats the first misses in each
+  half of a64-board cache. Persist one board+exact-key resume position, resume
+  inside that board, and move on when its window has no eligible candidates.
+  The acted64-board gate repairs both later healthy originals across8 fresh
+  Python process restarts without sleep/fetch or loss of256 protected intents.
+- Preserve expired retry strikes, but reconcile <=2048 nonterminal histories
+  against scoped exact-current PBs and linked-file readability. Obsolete/ready
+  histories must retire or they permanently saturate capacity. At a truly full
+  active ledger, decline new overflow; queued terminal intents hold their slot
+  until seven-day expiry rather than lose history or attempt a fourth time.
+- Legacy writers can append failures after truncation and save2050..2304 entries.
+  After normal expiry, an oversized active set parks LOCALLY before DB/work/save,
+  preserving historical bytes and refusing no host. Accepted processing/new
+  writes are capped2048; preserved historical files are not physically normalized.
+- P716 null-ID profile PB .0599 can replace identified .0601 at rounded60ms,
+  then stale filing/legacy repair rebinds the old record after raw clock is lost.
+  Schema19 ksf_unbound retains precise seconds/millis/submitted per exact scope
+  in the same transaction as PB writes. Cache cannot bind; slower fresh records
+  refuse, matching fresh identity clears metadata. Current/install/legacy paths
+  all refuse matching markers. No record ID or native evidence is fabricated.
+- Original18 empty-runid KSF rows are ambiguous. Mark unknown precision without
+  rewriting runs/guessing clocks; native/identified rows stay unchanged. Fresh
+  identified authority is needed, and an unknown same-ms clock cannot reject a
+  subtly slower fresh record until precision is regained. Provably pre18 legacy
+  remains compatible; malformed matching markers require explicit repair.
+- Forward integer reading is NOT old-reader/old-writer rollback: old ticks erase
+  new dictionaries; old18 writers do not honor markers. surfd migrates on import,
+  BEFORE the importer's inner lock. Deployment/sweep flocks alone are insufficient.
+  Approved live transition must exclude/drain old cron/manual writers BEFORE any
+  install/import and retain fail-closed exclusion through coherent six-file
+  install, migration, accepting-generation verification and receipt, even on
+  failure/disconnect. Preserve source+DB+demos.json; do not overwrite later native/
+  player data or delete/reset metadata to downgrade. No live transition executed.
+- Independent review closed3 queue/state P1s plus1 incoming null-ID authority P1.
+  Frozen Windows collector45/profile16/importer106/top-up8/codec9 and explicit
+ 13-boundary account/board19 migration controls pass. Synthetic10000-row local
+  WSL19 migration is indexed/idempotent and preserves runs (~0.010s), not live
+  sizing/availability proof. Final exact current native18/flattened45/backend21
+  receipts remain required before publication. Limits/commands are recorded in
+  tools/p717ksfprotected.md and owned CHECKPOINT. Native Node/corpus/Pillow/MTV,
+  fleet/crawl/cron/game/GPU and crash/power-loss acceptance are not inferred.

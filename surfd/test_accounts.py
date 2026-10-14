@@ -392,6 +392,7 @@ check("...and is stamped the head schema, without 12's guid-keyed `links`",
 home = m._home
 conn = sqlite3.connect(m._test_db)
 conn.executescript("".join("DROP TABLE %s;" % t for t in TABLES)
+                   + "DROP TABLE IF EXISTS ksfprofiles; DROP TABLE IF EXISTS ksf_unbound;"
                    + "PRAGMA user_version=11;")
 conn.close()
 m = fresh(home=home)
@@ -433,8 +434,8 @@ check("...but a `links` somebody filled is left as it was",
 
 # gunicorn and a cron tool do start together on a deploy, and a script commits
 # between its statements.  So: an 11 database, and at each CREATE of the
-# account steps in turn (step 12's four, and the link table's two, which every
-# start makes) ANOTHER process runs them all to the end first.  The Pi's
+# account steps in turn (including profile18, unbound19 and startup indexes)
+# ANOTHER process runs them all to the end first.  The Pi's
 # two-thread arm met this by luck (test_board.py); here it is every boundary.
 m = fresh()
 real_connect = m.connect
@@ -451,6 +452,7 @@ def finish_elsewhere(what):
         accounts.links_now(other)
         other.executescript(m.ksftopup.SQL)
         other.executescript(m.ksfprofile.SQL)
+        other.executescript(m.KSF_UNBOUND_SQL)
         other.execute("PRAGMA user_version=%d" % m.SCHEMA_VERSION)
         other.commit()
         RACED[-1][1] = what
@@ -476,10 +478,11 @@ def racing_connect():
 
 
 outcomes = []
-for at in range(1, 13):                 # step12 four,16 one,17 one,18 one,links_now four,
-                                        # plus the board's own index at every start
+for at in range(1, 14):                 # step 12 four CREATEs, 16-19 four, links_now four,
+                                        # and the board's own index once more at every start
     conn = sqlite3.connect(m._test_db)
-    conn.executescript("".join("DROP TABLE IF EXISTS %s;" % t for t in TABLES + ["links", "ksfprofiles"])
+    conn.executescript("".join("DROP TABLE IF EXISTS %s;" % t for t in TABLES + ["links"])
+                       + "DROP TABLE IF EXISTS ksfprofiles; DROP TABLE IF EXISTS ksf_unbound;"
                        + "PRAGMA user_version=11;")
     conn.close()
     RACED.append([at, "never raced"])
@@ -492,13 +495,13 @@ for at in range(1, 13):                 # step12 four,16 one,17 one,18 one,links
     finally:
         m.connect = real_connect
 names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table'")}
-check("another process finishing the account steps at any of their twelve statements breaks neither",
+check("another process finishing the account steps at any of their thirteen statements breaks neither",
       (outcomes, sorted(names & set(TABLES)), "links" in names,
        rows(m, "PRAGMA user_version")[0][0]),
-      (["ok"] * 12, TABLES, False, m.SCHEMA_VERSION))
-check("...and those twelve were the statements raced: each table, and each index by its table",
+      (["ok"] * 13, TABLES, False, m.SCHEMA_VERSION))
+check("...and those thirteen were the statements raced: each table, and each index by its table",
       [r[1] for r in RACED],
-      ["accounts", "linkcodes", "linkcodes", "linknonces", "runs", "ksftopup", "ksfprofiles", "keylinks", "keylinks",
+      ["accounts", "linkcodes", "linkcodes", "linknonces", "runs", "ksftopup", "ksfprofiles", "ksf_unbound", "keylinks", "keylinks",
        "installs", "runpins", "runs"])
 
 print("\n--- 2. off unless SURFD_BOARD_URL is set -------------------------")

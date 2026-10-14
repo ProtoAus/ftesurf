@@ -25,7 +25,17 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-703
-patch    716
+patch    717
+# Patch 717: a bounded local-only overflow lane repairs retained KSF originals
+# through a protected256 queue, with board/exact-key rotation and shared cap2.
+# Preserve retry/strike history; retire obsolete/satisfied deferrals and park
+# oversized historical state without rewrite. Additive schema19 stores scoped
+# null-ID raw precision atomically, blocking stale cache/legacy replay authority.
+# Ambiguous18 precision remains unknown until fresh identity. Old writers must
+# be excluded BEFORE install/import; preserve source+DB+demos.json and later
+# native/player data. No live transition, engine pin/tag/QC Build, progs, crawl,
+# cron or game/GPU acceptance is implied; source-only downgrade is not safe.
+# Controls and native publication gate: tools/p717ksfprotected.md.
 # Patch 716: resolved profile views queue a paced, resumable four-style KSF
 # main-map completion check. Correct bestrecords positions and null record IDs;
 # disclose pending/unavailable coverage. Client board/profile stores now hold

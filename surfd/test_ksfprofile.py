@@ -38,7 +38,7 @@ class Profiles(unittest.TestCase):
     def setUp(self):
         self.cache = tempfile.mkdtemp(dir=HOME)
         self.db = S.connect()
-        self.db.execute('DELETE FROM ksfprofiles'); self.db.execute('DELETE FROM runs'); self.db.commit()
+        self.db.execute('DELETE FROM ksf_unbound'); self.db.execute('DELETE FROM ksfprofiles'); self.db.execute('DELETE FROM runs'); self.db.commit()
         self.src = Source(); self.have = {'surf_profile%d' % i for i in range(1100)}
         self.network = patch.object(K, 'fetch', self.src); self.network.start()
     def tearDown(self):
@@ -88,6 +88,7 @@ class Profiles(unittest.TestCase):
         self.queue(); self.step()
         self.assertEqual(self.count(), 5)
         self.assertEqual(self.db.execute("SELECT count(*) FROM runs WHERE runid='' AND replay_id=0").fetchone()[0], 5)
+        self.assertEqual(self.db.execute('SELECT count(*) FROM ksf_unbound').fetchone()[0], 5)
 
     def test_refusal_keeps_cursor(self):
         self.queue()
@@ -149,8 +150,39 @@ class Profiles(unittest.TestCase):
                 self.assertEqual(r.json['ksf_sync']['state'], 'queued')
                 self.assertEqual(c.get('/api/board?player=aaaaaaaaaaaa').status_code, 404)
         self.assertEqual(len(P.pending(self.db)), 1)
-    def test_migrate18_idempotent_and_no_existing_run_changes(self):
-        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 18)
+    def test_migrate18_to19_adds_scoped_marker_without_rewriting_runs(self):
+        self.queue(); self.step()
+        row = list(self.db.execute('SELECT * FROM runs ORDER BY map LIMIT 1').fetchone())
+        row[0], row[3], row[12] = 'surf_native', 'community', ''
+        self.db.execute('INSERT INTO runs VALUES ('+','.join('?' for _ in row)+')', row)
+        row[0], row[3], row[12] = 'surf_identified', 'ksf', 'identified-record'
+        self.db.execute('INSERT INTO runs VALUES ('+','.join('?' for _ in row)+')', row)
+        self.db.commit()
+        before = [tuple(r) for r in self.db.execute('SELECT * FROM runs ORDER BY map')]
+        self.db.executescript('DROP TABLE ksf_unbound; PRAGMA user_version=18;')
+        S.migrate()
+        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 19)
+        columns = self.db.execute('PRAGMA table_info(ksf_unbound)').fetchall()
+        self.assertEqual([(r[1], r[2], r[3], r[5]) for r in columns],
+                         [('map','TEXT',1,1), ('track','INTEGER',1,2), ('leg','INTEGER',1,3),
+                          ('style','TEXT',1,4), ('player','TEXT',1,5), ('seconds','REAL',0,0),
+                          ('millis','INTEGER',1,0), ('submitted','INTEGER',1,0)])
+        self.assertEqual([tuple(r) for r in self.db.execute('SELECT * FROM runs ORDER BY map')], before)
+        self.assertEqual(self.db.execute('SELECT count(*) FROM ksf_unbound WHERE seconds IS NULL').fetchone()[0], 5)
+        S.migrate()
+        self.assertEqual([tuple(r) for r in self.db.execute('SELECT * FROM runs ORDER BY map')], before)
+
+    def test_pre18_legacy_rows_remain_marker_free_on_upgrade(self):
+        self.queue(); self.step()
+        before = [tuple(r) for r in self.db.execute('SELECT * FROM runs ORDER BY map')]
+        self.db.executescript('DROP TABLE ksf_unbound; DROP TABLE ksfprofiles; PRAGMA user_version=17;')
+        S.migrate()
+        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 19)
+        self.assertEqual(self.db.execute('SELECT count(*) FROM ksf_unbound').fetchone()[0], 0)
+        self.assertEqual([tuple(r) for r in self.db.execute('SELECT * FROM runs ORDER BY map')], before)
+
+    def test_migrate19_idempotent_and_no_existing_run_changes(self):
+        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 19)
         S.migrate(); self.assertEqual(self.count(), 0)
 
 

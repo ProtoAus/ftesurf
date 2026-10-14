@@ -1292,13 +1292,46 @@ def write_rows(rows):
             with conn:
                 conn.execute("BEGIN IMMEDIATE")
                 for r in rows[i:i + WRITE_CHUNK]:
+                    scope = (r["map"], r["track"], r["leg"],
+                             r.get("style", S.STYLE_CLEAN), r["player"])
+                    marker = conn.execute(
+                        "SELECT seconds,millis,submitted FROM ksf_unbound WHERE map=? AND track=?"
+                        " AND leg=? AND style=? AND player=?", scope).fetchone()
                     previous = conn.execute(
-                        "SELECT runid,millis,submitted FROM runs WHERE map=? AND track=?"
+                        "SELECT runid,millis,submitted,replay_id FROM runs WHERE map=? AND track=?"
                         " AND leg=? AND tier=? AND style=? AND player=?",
                         (r["map"], r["track"], r["leg"], S.TIER_KSF,
                          r.get("style", S.STYLE_CLEAN), r["player"])).fetchone()
+                    if marker and not previous:
+                        conn.execute("DELETE FROM ksf_unbound WHERE map=? AND track=?"
+                                     " AND leg=? AND style=? AND player=?", scope)
+                        marker = None
+                    if marker:
+                        # Incoherent metadata cannot confer authority, even on
+                        # fresh rows. Preserve it for diagnosis, fail closed.
+                        seconds = marker["seconds"]
+                        if ((seconds is not None and
+                             (type(seconds) not in (int, float) or not 0 < seconds < 1e6))
+                                or type(marker["millis"]) is not int
+                                or marker["millis"] != previous["millis"]
+                                or type(marker["submitted"]) is not int
+                                or marker["submitted"] <= 0
+                                or marker["submitted"] != previous["submitted"]
+                                or (seconds is not None and int(round(seconds * 1000)) != previous["millis"])
+                                or previous["runid"] or previous["replay_id"]):
+                            continue
+                        if r.get("runid") and r.get("binding") != "board":
+                            continue  # Cache cannot bind a current null-ID PB.
+                        if seconds is None and not r.get("runid") and r["millis"] == previous["millis"]:
+                            continue  # Lost schema18 precision needs fresh identified authority.
+                    incoming_seconds = r.get("seconds")
+                    if not r.get("runid"):
+                        if (type(incoming_seconds) not in (int, float)
+                                or not 0 < incoming_seconds < 1e6
+                                or int(round(incoming_seconds * 1000)) != r["millis"]):
+                            continue
                     if previous and previous["millis"] == r["millis"]:
-                        oldseconds = record_seconds(previous["runid"])
+                        oldseconds = (marker["seconds"] or 0.0) if marker else record_seconds(previous["runid"])
                         newseconds = r.get("seconds", r["millis"] / 1000.0)
                         if oldseconds and "seconds" not in r:
                             continue  # Rounded-only metadata is not authority.
@@ -1337,6 +1370,16 @@ def write_rows(rows):
                          r["player"], r["name"], r["ticks"], r["rate"], r["millis"],
                          r.get("runid", ""), r["when"] or now))
                     wrote += cur.rowcount
+                    if cur.rowcount:
+                        if r.get("runid"):
+                            conn.execute("DELETE FROM ksf_unbound WHERE map=? AND track=?"
+                                         " AND leg=? AND style=? AND player=?", scope)
+                        else:
+                            conn.execute(
+                                "INSERT INTO ksf_unbound(map,track,leg,style,player,seconds,millis,submitted)"
+                                " VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(map,track,leg,style,player)"
+                                " DO UPDATE SET seconds=excluded.seconds,millis=excluded.millis,submitted=excluded.submitted",
+                                (*scope, incoming_seconds, r["millis"], r["when"] or now))
     finally:
         conn.close()
     return wrote

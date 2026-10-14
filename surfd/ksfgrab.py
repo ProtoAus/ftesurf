@@ -34,6 +34,7 @@ BOARD = re.compile(r'([a-z0-9_]{1,64})/z([0-9]+)(?:m([1-3]))?\.json\Z')
 MAX_BYTES = 16 << 20
 MAX_QUEUE = 256
 MAX_RECOVER = 2
+MAX_FAILED = 2048
 MAX_PROVENANCE = 16 << 10
 SCAN = 32
 BINDING = ('map', 'track', 'leg', 'style', 'player', 'runid', 'millis', 'when', 'file')
@@ -77,7 +78,10 @@ def current(conn, job):
         return False
     row = conn.execute(
         'SELECT runid, millis, submitted FROM runs WHERE map=? AND track=? AND leg=0'
-        ' AND style=? AND player=? AND tier=?',
+        ' AND style=? AND player=? AND tier=?'
+        ' AND NOT EXISTS (SELECT 1 FROM ksf_unbound u WHERE u.map=runs.map'
+        ' AND u.track=runs.track AND u.leg=runs.leg AND u.style=runs.style'
+        ' AND u.player=runs.player)',
         (job['map'], job['track'], job['style'], job['player'], S.TIER_KSF)).fetchone()
     return bool(row and row['runid'] == job['runid'] and row['millis'] == job['millis']
                 and row['submitted'] == job['when'])
@@ -93,6 +97,10 @@ def ready(conn, job):
         ' AND r.player=? AND r.runid=? AND r.millis=? AND r.submitted=?',
         (S.TIER_KSF, job['map'], job['track'], job['style'], job['player'],
          job['runid'], job['millis'], job['when'])).fetchone()
+    return readable_replay(row)
+
+
+def readable_replay(row):
     if not row or row['kind'] != 'ksf':
         return False
     path, _ = S.replay_file(row)
@@ -106,16 +114,45 @@ def ready(conn, job):
         return False
 
 
+def pending_deferral(conn, key):
+    """Reconcile bounded nonterminal history without discarding live strikes."""
+    try:
+        mp, zone, mode, runid = key.split('|', 3)
+        if (not re.fullmatch(r'[a-z0-9_]{1,64}', mp)
+                or not re.fullmatch(r'[0-9]{1,2}', zone)
+                or mode not in ('0', '1', '2', '3') or not runid):
+            return False
+        zone = int(zone)
+        if zone != 0 and not 31 <= zone <= 99:
+            return False
+        track, leg = K.zone_track_leg(zone)
+        row = conn.execute(
+            'SELECT p.* FROM runs r LEFT JOIN replays p ON p.id=r.replay_id'
+            ' WHERE r.tier=? AND r.map=? AND r.track=? AND r.leg=? AND r.style=? AND r.runid=?',
+            (S.TIER_KSF, mp, track, leg, K.KSF_MODES[int(mode)], runid)).fetchone()
+        return bool(row and not readable_replay(row))
+    except (TypeError, ValueError):
+        return False
+
+
 def discover(cache, state, conn):
     """Fair bounded rotation over cached boards; state lives under crawler lock."""
     folder = Path(cache) / 'boards'
     names = sorted(p.relative_to(folder).as_posix() for p in folder.glob('*/*.json'))
-    after = state.get('cursor', '')
-    names = [n for n in names if n > after] + [n for n in names if n <= after]
+    resume = state.get('overflow_board', '')
+    overflow_cursor = state.get('overflow_cursor', '') if resume in names else ''
+    if resume in names:
+        # Resume within the last attempted board before advancing the scan.
+        names = [n for n in names if n >= resume] + [n for n in names if n < resume]
+    else:
+        after = state.get('cursor', '')
+        names = [n for n in names if n > after] + [n for n in names if n <= after]
     jobs = state.setdefault('jobs', {})
+    state.setdefault('failed', {})
     retained_admitted = 0
+    overflow = []
     now = int(time.time())
-    for name in names[:SCAN]:
+    for index, name in enumerate(names[:SCAN]):
         state['cursor'] = name
         m = BOARD.fullmatch(name)
         p = folder / name
@@ -131,13 +168,18 @@ def discover(cache, state, conn):
             # and millis. Never let an old cached PB replace a newer one.
             conn.execute('UPDATE runs SET runid=? WHERE tier=? AND map=? AND track=?'
                          ' AND leg=0 AND style=? AND player=? AND millis=?'
-                         " AND submitted=? AND runid='' AND replay_id=0",
+                         " AND submitted=? AND runid='' AND replay_id=0"
+                         " AND NOT EXISTS (SELECT 1 FROM ksf_unbound u WHERE u.map=runs.map"
+                         " AND u.track=runs.track AND u.leg=runs.leg AND u.style=runs.style"
+                         " AND u.player=runs.player)",
                          (j['runid'], S.TIER_KSF, j['map'], j['track'], j['style'],
                           j['player'], j['millis'], j['when']))
             if not current(conn, j) or ready(conn, j):
                 continue
             key = '%s|%d|%d|%s' % (mp, zone, mode, j['runid'])
-            if state.get('failed', {}).get(key, 0) > now:
+            deferred = state.get('failed', {}).get(key, 0)
+            retry = deferred.get('retry', 0) if isinstance(deferred, dict) else deferred
+            if retry > now:
                 continue
             if key in jobs:
                 continue
@@ -151,11 +193,28 @@ def discover(cache, state, conn):
                              if not held.get('strikes') and not held.get('retry')
                              and not provenance(held).is_file()), None)
                 if cold is None:
+                    # No protected eviction: at most two local-only overflow
+                    # attempts, with exact-key rotation and durable deferrals.
+                    if key not in state['failed'] and len(state['failed']) >= MAX_FAILED:
+                        continue
+                    if name == resume and key <= overflow_cursor:
+                        continue
+                    overflow.append((index, key, j, name))
+                    overflow.sort(key=lambda item: (item[0], item[1]))
+                    del overflow[MAX_RECOVER:]
                     continue
                 jobs.pop(cold)
                 retained_admitted += 1
             jobs[key] = dict(j, status='queued', retry=0)
+            if isinstance(deferred, dict):
+                jobs[key].update(deferred)
+                state['failed'].pop(key, None)
     conn.commit()
+    if not overflow:
+        # No candidate in this window: normal board rotation must keep moving.
+        state.pop('overflow_board', None)
+        state.pop('overflow_cursor', None)
+    return [(key, job, name) for _, key, job, name in overflow]
 
 
 def fetch(file):
@@ -342,21 +401,45 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
         state['failed'] = {}
     now = int(time.time())
     state['failed'] = {k: t for k, t in state['failed'].items()
-                       if type(t) is int and t > now}
-    state['failed'] = dict(sorted(state['failed'].items(), key=lambda x: x[1])[-2048:])
+                       if (type(t) is int and t > now) or
+                       (isinstance(t, dict) and type(t.get('retry')) is int
+                        and type(t.get('strikes')) is int and 0 < t['strikes'] < 3)}
+    if len(state['failed']) > MAX_FAILED:
+        # Older writers appended terminal failures after their initial truncation.
+        # Preserve that input verbatim; normal expiry can unblock a later tick.
+        print('KSF demos parked locally: deferral ledger exceeds %d; no work or state save' % MAX_FAILED)
+        return 0, 0
     jobs = state['jobs']
     conn = S.connect()
     made = linked = recovered = 0
     try:
+        state['failed'] = {k: t for k, t in state['failed'].items()
+                           if not isinstance(t, dict) or pending_deferral(conn, k)}
         # Retain only queued/retryable current jobs; completed links rediscover
         # locally if lost. A saturated obsolete queue must not starve new maps.
         jobs = state['jobs'] = {k: j for k, j in jobs.items()
                               if isinstance(j, dict) and current(conn, j) and not ready(conn, j)}
-        discover(cache, state, conn)
+        overflow = discover(cache, state, conn)
         K._save(sf, state)
         park = K._load(os.path.join(cache, '.refused')) or {}
-        for key, job in list(jobs.items()):
+        # Give each lane one original slot when both have eligible work.
+        work = overflow[:1] + [(k, j, None) for k, j in list(jobs.items())] + overflow[1:]
+        for key, job, board in work:
+            local_only = board is not None
+            if local_only:
+                if recovered >= MAX_RECOVER:
+                    continue
+                state['overflow_board'] = board
+                state['overflow_cursor'] = key
+                deferred = state['failed'].get(key, {})
+                if isinstance(deferred, dict):
+                    job.update(deferred)
+                if key not in state['failed'] and len(state['failed']) >= MAX_FAILED:
+                    continue
             if job.get('retry', 0) > now:
+                continue
+            if job.get('terminal'):
+                jobs.pop(key, None)
                 continue
             if ready(conn, job):
                 jobs.pop(key, None)
@@ -366,14 +449,20 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                 continue
             try:
                 data = None
+                if local_only:
+                    recovered += 1
                 digest = retained_digest(job)
                 if digest:
-                    if recovered >= MAX_RECOVER:
-                        continue
-                    recovered += 1  # Bound original reads, including corrupt/missing bytes.
-                    jobs[key] = jobs.pop(key)  # Persist fairness even for parked cache misses.
+                    if not local_only:
+                        if recovered >= MAX_RECOVER:
+                            continue
+                        recovered += 1  # Bound original reads, including corrupt/missing bytes.
+                    if not local_only:
+                        jobs[key] = jobs.pop(key)  # Persist fairness even for parked cache misses.
                     data = retained_bytes(digest)
                 if data is None:
+                    if local_only:
+                        continue
                     if (made >= min(2, max(0, maximum))
                             or now < int(park.get('until') or 0)):
                         continue
@@ -384,6 +473,7 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                 rid = install(conn, job, data)
                 if rid:
                     linked += 1
+                    state['failed'].pop(key, None)
                     jobs.pop(key, None)
             except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
                 # Refusal belongs to the HOST, not whichever demo happened to
@@ -403,8 +493,13 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                 print('KSF demo deferred: %s' % type(e).__name__)
                 if job['strikes'] >= 3:
                     # Bounded durable tombstone frees the queue for later maps.
-                    state['failed'][key] = now + 7 * 86400
-                    jobs.pop(key, None)
+                    if key in state['failed'] or len(state['failed']) < MAX_FAILED:
+                        state['failed'][key] = now + 7 * 86400
+                        jobs.pop(key, None)
+                    else:
+                        job.update(retry=now + 7 * 86400, terminal=True)
+                elif local_only:
+                    state['failed'][key] = dict(retry=job['retry'], strikes=job['strikes'])
             finally:
                 K._save(sf, state)
         # Also persist local-only removals/empty ticks, not just fetch attempts.

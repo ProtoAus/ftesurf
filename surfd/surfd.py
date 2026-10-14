@@ -445,7 +445,15 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
+KSF_UNBOUND_SQL = """
+CREATE TABLE IF NOT EXISTS ksf_unbound (
+ map TEXT NOT NULL, track INTEGER NOT NULL, leg INTEGER NOT NULL,
+ style TEXT NOT NULL, player TEXT NOT NULL, seconds REAL,
+ millis INTEGER NOT NULL, submitted INTEGER NOT NULL,
+ PRIMARY KEY(map,track,leg,style,player)
+);
+"""
 
 
 # --------------------------------------------------------------------------
@@ -1541,6 +1549,20 @@ def migrate():
             conn.execute("PRAGMA user_version=18")
             conn.commit()
             version = 18
+
+        if version < 19:
+            # Current null-ID KSF PBs are not legacy rows awaiting identity.
+            conn.executescript(KSF_UNBOUND_SQL)
+            if started == 18:
+                # Schema18 lost null-ID raw precision: do not guess it from
+                # cached boards or mistake these rows for legacy bootstrap.
+                conn.execute("INSERT OR IGNORE INTO ksf_unbound"
+                             " (map,track,leg,style,player,seconds,millis,submitted)"
+                             " SELECT map,track,leg,style,player,NULL,millis,submitted"
+                             " FROM runs WHERE tier=? AND runid=''", (TIER_KSF,))
+            conn.execute("PRAGMA user_version=19")
+            conn.commit()
+            version = 19
 
         verdict_metrics(conn)
         gone = accounts.links_now(conn)
