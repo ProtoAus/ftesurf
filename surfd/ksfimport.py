@@ -834,8 +834,9 @@ def strike(cache, idx, key, why):
     _save(sf, st)
 
 
-def topup_step(cache, idx, pacer, completed, fetched):
+def topup_step(cache, idx, pacer, completed, fetched, filing=None):
     """Explicit selected boards, same pacing/park, three boards/five pages each.
+    `fetched` holds only this tick's pages; `filing` requests cache-only recovery.
     Main acknowledges only after write_rows; a crash leaves the request owed.
     """
     conn = S.connect()
@@ -860,16 +861,21 @@ def topup_step(cache, idx, pacer, completed, fetched):
                 conn.close()
             continue
         doc = board_load(cache, mp, zone, mode)
+        fresh = []
         for _ in range(min(5, pacer.left())):
             if not wants_more(_state(doc), target):
                 break
-            doc, _ = board_page(cache, mp, zone, pacer, mode, idx=idx)
-        # The common watch filing seam takes (map, zone, mode, rows), NOT a
-        # board key alone. Include cached rows too. On refusal leave completed
-        # and fetched untouched: owed markers recover any partial pages, and
-        # the failing board's strike must not be cleared as if it succeeded.
+            doc, page = board_page(cache, mp, zone, pacer, mode, idx=idx)
+            fresh.extend(page)
+        # A completed/cursor-recovered cache still needs filing, but only rows
+        # actually answered this tick may replace an exact record binding.
+        # On refusal leave completed/fetched/filing untouched; owed markers
+        # recover partial pages without treating their old cache as authority.
         idx[_ikey(mp, zone, mode)] = _state(doc)
-        fetched.append((mp, zone, mode, doc.get("rows", [])))
+        mark_owed(cache, mp, zone, mode)
+        fetched.append((mp, zone, mode, fresh))
+        if filing is not None:
+            filing.append((mp, zone, mode))
         completed.append(((mp, track, leg, style), target,
                           len(doc.get("rows", [])), bool(doc.get("done"))))
 
@@ -896,6 +902,7 @@ def watch_mode(args, have, cache):
     pacer = Pacer(args.delay, args.max)
     args._topups = []
     fetched, refreshed, left, prio, maps = [], 0, 0, set(), set()
+    filing = []
     if now < int(park.get("until") or 0):
         print("parked: refused (%s) at %s, nothing asked until %s"
               % (park.get("why"), time.strftime("%Y-%m-%d %H:%M", time.gmtime(park.get("at") or 0)),
@@ -913,7 +920,7 @@ def watch_mode(args, have, cache):
                 pass
             maps = {m for m in names if m in have}
             prio = wanted_maps(now) & maps
-            topup_step(cache, idx, pacer, args._topups, fetched)
+            topup_step(cache, idx, pacer, args._topups, fetched, filing)
             if cat["done"]:
                 refreshed = refresh_step(cache, idx, maps, prio, pacer,
                                          max(1, args.max // 4), now, fetched)
@@ -950,7 +957,7 @@ def watch_mode(args, have, cache):
     # A board owed by an earlier run is filed WHOLE, fetched again this tick or
     # not: filing only this tick's page and clearing its marker lost the pages
     # the earlier run never filed (review, 5 Oct).  The upsert is idempotent.
-    owing = set(owed)
+    owing = set(owed) | set(filing)
     fresh = {}
     for mp, z, m, page in fetched:
         fresh.setdefault((mp, z, m), []).extend(page)

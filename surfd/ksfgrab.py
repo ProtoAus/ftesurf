@@ -113,6 +113,8 @@ def discover(cache, state, conn):
     after = state.get('cursor', '')
     names = [n for n in names if n > after] + [n for n in names if n <= after]
     jobs = state.setdefault('jobs', {})
+    retained_admitted = 0
+    now = int(time.time())
     for name in names[:SCAN]:
         state['cursor'] = name
         m = BOARD.fullmatch(name)
@@ -135,10 +137,24 @@ def discover(cache, state, conn):
             if not current(conn, j) or ready(conn, j):
                 continue
             key = '%s|%d|%d|%s' % (mp, zone, mode, j['runid'])
-            if state.get('failed', {}).get(key, 0) > int(time.time()):
+            if state.get('failed', {}).get(key, 0) > now:
                 continue
-            if key not in jobs and len(jobs) < MAX_QUEUE:
-                jobs[key] = dict(j, status='queued', retry=0)
+            if key in jobs:
+                continue
+            if len(jobs) >= MAX_QUEUE:
+                # Cold requests cannot monopolize admission while the host is
+                # parked. Presence is priority only; tick still validates the
+                # exact provenance, digest and PB before any original can act.
+                if retained_admitted >= MAX_RECOVER or not provenance(j).is_file():
+                    continue
+                cold = next((k for k, held in jobs.items()
+                             if not held.get('strikes') and not held.get('retry')
+                             and not provenance(held).is_file()), None)
+                if cold is None:
+                    continue
+                jobs.pop(cold)
+                retained_admitted += 1
+            jobs[key] = dict(j, status='queued', retry=0)
     conn.commit()
 
 

@@ -29,6 +29,20 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   published JSON. Missing/nonmatching zones are not made by renaming another
   build's file; only the existing measured compatibility gate may donate them.
 
+## KSF retained admission through a fully protected queue — P714, 2026-10-14
+
+- Site: surfd/ksfgrab.py:discover/tick. P714 closes a saturated pristine-cold
+  queue's exclusion of later retained repair with bounded priority swaps, but
+  intentionally preserves every retry/strike or provenance-bearing intent.
+  Source-proven remaining limit: if all 256 slots are protected, a later intact
+  retained repair can still be excluded indefinitely at zero network allowance.
+  Next falsifier: fill the queue with current protected/missing-original jobs,
+  put an intact retained job257 later in the same cached board, park the host,
+  and require eventual local repair across repeated zero-allowance ticks while
+  preserving the existing retry/strike semantics, queue256 and original-read2
+  caps. This is a conditional-admission follow-up, not an unconditional fairness
+  claim or permission to drop per-file deferrals. Review/evidence: p714ksfaccept.md.
+
 ## World of Surf launcher platform/input coverage — P694, 2026-10-14
 
 - Site: launcher `src/ftesurf_ui.rs` Screen/raw guards and `src/download.rs`

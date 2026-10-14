@@ -25,7 +25,12 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-703
-patch    713
+patch    714
+# Patch 714: top-up cache filing is separate from freshly fetched exact-record
+# authority, including zero-page completion and interrupted owed recovery.
+# A full cold queue admits bounded retained repairs without losing retry/strike
+# state or relaxing identity/hash/PB/original/network caps. Source/offline only;
+# no QC/native format/build, engine pin/tag, QC Build or fleet delivery change.
 # Patch 713: cache-only KSF boards cannot resurrect a tied superseded demo;
 # opted-in zero-budget CLI ticks still repair originals, and publication intent
 # precedes bytes. Bound advertised leaves before integer parsing/requests.

@@ -321,6 +321,65 @@ class Tests(unittest.TestCase):
         self.assertTrue(G.current(self.conn, G.candidate('surf_test', 0, 0, updated)))
         self.assertGreater(G.install(self.conn, G.candidate('surf_test', 0, 0, updated), binary()), 0)
 
+    def test_topup_does_not_promote_cached_record_to_fresh_authority(self):
+        pages = ([], [raw(playerID=8, steamID='STEAM_0:0:456', record_id=222,
+                          file='replay_css_5_0_8_1700000000.rec')], [self.r])
+        for already_owed, fresh_page in ((owed, page) for owed in (False, True) for page in pages):
+            with self.subTest(owed=already_owed, fresh=bool(fresh_page), exact=fresh_page == [self.r]):
+                self.conn.execute('DELETE FROM ksftopup')
+                self.conn.commit()
+                K.write_rows([K.rec_row('surf_test', 0, 0, self.r)])
+                rid = G.install(self.conn, self.job, binary())
+                seed = dict(K.rec_row('surf_test', 0, 0, raw(record_id=112, file=None)),
+                            binding='seed')
+                K.write_rows([seed])
+                self.board([self.r])
+                if already_owed:
+                    K.mark_owed(self.cache, 'surf_test', 0, 0)
+                code = K.KT.enqueue(self.conn, ('surf_test', 0, 0, 'clean'), int(time.time()))[1]
+                self.assertEqual(code, 202)
+                asked = []
+                def page(cache, mp, zone, pacer, mode, **kwargs):
+                    asked.append((mp, zone, mode))
+                    doc = K.board_load(cache, mp, zone, mode)
+                    K.merge_page(doc, fresh_page)
+                    doc['done'] = True
+                    K._save(K.board_path(cache, mp, zone, mode), doc)
+                    K.mark_owed(cache, mp, zone, mode)
+                    return doc, fresh_page
+                if fresh_page:
+                    doc = K.board_load(self.cache, 'surf_test', 0, 0)
+                    doc['done'] = False
+                    K._save(K.board_path(self.cache, 'surf_test', 0, 0), doc)
+                argv = ['ksfimport.py', '--watch', '--go', '--demos', '--cache', self.cache,
+                        '--max', '2']
+                try:
+                    with patch.object(sys, 'argv', argv), \
+                         patch.object(K, 'playable_maps', return_value={'surf_test'}), \
+                         patch.object(K, 'catalog_step', return_value={'names':['surf_test'], 'done':False}), \
+                         patch.object(K, 'wanted_maps', return_value=set()), \
+                         patch.object(K, 'map_info', return_value={}), \
+                         patch.object(K, 'sweep_maps', return_value=({}, 0, 0)), \
+                         patch.object(K, 'board_page', side_effect=page), \
+                         patch.object(K, 'fetch', side_effect=AssertionError('board network forbidden')), \
+                         patch.object(G, 'transport', side_effect=AssertionError('demo network forbidden')):
+                        self.assertEqual(K.main(), 0)
+                    self.assertEqual(len(asked), int(bool(fresh_page)))
+                    got = self.conn.execute('SELECT runid,replay_id FROM runs WHERE player=?',
+                                            (self.job['player'],)).fetchone()[:]
+                    if fresh_page == [self.r]:
+                        self.assertEqual(got, (self.job['runid'], rid))  # actual fresh A can act
+                        self.assertTrue(G.ready(self.conn, self.job))
+                    else:
+                        self.assertEqual(got, (seed['runid'], 0))
+                        self.assertFalse(G.current(self.conn, self.job))
+                    if fresh_page and fresh_page != [self.r]:
+                        self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM runs').fetchone()[0], 2)
+                    self.assertFalse(K.owed_boards(self.cache))
+                finally:
+                    self.conn.execute('DELETE FROM ksftopup')
+                    self.conn.commit()
+
     def test_main_zero_demo_reservation_still_repairs_retained_original(self):
         self.board([self.r])
         rid = G.install(self.conn, self.job, binary())
@@ -451,6 +510,75 @@ class Tests(unittest.TestCase):
         self.assertEqual(calls,[rows[-1]['file']])
         self.assertEqual(K._load(os.path.join(self.cache,'demos.json'))['jobs'],{})
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM runs WHERE map='surf_warm' AND replay_id>0").fetchone()[0],257)
+
+    def test_full_cold_queue_does_not_exclude_retained_repair_at_zero_budget(self):
+        rows = [raw(playerID=5000+i, steamID='STEAM_0:0:%d' % (5000+i), record_id=50000+i,
+                    file='replay_css_5_0_%d_1700000000.rec' % (5000+i)) for i in range(257)]
+        K.write_rows([K.rec_row('surf_cold', 0, 0, r) for r in rows])
+        job = G.candidate('surf_cold', 0, 0, rows[-1])
+        rid = G.install(self.conn, job, binary())
+        replay = self.conn.execute('SELECT * FROM replays WHERE id=?', (rid,)).fetchone()
+        path = Path(S.replay_file(replay)[0])
+        board = K.board_path(self.cache, 'surf_cold', 0)
+        K._save(os.path.join(self.cache, '.refused'), dict(until=int(time.time()) + 3600))
+        for cold_count in (255, 256):
+            with self.subTest(cold=cold_count):
+                path.unlink()
+                K._save(board, dict(rows=rows[:cold_count] + [rows[-1]], done=True))
+                K._save(os.path.join(self.cache, 'demos.json'), {})
+                with patch.object(G.time, 'sleep') as sleep, \
+                     patch.object(G, 'retained_bytes', wraps=G.retained_bytes) as reads:
+                    self.assertEqual(G.tick(self.cache, maximum=0,
+                                           download=lambda f:self.fail('parked queue fetched')), (0, 1))
+                    sleep.assert_not_called()
+                    self.assertEqual(reads.call_count, 1)
+                self.assertTrue(G.ready(self.conn, job))
+                self.assertEqual(self.conn.execute('SELECT replay_id FROM runs WHERE player=?',
+                                                  (job['player'],)).fetchone()[0], rid)
+                pending = K._load(os.path.join(self.cache, 'demos.json'))['jobs']
+                self.assertLessEqual(len(pending), G.MAX_QUEUE)
+                self.assertTrue(all(j['player'] != job['player'] for j in pending.values()))
+
+    def test_retained_admission_is_bounded_and_preserves_cold_retry_state(self):
+        rows = [raw(playerID=6000+i, steamID='STEAM_0:0:%d' % (6000+i), record_id=60000+i,
+                    file='replay_css_5_0_%d_1700000000.rec' % (6000+i)) for i in range(259)]
+        K.write_rows([K.rec_row('surf_admit', 0, 0, r) for r in rows])
+        K._save(K.board_path(self.cache, 'surf_admit', 0), dict(rows=rows, done=True))
+        jobs = {}
+        future = int(time.time()) + 3600
+        protected = []
+        for i, r in enumerate(rows[:256]):
+            job = G.candidate('surf_admit', 0, 0, r)
+            key = 'surf_admit|0|0|' + job['runid']
+            retry = future if i == 1 else future - 7200 if i == 2 else 0
+            jobs[key] = dict(job, status='queued', retry=retry, strikes=1 if i == 0 else 0)
+            if i < 3:
+                protected.append(key)
+        K._save(os.path.join(self.cache, 'demos.json'), dict(jobs=jobs))
+        ids = []
+        for r in rows[256:]:
+            job = G.candidate('surf_admit', 0, 0, r)
+            rid = G.install(self.conn, job, binary())
+            ids.append(rid)
+            replay = self.conn.execute('SELECT * FROM replays WHERE id=?', (rid,)).fetchone()
+            Path(S.replay_file(replay)[0]).unlink()
+        K._save(os.path.join(self.cache, '.refused'), dict(until=future))
+        with patch.object(G.time, 'sleep') as sleep:
+            for links in (2, 1):
+                with patch.object(G, 'retained_bytes', wraps=G.retained_bytes) as reads:
+                    self.assertEqual(G.tick(self.cache, maximum=0,
+                                           download=lambda f:self.fail('admission downloaded')), (0, links))
+                    self.assertEqual(reads.call_count, links)
+                queued = K._load(os.path.join(self.cache, 'demos.json'))['jobs']
+                self.assertLessEqual(len(queued), G.MAX_QUEUE)
+                for key in protected:
+                    self.assertEqual(queued[key], jobs[key])
+            sleep.assert_not_called()
+        for r, rid in zip(rows[256:], ids):
+            job = G.candidate('surf_admit', 0, 0, r)
+            self.assertTrue(G.ready(self.conn, job))
+            self.assertEqual(self.conn.execute('SELECT replay_id FROM runs WHERE player=?',
+                                              (job['player'],)).fetchone()[0], rid)
 
     def test_warm_missing_file_requeues_and_recovers_same_index(self):
         self.board([self.r])

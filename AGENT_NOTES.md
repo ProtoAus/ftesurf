@@ -12317,3 +12317,26 @@ the game fetches its own map list. The menu half is Patch 652.
   pass; full backend regressions and exact final-commit checks are recorded in
   tools/p713ksffinal.md. No upstream/game/GPU, installation/reload/cron, native
   evidence, engine pin/tag or QC Build change. Live fleet acceptance is deferred.
+
+### KSF top-up fresh authority and saturated cold admission — P714, 2026-10-14
+
+- **Cache filing is not an answer from upstream.** Explicit top-ups used to
+  discard actual pages and append the entire cache to `fetched`, including
+  completed boards requiring zero requests. This revived same-time/same-date
+  superseded seed bindings despite the P713 owed/from-maps guards. Keep actual
+  pages and whole-cache filing separate; both initial owed states must match
+  fresh authority by exact valid player/runid. No-page and unrelated-fresh-page
+  arms preserve B; genuinely fresh A proves the positive path can still act.
+  Mark intent before filing/acknowledgement, even for cache-only completion.
+- **Queue cap must not silently disable local recovery.** A full pristine-cold
+  queue stranded retained repair257 at zero allowance. Bounded priority admits
+  at most two provenance-present candidates by replacing only cold intents
+  with no retry/strike metadata. Presence is scheduling only; bounded exact
+  provenance, digest and PB/transaction checks still authorize bytes. Retained
+  and deferred intents are protected, not forcibly evicted; a fully protected
+  queue's conditional-admission limit stays in BACKLOG.md. Queue256 and two
+  original reads/request caps are unchanged.
+- Original-source controls fail at the intended stale-binding and cold256
+  guards; cold255 and real fresh A are positive witnesses. Repaired collector31
+  and top-up8 pass; final source/read-only review and exact-commit evidence live
+  in tools/p714ksfaccept.md. No fleet/game/GPU/native acceptance is inferred.
