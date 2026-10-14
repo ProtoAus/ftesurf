@@ -12208,3 +12208,27 @@ the game fetches its own map list. The menu half is Patch 652.
   capability metadata; the QC varargs declaration is not a type-conversion gate.
 - Commands, limits and provenance: tools/p706ksf.md. No native reader/evidence
   semantics, engine pin/tag or QC Build change. Fleet delivery is a separate gate.
+
+### KSF backend codec shipping (source-only continuation, 2026-10-14)
+
+- Staging codecs for the backend suite does NOT install them. The pre-continuation
+  surfd-deploy allowlist only shipped surfd/, although ksfgrab requires both
+  tools/ksfconvert.py and tools/ksfreplay_info.py in the flattened backend layout.
+  Default shipping now includes those two allowlisted tools. A selective importer
+  or codec selection expands to the matched app/importer/codec five-file set;
+  an app-only selection remains narrow. Unknown paths and absent committed
+  dependencies refuse. PlanOnly resolves a full immutable SHA with no SSH or
+  scratch creation; archives and verification hashes use the same SHA.
+- Backend suite now invokes test_ksfgrab with its required owned --out, plus the
+  codec tests. Export TMPDIR BEFORE $(mktemp -d): TMPDIR=x command $(mktemp -d)
+  assigns x too late to control the substitution. Exclusive local/NVMe stage
+  roots are owned before population; no startup blanket cleanup or service-dir
+  scratch. Failed stages/logs are retained and reported; success keeps a local
+  ownership/plan receipt. Live backup retention remains a separate decision.
+- Offline falsifiers: tools/test_surfd_deploy.py, seven groups; the real flattened
+  collector/index/Flask test-client suite passes 17 tests. Either missing codec
+  acts as an import failure. Actual suite shell controls propagate collector and
+  converter failure, and test homes stay under the owned stage. Existing codec,
+  import/top-up, board and replay suites also pass. Commands/evidence/limits:
+  tools/ksf-deployment.md. No game/GPU tests, remote installation, reload, cron
+  enablement, native source, product patch, engine pin/tag or QC Build change.

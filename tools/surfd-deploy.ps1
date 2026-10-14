@@ -31,8 +31,11 @@
          DELETED with -KeepDbBackups N, because a deploy that made the backup is
          not a deploy that may decide to destroy older ones.
 
-    It is deliberately NOT a general sync: it deploys the surfd python tree only.
-    The progs go with `src/build.ps1 -Pi`, which has its own rules.
+    It is deliberately NOT a general sync: it deploys the surfd tree and the two
+    allowlisted KSF codecs under tools/. A KSF -Only selection expands to the
+    matched app/importer/codec ship-set. The progs go with `src/build.ps1 -Pi`.
+    -PlanOnly prints the exact commit, source/destination pairs and test-stage
+    manifest locally; it performs no SSH, installation or scratch creation.
 
 .NOTES
     THE REMOTE WORK IS WRITTEN AS SH FILES AND SHIPPED, NOT AS STRINGS ON SSH'S
@@ -56,6 +59,7 @@ param(
     [string]$PiHost = "proto@180.150.62.57",
     [string]$Remote = "/srv/nvme/surfd",
     [string[]]$Only,
+    [switch]$PlanOnly,
     [switch]$SkipTests,
     [switch]$NoReload,
     [switch]$NoBackup,
@@ -75,9 +79,20 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 $repo = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'surfd-deploy-plan.ps1')
+try { $plan = Get-SurfdDeployPlan -Repo $repo -Ref $Ref -Only $Only }
+catch { Write-Error $_; exit 1 }
+if ($PlanOnly) { $plan | ConvertTo-Json -Depth 4; exit 0 }
 
 $script:PiExit = 0        # exit code of the last remote command; see Invoke-PiSsh
-function Fail([string]$m) { Write-Host "FAIL: $m" -ForegroundColor Red; exit 1 }
+function Fail([string]$m) {
+    Write-Host "FAIL: $m" -ForegroundColor Red
+    if (Get-Variable -Name work -ErrorAction SilentlyContinue) {
+        Write-Host "  retained local ownership/plan: $work"
+        Write-Host "  remote owned stage (if created): $stage"
+    }
+    exit 1
+}
 function Step([string]$m) { Write-Host "`n=== $m" -ForegroundColor Cyan }
 
 # NOT named `Ssh`.  PowerShell names are case-insensitive, so a function called
@@ -109,17 +124,14 @@ function Send-PiFile {
 # deliberately written as $var -- everything else is literal shell.
 function Invoke-PiScript {
     param([string]$Name, [string]$Body, [switch]$AllowFail)
-    $local = Join-Path $env:TEMP "surfd-deploy-$Name.sh"
+    $local = Join-Path $work "surfd-deploy-$Name.sh"
     [IO.File]::WriteAllText($local, ($Body -replace "`r`n", "`n"))
     Send-PiFile $local "$stage/$Name.sh"
     Remove-Item $local -ErrorAction SilentlyContinue
     $out = Invoke-PiSsh -Cmd "sh '$stage/$Name.sh'"
-    # $LASTEXITCODE is captured HERE, immediately after the native call.  Reading it
-    # in the CALLER instead -- after a PowerShell function returned -- reads
-    # whatever the last native command in the whole script left there, because a
-    # function call does not set it.  A first cut did that, so this function's
-    # "did the remote step fail" test was grading an unrelated earlier command.
-    $code = $LASTEXITCODE
+    # Invoke-PiSsh captured its native exit status immediately. Use that saved
+    # status, not a caller's LASTEXITCODE from a different earlier command.
+    $code = $script:PiExit
     Write-Host $out
     if (-not $AllowFail -and $code -ne 0) {
         Fail "remote step '$Name' exited $code (output above)"
@@ -132,20 +144,19 @@ function Invoke-PiScript {
 Step "0. provenance"
 Push-Location $repo
 try {
-    $sha = (& git rev-parse --short "$Ref").Trim()
-    if (-not $sha) { Fail "could not resolve -Ref '$Ref'" }
-    $subject = (& git log -1 --format=%s "$Ref").Trim()
+    $commit = $plan.Commit
+    $sha = $commit.Substring(0, 12)
+    $subject = (& git log -1 --format=%s $commit).Trim()
     Write-Host "  ref      $sha  $subject"
 
-    $paths = @("surfd")
-    if ($Only) { $paths = $Only }
+    $paths = $plan.Files
     $dirty = & git status --porcelain -- @paths
     if ($dirty) {
         Write-Host $dirty
         Fail ("the working tree is dirty in the deploy set; commit it or use -Ref" +
               "`n     (deploying the TREE is how another session's uncommitted work ships)")
     }
-    $unpushed = & git log --oneline "origin/main..$Ref" 2>$null
+    $unpushed = & git log --oneline "origin/main..$commit" 2>$null
     if ($unpushed -and $AllowUnpushed) {
         Write-Host $unpushed
         Write-Host "  -AllowUnpushed: deploying $Ref, which is not on origin/main" -ForegroundColor Yellow
@@ -153,12 +164,9 @@ try {
         Write-Host $unpushed
         Fail "$Ref is not on origin/main; push it first, so the Pi can be told which commit it runs"
     }
-    $suiteFiles = @((& git ls-tree -r --name-only $sha -- surfd) |
-        Where-Object { $_ -match '\.(py|js|css|html|sh|nginx|sudoers)$' -and $_ -notmatch '/__pycache__/' })
-    # -Only restricts installation, not the app dependencies needed by tests.
-    $files = $suiteFiles
-    if ($Only) { $files = @($files | Where-Object { $Only -contains $_ }) }
-    if (-not $files.Count) { Fail "nothing to deploy for -Ref $sha" }
+    $files = $plan.Files
+    $stageFiles = $plan.StageFiles
+    foreach ($f in $plan.AddedDependencies) { Write-Host "  dependency added: $f" }
     # THE PATHS ARE RELATIVE TO $Remote, NOT TO THE REPO ROOT.  `git ls-tree`
     # returns `surfd/recplot.py`, and the Pi's layout has recplot.py directly in
     # /srv/nvme/surfd -- so installing under the repo-relative name creates a
@@ -167,40 +175,45 @@ try {
     # gunicorn kept serving the old code, and the deploy reported success.
     # The stage keeps the repo-relative names (it has to, so tools/ lands beside
     # surfd/ for the suite); only the install destination is stripped.
-    $dest = @($files | ForEach-Object { $_ -replace '^surfd/', '' })
-    Write-Host "  files    $($files.Count) from surfd/"
+    $dest = $plan.Destinations
+    Write-Host "  files    $($files.Count) from surfd/ and allowlisted codecs"
     $files | ForEach-Object { Write-Host "           $_" }
 
-    # tools/ and src/shared/ go beside surfd/ in the stage: test_sweep and the
-    # TF_* pins read them.  They are staged for the suite, NOT installed.
-    $extra = @((& git ls-tree -r --name-only $sha -- tools src/shared) |
-        Where-Object { $_ -match '\.py$' })
-    Write-Host "  staged   $($extra.Count) python files from tools/ and src/shared/ (suite only)"
+    # Complete test dependencies are staged even for a restricted installation.
+    # Only plan.Files ships: staging tools is not evidence of installing codecs.
+    Write-Host "  staged   $($stageFiles.Count) app/tool/shared files for the suite"
 }
 finally { Pop-Location }
 
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 # momgrab's fixture worker checks the data disk's 20 GB floor. Root /tmp can
 # have only 5 GB free while NVMe has ample room; stage on the target volume.
-$stage = "$Remote/.deploy-stage-$sha-$stamp"
+$nonce = [guid]::NewGuid().ToString('N').Substring(0, 8)
+$stage = "/srv/nvme/agent-work/surfdship-$sha-$stamp-$nonce"
+$work = Join-Path 'C:\FTESurf-worktrees' "surfdship-$sha-$stamp-$nonce"
+# Exclusive creation before any archive/script, ownership before population.
+[IO.Directory]::CreateDirectory((Split-Path -Parent $work)) | Out-Null
+New-Item -ItemType Directory -Path $work -ErrorAction Stop | Out-Null
+[IO.File]::WriteAllText((Join-Path $work 'OWNER.md'),
+    "Owner: surfd-deploy.ps1; created UTC $([DateTime]::UtcNow.ToString('o')).`n" +
+    "Source: $repo at $commit. Owned local root: $work. Remote stage: $stage.`n" +
+    "Status: active; no game processes. Retain on failure; on success keep receipt and remove only owned disposable archives/scripts.`n")
+$plan | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $work 'plan.json')
+Write-Host "  local ownership/plan: $work"
 $backupTag = "pre$sha-$stamp"
 
 # ---- 1. stage from the commit ---------------------------------------------
 Step "1. stage from the commit on the Pi"
-Invoke-PiSsh -Cmd "set -e; rm -rf '$stage'; mkdir -p '$stage/surfd' '$stage/tmp'" | Out-Null
+Invoke-PiSsh -Cmd ("set -eu; umask 077; mkdir -p '/srv/nvme/agent-work'; mkdir '$stage'; " +
+    "printf '%s\n' 'Owner: surfd-deploy.ps1; commit $commit; local receipt $work; status active, retained on failure.' > '$stage/OWNER.md'; " +
+    "mkdir '$stage/surfd' '$stage/tmp'") | Out-Null
 if ($script:PiExit -ne 0) { Fail "could not make the stage directory on the Pi" }
 
 Push-Location $repo
 try {
-    $tmpTar = Join-Path $env:TEMP "surfd-stage-$sha.tar"
-    & git -c core.autocrlf=false archive -o $tmpTar $sha -- @($suiteFiles)
+    $tmpTar = Join-Path $work "surfd-stage-$sha.tar"
+    & git -c core.autocrlf=false archive -o $tmpTar $commit -- @($stageFiles)
     if ($LASTEXITCODE -ne 0) { Fail "git archive failed" }
-    $tmpTar2 = $null
-    if ($extra.Count) {
-        $tmpTar2 = Join-Path $env:TEMP "surfd-stage-$sha-extra.tar"
-        & git -c core.autocrlf=false archive -o $tmpTar2 $sha -- @($extra)
-        if ($LASTEXITCODE -ne 0) { Fail "git archive (tools/) failed" }
-    }
 }
 finally { Pop-Location }
 
@@ -208,16 +221,11 @@ finally { Pop-Location }
 Get-Content -Raw -AsByteStream $tmpTar |
     & ssh -o BatchMode=yes $PiHost "set -e; cd '$stage'; tar -x"
 if ($LASTEXITCODE -ne 0) { Fail "could not unpack surfd/ on the Pi" }
-if ($tmpTar2) {
-    Get-Content -Raw -AsByteStream $tmpTar2 |
-        & ssh -o BatchMode=yes $PiHost "set -e; cd '$stage'; tar -x"
-    if ($LASTEXITCODE -ne 0) { Fail "could not unpack tools/ on the Pi" }
-}
-Remove-Item $tmpTar, $tmpTar2 -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $tmpTar -ErrorAction Stop
 
 $n = Invoke-PiSsh -Cmd "cd '$stage' && find . -type f | wc -l"
 Write-Host "  staged files on the Pi: $n"
-if ([int]($n.Trim()) -lt $files.Count) { Fail "the stage holds fewer files than the commit lists" }
+if ([int]($n.Trim()) -lt $stageFiles.Count) { Fail "the stage holds fewer files than the commit lists" }
 
 # ---- 2. the suite, in the stage, on the Pi --------------------------------
 if (-not $SkipTests) {
@@ -226,16 +234,32 @@ if (-not $SkipTests) {
 set -e
 cd STAGE/surfd
 mkdir -p STAGE/tmp
+# Export before command substitution: TMPDIR=x cmd $(mktemp -d) applies x
+# too late to control mktemp. Every suite-created home must stay in our stage.
+TMPDIR=STAGE/tmp
+export TMPDIR
 rc=0
-for t in test_web test_recplot test_board test_join test_replays test_sweep test_surfd test_simcheck test_momboards test_momgrab test_momrequest test_accounts test_ranked test_ksfimport test_ksftopup test_mapwatch test_zonefit test_variants test_mappool; do
+for t in test_web test_recplot test_board test_join test_replays test_sweep test_surfd test_simcheck test_momboards test_momgrab test_momrequest test_accounts test_ranked test_ksfimport test_ksftopup test_ksfgrab test_mapwatch test_zonefit test_variants test_mappool; do
   [ -f "$t.py" ] || continue
   printf '%-16s ' "$t"
-  if TMPDIR=STAGE/tmp SURFD_HOME=$(mktemp -d) python3 "$t.py" > "STAGE/tmp/$t.out" 2>&1; then
+  if [ "$t" = test_ksfgrab ]; then
+    set -- --out "STAGE/tmp/ksfgrab"
+  else
+    set --
+  fi
+  if TMPDIR=STAGE/tmp SURFD_HOME=$(mktemp -d) python3 "$t.py" "$@" > "STAGE/tmp/$t.out" 2>&1; then
     tail -2 "STAGE/tmp/$t.out" | tr '\n' ' '; echo
   else
     echo "FAILED"; tail -30 "STAGE/tmp/$t.out"; rc=1
   fi
 done
+if [ -f ../tools/test_ksfconvert.py ]; then
+  if TMPDIR=STAGE/tmp python3 ../tools/test_ksfconvert.py > STAGE/tmp/test_ksfconvert.out 2>&1; then
+    tail -2 STAGE/tmp/test_ksfconvert.out
+  else
+    echo 'FAILED test_ksfconvert'; tail -30 STAGE/tmp/test_ksfconvert.out; rc=1
+  fi
+fi
 exit $rc
 '@
     $r = Invoke-PiScript -Name "suite" -Body ($body -replace 'STAGE', $stage)
@@ -250,8 +274,7 @@ exit $rc
     # passing suites read as a failure.  A sentinel check is only a check if the
     # spelling is compared exactly.
     if ($script:PiExit -ne 0 -or $r -cmatch "FAILED") {
-        Invoke-PiSsh -Cmd "rm -rf '$stage'" | Out-Null
-        Fail "the suite did not pass in the stage; nothing was deployed, the stage is removed"
+        Fail "the suite did not pass; nothing was deployed, owned stage/logs retained at $stage"
     }
 }
 else {
@@ -372,7 +395,7 @@ $manifest = @()
 Push-Location $repo
 try {
     foreach ($f in $files) {
-        $h = (& git rev-parse "${sha}:$f").Trim()
+        $h = (& git rev-parse "${commit}:$f").Trim()
         if (-not $h) { Fail "could not hash $f at $sha" }
         $manifest += $h
     }
@@ -533,8 +556,12 @@ if ($baks -cnotmatch "BACKUPS_DONE" -or $baks -cnotmatch "STILL_LOOSE=0") {
 # ---- 8. clean up the stage --------------------------------------------------
 Step "8. remove the stage"
 Invoke-PiSsh -Cmd "rm -rf '$stage' && echo stage_removed" | Write-Host
+if ($script:PiExit -ne 0) { Fail "deployment verified, but owned stage removal failed" }
 
-Write-Host "`nDEPLOYED $sha to ${PiHost}:$Remote" -ForegroundColor Green
+Add-Content -LiteralPath (Join-Path $work 'OWNER.md') -Value (
+    "Completed UTC $([DateTime]::UtcNow.ToString('o')); remote stage removed. " +
+    "Deployment commit $commit; local plan/receipt retained; live destination/backups are NOT disposable scratch.")
+Write-Host "`nDEPLOYED $commit to ${PiHost}:$Remote" -ForegroundColor Green
 Write-Host "  database backup  $Remote/data/surfd.db.bak-$sha-$stamp (mode 600)"
 Write-Host "  file backups     *.$backupTag beside each replaced file"
 Write-Host "  The Pi keeps no receipt of its own: record this deploy in the commit"

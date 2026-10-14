@@ -123,3 +123,7 @@ Candidate implementation and isolated gates only at this document's creation.
 Publication, dual Windows installation and NanoPi backend/crawler enablement
 require their separate exact-commit/hash/runtime receipts. This paragraph is not
 a deployment claim. Do not restart an occupied lobby or the owner's client.
+
+The source-only [backend delivery preparation](ksf-deployment.md) adds the
+matched runtime codec ship-set, local PlanOnly and offline layout/suite gates.
+It does not perform installation or enable the crawler.
