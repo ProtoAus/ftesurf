@@ -114,6 +114,8 @@ KEEP_DIR = os.environ.get("SURFD_KEEP", os.path.join(DATA_DIR, "evidence"))
 # shape as RUNS_DIR so leg_dir() serves both.  A separate root and not a corner
 # of data/runs, because these are not this game's recordings and a sweeper,
 # a backup or a `du` should be able to tell them apart without reading headers.
+# KSF originals are retained separately by ksfgrab; only normalized text is served.
+KSF_DIR = os.environ.get("SURFD_KSF_RUNS", os.path.join(DATA_DIR, "ksfruns"))
 MOMENTUM_DIR = os.environ.get(
     "SURFD_MOMENTUM",
     os.path.join(os.path.dirname(os.path.normpath(RUNS_DIR)), "momentum"))
@@ -2588,7 +2590,7 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, n
         where, args = ("r.tier=?", (tier,))
     rank = "ROW_NUMBER() OVER (ORDER BY " + BOARD_ORDER + ") AS board_rank, " if name else ""
     query = ("SELECT " + rank + "r.rowid, r.momdemo, r.player, r.name, r.ticks, r.tickrate, r.millis, r.flags,"
-            "       r.submitted, r.replay_id, r.tier AS rtier, "
+            "       r.submitted, r.replay_id, r.tier AS rtier, r.map AS rmap, "
             + _PARENT_SQL + " AS prun, "
             + VER_SQL + " AS ver"
             "  FROM runs r"
@@ -2618,7 +2620,8 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, n
             # `replays` id, 0 when no recording is indexed (a legitimate
             # time).  An integer: the client keeps rows in fixed float arrays,
             # and /api/replay's whole surface stays one integer.
-            "rep": row["replay_id"],
+            "rep": (0 if row["rtier"] == TIER_KSF and row["rmap"] != mapname
+                    else row["replay_id"]),
             # Schema 6: a stage row's parent replay (_PARENT_SQL), else 0.
             "run": row["prun"] or 0,
             "ver": row["ver"],
@@ -3810,11 +3813,10 @@ def replay_file(row):
     leaf, map_dir = row["leaf"] or "", row["map_dir"] or ""
     if kind == "evidence":
         ok, root, sub = _EVLEAF_OK.match(leaf), KEEP_DIR, (map_dir, leaf)
-    elif kind in ("run", "momentum"):
-        # An imported run's leaf is written to FS_RunLeaf's grammar by
-        # tools/momimport.py, so _LEAF_OK reads both; only the root differs.
+    elif kind in ("run", "momentum", "ksf"):
+        # Imported text uses the native archive leaf grammar, not its authority.
         ok = _LEAF_OK.match(leaf)
-        root = RUNS_DIR if kind == "run" else MOMENTUM_DIR
+        root = {"run": RUNS_DIR, "momentum": MOMENTUM_DIR, "ksf": KSF_DIR}[kind]
         sub = (map_dir, leg_dir(row["track"], row["leg"]), leaf)
     else:
         return None, "name"
@@ -4878,7 +4880,7 @@ WEB_RUN_MAX = 30         # run-path fetches per RATE_WINDOW per source
 WEB_HEAD_KEYS = ("map", "track", "leg", "startseg", "tickrate", "movetickrate",
                  "clock", "flags", "momdemo")
 # Kinds whose file a public caller may plot.  `evidence` is deliberately absent.
-WEB_RUN_KINDS = ("run", "momentum")
+WEB_RUN_KINDS = ("run", "momentum", "ksf")
 # Tiers whose recordings are public.  Community runs are demoted and the web
 # board has never listed them (Patch 355), so their paths stay private too.
 WEB_RUN_TIERS = (TIER_RANKED,) + TIERS_IMPORTED

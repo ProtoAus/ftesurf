@@ -91,6 +91,8 @@ its own tier and is never merged into ranked, and why rows for maps this install
 cannot even load are dropped rather than stored against a name nobody can open.
 """
 import argparse
+import hashlib
+import struct
 import heapq
 import http.client
 import io
@@ -446,7 +448,11 @@ def merge_page(doc, page):
             held[k] = len(doc["rows"])
             doc["rows"].append(r)
             new += 1
-        elif _secs(r) < _secs(doc["rows"][i]):
+        elif (_secs(r) < _secs(doc["rows"][i])
+              or (_secs(r) == _secs(doc["rows"][i])
+                  and _when(r) >= _when(doc["rows"][i]))):
+            # Same PB can acquire a replay after our first crawl. Refresh its
+            # metadata too; equal-time newer records have a distinct identity.
             doc["rows"][i] = r
     return new
 
@@ -659,6 +665,25 @@ def _when(rec):
         return 0
 
 
+def record_key(rec):
+    """Exact upstream record identity; never derive it from a player/time alone."""
+    rid, when = rec.get("record_id"), _when(rec)
+    seconds = rec.get("time")
+    if (type(rid) is int and rid > 0 and when > 0
+            and type(seconds) in (int, float) and 0 < seconds < 1e6):
+        clock = struct.pack('>d', float(seconds)).hex()
+        filehash = hashlib.sha256(str(rec.get("file") or "").encode()).hexdigest()[:16]
+        return "ksf-%d-%d-%s-%s" % (rid, when, clock, filehash)
+    return ""
+
+
+def record_seconds(key):
+    try:
+        return struct.unpack('>d', bytes.fromhex(key.split('-')[3]))[0]
+    except (IndexError, ValueError, struct.error):
+        return 0.0
+
+
 def rec_row(mp, zone, mode, rec):
     """One KSF record as a run row, or None when it is unusable.  Never raises:
     one bad field must cost its row, not the tick."""
@@ -673,7 +698,8 @@ def rec_row(mp, zone, mode, rec):
             "player": str(sid),
             "name": S.clean_text(str(rec.get("name") or "")) or str(sid),
             "millis": ms, "ticks": int(round(ms / 1000.0 / KSF_TICK)),
-            "rate": 1.0 / KSF_TICK, "when": _when(rec)}
+            "rate": 1.0 / KSF_TICK, "when": _when(rec), "runid": record_key(rec),
+            "seconds": t, "binding": "board"}
 
 
 def board_rows(cache, mp, zone, mode):
@@ -1039,7 +1065,8 @@ def seed_mode(args, seed, have, cache):
                 "name": seed[sid],
                 "millis": ms, "ticks": int(round(ms / 1000.0 / KSF_TICK)),
                 "rate": 1.0 / KSF_TICK,
-                "when": _when(rec),
+                "when": _when(rec), "seconds": t,
+                "runid": record_key(rec), "binding": "seed",
             })
 
     print("requests made   %d   (from cache %d)" % (asked, cached))
@@ -1124,6 +1151,8 @@ def main():
                     help="--from-maps: KSF styles, 0 Forward 1 Sideways\n2 Half-Sideways 3 Backwards")
     ap.add_argument("--watch", action="store_true",
                     help="one unattended crawl tick, for cron (see the docstring)")
+    ap.add_argument("--demos", action="store_true",
+                    help="--watch --go: reserve up to two requests to download advertised demos")
     ap.add_argument("--delay", type=float, default=None,
                     help="--from-maps/--watch: seconds between requests\n(default %.1f, --watch %.1f)"
                     % (KSF_DELAY_MS / 1000.0, WATCH_DELAY))
@@ -1180,6 +1209,10 @@ def main():
               % (args.maps or S.MAPS_DIR))
         return 2
 
+    demo_max = 0
+    if args.watch and args.go and args.demos:
+        demo_max = min(2, max(0, args.max // 3))
+        args.max -= demo_max
     lock = take_lock(cache)
     if lock is None:
         print("another ksfimport holds %s -- not running beside it" % cache)
@@ -1208,6 +1241,9 @@ def main():
         finish_topups(getattr(args, "_topups", []))
         clear_owed(cache, boards)
         print("board rows set  %d" % n)
+        if demo_max:
+            import ksfgrab
+            ksfgrab.tick(cache, demo_max, args.delay)
         return 0
     finally:
         lock.close()
@@ -1226,22 +1262,46 @@ def write_rows(rows):
     try:
         for i in range(0, len(rows), WRITE_CHUNK):
             with conn:
+                conn.execute("BEGIN IMMEDIATE")
                 for r in rows[i:i + WRITE_CHUNK]:
+                    previous = conn.execute(
+                        "SELECT runid,millis,submitted FROM runs WHERE map=? AND track=?"
+                        " AND leg=? AND tier=? AND style=? AND player=?",
+                        (r["map"], r["track"], r["leg"], S.TIER_KSF,
+                         r.get("style", S.STYLE_CLEAN), r["player"])).fetchone()
+                    if previous and previous["millis"] == r["millis"]:
+                        oldseconds = record_seconds(previous["runid"])
+                        newseconds = r.get("seconds", r["millis"] / 1000.0)
+                        if oldseconds and "seconds" not in r:
+                            continue  # Rounded-only metadata is not authority.
+                        if oldseconds and newseconds > oldseconds:
+                            continue
+                        if oldseconds and newseconds == oldseconds and r.get("binding") != "board":
+                            # The seed endpoint does not carry advertised-file
+                            # state. An unchanged time cannot revoke a known demo.
+                            continue
+                        if not oldseconds or newseconds == oldseconds:
+                            if r["when"] < previous["submitted"]:
+                                continue
                     # The seed path's rows are all (0, 0): bestrecords carries no
                     # stage or bonus (stage_id and zone_id are null on every row
-                    # seen).  replay_id stays 0 -- there is no recording.
+                    # seen). New records start unlinked. An improved or equal-time
+                    # replacement must not keep the previous record's demo.
                     cur = conn.execute(
                         "INSERT INTO runs (map, track, leg, tier, style, player, name,"
                         "   ticks, tickrate, millis, flags, node, runid, submitted, replay_id)"
-                        " VALUES (?,?,?,?,?,?,?,?,?,?,0,'ksf','',?,0)"
+                        " VALUES (?,?,?,?,?,?,?,?,?,?,0,'ksf',?,?,0)"
                         " ON CONFLICT (map, track, leg, tier, style, player) DO UPDATE SET"
                         "   ticks=excluded.ticks, millis=excluded.millis,"
-                        "   name=excluded.name, submitted=excluded.submitted"
-                        " WHERE excluded.millis < runs.millis",
+                        "   name=excluded.name, submitted=excluded.submitted,"
+                        "   runid=excluded.runid, replay_id=CASE"
+                        "     WHEN runs.millis=excluded.millis AND runs.runid=excluded.runid"
+                        "     THEN runs.replay_id ELSE 0 END"
+                        " WHERE excluded.millis <= runs.millis",
                         (r["map"], r["track"], r["leg"], S.TIER_KSF,
                          r.get("style", S.STYLE_CLEAN),
                          r["player"], r["name"], r["ticks"], r["rate"], r["millis"],
-                         r["when"] or now))
+                         r.get("runid", ""), r["when"] or now))
                     wrote += cur.rowcount
     finally:
         conn.close()

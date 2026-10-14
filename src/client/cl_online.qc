@@ -94,9 +94,9 @@
 #define OB_TIER_BOTH "combined"
 
 /*
-  KSF (ksf.surf), Counter-Strike: Source.  TIMES ONLY -- that network publishes
-  no replay this game can fetch, so a ksf row carries no recording, no line and
-  no `watch`; surfd/ksfimport.py records why at length.
+  KSF (ksf.surf), Counter-Strike: Source. Sparse advertised demos are normalized
+  and exactly linked by surfd/ksfgrab.py. A nonzero rep uses the same download,
+  Watch and line pipeline; a time with no indexed demo still has no Watch.
 
   OB_TIER_IMP is every foreign board at once, and it is what the tab asks for:
   ONE tab whatever the sources are, with each row carrying its own in `tr`.  A

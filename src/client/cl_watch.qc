@@ -3831,7 +3831,7 @@ float() Rewind_Busy;                // cl_rewind.qc compiles after this file
 void() Rewind_HandOver;
 void() Rewind_Abandon;
 
-float(string path) Watch_Open =
+float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn =
 {
 	local float buf, leg;
 	local string vp;
@@ -3863,7 +3863,16 @@ float(string path) Watch_Open =
 		print("replay: buf_create failed\n");
 		return FALSE;
 	}
-	if (!Watch_BufLoad(path, buf))
+	if (ksfmap != "")
+	{
+		if (!KSF_BufLoad(path, buf, ksfmap, ksfbonus, ksfstyle))
+		{
+			buf_del(buf);
+			Watch_Stop();
+			return FALSE;
+		}
+	}
+	else if (!Watch_BufLoad(path, buf))
 	{
 		buf_del(buf);
 		print(sprintf("replay: cannot read %s\n", path));
@@ -3875,7 +3884,7 @@ float(string path) Watch_Open =
 
 	vp = strcat(substring(path, 0, strlen(path) - 4), ".view");
 	buf = 0;
-	if (rec_wt_noview)
+	if (rec_wt_noview || ksfmap != "")
 		print("replay: noview -- the sidecar is not loaded\n");
 	else
 		buf = buf_create_ex("string", 0);
@@ -3950,7 +3959,7 @@ float(string path) Watch_Open =
 	*/
 	if (strcmp(rec_wt_source, "ksf") == 0)
 		print("^3replay: KSF import -- map build and ducked body state unknown; "
-		      "bookmark clock, not a native verified run. v2 ground/moves unavailable.\n");
+		      "bookmark clock, not a native verified run. Missing ground/moves are not invented.\n");
 	if (rec_wt_momq > 1.05)
 		print(sprintf("^3replay: this import peaks %.1fx over the %0.0f u/s the "
 		              "demo itself reports -- its PATH is sound and its speed "
@@ -4015,6 +4024,12 @@ float(string path) Watch_Open =
 		print("        ^5hud_watch_info 1^7 for the run's frame rate, tick rate, "
 		      "sample rate and file details\n");
 	return TRUE;
+};
+
+// Keep the established one-argument call contract (including compiler lowering).
+float(string path) Watch_Open =
+{
+	return Watch_OpenIn(path, "", 0, "");
 };
 
 /*
@@ -5317,16 +5332,28 @@ string(float rep, string dir) Online_ReplayFind;     // cl_online.qc, compiled a
 float(string cmd) Watch_ConsoleCommand =
 {
 	local string a, p;
-	local float track, leg, nv;
+	local float track, leg, nv, count;
 	local float i, b, sl;   // the marks and seq dumps (Patch 449)
 	local vector ep;        // an array element is not swizzleable
 
-	tokenize(cmd);
+	count = tokenize(cmd);
 	if (argv(0) != "replay")
 		return FALSE;
 
 	a = argv(1);
 	nv = (argv(2) == "noview" || argv(3) == "noview" || argv(4) == "noview");
+
+	if (a == "ksf")
+	{
+		// Explicit metadata; never infer course, style or map from the filename.
+		if (count != 6 || argv(3) == "" || strcmp(sprintf("%g", stof(argv(4))), argv(4)))
+		{
+			print("replay: ksf <binary.rec> <map> <bonus: 0=main> <FW|SW|HSW|BW>\n");
+			return TRUE;
+		}
+		Watch_OpenIn(argv(2), argv(3), stof(argv(4)), argv(5));
+		return TRUE;
+	}
 
 	if (a == "stop" || a == "off")
 	{

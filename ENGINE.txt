@@ -25,7 +25,11 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-703
-patch    704
+patch    706
+# Patch 706: original KSF CSS/66t v2/v3 binary playback and bounded advertised-demo
+# discovery/import. Exact current record bindings, retained originals, shared
+# crawler budget/lock/cooldown, imported Watch/line API; no native verification.
+# Verification/limits: tools/p706ksf.md. Engine commit/tag and QC Build unchanged.
 # Patch 704: Windows Surf launcher exits after detached game spawn; source
 # checkouts skip public release updates instead of overwriting dev binaries.
 # Deploy the centered logo-only main source as an optimized 3.58 MB release,

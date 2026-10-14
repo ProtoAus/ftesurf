@@ -5,20 +5,17 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
-## KSF binary replay playback import — P699, 2026-10-14
+## KSF replay remaining track/build coverage — P706, 2026-10-14
 
-- Sites: surfd/ksfimport.py (replay_id remains 0), Momentum-style conversion/
-  cl_replay reader. Raw CSS bytes are public at KSF `/api/replays/<filename>?game=66t`;
-  the operator's `/replays/<map>/<filename>` links are HTML viewers. Twelve supplied
-  null/prosurf/monolith files downloaded and decoded, v2/v3, using the public
-  viewer layout. `tools/ksfreplay_info.py` is a bounded inspector, not a converter.
-- Next falsifier: prove matching map/build, player, selected track/style and
-  advertised duration before conversion; derive timed frames from bookmarks
-  without counting pre/post-roll, retain tick interval and teleport discontinuities,
-  and compare native line/watch endpoints and duration to the KSF viewer on main
-  and bonus-4 examples. Reject malformed/oversized/unmatched files and preserve
-  imported provenance. Never label these as native verified runs. No direct demo
-  fetching, replay database association or game playback is shipped by P699.
+- Sites: src/client/cl_ksf.qc, tools/ksfconvert.py, surfd/ksfgrab.py. Original
+  CSS/66t v2/v3 binaries and automatic exact current-PB import/Watch now exist
+  (tools/p706ksf.md). Staged courses are deliberately not imported: next falsifier
+  is an upstream stage row tied to a unique start/finish bookmark interval, with
+  no main/bonus false match. CSS100/other games need their own explicit clock
+  contract; the binary itself supplies no trustworthy tickrate or BSP identity.
+  The synchronous original reader refuses over 40,000 frames/16 MiB; normalized
+  imports have the converter's separate bound. Never remove map guards or claim
+  native verification to make a mismatched build watchable.
 - Local approved-map zone/version reconciliation: Momentum Playtest held all
   759 approved names but lacked JSON on 39 (including bhop). Exact BSP SHA256
   comparison with the Pi held 38; only bhop_perspective matched and its checked

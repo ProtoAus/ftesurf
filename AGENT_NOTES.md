@@ -12108,3 +12108,46 @@ the game fetches its own map list. The menu half is Patch 652.
 - Tests/provenance/limits: tools/p699ksf.md. Chrome smoke uses real-time CDP
   (Node's built-in WebSocket), an owned headless profile and explicit GUI state
   waits. A hash changing is not proof that its next board has rendered yet.
+
+### P706 — original KSF files and automatic sparse demo imports
+
+- Public cached board rows already carry `file` when a demo exists. Consume
+  that field, not guessed filename numbers or a request per player. The existing
+  board crawler discovers it; equal-time/newer metadata must refresh too, since
+  an unchanged PB can gain or lose its file. Only CSS/66t main/bonus courses are
+  supported. Stage cuts, CSS100/other clocks and BSP build identity stay explicit
+  limits. Original files contain no trustworthy map/player/style binding.
+- `replay ksf <binary> <map> <bonus> <style>` normalizes original v2/v3 bytes into
+  Watch's imported buffer without Python or writing player data. Bounds precede
+  fopen/fsize/fread because those builtins materialize the file. 16 MiB and
+  40,000 frames bound the synchronous VM. Preserve bookmark clock, raw buttons,
+  six-decimal normalized analog direction, source velocity/ground where present;
+  never infer duck state, map hash or native evidence. Imported .rec/board/API
+  playback still uses the existing viewer and integer `rep` protocol.
+- `ksfimport --watch --go --demos` reserves up to two requests WITHIN --max,
+  holding its shared lock through demo discovery/download/index. First download
+  sleeps too, after the board request. Fixed-origin no redirects; shared host
+  cooldown covers socket/header/body failure and ALL non-2xx, not just 429.
+  Normalize transport errors before local conversion/archive OSError handling:
+  ConnectionResetError and IncompleteRead are not per-file disk failures.
+- Exact binding includes upstream record/date, raw double seconds and advertised
+  file hash, not rounded millis alone. Seed records MUST retain raw seconds and
+  cannot revoke an unchanged known binding without board file metadata. A faster
+  PB clears its old rep. Original/provenance writes precede transactional exact
+  recheck/link; failed indexing retains intent. Warm missing files retry. Retire
+  obsolete jobs and three-strike local failures so a bounded queue can progress.
+  Exclude readable exact warm links BEFORE admission as well as pending retention;
+  otherwise 256 current warm jobs can starve one cold row forever. Persist
+  local-only removals/empty ticks, not just attempted downloads. Missing or
+  unreadable warm files remain recovery candidates.
+- Imported times on a catalogued variant retain their time rows but KSF `rep`
+  is suppressed when its stored map differs from the requested build. Do not
+  remove Watch's exact map guard to advertise an unplayable action.
+- Compiler finding: this fteqcc crashes silently when the new console condition
+  calls undeclared `argc()`. Baseline and loader-only arms compile; console-only
+  reproduces exit139. QuakeC uses the return of tokenize(cmd), not argc(). The
+  original one-argument Watch_Open wrapper remains compatible with all callers.
+  Pass float booleans to sprintf %g (or explicitly cast for %i), including codec
+  capability metadata; the QC varargs declaration is not a type-conversion gate.
+- Commands, limits and provenance: tools/p706ksf.md. No native reader/evidence
+  semantics, engine pin/tag or QC Build change. Fleet delivery is a separate gate.

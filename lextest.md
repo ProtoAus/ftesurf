@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P706 — original and automatic KSF replays
+
+After the P706 client/backend delivery receipt is marked deployed, open the KSF
+or Imported board on a matching map. Judge Watch, the motion/path and the usual
+pause/seek/rate controls on the fastest advertised clips. Sparse demos appear
+only after the bounded crawler has indexed them; a time with no recording stays
+unwatchable. Base-map imports on an incompatible _css variant keep their times
+but deliberately have no Watch. No same-name recording proves the BSP build.
+Local original binaries use `replay ksf <path> <map> <bonus: 0=main> <FW|SW|HSW|BW>`.
+The tested null main and prosurf/monolith bonus-4 clips retain bookmark clocks;
+duck body/build identity remain unknown, and this is never native verification.
+Source, tests, automatic enable command and delivery status: tools/p706ksf.md.
+
 ## P698 — linked map picker and admin manifest
 
 Open Create Server in either updated Windows install; judge the red missing-zone
