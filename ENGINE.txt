@@ -25,7 +25,11 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-703
-patch    714
+patch    715
+# Patch 715: validated Steam pictures persist in 256 daily-expiring disk
+# buckets, keyed by directory origin and player mark. Restarts rebuild from
+# disk without another HTTP request; corrupt/stale/colliding copies miss.
+# QC-only; engine binary pin/tag and QC Build number are unchanged.
 # Patch 714: top-up cache filing is separate from freshly fetched exact-record
 # authority, including zero-page completion and interrupted owed recovery.
 # A full cold queue admits bounded retained repairs without losing retry/strike

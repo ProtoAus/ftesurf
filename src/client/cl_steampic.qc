@@ -49,7 +49,66 @@ float  sp_req, sp_reqslot, sp_next;
 float  sp_base;                 // this VM's request ids: see SteamPic_Alloc
 float  sp_bad;                  // non-answers in a row; SP_STRIKES ends the asking this map
 float  sp_slow;                 // the request in flight is past SP_TIMEOUT, and said so
-float  sp_asked, sp_got;        // counts, for `scores pics`
+float  sp_asked, sp_got, sp_disk; // counts, for `scores pics`
+string sp_origin;              // directory that owns these marks/pictures
+float(float reqid, float code, string bdy) SteamPic_Reply;
+
+// At most 256 bucket files. Full origin+mark SHA256 and today's UTC date
+// guard collisions/stale pictures; the bucket prefix is NOT the identity.
+string(string mark) SP_DiskKey =
+{
+	local string key;
+	key = strtolower(digest_hex("SHA256", strcat(sp_origin, "\n", mark)));
+	if (strlen(key) != 64) return "";
+	return key;
+};
+string(string key) SP_DiskPath =
+{
+	return strcat("cache/steampic/", substring(key, 0, 2), ".txt");
+};
+string(string key) SP_DiskHeader =
+{
+	return sprintf("FTESURF-AVCACHE1 %s %s", key, strftime(TRUE, "%Y%m%d"));
+};
+string(string mark) SP_DiskLoad =
+{
+	local string key, hdr, body, line;
+	local float fh, i;
+	key = SP_DiskKey(mark);
+	if (key == "") return "";
+	fh = fopen(SP_DiskPath(key), FILE_READ);
+	if (fh < 0) return "";
+	if (fsize(fh) > SP_HEAD + SP_PX * SP_ROW + 128)
+	{
+		fclose(fh);
+		return "";
+	}
+	hdr = fgets(fh);
+	body = "";
+	for (i = 0; i <= SP_PX; i = i + 1)
+	{
+		line = fgets(fh);
+		body = strcat(body, line, "\n");
+	}
+	fclose(fh);
+	if (strcmp(hdr, SP_DiskHeader(key))) return "";
+	return body; // Reply validates every byte before rendering or keeping it
+};
+void(string mark, string body) SP_DiskStore =
+{
+	local string key, dst, part;
+	local float fh;
+	key = SP_DiskKey(mark);
+	if (key == "") return;
+	dst = SP_DiskPath(key);
+	part = strcat(dst, ".part");
+	fh = fopen(part, FILE_WRITE);
+	if (fh < 0) return;             // read-only installs still draw
+	fputs(fh, strcat(SP_DiskHeader(key), "\n", body));
+	fclose(fh);
+	fremove(dst);                   // Windows rename cannot replace
+	if (frename(part, dst) != 0) fremove(part);
+};
 
 void() SteamPic_Alloc =
 {
@@ -154,6 +213,7 @@ void() SteamPic_Lost =
 void() SteamPic_Frame =
 {
 	local float i;
+	local string cached, base;
 
 	if (!sp_st)
 		return;                             // nothing has wanted one yet
@@ -178,8 +238,16 @@ void() SteamPic_Frame =
 	if (ui_consent_ver < FS_TERMS_ONLINE)
 	if (cvar("rec_terms") < FS_TERMS_ONLINE)
 		return;
-	if (cvar_string("lobby_dir") == "")
+	base = cvar_string("lobby_dir");
+	if (base == "")
 		return;
+	if (strcmp(base, sp_origin))
+	{
+		if (sp_origin != "") strunzone(sp_origin);
+		sp_origin = strzone(base);
+		for (i = 0; i < SP_MAX; i = i + 1)
+			if (sp_st[i]) sp_st[i] = SP_WANT;
+	}
 
 	for (i = 0; i < SP_MAX; i = i + 1)
 	{
@@ -198,6 +266,18 @@ void() SteamPic_Frame =
 	sp_at[i] = cltime;
 	sp_req = sp_base + sp_asked - floor(sp_asked / 4000) * 4000;
 	sp_reqslot = i;
+	cached = SP_DiskLoad(bufstr_get(sp_bmark, i));
+	if (cached != "")
+	{
+		SteamPic_Reply(sp_req, 0, cached);
+		if (sp_st[i] == SP_HAVE)
+		{
+			sp_disk = sp_disk + 1;
+			return;
+		}
+		sp_st[i] = SP_WANT;             // corrupt cache: normal HTTP miss
+		sp_req = sp_base + sp_asked - floor(sp_asked / 4000) * 4000;
+	}
 	if (!uri_get(sprintf("%s/api/board?avatar=%s", cvar_string("lobby_dir"),
 	                     bufstr_get(sp_bmark, i)), sp_req))
 	{
@@ -214,6 +294,7 @@ void() SteamPic_Frame =
 float(float reqid, float code, string bdy) SteamPic_Reply =
 {
 	local float i, o, x, y;
+	local string digit;
 	local int hi, lo, a, seen;
 	local int *px;
 
@@ -244,6 +325,17 @@ float(float reqid, float code, string bdy) SteamPic_Reply =
 		return TRUE;
 	if (substring(bdy, 0, SP_HEAD) != "FTESURF-AVATAR 1 32 32\n")
 		return TRUE;
+
+	// A damaged disk file must not be silently interpreted as black pixels.
+	for (i = SP_HEAD; i < strlen(bdy); i = i + 1)
+	{
+		digit = substring(bdy, i, 1);
+		if (floor((i - SP_HEAD + 1) / SP_ROW) * SP_ROW == i - SP_HEAD + 1)
+		{
+			if (digit != "\n") return TRUE;
+		}
+		else if (strstrofs("0123456789abcdef", digit, 0) < 0) return TRUE;
+	}
 
 	// "rrggbbaa" a pixel; memory order is r, g, b, a.  Four hex digits at a
 	// time: eight would not fit a signed int.  The corners are rounded here,
@@ -280,6 +372,7 @@ float(float reqid, float code, string bdy) SteamPic_Reply =
 	shaderforname(sprintf("steampic/%g", sp_reqslot),
 	              sprintf("{\naffine\nnomipmaps\nprogram default2d\n{\nclampmap steampic/%g\nblendfunc blend\n}\nsort additive\n}\n",
 	                      sp_reqslot));
+	SP_DiskStore(bufstr_get(sp_bmark, sp_reqslot), bdy);
 	sp_st[sp_reqslot] = SP_HAVE;
 	sp_got = sp_got + 1;
 	return TRUE;
@@ -292,6 +385,7 @@ void() SteamPic_Status =
 
 	print(sprintf("steampic: asked %g got %g inflight %g strikes %g hold %g\n", sp_asked, sp_got,
 	              sp_req ? 1 : 0, sp_bad, max(0, cvar("_steampic_hold") - gettime(0))));
+	print(sprintf("steampic: disk hits %g (daily, 256 buckets)\n", sp_disk));
 	if (sp_st)
 	for (i = 0; i < SP_MAX; i = i + 1)
 		if (sp_st[i])
