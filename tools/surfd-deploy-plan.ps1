@@ -12,8 +12,15 @@ function Get-SurfdDeployPlan {
     if ($LASTEXITCODE -ne 0 -or "$commit" -notmatch '^[0-9a-f]{40}$') {
         throw "could not resolve -Ref '$Ref' to a commit"
     }
-    $all = @(& git -C $Repo ls-tree -r --name-only $commit -- surfd tools src/shared)
+    $tree = @(& git -C $Repo ls-tree -r $commit -- surfd tools src/shared)
     if ($LASTEXITCODE -ne 0) { throw "could not list commit $commit" }
+    $modeByPath = @{}
+    foreach ($entry in $tree) {
+        if ($entry -match '^([0-9]{6}) blob [0-9a-f]+\t(.+)$') {
+            $modeByPath[$Matches[2]] = $Matches[1]
+        }
+    }
+    $all = @($modeByPath.Keys)
     $suite = @($all | Where-Object {
         $_ -match '^surfd/.*\.(py|js|css|html|sh|nginx|sudoers)$' -and
         $_ -notmatch '/__pycache__/'
@@ -49,9 +56,18 @@ function Get-SurfdDeployPlan {
     # The test stage always contains the complete app, even with -Only. Tools
     # are staged beside surfd, but only the two allowlisted codecs may ship.
     $staged = @(@($suite) + @($extra) | Sort-Object -Unique)
+    $modes = @()
+    foreach ($file in $files) {
+        $mode = $modeByPath[$file]
+        if ($mode -notin @('100644', '100755')) {
+            throw "unsupported deploy file mode for '$file' at $commit"
+        }
+        $modes += $(if ($mode -eq '100755') { '755' } else { '644' })
+    }
     [pscustomobject]@{
         Commit = "$commit"
         Files = $files
+        Modes = $modes
         Destinations = @($files | ForEach-Object { $_ -replace '^surfd/', '' })
         AddedDependencies = $added
         StageFiles = $staged

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Offline exact-commit KSF shipping falsifiers; no SSH, app or game launch.
 
-Run with --out beneath an owned task root. Requires pwsh 7, git and sh. Only
-synthetic Git repositories/layouts created under --out may be modified here.
+Run with --out beneath an owned task root. Requires pwsh 7, git and sh;
+Windows genuine flock/SQLite controls also require WSL Ubuntu-22.04. Windows
+mode shims do not prove native POSIX executable permissions. Only synthetic
+Git repositories/layouts created under --out may be modified here.
 """
 import argparse
 import json
@@ -214,7 +216,7 @@ if ($b.Count -ne 1) { throw 'expected exactly one shell body' }
 @{Body=$b[0].Value} | ConvertTo-Json
 ''', DEPLOY_TEST_BODY_MARKER=marker)
         self.assertEqual(r.returncode, 0, r.stdout+r.stderr)
-        return json.loads(r.stdout.lstrip('\ufeff'))['Body']
+        return json.loads(r.stdout.lstrip('\ufeff'))['Body'].replace('\r\n', '\n')
 
     def test_actual_suite_shell_passes_args_and_propagates_both_failures(self):
         stage = self.root/'stage'
@@ -299,9 +301,9 @@ function New-Item { Set-Content $env:DEPLOY_TEST_MARKER workspace; throw 'worksp
         self.assertEqual(git(repo, 'hash-object', 'app.py'), want)  # Old filtered control ACTED.
         self.assertNotEqual(git(repo, 'hash-object', '--no-filters', '--', 'app.py'), want)
         body = self.shell_body('VERIFY_BAD=').replace('__REMOTE__', self.posix(repo))
-        body = body.replace('__MANIFEST__', 'app.py '+want)
+        body = body.replace('__MANIFEST__', 'app.py '+want+' 644')
         shell = self.root/'verify.sh'
-        shell.write_text(body, newline='\n')
+        shell.write_text(('stat() { echo 644; }\n' if os.name == 'nt' else '')+body, newline='\n')
         r = run(['sh', self.posix(shell)], check=False)
         self.assertEqual(r.returncode, 1, r.stdout+r.stderr)
         self.assertIn('VERIFY_BAD=1', r.stdout)
@@ -389,6 +391,310 @@ curl() {
                     self.assertNotIn('RELOAD_VERIFIED=', r.stdout)
                     if scenario not in ('unhealthy', 'slow-health'):
                         self.assertFalse((remote/'health-step').exists())
+
+    @staticmethod
+    def linux_path(path):
+        if os.name == 'nt':
+            return '/mnt/'+path.drive[0].lower()+'/'+path.as_posix()[3:]
+        return str(path)
+
+    def linux_run(self, body, *, check=True):
+        shell = self.root/'linux-probe.sh'
+        environment = "TMPDIR='"+self.linux_path(self.root)+"'; export TMPDIR\n"
+        environment += 'PYTHONDONTWRITEBYTECODE=1; export PYTHONDONTWRITEBYTECODE\n'
+        shell.write_text(environment+body, newline='\n')
+        cmd = ['sh', self.linux_path(shell)]
+        if os.name == 'nt':
+            cmd = ['wsl', '-d', 'Ubuntu-22.04', '--', *cmd]
+        return run(cmd, check=check)
+
+    def copy_body(self, stage, remote, tag):
+        return (self.shell_body('COPIED=')
+                .replace('/tmp/surfd-sweep.lock', self.linux_path(self.root/'sweep.lock'))
+                .replace('__REMOTE__', self.linux_path(remote))
+                .replace('__STAGE__', self.linux_path(stage))
+                .replace('__TAG__', tag)
+                .replace('__FILES__', 'surfd/run.sh run.sh 755\nsurfd/not-executable.sh not-executable.sh 644'))
+
+    def test_actual_install_modes_and_file_backup_collision(self):
+        stage = self.root/'stage'
+        (stage/'surfd').mkdir(parents=True)
+        remote = self.root/'remote'
+        remote.mkdir()
+        for name in ('run.sh', 'not-executable.sh'):
+            (stage/'surfd'/name).write_text('#!/bin/sh\necho ENTRYPOINT_ACTED\n')
+            (remote/name).write_text('original '+name+'\n')
+        # Windows drvfs has no POSIX mode metadata. The shim records install's
+        # requested mode while copying real bytes; native Linux uses real modes.
+        shim = """
+install() {
+  command install "$@"
+  for last; do :; done
+  echo "$2" > "$last.mode"
+}
+mv() { command mv "$@"; command mv "$2.mode" "$3.mode"; }
+stat() {
+  if [ "$1" = -c ] && [ "$2" = '%a' ]; then
+    for last; do :; done
+    cat "$last.mode"
+  else command stat "$@"; fi
+}
+""" if os.name == 'nt' else ''
+        copy = self.copy_body(stage, remote, 'pre-first')
+        r = self.linux_run(shim+copy)
+        self.assertIn('COPIED=2', r.stdout)
+        manifest = []
+        for name, mode in (('run.sh', '755'), ('not-executable.sh', '644')):
+            h = git(REPO, 'hash-object', '--no-filters', '--', str(remote/name))
+            manifest.append(name+' '+h+' '+mode)
+        verify = (self.shell_body('VERIFY_BAD=')
+                  .replace('__REMOTE__', self.linux_path(remote))
+                  .replace('__MANIFEST__', '\n'.join(manifest)))
+        r = self.linux_run(shim+verify)
+        self.assertIn('VERIFY_BAD=0', r.stdout)
+        if os.name == 'nt':
+            (remote/'run.sh.mode').write_text('644\n')
+        else:
+            (remote/'run.sh').chmod(0o644)
+        r = self.linux_run(shim+verify, check=False)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('MODE_DIFFERS run.sh', r.stdout)
+        original = (remote/'run.sh.pre-first').read_bytes()
+        r = self.linux_run(shim+copy, check=False)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('REFUSE_BACKUP_EXISTS', r.stdout)
+        self.assertEqual((remote/'run.sh.pre-first').read_bytes(), original)
+        r = self.linux_run(shim+self.copy_body(stage, remote, 'pre-second'))
+        self.assertIn('COPIED=2', r.stdout)
+        if os.name != 'nt':
+            r = self.linux_run('cd '+self.linux_path(remote)+'; ./run.sh')
+            self.assertIn('ENTRYPOINT_ACTED', r.stdout)
+        (args.out/'install-backup.log').write_text(
+            'COPIED=2; VERIFY_BAD=0; wrong-mode refused; same-tag refused; distinct-tag COPIED=2\n'+
+            ('Windows: install/stat mode shims; native executable proof PENDING\n' if os.name == 'nt'
+             else 'Native POSIX entrypoint executed: ENTRYPOINT_ACTED\n'))
+
+    def test_plan_modes_are_exact_commit_not_suffix_or_worktree(self):
+        repo, _, _ = self.fixture_repo()
+        for name in ('run.sh', 'not-executable.sh'):
+            (repo/'surfd'/name).write_text('#!/bin/sh\necho acted\n')
+            git(repo, 'add', '--', 'surfd/'+name)
+        git(repo, 'update-index', '--chmod=+x', 'surfd/run.sh')
+        git(repo, 'update-index', '--chmod=-x', 'surfd/not-executable.sh')
+        git(repo, '-c', 'user.name=Offline fixture', '-c', 'user.email=fixture@example.invalid',
+            '-c', 'commit.gpgsign=false', 'commit', '-qm', 'modes')
+        ref = git(repo, 'rev-parse', 'HEAD')
+        git(repo, 'update-index', '--chmod=-x', 'surfd/run.sh')
+        plan = self.plan(repo, ref)
+        modes = dict(zip(plan['Files'], plan['Modes']))
+        self.assertEqual(modes['surfd/run.sh'], '755')
+        self.assertEqual(modes['surfd/not-executable.sh'], '644')
+
+    def test_actual_database_backup_exclusive_collision(self):
+        import sqlite3
+        remote = self.root/'remote'
+        (remote/'data').mkdir(parents=True)
+        db = sqlite3.connect(remote/'data/surfd.db')
+        db.execute('create table witness(n)')
+        db.execute('insert into witness values(1)')
+        db.commit(); db.close()
+        body = (self.shell_body('import os, sqlite3')
+                .replace('REMOTE', self.linux_path(remote)).replace('TAG', 'bak-first'))
+        r = self.linux_run(body)
+        self.assertIn('BACKUP_OK', r.stdout)
+        db = sqlite3.connect(remote/'data/surfd.db')
+        db.execute('update witness set n=2'); db.commit(); db.close()
+        r = self.linux_run(body, check=False)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertNotIn('BACKUP_OK', r.stdout)
+        db = sqlite3.connect(remote/'data/surfd.db.bak-first')
+        self.assertEqual(db.execute('select n from witness').fetchone()[0], 1)
+        db.close()
+        r = self.linux_run(body.replace('bak-first', 'bak-second'))
+        self.assertIn('BACKUP_OK', r.stdout)
+        db = sqlite3.connect(remote/'data/surfd.db.bak-second')
+        self.assertEqual(db.execute('select n from witness').fetchone()[0], 2)
+        db.close()
+        (args.out/'db-backup.log').write_text('BACKUP_OK first; same-tag FileExistsError; original n=1 preserved; distinct-tag BACKUP_OK n=2\n')
+
+    def test_actual_transaction_holder_interleaving_eof_and_timeout(self):
+        holder = self.root/'holder.sh'
+        holder.write_text(self.shell_body('flock -w 120 8').replace(
+            '/tmp/surfd-deploy.lock', self.linux_path(self.root/'transaction.lock')),
+            newline='\n')
+        # The actual copy bodies are the payloads, not a reimplementation.
+        stage = self.root/'stage'
+        (stage/'surfd').mkdir(parents=True)
+        remote = self.root/'remote'
+        remote.mkdir()
+        for name in ('run.sh', 'not-executable.sh'):
+            (stage/'surfd'/name).write_text('A bytes\n')
+        a = self.root/'copy-a.sh'; a.write_text(self.copy_body(stage, remote, 'pre-a'), newline='\n')
+        b = self.root/'copy-b.sh'; b.write_text(self.copy_body(stage, remote, 'pre-b'), newline='\n')
+        verify = self.root/'verify-a.sh'
+        manifest = '\n'.join(name+' '+git(REPO, 'hash-object', '--no-filters', '--',
+                                       str(stage/'surfd'/name))+' '+mode
+                             for name, mode in (('run.sh', '755'), ('not-executable.sh', '644')))
+        verify_body = (self.shell_body('VERIFY_BAD=')
+                       .replace('__REMOTE__', self.linux_path(remote))
+                       .replace('__MANIFEST__', manifest))
+        # WSL drvfs lacks modes; hash checking remains real in this schedule.
+        mode_shim = 'stat() { case "$4" in run.sh) echo 755;; *) echo 644;; esac; }\n' if os.name == 'nt' else ''
+        verify.write_text(mode_shim+verify_body, newline='\n')
+        fast_holder = self.root/'fast-holder.sh'
+        fast_holder.write_text(holder.read_text().replace('flock -w 120 8', 'flock -w 1 8'), newline='\n')
+        driver = self.root/'driver.py'
+        driver.write_text("""import atexit, subprocess, threading, pathlib
+root=pathlib.Path(__file__).parent
+children=[]
+def start(name='holder.sh'):
+ p=subprocess.Popen(['sh',str(root/name)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+ children.append(p)
+ return p
+def cleanup():
+ for p in children:
+  if not p.stdin.closed: p.stdin.close()
+  p.wait(timeout=5)
+atexit.register(cleanup)
+def ack(p, token):
+ p.stdin.write(token+'\\n'); p.stdin.flush()
+ assert p.stdout.readline().strip()=='LOCK_ACK='+token
+A=start(); assert A.stdout.readline().strip()=='LOCK_ACQUIRED'
+subprocess.run(['sh',str(root/'copy-a.sh')],check=True)
+subprocess.run(['sh',str(root/'verify-a.sh')],check=True)
+ack(A,'A_VERIFIED')
+B=start(); acquired=threading.Event()
+def deploy_b():
+ assert B.stdout.readline().strip()=='LOCK_ACQUIRED'
+ acquired.set()
+ subprocess.run(['sh',str(root/'copy-b.sh')],check=True)
+thread=threading.Thread(target=deploy_b,daemon=True); thread.start()
+# The actual holder's acquisition deadline must refuse while A holds it.
+probe=start('fast-holder.sh')
+out,err=probe.communicate(timeout=5)
+assert probe.returncode==1 and 'LOCK_ACQUIRED' not in out and not acquired.is_set()
+print('ACTUAL_HOLDER_TIMEOUT_REFUSED',flush=True)
+assert (root/'remote/run.sh').read_text()=='A bytes\\n'
+print('B_ATTEMPTED_AND_BLOCKED_AFTER_A_VERIFY',flush=True)
+for name in ('run.sh','not-executable.sh'): (root/'stage/surfd'/name).write_text('B bytes\\n')
+ack(A,'A_RELOAD_ACCEPTED'); ack(A,'ACCEPTED:'+('a'*40)+':invocation-a')
+assert not acquired.is_set() and (root/'remote/run.sh').read_text()=='A bytes\\n'
+print('A_RECEIPT_WITH_A_BYTES',flush=True)
+A.stdin.close(); assert A.wait(timeout=5)==0
+thread.join(timeout=10); assert not thread.is_alive() and acquired.is_set()
+assert (root/'remote/run.sh').read_text()=='B bytes\\n'
+print('B_INSTALLED_ONLY_AFTER_A_RECEIPT_AND_EOF',flush=True)
+B.stdin.close(); assert B.wait(timeout=5)==0
+# Failure/disconnect uses the same EOF path: no stale lock or signal.
+C=start(); assert C.stdout.readline().strip()=='LOCK_ACQUIRED'
+C.stdin.close(); assert C.wait(timeout=5)==0
+D=start(); assert D.stdout.readline().strip()=='LOCK_ACQUIRED'
+ack(D,'AFTER_FAILURE_ACTED'); D.stdin.close(); assert D.wait(timeout=5)==0
+print('EOF_FAILURE_RELEASE_ACTED',flush=True)
+""", newline='\n')
+        r = self.linux_run('python3 '+self.linux_path(driver))
+        for witness in ('VERIFY_BAD=0', 'ACTUAL_HOLDER_TIMEOUT_REFUSED',
+                        'B_ATTEMPTED_AND_BLOCKED_AFTER_A_VERIFY', 'A_RECEIPT_WITH_A_BYTES',
+                        'B_INSTALLED_ONLY_AFTER_A_RECEIPT_AND_EOF', 'EOF_FAILURE_RELEASE_ACTED'):
+            self.assertIn(witness, r.stdout)
+        (args.out/'transaction.log').write_text(r.stdout+r.stderr)
+
+    def test_actual_transaction_ack_refuses_disconnected_holder(self):
+        # Evaluate the exact PowerShell guard functions, using only our own
+        # synthetic child process. No SSH executable is launched.
+        r = powershell('''
+$tokens=$null; $errors=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $env:DEPLOY_TEST_TOOLS 'surfd-deploy.ps1'), [ref]$tokens, [ref]$errors)
+foreach ($name in @('Read-DeployLockLine','Assert-DeployLock')) {
+ $f=$ast.Find({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name}, $true)
+ Invoke-Expression $f.Extent.Text
+}
+$script:DeployLock=[System.Diagnostics.Process]::new()
+$i=[System.Diagnostics.ProcessStartInfo]::new('pwsh')
+$i.UseShellExecute=$false; $i.RedirectStandardInput=$true; $i.RedirectStandardOutput=$true
+$i.ArgumentList.Add('-NoProfile'); $i.ArgumentList.Add('-Command'); $i.ArgumentList.Add('exit 0')
+$script:DeployLock.StartInfo=$i
+[void]$script:DeployLock.Start(); $script:DeployLock.WaitForExit()
+try { Assert-DeployLock -Token ('ACCEPTED:'+('a'*40)+':invocation-a'); throw 'BAD_RECEIPT' }
+catch { if ($_.ToString() -match 'holder exited') { 'DISCONNECTED_HOLDER_REFUSED_ACTED' } else { throw } }
+finally { $script:DeployLock.Dispose() }
+''')
+        self.assertEqual(r.returncode, 0, r.stdout+r.stderr)
+        self.assertIn('DISCONNECTED_HOLDER_REFUSED_ACTED', r.stdout)
+        (args.out/'disconnected-holder.log').write_text(r.stdout+r.stderr)
+
+    def test_actual_receipt_failure_retains_stage_and_cleanup_is_post_acceptance(self):
+        for scenario in ('ack-failure', 'cleanup-failure', 'cleanup-result-lost', 'success'):
+            with self.subTest(scenario=scenario):
+                fixture = self.root/scenario
+                fixture.mkdir()
+                r = powershell('''
+$tokens=$null; $errors=$null
+$ast=[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $env:DEPLOY_TEST_TOOLS 'surfd-deploy.ps1'), [ref]$tokens, [ref]$errors)
+foreach ($name in @('Read-DeployLockLine','Assert-DeployLock')) {
+ $f=$ast.Find({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name}, $true)
+ Invoke-Expression $f.Extent.Text
+}
+$transaction=$ast.Find({param($n) $n -is [System.Management.Automation.Language.TryStatementAst] -and $n.Body.Extent.Text -match 'ACCEPTED:'}, $true)
+$cleanup=$transaction.Body.Statements | Where-Object { $_.Extent.Text -match '^Step "8\\.' } | Select-Object -First 1
+$accept=$transaction.Body.Statements | Where-Object { $_.Extent.Text -match '^Assert-DeployLock -Token "ACCEPTED:' } | Select-Object -First 1
+if (-not $cleanup -or -not $accept) { throw 'receipt tail not found' }
+$start=[Math]::Min($cleanup.Extent.StartOffset,$accept.Extent.StartOffset)
+$tail=$ast.Extent.Text.Substring($start,$transaction.Body.Extent.EndOffset-$start-1)
+$work=Join-Path $env:DEPLOY_TEST_FIXTURE work
+$stage=Join-Path $env:DEPLOY_TEST_FIXTURE stage
+[void](New-Item -ItemType Directory -Path $work,$stage)
+Set-Content (Join-Path $work OWNER.md) 'synthetic receipt owner'
+Set-Content (Join-Path $stage suite.out) 'retained suite witness'
+$commit='a'*40; $nonce='synthetic-invocation'; $sha='aaaaaaa'
+$PiHost='synthetic.invalid'; $Remote='synthetic-remote'
+$backupTag='pre-synthetic'; $dbBackupTag='bak-synthetic'
+function Step { param($m) }
+function Fail { param($m) throw $m }
+function Invoke-PiSsh {
+ param($Cmd)
+ if ($env:DEPLOY_TEST_SCENARIO -eq 'cleanup-failure') { $script:PiExit=1 }
+ else { Remove-Item -LiteralPath $stage -Recurse; $script:PiExit=if ($env:DEPLOY_TEST_SCENARIO -eq 'cleanup-result-lost') {255} else {0} }
+}
+$script:DeployLock=[System.Diagnostics.Process]::new()
+$i=[System.Diagnostics.ProcessStartInfo]::new('pwsh')
+$i.UseShellExecute=$false; $i.RedirectStandardInput=$true; $i.RedirectStandardOutput=$true
+$i.ArgumentList.Add('-NoProfile'); $i.ArgumentList.Add('-Command')
+$child=if ($env:DEPLOY_TEST_SCENARIO -eq 'ack-failure') { 'exit 0' } else {
+ 'while (($line=[Console]::In.ReadLine()) -ne $null) { [Console]::Out.WriteLine("LOCK_ACK=$line"); [Console]::Out.Flush() }'
+}
+$i.ArgumentList.Add($child); $script:DeployLock.StartInfo=$i
+[void]$script:DeployLock.Start()
+if ($env:DEPLOY_TEST_SCENARIO -eq 'ack-failure') { $script:DeployLock.WaitForExit() }
+try {
+ $caught=$false
+ try { $output=Invoke-Expression $tail 6>&1 3>&1 | Out-String }
+ catch { $caught=$true; if ($_.ToString() -notmatch 'holder exited') { throw } }
+ $owner=Get-Content (Join-Path $work OWNER.md) -Raw
+ if ($env:DEPLOY_TEST_SCENARIO -eq 'ack-failure') {
+  if (-not $caught -or -not (Test-Path (Join-Path $stage suite.out)) -or $owner -match 'Accepted UTC') { throw 'unaccepted stage lost or receipt recorded' }
+  'PRE_ACCEPTANCE_FAILURE_RETAINS_STAGE_ACTED'
+ } elseif ($env:DEPLOY_TEST_SCENARIO -like 'cleanup-*') {
+  $exists=Test-Path (Join-Path $stage suite.out)
+  $expected=($env:DEPLOY_TEST_SCENARIO -eq 'cleanup-failure')
+  if ($caught -or $exists -ne $expected -or $owner -notmatch 'remote stage cleanup unconfirmed' -or $output -notmatch 'DEPLOYED' -or $output -notmatch 'unconfirmed') { throw 'accepted unknown cleanup outcome misreported' }
+  if ($expected) { 'ACCEPTED_CLEANUP_FAILURE_UNCONFIRMED_ACTED' } else { 'ACCEPTED_LOST_CLEANUP_RESULT_UNCONFIRMED_ACTED' }
+ } else {
+  if ($caught -or (Test-Path $stage) -or $owner -notmatch 'remote stage removed' -or $output -notmatch 'DEPLOYED') { throw 'accepted success did not clean/report' }
+  'ACCEPTED_SUCCESS_REMOVES_STAGE_ACTED'
+ }
+} finally {
+ if (-not $script:DeployLock.HasExited) { $script:DeployLock.StandardInput.Close(); if (-not $script:DeployLock.WaitForExit(5000)) { throw 'own fixture holder did not exit' } }
+ $script:DeployLock.Dispose()
+}
+''', DEPLOY_TEST_FIXTURE=fixture, DEPLOY_TEST_SCENARIO=scenario)
+                (args.out/('receipt-'+scenario+'.log')).write_text(r.stdout+r.stderr)
+                self.assertEqual(r.returncode, 0, r.stdout+r.stderr)
+                witness = {'ack-failure':'PRE_ACCEPTANCE_FAILURE_RETAINS_STAGE_ACTED',
+                           'cleanup-failure':'ACCEPTED_CLEANUP_FAILURE_UNCONFIRMED_ACTED',
+                           'cleanup-result-lost':'ACCEPTED_LOST_CLEANUP_RESULT_UNCONFIRMED_ACTED',
+                           'success':'ACCEPTED_SUCCESS_REMOVES_STAGE_ACTED'}[scenario]
+                self.assertIn(witness, r.stdout)
 
     def test_powershell_sources_parse(self):
         r = powershell('''

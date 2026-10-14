@@ -17,7 +17,8 @@
          credential, and sqlite's backup API creates it 0644 & ~umask.
       4. Files are copied in under `flock /tmp/surfd-sweep.lock`, each as
          `install` to a temp name then `mv`, so no cron import can see a
-         half-written file.  Every replaced file keeps a `.pre<sha>-<stamp>`
+         half-written file. Git executable modes are installed and verified.
+         Every replaced file keeps a `.pre<sha>-<stamp>-<nonce>`
          backup, the tree's convention.
       5. The gunicorn master is reloaded with SIGHUP -- but ONLY after the
          pidfile is proven to name a live `surfd:app` gunicorn.  `surfd.service`
@@ -65,7 +66,7 @@ param(
     [switch]$NoBackup,
     # Database-backup retention.  0 (the default) REPORTS what the backups cost
     # and deletes nothing; N keeps the newest N of the ones THIS script wrote
-    # (`surfd.db.bak-<sha>-<stamp>`) and deletes the older ones after the deploy
+    # (`surfd.db.bak-<sha>-<stamp>[-<nonce>]`) and deletes the older ones after the deploy
     # has verified.  Hand-made copies (`surfd.db.pre*`, `.post*`, `.prewipe`,
     # `.bak-preboard`) are never touched by any value: they are somebody's
     # deliberate rollback point, not this script's output.
@@ -132,12 +133,32 @@ function Invoke-PiScript {
     # Invoke-PiSsh captured its native exit status immediately. Use that saved
     # status, not a caller's LASTEXITCODE from a different earlier command.
     $code = $script:PiExit
+    if (Get-Variable -Name DeployLock -Scope Script -ErrorAction SilentlyContinue) {
+        Assert-DeployLock
+    }
     Write-Host $out
     if (-not $AllowFail -and $code -ne 0) {
         Fail "remote step '$Name' exited $code (output above)"
     }
     $script:PiExit = $code
     return $out
+}
+
+# The remote holder outlives individual step SSH sessions. Never unlink its lock.
+function Read-DeployLockLine {
+    param([System.Diagnostics.Process]$Holder, [int]$TimeoutMs = 20000)
+    $line = $Holder.StandardOutput.ReadLineAsync()
+    if (-not $line.Wait($TimeoutMs)) { throw 'deployment lock handshake timed out' }
+    return $line.GetAwaiter().GetResult()
+}
+function Assert-DeployLock {
+    param([string]$Token = [guid]::NewGuid().ToString('N'))
+    if ($script:DeployLock.HasExited) { throw 'deployment transaction lock holder exited' }
+    $script:DeployLock.StandardInput.WriteLine($token)
+    $script:DeployLock.StandardInput.Flush()
+    if ((Read-DeployLockLine $script:DeployLock) -cne "LOCK_ACK=$token") {
+        throw 'deployment transaction lock acknowledgment lost; no receipt accepted'
+    }
 }
 
 # ---- 0. what are we deploying, and is the tree honest about it -------------
@@ -191,7 +212,7 @@ finally { Pop-Location }
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 # momgrab's fixture worker checks the data disk's 20 GB floor. Root /tmp can
 # have only 5 GB free while NVMe has ample room; stage on the target volume.
-$nonce = [guid]::NewGuid().ToString('N').Substring(0, 8)
+$nonce = [guid]::NewGuid().ToString('N')
 $stage = "/srv/nvme/agent-work/surfdship-$sha-$stamp-$nonce"
 $work = Join-Path 'C:\FTESurf-worktrees' "surfdship-$sha-$stamp-$nonce"
 # Exclusive creation before any archive/script, ownership before population.
@@ -203,7 +224,8 @@ New-Item -ItemType Directory -Path $work -ErrorAction Stop | Out-Null
     "Status: active; no game processes. Retain on failure; on success keep receipt and remove only owned disposable archives/scripts.`n")
 $plan | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $work 'plan.json')
 Write-Host "  local ownership/plan: $work"
-$backupTag = "pre$sha-$stamp"
+$backupTag = "pre$sha-$stamp-$nonce"
+$dbBackupTag = "bak-$sha-$stamp-$nonce"
 
 # ---- 1. stage from the commit ---------------------------------------------
 Step "1. stage from the commit on the Pi"
@@ -284,6 +306,41 @@ else {
     Step "2. SKIPPED (-SkipTests): the Pi is taking an untested surfd"
 }
 
+# Hold exclusion before backups until the accepted receipt, including failure paths.
+$lockBody = @'
+set -eu
+exec 8>/tmp/surfd-deploy.lock
+flock -w 120 8
+printf '%s\n' LOCK_ACQUIRED
+while IFS= read -r token; do
+  printf 'LOCK_ACK=%s\n' "$token"
+done
+'@
+$lockPath = Join-Path $work 'transaction-lock.sh'
+[IO.File]::WriteAllText($lockPath, ($lockBody -replace "`r`n", "`n"))
+Send-PiFile $lockPath "$stage/transaction-lock.sh"
+$script:DeployLock = [System.Diagnostics.Process]::new()
+$lockInfo = [System.Diagnostics.ProcessStartInfo]::new('ssh')
+$lockInfo.UseShellExecute = $false
+$lockInfo.RedirectStandardInput = $true
+$lockInfo.RedirectStandardOutput = $true
+$lockInfo.RedirectStandardError = $true
+foreach ($arg in @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', '-o',
+                  'ServerAliveInterval=5', '-o', 'ServerAliveCountMax=3',
+                  $PiHost, "sh '$stage/transaction-lock.sh'")) {
+    $lockInfo.ArgumentList.Add($arg)
+}
+$script:DeployLock.StartInfo = $lockInfo
+$lockStarted = $false
+try {
+    $lockStarted = $script:DeployLock.Start()
+    if (-not $lockStarted) { throw 'could not start deployment lock holder' }
+    $lockErrors = $script:DeployLock.StandardError.ReadToEndAsync()
+    if ((Read-DeployLockLine $script:DeployLock -TimeoutMs 150000) -cne 'LOCK_ACQUIRED') {
+        throw 'deployment transaction lock was not acquired'
+    }
+    Assert-DeployLock
+
 # ---- 3. back up the live database -----------------------------------------
 if (-not $NoBackup) {
     Step "3. back up data/surfd.db (sqlite's own backup API)"
@@ -292,7 +349,9 @@ set -e
 cd REMOTE
 [ -f data/surfd.db ] || { echo NO_DATABASE; exit 1; }
 python3 - <<PYEOF
-import sqlite3
+import os, sqlite3
+fd = os.open("data/surfd.db.TAG", os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+os.close(fd)
 src = sqlite3.connect("data/surfd.db")
 dst = sqlite3.connect("data/surfd.db.TAG")
 with dst:
@@ -309,8 +368,8 @@ stat -c 'BACKUP_MODE=%a %n' data/surfd.db.TAG
 ls -l data/surfd.db data/surfd.db.TAG | awk '{print $5, $9}'
 '@
     $bak = Invoke-PiScript -Name "backup" -AllowFail `
-        -Body ($body -replace 'REMOTE', $Remote -replace 'TAG', "bak-$sha-$stamp")
-    if ($bak -cnotmatch "BACKUP_OK") {
+        -Body ($body -replace 'REMOTE', $Remote -replace 'TAG', $dbBackupTag)
+    if ($script:PiExit -ne 0 -or $bak -cnotmatch "BACKUP_OK") {
         Fail "the database backup did not report BACKUP_OK -- not deploying over an unbacked-up board"
     }
     if ($bak -cnotmatch "BACKUP_MODE=600 ") {
@@ -358,7 +417,7 @@ Step "5. copy in under flock, install+mv, keeping a .$backupTag backup"
 # a here-string is exactly what silently produced an unexpanded `$backupTag` in the
 # first cut, and an unexpanded name is an empty name under `set -e` without `-u`.
 $pairs = @()
-for ($i = 0; $i -lt $files.Count; $i++) { $pairs += "$($files[$i]) $($dest[$i])" }
+for ($i = 0; $i -lt $files.Count; $i++) { $pairs += "$($files[$i]) $($dest[$i]) $($plan.Modes[$i])" }
 $listBlock = ($pairs -join "`n")
 $body = @'
 set -eu
@@ -366,12 +425,16 @@ exec 9>/tmp/surfd-sweep.lock
 flock 9
 cd __REMOTE__
 n=0
-while read -r src dst; do
+while read -r src dst mode; do
   [ -n "$src" ] && [ -n "$dst" ] || continue
   [ -f "__STAGE__/$src" ] || { echo "MISSING_IN_STAGE $src"; exit 1; }
   d=$(dirname "$dst"); mkdir -p "$d"
-  if [ -f "$dst" ]; then cp -p "$dst" "$dst.__TAG__"; fi
-  install -m 0644 "__STAGE__/$src" "$dst.new"
+  case "$mode" in 644|755) ;; *) echo "REFUSE_MODE $src"; exit 1 ;; esac
+  if [ -f "$dst" ]; then
+    (set -C; : > "$dst.__TAG__") || { echo "REFUSE_BACKUP_EXISTS $dst"; exit 1; }
+    cp -p "$dst" "$dst.__TAG__"
+  fi
+  install -m "$mode" "__STAGE__/$src" "$dst.new"
   mv -f "$dst.new" "$dst"
   n=$((n+1))
 done <<'FILELIST'
@@ -393,7 +456,7 @@ if ($copy -cnotmatch "COPIED=$($files.Count)") {
 # loop was not counting successes.  So: hash what is now on the Pi and compare it
 # with what the commit says, byte for byte.  This is the step that makes the rest
 # of the output mean anything.
-Step "5b. verify the deployed bytes against the commit"
+Step "5b. verify the deployed bytes and modes against the commit"
 $manifest = @()
 Push-Location $repo
 try {
@@ -407,14 +470,16 @@ finally { Pop-Location }
 # git's blob hash is sha1("blob <len>\0" <bytes>), which is what `git hash-object`
 # computes -- and the Pi has git, so it can hash the installed file the same way.
 $lines = @()
-for ($i = 0; $i -lt $dest.Count; $i++) { $lines += "$($dest[$i]) $($manifest[$i])" }
+for ($i = 0; $i -lt $dest.Count; $i++) { $lines += "$($dest[$i]) $($manifest[$i]) $($plan.Modes[$i])" }
 $body = @'
 set -eu
 cd __REMOTE__
 bad=0
-while read -r f want; do
+while read -r f want mode; do
   [ -n "$f" ] || continue
   if [ ! -f "$f" ]; then echo "ABSENT $f"; bad=$((bad+1)); continue; fi
+  actual_mode=$(stat -c '%a' -- "$f")
+  if [ "$actual_mode" != "$mode" ]; then echo "MODE_DIFFERS $f want=$mode got=$actual_mode"; bad=$((bad+1)); fi
   got=$(git hash-object --no-filters -- "$f")
   if [ "$got" != "$want" ]; then echo "DIFFERS $f want=$want got=$got"; bad=$((bad+1)); fi
 done <<'MANIFEST'
@@ -429,7 +494,7 @@ if ($script:PiExit -ne 0) {
     Fail "the files on the Pi do not match commit $sha -- the deploy did NOT take;" +
          " the .$backupTag backups are beside every file it replaced"
 }
-Write-Host "  all $($dest.Count) files hash-match $sha" -ForegroundColor Green
+Write-Host "  all $($dest.Count) files hash/mode-match $sha" -ForegroundColor Green
 
 # ---- 6. reload, then verify -------------------------------------------------
 if (-not $NoReload) {
@@ -527,7 +592,7 @@ cd __REMOTE__/data
 # ONLY the shape this script writes.  `surfd.db.bak-*` alone would swallow
 # `surfd.db.bak-preboard`, which is a hand-made rollback point from before the
 # script existed.
-OURS='^\./surfd\.db\.bak-[0-9a-f]{7,40}-[0-9]{8}-[0-9]{6}$'
+OURS='^\./surfd\.db\.bak-[0-9a-f]{7,40}-[0-9]{8}-[0-9]{6}(-[0-9a-f]{32})?$'
 LIST=/tmp/surfd-baks.$$
 find . -maxdepth 1 -type f -regextype posix-extended -regex "$OURS" \
      -printf '%T@ %s %f\n' | sort -n > "$LIST"
@@ -579,17 +644,42 @@ if ($baks -cnotmatch "BACKUPS_DONE" -or $baks -cnotmatch "STILL_LOOSE=0") {
     Fail "the database files are not all owner-only, or the report did not complete (output above)"
 }
 
-# ---- 8. clean up the stage --------------------------------------------------
-Step "8. remove the stage"
-Invoke-PiSsh -Cmd "rm -rf '$stage' && echo stage_removed" | Write-Host
-if ($script:PiExit -ne 0) { Fail "deployment verified, but owned stage removal failed" }
+# This exact ACK is the point-in-time receipt, emitted remotely under flock.
+# Before acceptance, retain every failed stage/log. A later disconnect or
+# cleanup failure does not undo this already accepted point.
+Assert-DeployLock -Token "ACCEPTED:$($commit):$nonce"
 
+# ---- 8. success-only removal of what we staged -----------------------------
+Step "8. remove the stage"
+$stageState = "cleanup unconfirmed; inspect $stage"
+try {
+    Invoke-PiSsh -Cmd "rm -rf '$stage' && echo stage_removed" | Write-Host
+    if ($script:PiExit -ne 0) { throw 'owned stage removal returned nonzero' }
+    $stageState = 'removed'
+}
+catch {
+    Write-Warning "Deployment already accepted; stage cleanup unconfirmed; inspect ${stage}: $_"
+}
 Add-Content -LiteralPath (Join-Path $work 'OWNER.md') -Value (
-    "Completed UTC $([DateTime]::UtcNow.ToString('o')); remote stage removed. " +
+    "Accepted UTC $([DateTime]::UtcNow.ToString('o')); remote stage $stageState. " +
     "Deployment commit $commit; local plan/receipt retained; live destination/backups are NOT disposable scratch.")
 Write-Host "`nDEPLOYED $commit to ${PiHost}:$Remote" -ForegroundColor Green
-Write-Host "  database backup  $Remote/data/surfd.db.bak-$sha-$stamp (mode 600)"
+Write-Host "  database backup  $Remote/data/surfd.db.$dbBackupTag (mode 600)"
 Write-Host "  file backups     *.$backupTag beside each replaced file"
+Write-Host "  remote stage     $stageState"
 Write-Host "  The Pi keeps no receipt of its own: record this deploy in the commit"
 Write-Host "  or ENGINE_PATCHES.md's DEPLOYED notes, and in UTC -- the Pi talks UTC"
 Write-Host "  while git log talks local."
+
+}
+finally {
+    try {
+        if ($lockStarted) {
+            $script:DeployLock.StandardInput.Close()
+            if (-not $script:DeployLock.WaitForExit(5000)) {
+                Write-Warning 'owned SSH lock holder did not exit within 5s after EOF; no signal sent'
+            }
+        }
+    }
+    finally { $script:DeployLock.Dispose() }
+}

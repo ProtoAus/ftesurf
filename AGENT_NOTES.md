@@ -12340,3 +12340,22 @@ the game fetches its own map list. The menu half is Patch 652.
   guards; cold255 and real fresh A are positive witnesses. Repaired collector31
   and top-up8 pass; final source/read-only review and exact-commit evidence live
   in tools/p714ksfaccept.md. No fleet/game/GPU/native acceptance is inferred.
+- **Exact-commit means modes too.** Read each selected blob's mode from the same
+  Git tree, install/verify644 or755 alongside raw bytes, and record executable
+  bits for every documented direct entrypoint. Historical commits keep their
+  own modes; a .sh suffix is not permission authority. Windows/DrvFS mode shims
+  validate only forwarding/predicates; actual POSIX execution stays a Linux gate.
+- **A copy-only flock cannot protect a deployment receipt.** Hold a persistent
+  cooperating-deployer lock through backup, install, hashes, fresh worker/reload
+  acceptance and a final invocation/full-commit-specific ACK. Fresh bounded
+  per-phase ACKs reject a disconnected holder; the final remote under-lock ACK
+  is acceptance, not a guarantee against later/noncooperating writes. EOF closes
+  only the owned helper; never unlink the lock or signal an owner process.
+- **Unique stages are not unique backups.** Both DB/file tags need the invocation
+  nonce and exclusive name reservation; same-second same-ref collisions must
+  preserve the older rollback. Retention matches both historical/new owned
+  shapes, not hand-made backups. Do not delete stage/logs before final acceptance:
+  a reviewer caught cleanup-before-ACK evidence loss. Pre-ACK failure retains;
+  post-ACK cleanup failure warns and records accepted/cleanup-unconfirmed with
+  the exact inspection path. Transport failure may follow successful removal;
+  never claim retained logs without confirming they still exist.

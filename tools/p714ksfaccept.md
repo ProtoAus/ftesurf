@@ -54,12 +54,64 @@ Owned evidence root:
   Native replay grammar and evidence semantics are unchanged; no native/QC
   build, engine commit/tag pin or QC Build-number bump is needed.
 
+## Immutable collector publication proof
+
+Feature SHA `eaad87288f0c37699fc8b6602ed021f477224037` passes all ten existing
+exact-commit delivery groups (`collector-committed-deploy.log`) and the real
+flattened collector/index/API suite at 31 tests, OK. The feature is published
+through inspected merge `f7f340ebd220a485c7e8e51e6e7cf1932cadf50c`; a concurrent
+published R2 tooling commit advanced main during the first push. Only the three
+R2 tool files were merged, and every KSF source/proof/deployer byte remains equal
+to the verified feature. No history rewrite or uncommitted peer work was used.
+Engine ledger-only SHA `fa85c3d9a91881bb0b66470b37760392982307a8` is published;
+engine source/pin/tag and QC Build stay unchanged.
+
 ## Delivery and final acceptance
 
-Collector source is independently approved and offline verified. A separate
-isolated delivery worker is correcting executable manifests, transaction-wide
-exclusion and rollback-tag collisions; that tooling work is not a collector
-acceptance claim. Its final controls and exact-commit offline acceptance will
-be recorded separately when complete. Native Linux mode acceptance remains
-separate from Windows shell-manifest/shim tests. Live fleet deployment and
-public Watch behavior remain explicitly deferred.
+An isolated worker corrected three source-proven delivery gaps:
+
+- Immutable Git modes are planned/installed/verified alongside raw bytes. The
+  final tooling commit adds only executable bits, not byte edits, for all five
+  documented direct `surfd/*.sh` entrypoints. Historical refs retain their own
+  modes; same-suffix fixture files prove no permission guessing/working-index
+  influence.
+- A persistent remote flock excludes cooperating deployers through backup,
+  installation, raw-byte/mode checks, replacement-worker acceptance and final
+  invocation/full-commit-specific ACK. Fresh bounded phase ACKs refuse holder
+  loss; final ACK under flock is point-in-time acceptance, not permanent state
+  or exclusion of noncooperating/manual writers. EOF/wait/dispose is bounded
+  and never signals another process or unlinks the lock.
+- Rollback DB/file tags are invocation-unique and name creation is exclusive.
+  Actual same-tag controls preserve older rollback bytes/SQLite witness; new
+  tags act. Historical/new owned retention shapes exclude hand-made backups.
+
+`delivery-fixes/RED.log` retains original actual-body failures. Windows mode
+proof explicitly uses narrow install/stat shims; byte and SQLite behavior and
+WSL flock/interleaving are real owned fixtures, not live operations. Worker
+`FROZEN.log` has15 groups and flattened28 at the original assigned base; parent
+`delivery-integrated.log` has15 groups and flattened31 at integrated collector
+f7f340e. Independent `delivery-closure-review.initial.md` approved the three
+original mechanisms but caught a P1 evidence-loss edge: stage cleanup before
+final ACK removed failure logs without an accepted receipt.
+
+`receipt-red.log` reproduces both old-tail refusal/lost-stage arms while the
+positive success acts. Corrected code accepts before success-only cleanup;
+pre-ACK failure retains suite logs and records no acceptance, while post-ACK
+cleanup failure warns and records accepted/cleanup-unconfirmed with an exact
+inspection path. The independent follow-up closes P1, then correctly notes that
+a lost cleanup result cannot prove retention. `cleanup-wording-red.log` acts on
+that distinction; the corrected extra arm removes the stage before transport
+failure yet still reports unknown cleanup, never false retention.
+`receipt-green.log` passes all three initial focused groups; final focused and
+assembled16-group results exercise actual AST-extracted flow and guard with
+owned naturally exited/echo helpers. Only stage transport is mocked; bounded
+EOF finalization is unchanged. `delivery-assembled.log` has16 groups and nested
+collector31, OK, before the final two-line status wording refinement. Immutable
+candidate16-group controls are recorded in the owned checkpoint.
+
+Requires pwsh7/git/sh and WSL Ubuntu-22.04 on Windows. DrvFS cannot prove POSIX
+mode semantics; Windows mode shims prove manifest forwarding/predicates only.
+Native Linux chmod/stat/direct-execution acceptance remains pending. No actual
+SSH/transport/install/backup/reload/cron/game/GPU or fleet Watch ran. Future live
+gates are preregistered in the owned `LIVE_ACCEPTANCE_PLAN.md`, not authorized
+by these offline results.

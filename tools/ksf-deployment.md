@@ -68,8 +68,8 @@ reload and health gates remain required for an actual deployment.
 python tools/test_surfd_deploy.py --out C:/FTESurf-worktrees/<owned-task>/artifacts/shipping -v
 ```
 
-Requires an ancestor `OWNER.md`, pwsh 7, git, sh (plus cygpath on Windows), and
-backend Python dependencies. Uses only synthetic Git repositories, flattened
+Requires an ancestor `OWNER.md`, pwsh 7, git, sh (plus cygpath and WSL
+`Ubuntu-22.04` on Windows), and backend Python dependencies. Uses only synthetic Git repositories, flattened
 committed-file layouts, mocked transport functions, and owned shell fixtures.
 No game, GPU, HTTP listener, upstream request or remote deployment is performed.
 
@@ -112,3 +112,39 @@ and delivery gaps. The final collector has28 offline tests; exact-commit and
 flattened receipts, controls, commands and unverified live gates are recorded in
 `tools/p713ksffinal.md` and its owned checkpoint. Nothing here approves unrelated
 presentation/config/template/QC changes, a release or crawler enablement.
+
+## P714 collector and tooling continuation
+
+The collector now has31 offline tests. Explicit top-ups separate actual fresh
+pages from durable whole-cache filing, and bounded retained priority corrects
+pristine-cold queue saturation without evicting retry/strike records. Protected-
+only queues remain conditional admission, recorded in BACKLOG.md.
+
+The deployer carries executable modes from the same immutable Git tree as
+bytes, installs those modes and verifies both at the destination. All five
+documented direct `surfd/*.sh` entrypoints have mode-only Git100755 changes;
+their bytes stay unchanged. Historical refs retain their own recorded modes
+(including644), rather than deriving mode from a suffix.
+
+A persistent remote flock covers backup, installation, raw-byte/mode checks,
+worker/reload acceptance and final commit-specific receipt ACK. Cooperating B
+cannot install between A's verification and acceptance. The ACK under flock
+is the point-in-time acceptance, not a guarantee against later deployments or
+noncooperating/manual writers. Acquisition, fresh ACKs and EOF teardown are
+bounded; holder cleanup never unlinks a lock or signals a process.
+
+Rollback tags include an invocation nonce; both SQLite and file backups reserve
+names exclusively. Collisions refuse without replacing older rollback points.
+Script-owned DB retention recognizes old and nonce-bearing tags, never handmade
+backups. Success-only stage cleanup follows acceptance: pre-ACK failure retains
+all stage/log evidence; post-ACK cleanup failure warns and reports an accepted
+receipt with cleanup-unconfirmed status and an exact path to inspect. A lost
+cleanup result cannot falsely claim that the remote stage still exists.
+
+The actual-body offline suite adds mode/backup/interleaving/holder-loss and
+receipt-cleanup controls (16 groups). Windows requires WSL for genuine flock,
+SQLite and byte-copy controls, but install/stat shims prove mode forwarding and
+predicates only: DrvFS cannot prove native executable permission. Native Linux
+chmod/stat/direct-execution and approved live fleet/Watch gates remain separate.
+Evidence and limits: `tools/p714ksfaccept.md`. No live transport, installed files,
+actual reload, crawler, release or fleet Watch success is claimed here.
