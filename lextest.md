@@ -1,5 +1,24 @@
 # lextest.md — things waiting on a human
 
+## P698 — linked map picker and admin manifest
+
+Open Create Server in either updated Windows install; judge the red missing-zone
+names/labels and MOM/CS:S build switch at your normal resolution. Search
+surf_aircontrol: its held _ksf build is linked and both already have zones.
+The admin counterpart is https://play.proto.bar/admin/maps (Maps in the fleet
+navigation). Judge the highlighted enabled/dim disabled rows, filters and sorts;
+these actions and persistence have already passed browser and live API controls.
+Game policy refresh is at most once/minute with online consent; an offline menu
+uses its saved policy. Disabling does not delete times/files, evict a current
+lobby, rewrite explicit rotations, or prevent a console map command.
+
+For a newly zoned port such as surf_frus_njv, judge actual start/stage/end
+alignment during a normal surf. The copier checks donor BSP hash, bounds, timer
+shape, target geometry/restart names and preserves local overrides; that is not
+a playthrough of every course or proof of the author's intended stage placement.
+Twenty-nine incompatible transfers remained refused rather than being forced.
+Source, verified controls and deployment provenance: tools/p698maps.md.
+
 ## P696 — World of Surf launcher logo/progress only
 
 The owner rejected the illustrations and requested removal, not a replacement.

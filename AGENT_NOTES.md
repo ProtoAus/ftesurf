@@ -11920,3 +11920,43 @@ the game fetches its own map list. The menu half is Patch 652.
 - `mapscan.py --go` from `C:\FTESurf` at 13:40Z: the Pi's catalogue 1,647
   names, 37 the roster did not have; 319 Beta names sent; `mapdl.txt` 1,787
   rows (1,279 in the 0.1.24 archive, 705 lines before that).
+
+### P698 — map manifest, real port links and held beta zone donors
+
+- The admin manifest is **https://play.proto.bar/admin/maps**, NOT
+  proto.bar/ftesurf/admin/maps. Its board links use SURFD_BOARD_URL (the
+  existing public proto.bar/ftesurf/board route), not play's nonexistent /board.
+- A disabled mounted build must stay in `?maps=1` with `of zoned enabled`
+  columns. Omission is not policy: the menu discovers local BSPs independently.
+  Pool state is per build in SQLite `map_pool`, absent entries enabled. The
+  updated menu refreshes at most once/minute with online consent; offline uses
+  the saved feed. /api/join enforces policy for older clients too. Explicit
+  console maps and configured rotations are not rewritten by these controls.
+- A beta/extra donor can be valid even without an API zoneHash: match the held
+  BSP to extra.tsv, require well-shaped zones fitting that donor, then still
+  apply destination geometry/restart checks. `donor_of` must admit `extra` as
+  well as approved `mom`; adding donors alone does nothing if the loop retains
+  its approved-only gate (the acted extra integration test caught that).
+- Real KSF known-port suffixes can link to held MOM extra roots too. `names`
+  alone is the API set and may omit extras: pass `names | set(extra)` to the linker.
+  Namesake _css files stay independent unless archive-compared, and _v2/_new
+  are never stripped. Imported boards share a group in both APIs; native rows
+  stay on the exact build. SQL uses MULTI-INDEX OR / covering runs_board lookups
+  for the live aircontrol alias, not a whole-table scan.
+- `surf_aircontrol_ksf` already had an authoritative LOCAL zone on the fleet;
+  absence in online/ is not absence of zones. Preserve it. P698's copy pass
+  installed 28 other compatible zones; 29 refused transfers were left alone.
+  The live manifest at 07:25Z on 14 Oct had 2,033 BSPs, 875 missing-zone maps;
+  no maps were disabled by default. The live disable/re-enable control restored
+  its original policy row exactly (zero fixture rows afterward).
+- `mappool_smoke.py` uses synthetic offline consent only in an owned overlay.
+  A cvar alone does not set menu `ms_consent`: seed data/consent.txt there to
+  inspect Create Server instead of accidentally screenshotting terms. Keep
+  the initial renderer delay before `map`, then menu_restart. `ui_find` is a
+  substring query: `surf_ace` also finds surf_acerbus; use a unique disabled
+  fixture for the zero-row arm. `ui_browse` restores the prior show-all setting,
+  so set/open Create Server before claiming its post-browse visibility.
+- Source/deploy provenance: `tools/p698maps.md`. All 19 staged Pi suites passed;
+  Windows admin's two rcon/cache timing failures reproduced on the unchanged
+  e008c3b control. Node syntax checks are explicitly skipped if Node is absent
+  on the Pi; the actual page's JS was exercised in Chrome on Windows.
