@@ -2714,7 +2714,7 @@ float() Scores_SearchPick =
 		f = pf_on_f;
 		i = (act - 3) * PF_RF;
 		Profile_BoardPick(pf_on_map, f[i + 2], f[i], f[i + 1], f[i + 7],
-		                  f[i + 5], pf_on_handle, f[i + 3]);
+		                  f[i + 5], pf_on_handle, pf_on_ms[act - 3]);
 		if (Profile_BoardNavigate())
 			Scores_Close();
 		return TRUE;

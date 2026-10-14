@@ -39,6 +39,8 @@
 // limit.  Registered for this VM beside json_parse (pr_menu.c:2561, upstream
 // dd03b69609), and the shipped exe carries the name.
 int(int node) json_get_integer = #0:json_get_integer;
+int(string value) Mlb_Stoi = #0:stoi;
+string(int value) Mlb_Itos = #0:itos;
 
 // A typed int: a bare 86400 makes `int / 86400` a float divide (DIV_IF).
 const int MLB_DAYSECS = 86400;
@@ -59,7 +61,8 @@ vector mlb_scroll;
 float  mlb_going, mlb_goto;   // ui_board_test's scroll, held until the rows exist
 float  mlb_offset;           // first held row's offset, including a profile seek
 string mlb_focuswho;
-float  mlb_focusms, mlb_focusrank, mlb_focus; // picked identity/time, never display name
+int    mlb_focusms;          // exact milliseconds, never float32 display time
+float  mlb_focusrank, mlb_focus; // picked identity/time, never display name
 float  mlb_drop[MLB_DROPS];
 float  mlb_dropi;
 strbuf mlb_brank;
@@ -364,7 +367,8 @@ void(float t) Mlb_SetTab =
 	strunzone(mlb_source);
 	mlb_source = "";
 	Mlb_ClearRows();
-	mlb_offset = mlb_focusrank = mlb_focusms = 0;
+	mlb_offset = mlb_focusrank = 0;
+	mlb_focusms = 0i;
 	strunzone(mlb_focuswho); mlb_focuswho = "";
 	mlb_tab = mlb_lasttab = t;
 	print(sprintf("^5board:^7 tab %s\n", Mlb_Tier(t)));
@@ -389,7 +393,8 @@ void(string why) Mlb_Close =
 	strunzone(mlb_map);
 	mlb_map = "";
 	strunzone(mlb_focuswho); mlb_focuswho = "";
-	mlb_offset = mlb_focusrank = mlb_focusms = 0;
+	mlb_offset = mlb_focusrank = 0;
+	mlb_focusms = 0i;
 	mlb_open = FALSE;
 };
 
@@ -411,7 +416,8 @@ void(string mapname, float t) Mlb_Open =
 
 	if (!mlb_browsing)
 	{
-		mlb_track = mlb_leg = mlb_offset = mlb_focusrank = mlb_focusms = 0;
+		mlb_track = mlb_leg = mlb_offset = mlb_focusrank = 0;
+		mlb_focusms = 0i;
 		strunzone(mlb_focuswho); mlb_focuswho = "";
 		mlb_style = strzone("clean");
 	}
@@ -439,7 +445,7 @@ void(float i, int row) Mlb_Row =
 	bufstr_set(mlb_brank, i, ftos(json_get_float(json_find_object_child(row, "r"))));
 	if (mlb_focuswho != "")
 	if (!strcmp(substring(digest_hex("SHA256", json_get_string(json_find_object_child(row, "player"))), 0, strlen(mlb_focuswho)), mlb_focuswho))
-	if (json_get_float(json_find_object_child(row, "ms")) == mlb_focusms)
+	if (json_get_integer(json_find_object_child(row, "ms")) == mlb_focusms)
 		mlb_focus = i;
 	s = json_get_string(json_find_object_child(row, "name"));
 	bufstr_set(mlb_bname, i, (s != "") ? s : "unknown");
@@ -544,7 +550,7 @@ void(float id, float code, string body, float append) Mlb_Page =
 		if (mlb_focus >= 0)
 		{
 			mlb_scroll_y = max(0, mlb_focus - 4) * MLB_ROW_H;
-			print(sprintf("^5board:^7 profile time at #%s (%g ms)\n", bufstr_get(mlb_brank, mlb_focus), mlb_focusms));
+			print(sprintf("^5board:^7 profile time at #%s (%s ms)\n", bufstr_get(mlb_brank, mlb_focus), Mlb_Itos(mlb_focusms)));
 		}
 		else if (mlb_focuswho != "")
 			print("^3board:^7 selected time changed or is no longer on this page; showing nearby ranks\n");
@@ -765,7 +771,8 @@ void(vector screensize) Mlb_Draw =
 		{
 			mlb_offset = sui_is_released("mlb_top") ? 0 : max(0, mlb_offset - MLB_PAGE);
 			strunzone(mlb_focuswho); mlb_focuswho = "";
-			mlb_focusrank = mlb_focusms = 0;
+			mlb_focusrank = 0;
+			mlb_focusms = 0i;
 			Mlb_ClearRows(); Mlb_Fetch(FALSE);
 		}
 	}
@@ -989,20 +996,35 @@ float(string value, float limit) Mlb_ScopeNumber =
 	}
 	return stof(value) <= limit;
 };
-float(string value, float limit) Mlb_FocusNumber =
+// Canonical decimal digits for the lexical bound check before atoi-based stoi.
+string(string value) Mlb_Decimal =
+{
+	while (strlen(value) > 1 && str2chr(value, 0) == 48)
+		value = substring(value, 1, -1);
+	return value;
+};
+float(string value, int limit) Mlb_FocusNumber =
 {
 	local float i, c;
+	local string bound;
 	if (value == "" || strlen(value) > 10) return FALSE;
 	for (i = 0; i < strlen(value); i = i + 1)
 	{
 		c = str2chr(value, i);
 		if (c < 48 || c > 57) return FALSE;
 	}
-	return (stof(value) >= 1 && stof(value) <= limit);
+	// Bound the decimal before stoi: overflow must not wrap into a valid int.
+	value = Mlb_Decimal(value);
+	bound = Mlb_Itos(limit);
+	if (strlen(value) > strlen(bound)) return FALSE;
+	if (strlen(value) == strlen(bound))
+	if (strcmp(value, bound) > 0) return FALSE;
+	return Mlb_Stoi(value) > 0i;
 };
 float(string map, string source, string track, string leg, string style, string rank, string who, string time_ms) Mlb_Browse =
 {
-	local float i, c, t, tr, lg, allsource, off, pickedms, pickedrank;
+	local float i, c, t, tr, lg, allsource, off, pickedrank;
+	local int pickedms;
 	local string savedmap, savedstyle, savedwho;
 	if (map == "" || strlen(map) > 64) return FALSE;
 	for (i = 0; i < strlen(map); i = i + 1)
@@ -1016,16 +1038,17 @@ float(string map, string source, string track, string leg, string style, string 
 	allsource = !strcmp(source, "all");
 	t = allsource ? MLB_T_OURS : Mlb_TabOf(source);
 	tr = stof(track); lg = stof(leg);
-	off = pickedms = pickedrank = 0;
+	off = pickedrank = 0;
+	pickedms = 0i;
 	if (who != "" || rank != "" || time_ms != "")
 	{
-		if ((strlen(who) != 8 && strlen(who) != 12) || !Mlb_FocusNumber(rank, 10000000) || !Mlb_FocusNumber(time_ms, 2147483647)) return FALSE;
+		if ((strlen(who) != 8 && strlen(who) != 12) || !Mlb_FocusNumber(rank, 10000000i) || !Mlb_FocusNumber(time_ms, 2147483647i)) return FALSE;
 		for (i = 0; i < strlen(who); i = i + 1)
 		{
 			c = str2chr(who, i);
 			if (!(c >= 48 && c <= 57) && !(c >= 97 && c <= 102)) return FALSE;
 		}
-		pickedrank = stof(rank); pickedms = stof(time_ms);
+		pickedrank = stof(rank); pickedms = Mlb_Stoi(Mlb_Decimal(time_ms));
 		off = max(0, pickedrank - 6);
 	}
 	savedmap = strzone(map); savedstyle = strzone(style); savedwho = strzone(who);

@@ -329,6 +329,31 @@ class Runtime(BASE_RUNTIME):
         self.send('vote key %d 1' % number, 0.08)
         self.send('vote key %d 0' % number, 0.2)
 
+    def key_at(self, number, x, y, *, consumed=None):
+        # One stdin line: native cursor updates must not interleave between the
+        # pointer prerequisite and the existing console -> CL_InputEvent path.
+        command = 'zone_edit pointer %g %g; vote key %d 1; vote key %d 0; zone_edit status' % (x, y, number, number)
+        self.require(len((command + '\n').encode('ascii')) < 256 and '\n' not in command,
+                     'pointer/key packet exceeds the native stdin line contract')
+        text = self.section(command, 0.2)
+        receipts = re.findall(r'vote key: scan (\d+) down ([01]) took ([01])', text)
+        self.require([(int(scan), int(down)) for scan, down, _ in receipts] == [(number, 1), (number, 0)],
+                     'pointer/key packet lacks exact ordered down/up receipts: ' + text[:800])
+        if consumed is not None:
+            self.require([int(took) for _, _, took in receipts] == [int(consumed), int(consumed)],
+                         'pointer/key packet consumption mismatch: ' + text[:800])
+        return text
+
+    def zone_witness(self, text, *, cursor, row=None):
+        states = re.findall(r'zone_edit: state (\d+) map \S+ zones \d+ points \d+ dirty (\d+) crc \S+', text)
+        cursors = re.findall(r'zone_edit: cursor (\d+) polygon ', text)
+        rows = re.findall(r'zone_edit: first list row (\d+)', text)
+        self.require(states == [('1', '0')] and cursors == [str(cursor)] and len(rows) == 1,
+                     'fresh clean editor state/cursor witness did not act: ' + text[:800])
+        if row is not None:
+            self.require(rows == [str(row)], 'editor scroll row mismatch: ' + text[:800])
+        return text
+
     def zone(self):
         self.send('scores close', 0.1)
         self.send('ui_close', 0.1)
@@ -344,25 +369,25 @@ class Runtime(BASE_RUNTIME):
         status = self.section('zone_edit status')
         if 'cursor 0' in status:
             self.send('zone_edit mouse', 0.2)
+            status = self.section('zone_edit status')
+        self.zone_witness(status, cursor=1, row=0)
         position = re.search(r'window ([\d.-]+) ([\d.-]+)', status)
         self.require(bool(position), 'editor panel geometry control did not act')
         x, y = map(float, position.groups())
-        self.send('zone_edit pointer %g %g' % (x + 24, y + 200), 0.2)
-        self.key(516)
-        status = self.section('zone_edit status')
-        self.require('cursor 1' in status and 'first list row 2' in status,
-                     '+jump-bound wheel did not scroll without toggling: ' + status[:800])
-        self.key(515)
-        self.require('first list row 0' in self.section('zone_edit status'), 'wheel up did not reverse scroll')
+        panel = (x + 24, y + 200)
+        # Both outside controls must decline without moving the list/cursor.
+        # Panel geometry is clamped above zero, so (0, 0) is outside at any size.
+        for number in (516, 515):
+            self.zone_witness(self.key_at(number, 0, 0, consumed=False), cursor=1, row=0)
+        self.zone_witness(self.key_at(516, *panel, consumed=True), cursor=1, row=2)
+        self.zone_witness(self.key_at(515, *panel, consumed=True), cursor=1, row=0)
         self.key(32)
-        self.require('cursor 1' in self.section('zone_edit status'), 'space jump switched mouse')
-        self.key(513)
-        self.require('cursor 0' in self.section('zone_edit status'), 'Mouse2 did not switch to look')
-        self.key(513)
-        self.require('cursor 1' in self.section('zone_edit status'), 'Mouse2 did not switch back to window')
+        self.zone_witness(self.section('zone_edit status'), cursor=1, row=0)
+        self.zone_witness(self.key_at(513, *panel), cursor=0, row=0)
+        self.zone_witness(self.key_at(513, *panel), cursor=1, row=0)
         self.send('zone_edit place stage', 0.2)
         self.key(513)
-        self.require('state 1' in self.section('zone_edit status'), 'Mouse2 placement back did not cancel')
+        self.zone_witness(self.section('zone_edit status'), cursor=1, row=0)
         self.send('screenshot p692_zone', 0.2)
         self.send('zone_edit close', 0.1)
 

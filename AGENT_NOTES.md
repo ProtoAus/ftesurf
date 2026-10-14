@@ -12,6 +12,24 @@
   list rows per step. `zone_edit mouse` is a TOGGLE, not `mouse window` as a setter.
   Test Mouse2 both ways and look-mode placement back. Jump-bound wheel and space
   must not switch cursor ownership. `zone_edit status` exposes first list row.
+- A failed P693 control acknowledged `zone_edit pointer`, but separately sent
+  wheel down/up both returned took0 and the row stayed0. That did NOT prove why
+  it declined: neither effective pointer nor intervening native events were
+  logged. `tools/test_p693_ui.py` now batches pointer/down/up/status on one
+  physical stdin line, refreshing the prerequisite for BOTH directions. Require
+  exact ordered paired receipts, inside took1 and row0->2->0, outside took0 and
+  unchanged row/cursor, and one fresh clean status. Keep placement-back in its
+  existing look-mode chain, with no injected pointer and no save writes. Offline
+  dispatch/transport mutants and actual Cbuf extraction prove only their stated
+  host boundaries; actual acceptance needs authorized control-before-subject.
+  That gate closed on2026-10-14 as recorded below.
+- Native Windows plugin stdin has a256-byte buffer with room reserved for NUL.
+  Count the terminating newline: require `len((packet + '\n').encode('ascii'))
+  <256`, NOT merely a bare packet <256. An accepted255-byte bare packet can
+  fill the buffer without its newline and stall dispatch. The actual Python
+  sender boundary tests accept254 bare bytes and refuse255 before any write;
+  the old guard is an acted negative mutant under both normal/-O. Current wheel
+  packets are short; the ACK occupies a separate physical line.
 - A positive ent_view face census was NOT evidence of visible faces. The current
   compressed tensor2 *36 model has local bounds [-48,-24,-64]..[48,24,64], while
   its entity origin is far from zero. Original hull emission used model vertices
@@ -21,6 +39,50 @@
   the current QC pose record and inspect pixels. Source additive portal material
   can make the red fill look pink; an interior red-tint crop, excluding boxes and
   labels, distinguishes the subject from the original (554 vs 0 in the acted rig).
+- Exact profile-time focus must preserve integer milliseconds across JSON,
+  full/compact row storage and the CSQC/MenuQC decimal mailbox. Float32 conflates
+  16777217ms with16777216ms, including same-identity changed times. Keep exact
+  ints separate from existing display floats. QC sprintf `%d` expects a FLOAT
+  slot (F324 for int), so `itos` plus `%s` preserves the raw integer. Menu integer
+  conversions are name-only in pr_menu.c: use `#0:stoi`/`#0:itos`, NOT CSQC fixed
+  slots259/260. Trim leading zeros for the lexical decimal bound check BEFORE
+  conversion. Pinned native4148e7292's PF_stoi (pr_bgcmd.c:4886) uses decimal
+  libc atoi, NOT octal autodetection; pr_menu.c:2713 resolves to that function.
+  A compiled-helper trim mutant proves canonical output, not an octal failure.
+  Boundary runtime gate: p693ui.md. Fresh2026-10-14 acted PREINTEGER control
+  selects1500 for16777217/16777216; integer subject passes all5 groups and6 exact
+  typed full/compact changed/equal witnesses around2^24/INT_MAX. All12 PNGs
+  inspected; independent audit OK with notes/no issues. Four owned PIDs/eight
+  junctions gone;136 protected pins/36 install hashes+metadata unchanged. Exact
+  repo-status postflight remains NONMATCH only for peer untracked694 launcher
+  claim, not a native/progs/ref/index drift. Runtime scope is fixture/fallback/
+  synthetic input/current poses; no real backend/native-provider/clipboard/live
+  nonzero-mover claim. Commit/build/push/destination/live verification remain
+  separate; retained source acceptance receipt at the owned root's artifacts/
+  runtime-live/precision-acceptance-20261014T044940Z.json.
+- A baseline exit0 only retains failures. `--precision-control` additionally
+  requires the known float32 collision's fresh JSON/status witness and passing
+  predecessor profile/editor/faces regressions. The subject needs all five groups;
+  images remain a separate inspection. Exact integer prints must be from the
+  current case's log interval. Parse selected ranks numerically: a substring
+  check for#1 also accepts#10. Subject receipts require all6 typed raw-ms/rank
+  witnesses and input hashes for all5 sibling plugins as well as executables.
+  Reject output/OWNER/report aliases before creation; exclusively reserve the
+  first report. Driver verdicts BLOCKED/failed/evidence/control/subject are
+  distinct; process-free driver tests are NOT product acceptance. Standalone
+  qclib/fteqcc helper tests likewise do not verify menu builtin name linkage or
+  UI/socket/GPU behavior. FTE LOADP_F/STORE_F can copy raw integer bits: see the
+  shared int cases in qclib/execloop.h, rather than guessing from opcode names.
+- A delivery helper using assert can lose every safety check under python -O;
+  exists()-guarded lstat misses dangling .prev/stage links. Pin both destination
+  and .prev before staging, exclusively stage before visible swaps, and retain
+  an atomic first-predecessor receipt across interruption. The retained P693
+  helper refuses ANY existing transaction rather than automatically retrying.
+  Seventeen fake-install tests pass under normal/-O, not real delivery acceptance.
+  Native/plugin hashes must match the accepted build AND control/subject inputs;
+  an image with an absent file/null hash is NOT an inspected screenshot.
+  A confirmation JSON/process scan cannot prevent an unrelated launcher: an
+  owner/peer-coordinated exclusion must cover the whole real multi-file interval.
 - `tools/test_p693_ui.py` extends the isolated navigation rig with current consent
   version/addon mounts, actual full/compact profile time picks, pointer-targeted
   editor keys and viewer screenshots/censuses. Older base fixture consent4 and

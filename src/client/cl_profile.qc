@@ -79,6 +79,7 @@ float  pf_c_to[PF_TIERS];
 float  pf_rn;
 float  pf_bmap;             // strbuf: a row's map
 float *pf_rf;               // PF_ROWS * PF_RF
+int   *pf_rms;              // exact milliseconds for profile-time focus
 vector pf_scroll;
 float  pf_said;             // the answer's own line was printed (once an answer)
 
@@ -100,6 +101,8 @@ string pf_on_who, pf_on_map;    // asked for: a handle or a mark, and the map
 string pf_on_name, pf_on_handle;
 float  pf_on_state, pf_on_req, pf_on_sent, pf_on_code, pf_on_again, pf_on_n, pf_on_av;
 float *pf_on_f;             // PF_ONROWS * PF_RF
+int   *pf_on_ms;            // exact milliseconds for compact time focus
+int(int node) Profile_JsonInteger = #0:json_get_integer;
 vector pf_on_scroll;
 // Where three of these controls were last drawn, on the screen, for the status
 // lines an arm clicks by: the first tier's bar, "Whole profile", the first time.
@@ -115,10 +118,12 @@ void() Profile_Alloc =
 	if (pf_rf)
 		return;
 	pf_rf = memalloc(sizeof(float) * PF_ROWS * PF_RF);
+	pf_rms = memalloc(sizeof(int) * PF_ROWS);
 	pf_bmap = buf_create();
 	pf_ct_f = memalloc(sizeof(float) * PF_CTROWS * PF_CF);
 	pf_ct_bmap = buf_create();
 	pf_on_f = memalloc(sizeof(float) * PF_ONROWS * PF_RF);
+	pf_on_ms = memalloc(sizeof(int) * PF_ONROWS);
 	pf_s_sel = -1;
 };
 
@@ -237,7 +242,7 @@ void() Profile_Ask =
 // Copy browse data while rows live; publish only after the owner's SUI bracket.
 void() Profile_Unfocus;
 string pf_boardrequest;
-void(string map, float tier, float track, float leg, float segmented, float rank, string who, float time_ms) Profile_BoardPick =
+void(string map, float tier, float track, float leg, float segmented, float rank, string who, int time_ms) Profile_BoardPick =
 {
 	local float i, c;
 	local string source, payload;
@@ -249,8 +254,8 @@ void(string map, float tier, float track, float leg, float segmented, float rank
 	}
 	source = (tier == PFT_MOM) ? "momentum" : ((tier == PFT_KSF) ? "ksf" : "ranked");
 	payload = sprintf("%s %s %g %g %s", map, source, track, leg, segmented ? "segmented" : "clean");
-	if (rank > 0 && Profile_IsWho(who) && time_ms > 0)
-		payload = strcat(payload, sprintf(" %.0f %s %.0f", rank, who, time_ms));
+	if (rank > 0 && Profile_IsWho(who) && time_ms > 0i)
+		payload = strcat(payload, sprintf(" %.0f %s %s", rank, who, itos(time_ms)));
 	if (strlen(payload) > 128) return;
 	strunzone(pf_boardrequest);
 	pf_boardrequest = strzone(payload);
@@ -513,6 +518,7 @@ float(float root) Profile_Rows =
 	{
 		row = json_get_child_at_index(rows, i);
 		Profile_RowF(row, pf_rf, pf_rn * PF_RF);
+		pf_rms[pf_rn] = Profile_JsonInteger(json_find_object_child(row, "ms"));
 		bufstr_set(pf_bmap, pf_rn, strdecolorize(substring(
 			json_get_string(json_find_object_child(row, "map")), 0, PF_TEXT)));
 		pf_rn = pf_rn + 1;
@@ -663,7 +669,7 @@ void(string bdy, float more) Profile_TierParse =
 
 void(string bdy) Profile_OnParse =
 {
-	local float root, rows, n, i;
+	local float root, rows, n, i, row;
 	local float *f;
 	local string h;
 
@@ -690,7 +696,9 @@ void(string bdy) Profile_OnParse =
 	pf_on_n = 0;
 	for (i = 0; i < n && pf_on_n < PF_ONROWS; i = i + 1)
 	{
-		Profile_RowF(json_get_child_at_index(rows, i), f, pf_on_n * PF_RF);
+		row = json_get_child_at_index(rows, i);
+		Profile_RowF(row, f, pf_on_n * PF_RF);
+		pf_on_ms[pf_on_n] = Profile_JsonInteger(json_find_object_child(row, "ms"));
 		pf_on_n = pf_on_n + 1;
 	}
 	json_free(root);
@@ -1349,7 +1357,7 @@ void(vector p, vector sz, float tsz, float hint) Profile_DrawTier =
 		sui_action_element([lp_x + tsz * 1.6, lp_y], [mapw, rowh], strcat("pf_ctmap", ftos(i)), sui_noop);
 		if (sui_is_hovered(strcat("pf_ctmap", ftos(i)))) sui_fill(lp, [sz_x - tsz, rowh], SUI_THEME_HOVER, 0.5, 0);
 		if (sui_is_released(strcat("pf_ctmap", ftos(i))))
-			Profile_BoardPick(bufstr_get(pf_ct_bmap, i), f[at + 1], 0, 0, f[at + 3], 0, "", 0);
+			Profile_BoardPick(bufstr_get(pf_ct_bmap, i), f[at + 1], 0, 0, f[at + 3], 0, "", 0i);
 		s = Chat_Fit(bufstr_get(pf_ct_bmap, i), mapw, tsz);
 		sui_text([lp_x + tsz * 1.6, lp_y + (rowh - tsz) * 0.5], [tsz, tsz], s,
 		         (f[at] > 0) ? SUI_THEME_TEXT : SUI_THEME_DIM, 1, 0);
@@ -1682,7 +1690,7 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 		if (sui_is_hovered(strcat("pf_map", ftos(i)))) sui_fill(lp, [sz_x - tsz, rowh], SUI_THEME_HOVER, 0.5, 0);
 		if (sui_is_released(strcat("pf_map", ftos(i))))
 			Profile_BoardPick(bufstr_get(pf_bmap, i), f[at + 2], f[at], f[at + 1], f[at + 7],
-			                  r, pf_handle, f[at + 3]);
+			                  r, pf_handle, pf_rms[i]);
 		s = Chat_Fit(bufstr_get(pf_bmap, i), c1 - tsz * 9, tsz);
 		sui_text([lp_x + c0, lp_y + (rowh - tsz) * 0.5], [tsz, tsz], s, SUI_THEME_TEXT, 1, 0);
 		x = lp_x + c0 + stringwidth(s, TRUE, [tsz, tsz]) + tsz * 0.6;

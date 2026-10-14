@@ -10,6 +10,7 @@ connecting/downloading. These require the parent's serial runtime gate.
 """
 import argparse
 from pathlib import Path
+import hashlib
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,8 +53,8 @@ class BoardNavigation(unittest.TestCase):
     def test_profile_row_styles_and_tier_hit_width(self):
         p = source("src/client/cl_profile.qc")
         self.assertIn('Profile_BoardPick(bufstr_get(pf_bmap, i), f[at + 2], f[at], f[at + 1], f[at + 7],', p)
-        self.assertIn('r, pf_handle, f[at + 3]);', p)
-        self.assertIn('Profile_BoardPick(bufstr_get(pf_ct_bmap, i), f[at + 1], 0, 0, f[at + 3], 0, "", 0)', p)
+        self.assertIn('r, pf_handle, pf_rms[i]);', p)
+        self.assertIn('Profile_BoardPick(bufstr_get(pf_ct_bmap, i), f[at + 1], 0, 0, f[at + 3], 0, "", 0i)', p)
         self.assertIn('#define PF_RF       8', p)
         self.assertIn('#define PF_CF       4', p)
         self.assertIn('json_find_object_child(row, "style")', p)
@@ -114,7 +115,44 @@ class BoardNavigation(unittest.TestCase):
         p = source('src/client/cl_profile.qc')
         self.assertIn('sui_action_element(lp, [sz_x - tsz, rowh], strcat("pf_map", ftos(i))', p)
         s = source('src/client/cl_scores.qc')
-        self.assertIn('f[i + 5], pf_on_handle, f[i + 3]);', s)
+        self.assertIn('f[i + 5], pf_on_handle, pf_on_ms[act - 3]);', s)
+
+    def test_boundary_fixture_preserves_raw_milliseconds(self):
+        from test_p693_ui import Fixture, HANDLE, rig
+        fixture = Fixture()
+        fixture.profile_ms = 2147483647
+        fixture.neighbors[1499]['ms'] = 2147483646
+        _, profile, _ = fixture.answer('/api/board?player=' + HANDLE[:8])
+        self.assertEqual(profile['rows'][0]['ms'], 2147483647)
+        _, board, _ = fixture.answer('/api/board?map=surf_result&offset=1494&limit=100')
+        self.assertEqual(board['rows'][5]['ms'], 2147483646)
+        fixture.on_ms = 16777217
+        handle = hashlib.sha256(rig.SID[0].encode()).hexdigest()
+        _, compact, _ = fixture.answer('/api/board?player=' + handle[:8] + '&on=' + rig.MAP)
+        self.assertEqual(compact['rows'][0]['ms'], 16777217)
+        self.assertEqual(compact['who'], handle[:12])
+
+    def test_focus_milliseconds_stay_integer(self):
+        p = source('src/client/cl_profile.qc')
+        self.assertIn('int   *pf_rms;', p)
+        self.assertIn('int   *pf_on_ms;', p)
+        self.assertIn('pf_rms[pf_rn] = Profile_JsonInteger', p)
+        self.assertIn('pf_on_ms[pf_on_n] = Profile_JsonInteger', p)
+        self.assertIn('string who, int time_ms) Profile_BoardPick', p)
+        self.assertIn('sprintf(" %.0f %s %s", rank, who, itos(time_ms))', p)
+        b = source('src/menu/m_board.qc')
+        self.assertIn('int    mlb_focusms;', b)
+        self.assertIn('int(string value) Mlb_Stoi = #0:stoi;', b)
+        self.assertIn('string(int value) Mlb_Itos = #0:itos;', b)
+        self.assertNotIn('Mlb_Stoi = #259', b)
+        self.assertNotIn('Mlb_Itos = #260', b)
+        self.assertIn('json_get_integer(json_find_object_child(row, "ms")) == mlb_focusms', b)
+        self.assertIn('pickedms = Mlb_Stoi(Mlb_Decimal(time_ms));', b)
+        self.assertNotIn('pickedms = stof(time_ms)', b)
+        validator = b[b.index('float(string value, int limit) Mlb_FocusNumber ='):b.index('float(string map, string source')]
+        self.assertLess(validator.index('strcmp(value, bound) > 0'), validator.index('Mlb_Stoi(value)'))
+        self.assertIn('Mlb_FocusNumber(time_ms, 2147483647i)', b)
+        self.assertIn('value = Mlb_Decimal(value);', validator)
 
 
 if __name__ == "__main__":

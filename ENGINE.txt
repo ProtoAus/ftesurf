@@ -27,6 +27,9 @@ commit   4148e72923e617a79bf8ed16474cc49143fb72fc
 tag      patch-693
 patch    693
 # Patch 693: profile time rows open a focused tier/style leaderboard neighborhood;
+# exact JSON integer ms survive full/compact rows and the decimal menu mailbox,
+# rejecting float32 collisions at 2^24/INT_MAX. Acted control/six subject witnesses
+# and all five runtime groups accepted 2026-10-14; screenshots separately inspected.
 # Mouse2 replaces jump-bound editor mouse switching, so the wheel scrolls normally.
 # ent_view consumes map entity poses for red dithered teleport faces, and shows
 # nearby world player/monster clip hulls by default (ent_view_clips 0 disables it).
