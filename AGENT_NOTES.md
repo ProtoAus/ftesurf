@@ -12577,3 +12577,24 @@ the game fetches its own map list. The menu half is Patch 652.
 - Source-backed findings, exact commands, initial failures and bounded evidence:
   C:/FTESurf-worktrees/ksfguard-20261015T002724Z/artifacts/CHECKPOINT.md. No real
   gunicorn/scheduler/FD-coverage inventory, owner migration or live action claimed.
+
+### P717 continuation — foreground gunicorn lifetime and inventory boundaries
+
+- `tools/test_surfd_guard_gunicorn.py` adds real LOCAL Linux gunicorn20.1.0 and
+  23.0.0 upstream-pin controls: synthetic Unix-socket WSGI/gthread2, actual HUP
+  and max-requests recycling, admission-lock dev/inode inheritance and independent
+  exclusive contention, held-request graceful drain and exact-identity cleanup.
+- CLOSED blocks new guard admissions, NOT an admitted master's recycled worker
+  imports. Both real recycle arms import/serve while CLOSED and keep drain blocked.
+  Installation must wait for successful drain, not merely durable CLOSED.
+- The test-only FD-drop launcher still serves while close reports DRAINED; the
+  same lifetime oracle fails. Foreground success does not certify detached/service
+  routes or same-UID cooperation. Upstream pins are not distro-host equivalence.
+- The approved read-only host inventory advanced launch-path knowledge, not
+  enforced coverage. Raw metadata stays private; sanitized findings/remaining
+  unknowns and the separately approved transition gates are recorded in
+  C:/FTESurf-worktrees/ksfworkers-20261015T011756Z/artifacts/CHECKPOINT.md.
+  No DB/schema inspection, owner migration or live mutation was performed.
+- Test interface, dependency pins, source-derived launch families and limitations:
+  tools/surfd-transition-guard.md. Candidate/generation handover, coordinated
+  recovery and live native-submit no-loss acceptance remain separate blockers.
