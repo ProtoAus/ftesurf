@@ -1,19 +1,9 @@
 <!doctype html>
 <!--
-  World of Surf landing page -- template.
-
-  Rendered by src\release\release.ps1, which substitutes double-at placeholders
-  with ordinal [string]::Replace() and asserts afterwards that (a) no such
-  placeholder survives and (b) the token set here exactly equals its
-  substitution map. That assert reads the whole file, prose included, so never
-  write a token in a comment to explain it.
-
-  Tokens: VERSION FILENAME URL SIZE_HUMAN SIZE_BYTES SHA256 DATE QCBUILD ENGINEPATCH,
-  and the LINUX_* set only inside the LINUX blocks.
-
-  No token ever reaches a script: site.js is a fixed file and the copy buttons
-  read textContent out of the DOM. site.css, site.js and the pictures are
-  src/release/site/, copied beside this page by release.ps1.
+  World of Surf landing page. release.ps1 renders exact receipt tokens with
+  ordinal string replacement; the Windows and optional Linux token sets are
+  checked by releaselib.ps1. Keep Linux-only tokens inside LINUX blocks.
+  Download titles retain archive sizes, hashes and compatibility details.
 -->
 <html lang="en">
 <head>
@@ -39,10 +29,10 @@
 <meta name="twitter:image:alt" content="World of Surf wordmark on a dark background">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="site.css?v=p719">
+<link rel="stylesheet" href="site.css?v=p720">
 <script src="site.js" defer></script>
 </head>
-<body>
+<body class="landing">
 
 <header class="nav">
   <nav class="nav-in" aria-label="Site">
@@ -53,142 +43,42 @@
       <a href="board/#who=">Players</a>
       <a href="anticheat.html">Anti-Cheat</a>
     </div>
-    <a class="pill" href="#download">Download</a>
   </nav>
 </header>
 
-<main class="compact">
-
-<section class="hero">
-  <canvas id="runline" data-src="hero-run.json" aria-hidden="true"></canvas>
-  <div class="wrap">
-    <p class="eyebrow">@@VERSION@@</p>
-    <h1 class="hero-brand"><img src="worldofsurf-wordmark.svg" width="720" height="320" alt="World of Surf"></h1>
-    <p class="lede">Surf and bhop with Counter-Strike: Source and Momentum Mod movement.</p>
-    <div class="cta">
-      <a class="btn" href="#download">Download for Windows <small>Free &middot; @@SIZE_HUMAN@@</small></a>
-      <a class="more" href="board/">Leaderboard</a>
-    </div>
-  </div>
-  <p class="caption">surf_utopia &middot; 1:03.240 &middot; <a href="board/#r=62">Watch replay</a></p>
-</section>
-
-<section>
-  <div class="wrap split">
-    <div data-reveal>
-      <h2 class="h-m">Replays and practice</h2>
-      <ul class="ticks">
-        <li>Replays, ghosts and speed-coloured run lines.</li>
-        <li>Separate times for stages and bonuses. Save positions to practise sections.</li>
-        <li>Customisable speed and strafe HUD.</li>
-        <li>Momentum Mod and KSF leaderboards.</li>
-      </ul>
-      <p class="feature-note">Ranked runs are recorded and checked by server-side physics replay.
-        <a href="anticheat.html">Anti-cheat details</a></p>
-    </div>
-    <div class="shot" data-reveal>
-      <img src="shot-rise.webp" width="690" height="860" loading="lazy"
-           alt="surf_rise in World of Surf: platforms over the sea, with a run's line drawn across them">
-    </div>
-  </div>
-</section>
-
-<section id="download">
-  <div class="wrap">
-    <div class="center" data-reveal>
-      <h2 class="h-m">Download</h2>
-      <p class="lede">Free and open source. Install these Steam games first:</p>
-    </div>
-
-    <!-- The requirements and the button are one object: a player who downloads
-         without these games gets an empty map browser and concludes the game is
-         broken. -->
-    <ul class="requirements" data-reveal>
-      <li><b>Momentum Mod Playtest</b> &mdash; surf and bhop maps.</li>
-      <li><b>Counter-Strike: Source</b> &mdash; materials and models.</li>
-      <li><b>Half-Life 2</b> &mdash; textures, skyboxes and props.</li>
-    </ul>
-    <p class="optional">CS:GO (legacy Source&nbsp;1) and TF2 are optional, mounted only for the maps that need them.</p>
-
-    <div class="get" data-reveal>
-      <a class="dl" href="@@URL@@" download>Download for Windows
-        <small>@@FILENAME@@ &middot; @@SIZE_HUMAN@@</small></a>
-      <p class="meta"><b>@@VERSION@@</b> &middot; @@DATE@@ &middot; Windows x64 &middot; @@SIZE_BYTES@@ bytes &middot;
-        7-Zip &middot; QuakeC build @@QCBUILD@@ &middot; engine patch @@ENGINEPATCH@@</p>
-
-      <details>
-        <summary>Verify the download (SHA-256)</summary>
-        <div class="hash" id="sha">@@SHA256@@</div>
-        <button class="copy" type="button" data-copy="sha" hidden>Copy hash</button>
-        <div class="cmd" id="cmd">if ((Get-FileHash .\@@FILENAME@@ -Algorithm SHA256).Hash -eq '@@SHA256@@') { 'OK' } else { 'MISMATCH' }</div>
-        <button class="copy" type="button" data-copy="cmd" hidden>Copy PowerShell check</button>
-        <p>Paste the second line into PowerShell in the folder you downloaded to. It prints <code>OK</code> or <code>MISMATCH</code>.</p>
-      </details>
+<main id="download">
+  <section class="hero">
+    <canvas id="runline" data-src="hero-run.json" aria-hidden="true"></canvas>
+    <div class="wrap">
+      <p class="eyebrow" title="@@DATE@@ &middot; QuakeC build @@QCBUILD@@ &middot; engine patch @@ENGINEPATCH@@">@@VERSION@@ &middot; Free and open source</p>
+      <h1 class="hero-brand"><img src="worldofsurf-wordmark.svg" width="720" height="320" alt="World of Surf"></h1>
+      <p class="lede">Surf and bhop with Counter-Strike: Source and Momentum Mod movement.</p>
+      <div class="cta">
+        <a class="btn" href="@@URL@@" download="@@FILENAME@@" title="@@SIZE_BYTES@@ bytes &middot; SHA-256: @@SHA256@@">Download for Windows
+          <small>x64 &middot; @@SIZE_HUMAN@@</small></a>
+        <!--LINUX-BEGIN-->
+        <a class="btn alt" href="@@LINUX_URL@@" download="@@LINUX_FILENAME@@" title="Tested in WSL only &middot; glibc @@LINUX_GLIBC@@+ &middot; @@LINUX_SIZE_BYTES@@ bytes &middot; engine patch @@LINUX_ENGINE@@ &middot; SHA-256: @@LINUX_SHA256@@">Download for Linux
+          <small>x86_64 &middot; @@LINUX_SIZE_HUMAN@@ &middot; beta, unranked</small></a>
+        <!--LINUX-END-->
+      </div>
+      <p class="requirements-inline">Requires Momentum Mod Playtest, Counter-Strike: Source and Half-Life 2.</p>
+      <p class="launch-note">Extract and run <code>ftesurf.bat</code> (Windows)
       <!--LINUX-BEGIN-->
-      <a class="dl alt" href="@@LINUX_URL@@" download>Download for Linux &middot; beta
-        <small>@@LINUX_FILENAME@@ &middot; @@LINUX_SIZE_HUMAN@@</small></a>
-      <p class="meta">Linux x86_64, glibc @@LINUX_GLIBC@@ or newer &middot; @@LINUX_SIZE_BYTES@@ bytes &middot; tar.xz &middot;
-        engine patch @@LINUX_ENGINE@@ &middot; <b>tested in WSL only</b></p>
-      <details>
-        <summary>Verify the Linux download (SHA-256)</summary>
-        <div class="hash" id="sha-linux">@@LINUX_SHA256@@</div>
-        <button class="copy" type="button" data-copy="sha-linux" hidden>Copy hash</button>
-        <div class="cmd" id="cmd-linux">echo '@@LINUX_SHA256@@  @@LINUX_FILENAME@@' | sha256sum -c</div>
-        <button class="copy" type="button" data-copy="cmd-linux" hidden>Copy shell check</button>
-        <p>Run it in the folder you downloaded to. It prints <code>@@LINUX_FILENAME@@: OK</code>, or <code>FAILED</code> if the file is damaged.</p>
-      </details>
+        or <code>./ftesurf.sh</code> (Linux)
       <!--LINUX-END-->
+      </p>
     </div>
-
-    <ol class="steps" data-reveal>
-      <li>Unpack the archive into its own folder.</li>
-      <li>Run <code>ftesurf.bat</code>.</li>
-      <li>Choose a map or join a public lobby.</li>
-    </ol>
-
-    <div class="get">
-      <!--LINUX-BEGIN-->
-      <details>
-        <summary>On Linux (beta)</summary>
-        <ul>
-          <li>Extract it somewhere you own: <code>tar xf @@LINUX_FILENAME@@</code> makes a folder called <code>FTESurf</code>.</li>
-          <li>Run <code>./ftesurf.sh</code>. Startup errors go to <code>stderr.log</code>; crashes write <code>crash.log</code>.</li>
-          <li>Momentum Mod Playtest has no Linux build: install it with Steam Play (Properties &rsaquo; Compatibility &rsaquo; a Proton version). World of Surf only reads its maps.</li>
-          <li>Native, Flatpak and Snap Steam are found automatically; for another drive, <code>fs_steamlibs add /path/to/SteamLibrary</code> then <code>fs_restart</code>.</li>
-          <li>Linux runs are not ranked during the beta.</li>
-        </ul>
-      </details>
-      <!--LINUX-END-->
-      <details>
-        <summary>Setup and troubleshooting</summary>
-        <p><b>Updates:</b> The launcher asks before enabling update checks in a terminal. A first launch without a terminal skips the check. Change this in the game&rsquo;s Updates pane.</p>
-        <p><b>Empty map list?</b> Type <code>fs_steamlibs</code> in the console. To add another Steam library, use <code>fs_steamlibs add D:\SteamLibrary</code>, then <code>fs_restart</code>.</p>
-        <p><b>Alpha:</b> The unsigned build may trigger a SmartScreen warning. Physics fixes can invalidate earlier times.</p>
-        <p><b>Upgrading from 0.1.9 or earlier?</b> Delete <code>ftesurf\ftesurf.cfg</code> once, before you start the
-          game: older builds saved Momentum Mod&rsquo;s binds into it. That also resets your own settings, so note your
-          sensitivity first.</p>
-        <p>Problems? Bring <code>stderr.log</code> or a screenshot to
-          <a href="https://discord.com/channels/471331861839216643/1327302504823787541">Discord</a>.</p>
-      </details>
-    </div>
-  </div>
-</section>
-
+  </section>
 </main>
 
 <footer>
-  <div class="wrap">
-    <div class="fnav">
-      <a href="./">Overview</a><a href="board/">Leaderboard</a><a href="board/#who=">Players</a>
-      <a href="anticheat.html">Anti-Cheat</a><a href="https://github.com/ProtoAus/ftesurf">Source</a>
-      <a href="version.json">Build manifest</a>
-    </div>
-    <p>World of Surf is GPLv2 or later &middot; <a href="LICENSE.txt">Licence</a> &middot;
-      <a href="https://github.com/ProtoAus/ftesurf">Game source</a> &middot;
-      Built on FTEQW &middot; <a href="https://github.com/ProtoAus/ftequakers">Engine source</a>.
-      No Valve or Momentum Mod code or game assets are included. Steam content is read from your installed games.</p>
-    <p>Bebas Neue &copy; 2010 Ryoichi Tsunekawa, Dharma Type, SIL Open Font Licence 1.1 &mdash; <a href="OFL.txt">OFL.txt</a>.</p>
-  </div>
+  <nav aria-label="Project">
+    <a href="https://github.com/ProtoAus/ftesurf">Source</a>
+    <a href="https://github.com/ProtoAus/ftequakers">Built on FTEQW</a>
+    <a href="LICENSE.txt">Licence</a>
+    <a href="OFL.txt">Font licence</a>
+    <a href="version.json">Build details</a>
+  </nav>
 </footer>
 
 </body>

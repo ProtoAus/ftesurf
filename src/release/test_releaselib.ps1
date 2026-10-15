@@ -63,8 +63,9 @@ $tpl = Split-PageBlocks ([System.IO.File]::ReadAllText($tplPath))
 Check 'template: two blocks' { $tpl.Pairs -eq 2 }
 Check 'template: outside tokens = Windows map' { @(Compare-TokenSets (Get-TemplateTokens $tpl.Outside) $winKeys).Count -eq 0 }
 Check 'template: inside tokens = Linux names' { @(Compare-TokenSets (Get-TemplateTokens $tpl.Inside) $lxKeys).Count -eq 0 }
-Check 'template: ids once each when kept' {
-    @('id="sha"', 'id="cmd"', 'id="sha-linux"', 'id="cmd-linux"' | Where-Object { ([regex]::Matches($tpl.Kept, [regex]::Escape($_))).Count -ne 1 }).Count -eq 0
+Check 'template: archive links and filenames once each when kept' {
+    @('href="@@URL@@"', 'download="@@FILENAME@@"', 'href="@@LINUX_URL@@"', 'download="@@LINUX_FILENAME@@"' |
+        Where-Object { ([regex]::Matches($tpl.Kept, [regex]::Escape($_))).Count -ne 1 }).Count -eq 0
 }
 if ($Baseline) {
     Check "template: outside is byte-identical to $Baseline" {

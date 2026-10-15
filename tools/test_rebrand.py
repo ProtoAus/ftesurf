@@ -64,7 +64,8 @@ class BrandTests(unittest.TestCase):
         self.assertEqual(tokens, {"VERSION", "FILENAME", "URL", "SIZE_HUMAN", "SIZE_BYTES", "SHA256", "DATE", "QCBUILD", "ENGINEPATCH"})
         self.assertEqual(set(re.findall(r"@@(LINUX_[A-Z0-9_]+)@@", doc)),
                          {"LINUX_URL", "LINUX_FILENAME", "LINUX_SIZE_HUMAN", "LINUX_SIZE_BYTES", "LINUX_SHA256", "LINUX_GLIBC", "LINUX_ENGINE"})
-        for legacy in ("<code>ftesurf.bat</code>", "<code>./ftesurf.sh</code>", "<code>FTESurf</code>", "https://github.com/ProtoAus/ftesurf"):
+        # The single-screen homepage retains launchers, not the old extraction steps.
+        for legacy in ("<code>ftesurf.bat</code>", "<code>./ftesurf.sh</code>", "https://github.com/ProtoAus/ftesurf"):
             self.assertIn(legacy, doc)
         self.assertIn("Built on FTEQW", doc)
 

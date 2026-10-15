@@ -57,9 +57,10 @@ class CopyTests(unittest.TestCase):
     def test_home_is_compact(self):
         doc = source(HOME)
         page = Content(doc)
-        self.assertLessEqual(page.sections, 3)
-        self.assertLessEqual(len(page.words.split()), 560)
-        for old_layout in ('class="bento"', 'class="stats"', 'class="band"'):
+        self.assertEqual(page.sections, 1)
+        self.assertLessEqual(len(page.words.split()), 100)
+        self.assertIn(('body', {'class': 'landing'}), page.attrs)
+        for old_layout in ('class="bento"', 'class="stats"', 'class="band"', '<details', 'class="split"'):
             self.assertNotIn(old_layout, doc)
 
     def test_anti_is_compact(self):
@@ -87,18 +88,30 @@ class CopyTests(unittest.TestCase):
                 self.assertIn(fact, words)
         self.assertNotIn("checked before it counts", words)
 
-    def test_launchers_downloads_and_support_remain(self):
+    def test_direct_platform_downloads_and_receipt(self):
         doc = source(HOME)
-        for value in ('id="download"', 'id="sha"', 'id="sha-linux"', 'id="cmd-linux"',
-                      'data-copy="sha"', 'data-copy="sha-linux"', 'data-copy="cmd-linux"',
-                      '<code>ftesurf.bat</code>', '<code>./ftesurf.sh</code>', 'fs_steamlibs add D:',
-                      'sha256sum', 'tar xf', 'Updates pane', 'QuakeC build @@QCBUILD@@',
-                      'patch @@ENGINEPATCH@@'):
+        page = Content(doc)
+        for platform in ('', 'LINUX_'):
+            with self.subTest(platform=platform or 'WINDOWS'):
+                buttons = [attrs for tag, attrs in page.attrs
+                           if tag == 'a' and attrs.get('href') == f'@@{platform}URL@@']
+                self.assertEqual(len(buttons), 1)
+                self.assertEqual(buttons[0]['download'], f'@@{platform}FILENAME@@')
+                self.assertIn(f'@@{platform}SHA256@@', buttons[0]['title'])
+                self.assertIn(f'@@{platform}SIZE_BYTES@@', buttons[0]['title'])
+                self.assertIn('btn', buttons[0]['class'].split())
+        for value in ('id="download"', '<code>ftesurf.bat</code>', '<code>./ftesurf.sh</code>',
+                      'Momentum Mod Playtest', 'Counter-Strike: Source', 'Half-Life 2',
+                      'beta, unranked', 'Tested in WSL only', 'href="version.json"',
+                      'href="LICENSE.txt"', 'QuakeC build @@QCBUILD@@', 'patch @@ENGINEPATCH@@'):
             with self.subTest(value=value):
                 self.assertIn(value, doc)
         outside = re.sub(r"<!--LINUX-BEGIN-->.*?<!--LINUX-END-->", "", doc, flags=re.S)
         self.assertEqual(set(re.findall(r"@@([A-Z0-9_]+)@@", outside)),
                          {"VERSION", "FILENAME", "URL", "SIZE_HUMAN", "SIZE_BYTES", "SHA256", "DATE", "QCBUILD", "ENGINEPATCH"})
+        self.assertEqual(set(re.findall(r"@@(LINUX_[A-Z0-9_]+)@@", doc)),
+                         {"LINUX_URL", "LINUX_FILENAME", "LINUX_SIZE_HUMAN", "LINUX_SIZE_BYTES",
+                          "LINUX_SHA256", "LINUX_GLIBC", "LINUX_ENGINE"})
 
 
 if __name__ == "__main__":
