@@ -93,7 +93,9 @@ live source base `a9dce85f27f94b6c89672b6b63fc5659801ebe4c` without schema20,
 portal QC/native or unrelated features. Runtime candidate
 `7d8bad7a4aacf04d6700e0fbe326405f55fe10fd` is published on
 `agent/completion-p727-schema19-1015` (not main, to avoid a schema downgrade).
-Its actual pristine generation19 control passes5; compatible subject34 passes.
+The final test/docs commit on that branch is
+`bf054235bc2ec73b4d9a2cd685f3bc228f5978bf`; its runtime modules are unchanged from
+`7d8bad7`. Its actual pristine generation19 control passes5; compatible subject34 passes.
 All23 generation19 backend suites plus codec PASS in an isolated Pi stage. An
 initial older `test_ksfgrab` invocation omitted its required `--out`; that failed
 staging premise was retained, corrected, and only the remaining7 suites rerun.
@@ -120,14 +122,38 @@ bhop were manually off. On that captured population the requested automatic
 policy would retain1347 surf plus385 zoned bhop (1732); this is a target, NOT a
 claimed live readback. No pool reconciliation was performed without the code.
 
-**Remaining blocker:** a separately reviewed guarded same-schema generation
-handover is required; the normal deploy command is not an update driver for that
-sealed runtime. It must preserve import/cron/restart coverage, native-submit
-no-loss, accepted worker origins/schema and existing recovery. After that, reset
-only the owner's prior bulk bhop exclusions to automatic policy, snapshot/CAS
-those settings, verify385 zoned/195 unzoned outcomes and repeat live site/game
-proof. No guard bypass, unrelated schema20 upgrade or automatic DB rollback is
-authorised by this map-filter change. BACKLOG.md records the exact falsifier.
+## Authorized guarded handover prepared — live hold remains
+
+The owner subsequently authorized the separate guarded same-schema19 handover.
+Its operator implementation has passed independent implementation review with
+limits: no remaining critical ordering, lock, ownership or promotion defect was
+found. This is readiness evidence, NOT live acceptance.
+
+- **42** authored Linux operator checks PASS, including actual CLI lock contention,
+ schema19 backup, all-table preservation/refusal, compatible source provenance,
+ effective dependency/configuration checks and pre-promotion refusal sequencing.
+- Three real distro Gunicorn/gthread product-worker arms PASS in isolated homes
+ and databases: full closure accepted, foreign dependency origin rejected, and
+ incorrect proof-tool pin rejected despite valid six-module witnesses. Each arm
+ now measures whole-schema19 preservation. A fourth arm deliberately alters an
+ isolated fixture row and correctly REFUSES preservation rather than reporting
+ it passed; this corrects an evidence overclaim found during review.
+- The new generation is staged CLOSED. It is limited to four inspected P727
+ application/template overlays; all other executable/resource paths match the
+ compatible source, with old ancillary tests explicitly pinned separately.
+- The latest read-only preflight refuses ONLY connected player/spectator presence.
+ No native gate/config/cvar/service, scheduler, forwarding wrapper, live runtime,
+ database or pool setting has changed. The old generation remains OPEN.
+
+**Remaining blocker:** the fleet must be empty before this reviewed handover can
+act. Do not disconnect players, weaken the ordinary deployer's refusal, or
+mistake preparation/review for an accepted serving worker. Recheck current
+fleet/source provenance and coordinate other pending fleet work before resuming.
+After guarded acceptance, reset only the owner's prior bulk bhop exclusions to
+automatic policy with snapshot/CAS, verify385 zoned/195 unzoned outcomes (or a
+fresh census), and repeat the live public-site/actual-game proof. No unrelated
+schema20 upgrade, old-runtime mutation or automatic DB rollback is authorized.
+BACKLOG.md retains the end-to-end closing falsifier.
 
 Owned local evidence: C:/FTESurf-worktrees/completion-1015102256/.
 Owned remote synthetic evidence: /srv/nvme/agent-work/completion-1015102256/.

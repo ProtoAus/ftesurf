@@ -5,7 +5,7 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
-## P727 completion fix — blocked on guarded runtime handover (2026-10-15)
+## P727 completion fix — reviewed handover held for empty fleet (2026-10-15)
 
 - `surfd.py:_completion_scope` / `mapmanifest.py` fix the ignored admin pool and
   enforce surf plus file-zoned bhop for both web/game completion counts/lists.
@@ -16,7 +16,14 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   source, all23 native backend suites+codec and actual browser/game fixture
   proofs are in `tools/p727completion.md`. Do not overwrite another task's
   immutable runtime, relabel its guard or replay its completed migration.
-- Closing falsifier: separately reviewed guarded same-schema generation
+- The owner authorized a separate guarded schema19 handover. Its implementation
+  passed independent review,42 Linux operator tests and real isolated worker
+  acceptance/refusal controls; all preservation claims are measured, including
+  a deliberately altered-row refusal. New generation staged CLOSED; read-only
+  preflight's remaining blocker is connected player/spectator presence. NO live
+  source/config/service/pool/data changes. Empty fleet and current provenance
+  must be rechecked; coordinate other pending fleet work before maintenance.
+- Closing falsifier: actually accepted guarded same-schema generation
   handover with native-submit no-loss/launch coverage and fresh accepted serving
   origins; reversible reset of ONLY prior bulk bhop overrides;385 zoned bhop on,
   195 unzoned bhop off (re-census if library changes); live public site and actual
