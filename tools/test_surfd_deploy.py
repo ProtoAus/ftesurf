@@ -55,6 +55,8 @@ class Tests(unittest.TestCase):
             cls.ksf_set.add('surfd/ksfprofile.py')
         if run(['git', '-C', str(REPO), 'cat-file', '-e', cls.ref+':surfd/social.py'], check=False).returncode == 0:
             cls.ksf_set.update({'surfd/accounts.py', 'surfd/social.py'})
+        if run(['git', '-C', str(REPO), 'cat-file', '-e', cls.ref+':surfd/mapmanifest.py'], check=False).returncode == 0:
+            cls.ksf_set.update({'surfd/admin.py', 'surfd/mapmanifest.py', 'surfd/templates/admin_maps.html'})
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix=self._testMethodName+'-', dir=args.out)
@@ -182,6 +184,28 @@ function scp { Set-Content $env:DEPLOY_TEST_MARKER scp; throw 'network forbidden
         r = self.plan(repo, 'HEAD', ['surfd/social.py'], succeeds=False)
         self.assertIn('social runtime dependency', r.stderr)
         self.assertTrue((repo/'surfd/accounts.py').is_file())
+
+    def test_map_pool_app_admin_and_template_ship_together(self):
+        repo, _, _ = self.fixture_repo()
+        entries = {'surfd/surfd.py', 'surfd/admin.py', 'surfd/mapmanifest.py',
+                   'surfd/templates/admin_maps.html'}
+        for name in entries-{'surfd/surfd.py'}:
+            path = repo/name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('synthetic policy generation\n')
+            git(repo, 'add', '--', name)
+        git(repo, '-c', 'user.name=Offline fixture', '-c', 'user.email=fixture@example.invalid',
+            '-c', 'commit.gpgsign=false', 'commit', '-qm', 'map pool generation')
+        for entry in entries:
+            p = self.plan(repo, 'HEAD', [entry])
+            self.assertEqual(set(p['Files']), entries)
+            self.assertEqual(set(p['AddedDependencies']), entries-{entry})
+        git(repo, 'rm', '--cached', '--', 'surfd/templates/admin_maps.html')
+        git(repo, '-c', 'user.name=Offline fixture', '-c', 'user.email=fixture@example.invalid',
+            '-c', 'commit.gpgsign=false', 'commit', '-qm', 'missing committed map dependency')
+        result = self.plan(repo, 'HEAD', ['surfd/surfd.py'], succeeds=False)
+        self.assertIn('map-pool runtime dependency', result.stderr)
+        self.assertTrue((repo/'surfd/templates/admin_maps.html').is_file())
 
     def test_legacy_ref_and_committed_dependency_not_working_tree(self):
         repo, legacy, complete = self.fixture_repo()

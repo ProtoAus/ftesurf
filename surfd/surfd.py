@@ -202,11 +202,10 @@ MAPS_DIR = os.environ.get(
 # end, no checkpoints, so SV_TimerStart is never reached and the run timer never
 # arms.  From inside the game that is indistinguishable from a broken timer.
 #
-# So `timed` is REPORTED, never ENFORCED.  Refusing to host an unzoned map would
-# be surfd deciding a player may not walk around a map they own, which is not
-# its business; answering "yes, and you cannot set a time here" is.  The menu
-# decides what to do with that, and can say so before the player spends a
-# connect on it.
+# `timed` is still a separate report, not proof of pool eligibility. P727's
+# requested pool admits surf (including untimed surf) and bhop with a zone FILE;
+# other modes and unzoned bhop are disabled in menus/joins/completion. Explicit
+# console maps and existing lobbies/history are not removed or interrupted.
 ZONES_DIR = os.environ.get(
     "SURFD_ZONES", os.path.join(MAPS_DIR, "zones", "online"))
 # ...and the game's own overrides, which sv_zones.qc reads FIRST (66 maps on the
@@ -1803,6 +1802,28 @@ _maps_lock = threading.Lock()
 # "at" None = never scanned.  -1.0 read as fresh for the first MAPS_TTL after
 # boot (monotonic() counts from boot on Linux): every map "not installed".
 _maps_cache = {"at": None, "bsp": {}, "zone": frozenset()}
+_zone_files_cache = {"at": None, "names": frozenset()}
+
+
+def zone_file_index(now=None):
+    """Authoritative zone files, separately from BSP-embedded timer brushes."""
+    now = time.monotonic() if now is None else now
+    with _maps_lock:
+        at = _zone_files_cache["at"]
+        if at is not None and 0 <= now - at < MAPS_TTL:
+            return _zone_files_cache["names"]
+    names = set()
+    for zdir in (ZONES_DIR, ZONES_LOCAL_DIR):
+        try:
+            with os.scandir(zdir) as it:
+                names.update(e.name[:-5].lower() for e in it
+                             if e.name.lower().endswith(".json") and e.is_file())
+        except OSError as exc:
+            if zdir == ZONES_DIR:
+                log.warning("zone directory %s unreadable: %s", zdir, exc)
+    with _maps_lock:
+        _zone_files_cache["at"], _zone_files_cache["names"] = now, frozenset(names)
+        return _zone_files_cache["names"]
 
 
 def _scan_maps():
@@ -1836,19 +1857,7 @@ def _scan_maps():
         log.warning("map library %s unreadable: %s", MAPS_DIR, exc)
         return {}, frozenset()
 
-    for zdir in (ZONES_DIR, ZONES_LOCAL_DIR):
-        try:
-            with os.scandir(zdir) as it:
-                for entry in it:
-                    if entry.name.lower().endswith(".json"):
-                        zone.add(entry.name[:-5].lower())
-        except OSError as exc:
-            # NOT fatal and NOT the same failure as the one above.  With no zone
-            # directory every map reports `timed 0`, which is pessimistic and
-            # honest; with no map directory nothing can be hosted at all.  The
-            # local one is often simply absent (a box with no overrides).
-            if zdir == ZONES_DIR:
-                log.warning("zone directory %s unreadable: %s", zdir, exc)
+    zone.update(zone_file_index())
 
     for key, stem in bsp.items():
         if key not in zone and zonefit.has_timer(os.path.join(MAPS_DIR, stem + ".bsp")):
@@ -1879,6 +1888,7 @@ def maps_reset():
         _maps_cache["at"] = None
         _maps_cache["bsp"] = {}
         _maps_cache["zone"] = frozenset()
+        _zone_files_cache["at"], _zone_files_cache["names"] = None, frozenset()
 
 
 def style_of(flags):
@@ -2266,7 +2276,7 @@ def join_map():
 
     import mapmanifest
     try:
-        if mapname in mapmanifest.disabled(get_db()):
+        if mapname in mapmanifest.disabled(get_db(), (mapname,), zone_file_index()):
             return _join_reply(403, {"error": "that map is disabled in the map pool",
                                      "map": mapname})
     except sqlite3.Error:
@@ -4521,7 +4531,7 @@ def game_maplist():
         if os.stat(path).st_size > MAPLIST_MAX:
             return fail(404, "no map list")
         bsp, zoned = map_index()
-        body = mapmanifest.game_list(path, get_db(), bsp, zoned)
+        body = mapmanifest.game_list(path, get_db(), bsp, zoned, zone_file_index())
     except FileNotFoundError:
         return fail(404, "no map list")
     except (OSError, ValueError, sqlite3.Error):
@@ -5265,6 +5275,16 @@ def web_players():
                   "limit": WEB_SEARCH_MAX, "players": out}, "max-age=30")
 
 
+def _completion_scope(have_main):
+    """One pool-aware population for completion bars and both map-list APIs."""
+    import mapmanifest
+    bsp, zoned = map_index()
+    playable = set(bsp) & set(zoned)
+    have = set(have_main) | playable
+    off = mapmanifest.disabled(get_db(), have, zone_file_index())
+    return have - off, playable - off, bsp
+
+
 def _completion(done, have_main, tiers):
     """Maps finished per difficulty tier, against what the site holds.
 
@@ -5273,15 +5293,15 @@ def _completion(done, have_main, tiers):
     own map list uses to colour a map done.  `done` is the maps this player
     finished; `have_main` the maps holding a main board (the directory's).
 
-    `tiers` None (no catalogue) returns None, not an empty table: see map_tiers.
+    The effective pool excludes manual disables, unrelated modes and bhop
+    without zone files from both counts. `tiers` None means unknown, not zero.
     """
     if tiers is None:
         return None
     # The denominator is the maps this site actually knows a main board for,
     # not every map Momentum has rated -- a percentage against maps nobody here
     # can load is not a completion figure.
-    bsp, zoned = map_index()
-    have = set(have_main) | (set(bsp) & set(zoned))
+    have, _playable, _bsp = _completion_scope(have_main)
     table = {}
     for m in have:
         t = tiers.get(m)
@@ -5544,11 +5564,10 @@ def _tier_maps(ranked, main_maps):
         if r["millis"] < cur[0]:
             cur[0], cur[1], cur[3] = r["millis"], r["tier"], r["style"]
         cur[2].add(r["tier"])
-    bsp, zoned = map_index()
-    playable = set(bsp) & set(zoned)
+    have, playable, bsp = _completion_scope(main_maps)
     tiers = map_tiers()
     groups = {}
-    for key in sorted(set(main_maps) | playable, key=lambda k: bsp.get(k, k).lower()):
+    for key in sorted(have, key=lambda k: bsp.get(k, k).lower()):
         row = {"map": bsp.get(key, key), "have": 1 if key in playable else 0}
         mine = best.get(key)
         if mine is not None:
@@ -5777,7 +5796,8 @@ def _register_admin():
         # caller is.  One definition, injected.
         bp = build_blueprint(app, log, connect, LOBBY_TTL,
                              client_identity=client_identity, disk=disk_status,
-                             maps=dict(index=map_index, data=DATA_DIR, clean=clean_map),
+                             maps=dict(index=map_index, files=zone_file_index,
+                                       data=DATA_DIR, clean=clean_map),
                              runs=dict(replay_file=replay_file, restand=restand,
                                        restage=restage, stage_counts=stage_counts,
                                        public_state=public_state,

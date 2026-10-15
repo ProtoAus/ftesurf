@@ -1393,7 +1393,7 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
             conn = db_connect()
             bsp, zoned = maps["index"]()
             rows = mapmanifest.manifest(os.path.join(maps["data"], "mapwatch", "mapdl.txt"),
-                                        conn, bsp, zoned)
+                                        conn, bsp, zoned, maps["files"]())
             return jsonify(maps=rows)
         except (OSError, ValueError, sqlite3.Error):
             log.exception("admin map manifest unavailable")
@@ -1526,6 +1526,10 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
         bsp, _zoned = maps["index"]()
         if name not in bsp:
             raise AdminError("map is not installed", 404)
+        import mapmanifest
+        policy = mapmanifest.pool_policy(name, maps["files"]())
+        if enabled == "1" and policy:
+            raise AdminError(policy)
         conn = None
         try:
             conn = db_connect()
