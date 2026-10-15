@@ -142,3 +142,14 @@ rollback, live request/crawl, DEMOS cron, service/reload/SSH or game/GPU accepta
 is granted by this offline patch. Original CSS/66t v2/v3 Watch/seek/style/body,
 physical UI acceptance, recorder corpus and unsupported staged-course grammar
 remain separate gates; do not infer them from synthetic SQL/Flask/decoder tests.
+
+## Offline transition preparation (still not a live driver)
+
+`surfd_transition_guard.py` and `test_surfd_transition_guard.py` add cooperative
+POSIX launch admission and actual import/shared-lock/controller-death controls.
+See [surfd-transition-guard.md](surfd-transition-guard.md) for the pinned-generation
+manifest, persistent CLOSED-before-drain ordering, external receipt checks,
+foreground inherited-FD boundary and deliberately BLOCKED candidate start. No
+current production launch path uses this helper. It is not a substitute for
+launch inventory/enforcement, generation handover, native-submit no-loss drain,
+quiescent candidate acceptance or a coherent live recovery procedure.

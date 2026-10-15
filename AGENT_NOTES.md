@@ -12529,3 +12529,34 @@ the game fetches its own map list. The menu half is Patch 652.
 - Additional commands, acted controls, prior fixture-premise failures and limits:
   tools/p717ksfprotected.md and the owned ksfcont-20261015T000538Z artifacts.
   Tooling/tests only: no product patch, engine pin/tag, QC Build or live action.
+
+### P717 continuation — cooperative launch-fence preparation
+
+- `tools/surfd_transition_guard.py` is a stdlib POSIX pre-application-import
+  admission helper, NOT an end-to-end schema transition. Close fsyncs persistent
+  CLOSED before a bounded exclusive drain; launched foreground processes retain
+  a shared flock across same-PID exec. Missing/malformed state refuses. Reopen
+  requires a closure/generation/raw-six-hash-bound external receipt but does not
+  attest its truth. Candidate start and generation rebinding remain BLOCKED.
+- `tools/test_surfd_transition_guard.py --out <NEW-owned-path>` exercises real
+  module-import/writer/shared-lock activity, controller death/EOF, direct bypass
+  as an oracle-negative control, and eight simulated installation-phase cuts.
+  Source FIFO/directory/symlink inputs refuse through nonblocking regular-file
+  handles; canonical paths reject `..`. The test-only mutating controller must
+  match an authored fixture identity/token/home/guard before any close or write.
+  Initial review found the blocking FIFO read and unchecked test-controller
+  path; focused controls now cover both. See tools/surfd-transition-guard.md.
+- LOCAL WSL exact-source bundle rehearsal creates18 from fda98ed and migrates19
+  with65250ec; it exercises interrupted partial installation, matched online
+  SQLite/source/cache restore before later writes, then retention of later
+  synthetic SQL/cache rows after process death. It does NOT prove authenticated
+  native submits or enforced exclusion. Initial imports missed GAME/GAME_CODE
+  overrides; audited rerun sets fixture paths, observes actual fixture-code reads
+  and denies default-host opens before the OS. Earlier isolation claim rejected.
+- A backend outage is NOT no-loss: sv_lobby.qc posts finishes/stages once and
+  does not retain a durable retry body; local recordings are not board acceptance
+  (the existing Ranking integrity BACKLOG records this). No live quiescence until
+  native-submit admission/in-flight drain is independently agreed and verified.
+- Source-backed findings, exact commands, initial failures and bounded evidence:
+  C:/FTESurf-worktrees/ksfguard-20261015T002724Z/artifacts/CHECKPOINT.md. No real
+  gunicorn/scheduler/FD-coverage inventory, owner migration or live action claimed.
