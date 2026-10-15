@@ -111,6 +111,62 @@ over newer ranked history. Do not attempt to roll P717 schema19 back through a
 simple version reset; its own transition/recovery contract remains authoritative.
 The existing progs deploy keeps `.prev` and refuses occupied/unproved lobbies.
 
+## Committed-source verification and delivery — 2026-10-15
+
+Published feature commit `ada325286aae3081fdb9651f10c8a7418ae2e8c5` and
+engine-notes-only commit `dbf6bd40fae7a8d87fc56e51aa8bca903e59e48c`.
+The finite KSF migration assertions were then aligned to schema20 in
+`c69b845e057f46c5c3f63ff907bbfb8c55fd3bfa`; this changes tests only.
+
+- A clean committed-source `src/build.ps1 -Jobs 8 -Pi` produces zero warnings.
+  Every QC output is byte-identical to the native-tested `build-final2` output.
+  The exact-commit offline deployment suite passes all19 again.
+- Full Linux deployment-shell suite, **staged tests only**, from `c69b845`:
+  all22 suites pass including accounts/social/KSF migration/profile/top-up.
+  MOM `.mtv` conversion is skipped because no external fixture is on that host.
+  Original failed stage is retained: old KSF assertions expected19, and the
+  manual stage omitted nginx. Correcting those premises required a complete
+  rerun. The unsupported `-TestOnly` attempt made no remote change; instead the
+  actual parsed deployment-suite shell ran against `git archive` bytes in an
+  owned non-web scratch root. No live modules, DB, backup, reload or migration.
+- Pi progs swap: all12 fresh lobby rows showed0 players. Both `.new` files
+  hash-verified, swapped with `.prev` preserved, all12 lobbies restarted.
+  `pi-progs.log` is the private receipt. At 03:48:49Z, all12 are live and the
+  destination hashes below match. No `menu.dat` is shipped to the Pi.
+- Dual Windows copy completed 03:35:12Z, with games idle; both installs' three
+  QC hashes match the clean build, previous changed progs kept as `.prev`, and
+  compiled CSQC cache `844e6e86.dat` seeded. Protected owner/lobby cfg hashes
+  remained unchanged. `windows-progs-receipt.json` records before/after/UTC.
+- `pi-native`: a fresh isolated client connects to the updated live lobby,
+  loads the new Players tab (one real row) and labels module, then exits with
+  no command/VM errors. No other body is present, so this is NOT a new label-
+  visibility or performance measurement. Friends correctly remains not-ready
+  without its backend. Debug text obscures the screenshots; the earlier local
+  three-client screenshots establish layout, not these diagnostic captures.
+
+Installed hashes (both Windows installs and the two Pi progs):
+
+```
+qwprogs.dat a06afa8f208d04d3010c8846615aea6ed5ccbbb621b2f4303236d0a97985e62d
+csprogs.dat b2f50b192ec571b2c6a1caf2cf03f47718ef21ccb70c7d3d5aebd4c9438f1b19
+menu.dat   44f12fd918278bd160db66f6cfb45b176d56eeb6290e3d28e6365e81e3bbcbd9
+```
+
+**This is partial delivery, NOT a live friends backend.** At 03:48:49Z live
+schema is still18, social.py is absent, and all five measured live backend source
+hashes remain unchanged from startup. Read-only P717 launch inventory was
+requested but no approval has been received; no exclusion, worker retirement,
+backend source installation or schema transition was attempted. Human acceptance
+can exercise roster/profile/labels now; fleet Friends/Join/PM awaits that gate.
+
+Scratch disposition: the two owned Linux test stages at
+`/srv/nvme/agent-work/friends-01a13cdc-stage-20261015T0328Z` and
+`...-20261015T0345Z` retain OWNER/shell/suite logs/per-suite outputs/provenance;
+source/tar/TMPDIR copies are retired. The Windows task root retains source and
+private test evidence for the blocked backend continuation. Historical NoDeploy
+outputs are hash-verified into `historical-nodeploy-builds.zip`; only the final
+native-tested build remains unpacked. No owner/peer process was stopped.
+
 ## Remaining acceptance
 
 See `lextest.md` for human wording/layout, real cross-install account use and
