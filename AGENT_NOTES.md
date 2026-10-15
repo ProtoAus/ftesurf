@@ -1,5 +1,21 @@
 # AGENT_NOTES.md
 
+## P729 mapmedia and zone-draft measured contracts
+
+- The NanoPi's older Werkzeug does not enforce `MAX_CONTENT_LENGTH` while
+  `request.get_data()` reads. Check a positive explicit content length BEFORE
+  reading, reject unknown/zero lengths, and check the application cap explicitly.
+  Native POST and buffering nginx provide lengths. Backend11 passes on Windows
+  and Linux, including oversized and unknown-length controls.
+- Momentum `globalRegions` is an OBJECT whose named values are flat region
+  arrays, not an array itself. Download validation must accept the real shape,
+  validate complete main/bonus/global polygons, and never call `Zone_Clear` on
+  an active timer table just to inspect a candidate. Changed-valid, malformed
+  polygon, nonfinite value, HTTP404-with-valid-body and HTML arms acted natively.
+- The no-exponent-literals pitfall below also applies to a bound such as `1e30`:
+  silent compiler AV was removed by decimal spelling. Do not misdiagnose that
+  as evidence that recursive QC itself is broken.
+
 ## Monolith original CSS control — continuation after P728
 
 The operator-supplied Steam CSS `cstrike/maps/surf_monolith.bsp` now exists:

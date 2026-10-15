@@ -14,7 +14,8 @@
   missing cells were staged on a new page without moving existing coordinates.
 - After integrating published P728, full native/QC build passed with zero NEW
   compiler warnings (existing warnings preserved). Media10, backend11 (real
-  Ed25519), installer3 unit tests and recorder regression passed. The corpus
+  Ed25519, Windows and Linux), installer3 unit tests and recorder regression
+  passed. Explicit request-length gates cover older Werkzeug's get_data path. The corpus
   reader is byte-identical to the inspected baseline; private corpus inputs and
   individual results are not published here.
 - Native runtime: boot manifest GET acted before opening the picker; offline

@@ -130,6 +130,14 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None):
     games = tuple(Path(p) for p in game_files)
     peer_salt = secrets.token_bytes(32)
     def fail(message, status): return jsonify(ok=0, error=message), status
+    @app.before_request
+    def body_budget():
+        # Older Werkzeug does not enforce MAX_CONTENT_LENGTH in get_data().
+        # Native HTTP and the buffering nginx proxy both supply an exact length.
+        if request.method == 'POST':
+            size = request.content_length
+            if size is None or size <= 0: return fail('Request length required', 411)
+            if size > app.config['MAX_CONTENT_LENGTH']: return fail('Upload too large', 413)
     def known_game(code):
         for path in games:
             try:

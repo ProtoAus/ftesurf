@@ -106,6 +106,8 @@ class Upload(unittest.TestCase):
         for name in ('../surf_escape','surf_x/y','bhop_x.json','SURF_Upper','surf_a;cmd'):
             self.assertEqual(self.c.post('/api/zones/challenge',json=dict(map=name,sha='a'*64)).status_code,400)
         self.assertEqual(self.c.post('/api/zones/draft',data=b'x'*(z.MAX_ZONE_BYTES+2048)).status_code,413)
+        self.assertEqual(self.c.post('/api/zones/challenge',json=dict(map='surf_fixture',sha='a'*64),
+                         environ_overrides={'CONTENT_LENGTH':'','wsgi.input_terminated':True}).status_code,411)
         missing=self.root/'missing.db'
         c=z.create_app(missing,self.main,[self.game]).test_client()
         self.assertEqual(c.post('/api/zones/challenge',json=dict(map='surf_ok',sha='a'*64)).status_code,503)
