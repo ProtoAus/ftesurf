@@ -573,7 +573,7 @@ string(vector c) Bn_ChatCol =
 {
 	if (c == TC_AHEAD)
 		return "^2";
-	if (c == TC_BEHIND || c == TC_CHEAT)
+	if (c == TC_BEHIND)
 		return "^1";
 	if (c == BNC_WR || c == BNC_UNRANKED || c == TC_PRACTICE)
 		return "^3";

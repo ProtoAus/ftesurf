@@ -54,8 +54,18 @@ def main():
     check('stage banner reason label', bool(re.search(
         rf'banner: draws "STAGE 1"[^\n]*"{banner}"', text)))
     filters = re.findall(r'tab local   filter (\w+)', text)
-    check('practice filter and legacy alias',
-          filters[-2:] == (['all', 'cheated'] if args.control else ['practice', 'practice']))
+    check('class filter and legacy alias selection',
+          filters[-4:] == (['clean', 'stitched', 'all', 'cheated'] if args.control
+                          else ['clean', 'stitched', 'practice', 'practice']))
+    counts = re.findall(r'rows: (\d+) \((\d+) pass the filter\)', text)
+    check('six fixture rows are actually classified',
+          [int(n) for n, _ in counts[-4:]] == [6] * 4)
+    check('filter partition includes bare practice and legacy reason rows',
+          [int(n) for _, n in counts[-4:]] == ([2, 3, 6, 3] if args.control else [2, 2, 4, 4]))
+    fixtures = args.rig / 'ftesurf/data/runs/surf_dune/stage_2'
+    check('legacy no-flags reason fixture acted',
+          (fixtures / '0000500_cheat.rec').exists()
+          and '0000500_cheat.rec' in text)
     for row, cheat, state in [(1, 0, 2), (2, 1, 2), (3, 0, 1)]:
         p = args.rig / f'ftesurf/data/saves/surf_dune/save{row:03}/state.txt'
         saved = p.read_text(encoding='utf-8') if p.exists() else ''

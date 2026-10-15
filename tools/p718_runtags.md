@@ -41,4 +41,25 @@ Reserved 2026-10-15T00:12Z after fetching both repos and checking patch headings
 Internal reason bits and legacy `cheat` recording filenames are intentionally
 retained; this is not a file-format migration or a ranked-save-load feature.
 Existing hopped-start forgiveness, resume and recorder-failure rules are not
-changed. Independent review, post-corpus sweep and deployment pending.
+changed.
+
+## Independent review and strengthened controls
+
+Two fresh read-only reviews of frozen b70a29b: gameplay/ranking OK; UI/tests OK
+with two accepted P2 findings. Fixed the chat colour mapper's obsolete
+`TC_CHEAT` red comparison (now an alias of amber Practice). Replaced empty-list
+filter checks with six synthetic header-only browser fixtures: clean,
+segmented, bare practice, flagged legacy reason, unflagged legacy reason and
+unknown. These are never verifier/playback evidence. Generate with
+`python tools/p718tags_fixtures.py <new-owned-fixture-dir>` and pass each file
+as `--put data/runs/surf_dune/stage_2/<name>=<absolute-file>` to the rig.
+
+The first populated-list arm used an invalid `_seg` filename and correctly
+failed the six-row assertion; corrected the fixture to the existing `_shadow`
+filename, without changing the reader. Final control/subject each pass 42
+checks under their own expectations; the control fails 12 subject checks.
+Subject Practice keeps bare practice and both old reason variants; segmented
+stays separate and unknown remains visible in every chip. Full/stage banners
+and explicit finish-chat exercised. Final VMs compile with zero warnings.
+Post-run corpus: **289 files, 189 with existing faults**, unchanged.
+Final fix-blast-radius review and deployment pending.
