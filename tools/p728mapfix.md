@@ -2,10 +2,12 @@
 
 ## Delivery state and scope
 
-Locally implemented/built/tested; **not installed or deployed at source verification**.
+Implemented, published and **installed in both Windows installs**, with actual
+installed-binary/dedicated-client verification below. **Not deployed to the NanoPi**:
+its directory has no lobby rows and the read-only SSH census is unavailable, so
+there is no positive empty-fleet gate. No Pi upload, swap or restart was attempted.
 The other task's published P727 acceptance explicitly released the NanoPi/deployment
-hold at2026-10-15T15:35:36Z. Normal guarded development delivery can proceed; that
-release/source note alone is NOT a delivery receipt for P728. Do not alter/replay
+hold at2026-10-15T15:35:36Z; that release alone is not a P728 delivery receipt. Do not alter/replay
 the sealed backend generation or its controls. No owner game was stopped and no
 owner config or player-data tree was modified. Build number is unchanged.
 
@@ -20,8 +22,8 @@ engine control, small content overlays, generated fixtures and compact evidence
 are under that one root. Sources started at QC
 `36697da09d3893e2f3c192d9be55b2974287f02c` and engine
 `f84fb0ada93b5197acb20aba6f3e34203c31c6ea`. No peer working-tree files were used.
-A temporary shared `tools/p728mapfix.claim.md` reserves the number only; it is
-not product source and is removed by its owner after the real entry is published.
+The temporary shared `tools/p728mapfix.claim.md` was removed by its owner after
+publication; it was a number reservation, not product source.
 
 ## Commands / behavior
 
@@ -114,7 +116,8 @@ out of the runtime before the clean-product proof.
 
 - Clean baseline and subject engine/client/server/HL2 plugin builds used the same
   compiler, flags and shared read-only dependency bundle, from isolated source.
-  No actual install output target was used. QC builds have zero warnings.
+  Those source-verification builds used no actual install output target.
+  QC builds have zero warnings.
   The clean native control has60 existing compiler warnings /36 warning payloads;
   successful full+incremental subject builds introduce no new warning payload.
   Make grouped-target notices are reported separately, not compiler diagnostics.
@@ -165,7 +168,78 @@ strict-mode implementation is in P728. The original CSS control BSP could not be
 retrieved from the attempted public endpoints. Need matching original map bytes
 or authoritative trigger semantics to select/falsify a conversion versus mover fix.
 
-Remaining: Monolith's actual fix; owner shade/display/fast-surf acceptance; then
-guarded dual-install/fleet delivery after the now-released cutover hold. Record
-actual destination hashes and live readback, not an inferred delivery from source.
-Built, committed, published, installed and verified-live remain separate states.
+## Windows delivery — 2026-10-15T17:05:09Z
+
+Published product source: QC `181c2aa7ee7dd6687561a79c513365cfa96e0104` and engine
+`694bdd54427d8f29937dd6e85fecb76f98f1e6f5` / `patch-728`. Subsequent receipt-only
+documentation does not change those compiled product bytes. Build number unchanged.
+
+A fresh `src/build.ps1 -Jobs 8 -Engine -Full -NoDeploy -FteRoot <owned-engine>`
+completed on the exact clean product commit. The complete native baseline used
+`<owned-engine-control>` at `f84fb0ada93b5197acb20aba6f3e34203c31c6ea` with the
+same flags/dependencies. All five plugins were included:74 existing compiler
+warnings in each arm, zero new normalized payloads;349 grouped-target Make
+notices in each arm. All three QC VMs compiled with zero warnings. The shared
+read-only dependency fingerprints were unchanged through both completed builds.
+
+An exclusive file-lease/hash preflight passed before copying. Six primary and ten
+secondary files were installed, each with locked and post-lease SHA256 readback.
+Every predecessor remains in `.prev` and in the owned compact backup. No game was
+stopped and no owner config/player-data path was a deployment target. The primary
+client is `C:\FTESurf\ftesurf64.exe`; the secondary client is
+`C:\FTEQuake\fteqw64.exe`; the secondary dedicated server is `fteqwsv64.exe`.
+Both gamedirs contain the same three built VMs. Primary HL2/ImGui and secondary
+HL2/cod/box3d/ode/ImGui are from this same full build.
+
+| Built file (primary client renamed `ftesurf64.exe`) | SHA256 |
+|---|---|
+| `fteqw64.exe` | `eb9fc78df3b0f6b855f8c2427f6cf0f6985283871c53154945ee992f560e84b0` |
+| `fteqwsv64.exe` | `4c269cb7824485434b61a4384ded959c0ac96677b047f6887df42002350be4a8` |
+| `fteplug_hl2_x64.dll` | `6a7bea0c0621eaee552703985146d22ca05644e79aa12fcf17e89b7b1767b0cc` |
+| `fteplug_ui_imgui_x64.dll` | `f05a5ebeee71c9b8d3f1cbb1e0004648c8b1ddf4e46c1435e489086855551d90` |
+| `fteplug_cod_x64.dll` | `9a66260ee3a2ee734fb7af5bc35c0035d9a0fc5a68289809ec5ebaa12b91d0fe` |
+| `fteplug_box3d_x64.dll` | `48f2ba081f48cdb64546abdbaacb818772fb2e1d8a02741deb8e0e09e2197e86` |
+| `fteplug_ode_x64.dll` | `e1bd98e79051f50e984368e47a6a807f3f06e13a6def9b9faa465c125c3a224b` |
+| `qwprogs.dat` | `c868d9289e715133c4b4b15394fdc656a972e1f40a046d08b82f0273d350ac34` |
+| `csprogs.dat` | `c9568517aade358894b88b95add53e2f7e6eb83b70b17a2a1ba7fb7f416755db` |
+| `menu.dat` | `faac899b3c12658a3939559c9bd1a00c493124b263effd8857449cf30fc54764` |
+
+The installed primary client connected to the installed secondary dedicated
+server on an owned27591 fixture, not a listen server. OS module readback proved
+the actual installed executables and corresponding installed HL2/ImGui DLL paths;
+the old owned runtime plugins were parked, not accidentally used as a substitute.
+
+- Prosurf's natural B4 sequence again reached2275, practice0/recording1/hopped0/
+  dirty0 on the compiled product. This is a run-classification gate, not a claim
+  of ranked submission from the fixture account.
+- Sidistic's automatic policy read195. On a static86700-pixel floor crop, mean RGB
+  changed64.78 ->79.49 with shadows0.6, ->90.27 with brightness0.1, and ->80.41
+  with gamma1.2. All three controls acted while connected. Returning to neutral
+  restored the crop exactly (MAE0). Screenshots inspected; no runtime/shader error
+  was found in the complete client-log error scan.
+- Leidenfrost's three diffuse VTFs read `NEAREST ... loaded` with global
+  `GL_LINEAR_MIPMAP_LINEAR` unchanged. The first non-verbose listing omitted ALL
+  flag annotations; the targeted `developer 1` re-probe supplied the acting flag
+  diagnostic rather than treating a bare `loaded` line as a filtering failure.
+- Both owned harness sessions stopped only their own processes and reported no
+  added/removed/changed player-data files or protected top-level files.
+
+## Fleet delivery blocker / retained work
+
+Read-only Pi asset hashes match the measured Windows Momentum Monolith/Prosurf
+BSPs and Prosurf's authored zone JSON. The Pi copy is therefore not a different
+original CSS control that could close Monolith's discrepancy.
+
+The final directory check at2026-10-15T17:15:16Z returned an empty `lobbies` array;
+that is NOT evidence of an empty fleet. Subsequent read-only SSH census attempts
+timed out or refused (exit255). No positive complete fleet census was obtained.
+Do not force the normal `-Pi` gate, start stopped units, modify backend controls,
+or infer a live P728 rollout from the Windows receipt. Restore directory/SSH
+availability, then use the clean worktree's guarded `build.ps1 -Pi` and verify
+all destination hashes, actual restarts and fresh live-client behavior.
+
+Remaining: Monolith's actual fix (matching original CSS/KSF trigger control needed),
+owner shade/display/fast-surf acceptance, and guarded NanoPi delivery. Keep the
+owned root/controls/evidence retained for these explicit unresolved gates; no
+owned game/build process remains running. Built, committed, published, Windows-
+installed and fleet-verified remain separate states.

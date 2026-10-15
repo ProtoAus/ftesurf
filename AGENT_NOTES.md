@@ -22,6 +22,10 @@
   image load, without overriding an explicit linear sampler (LUTs). Leidenfrost
   real texture listings change from ordinary filtering to `NEAREST`; a same-view
   control/subject crop changes while global texture filtering stays unchanged.
+  `r_imagelist` flag annotations require `developer 1`: a non-verbose `loaded`
+  line omits NEAREST/2D/MIPCAP together and is not proof that nearest was lost.
+  Installed-binary re-probe showed all3 diffuse VTFs NEAREST with the global
+  GL_LINEAR_MIPMAP_LINEAR unchanged.
 - GLSL `!!cvarf` metadata does NOT declare its uniform. Explicitly declare the
   uniform or the fallback can hide a failed exposure shader and even flip the
   view. Inspect compile logs and pixels. Engine GLSL changes also need their

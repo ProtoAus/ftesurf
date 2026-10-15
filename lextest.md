@@ -2,9 +2,11 @@
 
 ## P728 — map appearance, bhop launch and shadows
 
-These changes are locally verified; source verification is not installation/live
-proof. P727's owner has published release of the cutover/deployment hold. After
-P728's guarded delivery receipt:
+Both Windows installs received the full clean build at2026-10-15T17:05:09Z;
+installed-executable/dedicated-client controls passed (`tools/p728mapfix.md`).
+The NanoPi has NOT received P728: its lobby directory is empty and the read-only
+SSH census is unavailable, so no safe fleet-deployment gate passed. Prosurf's
+server-side fix is available on local Windows servers, not yet on the fleet.
 
 - Prosurf B4: try the normal bhop into its cut-out booster. The run should remain
   ranked/recording; an earlier bad hopped start must still require an explicit
