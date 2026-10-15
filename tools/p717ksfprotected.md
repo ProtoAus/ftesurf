@@ -45,7 +45,43 @@ filing or retained recovery reinstate A. Provenance is not current-PB authority.
 
 ## Acted controls and independent review
 
-Owned evidence: `C:\FTESurf-worktrees\ksfnext-20261014T193114Z\artifacts\`.
+## Additional offline acceptance (2026-10-15)
+
+`tools/test_ksf_interrupt.py --out <owned-root>/artifacts/cuts` exercises real
+profile/importer transactions in deliberately spawned synthetic subprocesses.
+It requires an OWNER.md ancestor and creates fresh homes, never an existing DB.
+Five acted cuts bracket the PB update, precision-marker insert, PB commit,
+profile cursor update and acknowledgement commit. Each killed process is
+observed from a new SQLite connection; owed pages recover in a new interpreter
+with HTTP forbidden. Unrelated identified/community rows and integrity checks
+are controls. A normal uninterrupted step and an intentionally split TEST-ONLY
+transaction prove success and inconsistency detection, respectively. A fourth
+group audits inherited config/game-code sentinels: the worker scrubs SURFD_*
+and redirects actual read/write keys BEFORE import; deliberate denied opens
+prove the audit hook acts, and import must load only its synthetic settings.
+Windows and native Linux pass all four groups; optimized Python refuses before
+creating output. This is process-death recovery, NOT storage/power-loss injection
+or live acceptance. The prior harness-isolation failure was reproduced and fixed;
+no P717 runtime-product defect was inferred from it.
+
+The continuation also ran ten additional native backend scripts with portable
+Node24.14.0 and Pillow12.1.1: JavaScript parser and image branches actually acted.
+Seven committed JS/template inputs parse, authored invalid JS refuses, and real
+JPEG/PNG decoding acts. No owner corpus was read. MOMGRAB's missing real .mtv
+sample remains a reported skip; the local default's existence is not public
+provenance. No product runtime files, engine pin, QC Build or deployment changed.
+
+The live-transition review additionally confirms the ordinary deployer requires
+a running gunicorn master, while worker recycling can import during per-file
+installation. `-NoReload` does not provide a stopped-app transition mode. A
+persistent pre-import launch fence, verified drain, coherent source/DB/cache
+bundle and fresh candidate-start acceptance remain explicit live prerequisites.
+A document or advisory flock is not that fence; do not run the ordinary deployer
+as an alleged schema18->19 protocol. Remain fenced and roll forward on failure;
+never restore an older DB over later native/player writes.
+
+Owned original evidence: `C:\FTESurf-worktrees\ksfnext-20261014T193114Z\artifacts\`.
+Additional evidence: `C:\FTESurf-worktrees\ksfcont-20261015T000538Z\artifacts\`.
 
 - Original protected256 starvation and healthy recovery control; review red
   for stale metadata,2050/2304 processing and64-board links0 versus2. Corrected
