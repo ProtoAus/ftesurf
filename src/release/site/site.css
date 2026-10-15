@@ -230,11 +230,9 @@ h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -0.035em; }
 .band .more { display: inline-block; margin-top: 28px; }
 
 /* ---- download ----------------------------------------------------------------- */
-.needs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 48px; }
-.need { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px 22px 20px; }
-.need b { display: block; font-size: 18px; letter-spacing: -0.02em; }
-.need span { color: var(--text-2); font-size: 14.5px; }
-.need i { font-style: normal; color: var(--accent); font-size: 13px; font-weight: 600; display: block; margin-bottom: 10px; }
+.requirements { max-width: 720px; margin: 24px auto 0; padding-left: 24px; color: var(--text-2); }
+.requirements li + li { margin-top: 8px; }
+.requirements b { color: var(--text); font-weight: 600; }
 .optional { color: var(--text-3); font-size: 14px; margin: 14px 0 0; text-align: center; }
 .get { max-width: 720px; margin: 40px auto 0; }
 .dl {
@@ -268,39 +266,28 @@ details ul { padding-left: 20px; margin: 0; }
   background: var(--card-2); border: 1px solid var(--line); border-radius: 980px; padding: 5px 12px;
 }
 .copy:hover { color: var(--text); }
-.steps { list-style: none; counter-reset: s; padding: 0; margin: 56px 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-.steps li {
-  counter-increment: s; background: var(--card); border: 1px solid var(--line);
-  border-radius: 18px; padding: 24px; color: var(--text-2); font-size: 15px;
-}
-.steps li::before {
-  content: counter(s); display: block; margin-bottom: 8px;
-  font-size: 36px; font-weight: 700; letter-spacing: -0.05em; color: var(--text);
-}
-.steps li b { color: var(--text); font-weight: 600; display: block; font-size: 17px; margin-bottom: 4px; }
-@media (max-width: 860px) { .needs, .steps { grid-template-columns: 1fr; } }
+.steps { max-width: 720px; margin: 28px auto 0; padding-left: 24px; color: var(--text-2); }
+.steps li + li { margin-top: 8px; }
 
-/* ---- anti-cheat page ------------------------------------------------------------ */
-.flow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 60px; counter-reset: f; }
-.flow li {
-  list-style: none; counter-increment: f; position: relative;
-  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 30px;
+/* ---- compact overview and anti-cheat pages -------------------------------------- */
+.compact section { padding: 56px 0; }
+.compact .hero { min-height: 0; padding: 64px 0 88px; }
+.compact .hero-brand { width: min(420px, 100%); }
+.compact .feature-note { margin-top: 24px; color: var(--text-2); }
+.article .wrap { max-width: 800px; }
+.article section + section { padding-top: 0; }
+.article h1 { font-size: clamp(36px, 5vw, 56px); }
+.article h2 { font-size: clamp(26px, 3.2vw, 34px); }
+.article p, .verification { margin-top: 16px; color: var(--text-2); }
+.article .lede { max-width: none; }
+.verification { padding-left: 24px; }
+.verification li + li { margin-top: 16px; }
+.verification b { color: var(--text); font-weight: 600; }
+@media (max-width: 600px) {
+  .compact section { padding: 40px 0; }
+  .compact .hero { padding: 48px 0 64px; }
+  .article section + section { padding-top: 0; }
 }
-.flow li::before {
-  content: counter(f); display: block; font-size: 64px; font-weight: 700; letter-spacing: -0.06em;
-  line-height: 1; margin-bottom: 18px;
-  background: var(--speed); -webkit-background-clip: text; background-clip: text; color: transparent;
-}
-.flow h3 { font-size: 26px; }
-.flow p { color: var(--text-2); margin-top: 10px; font-size: 16px; }
-.flow { padding: 0; }
-.pillars { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-top: 60px; }
-.pillar { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 34px; }
-.pillar svg { width: 40px; height: 40px; color: var(--accent); }
-.pillar h3 { font-size: 28px; margin-top: 22px; }
-.pillar p { color: var(--text-2); margin-top: 10px; font-size: 16.5px; }
-@media (max-width: 860px) { .flow, .pillars { grid-template-columns: 1fr; } }
-.quiet { color: var(--text-3); font-size: 14px; margin-top: 26px; }
 
 /* ---- footer --------------------------------------------------------------------- */
 footer { border-top: 1px solid var(--line); padding: 30px 0 64px; color: var(--text-3); font-size: 12px; line-height: 1.65; }
