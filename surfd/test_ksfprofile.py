@@ -150,7 +150,7 @@ class Profiles(unittest.TestCase):
                 self.assertEqual(r.json['ksf_sync']['state'], 'queued')
                 self.assertEqual(c.get('/api/board?player=aaaaaaaaaaaa').status_code, 404)
         self.assertEqual(len(P.pending(self.db)), 1)
-    def test_migrate18_to19_adds_scoped_marker_without_rewriting_runs(self):
+    def test_migrate18_to20_adds_scoped_marker_without_rewriting_runs(self):
         self.queue(); self.step()
         row = list(self.db.execute('SELECT * FROM runs ORDER BY map LIMIT 1').fetchone())
         row[0], row[3], row[12] = 'surf_native', 'community', ''
@@ -161,7 +161,7 @@ class Profiles(unittest.TestCase):
         before = [tuple(r) for r in self.db.execute('SELECT * FROM runs ORDER BY map')]
         self.db.executescript('DROP TABLE ksf_unbound; PRAGMA user_version=18;')
         S.migrate()
-        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 19)
+        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 20)
         columns = self.db.execute('PRAGMA table_info(ksf_unbound)').fetchall()
         self.assertEqual([(r[1], r[2], r[3], r[5]) for r in columns],
                          [('map','TEXT',1,1), ('track','INTEGER',1,2), ('leg','INTEGER',1,3),
@@ -177,12 +177,12 @@ class Profiles(unittest.TestCase):
         before = [tuple(r) for r in self.db.execute('SELECT * FROM runs ORDER BY map')]
         self.db.executescript('DROP TABLE ksf_unbound; DROP TABLE ksfprofiles; PRAGMA user_version=17;')
         S.migrate()
-        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 19)
+        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 20)
         self.assertEqual(self.db.execute('SELECT count(*) FROM ksf_unbound').fetchone()[0], 0)
         self.assertEqual([tuple(r) for r in self.db.execute('SELECT * FROM runs ORDER BY map')], before)
 
-    def test_migrate19_idempotent_and_no_existing_run_changes(self):
-        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 19)
+    def test_migrate20_idempotent_and_no_existing_run_changes(self):
+        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 20)
         S.migrate(); self.assertEqual(self.count(), 0)
 
 
