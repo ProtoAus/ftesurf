@@ -12887,3 +12887,29 @@ the game fetches its own map list. The menu half is Patch 652.
   runtime/config recovery, no generated maintenance configs, guarded legacy
   entrypoints and HTTP200 for health, lobbies and the public board. Detailed
   recovery/process evidence remains private. No engine/QC patch or Build claim.
+
+### Seamless portal test fixtures (P725, 2026-10-15)
+
+- `sv_gravity 0` is NOT a valid near-zero-gravity control here: the existing
+  native entgravity normalization divides by world gravity, producing NaN;
+  Source FinishGravity then clears nonfinite velocity. Use positive1, or800
+  for ordinary gravity. The early vertical-loss fixture was invalid, not a
+  demonstrated portal momentum defect; no unrelated normalization fix was made.
+- The actual crouch button is `+duck` (bit3), with default eye47/hull45 versus
+  standing eye64/hull62. `+movedown` and assumed eye28 did not act as crouch.
+  Require the snapshot's actual viewheight before measuring a ducked crossing.
+- Keep gravity1 during unsupported placement/readiness, then set the measured
+  gravity with GO. Ceiling placements can otherwise fall through a portal before
+  the client acknowledges them. Measure native `run_portalx`/`run_portalvel`,
+  not a large-coordinate-jump heuristic: some valid links are less than512 apart.
+- Retargeting relinks the server portal list. Precondition with an initial same-
+  partner refresh before comparing environment digests, or list order alone can
+  imitate destination-state hashing. The old native then stays identical across
+  a partner-only change; v4 changes and restores with the destination basis.
+- Developer/log_developer1 floods portal trace diagnostics and can stall this
+  rig. Both0, a real dedicated socket, explicit100fps/netfps, and unique logs
+  produced acted body/view observations. Screenshots themselves stall frames;
+  retain native counters and timestamps, not an assumed wall-clock alignment.
+- P725's standalone math/CSG tools compile actual production functions. The CSG
+  controls separately restore unconditional carving and remove the one-way side
+  gate; each must fail its own wall assertion. Legacy pins are not those arms.

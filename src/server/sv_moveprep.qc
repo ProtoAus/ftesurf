@@ -35,7 +35,8 @@
 #define MP_SRC_rampcontact 512i
 #define MP_SRC_srcladder 1024i
 #define MP_SRC_srcladdernormal 2048i
-#define MP_SRC_ALL 4095i
+#define MP_SRC_portaloffset 4096i
+#define MP_SRC_ALL 8191i
 
 typedef struct
 {

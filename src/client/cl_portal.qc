@@ -12,27 +12,10 @@
   scripts/portal.shader is what sorts it; the size of each of the library's 443
   doors comes from the entity's axis rows rather than from a model per size.
 
-  PREDICTION, which is the half nobody sees until it is wrong.  These doors are
-  not networked.  They are static map entities, so the client derives them from
-  the same BSP entity lump the server does, with the same arithmetic -- there
-  is no delta and so nothing to skew.  What matters is that they carry
-  SOLID_PORTAL here too: without it the server would walk the player through
-  the doorway while the client predicted them walking into the wall behind it,
-  once per frame, forever.  Patch 203's CL_AddCSQCPortalsToPmove is what puts
-  them into the client's physents; this file is what puts them into
-  csqc_world.
-
-  WHY THE ENTITY LUMP AND NOT A NETWORKED ENTITY.  Zone_LoadFromBsp
-  (cl_zones.qc:145-187) and Decal_LoadForMap already read the lump with
-  getentitytoken on VBSP maps in this build, so the mechanism is proven here
-  rather than hoped for.  Networking would cost 443 entities on
-  surf_tripportals and would introduce exactly the client/server disagreement
-  the derivation avoids.
-
-  THE LIMITATION THAT FOLLOWS FROM IT: a door toggled at runtime (Source's
-  Enable/Disable inputs) will keep rendering after the server has stopped
-  letting anyone through, because nothing tells the client.  No map in the
-  library does this.  Documented rather than solved.
+  PREDICTION. Geometry comes from the BSP; authoritative Open/Close, pairing
+  and size changes use the typed CSQC entity stream, including late joins.
+  CL_AddCSQCPortalsToPmove uses these same SOLID_PORTAL entities. A closed
+  door must stop both drawing and carving collision, not merely hide its quad.
 ===========================================================================
 */
 
@@ -203,6 +186,48 @@ float() FS_PortalPredraw =
 	return PREDRAW_AUTOADD;
 };
 
+void(entity e) Portal_Refresh =
+{
+	local entity d;
+	local vector ext;
+
+	e.solid = SOLID_NOT;
+	e.drawmask = 0;
+	e.lpd_ok = FALSE;
+	if (e.lpd_active)
+	if (e.lpd_partner != "")
+	{
+		d = find(world, lpd_name, e.lpd_partner);
+		if (FS_PortalSetup(e, d))
+		{
+			e.movetype = MOVETYPE_NONE;
+			e.solid = SOLID_PORTAL;
+			e.camera_transform = FS_PortalTransformView;
+			e.drawmask = MASK_ENGINE;
+			e.predraw = FS_PortalPredraw;
+			setmodel(e, "models/ftesurf_portal.obj");
+			e.forceshader = vbsp_lpd_shader;
+		}
+	}
+	ext = FS_PortalExtent(e.lpd_fa, e.lpd_ra, e.lpd_ua, e.lpd_hw, e.lpd_hh);
+	setsize(e, '0 0 0' - ext, ext);
+	setorigin(e, e.origin);
+};
+
+void(entity state) Portal_NetState =
+{
+	local entity e;
+
+	e = find(world, lpd_name, state.pb_portalname);
+	if (!e || state.pb_portalname == "")
+		return; // retained on the wire entity until the map lump is ready
+	e.lpd_partner = state.pb_portalpartner;
+	e.lpd_active = state.pb_portalon;
+	e.lpd_hw = state.pb_portalwidth;
+	e.lpd_hh = state.pb_portalheight;
+	Portal_Refresh(e);
+};
+
 void() Portal_Clear =
 {
 	local entity e, n;
@@ -238,8 +263,7 @@ void() Portal_LoadForMap =
 	local string cn, nm, pn, sorg, sang, sw, sh, ssa, sd;
 	local string sigfirst;
 	local float sigcount;
-	local entity e, d;
-	local vector ext;
+	local entity e;
 
 	Portal_Clear();
 	FS_PortalRegisterCvars();
@@ -369,41 +393,15 @@ void() Portal_LoadForMap =
 		if (e.lpd_hh <= 0) e.lpd_hh = 128;
 	}
 
+	// Network snapshots may precede the entity lump; apply them before pairing.
+	for (e = nextent(world); e; e = nextent(e))
+		if (e.pb_portalwire)
+			Portal_NetState(e);
 	for (e = findchain(classname, "vbsp_portal"); e; e = e.chain)
 	{
-		if (!e.lpd_active)
-			continue;			// a name-holder: findable, but no aperture
-		d = find(world, lpd_name, e.lpd_partner);
-		if (!FS_PortalSetup(e, d))
-			continue;
-
-		ext = FS_PortalExtent(e.lpd_fa, e.lpd_ra, e.lpd_ua, e.lpd_hw, e.lpd_hh);
-
-		/*
-		  Order matters here in a way that is easy to get wrong.
-
-		  .solid first: World_LinkEdict routes a SOLID_PORTAL onto the world's
-		  portal list (world.c:675-679) instead of the area grid, and that list
-		  is what CL_AddCSQCPortalsToPmove walks.  Set it after the link and the
-		  entity is on the wrong list.
-
-		  setmodel BEFORE setsize: setmodel overwrites mins/maxs with the
-		  MODEL's bounds, which for the unit quad is a 2-unit cube -- as a
-		  collision box that is nothing, and PM_PortalCSG would derive a
-		  2-unit aperture from it.  setsize afterwards is what fixes both.
-		*/
-		e.movetype = MOVETYPE_NONE;
-		e.solid    = SOLID_PORTAL;
-		e.camera_transform = FS_PortalTransformView;
-		e.drawmask = MASK_ENGINE;
-		e.predraw  = FS_PortalPredraw;
-		setmodel(e, "models/ftesurf_portal.obj");
-		if (vbsp_lpd_shader)
-			e.forceshader = vbsp_lpd_shader;
-		setsize(e, '0 0 0' - ext, ext);
-		setorigin(e, e.origin);
-
-		vbsp_lpd_shown = vbsp_lpd_shown + 1;
+		Portal_Refresh(e);
+		if (e.solid == SOLID_PORTAL)
+			vbsp_lpd_shown = vbsp_lpd_shown + 1;
 	}
 
 	/*
