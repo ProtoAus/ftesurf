@@ -1590,6 +1590,13 @@ void(string cmd) SV_ParseClientCommand =
 			tail = substring(msg, sp + 1, strlen(msg) - (sp + 1));
 		}
 
+		// Use the existing camera/request path, including name matching and countdown.
+		if (w == "!spec")
+		{
+			stuffcmd(self, sprintf("spectate %S\n", strtrim(tail)));
+			return;
+		}
+
 		if (tail == "")
 		{
 			if (w == "!resume")  { SV_MsAccept(self);     return; }
