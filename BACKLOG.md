@@ -12,13 +12,22 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   Real dedicated straight launches settle near1643.13 horizontal; the supplied
   four KSF clips launch/settle around1666–1669 (with short transients). The
   reference-lane and default-lane physics probes both reproduce the deficit.
-- `StrictMode` is present and unimplemented, but that is a lead, NOT a proven
-  cause. No arbitrary +30 adjustment, global physics change or guessed strict
-  implementation was shipped. The first grounded/airborne launch ticks differ;
-  matching original CSS/KSF BSP bytes or authoritative launch semantics are
-  needed to distinguish a Momentum conversion difference from mover behavior.
-  The supplied recordings are already retained/inspected; do not ask for them
-  again. Public original-map download attempts failed; no replacement map shipped.
+- The operator has now supplied the original CSS BSP under the Steam CSS
+  `cstrike/maps` directory. Do NOT ask for the BSP or the four recordings again.
+  Its collision/geometry lumps match Momentum byte-for-byte, but hammer221083
+  is a `trigger_multiple`: RunScriptCode entry X=-1760/Z=0, exit X=-1638 with
+  Z preserved, versus Momentum's one-shot1662/398.301. Raw CSS-script emulation
+  alone settles at1638, not the KSF reference; the file does not establish the
+  effective KSF server booster sequence. This QC has no RunScriptCode execution.
+- Acting test-only phases using observed reference velocities reproduce the first
+  two dx/dz steps of all four clips within0.001 units and the1668.87/1665.94/
+  1663.01 transient. BUT that fitted control still falsely tags practice/hopped.
+  It is NOT a product fix or proof of server plugin internals. `StrictMode` is
+  also unimplemented; an ad-hoc far-edge relocation does not prove its behavior.
+  Need a causally justified port/KSF-runtime compatibility implementation with
+  correct per-command lift attribution, not a global speed multiplier, guessed
+  StrictMode, fitted state machine passed off as authoring, or taint forgiveness.
+  Neither canonical map library nor any product binary was changed in this check.
 - Closing falsifier: paired same-position/input launches against the supplied
   clips, including the first two launch ticks and later horizontal plateau,
   with a control that acts and normal run/evidence classification preserved.

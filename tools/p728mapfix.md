@@ -238,8 +238,63 @@ or infer a live P728 rollout from the Windows receipt. Restore directory/SSH
 availability, then use the clean worktree's guarded `build.ps1 -Pi` and verify
 all destination hashes, actual restarts and fresh live-client behavior.
 
-Remaining: Monolith's actual fix (matching original CSS/KSF trigger control needed),
+Remaining: Monolith's actual fix (original CSS BSP now supplied; see continuation),
 owner shade/display/fast-surf acceptance, and guarded NanoPi delivery. Keep the
 owned root/controls/evidence retained for these explicit unresolved gates; no
 owned game/build process remains running. Built, committed, published, Windows-
 installed and fleet-verified remain separate states.
+
+## Continuation — operator supplied the original CSS Monolith BSP
+
+The original is now available at Steam's `Counter-Strike Source/cstrike/maps/`
+`surf_monolith.bsp`, SHA256
+`896696e64479b42157e765c301759a5a9712b2e1409599d74e9f3c33dd3e6309`.
+It is85277615 bytes, versus the73040866-byte Momentum copy. Geometry/collision
+lumps1/3/5/10/12/13/14/16/17/18/19/26/48 match after decompression, including the
+brush-model indices and bounds. The entity lists differ (1815 versus1680).
+This closes the missing-original-BSP limitation above; do not request it again.
+
+Original hammer221083 / brush108 is `trigger_multiple`, with RunScriptCode
+`SetAbsVelocity(Vector(-1760 0 0))` on entry, and X=-1638/Y=0/currentZ on exit.
+The Momentum version converts it to one-shot horizontal1662/vertical398.301,
+StrictMode1. CSS references `superboost_filter`, which is not defined in the
+BSP's own entity list. There are no packed `.nut` scripts. This establishes a
+conversion/runtime-semantic difference, not the full effective KSF server setup.
+The existing QC dispatcher does not execute RunScriptCode.
+
+A test-only QC hook was appended to an owned manifest over a pinned Momentum
+BSP/ENT fixture. Both native dedicated/client processes used the clean P728 full
+build, real27591 socket and explicit100fps. No canonical map/source/config/data
+was edited, and no product binary was deployed. Final fixture compiles were zero
+warnings; the initial const-function-pointer error and unused-local warning were
+retained as failed preparation, not runtime passes.
+
+| Acting arm | Result | Interpretation |
+|---|---|---|
+| Unchanged product callback |1643.1304 plateau, practice0 | Reproduces the reported deficit |
+| Raw CSS entry1760 / exit1638 |1638 plateau, practice0 | BSP-script values alone do not reproduce KSF |
+| Entry1760, then observed1784 / exit1662 |1668.87 second-step transient, wrong first step, practice1 | A fitted second step is not enough |
+| Ad-hoc far-edge relocation with existing1662/398.301 |1662 plateau, different trajectory | Not proof of full StrictMode behavior |
+| Observed entry1662/Z0, next-touch1784/Z0, exit1662 |1668.8672 ->1665.9363 ->1663.0054, practice1 | Kinematic fit only; NOT a shipped fix |
+
+For the last fitted arm, the first two launch dx/dz steps match each of Hunter,
+Nex, Liq and Lucokiller to within0.000977 units (three within0.000001 after
+printed precision). This demonstrates that the existing mover can reproduce
+those reference displacements given the effective velocity sequence. It does
+NOT establish why the KSF runtime applies that sequence. Recorded velocity
+samples differ on event-adjacent frames; compare positions rather than assuming
+one callback ordering.
+
+The fitted callback still reports `hopped1/practice1`; no eligibility gate was
+weakened to conceal it. A safe fix must explain the effective booster phases and
+attribute their later slope lift narrowly, preserve real earlier taints, and
+pass both trajectory and classification falsifiers. Do not substitute a guessed
++30, global mover change or fitted callback for that work. The raw BSP alone is
+not evidence that the KSF server ran its unmodified script values.
+
+Both owned sessions stopped. The original owned runtime VM was restored and
+hash-verified; only the two verified owned BSP/ENT overlays and transient source
+manifest were retired. Both canonical BSP hashes were rechecked unchanged.
+Unique probe source/manifests, raw arms and compact kinematic comparisons remain
+inside the owned root (`rig/mono-css`, `artifacts/mono-css-*`,
+`artifacts/monolith-css-*`). `BACKLOG.md` now records the narrower remaining issue.

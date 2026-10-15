@@ -1,5 +1,22 @@
 # AGENT_NOTES.md
 
+## Monolith original CSS control — continuation after P728
+
+The operator-supplied Steam CSS `cstrike/maps/surf_monolith.bsp` now exists:
+SHA256896696e64479b42157e765c301759a5a9712b2e1409599d74e9f3c33dd3e6309.
+Do not keep asking for the original map/clips. Collision/geometry lumps match
+Momentum, but B4 hammer221083 is CSS RunScriptCode entry1760/exit1638 versus
+Momentum one-shot1662/398.301. The raw CSS values alone yield1638 in an acting
+fixture, not KSF; `superboost_filter` is not defined in the BSP. This QC does
+not execute RunScriptCode. BSP bytes are not a complete KSF-runtime contract.
+A reference-fitted two-step velocity control matched all four clips' first two
+position deltas within0.001 and1668.87/1665.94/1663.01, but still acquired a
+false hopped/practice tag. It is NOT a causal product fix or eligibility pass.
+An ad-hoc far-edge warp is likewise NOT proof of full StrictMode. Preserve the
+failed arms; require trajectory AND classification controls before shipping.
+Owned VM/ENT/BSP fixtures were restored/retired, canonical maps unchanged.
+Full original-vs-port data and arms: `tools/p728mapfix.md` continuation.
+
 ## P728 — command-scoped launch permission and image-control falsifiers
 
 - Prosurf B4's authored `allowBhop` pit must not disable hop rules for its whole
