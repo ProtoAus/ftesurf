@@ -68,7 +68,10 @@ that crossings acted; a coordinate-jump threshold missed valid short links.
 |10 ducked | Actual eye47/hull45; crossing under gravity800 |
 |19/20 ceiling/reverse | Native crossings under ordinary gravity800 |
 |Old native slow10 | Same placement/command acts without a crossing |
-|Open/Close | Old static control stays active; subject render/collision follow I/O |
+|Open/Close | Old static control stays active; subject render/collision follow I/O; closed10 has81 actual body observations and0 crossings |
+|Fresh late join | Already-closed10 is active0/solid0/draw0; live reopen becomes active1/solid21 |
+|Map transition/no portals | surf_demise count0, actual body/view moves95.46 units |
+|Yaw/floor doorway | surf_kitsune20 apertures, standing feet1 above sill crosses once without crouch-jump |
 |Partner-only retarget | Stable old native fingerprint stays7772440; v4 changes15832696 ->6604246 and restoration returns15832696 |
 
 Retarget preconditioning refreshes the same source once so list-relink order
@@ -94,10 +97,73 @@ The final focused review has no issues. Product source remained frozen during
 those reads; canonical peer edits were neither built nor deployed. P723/P724
 published upstream is integrated, along with the already-deployed P726 chat
 aliases. ENGINE.txt's highest patch stays726 while its native pin/tag is P725.
-Native deltas since the Pi's679 base outside this feature are Windows-only
-updater files, not additional server movement code.
+Server/common deltas since the Pi's679 base outside this feature are Windows-
+only updater files, not additional server movement code. The matching rebuilt
+HL2 plugin also includes published P683 material/rendering work; no extra Source
+collision policy was introduced for it.
 
-Source publication, exact-commit clean builds, Windows installation and NanoPi
-fleet delivery are distinct states. Final SHAs/hashes and any concrete delivery
-blockers will be appended after those operations. No deployment is claimed by
-this initial implementation/test record.
+### Publication and exact builds
+
+- Engine`77f614b462e1173076bbd0771e64bb3aadd54914`, annotated`patch-725`.
+- QC`7f3a0672b3b9c54f0de72d79ea7cc62179d4970d`, including approved P726.
+- Exact inspected SHAs pushed to main; all3 production VMs zero warnings.
+- Clean full Windows native revision`git-7334-patch-725-0-g77f614b46`.
+  Archive/worktree builds supplied this revision explicitly because the native
+  Makefile's directory-only`.git` test otherwise drops the stamp.
+- Clean native ARM subject/control each15 identical inherited warnings; matching
+  HL2 subject/control each1 identical comment warning: zero NEW warnings.
+
+### Windows delivery — completed2026-10-15 UTC
+
+Both installs received the standard native/plugin/VM set from the exact clean
+build outputs:16 destination files, all SHA256-verified, previous files retained
+as`.prev`. Owner cfg hashes were unchanged; no player data/configs were copied.
+Existing install processes were not killed; deployment waited until they had
+exited and preflight write access succeeded. This is installed-file provenance,
+not a claim about a human's currently running process or completed playthrough.
+
+| Output | SHA256 |
+|---|---|
+| Native client |`c3e8417cd09e14851dea4fa5f95b98cd9056cd2b1afc92e4ee829b7675e0bf34`|
+| Native dedicated |`3935f65f15985e5da41d95ed940deb8a603c7f02c32a8a7a77c4c1cfc0ebccef`|
+| qwprogs.dat |`9593a086282eeacf78f7f6bc991bf043f2caeac1baaaacad09d174f8520385b2`|
+| csprogs.dat |`a0a3065892b3f100c61746776d7f698e5fdb4db1e9eaf5aca49652b09de7fd88`|
+| menu.dat |`44f12fd918278bd160db66f6cfb45b176d56eeb6290e3d28e6365e81e3bbcbd9`|
+
+### NanoPi gates — passed; fleet delivery BLOCKED
+
+The actual candidate native and matching HL2 passed selftests and all7 native
+map/libm/trace/mover/tick/Source hash fields against Windows on bhop_eazy,
+surf_ace, surf_kitsune and surf_dune. Both arms used explicit identical BSP
+bytes in owned overlays: initial raw map variants were different, not a physics
+failure, and canonical map-library hashes were verified unchanged.
+
+Matched clean old engine85ef3e3/QC2de3726 controls and new engine77f614b46/QC7f3a067
+subjects replayed BOTH the approved pin1 reference3107 ticks/rows and provided
+pin2 synthetic4418 ticks/rows to PASS. Private player paths/raw output are not
+included. This legacy acceptance is not a completed new pin4 portal-route test.
+
+A verified four-file candidate is retained at
+`/srv/nvme/agent-work/portals-01a13e7a/stage/` with its manifest:
+
+- Native SHA256`c3c6a2b7ae6202b77f4e5f0a5327709474baf075ad49906739c206db7c32f9e2`.
+- Matching HL2 SHA256`4dd685d408af2c9839b892ea99d1629755a1b09eebb36be1eaabb84da549866a`.
+- QW/CS hashes exactly match the Windows table; menu is NOT a lobby artifact.
+
+At11:36Z both public and direct lobby directories returned ZERO rows while12
+services were active. An empty directory cannot prove quietness. No live native,
+plugin or progs file was replaced, and no live service was restarted. Readback
+still matched the separately deployed P726 pair (`7fb25d13…`/`a78f8dd6…`).
+The blocker is establishing a fresh positive directory and zero-player fleet,
+not a failed native gate. Recheck this and current deployed provenance before
+resuming; never guess a lobby count or overwrite a newer peer deployment.
+
+A later fetch also found [P727's guarded-runtime handover blocker](p727completion.md).
+This task did not copy backend source, migrate schema or attempt that handover.
+A future fleet resume must coordinate the current runtime and accepted native
+origins with its owner; a restored directory alone is not proof of that closure.
+Do not overwrite immutable inputs or run a normal backend deploy as a workaround.
+
+No Build/release/updater/feed operation was performed. Full-route camera feel,
+mouse timing and new pin4 complete-route receipt acceptance remain human checks
+in`lextest.md`, not automated claims.

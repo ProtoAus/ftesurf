@@ -4375,6 +4375,9 @@ position, momentum and the camera together, including upside-down/ceiling doors.
   old view, double turn or wall-sized pop should occur.
 - Try a ducked crossing, reverse direction after an exit, and the map's portals
   that open/close as the route advances. Closed doors must not remain windows.
+- Walk out of the start normally, check the timer is running/recording, then
+  finish a route and inspect its result. The fixture arms did not establish a
+  complete new pin4 portal-route receipt acceptance.
 - Compare a normal walking doorway on surf_kitsune: do not need a crouch-jump,
   sink into the frame's floor, or lose slow movement to an artificial200u/s kick.
 

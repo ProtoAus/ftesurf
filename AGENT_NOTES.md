@@ -12929,3 +12929,30 @@ the game fetches its own map list. The menu half is Patch 652.
 - P725's standalone math/CSG tools compile actual production functions. The CSG
   controls separately restore unconditional carving and remove the one-way side
   gate; each must fail its own wall assertion. Legacy pins are not those arms.
+- A reconnect of the already-cached fixture map with an external `.ent` tried
+  to download a nonexistent dlcache BSP and never spawned. No player/hook output
+  is not a portal-state failure. A fresh native client with the SAME `.ent`
+  proved late-join closed state and live reopen. Keep the invalid arm labelled.
+- A clean NanoPi `sv-rel` alone does not produce the required HL2 plugin. Source
+  maps then report Mod_NumForName/missing BSP even when the library is present.
+  Rebuild the installed plugin set against matching headers (here only HL2).
+  This host lacked `zip`: the owned build reproduced Makefile EMBEDMETA using
+  Python's append-mode ZIP writer, verified unchanged ELF prefix, metadata and
+  ZIP CRC, instead of installing system tools or silently omitting metadata.
+- Windows `-plugin` native gates need stdin kept OPEN until their planned quit.
+  EOF stopped the process after map load/before queued waits and native checks.
+  Read a fresh explicit engine log; empty Windows stdout is not test evidence.
+- Native mapcrc mismatched while all SIX physics/libm/tick hashes matched:
+  the raw bhop_eazy BSPs actually differed by580 bytes. Windows CSS/Momentum
+  variants also differed for surf_ace. Pin exact raw BSP fixtures in BOTH owned
+  comparison overlays; do not waive mapcrc or change the canonical libraries.
+  With explicit Momentum bytes, all7 fields matched Windows/ARM on bhop_eazy,
+  surf_ace, surf_kitsune and surf_dune. Canonical Pi map hashes stayed unchanged.
+- Match receipt-control QC to its native layout: clean QC2de3726/twelve fields
+  with native85ef3e3, versus QC7f3a067/thirteen fields/native77f614b46. Both
+  replayed the pin1 reference3107 ticks/rows and pin2 synthetic4418 ticks/rows
+  to PASS; raw player paths/output were suppressed. The public P492 fixture is
+  tracked at `ftesurf/cfg/test/p492voy.rec`, not necessarily an existing Pi rig.
+- At11:36Z the public/direct lobby directory returned0 rows while12 services
+  were active. This is NOT a zero-player proof. P725's live Pi swap was held;
+  never replace a failed/empty directory gate with a guessed count or restart.
