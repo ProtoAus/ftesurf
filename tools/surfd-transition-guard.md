@@ -145,7 +145,78 @@ controls prove refusal without state/source mutation. Source/SQLite/cache recove
 sentinels remain preserved, including a
 later native row after the cut; repeated guard failures cannot restore stale
 bytes. There is no DB restore procedure to approve or exercise. No real P717
-migration, gunicorn, scheduler, native HTTP submit, owner-sized drain, recovery
+migration, scheduler, native HTTP submit, owner-sized drain, recovery
 reconciliation, reboot or physical storage/power-loss acceptance is claimed.
 Exclusive guard initialization collision is tested; coordinated backup-name
 collision handling belongs to the unimplemented recovery driver.
+
+### Real foreground gunicorn lifetime falsifier
+
+`test_surfd_guard_gunicorn.py` separately runs an actual gunicorn master and
+one gthread worker/two threads against authored synthetic WSGI, over a private
+Unix socket only. It never imports surfd or invokes a live launcher. Supply an
+explicit root-local dependency directory: upstream gunicorn23.0.0 + packaging24.2,
+or gunicorn20.1.0 + packaging24.2 + setuptools65.5.1 (for pkg_resources). The test
+installs nothing, hashes the dependency sources and checks their import roots.
+These upstream pins do **not** identify or reproduce distro-patched host bytes.
+
+```
+python3 tools/test_surfd_guard_gunicorn.py --out /owned/new-gunicorn-run --gunicorn-path /owned/deps
+python3 tools/test_surfd_guard_gunicorn.py --out /owned/new-gunicorn20-run --gunicorn-path /owned/deps20 --gunicorn-version 20.1.0
+```
+
+Predictions and discriminating controls:
+
+- A served authored response and import witness identify the actual worker.
+  Both master and worker retain the exact admission-lock device/inode; an
+  independent exclusive flock must contend.
+- Closing publishes CLOSED but times out while that admitted master lives.
+  A fresh guarded launch refuses without a new import. HUP and deterministic
+  max-requests4/jitter0 recycling **still import and serve while CLOSED** under
+  the already admitted master, and retain the lock. This is expected: CLOSED
+  stops new admissions, not existing-generation descendants. Installation must
+  wait for successful drain, never just the CLOSED status line.
+- A held request survives graceful master TERM. Its authored completion and
+  response, master exit, worker reaping and socket removal must precede
+  successful drain. All waits are bounded; cleanup only signals the exact
+  parent-created master after checking its start identity, never process groups
+  or discovered PIDs. Cleanup failure retains identities rather than escalating.
+- A test-only launcher deliberately drops the inherited admission FD. The same
+  lifetime oracle must fail while real WSGI still serves and exclusive drain
+  succeeds. This proves why uncooperative/detached routes cannot be approved by
+  a passing foreground test.
+
+Linux, nonoptimized Python, link-free canonical NEW output and an owned ancestor
+are required before fixture creation. Provenance, guard commands, WSGI events,
+responses, lock oracles, logs and cleanup identities remain under that output.
+No production gthread4/max-requests5000/jitter500, detached run.sh, scheduler,
+service-manager, candidate, generation handover or live no-loss proof is implied.
+
+## Launch inventory preparation (not enforcement)
+
+Do not equate a finite source search with complete host launch coverage. Before
+proposing a transition, reconcile these **source-defined** families with actual
+installed definitions and process/start identities:
+
+| Family | Source leads |
+| --- | --- |
+| Detached master and worker recycling | `surfd/run.sh`, gunicorn HUP and max-requests |
+| Boot/restart/reload | `surfd/surfd.service`, loaded fragments/drop-ins and triggers |
+| Scheduled/manual KSF import | `surfd/ksfimport.py`, `ksfgrab.py`, all cache/home overrides |
+| Other scheduled/manual app importers | sweep, momwatch/momgrab/momboards/momdates/momindex, mapwatch, steamsync |
+| Descendant importers | momwatch launching momboards; parent supervision and FD lifetime |
+| Deploy/repair/restart tools | `tools/surfd-deploy.ps1`, `surfd/stop.sh`, alternate wrappers |
+| Direct Python/WSGI and smoke/test tools | module-scope surfd migrate, operator and automation entrypoints |
+
+With explicit inventory approval, collect bounded process/launcher metadata,
+resolved interpreter/source paths and hashes, loaded service and scheduler states,
+restart triggers, owning user and path metadata only. Include both snapshot
+boundaries to expose churn. Do not probe importer `--help`: app import can precede
+argument parsing. Do not read secrets/environment values, logs, DB/cache contents,
+player files, shell history or arbitrary job bodies; do not acquire locks, signal,
+import, change services or make application HTTP requests. Keep raw inventories
+private and publish only sanitized classifications and explicit inaccessible-user,
+alternate-path and manual-launch unknowns. Historical service headers conflict;
+only observed installed state can reconcile them. An inactive but enabled service
+is still a future launch route. Inventory approval is not permission to enforce
+exclusion, install source, migrate or reopen.
