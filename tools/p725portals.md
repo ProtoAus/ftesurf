@@ -154,9 +154,11 @@ At11:36Z both public and direct lobby directories returned ZERO rows while12
 services were active. An empty directory cannot prove quietness. No live native,
 plugin or progs file was replaced, and no live service was restarted. Readback
 still matched the separately deployed P726 pair (`7fb25d13…`/`a78f8dd6…`).
-The blocker is establishing a fresh positive directory and zero-player fleet,
-not a failed native gate. Recheck this and current deployed provenance before
-resuming; never guess a lobby count or overwrite a newer peer deployment.
+At12:28Z the directory recovered to12 positive rows; a fresh census then showed
+ONE connected player. The swap remains held for a zero-player fleet, not a
+failed native gate. No active player was disconnected. Recheck quietness and
+current deployed provenance before resuming; never guess a lobby count or
+overwrite a newer peer deployment.
 
 A later fetch also found [P727's guarded-runtime handover blocker](p727completion.md).
 This task did not copy backend source, migrate schema or attempt that handover.
