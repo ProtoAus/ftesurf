@@ -14,7 +14,7 @@ candidate is not permission to overwrite immutable runtime bytes, change pinned
 hashes, relabel a guard, create a second OPEN guard or bypass launch coverage.
 
 The ACTUAL pristine schema19 control reproduces the leak (5 checks); compatible
-subject32, web, join and map-pool suites pass. A synthetic Chrome DOM witness
+final subject34, web, join and map-pool suites pass. A synthetic Chrome DOM witness
 and real dedicated-socket game client both show exactly3 of5 eligible maps,
 with the same five finished/not-yet entries. Both screenshots were inspected.
 The historical9 runs remain visible separately; no history was deleted. Consent
@@ -22,7 +22,12 @@ in the isolated client fixture uses current version5; its initial outdated
 version4 correctly refused profile networking and is retained as failed harness
 evidence. No production consent/player config was changed.
 
-Native isolated tests and candidate commit hashes are recorded in the main
+All23 native isolated backend suites plus codec pass; expanded completion33
+checks pass there, with Node syntax separately passing on Windows. The one
+external MOM video fixture is absent and not claimed passed. Runtime bytes are
+unchanged after that full suite; the final test-only scope expansion pins
+installed-only admin rows versus disabled uninstalled feed rows. Candidate
+hashes and exact failed-staging boundaries are in main's
 `tools/p727completion.md` receipt. A separately reviewed guarded same-schema
 application-generation handover plus the requested reversible bhop override
 reconciliation is still needed. The previous transition was a different,

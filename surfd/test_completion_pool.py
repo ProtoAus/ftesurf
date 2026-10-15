@@ -61,7 +61,8 @@ def main():
     watch = home/'mapwatch'; watch.mkdir()
     (watch/'mapdl.txt').write_text('FTESURF-MAPDL 1\n'+''.join(
         f'dl {n} {n.split("_")[0]} m 2 1 2026-10-15 0 2 0\n'
-        for n in names if n.startswith(('surf_', 'bhop_'))))
+        for n in names if n.startswith(('surf_', 'bhop_'))) +
+        'dl bhop_uninstalled bhop m 2 1 2026-10-15 0 2 0\n')
     db = S.connect()
     completed = {'surf_done', 'surf_disabled', 'surf_unzoned', 'bhop_done',
                  'bhop_nozones', 'bhop_embedded', 'bhop_manual', 'df_other', 'de_other'}
@@ -110,6 +111,7 @@ def main():
     check('admin effective state includes both automatic and manual disables',
           {n for n,m in manifest.items() if m['enabled']}, {'surf_done','surf_next','surf_unzoned','bhop_done','bhop_next'})
     check('admin explains the automatic bhop disable', bool(manifest['bhop_nozones'].get('policy')), True)
+    check('admin manifest remains installed-build-only', 'bhop_uninstalled' in manifest, False)
     check('admin cannot enable a bhop without its zone file', setmap('bhop_nozones',1).status_code,400)
     check('admin cannot enable unrelated modes', setmap('df_other',1).status_code,400)
     check('manual disable acts after profiles and lists are warm', setmap('surf_done',0).status_code,200)
@@ -123,7 +125,7 @@ def main():
     check('manual re-enable acts',setmap('surf_done',1).status_code,200)
     check('manual re-enable restores list',web_maps()[1],expected)
     feed = c.get('/api/board?maps=1').get_data(as_text=True)
-    for name, enabled in [('bhop_nozones',0),('bhop_embedded',0),('bhop_done',1),('surf_disabled',0)]:
+    for name, enabled in [('bhop_nozones',0),('bhop_embedded',0),('bhop_uninstalled',0),('bhop_done',1),('surf_disabled',0)]:
         row = next(r for r in feed.splitlines() if r.startswith('dl '+name+' '))
         check('game feed effective policy: '+name,int(row.split()[-1]),enabled)
     check('join blocks automatic disable',c.get('/api/join?map=bhop_nozones').status_code,403)
