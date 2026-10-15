@@ -3045,6 +3045,8 @@ void(entity pl) SV_AmbientResend =
 	}
 };
 
+float(entity t, string input, string param, entity act) SV_PortalInput;
+
 void(entity t, entity o, entity act) SV_ApplyInput =
 {
 	local string in, pm;
@@ -3062,6 +3064,10 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 	  Source inputs differ only by case.
 	*/
 	in = strtolower(in);
+
+	if (!strcmp(t.classname, "linked_portal_door"))
+		if (SV_PortalInput(t, in, pm, act))
+			return;
 
 	if (in == "addoutput")      { SV_IOAddOutput(t, pm);                return; }
 	if (in == "kill")           { remove(t);                            return; }
@@ -5900,45 +5906,77 @@ void() linked_portal_door_report =
 	remove(self);
 };
 
-void() linked_portal_door_link =
+float(entity to, float changed) SV_PortalSend =
+{
+	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
+	WriteByte(MSG_ENTITY, ENTWIRE_PORTALSTATE);
+	WriteString(MSG_ENTITY, self.targetname);
+	WriteString(MSG_ENTITY, self.partnername);
+	WriteByte(MSG_ENTITY, self.startactive != 0);
+	WriteFloat(MSG_ENTITY, self.lpd_hw);
+	WriteFloat(MSG_ENTITY, self.lpd_hh);
+	return TRUE;
+};
+
+void(entity door) SV_PortalRefresh =
 {
 	local entity dst;
 	local vector ext;
 
-	dst = find(world, targetname, self.partnername);
-	if (!dst || !FS_PortalSetup(self, dst))
+	door.solid = SOLID_NOT;
+	door.lpd_ok = FALSE;
+	if (door.partnername != "")
+	{
+		dst = find(world, targetname, door.partnername);
+		if (FS_PortalSetup(door, dst))
+		{
+			door.camera_transform = FS_PortalTransform;
+			if (door.startactive)
+				door.solid = SOLID_PORTAL;
+		}
+	}
+	ext = FS_PortalExtent(door.lpd_fa, door.lpd_ra, door.lpd_ua, door.lpd_hw, door.lpd_hh);
+	setsize(door, '0 0 0' - ext, ext);
+	setorigin(door, door.origin);
+	door.SendFlags = 1;
+};
+
+float(entity t, string input, string param, entity act) SV_PortalInput =
+{
+	local float was;
+
+	was = t.startactive;
+	if (!strcmp(input, "open") || !strcmp(input, "enable"))
+		t.startactive = TRUE;
+	else if (!strcmp(input, "close") || !strcmp(input, "disable"))
+		t.startactive = FALSE;
+	else if (!strcmp(input, "toggle"))
+		t.startactive = !t.startactive;
+	else if (!strcmp(input, "setpartner"))
+		t.partnername = param;
+	else if (!strcmp(input, "setwidth"))
+		t.lpd_hw = bound(1, stof(param), 1024);
+	else if (!strcmp(input, "setheight"))
+		t.lpd_hh = bound(1, stof(param), 1024);
+	else
+		return FALSE;
+	SV_PortalRefresh(t);
+	if (was != t.startactive)
+		SV_FireOutput(t, t.startactive ? "OnOpen" : "OnClose", act);
+	return TRUE;
+};
+
+void() linked_portal_door_link =
+{
+	// Width/height are half-extents, initialized at spawn. Reuse the runtime
+	// path so startup I/O and later changes cannot disagree with the client.
+	SV_PortalRefresh(self);
+	if (!self.lpd_ok)
 	{
 		dprint(sprintf("linked_portal_door: no partner '%s'\n", self.partnername));
 		vbsp_lpd_unpaired = vbsp_lpd_unpaired + 1;
 		return;
 	}
-
-	/*
-	  DO NOT HALVE THESE -- `width` and `height` are already half-extents.
-	  momentum.fgd:5366-5372 uses the `orientedwidthheighthalf` helper and names
-	  the keys "Half-Width (G)" and "Half-Height (B)", default 128.  The long
-	  version of this, with the measurements that caught it, is at the matching
-	  site in cl_portal.qc; the two MUST agree, because this one is the teleport
-	  acceptance band and that one is what gets drawn.  Halved, the aperture you
-	  can see and the aperture you can enter were both a quarter of their real
-	  area -- which is why the far view never reached the edges of the doorway.
-	*/
-	self.lpd_hw = self.width;
-	self.lpd_hh = self.height;
-	if (self.lpd_hw <= 0) self.lpd_hw = 128;
-	if (self.lpd_hh <= 0) self.lpd_hh = 128;
-
-	ext = FS_PortalExtent(self.lpd_fa, self.lpd_ra, self.lpd_ua,
-	                      self.lpd_hw, self.lpd_hh);
-
-	// camera_transform BEFORE the entity becomes a portal: setsize links it,
-	// and from that moment any trace in the area can reach the transform.
-	self.camera_transform = FS_PortalTransform;
-	self.movetype = MOVETYPE_NONE;
-	self.solid    = SOLID_PORTAL;
-	setsize(self, '0 0 0' - ext, ext);
-	setorigin(self, self.origin);
-
 	vbsp_lpd_n = vbsp_lpd_n + 1;
 };
 
@@ -5992,6 +6030,13 @@ void() linked_portal_door =
 	self.solid    = SOLID_NOT;
 	setorigin(self, self.origin);
 
+	self.lpd_hw = self.width > 0 ? self.width : 128;
+	self.lpd_hh = self.height > 0 ? self.height : 128;
+	self.startactive = (self.startactive != 0 && !self.StartDisabled);
+	self.SendEntity = SV_PortalSend;
+	self.SendFlags = 1;
+	self.pvsflags = PVSF_IGNOREPVS;
+
 	// Patch 207: one reporter for the map, armed by whichever door spawns
 	// first and firing after every link think.  See linked_portal_door_report.
 	if (!vbsp_lpd_reporter)
@@ -6020,16 +6065,6 @@ void() linked_portal_door =
 		vbsp_lpd_unpaired = vbsp_lpd_unpaired + 1;
 		return;
 	}
-
-	/*
-	  startactive 0 means the door exists but does nothing.  Patch 194 reused
-	  StartDisabled for this because its touch already tested that flag; there is
-	  no touch any more, so the honest expression is simply not to build the
-	  portal.  Either spelling disables it -- 443 of 443 write startactive, and
-	  StartDisabled is the Source key a mapper would reach for.
-	*/
-	if (self.startactive == 0 || self.StartDisabled)
-		return;
 
 	// Resolved next frame: spawn order is map order and the partner is as likely
 	// to come after this door as before it.  See linked_portal_door_link.

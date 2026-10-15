@@ -315,6 +315,9 @@ void(entity b) Body_Free =
 };
 
 .float pb_trigwire, pb_trigmodel, pb_trigon;
+.float pb_portalwire, pb_portalon, pb_portalwidth, pb_portalheight;
+.string pb_portalname, pb_portalpartner;
+void(entity state) Portal_NetState;
 
 void() Body_TrigSeed =
 {
@@ -327,6 +330,11 @@ void() Body_TrigSeed =
 
 void() CSQC_Ent_Remove =
 {
+	if (self.pb_portalwire)
+	{
+		self.pb_portalon = FALSE;
+		Portal_NetState(self);
+	}
 	if (self.pb_trigwire)
 		Trig_NetState(self.pb_trigmodel, 0, 0);
 	if (self.pb_head)
@@ -605,6 +613,16 @@ void(float isnew) CSQC_Ent_Update =
 			self.pb_trigmodel = readshort();
 			self.pb_trigon = readbyte();
 			Trig_NetState(self.pb_trigmodel, 1, self.pb_trigon);
+		}
+		else if (f == ENTWIRE_PORTALSTATE)
+		{
+			self.pb_portalwire = TRUE;
+			self.pb_portalname = readstring();
+			self.pb_portalpartner = readstring();
+			self.pb_portalon = readbyte();
+			self.pb_portalwidth = readfloat();
+			self.pb_portalheight = readfloat();
+			Portal_NetState(self);
 		}
 		return;
 	}

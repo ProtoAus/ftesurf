@@ -30,6 +30,7 @@
 // Typed extension of the CSQC entity stream (body flag byte bit 128).
 #define ENTWIRE_TYPED 128
 #define ENTWIRE_TRIGSTATE 1
+#define ENTWIRE_PORTALSTATE 2
 
 // --- hulls ------------------------------------------------------------------
 // Source puts the player origin AT THE FEET, unlike Quake's centred origin.

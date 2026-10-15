@@ -116,6 +116,9 @@ void PM_PlayerMove(float gamespeed) {
  int i;seenmsecs[moved++]=pmove.cmd.msec;
  for(i=0;i<3;i++) pmove.origin[i]+=pmove.velocity[i]*pmove.cmd.msec*.001f*gamespeed;
 }
+void CSQC_PredictPortalAngles(int seat,const usercmd_t *cmd) {
+ (void)seat;(void)cmd;assert(0 && "physics double must not invent a portal crossing");
+}
 void CSQC_PredictPlayerMove(int seat,const usercmd_t *cmd,const float *preorigin) {
  if(npost==0) VectorCopy(preorigin,firstpostorigin);
  npost++;

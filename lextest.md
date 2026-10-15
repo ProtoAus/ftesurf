@@ -4363,3 +4363,21 @@ was last against the ramp and puts the mark there.
 
 What I would like to hear: on a ramp end you know well, is the chevron on the
 lip now?
+
+## Seamless portals on surf_tripportals (Patch 725)
+
+Use the matching P725 native engine and progs, not an older released binary.
+The portal window should show the destination before entry; crossing rotates
+position, momentum and the camera together, including upside-down/ceiling doors.
+
+- Play a continuous route, slowly first and then at surfing speed. Look sideways
+  while entering and keep moving the mouse through the crossing: no one-frame
+  old view, double turn or wall-sized pop should occur.
+- Try a ducked crossing, reverse direction after an exit, and the map's portals
+  that open/close as the route advances. Closed doors must not remain windows.
+- Compare a normal walking doorway on surf_kitsune: do not need a crouch-jump,
+  sink into the frame's floor, or lose slow movement to an artificial200u/s kick.
+
+Automated/native and dedicated-socket geometry checks are recorded in
+`tools/p725portals.md`; they are not a complete human playthrough or a mouse-feel
+acceptance. Report the door/route and whether standing or ducked if it feels wrong.

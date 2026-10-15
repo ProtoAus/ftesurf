@@ -33,19 +33,18 @@
       v_up          )
       return        the transformed point
 
-  pmove.c:106-114 calls it once with (origin, velocity, move-remainder,
-  gravitydir) and again with (origin, and the three rows of the view basis);
-  pr_csqc.c:8787-8798 calls it with (vieworg, and the three rows of the view
-  basis).  "Transform the point, rotate the three vectors" is correct for all
-  three, which is why there is one function here rather than three.
+  Source mover v4 passes the hull centre, velocity, move remainder and eye
+  offset; world gravity stays world gravity. Legacy movers pass the feet and
+  gravity direction. Both also transform a view basis. Portal rendering and
+  the main eye crossing use this same point/vector contract.
 
   WHY THE BASIS IS CACHED AT SPAWN.  makevectors WRITES v_forward/v_right/
   v_up -- the very globals the contract passes data in.  Calling it inside the
   transform would destroy the caller's input before it had been read.  The six
   basis vectors and the exit origin are therefore worked out once, at link
-  time, and the transform touches no entity but self.  (Which also means these
-  doors must not move at runtime.  None in the library does; Source's
-  Enable/Disable inputs are a separate matter and are not implemented.)
+  time, and the transform touches no entity but self. Doors must not move at
+  runtime. Open/Close, SetPartner and size inputs refresh collision and send
+  authoritative state through the typed CSQC entity stream.
 
   THE ROTATION is the ordinary portal one: express the offset in the entry
   door's basis, negate the forward and right components, read it back out in
@@ -55,20 +54,16 @@
   a point at depth +d in front of A becomes depth +d in front of B once the
   exit's own forward is accounted for.
 
-  PITCHED DOORS ARE OUT OF SCOPE, and the limitation is specific rather than
-  vague.  109 of the library's 443 doors carry a nonzero pitch (mostly +-90 --
-  portals in floors and ceilings).  The rotation above handles them
-  geometrically, but pmove.c:110-139 passes pmove.gravitydir through as v_up
-  and then applies a 200 u/s minimum-speed clamp when the transformed
-  gravitydir has turned more than 45 degrees.  For a pure-yaw pair the
-  gravitydir is unchanged and the clamp correctly stays off; for a floor
-  portal it fires.  Half gravity is also applied before and after the move
-  (pm_source.c), which a yaw rotation preserves exactly and a pitch does not.
-  surf_kitsune's eighteen doors are all pure yaw, which is what this patch is
-  for.  A pitched one will move you and will not be smooth.
+  PITCH AND ROLL require Source mover v4: exact oriented plane crossing,
+  hull-centre placement, conserved rotated momentum and a carried eye offset
+  which settles back to the upright hull. Prediction applies the rigid view
+  rotation once and reconciles its reliable acknowledgement. Versions 1-3
+  retain their original feet/slab and minimum-speed behavior for replay.
 ===========================================================================
 */
 
+// Source v4 uses an exact centre-plane crossing; the thin box below is only
+// its broad phase. The following slab rationale describes legacy movers.
 // The aperture is a plane, so the collision box wants to be as close to one as
 // a box can get.  This is not cosmetic: the engine stops the near-side trace
 // at the box's face and PM_PortalTransform mirrors THAT point, so a thick box
@@ -133,8 +128,8 @@
   depth: the standard sum of |axis component| x half-extent.  Exact for the
   427 doors at axis-aligned yaws and conservative for the sixteen that are
   not.  setsize wants an AABB and QuakeC entities do not have oriented ones,
-  so this is the same compromise PM_PortalCSG and PM_PlayerTrace make on the
-  engine side -- stated in all three places rather than assumed once.
+  Source v4 receives lpd_hw/lpd_hh separately and uses the exact oriented
+  aperture for collision; this AABB is only the broad phase.
 */
 vector(vector f, vector r, vector u, float hw, float hh) FS_PortalExtent =
 {
@@ -173,6 +168,8 @@ vector(entity e, vector p) FS_PortalWarp =
 float(entity door, entity dst) FS_PortalSetup =
 {
 	if (!dst || dst == door)
+		return FALSE;
+	if (strcmp(dst.classname, door.classname))
 		return FALSE;
 
 	makevectors(door.angles);
