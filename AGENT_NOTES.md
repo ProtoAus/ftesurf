@@ -5180,6 +5180,31 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
 
 ## OpenGL blend collector and visual harness (Patch 685)
 
+### P721 cache-gate readback refusal and build guards — 2026-10-15
+
+- The new exact-P721 Q1 product/twin attempt stopped BEFORE its first PNG:
+  `hud_timers` was unknown; raw replies also reject `hud_pb`, `hud_spectators`,
+  `hud_statusbar`, `hud_lobby` and `hud_surfinfo`. Copying old setting strings
+  into a mandatory readback contract does not establish that those names exist.
+  Keep required renderer/registered HUD controls strict; audit actual registration
+  and pin the loaded progs separately from any source checkout. An unknown name
+  is neither an effective zero nor evidence that every overlay is disabled.
+  This was one product boot/zero shots/no diagnostic boot, NOT a renderer/cache
+  failure or functional pass. Once-only rc0 closure restored eight subject
+  binaries; independent audit matched both installs/protected membership and
+  proved all three originally absent fixture files removed.
+  Preserve the frozen failure; a corrected contract needs separate review,
+  refreeze and fresh authority, never a silent retry or a generic Unknown bypass.
+- The diagnostic build helper's first review caught a warning filter that ignored
+  Makefile lines and required lowercase `warning:`. Match the word case-
+  insensitively, including non-colon forms, and compare payload MULTIPLICITIES;
+  an extra occurrence of an inherited warning must fail. Attribute compiler/Make
+  categories without discarding either. Normalize only registered source roots.
+  Acting controls reject new Makefile/mixed-case/non-colon and duplicate payloads.
+  Reread both source and product HEADs in the final closure, not just status/index
+  and tracked bytes. Corrected exact-P721 diagnostic compile: zero NEW counts,
+  unchanged tracked sources/dependency cache/HEADs/index; no native acceptance.
+
 ### Legacy list readiness/rescan seam (2026-10-14 source probe)
 
 `tools/test_p690legacyorder.py` compiles complete production batch-generation,
