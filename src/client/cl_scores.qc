@@ -91,6 +91,7 @@ float  rec_sb_legbuilt;          // the leg the rows belong to; -1 = none
 float  rec_sb_filter;            // SB_F_*
 vector rec_sb_scroll;
 vector rec_sb_legscroll;
+float rec_sb_sidew, rec_sb_sidelabel;   // P724: measured UI-font extent, not row-font ems
 float  rec_sb_best;              // the fastest CLEAN time on this leg, or 0
 
 // Every known row has one class chip; unknowns remain visible under all chips.
@@ -805,6 +806,12 @@ string(float leg) Scores_LegName =
 	if (k <= 0)
 		return sprintf("bonus %g", t);
 	return sprintf("bonus %g st %g", t, k);
+};
+
+string(float idx) Scores_LegTier =
+{
+	return MapTier_Text(rec_sb_legtrack[idx], rec_sb_legnum[idx], TRUE,
+	                    rec_sb_legtrack[idx] == 0 && rec_sb_legnum[idx] == 0);
 };
 
 /*
@@ -3127,7 +3134,16 @@ void(vector scr) Scores_Draw =
 		Scores_Type(px);
 		pad   = rec_sb_szrow;           // every ladder rung is even: its halves are whole pixels
 		chipw = ceil(rec_sb_cw * 8.5);
-		sidew = ceil(rec_sb_cw * 22);    // map/leg MOM + KSF ratings below each name
+		// P724: the row's mono em can shrink below the UI label's 12px floor.
+		// Measure the shared formatter in the actual label face/size.
+		sidew = stringwidth("TRACK  * suggested", TRUE, [rec_sb_szhead, rec_sb_szhead]);
+		for (idx = 0; idx < rec_sb_legn; idx = idx + 1)
+		{
+			sidew = max(sidew, stringwidth(Scores_LegName(idx), TRUE, [sb_szui, sb_szui]));
+			sidew = max(sidew, stringwidth(Scores_LegTier(idx), TRUE, [rec_sb_szhead, rec_sb_szhead]));
+		}
+		rec_sb_sidelabel = sidew;
+		sidew = ceil(max(rec_sb_cw * 15, sidew + rec_sb_cw * 3));
 		segw  = ceil(rec_sb_cw * 11.5);
 		roomw = 0;                    // the old room-list sidebar is gone
 		have  = scr_x - pad * 2 - roomw - (pad * 3 + sidew) - pad * 0.5;
@@ -3155,6 +3171,7 @@ void(vector scr) Scores_Draw =
 			break;                      // nothing smaller to try
 		step = step + 1;
 	}
+	rec_sb_sidew = sidew;
 	rec_sb_rowh = ceil(rec_sb_szrow * 1.75);
 	tabh  = ceil(rec_sb_szrow * 1.9);
 	chiph = ceil(rec_sb_szhead * 2);
@@ -3388,8 +3405,7 @@ void(vector scr) Scores_Draw =
 			             on ? SUI_THEME_SELECTED : SUI_THEME_HOVER, 1);
 		Scores_Text([lp_x + rec_sb_cw, lp_y + 2], sb_szui, Scores_LegName(idx),
 		            on ? SUI_THEME_ACCENT : (hot ? SUI_THEME_TEXT : SUI_THEME_DIM), 1);
-		s = MapTier_Text(rec_sb_legtrack[idx], rec_sb_legnum[idx], TRUE,
-		                 rec_sb_legtrack[idx] == 0 && rec_sb_legnum[idx] == 0);
+		s = Scores_LegTier(idx);
 		Scores_Text([lp_x + rec_sb_cw, lp_y + sb_szui + 4], rec_sb_szhead, s,
 		            on ? SUI_THEME_TEXT : SUI_THEME_MUTED, 1);
 		if (sui_is_released(rid))
@@ -4172,6 +4188,9 @@ void() Scores_Status =
 	print(sprintf("  board=%s  %s\n", (s != "") ? s : "(unpublished)",
 	              (Scores_BoardNote() != "") ? Scores_BoardNote()
 	                                         : "-- no note drawn"));
+
+	print(sprintf("  track sidebar %.1f label %.1f inset %.1f\n",
+	              rec_sb_sidew, rec_sb_sidelabel, rec_sb_cw * 3));
 
 	// Witnesses: does the online store describe the leg on screen, and how many
 	// best times has the room list absorbed from it.

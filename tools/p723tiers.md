@@ -100,7 +100,7 @@ of every arbitrary folder named cstrike or automatic map-name aliasing.
   <built-dir> --zones <surf_eclipse.json> --bonus-zones <surf_ace.json>
   --css-control surf_unrequited`: actual headless CSQC through a real dedicated
   socket. Differing client/server catalogues prove server authority; independent
-  MOM4/KSF6, stage2 suggestion, bonus split, compact labels, unknown stage,
+  MOM4/KSF6, stage1/tier2 suggestion, bonus split, compact labels, unknown stage,
   stale map, old-server fallbacks and clearing on map change pass. Actual
   `say !b 1` warp proves bonus-track HUD stats and sidebar leg table agree.
 - Predecessor c672f9c with a TEST-ONLY command observing its unchanged HUD
@@ -108,12 +108,40 @@ of every arbitrary folder named cstrike or automatic map-name aliasing.
 - Whole-tree shipguard in a fresh source-only worktree cannot run without the
   unrelated installed particle asset directory. The targeted real-literal /
   real-release-entry gate passes and removing this entry produces MISS.
-- Existing non-headless owner/peer game remains untouched. Screenshot, physical
-  wheel/click hit-testing and normal/small-window appearance were NOT verified
-  by the headless controls; see lextest.md. No recorder/evidence semantics,
-  physics, backend/schema, identity, network download policy or content files
-  were changed.
+- The existing non-headless game was not closed or used as a subject. After it
+  exited independently, graphical checks became possible; see the P724
+  follow-up below. Physical input and preferred HUD scale remain human-only
+  acceptance, not a claim made by the headless controls. No recorder/evidence
+  semantics, physics, backend/schema, identity or download policy were changed.
 
 Disposable test rigs and detailed logs are owned under the task's OWNER.md root;
 public source/receipts contain no player identities or raw private output.
 Deployment provenance is recorded separately after actual destination checks.
+
+## P724 — graphical follow-up: fit the complete bonus label
+
+The first1280x720 screenshot exposed a real P723 fault: the complete formatter
+text reached the client, but `22 * rec_sb_cw` clipped the sidebar after `KSF U:X`,
+hiding `S:S`. The mono row had shrunk below the UI label's12px floor. P724
+measures the header, every actual leg name and the SAME compact tier formatter
+in their drawn UI-font sizes inside the existing responsive sizing loop. Insets
+and the resulting width feed the board's normal column/size calculation.
+`scores status` prints `track sidebar <width> label <extent> inset <padding>`.
+
+All3 VMs compiled with0 warnings. The corrected graphical rig passed the full
+real-socket controls at1280x720 AND800x600 with complete `MOM 8* KSF U:X S:S`
+visible in the bonus sidebar, full bonus text in the HUD, and real UI-chain
+clicks selecting the taller stage2 row. Images were opened and inspected.
+A further800x600 HUD-editor arm registered the expanded map-info box including
+the bonus line, with all bounds inside the window. Width witnesses included
+123 >=108+14.4 for stages and128 >=113+14.4 for the split bonus. Normal/small
+HUD and board images were inspected; no physical mouse/wheel test is claimed.
+
+Commands: the same runtime script above with `--window-size 1280x720` or
+`--window-size 800x600`. The script refuses a graphical launch if an owner/peer
+game process exists, excluding only its own dedicated server. Screenshots plus
+nonzero drawn column/type metrics and the measured-width grade are required;
+headless text alone cannot pass this graphical arm. The initial graphical rig
+also failed on client-only cvars sent as bare server commands; the fixture was
+corrected to use `set`, and clean repeat arms passed. Those failed controls were
+retained, not relabelled as product passes.

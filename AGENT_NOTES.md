@@ -3583,7 +3583,7 @@ material behind it; not map completeness or native/prediction acceptance.
   only (`other`: a press another handler took); `rewind
   status|seek|step|go|save` drive the rest.
 
-## Map/leg tier metadata (P723)
+## Map/leg tier metadata (P723/P724)
 
 - `maps/tiers.txt` is public generated metadata, not player data. Rebuild with
   `tools/maptiers.py`; ship the asset to both installs and the Pi separately from
@@ -3609,6 +3609,16 @@ material behind it; not map completeness or native/prediction acceptance.
   download. Exact filenames/build compatibility still apply. `fs_addons.txt`
   overrides defaults; do not overwrite an owner's mounts. Full controls/limits:
   `tools/p723tiers.md`.
+- P724 visual falsifier: a `22 * rec_sb_cw` sidebar still clipped the Strafe
+  half of a bonus label at1280x720. The row's mono face had shrunk to8px while
+  the UI label had a12px floor. Measure every actual title/rating string in its
+  drawn face/size during the existing sizing loop; use the same formatter to
+  measure and draw. `scores status` now witnesses label+insets fitting sidew.
+  Quiet-gated1280x720/800x600 screenshots and real UI-chain row clicks passed;
+  an800x600 HUD-editor control also registered the entire extra bonus row inside
+  the window. A first graphical rig's server cfg used client-only commands
+  without `set` and correctly failed its unknown-command grade; corrected in
+  the fixture, not hidden as a product pass.
 
 ## Imported runs: Momentum Mod and KSF
 

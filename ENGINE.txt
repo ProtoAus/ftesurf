@@ -25,7 +25,7 @@ commit   b548053218a00aa6e549dfee9ad02a65833317b8
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-721
-patch    723
+patch    724
 # Patch 722: Steam-account friends with mutual acceptance, private lobby-mediated
 # presence/join/chat, a full-width Players scoreboard tab and one-ESC close for
 # other profiles. Viewer-local overhead pictures/names use existing poses and

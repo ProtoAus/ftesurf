@@ -26,12 +26,18 @@ def main():
     ap.add_argument("--zones", type=pathlib.Path, help="authored surf_eclipse.json fixture (read-only)")
     ap.add_argument("--bonus-zones", type=pathlib.Path, help="authored surf_ace.json fixture (read-only)")
     ap.add_argument("--css-control", help="exact CSS-only map to join without downloading")
+    ap.add_argument("--window-size", help="WxH graphical captures (requires a quiet desktop)")
     a = ap.parse_args()
     a.output_dir = a.output_dir.resolve()
     if not any((d / "OWNER.md").is_file() for d in [a.output_dir, *a.output_dir.parents]):
         raise ValueError("output-dir requires an ancestor OWNER.md")
     if not 27520 <= a.port <= 27620:
         raise ValueError("test socket must be in the dedicated lobby range")
+    size = None
+    if a.window_size:
+        if not re.fullmatch(r"[1-9][0-9]{2,3}x[1-9][0-9]{2,3}", a.window_size):
+            raise ValueError("window-size needs WxH")
+        size = tuple(map(int, a.window_size.split("x")))
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         s.bind(("127.0.0.1", a.port))
     a.output_dir.mkdir(exist_ok=False)
@@ -45,6 +51,10 @@ def main():
             (gd / "maps").mkdir(parents=True)
             shutil.copyfile(ROOT / "default.fmf", rig / "default.fmf")
             shutil.copytree(ROOT / "ftesurf/cfg", gd / "cfg")
+            if size and role == "client":
+                for folder in ("gfx", "models", "textures", "glsl", "scripts"):
+                    if (ROOT / "ftesurf" / folder).is_dir():
+                        shutil.copytree(ROOT / "ftesurf" / folder, gd / folder)
             shutil.copyfile(ROOT / "ftesurf/fs_addons.default.txt", gd / "fs_addons.txt")
             for name in ("qwprogs.dat", "csprogs.dat", "menu.dat"):
                 shutil.copyfile(a.progs / name, gd / name)
@@ -60,7 +70,9 @@ def main():
                     shutil.copyfile(a.bonus_zones, gd / "maps/zones/local/surf_ace.json")
             cfg = ('cfg_save_auto 0\ncl_idlefps 0\ncl_maxfps 100\ncon_savehistory 0\n'
                    'update_autocheck 0\nsv_public 0\ndeveloper 1\nlog_developer 1\n'
-                   'log_name tiers\nlog_enable 1\n')
+                   'log_name tiers\nlog_enable 1\ncon_notifytime 0\ncon_notifylines 0\n'
+                   'set vid_vsync 0\nset ui_bootcheck 0\nset run_resume 0\nset lobby_dir ""\n'
+                   'set hud_scale 1\nset sb_maxpx 16\n')
             if role == "server":
                 cfg += ("map surf_eclipse\nserverinfo maptier 4\nserverinfo maptiersrc rank\n"
                         "echo TIER_SERVER_READY\nserverinfo\n")
@@ -77,7 +89,20 @@ def main():
             if role == "server":
                 argv += ["-port", str(a.port)]
             else:
-                argv += ["+set", "vid_renderer", "headless"]
+                if size:
+                    # Exclude only OUR server. No focus/input/window action is
+                    # permitted while an owner/peer game process exists.
+                    probe = subprocess.run(["pwsh", "-NoProfile", "-Command",
+                        'Get-CimInstance Win32_Process | Where-Object { $_.Name -match "fte(surf|qw).*exe" } | Select-Object -ExpandProperty ProcessId'],
+                        capture_output=True, text=True, check=True)
+                    live = {int(x.strip()) for x in probe.stdout.splitlines() if x.strip().isdigit()}
+                    if live - {server.pid}:
+                        raise RuntimeError("windowed arm blocked by existing game process")
+                    argv += ["-window", "-nosound", "+set", "vid_renderer", "gl",
+                             "+set", "vid_width", str(size[0]), "+set", "vid_height", str(size[1]),
+                             "+set", "vid_fullscreen", "0", "+set", "vid_winmaximize", "0"]
+                else:
+                    argv += ["+set", "vid_renderer", "headless"]
             argv += ["+set", "cfg_save_auto", "0", "+exec", "cfg/test/tiers.cfg"]
             p = subprocess.Popen(argv, cwd="C:/FTESurf", stdin=subprocess.PIPE,
                                  stdout=out, stderr=subprocess.STDOUT, creationflags=0x08000000)
@@ -128,6 +153,38 @@ def main():
             assert "  stage 1: MOM tier 2 (suggested)" in text
             assert "  main: MOM tier 4 | KSF tier 6" in text
         print("PASS exact stage suggestion / active HUD leg / scoreboard leg table")
+
+        def capture(name, board):
+            send(client, ("scores open; scores tab local" if board else "scores close") + "; ui_close")
+            time.sleep(1)
+            send(client, "scores status; hud_edit status; screenshot " + name + "; echo SHOT_" + name)
+            text = wait("client", "SHOT_" + name)
+            end = time.monotonic() + 10
+            while time.monotonic() < end:
+                if list((rigs["client"] / "ftesurf/screenshots").glob(name + ".*")):
+                    break
+                time.sleep(.1)
+            assert list((rigs["client"] / "ftesurf/screenshots").glob(name + ".*")), "no screenshot " + name
+            if board:
+                assert re.search(r"cols [5-9]\s+type [1-9][0-9]*", text), "scoreboard did not draw"
+                extents = re.findall(r"track sidebar ([0-9.]+) label ([0-9.]+) inset ([0-9.]+)", text)
+                assert extents, "no acted sidebar width witness"
+                width, label, inset = map(float, extents[-1])
+                assert width + .11 >= label + inset, (width, label, inset)
+            print("CAPTURE", name, "board" if board else "HUD")
+
+        if size:
+            capture("tiers_stage_board", True)
+            # Hit-test the actual taller sidebar row via the existing UI probe.
+            send(client, "hud_edit ui hover sb_leg2; hud_edit ui down mouse1")
+            time.sleep(.15)
+            send(client, "hud_edit ui hover sb_leg2; hud_edit ui up mouse1")
+            time.sleep(.25)
+            send(client, "scores status; echo TIER_SIDEBAR_CLICK_ACTED")
+            text = wait("client", "TIER_SIDEBAR_CLICK_ACTED")
+            assert 'leg 3/4 "stage 2"' in text
+            capture("tiers_stage_hud", False)
+            print("PASS graphical board drew; taller sidebar row click selected stage2")
         send(client, "scores tiers 0 2; echo TIER_UNKNOWN_ACTED")
         text = wait("client", "TIER_UNKNOWN_ACTED")
         assert re.search(r"asked tiers: *\n", text.split("TIER_STAGE_ACTED", 1)[1])
@@ -174,6 +231,20 @@ def main():
             assert "  " + expected in tail
             assert "compact tiers: MOM 8*  KSF U:X S:S" in tail
             print("PASS warped bonus HUD stat + scoreboard bonus leg share MOM suggestion/KSF split")
+            if size:
+                capture("tiers_bonus_board", True)
+                capture("tiers_bonus_hud", False)
+                send(client, "hud_edit on")
+                time.sleep(.5)
+                capture("tiers_bonus_edit", False)
+                text = logs("client")
+                rects = re.findall(r"mapinfo[^\n]*drawn ([0-9.]+)x([0-9.]+) at ([0-9.-]+),([0-9.-]+)", text)
+                assert rects, "HUD editor never registered the expanded map-info box"
+                w, h, x, y = map(float, rects[-1])
+                assert w > 0 and h > 0 and x >= 0 and y >= 0
+                assert x + w <= size[0] + 1 and y + h <= size[1] + 1
+                send(client, "hud_edit off")
+                print("PASS expanded bonus map-info HUD editor bounds inside window")
         if a.css_control:
             name = a.css_control
             if not re.fullmatch(r"surf_[a-z0-9_]+", name):
@@ -199,7 +270,10 @@ def main():
             text = logs(role)
             bad = ("QC VM error", "Cannot call", "stack overflow", "Unknown command", "Progs boundcheck failed")
             assert not any(x in text for x in bad), role + " runtime error"
-        (a.output_dir / "PASS.txt").write_text("Real dedicated socket/headless CSQC controls passed. No visual acceptance claimed.\n")
+        (a.output_dir / "PASS.txt").write_text(
+            "Real dedicated socket CSQC controls passed. " +
+            ("Graphical captures require image inspection; sidebar hit-test passed.\n" if size else
+             "Headless; no visual acceptance claimed.\n"))
     finally:
         for p in reversed(processes):
             if p.poll() is None:
