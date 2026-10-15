@@ -25,8 +25,8 @@ commit   b548053218a00aa6e549dfee9ad02a65833317b8
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-721
-patch    725
-# Patch 725: !spec and !spec <player> chat aliases use the existing spectate
+patch    726
+# Patch 726: !spec and !spec <player> chat aliases use the existing spectate
 # camera, case-insensitive exact/unique-prefix matching and return countdown.
 # QC only; no native pin/tag, recorder/evidence, physics or QC Build change.
 # Patch 722: Steam-account friends with mutual acceptance, private lobby-mediated

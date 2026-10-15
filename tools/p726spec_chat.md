@@ -1,4 +1,4 @@
-# P725 — chat spectate aliases
+# P726 — chat spectate aliases
 
 ## Behavior
 
@@ -60,5 +60,11 @@ Final verified VM SHA256:
 | qwprogs.dat | `7fb25d136e061357e68d0543dd9f9593e0370c0a563a9b494913704ac26729e2` |
 | csprogs.dat | `a78f8dd66f92ff5f3caa1655c2e05107f53237f67300e9baaf030d8584213ce2` |
 | menu.dat | `44f12fd918278bd160db66f6cfb45b176d56eeb6290e3d28e6365e81e3bbcbd9` |
+
+The original product commit `87f4870` used P725. A concurrent portal engine
+commit claimed that number between our fetch and push; its native changes were
+not incorporated into this QC-only build. This feature is renumbered to P726
+without changing code or tested bytes. Portal P725 remains its author's separate
+paired native/QC delivery. No published history was rewritten.
 
 Delivery/UTC provenance follows after destination and live acting checks.
