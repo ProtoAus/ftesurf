@@ -3583,6 +3583,33 @@ material behind it; not map completeness or native/prediction acceptance.
   only (`other`: a press another handler took); `rewind
   status|seek|step|go|save` drive the rest.
 
+## Map/leg tier metadata (P723)
+
+- `maps/tiers.txt` is public generated metadata, not player data. Rebuild with
+  `tools/maptiers.py`; ship the asset to both installs and the Pi separately from
+  `build.ps1 -Pi`'s progs. Whole-map MOM/KSF numeric ratings and the owner's
+  community KSF bonus-letter sheet are distinct. Unit/Strafe letters are NOT a
+  numeric conversion. Do not donate main-map tiers to a stage or strip suffixes.
+- Public Momentum caches currently have bonus ratings but no non-null stage
+  tiers. Synthetic stage controls prove support, not real upstream stage data.
+  Skip private testing/disabled maps when generating a public asset.
+- A real dedicated/headless client control found initial serverinfo omitted a
+  whole-payload rating key. FTE marks values >=64 bytes OR containing semicolons
+  as large info blobs (`InfoBuf_IsLarge` / `InfoBuf_NeedsEncoding`). P723 uses
+  short comma-only per-leg keys and `mapratings=v1:<map>`, clears old-map keys,
+  and rejects different-map markers. Do not revert to one semicolon-rich key
+  merely because `forceinfokey` and server-side `serverinfo` show its bytes.
+- A headless renderer does not run the ordinary view's deferred zone loading.
+  `zone_reload` before `scores open` proves the real client sidebar leg table;
+  merely querying a direct tier formatter with track/leg numbers does not.
+  `-plugin` is needed on the Windows dedicated test process too if commands are
+  sent through its owned stdin pipe. Without it, a map-change echo never acts.
+- Actual CSS-only `surf_unrequited` join plus `flocate` proved the default
+  `steam:Counter-Strike Source/cstrike` mount supplies `cstrike/maps` before a
+  download. Exact filenames/build compatibility still apply. `fs_addons.txt`
+  overrides defaults; do not overwrite an owner's mounts. Full controls/limits:
+  `tools/p723tiers.md`.
+
 ## Imported runs: Momentum Mod and KSF
 
 - (Patch 635 has since taken the Imported tab out: the Online list asks for

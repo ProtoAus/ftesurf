@@ -446,6 +446,7 @@ void() SV_RegisterStats =
 
 void() worldspawn =
 {
+	SV_MapTierInit();
 	// worldspawn is the first entity in the lump, so this zeroes the spawn
 	// tallies before anything counts into them -- and re-arms the report.
 	// Both matter across a map change: these are globals and they persist.

@@ -219,6 +219,7 @@ $ShipGameFiles = @(
     'ftesurf/fs_addons.default.txt'
     'ftesurf/data/mapdeps.txt'
     'ftesurf/data/mapmeta.txt'
+    'ftesurf/maps/tiers.txt'
     'ftesurf/data/mapmeta_override.txt'
     'ftesurf/data/mapparticles.txt'
     # WITHOUT THIS THE DOWNLOAD BUTTON DOES NOT EXIST.  ui_dl_load reads it to

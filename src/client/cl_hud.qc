@@ -3319,14 +3319,10 @@ void(vector scr) HUD_DrawSeq =
             extension included.  cl_replay.qc:131 has the same warning written
             out at length; this is the third reader to need it.
 
-    tier    serverinfo, published by the engine at map load (Patch 227).  It
-            lives in data/mapmeta.txt, which until now only the MAP BROWSER read
-            -- and the browser is menu.dat while this is csprogs.dat, two
-            separate progs with no way to hand a value between them.  Reading the
-            file again from here would have been a second parser of a format that
-            already has two; asking the server means it is also right in a demo
-            and right for a client whose own mapmeta.txt does not match the
-            server's, which is the case that matters once sessions are P2P.
+    tier    Patch 723: serverinfo mapratings, from maps/tiers.txt on the
+            SERVER. Independent MOM/KSF main and stage/bonus ratings share
+            cl_maptier.qc with the scoreboard. No local file can override a
+            remote server's ratings; old servers have a source-aware fallback.
 
     stages  Zone_TrackSegs(0) -- the END zone's segment index IS the count, and
             sh_zones.qc:194 is emphatic about there being exactly one speller of
@@ -3334,31 +3330,14 @@ void(vector scr) HUD_DrawSeq =
             The zone file describes THIS map as loaded, so it outranks mapmeta;
             mapmeta answers only when there is no zone file at all.
 
-  A TIER OF 0 IS NOT A TIER.  There is no tier 0 and '-' in the file means
-  unknown, so 649 of the installed maps genuinely have no answer -- they are CS:S
-  community maps Momentum has never indexed.  Those draw "--".  Writing "Tier 0"
-  would be asserting something the data does not say, which is the same rule the
-  map browser follows (m_main.qc:2159).
-
-  The provenance suffix comes with it: a submitter's SUGGESTION and an INHERITED
-  tier are estimates, and 1020 and 76 rows respectively are exactly that.
+  Unknown is not tier 0. Suggestions say so; aliases are not MOM ratings.
+  The community KSF bonus sheet uses letters and separate Unit/Strafe columns,
+  not numeric equivalents of the main-map tiers.
 ===========================================================================
 */
 string() HUD_MapTier =
 {
-	local float t;
-	local string src;
-
-	t = serverkeyfloat("maptier");
-	if (t <= 0)
-		return "Tier --";
-
-	src = serverkey("maptiersrc");
-	if (src == "sugg")              // an estimate from an unranked submission
-		return sprintf("Tier %g?", t);
-	if (src == "alias")             // inherited from the same map without its port suffix
-		return sprintf("Tier %g~", t);
-	return sprintf("Tier %g", t);   // rank, over, or a file written before the column
+	return MapTier_Text(0, 0, FALSE, TRUE);
 };
 
 string() HUD_MapStages =
@@ -3665,6 +3644,15 @@ void(vector scr) HUD_DrawMapInfo =
 	tw = stringwidth(s, TRUE, [sz, sz]);    if (tw > bw) bw = tw;
 	HUD_TextR(p, s, sz, '0.55 0.70 0.90', 0.95);
 	p_y = p_y + lh;
+
+	// Exact current stage/bonus ratings only; never inherit the map's tier.
+	s = MapTier_Current();
+	if (s != "")
+	{
+		tw = stringwidth(s, TRUE, [sz, sz]); if (tw > bw) bw = tw;
+		HUD_TextR(p, s, sz, '0.55 0.70 0.90', 0.95);
+		p_y = p_y + lh;
+	}
 
 	s = HUD_MapStages();
 	if (s != "")

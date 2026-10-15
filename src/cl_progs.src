@@ -78,6 +78,7 @@ client/cl_soundscape.qc
 // Trig_Frame from CSQC_UpdateView and Trig_ConsoleCommand from
 // CSQC_ConsoleCommand.
 client/cl_triggers.qc
+client/cl_maptier.qc
 client/cl_hud.qc
 // Patch 610: the panel, axis and strip the trainer and the run graphs share.
 // After cl_hud.qc (HUD_Text*) and before both; it prototypes cl_lines.qc's strip.

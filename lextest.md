@@ -1,5 +1,22 @@
 # lextest.md — things waiting on a human
 
+## P723 — map HUD and scoreboard tiers
+
+On a server running P723, check the top-right MOM and KSF ratings separately
+(e.g. surf_angst's snapshot MOM5 / KSF4). On a rated bonus, check MOM plus the
+community KSF letter and Unit/Strafe labels. TAB's Track sidebar has the same
+ratings below each leg; `*` means a MOM suggestion, U/S mean Unit/Strafe.
+Untiered stages/bonuses must not inherit the main-map tier. This Momentum cache
+has no stage tiers; only explicitly synthetic controls demonstrate that path.
+
+Headless real-socket tests prove text, actual bonus-track stats, remote authority,
+unknowns, map changes and the sidebar's leg table. A pre-existing game prevented
+safe screenshot/physical UI testing in this session; it was NOT closed or used
+as a subject. Judge small-window/normal-scale readability, extra HUD-line bounds,
+sidebar scroll/click targeting and the narrower board table. `scores tiers`
+prints the source-aware values; `vote fake off` clears any test overlay.
+See `tools/p723tiers.md` for sources, refresh instructions and deployment receipt.
+
 ## P722 — Steam-account friends, Players tab and overhead labels
 
 Open your account's Friends tab on an account-enabled lobby. Add someone from

@@ -43,4 +43,5 @@ server/sv_pose.qc
 server/sv_social.qc
 server/sv_account.qc
 server/sv_player.qc
+server/sv_maptier.qc
 server/sv_main.qc

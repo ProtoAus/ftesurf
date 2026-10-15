@@ -260,8 +260,16 @@ float() Vote_Console =
 			HUD_SKFake(strcat("vote", argv(3)), argv(4));
 		else if (a == "votec")
 			HUD_SKFake("votec", argv(3));
+		else if (a == "ratings")
+			HUD_SKFake("mapratings", argv(3));
+		else if (a == "maptier")
+		{
+			HUD_SKFake("mapratings", "");
+			HUD_SKFake("maptier", argv(3));
+			HUD_SKFake("maptiersrc", argv(4));
+		}
 		else
-			print("vote fake clock|next|open|label|votec|off\n");
+			print("vote fake clock|next|open|label|votec|ratings|maptier|off\n");
 		return TRUE;
 	}
 	if (a != "")

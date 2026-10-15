@@ -258,6 +258,10 @@ __pycache__/
 !/ftesurf/textures/no_texture.png
 !/ftesurf/scripts/
 !/ftesurf/fs_addons.default.txt
+# Public generated tier catalogue; never un-ignore maps/BSPs generally.
+!/ftesurf/maps/
+/ftesurf/maps/*
+!/ftesurf/maps/tiers.txt
 
 
 #  ftesurf/cfg/ -- ALL source: default.cfg (the ruleset), the mode/fix configs,

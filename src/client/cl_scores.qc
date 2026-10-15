@@ -3067,7 +3067,7 @@ void(vector scr) Scores_Draw =
 	local vector p, sz, rp, rs, lp;
 	local float scale, bs, pad, w, h, x0, y0, sidew, tabh, chiph, chipw, segw, listh, n;
 	local float ytabs, yhead, ylist, yfoot, yc, x, idx, on, hot, pick, native, online;
-	local float roomw, have, need, floorw, ow, tablew, rows, chrome, step, px;
+	local float roomw, have, need, floorw, ow, tablew, rows, chrome, step, px, legh;
 	local string s, rid;
 
 	if (!rec_sb_open && !sc_held)
@@ -3127,7 +3127,7 @@ void(vector scr) Scores_Draw =
 		Scores_Type(px);
 		pad   = rec_sb_szrow;           // every ladder rung is even: its halves are whole pixels
 		chipw = ceil(rec_sb_cw * 8.5);
-		sidew = ceil(rec_sb_cw * 15);
+		sidew = ceil(rec_sb_cw * 22);    // map/leg MOM + KSF ratings below each name
 		segw  = ceil(rec_sb_cw * 11.5);
 		roomw = 0;                    // the old room-list sidebar is gone
 		have  = scr_x - pad * 2 - roomw - (pad * 3 + sidew) - pad * 0.5;
@@ -3371,8 +3371,9 @@ void(vector scr) Scores_Draw =
 	ylist = yhead + rec_sb_szhead + pad * 0.5;   // where both row drawers put their list
 
 	// ---- the legs, a sidebar; the graphs under them --------------------------
-	Scores_Text([x0 + pad + rec_sb_cw, yhead], rec_sb_szhead, "TRACK", SUI_THEME_MUTED, 1);
-	rs = [sidew - ceil(rec_sb_cw), rec_sb_rowh];
+	Scores_Text([x0 + pad + rec_sb_cw, yhead], rec_sb_szhead, "TRACK  * suggested", SUI_THEME_MUTED, 1);
+	legh = max(rec_sb_rowh, ceil(sb_szui + rec_sb_szhead + 8));
+	rs = [sidew - ceil(rec_sb_cw), legh];
 	sui_list_view_begin("sb_legs", [x0 + pad, ylist], [sidew, listh - tabh * 2 - 6 - pad * 0.5],
 	                    rs, rec_sb_legn, rec_sb_legscroll, [0, ceil(rec_sb_cw)]);
 	lp = '0 0 0';
@@ -3385,9 +3386,12 @@ void(vector scr) Scores_Draw =
 		if (on || hot)
 			sui_roundbox(lp + '0 1 0', rs - '0 2 0', ceil(rec_sb_cw * 0.6),
 			             on ? SUI_THEME_SELECTED : SUI_THEME_HOVER, 1);
-		Scores_Text([lp_x + rec_sb_cw, lp_y + (rec_sb_rowh - sb_szui) * 0.5], sb_szui,
-		            Scores_LegName(idx),
+		Scores_Text([lp_x + rec_sb_cw, lp_y + 2], sb_szui, Scores_LegName(idx),
 		            on ? SUI_THEME_ACCENT : (hot ? SUI_THEME_TEXT : SUI_THEME_DIM), 1);
+		s = MapTier_Text(rec_sb_legtrack[idx], rec_sb_legnum[idx], TRUE,
+		                 rec_sb_legtrack[idx] == 0 && rec_sb_legnum[idx] == 0);
+		Scores_Text([lp_x + rec_sb_cw, lp_y + sb_szui + 4], rec_sb_szhead, s,
+		            on ? SUI_THEME_TEXT : SUI_THEME_MUTED, 1);
 		if (sui_is_released(rid))
 		{
 			rec_sb_leg = idx;
@@ -4025,6 +4029,25 @@ float(string cmd) Scores_ConsoleCommand =
 		{
 			Scores_Refresh();
 			Scores_Status();
+			return TRUE;
+		}
+		else if (argv(1) == "tiers")
+		{
+			local float ti, ask, tt, tl;
+			ask = (argv(2) != "" && argv(3) != "");
+			tt = stof(argv(2));
+			tl = stof(argv(3));
+			Scores_Refresh();
+			print(strcat("map tiers: ", HUD_MapTier(), "\n"));
+			print(strcat("active tiers: ", MapTier_Current(), "\n"));
+			if (ask)
+			{
+				print(strcat("asked tiers: ", MapTier_Text(tt, tl, FALSE, FALSE), "\n"));
+				print(strcat("compact tiers: ", MapTier_Text(tt, tl, TRUE, FALSE), "\n"));
+			}
+			for (ti = 0; ti < rec_sb_legn; ti = ti + 1)
+				print(sprintf("  %s: %s\n", Scores_LegName(ti),
+				              MapTier_Text(rec_sb_legtrack[ti], rec_sb_legnum[ti], FALSE, FALSE)));
 			return TRUE;
 		}
 		else if (argv(1) == "legs")
