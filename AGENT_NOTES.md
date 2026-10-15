@@ -9,12 +9,29 @@ operational generation, not canonical `surfd:app`. A canonical source hash or
 SQLite backup does NOT establish what serves HTTP. Main's separate schema20
 must not be silently substituted to fix a map filter. Do not weaken that gate,
 replace pinned runtime bytes/hashes/locks, open a parallel guard or replay the
-completed prior migration. A matched generation19 compatibility candidate is
-published/tested; actual handover needs its separately reviewed coverage/drain/
-acceptance procedure. Source/tested/published is NOT deployed/verified-live.
-See tools/p727completion.md and BACKLOG.md for evidence/closing falsifier; raw
-operational process/config output remains private. No live map-pool settings,
-player history or runtime were mutated by the refused attempt.
+completed prior migration. The owner-authorized, separately reviewed schema19
+handover is now LIVE ACCEPTED (2026-10-15T15:35:36Z): all27 tables preserved at
+CLOSED acceptance, old CLOSED/new OPEN, only527 prior bulk exclusions removed,
+4 unrelated settings preserved. All12 lobbies/configs/cvars/autosave restored;
+12 fresh heartbeats and real web/dedicated-client1752 completion readback
+(1367 surf +385 file-zoned bhop). The NanoPi/deployment hold is released.
+The refused ordinary attempt is still a refusal, not the accepted procedure.
+
+One strict-census park after native drain required reviewed forward recovery;
+keep the original journal and revalidate current identities, never reset/replay
+it or kill a foreign process. Also distinguish acceptance snapshots from mutable
+shared assets: CLOSED pins remain exact, while normal OPEN boots must observe
+current canonical progs/proof-reader/credential bytes rather than permanently
+freeze them. Immutable application origins/bytes, critical paths/schema remain
+strict. A rotated worker needs full owner/start/argv/executable/lifetime/listener
+checks; retain that exact master/worker/guard epoch through pre-write and receipt
+checks instead of silently rebinding to a later witness. Real worker controls and
+a normal live roll acted. No runtime-in-place source edits/restart were needed.
+
+See tools/p727completion.md for evidence and the1000-row game tier/HTTP504 limits;
+BACKLOG.md tracks only those unresolved falsifiers. Raw operational process/config
+output remains private. The active sealed runtime/control/recovery are retained,
+not cleanup targets; only verified owned stopped test copies were retired.
 
 ## P722 schema20 guard compatibility and acceptance bounds (2026-10-15)
 

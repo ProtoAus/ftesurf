@@ -5,29 +5,30 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
-## P727 completion fix — reviewed handover held for empty fleet (2026-10-15)
+## Large completion tier stops holding rows at1000 — observed in P727 acceptance
 
-- `surfd.py:_completion_scope` / `mapmanifest.py` fix the ignored admin pool and
-  enforce surf plus file-zoned bhop for both web/game completion counts/lists.
-  Published/tested, NOT LIVE. The ordinary `tools/surfd-deploy.ps1` refuses the
-  sealed schema19 production launch before source copy/reload; main's schema20
-  is separate. No live pool settings or history were changed.
-- Minimal schema19 candidate is on `agent/completion-p727-schema19-1015`:
-  source, all23 native backend suites+codec and actual browser/game fixture
-  proofs are in `tools/p727completion.md`. Do not overwrite another task's
-  immutable runtime, relabel its guard or replay its completed migration.
-- The owner authorized a separate guarded schema19 handover. Its implementation
-  passed independent review,42 Linux operator tests and real isolated worker
-  acceptance/refusal controls; all preservation claims are measured, including
-  a deliberately altered-row refusal. New generation staged CLOSED; read-only
-  preflight's remaining blocker is connected player/spectator presence. NO live
-  source/config/service/pool/data changes. Empty fleet and current provenance
-  must be rechecked; coordinate other pending fleet work before maintenance.
-- Closing falsifier: actually accepted guarded same-schema generation
-  handover with native-submit no-loss/launch coverage and fresh accepted serving
-  origins; reversible reset of ONLY prior bulk bhop overrides;385 zoned bhop on,
-  195 unzoned bhop off (re-census if library changes); live public site and actual
-  game completion have identical filtered lists/counts and no forbidden entry.
+- Site: `src/client/cl_profile.qc`, `PF_CTROWS`, `Profile_TierMore` and completion
+  reply accumulation. Live dedicated-socket profile shows correct1752 total and
+  per-tier counts, but the1341-map unrated tier holds only1000. The same fixed
+  cap predates P727; matching counters are not complete browsing acceptance.
+- Falsifier: use a reference with more than1000 eligible maps in one tier;
+  traverse beyond row1000 and reach the final eligible row without duplicate,
+  missing or forbidden entries. Preserve exact totals/done, filtering, selection,
+  paging/retry/close behavior and bounded storage; do not merely raise the displayed
+  count or call the current1000-row stop a full pass. Evidence: tools/p727completion.md.
+
+## Public profile navigation can render HTTP504 — observed in P727 acceptance
+
+- An initial real public profile navigation rendered "Could not load the board
+  (HTTP504)" and never exposed completion controls; an alternate reference then
+  loaded and passed the full1752-map DOM proof. No exact failed endpoint, query
+  root cause or filter-regression attribution has been established.
+- Site: `surfd/web/board.js` profile navigation/fetch/error path and the served
+  `/board/` API/proxy. Falsifier: capture the actual failing request/status/timing,
+  compare acted working/failing references cold and warm, and load the formerly
+  failing profile plus full completion controls under the real proxy deadline.
+  Preserve completion policy and history; do not hide timeout/error UI or use
+  the alternate-reference pass as universal profile-performance acceptance.
 
 ## Picture delivery and remaining completion/zone coverage — P715/716
 
