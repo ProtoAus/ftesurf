@@ -5,6 +5,20 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Dedicated getinfo returns its header without the info string (P729 probe)
+
+- Current NanoPi dedicated binary: UDP `getinfo` returned only the17-byte
+  `infoResponse` header. Ordinary QW `status` did reply, but its1024-byte info
+  buffer omitted late CSQC fields. Budgeted hashed loopback rcon verified all12;
+  no game-server source/binary was changed to finish that delivery.
+- Site: engine `server/sv_main.c:SVC_GetInfo` calls
+  `SV_GeneratePublicServerinfo(resp, ...)` without advancing its send pointer.
+  Confirm the exact deployed source before fixing; do not infer runtime from a
+  newer checkout. This is unrelated to P729's menu/client transport changes.
+- Falsifier: one bounded UDP `getinfo <token>` must return nonempty regular
+  serverinfo after the header, including the expected challenge, with existing
+  status and anti-amplification behavior preserved. Source: `tools/p729mapmedia.md`.
+
 ## Monolith B4 — launch still below the supplied KSF reference (P728 investigation)
 
 - `src/server/sv_entities.qc:SV_SetSpeedEnter`, Momentum `surf_monolith` B4

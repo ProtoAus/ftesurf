@@ -15,6 +15,13 @@
 - The no-exponent-literals pitfall below also applies to a bound such as `1e30`:
   silent compiler AV was removed by decimal spelling. Do not misdiagnose that
   as evidence that recursive QC itself is broken.
+- For live CSQC provenance, QW `status` has a1024-byte info buffer and omitted
+  the late checksum keys on this fleet; its current `getinfo` returned only the
+  header. One budgeted hashed loopback `rcon serverinfo` per lobby exposed the
+  real fields. Both checksum and size carry `0x` prefixes; parse hex, not a
+  leading zero. Never print raw rcon replies or the credential. After SSH255
+  restart failures, preserve the verified swap and recover only missing empty
+  units; all12 exact live checks closed without recopying/restarting passed arms.
 
 ## Monolith original CSS control — continuation after P728
 

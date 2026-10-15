@@ -37,9 +37,40 @@
 
 ## Source and delivery state
 
-Implementation verification is complete. Final inspected-commit builds and
-Windows/fleet delivery are in progress; this paragraph must not be read as a
-claim that the public upload endpoint is installed or any zone activated.
+Delivery verified **2026-10-15T19:34:26Z**:
+
+- Engine `9ad66320b6865b53d8ee64af7d96096cb3dc8e44`, annotated `patch-729`;
+  native/QC feature source `bfe442052031c523a90e618f2b0b426c5ee3de15`.
+  Service compatibility/health follow-ups end at
+  `43153145eee5a5505992ce3543a42207f336070c`. All were inspected and pushed.
+- Final clean-start full build passed. Its55 distinct pre-existing compiler
+  warnings match the earlier full control exactly: zero NEW compiler warnings.
+  clangd database regenerated:222 translation units; touched C files have no
+  recorded errors (existing warnings remain). qcbuild stays20.
+- Both Windows installs:27 native/progs/generated-atlas/metadata files copied
+  and hash verified, preserving overwritten predecessors. Existing atlas cells
+  did not move. Both installed executables independently acted on boot fetch
+  and reached the1920x1080 photo; both screenshots were inspected.
+- Guarded `build.ps1 -Pi` uploaded, hash checked and swapped the progs pair with
+  `.prev` intact. Initial restart RPCs failed for7/10/11/12 with SSH255; the other
+  eight were NOT restarted again. Fresh zero-player checks preceded recovery of
+  only those four. All12 now report live `*csprogs=0xc97c7b34`, size5556502
+  (`0x54c916`), matching both Windows CSQC files and the fleet disk pair.
+  All12 directory rows were fresh (maximum age5s). The Pi engine is unchanged.
+- `qwprogs.dat` SHA256:
+  `40091ed25d14c09632bd3d6223883e4f9a20789d06cbddbe1621121571e62f1a`;
+  `csprogs.dat`:
+  `3cdbdf6302d9cb25a2963c42810d553f5bd1eb227ca375278dafcedfd0f928e4`;
+  client-local `menu.dat`:
+  `946ced6ae5005844b8552ab4c00e844b241436ff49ac34010f00fe74b2048575`.
+- Linux backend11/installer3 passed. The real read-only installer dry run passed
+  against schema19 and current paths. An OWNED temporary loopback Gunicorn
+  process passed real source-header, executable/cwd, socket-owner and retained
+  lifetime checks with an acted nonce response, then exited0. Its retained PID
+  was supplied explicitly; no systemd unit was installed or tested as live.
+  nginx and the fixture account DB were unchanged. The main app was not
+  restarted or migrated. The public upload endpoint is NOT installed, no live
+  role granted, and no zone activated.
 
 The owner's game is never killed/restarted. Native file locks are a per-file
 blocker, not permission to stop independent progs/assets work. Fleet files may
