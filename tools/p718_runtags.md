@@ -62,4 +62,33 @@ Subject Practice keeps bare practice and both old reason variants; segmented
 stays separate and unknown remains visible in every chip. Full/stage banners
 and explicit finish-chat exercised. Final VMs compile with zero warnings.
 Post-run corpus: **289 files, 189 with existing faults**, unchanged.
-Final fix-blast-radius review and deployment pending.
+Final fix-blast-radius review: OK, both P2 findings resolved. Subject screenshot
+also visibly confirms amber Practice finish chat. Fresh verifier rerun: 306/0.
+
+## Delivery — 2026-10-15
+
+Product source pushed as inspected d9c2e92 (includes the non-product P717
+interrupt-test/docs peer merge). Rebuilt that clean committed tree with
+`build.ps1 -Jobs 8 -NoDeploy`, zero warnings in all three VMs; all three output
+hashes match the final tested subject. At **00:41:27 UTC**, mirrored ONLY these
+verified generated outputs to BOTH `C:/FTESurf/ftesurf` and
+`C:/FTEQuake/ftesurf`, preserving each destination as `.prev`. Asserted no game
+or dedicated process running and no target hash change since inspection.
+Source working checkouts/owner cfg/player data untouched.
+
+SHA-256, identical at both destinations:
+
+- qwprogs.dat: `f21b9d53d18879318db138213ec1e16118cdb4471c6103e5002b1122bd66cdc2`
+- csprogs.dat: `a871d60d94aacd2eaf342911c023ff848c9361b203ff682e21d71d975bc6d88f`
+- menu.dat: `44f12fd918278bd160db66f6cfb45b176d56eeb6290e3d28e6365e81e3bbcbd9`
+
+A fresh dedicated-socket rig copied server progs from the first install and
+client progs from the second: **42 checks, zero failures**, no command/VM
+errors. Thus both installed artifacts, not merely pre-deploy source, acted.
+The NanoPi SSH and directory probes timed out; **no Pi files changed and no
+live-lobby deployment/restart/verification is claimed**. Fleet update remains
+blocked by connectivity. This is not a release or a Build-number bump.
+
+Task evidence retained at `C:/FTESurf-worktrees/runtags-20261015-001/artifacts`
+with OWNER.md lifecycle/provenance; disposable full worktrees/runtime junctions
+are retired after recording completion.
