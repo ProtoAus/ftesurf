@@ -31,7 +31,7 @@ base `a528fb76e07647504789b2cdc436ec08e23f1d99`. No canonical peer edits built.
 `surfd/test_completion_pool.py --source <pristine-base>/surfd --control`:
 **5 checks, zero failures**, including positive eligible controls and actual
 leakage of admin-disabled, unrelated-mode, unzoned and embedded-only bhop maps.
-Subject: **32 checks, zero failures**. Both web/game populations and counts,
+Final subject: **34 checks, zero failures**. Both web/game populations and counts,
 local-only zone file, warm disable/re-enable, schema migration preservation,
 automatic file add/remove, manual disable precedence, admin refusal, feed,
 allocator and non-deletion all acted. Admin JavaScript parses via Node.
@@ -64,5 +64,73 @@ Investigation correction: an initial SQLite read addressed a nonexistent
 by that exact immediately preceding command and removed; all real DB reads used
 `mode=ro`. No existing DB/table was removed.
 
-Full Pi/native suite, exact delivery, policy reconciliation and live/UI receipts
-follow after execution. Owned root: C:/FTESurf-worktrees/completion-1015102256/.
+## Verified source, NOT deployed — guarded-runtime blocker
+
+Feature `22eedb8449b1a92c243ae8dc0727e7c9e115ca99` and inspected merge
+`6727635357614d582303c6688107f491a9889451` are published on main. The merge
+retains the portal author's published engine pin/tag; this task did not build
+or ship any native/QC artifact. The tested backend bytes are unchanged by that
+merge. Patch-log documentation: `ebe8fd44166745fb29c8ba3477ddb3510610bd67`.
+
+- Offline deployment tooling:20 tests PASS, including matched map generation,
+  missing committed dependency, transfer-byte mutation, lock/acceptance/cleanup
+  and legacy-ref controls.
+- Exact main-source Pi stage:all24 backend suites plus codec PASS, including
+  native admin (no Windows UDP failures) and initial completion31 checks.
+  Node was unavailable there; its syntax assertion passed on Windows. MOM video
+  conversion lacked its external `.mtv` fixture and remains an explicit skip.
+- The ordinary deployer made its mode600 SQLite recovery copy, then REFUSED the
+  real process-identity gate BEFORE source copy, reload, schema migration,
+  scheduler/config/pool changes. No successful deployment/acceptance receipt
+  exists. Raw live operational metadata is kept private, not in this report.
+- Investigation found production is a sealed guarded schema19 generation, not
+  the ordinary canonical application launch. Main's schema20 is separate work.
+  Do NOT relabel pinned hashes/locks, overwrite that immutable runtime, start a
+  second OPEN guard or replay the completed schema18-to19 transition.
+
+A minimal compatibility candidate was therefore prepared on the EXACT inspected
+live source base `a9dce85f27f94b6c89672b6b63fc5659801ebe4c` without schema20,
+portal QC/native or unrelated features. Runtime candidate
+`7d8bad7a4aacf04d6700e0fbe326405f55fe10fd` is published on
+`agent/completion-p727-schema19-1015` (not main, to avoid a schema downgrade).
+Its actual pristine generation19 control passes5; compatible subject34 passes.
+All23 generation19 backend suites plus codec PASS in an isolated Pi stage. An
+initial older `test_ksfgrab` invocation omitted its required `--out`; that failed
+staging premise was retained, corrected, and only the remaining7 suites rerun.
+Expanded installed-admin-vs-feed scope checks then pass33 natively (34 Windows,
+minus the explicitly skipped Node assertion). Runtime modules are byte-identical
+to the full native-suite candidate; only extra tests/docs follow it.
+
+Synthetic actual UI proof: Chrome's real board DOM contains exactly the expected
+five have/not-beaten maps and3/5 completion; a REAL dedicated-socket game client
+using the compatible API reports tier2 maps5/5 done3 and draws the SAME five
+entries. Both screenshots inspected. The historical9 runs remain separately
+visible: preserving history is intentional, not completion leakage. Owned client,
+server and browser handles were reaped. Initial fixture setup attempted to add a
+Flask route after requests (refused); the next game arm used outdated consent4
+and correctly refused profile networking. Final fixture uses current consent5,
+without touching owner consent/configs. A late scope check incorrectly assumed
+uninstalled maps belong in the admin manifest; the original installed-only
+runtime contract was restored unchanged, and new tests pin both that omission
+and the disabled uninstalled feed row. Failed logs are retained, not passed.
+
+A read-only live API control still reproduces the bug:1762 completion entries,
+including8 bhop without a zone file and22 other-mode entries, while all385 zoned
+bhop were manually off. On that captured population the requested automatic
+policy would retain1347 surf plus385 zoned bhop (1732); this is a target, NOT a
+claimed live readback. No pool reconciliation was performed without the code.
+
+**Remaining blocker:** a separately reviewed guarded same-schema generation
+handover is required; the normal deploy command is not an update driver for that
+sealed runtime. It must preserve import/cron/restart coverage, native-submit
+no-loss, accepted worker origins/schema and existing recovery. After that, reset
+only the owner's prior bulk bhop exclusions to automatic policy, snapshot/CAS
+those settings, verify385 zoned/195 unzoned outcomes and repeat live site/game
+proof. No guard bypass, unrelated schema20 upgrade or automatic DB rollback is
+authorised by this map-filter change. BACKLOG.md records the exact falsifier.
+
+Owned local evidence: C:/FTESurf-worktrees/completion-1015102256/.
+Owned remote synthetic evidence: /srv/nvme/agent-work/completion-1015102256/.
+The refused normal deployment's separate surfdship ownership receipt is retained;
+those copies are not a serving runtime. Disposable copies are archived/retired
+where verified safe; no other session's runtime root is a cleanup target.

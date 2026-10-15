@@ -1,5 +1,21 @@
 # AGENT_NOTES.md
 
+## P727 — normal deployment is not a sealed-generation update (2026-10-15)
+
+The completion task's exact-commit backend suite passed natively, but ordinary
+`surfd-deploy.ps1` correctly refused its process-identity gate before any copy or
+reload: the current serving application is an immutable guarded schema19
+operational generation, not canonical `surfd:app`. A canonical source hash or
+SQLite backup does NOT establish what serves HTTP. Main's separate schema20
+must not be silently substituted to fix a map filter. Do not weaken that gate,
+replace pinned runtime bytes/hashes/locks, open a parallel guard or replay the
+completed prior migration. A matched generation19 compatibility candidate is
+published/tested; actual handover needs its separately reviewed coverage/drain/
+acceptance procedure. Source/tested/published is NOT deployed/verified-live.
+See tools/p727completion.md and BACKLOG.md for evidence/closing falsifier; raw
+operational process/config output remains private. No live map-pool settings,
+player history or runtime were mutated by the refused attempt.
+
 ## P722 schema20 guard compatibility and acceptance bounds (2026-10-15)
 
 Offline transition tooling now accepts immutable integer target_schema19 or20;

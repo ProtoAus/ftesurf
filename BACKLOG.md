@@ -5,6 +5,23 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## P727 completion fix — blocked on guarded runtime handover (2026-10-15)
+
+- `surfd.py:_completion_scope` / `mapmanifest.py` fix the ignored admin pool and
+  enforce surf plus file-zoned bhop for both web/game completion counts/lists.
+  Published/tested, NOT LIVE. The ordinary `tools/surfd-deploy.ps1` refuses the
+  sealed schema19 production launch before source copy/reload; main's schema20
+  is separate. No live pool settings or history were changed.
+- Minimal schema19 candidate is on `agent/completion-p727-schema19-1015`:
+  source, all23 native backend suites+codec and actual browser/game fixture
+  proofs are in `tools/p727completion.md`. Do not overwrite another task's
+  immutable runtime, relabel its guard or replay its completed migration.
+- Closing falsifier: separately reviewed guarded same-schema generation
+  handover with native-submit no-loss/launch coverage and fresh accepted serving
+  origins; reversible reset of ONLY prior bulk bhop overrides;385 zoned bhop on,
+  195 unzoned bhop off (re-census if library changes); live public site and actual
+  game completion have identical filtered lists/counts and no forbidden entry.
+
 ## Picture delivery and remaining completion/zone coverage — P715/716
 
 - `tools/r2mirror.py` now stages actual hash-named Steam JPEG/RGBA copies with
