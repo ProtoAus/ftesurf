@@ -79,6 +79,10 @@ class Fixture:
             "    if time.monotonic() > deadline: raise RuntimeError('fixture release timeout')\n"
             "    time.sleep(.02)\n"
             "Path('writer-done').write_text('OLD WRITE ACTED')\n")
+        (self.home / "candidate-server.py").write_text(
+            "import time\nfrom pathlib import Path\n"
+            "Path('candidate-acted').write_text('SERVER ACTED')\n"
+            "while True: time.sleep(.02)\n")
         for name in FILES[2:]:
             (self.home / name).write_text("# synthetic source sentinel\n")
         self.hashes = {name: hashlib.sha256((self.home / name).read_bytes()).hexdigest()
@@ -87,6 +91,8 @@ class Fixture:
                          "hashes": self.hashes,
                          "routes": {r: [str(Path(sys.executable).resolve()), "ksfimport.py"]
                                     for r in ("scheduled", "manual", "worker")}}
+        self.manifest["routes"]["server"] = [str(Path(sys.executable).resolve()),
+                                             "candidate-server.py"]
         self.state = root / "guard"
         self.manifest_path = root / "manifest.json"
         save(self.manifest_path, self.manifest)
@@ -118,13 +124,33 @@ class Fixture:
                    "schema": 19, "accepted": True,
                    "process": {"pid": os.getpid(), "start": "SYNTHETIC-not-attestation",
                                "cwd": str(self.home)}}
+        record = self.state / "candidate.json"
+        if record.exists():
+            receipt["process"] = json.loads(record.read_text())["process"]
         receipt.update(overrides)
         path = self.root / "receipt.json"
         save(path, receipt)
         return path
 
+    def candidate(self):
+        state = json.loads((self.state / "state.json").read_text())
+        grant = self.root / "authorization.json"
+        save(grant, {"generation": GEN, "closure": state["closure"],
+                     "route": "server", "authorized": True})
+        marker = self.home / "candidate-acted"
+        if marker.exists():
+            marker.unlink()
+        p = spawn(self.argv("candidate", "--generation", GEN, "--route", "server",
+                            "--authorization", str(grant)), self.root / "candidate.log")
+        wait_for(lambda: marker.exists(), "authorized candidate acted")
+        check(p.poll() is None, "candidate not live")
+        return p
+
     def reopen(self):
+        # Existing admission suite needs a real measured candidate at acceptance.
+        p = self.candidate()
         self.run("reopen", "--generation", GEN, "--receipt", str(self.receipt()))
+        stop(p)  # The suite then tests independent ordinary admission lifetimes.
 
     def refused_launches(self):
         witness = self.home / "imports"

@@ -2,7 +2,7 @@
 
 This stdlib-only helper is **not a deployment or migration driver**. It never
 imports surfd, opens a database/cache, installs source, edits a scheduler, starts
-a candidate, or restores anything. P717 live schema18→19 remains blocked on
+an unapproved candidate, or restores anything. P717 live schema18→19 remains blocked on
 inventory/enforced coverage, quiescent candidate start, coordinated recovery,
 external acceptance and native-submit no-loss prerequisites. Nothing here is live
 transition authorization.
@@ -75,7 +75,7 @@ an existing CLOSED fence.
 
 Initialization always starts CLOSED. Each close serializes against other
 controllers, atomically replaces state with CLOSED and a fresh closure ID, fsyncs
-file/directory, then attempts bounded exclusive admission-lock acquisition.
+file/directory, then attempts bounded exclusive admission-lock and candidate-lifetime-lock acquisition.
 Foreground launches acquire a shared lock, check OPEN/generation/route/source
 hashes, and exec the fixed application interpreter **in the same PID**, with the
 shared FD inherited. Only a fixed minimal environment (`PATH`, `HOME`,
@@ -86,8 +86,72 @@ cooperative FD holders drained; it does not inventory arbitrary host processes.
 Power-loss durability depends on the filesystem; no physical power-loss test was
 performed.
 
-`candidate` is deliberately BLOCKED while general admission remains closed.
-There is no temporary-open, finally-open, automatic rollback or restore command.
+## Linux CLOSED candidate protocol
+
+`candidate` permits only the literal `server` route in the immutable manifest,
+with its complete fixed foreground argv. General `launch` still refuses CLOSED.
+It does not interpret a shell, accept additional argv/env, choose an executable,
+or discover host configuration. The operator must review the manifest's server
+route itself: no daemonization, shell, preload or descriptor-closing launcher.
+The six-file hash set, pinned generation and minimal environment are unchanged.
+Old writers, boot, cron, manual launches and native-submit exclusion remain an
+external obligation, not a claim of this command.
+
+```
+python3 -I /trusted/surfd_transition_guard.py --state-dir /owned/fence candidate --generation <full-sha> --route server --authorization /owned/grant.json
+```
+
+The grant is an externally reviewed, narrow authorization to start, **not an
+acceptance receipt**. It must be an owner-owned mode600 regular single-link file
+with no symlink path components, and exactly:
+
+```
+{"generation":"<full-sha>","closure":"<current-32-hex-ID>","route":"server","authorized":true}
+```
+
+Initialization creates `candidate.lock` mode600 alongside admission/controller
+locks. Legacy state directories missing that lock refuse all commands; there is
+no implicit upgrade or reinitialization. Investigate/drain/exclude legacy users
+externally before authoring a fresh state directory. Never add a replacement
+lock to a running directory or bypass a CLOSED fence with a second OPEN one.
+
+Candidate startup holds controller EX, takes candidate lifetime EX with bounded
+wait, checks CLOSED, exact grant/generation/route, refuses any existing candidate
+record, drains admission EX and verifies raw hashes. After chdir it exclusively
+creates and fsyncs `candidate.json`, then fsyncs the directory. Exact record:
+
+```
+{"generation":"<full-sha>","closure":"<current-32-hex-ID>","route":"server",
+ "process":{"pid":123,"start":"<Linux stat field22 decimal ticks>","cwd":"/owned/source"}}
+```
+
+The process is the guard's own PID before same-PID exec. It releases admission
+and controller before exec, retaining only the inheritable candidate lifetime
+FD. A concurrent close can publish CLOSED and await lifetime without blocking
+startup from finishing. Every importing worker/descendant must retain this FD;
+foreground gunicorn must be tested on the actual installed runtime. No per-worker
+module attestation is supplied. Non-Linux candidate startup explicitly refuses;
+ordinary POSIX launch/close mechanics remain available, but this stricter reopen
+protocol requires Linux candidate identity.
+
+Reopen takes admission EX independently of the live candidate. In addition to
+the receipt checks below it requires a mode600 exact candidate record bound to
+the current closure/generation/server route, receipt process equality, live
+`/proc/<pid>/stat` field22 and cwd equality, and a still-contended candidate lock.
+A zombie, missing/dead/forged master, missing record or free lifetime lock cannot
+reopen. Identity is rechecked after contention; this is a point-in-time check,
+not a promise the process cannot die immediately afterwards. Start ticks are
+not boot-global identities: never reuse retained state across boots without
+external exclusion and a fresh close/grant/acceptance cycle.
+
+Close first durably rotates CLOSED, then drains **both** locks. Only after full
+drain may it remove the exact validated own-generation `candidate.json` and
+fsync the directory. Malformed/unsafe records are retained and refuse cleanup.
+Timeout or interruption leaves CLOSED and preserves the record. A dead/failed
+exec candidate is not retried over its stale record: full close must drain and
+retire it, rotating the closure and invalidating prior grants/receipts. There is
+no killing, automatic receipt creation, source restore, temporary-open,
+finally-open, automatic rollback or restore command.
 
 ## Reopening and external acceptance
 
@@ -106,15 +170,16 @@ source hashes plus a mode600 external JSON receipt with exactly:
 }
 ```
 
-The guard validates receipt structure/binding, **not its truth or authenticity**.
-It does not fabricate/read schema or process acceptance, inspect PID identity,
-probe health, or produce this receipt. A separately reviewed operator acceptance
+The guard validates receipt structure/binding and the Linux candidate identity
+and lock checks above, **not measured acceptance truth or authenticity**.
+It does not fabricate/read schema acceptance, probe health, or produce this receipt. A separately reviewed operator acceptance
 procedure must measure schema19, markers, ready/health, exact fresh accepting
 process/start configuration, old-generation retirement and recovery preservation,
 then write the receipt. Schema18, missing/malformed/mismatched receipts and wrong
 hashes/generations refuse reopening. A new close invalidates old receipts via
-its closure ID. Receipts are not cryptographic attestations. Reopening this seam
-must never be used as a substitute for the missing candidate acceptance path.
+its closure ID. Receipts are not cryptographic attestations. Authorization to
+start is not evidence of acceptance; the external measurement path remains
+mandatory.
 
 ## Offline acceptance tests
 
@@ -126,7 +191,19 @@ explicit exceptions rather than assertions.
 
 ```
 python3 tools/test_surfd_transition_guard.py --out /owned/artifacts/new-fence-run
+python3 tools/test_surfd_guard_candidate.py --out /owned/artifacts/new-candidate-run
 ```
+
+The candidate suite requires Linux and an OWNER.md ancestor. It tests acted
+fixed-server exec while CLOSED, grant mismatch/modes/links without application
+markers, independent ordinary CLOSED refusals, missing/malformed/dead/forged
+candidate identity, live identity without lock, real live reopen, closure
+rotation, failed exec retention, full drain timeout, and a forked descendant
+retaining the candidate FD after master death. Existing admission tests now
+start a real synthetic candidate for acceptance, then stop it to isolate the
+ordinary admission lifetime controls. These are not real gunicorn controls;
+the separately adapted gunicorn harness below starts an authorized live candidate
+and authors its clearly synthetic receipt only after a real WSGI response.
 
 Predictions/falsifiers: positive fixed routes create a real module-import witness;
 CLOSED/wrong-generation/alternate route/cache attempts must not. An unguarded
@@ -159,16 +236,21 @@ explicit root-local dependency directory: upstream gunicorn23.0.0 + packaging24.
 or gunicorn20.1.0 + packaging24.2 + setuptools65.5.1 (for pkg_resources). The test
 installs nothing, hashes the dependency sources and checks their import roots.
 These upstream pins do **not** identify or reproduce distro-patched host bytes.
+The explicit `--host-distro` mode instead requires the actual system interpreter,
+`/usr/lib/python3/dist-packages`, root-owned nonwritable gunicorn/package source,
+an exact declared gunicorn version, and `dpkg-query` provenance. It records the
+actual installed bytes/version, not an upstream-equivalence claim.
 
 ```
 python3 tools/test_surfd_guard_gunicorn.py --out /owned/new-gunicorn-run --gunicorn-path /owned/deps
 python3 tools/test_surfd_guard_gunicorn.py --out /owned/new-gunicorn20-run --gunicorn-path /owned/deps20 --gunicorn-version 20.1.0
+/usr/bin/python3 tools/test_surfd_guard_gunicorn.py --out /owned/new-distro-run --gunicorn-path /usr/lib/python3/dist-packages --gunicorn-version 20.1.0 --host-distro
 ```
 
 Predictions and discriminating controls:
 
 - A served authored response and import witness identify the actual worker.
-  Both master and worker retain the exact admission-lock device/inode; an
+  Both master and worker retain the exact candidate-lock device/inode; an
   independent exclusive flock must contend.
 - Closing publishes CLOSED but times out while that admitted master lives.
   A fresh guarded launch refuses without a new import. HUP and deterministic
@@ -181,8 +263,8 @@ Predictions and discriminating controls:
   successful drain. All waits are bounded; cleanup only signals the exact
   parent-created master after checking its start identity, never process groups
   or discovered PIDs. Cleanup failure retains identities rather than escalating.
-- A test-only launcher deliberately drops the inherited admission FD. The same
-  lifetime oracle must fail while real WSGI still serves and exclusive drain
+- A test-only launcher deliberately drops the inherited candidate FD. Reopen
+  must refuse; the same lifetime oracle must fail while real WSGI still serves and exclusive drain
   succeeds. This proves why uncooperative/detached routes cannot be approved by
   a passing foreground test.
 
@@ -190,7 +272,52 @@ Linux, nonoptimized Python, link-free canonical NEW output and an owned ancestor
 are required before fixture creation. Provenance, guard commands, WSGI events,
 responses, lock oracles, logs and cleanup identities remain under that output.
 No production gthread4/max-requests5000/jitter500, detached run.sh, scheduler,
-service-manager, candidate, generation handover or live no-loss proof is implied.
+service-manager, product schema acceptance, generation handover or live no-loss
+proof is implied.
+
+### Legacy direct-import entrypoints
+
+`surfd_import_dispatch.py` renders pinned stdlib-only wrappers for the six legacy
+module paths. Each wrapper verifies the dispatch helper bytes; the dispatcher
+verifies the guard bytes, acquires an ordinary shared admission lock through an
+O_RDONLY descriptor (compatible with a read-only source/service sandbox), checks
+OPEN, the fixed generation and all six source hashes, then executes the genuine
+immutable source in the original module namespace. Its real source origin and
+`sys.modules` identity are preserved. Already loaded local dependencies from
+outside that runtime are refused rather than silently evicted.
+
+This gates **application import/effects, not Python interpreter creation or
+startup hooks**. It is an alternative for a legacy root-owned direct-gunicorn
+unit whose ExecStart cannot be replaced. It requires an externally pinned whole
+runtime (unchanged modules/resources as well as the six files), a trusted
+interpreter/import environment and a complete old-process drain before wrapper
+installation. A direct import of the immutable files can bypass cooperation;
+this is not a sandbox against the same-UID operator or application code.
+
+```
+python3 tools/test_surfd_import_dispatch.py --out /owned/new-dispatch-run
+```
+
+The suite installs the exact generated wrapper bytes and acts on module/script
+origins, all six targets, O_RDONLY/inheritable FD lifetime through fork, close
+timeout, stale dependencies and changed source/helper/generation refusals. OPEN
+in this fixture is explicitly synthetic, not a real schema acceptance receipt.
+`test_surfd_dispatch_gunicorn.py` separately exercises actual gunicorn legacy
+worker imports through those exact generated bytes. A real synthetic candidate
+earns an explicitly synthetic receipt, exits while OPEN, then an unguarded legacy
+master loads `surfd:app` through the wrapper. Only its admitted worker holds the
+O_RDONLY lifetime. Held requests complete while CLOSED replacement workers fail
+before real source import; separate HUP, max-requests and fresh-master arms prove
+the distinction. A real WSGI FD-drop negative still serves and must fail the
+independent lifetime oracle. No product module or DB is imported.
+
+```
+/usr/bin/python3 tools/test_surfd_dispatch_gunicorn.py --out /owned/new-legacy-distro --gunicorn-path /usr/lib/python3/dist-packages --gunicorn-version 20.1.0 --host-distro
+```
+
+Upstream and actual installed distro provenance remain distinct. Neither this
+synthetic test nor its successful cleanup proves actual service configuration,
+whole-runtime compatibility, schema acceptance or native-submit no-loss.
 
 ## Launch inventory preparation (not enforcement)
 

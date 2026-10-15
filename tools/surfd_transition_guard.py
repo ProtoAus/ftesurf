@@ -133,6 +133,40 @@ def acquire(fd, operation, timeout):
             time.sleep(0.02)
 
 
+def linux_process(pid):
+    require(sys.platform == "linux", "UNSUPPORTED: candidate identity requires Linux /proc")
+    raw = Path("/proc/%d/stat" % pid).read_text()
+    fields = raw[raw.rfind(")") + 2:].split()
+    require(fields[0] not in ("Z", "X"), "candidate is not live")
+    return {"pid": pid, "start": fields[19],
+            "cwd": os.readlink("/proc/%d/cwd" % pid)}
+
+
+def candidate_read(root, m, s=None):
+    record = read_json(root / "candidate.json", True)
+    require(type(record) is dict and
+            set(record) == {"generation", "closure", "route", "process"} and
+            record["generation"] == m["generation"] and record["route"] == "server" and
+            type(record["closure"]) is str and
+            re.fullmatch("[0-9a-f]{32}", record["closure"]), "malformed candidate record")
+    if s is not None:
+        require(record["closure"] == s["closure"], "stale candidate closure")
+    p = record["process"]
+    require(type(p) is dict and set(p) == {"pid", "start", "cwd"} and
+            type(p["pid"]) is int and p["pid"] > 0 and
+            type(p["start"]) is str and re.fullmatch("[0-9]+", p["start"]) and
+            p["cwd"] == m["source_home"], "malformed candidate process")
+    return record
+
+
+def fixed_exec(m, route, lifetime):
+    os.chdir(m["source_home"])
+    os.set_inheritable(lifetime, True)
+    os.execve(m["routes"][route][0], m["routes"][route],
+              {"PATH": "/usr/bin:/bin", "HOME": m["source_home"],
+               "PYTHONNOUSERSITE": "1"})
+
+
 def main():
     require(os.name == "posix", "UNSUPPORTED: POSIX flock/fsync required; Windows refused")
     import fcntl
@@ -150,7 +184,10 @@ def main():
     launch = sub.add_parser("launch")
     launch.add_argument("--generation", required=True)
     launch.add_argument("--route", required=True)
-    sub.add_parser("candidate", help="intentionally blocked; requires separate reviewed protocol")
+    candidate = sub.add_parser("candidate", help="Linux externally authorized CLOSED server start")
+    candidate.add_argument("--generation", required=True)
+    candidate.add_argument("--route", required=True)
+    candidate.add_argument("--authorization", required=True)
     a = parser.parse_args()
     require(math.isfinite(a.timeout) and 0 <= a.timeout <= 300, "invalid timeout")
     root = plain_path(a.state_dir)
@@ -159,7 +196,7 @@ def main():
         root.mkdir(mode=0o700)  # Exclusive: never overwrite/reinitialize existing state.
         secure_stat(root.stat(), True)
         write_new(root / "manifest.json", m)
-        for name in ("admission.lock", "controller.lock"):
+        for name in ("admission.lock", "controller.lock", "candidate.lock"):
             write_new(root / name, {})
         state_write(root, {"admission": "CLOSED", "generation": m["generation"],
                            "closure": uuid.uuid4().hex})
@@ -168,8 +205,9 @@ def main():
         return
     secure_stat(root.stat(), True)
     m = manifest_check(read_json(root / "manifest.json", True))
-    if a.command == "candidate":
-        raise ValueError("candidate start BLOCKED: no quiescent-start acceptance protocol implemented")
+    # Legacy directories without the third lock fail safely, including ordinary launches.
+    candidate_fd = lock_file(root, "candidate.lock")
+    os.close(candidate_fd)
     if a.command == "status":
         print(json.dumps(state_read(root, m), sort_keys=True))
         return
@@ -182,12 +220,7 @@ def main():
             require(a.generation == m["generation"], "wrong generation")
             require(a.route in m["routes"], "route not allowlisted")
             verify_hashes(m)
-            os.chdir(m["source_home"])
-            os.set_inheritable(admission, True)
-            # exec preserves PID and shared lock for the cooperative foreground lifetime.
-            os.execve(m["routes"][a.route][0], m["routes"][a.route],
-                      {"PATH": "/usr/bin:/bin", "HOME": m["source_home"],
-                       "PYTHONNOUSERSITE": "1"})
+            fixed_exec(m, a.route, admission)
         controller = lock_file(root, "controller.lock")
         try:
             acquire(controller, fcntl.LOCK_EX, a.timeout)
@@ -197,7 +230,52 @@ def main():
                 state_write(root, s)
                 print("CLOSED DURABLE; draining", flush=True)
                 acquire(admission, fcntl.LOCK_EX, a.timeout)
-                print("DRAINED cooperative foreground launches only", flush=True)
+                lifetime = lock_file(root, "candidate.lock")
+                try:
+                    acquire(lifetime, fcntl.LOCK_EX, a.timeout)
+                    record_path = root / "candidate.json"
+                    if os.path.lexists(record_path):
+                        # Only our exact record type may be retired after BOTH drains.
+                        candidate_read(root, m)
+                        record_path.unlink()
+                        sync_dir(root)
+                finally:
+                    os.close(lifetime)
+                print("DRAINED cooperative foreground launches and candidate", flush=True)
+            elif a.command == "candidate":
+                require(sys.platform == "linux", "UNSUPPORTED: candidate requires Linux")
+                require(a.generation == m["generation"], "wrong generation")
+                require(s["admission"] == "CLOSED", "candidate requires CLOSED")
+                require(a.route == "server" and a.route in m["routes"],
+                        "candidate requires fixed server route")
+                grant = read_json(a.authorization, True)
+                expected = {"generation": m["generation"], "closure": s["closure"],
+                            "route": "server", "authorized": True}
+                require(type(grant) is dict and set(grant) == set(expected) and
+                        all(type(grant[k]) is type(v) and grant[k] == v
+                            for k, v in expected.items()), "candidate authorization mismatch")
+                lifetime = lock_file(root, "candidate.lock")
+                try:
+                    acquire(lifetime, fcntl.LOCK_EX, a.timeout)
+                    require(not os.path.lexists(root / "candidate.json"),
+                            "prior candidate record; full close required")
+                    # A CLOSED state alone does not prove old admitted work drained.
+                    acquire(admission, fcntl.LOCK_EX, a.timeout)
+                    verify_hashes(m)
+                    os.chdir(m["source_home"])
+                    write_new(root / "candidate.json",
+                              {"generation": m["generation"], "closure": s["closure"],
+                               "route": "server", "process": linux_process(os.getpid())})
+                    sync_dir(root)
+                    # Release controller before exec; close can publish CLOSED and then wait
+                    # for lifetime without preventing this startup from finishing.
+                    os.close(controller)
+                    controller = None
+                    os.close(admission)
+                    admission = None
+                    fixed_exec(m, a.route, lifetime)
+                finally:
+                    os.close(lifetime)
             else:
                 require(a.generation == m["generation"], "wrong generation")
                 require(s["admission"] == "CLOSED", "already open; close explicitly first")
@@ -216,13 +294,31 @@ def main():
                         type(p["pid"]) is int and p["pid"] > 0 and
                         type(p["start"]) is str and bool(p["start"]) and
                         p["cwd"] == m["source_home"], "missing process acceptance")
+                record = candidate_read(root, m, s)
+                require(p == record["process"] and linux_process(p["pid"]) == p,
+                        "candidate process acceptance mismatch")
+                lifetime = lock_file(root, "candidate.lock")
+                try:
+                    try:
+                        fcntl.flock(lifetime, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except BlockingIOError:
+                        pass
+                    else:
+                        raise ValueError("candidate lifetime lock is not held")
+                    # Recheck identity after contention; a dead master with live children
+                    # is drainable but cannot be accepted as the measured master.
+                    require(linux_process(p["pid"]) == p, "candidate no longer live")
+                finally:
+                    os.close(lifetime)
                 s["admission"] = "OPEN"
                 state_write(root, s)
                 print("OPEN: external receipt consumed; not independently attested")
         finally:
-            os.close(controller)
+            if controller is not None:
+                os.close(controller)
     finally:
-        os.close(admission)
+        if admission is not None:
+            os.close(admission)
 
 
 if __name__ == "__main__":

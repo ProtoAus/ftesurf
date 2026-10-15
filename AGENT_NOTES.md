@@ -12598,3 +12598,40 @@ the game fetches its own map list. The menu half is Patch 652.
 - Test interface, dependency pins, source-derived launch families and limitations:
   tools/surfd-transition-guard.md. Candidate/generation handover, coordinated
   recovery and live native-submit no-loss acceptance remain separate blockers.
+
+### P717 continuation — authorized candidate and legacy import gates
+
+- The explicit Linux `candidate` route now admits one externally authorized
+  fixed `server` while general admission remains CLOSED. Its independent
+  candidate-lifetime flock survives exec/fork: promotion can hold admission EX
+  without asking the candidate to exit; a full close drains BOTH lifetimes.
+  Grant and receipt bind the current closure/generation. Reopen additionally
+  checks the real candidate PID/start/cwd and held lifetime lock; only the
+  separately measured external receipt asserts application/schema acceptance.
+- `tools/surfd_import_dispatch.py` renders exact hash-pinned legacy wrappers.
+  O_RDONLY shared flock works under a read-only service source sandbox; the
+  real immutable module executes in its original namespace with genuine origin.
+  Stale preloaded dependencies refuse. This gates APPLICATION imports/effects,
+  not interpreter creation/startup hooks, and is not a same-UID sandbox. Pin the
+  entire runtime/resources and drain every already-loaded old process first.
+- `test_surfd_guard_gunicorn.py` now uses a live authorized synthetic candidate.
+  Explicit `--host-distro` tests the actual installed Debian package sources and
+  records dpkg/source provenance, separately from upstream20/23 pins. Native
+  candidate and legacy-direct-import gthread2 tests passed with the installed
+  distro bytes. These results are not production gthread4 or schema acceptance.
+- `test_surfd_dispatch_gunicorn.py` proves original module identity/origins,
+  worker O_RDONLY lifetime, held-request completion, and CLOSED HUP/recycle/fresh
+  direct-worker refusal. The legacy master itself need not hold admission;
+  workers must. A deliberate worker FD-drop still serves while drain succeeds,
+  so the same independent oracle rejects it. Exact Popen/start identities alone
+  are used for cleanup; no discovered-PID/group escalation is justified.
+- A setgid scratch ancestor can produce mode2700 even with mkdir(mode0700).
+  The exact owner-only guard correctly refuses it. Explicitly chmod only the
+  NEW owned task root before fixtures; do not weaken private-state checks or
+  chmod shared ancestors. Also, `python -I test.py` omits its sibling imports:
+  isolate the trusted test HOME/env instead; reserve -I for standalone guard/
+  launcher paths that do not require implicit source imports.
+- Commands, exact hashes, acted controls, failed fixture/staging attempts and
+  separate live-transition state: tools/surfd-transition-guard.md and
+  C:/FTESurf-worktrees/ksfdeploy-20261015T014929Z/artifacts/CHECKPOINT.md.
+  Tooling/tests only; no engine/product patch, pin/tag or QC Build claim.

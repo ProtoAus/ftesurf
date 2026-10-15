@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Local synthetic gunicorn lifetime falsifier, not an installation/acceptance driver.
 
-Predictions: inherited admission FDs block exclusive drain through HUP and automatic
+Predictions: inherited candidate-lifetime FDs block exclusive drain through HUP and automatic
 worker recycling, even while CLOSED. Graceful shutdown retains an in-flight request
 until release. An intentional FD-drop control serves while drain succeeds and must
 FAIL the same lifetime oracle. No real application modules or TCP sockets are used.
@@ -58,7 +58,7 @@ from pathlib import Path
 root = Path(__file__).resolve().parent
 
 def admission_fds():
-    lock = (root / "guard" / "admission.lock").stat()
+    lock = (root / "guard" / "candidate.lock").stat()
     found = []
     for entry in Path("/proc/self/fd").iterdir():
         try:
@@ -189,18 +189,14 @@ class Fixture:
                        for name in FILES}
         manifest = {"generation": GENERATION, "source_home": str(root),
                     "hashes": self.hashes,
-                    "routes": {"synthetic": [str(Path(sys.executable).resolve()),
+                    "routes": {"server": [str(Path(sys.executable).resolve()),
                                              "-I", str(root / "launcher.py")]}}
         save(root / "manifest.json", manifest)
         self.run("init", "--manifest", str(root / "manifest.json"))
         closure = json.loads((root / "guard/state.json").read_text())["closure"]
-        save(root / "SYNTHETIC-NOT-ATTESTATION.json",
-             {"generation": GENERATION, "closure": closure, "source_home": str(root),
-              "hashes": self.hashes, "schema": 19, "accepted": True,
-              "process": {"pid": os.getpid(), "start": "SYNTHETIC-NOT-ATTESTATION",
-                          "cwd": str(root)}})
-        self.run("reopen", "--generation", GENERATION, "--receipt",
-                 str(root / "SYNTHETIC-NOT-ATTESTATION.json"))
+        save(root / "candidate-grant.json",
+             {"generation": GENERATION, "closure": closure,
+              "route": "server", "authorized": True})
 
     def argv(self, *args, timeout=2):
         return [sys.executable, "-I", str(GUARD), "--state-dir", str(self.root / "guard"),
@@ -225,8 +221,9 @@ class Fixture:
 
     def start(self):
         with (self.root / "gunicorn.log").open("w") as log:
-            self.master = subprocess.Popen(self.argv("launch", "--generation", GENERATION,
-                                                    "--route", "synthetic"),
+            self.master = subprocess.Popen(self.argv("candidate", "--generation", GENERATION,
+                                                    "--route", "server", "--authorization",
+                                                    str(self.root / "candidate-grant.json")),
                                            stdin=subprocess.DEVNULL, stdout=log,
                                            stderr=subprocess.STDOUT, env=ENV)
         self.master_identity = identity(self.master.pid)
@@ -236,6 +233,15 @@ class Fixture:
               "import is not from the owned master's worker")
         wait_for(lambda: (self.root / "g.sock").exists(), "Unix socket bind")
         return worker
+
+    def accept(self, ok=True):
+        record = json.loads((self.root / "guard/candidate.json").read_text())
+        save(self.root / "SYNTHETIC-NOT-ATTESTATION.json",
+             {"generation": GENERATION, "closure": record["closure"],
+              "source_home": str(self.root), "hashes": self.hashes,
+              "schema": 19, "accepted": True, "process": record["process"]})
+        return self.run("reopen", "--generation", GENERATION, "--receipt",
+                        str(self.root / "SYNTHETIC-NOT-ATTESTATION.json"), ok=ok)
 
     def request_start(self, path):
         connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -279,7 +285,7 @@ class Fixture:
     def oracle(self, worker):
         check(same_process(self.master_identity) and same_process(worker),
               "cannot measure lifetime on vanished identities")
-        lock = self.root / "guard/admission.lock"
+        lock = self.root / "guard/candidate.lock"
         observation = {"master": self.master_identity, "worker": worker,
                        "master_fds": matching_fds(self.master.pid, lock),
                        "worker_fds": matching_fds(worker["pid"], lock),
@@ -311,7 +317,7 @@ class Fixture:
         workers = self.events("import")
         wait_for(lambda: not any(same_process(r) for r in workers), "exact worker identities reaped")
         check(not (self.root / "g.sock").exists(), "gunicorn socket survived shutdown")
-        check(not contended(self.root / "guard/admission.lock"), "admission FD leaked after exit")
+        check(not contended(self.root / "guard/candidate.lock"), "candidate FD leaked after exit")
         save(self.root / "cleanup.json", {"master": self.master_identity,
              "master_returncode": self.master.returncode if self.master else None,
              "workers": workers, "remaining_exact_identities": [r for r in workers if same_process(r)],
@@ -323,6 +329,7 @@ def suite(out, dependencies, commands, fixtures):
     fixtures.append(good)
     worker = good.start()
     good.request("/initial")
+    good.accept()
     first = good.oracle(worker)
     check(first["cooperative_lifetime"], "foreground master/worker did not retain admission FD")
     save(good.root / "initial-oracle.json", first)
@@ -332,7 +339,7 @@ def suite(out, dependencies, commands, fixtures):
     good.closed()
     check(good.master.poll() is None, "master exited during bounded close")
     before = good.events()
-    refusal = good.run("launch", "--generation", GENERATION, "--route", "synthetic", ok=False)
+    refusal = good.run("launch", "--generation", GENERATION, "--route", "server", ok=False)
     check("CLOSED: application interpreter not started" in refusal.stderr and good.events() == before,
           "fresh guarded launch failed pre-import refusal oracle")
 
@@ -393,6 +400,9 @@ def suite(out, dependencies, commands, fixtures):
     fixtures.append(bad)
     bad_worker = bad.start()
     bad.request("/intentional-drop")
+    rejection = bad.accept(ok=False)
+    check("candidate lifetime lock is not held" in rejection.stderr,
+          "FD-dropping candidate was not rejected at acceptance")
     master_witness = bad.events("master")[0]
     check(master_witness["before"] and master_witness["dropped"] and not master_witness["fds"],
           "intentional inherited FD drop did not act")
@@ -415,6 +425,44 @@ def preflight(args):
     check(dependencies.is_dir(), "missing explicit dependency directory")
     versions = {d.metadata["Name"].lower(): d.version
                 for d in importlib.metadata.distributions(path=[str(dependencies)])}
+    if args.host_distro:
+        check(str(dependencies) == "/usr/lib/python3/dist-packages",
+              "host distro mode requires the explicit Debian system package path")
+        check(str(Path(sys.executable).resolve()).startswith("/usr/bin/python3"),
+              "host distro mode requires the actual system interpreter")
+        import gunicorn
+        check(Path(gunicorn.__file__).resolve().is_relative_to(dependencies),
+              "host gunicorn did not resolve from the declared distro path")
+        check(gunicorn.__version__ == args.gunicorn_version,
+              "declared host gunicorn version does not match imported distro bytes")
+        hashes = {}
+        for package in ("gunicorn", "packaging", "pkg_resources"):
+            for path in sorted((dependencies / package).rglob("*.py")):
+                st = path.lstat()
+                check(stat.S_ISREG(st.st_mode) and st.st_uid == 0 and
+                      not (st.st_mode & 0o022) and not path.is_symlink(),
+                      "unsafe distro dependency source")
+                hashes[str(path.relative_to(dependencies))] = hashlib.sha256(path.read_bytes()).hexdigest()
+        check("gunicorn/app/wsgiapp.py" in hashes, "missing host gunicorn source")
+        out = canonical(args.out)
+        check(not out.exists() and out.parent.is_dir(), "--out must be NEW with existing parent")
+        owners = [p / "OWNER.md" for p in out.parents if (p / "OWNER.md").is_file()]
+        check(owners and not owners[0].is_symlink() and
+              owners[0].stat().st_uid == os.geteuid(), "unsafe/missing OWNER.md")
+        for part in (out.parent, *out.parent.parents):
+            check(part.stat().st_uid == os.geteuid() or not (part.stat().st_mode & 0o022),
+                  "foreign writable output ancestor refused")
+        check(len(os.fsencode(str(out / "c/g.sock"))) < 108, "Unix socket path too long")
+        distro = subprocess.run(["dpkg-query", "-W", "-f=${Version}", "gunicorn"],
+                                capture_output=True, text=True, timeout=10, check=True)
+        return out, dependencies, {"mode": "actual-installed-distro-not-upstream-pin",
+            "distro_package_version": distro.stdout, "versions": versions,
+            "dependency_sha256": hashes, "dependency_path": str(dependencies),
+            "python": sys.version, "executable": str(Path(sys.executable).resolve()),
+            "launcher_sha256": hashlib.sha256(Path("/usr/bin/gunicorn").read_bytes()).hexdigest(),
+            "guard_sha256": hashlib.sha256(GUARD.read_bytes()).hexdigest(),
+            "test_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "owner_file": str(owners[0])}
     expected = {"gunicorn": args.gunicorn_version, "packaging": "24.2"}
     if args.gunicorn_version == "20.1.0":
         expected["setuptools"] = "65.5.1"  # Supplies this version's pkg_resources import.
@@ -472,6 +520,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True)
     parser.add_argument("--gunicorn-path", required=True)
+    parser.add_argument("--host-distro", action="store_true",
+                        help="test actual installed Debian bytes, explicitly not an upstream pin")
     parser.add_argument("--gunicorn-version", choices=("20.1.0", "23.0.0"), default="23.0.0",
                         help="explicit upstream pin; never identifies host distro-patched bytes")
     args = parser.parse_args()
@@ -482,6 +532,12 @@ def main():
         return 2
     os.umask(0o077)
     out.mkdir(mode=0o700)
+    (out / "OWNER.md").write_text(
+        "# Synthetic guarded gunicorn candidate lifetime test\n\n"
+        "Owner: invoking agent/operator; parent ownership: " + provenance["owner_file"] +
+        "\nOwn fixture sources, exact Popen master/worker identities and logs here. "
+        "No application imports/production data or TCP sockets. Retain provenance and "
+        "failure evidence; finally gracefully stops only owned masters and checks workers.\n")
     commands = []
     fixtures = []
     errors = []
@@ -501,7 +557,8 @@ def main():
                       "error": str(exc), "no_escalation": "No SIGKILL or discovered-PID signals"})
         save(out / "commands.json", commands)
     result = {"verdict": "FAIL" if errors else "PASS", "errors": errors,
-              "limits": "Synthetic local pinned gunicorn gthread2 only; not live launch coverage, "
+              "limits": "Synthetic local gunicorn gthread2 candidate only; dependency provenance records "
+                        "upstream pin versus actual installed distro. Not live launch coverage, "
                         "installation permission, pre-drain worker exclusion, or attestation. "
                         "CLOSED permits existing-generation HUP/max-requests imports; drain first."}
     save(out / "result.json", result)
