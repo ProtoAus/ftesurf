@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   61466a48f3d76139318fbbeab77e503334746f1f
+commit   b548053218a00aa6e549dfee9ad02a65833317b8
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,20 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-703
-patch    720
+tag      patch-721
+patch    721
+# Patch 721: cull-aware default1 static world-alpha graph. Discard only faces
+# proven raster-empty using all triangles/remapped cull/view state, select actual
+# world entity and retain raw-face budget/conservative whole-batch replay. No
+# mode0/2/default2/worker/ABI/backend or QC Build-number change. Four host variants,
+# 17 acting mutant rejects; prior source-identical renderer has independent104.2
+# reference +40frame/3boot six-yaw mode/startup/return acceptance. Exact commit
+# coherent7product build has zero NEW warning counts, clean cache/source closure;
+# fresh4frame native smoke matches original independent104.2, preserves mode0,
+# ACTS42052pixels and restores every protected byte with4ordinary workers.
+# Source publication/deployment remain separate from build/native acceptance.
+# Quiet cost, supported-cache action and broader native integrations remain open.
+# Scope/evidence/limits: tools/p721alphacull.md.
 # Patch 720: single-screen homepage with direct Windows/Linux downloads; remove
 # lower sections and keep minimal requirements/launcher guidance plus links.
 # Website only; preserve receipts/feeds, anti-cheat copy and engine pin/tag.
