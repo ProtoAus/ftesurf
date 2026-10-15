@@ -89,7 +89,7 @@ def probe_app(commit, url='http://127.0.0.1:8087/api/zones/challenge'):
     with urllib.request.urlopen(request, timeout=10) as response:
         if response.headers.get('X-Zonepub-Source')!=commit: raise RuntimeError('Unexpected serving source')
         body=json.loads(response.read(4096))
-    if body.get('ok') is not True or not re.fullmatch('[0-9a-f]{32}',body.get('nonce','')):
+    if body.get('ok') != 1 or not re.fullmatch('[0-9a-f]{32}',body.get('nonce','')):
         raise RuntimeError('New service challenge control did not act')
 
 

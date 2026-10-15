@@ -43,7 +43,7 @@ class Install(unittest.TestCase):
     def test_health_requires_exact_source_and_valid_challenge(self):
         source='a'*40
         response=types.SimpleNamespace(headers={'X-Zonepub-Source':source},
-            read=lambda limit:json.dumps(dict(ok=True,nonce='b'*32)).encode())
+            read=lambda limit:json.dumps(dict(ok=1,nonce='b'*32)).encode())
         with patch.object(i.urllib.request,'urlopen',return_value=contextlib.nullcontext(response)) as call:
             i.probe_app(source)
             self.assertEqual(json.loads(call.call_args.args[0].data)['sha'],'0'*64)
