@@ -2089,7 +2089,8 @@ string(float c) FS_RunClassName =
 	if (c == RC_CLEAN)    return "clean";
 	if (c == RC_PRACTICE) return "practice";
 	if (c == RC_SEGMENT)  return "segmented";
-	if (c == RC_CHEAT)    return "cheated";
+	// Keep the reason class/wire bits for old recordings; it is Practice in UI.
+	if (c == RC_CHEAT)    return "practice";
 	return "--";
 };
 

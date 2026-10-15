@@ -531,7 +531,7 @@ string(string id, float row) HE_OptDef =
 		if (row == 1) return "hud_splits_energy|Energy column|t||"
 		                     "|The e figure at each checkpoint. Slides left when the speed column is off.";
 		if (row == 2) return "hud_splits_class|Class column|t||"
-		                     "|A mark in the left gutter per stage: ! you cheated in it, ~ you loaded a save in it.";
+		                     "|A ~ mark in the left gutter for practice stages: noclip or a loaded save.";
 		return "";
 	}
 

@@ -282,18 +282,9 @@ void(float tail) Bn_PlaceRaw =
 			return;
 		}
 		ui_bn_pl2 = "not saved";
-		if (cls == RC_CHEAT)
-		{
-			ui_bn_pl1 = "CHEATED";
-			ui_bn_plc = TC_CHEAT;
-			ui_bn_placc = TC_CHEAT;
-		}
-		else
-		{
-			ui_bn_pl1 = "PRACTICE";
-			ui_bn_plc = TC_PRACTICE;
-			ui_bn_placc = TC_PRACTICE;
-		}
+		ui_bn_pl1 = "PRACTICE";
+		ui_bn_plc = TC_PRACTICE;
+		ui_bn_placc = TC_PRACTICE;
 		return;
 	}
 
