@@ -2324,7 +2324,7 @@ void() Lobby_Heartbeat =
 				Lobby_SubmitStage(pl, 0, 3, 1111, TF_CHEAT);
 			cvar_set("lobby_run_probe", "0");
 			lobby_run_waiting = FALSE;
-			print("^5board:^7 probe -- one synthetic CHEATED run, which has no "
+			print("^5board:^7 probe -- one synthetic PRACTICE run, which has no "
 			      "board and cannot rank\n");
 			// No recording: the probe is synthetic, nothing was written, and
 			// naming a file that does not exist is the one thing the ledger
@@ -2816,7 +2816,7 @@ void(float reqid, float code, string body) Lobby_RunReply =
 		print(sprintf("^2board:^7 directory stored a run (rank %g of %g, %s)\n",
 		              rank, of, (tier == WRT_RANKED) ? "ranked" : "community"));
 	else if (code == 204)
-		print("^3board:^7 run has no board (practice or cheated) -- not an error\n");
+		print("^3board:^7 run has no board (practice) -- not an error\n");
 	else if (code == 403)
 		print("^1board:^7 directory refused the key -- this server cannot rank runs\n");
 	else if (code == LOBBY_NOANSWER)

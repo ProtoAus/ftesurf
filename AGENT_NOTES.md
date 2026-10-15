@@ -2972,6 +2972,23 @@ See `tools/OFFRAMP_CONTACT.md`; private diagnostic builds NEVER ship.
 
 ## Rewind (Patch 477)
 
+### Practice labels and save-owned noclip reason — P718
+
+Ordinary save loads replace the abandoned attempt's noclip/settings latch with
+`cheat` from the saved state plus the CURRENT `SV_CheatLevel`; apply it to run
+and stage. Do not OR the old live latch back into clean saved flags. Running
+loads still add segmentation/shadow and retain recorder restoration/failure
+rules. Retry, hopped-start forgiveness and active-mode watching are unchanged.
+The historical RC_CHEAT/TF_CHEAT/SF_CHEAT and `cheat` filename remain evidence/
+compatibility reasons, not a separate player-facing Cheated category: shared
+names, timer/stage marks, banners/chat and the local Practice chip say Practice.
+When aliasing colours, audit comparison callers too: `Bn_ChatCol`'s old red
+TC_CHEAT comparison caught amber Practice until removed. Filter controls must
+contain classified rows, not just test that the selected chip changed. P718's
+six header-only browser fixtures include bare practice and an unflagged legacy
+reason; they are NOT verifier/playback evidence. See tools/p718_runtags.md.
+
+
 P682's warm-go preparation is inert. See `tools/p682rewindprep.md` for supported
 current-recording/same-generation pin and all explicit unavailable branches.
 Shared `SV_RewindSelectRead` is bounded and effect-free; `SV_RewindFind` still

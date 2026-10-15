@@ -282,18 +282,9 @@ void(float tail) Bn_PlaceRaw =
 			return;
 		}
 		ui_bn_pl2 = "not saved";
-		if (cls == RC_CHEAT)
-		{
-			ui_bn_pl1 = "CHEATED";
-			ui_bn_plc = TC_CHEAT;
-			ui_bn_placc = TC_CHEAT;
-		}
-		else
-		{
-			ui_bn_pl1 = "PRACTICE";
-			ui_bn_plc = TC_PRACTICE;
-			ui_bn_placc = TC_PRACTICE;
-		}
+		ui_bn_pl1 = "PRACTICE";
+		ui_bn_plc = TC_PRACTICE;
+		ui_bn_placc = TC_PRACTICE;
 		return;
 	}
 
@@ -582,7 +573,7 @@ string(vector c) Bn_ChatCol =
 {
 	if (c == TC_AHEAD)
 		return "^2";
-	if (c == TC_BEHIND || c == TC_CHEAT)
+	if (c == TC_BEHIND)
 		return "^1";
 	if (c == BNC_WR || c == BNC_UNRANKED || c == TC_PRACTICE)
 		return "^3";

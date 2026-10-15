@@ -462,14 +462,8 @@ float(float state, float ticks, float tick, float flags) Timer_Display =
 */
 #define TC_SHADOW   '0.45 0.85 1.00'
 #define TC_PRACTICE '1.00 0.82 0.20'
-/*
-  BUILD 44.  A cheated run gets its own colour and it is the leaderboard's
-  SBC_BAD, so the clock you are looking at and the row it will become are the
-  same red.  Ranked ABOVE shadow below, because a run that both loaded a save and
-  noclipped carries both bits and cyan is the gentler answer -- the same
-  precedence FS_RunClass spells out, applied to a colour instead of a word.
-*/
-#define TC_CHEAT    '0.95 0.45 0.40'
+// Legacy reason bits share Practice's presentation without changing evidence.
+#define TC_CHEAT    TC_PRACTICE
 /*
   A CLOCK THAT IS NOT MOVING.  Build 19.
 
@@ -560,27 +554,14 @@ vector(float state, float ticks, float pb, float flags, float pace) Timer_Color 
       it would put a glyph on most boundaries of a good run, which is the
       opposite of information.
 
-  TWO MARKS AND NOT ONE, which narrows what was asked for, so here is the reason.
-  "Tag cheated stages" taken literally against SF_DIRTY marks the UMBRELLA -- and
-  a save-lock load is the most common gesture there is in practice, so red would
-  fire three or four times a lap and would mean nothing by the end of it.  Red is
-  kept for the thing that says you did not earn the position.  Amber says the
-  milder true thing: this stage did not record.
-
-  A GLYPH AS WELL AS A COLOUR, because red and amber at 14 px on a dark ground
-  are not separable by a colour-blind player, and this UI already pairs the two
-  elsewhere for exactly that reason rather than tinting alone.
+  Practice stages share the amber ~ mark, whether from noclip or a save load.
+  The stored reason bits remain distinct for existing recordings.
 */
 string(float word, __inout vector col) Timer_SplitsClass =
 {
 	if (!(word & SF_KNOWN))
 		return "";
-	if (word & SF_CHEAT)
-	{
-		col = TC_CHEAT;
-		return "!";
-	}
-	if (word & SF_STITCH)
+	if (word & (SF_CHEAT | SF_STITCH))
 	{
 		col = TC_PRACTICE;
 		return "~";
@@ -1068,8 +1049,7 @@ float(vector scr, float state, float ticks, float flags, float pb,
 	  THE ORDER IS FS_RunClass's, WITH SHADOW SPLICED IN, and the splice is the
 	  only thing here that is not simply the shared rule:
 
-	    cheated   the run's physics were not the ruleset's -- red, matching the
-	              board row it becomes
+	    practice  noclip/settings reason -- amber, matching other practice
 	    shadow    strictly narrower than segmented: the CLOCK came out of the save
 	              too, so the number above you is not a time you ran from the
 	              start.  Drawn instead of `segmented` because it is the more
@@ -1078,12 +1058,12 @@ float(vector scr, float state, float ticks, float flags, float pb,
 	    segmented a save state was used and the clock is your own
 	    practice   the residual -- today that is a hopped start and nothing else
 
-	  Colours: red and amber for the taints, cyan for shadow, which this file has
+	  Colours: amber for practice, cyan for shadow, which this file has
 	  used for it since build 17 and which `armed`, `held` and `ghost` share --
 	  cyan is a mode on this line, amber is a verdict.
 	*/
 	if (flags & TF_CHEAT)
-		s = strcat(s, (s != "") ? "  " : "", "^1cheated^7");
+		s = strcat(s, (s != "") ? "  " : "", "^3practice^7");
 	else if (flags & TF_SHADOW)
 		s = strcat(s, (s != "") ? "  " : "", "^5shadow^7");
 	else if (flags & TF_SEGMENT)

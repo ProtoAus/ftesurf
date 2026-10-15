@@ -93,25 +93,12 @@ vector rec_sb_scroll;
 vector rec_sb_legscroll;
 float  rec_sb_best;              // the fastest CLEAN time on this leg, or 0
 
-/*
-  BUILD 44: FOUR CHIPS, AND THE INVARIANT IS THAT NO ROW HIDES UNDER ALL OF THEM.
-
-  The row word now has four states (FS_RunClass) and the filter has three plus
-  `all`, so one chip has to cover two classes.  `stitched` takes RC_PRACTICE
-  along with RC_SEGMENT -- it is the "not clean, not cheated" bucket -- because
-  the alternative is a bare-practice row (a hopped start, or any file written
-  before build 44) that appears under `all` and nowhere else.  This file already
-  states that rule for the unknowns: a filter that quietly drops the runs it
-  cannot classify is one that lies about how many there are, and the same is true
-  of the ones it can.
-
-  Every row therefore shows under exactly one of the three, and unknowns show
-  under all of them.
-*/
+// Every known row has one class chip; unknowns remain visible under all chips.
+// Practice includes the legacy noclip/settings reason class.
 #define SB_F_ALL       0
 #define SB_F_CLEAN     1
 #define SB_F_STITCHED  2
-#define SB_F_CHEATED   3
+#define SB_F_PRACTICE  3
 
 /*
 ===========================================================================
@@ -713,11 +700,9 @@ float(float r) Scores_Passes =
 		return TRUE;
 	if (rec_sb_filter == SB_F_CLEAN)
 		return (c == RC_CLEAN);
-	if (rec_sb_filter == SB_F_CHEATED)
-		return (c == RC_CHEAT);
-	// SB_F_STITCHED, which is the "not clean, not cheated" bucket -- see the
-	// invariant beside the constants.
-	return (c == RC_SEGMENT || c == RC_PRACTICE);
+	if (rec_sb_filter == SB_F_PRACTICE)
+		return (c == RC_CHEAT || c == RC_PRACTICE);
+	return (c == RC_SEGMENT);
 };
 
 /*
@@ -1895,8 +1880,8 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 		  second copy of the words is a second place for that to happen.
 
 		  THE COLOUR STAYS LOCAL, because it is the only part that is about
-		  this list rather than about the run: red for cheated, amber for the
-		  two middle states -- which is what `practice` already is under the
+		  this list rather than about the run: amber for practice and segmented
+		  -- which is what `practice` already is under the
 		  live timer -- green for clean, and dim for the dash.
 		*/
 		if (sb_colon[SBK_KIND])
@@ -1906,9 +1891,6 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 				            (rec_sb_rowflags[idx] > 0) ? FS_RunKindName(rec_sb_rowflags[idx])
 				                                        : FS_RunClassName(cl),
 				            SBC_GOOD, on ? 0.85 : 0.3);
-			else if (cl == RC_CHEAT)
-				Scores_Cell(lp, SBK_KIND, d,
-				            FS_RunClassName(cl), SBC_BAD, on ? 0.85 : 0.3);
 			else if (cl == RC_UNKNOWN)
 				Scores_Cell(lp, SBK_KIND, d,
 				            "--", SBC_DIM, on ? 0.6 : 0.25);
@@ -3319,8 +3301,8 @@ void(vector scr) Scores_Draw =
 	yc = ytabs + floor((tabh - chiph) * 0.5);
 	if (!online)
 	{
-		if (Scores_Chip("sb_fx", [x, yc], [chipw, chiph], "cheated", rec_sb_filter == SB_F_CHEATED))
-			rec_sb_filter = SB_F_CHEATED;
+		if (Scores_Chip("sb_fx", [x, yc], [chipw, chiph], "practice", rec_sb_filter == SB_F_PRACTICE))
+			rec_sb_filter = SB_F_PRACTICE;
 		x = x - chipw - 6;
 		if (Scores_Chip("sb_fs", [x, yc], [chipw, chiph], "stitched", rec_sb_filter == SB_F_STITCHED))
 			rec_sb_filter = SB_F_STITCHED;
@@ -3894,7 +3876,8 @@ float(string cmd) Scores_ConsoleCommand =
 			// Build 44.  `segmented` as well, because that is the word the row
 			// now shows and a console handle nobody can guess is not one.
 			else if (argv(2) == "segmented") rec_sb_filter = SB_F_STITCHED;
-			else if (argv(2) == "cheated")  rec_sb_filter = SB_F_CHEATED;
+			else if (argv(2) == "practice" || argv(2) == "cheated")
+				rec_sb_filter = SB_F_PRACTICE;
 			else                            rec_sb_filter = SB_F_ALL;
 		}
 		/*
@@ -4133,7 +4116,7 @@ void() Scores_Status =
 	                : ((rec_sb_tab == SB_T_SEGMENT) ? "segmented" : "online"),
 	              (rec_sb_filter == SB_F_CLEAN) ? "clean"
 	              : ((rec_sb_filter == SB_F_STITCHED) ? "stitched"
-	              : ((rec_sb_filter == SB_F_CHEATED) ? "cheated" : "all")),
+	              : ((rec_sb_filter == SB_F_PRACTICE) ? "practice" : "all")),
 	              rec_sb_cols, rec_sb_szrow));
 
 	/*
@@ -4189,7 +4172,7 @@ void() Scores_Status =
 	  three builds once already.  Now `all` against the sum of the other three is
 	  an arithmetic check any config can make, and it is the invariant the four
 	  chips are built on: every row shows under exactly one of clean / stitched /
-	  cheated, and an unknown row shows under all three.
+	  practice, and an unknown row shows under all three.
 
 	  Counted over every row, not over the twenty printed below: the cap is a
 	  courtesy to the log and must not change the number.

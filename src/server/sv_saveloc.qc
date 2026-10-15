@@ -2065,40 +2065,10 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	}
 	else
 	{
-		/*
-		  BUILD 43: THROUGH THE FUNNEL, not around it.
-
-		  These were two direct writes -- `run_t_flags |= TF_PRACTICE` and
-		  `run_t_dirty = TRUE` -- which is what SV_TimerPractice does plus the
-		  per-stage taint it now also owns.  Bypassing it meant the one gesture
-		  the "segmented" category is NAMED after would be the one that never set
-		  the per-stage field, and a save-locked stage would have been admitted to
-		  the stage board as clean.
-
-		  AND THE CHEAT LATCH IS RE-APPLIED FIRST, because the flags restore above
-		  can otherwise LAUNDER one.  The word came out of the file, so a run that
-		  was clean when the save was taken and has been noclipped since gets its
-		  TF_CHEAT wiped by the load and finishes labelled `segmented`.  A load
-		  rewinds the clock; it does not rewind your hands.  Nothing about ranking
-		  turns on it -- both classes are practice -- but a label that can be
-		  removed by a gesture is not a label, and labels are the whole of this
-		  build.  run_t_cheat survives because SV_TimerArm is the only thing that
-		  clears it, which is exactly what it was made to survive.
-
-		  Caught by a scripted trace and not by reading: it needs a save taken
-		  before a cheat and a load taken after one, which is three gestures in an
-		  order nobody writes down.
-
-		  BUILD 46: AND IT NEEDS THE run_class GATE, which it did not need when
-		  it was written.  This is the third and last place TF_CHEAT is set, and it
-		  was safe ungated only because run_t_cheat could not BE true at
-		  run_class 0 -- every source of the latch was gated upstream.  Build 46
-		  ungated the sv_cheats source on purpose, so without this line the bit
-		  would arrive at run_class 0 through a save-load and through nothing
-		  else: `cheated` from one gesture and `practice` from every other, which
-		  is worse than either answer.  Nothing about ranking turns on it in either
-		  direction -- the run is practice from the funnel below regardless.
-		*/
+		// A load replaces the attempt, not the active mode: use the save's reason
+		// plus current noclip/sv_cheats, never the abandoned run's latch.
+		e.run_t_cheat = (cht || SV_CheatLevel(e));
+		e.run_st_cheat = e.run_t_cheat;
 		if (e.run_t_cheat)
 		if (run_t_runclass)
 			e.run_t_flags = e.run_t_flags | TF_CHEAT;

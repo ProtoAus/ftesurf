@@ -25,7 +25,13 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-703
-patch    717
+patch    718
+# Patch 718: noclip/settings attempts display as Practice across timer, stages,
+# completion banners and local records. Loading restores the save's reason
+# instead of inheriting a previous attempt's noclip latch; active noclip or
+# sv_cheats still applies. Running loads remain segmented/shadow and nonranked.
+# Legacy evidence bits/recording names stay compatible. QC-only; no engine
+# source/binary pin/tag or QC Build number change.
 # Patch 717: a bounded local-only overflow lane repairs retained KSF originals
 # through a protected256 queue, with board/exact-key rotation and shared cap2.
 # Preserve retry/strike history; retire obsolete/satisfied deferrals and park
