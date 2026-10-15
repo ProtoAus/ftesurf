@@ -67,4 +67,42 @@ not incorporated into this QC-only build. This feature is renumbered to P726
 without changing code or tested bytes. Portal P725 remains its author's separate
 paired native/QC delivery. No published history was rewritten.
 
-Delivery/UTC provenance follows after destination and live acting checks.
+## Delivery — 2026-10-15 UTC
+
+Product code `87f4870ce61f2a0d459828ac14bbf6ec8ef5bbe8`, renumber metadata
+`c9b6416adcf5b6cf8cc40cc61125a4fd22cb1c3c`; final engine patch documentation
+`a528fb76e07647504789b2cdc436ec08e23f1d99`. Exact inspected SHAs pushed to
+main. The native engine/pin/tag did not move for this feature. The engine-doc
+commit is atop the peer's published portal commit, but NONE of its native or
+unpublished paired QC was built/deployed by this task.
+
+The clean inspected QC tree ran `./build.ps1 -Jobs 8 -Pi` (pwsh7): all3 VMs
+zero warnings, all12 positive directory rows at0 players, uploaded pair verified
+before swapping, ordinary `.prev` backups kept, all12 services restarted. The
+VM hashes above exactly match the original-manifest subject, not just equivalent
+source. A readback at10:10:32Z showed both expected live hashes and all12 active
+services. At10:13:55Z the hashes remained exact and EVERY process PID differed
+from the pre-deployment receipt. No configs, native binaries, backend or release
+assets were copied.
+
+Both Windows gamedirs were independently verified at10:12:24Z: all3 VMs match
+the table, and protected owner cfg hashes were unchanged. Only qwprogs changed;
+rollback copies in each install are `qwprogs.dat.pre-p726-20261015T101224Z`.
+The unchanged CSQC/menu files were not needlessly replaced. The Pi retains its
+previous pair in `.prev`.
+
+A fresh two-client join to live lobby1 (surf_kitsune) fetched the EXACT served
+CSQC hash for BOTH clients, with no pre-seeded cache. `!spec spec726proto`
+selected our second owned test player; live status showed the actual target and
+the inspected screenshot showed `WATCHING Spec726Proto first person`. Bare
+`!spec` produced negative countdown stats, then stat0/body return; another bare
+entry and explicit `!spec off` also acted. Seven live assertions pass; no
+command/VM errors and both owned client handles reaped. This is live command/
+state/UI proof, not a new full-map camera-quality or movement/evidence test.
+
+Local evidence/source recovery was retained under the task OWNER.md root;
+verified disposable worktrees and runtime copies were retired after publication.
+No owner game process or another session's source was stopped/reverted. The
+original engine-doc push was safely refused on a concurrent non-fast-forward;
+P726 documentation was reapplied atop that inspected published parent, without
+force-push or rewriting history.
