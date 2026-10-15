@@ -84,9 +84,13 @@ download or new map/temp file in the fixture.
 The installed game's Steam library must be discoverable (or use an explicit
 absolute gamedir entry / `fs_load`); an owner's existing fs_addons.txt is not
 overwritten by defaults. The server must request the exact local filename.
-`surf_name.bsp` does not satisfy `surf_name_css.bsp`; a same-name but different
-BSP can still fail checksum/build checks. This is content mounting, not a scan
-of every arbitrary folder named cstrike or automatic map-name aliasing.
+A differently named/versioned file is not guaranteed to satisfy that request;
+a same-name but different BSP can still fail checksum/build checks. This is
+content mounting, not a scan of every arbitrary folder named cstrike. The acted
+control proves exact-name reuse, not every possible duplicate/alias combination.
+The mount confirmation is for the main `C:/FTESurf` install. The separate
+`C:/FTEQuake` control install currently has neither addon-list file; its mount
+preferences were not silently rewritten while deploying progs/tier metadata.
 
 ## Verification and honest limits
 
@@ -116,7 +120,7 @@ of every arbitrary folder named cstrike or automatic map-name aliasing.
 
 Disposable test rigs and detailed logs are owned under the task's OWNER.md root;
 public source/receipts contain no player identities or raw private output.
-Deployment provenance is recorded separately after actual destination checks.
+Deployment provenance is recorded below after actual destination checks.
 
 ## P724 — graphical follow-up: fit the complete bonus label
 
@@ -145,3 +149,63 @@ headless text alone cannot pass this graphical arm. The initial graphical rig
 also failed on client-only cvars sent as bare server commands; the fixture was
 corrected to use `set`, and clean repeat arms passed. Those failed controls were
 retained, not relabelled as product passes.
+
+## Final delivery — 2026-10-15 UTC
+
+**Product source:** QC `54ea7bcc83d0e0180d0d1c107bc8ced1a787fea6` (P724)
+includes the original P723 feature `3088366b163f9a2afb43e08284cd9221dbaffc5a`.
+Engine patch-log documentation is `85ef3e3f2f6a9f8adaada1117225ceb2a82f2d40`.
+Both exact inspected SHAs were pushed to main; native pins/tags and qcbuild were
+not moved. This receipt is a later docs-only commit, not another product patch.
+
+The clean inspected QC worktree was rebuilt with
+`pwsh -NoProfile -Command './build.ps1 -Jobs 8 -Pi'` from `src/`.
+All3 VMs compiled with0 warnings. Before either fleet swap the official deploy
+gate positively found all12 directory rows at0 players. The rating asset was
+installed separately before the first swap. The final fleet restart completed
+at08:18:54 UTC (all12 services active); both Windows gamedirs were verified
+at08:19:13 UTC:
+
+- `C:/FTESurf/ftesurf`
+- `C:/FTEQuake/ftesurf`
+- `/srv/nvme/ftesurf-server/game/ftesurf` on the NanoPi (progs + asset only;
+  menu.dat remains local)
+
+Final SHA256 values, matching BOTH Windows copies and the NanoPi where shipped:
+
+| File | SHA256 |
+|---|---|
+| qwprogs.dat | `4bc9774c7b3459fd2466286dc3ec5caa0cee4134396d00cbb24d9744a3ed2446` |
+| csprogs.dat | `a78f8dd66f92ff5f3caa1655c2e05107f53237f67300e9baaf030d8584213ce2` |
+| maps/tiers.txt | `f653a7cccc6f58610a39ab6aab2f94a0ef75e10d8d8039446fd45eae68b4931b` |
+| menu.dat (Windows, unchanged) | `44f12fd918278bd160db66f6cfb45b176d56eeb6290e3d28e6365e81e3bbcbd9` |
+
+The deployed progs exactly hash to the bits used for the successful graphical
+controls, not merely another compilation of similar source. At08:20:39 UTC,
+a bounded read-only check confirmed all12 fresh lobby processes publishing the
+current-map marker and EVERY expected catalogue row. A fresh headless client
+with NO local CSQC and NO local tier catalogue joined a live lobby, downloaded
+the exact final csprogs SHA above and reported actual `MOM tier 1 | KSF tier 1`
+for surf_kitsune at08:21:36 UTC. No fake overlay was used in this live check.
+
+Rollback: Pi retains its `.prev` progs pair. Both Windows installs retain
+`csprogs.dat.pre-p724-20261015T081913Z`; the P723 predecessor backups remain
+as `qwprogs.dat.pre-p723-20261015T075419Z` and
+`csprogs.dat.pre-p723-20261015T075419Z`. No original asset existed before P723.
+The first explicit `-File -PiGame /srv/...` invocation was refused before any
+progs swap because Bash rewrote that argument as a Windows path; the documented
+`-Command` invocation with defaults then passed the real fleet gate and swap.
+A first minimal fresh-client fixture omitted the standard cfg tree and never
+acted; the corrected isolated fixture did. Neither failed arm is counted pass.
+
+**Workspace:** pre-existing canonical branch/ref and dirty instruction/lobby/
+engine-log files were NOT switched, stashed, reverted or committed. Source is
+on origin/main and in the inspected owned QC worktree, not silently merged into
+those stale canonical checkouts. Do not rebuild/deploy their stale HEAD as if
+it were this tested source. The owned source/evidence root is
+`C:/FTESurf-worktrees/tiers-8bad691a/` (OWNER.md). All25 disposable control/build/
+runtime copies were archived, verified byte-for-byte and retired. The current
+QC source/current compiled outputs, opened screenshots and unique local evidence
+remain. The local-only fixture archive/manifest contain unreviewed logs and must
+not be exported as public reports. No owner/peer process was killed; physical
+input and preferred visual scale remain acceptance in lextest.md.
