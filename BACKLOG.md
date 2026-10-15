@@ -225,13 +225,19 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   and restored whole-batch veto ACT and fail. Per-face geometry, stationary
   unsupported slots/intervening-crossing fallback and material/view/budget gates
   remain. Full isolated client compile adds zero warnings; independent review OK.
-  This resolves the source defect, not the still-open GPU/startup/perf gates.
-  Next falsifier is the actual corrected product: fresh worker-enabled startup
-  repeats and correct pane pixels, with old default order as an ACTED failing
-  control. Require unchanged mode0/2, original callback/fog/multipass/capture
-  behavior and no process/config damage; do not demand old incorrect default
-  pixels where P700 intentionally changes the world order. No further decoder,
-  trace or snapshot milestone is a prerequisite for this source correction.
+  P721 closes the subsequently exposed raster-empty graph-constraint/stale
+  entity-flip defect with conservative actual-cull filtering and world-state
+  selection; raw-face budget and unsupported whole-batch fallback remain.
+  The formerly pending default/startup falsifier is COMPLETE: source-identical
+  independent104.2 reference plus40frame/3boot six-yaw repeats/mode0/2/returns
+  PASS with4ordinary workers; wrong-reference and broken-baseline controls ACT.
+  Clean exact engineb5480532/patch-721 coherent7product build adds zero warning
+  counts and leaves5890cache files/source/index unchanged. Its fresh4frame
+  smoke independently equals original104.2 reference, preserves old mode0,
+  ACTS42052pixels and byte-restores subject/backups/both installs. No native
+  retry, default2 promotion or broad performance/cache acceptance. Evidence and
+  limits: tools/p721alphacull.md. Earlier rejected gates remain historical;
+  do not reopen decoder/trace or already-passed startup milestones.
   Broader native model/sprite/weapon, portal/reflection, supported-map cache
   preservation and ordinary frame-time/tail acceptance remain open.
   One quiet fixed Kitsune cache0 ordinary gate now PASSES, not broad promotion:
