@@ -53,12 +53,22 @@ python3 -I /trusted/surfd_transition_guard.py --state-dir /owned/fence reopen --
 python3 -I /trusted/surfd_transition_guard.py --state-dir /owned/fence launch --generation <full-sha> --route scheduled
 ```
 
-The immutable manifest has exactly these keys:
+The immutable manifest has the four required keys below and optionally
+`target_schema`. Omitted `target_schema` means **schema19 only**, preserving the
+legacy six-file format. Explicit `target_schema` must be the JSON integer `19`
+or `20`; booleans, floats (including `20.0`), strings, null and unknown schemas
+refuse. The target is never inferred from a receipt or the dependency set.
 
 - `generation`: one lowercase full 40-character SHA.
 - `source_home`: one existing canonical source directory, used as application cwd.
 - `hashes`: raw SHA256 digests for exactly `surfd.py`, `ksfimport.py`,
-  `ksfgrab.py`, `ksfprofile.py`, `tools/ksfconvert.py`, `tools/ksfreplay_info.py`.
+  `ksfgrab.py`, `ksfprofile.py`, `tools/ksfconvert.py`, `tools/ksfreplay_info.py`
+  for schema19 (legacy or explicit). Schema20 requires exactly those six **plus
+  `accounts.py` and `social.py`**. Missing or extra paths refuse; all hashes are
+  checked for candidate, ordinary launch and reopen. This pins the coordinated
+  social/KSF group, **not** its complete import closure or application runtime.
+  External acceptance must separately pin effective dependency origins, including
+  the proof verifier, Steam helper and KSF top-up module, plus configuration.
 - `routes`: nonempty object of explicit route names to **complete fixed argv
   arrays**, starting with an absolute real executable path (resolve interpreter
   symlinks first). No user argv suffix, environment override, alternate cache or
@@ -67,7 +77,9 @@ The immutable manifest has exactly these keys:
   arbitrary `-c`, shell, or secondary unguarded launcher commands.
 
 There is one pinned generation per state directory, no generation-changing or
-manifest-update command. This seam does not implement old18→new19 rebinding. The
+manifest-update command. Schema selection is immutable too. This seam does not
+implement old18→new19 or schema19→20 rebinding; no existing guard may be relabeled
+or have its locks reset to select schema20. The
 synthetic old writer means a cooperative writer admitted *before closure*, not a
 real schema18 application. Integration must separately review the generation
 handover and installation procedure; never create a second OPEN guard to bypass
@@ -93,7 +105,8 @@ with its complete fixed foreground argv. General `launch` still refuses CLOSED.
 It does not interpret a shell, accept additional argv/env, choose an executable,
 or discover host configuration. The operator must review the manifest's server
 route itself: no daemonization, shell, preload or descriptor-closing launcher.
-The six-file hash set, pinned generation and minimal environment are unchanged.
+The manifest-selected schema/hash set, pinned generation and minimal environment
+remain fixed throughout the candidate lifetime.
 Old writers, boot, cron, manual launches and native-submit exclusion remain an
 external obligation, not a claim of this command.
 
@@ -163,7 +176,7 @@ source hashes plus a mode600 external JSON receipt with exactly:
   "generation": "<full-sha>",
   "closure": "<32-hex closure ID from status>",
   "source_home": "/owned/source",
-  "hashes": {"<each of the six relative paths>": "<raw-sha256>"},
+  "hashes": {"<each schema-specific relative path>": "<raw-sha256>"},
   "schema": 19,
   "accepted": true,
   "process": {"pid": 123, "start": "<external start identity>", "cwd": "/owned/source"}
@@ -173,9 +186,12 @@ source hashes plus a mode600 external JSON receipt with exactly:
 The guard validates receipt structure/binding and the Linux candidate identity
 and lock checks above, **not measured acceptance truth or authenticity**.
 It does not fabricate/read schema acceptance, probe health, or produce this receipt. A separately reviewed operator acceptance
-procedure must measure schema19, markers, ready/health, exact fresh accepting
+procedure must measure the manifest's target schema, markers, ready/health, exact fresh accepting
 process/start configuration, old-generation retirement and recovery preservation,
-then write the receipt. Schema18, missing/malformed/mismatched receipts and wrong
+then write the receipt. The example's `schema:19` is valid only for a legacy or
+explicit19 manifest; explicit20 requires receipt `schema:20` and its exact eight
+hashes. A20 receipt cannot reopen a19 guard or vice versa, even for the same
+source home/generation. Schema18, missing/malformed/mismatched receipts and wrong
 hashes/generations refuse reopening. A new close invalidates old receipts via
 its closure ID. Receipts are not cryptographic attestations. Authorization to
 start is not evidence of acceptance; the external measurement path remains
@@ -201,7 +217,11 @@ candidate identity, live identity without lock, real live reopen, closure
 rotation, failed exec retention, full drain timeout, and a forked descendant
 retaining the candidate FD after master death. Existing admission tests now
 start a real synthetic candidate for acceptance, then stop it to isolate the
-ordinary admission lifetime controls. These are not real gunicorn controls;
+ordinary admission lifetime controls. Schema controls additionally exercise legacy19 and explicit19/20 with real live
+synthetic candidates, opposite-schema/malformed receipts, exact dependency sets,
+missing/mismatched accounts/social bytes at candidate and launch, mismatched
+reopen bytes, acted ordinary imports and stale-closure replay. The manifest stays
+byte-identical; no upgrade/rebind command is added. These are not real gunicorn controls;
 the separately adapted gunicorn harness below starts an authorized live candidate
 and authors its clearly synthetic receipt only after a real WSGI response.
 
@@ -281,7 +301,8 @@ proof is implied.
 module paths. Each wrapper verifies the dispatch helper bytes; the dispatcher
 verifies the guard bytes, acquires an ordinary shared admission lock through an
 O_RDONLY descriptor (compatible with a read-only source/service sandbox), checks
-OPEN, the fixed generation and all six source hashes, then executes the genuine
+OPEN, the fixed generation and all schema-specific source hashes (six for19,
+eight for20), then executes the genuine
 immutable source in the original module namespace. Its real source origin and
 `sys.modules` identity are preserved. Already loaded local dependencies from
 outside that runtime are refused rather than silently evicted.
@@ -289,7 +310,7 @@ outside that runtime are refused rather than silently evicted.
 This gates **application import/effects, not Python interpreter creation or
 startup hooks**. It is an alternative for a legacy root-owned direct-gunicorn
 unit whose ExecStart cannot be replaced. It requires an externally pinned whole
-runtime (unchanged modules/resources as well as the six files), a trusted
+runtime (unchanged modules/resources as well as the pinned dependency set), a trusted
 interpreter/import environment and a complete old-process drain before wrapper
 installation. A direct import of the immutable files can bypass cooperation;
 this is not a sandbox against the same-UID operator or application code.
@@ -297,6 +318,11 @@ this is not a sandbox against the same-UID operator or application code.
 ```
 python3 tools/test_surfd_import_dispatch.py --out /owned/new-dispatch-run
 ```
+
+The suite also proves explicit19 and explicit20 imports through those same six
+entrypoint wrappers, genuine synthetic accounts/social origins, missing/mismatched
+dependency refusal before application effects, and schema20 CLOSED refusal.
+`accounts.py`/`social.py` are pinned dependencies, not new wrapper entrypoints.
 
 The suite installs the exact generated wrapper bytes and acts on module/script
 origins, all six targets, O_RDONLY/inheritable FD lifetime through fork, close

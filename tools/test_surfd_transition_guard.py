@@ -59,7 +59,7 @@ def stop(p):
 
 
 class Fixture:
-    def __init__(self, root):
+    def __init__(self, root, target_schema=None):
         self.root = root
         root.mkdir(mode=0o700)
         self.token = uuid.uuid4().hex
@@ -83,16 +83,19 @@ class Fixture:
             "import time\nfrom pathlib import Path\n"
             "Path('candidate-acted').write_text('SERVER ACTED')\n"
             "while True: time.sleep(.02)\n")
-        for name in FILES[2:]:
+        files = FILES + (("accounts.py", "social.py") if target_schema == 20 else ())
+        for name in files[2:]:
             (self.home / name).write_text("# synthetic source sentinel\n")
         self.hashes = {name: hashlib.sha256((self.home / name).read_bytes()).hexdigest()
-                       for name in FILES}
+                       for name in files}
         self.manifest = {"generation": GEN, "source_home": str(self.home),
                          "hashes": self.hashes,
                          "routes": {r: [str(Path(sys.executable).resolve()), "ksfimport.py"]
                                     for r in ("scheduled", "manual", "worker")}}
         self.manifest["routes"]["server"] = [str(Path(sys.executable).resolve()),
                                              "candidate-server.py"]
+        if target_schema is not None:
+            self.manifest["target_schema"] = target_schema
         self.state = root / "guard"
         self.manifest_path = root / "manifest.json"
         save(self.manifest_path, self.manifest)
@@ -121,7 +124,7 @@ class Fixture:
         state = json.loads((self.state / "state.json").read_text())
         receipt = {"generation": GEN, "closure": state["closure"],
                    "source_home": str(self.home), "hashes": self.hashes,
-                   "schema": 19, "accepted": True,
+                   "schema": self.manifest.get("target_schema", 19), "accepted": True,
                    "process": {"pid": os.getpid(), "start": "SYNTHETIC-not-attestation",
                                "cwd": str(self.home)}}
         record = self.state / "candidate.json"

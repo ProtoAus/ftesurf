@@ -1,5 +1,20 @@
 # AGENT_NOTES.md
 
+## P722 schema20 guard compatibility and acceptance bounds (2026-10-15)
+
+Offline transition tooling now accepts immutable integer target_schema19 or20;
+legacy manifests without that field still mean19. Schema20 pins the original six
+KSF paths plus accounts.py/social.py and requires a strict schema20 external
+receipt. Guard/candidate/dispatcher synthetic Linux suites pass (dispatcher22
+checks). No live migration, generation rebind, lock reset or measured acceptance
+is supplied. Never change an existing manifest or open a second guard to bypass
+an old CLOSED fence. Eight hashes are a coordinated deployment group, not full
+runtime/import closure: proof verifier, Steam, top-up, effective config and fresh
+serving-worker origins remain external acceptance obligations. A social poll is
+mutating (expiry, presence replacement, ACK), not a safe read-only health probe.
+Version metadata reset alone is not rollback/recovery. See tools/p722friends.md
+and tools/surfd-transition-guard.md; no unchanged client suite was rerun.
+
 ## P722 — Steam friends, roster and overhead names — 2026-10-15
 
 Final continuation: real dedicated QC transport now proves 41/42/64 complete

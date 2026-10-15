@@ -104,11 +104,14 @@ inventory, pre-import exclusion, whole-worker retirement and recovery protocol
 first. Inventory/transition approval is separate; no jobs have been stopped and
 no backend files or live schema have been changed by this continuation.
 
-Schema20 adds only the private social tables after schema19. A rollback to
-schema19 code must reset only `PRAGMA user_version` under the same deployment
-exclusion; additive tables may remain. Never restore an old complete SQLite file
-over newer ranked history. Do not attempt to roll P717 schema19 back through a
-simple version reset; its own transition/recovery contract remains authoritative.
+The schema20 migration step adds private social tables after schema19, but a
+whole application import also performs existing account/ranking/ban maintenance.
+There is no generic rollback command here: changing `PRAGMA user_version` alone
+is not operational recovery or permission to run schema19/18 writers. Any
+schema19-code recovery needs a separately reviewed, fenced source/runtime/data
+compatibility plan that preserves newer history and P717 markers. Never restore
+an old complete SQLite file over newer ranked history. The P717 transition and
+recovery contract remains authoritative.
 The existing progs deploy keeps `.prev` and refuses occupied/unproved lobbies.
 
 ## Committed-source verification and delivery — 2026-10-15
@@ -234,6 +237,34 @@ offline guard's schema19-only receipt must not be used to mislabel a schema20
 Friends candidate; the actual transition plan must independently accept its
 complete target generation, preserve P717 markers and prevent lost native posts.
 This inventory is not exclusion, installation, migration or permission to reopen.
+
+## Schema20 acceptance tooling — offline only
+
+A later continuation adds immutable manifest `target_schema` support to the
+transition guard and its coupled legacy dispatcher. A missing target retains
+schema19/six-hash behavior; explicit integer20 requires the six KSF paths plus
+`accounts.py` and `social.py`. Explicit19 remains supported. A receipt must
+strictly match the selected schema;20 is never reported as19. There is no guard
+rebinding, lock reset, automatic receipt or live generation-handover driver.
+
+`schema20-acceptance/` in the owned task root retains preregistered falsifiers,
+source hashes, exact commands, logs and synthetic-fixture lifecycle observations.
+The three affected isolated local-WSL suites pass: transition guard four groups,
+candidate five groups including legacy19/explicit19/20 acted acceptance and
+cross-schema/dependency/closure refusals, and dispatcher22/22 tests. Gunicorn
+is unavailable in that local runtime; this is not real gunicorn/host acceptance.
+No unchanged client build or social app suite was rerun for this tooling change.
+
+The eight-file set pins the coordinated social/KSF group, **not** complete
+runtime closure. Acceptance still needs fresh serving workers using the intended
+module origins, verifier/Steam/top-up dependencies and effective configuration;
+actual schema20 and preserved P717 marker keys/values; old-writer exclusion and
+native-submit reconciliation; and separately authorized genuine-account checks.
+A social poll is a mutating authenticated POST, not a public read-only probe.
+Do not seed live accounts/keylinks or fabricate a friendship to claim readiness.
+These controls neither alter the existing P717 controller nor authorize a second
+OPEN guard around its CLOSED fence. Live Friends remains undelivered until the
+actual schema20 generation passes that owner's reviewed transition/acceptance.
 
 ## Remaining acceptance
 

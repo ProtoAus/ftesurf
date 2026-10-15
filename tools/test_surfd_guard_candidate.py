@@ -28,7 +28,117 @@ def candidate_args(f, grant):
             "--authorization", str(grant))
 
 
+def schema_suite(out):
+    for target in (None, 19, 20):
+        f = Fixture(out / ("schema-legacy19" if target is None else "schema%d" % target),
+                    target_schema=target)
+        schema = 19 if target is None else target
+        manifest_bytes = (f.state / "manifest.json").read_bytes()
+        initial_state = (f.state / "state.json").read_bytes()
+        if schema == 20:
+            state = json.loads(initial_state)
+            grant = f.root / "grant.json"
+            save(grant, {"generation": GEN, "closure": state["closure"],
+                         "route": "server", "authorized": True})
+            for name in ("accounts.py", "social.py"):
+                path = f.home / name
+                original = path.read_bytes()
+                for changed in (None, b"# mismatched schema20 dependency\n"):
+                    path.unlink()
+                    if changed is not None:
+                        path.write_bytes(changed)
+                    f.run(*candidate_args(f, grant), ok=False)
+                    check(not (f.state / "candidate.json").exists() and
+                          not (f.home / "candidate-acted").exists(),
+                          "dependency hash refusal started candidate")
+                    if path.exists():
+                        path.unlink()
+                    path.write_bytes(original)
+        p = f.candidate()  # Acted server marker and same-PID record required by Fixture.
+        for wrong in (20 if schema == 19 else 19, True, False, float(schema),
+                      str(schema), None, 18, 21):
+            reopen(f, f.receipt(schema=wrong))
+            check((f.state / "state.json").read_bytes() == initial_state,
+                  "rejected schema receipt changed closure/state")
+        receipt = f.receipt()
+        accepted_bytes = receipt.read_bytes()
+        reopen(f, receipt, ok=True)
+        check(p.poll() is None, "schema acceptance killed live candidate")
+        stop(p)
+        if schema == 20:
+            for name in ("accounts.py", "social.py"):
+                path = f.home / name
+                original = path.read_bytes()
+                for changed in (None, b"# mismatched launch dependency\n"):
+                    path.unlink()
+                    if changed is not None:
+                        path.write_bytes(changed)
+                    f.run("launch", "--generation", GEN, "--route", "manual", ok=False)
+                    check(not (f.home / "imports").exists(), "bad dependency launch acted")
+                    if path.exists():
+                        path.unlink()
+                    path.write_bytes(original)
+        (f.home / "release").touch()
+        f.run("launch", "--generation", GEN, "--route", "manual")
+        check((f.home / "imports").read_text() == "IMPORT ACTED\n" and
+              (f.home / "writer-done").read_text() == "OLD WRITE ACTED",
+              "matching-schema launch did not act")
+        f.run("close")
+        f.refused_launches()
+        p = f.candidate()
+        stale = f.root / "stale-receipt.json"
+        stale.write_bytes(accepted_bytes)
+        stale.chmod(0o600)
+        reopen(f, stale)
+        if schema == 20:
+            for name in ("accounts.py", "social.py"):
+                path = f.home / name
+                original = path.read_bytes()
+                path.write_text("# mismatched reopen dependency\n")
+                reopen(f, f.receipt())
+                path.write_bytes(original)
+        reopen(f, f.receipt(), ok=True)
+        stop(p)
+        f.run("close")
+        check(not (f.state / "candidate.json").exists(), "close failed to retire candidate")
+        check((f.state / "manifest.json").read_bytes() == manifest_bytes,
+              "schema handling mutated immutable manifest")
+    print("PASS legacy19/explicit19/explicit20 acted acceptance, cross-schema refusal, hash gates and closure replay")
+
+    f = Fixture(out / "invalid-manifests", target_schema=20)
+    valid_state = f.state
+    variants = []
+    for value in (True, False, 20.0, 19.0, "20", None, 18, 21, [], {}):
+        variants.append(dict(f.manifest, target_schema=value))
+    for target in (None, 19, 20):
+        base = copy.deepcopy(f.manifest)
+        if target is None:
+            base.pop("target_schema")
+        else:
+            base["target_schema"] = target
+        # Eight hashes cannot silently upgrade a keyless or explicit19 manifest.
+        if target != 20:
+            variants.append(copy.deepcopy(base))
+        for name in ("accounts.py", "social.py"):
+            missing = copy.deepcopy(base)
+            missing["hashes"].pop(name)
+            variants.append(missing)
+        extra = copy.deepcopy(base)
+        extra["hashes"]["extra.py"] = "0" * 64
+        variants.append(extra)
+    for index, manifest in enumerate(variants):
+        f.state = f.root / ("invalid-guard-%d" % index)
+        path = f.root / ("invalid-manifest-%d.json" % index)
+        save(path, manifest)
+        f.run("init", "--manifest", str(path), ok=False)
+        check(not f.state.exists(), "invalid manifest initialized state")
+    f.state = valid_state
+    closed(f)
+    print("PASS target types and insufficient/extra dependency sets refuse before initialization")
+
+
 def suite(out):
+    schema_suite(out)
     f = Fixture(out / "authorization")
     state = json.loads((f.state / "state.json").read_text())
     good = {"generation": GEN, "closure": state["closure"],

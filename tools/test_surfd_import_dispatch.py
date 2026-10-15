@@ -53,6 +53,7 @@ class DispatchTests(unittest.TestCase):
             (self.home / relative).write_text(
                 "from pathlib import Path\nPath(%r).write_text(__file__)\nVALUE = 42\n" %
                 str(self.marker))
+        self.files = set(dispatch.FILES)
         self.manifest = {"generation": GENERATION, "source_home": str(self.home),
                          "hashes": {}, "routes": {"fixture": [str(Path(sys.executable).resolve()), "-V"]}}
         self.state_write("OPEN")
@@ -71,7 +72,7 @@ class DispatchTests(unittest.TestCase):
         path.chmod(0o600)
 
     def refresh(self):
-        self.manifest["hashes"] = {name: digest(self.home / name) for name in dispatch.FILES}
+        self.manifest["hashes"] = {name: digest(self.home / name) for name in self.files}
         path = self.state / "manifest.json"
         path.write_text(json.dumps(self.manifest))
         path.chmod(0o600)
@@ -97,6 +98,61 @@ class DispatchTests(unittest.TestCase):
         result = self.run_code("import surfd", False)
         self.assertIn(message, result.stderr)
         self.assertFalse(self.marker.exists(), "application ran before gate")
+
+    def schema20(self):
+        self.manifest["target_schema"] = 20
+        for name in ("accounts", "social"):
+            path = self.home / (name + ".py")
+            path.write_text("from pathlib import Path\nPath(%r).write_text(__file__)\n" %
+                            str(self.root / (name + "-acted")))
+            self.files.add(name + ".py")
+        target = self.home / "surfd.py"
+        target.write_text(target.read_text() + "import accounts, social\n")
+        self.refresh()
+
+    def test_schema20_dependency_origins(self):
+        self.schema20()
+        self.run_code("import surfd\nassert surfd.VALUE == 42\n")
+        self.assertTrue(self.marker.exists())
+        for name in ("accounts", "social"):
+            self.assertEqual((self.root / (name + "-acted")).read_text(),
+                             str(self.home / (name + ".py")))
+
+    def test_explicit19(self):
+        self.manifest["target_schema"] = 19
+        self.refresh()
+        self.run_code("import surfd\nassert surfd.VALUE == 42\n")
+        self.assertTrue(self.marker.exists())
+
+    def test_schema20_dependency_hash_refusals(self):
+        self.schema20()
+        for name in ("accounts.py", "social.py"):
+            path = self.home / name
+            original = path.read_bytes()
+            for changed in (None, b"# stale dependency\n"):
+                path.unlink()
+                if changed is not None:
+                    path.write_bytes(changed)
+                self.refused('No such file or directory' if changed is None else
+                             'raw helper/source hash mismatch')
+                for dependency in ("accounts", "social"):
+                    self.assertFalse((self.root / (dependency + "-acted")).exists())
+                if path.exists():
+                    path.unlink()
+                path.write_bytes(original)
+        self.run_code("import surfd")
+        self.assertTrue(self.marker.exists(), "restored schema20 dispatch never acted")
+
+    def test_schema20_closed(self):
+        self.schema20()
+        self.state_write("CLOSED")
+        self.refused()
+
+    def test_schema20_incomplete_manifest(self):
+        self.schema20()
+        self.files.remove("social.py")
+        self.refresh()
+        self.refused('exact schema20 raw hash set required')
 
     def test_closed(self):
         self.state_write("CLOSED")

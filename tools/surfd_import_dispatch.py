@@ -3,7 +3,7 @@
 
 This gates application effects, not interpreter creation or Python startup hooks.
 Installers must drain *all* old processes and pin dependencies first. source_home
-must contain the entire immutable runtime, not merely the six hashed files.
+must contain the entire immutable runtime, not merely the schema-specific hashed files.
 This is cooperative admission, not a sandbox against the owner or application.
 """
 import hashlib
@@ -123,7 +123,6 @@ def dispatch(namespace, *, guard_path, guard_sha256, state_dir, generation,
                       type(state["closure"]) is str and
                       re.fullmatch("[0-9a-f]{32}", state["closure"]),
                       "admission not OPEN for fixed generation")
-        guard.require(set(manifest["hashes"]) == FILES, "six-file manifest required")
         home = guard.plain_path(manifest["source_home"])
         for directory in (home, home / "tools"):
             st = guard.plain_path(str(directory)).stat()
