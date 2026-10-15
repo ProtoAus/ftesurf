@@ -56,8 +56,38 @@ every post-shot have4ordinary live workers, cache explicitly0. Independent
 post-run byte audit verifies all4images, logs, original8/backups, protected
 subject, both untouched installs,1167held inputs plus spec and zero owned
 processes remaining. No relaxed oracle, native retry or repeated broad matrix.
-Parent opened full default/mode0 PNGs. Source publication and dual-Windows
-installation are separate, later receipted operations, not inferred here.
+Parent opened full default/mode0 PNGs. Engine source/tag and paired QC metadata
+were pushed by exact inspected SHA and remote-verified, not inferred from HEAD.
+
+## Dual Windows delivery and installed live acceptance
+
+Native-only standard3+7 deployment PASSES2026-10-15T02:40:50Z: CFTESurf client,
+HL2/UI plugins; CFTEQuake client/dedicated/five plugins. All10destination hashes
+match the coherent manifest and each.prev matches originalcurrent. Pre-existing
+.prev bytes are separately retained in a CRC/SHA-verified archive. Config/progs/
+player-data aggregates remain unchanged. All5initial deployment-helper review
+blockers were fixed and independently re-reviewed before the first transaction;
+12actual exclusive-Windows-handle scratch controls pass normal/-O/no skips.
+
+Fresh independently reviewed INSTALLED-image native test PASSES first attempt:
+2sequential boots/4engineRGB960x720frames/204.5s/rc0, no native retry. Actual
+CFTESurf/ftesurf64.exe and CFTEQuake/fteqw64.exe client PIDs plus installed
+CFTEQuake/fteqwsv64.exe PIDs are independently traced to raw OS image inventories
+and exact hashes/stamps. Both default1 images equal original independent104.2
+fullframe0px; both mode0 images equal the held baseline0px and ACT42052px versus
+default; cross-install equality exact. Startupdefault1/4ordinaryworkers/cache0
+and effective camera/settings are verified. Both pairs quitrc0; independent byte
+audit verifies original8/backups/protected subject, canonical config/progs/player
+data,10installed+previous bytes,1279held inputs/spec and0owned processes.
+An unrelated native process present at admission was left untouched; the run is
+explicitly NONEXCLUSIVE and not quiet timing. Parent inspected fullframe PNGs
+and runtime logs (no warning/error/failure matches).
+
+The installed images use the isolated owned subject as basedir; this does not
+certify the owner's live profile/config. Installed and coherent-subject plugin
+bytes match, and plug_list reports HL2/UI loaded from `$system`, but those display
+paths are NOT independent OS DLL-module provenance. No such broader claim is
+made. No QC progs/config, Build number, Linux/Pi binary or release was shipped.
 
 ## Explicit remaining limits
 

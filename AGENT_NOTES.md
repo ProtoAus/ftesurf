@@ -12635,3 +12635,46 @@ the game fetches its own map list. The menu half is Patch 652.
   separate live-transition state: tools/surfd-transition-guard.md and
   C:/FTESurf-worktrees/ksfdeploy-20261015T014929Z/artifacts/CHECKPOINT.md.
   Tooling/tests only; no engine/product patch, pin/tag or QC Build claim.
+
+### P721 continuation — Git observer identity and native deploy rollback
+
+- A UCRT/MSYS host-test PATH changed `git` from Git-for-Windows to MSYS Git.
+  Different system `core.autocrlf` made unchanged CRLF checkouts appear dirty in
+  every engine worktree. The original failed guard is retained; explicit original
+  `C:/Program Files/Git/mingw64/bin/git.exe` status/rawdiff and SHA256 inventories
+  prove source/index closure without checkout/reset/config repair or host retry.
+  Pin the observer executable as well as compiler PATH before comparing status.
+- Native installation rollback must archive BOTH current and pre-existing `.prev`
+  before mutation. A preflight process query is stale after hashing/compression;
+  query at mutation boundaries, never kill a newly observed owner process.
+  Hash-before-write alone is not ownership across forward writes and rollback.
+- The bounded Windows ten-file helper uses nofollow lstat/fstat checks, refuses
+  reparse/symlink (including dangling) and hardlinked writable aliases, and holds
+  `CreateFileW` shareMode0/OPEN_REPARSE_POINT identity-bound handles through
+  archive verification, writes, fsynced success receipt and independent recovery.
+  Absent `.prev` uses CREATE_NEW; its rollback removes by owned-handle disposition,
+  not arbitrary path unlink. Restore each recorded current/previous mutation
+  independently even when another restore fails. Final archive hashing/receipt
+  I/O must remain INSIDE the rollback exception boundary; receipt persistence is
+  the commit point, not an unguarded afterthought.
+- Twelve actual Windows scratch controls pass normal/-O without skips: late busy
+  and inventory failure, linked aliases, blocked peer replacement/in-place writes,
+  peer-created absent `.prev`, partial current write plus failed current restore,
+  final receipt/archive-hash failure, exact ordinary rollback and lease retention
+  at receipt persistence. Source-only initial review found five real blockers;
+  all fixed and independently re-reviewed BEFORE the first deployment.
+- Standard build.ps1 native destination contract is three CFTESurf files and
+  seven CFTEQuake files, not a full install/config/QC-progs copy. P721 first actual
+  transaction2026-10-15T02:40:50Z passes all10destination/current.prev hashes,
+  archived old.prev CRC/SHA and unchanged config/progs/player-data aggregates.
+  No global process exclusion or crash/power-loss atomicity is claimed. Separate
+  installed-image2boot/4frame gate now PASSES204.5s/rc0/firstattempt: both actual
+  installed client images and installed dedicated image have raw OS PID/path/hash
+  proof; default1 original104.2 equality, mode0 preservation+42052pixel actor,
+  4ordinary workers and complete1279held/protected/prev/owned-process closure.
+  One unrelated native process at admission was untouched; NONEXCLUSIVE is not
+  quiet timing. Plugin display `$system` is not independent OS DLL provenance.
+  Quiet timing and broader renderer fixtures remain distinct open gates, not
+  inferred from installed smoke, byte deployment or historical staged captures.
+  Evidence: owned mapvisual task continuation-01a13d4e; product scope/pins and
+  accepted native reference controls: tools/p721alphacull.md.
