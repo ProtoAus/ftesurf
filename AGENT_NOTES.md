@@ -12809,3 +12809,44 @@ the game fetches its own map list. The menu half is Patch 652.
   inferred from installed smoke, byte deployment or historical staged captures.
   Evidence: owned mapvisual task continuation-01a13d4e; product scope/pins and
   accepted native reference controls: tools/p721alphacull.md.
+
+### P717 live backend transition: measured operational gates — 2026-10-15
+
+- The reviewed backend generation reached schema19 and OPEN with all twelve
+  lobbies recovered. The migration preserved the native/community row digest
+  and made exactly 398705 legacy empty-ID markers at the cut. Schema19 does NOT
+  invent IDs or delete those legacy rows; later imports can change the live
+  counts. P722/schema20 compatibility and deployment are separate from this
+  completed generation; do not equate origin/main with the live backend.
+- Probe actual procfs capabilities before admission/outage. This kernel omits
+  `/proc/PID/task/TID/children`, including for the observer itself. A bounded
+  TGID/PPID census, repeated around FD observation with exact target-identity
+  checks, supplies the relevant child predicate without that optional interface.
+  Permission, malformed-record and bound failures must not mean an empty census.
+- Start-of-frame counters alone do not prove deferred command timers ran. After
+  producer suppression, empty HTTP contexts and the acted held-request oracle,
+  require an acted zero-delay command-timer fence, then recheck map/process epoch,
+  contexts, tasks, sockets and admission. RCON can execute before the ordinary
+  command/timer phase. A test where frames advance but timers do not must block.
+- Protected same-UID cwd/exe reads also need preflight. Do not blanket-skip them.
+  Any narrow non-application-role exception needs fresh root-managed service or
+  current-controller ancestry bindings and exact observed PID/start/PPID/argv.
+  Keep an explicit unobserved-cwd sentinel and retain the record in descendant
+  and candidate-family accounting; otherwise refuse. Systemd's cached ExecStart
+  pid can be zero while its independently authenticated MainPID remains live.
+- Restart lobbies behind persistent admission keys. Restore captured effective
+  backend endpoints, rates and worker settings with auto-save still disabled;
+  prove all fresh engine identities and heartbeats before releasing admission.
+  Restore original auto-save last. Archive and identity/content-check only the
+  generated maintenance/recovery configs before removing them.
+- An immutable backend copy must include the assets its code actually opens.
+  The board uses `WEB_DIR` beside `surfd.py`, not Flask's templates/static tree.
+  Mirror the five published board assets, hash and seal them with the runtime,
+  and test the real public board and each allowlisted asset, not only health or
+  mocked web fixtures. Retain owner backup files without serving/copying them.
+- Current cutoff evidence includes all23 backend suites, native guard/Gunicorn
+  controls, controller/observer/adapter controls and independent targeted reviews.
+  An additional live readback proves schema19, twelve fresh heartbeats, exact
+  runtime/config recovery, no generated maintenance configs, guarded legacy
+  entrypoints and HTTP200 for health, lobbies and the public board. Detailed
+  recovery/process evidence remains private. No engine/QC patch or Build claim.
