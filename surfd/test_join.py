@@ -262,15 +262,15 @@ status, body = join(m, "surf_ace")
 check("a map somebody is already on is answered", status, 200)
 check("...and it is the one that is already running", body["state"], "ready")
 
-# A MAP WITH NO ZONE FILE IS HOSTED, NOT REFUSED. 781 of the shipped library's
-# 1312 maps are in this state: they load perfectly and can never be timed.
-# Refusing them would be surfd deciding a player may not walk around a map they
-# own; the honest answer is "yes, and you cannot set a time here".
+# P727: surf remains allowed without zones; bhop requires a zone file. The
+# latter is a reversible pool disable, never deletion or interruption of a lobby.
 m = fresh()
 beat(m, "p27510", "surf_ace")
 status, body = join(m, "bhop_hell")
-check("an UNZONED map is still hosted", status, 200)
-check("...and says so rather than pretending", body["timed"], 0)
+check("an UNZONED bhop is disabled", status, 403)
+check("...without assigning any server", assignments(m), [])
+status, body = join(m, "surf_ace")
+check("CONTROL: an unzoned surf is still hosted honestly", (status, body["timed"]), (200, 0))
 
 m = fresh()
 beat(m, "p27510", "surf_ace")

@@ -25,7 +25,10 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-703
-patch    719
+patch    727
+# P727 compatibility candidate: only the completion/pool backend fix is applied
+# to inspected live generation a9dce85 (schema19). No native/QC/schema upgrade.
+# Not permission to replace or bypass the sealed guarded production runtime.
 # Patch 719: minimal homepage and factual public anti-cheat overview. Remove
 # promotional slogans and repeated feature cards; explain recording, server
 # replay, input analysis, badge/review meaning and limits. Preserve release

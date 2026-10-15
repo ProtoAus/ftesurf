@@ -1,6 +1,7 @@
 """Shared map-list grammar and reversible pool policy. No BSP/zone deletion.
 
-Pool entries are per BUILD, not per display group. Missing entries are enabled.
+Pool entries are per BUILD, not per display group. Defaults admit surf maps
+and bhop maps with a zone file; explicit admin disables still take precedence.
 The catalogue's explicit `of` links are separate from zone compatibility.
 """
 import re
@@ -42,11 +43,21 @@ def read_list(path):
     return rows
 
 
-def disabled(db):
-    return {r[0] for r in db.execute("SELECT map FROM map_pool WHERE enabled=0")}
+def pool_policy(name, zone_files):
+    """Empty if eligible, otherwise the automatic disable explanation."""
+    if name.startswith("surf_"):
+        return ""
+    if name.startswith("bhop_"):
+        return "" if name in zone_files else "Bhop map has no zone file"
+    return "Not a surf or zoned bhop map"
 
 
-def manifest(path, db, bsp, zoned):
+def disabled(db, names=(), zone_files=frozenset()):
+    off = {r[0] for r in db.execute("SELECT map FROM map_pool WHERE enabled=0")}
+    return off | {name for name in names if pool_policy(name, zone_files)}
+
+
+def manifest(path, db, bsp, zoned, zone_files):
     """One row per held build, with the menu's independent tiers and links."""
     try:
         rows = read_list(path)
@@ -57,24 +68,25 @@ def manifest(path, db, bsp, zoned):
         if name not in byname:
             byname[name] = dict(map=name, disp=bsp[name], mode=name.split("_")[0],
                                 src="-", tier=0, mt=0, kt=0, kb=0, first="", new=0, of="")
-    off = disabled(db)
+    off = disabled(db, bsp, zone_files)
     out = []
     for name, row in sorted(byname.items()):
         if name not in bsp:
             continue
-        out.append(dict(row, enabled=name not in off, zoned=name in zoned))
+        out.append(dict(row, enabled=name not in off, zoned=name in zoned,
+                        policy=pool_policy(name, zone_files)))
         out[-1].pop("line", None)
     return out
 
 
-def game_list(path, db, bsp, zoned):
+def game_list(path, db, bsp, zoned, zone_files):
     """Append optional of / zones / enabled columns, keeping old clients valid.
 
     Disabled rows MUST stay in this list: omission cannot disable a mounted BSP.
     Older clients ignore the extension but /api/join still enforces the pool.
     """
     rows = read_list(path)
-    off = disabled(db)
+    off = disabled(db, (r["map"] for r in rows), zone_files)
     return ("FTESURF-MAPDL 1\n# of zoned enabled: pool state is per build\n" +
             "".join("%s %s %d %d\n" % (r["line"], r["of"] or "-",
                                        r["map"] in zoned, r["map"] not in off)

@@ -418,7 +418,20 @@ names are red. Actions require the existing admin session, CSRF token and
 same-origin checks.
 
 Enable/disable is per build and persists in `map_pool` in the directory DB.
-Missing policy entries default to enabled. Disabled rows stay in the game feed
+The effective pool admits `surf_` maps and `bhop_` maps with an authoritative
+online/local JSON zone file. Other modes and bhop without a file are automatically
+disabled (embedded BSP timers alone are not a bhop zone file). The admin table
+explains automatic disables and cannot enable past this rule. A manual disable
+still overrides eligibility. Adding/removing a zone file changes automatic bhop
+eligibility on the next library refresh, without deleting any data.
+
+The same effective pool filters BOTH numerator and denominator of profile
+completion, the website's have/not-beaten lists and the game's per-tier lists.
+Disabling an otherwise eligible build removes it from all three on the next
+request, even with the player/main-board caches warm. Existing HTTP freshness
+is at most30 seconds; zone-file scans retain the library's five-minute TTL.
+Historical run/board data remains available; neither a disable nor this scope
+change deletes old records. Disabled rows stay in the game feed
 with an explicit flag (omitting them cannot disable an already mounted BSP).
 Updated game menus refresh this feed at most once per minute while open, hide
 disabled builds and refuse selecting a disabled side of a build switch. The

@@ -18,9 +18,11 @@
 <main>
 <h2>Map manifest</h2>
 <p class="note">One row per installed build. MOM and KSF tiers are independent, as in Create Server.
-Enabled maps are highlighted. Disabling hides that build in the updated game menu and refuses new lobby requests;
-it does not delete maps, zones, times, or interrupt a running lobby. Manual console map commands and configured lobby rotations are not changed.</p>
-<p class="note">Red means <strong>no zone file</strong> on the server: the map can be played, but not timed.
+Enabled maps are highlighted. The pool and leaderboard completion admit surf maps and bhop maps with zone files;
+other modes and bhop maps without zone files are automatically disabled. Manual disables also remove a build from completion.
+Disabling hides that build in the updated game menu and refuses new lobby requests; it does not delete maps, zones, times,
+or interrupt a running lobby. Manual console map commands and configured lobby rotations are not changed.</p>
+<p class="note">Red means <strong>no zones listed</strong> on the server. Embedded BSP timers do not replace a zone file for bhop pool eligibility.
 A related-build link shares imported boards, not native FTE records; zones are copied only after a separate compatibility check.</p>
 <div class="card" style="margin-top:1rem">
 <div class="row filters">
@@ -76,8 +78,9 @@ function draw() {
     sub.textContent = [m.mode, m.src === 'km' ? 'MOM + KSF' : m.src === 'm' ? 'Momentum' : m.src === 'k' ? 'KSF / CS:S' : 'Other', m.kb ? (m.kb/1024).toFixed(1)+' MB' : '', m.of ? 'Related build of '+m.of : ''].filter(Boolean).join(' · '); td.appendChild(sub);
     cell(tr, m.mt ? 'T'+m.mt : '—'); cell(tr, m.kt ? 'T'+m.kt : '—');
     cell(tr, m.zoned ? 'Has zones' : 'NO ZONES', m.zoned ? '' : 'note bad');
-    cell(tr, m.enabled ? 'Enabled' : 'Disabled'); const action = cell(tr, '');
-    const button = document.createElement('button'); button.textContent = m.enabled ? 'Disable' : 'Enable'; button.className = m.enabled ? 'danger' : 'primary'; button.disabled = busy;
+    cell(tr, m.enabled ? 'Enabled' : m.policy ? 'Disabled — '+m.policy : 'Disabled'); const action = cell(tr, '');
+    const button = document.createElement('button'); button.textContent = m.enabled ? 'Disable' : 'Enable'; button.className = m.enabled ? 'danger' : 'primary'; button.disabled = busy || !!m.policy;
+    button.title = m.policy || '';
     button.onclick = async () => {
       busy = true; draw();
       try { await request('/admin/api/maps', {method:'POST', body:new URLSearchParams({csrf:CSRF,map:m.map,enabled:m.enabled?'0':'1'})}); await load(); }
