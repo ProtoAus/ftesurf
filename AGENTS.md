@@ -8,6 +8,34 @@ not only after a failure. That file is intentionally not auto-loaded in full.
 Naming: `pi.dev` is the coding agent (`.pi/`, `Start-Pi.cmd`, the `pi` command).
 "The Pi", "Pi operations" and `-Pi` always mean the NanoPi that hosts the lobbies.
 
+## Finish the user's task, not your milestone
+
+- For execution/continuation requests, keep the user's requested end state and
+  remaining in-scope work explicit. Do not silently shrink the task to the next
+  test, review, build or other agent-defined milestone.
+- A passing test, completed subagent, clean review, commit or checkpoint is
+  progress, NOT permission to stop. Continue with the next safe, authorized
+  step. Progress updates are not final handoffs; do not ask the user to repeat
+  authorization already given.
+- "Complete as much as possible" means exhaust available authorized work, not
+  choose one phase and leave the rest as recommendations. "Outside this pass"
+  and "next session" are not blockers unless the user set that boundary.
+- A blocker applies to the step it actually blocks. State the concrete obstacle,
+  continue independent work, and ask only for the missing decision/permission.
+  Do not turn one blocked measurement or deployment into a blanket stop.
+- Before ending an execution turn, check the remaining in-scope actions. If a
+  useful next action is safe, authorized and executable now, DO IT rather than
+  merely listing it in the final response. Stop when the requested end state is
+  reached, the user pauses/redirects, or a concrete blocker/execution limit
+  leaves no further work possible now; report which condition applies.
+- Preserve the overall goal, completed evidence, remaining actions and actual
+  blockers across checkpoints/compaction. Resume from that state, not another
+  preparation-only loop. Yield for async work when the tool requires it, then
+  resume on completion; yielding is not task completion.
+- This is persistence within scope, not unlimited autonomy: do not expand the
+  task, bypass safety/ownership rules, invent approvals, repeat passed tests
+  without a changed premise, or perform actions needing separate authorization.
+
 ## Start here
 
 - Start pi.dev from `C:\FTESurf`, or use `pwsh -NoProfile -File
