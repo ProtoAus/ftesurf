@@ -10388,6 +10388,45 @@ void(entity e) SV_RampWatch =
   exactly the right answer for it.
 ===========================================================================
 */
+.float run_bhop_launch_zone;        // armzone+1, from a grounded jump command
+.float run_bhop_launch_denied;      // any outside attempt in this packet wins
+
+// Prosurf B4's concave start surrounds its authored allowBhop launch pit.
+// Called per command, never with the previous packet's endpoint.
+float(entity e) SV_TimerBhopLaunchRegion =
+{
+	local float z, start;
+
+	if (strcmp(mapname, "surf_prosurf")) return FALSE;
+	start = e.run_t_armzone;
+	if (start < 0 || start >= zone_count) return FALSE;
+	if (zone_type[start] != ZONE_START || zone_track[start] != 4) return FALSE;
+	for (z = 0; z < zone_count; z = z + 1)
+	{
+		if (zone_type[z] != ZONE_BHOP) continue;
+		if (Zone_BoxInside(z, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e)))
+			return TRUE;
+	}
+	return FALSE;
+};
+
+// Same command seam as run_jumpcmd. Do not let a later inside command erase
+// an outside grounded jump attempt in a recovered/batched packet.
+void(entity e) SV_TimerBhopLaunchCommand =
+{
+	if (strcmp(mapname, "surf_prosurf")) return;
+	if (SV_TimerBhopLaunchRegion(e))
+	{
+		if (!e.run_bhop_launch_denied)
+			e.run_bhop_launch_zone = e.run_t_armzone + 1;
+	}
+	else
+	{
+		e.run_bhop_launch_zone = 0;
+		e.run_bhop_launch_denied = TRUE;
+	}
+};
+
 float(entity e) SV_TimerJumpWatch =
 {
 	local float ong, vz, jumped, dwell, want, settleok, launchz, bhopz;
@@ -10638,6 +10677,8 @@ float(entity e) SV_TimerJumpWatch =
 		  case -- you did press it -- and it keeps the pre-409 answer.
 		*/
 		if (jumped && !e.run_t_startok && cvar("run_starthop"))
+		if (!e.run_bhop_launch_zone || e.run_bhop_launch_denied ||
+		    e.run_bhop_launch_zone != e.run_t_armzone + 1)
 		if (!e.run_pushed || e.run_jumpcmd)
 		if (e.run_t_state == TS_ARMED || e.run_t_state == TS_RUNNING)
 		{

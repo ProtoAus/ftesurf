@@ -1,5 +1,32 @@
 # lextest.md — things waiting on a human
 
+## P728 — map appearance, bhop launch and shadows
+
+These changes are locally verified; source verification is not installation/live
+proof. P727's owner has published release of the cutover/deployment hold. After
+P728's guarded delivery receipt:
+
+- Prosurf B4: try the normal bhop into its cut-out booster. The run should remain
+  ranked/recording; an earlier bad hopped start must still require an explicit
+  reset. Do not turn off `run_starthop` as a workaround.
+- Leidenfrost: inspect its dithered textures close up. Authored nearest sampling
+  should look sharp without setting a global nearest texture filter.
+- Sidistic: automatic colour is now a softer light-blue grade rather than green.
+  Judge the exact shade on your usual display; `hl2_colour_hue 0` requests the
+  original hue/saturation and `hl2_colour_hue -999` restores the map default.
+- OpenGL: try `shadows 0.35`, then `shadows 0.6`, and `shadows 0` to disable.
+  Judge shadow readability, preserved deepest blacks/highlights, visible noise,
+  banding and fast-surf frame pacing. Strength is clamped to0..1 in the shader.
+  The lift is archived; no owner config was edited. Vulkan/D3D lift is not claimed.
+  `gamma 1` / `brightness 0` are neutral. Connected controls worked in both the
+  pre-change and changed tests; no server lock was reproduced. Source OpenGL now
+  uses scene-space controls rather than depending on OS/texture gamma policy.
+  Existing bands baked into textures/video cannot be recovered by the lift.
+
+GPU ramps and real-client screenshots are not human acceptance for your display,
+HDR path, exact colour preference or normal surfing performance. Monolith B4's
+speed discrepancy is **not fixed**; see BACKLOG and `tools/p728mapfix.md`.
+
 ## P723/P724 — map HUD and scoreboard tiers
 
 On a server running P723, check the top-right MOM and KSF ratings separately

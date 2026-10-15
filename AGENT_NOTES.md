@@ -1,5 +1,51 @@
 # AGENT_NOTES.md
 
+## P728 — command-scoped launch permission and image-control falsifiers
+
+- Prosurf B4's authored `allowBhop` pit must not disable hop rules for its whole
+  track/map. Sample its permission alongside `run_jumpcmd` in PlayerPreThink,
+  before consuming `run_pushlift`, using that command's origin/hull. A previous
+  packet endpoint (`run_t_lastorg`) can exempt an outside jump or reject an inside
+  jump under command batching. Two independent reviewers caught that first
+  implementation; both corrected-diff re-reviews found no concrete issue.
+  Outside attempts deny the packet, arm identity must still match, and PostThink
+  clears both fields after every timer return and on the held early return.
+- The13-check fake-state runtime fixture tests predicates, NOT packet recovery.
+  Separate real-client receipt probes seeded both fields13/1 and observed0/0
+  after an advancing packet on normal, no-zone early-return and held paths.
+  Natural B4 launches reached2275 with practice0/recording1/hopped0 both normally
+  and with outgoing throttling. An outside held-hop control acquired/preserved
+  practice. The prior-taint **boost** replay attempt did not hit the booster:
+  retain it as a non-acting boost arm, not proof of that path. Prior-taint
+  preservation has an acting classifier unit control instead.
+- VTF `POINTSAMPLE` is authored per-texture metadata. Preserve it on successful
+  image load, without overriding an explicit linear sampler (LUTs). Leidenfrost
+  real texture listings change from ordinary filtering to `NEAREST`; a same-view
+  control/subject crop changes while global texture filtering stays unchanged.
+- GLSL `!!cvarf` metadata does NOT declare its uniform. Explicitly declare the
+  uniform or the fallback can hide a failed exposure shader and even flip the
+  view. Inspect compile logs and pixels. Engine GLSL changes also need their
+  generated `r_bishaders.h` block regenerated; a normal engine build alone can
+  retain the old embedded shader. Preserve unrelated unavailable VK/D3D blobs.
+  Plugin shaders have their separate generator in `plugins/hl2/Makefile`.
+- Exposure must see the final map-graded blacks, not the LUT input. Preserve a
+  float scene and intermediate targets through the grade/exposure chain. A
+  dithered shader after an already quantized expanded grade is not a no-banding
+  argument. `tools/test_image_controls.py` compiles the ACTUAL GLSL in an owned
+  hidden Windows context and tests RGBA16F output:12 GPU checks, also under -O;
+  an optimized-out/non-acting lift is specifically rejected under both modes.
+  Its checks use explicit failures, not Python asserts disabled by -O.
+- Gamma/brightness worked on the clean connected control in modes0 AND1; do not
+  relabel this as reproduction of a server cvar lock. Source OpenGL's scene path
+  avoids depending on legacy OS/texture gamma and integrates the new lift. The
+  zero-strength/default-neutral path remains off, explicit hue overrides retain
+  original semantics, and the exact Sidistic shade remains human acceptance.
+- Monolith B4 deficit reproduced at both tested launch lanes. `StrictMode` is a
+  lead, not established causality. No guessed launch-energy correction shipped.
+  Public reference recordings are frozen; need a matching original CSS BSP or
+  authoritative trigger behavior before choosing a conversion versus mover fix.
+  Current artifact root and delivery receipts: tools/p728mapfix.md.
+
 ## P727 — normal deployment is not a sealed-generation update (2026-10-15)
 
 The completion task's exact-commit backend suite passed natively, but ordinary

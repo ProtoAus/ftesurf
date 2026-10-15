@@ -493,7 +493,10 @@ void() PlayerPreThink =
 	// move, which the stamp above cannot see.  See .run_pushlift.
 	if (self.run_wasground || self.run_pushlift)
 	if (self.button2)
+	{
 		self.run_jumpcmd = TRUE;
+		SV_TimerBhopLaunchCommand(self);
+	}
 	self.run_pushlift = FALSE;      // one command wide: set in the touch, spent here
 
 	/*
@@ -716,6 +719,7 @@ void() PlayerPostThink =
 	*/
 	if (self.run_pmhold)
 	{
+		self.run_bhop_launch_zone = self.run_bhop_launch_denied = 0;
 		if (self.run_t_state == TS_RUNNING)
 			lobby_cyc_runseen = time;
 		if (self.rec_cp_q >= 1)         // Patch 375's save copy is not a record
@@ -753,6 +757,8 @@ void() PlayerPostThink =
 	*/
 	SV_RecState(self);	// BUILD 87: the packet's last move, before its sample
 	SV_TimerFrame(self);
+	// Packet-scoped permission, including every early return inside the timer.
+	self.run_bhop_launch_zone = self.run_bhop_launch_denied = 0;
 
 	/*
 	  BUILD 43: pack the stage state for the wire.  HERE and not at the bottom of

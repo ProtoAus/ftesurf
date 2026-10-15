@@ -5,6 +5,25 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Monolith B4 — launch still below the supplied KSF reference (P728 investigation)
+
+- `src/server/sv_entities.qc:SV_SetSpeedEnter`, Momentum `surf_monolith` B4
+  `trigger_setspeed` brush `*108`: authored horizontal1662 / vertical398.30.
+  Real dedicated straight launches settle near1643.13 horizontal; the supplied
+  four KSF clips launch/settle around1666–1669 (with short transients). The
+  reference-lane and default-lane physics probes both reproduce the deficit.
+- `StrictMode` is present and unimplemented, but that is a lead, NOT a proven
+  cause. No arbitrary +30 adjustment, global physics change or guessed strict
+  implementation was shipped. The first grounded/airborne launch ticks differ;
+  matching original CSS/KSF BSP bytes or authoritative launch semantics are
+  needed to distinguish a Momentum conversion difference from mover behavior.
+  The supplied recordings are already retained/inspected; do not ask for them
+  again. Public original-map download attempts failed; no replacement map shipped.
+- Closing falsifier: paired same-position/input launches against the supplied
+  clips, including the first two launch ticks and later horizontal plateau,
+  with a control that acts and normal run/evidence classification preserved.
+  Source, snapshots and failed/probing arms: `tools/p728mapfix.md`.
+
 ## Large completion tier stops holding rows at1000 — observed in P727 acceptance
 
 - Site: `src/client/cl_profile.qc`, `PF_CTROWS`, `Profile_TierMore` and completion
