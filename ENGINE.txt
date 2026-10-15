@@ -25,7 +25,12 @@ commit   61466a48f3d76139318fbbeab77e503334746f1f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-703
-patch    718
+patch    719
+# Patch 719: minimal homepage and factual public anti-cheat overview. Remove
+# promotional slogans and repeated feature cards; explain recording, server
+# replay, input analysis, badge/review meaning and limits. Preserve release
+# receipt, downloads and update feeds. Website only; no engine pin/tag, native
+# or QC build, detection/evidence semantics or QC Build-number change.
 # Patch 718: noclip/settings attempts display as Practice across timer, stages,
 # completion banners and local records. Loading restores the save's reason
 # instead of inheriting a previous attempt's noclip latch; active noclip or

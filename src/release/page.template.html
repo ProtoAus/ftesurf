@@ -22,9 +22,9 @@
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#000000">
 <title>World of Surf</title>
-<meta name="description" content="Competitive surf and bhop with Counter-Strike: Source and Momentum Mod movement, playing 1,300+ maps from the games you already own.">
+<meta name="description" content="Free, open-source surf and bhop with Counter-Strike: Source and Momentum Mod movement. Download for Windows or Linux.">
 <meta property="og:title" content="World of Surf @@VERSION@@">
-<meta property="og:description" content="Surf, rebuilt. Source movement, 1,300+ maps from your own Steam library, and every ranked run replayed on the server.">
+<meta property="og:description" content="Free, open-source surf and bhop with Counter-Strike: Source and Momentum Mod movement. Download for Windows or Linux.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://proto.bar/ftesurf/">
 <meta property="og:image" content="https://proto.bar/ftesurf/og-worldofsurf.png">
@@ -34,12 +34,12 @@
 <meta property="og:image:alt" content="World of Surf wordmark on a dark background">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="World of Surf @@VERSION@@">
-<meta name="twitter:description" content="Counter-Strike: Source and Momentum movement, on an engine built for it. Free, open source, Windows and Linux.">
+<meta name="twitter:description" content="Free, open-source surf and bhop with Counter-Strike: Source and Momentum Mod movement. Download for Windows or Linux.">
 <meta name="twitter:image" content="https://proto.bar/ftesurf/og-worldofsurf.png">
 <meta name="twitter:image:alt" content="World of Surf wordmark on a dark background">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="site.css">
+<link rel="stylesheet" href="site.css?v=p719">
 <script src="site.js" defer></script>
 </head>
 <body>
@@ -57,44 +57,34 @@
   </nav>
 </header>
 
-<main>
+<main class="compact">
 
 <section class="hero">
   <canvas id="runline" data-src="hero-run.json" aria-hidden="true"></canvas>
   <div class="wrap">
     <p class="eyebrow">@@VERSION@@</p>
     <h1 class="hero-brand"><img src="worldofsurf-wordmark.svg" width="720" height="320" alt="World of Surf"></h1>
-    <p class="lede">Counter-Strike: Source and Momentum movement, on an engine built for it.
-      Every surf map you already own.</p>
+    <p class="lede">Surf and bhop with Counter-Strike: Source and Momentum Mod movement.</p>
     <div class="cta">
       <a class="btn" href="#download">Download for Windows <small>Free &middot; @@SIZE_HUMAN@@</small></a>
-      <a class="more" href="board/">See the leaderboard</a>
+      <a class="more" href="board/">Leaderboard</a>
     </div>
   </div>
-  <p class="caption">Proto on surf_utopia, 1:03.240 &mdash; a ranked run, drawn from its own recording.
-    <a href="board/#r=62">Watch it</a></p>
+  <p class="caption">surf_utopia &middot; 1:03.240 &middot; <a href="board/#r=62">Watch replay</a></p>
 </section>
-
-<div class="wrap">
-  <div class="stats" data-reveal>
-    <div class="stat"><b>1,300+</b><span>maps</span></div>
-    <div class="stat"><b>66.67</b><span>tick, like CS:S</span></div>
-    <div class="stat"><b>12</b><span>public lobbies</span></div>
-    <div class="stat"><b>Free</b><span>and open source</span></div>
-  </div>
-</div>
 
 <section>
   <div class="wrap split">
     <div data-reveal>
-      <p class="eyebrow">Replays and ghosts</p>
-      <h2 class="h-l">Every run leaves a line.</h2>
-      <p class="lede">Race a ghost. Scrub a replay. Watch the record from the inside.</p>
+      <h2 class="h-m">Replays and practice</h2>
       <ul class="ticks">
-        <li><b>Lines coloured by speed,</b> so you see where the time went.</li>
-        <li><b>Full replays</b> with the keys and the mouse.</li>
-        <li><b>Ghosts</b> of the best runs on the board.</li>
+        <li>Replays, ghosts and speed-coloured run lines.</li>
+        <li>Separate times for stages and bonuses. Save positions to practise sections.</li>
+        <li>Customisable speed and strafe HUD.</li>
+        <li>Momentum Mod and KSF leaderboards.</li>
       </ul>
+      <p class="feature-note">Ranked runs are recorded and checked by server-side physics replay.
+        <a href="anticheat.html">Anti-cheat details</a></p>
     </div>
     <div class="shot" data-reveal>
       <img src="shot-rise.webp" width="690" height="860" loading="lazy"
@@ -103,83 +93,21 @@
   </div>
 </section>
 
-<section style="padding-top:0">
-  <div class="wrap">
-    <div class="center" data-reveal>
-      <h2 class="h-l">Everything a run needs.</h2>
-      <p class="lede">Nothing it doesn&rsquo;t.</p>
-    </div>
-    <div class="bento">
-      <div class="tile wide photo" data-reveal>
-        <img src="shot-monolith.webp" width="860" height="740" loading="lazy" alt="">
-        <p class="big">1,300+</p>
-        <h3>Maps, ready to play.</h3>
-        <p>Read straight from Momentum Mod, Counter-Strike: Source and Half-Life&nbsp;2.
-          Nothing to download twice.</p>
-      </div>
-      <div class="tile" data-reveal>
-        <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 42V7"/><path d="M12 8h22l-5 7 5 7H12"/></svg>
-        <h3>Stages and bonuses.</h3>
-        <p>Each timed and ranked on its own. Save anywhere and practise one section.</p>
-      </div>
-      <div class="tile" data-reveal>
-        <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 34a18 18 0 0 1 36 0"/><path d="M24 34l9-11"/><circle cx="24" cy="34" r="2.5"/></svg>
-        <h3>Strafe HUD.</h3>
-        <p>Speed, gain and sync on every tick. Lay it out your way.</p>
-      </div>
-      <div class="tile" data-reveal>
-        <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="8" width="34" height="12" rx="3"/><rect x="7" y="28" width="34" height="12" rx="3"/><path d="M14 14h.01M14 34h.01"/></svg>
-        <h3>Twelve lobbies.</h3>
-        <p>Pick a map and a server switches to it. Vote on what&rsquo;s next.</p>
-      </div>
-      <div class="tile" data-reveal>
-        <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 8h16v10a8 8 0 0 1-16 0z"/><path d="M16 12H9a6 6 0 0 0 7 7M32 12h7a6 6 0 0 1-7 7"/><path d="M24 26v8M17 40h14"/></svg>
-        <h3>Momentum and KSF.</h3>
-        <p>Their records beside ours, with stages, bonuses and KSF&rsquo;s styles.</p>
-      </div>
-      <div class="tile half" data-reveal>
-        <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 14L7 24l10 10M31 14l10 10-10 10M27 9l-6 30"/></svg>
-        <h3>Open source.</h3>
-        <p>Game and engine, GPLv2. Read every line on GitHub.</p>
-      </div>
-      <div class="tile half" data-reveal>
-        <svg class="icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 30c8 0 10-14 18-14s10 14 18 14"/><path d="M6 38h36"/></svg>
-        <h3>Source movement.</h3>
-        <p>Air-strafing and ramps that feel the way they should.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="band">
-  <div class="wrap center" data-reveal>
-    <svg class="mark" viewBox="0 0 84 84" fill="none" aria-hidden="true">
-      <defs><linearGradient id="g1" x1="0" y1="0" x2="84" y2="84" gradientUnits="userSpaceOnUse">
-        <stop offset="0" stop-color="#46bee6"/><stop offset=".55" stop-color="#6edc82"/><stop offset="1" stop-color="#f0d25a"/></linearGradient></defs>
-      <path d="M42 6l28 10v22c0 19-12 32-28 40C26 70 14 57 14 38V16z" stroke="url(#g1)" stroke-width="3.5" stroke-linejoin="round"/>
-      <path d="M29 42l9 9 17-19" stroke="url(#g1)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-    <h2 class="h-l">Fair by design.</h2>
-    <p class="lede">Every ranked run is recorded, replayed on our server and checked before it counts.</p>
-    <a class="more" href="anticheat.html">How our anti-cheat works</a>
-  </div>
-</section>
-
 <section id="download">
   <div class="wrap">
     <div class="center" data-reveal>
-      <h2 class="h-l">Get World of Surf.</h2>
-      <p class="lede">Free, no installer. It plays from the games below and ships none of their content.</p>
+      <h2 class="h-m">Download</h2>
+      <p class="lede">Free and open source. Install these Steam games first:</p>
     </div>
 
     <!-- The requirements and the button are one object: a player who downloads
          without these games gets an empty map browser and concludes the game is
          broken. -->
-    <div class="needs" data-reveal>
-      <div class="need"><i>Needed</i><b>Momentum Mod Playtest</b><span>The map library: 1,308 maps.</span></div>
-      <div class="need"><i>Needed</i><b>Counter-Strike: Source</b><span>Materials and models most surf maps use.</span></div>
-      <div class="need"><i>Needed</i><b>Half-Life 2</b><span>Skyboxes, dev textures and common props.</span></div>
-    </div>
+    <ul class="requirements" data-reveal>
+      <li><b>Momentum Mod Playtest</b> &mdash; surf and bhop maps.</li>
+      <li><b>Counter-Strike: Source</b> &mdash; materials and models.</li>
+      <li><b>Half-Life 2</b> &mdash; textures, skyboxes and props.</li>
+    </ul>
     <p class="optional">CS:GO (legacy Source&nbsp;1) and TF2 are optional, mounted only for the maps that need them.</p>
 
     <div class="get" data-reveal>
@@ -213,9 +141,9 @@
     </div>
 
     <ol class="steps" data-reveal>
-      <li><b>Extract.</b>Into a folder of its own. Nothing is written outside it.</li>
-      <li><b>Run <code>ftesurf.bat</code>.</b>It starts the update bootstrap. The first terminal launch asks before checking for signed updates; without a terminal, the first launch starts the installed game without a bootstrap check or saved permission. Enable or disable updates in the game&rsquo;s Updates pane. A shortcut straight to the engine .exe stops at a mod list.</li>
-      <li><b>Empty map list?</b>Type <code>fs_steamlibs</code> in the console to see where it looked. Add a library with <code>fs_steamlibs add D:\SteamLibrary</code>, then <code>fs_restart</code>.</li>
+      <li>Unpack the archive into its own folder.</li>
+      <li>Run <code>ftesurf.bat</code>.</li>
+      <li>Choose a map or join a public lobby.</li>
     </ol>
 
     <div class="get">
@@ -224,7 +152,7 @@
         <summary>On Linux (beta)</summary>
         <ul>
           <li>Extract it somewhere you own: <code>tar xf @@LINUX_FILENAME@@</code> makes a folder called <code>FTESurf</code>.</li>
-          <li>Run <code>./ftesurf.sh</code>. The first terminal launch asks before the bootstrap checks for signed updates. A first desktop launch without a terminal starts the installed game without that check or saved permission; enable updates in the game&rsquo;s Updates pane. Startup errors go to <code>stderr.log</code>, a crash writes <code>crash.log</code>.</li>
+          <li>Run <code>./ftesurf.sh</code>. Startup errors go to <code>stderr.log</code>; crashes write <code>crash.log</code>.</li>
           <li>Momentum Mod Playtest has no Linux build: install it with Steam Play (Properties &rsaquo; Compatibility &rsaquo; a Proton version). World of Surf only reads its maps.</li>
           <li>Native, Flatpak and Snap Steam are found automatically; for another drive, <code>fs_steamlibs add /path/to/SteamLibrary</code> then <code>fs_restart</code>.</li>
           <li>Linux runs are not ranked during the beta.</li>
@@ -232,9 +160,10 @@
       </details>
       <!--LINUX-END-->
       <details>
-        <summary>Before you play</summary>
-        <p><b>Alpha.</b> The build is not code-signed, so SmartScreen warns the first time you run it.
-          Physics fixes between builds can invalidate earlier times.</p>
+        <summary>Setup and troubleshooting</summary>
+        <p><b>Updates:</b> The launcher asks before enabling update checks in a terminal. A first launch without a terminal skips the check. Change this in the game&rsquo;s Updates pane.</p>
+        <p><b>Empty map list?</b> Type <code>fs_steamlibs</code> in the console. To add another Steam library, use <code>fs_steamlibs add D:\SteamLibrary</code>, then <code>fs_restart</code>.</p>
+        <p><b>Alpha:</b> The unsigned build may trigger a SmartScreen warning. Physics fixes can invalidate earlier times.</p>
         <p><b>Upgrading from 0.1.9 or earlier?</b> Delete <code>ftesurf\ftesurf.cfg</code> once, before you start the
           game: older builds saved Momentum Mod&rsquo;s binds into it. That also resets your own settings, so note your
           sensitivity first.</p>
@@ -254,12 +183,10 @@
       <a href="anticheat.html">Anti-Cheat</a><a href="https://github.com/ProtoAus/ftesurf">Source</a>
       <a href="version.json">Build manifest</a>
     </div>
-    <p>World of Surf is GPLv2 or later &mdash; <a href="LICENSE.txt">LICENSE</a> &middot;
-      <a href="https://github.com/ProtoAus/ftesurf">game source</a> &middot;
-      <a href="https://github.com/ProtoAus/ftequakers">modified FTEQW engine</a>.
-      Built on FTEQW.
-      It contains no Valve or Momentum Mod code and redistributes no Source assets; mounted Steam content is read
-      from your own installs at runtime.</p>
+    <p>World of Surf is GPLv2 or later &middot; <a href="LICENSE.txt">Licence</a> &middot;
+      <a href="https://github.com/ProtoAus/ftesurf">Game source</a> &middot;
+      Built on FTEQW &middot; <a href="https://github.com/ProtoAus/ftequakers">Engine source</a>.
+      No Valve or Momentum Mod code or game assets are included. Steam content is read from your installed games.</p>
     <p>Bebas Neue &copy; 2010 Ryoichi Tsunekawa, Dharma Type, SIL Open Font Licence 1.1 &mdash; <a href="OFL.txt">OFL.txt</a>.</p>
   </div>
 </footer>
