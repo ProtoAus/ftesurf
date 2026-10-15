@@ -14,10 +14,13 @@ message delivery to Bob but not a present third account, session renewal, pictur
 and focused-search single-ESC close. Judge wording, layout, readability and real
 linked-account use across installs. Later controls also prove Join reconnect,
 roster Spectate, chat/voice mute toggles, Friends wheel ownership and safe snapshot
-replacement during a held action. The 64-player transport is measured; 64-player
-roster layout/scrolling and Players search/Back remain acceptance, not inferred
-from that encoder test. Spectate leaves play; ordinary owner sessions were not
-used as subjects. Other-player profile ESC should close the whole panel.
+replacement during a held action. A separate native TEST-ONLY UI fixture now
+proves 64 synthetic roster rows scroll to the last row and Players search-result
+selection → embedded on-map profile → Back restores scroll at 1280×720 and
+800×600. It uses one local player, not 64 network clients; actual crowded-lobby
+performance, long/color-coded names, physical input and visual comfort remain
+human acceptance. Spectate leaves play; ordinary owner sessions were not used as
+subjects. Other-player profile ESC should close the whole panel.
 
 TAB → Players replaces the sidebar. Try chat/voice mute, profiles, Spectate and
 scrolling at your usual HUD scale and a small window. Overhead names fade to zero

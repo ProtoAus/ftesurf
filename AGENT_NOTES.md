@@ -24,9 +24,25 @@ account IDs AND cancel a retained fr_list press on snapshot replacement; native
 hold/reorder control proves cancellation, not just a source argument about IDs.
 `live-final3/verdict.json` passes all23 controls, including PM isolation while
 Third is present, real roster chat/voice mute, Spectate and Join reconnect.
-Players 64-row layout/wheel and search/Back remain unmeasured acceptance.
-The NanoPi still has schema18; P717 transition is a concrete backend deployment
-gate, not permission to install schema20 or silently reset user_version.
+A later native TEST-ONLY Players fixture (`tools/players_smoke.py` and
+`tools/fixtures/players_roster.qc`) proves 64 synthetic rows reach visible index63,
+search-result selection renders Profile_DrawOn, and Back restores the bottom
+scroll at1280×720 and800×600. The fixture intercepts roster-key reads only in its
+owned source overlay; its manifest/instrumentation never enter shipped QC. Search
+replies are loopback synthetic data, not account authority; query entry uses the
+existing scores-find twin and gestures use production SUI input. Each size has
+an inert one-real-row control, unacted dropdown, fresh roster-draw generation,
+pinned/Players-tab checks and screenshot pixel differences; visual review is
+still required. Final rig passes30 checks and11 non-native lifecycle/grader
+controls. Never put subprocess.run(timeout=...) around a cleanup-owning runner:
+it kills the wrapper before its finally can reap native handles/remove junctions.
+Retain a timed-out wrapper and mark OWNER BLOCKED/cleanup-unverified; a successful
+exit also needs explicit native/compiler-idle and no-junction observations.
+Synthetic delayed-setup/cleanup-failure controls prove the lifecycle behavior. This is NOT64 genuine clients,
+physical input, nonempty profile-times rows or busy-lobby performance. Initial
+BuildNumber setup failure stays failed evidence: build.ps1 has no such parameter.
+The last measured live schema was18; P717 transition is a concrete backend
+deployment gate, not permission to install schema20 or reset user_version.
 
 Friends are a private Steam-account graph, NOT a local file or unproven GUID
 lookup. Only the existing verified connect/confirm signature/code path mints

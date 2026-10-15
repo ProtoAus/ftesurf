@@ -155,8 +155,10 @@ menu.dat   44f12fd918278bd160db66f6cfb45b176d56eeb6290e3d28e6365e81e3bbcbd9
 **This is partial delivery, NOT a live friends backend.** At 03:48:49Z live
 schema is still18, social.py is absent, and all five measured live backend source
 hashes remain unchanged from startup. Read-only P717 launch inventory was
-requested but no approval has been received; no exclusion, worker retirement,
-backend source installation or schema transition was attempted. Human acceptance
+requested during that delivery. The subsequent continuation received inventory
+approval and completed a bounded read-only check; no exclusion, worker retirement,
+backend source installation or schema transition was attempted by this workstream.
+Human acceptance
 can exercise roster/profile/labels now; fleet Friends/Join/PM awaits that gate.
 
 Scratch disposition: the two owned Linux test stages at
@@ -167,11 +169,79 @@ private test evidence for the blocked backend continuation. Historical NoDeploy
 outputs are hash-verified into `historical-nodeploy-builds.zip`; only the final
 native-tested build remains unpacked. No owner/peer process was stopped.
 
+## Later native Players UX controls — 2026-10-15
+
+`python -B tools/players_smoke.py --output-dir <owned-root>/players-runtime-NEW`
+uses an owned NoDeploy source overlay, not either install's progs/config/data.
+At1280×720 and800×600, final `players-runtime-a4/verdict.json` passes all30 checks:
+fixture-disabled one-real-row control; 64 synthetic roster rows; hover-gated wheel
+press/release reaching visible index63; parsed search dropdown left unselected
+until a real SUI result gesture; selected embedded on-map profile; Back requiring
+pinned Players **and a fresh roster-draw generation** before comparing preserved
+bottom scroll; four central-board pixel discriminations per size; explicit
+wrapper/native/compiler/junction cleanup observation; and before/after install-
+progs/config hash equality. Generation advances811→891 and815→895 after Back.
+All three QC targets compile with zero warnings. Parent inspected both a3/a4
+12-image contact sheets and original-size bottom/profile screenshots: Player64
+and its actions are visible, the selected profile replaces the roster, and Back
+restores it.
+
+The fixture substitutes roster-key reads and adds visible-row instrumentation
+ONLY in a private source/manifest. Production list rendering, SUI input/wheel,
+search parsing, Profile_DrawOn and Back execute in the native engine. Search and
+empty profile responses are synthetic loopback fixtures. This is one genuine
+local listen-server player with64 synthetic UI rows, NOT64 genuine network
+clients, real account authority, physical keyboard/mouse input or a nonempty
+profile-times test. White placeholder avatars are not photo-cache acceptance.
+The earlier build-setup failure and preliminary run remain retained as failed/
+preliminary evidence, not silently rewritten as final passes.
+
+`python -B tools/test_players_smoke.py --output-dir <owned-root>/players-runtime-unit-NEW`
+passes11 non-native controls (final `players-runtime-unit2.log`). An actual delayed
+Python wrapper exceeds the outer wait deadline, subsequently spawns/waits its
+child and completes its finally: the harness does NOT kill the cleanup owner.
+Timeout/nonzero wrappers, native/compiler presence or remaining content junctions
+retain a failing BLOCKED/cleanup-unverified OWNER state, never a blanket claim
+that no owned process remains. A separate synthetic cleanup-failure arm fails
+closed. Grader negatives reject stale Back draw generation, wrong tab, hidden
+board, zero-row inert control and absent generation. No native processes are
+started by these controls. The original review blocked the first harness on
+wrapper hard-kill/false-cleanup and stale Back grading; the final revision fixes
+both, not a production-code defect; independent narrow closure review is OK.
+Six positive/counterfactual regrades of the captured a4 logs also pass: both real
+logs pass, and same-log stale-generation/wrong-tab variants are rejected. The
+harness does not promise automatic descendant termination on timeout: it retains
+the wrapper and reports the cleanup blocker.
+
+## Later read-only transition inventory — 2026-10-15
+
+The user approved the pending bounded read-only launch check. A startup-isolated
+stdlib collector (`python3 -I -S -`) at04:05:01Z observed the same two WSGI
+identities but three sweep-family process classifications appeared between its
+snapshot boundaries: observed launch churn, NOT a drained state. The system unit
+is inactive but enabled with direct gunicorn/HUP routes; six current-user cron
+families do not name the guard. Explicit source/unit/cron metadata were unchanged
+from the04:02 capture; installed social.py is still absent. No DB/cache/log content,
+environment values, app HTTP/import, signals, locks, service/source changes or
+migration. Other-user, alternate-root and manual-launch visibility is incomplete.
+Raw identities/paths/hashes remain private; the task-root P717-HANDOFF.md records
+sanitized classifications and exact bounds.
+
+A separately owned P717 deployment workstream has live-deployment authority but
+its public checkpoint still blocks execution on native-submission drain and
+restart-order checks. Preserve that sole live-controller ownership. The published
+offline guard's schema19-only receipt must not be used to mislabel a schema20
+Friends candidate; the actual transition plan must independently accept its
+complete target generation, preserve P717 markers and prevent lost native posts.
+This inventory is not exclusion, installation, migration or permission to reopen.
+
 ## Remaining acceptance
 
 See `lextest.md` for human wording/layout, real cross-install account use and
-busy-lobby surfing/contrast/performance. The final real-client rig exercises Join,
-Spectate and mute button clicks. 64-player roster layout/scroll and the Players
-search-result/Back runtime path remain unmeasured acceptance; transport capacity
-and reviewed source integration are not substitutes for those UX observations. No native/package release,
-external Steam/R2 picture fetch or generic Steam-game presence is claimed.
+busy-lobby surfing/contrast/performance. Genuine crowded-client load, mixed/
+long/color-coded roster names, nonempty profile-times rows and physical input are
+not covered by the synthetic Players rig. The final three-client Friends rig
+already exercises Join, Spectate and mute button clicks; fleet Friends/Join/PM
+still awaits the separately owned backend transition and genuine-account live
+acceptance. No native/package release, external Steam/R2 picture fetch or generic
+Steam-game presence is claimed.
