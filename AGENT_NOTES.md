@@ -12498,3 +12498,34 @@ the game fetches its own map list. The menu half is Patch 652.
   receipts remain required before publication. Limits/commands are recorded in
   tools/p717ksfprotected.md and owned CHECKPOINT. Native Node/corpus/Pillow/MTV,
   fleet/crawl/cron/game/GPU and crash/power-loss acceptance are not inferred.
+
+### P717 continuation — process-death controls and native optional runtimes
+
+- `tools/test_ksf_interrupt.py --out <owned-root>/artifacts/cuts` creates fresh
+  synthetic homes only. Five deliberately spawned worker cuts ACT inside/after
+  PB/precision-marker transactions and cursor acknowledgement. Fresh readers
+  distinguish rolled-back from committed pairs; restarted owed pages must use
+  durable bytes with HTTP forbidden. An uninterrupted positive and an explicitly
+  TEST-ONLY split-transaction defect prove both oracle directions. Unrelated
+  identified/community fixture rows and SQLite integrity remain unchanged.
+  The fourth group proves inherited config/game-code sentinels are not opened:
+  scrub SURFD_* and set ACTUAL ENV/GAME_CODE/KSF_RUNS keys before import. An
+  independent review caught the earlier wrong-key leak; acted audit red/green
+  and final review close it. Windows/native four-group proofs are retained.
+  Optimization (`-O`) refuses because worker assertions are load-bearing.
+  This closes subprocess-death coverage, NOT storage/power loss or live drain.
+- Exact P717 native source additionally exercised ten optional-runtime scripts
+  with root-local official Node24.14.0 and Pillow12.1.1. Seven JS/template inputs
+  parse and invalid JS refuses; ranked/Steam picture JPEG/PNG branches act.
+  No owner corpus was read. Real MTV conversion remains explicitly skipped:
+  a default fixture path existing is not proof of public sample provenance.
+- Live18->19 remains blocked on persistent PRE-IMPORT launch exclusion and
+  natural drain. The ordinary deployer REQUIRES a live gunicorn master; its
+  per-file installation permits worker-recycle imports, even with -NoReload.
+  Do not use it as a stopped-app transition protocol. A reviewed quiescent-start
+  driver/procedure and coherent source+SQLite+KSF-cache recovery bundle are still
+  required; failure/disconnect must stay fenced. Never overwrite later native/
+  player writes, clear metadata or source-downgrade to fake rollback.
+- Additional commands, acted controls, prior fixture-premise failures and limits:
+  tools/p717ksfprotected.md and the owned ksfcont-20261015T000538Z artifacts.
+  Tooling/tests only: no product patch, engine pin/tag, QC Build or live action.
