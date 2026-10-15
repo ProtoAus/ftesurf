@@ -35,6 +35,7 @@ import types
 from flask import Flask, Response, g, jsonify, request, send_file
 
 import accounts         # Steam accounts: schema 12 and its routes
+import social           # Steam friends; authenticated lobby-only capabilities
 import zonefit          # bounded BSP entity/model reader for legacy timers
 import ksftopup         # bounded, board-scoped requests; no network in HTTP
 import ksfprofile       # resolved profile demand, paced by the same importer
@@ -445,7 +446,7 @@ TF_MULTISESSION = 16384
 # a spectated run stays ranked.
 TF_SPEC = 32768
 
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 KSF_UNBOUND_SQL = """
 CREATE TABLE IF NOT EXISTS ksf_unbound (
  map TEXT NOT NULL, track INTEGER NOT NULL, leg INTEGER NOT NULL,
@@ -1563,6 +1564,12 @@ def migrate():
             conn.execute("PRAGMA user_version=19")
             conn.commit()
             version = 19
+
+        if version < 20:
+            conn.executescript(social.SQL)
+            conn.execute("PRAGMA user_version=20")
+            conn.commit()
+            version = 20
 
         verdict_metrics(conn)
         gone = accounts.links_now(conn)
@@ -5800,7 +5807,11 @@ accounts.register(app, types.SimpleNamespace(
     secret=lambda: SECRET, setting=setting, fail=fail, game_json=game_json,
     clean_text=clean_text, http=lambda *a, **k: STEAM_HTTP(*a, **k),
     public_host=lambda: PUBLIC_HOST, resolve=lambda name: RESOLVE(name),
-    ranked_linked=RANKED_LINKED))
+    ranked_linked=RANKED_LINKED, social_issue=social.issue))
+
+social.register(app, types.SimpleNamespace(
+    get_db=get_db, clock=lambda: time.time(), secret=lambda: SECRET,
+    rate_ok=rate_ok, clean_text=clean_text, game_json=game_json, lobby_ttl=LOBBY_TTL))
 
 migrate()
 log.info("surfd ready (db=%s ttl=%ds cap=%d nodes)", DB_PATH, LOBBY_TTL, MAX_NODES)

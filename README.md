@@ -25,6 +25,37 @@ loads preceding ranks; **top** returns to the beginning. Normal paging continues
 from that position. If the cached time has changed or disappeared, the board
 says so rather than highlighting a same-name player.
 
+## Friends, players and overhead labels
+
+On an account-enabled lobby, link Steam and open your profile's **Friends** tab
+(or run `hud_player friends`). Add someone from their in-game profile or the
+scoreboard's **Players** tab. They can Accept or Decline; accepted friends show
+whether they are online, their lobby/map, and **Join** / **Message** buttons.
+Friendships belong to the Steam account and appear on every installation linked
+to it, including separate keys. Pending requests can be cancelled and friends
+removed. Presence covers the account-enabled lobby fleet, not unrelated Steam
+games or third-party servers. It refreshes approximately every five seconds.
+
+Message opens a **private chat draft** addressed to that friend. Enter sends it;
+ESC cancels. Only that account's recipient connections see it, including friends
+on another fleet lobby. Messages require an accepted friendship and live
+presence; there is no offline mail/history service. Private means hidden from
+other players, **not end-to-end encryption from server operators**.
+
+The full-width **Players** scoreboard tab replaces the old sidebar. Names open
+profiles; Spectate, Add friend, Mute chat and Mute voice are separate actions.
+It scrolls through the server's slots and works without map zones. ESC on
+another player's profile closes the entire window in one press, even when its
+search field has focus.
+
+Overhead labels use the existing display-picture cache and body poses. Nearby
+players have a picture and name; the name fades between 256 and 1024 units,
+leaving the picture centered. Range/view checks run locally; PVS plus a solid
+line-of-sight check rescan at most every 0.5 seconds per admitted body. Wall
+occlusion can therefore take up to half a second. No extra pose traffic is sent.
+Use `hud_playerlabels 0` to disable, or `hud_playerlabels_far <units>` to adjust
+the default 3000-unit limit (maximum 6000).
+
 ## Zone editor
 
 On a locally hosted map, run `zone_edit` to open the editor.

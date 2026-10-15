@@ -450,12 +450,6 @@ float(vector p, vector sz) Scores_NativeDraw =
 	more = (scn_page + rows < n);
 	if (Scores_IsOnline())
 		if (ob_more) more = TRUE;
-	//The room's docked rect may cover the right edge. Keep the entire native
-	//viewport (including its scrollbar) in the remaining visible run area.
-	if (pl_panelsize_y > 0)
-		if (pl_panelpos_x > p_x && pl_panelpos_x < p_x + sz_x)
-			if (pl_panelpos_y < p_y + sz_y && pl_panelpos_y + pl_panelsize_y > p_y)
-				sz_x = pl_panelpos_x - p_x - 1;
 	fontpx = Scores_NativeFontPx();
 	sig1 = [scn_page, n, highlight];
 	sig2 = [pagesize + fontpx * 1000, (rec_sb_open != 0) * 2 + more, Scores_IsOnline() ? ob_epoch : rec_sb_rowgen];
@@ -579,8 +573,6 @@ float(float evtype, float scanx, float chary, float devid) Scores_NativeInput =
 	if (evtype == IE_MOUSEABS) point = [scanx, chary, 0];
 	inside = (point_x >= scn_pos_x && point_y >= scn_pos_y &&
 		point_x < scn_pos_x + scn_size_x && point_y < scn_pos_y + scn_size_y);
-	if (point_x >= pl_panelpos_x && point_y >= pl_panelpos_y &&
-		point_x < pl_panelpos_x + pl_panelsize_x && point_y < pl_panelpos_y + pl_panelsize_y) inside = FALSE;
 	if (!inside)
 	{
 		if (scn_hover) NUI_Input(scn_handle, 6, 0, 0);

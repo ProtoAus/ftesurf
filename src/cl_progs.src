@@ -172,6 +172,7 @@ client/cl_chat.qc
 // (its request ids), cl_steampic.qc and cl_chat.qc (Chat_Fit); before the two
 // panels that show it, cl_avatar.qc and cl_scores.qc.
 client/cl_profile.qc
+client/cl_friends.qc
 client/cl_avatar.qc
 // Patch 383: lobby bodies from the pose stream (CSQC_Ent_Update/Remove).  After
 // cl_avatar.qc (Av_ColourModRGB, Av_PaletteRGB) and cl_netmon.qc (getdeltacount);
@@ -179,6 +180,7 @@ client/cl_avatar.qc
 // Embedded material must precede Body_Predraw's viewer-local proximity fade.
 client/cl_playerfade.qc
 client/cl_body.qc
+client/cl_playerlabels.qc
 client/cl_players.qc
 // Patch 385: spectate.  After cl_players.qc (PL_MAXSLOT), cl_body.qc, cl_ghost.qc
 // and cl_hud.qc; before cl_scores.qc (the room-list click calls Spec_Request)

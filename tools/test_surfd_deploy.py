@@ -53,6 +53,8 @@ class Tests(unittest.TestCase):
         cls.ksf_set = set(KSF_SET)
         if run(['git', '-C', str(REPO), 'cat-file', '-e', cls.ref+':surfd/ksfprofile.py'], check=False).returncode == 0:
             cls.ksf_set.add('surfd/ksfprofile.py')
+        if run(['git', '-C', str(REPO), 'cat-file', '-e', cls.ref+':surfd/social.py'], check=False).returncode == 0:
+            cls.ksf_set.update({'surfd/accounts.py', 'surfd/social.py'})
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix=self._testMethodName+'-', dir=args.out)
@@ -162,6 +164,25 @@ function scp { Set-Content $env:DEPLOY_TEST_MARKER scp; throw 'network forbidden
             self.assertEqual(set(self.plan(repo, 'HEAD', [only])['Files']), KSF_SET|{'surfd/ksfprofile.py'})
         self.assertEqual(self.plan(repo, complete, ['surfd/surfd.py'])['Files'], ['surfd/surfd.py'])
 
+    def test_social_schema_app_accounts_and_ksf_close_both_dependency_groups(self):
+        repo, _, _ = self.fixture_repo()
+        for name in ('surfd/accounts.py', 'surfd/social.py', 'surfd/ksfprofile.py'):
+            (repo/name).write_text('SQL = "synthetic schema20 dependency"\n')
+            git(repo, 'add', '--', name)
+        git(repo, '-c', 'user.name=Offline fixture', '-c', 'user.email=fixture@example.invalid',
+            '-c', 'commit.gpgsign=false', 'commit', '-qm', 'social generation')
+        expected = KSF_SET | {'surfd/accounts.py', 'surfd/social.py', 'surfd/ksfprofile.py'}
+        for entry in expected:
+            p = self.plan(repo, 'HEAD', [entry])
+            self.assertEqual(set(p['Files']), expected)
+            self.assertEqual(set(p['AddedDependencies']), expected-{entry})
+        git(repo, 'rm', '--cached', '--', 'surfd/accounts.py')
+        git(repo, '-c', 'user.name=Offline fixture', '-c', 'user.email=fixture@example.invalid',
+            '-c', 'commit.gpgsign=false', 'commit', '-qm', 'missing committed account dependency')
+        r = self.plan(repo, 'HEAD', ['surfd/social.py'], succeeds=False)
+        self.assertIn('social runtime dependency', r.stderr)
+        self.assertTrue((repo/'surfd/accounts.py').is_file())
+
     def test_legacy_ref_and_committed_dependency_not_working_tree(self):
         repo, legacy, complete = self.fixture_repo()
         self.assertEqual(set(self.plan(repo, legacy)['Files']),
@@ -238,7 +259,7 @@ if ($b.Count -ne 1) { throw 'expected exactly one shell body' }
         self.assertEqual(r.returncode, 0, r.stdout+r.stderr)
         return json.loads(r.stdout.lstrip('\ufeff'))['Body'].replace('\r\n', '\n')
 
-    def test_actual_suite_shell_passes_args_and_propagates_both_failures(self):
+    def test_actual_suite_shell_passes_args_and_propagates_all_failures(self):
         stage = self.root/'stage'
         (stage/'surfd').mkdir(parents=True)
         (stage/'tools').mkdir()
@@ -256,6 +277,10 @@ home=os.environ['SURFD_HOME'].replace('\\\\','/')
 tmp=os.environ['TMPDIR'].replace('\\\\','/')
 assert home.rsplit('/',1)[0]==tmp, (home,tmp)
 print('TOPUP_OWNED_HOME_ACTED')
+''')
+        (stage/'surfd/test_social.py').write_text('''import os, sys
+print('SOCIAL_SUITE_ACTED')
+sys.exit(int(os.environ.get('SOCIAL_FAIL','0')))
 ''')
         (stage/'tools/test_ksfconvert.py').write_text('''import os, sys
 print('CONVERTER_ACTED')
@@ -277,7 +302,7 @@ sys.exit(int(os.environ.get('CONVERT_FAIL','0')))
         shim = bindir/'python3'
         shim.write_text("#!/bin/sh\nexec '"+posix(Path(sys.executable))+"' \"$@\"\n", newline='\n')
         shim.chmod(0o700)
-        for failure in ('', 'GRAB_FAIL', 'CONVERT_FAIL'):
+        for failure in ('', 'GRAB_FAIL', 'CONVERT_FAIL', 'SOCIAL_FAIL'):
             env = dict(os.environ)
             # Setting the POSIX PATH inside sh avoids Windows PATH rewriting.
             command = 'PATH="'+posix(bindir)+':$PATH"; export PATH; sh "'+posix(shell)+'"'
@@ -287,7 +312,7 @@ sys.exit(int(os.environ.get('CONVERT_FAIL','0')))
             (args.out/('suite-'+(failure or 'pass')+'.log')).write_text(r.stdout+r.stderr)
             self.assertEqual(r.returncode, 1 if failure else 0, r.stdout+r.stderr)
             if not failure:
-                for acted in ('GRAB_ARGS_ACTED', 'CONVERTER_ACTED', 'TOPUP_OWNED_HOME_ACTED'):
+                for acted in ('GRAB_ARGS_ACTED', 'CONVERTER_ACTED', 'TOPUP_OWNED_HOME_ACTED', 'SOCIAL_SUITE_ACTED'):
                     self.assertIn(acted, r.stdout)
             else:
                 self.assertIn('FAILED', r.stdout)

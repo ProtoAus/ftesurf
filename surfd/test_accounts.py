@@ -186,7 +186,17 @@ def post(m, path, addr="127.0.0.1", **form):
 
 
 def body(resp):
-    return json.loads(resp.get_data(as_text=True))
+    result = json.loads(resp.get_data(as_text=True))
+    # Legacy account contract assertions exclude the additive lobby-only friend
+    # capability; test_social exercises its authority, revocation and isolation.
+    if "social" in result:
+        assert result.get("banned") == 0 and "name" in result
+        assert result.get("linked") == 1 or result.get("ok") == 1
+        assert len(result["social"]) == 64 and all(c in "0123456789abcdef" for c in result["social"])
+        assert len(result["social_who"]) == 8
+        result.pop("social")
+        result.pop("social_who")
+    return result
 
 
 def text(resp):
@@ -453,6 +463,7 @@ def finish_elsewhere(what):
         other.executescript(m.ksftopup.SQL)
         other.executescript(m.ksfprofile.SQL)
         other.executescript(m.KSF_UNBOUND_SQL)
+        other.executescript(m.social.SQL)
         other.execute("PRAGMA user_version=%d" % m.SCHEMA_VERSION)
         other.commit()
         RACED[-1][1] = what
@@ -478,8 +489,8 @@ def racing_connect():
 
 
 outcomes = []
-for at in range(1, 14):                 # step 12 four CREATEs, 16-19 four, links_now four,
-                                        # and the board's own index once more at every start
+for at in range(1, 20):                 # step12 four, 16-19 four, social six, links_now four,
+                                        # and the board index once more at every start
     conn = sqlite3.connect(m._test_db)
     conn.executescript("".join("DROP TABLE IF EXISTS %s;" % t for t in TABLES + ["links"])
                        + "DROP TABLE IF EXISTS ksfprofiles; DROP TABLE IF EXISTS ksf_unbound;"
@@ -495,13 +506,14 @@ for at in range(1, 14):                 # step 12 four CREATEs, 16-19 four, link
     finally:
         m.connect = real_connect
 names = {r[0] for r in rows(m, "SELECT name FROM sqlite_master WHERE type='table'")}
-check("another process finishing the account steps at any of their thirteen statements breaks neither",
+check("another process finishing the account steps at any of their nineteen statements breaks neither",
       (outcomes, sorted(names & set(TABLES)), "links" in names,
        rows(m, "PRAGMA user_version")[0][0]),
-      (["ok"] * 13, TABLES, False, m.SCHEMA_VERSION))
-check("...and those thirteen were the statements raced: each table, and each index by its table",
+      (["ok"] * 19, TABLES, False, m.SCHEMA_VERSION))
+check("...and those nineteen were the statements raced: each table, and each index by its table",
       [r[1] for r in RACED],
-      ["accounts", "linkcodes", "linkcodes", "linknonces", "runs", "ksftopup", "ksfprofiles", "ksf_unbound", "keylinks", "keylinks",
+      ["accounts", "linkcodes", "linkcodes", "linknonces", "runs", "ksftopup", "ksfprofiles", "ksf_unbound",
+       "social_friends", "social_friends", "social_sessions", "social_sessions", "social_messages", "social_messages", "keylinks", "keylinks",
        "installs", "runpins", "runs"])
 
 print("\n--- 2. off unless SURFD_BOARD_URL is set -------------------------")

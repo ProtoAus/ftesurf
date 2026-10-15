@@ -83,6 +83,14 @@ float  chat_rep;                // this KEYDOWN is an OS repeat of a key already
 // Prototype: Chat_InputEvent submits through it, and it is defined last.
 void(string cmd, string text) Chat_RunSafe;
 string chat_buf;
+string chat_private, chat_private_name;
+void() Chat_PrivateClear =
+{
+	if (chat_private != "") strunzone(chat_private);
+	if (chat_private_name != "") strunzone(chat_private_name);
+	chat_private = "";
+	chat_private_name = "";
+};
 
 string chat_sil[CHAT_SIL_MAX];  // lowercase names
 float  chat_sil_n;
@@ -722,7 +730,7 @@ void(vector scr) Chat_Draw =
 	chat_dft_yl = yb - lh;
 	if (chat_typing)
 	{
-		draft = Chat_Wrap(strcat("> ", chat_buf, "_"), maxw, sz);
+		draft = Chat_Wrap(strcat(chat_private != "" ? strcat("^5PM to ", chat_private_name, "^7 > ") : "> ", chat_buf, "_"), maxw, sz);
 		chat_dft_n = chat_wr_n;
 		if (!(floor(time * 2) & 1))
 			draft = strcat(substring(draft, 0, strlen(draft) - 1), " ");
@@ -980,6 +988,7 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 		// they are bound to -- `bind enter messagemode` made its ENTER a draft.
 		if (Rewind_Owns(scanx))
 			return FALSE;
+		Chat_PrivateClear();
 		chat_typing = TRUE;
 		chat_buf    = "";
 		Chat_TookReset();
@@ -1004,12 +1013,19 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 	if (scanx == K_ENTER)
 	{
 		if (strtrim(chat_buf) != "")
-			Chat_RunSafe("cmd say", chat_buf);
+		{
+			if (chat_private != "")
+				localcmd(sprintf("cmd friend message %s %s\n", chat_private, uri_escape(chat_buf)));
+			else
+				Chat_RunSafe("cmd say", chat_buf);
+		}
+		Chat_PrivateClear();
 		chat_typing = FALSE;
 		return TRUE;
 	}
 	if (scanx == K_ESCAPE)
 	{
+		Chat_PrivateClear();
 		chat_typing = FALSE;
 		return TRUE;
 	}
@@ -1062,6 +1078,7 @@ float(string cmd) Chat_ConsoleCommand =
 		t = (i == 1) ? argv(1) : strcat(t, " ", argv(i));
 	if (strlen(t) > CHAT_DRAFT_MAX)
 		t = substring(t, 0, CHAT_DRAFT_MAX);
+	Chat_PrivateClear();
 	chat_typing = TRUE;
 	chat_buf    = t;
 	Chat_TookReset();
@@ -1097,6 +1114,7 @@ float(string args, float team) CSQC_ChatSay =
 		return FALSE;          // say_team: no teams here, let the engine answer
 	if (strtrim(args) != "")
 		return FALSE;          // `say <text>` is a send, not a draft
+	Chat_PrivateClear();
 	chat_typing = TRUE;
 	chat_buf    = "";
 	Chat_TookReset();
@@ -1127,4 +1145,14 @@ float(string args, float team) CSQC_ChatSay =
 void(string cmd, string text) Chat_RunSafe =
 {
 	localcmd(sprintf("set cl_safetmp %S\n%s $cl_safetmp\n", text, cmd));
+};
+
+void(string who, string nm) Chat_Private =
+{
+	Chat_PrivateClear();
+	chat_private = strzone(who);
+	chat_private_name = strzone(nm);
+	chat_typing = TRUE;
+	chat_buf = "";
+	Chat_TookReset();
 };

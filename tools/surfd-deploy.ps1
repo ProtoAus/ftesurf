@@ -264,7 +264,7 @@ mkdir -p STAGE/tmp
 TMPDIR=STAGE/tmp
 export TMPDIR
 rc=0
-for t in test_web test_recplot test_board test_join test_replays test_sweep test_surfd test_simcheck test_momboards test_momgrab test_momrequest test_accounts test_ranked test_ksfimport test_ksfprofile test_ksftopup test_ksfgrab test_mapwatch test_zonefit test_variants test_mappool; do
+for t in test_web test_recplot test_board test_join test_replays test_sweep test_surfd test_simcheck test_momboards test_momgrab test_momrequest test_accounts test_social test_ranked test_ksfimport test_ksfprofile test_ksftopup test_ksfgrab test_mapwatch test_zonefit test_variants test_mappool; do
   [ -f "$t.py" ] || continue
   printf '%-16s ' "$t"
   if [ "$t" = test_ksfgrab ]; then

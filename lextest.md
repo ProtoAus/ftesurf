@@ -1,5 +1,37 @@
 # lextest.md — things waiting on a human
 
+## P722 — Steam-account friends, Players tab and overhead labels
+
+Open your account's Friends tab on an account-enabled lobby. Add someone from
+an in-game profile or TAB → Players; after they Accept, check server/map status,
+Join, private Message, Remove and pending-request Cancel/Decline. The list belongs
+to your linked Steam account, not this installation. Join follows advertised fleet
+servers only; there is no disconnected-main-menu or arbitrary-game presence.
+Messages are short-lived server-mediated delivery, operator-readable, NOT E2EE.
+
+Automated real-client controls prove profile Add, private-draft typing and literal
+message delivery to Bob but not a present third account, session renewal, pictures
+and focused-search single-ESC close. Judge wording, layout, readability and real
+linked-account use across installs. Later controls also prove Join reconnect,
+roster Spectate, chat/voice mute toggles, Friends wheel ownership and safe snapshot
+replacement during a held action. The 64-player transport is measured; 64-player
+roster layout/scrolling and Players search/Back remain acceptance, not inferred
+from that encoder test. Spectate leaves play; ordinary owner sessions were not
+used as subjects. Other-player profile ESC should close the whole panel.
+
+TAB → Players replaces the sidebar. Try chat/voice mute, profiles, Spectate and
+scrolling at your usual HUD scale and a small window. Overhead names fade to zero
+at 1024 units and the picture centers; pictures stop beyond hud_playerlabels_far
+(default 3000), behind the view or a solid wall. Visibility scans are at most twice
+per second per visible body, so wall hiding can lag by 0.5s. The wall/fade/behind
+fixture has acting negative controls, not just screenshots. Judge fast surfing,
+name contrast and busy-lobby cost; hud_playerlabels 0 disables the labels.
+
+The live backend was still schema18 on 2026-10-15; do not interpret source/test
+completion as a live friends deployment. P717 old-writer transition safeguards
+must be satisfied before the additive schema20 social tables can be installed.
+See tools/p722friends.md for current delivery evidence and exact remaining gates.
+
 ## P712 — strafe trainer while watching demos
 
 With `hud_trainer 1`, watch a native, Momentum or KSF replay. Judge the L/R

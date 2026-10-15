@@ -171,6 +171,7 @@ void(entity e) Account_Drop =
 // Edicts are recycled: a new connection owes nothing and is nobody.
 void(entity e) Account_Connect =
 {
+	Social_Clear(e);
 	if (e.acct_nonce != "")
 		strunzone(e.acct_nonce);
 	if (e.acct_scode != "")
@@ -362,8 +363,10 @@ void(entity e) Account_OwnRun =
 		Lobby_RunKey(e, e.acct_pub);
 };
 
-// `cmd acct_hello`: the client's game code is up and asks for its nonce.
-void(entity e) Account_Hello =
+// Automatic social renewal shares the same proof, but not the finite budget
+// for client-triggered connect hellos. Only the server's pending/backoff path
+// may request renewal; client acct_hello remains budgeted as before.
+void(entity e, float renewal) Account_IssueHello =
 {
 	local string n;
 
@@ -371,6 +374,7 @@ void(entity e) Account_Hello =
 		return;
 	if (!e.acct_here)                   // not in the game yet: see Account_Disconnect
 		return;
+	if (!renewal)
 	if (e.acct_hellos >= ACCT_HELLOS)
 		return;
 	// ONE NONCE IN FORCE.  A proof names no nonce, so a second ask that minted
@@ -379,7 +383,7 @@ void(entity e) Account_Hello =
 	if (e.acct_want)
 	if (time - e.acct_want_t <= ACCT_WAIT)
 		return;
-	e.acct_hellos = e.acct_hellos + 1;
+	if (!renewal) e.acct_hellos = e.acct_hellos + 1;
 	n = SV_RandHex(16);
 	if (e.acct_nonce != "")
 		strunzone(e.acct_nonce);
@@ -391,6 +395,9 @@ void(entity e) Account_Hello =
 	dprint(sprintf("^5account:^7 nonce %s.. issued to client %g\n", substring(n, 0, 8),
 	              num_for_edict(e)));
 };
+
+// `cmd acct_hello`: the client's game code is up and asks for its nonce.
+void(entity e) Account_Hello = { Account_IssueHello(e, FALSE); };
 
 // `n` digits and nothing else.
 float(string s, float n) Account_Digits =
@@ -488,12 +495,36 @@ void(entity e, string code) Account_Start =
   player.  No proof rides on a wait: it reads an account's NAME for a code
   surfd already keeps for this player's key.
 */
+// Nonempty link strings can outlive their question (including a late reply).
+// Only a live poll, prompt or proof defers server-owned social renewal.
+float(entity e) Account_LinkLive =
+{
+	if (e.acct_poll_end > time) return TRUE;
+	if (e.acct_pin != "" && e.acct_pin_t >= time) return TRUE;
+	if (e.acct_want && time - e.acct_want_t < ACCT_WAIT) return TRUE;
+	return FALSE;
+};
+
 void(entity e) Account_Think =
 {
 	if (time >= e.acct_name_t)
 	{
 		e.acct_name_t = time + 1;
 		Account_NameNow(e);
+	}
+	// A transient renewal failure must not strand an already-linked player
+	// outside the social roster forever. Defer busy links, retry with bounded
+	// 15..300s backoff, and preserve their proven account state meanwhile.
+	if (e.social_refresh && time >= e.social_retry)
+	if (e.acct_here)
+	if (!Account_Busy(e))
+	if (!Account_LinkLive(e))
+	{
+		Account_Drop(e); // only stale/expired state; live consent was gated above
+		e.social_delay = bound(15, e.social_delay, 300);
+		e.social_retry = time + e.social_delay;
+		e.social_delay = min(300, e.social_delay * 2);
+		Account_IssueHello(e, TRUE);
 	}
 	// Patch 629: a connection the directory has said nothing about is asked
 	// again, by itself, while its client is one that answers (it sent the
@@ -717,6 +748,7 @@ void(entity e, string kindarg, string pub, string keyed, string sig, string svna
 	               uri_escape(infokey(e, "ip")), uri_escape(infokey(e, "guid")),
 	               pub, sig, uri_escape(svname));
 	body = strcat(body, "&keyed=", keyed, "&game=", gcode);
+	body = strcat(body, "&old_social=", e.social_token != "" ? e.social_token : e.social_retire);
 	path = "/api/link";
 	if (kind == ACCT_HELLO)
 	{
@@ -907,7 +939,7 @@ void(float reqid, float code, string body) Account_Reply =
 	local entity who;
 	local int    root;
 	local float  kind, answered, ok, linked, banned, rmode, named;
-	local string why, nm, a, b, st, cd, mark;
+	local string why, nm, a, b, st, cd, mark, social, socialwho;
 
 	who = findfloat(world, acct_rq, reqid);
 	if (who == world)
@@ -935,6 +967,8 @@ void(float reqid, float code, string body) Account_Reply =
 	mark     = strcat(json_get_string(json_find_object_child(root, "who")));
 	rmode    = json_get_float(json_find_object_child(root, "ranked"));
 	named    = json_get_float(json_find_object_child(root, "named"));
+	social   = strcat(json_get_string(json_find_object_child(root, "social")));
+	socialwho = strcat(json_get_string(json_find_object_child(root, "social_who")));
 	if (root)
 		json_free(root);
 	if (code)
@@ -1011,6 +1045,7 @@ void(float reqid, float code, string body) Account_Reply =
 		who.acct_pub  = strzone(who.acct_rq_pub);
 		who.acct_fail = ACCT_F_NONE;
 		Account_Is(who, linked, banned, nm, named);
+		Social_Set(who, social, socialwho);
 		if (who.acct_who != "")
 			strunzone(who.acct_who);
 		who.acct_who = "";
@@ -1070,6 +1105,7 @@ void(float reqid, float code, string body) Account_Reply =
 		who.acct_pub  = strzone(who.acct_rq_pub);
 		who.acct_fail = ACCT_F_NONE;
 		Account_Is(who, TRUE, banned, nm, named);
+		Social_Set(who, social, socialwho);
 		if (who.acct_who != "")
 			strunzone(who.acct_who);
 		who.acct_who = "";
@@ -1092,5 +1128,6 @@ void(float reqid, float code, string body) Account_Reply =
 */
 void() SpectatorConnect =
 {
+	Account_Connect(self);
 	forceinfokey(self, "*phash", "");
 };

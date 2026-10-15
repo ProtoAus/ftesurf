@@ -45,15 +45,29 @@ function Get-SurfdDeployPlan {
         # Schema18/app and the paced worker must move together, even -Only app.
         $ksfEntries += @('surfd/surfd.py', 'surfd/ksfprofile.py')
     }
-    if ($all -contains 'surfd/ksfgrab.py' -and
-        (@($files | Where-Object { $_ -in $ksfEntries }).Count -gt 0)) {
-        $required = @('surfd/surfd.py', 'surfd/ksfimport.py', 'surfd/ksfgrab.py') + $codecs
-        if ($all -contains 'surfd/ksfprofile.py') { $required += 'surfd/ksfprofile.py' }
-        foreach ($file in $required) {
-            if ($all -notcontains $file) { throw "KSF runtime dependency '$file' is absent at $commit" }
-            if ($files -notcontains $file) { $added += $file; $files += $file }
+    # Schema20 routes, schema migration and social implementation form one
+    # generation. Close both groups: selecting accounts can add app, and a KSF
+    # selection can add app too. Always inspect COMMIT paths, not tree files.
+    $socialEntries = @('surfd/surfd.py', 'surfd/accounts.py', 'surfd/social.py')
+    do {
+        $before = $files.Count
+        if ($all -contains 'surfd/social.py' -and
+            (@($files | Where-Object { $_ -in $socialEntries }).Count -gt 0)) {
+            foreach ($file in $socialEntries) {
+                if ($all -notcontains $file) { throw "social runtime dependency '$file' is absent at $commit" }
+                if ($files -notcontains $file) { $added += $file; $files += $file }
+            }
         }
-    }
+        if ($all -contains 'surfd/ksfgrab.py' -and
+            (@($files | Where-Object { $_ -in $ksfEntries }).Count -gt 0)) {
+            $required = @('surfd/surfd.py', 'surfd/ksfimport.py', 'surfd/ksfgrab.py') + $codecs
+            if ($all -contains 'surfd/ksfprofile.py') { $required += 'surfd/ksfprofile.py' }
+            foreach ($file in $required) {
+                if ($all -notcontains $file) { throw "KSF runtime dependency '$file' is absent at $commit" }
+                if ($files -notcontains $file) { $added += $file; $files += $file }
+            }
+        }
+    } while ($files.Count -gt $before)
     $files = @($files | Sort-Object -Unique)
     if (-not $files.Count) { throw "nothing to deploy at $commit" }
     $extra = @($all | Where-Object {

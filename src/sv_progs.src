@@ -40,6 +40,7 @@ server/sv_pose.qc
 // Patch 615: Steam accounts.  After sv_lobby.qc (Lobby_Active; its
 // URI_Get_Callback holds the prototype) and sv_timer.qc (SV_RecIsHex); before
 // sv_player.qc, which calls it from the command dispatch and ClientConnect.
+server/sv_social.qc
 server/sv_account.qc
 server/sv_player.qc
 server/sv_main.qc

@@ -1,5 +1,80 @@
 # AGENT_NOTES.md
 
+## P722 — Steam friends, roster and overhead names — 2026-10-15
+
+Final continuation: real dedicated QC transport now proves 41/42/64 complete
+roster rows across >16s; whole-array uri_escape truncates at 42 populated rows
+(8192-byte builtin output limit), so encode each bounded row before concatenating
+encoded array delimiters. The old encoder mutant preserves41 but rejects42/64.
+Automatic capability renewal needs pending state + bounded 15..300s backoff,
+not one Account_Hello call. Server-owned renewal must survive the finite client
+hello budget and defer only LIVE link state: stale tags and expired PINs can
+persist even with no active poll. The VM fixture tests actual Think/nonce logic
+with only its terminal nonce stuffcmd replaced, then the real three-client rig
+forces the first renewal HTTP reply503 and proves a fresh proof/list recovers.
+
+Both new lists need explicit hover-gated wheel ownership, including release
+AFTER the pointer moves away. Use av_pg0, not nonexistent av_tab0, in the rig.
+friend_row wire order is who relation online encoded-name encoded-server
+encoded-map. Synthetic snapshots must restore the genuine Bob row before PM
+controls; missing hover targets otherwise leave the cursor over a fake Remove
+and make the subsequent click test the wrong action. Never count that as a
+product privacy failure or waive it as success. Keep failed arms. Use stable
+account IDs AND cancel a retained fr_list press on snapshot replacement; native
+hold/reorder control proves cancellation, not just a source argument about IDs.
+`live-final3/verdict.json` passes all23 controls, including PM isolation while
+Third is present, real roster chat/voice mute, Spectate and Join reconnect.
+Players 64-row layout/wheel and search/Back remain unmeasured acceptance.
+The NanoPi still has schema18; P717 transition is a concrete backend deployment
+gate, not permission to install schema20 or silently reset user_version.
+
+Friends are a private Steam-account graph, NOT a local file or unproven GUID
+lookup. Only the existing verified connect/confirm signature/code path mints
+lobby-only capabilities; `social.py` stores hashes, binds node and rechecks
+keylinks/bans every use. Sessions expire24h, full-node snapshots run every5s,
+presence expires16s and Join resolves the directory again at click time.
+Multiple connections may prove even the SAME copied key: `(pub,node)` must NOT
+be unique. Refresh retires only its explicitly supplied previous capability.
+SSQC refreshes invalid sessions through Account_Hello; disconnected/recycled
+slots cannot receive an old reply. Pending requests disclose no presence.
+Messages require mutual acceptance/live presence, expire120s, max160 chars /
+320 UTF8 bytes, 32/recipient, 2048 total, 20 actions/minute/Steam account across
+installs. IDs/ACKs pass through QC as decimal strings, NEVER float32. Deliver
+max2/poll and ACK after reliable private enqueue. No public reader or proxy
+allowlist addition. Messages are operator-readable, NOT E2EE. Banned/deleted
+peers remain removable as unavailable rows so they cannot trap the quota.
+Eight-hex online marks and exact12-hex profile handles resolve unambiguously.
+
+Pace lists four rows/100ms into separate client staging storage; swap only at
+friend_end. Do not dump128 rows into a reliable packet. A currently proven
+Steam player needs NO run history/profile response for Add from their profile.
+Own legacy GUID-board stats still use *phash; photos/friends use server-owned
+*ahash. Players_Panel and the native overlap rectangle are gone: Players is a
+full-width SUI list-view tab. Other-profile ESC must run BEFORE
+Profile_FieldEvent, or focused search consumes it. Message transfers keyboard
+ownership to the existing chat draft, with a private target instead of say.
+
+Labels reuse poses. PVS alone does NOT prove wall visibility: use the solid
+trace. Near admission is forward dot>8, not project() depth sign. At most one
+visibility scan/0.5s/body; name reaches0 at1024 units and picture centers. Detect
+teleports from CONSECUTIVE FRAME deltas, not cumulative travel since the scan
+(which blinks while surfing fast). Hide under opaque profile/board to preserve
+photo budget. Steam photos use64 slots; SPIC_MAX intentionally does NOT reuse
+spawnpoints' SP_MAX macro.
+
+Rigs use real clients/proofs and synthetic Steam accounts, NOT live Steam/R2:
+Add via profile, private draft/recipient-vs-third-party isolation, spectator
+account, upload+disk cache, full-width roster and focused-search one-ESC close.
+Two real bodies exercise labels. tools/p722labels_fixture.qc is TEST ONLY,
+never in cl_progs.src/ship build: real body/PVS, temporary overhead point, real
+world wall trace. Far mode forces admission only to isolate fade geometry.
+Near/far/wall/behind controls pass; removing LOS and pinning alpha1 produces
+expected failures. First arms raced acceptance / left players overlapping at
+spawn; retained FAILED, not passes. Reader mistakes: QC files are under
+**data/cache**, and final disconnect correctly zeros seen. Renewal proof is a
+fresh issue timestamp PLUS delivered friend_end after refresh, not final seen.
+See tools/friends_smoke.py and tools/playerlabels_smoke.py.
+
 ## P715/716 — Steam persistence, KSF profile positions and measured coverage
 
 - The picture origin already caches JPEGs AND32x32 RGBA text. R2's optional

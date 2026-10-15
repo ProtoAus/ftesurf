@@ -135,6 +135,7 @@ float  rec_sb_best;              // the fastest CLEAN time on this leg, or 0
 #define SB_T_ONLINE    0
 #define SB_T_SEGMENT   1
 #define SB_T_LOCAL     2
+#define SB_T_PLAYERS   3
 
 float rec_sb_tab;                // SB_T_*
 
@@ -206,7 +207,7 @@ float(float evtype, float scanx, float chary, float devid) Scores_NativeInput;
   home.  A second copy of `"segmented"` spelled `"segment"` would fetch an
   always-empty board and look like a server with no times on it.
 */
-float() Scores_IsOnline = { return (rec_sb_tab != SB_T_LOCAL); };
+float() Scores_IsOnline = { return (rec_sb_tab == SB_T_ONLINE || rec_sb_tab == SB_T_SEGMENT); };
 string() Scores_StyleOf =
 {
 	if (rec_sb_tab == SB_T_SEGMENT) return "segmented";
@@ -2742,19 +2743,7 @@ void(vector p, vector sz, float pad, vector scr, float pick) Scores_Finish =
 {
 	local string s;
 
-	/*
-	  PATCH 340: the room list, INSIDE this bracket and before its sui_end.
-
-	  A second sui bracket in the same frame draws dead buttons -- sui_begin
-	  empties the hit-test list and sui_end clears the input buffer, so the
-	  LAST bracket owns every click (cl_main.qc's Ev_Panel comment).  Sharing
-	  this one is what makes the mute buttons live.  It gets the rect this
-	  function just computed because it anchors to it; cl_players.qc's header
-	  has the rest.
-	*/
-	// Patch 635: the room list asks for its own board with its own request now
-	// (cl_players.qc), so nothing here says whether the store is spoken for.
-	Players_Panel(p, sz, pad, scr);
+	// Players is a full-width tab now; no sidebar can steal table hit targets.
 	Scores_SearchDrop();
 
 	sui_end();
@@ -3101,9 +3090,8 @@ void(vector scr) Scores_Draw =
 	if (scale > 16) scale = 16;         // an absurd value would make the type, and the loop below, infinite
 	bs = min(scale, scr_y / 432);       // a short window gets smaller type...
 	if (bs < 1) bs = 1;
-	// Three sources.  Patch 635 made the fourth a switch beside them on Online; it
-	// and its filter fit in the room the Local tab's four chips need anyway.
-	n = 3;
+	// Three board sources and a full-width Players page.
+	n = 4;
 
 	/*
 	  WHAT FITS, tried in the order a player would choose. Steps 0-2: every column
@@ -3141,7 +3129,7 @@ void(vector scr) Scores_Draw =
 		chipw = ceil(rec_sb_cw * 8.5);
 		sidew = ceil(rec_sb_cw * 15);
 		segw  = ceil(rec_sb_cw * 11.5);
-		roomw = ((step < 3) ? 300 : 200) + pad;
+		roomw = 0;                    // the old room-list sidebar is gone
 		have  = scr_x - pad * 2 - roomw - (pad * 3 + sidew) - pad * 0.5;
 		// The header row holds the tabs, a gap and four filter chips whatever the
 		// table needs: its inner width is the table's plus 1.5 pad and the sidebar.
@@ -3199,7 +3187,7 @@ void(vector scr) Scores_Draw =
 	h = chrome + listh;
 
 	// Centred as a pair with a whole room list; a narrower one takes what the row has left.
-	x0 = floor((scr_x - w - 300 - pad) * 0.5);
+	x0 = floor((scr_x - w) * 0.5);
 	if (x0 < pad) x0 = pad;
 	y0 = floor((scr_y - h) * 0.5);
 	p  = [x0, y0];
@@ -3232,26 +3220,6 @@ void(vector scr) Scores_Draw =
 	}
 	Scores_DrawClock([x0 + pad, y0 + pad], x0 + w - pad - (sb_pfw ? sb_pfw + chipw + pad * 1.5 : 0));
 
-	if (zone_count <= 0)
-	{
-		Scores_NativeClose();
-		if (pf_on_who != "")            // Patch 666: imported times need no zones here
-			sb_onact = Profile_DrawOn([x0 + pad, y0 + pad * 2 + rec_sb_sztitle + tabh],
-			                          [w - pad * 2, h - pad * 3 - rec_sb_sztitle - tabh], sb_szui, rec_sb_szhead);
-		else
-		Scores_Text([x0 + pad, y0 + pad * 2 + rec_sb_sztitle], sb_szui,
-		            "this map has no zone file, so it has no legs and no times",
-		            SUI_THEME_DIM, 1);
-		Players_Panel(p, sz, pad, scr);   // Patch 340: the room list is not about zones
-		Scores_SearchDrop();
-		sui_end();
-		Font_Reset();
-		if (Scores_SearchPick())
-			return;
-		Scores_SpecHandOff();
-		return;
-	}
-
 	// ---- the sources, one control; what narrows them, to its right ----------
 	// On a row of their own, not beside the title: a map name has no width limit.
 	ytabs = y0 + pad + rec_sb_sztitle + ceil(pad * 0.75);
@@ -3277,6 +3245,51 @@ void(vector scr) Scores_Draw =
 		Scores_TabSet(SB_T_LOCAL);
 		rec_sb_tabauto = FALSE;
 		Profile_OnClear();
+	}
+
+	if (Scores_Seg("sb_t3", [x0 + pad + segw * 3, ytabs], [segw, tabh], "Players", rec_sb_tab == SB_T_PLAYERS))
+	{
+		Scores_TabSet(SB_T_PLAYERS);
+		rec_sb_tabauto = FALSE;
+		Profile_OnClear();
+	}
+	if (rec_sb_tab == SB_T_PLAYERS)
+	{
+		Scores_NativeClose();
+		if (rec_sb_leg != sb_on_leg || rec_sb_tab != sb_on_tab) Profile_OnClear();
+		if (pf_on_who != "")
+			sb_onact = Profile_DrawOn([x0 + pad, ytabs + tabh + pad],
+			                          [w - pad * 2, y0 + h - pad - ytabs - tabh - pad], sb_szui, rec_sb_szhead);
+		else
+			Players_Draw([x0 + pad, ytabs + tabh + pad],
+			             [w - pad * 2, y0 + h - pad - ytabs - tabh - pad], rec_sb_szrow);
+		Scores_SearchDrop();
+		sui_end();
+		Font_Reset();
+		if (pl_profilepick != "")
+		{
+			s = pl_profilepick;
+			pl_profilepick = "";
+			Scores_Close();
+			Av_OpenAt(!strcmp(s, "me") ? "" : s);
+			strunzone(s);
+			return;
+		}
+		if (Scores_SearchPick()) return;
+		Scores_SpecHandOff();
+		return;
+	}
+	if (zone_count <= 0)
+	{
+		Scores_NativeClose();
+		if (pf_on_who != "")
+			sb_onact = Profile_DrawOn([x0 + pad, ytabs + tabh + pad],
+			                          [w - pad * 2, y0 + h - pad - ytabs - tabh - pad], sb_szui, rec_sb_szhead);
+		else
+			Scores_Text([x0 + pad, ytabs + tabh + pad], sb_szui,
+			            "No zone file / times here. Players is still available.", SUI_THEME_DIM, 1);
+		Scores_Finish(p, sz, pad, scr, -1);
+		return;
 	}
 
 	// A segment clicked this frame has just changed the source. The chips, the
@@ -3627,6 +3640,8 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 
 	if (evtype == IE_KEYDOWN || evtype == IE_KEYUP)
 	{
+		if (rec_sb_open)
+		if (Players_Wheel(evtype, scanx)) return TRUE;
 		// Patch 646.  The wheel scrolls a list, and scrolling is what asks for the
 		// next page.  Only pinned and over one of the three lists: both notches
 		// are bound to +jump (cl_entview.qc's wheel block has that story).  The
@@ -3718,7 +3733,7 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 			}
 			if (scanx == K_RIGHTARROW)
 			{
-				if (rec_sb_tab < SB_T_LOCAL)
+				if (rec_sb_tab < SB_T_PLAYERS)
 					Scores_TabSet(rec_sb_tab + 1);
 				rec_sb_tabauto = FALSE;
 				return TRUE;
@@ -3899,6 +3914,7 @@ float(string cmd) Scores_ConsoleCommand =
 		{
 			if (argv(2) == "segmented")  Scores_TabSet(SB_T_SEGMENT);
 			else if (argv(2) == "local") Scores_TabSet(SB_T_LOCAL);
+			else if (argv(2) == "players") Scores_TabSet(SB_T_PLAYERS);
 			else                         Scores_TabSet(SB_T_ONLINE);
 			// Patch 635: the tab is gone; the word still asks for both imports
 			// without ours (older arms type it), for this session and on no control.
@@ -4112,8 +4128,8 @@ void() Scores_Status =
 	  are 0 until the board has been drawn once.
 	*/
 	print(sprintf("  tab %s   filter %s   cols %g   type %g\n",
-	              (rec_sb_tab == SB_T_LOCAL) ? "local"
-	                : ((rec_sb_tab == SB_T_SEGMENT) ? "segmented" : "online"),
+	              (rec_sb_tab == SB_T_PLAYERS) ? "players" : ((rec_sb_tab == SB_T_LOCAL) ? "local"
+	                : ((rec_sb_tab == SB_T_SEGMENT) ? "segmented" : "online")),
 	              (rec_sb_filter == SB_F_CLEAN) ? "clean"
 	              : ((rec_sb_filter == SB_F_STITCHED) ? "stitched"
 	              : ((rec_sb_filter == SB_F_PRACTICE) ? "practice" : "all")),
@@ -4140,7 +4156,8 @@ void() Scores_Status =
 	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
 		shown = Online_Shows(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
 		                     Scores_TierOf(), Scores_StyleOf());
-	print(sprintf("  shows %g   room list: %g best time(s)\n", shown, pl_bn));
+	print(sprintf("  shows %g   player PBs: %g best time(s)\n", shown, pl_bn));
+	print(sprintf("  players rows %g scroll %.1f wheel %g profile %s\n", pl_rows, pl_scroll_y, pl_wheel, pf_on_who));
 	// Patch 635: what the online list holds (0 ours, 1 every game, 2 Momentum, 3 KSF,
 	// 4 both imports), the tier asked for, how many rows surfd has for it; then the
 	// footer's sentence and the first rows' names AS DRAWN (Scores_OnlineName, with

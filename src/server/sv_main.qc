@@ -194,6 +194,7 @@ void() StartFrame =
 	  unless lobby_master names a URL, so a listen server sends nothing.
 	*/
 	Lobby_Heartbeat();
+	Social_Frame();
 
 	/*
 	  Patch 275.  Also after Lobby_Frame and for the same compile-order reason,

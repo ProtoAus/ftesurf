@@ -680,9 +680,6 @@ From its one review (read, not run) and what the arm does not reach.
   the same lines. With a replay open the board is a second sui bracket and the
   replay's `sui_end` empties the input buffer first, which is why the wheel
   moves the offset itself (`Scores_InputEvent`): read, never run with a replay.
-- **On a narrow window a notch over the docked room list scrolls the Online
-  list under it.** `sui_hover_index` matches at any depth; the native table
-  excludes that rectangle (cl_scores_native.qc:572) and this does not.
 - **A board pinned by accident takes the wheel.** MOUSE2 during a TAB peek
   pins (a jump can do it); until TAB is let go, a notch with the remembered
   cursor over a list scrolls it and is not a jump. That state already takes
@@ -901,9 +898,6 @@ From its one review (read, not run) and what the arm does not reach.
 - **The native table has no switch, slider or LINE heading** (`ui_native_scores
   1` draws its own header): `scores source` and `scores lineall` only. Not run
   with this patch; its rows are the same store.
-- **The room list at hud_scale 4 draws "you" under the ping** (1600x900 and
-  1024x576). Seen on both cuts of this patch, whose only change to the room
-  list is its board request; the build before was not looked at.
 - **Not measured:** a drag of the slider's knob (the arm presses the stops); a
   ticked Online line downloading (the arm's surfd holds no recordings, so its
   two lines fail to fetch by design); the twenty older arms given `sb_filter
@@ -978,20 +972,14 @@ From its one review; measured there unless said.
 
 ## Steam pictures in the game: what Patch 640 left -- 2026-10-11
 
-- **Two of the three places are not measured in a rig.** `tools/p640pics.py`
-  reads the TAB board's row off a screenshot. The room list and the run-line
-  name call the same `SteamPic_Draw` with a mark from `*phash` and from the
-  ticked row, and each needs a LINKED player on a lobby to show anything:
-  the link rig (`p615link.py`) could seed a picture and screenshot them.
+- **The run-line picture is not measured in the P640 rig.**
+  `tools/p640pics.py` reads the TAB board's row off a screenshot. The run-line
+  name calls `SteamPic_Draw` with the ticked row's mark and needs a LINKED
+  player: the link rig (`p615link.py`) could seed a picture and screenshot it.
 - **Where a name is drawn and no picture is:** the opt-in native table
   (`cl_scores_native.qc`), the chatbox, the results screen, the spectate bar;
   and the Online list in a window too narrow for the slot (owner column
   under 15 character widths).
-- **The room list's voice icon is the missing-texture checker on a client
-  without the install's content** (`gfx/thumbnails/speaking_off`, drawn by
-  cl_players.qc; ftesurf-0f's smoke of a clean client on a Pi lobby, 09:06Z
-  and 10:1xZ on 11 Oct, before this patch). Not looked into: what a clean
-  client ships or downloads.
 - **From the review, not fixed:** a server that rotates `*phash` every frame
   makes a client ask 40 times a minute (the gap bounds it; a third of the
   board's budget). `SteamPic_Of` compares strings slot by slot, up to about
@@ -1003,8 +991,8 @@ From its one review; measured there unless said.
 - **Every ask is a board request** on surfd (120 a minute an address): a
   lobby of thirty linked players is thirty asks, 1.5 s apart, once. A path
   and a budget of its own wait on the game-facing vhost (root). A picture
-  changed on Steam is not seen until the next map: the cache has no expiry
-  for a picture it holds, and 32 slots (the 33rd mark in view has none).
+  changed on Steam is not seen until the next map: the in-memory cache has
+  no expiry for a picture it holds (disk persistence expires separately).
 - **A second game window on the desktop can stop a rig's client drawing at
   all** (two of this patch's runs, beside another session's arm: a black
   screenshot and every console line answered in one burst). The arm waits

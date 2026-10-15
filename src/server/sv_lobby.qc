@@ -2006,6 +2006,7 @@ float(string body) Lobby_Directed =
 // heartbeat's and the run's counters reach in a map's life, and it answers them.
 #define ACCT_ID_BASE 8000000
 void(float reqid, float code, string body) Account_Reply;
+float(float reqid, float code, string body) Social_Reply;
 // Patch 629 (sv_account.qc): the key a connection proved, and why it has none.
 string(entity e) Account_ProvenKey;
 string(entity e) Account_UnprovenWhy;
@@ -2019,6 +2020,7 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
 	if (reqid >= ACCT_ID_BASE)
 	{
+		if (Social_Reply(reqid, responsecode, resourcebody)) return;
 		Account_Reply(reqid, responsecode, resourcebody);
 		return;
 	}

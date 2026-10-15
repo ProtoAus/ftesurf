@@ -82,6 +82,7 @@ float av_namefocus;
 // ("" the player's own), and what the page last drew at.
 #define AV_TAB_LOOK  0
 #define AV_TAB_STATS 1
+#define AV_TAB_FRIENDS 2
 float  av_tab;
 string av_other;
 float  av_hint;                 // the small label size, for Av_Slider
@@ -869,8 +870,8 @@ void(vector scr) Av_Draw =
 {
 	local vector p, sz, tv, bv;
 	local float i, x, y, y0, sw, fx, want, got, eff, askt, pad, tsz, ttl, hint, sc, me;
-	local float hh, pic, fw, fh, lw, slh, stop, segw, tabh, segs, lit, stripw, striph, chw, link;
-	local string nm, mark, s, rgbstr, markstr;
+	local float hh, pic, fw, fh, lw, slh, stop, segw, tabh, segs, lit, stripw, striph, chw, link, fr_slot;
+	local string nm, mark, s, rgbstr, markstr, fr_target, profilemark;
 
 	// The board is the older modal and draws over this; see Av_Open.
 	if (!av_open || rec_sb_open)
@@ -931,15 +932,26 @@ void(vector scr) Av_Draw =
 	// ---- who
 	me = (av_other == "");
 	// The lobby's mark for this player: an account's while the board is by account.
-	mark = getplayerkeyvalue(player_localnum, "*phash");
+	mark = getplayerkeyvalue(player_localnum, "*ahash");
+	if (mark == "") mark = getplayerkeyvalue(player_localnum, "*phash");
 	if (!me)
 		Profile_Show(av_other);
 	else if (av_tab == AV_TAB_STATS && mark != "")
-		Profile_Show(mark);
+	{
+		profilemark = getplayerkeyvalue(player_localnum, "*phash");
+		Profile_Show(profilemark != "" ? profilemark : mark); // preserve GUID-board stats on legacy lobbies
+	}
+	fr_slot = Friends_ProfileSlot(av_other);
+	fr_target = me ? "" : Friends_ProfileTarget(av_other);
 	if (me)
 	{
 		nm = getplayerkeyvalue(player_localnum, "name");
 		Profile_Face([p_x + pad, p_y + pad], pic, mark, mark != "", nm);
+	}
+	else if (fr_slot >= 0 && pf_state != PFS_OK)
+	{
+		nm = getplayerkeyvalue(fr_slot, "name");
+		Profile_Face([p_x + pad, p_y + pad], pic, getplayerkeyvalue(fr_slot, "*ahash"), TRUE, nm);
 	}
 	else
 	{
@@ -992,7 +1004,7 @@ void(vector scr) Av_Draw =
 	segw = tsz * 7;
 	if (me)
 	{
-		sui_roundbox([p_x + pad, y], [segw * 2, tabh], tabh * 0.5, SUI_THEME_WELL, 1);
+		sui_roundbox([p_x + pad, y], [segw * 3, tabh], tabh * 0.5, SUI_THEME_WELL, 1);
 		// NOT av_t0 and av_t1: the trail's swatches are av_t1 to av_t12, and a
 		// press on the red one turned the page instead (663's review).
 		if (Profile_Seg("av_pg0", [p_x + pad, y], [segw, tabh], "Customize", tsz, av_tab == AV_TAB_LOOK))
@@ -1002,9 +1014,20 @@ void(vector scr) Av_Draw =
 			av_tab = AV_TAB_STATS;
 			av_namefocus = FALSE;
 		}
+		if (Profile_Seg("av_pg2", [p_x + pad + segw * 2, y], [segw, tabh], "Friends", tsz, av_tab == AV_TAB_FRIENDS))
+		{
+			av_tab = AV_TAB_FRIENDS;
+			av_namefocus = FALSE;
+		}
 	}
 	else
+	{
 		sui_text([p_x + pad, y + (tabh - hint) * 0.5], [hint, hint], "STATS", SUI_THEME_MUTED, 1, 0);
+		if (fr_target != "" && getplayerkeyvalue(player_localnum, "*ahash") != "")
+		if (Profile_Chip("av_friend", [p_x + sz_x - pad - segw * 1.5, y], [segw * 1.5, tabh],
+		                 Friends_AddLabel(fr_target), tsz, FALSE))
+			Friends_Add(fr_target);
+	}
 	y0 = y + tabh + ceil(pad * 0.75);
 	if (!av_saidtab)
 	{
@@ -1013,7 +1036,9 @@ void(vector scr) Av_Draw =
 		               me ? av_tab : AV_TAB_STATS, me ? "me" : av_other, sz_x, sz_y, p_x, p_y, tsz));
 	}
 
-	if (!me || av_tab == AV_TAB_STATS)
+	if (me && av_tab == AV_TAB_FRIENDS)
+		Friends_Draw([p_x + pad, y0], [sz_x - pad * 2, p_y + sz_y - pad - y0], tsz, hint);
+	else if (!me || av_tab == AV_TAB_STATS)
 	{
 		if (me && mark == "")
 		{
@@ -1230,7 +1255,15 @@ float(float evtype, float scanx, float chary, float devid) Av_InputEvent =
 	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP)
 		return FALSE;
 
+	// Other-player ESC wins even when the profile search owns text focus.
+	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && av_other != "")
+	{
+		Av_Close();
+		return TRUE;
+	}
 	if (Profile_FieldEvent(evtype, scanx, chary))
+		return TRUE;
+	if (Friends_Wheel(evtype, scanx))
 		return TRUE;
 	if (Profile_Wheel(evtype, scanx, av_rowh))
 		return TRUE;
@@ -1252,11 +1285,6 @@ float(float evtype, float scanx, float chary, float devid) Av_InputEvent =
 		{
 			av_namefocus = FALSE;           // first ESC leaves the field
 			Profile_TookNone();
-		}
-		else if (av_other != "")
-		{
-			av_other = "";
-			av_saidtab = FALSE;
 		}
 		else
 			Av_Close();
@@ -1311,6 +1339,11 @@ float(string cmd) Av_ConsoleCommand =
 	{
 		Av_OpenAt("");
 		av_tab = AV_TAB_STATS;
+	}
+	else if (argv(1) == "friends")
+	{
+		Av_OpenAt("");
+		av_tab = AV_TAB_FRIENDS;
 	}
 	else if (argv(1) == "view")             // ...somebody's, by handle or mark
 		Av_OpenAt(argv(2));

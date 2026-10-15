@@ -23,7 +23,7 @@
 
   The tables are memalloc'd: csprogs sits at fteqcc's global limit.
 */
-#define SP_MAX    32
+#define SPIC_MAX  64            // every lobby slot; overhead labels must not thrash 32 slots
 #define SP_PX     32
 #define SP_HEAD   23            // "FTESURF-AVATAR 1 32 32\n"
 #define SP_ROW    257           // 32 pixels of 8 hex, and the newline
@@ -115,9 +115,9 @@ void() SteamPic_Alloc =
 	if (sp_st)
 		return;
 	sp_bmark = buf_create();
-	sp_st = memalloc(sizeof(float) * SP_MAX);   // zeroed (pr_bgcmd.c PF_memalloc)
-	sp_at = memalloc(sizeof(float) * SP_MAX);
-	sp_used = memalloc(sizeof(float) * SP_MAX);
+	sp_st = memalloc(sizeof(float) * SPIC_MAX);   // zeroed (pr_bgcmd.c PF_memalloc)
+	sp_at = memalloc(sizeof(float) * SPIC_MAX);
+	sp_used = memalloc(sizeof(float) * SPIC_MAX);
 	// Ids of our own, from a base drawn per VM.  Online_NextReq restarts at 1
 	// with every map, the engine's stale test does not cover CSQC, and a reply
 	// names no mark: the last map's late answer with this map's id would be
@@ -135,7 +135,7 @@ string(string mark) SteamPic_Of =
 		return "";
 	SteamPic_Alloc();
 	old = -1;
-	for (i = 0; i < SP_MAX; i = i + 1)
+	for (i = 0; i < SPIC_MAX; i = i + 1)
 		if (sp_st[i])
 		if (!strcmp(bufstr_get(sp_bmark, i), mark))
 		{
@@ -153,7 +153,7 @@ string(string mark) SteamPic_Of =
 		// A free slot, else the one drawn longest ago; never the one in flight,
 		// and never one still on screen (more marks in view than slots would
 		// otherwise fetch each other out for ever).
-		for (i = 0; i < SP_MAX; i = i + 1)
+		for (i = 0; i < SPIC_MAX; i = i + 1)
 		{
 			if (!sp_st[i])
 			{
@@ -203,7 +203,7 @@ void() SteamPic_Lost =
 
 	if (!sp_st)
 		return;
-	for (i = 0; i < SP_MAX; i = i + 1)
+	for (i = 0; i < SPIC_MAX; i = i + 1)
 		if (sp_st[i] == SP_HAVE)
 			sp_st[i] = SP_WANT;
 };
@@ -245,11 +245,11 @@ void() SteamPic_Frame =
 	{
 		if (sp_origin != "") strunzone(sp_origin);
 		sp_origin = strzone(base);
-		for (i = 0; i < SP_MAX; i = i + 1)
+		for (i = 0; i < SPIC_MAX; i = i + 1)
 			if (sp_st[i]) sp_st[i] = SP_WANT;
 	}
 
-	for (i = 0; i < SP_MAX; i = i + 1)
+	for (i = 0; i < SPIC_MAX; i = i + 1)
 	{
 		if (cltime - sp_used[i] > SP_SEEN)
 			continue;
@@ -259,7 +259,7 @@ void() SteamPic_Frame =
 		if (sp_st[i] == SP_WANT)
 			break;
 	}
-	if (i >= SP_MAX)
+	if (i >= SPIC_MAX)
 		return;
 
 	sp_next = cltime + SP_GAP;
@@ -387,7 +387,7 @@ void() SteamPic_Status =
 	              sp_req ? 1 : 0, sp_bad, max(0, cvar("_steampic_hold") - gettime(0))));
 	print(sprintf("steampic: disk hits %g (daily, 256 buckets)\n", sp_disk));
 	if (sp_st)
-	for (i = 0; i < SP_MAX; i = i + 1)
+	for (i = 0; i < SPIC_MAX; i = i + 1)
 		if (sp_st[i])
 			print(sprintf("steampic: slot %g mark %s state %g\n", i, bufstr_get(sp_bmark, i), sp_st[i]));
 };

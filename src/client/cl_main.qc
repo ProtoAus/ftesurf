@@ -306,6 +306,8 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Chat_RegisterCvars();
 	Av_RegisterCvars();
 	Players_RegisterCvars();
+	Friends_Register();
+	PlayerLabels_Register();
 	Trn_RegisterCvars();            // Patch 462: the strafe trainer
 	// The online board's two console handles.  No cvars of its own: the
 	// directory URL is lobby_dir, which the menu progs already own and archive.
@@ -1776,6 +1778,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  renderscene, while the view matrix was set.
 		*/
 		Ev_Labels();
+		PlayerLabels_Draw(scr);
 
 		// Patch 331: the hover card, same pass and same reason -- it is 2D.
 		Ev_CardDraw();
@@ -1839,6 +1842,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  actually share a frame -- the ordering is the belt to that braces.
 		*/
 		Av_Draw(scr);
+		Friends_Finish();
 
 		// And the leaderboard over THAT: it is opened from inside a replay to
 		// pick the next one, so it has to be the front-most thing on screen and
@@ -2231,6 +2235,12 @@ float(string cmd) CSQC_ConsoleCommand =
 		return TRUE;
 	if (Banner_ConsoleCommand(cmd))
 		return TRUE;
+	if (Friends_ConsoleCommand(cmd)) return TRUE;
+	if (argv(0) == "playerlabels_status")
+	{
+		PlayerLabels_Status(argv(1) == "detail");
+		return TRUE;
+	}
 	if (Account_ConsoleCommand(cmd))    // Patch 615: `link`, and the stuffed `acct_hello`
 		return TRUE;
 	if (MPad_ConsoleCommand(cmd))

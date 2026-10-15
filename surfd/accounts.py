@@ -1113,7 +1113,11 @@ def register(app, d):
             return game(dict(mode, linked=0))
         if d.ranked_linked:
             mode["who"] = who_of(row["steamid"])
-        return game(dict(account_json(row), linked=1, **mode))
+        social = {}
+        if not row["banned_at"]:
+            with d.get_db():
+                social = d.social_issue(d.get_db(), pub, row["steamid"], node, now, request.form.get("old_social", ""))
+        return game(dict(account_json(row), linked=1, **mode, **social))
 
     def live_code(db, now, tag):
         """The unspent, unexpired code this digest is of, or "".  A TYPED code
@@ -1179,6 +1183,7 @@ def register(app, d):
             " node = excluded.node, linked_at = excluded.linked_at",
             (pub, row["steamid"], player, node, now))
         return (dict(account_json(row), ok=1,
+                     **d.social_issue(db, pub, row["steamid"], node, now, request.form.get("old_social", "")),
                      **({"ranked": 1, "who": who_of(row["steamid"])} if d.ranked_linked else {})),
                 row["steamid"],
                 old["steamid"] if moving else "")

@@ -419,8 +419,11 @@ void() SetChangeParms = { };
 // entity stood orphaned until the map changed, one per cycle.
 void() SpectatorDisconnect =
 {
+	Account_Disconnect(self);
 	SV_ViewEyeDetach(self);
 };
+
+void() SpectatorThink = { Account_Think(self); };
 
 void() PlayerPreThink =
 {
@@ -862,6 +865,12 @@ void(string cmd) SV_ParseClientCommand =
 	}
 	cmdargc = tokenize(cmd);
 	c = argv(0);
+	if (c == "friend")
+	{
+		if (cmdargc >= 3)
+			Social_Action(self, argv(1), argv(2), cmdargc >= 4 ? argv(3) : "");
+		return;
+	}
 	// The client can queue localcmd behind an already-buffered raw cmd. Its
 	// sl_* count cannot identify that save; echo a picture-only request ticket.
 	self.rec_sl_requesttag = 0;
