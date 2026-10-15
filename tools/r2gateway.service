@@ -1,0 +1,27 @@
+[Unit]
+Description=FTESurf verified R2 download redirects
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=proto
+Group=proto
+WorkingDirectory=@RUNTIME@
+Environment=R2GATEWAY_CONFIG=@RUNTIME@/gateway.json
+ExecStart=/usr/bin/python3 -m gunicorn --bind 127.0.0.1:@PORT@ --workers 1 --threads 4 --timeout 15 --graceful-timeout 10 --access-logfile /dev/null --error-logfile - r2gateway:create_app()
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+KillMode=mixed
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LimitNOFILE=2048
+
+[Install]
+WantedBy=multi-user.target

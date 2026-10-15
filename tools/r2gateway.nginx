@@ -1,0 +1,51 @@
+# R2 handoff for the existing public paths. Render @PORT@ before installation.
+# No bulk proxying: current verified files get302;409/downstream errors use disk.
+location ~ ^/(?:ftesurf/)?maps/(?<ftemap>[A-Za-z0-9_-]+)\.bsp$ {
+    proxy_pass http://127.0.0.1:@PORT@;
+    proxy_connect_timeout 1s;
+    proxy_read_timeout 4s;
+    proxy_set_header Host $host;
+    proxy_set_header Connection "";
+    proxy_http_version 1.1;
+    proxy_intercept_errors on;
+    error_page 409 500 502 503 504 = @r2_map_origin;
+}
+location @r2_map_origin {
+    root /srv/nvme/ftesurf-server/game/momentum;
+    try_files /maps/$ftemap.bsp =404;
+    limit_rate 1m;
+    limit_conn ftesurf_maps 2;
+    default_type application/octet-stream;
+    add_header Cache-Control "public, max-age=30";
+    add_header X-R2-Route "origin" always;
+    autoindex off;
+    disable_symlinks if_not_owner;
+    error_page 403 = @r2_missing;
+}
+
+location ~ ^/ftesurf/maps/zones/local/(?<ftezone>[A-Za-z0-9_-]+)\.json$ {
+    proxy_pass http://127.0.0.1:@PORT@;
+    proxy_connect_timeout 1s;
+    proxy_read_timeout 4s;
+    proxy_set_header Host $host;
+    proxy_set_header Connection "";
+    proxy_http_version 1.1;
+    proxy_intercept_errors on;
+    error_page 409 500 502 503 504 = @r2_zone_origin;
+}
+location @r2_zone_origin {
+    root /srv/nvme/ftesurf-site/zones;
+    try_files /$ftezone.json =404;
+    limit_rate 1m;
+    default_type application/json;
+    add_header Cache-Control "public, max-age=30";
+    add_header X-R2-Route "origin" always;
+    autoindex off;
+    disable_symlinks if_not_owner;
+    error_page 403 = @r2_missing;
+}
+
+location @r2_missing { return 404; }
+location = /maps/ { return 404; }
+location = /ftesurf/maps/ { return 404; }
+location = /ftesurf/maps/zones/local/ { return 404; }
