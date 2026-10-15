@@ -55,7 +55,9 @@ Usage:
 """
 
 import argparse
+import json
 import os
+import re
 import sys
 
 try:
@@ -81,6 +83,8 @@ ROWS = PAGE // CELL_H                 # 28
 PER_PAGE = COLS * ROWS                # 448
 
 SHOT_EXTS = (".png", ".jpg", ".jpeg", ".tga", ".bmp")
+FALLBACK_IMAGES = None
+THUMB_IDS = {}
 
 # mapmeta.txt column indices, matching what mapmeta.py writes
 C_NAME, C_PAGE, C_CELL, C_THUMB = 1, 6, 7, 8
@@ -102,17 +106,22 @@ def read_meta(path):
 def source_for(name, uuid, momentum):
     """The best available image file for one map, or None."""
     if uuid and uuid != "-":
-        for suffix in ("-small.jpg", "-large.jpg"):
-            p = os.path.join(momentum, "_cache", "images", uuid + suffix)
-            if os.path.exists(p):
-                return p
-        # What mapfetch.py pulled down for the maps Momentum never cached.
-        # Smallest first: this is a 128x72 cell either way, and decoding a
-        # 2560x1440 to get there is twenty times the work for the same pixels.
-        for suffix in ("-small.jpg", "-medium.jpg", "-large.jpg", "-xl.jpg"):
-            p = os.path.join(FETCHED, uuid + suffix)
-            if os.path.exists(p):
-                return p
+        uuid = THUMB_IDS.get(uuid, uuid)
+        candidates = []
+        for directory in (os.path.join(momentum, "_cache", "images"), FETCHED, FALLBACK_IMAGES):
+            if not directory: continue
+            for suffix in ("-small.jpg", "-medium.jpg", "-large.jpg", "-xl.jpg"):
+                p = os.path.join(directory, uuid + suffix)
+                try:
+                    with Image.open(p) as im:
+                        w, h = im.size
+                    candidates.append((p, w, h))
+                except (OSError, ValueError): continue
+        # Pick a source large enough for the requested cell, not a small image
+        # upscaled merely because it was encountered first. Decode only once.
+        enough = [(p,w,h) for p,w,h in candidates if w >= CELL_W and h >= CELL_H]
+        if enough: return min(enough, key=lambda c: c[1]*c[2])[0]
+        if candidates: return max(candidates, key=lambda c: c[1]*c[2])[0]
     p = os.path.join(KSFSHOTS, name.lower() + ".jpg")
     if os.path.exists(p):
         return p
@@ -155,14 +164,20 @@ def load_cell(path):
     return im.resize((CELL_W, CELL_H), Image.BOX)
 
 
-def build(momentum, meta_path, atlasdir, limit=0, report=False):
+def build(momentum, meta_path, atlasdir, limit=0, report=False, fill_missing=False, start_page=None):
     head, rows = read_meta(meta_path)
     os.makedirs(atlasdir, exist_ok=True)
+    occupied = [int(r[C_PAGE]) for r in rows if r[C_PAGE].isdigit() and r[C_CELL].isdigit()]
+    first_page = max(occupied) + 1 if occupied and fill_missing else 0
+    if start_page is not None:
+        if not fill_missing or start_page < first_page: raise ValueError('start-page overlaps existing cells')
+        first_page = start_page
 
     resolved = []          # (row, source path)
     missing_uuid = 0
     missing_file = 0
     for r in rows:
+        if fill_missing and r[C_PAGE].isdigit() and r[C_CELL].isdigit(): continue
         name = r[C_NAME]
         uuid = r[C_THUMB] if len(r) > C_THUMB else "-"
         src = source_for(name, uuid, momentum)
@@ -171,7 +186,7 @@ def build(momentum, meta_path, atlasdir, limit=0, report=False):
                 missing_uuid += 1
             else:
                 missing_file += 1
-            r[C_PAGE] = r[C_CELL] = "-"
+            if not fill_missing: r[C_PAGE] = r[C_CELL] = "-"
             continue
         resolved.append((r, src))
         if limit and len(resolved) >= limit:
@@ -183,6 +198,9 @@ def build(momentum, meta_path, atlasdir, limit=0, report=False):
              sum(1 for _, s in resolved if os.path.dirname(s) == KSFSHOTS),
              missing_uuid, missing_file))
 
+    if fill_missing and not resolved:
+        print('  no missing cells with available sources; existing metadata/pages unchanged')
+        return 0, 0
     npages = (len(resolved) + PER_PAGE - 1) // PER_PAGE
     written = 0
     failed = 0
@@ -197,7 +215,7 @@ def build(momentum, meta_path, atlasdir, limit=0, report=False):
             failed += 1
             continue
 
-        p, c = slot // PER_PAGE, slot % PER_PAGE
+        p, c = first_page + slot // PER_PAGE, slot % PER_PAGE
         if p != page_no:
             if page_img is not None:
                 out = os.path.join(atlasdir, "atlas%d.png" % page_no)
@@ -218,12 +236,14 @@ def build(momentum, meta_path, atlasdir, limit=0, report=False):
 
     # Remove stale pages from a previous, larger run so the menu cannot draw from
     # an atlas no row points into any more.
-    for extra in range(page_no + 1, page_no + 16):
+    for extra in ([] if fill_missing else range(page_no + 1, page_no + 16)):
         stale = os.path.join(atlasdir, "atlas%d.png" % extra)
         if os.path.exists(stale):
             os.remove(stale)
             print("  removed stale %s" % stale)
 
+    if failed:
+        raise RuntimeError('%d image decodes failed; metadata not replaced' % failed)
     with open(meta_path, "w", encoding="utf-8", newline="\n") as f:
         for h in head:
             f.write(h + "\n")
@@ -232,7 +252,7 @@ def build(momentum, meta_path, atlasdir, limit=0, report=False):
 
     if report:
         print("\n  %d cells over %d page(s), %d decode failures"
-              % (written, page_no + 1, failed))
+              % (written, npages, failed))
         print("  cell %dx%d, page %d, %d per page" % (CELL_W, CELL_H, PAGE, PER_PAGE))
         print("  menu draws these as gfx/mapthumbs/atlas<N>")
     return written, npages
@@ -248,11 +268,30 @@ def main():
     ap.add_argument("--atlasdir", help="atlas output (<gamedir>/gfx/mapthumbs)")
     ap.add_argument("--limit", type=int, default=0, help="only pack the first N maps")
     ap.add_argument("--report", action="store_true")
+    ap.add_argument("--images", help="XL/derivative source directory from mapmedia.py")
+    ap.add_argument("--fallback-images", help="additional existing picture directory")
+    ap.add_argument("--coverage", help="mapmedia coverage.json (deleted-thumbnail alternatives)")
+    ap.add_argument("--fill-missing", action="store_true",
+                    help="append new pages without shifting existing thumbnail cells")
+    ap.add_argument("--start-page", type=int, help="first new page for fill-missing; must exceed existing pages")
+    ap.add_argument("--cell-width", type=int, choices=(128,256,512), default=128,
+                    help="128 is the game atlas contract; larger values are offline export layouts")
     a = ap.parse_args()
 
-    global SHOTS, FETCHED, KSFSHOTS
+    global SHOTS, FETCHED, KSFSHOTS, FALLBACK_IMAGES, THUMB_IDS
+    global CELL_W, CELL_H, COLS, ROWS, PER_PAGE
+    CELL_W, CELL_H = a.cell_width, a.cell_width * 9 // 16
+    COLS, ROWS = PAGE // CELL_W, PAGE // CELL_H
+    PER_PAGE = COLS * ROWS
+    FALLBACK_IMAGES = a.fallback_images
+    if a.coverage:
+        with open(a.coverage, encoding='utf-8') as f: coverage = json.load(f)
+        for row in coverage['images']:
+            if row.get('state') == 'ok' and row.get('requested_uuid'):
+                if all(re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', row[k]) for k in ('uuid','requested_uuid')):
+                    THUMB_IDS[row['requested_uuid']] = row['uuid']
     SHOTS = os.path.join(a.gamedir, "screenshots")
-    FETCHED = os.path.join(a.gamedir, "gfx", "mapshots")
+    FETCHED = a.images or os.path.join(a.gamedir, "gfx", "mapshots")
     KSFSHOTS = os.path.join(FETCHED, "ksf")
     meta = a.meta or os.path.join(a.gamedir, "data", "mapmeta.txt")
     atlasdir = a.atlasdir or os.path.join(a.gamedir, "gfx", "mapthumbs")
@@ -261,7 +300,11 @@ def main():
         raise SystemExit("%s not found -- run mapmeta.py first" % meta)
 
     print("packing from %s" % os.path.join(a.momentum, "_cache", "images"))
-    n, pages = build(a.momentum, meta, atlasdir, a.limit, a.report)
+    if a.fill_missing and CELL_W != 128: ap.error('fill-missing preserves the game 128px atlas contract')
+    n, pages = build(a.momentum, meta, atlasdir, a.limit, a.report, a.fill_missing, a.start_page)
+    with open(os.path.join(atlasdir, 'layout.json'), 'w', encoding='utf-8') as f:
+        json.dump(dict(cell_width=CELL_W, cell_height=CELL_H, page=PAGE, columns=COLS,
+                       per_page=PER_PAGE, pages=pages, game_compatible=(CELL_W == 128)), f, indent=2)
     print("\npacked %d thumbnails, patched %s" % (n, meta))
 
 

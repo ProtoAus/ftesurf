@@ -176,6 +176,10 @@ void() SV_ZoneLoad =
 
 	if (Zone_LoadJson(strcat("maps/zones/local/",  mapname, ".json"), ZSRC_LOCAL))
 		;
+	// Trusted fixed-origin menu refresh, before local server startup. The
+	// client-only maps/zones/dl cache remains non-authoritative and unread.
+	else if (Zone_LoadJson(strcat("maps/zones/curated/", mapname, ".json"), ZSRC_ONLINE))
+		;
 	else if (Zone_LoadJson(strcat("maps/zones/online/", mapname, ".json"), ZSRC_ONLINE))
 		;
 	else

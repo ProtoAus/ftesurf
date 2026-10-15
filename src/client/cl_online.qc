@@ -143,6 +143,7 @@ void() Players_AbsorbBoard;
 // cl_zonedl.qc, which compiles after this file because it needs Online_NextReq.
 // Returns TRUE when the reply was one of its own -- see URI_Get_Callback.
 float(float reqid, float code, string bdy) ZoneDL_Reply;
+float(float reqid, float code, string bdy) ZonePub_Reply;
 // Patch 635, cl_players.qc: the room list's own request, answered the same way.
 float(float reqid, float code, string bdy) Players_BoardReply;
 // Patch 640, cl_steampic.qc: and a Steam picture's.
@@ -1588,6 +1589,8 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 	// is this branch; it returns TRUE when the id was one of its own.  It goes
 	// before the board test for the same reason the replay branch does -- the
 	// board test below is a bare inequality and would swallow anything left.
+	if (ZonePub_Reply(reqid, responsecode, resourcebody))
+		return;
 	if (ZoneDL_Reply(reqid, responsecode, resourcebody))
 		return;
 	// Patch 635: and the room list's own board (cl_players.qc), the same way.

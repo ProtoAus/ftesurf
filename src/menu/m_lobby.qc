@@ -1149,6 +1149,7 @@ float(float reqid, float code, string body) Mdl_Reply =
 // ROADMAP 9, m_board.qc (compiled later): TRUE when the id was the leaderboard
 // panel's, live or abandoned.
 float(float reqid, float code, string body) Mlb_Reply;
+float(float reqid, float code, string body) Mzd_Reply;
 
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
@@ -1169,6 +1170,8 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 
 	// Before the poll's test, which is a bare inequality and would swallow it.
 	if (Mlb_Reply(reqid, responsecode, resourcebody))
+		return;
+	if (Mzd_Reply(reqid, responsecode, resourcebody))
 		return;
 	if (Mdl_Reply(reqid, responsecode, resourcebody))
 		return;

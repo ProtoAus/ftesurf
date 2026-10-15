@@ -4,7 +4,10 @@
 
 Patch 671 adds the local editor controls, polygon authoring and six local map
 settings. The owner also requested making Proto an admin by Steam identity and
-uploading zones to the NanoPi R6C. This part remains unbuilt. On 12 Oct the
+uploading zones to the NanoPi R6C. Patch 729 implements the saved-zone draft
+client, separate deny-by-default role/proof service and reviewed-file staging
+(see zonepub.md). Installation/explicit role grant and authoritative/fleet
+activation remain outstanding; a draft is NOT a publication. On 12 Oct the
 owner confirmed Proto's Steam identity and chose reviewed activation, with an
 explicit per-publication choice for existing times (default keep). Identity
 confirmation is not itself a live privilege grant. Do not infer authority from

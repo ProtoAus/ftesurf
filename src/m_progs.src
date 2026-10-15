@@ -12,6 +12,7 @@ shared/sh_nativeui.qc
 // sh_json.qc declares them -- despite that file's header comment saying SSQC
 // and CSQC "both".  There is a third module and this is it.
 shared/sh_json.qc
+shared/sh_zonefile.qc
 sui_sys.qc
 shared/sh_ui.qc
 // Patch 467: the feedback renderer, shared with csprogs like sui_sys.qc.
@@ -23,6 +24,7 @@ milk_sys.qc
 // draws the rows with ui_thumb and resolves each lobby's map against ms_name.
 // Putting the drawing here instead would need both of those, which live below.
 menu/m_lobby.qc
+menu/m_zonedl.qc
 menu/m_main.qc
 // Patch 467: AFTER m_main.qc -- it draws with ui_option/ui_chip/ui_button and
 // reads menu_screen/ms_consent, all defined there; m_main.qc reaches it

@@ -486,6 +486,9 @@ float  ms_nhidden;              // BARE rows the last ui_refilter hid
 // The background pic currently held open, so it can be freed when the selection
 // moves.  "" when nothing is loaded.  See ui_backdrop.
 string ms_bgpic;
+// Optional menu-only engine capability: zero dimensions while decoding/HTTP is pending.
+vector(string pic) drawgetimagesize_async = #0;
+float ms_bgremote;
 float  ms_bgfor;                // ms_selected the background was loaded for
 // ms_bgblind went with the blind fallback it latched: there is nothing left to
 // warn about once "no readable image" is an ordinary answer with a backdrop of
@@ -840,6 +843,7 @@ void(float tier) ui_consent_write =
 	fclose(fh);
 
 	ms_consent = tier;
+	ms_bgfor = -2;                 // re-evaluate online image permission
 
 	/*
 	  BUILD 23: and LEAVE the screen.  Three sites set menu_screen to
@@ -3504,6 +3508,11 @@ void() m_open;
 */
 void(string mapname) ui_launch_local =
 {
+	Mzd_Play(mapname);
+};
+
+void(string mapname) ui_playlocal_now =
+{
 	// The name field went in build 57 (Lex).  This is a private, unlisted
 	// practice game, so a name had nowhere to be read.  Still SET rather than
 	// left alone, because the engine's own default is "unnamed".
@@ -5228,15 +5237,27 @@ void(vector screensize, float page, float cell) ui_bgatlas =
 	}
 };
 
+float(string uuid) ui_bguuid =
+{
+	local float i;
+	local string c;
+	if (strlen(uuid) != 36) return FALSE;
+	for (i = 0; i < 36; i = i + 1)
+	{
+		c = substring(uuid, i, 1);
+		if (i == 8 || i == 13 || i == 18 || i == 23)
+		{
+			if (strcmp(c, "-") != 0) return FALSE;
+		}
+		else if (strstrofs("0123456789abcdef", c) < 0) return FALSE;
+	}
+	return TRUE;
+};
+
 void(vector screensize) ui_map_backdrop =
 {
 	local string uuid, want;
-
-	// Patch 467: with the 3D space on, the tower field IS the backdrop.  A
-	// full-screen photo over it would bury it, and the nine-tap atlas blur
-	// cannot simply be faded (its taps average through their alphas).
-	if (MM_Active())
-		return;
+	local vector ready;
 
 	if (ms_selected != ms_bgfor)
 	{
@@ -5247,6 +5268,7 @@ void(vector screensize) ui_map_backdrop =
 			ms_bgpic = "";
 		}
 		ms_bgfor = ms_selected;
+		ms_bgremote = FALSE;
 
 		uuid = "";
 		ms_bgpage = ms_bgcell = -1;
@@ -5261,7 +5283,8 @@ void(vector screensize) ui_map_backdrop =
 					ms_bgcell = (argv(MT_CELL) == "-") ? -1 : stof(argv(MT_CELL));
 				}
 
-		if (uuid != "" && uuid != "-")
+		want = "";
+		if (strlen(uuid) && strcmp(uuid, "-") != 0)
 		{
 			// NO BLIND LAST RESORT.  What stood here asked for
 			// _cache/images/<uuid>-large.jpg after ui_bgprobe had already
@@ -5297,15 +5320,35 @@ void(vector screensize) ui_map_backdrop =
 			// the draw, and the fix is to keep an unverified path out of
 			// ms_bgpic rather than to stop precaching one.
 			want = ui_bgpick(uuid, screensize_x);
-			if (want != "")
-			{
-				ms_bgpic = strzone(want);
-				precache_pic(ms_bgpic);
-			}
+		}
+		// A bundled medium is a thumbnail, not a full-screen backdrop. Keep
+		// it offline/on old engines; online, prefer the bounded R2 derivative.
+		if (ms_consent >= FS_TERMS_ONLINE)
+		if (checkbuiltin(drawgetimagesize_async))
+		if (strcmp(substring(want, strlen(want) - 11, 11), "-medium.jpg") == 0) want = "";
+		if (!strlen(want) && ms_consent >= FS_TERMS_ONLINE)
+		if (checkbuiltin(drawgetimagesize_async))
+		if (ms_selected >= 0 && ms_selected < ms_count)
+		{
+			if (ui_bguuid(uuid))
+				want = strcat("https://dl.proto.bar/ftesurf/mapshots/", uuid, "-bg.jpg");
+			else if (Mdl_Made(bufstr_get(ms_name, ms_selected), MDL_NAMECH, 64))
+				want = strcat("https://dl.proto.bar/ftesurf/mapshots/", bufstr_get(ms_name, ms_selected), ".jpg");
+			if (strlen(want)) ms_bgremote = TRUE;
+		}
+		if (strlen(want))
+		{
+			ms_bgpic = strzone(want);
+			precache_pic(ms_bgpic, 0);
 		}
 	}
 
-	if (ms_bgpic == "")
+	// The selector is a photo backdrop; other screens retain the 3D space.
+	if (MM_Active() && menu_screen != SCREEN_CREATE) return;
+	ready = '1 1 0';
+	if (ms_bgremote && strlen(ms_bgpic))
+		ready = drawgetimagesize_async(ms_bgpic);
+	if (!strlen(ms_bgpic) || ready_x <= 0 || ready_y <= 0)
 	{
 		// No full-size image on this machine, which is the normal case. Draw
 		// the thumbnail we DID ship, blurred, and then the same wash -- so the
@@ -5462,7 +5505,8 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_head(p, draw, "What is uploaded");
 		ui_tm_par(p, w, draw, "Your finish time goes to play.proto.bar and appears on a public leaderboard. That server also keeps its own recording of the run (positions, velocities and angles), which anyone can download from the board.", SUI_THEME_WARN);
 		ui_tm_par(p, w, draw, "Your raw mouse and keyboard journal is NOT uploaded. It, and a copy of your lobby times, stay in this game's data folder here.", COL_TEXT);
-		ui_tm_par(p, w, draw, "play.proto.bar answers the map picker, the leaderboards and players' pictures, so it sees your IP address while you use them, as does any lobby you join.", COL_TEXT);
+		ui_tm_par(p, w, draw, "With online features enabled, play.proto.bar refreshes the map list at startup and serves zones, leaderboards and player pictures. Selecting a map can fetch its backdrop from dl.proto.bar. These services see your IP address, as does any lobby you join.", COL_TEXT);
+		ui_tm_par(p, w, draw, "A zone admin can explicitly upload saved zones to play.proto.bar. They are stored with the linked account as private drafts until an operator reviews and activates them; uploading alone does not change existing times.", COL_TEXT);
 		ui_tm_head(p, draw, "Steam");
 		ui_tm_par(p, w, draw, "A ranked time needs a Steam account linked to this game. You sign in on Steam's own page in your browser; the game never sees your password. play.proto.bar keeps your Steam ID, name and profile picture and, for this install, the key and id that name it, where and when it was linked, and when and how often it sends ranked runs.", COL_TEXT);
 		ui_tm_par(p, w, draw, "Once linked, your Steam name is your name on lobbies, and it and your picture are shown with your times, in the game and on proto.bar, where they link to your Steam profile and sit beside your Momentum Mod and KSF records.", COL_TEXT);
@@ -6047,10 +6091,12 @@ void(string name, optional float force) ui_dl_start =
 		dl_state = DL_ACTIVE;
 		dl_pct = dl_rate = dl_done = dl_total = 0;
 		dl_t0 = time;
+		Mzd_Fetch(name);
 	}
 	else if (r == 2)
 	{
 		// Already present -- the list is stale rather than the map missing.
+		Mzd_Fetch(name);
 		ui_load_maps();
 		ui_refilter();
 	}
@@ -7682,6 +7728,9 @@ void() m_init =
 	// panel that is no longer up.  The focus is recorded by whoever typed last
 	// and asked for here, where the screens are known.
 	registercommand("ui_key");
+	registercommand("ui_zonefetch");
+	registercommand("ui_zoneprobe");
+	registercommand("ui_bginfo");
 	registercommand("ui_focus");
 	registercommand("ui_cursor");
 	registercommand("ui_click");
@@ -7760,6 +7809,10 @@ void(vector screensize) m_draw =
 	ui_prejoin_tick();
 
 	Mlb_Poll();
+	// Warm the catalogue on boot, even before the picker is opened. Mdl_Ask
+	// owns consent, in-flight and one-minute refresh guards.
+	Mdl_Ask();
+	Mzd_Pump();
 
 	// m_draw is called EVERY frame whether or not the menu has focus
 	// (menu.c:168-176), so the gate is ours to enforce.
@@ -7830,7 +7883,6 @@ void(vector screensize) m_draw =
 		  poll does not depend on where in the layout the rows ended up.
 		*/
 		Lob_Poll();
-		Mdl_Ask();                  // live map pool, at most once a minute
 		float acts = _action_elements_index;
 		screen_create(screensize);
 
@@ -8381,6 +8433,26 @@ float(string cmd) m_consolecommand =
 		return TRUE;
 	}
 
+	if (argv(0) == "ui_zonefetch")
+	{
+		if (argv(2) == "force") mzd_at = -60;
+		Mzd_Fetch(argv(1));
+		return TRUE;
+	}
+	if (argv(0) == "ui_zoneprobe")
+	{
+		print(sprintf("^5zones:^7 map %s pending %g ok %g play %s\n", mzd_map, mzd_req, mzd_ok, mzd_play));
+		return TRUE;
+	}
+	if (argv(0) == "ui_bginfo")
+	{
+		local vector bgready;
+		bgready = '0 0 0';
+		if (ms_bgpic != "")
+		if (checkbuiltin(drawgetimagesize_async)) bgready = drawgetimagesize_async(ms_bgpic);
+		print(sprintf("^5backdrop:^7 selected %g remote %g ready %g %g pic %s\n", ms_selected, ms_bgremote, bgready_x, bgready_y, ms_bgpic));
+		return TRUE;
+	}
 	if (argv(0) == "ui_focus")
 	{
 		/*

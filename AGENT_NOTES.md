@@ -806,14 +806,14 @@ cannot be used, ask; do not silently scatter copies elsewhere.
 
 ## Build
 
-**Native isolation pitfall (measured P541).** `build.ps1 -Engine -NoDeploy`
-only suppresses QC deployment: the BuildEngine branch still copies native
-outputs to its product root AND QuakeDir. For an isolated engine build, the
-product root must be an isolated worktree and pass `-QuakeDir <private path>`
-explicitly (a nonexistent path skips the second native deployment). Do not
-assume NoDeploy protects C:\FTEQuake. A guarded `.prev` restoration is required
-if those files were accidentally copied; preserve any peer replacement. The
-script itself remains a follow-up in BACKLOG.
+**Native isolation pitfall (historical P541; rechecked P729).** That older
+`build.ps1 -Engine -NoDeploy` suppressed only QC deployment and still copied
+native outputs to both installs. Current source has a native NoDeploy guard;
+P729 full builds printed `native outputs retained ... both installs untouched`.
+Read the ACTUAL checkout's branch and output, not an older note or the flag's
+name. Older checkouts still need an isolated product root and explicit
+`-QuakeDir <owned path>` (nonexistent skips the second copy). If an accidental
+copy occurred, guarded `.prev` restoration must preserve any peer replacement.
 
 
 **A fresh engine worktree is not a build tree (measured P609).** It has no
@@ -824,6 +824,16 @@ Pass `ARCHLIBS=C:/msys64/home/Lex/fteqw/engine/libs-x86_64-w64-mingw32` and
 compare `objdump -p <exe>`'s DLL names with the installed binary's. It also
 stamps nothing (`.git` is a file there): supply `SVN_VERSION` and `SVNREVISION`,
 and make the patch tag ANNOTATED or `git describe --long` skips it.
+
+**Dependency appearance after partial compilation (P729).** Prepare the owned
+link to the dependency cache BEFORE the first make. A failed first build can
+leave image.o compiled against system JPEG80 headers; adding the ignored cache
+later links JPEG90 without invalidating that object. The exe starts but JPEG
+loads fail (`library is 90, caller expects 80`). Preprocessing after the link
+showed JPEG90 while the surviving object was still80. `-Engine -Full` with the
+proper dependencies fixed the isolated artifact; no JPEG decoder/source change
+was needed. Native HTTPS picture readiness then reached1920x1080 and the
+screenshot showed the photo. Regenerate clangdb after build-flag/path changes.
 
 From `src/`, with pwsh 7 (NOT `powershell`):
 
@@ -890,11 +900,11 @@ From `src/`, with pwsh 7 (NOT `powershell`):
     `d8fe56aa`. That is not dirt: gate 1 compares the ship set against GIT, and
     it passes clean. Reproduce it from a clean `git worktree` anyway if you want
     the archive to match a from-scratch clone.
-  - `-NoDeploy` on a worktree build leaves the .dat in the WORKTREE's `ftesurf/`,
-    never in `C:\FTESurf` -- copy them in, and copy the shipped pair back after.
-    That is also how a control build is made when this tree's source already holds
-    the patch (`cfg/test/p439smoke.cfg`'s RESULT block records the recipe and the
-    hash that proved which build ran).
+  - Current `-NoDeploy` compiles into the printed owned `rig/build-nodeploy-<id>`
+    output, NOT the worktree's normal `ftesurf/` directory; older checkouts differ.
+    Use the actual `NoDeploy QC outputs:` path and verify the compiler output.
+    Copy only inspected-commit artifacts for intentional dual deployment. See
+    historical `cfg/test/p439smoke.cfg` for the earlier control recipe.
 - CSPROGS SITS AT FTEQCC'S GLOBAL LIMIT (131,072). Patch 474's ten 1,000-float
   arrays took it to 131,418 and the build died with `Too many globals`, reported
   as `Error in client/cl_main.qc on line 0`. Big tables go in `memalloc`'d memory

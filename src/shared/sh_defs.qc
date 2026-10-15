@@ -1067,7 +1067,8 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 */
 // Optional signed updates now contact proto.bar/dl.proto.bar, behind their own
 // explicit permission. The new disclosure and endpoint ship together.
-#define FS_TERMS_ONLINE 5
+// Online tier 6 discloses startup catalogue refresh and R2 map backdrops.
+#define FS_TERMS_ONLINE 6
 
 #define TS_IDLE      0   // nothing armed
 #define TS_ARMED     1   // standing in the zone the run will start from

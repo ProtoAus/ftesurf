@@ -126,6 +126,8 @@ __pycache__/
 /.pi/workflows/*
 !/.pi/workflows/subagents-smoke.js
 !/README.md
+!/mapmedia.md
+!/zonepub.md
 !/REBRANDING_PLAN.md
 !/LICENSE
 !/CONTRIBUTING.md

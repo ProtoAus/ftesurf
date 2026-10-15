@@ -313,6 +313,8 @@ void() Zone_LoadForMap =
 	// edited.  A bad file there stops mattering the moment a real one arrives.
 	if (Zone_LoadJson(strcat("maps/zones/local/",  map, ".json"), ZSRC_LOCAL))
 		;
+	else if (Zone_LoadJson(strcat("maps/zones/curated/", map, ".json"), ZSRC_ONLINE))
+		;
 	else if (Zone_LoadJson(strcat("maps/zones/online/", map, ".json"), ZSRC_ONLINE))
 		;
 	else if (Zone_LoadJson(strcat("maps/zones/dl/", map, ".json"), ZSRC_DL))
@@ -322,8 +324,10 @@ void() Zone_LoadForMap =
 		// No file and no brushes.  Either this map genuinely has no zones --
 		// the common case, 1,156 of the 1,743 we hand out -- or it was zoned
 		// after the release this install came from.  One request settles it.
-		ZoneDL_Want(map);
 	}
+	// Refresh the non-authoritative client cache even with a populated table;
+	// never replace that table in the middle of the current connection/run.
+	ZoneDL_Want(map);
 
 	/*
 	  BUILD 81: the client hashes its own table too, and the value is NOT written
