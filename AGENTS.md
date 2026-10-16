@@ -36,6 +36,35 @@ Naming: `pi.dev` is the coding agent (`.pi/`, `Start-Pi.cmd`, the `pi` command).
   task, bypass safety/ownership rules, invent approvals, repeat passed tests
   without a changed premise, or perform actions needing separate authorization.
 
+## Keep tooling subordinate to delivery
+
+- Use the existing build/test/deploy entrypoints. Validate the smallest safe
+  end-to-end invocation early, before a large proof campaign, so path, argument,
+  namespace and transport errors are found before final deployment.
+- A wrapper failure is not feature progress. Preserve it, identify whether the
+  fault is in the product, tooling or environment, and fix the smallest reusable
+  seam. Do not grow numbered wrapper chains, manifests or fresh copies to avoid
+  understanding the same failure. New isolation/immutable evidence may be needed;
+  a new name is not a fix and must not bypass a failed transaction.
+- After two consecutive infrastructure-only failures without advancing the
+  feature, stop repeating that approach, NOT the task. Compare the actual failing
+  path with the last working one; choose one bounded diagnostic/fix/falsifier
+  cycle or a simpler supported route. If neither is safe and executable, report
+  the concrete blocker and continue independent in-scope work. Do not silently
+  turn feature work into building a deployment framework.
+- Keep immutable source/artifacts separate from volatile PIDs, epochs and clocks.
+  Reuse still-valid evidence; refresh only what a changed dependency invalidates,
+  at the real execution boundary. Never redate evidence or weaken freshness,
+  ownership, consent, data-preservation or promotion checks to make a run pass.
+- Coordinate only the exact conflicting resource and shortest critical interval,
+  not a blanket pause while preparing. Do not leave your maintenance gates or
+  shared fixtures active during extended offline debugging: restore only your
+  verified changes when safe and authorized, or report the exact recovery blocker.
+- Updates must distinguish implemented, verified and deployed, and state the
+  user-visible progress (or none). Wrapper/test counts, checkpoints and new attempt
+  names are not completion; once the needed check passes, take the next safe,
+  authorized step toward the requested feature.
+
 ## Start here
 
 - Start pi.dev from `C:\FTESurf`, or use `pwsh -NoProfile -File
