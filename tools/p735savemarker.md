@@ -111,8 +111,38 @@ all12 units were active, but the public directory lacked their live rows. A
 read-only diagnostic saw incomplete/flapping membership (0, then9, then0), not
 positive empty-population evidence. No force flag, lobby restart, remote config
 change or weakened occupancy guard was used. Pi hashes remained the predecessor
-SSQC and unchanged CSQC above; no `.new` swap files were left. Fleet deployment
-remains blocked specifically by that directory/heartbeat prerequisite.
+SSQC and unchanged CSQC above; no `.new` swap files were left. At that checkpoint,
+fleet deployment was blocked specifically by that directory/heartbeat prerequisite.
+
+### NanoPi continuation — completed 2026-10-16T11:05:14Z
+
+On the owner's explicit request to update the lobbies, fresh directory membership
+was complete (all12 configured ports) with one Monolith player. The owner was
+notified that the development rollout would interrupt that session; the existing
+`build.ps1 -Jobs 8 -Pi -PiForce` entrypoint was used. This was a known populated
+lobby override, not the earlier unknown-membership case.
+
+Built in a clean isolated tree at published
+`6e6c3575fe94a597d5e5fa0d6d9cb8a47f6d3bc0`; all QC, build and smoke code is
+identical to verified product `3f031b2`. All three VMs compiled with zero warnings.
+The SSQC and CSQC hashes above reproduced exactly, were checked after upload and
+swap, and the immediate predecessors were retained as `.prev`.
+
+Independent host readback at **11:05:14Z** proved all12 services active/running
+with new PIDs and later start epochs. Program hashes match the clean build,
+`.prev` matches the captured predecessor pair, no `.new` files remain, and the
+native engine, hl2 plugin and aggregate cfg-tree hashes are unchanged. No native,
+config, backend or player-data migration was shipped.
+
+The existing `tools/pi_lobby_smoke.py` joined lobby2 (`192.168.1.102:27520`)
+from an isolated client with NO local CSQC. It downloaded exactly the deployed
+CSQC, drew the local board (8columns/type14), reported no QC error, captured a
+screenshot inspected by the agent, and exited normally. Post-smoke directory
+membership was all12. This is one live client/served-CSQC acceptance check, not
+a full B4/futile gameplay traversal; the small owner route check below remains.
+
+Fleet deployment is now **complete**. Receipts and smoke evidence are retained
+under `C:/FTESurf-worktrees/savemarker-01a14325/`.
 
 Actual B4/futile route acceptance is **pending** in lextest.md. The small owner
 check is a NEW save from a normal run, load it, and touch the formerly resetting
