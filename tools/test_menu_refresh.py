@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Native menu layout/input falsifiers. Synthetic friends are NOT account authority.
+"""Native-rendered layout/synthetic-input falsifiers; NOT physical F2 verification.
+
+Use test_update_corner.py for Windows native F2/binding dispatch controls.
+Synthetic friends are NOT account authority.
 
 Run with an owned --out, a NoDeploy --qc-artifacts and --library install gamedir.
 Reuses the isolated gallery rig; never writes install configs/data or controls the
@@ -77,8 +80,8 @@ def grade(rig):
         for name, data in re.findall(r'MENU_(LARGE|FILTERS|FILTERED|COLLAPSED|COMPACT|SCROLLED)[\s\S]*?ui_menu_probe: ([^\r\n]+)', text):
             states[name] = {k: float(v) for k, v in re.findall(r'(\w+)=(-?[\d.]+)', data)}
         checks = {
-            'F2 opens updater': bool(re.search(r'ui_update_probe: .*screen=7', text)),
-            'F2 native bind': 'ui_updates' in text and '"F2"' in text,
+            'QC F2 handler opens updater': bool(re.search(r'ui_update_probe: .*screen=7', text)),
+            'F2 binding text exists (not dispatch proof)': 'ui_updates' in text and '"F2"' in text,
             'all layout actors': len(states) == 6,
             '128 completed friends': 'friends: ready 1 rows 128 loading 0' in text,
             'menu sees connected snapshot': bool(re.search(r'ui_menu_probe: friends_count=128 client=2 screen=1', text)),

@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P733 — update corner follow-up
+
+- After loading the new menu, check the bare, right-aligned current/latest
+  status. There should be no rectangle or F2 hint when no update is ready.
+- F2 should now open Updates, including with P731's saved binding. A custom
+  F2 action is preserved; in that case the update corner does not advertise F2.
+
 ## P731 — title/picker layout preference
 
 Both Windows installs are hash-verified on the clean product build; the new

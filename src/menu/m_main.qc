@@ -7698,9 +7698,10 @@ void() m_init =
 	registercvar("ui_maps_filters", "0", 32);
 	registercvar("ui_maps_large", "1", 32);
 	registercvar("ui_maps_friends", "0", 32);
-	// F-keys run binds even over menuqc. Replace only Quake's obsolete default.
-	if (getkeybind(K_F2) == "" || getkeybind(K_F2) == "menu_save")
-		localcmd("bind F2 ui_updates\n");
+	// Repair P731's level30 ui_updates bind too; menu commands reject that level.
+	if (checkbuiltin(localcmd_local))
+	if (getkeybind(K_F2) == "" || getkeybind(K_F2) == "menu_save" || getkeybind(K_F2) == "ui_updates")
+		localcmd_local("bind F2 ui_updates\n");
 	if (ms_consent < FS_TERMS_VERSION)
 		menu_screen = SCREEN_TERMS;
 

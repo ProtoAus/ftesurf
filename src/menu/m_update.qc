@@ -64,29 +64,45 @@ void() MU_Poll =
 	}
 };
 
+float(string st) MU_Ready =
+{
+	return (strcmp(st, "available") == 0 || strcmp(st, "restart") == 0 || strcmp(st, "launcher") == 0);
+};
+
+void(float right, float y, float width, vector size, string text, vector color) MU_StatusLine =
+{
+	text = ui_fit_text(text, width, size);
+	sui_text([right - stringwidth(text, TRUE, size), y], size, text, color, 1, 0);
+};
+
 void(vector screensize) MU_Status =
 {
 	local string st, label, latest, current;
-	local float w;
-	local vector p;
+	local float w, right;
 	st = cvar_string("update_state");
 	current = cvar_string("ui_release_version");
 	if (current == "") current = strcat(UI_MENU_VERSION, " (dev)");
 	latest = cvar_string("update_version");
 	if (latest == "") latest = "not checked";
-	label = "F2  Updates";
-	if (cvar("update_consent") == 0) label = "F2  Updates off";
-	else if (strcmp(st, "checking") == 0) label = "F2  Checking for updates";
-	else if (strcmp(st, "uptodate") == 0) label = "F2  Up to date";
-	else if (strcmp(st, "downloading") == 0 || strcmp(st, "applying") == 0) label = "F2  Updating...";
-	else if (strcmp(st, "restart") == 0 || strcmp(st, "launcher") == 0) label = "F2  Update ready - restart";
-	else if (strcmp(st, "error") == 0) label = "F2  Update check unavailable";
+	label = "Updates";
+	if (cvar("update_consent") == 0) label = "Updates off";
+	else if (strcmp(st, "checking") == 0) label = "Checking for updates";
+	else if (strcmp(st, "uptodate") == 0) label = "Up to date";
+	else if (strcmp(st, "downloading") == 0 || strcmp(st, "applying") == 0) label = "Updating...";
+	else if (strcmp(st, "available") == 0) label = "Update available";
+	else if (strcmp(st, "restart") == 0 || strcmp(st, "launcher") == 0) label = "Update ready - restart";
+	else if (strcmp(st, "error") == 0) label = "Update check unavailable";
+	if (cvar("update_consent") == 1)
+	if (MU_Ready(st))
+	if (checkbuiltin(localcmd_local))
+	if (strcmp(getkeybind(K_F2), "ui_updates") == 0)
+		label = strcat(label, "  [F2]");
 	w = min(320, screensize_x - 32);
-	p = [screensize_x - w - 16, 16];
-	sui_style_box(p, [w, 76], 9, SUI_THEME_PANEL, SUI_THEME_EDGE, 0.9);
-	sui_text(p + '12 10 0', SZ_LABEL, label, COL_ACCENT, 1, 0);
-	sui_text(p + '12 32 0', '12 12 0', ui_fit_text(strcat("Your version: ", current), w - 24, '12 12 0'), COL_TEXT, 1, 0);
-	sui_text(p + '12 52 0', '12 12 0', ui_fit_text(strcat("Latest: ", latest), w - 24, '12 12 0'), COL_DIM, 1, 0);
+	right = screensize_x - 16;
+	Font_Set(ui_font_ui);
+	MU_StatusLine(right, 16, w, SZ_LABEL, label, COL_ACCENT);
+	MU_StatusLine(right, 38, w, '12 12 0', strcat("Your version: ", current), COL_TEXT);
+	MU_StatusLine(right, 58, w, '12 12 0', strcat("Latest: ", latest), COL_DIM);
 };
 
 void(vector screensize) MU_Screen =
