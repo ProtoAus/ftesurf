@@ -5,22 +5,25 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
-## Mode2 Kitsune transparency still switches during mouse motion (P737)
+## Mode2 Kitsune live annotation-barrier fix awaiting acceptance (P739)
 
-- Site: engine `gl/gl_backend.c:GLBE_SubmitBlendedFaces` / plane ordering and
-  its live renderer inputs. All3 saved angles pass visually, but owner reports
-  switching between saves2/3 and farther right. P737 is NOT visually accepted.
+- Site: engine `gl/gl_backend.c:GLBE_BlendForeground` / mode2 plane ordering.
+  The actual live GL frame has375 commands/7 planes/status-3: stock CSQC wire
+  annotations interleave and veto the correction. P739 keeps those recognized
+  annotations in the legacy post-world layer; both normal clients are updated.
+  Owner angular acceptance is still PENDING; do not remove this issue yet.
 - Falsifier: capture an actually failing live angle/motion, reproduce the
   switching in the active renderer, and retain correct pixel/layer behavior
   through that transition and adjacent angles. The33-view portable straight
   sweep passes but does not falsify the reported real failure. Preserve all
   visible panes and conservative unsupported paths; no more centroid tuning
   or passing-saved-pose substitution.
-- Material is confirmed single-pass/front-cull/ordinary alpha/no program.
-  Runtime renderer/cache state and a bad stationary save4 were requested;
-  static BSP PVS at the estimated eye contains the same20 grid fans as the
-  diagnostic, not evidence of a larger-budget failure. Scope/evidence/limits:
-  `tools/p737alphacull2.md`. No additional native patch was deployed yet.
+- The one-line procedural regression ACTED red before the layer fix, passes
+  afterward with once-only annotation retention, and its removal mutant acts.
+  P739 native build has0 new warnings; both normal client hashes verified while
+  unchanged ABI/modules/data remain intact. With zones ON, test the actual bad
+  turn; a portable pass alone is not acceptance. Scope/evidence/limits:
+  `tools/p739annotations.md`. Remove only on owner/native acceptance.
 
 ## Save-marker source-removal fixture can be completed by its manual think (P735)
 

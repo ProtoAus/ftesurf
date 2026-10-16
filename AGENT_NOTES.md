@@ -6620,6 +6620,23 @@ Full client compile has zero new warnings and no cache-file changes. Fresh GPU,
 startup and performance remain open; unsupported intervening commands still
 abstain. See tools/p700alphafix.md; no decoder/trace prerequisite or worker change.
 
+## Renderer alpha live inputs — P739, 2026-10-16
+
+The static Kitsune model had12 world commands; the owner's actual OpenGL frame
+had383 raw/375 gathered,7 admitted planes,status-3,18 edges and190 work. Most
+extra commands were procedural stock CSQC wire annotations, not more BSP faces.
+The unknown-slot guard abandoned refinement when they interleaved. Do not infer
+live all-angle correctness from saved-pose/ray sweeps, increase budgets blindly,
+or keep adjusting face centres before counting the ACTUAL live draw inputs.
+`r_blendtrace` arms one local root pass then disarms; result counts are normally
+enough. P739 keeps recognized stock annotations in the legacy post-world layer,
+retaining opaque depth tests/width/once-only callback, not xray or missing lines.
+Other unknowns remain conservative. One interleaved line ACTED red/green; a375-
+command native trace is NOT reproduced by that smaller targeted regression.
+Both normal clients are updated but owner angular acceptance is pending. Test
+zones ON using the normal launcher, not the OLD logger-only alternate exe. A
+simple works/still-flips verdict is sufficient; tools/p739annotations.md.
+
 ## Pitfalls discovered the hard way
 
 ### Native recovery journal publication boundary — P692, 2026-10-13
