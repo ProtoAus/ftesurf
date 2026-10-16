@@ -89,6 +89,28 @@ bytes match, and plug_list reports HL2/UI loaded from `$system`, but those displ
 paths are NOT independent OS DLL-module provenance. No such broader claim is
 made. No QC progs/config, Build number, Linux/Pi binary or release was shipped.
 
+## Ready for owner testing — 2026-10-16
+
+P721's source/tag and original dual-install verification are already published.
+The installs have since advanced to P734 (`94ce3efb419e6e5b75e033eeb4ecd3c0ccdde1a4`),
+which contains P721; `engine/gl/gl_backend.c` is byte-identical between those
+commits. At2026-10-16T06:15:38Z, both actual client hashes, both HL2 plugin hashes
+and the installed dedicated-server hash match the P734 deployment receipt in
+`tools/p734devquiet.md`. No rebuild, downgrade, config/progs change or lobby
+restart was necessary to make the transparency fix available for testing.
+
+The owner's saved `r_blendsort 2` was left untouched. Test this fix with
+`r_blendsort 1`; use mode0 for the coarse-order comparison and return to1, or
+restore mode2 if preferred. Inspect ordinary affected windows from both sides
+while moving. The small pending human check is in `lextest.md`.
+
+At the owner's direction, optional reflection-harness work is stopped instead
+of blocking visual delivery. Human confirmation will be recorded as manual
+visual acceptance, not fabricated twelve-frame, cache-action or timing proof.
+The coverage limits below remain honest limits, not new machinery required
+before the owner can try the already-installed patch. No owner verdict has yet
+been received, and no new measured performance claim is made.
+
 ## Explicit remaining limits
 
 No quiet service/cadence/tail acceptance, universal map certification or default2

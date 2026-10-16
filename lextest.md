@@ -1,5 +1,24 @@
 # lextest.md — things waiting on a human
 
+## P721 — transparent windows: ready for your visual check
+
+Both Windows clients already have the newer P734 native build, which includes
+P721's unchanged world-alpha renderer. Installed hashes were rechecked on
+2026-10-16; no older binary was copied back. See `tools/p721alphacull.md`.
+
+- Restart the client, visit the Kitsune windows or another affected spot you
+  normally use, and enter `r_blendsort 1`. Your saved setting was mode2, which is
+  a different path; it was not edited. Inspect the panes from both sides while
+  moving. Their front/back overlap should look correct without new popping.
+- If useful, compare `r_blendsort 0` (old coarse ordering), then return to
+  `r_blendsort 1`. Mode2 remains available if you want your prior setting back.
+- A brief report that the affected scene looks right is sufficient manual visual
+  acceptance. No custom fixture, mirror hunt or automated screenshot rig needed.
+
+**Owner verdict pending.** Optional reflection-harness development is stopped;
+no reflection test or measured FPS improvement is claimed. Existing sorter and
+native pixel controls remain recorded, not replaced by an assumed human pass.
+
 ## P735 — save-lock progress checks (pending owner confirmation)
 
 - During a normal Monolith B4 run, make a NEW save before the ramp that used to

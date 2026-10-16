@@ -65,6 +65,25 @@ Naming: `pi.dev` is the coding agent (`.pi/`, `Start-Pi.cmd`, the `pi` command).
   names are not completion; once the needed check passes, take the next safe,
   authorized step toward the requested feature.
 
+## Prefer the fastest adequate validation
+
+- Before building or repairing test machinery, consider an existing test, a small
+  smoke check, or human validation. For visuals, UI, audio or feel, ask the owner
+  for a quick, concrete in-game check EARLY when that is faster/easier and answers
+  the acceptance question. Do not spend hours automating what a person can readily
+  confirm; keep the requested human check small and specific.
+- Actual owner confirmation is valid manual acceptance for what they observed.
+  Record it as such (human-only checks belong in lextest.md), distinguish pending
+  from confirmed, and leave untested cases explicit. Never invent a pass or turn
+  "looks right" into measured performance, security or data-integrity evidence.
+- Optional regression coverage and a perfect harness are NOT delivery requirements
+  by default. If test-infrastructure work starts dominating the feature, switch
+  to a simpler adequate check or ask for human validation rather than extending
+  the framework. Once acceptance is sufficient, stop expanding tests and deliver.
+- This does not waive required builds, safety/data-preservation rules, mandatory
+  security/evidence checks, or measurements needed for numerical claims. Match
+  validation to the actual risk and claim, not every hypothetical edge case.
+
 ## Start here
 
 - Start pi.dev from `C:\FTESurf`, or use `pwsh -NoProfile -File
