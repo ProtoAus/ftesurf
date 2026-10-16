@@ -61,6 +61,24 @@ class ShipGuardTests(unittest.TestCase):
             self.assertEqual(shipguard.classify(literal, 'strcat', set(), set())[0], 'DENIED')
         self.assertEqual(shipguard.classify('maps/settings/local-other/map.cfg', 'fopen', set(), set())[0], 'MISS')
 
+    def test_curated_zone_cache_is_narrow_and_runtime_only(self):
+        hits = [row for row in self.rows if row[0] == 'maps/zones/curated/']
+        self.assertEqual(len(hits), 3, hits)
+        for literal, verdict, reason, path, line in hits:
+            self.assertEqual(verdict, 'DENIED', (path, line, reason))
+            self.assertIn('runtime zone cache', reason)
+        self.assertEqual(shipguard.classify('maps/zones/curated/surf_fixture.json',
+                                           'fopen', set(), set(), ', FILE_READ);')[0], 'DENIED')
+        for literal in ('maps/zones/curated-other/surf_fixture.json',
+                        'maps/zones/curated.json', 'maps/zones/local/'):
+            self.assertEqual(shipguard.classify(literal, 'fopen', set(), set(), ', FILE_READ);')[0], 'MISS')
+        self.assertFalse(any(path.removeprefix('ftesurf/').startswith('maps/zones/curated/')
+                             for path in self.files))
+        with patch.dict(shipguard.DENY_PREFIX, clear=False):
+            del shipguard.DENY_PREFIX['maps/zones/curated/']
+            self.assertEqual(len([row for row in scan(self.files, self.dirs)
+                                  if row[0] == 'maps/zones/curated/' and row[1] == 'MISS']), 3)
+
     def test_fopen_read_remains_a_load(self):
         self.assertEqual(shipguard.classify('data/mapdl.txt', 'fopen', set(), set(), ', FILE_READ);')[0], 'MISS')
         self.assertEqual(shipguard.classify('data/mapdl.txt', 'fopen', self.files, self.dirs, ', FILE_READ);')[0], 'SHIPPED')
@@ -85,10 +103,17 @@ class ShipGuardTests(unittest.TestCase):
                 index = next(i for i, entry in enumerate(self.globs) if entry['path'] == directory)
                 hidden, hdirs, _ = shipguard.resolve_shipset(hidden=index)
                 self.assertTrue(self.files - hidden, 'glob did not contribute files')
-                self.assertTrue(any(row[0] == literal and row[1] == 'SHIPPED' for row in self.rows))
-                self.assertTrue(any(row[0] == literal and row[1] == 'MISS' for row in scan(hidden, hdirs)))
+                self.assertEqual(shipguard.classify(literal, 'drawpic', self.files, self.dirs)[0], 'SHIPPED')
+                self.assertEqual(shipguard.classify(literal, 'drawpic', hidden, hdirs)[0], 'MISS')
                 output = io.StringIO()
-                with contextlib.redirect_stdout(output):
+                with contextlib.ExitStack() as stack:
+                    # The current roster no longer names the old voice icons.
+                    # Keep their actual historical load as an explicit fixture.
+                    if not any(row[0] == literal and row[1] == 'SHIPPED' for row in self.rows):
+                        fixture = self.root / ('historical-' + str(index) + '.qc')
+                        fixture.write_text('void() Fixture = { drawpic("' + literal + '"); };\n')
+                        stack.enter_context(patch('shipguard.glob.glob', return_value=[str(fixture)]))
+                    stack.enter_context(contextlib.redirect_stdout(output))
                     code = shipguard.mutate(index)
                 self.assertEqual(code, 0, output.getvalue())
                 self.assertIn(literal, output.getvalue())

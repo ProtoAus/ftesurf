@@ -190,6 +190,9 @@ DENY_PREFIX = {
                          "(tools/zoneinstall.py). Not ours to ship.",
     "maps/zones/dl": "cl_zonedl.qc's HTTP fetch sandbox. Written at runtime into "
                      "data/, and tried LAST of the three sources by design.",
+    "maps/zones/curated/": "Mzd_Reply's validated fixed-origin runtime zone cache, "
+                            "refreshed before local play; shipped local zones "
+                            "still win and failed refreshes retain existing zones.",
     "maps/settings/local/": "Player-authored editor overrides and transaction "
                             "siblings; QC writes into data/maps/settings/local, "
                             "native hosted games only. Not shipped rulesets.",
