@@ -365,7 +365,7 @@ $LinuxExec = @('ftesurf64', 'ftesurf.sh', 'ftesurf-launcher')
 $LinuxRequired = @('ftesurf64', 'fteplug_hl2_amd64.so', 'ftesurf.sh', 'ftesurf-launcher', 'notices/bootstrap.txt', 'default.fmf', 'LICENSE',
     'INSTALL.txt', 'VERSION.txt', 'SOURCE.txt', 'ftesurf/csprogs.dat', 'ftesurf/qwprogs.dat', 'ftesurf/menu.dat',
     'ftesurf/fs_addons.default.txt', 'ftesurf/fs_addons.txt', 'ftesurf/cfg/default.cfg')
-$LinuxTokenNames = @('LINUX_URL', 'LINUX_FILENAME', 'LINUX_SIZE_HUMAN', 'LINUX_SIZE_BYTES', 'LINUX_SHA256', 'LINUX_GLIBC', 'LINUX_ENGINE')
+$LinuxTokenNames = @('LINUX_URL', 'LINUX_LAUNCHER_URL', 'LINUX_LAUNCHER_SHA256', 'LINUX_FILENAME', 'LINUX_SIZE_HUMAN', 'LINUX_SIZE_BYTES', 'LINUX_SHA256', 'LINUX_GLIBC', 'LINUX_ENGINE')
 $LinuxDeny = @(
     '\.(exe|dll|bat|cmd|lnk|pdb)$'
     '\.db$'                            # symbols stay with the drop, for crash reports

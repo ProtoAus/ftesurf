@@ -66,6 +66,12 @@ Check 'template: manual launcher upgrade is visible and links both platforms' {
     $tpl.Kept.Contains('href="@@LAUNCHER_URL@@"') -and $tpl.Kept.Contains('href="@@LINUX_LAUNCHER_URL@@"') -and
     -not $tpl.Outside.Contains('@@LINUX_LAUNCHER_URL@@')
 }
+Check 'publisher: actual Linux token contract matches the template helpers' {
+    $source = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'release.ps1'))
+    $match = [regex]::Match($source, '(?m)^\$LinuxTokenNames = @\(([^\r\n]+)\)')
+    $actual = @([regex]::Matches($match.Groups[1].Value, "'([A-Z0-9_]+)'") | ForEach-Object { $_.Groups[1].Value })
+    $match.Success -and @(Compare-TokenSets $actual $lxKeys).Count -eq 0
+}
 Check 'template: outside tokens = Windows map' { @(Compare-TokenSets (Get-TemplateTokens $tpl.Outside) $winKeys).Count -eq 0 }
 Check 'template: inside tokens = Linux names' { @(Compare-TokenSets (Get-TemplateTokens $tpl.Inside) $lxKeys).Count -eq 0 }
 Check 'template: archive links and filenames once each when kept' {
