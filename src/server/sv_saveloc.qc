@@ -1072,6 +1072,8 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	                 e.velocity_x, e.velocity_y, e.velocity_z));
 	fputs(f, sprintf("angles %.4f %.4f\n", e.v_angle_x, e.v_angle_y));
 	fputs(f, sprintf("duck %d\n", (e.pmove_flags & PMF_DUCKED) ? 1 : 0));
+	// Patch 735: the map's progress marker, including an explicitly empty name.
+	fputs(f, sprintf("targetname %S\n", e.targetname));
 
 	// The timer.
 	fputs(f, sprintf("state %d\n", e.run_t_state));
@@ -1566,6 +1568,8 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local float hadrec;             // Patch 441 r3: ...and when the LOAD began
 	local string drid;              // Patch 426: the run the Patch 360 discard kept
 	local vector rorg, rvel;
+	local string savedname;
+	local float hasname;
 
 	sl_voided = FALSE;
 	// Patch 450: cleared on EVERY call and above the fopen, for the same reason
@@ -1589,6 +1593,8 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	// Patch 450.  A string local is as un-zeroed as a float one, and this one is
 	// COMPARED rather than summed, so garbage here would be worse than a wrong value.
 	fcrc = "";
+	savedname = "";
+	hasname = FALSE;
 	srun = -1;                      // a pre-57 save file: derived from startseg below
 	sgs = 1;
 	az = ez = am = cz = -1;
@@ -1636,6 +1642,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		// The distinction between "cannot tell" and "no" is made by the comparison
 		// block below the fclose, not by this read.
 		if (k == "mapcrc")     { fcrc = argv(1); continue; }
+		if (k == "targetname") { savedname = argv(1); hasname = TRUE; continue; }
 
 		if (k == "azone")      { az = stof(argv(1)); continue; }
 		if (k == "evzone")     { ez = stof(argv(1)); continue; }
@@ -1688,6 +1695,14 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		}
 	}
 	fclose(f);
+
+	// Patch 735: discard stale EndTouch progress from the abandoned position.
+	// Legacy saves have no marker: retain their old behavior, never guess one.
+	if (hasname)
+	{
+		SV_TouchRelocate(e);
+		e.targetname = savedname;
+	}
 
 	/*
 	  PATCH 450: THE MAP COMPARISON, made here because the whole file has been read and
@@ -2746,6 +2761,8 @@ float(float base, float cnt) SV_SaveFreeID =
 // Patch 428: what a state file says it is -- seq, run clock (SL_DEMOTED for a
 // demoted file) and origin, the columns SV_SaveReadLight filled the row from.
 float  sl_fseq, sl_fticks, sl_fgo;
+float  sl_fhasname;
+string sl_fname;
 vector sl_forg;
 
 float(float id) SV_SaveReadIdent =
@@ -2759,6 +2776,8 @@ float(float id) SV_SaveReadIdent =
 		return FALSE;
 	sl_fseq = -1;
 	sl_fgo = 0;
+	sl_fhasname = FALSE;
+	sl_fname = "";
 	sl_fticks = 0;
 	sl_forg = '0 0 0';
 	dem = FALSE;
@@ -2768,6 +2787,7 @@ float(float id) SV_SaveReadIdent =
 		if (n < 2)
 			continue;
 		k = argv(0);
+		if (k == "targetname") { sl_fname = argv(1); sl_fhasname = TRUE; continue; }
 		if (k == "seq")     { sl_fseq = stof(argv(1)); continue; }
 		if (k == "rewindgo") { sl_fgo = stof(argv(1)); continue; }
 		if (k == "ticks")   { sl_fticks = stof(argv(1)); continue; }
@@ -2850,6 +2870,9 @@ void(float row) SV_SaveDemote =
 	fputs(f, "velocity 0 0 0\n");
 	fputs(f, sprintf("angles %.4f %.4f\n", rec_sl_pit[row], rec_sl_yaw[row]));
 	fputs(f, sprintf("duck %d\n", rec_sl_duck[row] ? 1 : 0));
+	// Preserve the original marker, not the demoting player's current progress.
+	if (sl_fhasname)
+		fputs(f, sprintf("targetname %S\n", sl_fname));
 	fputs(f, "demoted 1\n");       // for the reader: everything else defaults to an idle timer
 	fclose(f);
 
@@ -3037,6 +3060,7 @@ void(entity e, float b) SV_RewindStateSample;
 // before movement preparation (P682); sv_player.qc remains its lifecycle owner.
 .float run_inserver;
 float  *rw_slot[FS_MAXPLAYERS + 1];  // memalloc'd per slot on first use, kept
+.float rw_names;                // Patch 735: bounded strings indexed like the numeric ring
 .float rw_n;                    // samples held
 .float rw_head;                 // next write
 .float rw_last;                 // ticks of the last sample
@@ -3049,6 +3073,9 @@ float  rw_statebase;
 void(entity e) SV_RewindReset =
 {
 	e.rw_n = e.rw_head = e.rw_last = e.rw_st = 0;
+	if (e.rw_names > 0)
+		buf_del(e.rw_names);
+	e.rw_names = 0;
 	/*
 	  Patch 499: AND THE RESUME ROW'S POINTER, which used to outlive the run
 	  that wrote it.  SV_RewindReset is the documented wipe, and it runs at a
@@ -3239,6 +3266,10 @@ float(entity e, float id, float seq, float go) SV_SaveWriteAt =
 	fputs(f, sprintf("rwvel %.4f %.4f %.4f\n", rw_v_x, rw_v_y, rw_v_z));
 	fputs(f, sprintf("angles %.4f %.4f\n", rw_pit, rw_yaw));
 	fputs(f, sprintf("duck %d\n", rw_dk ? 1 : 0));
+	// Even a position-only warm rewind has its sampled map progress. A replay
+	// with no server sample has no such knowledge; do not borrow today's name.
+	if (rw_statebase >= 0)
+		SV_RewindWriteName(e, f, rw_statebase);
 	fputs(f, "demoted 1\n");
 	fputs(f, "rewound 1\n");
 	if (go)

@@ -8,6 +8,11 @@ void(entity e, float b) SV_RewindStateSample =
 	local float i;
 	local int bytes;
 	m = rw_slot[num_for_edict(e)];
+	// Patch 735: buffer ownership survives temporary strings and ring wrap.
+	if (e.rw_names < 1)
+		e.rw_names = buf_create_ex("string", 0);
+	if (e.rw_names > 0)
+		bufstr_set(e.rw_names, b / RW_STRIDE, strcat("n", e.targetname));
 	m[b+10] = e.run_t_track;
 	m[b+11] = e.run_t_startseg;
 	m[b+12] = e.run_t_stagerun;
@@ -61,6 +66,17 @@ void(entity e, float b) SV_RewindStateSample =
 		m[b+RW_SPLITBASE+i] = SV_TimerGetRunSplit(e, i);
 	for (i = 1; i < FS_MAXCPS; i = i + 1)
 		m[b+RW_CPBASE+i] = SV_TimerGetRunCP(e, i);
+};
+
+// A prefix distinguishes a captured empty name from a missing buffer entry.
+void(entity e, float f, float b) SV_RewindWriteName =
+{
+	local string name;
+	if (e.rw_names < 1)
+		return;
+	name = bufstr_get(e.rw_names, b / RW_STRIDE);
+	if (name != "")
+		fputs(f, sprintf("targetname %S\n", substring(name, 1, -1)));
 };
 
 float(entity e, float id, float seq, float go) SV_RewindWriteState =
@@ -123,6 +139,7 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 	                 rw_o_x, rw_o_y, rw_o_z, rw_v_x, rw_v_y, rw_v_z));
 	fputs(f, sprintf("angles %.4f %.4f\nduck %d\nstate %d\nticks %d\nelapsed %.6f\n",
 	                 rw_pit, rw_yaw, rw_dk, TS_RUNNING, rw_t, m[b+15]));
+	SV_RewindWriteName(e, f, b);
 	fputs(f, sprintf("track %d\nstartseg %d\nstagerun %d\nseg %d\nsegs %d\nsplit %d\ndelta %d\n",
 	                 m[b+10], m[b+11], m[b+12], m[b+13], m[b+14], m[b+16], m[b+17]));
 	fputs(f, sprintf("flags %d\npb %d\ndirty %d\ncheat %d\nhopped %d\nfromsave %d\nhandcarry %d\n",

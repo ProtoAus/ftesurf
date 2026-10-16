@@ -3284,6 +3284,20 @@ See `tools/OFFRAMP_CONTACT.md`; private diagnostic builds NEVER ship.
 
 ## Rewind (Patch 477)
 
+### Save-lock map progress markers — P735
+
+Player `targetname` is map progress, not the visible nickname. Monolith B4 and
+futile gate reset teleports on it; ordinary, demoted and warm-rewind saves must
+retain an explicitly empty name as well as nonempty names. Old files lack the
+history; do not infer it from today's player or an unsampled replay. Clear only
+the loading player's abandoned trigger occupancy, not once/cooldown or peers.
+A cold marker assertion belongs at the restore boundary: a legitimate new
+OnStartTouch can rename the player again on the next move. The dedicated test
+uses actual `rec_retry` dispatch (not the engine-only `retry` name), proves a
+map restart, and observes immediately after PutClientInServer. This compiler
+can access-violate if a local shadows an entity field; avoid a local named
+`targetname`. Commands/evidence/limits: tools/p735savemarker.md.
+
 ### Practice labels and save-owned noclip reason — P718
 
 Ordinary save loads replace the abandoned attempt's noclip/settings latch with
