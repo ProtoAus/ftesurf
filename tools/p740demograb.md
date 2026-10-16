@@ -58,5 +58,25 @@ canonical helper too; the fallback adds `--requests-only`. All three canonical
 entrypoints retain the existing pre-import dispatcher/fence. Do not edit the old
 sealed route manifest or its runtime source to add flags.
 
+## Review corrections
+
+Both independent reviews of clean 7808c0a blocked promotion. Four new regressions
+reproduce its stale-request resurrection (A,C,D), pacing-boundary delay (A,B,C),
+stale BSP inventory reaching the converter, and unsupported 180-second forced
+stop. The corrected loop rebuilds explicit requests solely from fresh validation,
+reselects after pacing, refreshes the BSP filename inventory on a lookup miss,
+and uses `TimeoutStopSec=infinity`. The separate transition close/drain remains
+bounded and fail-closed: a slow active transfer can block a transition; never
+force-kill it or bypass admission just to proceed.
+
+Corrected Windows controls: 15 tests, 14 passed and POSIX SIGTERM arm explicitly
+skipped; request (9) and existing grab controls pass. All four 7808c0a regression
+controls fail for the predicted reason. The POSIX arm uses a real loopback slow
+HTTP response, SIGTERM during the blocked read, and verifies full transfer,
+settled request and clean exit after release; it is not a new codec fixture.
+Original Linux 7808c0a checks also passed 10 priority, 9 request, existing grab,
+45 KSF and user-unit verification; KSF controls remain valid because KSF source
+has not changed. Corrected Linux/SIGTERM checks and follow-up reviews pending.
+
 Deployment and live Momentum acceptance are pending. No demo body, private
 identity, credential or raw private backend output belongs in this document.

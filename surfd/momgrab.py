@@ -343,7 +343,7 @@ def bsp_sha1(mp, maps_dir, cache_path):
     demo of any build as `nomap` (review, 5 Oct)."""
     if not _bsp:
         _bsp.update(_load(cache_path) or {})
-    if maps_dir not in _bsp_names:
+    if maps_dir not in _bsp_names or mp.lower() not in _bsp_names[maps_dir]:
         try:
             _bsp_names[maps_dir] = {f[:-4].lower(): f for f in os.listdir(maps_dir)
                                     if f.lower().endswith(".bsp")}
@@ -631,8 +631,7 @@ def run(a, stop=None):
                                        a.top, QUEUE_FILES)
         prio = wanted_maps(now)
         automatic = pick(q, done, later, held_runs(), prio, max(0, a.max), now, zstd)
-    hashes = {c[3] for c in explicit}
-    todo = explicit + [c for c in automatic if c[3] not in hashes]
+    todo = explicit + automatic
     print("queue: %d board(s) (%d read this tick, %d not yet); %d settled, %d waiting;"
           " %d wanted map(s); %d to take"
           % (len(q["boards"]), read, unread, len(done), len(later),
@@ -659,6 +658,7 @@ def run(a, stop=None):
     conn = S.connect()
     try:
         attempted = set()
+        paced = False
         while len(attempted) < max(0, a.max):
             if stop is not None and stop.is_set():
                 break
@@ -666,22 +666,25 @@ def run(a, stop=None):
             # A click arriving during a background batch takes its next slot.
             explicit = request_picks(done, later, now, zstd)
             seen = set(attempted)
-            todo = [c for c in explicit + todo
+            todo = [c for c in explicit + automatic
                     if not (c[3] in seen or seen.add(c[3]))]
             if not todo:
                 break
-            _, place, f, h, sid, ms, b = todo.pop(0)
-            attempted.add(h)
-            cur = h
+            _, place, f, h, sid, ms, b = todo[0]
             dest = os.path.join(a.demos, h[:2], h + ".mtv")
             fetch = not os.path.exists(dest)
-            if fetch:
-                # Persist pacing across cron/request worker handoffs too.
+            if fetch and not paced:
+                # Revalidate/reselect AFTER the wait, at the transfer boundary.
                 pause = min(a.delay, a.delay - (time.time() - float(st.get("last_request") or 0)))
                 if pause > 0:
                     time.sleep(pause)
+                    paced = True
+                    continue
             if stop is not None and stop.is_set():
                 break
+            attempted.add(h)
+            paced = False
+            cur = h
             momrequest.set_state(conn, h, "working", "downloading or converting", now)
             if fetch:
                 st["last_request"] = time.time()

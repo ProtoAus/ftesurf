@@ -4,10 +4,16 @@
 Set MOMGRAB_UNDER_TEST to an inspected old momgrab.py to falsify the mid-batch
 priority arm. Use an owned TEMP/TMPDIR when invoking this existing test family.
 """
+import configparser
+import hashlib
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import importlib.util
 import json
 import os
 from pathlib import Path
+import signal
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -54,11 +60,22 @@ class Priority(unittest.TestCase):
     def state(self, value):
         G._save(str(self.home / "state/state.json"), value)
 
+    def background(self):
+        return [(0, n, "fixture", h * 40, "76561198000000001", 3000,
+                 {"map": "surf_p544", "track": 0, "leg": 0, "player": "76561198000000001"})
+                for n, h in enumerate(("a", "b"))]
+
+    def run_background(self, download):
+        self.a.requests_only = False
+        with patch.object(G, "refresh_queue", return_value=({"boards": {}}, 0, 0)), \
+             patch.object(G, "held_runs", return_value={}), \
+             patch.object(G, "wanted_maps", return_value=set()), \
+             patch.object(G, "pick", return_value=self.background()), \
+             patch.object(G, "download", side_effect=download):
+            self.assertEqual(G.run(self.a), 0)
+
     def test_click_during_batch_is_next(self):
         token = self.fixture.board("c" * 40, "76561198000000003")
-        automatic = [(0, n, "fixture", h * 40, "76561198000000001", 3000,
-                      {"map": "surf_p544", "track": 0, "leg": 0, "player": "76561198000000001"})
-                     for n, h in enumerate(("a", "b"))]
         order = []
 
         def download(h, dest):
@@ -69,15 +86,128 @@ class Priority(unittest.TestCase):
                 self.assertEqual(result.get_json()["state"], "queued")
             return "toobig"  # settle the synthetic transfer; not codec coverage
 
-        self.a.requests_only = False
-        with patch.object(G, "refresh_queue", return_value=({"boards": {}}, 0, 0)), \
-             patch.object(G, "held_runs", return_value={}), \
-             patch.object(G, "wanted_maps", return_value=set()), \
-             patch.object(G, "pick", return_value=automatic), \
-             patch.object(G, "download", side_effect=download):
-            self.assertEqual(G.run(self.a), 0)
+        self.run_background(download)
         self.assertEqual(order, ["a", "c", "b"])
         self.assertEqual(self.fixture.db.execute("SELECT state FROM momrequests").fetchone()[0], "failed")
+
+    def test_invalidated_mid_batch_request_is_not_retained(self):
+        order = []
+
+        def download(h, dest):
+            order.append(h[0])
+            if h == "a" * 40:
+                self.queue("c" * 40, "76561198000000003")
+                self.queue("d" * 40, "76561198000000004")
+            if h == "c" * 40:
+                with self.fixture.db:
+                    self.fixture.db.execute("UPDATE runs SET momdemo=?,millis=2000 WHERE momdemo=?",
+                                            ("e" * 40, "d" * 40))
+            return "toobig"
+
+        self.run_background(download)
+        self.assertEqual(order, ["a", "c", "b"])
+        self.assertEqual(self.fixture.db.execute("SELECT state,why FROM momrequests WHERE hash=?",
+                                                ("d" * 40,)).fetchone()[:], ("failed", "record changed"))
+
+    def test_click_during_pacing_is_next(self):
+        order = []
+        self.a.delay = 2
+        now = time.time()
+        self.state({"last_request": now - 2})
+
+        def pause(seconds):
+            if not self.fixture.db.execute("SELECT 1 FROM momrequests").fetchone():
+                self.queue()
+
+        def download(h, dest):
+            order.append(h[0])
+            return "toobig"
+
+        with patch.object(G.time, "time", return_value=now), patch.object(G.time, "sleep", side_effect=pause):
+            self.run_background(download)
+        self.assertEqual(order, ["a", "c", "b"])
+
+    def test_persistent_inventory_discovers_new_bsp_and_rejects_wrong_build(self):
+        maps = self.home / "maps"
+        cache = str(self.home / "state/bsp.json")
+        G._bsp.clear()
+        G._bsp_names.clear()
+        self.addCleanup(G._bsp.clear)
+        self.addCleanup(G._bsp_names.clear)
+        (maps / "a.bsp").write_bytes(b"installed A")
+        self.assertIsNotNone(G.bsp_sha1("a", str(maps), cache))
+        (maps / "B.bsp").write_bytes(b"installed B")
+        demo = self.home / ("c" * 40 + ".mtv")
+        demo.write_bytes(b"synthetic header double")
+        head = dict(steam_id=76561198000000001, map="b", track_type=0, track_number=1,
+                    tick_interval=.01, run_time=3, map_sha1="0" * 40)
+        board = dict(map="b", track=0, leg=0, player=str(head["steam_id"]))
+        with patch.object(G.momreplay, "read_header", return_value=head), \
+             patch.object(G.momreimport, "convert") as convert:
+            self.assertEqual(G.convert_demo(str(demo), board, 3000, str(maps), cache, self.a.out),
+                             ("otherbuild", None))
+        convert.assert_not_called()
+
+    def test_service_has_no_forced_transfer_stop_deadline(self):
+        config = configparser.ConfigParser(interpolation=None)
+        config.read(os.environ.get("MOMREQUESTS_UNIT_UNDER_TEST", str(F.HERE / "momrequests.service")))
+        self.assertEqual(config["Service"]["TimeoutStopSec"], "infinity")
+
+    @unittest.skipIf(os.name == "nt", "POSIX SIGTERM delivery; exercised on the NanoPi")
+    def test_sigterm_finishes_a_slow_active_transfer(self):
+        body = b"synthetic transfer, not a demo codec fixture\n" * 4000
+        h = hashlib.sha1(body).hexdigest()
+        self.queue(h)
+        self.state({"last_request": time.time() - 3})
+        started, release = threading.Event(), threading.Event()
+
+        class Slow(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body[:65536])
+                self.wfile.flush()
+                started.set()
+                release.wait(10)
+                self.wfile.write(body[65536:])
+
+        server = HTTPServer(("127.0.0.1", 0), Slow)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(F.HERE)
+        env["P740_CDN"] = "http://127.0.0.1:%d/" % server.server_port
+        code = "import os,momgrab as G; G.CDN=os.environ['P740_CDN']; raise SystemExit(G.main())"
+        args = [sys.executable, "-c", code, "--requests-only", "--watch-requests", "--go",
+                "--state", self.a.state, "--demos", self.a.demos, "--out", self.a.out,
+                "--maps", self.a.maps]
+        proc = None
+        try:
+            with (self.home / "sigterm.log").open("wb") as log:
+                proc = subprocess.Popen(args, env=env, stdout=log, stderr=subprocess.STDOUT)
+                self.assertTrue(started.wait(5), "the worker must actually start its transfer")
+                proc.send_signal(signal.SIGTERM)
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    proc.wait(timeout=.15)
+                release.set()
+                self.assertEqual(proc.wait(timeout=5), 0)
+            dest = Path(self.a.demos) / h[:2] / (h + ".mtv")
+            self.assertEqual(dest.read_bytes(), body)
+            self.assertFalse(Path(str(dest) + ".part").exists())
+            self.assertEqual(self.fixture.db.execute("SELECT state,why FROM momrequests WHERE hash=?",
+                                                    (h,)).fetchone()[:], ("failed", "unreadable"))
+        finally:
+            release.set()
+            if proc is not None and proc.poll() is None:
+                proc.kill()  # only this test's synthetic child, never a serving worker
+                proc.wait()
+            server.shutdown()
+            server.server_close()
+            thread.join()
 
     def test_requested_only_never_scans_backlog(self):
         token = self.queue()
