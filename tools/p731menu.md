@@ -78,7 +78,39 @@ source VERSION remains 0.1.25, proving staged release metadata wins. Evidence:
 `artifacts/control/ui-gallery-okrds6cg` and
 `artifacts/release-version/ui-gallery-7he40j5z`; PNGs inspected. No release ran.
 
-Remaining before delivery: inspected commits, clean-commit build provenance and
-dual-install delivery. Live Steam/backend
-acceptance is owned by the other Friends workstream; synthetic UI checks do not
-claim that service is deployed or that a real cross-lobby join was measured.
+## Delivery and retention — 2026-10-16 UTC
+
+Product commit `53a50f3ab49e8212a3eb9e2020a61197fa3c1108` and engine notes
+`826f0e988368f560bd0aebfd23519b67365895b1` were inspected and pushed by exact
+SHA. A clean product-commit NoDeploy rebuild has zero warnings and all three
+.dat hashes match the native-tested build. Both Windows installs were copied,
+CSQC seeded and destination hashes verified at 02:24:26Z, with changed files'
+previous versions kept as .prev. No owner client or local server was restarted.
+An already-open client needs a normal restart to load the new menu/adapter.
+
+The same clean source's `build.ps1 -Jobs 8 -Pi` passed the real twelve-lobby,
+zero-player gate, verified upload/live hashes, kept .prev and restarted all12.
+The normal/Pi build hashes match the isolated clean build. A fresh isolated
+client, with NO local csprogs, downloaded the new csprogs from lobby1 and drew
+the board (8 columns/type14), exited0, captured a PNG and had no QC error. PNG
+inspected: this is a board/download smoke, not a run or Steam acceptance test.
+At 02:29:36Z all12 lobbies answered UDP status and the directory reported0
+players. No backend/schema migration or native binary deployment occurred.
+
+SHA-256:
+- qwprogs.dat: `40091ed25d14c09632bd3d6223883e4f9a20789d06cbddbe1621121571e62f1a`
+- csprogs.dat: `8384005ca399a546d284c4116a282a2b46e9e74273428a4176903b778961a412`
+- menu.dat: `76e11657c22abd6b22da549d1658ebfe4aebe2d9d8eb3487e1c2846778f10ac0`
+
+Retained under the owned evidence root: clean source worktree, final products in
+`artifacts/clean-build`, verified `artifacts/control-source-and-build.zip`, PNGs,
+logs/configs/verdicts, Windows/fleet provenance and retirement manifests. Six
+marker-owned runtime rigs had their copied assets/executables/products retired
+(664,502,518 bytes); unique evidence remains at the original screenshot/log
+paths. Duplicate NoDeploy products/compiler copy and the clean published
+engine-doc worktree were retired. No owned game/server process remains.
+
+Live Steam/backend acceptance is owned by the other Friends workstream;
+synthetic UI and lobby-download checks do not claim that service is deployed or
+that a real cross-lobby friend join was measured. Human preference checks are in
+lextest.md. No release or QC Build-number decision was made.

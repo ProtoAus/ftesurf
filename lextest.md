@@ -2,6 +2,10 @@
 
 ## P731 — title/picker layout preference
 
+Both Windows installs are hash-verified on the clean product build; the new
+CSQC is also served by all12 development lobbies. Delivery and limits:
+`tools/p731menu.md`. Restart an already-open client to load the new menu.
+
 - Check the passive top-right current/latest update status; F2 opens Updates
   (a custom F2 binding is preserved). The old station-stack update button is gone.
 - Play: compare the default large previews with `Thumbs: compact`. Collapse and
