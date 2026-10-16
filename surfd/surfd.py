@@ -5831,6 +5831,7 @@ accounts.register(app, types.SimpleNamespace(
 
 social.register(app, types.SimpleNamespace(
     get_db=get_db, clock=lambda: time.time(), secret=lambda: SECRET,
+    setting=setting, rate_key=rate_key,
     rate_ok=rate_ok, clean_text=clean_text, game_json=game_json, lobby_ttl=LOBBY_TTL))
 
 migrate()

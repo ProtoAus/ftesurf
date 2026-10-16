@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   87df379ec1989302b037acfe4f49b659eae1be84
+commit   23cbdc9a77dd04edbe6097bcfca817e6ce8ed5a9
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,14 @@ commit   87df379ec1989302b037acfe4f49b659eae1be84
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-739
-patch    740
+tag      patch-741
+patch    741
+# Patch 741: native MENU-only read-only Friends proofs and persistent URI VM
+# generations enable the map-picker list/Join before loading a map. Fixed HTTPS,
+# explicit online consent, bounded outstanding transport and fresh backend Join
+# checks retain privacy and the existing connected CSQC snapshot. Native real-
+# service/dedicated-socket controls and30 backend tests pass; schema20/public
+# activation remains a separate live gate. See tools/p741menufriends.md.
 # Patch 740: enable the bounded sparse KSF demo lane; prompt Momentum requests
 # get a supervised queue-only worker and next-slot priority during background
 # grabs. Existing import validation, lock, CDN pacing and cooldowns remain.

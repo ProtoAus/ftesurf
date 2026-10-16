@@ -1,5 +1,25 @@
 # AGENT_NOTES.md
 
+## P741 — disconnected Friends transport/VM boundary (2026-10-16)
+
+MENU `clientstate()` follows NetQuake:1 is disconnected,2 includes connecting;
+it is not a0/2 boolean. A fixed service must check `FS_TERMS_ONLINE` directly:
+`Lob_Blocked()` intentionally permits an empty directory, which cannot be used
+as consent for a different fixed endpoint. The configured verifier comes from
+`SURFD_TOOLS` or `SURFD_GAME/tools`, not a sibling of deployed social.py. Public
+routes need exact nginx locations and trusted `rate_key`, not socket-peer rates.
+
+Application cancellation/timeouts do not release the engine's HTTP worker.
+Keep an outstanding-wire gate until its matching callback even across Hide,
+consent loss and Join attempts. The91-second native control held one Friends
+challenge, completed another healthy URI, and recovered after release without
+replacement accumulation. MENU URI identity additionally needs a persistent
+native generation across `menu_restart`; an acted same-number old/new response
+control delivered only the new VM's response. JSON node/address locals are int.
+Initial rig failures (absolute .src parser paths, stderr warning parsing, test
+consent values/reload and teardown) are retained privately, not feature passes.
+Evidence, review and explicit live/backend limits: `tools/p741menufriends.md`.
+
 ## P732 — Monolith B4 physical-progress compatibility
 
 - Effective KSF phases are an explicit known-port policy, not recovered plugin

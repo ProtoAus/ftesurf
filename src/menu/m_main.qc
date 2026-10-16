@@ -136,7 +136,8 @@ void(vector screensize) MU_Screen;
 void(vector screensize) MU_Status;
 float() MF_Count;
 void() MF_Init;
-void() MF_Poll;
+void(float visible) MF_Poll;
+void() MF_ResumeJoin;
 void(vector pos, vector size) MF_Draw;
 void() MM_Init;
 float() MM_Active;
@@ -5515,6 +5516,7 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_par(p, w, draw, "A ranked time needs a Steam account linked to this game. You sign in on Steam's own page in your browser; the game never sees your password. play.proto.bar keeps your Steam ID, name and profile picture and, for this install, the key and id that name it, where and when it was linked, and when and how often it sends ranked runs.", COL_TEXT);
 		ui_tm_par(p, w, draw, "Once linked, your Steam name is your name on lobbies, and it and your picture are shown with your times, in the game and on proto.bar, where they link to your Steam profile and sit beside your Momentum Mod and KSF records.", COL_TEXT);
 		ui_tm_par(p, w, draw, "Without a link your lobby times are still kept and shown, unranked, under this install's own id and the name you are playing as.", COL_TEXT);
+		ui_tm_par(p, w, draw, "Opening Friends in the map picker asks play.proto.bar for your linked account's private friends list. This install's public signing key proves the account, without loading a map. Only lobby connections publish where you are playing; sitting in the menu does not make you joinable.", COL_TEXT);
 	}
 	return tm_y - TM_GAP;
 };
@@ -5866,6 +5868,8 @@ void(vector screensize) screen_name =
 				ui_launch();
 			else if (ui_name_resume == 2)
 				ui_connect(ui_name_arg);
+			else if (ui_name_resume == 3)
+				MF_ResumeJoin();
 			ui_name_resume = 0;
 		}
 	}
@@ -7856,7 +7860,7 @@ void(vector screensize) m_draw =
 	Dl_Tick();
 	ui_prejoin_tick();
 
-	MF_Poll();
+	MF_Poll(menu_active && menu_screen == SCREEN_CREATE && cvar("ui_maps_friends"));
 	Mlb_Poll();
 	// Warm the catalogue on boot, even before the picker is opened. Mdl_Ask
 	// owns consent, in-flight and one-minute refresh guards.

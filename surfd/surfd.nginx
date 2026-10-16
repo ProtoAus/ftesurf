@@ -18,6 +18,8 @@
 #                        See the essay over its block for why it is proxied at
 #                        all and what makes that safe.
 #   GET/POST /api/momentum/N/SHA1 public, bounded demo queue, RATE LIMITED
+#   GET /api/social/menu/challenge and POST /api/social/menu: read-only Friends
+#                        proofs, NO capability mint/presence/graph mutations.
 #   POST /api/run        NOT proxied (write path; servers post to 127.0.0.1)
 #   POST /api/heartbeat  NOT proxied, and must never be -- see below
 #   everything else      404 from the vhost's own `location / { return 404; }`
@@ -110,6 +112,43 @@ location = /api/board {
     proxy_read_timeout    5s;
 
     add_header X-Surfd-Proxied "1" always;
+}
+
+# Disconnected Friends only. Exact locations deliberately do NOT expose the
+# lobby-only social/poll or social/action APIs. No response/proof may be cached.
+location = /api/social/menu/challenge {
+    limit_req zone=surfdboard burst=10 nodelay;
+    limit_req_status 429;
+    limit_except GET { deny all; }
+    proxy_pass http://127.0.0.1:8084;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout 5s;
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
+    add_header Cache-Control "no-store" always;
+}
+
+location = /api/social/menu {
+    limit_req zone=surfdboard burst=10 nodelay;
+    limit_req_status 429;
+    client_max_body_size 1k;
+    limit_except POST { deny all; }
+    proxy_pass http://127.0.0.1:8084;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout 5s;
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
+    add_header Cache-Control "no-store" always;
 }
 
 # ---------------------------------------------------------------------------

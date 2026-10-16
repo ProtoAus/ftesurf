@@ -5,6 +5,25 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Disconnected Friends activation awaits the schema20 service generation (P741)
+
+- Implemented: `src/menu/m_friends.qc` standalone authenticated list/Join, native
+  MENU signer/generation guard, `surfd/social.py` read-only routes and two exact
+  public proxy locations. Synthetic real-service/native controls pass; this is
+  NOT yet a genuine-account/live-service pass. Public challenge still returned
+  HTTP404 at the recorded P741 probe.
+- Delivery gate: P717's completed schema19 transition is not approval/acceptance
+  of P722/schema20. Preserve the authorized controller's generation/data/guard
+  ownership. Accept the complete schema20 runtime and preserved records, then
+  install/check the exact public proxy routes; do not force an ordinary reload,
+  reset user_version or seed live accounts. Client destination state and evidence:
+  `tools/p741menufriends.md`.
+- Falsifier: from a normal linked install with no map loaded and online features
+  enabled, open Friends, see a genuine accepted friend's fresh lobby/map, click
+  Join and reach that lobby. Menu users must not become joinable, pending friends
+  must not reveal presence, and Hide/privacy-off must stop new work. Record owner
+  wording/layout acceptance in `lextest.md`; remove after actual live activation.
+
 ## Mode2 Kitsune live annotation-barrier fix awaiting acceptance (P739)
 
 - Site: engine `gl/gl_backend.c:GLBE_BlendForeground` / mode2 plane ordering.
