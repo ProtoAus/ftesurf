@@ -5,6 +5,18 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Save-marker source-removal fixture can be completed by its manual think (P735)
+
+- Site: `tools/fixtures/savemarker.qc:SM_Run`, source-self-removal arm. The
+  assertion follows an explicit EndThink on the survivor, so that manual call
+  can supply the counter increment even if relocation stopped after the source
+  removed itself. This is non-blocking test coverage debt, not an observed
+  production defect; post-callback nextent traversal is source-verified.
+- Falsifier: assert source removal and survivor delivery immediately after the
+  state load, BEFORE manual thinks. A stop-after-source-removal mutant must fail;
+  the production loop must pass. Keep a later no-duplicate check if useful.
+  Source: final focused P735 review; no extra harness campaign blocks delivery.
+
 ## Dedicated getinfo returns its header without the info string (P729 probe)
 
 - Current NanoPi dedicated binary: UDP `getinfo` returned only the17-byte

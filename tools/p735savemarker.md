@@ -61,6 +61,9 @@ python tools/test_savemarker.py --out <owned-root>/subject --run --progs <NoDepl
   subject passes all 49 and the real cold retry. A's exit killing adjacent B
   must not fire B's retained outputs; a self-removing source must still advance
   to a live successor. Advance with nextent AFTER callbacks, which skips frees.
+  Final review confirms the production lifetime fix. It notes that the explicit
+  later EndThink weakens the self-removal assertion as a traversal falsifier;
+  this non-blocking coverage debt is in BACKLOG.md, not a gameplay pass claim.
   The earlier 46-check control evidence remains valid for unchanged arms; no
   full authored-map gameplay traversal or full reconnect transaction is claimed.
 - Real `rec_retry` queues a map restart; a spawn hook observes the actual restored
@@ -83,5 +86,38 @@ the restore boundary. Earlier logs remain local, not public test evidence.
 
 ## Delivery
 
-Pending final review, publication and destination/live verification. No fixture
-progs may be deployed. Ship only a clean production build of the inspected commit.
+Product commit `3f031b2ad1877f357e3a61f399dc74c5de1e543b` and QC-only
+engine changelog descendant `a86a12701` are published to their origin/main.
+The two independent reviews and focused callback-lifetime closure are complete;
+no production blocker remains. The final review's optional fixture-coverage
+note is recorded in BACKLOG.md. No fixture progs were deployed.
+
+At **2026-10-16T06:22:51Z**, the clean production SSQC was copied to BOTH
+`C:/FTESurf/ftesurf/qwprogs.dat` and `C:/FTEQuake/ftesurf/qwprogs.dat`, with
+matching destination hashes and each immediate predecessor retained as `.prev`.
+The owner game/processes were not stopped; reload the map/reconnect to load SSQC.
+
+```text
+SSQC 2015a356cdaf2706f3efd346b85b8a395abb39fb75122a1192477ed832aea6c5
+CSQC 8384005ca399a546d284c4116a282a2b46e9e74273428a4176903b778961a412
+menu ae77a2c2183e18299db126110ecf656aca8dcd654be520f43b8c80b5e850cbfa
+prev b5ed555d980b37e13137ed0bd70acc50b5740f8d4e18e2d7047777de59c8602b
+```
+
+CSQC and menu already matched the clean build in both installs and were not
+needlessly replaced. Final `build.ps1 -Jobs 8 -Pi` also compiled all three VMs
+with zero warnings but **refused fleet deployment before uploading anything**:
+all12 units were active, but the public directory lacked their live rows. A
+read-only diagnostic saw incomplete/flapping membership (0, then9, then0), not
+positive empty-population evidence. No force flag, lobby restart, remote config
+change or weakened occupancy guard was used. Pi hashes remained the predecessor
+SSQC and unchanged CSQC above; no `.new` swap files were left. Fleet deployment
+remains blocked specifically by that directory/heartbeat prerequisite.
+
+Actual B4/futile route acceptance is **pending** in lextest.md. The small owner
+check is a NEW save from a normal run, load it, and touch the formerly resetting
+ramp. Old missing-marker saves are not repaired. No complete authored-route
+playthrough or multi-session reconnect acceptance is claimed.
+
+Compact receipts/reviews/logs remain under the owned root documented above;
+canonical source branches, peer edits and player data were not changed.
