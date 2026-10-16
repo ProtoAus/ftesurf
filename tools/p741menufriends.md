@@ -119,9 +119,9 @@ archive. No SSH, remote scratch, DB backup, app import, signal, reload, migratio
 nginx install or source replacement was performed. That plan is not the separate
 full-runtime/configuration/schema20 acceptance required by the live controller.
 
-Both normal Windows installs remain untouched by this task. The paired install
-is held because the primary normal client is running; no process was stopped,
-and a partial dual-install update is not presented as deployment. Payload,
+At this staging checkpoint both normal Windows installs remained untouched.
+The paired install was held because the primary normal client was running; no
+process was stopped and a partial dual-install update was not performed. Payload,
 preimage observations, failed attempts and native/review evidence are retained
 privately with ownership/retention notes for the pending delivery. A later
 install preflight directly confirmed the normal client was STILL active and
@@ -130,6 +130,31 @@ accepted as an absence proof. The existing all-target lock/backup/swap/verify/
 rollback kernel was checked byte-identical in the prepared fixed-generation
 adapter, but no destination write or partial update occurred. Owner live
 acceptance is still PENDING as listed in `lextest.md`.
+
+### Dual Windows delivery — 2026-10-16T16:34:03.9504713Z
+
+After the owner explicitly closed the game, the unchanged verified payload was
+installed to BOTH normal Windows installations. All16 engine/plugin/progs
+output destinations and all16 immediate `.prev` rollback hashes pass readback.
+The16 prior `.prev` files are additionally retained privately; no older rollback
+was silently discarded. This is the existing build ship-set: the primary
+client/two plugins/three progs and second install's client/server/five plugins/
+three progs, not a lobby or release update.
+
+Both `C:\FTESurf\ftesurf64.exe --version` and
+`C:\FTEQuake\fteqw64.exe --version` report
+`git-7361-patch-741-0-g23cbdc9a7`. Both installed menus match the production
+menu hash recorded above. The all-target lock/backup/swap/verify/rollback kernel
+is byte-identical to the previously used deployment kernel; only fixed source
+metadata and the explicit existing build ship-set were supplied. No owner
+process was stopped, and no config, player records/saves or backend changed.
+
+A fresh public unauthenticated challenge probe AFTER this client delivery still
+returns HTTP404. Thus Windows delivery is COMPLETE, but live map-free Friends
+activation is NOT complete: schema20/runtime/public-route acceptance and genuine
+account testing remain with the authorized service transition. There was no
+remote staging, DB/service/nginx modification or guard bypass. Human acceptance
+remains pending in `lextest.md`; do not label local synthetic success as live.
 
 Repeated explicit `menu_restart` can still leave prior native HTTP transports
 outstanding, as with existing URI users; this patch does not provide process-wide

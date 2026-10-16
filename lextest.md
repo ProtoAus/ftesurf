@@ -5,9 +5,11 @@
 Local real-service/native controls pass, including the disconnected list and
 pointer-driven Join. The public schema20 Friends generation/proxy activation is
 still gated separately; current source/build does not prove it is running live.
-Client installation state and precise limits: `tools/p741menufriends.md`.
+Both normal Windows clients/menu/progs are now installed and hash-verified at
+2026-10-16T16:34:03.9504713Z (Patch741); the public service still returns404.
+Precise source/delivery limits: `tools/p741menufriends.md`.
 
-AFTER that activation and the normal client update, start without a map, open
+AFTER the live service activation, launch normally without a map, open
 Play / Friends, and confirm a real accepted friend's name/lobby/map appears.
 Click Join once and confirm it reaches them. A small "list works / Join works"
 report is sufficient for that observed case. You need only link Steam once via
