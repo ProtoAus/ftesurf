@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   c75d7a5ea2b28af748001c7ba2bebe9c103618da
+commit   b9c66c50114d9a21f39087f6409d07dfbb295e77
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,15 @@ commit   c75d7a5ea2b28af748001c7ba2bebe9c103618da
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-742
-patch    742
+tag      patch-743
+patch    743
+# Patch 743: mode2 orders an unproved pane pair by 1/w over its actual clipped
+# screen overlap (disjoint: no edge; crossing: baseline), drops wholly
+# behind-eye faces, and on a cycle or barrier crossing retries with P742's own
+# graph. Kitsune stage1 save 6 trace camera: the owner's status -2/48 edges ->
+# status 1. Sweeps of 5400 views: stage1 978 -> 0 views wrong, stage3 475 -> 0.
+# Three review rounds; both normal clients hash-verified 2026-10-16T23:09:51Z,
+# P742 .prev. Owner live check pending: tools/p743alphaoverlap.md.
 # Patch 742: validated planar eye spans use conservative bounds; homogeneous
 # winding proves empty backfaces without dividing behind-eye vertices. P739's
 # annotation layer stays. Exact15-world-command live4/6/75/status-3 replay ACTED;

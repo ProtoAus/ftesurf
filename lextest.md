@@ -16,7 +16,21 @@ one has watched one in the game yet.
 
 Limits and evidence: `tools/p740demograb.md`.
 
-## P742 — farther-right Kitsune eye spans: ready in normal clients
+## P743 — Kitsune stage1 ramp flips (saves 5/6): ready in normal clients
+
+Both Windows clients have it since 2026-10-16T23:09:51Z (engine b9c66c501,
+stamp `git-7341-patch-743-0-gb9c66c501`; `.prev` is P742). Restart the game (the new exe loads on start), keep `r_blendsort 2`
+and zones on, then on surf_kitsune:
+
+- Load stage1 saves 5 and 6 and turn slowly left/right and up/down around
+  them, including turning right round. Do the ramp grids still swap layers?
+- Quick re-check of the stage3 saves that P742 fixed (still good?).
+
+"Fixed / still flips at save N" is enough. If it still flips, one
+`r_blendtrace` with the camera on the bad view and the `ALPHATRACE result`
+line. Verdict PENDING. Details: `tools/p743alphaoverlap.md`.
+
+## P742 — farther-right Kitsune eye spans: superseded by P743 above
 
 Both normal Windows clients hash-verified at2026-10-16T16:37:40Z; clean source
 `c75d7a5ea2b28af748001c7ba2bebe9c103618da`, tag742, native stamp

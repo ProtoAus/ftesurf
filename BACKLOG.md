@@ -44,21 +44,27 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   must not reveal presence, and Hide/privacy-off must stop new work. Record owner
   wording/layout acceptance in `lextest.md`; remove after actual live activation.
 
-## Mode2 Kitsune general ambiguous-pair graph cycle after P742
+## Mode2 Kitsune stage1 flips: P743 fix awaits the owner's live check
 
-- Site: engine `gl/gl_backend.c:GLBE_BlendPlaneSort`. Owner confirms P742
-  fixes the stage3 section, but stage1 new saves5/6 still flip (163/164).
-  All12 admitted/status-2/48 edges/546 work: a graph cycle, not another span
-  rejection. Unproved centre-order edges can contradict geometric constraints;
-  investigate general clipped-overlap depth comparison, not new exemptions.
-- Both normal clients now have clean742; default0/1 behavior, GPU clipping/depth,
-  current P741 server/DLLs and player data remain intact. All4 ramp contributors
-  retained in order by the39-view replay, independent positive-w clipped-area
-  reference,4 variants/23 acted mutants and native0-new-warning build.
-- Falsifier: mode2, zones ON, stage1 new pair/transition PLUS retained stage3
-  fixes, no switching or missing surfaces/lines. Overall verdict still OPEN;
-  do not substitute the host test or section-specific success. Scope/native
-  hashes/rollback/limits: `tools/p742eyespan.md`; human: `lextest.md`.
+- Site: engine `gl/gl_backend.c:GLBE_BlendPlaneSort`/`GLBE_BlendOverlapOrder`.
+  P743 replaces unproved centre-depth edges with clipped screen-overlap depth,
+  drops wholly behind-eye barriers and falls back to P742's graph rather than
+  abstaining. Native: the save 6 trace camera went from the owner's status
+  -2/48 edges/546 work to status 1. Geometry sweeps: stage1 978 -> 0 bad views
+  of 5400, stage3 475 -> 0. Not owner-confirmed.
+- Falsifier: mode2, zones on, stage1 saves 5/6 turning in every direction plus
+  the stage3 saves: no layer swaps. Delete this entry when the owner confirms;
+  `tools/p743alphaoverlap.md`, human: `lextest.md`.
+
+## Mode2 plane proofs read r_origin/vright, which portals rebuild without roll
+
+- Site: engine `gl/gl_backend.c:GLBE_BlendPlaneGeometry` bounds and
+  `GLBE_BlendPlaneSide` (P742 code). `GLR_DrawPortal` (gl_rmain.c ~2133) rebuilds
+  `vpn/vright/vup/r_origin` from viewangles without `gl_screenangle` roll, stereo
+  eye offset or the VR eye matrix, while `m_view` keeps them; P743's overlap
+  test uses `m_view`. Found by the P743 review; no case seen in play.
+- Falsifier: an actual-C scene with a portal batch and a non-zero screen roll or
+  eye offset, comparing the bounds' disjoint verdict with `m_view` projection.
 
 ## Save-marker source-removal fixture can be completed by its manual think (P735)
 
