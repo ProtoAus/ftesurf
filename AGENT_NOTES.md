@@ -6647,6 +6647,23 @@ Full client compile has zero new warnings and no cache-file changes. Fresh GPU,
 startup and performance remain open; unsupported intervening commands still
 abstain. See tools/p700alphafix.md; no decoder/trace prerequisite or worker change.
 
+## Renderer eye-spanning panes — P742, 2026-10-16
+
+After P739's annotation fix, the farther-right live world frame is15 commands,
+4 admitted/status-3/6 edges/75 work. Exact camera/BSP replay matches every
+world depth: planar ramp fans crossing the eye are unsupported barriers. Do
+not divide negative depth or simply remove unknown-slot protection. Mode2 uses
+conservative unbounded bounds plus full original-vertex half-space proofs, and
+homogeneous winding proves empty backfaces through positive-w clipping. An
+independent clipped polygon area reference checks newly omitted triangles.
+Preserve default1, GPU state and P739's layer fix; host pass is not owner angular
+acceptance. Owner confirms stage3 fixed; newstage1 all12/status-2 cycle remains.
+Centre-order edges on ambiguous pairs can contradict proven geometry; fix that
+GENERAL relation logic, not more shader/span exemptions: tools/p742eyespan.md.
+The old plane test extracts TWO source fragments: the P739 trace command lives
+in its record-type prefix, not its plane-code slice. After two setup failures,
+inspect the slices and directly compile actual C; don't grow wrapper variants.
+
 ## Renderer alpha live inputs — P739, 2026-10-16
 
 The static Kitsune model had12 world commands; the owner's actual OpenGL frame
