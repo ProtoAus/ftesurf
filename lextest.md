@@ -1,5 +1,41 @@
 # lextest.md — things waiting on a human
 
+## P741 — Friends before a map: pending live activation, not ready to accept yet
+
+Local real-service/native controls pass, including the disconnected list and
+pointer-driven Join. The public schema20 Friends generation/proxy activation is
+still gated separately; current source/build does not prove it is running live.
+Both normal Windows clients/menu/progs are now installed and hash-verified at
+2026-10-16T16:34:03.9504713Z (Patch741); the public service still returns404.
+Precise source/delivery limits: `tools/p741menufriends.md`.
+
+AFTER the live service activation, launch normally without a map, open
+Play / Friends, and confirm a real accepted friend's name/lobby/map appears.
+Click Join once and confirm it reaches them. A small "list works / Join works"
+report is sufficient for that observed case. You need only link Steam once via
+the existing lobby flow; opening the list itself must not need a map. Do not
+record this as passed before the genuine account/service check. Verdict PENDING.
+
+## P739 — live wire-annotation barrier: ready in normal clients
+
+Both normal Windows clients received clean feature/tag
+`87df379ec1989302b037acfe4f49b659eae1be84` / `patch-739` at
+2026-10-16T15:37:39Z; stamp `git-7328-patch-739-0-g87df379ec`.
+The actual OpenGL trace had375 commands/status-3, rather than the static12.
+Stock wire annotations now retain the legacy post-world layer; they still
+respect opaque depth, retain widths and draw once. This is NOT xray.
+
+Exit the old diagnostic exe and launch normally. With `r_blendsort 2` and zones
+ENABLED, turn between the Kitsune saved angles and farther right. **Works or
+still flips is sufficient.** If it still flips, only the `ALPHATRACE result`
+line is needed, not another huge dump/screenshot campaign. Verdict PENDING.
+
+The4 original save camera records remain on disk; no profile/data restoration
+or copy was attempted. Do not use `ftesurf-blendtrace64.exe` for acceptance: it
+contains the earlier logger ONLY. Normal clients are updated; server/DLLs,
+progs/config/saves and QC Build remain unchanged. ABI/dependencies, exact hashes,
+controls/limits and .prev rollback: `tools/p739annotations.md`.
+
 ## P737 — right-turn Kitsune ramp ordering: save3 check
 
 BOTH Windows installs received clean engine/tag
@@ -10,12 +46,12 @@ BOTH Windows installs received clean engine/tag
 moving between2/3 and farther right still produces sporadic surface switching.
 Do not substitute the33-view portable pass for this failing live acceptance.
 
-Read-only material output confirms grid_orange is sort11, single-pass,
-front-culled, standard alpha blend and no material/pass program. Remaining live
-renderer/cache values and a failing stationary save4 were requested; no new
-candidate has been built/deployed for this report. Modes0/1/default1, saves,
-config and installed progs remain unchanged. Open issue: BACKLOG.md; previous
-build/rollback and diagnostic limits: `tools/p737alphacull2.md`.
+P739 above now targets the ACTUAL live annotation-barrier failure found after
+the3 saved poses passed. This remains a rejected P737 historical checkpoint;
+do not present it as live all-angle acceptance. Modes0/1/default1, saves,
+config and installed progs remain unchanged. Open issue retained pending P739
+owner verdict: BACKLOG.md. Previous build/rollback/diagnostic limits:
+`tools/p737alphacull2.md`.
 
 ## P736 — Kitsune paired ramp/floor flip: one saved-position check
 
@@ -34,8 +70,8 @@ acceptance is now tracked under P737. P736 scope/rollback: `tools/p736alphacentr
 
 ## P721 — transparent windows: ready for your visual check
 
-Both Windows clients now have P737, which preserves P721's mode1 world-alpha
-renderer and separately improves mode2's face centres and cull-aware ordering. No older binary was
+Both Windows clients now have P739, which preserves P721's mode1 world-alpha
+renderer and separately fixes the live mode2 stock-wire annotation barrier. No older binary was
 copied back. Earlier P721 evidence remains in `tools/p721alphacull.md`.
 
 - Restart the client, visit the Kitsune windows or another affected spot you

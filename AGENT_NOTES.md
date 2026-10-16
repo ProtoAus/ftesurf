@@ -1,5 +1,32 @@
 # AGENT_NOTES.md
 
+## P741 — disconnected Friends transport/VM boundary (2026-10-16)
+
+MENU `clientstate()` follows NetQuake:1 is disconnected,2 includes connecting;
+it is not a0/2 boolean. A fixed service must check `FS_TERMS_ONLINE` directly:
+`Lob_Blocked()` intentionally permits an empty directory, which cannot be used
+as consent for a different fixed endpoint. The configured verifier comes from
+`SURFD_TOOLS` or `SURFD_GAME/tools`, not a sibling of deployed social.py. Public
+routes need exact nginx locations and trusted `rate_key`, not socket-peer rates.
+
+Application cancellation/timeouts do not release the engine's HTTP worker.
+Keep an outstanding-wire gate until its matching callback even across Hide,
+consent loss and Join attempts. The91-second native control held one Friends
+challenge, completed another healthy URI, and recovered after release without
+replacement accumulation. MENU URI identity additionally needs a persistent
+native generation across `menu_restart`; an acted same-number old/new response
+control delivered only the new VM's response. JSON node/address locals are int.
+Initial rig failures (absolute .src parser paths, stderr warning parsing, test
+consent values/reload and teardown) are retained privately, not feature passes.
+Evidence, review and explicit live/backend limits: `tools/p741menufriends.md`.
+
+At the P741 install gate a formatted `Get-Process | Select-Object` tool display
+was blank even though the exact process-count guard still found the normal
+client. Direct Id/Path fields confirmed it. Formatted emptiness is not process
+absence: use explicit machine-readable count/paths and the real destination
+locks. The guard refused before transaction creation or any destination write;
+never remove it to turn a misleading display into permission to install.
+
 ## P732 — Monolith B4 physical-progress compatibility
 
 - Effective KSF phases are an explicit known-port policy, not recovered plugin
@@ -4001,6 +4028,20 @@ its six-demo budget and existing hash, size, duration, disk, map, time and retry
 checks. Explicit candidates also bind the demo's player. The converter/filing
 path and `/api/replay/N` remain the existing foreign-replay contract.
 
+**P740 prompt worker:** `momgrab.py --requests-only --watch-requests --max 2
+--go` polls the bounded request table every second without scanning the board or
+held-run corpus. New explicit requests are reconsidered between background
+transfers; current transfers and earlier queued users are not preempted. All
+lanes share the existing momgrab lock and persisted transfer pacing/cooldowns.
+The proto **user** unit `momrequests.service` holds a legacy pre-import admission
+lease: explicitly stop it BEFORE any future source-generation close/drain, and
+start it only after OPEN. Background momgrab and minute momjobs fallback use the
+canonical admitted helper (fallback `--requests-only`), not old sealed route
+argv. KSF's canonical admitted watch now includes `--demos`, sharing its existing
+request budget and refusal ledger; sparse availability or an upstream cooldown
+is not permission to clear that ledger. See `tools/p740demograb.md` for measured
+acceptance and limits. Never mutate the old sealed manifest/runtime for flags.
+
 Client requests selected line handles before round-robin polling; closing a
 board cancels watch intent, not a durable job. New picks replace old watch
 intent; a cached replay must not wait behind a queued unavailable old choice.
@@ -6649,6 +6690,23 @@ intervening-slot fallback now pass; original/restored P700 veto ACT and fail.
 Full client compile has zero new warnings and no cache-file changes. Fresh GPU,
 startup and performance remain open; unsupported intervening commands still
 abstain. See tools/p700alphafix.md; no decoder/trace prerequisite or worker change.
+
+## Renderer alpha live inputs — P739, 2026-10-16
+
+The static Kitsune model had12 world commands; the owner's actual OpenGL frame
+had383 raw/375 gathered,7 admitted planes,status-3,18 edges and190 work. Most
+extra commands were procedural stock CSQC wire annotations, not more BSP faces.
+The unknown-slot guard abandoned refinement when they interleaved. Do not infer
+live all-angle correctness from saved-pose/ray sweeps, increase budgets blindly,
+or keep adjusting face centres before counting the ACTUAL live draw inputs.
+`r_blendtrace` arms one local root pass then disarms; result counts are normally
+enough. P739 keeps recognized stock annotations in the legacy post-world layer,
+retaining opaque depth tests/width/once-only callback, not xray or missing lines.
+Other unknowns remain conservative. One interleaved line ACTED red/green; a375-
+command native trace is NOT reproduced by that smaller targeted regression.
+Both normal clients are updated but owner angular acceptance is pending. Test
+zones ON using the normal launcher, not the OLD logger-only alternate exe. A
+simple works/still-flips verdict is sufficient; tools/p739annotations.md.
 
 ## Pitfalls discovered the hard way
 

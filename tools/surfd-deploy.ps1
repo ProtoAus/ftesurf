@@ -63,6 +63,10 @@ param(
     [switch]$PlanOnly,
     [switch]$SkipTests,
     [switch]$NoReload,
+    # Narrow helper-only publication beside an immutable admitted WSGI runtime.
+    # The recorded candidate's PID/start/cwd, OPEN closure and source hashes
+    # replace only the obsolete literal surfd:app name check; never reload it.
+    [string]$GuardStateDir = "",
     [switch]$NoBackup,
     # Database-backup retention.  0 (the default) REPORTS what the backups cost
     # and deletes nothing; N keeps the newest N of the ones THIS script wrote
@@ -83,6 +87,17 @@ $repo = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'surfd-deploy-plan.ps1')
 try { $plan = Get-SurfdDeployPlan -Repo $repo -Ref $Ref -Only $Only }
 catch { Write-Error $_; exit 1 }
+if ($GuardStateDir) {
+    if (-not $NoReload -or $plan.Files.Count -ne 1 -or $plan.Files[0] -cne 'surfd/momgrab.py') {
+        Write-Error '-GuardStateDir requires -NoReload and ONLY surfd/momgrab.py'; exit 1
+    }
+    foreach ($path in @($GuardStateDir, $Remote)) {
+        if ($path -cnotmatch '^/[A-Za-z0-9._-][A-Za-z0-9._/-]*$' -or
+            $path.Split('/') -contains '..' -or $path.Contains('__')) {
+            Write-Error '-GuardStateDir and -Remote must be absolute canonical safe paths'; exit 1
+        }
+    }
+}
 if ($PlanOnly) { $plan | ConvertTo-Json -Depth 4; exit 0 }
 
 $script:PiExit = 0        # exit code of the last remote command; see Invoke-PiSsh
@@ -341,7 +356,73 @@ try {
     }
     Assert-DeployLock
 
-# ---- 3. back up the live database -----------------------------------------
+# ---- 4. read the master's identity BEFORE touching anything ----------------
+Step "4. prove the pidfile names a live gunicorn master"
+$body = @'
+cd REMOTE
+P=$(cat surfd.pid 2>/dev/null || echo none)
+echo "PIDFILE=$P"
+ps -o pid=,ppid=,cmd= -p "$P" 2>/dev/null | head -1
+echo "COUNT=$(ps -eo cmd= | grep -c 'surfd:app' || true)"
+'@
+$pre = Invoke-PiScript -Name "identify" -AllowFail -Body ($body -replace 'REMOTE', $Remote)
+$pidfile = (($pre -split "`n") | Where-Object { $_ -match '^PIDFILE=' }) -replace '^PIDFILE=', ''
+$pidfile = "$pidfile".Trim()
+if ($pidfile -notmatch '^\d+$') {
+    Fail "the pidfile does not name a pid ('$pidfile') -- run.sh's start failed at some point; fix that first"
+}
+$masterLine = ($pre -split "`n") | Where-Object { $_ -match "^\s*$pidfile\s" } | Select-Object -First 1
+if (-not $masterLine) {
+    Fail "no process $pidfile -- surfd is NOT running, so a reload would be a lie; start it with run.sh"
+}
+if ($GuardStateDir) {
+    $body = @'
+set -eu
+python3 - <<'GUARDED_MASTER_PY'
+import importlib.util
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("guard", "__STAGE__/tools/surfd_transition_guard.py")
+g = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(g)
+root = g.plain_path("__GUARD__")
+g.secure_stat(root.stat(), directory=True)
+m = g.manifest_check(g.read_json(root / "manifest.json", True))
+s = g.state_read(root, m)
+g.require(s["admission"] == "OPEN", "guard is not OPEN")
+remote = g.plain_path("__REMOTE__")
+source = g.plain_path(m["source_home"])
+g.require(remote.anchor == source.anchor == "/", "double-slash anchors refused")
+g.require(remote != source and source not in remote.parents,
+          "helper destination must be outside immutable source_home")
+for leaf in ("momgrab.py", "momgrab.py.new"):
+    g.plain_path(str(remote / leaf))
+g.verify_hashes(m)
+r = g.candidate_read(root, m, s)
+pid = int(Path("__REMOTE__/surfd.pid").read_text())
+g.require(pid == __PID__ and r["process"] == g.linux_process(pid),
+          "pidfile/candidate PID, start or cwd changed")
+g.require(g.state_read(root, m) == s, "guard closure changed during proof")
+print("GUARD_MASTER_OK=%d" % pid)
+GUARDED_MASTER_PY
+'@
+    $body = $body.Replace('__STAGE__', $stage).Replace('__GUARD__', $GuardStateDir).
+                  Replace('__REMOTE__', $Remote).Replace('__PID__', $pidfile)
+    $proof = Invoke-PiScript -Name "guarded-master" -AllowFail -Body $body
+    if ($script:PiExit -ne 0 -or $proof -cnotmatch "(?m)^GUARD_MASTER_OK=$pidfile\s*$" -or
+        $masterLine -notmatch 'gunicorn') {
+        Fail 'guarded helper publication refused: current admitted master identity not proven'
+    }
+}
+elseif ($masterLine -notmatch 'gunicorn' -or $masterLine -notmatch 'surfd:app') {
+    Fail "pid $pidfile is not a gunicorn surfd:app master: $masterLine"
+}
+$ppid = ($masterLine.Trim() -split '\s+')[1]
+if ($ppid -ne '1') {
+    Write-Host "  NOTE: master's ppid is $ppid, not 1 -- not started detached by run.sh" -ForegroundColor Yellow
+}
+Write-Host "  master $pidfile (ppid $ppid) -- reload target" -ForegroundColor Green
+
+# ---- 3. back up the live database AFTER destination/identity proof ----------
 if (-not $NoBackup) {
     Step "3. back up data/surfd.db (sqlite's own backup API)"
     $body = @'
@@ -368,7 +449,7 @@ stat -c 'BACKUP_MODE=%a %n' data/surfd.db.TAG
 ls -l data/surfd.db data/surfd.db.TAG | awk '{print $5, $9}'
 '@
     $bak = Invoke-PiScript -Name "backup" -AllowFail `
-        -Body ($body -replace 'REMOTE', $Remote -replace 'TAG', $dbBackupTag)
+        -Body ($body -replace 'TAG', $dbBackupTag -replace 'REMOTE', $Remote)
     if ($script:PiExit -ne 0 -or $bak -cnotmatch "BACKUP_OK") {
         Fail "the database backup did not report BACKUP_OK -- not deploying over an unbacked-up board"
     }
@@ -380,34 +461,6 @@ ls -l data/surfd.db data/surfd.db.TAG | awk '{print $5, $9}'
 else {
     Step "3. SKIPPED (-NoBackup): deploying with no fresh database backup"
 }
-
-# ---- 4. read the master's identity BEFORE touching anything ----------------
-Step "4. prove the pidfile names a live gunicorn master"
-$body = @'
-cd REMOTE
-P=$(cat surfd.pid 2>/dev/null || echo none)
-echo "PIDFILE=$P"
-ps -o pid=,ppid=,cmd= -p "$P" 2>/dev/null | head -1
-echo "COUNT=$(ps -eo cmd= | grep -c 'surfd:app' || true)"
-'@
-$pre = Invoke-PiScript -Name "identify" -AllowFail -Body ($body -replace 'REMOTE', $Remote)
-$pidfile = (($pre -split "`n") | Where-Object { $_ -match '^PIDFILE=' }) -replace '^PIDFILE=', ''
-$pidfile = "$pidfile".Trim()
-if ($pidfile -notmatch '^\d+$') {
-    Fail "the pidfile does not name a pid ('$pidfile') -- run.sh's start failed at some point; fix that first"
-}
-$masterLine = ($pre -split "`n") | Where-Object { $_ -match "^\s*$pidfile\s" } | Select-Object -First 1
-if (-not $masterLine) {
-    Fail "no process $pidfile -- surfd is NOT running, so a reload would be a lie; start it with run.sh"
-}
-if ($masterLine -notmatch 'gunicorn' -or $masterLine -notmatch 'surfd:app') {
-    Fail "pid $pidfile is not a gunicorn surfd:app master: $masterLine"
-}
-$ppid = ($masterLine.Trim() -split '\s+')[1]
-if ($ppid -ne '1') {
-    Write-Host "  NOTE: master's ppid is $ppid, not 1 -- not started detached by run.sh" -ForegroundColor Yellow
-}
-Write-Host "  master $pidfile (ppid $ppid) -- reload target" -ForegroundColor Green
 
 # ---- 5. copy in under the sweep lock --------------------------------------
 Step "5. copy in under flock, install+mv, keeping a .$backupTag backup"

@@ -1,14 +1,17 @@
 """Steam-account friendships and lobby-mediated presence/private chat.
 
-No public reader or client-supplied identity. Only accounts.register's VERIFIED
-proof path mints a capability; it stays on the lobby. Every use rechecks the
+Lobby capabilities are minted only by accounts.register's VERIFIED proof path
+and stay on the lobby. Read-only menu requests use a separate signature domain,
+never mint capabilities or publish presence. Every use rechecks the
 key link and ban, and binds the capability to that lobby's node. Presence and
 join addresses are never supplied by clients. Messages are operator-readable,
 not E2E encrypted, and are bounded/expired (not logged).
 """
 import hashlib
 import hmac
+import importlib.util
 import json
+from pathlib import Path
 import re
 import secrets
 import sqlite3
@@ -21,6 +24,15 @@ SESSION_TTL = 86400
 MESSAGE_TTL = 120
 TOKEN = re.compile(r"[0-9a-f]{64}\Z")
 MARK = re.compile(r"[0-9a-f]{8}(?:[0-9a-f]{4})?\Z")
+MENU_NONCE = re.compile(r"[0-9a-f]{32}\Z")
+MENU_SIG = re.compile(r"[0-9a-f]{128}\Z")
+MENU_EXP = re.compile(r"[0-9]{10}\Z")
+MENU_TTL = 30
+MENU_STATEMENT = "FTESURF-FRIENDS 1\nserver play.proto.bar:443\nnonce %s\nop %s\nwho %s\n"
+
+
+def menu_target(op, who):
+    return (op == "list" and who == "-") or (op == "join" and len(who) == 8 and bool(MARK.fullmatch(who)))
 SQL = """
 CREATE TABLE IF NOT EXISTS social_friends (
  lo TEXT NOT NULL, hi TEXT NOT NULL, asker TEXT NOT NULL,
@@ -129,6 +141,15 @@ def friend_rows(db, sid, now, lobby_ttl):
 
 
 def register(app, d):
+    # The same verifier as account proofs, not a new Ed25519 implementation.
+    try:
+        tools = d.setting("SURFD_TOOLS") or str(Path(d.setting("SURFD_GAME") or "/srv/nvme/ftesurf-server/game") / "tools")
+        spec = importlib.util.spec_from_file_location("social_ed25519", Path(tools) / "ed25519.py")
+        ed = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ed)
+    except (OSError, ImportError, AttributeError):
+        ed = None
+
     def reply(payload, status=200):
         # FTE's URI builtin does not retain bodies on HTTP errors. A keyed game
         # action therefore carries its status INSIDE the reply, like /api/account;
@@ -138,7 +159,14 @@ def register(app, d):
             if d.secret() and hmac.compare_digest(key, d.secret()):
                 payload = dict(payload, status=status)
                 status = 200
-        return Response(d.game_json(dict(v=1, **payload)), status=status, mimetype="application/json")
+        if request.path.startswith("/api/social/menu"):
+            # URI callbacks discard non-2xx bodies. Keep refusal details without
+            # granting authority: ok=0/status still denote a failed request.
+            payload = dict(payload, status=status)
+            status = 200
+        response = Response(d.game_json(dict(v=1, **payload)), status=status, mimetype="application/json")
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     def auth():
         now = int(d.clock())
@@ -151,6 +179,77 @@ def register(app, d):
         if not d.rate_ok(request.remote_addr or "?", now, 4000, "social-lobby"):
             return now, node, reply({"ok": 0, "error": "rate limited"}, 429)
         return now, node, None
+
+    def menu_ticket(nonce, op, who, expires, peer):
+        secret = d.secret()
+        if not secret:
+            return ""
+        msg = json.dumps(["friends-menu-v1", nonce, op, who, expires, peer], separators=(",", ":"))
+        return hmac.new(secret.encode("utf-8"), msg.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    @app.get("/api/social/menu/challenge")
+    def menu_challenge():
+        now = int(d.clock())
+        peer = d.rate_key()
+        if not d.rate_ok(peer, now, 30, "social-menu-challenge"):
+            return reply({"ok": 0, "error": "Friends: try again shortly"}, 429)
+        op, who = request.args.get("op", ""), request.args.get("who", "")
+        if not menu_target(op, who):
+            return reply({"ok": 0, "error": "Bad Friends action"}, 400)
+        nonce, expires = secrets.token_hex(16), str(now + MENU_TTL)
+        ticket = menu_ticket(nonce, op, who, expires, peer)
+        if not ed or not ticket:
+            return reply({"ok": 0, "error": "Friends unavailable"}, 503)
+        return reply(dict(ok=1, nonce=nonce, expires=expires, ticket=ticket))
+
+    @app.post("/api/social/menu")
+    def menu_read():
+        now = int(d.clock())
+        peer = d.rate_key()
+        if not d.rate_ok(peer, now, 30, "social-menu-read"):
+            return reply({"ok": 0, "error": "Friends: try again shortly"}, 429)
+        f = request.form
+        op, who = f.get("op", ""), f.get("who", "")
+        nonce, expires, ticket = f.get("nonce", ""), f.get("expires", ""), f.get("ticket", "")
+        pub, sig = f.get("pub", ""), f.get("sig", "")
+        if not (menu_target(op, who) and MENU_NONCE.fullmatch(nonce) and
+                MENU_EXP.fullmatch(expires) and TOKEN.fullmatch(ticket) and
+                TOKEN.fullmatch(pub) and MENU_SIG.fullmatch(sig)):
+            return reply({"ok": 0, "error": "Bad Friends proof"}, 400)
+        expected = menu_ticket(nonce, op, who, expires, peer)
+        if not expected or not now <= int(expires) <= now + MENU_TTL or not hmac.compare_digest(ticket, expected):
+            return reply({"ok": 0, "error": "Friends request expired; try again"}, 403)
+        if not ed:
+            return reply({"ok": 0, "error": "Friends unavailable"}, 503)
+        if not d.rate_ok("all", now, 240, "social-menu-verify"):
+            return reply({"ok": 0, "error": "Friends busy; try again shortly"}, 503)
+        msg = (MENU_STATEMENT % (nonce, op, who)).encode("ascii")
+        if not ed.verify(bytes.fromhex(pub), msg, bytes.fromhex(sig)):
+            return reply({"ok": 0, "error": "Friends identity could not be verified"}, 403)
+        try:
+            db = d.get_db()
+            # A consistent read snapshot. Do not touch sessions/seen: somebody
+            # in the menu is not on a lobby and must not become joinable.
+            with db:
+                db.execute("BEGIN")
+                account = db.execute("SELECT k.steamid FROM keylinks k JOIN accounts a USING(steamid)"
+                                     " WHERE k.pub=? AND a.banned_at=0", (pub,)).fetchone()
+                if not account:
+                    return reply({"ok": 0, "error": "Link Steam on a lobby once to use Friends here"}, 403)
+                sid = account["steamid"]
+                if not d.rate_ok(sid, now, 20, "social-menu-account"):
+                    return reply({"ok": 0, "error": "Friends: try again shortly"}, 429)
+                if op == "list":
+                    return reply({"ok": 1, "friends": friend_rows(db, sid, now, d.lobby_ttl)})
+                other = resolve(db, who)
+                if not other or relation(db, sid, other) != 3:
+                    return reply({"ok": 0, "error": "Accept the friend request first"}, 403)
+                live = presence(db, other, now, d.lobby_ttl)
+                if not live["online"]:
+                    return reply({"ok": 0, "error": "Your friend is offline"}, 409)
+                return reply({"ok": 1, "addr": live["addr"], "map": live["map"]})
+        except sqlite3.Error:
+            return reply({"ok": 0, "error": "Friends unavailable"}, 503)
 
     @app.post("/api/social/poll")
     def poll():
