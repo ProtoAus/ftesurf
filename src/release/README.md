@@ -109,3 +109,20 @@ After successful publication/acceptance, record the released `VERSION` and UTC
 provenance in the source release commit; promotion itself does not edit a possibly
 advanced working tree. Do not bump qcbuild without the owner's Build NN decision.
 Tooling-only maintenance is not a new product patch, version or public release.
+
+## Maintenance acceptance — 2026-10-16
+
+- Actual local preparation compiled the selected 0.1.27 menu with zero QC warnings
+  while source VERSION stayed 0.1.26, compared both archives to their stages,
+  verified 760 signed objects and sealed 795 files. It reused read-only, previously
+  verified P738 native/Linux inputs; this was not a new public release.
+- That exact candidate moved to a source/cache-free courier folder. After source
+  HEAD advanced, the real prepared-only entrypoint passed with source VERSION
+  absent and PATH exposing only Python plus denial shims. Only Python ran;
+  there was no compiler, packer, signing or remote mutation. VERSION was restored.
+- Separate native Windows/Linux builds verified automatic metadata and all ten
+  Linux production gates; the real NoDeploy regression preserved 70 witnesses.
+  Windows retained the same 74 baseline compiler warning headers, zero new.
+- The new canonical-HTTPS smoke accepted live 0.1.26: Linux 847 and Windows 850
+  non-overridden signed file hashes and three protected sentinels per platform,
+  actual launchers, no game launch. In-game/visual acceptance was not claimed.
