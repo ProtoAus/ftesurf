@@ -10,7 +10,16 @@
   must not spend another phase. Pending state retires on warp/hold/invalid/exit.
 - PostThink-only exit finalization delays later commands in a batch. Finalize the
   previous move before the next command too, while retaining packet-end-before-
-  RecState ordering.44 native-QC predicates pass; omitting that call fails one.
+  RecState ordering. The initial44 native-QC predicates reject an omitted call.
+- Independent review caught two gaps: preserving jumpcmd did not help when the
+  pending zero-Z write erased JumpWatch's OUTER velocity edge; checking only its
+  inner predicate with older taints already set masked this. Cancel/consume that
+  contact on jump input without overwriting the real rise. Actual detector arms
+  now prove a NEW bad-hop taint and a clean generated-rise control.
+- Ghost frames/exits called TimerWarped without placing the body. Separate
+  TimerRestamp bookkeeping from actual-placement profile reset; ghost body phases
+  must survive. The strengthened50-case exact-QC fixture rejects old source45/5
+  and passes corrected source50/0, including actual ghost frame/exit calls.
 - Prediction baseline and subject both show1–2u entry seams and occasional one-
   tick seams (~25u). Test warp corrections are not booster errors. StrictMode's
   diagnostic is not a claim that its conditions are mirrored. No new mirror.

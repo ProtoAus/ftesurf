@@ -26,6 +26,17 @@ void(entity e) P732_Player =
 	SV_MonolithB4Command(e);
 	e.origin = '-10992 -5454 15936';
 };
+// Dummy entities only: start a NEW clean detector arm, never clear a live run.
+void(entity e) P732_ArmDetector =
+{
+	e.run_t_state = TS_ARMED; e.run_t_armzone = e.run_t_azone = -1;
+	e.run_st_seg = -1; e.run_t_flags = 0;
+	e.run_t_startok = e.run_t_hopped = e.run_t_dirty = 0;
+	e.run_t_lastvz = e.run_t_jumps = e.run_t_finfgv = 0;
+	e.run_t_groundsec = SV_ClockSec(e) - 0.01; e.run_t_airsec = 0;
+	e.run_rampcontact = 0; e.run_st_bcseen = e.run_boardcount;
+	e.run_bhop_launch_zone = e.run_bhop_launch_denied = 0;
+};
 void() P732_Units =
 {
 	local entity p, e, b, saved;
@@ -86,9 +97,22 @@ void() P732_Units =
 	e.run_mono_preorg_x = -11050; P732_Check("side or warp arrival falls back", !SV_MonolithB4Touch(p,e)); P732_Player(e);
 	e.run_t_hopped = e.run_t_dirty = 1; SV_MonolithB4Touch(p,e);
 	P732_Check("older hopped and dirty are never forgiven", (e.run_t_hopped && e.run_t_dirty));
-	e.run_jumpcmd = 1; SV_MonolithB4Command(e); e.run_movetick = e.run_movetick + 1; SV_MonolithB4Touch(p,e);
-	P732_Check("real jump latch survives pending reapplication", e.run_jumpcmd);
-	P732_Check("existing rejection predicate still wins", (!e.run_pushed || e.run_jumpcmd));
+	P732_Player(e); e.run_t_hopped = e.run_t_dirty = 0; SV_MonolithB4Touch(p,e);
+	SV_MonolithB4Command(e); e.run_movetick = 1; e.flags = 0;
+	e.origin = '-11016 -5454 15942'; e.velocity = '-1562 0 301';
+	P732_ArmDetector(e); e.run_jumpcmd = e.button2 = 1;
+	SV_MonolithB4Touch(p,e);
+	P732_Check("real rise cancels pending write without erasing input", (!e.run_mono_phase && e.run_jumpcmd && e.velocity == '-1562 0 301'));
+	P732_Check("start-hop detector enabled", cvar("run_starthop") == 1);
+	SV_TimerJumpWatch(e);
+	P732_Check("actual detector raises NEW hopped taint for real rise", (e.run_t_jumps == 1 && e.run_t_hopped && !e.run_t_dirty));
+	P732_Player(e); e.run_t_hopped = e.run_t_dirty = 0; SV_MonolithB4Touch(p,e);
+	e.run_movetick = 1; e.flags = 0; e.origin = '-11016 -5454 15942'; e.velocity = '-1562 0 375';
+	SV_MonolithB4Touch(p,e);
+	P732_Check("jump-free control completes pending reapplication", (e.run_mono_phase == 2 && e.velocity == '-1784 0 0'));
+	SV_MonolithB4Command(e); e.run_movetick = 2; e.velocity = '-1668.867 0 429';
+	P732_ArmDetector(e); SV_TimerJumpWatch(e);
+	P732_Check("actual detector sees generated rise but keeps clean arm", (e.run_t_jumps == 1 && !e.run_t_hopped && !e.run_t_dirty));
 
 	P732_Player(e); SV_MonolithB4Touch(p,e); e.origin_y = -4800; v = e.velocity; SV_MonolithB4Frame(e);
 	P732_Check("side exit clears without injecting speed", (!e.run_mono_phase && e.velocity == v));
@@ -101,6 +125,14 @@ void() P732_Units =
 	P732_Check("real warp funnel prevents deferred exit write", (!e.run_mono_phase && e.velocity == v));
 	P732_Player(e); SV_MonolithB4Touch(p,e); saved = self; self = e; e.run_pmhold = 1; PlayerPreThink(); self = saved;
 	P732_Check("held command clears pending state", !e.run_mono_phase); e.run_pmhold = 0;
+	P732_Player(e); e.run_t_state = TS_IDLE; e.run_t_armzone = e.run_t_azone = -1;
+	SV_MonolithB4Touch(p,e); e.rec_gh_on = 1; SV_TimerFrame(e);
+	P732_Check("actual ghost frame preserves pending body phase", (e.run_mono_phase == 1 && e.velocity == '-1662 0 0'));
+	SV_GhostSet(e, FALSE);
+	P732_Check("actual ghost exit preserves pending body phase", (e.run_mono_phase == 1 && !e.rec_gh_on && e.velocity == '-1662 0 0'));
+	SV_MonolithB4Command(e); e.run_movetick = 1; e.flags = 0;
+	e.origin = '-11016 -5454 15942'; e.velocity = '-1562 0 375'; SV_MonolithB4Touch(p,e);
+	P732_Check("post-ghost body still completes its reapplication", (e.run_mono_phase == 2 && e.velocity == '-1784 0 0'));
 	P732_Player(e); SV_MonolithB4Touch(p,e);
 	P732_Check("clean reentry restarts first phase", (e.run_mono_phase == 1 && e.velocity == '-1662 0 0'));
 	print(sprintf("P732 UNIT SUMMARY pass%g fail%g\n", p732_pass, p732_fail));

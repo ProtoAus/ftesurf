@@ -4358,7 +4358,7 @@ void(entity e, float on) SV_GhostSet =
 		  failure it guards against is a run being silently finished by a segment
 		  drawn across the map.
 		*/
-		SV_TimerWarped(e);
+		SV_TimerRestamp(e);
 		SV_TimerGhostMark(e, FALSE);
 
 		sprint(e, PRINT_HIGH, "^5ghost off^7 -- back in your body\n");

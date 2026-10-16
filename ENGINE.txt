@@ -28,6 +28,8 @@ tag      patch-729
 patch    732
 # Patch 732: known Momentum Monolith B4 KSF-compatible launch phases, with
 # mover-clock-bounded slope-lift attribution and no older-taint forgiveness.
+# Jump input preserves its real rise; nonplacement ghost restamps preserve the
+# pending phase, while actual warp/hold/spawn still retire it.
 # Other pads retain their authored behavior; no global physics, generic VScript,
 # native pin/tag or QC Build change. Scope and evidence: tools/p732monolith.md.
 # Patch 731: top-right version/update status with F2; collapsible picker filters,

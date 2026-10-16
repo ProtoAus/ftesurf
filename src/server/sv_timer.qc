@@ -9261,9 +9261,9 @@ void(entity e, string why) SV_TimerForgiveHop =
 // The save-lock hold (sv_saveloc.qc owns it), declared here for SV_TimerFrame.
 .float rec_sl_hold;
 
-void(entity e) SV_TimerWarped =
+// Swept-zone/padding bookkeeping, also used while a ghost's BODY keeps moving.
+void(entity e) SV_TimerRestamp =
 {
-	SV_MonolithB4Reset(e);
 	e.run_t_lastorg = e.origin;
 	e.rec_sl_loadt = 0;
 
@@ -9313,6 +9313,13 @@ void(entity e) SV_TimerWarped =
 	if (e.run_st_seg >= 0)
 	if (!e.rec_gh_on)
 		e.run_st_tp = e.run_st_tp + 1;
+};
+
+// Only real placements invalidate an in-flight movement profile.
+void(entity e) SV_TimerWarped =
+{
+	SV_MonolithB4Reset(e);
+	SV_TimerRestamp(e);
 };
 
 /*
@@ -13419,7 +13426,7 @@ void(entity e) SV_TimerFrame =
 	  fire stages and finish runs while its owner was somewhere else looking at
 	  the map.  That is the one thing a ghost is not allowed to do.
 
-	  SV_TimerWarped RATHER THAN A BARE RETURN, and the difference is the whole
+	  SV_TimerRestamp RATHER THAN A BARE RETURN, and the difference is the whole
 	  reason this is three lines instead of one.  A bare return skips
 	  `e.run_t_lastorg = e.origin` at the bottom of this function, so the tick the
 	  ghost ENDS would draw its swept segment from wherever the body was when you
@@ -13429,7 +13436,7 @@ void(entity e) SV_TimerFrame =
 	  of the segment travelling with the body, one tick at a time, so re-attaching
 	  tests exactly the tick it actually happened in.
 
-	  It is also right about the padding ring for the reason SV_TimerWarped
+	  It is also right about the padding ring for the reason SV_TimerRestamp
 	  already gives: the ring is the APPROACH, and a body nobody was flying did
 	  not approach anything.  That is why SV_RecPad is not called here either.
 
@@ -13519,7 +13526,7 @@ void(entity e) SV_TimerFrame =
 		}
 
 		SV_TimerRecFrame(e);
-		SV_TimerWarped(e);
+		SV_TimerRestamp(e);
 		return;
 	}
 

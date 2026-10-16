@@ -31,8 +31,11 @@ pending state. Existing `SV_RecWarp("speed")` records authoritative changes.
 
 The known ramp's next moving command may inherit the force's causal lift through
 existing `run_pushed`/`run_pushlift`. Zero-tick commands do not spend it. Once the
-mover advances, later commands cannot inherit it. A real jump latch still wins;
-there is no blanket start-rule disable and no older hopped/dirty clear.
+mover advances, later commands cannot inherit it. Jump input cancels a pending
+contact without replacing its real vertical rise: preserving the latch alone is
+not enough because JumpWatch first needs a velocity edge. There is no blanket
+start-rule disable and no older hopped/dirty clear. Actual placements reset the
+profile; ghost swept-zone/padding restamps do not move the body and preserve it.
 `PlayerPostThink` now retires pushed/jumpcmd on normal, timer-early-return and
 held packet exits, in addition to the existing jump-watch clear.
 
@@ -57,18 +60,22 @@ or index was used. QC-only: retain native P729 pin/tag and qcbuild89.
 - Real earlier held-hop control establishes hopped1; the later acting booster
   still reaches1662 but remains practice/hopped1. This is not taint forgiveness.
 - Prosurf B4 regression:2275, normal/recording1, hopped0, dirty0.
-- Actual-source QC fixture:44 predicates covering exact/negative guards,
+- Actual-source QC fixture:50 predicates covering exact/negative guards,
   independent players, duplicate/zero-tick contacts, physical-progress expiry,
-  real-jump latch precedence, older taints, warp/hold/side/timeout/invalid cleanup,
-  re-entry and command-before-physics exit finalization. A one-line mutant which
-  omits command-path exit finalization gives43pass/1fail at that exact predicate;
-  the subject gives44pass/0fail. These are VM tests, not a translated Python model.
+  the actual JumpWatch outer velocity gate and fresh taint, generated-rise clean
+  control, older taints, warp/hold/side/timeout/invalid cleanup, real ghost frame/
+  exit, re-entry and command-before-physics exit finalization. A one-line exit
+  mutant gives43pass/1fail against the initial44 checks. Independent review then
+  found two missing cases: the strengthened50-check fixture gives45pass/5fail
+  against the exact pre-fix source and50pass/0fail after correction. These are
+  actual-QC VM calls, not a translated Python model or only an inner predicate.
 - Three real-client packet cases seed all latches and wait for `run_pkn` to
   advance: normal, no-zone early return and native held command all act/clean.
 - Existing prefix serializer's nonlive control returns0; a naturally started
   live run writes212 lines. The new active-run prefix passes the reader. Native
-  `pm_recsim` reproduces32 input packets at the sample-printing floor, with zero
-  state-bit/physent-signature/physent-digest mismatches. It is a prefix, NOT a
+  `pm_recsim` reproduces32 initial-candidate and13 final-fix input packets at the
+  sample-printing floor, with zero state-bit/physent-signature/digest mismatches.
+  It is a prefix, NOT a
   completed/accepted record and not proof of every prestart or rewind path.
 - Reader suite:306 checks,0 failures. Fresh stable read-only run corpus295 recs
   plus96 views:190 faults in BOTH control and subject. Reader bytes match the
@@ -92,15 +99,37 @@ first-two-tick/endpoint checks alone did not prove command-scoped exit timing.
 production manifest. In an owned rig, compile a copy of `sv_progs.src` with a
 separate output plus this fixture appended; add `p732_unit` and
 `p732_packet_probe` entities to a disposable external ENT. Fresh native socket
-startup prints the44 predicates. Server `p732_case 1/2/3` exercises packet exits;
+startup prints the50 predicates. Server `p732_case 1/2/3` exercises packet exits;
 4 writes `data/p732-evidence/run.rec` using the existing prefix serializer (create
 that owned output directory first). Do not use this on a live lobby/player tree.
 
+## Independent review and correction
+
+Three independent source lenses reviewed the clean candidate without author
+conclusions. Physics found no blocking regression. Eligibility found that a
+pending zero-Z write could erase a real jump before JumpWatch's OUTER velocity
+gate; the old test checked only a surviving latch/inner predicate and also had
+older taints already set. Evidence found that ghost bookkeeping called the
+placement reset without placing the body. Both were corrected BEFORE pushing
+or deployment. The fixture now invokes actual JumpWatch on separate clean arms,
+actual ghost TimerFrame and GhostSet(false), with an acted rejecting old-source
+control. Actual placements still clear state. Private review reports remain
+private; technical scope is recorded here rather than exporting raw reports.
+
+Native key probes reached later active phases; an exact phase1 key timing was
+not captured at the tested command granularity. It is NOT claimed as the real-
+input phase1 falsifier: the actual-QC detector/control above supplies that case.
+
 Product build: `pwsh -NoProfile -Command "./build.ps1 -Jobs 8 -NoDeploy"`
 from the owned `qc/src` compiles all three production manifests with0 warnings.
-Outputs: `qc/rig/build-nodeploy-c6a974719efa46808d6e6903df4a3c42/`.
+Initial output `qc/rig/build-nodeploy-c6a974719efa46808d6e6903df4a3c42/`;
+corrected final output `qc/rig/build-nodeploy-4c92e81be77d4d16827bf4524baab528/`.
+Final SSQC SHA256 `eaabe85275f3eed09cccd9125ddb3d256961b6ac10a52e18ab0bece6ce4d5862`;
+CSQC/menu stay the published P731 bytes. No test symbols in product VMs.
 Both canonical installs' inspected VM/native/plugin hashes are unchanged by
-this isolated build. LSP does not parse QuakeC; the compiler is the code gate.
+isolated builds. LSP does not parse QuakeC; the compiler is the code gate.
+A missing relative include in a copied baseline and an escaped-newline observer
+compile failed during fixture preparation; neither was a product/runtime pass.
 
 ## Delivery
 

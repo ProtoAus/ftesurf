@@ -84,6 +84,13 @@ float(entity pad, entity e) SV_MonolithB4Touch =
 	else
 	{
 		pad.vbsp_ss_stamp = time;
+		// Do not erase a real rise before JumpWatch's velocity-edge gate.
+		// Consume this contact: legacy fallback must not replace it either.
+		if (e.run_jumpcmd || e.button2)
+		{
+			SV_MonolithB4Reset(e);
+			return TRUE;
+		}
 		if (e.run_mono_tick == e.run_movetick) return TRUE;
 		if (e.run_mono_phase != 1) return TRUE;
 		e.run_mono_phase = 2;

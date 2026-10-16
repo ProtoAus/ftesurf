@@ -7,6 +7,8 @@
   height and distance should feel alike. Try your normal approach/strafe too.
 - A clean walking launch must stay normal/recording. An older bad hopped start
   must remain practice; a real jump input must not gain a blanket exemption.
+- If detaching/reattaching the ghost camera during the launch, the unattended
+  body should retain its booster phase; actual placement/hold still cancels it.
 - Recheck Prosurf B4's ordinary bhop into the cut-out booster. Neither disabling
   `run_starthop` nor a global speed/physics setting is part of this fix.
 
