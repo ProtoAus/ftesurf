@@ -25,7 +25,11 @@ commit   9ad66320b6865b53d8ee64af7d96096cb3dc8e44
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-729
-patch    732
+patch    733
+# Patch 733: bare right-aligned update status; F2 hint only for actionable updates.
+# Repair P731's insecure saved F2 binding via the existing menu-only trusted
+# builtin. Native Windows key/bind controls now prove the pane really opens;
+# synthetic ui_key did not. No native pin/tag or Friends/backend changes.
 # Patch 732: known Momentum Monolith B4 KSF-compatible launch phases, with
 # mover-clock-bounded slope-lift attribution and no older-taint forgiveness.
 # Jump input preserves its real rise; nonplacement ghost restamps preserve the

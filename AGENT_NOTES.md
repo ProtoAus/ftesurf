@@ -28,6 +28,25 @@
   Three production VMs compile0 warnings; fixture code is never in their .src.
 - Commands, scope/limits and separate deployment receipts: tools/p732monolith.md.
 
+## P733 — native F2 route, not synthetic menu-key proof
+
+P731's `localcmd("bind F2 ui_updates")` saved a level30/insecure bind. F1..F15
+skip Menu_InputEvent in keys.c, so real F2 executed at that level and was
+rejected by MP_ConsoleCommand. `ui_key f2` called Menu_InputEvent directly and
+was NOT native bind proof. Repair only empty/stock/ui_updates bindings through
+the existing menu-only localcmd_local builtin; preserve custom bindings and the
+engine's command trust boundary. The owner's cfg is never edited directly.
+
+`tools/test_update_corner.py` posts native Windows key messages only to a HWND
+rechecked against its retained Popen PID. F3/F4 echo/capture actors prove native
+bind dispatch. The startup cfg MUST end before these keys: a trailing wait/quit
+list queues bound commands behind quit. Control reproduces the old no-op;
+subject opens the pane from the same stored bind, while custom F2 still acts.
+Status-only fixture menus are explicitly NEVER DEPLOYABLE and test geometry/
+conditional labels, not native updater authority. Final pictures prove bare
+text with a common16-unit right margin and [F2] only on actionable states.
+Full evidence/commands: tools/p733updatestatus.md.
+
 ## P731 — map-picker/Friends menu compatibility and layout
 
 The continuing Friends workstream owns Steam/backend integration. The menu-only

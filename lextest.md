@@ -16,6 +16,13 @@ Automated native-socket/reference, earlier-hop, clock/lifecycle, prefix replay
 and reader checks: `tools/p732monolith.md`. Human feel/route judgement is not
 claimed by those controls. Deployment provenance is recorded separately there.
 
+## P733 — update corner follow-up
+
+- After loading the new menu, check the bare, right-aligned current/latest
+  status. There should be no rectangle or F2 hint when no update is ready.
+- F2 should now open Updates, including with P731's saved binding. A custom
+  F2 action is preserved; in that case the update corner does not advertise F2.
+
 ## P731 — title/picker layout preference
 
 Both Windows installs are hash-verified on the clean product build; the new
