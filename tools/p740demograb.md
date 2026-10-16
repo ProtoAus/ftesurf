@@ -100,7 +100,16 @@ fixture acts positively and rejects wrong PID/start, CLOSED, changed source and
 insecure root; proof neither imports the app nor signals the candidate. Initial
 fixture setup exposed inherited NVMe setgid; exact private test-root permissions
 were fixed rather than weakening guard mode checks. Failed fixture evidence is
-preserved. Tool follow-up review and resumed same-entrypoint delivery pending.
+preserved. One tool review was clear; the other timed out after identifying a
+valid allowed-input gap: `-Remote` could target the immutable source tree itself.
+The corrected precheck rejects the source root, descendants, noncanonical paths,
+and symlinked helper/temp destinations. New Linux controls fail on c66dd93's
+source-root acceptance and pass on the fix, along with nested/symlink refusals.
+This is a read-only identity/destination preflight, NOT a generation/CAS handover
+or a promise to retain an epoch through copying a non-pinned helper. Execution
+still requires its own admitted import at activation. Both updated reviews and
+resumed same-entrypoint delivery are pending. The reviewed user-unit template is
+installed hash-matching but remains inactive and not enabled.
 
 Deployment and live Momentum acceptance are pending. No demo body, private
 identity, credential or raw private backend output belongs in this document.

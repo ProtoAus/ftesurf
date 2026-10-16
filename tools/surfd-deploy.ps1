@@ -91,8 +91,10 @@ if ($GuardStateDir) {
     if (-not $NoReload -or $plan.Files.Count -ne 1 -or $plan.Files[0] -cne 'surfd/momgrab.py') {
         Write-Error '-GuardStateDir requires -NoReload and ONLY surfd/momgrab.py'; exit 1
     }
-    if ($GuardStateDir -cnotmatch '^/[A-Za-z0-9._/-]+$' -or $GuardStateDir.Split('/') -contains '..') {
-        Write-Error '-GuardStateDir must be an absolute canonical safe path'; exit 1
+    foreach ($path in @($GuardStateDir, $Remote)) {
+        if ($path -cnotmatch '^/[A-Za-z0-9._/-]+$' -or $path.Split('/') -contains '..') {
+            Write-Error '-GuardStateDir and -Remote must be absolute canonical safe paths'; exit 1
+        }
     }
 }
 if ($PlanOnly) { $plan | ConvertTo-Json -Depth 4; exit 0 }
@@ -426,6 +428,12 @@ g.secure_stat(root.stat(), directory=True)
 m = g.manifest_check(g.read_json(root / "manifest.json", True))
 s = g.state_read(root, m)
 g.require(s["admission"] == "OPEN", "guard is not OPEN")
+remote = g.plain_path("__REMOTE__")
+source = g.plain_path(m["source_home"])
+g.require(remote != source and source not in remote.parents,
+          "helper destination must be outside immutable source_home")
+for leaf in ("momgrab.py", "momgrab.py.new"):
+    g.plain_path(str(remote / leaf))
 g.verify_hashes(m)
 r = g.candidate_read(root, m, s)
 pid = int(Path("__REMOTE__/surfd.pid").read_text())
