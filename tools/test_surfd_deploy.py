@@ -115,6 +115,22 @@ Get-SurfdDeployPlan @p | ConvertTo-Json -Depth 4
         for ref in ('no-such-ref-offline', '--help'):
             self.plan(ref=ref, succeeds=False)
 
+    def test_guarded_helper_mode_is_narrow_and_requires_no_reload(self):
+        for only, no_reload, guard, ok in (
+                ('surfd/momgrab.py', True, '/owned/guard', True),
+                ('surfd/momgrab.py', False, '/owned/guard', False),
+                ('surfd/surfd.py', True, '/owned/guard', False),
+                ('surfd/momgrab.py', True, '/owned/../guard', False)):
+            r = powershell('''
+function ssh { throw 'network forbidden' }
+function scp { throw 'network forbidden' }
+$p=@{PlanOnly=$true;Ref=$env:DEPLOY_TEST_REF;Only=@($env:DEPLOY_TEST_ONLY);
+     GuardStateDir=$env:DEPLOY_TEST_GUARD;NoReload=($env:DEPLOY_TEST_NORELOAD -eq '1')}
+& (Join-Path $env:DEPLOY_TEST_TOOLS 'surfd-deploy.ps1') @p
+''', DEPLOY_TEST_REF=self.ref, DEPLOY_TEST_ONLY=only, DEPLOY_TEST_GUARD=guard,
+                 DEPLOY_TEST_NORELOAD='1' if no_reload else '0')
+            self.assertEqual(r.returncode == 0, ok, r.stdout+r.stderr)
+
     def test_planonly_does_not_call_transport_or_create_workspace(self):
         marker = self.root/'transport-called'
         workspaces = Path('C:/FTESurf-worktrees')

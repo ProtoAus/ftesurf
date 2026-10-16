@@ -78,5 +78,29 @@ Original Linux 7808c0a checks also passed 10 priority, 9 request, existing grab,
 45 KSF and user-unit verification; KSF controls remain valid because KSF source
 has not changed. Corrected Linux/SIGTERM checks and follow-up reviews pending.
 
+## Deployment seam
+
+Corrected 44dc15e Linux tests all pass (15 priority/SIGTERM, 9 request, existing
+grab, user-unit verification), and both follow-up independent reviews are clear.
+The product blobs are identical after merging published P739 metadata; its native
+pin/tag are retained. Both repositories are pushed.
+
+The first existing `surfd-deploy.ps1 -NoReload -Only surfd/momgrab.py` transaction
+stopped before copying anything: it required literal `surfd:app`, while this
+sealed runtime legitimately uses `witness_wsgi:app`. Its stage, private database
+backup and failure evidence are retained. The fix is in that same entrypoint,
+not an alternate copy wrapper: explicit `-GuardStateDir <existing control>` is
+permitted ONLY with `-NoReload` and ONLY the non-pinned momgrab helper. It proves
+the private OPEN generation/closure, unchanged target hashes and recorded live
+candidate PID/start/cwd against the pidfile. Legacy reload checks are unchanged;
+no witness-name substring exception, new guard, sealed source or manifest edit.
+
+PowerShell parse/narrow-mode controls pass. The existing synthetic Linux guard
+fixture acts positively and rejects wrong PID/start, CLOSED, changed source and
+insecure root; proof neither imports the app nor signals the candidate. Initial
+fixture setup exposed inherited NVMe setgid; exact private test-root permissions
+were fixed rather than weakening guard mode checks. Failed fixture evidence is
+preserved. Tool follow-up review and resumed same-entrypoint delivery pending.
+
 Deployment and live Momentum acceptance are pending. No demo body, private
 identity, credential or raw private backend output belongs in this document.

@@ -63,6 +63,10 @@ param(
     [switch]$PlanOnly,
     [switch]$SkipTests,
     [switch]$NoReload,
+    # Narrow helper-only publication beside an immutable admitted WSGI runtime.
+    # The recorded candidate's PID/start/cwd, OPEN closure and source hashes
+    # replace only the obsolete literal surfd:app name check; never reload it.
+    [string]$GuardStateDir = "",
     [switch]$NoBackup,
     # Database-backup retention.  0 (the default) REPORTS what the backups cost
     # and deletes nothing; N keeps the newest N of the ones THIS script wrote
@@ -83,6 +87,14 @@ $repo = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'surfd-deploy-plan.ps1')
 try { $plan = Get-SurfdDeployPlan -Repo $repo -Ref $Ref -Only $Only }
 catch { Write-Error $_; exit 1 }
+if ($GuardStateDir) {
+    if (-not $NoReload -or $plan.Files.Count -ne 1 -or $plan.Files[0] -cne 'surfd/momgrab.py') {
+        Write-Error '-GuardStateDir requires -NoReload and ONLY surfd/momgrab.py'; exit 1
+    }
+    if ($GuardStateDir -cnotmatch '^/[A-Za-z0-9._/-]+$' -or $GuardStateDir.Split('/') -contains '..') {
+        Write-Error '-GuardStateDir must be an absolute canonical safe path'; exit 1
+    }
+}
 if ($PlanOnly) { $plan | ConvertTo-Json -Depth 4; exit 0 }
 
 $script:PiExit = 0        # exit code of the last remote command; see Invoke-PiSsh
@@ -400,7 +412,38 @@ $masterLine = ($pre -split "`n") | Where-Object { $_ -match "^\s*$pidfile\s" } |
 if (-not $masterLine) {
     Fail "no process $pidfile -- surfd is NOT running, so a reload would be a lie; start it with run.sh"
 }
-if ($masterLine -notmatch 'gunicorn' -or $masterLine -notmatch 'surfd:app') {
+if ($GuardStateDir) {
+    $body = @'
+set -eu
+python3 - <<'GUARDED_MASTER_PY'
+import importlib.util
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("guard", "__STAGE__/tools/surfd_transition_guard.py")
+g = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(g)
+root = g.plain_path("__GUARD__")
+g.secure_stat(root.stat(), directory=True)
+m = g.manifest_check(g.read_json(root / "manifest.json", True))
+s = g.state_read(root, m)
+g.require(s["admission"] == "OPEN", "guard is not OPEN")
+g.verify_hashes(m)
+r = g.candidate_read(root, m, s)
+pid = int(Path("__REMOTE__/surfd.pid").read_text())
+g.require(pid == __PID__ and r["process"] == g.linux_process(pid),
+          "pidfile/candidate PID, start or cwd changed")
+g.require(g.state_read(root, m) == s, "guard closure changed during proof")
+print("GUARD_MASTER_OK=%d" % pid)
+GUARDED_MASTER_PY
+'@
+    $body = $body.Replace('__STAGE__', $stage).Replace('__GUARD__', $GuardStateDir).
+                  Replace('__REMOTE__', $Remote).Replace('__PID__', $pidfile)
+    $proof = Invoke-PiScript -Name "guarded-master" -AllowFail -Body $body
+    if ($script:PiExit -ne 0 -or $proof -cnotmatch "(?m)^GUARD_MASTER_OK=$pidfile\s*$" -or
+        $masterLine -notmatch 'gunicorn') {
+        Fail 'guarded helper publication refused: current admitted master identity not proven'
+    }
+}
+elseif ($masterLine -notmatch 'gunicorn' -or $masterLine -notmatch 'surfd:app') {
     Fail "pid $pidfile is not a gunicorn surfd:app master: $masterLine"
 }
 $ppid = ($masterLine.Trim() -split '\s+')[1]
