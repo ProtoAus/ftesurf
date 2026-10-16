@@ -1,5 +1,24 @@
 # AGENT_NOTES.md
 
+## P732 — Monolith B4 physical-progress compatibility
+
+- Effective KSF phases are an explicit known-port policy, not recovered plugin
+  internals or generic StrictMode. Exact metadata/entry guards and causal lift
+  attribution matter; older taints and real jump latches must still win.
+- A different usercmd can have ZERO mover ticks: gate phase/attribution by the
+  existing native run_movetick, not an invented command count. Duplicate touches
+  must not spend another phase. Pending state retires on warp/hold/invalid/exit.
+- PostThink-only exit finalization delays later commands in a batch. Finalize the
+  previous move before the next command too, while retaining packet-end-before-
+  RecState ordering.44 native-QC predicates pass; omitting that call fails one.
+- Prediction baseline and subject both show1–2u entry seams and occasional one-
+  tick seams (~25u). Test warp corrections are not booster errors. StrictMode's
+  diagnostic is not a claim that its conditions are mirrored. No new mirror.
+- Read-only run corpus comparison is190→190. One historical kept save prefix
+  denies reading: preserve its ACL, report the limit, keep checking other work.
+  Three production VMs compile0 warnings; fixture code is never in their .src.
+- Commands, scope/limits and separate deployment receipts: tools/p732monolith.md.
+
 ## P731 — map-picker/Friends menu compatibility and layout
 
 The continuing Friends workstream owns Steam/backend integration. The menu-only

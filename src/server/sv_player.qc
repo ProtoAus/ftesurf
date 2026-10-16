@@ -158,6 +158,7 @@ void() PutClientInServer =
 	self.run_pushed        = 0;   // Patch 409, same argument one line up
 	self.run_jumpcmd       = 0;
 	self.run_pushlift      = 0;   // Patch 411
+	SV_MonolithB4Reset(self);
 
 	self.classname   = "player";
 	self.health      = 100;
@@ -431,6 +432,7 @@ void() PlayerPreThink =
 	// row, a ride or a pin, cash out a carrier or hand the engine one.
 	if (self.run_pmhold)
 	{
+		SV_MonolithB4Reset(self);
 		self.run_wasground = ((self.flags & FL_ONGROUND) != 0);
 		self.run_basevelocity = '0 0 0';
 		self.run_pushlift = FALSE;  // Patch 411: this return is above its clear,
@@ -444,6 +446,8 @@ void() PlayerPreThink =
 	// SV_WatchHoldMove (sv_saveloc.qc); the second call site is PlayerPostThink's,
 	// ahead of SV_NoclipWatch.
 	SV_WatchHoldMove(self);
+	if (self.run_pmhold) SV_MonolithB4Reset(self);
+	else SV_MonolithB4Command(self);
 
 	// BUILD 87 (v9): what the PREVIOUS move changed (pin, physents, portals),
 	// written before this command's `ride` and `in` rows.  See SV_RecState.
@@ -720,6 +724,8 @@ void() PlayerPostThink =
 	if (self.run_pmhold)
 	{
 		self.run_bhop_launch_zone = self.run_bhop_launch_denied = 0;
+		self.run_pushed = self.run_jumpcmd = FALSE;
+		SV_MonolithB4Reset(self);
 		if (self.run_t_state == TS_RUNNING)
 			lobby_cyc_runseen = time;
 		if (self.rec_cp_q >= 1)         // Patch 375's save copy is not a record
@@ -755,10 +761,12 @@ void() PlayerPostThink =
 	  the physics ran on.  It is also where the leg tracker (`!r`) now latches
 	  -- see SV_ZoneFrame for why that moved.
 	*/
+	SV_MonolithB4Frame(self);  // downstream exit velocity precedes state/sample
 	SV_RecState(self);	// BUILD 87: the packet's last move, before its sample
 	SV_TimerFrame(self);
-	// Packet-scoped permission, including every early return inside the timer.
+	// Packet-scoped latches, including every early return inside the timer.
 	self.run_bhop_launch_zone = self.run_bhop_launch_denied = 0;
+	self.run_pushed = self.run_jumpcmd = FALSE;
 
 	/*
 	  BUILD 43: pack the stage state for the wire.  HERE and not at the bottom of

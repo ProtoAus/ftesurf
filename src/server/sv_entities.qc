@@ -6427,6 +6427,9 @@ void() trigger_push =
 #define SS_DECREASE  3
 #define SS_IGNORE    4
 
+// P732's scoped compatibility profile is defined just after this module.
+float(entity pad, entity e) SV_MonolithB4Touch;
+
 void() trigger_setspeed_touch =
 {
 	local float  hmode, vmode, hspeed, vspeed, cur, iv, old;
@@ -6443,6 +6446,7 @@ void() trigger_setspeed_touch =
 		return;
 
 	SV_TriggerIOTouch(self, other);
+	if (SV_MonolithB4Touch(self, other)) return;
 
 	/*
 	  WHEN it applies.  Momentum's default is the ENTER edge only; OnThink

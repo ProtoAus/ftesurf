@@ -1075,7 +1075,7 @@ float rec_retry_armed;
   that follows -- what the tolerance is, whether a stalled stream is a taint,
   whether the migration is worth its cost -- needs the measurement first.
 */
-.float  run_movetick;            // cumulative mover ticks this map, per player
+// run_movetick: native cumulative mover ticks, declared in sv_monolith.qc (P732).
 .float  run_movecarry;           // sub-tick remainder, seconds
 // BUILD 87, engine Patch 346: what the mover was handed.  Optional fields, written
 // after every move; 0 on an older engine, and run_pmepoch > 0 is how the recorder
@@ -9263,6 +9263,7 @@ void(entity e, string why) SV_TimerForgiveHop =
 
 void(entity e) SV_TimerWarped =
 {
+	SV_MonolithB4Reset(e);
 	e.run_t_lastorg = e.origin;
 	e.rec_sl_loadt = 0;
 
@@ -10945,9 +10946,8 @@ float(entity e) SV_TimerJumpWatch =
 	}
 
 	// Patch 409.  Their only reader is above, so clearing them here makes both
-	// latches exactly one packet wide.  PlayerPostThink returns early under
-	// run_pmhold (sv_player.qc) and so does PreThink, so nothing can set them
-	// during a hold and the slack is one packet after release.
+	// latches exactly one packet wide. P732 also clears them on every packet
+	// end in PlayerPostThink, including held and early-return timer paths.
 	e.run_pushed  = FALSE;
 	e.run_jumpcmd = FALSE;
 

@@ -25,7 +25,11 @@ commit   9ad66320b6865b53d8ee64af7d96096cb3dc8e44
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-729
-patch    731
+patch    732
+# Patch 732: known Momentum Monolith B4 KSF-compatible launch phases, with
+# mover-clock-bounded slope-lift attribution and no older-taint forgiveness.
+# Other pads retain their authored behavior; no global physics, generic VScript,
+# native pin/tag or QC Build change. Scope and evidence: tools/p732monolith.md.
 # Patch 731: top-right version/update status with F2; collapsible picker filters,
 # large/compact previews and optional private Friends sidebar/drawer. Existing
 # P722 account/presence/join protocol is unchanged; tools/p731menu.md records the

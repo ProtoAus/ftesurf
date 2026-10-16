@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+## P732 — Monolith B4 launch compatibility
+
+- Walk out of B4's start into the opposed booster and compare its launch with
+  the supplied KSF clips: the1668→1663 transient and later1662 straight speed,
+  height and distance should feel alike. Try your normal approach/strafe too.
+- A clean walking launch must stay normal/recording. An older bad hopped start
+  must remain practice; a real jump input must not gain a blanket exemption.
+- Recheck Prosurf B4's ordinary bhop into the cut-out booster. Neither disabling
+  `run_starthop` nor a global speed/physics setting is part of this fix.
+
+Automated native-socket/reference, earlier-hop, clock/lifecycle, prefix replay
+and reader checks: `tools/p732monolith.md`. Human feel/route judgement is not
+claimed by those controls. Deployment provenance is recorded separately there.
+
 ## P731 — title/picker layout preference
 
 Both Windows installs are hash-verified on the clean product build; the new
@@ -41,8 +55,9 @@ server-side fix is available on local Windows servers, not yet on the fleet.
   Existing bands baked into textures/video cannot be recovered by the lift.
 
 GPU ramps and real-client screenshots are not human acceptance for your display,
-HDR path, exact colour preference or normal surfing performance. Monolith B4's
-speed discrepancy is **not fixed**; see BACKLOG and `tools/p728mapfix.md`.
+HDR path, exact colour preference or normal surfing performance. Monolith's
+P728 investigation continued into the explicit P732 compatibility fix above;
+the original failed/probing arms remain recorded in `tools/p728mapfix.md`.
 
 ## P723/P724 — map HUD and scoreboard tiers
 

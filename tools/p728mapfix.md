@@ -1,5 +1,11 @@
 # P728 — map appearance, Prosurf B4 and OpenGL shadow lift
 
+**Continuation:** P732 now implements a narrowly guarded, explicitly
+reference-tuned Monolith B4 compatibility policy, including causal slope-lift
+attribution and lifecycle checks. It does not claim recovered KSF plugin/VScript
+internals. See `p732monolith.md`. Historical failed/incomplete P728 arms below
+remain as originally observed, not retroactively relabelled as passes.
+
 ## Delivery state and scope
 
 Implemented, published and **installed in both Windows installs**, with actual

@@ -19,34 +19,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   serverinfo after the header, including the expected challenge, with existing
   status and anti-amplification behavior preserved. Source: `tools/p729mapmedia.md`.
 
-## Monolith B4 — launch still below the supplied KSF reference (P728 investigation)
-
-- `src/server/sv_entities.qc:SV_SetSpeedEnter`, Momentum `surf_monolith` B4
-  `trigger_setspeed` brush `*108`: authored horizontal1662 / vertical398.30.
-  Real dedicated straight launches settle near1643.13 horizontal; the supplied
-  four KSF clips launch/settle around1666–1669 (with short transients). The
-  reference-lane and default-lane physics probes both reproduce the deficit.
-- The operator has now supplied the original CSS BSP under the Steam CSS
-  `cstrike/maps` directory. Do NOT ask for the BSP or the four recordings again.
-  Its collision/geometry lumps match Momentum byte-for-byte, but hammer221083
-  is a `trigger_multiple`: RunScriptCode entry X=-1760/Z=0, exit X=-1638 with
-  Z preserved, versus Momentum's one-shot1662/398.301. Raw CSS-script emulation
-  alone settles at1638, not the KSF reference; the file does not establish the
-  effective KSF server booster sequence. This QC has no RunScriptCode execution.
-- Acting test-only phases using observed reference velocities reproduce the first
-  two dx/dz steps of all four clips within0.001 units and the1668.87/1665.94/
-  1663.01 transient. BUT that fitted control still falsely tags practice/hopped.
-  It is NOT a product fix or proof of server plugin internals. `StrictMode` is
-  also unimplemented; an ad-hoc far-edge relocation does not prove its behavior.
-  Need a causally justified port/KSF-runtime compatibility implementation with
-  correct per-command lift attribution, not a global speed multiplier, guessed
-  StrictMode, fitted state machine passed off as authoring, or taint forgiveness.
-  Neither canonical map library nor any product binary was changed in this check.
-- Closing falsifier: paired same-position/input launches against the supplied
-  clips, including the first two launch ticks and later horizontal plateau,
-  with a control that acts and normal run/evidence classification preserved.
-  Source, snapshots and failed/probing arms: `tools/p728mapfix.md`.
-
 ## Large completion tier stops holding rows at1000 — observed in P727 acceptance
 
 - Site: `src/client/cl_profile.qc`, `PF_CTROWS`, `Profile_TierMore` and completion
