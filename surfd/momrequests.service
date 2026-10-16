@@ -1,0 +1,23 @@
+[Unit]
+Description=Prompt requested Momentum demo imports
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/nvme/surfd
+ExecStart=/usr/bin/python3.11 /srv/nvme/surfd/momgrab.py --requests-only --watch-requests --max 2 --go
+Environment=PYTHONUNBUFFERED=1 PYTHONNOUSERSITE=1
+UnsetEnvironment=PYTHONPATH PYTHONHOME
+UMask=0077
+NoNewPrivileges=true
+Restart=on-failure
+RestartSec=10
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=180
+
+[Install]
+WantedBy=default.target

@@ -25,7 +25,11 @@ commit   9c95128bb53a5513b869a7f5ec9592b18e33e67f
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-738-release
-patch    738
+patch    740
+# Patch 740: enable the bounded sparse KSF demo lane; prompt Momentum requests
+# get a supervised queue-only worker and next-slot priority during background
+# grabs. Existing import validation, lock, CDN pacing and cooldowns remain.
+# Native engine pin, QC Build and lobbies unchanged. See tools/p740demograb.md.
 # Patch 737: mode2 reuses conservative world raster culling before plane ordering;
 # proven invisible backfaces no longer cause cycles and angle-dependent fallback.
 # All3 Kitsune poses+33-angle sweep,4 variants/20 mutants and exact native build

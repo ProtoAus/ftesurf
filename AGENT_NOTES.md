@@ -4001,6 +4001,20 @@ its six-demo budget and existing hash, size, duration, disk, map, time and retry
 checks. Explicit candidates also bind the demo's player. The converter/filing
 path and `/api/replay/N` remain the existing foreign-replay contract.
 
+**P740 prompt worker:** `momgrab.py --requests-only --watch-requests --max 2
+--go` polls the bounded request table every second without scanning the board or
+held-run corpus. New explicit requests are reconsidered between background
+transfers; current transfers and earlier queued users are not preempted. All
+lanes share the existing momgrab lock and persisted transfer pacing/cooldowns.
+The proto **user** unit `momrequests.service` holds a legacy pre-import admission
+lease: explicitly stop it BEFORE any future source-generation close/drain, and
+start it only after OPEN. Background momgrab and minute momjobs fallback use the
+canonical admitted helper (fallback `--requests-only`), not old sealed route
+argv. KSF's canonical admitted watch now includes `--demos`, sharing its existing
+request budget and refusal ledger; sparse availability or an upstream cooldown
+is not permission to clear that ledger. See `tools/p740demograb.md` for measured
+acceptance and limits. Never mutate the old sealed manifest/runtime for flags.
+
 Client requests selected line handles before round-robin polling; closing a
 board cancels watch intent, not a durable job. New picks replace old watch
 intent; a cached replay must not wait behind a queued unavailable old choice.

@@ -43,8 +43,10 @@ import logging
 import os
 import re
 import shutil
+import signal
 import sqlite3
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -514,6 +516,56 @@ def request_picks(done, later, now, zstd):
         conn.close()
 
 
+def requests_due(a, now=None):
+    """Cheap requested-only poll; never scan boards or bypass a cooldown."""
+    now = int(time.time()) if now is None else now
+    lock = take_lock(a.state)
+    if lock is None:
+        return False
+    conn = None
+    try:
+        st = _load(os.path.join(a.state, "state.json"))
+        st = st if isinstance(st, dict) else {}
+        if now < int(st.get("park", {}).get("until") or 0):
+            return False
+        conn = S.connect()
+        rows = conn.execute(
+            "SELECT hash FROM momrequests WHERE requested>=? AND"
+            " (state='queued' OR (state='working' AND updated<?)) ORDER BY requested LIMIT ?",
+            (now - momrequest.TTL, now - 3600, momrequest.CAP)).fetchall()
+        try:
+            import zstandard  # noqa: F401
+            zstd = True
+        except ImportError:
+            zstd = False
+        return any(not waiting(st.get("later", {}), r["hash"], now, zstd) for r in rows)
+    finally:
+        if conn is not None:
+            conn.close()
+        lock.close()
+
+
+def run_once(a, stop=None):
+    lock = take_lock(a.state)
+    if lock is None:
+        if not getattr(a, "watch_requests", False):
+            print("another momgrab holds %s -- not running beside it" % a.state)
+        return 0
+    try:
+        return run(a, stop)
+    finally:
+        lock.close()
+
+
+def serve_requests(a, stop):
+    """One foreground admitted worker; stop only between complete transfers."""
+    while not stop.is_set():
+        if requests_due(a):
+            run_once(a, stop)
+        stop.wait(1.0)
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -526,25 +578,36 @@ def main():
     ap.add_argument("--out", default=S.MOMENTUM_DIR)
     ap.add_argument("--maps", default=S.MAPS_DIR)
     ap.add_argument("--go", action="store_true", help="download and file; else a plan")
+    ap.add_argument("--requests-only", action="store_true", help="requested demos only; no board scan")
+    ap.add_argument("--watch-requests", action="store_true",
+                    help="poll requests once a second; requires --requests-only --go")
     a = ap.parse_args()
+    if a.watch_requests:
+        if not a.requests_only or not a.go or a.max < 1:
+            ap.error("--watch-requests requires --requests-only --go and --max >= 1")
+        a.max = min(a.max, 2)
+        a.delay = max(GRAB_DELAY, a.delay)
+        stop = threading.Event()
+        previous = {s: signal.signal(s, lambda *_: stop.set())
+                    for s in (signal.SIGTERM, signal.SIGINT)}
+        try:
+            return serve_requests(a, stop)
+        finally:
+            for s, handler in previous.items():
+                signal.signal(s, handler)
+    return run_once(a)
 
-    lock = take_lock(a.state)
-    if lock is None:
-        print("another momgrab holds %s -- not running beside it" % a.state)
-        return 0
-    try:
-        return run(a)
-    finally:
-        lock.close()
 
-
-def run(a):
+def run(a, stop=None):
     now = int(time.time())
     sp = os.path.join(a.state, "state.json")
     st = _load(sp)
     st = st if isinstance(st, dict) else {}
     done = st.setdefault("done", {})
     later = st.setdefault("later", {})
+    # Old cron workers did not persist the previous transfer time. Be polite
+    # at that first handoff too rather than immediately spending another slot.
+    st.setdefault("last_request", time.time())
     park = st.setdefault("park", {})
 
     def again(h, why):
@@ -560,14 +623,16 @@ def run(a):
         zstd = True
     except ImportError:
         zstd = False
-    q, read, unread = refresh_queue(a.boards, os.path.join(a.state, "queue.json"),
-                                    a.top, QUEUE_FILES)
-    held = held_runs()
-    prio = wanted_maps(now)
+    q, read, unread, prio = {"boards": {}}, 0, 0, set()
     explicit = request_picks(done, later, now, zstd) if a.go else []
+    automatic = []
+    if not getattr(a, "requests_only", False):
+        q, read, unread = refresh_queue(a.boards, os.path.join(a.state, "queue.json"),
+                                       a.top, QUEUE_FILES)
+        prio = wanted_maps(now)
+        automatic = pick(q, done, later, held_runs(), prio, max(0, a.max), now, zstd)
     hashes = {c[3] for c in explicit}
-    automatic = pick(q, done, later, held, prio, max(0, a.max), now, zstd)
-    todo = (explicit + [c for c in automatic if c[3] not in hashes])[:max(0, a.max)]
+    todo = explicit + [c for c in automatic if c[3] not in hashes]
     print("queue: %d board(s) (%d read this tick, %d not yet); %d settled, %d waiting;"
           " %d wanted map(s); %d to take"
           % (len(q["boards"]), read, unread, len(done), len(later),
@@ -593,13 +658,34 @@ def run(a):
     tally, asked, filed, linked, cur = {}, 0, 0, 0, None
     conn = S.connect()
     try:
-        for _, place, f, h, sid, ms, b in todo:
+        attempted = set()
+        while len(attempted) < max(0, a.max):
+            if stop is not None and stop.is_set():
+                break
+            now = int(time.time())
+            # A click arriving during a background batch takes its next slot.
+            explicit = request_picks(done, later, now, zstd)
+            seen = set(attempted)
+            todo = [c for c in explicit + todo
+                    if not (c[3] in seen or seen.add(c[3]))]
+            if not todo:
+                break
+            _, place, f, h, sid, ms, b = todo.pop(0)
+            attempted.add(h)
             cur = h
-            momrequest.set_state(conn, h, "working", "downloading or converting", now)
             dest = os.path.join(a.demos, h[:2], h + ".mtv")
-            if not os.path.exists(dest):
-                if asked:
-                    time.sleep(a.delay)
+            fetch = not os.path.exists(dest)
+            if fetch:
+                # Persist pacing across cron/request worker handoffs too.
+                pause = min(a.delay, a.delay - (time.time() - float(st.get("last_request") or 0)))
+                if pause > 0:
+                    time.sleep(pause)
+            if stop is not None and stop.is_set():
+                break
+            momrequest.set_state(conn, h, "working", "downloading or converting", now)
+            if fetch:
+                st["last_request"] = time.time()
+                _save(sp, st)
                 asked += 1
                 try:
                     got = download(h, dest)
