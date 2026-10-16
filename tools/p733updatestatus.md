@@ -58,6 +58,34 @@ Native-rendered product menu: rig/build-nodeploy-ae9c668368c04bafabf00c280158a15
   proof. Initial incorrect font-slot name failed compile and was corrected to
   existing ui_font_ui before the final zero-warning build.
 
-Remaining: inspected commits, clean-commit build/destination provenance and
-menu-only dual-install delivery. qwprogs and csprogs should remain byte-identical
-to P731, so this client-local menu change needs no lobby deployment/restart.
+## Clean build and delivery — 2026-10-16 UTC
+
+Inspected product `8a8b605bdf1e31dba442710c0ce75a4a171feb7d` and engine notes
+`93255c77848a49fd516295e09f34c960450e5ca4` were pushed by exact SHA. The clean
+product-commit NoDeploy build has zero warnings and all three hashes equal the
+native-tested subject. qwprogs/csprogs are byte-identical to P731; no fleet swap,
+backend migration, CSQC deployment, engine build or process restart is needed.
+
+At03:29:36Z, only menu.dat/menu.lno were staged and destination-hash verified in
+BOTH Windows installs. Known predecessor menus were checked before any write;
+each previous version is retained as .prev. Current server/client progs were
+hash-checked unchanged. Both installed client executables have the SAME hash
+as the engine used for native key controls. The owner's saved configuration
+was read narrowly to identify the stale bind, never edited or saved by a rig.
+Reload the menu (`menu_restart`) or restart the client to run its initialization
+and repair that binding in memory. No owner process was controlled.
+
+New menu SHA-256:
+`ae77a2c2183e18299db126110ecf656aca8dcd654be520f43b8c80b5e850cbfa`.
+Provenance: corner-windows-delivery.json and build-corner-clean.log in the owned
+root. Final clean products: artifacts/update-corner-clean-build. Ignored compiler,
+intermediate builds and caches were compressed with member-by-member hash
+readback before retiring their disposable copies:
+artifacts/update-corner-build-controls.zip / retained-corner-builds.json.
+All16 new marker-owned runtime copies retired their assets/executable/menu;
+configs, source-only status fixtures, logs and PNGs remain. No owned game process
+remains. The published-clean engine-doc worktree is unregistered and empty, but
+Windows denies removing its empty directory; retain exactly
+C:/FTESurf-worktrees/menu-20261016T015008Z/engine-doc until its handle is released.
+No lock was bypassed and no unrelated process was killed. Clean QC source and
+bounded evidence are deliberately retained for the continuing UI/Friends work.
