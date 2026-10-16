@@ -1,5 +1,25 @@
 # lextest.md — things waiting on a human
 
+## P742 — farther-right Kitsune eye spans: ready in normal clients
+
+Both normal Windows clients hash-verified at2026-10-16T16:37:40Z; clean source
+`c75d7a5ea2b28af748001c7ba2bebe9c103618da`, tag742, native stamp
+`git-7333-patch-742-0-gc75d7a5ea`. P739's working annotation fix remains.
+The residual live15-world-command/4-admission/status-3 frame now has an exact
+actual-C replay; mode2 handles planar eye spans and proves empty clipped
+backfaces without changing GPU clipping/depth. All4 visible ramp contributors
+remain in order at new slots4/5 and the traced camera in that replay.
+
+Launch normally, `r_blendsort 2`, zones ON. Try saves4/5 and keep turning farther
+right. **Owner confirms that stage3 section is fixed.** New stage1 saves5/6
+still flip (screenshots163/164): all12 planes admitted, status-2,48 edges,
+546 work. General graph/ambiguous-pair ordering remains OPEN, not another
+near-plane issue. No more giant dumps; not full-feature acceptance.
+Build/control success is not owner pixel acceptance. P741 work is included;
+its current DLL/server files were left untouched. No saves/config/progs ship.
+Exact source/new and .prev hashes, predecessor-change guard, controls/limits:
+`tools/p742eyespan.md`.
+
 ## P741 — Friends before a map: pending live activation, not ready to accept yet
 
 Local real-service/native controls pass, including the disconnected list and
@@ -16,7 +36,11 @@ report is sufficient for that observed case. You need only link Steam once via
 the existing lobby flow; opening the list itself must not need a map. Do not
 record this as passed before the genuine account/service check. Verdict PENDING.
 
-## P739 — live wire-annotation barrier: ready in normal clients
+## P739 — historical partial success; farther-right follow-up P742
+
+Owner says much better and most flipping is fixed, but new slots4/5 still
+switch farther right. That is NOT all-angle acceptance. P742 above is the
+current candidate; the following is P739's historical delivery record.
 
 Both normal Windows clients received clean feature/tag
 `87df379ec1989302b037acfe4f49b659eae1be84` / `patch-739` at

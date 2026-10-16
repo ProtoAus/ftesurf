@@ -24,25 +24,21 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   must not reveal presence, and Hide/privacy-off must stop new work. Record owner
   wording/layout acceptance in `lextest.md`; remove after actual live activation.
 
-## Mode2 Kitsune live annotation-barrier fix awaiting acceptance (P739)
+## Mode2 Kitsune general ambiguous-pair graph cycle after P742
 
-- Site: engine `gl/gl_backend.c:GLBE_BlendForeground` / mode2 plane ordering.
-  The actual live GL frame has375 commands/7 planes/status-3: stock CSQC wire
-  annotations interleave and veto the correction. P739 keeps those recognized
-  annotations in the legacy post-world layer; both normal clients are updated.
-  Owner angular acceptance is still PENDING; do not remove this issue yet.
-- Falsifier: capture an actually failing live angle/motion, reproduce the
-  switching in the active renderer, and retain correct pixel/layer behavior
-  through that transition and adjacent angles. The33-view portable straight
-  sweep passes but does not falsify the reported real failure. Preserve all
-  visible panes and conservative unsupported paths; no more centroid tuning
-  or passing-saved-pose substitution.
-- The one-line procedural regression ACTED red before the layer fix, passes
-  afterward with once-only annotation retention, and its removal mutant acts.
-  P739 native build has0 new warnings; both normal client hashes verified while
-  unchanged ABI/modules/data remain intact. With zones ON, test the actual bad
-  turn; a portable pass alone is not acceptance. Scope/evidence/limits:
-  `tools/p739annotations.md`. Remove only on owner/native acceptance.
+- Site: engine `gl/gl_backend.c:GLBE_BlendPlaneSort`. Owner confirms P742
+  fixes the stage3 section, but stage1 new saves5/6 still flip (163/164).
+  All12 admitted/status-2/48 edges/546 work: a graph cycle, not another span
+  rejection. Unproved centre-order edges can contradict geometric constraints;
+  investigate general clipped-overlap depth comparison, not new exemptions.
+- Both normal clients now have clean742; default0/1 behavior, GPU clipping/depth,
+  current P741 server/DLLs and player data remain intact. All4 ramp contributors
+  retained in order by the39-view replay, independent positive-w clipped-area
+  reference,4 variants/23 acted mutants and native0-new-warning build.
+- Falsifier: mode2, zones ON, stage1 new pair/transition PLUS retained stage3
+  fixes, no switching or missing surfaces/lines. Overall verdict still OPEN;
+  do not substitute the host test or section-specific success. Scope/native
+  hashes/rollback/limits: `tools/p742eyespan.md`; human: `lextest.md`.
 
 ## Save-marker source-removal fixture can be completed by its manual think (P735)
 
