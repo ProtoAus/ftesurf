@@ -14,7 +14,9 @@
 
 Automated native-socket/reference, earlier-hop, clock/lifecycle, prefix replay
 and reader checks: `tools/p732monolith.md`. Human feel/route judgement is not
-claimed by those controls. Deployment provenance is recorded separately there.
+claimed by those controls. Published and hash-verified in both Windows installs
+and all12 development lobbies on2026-10-16; a fresh live client downloaded exact
+CSQC and drew the board without QC errors. Full receipt is recorded there.
 
 ## P733 — update corner follow-up
 
@@ -42,9 +44,11 @@ CSQC is also served by all12 development lobbies. Delivery and limits:
 
 Both Windows installs received the full clean build at2026-10-15T17:05:09Z;
 installed-executable/dedicated-client controls passed (`tools/p728mapfix.md`).
-The NanoPi has NOT received P728: its lobby directory is empty and the read-only
-SSH census is unavailable, so no safe fleet-deployment gate passed. Prosurf's
-server-side fix is available on local Windows servers, not yet on the fleet.
+That phase's fleet gate was blocked at the time. It is now superseded by the
+P732 guarded rollout on2026-10-16: the published descendant SSQC/CSQC hashes are
+verified live for all12 lobbies, so Prosurf's server-side fix is on the fleet too.
+Client-native appearance controls remain a Windows-client feature; this did not
+replace the Pi's native binary. See `tools/p732monolith.md` for the live receipt.
 
 - Prosurf B4: try the normal bhop into its cut-out booster. The run should remain
   ranked/recording; an earlier bad hopped start must still require an explicit

@@ -143,8 +143,9 @@ first corrections `qc/rig/build-nodeploy-4c92e81be77d4d16827bf4524baab528/`;
 final subtick correction `qc/rig/build-nodeploy-38be7ddb9ef0424c97065f53152ed51e/`.
 Final SSQC SHA256 `b5ed555d980b37e13137ed0bd70acc50b5740f8d4e18e2d7047777de59c8602b`;
 CSQC stays P731, menu preserves the subsequently published P733 bytes. The
-highest metadata patch remains733; the reserved feature entry is732. No native
-pin/tag or QC Build change. No test symbols in product VMs. Clean final-product
+highest metadata patch is734 after preserving the later published diagnostic
+change and its pin/tag; the reserved feature entry remains732. This QC feature
+itself does not move the native pin/tag or QC Build. No test symbols in product VMs. Clean final-product
 normal/batch/retained-hop/Prosurf controls and306/0 reader/stable corpus pass.
 Both canonical installs' inspected VM/native/plugin hashes are unchanged by
 isolated builds. LSP does not parse QuakeC; the compiler is the code gate.
@@ -153,7 +154,47 @@ compile failed during fixture preparation; neither was a product/runtime pass.
 
 ## Delivery
 
-Product build, independent review, source publication, dual Windows delivery
-and guarded Pi delivery are separate gates. Deployment receipts are appended
-only after their actual hashes/restarts/live checks. Human route/feel and other
-approaches remain in `lextest.md`; no release/archive was requested or produced.
+Published QC `7409397b577a9b891604666e728ad5784583f16b` and engine history
+`4dded7ad5a0fcaa79e4eff66072729d33aed3d6c` at2026-10-16T04:28:58Z. Final
+eligibility/evidence re-reviews found no remaining source blocker. Published
+P733 menu and P734 opt-in native diagnostics are preserved; no uncommitted peer
+source was built or shipped. The merged three VMs are byte-identical to the
+reviewed/tested build.
+
+Dual Windows VM verification:2026-10-16T04:29:59Z. Both installs now have:
+
+| Program | SHA256 |
+| --- | --- |
+| qwprogs.dat | `b5ed555d980b37e13137ed0bd70acc50b5740f8d4e18e2d7047777de59c8602b` |
+| csprogs.dat | `8384005ca399a546d284c4116a282a2b46e9e74273428a4176903b778961a412` |
+| menu.dat | `ae77a2c2183e18299db126110ecf656aca8dcd654be520f43b8c80b5e850cbfa` |
+
+Only SSQC differed and was replaced, retaining hash-verified predecessors in the
+owned rollback staging. Existing matching CSQC/menu were not rewritten. Native
+P734 executables/plugins, owner configs and player files were not deployment
+targets; no owner process was killed or restarted.
+
+Fleet: the actual clean-tree `pwsh -NoProfile -File ./build.ps1 -Jobs 8 -Pi`
+passed its fresh12-unit census and12 directory rows with0 players. No Force or
+guessed roster. Both uploads and live swaps hash-match the table; ordinary
+`.prev` retained. All12 restarts succeeded. Independent host readback at
+2026-10-16T04:35:02Z proves12 distinct active PIDs, all started after publication,
+all using the common game directory, and all mapped native EXE hashes equal
+the unchanged ARM native file. Prior SSQC `.prev` is
+`40091ed25d14c09632bd3d6223883e4f9a20789d06cbddbe1621121571e62f1a`;
+CSQC `.prev` matches the unchanged CSQC above. No native/config/backend/menu
+fleet deployment was performed.
+
+Existing `tools/pi_lobby_smoke.py` then connected a fresh unseeded client to a
+real lobby. The downloaded `c0b8f1f4.dat` hashes to the exact CSQC above; the
+board draws8cols/type14, the cfg completes, client exits0 and no QC error is
+logged. Screenshot inspected. This proves served client code and live drawing,
+not a community submission or fleet B4 timing measurement. No terms were
+accepted. Local actual-native Monolith/Prosurf controls are the movement proof.
+
+A preliminary read-only snapshot failed before the entrypoint ran; it was not
+feature progress or a deployment attempt. The supported guarded entrypoint
+passed without infrastructure changes. Product build, review, publication,
+installation and live verification are separate evidence recorded above.
+Human route/feel and other approaches remain in `lextest.md`; no public
+release/archive was requested or produced.
