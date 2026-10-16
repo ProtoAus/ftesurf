@@ -31,11 +31,14 @@ pending state. Existing `SV_RecWarp("speed")` records authoritative changes.
 
 The known ramp's next moving command may inherit the force's causal lift through
 existing `run_pushed`/`run_pushlift`. Zero-tick commands do not spend it. Once the
-mover advances, later commands cannot inherit it. Jump input cancels a pending
-contact without replacing its real vertical rise: preserving the latch alone is
+mover advances, later commands cannot inherit it. Executed jump input cancels a
+pending contact without replacing its real vertical rise: preserving the latch alone is
 not enough because JumpWatch first needs a velocity edge. There is no blanket
 start-rule disable and no older hopped/dirty clear. Actual placements reset the
 profile; ghost swept-zone/padding restamps do not move the body and preserve it.
+The command's starting native tick and prior packet latch distinguish a zero-tick
+pulse from executed input. Only a newly latched, unexecuted pulse is removed;
+older executed input survives and a consumed latch is never raised again.
 `PlayerPostThink` now retires pushed/jumpcmd on normal, timer-early-return and
 held packet exits, in addition to the existing jump-watch clear.
 
@@ -60,15 +63,19 @@ or index was used. QC-only: retain native P729 pin/tag and qcbuild89.
 - Real earlier held-hop control establishes hopped1; the later acting booster
   still reaches1662 but remains practice/hopped1. This is not taint forgiveness.
 - Prosurf B4 regression:2275, normal/recording1, hopped0, dirty0.
-- Actual-source QC fixture:50 predicates covering exact/negative guards,
+- Actual-source QC fixture:60 predicates covering exact/negative guards,
   independent players, duplicate/zero-tick contacts, physical-progress expiry,
   the actual JumpWatch outer velocity gate and fresh taint, generated-rise clean
   control, older taints, warp/hold/side/timeout/invalid cleanup, real ghost frame/
   exit, re-entry and command-before-physics exit finalization. A one-line exit
   mutant gives43pass/1fail against the initial44 checks. Independent review then
   found two missing cases: the strengthened50-check fixture gives45pass/5fail
-  against the exact pre-fix source and50pass/0fail after correction. These are
-  actual-QC VM calls, not a translated Python model or only an inner predicate.
+  against the exact pre-fix source and50pass/0fail after correction. Follow-up
+  review caught cancellation by a zero-tick input pulse. The60-check fixture
+  rejects that source54/6 (same/separate-packet pulse arms) and passes the final
+  correction60/0. It checks older executed input, consumed-latch non-revival and
+  a pulse held into a real tick too. These are actual-QC VM calls, not a
+  translated Python model or only an inner predicate.
 - Three real-client packet cases seed all latches and wait for `run_pkn` to
   advance: normal, no-zone early return and native held command all act/clean.
 - Existing prefix serializer's nonlive control returns0; a naturally started
@@ -99,7 +106,7 @@ first-two-tick/endpoint checks alone did not prove command-scoped exit timing.
 production manifest. In an owned rig, compile a copy of `sv_progs.src` with a
 separate output plus this fixture appended; add `p732_unit` and
 `p732_packet_probe` entities to a disposable external ENT. Fresh native socket
-startup prints the50 predicates. Server `p732_case 1/2/3` exercises packet exits;
+startup prints the60 predicates. Server `p732_case 1/2/3` exercises packet exits;
 4 writes `data/p732-evidence/run.rec` using the existing prefix serializer (create
 that owned output directory first). Do not use this on a live lobby/player tree.
 
@@ -115,6 +122,15 @@ or deployment. The fixture now invokes actual JumpWatch on separate clean arms,
 actual ghost TimerFrame and GhostSet(false), with an acted rejecting old-source
 control. Actual placements still clear state. Private review reports remain
 private; technical scope is recorded here rather than exporting raw reports.
+Follow-up review identified an unsnapped-pacing edge: no native tick means no
+executed jump. The correction preserves pending state and removes only that
+command's newly introduced input bit, on contact/next-command/packet completion.
+It preserves prior executed input and cannot resurrect a bit consumed at packet
+end. Both packet arrangements now call the actual detector in the fixture.
+The first new-subject fixture run failed five older assertions because its
+simulated moving command advanced the native counter BEFORE PreThink. Correcting
+that fixture order to the actual engine order yields the paired54/6 and60/0.
+That failed fixture run is retained, not reported as a product pass.
 
 Native key probes reached later active phases; an exact phase1 key timing was
 not captured at the tested command granularity. It is NOT claimed as the real-
@@ -123,9 +139,13 @@ input phase1 falsifier: the actual-QC detector/control above supplies that case.
 Product build: `pwsh -NoProfile -Command "./build.ps1 -Jobs 8 -NoDeploy"`
 from the owned `qc/src` compiles all three production manifests with0 warnings.
 Initial output `qc/rig/build-nodeploy-c6a974719efa46808d6e6903df4a3c42/`;
-corrected final output `qc/rig/build-nodeploy-4c92e81be77d4d16827bf4524baab528/`.
-Final SSQC SHA256 `eaabe85275f3eed09cccd9125ddb3d256961b6ac10a52e18ab0bece6ce4d5862`;
-CSQC/menu stay the published P731 bytes. No test symbols in product VMs.
+first corrections `qc/rig/build-nodeploy-4c92e81be77d4d16827bf4524baab528/`;
+final subtick correction `qc/rig/build-nodeploy-38be7ddb9ef0424c97065f53152ed51e/`.
+Final SSQC SHA256 `b5ed555d980b37e13137ed0bd70acc50b5740f8d4e18e2d7047777de59c8602b`;
+CSQC stays P731, menu preserves the subsequently published P733 bytes. The
+highest metadata patch remains733; the reserved feature entry is732. No native
+pin/tag or QC Build change. No test symbols in product VMs. Clean final-product
+normal/batch/retained-hop/Prosurf controls and306/0 reader/stable corpus pass.
 Both canonical installs' inspected VM/native/plugin hashes are unchanged by
 isolated builds. LSP does not parse QuakeC; the compiler is the code gate.
 A missing relative include in a copied baseline and an escaped-newline observer

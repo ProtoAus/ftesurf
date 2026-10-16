@@ -37,6 +37,25 @@ void(entity e) P732_ArmDetector =
 	e.run_rampcontact = 0; e.run_st_bcseen = e.run_boardcount;
 	e.run_bhop_launch_zone = e.run_bhop_launch_denied = 0;
 };
+void(entity pad, entity e, float split) P732_ZeroPulse =
+{
+	local string tag;
+	if (split) tag = "separate-packet"; else tag = "same-packet";
+	P732_Player(e); e.run_t_hopped = e.run_t_dirty = 0;
+	SV_MonolithB4Touch(pad,e); SV_MonolithB4Command(e);
+	e.button2 = e.run_jumpcmd = 1; // new input, but no native mover progress
+	SV_MonolithB4Touch(pad,e);
+	P732_Check(strcat(tag, " zero-tick pulse keeps phase without new input latch"), (e.run_mono_phase == 1 && !e.run_jumpcmd && e.velocity == '-1662 0 0'));
+	SV_MonolithB4Frame(e);
+	if (split) e.run_pushed = e.run_jumpcmd = 0; // actual packet-end lifetime
+	e.button2 = 0; SV_MonolithB4Command(e);
+	e.run_movetick = 1; e.flags = 0; e.origin = '-11016 -5454 15942'; e.velocity = '-1562 0 375';
+	SV_MonolithB4Touch(pad,e);
+	P732_Check(strcat(tag, " jump-free physical move still reapplies"), (e.run_mono_phase == 2 && !e.run_jumpcmd && e.velocity == '-1784 0 0'));
+	SV_MonolithB4Command(e); e.run_movetick = 2; e.velocity = '-1668.867 0 429';
+	P732_ArmDetector(e); SV_TimerJumpWatch(e);
+	P732_Check(strcat(tag, " actual detector keeps generated rise clean"), (e.run_t_jumps == 1 && !e.run_t_hopped && !e.run_t_dirty));
+};
 void() P732_Units =
 {
 	local entity p, e, b, saved;
@@ -53,8 +72,8 @@ void() P732_Units =
 	P732_Check("two players independent", (b.run_mono_phase == 1 && e.run_mono_phase == 1));
 	SV_MonolithB4Command(e); SV_MonolithB4Touch(p,e);
 	P732_Check("zero-tick command cannot reapply", (e.run_mono_phase == 1 && e.velocity == '-1662 0 0'));
-	e.run_movetick = e.run_movetick + 1;
-	SV_MonolithB4Command(e); e.flags = 0; e.origin = '-11016 -5454 15942'; e.velocity = '-1562 0 375';
+	SV_MonolithB4Command(e); e.run_movetick = e.run_movetick + 1;
+	e.flags = 0; e.origin = '-11016 -5454 15942'; e.velocity = '-1562 0 375';
 	SV_MonolithB4Touch(p,e);
 	P732_Check("one next-contact reapplication", (e.run_mono_phase == 2 && e.velocity == '-1784 0 0'));
 	P732_Check("other player not advanced", b.run_mono_phase == 1);
@@ -113,6 +132,24 @@ void() P732_Units =
 	SV_MonolithB4Command(e); e.run_movetick = 2; e.velocity = '-1668.867 0 429';
 	P732_ArmDetector(e); SV_TimerJumpWatch(e);
 	P732_Check("actual detector sees generated rise but keeps clean arm", (e.run_t_jumps == 1 && !e.run_t_hopped && !e.run_t_dirty));
+	P732_ZeroPulse(p,e,TRUE); P732_ZeroPulse(p,e,FALSE);
+	// An older EXECUTED input survives a following zero-tick command.
+	P732_Player(e); SV_MonolithB4Touch(p,e);
+	e.run_movetick = 1; e.flags = 0; e.origin = '-11016 -5454 15942';
+	e.velocity = '-1562 0 301'; e.run_jumpcmd = 1; SV_MonolithB4Command(e);
+	e.button2 = 0; SV_MonolithB4Touch(p,e);
+	P732_Check("zero-tick cleanup preserves older executed input and rise", (e.run_jumpcmd && e.velocity == '-1562 0 301'));
+	P732_ArmDetector(e); SV_TimerJumpWatch(e);
+	P732_Check("older executed input still earns NEW detector taint", (e.run_t_jumps == 1 && e.run_t_hopped));
+	SV_MonolithB4Command(e);
+	P732_Check("consumed packet input is never resurrected", !e.run_jumpcmd);
+	// A pulse HELD into an actual tick is not an unexecuted input.
+	P732_Player(e); SV_MonolithB4Touch(p,e); SV_MonolithB4Command(e);
+	e.button2 = e.run_jumpcmd = 1; SV_MonolithB4Touch(p,e);
+	SV_MonolithB4Command(e); e.run_jumpcmd = 1; e.run_movetick = 1;
+	e.flags = 0; e.origin = '-11016 -5454 15942'; e.velocity = '-1562 0 301';
+	SV_MonolithB4Touch(p,e); P732_ArmDetector(e); SV_TimerJumpWatch(e);
+	P732_Check("input held through a real tick preserves rise and detector taint", (!e.run_mono_phase && e.velocity == '-1562 0 301' && e.run_t_jumps == 1 && e.run_t_hopped));
 
 	P732_Player(e); SV_MonolithB4Touch(p,e); e.origin_y = -4800; v = e.velocity; SV_MonolithB4Frame(e);
 	P732_Check("side exit clears without injecting speed", (!e.run_mono_phase && e.velocity == v));

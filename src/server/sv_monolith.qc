@@ -10,6 +10,8 @@
 .float run_mono_phase;
 .float run_mono_deadline;
 .float run_mono_tick;
+.float run_mono_cmdtick;
+.float run_mono_jumpbefore;
 .vector run_mono_preorg;
 
 void(entity e) SV_MonolithB4Frame;
@@ -19,6 +21,16 @@ void(entity e) SV_MonolithB4Reset =
 	e.run_mono_pad = world;
 	e.run_mono_phase = e.run_mono_deadline = 0;
 	e.run_mono_tick = -1;
+	e.run_mono_cmdtick = e.run_movetick;
+	e.run_mono_jumpbefore = e.run_jumpcmd;
+};
+
+// Drop only this zero-tick command's new latch; never raise a consumed latch.
+void(entity e) SV_MonolithB4InputEnd =
+{
+	if (!e.run_mono_phase) return;
+	if (e.run_movetick != e.run_mono_cmdtick) return;
+	if (!e.run_mono_jumpbefore) e.run_jumpcmd = FALSE;
 };
 
 float(entity pad) SV_MonolithB4Pad =
@@ -36,7 +48,10 @@ float(entity pad) SV_MonolithB4Pad =
 
 void(entity e) SV_MonolithB4Command =
 {
+	SV_MonolithB4InputEnd(e);
 	e.run_mono_preorg = e.origin;
+	e.run_mono_cmdtick = e.run_movetick;
+	e.run_mono_jumpbefore = e.run_jumpcmd;
 	if (!e.run_mono_phase) return;
 	if (!e.run_mono_pad || e.movetype != MOVETYPE_WALK || time > e.run_mono_deadline)
 	{
@@ -84,6 +99,8 @@ float(entity pad, entity e) SV_MonolithB4Touch =
 	else
 	{
 		pad.vbsp_ss_stamp = time;
+		SV_MonolithB4InputEnd(e);
+		if (e.run_movetick == e.run_mono_cmdtick) return TRUE;
 		// Do not erase a real rise before JumpWatch's velocity-edge gate.
 		// Consume this contact: legacy fallback must not replace it either.
 		if (e.run_jumpcmd || e.button2)
@@ -113,6 +130,7 @@ void(entity e) SV_MonolithB4Frame =
 	local entity pad;
 	local vector vel;
 	if (!e.run_mono_phase) return;
+	SV_MonolithB4InputEnd(e);
 	pad = e.run_mono_pad;
 	if (!pad) { SV_MonolithB4Reset(e); return; }
 	if (!SV_MonolithB4Pad(pad) || e.movetype != MOVETYPE_WALK || time > e.run_mono_deadline)

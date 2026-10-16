@@ -20,6 +20,13 @@
   TimerRestamp bookkeeping from actual-placement profile reset; ghost body phases
   must survive. The strengthened50-case exact-QC fixture rejects old source45/5
   and passes corrected source50/0, including actual ghost frame/exit calls.
+- Follow-up: input on a zero-mover-tick command must not cancel attribution.
+  Snapshot clock/prior latch before capture; remove only newly introduced input
+  if no tick ran, preserve older executed input, never raise a consumed latch.
+  Contact, next command and packet completion close that interval. Same/separate
+  packet pulse arms plus older/held/consumed controls grow the fixture to60:
+  before54/6, corrected60/0. Fake movement must advance the clock AFTER PreThink;
+  the first subject's reversed fake order failed five checks and is retained.
 - Prediction baseline and subject both show1–2u entry seams and occasional one-
   tick seams (~25u). Test warp corrections are not booster errors. StrictMode's
   diagnostic is not a claim that its conditions are mirrored. No new mirror.
