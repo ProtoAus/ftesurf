@@ -88,12 +88,43 @@ controller must accept the complete schema20 runtime and preserved data, then
 install/check the two public proxy locations and run genuine-account checks.
 
 The native feature commit `23cbdc9a77dd04edbe6097bcfca817e6ce8ed5a9`
-and annotated `patch-741` are published. The QC/menu/service source is the
-feature commit containing this document. At source publication, neither normal
+and annotated `patch-741` are published. The QC/menu/service feature commit is
+`08da1917cc5bd82cfca9d5d90a1a9e150e393328`, also pushed. At source publication, neither normal
 Windows installation nor the live backend has been changed by this task. The
 primary normal client was running at the installation gate; no owner's process
 was stopped. Exact clean-commit staging and any later destination verification
 will be recorded as a separate delivery update rather than implied by this build.
+
+### Clean-commit staging — 2026-10-16T16:19:17Z
+
+A full isolated `-Engine -Full -NoDeploy -Jobs 8` rebuild from those clean source
+commits explicitly supplied the worktree revision/date, then regenerated clangdb.
+The native executable reports `git-7361-patch-741-0-g23cbdc9a7`; it is not the
+unstamped initial worktree binary. All three QC programs report zero warnings.
+The actual stamped executable passes the corrected native acceptance again,
+including visible disconnected AND connected Friends screenshots.
+
+An immutable local stage holds the matched seven native files and three progs,
+with SHA256 manifest and copied-file equality checks. Client SHA256:
+`4e01424eb032f2afc09bfb4161badd341248833c2fb1959033f747d319a2bbb6`.
+Production menu.dat SHA256:
+`1703f73dc2cb796dc980f3e2700405b62a57041d5a5d9d84c5efabd625908b0a`.
+Native DLL import sets match both installed clients; engine header/plugin source
+is unchanged from the installed P739 baseline. These are compatibility/staging
+checks, NOT destination deployment hashes.
+
+The existing deployer's `-PlanOnly` from the exact QC feature commit also passes
+and yields the dependency-closed12-file backend candidate, retained from Git
+archive. No SSH, remote scratch, DB backup, app import, signal, reload, migration,
+nginx install or source replacement was performed. That plan is not the separate
+full-runtime/configuration/schema20 acceptance required by the live controller.
+
+Both normal Windows installs remain untouched by this task. The paired install
+is held because the primary normal client is running; no process was stopped,
+and a partial dual-install update is not presented as deployment. Payload,
+preimage observations, failed attempts and native/review evidence are retained
+privately with ownership/retention notes for the pending delivery. Owner live
+acceptance is still PENDING as listed in `lextest.md`.
 
 Repeated explicit `menu_restart` can still leave prior native HTTP transports
 outstanding, as with existing URI users; this patch does not provide process-wide
