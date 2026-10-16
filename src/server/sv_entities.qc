@@ -809,34 +809,6 @@ void(entity p) SV_TouchForget =
 	}
 };
 
-// Patch 735: a restored body did not walk out of its abandoned trigger set.
-// Forget only occupancy, not trigger_once consumption or multiplayer cooldowns.
-void(entity p) SV_TouchRelocate =
-{
-	local entity e;
-	local int bit;
-	local float n;
-
-	n = num_for_edict(p) - 1;
-	bit = 0;
-	if (n >= 0 && n < 32)
-		bit = (int)1 << (int)n;
-	for (e = nextent(world); e; e = nextent(e))
-	{
-		if (bit)
-		{
-			e.vbsp_touch_in = e.vbsp_touch_in & ~bit;
-			e.vbsp_touch_seen = e.vbsp_touch_seen & ~bit;
-			e.vbsp_touch_out = e.vbsp_touch_out & ~bit;
-		}
-		if (e.vbsp_touch_who == p)
-		{
-			e.vbsp_touch_who = world;
-			e.vbsp_touch_when = 0;
-		}
-	}
-};
-
 // On a PLAYER.  ModifySpeed's multiplier, applied in PlayerPreThink; and the
 // func_bhop dwell state, driven from PlayerPostThink.  Declared here because
 // sv_entities.qc is the first file in sv_progs.src and sv_player.qc reads them.
@@ -3819,6 +3791,44 @@ void() SV_TriggerEndThink =
 		self.nextthink = time + 0.02;
 	else
 		self.nextthink = 0;
+};
+
+// Patch 735: finish abandoned exits BEFORE restoring the saved progress name.
+// Dropping all exits would also lose non-name cleanup (e.g. gravity resets).
+void(entity p) SV_TouchRelocate =
+{
+	local entity e, nx;
+	local int bit;
+	local float n, occupied;
+
+	n = num_for_edict(p) - 1;
+	bit = 0;
+	if (n >= 0 && n < 32)
+		bit = (int)1 << (int)n;
+	for (e = nextent(world); e; e = nx)
+	{
+		nx = nextent(e); // an exit output may remove its source
+		occupied = (e.vbsp_touch_who == p);
+		if (bit)
+		{
+			if ((e.vbsp_touch_in | e.vbsp_touch_seen) & bit)
+				occupied = TRUE;
+			e.vbsp_touch_in = e.vbsp_touch_in & ~bit;
+			e.vbsp_touch_seen = e.vbsp_touch_seen & ~bit;
+			e.vbsp_touch_out = e.vbsp_touch_out & ~bit;
+		}
+		if (e.vbsp_touch_who == p)
+		{
+			e.vbsp_touch_who = world;
+			e.vbsp_touch_when = 0;
+		}
+		if (occupied)
+		{
+			SV_FireOutput(e, "OnEndTouch", p);
+			if (!e.vbsp_touch_in && !e.vbsp_touch_seen && !e.vbsp_touch_who)
+				SV_FireOutput(e, "OnEndTouchAll", p);
+		}
+	}
 };
 
 void(entity trig, entity act) SV_TriggerIOTouch =

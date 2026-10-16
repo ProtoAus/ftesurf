@@ -15,10 +15,12 @@ the buffer. A captured-empty sentinel distinguishes empty from unavailable.
 Unsampled replay positions cannot supply historical progress and do not borrow
 the current player's name.
 
-Restoration silently forgets the player's old trigger occupancy, preventing an
-abandoned `OnEndTouch` from immediately renaming them again. It does not erase
-trigger-once consumption, shared cooldowns, another player's occupancy, or map
-filters. Genuine new touches continue to update map progress normally.
+Restoration finishes the loading player's abandoned trigger exits BEFORE
+assigning the saved marker. This retains non-name cleanup such as gravity
+resets, while the final assignment replaces any abandoned progress rename.
+OnEndTouchAll fires only when no peer occupancy remains. Trigger-once
+consumption, shared cooldowns, peer state and map filters are not erased.
+Genuine new touches continue to update map progress normally.
 
 Legacy files without this key remain readable and keep their prior behavior;
 the missing historical marker cannot be reconstructed reliably. Re-create old
@@ -42,17 +44,25 @@ python tools/test_savemarker.py --out <owned-root>/subject --run --progs <NoDepl
 
 - Actual dedicated socket, real connected actor, walking out of the start,
   running recorder and warm ring are required before assertions can execute.
-- Final baseline: 22 expected failures in 40 checks; subject: 40 checks, zero
+- Final baseline: 22 expected failures in 46 checks; subject: 46 checks, zero
   failures. Controls cover real save/load/hold/release dispatch, quoted and empty
   markers, both map filter predicates with acting wrong-marker resets,
   retry/resume reader modes, original-marker preservation during demotion,
   legacy absence, sampled/unsampled rewind, physical ring wrap/overwrite,
-  stale exits in both trigger modes, peer occupancy and intact once/cooldowns.
+  stale exits in both trigger modes, mixed name+gravity cleanup, exactly-once
+  last-occupant outputs, peer occupancy and intact once/cooldowns.
+- The unshipped first candidate `9e0a129` silently dropped all exits; review found
+  that this also loses non-name cleanup. `--regression-control` reproduces four
+  expected failures in 46 checks on that candidate; the corrected subject passes.
+  Both control graders require the EXACT expected failure multiset, rejecting
+  failed actor/wrong-marker/invariant controls, not merely four required labels.
 - Real `rec_retry` queues a map restart; a spawn hook observes the actual restored
   player before legitimate new map touches can change the marker. The baseline
   loses it; the subject restores it. Both must prove sent=1 and restarted=1.
-- Reader suite: 306 checks, zero failures. Read-only corpus check results are
-  recorded separately below; no owner recordings were edited.
+- Reader suite: 306 checks, zero failures. Paired read-only corpus: 295 recordings
+  and 106 views, 190 faulted files / 193 existing faults in BOTH arms, zero
+  unreadable, identical reader bytes. This is no increase, not a clean corpus.
+  No owner recordings were edited.
 - fteqcc is authoritative for QC; LSP has no QC parser.
 
 Failed preparation is not evidence of a product pass: a local named like an

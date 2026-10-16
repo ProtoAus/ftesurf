@@ -34,7 +34,7 @@ string(float id) SM_ReadName =
 void(entity e) SM_Run =
 {
 	local string root, special;
-	local entity trig, output, filt, peer, savedself;
+	local entity trig, output, cleanup, endall, counter, filt, peer, savedself;
 	local float b, i, blk, row, f, mp;
 	local float *m;
 	local int bit, peerbit;
@@ -138,8 +138,16 @@ void(entity e) SM_Run =
 	SM_Check(SV_SaveApplyState(e, 714, FALSE) && !strcmp(e.targetname, "legacy-current"), "legacy absence keeps prior behavior after named read");
 
 	// Stale EndTouch must not reapply abandoned progress, in MP or legacy mode.
-	trig = spawn(); output = spawn();
+	trig = spawn(); output = spawn(); cleanup = spawn(); endall = spawn(); counter = spawn();
+	counter.classname = "math_counter"; counter.targetname = "sm_end_all";
 	trig.vbsp_io_out = output; output.owner = trig;
+	output.vbsp_io_next = cleanup; cleanup.owner = trig; cleanup.vbsp_io_next = endall;
+	cleanup.vbsp_io_name = "onendtouch"; cleanup.vbsp_io_target = "!activator";
+	cleanup.vbsp_io_input = "AddOutput"; cleanup.vbsp_io_param = "gravity 1";
+	cleanup.vbsp_io_times = -1;
+	endall.owner = trig; endall.vbsp_io_name = "onendtouchall";
+	endall.vbsp_io_target = "sm_end_all"; endall.vbsp_io_input = "Add";
+	endall.vbsp_io_param = "1"; endall.vbsp_io_times = -1;
 	output.vbsp_io_name = "onendtouch"; output.vbsp_io_target = "!activator";
 	output.vbsp_io_input = "AddOutput"; output.vbsp_io_param = "targetname abandoned";
 	output.vbsp_io_times = -1;
@@ -148,27 +156,31 @@ void(entity e) SM_Run =
 	for (i = 0; i < 2; i += 1)
 	{
 		vbsp_mp = i;
-		trig.vbsp_touch_who = e; trig.vbsp_touch_when = time - 1;
-		trig.vbsp_touch_in = bit; trig.vbsp_touch_out = bit;
+		trig.vbsp_touch_who = (i == 0) ? e : world; trig.vbsp_touch_when = time - 1;
+		trig.vbsp_touch_in = (i == 1) ? bit : 0; trig.vbsp_touch_out = trig.vbsp_touch_in;
 		trig.vbsp_touch_seen = 0;
 		trig.vbsp_once_done = bit | peerbit; trig.vbsp_io_gate_seen = bit | peerbit;
-		e.targetname = "abandoned";
+		e.targetname = "abandoned"; e.gravity = 0.25; counter.count = 0;
 		SM_Check(SV_SaveApplyState(e, 710, FALSE), "stale exit load actor");
 		savedself = self; self = trig; SV_TriggerEndThink(); self = savedself;
 		SM_Check(!strcmp(e.targetname, "block1"), "stale EndTouch cannot overwrite restored marker");
+		SM_Check(e.gravity == 1, "non-name exit cleanup retained");
+		SM_Check(counter.count == 1, "last-occupant cleanup delivered exactly once");
 		SM_Check(trig.vbsp_once_done == (bit | peerbit) && trig.vbsp_io_gate_seen == (bit | peerbit), "once/cooldown progress not erased");
 	}
-	vbsp_mp = 1;
+	vbsp_mp = 1; counter.count = 0;
 	trig.vbsp_touch_in = bit | peerbit; trig.vbsp_touch_seen = peerbit; trig.vbsp_touch_out = 0;
 	SM_Check(SV_SaveApplyState(e, 710, FALSE), "peer occupancy load actor");
 	SM_Check(trig.vbsp_touch_in == peerbit && trig.vbsp_touch_seen == peerbit
 		&& !strcmp(peer.targetname, "peer-marker"), "other player marker and occupancy retained");
+	SM_Check(counter.count == 0, "peer occupancy prevents premature last-occupant output");
 	// Positive exit control proves the same output really renames its activator.
 	trig.vbsp_touch_in = bit; trig.vbsp_touch_out = bit; trig.vbsp_touch_seen = 0;
 	savedself = self; self = trig; SV_TriggerEndThink(); self = savedself;
 	SM_Check(!strcmp(e.targetname, "abandoned"), "real EndTouch still updates map progress");
+	SM_Check(counter.count == 1, "real final exit still fires EndTouchAll once");
 	vbsp_mp = mp;
-	remove(output); remove(trig); remove(filt);
+	remove(output); remove(cleanup); remove(endall); remove(counter); remove(trig); remove(filt);
 	sl_root = root; strunzone(root);
 	bprint(2, sprintf("SAVEMARKER COMPLETE checks=%d failed=%d\n", sm_checks, sm_failed));
 };

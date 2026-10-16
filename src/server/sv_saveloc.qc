@@ -1696,7 +1696,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	}
 	fclose(f);
 
-	// Patch 735: discard stale EndTouch progress from the abandoned position.
+	// Patch 735: finish old exit cleanup, then replace its abandoned progress.
 	// Legacy saves have no marker: retain their old behavior, never guess one.
 	if (hasname)
 	{

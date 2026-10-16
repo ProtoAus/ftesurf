@@ -3289,8 +3289,11 @@ See `tools/OFFRAMP_CONTACT.md`; private diagnostic builds NEVER ship.
 Player `targetname` is map progress, not the visible nickname. Monolith B4 and
 futile gate reset teleports on it; ordinary, demoted and warm-rewind saves must
 retain an explicitly empty name as well as nonempty names. Old files lack the
-history; do not infer it from today's player or an unsampled replay. Clear only
-the loading player's abandoned trigger occupancy, not once/cooldown or peers.
+history; do not infer it from today's player or an unsampled replay. Finish only
+the loading player's abandoned exits before assigning the saved name: silently
+clearing occupancy also loses gravity/other cleanup. Preserve once/cooldown and
+peers; EndTouchAll needs the final occupant. A mixed name+gravity exit control
+caught the initial unshipped mistake in both trigger modes.
 A cold marker assertion belongs at the restore boundary: a legitimate new
 OnStartTouch can rename the player again on the next move. The dedicated test
 uses actual `rec_retry` dispatch (not the engine-only `retry` name), proves a

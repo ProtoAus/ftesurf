@@ -5,6 +5,7 @@ Use --out UNDER an owned task root. Content junctions are removed on exit;
 synthetic state/logs remain for inspection. No canonical player data is used.
 """
 import argparse
+from collections import Counter
 import os
 from pathlib import Path
 import re
@@ -14,18 +15,37 @@ import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = 'bdab71288b4823f5c56ce6510422f86a774741e6'
+REGRESSION = '9e0a129ff39d1ffccceb72b05e6f15f81b6f1599'
+EXPECTED_BASELINE = (
+    'recorded rewind uses sampled not present marker',
+    'position-only rewind retains sample marker',
+    'ring last row independent', 'ring wrapped row independent',
+    'ring overwrite replaces old marker', 'ring captured empty marker is not absent',
+    'ordinary save captures marker', 'ordinary load restores earlier progress',
+    'release retains restored progress', 'Monolith B4 restored marker suppresses reset',
+    'futile restored earlier marker suppresses reset',
+    'quoted whitespace marker roundtrip', 'quoted backslash marker roundtrip',
+    'empty marker explicitly serialized', 'empty marker clears later progress',
+    'retry/resume cold state reader marker', 'retry/resume cold state reader marker',
+    'demote preserves old file marker', 'demoted marker restores',
+    'stale EndTouch cannot overwrite restored marker',
+    'stale EndTouch cannot overwrite restored marker',
+    'other player marker and occupancy retained',
+)
+EXPECTED_REGRESSION = ('non-name exit cleanup retained',) * 2 + ('last-occupant cleanup delivered exactly once',) * 2
 MODULES = ('sv_entities.qc', 'sv_saveloc.qc', 'sv_rewindstate.qc')
 
 
-def build(out, baseline):
+def build(out, baseline, regression=False):
     src = ROOT / 'src'
     out.mkdir(parents=True, exist_ok=True)
     lines = (src / 'sv_progs.src').read_text().splitlines()
     lines[0] = os.path.relpath(out / 'qwprogs.dat', src).replace('\\', '/')
-    if baseline:
+    if baseline or regression:
+        revision = REGRESSION if regression else BASELINE
         for module in MODULES:
             data = subprocess.check_output(['git', '-C', str(ROOT), 'show',
-                                            f'{BASELINE}:src/server/{module}'])
+                                            f'{revision}:src/server/{module}'])
             (out / module).write_bytes(data)
         for module in MODULES:
             old = 'server/' + module
@@ -57,7 +77,7 @@ def bridge(name, *args):
     return p.stdout
 
 
-def run(out, progs, baseline, port, client, server):
+def run(out, progs, baseline, port, client, server, regression=False):
     rig = out / 'runtime'
     if rig.exists():
         raise RuntimeError('Use a fresh output directory: never reuse mutable evidence')
@@ -81,7 +101,7 @@ def run(out, progs, baseline, port, client, server):
     subprocess.run([sys.executable, str(ROOT / 'tools/seed_csprogs.py'), str(gd / 'csprogs.dat')],
                    check=True, capture_output=True)
     links = []
-    name = 'p735-control' if baseline else 'p735-subject'
+    name = 'p735-control' if baseline or regression else 'p735-subject'
     started = False
     try:
         for content in ('maps', 'gfx', 'glsl', 'models', 'particles', 'scripts'):
@@ -109,20 +129,17 @@ def run(out, progs, baseline, port, client, server):
         if len(matches) != 1:
             raise RuntimeError('Exactly one completed acting fixture required')
         checks, failed = map(int, matches[0])
-        if checks < 40:
+        if checks != 46:
             raise RuntimeError('Fixture did not exercise all controls')
         cold = re.findall(r'SAVEMARKER COLD COMPLETE restarted=(\d+) failed=(\d+)', text)
         if 'SAVEMARKER RETRY ACTOR sent=1' not in text or cold != [('1', '1' if baseline else '0')]:
             raise RuntimeError('Actual retry/map restart marker control failed to act as expected: ' + str(cold))
         failures = re.findall(r'SAVEMARKER FAIL ([^\r\n]+)', text)
-        if baseline:
-            required = ('ordinary load restores earlier progress',
-                        'recorded rewind uses sampled not present marker',
-                        'empty marker clears later progress',
-                        'stale EndTouch cannot overwrite restored marker')
-            if not failed or any(x not in failures for x in required):
-                raise RuntimeError('Baseline did not falsify the required changed behaviors')
-            print(f'PASS baseline detector: {failed}/{checks} expected assertion failures')
+        if baseline or regression:
+            expected = EXPECTED_REGRESSION if regression else EXPECTED_BASELINE
+            if failed != len(failures) or Counter(failures) != Counter(expected):
+                raise RuntimeError('Control failed outside its exact expected feature failures: ' + str(failures))
+            print(f'PASS {"regression" if regression else "baseline"} detector: {failed}/{checks} expected assertion failures')
         elif failed:
             raise RuntimeError(f'{failed}/{checks} assertions failed: {failures}')
         else:
@@ -141,7 +158,9 @@ def run(out, progs, baseline, port, client, server):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--out', required=True, type=Path)
-    p.add_argument('--baseline', action='store_true')
+    controls = p.add_mutually_exclusive_group()
+    controls.add_argument('--baseline', action='store_true')
+    controls.add_argument('--regression-control', action='store_true')
     p.add_argument('--run', action='store_true')
     p.add_argument('--progs', type=Path)
     p.add_argument('--port', type=int, default=27557)
@@ -151,12 +170,12 @@ def main():
     if not 27520 <= a.port <= 27620:
         p.error('Use a dedicated lobby-range test port')
     out = a.out.resolve()
-    build(out, a.baseline)
-    print('PASS zero-warning fixture build:', 'baseline' if a.baseline else 'subject')
+    build(out, a.baseline, a.regression_control)
+    print('PASS zero-warning fixture build:', 'regression' if a.regression_control else 'baseline' if a.baseline else 'subject')
     if a.run:
         if not a.progs:
             p.error('--run needs --progs')
-        run(out, a.progs.resolve(), a.baseline, a.port, a.client, a.server)
+        run(out, a.progs.resolve(), a.baseline, a.port, a.client, a.server, a.regression_control)
 
 
 if __name__ == '__main__':
