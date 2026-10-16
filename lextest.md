@@ -1,10 +1,26 @@
 # lextest.md — things waiting on a human
 
+## P736 — Kitsune paired ramp/floor flip: one saved-position check
+
+Installed in BOTH Windows installs at 2026-10-16T07:51:51Z, from clean engine
+`50c24acf33bb34f3e43a65dd3fa37e618613944e`, tag `patch-736`.
+Version stamp: `git-7352-patch-736-0-g50c24acf3`.
+
+Restart the game, set `r_blendsort 2`, load your existing Kitsune save and move
+the mouse slightly as in your two pictures. Does the ramp/floor grid still swap
+its apparent layer order? A simple works/still-flips answer is sufficient; no
+new automated capture rig or broad replay of earlier tests is required.
+
+The mode2 key now weights actual triangle area instead of counting edge-split
+vertices. Modes0/1 and default1 are unchanged. Saves, player config and installed
+progs were not replaced. Build/acting controls pass; GPU visual acceptance is
+PENDING until the owner checks. Scope/rollback: `tools/p736alphacentre.md`.
+
 ## P721 — transparent windows: ready for your visual check
 
-Both Windows clients already have the newer P734 native build, which includes
-P721's unchanged world-alpha renderer. Installed hashes were rechecked on
-2026-10-16; no older binary was copied back. See `tools/p721alphacull.md`.
+Both Windows clients now have P736, which preserves P721's mode1 world-alpha
+renderer and separately improves mode2's face centres. No older binary was
+copied back. Earlier P721 evidence remains in `tools/p721alphacull.md`.
 
 - Restart the client, visit the Kitsune windows or another affected spot you
   normally use, and enter `r_blendsort 1`. Your saved setting was mode2, which is
@@ -15,9 +31,10 @@ P721's unchanged world-alpha renderer. Installed hashes were rechecked on
 - A brief report that the affected scene looks right is sufficient manual visual
   acceptance. No custom fixture, mirror hunt or automated screenshot rig needed.
 
-**Owner verdict pending.** Optional reflection-harness development is stopped;
-no reflection test or measured FPS improvement is claimed. Existing sorter and
-native pixel controls remain recorded, not replaced by an assumed human pass.
+**Owner reports mode2 is almost flawless and much better than0/1.** The remaining
+paired Kitsune ramp/floor flip is tracked above under P736; this does not assert
+that every earlier mode1 visual check passed. Optional reflection-harness work
+remains stopped; no reflection or measured FPS improvement is claimed.
 
 ## P735 — save-lock progress checks (pending owner confirmation)
 
