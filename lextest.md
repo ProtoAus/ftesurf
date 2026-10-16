@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+## P741 — Friends before a map: pending live activation, not ready to accept yet
+
+Local real-service/native controls pass, including the disconnected list and
+pointer-driven Join. The public schema20 Friends generation/proxy activation is
+still gated separately; current source/build does not prove it is running live.
+Client installation state and precise limits: `tools/p741menufriends.md`.
+
+AFTER that activation and the normal client update, start without a map, open
+Play / Friends, and confirm a real accepted friend's name/lobby/map appears.
+Click Join once and confirm it reaches them. A small "list works / Join works"
+report is sufficient for that observed case. You need only link Steam once via
+the existing lobby flow; opening the list itself must not need a map. Do not
+record this as passed before the genuine account/service check. Verdict PENDING.
+
 ## P739 — live wire-annotation barrier: ready in normal clients
 
 Both normal Windows clients received clean feature/tag

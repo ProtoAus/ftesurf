@@ -19,7 +19,8 @@ GAME_BYTES = b"synthetic social test CSQC\n"
 os.environ.update(SURFD_HOME=str(HOME), SURFD_DB=str(HOME / "test.db"),
                   SURFD_ENV=str(HOME / "surfd.env"), SURFD_LINK_HOSTS="127.0.0.1",
                   SURFD_GAME_CODE=str(HOME / "csprogs.dat"),
-                  SURFD_BOARD_URL="https://proto.bar/ftesurf/board")
+                  SURFD_BOARD_URL="https://proto.bar/ftesurf/board",
+                  SURFD_TOOLS=str(Path(__file__).resolve().parent.parent / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 import ed25519
 import accounts as A
@@ -287,6 +288,151 @@ class Friends(unittest.TestCase):
         S._rate.clear()
         for _ in range(20): self.action(0, "join")
         self.assertEqual(self.action(3, "join").status_code, 429) # second install shares budget
+
+    def menu_form(self, i=0, op="list", who="-", ip=None):
+        args = {} if ip is None else {"environ_overrides": {"REMOTE_ADDR": ip}}
+        challenge = self.client.get("/api/social/menu/challenge", query_string=dict(op=op, who=who), **args)
+        data = challenge.get_json()
+        self.assertEqual(data["ok"], 1, data)
+        self.assertEqual(challenge.headers["Cache-Control"], "no-store")
+        form = {k: data[k] for k in ("nonce", "expires", "ticket")}
+        form.update(op=op, who=who, pub=PUBS[i])
+        msg = (F.MENU_STATEMENT % (form["nonce"], op, who)).encode("ascii")
+        form["sig"] = ed25519.sign(bytes([i + 1]) * 32, msg).hex()
+        return form
+
+    def menu_read(self, form, ip=None):
+        args = {} if ip is None else {"environ_overrides": {"REMOTE_ADDR": ip}}
+        r = self.client.post("/api/social/menu", data=form, **args)
+        self.assertEqual(r.headers["Cache-Control"], "no-store")
+        return r.get_json()
+
+    def test_menu_list_and_join_use_private_proof_not_lobby_token(self):
+        self.accept(); self.poll()
+        sessions = list(self.db.execute("SELECT * FROM social_sessions"))
+        row = self.menu_read(self.menu_form())
+        self.assertEqual(row["ok"], 1, row)
+        self.assertEqual(row["friends"][0]["name"], "Bob")
+        target = A.who_of(IDS[1])
+        join = self.menu_read(self.menu_form(op="join", who=target))
+        self.assertEqual((join["ok"], join["addr"], join["map"]), (1, "127.0.0.1:27510", "surf_test"))
+        self.assertEqual(list(self.db.execute("SELECT * FROM social_sessions")), sessions)
+        self.assertNotIn("token", row)
+        self.assertNotIn("messages", row)
+
+    def test_menu_pending_request_redacts_presence_and_denies_join(self):
+        self.action(0, "add"); self.poll()
+        row = self.menu_read(self.menu_form())["friends"][0]
+        self.assertEqual((row["relation"], row["online"], row["addr"]), (1, 0, ""))
+        self.assertEqual(self.menu_read(self.menu_form(op="join", who=A.who_of(IDS[1])))["status"], 403)
+
+    def test_menu_invalid_fields_ticket_and_signature_fail_closed(self):
+        self.accept(); self.poll()
+        form = self.menu_form()
+        for key, value in (("nonce", "A" * 32), ("expires", "9" * 20), ("ticket", "0" * 64),
+                           ("pub", "z" * 64), ("sig", "0" * 128), ("who", "12345678"),
+                           ("op", "link"), ("op", "remove"), ("op", "message")):
+            with self.subTest(key=key, value=value[:12]):
+                self.assertEqual(self.menu_read(dict(form, **{key: value}))["ok"], 0)
+        self.assertEqual(self.menu_read(form)["ok"], 1) # positive control with same nonce
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM social_friends").fetchone()[0], 1)
+
+    def test_menu_challenge_is_peer_bound_and_expires(self):
+        form = self.menu_form(ip="198.51.100.11")
+        self.assertEqual(self.menu_read(form, ip="198.51.100.12")["status"], 403)
+        self.assertEqual(self.menu_read(form, ip="198.51.100.11")["ok"], 1)
+        self.now += F.MENU_TTL + 1
+        self.assertEqual(self.menu_read(form, ip="198.51.100.11")["status"], 403)
+        self.assertEqual(self.menu_read(self.menu_form())["ok"], 1)
+
+    def test_menu_rechecks_links_bans_and_live_presence_each_read(self):
+        self.accept(); self.poll()
+        form = self.menu_form()
+        join = self.menu_form(op="join", who=A.who_of(IDS[1]))
+        self.assertEqual(self.menu_read(join)["ok"], 1)
+        self.db.execute("UPDATE accounts SET banned_at=1 WHERE steamid=?", (IDS[0],)); self.db.commit()
+        self.assertEqual(self.menu_read(form)["status"], 403)
+        self.db.execute("UPDATE accounts SET banned_at=0 WHERE steamid=?", (IDS[0],)); self.db.commit()
+        self.assertEqual(self.menu_read(form)["ok"], 1)
+        self.db.execute("DELETE FROM keylinks WHERE pub=?", (PUBS[0],)); self.db.commit()
+        self.assertEqual(self.menu_read(form)["status"], 403)
+        # A formerly valid request from a different linked install rechecks a
+        # friend's disconnect rather than trusting the previously displayed row.
+        join = self.menu_form(i=3, op="join", who=A.who_of(IDS[1]))
+        self.assertEqual(self.menu_read(join)["ok"], 1)
+        self.poll((0, 3))
+        self.assertEqual(self.menu_read(join)["status"], 409)
+
+    def test_menu_domain_and_join_target_cannot_be_substituted(self):
+        self.accept(); self.poll()
+        form = self.menu_form(op="join", who=A.who_of(IDS[1]))
+        self.assertEqual(self.menu_read(form)["ok"], 1)
+        other = self.menu_form(op="join", who=A.who_of(IDS[2]))
+        other["sig"] = form["sig"]
+        self.assertEqual(self.menu_read(other)["ok"], 0)
+        # An account statement signed by the same fixture key is not a menu proof.
+        form = self.menu_form()
+        msg = (A.STATEMENT % ("127.0.0.1:27510", form["nonce"], A.TICKS_HELLO, 0, GAME)).encode()
+        form["sig"] = ed25519.sign(bytes([1]) * 32, msg).hex()
+        self.assertEqual(self.menu_read(form)["status"], 403)
+
+    def test_menu_real_proxy_identity_is_bound_but_untrusted_header_is_not(self):
+        def challenge(peer, claimed):
+            return self.client.get("/api/social/menu/challenge?op=list&who=-",
+                                   environ_overrides={"REMOTE_ADDR": peer}, headers={"X-Real-IP": claimed}).get_json()
+        def submit(form, peer, claimed):
+            return self.client.post("/api/social/menu", data=form,
+                                    environ_overrides={"REMOTE_ADDR": peer}, headers={"X-Real-IP": claimed}).get_json()
+        def signed(ch):
+            form = {k: ch[k] for k in ("nonce", "expires", "ticket")}
+            form.update(op="list", who="-", pub=PUBS[0])
+            form["sig"] = ed25519.sign(bytes([1]) * 32, (F.MENU_STATEMENT % (form["nonce"], "list", "-")).encode()).hex()
+            return form
+        form = signed(challenge("127.0.0.1", "198.51.100.11"))
+        self.assertEqual(submit(form, "127.0.0.1", "198.51.100.12")["status"], 403)
+        self.assertEqual(submit(form, "127.0.0.1", "198.51.100.11")["ok"], 1)
+        form = signed(challenge("203.0.113.21", "198.51.100.11"))
+        # A direct untrusted caller cannot choose its source bucket via a header.
+        self.assertEqual(submit(form, "203.0.113.21", "198.51.100.12")["ok"], 1)
+        self.assertEqual(submit(form, "203.0.113.22", "198.51.100.11")["status"], 403)
+        for _ in range(30): challenge("127.0.0.1", "198.51.100.31")
+        self.assertEqual(challenge("127.0.0.1", "198.51.100.31")["status"], 429)
+        self.assertEqual(challenge("127.0.0.1", "198.51.100.32")["ok"], 1)
+
+    def test_menu_configured_verifier_in_deployed_service_layout(self):
+        import importlib.util
+        import types
+        from flask import Flask
+        game = HOME / "deployed-game"
+        tools = game / "tools"
+        tools.mkdir(parents=True)
+        shutil.copy2(Path(__file__).resolve().parent.parent / "tools/ed25519.py", tools / "ed25519.py")
+        service = HOME / "deployed-service"
+        service.mkdir()
+        shutil.copy2(Path(F.__file__), service / "social.py")
+        spec = importlib.util.spec_from_file_location("deployed_social", service / "social.py")
+        deployed = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(deployed)
+        for settings in ({"SURFD_TOOLS": str(tools)}, {"SURFD_GAME": str(game)}):
+            with self.subTest(settings=settings):
+                app = Flask("deployed-social")
+                deployed.register(app, types.SimpleNamespace(setting=settings.get, secret=lambda: "testkey",
+                    clock=lambda: self.now, rate_key=lambda: "127.0.0.1", rate_ok=lambda *a: True,
+                    get_db=lambda: self.db, game_json=S.game_json, clean_text=S.clean_text, lobby_ttl=S.LOBBY_TTL))
+                self.client = app.test_client()
+                self.assertEqual(self.menu_read(self.menu_form())["ok"], 1)
+
+    def test_menu_rate_caps_and_missing_service_secret(self):
+        form = self.menu_form()
+        for _ in range(20):
+            self.assertEqual(self.menu_read(form)["ok"], 1)
+        self.assertEqual(self.menu_read(form)["status"], 429)
+        S._rate.clear()
+        with patch.object(S, "SECRET", ""):
+            self.assertEqual(self.client.get("/api/social/menu/challenge?op=list&who=-").get_json()["ok"], 0)
+        for _ in range(30):
+            self.client.get("/api/social/menu/challenge?op=list&who=-")
+        self.assertEqual(self.client.get("/api/social/menu/challenge?op=list&who=-").get_json()["status"], 429)
 
 
 if __name__ == "__main__":
