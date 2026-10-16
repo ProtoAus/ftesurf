@@ -107,9 +107,17 @@ and symlinked helper/temp destinations. New Linux controls fail on c66dd93's
 source-root acceptance and pass on the fix, along with nested/symlink refusals.
 This is a read-only identity/destination preflight, NOT a generation/CAS handover
 or a promise to retain an epoch through copying a non-pinned helper. Execution
-still requires its own admitted import at activation. Both updated reviews and
-resumed same-entrypoint delivery are pending. The reviewed user-unit template is
-installed hash-matching but remains inactive and not enabled.
+still requires its own admitted import at activation. Updated reviews found double-leading-slash aliases, replacement-marker paths,
+and default backup running before destination proof. The corrected seam rejects
+double anchors and reserved `__` inputs, proves identity/destination BEFORE the
+backup, and substitutes the backup TAG before inserting the literal destination.
+Five PowerShell controls pass, including an acted refused transaction that leaves
+a synthetic SQLite subtree unchanged. The old 186d321 input, backup-order and
+literal-destination controls all fail; its double-slash source-root proof also
+acts/fails refusal, while corrected Linux root/nested/symlink/identity controls
+pass. SQLite fixture handles now close explicitly before Windows cleanup.
+Follow-up reviews and resumed same-entrypoint delivery are pending. The reviewed
+user-unit template is installed hash-matching but remains inactive/not enabled.
 
 Deployment and live Momentum acceptance are pending. No demo body, private
 identity, credential or raw private backend output belongs in this document.

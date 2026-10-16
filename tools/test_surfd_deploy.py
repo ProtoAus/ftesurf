@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -130,6 +131,71 @@ $p=@{PlanOnly=$true;Ref=$env:DEPLOY_TEST_REF;Only=@($env:DEPLOY_TEST_ONLY);
 ''', DEPLOY_TEST_REF=self.ref, DEPLOY_TEST_ONLY=only, DEPLOY_TEST_GUARD=guard,
                  DEPLOY_TEST_NORELOAD='1' if no_reload else '0')
             self.assertEqual(r.returncode == 0, ok, r.stdout+r.stderr)
+
+    def test_backup_replacement_does_not_rescan_destination(self):
+        script = os.environ.get('SURFD_DEPLOY_TEST_SCRIPT', str(TOOLS/'surfd-deploy.ps1'))
+        r = powershell('''
+$source=Get-Content -Raw $env:DEPLOY_TEST_SCRIPT
+$source=$source.Substring($source.IndexOf('# ---- 3. back up'))
+$match=[regex]::Match($source,'-Body (\\(\\$body -replace [^\\r\\n]+\\))')
+$body="cd REMOTE`nDB=TAG";$Remote='/owned/pubTAG';$dbBackupTag='bak-valid'
+$result=Invoke-Expression $match.Groups[1].Value
+if ($result -cne "cd /owned/pubTAG`nDB=bak-valid") { throw 'destination rescanned as backup marker' }
+'BACKUP_DESTINATION_LITERAL_ACTED'
+''', DEPLOY_TEST_SCRIPT=script)
+        self.assertEqual(r.returncode, 0, r.stdout+r.stderr)
+        self.assertIn('BACKUP_DESTINATION_LITERAL_ACTED', r.stdout)
+
+    def test_guarded_markers_and_double_anchors_refuse(self):
+        script = os.environ.get('SURFD_DEPLOY_TEST_SCRIPT', str(TOOLS/'surfd-deploy.ps1'))
+        for remote in ('//owned/pub', '/owned/pub__PID__', '/owned/pub__STAGE__'):
+            r = powershell('''
+$source=Get-Content -Raw $env:DEPLOY_TEST_SCRIPT
+$start=$source.IndexOf('if ($GuardStateDir) {')
+$gate=$source.Substring($start,$source.IndexOf('if ($PlanOnly)')-$start)
+$plan=[pscustomobject]@{Files=@('surfd/momgrab.py')}
+$GuardStateDir='/owned/guard';$Remote=$env:DEPLOY_TEST_REMOTE;$NoReload=$true
+Invoke-Expression $gate
+'INPUT_ACCEPTED'
+''', DEPLOY_TEST_SCRIPT=script, DEPLOY_TEST_REMOTE=remote)
+            self.assertNotEqual(r.returncode, 0, r.stdout+r.stderr)
+            self.assertNotIn('INPUT_ACCEPTED', r.stdout)
+
+    def test_guarded_identity_precedes_destination_backup(self):
+        remote = self.root/'source_home'
+        (remote/'data').mkdir(parents=True)
+        with sqlite3.connect(remote/'data/surfd.db') as db:
+            db.execute('CREATE TABLE sentinel(value TEXT)')
+            db.execute("INSERT INTO sentinel VALUES ('original')")
+        db.close()
+        before = {str(p.relative_to(remote)): p.read_bytes() for p in remote.rglob('*') if p.is_file()}
+        script = os.environ.get('SURFD_DEPLOY_TEST_SCRIPT', str(TOOLS/'surfd-deploy.ps1'))
+        r = powershell('''
+$source=Get-Content -Raw $env:DEPLOY_TEST_SCRIPT
+$start=[Math]::Min($source.IndexOf('# ---- 3. back up'),$source.IndexOf('# ---- 4. read'))
+$section=$source.Substring($start,$source.IndexOf('# ---- 5. copy')-$start)
+$Remote=$env:DEPLOY_TEST_REMOTE;$GuardStateDir='/owned/guard';$stage='/owned/stage'
+$NoBackup=$false;$dbBackupTag='fixture-backup';$script:PiExit=0
+function Step($m) {}
+function Fail($m) { throw "BLOCKED:$m" }
+function Invoke-PiScript($Name,$Body,[switch]$AllowFail) {
+ if ($Name -eq 'identify') { return "PIDFILE=1234`n1234 1 gunicorn witness_wsgi:app`nCOUNT=1" }
+ if ($Name -eq 'guarded-master') { $script:PiExit=1; return 'DESTINATION_REFUSED' }
+ if ($Name -eq 'backup') {
+  [IO.File]::Copy((Join-Path $Remote 'data/surfd.db'),(Join-Path $Remote 'data/surfd.db.fixture-backup'))
+  return "BACKUP_OK`nBACKUP_MODE=600 fixture"
+ }
+ throw 'unexpected operation'
+}
+try { Invoke-Expression $section; throw 'refusal did not stop transaction' }
+catch { if ($_.ToString() -notmatch 'BLOCKED:') { throw } }
+'GUARD_REFUSAL_ACTED'
+''', DEPLOY_TEST_SCRIPT=script, DEPLOY_TEST_REMOTE=remote)
+        self.assertEqual(r.returncode, 0, r.stdout+r.stderr)
+        self.assertIn('GUARD_REFUSAL_ACTED', r.stdout)
+        after = {str(p.relative_to(remote)): p.read_bytes() for p in remote.rglob('*') if p.is_file()}
+        self.assertEqual(set(after), set(before), 'refused destination was written before guard validation')
+        self.assertTrue(all(after[k] == before[k] for k in before), 'refused subtree bytes changed')
 
     def test_planonly_does_not_call_transport_or_create_workspace(self):
         marker = self.root/'transport-called'

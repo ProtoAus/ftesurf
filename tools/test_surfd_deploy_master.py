@@ -69,6 +69,8 @@ def main():
             inside.mkdir(exist_ok=True)
             (inside / 'surfd.pid').write_text(str(p.pid))
             proof(False, code.replace(str(remote), str(inside)))
+            print('control: double-slash immutable root refusal')
+            proof(False, code.replace(str(remote), '/' + str(inside)))
         alias = a.out / 'alias'
         alias.symlink_to(f.home, target_is_directory=True)
         try:

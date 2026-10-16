@@ -92,7 +92,8 @@ if ($GuardStateDir) {
         Write-Error '-GuardStateDir requires -NoReload and ONLY surfd/momgrab.py'; exit 1
     }
     foreach ($path in @($GuardStateDir, $Remote)) {
-        if ($path -cnotmatch '^/[A-Za-z0-9._/-]+$' -or $path.Split('/') -contains '..') {
+        if ($path -cnotmatch '^/[A-Za-z0-9._-][A-Za-z0-9._/-]*$' -or
+            $path.Split('/') -contains '..' -or $path.Contains('__')) {
             Write-Error '-GuardStateDir and -Remote must be absolute canonical safe paths'; exit 1
         }
     }
@@ -355,46 +356,6 @@ try {
     }
     Assert-DeployLock
 
-# ---- 3. back up the live database -----------------------------------------
-if (-not $NoBackup) {
-    Step "3. back up data/surfd.db (sqlite's own backup API)"
-    $body = @'
-set -e
-cd REMOTE
-[ -f data/surfd.db ] || { echo NO_DATABASE; exit 1; }
-python3 - <<PYEOF
-import os, sqlite3
-fd = os.open("data/surfd.db.TAG", os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-os.close(fd)
-src = sqlite3.connect("data/surfd.db")
-dst = sqlite3.connect("data/surfd.db.TAG")
-with dst:
-    src.backup(dst)
-dst.close(); src.close()
-print("BACKUP_OK")
-PYEOF
-# The copy holds every ranked player's guid, and sqlite's backup API creates it
-# 0644 & ~umask -- the same mode the live database had before surfd installed a
-# 077 umask of its own.  Tighten it here, and PRINT THE MODE rather than trusting
-# the chmod: a permissions fix that is not read back is a permissions hope.
-chmod 600 data/surfd.db.TAG
-stat -c 'BACKUP_MODE=%a %n' data/surfd.db.TAG
-ls -l data/surfd.db data/surfd.db.TAG | awk '{print $5, $9}'
-'@
-    $bak = Invoke-PiScript -Name "backup" -AllowFail `
-        -Body ($body -replace 'REMOTE', $Remote -replace 'TAG', $dbBackupTag)
-    if ($script:PiExit -ne 0 -or $bak -cnotmatch "BACKUP_OK") {
-        Fail "the database backup did not report BACKUP_OK -- not deploying over an unbacked-up board"
-    }
-    if ($bak -cnotmatch "BACKUP_MODE=600 ") {
-        Fail "the database backup is not owner-only ($($bak -join ' | ')) -- it holds every player's guid"
-    }
-    Write-Host "  $($bak | Where-Object { $_ -match 'BACKUP_MODE=' })"
-}
-else {
-    Step "3. SKIPPED (-NoBackup): deploying with no fresh database backup"
-}
-
 # ---- 4. read the master's identity BEFORE touching anything ----------------
 Step "4. prove the pidfile names a live gunicorn master"
 $body = @'
@@ -430,6 +391,7 @@ s = g.state_read(root, m)
 g.require(s["admission"] == "OPEN", "guard is not OPEN")
 remote = g.plain_path("__REMOTE__")
 source = g.plain_path(m["source_home"])
+g.require(remote.anchor == source.anchor == "/", "double-slash anchors refused")
 g.require(remote != source and source not in remote.parents,
           "helper destination must be outside immutable source_home")
 for leaf in ("momgrab.py", "momgrab.py.new"):
@@ -459,6 +421,46 @@ if ($ppid -ne '1') {
     Write-Host "  NOTE: master's ppid is $ppid, not 1 -- not started detached by run.sh" -ForegroundColor Yellow
 }
 Write-Host "  master $pidfile (ppid $ppid) -- reload target" -ForegroundColor Green
+
+# ---- 3. back up the live database AFTER destination/identity proof ----------
+if (-not $NoBackup) {
+    Step "3. back up data/surfd.db (sqlite's own backup API)"
+    $body = @'
+set -e
+cd REMOTE
+[ -f data/surfd.db ] || { echo NO_DATABASE; exit 1; }
+python3 - <<PYEOF
+import os, sqlite3
+fd = os.open("data/surfd.db.TAG", os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+os.close(fd)
+src = sqlite3.connect("data/surfd.db")
+dst = sqlite3.connect("data/surfd.db.TAG")
+with dst:
+    src.backup(dst)
+dst.close(); src.close()
+print("BACKUP_OK")
+PYEOF
+# The copy holds every ranked player's guid, and sqlite's backup API creates it
+# 0644 & ~umask -- the same mode the live database had before surfd installed a
+# 077 umask of its own.  Tighten it here, and PRINT THE MODE rather than trusting
+# the chmod: a permissions fix that is not read back is a permissions hope.
+chmod 600 data/surfd.db.TAG
+stat -c 'BACKUP_MODE=%a %n' data/surfd.db.TAG
+ls -l data/surfd.db data/surfd.db.TAG | awk '{print $5, $9}'
+'@
+    $bak = Invoke-PiScript -Name "backup" -AllowFail `
+        -Body ($body -replace 'TAG', $dbBackupTag -replace 'REMOTE', $Remote)
+    if ($script:PiExit -ne 0 -or $bak -cnotmatch "BACKUP_OK") {
+        Fail "the database backup did not report BACKUP_OK -- not deploying over an unbacked-up board"
+    }
+    if ($bak -cnotmatch "BACKUP_MODE=600 ") {
+        Fail "the database backup is not owner-only ($($bak -join ' | ')) -- it holds every player's guid"
+    }
+    Write-Host "  $($bak | Where-Object { $_ -match 'BACKUP_MODE=' })"
+}
+else {
+    Step "3. SKIPPED (-NoBackup): deploying with no fresh database backup"
+}
 
 # ---- 5. copy in under the sweep lock --------------------------------------
 Step "5. copy in under flock, install+mv, keeping a .$backupTag backup"
