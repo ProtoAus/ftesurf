@@ -29,7 +29,8 @@ patch    738
 # Patch 737: mode2 reuses conservative world raster culling before plane ordering;
 # proven invisible backfaces no longer cause cycles and angle-dependent fallback.
 # All3 Kitsune poses+33-angle sweep,4 variants/20 mutants and exact native build
-# pass; both Windows installs hash-verified. Owner save3 visual gate is pending.
+# pass; both Windows installs hash-verified. Owner confirms saved poses but
+# motion STILL flips; P737 is not visually accepted. See BACKLOG.md.
 # Modes0/1/default1, unsupported geometry, QC Build/evidence/Pi remain unchanged.
 # Native/source/rollback provenance: tools/p737alphacull2.md.
 # Patch 736: mode2 indexed alpha faces use triangle-area-weighted sort centres,

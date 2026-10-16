@@ -6,11 +6,16 @@ BOTH Windows installs received clean engine/tag
 `2aec8c6de262598abf4e836f133f6c35c7a0623b` / `patch-737` at
 2026-10-16T08:43:03Z; stamp `git-7353-patch-737-0-g2aec8c6de`.
 
-Restart, set `r_blendsort 2`, load existing save3 and sweep back toward save2.
-Does the ramp still reshuffle? Works/still-flips is sufficient; no new capture
-rig or broad earlier test matrix. Modes0/1/default1 are unchanged; saves/config
-and installed progs were not replaced. P737 visual verdict remains PENDING.
-Build,20 acting mutants,3 poses+33-view sweep and rollback: `tools/p737alphacull2.md`.
+**Owner verdict: NOT ACCEPTED.** All3 specific saves now look correct, but
+moving between2/3 and farther right still produces sporadic surface switching.
+Do not substitute the33-view portable pass for this failing live acceptance.
+
+Read-only material output confirms grid_orange is sort11, single-pass,
+front-culled, standard alpha blend and no material/pass program. Remaining live
+renderer/cache values and a failing stationary save4 were requested; no new
+candidate has been built/deployed for this report. Modes0/1/default1, saves,
+config and installed progs remain unchanged. Open issue: BACKLOG.md; previous
+build/rollback and diagnostic limits: `tools/p737alphacull2.md`.
 
 ## P736 — Kitsune paired ramp/floor flip: one saved-position check
 

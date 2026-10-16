@@ -68,9 +68,24 @@ held exclusively through backup/copy/hash verification and rehashed afterward:
 
 ## Human gate and retention
 
-P737 GPU visual verdict is PENDING. Restart, use `r_blendsort 2`, load existing
-save3 and sweep back toward save2. A simple works/still-flips answer suffices;
-no new screenshots or broad old test matrix are required.
+**P737 live visual acceptance FAILED:** owner reports all3 exact saved angles
+look correct, but moving between2/3 or farther right still switches surfaces.
+The33 interpolated views are not a proof of arbitrary live mouse motion.
+
+Read-only r_shaderpasses grid_orange reports flags0x8 (front cull), sort11,
+passes1, shaderbits0x400065 (ordinary alpha blend/fullrate), no shader/pass
+program: the material is not a custom-program/multipass exclusion. Static BSP
+PVS reconstruction at the estimated eye resolves cluster132/area12 and the same
+20 grid fans, rather than demonstrating a larger graph budget failure. A wider
+2D pitch/yaw diagnostic does not reproduce the reported2-to3 failure in that
+static model; far-right admission/rank transitions alone are NOT a GPU error
+oracle. Runtime renderer/cache values, whether a bad angle stays wrong after
+motion stops, and a stationary failing save4 remain requested. No new product
+patch, rebuilt binary or deployment is claimed for this follow-up.
+
+Track the unresolved live issue in BACKLOG.md. Preserve the current P737
+native/rollback state until a real failing control is obtained; no new capture
+harness, reference rig or screenshot campaign is required.
 
 Retain clean sources, staged natives, rollback bytes and evidence pending that
 check at `C:\FTESurf-worktrees\mapvisual-01a13061\ramp-centre\` (OWNER.md).
