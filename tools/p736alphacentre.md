@@ -69,10 +69,11 @@ all10 destination hashes again after releasing handles. No process was stopped.
 
 ## Human acceptance and retention
 
-Do not mark the reported visual symptom fixed until the owner restarts, reloads
-the existing Kitsune save with `r_blendsort 2` and tries the small mouse movement.
-A simple works/still-flips answer is sufficient; no new screenshot rig is needed.
-Original screenshots contain temporary download links and must not be exported.
+Owner confirms P736 fixes the original saved angle and save2 is good; turning
+right into save3 still reorders ramp surfaces. That partial acceptance exposed
+a separate mode2 cull-induced cycle, reproduced and addressed under P737.
+Current pending visual gate: `tools/p737alphacull2.md`. No new screenshot rig is
+needed. Original screenshots contain temporary links and must not be exported.
 
 Clean paired sources/build output, controls, failed-setup evidence and rollback
 bytes are retained pending that visual gate at

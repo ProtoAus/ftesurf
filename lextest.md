@@ -1,25 +1,36 @@
 # lextest.md — things waiting on a human
 
+## P737 — right-turn Kitsune ramp ordering: save3 check
+
+BOTH Windows installs received clean engine/tag
+`2aec8c6de262598abf4e836f133f6c35c7a0623b` / `patch-737` at
+2026-10-16T08:43:03Z; stamp `git-7353-patch-737-0-g2aec8c6de`.
+
+Restart, set `r_blendsort 2`, load existing save3 and sweep back toward save2.
+Does the ramp still reshuffle? Works/still-flips is sufficient; no new capture
+rig or broad earlier test matrix. Modes0/1/default1 are unchanged; saves/config
+and installed progs were not replaced. P737 visual verdict remains PENDING.
+Build,20 acting mutants,3 poses+33-view sweep and rollback: `tools/p737alphacull2.md`.
+
 ## P736 — Kitsune paired ramp/floor flip: one saved-position check
 
 Installed in BOTH Windows installs at 2026-10-16T07:51:51Z, from clean engine
 `50c24acf33bb34f3e43a65dd3fa37e618613944e`, tag `patch-736`.
 Version stamp: `git-7352-patch-736-0-g50c24acf3`.
 
-Restart the game, set `r_blendsort 2`, load your existing Kitsune save and move
-the mouse slightly as in your two pictures. Does the ramp/floor grid still swap
-its apparent layer order? A simple works/still-flips answer is sufficient; no
-new automated capture rig or broad replay of earlier tests is required.
+Owner confirms the original view is fixed and save2 is good. A right turn into
+save3 still flips other ramp surfaces; P737 above addresses the reproduced
+mode2 cull-induced cycle. This is partial P736 visual acceptance, not all angles.
 
 The mode2 key now weights actual triangle area instead of counting edge-split
 vertices. Modes0/1 and default1 are unchanged. Saves, player config and installed
-progs were not replaced. Build/acting controls pass; GPU visual acceptance is
-PENDING until the owner checks. Scope/rollback: `tools/p736alphacentre.md`.
+progs were not replaced. Earlier build/acting controls pass; follow-up visual
+acceptance is now tracked under P737. P736 scope/rollback: `tools/p736alphacentre.md`.
 
 ## P721 — transparent windows: ready for your visual check
 
-Both Windows clients now have P736, which preserves P721's mode1 world-alpha
-renderer and separately improves mode2's face centres. No older binary was
+Both Windows clients now have P737, which preserves P721's mode1 world-alpha
+renderer and separately improves mode2's face centres and cull-aware ordering. No older binary was
 copied back. Earlier P721 evidence remains in `tools/p721alphacull.md`.
 
 - Restart the client, visit the Kitsune windows or another affected spot you
