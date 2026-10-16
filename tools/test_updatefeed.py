@@ -80,11 +80,21 @@ class PublisherTests(unittest.TestCase):
     def test_policy_protects_mounted_assets_and_settings(self):
         for p in ['ftesurf/ftesurf.cfg', 'qkey', 'hl2/pak01_dir.vpk', 'ftesurf/maps/a.bsp',
                   'ftesurf/data/consent.txt', 'ftesurf/cfg/settings.cfg', '../LICENSE',
+                  'ftesurf/maps/tiers-other.txt', 'ftesurf/maps/tiers.txt/extra', 'ftesurf/maps/TIERS.txt',
                   'ftesurf/gfx/../../data/consent.txt', 'ftesurf/gfx/x.']:
             self.assertFalse(feed.managed(p), p)
         for p in ['ftesurf/maps/zones/local/surf_a.json', 'ftesurf/cfg/maps/map_surf_a.cfg',
-                  'ftesurf/data/mapwr.txt', 'ftesurf/menu.dat']:
+                  'ftesurf/data/mapwr.txt', 'ftesurf/menu.dat', 'ftesurf/maps/tiers.txt']:
             self.assertTrue(feed.managed(p), p)
+
+    def test_tier_catalogue_signed_roundtrip(self):
+        p = self.win / 'ftesurf/maps/tiers.txt'
+        p.parent.mkdir(parents=True)
+        p.write_bytes(b'tiers surf_fixture "0,0,4,approved,6"\n')
+        self.build()
+        payload = feed.verify((self.root / 'feed/update.json').read_bytes(), KEY)
+        row = next(f for f in payload['files'] if f['path'] == 'ftesurf/maps/tiers.txt')
+        self.assertEqual(feed.object_bytes(self.root / 'feed/objects', row['hash'], row['size']), p.read_bytes())
 
     def test_launcher_is_bootstrap_not_self_replaced(self):
         (self.win / 'ftesurf-launcher.exe').write_bytes(b'bootstrap')

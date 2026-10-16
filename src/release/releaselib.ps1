@@ -279,6 +279,18 @@ function Get-ReceiptTokens ($Receipt) {
             'LINUX_ENGINE'     = (Format-EngineLabel $l.engine.patch_doc $l.engine.binary_verified)
         }
     }
+    if ($Receipt.PSObject.Properties.Name -contains 'bootstrap_downloads') {
+        $wb = @($Receipt.bootstrap_downloads | Where-Object platform -eq 'win64')
+        if ($wb.Count -ne 1) { throw 'receipt needs exactly one Windows launcher download' }
+        $win['LAUNCHER_URL'] = "$($wb[0].url)"
+        $win['LAUNCHER_SHA256'] = "$($wb[0].sha256)"
+        if ($null -ne $lx) {
+            $lb = @($Receipt.bootstrap_downloads | Where-Object platform -eq 'linux64')
+            if ($lb.Count -ne 1) { throw 'receipt needs exactly one Linux launcher download' }
+            $lx['LINUX_LAUNCHER_URL'] = "$($lb[0].url)"
+            $lx['LINUX_LAUNCHER_SHA256'] = "$($lb[0].sha256)"
+        }
+    }
     [pscustomobject]@{ Windows = $win; Linux = $lx }
 }
 

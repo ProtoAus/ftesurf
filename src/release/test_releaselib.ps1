@@ -57,10 +57,15 @@ Check 'blocks: marker sharing a line throws' { Throws { Split-PageBlocks "a <!--
 Check 'blocks: lowercase marker is not a marker' { Throws { Split-PageBlocks "<!--linux-begin-->`nb`n<!--linux-end-->`n" } '*no <!--LINUX-BEGIN-->*' }
 
 $tplPath = Join-Path $PSScriptRoot 'page.template.html'
-$winKeys = @('VERSION', 'FILENAME', 'URL', 'SIZE_HUMAN', 'SIZE_BYTES', 'SHA256', 'DATE', 'QCBUILD', 'ENGINEPATCH')
-$lxKeys  = @('LINUX_URL', 'LINUX_FILENAME', 'LINUX_SIZE_HUMAN', 'LINUX_SIZE_BYTES', 'LINUX_SHA256', 'LINUX_GLIBC', 'LINUX_ENGINE')
+$winKeys = @('VERSION', 'FILENAME', 'URL', 'LAUNCHER_URL', 'LAUNCHER_SHA256', 'SIZE_HUMAN', 'SIZE_BYTES', 'SHA256', 'DATE', 'QCBUILD', 'ENGINEPATCH')
+$lxKeys  = @('LINUX_URL', 'LINUX_LAUNCHER_URL', 'LINUX_LAUNCHER_SHA256', 'LINUX_FILENAME', 'LINUX_SIZE_HUMAN', 'LINUX_SIZE_BYTES', 'LINUX_SHA256', 'LINUX_GLIBC', 'LINUX_ENGINE')
 $tpl = Split-PageBlocks ([System.IO.File]::ReadAllText($tplPath))
-Check 'template: two blocks' { $tpl.Pairs -eq 2 }
+Check 'template: three blocks' { $tpl.Pairs -eq 3 }
+Check 'template: manual launcher upgrade is visible and links both platforms' {
+    $tpl.Kept.Contains('download the new launcher once') -and
+    $tpl.Kept.Contains('href="@@LAUNCHER_URL@@"') -and $tpl.Kept.Contains('href="@@LINUX_LAUNCHER_URL@@"') -and
+    -not $tpl.Outside.Contains('@@LINUX_LAUNCHER_URL@@')
+}
 Check 'template: outside tokens = Windows map' { @(Compare-TokenSets (Get-TemplateTokens $tpl.Outside) $winKeys).Count -eq 0 }
 Check 'template: inside tokens = Linux names' { @(Compare-TokenSets (Get-TemplateTokens $tpl.Inside) $lxKeys).Count -eq 0 }
 Check 'template: archive links and filenames once each when kept' {
@@ -241,7 +246,7 @@ Check 'maxversion: junk throws' { Throws { Get-MaxVersion @('2.31', 'GLIBC_PRIVA
 # 2026', 'QuakeC build 89' and 'engine patch 467'.
 $rc = '{"version":"0.1.22","built_utc":"2026-10-04T09:36:32Z","archive":{"name":"ftesurf-0.1.22.7z","bytes":40171789,"sha256":"d11e27d234e0c71402248dc8fc3cc126bf95b890a2fcb98baac1f2b70dd0c147","url":"https://dl.proto.bar/ftesurf/ftesurf-0.1.22.7z"},"qc":{"build":89},"engine":{"patch_doc":467,"patch_applies_to_binary":true}}' | ConvertFrom-Json
 $t = Get-ReceiptTokens $rc
-Check 'receipt: keys are exactly the Windows map' { @(Compare-TokenSets @($t.Windows.Keys) $winKeys).Count -eq 0 }
+Check 'receipt: legacy keys retain the historical Windows map' { @(Compare-TokenSets @($t.Windows.Keys) @($winKeys | Where-Object { $_ -notlike 'LAUNCHER_*' })).Count -eq 0 }
 Check 'receipt: values as 0.1.22 rendered them' {
     $t.Windows.SIZE_HUMAN -ceq '38.3 MB' -and $t.Windows.DATE -ceq '4 October 2026' -and
         $t.Windows.QCBUILD -ceq '89' -and $t.Windows.ENGINEPATCH -ceq '467' -and $t.Windows.VERSION -ceq '0.1.22' -and
@@ -252,7 +257,16 @@ Check 'receipt: the date is the UTC day' { (Format-ReceiptDate '2026-10-04T23:59
 Check 'receipt: an unverified engine says so' { (Format-EngineLabel 467 $false) -ceq '467 (unverified against this binary)' }
 $rc | Add-Member -NotePropertyName linux -NotePropertyValue ('{"archive":{"name":"x.tar.xz","bytes":33528724,"sha256":"AB88","url":"https://x/x.tar.xz"},"glibc_min":"2.29","engine":{"patch_doc":427,"binary_verified":true}}' | ConvertFrom-Json)
 $t = Get-ReceiptTokens $rc
-Check 'receipt: a linux section gives exactly the Linux names' { @(Compare-TokenSets @($t.Linux.Keys) $lxKeys).Count -eq 0 }
+Check 'receipt: legacy linux section retains the historical Linux names' { @(Compare-TokenSets @($t.Linux.Keys) @($lxKeys | Where-Object { $_ -notlike 'LINUX_LAUNCHER_*' })).Count -eq 0 }
+$rc | Add-Member -NotePropertyName bootstrap_downloads -NotePropertyValue @(
+    [pscustomobject]@{ platform = 'win64'; url = 'https://x/launcher.exe'; sha256 = ('a' * 64) },
+    [pscustomobject]@{ platform = 'linux64'; url = 'https://x/launcher'; sha256 = ('b' * 64) })
+$newTokens = Get-ReceiptTokens $rc
+Check 'receipt: standalone launchers add the current template tokens' {
+    @(Compare-TokenSets @($newTokens.Windows.Keys) $winKeys).Count -eq 0 -and
+    @(Compare-TokenSets @($newTokens.Linux.Keys) $lxKeys).Count -eq 0 -and
+    $newTokens.Windows.LAUNCHER_URL -ceq 'https://x/launcher.exe'
+}
 Check 'receipt: the Linux hash is lower case, as sha256sum wants' { $t.Linux.LINUX_SHA256 -ceq 'ab88' -and $t.Linux.LINUX_SIZE_HUMAN -ceq '32.0 MB' }
 $sd = Join-Path ([System.IO.Path]::GetTempPath()) ("site-" + [guid]::NewGuid()); New-Item -ItemType Directory $sd | Out-Null
 $sd2 = Join-Path ([System.IO.Path]::GetTempPath()) ("site-" + [guid]::NewGuid()); New-Item -ItemType Directory $sd2 | Out-Null

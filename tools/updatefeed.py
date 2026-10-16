@@ -24,7 +24,7 @@ ROOT = {
     "fteplug_hl2_x64.dll", "fteplug_ui_imgui_x64.dll", "fteplug_hl2_amd64.so",
 }
 GAME = {"ftesurf/csprogs.dat", "ftesurf/qwprogs.dat", "ftesurf/menu.dat",
-        "ftesurf/fs_addons.default.txt", "ftesurf/fs_addons.txt"}
+        "ftesurf/fs_addons.default.txt", "ftesurf/fs_addons.txt", "ftesurf/maps/tiers.txt"}
 DATA = {f"ftesurf/data/{name}.txt" for name in ("mapmeta", "mapdeps", "mapmeta_override", "mapparticles", "mapwr", "mapdl", "mapmanifest")}
 PREFIXES = ("ftesurf/gfx/", "ftesurf/glsl/", "ftesurf/particles/", "ftesurf/scripts/", "ftesurf/models/", "ftesurf/sound/")
 

@@ -1656,6 +1656,24 @@ if ($Linux) {
         }
     }
 }
+# The bootstrap is intentionally not self-managed: alpha upgrades may require
+# one-time replacement without weakening the managed-file policy.
+$launcherArtifacts = @()
+foreach ($platform in @('win64', 'linux64')) {
+    if ($platform -eq 'linux64' -and -not $Linux) { continue }
+    $boot = if ($platform -eq 'win64') { $bootstrap } else { $linuxBootstrap }
+    $name = if ($platform -eq 'win64') { "ftesurf-launcher-$Ver.exe" } else { "ftesurf-launcher-$Ver-linux-x86_64" }
+    $path = Join-Path $OutDir $name
+    Copy-Item -LiteralPath $boot.binary -Destination $path
+    $sha = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($sha -ne $boot.provenance.sha256.ToLowerInvariant()) { Fail "standalone $platform bootstrap differs from verified build" }
+    $key = "$Prefix/$name"
+    $launcherArtifacts += [pscustomobject]@{ Platform = $platform; Name = $name; Path = $path; Key = $key; Url = "$DlBase/$key"; Sha = $sha; Md5 = (Get-FileHash -LiteralPath $path -Algorithm MD5).Hash.ToLowerInvariant() }
+    [System.IO.File]::WriteAllText("$path.sha256", "$sha  $name`n", [System.Text.UTF8Encoding]::new($false))
+}
+$winLauncher = $launcherArtifacts | Where-Object Platform -eq 'win64'
+$lxLauncher = $launcherArtifacts | Where-Object Platform -eq 'linux64'
+$receipt['bootstrap_downloads'] = @($launcherArtifacts | ForEach-Object { [ordered]@{ platform = $_.Platform; name = $_.Name; url = $_.Url; sha256 = $_.Sha; bytes = (Get-Item -LiteralPath $_.Path).Length } })
 $ReceiptPath = Join-Path $OutDir "ftesurf-$Ver.json"
 $json = ($receipt | ConvertTo-Json -Depth 8).Replace("`r`n", "`n")
 [System.IO.File]::WriteAllText($ReceiptPath, $json + "`n", (New-Object System.Text.UTF8Encoding $false))
@@ -1681,6 +1699,8 @@ if (-not $SkipSite) {
         'VERSION'      = $Ver
         'FILENAME'     = $ArchiveName
         'URL'          = $ArchiveUrl
+        'LAUNCHER_URL' = $winLauncher.Url
+        'LAUNCHER_SHA256' = $winLauncher.Sha
         'SIZE_HUMAN'   = (HumanSize $ArchiveBytes)
         'SIZE_BYTES'   = ('{0:N0}' -f $ArchiveBytes)
         'SHA256'       = $ArchiveSha.ToUpper()
@@ -1696,6 +1716,8 @@ if (-not $SkipSite) {
     if ($Linux) {
         $lxTokens = [ordered]@{
             'LINUX_URL'        = $LinuxArchiveUrl
+            'LINUX_LAUNCHER_URL' = $lxLauncher.Url
+            'LINUX_LAUNCHER_SHA256' = $lxLauncher.Sha
             'LINUX_FILENAME'   = $LinuxArchiveName
             'LINUX_SIZE_HUMAN' = (HumanSize $LinuxArchiveBytes)
             'LINUX_SIZE_BYTES' = ('{0:N0}' -f $LinuxArchiveBytes)
@@ -1807,6 +1829,11 @@ if ($DryRun) {
 if (-not $SkipUpload) {
     Step "Upload to R2 ($ObjectKey)"
 
+    # Standalone versioned bootstrap keys are immutable too: check before ANY PUT.
+    foreach ($artifact in $launcherArtifacts) {
+        $prior = Get-R2Object $artifact.Key
+        if ($prior -and $prior.Md5 -ne $artifact.Md5) { Fail "$($artifact.Key) already exists with different bytes; advance the version" }
+    }
     # Both keys are checked before either PUT: a refusal after the first PUT
     # would cost the version.
     $LxSkipPut = $false
@@ -1996,6 +2023,21 @@ if (-not $SkipUpload) {
 #  9b. IMMUTABLE UPDATE OBJECTS: full closure, including retained platform bytes.
 # =============================================================================
 if (-not $SkipUpload -or -not $SkipSite) {
+    Step 'Publish and round-trip standalone launchers'
+    foreach ($artifact in $launcherArtifacts) {
+        if (-not $SkipUpload) {
+            foreach ($suffix in @('', '.sha256')) {
+                $type = if ($suffix) { 'text/plain; charset=utf-8' } else { 'application/octet-stream' }
+                Native 'rclone' @('copyto', "$($artifact.Path)$suffix", "${Remote}:$Bucket/$($artifact.Key)$suffix", '--bind', '0.0.0.0',
+                    '--immutable', '--header-upload', 'Cache-Control: public, max-age=31536000, immutable', '--header-upload', "Content-Type: $type") 'rclone standalone launcher' | Out-Null
+            }
+        }
+        $check = Join-Path $OutDir "verify-$($artifact.Name)"
+        Native 'curl.exe' @('--fail', '--silent', '--show-error', '--location', '--max-time', '120', '--output', $check, $artifact.Url) 'download standalone launcher' | Out-Null
+        if ((Get-FileHash -LiteralPath $check -Algorithm SHA256).Hash.ToLowerInvariant() -ne $artifact.Sha) { Fail "public standalone launcher SHA256 mismatch: $($artifact.Name)" }
+        Remove-Item -LiteralPath $check
+        Good "$($artifact.Name): public SHA256 matches verified bootstrap"
+    }
     Step 'Publish and round-trip verify every referenced update object'
     $updateProof = Publish-UpdateObjects -Feed $updateFeed -Destination "${Remote}:$Bucket/$Prefix/update/objects" `
         -Limit (Get-BwLimit) -SkipPut:$SkipUpload

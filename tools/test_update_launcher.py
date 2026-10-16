@@ -46,7 +46,8 @@ def main():
     thread.start()
     base = f'http://127.0.0.1:{server.server_port}'
     paths = ['default.fmf', engine, 'ftesurf/menu.dat', 'ftesurf/csprogs.dat', 'ftesurf/qwprogs.dat',
-             'ftesurf/fs_addons.txt', 'ftesurf/maps/zones/local/surf_fixture.json']
+             'ftesurf/fs_addons.txt', 'ftesurf/maps/zones/local/surf_fixture.json',
+             'ftesurf/maps/tiers.txt']
     for p in paths:
         target = stagedir / p
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -85,7 +86,8 @@ def main():
     try:
         good = publish()
         run()
-        assert hits['/update.json'] == 1 and sum(n for p, n in hits.items() if '/objects/' in p) == 5
+        assert hits['/update.json'] == 1 and sum(n for p, n in hits.items() if '/objects/' in p) == 6
+        assert (install / 'ftesurf/maps/tiers.txt').read_bytes() == (stagedir / 'ftesurf/maps/tiers.txt').read_bytes()
         print('PASS positive install control: feed + 5 objects, protected sentinels unchanged')
         hits.clear(); run()
         assert hits['/update.json'] == 1 and sum(n for p, n in hits.items() if '/objects/' in p) == 0

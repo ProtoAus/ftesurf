@@ -3816,6 +3816,12 @@ material behind it; not map completeness or native/prediction acceptance.
   `build.ps1 -Pi`'s progs. Whole-map MOM/KSF numeric ratings and the owner's
   community KSF bonus-letter sheet are distinct. Unit/Strafe letters are NOT a
   numeric conversion. Do not donate main-map tiers to a stage or strip suffixes.
+- Release ship-set membership does NOT imply signed-update eligibility. P738 adds
+  exactly `ftesurf/maps/tiers.txt` to publisher, Rust bootstrap and native disk
+  policies; the prior launcher actually refuses the signed asset before install.
+  Owner approved a one-time new-launcher download for this alpha rollout. Keep
+  that notice/direct verified launcher links visible; never omit the tier asset,
+  wildcard all maps or relax player-data protection merely to pass signing.
 - Public Momentum caches currently have bonus ratings but no non-null stage
   tiers. Synthetic stage controls prove support, not real upstream stage data.
   Skip private testing/disabled maps when generating a public asset.
