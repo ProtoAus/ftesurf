@@ -3797,7 +3797,7 @@ void() SV_TriggerEndThink =
 // Dropping all exits would also lose non-name cleanup (e.g. gravity resets).
 void(entity p) SV_TouchRelocate =
 {
-	local entity e, nx;
+	local entity e;
 	local int bit;
 	local float n, occupied;
 
@@ -3805,9 +3805,9 @@ void(entity p) SV_TouchRelocate =
 	bit = 0;
 	if (n >= 0 && n < 32)
 		bit = (int)1 << (int)n;
-	for (e = nextent(world); e; e = nx)
+	// Advance after callbacks: nextent skips a successor removed by an exit.
+	for (e = nextent(world); e; e = nextent(e))
 	{
-		nx = nextent(e); // an exit output may remove its source
 		occupied = (e.vbsp_touch_who == p);
 		if (bit)
 		{

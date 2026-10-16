@@ -44,8 +44,8 @@ python tools/test_savemarker.py --out <owned-root>/subject --run --progs <NoDepl
 
 - Actual dedicated socket, real connected actor, walking out of the start,
   running recorder and warm ring are required before assertions can execute.
-- Final baseline: 22 expected failures in 46 checks; subject: 46 checks, zero
-  failures. Controls cover real save/load/hold/release dispatch, quoted and empty
+- Before the callback-iteration correction, baseline: 22 expected failures in
+  46 checks; corrected exit subject: 46 checks, zero failures. Controls cover real save/load/hold/release dispatch, quoted and empty
   markers, both map filter predicates with acting wrong-marker resets,
   retry/resume reader modes, original-marker preservation during demotion,
   legacy absence, sampled/unsampled rewind, physical ring wrap/overwrite,
@@ -54,8 +54,15 @@ python tools/test_savemarker.py --out <owned-root>/subject --run --progs <NoDepl
 - The unshipped first candidate `9e0a129` silently dropped all exits; review found
   that this also loses non-name cleanup. `--regression-control` reproduces four
   expected failures in 46 checks on that candidate; the corrected subject passes.
-  Both control graders require the EXACT expected failure multiset, rejecting
+  All control graders require the EXACT expected failure multiset, rejecting
   failed actor/wrong-marker/invariant controls, not merely four required labels.
+- Final callback lifetime control: `--iteration-control` reproduces the cached-
+  successor bug on unshipped `a1792ff` (one failure in 49 checks). The final
+  subject passes all 49 and the real cold retry. A's exit killing adjacent B
+  must not fire B's retained outputs; a self-removing source must still advance
+  to a live successor. Advance with nextent AFTER callbacks, which skips frees.
+  The earlier 46-check control evidence remains valid for unchanged arms; no
+  full authored-map gameplay traversal or full reconnect transaction is claimed.
 - Real `rec_retry` queues a map restart; a spawn hook observes the actual restored
   player before legitimate new map touches can change the marker. The baseline
   loses it; the subject restores it. Both must prove sent=1 and restarted=1.

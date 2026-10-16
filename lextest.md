@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P735 — save-lock progress checks (pending owner confirmation)
+
+- During a normal Monolith B4 run, make a NEW save before the ramp that used to
+  reset you. Load it, then touch the same ramp: it should behave as it did when
+  you originally reached the save. Repeat on bhop_futile if readily available.
+- Re-create old affected saves: they never stored the internal progress marker.
+  Do not infer a pass from a diagnostic warp that never established map progress.
+
+Automated state/trigger controls pass; a complete authored-route playthrough is
+not claimed. A quick owner confirmation is sufficient manual acceptance of the
+observed case; record the result here without claiming untested routes.
+
 ## P732 — Monolith B4 launch compatibility
 
 - Walk out of B4's start into the opposed booster and compare its launch with

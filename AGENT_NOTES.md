@@ -3293,7 +3293,10 @@ history; do not infer it from today's player or an unsampled replay. Finish only
 the loading player's abandoned exits before assigning the saved name: silently
 clearing occupancy also loses gravity/other cleanup. Preserve once/cooldown and
 peers; EndTouchAll needs the final occupant. A mixed name+gravity exit control
-caught the initial unshipped mistake in both trigger modes.
+caught the initial unshipped mistake in both trigger modes. Advance the entity
+walk with nextent AFTER output callbacks: an earlier exit may Kill the cached
+successor, whose custom fields remain populated after remove. An adjacent-
+trigger kill and source-self-removal control falsify that iteration seam.
 A cold marker assertion belongs at the restore boundary: a legitimate new
 OnStartTouch can rename the player again on the next move. The dedicated test
 uses actual `rec_retry` dispatch (not the engine-only `retry` name), proves a

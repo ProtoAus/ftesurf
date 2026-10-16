@@ -35,6 +35,7 @@ void(entity e) SM_Run =
 {
 	local string root, special;
 	local entity trig, output, cleanup, endall, counter, filt, peer, savedself;
+	local entity a, victim, killer, victimout, padding, tmp;
 	local float b, i, blk, row, f, mp;
 	local float *m;
 	local int bit, peerbit;
@@ -179,6 +180,45 @@ void(entity e) SM_Run =
 	savedself = self; self = trig; SV_TriggerEndThink(); self = savedself;
 	SM_Check(!strcmp(e.targetname, "abandoned"), "real EndTouch still updates map progress");
 	SM_Check(counter.count == 1, "real final exit still fires EndTouchAll once");
+
+	// Fill only reusable holes so the two owned triggers are consecutive live
+	// edicts. A cached next pointer must not deliver a victim killed by A.
+	padding = world; a = spawn();
+	while (nextent(a)) { a.chain = padding; padding = a; a = spawn(); }
+	victim = spawn(); killer = spawn(); victimout = spawn();
+	SM_Check(nextent(a) == victim, "adjacent owned trigger actor");
+	a.classname = victim.classname = "trigger_multiple";
+	a.targetname = "sm_killer"; victim.targetname = "sm_victim";
+	a.vbsp_touch_in = a.vbsp_touch_out = victim.vbsp_touch_in = victim.vbsp_touch_out = bit;
+	a.vbsp_io_out = killer; killer.owner = a;
+	killer.vbsp_io_name = "onendtouch"; killer.vbsp_io_target = "sm_victim";
+	killer.vbsp_io_input = "Kill"; killer.vbsp_io_times = -1;
+	victim.vbsp_io_out = victimout; victimout.owner = victim;
+	victimout.vbsp_io_name = "onendtouch"; victimout.vbsp_io_target = "sm_end_all";
+	victimout.vbsp_io_input = "Add"; victimout.vbsp_io_param = "1"; victimout.vbsp_io_times = -1;
+	counter.count = 0;
+	SV_SaveApplyState(e, 710, FALSE);
+	if (a.classname != "") { savedself = self; self = a; SV_TriggerEndThink(); self = savedself; }
+	SM_Check(victim.classname == "" && counter.count == 0, "removed successor never emits an exit");
+	if (a.classname != "") remove(a);
+	if (victim.classname != "") remove(victim);
+
+	// Removing the source itself must still advance to the next live trigger.
+	a = spawn(); victim = spawn();
+	a.classname = victim.classname = "trigger_multiple";
+	a.targetname = "sm_self_remove";
+	a.vbsp_touch_in = a.vbsp_touch_out = victim.vbsp_touch_in = victim.vbsp_touch_out = bit;
+	a.vbsp_io_out = killer; killer.owner = a; killer.vbsp_io_target = "sm_self_remove";
+	victim.vbsp_io_out = victimout; victimout.owner = victim;
+	counter.count = 0;
+	SV_SaveApplyState(e, 710, FALSE);
+	if (a.classname != "") { savedself = self; self = a; SV_TriggerEndThink(); self = savedself; }
+	if (victim.classname != "") { savedself = self; self = victim; SV_TriggerEndThink(); self = savedself; }
+	SM_Check(a.classname == "" && counter.count == 1, "source removal still advances to live successor");
+	if (a.classname != "") remove(a);
+	if (victim.classname != "") remove(victim);
+	remove(killer); remove(victimout);
+	while (padding) { tmp = padding.chain; remove(padding); padding = tmp; }
 	vbsp_mp = mp;
 	remove(output); remove(cleanup); remove(endall); remove(counter); remove(trig); remove(filt);
 	sl_root = root; strunzone(root);
