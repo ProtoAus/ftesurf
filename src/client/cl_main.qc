@@ -813,7 +813,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	print("FTESurf CSQC loaded\n");
 };
 
-void() CSQC_Shutdown = { Scores_NativeClose(); };
+void() CSQC_Shutdown = { Friends_MenuClear(); Scores_NativeClose(); };
 
 /*
   Forced view angles from the server -- svc_setangle, its relative form, and

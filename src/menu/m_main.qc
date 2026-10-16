@@ -133,7 +133,11 @@
 void() MU_Init;
 void() MU_Poll;
 void(vector screensize) MU_Screen;
-void(vector pos) MU_Link;
+void(vector screensize) MU_Status;
+float() MF_Count;
+void() MF_Init;
+void() MF_Poll;
+void(vector pos, vector size) MF_Draw;
 void() MM_Init;
 float() MM_Active;
 void(vector screensize) MM_Frame;
@@ -6779,25 +6783,43 @@ void(vector screensize) screen_create =
 	  row costs 56 px, and 808 gives it back so 1080p keeps 8 map rows; 720p is
 	  screen-clamped and shows 5.
 	*/
-	vector size = [min(screensize_x - 32, 1100), 808];
+	float friends = cvar("ui_maps_friends");
+	float side = (friends && screensize_x >= 1180) ? 304 : 0;
+	float rh = cvar("ui_maps_large") ? 80 : ROW_H;
+	float tx = cvar("ui_maps_large") ? 140 : 90;
+	float nx = tx + 72;
+	vector size = [min(screensize_x - 32 - side, 1100), 808];
 	if (size_y > screensize_y - 32) size_y = screensize_y - 32;
 	ui_cs_size = size;
 	ui_cs_lcols = ui_cs_lshow = 0;
 
-	vector pos  = [floor((screensize_x - size_x) * 0.5),
+	vector pos  = [floor((screensize_x - size_x - side) * 0.5),
 	               floor((screensize_y - size_y) * 0.5)];
 
 	float inner = size_x - 32;      // content width inside the 16px margins
 
 	sui_style_panel(pos, size, 12, 1);
-	sui_text([pos_x + 16, pos_y + 12], SZ_HEAD, "create server", COL_ACCENT, 1, 0);
+	sui_text([pos_x + 16, pos_y + 12], SZ_HEAD, "play", COL_ACCENT, 1, 0);
 
 	sui_push_frame(pos, size);
 
-	// THE HEADER BUDGET: the list shows floor((size_y - 60 - y) / 48) rows.
-	// Filters (56) + search (56) + three lobby rows (188) put y at 356.
-	float y = 56;
+	float y = 86;
 	float fx, f;
+	if (ui_button("cs_filters", [16, 48], [130, 28], ms_tier ? sprintf("Filters T%g %s", ms_tier, cvar("ui_maps_filters") ? "[-]" : "[+]") : (cvar("ui_maps_filters") ? "Filters [-]" : "Filters [+]")))
+		cvar_set("ui_maps_filters", ftos(!cvar("ui_maps_filters")));
+	if (ui_button("cs_size", [154, 48], [150, 28], cvar("ui_maps_large") ? "Thumbs: large" : "Thumbs: compact"))
+	{
+		cvar_set("ui_maps_large", ftos(!cvar("ui_maps_large")));
+		ms_scroll_y = 0;
+	}
+	if (ui_button("cs_friends", [312, 48], [110, 28], friends ? "Friends [-]" : "Friends [+]"))
+	{
+		sui_text_unfocus();
+		cvar_set("ui_maps_friends", ftos(!friends));
+	}
+
+	if (cvar("ui_maps_filters"))
+	{
 
 	/*
 	  ---- tier and gametype filters -------------------------------------
@@ -6944,6 +6966,7 @@ void(vector screensize) screen_create =
 	if (sui_is_released("cs_showall"))
 		ui_showall_set(!ms_showall);
 	y += 56;
+	}
 
 	/*
 	  ---- map picker: ONE box, and the list is always open ----------------
@@ -7195,7 +7218,7 @@ void(vector screensize) screen_create =
 	// ---- the list ------------------------------------------------------
 	float by = size_y - 46;         // top of the start/back row
 	vector ls = [inner, by - y - 12];
-	ui_cs_rows = floor((ls_y - 2) / ROW_H);
+	ui_cs_rows = floor((ls_y - 2) / rh);
 
 	{
 		sui_style_box([16, y], ls, 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
@@ -7208,7 +7231,7 @@ void(vector screensize) screen_create =
 			// loop costs per VISIBLE row -- about a dozen -- not per map.  That
 			// is what lets a 1400-entry list scroll for nothing.
 			sui_list_view_begin("cs_list", [17, y + 1], [ls_x - 2, ls_y - 2],
-			                    [ls_x - 14, ROW_H], ms_viewcount, ms_scroll, [0, 10]);
+			                    [ls_x - 14, rh], ms_viewcount, ms_scroll, [0, 10]);
 
 			/*
 			  The download gutter is reserved for the WHOLE list or for none of
@@ -7237,7 +7260,7 @@ void(vector screensize) screen_create =
 				float er = ui_eff(real);           // Patch 652: the build this row plays
 				float bsw = 0;                     // width its build switch takes
 				string rid = strcat("cs_row", ftos(idx));
-				vector rs  = [ls_x - 14, ROW_H];
+				vector rs  = [ls_x - 14, rh];
 
 				sui_action_element(rp, rs, rid, sui_noop);
 
@@ -7277,7 +7300,10 @@ void(vector screensize) screen_create =
 				}
 				mtsrc = bufstr_get(ms_momtsrc, real);
 
-				ui_thumb([rp_x + 3, rp_y + 2], [78, 44], mpage, mcell);
+				// Keep metadata/actions centered while the thumbnail uses the full row.
+				ui_thumb([rp_x + 3, rp_y + (rh == ROW_H ? 2 : 4)],
+				         rh == ROW_H ? [78, 44] : [128, 72], mpage, mcell);
+				rp_y += (rh - ROW_H) * 0.5;
 
 				mtier = bufstr_get(ms_momtier, real);
 				mktier = bufstr_get(ms_ksftier, real);
@@ -7287,9 +7313,9 @@ void(vector screensize) screen_create =
 					if (!strcmp(mtsrc, "sugg"))
 						sui_tooltip_for(rid, "MOM suggested tier: this map has not been ranked yet.", 2);
 				}
-				sui_text([rp_x + 90, rp_y + 6], '12 12 0',
+				sui_text([rp_x + tx, rp_y + 6], '12 12 0',
 				         (stof(mtier) > 0) ? strcat("MOM T", mtier) : "MOM -", '0.25 0.55 1', 1, 0);
-				sui_text([rp_x + 90, rp_y + 28], '12 12 0',
+				sui_text([rp_x + tx, rp_y + 28], '12 12 0',
 				         (stof(mktier) > 0) ? strcat("KSF T", mktier) : "KSF -", '1 1 1', 1, 0);
 
 				/*
@@ -7320,10 +7346,10 @@ void(vector screensize) screen_create =
 				}
 
 				mnmf = ui_fit_text(bufstr_get(ms_name, real),
-				                   rs_x - 170 - ROW_RPAD - dlg - wrw, SZ_ROW);
+				                   rs_x - nx - 8 - ROW_RPAD - dlg - wrw, SZ_ROW);
 				if (bufstr_get(ms_zoned, er) != "1")
 					mnmf = strcat(MAP_NOZONE_ESC, mnmf);
-				sui_text([rp_x + 162, rp_y + 4], SZ_ROW, mnmf,
+				sui_text([rp_x + nx, rp_y + 4], SZ_ROW, mnmf,
 				         (on || hot) ? COL_ACCENT : COL_TEXT, 1, 0);
 
 				// NEW means "a sweep saw this name appear", not "recently
@@ -7332,7 +7358,7 @@ void(vector screensize) screen_create =
 				// Measured off the FITTED name: against the full one it drew
 				// detached, past the end of a name that had been cut.
 				if (bufstr_get(ms_new, real) == "1")
-					sui_text([rp_x + 166 + stringwidth(mnmf, TRUE, SZ_ROW),
+					sui_text([rp_x + nx + 4 + stringwidth(mnmf, TRUE, SZ_ROW),
 					          rp_y + 4], SZ_ROW, strcat(SUI_ESC_GOOD, "NEW"), COL_TEXT, 1, 0);
 
 				// Second line: where it came from, what it is, then how it is
@@ -7445,9 +7471,9 @@ void(vector screensize) screen_create =
 				  half that survives.
 				*/
 				if (bufstr_get(ms_var, real) != "")
-					bsw = ui_build_switch([rp_x + 162, rp_y + 25], real, idx);
-				sui_text([rp_x + 162 + bsw, rp_y + 26], SZ_ROW,
-				         ui_fit_text(sub, rs_x - 170 - ROW_RPAD - dlg - mtw - mpopw - bsw,
+					bsw = ui_build_switch([rp_x + nx, rp_y + 25], real, idx);
+				sui_text([rp_x + nx + bsw, rp_y + 26], SZ_ROW,
+				         ui_fit_text(sub, rs_x - nx - 8 - ROW_RPAD - dlg - mtw - mpopw - bsw,
 				                     SZ_ROW),
 				         COL_DIM, 1, 0);
 
@@ -7613,6 +7639,17 @@ void(vector screensize) screen_create =
 	}
 
 	sui_pop_frame();
+	if (friends)
+	{
+		if (side)
+			MF_Draw([pos_x + size_x + 12, pos_y], [292, size_y]);
+		else
+		{
+			// Narrow windows use a modal drawer, never overlapping live map targets.
+			_action_elements_index = 0;
+			MF_Draw([pos_x + size_x - min(360, size_x), pos_y], [min(360, size_x), size_y]);
+		}
+	}
 };
 
 // ---------------------------------------------------------------------------
@@ -7657,6 +7694,13 @@ void() m_init =
 	ms_consent = ui_consent_read();
 	cvar_set("rec_terms", ftos(ms_consent));
 	MU_Init();
+	MF_Init();
+	registercvar("ui_maps_filters", "0", 32);
+	registercvar("ui_maps_large", "1", 32);
+	registercvar("ui_maps_friends", "0", 32);
+	// F-keys run binds even over menuqc. Replace only Quake's obsolete default.
+	if (getkeybind(K_F2) == "" || getkeybind(K_F2) == "menu_save")
+		localcmd("bind F2 ui_updates\n");
 	if (ms_consent < FS_TERMS_VERSION)
 		menu_screen = SCREEN_TERMS;
 
@@ -7707,6 +7751,9 @@ void() m_init =
 	registercvar("ui_mapdl_gen", "0", 32);
 	ui_dl_migrate_url();
 
+	registercommand("ui_updates");
+	registercommand("ui_update_probe");
+	registercommand("ui_menu_probe");
 	registercommand("ui_maplist");
 	registercommand("ui_browse");
 	registercommand("ui_build");
@@ -7808,6 +7855,7 @@ void(vector screensize) m_draw =
 	Dl_Tick();
 	ui_prejoin_tick();
 
+	MF_Poll();
 	Mlb_Poll();
 	// Warm the catalogue on boot, even before the picker is opened. Mdl_Ask
 	// owns consent, in-flight and one-minute refresh guards.
@@ -7908,6 +7956,7 @@ void(vector screensize) m_draw =
 	else
 	{
 		screen_main(screensize);
+		MU_Status(screensize);
 		ui_status_toast(screensize);
 	}
 
@@ -7964,6 +8013,24 @@ void() Menu_RendererRestarted =
 
 float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 {
+	if (evtype == IE_KEYDOWN && scanx == K_F2)
+	if (ms_consent >= FS_TERMS_VERSION)
+	{
+		sui_text_unfocus();
+		menu_screen = SCREEN_UPDATE;
+		return TRUE;
+	}
+	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && menu_screen == SCREEN_UPDATE)
+	{
+		menu_screen = SCREEN_MAIN;
+		return TRUE;
+	}
+	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && menu_screen == SCREEN_CREATE)
+	if (cvar("ui_maps_friends"))
+	{
+		cvar_set("ui_maps_friends", "0");
+		return TRUE;
+	}
 	// Patch 667: paste.  ASKED FOR UNDER THE KEY, where a field had the keyboard
 	// on the last frame: the engine is the judge of the chord, and the line
 	// comes as IE_PASTE events, at once with no server connected and after its
@@ -8139,6 +8206,14 @@ float(string cmd) m_consolecommand =
 	{
 		menu_screen = SCREEN_UPDATE;
 		m_open();
+		return TRUE;
+	}
+	if (strcmp(argv(0), "ui_menu_probe") == 0)
+	{
+		print(sprintf("ui_menu_probe: filters=%g large=%g friends=%g rows=%g maps=%g tier=%g scroll=%.1f\n",
+			cvar("ui_maps_filters"), cvar("ui_maps_large"), cvar("ui_maps_friends"), ui_cs_rows,
+			ms_viewcount, ms_tier, ms_scroll_y));
+		print(sprintf("ui_menu_probe: friends_count=%g client=%g screen=%g friends_draw=%g\n", cvar("ui_friends_count"), clientstate(), menu_screen, MF_Count()));
 		return TRUE;
 	}
 	if (strcmp(argv(0), "ui_update_probe") == 0)

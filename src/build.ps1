@@ -199,6 +199,12 @@ try {
             Copy-Item -LiteralPath $controlSrc -Destination (Join-Path $NoDeployDir $src)
             $qcArgs = @('-srcfile', (Split-Path $controlSrc -Leaf))
         }
+        if ($src -eq 'm_progs.src') {
+            # This is the compiled menu version, not an install-integrity verdict.
+            $menuVersion = (Get-Content -LiteralPath (Join-Path $SurfDir 'VERSION') -Raw).Trim()
+            if ($menuVersion -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid menu source VERSION' }
+            $qcArgs += "-DUI_MENU_VERSION=`"$menuVersion`""
+        }
         try { $out = & $Fteqcc @qcArgs 2>&1 }
         finally { if ($controlSrc) { Remove-Item -LiteralPath $controlSrc } }
         if ($LASTEXITCODE -ne 0) {

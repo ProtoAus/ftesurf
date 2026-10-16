@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P731 — title/picker layout preference
+
+- Check the passive top-right current/latest update status; F2 opens Updates
+  (a custom F2 binding is preserved). The old station-stack update button is gone.
+- Play: compare the default large previews with `Thumbs: compact`. Collapse and
+  reopen Filters after choosing a tier; both the choice and results must persist.
+- Friends opens a sidebar on wide windows or a drawer on narrow ones. With the
+  continuing Friends backend integration available, check real linked-account
+  presence/server/map and a cross-lobby Join. UI-only synthetic checks do not
+  claim live Steam/service acceptance; disconnected/unavailable is intentional.
+
 ## P728 — map appearance, bhop launch and shadows
 
 Both Windows installs received the full clean build at2026-10-15T17:05:09Z;

@@ -209,8 +209,14 @@ float(string addr) Friends_AddrSafe =
 	return TRUE;
 };
 
+// Optional install-local menu adapter. Keep the account/presence protocol here.
+void() Friends_MenuClear;
+void() Friends_MenuPublish;
+void(string who) Friends_MenuJoin;
+
 void() Friends_Register =
 {
+	Friends_MenuClear();
 	fr_buf = buf_create();
 	fr_stage = buf_create();
 	registercommand("friend_clear");
@@ -221,6 +227,7 @@ void() Friends_Register =
 	registercommand("friend_note");
 	registercommand("friend_join");
 	registercommand("friends_status");
+	registercommand("friends_menu_join");
 };
 
 float(string cmd) Friends_ConsoleCommand =
@@ -230,9 +237,15 @@ float(string cmd) Friends_ConsoleCommand =
 
 	n = tokenize(cmd);
 	c = argv(0);
+	if (c == "friends_menu_join" && n == 2)
+	{
+		Friends_MenuJoin(argv(1));
+		return TRUE;
+	}
 	if (c == "friend_clear")
 	{
 		fr_n = 0; fr_sn = 0; fr_ready = FALSE; fr_loading = FALSE;
+		Friends_MenuClear();
 		return TRUE;
 	}
 	if (c == "friend_begin") { fr_sn = 0; fr_loading = TRUE; return TRUE; }
@@ -264,6 +277,7 @@ float(string cmd) Friends_ConsoleCommand =
 			}
 			tmp = fr_buf; fr_buf = fr_stage; fr_stage = tmp;
 			fr_n = fr_sn; fr_ready = TRUE; fr_loading = FALSE;
+			Friends_MenuPublish();
 		}
 		return TRUE;
 	}

@@ -1,5 +1,24 @@
 # AGENT_NOTES.md
 
+## P731 — map-picker/Friends menu compatibility and layout
+
+The continuing Friends workstream owns Steam/backend integration. The menu-only
+adapter in `cl_menu_friends.qc` observes completed P722 snapshots and reuses its
+existing armed join action; it adds no HTTP/account path. Ephemeral cvar schema
+and hooks: `tools/p731menu.md`. Disconnected or >16-second-old data is unavailable,
+not offline. Clear/shutdown wipe the display snapshot; pending rows never expose
+location/Join. Native synthetic128-row controls cover wide sidebar/narrow drawer,
+one UI-to-CSQC join request and offline/pending negatives, not live service.
+
+Large map rows use80 units/128x72 previews; compact uses48/78x44. At1280x720,
+collapsing filters gives5 full large rows instead of3; compact gives8. At800x600,
+the corresponding counts are3/1/6. Collapsing keeps the selected tier/results.
+F-keys bypass menuqc in keys.c: default/empty F2 is bound to ui_updates; preserve
+custom player bindings. A renderer must initialize BEFORE a harness menu_restart;
+otherwise all later menu controls can silently target the builtin fallback.
+Final release staging stamps ui_release_version in its own default.cfg, because
+an optional pre-bump menu build cannot know the final release version.
+
 ## P729 mapmedia and zone-draft measured contracts
 
 - The NanoPi's older Werkzeug does not enforce `MAX_CONTENT_LENGTH` while

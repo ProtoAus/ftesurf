@@ -1403,7 +1403,6 @@ void(float x, float y, float pitch) MM_MainItems =
 	}
 	if (MM_Item(3, "mm_quit", [x, y + pitch * 3], "QUIT", 0, -4))
 		localcmd("quit\n");
-	MU_Link([x + 4, y + pitch * 4 + 8]);
 };
 
 // The analyser strip, straight off the engine's image.

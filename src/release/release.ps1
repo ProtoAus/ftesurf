@@ -1080,6 +1080,11 @@ $nowUtc = [DateTime]::UtcNow
 $stamp  = $nowUtc.ToString('yyyy-MM-dd HH:mm:ss') + ' UTC'
 $engineLabel = if ($patchAppliesToBinary) { "$enginePatch" } else { "$enginePatch (unverified against this binary)" }
 
+# Staged config is copied to Linux too. Stamp the FINAL release version, not
+# the source VERSION that a pre-bump menu build may have compiled. Never seta.
+Add-Content -LiteralPath (Join-Path $StageDir 'ftesurf/cfg/default.cfg') `
+    -Value "`n// Release metadata for the main-menu status.`nset ui_release_version `"$Ver`"" -Encoding utf8
+
 [System.IO.File]::WriteAllText((Join-Path $StageDir 'VERSION.txt'), @"
 World of Surf $Ver
 built            $stamp

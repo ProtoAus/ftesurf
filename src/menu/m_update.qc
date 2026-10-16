@@ -12,9 +12,14 @@ float(float action) MU_Action =
 float mu_checked;
 float mu_lastcheck;
 float mu_apply_sent;
+// The menu identifies its own compiled version, not an unverified install ledger.
+#ifndef UI_MENU_VERSION
+#define UI_MENU_VERSION "development"
+#endif
 
 void() MU_Init =
 {
+	registercvar("ui_release_version", "", 0);
 	mu_checked = FALSE;
 	mu_apply_sent = FALSE;
 	mu_lastcheck = 0;
@@ -55,25 +60,33 @@ void() MU_Poll =
 	if (menu_screen == SCREEN_MAIN || menu_screen == SCREEN_UPDATE)
 	{
 		mu_apply_sent = TRUE;
-		menu_screen = SCREEN_UPDATE;
 		MU_Action(2);
 	}
 };
 
-void(vector pos) MU_Link =
+void(vector screensize) MU_Status =
 {
-	local string st, label;
+	local string st, label, latest, current;
+	local float w;
+	local vector p;
 	st = cvar_string("update_state");
-	label = "Updates";
-	if (cvar("update_consent") == 0) label = "Updates: off";
-	else if (strcmp(st, "checking") == 0) label = "Updates: checking";
-	else if (strcmp(st, "uptodate") == 0) label = "Updates: current";
-	else if (strcmp(st, "downloading") == 0) label = "Updates: downloading";
-	else if (strcmp(st, "restart") == 0) label = "Updates: restart to finish";
-	else if (strcmp(st, "launcher") == 0) label = "Update ready: restart";
-	else if (strcmp(st, "error") == 0) label = "Updates: check unavailable";
-	if (ui_button("mu_link", pos, [256, 30], label, strcmp(st, "launcher") == 0 || strcmp(st, "restart") == 0))
-		menu_screen = SCREEN_UPDATE;
+	current = cvar_string("ui_release_version");
+	if (current == "") current = strcat(UI_MENU_VERSION, " (dev)");
+	latest = cvar_string("update_version");
+	if (latest == "") latest = "not checked";
+	label = "F2  Updates";
+	if (cvar("update_consent") == 0) label = "F2  Updates off";
+	else if (strcmp(st, "checking") == 0) label = "F2  Checking for updates";
+	else if (strcmp(st, "uptodate") == 0) label = "F2  Up to date";
+	else if (strcmp(st, "downloading") == 0 || strcmp(st, "applying") == 0) label = "F2  Updating...";
+	else if (strcmp(st, "restart") == 0 || strcmp(st, "launcher") == 0) label = "F2  Update ready - restart";
+	else if (strcmp(st, "error") == 0) label = "F2  Update check unavailable";
+	w = min(320, screensize_x - 32);
+	p = [screensize_x - w - 16, 16];
+	sui_style_box(p, [w, 76], 9, SUI_THEME_PANEL, SUI_THEME_EDGE, 0.9);
+	sui_text(p + '12 10 0', SZ_LABEL, label, COL_ACCENT, 1, 0);
+	sui_text(p + '12 32 0', '12 12 0', ui_fit_text(strcat("Your version: ", current), w - 24, '12 12 0'), COL_TEXT, 1, 0);
+	sui_text(p + '12 52 0', '12 12 0', ui_fit_text(strcat("Latest: ", latest), w - 24, '12 12 0'), COL_DIM, 1, 0);
 };
 
 void(vector screensize) MU_Screen =
