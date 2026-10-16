@@ -20,6 +20,13 @@ Initial rig failures (absolute .src parser paths, stderr warning parsing, test
 consent values/reload and teardown) are retained privately, not feature passes.
 Evidence, review and explicit live/backend limits: `tools/p741menufriends.md`.
 
+At the P741 install gate a formatted `Get-Process | Select-Object` tool display
+was blank even though the exact process-count guard still found the normal
+client. Direct Id/Path fields confirmed it. Formatted emptiness is not process
+absence: use explicit machine-readable count/paths and the real destination
+locks. The guard refused before transaction creation or any destination write;
+never remove it to turn a misleading display into permission to install.
+
 ## P732 — Monolith B4 physical-progress compatibility
 
 - Effective KSF phases are an explicit known-port policy, not recovered plugin

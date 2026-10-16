@@ -123,7 +123,12 @@ Both normal Windows installs remain untouched by this task. The paired install
 is held because the primary normal client is running; no process was stopped,
 and a partial dual-install update is not presented as deployment. Payload,
 preimage observations, failed attempts and native/review evidence are retained
-privately with ownership/retention notes for the pending delivery. Owner live
+privately with ownership/retention notes for the pending delivery. A later
+install preflight directly confirmed the normal client was STILL active and
+refused before transaction creation; a blank formatted process display was not
+accepted as an absence proof. The existing all-target lock/backup/swap/verify/
+rollback kernel was checked byte-identical in the prepared fixed-generation
+adapter, but no destination write or partial update occurred. Owner live
 acceptance is still PENDING as listed in `lextest.md`.
 
 Repeated explicit `menu_restart` can still leave prior native HTTP transports
