@@ -29,8 +29,10 @@ The public page links verified standalone launchers; fresh archives include them
   Earlier published `patch-738` remains its original updater-source commit; no
   published tag/history is rewritten.
 - Launcher `646c8d111fe0efd5e40697e195f05044034df2eb`.
-- Product parent5cdfc89 includes P737's committed delivery notes. Product release
-  source/receipt SHA is recorded by the release tool and completion update below.
+- Product release source `4ba210990cfbf01de97d8335780c14dc2fb055ea`, including
+  published P737 delivery notes, the P738 update path and standalone-launcher
+  publisher. The later VERSION/provenance commit records publication; it does
+  not relabel or rebuild these immutable artifacts.
 
 ## Acting checks
 
@@ -65,6 +67,45 @@ renderer task, with the owner's game active. They are NOT overwritten/stopped;
 this release's public artifacts come only from clean isolated committed sources.
 No NanoPi lobby restart, player/config/save write, or unrelated worktree cleanup.
 
-## Completion
+## Completion — published and verified
 
-Publication and final public provenance pending the final full preview/live run.
+Released **0.1.26+b89.p738** through the normal full preview and live entrypoint
+with `-VerifyFull`. Both CDN archive downloads rehash exactly; standalone launcher
+CDN downloads match their built SHA256; all760 signed objects round-trip before
+atomic site/feed promotion. Public page is byte-equal to the rendered page and
+signed update feed is byte-equal/no-cache. Required manual launcher replacement
+is visible on the page. VERSION now0.1.26; qcbuild remains89.
+
+Final actual public/default-HTTPS acceptance: **2026-10-16T09:19:46Z**. Both new
+launchers downloaded from their public URLs, exit0 with `--yes --no-launch` and
+install the released signed feed. Windows850 and Linux847 non-overridden payload
+files rehash against their signed BLAKE2b256 values; each preserves3 synthetic
+config/data/edited-zone sentinels and installs the tier catalogue. No game
+launch/process stop. This is a CLI/install acceptance, not P737 visual acceptance.
+
+The native stamped full build matches all74 prior P737 compiler diagnostics,
+0 NEW; QC0 warnings. Final release-helper81 tests include the real publisher's
+Linux token declaration: the preview caught its initially missing standalone
+launcher tokens before any upload, then the fixed full preview/live run passed.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Windows full archive | `a343a0045efd93563f02a651c3a8c10ad09e10bb50e5d772f5d59b8824d1b57b` |
+| Linux full archive | `6149ef803fc24d818a25ad0736940a784cc8d92e7856a30f189d019afa28aa11` |
+| Windows standalone launcher | `5ace5a0ebd7ff56a536886322d1939488a55551e9c1b66d2bf2c0f32a12cbf72` |
+| Linux standalone launcher | `618806cb36868bb1fa12c0e1d5ed322e113f4805c994bc05a78fd0a3cc27a084` |
+| Signed feed | `60bd607fd63653ed856701e054f3dd922401bcae3a3a8d96bbc287b34b7fd5a8` |
+
+Page: https://proto.bar/ftesurf/ . Metadata: `version.json`; signed feed:
+`update.json`. Standalones: `https://dl.proto.bar/ftesurf/ftesurf-launcher-0.1.26.exe`
+and `https://dl.proto.bar/ftesurf/ftesurf-launcher-0.1.26-linux-x86_64`.
+Public metadata intentionally withholds the local receipt's tool.host; compare
+against the rendered public receipt, not the private machine-labelled copy.
+
+Retain OWNER/logs/receipts, final distributions, signed manifests/proofs, native
+products and source worktrees under the owned root above. Disposable compiler
+caches, duplicate stages/object stores and synthetic public installs are retired
+only after acceptance; the borrowed dependency junction is unlinked, never
+followed. Exact retirement inventory/status is in that root. Local Windows
+replacement remains blocked/preserved as described above, independent of this
+completed public release. No lobby/native fleet deployment is claimed.
