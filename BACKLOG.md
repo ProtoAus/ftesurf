@@ -5,6 +5,26 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## KSF sparse demos: none downloaded yet, upstream parked (P740)
+
+- Site: the Pi's `ksfimport.py --watch --go --demos` cron row (`1-59/5`),
+  enabled 2026-10-16T15:30:35Z. It discovers demos (50 pending at 21:58Z) and
+  requests none: the upstream is parked after its HTTP 500 at 08:36Z, retry
+  2026-10-17T08:36Z. Never clear the refusal ledger to force one.
+- Falsifier: after the retry `logs/ksfwatch.log` reads `KSF demos: N request(s),
+  M linked` with M > 0, and a linked row plays from Watch (lextest P740). An
+  upstream that keeps refusing is a recorded outcome, not a pass.
+
+## reccheck's default sweep stops at one unreadable file (P740)
+
+- Site: `tools/reccheck.py:read_lines`. On 2026-10-16 the default selector read
+  268 save prefixes beside `ftesurf/data/runs`; one raised PermissionError
+  (cause unconfirmed, likely the running game holding it) and the default CLI
+  did not complete. `data/runs` alone did (295 recordings, 190 faults).
+- Falsifier: a scratch dir with one good `.rec` and one that cannot be opened.
+  The sweep must name the second as unreadable -- a third verdict, not a fault
+  or a pass -- and still check the first.
+
 ## Disconnected Friends activation awaits the schema20 service generation (P741)
 
 - Implemented: `src/menu/m_friends.qc` standalone authenticated list/Join, native

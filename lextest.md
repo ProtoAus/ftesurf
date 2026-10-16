@@ -1,5 +1,21 @@
 # lextest.md — things waiting on a human
 
+## P740 — Get demo now starts within seconds; KSF demos after 08:36Z
+
+Backend only and live since 2026-10-16T16:43Z; no client update needed. A real
+public request went queued to ready in 1.263 s and the row then had Watch. No
+one has watched one in the game yet.
+
+- Open `scores`, choose **imported**, click **Get demo** on a Momentum row we do
+  not hold. It should be ready in a few seconds (longer if another download is
+  already running), not up to five minutes. Click Watch: does it play?
+  "Ready in N s / plays" is enough.
+- KSF: after 2026-10-17T08:36Z (upstream cooldown from its HTTP 500), give it an
+  hour, then look for Watch on a KSF row. None yet is not a fault in itself:
+  the upstream may still refuse. Verdict PENDING for both.
+
+Limits and evidence: `tools/p740demograb.md`.
+
 ## P742 — farther-right Kitsune eye spans: ready in normal clients
 
 Both normal Windows clients hash-verified at2026-10-16T16:37:40Z; clean source

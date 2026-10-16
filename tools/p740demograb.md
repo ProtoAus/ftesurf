@@ -116,8 +116,42 @@ a synthetic SQLite subtree unchanged. The old 186d321 input, backup-order and
 literal-destination controls all fail; its double-slash source-root proof also
 acts/fails refusal, while corrected Linux root/nested/symlink/identity controls
 pass. SQLite fixture handles now close explicitly before Windows cleanup.
-Follow-up reviews and resumed same-entrypoint delivery are pending. The reviewed
-user-unit template is installed hash-matching but remains inactive/not enabled.
+Both 6474131 follow-up reviews were clear.
 
-Deployment and live Momentum acceptance are pending. No demo body, private
-identity, credential or raw private backend output belongs in this document.
+## Deployed and live
+
+`surfd-deploy.ps1` from `35988cd`, `-Only surfd/momgrab.py -NoReload -SkipTests
+-GuardStateDir`, 2026-10-16T16:39Z: `GUARD_MASTER_OK`, mode-600 DB backup,
+`COPIED=1`, `VERIFY_BAD=0`, stage removed, no app reload. The guard state dir is
+the one the original KSF cron row passes as `--state-dir`, NOT the WSGI `control`
+folder beside it; the first `35988cd` attempt named the wrong one and stopped
+before backup or copy.
+
+16:43:19Z: `momrequests.service` installed (unit blob `1a3a53ad`), enabled and
+active, its admission lease observed. The background row (`3-59/5`) runs the new
+helper; a minute row `momgrab.py --go --requests-only --max 2` was ADDED (there
+was no momjobs row before). Guard OPEN, sealed state/manifest unchanged.
+
+Public HTTPS acceptance, 16:48:42Z: a short PB outside the automatic top ten,
+its original absent before the request, showed Get. POST returned queued; polling
+reached ready in 1.263 s. `/api/replay/N` returned 200 with a matching header and
+212857 bytes; `reccheck` found zero faults (six notes); the board row then had
+Watch. The worker's journal logged that transfer (`ok 1`, 1 filed, 1 linked).
+No in-game playback was driven.
+
+Readback 2026-10-16T21:58Z: same worker PID, 0 restarts, unit enabled; crontab
+hash equals the post-change snapshot; deployed helper is blob `543e18e5`; the
+minute row has logged no error; background grabs keep filing; `/health` 200.
+
+KSF: the `--demos` row runs every five minutes and discovers demos (4 pending at
+enable, 50 at 21:58Z) but has requested and linked none. The upstream is still
+parked from its HTTP 500 at 2026-10-16T08:36Z, until 2026-10-17T08:36Z; the
+cooldown was not reset. No KSF download or playback is claimed.
+
+`tools/test_reccheck.py` exit 0; `ftesurf/data/runs` 295 recordings, 190 faults,
+equal to the P741 baseline (no reader change in this patch). The default
+selector also reads 268 save prefixes; one raised PermissionError in
+`read_lines` and stopped the CLI (BACKLOG).
+
+No demo body, private identity, credential or raw private backend output belongs
+in this document.
