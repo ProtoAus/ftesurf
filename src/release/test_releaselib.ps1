@@ -66,12 +66,17 @@ Check 'template: manual launcher upgrade is visible and links both platforms' {
     $tpl.Kept.Contains('href="@@LAUNCHER_URL@@"') -and $tpl.Kept.Contains('href="@@LINUX_LAUNCHER_URL@@"') -and
     -not $tpl.Outside.Contains('@@LINUX_LAUNCHER_URL@@')
 }
-Check 'publisher: actual Linux token contract matches the template helpers' {
-    $source = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'release.ps1'))
-    $match = [regex]::Match($source, '(?m)^\$LinuxTokenNames = @\(([^\r\n]+)\)')
-    $actual = @([regex]::Matches($match.Groups[1].Value, "'([A-Z0-9_]+)'") | ForEach-Object { $_.Groups[1].Value })
-    $match.Success -and @(Compare-TokenSets $actual $lxKeys).Count -eq 0
+Check 'preflight: actual receipt renderer and template agree' {
+    $contract = Test-ReleaseTemplate ([IO.File]::ReadAllText($tplPath))
+    @(Compare-TokenSets $contract.LinuxKeys $lxKeys).Count -eq 0 -and @(Compare-TokenSets $contract.WindowsKeys $winKeys).Count -eq 0
 }
+Check 'preflight: unknown token acts and fails before render' { Throws { Test-ReleaseTemplate (([IO.File]::ReadAllText($tplPath)) + '@@UNREGISTERED@@') } '*template contract*' }
+Check 'preflight: missing Linux launcher token is refused' { Throws { Test-ReleaseTemplate (([IO.File]::ReadAllText($tplPath)).Replace('@@LINUX_LAUNCHER_URL@@', 'missing')) } '*template contract*' }
+Check 'version: target patch selected once' { (Get-ReleaseVersion '0.1.26' 'patch') -ceq '0.1.27' }
+Check 'version: minor clears patch' { (Get-ReleaseVersion '0.1.26' 'minor') -ceq '0.2.0' }
+Check 'version: major clears both' { (Get-ReleaseVersion '0.1.26' 'major') -ceq '1.0.0' }
+Check 'version: no bump preserves current' { (Get-ReleaseVersion '0.1.26' '') -ceq '0.1.26' }
+Check 'version: invalid input refused' { Throws { Get-ReleaseVersion '0.1.26.1' 'patch' } '*invalid*VERSION*' }
 Check 'template: outside tokens = Windows map' { @(Compare-TokenSets (Get-TemplateTokens $tpl.Outside) $winKeys).Count -eq 0 }
 Check 'template: inside tokens = Linux names' { @(Compare-TokenSets (Get-TemplateTokens $tpl.Inside) $lxKeys).Count -eq 0 }
 Check 'template: archive links and filenames once each when kept' {

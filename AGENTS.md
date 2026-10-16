@@ -202,8 +202,11 @@ Naming: `pi.dev` is the coding agent (`.pi/`, `Start-Pi.cmd`, the `pi` command).
    csprogs from the TREE, not a commit; configs/tools need separate copying.
    Verify destination hashes and live behavior, then record UTC provenance.
    Ordinary progs swaps keep .prev. Do not silently ship unapproved peer work.
-   Releases are a separate operation; ALWAYS start with `-Bump patch -DryRun`,
-   read all release notes, and verify the archive rather than only the build box.
+   Releases are separate: run `release.ps1 -PreflightOnly -Bump patch` first,
+   then `-Bump patch -DryRun` ONCE and publish that exact `-PublishPrepared`
+   receipt with its trusted `-PreparedSha256`; never rebuild after preview.
+   Follow `src/release/README.md`, read all release notes and verify downloads.
+   These are release-only gates, not extra work on ordinary feature builds.
 
 ## Harness essentials
 

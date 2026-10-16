@@ -17,15 +17,35 @@ if (-not $Commit) {
 }
 $full = git -C $FteRoot rev-parse --verify "$Commit^{commit}"
 if ($LASTEXITCODE) { throw "unknown engine commit $Commit" }
-if (-not (git -C $FteRoot branch -r --contains $full)) { Write-Warning "$full is not on any pushed branch" }
+# A worktree commit need not be pushed just to compile/test it. Export exactly
+# that inspected object through an owned temporary ref, not whichever local
+# branch the canonical checkout happens to have.
+$common = (& git -C $FteRoot rev-parse --path-format=absolute --git-common-dir).Trim()
+if ($LASTEXITCODE) { throw 'cannot resolve engine common Git directory' }
+function WslDrivePath ([string]$Path) {
+    $Path = [IO.Path]::GetFullPath($Path)
+    if ($Path -notmatch '^[A-Za-z]:[\\/]') { throw 'Linux build requires a local-drive engine path' }
+    '/mnt/' + $Path.Substring(0, 1).ToLowerInvariant() + ($Path.Substring(2) -replace '\\', '/')
+}
+$wslEngine = WslDrivePath $FteRoot
+$wslGit = WslDrivePath $common
+$sourceRef = "refs/ftesurf-build/$PID-$($full.Substring(0, 12))"
+& git -C $FteRoot update-ref $sourceRef $full ('0' * 40)
+if ($LASTEXITCODE) { throw 'cannot create owned temporary source ref' }
 
 # --exec: without it wsl.exe hands the joined line to a shell, which expands $vars on the way.
 # This checkout, not C:\FTESurf: a worktree's build.sh and dist\ are its own.
 $wslRoot = '/mnt/' + $root.Substring(0, 1).ToLower() + ($root.Substring(2) -replace '\\', '/')
-$wslArgs = @('-d', $Distro, '-u', 'root', '--cd', $wslRoot, '--exec', '/usr/bin/env', "FTESURF_LINUX_OUT=$wslRoot/dist/$OutName", '/bin/bash', 'tools/linux/build.sh', $full)
+$wslArgs = @('-d', $Distro, '-u', 'root', '--cd', $wslRoot, '--exec', '/usr/bin/env', "FTESURF_LINUX_OUT=$wslRoot/dist/$OutName",
+    "FTESURF_ENGINE_SOURCE=$wslEngine", "FTESURF_ENGINE_GIT_DIR=$wslGit", "FTESURF_ENGINE_REF=$sourceRef", '/bin/bash', 'tools/linux/build.sh', $full)
 if ($ExpectSonames) { $wslArgs += '--expect-sonames' }
-& wsl.exe @wslArgs
-$rc = $LASTEXITCODE
+try {
+    & wsl.exe @wslArgs
+    $rc = $LASTEXITCODE
+} finally {
+    & git -C $FteRoot update-ref -d $sourceRef $full
+    if ($LASTEXITCODE) { throw "temporary source ref cleanup blocked: $sourceRef at $full" }
+}
 
 $bi = Join-Path $root "dist\$OutName\BUILDINFO.txt"
 if (-not (Test-Path $bi)) { throw "build.sh exited $rc and wrote no BUILDINFO.txt" }

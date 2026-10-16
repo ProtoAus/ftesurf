@@ -100,6 +100,11 @@ param(
     # LTO wrappers the same tokens.
     [int]$Jobs = 8,
 
+    # Release preparation can compile its chosen version without editing VERSION.
+    [ValidatePattern('^\d+\.\d+\.\d+$')]
+    [string]$ReleaseVersion,
+    [switch]$PassThru,
+
     # After the build, push qwprogs.dat and csprogs.dat to the NanoPi's lobbies
     # and restart them -- see the header.  -PiForce deploys even while the
     # directory shows players on a lobby, cannot be read, or has no row for one
@@ -201,7 +206,7 @@ try {
         }
         if ($src -eq 'm_progs.src') {
             # This is the compiled menu version, not an install-integrity verdict.
-            $menuVersion = (Get-Content -LiteralPath (Join-Path $SurfDir 'VERSION') -Raw).Trim()
+            $menuVersion = if ($ReleaseVersion) { $ReleaseVersion } else { (Get-Content -LiteralPath (Join-Path $SurfDir 'VERSION') -Raw).Trim() }
             if ($menuVersion -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid menu source VERSION' }
             $qcArgs += "-DUI_MENU_VERSION=`"$menuVersion`""
         }
@@ -219,7 +224,24 @@ try {
 
 # ------------------------------------------------------------ engine ---------
 if ($Engine) {
+    # Use the same Windows Git view that inspected this checkout. MSYS Git can
+    # otherwise call a clean CRLF checkout dirty; metadata must be make arguments.
+    $count = & git -C $FteRoot rev-list --count HEAD
+    if ($LASTEXITCODE) { throw 'cannot resolve native source count' }
+    $describe = & git -C $FteRoot describe --long --always --dirty
+    if ($LASTEXITCODE) { throw 'cannot resolve native source revision' }
+    $sourceDate = & git -C $FteRoot log -1 --format=%cs -- .
+    if ($LASTEXITCODE -or $sourceDate -notmatch '^\d{4}-\d{2}-\d{2}$') { throw 'cannot resolve native source date' }
+    $nativeRevision = @("SVN_VERSION=git-$([int]$count + 29)-$describe", "SVN_DATE=$sourceDate")
+    $nativeTmp = [IO.Path]::GetFullPath((Join-Path $ReleaseDir '.tmp'))
+    [IO.Directory]::CreateDirectory($nativeTmp) | Out-Null
+    $savedNativeEnv = @{}
+    foreach ($key in @('PATH', 'TMP', 'TEMP', 'TMPDIR', 'SVNREVISION')) { $savedNativeEnv[$key] = [Environment]::GetEnvironmentVariable($key, 'Process') }
+    try {
     $env:PATH = "C:\msys64\ucrt64\bin;C:\msys64\usr\bin;$env:PATH"
+    $env:SVNREVISION = $null
+    $env:TMP = $nativeTmp.Replace('\', '/'); $env:TEMP = $env:TMP
+    $env:TMPDIR = '/' + $nativeTmp.Substring(0, 1).ToLowerInvariant() + $nativeTmp.Substring(2).Replace('\', '/')
 
     if ($Full) {
         Step "Full rebuild: clearing objects and plugin DLLs"
@@ -234,11 +256,11 @@ if ($Engine) {
     # FTE_TARGET=win64 is MANDATORY: msys2's gcc reports mingw, so the
     # auto-detect in engine/Makefile:542-549 picks win32.
     Step "make m-rel (client)"
-    & $Make "-j$Jobs" -C $EngineDir m-rel FTE_TARGET=win64
+    & $Make "-j$Jobs" -C $EngineDir m-rel FTE_TARGET=win64 @nativeRevision
     if ($LASTEXITCODE -ne 0) { throw "m-rel failed" }
 
     Step "make sv-rel (dedicated server)"
-    & $Make "-j$Jobs" -C $EngineDir sv-rel FTE_TARGET=win64
+    & $Make "-j$Jobs" -C $EngineDir sv-rel FTE_TARGET=win64 @nativeRevision
     if ($LASTEXITCODE -ne 0) { throw "sv-rel failed" }
 
     # ---------------------------------------------------------------------
@@ -273,7 +295,7 @@ if ($Engine) {
     # Bare `plugins-rel` dies on an unrelated ffmpeg target (plugins/Makefile:241),
     # so NATIVE_PLUGINS is always explicit.
     Step "make plugins-rel (hl2 cod box3d ode ui_imgui)"
-    & $Make "-j$Jobs" -C $EngineDir plugins-rel FTE_TARGET=win64 NATIVE_PLUGINS="hl2 cod box3d ode ui_imgui"
+    & $Make "-j$Jobs" -C $EngineDir plugins-rel FTE_TARGET=win64 NATIVE_PLUGINS="hl2 cod box3d ode ui_imgui" @nativeRevision
     if ($LASTEXITCODE -ne 0) { throw "plugins-rel failed" }
 
     # ------------------------------------------------------- deploy ---------
@@ -304,6 +326,9 @@ if ($Engine) {
         } else {
             Ok "second install not present ($QuakeDir) -- dual deploy skipped"
         }
+    }
+    } finally {
+        foreach ($key in $savedNativeEnv.Keys) { [Environment]::SetEnvironmentVariable($key, $savedNativeEnv[$key], 'Process') }
     }
 }
 
@@ -568,6 +593,15 @@ Step "Done"
 $ProgsDir = if ($NoDeploy) { $NoDeployDir } else { "$SurfDir\ftesurf" }
 Ok "qwprogs.dat  $((Get-Item "$ProgsDir\qwprogs.dat").Length) bytes"
 Ok "csprogs.dat  $((Get-Item "$ProgsDir\csprogs.dat").Length) bytes"
+
+if ($PassThru) {
+    [pscustomobject]@{
+        kind = 'ftesurf-build'
+        release_version = $menuVersion
+        qc = [ordered]@{ 'qwprogs.dat' = (Join-Path $ProgsDir 'qwprogs.dat'); 'csprogs.dat' = (Join-Path $ProgsDir 'csprogs.dat'); 'menu.dat' = (Join-Path $ProgsDir 'menu.dat') }
+        native_release = $(if ($Engine) { $ReleaseDir } else { '' })
+    }
+}
 
 if ($Run) {
     Step "Launching"

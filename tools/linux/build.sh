@@ -11,7 +11,10 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 CH=/srv/ftebuild-bullseye
 MIRROR=/srv/fteqw-mirror.git
 CACHE=/srv/ftebuild-cache
-SRC=/mnt/c/msys64/home/Lex/fteqw
+SRC=${FTESURF_ENGINE_SOURCE:-/mnt/c/msys64/home/Lex/fteqw}
+GIT_SOURCE=${FTESURF_ENGINE_GIT_DIR:-$SRC}
+SOURCE_REF=${FTESURF_ENGINE_REF:-}
+BUILD_REF=refs/heads/ftesurf-selected-build
 OUT=${FTESURF_LINUX_OUT:-/mnt/c/FTESurf/dist/linux-build}
 ZSTDVER=1.5.6
 JOBS=$(nproc)
@@ -21,8 +24,34 @@ die() { echo "build.sh: $*" >&2; exit 1; }
 # The publish step renames $OUT aside; an empty name once made it dist/ itself.
 case $OUT in */dist/linux-build*) ;; *) die "output must be a dist/linux-build* folder, not '$OUT'" ;; esac
 
-# 1. The commit, from the Windows repo, into the mirror (tags too: the revision stamp uses describe).
-git -C "$MIRROR" -c safe.directory='*' fetch -q --prune "$SRC" '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
+# Only the actual shared mirror/chroot interval is exclusive, not feature work.
+exec 9>"$CH/.engine-build.lock"
+flock -n 9 || die 'another Linux engine build owns the mirror/chroot; retry when it finishes'
+owned_proc=0; owned_ref=0
+cleanup() {
+    rc=$?; trap - EXIT; set +e
+    if [ "$owned_proc" = 1 ]; then
+        umount "$CH/proc" || { echo 'build.sh: own proc mount cleanup blocked' >&2; rc=1; }
+    fi
+    if [ "$owned_ref" = 1 ]; then
+        git -C "$MIRROR" update-ref -d "$BUILD_REF" "$COMMIT" || { echo 'build.sh: own mirror ref cleanup blocked' >&2; rc=1; }
+    fi
+    exit "$rc"
+}
+trap cleanup EXIT
+if git -C "$MIRROR" show-ref --verify --quiet "$BUILD_REF"; then die 'stale mirror build ref; inspect/recover before retrying'; fi
+
+# 1. The selected Git database, not a hard-coded checkout. Windows worktree .git
+# files cannot be parsed by WSL Git, so the wrapper supplies the common directory
+# and a short-lived advertised ref for precisely its inspected local commit.
+git -C "$MIRROR" -c safe.directory='*' fetch -q --prune "$GIT_SOURCE" '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
+if [ -n "$SOURCE_REF" ]; then
+    [[ "$SOURCE_REF" =~ ^refs/ftesurf-build/[0-9]+-[0-9a-f]{12}$ ]] || die 'invalid source ref'
+    [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || die 'source ref requires exact commit'
+    git -C "$MIRROR" fetch -q "$GIT_SOURCE" "$SOURCE_REF:$BUILD_REF"
+    owned_ref=1
+    [ "$(git -C "$MIRROR" rev-parse "$BUILD_REF")" = "$COMMIT" ] || die 'source ref changed'
+fi
 COMMIT=$(git -C "$MIRROR" rev-parse --verify "$COMMIT^{commit}") || die "unknown commit"
 
 # 2. A fresh full clone at the commit: a clean tree is what makes the embedded revision honest.
@@ -48,8 +77,7 @@ while read -r sha file url; do
 	case $file in zstd-*) cp "$CACHE/$file" "$CH/build/" ;; *) cp "$CACHE/$file" "$W/engine/" ;; esac
 done < "$HERE/tarballs.sha256"
 
-mountpoint -q "$CH/proc" || mount -t proc proc "$CH/proc"
-trap 'umount "$CH/proc" 2>/dev/null || true' EXIT
+if ! mountpoint -q "$CH/proc"; then mount -t proc proc "$CH/proc"; owned_proc=1; fi
 LOGS=$CH/build/logs; mkdir -p "$LOGS"
 inch() { chroot "$CH" /usr/bin/env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=/root LANG=C /bin/bash -c "$1"; }
 

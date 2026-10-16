@@ -17,7 +17,7 @@ function New-UpdateFeed {
         $argv += @('--previous', $Previous)
         if ($PreviousObjects) { $argv += @('--previous-objects', $PreviousObjects) }
     }
-    Native 'python' $argv 'signed update generation' | ForEach-Object { Info $_ }
+    Native 'python' (@('-B') + $argv) 'signed update generation' | ForEach-Object { Info $_ }
     foreach ($file in @('update.json', 'objects.txt')) {
         if (-not (Test-Path -LiteralPath (Join-Path $Output $file) -PathType Leaf)) { Fail "publisher did not produce $file" }
     }
@@ -27,15 +27,17 @@ function New-UpdateFeed {
 }
 
 function Publish-UpdateObjects {
-    param($Feed, [string]$Destination, [string]$Limit, [switch]$SkipPut)
+    param($Feed, [string]$Destination, [string]$Limit, [switch]$SkipPut, [string]$WorkRoot)
+    if (-not $WorkRoot) { $WorkRoot = $Feed.Root }
+    if (-not (Test-Path -LiteralPath $WorkRoot)) { New-Item -ItemType Directory -Path $WorkRoot | Out-Null }
     $feedPath = Join-Path $Feed.Root 'update.json'
     if ((Get-FileHash -LiteralPath $feedPath -Algorithm SHA256).Hash.ToLower() -cne $Feed.FeedSha) {
         Fail 'generated update feed changed before object publication'
     }
-    $list = Join-Path $Feed.Root 'objects.txt'
+    $list = Join-Path $WorkRoot 'objects.txt'
     # Regenerate/validate inventory from the signed feed rather than trusting a mutable list.
-    Native 'python' @($Feed.Tool, 'verify-objects', '--feed', $feedPath,
-        '--objects', (Join-Path $Feed.Root 'objects'), '--receipt', (Join-Path $Feed.Root 'local-check.json'), '--inventory', $list) 'local update object check' | ForEach-Object { Info $_ }
+    Native 'python' @('-B', $Feed.Tool, 'verify-objects', '--feed', $feedPath,
+        '--objects', (Join-Path $Feed.Root 'objects'), '--receipt', (Join-Path $WorkRoot 'local-check.json'), '--inventory', $list) 'local update object check' | ForEach-Object { Info $_ }
     # --immutable + --checksum refuses an existing same-name/different-byte object.
     if (-not $SkipPut) {
         Native 'rclone' @('copy', (Join-Path $Feed.Root 'objects'), $Destination,
@@ -44,20 +46,20 @@ function Publish-UpdateObjects {
             '--header-upload', 'Cache-Control: public, max-age=31536000, immutable',
             '--header-upload', 'Content-Type: application/octet-stream') 'immutable update object upload' | Out-Null
     }
-    $checkRoot = Join-Path $Feed.Root ('.verify-' + [guid]::NewGuid().ToString('N'))
+    $checkRoot = Join-Path $WorkRoot ('.verify-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $checkRoot | Out-Null
     $objects = Join-Path $checkRoot 'objects'
     New-Item -ItemType Directory -Path $objects | Out-Null
     Native 'rclone' @('copy', $Destination, $objects, '--files-from-raw', $list,
         '--checksum', '--bind', '0.0.0.0', '--bwlimit', $Limit) 'update object round-trip download' | Out-Null
     $proof = Join-Path $checkRoot 'publication.json'
-    Native 'python' @($Feed.Tool, 'verify-objects', '--feed', $feedPath, '--objects', $objects,
+    Native 'python' @('-B', $Feed.Tool, 'verify-objects', '--feed', $feedPath, '--objects', $objects,
         '--receipt', $proof, '--roundtrip') 'full referenced update object verification' | ForEach-Object { Info $_ }
     if ((Get-FileHash -LiteralPath $feedPath -Algorithm SHA256).Hash.ToLower() -cne $Feed.FeedSha) {
         Fail 'generated update feed changed during object verification'
     }
     # Retain failed round-trip evidence; retire only successful verified disposable downloads.
-    $saved = Join-Path $Feed.Root ('publication-' + [guid]::NewGuid().ToString('N') + '.json')
+    $saved = Join-Path $WorkRoot ('publication-' + [guid]::NewGuid().ToString('N') + '.json')
     Copy-Item -LiteralPath $proof -Destination $saved
     Remove-Item -LiteralPath $checkRoot -Recurse -Force
     return $saved

@@ -24,6 +24,7 @@ if __name__ == '__main__':
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--fte',type=Path,default=Path('C:/msys64/home/Lex/fteqw-ui-bridge'))
     p.add_argument('--log',type=Path,required=True); a=p.parse_args()
+    a.fte = a.fte.resolve()  # bind caller-relative paths before the child changes cwd
     before=snapshot(); env=os.environ.copy(); env.pop('MSYS2_ARG_CONV_EXCL',None)
     with a.log.open('w') as out:
         rc=subprocess.run(['pwsh','-NoProfile','-File',str(ROOT/'src/build.ps1'),'-Engine','-NoDeploy',

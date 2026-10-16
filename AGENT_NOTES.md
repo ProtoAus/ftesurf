@@ -5236,6 +5236,48 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
 - A test that lowers lobby_cycle must raise it again before a map change: on
   the next map a short period opens the end-of-map vote on its first frame.
 
+## Release preflight and immutable candidate handoff (2026-10-16)
+
+See src/release/README.md for commands. This is release tooling, not a product
+patch, Build bump, new public version or extra gate for ordinary feature work.
+
+- Cheap preflight runs the actual receipt renderer/template contract and declared
+  ship inputs against updatefeed.managed() before compiler/packer. The pre-P738
+  tier-table policy mutant must ACT and fail on ftesurf/maps/tiers.txt; missing
+  Linux launcher tokens are refused before rendering, not after two builds.
+- Preparation snapshots clean selected QC/engine/launcher inputs before compiling
+  and refuses mid-preparation changes. Bump implies QC build with explicit
+  -ReleaseVersion while preview keeps source VERSION untouched. -Build no
+  longer implies native rebuild. Build.ps1 -PassThru reports NoDeploy output
+  paths so the release never copies the owner's active progs/install to stage.
+- One complete, override-free preparation seals archives/sidecars, provenance,
+  launchers, rendered site, signed feed/objects and the publisher in a relative
+  indexed receipt. Keep its printed trusted SHA separately. Publication verifies
+  exact hashes and tree closure, trusted publisher-code bytes and pinned
+  signatures; it does not rebuild/repack/rerender/resign or relabel later HEAD.
+- Run frozen Python with -B. An initial crypto-refusal control really generated
+  __pycache__ in the publisher tree, invalidating its next immutable read! The
+  corrected entrypoint leaves the graph unchanged; publisher inventory refuses
+  extra/bytecode inputs, not only substituted verifier source. Fresh roundtrip
+  proofs, server observations and downloads belong OUTSIDE the sealed trees.
+  Never refresh timestamps/previous-feed evidence to fit a run.
+- The live predecessor is still checked at the real server promotion boundary.
+  Ordinary no-overwrite, source/notice, signed closure, remote byte comparison and
+  object-roundtrip checks remain required. Failure is not permission to mint a
+  replacement candidate/version or weaken a check.
+- Linux -FteRoot used to be validated but ignored by the shell's hard-coded Git
+  source: an unpublished detached worktree failed unknown commit. The wrapper
+  now exports its exact object through an owned temporary ref and common Git
+  directory (WSL cannot parse a native Windows worktree .git file). Both sides
+  compare-and-swap clean their refs; nonblocking flock owns only the shared
+  mirror/chroot interval. Only unmount proc if THIS invocation mounted it.
+- tools/release_smoke.py binds default-HTTPS metadata/feed/standalone bytes to the
+  LOCAL prepared receipt hash before executing a bootstrap. It uses release.ps1's
+  curl transport: the public edge returns 403 to urllib, while curl returns 200.
+  Actual launchers use --yes --no-launch in fresh owned Windows/WSL fixtures;
+  rehash managed files and keep settings/data/edited-zone sentinels. This is NOT
+  in-game/visual acceptance. Private local logs/fixtures are not public ship inputs.
+
 ## Linux build, test rig and release (Patches 386-389, 0.1.11)
 
 - **BEFORE CUTTING ANYTHING: does the feature you are shipping READ A GENERATED
@@ -5271,26 +5313,28 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   written by one is invisible to the other.
 - Call `wsl.exe -d <distro> --exec ...` from PowerShell. Git Bash rewrites
   /mnt/c paths, and without `--exec` the login shell expands `$vars`.
-- A Windows exe built from a `git worktree` carries NO revision stamp (the
-  Makefile tests `-d .git`, a file in a worktree): set `$env:SVN_VERSION =
-  git-<rev-list --count + 29>-<describe --long --always>` and `$env:SVN_DATE`
-  before `build.ps1 -Engine -Full -FteRoot <worktree>`.
-  SET THEM FOR THE MAIN CHECKOUT TOO WHEN CUTTING A RELEASE. The Makefile stamps
-  with `git describe --dirty` run under msys2, which sees the CRLF working copy
-  as modified and writes `-dirty` even when Windows `git status` is clean --
-  release gate L2 then refuses the drop ("names no clean commit"). `$env:SVN_DATE`
-  MUST HAVE NO SPACES (`%cs`, i.e. `2026-09-21`): it reaches CFLAGS unquoted, and
-  `Sep 21 2026` makes the compiler treat `21` and `2026` as linker inputs.
-- RELEASE: `release.ps1 -Bump patch -BuildNumber <n> -Linux dist\<drop>`.
+- Historical worktree trap: testing `-d .git` produced EMPTY metadata when .git
+  was a file. Engine aa04aefda now queries Git instead. Raw MSYS Git can STILL
+  call a clean CRLF checkout dirty: worktree detection is not clean-stamp proof.
+  Windows build.ps1 now resolves revision/date using its inspected Windows Git
+  view and passes actual make arguments, with owned native/Posix temp paths and
+  restored environment. No manual SVN environment exports are needed. Stamps
+  remain baked into objects: use `-Engine -Full -NoDeploy -FteRoot <tree>` after
+  flag/header changes; release -BuildEngine requests the full restamp. Date is
+  %cs (no spaces); old Sep 21 2026 became bogus linker input filenames.
+- RELEASE: follow src/release/README.md: cheap -PreflightOnly, prepare
+  -Bump patch -DryRun -BuildNumber <n> -Linux dist\<drop> ONCE, then publish
+  the printed -PublishPrepared receipt and trusted SHA, not a second build.
   `-BuildNumber` is REQUIRED unless a `Build NN:` commit is inside the last 200
   (the script derives the number from a subject and hard-fails without it; the
   last one, `QC build 89` f4b5051, is 224 back as of Patch 441 -- re-measure with
   `git rev-list --count HEAD ^f4b5051` rather than trusting a number here, and
   note it was 219 when this line was written, not the 228 it claimed). The Linux drop and ftesurf64.exe must come from the same
-  engine commit (gate L2); build.ps1 recompiles the progs from `src`, so copy the
-  lobby-deployed .dat back in before releasing. `ENGINE.txt`'s pin block is a gate
-  too -- bump `commit`, `patch` and `qcbuild` with the engine or the run stops
-  there.
+  engine commit (gate L2). Bump selects the target BEFORE a QC-only NoDeploy
+  compile; never copy another lobby/session's live .dat into a release. Native
+  rebuild is explicit (-BuildEngine), not automatic on each preview. Keep
+  ENGINE.txt's engine pin accurate; patch/qcbuild change only with their separately
+  authorized product/Build decisions, not because release tooling changed.
   - STEP 18 USED TO FAIL ON WINDOWS. The fix in 6aaeebb did NOT work and was
     never run: it passed `-LiteralPath` to scp, which is a PowerShell parameter
     name, and a native exe answers `scp: unknown option -- L` and exits 1 -- the

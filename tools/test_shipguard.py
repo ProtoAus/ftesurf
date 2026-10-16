@@ -11,6 +11,7 @@ import unittest
 from unittest.mock import patch
 
 import shipguard
+import updatefeed
 
 
 RUNTIME_LITERALS = {
@@ -37,6 +38,21 @@ class ShipGuardTests(unittest.TestCase):
     def setUpClass(cls):
         cls.files, cls.dirs, cls.globs = shipguard.resolve_shipset()
         cls.rows = scan(cls.files, cls.dirs)
+
+    def test_release_disk_policy_accepts_current_declared_paths(self):
+        output = io.StringIO()
+        with patch('sys.argv', ['shipguard.py', '--release-policy']), contextlib.redirect_stdout(output):
+            code = shipguard.main()
+        self.assertEqual(code, 0, output.getvalue())
+        self.assertIn('signed-update disk policy', output.getvalue())
+
+    def test_prechange_tier_policy_is_caught_before_staging(self):
+        output = io.StringIO()
+        with patch.object(updatefeed, 'GAME', updatefeed.GAME - {'ftesurf/maps/tiers.txt'}), \
+                patch('sys.argv', ['shipguard.py', '--release-policy']), contextlib.redirect_stdout(output):
+            code = shipguard.main()
+        self.assertEqual(code, 1, output.getvalue())
+        self.assertIn('UNMANAGED release path: ftesurf/maps/tiers.txt', output.getvalue())
 
     def test_runtime_paths_are_narrowly_explained(self):
         hits = [row for row in self.rows if row[0] in RUNTIME_LITERALS and row[1] != 'RUNTIME']

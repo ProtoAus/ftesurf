@@ -136,6 +136,10 @@ chatty.
 - Build and verify before saying something is done: `./build.ps1` to 0 warnings,
   then the relevant falsifier (`tools/test_reccheck.py`, a `cfg/test/` arm, or a
   headless run whose log you actually read).
+- Cutting a release is separate: follow `src/release/README.md` — cheap
+  preflight, one `-Bump patch -DryRun`, then hash-bound `-PublishPrepared`, not
+  another build. Public launcher acceptance uses `--no-launch` in owned fixtures.
+  Ordinary feature builds/falsifiers do not run the release pipeline.
 - Then commit that feature and push it — see the source-control rule in
   AGENTS.md. Verified work that is still only on this disk is not finished.
 - IF YOU COMPUTE BY HAND A FIGURE THE TOOL ALREADY PRINTS, RECONCILE THEM BEFORE

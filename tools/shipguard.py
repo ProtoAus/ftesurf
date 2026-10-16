@@ -466,6 +466,8 @@ def classify(lit, call, files, dirs, suffix=""):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--release-policy", action="store_true",
+                    help="also check every declared ship path against signed-update policy")
     ap.add_argument("--mutate", type=int, default=None,
                     help="hide the Nth ship glob and assert a MISS appears")
     a = ap.parse_args()
@@ -475,6 +477,27 @@ def main():
 
     files, dirs, globs = resolve_shipset()
     print("ship set: %d files over %d globbed directories" % (len(files), len(globs)))
+    if a.release_policy:
+        import updatefeed
+        generated = {"INSTALL.txt", "VERSION.txt", "SOURCE.txt", "THIRD-PARTY.txt", "notices/bootstrap.txt"}
+        # The resolver lowercases engine asset names. Policy is intentionally
+        # case-sensitive, so use the authored explicit root/game spellings.
+        declared = set()
+        with open(RELEASE, encoding="utf-8-sig") as source:
+            release_text = source.read()
+        for variable in ("ShipRootFiles", "ShipGameFiles"):
+            declared.update(ps_strings(ps_array(release_text, variable)))
+        explicit = {p.lower() for p in declared}
+        for path in files:
+            if path not in explicit:
+                declared.add("ftesurf/" + path if not path.startswith("notices/") else path)
+        refused = sorted(path for path in declared | generated if not updatefeed.managed(path))
+        if refused:
+            for path in refused:
+                print("UNMANAGED release path: " + path)
+            print("FAILED: register the exact authored asset in publisher, launcher and native policies; never wildcard player data.")
+            return 1
+        print("signed-update disk policy: declared/generated ship paths accepted")
 
     rows = []
     for path in sorted(glob.glob(os.path.join(SRCDIR, "**", "*.qc"), recursive=True)):

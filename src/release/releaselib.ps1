@@ -308,3 +308,38 @@ function Copy-SiteFiles ([string]$From, [string]$To) {
     }
     return $names
 }
+
+# Exercise the actual receipt renderer before any compiler/packer runs. There is
+# no second hard-coded token list for the publisher to drift away from.
+function Test-ReleaseTemplate ([string]$Text) {
+    $archive = [pscustomobject]@{ name = 'probe'; url = 'https://invalid.example/probe'; bytes = 1; sha256 = ('0' * 64) }
+    $engine = [pscustomobject]@{ patch_doc = 0; patch_applies_to_binary = $true; binary_verified = $true }
+    $probe = [pscustomobject]@{
+        version = '0.0.0'; archive = $archive; built_utc = [datetime]'2020-01-01T00:00:00Z'
+        qc = [pscustomobject]@{ build = 0 }; engine = $engine
+        linux = [pscustomobject]@{ archive = $archive; engine = $engine; glibc_min = '0.0' }
+        bootstrap_downloads = @(
+            [pscustomobject]@{ platform = 'win64'; url = 'https://invalid.example/launcher.exe'; sha256 = ('0' * 64) },
+            [pscustomobject]@{ platform = 'linux64'; url = 'https://invalid.example/launcher'; sha256 = ('0' * 64) })
+    }
+    $parts = Split-PageBlocks $Text
+    $maps = Get-ReceiptTokens $probe
+    $problems = @(Compare-TokenSets (Get-TemplateTokens $parts.Outside) @($maps.Windows.Keys)) +
+                @(Compare-TokenSets (Get-TemplateTokens $parts.Inside) @($maps.Linux.Keys))
+    if ($problems.Count) { throw ('release template contract: ' + ($problems -join '; ')) }
+    [pscustomobject]@{ Parts = $parts; WindowsKeys = @($maps.Windows.Keys); LinuxKeys = @($maps.Linux.Keys) }
+}
+
+function Get-ReleaseVersion ([string]$Current, [string]$Bump) {
+    $Current = $Current.Trim()
+    if ($Current -notmatch '^\d+\.\d+\.\d+$') { throw "invalid release VERSION: $Current" }
+    if (-not $Bump) { return $Current }
+    $parts = @($Current.Split('.') | ForEach-Object { [int]$_ })
+    switch ($Bump) {
+        'major' { $parts[0]++; $parts[1] = 0; $parts[2] = 0 }
+        'minor' { $parts[1]++; $parts[2] = 0 }
+        'patch' { $parts[2]++ }
+        default { throw "invalid release bump: $Bump" }
+    }
+    return ($parts -join '.')
+}

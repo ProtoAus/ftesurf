@@ -3,7 +3,12 @@
 #
 #    .\src\release\release.ps1 -SetupSite       # FIRST TIME ONLY: push the Pi-side
 #                                               # files so install.sh exists to sudo
-#    .\src\release\release.ps1 -DryRun -PreviousUpdateFeed <saved-update.json> -PreviousUpdateObjects <objects-dir>
+#    Release workflow/controls: src/release/README.md (ordinary features do not run it).
+#    First: -PreflightOnly -Bump patch; no build, pack, signing or remote access.
+#    Then: -Bump patch -DryRun -PreviousUpdateFeed <saved-update.json> -Linux <drop>
+#    Finally: -PublishPrepared <printed-receipt> -PreparedSha256 <printed-hash>
+#    Promotion never rebuilds/re-packs or selects another version/current HEAD.
+#    Windows-only preparation also needs -PreviousUpdateObjects for retained Linux bytes.
 #    First feed: -FirstUpdateFeed -Linux <drop> instead of prior inputs (both platforms).
 #    Subsequent Windows-only feeds preserve Linux descriptors AND cached object bytes.
 #    UpdateSeedFile is file-only (FTESURF_UPDATE_SEED_FILE or private default); never echo key bytes.
@@ -82,9 +87,14 @@ param(
     [ValidateSet('patch', 'minor', 'major')]
     [string] $Bump,
 
-    [switch] $Build,          # run src\build.ps1 -Engine first
+    [switch] $Build,          # compile QC only, without installing; native is explicit
     [int]    $BuildNumber,    # the QC build to ship, when no commit states one
     [switch] $DryRun,         # stage, pack and verify; publish nothing
+    [switch] $PreflightOnly,  # fast asset/policy/template checks, no build/network
+    [switch] $Offline,        # preview without R2 probes (not a dependency-network sandbox)
+    [string] $PublishPrepared,# exact prepared candidate; no build/stage/pack/sign
+    [string] $PreparedSha256, # trusted hash printed by preparation
+    [switch] $BuildEngine,    # -Build is QC-only; explicitly request native rebuild
     [switch] $SetupSite,      # push the Pi-side files, print the sudo line, stop
     [switch] $SkipUpload,
     [switch] $SkipSite,
@@ -182,6 +192,9 @@ function Native ($exe, [string[]]$argv, [string]$what) {
 . (Join-Path $PSScriptRoot 'releaselib.ps1')
 . (Join-Path $PSScriptRoot 'bootstrap.ps1')
 . (Join-Path $PSScriptRoot 'updatefeed.ps1')
+. (Join-Path $PSScriptRoot 'prepared.ps1')
+$loaded = $null
+if ($BuildEngine -or $Bump) { $Build = $true }
 
 # =============================================================================
 #  THE SHIP SET
@@ -365,7 +378,7 @@ $LinuxExec = @('ftesurf64', 'ftesurf.sh', 'ftesurf-launcher')
 $LinuxRequired = @('ftesurf64', 'fteplug_hl2_amd64.so', 'ftesurf.sh', 'ftesurf-launcher', 'notices/bootstrap.txt', 'default.fmf', 'LICENSE',
     'INSTALL.txt', 'VERSION.txt', 'SOURCE.txt', 'ftesurf/csprogs.dat', 'ftesurf/qwprogs.dat', 'ftesurf/menu.dat',
     'ftesurf/fs_addons.default.txt', 'ftesurf/fs_addons.txt', 'ftesurf/cfg/default.cfg')
-$LinuxTokenNames = @('LINUX_URL', 'LINUX_LAUNCHER_URL', 'LINUX_LAUNCHER_SHA256', 'LINUX_FILENAME', 'LINUX_SIZE_HUMAN', 'LINUX_SIZE_BYTES', 'LINUX_SHA256', 'LINUX_GLIBC', 'LINUX_ENGINE')
+# Template keys come from the same Get-ReceiptTokens renderer used below.
 $LinuxDeny = @(
     '\.(exe|dll|bat|cmd|lnk|pdb)$'
     '\.db$'                            # symbols stay with the drop, for crash reports
@@ -410,6 +423,30 @@ function Get-BwLimit {
 # =============================================================================
 #  0.  PREFLIGHT
 # =============================================================================
+if ($Offline -and -not ($DryRun -or $PreflightOnly)) { Fail '-Offline is local preview only' }
+if ($BuildEngine -and -not $Build) { Fail '-BuildEngine requires -Build' }
+if ($PublishPrepared) {
+    $allowed = @('PublishPrepared', 'PreparedSha256', 'DryRun', 'Offline', 'SkipUpload', 'SkipSite', 'VerifyFull', 'NoLobbyCheck', 'BwLimit', 'Tag', 'Prune', 'PruneKeep')
+    foreach ($key in $PSBoundParameters.Keys) { if ($key -notin $allowed) { Fail "-$key is a preparation/destination input; prepared promotion cannot override it" } }
+}
+if (-not $PublishPrepared) {
+if (-not $SetupSite) {
+    Step 'Fast release preflight (no compiler/packer/network)'
+    $targetVersion = Get-ReleaseVersion ([IO.File]::ReadAllText((Join-Path $SurfDir 'VERSION'))) $Bump
+    $templateContract = Test-ReleaseTemplate ([IO.File]::ReadAllText((Join-Path $RelDir 'page.template.html')))
+    Native 'python' @((Join-Path $SurfDir 'tools/shipguard.py'), '--release-policy') 'release asset/policy preflight' | ForEach-Object { Write-Host $_ }
+    if ($PreflightOnly) { Good "release preflight PASS; target $targetVersion; no build or publication"; return }
+    if ($FirstUpdateFeed.IsPresent -eq [bool]$PreviousUpdateFeed) { Fail 'choose -FirstUpdateFeed OR -PreviousUpdateFeed explicitly before building' }
+    if ($FirstUpdateFeed -and -not $Linux) { Fail 'first update feed requires both platforms' }
+    if ($PreviousUpdateFeed) { Assert-ReleaseNoLink $PreviousUpdateFeed }
+    $candidatePath = Join-Path $OutDir "ftesurf-$targetVersion.prepared.json"
+    if (Test-Path -LiteralPath $candidatePath) { Fail "already prepared: $candidatePath; use -PublishPrepared, do not rebuild this version" }
+    $frozenQc = Get-ReleaseSourceState $SurfDir -IgnoreVersion
+    $frozenEngine = Get-ReleaseSourceState $FteRoot
+    $frozenBootstrap = Get-BootstrapSource $LauncherRoot
+    $releaseHasDirtyInputs = ($frozenQc.Dirty -or $frozenEngine.Dirty -or $frozenBootstrap.dirty_source.Count)
+    if ($releaseHasDirtyInputs -and -not $AllowDirty) { Fail 'release inputs must be clean inspected checkouts; use isolated worktrees, not another session dirty source' }
+}
 Step 'Preflight'
 if (-not $SetupSite) {
     if ($FirstUpdateFeed.IsPresent -eq [bool]$PreviousUpdateFeed) { Fail 'choose -FirstUpdateFeed OR -PreviousUpdateFeed explicitly' }
@@ -487,15 +524,27 @@ if ($SetupSite) {
 #  0c. OPTIONAL BUILD
 # =============================================================================
 if ($Build) {
-    Step 'Build (src\build.ps1 -Engine)'
+    Step 'Build release inputs (isolated QC; native only with -BuildEngine)'
     $bp = Join-Path $SrcDir 'build.ps1'
     if (-not (Test-Path -LiteralPath $bp)) { Fail "missing $bp" }
     # Called as a script, not captured: build.ps1 writes progress to the host and
     # fteqcc prints its banner on stderr, which a `2>&1` capture under
     # $ErrorActionPreference='Stop' turns into a terminating error mid-compile.
-    & $bp -Engine
-    if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { Fail "build.ps1 -Engine failed (exit $LASTEXITCODE)" }
-    Good 'build.ps1 -Engine completed'
+    $buildArtifacts = $null
+    & $bp -NoDeploy -Engine:$BuildEngine -Full:$BuildEngine -FteRoot $FteRoot -ReleaseVersion $targetVersion -PassThru | ForEach-Object {
+        if ($_ -is [pscustomobject] -and $_.kind -eq 'ftesurf-build') { $buildArtifacts = $_ }
+        else { Write-Host $_ }
+    }
+    if (-not $buildArtifacts) { Fail 'build.ps1 did not return verified output paths' }
+    foreach ($name in @('qwprogs.dat', 'csprogs.dat', 'menu.dat')) {
+        Copy-Item -LiteralPath $buildArtifacts.qc[$name] -Destination (Join-Path $SurfDir "ftesurf/$name")
+    }
+    if ($BuildEngine) {
+        foreach ($pair in @(@('fteqw64.exe', 'ftesurf64.exe'), @('fteplug_hl2_x64.dll', 'fteplug_hl2_x64.dll'), @('fteplug_ui_imgui_x64.dll', 'fteplug_ui_imgui_x64.dll'))) {
+            Copy-Item -LiteralPath (Join-Path $buildArtifacts.native_release $pair[0]) -Destination (Join-Path $SurfDir $pair[1])
+        }
+    }
+    Good 'isolated release input build completed; no install/lobby deployment'
 }
 
 # =============================================================================
@@ -506,33 +555,13 @@ $verRaw = (Get-Content -LiteralPath $VersionFile -Raw).Trim()
 if ($verRaw -notmatch '^\d+\.\d+\.\d+$') {
     Fail "VERSION must be exactly MAJOR.MINOR.PATCH; found '$verRaw'"
 }
+$Ver = Get-ReleaseVersion $verRaw $Bump
+if ($Ver -ne $targetVersion) { Fail 'VERSION changed during release preparation; refusing mixed inputs' }
 if ($Bump) {
-    $n = @($verRaw.Split('.') | ForEach-Object { [int]$_ })
-    # EVERY component is parenthesised on purpose. PowerShell's comma operator
-    # binds TIGHTER than `+`, so @($n[0], $n[1], $n[2] + 1) parses as
-    # (@($n[0], $n[1], $n[2])) + 1 -- array concatenation, which APPENDS 1 and
-    # turns 0.1.0 into "0.1.0.1". It did exactly that on the first -Bump ever run.
-    switch ($Bump) {
-        'major' { $n = @(($n[0] + 1), 0, 0) }
-        'minor' { $n = @($n[0], ($n[1] + 1), 0) }
-        'patch' { $n = @($n[0], $n[1], ($n[2] + 1)) }
-    }
-    $newVer = $n -join '.'
-    # VALIDATE BEFORE WRITING. The first version of this wrote VERSION and then
-    # validated, so a bad computation persisted a bad version to disk and every
-    # later run started from it.
-    if ($newVer -notmatch '^\d+\.\d+\.\d+$') {
-        Fail "-Bump $Bump computed '$newVer' from '$verRaw', which is not MAJOR.MINOR.PATCH. VERSION not touched."
-    }
     if (-not $DryRun) {
-        [System.IO.File]::WriteAllText($VersionFile, "$newVer`n", (New-Object System.Text.UTF8Encoding $false))
-        Info "VERSION $verRaw -> $newVer"
-    } else {
-        Info "VERSION $verRaw -> $newVer (not written: -DryRun)"
-    }
-    $Ver = $newVer
-} else {
-    $Ver = $verRaw
+        [IO.File]::WriteAllText($VersionFile, "$Ver`n", [Text.UTF8Encoding]::new($false))
+        Info "VERSION $verRaw -> $Ver"
+    } else { Info "VERSION $verRaw -> $Ver (not written: -DryRun)" }
 }
 # The version crosses into a remote shell in publish.sh, where it lands beside
 # rm -rf. Validate at the boundary; publish.sh re-validates on its own side.
@@ -649,7 +678,8 @@ Info "engine patch $enginePatch (documentary: $headingCount headings in ENGINE_P
 # =============================================================================
 Step 'Gates'
 $Overrides = @()
-$bootstrapSource = Get-BootstrapSource $LauncherRoot
+if ($releaseHasDirtyInputs) { $Overrides += 'AllowDirty:frozen-source-inputs' }
+$bootstrapSource = $frozenBootstrap
 if ($bootstrapSource.dirty_source.Count) {
     if (-not $AllowDirty) { Fail 'uncommitted bootstrap source; commit it first or explicitly use -AllowDirty for isolated verification' }
     Warn 'uncommitted bootstrap source -> allowed by -AllowDirty; source fingerprint recorded'
@@ -1695,36 +1725,15 @@ if (-not $SkipSite) {
     function HtmlEsc ([string]$s) {
         $s.Replace('&', '&amp;').Replace('<', '&lt;').Replace('>', '&gt;').Replace('"', '&quot;').Replace("'", '&#39;')
     }
-    $tokens = [ordered]@{
-        'VERSION'      = $Ver
-        'FILENAME'     = $ArchiveName
-        'URL'          = $ArchiveUrl
-        'LAUNCHER_URL' = $winLauncher.Url
-        'LAUNCHER_SHA256' = $winLauncher.Sha
-        'SIZE_HUMAN'   = (HumanSize $ArchiveBytes)
-        'SIZE_BYTES'   = ('{0:N0}' -f $ArchiveBytes)
-        'SHA256'       = $ArchiveSha.ToUpper()
-        'DATE'         = $nowUtc.ToString('d MMMM yyyy')
-        'QCBUILD'      = "$qcBuild"
-        'ENGINEPATCH'  = $engineLabel
-    }
+    $renderMaps = Get-ReceiptTokens ($json | ConvertFrom-Json)
+    $tokens = $renderMaps.Windows
     # .Replace() is ordinal and has no metacharacters on EITHER operand.
     # -replace is regex on both sides ($1, $&, $$ are live in the REPLACEMENT),
     # and -f treats { } as format metacharacters. Neither is safe for a value
     # that contains a hash or a URL.
     foreach ($k in $tokens.Keys) { $html = $html.Replace("@@$k@@", (HtmlEsc $tokens[$k])) }
     if ($Linux) {
-        $lxTokens = [ordered]@{
-            'LINUX_URL'        = $LinuxArchiveUrl
-            'LINUX_LAUNCHER_URL' = $lxLauncher.Url
-            'LINUX_LAUNCHER_SHA256' = $lxLauncher.Sha
-            'LINUX_FILENAME'   = $LinuxArchiveName
-            'LINUX_SIZE_HUMAN' = (HumanSize $LinuxArchiveBytes)
-            'LINUX_SIZE_BYTES' = ('{0:N0}' -f $LinuxArchiveBytes)
-            'LINUX_SHA256'     = $LinuxArchiveSha.ToLower()      # sha256sum -c prints and wants lowercase
-            'LINUX_GLIBC'      = $lxGlibc
-            'LINUX_ENGINE'     = $lxLabel
-        }
+        $lxTokens = $renderMaps.Linux
         foreach ($k in $lxTokens.Keys) { $html = $html.Replace("@@$k@@", (HtmlEsc $lxTokens[$k])) }
     }
 
@@ -1736,7 +1745,7 @@ if (-not $SkipSite) {
     # exactly $LinuxTokenNames.
     $diff = @(Compare-TokenSets (Get-TemplateTokens $pb.Outside) @($tokens.Keys))
     if ($diff.Count) { Fail ("template tokens and substitution map disagree:`n" + (($diff | ForEach-Object { "      $_" }) -join "`n")) }
-    $diff = @(Compare-TokenSets (Get-TemplateTokens $pb.Inside) $LinuxTokenNames)
+    $diff = @(Compare-TokenSets (Get-TemplateTokens $pb.Inside) $templateContract.LinuxKeys)
     if ($diff.Count) { Fail ("the template's LINUX blocks and `$LinuxTokenNames disagree:`n" + (($diff | ForEach-Object { "      $_" }) -join "`n")) }
 
     $pageDir = Join-Path $OutDir "site-$Ver"
@@ -1776,7 +1785,71 @@ if (-not $SkipSite) {
     Good "rendered index.html ($((Get-Item (Join-Path $pageDir 'index.html')).Length) bytes) + $(4 + $siteFiles.Count) companions"
 }
 
+# Seal locally verified artifacts once. A later publication uses this receipt,
+# never the current source/HEAD or a second compiler/packer invocation.
+$preparedCandidate = $null
+if (-not $SkipSite -and -not $Overrides.Count) {
+    $nowQc = Get-ReleaseSourceState $SurfDir -IgnoreVersion
+    $nowEngine = Get-ReleaseSourceState $FteRoot
+    $nowBootstrap = Get-BootstrapSource $LauncherRoot
+    foreach ($pair in @(@($frozenQc, $nowQc), @($frozenEngine, $nowEngine))) {
+        if ($pair[0].Head -cne $pair[1].Head -or $pair[0].ChangesSha256 -cne $pair[1].ChangesSha256 -or $pair[0].Description -cne $pair[1].Description) { Fail 'source inputs changed during preparation; no candidate sealed' }
+    }
+    if ($nowBootstrap.commit -cne $frozenBootstrap.commit -or $nowBootstrap.source_sha256 -cne $frozenBootstrap.source_sha256) { Fail 'launcher source changed during preparation' }
+    Copy-Item -LiteralPath (Join-Path $updateFeed.Root 'update.json') -Destination (Join-Path $pageDir 'update.json')
+    $publisherDir = Join-Path $OutDir "prepared-$Ver"
+    if (Test-Path -LiteralPath $publisherDir) { Fail "unsealed publisher staging already exists: $publisherDir; inspect/recover it, do not rename around the failure" }
+    New-Item -ItemType Directory -Path $publisherDir | Out-Null
+    foreach ($name in @('ftesurf.nginx', 'install.sh', 'publish.sh')) { Copy-Item -LiteralPath (Join-Path $RelDir $name) -Destination $publisherDir }
+    foreach ($name in @('updatefeed.py', 'ed25519.py')) { Copy-Item -LiteralPath (Join-Path $SurfDir "tools/$name") -Destination $publisherDir }
+    $state = [ordered]@{}
+    foreach ($name in $ReleaseStateKeys) {
+        $variable = Get-Variable -Name $name -ErrorAction SilentlyContinue
+        $state[$name] = if ($null -ne $variable) { $variable.Value } else { $null }
+    }
+    $state.Linux = [bool]$Linux
+    $state = $state | ConvertTo-Json -Depth 16 | ConvertFrom-Json -AsHashtable
+    $state.updateFeed.Tool = Join-Path $publisherDir 'updatefeed.py'
+    $sealedFiles = @($ArchivePath, "$ArchivePath.sha256", $ReceiptPath, (Join-Path $updateFeed.Root 'update.json'), (Join-Path $updateFeed.Root 'objects.txt'))
+    if ($Linux) { $sealedFiles += @($LinuxArchivePath, "$LinuxArchivePath.sha256") }
+    foreach ($artifact in $launcherArtifacts) { $sealedFiles += @($artifact.Path, "$($artifact.Path).sha256") }
+    $preparedCandidate = New-ReleaseCandidate -Root $OutDir -Path $candidatePath -State $state -Files $sealedFiles `
+        -Trees @($pageDir, $publisherDir, (Join-Path $updateFeed.Root 'objects')) -ReaderDirectory $RelDir
+    Good "prepared candidate $($preparedCandidate.Path)"
+    Info "trusted candidate SHA256 $($preparedCandidate.Sha256)"
+    Info "publish exact bytes: pwsh -NoProfile -File `"$PSCommandPath`" -PublishPrepared `"$($preparedCandidate.Path)`" -PreparedSha256 $($preparedCandidate.Sha256)"
+} elseif ($Overrides.Count) { Warn 'override/control build: not sealing a promotable candidate' }
+} # preparation only
+
+if ($PublishPrepared -or ($preparedCandidate -and -not $DryRun)) {
+    Step 'Validate prepared candidate (no build, pack or signing)'
+    if ($PublishPrepared) { $path = $PublishPrepared; $seal = $PreparedSha256 }
+    else { $path = $preparedCandidate.Path; $seal = $preparedCandidate.Sha256 }
+    $loaded = Read-ReleaseCandidate -Path $path -ExpectedSha256 $seal -ReaderDirectory $RelDir
+    foreach ($name in $ReleaseStateKeys) {
+        $value = $loaded.State[$name]
+        if ($name -eq 'Linux') { $value = if ($value) { 'prepared' } else { '' } }
+        Set-Variable -Name $name -Value $value
+    }
+    $OutDir = $loaded.Root
+    $RelDir = $publisherDir
+    $Overrides = @()
+    $publishWorkDir = Join-Path $OutDir ("publication-$Ver-" + $loaded.Sha256.Substring(0, 12))
+    if (-not (Test-Path -LiteralPath $publishWorkDir)) { New-Item -ItemType Directory -Path $publishWorkDir | Out-Null }
+    Assert-ReleaseNoLink $publishWorkDir
+    $localProof = Join-Path $publishWorkDir 'candidate-local-check.json'
+    Native 'python' @('-B', $updateFeed.Tool, 'verify-objects', '--feed', (Join-Path $updateFeed.Root 'update.json'), '--objects', (Join-Path $updateFeed.Root 'objects'), '--receipt', $localProof) 'prepared signed feed/object validation' | ForEach-Object { Info $_ }
+    $checked = [IO.File]::ReadAllText($localProof) | ConvertFrom-Json
+    if ($checked.version -cne $Ver -or $checked.feed_sha256 -cne $updateFeed.FeedSha) { Fail 'signed candidate version/feed disagrees with prepared receipt' }
+    if ($DryRun) {
+        Good "PREPARED VALIDATION COMPLETE: $Ver; no build, pack, signing or remote mutation"
+        return
+    }
+    foreach ($tool in @('rclone', 'curl.exe', 'ssh', 'scp')) { if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { Fail "publication tool missing: $tool" } }
+}
+
 if ($DryRun) {
+    if (-not $Offline) {
     Step 'Dry run: R2 write probe'
     # The rclone token is bucket-scoped and its WRITE access is otherwise
     # unproven until the real upload. Prove it on a zero-byte object instead of
@@ -1812,6 +1885,7 @@ if ($DryRun) {
         elseif ($lo) { Warn "$LinuxArchiveName is ALREADY PUBLISHED with different bytes (R2 md5 $($lo.Md5), this build $LinuxArchiveMd5); -Bump first." }
     }
 
+    } else { Info 'offline preview: no R2 probe or remote reads' }
     Write-Host "`n=== DRY RUN COMPLETE ===" -ForegroundColor Cyan
     Info "archive   $ArchivePath"
     Info "receipt   $ReceiptPath"
@@ -1820,12 +1894,14 @@ if ($DryRun) {
     if ($Linux) { Info "linux     $LinuxArchivePath"; Info "would publish to  $LinuxArchiveUrl" }
     Info "would deploy page to  $SiteUrl"
     if ($Overrides.Count) { Warn "overrides in effect: $($Overrides -join ', ')" }
+    if ($preparedCandidate) { Write-Output $preparedCandidate }
     return
 }
 
 # =============================================================================
 #  9.  UPLOAD TO R2
 # =============================================================================
+if (-not $loaded) { Fail 'publication requires a sealed full candidate; override/archive-only controls are local previews' }
 if (-not $SkipUpload) {
     Step "Upload to R2 ($ObjectKey)"
 
@@ -2039,7 +2115,7 @@ if (-not $SkipUpload -or -not $SkipSite) {
         Good "$($artifact.Name): public SHA256 matches verified bootstrap"
     }
     Step 'Publish and round-trip verify every referenced update object'
-    $updateProof = Publish-UpdateObjects -Feed $updateFeed -Destination "${Remote}:$Bucket/$Prefix/update/objects" `
+    $updateProof = Publish-UpdateObjects -Feed $updateFeed -WorkRoot $publishWorkDir -Destination "${Remote}:$Bucket/$Prefix/update/objects" `
         -Limit (Get-BwLimit) -SkipPut:$SkipUpload
 }
 
@@ -2100,8 +2176,7 @@ refusing to deploy a page for an archive that is not published.
     if ((Get-FileHash -LiteralPath $feedPath -Algorithm SHA256).Hash.ToLower() -cne $updateFeed.FeedSha) {
         Fail 'generated update feed changed before site deployment'
     }
-    Copy-Item -LiteralPath $feedPath -Destination (Join-Path $pageDir 'update.json')
-    Copy-Item -LiteralPath $updateProof -Destination (Join-Path $pageDir 'update-verified.json')
+    if ((Get-FileHash -LiteralPath (Join-Path $pageDir 'update.json') -Algorithm SHA256).Hash.ToLowerInvariant() -cne $updateFeed.FeedSha) { Fail 'prepared public feed changed' }
     $sshOpts = @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10')
 
     # Always push the Pi-side files, so the installed snippet can never silently
@@ -2113,7 +2188,7 @@ refusing to deploy a page for an archive that is not published.
         if ($LASTEXITCODE -ne 0) { Fail "scp $f failed" }
     }
     foreach ($f in @('updatefeed.py', 'ed25519.py')) {
-        & scp @sshOpts -q (Join-Path $SurfDir "tools/$f") "${PiHost}:$SiteRoot/$f"
+        & scp @sshOpts -q (Join-Path $RelDir $f) "${PiHost}:$SiteRoot/$f"
         if ($LASTEXITCODE -ne 0) { Fail "scp $f failed" }
     }
     # NOT "$pageDir\*": scp does not glob, and on Windows the literal string is
@@ -2134,6 +2209,8 @@ refusing to deploy a page for an archive that is not published.
         & scp @sshOpts -q $pf "${PiHost}:$SiteRoot/.incoming/$Ver/$pfName"
         if ($LASTEXITCODE -ne 0) { Fail "scp $pfName failed" }
     }
+    & scp @sshOpts -q $updateProof "${PiHost}:$SiteRoot/.incoming/$Ver/update-verified.json"
+    if ($LASTEXITCODE -ne 0) { Fail 'scp verified publication proof failed' }
     & ssh @sshOpts $PiHost "chmod +x '$SiteRoot/publish.sh' '$SiteRoot/install.sh' && sh '$SiteRoot/publish.sh' '$Ver' '$($updateFeed.PreviousSha)' '$SiteRoot'" 2>&1 | ForEach-Object { Info $_ }
     if ($LASTEXITCODE -ne 0) { Fail 'publish.sh failed on the Pi' }
 
@@ -2184,8 +2261,8 @@ refusing to deploy a page for an archive that is not published.
             # passes on a stale page.
             if ($servedSha -ne $pageSha) { Fail "the page served at $SiteUrl does not match what was just deployed (sha256 $servedSha != $pageSha)" }
             Good "$SiteUrl serves the new page (sha256 verified byte for byte)"
-            $servedFeed = Join-Path $updateFeed.Root 'served-update.json'
-            $feedHeaders = Join-Path $updateFeed.Root 'served-update.headers'
+            $servedFeed = Join-Path $publishWorkDir 'served-update.json'
+            $feedHeaders = Join-Path $publishWorkDir 'served-update.headers'
             Native 'curl.exe' @('-4', '-fsS', '-D', $feedHeaders, '-o', $servedFeed, "$SiteUrl/update.json") 'served update feed' | Out-Null
             if ((Get-FileHash -LiteralPath $servedFeed -Algorithm SHA256).Hash.ToLower() -cne $updateFeed.FeedSha) {
                 Fail 'served update.json differs from the verified signed feed'
@@ -2211,7 +2288,7 @@ if ($Tag) {
         $existingTag = & git -C $SurfDir tag --list "v$Ver"
         if ($existingTag) { Warn "tag v$Ver already exists; not moving it" }
         else {
-            Native 'git' @('-C', $SurfDir, 'tag', '-a', "v$Ver", '-m', "FTESurf $Ver (QC build $qcBuild, engine patch $enginePatch)") 'git tag' | Out-Null
+            Native 'git' @('-C', $SurfDir, 'tag', '-a', "v$Ver", '-m', "FTESurf $Ver (QC build $qcBuild, engine patch $enginePatch)", $GitHead) 'git tag' | Out-Null
             Good "created local tag v$Ver (NOT pushed -- git push does not send tags; use: git push origin v$Ver)"
         }
     }
@@ -2244,6 +2321,10 @@ Write-Host "`n=== World of Surf $Ver released ===" -ForegroundColor Green
 Info "download  $ArchiveUrl"
 Info "page      $SiteUrl"
 Info "size      $(HumanSize $ArchiveBytes)   sha256 $ArchiveSha"
+if (-not $SkipSite) {
+    $receiptSha = (Get-FileHash -LiteralPath $ReceiptPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    Info "post-publish (no game): python `"$(Join-Path $SurfDir 'tools/release_smoke.py')`" --receipt `"$ReceiptPath`" --receipt-sha256 $receiptSha --work-root `"$(Join-Path $publishWorkDir 'launcher-smoke')`""
+}
 if ($Linux) {
     Info "linux     $LinuxArchiveUrl"
     Info "          $(HumanSize $LinuxArchiveBytes)   sha256 $LinuxArchiveSha   glibc $lxGlibc+   engine patch $lxLabel"
