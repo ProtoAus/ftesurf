@@ -80,5 +80,22 @@ frames (fixed in frames, not time), and the average fps falls the longer the run
 lasts (918 -> 486 over ~30 s in one arm). Not the trail, the race ghost or portal
 rendering (each switched off, spikes stay). A stage-timer diagnostic build puts the
 whole 17 ms inside the client QC's view function and outside `renderscene`
-(0.2-0.5 ms) and the swap (0.2 ms), so in a builtin `CSQC_UpdateView` calls
-itself. Open: BACKLOG's stutter item.
+(0.2-0.5 ms) and the swap (0.2 ms).
+
+The cause is the QC tempstring collector, which runs as the top-level QC call returns.
+It was measured with `p758gc`: the final binary and QC, hub walks, a door crossing,
+`pr_gc_threaded` set at launch and echoed in the log, and `cl_status` after each window:
+
+| pr_gc_threaded | before the crossing | after it (along2 / along3 / 10 s stand) |
+| --- | --- | --- |
+| 1 (default, threaded) | no spikes | 19-24 ms every ~0.45 s, then ~7 ms; 1% low 99-104 fps |
+| 0 (same thread) | no spikes | ~22 ms every ~0.45 s; 1% low 100-107 fps |
+| 2 (off, diagnostic) | no spikes | none; 1% low 490 / 419 / 349 fps |
+
+`cl_status` puts the CSQC address space at 0.3 % of 2 GiB before the crossing and 4.2 %
+after it. That is the run-line pool (`cl_lines.qc`, LN_TOTAL samples, ~80 MB), allocated
+when the first line starts. The collector copies all of it (1) or scans it (0) each time.
+The first `p758gc` cut walked without crossing and saw no spikes in any mode, which
+matches every earlier arm: the first walk is clean, and the spikes start after
+`through1` or `!m`. The fix is the next patch. The fps decline over a run is still open
+(1000 -> 708 fps with the collector off).

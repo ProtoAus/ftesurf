@@ -59,7 +59,11 @@ board). Restart the game.
 
 ## P758 — Kitsune: the sky through a door, the `!m` room's door, bhop through a door
 
-Offline (your own server); restart the game. Not yet on the installs.
+Offline only (your own server: the lobbies run the Pi's engine and csprogs). On both
+Windows installs since 2026-10-17T14:21Z: engine `patch-758` (client `cf52c386`,
+server `9a300458`; `.prev` is P756's `f669bc11`) and main `2530278` with P759 and
+P760: csprogs `e07aa625`, qwprogs `6b527829`, menu `527db60b` (`.prev`
+`781a125b`/`3d5d50f1`/`1703f73d`). Restart the game.
 
 - **The sky through a door.** Load saves 12, 13 and 14: through the door ahead the
   far room's background grid should be there, the same as at save 15, with no red
@@ -70,9 +74,10 @@ Offline (your own server); restart the game. Not yet on the installs.
 - **Bhop through a door.** Hop through the hub door into stage 1 a few times at
   speed: you should never be stopped dead in the doorway (before, about 2 hops in
   5 at 700-1000 u/s).
-- **Stutter.** Not fixed yet: a ~17 ms frame every ~415 frames once a run is going,
-  found and being narrowed down. To measure yours: type `frametimes`, play for a
-  minute, type `frametimes` again and send the three lines it prints.
+- **Stutter.** Not fixed yet. The cause is found: once a run has started, a ~20 ms frame
+  every ~415 frames, from the game's string clean-up going over the run lines' memory.
+  The fix is the next patch. To measure yours, type `frametimes`, play for a minute,
+  type `frametimes` again, and send the three lines it prints.
 
 "Sky ok / still at save N", "door ok / still pops", "hops through / still stops" is
 enough. Verdict PENDING. Details: `tools/p758portalsky.md`.
