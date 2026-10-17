@@ -25,9 +25,14 @@ Verdict PENDING.
 
 Tick more than eight runs on a leaderboard (LINE column), some of them over two
 minutes. Lines 9 to 64 used to keep 2 minutes and draw the rest at half detail
-or less; now every line keeps its whole run up to 16 minutes (until hours of runs
-are ticked at once). Does a long run look as smooth as line 1 at line 20?
-"Same / still rough at X" is enough. Verdict PENDING. Not yet on the installs.
+or less; now every line keeps its whole run up to 65,536 samples (16 minutes of a
+66-tick run, about 11 of a 100-tick one; until hours of runs are ticked at once). Does a long run look as smooth as line 1 at line 20?
+"Same / still rough at X" is enough. Verdict PENDING.
+
+Live on all 12 lobbies and both Windows installs since 2026-10-17T13:49Z: main
+`6bf55c5` (with P759), csprogs `781a125b`, qwprogs `3d5d50f1` unchanged (`.prev`
+is P759's `bcb0bb04`); lobby 1 serves it to a fresh client and draws the board.
+Restart the game.
 ## P759 — 3/4/5/6 and `!s N`/`!b N` are instant too
 
 On a lobby, `cl_prederror` at its default:
