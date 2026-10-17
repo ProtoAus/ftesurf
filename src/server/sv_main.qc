@@ -394,6 +394,24 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_WOPRANG,        EV_VECTOR, wop_rang);
 	clientstat(STAT_FS_WOPM,           EV_VECTOR, wop_morg);
 	clientstat(STAT_FS_WOPMANG,        EV_VECTOR, wop_mang);
+	clientstat(STAT_FS_WOPROW,         EV_VECTOR, wop_norg);          // Patch 759
+	clientstat(STAT_FS_WOPROW + 3,     EV_VECTOR, wop_nang);
+	clientstat(STAT_FS_WOPROW + 6,     EV_VECTOR, wop_nvel);
+	clientstat(STAT_FS_WOPROW + 9,     EV_VECTOR, wop_porg);
+	clientstat(STAT_FS_WOPROW + 12,    EV_VECTOR, wop_pang);
+	clientstat(STAT_FS_WOPROW + 15,    EV_VECTOR, wop_pvel);
+	clientstat(STAT_FS_WOPROW + 18,    EV_VECTOR, wop_forg);
+	clientstat(STAT_FS_WOPROW + 21,    EV_VECTOR, wop_fang);
+	clientstat(STAT_FS_WOPROW + 24,    EV_VECTOR, wop_fvel);
+	clientstat(STAT_FS_WOPROW + 27,    EV_VECTOR, wop_lorg);
+	clientstat(STAT_FS_WOPROW + 30,    EV_VECTOR, wop_lang);
+	clientstat(STAT_FS_WOPROW + 33,    EV_VECTOR, wop_lvel);
+	clientstat(STAT_FS_WOPLEGS,        EV_STRING, wop_legs0);
+	clientstat(STAT_FS_WOPLEGS + 1,    EV_STRING, wop_legs1);
+	clientstat(STAT_FS_WOPLEGS + 2,    EV_STRING, wop_legs2);
+	clientstat(STAT_FS_WOPLEGS + 3,    EV_STRING, wop_legs3);
+	clientstat(STAT_FS_WOPLEGS + 4,    EV_STRING, wop_legs4);
+	clientstat(STAT_FS_WOPLEGS + 5,    EV_STRING, wop_legs5);
 	clientstat(STAT_FS_SLACK,          EV_FLOAT, rec_sl_ack);
 	clientstat(STAT_FS_SLTRAILTAG,     EV_FLOAT, rec_sl_eventtag);
 	clientstat(STAT_FS_SLSAVEACK,      EV_FLOAT, rec_sl_answer_tag);

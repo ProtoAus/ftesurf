@@ -58,6 +58,20 @@
   on an engine without 754, whose nopred shows the server's STAT_VIEWHEIGHT (the
   first control read ducked too and was discarded); use a 754 build without the
   reconcile as the control (64 against 47).
+- Patch 759: 3/4/5/6 (WOP_NEXT..LAST) and `!s N`/`!b N` (WOP_STAGE1/BONUS1 + N - 1,
+  N up to 30/16; the impulse is a byte) are ops too. Before it, a 754 client
+  predicting through a hold printed one prederr per 3-6 press: the server moved
+  the held body by stringcmd and the replay, re-based one snapshot late, kept the
+  old row (Lex's Kitsune 12->15 walk, 9-4421 u). Turning prediction off around the
+  step does NOT fix that: on resume the engine re-bases at `prop.sequence`, a
+  frame before the step, and finalizes the old row again. Targets: STAT_FS_WOPROW
+  (next/prev/first/last rows, every PostThink) and STAT_FS_WOPLEGS (six string
+  stats, P680's answer per existing leg, on the publish signature or every 5 s).
+  A step pressed while a load or step is unanswered waits for it (its row is not
+  published yet, and a stringcmd sent then can run before the op); a load after
+  one takes that op's row. `p753warpop.py --more` grades the client's
+  `seq: event ... op 2 id N` (the server's load event), not "run resumed" or
+  `saves: N/M`, which print only for some rows.
 
 ## Lobby saves across lobbies (P751, 2026-10-17)
 

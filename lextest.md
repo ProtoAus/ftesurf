@@ -28,6 +28,20 @@ minutes. Lines 9 to 64 used to keep 2 minutes and draw the rest at half detail
 or less; now every line keeps its whole run up to 16 minutes (until hours of runs
 are ticked at once). Does a long run look as smooth as line 1 at line 20?
 "Same / still rough at X" is enough. Verdict PENDING. Not yet on the installs.
+## P759 — 3/4/5/6 and `!s N`/`!b N` are instant too
+
+On a lobby, `cl_prederror` at its default:
+
+- Make three saves in different places, open the save panel (z), hold 2 and tap
+  3, 4, 5 and 6 while holding: each moves you at once with no `prederr:` line.
+  This is your Kitsune walk (save 12 to 15) that printed 9-4421 u corrections.
+  Let go: you leave at the speed of the save you are on.
+- With nothing held, tap 3 or 4: you load that save and keep its speed, at once.
+- `!s 2`, `!s 3`, `!b 1` (chat or a bind): at the stage start at once, no prederr.
+- Taps faster than your ping queue (up to four) and each waits for the server's
+  answer to the one before, so they arrive one round trip apart, still predicted.
+
+"instant / still see N lines at <gesture>" is enough. Verdict PENDING.
 
 ## P748 / P752 / P756 — Kitsune portals: the view through a door, two rooms deep, walking through
 

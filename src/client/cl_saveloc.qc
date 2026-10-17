@@ -383,6 +383,23 @@ float() WarpOp_Load;
 float() WarpOp_Release;
 float() WarpOp_LoadRefused;
 void() WarpOp_Frame;
+float(float op) WarpOp_Step;
+
+// Patch 759: 3/4/5/6 ride one command when they can (WarpOp_Step).
+void(string c) SaveLoc_Step =
+{
+	local float op;
+
+	op = WOP_NEXT;
+	if (c == "sl_prev")
+		op = WOP_PREV;
+	else if (c == "sl_first")
+		op = WOP_FIRST;
+	else if (c == "sl_last")
+		op = WOP_LAST;
+	if (!WarpOp_Step(op))
+		SaveLoc_Cmd(c);
+};
 
 void() SaveLoc_Release =
 {
@@ -743,10 +760,10 @@ float(float scan, float down) SaveLoc_Key =
 	if (scan == '1') { SaveLoc_Cmd("sl_save");  return TRUE; }
 
 	// 3/4/5/6 LOAD as well as move the cursor -- see SV_SaveLocStep.
-	if (scan == '3') { SaveLoc_Cmd("sl_next");  return TRUE; }
-	if (scan == '4') { SaveLoc_Cmd("sl_prev");  return TRUE; }
-	if (scan == '5') { SaveLoc_Cmd("sl_first"); return TRUE; }
-	if (scan == '6') { SaveLoc_Cmd("sl_last");  return TRUE; }
+	if (scan == '3') { SaveLoc_Step("sl_next");  return TRUE; }
+	if (scan == '4') { SaveLoc_Step("sl_prev");  return TRUE; }
+	if (scan == '5') { SaveLoc_Step("sl_first"); return TRUE; }
+	if (scan == '6') { SaveLoc_Step("sl_last");  return TRUE; }
 
 	if (scan == '7') { SaveLoc_Cmd("sl_del");   return TRUE; }
 	if (scan == '0') { rec_sl_open = FALSE;      return TRUE; }
@@ -841,8 +858,10 @@ float() SaveLoc_Console =
 			SaveLoc_PredictLoad();  // Patch 430: draw the load at once
 		if (c == "sl_goto")
 			SaveLoc_Cmd(sprintf("sl_goto %g", stof(argv(1))));
-		else
+		else if (c == "sl_load")
 			SaveLoc_Cmd(c);
+		else
+			SaveLoc_Step(c);
 		return TRUE;
 	}
 

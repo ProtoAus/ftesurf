@@ -132,6 +132,8 @@ def main():
                     help='the client predicts through a hold (Patch 754): expect no release prederr either')
     ap.add_argument('--posture', choices=['duck', 'stand'],
                     help='only the held ducked load, expecting this predicted eye')
+    ap.add_argument('--more', action='store_true',
+                    help='Patch 759: also `!s 2`, `!b 1` and the 3/4/5/6 steps, held and free')
     ap.add_argument('--port', type=int, default=27563)
     ap.add_argument('--minping', type=int, default=80)
     ap.add_argument('--content', type=Path, default=Path('C:/FTESurf'))
@@ -197,7 +199,8 @@ def main():
             errs = [(int(s), float(d)) for s, d in PRED.findall(ct)]
             windows[tag] = {'prederr': errs, 'client_ops': re.findall(r'warpop: (\d+) on command (\d+)', ct),
                             'server_ops': re.findall(r'warpop: (\d+) at command (\d+)', st),
-                            'said': re.findall(r'(!r|!m) -- [^\n]*\(([^)]*)\)', ct)}
+                            'said': re.findall(r'(!r|!m|!s|!b) -- [^\n]*\(([^)]*)\)', ct),
+                            'rows': re.findall(r'seq: event seq \d+ op 2 id (\d+)', ct)}
             (a.out / f'{tag}-client.txt').write_text(ct)
             print(tag, json.dumps(windows[tag]), flush=True)
             return windows[tag]
@@ -261,6 +264,31 @@ def main():
             cl.send('-sl_hold')
         w3 = window('load', load, settle=2.0)
 
+        more = {}
+        if a.more:
+            # Patch 759: `!s N`, `!b N`, then 3/4/5/6 held and free.
+            walk()
+            more['stage2'] = window('stage2', lambda: cl.send('say !s 2'))
+            walk()
+            more['bonus1'] = window('bonus1', lambda: cl.send('say !b 1'))
+
+            def moving_save():
+                cl.send('+forward'); time.sleep(0.5)
+                cl.send('sl_save'); time.sleep(0.3)
+                cl.send('-forward'); time.sleep(0.8)
+            moving_save(); walk(0.7)
+            moving_save(); walk(0.7)
+            # Rows: 1 the ducked air save, 2 and 3 these; the cursor is on 3.
+            more['hold'] = window('hold', lambda: cl.send('+sl_hold'))
+            for tag, cmd in (('held-prev', 'sl_prev'), ('held-first', 'sl_first'),
+                             ('held-last', 'sl_last'), ('held-next', 'sl_next'),
+                             ('held-next2', 'sl_next; sl_next')):
+                more[tag] = window(tag, lambda c=cmd: cl.send(c), settle=1.2)
+            # The double tap ends on row 3 (1 -> 2 -> 3): released at its speed.
+            more['release'] = window('release', lambda: cl.send('-sl_hold'), settle=2.0)
+            walk()
+            more['free-prev'] = window('free-prev', lambda: cl.send('sl_prev'), settle=2.0)
+
         if a.threaded:
             check(not w['client_ops'] and not w2['client_ops'] and not w3['client_ops'],
                   'threaded: nothing queued an op')
@@ -288,6 +316,41 @@ def main():
                 check(not after, 'load: no prederr at or after the release (Patch 754 engine)')
             else:
                 print(f'note: release prederr on this engine: {after}', flush=True)
+        if more:
+            want = {'stage2': ['210'], 'bonus1': ['239'], 'hold': ['203'], 'held-prev': ['206'],
+                    'held-first': ['207'], 'held-last': ['208'], 'held-next': ['205'],
+                    'held-next2': ['205', '205'], 'release': ['204'], 'free-prev': ['206']}
+            check([s for s, _ in more['stage2']['said']] == ['!s'] and [s for s, _ in more['bonus1']['said']] == ['!b'],
+                  'the server teleported for !s 2 and !b 1')
+            held = ('held-prev', 'held-first', 'held-last', 'held-next', 'held-next2')
+            if a.hold_engine:
+                check([r for w in held for r in more[w]['rows']] == ['2', '1', '3', '1', '2', '3'],
+                      'the held steps loaded rows 2, 1, 3, 1, 2, 3')
+            else:
+                # Two stringcmd loads in one snapshot show the client only the second.
+                check([more[w]['rows'][-1:] for w in held] == [['2'], ['1'], ['3'], ['1'], ['3']],
+                      'the held steps ended on rows 2, 1, 3, 1, 3')
+            check(more['free-prev']['rows'] == ['2'], 'the free step loaded row 2')
+            if a.control or a.threaded:
+                for tag, ww in more.items():
+                    check(not ww['client_ops'] and not ww['server_ops'], f'{tag}: no op (old command)')
+                for tag in ('stage2', 'bonus1', 'free-prev'):
+                    check(len(more[tag]['prederr']) > 0, f'control: {tag} corrects the prediction')
+            else:
+                if not a.hold_engine:
+                    # No pre-move hook runs under a hold without Patch 754: the old command.
+                    for tag in held:
+                        want[tag] = []
+                for tag, ww in more.items():
+                    check([o for o, _ in ww['client_ops']] == want[tag]
+                          and [o for o, _ in ww['server_ops']] == want[tag]
+                          and [c for _, c in ww['client_ops']] == [c for _, c in ww['server_ops']],
+                          f'{tag}: {"/".join(want[tag])} rode the same command on both sides')
+                for tag, ww in more.items():
+                    if tag == 'release' and not a.hold_engine:
+                        print(f'note: release prederr on this engine: {ww["prederr"]}', flush=True)
+                    else:
+                        check(not ww['prederr'], f'{tag}: no prederr')
     finally:
         for peer in reversed(peers):
             peer.stop()

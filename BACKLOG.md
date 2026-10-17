@@ -3992,11 +3992,11 @@ that was never armed (see the bullet below it), and item 10's own residual.
 - **Patch 427's client half is not in a release.** Clients quote `download`;
   until players update, the lobbies' server half is what lets them join maps
   with spaced sound names. Ships with the next `release.ps1 -Bump patch`.
-- **Only `2` is predicted (Patch 753; drawn early since 430).** 3/4/5/6 move the
-  cursor and load in one server step and their target row is not published, so
-  they still snap a round trip later, and so does a hold they re-point (its
-  release speed is the new row's only once STAT_FS_HOLDVEL says so). `!s N`, `!b N`
-  and zone_goto are not ops either. A predicted reset with angles still gets the
+- **Save and zone keys that are still a round trip (Patches 753/759).** 2, 3-6,
+  `!r`, `!m`, `!s N` and `!b N` are predicted; `sl_goto N` (a load by number),
+  zone_goto, `!s` past 30 and `!b` past 16 still snap a round trip later. Steps
+  pressed faster than the round trip wait for each answer (at most four queue; a
+  step waiting over 1 s goes as the stringcmd). A predicted reset with angles still gets the
   server's fixangle a round trip later, which undoes mouse movement made in that
   round trip (as before the patch). The hold's release is predicted only on a
   Patch 754 client (released engines stop predicting under PM_NONE, one prederr

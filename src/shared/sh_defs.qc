@@ -490,6 +490,14 @@
 #define STAT_FS_WOPM           126  // + 127, 128 -- `!m`'s
 #define STAT_FS_WOPMANG        129  // + 130, 131
 #define STAT_FS_SLVEL          132  // + 133, 134 -- the cursor save's velocity
+// Patch 759: the rows 3/4/5/6 load (next, prev, first, last), 9 stats each:
+// origin, then pitch/yaw/1 if ducked, then velocity.
+#define STAT_FS_WOPROW         135  // .. 170
+#define WOPROW_STRIDE          9
+// `!s N` / `!b N` answers, up to 8 legs a string, "s|b N x y z pitch yaw WOPD_*"
+// each: stages 1-8, 9-16, 17-24, 25-30, then bonuses 1-8, 9-16.
+#define STAT_FS_WOPLEGS        171  // .. 176
+#define WOPLEG_CHUNKS          6
 #define WOPD_NONE  0                // no prediction: the server would refuse or cannot say
 #define WOPD_KEEP  1                // destination, angles kept
 #define WOPD_ANG   2                // destination and angles
@@ -498,6 +506,15 @@
 #define WOP_SPAWN   202
 #define WOP_LOAD    203             // sl_load + sl_hold
 #define WOP_RELEASE 204             // sl_holdoff
+#define WOP_NEXT    205             // Patch 759: sl_next
+#define WOP_PREV    206             // sl_prev
+#define WOP_FIRST   207             // sl_first
+#define WOP_LAST    208             // sl_last
+#define WOP_STAGE1  209             // `!s N` is WOP_STAGE1 + N - 1, N up to WOP_STAGES
+#define WOP_STAGES  30
+#define WOP_BONUS1  239             // `!b N` is WOP_BONUS1 + N - 1, N up to WOP_BONUSES
+#define WOP_BONUSES 16
+#define WOP_TOP     254             // the impulse is a byte
 
 
 /*

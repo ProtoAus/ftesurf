@@ -33,6 +33,10 @@ patch    762
 # Patch 760 (QC only): a board line's sample store is sized to its run from one
 # shared pool (lines 9..64 kept 2 min); the replay and live run keep fixed places.
 # p760pool arm; the build before holds half a 2.5-min run in lines 9 and 64.
+# Patch 759 (QC): 3/4/5/6 and `!s N`/`!b N` ride one usercmd's impulse like P753's
+# ops, from server-published rows (STAT_FS_WOPROW) and legs (STAT_FS_WOPLEGS). A 754
+# client printed one prederr per step under a hold (the replay kept the old row).
+# p753warpop --more: held steps 1343-28654 u, !s/!b 10923/29608, free step 498 -> 0.
 # Patch 757 (backend tool only): tools/ksfconvert.py takes a KSF demo that begins
 # inside the start zone when its official time binds it, and an official time
 # within 2.5 ticks plus each repeated frame (and one a 10,000 frames) of the frame
