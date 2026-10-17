@@ -57,6 +57,26 @@ board). Restart the game.
 
 "instant / still see N lines at <gesture>" is enough. Verdict PENDING.
 
+## P758 — Kitsune: the sky through a door, the `!m` room's door, bhop through a door
+
+Offline (your own server); restart the game. Not yet on the installs.
+
+- **The sky through a door.** Load saves 12, 13 and 14: through the door ahead the
+  far room's background grid should be there, the same as at save 15, with no red
+  bars.
+- **The `!m` room's door.** `!m`, then look at stage 1's exit door at the far end
+  (about 3,600 units away): it should show stage 2 from there, not appear when you
+  get close. `vbsp_portal_maxdist` puts a distance cap back if you want one (0 off).
+- **Bhop through a door.** Hop through the hub door into stage 1 a few times at
+  speed: you should never be stopped dead in the doorway (before, about 2 hops in
+  5 at 700-1000 u/s).
+- **Stutter.** Not fixed yet: a ~17 ms frame every ~415 frames once a run is going,
+  found and being narrowed down. To measure yours: type `frametimes`, play for a
+  minute, type `frametimes` again and send the three lines it prints.
+
+"Sky ok / still at save N", "door ok / still pops", "hops through / still stops" is
+enough. Verdict PENDING. Details: `tools/p758portalsky.md`.
+
 ## P748 / P752 / P756 — Kitsune portals: the view through a door, two rooms deep, walking through
 
 Restart the game. Keep `r_blendsort 2`. Offline (your own server) for all three.
@@ -82,7 +102,8 @@ native is brought up to date.
   and back: you should keep walking, with no stop in the doorway and no duck.
 
 "Flips fixed / still at save N", "rooms ok / too slow" and "walks through / sticks"
-is enough. Verdict PENDING.
+is enough. Verdict CONFIRMED by the owner on 2026-10-17 ("Yes it works!"); what was
+left in that report is P758 above.
 
 ## P755 — Steam pictures appear at once and stay remembered
 

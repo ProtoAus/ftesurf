@@ -174,22 +174,36 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   must not reveal presence, and Hide/privacy-off must stop new work. Record owner
   wording/layout acceptance in `lextest.md`; remove after actual live activation.
 
-## Kitsune portals: P748/P752/P756 await the owner's live check
+## Kitsune portals: P758 awaits the owner's check; the Pi native lags
 
-- P743 was confirmed by the owner on 2026-10-17 at the worked stage-1 saves. Its
-  follow-ups: P748 sorts panes seen through portals and in the 3D sky (saves 8 and
-  11), P752 opens the door seen through a door (`r_portalrecursion`, now saved),
-  P756 is mover 5 (walking through a linked door no longer sticks). Native arms
-  and reviews: `tools/p748portalsort.md`, `tools/p752portalrooms.md`,
-  `tools/p756portalwalk.md`. Not owner-confirmed.
-- Falsifier: lextest's P748/P752/P756 entry. Delete this item when the owner
-  confirms; keep the limits below.
+- P743, P748, P752 and P756 are owner-confirmed (2026-10-17). P758 (sky through a
+  door, doors by PVS, mover 6 bhop exits, `frametimes`) is not: lextest's P758
+  entry is the falsifier; delete this bullet when the owner confirms.
 - The Pi lobbies' native is P679 (`git-7270-patch-679-0-g263d17686`, mover 3):
-  P748 and P756 are engine fixes and reach the lobbies only with a native fleet
-  catch-up from P679 to P756 (about 70 engine patches, P725's mover 4 among them).
+  P748, P756 and P758 are engine fixes and reach the lobbies only with a native
+  fleet catch-up from P679 (about 80 engine patches, P725's mover 4 among them).
   That catch-up is the owner's call; ask before doing it. Order then: binary
   first (the sweeper verifies with it), gate (tools/pigate.sh plus a Kitsune
-  walk-through recording), then lobby restarts; never roll back below 756.
+  walk-through and a bhop-through recording), then lobby restarts; never roll back
+  below 758.
+- Board times on surf_kitsune under mover 5 and mover 6 are not like-for-like where
+  doors are taken at speed (mover 5 stopped 8 of 20 hub-door hops). Whether the
+  boards separate them is the owner's call.
+
+## Stutter on surf_kitsune (P758 diagnosis, open)
+
+- Once a run is going, a ~17.5 ms frame every 413-417 frames (fixed in frames, not
+  time), and the average fps falls the longer the run lasts (918 -> 486 over ~30 s
+  in one arm). Before the run starts: none. Arms: `tools/p758portalsky.md`.
+- Not the trail, the race ghost or portal rendering (each off, spikes stay). A
+  stage-timer diagnostic build (never shipped) puts all 17 ms inside the client
+  QC's view function, outside `renderscene` (0.2-0.5 ms) and the swap (0.2 ms): a
+  builtin `CSQC_UpdateView` calls itself (`addentities`, `setproperty`,
+  `getproperty`, `cvar`, `serverkey`, `sprintf`). Next: the same build splitting
+  `addentities` (players and packet entities, CSQC entities with their predraws,
+  view model, temp entities) is built (`smoke-p758/scrdiag2`) and waits for a quiet
+  rig.
+- The owner's own numbers: `frametimes` before and after a minute of play.
 
 ## Mode2 limits left by P748
 
@@ -210,7 +224,7 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - `checkpvs` decompresses a VBSP PVS row each call (~170 a frame at the defaults,
   ~1,800 at recursion 5 on a 116-door map); not profiled with `profile_csqc`.
 
-## Mover 5 portal limits (P756)
+## Mover 5/6 portal limits (P756, P758)
 
 - A linked door whose rectangle reaches BELOW the floor still stalls a walker
   (both movers): the sweep plane sits at the door's bottom edge, under the real
@@ -220,14 +234,23 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   overlaps a lintel or jamb above the real floor, a box embedded there can stand
   on the rectangle's bottom edge (review, traced, not built). A door audit:
   rectangle bottom edge against the floor beneath it.
-- Pre-existing (P725): on the tick the hull's back face leaves the exit wall's
-  slab, the linked carve reports the far plane (normal -fwd) and ClipVelocity can
-  zero the forward speed. Not seen on Kitsune (the timeline crosses at an
-  unbroken ~225 u/s); bites only if the wall face is within ~3.6 units of the
-  slab edge.
-- Pre-existing (P283): a trace that starts in solid and ends clear against a
-  func_brush door frame is carved on the server only, so a walked exit may snap
-  the prediction slightly.
+- Mover 6 still stops dead, as mover 5 does, where the hull overlaps a protruding
+  frame or jamb at the carve stop, or the wall face sits more than 1/8 in front of
+  the door (such a door cannot be entered from the front either). P758 round 1's
+  census: 7 upright and 4 non-upright recessed doors in the library.
+- Mover 6, round 3: a second linked door standing free within 1/32 unit in front
+  of an exit, facing it and listed before it, can have its teleport skipped (the
+  rest starts past its plane), and the result depends on physent order. None of
+  the library's 541 doors has such a pair.
+- Pre-existing (P283), wider under mover 6: a trace that starts in solid and ends
+  clear against a func_brush door frame (Kitsune's) is carved on the server only
+  (P283's scan runs for allsolid, not startsolid), so an exit predicts as stuck
+  while the server moves; mover 6 makes that a whole tick. 7,248 of 30,143 fuzzed
+  exits disagree at mover 5, the same set at mover 6. Prediction only: recordings
+  and pm_verify use the server's order. Fix: run the scan for startsolid too.
+  Reasoned, not measured: the server's portals already carve after the brush, so
+  only the client's result should move; P758's evidence fuzz
+  (`review758r3/flow/fuzz/h758r3.py`) can show whether a mover bump is needed.
 - pm_verify checks each pin for internal consistency, not that a file names one
   mover throughout; a forged file could mix movers. Honest runs resumed across a
   deploy legitimately carry two, so the fix is a policy decision, not a refusal.

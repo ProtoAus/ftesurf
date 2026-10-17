@@ -4910,7 +4910,9 @@ script rather than passing it as an argument, where `ps` would show it.
   binary REFUSEs p492voy.rec, which is the control. NEVER ROLL THE SWEEPER BACK
   PAST 492: an old verifier reads only the header's pmsrcver, so a Multi-Session
   run parked before a 492 deploy and resumed after it (pin 1 in the header, 2 in
-  a later `pm` record) HOLDs there. An ssh that starts a
+  a later `pm` record) HOLDs there. Nor past 756 or 758 once a lobby has run them:
+  an older verifier REFUSEs pin-5 and pin-6 files, and the sweeper treats REFUSE
+  as final. An ssh that starts a
   background server does not return, so run it in the background. Run
   hand tests on a port other than 27698, which is the sweeper's. Swap by
   `cp` to `.new` then `mv -f`, keeping `fteqw-svarm64.preNNN-<stamp>`. Running
