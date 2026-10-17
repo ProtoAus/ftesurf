@@ -110,7 +110,10 @@ off.
   included).
 - KSF v2 clips now have Segments and boards (ground read from vertical speed).
 
-"Looks right / X is off" is enough. Verdict PENDING. Not yet on the installs.
+"Looks right / X is off" is enough. Verdict PENDING. Live on both Windows installs
+(07:09Z) and all 12 lobbies (07:11Z) since 2026-10-17, main `b7f6f02`, csprogs
+`41d2e086`, read back on each host. KSF demos the crawler refused (Patch 757) wait
+for the next backend cutover.
 
 ## P749 — the ghost ducks, looks where its player looked, and has a name tag
 
@@ -123,7 +126,7 @@ Same place as P746 (hud_edit -> **Ghost**, new row **Name tag**). Race your PB:
 
 "Looks right / X is off" is enough. Verdict PENDING. Measured by
 `raceghost_pose.cfg` against your Kitsune PB's own yaw and duck (AGENT_NOTES, The
-run line). Not yet on the lobbies or the installs.
+run line). Live with P750 (same deploy, csprogs `41d2e086`).
 
 ## P746 — the race ghost
 
