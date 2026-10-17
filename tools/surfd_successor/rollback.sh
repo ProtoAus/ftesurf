@@ -1,6 +1,7 @@
 #!/bin/sh
 # P770: put the previous generation OLD back if the successor in ROOT failed or misbehaves.
 #   sh rollback.sh ROOT OLD
+# The successor keeps serving until OLD is known to drain; nothing runs if OLD is OPEN.
 set -eu
 ROOT=$1; OLD=$2
 PY=/usr/bin/python3.11
@@ -9,29 +10,29 @@ GUARD_OLD="$PY -I $OLD/control/surfd_transition_guard.py --state-dir $OLD/state"
 GUARD_NEW="$PY -I $ROOT/control/surfd_transition_guard.py --state-dir $ROOT/state"
 say() { echo "$(date -u +%H:%M:%S.%N | cut -c1-12)Z $*"; }
 umask 077
+stop() {    # TERM, then KILL after 45 s, every gunicorn process of one generation
+  for p in $(pgrep -f "$1/control witness_wsgi:app" || true); do kill -TERM "$p" 2>/dev/null || true; done
+  i=0; while pgrep -f "$1/control witness_wsgi:app" > /dev/null && [ $i -lt 45 ]; do sleep 1; i=$((i+1)); done
+  for p in $(pgrep -f "$1/control witness_wsgi:app" || true); do kill -KILL "$p" 2>/dev/null || true; done
+  sleep 1
+}
 
-say "1. close the successor and stop its master"
+$GUARD_OLD status | grep -q '"admission": "CLOSED"' || { say "REFUSED: $OLDGEN is OPEN; nothing to roll back"; exit 3; }
+
+say "1. a CLOSED old master (cutover stopped between its steps 1 and 2) only answers 503: stop it"
+stop "$OLD"
+
+say "2. drain the old guard; the successor is untouched if this fails"
+$GUARD_OLD --timeout 60 close || { say "FAIL: the old guard did not drain; inspect $OLD/state"; exit 7; }
+
+say "3. close the successor and stop it"
 $GUARD_NEW --timeout 1 close || true
-if [ -f $ROOT/state/candidate.json ]; then
-  NP=$($PY -c 'import json,sys; print(json.load(open(sys.argv[1]))["process"]["pid"])' $ROOT/state/candidate.json)
-  if [ -d /proc/$NP ] && tr '\0' ' ' < /proc/$NP/cmdline | grep -q "$ROOT/"; then
-    kill -TERM "$NP"
-    i=0; while [ -d /proc/$NP ] && [ $i -lt 45 ]; do sleep 1; i=$((i+1)); done
-  fi
-fi
-# A CLOSED old master (cutover stopped between its steps 1 and 2) only answers 503:
-# it is restarted below through its guard, so stop it too.
-for p in $(pgrep -f "$OLD/control witness_wsgi:app" || true); do kill -TERM "$p" 2>/dev/null || true; done
-i=0; while pgrep -f "$OLD/control witness_wsgi:app" > /dev/null && [ $i -lt 30 ]; do sleep 1; i=$((i+1)); done
-for p in $(pgrep -f "$OLD/control witness_wsgi:app" || true); do kill -KILL "$p" 2>/dev/null || true; done
+stop "$ROOT"
 i=0; while ss -ltnH | grep -q ':8084 ' && [ $i -lt 30 ]; do sleep 1; i=$((i+1)); done
-ss -ltnH | grep -q ':8084 ' && { say "FAIL: 8084 still bound; inspect by hand"; exit 6; }
+ss -ltnH | grep -q ':8084 ' && { say "FAIL: 8084 still bound by something else; inspect by hand"; exit 6; }
 $GUARD_NEW --timeout 10 close || true
 
-say "2. restart $OLDGEN through its own guard"
-# A full close drains and retires a stale candidate record the old master left.
-$GUARD_OLD --timeout 60 close || { say "FAIL: the old guard did not drain; inspect $OLD/state"; exit 7; }
-$GUARD_OLD status
+say "4. restart $OLDGEN through its own guard"
 CLOSURE=$($PY -c 'import json,sys; print(json.load(open(sys.argv[1]))["closure"])' $OLD/state/state.json)
 G=$ROOT/control/rollback-grant.json
 rm -f $G
@@ -62,7 +63,11 @@ with os.fdopen(fd, 'w') as f:
 EOF
 $GUARD_OLD reopen --generation "$OLDGEN" --receipt $ROOT/control/rollback-receipt.json
 
-say "3. crontab back"
-[ -f $ROOT/control/crontab.before ] && crontab $ROOT/control/crontab.before
-curl -s -m 5 http://127.0.0.1:8084/health; echo
+say "5. crontab back, only over the cutover's own edit"
+if [ -f $ROOT/control/crontab.after ] && crontab -l | cmp -s - $ROOT/control/crontab.after; then
+  crontab $ROOT/control/crontab.before
+elif [ -f $ROOT/control/crontab.before ] && ! crontab -l | cmp -s - $ROOT/control/crontab.before; then
+  say "   WARN: crontab is neither before nor after the cutover; left as it is"
+fi
+curl -s -m 5 http://127.0.0.1:8084/health || true; echo
 say "ROLLED BACK to $OLDGEN"

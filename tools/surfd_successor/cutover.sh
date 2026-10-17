@@ -17,6 +17,9 @@ tr '\0' ' ' < /proc/$MASTER/cmdline | grep -q "$OLD/control witness_wsgi:app" ||
 [ "$(awk '{print $4}' /proc/$MASTER/stat)" = 1 ] || { say "REFUSED: master $MASTER is not a ppid-1 master"; exit 3; }
 $GUARD_NEW status | grep -q '"admission": "CLOSED"' || { say "REFUSED: new guard is not CLOSED"; exit 3; }
 $GUARD_NEW status | grep -q "\"generation\": \"$SHA\"" || { say "REFUSED: $SHA is not the successor's generation"; exit 3; }
+for f in acceptance-receipt.json worker-witness.json candidate-grant.json; do
+  [ ! -e $ROOT/control/$f ] || { say "REFUSED: $ROOT/control/$f exists; a used successor root is not reused"; exit 3; }
+done
 crontab -l > $ROOT/control/crontab.before
 sed "s#$OLD/control/surfd_transition_guard.py --state-dir $OLD/state launch --generation $OLDGEN#$ROOT/control/surfd_transition_guard.py --state-dir $ROOT/state launch --generation $SHA#" \
   $ROOT/control/crontab.before > $ROOT/control/crontab.after
