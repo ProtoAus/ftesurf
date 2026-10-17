@@ -108,7 +108,7 @@ int main(void){
  assert(traces==2&&took>0&&t.endpos[2]==816.0f);checks++;
  // A recording pinned to mover 5 is one this verifier has; 6 is not.
  float pin[SV_PMPIN_COUNT];memset(pin,0,sizeof(pin));pin[SV_PMPIN_FIXRAMPBUGS]=2;
- pin[0]=5;assert(SV_PMSrcVer(pin)==5);pin[0]=4;assert(SV_PMSrcVer(pin)==4);pin[0]=6;assert(SV_PMSrcVer(pin)!=6);checks+=3;
+ pin[0]=6;assert(SV_PMSrcVer(pin)==6);pin[0]=5;assert(SV_PMSrcVer(pin)==5);pin[0]=4;assert(SV_PMSrcVer(pin)==4);pin[0]=7;assert(SV_PMSrcVer(pin)!=7);checks+=4;
  printf("PASS %d actual landing checks: mover 5 lands 1/32 above the exit floor, mover 4 keeps the 1/8 snap\n",checks);
  return 0;
 }

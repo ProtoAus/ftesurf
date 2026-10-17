@@ -3122,7 +3122,6 @@ void() FS_CvarsMoved =
 	FS_CvarMoved("fs_spotlights",       "vbsp_spotlights");
 	FS_CvarMoved("fs_skyroom",          "vbsp_skyroom");
 	FS_CvarMoved("fs_portal_render",    "vbsp_portal_render");
-	FS_CvarMoved("fs_portal_dist",      "vbsp_portal_dist");
 	FS_CvarMoved("fs_portal_debug",     "vbsp_portal_debug");
 	FS_CvarMoved("fs_entity_io",        "vbsp_entity_io");
 

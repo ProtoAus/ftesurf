@@ -57,7 +57,7 @@ void() FS_PortalRegisterCvars =
 		return;
 	vbsp_lpd_cvarsdone = TRUE;
 	registercvar("vbsp_portal_render", "1");
-	registercvar("vbsp_portal_dist",   "3000");
+	registercvar("vbsp_portal_maxdist", "0");
 	registercvar("vbsp_portal_debug",  "0");
 };
 
@@ -146,11 +146,12 @@ vector(vector org, vector ang) FS_PortalTransformView =
   the player's eye only, so the next room's door was never in the scene and the
   second level always drew closed.  Once per frame, ask them again from each
   offered door's far-side eye, with PVS sampled where the renderer samples it
-  (FS_PortalTransformView).  vbsp_portal_dist bounds only the doors the player
-  sees directly.  The engine renders the r_portalmaxviews largest doors of a
-  view (corner radius over distance, at most 16, levels below 5): that many per
-  eye carry the walk deeper, plus one for the frustum this half-space test
-  cannot see.  The engine refuses doors outside a view's PVS (Patch 752).
+  (FS_PortalTransformView).  vbsp_portal_maxdist (off by default, Patch 758) caps
+  only the doors the player sees directly.  The engine renders the
+  r_portalmaxviews largest doors of a view (corner radius over distance, at most
+  16, levels below 5): that many per eye carry the walk deeper, plus one for the
+  frustum this half-space test cannot see.  The engine refuses doors outside a
+  view's PVS (Patch 752).
 */
 #define LPD_MAXEYES 32
 #define LPD_MAXLEVELS 5	// GLR_PortalDrawableAt: R_MAX_RECURSE-1
@@ -177,7 +178,7 @@ void(vector root, vector ang) Portal_Offer =
 	for (d = head; d; d = d.chain)
 		d.lpd_offer = 0;
 	levels = min(cvar("r_portalrecursion"), LPD_MAXLEVELS);
-	cap = cvar("vbsp_portal_dist");
+	cap = cvar("vbsp_portal_maxdist");
 	width = cvar("r_portalmaxviews");
 	if (width <= 0 || width > 16)
 		width = 16;

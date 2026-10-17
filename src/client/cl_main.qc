@@ -1611,13 +1611,17 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  every sky_camera in the library that omits the key means 16, and a
 		  zero would divide the map into the sky room.
 		*/
-		local float sksc;
+		local float sksc, skprop;
 		local vector skeye;
 		sksc = vbsp_skyroom_scale;
 		if (sksc <= 0)
 			sksc = 16;
 		skeye = getproperty(VF_ORIGIN);
-		setproperty(VF_SKYROOM_CAMERA, vbsp_skyroom_pos + skeye * (1 / sksc));
+		// Patch 758: the scale (fifth argument, after a zero spin) lets the engine
+		// redo this for a view through a portal; older engines ignore it. Through a
+		// variable: fteqcc's table knows only the one-vector form (pr_csqc.c reads spin).
+		skprop = VF_SKYROOM_CAMERA;
+		setproperty(skprop, vbsp_skyroom_pos + skeye * (1 / sksc), '0 0 0', 0, sksc);
 	}
 
 	RG_DrawBodies();                // Patch 746: the race ghosts, with the scene's other bodies

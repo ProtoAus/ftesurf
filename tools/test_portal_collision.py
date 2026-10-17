@@ -25,7 +25,23 @@ static struct {vec3_t player_mins,player_maxs;int ducking,ducked,oldbuttons;floa
 #define VectorAdd(a,b,o) do {int k;for(k=0;k<3;k++)(o)[k]=(a)[k]+(b)[k];}while(0)
 #define VectorSubtract(a,b,o) do {int k;for(k=0;k<3;k++)(o)[k]=(a)[k]-(b)[k];}while(0)
 #define VectorInterpolate(a,s,b,o) do {int k;float v=(s);for(k=0;k<3;k++)(o)[k]=(a)[k]+v*((b)[k]-(a)[k]);}while(0)
+#ifndef min
+#define min(a,b) ((a)<(b)?(a):(b))
+#define max(a,b) ((a)>(b)?(a):(b))
+#endif
 static void PM_PortalCSGReport(int ent,int plane,float miss){(void)ent;(void)plane;(void)miss;}
+'''
+# The world for PM_CarveExitRest's rest trace: open, or a face at x = stub_wall_x
+# that the hull's front (+16) meets.
+STUB = r'''
+static float stub_wall_x=1e9f;
+trace_t PM_PlayerTrace(vec3_t s,vec3_t e,unsigned int mask) {
+ trace_t t;(void)mask;memset(&t,0,sizeof(t));t.fraction=1;t.entnum=-1;VectorCopy(e,t.endpos);
+ if (s[0]+16<=stub_wall_x&&e[0]+16>stub_wall_x){
+  t.fraction=(stub_wall_x-16-1/32.f-s[0])/(e[0]-s[0]);VectorInterpolate(s,t.fraction,e,t.endpos);
+  t.plane.normal[0]=-1;t.entnum=0;}
+ return t;
+}
 '''
 TEST = r'''
 static int checks;
@@ -97,7 +113,29 @@ int main(void) {
   PM_PortalCSG(&q,1,pmove.player_mins,pmove.player_maxs,qs,qe,&t);
   int tilted_unchanged_ok=tilted5==t.fraction;assert(tilted_unchanged_ok);checks++;
  }
- printf("PASS %d actual CSG/posture checks; glancing wall, departure, sill, stale eye, mover-5 sill sweep\n",checks);
+ // Patch 758, mover 6: a hop leaving an exit with the hull's back still in the wall
+ // stopped dead where the back clears the plane (centre x 16.09). Mover 6 carries on.
+ {
+  vec3_t s={3,0,0},e={20,0,0};float f0;
+  movevars.sourceversion=5;pm_carveexit_frac=-1;memset(&t,0,sizeof(t));t.startsolid=t.allsolid=1;
+  PM_PortalCSG(&p,1,pmove.player_mins,pmove.player_maxs,s,e,&t);f0=t.fraction;
+  assert(fabs(t.endpos[0]-16.09375f)<.001f&&t.plane.normal[0]<-.99f);checks++;  // where the hop stopped
+  t=PM_CarveExitRest(t,s,e,0);assert(t.fraction==f0);checks++;                  // mover 5 still stops there
+  movevars.sourceversion=6;pm_carveexit_frac=-1;memset(&t,0,sizeof(t));t.startsolid=t.allsolid=1;
+  PM_PortalCSG(&p,1,pmove.player_mins,pmove.player_maxs,s,e,&t);assert(t.fraction==f0);checks++;
+  t=PM_CarveExitRest(t,s,e,0);
+  int carveexit_ok=t.fraction==1&&t.endpos[0]==20;assert(carveexit_ok);checks++;
+  // The rest is a real trace: a face 25 units on (centre 25 - 1/32) still stops it.
+  e[0]=40;stub_wall_x=41;pm_carveexit_frac=-1;memset(&t,0,sizeof(t));t.startsolid=t.allsolid=1;
+  PM_PortalCSG(&p,1,pmove.player_mins,pmove.player_maxs,s,e,&t);t=PM_CarveExitRest(t,s,e,0);
+  int obstacle_ok=fabs(t.endpos[0]-(25-1/32.f))<.001f&&fabs(t.fraction-(25-1/32.f-3)/37)<1e-5f&&t.plane.normal[0]<-.99f;
+  assert(obstacle_ok);checks++;stub_wall_x=1e9f;
+  // Leaving through a SIDE plane is still a wall under mover 6 (the glancing case).
+  vec3_t gs={17,55,0},ge={-28,100,0};pm_carveexit_frac=-1;t=Impact(gs,ge);
+  PM_PortalCSG(&p,1,pmove.player_mins,pmove.player_maxs,gs,ge,&t);
+  assert(t.fraction<.25f&&pm_carveexit_frac<0);checks++;
+ }
+ printf("PASS %d actual CSG/posture checks; glancing wall, departure, sill, stale eye, mover-5 sill sweep, mover-6 carve exit\n",checks);
  return 0;
 }
 '''
@@ -120,7 +158,11 @@ def main():
     source = (e/'common/pm_source.c').read_text()
     tick = function(source, 'static void PMSrc_Tick (void)')
     assert tick.index('PMSrc_Duck ();') < tick.index('PMSrc_SetDuckedEyeOffset(PMSrc_DuckFraction())') < tick.index('PMSrc_LadderMove (NULL)')
-    csg = function((e/'common/pmovetst.c').read_text(), 'static void PM_PortalCSG(')
+    tst = (e/'common/pmovetst.c').read_text()
+    csg = function(tst, 'static void PM_PortalCSG(')
+    statics = re.search(r'^static float pm_carveexit_frac = -1;[^\n]*\n(?:static [^\n]*\n){2}', tst, re.M)
+    assert statics, 'pm_carveexit statics'
+    rest = function(tst, 'static trace_t PM_CarveExitRest(')
     code = PREFIX + TYPES
     for signature in ['void QDECL VectorAngles(', 'void QDECL AngleVectors (']:
         code += function(math, signature)
@@ -130,12 +172,16 @@ def main():
         code += m.group()+'\n'
     for name in ['PMSrc_SimpleSpline', 'PMSrc_ViewHeight', 'PMSrc_DuckViewHeight', 'PMSrc_DuckFraction', 'PMSrc_SetDuckedEyeOffset']:
         code += named(source, name)
-    code += csg + TEST
+    code += statics.group() + csg + STUB + rest + TEST
     a.out.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
     env['PATH'] = str(Path(a.cc).parent)+os.pathsep+env.get('PATH','')
-    for arm in ['subject','negative','negative_back','negative_sill','negative_upright']:
+    for arm in ['subject','negative','negative_back','negative_sill','negative_upright','negative_carveexit']:
         armcode = code
+        if arm == 'negative_carveexit':
+            flag = '\t\t\t\tpm_carveexit_frac = bestfrac;\n'
+            assert armcode.count(flag) == 1
+            armcode = armcode.replace(flag, '')
         if arm == 'negative_upright':
             assert ' && planes[5][2] >= 0.7f)' in armcode
             armcode = armcode.replace(' && planes[5][2] >= 0.7f)', ')')
@@ -163,6 +209,9 @@ def main():
         elif arm == 'negative_sill':
             assert p.returncode != 0 and b'sill_ground_ok' in p.stderr, p.stdout+p.stderr
             print('PASS pre-756 control carves the sill away and fails sill_ground_ok')
+        elif arm == 'negative_carveexit':
+            assert p.returncode != 0 and b'carveexit_ok' in p.stderr, p.stdout+p.stderr
+            print('PASS pre-758 control stops where the hull clears the exit and fails carveexit_ok')
         elif arm == 'negative_upright':
             assert p.returncode != 0 and b'tilted_unchanged_ok' in p.stderr, p.stdout+p.stderr
             print('PASS control without the upright gate changes a tilted door and fails tilted_unchanged_ok')
