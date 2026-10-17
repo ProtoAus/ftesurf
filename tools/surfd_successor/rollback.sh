@@ -63,11 +63,16 @@ with os.fdopen(fd, 'w') as f:
 EOF
 $GUARD_OLD reopen --generation "$OLDGEN" --receipt $ROOT/control/rollback-receipt.json
 
-say "5. crontab back, only over the cutover's own edit"
-if [ -f $ROOT/control/crontab.after ] && crontab -l | cmp -s - $ROOT/control/crontab.after; then
-  crontab $ROOT/control/crontab.before
-elif [ -f $ROOT/control/crontab.before ] && ! crontab -l | cmp -s - $ROOT/control/crontab.before; then
-  say "   WARN: crontab is neither before nor after the cutover; left as it is"
+say "5. the guarded cron lines back to $OLDGEN (other lines untouched)"
+SHA=$($PY -c 'import json,sys; print(json.load(open(sys.argv[1]))["generation"])' $ROOT/state/manifest.json)
+crontab -l > $ROOT/control/crontab.rollback-before
+sed "s#$ROOT/control/surfd_transition_guard.py --state-dir $ROOT/state launch --generation $SHA#$OLD/control/surfd_transition_guard.py --state-dir $OLD/state launch --generation $OLDGEN#" \
+  $ROOT/control/crontab.rollback-before > $ROOT/control/crontab.rollback-after
+N=$(diff $ROOT/control/crontab.rollback-before $ROOT/control/crontab.rollback-after | grep -c '^>' || true)
+if [ "$N" = 4 ]; then
+  crontab $ROOT/control/crontab.rollback-after
+elif [ "$N" != 0 ]; then
+  say "   WARN: $N guarded cron lines name the successor, not 4; crontab left as it is"
 fi
 curl -s -m 5 http://127.0.0.1:8084/health || true; echo
 say "ROLLED BACK to $OLDGEN"

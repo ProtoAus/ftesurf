@@ -404,6 +404,8 @@ def register(app, d):
                     # it ends a friendship and refuses their add and messages.
                     # Their block does not stand in for mine: they could lift it.
                     if rel == 5:
+                        if slots(db, sid) >= MAX_FRIENDS:
+                            return reply({"ok": 0, "error": "Friends list is full"}, 409)
                         db.execute("UPDATE social_friends SET accepted=-2 WHERE lo=? AND hi=?", (lo, hi))
                     elif rel in (1, 2, 3):
                         db.execute("UPDATE social_friends SET asker=?,accepted=-1 WHERE lo=? AND hi=?",
