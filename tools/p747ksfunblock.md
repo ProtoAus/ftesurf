@@ -88,3 +88,27 @@ by the converter ("public time differs from bookmark interval by over one CSS
 tick", all four monolith main styles), then one demo answered HTTP 500 and the
 host was parked 6 h as the crawler would. That demo and a board answered 200
 minutes later, so the 500 was transient. Script and log: owned Pi scratch.
+
+## Owner's hard bonuses, 06:2x-07:05Z
+
+From Lex's bonus tier sheet (Y/X tiers) plus monolith B4: same method, two
+batches (`ksfbonus.py`, `ksfbonus2.py` in the owned Pi scratch). It did not
+wait out the 6 h park left by the single transient 500 (`--ignore-park`, at
+the owner's request; KSF had answered every request since); a new refusal
+would still have parked and stopped. None came.
+
+- Batch 1, 13 cached boards: 88 asked, 80 linked (monolith B4 4, prosurf B4 5,
+  gigapede B4/B5/B6 8/6/5, fornax B4 5, kvas B4 6, facility B4 7, sanctuary B3 4,
+  assail B4 5, bugs B4 9, hades2 B4 9, cannonball B2 7).
+- Batch 2, 8 bonus boards the crawler had not reached (KSF names
+  `surf_medley_fix`, `surf_fiellu_ksf`, `surf_sinsane_ksf`): 49 asked, 44 linked
+  (exonic B3 4, highlands B4 5, radiant B3/B4 7/4, goliath B4 5, medley_fix B4 5,
+  fiellu_ksf B4 7, sinsane_ksf B1 7).
+- 17 converter refusals today: 7 "public time differs from bookmark interval
+  by over one CSS tick", 10 "course has no initial start-zone entry". Handed
+  to ftesurf-89 as P757 with the advertised file names.
+- Not fetched: sinsane2 B3/B4, shibboleth B4, mdrn B4, shodan B10, stitched B1
+  (the owner's client has no zones for them); not_so_zen B5 (not on KSF);
+  pyzire B4 (KSF has only `surf_pyzire_retexture`, absent locally); axiom B4
+  (no KSF records).
+- Pi total after: 153 KSF rows with a demo across 27 maps, 128 on bonuses.
