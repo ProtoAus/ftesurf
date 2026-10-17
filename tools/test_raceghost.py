@@ -3,6 +3,7 @@
 
 python tools/test_raceghost.py <rig>/ftesurf --pb <the PB .rec put into the rig>
     [--look <rig of raceghost_look.cfg>/ftesurf] [--stage <rig of raceghost_stage.cfg>/ftesurf]
+    [--stagepb <rig of raceghost_stagepb.cfg>/ftesurf]
 
 Live arm (dedicated, sv_minping 120): every printed ghost sits on the PB file at its
 own clock (within 1 u), its clock is yours plus the offset, and yours is the drawn
@@ -16,7 +17,10 @@ records independently of the zones (the LAST `stagestart <seg>` before `stage <s
 a fail back into the box restarts it), and the ghost is the PB at anchor + your clock -
 your anchor + the offset; a ticked board line of the same file is the ghost when the PB
 is off (slot 1), one ghost with both on, none with hud_ghost_lines 0.  The look arm's
-hud_edit Ghost pane lists its eight rows and its first chip turns hud_ghost on.
+hud_edit Ghost pane lists its eight rows and its first chip turns hud_ghost on.  Stage-PB
+arm (the review's two): in stage 2's box its own PB is already loaded; it is the ghost
+of the stage run, at the whole PB's place 4.98 s on (the file was cut from it); past
+its end and hold no other PB stands in; three attempts read it once.
 Exit 2 is CANNOT MEASURE.
 """
 import argparse
@@ -245,12 +249,54 @@ def stage(rig, pb, fails, notes):
             fails.append('%s: anchored at %.4f, not the PB stage 2 start' % (name, anchors[0]))
 
 
+def stagepb(rig, pb, fails, notes):
+    log = (rig / 'logs/runlines_smoke.log').read_text(errors='replace')
+    s = sections(log)
+    pbrows = [r for r in samples(pb) if r[0] >= 0]
+    inbox = '\n'.join(s.get('INBOX', []))
+    m = re.search(r'raceghost: pb stage leg (\S+) state (\S+) pts (\S+)', inbox)
+    print('stagepb INBOX stage slot leg/state/pts', m and m.groups())
+    if not m or m.group(1) != '2' or m.group(2) != '3':
+        fails.append('INBOX: the stage PB is not loaded while you stand in its box (%s)' % (m and m.groups(),))
+    for name, off in (('STAGEPB', 0), ('AGAIN', 0)):
+        body = s.get(name, [])
+        c = next((CLOCK.search(l) for l in body if CLOCK.search(l)), None)
+        g = [GHOST.search(l) for l in body if GHOST.search(l)]
+        if not c or float(c.group(1)) < 0:
+            notes.append(CANNOT + '%s: the stage run did not start' % name)
+            continue
+        slots = [x.group(2) for x in g]
+        print('stagepb %s ghosts in slots %s' % (name, slots))
+        if slots != ['67']:
+            fails.append('%s: ghosts %s, wanted the stage PB alone (67)' % (name, slots))
+            continue
+        clock, gt = float(c.group(1)), float(g[0].group(3))
+        gp = tuple(float(g[0].group(i)) for i in (4, 5, 6))
+        d = math.dist(gp, at(pbrows, 4.98 + gt))
+        print('stagepb %s t %.4f (clock %.4f), %.2f u off the whole PB 4.98 s on' % (name, gt, clock, d))
+        if abs(gt - clock - off) > 0.0005 or d > 1:
+            fails.append('%s: t %.4f clock %.4f, %.2f u off' % (name, gt, clock, d))
+    body = s.get('FINISHED', [])
+    c = next((CLOCK.search(l) for l in body if CLOCK.search(l)), None)
+    slots = [GHOST.search(l).group(2) for l in body if GHOST.search(l)]
+    print('stagepb FINISHED ghosts in slots', slots)
+    if not c or float(c.group(1)) < 0:
+        notes.append(CANNOT + 'FINISHED: the stage run did not start')
+    elif slots:
+        fails.append('FINISHED: the stage PB has finished and %s stands in (the review\'s pop-in)' % slots)
+    ready = len(re.findall(r'raceghost: stage PB ready', log))
+    print('stagepb stage PB reads', ready)
+    if ready != 1:
+        fails.append('the stage PB was read %d times over three attempts' % ready)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('rig', type=pathlib.Path)
     ap.add_argument('--pb', type=pathlib.Path, required=True)
     ap.add_argument('--look', type=pathlib.Path)
     ap.add_argument('--stage', type=pathlib.Path)
+    ap.add_argument('--stagepb', type=pathlib.Path)
     a = ap.parse_args()
     fails, notes = [], []
     live(a.rig, a.pb, fails, notes)
@@ -258,6 +304,8 @@ def main():
         look(a.look, a.pb, fails, notes)
     if a.stage:
         stage(a.stage, a.pb, fails, notes)
+    if a.stagepb:
+        stagepb(a.stagepb, a.pb, fails, notes)
     for n in notes:
         print(n)
     for f in fails:

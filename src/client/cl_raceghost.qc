@@ -17,6 +17,7 @@
 
 #define RG_MAX     10           // bodies: the two PB slots and eight lines
 #define RG_STG     32           // stage boxes a slot remembers leaving (FS_MAXSPLITS is 24)
+#define RG_ZONES   96           // start and stage regions of a track the scan tests
 #define RG_SCAN    2048         // samples a frame the stage scan reads
 #define RG_HOLD    1.5          // seconds a finished ghost stands at its end
 #define RGP_NONE   0
@@ -55,6 +56,11 @@ float  *rg_stgi;
 float  *rg_stgin;
 float  *rg_stgk;
 float  *rg_syaw;                // and the way it last faced
+float  *rg_stgz;                // the zones its table was read against (RG_ZoneSig)
+float  *rg_slgen;               // a board line's build, and the map it was built on
+string *rg_slmap;
+float  rg_zl[RG_ZONES];         // RG_StageScan's regions
+float  rg_nz;
 
 void() RG_RegisterCvars =
 {
@@ -75,8 +81,11 @@ void() RG_RegisterCvars =
 	rg_stgin  = memalloc(sizeof(float) * LN_SLOTS);
 	rg_stgk   = memalloc(sizeof(float) * LN_SLOTS);
 	rg_syaw   = memalloc(sizeof(float) * LN_SLOTS);
+	rg_stgz   = memalloc(sizeof(float) * LN_SLOTS);
+	rg_slgen  = memalloc(sizeof(float) * LN_SLOTS);
+	rg_slmap  = memalloc(sizeof(string) * LN_SLOTS);
 	for (s = 0; s < LN_SLOTS; s = s + 1)
-		rg_stggen[s] = -1;
+		rg_stggen[s] = rg_slgen[s] = -1;
 };
 
 /*
@@ -223,12 +232,15 @@ string(float track, float leg) RG_PBFind =
 	return f;
 };
 
-// PB slot i should hold leg `leg` of `track` (-1: nothing).  Looked for again on a
-// change of leg, of map, or after a run ended (a new PB has just been written).
+// PB slot i should hold leg `leg` of `track` (-1: nothing, -2: whatever it holds).
+// Looked for again on a change of leg, of map, or after a run ended (a new PB has
+// just been written).
 void(float i, float track, float leg) RG_PBWant =
 {
 	local string f;
 
+	if (leg == -2)
+		return;
 	if (leg < 0)
 	{
 		if (rg_pbst[i] != RGP_NONE)
@@ -285,22 +297,28 @@ void(float k) RG_JobDone =
 	              (k > 0) ? "ready" : "failed", ln_n[wt_lj_slot]));
 };
 
+// The zone tables, as a number that moves when they are loaded or edited.
+float() RG_ZoneSig =
+{
+	return zone_count * 4096 + zone_ptcount;
+};
+
 /*
   Where slot s's body left each stage's box: rg_stg[s * RG_STG + seg], the clock of
   its first sample outside, -1 never.  Only the box of the furthest stage reached
   is written, so a fail back into the stage's own box moves its start to the try
-  that went on, and an earlier box passed again does not.  RG_SCAN samples a frame;
-  RG_StageAt answers -1 until a slot's scan is done.
+  that went on, and an earlier box passed again does not.  RG_SCAN samples a frame,
+  from RG_Frame only (one slot a frame); RG_StageAt answers -1 until it is done.
 */
 void(float s) RG_StageScan =
 {
-	local float b, i, e, z, k, track, nz;
-	local float zl[RG_STG];
+	local float b, i, e, z, k, track;
 	local vector p;
 
-	if (rg_stggen[s] != ln_graphgen[s])
+	if (rg_stggen[s] != ln_graphgen[s] || rg_stgz[s] != RG_ZoneSig())
 	{
 		rg_stggen[s] = ln_graphgen[s];
+		rg_stgz[s] = RG_ZoneSig();
 		rg_stgi[s] = ln_ia[s];
 		rg_stgin[s] = -1;
 		rg_stgk[s] = -1;
@@ -312,14 +330,14 @@ void(float s) RG_StageScan =
 	if (zone_count <= 0)
 		return;                     // no zones yet: nothing read, so nothing done
 	track = (ln_track[s] >= 0) ? ln_track[s] : rg_track;
-	nz = 0;
+	rg_nz = 0;
 	for (z = 0; z < zone_count; z = z + 1)
 		if (zone_track[z] == track)
 		if (zone_type[z] == ZONE_START || zone_type[z] == ZONE_STAGE)
-		if (nz < RG_STG)
+		if (rg_nz < RG_ZONES)
 		{
-			zl[nz] = z;
-			nz = nz + 1;
+			rg_zl[rg_nz] = z;
+			rg_nz = rg_nz + 1;
 		}
 	b = LN_B(s);
 	e = min(ln_ib[s], rg_stgi[s] + RG_SCAN - 1);
@@ -327,10 +345,10 @@ void(float s) RG_StageScan =
 	{
 		p = ln_pos[b + i];
 		k = -1;
-		for (z = 0; z < nz; z = z + 1)
-			if (Zone_PointInside(zl[z], p))
+		for (z = 0; z < rg_nz; z = z + 1)
+			if (Zone_PointInside(rg_zl[z], p))
 			{
-				k = (zone_type[zl[z]] == ZONE_START) ? 0 : zone_seg[zl[z]];
+				k = (zone_type[rg_zl[z]] == ZONE_START) ? 0 : zone_seg[rg_zl[z]];
 				break;
 			}
 		if (k >= 0)
@@ -350,14 +368,18 @@ void(float s) RG_StageScan =
 	rg_stgi[s] = e + 1;
 };
 
+float(float s) RG_StageDone =
+{
+	return (rg_stggen[s] == ln_graphgen[s] && rg_stgz[s] == RG_ZoneSig() && rg_stgi[s] > ln_ib[s]);
+};
+
 float(float s, float seg) RG_StageAt =
 {
 	if (seg <= 0)
 		return ln_start[s];         // a whole run's clock starts as it leaves the start
 	if (seg >= RG_STG)
 		return -1;
-	RG_StageScan(s);
-	if (rg_stggen[s] != ln_graphgen[s] || rg_stgi[s] <= ln_ib[s])
+	if (!RG_StageDone(s))
 		return -1;                  // still reading
 	return rg_stg[s * RG_STG + seg];
 };
@@ -438,8 +460,21 @@ void(float s, float t) RG_At =
 		rg_gp = ln_pos[b + i - 1] + (ln_pos[b + i] - ln_pos[b + i - 1]) * f;
 	}
 	rg_gi = i;
-	k0 = max(ia, i - 3);
-	k1 = min(ib, i + 3);
+	// The way it was going over a few samples either side, not across a teleport.
+	k0 = i;
+	while (k0 > ia && k0 > i - 3)
+	{
+		if (ln_brk[b + k0])
+			break;
+		k0 = k0 - 1;
+	}
+	k1 = i;
+	while (k1 < ib && k1 < i + 3)
+	{
+		if (ln_brk[b + k1 + 1])
+			break;
+		k1 = k1 + 1;
+	}
 	d = ln_pos[b + k1] - ln_pos[b + k0];
 	d_z = 0;
 	if (vlen(d) > 1)
@@ -464,7 +499,8 @@ float(float c) RG_Anchor =
 		return -1;
 	legc = ln_leg[c];
 	rg_am = 0;
-	if (cvar("hud_ghost_sync") && rg_legnow > 0)
+	// A rewind's cursor is on the run's clock: the stage in play now says nothing of it.
+	if (cvar("hud_ghost_sync") && rg_legnow > 0 && !ui_rw_on)
 	{
 		if (rg_armed)
 			return -1;              // in the box: this stage has not started
@@ -502,21 +538,18 @@ float(float c, vector col) RG_Add =
 	rg_anc[rg_n] = a;
 	if (col == '0 0 0')
 		col = ln_col[LN_B(c) + rg_gi];
+	if (col == '0 0 0')
+		col = '0.55 0.85 1.00';     // no drawer has painted the line this map
 	rg_col[rg_n] = col;
 	rg_n = rg_n + 1;
 	return TRUE;
 };
 
-float(float s) RG_StageDone =
-{
-	return (rg_stggen[s] == ln_graphgen[s] && rg_stgi[s] > ln_ib[s]);
-};
-
 // Before clearscene, after Trail_Frame (whose kept frames RG_Clock reads).
 void() RG_Frame =
 {
-	local float st, i, k, lines, s, leg, sync;
-	local string pbr;
+	local float st, i, k, lines, s, leg, sync, had;
+	local string pbr, mp;
 
 	rg_n = 0;
 	rg_cv = cvar("hud_ghost");
@@ -540,24 +573,34 @@ void() RG_Frame =
 	rg_base   = getstatf(STAT_FS_STAGEBASE) * Timer_Tick();
 	rg_armed  = (getstatf(STAT_FS_STAGEST) & SF_ARMED) ? TRUE : FALSE;
 
-	// The PBs: the run's whenever asked, and a stage's for a stage run or a stage start.
+	/*
+	  The PBs: the run's whenever asked, and a stage's for a stage run or a stage
+	  start.  Between attempts (no run open: RUNLEG is 0 from a discarded run until
+	  the next leaves its box) the stage's is kept, or loaded already while you stand
+	  in a stage's box, whose run is the next; it is not cleared and read again for
+	  every attempt (the review).  No zones yet: nothing is decided.
+	*/
 	sync = cvar("hud_ghost_sync");
-	if (cvar("hud_ghost_pb") && zone_count > 0)
-	{
-		RG_PBWant(1, rg_track, 0);
-		leg = -1;
-		if (sync && rg_legnow > 0)
-			leg = rg_legnow;
-		else if (rg_runleg > 0)
-			leg = rg_runleg;
-		RG_PBWant(0, rg_track, leg);
-		rg_pbmap = rg_mapgen;
-		rg_rescan = FALSE;
-	}
-	else
+	if (!cvar("hud_ghost_pb"))
 	{
 		RG_PBWant(0, 0, -1);
 		RG_PBWant(1, 0, -1);
+	}
+	else if (zone_count > 0)
+	{
+		RG_PBWant(1, rg_track, 0);
+		leg = -2;
+		if (sync)
+			leg = (rg_legnow > 0) ? rg_legnow : -1;
+		else if (rg_runleg > 0)
+			leg = rg_runleg;
+		else if (rg_runleg == 0)
+			leg = -1;
+		else if (st == TS_ARMED && rg_legnow > 1)
+			leg = rg_legnow;
+		RG_PBWant(0, rg_track, leg);
+		rg_pbmap = rg_mapgen;
+		rg_rescan = FALSE;
 	}
 
 	/*
@@ -585,32 +628,46 @@ void() RG_Frame =
 	if (rg_now < 0 || rec_wt_on || Spec_Active())
 		return;
 
-	// A stage's own PB first; the whole run's only where none is standing in for
-	// it, or on its way (a swap at the stage's start would jump).
-	if (rg_pbst[0] == RGP_ON)
-		RG_Add(LN_S_GHOST, LN_GHOSTCOL);
-	if (rg_pbst[1] == RGP_ON)
-	if (!rg_n)
-	if (rg_pbst[0] != RGP_QUEUE && rg_pbst[0] != RGP_BUILD)
-		RG_Add(LN_S_GHR, LN_GHOSTCOL);
+	// A stage's own PB first; the whole run's only where that is not this run's
+	// ghost (drawn, or finished and gone: the review's whole-run pop-in) or on its
+	// way (a swap at the stage's start would jump).
+	had = FALSE;
 	pbr = "";
-	if (rg_n > 0)
+	if (rg_pbst[0] == RGP_ON)
+		had = RG_Add(LN_S_GHOST, LN_GHOSTCOL);
+	if (had)
 	{
-		i = (rg_slot[0] == LN_S_GHR) ? 1 : 0;
-		if (rg_pbpath[i])
-			pbr = rg_pbpath[i];
+		if (rg_pbpath[0])
+			pbr = rg_pbpath[0];
 	}
+	else if (rg_pbst[1] == RGP_ON)
+	if (rg_pbst[0] != RGP_QUEUE && rg_pbst[0] != RGP_BUILD)
+	if (RG_Add(LN_S_GHR, LN_GHOSTCOL))
+	if (rg_pbpath[1])
+		pbr = rg_pbpath[1];
 
-	// The first hud_ghost_lines ticked lines that run here.
+	// The first hud_ghost_lines ticked lines that run here.  A line is stamped with
+	// the map it was built on: a ticked line can outlive a map change, and on another
+	// map its track 0 is somewhere else (the review).
+	mp = serverkey("map");
 	k = 0;
 	for (i = 0; i < SB_LNMAX && k < lines; i = i + 1)
 		if (sb_ln_st[i] == SBL_ON)
 		{
+			s = LN_BOARDSLOT(i);
+			if (rg_slgen[s] != ln_graphgen[s])
+			{
+				rg_slgen[s] = ln_graphgen[s];
+				if (rg_slmap[s]) strunzone(rg_slmap[s]);
+				rg_slmap[s] = strzone(mp);
+			}
+			if (strcmp(rg_slmap[s], mp))
+				continue;
 			if (pbr != "")
 			if (sb_ln_path[i])
 			if (!strcmp(sb_ln_path[i], pbr))
 				continue;           // your PB ticked as well: one ghost of it
-			if (RG_Add(LN_BOARDSLOT(i), '0 0 0'))
+			if (RG_Add(s, '0 0 0'))
 				k = k + 1;
 		}
 };

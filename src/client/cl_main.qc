@@ -1513,7 +1513,6 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// readers, and it takes at most one sample per command frame.
 	Trail_SaveAnswerFrame();
 	Trail_Frame();
-	RG_Frame();                     // Patch 746: after Trail_Frame's kept frames, which its clock reads
 	Trail_RequestFrame();
 	Scores_NativeFrame(notmenu);
 	navfocus = (notmenu && !chat_typing && !UI_CursorHeld());
@@ -1553,6 +1552,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Watch_Camera();
 	Rewind_Camera();                // Patch 477: the cursor's chase view
 	Rewind_Present();               // visual cursor snapshot before HUD/timer draws
+	RG_Frame();                     // Patch 746: after the kept frames (Trail_Frame) and this frame's cursor
 
 	/*
 	  BUILD 30: the ghost camera, and the body it left behind.

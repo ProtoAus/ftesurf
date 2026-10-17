@@ -27,11 +27,26 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 - Site: `src/client/cl_raceghost.qc`. The body always stands (a line keeps no duck
   bit) and faces where it was going, not where its player looked (no yaw kept).
-  No name over a ghost. A stage's own PB is found only for the stage being run, so
-  in "each stage" it loads as the stage starts; until it is ready the whole run's
-  cut stands in only if it was never asked for (RG_Frame's QUEUE/BUILD guard).
-- Falsifier for any of them: `raceghost_look.cfg` with a ducking PB, or a printed
-  name from `raceghost`.
+  No name over a ghost. In "each stage" a stage's own PB loads as you enter its
+  box; a box flown through leaves a few frames with no ghost while it builds
+  (RG_Frame's QUEUE/BUILD guard hides the whole run's cut meanwhile).
+- RG_StageScan tests sample ORIGINS: a stage start box thinner than one sample's
+  travel (sh_zones' census: 101 regions under 32 u) holds no sample, and that
+  stage never gets a whole-run ghost. Sketch: test the segment between two samples
+  where its bounds meet the region's. Not seen on surf_kitsune; not measured.
+- The ghost's PB build goes before the board's queue (RG_JobStart), so an arm that
+  waits a fixed time for "line N drawn" on a map with a PB in its rig can run short.
+- Falsifier for any of them: `raceghost_look.cfg` with a ducking PB, a printed
+  name from `raceghost`, or a stage arm on a map with a thin stage start.
+
+## test_runlines_labels.py counts the replay's name as a mark label
+
+- Site: `tools/test_runlines_labels.py` test_complete_and_sparse_both_acted wants
+  `lnde 8 0`; since Patch 661 queues each line's name with the numbers, the arm
+  prints `lnde 9 0`. Measured 2026-10-17 on e8afa04 (before Patches 745/746) and
+  on 6195307 alike, so stale, not a regression.
+- Falsifier: the grader counts the name apart (`lnde` minus the line's one name)
+  and passes on e8afa04's csprogs with `runlines_labels.cfg`.
 
 ## KSF sparse demos: none downloaded yet, upstream parked (P740)
 
