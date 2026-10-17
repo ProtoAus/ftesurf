@@ -389,6 +389,11 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_SPEC,           EV_FLOAT, run_sp_stat);        // Patch 382
 	clientstat(STAT_FS_SLORG,          EV_VECTOR, rec_sl_curorg);     // Patch 430
 	clientstat(STAT_FS_SLANG,          EV_VECTOR, rec_sl_curang);
+	clientstat(STAT_FS_SLVEL,          EV_VECTOR, rec_sl_curvel);     // Patch 753
+	clientstat(STAT_FS_WOPR,           EV_VECTOR, wop_rorg);
+	clientstat(STAT_FS_WOPRANG,        EV_VECTOR, wop_rang);
+	clientstat(STAT_FS_WOPM,           EV_VECTOR, wop_morg);
+	clientstat(STAT_FS_WOPMANG,        EV_VECTOR, wop_mang);
 	clientstat(STAT_FS_SLACK,          EV_FLOAT, rec_sl_ack);
 	clientstat(STAT_FS_SLTRAILTAG,     EV_FLOAT, rec_sl_eventtag);
 	clientstat(STAT_FS_SLSAVEACK,      EV_FLOAT, rec_sl_answer_tag);

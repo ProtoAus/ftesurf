@@ -297,6 +297,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Rewind_RegisterCvars();     // Patch 477: `rewind`
 	Timer_RegisterCvars();
 	SaveLoc_RegisterCvars();
+	WarpOp_RegisterCvars();         // Patch 753: goto_start, goto_spawn, cl_warpop
 	Gfx_RegisterCvars();
 	Vote_RegisterCvars();           // Patch 372: the vote box
 	Watch_RegisterCvars();
@@ -1010,6 +1011,7 @@ void() CSQC_Input_Frame =
 	}
 
 	SaveLoc_InputFrame();
+	WarpOp_InputFrame();            // Patch 753: a queued op rides this command
 	PreStrafe_InputFrame();
 
 	/*
@@ -2076,6 +2078,8 @@ float(string cmd) CSQC_ConsoleCommand =
 	// +sl_hold pair, as bindable names.  It answers FALSE for anything else, so
 	// this may sit in front of the rest of the chain.
 	if (SaveLoc_Console())
+		return TRUE;
+	if (WarpOp_Console())       // Patch 753: goto_start / goto_spawn
 		return TRUE;
 
 	if (Line_Console())         // `lines help`: compact pane's console controls

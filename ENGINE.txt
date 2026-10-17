@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   b9c66c50114d9a21f39087f6409d07dfbb295e77
+commit   d886035b953b0b9b8e031082ac5f88359a24dae3
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,11 +24,19 @@ commit   b9c66c50114d9a21f39087f6409d07dfbb295e77
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-743
+tag      patch-754
 patch    755
 # Patch 755 (QC only): Steam pictures stay on disk 30 days, one file a mark, and
 # load from it at once (two a frame); only asks are paced. A copy of an earlier
 # day is drawn and refreshed behind it. Warm board of 13: 19.3 s -> 1.0 s, 0 asks.
+# Patch 754 (engine, client): prediction keeps running through PM_NONE when the
+# CSQC has the pre-move hook, so a save-lock hold's release is predicted at its
+# command, and the replay takes the acked snapshot's Source hull as its posture
+# (pmsrc is not networked). p753warpop: 0 prederr; --posture eye 47 vs 64.
+# Patch 753 (QC): `!r`, `!m`, goto_start/goto_spawn and the load key ride one
+# usercmd's impulse; SSQC applies the op at that command (P675 sequence) and
+# CSQC predicts it there (P672 pre-move hook) from server-published targets.
+# tools/p753warpop.py: prederr 371/361/105+23 -> 0/0/0 + one at the release, 0 on 754.
 # Patch 751 (QC only): a lobby lists, loads and keeps the saves another lobby
 # made on the same map. All twelve share data/saves, but a process opens only
 # files its name hash held at its last map load, and a block once read stayed

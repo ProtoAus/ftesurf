@@ -169,6 +169,20 @@ observable. An ordering model alone does not pass these runtime falsifiers.
 **Status.** Audited; this unified operation is NOT implemented or deployed by
 P670. Do not describe resets/rewind as fully client-predicted on that patch.
 
+**Patch 753 (17 Oct 2026): `!r`, `!m`, goto_start/goto_spawn and the load key's
+load + hold + release are predicted.** The request is the usercmd itself: the op
+rides one command's impulse (WOP_*), SSQC applies it first in that command's
+PlayerPreThink (P675 sequence, decoded commands only), and CSQC applies the same
+body at the same command through P672's pre-move hook on every replay, so there is
+no ACK to wait for and no baseline to reconcile: once the server's snapshot covers
+the command it already contains the op. The body comes from answers the server
+publishes beforehand (P680's reset descriptor in STAT_FS_WOPR/WOPM, the cursor
+save's SLORG/SLANG/SLVEL). A refused, late or stale op corrects like any other
+misprediction and stays visible as `prederr`. NOT covered: `!s N`, `!b N`,
+zone_goto, the 3-6 list keys (load + move in one server step), rewind go, a hold
+re-pointed by 4/5 before its release, and engines without P672/servers without
+P675 (they keep the stringcmds). See AGENT_NOTES "Warp ops".
+
 
 Lex's requests of 4 Oct 2026, read against the code as it stands (three surveys
 of the menu, the line and replay code, and the KSF/Momentum/Pi data paths), with

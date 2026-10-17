@@ -3894,10 +3894,15 @@ that was never armed (see the bullet below it), and item 10's own residual.
 - **Patch 427's client half is not in a release.** Clients quote `download`;
   until players update, the lobbies' server half is what lets them join maps
   with spaced sound names. Ships with the next `release.ps1 -Bump patch`.
-- **Only `2` is drawn early (Patch 430).** 3/4/5/6 move the cursor and load in
-  one server step and their target row is not published; the release after a
-  hold still waits a round trip for the server's unfreeze (the second `prederr`
-  line on each load).
+- **Only `2` is predicted (Patch 753; drawn early since 430).** 3/4/5/6 move the
+  cursor and load in one server step and their target row is not published, so
+  they still snap a round trip later, and so does a hold they re-point (its
+  release speed is the new row's only once STAT_FS_HOLDVEL says so). `!s N`, `!b N`
+  and zone_goto are not ops either. A predicted reset with angles still gets the
+  server's fixangle a round trip later, which undoes mouse movement made in that
+  round trip (as before the patch). The hold's release is predicted only on a
+  Patch 754 client (released engines stop predicting under PM_NONE, one prederr
+  at the release). Falsifier: tools/p753warpop.py's windows.
 - **IN-GAME MAP DOWNLOAD, A "NEW" BADGE, AND A 6-HOURLY UPSTREAM SCAN -- asked
   for 2026-09-28, surveyed and NOT started.** Three decisions were taken with the
   operator at survey time: the button fetches **from the Pi, which fetches through

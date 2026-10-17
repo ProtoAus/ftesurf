@@ -380,15 +380,30 @@ void() SaveLoc_Camera =
 	setproperty(VF_ANGLES, [rec_sl_pv_ang_x, rec_sl_pv_ang_y, 0]);
 };
 
+float rec_sl_wophold;             // Patch 753: this hold's load rode a usercmd (cl_warpop.qc)
+float() WarpOp_Load;
+float() WarpOp_Release;
+float() WarpOp_LoadRefused;
+void() WarpOp_Frame;
+
 void() SaveLoc_Release =
 {
+	local float sent;
+
 	if (!rec_sl_holding)
 		return;
 	rec_sl_holding = FALSE;
 	rec_sl_holdkey = 0;
 	rec_sl_holdrep = FALSE;
 	rec_sl_holdang_ok = FALSE;
-	SaveLoc_Cmd("sl_holdoff");
+	// Patch 753: the release at one command; WarpOp_Frame sends sl_holdoff later
+	// only if that command was lost.  Nested: QC's || evaluates both sides.
+	sent = FALSE;
+	if (rec_sl_wophold)
+		sent = WarpOp_Release();
+	if (!sent)
+		SaveLoc_Cmd("sl_holdoff");
+	rec_sl_wophold = FALSE;
 };
 
 /*
@@ -507,6 +522,20 @@ void() SaveLoc_Idle = { SaveLoc_Release(); rec_sl_refkey = 0; rec_sl_8held = 0; 
 */
 void(float scan) SaveLoc_LoadKey =
 {
+	// Patch 753: predicted at one command; the camera anticipation and the
+	// count-based refusal below are for the old pair of stringcmds.
+	if (WarpOp_Load())
+	{
+		rec_sl_wophold  = TRUE;
+		rec_sl_pv_on    = FALSE;
+		rec_sl_holdack  = 0;
+		rec_sl_holding  = TRUE;
+		rec_sl_holdkey  = scan;
+		rec_sl_holdseen = cltime;
+		rec_sl_holdrep  = FALSE;
+		return;
+	}
+	rec_sl_wophold = FALSE;
 	if (!Trail_RequestBusy())
 		SaveLoc_PredictLoad();          // queued saves can change the selected row
 	SaveLoc_Cmd("sl_load");
@@ -523,9 +552,15 @@ void(float scan) SaveLoc_LoadKey =
 // Called every frame the HUD IS drawn.  The deadman above.
 void() SaveLoc_HoldFrame =
 {
+	WarpOp_Frame();
 	if (!rec_sl_holding)
 		return;
 
+	if (rec_sl_wophold && WarpOp_LoadRefused())
+	{
+		SaveLoc_Release();
+		return;
+	}
 	// Patch 428 r3: a refused load takes its hold with it now, so once the count
 	// covers the press and no hold came (STAT_FS_HOLD), stop pinning the view.
 	if (rec_sl_holdack > 0 && getstatf(STAT_FS_SLACK) >= rec_sl_holdack)

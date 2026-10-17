@@ -12,6 +12,23 @@ disk before, 1.0 s now, with no requests.
   quietly behind). "Instant / still slow" is enough. Verdict PENDING.
 
 Delivery and limits: `tools/p755steampic.md`.
+## P751/P753/P754 — saves across lobbies, instant `!r`/`!m`/loads, the crouch trick
+
+On a lobby (all three are live there; P754 is your local client only):
+
+- Save on a map in one lobby (1), then join ANOTHER lobby that is already on that
+  map. Your save should be in the list (2 loads it). Before P751 it was missing,
+  and saving there wrote over it.
+- Press R (`say !r`) and M (`say !m`) away from the start: you should be at the
+  start at once, with no `prederr:` line in the console. New binds: `goto_start`
+  (= !r) and `goto_spawn` (= !m), e.g. `bind r goto_start`.
+- Save, walk off, hold 2 and let go while moving: no `prederr:` at the press or
+  at the release. Then the trick you reported: crouch-jump and save in the air,
+  land and stand, hold 2, let go — no z jump and no prederr. And the reverse
+  (save standing in the air, hold crouch, hold 2, let go, release crouch).
+- `cl_warpop 0` brings back the old commands if anything looks wrong.
+
+"no prederr / still see N lines at <gesture>" is enough. Verdict PENDING.
 
 ## P747 — KSF demos are downloading: Watch one
 

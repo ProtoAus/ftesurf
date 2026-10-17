@@ -258,4 +258,6 @@ client/cl_linegraph.qc
 // so it only has to precede that file.  Placed after cl_entview.qc so that
 // file stays "last before cl_main" in every sense its comment relies on.
 client/cl_milk.qc
+// Patch 753: before cl_main.qc, which calls it
+client/cl_warpop.qc
 client/cl_main.qc

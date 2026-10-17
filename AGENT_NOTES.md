@@ -1,5 +1,47 @@
 # AGENT_NOTES.md
 
+## Warp ops: `!r`, `!m` and the load key predicted (P753/P754, 2026-10-17)
+
+- An op is ONE usercmd's impulse (`WOP_*`, sh_defs.qc). `SV_WarpOpCommand` runs
+  first in PlayerPreThink, where a stringcmd sent just before that command would
+  have run, and calls what that stringcmd calls (`SV_ZoneChatCommand`,
+  `SV_SaveLocLoad`+`SV_SaveLocHold`, `SV_SaveLocHold(FALSE)`), so timer, recorder
+  and class are unchanged. It acts only on `input_cmd_kind` 1/2 (P675) and a
+  sequence newer than the last op: `SV_RunCmd`'s net_drop repeats re-run `lastcmd`
+  with its impulse as kind 0. The engine writes `.impulse` only when a command has
+  one, so the handler clears it every call. `fs_wop` serverinfo is published on
+  the first decoded command; a server engine without P675 never publishes it.
+- cl_warpop.qc queues the op, attaches it in CSQC_Input_Frame to
+  `clientcommandframe` (= that usercmd's sequence) and applies the same body in
+  `CSQC_PredictPlayerPreMove` at offset 0 of that sequence on every replay.
+  Destinations come from STAT_FS_WOPR/WOPM (P680's SV_MovePrepReset, republished
+  when leg/stage/save list/hold/movetype/pin change, else once a second) and the
+  cursor save's SLORG/SLANG/SLVEL. Gates: `fs_wop`, the hook ran in the last 0.5 s,
+  no spectate/replay/ghost/rewind, no list command in flight. Otherwise the old
+  stringcmd goes. `say !r`/`!m` (binds, chat box) go through CSQC_ChatSay.
+- QC's `||` evaluates BOTH sides: `if (!wop_seq || !WarpOp_Queue(...))` would have
+  written through the unallocated ring on every client that never passed
+  WarpOp_Able (a release on a released engine). Nested ifs; the review caught it,
+  no arm did. An op no command carried within 0.25 s (threaded input, a replay or
+  rewind's early return in CSQC_Input_Frame) expires to the stringcmd, and the
+  hold's sl_holdoff backstop goes only after the release's command is acked.
+- THE HOLD STOPPED PREDICTION, and that was the release's round trip. The engine
+  forced `nopred` whenever the server reported PM_NONE (save hold, replay pin), so
+  the RELEASE op could not be replayed and, when prediction resumed, `prop.pmsrc`
+  was stale (the measured 8.5 = PMSrc_AirDuckShift at release). Patch 754 keeps
+  predicting through PM_NONE when the module has the pre-move hook (a PM_NONE
+  replay only categorizes) and takes the acked snapshot's Source hull as the
+  replay's posture. An engine without 754: loads and resets predicted, the release
+  still waits a round trip.
+- `tools/p753warpop.py` (dedicated surf_dune, sv_minping 80) counts the client's
+  own `prederr:` lines per gesture; `--control` (cl_warpop 0) 371/361/105+23,
+  installed client 0/0/0 plus one at the release (7.5 or 22 u), Patch 754
+  client 0 everywhere; `--threaded` (cl_threadedphysics 1) falls back, no op sent.
+  `--posture` reads `cl_predtrace`'s `vh` during a hold: NOT a posture measurement
+  on an engine without 754, whose nopred shows the server's STAT_VIEWHEIGHT (the
+  first control read ducked too and was discarded); use a 754 build without the
+  reconcile as the control (64 against 47).
+
 ## Lobby saves across lobbies (P751, 2026-10-17)
 
 - All twelve Pi lobbies share one `data/saves` (one basedir, one `sv_guidkey`).

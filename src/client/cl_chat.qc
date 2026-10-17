@@ -82,6 +82,7 @@ float  chat_rep;                // this KEYDOWN is an OS repeat of a key already
 
 // Prototype: Chat_InputEvent submits through it, and it is defined last.
 void(string cmd, string text) Chat_RunSafe;
+float(string text) WarpOp_Chat;  // cl_warpop.qc, Patch 753
 string chat_buf;
 string chat_private, chat_private_name;
 void() Chat_PrivateClear =
@@ -1016,7 +1017,7 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 		{
 			if (chat_private != "")
 				localcmd(sprintf("cmd friend message %s %s\n", chat_private, uri_escape(chat_buf)));
-			else
+			else if (!WarpOp_Chat(chat_buf))
 				Chat_RunSafe("cmd say", chat_buf);
 		}
 		Chat_PrivateClear();
@@ -1112,6 +1113,8 @@ float(string args, float team) CSQC_ChatSay =
 {
 	if (team)
 		return FALSE;          // say_team: no teams here, let the engine answer
+	if (WarpOp_Chat(args))
+		return TRUE;           // Patch 753: `!r` / `!m` predicted, not sent as chat
 	if (strtrim(args) != "")
 		return FALSE;          // `say <text>` is a send, not a draft
 	Chat_PrivateClear();

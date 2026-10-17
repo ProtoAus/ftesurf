@@ -484,6 +484,21 @@
 #define STAT_FS_SLSAVEOP       114  // its SAVED op/id, or NONE on refusal
 #define STAT_FS_SLSAVETICK     115  // its saved visual cutoff, independent of the current row
 #define STAT_FS_PIN            111  // Patch 477: the rewind's open serial while its pin is held, -serial once refused or let go, else 0
+// Patch 753: what a predicted warp op will do (cl_warpop.qc, SV_WarpOpPublish).
+#define STAT_FS_WOPR           120  // + 121, 122 -- `!r`'s destination
+#define STAT_FS_WOPRANG        123  // + 124, 125 -- its pitch, yaw, and WOPD_*
+#define STAT_FS_WOPM           126  // + 127, 128 -- `!m`'s
+#define STAT_FS_WOPMANG        129  // + 130, 131
+#define STAT_FS_SLVEL          132  // + 133, 134 -- the cursor save's velocity
+#define WOPD_NONE  0                // no prediction: the server would refuse or cannot say
+#define WOPD_KEEP  1                // destination, angles kept
+#define WOPD_ANG   2                // destination and angles
+// The ops ride a usercmd's impulse, so the server applies each at that command.
+#define WOP_RESET   201
+#define WOP_SPAWN   202
+#define WOP_LOAD    203             // sl_load + sl_hold
+#define WOP_RELEASE 204             // sl_holdoff
+
 
 /*
   The personal best this run was measured against, latched before the PB table

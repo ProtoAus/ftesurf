@@ -3081,11 +3081,11 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 
                             THE IMPULSE IS NOT RECORDED, and that is a decision
                             rather than an omission: pm_source.c reads three
-                            button bits and no impulse, and this mod has no
-                            ImpulseCommands and no reader of .impulse anywhere.
-                            An input that can reach neither the mover nor the
-                            gamecode cannot change a run, and recording it would
-                            be 100 bytes a second asserting that it might.
+                            button bits and no impulse.  Its one gamecode reader
+                            (Patch 753, SV_WarpOpCommand) turns WOP_* into the
+                            gestures the stringcmds already reach -- `!r`, `!m`,
+                            sl_load+sl_hold, sl_holdoff -- before this command's
+                            rows, and those write their own `warp`/load records.
     warp <pk> <mt> <kind> <ox oy oz> <vx vy vz>
     warp <pk> <mt> <row> <kind> <ox oy oz> <vx vy vz> <fl>             (v9)
                             v9: <row> is the `in` row whose move this followed,

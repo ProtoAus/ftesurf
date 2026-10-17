@@ -429,6 +429,9 @@ void() SpectatorThink = { Account_Think(self); };
 
 void() PlayerPreThink =
 {
+	// Patch 753: first, where a stringcmd sent just before this command would run.
+	SV_WarpOpCommand();
+
 	// Patch 382: a held body (spectate) runs no move, so nothing here may write a
 	// row, a ride or a pin, cash out a carrier or hand the engine one.
 	if (self.run_pmhold)
@@ -733,6 +736,7 @@ void() PlayerPostThink =
 			SV_RecCopyStep(self, FS_RECCOPY_CHUNK);
 		SV_StageStat(self);
 		SV_SaveLocSync(self);
+		SV_WarpOpPublish(self);         // Patch 753
 		Pose_Capture(self);             // Patch 383: the held flag and its keepalive
 		SV_SpecFrame(self);
 		return;
@@ -789,6 +793,7 @@ void() PlayerPostThink =
 	// takes a field, so the count and the cursor's stored time are mirrored into
 	// this player's fields here.  Three float compares; see SV_SaveLocSync.
 	SV_SaveLocSync(self);
+	SV_WarpOpPublish(self);         // Patch 753: what !r, !m and the load key would do
 
 	// Multi-Session: the restore/countdown, and a fresh run against an offer.
 	SV_MsFrame(self);

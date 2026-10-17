@@ -1,6 +1,7 @@
 /*
- * Inert movement POLICY descriptors, not native snapshots or permission to
- * predict. No production caller. Timer/recorder/placement remain authoritative.
+ * Movement POLICY descriptors, not native snapshots. Patch 753's sv_warpop.qc
+ * publishes SV_MovePrepReset's answer for prediction; timer/recorder/placement
+ * remain authoritative.
  * Use Alloc/Free; output owns its identity strings. Reuse clears old output.
  * A READY answer describes this call only: no content/connection epoch or
  * persistent cache is supplied here. See tools/p678moveprep.md, p680zoneprep.md

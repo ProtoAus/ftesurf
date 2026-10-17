@@ -478,6 +478,7 @@ float(entity e, float r) SL_RowGrounded =
 };
 .vector rec_sl_curorg;           // Patch 430: STAT_FS_SLORG, the cursor row, SV_SaveLocSync
 .vector rec_sl_curang;           // Patch 430: STAT_FS_SLANG
+.vector rec_sl_curvel;           // Patch 753: STAT_FS_SLVEL, its velocity
 .float rec_sl_ack;               // Patch 430: STAT_FS_SLACK, SV_ParseClientCommand
 .float rec_sl_eventtag;          // visual request echoed with SLOP, never authoritative state
 .float rec_sl_answer_tag, rec_sl_answer_op, rec_sl_answer_tick;
@@ -2741,6 +2742,7 @@ void(entity e) SV_SaveLocSync =
 		e.rec_sl_savetick = 0;
 		e.rec_sl_curorg = '0 0 0';
 		e.rec_sl_curang = '0 0 0';
+		e.rec_sl_curvel = '0 0 0';
 		return;
 	}
 	SV_SaveGenCheck(e, blk);         // Patch 751
@@ -2763,11 +2765,13 @@ void(entity e) SV_SaveLocSync =
 	e.rec_sl_savetick = 0;
 	e.rec_sl_curorg = '0 0 0';
 	e.rec_sl_curang = '0 0 0';
+	e.rec_sl_curvel = '0 0 0';
 	if (e.rec_sl_index >= 1)
 		if (e.rec_sl_index <= cnt)
 		{
 			e.rec_sl_savetick = rec_sl_tick[base + e.rec_sl_index - 1];
 			e.rec_sl_curorg = rec_sl_org[base + e.rec_sl_index - 1];
+			e.rec_sl_curvel = rec_sl_vel[base + e.rec_sl_index - 1];
 			e.rec_sl_curang = [rec_sl_pit[base + e.rec_sl_index - 1],
 			                   rec_sl_yaw[base + e.rec_sl_index - 1],
 			                   rec_sl_duck[base + e.rec_sl_index - 1] ? 1 : 0];

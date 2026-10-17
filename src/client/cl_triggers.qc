@@ -1259,11 +1259,14 @@ void(float seq) TG_ChainStart =
 	}
 };
 
+void(float seat, float seq) WarpOp_PostMove;   // cl_warpop.qc, Patch 753
+
 void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 {
 	local float i, hit;
 	local vector smin, smax, org1, b0, b1;
 
+	WarpOp_PostMove(seat, seq);
 	if (!cvar("cl_triggers") || !tg_n)
 		return;
 	tg_cv_debug = cvar("cl_trigdebug");
