@@ -150,6 +150,30 @@ class Friends(unittest.TestCase):
         self.assertEqual(self.action(0, "add", 2).status_code, 409)
         self.assertEqual([r["relation"] for r in self.poll()[2]["friends"]], [4])
 
+    def test_mutual_blocks_each_stand_until_their_own_unblock(self):
+        self.assertEqual(self.action(0, "block").status_code, 200)        # the harasser first
+        self.assertEqual(self.action(1, "block", 0).status_code, 200)     # the victim's still counts
+        rows = self.poll()
+        self.assertEqual((rows[0]["friends"][0]["relation"], rows[1]["friends"][0]["relation"]), (4, 4))
+        self.assertEqual(self.action(0, "unblock").status_code, 200)
+        self.assertEqual(self.action(0, "add").status_code, 409)          # Bob's block stands
+        self.assertEqual(self.poll()[0]["friends"], [])
+        self.assertEqual(self.poll()[1]["friends"][0]["relation"], 4)
+        self.assertEqual(self.action(0, "remove").status_code, 200)       # cannot lift Bob's either
+        self.assertEqual(self.action(0, "add").status_code, 409)
+        self.assertEqual(self.action(1, "remove", 0).status_code, 200)    # Bob's Remove is his unblock
+        self.assertEqual(self.poll()[1]["friends"], [])
+        self.assertEqual(self.action(0, "add").status_code, 200)
+
+    def test_being_blocked_takes_no_friend_slot(self):
+        for i in range(F.MAX_FRIENDS):
+            blocker = "765611982%08d" % i
+            self.db.execute("INSERT INTO social_friends(lo,hi,asker,accepted) VALUES(?,?,?,-1)",
+                            (*F.pair(IDS[1], blocker), blocker))
+        self.db.commit()
+        self.assertEqual(self.poll()[1]["friends"], [])
+        self.assertEqual(self.action(1, "add", 2).status_code, 200)
+
     def test_menu_list_omits_my_blocks_for_older_menus(self):
         self.assertEqual(self.action(0, "block").status_code, 200)
         self.poll()

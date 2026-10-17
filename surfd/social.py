@@ -88,11 +88,19 @@ def pair(a, b):
 
 
 def rel_of(row, me):
-    # 1 sent / 2 received (pre-P770 requests), 3 friends; P770 block rows have
-    # accepted -1 and asker the blocker: 4 blocked by me, 5 blocked by them.
+    # 1 sent / 2 received (pre-P770 requests), 3 friends. P770 blocks: accepted
+    # -1 is the asker's block, -2 both sides'. 4 blocked by me, 5 by them only.
+    if row["accepted"] == -2:
+        return 4
     if row["accepted"] < 0:
         return 4 if row["asker"] == me else 5
     return 3 if row["accepted"] else (1 if row["asker"] == me else 2)
+
+
+def slots(db, who):
+    # Another account's block of `who` is invisible to them, so it takes no slot.
+    return db.execute("SELECT COUNT(*) FROM social_friends WHERE (lo=? OR hi=?)"
+                      " AND NOT (accepted=-1 AND asker<>?)", (who, who, who)).fetchone()[0]
 
 
 def relation(db, a, b):
@@ -361,6 +369,9 @@ def register(app, d):
                     return reply({"ok": 0, "error": "That Steam account is unavailable"}, 400)
                 rel = relation(db, sid, other)
                 lo, hi = pair(sid, other)
+                asked = op
+                if op == "remove" and rel in (4, 5):
+                    op = "unblock"          # only my own block is mine to lift
                 if op == "add":
                     # P770: no requests. Add makes both accounts friends at once.
                     if rel == 3:
@@ -373,9 +384,7 @@ def register(app, d):
                         db.execute("UPDATE social_friends SET accepted=1 WHERE lo=? AND hi=?", (lo, hi))
                     else:
                         for who in (sid, other):
-                            n = db.execute("SELECT COUNT(*) FROM social_friends WHERE lo=? OR hi=?",
-                                           (who, who)).fetchone()[0]
-                            if n >= MAX_FRIENDS:
+                            if slots(db, who) >= MAX_FRIENDS:
                                 return reply({"ok": 0, "error": "Friends list is full"}, 409)
                         db.execute("INSERT INTO social_friends(lo,hi,asker,accepted) VALUES(?,?,?,1)",
                                    (lo, hi, sid))
@@ -386,21 +395,21 @@ def register(app, d):
                     db.execute("UPDATE social_friends SET accepted=1 WHERE lo=? AND hi=?", (lo, hi))
                     note = "Friend request accepted"
                 elif op == "remove":
-                    if rel != 5:            # their block is theirs to lift
-                        db.execute("DELETE FROM social_friends WHERE lo=? AND hi=?", (lo, hi))
+                    db.execute("DELETE FROM social_friends WHERE lo=? AND hi=?", (lo, hi))
                     db.execute("DELETE FROM social_messages WHERE (sender=? AND recipient=?) OR"
                                " (sender=? AND recipient=?)", (sid, other, other, sid))
                     note = "Friend / request removed"
                 elif op == "block":
                     # With no acceptance, Block is how an account refuses one:
                     # it ends a friendship and refuses their add and messages.
-                    if rel in (1, 2, 3):
+                    # Their block does not stand in for mine: they could lift it.
+                    if rel == 5:
+                        db.execute("UPDATE social_friends SET accepted=-2 WHERE lo=? AND hi=?", (lo, hi))
+                    elif rel in (1, 2, 3):
                         db.execute("UPDATE social_friends SET asker=?,accepted=-1 WHERE lo=? AND hi=?",
                                    (sid, lo, hi))
                     elif rel == 0:
-                        n = db.execute("SELECT COUNT(*) FROM social_friends WHERE lo=? OR hi=?",
-                                       (sid, sid)).fetchone()[0]
-                        if n >= MAX_FRIENDS:
+                        if slots(db, sid) >= MAX_FRIENDS:
                             return reply({"ok": 0, "error": "Friends list is full"}, 409)
                         db.execute("INSERT INTO social_friends(lo,hi,asker,accepted) VALUES(?,?,?,-1)",
                                    (lo, hi, sid))
@@ -408,10 +417,19 @@ def register(app, d):
                                " (sender=? AND recipient=?)", (sid, other, other, sid))
                     note = "Blocked: they cannot add or message you"
                 elif op == "unblock":
-                    if rel != 4:
+                    if rel == 5 and asked == "remove":
+                        note = "Friend / request removed"
+                    elif rel != 4:
                         return reply({"ok": 0, "error": "Not blocked"}, 409)
-                    db.execute("DELETE FROM social_friends WHERE lo=? AND hi=?", (lo, hi))
-                    note = "Unblocked"
+                    else:
+                        both = db.execute("SELECT accepted FROM social_friends WHERE lo=? AND hi=?",
+                                          (lo, hi)).fetchone()["accepted"] == -2
+                        if both:            # theirs stays
+                            db.execute("UPDATE social_friends SET asker=?,accepted=-1 WHERE lo=? AND hi=?",
+                                       (other, lo, hi))
+                        else:
+                            db.execute("DELETE FROM social_friends WHERE lo=? AND hi=?", (lo, hi))
+                        note = "Unblocked"
                 else:
                     if rel != 3:
                         return reply({"ok": 0, "error": "Add them as a friend first"}, 403)
