@@ -147,37 +147,49 @@ vector(vector org, vector ang) FS_PortalTransformView =
   second level always drew closed.  Once per frame, ask them again from each
   offered door's far-side eye, with PVS sampled where the renderer samples it
   (FS_PortalTransformView).  vbsp_portal_dist bounds only the doors the player
-  sees directly; r_portalmaxviews still bounds every level in the engine.
+  sees directly.  The engine renders the r_portalmaxviews largest doors of a
+  view, so only that many per eye, in front of it, carry the walk deeper.
 */
 #define LPD_MAXEYES 32
 float  lpd_offertime;
-vector lpd_offereye;
+vector lpd_offereye, lpd_offerang;
 vector lpd_eye[LPD_MAXEYES];
+vector lpd_eyefwd[LPD_MAXEYES];
 vector lpd_eyepvs[LPD_MAXEYES];
 entity lpd_eyeexit[LPD_MAXEYES];
 float  lpd_eyelevel[LPD_MAXEYES];
 .float lpd_offer;		// 1 + the shallowest view level that sees the door; 0 not offered
+.float lpd_score;		// apparent size from the current eye, if it may carry the walk
 
-void(vector root) Portal_Offer =
+void(vector root, vector ang) Portal_Offer =
 {
-	local entity d;
+	local entity head, d, best;
 	local vector rel;
-	local float i, n, levels, cap;
+	local float i, k, n, levels, cap, width;
 
 	lpd_offertime = time;
 	lpd_offereye = root;
-	for (d = findchain(classname, "vbsp_portal"); d; d = d.chain)
+	lpd_offerang = ang;
+	head = findchain(classname, "vbsp_portal");
+	for (d = head; d; d = d.chain)
 		d.lpd_offer = 0;
 	levels = cvar("r_portalrecursion");
 	cap = cvar("vbsp_portal_dist");
+	width = cvar("r_portalmaxviews");
+	if (width <= 0)
+		width = LPD_MAXEYES;
+	makevectors(ang);
 	lpd_eye[0] = root;
+	lpd_eyefwd[0] = v_forward;
 	lpd_eyepvs[0] = root;
 	lpd_eyeexit[0] = world;
 	lpd_eyelevel[0] = 0;
 	n = 1;
 	for (i = 0; i < n; i = i + 1)
-		for (d = findchain(classname, "vbsp_portal"); d; d = d.chain)
+	{
+		for (d = head; d; d = d.chain)
 		{
+			d.lpd_score = 0;
 			// The eye sits behind the exit door it came through.
 			if (!d.lpd_ok || d == lpd_eyeexit[i])
 				continue;
@@ -191,20 +203,33 @@ void(vector root) Portal_Offer =
 				continue;
 			if (!d.lpd_offer)
 				d.lpd_offer = 1 + lpd_eyelevel[i];
-			if (lpd_eyelevel[i] + 1 < levels && n < LPD_MAXEYES)
-			{
-				lpd_eye[n] = FS_PortalWarp(d, lpd_eye[i]);
-				lpd_eyepvs[n] = d.lpd_ob + d.lpd_fb * LPD_PVSNUDGE;
-				lpd_eyeexit[n] = d.lpd_dst;
-				lpd_eyelevel[n] = lpd_eyelevel[i] + 1;
-				n = n + 1;
-			}
+			if (lpd_eyelevel[i] + 1 < levels)
+			if (rel * lpd_eyefwd[i] < 0)
+				d.lpd_score = (d.lpd_hw + d.lpd_hh) / (vlen(rel) + 1);
 		}
+		for (k = 0; k < width && n < LPD_MAXEYES; k = k + 1)
+		{
+			best = world;
+			for (d = head; d; d = d.chain)
+				if (d.lpd_score > 0)
+				if (!best || d.lpd_score > best.lpd_score)
+					best = d;
+			if (!best)
+				break;
+			best.lpd_score = 0;
+			lpd_eye[n] = FS_PortalWarp(best, lpd_eye[i]);
+			lpd_eyefwd[n] = FS_PortalRotate(best, lpd_eyefwd[i]);
+			lpd_eyepvs[n] = best.lpd_ob + best.lpd_fb * LPD_PVSNUDGE;
+			lpd_eyeexit[n] = best.lpd_dst;
+			lpd_eyelevel[n] = lpd_eyelevel[i] + 1;
+			n = n + 1;
+		}
+	}
 };
 
 float() FS_PortalPredraw =
 {
-	local vector eye;
+	local vector eye, ang;
 
 	FS_PortalRegisterCvars();
 
@@ -216,9 +241,11 @@ float() FS_PortalPredraw =
 	if (getstatf(STAT_FS_MOVETYPE) == MOVETYPE_NOCLIP)
 		return PREDRAW_NEXT;
 
+	// Portal_Offer's makevectors is safe here: v_* are written below, after it.
 	eye = getproperty(VF_ORIGIN);
-	if (time != lpd_offertime || eye != lpd_offereye)
-		Portal_Offer(eye);
+	ang = getproperty(VF_ANGLES);
+	if (time != lpd_offertime || eye != lpd_offereye || ang != lpd_offerang)
+		Portal_Offer(eye, ang);
 	if (!self.lpd_offer)
 		return PREDRAW_NEXT;
 
