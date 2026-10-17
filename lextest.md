@@ -1,5 +1,31 @@
 # lextest.md — things waiting on a human
 
+## P770 — Friends without accepting; TAB board switch, Styles, Players list
+
+Live on the 12 lobbies (qwprogs `24e65490`, csprogs `bc93f6db`, 22:47Z) and in both
+Windows installs (also menu `7cdba577`, 22:48Z; `.prev` keeps the old three). The
+friends service on the Pi runs the new code since 22:58Z. Restart the game.
+
+- **TAB board:** a Scoreboard | Players switch sits above the board. The tab strip
+  is Online / Local; the row under it is "Styles": Segmented, then FW SW HSW BW.
+  Scoreboard takes you back to the board and style you left. Left / right arrows go
+  Online, Local, Players.
+- **Players:** click a row to spectate that player. Buttons on each row: Profile,
+  Add friend, Mute (their voice, this session) and Block (hides their chat and
+  private messages, and on a Steam account stops them adding or messaging you;
+  saved). Try it at your usual HUD scale and in a small window.
+- **Friends:** Add makes you both friends at once, no accepting. The other player
+  sees you in their Friends tab straight away. Remove (Friends tab) ends it; Block
+  refuses someone, and Unblock in the Friends tab lifts that. Requests sent before
+  this patch became friendships.
+- **Main menu Friends list (Play / Friends, no map loaded):** needs one command on
+  the Pi with your sudo password first (the web proxy's two routes), from a
+  terminal on this PC:
+  `ssh -t proto@192.168.1.102 'sudo cp -p /etc/nginx/snippets/surfd.conf /etc/nginx/snippets/surfd.conf.pre-p770 && sudo install -m 644 /srv/nvme/agent-work/surfd770-20261018T0000b/surfd.conf /etc/nginx/snippets/surfd.conf && (sudo nginx -t && sudo systemctl reload nginx && echo P770-OK || { sudo cp -p /etc/nginx/snippets/surfd.conf.pre-p770 /etc/nginx/snippets/surfd.conf; echo RESTORED; })'`
+  Then open Play / Friends without a map: your friends and their lobby should list.
+
+"Board ok / Players ok / add works / menu list ok" or what looks wrong. Verdict PENDING.
+
 ## P772 — paint, and the player trail as a line
 
 Restart the game (new client exe and csprogs). Bind a key: open the key panel (K),

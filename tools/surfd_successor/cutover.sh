@@ -63,7 +63,8 @@ ss -ltnH | grep -q ':8084 ' && { say "FAIL: 8084 still bound"; exit 6; }
 say "   stopped after ${i}s port wait"
 
 say "3. finish the old drain (a failure here does not stop the successor)"
-$GUARD_OLD --timeout 60 close || say "   WARN: old drain did not finish; rollback.sh closes it again first"
+# momrequests.service holds the old lock until step 8 restarts it: do not wait long.
+$GUARD_OLD --timeout 5 close || say "   (old drain finishes at step 8; rollback.sh closes it again first)"
 
 say "4. start the successor candidate"
 CLOSURE=$($PY -c 'import json,sys; print(json.load(open(sys.argv[1]))["closure"])' $ROOT/state/state.json)

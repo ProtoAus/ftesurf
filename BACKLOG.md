@@ -162,15 +162,16 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   0x303844, the same rva as an earlier record from 02:00 local. A `vid_restart`
   before the map loads never ended a client in seven runs.
 
-## KSF converter: P757 waits for the next backend cutover
+## KSF converter: P757 is live; its falsifier is not run yet
 
-- Site: `tools/ksfconvert.py` (P757, on main), pinned by the sealed schema20
-  generation 36697da: until the guarded cutover the crawler still refuses demos
-  that begin inside the start zone and ones whose official time is over a tick
-  from the frame count (17 of 155 on 2026-10-17, tools/p757ksfconvert.md).
+- Site: `tools/ksfconvert.py` (P757). Live since 2026-10-17T22:58:21Z: the
+  sealed generation 8182c6f (P770, `agent-work/surfd770-20261018T0000b`) carries
+  it, for the web app and (through /srv/nvme/surfd's import stubs) the crawler. Before that the crawler refused demos that begin inside the start zone
+  and ones whose official time is over a tick from the frame count (17 of 155 on
+  2026-10-17, tools/p757ksfconvert.md).
 - KSF STAGE demos are still refused (`interval` reads only main and bonus). None
   was among the 17; design from a fetched stage replay's bookmarks.
-- Falsifier after the cutover: `python -m unittest test_ksfconvert` passes in
+- Falsifier (the cutover is done): `python -m unittest test_ksfconvert` passes in
   tools/, and the 17 files in that note link when asked. They hold no job, strike
   or tombstone (7c's targeted runs called ksfgrab.install directly), so nothing
   retries them until the demo rotation reaches their boards (up to ~20 h) or a
@@ -178,17 +179,19 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - `surfd/test_ksfgrab.py` needs a fresh `--out`: re-running into one that holds
   a previous run's state failed 14 of 49 here (a fresh one: 49 pass).
 
-## KSF crawler: P747 waits for the next backend cutover
+## KSF crawler: P747 is live; the park it caused runs out ~03:16Z 18 Oct
 
-- Site: `surfd/ksfprofile.py:step`, `surfd/ksfgrab.py` (P747, on main). The
-  live sealed generation 36697da still runs the old code: viewing the profile
-  of a player KSF does not know queues a walk that 500s, and the crawler parks
-  (6 h doubling to 48 h), stopping KSF boards and demo downloads. The
+- Site: `surfd/ksfprofile.py:step`, `surfd/ksfgrab.py` (P747). Live since
+  2026-10-17T22:58:21Z in the sealed generation 8182c6f (P770). Before that,
+  viewing the profile of a player KSF does not know queued a walk that 500s, and
+  the crawler parked (6 h doubling to 48 h), stopping KSF boards and demo
+  downloads. At the cutover `data/ksf/.refused` held such a park (21:16Z, until
+  1792293369 = 03:16Z 18 Oct); it was left to expire, not lifted. The
   2026-10-17T03:56Z interim (tools/p747ksfunblock.md) cleared only the 7 walks
-  queued then. Viewed-map demo priority is not live either.
+  queued then. Viewed-map demo priority went live with it.
 - Check: `data/ksf/.refused` reads `HTTP 500` while `ksfprofiles` holds a queued
   zero-page walk for a player with no KSF rows.
-- Falsifier after the cutover: queue a walk for a non-KSF player; the next tick
+- Falsifier (after the park expires): queue a walk for a non-KSF player; the next tick
   makes a request past the profile, writes no `.refused`, and the walk reads
   `unknown`. Then view a map's board and its advertised demos download first.
 - Known from review, left as designed: while two or more viewed-map demos are
@@ -212,7 +215,16 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   The sweep must name the second as unreadable -- a third verdict, not a fault
   or a pass -- and still check the first.
 
-## Disconnected Friends activation awaits the schema20 service generation (P741)
+## Disconnected Friends: the backend is live (P770); the public proxy waits on Lex's sudo (P741)
+
+- Since 2026-10-17T22:58:21Z surfd generation 8182c6f (P770) serves P741's
+  `/api/social/menu` routes (the local challenge answers ok). The public
+  `play.proto.bar` route still answered 404 at 23:00Z: nginx's `snippets/surfd.conf`
+  lacks the two locations. The reviewed snippet is staged as
+  `/srv/nvme/agent-work/surfd770-20261018T0000b/surfd.conf` (diff: the two blocks
+  and their comments); installing it needs root, given to Lex as one command
+  (backup to `surfd.conf.pre-p770`, install, `nginx -t`, reload, restore on failure).
+- The original P741 item, for its history:
 
 - Implemented: `src/menu/m_friends.qc` standalone authenticated list/Join, native
   MENU signer/generation guard, `surfd/social.py` read-only routes and two exact
