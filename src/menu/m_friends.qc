@@ -267,7 +267,7 @@ float(float reqid, float code, string body) MF_Reply =
 		o = json_get_child_at_index(arr, i);
 		who = json_get_string(json_find_object_child(o, "who"));
 		rel = json_get_float(json_find_object_child(o, "relation"));
-		if (!MF_WhoSafe(who) || rel < 1 || rel > 3 || rel != floor(rel)) break;
+		if (!MF_WhoSafe(who) || rel < 1 || rel > 4 || rel != floor(rel)) break;
 		online = (rel == 3 && json_get_float(json_find_object_child(o, "online")) == 1);
 		bufstr_set(stage, i, sprintf("%s %g %g \"%s\" \"%s\" \"%s\"", who, rel, online,
 			uri_escape(substring(json_get_string(json_find_object_child(o, "name")), 0, 64)),
@@ -318,7 +318,7 @@ void(vector pos, vector size) MF_Draw =
 	}
 	else if (!mf_count)
 		ui_para('16 60 0', size_x - 32, SZ_LABEL, 20,
-		        "No friends yet. Open a player's profile in the Players tab to add them.", COL_DIM, TRUE);
+		        "No friends yet. In a lobby, add someone from TAB > Players.", COL_DIM, TRUE);
 	else
 	{
 		status = strcmp(mf_note, "") ? mf_note : "Private lobby presence";
@@ -344,6 +344,7 @@ void(vector pos, vector size) MF_Draw =
 			status = "Offline";
 			if (rel == 1) status = "Friend request sent";
 			if (rel == 2) status = "Incoming friend request";
+			if (rel == 4) status = "Blocked";
 			if (online) status = server;
 			sui_text(rp + '10 32 0', '12 12 0', ui_fit_text(status, size_x - 60, '12 12 0'), online ? SUI_THEME_GOOD : COL_DIM, 1, 0);
 			if (online)

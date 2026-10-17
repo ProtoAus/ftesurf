@@ -133,12 +133,15 @@ float  rec_sb_best;              // the fastest CLEAN time on this leg, or 0
   unplugged install look like an unplayed map.
 ===========================================================================
 */
+// P770: the tab strip is Online / Local. Segmented is the first chip of the
+// Styles row, and Players is the Scoreboard / Players switch over the panel.
 #define SB_T_ONLINE    0
 #define SB_T_SEGMENT   1
 #define SB_T_LOCAL     2
 #define SB_T_PLAYERS   3
 
 float rec_sb_tab;                // SB_T_*
+float sb_viewtab, sb_viewksf;    // the board and KSF style Scoreboard goes back to
 
 /*
   Patch 635: THE ONLINE LIST IS EVERY GAME'S TIMES, and Imported is no longer a
@@ -3075,10 +3078,45 @@ void(float xr, float y, float h) Scores_FilterDraw =
 	}
 };
 
+void() Scores_ShowPlayers =
+{
+	if (rec_sb_tab == SB_T_PLAYERS) return;
+	sb_viewtab = rec_sb_tab;
+	sb_viewksf = rec_sb_ksfstyle;
+	Scores_TabSet(SB_T_PLAYERS);
+	rec_sb_tabauto = FALSE;
+	Profile_OnClear();
+};
+
+void() Scores_ShowBoard =
+{
+	if (rec_sb_tab != SB_T_PLAYERS) return;
+	Scores_TabSet(sb_viewtab);
+	if (sb_viewtab == SB_T_ONLINE) rec_sb_ksfstyle = sb_viewksf;
+	rec_sb_tabauto = FALSE;
+	Profile_OnClear();
+};
+
+// Centred on `mid`, `th` tall: the two views, as one pill.
+void(float mid, float y, float th) Scores_ViewSwitch =
+{
+	local float sw;
+	local vector p;
+
+	sw = ceil(max(stringwidth("Scoreboard", TRUE, [sb_szui, sb_szui]),
+	              stringwidth("Players", TRUE, [sb_szui, sb_szui])) + sb_szui * 2.5);
+	p = [floor(mid - sw), y];
+	sui_style_box(p, [sw * 2, th], th * 0.5, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
+	if (Scores_Seg("sb_vboard", p, [sw, th], "Scoreboard", rec_sb_tab != SB_T_PLAYERS))
+		Scores_ShowBoard();
+	if (Scores_Seg("sb_vplayers", p + [sw, 0], [sw, th], "Players", rec_sb_tab == SB_T_PLAYERS))
+		Scores_ShowPlayers();
+};
+
 void(vector scr) Scores_Draw =
 {
 	local vector p, sz, rp, rs, lp;
-	local float scale, bs, pad, w, h, x0, y0, sidew, tabh, chiph, chipw, segw, listh, n;
+	local float scale, bs, pad, w, h, x0, y0, sidew, tabh, chiph, chipw, segw, listh, n, vh;
 	local float ytabs, yhead, ylist, yfoot, yc, x, idx, on, hot, pick, native, online;
 	local float roomw, have, need, floorw, ow, tablew, rows, chrome, step, px, legh;
 	local string s, rid;
@@ -3103,8 +3141,8 @@ void(vector scr) Scores_Draw =
 	if (scale > 16) scale = 16;         // an absurd value would make the type, and the loop below, infinite
 	bs = min(scale, scr_y / 432);       // a short window gets smaller type...
 	if (bs < 1) bs = 1;
-	// Three board sources and a full-width Players page.
-	n = 4;
+	// The tab strip: Online and Local.
+	n = 2;
 
 	/*
 	  WHAT FITS, tried in the order a player would choose. Steps 0-2: every column
@@ -3205,20 +3243,22 @@ void(vector scr) Scores_Draw =
 	chrome = pad + rec_sb_sztitle + ceil(pad * 0.75) + tabh + pad
 	       + rec_sb_szhead + pad * 0.5
 	       + ceil(pad * 0.75) + rec_sb_szhead * 2 + 6 + pad + chiph + pad * 0.5;
-	rows  = bound(6, floor((scr_y * 0.86 - chrome) / rec_sb_rowh), 24);
+	vh = tabh + ceil(pad * 0.5);        // the Scoreboard / Players switch above the panel
+	rows  = bound(6, floor((scr_y * 0.86 - chrome - vh) / rec_sb_rowh), 24);
 	listh = rows * rec_sb_rowh;
 	h = chrome + listh;
 
 	// Centred as a pair with a whole room list; a narrower one takes what the row has left.
 	x0 = floor((scr_x - w) * 0.5);
 	if (x0 < pad) x0 = pad;
-	y0 = floor((scr_y - h) * 0.5);
+	y0 = floor((scr_y - h - vh) * 0.5) + vh;
 	p  = [x0, y0];
 	sz = [w, h];
 	sui_style_panel(p, sz, ceil(pad * 0.75), 0.98);
 
 	// ---- the header: the map, and its clock on the title's baseline ---------
 	Font_Set(ui_font_ui);
+	Scores_ViewSwitch(x0 + w * 0.5, y0 - vh, tabh);
 	s = (serverkey("map") != "") ? serverkey("map") : "no map";
 	Scores_Text([x0 + pad, y0 + pad], rec_sb_sztitle, s, SUI_THEME_TEXT, 1);
 	if (rec_sb_open)
@@ -3246,46 +3286,14 @@ void(vector scr) Scores_Draw =
 	// ---- the sources, one control; what narrows them, to its right ----------
 	// On a row of their own, not beside the title: a map name has no width limit.
 	ytabs = y0 + pad + rec_sb_sztitle + ceil(pad * 0.75);
-	sui_roundbox([x0 + pad, ytabs], [segw * n, tabh], tabh * 0.5, SUI_THEME_WELL, 1);
-	// A source or a leg chosen is the board asked for again: a player's times
-	// (Patch 666) give the table back.
-	if (Scores_Seg("sb_t0", [x0 + pad, ytabs], [segw, tabh], "Online", rec_sb_tab == SB_T_ONLINE))
-	{
-		Scores_TabSet(SB_T_ONLINE);
-		rec_sb_tabauto = FALSE;         // the player chose; the follow leaves it
-		Profile_OnClear();
-	}
-	if (Scores_Seg("sb_t1", [x0 + pad + segw, ytabs], [segw, tabh], "Segmented",
-	               rec_sb_tab == SB_T_SEGMENT))
-	{
-		Scores_TabSet(SB_T_SEGMENT);
-		rec_sb_tabauto = FALSE;
-		Profile_OnClear();
-	}
-	if (Scores_Seg("sb_t2", [x0 + pad + segw * 2, ytabs], [segw, tabh], "Local",
-	               rec_sb_tab == SB_T_LOCAL))
-	{
-		Scores_TabSet(SB_T_LOCAL);
-		rec_sb_tabauto = FALSE;
-		Profile_OnClear();
-	}
-
-	if (Scores_Seg("sb_t3", [x0 + pad + segw * 3, ytabs], [segw, tabh], "Players", rec_sb_tab == SB_T_PLAYERS))
-	{
-		Scores_TabSet(SB_T_PLAYERS);
-		rec_sb_tabauto = FALSE;
-		Profile_OnClear();
-	}
 	if (rec_sb_tab == SB_T_PLAYERS)
 	{
 		Scores_NativeClose();
 		if (rec_sb_leg != sb_on_leg || rec_sb_tab != sb_on_tab) Profile_OnClear();
 		if (pf_on_who != "")
-			sb_onact = Profile_DrawOn([x0 + pad, ytabs + tabh + pad],
-			                          [w - pad * 2, y0 + h - pad - ytabs - tabh - pad], sb_szui, rec_sb_szhead);
+			sb_onact = Profile_DrawOn([x0 + pad, ytabs], [w - pad * 2, y0 + h - pad - ytabs], sb_szui, rec_sb_szhead);
 		else
-			Players_Draw([x0 + pad, ytabs + tabh + pad],
-			             [w - pad * 2, y0 + h - pad - ytabs - tabh - pad], rec_sb_szrow);
+			Players_Draw([x0 + pad, ytabs], [w - pad * 2, y0 + h - pad - ytabs], rec_sb_szrow);
 		Scores_SearchDrop();
 		sui_end();
 		Font_Reset();
@@ -3301,6 +3309,21 @@ void(vector scr) Scores_Draw =
 		if (Scores_SearchPick()) return;
 		Scores_SpecHandOff();
 		return;
+	}
+	sui_roundbox([x0 + pad, ytabs], [segw * n, tabh], tabh * 0.5, SUI_THEME_WELL, 1);
+	// A source or a leg chosen is the board asked for again: a player's times
+	// (Patch 666) give the table back.
+	if (Scores_Seg("sb_t0", [x0 + pad, ytabs], [segw, tabh], "Online", Scores_IsOnline()))
+	{
+		Scores_TabSet(SB_T_ONLINE);
+		rec_sb_tabauto = FALSE;         // the player chose; the follow leaves it
+		Profile_OnClear();
+	}
+	if (Scores_Seg("sb_t2", [x0 + pad + segw, ytabs], [segw, tabh], "Local", rec_sb_tab == SB_T_LOCAL))
+	{
+		Scores_TabSet(SB_T_LOCAL);
+		rec_sb_tabauto = FALSE;
+		Profile_OnClear();
 	}
 	if (zone_count <= 0)
 	{
@@ -3360,18 +3383,33 @@ void(vector scr) Scores_Draw =
 	if (rec_sb_tab == SB_T_ONLINE)
 		Scores_FilterDraw(x - ceil(pad * 0.75), ytabs, tabh);
 
-	// A distinct style axis; SW/HSW/BW force KSF and never join Forward.
-	if (rec_sb_tab == SB_T_ONLINE)
+	// Styles: our segmented board, then KSF's styles (SW/HSW/BW force KSF and
+	// never join Forward).
+	if (online)
 	{
 		x = x0 + pad;
 		yc = ytabs + tabh + pad * 0.5;
-		Scores_Text([x, yc + (chiph - rec_sb_szhead) * 0.5], rec_sb_szhead, "KSF style", SBC_DIM, 1);
-		x = x + rec_sb_cw * 10;
+		Scores_Text([x, yc + (chiph - rec_sb_szhead) * 0.5], rec_sb_szhead, "Styles", SBC_DIM, 1);
+		x = x + ceil(stringwidth("Styles", TRUE, [rec_sb_szhead, rec_sb_szhead]) + pad);
+		if (Scores_Chip("sb_t1", [x, yc], [chipw, chiph], "Segmented", rec_sb_tab == SB_T_SEGMENT))
+		{
+			Scores_TabSet(SB_T_SEGMENT);
+			rec_sb_tabauto = FALSE;
+			rec_sb_oscroll = '0 0 0';
+			Profile_OnClear();
+		}
+		x = x + chipw + 4;
 		for (idx = 0; idx < 4; idx = idx + 1)
 		{
 			rid = strcat("sb_ks", ftos(idx));
-			if (Scores_Chip(rid, [x, yc], [chipw * 0.65, chiph], Scores_KsfName(idx), idx == rec_sb_ksfstyle))
+			if (Scores_Chip(rid, [x, yc], [chipw * 0.65, chiph], Scores_KsfName(idx),
+			                rec_sb_tab == SB_T_ONLINE && idx == rec_sb_ksfstyle))
 			{
+				if (rec_sb_tab != SB_T_ONLINE)
+				{
+					Scores_TabSet(SB_T_ONLINE);
+					rec_sb_tabauto = FALSE;
+				}
 				Scores_ImpSet(TRUE, 2);
 				rec_sb_ksfstyle = idx;
 				rec_sb_oscroll = '0 0 0';
@@ -3379,9 +3417,11 @@ void(vector scr) Scores_Draw =
 			}
 			x = x + chipw * 0.65 + 4;
 		}
+		if (rec_sb_tab == SB_T_ONLINE)
 		if (Scores_Chip("sb_ksmore", [x, yc], [chipw * 2, chiph], "fetch +100 KSF", FALSE))
 		if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
 			Online_KsfMore(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], Scores_StyleOf());
+		if (rec_sb_tab == SB_T_ONLINE)
 		if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
 		{
 			s = Online_KsfState(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], Scores_StyleOf());
@@ -3750,17 +3790,22 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 			  under the keys either.  Clamped, so holding a key settles at an
 			  end rather than cycling.
 			*/
+			// P770: Online, Local, then the Players view; Segmented is a style.
 			if (scanx == K_LEFTARROW)
 			{
-				if (rec_sb_tab > SB_T_ONLINE)
-					Scores_TabSet(rec_sb_tab - 1);
+				if (rec_sb_tab == SB_T_PLAYERS)
+					Scores_ShowBoard();
+				else if (rec_sb_tab == SB_T_LOCAL)
+					Scores_TabSet(SB_T_ONLINE);
 				rec_sb_tabauto = FALSE;
 				return TRUE;
 			}
 			if (scanx == K_RIGHTARROW)
 			{
-				if (rec_sb_tab < SB_T_PLAYERS)
-					Scores_TabSet(rec_sb_tab + 1);
+				if (rec_sb_tab == SB_T_LOCAL)
+					Scores_ShowPlayers();
+				else if (rec_sb_tab != SB_T_PLAYERS)
+					Scores_TabSet(SB_T_LOCAL);
 				rec_sb_tabauto = FALSE;
 				return TRUE;
 			}
@@ -4188,6 +4233,7 @@ void() Scores_Status =
 	              : ((rec_sb_filter == SB_F_STITCHED) ? "stitched"
 	              : ((rec_sb_filter == SB_F_PRACTICE) ? "practice" : "all")),
 	              rec_sb_cols, rec_sb_szrow));
+	print(sprintf("  style %s   ksf %g\n", Scores_StyleOf(), rec_sb_ksfstyle));
 
 	/*
 	  THE SERVER'S ANSWER VERBATIM, then this file's reading of it.

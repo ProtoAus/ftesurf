@@ -64,6 +64,8 @@ void(string op, string who) Friends_Action =
 	if (op == "join") fr_joinuntil = cltime + 15;
 };
 
+// P770: Add makes the friendship at once. 1 and 2 are only seen on a service
+// older than P770, which still keeps requests.
 string(string who) Friends_AddLabel =
 {
 	local float r;
@@ -145,7 +147,7 @@ void(vector p, vector sz, float tsz, float hint) Friends_Draw =
 	if (s != "") sui_text([p_x, y], [hint, hint], Chat_Fit(s, sz_x, hint), SUI_THEME_ACCENT, 1, 0);
 	y = y + hint * 2;
 	if (fr_ready && !fr_n)
-		sui_text([p_x, y], [tsz, tsz], "No friends yet. Open a player's profile to add them.", SUI_THEME_DIM, 1, 0);
+		sui_text([p_x, y], [tsz, tsz], "No friends yet. Add someone from TAB > Players or their profile.", SUI_THEME_DIM, 1, 0);
 	rowh = ceil(tsz * 3.7);
 	fr_rowh = rowh;
 	bw = ceil(hint * 7);
@@ -172,6 +174,7 @@ void(vector p, vector sz, float tsz, float hint) Friends_Draw =
 		s = "Offline";
 		if (rel == 1) s = "Friend request sent";
 		if (rel == 2) s = "Wants to be your friend";
+		if (rel == 4) s = "Blocked: cannot add or message you";
 		if (rel == 3 && online)
 			s = strcat(bufstr_get(fr_buf, at + 5), "  /  ", bufstr_get(fr_buf, at + 4));
 		sui_text([x, lp_y + tsz * 1.65], [hint, hint], Chat_Fit(s, w - tsz * 3, hint),
@@ -192,7 +195,12 @@ void(vector p, vector sz, float tsz, float hint) Friends_Draw =
 				Friends_Action("accept", who);
 			x = x + bw + 4;
 		}
-		if (Profile_Chip(strcat("fr_del", who), [x, y], [bw, hint * 1.9],
+		if (rel == 4)
+		{
+			if (Profile_Chip(strcat("fr_unblock", who), [x, y], [bw, hint * 1.9], "Unblock", hint, FALSE))
+				Friends_Action("unblock", who);
+		}
+		else if (Profile_Chip(strcat("fr_del", who), [x, y], [bw, hint * 1.9],
 		                 rel == 2 ? "Decline" : (rel == 1 ? "Cancel" : "Remove"), hint, FALSE))
 			Friends_Action("remove", who);
 	}

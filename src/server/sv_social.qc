@@ -136,7 +136,8 @@ void(entity e, string op, string who, string text) Social_Action =
 	}
 	e.social_last = time + 1;
 	if (!SV_RecIsHex(who, FS_WHO_IDLEN) && !SV_RecIsHex(who, 12)) return;
-	if (op != "add" && op != "accept" && op != "remove" && op != "message" && op != "join") return;
+	if (op != "add" && op != "accept" && op != "remove" && op != "message" && op != "join"
+	    && op != "block" && op != "unblock") return;
 	if (strlen(text) > 960) return; // percent-encoded UTF8, still bounded upstream
 	form = strcat(Social_Form(), "&game=1&token=", e.social_token, "&op=", op, "&who=", who);
 	if (op == "message") form = strcat(form, "&text=", uri_escape(uri_unescape(text)));
