@@ -92,6 +92,7 @@ def step(K, cache, pacer, have, now, budget=3):
                 # host that answers 500 to everything.
                 if e.code != 500:
                     raise
+                pacer.unanswered += 1   # never lifts a park (watch_mode)
                 retire(K, player, mode, start, asked, now)
                 return spent + 1
             saved = {'asked': asked, 'body': doc}

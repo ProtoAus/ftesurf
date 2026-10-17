@@ -25,7 +25,11 @@ commit   b9c66c50114d9a21f39087f6409d07dfbb295e77
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-743
-patch    746
+patch    747
+# Patch 747 (backend only): a KSF profile walk for a player KSF does not know
+# (HTTP 500) is ended as `unknown` instead of parking the whole KSF crawler, and
+# maps somebody viewed get their advertised demos scanned and downloaded first.
+# Pinned by the sealed schema20 generation: ships with the next backend cutover.
 # Patch 746 (QC only): the race ghost (cl_raceghost.qc): your PB and the first
 # hud_ghost_lines ticked board lines run beside you from the start box, or from
 # each stage's (a whole run cut where it left that box), with an offset, a dithered

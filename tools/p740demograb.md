@@ -148,6 +148,10 @@ enable, 50 at 21:58Z) but has requested and linked none. The upstream is still
 parked from its HTTP 500 at 2026-10-16T08:36Z, until 2026-10-17T08:36Z; the
 cooldown was not reset. No KSF download or playback is claimed.
 
+Correction, 2026-10-17: the HTTP 500 was not the upstream failing. It was our own
+request for a KSF profile walk of a player KSF does not know, asked first on
+every tick; KSF itself answered normally. See `tools/p747ksfunblock.md`.
+
 `tools/test_reccheck.py` exit 0; `ftesurf/data/runs` 295 recordings, 190 faults,
 equal to the P741 baseline (no reader change in this patch). The default
 selector also reads 268 save prefixes; one raised PermissionError in

@@ -357,6 +357,7 @@ class Pacer:
     def __init__(self, delay, budget):
         self.delay, self.budget, self.made = delay, budget, 0
         self.what = None            # the board key the last request was for
+        self.unanswered = 0         # 500s a caller took as being about one player
 
     def left(self):
         return self.budget - self.made
@@ -951,7 +952,7 @@ def watch_mode(args, have, cache):
             print("profile/cache filing deferred: %s" % type(e).__name__)
         else:
             # Lifted only by an answer: a tick that asked nothing proves nothing.
-            if park and pacer.made:
+            if park and pacer.made > pacer.unanswered:
                 os.remove(pf)
         finally:
             _save(ixf, idx)

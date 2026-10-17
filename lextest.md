@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P747 — KSF demos are downloading: Watch one
+
+The KSF crawler had been stuck since 15 Oct, so no KSF row had a demo. Unblocked
+2026-10-17T03:56Z; the first tick linked two: surf_004_fix and surf_1024, main
+FW (both maps are on this PC). About two more every five minutes, in board
+order; viewed maps first only once P747 ships with the next backend cutover.
+
+- Load surf_1024 or surf_004_fix, open `scores`, find the KSF row with Watch.
+  Does it play, and does its line draw when ticked? "plays / line ok" is enough.
+- It can park again before P747 ships if someone opens the profile of a player
+  KSF does not know (BACKLOG). Verdict PENDING.
+
 ## P744 — spectating shows the other player's splits, segments, boarding and trainer
 
 Needs someone else on a lobby (or a second client). Spectate them (`!spec <name>`
@@ -59,9 +71,8 @@ one has watched one in the game yet.
   not hold. It should be ready in a few seconds (longer if another download is
   already running), not up to five minutes. Click Watch: does it play?
   "Ready in N s / plays" is enough.
-- KSF: after 2026-10-17T08:36Z (upstream cooldown from its HTTP 500), give it an
-  hour, then look for Watch on a KSF row. None yet is not a fault in itself:
-  the upstream may still refuse. Verdict PENDING for both.
+- KSF: see P747 above (the "upstream" park was our own stuck request).
+  Verdict PENDING.
 
 Limits and evidence: `tools/p740demograb.md`.
 

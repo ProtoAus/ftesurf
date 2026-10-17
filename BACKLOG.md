@@ -48,15 +48,23 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - Falsifier: the grader counts the name apart (`lnde` minus the line's one name)
   and passes on e8afa04's csprogs with `runlines_labels.cfg`.
 
-## KSF sparse demos: none downloaded yet, upstream parked (P740)
+## KSF crawler: P747 waits for the next backend cutover
 
-- Site: the Pi's `ksfimport.py --watch --go --demos` cron row (`1-59/5`),
-  enabled 2026-10-16T15:30:35Z. It discovers demos (50 pending at 21:58Z) and
-  requests none: the upstream is parked after its HTTP 500 at 08:36Z, retry
-  2026-10-17T08:36Z. Never clear the refusal ledger to force one.
-- Falsifier: after the retry `logs/ksfwatch.log` reads `KSF demos: N request(s),
-  M linked` with M > 0, and a linked row plays from Watch (lextest P740). An
-  upstream that keeps refusing is a recorded outcome, not a pass.
+- Site: `surfd/ksfprofile.py:step`, `surfd/ksfgrab.py` (P747, on main). The
+  live sealed generation 36697da still runs the old code: viewing the profile
+  of a player KSF does not know queues a walk that 500s, and the crawler parks
+  (6 h doubling to 48 h), stopping KSF boards and demo downloads. The
+  2026-10-17T03:56Z interim (tools/p747ksfunblock.md) cleared only the 7 walks
+  queued then. Viewed-map demo priority is not live either.
+- Check: `data/ksf/.refused` reads `HTTP 500` while `ksfprofiles` holds a queued
+  zero-page walk for a player with no KSF rows.
+- Falsifier after the cutover: queue a walk for a non-KSF player; the next tick
+  makes a request past the profile, writes no `.refused`, and the walk reads
+  `unknown`. Then view a map's board and its advertised demos download first.
+- Known from review, left as designed: while two or more viewed-map demos are
+  eligible, unwanted maps get no download; an evicted cold job returns only on
+  the next full rotation (~242 ticks). In a host-wide 500 outage the board
+  asked after a swallowed profile 500 takes the strike the profile used to.
 
 ## reccheck's default sweep stops at one unreadable file (P740)
 

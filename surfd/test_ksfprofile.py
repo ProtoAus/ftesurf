@@ -8,6 +8,7 @@ import re
 import shutil
 import sqlite3
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -185,6 +186,17 @@ class Profiles(unittest.TestCase):
         self.assertIn('/api/maps/new', calls[1])
         self.assertFalse(os.path.exists(os.path.join(self.cache, '.refused')))
         self.assertEqual(P.status(self.db, PLAYER)['state'], 'unknown')
+    def test_swallowed_500_does_not_lift_an_expired_park(self):
+        self.queue()
+        now = int(time.time())
+        K._save(os.path.join(self.cache, 'catalog.json'),
+                {'names': [], 'offset': 0, 'done': True, 'at': now, 'full_at': now})
+        park = {'at': 1, 'until': 2, 'n': 3, 'why': 'HTTP 500'}
+        K._save(os.path.join(self.cache, '.refused'), park)
+        with patch.object(K, 'fetch', side_effect=K.NoSuchPlayer('HTTP 500')) as f:
+            K.watch_mode(SimpleNamespace(delay=0, max=10, go=True), self.have, self.cache)
+            self.assertEqual(f.call_count, 1)
+        self.assertEqual(K._load(os.path.join(self.cache, '.refused')), park)
     def test_migrate18_to20_adds_scoped_marker_without_rewriting_runs(self):
         self.queue(); self.step()
         row = list(self.db.execute('SELECT * FROM runs ORDER BY map LIMIT 1').fetchone())
