@@ -40,6 +40,11 @@
 #define SP_ASK    2
 #define SP_HAVE   3
 #define SP_NOPIC  4
+#define SP_HTTP   5             // wanted, and the disk had none: an ask's turn
+#define SP_OLD    6             // drawn from a disk copy of an earlier day; refresh owed
+#define SP_FRESH  7             // SP_OLD with its refresh in flight; still drawn
+#define SP_DISKDAYS 30          // a disk copy older than this is not drawn
+#define SP_DISKBURST 4          // disk loads a frame; only asks are paced
 
 float  sp_bmark;                // strbuf: the mark each slot holds
 float  *sp_st;                  // one declarator a line: `float *a, *b` makes b a float**
@@ -50,11 +55,13 @@ float  sp_base;                 // this VM's request ids: see SteamPic_Alloc
 float  sp_bad;                  // non-answers in a row; SP_STRIKES ends the asking this map
 float  sp_slow;                 // the request in flight is past SP_TIMEOUT, and said so
 float  sp_asked, sp_got, sp_disk; // counts, for `scores pics`
+float  sp_dage;                 // age in days of the copy SP_DiskLoad last returned
 string sp_origin;              // directory that owns these marks/pictures
 float(float reqid, float code, string bdy) SteamPic_Reply;
+float(float slot, string bdy) SP_Upload;
 
-// At most 256 bucket files. Full origin+mark SHA256 and today's UTC date
-// guard collisions/stale pictures; the bucket prefix is NOT the identity.
+// One file per origin+mark SHA256 (P755). P715's 256 two-hex buckets evicted
+// each other and expired every UTC day; they are still read, never written.
 string(string mark) SP_DiskKey =
 {
 	local string key;
@@ -64,19 +71,36 @@ string(string mark) SP_DiskKey =
 };
 string(string key) SP_DiskPath =
 {
-	return strcat("cache/steampic/", substring(key, 0, 2), ".txt");
+	return strcat("cache/steampic/", key, ".txt");
 };
 string(string key) SP_DiskHeader =
 {
 	return sprintf("FTESURF-AVCACHE1 %s %s", key, strftime(TRUE, "%Y%m%d"));
 };
-string(string mark) SP_DiskLoad =
+// Days since 1970-01-01 of a YYYYMMDD stamp, or -1 (Hinnant's days_from_civil).
+float(string ymd) SP_Day =
 {
-	local string key, hdr, body, line;
-	local float fh, i;
-	key = SP_DiskKey(mark);
-	if (!strlen(key)) return "";
-	fh = fopen(SP_DiskPath(key), FILE_READ);
+	local float i, y, m, d, era, yoe;
+	if (strlen(ymd) != 8) return -1;
+	for (i = 0; i < 8; i = i + 1)
+		if (strstrofs("0123456789", substring(ymd, i, 1), 0) < 0)
+			return -1;
+	y = stof(substring(ymd, 0, 4));
+	m = stof(substring(ymd, 4, 2));
+	d = stof(substring(ymd, 6, 2));
+	if (m < 1 || m > 12 || d < 1 || d > 31) return -1;
+	if (m <= 2) y = y - 1;
+	era = floor(y / 400);
+	yoe = y - era * 400;
+	if (m > 2) m = m - 3; else m = m + 9;
+	return era * 146097 + yoe * 365 + floor(yoe / 4) - floor(yoe / 100)
+	       + floor((153 * m + 2) / 5) + d - 1 - 719468;
+};
+string(string path, string key) SP_DiskRead =
+{
+	local string hdr, body, line;
+	local float fh, i, age;
+	fh = fopen(path, FILE_READ);
 	if (fh < 0) return "";
 	if (fsize(fh) > SP_HEAD + SP_PX * SP_ROW + 128)
 	{
@@ -91,8 +115,23 @@ string(string mark) SP_DiskLoad =
 		body = strcat(body, line, "\n");
 	}
 	fclose(fh);
-	if (strcmp(hdr, SP_DiskHeader(key))) return "";
-	return body; // Reply validates every byte before rendering or keeping it
+	// "FTESURF-AVCACHE1 <key> <YYYYMMDD>": the key is the identity, the date its age.
+	if (strlen(hdr) != 17 + 64 + 1 + 8) return "";
+	if (strcmp(substring(hdr, 0, 17 + 64 + 1), strcat("FTESURF-AVCACHE1 ", key, " "))) return "";
+	age = SP_Day(strftime(TRUE, "%Y%m%d")) - SP_Day(substring(hdr, 17 + 64 + 1, 8));
+	if (age < 0 || age > SP_DISKDAYS) return "";
+	sp_dage = age;
+	return body; // SP_Upload validates every byte before rendering or keeping it
+};
+string(string mark) SP_DiskLoad =
+{
+	local string key, body;
+	key = SP_DiskKey(mark);
+	if (!strlen(key)) return "";
+	body = SP_DiskRead(SP_DiskPath(key), key);
+	if (!strlen(body))
+		body = SP_DiskRead(strcat("cache/steampic/", substring(key, 0, 2), ".txt"), key);
+	return body;
 };
 void(string mark, string body) SP_DiskStore =
 {
@@ -160,7 +199,7 @@ string(string mark) SteamPic_Of =
 				old = i;
 				break;
 			}
-			if (sp_st[i] == SP_ASK)
+			if (sp_st[i] == SP_ASK || sp_st[i] == SP_FRESH)
 				continue;
 			if (old < 0)
 				old = i;
@@ -178,6 +217,8 @@ string(string mark) SteamPic_Of =
 	}
 	sp_used[old] = cltime;
 	if (sp_st[old] != SP_HAVE)
+	if (sp_st[old] != SP_OLD)
+	if (sp_st[old] != SP_FRESH)
 		return "";
 	return sprintf("steampic/%g", old);
 };
@@ -204,37 +245,33 @@ void() SteamPic_Lost =
 	if (!sp_st)
 		return;
 	for (i = 0; i < SPIC_MAX; i = i + 1)
-		if (sp_st[i] == SP_HAVE)
-			sp_st[i] = SP_WANT;
+	{
+		if (sp_st[i] == SP_HAVE || sp_st[i] == SP_OLD)
+			sp_st[i] = SP_WANT;     // the disk copy uploads again at once
+		if (sp_st[i] == SP_FRESH)
+			sp_st[i] = SP_ASK;      // in flight, and nothing left to draw meanwhile
+	}
 };
 
-// Once a frame: at most one ask, for a mark still being drawn.  The consent
-// and lobby_dir rules are Online_Fetch's.
+// Once a frame: disk copies of marks being drawn, SP_DISKBURST at once, then at
+// most one paced ask: a mark the disk had none of, else a refresh of an old copy.
+// The consent and lobby_dir rules are Online_Fetch's.
 void() SteamPic_Frame =
 {
-	local float i;
+	local float i, n;
 	local string cached, base;
 
 	if (!sp_st)
 		return;                             // nothing has wanted one yet
 	if (sp_req)
+	if (!sp_slow)
+	if (cltime - sp_at[sp_reqslot] > SP_TIMEOUT)
 	{
-		// Still out: wait for it, and past SP_TIMEOUT tell the maps after this
-		// one too.  gettime(0) is the engine's clock; cltime restarts each map.
-		if (!sp_slow)
-		if (cltime - sp_at[sp_reqslot] > SP_TIMEOUT)
-		{
-			sp_slow = TRUE;
-			localcmd(sprintf("set _steampic_hold %g\n", gettime(0) + SP_MISS));
-		}
-		return;
+		// Still out past SP_TIMEOUT: tell the maps after this one too.
+		// gettime(0) is the engine's clock; cltime restarts each map.
+		sp_slow = TRUE;
+		localcmd(sprintf("set _steampic_hold %g\n", gettime(0) + SP_MISS));
 	}
-	if (sp_bad >= SP_STRIKES)
-		return;
-	if (cltime < sp_next)
-		return;
-	if (gettime(0) < cvar("_steampic_hold"))
-		return;
 	if (ui_consent_ver < FS_TERMS_ONLINE)
 	if (cvar("rec_terms") < FS_TERMS_ONLINE)
 		return;
@@ -249,16 +286,54 @@ void() SteamPic_Frame =
 			if (sp_st[i]) sp_st[i] = SP_WANT;
 	}
 
+	n = 0;
+	for (i = 0; i < SPIC_MAX; i = i + 1)
+	{
+		if (n >= SP_DISKBURST)
+			break;
+		if (sp_st[i] != SP_WANT)
+			continue;
+		if (cltime - sp_used[i] > SP_SEEN)
+			continue;
+		n = n + 1;
+		cached = SP_DiskLoad(bufstr_get(sp_bmark, i));
+		if (strlen(cached))
+		if (SP_Upload(i, cached))
+		{
+			sp_st[i] = SP_HAVE;
+			if (sp_dage > 0)
+				sp_st[i] = SP_OLD;
+			sp_disk = sp_disk + 1;
+			continue;
+		}
+		sp_st[i] = SP_HTTP;                 // none, or corrupt: an ordinary miss
+	}
+
+	if (n >= SP_DISKBURST)
+		return;                             // the disk first: more may be waiting
+	if (sp_req)
+		return;
+	if (sp_bad >= SP_STRIKES)
+		return;
+	if (cltime < sp_next)
+		return;
+	if (gettime(0) < cvar("_steampic_hold"))
+		return;
 	for (i = 0; i < SPIC_MAX; i = i + 1)
 	{
 		if (cltime - sp_used[i] > SP_SEEN)
 			continue;
 		if (sp_st[i] == SP_NOPIC)
 		if (cltime - sp_at[i] > SP_MISS)
-			sp_st[i] = SP_WANT;
-		if (sp_st[i] == SP_WANT)
+			sp_st[i] = SP_HTTP;
+		if (sp_st[i] == SP_HTTP)
 			break;
 	}
+	if (i >= SPIC_MAX)
+		for (i = 0; i < SPIC_MAX; i = i + 1)
+			if (sp_st[i] == SP_OLD)
+			if (cltime - sp_used[i] <= SP_SEEN)
+				break;
 	if (i >= SPIC_MAX)
 		return;
 
@@ -266,18 +341,6 @@ void() SteamPic_Frame =
 	sp_at[i] = cltime;
 	sp_req = sp_base + sp_asked - floor(sp_asked / 4000) * 4000;
 	sp_reqslot = i;
-	cached = SP_DiskLoad(bufstr_get(sp_bmark, i));
-	if (strlen(cached))
-	{
-		SteamPic_Reply(sp_req, 0, cached);
-		if (sp_st[i] == SP_HAVE)
-		{
-			sp_disk = sp_disk + 1;
-			return;
-		}
-		sp_st[i] = SP_WANT;             // corrupt cache: normal HTTP miss
-		sp_req = sp_base + sp_asked - floor(sp_asked / 4000) * 4000;
-	}
 	if (!uri_get(sprintf("%s/api/board?avatar=%s", cvar_string("lobby_dir"),
 	                     bufstr_get(sp_bmark, i)), sp_req))
 	{
@@ -286,45 +349,25 @@ void() SteamPic_Frame =
 		sp_bad = sp_bad + 1;
 		return;
 	}
-	sp_st[i] = SP_ASK;
+	if (sp_st[i] == SP_OLD)
+		sp_st[i] = SP_FRESH;
+	else
+		sp_st[i] = SP_ASK;
 	sp_asked = sp_asked + 1;
 };
 
-// Its answer (URI_Get_Callback).  TRUE when the id was this request's.
-float(float reqid, float code, string bdy) SteamPic_Reply =
+// A body's pixels into slot `slot`'s texture.  TRUE only for a whole, valid picture.
+float(float slot, string bdy) SP_Upload =
 {
 	local float i, o, x, y;
 	local string digit;
 	local int hi, lo, a, seen;
 	local int *px;
 
-	if (!sp_req)
-		return FALSE;
-	if (reqid != sp_req)
-		return FALSE;
-	sp_req = 0;
-	sp_at[sp_reqslot] = cltime;
-	if (sp_slow)
-	{
-		sp_slow = FALSE;                    // late, but an answer: the hold comes off
-		localcmd("set _steampic_hold 0\n");
-	}
-	if (code)                               // 0 is success (cl_online.qc, trap 1)
-	if (code != 404)
-	{
-		sp_st[sp_reqslot] = SP_WANT;
-		sp_next = cltime + SP_PAUSE;
-		sp_bad = sp_bad + 1;
-		return TRUE;
-	}
-	sp_bad = 0;
-	sp_st[sp_reqslot] = SP_NOPIC;           // a 404, or a body that is no picture
-	if (code)
-		return TRUE;
 	if (strlen(bdy) != SP_HEAD + SP_PX * SP_ROW)
-		return TRUE;
-	if (substring(bdy, 0, SP_HEAD) != "FTESURF-AVATAR 1 32 32\n")
-		return TRUE;
+		return FALSE;
+	if (strcmp(substring(bdy, 0, SP_HEAD), "FTESURF-AVATAR 1 32 32\n"))
+		return FALSE;
 
 	// A damaged disk file must not be silently interpreted as black pixels.
 	for (i = SP_HEAD; i < strlen(bdy); i = i + 1)
@@ -332,9 +375,9 @@ float(float reqid, float code, string bdy) SteamPic_Reply =
 		digit = substring(bdy, i, 1);
 		if (floor((i - SP_HEAD + 1) / SP_ROW) * SP_ROW == i - SP_HEAD + 1)
 		{
-			if (strcmp(digit, "\n")) return TRUE;
+			if (strcmp(digit, "\n")) return FALSE;
 		}
-		else if (strstrofs("0123456789abcdef", digit, 0) < 0) return TRUE;
+		else if (strstrofs("0123456789abcdef", digit, 0) < 0) return FALSE;
 	}
 
 	// "rrggbbaa" a pixel; memory order is r, g, b, a.  Four hex digits at a
@@ -362,19 +405,55 @@ float(float reqid, float code, string bdy) SteamPic_Reply =
 	if (!seen)
 	{
 		memfree(px);                        // nothing opaque: junk of the right length
-		return TRUE;
+		return FALSE;
 	}
-	r_uploadimage(sprintf("steampic/%g", sp_reqslot), SP_PX, SP_PX, px);
+	r_uploadimage(sprintf("steampic/%g", slot), SP_PX, SP_PX, px);
 	memfree(px);
 	// A shader of our own, once per slot.  drawpic's default loads its picture
 	// PREMULTIPLIED (gl_shader.c Shader_Default2D), which is another texture
 	// than the one just uploaded: it drew the engine's missing-texture checker.
-	shaderforname(sprintf("steampic/%g", sp_reqslot),
+	shaderforname(sprintf("steampic/%g", slot),
 	              sprintf("{\naffine\nnomipmaps\nprogram default2d\n{\nclampmap steampic/%g\nblendfunc blend\n}\nsort additive\n}\n",
-	                      sp_reqslot));
-	SP_DiskStore(bufstr_get(sp_bmark, sp_reqslot), bdy);
-	sp_st[sp_reqslot] = SP_HAVE;
-	sp_got = sp_got + 1;
+	                      slot));
+	return TRUE;
+};
+
+// Its answer (URI_Get_Callback).  TRUE when the id was this request's.
+float(float reqid, float code, string bdy) SteamPic_Reply =
+{
+	if (!sp_req)
+		return FALSE;
+	if (reqid != sp_req)
+		return FALSE;
+	sp_req = 0;
+	sp_at[sp_reqslot] = cltime;
+	if (sp_slow)
+	{
+		sp_slow = FALSE;                    // late, but an answer: the hold comes off
+		localcmd("set _steampic_hold 0\n");
+	}
+	if (code)                               // 0 is success (cl_online.qc, trap 1)
+	if (code != 404)
+	{
+		// Not an answer: ask again later; an old copy stays on screen meanwhile.
+		if (sp_st[sp_reqslot] == SP_FRESH)
+			sp_st[sp_reqslot] = SP_OLD;
+		else
+			sp_st[sp_reqslot] = SP_HTTP;
+		sp_next = cltime + SP_PAUSE;
+		sp_bad = sp_bad + 1;
+		return TRUE;
+	}
+	sp_bad = 0;
+	if (!code)
+	if (SP_Upload(sp_reqslot, bdy))
+	{
+		SP_DiskStore(bufstr_get(sp_bmark, sp_reqslot), bdy);
+		sp_st[sp_reqslot] = SP_HAVE;
+		sp_got = sp_got + 1;
+		return TRUE;
+	}
+	sp_st[sp_reqslot] = SP_NOPIC;           // a 404, or a body that is no picture
 	return TRUE;
 };
 
@@ -385,7 +464,7 @@ void() SteamPic_Status =
 
 	print(sprintf("steampic: asked %g got %g inflight %g strikes %g hold %g\n", sp_asked, sp_got,
 	              sp_req ? 1 : 0, sp_bad, max(0, cvar("_steampic_hold") - gettime(0))));
-	print(sprintf("steampic: disk hits %g (daily, 256 buckets)\n", sp_disk));
+	print(sprintf("steampic: disk hits %g (a file a mark, %g days)\n", sp_disk, SP_DISKDAYS));
 	if (sp_st)
 	for (i = 0; i < SPIC_MAX; i = i + 1)
 		if (sp_st[i])
