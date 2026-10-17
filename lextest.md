@@ -29,7 +29,9 @@ is; any latency difference is unmeasured), type `vid_borderless_capture 0` and r
 the game. Do not use `vid_restart` with a map loaded: it currently ends the client
 (BACKLOG).
 
-"Capture works / still black" is enough. Verdict PENDING.
+Verdict CONFIRMED by Lex, 2026-10-18 local (17 Oct ~19:56Z): "yep works", after being
+asked to check OBS display capture of the borderless game. That is his setup only:
+NVIDIA, OpenGL, `vid_srgb 0`, default `vid_borderless_capture 1`.
 
 ## P765 — surf_monolith's walls are solid again; zones and particles stay behind them
 
