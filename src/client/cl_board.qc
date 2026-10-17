@@ -42,6 +42,7 @@ float  board_stepe;
 vector board_dv;            // the signed XYZ you lost
 float  board_approach;      // degrees off the normal; 90 = perfect
 float  board_grade;         // 0 perfect .. 4 terrible
+float  board_inferred;      // Patch 750: the replay's boards are inferred (cl_watch.qc rec_wt_bdinfer)
 float  board_perfect_streak; // live ramp arrivals only; capped at one octave
 float  board_rampdeg;       // how steep the ramp was
 // Patch 631, for the Boarding window: the raw energy you arrived with, and the

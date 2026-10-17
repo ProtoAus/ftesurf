@@ -44,6 +44,10 @@ patch    755
 # A read that misses adopts the file (frename onto itself, as SV_MsAdopt), and
 # a join rescans when @guid/gen.txt, rewritten by every list change, moved.
 # tools/p751lobbysaves.py: two servers on one basedir; 223475b loses the save.
+# Patch 750 (QC only): a Momentum or KSF replay's splits come from the map's zones,
+# its boards are inferred from its contact and the map's face, and every replay
+# keeps its leaves for the Boarding window; KSF v2 reads ground from vz so its
+# contact is inferred. replayhud_infer/ksf arms; the build without fails 9 checks.
 # Patch 749 (QC only): the race ghost ducks and faces as the recording's view did
 # (a yaw and duck kept per line sample, ln_pose), and wears a name tag drawn like a
 # player's (hud_ghost_names). raceghost_pose arm; the 746 build fails it 18 times.

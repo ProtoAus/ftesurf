@@ -136,6 +136,7 @@ float  rec_wt_ksfver;
 // `momdemo`: an import written from its own demo -- per-tick velocity and real
 // ground flags, which is what inferring its ramp contact needs (cl_infer.qc).
 float  rec_wt_momdemo;
+float  rec_wt_gndi;             // Patch 750: ground read from vz (Infer_Ground), KSF v2
 // Patch 712: bounded trainer walk, independent of the render/interpolation cursors.
 #define WT_TRN_BUDGET 512
 // CSQC is at its global limit; keep this cursor/state in allocated storage.
@@ -347,6 +348,18 @@ float  rec_wt_evtick[WT_EVMAX];
 float  rec_wt_evn;
 float  rec_wt_evshown;           // how many are in the split list right now
 
+// Patch 750: an import has no `stage` or `cp` records.  Its crossings of this map's
+// zones, tested as the server tests them (swept hull), WT_ZBUDGET lines a frame by
+// Watch_ZoneEvents, appended to the table above in time order.
+#define WT_ZMAX    96
+#define WT_ZBUDGET 2048
+float  rec_wt_zon;              // 1 reading, 2 done, 0 the file has its own
+float  rec_wt_zat;              // the job's line
+float  rec_wt_zseg, rec_wt_zcp; // the furthest stage and checkpoint crossed
+vector rec_wt_zpo;              // the sample before
+float  rec_wt_zhave, rec_wt_zn;
+float *rec_wt_zl;               // the track's stage and checkpoint regions
+
 // Patch 395: the stage windows (Watch_StageWindow).
 #define WT_STGMAX 24                  // sv_timer.qc FS_MAXSPLITS (server-only define)
 float  rec_wt_pw0[WT_STGMAX];         // a seg's `stagepost` window, ticks; -1 none
@@ -472,6 +485,16 @@ float  rec_wt_bdover;            // events the file had that would not fit
 // did not walk it.  memalloc'd: csprogs is at fteqcc's global limit.
 #define WT_NOLEVEL -1000000000
 float *rec_wt_bde;
+// Patch 750: an import has no `board` records: the build pass infers its boards where
+// ramp contact begins after more than RAMP_GAP off a ramp, the plane from the map
+// (Watch_BoardPlane), the pre-clip velocity from the sample before.  And every file's
+// leaves (contact's falling edges), which no record carries.  memalloc'd.
+float  rec_wt_bdinfer;          // inferring: the file has none of its own
+float  rec_wt_bdnoplane;        // contact edges the map showed no ramp face at (skipped)
+float *rec_wt_lvt;              // the clock at each leave
+float *rec_wt_lvs;              // its horizontal speed
+float *rec_wt_lve;              // its level, or WT_NOLEVEL
+float  rec_wt_lvn, rec_wt_lvshown;
 
 /*
   THE SEGMENT COLUMN, built once and then only counted into.
@@ -1062,7 +1085,7 @@ void() Watch_InferScan =
 
 	why = INF_MEASURED;
 	if (rec_wt_foreign)
-		why = rec_wt_momdemo ? INF_INFERRED : INF_NOVEL;
+		why = (rec_wt_momdemo || rec_wt_gndi) ? INF_INFERRED : INF_NOVEL;
 	else if (!rec_wt_v4)
 		why = INF_NOBIT;
 	if (why == INF_INFERRED && rec_wt_nsamp > INF_SCANMAX)
@@ -1094,7 +1117,8 @@ void() Watch_InferScan =
 		                    stof(argv(WT_C_ORG + 2))],
 		                [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)),
 		                 stof(argv(WT_C_VEL + 2))],
-		                stof(argv(WT_C_FLAGS)), stof(argv(WT_C_T)), rec_wt_tickrate))
+		                Infer_Ground(stof(argv(WT_C_FLAGS)), stof(argv(WT_C_VEL + 2)), rec_wt_gndi),
+		                stof(argv(WT_C_T)), rec_wt_tickrate))
 			continue;
 		Infer_Count(0);
 		rec_wt_inf[i] = inf_dvz;
@@ -1120,6 +1144,7 @@ float(float i) Watch_Flags =
 
 	fl = stof(argv(WT_C_FLAGS));
 	fl = fl - (fl & WT_F_RAMPI);
+	fl = Infer_Ground(fl, stof(argv(WT_C_VEL + 2)), rec_wt_gndi);
 	if (rec_wt_inf)
 	if (rec_wt_inf[i])
 		fl = fl | WT_F_RAMPI;
@@ -1156,6 +1181,7 @@ void() Watch_Scan =
 	rec_wt_ksfstyle = "?";
 	rec_wt_ksfver   = 0;
 	rec_wt_momdemo  = FALSE;
+	rec_wt_gndi     = FALSE;
 	rec_wt_momq     = 0;
 	rec_wt_momceil  = 0;
 	rec_wt_pad      = 0;
@@ -1198,6 +1224,7 @@ void() Watch_Scan =
 			wt_trn_moves = (argv(1) == "wishvel" || argv(1) == "keys" || argv(1) == "recorded" || argv(1) == "buttons");
 		if (argv(0) == "momdemo")     rec_wt_momdemo  = TRUE;
 		if (argv(0) == "demodata")    rec_wt_momdemo  = stof(argv(1)) > 0;
+		if (argv(0) == "ksfground")   rec_wt_gndi     = (stof(argv(1)) == 0);
 		if (argv(0) == "ksfdemo" && n >= 5)
 		{
 			rec_wt_ksfver = stof(argv(1));
@@ -1445,6 +1472,17 @@ void() Watch_Scan =
 	}
 	rec_wt_bt0 = 0;
 	rec_wt_bt1 = -1;                // nothing built yet: Watch_ScanRange
+
+	// Patch 750.
+	rec_wt_bdinfer = (rec_wt_foreign && rec_wt_bdn_n == 0);
+	board_inferred = rec_wt_bdinfer;
+	rec_wt_zon   = (rec_wt_foreign && rec_wt_evn == 0);
+	rec_wt_zat   = rec_wt_rec0;
+	rec_wt_zn    = -1;              // the regions are listed on the job's first frame
+	rec_wt_zhave = FALSE;
+	rec_wt_zseg  = rec_wt_startseg;
+	rec_wt_zcp   = 0;
+	rec_wt_lvn   = 0;
 
 	Watch_InferScan();              // after rec_wt_v4 and the tick rate are known
 
@@ -1832,6 +1870,7 @@ float  wt_lj_ta, wt_lj_tb;      // the window, run seconds
 float  wt_lj_c, wt_lj_pt, wt_lj_frc, wt_lj_veto, wt_lj_ride;
 float  wt_lj_stitch;             // a save state came back in this interval
 float  wt_lj_fgn, wt_lj_momdemo; // the header's `foreign` and `momdemo` (cl_infer.qc)
+float  wt_lj_gndi;              // Patch 750: and `ksfground 0` (Infer_Ground)
 vector wt_lj_qv, wt_lj_qo;       // the sample before the window: Line_Seed's
 float  wt_lj_qfl, wt_lj_qt, wt_lj_qhave, wt_lj_qyaw;
 vector wt_lj_po, wt_lj_pv;
@@ -1999,7 +2038,7 @@ float(float slot, string path, float leg) Watch_LineJobStart =
 	wt_lj_endt = 0;
 	wt_lj_stitch = FALSE;
 	wt_lj_qhave  = FALSE;
-	wt_lj_fgn = wt_lj_momdemo = FALSE;
+	wt_lj_fgn = wt_lj_momdemo = wt_lj_gndi = FALSE;
 	Infer_Open(1, INF_MEASURED);
 	Line_Begin(slot);
 	return TRUE;
@@ -2053,7 +2092,7 @@ float() Watch_LineJobStep =
 				if (wt_lj_phase == 1)
 				{
 					if (wt_lj_fgn)
-						Infer_Open(1, wt_lj_momdemo ? INF_INFERRED : INF_NOVEL);
+						Infer_Open(1, (wt_lj_momdemo || wt_lj_gndi) ? INF_INFERRED : INF_NOVEL);
 					if (wt_lj_mtick > 0)
 						wt_lj_tick = wt_lj_mtick;
 					if (wt_lj_tick <= 0)
@@ -2082,6 +2121,7 @@ float() Watch_LineJobStep =
 				}
 				if (argv(0) == "momdemo")   wt_lj_momdemo = TRUE;
 				if (argv(0) == "demodata")  wt_lj_momdemo = stof(argv(1)) > 0;
+				if (argv(0) == "ksfground") wt_lj_gndi = (stof(argv(1)) == 0);
 			}
 			continue;
 		}
@@ -2097,7 +2137,8 @@ float() Watch_LineJobStep =
 				                   stof(argv(WT_C_ORG + 2))],
 				               [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)),
 				                stof(argv(WT_C_VEL + 2))],
-				               stof(argv(WT_C_FLAGS)), stof(argv(WT_C_T)), wt_lj_tick))
+				               Infer_Ground(stof(argv(WT_C_FLAGS)), stof(argv(WT_C_VEL + 2)), wt_lj_gndi),
+				               stof(argv(WT_C_T)), wt_lj_tick))
 					Infer_Count(1);
 				continue;
 			}
@@ -2185,7 +2226,7 @@ float() Watch_LineJobStep =
 				            stof(argv(WT_C_VEL + 2))];
 				wt_lj_qo = [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)),
 				            stof(argv(WT_C_ORG + 2))];
-				wt_lj_qfl = stof(argv(WT_C_FLAGS));
+				wt_lj_qfl = Infer_Ground(stof(argv(WT_C_FLAGS)), stof(argv(WT_C_VEL + 2)), wt_lj_gndi);
 				wt_lj_qfl = wt_lj_qfl - (wt_lj_qfl & WT_F_RAMPI);   // see Watch_Flags
 				if (inf_why[1] == INF_INFERRED)
 				if (Infer_Step(1, wt_lj_qo, wt_lj_qv, wt_lj_qfl, t, wt_lj_tick))
@@ -2202,6 +2243,7 @@ float() Watch_LineJobStep =
 		v = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)), stof(argv(WT_C_VEL + 2))];
 		fl = stof(argv(WT_C_FLAGS));
 		fl = fl - (fl & WT_F_RAMPI);
+		fl = Infer_Ground(fl, v_z, wt_lj_gndi);
 		if (inf_why[1] == INF_INFERRED)
 		{
 			if (Infer_Step(1, o, v, fl, t, wt_lj_tick))
@@ -2761,11 +2803,111 @@ void() Watch_SeqRestore =
   on `riding = 0` would produce a column of pure air rows -- confidently wrong,
   which is worse than the empty column build 23 shipped.
 */
+/*
+  Patch 750: an import's stage and checkpoint crossings.  Each sample's move from the
+  last is tested against the track's regions not yet crossed, swept with its hull as
+  SV_ZoneHit does by default (run_zone_hull 1, run_zone_swept 1); across a teleport
+  only where it landed.  The tick is the sample's.  Waits for the zone table.
+*/
+void() Watch_ZoneEvents =
+{
+	local float i, k, n, z, c, t, fl, far, isst;
+	local vector o, v, mx;
+	local string s;
+
+	if (rec_wt_zon != 1 || zone_count <= 0)
+		return;
+	if (rec_wt_zn < 0)
+	{
+		if (!rec_wt_zl)
+			rec_wt_zl = memalloc(sizeof(float) * WT_ZMAX);
+		rec_wt_zn = 0;
+		for (z = 0; z < zone_count && rec_wt_zn < WT_ZMAX; z = z + 1)
+			if (zone_track[z] == rec_wt_track)
+			if (zone_type[z] == ZONE_STAGE || zone_type[z] == ZONE_CHECKPOINT)
+			{
+				rec_wt_zl[rec_wt_zn] = z;
+				rec_wt_zn = rec_wt_zn + 1;
+			}
+	}
+	for (k = 0; k < WT_ZBUDGET && rec_wt_zat < rec_wt_recn; k = k + 1)
+	{
+		i = rec_wt_zat;
+		rec_wt_zat = i + 1;
+		s = bufstr_get(rec_wt_rec, i);
+		c = str2chr(s, 0);
+		if (c != 45 && (c < 48 || c > 57))
+			continue;
+		tokenize(s);
+		t  = stof(argv(WT_C_T));
+		o  = [stof(argv(WT_C_ORG)), stof(argv(WT_C_ORG + 1)), stof(argv(WT_C_ORG + 2))];
+		v  = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL + 1)), stof(argv(WT_C_VEL + 2))];
+		fl = stof(argv(WT_C_FLAGS));
+		mx = (fl & WT_F_DUCKED) ? PM_DUCK_MAXS : PM_HULL_MAXS;
+		far = (vlen(o - rec_wt_zpo) > vlen(v) * rec_wt_tickrate * 2 + 64);
+		if (rec_wt_zhave)
+		if (t >= 0)                 // the pad before the start is not the run
+		for (n = 0; n < rec_wt_zn && rec_wt_evn < WT_EVMAX; n = n + 1)
+		{
+			z = rec_wt_zl[n];
+			isst = (zone_type[z] == ZONE_STAGE);
+			if (isst)
+			{
+				// A stage run is one stage: the next one's box is its finish, not a split.
+				if (zone_seg[z] <= rec_wt_zseg || rec_wt_leg > 0)
+					continue;
+			}
+			else if (zone_cp[z] <= rec_wt_zcp)
+				continue;
+			if (far)
+			{
+				if (!Zone_BoxInside(z, o, PM_HULL_MINS, mx))
+					continue;
+			}
+			else if (!Zone_BoxSwept(z, rec_wt_zpo, o, PM_HULL_MINS, mx))
+				continue;
+			rec_wt_evkind[rec_wt_evn] = isst ? SPK_STAGE : SPK_CP;
+			rec_wt_evseg[rec_wt_evn]  = isst ? zone_seg[z] : zone_cp[z];
+			rec_wt_evtick[rec_wt_evn] = rint(t / rec_wt_tickrate);
+			rec_wt_evn = rec_wt_evn + 1;
+			if (isst)
+				rec_wt_zseg = zone_seg[z];
+			else
+				rec_wt_zcp = zone_cp[z];
+		}
+		rec_wt_zpo = o;
+		rec_wt_zhave = TRUE;
+	}
+	if (rec_wt_zat >= rec_wt_recn)
+		rec_wt_zon = 2;
+};
+
+string(vector v) Watch_V5 = { return sprintf("%.5f %.5f %.5f", v_x, v_y, v_z); };
+
+// Patch 750: the face an inferred board met: traced along the clip the velocity shows
+// (this sample's against the last one's plus a tick of gravity); '0 0 0' where the map
+// has no ramp face there.
+vector(vector o, vector v, vector pv, float dt, float gravity, float ducked) Watch_BoardPlane =
+{
+	local vector n;
+
+	n = v - pv + [0, 0, gravity * dt];
+	if (vlen(n) < 1)
+		return '0 0 0';
+	n = normalize(n);
+	if (Line_OnRamp(o, n, ducked) <= 0)
+		return '0 0 0';
+	if (ln_hitn * n < 0.5)
+		return '0 0 0';
+	return ln_hitn;
+};
+
 void() Watch_BuildSeq =
 {
 	local float i, fl, n, t, bk;
 	local float bi, pendb, gravity;     // Patch 631: rec_wt_bde's cursor
-	local vector org, vel;
+	local float lastc, pt, havep, lvwas, sk, sv;    // Patch 750
+	local vector org, vel, pvel, bn, bv;
 	local string s;
 
 	rec_wt_sqn      = 0;
@@ -2827,6 +2969,26 @@ void() Watch_BuildSeq =
 	pendb = -1;
 	gravity = serverkeyfloat("sv_gravity");
 	if (gravity < 1) gravity = 800;
+
+	// Patch 750: the leaves, and an import's boards (rec_wt_bdinfer), are made here.
+	if (!rec_wt_lvt)
+	{
+		rec_wt_lvt = memalloc(sizeof(float) * WT_BDMAX);
+		rec_wt_lvs = memalloc(sizeof(float) * WT_BDMAX);
+		rec_wt_lve = memalloc(sizeof(float) * WT_BDMAX);
+	}
+	rec_wt_lvn = 0;
+	rec_wt_lvshown = -2;
+	if (rec_wt_bdinfer)
+	{
+		rec_wt_bdn_n = 0;
+		rec_wt_bdover = 0;
+		rec_wt_bdnoplane = 0;
+	}
+	lastc = -999;
+	havep = FALSE;
+	pt = 0;
+	pvel = '0 0 0';
 
 	bk = 0;
 	for (i = rec_wt_bline; i < rec_wt_recn; i = i + 1)
@@ -2893,6 +3055,37 @@ void() Watch_BuildSeq =
 		if (rec_wt_bkl[bk] == i)
 			Board_LineBroke();
 
+		if (rec_wt_bdinfer)
+		{
+			if (board_ov_riding)
+			if (havep)
+			if (board_ov_now - lastc > RAMP_GAP)
+			{
+				bn = Watch_BoardPlane(org, vel, pvel, board_ov_now - pt, gravity, fl & WT_F_DUCKED);
+				if (bn == '0 0 0')
+					rec_wt_bdnoplane = rec_wt_bdnoplane + 1;
+				else if (rec_wt_bdn_n >= WT_BDMAX)
+					rec_wt_bdover = rec_wt_bdover + 1;
+				else
+				{
+					// In the plane as sampled; into it as the last sample, a tick on.
+					bv = vel - bn * (vel * bn)
+					   + bn * min(0, (pvel - [0, 0, gravity * (board_ov_now - pt)]) * bn);
+					board_ov_seq   = board_ov_seq + 1;
+					board_ov_bnorm = bn;
+					board_ov_bvel  = bv;
+					rec_wt_bdt[rec_wt_bdn_n] = board_ov_now;
+					rec_wt_bdc[rec_wt_bdn_n] = board_ov_seq;
+					rec_wt_bdn[rec_wt_bdn_n] = bn;
+					rec_wt_bdv[rec_wt_bdn_n] = bv;
+					pendb = rec_wt_bdn_n;
+					rec_wt_bdn_n = rec_wt_bdn_n + 1;
+				}
+			}
+			if (board_ov_riding)
+				lastc = board_ov_now;
+		}
+
 		// The sample of the tick the board happened on: what Board_Frame stamps
 		// live (board_ein), here for every board whether or not it is graded.
 		if (pendb >= 0)
@@ -2902,7 +3095,23 @@ void() Watch_BuildSeq =
 			pendb = -1;
 		}
 
+		lvwas = leave_time;
+		sk = seg_kind;
+		sv = seg_valid;
 		Board_Frame(org, vel, (fl & WT_F_ONGROUND) ? TRUE : FALSE);
+		// Patch 750: a leave edge, kept with the level Board_Frame's leave reads.
+		if (leave_time != lvwas)
+		if (rec_wt_lvn < WT_BDMAX)
+		{
+			rec_wt_lvt[rec_wt_lvn] = leave_time;
+			rec_wt_lvs[rec_wt_lvn] = leave_speed;
+			rec_wt_lve[rec_wt_lvn] = (sk == SEG_RAMP && sv) ? Strafe_Energy(org, vel, gravity)
+			                                                  : WT_NOLEVEL;
+			rec_wt_lvn = rec_wt_lvn + 1;
+		}
+		pvel = vel;
+		pt = board_ov_now;
+		havep = TRUE;
 		if (board_ov_now > rec_wt_bt1)
 			break;                  // Patch 431: the sample that closes the range
 	}
@@ -3056,6 +3265,36 @@ void(float ticks) Watch_SeqApply =
   event at or before the clock reproduces the panel exactly, including on a
   backwards scrub, which simply lands on an earlier event.
 */
+// Patch 750: the newest leave at or before the clock, from the build pass's table
+// (`leaving` has no record: it is contact's falling edge, which the samples carry).
+void() Watch_LeaveApply =
+{
+	local float i, k;
+
+	k = -1;
+	for (i = 0; i < rec_wt_lvn; i = i + 1)
+	{
+		if (rec_wt_lvt[i] > rec_wt_time)
+			break;
+		k = i;
+	}
+	if (k == rec_wt_lvshown)
+		return;
+	rec_wt_lvshown = k;
+	leave_time = 0;
+	leave_eok  = FALSE;
+	if (k < 0)
+		return;
+	leave_time  = rec_wt_lvt[k];
+	leave_speed = rec_wt_lvs[k];
+	if (rec_wt_lve[k] != WT_NOLEVEL)
+	{
+		leave_e    = rec_wt_lve[k];
+		leave_eref = HUD_EnergyRef();
+		leave_eok  = TRUE;
+	}
+};
+
 void() Watch_BoardApply =
 {
 	local float i, k;
@@ -3070,6 +3309,7 @@ void() Watch_BoardApply =
 			break;
 		k = i;
 	}
+	Watch_LeaveApply();
 
 	if (k == rec_wt_bdshown)
 		return;
@@ -3078,7 +3318,6 @@ void() Watch_BoardApply =
 	if (k < 0)
 	{
 		board_time = 0;             // nothing has been boarded yet; the row is blank
-		leave_time = 0;
 		return;
 	}
 
@@ -3099,12 +3338,6 @@ void() Watch_BoardApply =
 		board_eref = HUD_EnergyRef();
 		board_eok  = TRUE;
 	}
-
-	// `leaving` has no record of its own -- it is the falling edge of ramp
-	// contact, which the sample stream carries -- and reproducing it would want a
-	// second table for one row.  Left blank rather than stale: a leave speed from
-	// somewhere else in the run is a wrong number in a slot that keeps its place.
-	leave_time = 0;
 };
 
 void(float t) Watch_Seek =
@@ -5141,6 +5374,7 @@ void(float navfocus) Watch_Frame =
 		}
 	}
 
+	Watch_ZoneEvents();             // Patch 750: before the sample's splits read the table
 	Watch_Sample();
 	Watch_Trainer();
 	rec_wt_on = TRUE;
@@ -5357,8 +5591,9 @@ void() Watch_Status =
 	              Line_IsForeign(0), ln_tintd[0]));  // Patch 432; foreign: momentum import
 	if (rec_wt_foreign)
 	{
-		print(sprintf("  import %s  per-tick ground/velocity %g  not native verified\n",
-		              rec_wt_source, rec_wt_momdemo));
+		print(sprintf("  import %s  per-tick ground/velocity %g%s  not native verified\n",
+		              rec_wt_source, rec_wt_momdemo,
+		              rec_wt_gndi ? "  ground from vz (Patch 750)" : ""));
 		if (strcmp(rec_wt_source, "ksf") == 0)
 			print(sprintf("  KSF v%g %s  map build unknown  duck state unknown  bookmark clock\n",
 			              rec_wt_ksfver, rec_wt_ksfstyle));
@@ -5402,6 +5637,14 @@ void() Watch_Status =
 	print(sprintf("  seq %g rows (%g shown)  boards %g (at %g)  turn %.0f/s\n",
 	              rec_wt_sqn, rec_wt_sqshown, rec_wt_bdn_n, rec_wt_bdshown,
 	              ui_turnrate));
+	// Patch 750.
+	print(sprintf("  boards %s (%g contact edges with no ramp face)  leaves %g (at %g)\n",
+	              rec_wt_bdinfer ? "inferred" : "recorded", rec_wt_bdnoplane, rec_wt_lvn,
+	              rec_wt_lvshown),
+	      sprintf("  splits %s  events %g  zones %g  line %g of %g\n",
+	              (rec_wt_zon == 0) ? "recorded" : ((rec_wt_zon == 1) ? "from the zones, reading"
+	                                                                   : "from the zones"),
+	              rec_wt_evn, rec_wt_zn, rec_wt_zat, rec_wt_recn));
 	// Patch 470: what the strafe bar last graded with.  Its tick is the file's.
 	print(sprintf("  bar tick %.5f  ideal %.3f  speed %.3f  regime %g\n",
 	              ui_strafe_tick, ui_strafe_ideal, ui_strafe_speed, ui_strafe_regime));
@@ -5649,6 +5892,21 @@ float(string cmd) Watch_ConsoleCommand =
 	// Patch 449: the Segments column's own rows, for the containment check --
 	// every row boundary must be a mark.  The reverse does not hold: a contact
 	// under SEG_MINTIME is a mark with no row, which is the point.
+	// Patch 750: the board and leave tables and the split events, recorded or inferred.
+	if (a == "boards")
+	{
+		print(sprintf("wtbd %g %g %g\n", rec_wt_bdn_n, rec_wt_bdinfer, rec_wt_bdnoplane));
+		for (i = 0; i < rec_wt_bdn_n; i = i + 1)
+			print(sprintf("wtb %g %.4f %g ", i, rec_wt_bdt[i], rec_wt_bdc[i]),
+			      Watch_V5(rec_wt_bdn[i]), " ", Watch_V5(rec_wt_bdv[i]),
+			      sprintf(" %.1f\n", rec_wt_bde ? rec_wt_bde[i] : WT_NOLEVEL));
+		for (i = 0; i < rec_wt_lvn; i = i + 1)
+			print(sprintf("wtl %g %.4f %.1f %.1f\n", i, rec_wt_lvt[i], rec_wt_lvs[i], rec_wt_lve[i]));
+		for (i = 0; i < rec_wt_evn; i = i + 1)
+			print(sprintf("wte %g %g %g %g\n", i, rec_wt_evkind[i], rec_wt_evseg[i], rec_wt_evtick[i]));
+		print(sprintf("wtbe %g %g %g\n", rec_wt_lvn, rec_wt_evn, rec_wt_zon));
+		return TRUE;
+	}
 	if (a == "seq")
 	{
 		// Patch 616: `replay seq live` is the player's own column, and how many

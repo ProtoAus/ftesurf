@@ -23,6 +23,21 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - Developer only: a viewer with both `pb_watch` and `pb_dwatch` set is sent the
   `pb_dwatch` target's SPEC, whose STATE is never forced (sv_pose.qc Pose_Frame).
 
+## Replay panels for imports: what Patch 750 left out
+
+- Site: `src/client/cl_watch.qc`, `cl_infer.qc`. The 21 Momentum imports without
+  `momdemo` (velocity differenced from positions, no ground flag) still have no
+  contact, so no Segments rows or boards: Infer_Ground would read standing still
+  right, but an apex can difference to vz 0 as well. A `--twin` against a native
+  run of the same map would say whether a two-sample rule holds.
+- The one import over INF_SCANMAX (surf_666, 238,434 samples) has no contact: the
+  inference runs inside the open's single QC call. Spreading Watch_InferScan over
+  frames, as Watch_ZoneEvents is, would lift it.
+- Split rows of an import carry no delta (as a native replay's: no per-split PB
+  table on disk); a KSF bonus with one segment has no splits but its finish.
+- An inferred board's velocity misses the tick's air acceleration along the normal
+  (2 of 38 grades differ on the Kitsune twin). Falsifier: `replayhud_infer.cfg`.
+
 ## Race ghost: what Patch 746 left out
 
 - Site: `src/client/cl_raceghost.qc`. (Ducking, the view's yaw and a name tag came

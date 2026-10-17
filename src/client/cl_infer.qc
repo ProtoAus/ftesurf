@@ -46,6 +46,20 @@ vector inf_po[2], inf_pv[2];    // the sample before
 float  inf_pfl[2], inf_pt[2], inf_have[2];
 float  inf_dvz, inf_dvh;        // Infer_Step's other answers: the change in vz, and sideways
 
+/*
+  Patch 750: a file whose rows carry the game's own velocity but no ground flag (KSF
+  v2, `ksfground 0`).  Source holds vz at exactly 0 on the ground, so that is the
+  flag.  On the three KSF v3 clips, which record ground, vz is 0 on all 270 ground
+  samples and on none of the other 10,747.
+*/
+float(float fl, float vz, float gi) Infer_Ground =
+{
+	if (gi)
+	if (fabs(vz) < 0.0005)
+		return fl | WT_F_ONGROUND;
+	return fl;
+};
+
 string(float why) Infer_Name =
 {
 	if (why == INF_MEASURED) return "measured";

@@ -4170,6 +4170,28 @@ material behind it; not map completeness or native/prediction acceptance.
   Synchronous multi-thousand-line traces consume an enqueued `waitms` deadline;
   use `wait 60` and `replay trace frames 60` AFTER the synthetic trace instead.
   All-map harness needs a 600-second outer timeout, or invoke one map at a time.
+- **A REPLAY'S PANELS FOR AN IMPORT (Patch 750).** MEASURED FIRST: a native (WOS)
+  replay already had splits, Segments, the Board panel, boarding enter and the
+  trainer; a Momentum one only Segments and the trainer; a KSF v2 one only the
+  trainer. Now, all `cl_watch.qc`:
+  splits for a file with no `stage`/`cp` records come from this map's zones
+  (Watch_ZoneEvents: each move swept with its hull as SV_ZoneHit does by default,
+  WT_ZBUDGET lines a frame, so the open's one-call budget is untouched); boards for
+  a file with no `board` records are inferred in the build pass where contact
+  begins after more than RAMP_GAP off a ramp: the plane is the face Line_OnRamp
+  finds along the velocity's clip, the pre-clip velocity the sample's in-plane part
+  plus the last sample's (a tick of gravity on) along the normal; the panel says
+  "inferred". The Boarding LEAVE row, which no record carries, is kept for every
+  replay (rec_wt_lv*). KSF v2 (`ksfground 0`) reads ground from vz (Infer_Ground):
+  on the three KSF v3 clips, which record ground, vz is exactly 0 on all 270
+  ground samples and on none of the other 10,747; so its contact is inferred too.
+  Graded (`replayhud_infer.cfg`, `tools/test_replayhud.py`) against Lex's Kitsune PB
+  rewritten as an import: split ticks 8 of 8 exact; boards 38 of 38 within two
+  ticks, plane error median 0.00 max 0.66 deg, kept % median 0.04 max 1.21, grade
+  equal on 36; with the ramp bit gone too (inferred contact) 35 of 38. The build
+  without the patch fails 9 of its checks. Still blank: the 21 Momentum imports
+  without `momdemo` (differenced velocity: an apex can read vz 0 too) and the one
+  over INF_SCANMAX (BACKLOG).
 - **A KSF time is a THIRD measurement.** CS:S physics, KSF's own zones, and
   their `mapName` is the PLAIN name (`surf_whiteout`, not `surf_whiteout_ksf`),
   so a matching name does not mean the same build, start or end.

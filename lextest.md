@@ -60,6 +60,21 @@ Live on all 12 lobbies and both Windows installs since 2026-10-17T01:38Z (main
 "Panels show / look wrong at <panel>" is enough. Verdict PENDING. Measured:
 `tools/p744spec.py` (AGENT_NOTES, Spectator telemetry).
 
+## P750 — Momentum and KSF replays show splits, boards and boarding
+
+Watch a Momentum replay (a board row's Watch on surf_dune or any map with zones)
+and a KSF one (`exec cfg/ksfplayback.cfg` on surf_monolith, then
+`ksf_monolith_hunter`). Turn on Boarding and the trainer in hud_edit if they are
+off.
+
+- The timer says stage N/M and the split list fills as it crosses stage boxes.
+- Segments has Board rows, the Board panel grades each landing with the word
+  "inferred", Boarding shows enter AND leave (leave is new in every replay, yours
+  included).
+- KSF v2 clips now have Segments and boards (ground read from vertical speed).
+
+"Looks right / X is off" is enough. Verdict PENDING. Not yet on the installs.
+
 ## P749 — the ghost ducks, looks where its player looked, and has a name tag
 
 Same place as P746 (hud_edit -> **Ghost**, new row **Name tag**). Race your PB:

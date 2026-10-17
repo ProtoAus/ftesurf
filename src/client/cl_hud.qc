@@ -2569,6 +2569,9 @@ void(vector scr, float y) HUD_DrawBoard =
 			s = sprintf("%s%.1f%%", s, board_kept);
 			if (ui_cv_bwords) s = strcat(s, " kept");
 		}
+		if (s != "")
+		if (rec_wt_on && board_inferred)
+			s = strcat(s, "  inferred");    // Patch 750: an import's, from its contact and the map
 
 		if (s != "")
 		{
