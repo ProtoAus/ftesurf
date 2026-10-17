@@ -40,7 +40,7 @@
 
 #define PBL_COLOUR  1
 #define PBL_TRAIL   2
-#define PBL_MOTES   4
+#define PBL_MOTES   4       // drawn by nothing since Patch 772
 #define PBL_GLOW    8
 // PATCH 457: two bits, not one -- the trail length stop 0..3.  The pairing with
 // 64 rather than 32 is explained where the message is written (sv_pose.qc).
@@ -108,12 +108,11 @@
 .float  pb_rsflag;
 .float  pb_lf, pb_lc, pb_tc;
 .vector pb_rgb;             // worn rgb, bytes
-.float  pb_fxtrail, pb_fxmote, pb_motacc;
+.float  pb_tlife;            // the trail's life, s (PTrail_Life)
 .vector pb_rorg, pb_rang, pb_rvel;
 .float  pb_reye, pb_rfl, pb_rkeys, pb_rkraw, pb_rser, pb_snap, pb_st;
 .float  pb_rstate, pb_rtrack, pb_rflags, pb_rticks;
 .entity pb_rcell;           // Patch 744: the cell Body_Eval drew from
-.vector pb_trail;
 .float  pb_trailok, pb_duck;
 .float  pb_rx, pb_rx0t, pb_tks, pb_gapn, pb_reseed, pb_under, pb_frames, pb_latef;
 
@@ -159,7 +158,7 @@ void() Body_RegisterCvars =
 	  lobby_av_fxmax cap is gone -- it silently took effects away from
 	  whoever joined late to protect a particle budget that was never close
 	  -- so the clutter question belongs to the person looking at it rather
-	  than to the server.  0 hides every other player's trail and motes.
+	  than to the server.  0 hides every other player's trail.
 	  Not the glow: that is one texture fetch on a model already drawn and
 	  spawns nothing.  Your OWN trail is cl_trailself, separately.
 	*/
@@ -187,7 +186,7 @@ vector(vector v) Body_Q32 =
 
 float() Body_Predraw =
 {
-	local float duck, n;
+	local float duck;
 	local vector rgb, org;
 
 	if (!self.pb_n || (spc_hideslot && self.pb_slot == spc_hideslot))
@@ -228,42 +227,18 @@ float() Body_Predraw =
 	else
 		self.glowmod = Body_Q32('0.032 0.032 0.032');
 
-	/*
-	  PATCH 457: cl_avfx 0 hides other players' PARTICLES for this viewer only.
-	  It replaces the server's lobby_av_fxmax cap, which answered the clutter
-	  question for everybody at once and in join order.  The glow above is not
-	  gated: it spawns nothing.
-
-	  BOTH BOOKKEEPERS STILL RUN WHILE IT IS OFF, and that is the whole care
-	  here.  pb_trail keeps following the body, or switching the cvar back on
-	  would emit one segment spanning wherever that player has been since;
-	  pb_motacc is cleared rather than left to accumulate, or it would come back
-	  as a burst of however many motes the off period was worth.
-	*/
+	// PATCH 457, A LINE SINCE 769 (cl_ptrail.qc): cl_avfx 0 hides other players'
+	// trails for this viewer only.  Fed while hidden, so turning it back on draws
+	// no segment across wherever that player went meanwhile.
 	if (self.pb_lf & PBL_TRAIL)
 	{
-		if (pb_cv_fx)
-		if (self.pb_trailok && !self.pb_snap)
-			trailparticles(self.pb_fxtrail, self, self.pb_trail, org);
-		self.pb_trail   = org;
+		if (self.pb_slot >= 1)
+			PTrail_Feed(PT_BODY + self.pb_slot - 1, org, (!self.pb_trailok || self.pb_snap),
+			            Av_PaletteRGB(self.pb_tc), self.pb_tlife, pb_cv_fx);
 		self.pb_trailok = TRUE;
 	}
-	if (self.pb_lf & PBL_MOTES)
-	{
-		if (!pb_cv_fx)
-			self.pb_motacc = 0;
-		else
-		{
-			// A count, not a rate: integrated at 6/s as Av_Dress does.
-			self.pb_motacc = self.pb_motacc + 6 * pb_fdt;
-			n = floor(self.pb_motacc);
-			if (n >= 1)
-			{
-				self.pb_motacc = self.pb_motacc - n;
-				pointparticles(self.pb_fxmote, org + '0 0 32', '0 0 0', n);
-			}
-		}
-	}
+	else
+		self.pb_trailok = FALSE;
 	return PREDRAW_AUTOADD;
 };
 
@@ -425,7 +400,7 @@ float() Body_R24 =
 
 void(entity b) Body_ReadLook =
 {
-	local float s, lf, lc, tc, r, g, bl, a, n;
+	local float s, lf, lc, tc, r, g, bl, a;
 	local entity o;
 
 	s  = readbyte();
@@ -448,17 +423,8 @@ void(entity b) Body_ReadLook =
 	b.pb_tc   = tc;
 	b.pb_rgb  = [r, g, bl];
 	b.alpha   = a / 255;
-	b.pb_fxtrail = 0;
-	b.pb_fxmote  = 0;
-	if (lf & PBL_TRAIL)
-	{
-		// Stop 0..3 out of the two-bit field, +1 for the block names, which are
-		// 1-based because ftesurf_avtrail0_ reads like "no trail".
-		n = ((lf & PBL_LEN0) ? 1 : 0) + ((lf & PBL_LEN1) ? 2 : 0);
-		b.pb_fxtrail = particleeffectnum(sprintf("ftesurf_avtrail%g_%g", n + 1, tc));
-	}
-	if (lf & PBL_MOTES)
-		b.pb_fxmote = particleeffectnum(sprintf("ftesurf_avmote_%g", lc));
+	// The length stop 0..3 out of the two-bit field.
+	b.pb_tlife = PTrail_Life(((lf & PBL_LEN0) ? 1 : 0) + ((lf & PBL_LEN1) ? 2 : 0));
 };
 
 // On a sample that advanced the tick.

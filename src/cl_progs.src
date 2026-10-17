@@ -177,7 +177,10 @@ client/cl_profile.qc
 client/cl_friends.qc
 // Install-local menu snapshot adapter, after the friend cache it reads.
 client/cl_menu_friends.qc
+// Patch 772: the trail line, fed by cl_avatar.qc and cl_body.qc; paint reads cl_avatar.qc's colours.
+client/cl_ptrail.qc
 client/cl_avatar.qc
+client/cl_paint.qc
 // Patch 383: lobby bodies from the pose stream (CSQC_Ent_Update/Remove).  After
 // cl_avatar.qc (Av_ColourModRGB, Av_PaletteRGB) and cl_netmon.qc (getdeltacount);
 // before cl_players.qc, cl_scores.qc and cl_main.qc, which call Body_*.

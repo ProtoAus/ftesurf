@@ -140,6 +140,8 @@ void() CSQC_WorldLoaded =
 	RG_Reset();                     // Patch 746: and the race ghost's two PB slots
 	Trail_RequestReset();
 	Rewind_Reset();                 // Patch 477: and the rewind on top of it
+	Paint_WorldLoaded();            // Patch 772: the engine dropped the decals with the map
+	PTrail_Reset();                 // ...and no trail line spans the load
 
 	Portal_LoadFromWorld();
 	MilkSky_WorldLoaded();          // Patch 467: r_skybox is not archived
@@ -308,6 +310,8 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	// the `hud_player` command and the server's two mirrors.
 	Chat_RegisterCvars();
 	Av_RegisterCvars();
+	Paint_RegisterCvars();          // Patch 772
+	PTrail_RegisterCvars();
 	Players_RegisterCvars();
 	Friends_Register();
 	PlayerLabels_Register();
@@ -1631,6 +1635,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// and the default shader is depth-tested, so this is what makes a zone
 	// behind a wall correctly disappear behind it.
 	Zone_Draw();
+	PTrail_DrawAll();                // Patch 772: after the predraws that feed it
 	ZoneEdit_Draw3D();              // Patch 669: the editor's own lines, and its aim, in the same window
 
 	// The map's sprites, in the same window and for the same reason -- these are
@@ -1657,6 +1662,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	  final here, which is what the distance cull reads.
 	*/
 	Emit_Frame();
+	Paint_Frame();                  // Patch 772: the camera is final; the world pass draws it
 
 	// Build 66.  Beside Emit_Frame and for the same reason: VF_ORIGIN is final
 	// by this point, and the soundscape selection traces from it.  Cheap --
@@ -2247,6 +2253,10 @@ float(string cmd) CSQC_ConsoleCommand =
 
 	// Patch 340: `hud_player`, the avatar customizer's toggle.
 	if (Av_ConsoleCommand(cmd))
+		return TRUE;
+	if (Paint_ConsoleCommand(cmd))  // Patch 772
+		return TRUE;
+	if (PTrail_ConsoleCommand(cmd))
 		return TRUE;
 
 	// The online board. Before the card and after the local board, which is the

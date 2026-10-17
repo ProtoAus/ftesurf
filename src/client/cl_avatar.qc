@@ -40,32 +40,27 @@
   backdrop and no frame -- renderscene does not clear, so the rect shows the
   main view behind the body; that is the look Lex asked for.
 
-  IT CANNOT SHOW THE TRAIL OR THE MOTES, and this paragraph used to claim it
-  did -- "it oscillates so the trail is a ribbon and not a dot".  P_DrawParticles
-  is inside `if (!(r_refdef.flags & RDF_NOWORLDMODEL))` (r_surf.c:4014) and
-  VF_DRAWWORLD 0 sets exactly that flag, so the two effects made of particles
-  are the two this preview is structurally unable to draw.  The oscillation was
-  animating a ribbon nothing was drawing.  The trail STRIP lower down the panel
-  is the answer: a 2D representation of colour and length, labelled as one.
+  It does not show the trail: a body swaying in place has no path to draw.
+  The trail STRIP lower down the panel is a 2D representation of colour and
+  length, labelled as one.  Patch 772 made the trail a line (cl_ptrail.qc)
+  and took the motes out.
 
   GHOST MODE dresses the replay stand-in (cl_ghost.qc's rec_gh_body) through
-  Av_GhostDress, called from Ghost_DrawBody: the same colormod/glowmod and
-  the same trail/mote emitters, so the changes you make are visible on your
-  own body the moment you look at it from outside.
+  Av_GhostDress, called from Ghost_DrawBody, so the changes you make are
+  visible on your own body the moment you look at it from outside; its trail
+  is your own (Av_SelfTrail), drawn at the same feet.
 ===========================================================================
 */
 
 float av_open;                  // the customizer is up
 
 #define AV_FX_TRAIL    1
-#define AV_FX_MOTES    2
 #define AV_FX_GLOW     4
+#define AV_FX_MOTES    2        // drawn by nothing since Patch 772; cleared, see Av_ClearMotes
 /*
   PATCH 457: bit 8 was "long trail" and is unassigned now -- the trail's LENGTH
   is `setinfo lobbylen <0..3>`, its own key beside `lobbytrail`'s colour, because
-  one bit can only ever offer two lengths.  Four stops, and they all cost the
-  same: tools/mkavatarfx.py scales `step` with `die`, so live particles per
-  player is mean(die)/step x speed and depends on the ratio, not on either alone.
+  one bit can only ever offer two lengths.  The stops' lives: PTrail_Life.
 */
 #define AV_TRAILN 4
 
@@ -93,16 +88,11 @@ string av_tbsent;               // last topcolor/bottomcolor pushed; see Av_Push
 float av_half;                  // which part the sliders edit: 0 belt, 1 body
 string av_name_text;
 float av_name_caret;
-float av_mote_acc;                // mote rate integrator, see Av_Dress
 vector av_rgb;                    // PATCH 341: the RGB sliders' 0..255 state
 
 entity av_prev;                 // the preview body
-vector av_prev_org;             // its origin last frame (trail segment)
-vector av_gh_prev;              // ghost body's feet last frame, same job
-float  av_emit_t;               // last mote emit, for a rate
-float  av_gh_emit_t;            // the ghost body's own; see Av_GhostDress
-entity av_self;                 // trailstate carrier for Av_SelfTrail; never drawn
-vector av_self_prev;            // ...and its last feet
+vector av_self_prev;            // Av_SelfTrail's last feet, for the teleport cut
+float  av_self_t;
 
 // The stage the preview body lives on: above every map, below no frustum
 // the game camera owns.
@@ -407,9 +397,9 @@ void(float v) Av_SetB = { av_rgb_z = v; Av_SendRGB(); };
 
 /*
   Which of the twelve the trail is drawn in: the asked colour when it is in
-  range, else the one the body's particles resolve to.  One copy, because three
-  callers wanted it -- Av_Dress, Av_SelfTrail and the panel's strip -- and the
-  fallback has two steps that are easy to get half right.
+  range, else your body's palette entry -- what the server resolves for the
+  others (Lobby_ApplyFX), so your line matches theirs.  Av_SelfTrail and the
+  panel's strip both read it.
 */
 float() Av_TrailColour =
 {
@@ -424,8 +414,6 @@ float() Av_TrailColour =
 	return c;
 };
 
-// The stop's name, matching tools/mkavatarfx.py's TRAIL_STOPS so the panel and
-// the generated blocks call the same ribbon the same thing.
 string(float n) Av_TrailLenName =
 {
 	if (n <= 0) return "short";
@@ -451,28 +439,28 @@ float() Av_TrailLen =
   length is written only when the trail is ON, so switching it off and back on
   returns the ribbon you had rather than the shortest one.
 */
+// The server still emits motes for a client without CSQC, and the chip that
+// switched them off is gone: any write of the mask takes the bit out.
+void() Av_ClearMotes =
+{
+	local float fx;
+
+	fx = Av_MyInfo("lobbyfx");
+	if (fx & AV_FX_MOTES)
+		Av_SetInfo("lobbyfx", fx - AV_FX_MOTES);
+};
+
 void(float v) Av_FxTrail =
 {
 	local float fx;
 
 	fx = Av_MyInfo("lobbyfx");
-	fx = fx - (fx & AV_FX_TRAIL);
+	fx = fx - (fx & (AV_FX_TRAIL | AV_FX_MOTES));
 	if (v >= 1)
 	{
 		fx = fx + AV_FX_TRAIL;
 		Av_SetInfo("lobbylen", v - 1);
 	}
-	Av_SetInfo("lobbyfx", fx);
-};
-
-void(float v) Av_FxMotes =
-{
-	local float fx;
-
-	fx = Av_MyInfo("lobbyfx");
-	fx = fx - (fx & AV_FX_MOTES);
-	if (v >= 1)
-		fx = fx + AV_FX_MOTES;
 	Av_SetInfo("lobbyfx", fx);
 };
 
@@ -488,7 +476,7 @@ void(float v) Av_FxGlow =
 	local float fx;
 
 	fx = Av_MyInfo("lobbyfx");
-	fx = fx - (fx & AV_FX_GLOW);
+	fx = fx - (fx & (AV_FX_GLOW | AV_FX_MOTES));
 	if (v >= 1)
 		fx = fx + AV_FX_GLOW;
 	Av_SetInfo("lobbyfx", fx);
@@ -556,6 +544,7 @@ void() Av_Open =
 		return;
 	av_open = TRUE;
 	av_saidtab = FALSE;
+	Av_ClearMotes();
 	av_other = "";
 	av_name_text = getplayerkeyvalue(player_localnum, "name");
 	av_name_caret = strlen(av_name_text);
@@ -602,18 +591,10 @@ void(string key, float v) Av_SetInfo =
 
 /*
   Dress a body -- the preview's or the ghost stand-in's -- in this player's
-  resolved look.  colormod and glowmod are fields; the trail and motes are
-  EMITTED, because the engine-driven .traileffectnum wants a SERVER-side
-  particle slot and CSQC's particleeffectnum hands back a client-only one
-  (sv_lobby.qc's effects essay is the long version).  trailparticles and
-  pointparticles are the client-side end of the same table, so they take it.
+  resolved look: the colour overlay and the glow.  The trail is Av_SelfTrail's.
 */
-void(entity g, vector feet, vector prevfeet, float dt) Av_Dress =
+void(entity g) Av_Dress =
 {
-	local float c, m, tc, slot, n;
-	local vector rgb;
-
-	rgb = Av_MyRGB();
 	/*
 	  PATCH 457: the colour is the shirt/pants overlay, which the renderer
 	  fetches from this player's own topcolor/bottomcolor through .colormap.
@@ -625,116 +606,41 @@ void(entity g, vector feet, vector prevfeet, float dt) Av_Dress =
 	g.colormap = player_localnum + 1;
 	Av_PushHalves();
 
-	m = Av_MyInfo("lobbyfx");
-
-	if (m & AV_FX_GLOW)
-		g.glowmod = Av_GlowModRGB(rgb);
+	if (Av_MyInfo("lobbyfx") & AV_FX_GLOW)
+		g.glowmod = Av_GlowModRGB(Av_MyRGB());
 	else
 		g.glowmod = '0.032 0.032 0.032';   // off, and expressible: see sv_lobby
-
-	/*
-	  cl_pcolour is the LOBBY's resolved index and it is 0 off one -- a listen
-	  server, or any time before the first 1 Hz pass.  This function used to
-	  RETURN there, so the body stayed undressed with nothing saying why, which
-	  is every offline session and every headless arm.  The worn colour never
-	  needed the server (lobbyrgb is local userinfo); only the particles need an
-	  index, so only they fall back.
-	*/
-	c = cvar("cl_pcolour");
-	if (c < 1 || c > AV_COLOURS)
-		c = Av_NearestColour(rgb);
-
-	tc = Av_TrailColour();
-
-	if (m & AV_FX_TRAIL)
-	{
-		slot = particleeffectnum(sprintf("ftesurf_avtrail%g_%g",
-		                                 Av_TrailLen() + 1, tc));
-		if (prevfeet != '0 0 0')
-			trailparticles(slot, g, prevfeet, feet);
-	}
-	if (m & AV_FX_MOTES)
-	{
-		/*
-		  pointparticles' count is a NUMBER of particles, not a rate -- the
-		  engine-driven emitter passes frametime and multiplies by the block's
-		  `count` itself, a manual call does not.  So the 6/sec rate is
-		  integrated here and spent in whole particles, or at 100 fps every
-		  call would ask for 0.06 of one and get nothing at all.
-		*/
-		/*
-		  dt IS CLAMPED, because it is "since this body last emitted" and a
-		  caller can hand over a stale stamp: Av_GhostDress wrote none at all, so
-		  the first ghost frame after the panel had been shut for five minutes
-		  asked for 6 * 300 motes in one call, and again on the next frame.
-		*/
-		if (dt > 0.1)
-			dt = 0.1;
-		av_mote_acc = av_mote_acc + 6 * dt;
-		n = floor(av_mote_acc);
-		if (n >= 1)
-		{
-			av_mote_acc = av_mote_acc - n;
-			pointparticles(particleeffectnum(sprintf("ftesurf_avmote_%g", c)),
-			               feet + '0 0 32', '0 0 0', n);
-		}
-	}
 };
 
 /*
-  PATCH 457: YOUR OWN TRAIL, DRAWN LOCALLY.
+  PATCH 457, A LINE SINCE 769: YOUR OWN TRAIL, DRAWN LOCALLY.
 
-  The trail everybody ELSE sees is emitted for your AVATAR -- the server's
-  entity through .traileffectnum, or the pose-stream body in cl_body.qc -- and
-  neither of those exists for you: lobby_av_self is 0, so the engine drops your
-  own avatar before it is networked (sv_ents.c:4213) and switching your trail on
-  showed you nothing whatsoever.  The standing advice was "set lobby_av_self 1
-  and use ghost mode", which is a cvar and a mode change to look at a ribbon.
+  Nobody streams your own body back to you (lobby_av_self 0), so this is the
+  only trail of yours you see; the others draw theirs from your LOOK block
+  (cl_body.qc) in the same colour and length.  rec_gh_bodyfeet is the body's
+  feet whether or not you are ghosting (cl_ghost.qc), so the stand-in's trail
+  is this one, shown while ghosting even with cl_trailself 0.
 
-  This emits the same block from your own feet, client side.  It is a LOCAL DRAW
-  and changes nothing anyone else sees -- their copy of your trail is still the
-  server's, from the same generated block, so the two agree by construction.
-
-  rec_gh_bodyfeet is the body's feet whether or not you are ghosting
-  (cl_ghost.qc:411, off VF_ORIGIN before any camera override, and its comment
-  says it is maintained for exactly this kind of reader), which is why this
-  needs no position tracking of its own.
-
-  SKIPPED WHILE GHOSTING, because Av_GhostDress is already emitting on the
-  stand-in at those same feet and two emitters would draw the ribbon twice.
-
-  AND THE 128-UNIT GUARD IS NOT OPTIONAL.  The engine's own trail drops a
-  segment longer than that (cl_ents.c:6332) precisely so a teleport does not
-  draw a line across the map; trailparticles called by hand gets no such test,
-  and without it every telehop on every map would paint one.
+  A move further than twice this frame's travel plus 128 units is a teleport,
+  a load or a respawn, and cuts the line rather than drawing one across the map.
 */
 void() Av_SelfTrail =
 {
 	local vector feet;
-
-	if (!cvar("cl_trailself") || rec_gh_on)
-		return;
+	local float cut, dt;
 
 	if (!(Av_MyInfo("lobbyfx") & AV_FX_TRAIL))
 	{
-		av_self_prev = '0 0 0';     // so switching it back on does not span the gap
+		PTrail_Cut(PT_SELF);
 		return;
 	}
-
-	if (!av_self)
-	{
-		av_self = spawn();
-		av_self.solid = SOLID_NOT;  // never drawn: it is here for the trailstate
-	}
-
 	feet = rec_gh_bodyfeet;
-	if (av_self_prev != '0 0 0')
-	if (vlen(feet - av_self_prev) <= 128)
-		trailparticles(particleeffectnum(sprintf("ftesurf_avtrail%g_%g",
-		                                         Av_TrailLen() + 1,
-		                                         Av_TrailColour())),
-		               av_self, av_self_prev, feet);
+	dt = max(0, cltime - av_self_t);
+	cut = (vlen(feet - av_self_prev) > 128 + vlen(pmove_vel) * dt * 2);
+	PTrail_Feed(PT_SELF, feet, cut, Av_PaletteRGB(Av_TrailColour()), PTrail_Life(Av_TrailLen()),
+	            (cvar("cl_trailself") || rec_gh_on));
 	av_self_prev = feet;
+	av_self_t = cltime;
 };
 
 /*
@@ -745,20 +651,7 @@ void() Av_SelfTrail =
 */
 void(entity g) Av_GhostDress =
 {
-	local float dt;
-
-	/*
-	  ITS OWN STAMP.  This read av_emit_t, which only Av_Preview ever writes, and
-	  wrote nothing back -- so dt was "seconds since the panel was last open" and
-	  grew by a frame every frame.  Av_Dress clamps too; both are wanted, because
-	  the clamp bounds the burst and this makes the rate right.
-	*/
-	dt = time - av_gh_emit_t;
-	if (dt < 0)
-		dt = 0;
-	av_gh_emit_t = time;
-	Av_Dress(g, g.origin, av_gh_prev, dt);
-	av_gh_prev = g.origin;
+	Av_Dress(g);
 };
 
 /*
@@ -792,7 +685,6 @@ float(vector pos, string s) Av_Head =
 void(vector rpos, vector rsz) Av_Preview =
 {
 	local vector cam, look, org;
-	local float dt;
 
 	if (!av_prev)
 	{
@@ -800,22 +692,14 @@ void(vector rpos, vector rsz) Av_Preview =
 		setmodel(av_prev, "models/player.iqm");
 		av_prev.solid = SOLID_NOT;
 		av_prev.effects = EF_NOSHADOW;
-		av_prev_org = '0 0 0';
 	}
 
-	// Oscillate: sway on x, bob on z, yaw back and forth -- enough motion for
-	// the trail to be a ribbon and for the colour to catch the eye.
+	// Oscillate: sway on x, bob on z, yaw back and forth, so the colour catches the eye.
 	org = AV_STAGE + [sin(time * 1.3) * 16, 0, sin(time * 2.2) * 2];
 	setorigin(av_prev, org);
 	av_prev.angles = [0, sin(time * 0.7) * 40, 0];
 
-	dt = time - av_emit_t;
-	if (dt < 0)
-		dt = 0;
-	av_emit_t = time;
-
-	Av_Dress(av_prev, org, av_prev_org, dt);
-	av_prev_org = org;
+	Av_Dress(av_prev);
 
 	cam  = org + [120, -120, 44];
 	/*
@@ -856,6 +740,63 @@ void(vector rpos, vector rsz) Av_Preview =
 	renderscene();
 };
 
+// Patch 772: cl_paint.qc compiles after this file.
+void() Paint_Clear;
+float() Paint_Count;
+float() Paint_Size;
+
+string(vector rgb) Av_255 =
+{
+	return sprintf("%g %g %g", rint(rgb_x * 255), rint(rgb_y * 255), rint(rgb_z * 255));
+};
+
+void(float v) Av_PaintSize = { cvar_set("paint_size", ftos((rint(v) + 1) * 4)); };
+void(float v) Av_PaintAlpha = { cvar_set("paint_alpha", ftos((rint(v) + 1) / 10)); };
+
+/*
+  The paint controls: a palette swatch or the body's colour, size and opacity,
+  and the key.  Local cvars, not setinfo: nobody else sees your paint.
+*/
+void(vector pos, float w, float psw, float slh) Av_PaintPanel =
+{
+	local float i, chw, sz, al;
+	local vector v;
+	local string k, s;
+
+	chw = ceil(av_hint * 6.5);
+	if (Profile_Chip("av_pclr", [pos_x + w - chw, pos_y - 3], [chw, ceil(av_hint * 1.8)],
+	                 sprintf("Clear %g", Paint_Count()), av_hint, FALSE))
+		Paint_Clear();
+	if (Profile_Chip("av_pbody", [pos_x + w - chw * 2 - 6, pos_y - 3], [chw, ceil(av_hint * 1.8)],
+	                 "Body", av_hint, cvar_string("paint_color") == ""))
+		cvar_set("paint_color", "");
+	pos_y = Av_Head(pos, "PAINT") + 3;
+	v = Av_Parse255(cvar_string("paint_color"));
+	for (i = 1; i <= AV_COLOURS; i = i + 1)
+	{
+		if (Av_Swatch(sprintf("av_ps%g", i), [pos_x + (i - 1) * (psw + 4), pos_y], psw, i,
+		              !strcmp(Av_255(v * (1 / 255)), Av_255(Av_PaletteRGB(i))), FALSE))
+			cvar_set("paint_color", Av_255(Av_PaletteRGB(i)));
+	}
+	pos_y = pos_y + psw + 6;
+	sz = Paint_Size();
+	Av_Slider("av_psz", pos, [w, slh], 15, bound(0, sz / 4 - 1, 15), "Size", sprintf("%gu", sz),
+	          Av_PaintSize, 15);
+	pos_y = pos_y + slh + 2;
+	al = bound(0.1, cvar("paint_alpha"), 1);
+	Av_Slider("av_pal", pos, [w, slh], 9, al * 10 - 1, "Opacity", sprintf("%g%%", rint(al * 100)),
+	          Av_PaintAlpha, 9);
+	pos_y = pos_y + slh + 2;
+	k = "";
+	if (checkbuiltin(findkeysforcommandex))
+		k = Gfx_Field(findkeysforcommandex("+paint"), 0, " ");
+	if (k == "")
+		s = "Bind Paint in the key panel (K) to spray. Only you see it.";
+	else
+		s = sprintf("Hold %s to spray. Only you see it.", strtoupper(k));
+	sui_text(pos, [av_hint, av_hint], Chat_Fit(s, w, av_hint), SUI_THEME_MUTED, 1, 0);
+};
+
 /*
   Patch 663: THE PROFILE.  One card in the UI's look: who you are (the name and
   picture a linked account plays under), a search for any player, and two
@@ -871,6 +812,7 @@ void(vector scr) Av_Draw =
 	local vector p, sz, tv, bv;
 	local float i, x, y, y0, sw, fx, want, got, eff, askt, pad, tsz, ttl, hint, sc, me;
 	local float hh, pic, fw, fh, lw, slh, stop, segw, tabh, segs, lit, stripw, striph, chw, link, fr_slot;
+	local float pw, px, psw, ph;
 	local string nm, mark, s, rgbstr, markstr, fr_target, profilemark;
 
 	// The board is the older modal and draws over this; see Av_Open.
@@ -1083,8 +1025,8 @@ void(vector scr) Av_Draw =
 
 		// ---- colour
 		got  = cvar("cl_pcolour");          // the server's answer (float read)
-		// ...and the index the PARTICLES really use: off a lobby Av_Dress falls
-		// back to the nearest entry. The swatch marks stay on `got`.
+		// ...and the index the TRAIL really uses: off a lobby it falls back to
+		// the nearest entry. The swatch marks stay on `got`.
 		eff  = got;
 		if (eff < 1 || eff > AV_COLOURS)
 			eff = Av_NearestColour(Av_MyRGB());
@@ -1140,15 +1082,15 @@ void(vector scr) Av_Draw =
 		y = y + slh + 2;
 		Av_Slider("av_b", [x, y], [lw, slh], 255, av_rgb_z, "Blue", ftos(floor(av_rgb_z + 0.5)), Av_SetB, 255);
 		y = y + slh + 4;
-		// The body is two parts; the particles are still a palette entry.
+		// The body is two parts; the trail is still a palette entry.
 		tv = Av_MyMark() * 255;
 		bv = Av_MyBody() * 255;
 		if (markstr != "")
-			s = sprintf("belt %g %g %g, body %g %g %g, particles %s",
+			s = sprintf("belt %g %g %g, body %g %g %g, trail %s",
 			            floor(tv_x + 0.5), floor(tv_y + 0.5), floor(tv_z + 0.5),
 			            floor(bv_x + 0.5), floor(bv_y + 0.5), floor(bv_z + 0.5), Av_ColourName(eff));
 		else if (rgbstr != "" || getplayerkeyvalue(player_localnum, "lobbybody") != "")
-			s = sprintf("body %g %g %g, particles %s",
+			s = sprintf("body %g %g %g, trail %s",
 			            floor(tv_x + 0.5), floor(tv_y + 0.5), floor(tv_z + 0.5), Av_ColourName(eff));
 		else if (got >= 1 && got <= AV_COLOURS)
 			s = sprintf("body %s", Av_ColourName(got));
@@ -1164,13 +1106,11 @@ void(vector scr) Av_Draw =
 		Av_Slider("av_fx1", [x, y], [lw, slh], AV_TRAILN, stop, "Trail",
 		          stop == 0 ? "off" : Av_TrailLenName(stop - 1), Av_FxTrail, AV_TRAILN);
 		y = y + slh + 6;
-		chw = floor((lw - 12) / 3);
-		if (Profile_Chip("av_fx2", [x, y], [chw, ceil(hint * 1.9)], "Motes", hint, (fx & AV_FX_MOTES) != 0))
-			Av_FxMotes((fx & AV_FX_MOTES) ? 0 : 1);
-		if (Profile_Chip("av_fx3", [x + chw + 6, y], [chw, ceil(hint * 1.9)], "Glow", hint, (fx & AV_FX_GLOW) != 0))
+		chw = floor((lw - 6) / 2);
+		if (Profile_Chip("av_fx3", [x, y], [chw, ceil(hint * 1.9)], "Glow", hint, (fx & AV_FX_GLOW) != 0))
 			Av_FxGlow((fx & AV_FX_GLOW) ? 0 : 1);
 		// The odd one out: a cvar that changes only what YOU see.
-		if (Profile_Chip("av_fx4", [x + (chw + 6) * 2, y], [chw, ceil(hint * 1.9)], "See my own", hint,
+		if (Profile_Chip("av_fx4", [x + chw + 6, y], [chw, ceil(hint * 1.9)], "See my own", hint,
 		                 cvar("cl_trailself") != 0))
 			Av_FxSelf(cvar("cl_trailself") ? 0 : 1);
 		y = y + ceil(hint * 1.9) + ceil(pad * 0.7);
@@ -1192,8 +1132,8 @@ void(vector scr) Av_Draw =
 				Av_SetInfo("lobbytrail", i);
 		}
 		y = y + sw + 8;
-		// A REPRESENTATION of the trail, to scale: the 3D preview cannot draw
-		// particles (it renders with no world; r_surf.c:4014).
+		// A REPRESENTATION of the trail, to scale: the preview body sways in
+		// place and has no path to draw.
 		striph = ceil(hint * 0.5);
 		if (fx & AV_FX_TRAIL)
 		{
@@ -1210,8 +1150,15 @@ void(vector scr) Av_Draw =
 		sui_text([x, p_y + sz_y - pad - hint], [hint, hint], "This is how other players see you.",
 		         SUI_THEME_MUTED, 1, 0);
 
+		// ---- Patch 772: paint, under the body in its column
+		pw  = sz_x - pad * 3 - lw;
+		px  = p_x + pad * 2 + lw;
+		psw = min(floor((pw - 11 * 4) / 12), ceil(tsz * 1.4));
+		ph  = ceil(hint * 1.6) + 3 + psw + 6 + (slh + 2) * 2 + hint;
+		Av_PaintPanel([px, p_y + sz_y - pad - ph], pw, psw, slh);
+
 		// ---- the body, standing on the card beside its controls
-		Av_Preview([p_x + pad * 2 + lw, y0], [sz_x - pad * 3 - lw, p_y + sz_y - pad - y0]);
+		Av_Preview([px, y0], [pw, p_y + sz_y - pad * 2 - ph - y0]);
 	}
 
 	// The search's list, LAST: over everything, and the element sui answers for.

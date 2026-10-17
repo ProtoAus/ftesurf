@@ -21,7 +21,7 @@
 ===========================================================================
 */
 
-#define KC_N        22
+#define KC_N        23
 
 // FTE names it; #630 in the engine table. checkbuiltin-gated in KC_SetBind.
 void(float keynum, string bindcmd, optional float bindmap, optional float modifier) setkeybind = #0:setkeybind;
@@ -54,6 +54,7 @@ string(float i) KC_Def =
 	if (i == 19) return "respawn|Respawn|goto_spawn|say !m|m|Run";
 	if (i == 20) return "rewind|Rewind|rewind||BACKSPACE|Run";
 	if (i == 21) return "noclip|Noclip|noclip||v|Run";
+	if (i == 22) return "paint|Paint (hold)|+paint|paint||Run";     // Patch 772: unbound by default
 	return "";
 };
 
@@ -817,7 +818,7 @@ void(vector scr) KC_Draw =
 
 	sc = ui_cv_scale;
 	if (sc <= 0) sc = 2;
-	fit = min(scr_x * 0.96 / 380, scr_y * 0.96 / 262);
+	fit = min(scr_x * 0.96 / 380, scr_y * 0.96 / 275);
 	if (sc > fit)
 		sc = max(1, floor(fit * 2) / 2);
 
@@ -828,7 +829,7 @@ void(vector scr) KC_Draw =
 	colw  = labw + 2 * chipw + 6 * sc + 12 * sc;
 	gap   = 12 * sc;
 	panw  = pad * 2 + colw * 2 + gap;
-	panh  = 6 * sc + 18 * sc + 15 * rh + 4 * sc + rh + 2 * sc + 4 * sc + 10 * sc + 6 * sc;
+	panh  = 6 * sc + 18 * sc + 16 * rh + 4 * sc + rh + 2 * sc + 4 * sc + 10 * sc + 6 * sc;
 	p = [floor((scr_x - panw) * 0.5), floor((scr_y - panh) * 0.5), 0];
 
 	kc_hov_i = -1;
@@ -861,7 +862,7 @@ void(vector scr) KC_Draw =
 	y = y + rh;
 	KC_Slider(2, [c1_x, y, 0], labw, colw, rh, sc);
 
-	y = y0 + 15 * rh + 4 * sc;
+	y = y0 + 16 * rh + 4 * sc;
 	sui_fill([p_x + pad, y - 2 * sc, 0], [panw - pad * 2, 1, 0], SUI_THEME_EDGE_HI, 0.7, 0);
 	bw = 64 * sc;
 	if (KC_Button("kc_reset", [p_x + pad, y, 0], [bw, rh, 0],
