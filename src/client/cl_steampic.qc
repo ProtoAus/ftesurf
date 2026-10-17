@@ -44,7 +44,7 @@
 #define SP_OLD    6             // drawn from a disk copy of an earlier day; refresh owed
 #define SP_FRESH  7             // SP_OLD with its refresh in flight; still drawn
 #define SP_DISKDAYS 30          // a disk copy older than this is not drawn
-#define SP_DISKBURST 4          // disk loads a frame; only asks are paced
+#define SP_DISKBURST 2          // disk loads a frame; only asks are paced
 
 float  sp_bmark;                // strbuf: the mark each slot holds
 float  *sp_st;                  // one declarator a line: `float *a, *b` makes b a float**
@@ -61,7 +61,8 @@ float(float reqid, float code, string bdy) SteamPic_Reply;
 float(float slot, string bdy) SP_Upload;
 
 // One file per origin+mark SHA256 (P755). P715's 256 two-hex buckets evicted
-// each other and expired every UTC day; they are still read, never written.
+// each other and expired every (local) day; they are still read, never written.
+// The stamp is strftime(TRUE): the local date, read and written alike.
 string(string mark) SP_DiskKey =
 {
 	local string key;
@@ -107,7 +108,17 @@ string(string path, string key) SP_DiskRead =
 		fclose(fh);
 		return "";
 	}
+	// "FTESURF-AVCACHE1 <key> <YYYYMMDD>": the key is the identity, the date its age.
 	hdr = fgets(fh);
+	age = -1;
+	if (strlen(hdr) == 17 + 64 + 1 + 8)
+	if (!strcmp(substring(hdr, 0, 17 + 64 + 1), strcat("FTESURF-AVCACHE1 ", key, " ")))
+		age = SP_Day(strftime(TRUE, "%Y%m%d")) - SP_Day(substring(hdr, 17 + 64 + 1, 8));
+	if (age < 0 || age > SP_DISKDAYS)
+	{
+		fclose(fh);
+		return "";
+	}
 	body = "";
 	for (i = 0; i <= SP_PX; i = i + 1)
 	{
@@ -115,11 +126,6 @@ string(string path, string key) SP_DiskRead =
 		body = strcat(body, line, "\n");
 	}
 	fclose(fh);
-	// "FTESURF-AVCACHE1 <key> <YYYYMMDD>": the key is the identity, the date its age.
-	if (strlen(hdr) != 17 + 64 + 1 + 8) return "";
-	if (strcmp(substring(hdr, 0, 17 + 64 + 1), strcat("FTESURF-AVCACHE1 ", key, " "))) return "";
-	age = SP_Day(strftime(TRUE, "%Y%m%d")) - SP_Day(substring(hdr, 17 + 64 + 1, 8));
-	if (age < 0 || age > SP_DISKDAYS) return "";
 	sp_dage = age;
 	return body; // SP_Upload validates every byte before rendering or keeping it
 };
@@ -132,6 +138,12 @@ string(string mark) SP_DiskLoad =
 	if (!strlen(body))
 		body = SP_DiskRead(strcat("cache/steampic/", substring(key, 0, 2), ".txt"), key);
 	return body;
+};
+void(string mark) SP_DiskForget =
+{
+	local string key;
+	key = SP_DiskKey(mark);
+	if (strlen(key)) fremove(SP_DiskPath(key));
 };
 void(string mark, string body) SP_DiskStore =
 {
@@ -280,6 +292,8 @@ void() SteamPic_Frame =
 		return;
 	if (strcmp(base, sp_origin))
 	{
+		if (sp_req)
+			return;                         // the answer out belongs to the old origin
 		if (sp_origin != "") strunzone(sp_origin);
 		sp_origin = strzone(base);
 		for (i = 0; i < SPIC_MAX; i = i + 1)
@@ -439,7 +453,7 @@ float(float reqid, float code, string bdy) SteamPic_Reply =
 		if (sp_st[sp_reqslot] == SP_FRESH)
 			sp_st[sp_reqslot] = SP_OLD;
 		else
-			sp_st[sp_reqslot] = SP_HTTP;
+			sp_st[sp_reqslot] = SP_WANT;    // the disk first: after vid_restart a copy is there
 		sp_next = cltime + SP_PAUSE;
 		sp_bad = sp_bad + 1;
 		return TRUE;
@@ -453,6 +467,8 @@ float(float reqid, float code, string bdy) SteamPic_Reply =
 		sp_got = sp_got + 1;
 		return TRUE;
 	}
+	if (code == 404)
+		SP_DiskForget(bufstr_get(sp_bmark, sp_reqslot));
 	sp_st[sp_reqslot] = SP_NOPIC;           // a 404, or a body that is no picture
 	return TRUE;
 };

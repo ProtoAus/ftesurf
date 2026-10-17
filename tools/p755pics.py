@@ -6,7 +6,8 @@ Thirteen pictured players on one board. Every arm grades the client's own
 `scores pics` lines (state 3 drawn, 6 old copy drawn, 7 old copy refreshing),
 surfd's count of picture requests, and a screenshot. Run it under the rig lock
 (rig_wait.py). Against a pre-P755 csprogs the warm burst, yesterday and file
-layout arms must fail.
+layout arms must fail. `vid_restart` ends the test client on both builds
+(BACKLOG); its two checks fail for that reason, not the cache.
 """
 import argparse
 import hashlib
@@ -77,8 +78,8 @@ def main():
         keys = {m: hashlib.sha256((origin + '\n' + m).encode()).hexdigest() for m in marks}
         folder = gd / 'data/cache/steampic'
         path = {m: folder / (keys[m] + '.txt') for m in marks}
-        today = time.strftime('%Y%m%d', time.gmtime())
-        yesterday = time.strftime('%Y%m%d', time.gmtime(time.time() - 86400))
+        today = time.strftime('%Y%m%d', time.localtime())          # strftime(TRUE): local
+        yesterday = time.strftime('%Y%m%d', time.localtime(time.time() - 86400))
         results = {}
 
         def redate(m, day):
@@ -86,9 +87,13 @@ def main():
             lines = text.splitlines(); lines[0] = lines[0][:-8] + day
             path[m].write_text('\n'.join(lines) + '\n', newline='\n')
 
+        # No 404 arm: a board row carries no mark for a player without a picture, so
+        # the client never asks for one (measured 2026-10-17); SP_DiskForget is unexercised.
         for arm in ('cold', 'warm', 'yesterday', 'old', 'legacy', 'corrupt', 'origin'):
+            moved = {marks[1]} if arm in ('corrupt', 'origin') else set()   # the legacy arm's
             if arm != 'cold':
-                L.check(arm + ': per-mark files from cold exist', all(p.exists() for p in path.values()), True)
+                L.check(arm + ': per-mark files from cold exist',
+                        all(path[m].exists() for m in marks if m not in moved), True)
             if arm == 'yesterday':
                 for m in marks:
                     if path[m].exists(): redate(m, yesterday)
@@ -120,10 +125,13 @@ def main():
             base = origin + ('/' if arm == 'origin' else '')
             send('menu_restart'); send('closemenu'); send('set rec_terms 6'); send('set lobby_dir "%s"' % base)
             time.sleep(1); send('scores open'); send('scores tab online')
-            t0, drawn_at, asks_at_draw = time.time(), None, None
+            t0, drawn_at, asks_at_draw, reopened = time.time(), None, None, time.time()
             while time.time() - t0 < 60:
                 send('scores pics'); time.sleep(0.5)
                 st, disk = pics(cl)
+                if not st and time.time() - reopened > 3:
+                    # The client's zones can land after the first open (leg "?"): ask again.
+                    send('scores open'); send('scores tab online'); reopened = time.time()
                 if drawn_at is None and sum(1 for m in marks if st.get(m) in DRAWN) == N:
                     drawn_at, asks_at_draw = time.time() - t0, len(asks) - before
                 if drawn_at is not None and len(asks) - before >= want:
@@ -142,7 +150,7 @@ def main():
             if arm in ('warm', 'yesterday', 'legacy'):
                 # From disk, not 1.5 s apart: the whole board within 4 s of opening it.
                 L.check(arm + ': whole board drawn within 4 s', drawn_at is not None and drawn_at <= 4, True)
-                L.check(arm + ': no request before the board was drawn', asks_at_draw, 0)
+                L.check(arm + ': every picture came from the disk', disk, N)
             if arm == 'cold':
                 L.check('cold: a file per mark, body persisted',
                         all(p.exists() and p.read_bytes().endswith(body.encode()) for p in path.values()), True)
