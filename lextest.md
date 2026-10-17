@@ -42,6 +42,12 @@ On a lobby, `cl_prederror` at its default:
   faster than your ping on a long list can still show a correction for a save
   two or more steps ahead; it lands in the right place.
 
+Live on all 12 lobbies since 2026-10-17T13:27Z and both Windows installs since
+13:37Z: main `bac1fc5` with P760 (c62aa38) left out in the deploy tree only;
+qwprogs `3d5d50f1`, csprogs `bcb0bb04` (host read back, `.prev` is the
+`f5297fcf`/`e5a29895` pair; lobby 1 serves it to a fresh client and draws the
+board). Restart the game.
+
 "instant / still see N lines at <gesture>" is enough. Verdict PENDING.
 
 ## P748 / P752 / P756 — Kitsune portals: the view through a door, two rooms deep, walking through
