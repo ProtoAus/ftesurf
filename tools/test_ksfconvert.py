@@ -10,7 +10,7 @@ import unittest
 import ksfconvert as C
 
 
-def binary(version=2, marks=None, cells=18):
+def binary(version=2, marks=None, cells=18, frames=9):
     if marks is None:
         marks = [(0, 2, 1, ''), (2, 3, 1, ''), (6, 2, 99, '')]
     b = struct.pack('<4i', version, 3, 12345, len(marks))  # not frame/run duration
@@ -18,7 +18,7 @@ def binary(version=2, marks=None, cells=18):
         b += struct.pack('<2i', cells, 3) + bytes(12)
     for tick, touch, zone, name in marks:
         b += struct.pack('<3i', tick, touch, zone) + name.encode().ljust(256, b'\0') + bytes(256)
-    for i in range(9):
+    for i in range(frames):
         # First integer is buttons, roll is a FLOAT. All axes intentionally distinct.
         buttons = 8 | 512 | 2 | 4 | 1 | 128
         b += struct.pack('<i9f', buttons, i + .25, i + .5, i + .75, i + 1.25,
@@ -76,6 +76,37 @@ class Convert(unittest.TestCase):
                        {'bonus': 99}, {'style': 'auto'}, {'seconds': 1}, {'seconds': math.nan}):
             args = dict(mapname='surf_test'); args.update(kwargs)
             with self.assertRaises(ValueError): C.convert(binary(), **args)
+
+    def test_lead_in_needs_the_official_time(self):
+        # Patch 757: a recording that begins inside the start zone has no entry before
+        # its one exit; only an official time that matches may bind that interval.
+        for zone, stopz, bonus in ((34, 34, 4), (1, 99, 0)):
+            marks = [(2, 3, zone, ''), (6, 2, stopz, '')]
+            with self.subTest(bonus=bonus):
+                with self.assertRaises(ValueError): C.convert(binary(marks=marks), 'surf_test', bonus=bonus)
+                text, info = C.convert(binary(marks=marks), 'surf_test', bonus=bonus, seconds=.06)
+                self.assertEqual((info['start'], info['stop']), (2, 6))
+                with self.assertRaises(ValueError):
+                    C.convert(binary(marks=marks), 'surf_test', bonus=bonus, seconds=.06 + 3 * .015)
+        # Two exits stay ambiguous with a time as well.
+        with self.assertRaises(ValueError):
+            C.convert(binary(marks=[(1, 3, 1, ''), (2, 3, 1, ''), (6, 2, 99, '')]), 'surf_test', seconds=.06)
+
+    def test_official_time_tolerance(self):
+        # 2.5 ticks on a short run; 0.2 % of a long one (3996 ticks: 7.99).
+        for off, ok in ((2.4, True), (-2.4, True), (2.6, False), (-2.6, False)):
+            with self.subTest(off=off):
+                if ok:
+                    C.convert(binary(), 'surf_test', seconds=.06 + off * .015)
+                else:
+                    with self.assertRaises(ValueError): C.convert(binary(), 'surf_test', seconds=.06 + off * .015)
+        long = binary(marks=[(0, 2, 1, ''), (2, 3, 1, ''), (3998, 2, 99, '')], frames=4000)
+        for off, ok in ((7.5, True), (-7.5, True), (8.5, False), (-8.5, False)):
+            with self.subTest(off=off, frames=4000):
+                if ok:
+                    C.convert(long, 'surf_test', seconds=59.94 + off * .015)
+                else:
+                    with self.assertRaises(ValueError): C.convert(long, 'surf_test', seconds=59.94 + off * .015)
 
     def test_malformed_and_nonfinite(self):
         data = binary(3)

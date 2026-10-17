@@ -34,13 +34,17 @@ def classify(target):
     return ('other', n)
 
 
-def interval(bookmarks, bonus):
+def interval(bookmarks, bonus, lead_ok=False):
     """One unambiguous start-exit and finish-entry, never full-file fallbacks.
 
     KSF bonus start/end share zone30+N. Named triggers distinguish them; the
     unclassified-target form requires an entry at/before the one exit and exactly
     one later entry (the plugin's second-entry rule). Stage imports are not
     supported by this converter yet.
+
+    Patch 757: lead_ok accepts a recording that begins inside the start zone (no
+    entry before its one exit: 10 of 17 refusals, each a 334-tick lead-in), for a
+    caller whose official time then binds the interval.
     """
     if any(a['tick'] > b['tick'] for a, b in zip(bookmarks, bookmarks[1:])):
         raise ValueError('bookmarks are out of order')
@@ -56,7 +60,7 @@ def interval(bookmarks, bonus):
     if len(starts) != 1:
         raise ValueError('course needs exactly one start-zone exit')
     start = starts[0]
-    if not any(m['touch'] == 2 and m['tick'] <= start for m in marks):
+    if not lead_ok and not any(m['touch'] == 2 and m['tick'] <= start for m in marks):
         raise ValueError('course has no initial start-zone entry')
     stops = []
     for m in bookmarks:
@@ -87,15 +91,23 @@ def convert(data, mapname, bonus=0, style='FW', owner='?', seconds=None):
     if style not in STYLES:
         raise ValueError('style must be FW, SW, HSW or BW')
     info = K.inspect(data)
-    start, stop = interval(info['bookmarks'], bonus)
+    start, stop = interval(info['bookmarks'], bonus, lead_ok=seconds is not None)
     if stop + 1 > 200000:
         raise ValueError('playback exceeds the 200000-frame conversion bound')
     # CSS 66t, also the current ksfimport.py TICK. No CSS100/CSGO rate guessed.
     dt = 0.015
     duration = (stop - start) * dt
     if seconds is not None:
-        if not math.isfinite(seconds) or seconds <= 0 or abs(seconds - duration) > dt + 1e-6:
-            raise ValueError('public time differs from bookmark interval by over one CSS tick')
+        # Patch 757: KSF's time is its timer's, not this file's frame count. Measured
+        # on 29 of its demos: 22 within 0.87 tick, four 1.005-1.04, one 2.03 (the three
+        # bonus runs among those five repeat or skip no frame), and two long ones 3.99
+        # and 24.15 ticks off over 57,053 and 24,692 frames (the second repeats 23 frames
+        # while moving). A wrong course or run is seconds off; so 2.5 ticks or 0.2 % of
+        # the run, whichever is more.
+        tol = max(2.5 * dt, 0.002 * duration)
+        if not math.isfinite(seconds) or seconds <= 0 or abs(seconds - duration) > tol:
+            raise ValueError('public time %.6f differs from bookmark interval %.3f by over %.3f s'
+                             % (seconds, duration, tol))
     off = 16
     if info['version'] == 3:
         off = 24 + info['extension_cells'] * 4
@@ -162,7 +174,8 @@ def main():
     p.add_argument('--bonus', type=int, default=0, help='0 = main, N = bonus N (not a stage)')
     p.add_argument('--style', required=True, choices=STYLES, help='external board binding, not header kind')
     p.add_argument('--owner', default='?', help='display alias, not proof of player identity')
-    p.add_argument('--seconds', type=float, help='optional official row time, within one CSS tick')
+    p.add_argument('--seconds', type=float,
+                   help='optional official row time, within 2.5 CSS ticks or 0.2%% of the run')
     p.add_argument('--out', required=True, type=Path, help='NEW .rec; existing files are never overwritten')
     a = p.parse_args()
     try:

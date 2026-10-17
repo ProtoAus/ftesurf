@@ -77,6 +77,17 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - Also: `p715pics.py` sets `rec_terms 5`; FS_TERMS_ONLINE is now 6, so its online
   board never asks and every arm measures nothing until it is updated.
 
+## KSF converter: P757 waits for the next backend cutover
+
+- Site: `tools/ksfconvert.py` (P757, on main), pinned by the sealed schema20
+  generation 36697da: until the guarded cutover the crawler still refuses demos
+  that begin inside the start zone and ones whose official time is over a tick
+  from the frame count (17 of 155 on 2026-10-17, tools/p757ksfconvert.md).
+- KSF STAGE demos are still refused (`interval` reads only main and bonus). None
+  was among the 17; design from a fetched stage replay's bookmarks.
+- Falsifier after the cutover: the 17 files in that note link on their next
+  attempt, and `python -m unittest test_ksfconvert` passes in tools/.
+
 ## KSF crawler: P747 waits for the next backend cutover
 
 - Site: `surfd/ksfprofile.py:step`, `surfd/ksfgrab.py` (P747, on main). The
