@@ -54,6 +54,22 @@ float  spc_trn;                 // spec_trace frames left
 string spc_flash;
 float  spc_flashat;
 
+/*
+  Patch 744: the watched player's telemetry (sv_pose.qc RUN and STATE).  Each frame,
+  every sample the camera has drawn past, oldest first, runs the anchor, the segment
+  machine and the trainer as your own frames do; the timer reads the drawn sample
+  (cl_timer.qc Timer_Stat).  Your column, split list, anchor, board streak and
+  trainer are held for the window and come back unchanged; a new target starts
+  them all empty.  The trainer's held jumps are not kept: it starts clean after.
+*/
+float  spc_tmon;                // your state is held
+float  spc_tmslot;              // whose samples feed it, slot + 1
+float  spc_tmstreak;            // your board_perfect_streak
+float  spc_fedt;                // tick of the newest sample fed; -1 = seed on the next
+float  spc_fedser;
+float  spc_fedn;                // samples fed this window, `spectate status`
+float  spc_fedgap;              // discontinuities: no STATE, a lost run of samples
+
 void() Spec_RegisterCvars =
 {
 	registercommand("spectate");
@@ -404,6 +420,157 @@ float(string q) Spec_FindName =
 	return hit;
 };
 
+void(float slot) Spec_TmReset =
+{
+	Board_ResetRun();
+	Board_Warped();
+	HUD_AnchorFresh();
+	board_perfect_streak = 0;
+	Trn_Clear();
+	if (trn_clock < 1)
+		trn_clock = 1;              // 0 is the sampler's "no flick yet"
+	Timer_Seed();
+	spc_tmslot = slot + 1;
+	spc_fedt = -1;
+};
+
+void(float slot) Spec_TmOpen =
+{
+	if (!spc_tmon)
+	{
+		Watch_SeqSave();
+		Timer_SplitsHold(TRUE);
+		HUD_AnchorHold(TRUE);
+		spc_tmstreak = board_perfect_streak;
+		spc_tmon = TRUE;
+		spc_fedn = 0;
+		spc_fedgap = 0;
+	}
+	Spec_TmReset(slot);
+};
+
+void() Spec_TmClose =
+{
+	if (!spc_tmon)
+		return;
+	spc_tmon = FALSE;
+	spc_tmslot = 0;
+	Trn_Clear();
+	Timer_SplitsHold(FALSE);
+	HUD_AnchorHold(FALSE);
+	board_perfect_streak = spc_tmstreak;
+	Board_ResetRun();
+	Watch_SeqRestore();             // also re-reads your board counter and timer state
+};
+
+// One sample, through the same three machines your own frames drive.
+void(entity b, entity c) Spec_FeedCell =
+{
+	local float dt, ser, gap, ong, side, st;
+	local vector v;
+
+	// A gap is lost samples; a teleport is not one.  Your own trainer runs through
+	// a teleport and Board_LiveMoved breaks the segment line at it, so this does both.
+	ser = c.pc_fl & PBF_SERMASK;
+	dt  = 0;
+	gap = (spc_fedn > 0);
+	if (spc_fedt >= 0)
+	{
+		dt  = (c.pc_t - spc_fedt) * pb_tick;
+		gap = (dt > 0.25);
+	}
+	ong = (c.pc_fl & PBF_GROUND) ? TRUE : FALSE;
+	v   = c.velocity;
+
+	// The render clock's offset puts each sample on cltime, the clock the panels fade on.
+	board_ov_spec   = TRUE;
+	board_ov_tstate = c.pc_state;
+	board_ov_now    = cltime - (b.pb_reval - c.pc_t * pb_tick);
+	board_ov_seq    = c.pc_k0_x;
+	board_ov_riding = (c.pc_rf & PBR_RAMP) ? TRUE : FALSE;
+	board_ov_bnorm  = c.pc_kn;
+	board_ov_bvel   = c.pc_kv;
+	HUD_UpdateAnchor(c.origin);
+	HUD_UpdateJumpRef(c.origin, v, ong);
+	if (gap || (spc_fedt >= 0 && ser != spc_fedser))
+		Board_LineBroke();
+	Board_Frame(c.origin, v, ong);
+	board_ov_spec = FALSE;
+
+	ui_trn_on = cvar("hud_trainer");
+	if (ui_trn_on)
+	{
+		if (gap)
+			Trn_Break();
+		// SV_RecKeys' bits are the usercmd's signs, the trainer's `side`.
+		side = 0;
+		if (c.pc_keys & FSI_RIGHT) side = 1;
+		if (c.pc_keys & FSI_LEFT)  side = -1;
+		st = TRS_AIR;
+		if (board_ov_riding) st = TRS_RIDE;
+		if (ong)             st = TRS_GROUND;
+		Trn_ReadVars();
+		Trn_Sample(dt, c.angles_y, side, vlen([v_x, v_y, 0]), st, TRUE);
+	}
+	else if (trn_haveyaw || trh_n)
+		Trn_Clear();
+
+	spc_fedt   = c.pc_t;
+	spc_fedser = ser;
+	spc_fedn   = spc_fedn + 1;
+};
+
+// The samples from the last one fed up to the one drawn, oldest first.  The first,
+// or the first after a break, is fed alone: there is nothing to difference it with.
+void(entity b, entity a) Spec_Feed =
+{
+	local entity c;
+	local float k;
+
+	if (spc_fedt >= 0 && a.pc_t < spc_fedt)
+		spc_fedt = -1;              // the owner's tick went backwards: a new ring
+	if (spc_fedt >= 0 && a.pc_t == spc_fedt)
+		return;
+
+	c = a;
+	if (spc_fedt >= 0)
+	{
+		k = 0;
+		c = b.pb_head;
+		while (c != a)
+		{
+			c = c.pc_prev;
+			k = k + 1;
+			if (k >= b.pb_n)
+				return;
+		}
+		while (k + 1 < b.pb_n && c.pc_prev.pc_t > spc_fedt)
+		{
+			c = c.pc_prev;
+			k = k + 1;
+		}
+		if (k + 1 >= b.pb_n)
+		{
+			spc_fedgap = spc_fedgap + 1;
+			spc_fedt = -1;          // the ring overran what was fed: start from the drawn one
+			c = a;
+		}
+	}
+	while (TRUE)
+	{
+		if ((c.pc_fl & PC_SPEC) && c.pc_kok && c.pc_rf >= 0)
+			Spec_FeedCell(b, c);
+		else if (spc_fedt >= 0)
+		{
+			spc_fedgap = spc_fedgap + 1;
+			spc_fedt = -1;
+		}
+		if (c == a)
+			break;
+		c = c.pc_next;
+	}
+};
+
 // The window's edges, off the stat.  A nonzero stat on a fresh VM is a rising edge.
 void(float st) Spec_Edges =
 {
@@ -455,6 +622,7 @@ void(float st) Spec_Edges =
 	}
 	if (st <= 0)
 	{
+		Spec_TmClose();
 		spc_leaving  = 0;
 		spc_eyeclaim = FALSE;           // the server took the eye back (countdown, release)
 		PVS_Forget();
@@ -506,6 +674,7 @@ void() Spec_Frame =
 {
 	local float st, dt, t, ts, tk, tt, tf;
 	local vector piv, cam, cang, aim;
+	local entity b, c;
 
 	st = getstatf(STAT_FS_SPEC);
 	dt = cltime - spc_lastt;
@@ -526,6 +695,8 @@ void() Spec_Frame =
 
 	spc_cam = FALSE;
 	spc_hud = FALSE;
+	spc_hfed = FALSE;
+	spc_hkok = FALSE;
 	spc_hideslot = 0;
 	spc_clr = -1;
 	spc_allow = -1;
@@ -588,6 +759,31 @@ void() Spec_Frame =
 	spc_hticks  = tk;
 	spc_htrack  = tt;
 	spc_htflags = tf;
+
+	// Patch 744: the drawn sample's STATE, and everything drawn up to it fed.
+	b = Body_Find(t);
+	c = b ? b.pb_rcell : world;
+	if (!c || !(c.pc_fl & PC_SPEC) || !c.pc_kok)
+		return;
+	spc_hkok     = TRUE;
+	spc_hseg     = c.pc_k0_y;
+	spc_hsegs    = c.pc_k0_z;
+	spc_hcp      = c.pc_k1_x;
+	spc_hfails   = c.pc_k1_y;
+	spc_hendrec  = c.pc_k1_z;
+	spc_hword    = c.pc_k2_x;
+	spc_hendword = c.pc_k2_y;
+	spc_hsplit   = c.pc_kt_x;
+	spc_hdelta   = c.pc_kt_y;
+	spc_hcpt     = c.pc_kt_z;
+	spc_hcpd     = c.pc_kp_x;
+	spc_hpb      = c.pc_kp_y;
+	if (c.pc_rf < 0)
+		return;
+	if (!spc_tmon || spc_tmslot != t + 1)
+		Spec_TmOpen(t);
+	Spec_Feed(b, c);
+	spc_hfed = TRUE;
 };
 
 // Once per usercmd for the whole window, countdown included (critic #28): no time,
@@ -818,6 +1014,13 @@ void() Spec_Status =
 		print(sprintf("  target slot %g (%s^7)  pose bits %g  hud %g run %g\n",
 		              spc_stat - 1, getplayerkeyvalue(spc_stat - 1, "name"),
 		              spc_tbp, spc_hud, spc_hrun));
+	// Patch 744: an arm grades these, not the panels' pixels.
+	print(sprintf("  telemetry held %g fed %g state %g samples %g last %g gaps %g rows %g\n",
+	              spc_tmon, spc_hfed, spc_hkok, spc_fedn, spc_fedt, spc_fedgap, ui_sp_n));
+	if (spc_hkok)
+		print(sprintf("  stage %g/%g cp %g split %g cpt %g fails %g closes %g\n",
+		              spc_hseg + 1, spc_hsegs, spc_hcp, spc_hsplit, spc_hcpt,
+		              spc_hfails, spc_hendrec));
 	print(sprintf("  camera %v  angles %v  dist %.1f\n", spc_camorg, spc_camang, spc_dcur));
 	print(sprintf("  aim %v  body feet %v  looks %g  eye claimed %g\n",
 	              aim, rec_gh_bodyfeet, spc_nlook, spc_eyeclaim));

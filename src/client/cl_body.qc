@@ -24,7 +24,11 @@
 #define PB_POSE     1
 #define PB_LOOK     2
 #define PB_SPEC     4
+#define PB_RUN      8       // Patch 744: with SPEC, PBR_* and the velocity's fine part
+#define PB_STATE    16      // Patch 744: the stage and board state, on change
 #define PB_TYPE     128     // reserved: a type byte follows
+
+#define PBR_RAMP    1
 
 #define PBF_DUCKED  1
 #define PBF_GROUND  2
@@ -73,6 +77,16 @@
 .float  pc_keys;            // FSI_* mask
 .float  pc_kraw;            // the wire keys byte, for body_trace
 .float  pc_state, pc_track, pc_flags, pc_ticks;
+// Patch 744: RUN and STATE (sv_pose.qc).  STATE carries forward cell to cell while
+// samples keep their SPEC; pc_kok says this cell has one.
+.float  pc_rf;              // PBR_*, -1 = no RUN
+.float  pc_kok;
+.vector pc_k0;              // [board count & 255, seg, segs]
+.vector pc_k1;              // [cp, fails & 255, close count & 255]
+.vector pc_k2;              // [stage word, close word, 0]
+.vector pc_kn, pc_kv;       // board normal, board velocity (u/s)
+.vector pc_kt;              // [split, delta, cp ticks]
+.vector pc_kp;              // [cp delta, pb, 0]
 .entity pc_next;            // newer
 .entity pc_prev;            // older
 
@@ -98,6 +112,7 @@
 .vector pb_rorg, pb_rang, pb_rvel;
 .float  pb_reye, pb_rfl, pb_rkeys, pb_rkraw, pb_rser, pb_snap, pb_st;
 .float  pb_rstate, pb_rtrack, pb_rflags, pb_rticks;
+.entity pb_rcell;           // Patch 744: the cell Body_Eval drew from
 .vector pb_trail;
 .float  pb_trailok, pb_duck;
 .float  pb_rx, pb_rx0t, pb_tks, pb_gapn, pb_reseed, pb_under, pb_frames, pb_latef;
@@ -364,6 +379,18 @@ float(entity b) Body_OldestT =
 	return b.pb_t0;
 };
 
+void(entity d, entity s) Body_CopyState =
+{
+	d.pc_kok = s.pc_kok;
+	d.pc_k0  = s.pc_k0;
+	d.pc_k1  = s.pc_k1;
+	d.pc_k2  = s.pc_k2;
+	d.pc_kn  = s.pc_kn;
+	d.pc_kv  = s.pc_kv;
+	d.pc_kt  = s.pc_kt;
+	d.pc_kp  = s.pc_kp;
+};
+
 // Everything but the tick.
 void(entity d, entity s) Body_Copy =
 {
@@ -378,6 +405,8 @@ void(entity d, entity s) Body_Copy =
 	d.pc_track = s.pc_track;
 	d.pc_flags = s.pc_flags;
 	d.pc_ticks = s.pc_ticks;
+	d.pc_rf    = s.pc_rf;
+	Body_CopyState(d, s);
 };
 
 float() Body_R24 =
@@ -473,10 +502,11 @@ void(entity b, float t) Body_Clock =
 };
 
 // One read per statement: argument evaluation order is not guaranteed.
-void(entity b, float spec) Body_ReadPose =
+void(entity b, float spec, float run) Body_ReadPose =
 {
 	local float lo, ox, oy, oz, pi, ya, ey, pf;
 	local float vx, vy, vz, ky, st, tr, fl, tk;
+	local float rf, fx, fy, fz;
 	local float d, t, first, lag, mv, hold;
 	local vector no, na;
 	local entity c;
@@ -501,6 +531,14 @@ void(entity b, float spec) Body_ReadPose =
 		tr = readbyte();
 		fl = Body_R24();
 		tk = Body_R24();
+	}
+	rf = -1;  fx = 0;  fy = 0;  fz = 0;
+	if (run)
+	{
+		rf = readbyte();
+		fx = readchar();
+		fy = readchar();
+		fz = readchar();
 	}
 
 	if (lo < 0)
@@ -545,6 +583,10 @@ void(entity b, float spec) Body_ReadPose =
 			Body_Copy(c, c.pc_prev);
 		}
 		c = Body_Push(b, t);
+		if (first || !spec)
+			c.pc_kok = FALSE;
+		else
+			Body_CopyState(c, c.pc_prev);
 	}
 
 	c.origin = no;
@@ -554,7 +596,7 @@ void(entity b, float spec) Body_ReadPose =
 	if (spec)
 	{
 		c.pc_fl    = c.pc_fl | PC_SPEC;
-		c.velocity = [vx, vy, vz];
+		c.velocity = [vx, vy, vz] + [fx, fy, fz] * (1 / 254);
 		c.pc_kraw  = ky;
 		c.pc_keys  = (ky & 63) | ((ky & 64) ? FSI_ATTACK : 0);
 		c.pc_state = st;
@@ -571,7 +613,9 @@ void(entity b, float spec) Body_ReadPose =
 		c.pc_track = 0;
 		c.pc_flags = 0;
 		c.pc_ticks = 0;
+		c.pc_kok   = FALSE;
 	}
+	c.pc_rf = rf;
 
 	lag = cltime - t * pb_tick - b.pb_o;
 	if (first || d > 0)
@@ -597,6 +641,46 @@ void(entity b, float spec) Body_ReadPose =
 	if (pb_tr_n > 0 && b == pb_tr_ent)
 		print(strcat(sprintf("bx %.4f %g %g %.4f", cltime, t, d, first ? 0 : lag),
 		             sprintf(" %g %g %g %g\n", pf, spec ? 1 : 0, b.pb_rsflag, mv)));
+};
+
+// After the POSE it rode in with, so it lands on that sample.
+void(entity b) Body_ReadState =
+{
+	local float bc, sg, ss, cp, fa, er, wd, ew, nx, ny, nz;
+	local float vx, vy, vz, sp, de, ct, cd, pb;
+	local entity c;
+
+	bc = readbyte();
+	sg = readbyte();
+	ss = readbyte();
+	cp = readbyte();
+	fa = readbyte();
+	er = readbyte();
+	wd = readshort();
+	ew = readshort();
+	nx = readshort();
+	ny = readshort();
+	nz = readshort();
+	vx = Body_R24();
+	vy = Body_R24();
+	vz = Body_R24();
+	sp = Body_R24();
+	de = Body_R24();
+	ct = Body_R24();
+	cd = Body_R24();
+	pb = Body_R24();
+
+	c = b.pb_head;
+	if (!c || !b.pb_n || !(c.pc_fl & PC_SPEC))
+		return;
+	c.pc_kok = TRUE;
+	c.pc_k0  = [bc, sg, ss];
+	c.pc_k1  = [cp, fa, er];
+	c.pc_k2  = [wd, ew, 0];
+	c.pc_kn  = [nx, ny, nz] * (1 / 32767);
+	c.pc_kv  = [vx, vy, vz] * (1 / 16);
+	c.pc_kt  = [sp, de, ct];
+	c.pc_kp  = [cd, pb, 0];
 };
 
 void(float isnew) CSQC_Ent_Update =
@@ -631,7 +715,9 @@ void(float isnew) CSQC_Ent_Update =
 	if (f & PB_LOOK)
 		Body_ReadLook(self);
 	if (f & PB_POSE)
-		Body_ReadPose(self, f & PB_SPEC);
+		Body_ReadPose(self, f & PB_SPEC, f & PB_RUN);
+	if (f & PB_STATE)
+		Body_ReadState(self);
 };
 
 // Past the newest sample by dt: its velocity, else the step from the cell
@@ -752,6 +838,7 @@ void(entity b) Body_Eval =
 		}
 	}
 	b.pb_rorg   = org;
+	b.pb_rcell  = a;
 	b.pb_rfl    = a.pc_fl;
 	b.pb_rkeys  = a.pc_keys;
 	b.pb_rkraw  = a.pc_kraw;

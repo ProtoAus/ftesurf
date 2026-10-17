@@ -1107,7 +1107,7 @@ void(vector scr) Trn_Draw =
 	if (!cvar("hud_trainer"))
 		return;
 
-	if (getstatf(STAT_FS_SPEC) && !trn_demo)
+	if (getstatf(STAT_FS_SPEC) && !trn_demo && !spc_hfed)   // Patch 744: Spec_Feed's samples
 		return;
 
 	Font_Set(ui_font_ui);

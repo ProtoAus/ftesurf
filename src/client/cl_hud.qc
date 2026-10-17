@@ -1684,7 +1684,7 @@ void(vector org, vector vel, float onground) HUD_UpdateJumpRef =
 		  legs in the library put the END zone inside the START zone -- and
 		  re-basing mid-run would throw away a live measurement.
 		*/
-		if (getstatf(STAT_FS_TIMERSTATE) != TS_RUNNING)
+		if (Board_TimerState() != TS_RUNNING)
 		if (HUD_InStartZone(org))
 		{
 			ui_jump_z    = org_z;
@@ -1831,6 +1831,62 @@ float() HUD_ZeroKnown =
 	if (ui_cv_energyref)
 		return TRUE;
 	return (ui_anchor_zone >= 0);
+};
+
+// Patch 744: spectate measures the watched body from its own zero (Spec_Feed);
+// yours waits here.  A map change in between drops it -- it was that map's.
+float  ui_anch_held, ui_anch_svz, ui_anch_svzone, ui_anch_svman;
+float  ui_anch_svjz, ui_anch_svjhave, ui_anch_svgz, ui_anch_svwas;
+vector ui_anch_svlast;
+string ui_anch_svmap;
+
+void(float hold) HUD_AnchorHold =
+{
+	if (hold)
+	{
+		if (ui_anch_held)
+			return;
+		ui_anch_held   = TRUE;
+		ui_anch_svz    = ui_anchor_z;
+		ui_anch_svzone = ui_anchor_zone;
+		ui_anch_svman  = ui_anchor_manual;
+		ui_anch_svjz   = ui_jump_z;
+		ui_anch_svjhave = ui_jump_have;
+		ui_anch_svgz   = ui_ground_z;
+		ui_anch_svwas  = ui_was_onground;
+		ui_anch_svlast = ui_jump_lastorg;
+		if (ui_anch_svmap != "")
+			strunzone(ui_anch_svmap);
+		ui_anch_svmap  = strzone(ui_anchor_map);
+		return;
+	}
+	if (!ui_anch_held)
+		return;
+	ui_anch_held = FALSE;
+	if (strcmp(ui_anch_svmap, ui_anchor_map))
+		return;
+	ui_anchor_z      = ui_anch_svz;
+	ui_anchor_zone   = ui_anch_svzone;
+	ui_anchor_manual = ui_anch_svman;
+	ui_jump_z        = ui_anch_svjz;
+	ui_jump_have     = ui_anch_svjhave;
+	ui_ground_z      = ui_anch_svgz;
+	ui_was_onground  = ui_anch_svwas;
+	ui_jump_lastorg  = ui_anch_svlast;
+	HUD_ClearEnergyHistory();
+	HUD_ClearRampHold();
+};
+
+// A new body to measure: no zone, no jump, no hand-set zero.
+void() HUD_AnchorFresh =
+{
+	ui_anchor_zone   = -1;
+	ui_anchor_z      = 0;
+	ui_anchor_manual = 0;
+	ui_jump_have     = 0;
+	ui_was_onground  = FALSE;
+	HUD_ClearEnergyHistory();
+	HUD_ClearRampHold();
 };
 
 /*
@@ -2055,6 +2111,11 @@ vector() HUD_SplitSample =
 	*/
 	org = HUD_Feet();       // FIRST: it decides the source for both
 	vel = HUD_LiveVel();
+	if (spc_hud)            // Patch 744: the watched player crossed it
+	{
+		org = spc_hfeet;
+		vel = spc_hvel;
+	}
 
 	gravity = serverkeyfloat("sv_gravity");
 	if (gravity < 1) gravity = 800;
@@ -2110,7 +2171,7 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 	// energy is your own anchor's (Patch 385), so a watched player shows a speed
 	// whatever is picked; hud_energy 0 still means no energy line under the speed.
 	wante = FALSE;
-	if (!spc_hud)
+	if (!spc_hud || spc_hfed)       // Patch 744: then it is measured from the watched body's
 	if (ui_cv_speedshow >= 2 || (ui_cv_speedshow >= 1 && ui_cv_energy))
 		wante = TRUE;
 	wants = (ui_cv_speedshow < 2 || !wante);
@@ -5976,8 +6037,10 @@ void(vector scr) HUD_Draw =
 	HUD_DrawSubmitWarn(scr);
 
 	// No ground plane/input stream: keep only telemetry the viewed body carries.
-	// Layout and controls are still the normal HUD's.
-	if ((rec_wt_on && !rec_wt_v4) || spc_hud)
+	// Layout and controls are still the normal HUD's.  Patch 744: a watched body
+	// with STATE feeds the board panels from Spec_Feed; still no strafe bar, which
+	// needs its ramp plane and wish direction per frame.
+	if ((rec_wt_on && !rec_wt_v4) || (spc_hud && !spc_hfed))
 	{
 		if (ui_cv_keys)  HUD_DrawKeys(scr);
 		if (ui_cv_debug) HUD_DrawDebug(scr, vel, onground, gnorm, mtype);
@@ -5985,7 +6048,7 @@ void(vector scr) HUD_Draw =
 		return;
 	}
 
-	if (ui_cv_strafe && mtype != MOVETYPE_NOCLIP)
+	if (ui_cv_strafe && mtype != MOVETYPE_NOCLIP && !spc_hud)
 		HUD_DrawStrafe(scr, vlen([vel_x, vel_y, 0]), onground, gnorm, wishdir, vel, dt);
 	if (ui_cv_board)  HUD_DrawBoard(scr, ui_strafe_bottom);
 	if (ui_cv_keys)   HUD_DrawKeys(scr);

@@ -3900,6 +3900,14 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 	leg = rec_wt_wantleg;           // Patch 431: taken whatever happens below
 	rec_wt_wantleg = 0;
 
+	// Patch 744: spectate holds your segment column where the build pass would
+	// (Watch_SeqSave).  Spec_Request refuses the other order.
+	if (Spec_Active())
+	{
+		print("replay: leave spectate first\n");
+		return FALSE;
+	}
+
 	// Patch 477 review round 10: nor under a save-lock hold, which the server's
 	// pin refuses -- the replay would run over a body nobody holds once the hold
 	// lets go.  The rewind hands its pin over only while browsing.

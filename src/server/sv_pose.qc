@@ -10,9 +10,9 @@
   WIRE (MSG_ENTITY).  Every short is written signed; q24 is a signed 24-bit
   value as WriteShort(lo) + WriteByte(hi) (Pose_W24).
 
-    header  byte   PB_POSE | PB_LOOK | PB_SPEC.  0x80 reserved: a type byte
-                   follows (nothing sends it yet).  0 = an empty update: a
-                   FALSE return would make the engine send a REMOVE.
+    header  byte   PB_POSE | PB_LOOK | PB_SPEC | PB_RUN | PB_STATE.  0x80
+                   reserved: a type byte follows (ENTWIRE_TYPED).  0 = an empty
+                   update: a FALSE return would make the engine send a REMOVE.
     LOOK    8 B    slot (num_for_edict(owner) - 1), lf (PBL_*), lc (palette
                    index), trail colour, worn r g b 0..255, alpha * 255
     POSE    17 B   short tick (run_movetick mod 65536), q24 x y z (1/64 u),
@@ -22,6 +22,15 @@
                    attack), byte run_t_state, byte run_t_track,
                    q24 run_t_flags, q24 run_t_ticks.  Only to viewers whose
                    pb_watch is the owner.
+    RUN     4 B    with every SPEC: byte rf (PBR_*), char x y z = velocity
+                   less SPEC's rounding, * 254.  Patch 744.
+    STATE   40 B   to watchers, on change and when a watch starts: byte board
+                   count & 255, byte run_t_seg, byte run_t_segs, byte
+                   run_t_cpn, byte run_st_fails & 255, byte run_st_endrec &
+                   255, short run_st_word, short run_st_endword, short board
+                   normal x y z (* 32767), q24 board velocity x y z (* 16),
+                   q24 run_t_split, run_t_delta, run_t_cpticks, run_t_cpdelta,
+                   run_t_pb.  Patch 744.
 
   A sample is published (copied to pb_q*, SendFlags set) on a teleport, a
   held-flag change, every moved tick while spectated, every moved tick up to
@@ -34,6 +43,10 @@
 #define PB_POSE 1
 #define PB_LOOK 2
 #define PB_SPEC 4
+#define PB_RUN  8
+#define PB_STATE 16
+
+#define PBR_RAMP    1       // run_rampcontact
 
 #define PBF_DUCKED  1
 #define PBF_GROUND  2
@@ -76,6 +89,16 @@
 .vector pb_qv;              // velocity, integers
 .vector pb_qr;              // [state, track, flags]
 .float  pb_qt;              // run_t_ticks
+.vector pb_qf;              // RUN: [rf, fine x, fine y]
+.float  pb_qfz;             // ...fine z
+// ...the STATE last flagged (Pose_KQuant).
+.vector pb_k0;              // [board count, seg, segs]
+.vector pb_k1;              // [cp, fails, close count]
+.vector pb_k2;              // [stage word, close word, 0]
+.vector pb_kn;              // board normal * 32767
+.vector pb_kv;              // board velocity * 16
+.vector pb_kt;              // [split, delta, cp ticks]
+.vector pb_kp;              // [cp delta, pb, 0]
 // ...the appearance last sent.
 .vector pb_lk1;             // [slot, lf, lc]
 .vector pb_lk2;             // [trail colour, alpha byte, 0]
@@ -84,17 +107,18 @@
 // On the player.
 .float  pb_specn;           // viewers spectating this player, Pose_Frame
 .entity pb_dwatch;          // developer `cmd pose_watch`: pb_watch without Patch 382
+.entity pb_kwatch;          // on a viewer: whom its last forced STATE went to
 
 float pb_capticks;          // minimum published gap, ticks
 float pb_nav;               // streaming avatars
 // Counters for `cmd pose_stats`, per map.
 float pb_nsend, pb_nbytes, pb_npose, pb_bpose, pb_nspec, pb_bspec;
-float pb_nlook, pb_nempty;
+float pb_nlook, pb_nempty, pb_nstate;
 float pb_npub, pb_nka, pb_ntp, pb_nheld;
 
 // The candidate sample, filled by Pose_Quant.
-vector pose_n0, pose_no, pose_n1, pose_nv, pose_nr;
-float  pose_nt;
+vector pose_n0, pose_no, pose_n1, pose_nv, pose_nr, pose_nf;
+float  pose_nt, pose_nfz;
 
 float(entity p) Pose_Tick =
 {
@@ -134,6 +158,40 @@ float(entity p) Pose_Held =
 	return p.run_pmhold || p.rec_sl_hold || p.movetype == MOVETYPE_NONE;
 };
 
+// What SPEC's rint dropped, in 1/254 u/s.  1 u/s of speed is ~1.6 units of energy
+// at 1500 u/s, three ticks of the air ceiling the Segments column grades against.
+float(float v) Pose_QFine =
+{
+	return bound(-127, rint((v - rint(v)) * 254), 127);
+};
+
+float(float v) Pose_Mod8 =
+{
+	return v - 256 * floor(v / 256);
+};
+
+// The STATE block into pb_k*; TRUE when it differs from the one last flagged.
+float(entity av, entity p) Pose_KQuant =
+{
+	local vector k0, k1, k2, kn, kv, kt, kp;
+
+	k0 = [Pose_Mod8(p.run_boardcount), bound(0, p.run_t_seg, 255), bound(0, p.run_t_segs, 255)];
+	k1 = [bound(0, p.run_t_cpn, 255), Pose_Mod8(p.run_st_fails), Pose_Mod8(p.run_st_endrec)];
+	k2 = [bound(-32768, p.run_st_word, 32767), bound(-32768, p.run_st_endword, 32767), 0];
+	kn = [rint(p.run_boardnormal_x * 32767), rint(p.run_boardnormal_y * 32767),
+	      rint(p.run_boardnormal_z * 32767)];
+	kv = [rint(p.run_boardvelocity_x * 16), rint(p.run_boardvelocity_y * 16),
+	      rint(p.run_boardvelocity_z * 16)];
+	kt = [p.run_t_split, p.run_t_delta, p.run_t_cpticks];
+	kp = [p.run_t_cpdelta, p.run_t_pb, 0];
+	if (k0 == av.pb_k0 && k1 == av.pb_k1 && k2 == av.pb_k2 && kn == av.pb_kn
+	    && kv == av.pb_kv && kt == av.pb_kt && kp == av.pb_kp)
+		return FALSE;
+	av.pb_k0 = k0;  av.pb_k1 = k1;  av.pb_k2 = k2;
+	av.pb_kn = kn;  av.pb_kv = kv;  av.pb_kt = kt;  av.pb_kp = kp;
+	return TRUE;
+};
+
 // Quantize p into pose_n*; TRUE when the drawn pose differs from the published one.
 float(entity av, entity p, float held) Pose_Quant =
 {
@@ -164,6 +222,8 @@ float(entity av, entity p, float held) Pose_Quant =
 	           bound(-32767, rint(p.velocity_z), 32767)];
 	pose_nr = [bound(0, p.run_t_state, 255), bound(0, p.run_t_track, 255), p.run_t_flags];
 	pose_nt = p.run_t_ticks;
+	pose_nf = [p.run_rampcontact ? PBR_RAMP : 0, Pose_QFine(p.velocity_x), Pose_QFine(p.velocity_y)];
+	pose_nfz = Pose_QFine(p.velocity_z);
 
 	if (pose_no != av.pb_qo)
 		return TRUE;
@@ -184,12 +244,18 @@ void(entity av, entity p, float resume) Pose_Publish =
 	av.pb_qv = pose_nv;
 	av.pb_qr = pose_nr;
 	av.pb_qt = pose_nt;
+	av.pb_qf = pose_nf;
+	av.pb_qfz = pose_nfz;
 	av.pb_pubt = p.run_movetick;
 	av.pb_kat = time;
 	av.pb_held = (pose_n1_y & PBF_HELD) ? TRUE : FALSE;
 	av.SendFlags = av.SendFlags | PB_POSE;
 	if (p.pb_specn > 0)
+	{
 		av.SendFlags = av.SendFlags | PB_SPEC;
+		if (Pose_KQuant(av, p))
+			av.SendFlags = av.SendFlags | PB_STATE;
+	}
 	pb_npub = pb_npub + 1;
 };
 
@@ -238,7 +304,9 @@ void(entity p) Pose_Capture =
 		return;
 
 	changed = Pose_Quant(av, p, held);
-	force   = tp || heldchg || (p.pb_specn > 0 && d > 0);
+	// Patch 744: bracketed.  `=` binds tighter than `||`, so this was `tp` alone and a
+	// watched body at rest published at the keepalive's 2 Hz.
+	force   = (tp || heldchg || (p.pb_specn > 0 && d > 0));
 	due     = (p.run_movetick - av.pb_pubt >= pb_capticks);
 
 	if (changed)
@@ -325,9 +393,9 @@ float(entity to, float sf) Pose_Send =
 
 	p = self.lobby_owner;
 	f = sf & (PB_POSE | PB_LOOK);
-	if (to && p && (sf & (PB_POSE | PB_SPEC)))
+	if (to && p && (sf & (PB_POSE | PB_SPEC | PB_STATE)))
 	if (to.pb_watch == p || to.pb_dwatch == p)
-		f = f | PB_POSE | PB_SPEC;
+		f = f | PB_POSE | PB_SPEC | PB_RUN | (sf & PB_STATE);
 
 	WriteByte(MSG_ENTITY, f);
 	n = 1;
@@ -368,9 +436,42 @@ float(entity to, float sf) Pose_Send =
 		Pose_W24(self.pb_qt);
 		n = n + 15;
 	}
+	if (f & PB_RUN)
+	{
+		WriteByte(MSG_ENTITY, self.pb_qf_x);
+		WriteChar(MSG_ENTITY, self.pb_qf_y);
+		WriteChar(MSG_ENTITY, self.pb_qf_z);
+		WriteChar(MSG_ENTITY, self.pb_qfz);
+		n = n + 4;
+	}
+	if (f & PB_STATE)
+	{
+		WriteByte(MSG_ENTITY, self.pb_k0_x);
+		WriteByte(MSG_ENTITY, self.pb_k0_y);
+		WriteByte(MSG_ENTITY, self.pb_k0_z);
+		WriteByte(MSG_ENTITY, self.pb_k1_x);
+		WriteByte(MSG_ENTITY, self.pb_k1_y);
+		WriteByte(MSG_ENTITY, self.pb_k1_z);
+		WriteShort(MSG_ENTITY, self.pb_k2_x);
+		WriteShort(MSG_ENTITY, self.pb_k2_y);
+		WriteShort(MSG_ENTITY, self.pb_kn_x);
+		WriteShort(MSG_ENTITY, self.pb_kn_y);
+		WriteShort(MSG_ENTITY, self.pb_kn_z);
+		Pose_W24(self.pb_kv_x);
+		Pose_W24(self.pb_kv_y);
+		Pose_W24(self.pb_kv_z);
+		Pose_W24(self.pb_kt_x);
+		Pose_W24(self.pb_kt_y);
+		Pose_W24(self.pb_kt_z);
+		Pose_W24(self.pb_kp_x);
+		Pose_W24(self.pb_kp_y);
+		n = n + 40;
+		pb_nstate = pb_nstate + 1;
+	}
 
 	pb_nsend  = pb_nsend + 1;
 	pb_nbytes = pb_nbytes + n;
+	f = f - (f & (PB_RUN | PB_STATE));
 	if (f == PB_POSE)
 	{
 		pb_npose = pb_npose + 1;
@@ -412,10 +513,23 @@ void() Pose_Frame =
 		w = p.pb_watch;
 		if (!w)
 			w = p.pb_dwatch;
-		if (w && w != p)
+		if (w == p)
+			w = world;
+		if (w)
 		{
 			w.pb_specn = w.pb_specn + 1;
 			spec = 1;
+		}
+		// Patch 744: STATE goes on change only, so a new watcher is sent it once.
+		if (w != p.pb_kwatch)
+		{
+			p.pb_kwatch = w;
+			if (w)
+			if (w.lobby_av.SendEntity)
+			{
+				Pose_KQuant(w.lobby_av, w);
+				w.lobby_av.SendFlags = w.lobby_av.SendFlags | PB_STATE;
+			}
 		}
 		p = find(p, classname, "player");
 	}
@@ -431,7 +545,7 @@ void() Pose_Frame =
 	pb_nav = n;
 
 	// Whole ticks.  The budget is one viewer's downstream: every other body's
-	// 20 B update, plus the watched one's 15 B SPEC when anyone spectates.
+	// 20 B update, plus the watched one's 15 B SPEC and 4 B RUN when anyone spectates.
 	tick = run_t_tick;
 	if (tick <= 0)
 		tick = PM_TICK;
@@ -441,7 +555,7 @@ void() Pose_Frame =
 	if (rate > 0)
 		c = max(c, ceil(1 / (rate * tick) - 0.05));
 	if (budget > 0 && n > 1)
-		c = max(c, ceil(((n - 1) * 20 + spec * 15) / (budget * tick)));
+		c = max(c, ceil(((n - 1) * 20 + spec * 19) / (budget * tick)));
 	pb_capticks = c;
 };
 
@@ -499,14 +613,15 @@ float(entity e, string c) Pose_Command =
 			pb_nsend = 0;  pb_nbytes = 0;  pb_npose = 0;  pb_bpose = 0;
 			pb_nspec = 0;  pb_bspec = 0;   pb_nlook = 0;  pb_nempty = 0;
 			pb_npub = 0;   pb_nka = 0;     pb_ntp = 0;    pb_nheld = 0;
+			pb_nstate = 0;
 		}
 		sprint(e, PRINT_HIGH, sprintf("pose: stream %g avatars %g capticks %g budget %g rate %g\n",
 		       cvar("lobby_av_stream"), pb_nav, pb_capticks,
 		       cvar("lobby_av_budget"), cvar("lobby_av_rate")));
 		sprint(e, PRINT_HIGH, sprintf("pose: publish %g keepalive %g teleport %g held %g\n",
 		       pb_npub, pb_nka, pb_ntp, pb_nheld));
-		sprint(e, PRINT_HIGH, sprintf("pose: send %g bytes %g look %g empty %g\n",
-		       pb_nsend, pb_nbytes, pb_nlook, pb_nempty));
+		sprint(e, PRINT_HIGH, sprintf("pose: send %g bytes %g look %g empty %g state %g\n",
+		       pb_nsend, pb_nbytes, pb_nlook, pb_nempty, pb_nstate));
 		sprint(e, PRINT_HIGH, sprintf("pose: pose-only %g avg %.2f B, pose+spec %g avg %.2f B\n",
 		       pb_npose, pb_npose ? pb_bpose / pb_npose : 0,
 		       pb_nspec, pb_nspec ? pb_bspec / pb_nspec : 0));

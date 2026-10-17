@@ -1728,7 +1728,9 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  own relationship with the strafe bar.
 		*/
 		Boarding_ReadCvars();
-		if (!spc_hud && !ui_rw_on)     // no live ramp grade on an inspection cursor
+		// No live ramp grade on an inspection cursor; a watched body has one once
+		// its samples feed the segment machine (Patch 744).
+		if ((!spc_hud || spc_hfed) && !ui_rw_on)
 			Boarding_Draw(scr, ui_board_bottom);
 
 		/*

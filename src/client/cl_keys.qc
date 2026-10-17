@@ -160,6 +160,12 @@ vector spc_hvel, spc_hfeet;
 float  spc_hongr, spc_hducked, spc_hkeys;
 float  spc_hrun;                 // Body_Run answered: a SPEC sample has arrived
 float  spc_htstate, spc_hticks, spc_htrack, spc_htflags;
+// Patch 744: the drawn sample's STATE (sv_pose.qc), and whether the watched
+// player's samples are driving the segment machine, the anchor and the trainer.
+float  spc_hfed;
+float  spc_hkok;
+float  spc_hseg, spc_hsegs, spc_hcp, spc_hfails, spc_hendrec, spc_hword, spc_hendword;
+float  spc_hsplit, spc_hdelta, spc_hcpt, spc_hcpd, spc_hpb;
 float  spc_want;                 // entnum asked for, 0 none
 float  spc_leaving;              // cltime of a `rec_spec 0` the stat has not answered, 0 none
 

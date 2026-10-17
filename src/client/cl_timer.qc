@@ -1073,7 +1073,7 @@ float(vector scr, float state, float ticks, float flags, float pb,
 	// Multi-Session: which session of the run this is -- a mode, so cyan.
 	if (flags & TF_MULTISESSION)
 	if (state == TS_RUNNING)
-	if (!rec_wt_on)
+	if (!rec_wt_on && !spc_hud)
 		s = strcat(s, (s != "") ? "  " : "",
 		           sprintf("^5session %g^7", getstatf(STAT_FS_MSSESSION) + 1));
 	// Patch 382: the run holds a spectate window -- a marker, cyan like session.
@@ -1300,6 +1300,135 @@ void(vector scr) Timer_DrawResumeOffer =
 	Font_Reset();
 };
 
+/*
+  Patch 744: what Timer_Draw's live path reads -- your stats, or while spectating
+  the drawn sample's SPEC and STATE (Spec_Frame).  No save-lock stream: SLSEQ reads
+  as the latch, so no resume edge.
+*/
+float(float st) Timer_Stat =
+{
+	if (!spc_hud)
+		return getstatf(st);
+	if (st == STAT_FS_TIMERSTATE)   return spc_htstate;
+	if (st == STAT_FS_TIMERTICKS)   return floor(spc_hticks);
+	if (st == STAT_FS_TIMERSEG)     return spc_hseg;
+	if (st == STAT_FS_TIMERSEGS)    return spc_hsegs;
+	if (st == STAT_FS_TIMERTRACK)   return spc_htrack;
+	if (st == STAT_FS_TIMERFLAGS)   return spc_htflags;
+	if (st == STAT_FS_TIMERSPLIT)   return spc_hsplit;
+	if (st == STAT_FS_TIMERDELTA)   return spc_hdelta;
+	if (st == STAT_FS_TIMERPB)      return spc_hpb;
+	if (st == STAT_FS_TIMERCP)      return spc_hcp;
+	if (st == STAT_FS_TIMERCPT)     return spc_hcpt;
+	if (st == STAT_FS_TIMERCPD)     return spc_hcpd;
+	if (st == STAT_FS_STAGEFAILS)   return spc_hfails;
+	if (st == STAT_FS_STAGEENDREC)  return spc_hendrec;
+	if (st == STAT_FS_STAGEENDST)   return spc_hendword;
+	if (st == STAT_FS_STAGEST)      return spc_hword;
+	if (st == STAT_FS_SLSEQ)        return ui_tm_lastslseq;
+	return 0;
+};
+
+// The split list's latches for a body not seen yet: Timer_Draw's map-change seed.
+// The first frame then pushes the newest stage and checkpoint split it reports.
+void() Timer_Seed =
+{
+	Timer_SplitsClear();
+	ui_tm_lastdrawstate = -1;
+	ui_tm_lastseg    = 0;
+	ui_tm_lastcp     = 0;
+	ui_tm_pace       = 0;
+	ui_tm_lastfails  = -1;
+	ui_tm_failat     = 0;
+	ui_tm_lockat     = 0;
+	ui_tm_splitat    = 0;
+	ui_tm_lastendrec = -1;
+	ui_tm_endword    = 0;
+	ui_tm_lastslseq  = -1;
+	ui_tm_resumeat   = 0;
+};
+
+// Patch 744: your list and latches while spectate draws the watched player's in
+// the same rows.  Back unchanged, as if Timer_Draw had not looked for a while.
+#define SP_SVCOLS 8
+float *ui_sp_sv;
+float  ui_sp_svheld, ui_sp_svn, ui_sp_svover, ui_sp_svfade, ui_sp_svword;
+float  ui_tm_svseg, ui_tm_svcp, ui_tm_svendrec, ui_tm_svfails, ui_tm_svdraw, ui_tm_svslseq;
+float  ui_tm_svendword, ui_tm_svpace, ui_tm_svsplitat, ui_tm_svfailat, ui_tm_svfailseg;
+float  ui_tm_svlockat, ui_tm_svresume;
+
+void(float hold) Timer_SplitsHold =
+{
+	local float i;
+
+	if (hold)
+	{
+		if (ui_sp_svheld)
+			return;
+		if (!ui_sp_sv)
+			ui_sp_sv = memalloc(sizeof(float) * SP_MAX * SP_SVCOLS);
+		for (i = 0; i < ui_sp_n; i = i + 1)
+		{
+			ui_sp_sv[i]              = ui_sp_kind[i];
+			ui_sp_sv[SP_MAX + i]     = ui_sp_seg[i];
+			ui_sp_sv[SP_MAX * 2 + i] = ui_sp_ticks[i];
+			ui_sp_sv[SP_MAX * 3 + i] = ui_sp_delta[i];
+			ui_sp_sv[SP_MAX * 4 + i] = ui_sp_speed[i];
+			ui_sp_sv[SP_MAX * 5 + i] = ui_sp_energy[i];
+			ui_sp_sv[SP_MAX * 6 + i] = ui_sp_class[i];
+		}
+		ui_sp_svn       = ui_sp_n;
+		ui_sp_svover    = ui_sp_over;
+		ui_sp_svfade    = ui_sp_fadeat;
+		ui_sp_svword    = ui_sp_pendword;
+		ui_tm_svseg     = ui_tm_lastseg;
+		ui_tm_svcp      = ui_tm_lastcp;
+		ui_tm_svendrec  = ui_tm_lastendrec;
+		ui_tm_svfails   = ui_tm_lastfails;
+		ui_tm_svdraw    = ui_tm_lastdrawstate;
+		ui_tm_svslseq   = ui_tm_lastslseq;
+		ui_tm_svendword = ui_tm_endword;
+		ui_tm_svpace    = ui_tm_pace;
+		ui_tm_svsplitat = ui_tm_splitat;
+		ui_tm_svfailat  = ui_tm_failat;
+		ui_tm_svfailseg = ui_tm_failseg;
+		ui_tm_svlockat  = ui_tm_lockat;
+		ui_tm_svresume  = ui_tm_resumeat;
+		ui_sp_svheld    = TRUE;
+		return;
+	}
+	if (!ui_sp_svheld)
+		return;
+	ui_sp_svheld = FALSE;
+	for (i = 0; i < ui_sp_svn; i = i + 1)
+	{
+		ui_sp_kind[i]   = ui_sp_sv[i];
+		ui_sp_seg[i]    = ui_sp_sv[SP_MAX + i];
+		ui_sp_ticks[i]  = ui_sp_sv[SP_MAX * 2 + i];
+		ui_sp_delta[i]  = ui_sp_sv[SP_MAX * 3 + i];
+		ui_sp_speed[i]  = ui_sp_sv[SP_MAX * 4 + i];
+		ui_sp_energy[i] = ui_sp_sv[SP_MAX * 5 + i];
+		ui_sp_class[i]  = ui_sp_sv[SP_MAX * 6 + i];
+	}
+	ui_sp_n             = ui_sp_svn;
+	ui_sp_over          = ui_sp_svover;
+	ui_sp_fadeat        = ui_sp_svfade;
+	ui_sp_pendword      = ui_sp_svword;
+	ui_tm_lastseg       = ui_tm_svseg;
+	ui_tm_lastcp        = ui_tm_svcp;
+	ui_tm_lastendrec    = ui_tm_svendrec;
+	ui_tm_lastfails     = ui_tm_svfails;
+	ui_tm_lastdrawstate = ui_tm_svdraw;
+	ui_tm_lastslseq     = ui_tm_svslseq;
+	ui_tm_endword       = ui_tm_svendword;
+	ui_tm_pace          = ui_tm_svpace;
+	ui_tm_splitat       = ui_tm_svsplitat;
+	ui_tm_failat        = ui_tm_svfailat;
+	ui_tm_failseg       = ui_tm_svfailseg;
+	ui_tm_lockat        = ui_tm_svlockat;
+	ui_tm_resumeat      = ui_tm_svresume;
+};
+
 void(vector scr) Timer_Draw =
 {
 	local float state, ticks, seg, segs, track, flags, split, delta, pb, cp;
@@ -1392,9 +1521,10 @@ void(vector scr) Timer_Draw =
 	  Patch 385: the watched player's clock, from its SPEC samples.  Body_Run has
 	  already advanced it to the drawn tick, so ui_tm_lastat = cltime keeps
 	  Timer_Display from adding any.  Your own splits are hidden; nothing draws
-	  until the first SPEC sample.  The stage state is not streamed: '0 0 0'.
+	  until the first SPEC sample.  Patch 744: once its STATE arrives the live
+	  path below runs on it (Timer_Stat); before that, the stage line is blank.
 	*/
-	if (spc_hud)
+	if (spc_hud && !(spc_hrun && spc_hfed))
 	{
 		if (spc_hrun)
 		{
@@ -1408,15 +1538,15 @@ void(vector scr) Timer_Draw =
 		return;
 	}
 
-	state = getstatf(STAT_FS_TIMERSTATE);
-	ticks = getstatf(STAT_FS_TIMERTICKS);
-	seg   = getstatf(STAT_FS_TIMERSEG);
-	segs  = getstatf(STAT_FS_TIMERSEGS);
-	track = getstatf(STAT_FS_TIMERTRACK);
-	flags = getstatf(STAT_FS_TIMERFLAGS);
-	split = getstatf(STAT_FS_TIMERSPLIT);
-	delta = getstatf(STAT_FS_TIMERDELTA);
-	pb    = getstatf(STAT_FS_TIMERPB);
+	state = Timer_Stat(STAT_FS_TIMERSTATE);
+	ticks = Timer_Stat(STAT_FS_TIMERTICKS);
+	seg   = Timer_Stat(STAT_FS_TIMERSEG);
+	segs  = Timer_Stat(STAT_FS_TIMERSEGS);
+	track = Timer_Stat(STAT_FS_TIMERTRACK);
+	flags = Timer_Stat(STAT_FS_TIMERFLAGS);
+	split = Timer_Stat(STAT_FS_TIMERSPLIT);
+	delta = Timer_Stat(STAT_FS_TIMERDELTA);
+	pb    = Timer_Stat(STAT_FS_TIMERPB);
 
 	tick = Timer_Tick();
 
@@ -1427,6 +1557,8 @@ void(vector scr) Timer_Draw =
 		ui_tm_lastat    = cltime;
 		ui_tm_laststate = state;
 	}
+	if (spc_hud)
+		ui_tm_lastat = cltime;      // Body_Run's clock is already the drawn tick
 	/*
 	  BUILD 48 -- THE STAGE-CLOSE EDGE, AND IT IS READ BEFORE THE SPLIT EDGE
 	  BELOW ON PURPOSE.
@@ -1460,32 +1592,32 @@ void(vector scr) Timer_Draw =
 	  the stage counters in one snapshot, and none of that is an event.  Seed
 	  every latch below; the rows come back from the `A` key.
 	*/
-	if (getstatf(STAT_FS_SLSEQ) != ui_tm_lastslseq)
+	if (Timer_Stat(STAT_FS_SLSEQ) != ui_tm_lastslseq)
 	{
 		if (ui_tm_lastslseq >= 0)
-		if (FS_SlopOp(getstatf(STAT_FS_SLOP)) == SLOP_RESUME)
+		if (FS_SlopOp(Timer_Stat(STAT_FS_SLOP)) == SLOP_RESUME)
 		{
 			ui_tm_lastseg       = seg;
-			ui_tm_lastcp        = getstatf(STAT_FS_TIMERCP);
-			ui_tm_lastendrec    = getstatf(STAT_FS_STAGEENDREC);
-			ui_tm_lastfails     = getstatf(STAT_FS_STAGEFAILS);
+			ui_tm_lastcp        = Timer_Stat(STAT_FS_TIMERCP);
+			ui_tm_lastendrec    = Timer_Stat(STAT_FS_STAGEENDREC);
+			ui_tm_lastfails     = Timer_Stat(STAT_FS_STAGEFAILS);
 			ui_tm_lastdrawstate = state;
 			ui_tm_endword       = 0;
 			ui_tm_pace          = 0;
 			Timer_SplitsClear();
 			ui_tm_resumeat      = cltime;
 		}
-		ui_tm_lastslseq = getstatf(STAT_FS_SLSEQ);
+		ui_tm_lastslseq = Timer_Stat(STAT_FS_SLSEQ);
 	}
 	if (ui_tm_resumeat > 0)
 		Timer_ResumeRows();
 
-	endrec = getstatf(STAT_FS_STAGEENDREC);
+	endrec = Timer_Stat(STAT_FS_STAGEENDREC);
 	if (endrec != ui_tm_lastendrec)
 	{
 		if (ui_tm_lastendrec >= 0)
 		if (endrec > ui_tm_lastendrec)
-			ui_tm_endword = getstatf(STAT_FS_STAGEENDST);
+			ui_tm_endword = Timer_Stat(STAT_FS_STAGEENDST);
 		ui_tm_lastendrec = endrec;
 	}
 
@@ -1522,7 +1654,7 @@ void(vector scr) Timer_Draw =
 	  interrupting the panel above for one would bury the stage flashes on a map
 	  that has both.
 	*/
-	cp = getstatf(STAT_FS_TIMERCP);
+	cp = Timer_Stat(STAT_FS_TIMERCP);
 	if (cp != ui_tm_lastcp)
 	{
 		if (state == TS_RUNNING && cp > 0)
@@ -1537,10 +1669,10 @@ void(vector scr) Timer_Draw =
 			  edge and STAT_FS_STAGEST still describes the stage the gate is IN,
 			  which is exactly the thing the row wants to say.
 			*/
-			ui_sp_pendword = getstatf(STAT_FS_STAGEST);
-			cpd = getstatf(STAT_FS_TIMERCPD);
+			ui_sp_pendword = Timer_Stat(STAT_FS_STAGEST);
+			cpd = Timer_Stat(STAT_FS_TIMERCPD);
 			Timer_SplitsPush(SPK_CP, cp,
-			                 getstatf(STAT_FS_TIMERCPT), cpd);
+			                 Timer_Stat(STAT_FS_TIMERCPT), cpd);
 			/*
 			  Build 86: and the clock's pace, exactly as the stage edge above does
 			  it.  A CHECKPOINT IS THE MORE USEFUL OF THE TWO for this: it is the
@@ -1567,7 +1699,7 @@ void(vector scr) Timer_Draw =
 	  because by the time it is drawn the player may have crossed into the next
 	  stage, and the flash has to keep saying which stage it was about.
 	*/
-	fails = getstatf(STAT_FS_STAGEFAILS);
+	fails = Timer_Stat(STAT_FS_STAGEFAILS);
 	if (fails != ui_tm_lastfails)
 	{
 		if (ui_tm_lastfails >= 0)
@@ -1617,7 +1749,7 @@ void(vector scr) Timer_Draw =
 	  starting state.  hud_timer_pace 0 restores the flat white clock.
 	*/
 	y = Timer_DrawPanel(scr, state, ticks, flags, pb, tick, [seg, segs, track],
-	                    [fails, getstatf(STAT_FS_STAGEST),
+	                    [fails, Timer_Stat(STAT_FS_STAGEST),
 	                     (ui_tm_cvpace && (flags & TF_HAVEPB))
 	                       ? (ui_tm_pace ? ui_tm_pace : -1) : 0]);
 	p = [scr_x * ui_tm_x, scr_y * ui_tm_y, 0];

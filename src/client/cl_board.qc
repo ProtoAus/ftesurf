@@ -183,6 +183,18 @@ float  board_ov_riding;     // run_rampcontact, the v4 flags bit
 vector board_ov_bnorm;      // the latched arrival plane of the board just taken
 vector board_ov_bvel;       // and its pre-clip velocity
 float  board_ov_tick;       // Patch 473: the recording's tick
+// Patch 744: a LIVE frame on another body's inputs -- spectate's feed (Spec_Feed).
+// Unlike a build pass it publishes seg_live_*, plays the board sound and watches
+// that body's timer; the save-lock events stay yours (Seq_Frame).
+float  board_ov_spec;
+float  board_ov_tstate;     // the watched timer state
+
+float() Board_TimerState =
+{
+	if (board_ov_spec)
+		return board_ov_tstate;
+	return getstatf(STAT_FS_TIMERSTATE);
+};
 
 // Patch 473: the tick the frames being fed were flown at -- the recording's in a
 // build pass, the server's live.  A 0.01 file on a 0.015 lobby had its air
@@ -2374,7 +2386,7 @@ void() Seq_Frame =
 {
 	local float st;
 
-	st = getstatf(STAT_FS_TIMERSTATE);
+	st = Board_TimerState();
 	if (st != seq_laststate)
 	{
 		if (st == TS_RUNNING && seq_n > 0)
@@ -2399,7 +2411,8 @@ void() Seq_Frame =
 	  and the list would be gone a second later, which is worse than never
 	  restoring it -- it would look like the restore worked and then broke.
 	*/
-	Seq_SaveEvents();
+	if (!board_ov_spec)
+		Seq_SaveEvents();
 
 	if (seq_fadeat > 0)
 		if (cltime - seq_fadeat >= SEQ_FADE)
@@ -2650,9 +2663,9 @@ void(vector org, vector vel, float onground) Board_Frame =
 	}
 	else
 	{
-		board_now = cltime;
+		board_now = board_ov_spec ? board_ov_now : cltime;
 		Seq_Frame();
-		seq    = getstatf(STAT_FS_BOARDCOUNT);
+		seq    = board_ov_spec ? board_ov_seq : getstatf(STAT_FS_BOARDCOUNT);
 		// Patch 631: after a reset the counter is wherever the server has got to (a
 		// listen server keeps it across maps: 4, the old plane still latched, 0.43 s
 		// into the next), so it is adopted, not read as a board.
@@ -2661,7 +2674,7 @@ void(vector org, vector vel, float onground) Board_Frame =
 			board_resync = FALSE;
 			board_seq = seq;
 		}
-		riding = getstatf(STAT_FS_RAMPCONTACT);
+		riding = board_ov_spec ? board_ov_riding : getstatf(STAT_FS_RAMPCONTACT);
 	}
 
 	/*
@@ -2724,7 +2737,7 @@ void(vector org, vector vel, float onground) Board_Frame =
 		// they hold the previous board's values.  During a build pass they come
 		// out of the .rec's own `board` record, which is written on exactly the
 		// tick the counter moved and carries the same latched pair.
-		if (rec_wt_build)
+		if (rec_wt_build || board_ov_spec)
 		{
 			n   = board_ov_bnorm;
 			vin = board_ov_bvel;
