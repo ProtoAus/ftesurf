@@ -635,11 +635,29 @@ void(float scan) SaveLoc_Refuse =
 */
 float(float scan, float down) SaveLoc_Key =
 {
+	/*
+	  The key that owns a hold: its release lets go and its repeats arm the
+	  deadman. Patch 477 round 22: a holdkey of 0 is no key's (the rewind's
+	  countdown, a typed `+sl_hold`), and a real key reports 0 (the ISO `<>`
+	  key, a dead key) -- its tap let the countdown's body go mid-count.
+	  Patch 762: above the rec_savelock gate, because a bound `+sl_hold` owns
+	  its hold too; round 23's release-on-any-key there would drop it.
+	*/
+	if (rec_sl_holding && rec_sl_holdkey && scan == rec_sl_holdkey)
+	{
+		if (down)
+		{
+			rec_sl_holdseen = cltime;
+			rec_sl_holdrep  = TRUE;
+		}
+		else
+			SaveLoc_Release();
+		return TRUE;
+	}
+
 	rec_sl_cv = cvar("rec_savelock");
 	if (!rec_sl_cv)
 	{
-		if (rec_sl_holdkey)         // Patch 477 round 23: a key's hold only -- 0 is the
-			SaveLoc_Release();      // countdown's or `+sl_hold`'s, let go by their own
 		rec_sl_refkey = 0;
 		rec_sl_8held  = 0;
 		return FALSE;
@@ -647,16 +665,6 @@ float(float scan, float down) SaveLoc_Key =
 
 	if (!down)
 	{
-		// The only release that means anything is the load key's.  Consume it
-		// so it matches the press, which was consumed too.  Patch 477 round 22:
-		// a holdkey of 0 is no key's (the rewind's countdown, `+sl_hold`), and a
-		// real key reports 0 (the ISO `<>` key, a dead key) -- its tap let the
-		// countdown's body go mid-count.
-		if (rec_sl_holding && rec_sl_holdkey && scan == rec_sl_holdkey)
-		{
-			SaveLoc_Release();
-			return TRUE;
-		}
 		if (scan == '8')
 			rec_sl_8held = 0;
 		// Patch 391: a refused press's release is taken like its press.
@@ -666,16 +674,6 @@ float(float scan, float down) SaveLoc_Key =
 			return TRUE;
 		}
 		return FALSE;
-	}
-
-	// A REPEAT of the key already held.  The engine keeps delivering key-down
-	// while a key is held; the server has already been told once.  Stamping it
-	// here is what arms the deadman -- see rec_sl_holdrep.
-	if (rec_sl_holding && rec_sl_holdkey && scan == rec_sl_holdkey)
-	{
-		rec_sl_holdseen = cltime;
-		rec_sl_holdrep  = TRUE;
-		return TRUE;
 	}
 
 	// Patch 391: a refused key's repeats stay refused and silent.  Lapses after
@@ -705,7 +703,8 @@ float(float scan, float down) SaveLoc_Key =
 	if (!rec_sl_open)
 		return FALSE;
 	// The key that opened the panel closes it, whatever digit config_menu put it on.
-	if (getkeybind(scan) == "save_menu" || getkeybind(scan) == "saveloc_menu")
+	if (getkeybind(scan) == "save_menu" || getkeybind(scan) == "saveloc_menu"
+	    || getkeybind(scan) == "mom_saveloc_close")
 		return FALSE;
 
 	/*
@@ -813,6 +812,16 @@ float() SaveLoc_Console =
 	}
 	if (c == "-sl_hold")
 	{
+		// A printable key's release lets go of its own hold only. SaveLoc_Key takes
+		// that key-up, so keys.c keeps this `-sl_hold <key>` and runs it on a later
+		// release it is given (a digit the vote box took), when another hold may be up.
+		k = stof(argv(1));
+		if (k > 32 && k < 127)
+		{
+			if (rec_sl_holding && rec_sl_holdkey == k)
+				SaveLoc_Release();
+			return TRUE;
+		}
 		if (rec_sl_holding)
 			SaveLoc_Release();      // which sends sl_holdoff itself
 		else

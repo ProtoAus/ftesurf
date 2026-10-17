@@ -15,6 +15,17 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   modifier ("SHIFT+e") is listed but cannot be cleared or replaced:
   stringtokeynum returns -1 for the modifier name. Check: `bind SHIFT+e +left`,
   then right-click that chip.
+- Site: `src/client/cl_saveloc.qc` SaveLoc_HoldFrame. Windows repeats only the
+  last key pressed, so holding the load key and then another key stops its
+  repeats and the deadman lets go of a hold still held (the fixed 2 always did;
+  since 762 the bound 2 does too). Check: hold 2, then hold A for 2 s.
+- Site: `src/client/cl_saveloc.qc` SaveLoc_Console. An alias bind
+  (`bind 2 +mom_saveloc_current`) reaches +sl_hold without the key number
+  (cmd.c passes it only to non-+ alias bodies), so its hold has no owner and a
+  repeat into the open save panel loads again.
+- Site: `src/client/cl_keycfg.qc` KC_CaptureEvent. Keys down at an alt-tab stay
+  in chat_dn (Key_ClearStates sends no ups), so their first press afterwards is
+  read as a repeat and not captured; the second press is.
 
 ## Spectator telemetry: what Patch 744 left out
 

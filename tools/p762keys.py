@@ -354,6 +354,34 @@ def run(a, base, check, bound, saves, shot, start, VK):
         check(m.group(1) == '0', 'a lost release of the bound load key is let go by the deadman', m.group(0))
         cl.post(VK['2'], 'up', .5)
 
+        # rec_savelock 0 turns off the panel's digits, not the bound hold: another key's events keep it.
+        cl.send('set rec_savelock 0')
+        cl.post(VK['2'], 'down', .3)
+        cl.key(VK['w'], .3)
+        m = cl.query('saveloc', r'saveloc: locked \S+ refkey \S+ hold \S+ holding (\S+)')
+        check(m.group(1) == '1', 'with rec_savelock 0 another key does not drop the bound hold', m.group(0))
+        cl.post(VK['2'], 'up', .5)
+        m = cl.query('saveloc', r'saveloc: locked \S+ refkey \S+ hold \S+ holding (\S+)')
+        check(m.group(1) == '0', "with rec_savelock 0 the bound key's release lets go", m.group(0))
+        cl.send('set rec_savelock 1')
+
+        # An owned hold's release is taken by SaveLoc_Key, so keys.c keeps `-sl_hold 50`; a later 2
+        # whose press the graphics menu takes hands its release to the engine, which runs it.
+        cl.post(VK['2'], 'down', .5)
+        cl.post(VK['2'], 'up', .5)
+        m = cl.query('saveloc', r'saveloc: locked \S+ refkey \S+ hold \S+ holding (\S+)')
+        check(m.group(1) == '0', 'an owned hold lets go on its release (leaves -sl_hold 50 behind)', m.group(0))
+        cl.send('+sl_hold')
+        time.sleep(.5)
+        cl.send('gfx_menu')
+        time.sleep(.3)
+        cl.key(VK['2'], .5)
+        m = cl.query('saveloc', r'saveloc: locked \S+ refkey \S+ hold \S+ holding (\S+)')
+        check(m.group(1) == '1', "a stale -sl_hold 50 does not release a typed +sl_hold's hold", m.group(0))
+        cl.send('-sl_hold')
+        cl.send('gfx_menu')
+        time.sleep(.5)
+
         # A click away from the waiting chip cancels instead of binding Mouse 1.
         cl.query('config_menu capture prev 0', r'waiting for a key for prev')
         cl.query('vote key 512 1', r'vote key: scan 512 down 1 took 1')
