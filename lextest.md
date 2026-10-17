@@ -2,6 +2,10 @@
 
 ## P762 — key configuration (`config_menu`), the key strip, the vote box
 
+Live in both Windows installs and all 12 lobbies since 2026-10-17T09:54Z
+(csprogs `f5297fcf`, `.prev` is the build before, `41d2e086`); restart the game.
+Works offline and on any lobby.
+
 - **The panel.** Press K (or type `config_menu`). Left: movement, turning and the
   menus; right: saves, restart/respawn/rewind/noclip, then Turn speed
   (cl_yawspeed) and Sensitivity. Click a key, press the new one (Esc cancels);
