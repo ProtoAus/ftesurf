@@ -1,5 +1,21 @@
 # lextest.md — things waiting on a human
 
+## P767 — surf_board_this's stage 1 sky is the tinted nebula, not flat yellow
+
+In both Windows installs since 2026-10-17T19:51Z (`fteplug_hl2_x64.dll` `105ef7b7`;
+`.prev` is P764's `7d494b02`); restart the game. Stage 1 sits inside a box the
+mapper made to tint the sky (`lody/rainbow`, Source's Modulate); it was being added
+on top instead of multiplied, which washed the sky out to yellow.
+
+- **surf_board_this, stage 1:** the sky behind the stage is the green nebula with a
+  colour tint, no yellow wash. The streaks at the box's edges are still there.
+- **surf_era and surf_pride** use the same rainbow and lody materials: same check.
+- **monolith B4:** not fixed. When you see blue breaking through the red fake sky,
+  make a save right there (with the view on it) and tell me its number.
+
+"Board_this ok / still yellow at <spot>" and the B4 save number.
+Verdict PENDING.
+
 ## P766 — OBS display capture sees the borderless game
 
 In both Windows installs since 2026-10-17T19:38:17Z (`ftesurf64.exe` `66e7748e`,

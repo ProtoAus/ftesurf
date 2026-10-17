@@ -17,14 +17,30 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   first SPF_ADDON path), so `downloads/materials/x.tga` would beat the map's
   `x.vtf` in Image_LocateHighResTexture's first-lowest-depth pick (review round 2).
   No live effect: downloads holds only `csprogsvers/`. Check: put a .tga there.
-- Lex, 17 Oct: surf_board_this "a room's projected skybox fights the map's sky"
-  and monolith B4's fake sky "fighting" -- P765 changes nothing in either (B4's
-  WindowImposter slab draws the same with fs_mapmaterials 0 and 1, and
-  board_this has no WindowImposter and no shadowed opacity). Needs the spot.
-  Lead: B4's slab sits 4 units under its sky brush, which r_sky_forcedepth 2
-  writes depth for; at distance that gap is under one depth step.
+- Lex, 17 Oct, monolith B4 (save 17, screenshot surf_monolith_002.png at 0:52 of a
+  run resumed from it): sky138a's blue shows through the red WindowImposter slab at
+  the horizon, partly as a fine stipple. NOT REPRODUCED at save 17's origin and
+  angles (setpos, re-sent before each shot -- the run is cancelled ~3 s later):
+  8-shot bursts at r_blendsort 2 and 0, r_sky_forcedepth 2/1/0, 1280x720 and
+  1920x1200 all read 0.6-0.8% blue, which is the cyan glass. The 4-unit
+  slab-to-sky-brush gap is a lead, not demonstrated. Needs a save made while it
+  shows. (board_this's "sky fight" was the Modulate box: Patch 767.)
 - Site: `vid_reload` on surf_monolith (P758 client, after `r_refract_fbo 0`)
   crashed: 0xC0000005 at rva 0x303844 (crashaddr.txt, 17 Oct 15:00Z).
+
+## Modulate materials: what Patch 767 left out
+
+- Site: engine `plugins/hl2/mat_vmt.c`, the Modulate arm. Still unlike
+  modulate_dx9.cpp: `$writez` is in the ignored keys (no depth write); `$color` and
+  `$color2` are not applied; transparent texels are not faded to grey (Source
+  lerps toward 0.5, so a 1x multiply leaves them dimming the scene). Check:
+  `python tools/census/modulate.py --list` names the 26 packed Modulate materials.
+- Site: the DecalModulate arm beside it. Under `$mod2x` it writes
+  DST_COLOR*(1-SRC_ALPHA); Source's decalmodulate_dx9.cpp always doubles
+  (DST_COLOR*SRC_COLOR). It also leaves `st->additive` set (3 of 120 packed
+  DecalModulate materials say `$additive`). Check: `r_showshader` on one.
+- surf_board_this stage 1: vertical streaks along the Modulate box's edges, with
+  and without P767. Check: `cmd zone_goto 0 0 10`, the left edge. Unexamined.
 
 ## Key panel: what Patch 762 left out
 

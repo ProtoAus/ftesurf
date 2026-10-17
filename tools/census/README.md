@@ -27,6 +27,7 @@ Start zones come from the shipped zone JSON (`maps/zones/online/<map>.json`,
 | `assist.py` | the timing-assist statistics, and which of them the corpus can support (BACKLOG item G) |
 | `physeams.py` | a prop's `.phy` ledges: convexity, inner walls, and how far a wall's 4-unit slab stands above the ramp (Patch 764) |
 | `shadowed.py` | packed materials/models another mount answers first, and whether its bytes differ (Patch 765; mount order is this PC's `path`) |
+| `modulate.py` | packed Modulate / DecalModulate materials and which set `$additive` or `$mod2x` (Patch 767) |
 
 ## Source particle coverage
 

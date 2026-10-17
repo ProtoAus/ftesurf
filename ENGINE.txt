@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   23f7bf2c3cfebf0e3d88c81255fd2ad17191e197
+commit   888f9dbe520a457d879e4cdfabbd163777bfc71f
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,11 @@ commit   23f7bf2c3cfebf0e3d88c81255fd2ad17191e197
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-766
-patch    766
+tag      patch-767
+patch    767
+# Patch 767 (hl2 plugin): Modulate multiplies as Source does (DST_COLOR*ZERO, or *SRC_COLOR
+# with $mod2x) and $additive no longer turns it into an add: surf_board_this's stage 1 sky
+# was washed yellow by its Modulate rainbow box. Plugin DLL only.
 # Patch 766 (engine): borderless (vid_fullscreen 1) sizes itself one row past an edge of
 # the screen with no monitor beyond, so NVIDIA's OpenGL driver keeps it on the compositor
 # and OBS display capture sees it (before: 0 frames while the game was active);
