@@ -65,6 +65,7 @@ class Tests(unittest.TestCase):
         self.conn.execute('DELETE FROM ksf_unbound')
         self.conn.execute('DELETE FROM runs')
         self.conn.execute('DELETE FROM replays')
+        self.conn.execute('DELETE FROM mapwant')
         self.conn.commit()
         self.r = raw()
         self.job = G.candidate('surf_test', 0, 0, self.r)
@@ -636,6 +637,54 @@ class Tests(unittest.TestCase):
         self.assertEqual(calls,[rows[-1]['file']])
         self.assertEqual(K._load(os.path.join(self.cache,'demos.json'))['jobs'],{})
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM runs WHERE map='surf_warm' AND replay_id>0").fetchone()[0],257)
+
+    # P747: a map somebody viewed (mapwant) is scanned and downloaded first.
+    def want(self, *maps):
+        now = int(time.time())
+        self.conn.executemany('INSERT INTO mapwant (map, asked, first, last) VALUES (?, 1, ?, ?)',
+                              [(mp, now, now) for mp in maps])
+        self.conn.commit()
+
+    def one_board(self, mp, i):
+        r = raw(record_id=500+i, playerID=50+i, steamID='STEAM_0:0:%d' % (500+i),
+                file='replay_css_5_0_%d_1700000000.rec' % (50+i))
+        K.write_rows([K.rec_row(mp, 0, 0, r)])
+        K._save(K.board_path(self.cache, mp, 0), dict(rows=[r], done=True))
+        return r
+
+    def test_viewed_map_downloads_before_rotation_order(self):
+        rows = {mp: self.one_board(mp, i) for i, mp in enumerate(('surf_a1', 'surf_a2', 'surf_zwant'))}
+        self.want('surf_zwant')
+        calls = []
+        def download(file): calls.append(file); return binary()
+        with patch.object(G.time, 'sleep'):
+            self.assertEqual(G.tick(self.cache, maximum=1, download=download), (1, 1))
+        self.assertEqual(calls, [rows['surf_zwant']['file']])
+
+    def test_full_queue_gives_viewed_map_a_cold_unwanted_slot(self):
+        many = [raw(playerID=100+i, steamID='STEAM_0:0:%d'%(1000+i), record_id=1000+i,
+                    file='replay_css_5_0_%d_1700000000.rec'%(100+i)) for i in range(G.MAX_QUEUE)]
+        K.write_rows([K.rec_row('surf_queue',0,0,r) for r in many])
+        K._save(K.board_path(self.cache,'surf_queue',0), dict(rows=many, done=True))
+        state = {}
+        G.discover(self.cache, state, self.conn)
+        self.assertEqual(len(state['jobs']), G.MAX_QUEUE)
+        self.one_board('surf_zwant', 0)
+        G.discover(self.cache, state, self.conn)
+        self.assertNotIn('surf_zwant', {j['map'] for j in state['jobs'].values()})
+        G.discover_wanted(self.cache, state, self.conn, {'surf_zwant'})
+        maps = [j['map'] for j in state['jobs'].values()]
+        self.assertEqual((len(maps), maps.count('surf_zwant')), (G.MAX_QUEUE, 1))
+
+    def test_wanted_scan_is_bounded_and_rotates(self):
+        wanted = {'surf_w%02d' % i for i in range(G.SCAN + 8)}
+        for i, mp in enumerate(sorted(wanted)):
+            self.one_board(mp, i)
+        state = {}
+        G.discover_wanted(self.cache, state, self.conn, wanted)
+        self.assertEqual(len(state['jobs']), G.SCAN)
+        G.discover_wanted(self.cache, state, self.conn, wanted)
+        self.assertEqual({j['map'] for j in state['jobs'].values()}, wanted)
 
     def test_full_cold_queue_does_not_exclude_retained_repair_at_zero_budget(self):
         rows = [raw(playerID=5000+i, steamID='STEAM_0:0:%d' % (5000+i), record_id=50000+i,

@@ -83,7 +83,17 @@ def step(K, cache, pacer, have, now, budget=3):
         if not isinstance(saved, dict) or saved.get('asked') != asked:
             if pacer.left() <= 0:
                 break
-            doc = pacer.get('/api/players/%s/bestrecords/%d?game=css&mode=%d' % (sid, start, mode))
+            try:
+                doc = pacer.get('/api/players/%s/bestrecords/%d?game=css&mode=%d' % (sid, start, mode))
+            except K.Refused as e:
+                # This route's 500 is KSF's "not a player of mine" (ksfimport.NoSuchPlayer).
+                # Parking the host on it stalled every crawl and demo from 2026-10-15 to
+                # 10-17. At most one per tick; the crawl's next request still parks a
+                # host that answers 500 to everything.
+                if e.code != 500:
+                    raise
+                retire(K, player, mode, start, asked, now)
+                return spent + 1
             saved = {'asked': asked, 'body': doc}
             # Invalid pages must not get a cursor, even if they are empty.
             validate(K, doc, start)
@@ -149,6 +159,20 @@ def step(K, cache, pacer, have, now, budget=3):
         if state == 'partial':
             work.append((player, nextmode, nxt, asked))
     return spent
+
+
+def retire(K, player, mode, start, asked, now):
+    """End a walk KSF answered 500 for: `unknown` before any page, else `limited`.
+    A later profile view re-queues it after TTL, as for any finished walk."""
+    db = K.S.connect()
+    try:
+        db.execute('PRAGMA synchronous=FULL')
+        with db:
+            db.execute("UPDATE ksfprofiles SET state=CASE WHEN pages=0 THEN 'unknown' ELSE 'limited' END,"
+                       " updated=? WHERE player=? AND mode=? AND cursor=? AND asked=?"
+                       " AND state IN ('queued','partial')", (now, player, mode, start, asked))
+    finally:
+        db.close()
 
 
 def validate(K, doc, start):

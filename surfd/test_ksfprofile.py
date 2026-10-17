@@ -8,6 +8,7 @@ import re
 import shutil
 import sqlite3
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -150,6 +151,40 @@ class Profiles(unittest.TestCase):
                 self.assertEqual(r.json['ksf_sync']['state'], 'queued')
                 self.assertEqual(c.get('/api/board?player=aaaaaaaaaaaa').status_code, 404)
         self.assertEqual(len(P.pending(self.db)), 1)
+
+    # P747: KSF answers 500 for a player it does not know; that parked the host.
+    def test_unknown_player_retires_walk_one_per_tick(self):
+        other = str(int(PLAYER) + 1)
+        self.queue(); self.queue(other, now=1001)
+        with patch.object(K, 'fetch', side_effect=K.NoSuchPlayer('HTTP 500')) as f:
+            self.assertEqual(self.step(budget=3), 1)
+            self.assertEqual(f.call_count, 1)
+        self.assertEqual(P.status(self.db, PLAYER)['state'], 'unknown')
+        self.assertEqual(P.status(self.db, other)['state'], 'queued')
+        self.assertEqual(self.queue(now=2000)['state'], 'unknown')
+        self.assertEqual(self.queue(now=1002 + P.TTL)['state'], 'queued')
+    def test_partial_walk_500_is_limited_not_complete(self):
+        self.src.n = 25; self.queue(); self.step()
+        with patch.object(K, 'fetch', side_effect=K.NoSuchPlayer('HTTP 500')):
+            self.step()
+        self.assertEqual(P.status(self.db, PLAYER)['state'], 'limited')
+        self.assertEqual(self.count(), 5)
+    def test_watch_tick_survives_unknown_profile_and_keeps_crawling(self):
+        self.queue()
+        calls = []
+        def fetch(url):
+            calls.append(url)
+            if '/bestrecords/' in url:
+                raise K.NoSuchPlayer('HTTP 500')
+            if '/api/maps/new' in url:
+                return '[]'
+            raise AssertionError(url)
+        with patch.object(K, 'fetch', side_effect=fetch):
+            K.watch_mode(SimpleNamespace(delay=0, max=10, go=True), self.have, self.cache)
+        self.assertEqual(len(calls), 2)
+        self.assertIn('/api/maps/new', calls[1])
+        self.assertFalse(os.path.exists(os.path.join(self.cache, '.refused')))
+        self.assertEqual(P.status(self.db, PLAYER)['state'], 'unknown')
     def test_migrate18_to20_adds_scoped_marker_without_rewriting_runs(self):
         self.queue(); self.step()
         row = list(self.db.execute('SELECT * FROM runs ORDER BY map LIMIT 1').fetchone())

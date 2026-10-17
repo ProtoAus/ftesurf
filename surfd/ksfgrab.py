@@ -135,7 +135,74 @@ def pending_deferral(conn, key):
         return False
 
 
-def discover(cache, state, conn):
+def fresh(conn, state, jobs, mp, zone, mode, raw, now):
+    """(key, job, deferral) for an exact current PB not yet linked or queued."""
+    j = candidate(mp, zone, mode, raw)
+    if not j:
+        return None
+    # Backfill pre-P704 identity only from the same official timestamp
+    # and millis. Never let an old cached PB replace a newer one.
+    conn.execute('UPDATE runs SET runid=? WHERE tier=? AND map=? AND track=?'
+                 ' AND leg=0 AND style=? AND player=? AND millis=?'
+                 " AND submitted=? AND runid='' AND replay_id=0"
+                 " AND NOT EXISTS (SELECT 1 FROM ksf_unbound u WHERE u.map=runs.map"
+                 " AND u.track=runs.track AND u.leg=runs.leg AND u.style=runs.style"
+                 " AND u.player=runs.player)",
+                 (j['runid'], S.TIER_KSF, j['map'], j['track'], j['style'],
+                  j['player'], j['millis'], j['when']))
+    if not current(conn, j) or ready(conn, j):
+        return None
+    key = '%s|%d|%d|%s' % (mp, zone, mode, j['runid'])
+    deferred = state.get('failed', {}).get(key, 0)
+    retry = deferred.get('retry', 0) if isinstance(deferred, dict) else deferred
+    if retry > now or key in jobs:
+        return None
+    return key, j, deferred
+
+
+def queue(state, jobs, key, j, deferred):
+    jobs[key] = dict(j, status='queued', retry=0)
+    if isinstance(deferred, dict):
+        jobs[key].update(deferred)
+        state['failed'].pop(key, None)
+
+
+def discover_wanted(cache, state, conn, prio):
+    """Boards of maps viewed lately (mapwant), SCAN a tick on their own cursor,
+    before the rotation. A full queue gives up one cold unwanted job per row."""
+    folder = Path(cache) / 'boards'
+    names = []
+    for mp in sorted(prio):
+        if BOARD.fullmatch(mp + '/z0.json') and not (folder / mp).is_symlink():
+            names += sorted('%s/%s' % (mp, p.name) for p in (folder / mp).glob('*.json'))
+    after = state.get('wanted_cursor', '')
+    names = [n for n in names if n > after] + [n for n in names if n <= after]
+    jobs = state.setdefault('jobs', {})
+    state.setdefault('failed', {})
+    now = int(time.time())
+    for name in names[:SCAN]:
+        state['wanted_cursor'] = name
+        m = BOARD.fullmatch(name)
+        p = folder / name
+        if not m or p.is_symlink() or p.stat().st_size > 8 << 20:
+            continue
+        mp, zone, mode = m[1], int(m[2]), int(m[3] or 0)
+        for raw in K.board_load(cache, mp, zone, mode)['rows']:
+            got = fresh(conn, state, jobs, mp, zone, mode, raw, now)
+            if not got:
+                continue
+            if len(jobs) >= MAX_QUEUE:
+                cold = next((k for k, held in jobs.items() if held.get('map') not in prio
+                             and not held.get('strikes') and not held.get('retry')
+                             and not provenance(held).is_file()), None)
+                if cold is None:
+                    continue
+                jobs.pop(cold)
+            queue(state, jobs, *got)
+    conn.commit()
+
+
+def discover(cache, state, conn, prio=()):
     """Fair bounded rotation over cached boards; state lives under crawler lock."""
     folder = Path(cache) / 'boards'
     names = sorted(p.relative_to(folder).as_posix() for p in folder.glob('*/*.json'))
@@ -161,36 +228,18 @@ def discover(cache, state, conn):
         mp, zone, mode = m[1], int(m[2]), int(m[3] or 0)
         doc = K.board_load(cache, mp, zone, mode)
         for raw in doc['rows']:
-            j = candidate(mp, zone, mode, raw)
-            if not j:
+            got = fresh(conn, state, jobs, mp, zone, mode, raw, now)
+            if not got:
                 continue
-            # Backfill pre-P704 identity only from the same official timestamp
-            # and millis. Never let an old cached PB replace a newer one.
-            conn.execute('UPDATE runs SET runid=? WHERE tier=? AND map=? AND track=?'
-                         ' AND leg=0 AND style=? AND player=? AND millis=?'
-                         " AND submitted=? AND runid='' AND replay_id=0"
-                         " AND NOT EXISTS (SELECT 1 FROM ksf_unbound u WHERE u.map=runs.map"
-                         " AND u.track=runs.track AND u.leg=runs.leg AND u.style=runs.style"
-                         " AND u.player=runs.player)",
-                         (j['runid'], S.TIER_KSF, j['map'], j['track'], j['style'],
-                          j['player'], j['millis'], j['when']))
-            if not current(conn, j) or ready(conn, j):
-                continue
-            key = '%s|%d|%d|%s' % (mp, zone, mode, j['runid'])
-            deferred = state.get('failed', {}).get(key, 0)
-            retry = deferred.get('retry', 0) if isinstance(deferred, dict) else deferred
-            if retry > now:
-                continue
-            if key in jobs:
-                continue
+            key, j, deferred = got
             if len(jobs) >= MAX_QUEUE:
                 # Cold requests cannot monopolize admission while the host is
                 # parked. Presence is priority only; tick still validates the
                 # exact provenance, digest and PB before any original can act.
                 if retained_admitted >= MAX_RECOVER or not provenance(j).is_file():
                     continue
-                cold = next((k for k, held in jobs.items()
-                             if not held.get('strikes') and not held.get('retry')
+                cold = next((k for k, held in jobs.items() if held.get('map') not in prio
+                             and not held.get('strikes') and not held.get('retry')
                              and not provenance(held).is_file()), None)
                 if cold is None:
                     # No protected eviction: at most two local-only overflow
@@ -205,10 +254,7 @@ def discover(cache, state, conn):
                     continue
                 jobs.pop(cold)
                 retained_admitted += 1
-            jobs[key] = dict(j, status='queued', retry=0)
-            if isinstance(deferred, dict):
-                jobs[key].update(deferred)
-                state['failed'].pop(key, None)
+            queue(state, jobs, key, j, deferred)
     conn.commit()
     if not overflow:
         # No candidate in this window: normal board rotation must keep moving.
@@ -419,11 +465,14 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
         # locally if lost. A saturated obsolete queue must not starve new maps.
         jobs = state['jobs'] = {k: j for k, j in jobs.items()
                               if isinstance(j, dict) and current(conn, j) and not ready(conn, j)}
-        overflow = discover(cache, state, conn)
+        prio = K.wanted_maps(now)
+        discover_wanted(cache, state, conn, prio)
+        overflow = discover(cache, state, conn, prio)
         K._save(sf, state)
         park = K._load(os.path.join(cache, '.refused')) or {}
-        # Give each lane one original slot when both have eligible work.
-        work = overflow[:1] + [(k, j, None) for k, j in list(jobs.items())] + overflow[1:]
+        # Give each lane one original slot when both have eligible work; viewed maps first.
+        queued = sorted(jobs.items(), key=lambda kj: kj[1].get('map') not in prio)
+        work = overflow[:1] + [(k, j, None) for k, j in queued] + overflow[1:]
         for key, job, board in work:
             local_only = board is not None
             if local_only:
