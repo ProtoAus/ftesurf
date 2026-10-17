@@ -704,6 +704,9 @@ float(float scan, float down) SaveLoc_Key =
 	*/
 	if (!rec_sl_open)
 		return FALSE;
+	// The key that opened the panel closes it, whatever digit config_menu put it on.
+	if (getkeybind(scan) == "save_menu" || getkeybind(scan) == "saveloc_menu")
+		return FALSE;
 
 	/*
 	  8 twice.  Tested before the disarm below, and the disarm is what every
@@ -785,6 +788,7 @@ float() Rewind_Holds;                  // cl_rewind.qc, Patch 477
 float() SaveLoc_Console =
 {
 	local string c;
+	local float k;
 
 	c = argv(0);
 
@@ -793,11 +797,19 @@ float() SaveLoc_Console =
 	// load+hold pair, and sl_loadlast was what that mistake looked like.
 	if (c == "+sl_hold")
 	{
+		// Patch 762: keys.c appends the key's number, which for a printable key
+		// is its scancode here too. That key owns the hold as the fixed 2 did:
+		// its repeats arm the deadman and SaveLoc_Key takes its release, so a
+		// key-up the chat draft swallows still lets go. Typed, or any other key:
+		// 0, no owner, the deadman stays inert and -sl_hold releases.
+		k = stof(argv(1));
+		if (k <= 32 || k >= 127)
+			k = 0;
 		if (SaveLoc_RunLocked())
-			SaveLoc_Refuse(0);
+			SaveLoc_Refuse(k);
 		else
-			SaveLoc_LoadKey(0);     // 0: no key owns this hold, so the repeat
-		return TRUE;                // deadman stays inert and -sl_hold releases
+			SaveLoc_LoadKey(k);
+		return TRUE;
 	}
 	if (c == "-sl_hold")
 	{

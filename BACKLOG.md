@@ -5,6 +5,17 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Key panel: what Patch 762 left out
+
+- Site: `src/client/cl_keycfg.qc` KC_Draw. While TAB holds the board (`sc_held`,
+  not pinned) Scores_Draw's SUI bracket runs first and its sui_end clears the
+  release, so the panel's chips and buttons do not fire until TAB is let go.
+  Check: open config_menu, hold TAB, click a chip.
+- Site: `src/client/cl_keycfg.qc` KC_Assign/KC_Clear. A key bound only with a
+  modifier ("SHIFT+e") is listed but cannot be cleared or replaced:
+  stringtokeynum returns -1 for the modifier name. Check: `bind SHIFT+e +left`,
+  then right-click that chip.
+
 ## Spectator telemetry: what Patch 744 left out
 
 - Site: `src/client/cl_hud.qc` HUD_Draw. No strafe bar for a watched player: it

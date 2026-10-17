@@ -266,6 +266,21 @@ float(string b) KC_RowOf =
 	return -1;
 };
 
+// The open save panel takes these digits first (SaveLoc_Key); its own key is let through.
+string(float scan) KC_PanelDigit =
+{
+	if (scan == '1') return "Create save";
+	if (scan == '2') return "Load save";
+	if (scan == '3') return "Go to next";
+	if (scan == '4') return "Go to previous";
+	if (scan == '5') return "Go to first";
+	if (scan == '6') return "Go to last";
+	if (scan == '7') return "Remove save";
+	if (scan == '8') return "Delete all";
+	if (scan == '0') return "Close menu";
+	return "";
+};
+
 // Key `scan` now does row i, in place of whatever slot s held.
 void(float i, float s, float scan) KC_Assign =
 {
@@ -288,11 +303,15 @@ void(float i, float s, float scan) KC_Assign =
 	}
 	KC_SetBind(scan, KC_F(i, 2));
 	if (other >= 0 && other != i)
-		KC_Say(sprintf("%s: %s (was %s)", KC_KeyLabel(kn), KC_F(i, 1), KC_F(other, 1)));
+		kn = sprintf("%s: %s (was %s)", KC_KeyLabel(kn), KC_F(i, 1), KC_F(other, 1));
 	else if (was != "" && other != i)
-		KC_Say(sprintf("%s: %s (was \"%s\")", KC_KeyLabel(kn), KC_F(i, 1), was));
+		kn = sprintf("%s: %s (was \"%s\")", KC_KeyLabel(kn), KC_F(i, 1), was);
 	else
-		KC_Say(sprintf("%s: %s", KC_KeyLabel(kn), KC_F(i, 1)));
+		kn = sprintf("%s: %s", KC_KeyLabel(kn), KC_F(i, 1));
+	was = KC_PanelDigit(scan);
+	if (was != "" && i != 12)
+		kn = strcat(kn, "; with the save menu open it is ", was);
+	KC_Say(kn);
 	KC_Changed();
 };
 
@@ -373,6 +392,7 @@ void() KC_Close =
 	kc_cap_i = -1;
 	kc_armed = FALSE;
 	sui_tooltip_reset();
+	sui_reset_actions();            // a slider held through ESC would drag on the next open
 	UI_CursorRelease(UIC_KEYCFG);
 	if (kc_dirty)
 	{
@@ -404,6 +424,7 @@ void() KC_Open =
 	kc_armed = FALSE;
 	kc_hov_i = -1;
 	kc_hov_slider = 0;
+	sui_reset_actions();
 	KC_Refresh();
 	UI_CursorClaim(UIC_KEYCFG);
 };
@@ -434,8 +455,9 @@ float() KC_Console =
 	if (a == "status")
 	{
 		KC_Refresh();
-		print(sprintf("config_menu: open %g capture %g/%g savepanel %g yawspeed %g sensitivity %g\n",
-		              kc_open, kc_cap_i, kc_cap_s, rec_sl_open, cvar("cl_yawspeed"), cvar("sensitivity")));
+		print(sprintf("config_menu: open %g capture %g/%g savepanel %g hold %g/%g ",
+		              kc_open, kc_cap_i, kc_cap_s, rec_sl_open, rec_sl_holding, rec_sl_holdkey));
+		print(sprintf("yawspeed %g sensitivity %g\n", cvar("cl_yawspeed"), cvar("sensitivity")));
 		for (i = 0; i < KC_N; i = i + 1)
 			print(sprintf("config_menu: %-9s %-14s %-11s keys [%s]\n",
 			              KC_F(i, 0), KC_F(i, 1), KC_F(i, 2), kc_keys[i]));
@@ -510,10 +532,11 @@ float(float evtype, float scanx, float chary, float devid) KC_CaptureEvent =
 			kc_eatkey = -1;
 		return TRUE;
 	}
-	if (kc_cap_i < 0 || evtype != IE_KEYDOWN)
-		return FALSE;               // a key held from before keeps its release
+	if (kc_cap_i < 0 || evtype != IE_KEYDOWN || chat_rep)
+		return FALSE;               // a key held from before keeps its repeats and release
 	kc_eatkey = scanx;
-	if (scanx == K_ESCAPE)
+	// A click binds Mouse 1 only on the waiting chip; anywhere else it cancels.
+	if (scanx == K_ESCAPE || (scanx == K_MOUSE1 && (kc_hov_i != kc_cap_i || kc_hov_s != kc_cap_s)))
 		KC_Say("cancelled");
 	else
 		KC_Assign(kc_cap_i, kc_cap_s, scanx);
@@ -864,7 +887,7 @@ void(vector scr) KC_Draw =
 
 	if (kc_cap_i >= 0)
 	{
-		foot = sprintf("press a key for %s   Esc cancels", KC_F(kc_cap_i, 1));
+		foot = sprintf("press a key for %s   click it again for Mouse 1   Esc cancels", KC_F(kc_cap_i, 1));
 		footc = SUI_THEME_FOCUS;
 	}
 	else if (kc_status != "" && cltime - kc_statusat < KC_STATUS_T)

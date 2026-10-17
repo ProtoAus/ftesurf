@@ -98,6 +98,11 @@ class Client:
 
     def key(self, vk, settle=.5):
         """A native press and release of one virtual key, posted to our own window."""
+        self.post(vk, 'down')
+        self.post(vk, 'up', settle)
+
+    def post(self, vk, kind, settle=.12):
+        """One native key message: 'down', 'repeat' (another down while held) or 'up'."""
         if self.proc.poll() is not None:
             raise RuntimeError('owned client already exited')
         user, hwnd = window(self.proc.pid)
@@ -109,10 +114,9 @@ class Client:
         scan = user.MapVirtualKeyW(vk, 0)
         ext = 1 << 24 if vk in (0x25, 0x26, 0x27, 0x28, 0x2D, 0x2E) else 0
         user.PostMessageW.argtypes = (W.HWND, W.UINT, W.WPARAM, W.LPARAM)
-        for message, value in ((0x100, 1 | scan << 16 | ext), (0x101, 0xC0000001 | scan << 16 | ext)):
-            if not user.PostMessageW(hwnd, message, vk, value):
-                raise C.WinError(C.get_last_error())
-            time.sleep(.12)
+        message, value = {'down': (0x100, 1), 'repeat': (0x100, 0x40000001), 'up': (0x101, 0xC0000001)}[kind]
+        if not user.PostMessageW(hwnd, message, vk, value | scan << 16 | ext):
+            raise C.WinError(C.get_last_error())
         time.sleep(settle)
 
     def stop(self):
@@ -199,7 +203,7 @@ def main():
         time.sleep(1)
         return cl
 
-    VK = {'1': 0x31, 'z': 0x5A, 'k': 0x4B, 'j': 0x4A, 'x': 0x58, 'esc': 0x1B}
+    VK = {'1': 0x31, '2': 0x32, '8': 0x38, 'z': 0x5A, 'k': 0x4B, 'j': 0x4A, 'x': 0x58, 'w': 0x57, 'esc': 0x1B}
     base = prepare(a, a.out)
     try:
         run(a, base, check, bound, saves, shot, start, VK)
@@ -261,8 +265,12 @@ def run(a, base, check, bound, saves, shot, start, VK):
         check(m.group(1) == '1', 'native k opens the key panel')
         shot(cl, 'p762_panel')
 
+        cl.post(VK['w'], 'down', .3)          # held from before the capture
         cl.query('config_menu capture turnleft 1', r'waiting for a key for turnleft')
+        cl.post(VK['w'], 'repeat', .3)        # its OS repeat must not be taken as the new key
         cl.key(VK['j'])
+        cl.post(VK['w'], 'up', .3)
+        check(bound(cl, 'w') == '+forward', "a held W's repeat during a capture is not bound")
         check(bound(cl, 'j') == '+left', 'a captured native j is bound to +left')
         m = cl.query('config_menu status', r'config_menu: turnleft .* keys \[([^\]]*)\]')
         check(m.group(1) == 'e j', 'turn left lists e and j', m.group(1))
@@ -333,6 +341,35 @@ def run(a, base, check, bound, saves, shot, start, VK):
         cl.key(VK['z'])
         m = cl.query('config_menu status', r'savepanel (\d)')
         check(m.group(1) == '1', 'native z runs save_menu from a panel-made bind')
+        cl.key(VK['z'])
+
+        # The bound load key owns its hold: repeats then no release -> the deadman lets go.
+        cl.post(VK['2'], 'down', .3)
+        m = cl.query('saveloc', r'saveloc: locked \S+ refkey \S+ hold \S+ holding (\S+)')
+        check(m.group(1) == '1', 'native 2 holds through its bind', m.group(0))
+        for _ in range(3):
+            cl.post(VK['2'], 'repeat', .2)
+        time.sleep(2.5)                         # SL_HOLD_DEADMAN 1.5 s of silence after a repeat
+        m = cl.query('saveloc', r'saveloc: locked \S+ refkey \S+ hold \S+ holding (\S+)')
+        check(m.group(1) == '0', 'a lost release of the bound load key is let go by the deadman', m.group(0))
+        cl.post(VK['2'], 'up', .5)
+
+        # A click away from the waiting chip cancels instead of binding Mouse 1.
+        cl.query('config_menu capture prev 0', r'waiting for a key for prev')
+        cl.query('vote key 512 1', r'vote key: scan 512 down 1 took 1')
+        cl.query('vote key 512 0', r'vote key: scan 512 down 0 took 1')
+        check(bound(cl, 'MOUSE1') == '+duck', 'a stray click during a capture cancels (Mouse 1 stays Duck)')
+        cl.send('config_menu')                  # the capture opened the panel
+        time.sleep(.5)
+
+        # The save-menu key closes the open save panel even on a digit the panel uses.
+        cl.query('config_menu bind savemenu 8', r'8: Save menu')
+        cl.key(VK['8'])
+        m = cl.query('config_menu status', r'savepanel (\d)')
+        check(m.group(1) == '1', 'save_menu on 8 opens the save panel')
+        cl.key(VK['8'])
+        m = cl.query('config_menu status', r'savepanel (\d)')
+        check(m.group(1) == '0', "save_menu on 8 closes it again (not the panel's delete-all)")
     finally:
         cl.stop()
 
