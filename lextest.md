@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P760 — long runs keep their full line wherever they are ticked
+
+Tick more than eight runs on a leaderboard (LINE column), some of them over two
+minutes. Lines 9 to 64 used to keep 2 minutes and draw the rest at half detail
+or less; now every line keeps its whole run up to 16 minutes (until hours of runs
+are ticked at once). Does a long run look as smooth as line 1 at line 20?
+"Same / still rough at X" is enough. Verdict PENDING. Not yet on the installs.
+
 ## P748 / P752 / P756 — Kitsune portals: the view through a door, two rooms deep, walking through
 
 Restart the game. Keep `r_blendsort 2`. Offline (your own server) for all three.

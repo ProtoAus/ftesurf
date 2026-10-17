@@ -142,7 +142,7 @@ float(float s, float i) LineGraph_Energy =
 {
 	local float b, speed, vz;
 	local vector p;
-	b = s * LN_CAP + i;
+	b = LN_B(s) + i;
 	p = ln_pos[b];
 	speed = ln_spd[b];
 	vz = ln_vz[b];
@@ -157,7 +157,7 @@ vector(float s, float seconds) LineGraph_At =
 	local float i, b, t, dt, f, a;
 	local vector lo, hi;
 	if (!LineGraph_Available(s)) return '0 0 0';
-	b = s * LN_CAP;
+	b = LN_B(s);
 	t = seconds + LG_Start(s);
 	i = Line_Find(s, t);
 	if (i > LG_Ib(s) || i < LG_Ia(s)) return '0 0 0';
@@ -338,7 +338,7 @@ void() LineGraph_LiveAlign =
 		if (ln_leg[c] <= 0) have0 = TRUE;           // a loader that did not say shows a whole run
 		else if (ln_leg[c] == legnow) havenow = TRUE;
 	}
-	head = ln_t[s * LN_CAP + ln_n[s] - 1];
+	head = ln_t[LN_B(s) + ln_n[s] - 1];
 	if (!tr_stopped)
 	if (getstatf(STAT_FS_TIMERSTATE) == TS_RUNNING)
 	{
@@ -407,7 +407,7 @@ void() LineGraph_LiveFold =
 	local vector r;
 
 	s = lv_slot;
-	b = s * LN_CAP;
+	b = LN_B(s);
 	n = ln_n[s];
 	grew = wide = FALSE;
 	budget = 512;
@@ -484,7 +484,7 @@ void() LineGraph_Prepare =
 				// (its graph generation: a trim or a load can put back a line as long as the one folded)
 				if (lv_bgg != ln_graphgen[s] || ln_n[s] < lv_done)
 					live = TRUE;
-				if (ln_t[s * LN_CAP + ln_n[s] - 1] - lv_start > lg_tmax)
+				if (ln_t[LN_B(s) + ln_n[s] - 1] - lv_start > lg_tmax)
 					live = TRUE;
 			}
 			continue;
@@ -511,7 +511,7 @@ void() LineGraph_Prepare =
 				if (i <= LG_Ib(s)) lg_ref[s] = LineGraph_Energy(s, i);
 				if (s == lv_slot) lv_refok = (i <= LG_Ib(s));
 				if (s != lv_slot)
-					lg_tmax = max(lg_tmax, ln_t[s * LN_CAP + LG_Ib(s)] - LG_Start(s));
+					lg_tmax = max(lg_tmax, ln_t[LN_B(s) + LG_Ib(s)] - LG_Start(s));
 			}
 		}
 		if (lv_slot >= 0)
@@ -525,7 +525,7 @@ void() LineGraph_Prepare =
 			// The ticked runs set the span. Past the longest of them the live head would
 			// leave the plot, so the span grows a quarter of it at a time: a rebuild every
 			// so often, not every tick.
-			t = ln_t[lv_slot * LN_CAP + ln_n[lv_slot] - 1] - lv_start;
+			t = ln_t[LN_B(lv_slot) + ln_n[lv_slot] - 1] - lv_start;
 			if (lg_tmax > 0)
 			if (t > lg_tmax)
 			{
@@ -595,7 +595,7 @@ void() LineGraph_Prepare =
 		}
 		lg_buildpoint = i + 1;
 		budget = budget - 1;
-		b = s * LN_CAP;
+		b = LN_B(s);
 		t = ln_t[b + i] - LG_Start(s);
 		if (t < 0) continue;
 		gap = ln_brk[b + i];
@@ -974,7 +974,7 @@ void(vector p, vector size, float energy, vector r, float d) LineGraph_LiveHead 
 	if (!lg_available[s] || !lg_selected[s]) return;
 	i = ln_n[s] - 1;
 	if (i < lv_ia) return;
-	b = s * LN_CAP;
+	b = LN_B(s);
 	t = ln_t[b + i] - lv_start;
 	if (t < lg_v0 || t > lg_v1) return;
 	x = floor(p_x + (t - lg_v0) / (lg_v1 - lg_v0) * size_x);
@@ -1236,7 +1236,7 @@ float() LineGraph_NativeRows =
 			lgn_done[s] = first;
 			lgn_dirty = TRUE;
 		}
-		b = s * LN_CAP;
+		b = s * LN_CAP;          // lgn_e is the graph's own, a slot LN_CAP
 		for (i = lgn_done[s]; i <= LG_Ib(s) && budget > 0; i = i + 1)
 		{
 			lgn_e[b + i] = LineGraph_Energy(s, i) - lg_ref[s];
@@ -1253,14 +1253,14 @@ float() LineGraph_NativeRows =
 // the rows where they lie, checks them and copies them; a refusal is FALSE.
 float() LineGraph_NativePublish =
 {
-	local float s, k, n, b, rows, flags, ext;
+	local float s, k, n, b, gb, rows, flags, ext;
 	n = ext = 0;
 	for (s = 0; s < LG_SLOTS; s = s + 1)
 		if (lg_available[s])
 		if (LG_Ib(s) >= lgn_first[s])
 		{
 			n = n + 1;
-			ext = max(ext, ln_t[s * LN_CAP + LG_Ib(s)] - LG_Start(s));
+			ext = max(ext, ln_t[LN_B(s) + LG_Ib(s)] - LG_Start(s));
 		}
 	lgn_rev = lgn_rev + 1;
 	if (!ui_native_plot_begin(lgn_handle, lgn_rev, n)) return FALSE;
@@ -1271,14 +1271,15 @@ float() LineGraph_NativePublish =
 		if (!lg_available[s]) continue;
 		rows = LG_Ib(s) - lgn_first[s] + 1;
 		if (rows < 1) continue;
-		b = s * LN_CAP + lgn_first[s];
+		b = LN_B(s) + lgn_first[s];
+		gb = s * LN_CAP + lgn_first[s];        // Patch 760: lgn_e keeps a slot LN_CAP
 		flags = (ln_g[s] > 0) ? 1 : 0;      // energy needs a gravity (LineGraph_Energy)
 		if (s == 0) { flags = flags + 2; lgn_marked = TRUE; }   // the replay's clock rides it
 		if (!ui_native_plot_series(lgn_handle, k, [flags, max(0.25, ln_tick[s] * ln_step[s] * 2), 0], LineGraph_Colour(s)))
 			return FALSE;
 		if (ln_g[s] > 0)
 		{
-			if (!ui_native_plot_rows(lgn_handle, k, &ln_t[b], &ln_spd[b], &lgn_e[b], &ln_brk[b], rows, LG_Start(s)))
+			if (!ui_native_plot_rows(lgn_handle, k, &ln_t[b], &ln_spd[b], &lgn_e[gb], &ln_brk[b], rows, LG_Start(s)))
 				return FALSE;
 		}
 		else if (!ui_native_plot_rows(lgn_handle, k, &ln_t[b], &ln_spd[b], __NULL__, &ln_brk[b], rows, LG_Start(s)))
@@ -1317,8 +1318,8 @@ void() LineGraph_NativeProbe =
 	lgn_probe = lgn_probe + 1;
 	rev = lgn_rev + 1;
 	s = lgn_map[0];
-	x = &ln_t[s * LN_CAP + lgn_first[s]];
-	a = &ln_spd[s * LN_CAP + lgn_first[s]];
+	x = &ln_t[LN_B(s) + lgn_first[s]];
+	a = &ln_spd[LN_B(s) + lgn_first[s]];
 	spec = [0, 0.25, 0];
 	rgb = '0.5 0.5 0.5';
 	v = 10 + lgn_rev;                       // +Inf, made at run time: six squarings
@@ -2427,10 +2428,10 @@ float(string cmd) LineGraph_Command =
 		if (s >= 0) t = ln_n[s];
 		if (t > 0)
 		{
-			t = ln_t[s * LN_CAP + ln_n[s] - 1] - lv_start;
+			t = ln_t[LN_B(s) + ln_n[s] - 1] - lv_start;
 			print(sprintf("linegraph: live %g why %g start %.4f leg %g samples %g folded %g head %.4f",
 			              lv_slot, lv_why, lv_start, lv_leg, ln_n[s] - lv_ia, lv_done - lv_ia, t));
-			print(sprintf(" speed %.2f energy %.2f span %.4f gen %g\n", ln_spd[s * LN_CAP + ln_n[s] - 1],
+			print(sprintf(" speed %.2f energy %.2f span %.4f gen %g\n", ln_spd[LN_B(s) + ln_n[s] - 1],
 			              LineGraph_Energy(s, ln_n[s] - 1) - lg_ref[s], lg_tmax, lv_gen));
 		}
 		else

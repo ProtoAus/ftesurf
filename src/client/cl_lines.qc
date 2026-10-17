@@ -32,17 +32,22 @@
 #define LN_S_TRAIL 9            // which pick a slot's width (Line_SlotPx)
 #define LN_S_MORE  11           // Patch 649: the first of the fifty-six further board slots
 #define LN_CAP     65536        // samples a slot holds (16 min at 66 Hz); past it, halved
-#define LN_CAP2    8192         // ... and a further board slot (2 min at 66 Hz; the same halving)
+#define LN_CAP2    8192         // a pooled slot's size when nobody asks (Patch 760: ln_want)
 // Patch 746: the race ghost's PBs (cl_raceghost.qc) after the board's: a stage's at
 // LN_CAP2 and a whole run's at LN_CAP, last, so LN_B holds for both.
 #define LN_S_GHOST 67
 #define LN_S_GHR   68
 #define LN_TOTAL   (LN_S_MORE * LN_CAP + (LN_S_GHR - LN_S_MORE) * LN_CAP2 + LN_CAP)
 // A slot's first sample in the arenas, its capacity, and whether it is the live run's.
-// Slots under LN_S_MORE are where they always were, so LN_B(s) still holds for those.
-#define LN_B(s)    (((s) < LN_S_MORE) ? (s) * LN_CAP : LN_S_MORE * LN_CAP + ((s) - LN_S_MORE) * LN_CAP2)
-#define LN_C(s)    (((s) < LN_S_MORE || (s) == LN_S_GHR) ? LN_CAP : LN_CAP2)
+// Patch 760: the replay's and the live run's are fixed where they always were (s *
+// LN_CAP); every other slot is given what its run needs from the rest (Line_PoolTake),
+// up to LN_CAP.  Lines 9..64 kept 2 min (LN_CAP2): 18 % of Momentum's main runs.
+#define LN_B(s)    (ln_base[s])
+#define LN_C(s)    (ln_capn[s])
 #define LN_TRAIL(s) ((s) >= LN_S_TRAIL && (s) < LN_S_MORE)
+#define LN_POOLED(s) ((s) > 0 && !LN_TRAIL(s))
+#define LN_ALIGN   512          // LN_CHUNK * LN_GROUP: a region owns whole chunks and groups
+#define LN_FMAX    160          // free regions the pool keeps apart
 // Board line i of the scoreboard's (0 the first) is this slot.
 #define LN_BOARDSLOT(i) (((i) < LN_S_TRAIL - LN_S_BOARD) ? (i) + LN_S_BOARD : (i) + LN_S_MORE - (LN_S_TRAIL - LN_S_BOARD))
 #define LN_BOARDINDEX(s) (((s) < LN_S_TRAIL) ? (s) - LN_S_BOARD : (s) - LN_S_MORE + (LN_S_TRAIL - LN_S_BOARD))
@@ -104,6 +109,12 @@
 */
 
 vector *ln_pos;
+float *ln_base;                 // Patch 760: a slot's first sample in the arenas
+float *ln_capn;                 // ... and how many it may hold
+float *ln_fs;                   // the pool's free regions in order: where
+float *ln_fl;                   // ... and how long
+float  ln_fn;                   // ... how many
+float  ln_want;                 // Line_Begin's request for a pooled slot, samples (0: LN_CAP2)
 string *ln_owner;
 float *ln_g;
 float *ln_g_assumed;
@@ -487,8 +498,26 @@ float  *ln_np;
 // Line_RegisterCvars calls this before anything can read one.
 void() Line_AllocSlots =
 {
+	local float s;
+
 	if (ln_n)
 		return;
+	ln_base = memalloc(sizeof(float) * LN_SLOTS);
+	ln_capn = memalloc(sizeof(float) * LN_SLOTS);
+	ln_fs   = memalloc(sizeof(float) * LN_FMAX);
+	ln_fl   = memalloc(sizeof(float) * LN_FMAX);
+	for (s = 0; s < LN_SLOTS; s = s + 1)
+		if (!LN_POOLED(s))
+		{
+			ln_base[s] = s * LN_CAP;
+			ln_capn[s] = LN_CAP;
+		}
+	// The pool: slots 1..8's old place and everything past the live run's.
+	ln_fs[0] = LN_CAP;
+	ln_fl[0] = (LN_S_TRAIL - 1) * LN_CAP;
+	ln_fs[1] = LN_S_MORE * LN_CAP;
+	ln_fl[1] = LN_TOTAL - LN_S_MORE * LN_CAP;
+	ln_fn = 2;
 	ln_lab_p = memalloc(sizeof(vector) * LN_LABMAX);
 	ln_lab_c = memalloc(sizeof(vector) * LN_LABMAX);
 	ln_lab_a = memalloc(sizeof(float) * LN_LABMAX);
@@ -645,6 +674,128 @@ float(float s) Line_BirthBase =
 	return (s == 0) ? 2 * LN_CAP : (s - LN_S_TRAIL) * LN_CAP;
 };
 
+// Patch 760: samples [a, a + n) back to the pool, joined to free neighbours.
+void(float a, float n) Line_PoolFree =
+{
+	local float i, j;
+
+	if (n <= 0)
+		return;
+	for (i = 0; i < ln_fn; i = i + 1)
+		if (ln_fs[i] > a)
+			break;
+	// Nested: QC's && reads both sides, and ln_fs[-1] is a VM error.
+	if (i > 0)
+	if (ln_fs[i - 1] + ln_fl[i - 1] == a)
+	{
+		ln_fl[i - 1] = ln_fl[i - 1] + n;
+		if (i < ln_fn)
+		if (a + n == ln_fs[i])
+		{
+			ln_fl[i - 1] = ln_fl[i - 1] + ln_fl[i];
+			for (j = i; j + 1 < ln_fn; j = j + 1)
+			{
+				ln_fs[j] = ln_fs[j + 1];
+				ln_fl[j] = ln_fl[j + 1];
+			}
+			ln_fn = ln_fn - 1;
+		}
+		return;
+	}
+	if (i < ln_fn)
+	if (a + n == ln_fs[i])
+	{
+		ln_fs[i] = a;
+		ln_fl[i] = ln_fl[i] + n;
+		return;
+	}
+	if (ln_fn >= LN_FMAX)
+		return;                     // out of the pool until the map changes
+	for (j = ln_fn; j > i; j = j - 1)
+	{
+		ln_fs[j] = ln_fs[j - 1];
+		ln_fl[j] = ln_fl[j - 1];
+	}
+	ln_fs[i] = a;
+	ln_fl[i] = n;
+	ln_fn = ln_fn + 1;
+};
+
+// Pooled slot s gives its region back.
+void(float s) Line_PoolGive =
+{
+	if (!LN_POOLED(s))
+		return;
+	Line_PoolFree(LN_B(s), LN_C(s));
+	ln_capn[s] = 0;
+};
+
+/*
+  Patch 760: a region of `want` samples (whole LN_ALIGN groups, at most LN_CAP) for
+  pooled slot s: the smallest free one that holds it, else the largest there is (a
+  longer run is then halved, as every line was past its fixed size).  None: 0, and
+  Line_Add keeps nothing.
+*/
+void(float s, float want) Line_PoolTake =
+{
+	local float i, k, j;
+
+	Line_PoolGive(s);
+	want = min(LN_CAP, ceil(max(want, 1) / LN_ALIGN) * LN_ALIGN);
+	k = -1;
+	for (i = 0; i < ln_fn; i = i + 1)
+		if (ln_fl[i] >= want)
+		{
+			if (k < 0)
+				k = i;
+			else if (ln_fl[i] < ln_fl[k])
+				k = i;
+		}
+	if (k < 0)
+		for (i = 0; i < ln_fn; i = i + 1)
+		{
+			if (k < 0)
+				k = i;
+			else if (ln_fl[i] > ln_fl[k])
+				k = i;
+		}
+	if (k < 0)
+	{
+		ln_capn[s] = 0;
+		return;
+	}
+	ln_base[s] = ln_fs[k];
+	ln_capn[s] = min(want, ln_fl[k]);
+	ln_fs[k] = ln_fs[k] + ln_capn[s];
+	ln_fl[k] = ln_fl[k] - ln_capn[s];
+	if (ln_fl[k] <= 0)
+	{
+		for (j = k; j + 1 < ln_fn; j = j + 1)
+		{
+			ln_fs[j] = ln_fs[j + 1];
+			ln_fl[j] = ln_fl[j + 1];
+		}
+		ln_fn = ln_fn - 1;
+	}
+};
+
+void() Line_PoolPrint =
+{
+	local float i, f, big, s;
+
+	f = big = 0;
+	for (i = 0; i < ln_fn; i = i + 1)
+	{
+		f = f + ln_fl[i];
+		big = max(big, ln_fl[i]);
+	}
+	print(sprintf("lines: pool %d samples free in %d regions, the largest %d\n", f, ln_fn, big));
+	for (s = 0; s < LN_SLOTS; s = s + 1)
+		if (ln_n[s] > 0 || (LN_POOLED(s) && LN_C(s) > 0))
+			print(sprintf("lnpool %d base %d cap %d n %d step %d\n", s, LN_B(s), LN_C(s),
+			              ln_n[s], ln_step[s]));
+};
+
 void(float s) Line_Clear =
 {
 	if (ln_owner[s] != "") strunzone(ln_owner[s]);
@@ -662,6 +813,7 @@ void(float s) Line_Clear =
 	ln_evcut[s] = FALSE;
 	ln_evdrop[s] = 0;
 	ln_nsamp[s] = 0;
+	Line_PoolGive(s);
 };
 
 // The recording's own tick.  The energy colour divides by the most energy air
@@ -902,6 +1054,9 @@ void(float s) Line_Begin =
 	Line_Alloc();
 	Line_Movevars();
 	Line_Clear(s);
+	if (LN_POOLED(s))
+		Line_PoolTake(s, (ln_want > 0) ? ln_want : LN_CAP2);
+	ln_want = 0;
 	ln_step[s] = 1;
 	ln_skip[s] = 0;
 	ln_pbrk[s] = FALSE;
@@ -1099,6 +1254,9 @@ void(float s, float si) Line_EvFold =
 void(float s, vector o, float spd, float vz, float q, float t, float brk, float pose) Line_Add =
 {
 	local float b, n, i, j;
+
+	if (LN_C(s) < 2)
+		return;                     // Patch 760: the pool gave this slot nothing
 
 	if (brk)
 		ln_pbrk[s] = TRUE;
@@ -1629,6 +1787,16 @@ void(float s) Line_End =
 
 	b = LN_B(s);
 	n = ln_n[s];
+	// Patch 760: a pooled line keeps what it holds; the rest goes back.
+	if (LN_POOLED(s))
+	{
+		c = ceil(max(n, 1) / LN_ALIGN) * LN_ALIGN;
+		if (c < LN_C(s))
+		{
+			Line_PoolFree(b + c, LN_C(s) - c);
+			ln_capn[s] = c;
+		}
+	}
 	// Patch 632: your own line has a speed range too.  Only Line_Range set one and
 	// nothing calls it for the trail, so "speed" over your line alone was 0..0 and
 	// every point the slow end's red (58 of 58 on a 116-point line, the review).
@@ -3899,6 +4067,8 @@ float() Line_Console =
 		              ln_lbshown, ln_lbhidden, ln_declutter, ln_labfar));
 		print(sprintf("lines: repainted %g times (the live run's own not counted); tables made in %.1f ms\n",
 		              ln_npaint, ln_allocms));
+		// Patch 760: the pool, and each line's place in it.
+		Line_PoolPrint();
 		return TRUE;
 	}
 	print("lines: independent switches (0 off, 1 on):\n"

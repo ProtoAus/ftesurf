@@ -25,7 +25,10 @@ commit   99e69da32be77f24d18a5441440b002a0db72672
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-756
-patch    757
+patch    760
+# Patch 760 (QC only): a board line's sample store is sized to its run from one
+# shared pool (lines 9..64 kept 2 min); the replay and live run keep fixed places.
+# p760pool arm; the build before holds half a 2.5-min run in lines 9 and 64.
 # Patch 757 (backend tool only): tools/ksfconvert.py takes a KSF demo that begins
 # inside the start zone when its official time binds it, and an official time
 # within 2.5 ticks plus each repeated frame (and one a 10,000 frames) of the frame

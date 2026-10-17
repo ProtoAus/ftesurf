@@ -2041,6 +2041,10 @@ float(float slot, string path, float leg) Watch_LineJobStart =
 	wt_lj_qhave  = FALSE;
 	wt_lj_fgn = wt_lj_momdemo = wt_lj_gndi = FALSE;
 	Infer_Open(1, INF_MEASURED);
+	// Patch 760: room for the run in the line pool, never less than it holds: a
+	// sample line is over 40 bytes.  Line_End gives back what it did not use.  (Leaves
+	// are no guide: online ones lead with "02m30.125s".)
+	ln_want = fsize(wt_lj_fh) / 40;
 	Line_Begin(slot);
 	return TRUE;
 };

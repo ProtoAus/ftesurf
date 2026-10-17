@@ -32,7 +32,13 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   run of the same map would say whether a two-sample rule holds.
 - The one import over INF_SCANMAX (surf_666, 238,434 samples) has no contact: the
   inference runs inside the open's single QC call. Spreading Watch_InferScan over
-  frames, as Watch_ZoneEvents is, would lift it.
+  frames, as Watch_ZoneEvents is, would lift it, but the line and segment passes
+  that read its bits run in that call too (95 % of the budget with the inference,
+  before 749/750 added per-sample work): it wants the open itself in pieces.
+  Considered 17 Oct (claimed as 761, released): one file of 5,281.
+- `tools/p545graph.py`'s "shared mouse cursor did not act" fails on the deployed
+  build too (41d2e086 and P760 alike: cursor 0.1236 on a 0.1 s run); the other
+  checks pass. Seen 17 Oct, not looked into.
 - Split rows of an import carry no delta (as a native replay's: no per-split PB
   table on disk); a KSF bonus with one segment has no splits but its finish.
 - An inferred board's velocity misses the tick's air acceleration along the normal
