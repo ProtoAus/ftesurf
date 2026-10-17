@@ -54,7 +54,7 @@ float  wop_relat;
 vector *wop_legorg;
 vector *wop_legang;             // pitch, yaw, WOPD_* (WOPD_NONE: no answer)
 string wop_legsrc;              // the six strings they were parsed from
-float  *wop_blind;              // Patch 759: sent unpredicted (its row was not published)
+float  *wop_blind;              // Patch 759: WOPB_* -- sent unpredicted
 float  wop_slot;                // the slot WarpOp_Queue just filled
 vector wop_tgorg, wop_tgang, wop_tgvel;   // WarpOp_Row's answer: origin, pitch/yaw/duck, speed
 float  wop_tok, wop_tokt;       // SV_SaveLocRate's bucket, mirrored
@@ -91,7 +91,22 @@ float() WarpOp_Able =
 	return TRUE;
 };
 
-// A slot not queued and not still being replayed; -1 when the ring is busy.
+#define WOPB_BLIND   1              // wop_blind: sent unpredicted; the server's answer moves it
+#define WOPB_REFUSED 2              // ...and SV_SaveLocRate will refuse it: no move at all
+
+// Patch 759: an op the server has not answered -- STAT_FS_WOPACK (which arrives
+// with the rows the op moved) has not reached its command, and it was queued
+// under a second ago (by then the server dropped it).
+float(float i) WarpOp_Unanswered =
+{
+	if (wop_seq[i] == -1)
+		return TRUE;
+	if (wop_seq[i] <= 0 || wop_seq[i] <= getstatf(STAT_FS_WOPACK))
+		return FALSE;
+	return (cltime - wop_qt[i] < 1 && cltime >= wop_qt[i]);
+};
+
+// A slot not queued, answered and not still being replayed; -1 when the ring is busy.
 float() WarpOp_Slot =
 {
 	local float i;
@@ -99,6 +114,7 @@ float() WarpOp_Slot =
 	for (i = 0; i < WOP_RING; i = i + 1)
 		// Not one the replay can still reach from an older baseline (UPDATE_BACKUP).
 		if (wop_seq[i] == 0 || (wop_seq[i] > 0 && wop_seq[i] + 64 <= servercommandframe))
+		if (!WarpOp_Unanswered(i))
 			return i;
 	return -1;
 };
@@ -122,18 +138,6 @@ float(float op, vector org, vector vel, vector ang, float duck) WarpOp_Queue =
 	wop_blind[i] = FALSE;
 	wop_slot = i;
 	return TRUE;
-};
-
-// Patch 759: an op the server has not answered -- STAT_FS_WOPACK (which arrives
-// with the rows the op moved) has not reached its command, and it is not so old
-// that the server must have dropped it.
-float(float i) WarpOp_Unanswered =
-{
-	if (wop_seq[i] == -1)
-		return TRUE;
-	if (wop_seq[i] <= 0)
-		return FALSE;
-	return (wop_seq[i] > getstatf(STAT_FS_WOPACK) && wop_seq[i] + 64 > servercommandframe);
 };
 
 // A load or step still unanswered: the cursor stats are from before it.
@@ -169,13 +173,17 @@ float(float op, float idx, float cnt) WarpOp_StepIdx =
 
 /*
   The row a load or step lands on, after every load and step still unanswered,
-  into wop_tgorg/tgang/tgvel.  FALSE when it is not one the server published for
-  this cursor (the row itself, next, prev, first or last): send it unpredicted.
+  into wop_tgorg/tgang/tgvel (zero when FALSE).  FALSE when it is not one the
+  server published for this cursor (the row itself, next, prev, first or last),
+  or follows a blind load (whose hold the replay does not have): send it blind.
 */
 float(float op) WarpOp_Row =
 {
 	local float cnt, i0, idx, i, j, bq, b;
 
+	wop_tgorg = '0 0 0';
+	wop_tgang = '0 0 0';
+	wop_tgvel = '0 0 0';
 	cnt = getstatf(STAT_FS_SAVECOUNT);
 	i0 = getstatf(STAT_FS_SAVEINDEX);
 	if (cnt < 1 || i0 < 1 || i0 > cnt)
@@ -188,12 +196,20 @@ float(float op) WarpOp_Row =
 		for (i = 0; i < WOP_RING; i = i + 1)
 			if (wop_op[i] == WOP_LOAD || (wop_op[i] >= WOP_NEXT && wop_op[i] <= WOP_LAST))
 			if (wop_q[i] > bq && WarpOp_Unanswered(i))
-			if (j < 0 || wop_q[i] < wop_q[j])
-				j = i;
+			{
+				if (j < 0)
+					j = i;
+				else if (wop_q[i] < wop_q[j])
+					j = i;
+			}
 		if (j < 0)
 			break;
-		idx = WarpOp_StepIdx(wop_op[j], idx, cnt);
 		bq = wop_q[j];
+		if (wop_blind[j] == WOPB_REFUSED)
+			continue;                       // the server keeps its cursor
+		if (wop_blind[j] == WOPB_BLIND && wop_op[j] == WOP_LOAD)
+			return FALSE;
+		idx = WarpOp_StepIdx(wop_op[j], idx, cnt);
 	}
 	idx = WarpOp_StepIdx(op, idx, cnt);
 	if (idx == i0)
@@ -279,7 +295,7 @@ void() WarpOp_Legs =
 float(float op) WarpOp_Reset =
 {
 	local vector org, ang;
-	local float i;
+	local float i, blind;
 
 	if (!WarpOp_Able() || rec_sl_holding || Trail_RequestBusy())
 		return FALSE;
@@ -307,7 +323,16 @@ float(float op) WarpOp_Reset =
 	if (ang_z != WOPD_KEEP && ang_z != WOPD_ANG)
 		return FALSE;
 	ang_z = (ang_z == WOPD_ANG);
-	return WarpOp_Queue(op, org, '0 0 0', ang, 0);
+	// Patch 759: a load or step still unanswered restores run state that `!r`'s
+	// published destination was read from: sent in order, unpredicted.
+	blind = (op == WOP_RESET && WarpOp_ListBusy());
+	if (blind)
+		ang_z = 0;
+	if (!WarpOp_Queue(op, org, '0 0 0', ang, 0))
+		return FALSE;
+	if (blind)
+		wop_blind[wop_slot] = WOPB_BLIND;
+	return TRUE;
 };
 
 // The load key's sl_load + sl_hold.  Same gates as SaveLoc_PredictLoad's camera.
@@ -331,9 +356,9 @@ float() WarpOp_Load =
 	// Patch 759: after any load or step still unanswered.  Sent in order either
 	// way; unpredicted (blind) when its row is not published or the server's
 	// bucket would refuse it, and the server's answer corrects it as before.
-	blind = !WarpOp_Row(WOP_LOAD);
+	blind = WarpOp_Row(WOP_LOAD) ? 0 : WOPB_BLIND;
 	if (!WarpOp_Charge())
-		blind = TRUE;
+		blind = WOPB_REFUSED;
 	if (!WarpOp_Queue(WOP_LOAD, wop_tgorg, wop_tgvel, [wop_tgang_x, wop_tgang_y, !blind], wop_tgang_z))
 		return FALSE;
 	wop_blind[wop_slot] = blind;
@@ -370,14 +395,14 @@ float(float op, float rep) WarpOp_Step =
 	if (rep)
 	if (WarpOp_ListBusy())
 		return TRUE;
-	blind = !WarpOp_Row(op);
+	blind = WarpOp_Row(op) ? 0 : WOPB_BLIND;
 	if (rep && blind)
 		return TRUE;
 	if (!WarpOp_Charge())
 	{
 		if (rep)
 			return TRUE;
-		blind = TRUE;
+		blind = WOPB_REFUSED;
 	}
 	if (!WarpOp_Queue(op, wop_tgorg, wop_tgvel, [wop_tgang_x, wop_tgang_y, !blind], wop_tgang_z))
 		return FALSE;
@@ -420,18 +445,29 @@ float() WarpOp_Release =
 */
 void() WarpOp_Frame =
 {
-	local float i, op;
+	local float i, j, op;
 
 	// An op no command has carried in 0.25 s (CSQC_Input_Frame returning early
 	// under a replay, spectate, rewind or ghost): send the old command, or for a
-	// release nothing a rewind could be holding by now.
+	// release nothing a rewind could be holding by now.  Oldest first.
 	if (wop_seq)
-		for (i = 0; i < WOP_RING; i = i + 1)
-			if (wop_seq[i] == -1)
-			if (cltime - wop_qt[i] > 0.25 || cltime < wop_qt[i])
+		while (TRUE)
+		{
+			j = -1;
+			for (i = 0; i < WOP_RING; i = i + 1)
+				if (wop_seq[i] == -1)
+				if (cltime - wop_qt[i] > 0.25 || cltime < wop_qt[i])
+				{
+					if (j < 0)
+						j = i;
+					else if (wop_q[i] < wop_q[j])
+						j = i;
+				}
+			if (j < 0)
+				break;
 			{
-				op = wop_op[i];
-				wop_seq[i] = 0;
+				op = wop_op[j];
+				wop_seq[j] = 0;
 				if (op == WOP_RESET)
 					localcmd("cmd zone_reset\n");
 				else if (op == WOP_SPAWN)
@@ -454,6 +490,7 @@ void() WarpOp_Frame =
 						SaveLoc_Cmd("sl_holdoff");
 				}
 			}
+		}
 
 	if (wop_relseq <= 0 || servercommandframe < wop_relseq)
 		return;

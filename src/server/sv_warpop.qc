@@ -39,8 +39,9 @@ moveprep_t *wop_mp;
 .string wop_legs0, wop_legs1, wop_legs2, wop_legs3, wop_legs4, wop_legs5;
 .float  wop_legzoned;            // bit k: wop_legs<k> is a strzone this module owns
 .float  wop_legt, wop_legdue;
+.float  wop_leggot;              // the wop_leggen this player's table was built on
 string  wop_legcrc;              // the zone set wop_nstage/wop_nbonus were counted on
-float   wop_legcount, wop_nstage, wop_nbonus;
+float   wop_legcount, wop_nstage, wop_nbonus, wop_leggen;
 
 void() SV_WarpOpCommand =
 {
@@ -207,27 +208,36 @@ string(entity e, float k) SV_WarpOpLegChunk =
 	return s;
 };
 
-void(entity e) SV_WarpOpLegs =
+// The legs this zone set has; a new set bumps wop_leggen, which every player's
+// table then follows.
+void() SV_WarpOpLegCount =
 {
 	local float n;
 
 	if (!zone_loaded)
 		return;
-	if (strcmp(wop_legcrc, zone_crc) || wop_legcount != zone_count)
-	{
-		if (wop_legcrc)
-			strunzone(wop_legcrc);
-		wop_legcrc = strzone(zone_crc);
-		wop_legcount = zone_count;
-		wop_nstage = 0;
-		wop_nbonus = 0;
-		for (n = 1; n <= WOP_STAGES; n = n + 1)
-			if (SV_ZoneFindLeg(0, n - 1) >= 0)
-				wop_nstage = n;
-		for (n = 1; n <= WOP_BONUSES; n = n + 1)
-			if (SV_ZoneFindLeg(n, 0) >= 0)
-				wop_nbonus = n;
-	}
+	if (!strcmp(wop_legcrc, zone_crc) && wop_legcount == zone_count)
+		return;
+	if (wop_legcrc)
+		strunzone(wop_legcrc);
+	wop_legcrc = strzone(zone_crc);
+	wop_legcount = zone_count;
+	wop_leggen = wop_leggen + 1;
+	wop_nstage = 0;
+	wop_nbonus = 0;
+	for (n = 1; n <= WOP_STAGES; n = n + 1)
+		if (SV_ZoneFindLeg(0, n - 1) >= 0)
+			wop_nstage = n;
+	for (n = 1; n <= WOP_BONUSES; n = n + 1)
+		if (SV_ZoneFindLeg(n, 0) >= 0)
+			wop_nbonus = n;
+};
+
+void(entity e) SV_WarpOpLegs =
+{
+	if (!zone_loaded)
+		return;
+	e.wop_leggot = wop_leggen;
 	e.wop_legt = time;
 	SV_WarpOpLegSet(e, wop_legs0, 1, SV_WarpOpLegChunk(e, 0));
 	SV_WarpOpLegSet(e, wop_legs1, 2, SV_WarpOpLegChunk(e, 1));
@@ -273,7 +283,8 @@ void(entity e) SV_WarpOpPublish =
 	e.wop_mang = wop_dang;
 	// Up to 46 destinations, each a find and traces: at most once a second even
 	// for a client that changes the signature every command.
-	if (moved || strcmp(wop_legcrc, zone_crc) || wop_legcount != zone_count)
+	SV_WarpOpLegCount();
+	if (moved || e.wop_leggot != wop_leggen)
 		e.wop_legdue = TRUE;
 	if ((e.wop_legdue && time - e.wop_legt >= 1) || time - e.wop_legt >= 5 || time < e.wop_legt)
 	{

@@ -72,8 +72,12 @@
   server published for the current cursor; otherwise the op goes "blind" and
   the server's answer corrects it. "Unanswered" is STAT_FS_WOPACK, not
   servercommandframe: stats ride the reliable channel and can arrive a packet
-  after the ack. A key's auto-repeat waits for the answer; WarpOp_Charge mirrors
-  SV_SaveLocRate so a press the server would refuse is not predicted. A first cut
+  after the ack; an op unanswered a second after it was queued was dropped. A
+  key's auto-repeat waits for the answer; WarpOp_Charge mirrors SV_SaveLocRate,
+  and a press it says the server refuses is WOPB_REFUSED, which the walk skips
+  (it moves no cursor). A blind load ends prediction for what follows it (the
+  replay does not have its hold), and `!r` behind an unanswered load or step
+  goes blind (the load restores the run state `!r`'s destination reads). A first cut
   DEFERRED early presses and the review found the cost: later keys (`!r`, 7,
   the release) overtook them, and a fifth press vanished.
 - `p753warpop.py --more` grades the client's `seq: event ... op 2 id N` (the

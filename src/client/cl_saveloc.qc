@@ -402,6 +402,13 @@ void(string c, float rep) SaveLoc_Step =
 		op = WOP_FIRST;
 	else if (c == "sl_last")
 		op = WOP_LAST;
+	if (rep)
+	{
+		// The stringcmd path too: a repeat waits for the last list command's answer.
+		SaveLoc_Resync();
+		if (rec_sl_sent != getstatf(STAT_FS_SLACK))
+			return;
+	}
 	if (!WarpOp_Step(op, rep))
 		SaveLoc_Cmd(c);
 };

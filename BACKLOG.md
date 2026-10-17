@@ -3992,15 +3992,27 @@ that was never armed (see the bullet below it), and item 10's own residual.
 - **Patch 427's client half is not in a release.** Clients quote `download`;
   until players update, the lobbies' server half is what lets them join maps
   with spaced sound names. Ships with the next `release.ps1 -Bump patch`.
+- **A landing from surf_dune's stage 1 void teleport is sometimes corrected
+  (found 17 Oct during Patch 759).** Load the ducked mid-air save just past the
+  start without a hold (`tools/p753warpop.py --freeduck N`): the step itself is
+  predicted, and the correction, 4.6-8.7 u, mostly in z, came after the void
+  teleport in every one I traced (one corrected mid-fall instead). Counts, free steps corrected: 754 client 7/13, the
+  installed 756 client 2/6, a 754 build without the hull reconcile 3/6, the 0.1.26
+  release client 1/7. So it is not Patch 759's, and that 754 makes it more
+  frequent is not shown at these counts. A plain `setpos` drop into the same
+  teleport (`--fallteleport`) gave 0/5 on 754 and on 0.1.26. Not traced to a cause.
 - **Save and zone keys that are still a round trip (Patches 753/759).** 2, 3-6,
   `!r`, `!m`, `!s N` and `!b N` are predicted; `sl_goto N` (a load by number),
   zone_goto, `!s` past 30 and `!b` past 16 still snap a round trip later, and so
   does a step tapped within a round trip onto a row the server has not
   published (two the same way on a list of five or more). A step, `!s` or `!b`
   lost to 3+ dropped packets is lost (the stringcmds were reliable; `!r` has the
-  same gap), and a stringcmd issued in the same frame as an op (one bind doing
-  both) can run before it. QW spectators now also receive the tracked player's
-  next/prev/first/last save rows (the cursor row was already sent). A predicted reset with angles still gets the
+  same gap), and a stringcmd sent within one packet of an op (3 then 7, one bind
+  doing both, or the op's packet lost) can run before it. QW spectators now also
+  receive the tracked player's next/prev/first/last save rows (the cursor row was
+  already sent) and STAT_FS_WOPACK, which shows when an op was pressed. That stat
+  is a float: exact for 2^24 commands (70 h on one connection at 66/s), then
+  the client's "answered" test goes coarse. A predicted reset with angles still gets the
   server's fixangle a round trip later, which undoes mouse movement made in that
   round trip (as before the patch). The hold's release is predicted only on a
   Patch 754 client (released engines stop predicting under PM_NONE, one prederr

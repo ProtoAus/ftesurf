@@ -132,6 +132,10 @@ def main():
                     help='the client predicts through a hold (Patch 754): expect no release prederr either')
     ap.add_argument('--posture', choices=['duck', 'stand'],
                     help='only the held ducked load, expecting this predicted eye')
+    ap.add_argument('--fallteleport', type=int, default=0,
+                    help='diagnostic: N drops into the map teleport under stage 1, prederr per drop')
+    ap.add_argument('--freeduck', type=int, default=0,
+                    help='diagnostic: N free steps onto the ducked air save, prederr per step')
     ap.add_argument('--more', action='store_true',
                     help='Patch 759: also `!s 2`, `!b 1` and the 3/4/5/6 steps, held and free')
     ap.add_argument('--port', type=int, default=27563)
@@ -200,6 +204,7 @@ def main():
             windows[tag] = {'prederr': errs, 'client_ops': re.findall(r'warpop: (\d+) on command (\d+)', ct),
                             'server_ops': re.findall(r'warpop: (\d+) at command (\d+)', st),
                             'said': re.findall(r'(!r|!m|!s|!b) -- [^\n]*\(([^)]*)\)', ct),
+                            'saidline': re.findall(r'(?:!r|!m|!s|!b) -- [^\n]*', ct),
                             'rows': re.findall(r'seq: event seq \d+ op 2 id (\d+)', ct)}
             (a.out / f'{tag}-client.txt').write_text(ct)
             print(tag, json.dumps(windows[tag]), flush=True)
@@ -208,6 +213,16 @@ def main():
         cl.send('cmd zone_goto 0')
         time.sleep(1.5)
         start = pos()
+        if a.fallteleport:
+            # Diagnostic, no saves: drop above the void under stage 1 and let the
+            # map's teleport bring the body back.  setpos's own correction comes
+            # first; the teleport's is about a second later.
+            got = []
+            for k in range(a.fallteleport):
+                got.append(window(f'fall{k}', lambda: cl.send('cmd setpos -11910 1225 14900'), settle=3.0)['prederr'])
+            print('fallteleport prederr', got, flush=True)
+            check(True, 'fallteleport ran')
+            return
         if a.posture:
             cl.send('+duck'); time.sleep(1.0)
             cl.send('sl_save'); time.sleep(0.5)
@@ -253,6 +268,15 @@ def main():
             cl.send('-jump; -forward'); time.sleep(1.0)
             cl.send('-duck'); time.sleep(0.5)
         crouch_save()
+        if a.freeduck:
+            # Diagnostic: a free step onto the ducked air save, repeated.
+            got = []
+            for k in range(a.freeduck):
+                walk()
+                got.append(window(f'freeduck{k}', lambda: cl.send('sl_first'), settle=2.5)['prederr'])
+            print('freeduck prederr', got, flush=True)
+            check(True, 'freeduck ran')
+            return
         lst = cl.query('cmd sl_list', r'saveloc: (\d+) saved on[^\n]*\n[^\n]*')
         listing = cl.text()[-2000:]
         report['listing'] = listing
@@ -287,13 +311,19 @@ def main():
                              ('held-chain', 'sl_next; sl_prev'),
                              # 2, then 3 (not published from row 1: blind), then 4.
                              ('held-blindpast', 'sl_next; sl_next; sl_next'),
-                             # From 4: 1, then 2 and 3, both blind, the last left standing.
-                             ('held-blind', 'sl_first; sl_next; sl_next')):
+                             # From 4 the server publishes 4, 1 and 3: 1, then 2 blind, left standing.
+                             ('held-blind', 'sl_first; sl_next')):
                 more[tag] = window(tag, lambda c=cmd: cl.send(c), settle=1.2)
-            # Ends on row 3: released at its speed.
+            # Ends on row 2: released at its speed.
             more['release'] = window('release', lambda: cl.send('-sl_hold'), settle=2.0)
             walk()
-            more['free-prev'] = window('free-prev', lambda: cl.send('sl_prev'), settle=2.0)
+            # Not onto row 1: its fall reaches the stage 1 void teleport, whose own
+            # landing misses now and then on any engine (--freeduck; BACKLOG).
+            more['free-next'] = window('free-next', lambda: cl.send('sl_next'), settle=2.0)
+            walk()
+            # Row 4 is a bonus save: in order, the step restores its run and `!r`
+            # resets that bonus; the other way round `!r` lands on stage 1's start.
+            more['step-reset'] = window('step-reset', lambda: cl.send('sl_next; say !r'), settle=2.0)
 
         if a.threaded:
             check(not w['client_ops'] and not w2['client_ops'] and not w3['client_ops'],
@@ -326,25 +356,28 @@ def main():
             want = {'stage2': ['210'], 'bonus1': ['239'], 'hold': ['203'], 'held-prev': ['206'],
                     'held-first': ['207'], 'held-last': ['208'], 'held-next': ['205'],
                     'held-chain': ['205', '206'], 'held-blindpast': ['205', '205', '205'],
-                    'held-blind': ['207', '205', '205'],
-                    'release': ['204'], 'free-prev': ['206']}
+                    'held-blind': ['207', '205'],
+                    'release': ['204'], 'free-next': ['205'], 'step-reset': ['205', '201']}
             check([s for s, _ in more['stage2']['said']] == ['!s'] and [s for s, _ in more['bonus1']['said']] == ['!b'],
                   'the server teleported for !s 2 and !b 1')
             held = ('held-prev', 'held-first', 'held-last', 'held-next', 'held-chain',
                     'held-blindpast', 'held-blind')
-            path = [['3'], ['1'], ['4'], ['1'], ['2', '1'], ['2', '3', '4'], ['1', '2', '3']]
+            path = [['3'], ['1'], ['4'], ['1'], ['2', '1'], ['2', '3', '4'], ['1', '2']]
 
             def along(seen, rows):
                 # Loads in one server frame show the client only the last event.
                 it = iter(rows)
                 return bool(seen) and seen[-1] == rows[-1] and all(r in it for r in seen)
             check(all(along(more[w]['rows'], p) for w, p in zip(held, path)),
-                  'the held steps landed in order on 3; 1; 4; 1; 2, 1; 2, 3, 4; 1, 2, 3')
-            check(more['free-prev']['rows'] == ['2'], 'the free step loaded row 2')
+                  'the held steps landed in order on 3; 1; 4; 1; 2, 1; 2, 3, 4; 1, 2')
+            check(more['free-next']['rows'] == ['3'], 'the free step loaded row 3')
+            sr = more['step-reset']
+            check(sr['rows'] == ['4'] and len(sr['saidline']) == 1 and 'bonus' in sr['saidline'][0],
+                  f'a step then !r: row 4, then the bonus start ({sr["saidline"]})')
             if a.control or a.threaded:
                 for tag, ww in more.items():
                     check(not ww['client_ops'] and not ww['server_ops'], f'{tag}: no op (old command)')
-                for tag in ('stage2', 'bonus1', 'free-prev'):
+                for tag in ('stage2', 'bonus1', 'free-next'):
                     check(len(more[tag]['prederr']) > 0, f'control: {tag} corrects the prediction')
             else:
                 if not a.hold_engine:
@@ -359,6 +392,9 @@ def main():
                 for tag, ww in more.items():
                     if tag == 'release' and not a.hold_engine:
                         print(f'note: release prederr on this engine: {ww["prederr"]}', flush=True)
+                    elif tag == 'step-reset':
+                        # `!r` behind an unanswered step goes blind: its correction is expected.
+                        print(f'note: step-reset prederr: {ww["prederr"]}', flush=True)
                     elif tag == 'held-blindpast':
                         # A blind step one command before a predicted one: the meter
                         # samples one frame a pass and may not see it.
