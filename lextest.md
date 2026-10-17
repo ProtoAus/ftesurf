@@ -36,8 +36,8 @@ Verdict PENDING.
 ## P764 — curved prop ramps no longer kick you off at their seams
 
 Live in both Windows installs since 2026-10-17T16:12:30Z (engine `patch-764`, client
-SHA-256 `9752ac8b`, hl2 plugin `7d494b02`; `.prev` is P758's). Restart the game. Offline
-only: the lobbies run an older engine until the Pi takes 764, its plugin included.
+SHA-256 `9752ac8b`, hl2 plugin `7d494b02`; `.prev` is P758's), and on all 12 lobbies since
+2026-10-17T19:37Z (`tools/lobby-engine-p764-20261017.md`). Restart the game.
 
 - **surf_leidenfrost, save 4.** Load it and let go of every key. Before: thrown off
   the ramp onto the floor below at the first seam. Now: you ride the curve down
@@ -48,9 +48,8 @@ only: the lobbies run an older engine until the Pi takes 764, its plugin include
 - Then surf both ramps for real, holding strafe through the bend: it should feel
   like Momentum.
 
-Verdict CONFIRMED by Lex, 2026-10-18 local (17 Oct ~16:45Z): "yep, it's good!" after
-being asked to try both saves and surf the ramps. Offline only; the lobbies are not
-on 764.
+Verdict CONFIRMED by Lex offline (recorded 2026-10-17T19:23Z): "yep, it's good!" after
+being asked to try both saves and surf the ramps. Not yet played on a lobby.
 
 ## P763 — the Kitsune stutter (a ~20 ms frame every half second once a run starts)
 
