@@ -139,10 +139,72 @@ vector(vector org, vector ang) FS_PortalTransformView =
        works on these doors because World_LinkEdict runs FindTouchedLeafs before
        the SOLID_PORTAL branch (world.c:665-675), so they have a leaf list.
 */
+/*
+  Patch 752: a door seen through a door.  The engine recurses into any portal
+  entity in the scene, r_portalrecursion levels deep, from whichever eye that
+  level has (CSQC_SetupToRenderPortal).  Questions 3 and 4 used to be asked from
+  the player's eye only, so the next room's door was never in the scene and the
+  second level always drew closed.  Once per frame, ask them again from each
+  offered door's far-side eye, with PVS sampled where the renderer samples it
+  (FS_PortalTransformView).  vbsp_portal_dist bounds only the doors the player
+  sees directly; r_portalmaxviews still bounds every level in the engine.
+*/
+#define LPD_MAXEYES 32
+float  lpd_offertime;
+vector lpd_offereye;
+vector lpd_eye[LPD_MAXEYES];
+vector lpd_eyepvs[LPD_MAXEYES];
+entity lpd_eyeexit[LPD_MAXEYES];
+float  lpd_eyelevel[LPD_MAXEYES];
+.float lpd_offer;		// 1 + the shallowest view level that sees the door; 0 not offered
+
+void(vector root) Portal_Offer =
+{
+	local entity d;
+	local vector rel;
+	local float i, n, levels, cap;
+
+	lpd_offertime = time;
+	lpd_offereye = root;
+	for (d = findchain(classname, "vbsp_portal"); d; d = d.chain)
+		d.lpd_offer = 0;
+	levels = cvar("r_portalrecursion");
+	cap = cvar("vbsp_portal_dist");
+	lpd_eye[0] = root;
+	lpd_eyepvs[0] = root;
+	lpd_eyeexit[0] = world;
+	lpd_eyelevel[0] = 0;
+	n = 1;
+	for (i = 0; i < n; i = i + 1)
+		for (d = findchain(classname, "vbsp_portal"); d; d = d.chain)
+		{
+			// The eye sits behind the exit door it came through.
+			if (!d.lpd_ok || d == lpd_eyeexit[i])
+				continue;
+			rel = lpd_eye[i] - d.origin;
+			if (rel * d.lpd_fa <= 0)
+				continue;
+			if (!lpd_eyelevel[i])
+			if (cap > 0 && vlen(rel) > cap)
+				continue;
+			if (!checkpvs(lpd_eyepvs[i], d))
+				continue;
+			if (!d.lpd_offer)
+				d.lpd_offer = 1 + lpd_eyelevel[i];
+			if (lpd_eyelevel[i] + 1 < levels && n < LPD_MAXEYES)
+			{
+				lpd_eye[n] = FS_PortalWarp(d, lpd_eye[i]);
+				lpd_eyepvs[n] = d.lpd_ob + d.lpd_fb * LPD_PVSNUDGE;
+				lpd_eyeexit[n] = d.lpd_dst;
+				lpd_eyelevel[n] = lpd_eyelevel[i] + 1;
+				n = n + 1;
+			}
+		}
+};
+
 float() FS_PortalPredraw =
 {
-	local vector eye, d;
-	local float dist;
+	local vector eye;
 
 	FS_PortalRegisterCvars();
 
@@ -155,22 +217,14 @@ float() FS_PortalPredraw =
 		return PREDRAW_NEXT;
 
 	eye = getproperty(VF_ORIGIN);
-	d = eye - self.origin;
-
-	// Behind the plane: the renderer would refuse it anyway.
-	if (d * self.lpd_fa <= 0)
-		return PREDRAW_NEXT;
-
-	dist = cvar("vbsp_portal_dist");
-	if (dist > 0 && vlen(d) > dist)
-		return PREDRAW_NEXT;
-
-	if (!checkpvs(eye, self))
+	if (time != lpd_offertime || eye != lpd_offereye)
+		Portal_Offer(eye);
+	if (!self.lpd_offer)
 		return PREDRAW_NEXT;
 
 	if (cvar("vbsp_portal_debug"))
-		dprint(sprintf("portal %s: offered at %g units\n",
-			self.lpd_name == "" ? "?" : self.lpd_name, rint(vlen(d))));
+		dprint(sprintf("portal %s: offered at %g units, view level %g\n",
+			self.lpd_name == "" ? "?" : self.lpd_name, rint(vlen(eye - self.origin)), self.lpd_offer - 1));
 
 	/*
 	  RF_USEAXIS is how one quad becomes 443 differently sized doors -- see the
