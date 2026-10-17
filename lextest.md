@@ -28,7 +28,11 @@ friends service on the Pi runs the new code since 22:58Z. Restart the game.
 
 ## P772 — paint, and the player trail as a line
 
-Restart the game (new client exe and csprogs). Bind a key: open the key panel (K),
+In both Windows installs since 2026-10-17T22:54:12Z (`ftesurf64.exe` `41a0c6d0`,
+git-7423-patch-772-1-g836bf6bf5; `.prev` is P771's `25ff1eaa`; csprogs `04e58e23`,
+`.prev` P770's `bc93f6db`), and on all 12 lobbies since 22:59:19Z (csprogs `04e58e23`;
+qwprogs unchanged at `24e65490`). A lobby serves it to an older client too, which
+paints world faces only. Restart the game. Bind a key: open the key panel (K),
 "Paint (hold)" under Run, or `bind mouse3 +paint`.
 
 - **Paint:** hold the key and sweep across a ramp. The discs should appear the moment
