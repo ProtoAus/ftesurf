@@ -32,7 +32,9 @@ only: the lobbies run an older engine until the Pi takes 764, its plugin include
 - Then surf both ramps for real, holding strafe through the bend: it should feel
   like Momentum.
 
-"Smooth / still kicks at <where>" is enough. Verdict PENDING.
+Verdict CONFIRMED by Lex, 2026-10-18 local (17 Oct ~16:45Z): "yep, it's good!" after
+being asked to try both saves and surf the ramps. Offline only; the lobbies are not
+on 764.
 
 ## P763 — the Kitsune stutter (a ~20 ms frame every half second once a run starts)
 
