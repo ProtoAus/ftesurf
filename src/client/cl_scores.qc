@@ -1208,6 +1208,9 @@ float(string id, vector pos, vector sz, string label, float on) Scores_Chip =
 ===========================================================================
 */
 #define SB_LNMAX   64                 // Patch 649: board line i is slot LN_BOARDSLOT(i) (cl_lines.qc)
+// Patch 746: the race ghost (cl_raceghost.qc) builds its PBs with this file's line job.
+float() RG_JobStart;
+void(float k) RG_JobDone;
 // Patch 654: an engine before Patch 645 has no line builtins, so cl_lines.qc's own loop
 // draws, six to ten vertices a segment into one polygon batch, and that engine dies
 // when a batch reaches 32768 (ENGINE_PATCHES 645).  Measured on the 625 exe: the
@@ -1532,6 +1535,9 @@ void() Scores_LinesFrame =
 	{
 		k = Watch_LineJobStep();
 		if (k)
+		if (wt_lj_slot >= LN_S_GHOST)
+			RG_JobDone(k);
+		else
 		{
 			i = LN_BOARDINDEX(wt_lj_slot);
 			sb_ln_st[i] = (k > 0) ? SBL_ON : SBL_FAIL;
@@ -1539,7 +1545,7 @@ void() Scores_LinesFrame =
 			              (k > 0) ? "drawn" : "failed", ln_n[LN_BOARDSLOT(i)], ln_bkn[LN_BOARDSLOT(i)]));
 		}
 	}
-	else
+	else if (!RG_JobStart())             // Patch 746: a ghost's PB first: it is wanted now
 		for (i = 0; i < SB_LNMAX; i = i + 1)
 			if (sb_ln_st[i] == SBL_QUEUE)
 			{

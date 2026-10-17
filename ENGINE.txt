@@ -25,7 +25,12 @@ commit   b9c66c50114d9a21f39087f6409d07dfbb295e77
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-743
-patch    745
+patch    746
+# Patch 746 (QC only): the race ghost (cl_raceghost.qc): your PB and the first
+# hud_ghost_lines ticked board lines run beside you from the start box, or from
+# each stage's (a whole run cut where it left that box), with an offset, a dithered
+# or blended body, a highlight on its line, and a hud_edit Ghost pane. Line slots
+# 67/68 hold the PBs. raceghost_live/look/stage arms; two mutants each caught.
 # Patch 745 (QC only): hud_trail 0 hides the player line and still records it, so
 # rewind and save pictures work with it off; a replay's line gets hud_edit's own
 # window (hud_lines_demo, default as hud_lines_order) and distance

@@ -137,6 +137,7 @@ void() CSQC_WorldLoaded =
 	// arenas outlive a map change and only the CSQC globals are zeroed.
 	LineGraph_Reset();
 	Trail_Reset();
+	RG_Reset();                     // Patch 746: and the race ghost's two PB slots
 	Trail_RequestReset();
 	Rewind_Reset();                 // Patch 477: and the rewind on top of it
 
@@ -292,6 +293,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Zone_RegisterCvars();
 	Line_RegisterCvars();       // Patch 449: the run line's marks and window
 	Trail_RegisterCvars();      // Patch 475: the live one, which uses those cvars too
+	RG_RegisterCvars();         // Patch 746: the race ghost
 	Rewind_RegisterCvars();     // Patch 477: `rewind`
 	Timer_RegisterCvars();
 	SaveLoc_RegisterCvars();
@@ -1511,6 +1513,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// readers, and it takes at most one sample per command frame.
 	Trail_SaveAnswerFrame();
 	Trail_Frame();
+	RG_Frame();                     // Patch 746: after Trail_Frame's kept frames, which its clock reads
 	Trail_RequestFrame();
 	Scores_NativeFrame(notmenu);
 	navfocus = (notmenu && !chat_typing && !UI_CursorHeld());
@@ -1610,6 +1613,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		setproperty(VF_SKYROOM_CAMERA, vbsp_skyroom_pos + skeye * (1 / sksc));
 	}
 
+	RG_DrawBodies();                // Patch 746: the race ghosts, with the scene's other bodies
 	addentities(MASK_ENGINE | MASK_VIEWMODEL);
 
 	// Zones go in BEFORE renderscene: R_BeginPolygon queues into the scene,
@@ -1658,6 +1662,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// Patch 475: and the live trail's, which cannot lean on the line above --
 	// Scores_LinesPin returns early when the board lines are off.
 	Trail_Pin();
+	RG_Pin();                       // Patch 746: the ghosts' highlights, the same 2D pass
 
 	// Patch 467.  The sky's render-target passes, last before the scene that
 	// samples them; Milk_Tick puts VF_RT_DESTCOLOUR back to the screen.
@@ -1762,6 +1767,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 			Watch_Path2D();
 		Scores_LinesDraw();     // Patch 433: the board's ticked lines
 		Trail_Draw();           // Patch 475: and your own run, as it happens
+		RG_DrawLines();         // Patch 746: where each race ghost is on its line
 		// Patch 451: the marks' labels, queued by both passes above.  Text drawn
 		// inside them does not appear at all -- they are a stream of deferred
 		// polygon batches -- so it is drawn here, the slot Ev_Labels uses below
@@ -2072,6 +2078,8 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (Line_Console())         // `lines help`: compact pane's console controls
 		return TRUE;
 	if (Trail_Console())        // Patch 475: `trail`
+		return TRUE;
+	if (RG_Console())           // Patch 746: `raceghost`
 		return TRUE;
 	if (Rewind_Console())       // Patch 477: `rewind`
 		return TRUE;

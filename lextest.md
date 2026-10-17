@@ -1,5 +1,20 @@
 # lextest.md — things waiting on a human
 
+## P746 — the race ghost
+
+On by default (hud_edit -> **Ghost**). Offline, on a map you hold a PB for:
+
+- Leave the start: a gold body should run your PB beside you. Is it where you
+  remember being? Try **Time offset** +1 s / -1 s.
+- **Show**: line highlight (a bright stretch of its line where it is now), both,
+  off. **Opacity** and **Opacity by** dither/blend: which looks right?
+- Tick a run's LINE box on the leaderboard (yours or anyone's): it gets a ghost
+  too (**Ticked runs**). On a staged map try **Starts with: each stage** and a
+  `!s` stage run.
+
+"Looks right / X is off" is enough. Verdict PENDING. Not checked by any arm: a
+real player's feel at speed, a ducked ghost (it always stands), and lobby use.
+
 ## P745 — rewind with the player line off; the replay line's own window
 
 - `hud_edit` -> Run lines -> Player line OFF. Start a run and press the rewind key

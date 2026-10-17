@@ -2498,6 +2498,36 @@ publicly WITH its fix, not before it.
 
 ## The run line (Patches 432, 449-453)
 
+- Patch 746: THE RACE GHOST, `src/client/cl_raceghost.qc` (prefix `RG_`; the `ghost`
+  command and `ghost_*` cvars are the unrelated freecam). Ghosts are LINE SLOTS: your
+  PB in two slots added at the END of the table (67 a stage's at LN_CAP2, 68 a whole
+  run's at LN_CAP, so LN_B holds; LN_C and LN_TOTAL know them), built by the board
+  lines' own job (Scores_LinesFrame hands a ghost slot to RG_JobDone and starts a
+  queued PB before the board's queue); and the first `hud_ghost_lines` ticked board
+  lines that run here. Ghost slots are plain gold (LN_GHOSTCOL), never ranked, out
+  of the speed range and the graph (LineGraph_Available). Which recording goes with
+  which run is LineGraph_LiveAlign's rule: a stage line from the stage base, a whole
+  run's from the run start; a whole run asked for a stage is cut where its body LEFT
+  THAT STAGE'S BOX, found from its samples and the zone file (RG_StageScan; the last
+  exit before the next stage's box, so a fail back into the box counts the retry).
+  The file's own `stagestart <seg>` records are the independent truth the stage arm
+  grades against (stage 2 4.98 s, stage 7 37.02 s not its first 29.475).
+  THE CLOCK IS THE DRAWN BODY'S, NOT THE STAT'S: the stat describes the frame the
+  server last acknowledged (Patch 611), so RG_Clock adds the wall time since that
+  kept frame was predicted (`tr_kf`). Behind sv_minping 120 the server's recording
+  at that clock is 1-10 u from the predicted body against 35-75 u at the stat clock.
+  `STAT_FS_RUNLEG` is published for EVERY open run, not only a written one:
+  SV_RecOpen sets it unconditionally (measured with `rec_enable 0`), so it tells a
+  stage run on a lobby too. Arms `raceghost_live.cfg` (dedicated, latency),
+  `raceghost_look.cfg` (pictures, highlight, off, the pane, a rewind), and
+  `raceghost_stage.cfg` (stage runs, sync 1, ticked line, de-dup), all with
+  `--put data/runs/surf_kitsune/main/0009998_pb.rec=<a Kitsune PB>`, graded by
+  `tools/test_raceghost.py`. Mutants caught: no lead (36-64 u off), first exit kept
+  (stage 7 at 29.475). THE GRADER FIRST JUDGED "IS THERE LATENCY" BY THE SUBJECT'S
+  OWN PRINTED LEAD, so the no-lead mutant graded itself CANNOT MEASURE; it is the
+  stat clock's own error against the recording now.
+  Harness: surf_kitsune's start and stage boxes (2048 u apart in x) are left by
+  +moveright 0.8 s then +forward 1.7 s; walking forward alone does not leave them.
 - Patch 745: `hud_trail` is a DRAW switch only. Trail_Frame records the live line
   whatever it says, so rewind, save pictures and the live graph no longer need it
   on (before, 0 reset the line and Rewind_Open refused). A replay's line is

@@ -27,17 +27,21 @@
 // 0 the replay, 1..8 the board's, 9 and 10 the live trail's pair (cl_trail.qc,
 // Patch 475 -- two so a finished run can fade while the next one builds over it).
 // 3.25 MiB a slot at LN_CAP, counted off Line_Alloc's own arenas.
-#define LN_SLOTS   67           // 0 the replay, 1..8 board lines, 9 and 10 the live run, 11..66 more
+#define LN_SLOTS   69           // 0 the replay, 1..8 board lines, 9 and 10 the live run, 11..66 more, 67 68 the ghost's
 #define LN_S_BOARD 1            // the first board slot and the first trail slot,
 #define LN_S_TRAIL 9            // which pick a slot's width (Line_SlotPx)
 #define LN_S_MORE  11           // Patch 649: the first of the fifty-six further board slots
 #define LN_CAP     65536        // samples a slot holds (16 min at 66 Hz); past it, halved
 #define LN_CAP2    8192         // ... and a further board slot (2 min at 66 Hz; the same halving)
-#define LN_TOTAL   (LN_S_MORE * LN_CAP + (LN_SLOTS - LN_S_MORE) * LN_CAP2)
+// Patch 746: the race ghost's PBs (cl_raceghost.qc) after the board's: a stage's at
+// LN_CAP2 and a whole run's at LN_CAP, last, so LN_B holds for both.
+#define LN_S_GHOST 67
+#define LN_S_GHR   68
+#define LN_TOTAL   (LN_S_MORE * LN_CAP + (LN_S_GHR - LN_S_MORE) * LN_CAP2 + LN_CAP)
 // A slot's first sample in the arenas, its capacity, and whether it is the live run's.
 // Slots under LN_S_MORE are where they always were, so LN_B(s) still holds for those.
 #define LN_B(s)    (((s) < LN_S_MORE) ? (s) * LN_CAP : LN_S_MORE * LN_CAP + ((s) - LN_S_MORE) * LN_CAP2)
-#define LN_C(s)    (((s) < LN_S_MORE) ? LN_CAP : LN_CAP2)
+#define LN_C(s)    (((s) < LN_S_MORE || (s) == LN_S_GHR) ? LN_CAP : LN_CAP2)
 #define LN_TRAIL(s) ((s) >= LN_S_TRAIL && (s) < LN_S_MORE)
 // Board line i of the scoreboard's (0 the first) is this slot.
 #define LN_BOARDSLOT(i) (((i) < LN_S_TRAIL - LN_S_BOARD) ? (i) + LN_S_BOARD : (i) + LN_S_MORE - (LN_S_TRAIL - LN_S_BOARD))
@@ -352,6 +356,7 @@ float  ln_slo, ln_shi, ln_sinv;
 float  ln_cmown, ln_cmoth;
 #define LN_CM_PLAIN 5
 #define LN_OWNCOL  '0.30 0.65 1.00'
+#define LN_GHOSTCOL '1.00 0.80 0.30'   // Patch 746: the ghost's PB slots, always plain
 vector *ln_rk;          // an other line's colour by time, this frame
 float  *ln_rkin;    // it is ranked; its place, 0 the fastest
 float  *ln_rkpos;
@@ -2383,6 +2388,8 @@ void(float s) Line_ColQuality =
 // The colouring a slot is drawn in: its group's.
 float(float s) Line_Mode =
 {
+	if (s >= LN_S_GHOST)
+		return LN_CM_PLAIN;
 	return (LN_TRAIL(s)) ? ln_cmown : ln_cmoth;
 };
 
@@ -2425,8 +2432,8 @@ void() Line_Rank =
 	for (s = 0; s < LN_SLOTS; s = s + 1)
 	{
 		ln_rkin[s] = FALSE;
-		if (LN_TRAIL(s))
-			continue;                   // the live run's own: not ranked among the others
+		if (LN_TRAIL(s) || s >= LN_S_GHOST)
+			continue;                   // the live run's own and the ghost's: not ranked among the others
 		if (!ln_on[s])
 			continue;
 		if (ln_n[s] < 1)
@@ -2484,7 +2491,7 @@ void(float s, float m, float from) Line_Paint =
 	b = LN_B(s);
 	if (m >= LN_CM_PLAIN)
 	{
-		c = (LN_TRAIL(s)) ? LN_OWNCOL : ln_rk[s];
+		c = (LN_TRAIL(s)) ? LN_OWNCOL : ((s >= LN_S_GHOST) ? LN_GHOSTCOL : ln_rk[s]);
 		for (i = b + from; i < b + ln_n[s]; i = i + 1)
 			ln_col[i] = c;
 		return;
@@ -2580,7 +2587,7 @@ void() Line_ViewFrame =
 	// another colouring does not move it (Patch 632).
 	ln_slo = 99999;
 	ln_shi = 0;
-	for (s = 0; s < LN_SLOTS; s = s + 1)
+	for (s = 0; s < LN_S_GHOST; s = s + 1)
 		if (ln_on[s])
 		if (Line_Mode(s) == 0)
 		{
@@ -2606,7 +2613,7 @@ void() Line_ViewFrame =
 		if (ln_on[s])
 		{
 			m = Line_Mode(s);
-			c = (LN_TRAIL(s)) ? LN_OWNCOL : ln_rk[s];
+			c = (LN_TRAIL(s)) ? LN_OWNCOL : ((s >= LN_S_GHOST) ? LN_GHOSTCOL : ln_rk[s]);
 			if (m < LN_CM_PLAIN)
 				c = '0 0 0';
 			if (dirty || ln_sgen[s] != ln_scgen[s] || (rd && m == 0) || c != ln_plain[s])
@@ -3359,10 +3366,15 @@ void(float s, float ia, float ib, float tplay, float ahead, float alpha) Line_Ma
 
 // Slot s's width, px.  The board's and your own run's follow the replay's at -1
 // (the shipped default), so nobody's lines changed when they got their own.
+// Patch 746: a ghost's highlight draws a slot wider and with no marks (cl_raceghost.qc).
+float  ln_pxover, ln_nomk;
+
 float(float s) Line_SlotPx =
 {
 	local float w;
 
+	if (ln_pxover > 0)
+		return ln_pxover;
 	w = -1;
 	if (LN_TRAIL(s))
 		w = ln_wpxt;
@@ -3590,7 +3602,7 @@ void(float s, float tplay, vector phead, float ahead, float alpha) Line_Draw =
 	// a mark, half of sixty-four lines' cost when all had them (2.2 of 4.2 ms a
 	// frame), and fifty lines of them cover the view.
 	ln_nmk = ln_nlab = 0;
-	k = TRUE;
+	k = !ln_nomk;
 	if (s >= LN_S_BOARD)
 	if (!LN_TRAIL(s))
 	if (ln_mkrank >= ln_mkmax)

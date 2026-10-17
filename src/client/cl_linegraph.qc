@@ -106,6 +106,7 @@ float(float s) LineGraph_Available =
 {
 	if (LN_TRAIL(s)) return (s == lv_slot);
 	if (s == 0) return (rec_wt_open && ln_on[0] && cvar("hud_watch_path") > 0);
+	if (s >= LN_S_GHOST) return FALSE;          // Patch 746: the ghost's own, no board row
 	return (sb_ln_st[LN_BOARDINDEX(s)] == SBL_ON && ln_on[s] && (lg_open || cvar("hud_lines_board") > 0));
 };
 

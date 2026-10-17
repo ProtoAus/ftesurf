@@ -5,6 +5,16 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Race ghost: what Patch 746 left out
+
+- Site: `src/client/cl_raceghost.qc`. The body always stands (a line keeps no duck
+  bit) and faces where it was going, not where its player looked (no yaw kept).
+  No name over a ghost. A stage's own PB is found only for the stage being run, so
+  in "each stage" it loads as the stage starts; until it is ready the whole run's
+  cut stands in only if it was never asked for (RG_Frame's QUEUE/BUILD guard).
+- Falsifier for any of them: `raceghost_look.cfg` with a ducking PB, or a printed
+  name from `raceghost`.
+
 ## KSF sparse demos: none downloaded yet, upstream parked (P740)
 
 - Site: the Pi's `ksfimport.py --watch --go --demos` cron row (`1-59/5`),

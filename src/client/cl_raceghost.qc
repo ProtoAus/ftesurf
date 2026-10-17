@@ -1,0 +1,710 @@
+/*
+  cl_raceghost.qc -- the comparative ghost.  Patch 746.
+
+  A body that runs a recording beside you on your own clock: your PB for the
+  run or stage you are on (data/runs, built into line slots LN_S_GHOST and
+  LN_S_GHR by the board lines' job) and the first hud_ghost_lines ticked board
+  lines.  It starts when you leave the start box, or with hud_ghost_sync 1 again
+  at every stage's box, plus hud_ghost_offset.  hud_ghost 2 highlights the
+  ghost's place on its line instead of drawing a body.  A picture only: nothing
+  here is sent, and the `ghost` command is the unrelated freecam (cl_ghost.qc).
+
+  Which recording goes with which run follows LineGraph_LiveAlign: a stage's
+  line from the stage base, a whole run's from the run's start.  A whole-run
+  line asked for a stage is cut at the moment it left that stage's box, found
+  from its own samples and the zone file (RG_StageScan).
+*/
+
+#define RG_MAX     10           // bodies: the two PB slots and eight lines
+#define RG_STG     32           // stage boxes a slot remembers leaving (FS_MAXSPLITS is 24)
+#define RG_SCAN    2048         // samples a frame the stage scan reads
+#define RG_HOLD    1.5          // seconds a finished ghost stands at its end
+#define RGP_NONE   0
+#define RGP_QUEUE  1
+#define RGP_BUILD  2
+#define RGP_ON     3
+#define RGP_FAIL   4
+
+float  rg_cv;                   // hud_ghost: 0 off, 1 body, 2 highlight, 3 both
+float  rg_now;                  // the drawn body's run clock; -1 no run
+float  rg_lticks, rg_tickat;    // the clock stat, and cltime it last changed
+float  rg_lead;                 // what rg_now adds to the stat
+float  rg_track, rg_seg, rg_legnow, rg_runleg, rg_base, rg_armed;
+float  rg_n;                    // ghosts this frame
+float  rg_slot[RG_MAX];
+float  rg_t[RG_MAX];            // its run clock
+vector rg_pos[RG_MAX];
+float  rg_yaw[RG_MAX];
+vector rg_col[RG_MAX];
+float  rg_end[RG_MAX];          // 1 past its run's end, -1 before its start
+float  rg_anc[RG_MAX];          // the slot's clock at the anchor (RG_Anchor)
+entity rg_ent[RG_MAX];
+vector rg_gp;                   // RG_At's answer
+float  rg_gyaw, rg_gend, rg_gi;
+float  rg_shd, rg_shb;          // the dither and blend materials
+
+// The two PB slots: [0] LN_S_GHOST a stage's, [1] LN_S_GHR the whole run's.
+string rg_pbpath[2];
+float  rg_pbst[2], rg_pbleg[2], rg_pbtrack[2], rg_pbmap;
+float  rg_mapgen, rg_rescan, rg_laststate;
+
+// Per slot: when its body left each stage's box (Patch 746, RG_StageScan).
+float  *rg_stg;
+float  *rg_stggen;
+float  *rg_stgi;
+float  *rg_stgin;
+float  *rg_stgk;
+float  *rg_syaw;                // and the way it last faced
+
+void() RG_RegisterCvars =
+{
+	local float s;
+
+	registercvar("hud_ghost",        "1",    CVAR_ARCHIVE);
+	registercvar("hud_ghost_sync",   "0",    CVAR_ARCHIVE);
+	registercvar("hud_ghost_pb",     "1",    CVAR_ARCHIVE);
+	registercvar("hud_ghost_lines",  "4",    CVAR_ARCHIVE);
+	registercvar("hud_ghost_offset", "0",    CVAR_ARCHIVE);
+	registercvar("hud_ghost_alpha",  "0.55", CVAR_ARCHIVE);
+	registercvar("hud_ghost_dither", "1",    CVAR_ARCHIVE);
+	registercvar("hud_ghost_near",   "96",   CVAR_ARCHIVE);
+	registercommand("raceghost");
+	rg_stg    = memalloc(sizeof(float) * LN_SLOTS * RG_STG);
+	rg_stggen = memalloc(sizeof(float) * LN_SLOTS);
+	rg_stgi   = memalloc(sizeof(float) * LN_SLOTS);
+	rg_stgin  = memalloc(sizeof(float) * LN_SLOTS);
+	rg_stgk   = memalloc(sizeof(float) * LN_SLOTS);
+	rg_syaw   = memalloc(sizeof(float) * LN_SLOTS);
+	for (s = 0; s < LN_SLOTS; s = s + 1)
+		rg_stggen[s] = -1;
+};
+
+/*
+  The dither material is cl_playerfade.qc's shape: opaque and depth-writing, a
+  pixel kept where the coverage beats a fixed spatial noise.  The body is its
+  colour (colormod), lit between 0.6 and 1 so it reads on an unlit ramp, a
+  little of the texture in it and a rim at its silhouette, and fades out within
+  hud_ghost_near of the eye.  The blend one is the same picture at that alpha.
+  (The first cut lit it at texture brightness: a dark olive block on Kitsune.)
+*/
+float() RG_ShaderDither =
+{
+	return shaderforname("ftesurf/raceghost_d",
+		"{\nglslprogram\n{\n"
+		"!!ver 100 150\n"
+		"!!permu SKELETAL\n"
+		"!!permu FRAMEBLEND\n"
+		"!!permu FOG\n"
+		"!!samps diffuse\n"
+		"!!cvarf hud_ghost_alpha=0.55\n"
+		"!!cvarf hud_ghost_near=96\n"
+		"#include \"sys/defs.h\"\n"
+		"#include \"sys/fog.h\"\n"
+		"varying vec2 tc;\n"
+		"varying vec3 light;\n"
+		"varying float rim;\n"
+		"#ifdef VERTEX_SHADER\n"
+		"#include \"sys/skeletal.h\"\n"
+		"void main(void)\n{\n"
+		" vec3 normal, tangent, bitangent, position;\n"
+		" gl_Position = skeletaltransform_wnst(position, normal, tangent, bitangent);\n"
+		" tc = v_texcoord;\n"
+		" float diffuse = dot(normalize(normal), e_light_dir);\n"
+		" if (diffuse < 0.0) diffuse *= 13.0/44.0;\n"
+		" light = e_light_ambient + e_light_mul * diffuse;\n"
+		" rim = 1.0 - abs(dot(normalize(normal), normalize(e_eyepos - position)));\n"
+		"}\n#endif\n"
+		"#ifdef FRAGMENT_SHADER\n"
+		"uniform float cvar_hud_ghost_alpha;\n"
+		"uniform float cvar_hud_ghost_near;\n"
+		"float coverageNoise(vec2 p)\n{\n"
+		" return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));\n"
+		"}\n"
+		"void main(void)\n{\n"
+		" float nearDist = max(0.0, cvar_hud_ghost_near);\n"
+		" float cover = clamp(cvar_hud_ghost_alpha, 0.0, 1.0);\n"
+		" if (nearDist > 0.0) cover *= smoothstep(nearDist * 0.5, nearDist, length(e_eyepos - vec3(0.0, 0.0, 31.0)));\n"
+		" if (cover <= coverageNoise(floor(gl_FragCoord.xy))) discard;\n"
+		" vec4 col = texture2D(s_diffuse, tc);\n"
+		" float lum = dot(col.rgb, vec3(0.30, 0.59, 0.11));\n"
+		" float shade = mix(0.6, 1.0, clamp(dot(light, vec3(0.333)), 0.0, 1.0));\n"
+		" col.rgb = e_colourident.rgb * (shade * (0.8 + 0.2 * lum) + 0.6 * rim * rim);\n"
+		" gl_FragColor = fog4(vec4(col.rgb, 1.0));\n"
+		"}\n#endif\n"
+		"}\ndiffusemap models/player\n"
+		"{\nmap models/player\nrgbgen lightingdiffuse\n}\n}\n");
+};
+
+float() RG_ShaderBlend =
+{
+	return shaderforname("ftesurf/raceghost_b",
+		"{\nglslprogram\n{\n"
+		"!!ver 100 150\n"
+		"!!permu SKELETAL\n"
+		"!!permu FRAMEBLEND\n"
+		"!!permu FOG\n"
+		"!!samps diffuse\n"
+		"!!cvarf hud_ghost_alpha=0.55\n"
+		"!!cvarf hud_ghost_near=96\n"
+		"#include \"sys/defs.h\"\n"
+		"#include \"sys/fog.h\"\n"
+		"varying vec2 tc;\n"
+		"varying vec3 light;\n"
+		"varying float rim;\n"
+		"#ifdef VERTEX_SHADER\n"
+		"#include \"sys/skeletal.h\"\n"
+		"void main(void)\n{\n"
+		" vec3 normal, tangent, bitangent, position;\n"
+		" gl_Position = skeletaltransform_wnst(position, normal, tangent, bitangent);\n"
+		" tc = v_texcoord;\n"
+		" float diffuse = dot(normalize(normal), e_light_dir);\n"
+		" if (diffuse < 0.0) diffuse *= 13.0/44.0;\n"
+		" light = e_light_ambient + e_light_mul * diffuse;\n"
+		" rim = 1.0 - abs(dot(normalize(normal), normalize(e_eyepos - position)));\n"
+		"}\n#endif\n"
+		"#ifdef FRAGMENT_SHADER\n"
+		"uniform float cvar_hud_ghost_alpha;\n"
+		"uniform float cvar_hud_ghost_near;\n"
+		"void main(void)\n{\n"
+		" float nearDist = max(0.0, cvar_hud_ghost_near);\n"
+		" float cover = clamp(cvar_hud_ghost_alpha, 0.0, 1.0);\n"
+		" if (nearDist > 0.0) cover *= smoothstep(nearDist * 0.5, nearDist, length(e_eyepos - vec3(0.0, 0.0, 31.0)));\n"
+		" vec4 col = texture2D(s_diffuse, tc);\n"
+		" float lum = dot(col.rgb, vec3(0.30, 0.59, 0.11));\n"
+		" float shade = mix(0.6, 1.0, clamp(dot(light, vec3(0.333)), 0.0, 1.0));\n"
+		" col.rgb = e_colourident.rgb * (shade * (0.8 + 0.2 * lum) + 0.6 * rim * rim);\n"
+		" gl_FragColor = fog4(vec4(col.rgb, cover));\n"
+		"}\n#endif\n"
+		"}\ndiffusemap models/player\n"
+		"{\nmap models/player\nblendfunc blend\nrgbgen lightingdiffuse\n}\n}\n");
+};
+
+void(float i) RG_PBClear =
+{
+	local float s;
+
+	s = i ? LN_S_GHR : LN_S_GHOST;
+	if (wt_lj_phase)
+	if (wt_lj_slot == s)
+		Watch_LineJobStop();
+	if (rg_pbpath[i]) strunzone(rg_pbpath[i]);
+	rg_pbpath[i] = __NULL__;
+	rg_pbst[i] = RGP_NONE;
+	Line_Clear(s);
+};
+
+// A map change: the slots hold the last map's runs (Trail_Reset's reason).
+void() RG_Reset =
+{
+	RG_PBClear(0);
+	RG_PBClear(1);
+	rg_pbleg[0] = rg_pbleg[1] = rg_pbtrack[0] = rg_pbtrack[1] = -1;
+	rg_mapgen = rg_mapgen + 1;
+	rg_n = 0;
+};
+
+/*
+  The fastest `_pb` file of a leg.  FS_RunDir's names lead with the zero-padded
+  tick count, so FS_NAMESORT puts the PB first; a lobby's header-only `_lobby`
+  is another tag and never matches.
+*/
+string(float track, float leg) RG_PBFind =
+{
+	local float h;
+	local string f;
+
+	h = search_begin(strcat(FS_RunDir(serverkey("map"), track, leg), "*_pb.rec"), FS_NAMESORT, TRUE);
+	if (h < 0)
+		return "";
+	f = "";
+	if (search_getsize(h) > 0)
+		f = search_getfilename(h, 0);
+	search_end(h);
+	return f;
+};
+
+// PB slot i should hold leg `leg` of `track` (-1: nothing).  Looked for again on a
+// change of leg, of map, or after a run ended (a new PB has just been written).
+void(float i, float track, float leg) RG_PBWant =
+{
+	local string f;
+
+	if (leg < 0)
+	{
+		if (rg_pbst[i] != RGP_NONE)
+			RG_PBClear(i);
+		rg_pbleg[i] = -1;
+		return;
+	}
+	if (leg == rg_pbleg[i] && track == rg_pbtrack[i] && rg_pbmap == rg_mapgen && !rg_rescan)
+		return;
+	rg_pbleg[i] = leg;
+	rg_pbtrack[i] = track;
+	f = RG_PBFind(track, leg);
+	if (f == "")
+	{
+		RG_PBClear(i);
+		return;
+	}
+	if (rg_pbpath[i])
+	if (!strcmp(rg_pbpath[i], f))
+	if (rg_pbst[i] != RGP_FAIL)
+		return;                     // that file, held or on its way
+	RG_PBClear(i);
+	rg_pbpath[i] = strzone(f);
+	rg_pbst[i] = RGP_QUEUE;
+};
+
+// From Scores_LinesFrame when no line job runs: start a queued PB's.  Before the
+// board's own queue, because a ghost is wanted the moment its run starts.
+float() RG_JobStart =
+{
+	local float i, s;
+
+	for (i = 1; i >= 0; i = i - 1)
+		if (rg_pbst[i] == RGP_QUEUE)
+		{
+			s = i ? LN_S_GHR : LN_S_GHOST;
+			rg_pbst[i] = Watch_LineJobStart(s, rg_pbpath[i], rg_pbleg[i]) ? RGP_BUILD : RGP_FAIL;
+			rg_stggen[s] = -1;
+			return TRUE;
+		}
+	return FALSE;
+};
+
+void(float k) RG_JobDone =
+{
+	local float i;
+
+	i = (wt_lj_slot == LN_S_GHR) ? 1 : 0;
+	if (rg_pbst[i] != RGP_BUILD)
+		return;
+	rg_pbst[i] = (k > 0) ? RGP_ON : RGP_FAIL;
+	rg_stggen[wt_lj_slot] = -1;
+	print(sprintf("raceghost: %s PB %s (%g points)\n", i ? "run" : "stage",
+	              (k > 0) ? "ready" : "failed", ln_n[wt_lj_slot]));
+};
+
+/*
+  Where slot s's body left each stage's box: rg_stg[s * RG_STG + seg], the clock of
+  its first sample outside, -1 never.  Only the box of the furthest stage reached
+  is written, so a fail back into the stage's own box moves its start to the try
+  that went on, and an earlier box passed again does not.  RG_SCAN samples a frame;
+  RG_StageAt answers -1 until a slot's scan is done.
+*/
+void(float s) RG_StageScan =
+{
+	local float b, i, e, z, k, track, nz;
+	local float zl[RG_STG];
+	local vector p;
+
+	if (rg_stggen[s] != ln_graphgen[s])
+	{
+		rg_stggen[s] = ln_graphgen[s];
+		rg_stgi[s] = ln_ia[s];
+		rg_stgin[s] = -1;
+		rg_stgk[s] = -1;
+		for (k = 0; k < RG_STG; k = k + 1)
+			rg_stg[s * RG_STG + k] = -1;
+	}
+	if (rg_stgi[s] > ln_ib[s])
+		return;
+	if (zone_count <= 0)
+		return;                     // no zones yet: nothing read, so nothing done
+	track = (ln_track[s] >= 0) ? ln_track[s] : rg_track;
+	nz = 0;
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_track[z] == track)
+		if (zone_type[z] == ZONE_START || zone_type[z] == ZONE_STAGE)
+		if (nz < RG_STG)
+		{
+			zl[nz] = z;
+			nz = nz + 1;
+		}
+	b = LN_B(s);
+	e = min(ln_ib[s], rg_stgi[s] + RG_SCAN - 1);
+	for (i = rg_stgi[s]; i <= e; i = i + 1)
+	{
+		p = ln_pos[b + i];
+		k = -1;
+		for (z = 0; z < nz; z = z + 1)
+			if (Zone_PointInside(zl[z], p))
+			{
+				k = (zone_type[zl[z]] == ZONE_START) ? 0 : zone_seg[zl[z]];
+				break;
+			}
+		if (k >= 0)
+		{
+			rg_stgk[s] = max(rg_stgk[s], k);
+			rg_stgin[s] = k;
+		}
+		else if (rg_stgin[s] >= 0)
+		{
+			k = rg_stgin[s];
+			if (k >= rg_stgk[s])
+			if (k < RG_STG)
+				rg_stg[s * RG_STG + k] = ln_t[b + i];
+			rg_stgin[s] = -1;
+		}
+	}
+	rg_stgi[s] = e + 1;
+};
+
+float(float s, float seg) RG_StageAt =
+{
+	if (seg <= 0)
+		return ln_start[s];         // a whole run's clock starts as it leaves the start
+	if (seg >= RG_STG)
+		return -1;
+	RG_StageScan(s);
+	if (rg_stggen[s] != ln_graphgen[s] || rg_stgi[s] <= ln_ib[s])
+		return -1;                  // still reading
+	return rg_stg[s * RG_STG + seg];
+};
+
+/*
+  The run clock of the body you see, seconds; -1 when no run is on.  The stat
+  describes the command frame the server last acknowledged (Patch 611's
+  Trail_Pair), which is a round trip behind the predicted body: the wall time
+  since that frame was predicted is added.  On a local server the frame is the
+  current one, and the time since the stat moved, at most a tick, is added.
+*/
+float() RG_Clock =
+{
+	local float tick, ticks, lead, n, p, c;
+
+	if (ui_rw_on)
+		return ui_rw_time;          // the rewind cursor (display only)
+	if (getstatf(STAT_FS_TIMERSTATE) != TS_RUNNING)
+		return -1;
+	tick = Timer_Tick();
+	ticks = getstatf(STAT_FS_TIMERTICKS);
+	if (ticks != rg_lticks)
+	{
+		rg_lticks = ticks;
+		rg_tickat = cltime;
+	}
+	rg_lead = 0;
+	if (getstatf(STAT_FS_TIMERFLAGS) & TF_FROZEN)
+		return ticks * tick;
+	lead = -1;
+	n = clientcommandframe;
+	p = servercommandframe + TR_LEAD;
+	if (tr_kf)
+	if (p < n)
+	if (n - p < TR_RING - 3)
+	if (!cvar("cl_nopred"))
+	{
+		c = (p & (TR_RING - 1)) * 4;
+		if (tr_kf[c] == p)
+			lead = cltime - tr_kf[c + 1];
+	}
+	if (lead < 0)
+		lead = min(cltime - rg_tickat, tick);
+	rg_lead = bound(0, lead, 0.5);
+	return ticks * tick + rg_lead;
+};
+
+// Slot s at run clock t: rg_gp, rg_gyaw (the way it was going), rg_gend.
+void(float s, float t) RG_At =
+{
+	local float b, ia, ib, i, f, k0, k1;
+	local vector d;
+
+	b  = LN_B(s);
+	ia = ln_ia[s];
+	ib = ln_ib[s];
+	i  = Line_Find(s, t);
+	rg_gend = 0;
+	if (i <= ia)
+	{
+		i = ia;
+		rg_gp = ln_pos[b + ia];
+		if (t < ln_t[b + ia])
+			rg_gend = -1;
+	}
+	else if (i > ib)
+	{
+		i = ib;
+		rg_gp = ln_pos[b + ib];
+		rg_gend = 1;
+	}
+	else
+	{
+		f = ln_t[b + i] - ln_t[b + i - 1];
+		f = (f > 0) ? (t - ln_t[b + i - 1]) / f : 1;
+		if (ln_brk[b + i])
+			f = (f < 0.5) ? 0 : 1;  // a teleport: no slide across it
+		rg_gp = ln_pos[b + i - 1] + (ln_pos[b + i] - ln_pos[b + i - 1]) * f;
+	}
+	rg_gi = i;
+	k0 = max(ia, i - 3);
+	k1 = min(ib, i + 3);
+	d = ln_pos[b + k1] - ln_pos[b + k0];
+	d_z = 0;
+	if (vlen(d) > 1)
+		rg_syaw[s] = vectoyaw(d);
+	rg_gyaw = rg_syaw[s];
+};
+
+/*
+  The clock slot c runs at against yours, or -1 for none: a stage's recording from
+  the stage base, a whole run's from the start.  M is your clock at the anchor and
+  A the slot's, so the ghost is at A + (rg_now - M) + hud_ghost_offset.
+*/
+float rg_am;
+float(float c) RG_Anchor =
+{
+	local float legc, leg;
+
+	if (!ln_on[c] || ln_ib[c] <= ln_ia[c])
+		return -1;
+	if (ln_track[c] >= 0)
+	if (ln_track[c] != rg_track)
+		return -1;
+	legc = ln_leg[c];
+	rg_am = 0;
+	if (cvar("hud_ghost_sync") && rg_legnow > 0)
+	{
+		if (rg_armed)
+			return -1;              // in the box: this stage has not started
+		rg_am = rg_base;
+		leg = rg_legnow;
+	}
+	else
+		leg = (rg_runleg > 0) ? rg_runleg : 0;
+	if (legc > 0)
+		return (legc == leg) ? ln_start[c] : -1;
+	return RG_StageAt(c, leg - 1);
+};
+
+// Slot c as a ghost, if a slot is free and it runs here; FALSE when it does not.
+float(float c, vector col) RG_Add =
+{
+	local float a, t;
+
+	if (rg_n >= RG_MAX)
+		return FALSE;
+	a = RG_Anchor(c);
+	if (a < 0)
+		return FALSE;
+	// A negative offset holds it where its clock starts until it is due.
+	t = max(a, a + (rg_now - rg_am) + cvar("hud_ghost_offset"));
+	RG_At(c, t);
+	if (rg_gend > 0)
+	if (t - ln_t[LN_B(c) + ln_ib[c]] > RG_HOLD)
+		return TRUE;                // finished a while ago: still this run's ghost
+	rg_slot[rg_n] = c;
+	rg_t[rg_n] = t;
+	rg_pos[rg_n] = rg_gp;
+	rg_yaw[rg_n] = rg_gyaw;
+	rg_end[rg_n] = rg_gend;
+	rg_anc[rg_n] = a;
+	if (col == '0 0 0')
+		col = ln_col[LN_B(c) + rg_gi];
+	rg_col[rg_n] = col;
+	rg_n = rg_n + 1;
+	return TRUE;
+};
+
+float(float s) RG_StageDone =
+{
+	return (rg_stggen[s] == ln_graphgen[s] && rg_stgi[s] > ln_ib[s]);
+};
+
+// Before clearscene, after Trail_Frame (whose kept frames RG_Clock reads).
+void() RG_Frame =
+{
+	local float st, i, k, lines, s, leg, sync;
+	local string pbr;
+
+	rg_n = 0;
+	rg_cv = cvar("hud_ghost");
+	st = getstatf(STAT_FS_TIMERSTATE);
+	if (st != rg_laststate)
+	{
+		if (rg_laststate == TS_RUNNING)
+			rg_rescan = TRUE;       // a run ended: its PB may be new
+		rg_laststate = st;
+	}
+	if (!rg_cv)
+		return;
+
+	rg_track  = getstatf(STAT_FS_TIMERTRACK);
+	rg_seg    = getstatf(STAT_FS_TIMERSEG);
+	rg_legnow = (getstatf(STAT_FS_TIMERSEGS) > 1) ? rg_seg + 1 : 0;
+	// RUNLEG is track * 100 + leg + 1 while a run is open.  SV_RecOpen sets it for
+	// every run, one that is not written included (measured with rec_enable 0).
+	rg_runleg = getstatf(STAT_FS_RUNLEG);
+	rg_runleg = (rg_runleg > 0) ? rg_runleg - floor(rg_runleg / 100) * 100 - 1 : -1;
+	rg_base   = getstatf(STAT_FS_STAGEBASE) * Timer_Tick();
+	rg_armed  = (getstatf(STAT_FS_STAGEST) & SF_ARMED) ? TRUE : FALSE;
+
+	// The PBs: the run's whenever asked, and a stage's for a stage run or a stage start.
+	sync = cvar("hud_ghost_sync");
+	if (cvar("hud_ghost_pb") && zone_count > 0)
+	{
+		RG_PBWant(1, rg_track, 0);
+		leg = -1;
+		if (sync && rg_legnow > 0)
+			leg = rg_legnow;
+		else if (rg_runleg > 0)
+			leg = rg_runleg;
+		RG_PBWant(0, rg_track, leg);
+		rg_pbmap = rg_mapgen;
+		rg_rescan = FALSE;
+	}
+	else
+	{
+		RG_PBWant(0, 0, -1);
+		RG_PBWant(1, 0, -1);
+	}
+
+	/*
+	  The stage tables, in the background once a later stage is in play: standing in
+	  its box is long enough (measured: no ghost 0.02 s into a stage run when the table
+	  was begun only at its start).  One unfinished slot a frame, RG_SCAN samples.
+	*/
+	lines = cvar("hud_ghost_lines");
+	if (sync || rg_legnow > 1)
+	{
+		s = -1;
+		if (rg_pbst[1] == RGP_ON)
+		if (!RG_StageDone(LN_S_GHR))
+			s = LN_S_GHR;
+		for (i = 0; i < SB_LNMAX && s < 0 && lines > 0; i = i + 1)
+			if (sb_ln_st[i] == SBL_ON)
+			if (ln_leg[LN_BOARDSLOT(i)] <= 0)
+			if (!RG_StageDone(LN_BOARDSLOT(i)))
+				s = LN_BOARDSLOT(i);
+		if (s >= 0)
+			RG_StageScan(s);
+	}
+
+	rg_now = RG_Clock();
+	if (rg_now < 0 || rec_wt_on || Spec_Active())
+		return;
+
+	// A stage's own PB first; the whole run's only where none is standing in for
+	// it, or on its way (a swap at the stage's start would jump).
+	if (rg_pbst[0] == RGP_ON)
+		RG_Add(LN_S_GHOST, LN_GHOSTCOL);
+	if (rg_pbst[1] == RGP_ON)
+	if (!rg_n)
+	if (rg_pbst[0] != RGP_QUEUE && rg_pbst[0] != RGP_BUILD)
+		RG_Add(LN_S_GHR, LN_GHOSTCOL);
+	pbr = "";
+	if (rg_n > 0)
+	{
+		i = (rg_slot[0] == LN_S_GHR) ? 1 : 0;
+		if (rg_pbpath[i])
+			pbr = rg_pbpath[i];
+	}
+
+	// The first hud_ghost_lines ticked lines that run here.
+	k = 0;
+	for (i = 0; i < SB_LNMAX && k < lines; i = i + 1)
+		if (sb_ln_st[i] == SBL_ON)
+		{
+			if (pbr != "")
+			if (sb_ln_path[i])
+			if (!strcmp(sb_ln_path[i], pbr))
+				continue;           // your PB ticked as well: one ghost of it
+			if (RG_Add(LN_BOARDSLOT(i), '0 0 0'))
+				k = k + 1;
+		}
+};
+
+// Before renderscene: the bodies.
+void() RG_DrawBodies =
+{
+	local float g, dither;
+	local entity e;
+
+	if (!(rg_cv & 1) || rg_n < 1)
+		return;
+	dither = cvar("hud_ghost_dither");
+	if (dither && !rg_shd)
+		rg_shd = RG_ShaderDither();
+	if (!dither && !rg_shb)
+		rg_shb = RG_ShaderBlend();
+	for (g = 0; g < rg_n; g = g + 1)
+	{
+		e = rg_ent[g];
+		if (!e)
+		{
+			e = spawn();
+			rg_ent[g] = e;
+			setmodel(e, "models/player.iqm");
+		}
+		setorigin(e, rg_pos[g]);
+		e.angles = [0, rg_yaw[g], 0];
+		e.colormod = rg_col[g];
+		e.glowmod = '0.032 0.032 0.032';
+		e.forceshader = dither ? rg_shd : rg_shb;
+		addentity(e);
+	}
+};
+
+// Before renderscene, as Trail_Pin: the 2D pass's projection.
+void() RG_Pin =
+{
+	if (!(rg_cv & 2) || rg_n < 1)
+		return;
+	makevectors(getproperty(VF_ANGLES));
+	project(getproperty(VF_ORIGIN) + v_forward * 256);
+};
+
+// After renderscene, beside the other lines: the stretch each ghost has just run.
+void() RG_DrawLines =
+{
+	local float g, s;
+
+	if (!(rg_cv & 2) || rg_n < 1)
+		return;
+	Line_ViewFrame();
+	ln_nomk = TRUE;
+	ln_pxover = max(4, 3 * cvar("hud_watch_path_px"));
+	for (g = 0; g < rg_n; g = g + 1)
+	{
+		s = rg_slot[g];
+		Line_Window(rg_t[g] - 0.6, rg_t[g] + 0.06);
+		Line_Draw(s, rg_t[g], rg_pos[g], 0, 1);
+		Line_Square(rg_pos[g] + '0 0 36', rg_col[g], 1);
+	}
+	Line_WindowOff();
+	ln_nomk = FALSE;
+	ln_pxover = 0;
+};
+
+// `raceghost`: what it is following and where.
+float() RG_Console =
+{
+	local float g, i;
+	local vector p;
+
+	if (argv(0) != "raceghost")
+		return FALSE;
+	print(sprintf("raceghost: cv %g sync %g offset %g lines %g pb %g\n", cvar("hud_ghost"),
+	              cvar("hud_ghost_sync"), cvar("hud_ghost_offset"), cvar("hud_ghost_lines"),
+	              cvar("hud_ghost_pb")));
+	print(sprintf("raceghost: clock %.4f (stat %g, lead %.4f) track %g seg %g legnow %g",
+	              rg_now, rg_lticks, rg_lead, rg_track, rg_seg, rg_legnow),
+	      sprintf(" runleg %g (stat %g) base %.3f armed %g\n", rg_runleg, getstatf(STAT_FS_RUNLEG),
+	              rg_base, rg_armed));
+	for (i = 0; i < 2; i = i + 1)
+		print(sprintf("raceghost: pb %s leg %g state %g pts %g %s\n", i ? "run" : "stage",
+		              rg_pbleg[i], rg_pbst[i], ln_n[i ? LN_S_GHR : LN_S_GHOST],
+		              rg_pbpath[i] ? rg_pbpath[i] : "-"));
+	for (g = 0; g < rg_n; g = g + 1)
+	{
+		p = rg_pos[g];
+		print(sprintf("raceghost: ghost %g slot %g t %.4f at %.1f %.1f %.1f",
+		              g, rg_slot[g], rg_t[g], p_x, p_y, p_z),
+		      sprintf(" yaw %.1f end %g anchor %.4f mine %.4f\n", rg_yaw[g], rg_end[g], rg_anc[g], rg_am));
+	}
+	p = pmove_org;
+	print(sprintf("raceghost: you at %.1f %.1f %.1f\n", p_x, p_y, p_z));
+	print(sprintf("raceghost: %g shown\n", rg_n));
+	return TRUE;
+};

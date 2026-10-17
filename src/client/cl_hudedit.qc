@@ -304,6 +304,8 @@ void() HE_BuildTable =
 	HE_Add("lines",   "Run lines",  "",              "",              "",             1, HEA_CT,  0,   0);
 	// Patch 661: what is written on them (names, the marks' numbers), options only.
 	HE_Add("labels",  "Line labels","",              "",              "",             1, HEA_CT,  0,   0);
+	// Patch 746: the race ghost, options only.
+	HE_Add("ghost",   "Ghost",      "",              "",              "",             1, HEA_CT,  0,   0);
 	// Patch 610: the HUD's run graph. It draws only while a line is ticked, so the
 	// outline here is usually the nominal one.
 	HE_Add("graph",   "Run graph",  "hud_linegraph_x", "hud_linegraph_y", "hud_linegraph", 0, HEA_RT, 150, 80);
@@ -645,6 +647,27 @@ string(string id, float row) HE_OptDef =
 		return "";
 	}
 
+	if (id == "ghost")
+	{
+		if (row == 0) return "hud_ghost|Show|c|0 1 2 3|off;body;line highlight;both"
+		                     "|A body running the run beside you, or a bright stretch on its line where it is now, or both.";
+		if (row == 1) return "hud_ghost_sync|Starts with|c|0 1|your run;each stage"
+		                     "|your run: from the moment you leave the start, on your run's clock. each stage: put back level with you every time you leave a stage's start.";
+		if (row == 2) return "hud_ghost_pb|Your PB|t||"
+		                     "|Your own best recording of the run or stage you are on, from this PC's saved runs.";
+		if (row == 3) return "hud_ghost_lines|Ticked runs|c|0 1 4 8|none;first;first 4;first 8"
+		                     "|Also a ghost for the runs ticked in the leaderboard's LINE column, yours or anyone's.";
+		if (row == 4) return "hud_ghost_offset|Time offset|c|-2 -1 -0.5 0 0.5 1 2|-2 s;-1 s;-0.5 s;none;+0.5 s;+1 s;+2 s"
+		                     "|Plus runs the ghost that far ahead of your clock, minus that far behind. Any value from the console.";
+		if (row == 5) return "hud_ghost_alpha|Opacity|c|0.25 0.4 0.55 0.75 1|25%;40%;55%;75%;100%"
+		                     "|How solid the ghost's body is.";
+		if (row == 6) return "hud_ghost_dither|Opacity by|c|1 0|dither;blend"
+		                     "|dither: a fixed pattern of solid pixels, sorted with the world. blend: smooth see-through, can sort wrongly behind glass.";
+		if (row == 7) return "hud_ghost_near|Fade near you|c|0 64 96 160 256|off;64;96;160;256"
+		                     "|Within this many units of your eye the body fades out, so a ghost level with you does not block the view.";
+		return "";
+	}
+
 	if (id == "graph")
 	{
 		if (row == 0) return "hud_linegraph_plots|Shows|c|1 2 3|speed;energy;both"
@@ -707,6 +730,7 @@ string(string id) HE_Tip =
 	if (id == "spectate") return "Watching another player: pin the TAB board and click a name.";
 	if (id == "lines")    return "The path a recording took, drawn through walls, with what happened along it.";
 	if (id == "labels")   return "What is written on the run lines: each run's name, and the numbers at its marks.";
+	if (id == "ghost")    return "A ghost of your PB, or of a ticked run, racing you from the moment you leave the start.";
 	if (id == "graph")    return "Speed over time for the runs whose LINE box is ticked on the leaderboard. On screen only while one is.";
 	if (id == "mouse")    return "Your mouse as turn; the dot wraps at the edges. Replays and spectate show their view.";
 	return "";
@@ -2005,6 +2029,8 @@ void() HE_ResetAll =
 	// that are not positions (those are HE_Default's), for the same reason.
 	localcmd("seta hud_lines_order 4\nseta hud_linegraph_plots 3\n");
 	localcmd("seta hud_lines_demo -1\nseta hud_lines_demo_far -1\n");      // Patch 745
+	localcmd("seta hud_ghost 1\nseta hud_ghost_sync 0\nseta hud_ghost_pb 1\nseta hud_ghost_lines 4\n"
+	         "seta hud_ghost_offset 0\nseta hud_ghost_alpha 0.55\nseta hud_ghost_dither 1\nseta hud_ghost_near 96\n");
 
 	// And the panel itself, which can be dragged into a corner like anything else.
 	HE_ResetCvar("hud_edit_panel_x");

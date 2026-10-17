@@ -195,6 +195,7 @@ client/cl_spectate.qc
 // Timer_Tick's rate.  Stage 2 of build 24.
 client/cl_scores.qc
 client/cl_scores_native.qc
+client/cl_raceghost.qc
 client/cl_portal.qc
 // AFTER cl_scores.qc, which owns Scores_LastOf -- the rank scan parses the same
 // <ticks>_<tag> filenames the leaderboard does and there is no second copy of
