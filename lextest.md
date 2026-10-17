@@ -1,5 +1,20 @@
 # lextest.md — things waiting on a human
 
+## P768 — monolith B4's red fake sky no longer lets the blue sky through
+
+In both Windows installs since 2026-10-17T22:02:41Z (`ftesurf64.exe` `7b280443`,
+which also carries P763-P767; `.prev` is P766's `66e7748e`); restart the game. B4's
+red sky is a panel a few units in front of the real sky, and from some angles the
+real sky's depth won; the sky's depth is now written a hair behind it.
+
+- **surf_monolith B4:** load save 18 with your view offset the way that showed the
+  blue band (about 1° above the save's angle); the horizon stays red.
+- `r_sky_forcedepth_push 0` brings the old behaviour back for an A/B.
+- If you remember where on surf_fantasy level geometry used to show out of the
+  windows (the reason the sky mask exists, Patch 296), check that spot still hides it.
+
+"B4 ok / still blue at <save>" and the fantasy spot if you know it. Verdict PENDING.
+
 ## P767 — surf_board_this's stage 1 sky is the tinted nebula, not flat yellow
 
 In both Windows installs since 2026-10-17T19:51Z (`fteplug_hl2_x64.dll` `105ef7b7`;
@@ -10,11 +25,8 @@ on top instead of multiplied, which washed the sky out to yellow.
 - **surf_board_this, stage 1:** the sky behind the stage is the green nebula with a
   colour tint, no yellow wash. The streaks at the box's edges are still there.
 - **surf_era and surf_pride** use the same rainbow and lody materials: same check.
-- **monolith B4:** not fixed. When you see blue breaking through the red fake sky,
-  make a save right there (with the view on it) and tell me its number.
 
-"Board_this ok / still yellow at <spot>" and the B4 save number.
-Verdict PENDING.
+"Board_this ok / still yellow at <spot>". Verdict PENDING.
 
 ## P766 — OBS display capture sees the borderless game
 

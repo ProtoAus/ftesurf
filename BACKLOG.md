@@ -17,14 +17,12 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   first SPF_ADDON path), so `downloads/materials/x.tga` would beat the map's
   `x.vtf` in Image_LocateHighResTexture's first-lowest-depth pick (review round 2).
   No live effect: downloads holds only `csprogsvers/`. Check: put a .tga there.
-- Lex, 17 Oct, monolith B4 (save 17, screenshot surf_monolith_002.png at 0:52 of a
-  run resumed from it): sky138a's blue shows through the red WindowImposter slab at
-  the horizon, partly as a fine stipple. NOT REPRODUCED at save 17's origin and
-  angles (setpos, re-sent before each shot -- the run is cancelled ~3 s later):
-  8-shot bursts at r_blendsort 2 and 0, r_sky_forcedepth 2/1/0, 1280x720 and
-  1920x1200 all read 0.6-0.8% blue, which is the cyan glass. The 4-unit
-  slab-to-sky-brush gap is a lead, not demonstrated. Needs a save made while it
-  shows. (board_this's "sky fight" was the Modulate box: Patch 767.)
+- Site: engine `gl/gl_warp.c` GL_SkyForceDepth. Patch 768's push lets level
+  geometry within ~4 depth steps behind a sky brush show (about 60 units at 16000).
+  Patch 296's surf_fantasy "crap out the windows" case was not found by the arm
+  (mask on/off differed by at most 0.26% at its four zone starts), so no view
+  proves the mask still hides it. Check: the reporter's window, with
+  `r_sky_forcedepth 1` against `2` and `r_sky_forcedepth_push 0` against 4.
 - Site: `vid_reload` on surf_monolith (P758 client, after `r_refract_fbo 0`)
   crashed: 0xC0000005 at rva 0x303844 (crashaddr.txt, 17 Oct 15:00Z).
 
