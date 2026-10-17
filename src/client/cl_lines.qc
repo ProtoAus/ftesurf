@@ -1577,8 +1577,11 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 		ln_v20[s] = v * v;
 	}
 	ln_nsamp[s] = ln_nsamp[s] + 1;
-	Line_Add(s, o, vlen([v_x, v_y, 0]), v_z, q, t, brk,
-	         anglemod(aux_x) + ((fl & WT_F_DUCKED) ? LN_POSE_DUCK : 0));
+	// Patch 749: wrapped here, not by anglemod, whose loop never ends on an infinite yaw.
+	r = aux_x - 360 * floor(aux_x / 360);
+	if (!(r >= 0 && r < 360))
+		r = 0;
+	Line_Add(s, o, vlen([v_x, v_y, 0]), v_z, q, t, brk, r + ((fl & WT_F_DUCKED) ? LN_POSE_DUCK : 0));
 };
 
 /*

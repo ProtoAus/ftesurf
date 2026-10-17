@@ -23,8 +23,10 @@ of the stage run, at the whole PB's place 4.98 s on (the file was cut from it); 
 its end and hold no other PB stands in; three attempts read it once.
 Pose arm (Patch 749): at each POSE the ghost's yaw is the file's view yaw at its clock
 (the shortest way round between the two samples either side, within 0.2 degrees) and its
-duck the nearer sample's flag; the arm must hold ducked and standing moments and one
-where the view and the travel part by over 30 degrees, or it cannot tell the two apart.
+duck the nearer sample's flag, and the body's model the ducked one exactly when it
+ducks; the arm must hold ducked and standing moments, one where the view and the travel
+part by over 30 degrees, a duck edge each way where the earlier or the later sample
+would answer otherwise, and a turn across 0/360 that a plain blend would get wrong.
 The look arm's held ghost ducks as the file does there and its tag "Your PB" is drawn.
 Exit 2 is CANNOT MEASURE.
 """
@@ -39,7 +41,7 @@ GHOST = re.compile(r'raceghost: ghost (\d+) slot (\d+) t (\S+) at (\S+) (\S+) (\
 YOU = re.compile(r'raceghost: you at (\S+) (\S+) (\S+)')
 SHOWN = re.compile(r'raceghost: (\d+) shown')
 DUCK = re.compile(r' duck (\S+)$')
-TAG = re.compile(r'raceghost: tag (\d+) "([^"]*)" drawn (\S+)')
+TAG = re.compile(r'raceghost: tag (\d+) "([^"]*)" drawn (\S+)(?: model (\S+))?')
 CANNOT = 'CANNOT MEASURE: '
 
 
@@ -87,6 +89,21 @@ def wrap(d):
     return (d + 180) % 360 - 180
 
 
+def pose_rules(rows, t):
+    """Whether the earlier sample's duck, the later sample's, or a blend that does not
+    wrap would answer differently from RG_At's rule at t (the arm's discriminating
+    moments)."""
+    i = next((k for k in range(1, len(rows)) if rows[k][0] >= t), None)
+    if i is None:
+        return False, False, False
+    (t0, p0, y0, f0), (t1, p1, y1, f1) = rows[i - 1], rows[i]
+    f = (t - t0) / (t1 - t0) if t1 > t0 else 1
+    near = (f0 if f < 0.5 else f1) & 2
+    plain = y0 % 360 + ((y1 % 360) - (y0 % 360)) * f
+    wrapped = (y0 + wrap(y1 - y0) * f) % 360
+    return (f0 & 2) != near, (f1 & 2) != near, abs(wrap(plain - wrapped)) > 1
+
+
 def pose_at(rows, t):
     """The file's (yaw, ducked, travel yaw) at clock t, as RG_At reads it."""
     i = next((k for k in range(1, len(rows)) if rows[k][0] >= t), None)
@@ -113,7 +130,7 @@ def pose(rig, pb, fails, notes):
             secs.append(cur)
         elif cur is not None:
             cur.append(line)
-    ducked = standing = parted = 0
+    ducked = standing = parted = early = late = wraps = 0
     for k, body in enumerate(secs):
         g = [l for l in body if GHOST.search(l) and GHOST.search(l).group(2) == '68']
         if not g:
@@ -135,14 +152,25 @@ def pose(rig, pb, fails, notes):
             fails.append('POSE %d: the ghost says nothing of ducking' % k)
         elif bool(float(d.group(1))) != wd:
             fails.append('POSE %d: duck %s, the file %d' % (k, d.group(1), wd))
+        tag = [TAG.search(l) for l in body if TAG.search(l)]
+        model = tag and tag[0].group(4)
+        want = 'models/player_duck.iqm' if wd else 'models/player.iqm'
+        if model != want:
+            fails.append('POSE %d: the body is %s, the file says %s' % (k, model, want))
+        e, l, w = pose_rules(rows, t)
+        early += e
+        late += l
+        wraps += w
         ducked += wd
         standing += not wd
         parted += abs(wrap(wy - tr)) > 30
-    print('POSE %d moments: %d ducked, %d standing, %d where view and travel part'
-          % (len(secs), ducked, standing, parted))
-    if ducked < 3 or standing < 3 or not parted:
-        notes.append(CANNOT + 'POSE: the moments cannot tell a pose from the travel '
-                     '(%d ducked, %d standing, %d parted)' % (ducked, standing, parted))
+    print('POSE %d moments: %d ducked, %d standing, %d where view and travel part, '
+          '%d/%d where the earlier/later sample\'s duck differs, %d across 0/360'
+          % (len(secs), ducked, standing, parted, early, late, wraps))
+    if ducked < 3 or standing < 3 or not parted or not early or not late or not wraps:
+        notes.append(CANNOT + 'POSE: the moments cannot tell the rules apart (%d ducked, '
+                     '%d standing, %d parted, %d early, %d late, %d wrapped)'
+                     % (ducked, standing, parted, early, late, wraps))
 
 
 def sections(text):
@@ -240,6 +268,9 @@ def look(rig, pb, fails, notes):
                                                   tag and tag[0].groups()))
         if not dk or want is None or bool(float(dk.group(1))) != want[1]:
             fails.append('look %s: duck %s, the file %s' % (name, dk and dk.group(1), want and want[1]))
+        elif not want[1]:
+            print('look %s: the file stands here, so this check cannot catch a body that never ducks'
+                  % name)
         if not tag or tag[0].group(2) != 'Your PB' or tag[0].group(3) != '1':
             fails.append('look %s: no "Your PB" tag drawn (%s)' % (name, tag and tag[0].groups()))
     hl = s.get('HIGHLIGHT', [])

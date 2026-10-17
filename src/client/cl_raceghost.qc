@@ -706,10 +706,12 @@ void() RG_DrawBodies =
 	}
 };
 
-// Before renderscene, as Trail_Pin: the 2D pass's projection.
+// Before renderscene, as Trail_Pin: the 2D pass's projection (the lines' and the tags').
 void() RG_Pin =
 {
-	if (!(rg_cv & 2) || rg_n < 1)
+	if (rg_n < 1)
+		return;
+	if (!(rg_cv & 2) && !cvar("hud_ghost_names"))
 		return;
 	makevectors(getproperty(VF_ANGLES));
 	project(getproperty(VF_ORIGIN) + v_forward * 256);
@@ -740,7 +742,9 @@ void() RG_DrawLines =
 /*
   Patch 749: each ghost's name over its head, as PlayerLabels_Draw draws a player's
   (its picture, the name fading out past 256 u, nothing past hud_playerlabels_far
-  or behind a wall), after the world's labels.  Your PB says so.
+  or behind a wall), after the world's labels.  Your PB says so.  It fades with the
+  body within hud_ghost_near (the material's smoothstep, from its middle 31 u up), and
+  with no body (hud_ghost 2) sits over the highlight's square.
 */
 float rg_tagn;                  // drawn last frame (`raceghost`)
 float rg_tagd[RG_MAX];
@@ -775,7 +779,7 @@ string(float g) RG_Name =
 
 void(vector scr) RG_Tags =
 {
-	local float g, dist, far, a, tsz, icon, nw, x;
+	local float g, dist, far, a, tsz, icon, nw, x, near, k;
 	local vector eye, fwd, head, v, q;
 	local string nm, who;
 
@@ -793,10 +797,24 @@ void(vector scr) RG_Tags =
 	Font_Set(ui_font_ui);
 	tsz = max(8, Font_Px(6 * max(1, ui_cv_scale)));
 	icon = tsz * 1.6;
+	near = max(0, cvar("hud_ghost_near"));
 	for (g = 0; g < rg_n; g = g + 1)
 	{
 		rg_tagd[g] = FALSE;
-		head = rg_pos[g] + (rg_duck[g] ? PM_DUCK_VIEW_OFS : PM_VIEW_OFS) + '0 0 16';
+		k = 1;
+		if (rg_cv & 1)
+		{
+			head = rg_pos[g] + (rg_duck[g] ? PM_DUCK_VIEW_OFS : PM_VIEW_OFS) + '0 0 16';
+			if (near > 0)
+			{
+				k = bound(0, (vlen(rg_pos[g] + '0 0 31' - eye) - near * 0.5) / (near * 0.5), 1);
+				k = k * k * (3 - 2 * k);
+				if (k <= 0)
+					continue;
+			}
+		}
+		else
+			head = rg_pos[g] + '0 0 52';    // RG_DrawLines' square is 36 u up
 		v = head - eye;
 		dist = vlen(v);
 		if (dist < 24 || dist > far || v * fwd <= 8)
@@ -817,8 +835,9 @@ void(vector scr) RG_Tags =
 			nw = stringwidth(nm, TRUE, [tsz, tsz]);
 		}
 		x = q_x - (icon + a * (nw + tsz * 0.5)) * 0.5;
-		if (who == "" || !SteamPic_Draw([x, q_y - icon * 0.5], icon, who, 1))
-			sui_roundbox([x, q_y - icon * 0.5], [icon, icon], icon * 0.25, rg_col[g], 1);
+		if (who == "" || !SteamPic_Draw([x, q_y - icon * 0.5], icon, who, k))
+			sui_roundbox([x, q_y - icon * 0.5], [icon, icon], icon * 0.25, rg_col[g], k);
+		a = a * k;
 		if (a > 0)
 		{
 			drawstring([x + icon + tsz * 0.5 + 1, q_y - tsz * 0.5 + 1], nm, [tsz, tsz], '0 0 0', a, 0);
@@ -835,6 +854,8 @@ float() RG_Console =
 {
 	local float g, i;
 	local vector p;
+	local entity e;
+	local string m;
 
 	if (argv(0) != "raceghost")
 		return FALSE;
@@ -856,7 +877,12 @@ float() RG_Console =
 		              g, rg_slot[g], rg_t[g], p_x, p_y, p_z),
 		      sprintf(" yaw %.1f end %g anchor %.4f mine %.4f duck %g\n", rg_yaw[g], rg_end[g],
 		              rg_anc[g], rg_am, rg_duck[g]));
-		print(sprintf("raceghost: tag %g \"%s\" drawn %g\n", g, RG_Name(g), rg_tagd[g]));
+		e = rg_ent[g];
+		m = "-";
+		if (rg_cv & 1)
+		if (e)
+			m = e.model;
+		print(sprintf("raceghost: tag %g \"%s\" drawn %g model %s\n", g, RG_Name(g), rg_tagd[g], m));
 	}
 	p = pmove_org;
 	print(sprintf("raceghost: you at %.1f %.1f %.1f\n", p_x, p_y, p_z));
