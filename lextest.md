@@ -83,9 +83,12 @@ fixed yet.
 Live in both Windows installs since 2026-10-17T19:43Z. Engine 763 arrived inside the
 764/765/766 exes (now `66e7748e`, P766). Csprogs `260e66bf`, from main `8096b09` and
 byte-identical to the tested build, went in by itself (`.prev` `e07aa625`); qwprogs and
-menu are unchanged. The lobbies run engine 763 since a2's Pi swap (19:37Z), but they
-still serve csprogs `781a125b`, which does not make the call, so they keep the old cost
-until that QC is deployed. Restart the game.
+menu are unchanged. On all 12 lobbies since 2026-10-17T20:01Z: the Pi engine has
+carried 763 since a2's swap at 19:37Z, and now its QC from main `f3bc8d4` (csprogs
+`260e66bf`, qwprogs `6b527829`; `.prev` `781a125b`/`3d5d50f1`). Nobody was on any
+lobby. A fresh client on lobby 1 downloaded `260e66bf` and drew the board with no QC
+error. The same csprogs on the 0.1.26 release exe crosses the hub door with no QC
+error (its engine skips the call and keeps the old cost). Restart the game.
 
 "Smooth / still hitches at X" is enough. Verdict PENDING. Details: `tools/p763gcskip.md`.
 
@@ -148,7 +151,8 @@ board). Restart the game.
 
 ## P758 — Kitsune: the sky through a door, the `!m` room's door, bhop through a door
 
-Offline only (your own server: the lobbies run the Pi's engine and csprogs). On both
+On the lobbies too since 2026-10-17T20:01Z: the Pi's engine since a2's swap (19:37Z),
+and the QC with P763's csprogs `260e66bf`. On both
 Windows installs since 2026-10-17T14:21Z: engine `patch-758` (client `cf52c386`,
 server `9a300458`; `.prev` is P756's `f669bc11`) and main `2530278` with P759 and
 P760: csprogs `e07aa625`, qwprogs `6b527829`, menu `527db60b` (`.prev`
