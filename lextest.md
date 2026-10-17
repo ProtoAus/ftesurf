@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P771 — Kitsune: the sky through the stage 2 door shows from any distance
+
+Load saves 17, 18 and 19 (and stand anywhere further back in stage 1): through the
+door, the stage 2 room's background grid should be there from all of them, not only
+when you are within ~220 units of the door. The door's own clip plane was cutting the
+sky room; saves 12-15 still show their grid. Your own server and lobbies alike, once
+the client exe is installed. Restart the game.
+
+"Grid at 17 / still pops in at N units" is enough. Verdict PENDING.
+
 ## P768 — monolith B4's red fake sky no longer lets the blue sky through
 
 In both Windows installs since 2026-10-17T22:02:41Z (`ftesurf64.exe` `7b280443`,

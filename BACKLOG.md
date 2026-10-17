@@ -244,6 +244,16 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   collector off too (1000 -> 708 fps over ~25 s in the P758 arm). Not yet diagnosed.
 - The owner's own numbers: `frametimes` before and after a minute of play.
 
+## Sky through a portal: limits left by P771
+
+- With `r_portalfbo 0`, or where `GLR_PortalScreenRect` falls back to the full viewport,
+  the far-side 3D sky can now show past the door's outline wherever the door's scissor
+  rectangle meets the skyline. The outer view's sky paints nothing under RDF_SKIPSKY, so
+  nothing covers it. It is cosmetic, it is the corner case Patch 208 accepted, and the
+  default FBO path paints only the exact aperture.
+- Water reflection and refraction views draw the unclipped sky too. Where refraction
+  leaves pixels uncovered, they show the whole skyroom instead of black.
+
 ## Mode2 limits left by P748
 
 - A spinning skyroom (`skyroom_spin`) keys the baseline order along the unspun
