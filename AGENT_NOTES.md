@@ -8344,20 +8344,27 @@ measured evidence, not implied by preparing a feed.
   inside one kept step becoming one.
 - PATCH 760: A LINE IS SIZED TO ITS RUN. The fixed split above (eight 65,536s,
   fifty-six 8,192s) kept 2 min of a line 9..64 and halved past it: 18 % of
-  Momentum's 2,491 main runs. Now only the replay (0) and the live run (9, 10) keep
-  fixed places; every other slot takes a region of the rest (1,056,768 samples,
+  Momentum's 2,491 main runs. Now only the replay (0), the live run (9, 10) and the
+  race ghost's whole-run PB (68, after its review) keep fixed places; every other
+  slot takes a region of the rest (991,232 samples,
   `Line_PoolTake`: best fit, else the largest; whole LN_ALIGN 512 groups, so a
   region owns its chunks and LOD groups and the engine's per-draw LP_BASE /
   CHUNKBASE / GROUPBASE need nothing; at most LN_CAP). `LN_B`/`LN_C` read the
   tables. The line job asks `fsize / 40` (a sample line is over 40 bytes; online
   leaves start "02m30.125s", so a name is no guide) and Line_End gives the tail
-  back; Line_Clear returns the region. The graph's own `lgn_e` keeps a slot
+  back, as does a job that stops early (Watch_LineJobStop: a stage with no window
+  held its 65,536); Line_Clear returns the region. The graph's own `lgn_e` keeps a slot
   LN_CAP: it is indexed `s * LN_CAP`, the line's arrays `LN_B(s)`. `lines native`
   prints the pool (`lnpool` rows) with %d: %g printed 1,012,736 as 1.01274e+06
   and the first grading read that as overlaps. Arm `p760pool.cfg`,
   `tools/test_p760pool.py`: Lex's Kitsune PB in lines 1, 9 and 64 keeps all 9,996
   (the build before: 4,998 in 9 and 64); 19 copies of a 58,126-sample run fill it,
-  17 whole, two halved to fit; cleared, the pool is whole in its 2 regions.
+  15 whole (8 below the live run, 7 above beside the three short runs: a run cannot
+  span the live run's slots), the other four halved down to an eighth; lines 5
+  and 6 off join into one free region and a run ticked back lands in it; cleared,
+  the pool is whole in its 2 ranges; no region, used or free, overlaps another
+  (`lnfree` rows). The same on the 0.1.26 release exe. `scores lineoff N` is the
+  harness's untick.
 - NOT A FAULT, AND IT COST AN HOUR: "the Linux client's VM is 32 MiB". Three
   readers took it from `initlib.c PR_Configure`; the caller hands it
   `PR_ReadBytesString`, which makes -1 into 2 GiB on 64-bit Linux too

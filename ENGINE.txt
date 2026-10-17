@@ -31,7 +31,8 @@ patch    762
 # to "" so default.cfg cannot bring it back), with turn speed and sensitivity
 # sliders; z/1/2/4 are binds now; a bottom-left key strip; the vote box in the card style.
 # Patch 760 (QC only): a board line's sample store is sized to its run from one
-# shared pool (lines 9..64 kept 2 min); the replay and live run keep fixed places.
+# shared pool (lines 9..64 kept 2 min); the replay, the live run and the ghost's
+# whole-run PB keep fixed places.
 # p760pool arm; the build before holds half a 2.5-min run in lines 9 and 64.
 # Patch 759 (QC): 3/4/5/6 and `!s N`/`!b N` ride one usercmd's impulse like P753's
 # ops, from server-published rows (STAT_FS_WOPROW) and legs (STAT_FS_WOPLEGS). A 754

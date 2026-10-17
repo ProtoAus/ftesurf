@@ -1934,7 +1934,10 @@ void(float seg, float src) Watch_StageSpan =
 void() Watch_LineJobStop =
 {
 	if (wt_lj_phase)
+	{
 		fclose(wt_lj_fh);
+		Line_PoolShrink(wt_lj_slot);    // Patch 760: a job that stops early gives back its room
+	}
 	wt_lj_phase = 0;
 };
 

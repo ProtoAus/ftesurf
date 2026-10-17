@@ -39,13 +39,14 @@
 #define LN_S_GHR   68
 #define LN_TOTAL   (LN_S_MORE * LN_CAP + (LN_S_GHR - LN_S_MORE) * LN_CAP2 + LN_CAP)
 // A slot's first sample in the arenas, its capacity, and whether it is the live run's.
-// Patch 760: the replay's and the live run's are fixed where they always were (s *
-// LN_CAP); every other slot is given what its run needs from the rest (Line_PoolTake),
-// up to LN_CAP.  Lines 9..64 kept 2 min (LN_CAP2): 18 % of Momentum's main runs.
+// Patch 760: the replay's, the live run's and the race ghost's whole-run PB are fixed
+// where they always were; every other slot is given what its run needs from the rest
+// (Line_PoolTake), up to LN_CAP.  Lines 9..64 kept 2 min (LN_CAP2): 18 % of
+// Momentum's main runs.
 #define LN_B(s)    (ln_base[s])
 #define LN_C(s)    (ln_capn[s])
 #define LN_TRAIL(s) ((s) >= LN_S_TRAIL && (s) < LN_S_MORE)
-#define LN_POOLED(s) ((s) > 0 && !LN_TRAIL(s))
+#define LN_POOLED(s) ((s) > 0 && !LN_TRAIL(s) && (s) != LN_S_GHR)
 #define LN_ALIGN   512          // LN_CHUNK * LN_GROUP: a region owns whole chunks and groups
 #define LN_FMAX    160          // free regions the pool keeps apart
 // Board line i of the scoreboard's (0 the first) is this slot.
@@ -512,11 +513,12 @@ void() Line_AllocSlots =
 			ln_base[s] = s * LN_CAP;
 			ln_capn[s] = LN_CAP;
 		}
-	// The pool: slots 1..8's old place and everything past the live run's.
+	ln_base[LN_S_GHR] = LN_TOTAL - LN_CAP;    // the end, where it was (Patch 746)
+	// The pool: slots 1..8's old place and what lies between the live run and the PB.
 	ln_fs[0] = LN_CAP;
 	ln_fl[0] = (LN_S_TRAIL - 1) * LN_CAP;
 	ln_fs[1] = LN_S_MORE * LN_CAP;
-	ln_fl[1] = LN_TOTAL - LN_S_MORE * LN_CAP;
+	ln_fl[1] = LN_TOTAL - LN_CAP - LN_S_MORE * LN_CAP;
 	ln_fn = 2;
 	ln_lab_p = memalloc(sizeof(vector) * LN_LABMAX);
 	ln_lab_c = memalloc(sizeof(vector) * LN_LABMAX);
@@ -710,7 +712,7 @@ void(float a, float n) Line_PoolFree =
 		return;
 	}
 	if (ln_fn >= LN_FMAX)
-		return;                     // out of the pool until the map changes
+		return;                     // not reached: 66 regions split two ranges into at most 68
 	for (j = ln_fn; j > i; j = j - 1)
 	{
 		ln_fs[j] = ln_fs[j - 1];
@@ -790,10 +792,28 @@ void() Line_PoolPrint =
 		big = max(big, ln_fl[i]);
 	}
 	print(sprintf("lines: pool %d samples free in %d regions, the largest %d\n", f, ln_fn, big));
+	for (i = 0; i < ln_fn; i = i + 1)
+		print(sprintf("lnfree %d len %d\n", ln_fs[i], ln_fl[i]));
 	for (s = 0; s < LN_SLOTS; s = s + 1)
 		if (ln_n[s] > 0 || (LN_POOLED(s) && LN_C(s) > 0))
 			print(sprintf("lnpool %d base %d cap %d n %d step %d\n", s, LN_B(s), LN_C(s),
 			              ln_n[s], ln_step[s]));
+};
+
+// Patch 760: a pooled line keeps what it holds; the rest goes back (at the end of
+// its build, and when its job stops early: a stage with no window held 65,536).
+void(float s) Line_PoolShrink =
+{
+	local float c;
+
+	if (!LN_POOLED(s))
+		return;
+	c = ceil(max(ln_n[s], 1) / LN_ALIGN) * LN_ALIGN;
+	if (c < LN_C(s))
+	{
+		Line_PoolFree(LN_B(s) + c, LN_C(s) - c);
+		ln_capn[s] = c;
+	}
 };
 
 void(float s) Line_Clear =
@@ -1787,16 +1807,7 @@ void(float s) Line_End =
 
 	b = LN_B(s);
 	n = ln_n[s];
-	// Patch 760: a pooled line keeps what it holds; the rest goes back.
-	if (LN_POOLED(s))
-	{
-		c = ceil(max(n, 1) / LN_ALIGN) * LN_ALIGN;
-		if (c < LN_C(s))
-		{
-			Line_PoolFree(b + c, LN_C(s) - c);
-			ln_capn[s] = c;
-		}
-	}
+	Line_PoolShrink(s);             // Patch 760
 	// Patch 632: your own line has a speed range too.  Only Line_Range set one and
 	// nothing calls it for the trail, so "speed" over your line alone was 0..0 and
 	// every point the slow end's red (58 of 58 on a 116-point line, the review).

@@ -3886,6 +3886,15 @@ float(string cmd) Scores_ConsoleCommand =
 			print(sprintf("scores: line %g queued: %s\n", ls + 1, argv(3)));
 			return TRUE;
 		}
+		// Patch 760's harness handle: one line off, as unticking its row does.
+		else if (argv(1) == "lineoff")
+		{
+			ls = stof(argv(2)) - 1;
+			if (ls >= 0 && ls < Scores_LineMax())
+			if (sb_ln_st[ls] != SBL_FREE)
+				Scores_LineFree(ls);
+			return TRUE;
+		}
 		else if (argv(1) == "lines")
 		{
 			if (argv(2) == "clear")
