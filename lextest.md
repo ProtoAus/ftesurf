@@ -60,8 +60,14 @@ regular hitch, every ~0.45 s at your frame rate, should be gone. A much smaller 
 "csqc gc reads: 7.2 MiB of ~87 MiB (29 blocks marked)" once a line exists.
 
 The average fps still drops the longer a run lasts. That is a separate issue, not
-fixed yet. Lobbies keep the old cost until the Pi's engine and the next release
-carry 763.
+fixed yet.
+
+Live in both Windows installs since 2026-10-17T19:43Z. Engine 763 arrived inside the
+764/765/766 exes (now `66e7748e`, P766). Csprogs `260e66bf`, from main `8096b09` and
+byte-identical to the tested build, went in by itself (`.prev` `e07aa625`); qwprogs and
+menu are unchanged. The lobbies run engine 763 since a2's Pi swap (19:37Z), but they
+still serve csprogs `781a125b`, which does not make the call, so they keep the old cost
+until that QC is deployed. Restart the game.
 
 "Smooth / still hitches at X" is enough. Verdict PENDING. Details: `tools/p763gcskip.md`.
 
