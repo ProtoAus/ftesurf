@@ -1,5 +1,31 @@
 # AGENT_NOTES.md
 
+## Static prop hulls as convex pieces (P764, mover 7, 2026-10-18)
+
+- At `movevars.sourceversion >= 7` the mover sweeps a static prop's `.phy` ledges
+  as world-space brushes (`bihtransform_s.phybrushes`, built in mod_vbsp.c
+  `VBSP_PhyBrushes`); below 7, QC traces and everything else, the model's
+  triangles as before. The load line names the props, pieces, planes and KB.
+- `pm_dispprobe 3` on the SERVER names the stop: `BIH_BRUSH (prop hull piece)`
+  with the model is the new path; `BIH_TRIANGLE ... via plane N bevel #k` on a
+  vertical triangle of a prop is the inner-wall kick it replaces.
+- mod_vbsp.c's own `VectorNormalize` returns 1/length, not the length. The first
+  cut read it as a length and every large ledge became its bounding box (riders
+  stood on the box tops). Use `VectorLength`.
+- The builder is part of pin 7: a pin-7 recording replays on these shapes, so a
+  change to `VBSP_PhyBrushes` or `Mod_PHY_ConvexPieces` is a new PMSRC_VERSION
+  with this builder kept. Never roll the sweeper's binary back past 764: an older
+  verifier REFUSEs pin 7.
+- `MODPLUGFUNCS_VERSION` 5: the hl2 plugin must be rebuilt with the engine
+  (`plugins-rel`, on the Pi too), or Source maps do not load.
+- `pm_dettest`: `srctrace`/`srcmover` are still the triangles pins 2..6 replay
+  on; `proptrace`/`propmover` are mover 7. Equal to them on a map whose sample
+  met no prop.
+- Driving a save with `tools/conbridge.py`: `start` returns before a large map
+  (surf_surreal, 108 MB) has spawned the client, so wait for the server's
+  `joined`; a console line of ~2.4K characters (120 `wait;cmd viewpos`) was
+  dropped silently, while an alias of ten repeated twelve times worked.
+
 ## Key panel and bound save keys (P762, 2026-10-17)
 
 - `config_menu` (cl_keycfg.qc) rebinds with `setkeybind` on every modifier

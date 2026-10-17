@@ -2118,17 +2118,26 @@ the same 4418 ticks, with every tick to 11.64 s equal (ENGINE_PATCHES.md, 492).
   only at brush ties and edges (a player gains at most ~1 unit).
 - **Bumps:** `pm_bumpcount 8` matches Momentum 0.10's `mom_mv_bumpcount` (8, read
   from its console by Lex).
-- **Triangles and props are not on Source's rules yet** (review round 2 of 492).
+- **Displacements are not on Source's rules yet** (review round 2 of 492). Static
+  props are, from mover 7 (Patch 764: each `.phy` ledge a brush); displacements,
+  brush-mounted and dynamic props, and QC traces still take triangles.
   Under the clip they keep Quake 2's test on true fractions while brushes decide
   on the adjusted enter; running them through the brush's rules, as Source's
-  `dispcoll_common.cpp` does, needs ground truth on a displacement or prop map
-  (surf_boreas's ramps are .phy props). The final review measured what the mix
+  `dispcoll_common.cpp` does, needs ground truth on a displacement map. The final review measured what the mix
   costs: a brush plane just under 1/32 behind a triangle face can win and leave
   the box up to 0.004 behind that face at large coordinates (176 of 9,134 crafted
   near-ties; 0 with the clip off). And Source's own leave epsilon lets a box
   clipping a wall's top by 0.02 end up to 1/32 inside it, brushes only, as in
   Source. Physics only: a replay runs the same code. Nit: pm_verify's refusal
   prints fixrampbugs with %g, so 1.9999999 reads as 2.
+- **A scaled static prop collides at scale 1** (mod_vbsp.c's sprp reader, Patch
+  228's note): `bihtransform_s` has no scale and the leaf is bounded by the
+  unscaled radius, and Patch 764's pieces follow the same transform. Fixing it
+  changes collision, so it wants a mover version. Falsifier: `pm_dispprobe 3`
+  against a v11+ prop with `modelscale` != 1.
+- **QC traces still see a static prop's triangles** (Patch 764): the mover sweeps
+  the convex pieces at mover 7, `tracebox` does not, so a QC check at a prop
+  seam (SL_RowGrounded's probe) can disagree with the move by the inner wall.
 - **Generated edge bevels:** voyager compiled without them and `hl2_brushbevels 1`
   adds 13,802 planes; Source traces the brushes as compiled. The match to 11.64 s
   says they did not matter there; another map could differ on them.

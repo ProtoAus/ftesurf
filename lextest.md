@@ -1,5 +1,22 @@
 # lextest.md — things waiting on a human
 
+## P764 — curved prop ramps no longer kick you off at their seams
+
+Live in both Windows installs since 2026-10-17T16:12:30Z (engine `patch-764`, client
+SHA-256 `9752ac8b`, hl2 plugin `7d494b02`; `.prev` is P758's). Restart the game. Offline
+only: the lobbies run an older engine until the Pi takes 764, its plugin included.
+
+- **surf_leidenfrost, save 4.** Load it and let go of every key. Before: thrown off
+  the ramp onto the floor below at the first seam. Now: you ride the curve down
+  past that seam, then slide off the bottom of the ramp because nothing is held.
+- **surf_surreal, save 3.** Same. Before: kicked sideways into the wall. Now: you
+  land, slide along the face and leave the curve where it bends away from you;
+  hold your strafe key and you should stay on it.
+- Then surf both ramps for real, holding strafe through the bend: it should feel
+  like Momentum.
+
+"Smooth / still kicks at <where>" is enough. Verdict PENDING.
+
 ## P763 — the Kitsune stutter (a ~20 ms frame every half second once a run starts)
 
 On your own server: run surf_kitsune through the hub door and keep going. The

@@ -25,6 +25,7 @@ Start zones come from the shipped zone JSON (`maps/zones/online/<map>.json`,
 | `onjumpstart.py` | OnJump basevelocity pads vs start zones, on the live rotation (Patch 414) |
 | `recsim.py` | cross-run similarity over the server-written move columns (BACKLOG item F) |
 | `assist.py` | the timing-assist statistics, and which of them the corpus can support (BACKLOG item G) |
+| `physeams.py` | a prop's `.phy` ledges: convexity, inner walls, and how far a wall's 4-unit slab stands above the ramp (Patch 764) |
 
 ## Source particle coverage
 

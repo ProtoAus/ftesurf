@@ -106,9 +106,9 @@ int main(void){
  end[0]=0;end[1]=-500;end[2]=96.03125f;
  Setup(4);t=PM_PlayerTracePortals(start,end,MASK_PLAYERSOLID,&took);
  assert(traces==2&&took>0&&t.endpos[2]==816.0f);checks++;
- // A recording pinned to mover 5 is one this verifier has; 6 is not.
+ // Recordings pinned to movers 4-7 are ones this verifier has; 8 is not (Patch 764 added 7).
  float pin[SV_PMPIN_COUNT];memset(pin,0,sizeof(pin));pin[SV_PMPIN_FIXRAMPBUGS]=2;
- pin[0]=6;assert(SV_PMSrcVer(pin)==6);pin[0]=5;assert(SV_PMSrcVer(pin)==5);pin[0]=4;assert(SV_PMSrcVer(pin)==4);pin[0]=7;assert(SV_PMSrcVer(pin)!=7);checks+=4;
+ pin[0]=6;assert(SV_PMSrcVer(pin)==6);pin[0]=5;assert(SV_PMSrcVer(pin)==5);pin[0]=4;assert(SV_PMSrcVer(pin)==4);pin[0]=7;assert(SV_PMSrcVer(pin)==7);pin[0]=8;assert(SV_PMSrcVer(pin)!=8);checks+=5;
  printf("PASS %d actual landing checks: mover 5 lands 1/32 above the exit floor, mover 4 keeps the 1/8 snap\n",checks);
  return 0;
 }
