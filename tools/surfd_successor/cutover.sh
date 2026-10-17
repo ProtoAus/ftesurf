@@ -25,8 +25,20 @@ sed "s#$OLD/control/surfd_transition_guard.py --state-dir $OLD/state launch --ge
   $ROOT/control/crontab.before > $ROOT/control/crontab.after
 N=$(diff $ROOT/control/crontab.before $ROOT/control/crontab.after | grep -c '^>' || true)
 [ "$N" = 4 ] || { say "REFUSED: expected 4 guarded cron lines, found $N"; exit 3; }
-# A cron launch holds admission shared while it runs; step 3 would wait on it.
-flock -n -x $OLD/state/admission.lock true || { say "REFUSED: a guarded cron job is running; try again"; exit 4; }
+for f in surfd.py ksfimport.py ksfgrab.py ksfprofile.py tools/ksfconvert.py tools/ksfreplay_info.py run.sh; do
+  cmp -s /srv/nvme/surfd/$f $ROOT/control/pre/$f || { say "REFUSED: /srv/nvme/surfd/$f changed since the build"; exit 3; }
+  [ -s $ROOT/control/stubs/$f ] || { say "REFUSED: no successor stub for $f"; exit 3; }
+done
+# Cron jobs and every import of the stubs hold admission shared while they run.
+# momrequests.service holds it for good; step 8 restarts it. Wait out the rest.
+holders() {
+  INO=$(stat -c %i $OLD/state/admission.lock)
+  for p in $(grep ":$INO " /proc/locks | awk '{print $5}' | sort -u); do
+    tr '\0' ' ' < /proc/$p/cmdline 2>/dev/null | grep -q 'momgrab.py --requests-only --watch-requests' || echo $p
+  done
+}
+i=0; while [ -n "$(holders)" ] && [ $i -lt 30 ]; do sleep 3; i=$((i+1)); done
+[ -z "$(holders)" ] || { say "REFUSED: guarded jobs still running: $(holders)"; exit 4; }
 PLAYERS=$(curl -s -m 5 http://127.0.0.1:8084/lobbies.json | $PY -c 'import json,sys; d=json.load(sys.stdin); print(sum(l["players"] for l in d["lobbies"]), len(d["lobbies"]))')
 say "lobbies: players lobbies = $PLAYERS"
 [ "${PLAYERS%% *}" = 0 ] || { say "REFUSED: players are on the lobbies"; exit 4; }
@@ -89,7 +101,20 @@ curl -s -m 5 'http://127.0.0.1:8084/api/social/menu/challenge?op=list&who=-' | h
 curl -s -m 5 http://127.0.0.1:8084/health || true; echo
 ps -eo pid,ppid,lstart,cmd | grep "$ROOT/control witness_wsgi" | grep -v grep | cut -c1-120 || true
 
+say "6b. /srv/nvme/surfd's import stubs and run.sh now name the successor"
+for f in surfd.py ksfimport.py ksfgrab.py ksfprofile.py tools/ksfconvert.py tools/ksfreplay_info.py run.sh; do
+  cmp -s /srv/nvme/surfd/$f $ROOT/control/pre/$f || { say "FAIL: /srv/nvme/surfd/$f changed; run rollback.sh"; exit 9; }
+  cp $ROOT/control/stubs/$f /srv/nvme/surfd/$f.p770new
+  chmod --reference=$ROOT/control/pre/$f /srv/nvme/surfd/$f.p770new
+  mv -f /srv/nvme/surfd/$f.p770new /srv/nvme/surfd/$f
+done
+
 say "7. crontab: the guarded routes move to the successor (rewrite checked before step 1)"
 crontab -l | cmp -s - $ROOT/control/crontab.before || { say "FAIL: crontab changed during the cutover; not replaced"; exit 8; }
 crontab $ROOT/control/crontab.after
-say "DONE: 4 cron lines moved; $SHA serving"
+
+say "8. momrequests.service re-imports through the new stubs; then the old drain finishes"
+timeout 300 systemctl --user restart momrequests.service || say "   WARN: momrequests restart did not finish in 300 s"
+systemctl --user is-active momrequests.service || true
+$GUARD_OLD --timeout 60 close || say "   WARN: old drain still waiting on a holder"
+say "DONE: stubs, run.sh and 4 cron lines moved; $SHA serving"

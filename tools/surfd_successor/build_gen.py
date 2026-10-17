@@ -21,6 +21,12 @@ import sys
 P = pathlib.Path
 GUARD_SHA = 'af6c26b5df1e72cc0943c8ee8df4a124a202295fdc9e46ba7647672c93746a75'
 PI_ONLY = {'momfetch.py', 'msml.py'}     # on the Pi only, never in surfd/
+DISPATCH_SHA = '787373937cd6d2afc66f3ae9ef073e3f4e9b7e55f9d42c4af7ade52fde7eda49'
+HOME = P('/srv/nvme/surfd')
+# /srv/nvme/surfd's entrypoints are import stubs that run the generation's code
+# under its guard (tools/surfd_import_dispatch.py); run.sh restarts its server.
+STUBS = ('surfd.py', 'ksfimport.py', 'ksfgrab.py', 'ksfprofile.py',
+         'tools/ksfconvert.py', 'tools/ksfreplay_info.py')
 
 
 def sha(path):
@@ -93,6 +99,37 @@ def main():
     rt.chmod(0o500)
     for name in ('surfd_transition_guard.py', 'gunicorn.conf.py', 'guard-manifest.json', 'witness_wsgi.py'):
         (ctl / name).chmod(0o400)
+
+    # The live stubs must be exactly what the dispatcher renders for OLD: then the
+    # successor's are the same template with its own bindings. pre/ keeps the live
+    # bytes, which the cutover compares before replacing and rollback restores.
+    disp = OLD / 'control/surfd_import_dispatch.py'
+    assert sha(disp) == DISPATCH_SHA
+    shutil.copyfile(disp, ctl / 'surfd_import_dispatch.py')
+    (ctl / 'surfd_import_dispatch.py').chmod(0o400)
+    ns = {'__name__': '_p770_dispatch'}
+    exec(compile((ctl / 'surfd_import_dispatch.py').read_bytes(), 'surfd_import_dispatch.py', 'exec'), ns)
+    def render(where, generation, rel):
+        return ns['render_wrapper'](dispatch_path=str(where / 'control/surfd_import_dispatch.py'),
+                                    dispatch_sha256=DISPATCH_SHA,
+                                    guard_path=str(where / 'control/surfd_transition_guard.py'),
+                                    guard_sha256=GUARD_SHA, state_dir=str(where / 'state'),
+                                    generation=generation, source_relative=rel)
+    for rel in STUBS:
+        live = (HOME / rel).read_bytes()
+        assert live == render(OLD, OLDGEN, rel), 'live stub is not its rendering: ' + rel
+        for sub_dir, data in (('pre', live), ('stubs', render(root, gen, rel))):
+            out = ctl / sub_dir / rel
+            out.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            out.write_bytes(data)
+            out.chmod(0o600)
+    run = (HOME / 'run.sh').read_bytes()
+    assert run.count(str(OLD).encode()) == 2 and run.count(OLDGEN.encode()) == 1, 'run.sh shape'
+    (ctl / 'pre/run.sh').write_bytes(run)
+    (ctl / 'stubs/run.sh').write_bytes(run.replace(str(OLD).encode(), str(root).encode())
+                                       .replace(OLDGEN.encode(), gen.encode()))
+    (ctl / 'pre/run.sh').chmod(0o700)
+    (ctl / 'stubs/run.sh').chmod(0o700)
     (ctl / 'build.json').write_text(json.dumps({'generation': gen, 'origin': origin, 'hashes': hashes},
                                                indent=1, sort_keys=True) + '\n')
     r = subprocess.run(['/usr/bin/python3.11', '-I', str(ctl / 'surfd_transition_guard.py'),

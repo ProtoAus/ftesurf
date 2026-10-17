@@ -23,6 +23,8 @@ say "1. a CLOSED old master (cutover stopped between its steps 1 and 2) only ans
 stop "$OLD"
 
 say "2. drain the old guard; the successor is untouched if this fails"
+# momrequests.service holds whichever generation's admission it imported under.
+timeout 300 systemctl --user stop momrequests.service || say "   WARN: momrequests stop did not finish"
 $GUARD_OLD --timeout 60 close || { say "FAIL: the old guard did not drain; inspect $OLD/state"; exit 7; }
 
 say "3. close the successor and stop it"
@@ -62,6 +64,16 @@ with os.fdopen(fd, 'w') as f:
     json.dump(r, f, sort_keys=True); f.write('\n')
 EOF
 $GUARD_OLD reopen --generation "$OLDGEN" --receipt $ROOT/control/rollback-receipt.json
+
+say "4b. /srv/nvme/surfd's stubs and run.sh back, where they are the successor's"
+for f in surfd.py ksfimport.py ksfgrab.py ksfprofile.py tools/ksfconvert.py tools/ksfreplay_info.py run.sh; do
+  if [ -f $ROOT/control/pre/$f ] && cmp -s /srv/nvme/surfd/$f $ROOT/control/stubs/$f; then
+    cp $ROOT/control/pre/$f /srv/nvme/surfd/$f.p770old
+    chmod --reference=$ROOT/control/pre/$f /srv/nvme/surfd/$f.p770old
+    mv -f /srv/nvme/surfd/$f.p770old /srv/nvme/surfd/$f
+  fi
+done
+systemctl --user start momrequests.service || say "   WARN: momrequests did not start"
 
 say "5. the guarded cron lines back to $OLDGEN (other lines untouched)"
 SHA=$($PY -c 'import json,sys; print(json.load(open(sys.argv[1]))["generation"])' $ROOT/state/manifest.json)
