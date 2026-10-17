@@ -5,8 +5,10 @@
 Load saves 17, 18 and 19 (and stand anywhere further back in stage 1): through the
 door, the stage 2 room's background grid should be there from all of them, not only
 when you are within ~220 units of the door. The door's own clip plane was cutting the
-sky room; saves 12-15 still show their grid. Your own server and lobbies alike, once
-the client exe is installed. Restart the game.
+sky room; saves 12-15 still show their grid. The change is client-side, so lobbies
+need no update. In both Windows installs since 2026-10-17T22:24:10Z: client
+`25ff1eaa` (stamp git-7391-patch-771-0-gafa53a51d, carries P763-P768), FTEQuake server
+`c5f8d935`, hl2 plugin `f0d0a5e4`; `.prev` is P768's `7b280443`. Restart the game.
 
 "Grid at 17 / still pops in at N units" is enough. Verdict PENDING.
 
