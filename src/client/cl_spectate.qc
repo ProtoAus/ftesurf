@@ -69,6 +69,8 @@ float  spc_fedt;                // tick of the newest sample fed; -1 = seed on t
 float  spc_fedser;
 float  spc_fedn;                // samples fed this window, `spectate status`
 float  spc_fedgap;              // discontinuities: no STATE, a lost run of samples
+float  spc_fedoff;              // cltime - tick time, fixed while the feed runs on
+float  spc_tmfade;              // your column's seq_fadeat (Watch_SeqSave keeps no fade)
 
 void() Spec_RegisterCvars =
 {
@@ -439,6 +441,7 @@ void(float slot) Spec_TmOpen =
 	if (!spc_tmon)
 	{
 		Watch_SeqSave();
+		spc_tmfade = seq_fadeat;
 		Timer_SplitsHold(TRUE);
 		HUD_AnchorHold(TRUE);
 		spc_tmstreak = board_perfect_streak;
@@ -461,12 +464,13 @@ void() Spec_TmClose =
 	board_perfect_streak = spc_tmstreak;
 	Board_ResetRun();
 	Watch_SeqRestore();             // also re-reads your board counter and timer state
+	seq_fadeat = spc_tmfade;        // a list that was fading for a new run still goes
 };
 
 // One sample, through the same three machines your own frames drive.
 void(entity b, entity c) Spec_FeedCell =
 {
-	local float dt, ser, gap, ong, side, st;
+	local float dt, ser, gap, ong, side, st, now;
 	local vector v;
 
 	// A gap is lost samples; a teleport is not one.  Your own trainer runs through
@@ -482,10 +486,14 @@ void(entity b, entity c) Spec_FeedCell =
 	ong = (c.pc_fl & PBF_GROUND) ? TRUE : FALSE;
 	v   = c.velocity;
 
-	// The render clock's offset puts each sample on cltime, the clock the panels fade on.
+	// Tick time on cltime, the clock the panels fade on, through an offset held while
+	// the feed runs: the render clock's own jumps would run the segment clock backwards.
+	now = cltime - (b.pb_reval - c.pc_t * pb_tick);
+	if (spc_fedt < 0 || fabs(c.pc_t * pb_tick + spc_fedoff - now) > 0.5)
+		spc_fedoff = now - c.pc_t * pb_tick;
 	board_ov_spec   = TRUE;
 	board_ov_tstate = c.pc_state;
-	board_ov_now    = cltime - (b.pb_reval - c.pc_t * pb_tick);
+	board_ov_now    = c.pc_t * pb_tick + spc_fedoff;
 	board_ov_seq    = c.pc_k0_x;
 	board_ov_riding = (c.pc_rf & PBR_RAMP) ? TRUE : FALSE;
 	board_ov_bnorm  = c.pc_kn;

@@ -972,6 +972,9 @@ void(vector scr) Results_Draw =
 
 	if (!ui_rs_open || !cvar("hud_results"))
 		return;
+	// Patch 744: its rows are ui_sp_*, which hold the watched player's while spectating.
+	if (spc_stat > 0)
+		return;
 
 	// Taken here rather than passed in, so the two call sites in cl_main.qc are
 	// one argument each and neither has to know this panel formats times at all.

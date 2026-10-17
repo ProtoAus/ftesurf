@@ -669,6 +669,7 @@ float  rec_sl_held;
 // same reason build 26 moved ui_jump_* there: the saveloc restore writes them
 // and cl_board.qc compiles before this file.  Every reader here is unchanged.
 float  ui_anchor_manual;    // set by hand with `ui_anchor`; zones will not move it
+float  ui_jump_fresh;       // Patch 744: a watched body not yet seen on the ground; its last jump is unknown
 string ui_anchor_map;
 
 /*
@@ -1656,6 +1657,7 @@ void(vector org, vector vel, float onground) HUD_UpdateJumpRef =
 
 	if (onground)
 	{
+		ui_jump_fresh   = FALSE;
 		ui_ground_z     = org_z;
 		ui_was_onground = TRUE;
 
@@ -1829,7 +1831,7 @@ float() HUD_ZeroKnown =
 	if (ui_anchor_manual)
 		return TRUE;
 	if (ui_cv_energyref)
-		return TRUE;
+		return !ui_jump_fresh;
 	return (ui_anchor_zone >= 0);
 };
 
@@ -1873,17 +1875,20 @@ void(float hold) HUD_AnchorHold =
 	ui_ground_z      = ui_anch_svgz;
 	ui_was_onground  = ui_anch_svwas;
 	ui_jump_lastorg  = ui_anch_svlast;
+	ui_jump_fresh    = FALSE;
 	HUD_ClearEnergyHistory();
 	HUD_ClearRampHold();
 };
 
-// A new body to measure: no zone, no jump, no hand-set zero.
+// A new body to measure: no zone, no jump, no hand-set zero.  Caught mid-air, its
+// last jump is somewhere we never saw, so mode 1's zero is unknown until it stands.
 void() HUD_AnchorFresh =
 {
 	ui_anchor_zone   = -1;
 	ui_anchor_z      = 0;
 	ui_anchor_manual = 0;
 	ui_jump_have     = 0;
+	ui_jump_fresh    = TRUE;
 	ui_was_onground  = FALSE;
 	HUD_ClearEnergyHistory();
 	HUD_ClearRampHold();
@@ -2204,10 +2209,8 @@ void(vector scr, vector vel, vector org) HUD_DrawSpeed =
 		  Momentum's last-jump reference and always has an answer, 0 is the
 		  floor of the leg's start zone and says so when there isn't one.
 		*/
-		nozone = FALSE;
 		ref = HUD_EnergyRef();
-		if (!ui_anchor_manual && !ui_cv_energyref)
-			nozone = (ui_anchor_zone < 0);
+		nozone = !HUD_ZeroKnown();      // Patch 744: one rule, which a watched body's zero also answers
 		if (ui_rw_on)
 		{
 			ref = ui_rw_ref;
@@ -5922,7 +5925,9 @@ void(vector scr) HUD_Draw =
 	}
 
 	HUD_UpdateTurn(dt);                 // VF_ANGLES: spectate's camera while watching
-	if (!spc_hud)                       // Patch 385: both are your own body's
+	// Patch 385: both are your own body's.  Patch 744: and not while watching at all --
+	// Spec_Feed drives them from the watched body, and before its first pose they hold.
+	if (!spc_hud && spc_stat <= 0)
 	{
 		HUD_UpdateAnchor(org);
 		HUD_UpdateJumpRef(org, vel, onground);
@@ -5954,7 +5959,7 @@ void(vector scr) HUD_Draw =
 	  over a two-second wall-clock window and is debug-only, and feeding it a
 	  scrubbed clock would produce a number nobody could interpret.
 	*/
-	if (!rec_wt_on && !spc_hud)
+	if (!rec_wt_on && !spc_hud && spc_stat <= 0)
 	{
 		// Patch 616: a teleport, told to the live column as a replay's is.
 		Board_LiveMoved(org, vel, tg_teleseq, tg_lastseq, clientcommandframe);

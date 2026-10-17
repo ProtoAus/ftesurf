@@ -127,7 +127,7 @@ def main():
               'set lobby_enable 1', 'set lobby_avatars 1', 'set lobby_av_stream 1',
               'set cl_run_upload 0', 'set cl_board_url ""', 'set sv_public 0']
     hud = ['set hud_trainer 1', 'set hud_trainer_split 1', 'set hud_seq 1', 'set hud_board 1',
-           'set hud_boarding 1', 'set hud_splits 1', 'set hud_timer 1', 'set hud_energy_ref 0',
+           'set hud_boarding 1', 'set hud_splits 1', 'set hud_timer 1', 'set hud_energy_ref 1',
            'set hud_board_sound 0', 'set run_prestrafe 0', 'set cl_yawspeed 220']
 
     def check(ok, name):
@@ -154,12 +154,13 @@ def main():
         base = prepare(a, 'server')
         (base / 'ftesurf/probe.cfg').write_text('\n'.join(common + [
             f'sv_port {a.port}', 'sv_playerslots 4', 'sv_maxclients 4',
-            'developer 1', 'log_developer 1', f'map {MAP}', 'wait', 'sv_cheats 1']) + '\n')
+            'developer 1', 'log_developer 1', 'set sv_csqcdebug 1', f'map {MAP}', 'wait',
+            'sv_cheats 1']) + '\n')
         sv = Peer(a.server, base, 'probe.cfg', True); peers.append(sv)
         sv.wait(r'Server spawned\.', timeout=90)
         sv.send('sv_cheats 1')
         clients = []
-        for folder, name in [('surfer', 'Surfer'), ('watcher', 'Watcher')]:
+        for folder, name in [('surfer', 'Surfer'), ('watcher', 'Watcher'), ('bystander', 'Bystander')]:
             base = prepare(a, folder)
             (base / 'ftesurf/probe.cfg').write_text('\n'.join(common + hud + [
                 'cl_threadedphysics 0', f'name "{name}"', f'connect 127.0.0.1:{a.port}']) + '\n')
@@ -170,7 +171,7 @@ def main():
             time.sleep(1)
             for line in hud:
                 cl.send(line)
-        surfer, watcher = clients
+        surfer, watcher, bystander = clients
 
         def pos(peer):
             return peer.query('cmd viewpos', r'setpos ([-\d.]+ [-\d.]+ [-\d.]+)').group(1)
@@ -199,7 +200,9 @@ def main():
 
         # Out of the start, into stage 2 (the split), a hop with a right strafe from its
         # floor, the ride, and back to that floor to stand still for the dumps.
-        watcher.send('body_trace 0 2500')    # `bx` per sample arrival, for a failure's diagnosis
+        # `bx` per sample arrival: graded for the stream's rates, and a failure's diagnosis.
+        watcher.send('body_trace 0 2500')
+        bystander.send('body_trace 0 2500')
         surfer.send('+forward'); time.sleep(1.2); surfer.send('-forward')
         notes['surfer_walk'] = pos(surfer)
         surfer.send('setpos ' + STAGE2)
@@ -233,6 +236,16 @@ def main():
         st2 = block(watcher, 'spectate status', r'camera ')
         back = dump(watcher, 'watcher-after')
 
+        # Watched again after its stage-2 split: a split from before you looked is not a
+        # row (a -1 state seed pushed it and faded it a second later).
+        watcher.send('spectate Surfer')
+        time.sleep(0.6)
+        st3 = block(watcher, 'spectate status', r'camera ')
+        (a.out / 'watcher-status-rewatch.txt').write_text(st3)
+        rewatch = re.search(r'telemetry held \S+ fed (\S+) .* rows (\S+)', st3)
+        watcher.send('spectate off')
+        time.sleep(4.5)
+
         tele = re.search(r'telemetry held (\S+) fed (\S+) state (\S+) samples (\S+) last (\S+) gaps (\S+) rows (\S+)', st)
         if a.control:
             check(not tele, 'control: no telemetry line')
@@ -256,10 +269,11 @@ def main():
             # Your own trainer reads the server's ground flag a snapshot late at each input
             # frame; the fed one has each sample's own tick.  Four ticks of that jitter.
             check(abs(m['air'] - s['air']) <= 60, f'trainer jump {i}: air {s["air"]} ms against {m["air"]}')
-            # Jumps 0 and 1 turn at cl_yawspeed for the whole strafe: 5%.  Jump 2's turn
-            # crosses the ramp's exit, and your own trainer reads ramp contact a snapshot
-            # late, so which edge ticks are graded moves its mean (run7: 68.8 against 62.4).
-            tol = 0.05 if i < 2 else 0.12
+            # Jump 0 turns at cl_yawspeed for the whole strafe: 5%.  Jump 1's rate is
+            # setpos's yaw step spread over the drop, and jump 2's turn crosses the ramp's
+            # exit; your own trainer reads contact and the step a snapshot late, so which
+            # edge ticks are graded moves their means (68.8 against 62.4, 160.5 against 152.7).
+            tol = 0.05 if i < 1 else 0.12
             for (dm, rm), (ds, rs) in zip(m['rates'], s['rates']):
                 check(dm == ds and abs(rm - rs) <= max(3, tol * rm),
                       f'trainer jump {i}: strafe {ds}{rs} against {dm}{rm} deg/s')
@@ -279,11 +293,35 @@ def main():
         check(rs_ and all(r[:3] in [x[:3] for x in rm_] for r in rs_),
               f'splits: the Watcher drew {rs_} of the Surfer\'s {rm_}')
 
+        check(rewatch and rewatch.group(1) == '1' and rewatch.group(2) == '0',
+              f'rewatch mid-run: fed and no rows from before it ({rewatch and rewatch.groups()})')
         check(re.search(r'spectate: stat 0 ', st2), 'restore: the Watcher is back')
         bp, bb = boarding(pre['boarding']), boarding(back['boarding'])
         check(bb['rows'][:len(bp['rows'])] == bp['rows'], f'restore: segment rows {bb["rows"]} were {bp["rows"]}')
         check(rows(back['timer']) == rows(pre['timer']), f'restore: split rows {rows(back["timer"])} were {rows(pre["timer"])}')
+        # At rest after the last teleport, the Watcher takes the Surfer every tick and the
+        # Bystander, who watches nobody, at the 2 Hz keepalive (before the fix: every tick).
+        rest = {}
+        for name, peer in (('watcher', watcher), ('bystander', bystander)):
+            bx = [(int(t), int(pf)) for t, pf in re.findall(
+                r' bx [\d.]+ (\d+) \d+ -?[\d.]+ (\d+) ', peer.text())]
+            tele = max((i for i in range(1, len(bx)) if (bx[i][1] & 56) != (bx[i - 1][1] & 56)), default=None)
+            if tele is None:
+                rest[name] = None
+                continue
+            # 0.9 s to land, then 1.8 s still: inside the 3 s before the dumps, still watched.
+            after = [t for t, _ in bx[tele:] if bx[tele][0] + 60 <= t <= bx[tele][0] + 180]
+            rest[name] = (len(after), (after[-1] - after[0]) if len(after) > 1 else 0)
+        notes['rest_samples'] = rest
+        # The Watcher's own packets pace delivery, so some ticks merge (82% and 71% of
+        # them arrived in two runs); the keepalive is about 3%.
+        check(rest.get('watcher') and rest['watcher'][0] >= 0.5 * rest['watcher'][1],
+              f'stream: the Watcher took {rest.get("watcher")} (samples, ticks) at rest')
+        check(rest.get('bystander') and rest['bystander'][0] <= 2 + rest['bystander'][1] / 25,
+              f'stream: the Bystander took {rest.get("bystander")} (samples, ticks) at rest')
         for peer in peers:
+            check(not re.search(r'(?i)csqc (overread|underread)', peer.text()),
+                  peer.log.parent.parent.parent.name + ' has no CSQC overread or underread')
             check(not any(bad in peer.text() for bad in ('QC VM error', 'stack overflow', 'NULL pointer')),
                   peer.log.parent.parent.parent.name + ' has no VM errors')
     finally:

@@ -33,8 +33,9 @@
                    run_t_pb.  Patch 744.
 
   A sample is published (copied to pb_q*, SendFlags set) on a teleport, a
-  held-flag change, every moved tick while spectated, every moved tick up to
-  the pb_capticks gap otherwise, and while unchanged as one rest marker then a
+  held-flag change, every moved tick while spectated (to the watchers alone,
+  when no other rule would have sent it), every moved tick up to the
+  pb_capticks gap otherwise, and while unchanged as one rest marker then a
   keepalive every POSE_KEEPALIVE s of wall time -- also while held, when no
   tick moves, so no viewer extrapolates a held body.
 ===========================================================================
@@ -99,6 +100,8 @@
 .vector pb_kv;              // board velocity * 16
 .vector pb_kt;              // [split, delta, cp ticks]
 .vector pb_kp;              // [cp delta, pb, 0]
+.float  pb_kbc;             // run_boardcount when the pair below was latched
+.vector pb_kbn, pb_kbv;     // run_boardnormal/velocity on that move (Pose_Capture)
 // ...the appearance last sent.
 .vector pb_lk1;             // [slot, lf, lc]
 .vector pb_lk2;             // [trail colour, alpha byte, 0]
@@ -175,13 +178,11 @@ float(entity av, entity p) Pose_KQuant =
 {
 	local vector k0, k1, k2, kn, kv, kt, kp;
 
-	k0 = [Pose_Mod8(p.run_boardcount), bound(0, p.run_t_seg, 255), bound(0, p.run_t_segs, 255)];
+	k0 = [Pose_Mod8(av.pb_kbc), bound(0, p.run_t_seg, 255), bound(0, p.run_t_segs, 255)];
 	k1 = [bound(0, p.run_t_cpn, 255), Pose_Mod8(p.run_st_fails), Pose_Mod8(p.run_st_endrec)];
 	k2 = [bound(-32768, p.run_st_word, 32767), bound(-32768, p.run_st_endword, 32767), 0];
-	kn = [rint(p.run_boardnormal_x * 32767), rint(p.run_boardnormal_y * 32767),
-	      rint(p.run_boardnormal_z * 32767)];
-	kv = [rint(p.run_boardvelocity_x * 16), rint(p.run_boardvelocity_y * 16),
-	      rint(p.run_boardvelocity_z * 16)];
+	kn = [rint(av.pb_kbn_x * 32767), rint(av.pb_kbn_y * 32767), rint(av.pb_kbn_z * 32767)];
+	kv = [rint(av.pb_kbv_x * 16), rint(av.pb_kbv_y * 16), rint(av.pb_kbv_z * 16)];
 	kt = [p.run_t_split, p.run_t_delta, p.run_t_cpticks];
 	kp = [p.run_t_cpdelta, p.run_t_pb, 0];
 	if (k0 == av.pb_k0 && k1 == av.pb_k1 && k2 == av.pb_k2 && kn == av.pb_kn
@@ -234,7 +235,9 @@ float(entity av, entity p, float held) Pose_Quant =
 	return pf != (av.pb_q1_y - (av.pb_q1_y & PBF_RESUME));
 };
 
-void(entity av, entity p, float resume) Pose_Publish =
+// `watch`: only the watchers need this sample (Pose_Capture), so the others' gap,
+// keepalive and POSE stay where their last publish left them.
+void(entity av, entity p, float resume, float watch) Pose_Publish =
 {
 	av.pb_q0 = pose_n0;
 	av.pb_qo = pose_no;
@@ -246,10 +249,13 @@ void(entity av, entity p, float resume) Pose_Publish =
 	av.pb_qt = pose_nt;
 	av.pb_qf = pose_nf;
 	av.pb_qfz = pose_nfz;
-	av.pb_pubt = p.run_movetick;
-	av.pb_kat = time;
 	av.pb_held = (pose_n1_y & PBF_HELD) ? TRUE : FALSE;
-	av.SendFlags = av.SendFlags | PB_POSE;
+	if (!watch)
+	{
+		av.pb_pubt = p.run_movetick;
+		av.pb_kat = time;
+		av.SendFlags = av.SendFlags | PB_POSE;
+	}
 	if (p.pb_specn > 0)
 	{
 		av.SendFlags = av.SendFlags | PB_SPEC;
@@ -264,12 +270,22 @@ void(entity av, entity p, float resume) Pose_Publish =
 void(entity p) Pose_Capture =
 {
 	local entity av;
-	local float d, tick, tp, held, heldchg, ka, changed, force, due;
+	local float d, tick, tp, held, heldchg, ka, changed, force, due, alone;
 	local vector pred;
 
 	av = p.lobby_av;
 	if (!av || !av.SendEntity)
 		return;
+
+	// Patch 744: the engine copies its shared pmove's plane into these after EVERY
+	// move, any client's last board included (sv_user.c:8781); they are this
+	// player's only on the move the count changed, as SV_RecBoard reads them.
+	if (p.run_boardcount != av.pb_kbc)
+	{
+		av.pb_kbc = p.run_boardcount;
+		av.pb_kbn = p.run_boardnormal;
+		av.pb_kbv = p.run_boardvelocity;
+	}
 
 	tick = Pose_Tick(p);
 	d = p.run_movetick - av.pb_ct;
@@ -309,27 +325,23 @@ void(entity p) Pose_Capture =
 	force   = (tp || heldchg || (p.pb_specn > 0 && d > 0));
 	due     = (p.run_movetick - av.pb_pubt >= pb_capticks);
 
+	// What every viewer is sent without force.  Held: no tick moves, so `due`
+	// never comes; the keepalive is the clock.
 	if (changed)
-	{
-		if (!force && !due && !av.pb_rest && !held)
-			return;
-	}
-	else if (!force)
-	{
-		// Held: no tick moves, so `due` never comes; the keepalive is the clock.
-		if (av.pb_rest || held)
-		{
-			if (!ka)
-				return;
-			pb_nka = pb_nka + 1;
-		}
-		else if (!due)
-			return;
-	}
+		alone = (due || av.pb_rest || held);
+	else if (av.pb_rest || held)
+		alone = ka;
+	else
+		alone = due;
+	if (!force && !alone)
+		return;
+	if (!force && !changed)
+	if (av.pb_rest || held)
+		pb_nka = pb_nka + 1;
 	if (heldchg)
 		pb_nheld = pb_nheld + 1;
 
-	Pose_Publish(av, p, changed && av.pb_rest);
+	Pose_Publish(av, p, changed && av.pb_rest, !alone && !tp && !heldchg);
 	av.pb_rest = !changed;
 };
 
@@ -345,7 +357,7 @@ void(entity av, entity p) Pose_Seed =
 	av.pb_held = FALSE;         // live angles: pb_q0 may predate a stream switch-off
 	held = Pose_Held(p);
 	Pose_Quant(av, p, held);
-	Pose_Publish(av, p, FALSE);
+	Pose_Publish(av, p, FALSE, FALSE);
 	av.pb_rest = FALSE;
 };
 
@@ -545,7 +557,8 @@ void() Pose_Frame =
 	pb_nav = n;
 
 	// Whole ticks.  The budget is one viewer's downstream: every other body's
-	// 20 B update, plus the watched one's 15 B SPEC and 4 B RUN when anyone spectates.
+	// 20 B update at the gap; a watcher also takes its target EVERY tick, 39 B
+	// with SPEC and RUN (Patch 744).
 	tick = run_t_tick;
 	if (tick <= 0)
 		tick = PM_TICK;
@@ -555,7 +568,11 @@ void() Pose_Frame =
 	if (rate > 0)
 		c = max(c, ceil(1 / (rate * tick) - 0.05));
 	if (budget > 0 && n > 1)
-		c = max(c, ceil(((n - 1) * 20 + spec * 19) / (budget * tick)));
+	{
+		c = max(c, ceil((n - 1) * 20 / (budget * tick)));
+		if (spec && n > 2 && budget * tick > 39)
+			c = max(c, ceil((n - 2) * 20 / (budget * tick - 39)));
+	}
 	pb_capticks = c;
 };
 

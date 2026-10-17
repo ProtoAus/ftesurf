@@ -1329,20 +1329,21 @@ float(float st) Timer_Stat =
 	return 0;
 };
 
-// The split list's latches for a body not seen yet: Timer_Draw's map-change seed.
-// The first frame then pushes the newest stage and checkpoint split it reports.
+// The split list's latches at the watched body's first sample (spc_h*), so nothing it
+// did before you looked becomes a row or a flash: those would carry the speed and
+// energy of now, and a -1 state seed would fade them as a new run.
 void() Timer_Seed =
 {
 	Timer_SplitsClear();
-	ui_tm_lastdrawstate = -1;
-	ui_tm_lastseg    = 0;
-	ui_tm_lastcp     = 0;
+	ui_tm_lastdrawstate = spc_htstate;
+	ui_tm_lastseg    = spc_hseg;
+	ui_tm_lastcp     = spc_hcp;
 	ui_tm_pace       = 0;
-	ui_tm_lastfails  = -1;
+	ui_tm_lastfails  = spc_hfails;
 	ui_tm_failat     = 0;
 	ui_tm_lockat     = 0;
 	ui_tm_splitat    = 0;
-	ui_tm_lastendrec = -1;
+	ui_tm_lastendrec = spc_hendrec;
 	ui_tm_endword    = 0;
 	ui_tm_lastslseq  = -1;
 	ui_tm_resumeat   = 0;
@@ -1524,6 +1525,8 @@ void(vector scr) Timer_Draw =
 	  until the first SPEC sample.  Patch 744: once its STATE arrives the live
 	  path below runs on it (Timer_Stat); before that, the stage line is blank.
 	*/
+	if (spc_stat > 0 && !spc_hud)
+		return;                     // watching, no pose yet: not your list either
 	if (spc_hud && !(spc_hrun && spc_hfed))
 	{
 		if (spc_hrun)
