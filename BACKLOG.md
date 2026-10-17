@@ -5,6 +5,23 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Paint: what Patch 772 left out
+
+- Site: engine `client/cl_ents.c` CL_ClipPersistDecal. Static props take no decal
+  (Source paints them); surf_ethereal's ramps are props, so paint there lands
+  nowhere. Needs the hl2 plugin to expose a prop's triangles near a point. Check:
+  `paint_status` after aiming at surf_ethereal's first ramp reads "no face".
+- Site: the same. Brush entities are clipped at rest: a door or func_movelinear
+  that moved keeps its paint where it started. Check: paint a moving platform.
+- Site: `src/client/cl_paint.qc` Paint_At. Other players never see your paint;
+  sharing it would be a server channel (rate-limited), not built.
+- Site: `src/client/cl_decals.qc` Decal_Place / Overlay_Place. Map infodecals and
+  overlays do not pass PDC_SOURCE, so an infodecal on a displacement is still not
+  drawn (Source draws it). Check: a map with an infodecal on terrain.
+- Site: `src/client/cl_ptrail.qc` PTrail_DrawAll. A full lobby is 32 ribbons of up
+  to 192 points each (3 s at 64 a second), ~6,100 R_PolygonVertex calls a frame;
+  not measured. Check: `trail_status` and frame time with 32 trails on.
+
 ## Map pakfile priority: what Patch 765 left out
 
 - Site: engine `common/fs.c` FS_FLocateFile. Only `materials/` looks in the map

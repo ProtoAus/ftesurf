@@ -1,5 +1,34 @@
 # AGENT_NOTES.md
 
+## Paint and the line trail (P772, 2026-10-18)
+
+- Paint is `adddecal_static` with srange_z 1 (PDC_SOURCE). The engine re-sends every
+  persistent decal each frame, and since P772 skips those whose bounds are outside
+  the frustum, except after a frame in which a portal/mirror view drew the world.
+  Measured with 29,992 decals out of view: 4.7 ms a frame without the cull, 1.5-2.3
+  with it, 0.94 with none. A view packed with ~26k overlapping discs ran at 21 fps:
+  that is fill, not the emit.
+- VBSP leaves list no displacement faces (0 of 452/457/493 on dune, ethereal and
+  aquaflow), so `Mod_ClipDecal`'s leaf walk never reaches one. Displacements are the
+  only non-fan meshes (`istrifan` false) in a VBSP world.
+- Ramps come in four kinds for paint. World brush: the leaf walk. func_brush or
+  func_illusionary over player clip (116 of 1,131 surf maps carry a quarter or more of
+  their surfable area that way): the submodel clip, aimed at the clip. Source stores
+  a brush entity's model about its origin (the review's 41-map sample: every one with
+  an origin 64+ units out), so it is clipped in model space; P772's first cut clipped
+  in world space and painted none of them while a nearby world face made it look done. Displacement
+  (35 maps): the displacement pass. Static prop (surf_ethereal): nothing. `paint_status`
+  names the failure (no face / brush entity), and a census of BSP face area cannot
+  see props.
+- `getproperty(VF_ORIGIN)` in a console command is whichever scene set it last (a HUD
+  preview, a portal), not the camera. `paint_fill` measured nothing until it was moved
+  into `Paint_Frame`, beside renderscene.
+- Harness: conbridge `send -- "-forward"`, or argparse eats the line as an option and
+  the key stays held. `setpos` in noclip on a dedicated server leaves the predicted
+  camera behind (prederr hundreds of units): set `cl_nopred 1` before aiming by
+  angles. A noclip camera high over a map is often inside a sky or clip brush:
+  traceline then starts solid, and paint's aim accepts that unless all-solid.
+
 ## Map pakfile priority (P765, 2026-10-17)
 
 - A Source map's packed file used to lose to ANY mounted game's copy: the map pak

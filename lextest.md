@@ -1,5 +1,21 @@
 # lextest.md — things waiting on a human
 
+## P772 — paint, and the player trail as a line
+
+Restart the game (new client exe and csprogs). Bind a key: open the key panel (K),
+"Paint (hold)" under Run, or `bind mouse3 +paint`.
+
+- **Paint:** hold the key and sweep across a ramp. The discs should appear the moment
+  you press, lie flat on the ramp, and stop clean at its edge, showing where it
+  ends. Try a func_illusionary ramp map (surf_dune) and one with displacement
+  terrain. `paint_clear` (or Clear in the panel) removes them.
+- **Panel (P):** under your body there is a PAINT section: twelve colours or "Body",
+  size, opacity, Clear. Only you see your paint.
+- **Trail:** set Trail to any length in the panel. It should be a solid line behind you
+  (third person, ghost mode) and behind other players, not dots. Motes are gone.
+
+"Paint ok / feels <x>" and "trail ok / looks <x>". Verdict PENDING.
+
 ## P771 — Kitsune: the sky through the stage 2 door shows from any distance
 
 Load saves 17, 18 and 19 (and stand anywhere further back in stage 1): through the

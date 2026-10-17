@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   afa53a51d536f3aa0b5428d512e2f39f7db77896
+commit   db490edd7b1aed04cae445a0cee063da325393a2
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,12 @@ commit   afa53a51d536f3aa0b5428d512e2f39f7db77896
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-771
-patch    771
+tag      patch-772
+patch    772
+# Patch 772 (engine + csprogs): paint. adddecal_static's srange_z 1 (FTESURF_DECAL_SOURCE) also
+# clips to displacements and to brush entities in model space, and persistent decals are frustum-
+# culled; csprogs adds `paint` and draws the player trail as a line. Client exe only; the csprogs
+# runs on older engines (world faces only).
 # Patch 771 (engine): a 3D sky seen through a portal draws with the root view's projection
 # (r_refdef.m_projection_noclip), not the door's oblique near plane, which cut away the sky
 # room nearer than the eye's distance to the door (surf_kitsune's stage 2 door, >~220 units
