@@ -1,12 +1,28 @@
 # lextest.md — things waiting on a human
 
+## P766 — OBS display capture sees the borderless game
+
+In both Windows installs since 2026-10-17T19:38:17Z (`ftesurf64.exe` `66e7748e`,
+which also carries P763-P765; `.prev` is P765's `20d3e0b1`); restart the game. In
+OBS, a Display Capture of the monitor the game is on should now show the game in
+borderless (`vid_fullscreen 1`), not black. Nothing to set: `vid_borderless_capture` is 1 by
+default. The window is one pixel taller than the screen, and that row is off-screen.
+
+To get the old behaviour back (the window presented directly, as exclusive fullscreen
+is; any latency difference is unmeasured), type `vid_borderless_capture 0` and restart
+the game. Do not use `vid_restart` with a map loaded: it currently ends the client
+(BACKLOG).
+
+"Capture works / still black" is enough. Verdict PENDING.
+
 ## P765 — surf_monolith's walls are solid again; zones and particles stay behind them
 
 Your CS:S folder has its own `materials/silkroad/...` with `$translucent 1` on
 walls that surf_monolith and surf_joutsenlaulu pack as solid; the game used to
 read CS:S's copy first. Now a map's own materials win (FTESurf's still win over
 both). Live in both Windows installs since 2026-10-17T16:36Z (`ftesurf64.exe`
-`20d3e0b1`, engine tag patch-765; `.prev` is P764's `9752ac8b`); restart the game.
+`20d3e0b1`, engine tag patch-765; `.prev` is P764's `9752ac8b`; since
+2026-10-17T19:38:17Z P765 ships inside P766's `66e7748e`); restart the game.
 
 - **surf_monolith** at spawn and at the main start: the zone boxes and the dust
   behind the stone walls are hidden; nothing looks inside-out.

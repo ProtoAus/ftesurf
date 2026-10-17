@@ -125,6 +125,11 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   running and draw. Then bisect engine builds if it does not.
 - Also: `p715pics.py` sets `rec_terms 5`; FS_TERMS_ONLINE is now 6, so its online
   board never asks and every arm measures nothing until it is updated.
+- 2026-10-18 (P766's arm): the 758 install exe (`cf52c386`) died the same way in
+  borderless with surf_dune loaded. The log stops after "Destroyed 156/345 images",
+  exit 0xc0000005, and this time there IS a crash record: `crashaddr.txt` rva
+  0x303844, the same rva as an earlier record from 02:00 local. A `vid_restart`
+  before the map loads never ended a client in seven runs.
 
 ## KSF converter: P757 waits for the next backend cutover
 

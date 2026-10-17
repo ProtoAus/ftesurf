@@ -7019,6 +7019,18 @@ Both normal clients are updated but owner angular acceptance is pending. Test
 zones ON using the normal launcher, not the OLD logger-only alternate exe. A
 simple works/still-flips verdict is sufficient; tools/p739annotations.md.
 
+## Borderless and display capture — P766, 2026-10-18
+
+NVIDIA's OpenGL driver takes a window that exactly covers its monitor off the
+compositor only while it is the FOREGROUND window. A capture arm that launches the
+game and captures has measured a background window, which captures fine (121 of 121
+live frames on the build with the bug). Make the game foreground first and grade on
+that (`tools/p766capture.py` does it with AttachThreadInput and prints `foreground`
+per phase). ffmpeg's `ddagrab` and `gfxcapture` are the two APIs behind OBS display
+capture's two methods. A failing ddagrab exits at once with "ReleaseFrame failed", and
+a failing gfxcapture hangs with no frames, so kill it on a timeout. The view must turn,
+or a stale frame looks the same as a live one.
+
 ## Pitfalls discovered the hard way
 
 ### Native recovery journal publication boundary — P692, 2026-10-13
