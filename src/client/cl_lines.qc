@@ -441,6 +441,9 @@ float(float *pts, float n, vector org, vector scale, vector rgb, float alpha) li
 void(vector *pos, vector *col, float *t, float *brk, float *born, float samples, float bornsamples) lines_arrays = #0;
 void(vector *cc, float *cr, float *cerr, vector *gc, float *gr, float chunks, float groups, float levels) lines_lod = #0;
 float(float *parm, float count) lines_draw = #0;
+// Patch 763: engine 763+ leaves a block marked by this out of its tempstring collector, which
+// read all of Line_Alloc's ~80 MB every ~415 frames (a ~20 ms frame). Float and vector blocks only.
+float(__variant *ptr) memnostrings = #0;
 #define LP_VERSION   0
 #define LP_BASE      1
 #define LP_FIRST     2
@@ -659,6 +662,17 @@ void() Line_Alloc =
 	ln_lcell = memalloc(sizeof(float) * LN_CELLS);
 	ln_lfa = memalloc(sizeof(float) * (LN_LB_NAME + LN_SLOTS));     // Patch 661: 1.05 MiB each
 	ln_lff = memalloc(sizeof(float) * (LN_LB_NAME + LN_SLOTS));
+	if (checkbuiltin(memnostrings))
+	{
+		memnostrings(ln_pos); memnostrings(ln_spd); memnostrings(ln_t); memnostrings(ln_born);
+		memnostrings(ln_brk); memnostrings(ln_gain); memnostrings(ln_vz); memnostrings(ln_q);
+		memnostrings(ln_pose); memnostrings(ln_col); memnostrings(ln_cerr); memnostrings(ln_cc);
+		memnostrings(ln_cr); memnostrings(ln_cbk); memnostrings(ln_gc); memnostrings(ln_gr);
+		memnostrings(ln_bk); memnostrings(ln_ek); memnostrings(ln_efd); memnostrings(ln_es);
+		memnostrings(ln_et); memnostrings(ln_ep); memnostrings(ln_evh); memnostrings(ln_e2);
+		memnostrings(ln_ez); memnostrings(ln_ei); memnostrings(ln_ec); memnostrings(ln_lfa);
+		memnostrings(ln_lff);
+	}
 	if (checkbuiltin(lines_draw))
 	{
 		lines_arrays(ln_pos, ln_col, ln_t, ln_brk, ln_born, LN_TOTAL, 3 * LN_CAP);
