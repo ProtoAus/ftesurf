@@ -148,9 +148,12 @@ vector(vector org, vector ang) FS_PortalTransformView =
   offered door's far-side eye, with PVS sampled where the renderer samples it
   (FS_PortalTransformView).  vbsp_portal_dist bounds only the doors the player
   sees directly.  The engine renders the r_portalmaxviews largest doors of a
-  view, so only that many per eye, in front of it, carry the walk deeper.
+  view (corner radius over distance, at most 16, levels below 5): that many per
+  eye carry the walk deeper, plus one for the frustum this half-space test
+  cannot see.  The engine refuses doors outside a view's PVS (Patch 752).
 */
 #define LPD_MAXEYES 32
+#define LPD_MAXLEVELS 5	// GLR_PortalDrawableAt: R_MAX_RECURSE-1
 float  lpd_offertime;
 vector lpd_offereye, lpd_offerang;
 vector lpd_eye[LPD_MAXEYES];
@@ -167,17 +170,18 @@ void(vector root, vector ang) Portal_Offer =
 	local vector rel;
 	local float i, k, n, levels, cap, width;
 
-	lpd_offertime = time;
+	lpd_offertime = cltime;
 	lpd_offereye = root;
 	lpd_offerang = ang;
 	head = findchain(classname, "vbsp_portal");
 	for (d = head; d; d = d.chain)
 		d.lpd_offer = 0;
-	levels = cvar("r_portalrecursion");
+	levels = min(cvar("r_portalrecursion"), LPD_MAXLEVELS);
 	cap = cvar("vbsp_portal_dist");
 	width = cvar("r_portalmaxviews");
-	if (width <= 0)
-		width = LPD_MAXEYES;
+	if (width <= 0 || width > 16)
+		width = 16;
+	width = width + 1;
 	makevectors(ang);
 	lpd_eye[0] = root;
 	lpd_eyefwd[0] = v_forward;
@@ -205,7 +209,7 @@ void(vector root, vector ang) Portal_Offer =
 				d.lpd_offer = 1 + lpd_eyelevel[i];
 			if (lpd_eyelevel[i] + 1 < levels)
 			if (rel * lpd_eyefwd[i] < 0)
-				d.lpd_score = (d.lpd_hw + d.lpd_hh) / (vlen(rel) + 1);
+				d.lpd_score = sqrt(d.lpd_hw * d.lpd_hw + d.lpd_hh * d.lpd_hh) / max(vlen(rel), 1);
 		}
 		for (k = 0; k < width && n < LPD_MAXEYES; k = k + 1)
 		{
@@ -242,9 +246,10 @@ float() FS_PortalPredraw =
 		return PREDRAW_NEXT;
 
 	// Portal_Offer's makevectors is safe here: v_* are written below, after it.
+	// cltime runs while paused; Portal_Refresh clears lpd_offertime.
 	eye = getproperty(VF_ORIGIN);
 	ang = getproperty(VF_ANGLES);
-	if (time != lpd_offertime || eye != lpd_offereye || ang != lpd_offerang)
+	if (cltime != lpd_offertime || eye != lpd_offereye || ang != lpd_offerang)
 		Portal_Offer(eye, ang);
 	if (!self.lpd_offer)
 		return PREDRAW_NEXT;
@@ -272,6 +277,7 @@ void(entity e) Portal_Refresh =
 	local entity d;
 	local vector ext;
 
+	lpd_offertime = -1;		// Portal_Offer walks again with this door's new state
 	e.solid = SOLID_NOT;
 	e.drawmask = 0;
 	e.lpd_ok = FALSE;
