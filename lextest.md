@@ -32,6 +32,8 @@ On by default (hud_edit -> **Ghost**). Offline, on a map you hold a PB for:
 
 "Looks right / X is off" is enough. Verdict PENDING. Not checked by any arm: a
 real player's feel at speed, a ducked ghost (it always stands), and lobby use.
+In both Windows clients and on all 12 lobbies since 2026-10-17T01:38Z (main
+`b4ab2c1`, with P744's deploy; csprogs `b7d751ee`, read back on each host).
 
 ## P745 — rewind with the player line off; the replay line's own window
 
@@ -44,7 +46,8 @@ real player's feel at speed, a ducked ghost (it always stands), and lobby use.
   Is the default what you want while watching? "Good / prefer whole" is enough.
 
 Verdict PENDING. Measured: `tools/test_runlines_hidden.py`,
-`tools/test_runlines_demowin.py` (AGENT_NOTES, The run line).
+`tools/test_runlines_demowin.py` (AGENT_NOTES, The run line). Deployed with P746
+(above).
 
 ## P740 — Get demo now starts within seconds; KSF demos after 08:36Z
 

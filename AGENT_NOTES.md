@@ -2554,6 +2554,15 @@ publicly WITH its fix, not before it.
   stat clock's own error against the recording now.
   Harness: surf_kitsune's start and stage boxes (2048 u apart in x) are left by
   +moveright 0.8 s then +forward 1.7 s; walking forward alone does not leave them.
+  ITS ONE REVIEW found two defects in the stage-PB slot (67), which no arm had
+  filled: the stage arm put only a whole-run PB in the rig. A stage PB that had
+  finished let the whole run's stand in elsewhere on the map; between runs (RUNLEG
+  0 after a discarded attempt) the slot was cleared and read again each attempt.
+  `raceghost_stagepb.cfg` cuts stage 2 out of the Kitsune PB (`tmp/slice_stage.py`
+  in the task root; a fixture, `--put` into data/runs/<map>/stage_2) and shows both
+  on 6195307 and neither after. A whole-run line asked for a stage now waits for its
+  table, read one slot a frame in the background: asking per line per frame cost
+  2048 samples x the boxes for every line.
 - Patch 745: `hud_trail` is a DRAW switch only. Trail_Frame records the live line
   whatever it says, so rewind, save pictures and the live graph no longer need it
   on (before, 0 reset the line and Rewind_Open refused). A replay's line is
