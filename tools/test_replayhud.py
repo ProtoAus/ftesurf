@@ -41,20 +41,24 @@ def sections(text):
 
 
 def table(body):
-    boards, leaves, events, head = [], [], [], None
+    """`replay boards`: the head (count, inferred, no plane, ground samples), boards,
+    leaves, events, and the zone job's state (0 the file's own, 2 read)."""
+    boards, leaves, events, head, zon = [], [], [], None, None
     for l in body:
         w = l.split()
         if not w:
             continue
         if w[0] == 'wtbd':
-            head = [float(x) for x in w[1:4]]
+            head = [float(x) for x in w[1:5]]
+        elif w[0] == 'wtbe':
+            zon = float(w[3])
         elif w[0] == 'wtb' and len(w) >= 10:
             boards.append((float(w[2]), tuple(map(float, w[4:7])), tuple(map(float, w[7:10]))))
         elif w[0] == 'wtl':
             leaves.append((float(w[2]), float(w[3]), float(w[4])))
         elif w[0] == 'wte':
             events.append((int(float(w[2])), int(float(w[3])), int(float(w[4]))))
-    return head, boards, leaves, events
+    return head, boards, leaves, events, zon
 
 
 def panels(body):
@@ -132,7 +136,25 @@ def boards_vs(name, truth, got, fails, notes, bar):
 def ksf(rig, fails, notes):
     s = sections((rig / 'logs/runlines_smoke.log').read_text(errors='replace'))
     body = s.get('KSF', [])
-    h, b, l, e = table(body)
+    h, b, l, e, zon = table(body)
+    # Every reader takes ground from vz (Infer_Ground): the build pass's count is the
+    # file's own count of samples with vz 0.
+    want = 0
+    clip = rig / 'data/ksf/ksf_monolith.rec'
+    if clip.is_file():
+        on = False
+        for line in open(clip, encoding='utf-8', errors='replace'):
+            if line.startswith('begin'):
+                on = True
+            elif on and line[:1] in '-0123456789':
+                w = line.split()
+                if len(w) >= 10 and abs(float(w[6])) < 0.0005:
+                    want += 1
+    print('KSF: ground samples seen %s, vz 0 in the file %d' % (h and h[3], want))
+    if not clip.is_file() or not want:
+        notes.append(CANNOT + 'KSF: no clip or no ground in it to count')
+    elif not h or h[3] != want:
+        fails.append('KSF: the build pass saw %s ground samples, the file has %d' % (h and h[3], want))
     inf = next((re.search(r'ramp contact (\S+).*step (\S+)\s+share (\S+)', x) for x in body
                 if 'ramp contact' in x), None)
     print('KSF: contact %s, %d boards (head %s), %d leaves, events %s'
@@ -184,7 +206,16 @@ def main():
 def imports(rig, control, fails, notes):
     s = sections((rig / 'logs/runlines_smoke.log').read_text(errors='replace'))
     tabs = {k: table(s.get(k, [])) for k in ('NATIVE', 'ASIMPORT', 'INFERRED', 'MOM')}
-    nh, nb, nl, ne = tabs['NATIVE']
+    nh, nb, nl, ne, nz = tabs['NATIVE']
+    # Which path each copy took: the native file's own records, the copies the
+    # inference and the zones, or the arm measured the records twice.
+    for name, inf, zon in (('NATIVE', 0, 0), ('ASIMPORT', 1, 2), ('INFERRED', 1, 2), ('MOM', 1, 2)):
+        h, z = tabs[name][0], tabs[name][4]
+        if not h or h[1] != inf or z != zon:
+            fails.append('%s: boards inferred %s (want %d), splits state %s (want %d)'
+                         % (name, h and h[1], inf, z, zon))
+    if not any('ramp contact inferred' in l for l in s.get('INFERRED', [])):
+        fails.append('INFERRED: its ramp contact was not inferred')
     if nh is None or not ne:
         print('NATIVE: no table (head %s, %d events)' % (nh, len(ne)))
         if not control:
@@ -202,7 +233,7 @@ def imports(rig, control, fails, notes):
         if name == 'MOM' and (sp is None or sp != 3):
             fails.append('MOM: %s split rows at the end of a three-stage run' % sp)
     for name in ('ASIMPORT', 'INFERRED'):
-        h, b, l, e = tabs[name]
+        h, b, l, e, z = tabs[name]
         print('%s: head %s, %d boards, %d leaves, events %s' % (name, h, len(b), len(l), e))
         kinds = [(k, sg) for k, sg, _ in e]
         if kinds != [(k, sg) for k, sg, _ in ne]:
@@ -222,19 +253,22 @@ def imports(rig, control, fails, notes):
         fails.append('NATIVE: no leaves kept')
     elif len(al) != len(nl) or max(abs(x[0] - y[0]) for x, y in zip(al, nl)) > 0.0005:
         fails.append('ASIMPORT: leaves %d, NATIVE %d (or at other times)' % (len(al), len(nl)))
+    # The row at 40 s is the newest leave at or before it, by the native table.
+    lv = [x for x in nl if x[0] <= 40]
     for name in ('NATIVE 40', 'ASIMPORT 40'):
         m = [re.search(r'boarding: leave (\S+) u/s .* ok (\d) age (\S+)', l) for l in s.get(name, [])]
         m = [x for x in m if x]
-        print('%s leave row: %s' % (name, m and m[0].groups()))
+        print('%s leave row: %s, the table\'s %s' % (name, m and m[0].groups(), lv and lv[-1]))
         if not m or float(m[0].group(3)) < 0:
             fails.append('%s: no leave row' % name)
-    mh, mb, ml, me = tabs['MOM']
+        elif not lv or abs(float(m[0].group(1)) - lv[-1][1]) > 0.05:
+            fails.append('%s: the leave row is not the newest leave before 40 s' % name)
+    mh, mb, ml, me, mz = tabs['MOM']
     print('MOM: %d boards inferred, %d leaves, events %s' % (len(mb), len(ml), me))
     if len([x for x in me if x[0] == 0]) != 2:
         fails.append('MOM: %d stage events on a three-stage map' % len([x for x in me if x[0] == 0]))
     if not mb:
         fails.append('MOM: no boards inferred')
-    seg = [re.search(r'track 0  leg \S+  startseg \S+  seg (\S+) of (\S+)', l) for l in s.get('MOM 40', [])]
     rows = [l for l in s.get('MOM 40', []) if re.match(r'\s*row \d+: kind 0', l)]
     print('MOM 40: split rows %d' % len(rows))
     if not rows:

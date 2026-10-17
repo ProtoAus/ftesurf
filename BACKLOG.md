@@ -37,6 +37,9 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   table on disk); a KSF bonus with one segment has no splits but its finish.
 - An inferred board's velocity misses the tick's air acceleration along the normal
   (2 of 38 grades differ on the Kitsune twin). Falsifier: `replayhud_infer.cfg`.
+- The zone job mirrors the server's stage and checkpoint rule, but no hub map
+  (surf_doodles' wedges) is installed here to measure it on. A stage window asked
+  for while the job is still reading ends at the file's finish until it is done.
 
 ## Race ghost: what Patch 746 left out
 

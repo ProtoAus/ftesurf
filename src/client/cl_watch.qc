@@ -349,16 +349,16 @@ float  rec_wt_evn;
 float  rec_wt_evshown;           // how many are in the split list right now
 
 // Patch 750: an import has no `stage` or `cp` records.  Its crossings of this map's
-// zones, tested as the server tests them (swept hull), WT_ZBUDGET lines a frame by
-// Watch_ZoneEvents, appended to the table above in time order.
-#define WT_ZMAX    96
-#define WT_ZBUDGET 2048
+// zones, by the server's rule (Watch_ZoneEvents), WT_ZBUDGET lines a frame,
+// appended to the table above in time order.
+#define WT_ZBUDGET 1024
 float  rec_wt_zon;              // 1 reading, 2 done, 0 the file has its own
 float  rec_wt_zat;              // the job's line
-float  rec_wt_zseg, rec_wt_zcp; // the furthest stage and checkpoint crossed
+float  rec_wt_zseg, rec_wt_zcp; // the stage reached and the furthest checkpoint
+float  rec_wt_zcz;              // the checkpoint region touched last tick (run_t_cpzone)
 vector rec_wt_zpo;              // the sample before
 float  rec_wt_zhave, rec_wt_zn;
-float *rec_wt_zl;               // the track's stage and checkpoint regions
+float *rec_wt_zl;               // every END, STAGE and CHECKPOINT region, table order
 
 // Patch 395: the stage windows (Watch_StageWindow).
 #define WT_STGMAX 24                  // sv_timer.qc FS_MAXSPLITS (server-only define)
@@ -494,7 +494,8 @@ float  rec_wt_bdnoplane;        // contact edges the map showed no ramp face at 
 float *rec_wt_lvt;              // the clock at each leave
 float *rec_wt_lvs;              // its horizontal speed
 float *rec_wt_lve;              // its level, or WT_NOLEVEL
-float  rec_wt_lvn, rec_wt_lvshown;
+float  rec_wt_lvn, rec_wt_lvshown, rec_wt_lvover;
+float  rec_wt_gndn;             // samples the build pass saw on the ground (`replay boards`)
 
 /*
   THE SEGMENT COLUMN, built once and then only counted into.
@@ -2804,14 +2805,17 @@ void() Watch_SeqRestore =
   which is worse than the empty column build 23 shipped.
 */
 /*
-  Patch 750: an import's stage and checkpoint crossings.  Each sample's move from the
-  last is tested against the track's regions not yet crossed, swept with its hull as
-  SV_ZoneHit does by default (run_zone_hull 1, run_zone_swept 1); across a teleport
-  only where it landed.  The tick is the sample's.  Waits for the zone table.
+  Patch 750: an import's stage and checkpoint crossings, by SV_ZoneScan's and the
+  timer's rule.  Each move is swept with its hull against every region in table order
+  (run_zone_hull 1, run_zone_swept 1; across a teleport only where it landed).  The
+  first END touched, else the first STAGE, is the tick's event: a split only when it
+  is this track's next stage of a whole run, and an END of the track ends the job.
+  The first CHECKPOINT touched counts on a change of region when it is this track's
+  and further on.  The tick is the sample's.  Waits for the zone table.
 */
 void() Watch_ZoneEvents =
 {
-	local float i, k, n, z, c, t, fl, far, isst;
+	local float i, k, n, z, c, t, fl, far, ty, ez, cp, hit;
 	local vector o, v, mx;
 	local string s;
 
@@ -2820,17 +2824,18 @@ void() Watch_ZoneEvents =
 	if (rec_wt_zn < 0)
 	{
 		if (!rec_wt_zl)
-			rec_wt_zl = memalloc(sizeof(float) * WT_ZMAX);
+			rec_wt_zl = memalloc(sizeof(float) * ZONE_MAX);
 		rec_wt_zn = 0;
-		for (z = 0; z < zone_count && rec_wt_zn < WT_ZMAX; z = z + 1)
-			if (zone_track[z] == rec_wt_track)
-			if (zone_type[z] == ZONE_STAGE || zone_type[z] == ZONE_CHECKPOINT)
+		for (z = 0; z < zone_count; z = z + 1)
+			if (zone_type[z] == ZONE_END || zone_type[z] == ZONE_STAGE
+			    || zone_type[z] == ZONE_CHECKPOINT)
 			{
 				rec_wt_zl[rec_wt_zn] = z;
 				rec_wt_zn = rec_wt_zn + 1;
 			}
+		rec_wt_zcz = -1;
 	}
-	for (k = 0; k < WT_ZBUDGET && rec_wt_zat < rec_wt_recn; k = k + 1)
+	for (k = 0; k < WT_ZBUDGET && rec_wt_zat < rec_wt_recn && rec_wt_zon == 1; k = k + 1)
 	{
 		i = rec_wt_zat;
 		rec_wt_zat = i + 1;
@@ -2847,33 +2852,69 @@ void() Watch_ZoneEvents =
 		far = (vlen(o - rec_wt_zpo) > vlen(v) * rec_wt_tickrate * 2 + 64);
 		if (rec_wt_zhave)
 		if (t >= 0)                 // the pad before the start is not the run
-		for (n = 0; n < rec_wt_zn && rec_wt_evn < WT_EVMAX; n = n + 1)
 		{
-			z = rec_wt_zl[n];
-			isst = (zone_type[z] == ZONE_STAGE);
-			if (isst)
+			ez = cp = -1;
+			for (n = 0; n < rec_wt_zn; n = n + 1)
 			{
-				// A stage run is one stage: the next one's box is its finish, not a split.
-				if (zone_seg[z] <= rec_wt_zseg || rec_wt_leg > 0)
+				z = rec_wt_zl[n];
+				ty = zone_type[z];
+				if (ty == ZONE_CHECKPOINT)
+				{
+					if (cp >= 0)
+						continue;
+				}
+				else if (ty == ZONE_END)
+				{
+					if (ez >= 0)
+					if (zone_type[ez] == ZONE_END)
+						continue;
+				}
+				else if (ez >= 0)
 					continue;
+				if (far)
+					hit = Zone_BoxInside(z, o, PM_HULL_MINS, mx);
+				else
+					hit = Zone_BoxSwept(z, rec_wt_zpo, o, PM_HULL_MINS, mx);
+				if (!hit)
+					continue;
+				if (ty == ZONE_CHECKPOINT)
+					cp = z;
+				else
+					ez = z;
 			}
-			else if (zone_cp[z] <= rec_wt_zcp)
-				continue;
-			if (far)
+			// Nested: QC's && reads both sides, and zone_track[-1] is a VM error.
+			if (ez >= 0)
+			if (zone_track[ez] == rec_wt_track)
 			{
-				if (!Zone_BoxInside(z, o, PM_HULL_MINS, mx))
-					continue;
+				if (zone_type[ez] == ZONE_END)
+					rec_wt_zon = 2;     // finished: nothing after the end is timed
+				else if (rec_wt_leg <= 0)       // a stage run's next box is its finish
+				if (zone_seg[ez] == rec_wt_zseg + 1)
+				if (rec_wt_evn < WT_EVMAX)
+				{
+					rec_wt_evkind[rec_wt_evn] = SPK_STAGE;
+					rec_wt_evseg[rec_wt_evn]  = zone_seg[ez];
+					rec_wt_evtick[rec_wt_evn] = rint(t / rec_wt_tickrate);
+					rec_wt_evn = rec_wt_evn + 1;
+					rec_wt_zseg = zone_seg[ez];
+				}
 			}
-			else if (!Zone_BoxSwept(z, rec_wt_zpo, o, PM_HULL_MINS, mx))
-				continue;
-			rec_wt_evkind[rec_wt_evn] = isst ? SPK_STAGE : SPK_CP;
-			rec_wt_evseg[rec_wt_evn]  = isst ? zone_seg[z] : zone_cp[z];
-			rec_wt_evtick[rec_wt_evn] = rint(t / rec_wt_tickrate);
-			rec_wt_evn = rec_wt_evn + 1;
-			if (isst)
-				rec_wt_zseg = zone_seg[z];
-			else
-				rec_wt_zcp = zone_cp[z];
+			if (rec_wt_zon == 1)
+			if (cp != rec_wt_zcz)
+			{
+				if (cp >= 0)
+				if (zone_track[cp] == rec_wt_track)
+				if (zone_cp[cp] > rec_wt_zcp)
+				if (rec_wt_evn < WT_EVMAX)
+				{
+					rec_wt_evkind[rec_wt_evn] = SPK_CP;
+					rec_wt_evseg[rec_wt_evn]  = zone_cp[cp];
+					rec_wt_evtick[rec_wt_evn] = rint(t / rec_wt_tickrate);
+					rec_wt_evn = rec_wt_evn + 1;
+					rec_wt_zcp = zone_cp[cp];
+				}
+				rec_wt_zcz = cp;
+			}
 		}
 		rec_wt_zpo = o;
 		rec_wt_zhave = TRUE;
@@ -2906,7 +2947,7 @@ void() Watch_BuildSeq =
 {
 	local float i, fl, n, t, bk;
 	local float bi, pendb, gravity;     // Patch 631: rec_wt_bde's cursor
-	local float lastc, pt, havep, lvwas, sk, sv;    // Patch 750
+	local float lastc, pt, havep, lvwas, sk, sv, wantb, broke;    // Patch 750
 	local vector org, vel, pvel, bn, bv;
 	local string s;
 
@@ -2915,6 +2956,7 @@ void() Watch_BuildSeq =
 	rec_wt_sqshown  = -1;
 	rec_wt_bdshown  = -2;            // -1 is "before the first board", a real state
 
+	board_time = leave_time = 0;    // Patch 750: none of the last file's, v3 or not
 	if (!rec_wt_v4 || rec_wt_rec < 1)
 		return;
 
@@ -2978,6 +3020,8 @@ void() Watch_BuildSeq =
 		rec_wt_lve = memalloc(sizeof(float) * WT_BDMAX);
 	}
 	rec_wt_lvn = 0;
+	rec_wt_lvover = 0;
+	rec_wt_gndn = 0;
 	rec_wt_lvshown = -2;
 	if (rec_wt_bdinfer)
 	{
@@ -2986,6 +3030,7 @@ void() Watch_BuildSeq =
 		rec_wt_bdnoplane = 0;
 	}
 	lastc = -999;
+	wantb = 0;
 	havep = FALSE;
 	pt = 0;
 	pvel = '0 0 0';
@@ -3051,23 +3096,46 @@ void() Watch_BuildSeq =
 				break;
 			bk = bk + 1;
 		}
+		broke = FALSE;
 		if (bk < rec_wt_bkln)
 		if (rec_wt_bkl[bk] == i)
+		{
 			Board_LineBroke();
+			broke = TRUE;
+		}
+		if (fl & WT_F_ONGROUND)
+			rec_wt_gndn = rec_wt_gndn + 1;
 
 		if (rec_wt_bdinfer)
 		{
+			// A ride's board is looked for on its first three samples (a crease or a
+			// face the trace misses on the first); never across a teleport.
+			if (board_ov_riding)
+			{
+				if (board_ov_now - lastc > RAMP_GAP)
+					wantb = 3;
+				lastc = board_ov_now;
+			}
+			if (wantb > 0)
 			if (board_ov_riding)
 			if (havep)
-			if (board_ov_now - lastc > RAMP_GAP)
+			if (!broke)
 			{
 				bn = Watch_BoardPlane(org, vel, pvel, board_ov_now - pt, gravity, fl & WT_F_DUCKED);
+				wantb = wantb - 1;
 				if (bn == '0 0 0')
-					rec_wt_bdnoplane = rec_wt_bdnoplane + 1;
+				{
+					if (!wantb)
+						rec_wt_bdnoplane = rec_wt_bdnoplane + 1;
+				}
 				else if (rec_wt_bdn_n >= WT_BDMAX)
+				{
 					rec_wt_bdover = rec_wt_bdover + 1;
+					wantb = 0;
+				}
 				else
 				{
+					wantb = 0;
 					// In the plane as sampled; into it as the last sample, a tick on.
 					bv = vel - bn * (vel * bn)
 					   + bn * min(0, (pvel - [0, 0, gravity * (board_ov_now - pt)]) * bn);
@@ -3082,8 +3150,6 @@ void() Watch_BuildSeq =
 					rec_wt_bdn_n = rec_wt_bdn_n + 1;
 				}
 			}
-			if (board_ov_riding)
-				lastc = board_ov_now;
 		}
 
 		// The sample of the tick the board happened on: what Board_Frame stamps
@@ -3101,7 +3167,9 @@ void() Watch_BuildSeq =
 		Board_Frame(org, vel, (fl & WT_F_ONGROUND) ? TRUE : FALSE);
 		// Patch 750: a leave edge, kept with the level Board_Frame's leave reads.
 		if (leave_time != lvwas)
-		if (rec_wt_lvn < WT_BDMAX)
+		if (rec_wt_lvn >= WT_BDMAX)
+			rec_wt_lvover = rec_wt_lvover + 1;
+		else
 		{
 			rec_wt_lvt[rec_wt_lvn] = leave_time;
 			rec_wt_lvs[rec_wt_lvn] = leave_speed;
@@ -3142,6 +3210,9 @@ void() Watch_BuildSeq =
 	if (rec_wt_bdover > 0)
 		print(sprintf("^3replay: %g board record(s) past the %g cap were dropped; "
 		              "the segment column ends early\n", rec_wt_bdover, WT_BDMAX));
+	if (rec_wt_lvover > 0)
+		print(sprintf("^3replay: %g leave(s) past the %g cap were not kept; "
+		              "the Boarding window's leave row ends early\n", rec_wt_lvover, WT_BDMAX));
 	if (rec_wt_sqover > 0)
 		print(sprintf("^3replay: %g segment row(s) past the %g cap were dropped; "
 		              "the segment column stops there\n", rec_wt_sqover, WT_SQMAX));
@@ -5895,7 +5966,7 @@ float(string cmd) Watch_ConsoleCommand =
 	// Patch 750: the board and leave tables and the split events, recorded or inferred.
 	if (a == "boards")
 	{
-		print(sprintf("wtbd %g %g %g\n", rec_wt_bdn_n, rec_wt_bdinfer, rec_wt_bdnoplane));
+		print(sprintf("wtbd %g %g %g %g\n", rec_wt_bdn_n, rec_wt_bdinfer, rec_wt_bdnoplane, rec_wt_gndn));
 		for (i = 0; i < rec_wt_bdn_n; i = i + 1)
 			print(sprintf("wtb %g %.4f %g ", i, rec_wt_bdt[i], rec_wt_bdc[i]),
 			      Watch_V5(rec_wt_bdn[i]), " ", Watch_V5(rec_wt_bdv[i]),

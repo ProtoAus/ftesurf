@@ -84,6 +84,7 @@ void() Trail_ReplayPrefix =
 		v = [stof(argv(WT_C_VEL)), stof(argv(WT_C_VEL+1)), stof(argv(WT_C_VEL+2))];
 		fl = stof(argv(WT_C_FLAGS));
 		fl = fl - (fl & WT_F_RAMPI);            // a reader's own bit (Watch_Flags)
+		fl = Infer_Ground(fl, v_z, rec_wt_gndi);    // Patch 750: as Watch_Flags reads it
 		pitch = stof(argv(WT_C_PITCH));
 		yaw = stof(argv(WT_C_YAW));
 		nrm = rec_wt_v4 ? [stof(argv(WT_C_NORM)), stof(argv(WT_C_NORM+1)), stof(argv(WT_C_NORM+2))] : '0 0 0';

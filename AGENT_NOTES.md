@@ -4192,6 +4192,14 @@ material behind it; not map completeness or native/prediction acceptance.
   without the patch fails 9 of its checks. Still blank: the 21 Momentum imports
   without `momdemo` (differenced velocity: an apex can read vz 0 too) and the one
   over INF_SCANMAX (BACKLOG).
+  ITS ONE REVIEW: the first cut split on any higher stage a hull touched, where the
+  server (SV_ZoneScan, SV_TimerEvent) takes per tick the first END touched, else the
+  first STAGE, in table order over every track, and splits only on this track's
+  next stage; a hub of wedges (surf_doodles) would have shown three splits at one
+  tick. The job now mirrors that rule and the checkpoint one (first touched, on a
+  change of region, further on). An inferred board is looked for on a ride's first
+  three samples, never across a teleport; `replay boards` also prints the ground
+  samples the build pass saw, which the KSF grader counts against the file.
 - **A KSF time is a THIRD measurement.** CS:S physics, KSF's own zones, and
   their `mapName` is the PLAIN name (`surf_whiteout`, not `surf_whiteout_ksf`),
   so a matching name does not mean the same build, start or end.
