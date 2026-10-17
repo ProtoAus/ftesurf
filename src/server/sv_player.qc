@@ -313,6 +313,7 @@ void() ClientConnect =
 	SV_RecEndHold(self, "", "", 0);     // Patch 426: ...and no held receipt
 	self.pb_dwatch = world;             // Patch 383: edicts are recycled
 	SV_SpecForget(self);                // Patch 382: ...and no hold, no target
+	self.rec_sl_genchk = TRUE;          // Patch 751: saves another lobby changed
 
 	// Patch 270: give this player a body for everyone else to look at.  A no-op
 	// unless lobby_enable is set, so a solo session is byte-identical to before.

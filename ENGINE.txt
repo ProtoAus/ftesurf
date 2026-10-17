@@ -25,7 +25,14 @@ commit   b9c66c50114d9a21f39087f6409d07dfbb295e77
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-743
-patch    749
+patch    751
+# Patch 751 (QC only): a lobby lists, loads and keeps the saves another lobby
+# made on the same map. All twelve share data/saves, but a process opens only
+# files its name hash held at its last map load, and a block once read stayed
+# fresh across a rejoin: the save was missing and the next save took its folder.
+# A read that misses adopts the file (frename onto itself, as SV_MsAdopt), and
+# a join rescans when @guid/gen.txt, rewritten by every list change, moved.
+# tools/p751lobbysaves.py: two servers on one basedir; 223475b loses the save.
 # Patch 749 (QC only): the race ghost ducks and faces as the recording's view did
 # (a yaw and duck kept per line sample, ln_pose), and wears a name tag drawn like a
 # player's (hud_ghost_names). raceghost_pose arm; the 746 build fails it 18 times.

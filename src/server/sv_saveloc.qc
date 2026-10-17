@@ -111,6 +111,8 @@ float  rec_sl_nb[FS_SLCLIENTS + 1];        // rows in use per block
 float  rec_sl_ns[FS_SLCLIENTS + 1];        // next seq per block
 float  rec_sl_scanlob[FS_SLCLIENTS + 1];   // Lobby_Active()+1 at scan time; 0 never
 string rec_sl_owner[FS_SLCLIENTS + 1];     // Patch 428: the guid a lobby block was scanned for; SL_Fresh
+string rec_sl_gen[FS_SLCLIENTS + 1];       // Patch 751: the folder's gen.txt when the block was scanned or written
+float  sl_genn;
 string sl_root;                            // directory the paths are spelled from
 float  sl_lob_last;                        // lobby state the stamps were taken in
 
@@ -161,6 +163,7 @@ float  rec_sl_quiet;
 .float rec_sl_toksay;            // ...and the last "slow down"
 .float rec_sl_loadrow;           // Patch 428: with rec_sl_loadt (sv_timer.qc), the load
 .float rec_sl_loadseq;           // a hold may follow -- its row and its save
+.float rec_sl_genchk;            // Patch 751: set at ClientConnect; SV_SaveGenCheck compares gen.txt once
 
 #define SL_TOKRATE  20           // list commands a second, burst and sustained
 #define SL_DEMOTED  -1           // rec_sl_tick of a demoted save: never "clock stopped" to `!r`
@@ -617,6 +620,76 @@ string(float id) SL_SeqPath  = { return strcat(SL_Dir(id), "seq.txt"); };
 string(float id) SL_TrailPath= { return strcat(SL_Dir(id), "trail.txt"); };
 
 /*
+  Patch 751: the twelve lobbies share data/saves, but a process finds only the
+  files its name hash held at its last map load (fs.c FS_FLocateFile), so a save
+  made in another lobby read as torn and its folder number looked free.  Renaming
+  a file onto itself adds it (FS_Rename2 -> FS_FlushFSHashWritten), as SV_MsAdopt
+  does; it succeeds on both platforms (measured on the Windows server's CRT
+  rename).  Each one walks the search paths, so only after a read missed, and
+  only where the file is on disk: FS_Rename2 mkdirs the destination's path first.
+*/
+void(string p) SL_Adopt =
+{
+	if (!Lobby_Active())
+		return;
+	frename(p, p);
+	dprint(sprintf("saveloc: adopted %s\n", p));
+};
+string() SL_GenPath = { return strcat(sl_root, "/gen.txt"); };
+
+// gen.txt is rewritten by every list change in a lobby folder; a different line
+// than the block was scanned with means another lobby changed it.
+string() SV_SaveGenRead =
+{
+	local filestream f;
+	local searchhandle h;
+	local string s;
+
+	f = fopen(SL_GenPath(), FILE_READ);
+	if (f < 0)
+	{
+		h = search_begin(SL_GenPath(), 0, TRUE);
+		if (h < 0)
+			return "";
+		if (search_getsize(h) > 0)
+			SL_Adopt(SL_GenPath());
+		search_end(h);
+		f = fopen(SL_GenPath(), FILE_READ);
+		if (f < 0)
+			return "";
+	}
+	s = fgets(f);
+	fclose(f);
+	return s;
+};
+
+void(float blk, string g) SL_GenKeep =
+{
+	if (rec_sl_gen[blk] != "")
+		strunzone(rec_sl_gen[blk]);
+	rec_sl_gen[blk] = strzone(g);
+};
+
+// After a list change, with sl_root at the changed folder.
+void(float blk) SV_SaveGenBump =
+{
+	local filestream f;
+	local string g;
+
+	if (blk <= 0)
+		return;
+	sl_genn = sl_genn + 1;
+	g = sprintf("%s %s %g %g", cvar_string("sv_port"), strftime(FALSE, "%Y%m%d%H%M%S"),
+	            sl_genn, floor(random() * 65536));
+	f = fopen(SL_GenPath(), FILE_WRITE);
+	if (f < 0)
+		return;
+	fputs(f, strcat(g, "\n"));
+	fclose(f);
+	SL_GenKeep(blk, g);
+};
+
+/*
   PATCH 333 -- WHICH BLOCK, WHICH SLICE, WHICH DIRECTORY.
 
   SL_Blk is 0 off-lobby and the client slot in one: num_for_edict is 1-based,
@@ -861,6 +934,22 @@ float(entity e, float blk) SL_Fresh =
 	return TRUE;
 };
 
+// A join (rec_sl_genchk) rescans a fresh block another lobby changed since it was
+// read.  Before any list use: Sync, and Begin for a command ahead of the first move.
+void(entity e, float blk) SV_SaveGenCheck =
+{
+	if (!e.rec_sl_genchk)
+		return;
+	e.rec_sl_genchk = FALSE;
+	if (blk > 0)
+	if (SL_Fresh(e, blk))
+	{
+		SV_SaveRootSet(e);
+		if (strcmp(SV_SaveGenRead(), rec_sl_gen[blk]))
+			rec_sl_scanlob[blk] = 0;
+	}
+};
+
 void(entity e, float blk) SV_SaveLocScanFor =
 {
 	SV_SaveLocScanBlk(blk);
@@ -992,6 +1081,7 @@ float(entity e, float quiet) SV_SaveLocBegin =
 
 	SV_SaveRootFor(e);
 
+	SV_SaveGenCheck(e, blk);         // Patch 751
 	if (!SL_Fresh(e, blk))
 		SV_SaveLocScanFor(e, blk);
 
@@ -2476,6 +2566,10 @@ void(float blk) SV_SaveLocScanBlk =
 	pre = strcat(sl_root, "/save");
 	pl  = strlen(pre);
 
+	// Patch 751: before the listing, so a change made during it rescans again.
+	if (blk > 0)
+		SL_GenKeep(blk, SV_SaveGenRead());
+
 	h = search_begin(sprintf("%s/*/state.txt", sl_root), SL_NAMESORT, TRUE);
 	if (h < 0)
 		return;
@@ -2498,6 +2592,12 @@ void(float blk) SV_SaveLocScanBlk =
 			continue;
 
 		seq = SV_SaveReadLight(id, base + n);
+		if (seq < 0)
+		{
+			// The listing read the disk; fopen reads the name hash (Patch 751).
+			SL_Adopt(SL_StatePath(id));
+			seq = SV_SaveReadLight(id, base + n);
+		}
 		if (seq < 0)
 			continue;               // not a save state, or torn
 
@@ -2643,6 +2743,7 @@ void(entity e) SV_SaveLocSync =
 		e.rec_sl_curang = '0 0 0';
 		return;
 	}
+	SV_SaveGenCheck(e, blk);         // Patch 751
 	if (!SL_Fresh(e, blk))
 	{
 		SV_SaveRootFor(e);
@@ -3014,6 +3115,7 @@ void(entity e) SV_SaveLocCreate =
 	// Patch 428: in a lobby only the newest SL_RECKEEP keep their run.
 	if (blk > 0)
 		SV_SaveKeepWindow(base, cnt + 1);
+	SV_SaveGenBump(blk);
 
 	e.rec_sl_index = cnt + 1;
 	SV_SaveLocEvent(e, SLOP_SAVED, id);
@@ -3336,6 +3438,7 @@ void(entity e) SV_RewindDropGo =
 	rec_sl_quiet = TRUE;
 	SV_SaveLocDeleteRow(e, r - base + 1);
 	rec_sl_quiet = FALSE;
+	SV_SaveGenBump(SL_Blk(e));      // Patch 751
 };
 
 // `sl_saveat <ticks> [x y z]`: SV_SaveLocCreate's flow, with the ring for the body.
@@ -3434,6 +3537,7 @@ float(entity e, float t, vector near, float usenear, float go, float view) SV_Sa
 		SV_RewindDropGo(e);
 	if (blk > 0)
 		SV_SaveKeepWindow(base, rec_sl_nb[blk]);
+	SV_SaveGenBump(blk);
 	e.rec_sl_index = rec_sl_nb[blk];
 	SV_SaveLocEvent(e, SLOP_SAVED, id);
 	sprint(e, PRINT_HIGH, sprintf("^7rewind: save ^2%g^7 (slot %s) at %s, %g u/s%s\n",
@@ -4998,6 +5102,8 @@ void(entity e, float n) SV_SaveLocDeleteRow =
 	}
 
 	rec_sl_nb[blk] = cnt - 1;
+	if (!rec_sl_quiet)
+		SV_SaveGenBump(blk);        // a delete-all bumps once a batch
 
 	if (e.rec_sl_index > cnt - 1)
 		e.rec_sl_index = cnt - 1;
@@ -5162,6 +5268,7 @@ void(entity e) SV_SaveLocDeleteAllStep =
 			e.rec_sl_delall = e.rec_sl_delall + 1;
 		}
 		rec_sl_quiet = FALSE;
+		SV_SaveGenBump(blk);            // Patch 751
 		if (i >= 0 && rec_sl_nb[blk] > 0)
 			return;                 // more next frame
 	}

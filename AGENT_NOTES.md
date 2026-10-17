@@ -1,5 +1,27 @@
 # AGENT_NOTES.md
 
+## Lobby saves across lobbies (P751, 2026-10-17)
+
+- All twelve Pi lobbies share one `data/saves` (one basedir, one `sv_guidkey`).
+  Two things hid a save made in lobby A from lobby B already on that map: the
+  block B had scanned for the guid stayed `SL_Fresh` across a leave and rejoin,
+  and `fopen` finds only files the process's name hash held at its LAST MAP LOAD
+  (`fs.c` FS_FLocateFile, `fs_cache 1`) while `search_begin` lists the disk. B's
+  next save then took A's folder number and wrote over it (measured: one folder
+  left). Every list change rewrites `@<guid>/gen.txt`; `SV_SaveGenCheck` (first
+  Sync or Begin after ClientConnect) rescans a fresh block whose line moved, and
+  a read that misses adopts the file with `frename(p, p)` (SV_MsAdopt's trick;
+  the subject's `saveloc: adopted` dprints are the miss and the cure). FS_Rename2
+  mkdirs the path first, so adopt only what the listing found on disk.
+- A streamed save's run.rec is read with `fappendrange`, which opens FS_GAMEONLY
+  (OS path, no hash): it needed no adoption, and a mutant without one still
+  resumed. Only buffered `buf_loadfile` reads go through the hash.
+- Harness traps: `cl_sendguid 1` hashes the guid with the server ADDRESS, so two
+  local lobbies on two ports see two players; players run the default (empty),
+  salted by `sv_guidkey`. A rejoined slot answers `cmd viewpos` with the last
+  visit's origin before its spawn, and commands sent then vanish: wait for the
+  welcome line. `tools/p751lobbysaves.py --control` / subject.
+
 ## Spectator telemetry (P744, 2026-10-17)
 
 - The watched body's HUD comes from the pose stream's watcher-only RUN (every
