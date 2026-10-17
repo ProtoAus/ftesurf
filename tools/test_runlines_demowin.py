@@ -7,15 +7,35 @@ Reads the demo slot's `lnd` (playhead, window on, window ends) and `lnd2` (point
 lines from `replay marktrace` in each section.  The window must be off for `whole`,
 [t-1, t+4] for 4 s, [t-2, t+8] for "as board lines" at hud_lines_order 8, the console's
 own [t-6, t+2] when hud_lines_win/winf are set, and the replay's own distance must draw
-fewer points than the whole line, as hud_watch_path_far does.  A control log from a
+fewer points than the whole line, as hud_watch_path_far does.  The review's cases: with
+hud_watch_path_ahead 0 the window is the span behind the playhead, [t-4, t+0.8]; the
+line's name only sits on the windowed stretch (its point's nearest recorded sample is
+inside the window); and at a demo distance of 40 u no name is further than that from
+the eye, though a board line drawn the same frame reaches 12000.  A control log from a
 build before the patch must fail: it has no window at 4 s.
 """
+import math
+import os
 import argparse
 import re
 import sys
 
 LND = re.compile(r'lnd 0 (\S+) (\S+) (\S+) (\S+)')
 LND2 = re.compile(r'lnd2 0 (\S+) (\S+) (\S+) (\S+) (\S+)')
+EYE = re.compile(r'linegraph: eye (\S+) (\S+) (\S+)')
+LABEL0 = re.compile(r'linegraph: label 0 at (\S+) (\S+) (\S+)')
+
+
+def samples(rec):
+    out, body = [], False
+    for line in open(rec, encoding='utf-8', errors='replace'):
+        if line.startswith('begin'):
+            body = True
+            continue
+        if body and line[:1] in '-0123456789':
+            w = line.split()
+            out.append((float(w[0]), (float(w[1]), float(w[2]), float(w[3]))))
+    return out
 
 
 def sections(text):
@@ -42,6 +62,8 @@ def grade(path):
     s = sections(open(path, encoding='utf-8', errors='replace').read())
     fails = []
     got = {}
+    rec = os.path.join(os.path.dirname(os.path.dirname(path)), 'cfg', 'test', 'runlines_sample.rec')
+    pts = samples(rec) if os.path.isfile(rec) else []
     for name in ('WHOLE', 'AHEAD4', 'ASBOARD', 'OVERRIDE', 'NEAR', 'PATHFAR'):
         d, d2 = first(s.get(name, []), LND), first(s.get(name, []), LND2)
         got[name] = (d, d2)
@@ -74,6 +96,31 @@ def grade(path):
         fails.append('NEAR %g against PATHFAR %g: the two distances disagree' % (near, pathfar))
     if not got['AHEAD4'][1][2] < whole:
         fails.append('AHEAD4: the window drew no fewer points than the whole line')
+
+    a0 = first(s.get('AHEAD0', []), LND)
+    print('AHEAD0 lnd', a0)
+    if not a0:
+        fails.append('AHEAD0: no demo-slot trace')
+    else:
+        t, on, a, b = a0
+        if on != 1 or abs(a - (t - 4)) > 0.01 or abs(b - (t + 0.8)) > 0.01:
+            fails.append('AHEAD0: window %s..%s around %s, wanted -4/+0.8' % (a, b, t))
+        lab = first(s.get('AHEAD0', []), LABEL0)
+        print('AHEAD0 name at', lab)
+        if lab and pts:
+            tn = min(pts, key=lambda q: math.dist(q[1], lab))[0]
+            print('AHEAD0 name sits on the sample at t', tn)
+            if not a - 0.05 <= tn <= b + 0.05:
+                fails.append('AHEAD0: the name sits at t %.3f, outside the drawn %.3f..%.3f' % (tn, a, b))
+        elif lab:
+            fails.append('AHEAD0: no recording in the rig to place the name with')
+    eye = first(s.get('NAMENEAR', []) or s.get('NAMEFAR', []), EYE) or first(s.get('NAMEFAR', []), EYE)
+    lab = first(s.get('NAMENEAR', []), LABEL0)
+    print('NAMENEAR name at', lab, 'eye', eye)
+    if 'NAMENEAR' not in s:
+        fails.append('NAMENEAR: section missing')
+    elif lab and eye and math.dist(lab, eye) > 40.5:
+        fails.append('NAMENEAR: the name is %.1f u from the eye past a 40 u demo line' % math.dist(lab, eye))
     return fails
 
 

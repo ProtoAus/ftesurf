@@ -3669,11 +3669,16 @@ void() Watch_Path =
 	}
 };
 
+// Patch 745: the distance the demo's line was drawn to this frame, for its name
+// (LineGraph_WorldLabels runs after the board lines have put ln_far back); -1 none.
+float wt_demofar;
+
 void() Watch_Path2D =
 {
 	local float t, wb, wf, far;
 	local vector eye, fwd, q0;
 
+	wt_demofar    = -1;
 	rec_wt_p2n    = 0;
 	rec_wt_p2clip = 0;
 	rec_wt_p2wild = 0;
@@ -3755,10 +3760,21 @@ void() Watch_Path2D =
 		wf = cvar("hud_lines_demo");
 		if (wf < 0)
 			wf = cvar("hud_lines_order");
-		if (wf > 0)
+		if (wf <= 0)
+			Line_WindowOff();
+		else if (cvar("hud_watch_path_ahead"))
 			Line_Window(rec_wt_time - max(1, wf * 0.25), rec_wt_time + wf);
 		else
-			Line_WindowOff();
+			// Nothing past the playhead is drawn: that span behind it, whole at the playhead.
+			Line_Window(rec_wt_time - wf, rec_wt_time + wf * 0.2);
+	}
+	// Where the line's name may sit: the window, as Line_FollowWindow records a board line's.
+	wt_demofar = ln_far;
+	if (ln_winon)
+	{
+		ln_fo_ta[0] = ln_wina;
+		ln_fo_tb[0] = ln_winb;
+		ln_fo_wt[0] = cltime;
 	}
 	Line_Draw(0, rec_wt_time, rec_wt_org, cvar("hud_watch_path_ahead") ? 0.5 : 0, 1);
 

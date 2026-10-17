@@ -1991,6 +1991,7 @@ float lg_lab_gen[LN_SLOTS], lg_lab_frame;
 vector lgl_lo, lgl_hi;          // that rectangle, virtual pixels
 vector lgl_q, lgl_p;            // the last point tried: on screen, and in the world
 float lgl_ahead;                // hud_watch_path_ahead: the replay's line is shown past its playhead
+float lgl_far, lgl_fadek;       // Patch 745: the slot's own distance (the replay's can differ)
 
 // The point `f` of the way from sample i to the next, in slot s at base b. f is 0 at
 // the last sample and across a break: the caller keeps it so. 2: a label may sit there;
@@ -2057,8 +2058,8 @@ void(float s, vector at, vector aw, float pw) LineGraph_NameQueue =
 	lg_lab_q[s] = at;
 	d = vlen(aw - ln_eye);
 	a = 0.95;
-	if (ln_fadek > 0)
-		a = a * bound(0, (ln_far - d) * ln_fadek, 1);   // as far as its line: the numbers' range is not a name's
+	if (lgl_fadek > 0)
+		a = a * bound(0, (lgl_far - d) * lgl_fadek, 1);   // as far as its line: the numbers' range is not a name's
 	if (a > 0)
 		Line_LabelQueue(at + [6, 0 - lg_lab_sz - 6], LineGraph_Name(s), lg_lab_c[s], a,
 		                pw + lg_name_w[s], lg_lab_sz, d, LN_LB_NAME + s);
@@ -2072,7 +2073,7 @@ void(float s, vector at, vector aw, float pw) LineGraph_NameQueue =
 void() LineGraph_WorldLabels =
 {
 	local float s, i, j, k, n, b, d, e, best, stride, bi, f, sz, f0, dir, us, ulo, uhi, ci, cbest, ia, ib, pw;
-	local float board, names, cap, far, walk, fine, every;
+	local float board, names, cap, far, walk, fine, every, farb;
 	local vector at, p0, seg, aw, vs;
 	local string nm;
 	for (s = 0; s < LN_SLOTS; s = s + 1) lg_lab_on[s] = FALSE;
@@ -2104,11 +2105,14 @@ void() LineGraph_WorldLabels =
 		}
 	cap = (names <= 8) ? 256 : max(32, floor(2048 / names));
 	every = (names <= 8) ? 1 : ceil(names / 16);
-	far = ln_far;                   // a name shows as far as its line; 0: never fades
+	farb = ln_far;                  // a name shows as far as its line; 0: never fades
 	for (s = 0; s < LN_SLOTS; s = s + 1)
 	{
 		if (lg_lab_on[s] != 2) continue;
 		lg_lab_on[s] = FALSE;
+		far = (s == 0 && wt_demofar >= 0) ? wt_demofar : farb;
+		lgl_far = far;
+		lgl_fadek = (far > 0) ? 3 / far : 0;
 		b = LN_B(s);
 		// The text is drawn up and to the right of its point (below).
 		lgl_lo = [vs_x * 0.02, vs_y * 0.06 + sz + 6, 0];

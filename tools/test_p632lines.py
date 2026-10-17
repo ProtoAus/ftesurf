@@ -107,15 +107,17 @@ def main():
         check('pane', None, 'section not in the log')
     else:
         ids = set(re.findall(r'sui_element \[(he_o_[^\]]+)\]', body))
+        # Patch 661 moved hud_lines_nums to the Line labels pane; Patch 745 added the demo's two.
         want = ['he_o_hud_trail', 'he_o_hud_watch_path', 'he_o_hud_lines_board', 'he_o_hud_lines_order',
-                'he_o_hud_lines_nums', 'he_o_hud_lines_color_own', 'he_o_hud_lines_color_others',
-                'he_o_hud_watch_path_px', 'he_o_hud_watch_path_far', 'he_o_hud_lines_reveal']
+                'he_o_hud_lines_demo', 'he_o_hud_lines_color_own', 'he_o_hud_lines_color_others',
+                'he_o_hud_watch_path_px', 'he_o_hud_watch_path_far', 'he_o_hud_lines_demo_far',
+                'he_o_hud_lines_reveal']
         if not ids:
             check('pane', None, 'no option chips listed')
         else:
             missing = [i for i in want if i not in ids]
             extra = sorted(ids - set(want))
-            check('pane: its ten rows', not missing, 'missing %s' % missing if missing else 'all ten listed')
+            check('pane: its eleven rows', not missing, 'missing %s' % missing if missing else 'all eleven listed')
             check('pane: nothing else (the nearby-player rows are gone)', not extra,
                   'also listed: %s' % extra if extra else 'no other row')
     for marker, cv, want in (('read nums a', 'hud_lines_nums', 0), ('read nums b', 'hud_lines_nums', 1),

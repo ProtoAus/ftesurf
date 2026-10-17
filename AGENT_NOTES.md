@@ -2513,6 +2513,15 @@ publicly WITH its fix, not before it.
   surf_dune's start platform ends about 300 u past its box: walking 2.3 s off it
   falls back into the start and cancels the run (`run cancelled (back in the
   start)`), so the rewind arm walks 1.6 s.
+  ITS ONE REVIEW found the line's NAME outside both new settings: LineGraph_WorldLabels
+  narrows a name's search only by `ln_fo_wt/ta/tb[s]`, which only Line_FollowWindow
+  wrote, and it reads `ln_far` after Scores_LinesDraw has put it back. Watch_Path2D now
+  records slot 0's window there and its distance in `wt_demofar`; with
+  `hud_watch_path_ahead 0` the window is the span behind the playhead, [t-wf, t+wf/5].
+  Measured by the same arm: the old build put the name 1,655 u off, on a sample at
+  31.3 s outside [39, 44], and showed it 102 u off past a 40 u demo line. Cost, by
+  design: a `hud_trail 0` player now allocates the line arenas (68.9 MiB) at the first
+  run and records, as `hud_trail 1` always did.
 - Patch 628: THE OFF-RAMP MARK AT THE RAMP'S OWN EDGE, from the loaded map.
   The ramp bit says the mover clipped a ramp DURING a tick; its sample is
   where that tick ended, and on 176 of 290 native leaves the hull is already
