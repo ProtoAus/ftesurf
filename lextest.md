@@ -30,6 +30,14 @@ On a lobby (all three are live there; P754 is your local client only):
 
 "no prederr / still see N lines at <gesture>" is enough. Verdict PENDING.
 
+Live on all 12 lobbies and both Windows installs since 2026-10-17T06:46Z: main
+`b87c37b` built with P749 (da909c0, bca6577) reverted in the deploy tree only and
+P755 included; qwprogs `e5a29895`, csprogs `4e369446` (host read back, `.prev` is
+the `aca51849`/`b7d751ee` pair; lobby 1 serves it and reports `fs_wop 1`). Client
+engine `git-7380-patch-754-0-gd886035b9` (`fb3c90bf`) in both installs with its
+plugins and C:\FTEQuake's server, P743's set kept as `.prev`. Your PC only: other
+players get P754 with the next release.
+
 ## P747 — KSF demos are downloading: Watch one
 
 The KSF crawler had been stuck since 15 Oct, so no KSF row had a demo. Unblocked
