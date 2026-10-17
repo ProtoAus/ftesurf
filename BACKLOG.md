@@ -190,20 +190,18 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   doors are taken at speed (mover 5 stopped 8 of 20 hub-door hops). Whether the
   boards separate them is the owner's call.
 
-## Stutter on surf_kitsune (cause found, fix next)
+## Stutter on surf_kitsune (spikes fixed by P763; the fps decline is open)
 
-- Measured cause: the client QC's tempstring collector, which runs every ~415 frames. With
-  `pr_gc_threaded` 1 (the default) it copies the whole QC address space on the main thread:
-  a 19-24 ms frame, then a ~7 ms one. With 0 it scans it instead (~22 ms). The first door
-  crossing takes that space from 0.3 % to 4.2 % of 2 GiB (`cl_status`), because the run-line
-  pool (`cl_lines.qc`, LN_TOTAL = 1,253,376 samples in ten-plus arrays, ~80 MB) is allocated
-  when the first line starts. With the collector off (2, diagnostic) there are no spikes, and
-  the 1% low goes from ~100 fps to 350-490. Before the crossing there are no spikes in any
-  mode. The stage-timer build's "17 ms inside the QC view function" was this collector: it
-  runs as the top-level QC call returns. Arm: `tools/p758portalsky.md`.
-- Fix (next patch): the collector skips memory that never holds a string (the line arrays).
-- Still open: the average fps falls as a run goes, separately from the spikes (1000 -> 708 fps
-  over ~25 s with the collector off).
+- P763 fixes the ~20 ms frame every ~415 frames once a run starts. The cause was the CSQC
+  tempstring GC copying or scanning the ~80 MB run-line pool. Engine 763 skips the blocks
+  `cl_lines.qc` marks, and a ~4 ms frame per collection remains (it reads 7.2 MiB).
+  Arms: `tools/p758portalsky.md`, `tools/p763gcskip.md`.
+- Left: lobbies and the released engines keep the cost until the Pi and a release carry
+  engine 763, because the QC call is skipped there. The 7.2 MiB the GC still reads is the
+  rest of the hunk. `memnostrings` on other big float arrays would trim it, if a later
+  measure says it matters.
+- Still open: the average fps falls as a run goes, separately from the spikes and with the
+  collector off too (1000 -> 708 fps over ~25 s in the P758 arm). Not yet diagnosed.
 - The owner's own numbers: `frametimes` before and after a minute of play.
 
 ## Mode2 limits left by P748

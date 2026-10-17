@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+## P763 — the Kitsune stutter (a ~20 ms frame every half second once a run starts)
+
+On your own server: run surf_kitsune through the hub door and keep going. The
+regular hitch, every ~0.45 s at your frame rate, should be gone. A much smaller one
+(~4 ms) remains. To measure it, type `frametimes`, play for a minute, type
+`frametimes` again, and send the three lines it prints. `cl_status` should show
+"csqc gc reads: 7.2 MiB of ~87 MiB (29 blocks marked)" once a line exists.
+
+The average fps still drops the longer a run lasts. That is a separate issue, not
+fixed yet. Lobbies keep the old cost until the Pi's engine and the next release
+carry 763.
+
+"Smooth / still hitches at X" is enough. Verdict PENDING. Details: `tools/p763gcskip.md`.
+
 ## P762 — key configuration (`config_menu`), the key strip, the vote box
 
 Live in both Windows installs and all 12 lobbies since 2026-10-17T09:54Z
@@ -74,10 +88,8 @@ P760: csprogs `e07aa625`, qwprogs `6b527829`, menu `527db60b` (`.prev`
 - **Bhop through a door.** Hop through the hub door into stage 1 a few times at
   speed: you should never be stopped dead in the doorway (before, about 2 hops in
   5 at 700-1000 u/s).
-- **Stutter.** Not fixed yet. The cause is found: once a run has started, a ~20 ms frame
-  every ~415 frames, from the game's string clean-up going over the run lines' memory.
-  The fix is the next patch. To measure yours, type `frametimes`, play for a minute,
-  type `frametimes` again, and send the three lines it prints.
+- **Stutter.** Fixed by P763 (above): the game's string clean-up was reading the run
+  lines' memory every ~415 frames.
 
 "Sky ok / still at save N", "door ok / still pops", "hops through / still stops" is
 enough. Verdict PENDING. Details: `tools/p758portalsky.md`.
