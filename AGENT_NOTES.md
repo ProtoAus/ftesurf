@@ -4161,13 +4161,15 @@ material behind it; not map completeness or native/prediction acceptance.
   v2 ground is unavailable. v3 ground bit0 is shared by both public-viewer paths;
   bit1 conflicts (ducked/teleport), so no native ducked/warp evidence is emitted.
   `demodata` extends the old `momdemo` inference capability without certifying
-  an import. Bookmark clock and official row time are separate (up to one CSS
-  tick here). Main/bonus boundaries are required; no full-file/stage fallback.
+  an import. Bookmark clock and official row time are separate. Main/bonus
+  boundaries are required; no full-file/stage fallback.
   Patch 757 (tools/p757ksfconvert.md): of 17 refused demos, 10 begin inside the
   start zone (no entry before the exit; an official time now binds them) and 7
   differ from the frame count by 1.005 to 24 ticks (KSF's timer is not the frame
-  count; one long run repeats 23 frames): the bound is 2.5 ticks or 0.2 % of the
-  run. All 17 convert; the 12 P702 clips convert to identical bytes.
+  count; one long run repeats 23 frames). The bound is 2.5 ticks, plus each frame
+  the file repeats while moving, plus one a 10,000 frames. All 17 convert; the 12
+  P702 clips convert to identical bytes. ksfgrab.install now stores the row's time
+  (job['millis']) as replays.millis, the run page's, not the frame clock's.
   The visible title states KSF style/build unknown, info import/not verified,
   and imported hashes are never formatted as native dates. No native data filing.
   Dedicated full source-frame traces matched all twelve public clips on three

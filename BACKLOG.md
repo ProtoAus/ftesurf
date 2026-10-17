@@ -85,8 +85,13 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   from the frame count (17 of 155 on 2026-10-17, tools/p757ksfconvert.md).
 - KSF STAGE demos are still refused (`interval` reads only main and bonus). None
   was among the 17; design from a fetched stage replay's bookmarks.
-- Falsifier after the cutover: the 17 files in that note link on their next
-  attempt, and `python -m unittest test_ksfconvert` passes in tools/.
+- Falsifier after the cutover: `python -m unittest test_ksfconvert` passes in
+  tools/, and the 17 files in that note link when asked. They hold no job, strike
+  or tombstone (7c's targeted runs called ksfgrab.install directly), so nothing
+  retries them until the demo rotation reaches their boards (up to ~20 h) or a
+  targeted run asks.
+- `surfd/test_ksfgrab.py` needs a fresh `--out`: re-running into one that holds
+  a previous run's state failed 14 of 49 here (a fresh one: 49 pass).
 
 ## KSF crawler: P747 waits for the next backend cutover
 

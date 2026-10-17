@@ -29,14 +29,26 @@ Against: the 12 P702 sample clips 0.01-0.87 tick, the 10 above 0.00-0.13.
 - `interval(..., lead_ok)`: no entry before the one exit is accepted when the
   caller has an official time (`convert` passes `seconds is not None`), which then
   binds the interval. Without a time it is refused as before; two exits still are.
-- The time must be within 2.5 ticks or 0.2 % of the run, whichever is more (was one
-  tick). A wrong course or run is seconds off, not ticks.
+- The time must be within 2.5 ticks, plus each frame the file repeats while the
+  body moves (counted: HSW 23, SW 3, the rest 0), plus one a 10,000 frames for
+  drops a teleporting route hides (was one tick). A wrong course or run is seconds
+  off. The first cut allowed 0.2 % of the run; its review found that loose (1.8 s
+  at 900 s) and this is about 0.13 s there plus repeats.
+- `surfd/ksfgrab.py` stored the converter's bookmark interval as `replays.millis`,
+  the run page's headline time, which the wider bound would have let differ from
+  the board row (HSW 0.362 s). It now stores the row's time; ticks stay the file's
+  (ftesurf-7c, its owner, asked for it in this patch).
 
 ## Verified
 
 - `tools/test_ksfconvert.py`: 11 tests pass; the converter before this patch fails
-  6 of the new checks (lead-in with and without time, both tolerance edges, short
-  and 4,000-frame runs).
+  the new checks (lead-in with and without time, both tolerance edges, short and
+  4,000-frame runs, 20 repeated frames counted). (The review ran mutants on the
+  first cut's tests: lead_ok always true and one-sided or floor-only bounds each
+  failed them; not repeated on these.)
+- `surfd/test_ksfgrab.py`: 49 pass (fresh `--out`); the ksfgrab before this patch
+  fails the new `test_row_time_not_the_frame_clock` (stores 60, the interval, for a
+  row of 0.0886 s).
 - All 17 refused files convert with their exact official times.
 - The 12 P702 sample clips convert to byte-identical .rec files.
 - End to end: the refused surf_monolith main FW demo, converted and replayed on the

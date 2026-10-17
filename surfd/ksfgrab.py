@@ -420,7 +420,9 @@ def install(conn, job, data):
             ' sha=excluded.sha,seen=excluded.seen'
             " WHERE replays.kind='ksf' AND replays.runid=excluded.runid",
             (job['map'], leaf, len(body), digest, job['map'], job['track'], 0,
-             job['player'], ticks, 1 / K.KSF_TICK, int(round(info['seconds'] * 1000)),
+             # Patch 757: the row's time, which the converter bound; the frame count
+             # can differ by more than a tick (tools/p757ksfconvert.md). ticks stays the file's.
+             job['player'], ticks, 1 / K.KSF_TICK, job['millis'],
              int(time.time()), 'ksf-' + info['sha256'][:20], job['when'],
              S.TIER_KSF, job['style'], job['name']))
         indexed = conn.execute('SELECT id,kind,runid FROM replays WHERE map=? AND track=?'

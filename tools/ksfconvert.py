@@ -97,22 +97,29 @@ def convert(data, mapname, bonus=0, style='FW', owner='?', seconds=None):
     # CSS 66t, also the current ksfimport.py TICK. No CSS100/CSGO rate guessed.
     dt = 0.015
     duration = (stop - start) * dt
-    if seconds is not None:
-        # Patch 757: KSF's time is its timer's, not this file's frame count. Measured
-        # on 29 of its demos: 22 within 0.87 tick, four 1.005-1.04, one 2.03 (the three
-        # bonus runs among those five repeat or skip no frame), and two long ones 3.99
-        # and 24.15 ticks off over 57,053 and 24,692 frames (the second repeats 23 frames
-        # while moving). A wrong course or run is seconds off; so 2.5 ticks or 0.2 % of
-        # the run, whichever is more.
-        tol = max(2.5 * dt, 0.002 * duration)
-        if not math.isfinite(seconds) or seconds <= 0 or abs(seconds - duration) > tol:
-            raise ValueError('public time %.6f differs from bookmark interval %.3f by over %.3f s'
-                             % (seconds, duration, tol))
     off = 16
     if info['version'] == 3:
         off = 24 + info['extension_cells'] * 4
     off += len(info['bookmarks']) * 524
     stride = info['frame_cells'] * 4
+    repeats = 0
+    if seconds is not None:
+        # Patch 757: KSF's time is its timer's, not this file's frame count. Measured
+        # on 29 of its demos: 22 within 0.87 tick; five short runs 1.005 to 2.03 with
+        # no frame repeated; surf_monolith main HSW 24.15 over 24,692 frames, 23 of them
+        # repeating the frame before while the body moves, and BW 3.99 over 57,053 (a
+        # dropped frame cannot be counted on a route that teleports). So 2.5 ticks, plus
+        # each repeated frame, plus one a 10,000 frames. A wrong run is seconds off.
+        last = None
+        for i in range(start, stop + 1):
+            rec = K.PREFIX.unpack_from(data, off + i * stride)
+            if last == rec[1:4] and math.hypot(*rec[7:10]) >= 50:
+                repeats += 1
+            last = rec[1:4]
+        tol = dt * (2.5 + repeats + (stop - start) / 10000)
+        if not math.isfinite(seconds) or seconds <= 0 or abs(seconds - duration) > tol:
+            raise ValueError('public time %.6f differs from bookmark interval %.3f by over %.3f s'
+                             % (seconds, duration, tol))
     # v3 common prefix + ground bit, and the documented full 18-cell layout.
     ground = info['version'] == 3 and info['frame_cells'] >= 11
     moves = info['version'] == 3 and info['frame_cells'] == 18
@@ -161,7 +168,7 @@ def convert(data, mapname, bonus=0, style='FW', owner='?', seconds=None):
                   ((i - start) * dt, x, y, z, vx, vy, vz, pitch, yaw, fl, keys, fwd, side, up))
     out.write('end %d %d %d 0\n' % (stop - start, stop + 1, start))
     return out.getvalue(), dict(info, start=start, stop=stop, seconds=duration,
-                                official_seconds=seconds, sha256=digest,
+                                official_seconds=seconds, repeats=repeats, sha256=digest,
                                 map=mapname, bonus=bonus, style=style,
                                 ground_recorded=ground, moves_recorded=moves,
                                 duck_state='unknown', map_build='unknown')
@@ -175,7 +182,7 @@ def main():
     p.add_argument('--style', required=True, choices=STYLES, help='external board binding, not header kind')
     p.add_argument('--owner', default='?', help='display alias, not proof of player identity')
     p.add_argument('--seconds', type=float,
-                   help='optional official row time, within 2.5 CSS ticks or 0.2%% of the run')
+                   help='optional official row time, within 2.5 CSS ticks plus repeated frames')
     p.add_argument('--out', required=True, type=Path, help='NEW .rec; existing files are never overwritten')
     a = p.parse_args()
     try:

@@ -10,7 +10,7 @@ import unittest
 import ksfconvert as C
 
 
-def binary(version=2, marks=None, cells=18, frames=9):
+def binary(version=2, marks=None, cells=18, frames=9, repeat=()):
     if marks is None:
         marks = [(0, 2, 1, ''), (2, 3, 1, ''), (6, 2, 99, '')]
     b = struct.pack('<4i', version, 3, 12345, len(marks))  # not frame/run duration
@@ -21,7 +21,8 @@ def binary(version=2, marks=None, cells=18, frames=9):
     for i in range(frames):
         # First integer is buttons, roll is a FLOAT. All axes intentionally distinct.
         buttons = 8 | 512 | 2 | 4 | 1 | 128
-        b += struct.pack('<i9f', buttons, i + .25, i + .5, i + .75, i + 1.25,
+        p = i - 1 if i in repeat else i     # a frame the recorder wrote twice
+        b += struct.pack('<i9f', buttons, p + .25, p + .5, p + .75, i + 1.25,
                          i + 1.5, i + 1.75, i + 2.25, i + 2.5, i + 2.75)
         if version == 3:
             extra = struct.pack('<3i2f2if', 3, i + 100, i + 200, 123.25, -456.5, 20, 30, 7.75)
@@ -93,20 +94,25 @@ class Convert(unittest.TestCase):
             C.convert(binary(marks=[(1, 3, 1, ''), (2, 3, 1, ''), (6, 2, 99, '')]), 'surf_test', seconds=.06)
 
     def test_official_time_tolerance(self):
-        # 2.5 ticks on a short run; 0.2 % of a long one (3996 ticks: 7.99).
+        # 2.5 ticks, plus one a 10,000 frames (3996 ticks: 2.9), plus each frame the
+        # recorder repeated while moving (20 here: 22.9).
         for off, ok in ((2.4, True), (-2.4, True), (2.6, False), (-2.6, False)):
             with self.subTest(off=off):
                 if ok:
                     C.convert(binary(), 'surf_test', seconds=.06 + off * .015)
                 else:
                     with self.assertRaises(ValueError): C.convert(binary(), 'surf_test', seconds=.06 + off * .015)
-        long = binary(marks=[(0, 2, 1, ''), (2, 3, 1, ''), (3998, 2, 99, '')], frames=4000)
-        for off, ok in ((7.5, True), (-7.5, True), (8.5, False), (-8.5, False)):
-            with self.subTest(off=off, frames=4000):
-                if ok:
-                    C.convert(long, 'surf_test', seconds=59.94 + off * .015)
-                else:
-                    with self.assertRaises(ValueError): C.convert(long, 'surf_test', seconds=59.94 + off * .015)
+        marks = [(0, 2, 1, ''), (2, 3, 1, ''), (3998, 2, 99, '')]
+        long = binary(marks=marks, frames=4000)
+        rep = binary(marks=marks, frames=4000, repeat=range(1000, 1040, 2))
+        for data, lim, n in ((long, 2.9, 0), (rep, 22.9, 20)):
+            for off, ok in ((lim - .2, True), (-(lim - .2), True), (lim + .2, False), (-(lim + .2), False)):
+                with self.subTest(off=off, repeats=n):
+                    if ok:
+                        text, info = C.convert(data, 'surf_test', seconds=59.94 + off * .015)
+                        self.assertEqual(info['repeats'], n)
+                    else:
+                        with self.assertRaises(ValueError): C.convert(data, 'surf_test', seconds=59.94 + off * .015)
 
     def test_malformed_and_nonfinite(self):
         data = binary(3)

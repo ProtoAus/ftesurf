@@ -70,7 +70,9 @@ distinguished from this prefix alone. `--map`, `--style` (FW/SW/HSW/BW), course 
 come from the exact external board/viewer row. The binary header does not name
 them; its kind and the filename's numeric fields are NOT identities. The owner
 is only a display alias. No Steam/GUID binding or board filing is claimed.
-`--seconds` is optional; when supplied it must agree within one 15 ms CSS tick.
+`--seconds` is optional; when supplied it must agree within 2.5 CSS ticks, plus
+one for each frame the file repeats while moving, plus one a 10,000 frames
+(Patch 757: KSF's time is its timer's, not the frame count; tools/p757ksfconvert.md).
 A new output file is required; existing recordings are never overwritten.
 Conversion rejects malformed/HTML/nonfinite inputs, ambiguous or missing course
 bookmarks, unsupported bounds and invalid bindings before creating the file.
@@ -80,14 +82,16 @@ Input is bounded at 64 MiB; converted playback is bounded at 200,000 frames.
 
 - FTESURF-REC 5 sampled clock, source SHA256, `foreign ksf`, explicit map/course/
   style, no fabricated native integrity keys, journal, sidecar or warp evidence.
-- Initial start-zone entry followed by its exit establishes start. Main ends at
+- Initial start-zone entry followed by its exit establishes start; a recording
+  that begins inside the start zone (no entry before its one exit) is taken only
+  with `--seconds` binding it (Patch 757). Main ends at
   zone99 entry. Bonus N uses zone30+N: named standard triggers disambiguate
   start/end; the unclassified-target-name fallback requires exactly one later
   entry (including nonempty names outside the documented numeric namespace). Multiple
   intervals, stages or missing boundaries are refused, never full-file timed.
 - Preserve pre-roll, rebase time to the start bookmark, include the finish
   sample, exclude post-roll. The displayed duration is the **bookmark clock**;
-  the separately retained official time can differ by less than a source tick.
+  the separately retained official time can differ by the bound above.
 - Position, velocity, pitch/yaw come from source floats. Raw Source button masks
   are preserved in additive `ksfbuttons <source-frame> <mask>` records. Native
   FSI directional keys mean resolved movement direction, not raw buttons.

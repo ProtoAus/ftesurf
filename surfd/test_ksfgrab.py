@@ -261,6 +261,18 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM runs WHERE tier<>'ksf'").fetchone()[0], 0)
         self.assertTrue(list((Path(S.KSF_DIR)/'.originals').glob('*.rec')))
 
+    def test_row_time_not_the_frame_clock(self):
+        # Patch 757: the converter takes KSF's time 1.9 ticks off the frame count
+        # (binary()'s interval is 4 ticks, 0.06 s); the replay keeps the row's time.
+        self.conn.execute('DELETE FROM runs'); self.conn.commit()
+        r = raw(time=.0886)
+        job = G.candidate('surf_test', 0, 0, r)
+        K.write_rows([K.rec_row('surf_test', 0, 0, r)])
+        rid = G.install(self.conn, job, binary())
+        self.assertGreater(rid, 0)
+        row = self.conn.execute('SELECT millis,ticks FROM replays WHERE id=?', (rid,)).fetchone()
+        self.assertEqual(tuple(row), (89, 4))
+
     def test_faster_sub_millisecond_invalidates_and_old_job_refuses(self):
         rid = G.install(self.conn, self.job, binary())
         faster = raw(time=.0599, record_id=112, date=1699999999,
