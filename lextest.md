@@ -11,7 +11,9 @@ disk before, 1.0 s now, with no requests.
   map after map. Tomorrow, they should still be there at once (they refresh
   quietly behind). "Instant / still slow" is enough. Verdict PENDING.
 
-Delivery and limits: `tools/p755steampic.md`.
+Live on all 12 lobbies and both Windows installs since 2026-10-17T06:46Z
+(csprogs `4e369446`, with P751/P753). Delivery and limits: `tools/p755steampic.md`.
+
 ## P751/P753/P754 — saves across lobbies, instant `!r`/`!m`/loads, the crouch trick
 
 On a lobby (all three are live there; P754 is your local client only):

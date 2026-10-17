@@ -57,3 +57,13 @@ never asks for one there; only a lobby's `*phash` mark could reach it.
 Final run (fixed build, `artifacts/run-subject5` in the task root): every
 cache arm above passes as tabled; only the two `vid_restart` checks fail, as
 they do on the unpatched build.
+
+## Delivery
+
+Shipped in ftesurf-a2's P751/P753 fleet deploy, 2026-10-17T06:46Z: built from
+main `b87c37b` (contains P755 `504d36b`) with P749 `da909c0`/`bca6577` reverted in
+that deploy worktree only, at the P749 owner's request. Read back by a2: Pi
+qwprogs `e5a29895`, csprogs `4e369446` (`.prev` `aca51849`/`b7d751ee`), all 12
+lobbies restarted, a fresh client on 27510 served `4e369446` and drew the board.
+Checked separately here: the Pi's and both Windows installs' `csprogs.dat` hash
+`4e369446d36623c0` and contain P755's status text; 12 `ftesurf@` units active.
