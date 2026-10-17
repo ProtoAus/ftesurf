@@ -165,7 +165,6 @@ float  rec_sl_quiet;
 .float rec_sl_loadseq;           // a hold may follow -- its row and its save
 .float rec_sl_genchk;            // Patch 751: set at ClientConnect; SV_SaveGenCheck compares gen.txt once
 
-#define SL_TOKRATE  20           // list commands a second, burst and sustained
 #define SL_DEMOTED  -1           // rec_sl_tick of a demoted save: never "clock stopped" to `!r`
 #define SL_RECKEEP  24           // lobby saves that keep their recording copy (SV_SaveLocCreate)
 /*

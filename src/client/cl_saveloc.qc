@@ -165,6 +165,7 @@ float  rec_sl_holdang_ok;        // the latch is valid; a hold with no latch yet
 float rec_sl_refkey;             // scancode; 0 = none
 float rec_sl_refseen;            // cltime of its last down edge
 float rec_sl_8held;              // cltime of 8's last down edge while held; 0 = up
+float rec_sl_stepkey, rec_sl_stepseen;   // Patch 759: the 3-6 key down and its last down edge
 
 float() LT_StatsAreMine;         // cl_lobbytime.qc
 void() Bn_ErrorSound;            // cl_banner.qc
@@ -282,6 +283,7 @@ string(string c) Trail_Command;
 float(string c) Trail_Request;
 float() Trail_RequestBusy;
 float() Trail_RequestDispatching;
+float() WarpOp_Charge;
 
 void(string c) SaveLoc_Cmd =
 {
@@ -292,6 +294,8 @@ void(string c) SaveLoc_Cmd =
 	{
 		SaveLoc_Resync();
 		rec_sl_sent = rec_sl_sent + 1;
+		if (c != "sl_hold" && c != "sl_holdoff")
+			WarpOp_Charge();        // Patch 759: SV_SaveLocRate's charge, mirrored
 	}
 	if (c == "sl_save")
 	if (!Trail_RequestDispatching())
@@ -383,10 +387,11 @@ float() WarpOp_Load;
 float() WarpOp_Release;
 float() WarpOp_LoadRefused;
 void() WarpOp_Frame;
-float(float op) WarpOp_Step;
+float(float op, float rep) WarpOp_Step;
 
-// Patch 759: 3/4/5/6 ride one command when they can (WarpOp_Step).
-void(string c) SaveLoc_Step =
+// Patch 759: 3/4/5/6 ride one command when they can (WarpOp_Step); rep is a
+// key's auto-repeat.
+void(string c, float rep) SaveLoc_Step =
 {
 	local float op;
 
@@ -397,7 +402,7 @@ void(string c) SaveLoc_Step =
 		op = WOP_FIRST;
 	else if (c == "sl_last")
 		op = WOP_LAST;
-	if (!WarpOp_Step(op))
+	if (!WarpOp_Step(op, rep))
 		SaveLoc_Cmd(c);
 };
 
@@ -652,6 +657,8 @@ void(float scan) SaveLoc_Refuse =
 */
 float(float scan, float down) SaveLoc_Key =
 {
+	local float rep;
+
 	/*
 	  The key that owns a hold: its release lets go and its repeats arm the
 	  deadman. Patch 477 round 22: a holdkey of 0 is no key's (the rewind's
@@ -684,6 +691,8 @@ float(float scan, float down) SaveLoc_Key =
 	{
 		if (scan == '8')
 			rec_sl_8held = 0;
+		if (scan == rec_sl_stepkey)
+			rec_sl_stepkey = 0;
 		// Patch 391: a refused press's release is taken like its press.
 		if (rec_sl_refkey && scan == rec_sl_refkey)
 		{
@@ -760,10 +769,18 @@ float(float scan, float down) SaveLoc_Key =
 	if (scan == '1') { SaveLoc_Cmd("sl_save");  return TRUE; }
 
 	// 3/4/5/6 LOAD as well as move the cursor -- see SV_SaveLocStep.
-	if (scan == '3') { SaveLoc_Step("sl_next");  return TRUE; }
-	if (scan == '4') { SaveLoc_Step("sl_prev");  return TRUE; }
-	if (scan == '5') { SaveLoc_Step("sl_first"); return TRUE; }
-	if (scan == '6') { SaveLoc_Step("sl_last");  return TRUE; }
+	if (scan >= '3' && scan <= '6')
+	{
+		// Patch 759: a held key repeats; WarpOp_Step paces its repeats.
+		rep = (scan == rec_sl_stepkey && cltime - rec_sl_stepseen <= SL_HOLD_DEADMAN);
+		rec_sl_stepkey = scan;
+		rec_sl_stepseen = cltime;
+		if (scan == '3') SaveLoc_Step("sl_next", rep);
+		if (scan == '4') SaveLoc_Step("sl_prev", rep);
+		if (scan == '5') SaveLoc_Step("sl_first", rep);
+		if (scan == '6') SaveLoc_Step("sl_last", rep);
+		return TRUE;
+	}
 
 	if (scan == '7') { SaveLoc_Cmd("sl_del");   return TRUE; }
 	if (scan == '0') { rec_sl_open = FALSE;      return TRUE; }
@@ -861,7 +878,7 @@ float() SaveLoc_Console =
 		else if (c == "sl_load")
 			SaveLoc_Cmd(c);
 		else
-			SaveLoc_Step(c);
+			SaveLoc_Step(c, FALSE);
 		return TRUE;
 	}
 

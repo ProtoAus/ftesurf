@@ -66,12 +66,19 @@
   step does NOT fix that: on resume the engine re-bases at `prop.sequence`, a
   frame before the step, and finalizes the old row again. Targets: STAT_FS_WOPROW
   (next/prev/first/last rows, every PostThink) and STAT_FS_WOPLEGS (six string
-  stats, P680's answer per existing leg, on the publish signature or every 5 s).
-  A step pressed while a load or step is unanswered waits for it (its row is not
-  published yet, and a stringcmd sent then can run before the op); a load after
-  one takes that op's row. `p753warpop.py --more` grades the client's
-  `seq: event ... op 2 id N` (the server's load event), not "run resumed" or
-  `saves: N/M`, which print only for some rows.
+  stats, P680's answer per existing leg, at most once a second per player).
+- Every press is sent at once, in order. WarpOp_Row walks the unanswered loads
+  and steps through SV_SaveLocStep's arithmetic and predicts only a row the
+  server published for the current cursor; otherwise the op goes "blind" and
+  the server's answer corrects it. "Unanswered" is STAT_FS_WOPACK, not
+  servercommandframe: stats ride the reliable channel and can arrive a packet
+  after the ack. A key's auto-repeat waits for the answer; WarpOp_Charge mirrors
+  SV_SaveLocRate so a press the server would refuse is not predicted. A first cut
+  DEFERRED early presses and the review found the cost: later keys (`!r`, 7,
+  the release) overtook them, and a fifth press vanished.
+- `p753warpop.py --more` grades the client's `seq: event ... op 2 id N` (the
+  server's load event), not "run resumed" or `saves: N/M`, which print only for
+  some rows.
 
 ## Lobby saves across lobbies (P751, 2026-10-17)
 

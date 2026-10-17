@@ -38,8 +38,9 @@ On a lobby, `cl_prederror` at its default:
   Let go: you leave at the speed of the save you are on.
 - With nothing held, tap 3 or 4: you load that save and keep its speed, at once.
 - `!s 2`, `!s 3`, `!b 1` (chat or a bind): at the stage start at once, no prederr.
-- Taps faster than your ping queue (up to four) and each waits for the server's
-  answer to the one before, so they arrive one round trip apart, still predicted.
+- Holding 3 down walks one save per round trip, each one instant. Tapping
+  faster than your ping on a long list can still show a correction for a save
+  two or more steps ahead; it lands in the right place.
 
 "instant / still see N lines at <gesture>" is enough. Verdict PENDING.
 

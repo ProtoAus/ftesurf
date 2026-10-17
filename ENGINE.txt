@@ -36,6 +36,7 @@ patch    762
 # Patch 759 (QC): 3/4/5/6 and `!s N`/`!b N` ride one usercmd's impulse like P753's
 # ops, from server-published rows (STAT_FS_WOPROW) and legs (STAT_FS_WOPLEGS). A 754
 # client printed one prederr per step under a hold (the replay kept the old row).
+# A row the cursor does not publish is sent unpredicted (one correction), in order.
 # p753warpop --more: held steps 1343-28654 u, !s/!b 10923/29608, free step 498 -> 0.
 # Patch 757 (backend tool only): tools/ksfconvert.py takes a KSF demo that begins
 # inside the start zone when its official time binds it, and an official time

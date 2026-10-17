@@ -22,6 +22,7 @@ __used float input_cmd_piece_msec;
 __used float input_cmd_offset_msec;
 
 .float wop_lo, wop_hi;           // the last op's command
+.float wop_ack;                  // Patch 759: the same, one number (STAT_FS_WOPACK)
 float  wop_live;                 // fs_wop published
 
 .vector wop_rorg, wop_rang;      // STAT_FS_WOPR/RANG: where `!r` would put you
@@ -37,7 +38,7 @@ moveprep_t *wop_mp;
 // STAT_FS_WOPLEGS: `!s N` / `!b N`.
 .string wop_legs0, wop_legs1, wop_legs2, wop_legs3, wop_legs4, wop_legs5;
 .float  wop_legzoned;            // bit k: wop_legs<k> is a strzone this module owns
-.float  wop_legt;
+.float  wop_legt, wop_legdue;
 string  wop_legcrc;              // the zone set wop_nstage/wop_nbonus were counted on
 float   wop_legcount, wop_nstage, wop_nbonus;
 
@@ -68,6 +69,8 @@ void() SV_WarpOpCommand =
 		return;
 	self.wop_hi = input_cmd_sequence_hi;
 	self.wop_lo = input_cmd_sequence_lo;
+	// Patch 759: STAT_FS_WOPACK, sent with the rows this op moves, run or refused.
+	self.wop_ack = input_cmd_sequence_hi * 65536 + input_cmd_sequence_lo;
 	if (self.classname != "player" || !self.run_inserver)
 		return;
 	dprint(sprintf("warpop: %g at command %g\n", op, input_cmd_sequence_hi * 65536 + input_cmd_sequence_lo));
@@ -268,6 +271,13 @@ void(entity e) SV_WarpOpPublish =
 	SV_WarpOpDest(e, "!m", 0);
 	e.wop_morg = wop_dorg;
 	e.wop_mang = wop_dang;
-	if (moved || time - e.wop_legt >= 5 || time < e.wop_legt)
+	// Up to 46 destinations, each a find and traces: at most once a second even
+	// for a client that changes the signature every command.
+	if (moved || strcmp(wop_legcrc, zone_crc) || wop_legcount != zone_count)
+		e.wop_legdue = TRUE;
+	if ((e.wop_legdue && time - e.wop_legt >= 1) || time - e.wop_legt >= 5 || time < e.wop_legt)
+	{
+		e.wop_legdue = FALSE;
 		SV_WarpOpLegs(e);
+	}
 };

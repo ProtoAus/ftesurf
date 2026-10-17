@@ -498,6 +498,8 @@
 // each: stages 1-8, 9-16, 17-24, 25-30, then bonuses 1-8, 9-16.
 #define STAT_FS_WOPLEGS        171  // .. 176
 #define WOPLEG_CHUNKS          6
+#define STAT_FS_WOPACK         177  // the last op's command, sent with what it moved
+#define SL_TOKRATE             20   // sl_ commands a second, burst and sustained (SV_SaveLocRate)
 #define WOPD_NONE  0                // no prediction: the server would refuse or cannot say
 #define WOPD_KEEP  1                // destination, angles kept
 #define WOPD_ANG   2                // destination and angles

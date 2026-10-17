@@ -54,9 +54,10 @@ float  wop_relat;
 vector *wop_legorg;
 vector *wop_legang;             // pitch, yaw, WOPD_* (WOPD_NONE: no answer)
 string wop_legsrc;              // the six strings they were parsed from
-// Steps pressed while a load or step is unanswered, in order (WarpOp_Frame).
-float  wop_defer[4];
-float  wop_defern, wop_defert;
+float  *wop_blind;              // Patch 759: sent unpredicted (its row was not published)
+float  wop_slot;                // the slot WarpOp_Queue just filled
+vector wop_tgorg, wop_tgang, wop_tgvel;   // WarpOp_Row's answer: origin, pitch/yaw/duck, speed
+float  wop_tok, wop_tokt;       // SV_SaveLocRate's bucket, mirrored
 
 void() WarpOp_RegisterCvars =
 {
@@ -85,6 +86,7 @@ float() WarpOp_Able =
 		wop_org  = memalloc(sizeof(vector) * WOP_RING);
 		wop_vel  = memalloc(sizeof(vector) * WOP_RING);
 		wop_ang  = memalloc(sizeof(vector) * WOP_RING);
+		wop_blind = memalloc(sizeof(float) * WOP_RING);
 	}
 	return TRUE;
 };
@@ -117,6 +119,117 @@ float(float op, vector org, vector vel, vector ang, float duck) WarpOp_Queue =
 	wop_ang[i]  = ang;
 	wop_duck[i] = duck;
 	wop_qt[i]   = cltime;
+	wop_blind[i] = FALSE;
+	wop_slot = i;
+	return TRUE;
+};
+
+// Patch 759: an op the server has not answered -- STAT_FS_WOPACK (which arrives
+// with the rows the op moved) has not reached its command, and it is not so old
+// that the server must have dropped it.
+float(float i) WarpOp_Unanswered =
+{
+	if (wop_seq[i] == -1)
+		return TRUE;
+	if (wop_seq[i] <= 0)
+		return FALSE;
+	return (wop_seq[i] > getstatf(STAT_FS_WOPACK) && wop_seq[i] + 64 > servercommandframe);
+};
+
+// A load or step still unanswered: the cursor stats are from before it.
+float() WarpOp_ListBusy =
+{
+	local float i, op;
+
+	if (!wop_seq)
+		return FALSE;
+	for (i = 0; i < WOP_RING; i = i + 1)
+	{
+		op = wop_op[i];
+		if (op == WOP_LOAD || (op >= WOP_NEXT && op <= WOP_LAST))
+		if (WarpOp_Unanswered(i))
+			return TRUE;
+	}
+	return FALSE;
+};
+
+// SV_SaveLocStep/First/Last's cursor arithmetic.
+float(float op, float idx, float cnt) WarpOp_StepIdx =
+{
+	if (op == WOP_NEXT)
+		return (idx < cnt) ? idx + 1 : 1;
+	if (op == WOP_PREV)
+		return (idx > 1) ? idx - 1 : cnt;
+	if (op == WOP_FIRST)
+		return 1;
+	if (op == WOP_LAST)
+		return cnt;
+	return idx;                         // WOP_LOAD: the cursor row
+};
+
+/*
+  The row a load or step lands on, after every load and step still unanswered,
+  into wop_tgorg/tgang/tgvel.  FALSE when it is not one the server published for
+  this cursor (the row itself, next, prev, first or last): send it unpredicted.
+*/
+float(float op) WarpOp_Row =
+{
+	local float cnt, i0, idx, i, j, bq, b;
+
+	cnt = getstatf(STAT_FS_SAVECOUNT);
+	i0 = getstatf(STAT_FS_SAVEINDEX);
+	if (cnt < 1 || i0 < 1 || i0 > cnt)
+		return FALSE;
+	idx = i0;
+	bq = 0;
+	while (TRUE)
+	{
+		j = -1;
+		for (i = 0; i < WOP_RING; i = i + 1)
+			if (wop_op[i] == WOP_LOAD || (wop_op[i] >= WOP_NEXT && wop_op[i] <= WOP_LAST))
+			if (wop_q[i] > bq && WarpOp_Unanswered(i))
+			if (j < 0 || wop_q[i] < wop_q[j])
+				j = i;
+		if (j < 0)
+			break;
+		idx = WarpOp_StepIdx(wop_op[j], idx, cnt);
+		bq = wop_q[j];
+	}
+	idx = WarpOp_StepIdx(op, idx, cnt);
+	if (idx == i0)
+	{
+		wop_tgorg = [getstatf(STAT_FS_SLORG), getstatf(STAT_FS_SLORG + 1), getstatf(STAT_FS_SLORG + 2)];
+		wop_tgang = [getstatf(STAT_FS_SLANG), getstatf(STAT_FS_SLANG + 1), getstatf(STAT_FS_SLANG + 2)];
+		wop_tgvel = [getstatf(STAT_FS_SLVEL), getstatf(STAT_FS_SLVEL + 1), getstatf(STAT_FS_SLVEL + 2)];
+		return (wop_tgorg != '0 0 0');
+	}
+	if (idx == WarpOp_StepIdx(WOP_NEXT, i0, cnt))
+		b = 0;
+	else if (idx == WarpOp_StepIdx(WOP_PREV, i0, cnt))
+		b = 1;
+	else if (idx == 1)
+		b = 2;
+	else if (idx == cnt)
+		b = 3;
+	else
+		return FALSE;
+	b = STAT_FS_WOPROW + WOPROW_STRIDE * b;
+	wop_tgorg = [getstatf(b), getstatf(b + 1), getstatf(b + 2)];
+	wop_tgang = [getstatf(b + 3), getstatf(b + 4), getstatf(b + 5)];
+	wop_tgvel = [getstatf(b + 6), getstatf(b + 7), getstatf(b + 8)];
+	return (wop_tgorg != '0 0 0');
+};
+
+// One charge of SV_SaveLocRate's bucket; FALSE when the server would refuse.
+float() WarpOp_Charge =
+{
+	if (cltime < wop_tokt)
+		wop_tokt = cltime;
+	wop_tok = min(SL_TOKRATE, wop_tok + (cltime - wop_tokt) * SL_TOKRATE);
+	wop_tokt = cltime;
+	if (wop_tok < 1)
+		return FALSE;
+	wop_tok = wop_tok - 1;
 	return TRUE;
 };
 
@@ -197,35 +310,10 @@ float(float op) WarpOp_Reset =
 	return WarpOp_Queue(op, org, '0 0 0', ang, 0);
 };
 
-// Patch 759: the newest load or step the server has not answered (its ring slot),
-// or -1.  While there is one, the cursor rows on the stats are from before it.
-float() WarpOp_ListLast =
-{
-	local float i, op, best, bq;
-
-	best = -1;
-	bq = 0;
-	if (!wop_seq)
-		return -1;
-	for (i = 0; i < WOP_RING; i = i + 1)
-	{
-		op = wop_op[i];
-		if (op == WOP_LOAD || (op >= WOP_NEXT && op <= WOP_LAST))
-		if (wop_seq[i] == -1 || wop_seq[i] > servercommandframe)
-		if (wop_q[i] > bq)
-		{
-			best = i;
-			bq = wop_q[i];
-		}
-	}
-	return best;
-};
-
 // The load key's sl_load + sl_hold.  Same gates as SaveLoc_PredictLoad's camera.
 float() WarpOp_Load =
 {
-	local vector org, ang, a;
-	local float relpending, j;
+	local float relpending, blind;
 
 	// A release still in flight is ordered before this load (both ride commands);
 	// otherwise a hold the server still reports is not ours to stack on.
@@ -240,96 +328,69 @@ float() WarpOp_Load =
 		return FALSE;                   // a list command is in flight: the row may be stale
 	if (getstatf(STAT_FS_SAVECOUNT) < 1 || getstatf(STAT_FS_SAVEINDEX) < 1)
 		return FALSE;
-	j = WarpOp_ListLast();
-	if (j >= 0)
-	{
-		// Patch 759: the cursor is the row that load or step put it on.
-		org = wop_org[j];
-		a = wop_ang[j];
-		ang = [a_x, a_y, wop_duck[j]];
-		wop_loadvel = wop_vel[j];
-	}
-	else
-	{
-		org = [getstatf(STAT_FS_SLORG), getstatf(STAT_FS_SLORG + 1), getstatf(STAT_FS_SLORG + 2)];
-		ang = [getstatf(STAT_FS_SLANG), getstatf(STAT_FS_SLANG + 1), getstatf(STAT_FS_SLANG + 2)];
-		wop_loadvel = [getstatf(STAT_FS_SLVEL), getstatf(STAT_FS_SLVEL + 1), getstatf(STAT_FS_SLVEL + 2)];
-	}
-	if (org == '0 0 0')
+	// Patch 759: after any load or step still unanswered.  Sent in order either
+	// way; unpredicted (blind) when its row is not published or the server's
+	// bucket would refuse it, and the server's answer corrects it as before.
+	blind = !WarpOp_Row(WOP_LOAD);
+	if (!WarpOp_Charge())
+		blind = TRUE;
+	if (!WarpOp_Queue(WOP_LOAD, wop_tgorg, wop_tgvel, [wop_tgang_x, wop_tgang_y, !blind], wop_tgang_z))
 		return FALSE;
-	if (!WarpOp_Queue(WOP_LOAD, org, wop_loadvel, [ang_x, ang_y, 1], ang_z))
-		return FALSE;
+	wop_blind[wop_slot] = blind;
+	wop_loadvel = wop_tgvel;
 	wop_loadseq = -1;
 	wop_loadackat = 0;
-	// The hold's view lock keeps the save's aim from the first frame.
-	rec_sl_holdang = [ang_x, ang_y, 0];
-	rec_sl_holdang_ok = TRUE;
+	if (!blind)
+	{
+		// The hold's view lock keeps the save's aim from the first frame.
+		rec_sl_holdang = [wop_tgang_x, wop_tgang_y, 0];
+		rec_sl_holdang_ok = TRUE;
+	}
 	return TRUE;
 };
 
-string(float op) WarpOp_StepCmd =
+/*
+  Patch 759: 3/4/5/6 at one command -- SV_SaveLocStep/First/Last.  Every press is
+  sent at once, in order; it is predicted when its row (WarpOp_Row) is published
+  and the server's bucket has a charge, else blind.  A key's auto-repeat (rep)
+  waits for the last step's answer and is dropped rather than sent blind.
+  FALSE: send the stringcmd.
+*/
+float(float op, float rep) WarpOp_Step =
 {
-	if (op == WOP_PREV)
-		return "sl_prev";
-	if (op == WOP_FIRST)
-		return "sl_first";
-	if (op == WOP_LAST)
-		return "sl_last";
-	return "sl_next";
-};
-
-// Patch 759: 3/4/5/6 at one command -- SV_SaveLocStep/First/Last on the row the
-// server published for this cursor (STAT_FS_WOPROW).  FALSE: send the stringcmd.
-float(float op) WarpOp_StepNow =
-{
-	local float b;
-	local vector org, ang, vel;
+	local float blind;
 
 	if (!WarpOp_Able() || Trail_RequestBusy())
 		return FALSE;
 	SaveLoc_Resync();
 	if (rec_sl_sent != getstatf(STAT_FS_SLACK))
 		return FALSE;
-	if (WarpOp_ListLast() >= 0)
-		return FALSE;
 	if (getstatf(STAT_FS_SAVECOUNT) < 1 || getstatf(STAT_FS_SAVEINDEX) < 1)
 		return FALSE;
-	b = STAT_FS_WOPROW + WOPROW_STRIDE * (op - WOP_NEXT);
-	org = [getstatf(b), getstatf(b + 1), getstatf(b + 2)];
-	if (org == '0 0 0')
-		return FALSE;                   // a server before Patch 759
-	ang = [getstatf(b + 3), getstatf(b + 4), getstatf(b + 5)];
-	vel = [getstatf(b + 6), getstatf(b + 7), getstatf(b + 8)];
-	if (!WarpOp_Queue(op, org, vel, [ang_x, ang_y, 1], ang_z))
+	if (rep)
+	if (WarpOp_ListBusy())
+		return TRUE;
+	blind = !WarpOp_Row(op);
+	if (rep && blind)
+		return TRUE;
+	if (!WarpOp_Charge())
+	{
+		if (rep)
+			return TRUE;
+		blind = TRUE;
+	}
+	if (!WarpOp_Queue(op, wop_tgorg, wop_tgvel, [wop_tgang_x, wop_tgang_y, !blind], wop_tgang_z))
 		return FALSE;
+	wop_blind[wop_slot] = blind;
+	if (!blind)
 	if (rec_sl_holding)
 	{
 		// The hold's view lock and its release speed follow the row.
-		rec_sl_holdang = [ang_x, ang_y, 0];
+		rec_sl_holdang = [wop_tgang_x, wop_tgang_y, 0];
 		rec_sl_holdang_ok = TRUE;
-		wop_loadvel = vel;
+		wop_loadvel = wop_tgvel;
 	}
 	return TRUE;
-};
-
-// A step pressed while another load or step is unanswered waits for it: its row
-// is not on the stats until then, and a stringcmd sent now could run first.
-float(float op) WarpOp_Step =
-{
-	if (wop_defern > 0 || WarpOp_ListLast() >= 0)
-	{
-		if (!WarpOp_Able())
-			return FALSE;
-		if (wop_defern < 4)
-		{
-			if (!wop_defern)
-				wop_defert = cltime;
-			wop_defer[wop_defern] = op;
-			wop_defern = wop_defern + 1;
-		}
-		return TRUE;
-	}
-	return WarpOp_StepNow(op);
 };
 
 // Letting go of a predicted hold.  The speed is the held row's, once the server
@@ -340,7 +401,7 @@ float() WarpOp_Release =
 
 	v = wop_loadvel;
 	if (getstatf(STAT_FS_HOLD))
-	if (WarpOp_ListLast() < 0)
+	if (!WarpOp_ListBusy())
 		v = [getstatf(STAT_FS_HOLDVEL), getstatf(STAT_FS_HOLDVEL + 1), getstatf(STAT_FS_HOLDVEL + 2)];
 	if (!wop_seq)
 		return FALSE;
@@ -379,8 +440,8 @@ void() WarpOp_Frame =
 					localcmd(sprintf("cmd say \"!b %g\"\n", op - WOP_BONUS1 + 1));
 				else if (op >= WOP_STAGE1)
 					localcmd(sprintf("cmd say \"!s %g\"\n", op - WOP_STAGE1 + 1));
-				else if (op >= WOP_NEXT)
-					SaveLoc_Cmd(WarpOp_StepCmd(op));
+				// A step is dropped: the replay, rewind or spectate that stopped the
+				// commands is a state its load would end.
 				else if (op == WOP_LOAD && rec_sl_wophold)
 				{
 					rec_sl_wophold = FALSE;
@@ -393,22 +454,6 @@ void() WarpOp_Frame =
 						SaveLoc_Cmd("sl_holdoff");
 				}
 			}
-
-	// Patch 759: the next waiting step, once nothing ahead of it is unanswered
-	// (or after 1 s, as the stringcmd).
-	if (wop_defern > 0)
-	if (WarpOp_ListLast() < 0 || cltime - wop_defert > 1 || cltime < wop_defert)
-	{
-		op = wop_defer[0];
-		for (i = 1; i < wop_defern; i = i + 1)
-			wop_defer[i - 1] = wop_defer[i];
-		wop_defern = wop_defern - 1;
-		wop_defert = cltime;
-		if (WarpOp_ListLast() >= 0)
-			SaveLoc_Cmd(WarpOp_StepCmd(op));
-		else if (!WarpOp_StepNow(op))
-			SaveLoc_Cmd(WarpOp_StepCmd(op));
-	}
 
 	if (wop_relseq <= 0 || servercommandframe < wop_relseq)
 		return;
@@ -479,6 +524,8 @@ void() WarpOp_InputFrame =
 // The server's body for op `op` (ring slot i), at the first piece of its command.
 void(float op, float i) WarpOp_Apply =
 {
+	if (wop_blind[i])
+		return;
 	if (op == WOP_RESET || op == WOP_SPAWN || op >= WOP_STAGE1)
 	{
 		// SV_ZoneMoveAt: origin, speed zero, carrier cleared, ground and duck kept.

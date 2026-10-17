@@ -278,13 +278,19 @@ def main():
                 cl.send('-forward'); time.sleep(0.8)
             moving_save(); walk(0.7)
             moving_save(); walk(0.7)
-            # Rows: 1 the ducked air save, 2 and 3 these; the cursor is on 3.
+            moving_save(); walk(0.7)
+            # Rows: 1 the ducked air save, 2-4 these; the cursor is on 4.  From row 1
+            # the server publishes 1, 2 (next), 4 (prev, last): row 3 is not.
             more['hold'] = window('hold', lambda: cl.send('+sl_hold'))
             for tag, cmd in (('held-prev', 'sl_prev'), ('held-first', 'sl_first'),
                              ('held-last', 'sl_last'), ('held-next', 'sl_next'),
-                             ('held-next2', 'sl_next; sl_next')):
+                             ('held-chain', 'sl_next; sl_prev'),
+                             # 2, then 3 (not published from row 1: blind), then 4.
+                             ('held-blindpast', 'sl_next; sl_next; sl_next'),
+                             # From 4: 1, then 2 and 3, both blind, the last left standing.
+                             ('held-blind', 'sl_first; sl_next; sl_next')):
                 more[tag] = window(tag, lambda c=cmd: cl.send(c), settle=1.2)
-            # The double tap ends on row 3 (1 -> 2 -> 3): released at its speed.
+            # Ends on row 3: released at its speed.
             more['release'] = window('release', lambda: cl.send('-sl_hold'), settle=2.0)
             walk()
             more['free-prev'] = window('free-prev', lambda: cl.send('sl_prev'), settle=2.0)
@@ -319,17 +325,21 @@ def main():
         if more:
             want = {'stage2': ['210'], 'bonus1': ['239'], 'hold': ['203'], 'held-prev': ['206'],
                     'held-first': ['207'], 'held-last': ['208'], 'held-next': ['205'],
-                    'held-next2': ['205', '205'], 'release': ['204'], 'free-prev': ['206']}
+                    'held-chain': ['205', '206'], 'held-blindpast': ['205', '205', '205'],
+                    'held-blind': ['207', '205', '205'],
+                    'release': ['204'], 'free-prev': ['206']}
             check([s for s, _ in more['stage2']['said']] == ['!s'] and [s for s, _ in more['bonus1']['said']] == ['!b'],
                   'the server teleported for !s 2 and !b 1')
-            held = ('held-prev', 'held-first', 'held-last', 'held-next', 'held-next2')
-            if a.hold_engine:
-                check([r for w in held for r in more[w]['rows']] == ['2', '1', '3', '1', '2', '3'],
-                      'the held steps loaded rows 2, 1, 3, 1, 2, 3')
-            else:
-                # Two stringcmd loads in one snapshot show the client only the second.
-                check([more[w]['rows'][-1:] for w in held] == [['2'], ['1'], ['3'], ['1'], ['3']],
-                      'the held steps ended on rows 2, 1, 3, 1, 3')
+            held = ('held-prev', 'held-first', 'held-last', 'held-next', 'held-chain',
+                    'held-blindpast', 'held-blind')
+            path = [['3'], ['1'], ['4'], ['1'], ['2', '1'], ['2', '3', '4'], ['1', '2', '3']]
+
+            def along(seen, rows):
+                # Loads in one server frame show the client only the last event.
+                it = iter(rows)
+                return bool(seen) and seen[-1] == rows[-1] and all(r in it for r in seen)
+            check(all(along(more[w]['rows'], p) for w, p in zip(held, path)),
+                  'the held steps landed in order on 3; 1; 4; 1; 2, 1; 2, 3, 4; 1, 2, 3')
             check(more['free-prev']['rows'] == ['2'], 'the free step loaded row 2')
             if a.control or a.threaded:
                 for tag, ww in more.items():
@@ -349,6 +359,13 @@ def main():
                 for tag, ww in more.items():
                     if tag == 'release' and not a.hold_engine:
                         print(f'note: release prederr on this engine: {ww["prederr"]}', flush=True)
+                    elif tag == 'held-blindpast':
+                        # A blind step one command before a predicted one: the meter
+                        # samples one frame a pass and may not see it.
+                        print(f'note: held-blindpast prederr: {ww["prederr"]}', flush=True)
+                    elif tag == 'held-blind' and a.hold_engine:
+                        # The last step is blind, so the server's answer corrects it.
+                        check(len(ww['prederr']) >= 1, f'held-blind: the blind step is corrected ({ww["prederr"]})')
                     else:
                         check(not ww['prederr'], f'{tag}: no prederr')
     finally:
