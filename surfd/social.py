@@ -87,12 +87,18 @@ def pair(a, b):
     return tuple(sorted((a, b)))
 
 
+def rel_of(row, me):
+    # 1 sent / 2 received (pre-P770 requests), 3 friends; P770 block rows have
+    # accepted -1 and asker the blocker: 4 blocked by me, 5 blocked by them.
+    if row["accepted"] < 0:
+        return 4 if row["asker"] == me else 5
+    return 3 if row["accepted"] else (1 if row["asker"] == me else 2)
+
+
 def relation(db, a, b):
     row = db.execute("SELECT asker,accepted FROM social_friends WHERE lo=? AND hi=?",
                      pair(a, b)).fetchone()
-    if not row:
-        return 0
-    return 3 if row["accepted"] else (1 if row["asker"] == a else 2)
+    return rel_of(row, a) if row else 0
 
 
 def resolve(db, mark, owner=None):
@@ -132,12 +138,15 @@ def friend_rows(db, sid, now, lobby_ttl):
         other = r["hi"] if r["lo"] == sid else r["lo"]
         account = db.execute("SELECT name,banned_at FROM accounts WHERE steamid=?", (other,)).fetchone()
         available = account is not None and not account["banned_at"]
-        rel = 3 if r["accepted"] else (1 if r["asker"] == sid else 2)
+        rel = rel_of(r, sid)
+        if rel == 5:
+            continue                # being blocked is not shown
         live = presence(db, other, now, lobby_ttl) if rel == 3 and available else {
             "online": 0, "addr": "", "server": "", "map": ""}
         rows.append(dict(who=accounts.who_of(other), name=accounts.game_name(account["name"]) if available else "Unavailable account",
                          relation=rel, **live))
-    return sorted(rows, key=lambda r: (-r["relation"], -r["online"], r["name"].casefold(), r["who"]))
+    return sorted(rows, key=lambda r: (r["relation"] == 4, -r["relation"], -r["online"],
+                                       r["name"].casefold(), r["who"]))
 
 
 def register(app, d):
@@ -240,7 +249,9 @@ def register(app, d):
                 if not d.rate_ok(sid, now, 20, "social-menu-account"):
                     return reply({"ok": 0, "error": "Friends: try again shortly"}, 429)
                 if op == "list":
-                    return reply({"ok": 1, "friends": friend_rows(db, sid, now, d.lobby_ttl)})
+                    # Menus before P770 refuse a list holding relation 4.
+                    rows = [r for r in friend_rows(db, sid, now, d.lobby_ttl) if r["relation"] <= 3]
+                    return reply({"ok": 1, "friends": rows})
                 other = resolve(db, who)
                 if not other or relation(db, sid, other) != 3:
                     return reply({"ok": 0, "error": "Add them as a friend first"}, 403)
@@ -334,7 +345,7 @@ def register(app, d):
         db = d.get_db()
         token = request.form.get("token", "")
         op = request.form.get("op", "")
-        if op not in ("add", "accept", "remove", "message", "join"):
+        if op not in ("add", "accept", "remove", "message", "join", "block", "unblock"):
             return reply({"ok": 0, "error": "bad action"}, 400)
         try:
             with db:
@@ -345,7 +356,7 @@ def register(app, d):
                 sid = s["steamid"]
                 if not d.rate_ok(sid, now, 20, "social-action"):
                     return reply({"ok": 0, "error": "Slow down; try again shortly"}, 429)
-                other = resolve(db, request.form.get("who", ""), sid if op == "remove" else None)
+                other = resolve(db, request.form.get("who", ""), sid if op in ("remove", "unblock") else None)
                 if not other or other == sid:
                     return reply({"ok": 0, "error": "That Steam account is unavailable"}, 400)
                 rel = relation(db, sid, other)
@@ -354,6 +365,10 @@ def register(app, d):
                     # P770: no requests. Add makes both accounts friends at once.
                     if rel == 3:
                         return reply({"ok": 0, "error": "You are already friends"}, 409)
+                    if rel == 4:
+                        return reply({"ok": 0, "error": "Unblock them first"}, 409)
+                    if rel == 5:
+                        return reply({"ok": 0, "error": "Could not add that player"}, 409)
                     if rel:
                         db.execute("UPDATE social_friends SET accepted=1 WHERE lo=? AND hi=?", (lo, hi))
                     else:
@@ -371,10 +386,32 @@ def register(app, d):
                     db.execute("UPDATE social_friends SET accepted=1 WHERE lo=? AND hi=?", (lo, hi))
                     note = "Friend request accepted"
                 elif op == "remove":
-                    db.execute("DELETE FROM social_friends WHERE lo=? AND hi=?", (lo, hi))
+                    if rel != 5:            # their block is theirs to lift
+                        db.execute("DELETE FROM social_friends WHERE lo=? AND hi=?", (lo, hi))
                     db.execute("DELETE FROM social_messages WHERE (sender=? AND recipient=?) OR"
                                " (sender=? AND recipient=?)", (sid, other, other, sid))
                     note = "Friend / request removed"
+                elif op == "block":
+                    # With no acceptance, Block is how an account refuses one:
+                    # it ends a friendship and refuses their add and messages.
+                    if rel in (1, 2, 3):
+                        db.execute("UPDATE social_friends SET asker=?,accepted=-1 WHERE lo=? AND hi=?",
+                                   (sid, lo, hi))
+                    elif rel == 0:
+                        n = db.execute("SELECT COUNT(*) FROM social_friends WHERE lo=? OR hi=?",
+                                       (sid, sid)).fetchone()[0]
+                        if n >= MAX_FRIENDS:
+                            return reply({"ok": 0, "error": "Friends list is full"}, 409)
+                        db.execute("INSERT INTO social_friends(lo,hi,asker,accepted) VALUES(?,?,?,-1)",
+                                   (lo, hi, sid))
+                    db.execute("DELETE FROM social_messages WHERE (sender=? AND recipient=?) OR"
+                               " (sender=? AND recipient=?)", (sid, other, other, sid))
+                    note = "Blocked: they cannot add or message you"
+                elif op == "unblock":
+                    if rel != 4:
+                        return reply({"ok": 0, "error": "Not blocked"}, 409)
+                    db.execute("DELETE FROM social_friends WHERE lo=? AND hi=?", (lo, hi))
+                    note = "Unblocked"
                 else:
                     if rel != 3:
                         return reply({"ok": 0, "error": "Add them as a friend first"}, 403)

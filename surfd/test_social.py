@@ -123,6 +123,38 @@ class Friends(unittest.TestCase):
         self.assertEqual((rows[0]["friends"][0]["relation"], rows[1]["friends"][0]["relation"]), (3, 3))
         self.assertEqual(self.db.execute("SELECT count(*) FROM social_friends WHERE accepted=0").fetchone()[0], 0)
 
+    def test_block_ends_friendship_refuses_add_and_messages_and_is_hidden(self):
+        self.befriend(); self.poll()
+        self.assertEqual(self.action(1, "block", 0).status_code, 200)
+        rows = self.poll()
+        self.assertEqual(rows[0]["friends"], [])                      # Alice no longer sees Bob
+        self.assertEqual((rows[1]["friends"][0]["relation"], rows[1]["friends"][0]["online"]), (4, 0))
+        self.assertEqual(self.action(0, "add").status_code, 409)
+        self.assertEqual(self.action(0, "message", text="hello?").status_code, 403)
+        self.assertEqual(self.action(0, "join").status_code, 403)
+        self.assertEqual(self.action(0, "remove").status_code, 200)   # cannot lift Bob's block
+        self.assertEqual(self.action(0, "add").status_code, 409)
+        self.assertEqual(self.action(1, "add", 0).status_code, 409)   # unblock first
+        self.assertEqual(self.poll()[1]["friends"][0]["relation"], 4)  # a poll does not convert it
+        self.assertEqual(self.action(0, "unblock").status_code, 409)
+        self.assertEqual(self.action(1, "unblock", 0).status_code, 200)
+        self.assertEqual(self.poll()[1]["friends"], [])
+        self.assertEqual(self.action(0, "add").status_code, 200)
+
+    def test_block_purges_queued_messages_and_a_stranger_can_be_blocked(self):
+        self.befriend(); self.poll()
+        self.assertEqual(self.action(0, "message", text="queued").status_code, 200)
+        self.assertEqual(self.action(1, "block", 0).status_code, 200)
+        self.assertEqual(self.poll()[1]["messages"], [])
+        self.assertEqual(self.action(2, "block", 0).status_code, 200)  # never friends
+        self.assertEqual(self.action(0, "add", 2).status_code, 409)
+        self.assertEqual([r["relation"] for r in self.poll()[2]["friends"]], [4])
+
+    def test_menu_list_omits_my_blocks_for_older_menus(self):
+        self.assertEqual(self.action(0, "block").status_code, 200)
+        self.poll()
+        self.assertEqual(self.menu_read(self.menu_form())["friends"], [])
+
     def test_copied_key_connections_do_not_revoke_each_other(self):
         copied = self.hello(1, nonce="bc" * 16)["social"]
         self.tokens.append(copied)
