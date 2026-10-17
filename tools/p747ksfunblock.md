@@ -68,3 +68,23 @@ for a style with no records (8 such pages), so an FW-only player is not ended
 First tick after the interim, 04:01Z: 8 requests, 6 board pages, 202 rows, no
 park; `KSF demos: 2 request(s), 2 linked`. The first linked KSF replays:
 surf_004_fix and surf_1024, main FW.
+
+## Why most advertised demos still cannot link (measured 2026-10-17)
+
+Every advertised demo on surf_monolith (91), surf_prosurf (38) and surf_null
+(59) matched our row's time and date, yet `current()` refused all of them: each
+row had `runid=''` and a `ksf_unbound` marker. The schema20 migration marks
+older KSF rows unbound, and only a board page fetched FRESH re-files a record
+with its ID and lifts the marker. The crawler re-asks a first page every
+`REFRESH_DAYS` (14) and walks deeper ranks again every `REWALK_DAYS` (60), so
+until then most maps' demos are not eligible, whatever the demo lane does.
+
+Owner-requested one-off, 05:2xZ, under the crawler lock through the live
+admitted code: page 1 of the 32 main/bonus boards of those three maps that
+advertise a demo was re-asked (`board_page(top=True)`) and filed as a tick
+files it: 411 rows set, 137 demos eligible. Downloads 10 s apart: 19 asked, 14
+linked on surf_monolith (main FW 5, HSW 3, SW 1, BW 1; bonus 1 FW 4), 4 refused
+by the converter ("public time differs from bookmark interval by over one CSS
+tick", all four monolith main styles), then one demo answered HTTP 500 and the
+host was parked 6 h as the crawler would. That demo and a board answered 200
+minutes later, so the 500 was transient. Script and log: owned Pi scratch.

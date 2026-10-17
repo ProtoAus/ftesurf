@@ -76,6 +76,12 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   eligible, unwanted maps get no download; an evicted cold job returns only on
   the next full rotation (~242 ticks). In a host-wide 500 outage the board
   asked after a swallowed profile 500 takes the strike the profile used to.
+- Most advertised demos cannot link until their board page is re-read FRESH:
+  rows filed before schema20 carry `ksf_unbound` (measured: 91/91 on
+  surf_monolith). First pages refresh every 14 days, deeper ranks every 60.
+  Falsifier for a fix: a viewed map's boards that advertise demos are re-asked
+  within a day, and `current()` then holds for their advertised rows. A
+  by-hand refresh of three maps is in tools/p747ksfunblock.md.
 
 ## reccheck's default sweep stops at one unreadable file (P740)
 
