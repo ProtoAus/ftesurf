@@ -8,9 +8,12 @@ free, realloc and forged-header sequences run on a hunk of random words, a third
 tempstring references. After each step the marks both paths set are compared with an oracle: a
 plain word scan of the whole hunk that leaves out only the ranges an independent model says are
 registered. No game, deployment or data access. --out must be under an owned task root.
-Controls: without the drop in PR_memfree, a freed block's reuse is still skipped (marks_ok); with
-skips not cut to whole words, a forged odd-sized block shifts the words read (marks_ok); with
-insertion unsorted, the stretches overlap (marks_ok).
+The model restates the registration rules (an aligned header wholly inside the hunk, the used
+marker, a size inside the hunk), so it checks the bookkeeping and the reads, not the rules.
+Controls, each failing marks_ok: without the drop in PR_memfree a freed block's reuse is still
+skipped; dropping only registrations that START in the freed block keeps a forged one from the
+globals over it (review round 1); skips not cut to whole words shift the words read; unsorted
+insertion overlaps the stretches.
 """
 import argparse
 import os
@@ -85,7 +88,8 @@ typedef struct {unsigned int hdr, size;} blk_t;	// header offset, the header's s
 static blk_t blks[2048]; static int nblks;
 typedef struct {unsigned int s, e;} rng_t;		// the model of the engine's table
 static rng_t mr[512]; static int nmr;
-static long regs, dups, fulls, rejects, forged, drops, frees, reallocs, checks, skipbytes, refs_skipped;
+static long regs, dups, fulls, rejects, forged, drops, frees, reallocs, checks, skipbytes, refs_skipped, forged_globals;
+static unsigned int globals;
 static int fail(const char *what) {fprintf(stderr, "FAIL %s (seed %u, check %ld)\n", what, seed0, checks); exit(1);}
 
 static void fill(char *p, size_t n)
@@ -101,7 +105,7 @@ static void fill(char *p, size_t n)
 static int model_register(unsigned int hdr)
 {	// the promise's rules restated: an aligned in-hunk header, its marker, a size inside the hunk
 	unsigned int marker, size, s = hdr + 8; int i;
-	if (hdr >= pf->inst.addressableused || (hdr & 3)) return 0;
+	if ((size_t)hdr + 8 > pf->inst.addressableused || (hdr & 3)) return 0;
 	memcpy(&marker, pf->inst.addressablehunk + hdr, 4); memcpy(&size, pf->inst.addressablehunk + hdr + 4, 4);
 	if (marker != 0xC2A4F5A6u || size <= 8 || (size_t)hdr + size > pf->inst.addressableused) return 0;
 	for (i = 0; i < nmr; i++) if (mr[i].s == s) return 2;
@@ -110,9 +114,9 @@ static int model_register(unsigned int hdr)
 	return 1;
 }
 static void model_drop(unsigned int hdr, unsigned int size)
-{
+{	// a free forgets every registration overlapping the block, forged ones over it included
 	int i, o;
-	for (i = o = 0; i < nmr; i++) if (mr[i].s < hdr || mr[i].s >= hdr + size) mr[o++] = mr[i]; else drops++;
+	for (i = o = 0; i < nmr; i++) if (mr[i].e <= hdr || mr[i].s >= hdr + size) mr[o++] = mr[i]; else drops++;
 	nmr = o;
 }
 static void check(void)
@@ -156,7 +160,8 @@ static void trial(uint32_t seed, int steps)
 	pf->inst.addressablesize = HUNK;
 	pf->inst.maxtempstrings = NUMTEMPS;
 	nblks = nmr = 0;
-	fill(PRAddressableExtend(pf, NULL, 1000 + rnd() % 4000, 0), 1000);	// globals, fields
+	globals = 1000 + rnd() % 4000;
+	fill(PRAddressableExtend(pf, NULL, globals, 0), globals);	// globals, fields
 	check();
 	for (s = 0; s < steps; s++)
 	{
@@ -194,33 +199,36 @@ static void trial(uint32_t seed, int steps)
 			reallocs++;
 		}
 		else
-		{	// a forged header inside a block: any size, sometimes unaligned
+		{	// a forged header inside a block or in the globals (never freed, so its range can reach
+			// over later blocks): any size, sometimes unaligned
 			unsigned int at = blks[k].hdr + 8 + (rnd() % (blks[k].size > 24 ? blks[k].size - 16 : 1)), size = rnd() % 2 ? 9 + rnd() % 4000 : 0x7ffffff0u;
 			unsigned int marker = 0xC2A4F5A6u; int want, got;
+			if (rnd() % 3 == 0) at = rnd() % (globals - 8);
 			if (rnd() % 4) at &= ~3u;
-			if (at + 8 > blks[k].hdr + blks[k].size) continue;
+			if (at >= globals && at + 8 > blks[k].hdr + blks[k].size) continue;
 			memcpy(pf->inst.addressablehunk + at, &marker, 4); memcpy(pf->inst.addressablehunk + at + 4, &size, 4);
 			want = model_register(at);
 			got = PR_AddressableNoStrings(&pf->funcs, pf->funcs.stringtable + at + 8);
 			if (got != (want == 1 || want == 2)) fail("forged_ok");
 			forged += want == 1; rejects += want == 0; fulls += want == 3;
+			forged_globals += want == 1 && at < globals;
 		}
 		if (rnd() % 4 == 0) check();
 	}
 	for (i = 0; i < nblks; i++) model_drop(blks[i].hdr, blks[i].size), PR_memfree(&pf->funcs, pf->funcs.stringtable + blks[i].hdr + 8);
 	nblks = 0;
 	check();
-	if (pf->inst.numnostr) fail("empty_ok");
+	if (pf->inst.numnostr != (unsigned)nmr || nmr > forged_globals) fail("empty_ok");	// only globals forgeries may outlive the blocks
 }
 int main(void)
 {
 	uint32_t seed;
 	for (seed = 1; seed <= 40; seed++) trial(seed * 2654435761u, 3000);
 	if (errors) fail("errors_ok (allocator reports)");
-	if (!regs || !dups || !fulls || !rejects || !forged || !drops || !refs_skipped) fail("coverage_ok");
+	if (!regs || !dups || !fulls || !rejects || !forged || !forged_globals || !drops || !refs_skipped) fail("coverage_ok");
 	printf("PASS %ld checks: marks equal the oracle on both paths; %ld registered, %ld again, %ld refused full, "
-	       "%ld forged accepted, %ld refused, %ld dropped by %ld frees and %ld reallocs, %ld skipped refs\n",
-	       checks, regs, dups, fulls, forged, rejects, drops, frees, reallocs, refs_skipped);
+	       "%ld forged accepted (%ld in the globals), %ld refused, %ld dropped by %ld frees and %ld reallocs, %ld skipped refs\n",
+	       checks, regs, dups, fulls, forged, forged_globals, rejects, drops, frees, reallocs, refs_skipped);
 	return 0;
 }
 '''
@@ -262,14 +270,16 @@ def main():
     test = TEST.replace('SAMETHREAD\n', same).replace('THREADED\n', thr)
     code += test
     drop = '\tPR_NoStringsDrop(progfuncs, ptr, ptr + size);'
+    overlap = 'if (prinst.nostr_end[i] <= start || prinst.nostr_start[i] >= end)'
     words_s = 's = (prinst.nostr_start[i] + 3) & ~(size_t)3;'
     words_e = 'e = (prinst.nostr_end[i] < used ? prinst.nostr_end[i] : used) & ~(size_t)3;'
     sort = 'for (i = 0; i < prinst.numnostr && prinst.nostr_start[i] < start; i++)\n\t\t;\n'
-    for needle in (drop, words_s, words_e, sort):
+    for needle in (drop, overlap, words_s, words_e, sort):
         assert code.count(needle) == 1, needle
     arms = {
         'subject': code,
         'negative_drop': code.replace(drop, '\t(void)0;'),
+        'negative_overlap': code.replace(overlap, 'if (prinst.nostr_start[i] < start || prinst.nostr_start[i] >= end)'),
         'negative_words': code.replace(words_e, 'e = (prinst.nostr_end[i] < used ? prinst.nostr_end[i] : used);'),
         'negative_sort': code.replace(sort, 'i = prinst.numnostr;\n'
                                       '\tfor (unsigned int j = 0; j < prinst.numnostr; j++) if (prinst.nostr_start[j] == start) i = j;\n'),
