@@ -12,6 +12,9 @@ or the room list), first person, while they run a staged map:
 - Press ESC to come back: your own Segments column and Splits are as you left
   them (the trainer starts empty).
 
+Live on all 12 lobbies and both Windows installs since 2026-10-17T01:38Z (main
+`b4ab2c1`, csprogs `b7d751ee`, qwprogs `aca51849`; `.prev` is the P743 pair).
+
 "Panels show / look wrong at <panel>" is enough. Verdict PENDING. Measured:
 `tools/p744spec.py` (AGENT_NOTES, Spectator telemetry).
 
