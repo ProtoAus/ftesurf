@@ -1,5 +1,31 @@
 # AGENT_NOTES.md
 
+## Spectator telemetry (P744, 2026-10-17)
+
+- The watched body's HUD comes from the pose stream's watcher-only RUN (every
+  SPEC) and STATE (on change, forced once per new watcher in `Pose_Frame` via
+  `pb_kwatch`) blocks; grammar in the `sv_pose.qc` header. Change writer and
+  reader in one commit: a byte missed desyncs every later field of the entity.
+  Server and csprogs ship together (`-Pi`). `sv_csqcdebug 1` on a test server
+  makes the client print `CSQC overread/underread` for a size mismatch.
+- `run_boardnormal`/`run_boardvelocity` are the engine's shared pmove copied
+  after EVERY move (sv_user.c:8781), any client's last board included: read
+  them only on the move `run_boardcount` changed (`SV_RecBoard`, `pb_kbc`).
+- `Spec_Feed` feeds each drawn sample once, oldest first, on a tick clock.
+  `board_ov_spec` is a LIVE frame on another body's inputs, unlike the build
+  pass's `rec_wt_build` (no `seg_live_*`, and it calls `Watch_SeqRow`, which
+  writes replay-only memalloc'd arrays).
+- `force = tp || heldchg || (...)` was `(force = tp) || ...` from Patch 383 to
+  744. A watch-only publish now goes to watchers alone (`Pose_Publish`'s
+  `watch`); every other viewer keeps its gap and keepalive.
+- Falsifier `tools/p744spec.py` (`--control` for a build without the patch,
+  `--client`/`--plugin` for an older engine): grades `spectate status`,
+  `trainer status`, `boarding`, `timer` and `body_trace`, the Watcher's against
+  the Surfer's own and the Bystander's. Keep its gestures off map teleports and
+  release keys before a `setpos`: after the ramp-end teleport the server ran no
+  move ticks for 0.7 s while the Surfer's prediction landed, and a release sent
+  with `setpos` reached the server after it.
+
 ## P741 — disconnected Friends transport/VM boundary (2026-10-16)
 
 MENU `clientstate()` follows NetQuake:1 is disconnected,2 includes connecting;

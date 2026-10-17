@@ -1,5 +1,20 @@
 # lextest.md — things waiting on a human
 
+## P744 — spectating shows the other player's splits, segments, boarding and trainer
+
+Needs someone else on a lobby (or a second client). Spectate them (`!spec <name>`
+or the room list), first person, while they run a staged map:
+
+- The timer says `stage N/M` and the Splits column fills with THEIR stage and
+  checkpoint times as they cross. (On public lobbies there is no PB, so no +/-.)
+- Segments, Board and the Boarding window show their ramps and boards; the strafe
+  trainer shows their jumps. With `hud_board_sound` on you hear their perfect boards.
+- Press ESC to come back: your own Segments column and Splits are as you left
+  them (the trainer starts empty).
+
+"Panels show / look wrong at <panel>" is enough. Verdict PENDING. Measured:
+`tools/p744spec.py` (AGENT_NOTES, Spectator telemetry).
+
 ## P746 — the race ghost
 
 On by default (hud_edit -> **Ghost**). Offline, on a map you hold a PB for:

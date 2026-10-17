@@ -5,6 +5,24 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Spectator telemetry: what Patch 744 left out
+
+- Site: `src/client/cl_hud.qc` HUD_Draw. No strafe bar for a watched player: it
+  needs the ramp plane per frame and a wish direction from the keys and yaw.
+- Site: `src/server/sv_pose.qc` Pose_KQuant. STATE goes on change, so under loss
+  a split or board lands on a sample up to a round trip late (no corruption).
+  Check: `tools/p744spec.py` with `+set p383_vloss 0.05` on the Watcher.
+- Site: `src/client/cl_hud.qc` HUD_SplitSample / Seq rows. Absolute energy levels
+  in the Segments and Splits columns read from the watch's first height until the
+  watched body stands (mode 1); gains are unaffected.
+- After the ramp-end trigger_teleport on surf_kitsune (fails 1, into a stage
+  start) the server ran no move ticks for about 0.7 s and its ground flag stayed
+  off while the client's prediction landed (`artifacts/run5` in
+  `C:\FTESurf-worktrees\spechud-20261016T2340Z`, Watcher `bx` ticks 2168 -> 2197).
+  Not P744's; unexplained. Check: `body_trace` on a body sent there.
+- Developer only: a viewer with both `pb_watch` and `pb_dwatch` set is sent the
+  `pb_dwatch` target's SPEC, whose STATE is never forced (sv_pose.qc Pose_Frame).
+
 ## Race ghost: what Patch 746 left out
 
 - Site: `src/client/cl_raceghost.qc`. The body always stands (a line keeps no duck
