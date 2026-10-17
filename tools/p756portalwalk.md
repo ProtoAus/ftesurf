@@ -65,6 +65,24 @@ putting the feet exactly on the sill. Measured: with an exact landing (feet
   and walks out; tilted doors now keep mover 4's sweep (the plane would have made
   a pitched door's edge a ramp); the rest is in BACKLOG.
 
+## Delivery
+
+- Engine `469a69e46` on public main, tags `patch-748`, `patch-752`, `patch-756`
+  (code `99e69da32`, the built commit). Full build, the same 74 warning lines as
+  P743's, 0 new; shared dependency cache unchanged (`b35addf4...`).
+- Both Windows installs at 2026-10-17T07:05:26Z by the task root's `deploy.ps1
+  -Patch 756` (exclusive locks, backup, hash verify, rollback copies `.prev`);
+  receipt `delivery-p756/deployment.json`. No game process was stopped.
+
+| File | before -> after (SHA-256 prefix) |
+| --- | --- |
+| `C:\FTESurf\ftesurf64.exe`, `C:\FTEQuake\fteqw64.exe` | `fb3c90bf` (P754) -> `f669bc11` |
+| `C:\FTEQuake\fteqwsv64.exe` | `49bd6081` -> `0cf5d306` |
+| plugins (hl2, ui_imgui, cod, box3d, ode), both installs | rebuilt from the same tree |
+
+- Lobbies: the Pi native is P679 (mover 3); mover 5 waits for a native fleet
+  catch-up, the owner's call (BACKLOG).
+
 ## Limits
 
 - Only upright doors get the sill; door rectangles that reach below the floor

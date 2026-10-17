@@ -2,7 +2,13 @@
 
 ## P748 / P752 / P756 — Kitsune portals: the view through a door, two rooms deep, walking through
 
-Restart the game. Keep `r_blendsort 2`.
+Restart the game. Keep `r_blendsort 2`. Offline (your own server) for all three.
+Live in both Windows clients since 2026-10-17T07:05:26Z (engine
+`git-7358-patch-756-0-g99e69da32`, client `f669bc11`, `.prev` is P754), csprogs
+`41d2e086` in both installs and all 12 lobbies since about 07:11Z. The lobbies'
+native server is still P679 (mover 3), so on a lobby only the two-rooms part
+applies; the flips and the walk-through fixes are local play until the Pi
+native is brought up to date.
 
 - **Flips through a door (P748).** Load saves 8 and 11 and turn around them: the
   floor through the hub door and the skybox grid at stage 1's start should hold

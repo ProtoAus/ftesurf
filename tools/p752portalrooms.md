@@ -49,6 +49,27 @@ scene. The cvar was also not saved, so a console change was lost on restart.
   are fixed (PVS budget, engine ranking metric, level and width clamps, cltime
   cache cleared by Portal_Refresh) or in BACKLOG (half-space ranking, cost).
 
+## Delivery
+
+- Engine `469a69e46` on public main, tags `patch-748`, `patch-752`, `patch-756`
+  (code `99e69da32`, the built commit). Full build, the same 74 warning lines as
+  P743's, 0 new; shared dependency cache unchanged (`b35addf4...`).
+- Both Windows installs at 2026-10-17T07:05:26Z by the task root's `deploy.ps1
+  -Patch 756` (exclusive locks, backup, hash verify, rollback copies `.prev`);
+  receipt `delivery-p756/deployment.json`. No game process was stopped.
+
+| File | before -> after (SHA-256 prefix) |
+| --- | --- |
+| `C:\FTESurf\ftesurf64.exe`, `C:\FTEQuake\fteqw64.exe` | `fb3c90bf` (P754) -> `f669bc11` |
+| `C:\FTEQuake\fteqwsv64.exe` | `49bd6081` -> `0cf5d306` |
+| plugins (hl2, ui_imgui, cod, box3d, ode), both installs | rebuilt from the same tree |
+
+- csprogs `41d2e086` (main `b7f6f02`, with P749/P750 cleared by their author)
+  in both installs at 07:09:20Z and on all 12 lobbies by `build.ps1 -Pi` about
+  07:11Z, read back on the host (`.prev` `4e369446`, fresh PIDs). Smoked first on
+  the final engine and on the 0.1.26 release exe: the nested door is offered and
+  drawn, 0 QC errors. qwprogs/menu unchanged (`e5a29895`/`1703f73d`).
+
 ## Limits
 
 - The extra level costs about 1.6 ms a frame at the hub (averaged over a full

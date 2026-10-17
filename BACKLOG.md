@@ -140,6 +140,12 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   `tools/p756portalwalk.md`. Not owner-confirmed.
 - Falsifier: lextest's P748/P752/P756 entry. Delete this item when the owner
   confirms; keep the limits below.
+- The Pi lobbies' native is P679 (`git-7270-patch-679-0-g263d17686`, mover 3):
+  P748 and P756 are engine fixes and reach the lobbies only with a native fleet
+  catch-up from P679 to P756 (about 70 engine patches, P725's mover 4 among them).
+  That catch-up is the owner's call; ask before doing it. Order then: binary
+  first (the sweeper verifies with it), gate (tools/pigate.sh plus a Kitsune
+  walk-through recording), then lobby restarts; never roll back below 756.
 
 ## Mode2 limits left by P748
 
