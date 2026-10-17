@@ -46,6 +46,7 @@
 // Board line i of the scoreboard's (0 the first) is this slot.
 #define LN_BOARDSLOT(i) (((i) < LN_S_TRAIL - LN_S_BOARD) ? (i) + LN_S_BOARD : (i) + LN_S_MORE - (LN_S_TRAIL - LN_S_BOARD))
 #define LN_BOARDINDEX(s) (((s) < LN_S_TRAIL) ? (s) - LN_S_BOARD : (s) - LN_S_MORE + (LN_S_TRAIL - LN_S_BOARD))
+#define LN_POSE_DUCK 512        // ln_pose: yaw is 0..360, so this bit reads back as >= 512
 #define LN_CHUNK   32
 #define LN_GROUP   16           // chunks a group sphere covers
 #define LN_BKCAP   512          // teleports marked per slot
@@ -121,7 +122,8 @@ float  *ln_brk;                 // 1: no segment from the previous point (a tele
 float  *ln_gain;
 float  *ln_vz;                  // Patch 452: the third term of the energy
 float  *ln_q;                   // Patch 453: air-control grade, -1 = no answer
-vector *ln_col;                 // the colour, redone when the range or mode moves
+float  *ln_pose;                // Patch 749: the view's yaw, + LN_POSE_DUCK if ducked (the race ghost)
+vector *ln_col;                // the colour, redone when the range or mode moves
 float  *ln_cerr;                // per chunk and level 1..LN_LEVELS: the error, units
 vector *ln_cc;                  // per chunk: centre, radius, holds a break
 float  *ln_cr;
@@ -595,6 +597,7 @@ void() Line_Alloc =
 	// wrong exactly where a surf line is interesting.
 	ln_vz   = memalloc(sizeof(float) * LN_TOTAL);
 	ln_q    = memalloc(sizeof(float) * LN_TOTAL);
+	ln_pose = memalloc(sizeof(float) * LN_TOTAL);      // Patch 749: +4.8 MiB
 	ln_col  = memalloc(sizeof(vector) * LN_TOTAL);
 	ln_cerr = memalloc(sizeof(float) * LN_TOTAL / LN_CHUNK * LN_LEVELS);
 	ln_cc   = memalloc(sizeof(vector) * LN_TOTAL / LN_CHUNK);
@@ -1093,7 +1096,7 @@ void(float s, float si) Line_EvFold =
 };
 
 // One sample.  brk: the segment from the previous sample is a teleport.
-void(float s, vector o, float spd, float vz, float q, float t, float brk) Line_Add =
+void(float s, vector o, float spd, float vz, float q, float t, float brk, float pose) Line_Add =
 {
 	local float b, n, i, j;
 
@@ -1116,6 +1119,7 @@ void(float s, vector o, float spd, float vz, float q, float t, float brk) Line_A
 			ln_spd[b + i] = ln_spd[j];
 			ln_vz[b + i]  = ln_vz[j];
 			ln_q[b + i]   = ln_q[j];
+			ln_pose[b + i] = ln_pose[j];
 			ln_t[b + i]   = ln_t[j];
 			if (s == 0 || LN_TRAIL(s))
 				ln_born[Line_BirthBase(s) + i] = ln_born[Line_BirthBase(s) + 2 * i];
@@ -1135,6 +1139,7 @@ void(float s, vector o, float spd, float vz, float q, float t, float brk) Line_A
 	ln_spd[b + n] = spd;
 	ln_vz[b + n]  = vz;
 	ln_q[b + n]   = q;
+	ln_pose[b + n] = pose;
 	ln_t[b + n]   = t;
 	if (LN_TRAIL(s))
 		ln_born[Line_BirthBase(s) + n] = cltime;
@@ -1572,7 +1577,8 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
 		ln_v20[s] = v * v;
 	}
 	ln_nsamp[s] = ln_nsamp[s] + 1;
-	Line_Add(s, o, vlen([v_x, v_y, 0]), v_z, q, t, brk);
+	Line_Add(s, o, vlen([v_x, v_y, 0]), v_z, q, t, brk,
+	         anglemod(aux_x) + ((fl & WT_F_DUCKED) ? LN_POSE_DUCK : 0));
 };
 
 /*

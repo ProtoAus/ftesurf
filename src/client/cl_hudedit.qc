@@ -665,6 +665,8 @@ string(string id, float row) HE_OptDef =
 		                     "|dither: a fixed pattern of solid pixels, sorted with the world. blend: smooth see-through, can sort wrongly behind glass.";
 		if (row == 7) return "hud_ghost_near|Fade near you|c|0 64 96 160 256|off;64;96;160;256"
 		                     "|Within this many units of your eye the body fades out, so a ghost level with you does not block the view.";
+		if (row == 8) return "hud_ghost_names|Name tag|t||"
+		                     "|Whose run each ghost is, over its head as a player's name is.";
 		return "";
 	}
 
@@ -2030,7 +2032,8 @@ void() HE_ResetAll =
 	localcmd("seta hud_lines_order 4\nseta hud_linegraph_plots 3\n");
 	localcmd("seta hud_lines_demo -1\nseta hud_lines_demo_far -1\n");      // Patch 745
 	localcmd("seta hud_ghost 1\nseta hud_ghost_sync 0\nseta hud_ghost_pb 1\nseta hud_ghost_lines 4\n"
-	         "seta hud_ghost_offset 0\nseta hud_ghost_alpha 0.55\nseta hud_ghost_dither 1\nseta hud_ghost_near 96\n");
+	         "seta hud_ghost_offset 0\nseta hud_ghost_alpha 0.55\nseta hud_ghost_dither 1\nseta hud_ghost_near 96\n"
+	         "seta hud_ghost_names 1\n");
 
 	// And the panel itself, which can be dragged into a corner like anything else.
 	HE_ResetCvar("hud_edit_panel_x");

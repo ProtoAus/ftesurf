@@ -25,7 +25,10 @@ commit   b9c66c50114d9a21f39087f6409d07dfbb295e77
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-743
-patch    747
+patch    749
+# Patch 749 (QC only): the race ghost ducks and faces as the recording's view did
+# (a yaw and duck kept per line sample, ln_pose), and wears a name tag drawn like a
+# player's (hud_ghost_names). raceghost_pose arm; the 746 build fails it 18 times.
 # Patch 747 (backend only): a KSF profile walk for a player KSF does not know
 # (HTTP 500) is ended as `unknown` instead of parking the whole KSF crawler, and
 # maps somebody viewed get their advertised demos scanned and downloaded first.

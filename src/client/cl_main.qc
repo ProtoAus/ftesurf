@@ -1787,6 +1787,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		*/
 		Ev_Labels();
 		PlayerLabels_Draw(scr);
+		RG_Tags(scr);           // Patch 749: the race ghosts' names
 
 		// Patch 331: the hover card, same pass and same reason -- it is 2D.
 		Ev_CardDraw();

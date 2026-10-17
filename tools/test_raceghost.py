@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Patch 746: grade raceghost_live.cfg (and raceghost_look.cfg) logs.
 
-python tools/test_raceghost.py <rig>/ftesurf --pb <the PB .rec put into the rig>
+python tools/test_raceghost.py [<rig>/ftesurf] --pb <the PB .rec put into the rig>
     [--look <rig of raceghost_look.cfg>/ftesurf] [--stage <rig of raceghost_stage.cfg>/ftesurf]
-    [--stagepb <rig of raceghost_stagepb.cfg>/ftesurf]
+    [--stagepb <rig of raceghost_stagepb.cfg>/ftesurf] [--pose <rig of raceghost_pose.cfg>/ftesurf]
 
 Live arm (dedicated, sv_minping 120): every printed ghost sits on the PB file at its
 own clock (within 1 u), its clock is yours plus the offset, and yours is the drawn
@@ -17,10 +17,15 @@ records independently of the zones (the LAST `stagestart <seg>` before `stage <s
 a fail back into the box restarts it), and the ghost is the PB at anchor + your clock -
 your anchor + the offset; a ticked board line of the same file is the ghost when the PB
 is off (slot 1), one ghost with both on, none with hud_ghost_lines 0.  The look arm's
-hud_edit Ghost pane lists its eight rows and its first chip turns hud_ghost on.  Stage-PB
+hud_edit Ghost pane lists its nine rows and its first chip turns hud_ghost on.  Stage-PB
 arm (the review's two): in stage 2's box its own PB is already loaded; it is the ghost
 of the stage run, at the whole PB's place 4.98 s on (the file was cut from it); past
 its end and hold no other PB stands in; three attempts read it once.
+Pose arm (Patch 749): at each POSE the ghost's yaw is the file's view yaw at its clock
+(the shortest way round between the two samples either side, within 0.2 degrees) and its
+duck the nearer sample's flag; the arm must hold ducked and standing moments and one
+where the view and the travel part by over 30 degrees, or it cannot tell the two apart.
+The look arm's held ghost ducks as the file does there and its tag "Your PB" is drawn.
 Exit 2 is CANNOT MEASURE.
 """
 import argparse
@@ -33,6 +38,8 @@ CLOCK = re.compile(r'raceghost: clock (\S+) \(stat (\S+), lead (\S+)\)')
 GHOST = re.compile(r'raceghost: ghost (\d+) slot (\d+) t (\S+) at (\S+) (\S+) (\S+) yaw (\S+) end (\S+) anchor (\S+) mine (\S+)')
 YOU = re.compile(r'raceghost: you at (\S+) (\S+) (\S+)')
 SHOWN = re.compile(r'raceghost: (\d+) shown')
+DUCK = re.compile(r' duck (\S+)$')
+TAG = re.compile(r'raceghost: tag (\d+) "([^"]*)" drawn (\S+)')
 CANNOT = 'CANNOT MEASURE: '
 
 
@@ -59,6 +66,83 @@ def at(rows, t):
             f = (t - t0) / (t1 - t0) if t1 > t0 else 1
             return tuple(a + (b - a) * f for a, b in zip(p0, p1))
     return rows[-1][1]
+
+
+def poses(path):
+    """(t, (x, y, z), yaw, flags) for every sample."""
+    out, body = [], False
+    for line in open(path, encoding='utf-8', errors='replace'):
+        if line.startswith('begin'):
+            body = True
+            continue
+        if body and line[:1] in '-0123456789':
+            w = line.split()
+            if len(w) >= 10:
+                out.append((float(w[0]), (float(w[1]), float(w[2]), float(w[3])),
+                            float(w[8]), int(float(w[9]))))
+    return out
+
+
+def wrap(d):
+    return (d + 180) % 360 - 180
+
+
+def pose_at(rows, t):
+    """The file's (yaw, ducked, travel yaw) at clock t, as RG_At reads it."""
+    i = next((k for k in range(1, len(rows)) if rows[k][0] >= t), None)
+    if i is None or t < rows[0][0]:
+        return None
+    (t0, p0, y0, f0), (t1, p1, y1, f1) = rows[i - 1], rows[i]
+    f = (t - t0) / (t1 - t0) if t1 > t0 else 1
+    if math.dist(p0, p1) > 64:
+        f = 0 if f < 0.5 else 1
+    yaw = (y0 + wrap(y1 - y0) * f) % 360
+    duck = bool((f0 if f < 0.5 else f1) & 2)
+    a, b = rows[max(0, i - 3)][1], rows[min(len(rows) - 1, i + 3)][1]
+    travel = math.degrees(math.atan2(b[1] - a[1], b[0] - a[0])) % 360
+    return yaw, duck, travel
+
+
+def pose(rig, pb, fails, notes):
+    s = (rig / 'logs/runlines_smoke.log').read_text(errors='replace')
+    rows = poses(pb)
+    secs, cur = [], None
+    for line in s.splitlines():
+        if '==== POSE ====' in line:
+            cur = []
+            secs.append(cur)
+        elif cur is not None:
+            cur.append(line)
+    ducked = standing = parted = 0
+    for k, body in enumerate(secs):
+        g = [l for l in body if GHOST.search(l) and GHOST.search(l).group(2) == '68']
+        if not g:
+            fails.append('POSE %d: no ghost of the whole run\'s PB' % k)
+            continue
+        m = GHOST.search(g[0])
+        t, yaw = float(m.group(3)), float(m.group(7)) % 360
+        d = DUCK.search(g[0])
+        want = pose_at(rows, t)
+        if want is None:
+            notes.append(CANNOT + 'POSE %d: t %.4f is outside the file' % (k, t))
+            continue
+        wy, wd, tr = want
+        print('POSE %d t %.4f yaw %.1f (file %.1f, travel %.1f) duck %s (file %d)'
+              % (k, t, yaw, wy, tr, d and d.group(1), wd))
+        if abs(wrap(yaw - wy)) > 0.2:
+            fails.append('POSE %d: yaw %.1f, the view was %.1f (travel %.1f)' % (k, yaw, wy, tr))
+        if not d:
+            fails.append('POSE %d: the ghost says nothing of ducking' % k)
+        elif bool(float(d.group(1))) != wd:
+            fails.append('POSE %d: duck %s, the file %d' % (k, d.group(1), wd))
+        ducked += wd
+        standing += not wd
+        parted += abs(wrap(wy - tr)) > 30
+    print('POSE %d moments: %d ducked, %d standing, %d where view and travel part'
+          % (len(secs), ducked, standing, parted))
+    if ducked < 3 or standing < 3 or not parted:
+        notes.append(CANNOT + 'POSE: the moments cannot tell a pose from the travel '
+                     '(%d ducked, %d standing, %d parted)' % (ducked, standing, parted))
 
 
 def sections(text):
@@ -149,6 +233,15 @@ def look(rig, pb, fails, notes):
         print('look %s ghost t %.4f, %.2f u from the PB start' % (name, gt, d))
         if abs(gt - pbrows[0][0]) > 0.02 or d > 1:
             fails.append('look %s: a -30 s offset did not hold it at its start (t %.3f, %.1f u)' % (name, gt, d))
+        line = next(l for l in s.get(name, []) if GHOST.search(l))
+        dk, want = DUCK.search(line), pose_at(poses(pb), gt)
+        tag = [TAG.search(l) for l in s.get(name, []) if TAG.search(l)]
+        print('look %s duck %s (file %s) tag %s' % (name, dk and dk.group(1), want and int(want[1]),
+                                                  tag and tag[0].groups()))
+        if not dk or want is None or bool(float(dk.group(1))) != want[1]:
+            fails.append('look %s: duck %s, the file %s' % (name, dk and dk.group(1), want and want[1]))
+        if not tag or tag[0].group(2) != 'Your PB' or tag[0].group(3) != '1':
+            fails.append('look %s: no "Your PB" tag drawn (%s)' % (name, tag and tag[0].groups()))
     hl = s.get('HIGHLIGHT', [])
     g = [GHOST.search(l) for l in hl if GHOST.search(l)]
     lnd = [l for l in hl if re.search(r'lnd 68 ', l)]
@@ -179,7 +272,8 @@ def look(rig, pb, fails, notes):
     if not off or int(off[0].group(1)) != 0:
         fails.append('look OFF: hud_ghost 0 still shows ghosts')
     rows = ['he_o_hud_ghost', 'he_o_hud_ghost_sync', 'he_o_hud_ghost_pb', 'he_o_hud_ghost_lines',
-            'he_o_hud_ghost_offset', 'he_o_hud_ghost_alpha', 'he_o_hud_ghost_dither', 'he_o_hud_ghost_near']
+            'he_o_hud_ghost_offset', 'he_o_hud_ghost_alpha', 'he_o_hud_ghost_dither', 'he_o_hud_ghost_near',
+            'he_o_hud_ghost_names']
     ids = set(re.findall(r'sui_element \[(he_o_[^\]]+)\]', '\n'.join(s.get('PANE', []))))
     print('look PANE rows', sorted(ids))
     if [r for r in rows if r not in ids]:
@@ -245,6 +339,15 @@ def stage(rig, pb, fails, notes):
                 fails.append('DEDUPE: the PB ticked as a line as well shows %d ghosts' % len(slots))
         elif slots != want:
             fails.append('%s: ghosts in slots %s, wanted %s' % (name, slots, want))
+        # Patch 749: a ticked line's ghost is tagged with the run's owner.
+        if name == 'LINE2' and slots == ['1']:
+            owner = next((l.split(None, 1)[1].strip() for l in open(pb, encoding='utf-8', errors='replace')
+                          if l.startswith('owner ')), '')
+            tag = [TAG.search(l) for l in body if TAG.search(l)]
+            print('stage LINE2 tag %s, the file\'s owner "%s"' % (tag and tag[0].groups(), owner))
+            if not tag or tag[0].group(2) != owner:
+                fails.append('LINE2: the ticked line\'s ghost is not tagged "%s" (%s)'
+                             % (owner, tag and tag[0].groups()))
         if anchors and abs(anchors[0] - starts.get(1, -9)) > 0.031:
             fails.append('%s: anchored at %.4f, not the PB stage 2 start' % (name, anchors[0]))
 
@@ -292,20 +395,24 @@ def stagepb(rig, pb, fails, notes):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('rig', type=pathlib.Path)
+    ap.add_argument('rig', type=pathlib.Path, nargs='?')
     ap.add_argument('--pb', type=pathlib.Path, required=True)
     ap.add_argument('--look', type=pathlib.Path)
     ap.add_argument('--stage', type=pathlib.Path)
     ap.add_argument('--stagepb', type=pathlib.Path)
+    ap.add_argument('--pose', type=pathlib.Path)
     a = ap.parse_args()
     fails, notes = [], []
-    live(a.rig, a.pb, fails, notes)
+    if a.rig:
+        live(a.rig, a.pb, fails, notes)
     if a.look:
         look(a.look, a.pb, fails, notes)
     if a.stage:
         stage(a.stage, a.pb, fails, notes)
     if a.stagepb:
         stagepb(a.stagepb, a.pb, fails, notes)
+    if a.pose:
+        pose(a.pose, a.pb, fails, notes)
     for n in notes:
         print(n)
     for f in fails:

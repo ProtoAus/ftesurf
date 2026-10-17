@@ -2563,6 +2563,22 @@ publicly WITH its fix, not before it.
   on 6195307 and neither after. A whole-run line asked for a stage now waits for its
   table, read one slot a frame in the background: asking per line per frame cost
   2048 samples x the boxes for every line.
+- Patch 749: the ghost DUCKS AND FACES AS THE RECORDING'S VIEW DID. Every line sample
+  now keeps `ln_pose` (view yaw 0..360, + LN_POSE_DUCK 512 if the flags say ducked;
+  written by Line_Point from the yaw and flags it was already handed, carried through
+  Line_Add's past-the-cap halving; +4.8 MiB over LN_TOTAL). RG_At turns the shortest
+  way between the two samples either side (no slide across a break) and takes the
+  nearer sample's duck; RG_DrawBodies swaps `models/player_duck.iqm` in as
+  Body_Predraw does. A name tag over each ghost is drawn like PlayerLabels_Draw's
+  (picture or a chip in the ghost's colour, name fading past 256 u, nothing past
+  `hud_playerlabels_far` or behind a wall): "Your PB", "Your stage N PB", or the
+  ticked line's owner (`hud_ghost_names`). Arm `raceghost_pose.cfg`: a REWIND makes
+  the ghost's clock exact (cursor + offset), so each POSE is a chosen moment of the
+  PB: its three ducks and three places where view and travel part by 54-177
+  degrees. On the 746 build the yaw is the travel's (vectoyaw: whole degrees) and
+  there is no duck: 18 failures. One stage-arm run of four froze the client with no
+  VM error (a QC loop would stop at the engine's 100M-instruction runaway); its log
+  is retained in the task root and the other three passed.
 - Patch 745: `hud_trail` is a DRAW switch only. Trail_Frame records the live line
   whatever it says, so rewind, save pictures and the live graph no longer need it
   on (before, 0 reset the line and Rewind_Open refused). A replay's line is

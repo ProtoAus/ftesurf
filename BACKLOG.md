@@ -25,9 +25,9 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Race ghost: what Patch 746 left out
 
-- Site: `src/client/cl_raceghost.qc`. The body always stands (a line keeps no duck
-  bit) and faces where it was going, not where its player looked (no yaw kept).
-  No name over a ghost. In "each stage" a stage's own PB loads as you enter its
+- Site: `src/client/cl_raceghost.qc`. (Ducking, the view's yaw and a name tag came
+  in Patch 749. The body turns but does not pitch, as a lobby body does not.)
+  In "each stage" a stage's own PB loads as you enter its
   box; a box flown through leaves a few frames with no ghost while it builds
   (RG_Frame's QUEUE/BUILD guard hides the whole run's cut meanwhile).
 - RG_StageScan tests sample ORIGINS: a stage start box thinner than one sample's
@@ -36,8 +36,7 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   where its bounds meet the region's. Not seen on surf_kitsune; not measured.
 - The ghost's PB build goes before the board's queue (RG_JobStart), so an arm that
   waits a fixed time for "line N drawn" on a map with a PB in its rig can run short.
-- Falsifier for any of them: `raceghost_look.cfg` with a ducking PB, a printed
-  name from `raceghost`, or a stage arm on a map with a thin stage start.
+- Falsifier for any of them: a stage arm on a map with a thin stage start.
 
 ## test_runlines_labels.py counts the replay's name as a mark label
 

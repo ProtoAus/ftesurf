@@ -30,6 +30,19 @@ Live on all 12 lobbies and both Windows installs since 2026-10-17T01:38Z (main
 "Panels show / look wrong at <panel>" is enough. Verdict PENDING. Measured:
 `tools/p744spec.py` (AGENT_NOTES, Spectator telemetry).
 
+## P749 — the ghost ducks, looks where its player looked, and has a name tag
+
+Same place as P746 (hud_edit -> **Ghost**, new row **Name tag**). Race your PB:
+
+- Where you ducked in that run, the ghost crouches; it now faces where you were
+  looking, not where you were going (watch it on a strafe or a turn).
+- A tag over its head says "Your PB" (or "Your stage N PB"); a ticked board run's
+  ghost shows that player's name and picture. Behind a wall the tag hides.
+
+"Looks right / X is off" is enough. Verdict PENDING. Measured by
+`raceghost_pose.cfg` against your Kitsune PB's own yaw and duck (AGENT_NOTES, The
+run line). Not yet on the lobbies or the installs.
+
 ## P746 — the race ghost
 
 On by default (hud_edit -> **Ghost**). Offline, on a map you hold a PB for:

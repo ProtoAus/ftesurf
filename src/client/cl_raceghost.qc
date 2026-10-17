@@ -13,6 +13,9 @@
   line from the stage base, a whole run's from the run's start.  A whole-run
   line asked for a stage is cut at the moment it left that stage's box, found
   from its own samples and the zone file (RG_StageScan).
+
+  Patch 749: the body ducks and faces as the recording's view did (ln_pose), and
+  carries a name tag drawn like a player's (RG_Tags, hud_ghost_names).
 */
 
 #define RG_MAX     10           // bodies: the two PB slots and eight lines
@@ -36,12 +39,14 @@ float  rg_slot[RG_MAX];
 float  rg_t[RG_MAX];            // its run clock
 vector rg_pos[RG_MAX];
 float  rg_yaw[RG_MAX];
+float  rg_duck[RG_MAX];
+float  rg_ed[RG_MAX];           // the model rg_ent[g] has: 0 none, 1 standing, 2 ducked
 vector rg_col[RG_MAX];
 float  rg_end[RG_MAX];          // 1 past its run's end, -1 before its start
 float  rg_anc[RG_MAX];          // the slot's clock at the anchor (RG_Anchor)
 entity rg_ent[RG_MAX];
 vector rg_gp;                   // RG_At's answer
-float  rg_gyaw, rg_gend, rg_gi;
+float  rg_gyaw, rg_gduck, rg_gend, rg_gi;
 float  rg_shd, rg_shb;          // the dither and blend materials
 
 // The two PB slots: [0] LN_S_GHOST a stage's, [1] LN_S_GHR the whole run's.
@@ -55,7 +60,6 @@ float  *rg_stggen;
 float  *rg_stgi;
 float  *rg_stgin;
 float  *rg_stgk;
-float  *rg_syaw;                // and the way it last faced
 float  *rg_stgz;                // the zones its table was read against (RG_ZoneSig)
 float  *rg_slgen;               // a board line's build, and the map it was built on
 string *rg_slmap;
@@ -74,13 +78,13 @@ void() RG_RegisterCvars =
 	registercvar("hud_ghost_alpha",  "0.55", CVAR_ARCHIVE);
 	registercvar("hud_ghost_dither", "1",    CVAR_ARCHIVE);
 	registercvar("hud_ghost_near",   "96",   CVAR_ARCHIVE);
+	registercvar("hud_ghost_names",  "1",    CVAR_ARCHIVE);
 	registercommand("raceghost");
 	rg_stg    = memalloc(sizeof(float) * LN_SLOTS * RG_STG);
 	rg_stggen = memalloc(sizeof(float) * LN_SLOTS);
 	rg_stgi   = memalloc(sizeof(float) * LN_SLOTS);
 	rg_stgin  = memalloc(sizeof(float) * LN_SLOTS);
 	rg_stgk   = memalloc(sizeof(float) * LN_SLOTS);
-	rg_syaw   = memalloc(sizeof(float) * LN_SLOTS);
 	rg_stgz   = memalloc(sizeof(float) * LN_SLOTS);
 	rg_slgen  = memalloc(sizeof(float) * LN_SLOTS);
 	rg_slmap  = memalloc(sizeof(string) * LN_SLOTS);
@@ -427,17 +431,17 @@ float() RG_Clock =
 	return ticks * tick + rg_lead;
 };
 
-// Slot s at run clock t: rg_gp, rg_gyaw (the way it was going), rg_gend.
+// Slot s at run clock t: rg_gp, rg_gyaw and rg_gduck (its view's, Patch 749), rg_gend.
 void(float s, float t) RG_At =
 {
-	local float b, ia, ib, i, f, k0, k1;
-	local vector d;
+	local float b, ia, ib, i, f, p0, p1, d0, d1;
 
 	b  = LN_B(s);
 	ia = ln_ia[s];
 	ib = ln_ib[s];
 	i  = Line_Find(s, t);
 	rg_gend = 0;
+	f = 1;
 	if (i <= ia)
 	{
 		i = ia;
@@ -460,26 +464,19 @@ void(float s, float t) RG_At =
 		rg_gp = ln_pos[b + i - 1] + (ln_pos[b + i] - ln_pos[b + i - 1]) * f;
 	}
 	rg_gi = i;
-	// The way it was going over a few samples either side, not across a teleport.
-	k0 = i;
-	while (k0 > ia && k0 > i - 3)
-	{
-		if (ln_brk[b + k0])
-			break;
-		k0 = k0 - 1;
-	}
-	k1 = i;
-	while (k1 < ib && k1 < i + 3)
-	{
-		if (ln_brk[b + k1 + 1])
-			break;
-		k1 = k1 + 1;
-	}
-	d = ln_pos[b + k1] - ln_pos[b + k0];
-	d_z = 0;
-	if (vlen(d) > 1)
-		rg_syaw[s] = vectoyaw(d);
-	rg_gyaw = rg_syaw[s];
+	p1 = ln_pose[b + i];
+	p0 = (f < 1) ? ln_pose[b + i - 1] : p1;
+	d0 = (p0 >= LN_POSE_DUCK);
+	d1 = (p1 >= LN_POSE_DUCK);
+	p0 = p0 - d0 * LN_POSE_DUCK;
+	p1 = p1 - d1 * LN_POSE_DUCK;
+	p1 = p1 - p0;
+	if (p1 > 180)
+		p1 = p1 - 360;
+	else if (p1 < -180)
+		p1 = p1 + 360;
+	rg_gyaw = p0 + p1 * f;
+	rg_gduck = (f < 0.5) ? d0 : d1;
 };
 
 /*
@@ -534,6 +531,7 @@ float(float c, vector col) RG_Add =
 	rg_t[rg_n] = t;
 	rg_pos[rg_n] = rg_gp;
 	rg_yaw[rg_n] = rg_gyaw;
+	rg_duck[rg_n] = rg_gduck;
 	rg_end[rg_n] = rg_gend;
 	rg_anc[rg_n] = a;
 	if (col == '0 0 0')
@@ -675,7 +673,7 @@ void() RG_Frame =
 // Before renderscene: the bodies.
 void() RG_DrawBodies =
 {
-	local float g, dither;
+	local float g, dither, m;
 	local entity e;
 
 	if (!(rg_cv & 1) || rg_n < 1)
@@ -692,7 +690,12 @@ void() RG_DrawBodies =
 		{
 			e = spawn();
 			rg_ent[g] = e;
-			setmodel(e, "models/player.iqm");
+		}
+		m = rg_duck[g] ? 2 : 1;
+		if (rg_ed[g] != m)
+		{
+			rg_ed[g] = m;
+			setmodel(e, (m == 2) ? "models/player_duck.iqm" : "models/player.iqm");
 		}
 		setorigin(e, rg_pos[g]);
 		e.angles = [0, rg_yaw[g], 0];
@@ -734,6 +737,99 @@ void() RG_DrawLines =
 	ln_pxover = 0;
 };
 
+/*
+  Patch 749: each ghost's name over its head, as PlayerLabels_Draw draws a player's
+  (its picture, the name fading out past 256 u, nothing past hud_playerlabels_far
+  or behind a wall), after the world's labels.  Your PB says so.
+*/
+float rg_tagn;                  // drawn last frame (`raceghost`)
+float rg_tagd[RG_MAX];
+string rg_who;                  // RG_Name's picture mark, "" none
+
+string(float g) RG_Name =
+{
+	local float s, i;
+	local string nm;
+
+	s = rg_slot[g];
+	rg_who = "";
+	if (s >= LN_S_GHOST)
+	{
+		rg_who = getplayerkeyvalue(player_localnum, "*ahash");
+		if (rg_who == "")
+			rg_who = getplayerkeyvalue(player_localnum, "*phash");
+		if (s == LN_S_GHOST && rg_pbleg[0] > 0)
+			return sprintf("Your stage %g PB", rg_pbleg[0]);
+		return "Your PB";
+	}
+	i = LN_BOARDINDEX(s);
+	if (sb_ln_who[i])
+		rg_who = sb_ln_who[i];
+	nm = ln_owner[s];
+	if (nm == "")
+		nm = sb_ln_name[i];
+	if (nm == "")
+		nm = "unknown";
+	return nm;
+};
+
+void(vector scr) RG_Tags =
+{
+	local float g, dist, far, a, tsz, icon, nw, x;
+	local vector eye, fwd, head, v, q;
+	local string nm, who;
+
+	rg_tagn = 0;
+	for (g = 0; g < RG_MAX; g = g + 1)
+		rg_tagd[g] = FALSE;
+	if (!cvar("hud_ghost_names") || rg_n < 1)
+		return;
+	if (rec_sb_open || av_open)
+		return;
+	eye = getproperty(VF_ORIGIN);
+	makevectors(getproperty(VF_ANGLES));
+	fwd = v_forward;
+	far = bound(0, cvar("hud_playerlabels_far"), 6000);
+	Font_Set(ui_font_ui);
+	tsz = max(8, Font_Px(6 * max(1, ui_cv_scale)));
+	icon = tsz * 1.6;
+	for (g = 0; g < rg_n; g = g + 1)
+	{
+		rg_tagd[g] = FALSE;
+		head = rg_pos[g] + (rg_duck[g] ? PM_DUCK_VIEW_OFS : PM_VIEW_OFS) + '0 0 16';
+		v = head - eye;
+		dist = vlen(v);
+		if (dist < 24 || dist > far || v * fwd <= 8)
+			continue;
+		q = project(head);
+		if (q_x < icon || q_x > scr_x - icon || q_y < icon || q_y > scr_y - icon)
+			continue;
+		traceline(eye, head - '0 0 16', MOVE_NOMONSTERS, world);
+		if (trace_fraction < 1 || trace_startsolid)
+			continue;
+		nm = RG_Name(g);
+		who = rg_who;
+		a = bound(0, (1024 - dist) / 768, 1);
+		nw = 0;
+		if (a > 0)
+		{
+			nm = Chat_Fit(nm, tsz * 24, tsz);
+			nw = stringwidth(nm, TRUE, [tsz, tsz]);
+		}
+		x = q_x - (icon + a * (nw + tsz * 0.5)) * 0.5;
+		if (who == "" || !SteamPic_Draw([x, q_y - icon * 0.5], icon, who, 1))
+			sui_roundbox([x, q_y - icon * 0.5], [icon, icon], icon * 0.25, rg_col[g], 1);
+		if (a > 0)
+		{
+			drawstring([x + icon + tsz * 0.5 + 1, q_y - tsz * 0.5 + 1], nm, [tsz, tsz], '0 0 0', a, 0);
+			drawstring([x + icon + tsz * 0.5, q_y - tsz * 0.5], nm, [tsz, tsz], '1 1 1', a, 0);
+		}
+		rg_tagd[g] = TRUE;
+		rg_tagn = rg_tagn + 1;
+	}
+	Font_Reset();
+};
+
 // `raceghost`: what it is following and where.
 float() RG_Console =
 {
@@ -758,10 +854,12 @@ float() RG_Console =
 		p = rg_pos[g];
 		print(sprintf("raceghost: ghost %g slot %g t %.4f at %.1f %.1f %.1f",
 		              g, rg_slot[g], rg_t[g], p_x, p_y, p_z),
-		      sprintf(" yaw %.1f end %g anchor %.4f mine %.4f\n", rg_yaw[g], rg_end[g], rg_anc[g], rg_am));
+		      sprintf(" yaw %.1f end %g anchor %.4f mine %.4f duck %g\n", rg_yaw[g], rg_end[g],
+		              rg_anc[g], rg_am, rg_duck[g]));
+		print(sprintf("raceghost: tag %g \"%s\" drawn %g\n", g, RG_Name(g), rg_tagd[g]));
 	}
 	p = pmove_org;
 	print(sprintf("raceghost: you at %.1f %.1f %.1f\n", p_x, p_y, p_z));
-	print(sprintf("raceghost: %g shown\n", rg_n));
+	print(sprintf("raceghost: %g shown, %g tags\n", rg_n, rg_tagn));
 	return TRUE;
 };
