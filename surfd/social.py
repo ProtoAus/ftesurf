@@ -243,7 +243,7 @@ def register(app, d):
                     return reply({"ok": 1, "friends": friend_rows(db, sid, now, d.lobby_ttl)})
                 other = resolve(db, who)
                 if not other or relation(db, sid, other) != 3:
-                    return reply({"ok": 0, "error": "Accept the friend request first"}, 403)
+                    return reply({"ok": 0, "error": "Add them as a friend first"}, 403)
                 live = presence(db, other, now, d.lobby_ttl)
                 if not live["online"]:
                     return reply({"ok": 0, "error": "Your friend is offline"}, 409)
@@ -286,6 +286,8 @@ def register(app, d):
                 db.execute("BEGIN IMMEDIATE")
                 db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
                 db.execute("DELETE FROM social_sessions WHERE issued<?", (now - SESSION_TTL,))
+                # A request left by a service older than P770 is a friendship now.
+                db.execute("UPDATE social_friends SET accepted=1 WHERE accepted=0")
                 # Full-node snapshot. Tokens of disconnected slots cannot keep presence alive.
                 db.execute("UPDATE social_sessions SET seen=0 WHERE node=?", (node,))
                 for r in roster:
@@ -349,15 +351,20 @@ def register(app, d):
                 rel = relation(db, sid, other)
                 lo, hi = pair(sid, other)
                 if op == "add":
+                    # P770: no requests. Add makes both accounts friends at once.
+                    if rel == 3:
+                        return reply({"ok": 0, "error": "You are already friends"}, 409)
                     if rel:
-                        return reply({"ok": 0, "error": "A request or friendship already exists"}, 409)
-                    for who in (sid, other):
-                        n = db.execute("SELECT COUNT(*) FROM social_friends WHERE lo=? OR hi=?",
-                                       (who, who)).fetchone()[0]
-                        if n >= MAX_FRIENDS:
-                            return reply({"ok": 0, "error": "Friends list is full"}, 409)
-                    db.execute("INSERT INTO social_friends(lo,hi,asker) VALUES(?,?,?)", (lo, hi, sid))
-                    note = "Friend request sent"
+                        db.execute("UPDATE social_friends SET accepted=1 WHERE lo=? AND hi=?", (lo, hi))
+                    else:
+                        for who in (sid, other):
+                            n = db.execute("SELECT COUNT(*) FROM social_friends WHERE lo=? OR hi=?",
+                                           (who, who)).fetchone()[0]
+                            if n >= MAX_FRIENDS:
+                                return reply({"ok": 0, "error": "Friends list is full"}, 409)
+                        db.execute("INSERT INTO social_friends(lo,hi,asker,accepted) VALUES(?,?,?,1)",
+                                   (lo, hi, sid))
+                    note = "Friend added"
                 elif op == "accept":
                     if rel != 2:
                         return reply({"ok": 0, "error": "No incoming request"}, 409)
@@ -370,7 +377,7 @@ def register(app, d):
                     note = "Friend / request removed"
                 else:
                     if rel != 3:
-                        return reply({"ok": 0, "error": "Accept the friend request first"}, 403)
+                        return reply({"ok": 0, "error": "Add them as a friend first"}, 403)
                     live = presence(db, other, now, d.lobby_ttl)
                     if not live["online"]:
                         return reply({"ok": 0, "error": "Your friend is offline"}, 409)

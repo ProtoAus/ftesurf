@@ -83,9 +83,13 @@ class Friends(unittest.TestCase):
         r = self.post("/api/social/action", token=self.tokens[i], op=op, who=A.who_of(IDS[other]), **extra)
         return r
 
-    def accept(self):
+    def befriend(self):
         self.assertEqual(self.action(0, "add").status_code, 200)
-        self.assertEqual(self.action(1, "accept", 0).status_code, 200)
+
+    def legacy_request(self):
+        # A request a pre-P770 service stored: Alice asked, Bob never accepted.
+        self.db.execute("INSERT INTO social_friends(lo,hi,asker) VALUES(?,?,?)", (*F.pair(IDS[0], IDS[1]), IDS[0]))
+        self.db.commit()
 
     def test_proof_mint_and_wrong_proof_no_capability(self):
         r = self.hello(1, old_social=self.tokens[0])
@@ -96,18 +100,28 @@ class Friends(unittest.TestCase):
         self.assertEqual(F.digest(r["social"]), self.db.execute("SELECT token FROM social_sessions WHERE pub=?", (PUBS[0],)).fetchone()[0])
         self.assertNotEqual(r["social"], F.digest(r["social"]))
 
-    def test_requests_acceptance_and_cross_install_identity(self):
+    def test_add_is_mutual_at_once_and_cross_install_identity(self):
         self.assertEqual(self.action(0, "add").status_code, 200)
         rows = self.poll()
         self.assertEqual(rows[0]["friends"], rows[3]["friends"])
-        self.assertEqual(rows[0]["friends"][0]["relation"], 1)
-        self.assertEqual(rows[1]["friends"][0]["relation"], 2)
-        self.assertEqual(rows[1]["friends"][0]["online"], 0)
-        self.assertEqual(self.action(0, "accept").status_code, 409)
-        self.assertEqual(self.action(1, "accept", 0).status_code, 200)
-        self.assertEqual(self.poll()[3]["friends"][0]["relation"], 3)
+        self.assertEqual(rows[0]["friends"][0]["relation"], 3)
+        self.assertEqual((rows[1]["friends"][0]["relation"], rows[1]["friends"][0]["online"]), (3, 1))
+        self.assertEqual(self.action(0, "add").status_code, 409)
+        self.assertEqual(self.action(1, "add", 0).status_code, 409)
+        self.assertEqual(self.action(1, "accept", 0).status_code, 409)
         self.assertEqual(self.action(3, "remove").status_code, 200)
         self.assertEqual(self.poll()[0]["friends"], [])
+        self.assertEqual(self.poll()[1]["friends"], [])
+
+    def test_legacy_request_becomes_friendship_by_add_or_poll(self):
+        self.legacy_request()
+        self.assertEqual(self.action(1, "add", 0).status_code, 200)
+        self.assertEqual(self.poll()[0]["friends"][0]["relation"], 3)
+        self.assertEqual(self.action(0, "remove").status_code, 200)
+        self.legacy_request()
+        rows = self.poll()
+        self.assertEqual((rows[0]["friends"][0]["relation"], rows[1]["friends"][0]["relation"]), (3, 3))
+        self.assertEqual(self.db.execute("SELECT count(*) FROM social_friends WHERE accepted=0").fetchone()[0], 0)
 
     def test_copied_key_connections_do_not_revoke_each_other(self):
         copied = self.hello(1, nonce="bc" * 16)["social"]
@@ -127,13 +141,13 @@ class Friends(unittest.TestCase):
         self.assertEqual(r.status_code, 400)
 
     def test_banned_or_deleted_friend_can_still_be_removed(self):
-        self.accept(); self.poll()
+        self.befriend(); self.poll()
         self.db.execute("UPDATE accounts SET banned_at=? WHERE steamid=?", (self.now, IDS[1])); self.db.commit()
         row = self.poll((0,))[0]["friends"][0]
         self.assertEqual((row["name"], row["online"]), ("Unavailable account", 0))
         self.assertEqual(self.action(0, "remove").status_code, 200)
         self.db.execute("UPDATE accounts SET banned_at=0 WHERE steamid=?", (IDS[1],)); self.db.commit()
-        self.accept()
+        self.befriend()
         self.db.execute("DELETE FROM accounts WHERE steamid=?", (IDS[1],)); self.db.commit()
         self.assertEqual(self.poll((0,))[0]["friends"][0]["name"], "Unavailable account")
         self.assertEqual(self.action(0, "remove").status_code, 200)
@@ -142,12 +156,12 @@ class Friends(unittest.TestCase):
         r = self.action(0, "join", game="1")
         self.assertEqual(r.status_code, 200)
         self.assertEqual((r.get_json()["ok"], r.get_json()["status"]), (0, 403))
-        self.assertEqual(r.get_json()["error"], "Accept the friend request first")
+        self.assertEqual(r.get_json()["error"], "Add them as a friend first")
         r = self.client.post("/api/social/action", data=dict(game="1", node="p27510", op="join"))
         self.assertEqual(r.status_code, 403)
 
     def test_fresh_presence_and_join_revalidated(self):
-        self.accept(); self.poll()
+        self.befriend(); self.poll()
         row = self.poll()[0]["friends"][0]
         self.assertEqual((row["online"], row["map"], row["addr"]), (1, "surf_test", "127.0.0.1:27510"))
         self.assertEqual(self.action(0, "join").get_json()["addr"], row["addr"])
@@ -156,14 +170,14 @@ class Friends(unittest.TestCase):
         self.assertEqual(self.poll((0,))[0]["friends"][0]["online"], 0)
 
     def test_snapshot_disconnect_and_other_install_still_online(self):
-        self.accept(); self.poll()
+        self.befriend(); self.poll()
         # Bob sees Alice through install4 after install1 drops.
         row = self.poll((1, 3))[0]["friends"][0]
         self.assertEqual(row["online"], 1)
         self.assertEqual(self.poll((1,))[0]["friends"][0]["online"], 0)
 
     def test_directory_staleness_and_map_switch(self):
-        self.accept(); self.poll()
+        self.befriend(); self.poll()
         self.heartbeat("p27510", 27510, "surf_new")
         self.assertEqual(self.poll()[0]["friends"][0]["map"], "surf_new")
         self.db.execute("UPDATE lobbies SET last_seen=0"); self.db.commit()
@@ -171,7 +185,7 @@ class Friends(unittest.TestCase):
         self.assertEqual(self.action(0, "join").status_code, 409)
 
     def test_incremental_hash_omits_unchanged_list(self):
-        self.accept()
+        self.befriend()
         initial = self.poll()
         rows = self.poll(hashes={i: r["hash"] for i, r in enumerate(initial)})
         self.assertTrue(all("friends" not in r for r in rows))
@@ -180,7 +194,7 @@ class Friends(unittest.TestCase):
         self.assertEqual(rows[0]["friends"], [])
 
     def test_message_private_only_to_recipient_with_retry_and_ack(self):
-        self.accept(); self.poll()
+        self.befriend(); self.poll()
         text = 'hello; "quoted" $cvar and café'
         self.assertEqual(self.action(0, "message", text=text).status_code, 200)
         rows = self.poll()
@@ -193,14 +207,14 @@ class Friends(unittest.TestCase):
     def test_message_friend_requirement_control_then_remove_purges(self):
         self.poll()
         self.assertEqual(self.action(0, "message", text="not friends").status_code, 403)
-        self.accept(); self.poll()
+        self.befriend(); self.poll()
         self.assertEqual(self.action(0, "message", text="private").status_code, 200)
         self.assertEqual(self.action(1, "remove", 0).status_code, 200)
         self.assertEqual(self.poll()[1]["messages"], [])
         self.assertEqual(self.db.execute("SELECT count(*) FROM social_messages").fetchone()[0], 0)
 
     def test_message_controls_length_and_expiry(self):
-        self.accept(); self.poll()
+        self.befriend(); self.poll()
         for text in ("", "x" * 161, "x\nnewline", "x\rreturn", "x\tTAB", "\x04"):
             self.assertEqual(self.action(0, "message", text=text).status_code, 400)
         self.assertEqual(self.action(0, "message", text="x" * 160).status_code, 200)
@@ -220,7 +234,7 @@ class Friends(unittest.TestCase):
         self.assertTrue(all(r.get("invalid") for r in self.poll()))
 
     def test_relinked_key_and_ban_revoke_immediately(self):
-        self.accept(); self.poll()
+        self.befriend(); self.poll()
         self.db.execute("UPDATE keylinks SET steamid=? WHERE pub=?", (IDS[2], PUBS[0]))
         self.db.execute("UPDATE accounts SET banned_at=? WHERE steamid=?", (self.now, IDS[1]))
         self.db.commit()
@@ -236,7 +250,7 @@ class Friends(unittest.TestCase):
             self.assertEqual(self.post("/api/social/action", token=self.tokens[0], op="add", who="f" * 8).status_code, 400)
 
     def test_presence_across_two_nodes_and_source_disconnect(self):
-        self.accept(); self.poll()
+        self.befriend(); self.poll()
         elsewhere = self.hello(2, node="p27511", server="127.0.0.1:27511")["social"]
         r = self.client.post("/api/social/poll", data=dict(key="testkey", node="p27511",
             roster=json.dumps([dict(token=elsewhere)])))
@@ -248,7 +262,7 @@ class Friends(unittest.TestCase):
                          (1, "127.0.0.1:27511", "surf_elsewhere"))
 
     def test_ids_past_float32_and_bounded_delivery(self):
-        self.accept(); self.poll()
+        self.befriend(); self.poll()
         self.db.execute("INSERT INTO social_messages(id,sender,recipient,body,sent) VALUES(?,?,?,?,?)",
                         (16777217, IDS[0], IDS[1], "one", self.now))
         for text in ("two", "three"):
@@ -279,7 +293,7 @@ class Friends(unittest.TestCase):
             self.assertEqual(self.post("/api/social/poll", roster=roster).status_code, 400)
 
     def test_friend_and_inbox_caps_and_per_account_rate(self):
-        self.accept(); self.poll()
+        self.befriend(); self.poll()
         for i in range(32):
             self.db.execute("INSERT INTO social_messages(sender,recipient,body,sent) VALUES(?,?,?,?)",
                             (IDS[0], IDS[1], "busy", self.now))
@@ -308,7 +322,7 @@ class Friends(unittest.TestCase):
         return r.get_json()
 
     def test_menu_list_and_join_use_private_proof_not_lobby_token(self):
-        self.accept(); self.poll()
+        self.befriend(); self.poll()
         sessions = list(self.db.execute("SELECT * FROM social_sessions"))
         row = self.menu_read(self.menu_form())
         self.assertEqual(row["ok"], 1, row)
@@ -320,14 +334,18 @@ class Friends(unittest.TestCase):
         self.assertNotIn("token", row)
         self.assertNotIn("messages", row)
 
-    def test_menu_pending_request_redacts_presence_and_denies_join(self):
-        self.action(0, "add"); self.poll()
+    def test_menu_legacy_request_redacts_presence_until_a_poll(self):
+        self.legacy_request()
         row = self.menu_read(self.menu_form())["friends"][0]
         self.assertEqual((row["relation"], row["online"], row["addr"]), (1, 0, ""))
         self.assertEqual(self.menu_read(self.menu_form(op="join", who=A.who_of(IDS[1])))["status"], 403)
+        self.poll()
+        S._rate.clear()
+        row = self.menu_read(self.menu_form())["friends"][0]
+        self.assertEqual((row["relation"], row["online"]), (3, 1))
 
     def test_menu_invalid_fields_ticket_and_signature_fail_closed(self):
-        self.accept(); self.poll()
+        self.befriend(); self.poll()
         form = self.menu_form()
         for key, value in (("nonce", "A" * 32), ("expires", "9" * 20), ("ticket", "0" * 64),
                            ("pub", "z" * 64), ("sig", "0" * 128), ("who", "12345678"),
@@ -346,7 +364,7 @@ class Friends(unittest.TestCase):
         self.assertEqual(self.menu_read(self.menu_form())["ok"], 1)
 
     def test_menu_rechecks_links_bans_and_live_presence_each_read(self):
-        self.accept(); self.poll()
+        self.befriend(); self.poll()
         form = self.menu_form()
         join = self.menu_form(op="join", who=A.who_of(IDS[1]))
         self.assertEqual(self.menu_read(join)["ok"], 1)
@@ -364,7 +382,7 @@ class Friends(unittest.TestCase):
         self.assertEqual(self.menu_read(join)["status"], 409)
 
     def test_menu_domain_and_join_target_cannot_be_substituted(self):
-        self.accept(); self.poll()
+        self.befriend(); self.poll()
         form = self.menu_form(op="join", who=A.who_of(IDS[1]))
         self.assertEqual(self.menu_read(form)["ok"], 1)
         other = self.menu_form(op="join", who=A.who_of(IDS[2]))
