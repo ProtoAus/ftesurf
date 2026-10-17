@@ -328,6 +328,8 @@ def main():
             # Row 4 is a bonus save: in order, the step restores its run and `!r`
             # resets that bonus; the other way round `!r` lands on stage 1's start.
             more['step-reset'] = window('step-reset', lambda: cl.send('sl_next; say !r'), settle=2.0)
+            # `!s 2` moves the leg `!r` reads: in order, `!r` resets stage 2.
+            more['stage-reset'] = window('stage-reset', lambda: cl.send('say !s 2; say !r'), settle=2.0)
 
         if a.threaded:
             check(not w['client_ops'] and not w2['client_ops'] and not w3['client_ops'],
@@ -361,7 +363,8 @@ def main():
                     'held-first': ['207'], 'held-last': ['208'], 'held-next': ['205'],
                     'held-chain': ['205', '206'], 'held-blindpast': ['205', '205', '205'],
                     'held-blind': ['207', '205'],
-                    'release': ['204'], 'free-next': ['205'], 'step-reset': ['205', '201']}
+                    'release': ['204'], 'free-next': ['205'], 'step-reset': ['205', '201'],
+                    'stage-reset': ['210', '201']}
             check([s for s, _ in more['stage2']['said']] == ['!s'] and [s for s, _ in more['bonus1']['said']] == ['!b'],
                   'the server teleported for !s 2 and !b 1')
             held = ('held-prev', 'held-first', 'held-last', 'held-next', 'held-chain',
@@ -378,6 +381,10 @@ def main():
             sr = more['step-reset']
             check(sr['rows'] == ['4'] and len(sr['saidline']) == 1 and 'bonus' in sr['saidline'][0],
                   f'a step then !r: row 4, then the bonus start ({sr["saidline"]})')
+            st = more['stage-reset']
+            check(len(st['saidline']) == 2 and st['saidline'][1].startswith('!r')
+                  and 'stage 2' in st['saidline'][1],
+                  f'!s 2 then !r: the reset is stage 2\'s ({st["saidline"]})')
             if a.control or a.threaded:
                 for tag, ww in more.items():
                     check(not ww['client_ops'] and not ww['server_ops'], f'{tag}: no op (old command)')
@@ -396,9 +403,9 @@ def main():
                 for tag, ww in more.items():
                     if tag == 'release' and not a.hold_engine:
                         print(f'note: release prederr on this engine: {ww["prederr"]}', flush=True)
-                    elif tag == 'step-reset':
-                        # `!r` behind an unanswered step goes blind: its correction is expected.
-                        print(f'note: step-reset prederr: {ww["prederr"]}', flush=True)
+                    elif tag in ('step-reset', 'stage-reset'):
+                        # `!r` behind an unanswered op goes blind: its correction is expected.
+                        print(f'note: {tag} prederr: {ww["prederr"]}', flush=True)
                     elif tag == 'held-blindpast':
                         # A blind step one command before a predicted one: the meter
                         # samples one frame a pass and may not see it.

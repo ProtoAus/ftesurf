@@ -76,8 +76,11 @@
   key's auto-repeat waits for the answer; WarpOp_Charge mirrors SV_SaveLocRate,
   and a press it says the server refuses is WOPB_REFUSED, which the walk skips
   (it moves no cursor). A blind load ends prediction for what follows it (the
-  replay does not have its hold), and `!r` behind an unanswered load or step
-  goes blind (the load restores the run state `!r`'s destination reads). A first cut
+  replay does not have its hold, nor its row's release speed), and `!r` behind
+  any unanswered op but a release goes blind (`!s`/`!b`/`!m` move its leg, a load
+  restores its run state). The ring is 64: a slot is held 64 commands past its
+  answer for the replay, and a review estimated (not measured) that a held key
+  at low ping fills 16 in under a second. A first cut
   DEFERRED early presses and the review found the cost: later keys (`!r`, 7,
   the release) overtook them, and a fifth press vanished.
 - `p753warpop.py --more` grades the client's `seq: event ... op 2 id N` (the

@@ -404,9 +404,10 @@ void(string c, float rep) SaveLoc_Step =
 		op = WOP_LAST;
 	if (rep)
 	{
-		// The stringcmd path too: a repeat waits for the last list command's answer.
+		// The stringcmd path too: a repeat waits for the last list command's
+		// answer, and does not pile into a busy trail request's queue.
 		SaveLoc_Resync();
-		if (rec_sl_sent != getstatf(STAT_FS_SLACK))
+		if (rec_sl_sent != getstatf(STAT_FS_SLACK) || Trail_RequestBusy())
 			return;
 	}
 	if (!WarpOp_Step(op, rep))

@@ -30,7 +30,7 @@ float predinput_held;           // Patch 754: the engine predicts through PM_NON
 #define WOP_HOLD  8
 #define WOP_CLEARCARRIER 16
 
-#define WOP_RING 16
+#define WOP_RING 64                 // a slot is held 64 commands past its answer: room for a held key
 float  *wop_seq;                // the command it rode; -1 queued; 0 free
 float  *wop_op;
 float  *wop_q;                  // queue order while queued
@@ -140,8 +140,12 @@ float(float op, vector org, vector vel, vector ang, float duck) WarpOp_Queue =
 	return TRUE;
 };
 
-// A load or step still unanswered: the cursor stats are from before it.
-float() WarpOp_ListBusy =
+#define WOPP_LIST      1            // a load or step: the cursor stats are from before it
+#define WOPP_MOVE      2            // anything but a release: `!r`'s leg may move under it
+#define WOPP_BLINDLOAD 3            // a blind load: its row's speed is not known here
+
+// An unanswered op of the kind asked about.
+float(float what) WarpOp_Pending =
 {
 	local float i, op;
 
@@ -149,9 +153,14 @@ float() WarpOp_ListBusy =
 		return FALSE;
 	for (i = 0; i < WOP_RING; i = i + 1)
 	{
+		if (!WarpOp_Unanswered(i))
+			continue;
 		op = wop_op[i];
-		if (op == WOP_LOAD || (op >= WOP_NEXT && op <= WOP_LAST))
-		if (WarpOp_Unanswered(i))
+		if (what == WOPP_MOVE && op != WOP_RELEASE)
+			return TRUE;
+		if (what == WOPP_LIST && (op == WOP_LOAD || (op >= WOP_NEXT && op <= WOP_LAST)))
+			return TRUE;
+		if (what == WOPP_BLINDLOAD && op == WOP_LOAD && wop_blind[i] == WOPB_BLIND)
 			return TRUE;
 	}
 	return FALSE;
@@ -323,9 +332,9 @@ float(float op) WarpOp_Reset =
 	if (ang_z != WOPD_KEEP && ang_z != WOPD_ANG)
 		return FALSE;
 	ang_z = (ang_z == WOPD_ANG);
-	// Patch 759: a load or step still unanswered restores run state that `!r`'s
-	// published destination was read from: sent in order, unpredicted.
-	blind = (op == WOP_RESET && WarpOp_ListBusy());
+	// Patch 759: any op still unanswered can move the leg or restore the run state
+	// `!r`'s published destination was read from: sent in order, unpredicted.
+	blind = (op == WOP_RESET && WarpOp_Pending(WOPP_MOVE));
 	if (blind)
 		ang_z = 0;
 	if (!WarpOp_Queue(op, org, '0 0 0', ang, 0))
@@ -338,7 +347,7 @@ float(float op) WarpOp_Reset =
 // The load key's sl_load + sl_hold.  Same gates as SaveLoc_PredictLoad's camera.
 float() WarpOp_Load =
 {
-	local float relpending, blind;
+	local float relpending, blind, charged;
 
 	// A release still in flight is ordered before this load (both ride commands);
 	// otherwise a hold the server still reports is not ours to stack on.
@@ -357,10 +366,15 @@ float() WarpOp_Load =
 	// way; unpredicted (blind) when its row is not published or the server's
 	// bucket would refuse it, and the server's answer corrects it as before.
 	blind = WarpOp_Row(WOP_LOAD) ? 0 : WOPB_BLIND;
-	if (!WarpOp_Charge())
+	charged = WarpOp_Charge();
+	if (!charged)
 		blind = WOPB_REFUSED;
 	if (!WarpOp_Queue(WOP_LOAD, wop_tgorg, wop_tgvel, [wop_tgang_x, wop_tgang_y, !blind], wop_tgang_z))
+	{
+		if (charged)
+			wop_tok = wop_tok + 1;      // the stringcmd sent instead charges it
 		return FALSE;
+	}
 	wop_blind[wop_slot] = blind;
 	wop_loadvel = wop_tgvel;
 	wop_loadseq = -1;
@@ -383,7 +397,7 @@ float() WarpOp_Load =
 */
 float(float op, float rep) WarpOp_Step =
 {
-	local float blind;
+	local float blind, charged;
 
 	if (!WarpOp_Able() || Trail_RequestBusy())
 		return FALSE;
@@ -393,19 +407,24 @@ float(float op, float rep) WarpOp_Step =
 	if (getstatf(STAT_FS_SAVECOUNT) < 1 || getstatf(STAT_FS_SAVEINDEX) < 1)
 		return FALSE;
 	if (rep)
-	if (WarpOp_ListBusy())
+	if (WarpOp_Pending(WOPP_LIST))
 		return TRUE;
 	blind = WarpOp_Row(op) ? 0 : WOPB_BLIND;
 	if (rep && blind)
 		return TRUE;
-	if (!WarpOp_Charge())
+	charged = WarpOp_Charge();
+	if (!charged)
 	{
 		if (rep)
 			return TRUE;
 		blind = WOPB_REFUSED;
 	}
 	if (!WarpOp_Queue(op, wop_tgorg, wop_tgvel, [wop_tgang_x, wop_tgang_y, !blind], wop_tgang_z))
-		return FALSE;
+	{
+		if (charged)
+			wop_tok = wop_tok + 1;      // the stringcmd sent instead charges it
+		return rep;                     // a repeat with the ring full is dropped
+	}
 	wop_blind[wop_slot] = blind;
 	if (!blind)
 	if (rec_sl_holding)
@@ -426,12 +445,14 @@ float() WarpOp_Release =
 
 	v = wop_loadvel;
 	if (getstatf(STAT_FS_HOLD))
-	if (!WarpOp_ListBusy())
+	if (!WarpOp_Pending(WOPP_LIST))
 		v = [getstatf(STAT_FS_HOLDVEL), getstatf(STAT_FS_HOLDVEL + 1), getstatf(STAT_FS_HOLDVEL + 2)];
 	if (!wop_seq)
 		return FALSE;
 	if (!WarpOp_Queue(WOP_RELEASE, '0 0 0', v, '0 0 0', 0))
 		return FALSE;
+	if (WarpOp_Pending(WOPP_BLINDLOAD))
+		wop_blind[wop_slot] = WOPB_BLIND;   // Patch 759: that load's speed is not known here
 	wop_relseq = -1;
 	wop_relat = 0;
 	return TRUE;
