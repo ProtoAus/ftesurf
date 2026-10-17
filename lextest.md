@@ -1,5 +1,26 @@
 # lextest.md — things waiting on a human
 
+## P748 / P752 / P756 — Kitsune portals: the view through a door, two rooms deep, walking through
+
+Restart the game. Keep `r_blendsort 2`.
+
+- **Flips through a door (P748).** Load saves 8 and 11 and turn around them: the
+  floor through the hub door and the skybox grid at stage 1's start should hold
+  still. If one still flips, type `r_blendtrace` there and send the `ALPHATRACE
+  result` lines; there is one per view now, ending `recurse=0` for the main view
+  and `recurse=1`/`2` for the views through a door or the sky.
+- **Two rooms deep (P752).** In the hub, look through the door into stage 1: at
+  the far end, stage 1's exit door now shows stage 2 (a small yellow frame) instead
+  of a closed door. `r_portalrecursion` is how many rooms deep you see: 0 closes
+  every door, 1 the room behind a door, 2 (default) that room's door open too.
+  It is saved now. Looking through the hub door costs up to about 1.5 ms a frame
+  more; if that is too slow, `r_portalrecursion 1`.
+- **Walking through (P756).** Walk, don't jump, through the hub door into stage 1
+  and back: you should keep walking, with no stop in the doorway and no duck.
+
+"Flips fixed / still at save N", "rooms ok / too slow" and "walks through / sticks"
+is enough. Verdict PENDING.
+
 ## P755 — Steam pictures appear at once and stay remembered
 
 Before: every picture was fetched again after your midnight, one per 1.5 s even
@@ -144,7 +165,7 @@ one has watched one in the game yet.
 
 Limits and evidence: `tools/p740demograb.md`.
 
-## P743 — Kitsune stage1 ramp flips (saves 5/6): ready in normal clients
+## P743 — Kitsune stage1 ramp flips (saves 5/6): CONFIRMED
 
 Both Windows clients have it since 2026-10-16T23:09:51Z (engine b9c66c501,
 stamp `git-7341-patch-743-0-gb9c66c501`; `.prev` is P742). Restart the game (the new exe loads on start), keep `r_blendsort 2`
@@ -156,7 +177,9 @@ and zones on, then on surf_kitsune:
 
 "Fixed / still flips at save N" is enough. If it still flips, one
 `r_blendtrace` with the camera on the bad view and the `ALPHATRACE result`
-line. Verdict PENDING. Details: `tools/p743alphaoverlap.md`.
+line. CONFIRMED by the owner 2026-10-17 ("The location we worked on are fixed!");
+the flips through a door and in the sky followed as P748, below. Details:
+`tools/p743alphaoverlap.md`.
 
 ## P742 — farther-right Kitsune eye spans: superseded by P743 above
 

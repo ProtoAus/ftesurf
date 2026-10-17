@@ -127,27 +127,57 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   must not reveal presence, and Hide/privacy-off must stop new work. Record owner
   wording/layout acceptance in `lextest.md`; remove after actual live activation.
 
-## Mode2 Kitsune stage1 flips: P743 fix awaits the owner's live check
+## Kitsune portals: P748/P752/P756 await the owner's live check
 
-- Site: engine `gl/gl_backend.c:GLBE_BlendPlaneSort`/`GLBE_BlendOverlapOrder`.
-  P743 replaces unproved centre-depth edges with clipped screen-overlap depth,
-  drops wholly behind-eye barriers and falls back to P742's graph rather than
-  abstaining. Native: the save 6 trace camera went from the owner's status
-  -2/48 edges/546 work to status 1. Geometry sweeps: stage1 978 -> 0 bad views
-  of 5400, stage3 475 -> 0. Not owner-confirmed.
-- Falsifier: mode2, zones on, stage1 saves 5/6 turning in every direction plus
-  the stage3 saves: no layer swaps. Delete this entry when the owner confirms;
-  `tools/p743alphaoverlap.md`, human: `lextest.md`.
+- P743 was confirmed by the owner on 2026-10-17 at the worked stage-1 saves. Its
+  follow-ups: P748 sorts panes seen through portals and in the 3D sky (saves 8 and
+  11), P752 opens the door seen through a door (`r_portalrecursion`, now saved),
+  P756 is mover 5 (walking through a linked door no longer sticks). Native arms
+  and reviews: `tools/p748portalsort.md`, `tools/p752portalrooms.md`,
+  `tools/p756portalwalk.md`. Not owner-confirmed.
+- Falsifier: lextest's P748/P752/P756 entry. Delete this item when the owner
+  confirms; keep the limits below.
 
-## Mode2 plane proofs read r_origin/vright, which portals rebuild without roll
+## Mode2 limits left by P748
 
-- Site: engine `gl/gl_backend.c:GLBE_BlendPlaneGeometry` bounds and
-  `GLBE_BlendPlaneSide` (P742 code). `GLR_DrawPortal` (gl_rmain.c ~2133) rebuilds
-  `vpn/vright/vup/r_origin` from viewangles without `gl_screenangle` roll, stereo
-  eye offset or the VR eye matrix, while `m_view` keeps them; P743's overlap
-  test uses `m_view`. Found by the P743 review; no case seen in play.
-- Falsifier: an actual-C scene with a portal batch and a non-zero screen roll or
-  eye offset, comparing the bounds' disjoint verdict with `m_view` projection.
+- A spinning skyroom (`skyroom_spin`) keys the baseline order along the unspun
+  `vpn` (gl_backend.c `GLBE_BlendCenterDepth`); proofs are unaffected. Measured
+  by P748's review: baseline wrong on 35% of such pairs against 2.2% with the
+  axes matching. Fix: take the depth axis from `m_view` row 2 in mode2.
+- Mode 1 (`GLBE_SubmitBlendedWorld`, the default) has no eye guard: in VR or with
+  a stereo eye offset, after a portal pass, its plane proofs run from `r_origin`
+  while GL draws from the offset eye. No case seen in play.
+
+## Portal rooms: what P752 left out
+
+- The extra level costs up to about 1.5 ms a frame (averaged over a turn) where
+  a second door shows; `r_portalrecursion 1` removes it.
+- `Portal_Offer` ranks doors in a half-space, not the view frustum, plus one spare
+  per eye; a big door just off screen can still take a spare's place.
+- `checkpvs` decompresses a VBSP PVS row each call (~170 a frame at the defaults,
+  ~1,800 at recursion 5 on a 116-door map); not profiled with `profile_csqc`.
+
+## Mover 5 portal limits (P756)
+
+- A linked door whose rectangle reaches BELOW the floor still stalls a walker
+  (both movers): the sweep plane sits at the door's bottom edge, under the real
+  floor. A fix needs the floor height in front of the door, which a startsolid
+  trace does not report.
+- The carve forgives any solid in a door's window, so where a door's rectangle
+  overlaps a lintel or jamb above the real floor, a box embedded there can stand
+  on the rectangle's bottom edge (review, traced, not built). A door audit:
+  rectangle bottom edge against the floor beneath it.
+- Pre-existing (P725): on the tick the hull's back face leaves the exit wall's
+  slab, the linked carve reports the far plane (normal -fwd) and ClipVelocity can
+  zero the forward speed. Not seen on Kitsune (the timeline crosses at an
+  unbroken ~225 u/s); bites only if the wall face is within ~3.6 units of the
+  slab edge.
+- Pre-existing (P283): a trace that starts in solid and ends clear against a
+  func_brush door frame is carved on the server only, so a walked exit may snap
+  the prediction slightly.
+- pm_verify checks each pin for internal consistency, not that a file names one
+  mover throughout; a forged file could mix movers. Honest runs resumed across a
+  deploy legitimately carry two, so the fix is a policy decision, not a refusal.
 
 ## Save-marker source-removal fixture can be completed by its manual think (P735)
 

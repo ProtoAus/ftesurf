@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   d886035b953b0b9b8e031082ac5f88359a24dae3
+commit   99e69da32be77f24d18a5441440b002a0db72672
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,19 @@ commit   d886035b953b0b9b8e031082ac5f88359a24dae3
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-754
-patch    755
+tag      patch-756
+patch    756
+# Patch 756 (engine, mover 5): walking through a linked portal no longer sticks.
+# Half the hull is still in the wall behind the exit, every trace starts in solid,
+# and the carve dropped the sill: airborne, then each gravity move refused. Mover 5
+# bounds a carved trace by an upright door's bottom edge and lands exactly (no 1/8
+# snap); movers 1-4 replay unchanged. Timeline arm: 4 freezes, 5 walks both ways.
+# Patch 752 (engine + QC): portal rooms. r_portalrecursion is saved; cl_portal.qc
+# offers the door seen through a door (Portal_Offer), and a view only budgets doors
+# in its own PVS. Hub: stage 1's exit now shows stage 2 through the hub door.
+# Patch 748 (engine, mode2): portal, skyroom and capture views gather, cull and
+# plane-sort like the main view, gated on GL's eye matching r_origin; r_blendtrace
+# traces every pass of one frame. Owner saves 8/11 render as their good neighbours.
 # Patch 755 (QC only): Steam pictures stay on disk 30 days, one file a mark, and
 # load from it at once (two a frame); only asks are paced. A copy of an earlier
 # day is drawn and refreshed behind it. Warm board of 13: 19.3 s -> 1.0 s, 0 asks.
