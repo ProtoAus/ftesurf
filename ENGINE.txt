@@ -25,7 +25,10 @@ commit   b9c66c50114d9a21f39087f6409d07dfbb295e77
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-743
-patch    751
+patch    755
+# Patch 755 (QC only): Steam pictures stay on disk 30 days, one file a mark, and
+# load from it at once (two a frame); only asks are paced. A copy of an earlier
+# day is drawn and refreshed behind it. Warm board of 13: 19.3 s -> 1.0 s, 0 asks.
 # Patch 751 (QC only): a lobby lists, loads and keeps the saves another lobby
 # made on the same map. All twelve share data/saves, but a process opens only
 # files its name hash held at its last map load, and a block once read stayed

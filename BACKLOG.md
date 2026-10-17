@@ -47,6 +47,18 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - Falsifier: the grader counts the name apart (`lnde` minus the line's one name)
   and passes on e8afa04's csprogs with `runlines_labels.cfg`.
 
+## `vid_restart` ends a rig test client (seen in P755's arm)
+
+- Site: unknown (engine or rig). `tools/p755pics.py`'s warm arm sends
+  `vid_restart`; the client's log stops after "Hardware gamma is not
+  supported" and the process is gone, with no Windows error record. Same on
+  the unpatched build with the same `C:/FTESurf/ftesurf64.exe`, so not the
+  picture cache; `p715pics.py` passed this step on 15 Oct.
+- Falsifier: one isolated client, any map, `vid_restart` -- it must keep
+  running and draw. Then bisect engine builds if it does not.
+- Also: `p715pics.py` sets `rec_terms 5`; FS_TERMS_ONLINE is now 6, so its online
+  board never asks and every arm measures nothing until it is updated.
+
 ## KSF crawler: P747 waits for the next backend cutover
 
 - Site: `surfd/ksfprofile.py:step`, `surfd/ksfgrab.py` (P747, on main). The

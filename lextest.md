@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P755 — Steam pictures appear at once and stay remembered
+
+Before: every picture was fetched again after your midnight, one per 1.5 s even
+when it was already on disk, and players evicted each other from the cache.
+Measured in a test client with 13 players: 19.3 s for the board's pictures from
+disk before, 1.0 s now, with no requests.
+
+- Open a board or the player list on a lobby: pictures should be there at once,
+  map after map. Tomorrow, they should still be there at once (they refresh
+  quietly behind). "Instant / still slow" is enough. Verdict PENDING.
+
+Delivery and limits: `tools/p755steampic.md`.
+
 ## P747 — KSF demos are downloading: Watch one
 
 The KSF crawler had been stuck since 15 Oct, so no KSF row had a demo. Unblocked
