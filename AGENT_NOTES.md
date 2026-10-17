@@ -1,5 +1,20 @@
 # AGENT_NOTES.md
 
+## Map pakfile priority (P765, 2026-10-17)
+
+- A Source map's packed file used to lose to ANY mounted game's copy: the map pak
+  is SPF_TEMPORARY, appended after Momentum/CS:S/HL2/TF2/CS:GO/Portal 2 (`path`).
+  P765 fixes `materials/` only. Before debugging how a Source material looks,
+  `flocate "materials/<name>.vmt"` and `r_showshader "<name>"`: the copy in use
+  may be a loose `cstrike/materials` file from another map's download, and a
+  `progblendfunc` line there means the surface writes no depth.
+- An overlay (zones, particles) drawn through a solid-looking wall in
+  `r_blendsort 0` and `1` is a wall in sort 11, not a sorter bug. Mode 2 hid it
+  until P739 by ordering lines among the blended faces. Test every mode on the
+  CONTROL build too: P739-P758 looked like a mode-independent regression only
+  because 0.1.26 had been measured in mode 2 alone.
+- Bisect a native build from peers' retained delivery copies (their task roots'
+  `delivery-pNNN/subject`) before building one: hash it against the deploy record.
 ## Static prop hulls as convex pieces (P764, mover 7, 2026-10-18)
 
 - At `movevars.sourceversion >= 7` the mover sweeps a static prop's `.phy` ledges

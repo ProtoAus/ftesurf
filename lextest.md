@@ -1,5 +1,22 @@
 # lextest.md — things waiting on a human
 
+## P765 — surf_monolith's walls are solid again; zones and particles stay behind them
+
+Your CS:S folder has its own `materials/silkroad/...` with `$translucent 1` on
+walls that surf_monolith and surf_joutsenlaulu pack as solid; the game used to
+read CS:S's copy first. Now a map's own materials win (FTESurf's still win over
+both). Live in both Windows installs since 2026-10-17T16:36Z (`ftesurf64.exe`
+`20d3e0b1`, engine tag patch-765; `.prev` is P764's `9752ac8b`); restart the game.
+
+- **surf_monolith** at spawn and at the main start: the zone boxes and the dust
+  behind the stone walls are hidden; nothing looks inside-out.
+- **surf_joutsenlaulu**, turn right from spawn: same.
+- **B4 and surf_board_this's room skies:** P765 does not change these. If the
+  fight is still there, say where you stand and which way you look.
+- `fs_mapmaterials 0` then reconnect brings the old behaviour back, for an A/B.
+
+"Monolith ok / still see-through at <spot>", "joutsen ok" and the sky spots.
+Verdict PENDING.
 ## P764 — curved prop ramps no longer kick you off at their seams
 
 Live in both Windows installs since 2026-10-17T16:12:30Z (engine `patch-764`, client

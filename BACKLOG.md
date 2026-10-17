@@ -5,6 +5,27 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Map pakfile priority: what Patch 765 left out
+
+- Site: engine `common/fs.c` FS_FLocateFile. Only `materials/` looks in the map
+  pakfile before the mounted games; `models/`, `sound/`, `particles/` still lose to
+  any Momentum/CS:S/HL2 copy. Not done because `.phy` collision is under models/
+  (physics). Check: `python tools/census/shadowed.py <map>` lists the
+  packed files another mount shadows with different bytes (surf_board_this: 83 of
+  1376, none of them a VMT opacity change).
+- Site: the same pass. A map-pak hit ranks as deep as `ftesurf/downloads` (the
+  first SPF_ADDON path), so `downloads/materials/x.tga` would beat the map's
+  `x.vtf` in Image_LocateHighResTexture's first-lowest-depth pick (review round 2).
+  No live effect: downloads holds only `csprogsvers/`. Check: put a .tga there.
+- Lex, 17 Oct: surf_board_this "a room's projected skybox fights the map's sky"
+  and monolith B4's fake sky "fighting" -- P765 changes nothing in either (B4's
+  WindowImposter slab draws the same with fs_mapmaterials 0 and 1, and
+  board_this has no WindowImposter and no shadowed opacity). Needs the spot.
+  Lead: B4's slab sits 4 units under its sky brush, which r_sky_forcedepth 2
+  writes depth for; at distance that gap is under one depth step.
+- Site: `vid_reload` on surf_monolith (P758 client, after `r_refract_fbo 0`)
+  crashed: 0xC0000005 at rva 0x303844 (crashaddr.txt, 17 Oct 15:00Z).
+
 ## Key panel: what Patch 762 left out
 
 - Site: `src/client/cl_keycfg.qc` KC_Draw. While TAB holds the board (`sc_held`,
