@@ -470,21 +470,9 @@ void() Trail_Frame =
 	local float st, sq, op, id, saved;
 
 	Trail_Init();
+	// Patch 745: hud_trail only hides the line.  It is recorded either way, so
+	// rewind, saves' pictures and the live graph work with it off.
 	tr_cv = cvar("hud_trail");
-	if (!tr_cv)
-	{
-		// Do not leave an old picture at a reused id while trails are disabled.
-		sq = getstatf(STAT_FS_SLSEQ);
-		if (sq != tr_slseq && tr_saveack > 0)
-		if (getstatf(STAT_FS_SLTRAILTAG) == tr_saveack)
-		if (getstatf(STAT_FS_SLTRAILTAG) != tr_req_wait)
-		if (FS_SlopOp(getstatf(STAT_FS_SLOP)) == SLOP_SAVED)
-			Trail_Save(FS_SlopId(getstatf(STAT_FS_SLOP)), getstatf(STAT_FS_SAVETICKS));
-		if (tr_on || tr_prevon)
-			Trail_Reset();          // turned off underneath us
-		tr_slseq = sq;
-		return;
-	}
 
 	Trail_Keep();
 	st = getstatf(STAT_FS_TIMERSTATE);

@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P745 — rewind with the player line off; the replay line's own window
+
+- `hud_edit` -> Run lines -> Player line OFF. Start a run and press the rewind key
+  twice: it should open and scrub your run as before, with no line drawn. Turn
+  the line back on mid-run: the whole run so far should appear.
+- Watch any replay. Its line now shows only the next few seconds ahead of the
+  playhead by default (Run lines -> **Demo line shows**, "as board lines" follows
+  Board lines show). Try whole / next 4 / 8 / 16 s, and **Demo visible for**.
+  Is the default what you want while watching? "Good / prefer whole" is enough.
+
+Verdict PENDING. Measured: `tools/test_runlines_hidden.py`,
+`tools/test_runlines_demowin.py` (AGENT_NOTES, The run line).
+
 ## P740 — Get demo now starts within seconds; KSF demos after 08:36Z
 
 Backend only and live since 2026-10-16T16:43Z; no client update needed. A real

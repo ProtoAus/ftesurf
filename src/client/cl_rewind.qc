@@ -326,12 +326,6 @@ float() Rewind_Open =
 
 	if (rw_on)
 		return FALSE;
-	if (!cvar("hud_trail"))
-	{
-		print("^3rewind:^7 it rewinds your run's line, and hud_trail is off "
-		      "(hud_edit, Run lines)\n");
-		return FALSE;
-	}
 	if (!tr_on || ln_n[tr_live] < 2)
 	{
 		print("^3rewind:^7 no run to rewind -- start one first\n");
@@ -626,7 +620,7 @@ void(float navfocus) Rewind_Frame =
 	}
 	if (!tr_on || !tr_cur_on)
 	{
-		Rewind_Leave();             // the line went: hud_trail 0
+		Rewind_Leave();             // the line went (a map change, Trail_Reset)
 		return;
 	}
 	// The line started over: a run began under the pin with no state change

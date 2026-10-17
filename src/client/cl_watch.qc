@@ -3671,7 +3671,7 @@ void() Watch_Path =
 
 void() Watch_Path2D =
 {
-	local float t, wb, wf;
+	local float t, wb, wf, far;
 	local vector eye, fwd, q0;
 
 	rec_wt_p2n    = 0;
@@ -3739,6 +3739,9 @@ void() Watch_Path2D =
 	ln_frames = ln_frames + 1;
 	Line_ViewFrame();
 	Line_StatsReset();
+	far = cvar("hud_lines_demo_far");          // Patch 745: a replay's own distance
+	if (far >= 0)
+		Line_FarSet(far);
 	// Patch 449: the window, around where you are WATCHING.  Set here and not
 	// inside Line_Draw, which cannot tell a playhead from a board line's
 	// "no playhead" sentinel.
@@ -3747,7 +3750,16 @@ void() Watch_Path2D =
 	if (wb > 0 || wf > 0)
 		Line_Window(rec_wt_time - wb, rec_wt_time + wf);
 	else
-		Line_WindowOff();
+	{
+		// Patch 745: else hud_edit's, shaped as a board line's (Line_FollowWindow).
+		wf = cvar("hud_lines_demo");
+		if (wf < 0)
+			wf = cvar("hud_lines_order");
+		if (wf > 0)
+			Line_Window(rec_wt_time - max(1, wf * 0.25), rec_wt_time + wf);
+		else
+			Line_WindowOff();
+	}
 	Line_Draw(0, rec_wt_time, rec_wt_org, cvar("hud_watch_path_ahead") ? 0.5 : 0, 1);
 
 	// `replay bench <n>`: the draw n more times in this frame, unprofiled (gettime(1)

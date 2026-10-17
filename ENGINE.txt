@@ -25,7 +25,12 @@ commit   b9c66c50114d9a21f39087f6409d07dfbb295e77
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-743
-patch    743
+patch    745
+# Patch 745 (QC only): hud_trail 0 hides the player line and still records it, so
+# rewind and save pictures work with it off; a replay's line gets hud_edit's own
+# window (hud_lines_demo, default as hud_lines_order) and distance
+# (hud_lines_demo_far). runlines_hidden/runlines_demowin, controls on the
+# installed 108748bb build. Engine pin/tag and qcbuild unchanged.
 # Patch 743: mode2 orders an unproved pane pair by 1/w over its actual clipped
 # screen overlap (disjoint: no edge; crossing: baseline), drops wholly
 # behind-eye faces, and on a cycle or barrier crossing retries with P742's own

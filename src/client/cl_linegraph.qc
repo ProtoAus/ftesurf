@@ -92,7 +92,7 @@ float lv_rebuilds, lg_blanks;   // rebuilds only the live run asked for; frames 
 
 #define LVW_ON       0
 #define LVW_OFF      1          // hud_linegraph_live 0
-#define LVW_NORUN    2          // no run on the live slot (or hud_trail 0)
+#define LVW_NORUN    2          // no run on the live slot
 #define LVW_PRACTICE 3          // a practice clock is not the timer's
 #define LVW_NOMATCH  4          // no ticked run shows this run or the stage being run
 

@@ -2496,6 +2496,24 @@ void(float s, float m, float from) Line_Paint =
 // ---- per frame ------------------------------------------------------------------
 
 // The view the lines are projected against, and the shared colour range.
+// How far the lines show, fading over the last third, and the numbers' own range inside
+// it (Patch 661: 0 is the line's).  Patch 745: a replay's line sets its own after
+// Line_ViewFrame (hud_lines_demo_far), so the engine's copy is written here too.
+void(float far) Line_FarSet =
+{
+	ln_far   = far;
+	ln_fadek = (far > 0) ? 3 / far : 0;
+	ln_labfar = cvar("hud_lines_label_far");
+	if (ln_labfar <= 0 || (ln_far > 0 && ln_labfar > ln_far))
+		ln_labfar = ln_far;
+	ln_labfadek = (ln_labfar > 0) ? 3 / ln_labfar : 0;
+	if (ln_np)
+	{
+		ln_np[LP_FAR]   = ln_far;
+		ln_np[LP_FADEK] = ln_fadek;
+	}
+};
+
 void() Line_ViewFrame =
 {
 	local vector fov, c;
@@ -2520,8 +2538,7 @@ void() Line_ViewFrame =
 	fov = getproperty(VF_SCREENPSIZE);
 	ln_labelscreen = fov;
 	ln_tolk = LN_PXERR * ln_tx / max(1, fov_x * 0.5);
-	ln_far  = cvar("hud_watch_path_far");
-	ln_fadek = (ln_far > 0) ? 3 / ln_far : 0;       // fades over its last third
+	Line_FarSet(cvar("hud_watch_path_far"));
 	ln_cmown = bound(0, cvar("hud_lines_color_own"), LN_CM_PLAIN);
 	ln_cmoth = bound(0, cvar("hud_lines_color_others"), LN_CM_PLAIN);
 	// The marks, read once a frame beside the rest.
@@ -2535,11 +2552,6 @@ void() Line_ViewFrame =
 	ln_declutter = cvar("hud_lines_declutter");
 	ln_sparse   = (ln_declutter == 1);
 	ln_lanes    = (ln_declutter == 2);
-	// Patch 661: the numbers' own range, nearer than the line's; 0 is the line's.
-	ln_labfar   = cvar("hud_lines_label_far");
-	if (ln_labfar <= 0 || (ln_far > 0 && ln_labfar > ln_far))
-		ln_labfar = ln_far;
-	ln_labfadek = (ln_labfar > 0) ? 3 / ln_labfar : 0;
 	ln_mkgap    = cvar("hud_lines_gap");    if (ln_mkgap < 4) ln_mkgap = 40;
 	ln_mkgap    = ln_mkgap * ln_px;
 	ln_numon     = cvar("hud_lines_nums");
@@ -3818,6 +3830,11 @@ void() Line_RegisterCvars =
 	// along it (and a quarter of that behind); 0 is everything within hud_watch_path_far.
 	registercvar("hud_lines_order",  "4", CVAR_ARCHIVE);
 	registercvar("hud_lines_winf",   "0", CVAR_ARCHIVE);
+	// Patch 745: the open demo's own window, when hud_lines_win/winf are both 0: this
+	// many seconds ahead of the playhead and a quarter of that behind; 0 the whole
+	// line, -1 as hud_lines_order.  _far is its own Visible for; -1 hud_watch_path_far.
+	registercvar("hud_lines_demo",     "-1", CVAR_ARCHIVE);
+	registercvar("hud_lines_demo_far", "-1", CVAR_ARCHIVE);
 	// Patch 649: of the ticked lines (sixty-four at most now), the first this many have
 	// marks and numbers; the rest are lines.  The graph and the names are the first
 	// eight's whatever this says.
@@ -3884,6 +3901,8 @@ float() Line_Console =
 	      "  hud_lines_telealpha 0.3 (faded dashed teleport joins)\n"
 	      "  hud_lines_win/winf 0 (whole line), or seconds behind/ahead\n"
 	      "  hud_lines_order 8 (board lines: seconds ahead of you; 0 all near)\n"
+	      "  hud_lines_demo -1 (a replay's line: seconds ahead of the playhead;\n"
+	      "    0 whole, -1 as order), hud_lines_demo_far -1 (-1: as path_far)\n"
 	      "  hud_trail_prev 1, hud_trail_fade 1 (seconds)\n"
 	      "  hud_lines_reveal 0.18 (chunk reveal seconds; 0 instant)\n"
 	      "Nearby players (use seta, or it is not saved): cl_playerfade 1,\n"

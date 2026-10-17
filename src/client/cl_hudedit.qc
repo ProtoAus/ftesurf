@@ -603,17 +603,20 @@ string(string id, float row) HE_OptDef =
 	// `lines help` lists them without filling the editor with 29 rows.
 	if (id == "lines")
 	{
-		if (row == 0) return "hud_trail|Player line|t|||Your own run. Saves and rewind retain the attached prefix.";
+		if (row == 0) return "hud_trail|Player line|t|||Your own run. Off only hides it: it is still recorded, so rewind and saves work either way.";
 		if (row == 1) return "hud_watch_path|Demo line|t|||The demo currently open in the replay viewer.";
 		if (row == 2) return "hud_lines_board|Board lines|t|||Show selected leaderboard lines without forgetting the selection.";
 		if (row == 3) return "hud_lines_order|Board lines show|c|0 4 8 16|all near;next 4 s;next 8 s;next 16 s|Only the stretch of each ticked run that comes next from where you are, so a later part of the route does not show through a wall.";
+		// Patch 745: the replay's own two, each able to follow the setting above it.
+		if (row == 4) return "hud_lines_demo|Demo line shows|c|-1 0 4 8 16|as board lines;whole;next 4 s;next 8 s;next 16 s|While you watch a replay: the stretch of its line ahead of the playhead (and a quarter of that behind), faded at both ends, or all of it.";
 		// Patch 632: one colouring for your own line and one for the others; 5 is
 		// each group's plain colour and the default.
-		if (row == 4) return "hud_lines_color_own|Your line|c|5 0 1 2 3 4|blue;speed;gain;contact;energy;air control|The line of the run you are making: plain blue, or coloured by one of five readings of the run.";
-		if (row == 5) return "hud_lines_color_others|Other lines|c|5 0 1 2 3 4|by time;speed;gain;contact;energy;air control|The open demo and the ticked board lines. by time: the fastest green, the slowest red.";
-		if (row == 6) return "hud_watch_path_px|Thickness|c|1 2 3 4 6|1 px;2 px;3 px;4 px;6 px|Default width. Player and board width overrides remain console settings.";
-		if (row == 7) return "hud_watch_path_far|Visible for|c|0 3000 6000 12000|forever;3000;6000;12000|Units of distance. Fades over the last third.";
-		if (row == 8) return "hud_lines_reveal|Chunk fade|c|0 0.09 0.18 0.36|instant;fast;smooth;slow|Continuous sample-age fade, without chunk steps. Seconds; never changes the run clock.";
+		if (row == 5) return "hud_lines_color_own|Your line|c|5 0 1 2 3 4|blue;speed;gain;contact;energy;air control|The line of the run you are making: plain blue, or coloured by one of five readings of the run.";
+		if (row == 6) return "hud_lines_color_others|Other lines|c|5 0 1 2 3 4|by time;speed;gain;contact;energy;air control|The open demo and the ticked board lines. by time: the fastest green, the slowest red.";
+		if (row == 7) return "hud_watch_path_px|Thickness|c|1 2 3 4 6|1 px;2 px;3 px;4 px;6 px|Default width. Player and board width overrides remain console settings.";
+		if (row == 8) return "hud_watch_path_far|Visible for|c|0 3000 6000 12000|forever;3000;6000;12000|Units of distance. Fades over the last third.";
+		if (row == 9) return "hud_lines_demo_far|Demo visible for|c|-1 0 3000 6000 12000|as Visible for;forever;3000;6000;12000|While you watch a replay: how far from the camera its line shows, in units. Fades over the last third.";
+		if (row == 10) return "hud_lines_reveal|Chunk fade|c|0 0.09 0.18 0.36|instant;fast;smooth;slow|Continuous sample-age fade, without chunk steps. Seconds; never changes the run clock.";
 		// Patch 632: the nearby-player fade (cl_playerfade, _near, _far) left this
 		// pane for the console; HE_ResetAll still resets the three.
 		return "";
@@ -647,7 +650,7 @@ string(string id, float row) HE_OptDef =
 		if (row == 0) return "hud_linegraph_plots|Shows|c|1 2 3|speed;energy;both"
 		                     "|Speed against time, energy against time, or one above the other.";
 		if (row == 1) return "hud_linegraph_live|Your run|t||"
-		                     "|Your own run as you make it, in white, against the ticked runs. Needs the Player line on.";
+		                     "|Your own run as you make it, in white, against the ticked runs.";
 		return "";
 	}
 
@@ -2001,6 +2004,7 @@ void() HE_ResetAll =
 	// Patch 637: the two settings it moved that only the game code registers and
 	// that are not positions (those are HE_Default's), for the same reason.
 	localcmd("seta hud_lines_order 4\nseta hud_linegraph_plots 3\n");
+	localcmd("seta hud_lines_demo -1\nseta hud_lines_demo_far -1\n");      // Patch 745
 
 	// And the panel itself, which can be dragged into a corner like anything else.
 	HE_ResetCvar("hud_edit_panel_x");

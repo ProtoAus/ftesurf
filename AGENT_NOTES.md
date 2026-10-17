@@ -2498,6 +2498,21 @@ publicly WITH its fix, not before it.
 
 ## The run line (Patches 432, 449-453)
 
+- Patch 745: `hud_trail` is a DRAW switch only. Trail_Frame records the live line
+  whatever it says, so rewind, save pictures and the live graph no longer need it
+  on (before, 0 reset the line and Rewind_Open refused). A replay's line is
+  windowed round its playhead by `hud_lines_demo` (seconds ahead, a quarter behind,
+  min 1; 0 whole; -1, the default, follows `hud_lines_order`) unless the console's
+  `hud_lines_win/winf` are set, and has its own distance `hud_lines_demo_far`
+  (-1 = `hud_watch_path_far`, set through `Line_FarSet` after Line_ViewFrame).
+  MEASURED BEFORE CHANGING IT: `hud_watch_path_far` already applied to a replay
+  (1500 u drew 431 of 691 points on the old build); what the owner saw as "the
+  whole line" was the missing window. Arms `runlines_hidden.cfg` (dedicated) and
+  `runlines_demowin.cfg` (`--recording`), graders `tools/test_runlines_hidden.py`
+  and `test_runlines_demowin.py`, each with `--control <old build's log>`.
+  surf_dune's start platform ends about 300 u past its box: walking 2.3 s off it
+  falls back into the start and cancels the run (`run cancelled (back in the
+  start)`), so the rewind arm walks 1.6 s.
 - Patch 628: THE OFF-RAMP MARK AT THE RAMP'S OWN EDGE, from the loaded map.
   The ramp bit says the mover clipped a ramp DURING a tick; its sample is
   where that tick ended, and on 176 of 290 native leaves the hull is already
