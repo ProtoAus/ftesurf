@@ -236,6 +236,8 @@ client/cl_mouse.qc
 // because cl_watch.qc compiles before cl_scores.qc and could not otherwise test
 // it before releasing the cursor.  See the block beside ui_he_open there.
 client/cl_hudedit.qc
+// Patch 762: the key panel. After cl_hudedit.qc (HUD_EditClose) and cl_gfx.qc (Gfx_Field).
+client/cl_keycfg.qc
 // LAST, after cl_hudedit.qc.  Build 54: the trigger/entity inspector.
 //
 // It needs Sprite_ParseVec from cl_sprites.qc, Zone_Line/Zone_Face from

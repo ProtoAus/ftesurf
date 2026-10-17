@@ -172,11 +172,9 @@ void() Bn_ErrorSound;            // cl_banner.qc
 void() SaveLoc_RegisterCvars =
 {
 	/*
-	  The whole feature, including the bare digits.
-
-	  0 hands 1/2/3/4/5/0/z straight back to the engine's bind table, which is
-	  the only reason this is a cvar: if you ever want a number row that does
-	  something else, there has to be a way to say so.
+	  The open panel's digit map. 0 hands the digits back to the engine's bind
+	  table. Patch 762: with the panel down there is no digit map any more --
+	  z, 1, 2 and 4 are binds (default.cfg) that config_menu can move.
 	*/
 	registercvar("rec_savelock",   "1");
 
@@ -204,10 +202,10 @@ void() SaveLoc_RegisterCvars =
 	*/
 	registercommand("viewpos");
 
-	// The same toggle `z` does, as a command -- so it can be bound to whatever
-	// key you like without editing this file, and so it can be driven from a
-	// config.
+	// The panel's toggle. save_menu is the name default.cfg binds to z (Patch 762);
+	// saveloc_menu is the older spelling and Momentum's alias points at it.
 	registercommand("saveloc_menu");
+	registercommand("save_menu");
 
 	/*
 	  BUILD 90: every save-lock action as a bindable name -- see SaveLoc_Console
@@ -698,32 +696,14 @@ float(float scan, float down) SaveLoc_Key =
 		return TRUE;
 	}
 
-	if (scan == 'z')
-	{
-		rec_sl_open = !rec_sl_open;
-		rec_sl_armdel = 0;           // an arm does not survive the panel closing
-		return TRUE;
-	}
-
 	/*
-	  BUILD 26: THE PANEL-DOWN KEYS.  Create, load, remove -- and nothing else.
-
-	  The same three commands the open panel sends, so both states act on the
-	  cursor and the build 25 header's argument survives intact: there is still
-	  only one key map in the sense that matters, which is one set of commands
-	  over one index.  What differs is which keys reach it.
-
-	  Every other digit returns FALSE here and goes to the engine's own bind
-	  table untouched.  8 is deliberately not among these -- its confirmation is
-	  a row on a panel that is not being drawn.
+	  Patch 762: THE PANEL-DOWN KEYS ARE BINDS. z, 1, 2 and 4 were scancodes here
+	  (build 26), so nothing could move them; default.cfg now binds them to
+	  save_menu, sl_save, +sl_hold and sl_del, which reach the same calls through
+	  SaveLoc_Console. With the panel down every key goes to its bind.
 	*/
 	if (!rec_sl_open)
-	{
-		if (scan == '1') { SaveLoc_Cmd("sl_save"); return TRUE; }
-		if (scan == '2') { SaveLoc_LoadKey(scan);  return TRUE; }
-		if (scan == '4') { SaveLoc_Cmd("sl_del");  return TRUE; }
 		return FALSE;
-	}
 
 	/*
 	  8 twice.  Tested before the disarm below, and the disarm is what every

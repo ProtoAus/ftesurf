@@ -1,5 +1,22 @@
 # AGENT_NOTES.md
 
+## Key panel and bound save keys (P762, 2026-10-17)
+
+- `config_menu` (cl_keycfg.qc) rebinds with `setkeybind` on every modifier
+  state. A CSQC bind has the insecure level: `bind <key>` says "bound by insecure
+  source" and cfg_save writes `bindlevel <key> 30 "<cmd>"`; the table's commands
+  run at 30 (noclip measured). Key_WriteBindings writes no unbound key and no
+  `unbindall`, so an `unbind` of a key default.cfg binds comes back next launch:
+  a key a row gives up is bound to "" instead, which is written and wins.
+- z/1/2/4 are binds (save_menu, sl_save, +sl_hold, sl_del); SaveLoc_Key owns
+  only the OPEN panel's digits. A handler that swallows keys must pass those
+  binds: Rewind_InputEvent's save-lock test, SPEC_CMDS.
+- A capture is first in CL_InputChain (before the draft steals messagemode keys)
+  and eats its key's repeats and release. The panel closes when the board, a
+  replay or another cursor claim appears: one SUI bracket a frame owns the
+  clicks (P684). `tools/p762keys.py` posts native keys to its own window only;
+  `--control` shows the old fixed `1` saving with its bind cleared.
+
 ## Warp ops: `!r`, `!m` and the load key predicted (P753/P754, 2026-10-17)
 
 - An op is ONE usercmd's impulse (`WOP_*`, sh_defs.qc). `SV_WarpOpCommand` runs

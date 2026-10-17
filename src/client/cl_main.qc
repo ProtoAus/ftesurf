@@ -337,6 +337,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Body_RegisterCvars();           // Patch 383, the pose stream's bodies
 	Spec_RegisterCvars();           // Patch 385, spectate
 	MPad_RegisterCvars();           // Patch 390, the mouse pad
+	KC_Register();                  // Patch 762, config_menu and the key hints
 	HE_MigrateDefaults();           // Patch 641: after every HUD registration above
 	Ev_Register();                  // build 54, the trigger/entity inspector
 	ZoneEdit_Register();            // Patch 669, the zone editor
@@ -1120,6 +1121,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	*/
 	Vote_Track(evtype, scanx);      // Patch 372: observes only -- the draft below swallows key-ups
 	MPad_Track(evtype, scanx, chary);   // Patch 390: observes only -- the draft swallows deltas
+	if (KC_CaptureEvent(evtype, scanx, chary, devid))   // Patch 762: a key being bound takes any key
+		return TRUE;
 	// A release of the editor's press is still its own after closing/changing modes.
 	if (evtype == IE_KEYUP)
 		if (ZoneEdit_InputEvent(evtype, scanx, chary, devid)) return TRUE;
@@ -1157,6 +1160,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	if (ui_he_open)
 		if (HUD_EditInputEvent(evtype, scanx, chary, devid))
 			return TRUE;
+	if (KC_InputEvent(evtype, scanx, chary, devid))    // Patch 762: the key panel, modal like the editor
+		return TRUE;
 
 	/*
 	  BUILD 56: the entity inspector's cursor, behind the editor and in front of
@@ -1211,7 +1216,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (evtype == IE_KEYDOWN)
 		if (Vote_Key(scanx))
 			return TRUE;
-		if (rec_sl_open || scanx == '1' || scanx == '2' || scanx == 'z')
+		if (rec_sl_open || (rec_sl_holding && rec_sl_holdkey && scanx == rec_sl_holdkey))
 		if (SaveLoc_Key(scanx, evtype == IE_KEYDOWN))
 			return TRUE;
 	}
@@ -1837,6 +1842,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		SaveLoc_Draw(scr);
 		Gfx_Draw(scr);
 		Vote_Draw(scr);                 // Patch 372: over saveloc, gfx and the chatbox
+		KC_HintDraw(scr);               // Patch 762: the bottom-left key strip
 		// Reads two cvars the hl2 plugin writes at map load, and self-limits to
 		// the first twenty seconds of a map -- see the essay above it.
 		Gfx_DrawMissing(scr);
@@ -1900,6 +1906,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  bracket to this editor, so the two cannot clear each other's clicks.
 		*/
 		HUD_EditDraw(scr);
+		KC_Draw(scr);                   // Patch 762: closes itself if another panel takes the mouse
 		HUD_EditRoundTest(scr);     // Patch 642's arm; draws only while asked
 
 		// The save-lock hold's deadman.  Here rather than inside SaveLoc_Draw
@@ -2068,9 +2075,10 @@ float(string cmd) CSQC_ConsoleCommand =
 		return TRUE;
 	}
 
-	if (argv(0) == "saveloc_menu")
+	if (argv(0) == "saveloc_menu" || argv(0) == "save_menu")    // Patch 762: save_menu is the bound name
 	{
 		rec_sl_open = !rec_sl_open;
+		rec_sl_armdel = 0;          // an arm does not survive the panel closing (was z's)
 		return TRUE;
 	}
 
@@ -2095,6 +2103,8 @@ float(string cmd) CSQC_ConsoleCommand =
 	// BUILD 33 gave it arguments -- see Gfx_Console.
 	if (argv(0) == "gfx_menu")
 		return Gfx_Console();
+	if (argv(0) == "config_menu")      // Patch 762
+		return KC_Console();
 
 	// Patch 372.  `vote key <scan> <0|1>` runs the whole input chain, so a harness
 	// proves the handlers' ORDER, which cl_vote.qc's own handles cannot reach.

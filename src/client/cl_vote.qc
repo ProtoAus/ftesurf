@@ -2,7 +2,7 @@
 ===========================================================================
   cl_vote.qc -- the vote box.  Patch 372.
 
-  Drawn on the left in gfx_menu's look while the server runs a vote
+  Drawn on the left in gfx_menu's card while the server runs a vote
   (serverinfo "vote" and friends, grammar in sh_defs.qc; sv_vote.qc writes
   them).  Digits 1..n pick and 0 hides -- but only while the box is asking:
   from VOTE_ARM after it opens until you pick (plus VOTE_GRACE, so a double tap
@@ -291,46 +291,52 @@ float() Vote_Console =
 	return TRUE;
 };
 
+// Patch 762: the save-lock and gfx menus' card -- keycap rows, the pick lit.
 void(vector scr) Vote_Draw =
 {
 	local vector p;
-	local float w, h, lsz, gap, y, i, left, cap;
-	local string c, lab, foot;
+	local float sc, w, h, hh, lsz, ssz, y, i, left, cap, total, cw;
+	local string c, foot;
 
 	vt_box = '0 0 0';
 	if (!vt_on || !vt_shown)
 		return;
 
+	sc  = ui_cv_scale;
 	Font_Set(ui_font_ui);
-	lsz = Font_Px(8 * ui_cv_scale);
-	h   = 13 * ui_cv_scale;
-	gap = 1 * ui_cv_scale;
-	w   = 110 * ui_cv_scale;
+	lsz = Font_Px(8 * sc);
+	ssz = Font_Px(6 * sc);
+	h   = 14 * sc;
+	hh  = 15 * sc;
+	cw  = stringwidth("000", TRUE, [lsz, lsz]);
+	w   = 110 * sc;
 	for (i = 1; i <= vt_n; i = i + 1)
-		w = max(w, stringwidth(HUD_SK(sprintf("vote%g", i)), TRUE, [lsz, lsz])
-		           + stringwidth("000", TRUE, [lsz, lsz]) + h * 2.1);
+		w = max(w, stringwidth(HUD_SK(sprintf("vote%g", i)), TRUE, [lsz, lsz]) + cw + h + 20 * sc);
 	w = min(w, scr_x * 0.4);
+	total = 3 * sc + hh + vt_n * h + 3 * sc + ssz + 4 * sc;
 
 	p = [scr_x * cvar("hud_vote_x"), scr_y * cvar("hud_vote_y"), 0];
-	y = p_y;
 	left = max(vt_end - time, 0);
 	cap = Vote_Capturing();
+	_sui_round_draw(p, [w, total, 0], 5 * sc, SUI_THEME_PANEL, 0.90);
 
-	drawfill([p_x, y], [w, h + gap], '0.10 0.13 0.17', 0.85, 0);
-	HUD_Text([p_x + h * 0.35, y + (h - lsz) * 0.5], Vote_Title(), lsz, '1 1 1', 1);
-	HUD_TextR([p_x + w - h * 0.35, y + (h - lsz) * 0.5], sprintf("%gs", ceil(left)), lsz,
-	          (left < 5) ? '1 0.35 0.30' : '1.00 0.90 0.55', 1);
-	y = y + h + gap * 2;
+	y = p_y + 3 * sc;
+	HUD_Text([p_x + 6 * sc, y + (hh - 2 * sc - lsz) * 0.5], Vote_Title(), lsz, SUI_THEME_TEXT, 1);
+	HUD_TextR([p_x + w - 6 * sc, y + (hh - 2 * sc - lsz) * 0.5], sprintf("%gs", ceil(left)), lsz,
+	          (left < 5) ? SUI_THEME_BAD : SUI_THEME_WARN, 1);
+	drawfill([p_x + 4 * sc, y + hh - 2 * sc, 0], [w - 8 * sc, 1, 0], SUI_THEME_EDGE_HI, 0.7, 0);
+	y = y + hh;
 
+	// Muted while the digits are not live (the arm delay, after a pick): the
+	// keycaps say whether pressing one does anything right now.
 	c = HUD_SK("votec");
 	for (i = 1; i <= vt_n; i = i + 1)
 	{
-		lab = HUD_SK(sprintf("vote%g", i));
-		if (i == vt_pick)
-			drawfill([p_x, y], [w, h], '0.35 0.49 0.67', 1, 0);   // under Gfx_Row's black
-		Gfx_Row([p_x, y], w, h, sprintf("%g", i), lab, Gfx_Field(c, i - 1, " "),
-		        FALSE, "", lsz);
-		y = y + h + gap;
+		KeyMenu_Row([p_x, y], w, h, sprintf("%g", i), HUD_SK(sprintf("vote%g", i)),
+		            (i == vt_pick) ? KM_HOT : (cap ? KM_NORMAL : KM_INERT), lsz, sc);
+		HUD_TextR([p_x + w - 6 * sc, y + (h - sc - lsz) * 0.5], Gfx_Field(c, i - 1, " "), lsz,
+		          (i == vt_pick) ? SUI_THEME_TEXT : SUI_THEME_WARN, 1);
+		y = y + h;
 	}
 
 	if (Vote_Spectating())
@@ -343,12 +349,11 @@ void(vector scr) Vote_Draw =
 		foot = sprintf("1-%g change vote   0 hide", vt_n);
 	else
 		foot = "voted -- results in chat";
-	y = y + gap * 2;
-	HUD_Text([p_x + h * 0.35, y], foot, lsz * 0.9, '0.55 0.58 0.62', 1);
-	y = y + lsz;
+	y = y + 3 * sc;
+	HUD_Text([p_x + 6 * sc, y], foot, ssz, SUI_THEME_MUTED, 1);
 
 	Font_Reset();
-	HUD_Rect("vote", p, [w, y - p_y, 0], p);
-	vt_box = [p_x, p_x + w, y];     // the chatbox stops below it (Chat_Draw, next frame)
+	HUD_Rect("vote", p, [w, total, 0], p);
+	vt_box = [p_x, p_x + w, p_y + total];     // the chatbox stops below it (Chat_Draw, next frame)
 	vt_boxtop = p_y;
 };

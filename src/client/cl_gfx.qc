@@ -721,35 +721,6 @@ float(float scan, float down) Gfx_Key =
 	return FALSE;
 };
 
-// A plain row: key, label, and the value or the reason the row is inert.
-// cl_vote.qc is its only user since Patch 607; this menu draws KeyMenu_Row.
-void(vector p, float w, float h, string key, string label, string val,
-     float latched, string inert, float lsz) Gfx_Row =
-{
-	local float a;
-
-	drawfill(p, [w, h], '0 0 0', 0.55, 0);
-
-	a = (inert != "") ? 0.45 : 1;
-
-	HUD_Text([p_x + h * 0.35, p_y + (h - lsz) * 0.5], key, lsz, '0.80 0.83 0.88', a);
-	HUD_Text([p_x + h * 1.25, p_y + (h - lsz) * 0.5], label, lsz, '0.72 0.75 0.80', a);
-
-	if (inert != "")
-	{
-		// Full alpha on the reason: it is dimmer than a value by colour, not by
-		// transparency, because it is the row's most useful text right now.
-		HUD_TextR([p_x + w - h * 0.35, p_y + (h - lsz) * 0.5],
-		          inert, lsz, '0.50 0.54 0.60', 1);
-		return;
-	}
-
-	// The value is the thing you came to read, so it gets the highlight the
-	// save-lock menu gives its cursor row.
-	HUD_TextR([p_x + w - h * 0.35, p_y + (h - lsz) * 0.5],
-	          latched ? strcat(val, " *") : val, lsz, '1.00 0.90 0.55', 1);
-};
-
 /*
   THE CONSOLE HANDLE (build 33).
 

@@ -25,7 +25,11 @@ commit   99e69da32be77f24d18a5441440b002a0db72672
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-756
-patch    760
+patch    762
+# Patch 762 (QC only): `config_menu` rebinds movement, turning, the save-lock keys,
+# restart/respawn/rewind/noclip and the menus (setkeybind; a key given up is bound
+# to "" so default.cfg cannot bring it back), with turn speed and sensitivity
+# sliders; z/1/2/4 are binds now; a bottom-left key strip; the vote box in the card style.
 # Patch 760 (QC only): a board line's sample store is sized to its run from one
 # shared pool (lines 9..64 kept 2 min); the replay and live run keep fixed places.
 # p760pool arm; the build before holds half a 2.5-min run in lines 9 and 64.

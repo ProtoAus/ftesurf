@@ -830,7 +830,8 @@ float(float evtype, float scanx, float chary, float devid) Rewind_InputEvent =
 		Rewind_Cursor();
 		return TRUE;
 	}
-	slk = (strstrofs(getkeybind(scanx), "sl_", 0) >= 0 || strstrofs(getkeybind(scanx), "saveloc", 0) >= 0);
+	slk = (strstrofs(getkeybind(scanx), "sl_", 0) >= 0 || strstrofs(getkeybind(scanx), "saveloc", 0) >= 0
+	       || getkeybind(scanx) == "save_menu");       // Patch 762: z's bind
 	if (slk || (k < 0 && ((scanx >= '0' && scanx <= '9') || scanx == 'z')))
 		return FALSE;               // save-lock commands reach their normal route
 	if (k == 0)

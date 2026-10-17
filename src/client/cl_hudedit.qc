@@ -116,7 +116,7 @@ void() HE_ResetAll;             // build 66, and the same story
   both constants go to 16 rather than to exactly 15.  One spare row is the cheap
   way to not find this out the same way twice.
 */
-#define HE_MAX 28                // 24 rows since Patch 661's "Line labels"; four spare (HUDE_MAX moves with it)
+#define HE_MAX 28                // 26 rows since Patch 762's "Key hints"; two spare (HUDE_MAX moves with it)
 
 /*
   The chip rows below the element list that are always there.  Named because the
@@ -312,6 +312,8 @@ void() HE_BuildTable =
 	HE_Text("hud_linegraph_size", "16 20 24 28", 8);     // UI; 16 at hud_scale 2
 	// Patch 390: -1/-1 = attached left of the key block; a drag detaches it.
 	HE_Add("mouse",   "Mouse",      "hud_mouse_x",   "hud_mouse_y",   "hud_mouse",    0, HEA_LT,   83,  52);
+	// Patch 762: the bottom-left strip of menu keys (cl_keycfg.qc).
+	HE_Add("keyhint", "Key hints",  "hud_keyhint_x", "hud_keyhint_y", "hud_keyhint",  0, HEA_LT,  200,  11);
 	/*
 	  BUILD 66 -- FROM HERE DOWN, EVERY ROW IS HIDDEN FROM THE LIST.
 

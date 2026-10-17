@@ -1,5 +1,22 @@
 # lextest.md — things waiting on a human
 
+## P762 — key configuration (`config_menu`), the key strip, the vote box
+
+- **The panel.** Press K (or type `config_menu`). Left: movement, turning and the
+  menus; right: saves, restart/respawn/rewind/noclip, then Turn speed
+  (cl_yawspeed) and Sensitivity. Click a key, press the new one (Esc cancels);
+  right-click a key to clear it; drag a slider or use - / +, the wheel nudges it.
+  `reset keys` asks twice. Done or Esc closes and saves.
+- **The strip.** Bottom left: Z Saves, X Graphics, C HUD, V Noclip, Bksp Rewind,
+  K Keys, with your own keys. `hud_edit` lists it as "Key hints" to move or hide.
+- **Save keys are binds now.** z/1/2/4 were fixed keys; they are binds, so the
+  panel can move them. If 1, 2 or 4 stop saving, your ftesurf.cfg has its own
+  bind on that key: set it in the panel.
+- **Vote box** has the save menu's card look; vote with 1-n as before.
+
+"Panel ok / <what is wrong>", "strip ok / moved it" and "vote box ok" is enough.
+Verdict PENDING.
+
 ## P760 — long runs keep their full line wherever they are ticked
 
 Tick more than eight runs on a leaderboard (LINE column), some of them over two
