@@ -69,7 +69,35 @@ int main(void) {
  PMSrc_SetDuckedEyeOffset(PMSrc_DuckFraction());assert(pmove.viewheight==64);checks++;
  pmove.ducked=1;pmove.viewheight=64;PMSrc_SetDuckedEyeOffset(PMSrc_DuckFraction());assert(pmove.viewheight==47);checks++;
  pmove.ducked=0;pmove.viewheight=123;PMSrc_SetDuckedEyeOffset(PMSrc_DuckFraction());assert(pmove.viewheight==64);checks++;
- printf("PASS %d actual CSG/posture checks; glancing wall, departure, sill, stale eye\n",checks);
+ // Patch 756, mover 5: a trace that starts in the wall behind an exit keeps the
+ // sill. Feet 1/32 above the bottom edge (z -128), centre 3 in front of the plane.
+ {
+  vec3_t s={3,0,-128+1/32.f},e={3,0,-128+1/32.f-2};
+  movevars.sourceversion=5;memset(&t,0,sizeof(t));t.startsolid=t.allsolid=1;
+  PM_PortalCSG(&p,1,pmove.player_mins,pmove.player_maxs,s,e,&t);
+  int sill_ground_ok=!t.allsolid&&t.fraction==0&&t.plane.normal[2]>.99f;assert(sill_ground_ok);checks++;
+  e[0]=6;e[2]=s[2];memset(&t,0,sizeof(t));t.startsolid=t.allsolid=1;
+  PM_PortalCSG(&p,1,pmove.player_mins,pmove.player_maxs,s,e,&t);
+  assert(!t.allsolid&&t.fraction==1);checks++;  // the walk out is still carved
+  e[2]=s[2]-.2f;memset(&t,0,sizeof(t));t.startsolid=t.allsolid=1;
+  PM_PortalCSG(&p,1,pmove.player_mins,pmove.player_maxs,s,e,&t);
+  assert(t.fraction==0&&t.plane.normal[2]>.99f);checks++;  // falling stops on the sill
+  e[0]=3;e[2]=s[2]-2;movevars.sourceversion=4;memset(&t,0,sizeof(t));t.startsolid=t.allsolid=1;
+  PM_PortalCSG(&p,1,pmove.player_mins,pmove.player_maxs,s,e,&t);
+  assert(t.fraction==1);checks++;  // mover 4 replays carve the sill away, as recorded
+  // A tilted door's bottom edge is not a floor: mover 5 sweeps it as mover 4 did.
+  // Box centre 3 in front and 40 above the bottom edge; the feet corner (along the
+  // door's up) starts 7.8 above the edge and the trace sinks 20 along up.
+  physent_t q=p;q.angles[0]=50;vec3_t qf,qr,qu,qs,qe;AngleVectors(q.angles,qf,qr,qu);
+  for(int k=0;k<3;k++){qs[k]=3*qf[k]-88*qu[k];qe[k]=qs[k]-20*qu[k];}
+  qs[2]-=31;qe[2]-=31;  // the trace moves the feet origin, 31 under the box centre
+  movevars.sourceversion=5;memset(&t,0,sizeof(t));t.startsolid=t.allsolid=1;
+  PM_PortalCSG(&q,1,pmove.player_mins,pmove.player_maxs,qs,qe,&t);float tilted5=t.fraction;
+  movevars.sourceversion=4;memset(&t,0,sizeof(t));t.startsolid=t.allsolid=1;
+  PM_PortalCSG(&q,1,pmove.player_mins,pmove.player_maxs,qs,qe,&t);
+  int tilted_unchanged_ok=tilted5==t.fraction;assert(tilted_unchanged_ok);checks++;
+ }
+ printf("PASS %d actual CSG/posture checks; glancing wall, departure, sill, stale eye, mover-5 sill sweep\n",checks);
  return 0;
 }
 '''
@@ -106,8 +134,15 @@ def main():
     a.out.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
     env['PATH'] = str(Path(a.cc).parent)+os.pathsep+env.get('PATH','')
-    for arm in ['subject','negative','negative_back']:
+    for arm in ['subject','negative','negative_back','negative_sill','negative_upright']:
         armcode = code
+        if arm == 'negative_upright':
+            assert ' && planes[5][2] >= 0.7f)' in armcode
+            armcode = armcode.replace(' && planes[5][2] >= 0.7f)', ')')
+        if arm == 'negative_sill':
+            begin = armcode.index('\tif (linked && movevars.sourceversion >= 5 && planes[5][2] >= 0.7f)\n\t{\n\t\tfloat ds = DotProduct(start, planes[6])')
+            end = armcode.index('\n\t}\n', begin)+3
+            armcode = armcode[:begin]+armcode[end:]
         if arm == 'negative_back':
             begin = armcode.index('\t\tvec3_t approach;')
             end = armcode.index('\t\thwidth = portal->portalhalf[0];',begin)
@@ -125,6 +160,12 @@ def main():
         if arm == 'subject':
             assert p.returncode == 0, p.stdout+p.stderr
             print(p.stdout.decode().strip())
+        elif arm == 'negative_sill':
+            assert p.returncode != 0 and b'sill_ground_ok' in p.stderr, p.stdout+p.stderr
+            print('PASS pre-756 control carves the sill away and fails sill_ground_ok')
+        elif arm == 'negative_upright':
+            assert p.returncode != 0 and b'tilted_unchanged_ok' in p.stderr, p.stdout+p.stderr
+            print('PASS control without the upright gate changes a tilted door and fails tilted_unchanged_ok')
         else:
             assert p.returncode != 0, 'pre-fix CSG control unexpectedly passed'
             print('PASS '+('pre-fix unconditional-carve control fails glancing-wall assertion' if arm == 'negative' else 'pre-fix symmetric-carve control fails back-side wall assertion'))
