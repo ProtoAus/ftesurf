@@ -4000,7 +4000,10 @@ that was never armed (see the bullet below it), and item 10's own residual.
   installed 756 client 2/6, a 754 build without the hull reconcile 3/6, the 0.1.26
   release client 1/7. So it is not Patch 759's, and that 754 makes it more
   frequent is not shown at these counts. A plain `setpos` drop into the same
-  teleport (`--fallteleport`) gave 0/5 on 754 and on 0.1.26. Not traced to a cause.
+  teleport (`--fallteleport`) gave 0/5 on 754 and on 0.1.26. The clearest case:
+  a save made mid-fall over the bonus 1 void (-1386 u/s) loaded free corrected
+  22.5 u in z, eight commands later, on the 754 AND the 0.1.26 client alike --
+  about one tick of that fall. Not traced to a cause.
 - **Save and zone keys that are still a round trip (Patches 753/759).** 2, 3-6,
   `!r`, `!m`, `!s N` and `!b N` are predicted; `sl_goto N` (a load by number),
   zone_goto, `!s` past 30 and `!b` past 16 still snap a round trip later, and so

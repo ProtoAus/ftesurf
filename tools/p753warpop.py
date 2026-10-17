@@ -296,13 +296,17 @@ def main():
             walk()
             more['bonus1'] = window('bonus1', lambda: cl.send('say !b 1'))
 
-            def moving_save():
-                cl.send('+forward'); time.sleep(0.5)
-                cl.send('sl_save'); time.sleep(0.3)
+            def moving_save(t):
+                # From the bonus start each time, short of its edge (y ~6640): a
+                # save that walked off falls into the void teleport, whose landing
+                # is BACKLOG's, not the step's.
+                cl.send('say !b 1'); time.sleep(1.0)
+                cl.send('+forward'); time.sleep(t)
+                cl.send('sl_save'); time.sleep(0.1)
                 cl.send('-forward'); time.sleep(0.8)
-            moving_save(); walk(0.7)
-            moving_save(); walk(0.7)
-            moving_save(); walk(0.7)
+            moving_save(0.3)
+            moving_save(0.45)
+            moving_save(0.6)
             # Rows: 1 the ducked air save, 2-4 these; the cursor is on 4.  From row 1
             # the server publishes 1, 2 (next), 4 (prev, last): row 3 is not.
             more['hold'] = window('hold', lambda: cl.send('+sl_hold'))
