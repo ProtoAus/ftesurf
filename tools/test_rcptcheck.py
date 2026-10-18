@@ -424,19 +424,25 @@ def test_usable_angles_keep_view_faults():
                        for x in r.faults), r.rec_report.view_reset_budget),
                   (True, label == "rotation-ghost", 0))
         if label in ("rotation", "rotation-ghost"):
-            check("usable %s: actual comparison diagnostics survive" % label,
-                  all(parsed.info.get(k) and parsed.info[k] in r.angles_detail
-                      for k in ("angle_off", "angle_solo")), True)
+            check("usable %s: full and exported comparison diagnostics survive" % label,
+                  tuple(all(parsed.info.get(k) and parsed.info[k] in detail
+                            for k in ("angle_off", "angle_solo"))
+                        for detail in (r.angles_detail, r.angles_detail[:1000])), (True, True))
 
 
 def test_signed_usable_view_faults():
+    import reccheck
+
     surfd, sweep, _runs = fx.fresh()
     sweep.TOOLS = fx.TOOLS
     rid = "20261018-000794-0"
     rec, good = fx.angle_pair(rid, still=False)
     mixed_rec, rotated = fx.angle_pair(rid, rot=5, still=False)
     check("signed mixed: rotation does not change the control recording", mixed_rec == rec, True)
-    mixed = rotated + "ghost 2 10 0\n"
+    mixed = rotated + "ghost 2 10 0\n" * 30
+    parsed_rec = reccheck.check_rec("signed.rec", data=rec.encode("utf-8"))
+    parsed_view = reccheck.check_view("signed.view", parsed_rec, data=rotated.encode("utf-8"))
+    diagnostics = [parsed_view.info[k] for k in ("angle_off", "angle_solo")]
     original_game = rcptcheck.GAME
     rc = fx.with_rec(surfd, sweep, rid, rec)
     bad = good.splitlines()
@@ -459,6 +465,8 @@ def test_signed_usable_view_faults():
                 if label == "mixed":
                     check("signed mixed %s: genuine angular proof also survives" % mode,
                           "AND the .view does not describe this recording" in got[4], True)
+                    check("signed mixed %s: actual diagnostics survive the exported field" % mode,
+                          all(value in got[13] for value in diagnostics), True)
     finally:
         rc.GAME = original_game
 
