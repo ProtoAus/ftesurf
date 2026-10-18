@@ -1,5 +1,23 @@
 # lextest.md — things waiting on a human
 
+## P782 — `r_budget`: where each frame's time goes
+
+Engine patch-782 (exe a7f3dfc4, `git-7446-patch-782-0-gb77fbe44a`) is in both
+installs since 09:04Z 18 Oct; `.prev` is the P780 exe. Client only, nothing on the
+lobbies. Your `ftesurf.cfg` has `r_renderscale 2` (4x the pixels): on surf_demise
+the GPU is busy about 2.5 ms a frame at 2 and about 0.8 at 1.
+
+- Type `r_budget 1` in a map: a small panel at the top left with the frame time,
+  CPU busy, GPU and idle, two coloured bars (CPU work, GPU work) and the three
+  biggest items under each. `r_budget 2` lists every group; `r_budget 3` every
+  timer in each group. `r_budget 0` turns it off.
+- `r_budget_dump` prints the table and copies it to the clipboard: paste it here
+  when something looks slow.
+- Try it on a heavy map and on a light one, uncapped (`cl_maxfps 0`) and capped:
+  capped, the time you have left shows as "Idle".
+
+"Readable / want <x> split out / numbers look wrong at <x>". Verdict PENDING.
+
 ## P779 — the Comparison window: you against the ghost's line
 
 hud_edit > Comparison (left side, under the Segments list; drag it anywhere). With your

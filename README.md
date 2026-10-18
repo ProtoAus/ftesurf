@@ -125,6 +125,27 @@ hull pieces, and solid brush entities. `surf_view_dist` (8192) sets its range
 and `surf_view_fill` (0.25) its density. It is depth-tested, so it marks only
 what you can see.
 
+## Frame budget
+
+`r_budget` shows where each frame's time goes (Patch 782, native client), at the
+top left. **1** is compact: the frame time, how long the CPU and the GPU were busy
+and how long the frame waited, two bars on one scale (the CPU's work by group, then
+idle; the GPU's passes), and the three biggest items under each. **2** lists every
+group with its milliseconds, its share of the frame and a bar; **3** adds every
+timer inside each group. `r_budget_dump` prints the table as text and copies it to
+the clipboard. `r_budget_window` (0.5 s) is the averaging window.
+
+- **CPU groups:** server; game client code (CSQC); world; map vis and static props
+  (the HL2 plugin on a Source map); draw calls; shadows; particles; post-processing;
+  HUD and 2D (this panel included); display (swap, vsync, pacing); input, network
+  and audio; loading; other. Each timer counts once, without the timers nested in it.
+- **GPU passes** (GL timer queries, OpenGL 3.3 or later): world; models and props;
+  sky; 3D sky; portals and reflections; shadows; RT lights; transparent and
+  effects; post-processing; HUD and 2D; and "Waiting on the CPU", the stretches the
+  GPU spends waiting for the CPU, which do not count as GPU busy.
+- At about 190 fps on the PC it cost nothing measurable at 1, about 2% of the frame
+  at 2 and 3% at 3; it shows its own cost under "HUD, 2D, this overlay".
+
 ## What you need
 
 **Windows x64, and Linux x86_64 as a beta** (`ftesurf.sh`). The build script is
