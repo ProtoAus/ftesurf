@@ -7307,7 +7307,9 @@ float(entity e) SV_RotButtonEta =
 // A move whose clock has reached its goal ends here, and the goal it reached is kept
 // (+1, so 0 is "none") for the outputs: a later input may change vbsp_rb_ideal first.
 // On the eta too: float32 puts SV_RotButtonPos a hair short at about half of them.
-// One pending arrival at a time; a second waits a tick rather than replacing it.
+// One pending arrival at a time: in the driver a second waits a tick.  An input that
+// lands while one is pending re-anchors the move, so a second move shorter than a frame
+// can go unreported (three inputs to one button in one frame; none in the library).
 void(entity e) SV_RotButtonSettle =
 {
 	if (e.vbsp_rb_dir && !e.vbsp_rb_arrived)
