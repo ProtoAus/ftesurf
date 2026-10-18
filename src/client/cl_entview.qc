@@ -194,7 +194,8 @@ float  ev_info_made;
 float  ev_info_row;
 float  ev_info_until;           // capture window end, cltime
 float  ev_info_got;             // its header line has arrived
-float  ev_info_cur;             // ...and was the last header seen, so ten-space lines are its
+float  ev_info_cur;             // the last header seen: 0 not ours, 1 ours, 2 held for its second line
+string ev_info_hold;            // ...that header (strzone'd)
 #define EV_INFO_WAIT 3
 #define EV_INFO_MAX  12
 
@@ -1723,7 +1724,7 @@ void(float row) Ev_Pin =
 	ev_info_made = TRUE;
 	ev_info_row  = row;
 	ev_info_got  = FALSE;
-	ev_info_cur  = FALSE;
+	ev_info_cur  = 0;
 	ev_info_until = cltime + EV_INFO_WAIT;
 
 	print(sprintf("%s\n", Ev_Summary(row)));
@@ -1785,51 +1786,78 @@ float(float scanx) Ev_PassiveMouse =
 	return FALSE;
 };
 
+// The text between `key'` and the next quote, or "" -- SV_EntInfo quotes every value.
+string(string s, string key) Ev_Quoted =
+{
+	local float a, b;
+
+	a = strstrofs(s, key, 0);
+	if (a < 0)
+		return "";
+	a = a + strlen(key);
+	b = strstrofs(s, "'", a);
+	if (b < 0)
+		return "";
+	return substring(s, a, b - a);
+};
+
 /*
   Every server print passes here from CSQC_Parse_Print (cl_chat.qc), and only
   while a pin waits is any of it kept: SV_EntInfo's header line, then its lines
-  that start with ten spaces.  The header must name the pinned row's classname,
-  and its "*N" when both have one -- a reply to an earlier pin, to one the server's
+  that start with ten spaces.  A reply to an earlier pin, to one the server's
   0.25 s cooldown dropped, or to ent_here would otherwise be filed under this one
-  (review of Patch 776).  Only the first matching reply is kept.
+  (review of Patch 776), so a reply must be the pinned row's: its classname, its
+  "*N" when the server still has one (triggers are stripped to '-'), and its
+  targetname and target, which arrive on the second line -- so the header is held
+  until then.  The class-only "NOT on the server" answer is kept on the class.
 */
 void(string msg) Ev_ServerPrint =
 {
-	local string s, head, cn, mdl;
-	local float a, b;
+	local string s, head, m;
 
 	if (!ev_info_made || ev_info_until < cltime)
 		return;
-	head = substring(msg, 0, 12);
+	s = substring(msg, 0, strlen(msg) - !strcmp(substring(msg, strlen(msg) - 1, 1), "\n"));
+	head = substring(s, 0, 12);
 	if (!strcmp(head, "^5ent_info^7") || !strcmp(head, "^3ent_info^7") || !strcmp(head, "^1ent_info^7"))
 	{
-		ev_info_cur = FALSE;
+		ev_info_cur = 0;
 		if (ev_info_got)
 			return;
-		s   = substring(msg, 14, strlen(msg) - 14);
-		cn  = bufstr_get(ev_cn, ev_info_row);
-		mdl = bufstr_get(ev_mdl, ev_info_row);
-		if (strcmp(substring(s, 0, strlen(cn) + 2), strcat("'", cn, "'")))
+		s = substring(s, 14, strlen(s) - 14);
+		if (strcmp(substring(s, 0, strlen(bufstr_get(ev_cn, ev_info_row)) + 2),
+		           strcat("'", bufstr_get(ev_cn, ev_info_row), "'")))
 			return;
-		a = strstrofs(s, "model '", 0);
-		if (a >= 0)
-		if (strcmp(mdl, ""))
+		m = Ev_Quoted(s, "model '");
+		if (!strcmp(substring(m, 0, 1), "*"))
+		if (strcmp(m, bufstr_get(ev_mdl, ev_info_row)))
+			return;
+		if (strstrofs(s, "' solid ", 0) < 0)
 		{
-			b = strstrofs(s, "'", a + 7);
-			if (b < 0)
-				return;
-			if (strcmp(substring(s, a + 7, b - a - 7), mdl))
-				return;
+			ev_info_got = TRUE;     // the class-level answer: nothing per entity to check
+			ev_info_cur = 1;
+			bufstr_add(ev_info, s, TRUE);
+			return;
 		}
-		ev_info_got = TRUE;
-		ev_info_cur = TRUE;
-	}
-	else if (ev_info_cur && !strcmp(substring(msg, 0, 10), "          "))
-		s = substring(msg, 10, strlen(msg) - 10);
-	else
+		strunzone(ev_info_hold);
+		ev_info_hold = strzone(s);
+		ev_info_cur = 2;            // held until the targetname line
 		return;
-	if (!strcmp(substring(s, strlen(s) - 1, 1), "\n"))
-		s = substring(s, 0, strlen(s) - 1);
+	}
+	if (!ev_info_cur || strcmp(substring(s, 0, 10), "          "))
+		return;
+	s = substring(s, 10, strlen(s) - 10);
+	if (ev_info_cur == 2)
+	{
+		ev_info_cur = 0;
+		if (strcmp(Ev_Quoted(s, "targetname '"), Ev_Key(ev_info_row, "targetname")))
+			return;
+		if (strcmp(Ev_Quoted(s, "  target '"), Ev_Key(ev_info_row, "target")))
+			return;
+		ev_info_got = TRUE;
+		ev_info_cur = 1;
+		bufstr_add(ev_info, ev_info_hold, TRUE);
+	}
 	if (buf_getsize(ev_info) < EV_INFO_MAX)
 		bufstr_add(ev_info, s, TRUE);
 };
