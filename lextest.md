@@ -13,6 +13,10 @@ Verdict PENDING ("opens ok / countdowns gone" or what still blocks).
 
 ## P781 — leaderboards, friends and the map list load once and stay up
 
+Live from main `9a3cc8fa`: all 12 lobbies since 2026-10-18T07:38Z (qwprogs `3956e634`,
+csprogs `e8f0dfd5`; lobby smoke passed), both installs since 07:37:11Z (also menu
+`f15a1c82`; `.prev` `d7316a58` / `7b4b2804` / `3d90d504`). Restart the game.
+
 In game (TAB): switch the source (WOS / Momentum / KSF) and the styles back and forth:
 each shows at once, with no "no times" that fixes itself on a click back (that was a bug
 in how the board read the reply, now fixed). The main leg's sections and their first 24
@@ -78,8 +82,8 @@ in and the run's map/time). No pass is recorded until you confirm what you obser
 
 In both Windows installs since 2026-10-18T06:13:23Z (csprogs `724c5599`, `.prev` P776's
 `81a2d0a1`; qwprogs `f1548792`, `.prev` `24e65490`), built from `03194e7e`, which also
-carries P776 and P778. The 12 lobbies are NOT yet on it: a player was on, and it goes
-there the moment they are empty (this entry will say when). Restart the game. Sharing
+carries P776 and P778. On all 12 lobbies since 2026-10-18T07:38Z with P781's build
+(qwprogs `3956e634`, csprogs `e8f0dfd5`, main `9a3cc8fa`). Restart the game. Sharing
 needs you both on the same server (a lobby).
 
 - **Share:** look at another player and press **F** (key panel: "Share (look at a
