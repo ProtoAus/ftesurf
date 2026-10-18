@@ -614,19 +614,16 @@ float(float e0, float e1, float x) Emit_Smooth =
 
 // Alpha at fraction f of the life: rp_a0 up to the particle's alpha over the fade-in,
 // then down to rp_a1 over the fade-out (C_OP_FadeAndKill as pcf.py reads it), smoothstepped.
+// Composed, not chosen, so overlapping windows stay continuous.
 float(float j, float f) Emit_RopeAlpha =
 {
 	local vector fi, fo;
-	local float a;
+	local float v;
 
 	fi = rp_fi[j];
 	fo = rp_fo[j];
-	a = rp_alpha[j];
-	if (f < fi_y)
-		return rp_a0[j] + (a - rp_a0[j]) * Emit_Smooth(fi_x, fi_y, f);
-	if (f > fo_x)
-		return a + (rp_a1[j] - a) * Emit_Smooth(fo_x, fo_y, f);
-	return a;
+	v = rp_a0[j] + (rp_alpha[j] - rp_a0[j]) * Emit_Smooth(fi_x, fi_y, f);
+	return v + (rp_a1[j] - v) * Emit_Smooth(fo_x, fo_y, f);
 };
 
 // The ropes a placed system starts: its children, or itself when it is a rope.
@@ -662,7 +659,9 @@ void() Emit_RopeFrame =
 		j = ri_type[i];
 		shaderforname(rp_shader[j], rp_body[j]);
 		lf = rp_life[j];
-		n = bound(1, floor(lf * rp_rate[j]), ROPE_SEGS);	// no more joints than particles alive
+		n = min(floor(lf * rp_rate[j]) - 1, ROPE_SEGS);		// a segment between each two live particles
+		if (n < 1)
+			continue;									// fewer than two alive: Source draws no rope
 		step = lf / n;
 		col = rp_rgb[j];
 		for (k = 0; k < n; k = k + 1)

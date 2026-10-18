@@ -406,7 +406,12 @@ class RopeTests(unittest.TestCase):
     def test_rope_line_is_25_words_and_a_timed_emitter_refuses(self):
         import collections, pcf
         blocks, runtime, skipped = pcf.bake(self.system(), 'm', collections.Counter())
-        self.assertEqual(len(pcf.rope_line('m', runtime[0], '-').split()), 25)
+        w = pcf.rope_line('m', runtime[0], 'par').split()
+        self.assertEqual(len(w), 25)
+        # The reader's argv positions (cl_emit.qc Emit_RopeNote): image 3, rate 5, life 6,
+        # width 13, alpha 17, start/end alpha 18/19, parent 24.
+        self.assertEqual((w[3], w[5], w[6], w[13], w[17], w[18], w[19], w[24]),
+                         ('particle/beam', '8', '3', '750', '1', '1', '1', 'par'))
         timed = pcf_bytes([('DmElement', 'root', {'particleSystemDefinitions': (15, [1])}),
                            ('DmeParticleSystemDefinition', 'beam',
                             {'max_particles': (2, 10), 'renderers': (15, [2]), 'emitters': (15, [3])}),

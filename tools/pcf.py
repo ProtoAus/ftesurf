@@ -260,12 +260,15 @@ def translate_rope(d, e, content):
         fade = [float(fd.get(k, dv)) for k, dv in (("start_fade_in_time", 0.0), ("end_fade_in_time", 0.5),
                                                     ("start_fade_out_time", 0.5), ("end_fade_out_time", 1.0))]
     mat = re.sub(r"\.vmt$", "", (e.get("material") or "").replace("\\", "/"), flags=re.I)
-    image, blend = mat, "blendalpha"
+    if not mat:
+        raise Untranslated("render_rope with no material: not drawn")
+    image, blend, look = mat, "blendalpha", "material %s: no content given, drawn by its name, rope" % mat
     if content is not None:
         try:
             image, blend = material_look(content, mat)
         except (ValueError, OSError, struct.error) as ex:
             raise Untranslated("render_rope material %s NOT RESOLVED (%s): not drawn" % (mat, ex))
+        look = "material %s: image %s, rope" % (mat, image)
     children = [d.elements[c.get("child")].name for c in ops(d, e, "children")
                 if c.get("child", -1) is not None and c.get("child", -1) >= 0]
     rope = dict(image=image, add=1 if blend == "adda" else 0, life=life, grav=grav,
@@ -273,8 +276,7 @@ def translate_rope(d, e, content):
                 alpha=alpha, alpha0=alpha0, alpha1=alpha1, fade=fade)
     return None, dict(name=e.name, rate=rate, vel=[0.0, 0.0, 0.0], wvel=[0.0, 0.0, 0.0], ofs=ofs,
                       jit=0.0, maxp=int(maxp), die=life, maxdist=float(e.get("maximum draw distance", 0.0) or 0.0),
-                      nominal=nominal, children=children, trail=None,
-                      look="material %s: image %s, rope" % (mat, image), rope=rope)
+                      nominal=nominal, children=children, trail=None, look=look, rope=rope)
 
 
 def translate(d, e, unknown, mapname, content=None):
