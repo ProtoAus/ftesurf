@@ -170,7 +170,8 @@ def grade(rig, missing_mask=False):
     check(ps["focusback"] is not None and ps["focusback"][2] == 1, "fresh focus restores delayed tooltip")
     check(ps["keyboardlost"] is not None and ps["keyboardlost"][2] == 0, "keyboard-only loss with unchanged mouse clears tooltip")
     check(ps["keyboardback"] is not None and ps["keyboardback"][2] == 1, "keyboard-only restoration preserves unchanged mouse focus")
-    ap = values(s["B"], "sui_panel ", panel)
+    # P798: "held" is the Display Info pane the click must move off; B is -1.
+    ap = values(s["held"], "sui_panel ", panel)
     bp = values(s["action"], "sui_panel ", panel)
     check(ap is not None and bp is not None and bp[1] >= 0 and bp[1] != ap[1], "real selection action changes the selection")
     close = values(s["closed2"], "sui_panel ", panel)

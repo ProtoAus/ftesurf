@@ -130,11 +130,10 @@ void() HE_ResetAll;             // build 66, and the same story
   instead would put the panel's most destructive button next to the one pressed
   at the end of every session.
 
-  PATCH 440: five.  The text-effect chip is a row of its own because it is a
-  font-wide setting with no partner -- it belongs to no element, so it cannot go
-  in a pane, and pairing it with `reset all` would put a look next to a nuke.
+  PATCH 798: three -- `reset all`, `done` and the hint line.  The rate/step,
+  text-effect and crosshair chips are rows of the Display Info pane.
 */
-#define HE_FIXEDROWS 5
+#define HE_FIXEDROWS 3
 
 string he_id[HE_MAX];
 string he_label[HE_MAX];
@@ -289,16 +288,16 @@ void() HE_BuildTable =
 	// listed ones stay contiguous at the top.
 	HE_Add("trainer", "Strafe trainer", "hud_trainer_x", "hud_trainer_y", "hud_trainer", 0, HEA_CT, 195, 183);  // Patch 637: 156x146 at the 8-unit text
 	HE_Text("hud_trainer_size",  "16 20 24 28", 10);     // UI; 20 at hud_scale 2 (Patch 637)
-	HE_Add("board",   "Board",      "hud_board_x",   "hud_board_y",   "hud_board",    0, HEA_CT,  120,  52);
+	// Patch 798: "Boarding" and "Enter/Exit speeds" were "Board" and "Boarding".
+	HE_Add("board",   "Boarding",   "hud_board_x",   "hud_board_y",   "hud_board",    0, HEA_CT,  120,  52);
 	HE_Text("hud_board_size",    "16 20 24 28", 10);     // mono from build 65; 20 today
-	HE_Add("boarding","Boarding",   "hud_boarding_x","hud_boarding_y","hud_boarding", 0, HEA_CT,  150,  44);
+	HE_Add("boarding","Enter/Exit speeds","hud_boarding_x","hud_boarding_y","hud_boarding", 0, HEA_CT, 150, 44);
 	HE_Text("hud_boarding_size", "16 20 24 28", 10);     // mono; 20 shipped
 	HE_Add("speed",   "Speed",      "hud_speed_x",   "hud_speed_y",   "hud_speed",    0, HEA_CT,   70,  40);
 	HE_Text("hud_speed_size",    "40 48 64 80", 32);     // display; 64 at hud_scale 2 (Patch 637)
 	HE_Add("banner",  "Banner",     "hud_banner_x",  "hud_banner_y",  "hud_banner",   0, HEA_CT,  300,  50);
 	HE_Text("hud_banner_size",   "40 48 64 80", 32);     // the unit (hero = 32u); 64 at scale 2
-	// Patch 385: listed for its options only -- the banner sits where it sits.
-	HE_Add("spectate","Spectate",   "",              "",              "",             0, HEA_CT,    0,   0);
+	// Patch 798: no Spectate row; Who's watching is in Display Info, spec_dist console only.
 	// The line types have independent switches; this row is an options pane,
 	// not a misleading master toggle that only turns off the open demo.
 	HE_Add("lines",   "Run lines",  "",              "",              "",             1, HEA_CT,  0,   0);
@@ -314,9 +313,11 @@ void() HE_BuildTable =
 	HE_Add("compare", "Comparison", "hud_compare_x", "hud_compare_y", "hud_compare", 0, HEA_LT, 240, 120);
 	HE_Text("hud_compare_size",  "12 14 16 20",  8);     // mono; 16 at hud_scale 2
 	// Patch 390: -1/-1 = attached left of the key block; a drag detaches it.
-	HE_Add("mouse",   "Mouse",      "hud_mouse_x",   "hud_mouse_y",   "hud_mouse",    0, HEA_LT,   83,  52);
-	// Patch 762: the bottom-left strip of menu keys (cl_keycfg.qc).
-	HE_Add("keyhint", "Key hints",  "hud_keyhint_x", "hud_keyhint_y", "hud_keyhint",  0, HEA_LT,  200,  11);
+	// Patch 798: listed as Input display, the key block and the pad together; its
+	// outline out in the world is still "Mouse" (HUD_EditDraw).
+	HE_Add("mouse",   "Input display", "hud_mouse_x", "hud_mouse_y",  "hud_mouse",    0, HEA_LT,   83,  52);
+	// Patch 798: switches for elements with no list row of their own, options only.
+	HE_Add("display", "Display Info", "",             "",              "",             0, HEA_CT,    0,   0);
 	/*
 	  BUILD 66 -- FROM HERE DOWN, EVERY ROW IS HIDDEN FROM THE LIST.
 
@@ -343,8 +344,12 @@ void() HE_BuildTable =
 	HE_Add("mapinfo", "Map info",   "hud_mapinfo_x", "hud_mapinfo_y", "hud_mapinfo",  0, HEA_RT,   96,  56);
 	HE_Text("hud_mapinfo_size",  "12 16 20 24",  8);     // UI; 16 today
 	HE_Hide();
-	// Patch 429: its switch is a row of the Spectate pane.
+	// Patch 429: its switch is a row of the Display Info pane (Spectate's until 798).
 	HE_Add("specby",  "Spectators", "hud_specby_x",  "hud_specby_y",  "hud_specby",   0, HEA_RT,   60,  32);
+	HE_Hide();
+	// Patch 762: the bottom-left strip of menu keys (cl_keycfg.qc); listed until
+	// Patch 798, its switch is a Display Info row now.
+	HE_Add("keyhint", "Key hints",  "hud_keyhint_x", "hud_keyhint_y", "hud_keyhint",  0, HEA_LT,  200,  11);
 	HE_Hide();
 
 	/*
@@ -367,8 +372,8 @@ void() HE_BuildTable =
 	  crosshairs + off" -- so it keeps its table row (HE_Rect and the reset walk
 	  still want it) and loses both its list line and its pane.  Three option rows
 	  for what is one four-state choice was the wrong shape; the choice moved to a
-	  chip in the fixed block, and size and opacity are pinned at 32 and 1 rather
-	  than being offered.
+	  chip in the fixed block (a Display Info row since Patch 798), and size and
+	  opacity are pinned at 32 and 1 rather than being offered.
 	*/
 	HE_Add("net",      "Net",       "hud_net_x",     "hud_net_y",     "hud_net",      0, HEA_LT,  128,  64);
 	HE_Hide();
@@ -400,8 +405,7 @@ void() HE_BuildTable =
     kind  t   toggle.  values and names unused; the chip lights or does not.
           c   cycle.  values "0 1 2", names "u/s;energy;both" -- the chip prints
               which one it is on, because a slider over three named states is
-              worse than a button that says where it is (the argument the
-              calm-numbers pair already makes below).
+              worse than a button that says where it is.
           s   Patch 630: a second text size, as the element's own size row draws
               one.  values are the pixel sizes (four at most), names unused.
               0 is auto: the lit box clicked again.
@@ -599,19 +603,33 @@ string(string id, float row) HE_OptDef =
 		return "";
 	}
 
-	if (id == "mapinfo")
+	/*
+	  Patch 798: the switches of elements with no list row, then the four chips that
+	  were the panel's fixed block, in their old cycle order.  A value typed at the
+	  console steps to the first one: 1, plain, tick, 1.  The calm-numbers essay is
+	  above HUD_UpdateLatch in cl_hud.qc.
+	*/
+	if (id == "display")
 	{
-		if (row == 0) return "hud_mapinfo_timeleft|Time left|t||"
+		if (row == 0) return "hud_mapinfo|Map info|t||"
+		                     "|The block in the top right: the map's name, its tier and the stage you are on.";
+		if (row == 1) return "hud_mapinfo_timeleft|Map time left|t||"
 		                     "|On a server with a time limit: the time left on this map, then the next map.";
-		return "";
-	}
-
-	if (id == "spectate")
-	{
-		if (row == 0) return "spec_dist|Distance|c|70 110 160 240|70;110;160;240"
-		                     "|How far the third-person camera sits from the player you watch. Walls pull it in.";
-		if (row == 1) return "hud_specby|Who's watching|t||"
+		if (row == 2) return "hud_keyhint|Key hints|t||"
+		                     "|The strip of menu keys along the bottom left. Drag its outline to move it.";
+		if (row == 3) return "hud_chat|Chat|t||"
+		                     "|The chat box, and what you are typing. Off still prints chat to the console.";
+		if (row == 4) return "hud_specby|Who's watching|t||"
 		                     "|List the players spectating you, under the map info.";
+		// 0 is off; the engine's own, -1, prints as the number and steps to 1.
+		if (row == 5) return "hud_crosshair|Crosshair|c|1 2 3 0|1;2;3;off"
+		                     "|Cycle the three crosshairs and off. 32 px, fully opaque.";
+		if (row == 6) return "hud_font_outline|Text|c|0 1 2|plain;outline;shadow"
+		                     "|Dark outline around the text drawn in the Google face, and a grey drop shadow behind it -- the timer and the speed take the shadow too. plain is the old look; outline skips the second pass.";
+		if (row == 7) return "hud_update|Number rate|c|-1 10 20 30 0|tick;10Hz;20Hz;30Hz;frame"
+		                     "|How often the speed, energy and turn-rate numbers re-read. Not the timer.";
+		if (row == 8) return "hud_round|Number step|c|1 2 5 0|1;2;5;off"
+		                     "|Round those same numbers to the nearest 1, 2 or 5 u/s. 1 changes nothing.";
 		return "";
 	}
 
@@ -710,12 +728,17 @@ string(string id, float row) HE_OptDef =
 
 	if (id == "mouse")
 	{
+		// Patch 798: Input display, so the key block's switch is here too.
+		if (row == 0) return "hud_keys|Keys|t||"
+		                     "|The movement, jump and duck keys you are holding, bottom right.";
+		if (row == 1) return "hud_mouse|Mouse|t||"
+		                     "|Your mouse as turn, beside the keys; the dot wraps at the edges.";
 		// Patch 630: one size for the pad and the key block, which sit together.
-		if (row == 0) return "hud_keys_size|Size|b|1 1.25 1.5 2|S;M;L;XL"
+		if (row == 2) return "hud_keys_size|Size|b|1 1.25 1.5 2|S;M;L;XL"
 		                     "|How big the mouse pad and the key block beside it are drawn. S is the old size.";
-		if (row == 1) return "hud_mouse_span|Width|c|45 90 180 360|45;90;180;360"
+		if (row == 3) return "hud_mouse_span|Width|c|45 90 180 360|45;90;180;360"
 		                     "|Degrees of turn from edge to edge. The height is 10/16 of it.";
-		if (row == 2) return "hud_mouse_trail|Trail|c|0 0.25 0.5 1|off;0.25s;0.5s;1s"
+		if (row == 4) return "hud_mouse_trail|Trail|c|0 0.25 0.5 1|off;0.25s;0.5s;1s"
 		                     "|How long the line behind the dot takes to fade.";
 		return "";
 	}
@@ -745,13 +768,13 @@ string(string id) HE_Tip =
 	if (id == "boarding") return "What you entered and left the last ramp with.";
 	if (id == "speed")    return "Horizontal speed, and the energy line under it.";
 	if (id == "banner")   return "Across the screen when you finish the map, a bonus or a stage.";
-	if (id == "spectate") return "Watching another player: pin the TAB board and click a name.";
 	if (id == "lines")    return "The path a recording took, drawn through walls, with what happened along it.";
 	if (id == "labels")   return "What is written on the run lines: each run's name, and the numbers at its marks.";
 	if (id == "ghost")    return "A ghost of your PB, or of a ticked run, racing you from the moment you leave the start.";
 	if (id == "compare")  return "You against the ghost's line where you are: time to get here, speed and energy. Green is ahead.";
 	if (id == "graph")    return "Speed over time for the runs whose LINE box is ticked on the leaderboard. On screen only while one is.";
-	if (id == "mouse")    return "Your mouse as turn; the dot wraps at the edges. Replays and spectate show their view.";
+	if (id == "mouse")    return "Your keys and your mouse as turn. Replays and spectate show the player's.";
+	if (id == "display")  return "Map info, key hints, chat and who's watching on or off; the crosshair, the text and the numbers.";
 	return "";
 };
 
@@ -1281,7 +1304,10 @@ void(vector scr) HUD_EditDraw =
 		               (mode == 2) ? HEC_HOT : ((mode == 1) ? HEC_LINE : HEC_GHOST),
 		               (mode == 0) ? 0.35 : ((mode == 1) ? 0.5 : 0.9), 0);
 
-		sui_native_text([p_x + 2, p_y - 10 * sc, 0], he_label[i], 8 * sc,
+		s = he_label[i];
+		if (he_id[i] == "mouse")
+			s = "Mouse";                    // Patch 798: the pad, not the whole Input display
+		sui_native_text([p_x + 2, p_y - 10 * sc, 0], s, 8 * sc,
 		         (mode == 2) ? HEC_HOT : ((mode == 1) ? HEC_LINE : HEC_GHOST), 0.9);
 	}
 
@@ -1534,10 +1560,17 @@ void(vector scr) HUD_EditDraw =
 		if (he_cvon[i] != "")
 		{
 			on = cvar(he_cvon[i]);
+			// Patch 798: Input display's square is the keys and the mouse together.
+			if (he_id[i] == "mouse")
+				on = (on || cvar("hud_keys"));
 			if (HE_Chip(strcat("he_on_", he_id[i]),
 			            [x + namew + 2 * psc, y, 0], [sqw, sqw, 0],
 			            "", on, psc, "Show or hide this element."))
+			{
 				localcmd(sprintf("seta %s %g\n", he_cvon[i], on ? 0 : 1));
+				if (he_id[i] == "mouse")
+					localcmd(sprintf("seta hud_keys %g\n", on ? 0 : 1));
+			}
 		}
 		else
 		{
@@ -1723,8 +1756,7 @@ void(vector scr) HUD_EditDraw =
 			else
 			{
 				/*
-				  A CYCLE, AND IT SHOWS THE NAME RATHER THAN THE NUMBER.  Same
-				  argument the calm-numbers pair below has always made: these are
+				  A CYCLE, AND IT SHOWS THE NAME RATHER THAN THE NUMBER.  These are
 				  small enumerations, and a button that says "energy" beats a
 				  slider that says 1.
 
@@ -1770,93 +1802,9 @@ void(vector scr) HUD_EditDraw =
 	y = y + 5 * psc;
 
 	/*
-	  THE CALM-NUMBERS PAIR.  Both cycle rather than sliding, because both are
-	  small enumerations and a slider over four values is worse than a button that
-	  says which one it is on.  The essay is above HUD_UpdateLatch in cl_hud.qc.
-	*/
-	mode = cvar("hud_update");
-	if (mode < 0)       s = "rate: tick";
-	else if (mode == 0) s = "rate: frame";
-	else                s = sprintf("rate: %gHz", mode);
-	if (HE_Chip("he_upd", [x, y, 0], [w * 0.48, rowh - 2 * psc, 0], s, mode != 0, psc,
-	            "How often the speed, energy and turn-rate numbers re-read. Not the timer."))
-	{
-		// tick -> 10 -> 20 -> 30 -> frame -> tick.  It passes through "every
-		// frame" so build 30's behaviour is reachable from anywhere in the cycle.
-		if (mode < 0)        localcmd("seta hud_update 10\n");
-		else if (mode == 10) localcmd("seta hud_update 20\n");
-		else if (mode == 20) localcmd("seta hud_update 30\n");
-		else if (mode == 0)  localcmd("seta hud_update -1\n");
-		else                 localcmd("seta hud_update 0\n");
-		ui_he_dirty = TRUE;
-	}
+	  Patch 798: the rate/step, text and crosshair chips above this were moved into
+	  the Display Info pane, so `reset all` has the row to itself.
 
-	mode = cvar("hud_round");
-	if (HE_Chip("he_round", [x + w * 0.52, y, 0], [w * 0.48, rowh - 2 * psc, 0],
-	            mode ? sprintf("step %g", mode) : "step off", mode, psc,
-	            "Round those same numbers to the nearest 1, 2 or 5 u/s. 1 changes nothing."))
-	{
-		if (mode == 1)      localcmd("seta hud_round 2\n");
-		else if (mode == 2) localcmd("seta hud_round 5\n");
-		else if (mode == 5) localcmd("seta hud_round 0\n");
-		else                localcmd("seta hud_round 1\n");
-		ui_he_dirty = TRUE;
-	}
-	y = y + rowh;
-
-	/*
-	  PATCH 440 -- THE GOOGLE FACE'S OUTLINE AND SHADOW, one chip cycling three
-	  states.  Full width, in the fixed block rather than in a pane, because it is
-	  a property of a FONT and every block drawn in Google Sans Code answers to it:
-	  splits, segments, the clock's subtext, map info, the strafe and board numbers.
-	  Putting it in one of those panes would say it belongs to that one.
-
-	  `shadow` is the state that costs: it is a second drawstring per mono string.
-	  The cycle goes through `outline` on the way to it so the cheaper look is one
-	  click from the expensive one rather than behind a cvar name.
-	*/
-	mode = cvar("hud_font_outline");
-	if (mode <= FX_PLAIN)        s = "text plain";
-	else if (mode == FX_OUTLINE) s = "text outline";
-	else                         s = "text shadow";
-	if (HE_Chip("he_fontfx", [x, y, 0], [w, rowh - 2 * psc, 0], s, mode > FX_PLAIN, psc,
-	            "Dark outline around the text drawn in the Google face, and a grey drop shadow behind it -- the timer and the speed take the shadow too. plain is the old look; outline skips the second pass."))
-	{
-		if (mode <= FX_PLAIN)        localcmd("seta hud_font_outline 1\n");
-		else if (mode == FX_OUTLINE) localcmd("seta hud_font_outline 2\n");
-		else                         localcmd("seta hud_font_outline 0\n");
-		ui_he_dirty = TRUE;
-	}
-	y = y + rowh;
-
-	/*
-	  BUILD 66 -- THE CROSSHAIR IS ONE CHIP.
-
-	  "Remove the crosshair button and replace it with a single cycling button
-	  that switches between the three crosshairs + off."  It is in the fixed block
-	  rather than the list because it is the one HUD element with no position and
-	  no size to pick -- there is nothing for a pane to hold.
-
-	  0 IS OFF, and that is a change of meaning from build 65, where 0 meant "let
-	  the engine draw its own".  A four-state cycle cannot express both, and the
-	  ask names off.  The engine's is still reachable as -1, which prints as its
-	  own label if anyone sets it.
-	*/
-	mode = cvar("hud_crosshair");
-	if (mode < 0)       s = "xhair engine";
-	else if (mode < 1)  s = "xhair off";
-	else                s = sprintf("xhair %g", mode);
-	if (HE_Chip("he_xhair", [x, y, 0], [w * 0.48, rowh - 2 * psc, 0],
-	            s, mode >= 1, psc,
-	            "Cycle the three crosshairs and off. 32 px, fully opaque."))
-	{
-		if (mode >= 1 && mode < 3) localcmd(sprintf("seta hud_crosshair %g\n", mode + 1));
-		else if (mode >= 3)        localcmd("seta hud_crosshair 0\n");
-		else                       localcmd("seta hud_crosshair 1\n");
-		ui_he_dirty = TRUE;
-	}
-
-	/*
 	  BUILD 66 -- `reset all`, AND IT ASKS FIRST.
 
 	  "Hit a general reset if anything goes really bad."  It undoes every position,
@@ -1872,7 +1820,7 @@ void(vector scr) HUD_EditDraw =
 	if (cltime - ui_he_armat > 3)
 		ui_he_armed = FALSE;
 
-	if (HE_Chip("he_rstall", [x + w * 0.52, y, 0], [w * 0.48, rowh - 2 * psc, 0],
+	if (HE_Chip("he_rstall", [x, y, 0], [w, rowh - 2 * psc, 0],
 	            ui_he_armed ? "sure?" : "reset all", ui_he_armed, psc,
 	            ui_he_armed
 	              ? "Click again to undo every position, size, toggle and option."
@@ -1943,13 +1891,16 @@ void(float r) HE_Default =
 	if (id == "board")   localcmd("seta hud_board_x 0.5\nseta hud_board_y 0.5\n");
 	if (id == "speed")   localcmd("seta hud_speed_x 0.5\nseta hud_speed_y 0.6269\n");
 	if (id == "banner")  localcmd("seta hud_banner_x 0.5\nseta hud_banner_y 0.25\n");
-	if (id == "keys")    localcmd("seta hud_keys_x 0\nseta hud_keys_y 0.84\n");
+	// Patch 798: Input display's reset puts the key block back too.
+	if (id == "keys" || id == "mouse") localcmd("seta hud_keys_x 0\nseta hud_keys_y 0.84\n");
 	if (id == "debug")   localcmd("seta hud_debug_x 0.0333\nseta hud_debug_y 0.0405\n");
 	if (id == "saveloc") localcmd("seta hud_saveloc_x 0.0333\nseta hud_saveloc_y 0.3695\n");
 	if (id == "gfx")     localcmd("seta hud_gfx_x 0.0333\nseta hud_gfx_y 0.338\n");
 	if (id == "vote")    localcmd("seta hud_vote_x 0.0333\nseta hud_vote_y 0.4028\n");
 	if (id == "mapinfo") localcmd("seta hud_mapinfo_x 0.99\nseta hud_mapinfo_y 0.02\n");
 	if (id == "specby")  localcmd("seta hud_specby_x 0.99\nseta hud_specby_y 0.18\n");
+	// Patch 798: missing since Patch 762, so the strip's reset chip did nothing.
+	if (id == "keyhint") localcmd("seta hud_keyhint_x 0.0333\nseta hud_keyhint_y 0.955\n");
 
 	/*
 	  BUILD 65 (until Patch 637, see above HE_Default).  boarding's pair is the -1
@@ -2027,15 +1978,11 @@ void() HE_ResetAll =
 			HE_ResetCvar(Gfx_Field(HE_OptDef(he_id[i], j), 0, "|"));
 	}
 
-	// The fixed block's own five, which belong to no element.  hud_scale is here
-	// even though build 66 took its chip away: it is still what every panel sizes
-	// itself from, so a value typed at the console is exactly the kind of "really
-	// bad" this button is for.
-	HE_ResetCvar("hud_update");
-	HE_ResetCvar("hud_round");
+	// hud_scale has had no chip since build 66, but every panel sizes from it.
+	// Patch 798: the fixed block's other four are Display Info rows, walked above;
+	// spec_dist was the Spectate pane's and is console only, still reset here.
 	HE_ResetCvar("hud_scale");
-	HE_ResetCvar("hud_crosshair");
-	HE_ResetCvar("hud_font_outline");       // Patch 440: the text effect's chip
+	HE_ResetCvar("spec_dist");
 
 	// Patch 632: rows of the Run lines pane until then, so a value set from it is
 	// not stranded now that only the console reaches them.  LITERALS, like the
@@ -2054,6 +2001,7 @@ void() HE_ResetAll =
 	localcmd("seta hud_ghost 1\nseta hud_ghost_sync 0\nseta hud_ghost_pb 1\nseta hud_ghost_lines 4\n"
 	         "seta hud_ghost_offset 0\nseta hud_ghost_alpha 0.55\nseta hud_ghost_dither 1\nseta hud_ghost_near 96\n"
 	         "seta hud_ghost_names 1\n");
+	localcmd("seta hud_chat 1\n");          // Patch 798: default.cfg never sets it
 
 	// And the panel itself, which can be dragged into a corner like anything else.
 	HE_ResetCvar("hud_edit_panel_x");

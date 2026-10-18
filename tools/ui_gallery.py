@@ -178,7 +178,8 @@ def config(a, size, port, http_port, native):
     lines += ['hud_edit on', 'waitms 700', 'hud_edit ui hover he_done'] + shot('hudedit_list')
     lines += ['hud_edit ui hover he_sel_speed', 'hud_edit ui down mouse1', 'waitms 120',
               'hud_edit ui hover he_sel_speed', 'hud_edit ui up mouse1'] + shot('hudedit_pane', 700)
-    lines += ['hud_edit ui hover he_fontfx'] + shot('hudedit_tip', 1000)
+    lines += ['hud_edit display', 'waitms 300',
+              'hud_edit ui hover he_o_hud_font_outline'] + shot('hudedit_tip', 1000)
     lines += ['hud_edit off', 'waitms 400']
     # Mixed values, so On, Off, a named mode and an inert row are all on screen.
     lines += ['set hl2_water 3', 'set hl2_refract 1', 'set hl2_translucent 1', 'set hl2_animated 0',

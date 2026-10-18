@@ -58,7 +58,8 @@ class UiTests(unittest.TestCase):
             # Stage A is the closed editor; the selection click lands in `action`.
             shut = name == "A" or name.startswith("closed")
             opened = int(name != "A")
-            picked = -1 if name in ("A", "B", "delayed", "visible", "cached", "held") else 2
+            # P798: `hud_edit display` selects row 15 before the hovers; the click picks seq (2).
+            picked = {"A": -1, "B": -1, "action": 2}.get(name, 15)
             lines += [f"sui_probe round {opened*2} asset {opened} tip {visible} lines 2 wraps 1",
                       f"sui_work frames 100 quads 200 screen 100 100 focused 1",
                       "sui_font native 8 ratio 1 1 glyph 8 8 calls 50",
@@ -98,7 +99,7 @@ class UiTests(unittest.TestCase):
             log = self.fixture(rig)
             text = log.read_text()
             start = text.index("=== sui action ===")
-            bad = text[:start] + text[start:].replace("selected 2", "selected -1", 1)
+            bad = text[:start] + text[start:].replace("selected 2", "selected 15", 1)
             self.assertNotEqual(bad, text)
             log.write_text(bad)
             self.assertEqual(self.graded(rig), 1)

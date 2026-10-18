@@ -6616,3 +6616,18 @@ depth at ~3,000 requests/day. What that leaves open:
   the easing, the hover nudge and the present-time parallax (`MM_Camera`) were
   read, never exercised. Falsifier: move the mouse across the main menu and watch
   the cube stay framed, with no snap when the cursor enters the window.
+
+## tools/test_ui_modern.py: three round/SUI-frame checks fail on main
+
+Found running it for Patch 798 (19 Oct); the same three fail on origin/main 85abd9ee
+(csprogs c62f3f83), so they predate P798. "no rounded drawing before the editor
+opens" (stage A reads `sui_probe round 854`), "real panel draws rounding" (`asset 0`
+in every stage while `sui_masks made` is 3-9) and "closed UI performs no additional
+SUI frames" (closed1 -> closed2: frames stay 265, quads 184919 -> 185017, round
+104 -> 118; stage A has frames 0 but quads 5978). Likely the arm's premise aged:
+something else draws rounded quads with the editor shut, and P642's generated
+masks replaced the roundmask asset -- unmeasured. Site: the grader in
+`tools/test_ui_modern.py` (`grade`); check: run it on main, find what submits sui
+quads while closed, then decide which checks still mean something.
+Also stale, harmless: `tools/p440font.py` / `cfg/test/p440font.cfg` count 5 fixed
+hud_edit rows (3 since P798); their height estimate only errs high.

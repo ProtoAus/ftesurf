@@ -12,6 +12,23 @@ Engine patch-800 (exe 33466461, `git-7464-patch-800-0-g553f9a4bd`) in both insta
 
 "Readable / want <x> split out". Verdict PENDING.
 
+## P798 — HUD editor: Display Info, Input display, new names
+
+Open `hud_edit` (C). The list has changed:
+
+- **Display Info** (last row) is where Key hints was. Click it: Map info, Map time
+  left, Key hints, Chat and Who's watching switch on and off; Crosshair, Text, Number
+  rate and Number step are the chips that used to sit at the bottom of the window.
+  The bottom now has only `reset all` and `done`.
+- **Spectate** is gone. Who's watching is in Display Info; the camera distance is
+  console only (`spec_dist 70`..`240`).
+- **Input display** (was Mouse): Keys and Mouse switch separately in its pane; the
+  square beside it switches both; `reset` puts both back. Its outline on screen
+  still says Mouse.
+- **Boarding** is the old Board row, **Enter/Exit speeds** the old Boarding row.
+
+"Panel ok / <what is wrong>" is enough. Verdict PENDING.
+
 ## P791 — surf_boreas's end beam
 
 The beam over the end-room circle is drawn: a soft white column from the pit to the
@@ -473,7 +490,8 @@ Works offline and on any lobby.
   right-click a key to clear it; drag a slider or use - / +, the wheel nudges it.
   `reset keys` asks twice. Done or Esc closes and saves.
 - **The strip.** Bottom left: Z Saves, X Graphics, C HUD, V Noclip, Bksp Rewind,
-  K Keys, with your own keys. `hud_edit` lists it as "Key hints" to move or hide.
+  K Keys, with your own keys. Hide it in `hud_edit` > Display Info > Key hints;
+  drag its outline to move it (P798).
 - **Save keys are binds now.** z/1/2/4 were fixed keys; they are binds, so the
   panel can move them. If 1, 2 or 4 stop saving, your ftesurf.cfg has its own
   bind on that key: set it in the panel.

@@ -835,8 +835,8 @@ void() HUD_RegisterCvars =
 	/*
 	  Patch 440: the Google face's outline, and its shadow.  2 ships both; 0 is
 	  what every earlier build drew.  Archived because it is a look picked in
-	  hud_edit and expected to survive a quit.  The matching chip is in
-	  cl_hudedit.qc's fixed block -- it belongs to no one element.
+	  hud_edit and expected to survive a quit.  The matching chip is the Text row
+	  of hud_edit's Display Info pane (Patch 798).
 	*/
 	registercvar("hud_font_outline", "2", CVAR_ARCHIVE);
 

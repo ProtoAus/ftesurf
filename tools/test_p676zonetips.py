@@ -69,8 +69,8 @@ def cfg():
                   'ui_close', 'waitms 300'])
     hover('ze_gs', True, '_small')
     lines.extend(['echo P675 FINAL', 'zone_edit status', 'zone_edit',
-                  'hud_edit', 'waitms 300'])
-    hover('he_round')
+                  'hud_edit display', 'waitms 300'])
+    hover('he_o_hud_round')
     lines.extend(['hud_edit', 'echo RUNLINES COMPLETE', 'quit'])
     return '\n'.join(lines) + '\n'
 
@@ -138,7 +138,7 @@ def main():
           and not list((game / 'data/maps').rglob('*.cfg')))
     check('small-window Surface tooltip reached', len(chunks(text, 'ze_gs')) == 2)
     check('HUD-editor tooltip survives inactive zone editor',
-          any(tip_ok(b, 'he_round') for b in chunks(text, 'he_round')))
+          any(tip_ok(b, 'he_o_hud_round') for b in chunks(text, 'he_o_hud_round')))
     for name in ('ze_shape', 'ze_gs', 'ze_sv', 'ze_mode_bhop', 'ze_ms0', 'ze_gs_small'):
         shot = game / 'screenshots' / ('p675_' + name + '.png')
         check('screenshot exists: ' + name, shot.is_file() and shot.stat().st_size > 1000)
