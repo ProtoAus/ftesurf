@@ -191,9 +191,74 @@ class Untranslated(Exception):
     pass
 
 
+# Patch 791: render_rope, one ribbon through a system's particles in birth order.  It
+# is not particles here: cl_emit.qc (Emit_RopeFrame) draws the path one particle takes
+# over its life -- the spawn offset, then gravity -- sampled at the emission interval,
+# with Alpha Fade and Decay along it, from a `rope` index line.  Only ROPE_OPS are
+# understood and anything else refuses.  ROPE_WIDTH is the one number not in the file:
+# Source's rope renderer is in the closed particles.lib, and 0.5 x radius fits Momentum's
+# surf_boreas end beam (core ~120 units of a laser01 stripe; ONE sample, one map).
+ROPE_OPS = {"emit_continuously", "Position Within Box Random", "Lifetime Random",
+            "Movement Basic", "Alpha Fade and Decay", "Alpha Random", "render_rope"}
+ROPE_WIDTH = 0.5
+
+
+def translate_rope(d, e, content):
+    for key in ("emitters", "initializers", "operators", "renderers", "forces", "constraints"):
+        for o in ops(d, e, key):
+            if o.get("functionName") not in ROPE_OPS:
+                raise Untranslated("render_rope with %s: not drawn" % o.get("functionName"))
+    em = find(d, e, "emitters", "emit_continuously")
+    nominal = float(em.get("emission_rate", 0.0)) if em else 0.0
+    lt = find(d, e, "initializers", "Lifetime Random")
+    life = (float(lt.get("lifetime_min", 1.0)) + float(lt.get("lifetime_max", lt.get("lifetime_min", 1.0)))) * 0.5 if lt else 1.0
+    if nominal <= 0 or life <= 0:
+        raise Untranslated("render_rope: no continuous emission")
+    maxp = float(e.get("max_particles", 0) or 0)
+    rate = min(nominal, maxp / life) if maxp > 0 else nominal
+    ofs = [0.0, 0.0, 0.0]
+    pb = find(d, e, "initializers", "Position Within Box Random")
+    if pb:
+        ofs = [(float(a) + float(b)) * 0.5 for a, b in zip(pb.get("min", [0, 0, 0]), pb.get("max", [0, 0, 0]))]
+    mv = find(d, e, "operators", "Movement Basic")
+    if mv and float(mv.get("drag", 0) or 0) != 0:
+        raise Untranslated("render_rope with drag: not drawn")
+    grav = [float(x) for x in (mv.get("gravity", [0, 0, 0]) if mv else [0, 0, 0])]
+    col = e.get("color", [255, 255, 255, 255])
+    alpha = float(col[3]) / 255.0
+    ar = find(d, e, "initializers", "Alpha Random")
+    if ar:
+        alpha = (float(ar.get("alpha_min", 255)) + float(ar.get("alpha_max", 255))) / 510.0
+    fd = find(d, e, "operators", "Alpha Fade and Decay")
+    fade = [0.0, 0.0, 1.0, 1.0]                 # no fade: full alpha over the whole life
+    if fd:
+        alpha *= float(fd.get("start_alpha", 1.0))
+        fade = [float(fd.get(k, dv)) for k, dv in (("start_fade_in_time", 0.0), ("end_fade_in_time", 0.5),
+                                                    ("start_fade_out_time", 0.5), ("end_fade_out_time", 1.0))]
+    mat = re.sub(r"\.vmt$", "", (e.get("material") or "").replace("\\", "/"), flags=re.I)
+    image, blend = mat, "blendalpha"
+    if content is not None:
+        try:
+            image, blend = material_look(content, mat)
+        except (ValueError, OSError, struct.error):
+            pass
+    children = [d.elements[c.get("child")].name for c in ops(d, e, "children")
+                if c.get("child", -1) is not None and c.get("child", -1) >= 0]
+    rope = dict(image=image, add=1 if blend == "adda" else 0, life=life, grav=grav,
+                width=ROPE_WIDTH * float(e.get("radius", 5.0)), rgb=[float(c) for c in col[:3]],
+                alpha=alpha, fade=fade)
+    return None, dict(name=e.name, rate=rate, vel=[0.0, 0.0, 0.0], wvel=[0.0, 0.0, 0.0], ofs=ofs,
+                      jit=0.0, maxp=int(maxp), die=life, maxdist=float(e.get("maximum draw distance", 0.0) or 0.0),
+                      nominal=nominal, children=children, trail=None,
+                      look="material %s: image %s, rope" % (mat, image), rope=rope)
+
+
 def translate(d, e, unknown, mapname, content=None):
     """One DmeParticleSystemDefinition -> (cfg block text, runtime fields)."""
     name = e.name
+    rend = ops(d, e, "renderers")
+    if rend and rend[0].get("functionName") == "render_rope":
+        return translate_rope(d, e, content)
 
     for key in ("emitters", "initializers", "operators", "renderers",
                 "forces", "constraints"):
@@ -636,11 +701,6 @@ def translate(d, e, unknown, mapname, content=None):
     if not mat:
         raise Untranslated("no material")
 
-    rend = ops(d, e, "renderers")
-    if rend and rend[0].get("functionName") == "render_rope":
-        # Patch 787: one ribbon threaded through the particles in birth order.  As
-        # billboards of its radius, surf_boreas's end beam (1500) whited out the room.
-        raise Untranslated("render_rope: a ribbon through the particles, not drawn")
     rtype = RENDERER_TYPE.get(rend[0].get("functionName")) if rend else None
 
     coll = find(d, e, "constraints", "Collision via traces")
@@ -848,7 +908,8 @@ def bake(pcf_bytes, mapname, unknown, content=None):
         except Untranslated as ex:
             skipped.append((e.name, str(ex)))
             continue
-        blocks.append(b)
+        if b is not None:                       # a rope has no r_part block (Patch 791)
+            blocks.append(b)
         runtime.append(rt)
     return blocks, runtime, skipped
 
@@ -927,9 +988,9 @@ def main():
     except dmx.DmxError as ex:
         sys.exit("REFUSED: %s" % ex)
 
-    total = len(blocks) + len(skipped)
+    total = len(runtime) + len(skipped)
     body = HEADER % dict(map=mapname, src=srcname,
-                         n=len(blocks), total=total) + "\n" + "\n\n".join(blocks) + "\n"
+                         n=len(runtime), total=total) + "\n" + "\n\n".join(blocks) + "\n"
 
     # psys <map> <name> <rate> <lx> <ly> <lz> <maxp> <die> <maxdist>
     #      <ox> <oy> <oz> <wx> <wy> <wz> <jit> <parent|->
@@ -957,11 +1018,22 @@ def main():
                 edges.append((rt["name"], byname[c]))
             else:
                 skipped.append((c, "child of %s was not translated; dropped" % rt["name"]))
-    idx = ["particles %s %d" % (mapname, len(runtime) + len(edges))]
+    # rope <map> <name> <image> <add> <rate> <life> <ox oy oz> <gx gy gz> <width> <r g b> <alpha>
+    #      <fade in start, end> <fade out start, end> <parent|->
+    # Twenty-three words (Patch 791).  Older clients skip them: the first word is not psys.
+    def ropeline(rt, parent):
+        r = rt["rope"]
+        return "rope %s %s %s %d %.4g %.4g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.4g %.4g %.4g %.4g %.4g %s" % (
+            mapname, rt["name"], r["image"], r["add"], rt["rate"], r["life"],
+            rt["ofs"][0], rt["ofs"][1], rt["ofs"][2], r["grav"][0], r["grav"][1], r["grav"][2], r["width"],
+            r["rgb"][0], r["rgb"][1], r["rgb"][2], r["alpha"],
+            r["fade"][0], r["fade"][1], r["fade"][2], r["fade"][3], parent)
+    nps = len([rt for rt in runtime if "rope" not in rt]) + len([1 for p_, rt in edges if "rope" not in rt])
+    idx = ["particles %s %d" % (mapname, nps)]
     for rt in runtime:
-        idx.append(psline(rt, "-"))
+        idx.append(ropeline(rt, "-") if "rope" in rt else psline(rt, "-"))
     for parent, rt in edges:
-        idx.append(psline(rt, parent))
+        idx.append(ropeline(rt, parent) if "rope" in rt else psline(rt, parent))
     # trail <map> <name> <material> <rate> <box x y z> <speed spread x y z> <gravity>
     #       <n> <t0> <ratio> <half a streak's length, 0 = 0.05 s of travel>
     # Sixteen words, after the psys lines.  A client from before Patch 659 skips
@@ -976,7 +1048,7 @@ def main():
                 TRAIL_N, TRAIL_T0, TRAIL_RATIO, t["half"]))
 
     print("%s: %d systems translated, %d skipped, %d child links" % (
-        mapname, len(blocks), len(skipped), len(edges)))
+        mapname, len(runtime), len(skipped), len(edges)))
     for n, why in skipped:
         print("   skipped %-24s %s" % (n, why))
     for parent, rt in edges:

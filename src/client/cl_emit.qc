@@ -390,6 +390,26 @@ float  ps_thalf[PS_MAX];
 float *ps_tfx;                  //   and [PS_MAX * TRAIL_N] its blocks by life
 float  ps_n;
 float  ps_links;                // how many of ps_n are child links
+
+// Patch 791: render_rope ribbons -- tools/pcf.py's `rope` lines, drawn by Emit_RopeFrame.
+#define RP_MAX          8       // rope systems a map; surf_boreas has 2
+#define RI_MAX          16      // placed ropes
+float  rp_n, ri_n, rp_zoned;
+string rp_name[RP_MAX];
+string rp_parent[RP_MAX];       // "" on a stand-alone line
+string rp_shader[RP_MAX];
+string rp_body[RP_MAX];         // re-registered each frame: a renderer restart forgets it
+float  rp_rate[RP_MAX];
+float  rp_life[RP_MAX];
+float  rp_width[RP_MAX];
+float  rp_alpha[RP_MAX];
+vector rp_ofs[RP_MAX];
+vector rp_grav[RP_MAX];
+vector rp_rgb[RP_MAX];          // 0..1
+vector rp_fi[RP_MAX];           // fade in, x..y, fractions of the life
+vector rp_fo[RP_MAX];           // fade out, x..y
+float  ri_type[RI_MAX];
+vector ri_org[RI_MAX];
 float  ps_zoned;                // ps_name[]/ps_parent[] hold strzone handles to give back
 
 void() Emit_TrailForget;
@@ -407,6 +427,16 @@ void() Emit_PsysFree =
 	ps_n = 0;
 	ps_links = 0;
 	Emit_TrailForget();
+	if (rp_zoned)
+		for (i = 0; i < rp_n; i = i + 1)
+		{
+			strunzone(rp_name[i]);
+			strunzone(rp_parent[i]);
+			strunzone(rp_shader[i]);
+			strunzone(rp_body[i]);
+		}
+	rp_zoned = FALSE;
+	rp_n = ri_n = 0;
 };
 
 #define TRAIL_SHADER "ftesurf_trail/"   // tools/pcf.py has these by the same names
@@ -527,6 +557,118 @@ void() Emit_TrailNote =
 	Emit_TrailShader(mat);
 };
 
+/*
+  Patch 791: render_rope.  tools/pcf.py writes the path one particle takes (spawn
+  offset, then gravity from rest) and its Alpha Fade and Decay; the ribbon is drawn
+  through that path at the emission interval, so it moves the way the particles do.
+  Width and why: pcf.py ROPE_WIDTH.  Not a particle and not under the budget: one
+  strip of quads a rope, drawn whether or not vbsp_emit_psys_children starts the
+  parent's particle children (surf_boreas's beam is one).  Off: vbsp_emit_ropes 0.
+*/
+void() Emit_RopeNote =
+{
+	local string img;
+
+	if (rp_n >= RP_MAX)
+		return;
+	img = argv(3);
+	rp_name[rp_n]   = strzone(argv(2));
+	rp_parent[rp_n] = strzone(argv(22) == "-" ? "" : argv(22));
+	rp_shader[rp_n] = strzone(sprintf("ftesurf_rope/%s/%s", img, argv(4)));
+	rp_body[rp_n] = strzone(sprintf("{\ncull disable\nsort %s\n{\nmap \"materials/%s.vtf\"\nblendfunc %s\nrgbgen vertex\nalphagen vertex\n}\n}\n",
+		stof(argv(4)) ? "additive" : "blend", img,
+		stof(argv(4)) ? "GL_SRC_ALPHA GL_ONE" : "GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA"));
+	rp_rate[rp_n]  = stof(argv(5));
+	rp_life[rp_n]  = stof(argv(6));
+	rp_ofs[rp_n]   = [stof(argv(7)), stof(argv(8)), stof(argv(9))];
+	rp_grav[rp_n]  = [stof(argv(10)), stof(argv(11)), stof(argv(12))];
+	rp_width[rp_n] = stof(argv(13));
+	rp_rgb[rp_n]   = [stof(argv(14)), stof(argv(15)), stof(argv(16))] * (1 / 255);
+	rp_alpha[rp_n] = stof(argv(17));
+	rp_fi[rp_n]    = [stof(argv(18)), stof(argv(19)), 0];
+	rp_fo[rp_n]    = [stof(argv(20)), stof(argv(21)), 0];
+	if (rp_rate[rp_n] > 0 && rp_life[rp_n] > 0)
+		rp_n = rp_n + 1;
+	rp_zoned = TRUE;
+};
+
+float(float e0, float e1, float x) Emit_Smooth =
+{
+	local float t;
+
+	if (e1 <= e0)
+		return x >= e1;
+	t = bound(0, (x - e0) / (e1 - e0), 1);
+	return t * t * (3 - 2 * t);
+};
+
+// Alpha Fade and Decay at fraction f of the life: a smoothstep at each end, as the other bakes do.
+float(float j, float f) Emit_RopeFade =
+{
+	local vector fi, fo;
+
+	fi = rp_fi[j];
+	fo = rp_fo[j];
+	return Emit_Smooth(fi_x, fi_y, f) * (1 - Emit_Smooth(fo_x, fo_y, f));
+};
+
+// The ropes a placed system starts: its children, or itself when it is a rope.
+void(string effname, vector org) Emit_RopeAt =
+{
+	local float j;
+
+	for (j = 0; j < rp_n && ri_n < RI_MAX; j = j + 1)
+		if (rp_parent[j] == effname || (rp_parent[j] == "" && rp_name[j] == effname))
+		{
+			ri_type[ri_n] = j;
+			ri_org[ri_n] = org + rp_ofs[j];
+			ri_n = ri_n + 1;
+			dprint(sprintf("emit: rope %s at %v, %g wide\n", rp_name[j], org + rp_ofs[j], rp_width[j]));
+		}
+};
+
+void() Emit_RopeFrame =
+{
+	local float i, j, k, n, age, lf, f, a0, a1, step, ph;
+	local vector eye, p0, p1, s0, s1, col;
+
+	if (!ri_n || !cvar("vbsp_emit_ropes"))
+		return;
+	eye = getproperty(VF_ORIGIN);
+	for (i = 0; i < ri_n; i = i + 1)
+	{
+		j = ri_type[i];
+		shaderforname(rp_shader[j], rp_body[j]);
+		step = 1 / rp_rate[j];
+		lf = rp_life[j];
+		n = floor(lf / step);
+		ph = time - floor(time / step) * step;		// the youngest particle's age
+		col = rp_rgb[j];
+		for (k = 0; k < n; k = k + 1)
+		{
+			age = ph + k * step;
+			p0 = ri_org[i] + rp_grav[j] * (0.5 * age * age);
+			f = age / lf;
+			a0 = rp_alpha[j] * Emit_RopeFade(j, f);
+			age = min(age + step, lf);
+			p1 = ri_org[i] + rp_grav[j] * (0.5 * age * age);
+			f = age / lf;
+			a1 = rp_alpha[j] * Emit_RopeFade(j, f);
+			if (a0 <= 0 && a1 <= 0)
+				continue;
+			// Facing the eye about the segment: half the width either side.
+			s0 = normalize(crossproduct(p1 - p0, eye - p0)) * (rp_width[j] * 0.5);
+			s1 = normalize(crossproduct(p1 - p0, eye - p1)) * (rp_width[j] * 0.5);
+			R_BeginPolygon(rp_shader[j], DRAWFLAG_TWOSIDED, FALSE);
+			R_PolygonVertex(p0 - s0, [0, k, 0], col, a0);
+			R_PolygonVertex(p0 + s0, [1, k, 0], col, a0);
+			R_PolygonVertex(p1 + s1, [1, k + 1, 0], col, a1);
+			R_PolygonVertex(p1 - s1, [0, k + 1, 0], col, a1);
+			R_EndPolygon();
+		}
+	}
+};
+
 void() Emit_TrailForget =
 {
 	while (em_trmats > 0)
@@ -599,6 +741,10 @@ void(string mname) Emit_PsysLoad =
 		if (argv(0) == "trail")
 		if (argv(1) == mname)
 			Emit_TrailNote();
+		if (n == 23)
+		if (argv(0) == "rope")
+		if (argv(1) == mname)
+			Emit_RopeNote();
 		if (n < 10)
 			continue;
 		if (argv(0) != "psys" || argv(1) != mname)
@@ -1743,6 +1889,8 @@ void() Emit_RegisterCvars =
 	// children, so flip this once cfg/test/psboreas.cfg arms C/D have shown
 	// them.  Read once per map load in Emit_LoadForMap; not archived.
 	registercvar("vbsp_emit_psys_children", "0", 0);
+	// Patch 791: render_rope ribbons (Emit_RopeFrame), whatever the line above says.
+	registercvar("vbsp_emit_ropes", "1", 0);
 
 	registercommand("emit_list");
 	registercommand("emit_test");
@@ -3200,6 +3348,8 @@ void() Emit_LoadForMap =
 		*/
 		if (kind == EK_PSYS)
 		{
+			if (effname != "")
+				Emit_RopeAt(effname, org);	// before the no-psys exit: a rope has no psys line
 			ps = (effname == "") ? -1 : Emit_PsysFind(effname);
 			if (ps < 0)
 			{
@@ -3424,6 +3574,7 @@ void() Emit_Frame =
 		return;
 	}
 
+	Emit_RopeFrame();
 	if (!em_n && !pr_n)
 		return;
 

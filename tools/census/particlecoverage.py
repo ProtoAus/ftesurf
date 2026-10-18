@@ -88,7 +88,7 @@ def audit_map(path, baked, cfgdir):
                 cfg = cfgdir / (path.stem + '.cfg')
                 if len(names) == 1 and baked and cfg.exists():
                     header = pcf.HEADER % dict(map=path.stem, src=Path(name).name,
-                                              n=len(blocks), total=len(blocks)+len(skipped))
+                                              n=len(runtime), total=len(runtime)+len(skipped))
                     body = header + '\n' + '\n\n'.join(blocks) + '\n'
                     row['cfg_matches_current_translator'] = cfg.read_text() == body
             except Exception as error:

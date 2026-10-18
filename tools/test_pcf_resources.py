@@ -373,6 +373,37 @@ class ResourceTests(unittest.TestCase):
         self.assertFalse((self.root/'particles').exists())
 
 
+class RopeTests(unittest.TestCase):
+    # Patch 791: a render_rope system bakes to a `rope` index line, not an r_part block,
+    # and one with an operator outside pcf.ROPE_OPS is refused rather than guessed.
+    def system(self, extra=None):
+        ops_ = [('DmeParticleOperator', 'r', {'functionName': (5, 'render_rope')}),
+                ('DmeParticleOperator', 'e', {'functionName': (5, 'emit_continuously'), 'emission_rate': (3, 8.0)}),
+                ('DmeParticleOperator', 'l', {'functionName': (5, 'Lifetime Random'),
+                                              'lifetime_min': (3, 3.0), 'lifetime_max': (3, 3.0)})]
+        attrs = {'max_particles': (2, 1000), 'radius': (3, 1500.0), 'material': (5, 'particle\\beam.vmt'),
+                 'renderers': (15, [2]), 'emitters': (15, [3]), 'initializers': (15, [4])}
+        if extra:
+            ops_.append(('DmeParticleOperator', 'x', {'functionName': (5, extra)}))
+            attrs['operators'] = (15, [5])
+        return pcf_bytes([('DmElement', 'root', {'particleSystemDefinitions': (15, [1])}),
+                          ('DmeParticleSystemDefinition', 'beam', attrs)] + ops_)
+
+    def test_rope_bakes_to_an_index_line(self):
+        import collections, pcf
+        blocks, runtime, skipped = pcf.bake(self.system(), 'm', collections.Counter())
+        self.assertEqual((blocks, skipped), ([], []))
+        rope = runtime[0]['rope']
+        self.assertEqual((runtime[0]['rate'], rope['life'], rope['width']), (8.0, 3.0, 750.0))
+        self.assertEqual(rope['image'], 'particle/beam')
+
+    def test_rope_with_an_unknown_operator_is_refused(self):
+        import collections, pcf
+        blocks, runtime, skipped = pcf.bake(self.system('Velocity Noise'), 'm', collections.Counter())
+        self.assertEqual(runtime, [])
+        self.assertIn('render_rope with Velocity Noise', skipped[0][1])
+
+
 class SheetTests(unittest.TestCase):
     def test_versions_channels_flags_and_every_truncated_prefix(self):
         for version in (0, 1):
