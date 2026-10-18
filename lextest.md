@@ -1,5 +1,20 @@
 # lextest.md — things waiting on a human
 
+## P813 — no more dead stops on ramps (mover 8)
+
+Lobbies since 2026-10-18T21:20Z (native 06fee9ab, `pm_sourceversion` 8); both installs
+21:20Z (client 219c737c, C:\FTEQuake server c6dbcef3). Your stop was on
+surf_colin_blaster_69000's curved ramp at about `setpos -20137 -16038 -15215`, riding +x at
+~950 u/s; the same bug stopped another player's run there and a run on surf_666.
+
+- Surf those maps (and anything with curved ramps) as you normally do. A "random stop" on a
+  ramp should not happen any more; you keep your speed through the seam.
+- If you still stop dead, say which map and roughly when: the lobby keeps the run, and
+  `tools/stopmine.py` finds the stop in it.
+- Nothing else should feel different: voyager still finishes with no keys.
+
+"No stops / <map and time of a stop>". Verdict PENDING.
+
 ## P812 — no prediction errors above ~4100 u/s (surf_joutsenlaulu)
 
 Both installs 2026-10-18T21:11Z: exe 7f8e25fb (git-7483-patch-812-0-g92f020ed3), dedicated

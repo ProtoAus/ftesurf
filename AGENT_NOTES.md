@@ -1,5 +1,25 @@
 # AGENT_NOTES.md
 
+## Rare movement bugs are in the recordings (P813, 2026-10-19)
+
+- A "rare, hard to capture" stop is already captured: every lobby run is a recording
+  that `pm_verify` (Pi) and `pm_recsim` (Windows) replay bit-exactly. `tools/stopmine.py`
+  finds full stops in a tree of .rec files; replay the hit under `pm_dispprobe 3` and list
+  the geometry with `tools/bspnear.py`. Lex's colin_blaster stop was found and explained
+  this way from data/runs on the Pi without anyone reproducing it.
+- `pm_recsim` runs the open loop (the real run) first, then a PINNED loop that snaps the
+  state to the file's %.2f samples each packet. A probe sees both; the pinned loop can
+  invent a stop (or lose one) because the bug lives under 1/100 u. Grade only the open loop.
+- Windows headless replays: cwd C:\FTESurf (Momentum maps mount through fs_addons;
+  C:\FTEQuake mounts none and tries to download), `-plugin` with stdin an OPEN pipe (with
+  stdin closed the server died at map load, 0xC0000005), `+log_enable 1 +log_dir <scratch>`
+  for output. C:\FTESurf\fteqwsv64.exe is September's; `ftesurf64 -dedicated` died with
+  0xC0000094 on a replay; use a current fteqwsv64. A parked resume file REFUSEs (an
+  unanswered `pause`): replay a copy cut before that line.
+- Past |x| 16384 a float32 origin resolves 1/512 u. A hull left closer than that to a face
+  re-hits it on a parallel move; mover 8 recovers that case (ENGINE_PATCHES.md, 813).
+  The audit's open differences from Momentum are in BACKLOG.
+
 ## Boards, friends and the map list that stay loaded (P781, 2026-10-18)
 
 - A JSON node handle is a byte offset into the QC heap: keep `json_parse`,
@@ -5186,10 +5206,14 @@ script rather than passing it as an argument, where `ps` would show it.
   binary REFUSEs p492voy.rec, which is the control. NEVER ROLL THE SWEEPER BACK
   PAST 492: an old verifier reads only the header's pmsrcver, so a Multi-Session
   run parked before a 492 deploy and resumed after it (pin 1 in the header, 2 in
-  a later `pm` record) HOLDs there. Nor past 756, 758 or 764 once a lobby has run
-  them: an older verifier REFUSEs pin-5, pin-6 and pin-7 files, and the sweeper
+  a later `pm` record) HOLDs there. Nor past 756, 758, 764 or 813 once a lobby has run
+  them: an older verifier REFUSEs pin-5, -6, -7 and -8 files, and the sweeper
   treats REFUSE as final. The fleet has run 764 since 2026-10-17T19:37Z
-  (`tools/lobby-engine-p764-20261017.md`). An ssh that starts a
+  (`tools/lobby-engine-p764-20261017.md`) and 813 since 2026-10-18T21:20Z. The
+  P764 gate's known-PASS surf_boreas 0003107 HOLDs on physents (18 rows, first 1945) on
+  the 812 and 813 natives alike, measured 18 Oct (the owed boreas physents bump, not a
+  mover change); P813's gate used surf_colin_blaster_69000
+  0009194 (pin 7) instead. An ssh that starts a
   background server does not return, so run it in the background. Run
   hand tests on a port other than 27698, which is the sweeper's. Swap by
   `cp` to `.new` then `mv -f`, keeping `fteqw-svarm64.preNNN-<stamp>`. Running

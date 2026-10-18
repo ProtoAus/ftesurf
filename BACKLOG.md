@@ -5,6 +5,41 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Momentum parity: what the 19 Oct movement audit left open (P813 fixed the ramp stops)
+
+Read against Momentum's last public source (momentum-mod/game develop a299840b,
+mom_gamemovement.cpp and its fork of gamemovement.cpp) and Valve's SDK 2013. Each changes
+physics, so each wants a mover version and ground truth first; none is measured against
+Momentum yet.
+- Start-of-tick ground check. Momentum's PlayerMove (fork gamemovement.cpp:4549-4561,
+  `sv_optimizedmovement 1`) re-categorizes at the top of a tick only when game code moved
+  the player since the last move (player_command.cpp:143-146); otherwise it only drops the
+  ground above vz 250. PMSrc_Tick always calls PMSrc_CategorizePosition there, after the
+  previous tick's FinishGravity. So surfacefriction (which scales AirAccelerate) is
+  re-decided from vz minus half a tick of gravity: on the tick where 0 < vz < 6 at the end
+  of a move, Momentum air-accelerates at 0.25 and we at 1. A landing can also be taken a
+  tick early, with the slope fix's velocity adopted at the top of the tick.
+- Duck speed crop. Momentum (mom_gamemovement.cpp:683-703) crops the move values by 0.34
+  while duck is held, ducking or ducked, on the ground or in the air; PMSrc_HandleDuckingSpeedCrop
+  only when fully ducked AND on the ground (Valve's base). On the ground it changes speed
+  during the 0.4 s duck; in the air the 30 u/s cap hides it.
+- Duck re-pressed during an unduck: Momentum's DoDuck inverts the remaining time
+  (:935-941); ours follows Valve (FinishDuck returns early while still ducked, `ducking`
+  stays set). Eye-height timing only.
+- CheckStuck: Source and Momentum skip the whole tick when it starts in solid, trying one
+  random offset per 0.05 s; PMSrc_CheckStuck nudges up to 16 u axially at once and moves.
+  Momentum's FinishDuck also calls FixPlayerCrouchStuck (:1151); ours does not.
+- Generated edge bevels: see the surf_voyager section (`hl2_brushbevels 1` adds 3,224
+  planes on surf_colin_blaster_69000 and 11,572 on surf_666; Source traces as compiled).
+- P813's same-plane test compares normals bit for bit, so it covers brush faces; a
+  displacement or .phy face made of several triangles can dip the same way and still
+  stop. Falsifier: tools/stopmine.py over a displacement-ramp map's lobby runs, then
+  pm_recsim the hit under pm_dispprobe 3 (a BIH triangle at fraction 0 each bump).
+- surf_derpis (kap's lobby run 0016195, t 120.825): x speed 2414 -> 0 at (-10812, -3088,
+  6002), the hull 0.23 u from the nodraw -x face of brush 1057 (x = -10796) and of
+  playerclip 448, riding playerclip 441. The replay is exact; whether Momentum hits the
+  same face (a real wall, or a lip Source does not expose) needs a look in game.
+
 ## Index guards on one side of && / || (found sweeping for P795's shape)
 
 QC evaluates both sides, so a guard beside an array read does not guard it, and a
