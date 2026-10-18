@@ -7298,59 +7298,98 @@ void(entity e) SV_RotButtonPlace =
 	e.angles_z = anglemod(a_z);
 };
 
+// A move whose clock has reached its goal ends here, and the goal it reached is kept
+// (+1, so 0 is "none") for the outputs: a later input may change vbsp_rb_ideal first.
+void(entity e) SV_RotButtonSettle =
+{
+	if (e.vbsp_rb_dir && SV_RotButtonPos(e) == e.vbsp_rb_ideal)
+	{
+		e.vbsp_rb_pos = e.vbsp_rb_ideal;
+		e.vbsp_rb_dir = 0;
+		e.vbsp_rb_t0 = time;
+		e.vbsp_rb_arrived = e.vbsp_rb_ideal + 1;
+	}
+};
+
+void() SV_RotButtonFrame;
+void() SV_RotButtonWake =
+{
+	if (!vbsp_rb_driver || vbsp_rb_driver.classname != "vbsp_rotdriver")
+	{
+		vbsp_rb_driver = spawn();
+		vbsp_rb_driver.classname = "vbsp_rotdriver";
+		vbsp_rb_driver.think = SV_RotButtonFrame;
+	}
+	if (!vbsp_rb_driver.nextthink || vbsp_rb_driver.nextthink > time)
+		vbsp_rb_driver.nextthink = time;
+};
+
 /*
-  Twenty times a second while anything turns; the clients lerp between.  TWO PASSES:
-  every arrival is settled before any output fires, because a zero-delay output runs
-  inline -- bhop_avantasia's first blimp to arrive sends its group SetPosition 1 through
-  a relay, and in one pass the rest were reset to "there already" before their own
-  arrival fired, and froze.  Source queues those events.
+  At most twenty times a second, and at each predicted arrival (as Source's MoveDone
+  is, buttons.cpp:1161-1170, so a self-looping button does not wait at its end); the
+  clients lerp between.  TWO PASSES: every arrival is settled before any output fires,
+  because a zero-delay output runs inline -- bhop_avantasia's first blimp to arrive
+  sends its group SetPosition 1 through a relay, and in one pass the rest were reset to
+  "there already" before their own arrival fired, and froze.  Source queues them.
 */
 void() SV_RotButtonFrame =
 {
 	local entity e, nx, p;
-	local float moving;
+	local float moving, k, next, eta;
 
 	for (e = find(world, classname, "momentary_rot_button"); e; e = find(e, classname, "momentary_rot_button"))
 		if (e.vbsp_rb_live)
 		{
-			if (e.vbsp_rb_dir && SV_RotButtonPos(e) == e.vbsp_rb_ideal)
-			{
-				e.vbsp_rb_pos = e.vbsp_rb_ideal;
-				e.vbsp_rb_dir = 0;
-				e.vbsp_rb_t0 = time;
-				e.vbsp_rb_arrived = TRUE;
-			}
+			SV_RotButtonSettle(e);
 			SV_RotButtonPlace(e);
 		}
 	for (e = find(world, classname, "momentary_rot_button"); e; e = nx)
 	{
 		nx = find(e, classname, "momentary_rot_button");	// an output may Kill e
-		if (!e.vbsp_rb_arrived)
-			continue;
-		e.vbsp_rb_arrived = FALSE;
+		if (!e.vbsp_rb_arrived || e.classname != "momentary_rot_button")
+			continue;							// (killed by an earlier output this pass)
+		k = e.vbsp_rb_arrived - 1;
+		e.vbsp_rb_arrived = 0;
 		// OutputMovementComplete, buttons.cpp:1237-1246.
-		if (e.vbsp_rb_ideal == 1)
+		if (k == 1)
 			SV_FireOutput(e, "OnFullyClosed", e);
-		else if (e.vbsp_rb_ideal == 0)
+		else if (k == 0)
 			SV_FireOutput(e, "OnFullyOpen", e);
 		if (e.classname == "momentary_rot_button")
 			SV_FireOutput(e, "OnReachedPosition", e);
 	}
-	// After the outputs, which may have started or stopped anything.
+	// After the outputs, which may have started, stopped or settled anything.
 	moving = FALSE;
+	next = time + 0.05;
 	for (e = find(world, classname, "momentary_rot_button"); e; e = find(e, classname, "momentary_rot_button"))
 	{
+		if (!e.vbsp_rb_live)
+			continue;
+		if (e.vbsp_rb_arrived)
+			next = time;						// settled by an input above: fire next frame
 		p = e.vbsp_rb_parent;
-		if (e.vbsp_rb_live && (e.vbsp_rb_dir || (p.classname == "momentary_rot_button" && p.vbsp_rb_dir)))
+		if (e.vbsp_rb_dir || (p.classname == "momentary_rot_button" && p.vbsp_rb_dir))
 			moving = TRUE;
+		if (e.vbsp_rb_dir)
+		{
+			eta = e.vbsp_rb_t0 + fabs(e.vbsp_rb_ideal - e.vbsp_rb_pos) * e.distance / e.speed;
+			if (eta < next)
+				next = eta;
+		}
 	}
-	self.nextthink = moving ? time + 0.05 : 0;
+	if (next < time)
+		next = time;
+	self.nextthink = (moving || next == time) ? next : 0;
 };
 
 void(entity t, float v, float now) SV_RotButtonSet =
 {
 	local float p;
 
+	// An arrival the driver has not reached yet is still an arrival (up to 50 ms late).
+	SV_RotButtonSettle(t);
+	if (t.vbsp_rb_arrived)
+		SV_RotButtonWake();
 	v = bound(0, v, 1);
 	p = SV_RotButtonPos(t);
 	t.vbsp_rb_ideal = v;
@@ -7374,14 +7413,7 @@ void(entity t, float v, float now) SV_RotButtonSet =
 		return;
 	}
 	dprint(sprintf("rotbutton %s: SetPosition %g from %g at %g deg/s\n", t.model, v, p, t.speed));
-	if (!vbsp_rb_driver || vbsp_rb_driver.classname != "vbsp_rotdriver")
-	{
-		vbsp_rb_driver = spawn();
-		vbsp_rb_driver.classname = "vbsp_rotdriver";
-		vbsp_rb_driver.think = SV_RotButtonFrame;
-	}
-	if (!vbsp_rb_driver.nextthink)
-		vbsp_rb_driver.nextthink = time;
+	SV_RotButtonWake();
 };
 
 float(entity t, string in, string pm) SV_RotButtonInput =
