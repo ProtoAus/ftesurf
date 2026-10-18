@@ -217,8 +217,8 @@ def run(a, sv, A, B):
     check(lb.get('live', 0) + lb.get('wait', 0) == la, 'Bob now holds Alice\'s paint', [la, lb])
     block(A, 'paint_save p777', r'paint: saved')
     block(B, 'paint_save p777', r'paint: saved')
-    fa = a.out / 'alice/ftesurf/data/paint/surf_dune_p777.txt'
-    fb = a.out / 'bob/ftesurf/data/paint/surf_dune_p777.txt'
+    fa = a.out / 'alice/ftesurf/data/paint/surf_dune.p777.txt'
+    fb = a.out / 'bob/ftesurf/data/paint/surf_dune.p777.txt'
     da, db = sorted(discs(fa)), sorted(discs(fb))
     worst = [0.0, 0.0, 0.0]
     if len(da) == len(db):
@@ -281,10 +281,15 @@ def run(a, sv, A, B):
     time.sleep(1)
     check('said no' in A.text()[off:], 'a decline reaches Alice')
     off = len(A.text())
-    time.sleep(2)
+    A.send(f'share layout {b_}')                    # within 10 s of a no: refused
+    time.sleep(1.5)
+    check('a few seconds' in A.text()[off:], 'the same sender waits after a no')
+    time.sleep(9)
+    off = len(A.text())
     A.send(f'share layout {b_}')
     time.sleep(23)
     check('did not answer' in A.text()[off:], 'an unanswered offer runs out')
+    time.sleep(10)                                  # the cooldown after no answer
     sb = share_status(B)
     check(sb.get('offer') == -1, 'Bob\'s card went with it', sb.get('offer'))
 
@@ -309,6 +314,27 @@ def run(a, sv, A, B):
     A.send('paint')
     time.sleep(1.5)
     check(paint_status(B).get('rx', 0) == rb0, 'after stop Bob receives nothing')
+
+    # A re-link sends Alice's paint again; Bob keeps one copy of it.
+    A.send('paint_clear')
+    B.send('paint_clear')
+    for yaw in (-6, -3, 0, 3, 6):
+        A.send(f'setpos {O[0]} {O[1]} {O[2]} 0 {yaw} 0')
+        time.sleep(0.7)
+        A.send('paint')
+        time.sleep(0.3)
+    na = paint_status(A)['live']
+    seen = []
+    for _ in (1, 2):
+        time.sleep(2.5)
+        A.send(f'share paint {b_}')
+        time.sleep(1.5)
+        key(B, 0x72)
+        time.sleep(3)
+        seen.append(paint_status(B)['live'])
+        A.send('share stop')
+        time.sleep(1.5)
+    check(na >= 3 and seen == [na, na], 'a re-link brings Alice\'s paint once, not twice', [na, seen])
 
     # The pick's miss, and pictures.
     B.send(f'setpos {O[0] + 300} {O[1]} {O[2]} 0 90 0')

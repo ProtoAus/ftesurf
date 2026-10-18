@@ -19,7 +19,7 @@
       +paint / -paint     hold to spray, paint_rate discs a second
       paint               one disc; a key bound to it also sprays while held
       paint_clear         remove it all, yours and what others sent
-      paint_save / paint_load [name]   this map's layout, data/paint/<map>[_name].txt
+      paint_save / paint_load [name]   this map's layout, data/paint/<map>[.name].txt
                           (Patch 777); paint_autoload 1 loads the unnamed one with the map
       paint_fill <n> [deg]  n discs in a cone, for the stress arm
       paint_status        counts, the last hit and the cvars
@@ -332,6 +332,43 @@ void(vector cam) Paint_Retry =
 	}
 };
 
+// Every disc a slot sent (from = slot + 1), placed or waiting.
+void(float from) Paint_DropFrom =
+{
+	local float k, w, j, i;
+
+	w = 0;
+	for (k = 0; k < pt_n; k = k + 1)
+	{
+		i = (pt_tail + k) % PAINT_CAP;
+		if (pt_dat[i * PD_N + 11] == from)
+		{
+			removedecal(pt_ring[i]);
+			continue;
+		}
+		j = (pt_tail + w) % PAINT_CAP;
+		if (j != i)
+		{
+			pt_ring[j] = pt_ring[i];
+			Paint_Put(pt_dat, j * PD_N, Paint_O(pt_dat, i * PD_N), Paint_N(pt_dat, i * PD_N),
+			          Paint_C(pt_dat, i * PD_N), pt_dat[i * PD_N + 9], pt_dat[i * PD_N + 10], pt_dat[i * PD_N + 11]);
+		}
+		w = w + 1;
+	}
+	pt_n = w;
+	w = 0;
+	for (k = 0; k < pt_pn; k = k + 1)
+	{
+		if (pt_pend[k * PD_N + 11] == from)
+			continue;
+		if (w != k)
+			Paint_Put(pt_pend, w * PD_N, Paint_O(pt_pend, k * PD_N), Paint_N(pt_pend, k * PD_N),
+			          Paint_C(pt_pend, k * PD_N), pt_pend[k * PD_N + 9], pt_pend[k * PD_N + 10], pt_pend[k * PD_N + 11]);
+		w = w + 1;
+	}
+	pt_pn = w;
+};
+
 // A disc another player sent (cl_share.qc).
 void(vector o, vector n, vector col, float size, float alpha, float from) Paint_Receive =
 {
@@ -454,7 +491,8 @@ string(string m) Paint_FileWord =
 	return o;
 };
 
-// data/paint/<map>.txt, or <map>_<name>.txt for a named one (`paint_save <name>`).
+// data/paint/<map>.txt, or <map>.<name>.txt for a named one (`paint_save <name>`): no
+// map name has a dot, so a named layout is never another map's (review round 1).
 string(string name) Paint_LayoutPath =
 {
 	local string m;
@@ -463,7 +501,7 @@ string(string name) Paint_LayoutPath =
 	if (m == "")
 		return "";
 	if (name != "")
-		return sprintf("data/paint/%s_%s.txt", m, Paint_FileWord(name));
+		return sprintf("data/paint/%s.%s.txt", m, Paint_FileWord(name));
 	return sprintf("data/paint/%s.txt", m);
 };
 
@@ -531,7 +569,7 @@ void(string name) Paint_Save =
 // Replaces what is up; the lines are read PAINT_LOADF a frame by Paint_Frame.
 void(string name, float quiet) Paint_Load =
 {
-	local string p;
+	local string p, l;
 	local filestream f;
 
 	p = Paint_LayoutPath(name);
@@ -552,6 +590,10 @@ void(string name, float quiet) Paint_Load =
 		print(sprintf("paint: %s is not a paint layout\n", p));
 		return;
 	}
+	l = fgets(f);                   // "map <name>": a copied file says where it was made
+	if (substring(l, 0, 4) == "map ")
+	if (strcmp(substring(l, 4, -1), serverkey("map")))
+		print(sprintf("paint: %s was made on %s\n", p, substring(l, 4, -1)));
 	Paint_Clear();
 	pt_ldf = f;
 	pt_ldn = pt_ldwait = 0;

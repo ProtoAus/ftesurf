@@ -18,11 +18,25 @@
 #define SH_LIVE    1
 #define SH_LAYOUT  2
 #define SH_SAVE    3
-#define SH_EV_DISC 1
-#define SH_EV_END  2
+#define SH_EV_DISC  1      // live, or a live share's first dump: the sender's
+#define SH_EV_END   2
+#define SH_EV_LDISC 3      // a layout you took: yours now
 #define SH_SLOTS   32
-#define SH_SPS     200      // streamed discs a second; the server passes 300
-#define SH_LIVEPS  60       // live discs a second
+#define SH_LIVEPS  60       // live discs a second, at most
+/*
+  The reliable channel carries about one 1428-byte packet a round trip, and what
+  queues past that is cleared with an "overflow" (net_chan.c), taking any other
+  command with it (review round 1).  So what this sends is paced to SH_TXBYTES of
+  your round trip with a burst of SH_TXCAP, and a stream also to the receiver's room
+  (sv_share.qc SH_RXBYTES).  At +300 ms a 600-byte rate with a 600-byte burst still
+  overflowed once at a stream's start (31 of 1500 lost).
+*/
+#define SH_TXBYTES 500
+#define SH_TXCAP   150
+#define SH_PDB     44       // a "pd" event's bytes on the wire
+#define SH_PLB     49       // a "pl"
+#define SH_RXDISCS 26       // relayed discs a receiver takes a round trip (700 / 23 bytes)
+#define SH_MAXPS   250      // streamed discs a second, at most: the server drops past 300
 #define SH_SMAX    8192     // discs one stream carries
 #define SH_CARD    10       // seconds the share card stays up
 
@@ -37,7 +51,10 @@ float *sh_buf;              // the stream going out, PD_N a disc
 float sh_bn, sh_bi, sh_bto, sh_bkind;
 float sh_q[8];              // streams waiting: (slot + 1) * 10 + kind
 float sh_qn;
-float sh_tok, sh_ltok, sh_tokt, sh_ltokt;
+float sh_tok, sh_ltok, sh_tokt, sh_ltokt;   // bytes you may send; live discs
+float sh_rtok;              // discs the stream's receiver has room for
+float sh_fid;               // the offer the card shows (sv_share.qc sh_id)
+float sh_rxs[SH_SLOTS];     // discs from each slot since its last end marker
 string sh_note;
 float sh_noteend;
 float sh_kmine;             // keys a card took: their repeats stay the card's
@@ -77,6 +94,7 @@ void() Share_WorldLoaded =
 	{
 		sh_link[i] = 0;
 		sh_rx[i] = 0;
+		sh_rxs[i] = 0;
 	}
 	sh_nlink = sh_to = sh_from = sh_pick = 0;
 	sh_bto = sh_qn = 0;
@@ -139,15 +157,30 @@ void() Share_StreamNext =
 	sh_bi = 0;
 	sh_bto = floor(v / 10);
 	sh_bkind = kind;
-	sh_tokt = cltime;
+	sh_rtok = 0;
 	if (kind == SH_LAYOUT)
 		Share_Note(sprintf("sending %g marks to %s", sh_bn, Share_Name(sh_bto - 1)));
 };
 
-// SH_SPS discs a second, then the end marker the receiver counts by.
+// A slot's round trip, from the scoreboard's ping.
+float(float slot) Share_Rtt = { return max(0.04, stof(getplayerkeyvalue(slot, "ping")) / 1000 + 0.02); };
+
+void() Share_Refill =
+{
+	local float dt;
+
+	dt = bound(0, cltime - sh_tokt, 0.5);
+	sh_tokt = cltime;
+	sh_tok = min(SH_TXCAP, sh_tok + dt * SH_TXBYTES / Share_Rtt(player_localnum));
+	if (sh_bto)
+		sh_rtok = min(8, sh_rtok + dt * min(SH_MAXPS, SH_RXDISCS / Share_Rtt(sh_bto - 1)));
+};
+
+// Paced to both ends' round trips, then the end marker the receiver counts by.
+// A layout's target is the slot + 100 (sv_share.qc CSEv_pl_fvvv).
 void() Share_StreamStep =
 {
-	local float j;
+	local float j, to;
 
 	if (!sh_bto)
 	{
@@ -161,19 +194,21 @@ void() Share_StreamStep =
 		Share_StreamNext();
 		return;
 	}
-	sh_tok = min(16, sh_tok + (cltime - sh_tokt) * SH_SPS);
-	sh_tokt = cltime;
-	while (sh_tok >= 1 && sh_bi < sh_bn)
+	Share_Refill();
+	to = sh_bto - 1 + ((sh_bkind == SH_LAYOUT) ? 100 : 0);
+	while (sh_tok >= SH_PLB && sh_rtok >= 1 && sh_bi < sh_bn)
 	{
 		j = sh_bi * PD_N;
-		sendevent("pl", "fvvv", sh_bto - 1, Paint_O(sh_buf, j), Paint_N(sh_buf, j),
+		sendevent("pl", "fvvv", to, Paint_O(sh_buf, j), Paint_N(sh_buf, j),
 		          Share_Pack(Paint_C(sh_buf, j), sh_buf[j + 9], sh_buf[j + 10]));
 		sh_bi = sh_bi + 1;
-		sh_tok = sh_tok - 1;
+		sh_tok = sh_tok - SH_PLB;
+		sh_rtok = sh_rtok - 1;
 	}
-	if (sh_bi >= sh_bn)
+	if (sh_bi >= sh_bn && sh_tok >= SH_PLB)
 	{
-		sendevent("ple", "ff", sh_bto - 1, sh_bn);
+		sendevent("ple", "ff", to, sh_bn);
+		sh_tok = sh_tok - SH_PLB;
 		Share_StreamNext();
 	}
 };
@@ -183,11 +218,13 @@ void(vector o, vector n, vector col, float size, float alpha) Share_OnPaint =
 {
 	if (!sh_nlink)
 		return;
+	Share_Refill();
 	sh_ltok = min(SH_LIVEPS, sh_ltok + (cltime - sh_ltokt) * SH_LIVEPS);
 	sh_ltokt = cltime;
-	if (sh_ltok < 1)
+	if (sh_ltok < 1 || sh_tok < SH_PDB)
 		return;                     // a faster spray than the share carries: some stay yours
 	sh_ltok = sh_ltok - 1;
+	sh_tok = sh_tok - SH_PDB;
 	sendevent("pd", "vvv", o, n, Share_Pack(col, size, alpha));
 };
 
@@ -198,7 +235,7 @@ void() CSQC_Parse_Event =
 	local float size, alpha;
 
 	t = readbyte();
-	if (t == SH_EV_DISC)
+	if (t == SH_EV_DISC || t == SH_EV_LDISC)
 	{
 		from = readbyte();
 		o_x = readfloat();
@@ -213,15 +250,26 @@ void() CSQC_Parse_Event =
 		size = readbyte();
 		alpha = readbyte() / 255;
 		if (from < SH_SLOTS)
+		{
 			sh_rx[from] = sh_rx[from] + 1;
+			sh_rxs[from] = sh_rxs[from] + 1;
+		}
 		if (n != '0 0 0')
-			Paint_Receive(o, normalize(n), c * (1 / 255), size, alpha, from + 1);
+			Paint_Receive(o, normalize(n), c * (1 / 255), size, alpha, (t == SH_EV_LDISC) ? 0 : from + 1);
 	}
 	else if (t == SH_EV_END)
 	{
 		from = readbyte();
 		cnt = readlong();
-		Share_Note(sprintf("%s sent you %g marks", Share_Name(from), cnt));
+		// Only for discs that came: an end marker alone says nothing (review round 1).
+		if (from < SH_SLOTS && sh_rxs[from] > 0)
+		{
+			if (sh_rxs[from] >= cnt)
+				Share_Note(sprintf("%s sent you %g marks", Share_Name(from), cnt));
+			else
+				Share_Note(sprintf("%s sent you %g marks, %g arrived", Share_Name(from), cnt, sh_rxs[from]));
+			sh_rxs[from] = 0;
+		}
 	}
 	else
 		error(sprintf("CSQC_Parse_Event: unknown event %g\n", t));
@@ -296,7 +344,7 @@ void(float yes) Share_Answer =
 {
 	if (!sh_from)
 		return;
-	localcmd(sprintf("cmd share answer %g\n", yes ? 1 : 0));
+	localcmd(sprintf("cmd share answer %g %g\n", yes ? 1 : 0, sh_fid));
 	sh_from = 0;
 };
 
@@ -498,6 +546,9 @@ void() Share_Status =
 			s = strcat(s, sprintf(" %g from %s", sh_rx[i], Share_Name(i)));
 	print(sprintf("share: received%s; stream to %g kind %g at %g/%g, %g queued\n",
 	              s == "" ? " nothing" : s, sh_bto - 1, sh_bkind, sh_bi, sh_bn, sh_qn));
+	print(sprintf("share: pacing by a %g ms round trip, the receiver's %g; %g bytes, %g discs in hand\n",
+	              rint(Share_Rtt(player_localnum) * 1000), sh_bto ? rint(Share_Rtt(sh_bto - 1) * 1000) : -1,
+	              floor(sh_tok), floor(sh_rtok)));
 };
 
 float(string cmd) Share_ConsoleCommand =
@@ -536,9 +587,10 @@ float(string cmd) Share_ConsoleCommand =
 	{
 		if (!cvar("share_offers"))
 		{
-			localcmd("cmd share answer 0\n");
+			localcmd(sprintf("cmd share answer 0 %g\n", stof(argv(5))));
 			return TRUE;
 		}
+		sh_fid = stof(argv(5));
 		sh_from = stof(argv(1)) + 1;
 		sh_fkind = stof(argv(2));
 		sh_fn = stof(argv(3));
@@ -562,6 +614,8 @@ float(string cmd) Share_ConsoleCommand =
 		if (on)
 		{
 			Share_Note(sprintf("painting together with %s", Share_Name(slot)));
+			Paint_DropFrom(slot + 1);       // their dump brings it again: no copies on a re-link
+			sh_rxs[slot] = 0;
 			Share_Queue(slot, SH_LIVE);     // what you have up so far
 		}
 		return TRUE;
