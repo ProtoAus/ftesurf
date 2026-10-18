@@ -97,6 +97,38 @@ def bsp_pak(path):
         return zipfile.ZipFile(io.BytesIO(f.read(ln)))
 
 
+#   Patch 787: what a material draws with.  FTE's particle loader reads `texture`
+# as an IMAGE name and, when there is none, silently draws its default particle
+# (p_script.c:1008), so writing the material name only worked where the image
+# shares it.  surf_boreas's children did not (particle_glow_11 -> effects/
+# tesla_glow, laser -> laser01) and drew as white discs, alpha-blended where
+# Source adds them: the end room went white with vbsp_emit_psys_children 1.
+# Additive per Source: $additive (BaseShader.cpp:632, spritecard.cpp:235), or a
+# Sprite in render mode 3, 5, 7 or 9 (sprite_dx9.cpp:237-346).
+SPRITE_ADDITIVE_MODES = ("3", "5", "7", "9")
+
+
+def material_look(content, mat):
+    """(image, blend) for an r_part block; raises ResourceError if the .vmt cannot be read."""
+    from sourceassets import resolve_vmt
+    shader, params, _ = resolve_vmt(content, mat)
+    base = params.get("$basetexture")
+    image = mat
+    if isinstance(base, str) and base.strip():
+        image = re.sub(r"\.vtf$", "", base.strip().replace("\\", "/"), flags=re.I)
+        if image.lower() == mat.lower():
+            image = mat	# same file: keep the spelling every existing bake already loads
+
+    def on(key):
+        try:
+            return float(params.get(key, "0")) != 0
+        except (TypeError, ValueError):
+            return False
+    additive = on("$additive") or (shader == "sprite" and
+                                   str(params.get("$spriterendermode", "")).strip() in SPRITE_ADDITIVE_MODES)
+    return image, ("adda" if additive else "blendalpha")
+
+
 def pcfs_in_map(bsp):
     z = bsp_pak(bsp)
     if not z:
@@ -159,7 +191,7 @@ class Untranslated(Exception):
     pass
 
 
-def translate(d, e, unknown, mapname):
+def translate(d, e, unknown, mapname, content=None):
     """One DmeParticleSystemDefinition -> (cfg block text, runtime fields)."""
     name = e.name
 
@@ -605,6 +637,10 @@ def translate(d, e, unknown, mapname):
         raise Untranslated("no material")
 
     rend = ops(d, e, "renderers")
+    if rend and rend[0].get("functionName") == "render_rope":
+        # Patch 787: one ribbon threaded through the particles in birth order.  As
+        # billboards of its radius, surf_boreas's end beam (1500) whited out the room.
+        raise Untranslated("render_rope: a ribbon through the particles, not drawn")
     rtype = RENDERER_TYPE.get(rend[0].get("functionName")) if rend else None
 
     coll = find(d, e, "constraints", "Collision via traces")
@@ -627,11 +663,18 @@ def translate(d, e, unknown, mapname):
     # plain name (p_script.c:649-660) out of whatever has been exec'd, and
     # cl_emit.qc execs this file itself at map load.  A missing file is then a
     # visible exec error rather than silence.
+    image, blend, look = mat, "blendalpha", "material %s: no content given, drawn by its name" % mat
+    if content is not None:
+        try:
+            image, blend = material_look(content, mat)
+            look = "material %s: image %s, blend %s" % (mat, image, blend)
+        except (ValueError, OSError, struct.error) as ex:	# ResourceError: missing or unreadable .vmt
+            look = "material %s: NOT RESOLVED (%s), drawn by its name" % (mat, ex)
     L = ["r_part %s_%s" % (mapname, name), "{"]
-    L.append('\ttexture "%s"' % mat)
+    L.append('\ttexture "%s"' % image)
     if rtype:
         L.append("\ttype %s" % rtype)
-    L.append("\tblend blendalpha")
+    L.append("\tblend %s" % blend)
     if abs(scale_hi - scale_lo) > 0.01:
         L.append("\tscale %.3g %.3g" % (scale_lo, scale_hi))
     else:
@@ -786,12 +829,12 @@ def translate(d, e, unknown, mapname):
 
     rt = dict(name=name, rate=rate, vel=basevel, wvel=worldvel, ofs=ofs,
               jit=jit, maxp=int(maxp), die=die_hi, maxdist=maxdist,
-              nominal=nominal, children=children, trail=trail)
+              nominal=nominal, children=children, trail=trail, look=look)
     return "\n".join(L), rt
 
 
 # ------------------------------------------------------------------ driver
-def bake(pcf_bytes, mapname, unknown):
+def bake(pcf_bytes, mapname, unknown, content=None):
     d = dmx.parse(pcf_bytes)
     if d.format != "pcf":
         raise dmx.DmxError("format is %r, not pcf" % d.format)
@@ -801,7 +844,7 @@ def bake(pcf_bytes, mapname, unknown):
     for i in ids:
         e = d.elements[i]
         try:
-            b, rt = translate(d, e, unknown, mapname)
+            b, rt = translate(d, e, unknown, mapname, content)
         except Untranslated as ex:
             skipped.append((e.name, str(ex)))
             continue
@@ -846,9 +889,18 @@ def main():
     ap.add_argument("--strict", action="store_true",
                     help="fail if any operator is not understood")
     ap.add_argument("--dry", action="store_true", help="print, do not write")
+    ap.add_argument("--content", action="append", default=None,
+                    help="game VPK or directory to resolve materials in, highest priority first "
+                         "(after the map's own pak); default: CS:S's cstrike_pak and hl2_misc")
     a = ap.parse_args()
 
     unknown = collections.Counter()
+    from sourceassets import BspSource, Content, content_source
+    css = r"C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Source"
+    vpks = a.content if a.content is not None else [
+        p for p in (os.path.join(css, "cstrike", "cstrike_pak_dir.vpk"), os.path.join(css, "hl2", "hl2_misc_dir.vpk"))
+        if os.path.exists(p)]
+    sources = [content_source(p) for p in vpks]
 
     if a.pcf:
         data = open(a.pcf, "rb").read()
@@ -866,11 +918,12 @@ def main():
         data = z.read(names[0])
         mapname = a.map
         srcname = os.path.basename(names[0])
+        sources.insert(0, BspSource(bsp))	# the map's own materials win, as in the game
     else:
         sys.exit("need --map or --pcf")
 
     try:
-        blocks, runtime, skipped = bake(data, mapname, unknown)
+        blocks, runtime, skipped = bake(data, mapname, unknown, Content(sources))
     except dmx.DmxError as ex:
         sys.exit("REFUSED: %s" % ex)
 
@@ -928,6 +981,8 @@ def main():
         print("   skipped %-24s %s" % (n, why))
     for parent, rt in edges:
         print("   child   %-24s of %s" % (rt["name"], parent))
+    for rt in runtime:
+        print("   look    %-24s %s" % (rt["name"], rt["look"]))
     if unknown:
         print("   operators NOT understood (effects will differ):")
         for k, v in unknown.most_common():

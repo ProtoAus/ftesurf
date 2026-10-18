@@ -258,7 +258,9 @@ def keyvalues(data):
         pos = match.end()
         if match[1] is not None or match[2] or match[3]:
             value = match[1] if match[1] is not None else (match[2] or match[3])
-            if '[' in value or ']' in value:
+            # Patch 787: a quoted "[ 0.5 0.5 ]" is a vector value (surf_boreas's laser.vmt),
+            # not a [$WIN32] conditional.
+            if (match[3] and ('[' in value or ']' in value)) or re.match(r'\[!?\$', value):
                 raise ResourceError('conditional VMT syntax unsupported')
             tokens.append(value)
     cursor = 0

@@ -313,10 +313,25 @@ class ResourceTests(unittest.TestCase):
             self.put('materials/a.vmt', data)
             with self.assertRaises(ResourceError):
                 resolve_vmt(self.content(), 'a')
+        self.put('materials/a.vmt', b'Sprite { "$spriteorigin" "[ 0.50 0.50 ]" "$basetexture" "v" }')
+        self.assertEqual(resolve_vmt(self.content(), 'a')[1]['$spriteorigin'], '[ 0.50 0.50 ]')
         self.put('materials/a.vmt', b'SpriteCard { "$basetexture" "missing" }')
         self.put('particles/a.pcf', library('a', material='a'))
         report = plan(self.content(), ['a'])
         self.assertIn('missing asset', report['errors'][0]['error'])
+
+    def test_bake_look_uses_basetexture_and_source_additive_rule(self):
+        # Patch 787: pcf.py's r_part texture is an IMAGE name and its blend follows Source.
+        from pcf import material_look
+        cases = ((b'SpriteCard { "$basetexture" "effects/tesla_glow" "$additive" 1 }', 'effects/tesla_glow', 'adda'),
+                 (b'UnlitGeneric { "$basetexture" "p\\glow_04" $translucent 1 $Additive 1 }', 'p/glow_04', 'adda'),
+                 (b'UnlitGeneric { "$basetexture" "p/glow_03" $translucent 1 }', 'p/glow_03', 'blendalpha'),
+                 (b'Sprite { "$basetexture" "laser01" "$spriterendermode" 5 }', 'laser01', 'adda'),
+                 (b'Sprite { "$basetexture" "laser01" "$spriterendermode" 4 }', 'laser01', 'blendalpha'),
+                 (b'SpriteCard { "$additive" "0" }', 'a', 'blendalpha'))
+        for data, image, blend in cases:
+            self.put('materials/a.vmt', data)
+            self.assertEqual(material_look(self.content(), 'a'), (image, blend), data)
 
     def test_complete_material_provenance_and_no_stale_map_cache(self):
         self.put('particles/a.pcf', library('a', material='a'))
