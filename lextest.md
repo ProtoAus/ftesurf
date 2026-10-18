@@ -113,7 +113,7 @@ Open `hud_edit` (C). The list has changed:
   still says Mouse.
 - **Boarding** is the old Board row, **Enter/Exit speeds** the old Boarding row.
 
-"Panel ok / <what is wrong>" is enough. Verdict PENDING.
+Verdict CONFIRMED by Lex, 2026-10-18T19:24Z: "panel ok".
 
 ## P791 — surf_boreas's end beam
 
