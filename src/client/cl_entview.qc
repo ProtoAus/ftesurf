@@ -1179,8 +1179,8 @@ void() Ev_PinDraw =
 
 	a = 1 - (cltime - ev_copied_at) / 2;
 	foot = "mouse1 close | mouse2 copy | ESC off";
-	if (Spec_Active())
-		foot = "spectating: the mouse buttons are the camera's | ESC off";
+	if (Spec_Active())          // spectate may take the mouse buttons first
+		foot = "ent_report full | ESC off";
 	if (ev_copied != "" && a > 0)
 		foot = "copied to the clipboard";
 	n = buf_getsize(ev_pinl);
@@ -1249,6 +1249,12 @@ void() Ev_CardDraw =
 	for (i = 0; i < ev_card_n; i = i + 1)
 	{
 		w = stringwidth(ev_card_l[i], TRUE, [tsz, tsz]);
+		if (w > mw)
+			mw = w;
+	}
+	if (Spec_Active())              // the footer below swaps to the console-command one
+	{
+		w = stringwidth("ent_report full | ent_copy copy | ESC off", TRUE, [tsz, tsz]);
 		if (w > mw)
 			mw = w;
 	}
