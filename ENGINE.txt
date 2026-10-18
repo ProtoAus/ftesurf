@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   29ddd0a6a7f7e464d21ca60ce5aee561490e6bce
+commit   9dbee7b9eb88aa291089e4488979074b28b5f7e1
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,11 +24,15 @@ commit   29ddd0a6a7f7e464d21ca60ce5aee561490e6bce
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-780
+tag      patch-782
 patch    785
 # Patch 785 (qwprogs + reader): practice holds declare their frozen-tick clock.
 # Unresolved recording/sidecar joins are unavailable, not an angle verdict.
-# No native change; commit/tag pins remain Patch 780.
+# No native change.
+# Patch 782 (engine): `r_budget` 1/2/3 draws where each frame goes -- CPU self times in groups
+# (server, CSQC, world, PrepareFrame/hl2 plugin, draw calls, ..., display), idle, and GL
+# timestamp GPU passes (world, props, sky, 3D sky, portals, ..., "Waiting on the CPU") -- as
+# bars; `r_budget_dump` copies the table. Client exe only; no QC change.
 # Patch 780 (engine + hl2 plugin): Source map visuals. The leaf-ambient sample index wraps past
 # 65535 (VRAD stores it in a short) and is rebuilt from the running count; the cube is VRAD's
 # inverse-square blend of the leaf's samples; static props with no lighting origin are lit

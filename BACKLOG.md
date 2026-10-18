@@ -5,6 +5,23 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Frame budget: what Patch 782 left out
+
+- Site: engine `gl/gl_rmain.c` GLR_RenderView's `GLBudget_Set(GPUB_2D)`. The GPU's
+  "HUD & 2D" row runs from the end of post to the frame's end, so it includes the GPU
+  idling while the HUD's QC runs. Check: a CPU-bound frame's row against r_speeds 3.
+  A mark per 2D flush would split it.
+- Site: engine `vk/vk_init.c` VK_SCR_GrabBackBuffer (three early returns with SETUP open)
+  and `vk/vk_backend.c`'s `r_lightprepass` branch (OPAQUE left open, TRANSPARENTS
+  nested in it). Vulkan only; `r_budget_dump`'s "closed with others still open" counts
+  them. GPU timing is GL only (D3D and Vulkan say "n/a").
+- Site: engine `client/cl_screen.c` R_Budget_Draw. The panel draws with `font_console`
+  and measures one glyph for its columns: a proportional console font would misalign
+  the numbers. Check: `gl_font` set to a proportional TTF.
+- The overhead figures (level 1 free, 2 about 2%, 3 about 3% at ~190 fps) were measured
+  on the first cut, before self times moved to the runtime depth stack; the panel's own
+  row reads 0.29 ms at level 3. Check: arm782.sh's D shots on the current build.
+
 ## Board, friends and map list loading: what Patch 781 left out
 
 - Site: `src/client/cl_online.qc` OBC_Save. `data/boards/<map>.txt` is never pruned:

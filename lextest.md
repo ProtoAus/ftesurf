@@ -163,9 +163,9 @@ first entry. Verdict PENDING ("demo fails ok" or what looks wrong).
 P776 went into both Windows installs at 2026-10-18T05:33:26Z (exe `bf1a9aac`) and 05:37:04Z
 (csprogs `81a2d0a1`). Both have since been replaced by builds that carry it: the exe by P780's
 `0fdede9f` (06:12:22Z, surf_view checked on it) and the csprogs by P777's `724c5599`
-(06:13:23Z, built on 03194e7e). Restart the game. The 12 lobbies still serve P773's csprogs:
-P777's deploy, which carries the ent_view mouse, waits for them to empty. surf_view is in the
-exe, so it works on any lobby; the mouse buttons on a lobby need that deploy.
+(06:13:23Z, built on 03194e7e), and P782's exe `a7f3dfc4` (09:04Z) carries it too. The 12
+lobbies serve P777's csprogs, which carries the ent_view mouse, since 07:38Z (P781's deploy),
+so both parts work on any lobby.
 
 - **surf_view:** type `surf_view` on any surf map. Ramps you can surf get a red
   stipple, teleport volumes are red boxes, and invisible walls or clips that stop you
