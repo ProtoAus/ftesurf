@@ -141,6 +141,7 @@ void() CSQC_WorldLoaded =
 	Trail_RequestReset();
 	Rewind_Reset();                 // Patch 477: and the rewind on top of it
 	Paint_WorldLoaded();            // Patch 772: the engine dropped the decals with the map
+	Share_WorldLoaded();            // Patch 777: the server's links went with it
 	PTrail_Reset();                 // ...and no trail line spans the load
 
 	Portal_LoadFromWorld();
@@ -311,6 +312,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Chat_RegisterCvars();
 	Av_RegisterCvars();
 	Paint_RegisterCvars();          // Patch 772
+	Share_RegisterCvars();          // Patch 777
 	PTrail_RegisterCvars();
 	Players_RegisterCvars();
 	Friends_Register();
@@ -1220,6 +1222,9 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (evtype == IE_KEYDOWN)
 		if (Vote_Key(scanx))
 			return TRUE;
+		if (evtype == IE_KEYDOWN)
+		if (Share_Key(scanx))           // Patch 777: F3/F4 answer an offer while watching
+			return TRUE;
 		if (rec_sl_open || (rec_sl_holding && rec_sl_holdkey && scanx == rec_sl_holdkey))
 		if (SaveLoc_Key(scanx, evtype == IE_KEYDOWN))
 			return TRUE;
@@ -1285,6 +1290,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		  the moment you close this.
 		*/
 		if (Vote_Key(scanx))            // Patch 372: drawn over both menus, so asked first
+			return TRUE;
+		if (Share_Key(scanx))           // Patch 777: only while a share card is up
 			return TRUE;
 		if (Gfx_Key(scanx, TRUE))
 			return TRUE;
@@ -1453,6 +1460,7 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 	}
 
 	Paint_InputEvent(evtype, scanx);    // Patch 773: watches only
+	Share_Track(evtype, scanx);         // Patch 777: the same
 	cl_input_real = TRUE;
 	took = CL_InputEvent(evtype, scanx, chary, devid);
 	cl_input_real = FALSE;
@@ -1668,6 +1676,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	*/
 	Emit_Frame();
 	Paint_Frame();                  // Patch 772: the camera is final; the world pass draws it
+	Share_Frame();                  // Patch 777: the pick reads the same camera
 
 	// Build 66.  Beside Emit_Frame and for the same reason: VF_ORIGIN is final
 	// by this point, and the soundscape selection traces from it.  Cheap --
@@ -1857,6 +1866,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		SaveLoc_Draw(scr);
 		Gfx_Draw(scr);
 		Vote_Draw(scr);                 // Patch 372: over saveloc, gfx and the chatbox
+		Share_Draw(scr);                // Patch 777
 		KC_HintDraw(scr);               // Patch 762: the bottom-left key strip
 		// Reads two cvars the hl2 plugin writes at map load, and self-limits to
 		// the first twenty seconds of a map -- see the essay above it.
@@ -2258,6 +2268,8 @@ float(string cmd) CSQC_ConsoleCommand =
 
 	// Patch 340: `hud_player`, the avatar customizer's toggle.
 	if (Av_ConsoleCommand(cmd))
+		return TRUE;
+	if (Share_ConsoleCommand(cmd))  // Patch 777
 		return TRUE;
 	if (Paint_ConsoleCommand(cmd))  // Patch 772
 		return TRUE;
