@@ -3303,6 +3303,12 @@ void(vector scr) Scores_Draw =
 		{
 			s = pl_profilepick;
 			pl_profilepick = "";
+			if (ui_he_open)         // Patch 784: Av_Open refuses it; the board stays, as above
+			{
+				print("leaderboard: close the editor, then a profile can open\n");
+				strunzone(s);
+				return;
+			}
 			Scores_Close();
 			Av_OpenAt(!strcmp(s, "me") ? "" : s);
 			strunzone(s);
@@ -3671,7 +3677,9 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 		Scores_Open();
 		return TRUE;
 	}
+	// Patch 784: not over a replay or profile card, where the held board is dead.
 	if (evtype == IE_KEYDOWN && scanx == K_MOUSE2 && sc_held && rec_sb_open)
+	if (!(UI_CursorHeld() & (UIC_WATCH | UIC_AVATAR)))
 	{
 		Scores_Close();
 		/*
@@ -3860,14 +3868,21 @@ float(string cmd) Scores_ConsoleCommand =
 	{
 		if (!sc_held) Scores_NativeReset(TRUE);
 		sc_held = TRUE;
+		// Patch 784: over an open replay or profile card the pointer is already
+		// up, and a held board drops clicks (Patch 635) -- so it opens pinned,
+		// and a row or a name replaces what is open.  Letting go still closes it.
+		if (!rec_sb_open)
+		if (UI_CursorHeld() & (UIC_WATCH | UIC_AVATAR))
+			Scores_Open();
 		return TRUE;
 	}
 	if (argv(0) == "-showscores")
 	{
 		// Patch 663: a pinned board whose search field has the keyboard stays.
 		// Its player let go of the key to type; ESC or the key again closes it.
-		// Patch 666: and one showing who that search found.
-		if (rec_sb_open && (pf_q_focus || pf_q_open || pf_on_who != ""))
+		// Patch 666: and one showing who that search found.  Patch 784: and one
+		// fetching the replay it was asked for, which closes it when it lands.
+		if (rec_sb_open && (pf_q_focus || pf_q_open || pf_on_who != "" || rec_sb_wantrep))
 		{
 			sc_held = FALSE;
 			return TRUE;

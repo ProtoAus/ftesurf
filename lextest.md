@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P784 — demos and profiles open over open ones; no countdowns
+
+- With a demo playing, hold TAB and click another run (Local or Online): it replaces the
+  one playing. With a profile card open, hold TAB and click a name or "my profile": the
+  card switches. Letting go of TAB while an online demo downloads keeps the board until
+  it opens.
+- Leaving spectate puts you straight back in your body (no 3-2-1); `run_spec_countdown 3`
+  on a server brings it back. The rewind's resume has no count either;
+  `hud_rewind_countdown 3` brings it back.
+Verdict PENDING ("opens ok / countdowns gone" or what still blocks).
+
 ## P781 — leaderboards, friends and the map list load once and stay up
 
 In game (TAB): switch the source (WOS / Momentum / KSF) and the styles back and forth:

@@ -165,9 +165,10 @@ def main():
         check(int(watcher.status()) > 0, 'bare entry ACTS (console control / chat subject)')
         watcher.send('spectate off' if a.control else 'say !spec')
         time.sleep(.3)
-        check(int(watcher.status()) < 0, 'leave ACTS through existing countdown')
+        # Patch 784: run_spec_countdown 0 by default, so the leave lands at once (<= 0).
+        check(int(watcher.status()) <= 0, 'leave ACTS (straight back, or through a countdown)')
         time.sleep(4)
-        check(watcher.status() == '0', 'countdown restores own body')
+        check(watcher.status() == '0', 'leave restores own body')
         if a.control:
             return
 

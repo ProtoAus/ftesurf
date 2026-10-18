@@ -877,8 +877,8 @@ void() worldspawn =
 	SV_MsSweep();
 
 	// Patch 382: spectate's countdown back into the body, seconds.  Read only by
-	// client commands and player thinks, which come after this.
-	registercvar("run_spec_countdown", "3");
+	// client commands and player thinks, which come after this.  Patch 784: 0 (Lex).
+	registercvar("run_spec_countdown", "0");
 
 	dprint("WOS: worldspawn\n");
 };

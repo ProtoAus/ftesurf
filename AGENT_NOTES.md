@@ -2370,7 +2370,7 @@ publicly WITH its fix, not before it.
   `sl_prev`/`sl_next` LOAD the save they step to -- a harness that follows
   them with `sl_load` loads twice.
 - THE SPECTATE HOLD (Patches 380/382) keeps a run RANKED. `cmd rec_spec <n>`
-  (entnum; 0 starts the countdown) sets `.run_pmhold`, and the engine then runs
+  (entnum; 0 leaves: at once since Patch 784, or after `run_spec_countdown` s) sets `.run_pmhold`, and the engine then runs
   ZERO mover ticks for that player and links it without touching triggers
   (`*pmhold` "1" says the engine can; the progs refuse a ranked hold without it).
   A MOVETYPE_NONE pin is NOT a hold: the duck timer and stamina decay under it.
@@ -2381,7 +2381,7 @@ publicly WITH its fix, not before it.
   (the funnels: disconnect, SV_Shutdown, retry, load, SV_ZoneMove, setpos,
   respawn), and nothing may write to the recorder while `run_pmhold` is set.
   Entry is refused while a trigger is touching the body or has not seen it leave.
-  STAT_FS_SPEC 103: 0 off, n = watching entnum n, -3..-1 the countdown.
+  STAT_FS_SPEC 103: 0 off, n = watching entnum n, -3..-1 the countdown (when there is one).
   Harnesses: `p380verify` (derived files), `p382a/c/d` (+`p382t/e`), `p382verify`.
 - SPECTATING (Patch 385, `client/cl_spectate.qc`) drives that hold. The camera
   integrates IE_MOUSEDELTA itself and NEVER writes VF_CL_VIEWANGLES, so the
