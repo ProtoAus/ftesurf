@@ -70,7 +70,9 @@ real sky's depth won; the sky's depth is now written a hair behind it.
 - If you remember where on surf_fantasy level geometry used to show out of the
   windows (the reason the sky mask exists, Patch 296), check that spot still hides it.
 
-"B4 ok / still blue at <save>" and the fantasy spot if you know it. Verdict PENDING.
+Verdict CONFIRMED by Lex, 2026-10-18T02:50Z: "yep it works now!", in reply to
+the check of monolith B4, board_this, monolith and joutsenlaulu together (P765, P767, P768).
+The surf_fantasy window spot (Patch 296) was not answered and stays in BACKLOG.
 
 ## P767 — surf_board_this's stage 1 sky is the tinted nebula, not flat yellow
 
@@ -83,7 +85,9 @@ on top instead of multiplied, which washed the sky out to yellow.
   colour tint, no yellow wash. The streaks at the box's edges are still there.
 - **surf_era and surf_pride** use the same rainbow and lody materials: same check.
 
-"Board_this ok / still yellow at <spot>". Verdict PENDING.
+Verdict CONFIRMED by Lex, 2026-10-18T02:50Z: "yep it works now!", in reply to
+the check of monolith B4, board_this, monolith and joutsenlaulu together (P765, P767, P768).
+surf_era and surf_pride were not named; the box-edge streaks stay in BACKLOG.
 
 ## P766 — OBS display capture sees the borderless game
 
@@ -118,8 +122,9 @@ both). Live in both Windows installs since 2026-10-17T16:36Z (`ftesurf64.exe`
   fight is still there, say where you stand and which way you look.
 - `fs_mapmaterials 0` then reconnect brings the old behaviour back, for an A/B.
 
-"Monolith ok / still see-through at <spot>", "joutsen ok" and the sky spots.
-Verdict PENDING.
+Verdict CONFIRMED by Lex, 2026-10-18T02:50Z: "yep it works now!", in reply to
+the check of monolith B4, board_this, monolith and joutsenlaulu together (P765, P767, P768).
+
 ## P764 — curved prop ramps no longer kick you off at their seams
 
 Live in both Windows installs since 2026-10-17T16:12:30Z (engine `patch-764`, client
