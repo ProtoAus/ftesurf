@@ -215,15 +215,14 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   The sweep must name the second as unreadable -- a third verdict, not a fault
   or a pass -- and still check the first.
 
-## Disconnected Friends: the backend is live (P770); the public proxy waits on Lex's sudo (P741)
+## Disconnected Friends: live (P770); the owner's in-game check is open (P741)
 
 - Since 2026-10-17T22:58:21Z surfd generation 8182c6f (P770) serves P741's
-  `/api/social/menu` routes (the local challenge answers ok). The public
-  `play.proto.bar` route still answered 404 at 23:00Z: nginx's `snippets/surfd.conf`
-  lacks the two locations. The reviewed snippet is staged as
-  `/srv/nvme/agent-work/surfd770-20261018T0000b/surfd.conf` (diff: the two blocks
-  and their comments); installing it needs root, given to Lex as one command
-  (backup to `surfd.conf.pre-p770`, install, `nginx -t`, reload, restore on failure).
+  `/api/social/menu` routes. Lex installed the staged proxy snippet at
+  2026-10-18T02:19:28Z (byte-identical to
+  `/srv/nvme/agent-work/surfd770-20261018T0000b/surfd.conf`; the previous file is
+  `surfd.conf.pre-p770`). At 02:47Z `play.proto.bar/api/social/menu/challenge`
+  answered 200 with ok 1. Not yet run: the falsifier below, with real accounts.
 - The original P741 item, for its history:
 
 - Implemented: `src/menu/m_friends.qc` standalone authenticated list/Join, native

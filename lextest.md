@@ -2,8 +2,8 @@
 
 ## P770 — Friends without accepting; TAB board switch, Styles, Players list
 
-Live on the 12 lobbies (qwprogs `24e65490`, csprogs `bc93f6db`, 22:47Z) and in both
-Windows installs (also menu `7cdba577`, 22:48Z; `.prev` keeps the old three). The
+Live on the 12 lobbies (qwprogs `24e65490`, 22:47Z) and in both Windows installs
+(also menu `7cdba577`, 22:48Z); csprogs is now P772's `04e58e23`, which carries it. The
 friends service on the Pi runs the new code since 22:58Z. Restart the game.
 
 - **TAB board:** a Scoreboard | Players switch sits above the board. The tab strip
@@ -18,11 +18,10 @@ friends service on the Pi runs the new code since 22:58Z. Restart the game.
   sees you in their Friends tab straight away. Remove (Friends tab) ends it; Block
   refuses someone, and Unblock in the Friends tab lifts that. Requests sent before
   this patch became friendships.
-- **Main menu Friends list (Play / Friends, no map loaded):** needs one command on
-  the Pi with your sudo password first (the web proxy's two routes), from a
-  terminal on this PC:
-  `ssh -t proto@192.168.1.102 'sudo cp -p /etc/nginx/snippets/surfd.conf /etc/nginx/snippets/surfd.conf.pre-p770 && sudo install -m 644 /srv/nvme/agent-work/surfd770-20261018T0000b/surfd.conf /etc/nginx/snippets/surfd.conf && (sudo nginx -t && sudo systemctl reload nginx && echo P770-OK || { sudo cp -p /etc/nginx/snippets/surfd.conf.pre-p770 /etc/nginx/snippets/surfd.conf; echo RESTORED; })'`
-  Then open Play / Friends without a map: your friends and their lobby should list.
+- **Main menu Friends list (Play / Friends, no map loaded):** the web proxy's
+  routes are in since your command at 02:19Z (the route answers ok). Open Play /
+  Friends without a map: your friends and their lobby should list, and Join
+  should take you there.
 
 "Board ok / Players ok / add works / menu list ok" or what looks wrong. Verdict PENDING.
 
