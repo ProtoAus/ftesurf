@@ -65,12 +65,8 @@ limit_req_zone $binary_remote_addr zone=surfdlogin:1m rate=12r/m;
 limit_req_zone $binary_remote_addr zone=surfdboard:4m rate=120r/m;
 limit_req_zone $binary_remote_addr zone=surfdreplay:4m rate=20r/m;
 limit_req_zone $binary_remote_addr zone=surfdjoin:4m rate=30r/m;
-limit_req_zone $binary_remote_addr zone=surfdhid:1m rate=12r/m;
-limit_conn_zone $binary_remote_addr zone=surfdhidip:1m;
-limit_conn_zone $server_name zone=surfdhidglobal:1m;
-limit_conn_zone $binary_remote_addr zone=ftesurf_maps:10m;
 ZONES
-echo "  wrote login/board/replay/join rates and bounded HID upload rates/connections"
+echo "  wrote surfdlogin + surfdboard + surfdreplay + surfdjoin"
 
 echo "== the snippet =="
 install -m 0644 "$HOME_DIR/surfd.nginx" /etc/nginx/snippets/surfd.conf

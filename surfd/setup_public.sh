@@ -143,17 +143,11 @@ ZONES='limit_req_zone $binary_remote_addr zone=surfdlogin:1m rate=12r/m;
 limit_req_zone $binary_remote_addr zone=surfdboard:4m rate=120r/m;
 limit_req_zone $binary_remote_addr zone=surfdreplay:4m rate=20r/m;
 limit_req_zone $binary_remote_addr zone=surfdjoin:4m rate=30r/m;
-limit_req_zone $binary_remote_addr zone=surfdhid:1m rate=12r/m;
-limit_conn_zone $binary_remote_addr zone=surfdhidip:1m;
-limit_conn_zone $server_name zone=surfdhidglobal:1m;
 limit_conn_zone $binary_remote_addr zone=ftesurf_maps:10m;'
 if ! grep -qrs "zone=surfdlogin" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
    ! grep -qrs "zone=surfdboard" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
    ! grep -qrs "zone=surfdreplay" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
    ! grep -qrs "zone=surfdjoin" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
-   ! grep -qrs "zone=surfdhid:" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
-   ! grep -qrs "zone=surfdhidip:" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
-   ! grep -qrs "zone=surfdhidglobal:" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
    ! grep -qrs "zone=ftesurf_maps" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null; then
     printf '%s\n' "$ZONES" > /etc/nginx/conf.d/surfd-ratelimit.conf
     echo "  wrote the surfdlogin + surfdboard + surfdreplay + surfdjoin + ftesurf_maps zones in conf.d"

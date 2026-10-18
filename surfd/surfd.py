@@ -34,7 +34,6 @@ import types
 
 from flask import Flask, Response, g, jsonify, request, send_file
 
-import hidupload        # signed, bounded raw journals; never a run verdict
 import accounts         # Steam accounts: schema 12 and its routes
 import social           # Steam friends; authenticated lobby-only capabilities
 import zonefit          # bounded BSP entity/model reader for legacy timers
@@ -5834,12 +5833,6 @@ social.register(app, types.SimpleNamespace(
     get_db=get_db, clock=lambda: time.time(), secret=lambda: SECRET,
     setting=setting, rate_key=rate_key,
     rate_ok=rate_ok, clean_text=clean_text, game_json=game_json, lobby_ttl=LOBBY_TTL))
-
-hidupload.register(app, types.SimpleNamespace(
-    log=log, clock=lambda: time.time(), rate_ok=rate_ok, rate_key=rate_key,
-    fail=lambda message, code: fail(code, message), evidence=lambda: EVIDENCE_DIR),
-    tools=setting("SURFD_TOOLS") or os.path.join(
-        setting("SURFD_GAME") or "/srv/nvme/ftesurf-server/game", "tools"))
 
 migrate()
 log.info("surfd ready (db=%s ttl=%ds cap=%d nodes)", DB_PATH, LOBBY_TTL, MAX_NODES)
