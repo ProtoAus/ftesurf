@@ -14,6 +14,9 @@ Engine patch-800 (exe 33466461, `git-7464-patch-800-0-g553f9a4bd`) in both insta
 
 ## P798 — HUD editor: Display Info, Input display, new names
 
+Live: all 12 lobbies 2026-10-18T16:46Z, both installs 16:47Z (csprogs 44b650ce; .prev
+75b75a77). Restart the game, or join a lobby.
+
 Open `hud_edit` (C). The list has changed:
 
 - **Display Info** (last row) is where Key hints was. Click it: Map info, Map time
