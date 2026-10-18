@@ -239,6 +239,16 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   The sweep must name the second as unreadable -- a third verdict, not a fault
   or a pass -- and still check the first.
 
+## Demo attempts filter hides an abandoned run's whole last stage (P778)
+
+- Site: `src/client/cl_watch.qc` `Watch_FailClose` (abandon branch) and the
+  `hud_watch_path_fails` filter in `Watch_ScanRange`. An abandoned run's last stage is
+  one failed span from its entry to the end, so with "Demo attempts: successful only"
+  the "stage N only" window of that stage draws almost no line ("1 shown" in `replay
+  status` on the 990042 fixture). The skip already leaves the cut stage alone.
+- Falsifier: the fixture (`onlinecache.py fixture` from r42), `hud_watch_path_fails 0`,
+  `replay window 5`: `replay status` should show the stage's samples, not 1.
+
 ## Disconnected Friends: live (P770); the owner's in-game check is open (P741)
 
 - Since 2026-10-17T22:58:21Z surfd generation 8182c6f (P770) serves P741's

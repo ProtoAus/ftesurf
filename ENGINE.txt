@@ -25,7 +25,7 @@ commit   bd2e037574b1350859f84dbb4ba0245e4122c383
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-776
-patch    776
+patch    778
 # Patch 776 (engine + csprogs): `surf_view` draws a dither over collision -- red on surfable
 # faces (normal z 0.1..0.7, displacements both sides, prop hull pieces) and every
 # trigger_*teleport*, yellow on player-solid nodraw/clip faces; csprogs: ent_view mouse1 pins

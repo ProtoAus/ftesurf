@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P778 — demo playback: skip and hide failed stage attempts
+
+Open a replay of a run where you failed a stage and retried (back in the stage box, or
+`!r`). The playback bar marks the failed attempts in yellow beside the red still
+stretches; the "skip fails (N)" chip beside "skip still" jumps them while playing,
+landing half a second before the attempt that counted. hud_edit > Run lines > "Demo
+attempts: successful only" takes them off the demo line (and the run graph). "stage N
+only" from a board stage row now starts at the attempt that counted, not at the stage's
+first entry. Verdict PENDING ("demo fails ok" or what looks wrong).
+
 ## P773 — paint sprays while held, Rate and Random; body/belt colour presets
 
 In both Windows installs since 2026-10-18T03:48:50Z (csprogs `f6103f93`, `.prev` P772's
