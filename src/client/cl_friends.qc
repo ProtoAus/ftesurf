@@ -9,7 +9,8 @@ string fr_notice, fr_msgpick, fr_profpick;
 float fr_joinuntil, fr_rowh, fr_wheel;
 // P788: the "added you" toast, once per account (fr_seen, data/friends_toasted.txt).
 string fr_seen, fr_tw, fr_tn;
-float fr_tend, fr_tsent, fr_tshown;
+float fr_tend, fr_tsent, fr_tshown, fr_tlast;
+float fr_tsheld;                // cl_main.qc copies sc_held (declared after this file)
 void() Av_Close;
 void(string who) Av_OpenAt;
 
@@ -135,7 +136,7 @@ void() Friends_ToastPick =
 		if (strstrofs(strcat(fr_seen, " "), strcat(" ", who, " "), 0) >= 0) continue;
 		if (Chat_Silenced(bufstr_get(fr_buf, i * FR_FIELDS + 3))) continue;
 		fr_tw = strzone(who);
-		fr_tn = strzone(strcat(bufstr_get(fr_buf, i * FR_FIELDS + 3), ""));
+		fr_tn = strzone(bufstr_get(fr_buf, i * FR_FIELDS + 3));
 		fr_tsent = fr_tshown = FALSE;
 		return;
 	}
@@ -151,7 +152,7 @@ void() Friends_ToastClear =
 // Not over the board, the profile card or a resume offer (that F2 is theirs).
 float() Friends_ToastCovered =
 {
-	return (rec_sb_open || (UI_CursorHeld() & UIC_AVATAR) || Timer_ResumeOffered());
+	return (rec_sb_open || fr_tsheld || (UI_CursorHeld() & UIC_AVATAR) || Timer_ResumeOffered());
 };
 
 float(float scanx) Friends_ToastKey =
@@ -167,9 +168,11 @@ float(float scanx) Friends_ToastKey =
 void(vector scr) Friends_DrawToast =
 {
 	local vector p;
-	local float sc, w, h, hh, lsz, pic, y;
+	local float sc, w, h, hh, lsz, pic, y, dt;
 	local string t;
 
+	dt = bound(0, cltime - fr_tlast, 1);      // real time since the last draw
+	fr_tlast = cltime;
 	if (fr_tw == "") return;
 	// Gone, or added back some other way: nothing left to answer.
 	if ((fr_tshown && cltime >= fr_tend) || (!fr_tsent && Friends_Relation(fr_tw) != 2))
@@ -180,7 +183,7 @@ void(vector scr) Friends_DrawToast =
 	}
 	if (Friends_ToastCovered())
 	{
-		if (fr_tshown) fr_tend = fr_tend + frametime;      // paused under it
+		if (fr_tshown) fr_tend = fr_tend + dt;    // paused under it
 		return;
 	}
 	if (!fr_tshown)

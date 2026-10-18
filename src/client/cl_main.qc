@@ -1876,6 +1876,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Gfx_Draw(scr);
 		Vote_Draw(scr);                 // Patch 372: over saveloc, gfx and the chatbox
 		Share_Draw(scr);                // Patch 777
+		fr_tsheld = sc_held;            // the held board covers it too
 		Friends_DrawToast(scr);         // Patch 788
 		KC_HintDraw(scr);               // Patch 762: the bottom-left key strip
 		// Reads two cvars the hl2 plugin writes at map load, and self-limits to
