@@ -224,10 +224,10 @@ try {
 
 # Generated artifacts only; native and QC deployment share .prev preservation.
 function Deploy($from, $to) {
-    if (-not (Test-Path $from)) { throw "missing build output: $from" }
-    if (Test-Path $to) { Copy-Item $to "$to.prev" -Force }
-    Copy-Item $from $to -Force
-    Ok ((Split-Path $to -Leaf) + "  <- " + (Get-Item $from).LastWriteTime)
+    if (-not (Test-Path -LiteralPath $from)) { throw "missing build output: $from" }
+    if (Test-Path -LiteralPath $to) { Copy-Item -LiteralPath $to -Destination "$to.prev" -Force }
+    Copy-Item -LiteralPath $from -Destination $to -Force
+    Ok ((Split-Path $to -Leaf) + "  <- " + (Get-Item -LiteralPath $from).LastWriteTime)
 }
 
 # ------------------------------------------------------------ engine ---------

@@ -1360,13 +1360,15 @@ From `src/`, with pwsh 7 (NOT `powershell`):
 
     pwsh -NoProfile -Command "./build.ps1 -Jobs 8"
 
-- Current default: compiles the three progs into this checkout's `ftesurf/`.
-  In `build.ps1`, `-QuakeDir` is used only by the `-Engine` native/plugin copy
-  block; it does NOT redirect/copy QC from an isolated worktree to an install.
-  Copy only inspected-commit `.dat`/matching `.lno` artifacts intentionally into
-  BOTH `C:\FTESurf\ftesurf` and `C:\FTEQuake\ftesurf`, retaining predecessors
-  and checking destination hashes. Dual deployment remains mandatory; a successful
-  compile or an overridden `-QuakeDir` does not by itself prove either QC copy.
+- Current default: compiles the three progs into this checkout's `ftesurf/`,
+  then synchronizes the three VMs and available LNOs to a present, distinct
+  `-QuakeDir` with `.prev` preservation, without requiring `-Engine`. It does not
+  redirect checkout-local compilation: a normal worktree build ALSO writes its
+  configured second install. Use `-NoDeploy` for isolated compilation without that
+  copy. If the source checkout is isolated, intentionally promote only inspected-
+  commit `.dat`/matching `.lno` artifacts to the real primary install as well.
+  BOTH `C:\FTESurf\ftesurf` and `C:\FTEQuake\ftesurf` remain mandatory;
+  verify actual destination hashes rather than infer deployment from compilation.
 - `-Engine`: also rebuilds the engine from the fteqw checkout; add `-Full`
   after any engine header change. Plugin rebuild is automatic. It builds the
   engine WORKING TREE, and `release.ps1` ships whatever it built. 0.1.8 went out
