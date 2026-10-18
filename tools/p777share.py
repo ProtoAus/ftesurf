@@ -281,28 +281,17 @@ def run(a, sv, A, B):
     time.sleep(1)
     check('said no' in A.text()[off:], 'a decline reaches Alice')
     off = len(A.text())
-    A.send(f'share layout {b_}')                    # within 10 s of a no: refused
+    A.send(f'share layout {b_}')                    # within a minute of a no: refused
     time.sleep(1.5)
-    check('a few seconds' in A.text()[off:], 'the same sender waits after a no')
-    time.sleep(9)
+    check('a minute' in A.text()[off:], 'the same sender waits after a no')
+    time.sleep(60)
     off = len(A.text())
     A.send(f'share layout {b_}')
     time.sleep(23)
     check('did not answer' in A.text()[off:], 'an unanswered offer runs out')
-    time.sleep(10)                                  # the cooldown after no answer
     sb = share_status(B)
     check(sb.get('offer') == -1, 'Bob\'s card went with it', sb.get('offer'))
-
-    # share_offers 0: an offer is declined unseen.
-    B.send('share_offers 0')
-    time.sleep(2.5)
-    off = len(A.text())
-    A.send(f'share layout {b_}')
-    time.sleep(2)
-    sb = share_status(B)
-    check('said no' in A.text()[off:] and sb.get('offer') == -1, 'share_offers 0 declines unseen',
-          sb.get('offer'))
-    B.send('share_offers 1')
+    time.sleep(60)                                  # the wait after no answer
 
     # Stop: nothing more crosses.
     A.send('share stop')
@@ -335,6 +324,17 @@ def run(a, sv, A, B):
         A.send('share stop')
         time.sleep(1.5)
     check(na >= 3 and seen == [na, na], 'a re-link brings Alice\'s paint once, not twice', [na, seen])
+
+    # share_offers 0: an offer is declined unseen.
+    B.send('share_offers 0')
+    time.sleep(2.5)
+    off = len(A.text())
+    A.send(f'share layout {b_}')
+    time.sleep(2)
+    sb = share_status(B)
+    check('said no' in A.text()[off:] and sb.get('offer') == -1, 'share_offers 0 declines unseen',
+          sb.get('offer'))
+    B.send('share_offers 1')
 
     # The pick's miss, and pictures.
     B.send(f'setpos {O[0] + 300} {O[1]} {O[2]} 0 90 0')

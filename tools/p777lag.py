@@ -4,9 +4,10 @@ clients (the overseas case the review worked out from the engine source). Graded
 still connected, Bob's received count against Alice's, the server's dropped count, and
 "overflow" / "MAX_BACK_BUFFERS" lines in the three logs.
 
-    python tools/p777lag.py --out <dir> --progs <dir> --delay <ms>    (under the rig lock)
+    python tools/p777lag.py --out <dir> --progs <dir> --delay <ms> [--freeze <s>]    (under the rig lock)
 """
 import argparse
+import ctypes as C
 import json
 from pathlib import Path
 import re
@@ -24,6 +25,7 @@ def main():
     ap.add_argument('--progs', type=Path, required=True)
     ap.add_argument('--delay', type=int, default=300)
     ap.add_argument('--port', type=int, default=27619)
+    ap.add_argument('--freeze', type=float, default=0, help='suspend Bob this many seconds once the stream runs')
     a = ap.parse_args()
     a.content = Path('C:/FTESurf')
     a.client = Path('C:/FTESurf/ftesurf64.exe')
@@ -74,9 +76,6 @@ def main():
         R.block(A, 'paint_fill 1500 50', r'paint: fill', 30)
         la = R.paint_status(A)['live']
         res['alice_live'] = la
-        out = R.block(A, 'share status', r'share: pacing', 20)
-        m = re.search(r'share: pacing by a (\d+) ms', out)
-        res['alice_rtt_ms_before'] = m and int(m[1])
         off_b = len(B.text())
         A.send(f'share layout {b_}')
         time.sleep(3)
@@ -89,8 +88,18 @@ def main():
         for _ in range(10):                 # the pacing as the stream starts
             A.send('share status')
             time.sleep(0.25)
-        res['pacing'] = re.findall(r'share: pacing by.*|share: received.*stream to.*|Outgoing message overflow',
-                                   A.text()[off_a:])[:30]
+        res['pacing'] = re.findall(r'share: \d+ sent.*|share: pacing by.*|share: received.*stream to.*|'
+                                   r'Outgoing message overflow', A.text()[off_a:])[:30]
+        if a.freeze:
+            # A receiver that stops answering (a stalled machine, a dropped link): the
+            # server must not let its backlog for Bob reach the engine's drop.
+            k = C.WinDLL('ntdll')
+            h = C.windll.kernel32.OpenProcess(0x0800, False, B.proc.pid)    # PROCESS_SUSPEND_RESUME
+            k.NtSuspendProcess(h)
+            time.sleep(a.freeze)
+            k.NtResumeProcess(h)
+            C.windll.kernel32.CloseHandle(h)
+            res['froze_s'] = a.freeze
         got = None
         while time.monotonic() - t0 < 120:
             m = re.search(r'sent you (\d+) marks(, (\d+) arrived)?', B.text()[off_b:])
@@ -101,9 +110,9 @@ def main():
                 break
             time.sleep(1)
         res['bob_note'] = got
-        out = R.block(A, 'share status', r'share: pacing', 20)
-        m = re.search(r'share: pacing by a (\d+) ms', out)
-        res['alice_rtt_ms_after'] = m and int(m[1])
+        out = R.block(A, 'share status', r'share: (\d+ sent|pacing)', 20)
+        m = re.search(r'share: (\d+ sent.*|pacing by.*)', out)
+        res['alice_window_after'] = m and m[1]
         res['stream_s'] = round(time.monotonic() - t0, 1)
         time.sleep(2)
         try:
@@ -115,11 +124,16 @@ def main():
             res['relay'] = re.search(r'share: relayed.*', out)[0]
         except Exception as e:
             res['relay'] = f'no answer: {e}'
+        try:
+            out = R.block(B, 'cmd viewpos', r'setpos ', 20)
+            res['bob_connected'] = True
+        except Exception as e:
+            res['bob_connected'] = f'no answer: {e}'
         res['logs'] = {}
         for name, p in (('server', sv), ('alice', A), ('bob', B)):
             t = p.text()
             res['logs'][name] = [l for l in t.splitlines()
-                                 if re.search(r'(?i)overflow|MAX_BACK_BUFFERS|dropped|disconnect|kicked|timed out', l)][-8:]
+                                 if re.search(r'(?i)overflow|MAX_BACK_BUFFERS|disconnect|kicked|timed out|connection lost', l)][-8:]
     finally:
         for p in reversed(peers):
             try:
