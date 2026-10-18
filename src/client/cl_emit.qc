@@ -402,7 +402,9 @@ string rp_body[RP_MAX];         // re-registered each frame: a renderer restart 
 float  rp_rate[RP_MAX];
 float  rp_life[RP_MAX];
 float  rp_width[RP_MAX];
-float  rp_alpha[RP_MAX];
+float  rp_alpha[RP_MAX];         // the particle's own; the fade runs from rp_a0 to it, then to rp_a1
+float  rp_a0[RP_MAX];
+float  rp_a1[RP_MAX];
 vector rp_ofs[RP_MAX];
 vector rp_grav[RP_MAX];
 vector rp_rgb[RP_MAX];          // 0..1
@@ -559,21 +561,28 @@ void() Emit_TrailNote =
 
 /*
   Patch 791: render_rope.  tools/pcf.py writes the path one particle takes (spawn
-  offset, then gravity from rest) and its Alpha Fade and Decay; the ribbon is drawn
-  through that path at the emission interval, so it moves the way the particles do.
-  Width and why: pcf.py ROPE_WIDTH.  Not a particle and not under the budget: one
-  strip of quads a rope, drawn whether or not vbsp_emit_psys_children starts the
+  offset, then gravity from rest) and its Alpha Fade and Decay (rope_line there); in
+  steady state every particle is somewhere on that one curve, so the ribbon is that
+  curve, at most ROPE_SEGS quads.  Width and why: pcf.py ROPE_WIDTH.  Not a particle
+  and not under the budget, so drawn whether or not vbsp_emit_psys_children starts the
   parent's particle children (surf_boreas's beam is one).  Off: vbsp_emit_ropes 0.
 */
+#define ROPE_SEGS 32
+
 void() Emit_RopeNote =
 {
 	local string img;
 
-	if (rp_n >= RP_MAX)
+	if (stof(argv(5)) <= 0 || stof(argv(6)) <= 0)
 		return;
+	if (rp_n >= RP_MAX)
+	{
+		dprint(sprintf("^3emit: rope %s dropped, more than %g rope lines\n", argv(2), RP_MAX));
+		return;
+	}
 	img = argv(3);
 	rp_name[rp_n]   = strzone(argv(2));
-	rp_parent[rp_n] = strzone(argv(22) == "-" ? "" : argv(22));
+	rp_parent[rp_n] = strzone(argv(24) == "-" ? "" : argv(24));
 	rp_shader[rp_n] = strzone(sprintf("ftesurf_rope/%s/%s", img, argv(4)));
 	rp_body[rp_n] = strzone(sprintf("{\ncull disable\nsort %s\n{\nmap \"materials/%s.vtf\"\nblendfunc %s\nrgbgen vertex\nalphagen vertex\n}\n}\n",
 		stof(argv(4)) ? "additive" : "blend", img,
@@ -585,10 +594,11 @@ void() Emit_RopeNote =
 	rp_width[rp_n] = stof(argv(13));
 	rp_rgb[rp_n]   = [stof(argv(14)), stof(argv(15)), stof(argv(16))] * (1 / 255);
 	rp_alpha[rp_n] = stof(argv(17));
-	rp_fi[rp_n]    = [stof(argv(18)), stof(argv(19)), 0];
-	rp_fo[rp_n]    = [stof(argv(20)), stof(argv(21)), 0];
-	if (rp_rate[rp_n] > 0 && rp_life[rp_n] > 0)
-		rp_n = rp_n + 1;
+	rp_a0[rp_n]    = stof(argv(18));
+	rp_a1[rp_n]    = stof(argv(19));
+	rp_fi[rp_n]    = [stof(argv(20)), stof(argv(21)), 0];
+	rp_fo[rp_n]    = [stof(argv(22)), stof(argv(23)), 0];
+	rp_n = rp_n + 1;
 	rp_zoned = TRUE;
 };
 
@@ -602,14 +612,21 @@ float(float e0, float e1, float x) Emit_Smooth =
 	return t * t * (3 - 2 * t);
 };
 
-// Alpha Fade and Decay at fraction f of the life: a smoothstep at each end, as the other bakes do.
-float(float j, float f) Emit_RopeFade =
+// Alpha at fraction f of the life: rp_a0 up to the particle's alpha over the fade-in,
+// then down to rp_a1 over the fade-out (C_OP_FadeAndKill as pcf.py reads it), smoothstepped.
+float(float j, float f) Emit_RopeAlpha =
 {
 	local vector fi, fo;
+	local float a;
 
 	fi = rp_fi[j];
 	fo = rp_fo[j];
-	return Emit_Smooth(fi_x, fi_y, f) * (1 - Emit_Smooth(fo_x, fo_y, f));
+	a = rp_alpha[j];
+	if (f < fi_y)
+		return rp_a0[j] + (a - rp_a0[j]) * Emit_Smooth(fi_x, fi_y, f);
+	if (f > fo_x)
+		return a + (rp_a1[j] - a) * Emit_Smooth(fo_x, fo_y, f);
+	return a;
 };
 
 // The ropes a placed system starts: its children, or itself when it is a rope.
@@ -617,9 +634,14 @@ void(string effname, vector org) Emit_RopeAt =
 {
 	local float j;
 
-	for (j = 0; j < rp_n && ri_n < RI_MAX; j = j + 1)
+	for (j = 0; j < rp_n; j = j + 1)
 		if (rp_parent[j] == effname || (rp_parent[j] == "" && rp_name[j] == effname))
 		{
+			if (ri_n >= RI_MAX)
+			{
+				dprint(sprintf("^3emit: rope %s at %v dropped, more than %g placed\n", rp_name[j], org, RI_MAX));
+				continue;
+			}
 			ri_type[ri_n] = j;
 			ri_org[ri_n] = org + rp_ofs[j];
 			ri_n = ri_n + 1;
@@ -629,7 +651,7 @@ void(string effname, vector org) Emit_RopeAt =
 
 void() Emit_RopeFrame =
 {
-	local float i, j, k, n, age, lf, f, a0, a1, step, ph;
+	local float i, j, k, n, age, lf, f, a0, a1, step;
 	local vector eye, p0, p1, s0, s1, col;
 
 	if (!ri_n || !cvar("vbsp_emit_ropes"))
@@ -639,21 +661,20 @@ void() Emit_RopeFrame =
 	{
 		j = ri_type[i];
 		shaderforname(rp_shader[j], rp_body[j]);
-		step = 1 / rp_rate[j];
 		lf = rp_life[j];
-		n = floor(lf / step);
-		ph = time - floor(time / step) * step;		// the youngest particle's age
+		n = bound(1, floor(lf * rp_rate[j]), ROPE_SEGS);	// no more joints than particles alive
+		step = lf / n;
 		col = rp_rgb[j];
 		for (k = 0; k < n; k = k + 1)
 		{
-			age = ph + k * step;
+			age = k * step;
 			p0 = ri_org[i] + rp_grav[j] * (0.5 * age * age);
 			f = age / lf;
-			a0 = rp_alpha[j] * Emit_RopeFade(j, f);
-			age = min(age + step, lf);
+			a0 = Emit_RopeAlpha(j, f);
+			age = age + step;
 			p1 = ri_org[i] + rp_grav[j] * (0.5 * age * age);
 			f = age / lf;
-			a1 = rp_alpha[j] * Emit_RopeFade(j, f);
+			a1 = Emit_RopeAlpha(j, f);
 			if (a0 <= 0 && a1 <= 0)
 				continue;
 			// Facing the eye about the segment: half the width either side.
@@ -741,7 +762,7 @@ void(string mname) Emit_PsysLoad =
 		if (argv(0) == "trail")
 		if (argv(1) == mname)
 			Emit_TrailNote();
-		if (n == 23)
+		if (n == 25)
 		if (argv(0) == "rope")
 		if (argv(1) == mname)
 			Emit_RopeNote();

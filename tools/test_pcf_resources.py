@@ -403,6 +403,19 @@ class RopeTests(unittest.TestCase):
         self.assertEqual(runtime, [])
         self.assertIn('render_rope with Velocity Noise', skipped[0][1])
 
+    def test_rope_line_is_25_words_and_a_timed_emitter_refuses(self):
+        import collections, pcf
+        blocks, runtime, skipped = pcf.bake(self.system(), 'm', collections.Counter())
+        self.assertEqual(len(pcf.rope_line('m', runtime[0], '-').split()), 25)
+        timed = pcf_bytes([('DmElement', 'root', {'particleSystemDefinitions': (15, [1])}),
+                           ('DmeParticleSystemDefinition', 'beam',
+                            {'max_particles': (2, 10), 'renderers': (15, [2]), 'emitters': (15, [3])}),
+                           ('DmeParticleOperator', 'r', {'functionName': (5, 'render_rope')}),
+                           ('DmeParticleOperator', 'e', {'functionName': (5, 'emit_continuously'),
+                                                         'emission_rate': (3, 8.0), 'emission_duration': (3, 2.0)})])
+        blocks, runtime, skipped = pcf.bake(timed, 'm', collections.Counter())
+        self.assertIn('timed emitter', skipped[0][1])
+
 
 class SheetTests(unittest.TestCase):
     def test_versions_channels_flags_and_every_truncated_prefix(self):
