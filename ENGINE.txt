@@ -25,7 +25,10 @@ commit   020f9ad3bc75b9796a6b86ab3b151078594f1e4d
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-783
-patch    787
+patch    790
+# Patch 790 (readers): bounded hold-counter parsing and safe projected timestamps;
+# independent sidecar faults survive unavailable joins; server history bounds local resets.
+# No native change.
 # Patch 787 (tools + particles/surf_boreas.cfg): tools/pcf.py bakes each particle system with
 # its material's real image and Source's additive blend, and declines render_rope. No native change.
 # Patch 783 (engine + hl2 plugin): VTF BGRA4444/BGRA5551/BGR565 load (surf_boreas's end-room

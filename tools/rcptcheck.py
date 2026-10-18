@@ -522,7 +522,8 @@ def join_angles(r, want):
         return
 
     off = v.info.get("angle_off")
-    if off is None:
+    if off is None or v.info.get("angle_rule") == "unavailable":
+        # Clock abstention does not suppress independent sidecar format faults.
         # NOT COMPARABLE IS NOT A PASS.  If the sidecar is unreadable enough
         # that no join happened at all -- no frames, a tick past the end of the
         # recording, a clock that runs backwards -- then the file this receipt
@@ -535,8 +536,9 @@ def join_angles(r, want):
                     "the digest that was signed, but the .view cannot be read "
                     "against the recording at all: %s" % v.faults[0])
             return
-        r.note("the recording carries no angle stream to check the sidecar against")
-        return
+        if off is None:
+            r.note("the recording carries no angle stream to check the sidecar against")
+            return
     solo = v.info.get("angle_solo", "")
     detail = [off] + ([solo] if solo else [])
     detail.extend(n for n in v.notes if n.startswith("the tight angle rule did not judge this pair:"))

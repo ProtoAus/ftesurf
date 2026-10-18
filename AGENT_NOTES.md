@@ -2574,6 +2574,16 @@ publicly WITH its fix, not before it.
   observation on surf_dune: waiting to turn first let the map teleport re-arm the
   timer. Those earlier logs are NOT acted hold controls. Also make the reader-test
   helper reject a crashed child: empty stdout is not an empty fault list.
+  Patch 790 follow-up: independent review found counter-conversion/projection
+  errors and receipt-layer loss of independent view faults on unavailable clocks.
+  Bound ASCII counters before conversion; invalid projections fault without an
+  angle judgment. Do not blindly promote old clock-reset diagnostics: repeated
+  retries/cold loads legitimately restart client-local clocks. Use server restore/
+  session history and deduplicate the two records for one cold boundary; sidecar
+  claims cannot authorize resets. Keep format validity separate from abstention.
+  Reader 354 / receipt 151 and sweep pass. Same 602/383 corpus: no new faults;
+  two old cold-load false faults removed, both still unavailable. Test subprocess
+  stdout must explicitly use UTF-8, matching the fixture files, not Windows CP1252.
 - CROSS-RUN SIMILARITY IS COLLECTED AND NOT ENFORCED (surfd schema 10,
   `surfd/simcheck.py`).  A run submitted twice -- a PLAYBACK of a recording rather
   than a performance -- produces two clean board rows and nothing else in this tree

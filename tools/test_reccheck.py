@@ -294,8 +294,8 @@ def run(lines, name="t.rec", view=None, report=False):
         if view is not None:
             with open(os.path.splitext(p)[0] + ".view", "w", encoding="utf-8") as f:
                 f.write("\n".join(view) + "\n")
-        proc = subprocess.run([sys.executable, RECCHECK, "-v", p],
-                              capture_output=True, text=True)
+        proc = subprocess.run([sys.executable, "-X", "utf8", RECCHECK, "-v", p],
+                              capture_output=True, text=True, encoding="utf-8")
         if (proc.returncode not in (0, 1) or "Traceback" in proc.stderr
                 or "file(s) checked" not in proc.stdout):
             raise AssertionError("reader did not complete: %s\n%s" % (proc.stdout, proc.stderr))
@@ -2044,6 +2044,81 @@ def case_angle_lag_is_not_claimed_when_the_winner_is_bad():
         print("        notes=%s" % n)
 
 
+def retry_clock_pair(retries=2, resets=2):
+    """Server retry markers; client-local clocks reset while run ticks increase."""
+    base = head(build(sweep=128), "flags", 1)
+    out, pending = [], [2 + 2 * n for n in range(retries)]
+    for line in base:
+        if line.startswith("in "):
+            tick = int(line.split()[2]) - HORIZON
+            while pending and tick >= pending[0]:
+                out.append("retry %d" % pending.pop(0))
+        out.append(line)
+    assert not pending
+    view = ["FTESURF-VIEW 2", "map bhop_eazy", "hid 1", "begin",
+            "10.0 100 0 0 0 0", "11.0 101 1 0 0 0"]
+    for n in range(resets):
+        view += ["1.0 1 %d 0 0 0" % (2 + 2 * n),
+                 "2.0 2 %d 0 0 0" % (3 + 2 * n)]
+    return out, view
+
+
+def cold_clock_pair(why="load", resets=2, restore=True):
+    lines = build(ver=10, sessions=((10, 3, why), (20, 3, why)))
+    out = []
+    for line in lines:
+        out.append(line)
+        if restore and line.startswith("pause "):
+            ticks = line.split()[3]
+            out.append("retry %s" % ticks if why == "retry" else "resume 1 %s" % ticks)
+    boundaries = [int(float(l.split()[4])) for l in lines if l.startswith("session ")]
+    _unused, view = retry_clock_pair(0, resets)
+    ticks = [0, boundaries[0] - 1]
+    for n in range(resets):
+        t = boundaries[n] if n < len(boundaries) else boundaries[-1] + 2 * (n - 1)
+        ticks += [t, t + 1]
+    for i, tick in enumerate(ticks):
+        f = view[i + 4].split(); f[2] = str(tick); view[i + 4] = " ".join(f)
+    return out, view
+
+
+def case_view_restore_history():
+    for why, restore in (("load", True), ("retry", True), ("drop", False)):
+        L, view = cold_clock_pair(why, restore=restore)
+        f, _ = run(L)
+        check(not f, "CONTROL: %s session history parses without faults" % why)
+        f, _notes, report = run(L, view=view, report=True)
+        check(not f and "angle_rule     unavailable" in report,
+              "%s client restarts stay unavailable, not a clock conviction" % why)
+        L, view = cold_clock_pair(why, resets=3, restore=restore)
+        f, _ = run(L, view=view)
+        check(any("goes backwards" in x for x in f),
+              "%s restore + session is one boundary, not two reset permissions" % why)
+
+
+def case_view_retry_history():
+    L, view = retry_clock_pair()
+    f, _ = run(L)
+    check(not f, "CONTROL: two authoritative retry markers parse without faults")
+    f, _notes, report = run(L, view=view, report=True)
+    check(not f and "angle_rule     unavailable" in report,
+          "two declared retries permit two client-local resets, never an angle OK")
+    for retries, resets in ((0, 2), (1, 2), (2, 3)):
+        L, view = retry_clock_pair(retries, resets)
+        f, _ = run(L, view=view)
+        check(any("goes backwards" in x for x in f),
+              "%d retries cannot authorize %d client-local resets" % (retries, resets))
+    L, view = retry_clock_pair()
+    f, _ = run(view, name="t.view")
+    check(any("goes backwards" in x for x in f),
+          "a standalone sidecar has no authority for a second reset")
+    for token in ("--1", "\u0662", "2.5", "nan", "1" * 129):
+        bad = ["retry %s" % token if l.startswith("retry ") else l for l in L]
+        f, _ = run(bad, view=view)
+        check(any("goes backwards" in x for x in f),
+              "invalid server marker %s cannot grant additional resets" % ascii(token[:20]))
+
+
 def held_clock_pair(holds=((150, 73), (350, 137)), sessions=()):
     """Independent run-clock view; only raw server counters acquire held time."""
     base = head(build(sweep=128, packets=600, ver=10 if sessions else 9,
@@ -2134,6 +2209,29 @@ def case_angle_hold_origins():
     f, _ = run(R, view=bad)
     check(any("not a number" in x or "NaN" in x or "finite" in x for x in f),
           "clock abstention does not suppress independent sidecar format faults")
+
+
+def case_angle_hold_conversion():
+    for token in ("--1", "\u00b2", "1" * 5000):
+        L = build()
+        ix = next(i for i, l in enumerate(L) if l.startswith("inend "))
+        L.insert(ix, "hold %s 0" % token)
+        f, _ = run(L)
+        check(any("'hold'" in x for x in f),
+              "noncanonical hold counter %r completes with a format fault" % token[:20])
+    for mt in (-2, 2147483648):
+        L = insert_before(build(), "begin", "holdclock 1")
+        ix = next(i for i, l in enumerate(L) if l.startswith("in "))
+        f = L[ix].split()
+        f[2] = str(mt)
+        L[ix] = " ".join(f)
+        if mt < 0:
+            L.insert(ix, "hold 2147483647 2147483647")
+        faults, _notes, report = run(L, view=view_for(build()), report=True)
+        check(any("projected angle tick" in x for x in faults),
+              "projected counter %s reports instead of overflowing the angle array" % mt)
+        check("angle_rule     unavailable" in report,
+              "an unrepresentable projection cannot produce an angle judgment")
 
 
 def case_angle_hold_shape():
@@ -2235,7 +2333,8 @@ def main():
                case_angle_tight_rule_abstains_where_the_epoch_moves,
                case_angle_tight_rule_is_keyed_on_the_source_not_the_version,
                case_angle_hold_clock, case_angle_hold_legacy, case_angle_hold_origins,
-               case_angle_hold_shape,
+               case_angle_hold_shape, case_angle_hold_conversion, case_view_retry_history,
+               case_view_restore_history,
                case_angle_splice, case_angle_no_sidecar_is_silent):
         # argv: case-name prefixes to run (default all).
         if sys.argv[1:] and not fn.__name__.startswith(tuple(sys.argv[1:])):

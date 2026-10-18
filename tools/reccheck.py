@@ -462,6 +462,7 @@ class Report:
         self.angles = None
         self.angle_ghosts = []
         self.angle_epoch = []
+        self.view_reset_budget = 0  # server restore/session history, never sidecar claims
 
     def fault(self, msg):
         self.faults.append(msg)
@@ -1125,6 +1126,11 @@ def check_rec(path, verbose=False, *, data=None):
                 r.fault("line %d: 'in' below the preceding hold horizon" % (lineno + 1))
                 ang_holdbad = True
             ang_prev = mt - ang_frozen if holdclock == "1" else mt
+            if not -2147483648 <= ang_prev <= 2147483647:
+                r.fault("line %d: 'in' projected angle tick is outside signed-32 range"
+                        % (lineno + 1))
+                ang_holdbad = True
+                ang_prev = 0       # placeholder only; invalid clock cannot be judged
             ang_mt.append(ang_prev)
             ang_pit.append(ang[0])
             ang_yaw.append(ang[1])
@@ -1353,8 +1359,10 @@ def check_rec(path, verbose=False, *, data=None):
         elif kind == "hold" and ver >= 9:
             # An authoritative server-clock edge, never a sidecar request.
             a = tok[1:]
-            if len(a) != 2 or not all(is_int(x) for x in a):
-                r.fault("line %d: 'hold' takes <mt> <frozen> integers" % (lineno + 1))
+            if len(a) != 2 or not all(1 <= len(x) <= 10 and x.isascii()
+                                      and x.isdecimal() for x in a):
+                r.fault("line %d: 'hold' takes bounded unsigned decimal <mt> <frozen>"
+                        % (lineno + 1))
                 ang_holdbad = True
             else:
                 hmt, frozen = map(int, a)
@@ -2677,6 +2685,25 @@ def check_rec(path, verbose=False, *, data=None):
     # resume/retry/pause/session still change the origin. Neither angle rule
     # can convict on an unknown join, even when its resulting difference is large.
     r.angle_ghosts = list(ghost_windows)
+    if not r.faults:
+        # A restored prefix may carry a client-clock restart. Cold restores also
+        # open a mover session: count that same boundary once, not twice.
+        events = [(ln, 0) for ln, *_ in pauses] + [(ln, 2) for ln, *_ in sessions]
+        for group, width in ((retries, 1), (resumes, 2)):
+            for ln, a in group:
+                if len(a) == width and a[-1].isascii():
+                    if exact_finish_ticks(a[-1]) is not None:
+                        events.append((ln, 1))
+        pending_restore = False
+        for _ln, kind in sorted(events):
+            if kind == 0:
+                pending_restore = False
+            elif kind == 1:
+                r.view_reset_budget += 1
+                pending_restore = True
+            else:
+                r.view_reset_budget += not pending_restore
+                pending_restore = False
     r.angle_epoch = [k for k, v in (("resume", resumes), ("retry", retries),
                                     ("pause", pauses), ("session", sessions))
                      if v]
@@ -3385,31 +3412,32 @@ def check_view(path, rec_report=None, *, data=None):
 
     r.info["frames"] = len(frames)
 
-    # BOTH OF THESE CLOCKS MAY RESET EXACTLY ONCE, and only build 18 made that
-    # true.  cltime is realtime - cl.mapstarttime and clientcommandframe is
-    # cl.movesequence; a `retry` restarts the map underneath the run, which
-    # zeroes both while the run itself carries on.  So a single backwards step
-    # is the signature of a retry join and is expected; two means the file has
-    # been spliced from unrelated attempts, which is a real fault.
-    #
-    # The .rec's `retry` record is the other half of this and says where.
+    # Client-local clocks may restart across restored prefixes or mover sessions;
+    # the invariant run clock may not. Only server history authorizes more than
+    # the legacy single-reset allowance. A sidecar cannot grant itself resets.
+    reset_limit = 1
+    if rec_report is not None:
+        reset_limit = max(reset_limit, rec_report.view_reset_budget)
+    limit_note = ("at most one (a retry) is expected" if reset_limit == 1 else
+                  "at most %d recorded restore/session resets are allowed" % reset_limit)
     resets = [(i, a[0], b[0]) for i, (a, b) in enumerate(zip(frames, frames[1:]))
               if b[0] < a[0]]
     cmdresets = [(i, a[1], b[1]) for i, (a, b) in enumerate(zip(frames, frames[1:]))
                  if b[1] < a[1]]
 
-    if len(resets) > 1:
-        r.fault("cltime goes backwards %d times -- at most one (a retry) is "
-                "expected; first at frame %d, %.4f after %.4f"
-                % (len(resets), resets[0][0] + 1, resets[0][2], resets[0][1]))
-    elif resets:
+    if len(resets) > reset_limit:
+        r.fault("cltime goes backwards %d times -- %s; first at frame %d, %.4f after %.4f"
+                % (len(resets), limit_note, resets[0][0] + 1, resets[0][2], resets[0][1]))
+    elif len(resets) == 1:
         r.note("cltime restarts once at frame %d (%.4f after %.4f) -- a retry"
                % (resets[0][0] + 1, resets[0][2], resets[0][1]))
+    elif resets:
+        r.note("cltime restarts %d times, within %d server reset boundaries"
+               % (len(resets), reset_limit))
 
-    if len(cmdresets) > 1:
-        r.fault("clientcommandframe goes backwards %d times -- at most one (a "
-                "retry) is expected; first at frame %d, %g after %g"
-                % (len(cmdresets), cmdresets[0][0] + 1,
+    if len(cmdresets) > reset_limit:
+        r.fault("clientcommandframe goes backwards %d times -- %s; first at frame %d, %g after %g"
+                % (len(cmdresets), limit_note, cmdresets[0][0] + 1,
                    cmdresets[0][2], cmdresets[0][1]))
 
     # THE RUN CLOCK IS THE INVARIANT THAT SURVIVES A RETRY, and therefore the

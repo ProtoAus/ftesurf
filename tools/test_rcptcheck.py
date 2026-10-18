@@ -5,6 +5,7 @@ The verdict must describe those captured bytes, not a later open of that path.
 """
 import builtins
 import contextlib
+import hashlib
 import io
 import os
 import sys
@@ -364,12 +365,94 @@ def test_parser_bytes():
                   (disk.faults, disk.notes, disk.info))
 
 
+def test_unavailable_angles_keep_view_faults():
+    """Post-signature classification: matching captured digest is not valid content."""
+    rec, good = fx.angle_pair("20261006-000206-0")
+    rec = "\n".join("flags 1" if l.startswith("flags ") else l
+                    for l in rec.splitlines()) + "\n"
+    end = int(next(l.split()[1] for l in rec.splitlines() if l.startswith("end ")))
+    header = "FTESURF-VIEW 2\nmap bhop_eazy\nhid 1\nbegin\n"
+    cases = [("range", header + "10.0 1000 %d 0 90 0\n" % (end + 1), "FAULT"),
+             ("nonfinite", header + "10.0 1000 0 nan 90 0\n", "FAULT"),
+             ("backwards", header + "10.0 1000 1 0 90 0\n10.1 1000 0 0 90 0\n", "FAULT"),
+             ("valid", good, "BLIND")]
+    for label, view, expected in cases:
+        data = view.encode("utf-8")
+        r = rcptcheck.Receipt("epoch.rcpt")
+        r.recpath, r.recdata = "epoch.rec", rec.encode("utf-8")
+        r.file_bytes["epoch.view"] = data
+        r.signed = [("view", hashlib.sha256(data).hexdigest())]
+        with mock.patch("builtins.open", side_effect=AssertionError("reopened captured evidence")):
+            rcptcheck.join_angles(r, {"view": "epoch.view"})
+        check("epoch %s: captured view digest was ACTUALLY checked" % label,
+              (("view", "epoch.view") in r.digest_checked, r.digest_bad), (True, {}))
+        check("epoch %s: availability does not hide independent content faults" % label,
+              (r.angles, bool(r.faults)), (expected, expected == "FAULT"))
+        if label == "valid":
+            check("epoch valid: no unsupported angular-mismatch accusation", r.faults, [])
+
+
+def test_retry_clock_faults():
+    import test_reccheck as vectors
+
+    cases = [("declared", 2, 2, "BLIND"), ("missing", 0, 2, "FAULT"),
+             ("extra", 2, 3, "FAULT"), ("invalid-marker", 2, 2, "FAULT"),
+             ("untrusted-view-claim", 0, 2, "FAULT"),
+             ("run-clock", 2, 2, "FAULT"), ("nonfinite", 2, 2, "FAULT"),
+             ("range", 2, 2, "FAULT"), ("invalid-recording", 2, 2, "FAULT"),
+             ("cold-load", 2, 2, "BLIND"), ("cold-retry", 2, 2, "BLIND"),
+             ("cold-extra", 2, 3, "FAULT"), ("session-only", 2, 2, "BLIND"),
+             ("session-extra", 2, 3, "FAULT"), ("cold-run-clock", 2, 2, "FAULT"),
+             ("legacy-resume", 2, 2, "BLIND"), ("legacy-extra", 2, 3, "FAULT")]
+    for label, retries, resets, expected in cases:
+        if label.startswith("cold-"):
+            lines, view = vectors.cold_clock_pair("retry" if label == "cold-retry" else "load", resets)
+        elif label.startswith("session-"):
+            lines, view = vectors.cold_clock_pair("drop", resets, restore=False)
+        else:
+            lines, view = vectors.retry_clock_pair(retries, resets)
+        if label.startswith("legacy-"):
+            lines = ["resume 1 " + l.split()[1] if l.startswith("retry ") else l for l in lines]
+        if label == "invalid-marker":
+            lines = ["retry --1" if l.startswith("retry ") else l for l in lines]
+        elif label == "untrusted-view-claim":
+            view.insert(3, "retries 2")
+        elif label in ("run-clock", "cold-run-clock"):
+            f = view[-1].split(); f[2] = "0"; view[-1] = " ".join(f)
+        elif label == "nonfinite":
+            f = view[-1].split(); f[3] = "nan"; view[-1] = " ".join(f)
+        elif label == "range":
+            end = int(next(l.split()[1] for l in lines if l.startswith("end ")))
+            f = view[-1].split(); f[2] = str(end + 1); view[-1] = " ".join(f)
+        elif label == "invalid-recording":
+            lines.append(next(l for l in lines if l.startswith("end ")))
+        raw = ("\n".join(lines) + "\n").encode("utf-8")
+        data = ("\n".join(view) + "\n").encode("utf-8")
+        r = rcptcheck.Receipt("retry.rcpt")
+        r.recpath, r.recdata = "retry.rec", raw
+        r.file_bytes["retry.view"] = data
+        r.signed = [("view", hashlib.sha256(data).hexdigest())]
+        with mock.patch("builtins.open", side_effect=AssertionError("reopened captured evidence")):
+            rcptcheck.join_angles(r, {"view": "retry.view"})
+        check("retry %s: source format control ACTED" % label,
+              bool(r.rec_report.faults), label == "invalid-recording")
+        check("retry %s: captured digest check ACTED" % label,
+              (("view", "retry.view") in r.digest_checked, r.digest_bad), (True, {}))
+        budget = 0 if label in ("missing", "invalid-marker", "untrusted-view-claim",
+                                "invalid-recording") else 2
+        check("retry %s: server history counts each boundary once" % label,
+              r.rec_report.view_reset_budget, budget)
+        check("retry %s: source-authorized resets retain independent faults" % label,
+              (r.angles, bool(r.faults)), (expected, expected == "FAULT"))
+
+
 def main():
     tests = (lambda: test_swap("view"), lambda: test_swap("hid"),
              lambda: test_swap("hid", broken_first=True), test_rec_swap,
              test_absent_arrives_between_phases, test_explicit_view_and_bad_digest,
              test_missing_view_and_io, test_selected_rec_tail_io,
-             test_unsigned_sibling_io, test_parser_bytes)
+             test_unsigned_sibling_io, test_parser_bytes,
+             test_unavailable_angles_keep_view_faults, test_retry_clock_faults)
     for test in tests:
         try:
             test()
