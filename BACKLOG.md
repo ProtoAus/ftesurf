@@ -5,6 +5,22 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Board, friends and map list loading: what Patch 781 left out
+
+- Site: `src/client/cl_online.qc` OBC_Save. `data/boards/<map>.txt` is never pruned:
+  one file a visited map, up to ~150 KB (nine sections of 100 rows). Check: the size of
+  data/boards after a week of play.
+- Site: `src/menu/m_friends.qc` MF_LoadSaved. The saved friends list is not tied to an
+  account: a second Steam account on one install sees the first's names until its own
+  list lands. Check: two accounts on one install.
+- Site: `src/client/cl_scores_native.qc`. The native table (`ui_native_scores`, off by
+  default) sizes its own columns in the ImGui plugin; four-digit ranks were checked on
+  the SUI table only. Check: native table at rank 1000 (`scores scrollto 990`).
+- Site: `tools/test_menu_refresh.py`. Its stale-friends check now reads
+  `friends_fresh=0` (rows stay up); the test was edited, not rerun.
+- Site: `Online_NextReq`. Ids run up from a per-VM base without wrapping; past 8000
+  requests in one map they reach the next base's range. Check: none needed below that.
+
 ## Share and layouts: what Patch 777 left out
 
 - Site: `src/client/cl_paint.qc` Paint_Add / Paint_Push. Received discs share the ring

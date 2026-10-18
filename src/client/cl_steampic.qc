@@ -176,6 +176,67 @@ void() SteamPic_Alloc =
 	sp_base = 1000000 + floor(random() * 1000) * 4000;
 };
 
+/*
+  Patch 781: THE MARKS A PREFETCHED BOARD WILL SHOW (cl_online.qc), asked while
+  nothing on screen wants one and kept on disk only -- no slot, so they never
+  push a drawn picture out.  A mark with a copy from today is skipped; the
+  first draw then loads it from disk in a frame.
+*/
+#define SP_WARMMAX 64
+float  sp_warm;                 // strbuf of marks, in the order the boards gave them
+float  sp_warmn, sp_warmi, sp_wreq, sp_wat, sp_wgot;
+string sp_wmark;
+
+void(string mark) SteamPic_Warm =
+{
+	local float i;
+
+	if (strlen(mark) != 8)
+		return;
+	for (i = 0; i < 8; i = i + 1)
+		if (strstrofs("0123456789abcdef", substring(mark, i, 1), 0) < 0)
+			return;
+	SteamPic_Alloc();
+	if (!sp_warm)
+		sp_warm = buf_create();
+	if (sp_warmn >= SP_WARMMAX)
+		return;
+	for (i = 0; i < sp_warmn; i = i + 1)
+		if (!strcmp(bufstr_get(sp_warm, i), mark))
+			return;
+	bufstr_set(sp_warm, sp_warmn, mark);
+	sp_warmn = sp_warmn + 1;
+};
+
+// The next warm mark without a copy from today, asked; SP_DISKBURST disk looks a frame.
+void() SP_WarmAsk =
+{
+	local string mark;
+	local float n;
+
+	for (n = 0; n < SP_DISKBURST && sp_warmi < sp_warmn; n = n + 1)
+	{
+		mark = bufstr_get(sp_warm, sp_warmi);
+		sp_warmi = sp_warmi + 1;
+		if (strlen(SP_DiskLoad(mark)))
+		if (sp_dage == 0)
+			continue;
+		sp_next = cltime + SP_GAP;
+		sp_wat = cltime;
+		sp_wreq = sp_base + sp_asked - floor(sp_asked / 4000) * 4000;
+		sp_asked = sp_asked + 1;
+		if (sp_wmark != "") strunzone(sp_wmark);
+		sp_wmark = strzone(mark);
+		if (!uri_get(sprintf("%s/api/board?avatar=%s", cvar_string("lobby_dir"), mark), sp_wreq))
+		{
+			sp_wreq = 0;
+			sp_next = cltime + SP_PAUSE;
+			sp_bad = sp_bad + 1;
+		}
+		return;
+	}
+};
+
 // The image to draw for a mark, or "" while there is none: then the mark is
 // noted, and asked for when its turn comes.
 string(string mark) SteamPic_Of =
@@ -327,6 +388,12 @@ void() SteamPic_Frame =
 		return;                             // the disk first: more may be waiting
 	if (sp_req)
 		return;
+	if (sp_wreq)
+	{
+		if (cltime - sp_wat > SP_TIMEOUT)
+			sp_wreq = 0;               // written off; its late answer matches nothing
+		return;
+	}
 	if (sp_bad >= SP_STRIKES)
 		return;
 	if (cltime < sp_next)
@@ -349,7 +416,10 @@ void() SteamPic_Frame =
 			if (cltime - sp_used[i] <= SP_SEEN)
 				break;
 	if (i >= SPIC_MAX)
+	{
+		SP_WarmAsk();                   // nothing drawn wants one
 		return;
+	}
 
 	sp_next = cltime + SP_GAP;
 	sp_at[i] = cltime;
@@ -435,6 +505,27 @@ float(float slot, string bdy) SP_Upload =
 // Its answer (URI_Get_Callback).  TRUE when the id was this request's.
 float(float reqid, float code, string bdy) SteamPic_Reply =
 {
+	if (sp_wreq)
+	if (reqid == sp_wreq)
+	{
+		sp_wreq = 0;
+		if (code)
+		if (code != 404)
+		{
+			sp_next = cltime + SP_PAUSE;
+			sp_bad = sp_bad + 1;
+			return TRUE;
+		}
+		sp_bad = 0;
+		if (!code)
+		if (strlen(bdy) == SP_HEAD + SP_PX * SP_ROW)
+		if (!strcmp(substring(bdy, 0, SP_HEAD), "FTESURF-AVATAR 1 32 32\n"))
+		{
+			SP_DiskStore(sp_wmark, bdy);
+			sp_wgot = sp_wgot + 1;
+		}
+		return TRUE;
+	}
 	if (!sp_req)
 		return FALSE;
 	if (reqid != sp_req)
@@ -481,6 +572,7 @@ void() SteamPic_Status =
 	print(sprintf("steampic: asked %g got %g inflight %g strikes %g hold %g\n", sp_asked, sp_got,
 	              sp_req ? 1 : 0, sp_bad, max(0, cvar("_steampic_hold") - gettime(0))));
 	print(sprintf("steampic: disk hits %g (a file a mark, %g days)\n", sp_disk, SP_DISKDAYS));
+	print(sprintf("steampic: ahead of the board %g queued, %g looked at, %g kept\n", sp_warmn, sp_warmi, sp_wgot));
 	if (sp_st)
 	for (i = 0; i < SPIC_MAX; i = i + 1)
 		if (sp_st[i])

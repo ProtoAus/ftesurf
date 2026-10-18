@@ -284,8 +284,8 @@ def view_for(lines, rot=0.0, lo=0.0, hi=1.0, dense=1, dense_lo=0.0,
     return out
 
 
-def run(lines, name="t.rec", view=None):
-    """-> (faults, notes) as reccheck.py reports them."""
+def run(lines, name="t.rec", view=None, report=False):
+    """-> (faults, notes), optionally with the complete reader report."""
     d = tempfile.mkdtemp(prefix="reccheck_t")
     try:
         p = os.path.join(d, name)
@@ -294,13 +294,17 @@ def run(lines, name="t.rec", view=None):
         if view is not None:
             with open(os.path.splitext(p)[0] + ".view", "w", encoding="utf-8") as f:
                 f.write("\n".join(view) + "\n")
-        out = subprocess.run([sys.executable, RECCHECK, "-v", p],
-                             capture_output=True, text=True).stdout
+        proc = subprocess.run([sys.executable, RECCHECK, "-v", p],
+                              capture_output=True, text=True)
+        if (proc.returncode not in (0, 1) or "Traceback" in proc.stderr
+                or "file(s) checked" not in proc.stdout):
+            raise AssertionError("reader did not complete: %s\n%s" % (proc.stdout, proc.stderr))
+        out = proc.stdout
         faults = [l.strip()[2:] for l in out.splitlines()
                   if l.strip().startswith("! ")]
         notes = [l.strip()[2:] for l in out.splitlines()
                  if l.strip().startswith("- ")]
-        return faults, notes
+        return (faults, notes, out) if report else (faults, notes)
     finally:
         shutil.rmtree(d, ignore_errors=True)
 
@@ -2040,6 +2044,119 @@ def case_angle_lag_is_not_claimed_when_the_winner_is_bad():
         print("        notes=%s" % n)
 
 
+def held_clock_pair(holds=((150, 73), (350, 137)), sessions=()):
+    """Independent run-clock view; only raw server counters acquire held time."""
+    base = head(build(sweep=128, packets=600, ver=10 if sessions else 9,
+                      sessions=sessions), "flags", 1)
+    view = view_for(base)
+    out, n, frozen = [], 0, 0
+    for line in base:
+        f = line.split()
+        if f[0] == "session":
+            frozen = 0
+        if f[0] == "begin":
+            out.append("holdclock 1")
+        if f[0] == "in":
+            for at, gap in holds:
+                if n == at:
+                    frozen += gap
+                    out.append("hold %d %d" % (int(f[2]) + frozen, frozen))
+            f[2] = str(int(f[2]) + frozen)
+            line = " ".join(f)
+            n += 1
+        elif f[0] in ("inend", "pause"):
+            f[1] = str(int(f[1]) + frozen)
+            line = " ".join(f)
+        out.append(line)
+    return out, view
+
+
+def case_angle_hold_clock():
+    L, view = held_clock_pair()
+    f, n, report = run(L, view=view, report=True)
+    check(not f, "two held intervals join the independent run-clock sidecar")
+    check("angle_rule     tight" in report,
+          "held-clock correction retains an acting one-frame comparison")
+    if f:
+        print("        %s" % f)
+    missing = [l for l in L if not l.startswith("hold ")]
+    f, _ = run(missing, view=view)
+    check(any("sidecar" in x for x in f),
+          "removing clock edges reproduces the mismatch, not a blanket exemption")
+    base = head(build(sweep=128, packets=600), "flags", 1)
+    for lo, what in ((0.0, "whole"), (0.65, "post-hold")):
+        f, _ = run(L, view=view_for(base, rot=5, lo=lo))
+        check(any("sidecar" in x or "does not describe" in x for x in f),
+              "%s sidecar rotation still faults with honest server clock edges" % what)
+    injected = view[:4] + ["hold 999999 999999"] + view[4:]
+    f, _ = run(missing, view=injected)
+    check(any("sidecar" in x for x in f),
+          "a sidecar-supplied edge cannot repair the authoritative clock")
+
+
+def case_angle_hold_legacy():
+    L, view = held_clock_pair()
+    legacy = [l for l in L if not l.startswith(("hold ", "holdclock "))]
+    for unclosed in (False, True):
+        part = [l for l in legacy if not l.startswith(("end ", "inend "))] if unclosed else legacy
+        if unclosed:
+            part = head(part, "flags", 0)  # a prefix's placeholder, NOT a clean verdict
+        f, n = run(part, name="run.rec" if unclosed else "t.rec", view=view)
+        check(not f and any("legacy hold clock not stated" in x for x in n),
+              "legacy %s clock is explicitly unavailable, never an angle conviction"
+              % ("prefix" if unclosed else "practice"))
+    ranked = build(sweep=128, packets=600)
+    f, _ = run(ranked, view=view_for(ranked, rot=5))
+    check(any("sidecar" in x or "does not describe" in x for x in f),
+          "legacy closed ranked no-hold records retain their existing comparison")
+    future = head(L[:], "holdclock", 2)
+    f, n = run(future, view=view)
+    check(not f and any("unsupported hold clock" in x for x in n),
+          "an unknown future clock cannot claim an angle OK or a conviction")
+
+
+def case_angle_hold_origins():
+    L, _ = held_clock_pair(holds=((150, 73), (161, 37)),
+                           sessions=((160, 10, "retry"),))
+    f, _ = run(L)
+    check(not f, "a session resets cumulative exclusion and its prior-origin floor")
+    if f:
+        print("        %s" % f)
+    L = build(sweep=128, packets=600)
+    R = L[:]
+    R.insert(next(i for i, l in enumerate(R) if l.startswith("in ")),
+             "resume 001 0")
+    f, n, report = run(R, view=view_for(L, rot=90), report=True)
+    check(not f and "angle_rule     unavailable" in report,
+          "an unknown restored origin cannot produce even a loose-rule conviction")
+    bad = view_for(L)
+    bad[4] = "10.01 1 nan 0 0 0"
+    f, _ = run(R, view=bad)
+    check(any("not a number" in x or "NaN" in x or "finite" in x for x in f),
+          "clock abstention does not suppress independent sidecar format faults")
+
+
+def case_angle_hold_shape():
+    L, view = held_clock_pair()
+    for bad in ("hold x 3", "hold 1", "hold 100 -1", "hold 20 21",
+                "hold 99999999999999999 3", "hold 10 0"):
+        mutant = L[:]
+        ix = next(i for i, l in enumerate(mutant) if l.startswith("hold "))
+        mutant[ix] = bad
+        f, _ = run(mutant, view=view)
+        check(any("'hold'" in x for x in f), "invalid clock edge %r cannot remap angles" % bad)
+    mutant = L[:]
+    ix = [i for i, l in enumerate(mutant) if l.startswith("hold ")][1]
+    f = mutant[ix].split()
+    mutant[ix] = "hold %s 1" % f[1]
+    faults_with(mutant, "counters go backwards", "cumulative exclusions cannot decrease")
+    mutant = L[:]
+    ix = next(i for i, l in enumerate(mutant) if l.startswith("hold "))
+    f = mutant[ix].split()
+    mutant[ix] = "hold %d %s" % (int(f[1]) + 50, f[2])
+    faults_with(mutant, "below the preceding hold horizon", "a clock edge cannot cover earlier input")
+
+
 def case_angle_splice():
     """A CONTIGUOUS BLOCK FROM SOMEWHERE ELSE, which the fraction rule alone
     misses: --tamper-view put a tenth of surf_kitsune 90 deg out and scored
@@ -2117,6 +2234,8 @@ def main():
                case_angle_omission_does_not_read_as_cover,
                case_angle_tight_rule_abstains_where_the_epoch_moves,
                case_angle_tight_rule_is_keyed_on_the_source_not_the_version,
+               case_angle_hold_clock, case_angle_hold_legacy, case_angle_hold_origins,
+               case_angle_hold_shape,
                case_angle_splice, case_angle_no_sidecar_is_silent):
         # argv: case-name prefixes to run (default all).
         if sys.argv[1:] and not fn.__name__.startswith(tuple(sys.argv[1:])):

@@ -4690,8 +4690,14 @@ void(entity e, entity t) SV_SpecWatch =
 };
 
 // The countdown (run_spec_countdown s) back into the body; `lost`: the target left.
+// Patch 784: 0, the default, is no countdown -- back in the body on this packet.
 void(entity e, float lost) SV_SpecCount =
 {
+	if (cvar("run_spec_countdown") <= 0)
+	{
+		SV_SpecRelease(e, lost ? "notarget" : "leave");
+		return;
+	}
 	e.run_sp_phase = 2;
 	e.run_sp_until = time + max(0, cvar("run_spec_countdown"));
 	e.run_sp_lost = lost;

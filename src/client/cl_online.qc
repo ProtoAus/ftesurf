@@ -169,6 +169,10 @@ float  ob_nextid;
 
 float() Online_NextReq =
 {
+	// Patch 781: from a base drawn per VM, as cl_steampic.qc's are: ids restarted at 1
+	// each map, and the last map's late reply was parsed as this map's board.
+	if (!ob_nextid)
+		ob_nextid = 7000000 + floor(random() * 1000) * 8000;
 	ob_nextid = ob_nextid + 1;
 	return ob_nextid;
 };
@@ -182,12 +186,14 @@ float() Online_NextReq =
 float  ob_gen;
 float  ob_q_gen;
 float  ob_mine;
-void() Online_MarkStale = { ob_gen = ob_gen + 1; };
+float  ob_staleat;         // Patch 781: cached copies stored before this are asked again when shown
+void() Online_MarkStale = { ob_gen = ob_gen + 1; ob_staleat = cltime; };
 
 float  ob_code;            // last non-zero responsecode
 float  ob_when;            // cltime the rows landed
 float  ob_sent;            // cltime the in-flight request went out; 0 = none
 float  ob_retry_at;        // cltime after which ONE re-ask is allowed; 0 = never
+float  ob_owed;            // Patch 781: the rows up are a stale copy: ask once behind them
 
 /*
   The SERVER's clock at the moment it answered -- root `t`, beside the rows'
@@ -405,6 +411,20 @@ void() Online_Clear =
 	Online_FreeHave();
 };
 
+// What the next parsed rows are, as asked: Online_Fetch and a cached copy alike.
+void(string mname, float track, float leg, string tier, string style) Online_SetQuery =
+{
+	Online_FreeQuery();
+	ob_q_name = strzone(ob_name);
+	ob_q_map   = strzone(mname);
+	ob_q_tier  = strzone(tier);
+	ob_q_style = strzone(style);
+	ob_q_track = track;
+	ob_q_leg   = leg;
+	ob_q_zoned = TRUE;
+	ob_q_gen   = ob_gen;
+};
+
 /*
   Ask surfd for one board.
 
@@ -471,15 +491,8 @@ float(float track, float leg, string tier, string style) Online_Fetch =
 	if (mname == "")
 		return FALSE;
 
-	Online_FreeQuery();
-	ob_q_name = strzone(ob_name);
-	ob_q_map   = strzone(mname);
-	ob_q_tier  = strzone(tier);
-	ob_q_style = strzone(style);
-	ob_q_track = track;
-	ob_q_leg   = leg;
-	ob_q_zoned = TRUE;
-	ob_q_gen   = ob_gen;
+	Online_SetQuery(mname, track, leg, tier, style);
+	ob_owed = FALSE;
 
 	/*
 	  uri_escape on the map name even though every name in the library is
@@ -515,7 +528,7 @@ float(float track, float leg, string tier, string style) Online_Fetch =
 };
 
 // One /api/board row into slot i.  Both the first page and appended pages use it.
-void(float i, float row) Online_RowSet =
+void(float i, int row) Online_RowSet =
 {
 	local string s;
 
@@ -620,7 +633,8 @@ float(float from, float to) Online_FindMine =
 */
 void(string body) Online_Parse =
 {
-	local float root, rows, counts, n, i;
+	local int root, rows, counts;
+	local float n, i;
 	local string s;
 
 	root = json_parse(body);
@@ -770,7 +784,8 @@ float() Online_FetchMore =
 // The reply to Online_FetchMore.  Appends, or drops a page that no longer fits.
 void(float code, string body) Online_ParseMore =
 {
-	local float root, rows, n, i;
+	local int root, rows;
+	local float n, i;
 
 	ob_more_req = 0;
 	if (code)
@@ -814,6 +829,255 @@ void(float code, string body) Online_ParseMore =
 		ob_n = ob_n + n;
 		// Not Players_AbsorbBoard: the room list wants the first page's best
 		// times, and it rescans every row held on each call.
+	}
+	json_free(root);
+};
+
+/*
+  Patch 781: THE FIRST PAGE OF EVERY BOARD ASKED ON THIS MAP, kept by query as
+  the reply's own body and parsed again on a switch back, so a switch draws at
+  once.  The main leg's sections are asked once at map load (OBP), and kept in
+  data/boards/<map>.txt for the next visit.  A copy older than OBC_FRESH, or
+  one read from disk (t -1), goes up at once and is asked again behind its rows.
+*/
+#define OBC_N      24
+#define OBC_FRESH  60
+#define OBC_HEAD   "FTESURF-BOARDS 1"
+#define OBP_N      9       // OBP_Section's count
+#define OBP_GAP    0.4     // s between them; surfd's board budget is 120 a minute
+#define OBP_FACES  24      // rows a section's pictures are fetched for ahead of time
+float  obc_key, obc_body;  // strbufs, by slot
+float  *obc_t;             // cltime stored; -1 read from disk; 0 free
+float  obc_dirty, obc_saveat, obc_loaded;
+float  ob_fromdisk;        // the rows up are the saved copy, and nothing newer has landed
+float  obp_req, obp_sent, obp_next, obp_i;
+string obp_key;
+string() Scores_TierOf;
+string() Scores_StyleOf;
+void(string mark) SteamPic_Warm;
+
+string(float track, float leg, string tier, string style) OBC_Key =
+{
+	return sprintf("%g %g %s %s", track, leg, tier, style);
+};
+
+float(string key) OBC_Find =
+{
+	local float i;
+
+	if (!obc_t)
+		return -1;
+	for (i = 0; i < OBC_N; i = i + 1)
+		if (obc_t[i] != 0)
+		if (!strcmp(bufstr_get(obc_key, i), key))
+			return i;
+	return -1;
+};
+
+// Into the slot holding `key`, else a free one, else the oldest (disk copies first).
+void(string key, string body, float t) OBC_Put =
+{
+	local float i, j;
+
+	if (!obc_t)
+	{
+		obc_key = buf_create();
+		obc_body = buf_create();
+		obc_t = memalloc(sizeof(float) * OBC_N);
+	}
+	i = OBC_Find(key);
+	if (i < 0)
+	{
+		i = 0;
+		for (j = 1; j < OBC_N; j = j + 1)
+			if (obc_t[i] != 0)
+			if (obc_t[j] == 0 || obc_t[j] < obc_t[i])
+				i = j;
+	}
+	bufstr_set(obc_key, i, key);
+	bufstr_set(obc_body, i, body);
+	obc_t[i] = t;
+	if (t > 0)
+	{
+		obc_dirty = TRUE;
+		obc_saveat = cltime + 5;
+	}
+};
+
+// data/boards/<map>.txt, or "" for a map name that should not become a path.
+string() OBC_Path =
+{
+	local string m;
+	local float i, c;
+
+	m = strtolower(serverkey("map"));
+	if (m == "" || strlen(m) > 64)
+		return "";
+	for (i = 0; i < strlen(m); i = i + 1)
+	{
+		c = str2chr(m, i);
+		if (!(c >= 48 && c <= 57) && !(c >= 97 && c <= 122) && c != 95 && c != 45)
+			return "";
+	}
+	return strcat("data/boards/", m, ".txt");
+};
+
+// A body a row a line, split after each "}," of "},{": fgets reads at most 4095
+// bytes a line.  Not strreplace, which returns at most 4095 (pr_bgcmd.c): a
+// 22 KB board came back cut and was dropped on use.  The reader joins the
+// lines with nothing, so the split is undone byte for byte.
+void(filestream fh, string body) OBC_PutBody =
+{
+	local float at, next;
+
+	at = 0;
+	while (1)
+	{
+		next = strstrofs(body, "},{", at);
+		if (next < 0)
+			break;
+		fputs(fh, substring(body, at, next + 2 - at), "\n");
+		at = next + 2;
+	}
+	fputs(fh, substring(body, at, -1), "\n");
+};
+
+// The main leg's copies: "@ <key>", the body (OBC_PutBody), "@end".
+void() OBC_Save =
+{
+	local string path;
+	local filestream fh;
+	local float i;
+
+	obc_dirty = FALSE;
+	path = OBC_Path();
+	if (path == "" || !obc_t)
+		return;
+	fh = fopen(strcat(path, ".part"), FILE_WRITE);
+	if (fh < 0)
+		return;
+	fputs(fh, strcat(OBC_HEAD, "\n"));
+	for (i = 0; i < OBC_N; i = i + 1)
+		if (obc_t[i] != 0)
+		if (!strcmp(substring(bufstr_get(obc_key, i), 0, 4), "0 0 "))
+		{
+			fputs(fh, "@ ", bufstr_get(obc_key, i), "\n");
+			OBC_PutBody(fh, bufstr_get(obc_body, i));
+			fputs(fh, "@end\n");
+		}
+	fclose(fh);
+	fremove(path);                  // Windows rename cannot replace
+	if (frename(strcat(path, ".part"), path) != 0)
+		fremove(strcat(path, ".part"));
+};
+
+void() OBC_Load =
+{
+	local string path, ln, key, body;
+	local filestream fh;
+	local float n;
+
+	obc_loaded = TRUE;
+	path = OBC_Path();
+	if (path == "")
+		return;
+	fh = fopen(path, FILE_READ);
+	if (fh < 0)
+		return;
+	if (strcmp(fgets(fh), OBC_HEAD))
+	{
+		fclose(fh);
+		return;
+	}
+	key = body = "";
+	n = 0;
+	while (1)
+	{
+		ln = fgets(fh);
+		if not (ln)
+			break;
+		if (!strcmp(substring(ln, 0, 2), "@ "))
+		{
+			key = substring(ln, 2, -1);
+			body = "";
+		}
+		else if (!strcmp(ln, "@end"))
+		{
+			if (key != "")
+			if (OBC_Find(key) < 0)
+			{
+				OBC_Put(key, body, -1);
+				n = n + 1;
+			}
+			key = "";
+		}
+		else if (key != "")
+			body = strcat(body, ln);
+	}
+	fclose(fh);
+	if (n)
+		print(sprintf("scores: %g saved board(s) for this map, from %s\n", n, path));
+};
+
+// A held copy onto the board: the reply's own parse, under its own query.
+void(float i, float track, float leg, string tier, string style) Online_FromCache =
+{
+	Online_SetQuery(serverkey("map"), track, leg, tier, style);
+	ob_req = 0;                     // a board still on the wire lands on nothing
+	Online_Parse(bufstr_get(obc_body, i));
+	ob_fromdisk = (obc_t[i] < 0);
+};
+
+// The main leg's sections in the order they are asked: the one the board opens on first.
+string(float i) OBP_Section =
+{
+	if (i == 0) return strcat(Scores_TierOf(), " ", Scores_StyleOf());
+	if (i == 1) return "combined clean";
+	if (i == 2) return "ranked clean";
+	if (i == 3) return "momentum clean";
+	if (i == 4) return "ksf clean";
+	if (i == 5) return "ranked segmented";
+	if (i == 6) return "ksf sw";
+	if (i == 7) return "ksf hsw";
+	return "ksf bw";
+};
+
+// A prefetch's answer: kept when it is the section asked, and its first rows' pictures queued.
+void(float code, string body) Online_PrefetchReply =
+{
+	local int root, rows, row;
+	local float i, n;
+	local string s;
+
+	if (code)
+	{
+		if (Online_Retryable(code))
+		{
+			obp_i = max(0, obp_i - 1);  // the same section, after the pause
+			obp_next = cltime + OB_RETRY_SECS;
+		}
+		return;
+	}
+	root = json_parse(body);
+	if (!root)
+		return;
+	rows = json_find_object_child(root, "rows");
+	s = OBC_Key(json_get_float(json_find_object_child(root, "track")),
+	            json_get_float(json_find_object_child(root, "leg")),
+	            json_get_string(json_find_object_child(root, "tier")),
+	            json_get_string(json_find_object_child(root, "style")));
+	if (rows)
+	if (!strcmp(s, obp_key))
+	if (!strcasecmp(json_get_string(json_find_object_child(root, "map")), serverkey("map")))
+	{
+		OBC_Put(obp_key, body, max(cltime, 0.001));
+		n = min(OBP_FACES, json_get_length(rows));
+		for (i = 0; i < n; i = i + 1)
+		{
+			row = json_get_child_at_index(rows, i);
+			if (json_get_float(json_find_object_child(row, "av")))
+				SteamPic_Warm(FS_GuidId(json_get_string(json_find_object_child(row, "player"))));
+		}
 	}
 	json_free(root);
 };
@@ -1453,7 +1717,7 @@ void() Online_MomBindRow =
 
 void(float code, string body) Online_MomReply =
 {
-	local float root;
+	local int root;
 	local string state, why;
 	om_req = 0;
 	om_due = cltime + 10;
@@ -1521,7 +1785,7 @@ string(float track, float leg, string style) Online_KsfState =
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
 	local string fn;
-	local float kr;
+	local int kr;
 
 	if (ok_req)
 	if (reqid == ok_req)
@@ -1607,6 +1871,13 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 		Online_ParseMore(responsecode, resourcebody);
 		return;
 	}
+	if (obp_req)
+	if (reqid == obp_req)
+	{
+		obp_req = 0;
+		Online_PrefetchReply(responsecode, resourcebody);
+		return;
+	}
 
 	if (reqid != ob_req)
 		return;                 // a board we have already replaced, or not ours
@@ -1625,6 +1896,13 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 	}
 
 	Online_Parse(resourcebody);
+	if (ob_state == OBS_OK)
+	if (ob_have_name == "")
+	{
+		OBC_Put(OBC_Key(ob_have_track, ob_have_leg, ob_have_tier, ob_have_style),
+		        resourcebody, max(cltime, 0.001));
+		ob_fromdisk = FALSE;
+	}
 };
 
 /*
@@ -1737,6 +2015,8 @@ float(float track, float leg, string tier, string style) Online_Shows =
 */
 float(float track, float leg, string tier, string style) Online_Need =
 {
+	local float i;
+
 	if (strcmp(ob_name, Profile_BoardQuery()))
 	{
 		strunzone(ob_name);
@@ -1747,6 +2027,27 @@ float(float track, float leg, string tier, string style) Online_Need =
 	}
 	if (!Profile_BoardReady()) return FALSE;
 	Online_Poll();                      // the deadline (see Online_Poll)
+	// Patch 781: a switch to a board held in the cache draws it at once.
+	if (ob_name == "")
+	if (!Online_Asked(track, leg, tier, style, FALSE))
+	{
+		i = OBC_Find(OBC_Key(track, leg, tier, style));
+		if (i >= 0)
+		{
+			Online_FromCache(i, track, leg, tier, style);
+			if (ob_state == OBS_OK)
+			{
+				ob_owed = (obc_t[i] < 0 || cltime - obc_t[i] > OBC_FRESH || obc_t[i] <= ob_staleat);
+				return FALSE;
+			}
+			obc_t[i] = 0;               // a copy that does not parse is dropped and asked for
+			return Online_Fetch(track, leg, tier, style);
+		}
+		// The map-load prefetch is asking this one: let it land.
+		if (obp_req)
+		if (!strcmp(obp_key, OBC_Key(track, leg, tier, style)))
+			return FALSE;
+	}
 	if (ob_state == OBS_FETCH)
 	{
 		return FALSE;                   // one in flight; let it land
@@ -1759,6 +2060,8 @@ float(float track, float leg, string tier, string style) Online_Need =
 	{
 		// Asked before a finish landed on the board: ask once more (Patch 357).
 		if (ob_q_gen != ob_gen)
+			return Online_Fetch(track, leg, tier, style);
+		if (ob_owed)
 			return Online_Fetch(track, leg, tier, style);
 
 		/*
@@ -1781,6 +2084,62 @@ float(float track, float leg, string tier, string style) Online_Need =
 	}
 
 	return Online_Fetch(track, leg, tier, style);
+};
+
+// Once a frame: the next section's first page, OBP_GAP apart, one in flight;
+// and the disk copy, five seconds after the last page landed.
+void() Online_Prefetch =
+{
+	local string dir, mname, url, tier, style;
+	local float i;
+
+	if (obc_dirty)
+	if (cltime >= obc_saveat)
+		OBC_Save();
+	if (obp_req)
+	{
+		if (cltime - obp_sent > OB_DEADLINE)
+			obp_req = 0;                // written off; a late reply matches nothing
+		return;
+	}
+	if (obp_i >= OBP_N || cltime < obp_next || cltime < 2)
+		return;
+	if (ob_name != "")
+		return;
+	if (ui_consent_ver < FS_TERMS_ONLINE)
+	if (cvar("rec_terms") < FS_TERMS_ONLINE)
+		return;
+	dir = cvar_string("lobby_dir");
+	mname = serverkey("map");
+	if (dir == "" || mname == "")
+		return;
+	if (!obc_loaded)
+		OBC_Load();
+	tokenize(OBP_Section(obp_i));
+	tier = argv(0);
+	style = argv(1);
+	obp_i = obp_i + 1;
+	if (obp_key != "")
+		strunzone(obp_key);
+	obp_key = strzone(OBC_Key(0, 0, tier, style));
+	i = OBC_Find(obp_key);
+	if (i >= 0)
+	if (obc_t[i] > 0)
+		return;                         // the board has asked it already
+	if (ob_state == OBS_FETCH)
+	if (Online_Asked(0, 0, tier, style, FALSE))
+		return;                         // and is asking it now
+	url = sprintf("%s/api/board?map=%s&track=0&leg=0&tier=%s&style=%s&limit=%g",
+	              dir, uri_escape(mname), uri_escape(tier), uri_escape(style), OB_PAGE);
+	obp_req = Online_NextReq();
+	if (!uri_get(url, obp_req))
+	{
+		obp_req = 0;
+		obp_next = cltime + OB_RETRY_SECS;
+		return;
+	}
+	obp_sent = cltime;
+	obp_next = cltime + OBP_GAP;
 };
 
 /*
@@ -1931,6 +2290,13 @@ void() Online_Status =
 	print(sprintf("  gen %g asked %g  mine %g\n", ob_gen, ob_q_gen, ob_mine));
 	print(sprintf("  more %g  append %g  held %g of %g\n",
 	              ob_more, ob_more_req != 0, ob_n, OB_MAXROW));
+	word = "";
+	if (obc_t)
+	for (i = 0; i < OBC_N; i = i + 1)
+		if (obc_t[i] != 0)
+			word = strcat(word, (word == "") ? "" : ", ", bufstr_get(obc_key, i), (obc_t[i] < 0) ? " (saved)" : "");
+	print(sprintf("  cache: %s\n  prefetch %g/%g%s%s\n", (word == "") ? "none" : word, obp_i, OBP_N,
+	              obp_req ? " (asking)" : "", ob_fromdisk ? "  rows up: the saved copy" : ""));
 
 	/*
 	  1/rate, AND THE INVERSION IS THE POINT.  Two different units meet here and

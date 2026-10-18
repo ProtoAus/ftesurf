@@ -136,6 +136,7 @@ void() MU_Poll;
 void(vector screensize) MU_Screen;
 void(vector screensize) MU_Status;
 float() MF_Count;
+float() MF_Fresh;
 void() MF_Init;
 void(float visible) MF_Poll;
 void() MF_ResumeJoin;
@@ -2212,11 +2213,17 @@ void() ui_dl_load =
 	local filestream fh;
 	local hashtable byname;
 	local string ln, nm, key, of;
-	local float i, n, row, appended, badged, stale, network;
+	local float i, n, row, appended, badged, stale, network, older;
 
 	// Patch 652: the list fetched from the directory (m_lobby.qc Mdl_Reply,
 	// which wrote it row by row), else the one the release shipped.
-	fh = fopen(MDL_FILE, FILE_READ);
+	// Patch 781: not when the shipped one is newer (offline after an update).
+	older = Mdl_NetOlder();
+	fh = -1;
+	if (!older)
+		fh = fopen(MDL_FILE, FILE_READ);
+	else
+		print("^5maplist:^7 the shipped list is newer than the saved directory list -- reading it\n");
 	network = (fh >= 0);
 	if (fh < 0)
 		fh = fopen("data/mapdl.txt", FILE_READ);
@@ -7878,6 +7885,40 @@ void() m_init =
 	}
 };
 
+/*
+  Patch 781 (Lex): the picker's list -- and its thumbnail atlases, which
+  ui_meta_load starts -- is built half a second into the menu rather than on
+  the first PLAY, so the picker opens loaded.  Not while in a game with the
+  menu shut: there the load would be a hitch mid-run, and PLAY still loads it.
+*/
+float ui_boot_at, ui_boot_done;
+void() ui_boot_preload =
+{
+	local float t;
+
+	if (ui_boot_done)
+		return;
+	if (ms_count)
+	{
+		ui_boot_done = TRUE;
+		return;
+	}
+	if (!ui_boot_at)
+	{
+		ui_boot_at = time + 0.5;
+		return;
+	}
+	if (time < ui_boot_at)
+		return;
+	if (clientstate() != 1)
+	if (!menu_active)
+		return;
+	ui_boot_done = TRUE;
+	t = gettime(1);
+	ui_create_open();
+	print(sprintf("^5maplist:^7 %g maps loaded at boot in %g ms\n", ms_count, rint((gettime(1) - t) * 1000)));
+};
+
 // screensize is the VIRTUAL screen -- equal to the framebuffer at
 // vid_conautoscale 1.  Declaring this with a vector parameter matters: two
 // float parameters would make the engine assume a DarkPlaces menu and hand
@@ -7911,6 +7952,7 @@ void(vector screensize) m_draw =
 	// owns consent, in-flight and one-minute refresh guards.
 	Mdl_Ask();
 	Mzd_Pump();
+	ui_boot_preload();
 
 	// m_draw is called EVERY frame whether or not the menu has focus
 	// (menu.c:168-176), so the gate is ours to enforce.
@@ -8265,7 +8307,7 @@ float(string cmd) m_consolecommand =
 		print(sprintf("ui_menu_probe: filters=%g large=%g friends=%g rows=%g maps=%g tier=%g scroll=%.1f\n",
 			cvar("ui_maps_filters"), cvar("ui_maps_large"), cvar("ui_maps_friends"), ui_cs_rows,
 			ms_viewcount, ms_tier, ms_scroll_y));
-		print(sprintf("ui_menu_probe: friends_count=%g client=%g screen=%g friends_draw=%g\n", cvar("ui_friends_count"), clientstate(), menu_screen, MF_Count()));
+		print(sprintf("ui_menu_probe: friends_count=%g client=%g screen=%g friends_draw=%g friends_fresh=%g\n", cvar("ui_friends_count"), clientstate(), menu_screen, MF_Count(), MF_Fresh()));
 		return TRUE;
 	}
 	if (strcmp(argv(0), "ui_update_probe") == 0)

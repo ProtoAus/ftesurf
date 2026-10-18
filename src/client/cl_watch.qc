@@ -4374,6 +4374,13 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 		return FALSE;
 	}
 
+	// Patch 784: before anything is let go, so a wrong pick keeps the open replay.
+	if (strstrofs(path, ".rec") < 0)
+	{
+		print(sprintf("replay: %s is not a .rec\n", path));
+		return FALSE;
+	}
+
 	// Patch 477 review round 10: nor under a save-lock hold, which the server's
 	// pin refuses -- the replay would run over a body nobody holds once the hold
 	// lets go.  The rewind hands its pin over only while browsing.
@@ -4385,12 +4392,6 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 	rec_wt_loadms = gettime(1);
 	Watch_NavClear();
 	Watch_Free();
-
-	if (strstrofs(path, ".rec") < 0)
-	{
-		print(sprintf("replay: %s is not a .rec\n", path));
-		return FALSE;
-	}
 
 	buf = buf_create_ex("string", 0);
 	if (buf < 1)
@@ -4411,6 +4412,7 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 	{
 		buf_del(buf);
 		print(sprintf("replay: cannot read %s\n", path));
+		Watch_Stop();               // Patch 784: the replay it replaced is gone too
 		return FALSE;
 	}
 	rec_wt_rec  = buf;
@@ -4456,6 +4458,7 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 	{
 		print(sprintf("replay: %s holds %g samples -- nothing to play\n",
 		              path, rec_wt_nsamp));
+		Watch_Stop();               // Patch 784: release the replaced one's pin/cursor
 		Watch_Free();
 		return FALSE;
 	}

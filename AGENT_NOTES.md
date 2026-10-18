@@ -1,5 +1,33 @@
 # AGENT_NOTES.md
 
+## Boards, friends and the map list that stay loaded (P781, 2026-10-18)
+
+- A JSON node handle is a byte offset into the QC heap: keep `json_parse`,
+  `json_find_object_child` and `json_get_child_at_index` results in `int`, never `float`.
+  Past float precision the offset rounds off its allocation, accessors read the wrong
+  node, and the only trace is `PR_memfree: pointer lacks marker - double-freed?` at the
+  `json_free`. Online_Parse had them in floats: on surf_kitsune (installed csprogs
+  d7316a58) the first KSF and every-game switches parsed as 0 rows with 4 marker errors in
+  each of two runs, and the board then never asked again ("no times" until a click back).
+  int handles: 100 rows, 0 errors. Same allocation sequence, same failures: a repeatable
+  control. P741 already said this for the menu.
+- `strreplace` and `fgets` stop at 4095 bytes (pr_bgcmd.c, fixed 4096 buffers): a 22 KB
+  board written through strreplace came back cut and was dropped on use. `strcat` and
+  `substring` have no cap; `strstrofs` and `substring` both count characters under UTF-8.
+- uri_get replies are delivered by world spawncount, which CSQC never bumps: a reply to the
+  last map's request reaches this map's VM with its id. Request ids now start from a
+  per-VM base (Online_NextReq 7e6+, steampic 1e6+, zone publish 6.1e6+).
+- The in-game cache (cl_online.qc OBC/OBP): first pages by "track leg tier style", 24
+  slots; the main leg's nine sections asked 2 s after load, 0.4 s apart (surfd allows 120
+  board requests a minute per address, avatars included); the first 24 rows' pictures
+  asked ahead to disk only (SteamPic_Warm, no slot); data/boards/<map>.txt holds the main
+  leg's copies. `scores status` prints the cache and the prefetch; `scores pics` the
+  pictures; `scores scrollto <row>` scrolls the online list. Arms: tmp/arm781e.py and
+  arm781g.py in board-20261018T0650Z (swap the build into the install for the run).
+- conbridge `log --all` did not return a session's first lines twice; grade from the
+  log file the session wrote. `scores status` prints every held row: with 1000 held the
+  client drew at 0.2 fps and a screenshot taken a second later showed the frame before.
+
 ## Sharing paint and saves (P777, 2026-10-18)
 
 - A client's reliable channel carries about one ~1428-byte packet a round trip; what
@@ -2342,7 +2370,7 @@ publicly WITH its fix, not before it.
   `sl_prev`/`sl_next` LOAD the save they step to -- a harness that follows
   them with `sl_load` loads twice.
 - THE SPECTATE HOLD (Patches 380/382) keeps a run RANKED. `cmd rec_spec <n>`
-  (entnum; 0 starts the countdown) sets `.run_pmhold`, and the engine then runs
+  (entnum; 0 leaves: at once since Patch 784, or after `run_spec_countdown` s) sets `.run_pmhold`, and the engine then runs
   ZERO mover ticks for that player and links it without touching triggers
   (`*pmhold` "1" says the engine can; the progs refuse a ranked hold without it).
   A MOVETYPE_NONE pin is NOT a hold: the duck timer and stamina decay under it.
@@ -2353,7 +2381,7 @@ publicly WITH its fix, not before it.
   (the funnels: disconnect, SV_Shutdown, retry, load, SV_ZoneMove, setpos,
   respawn), and nothing may write to the recorder while `run_pmhold` is set.
   Entry is refused while a trigger is touching the body or has not seen it leave.
-  STAT_FS_SPEC 103: 0 off, n = watching entnum n, -3..-1 the countdown.
+  STAT_FS_SPEC 103: 0 off, n = watching entnum n, -3..-1 the countdown (when there is one).
   Harnesses: `p380verify` (derived files), `p382a/c/d` (+`p382t/e`), `p382verify`.
 - SPECTATING (Patch 385, `client/cl_spectate.qc`) drives that hold. The camera
   integrates IE_MOUSEDELTA itself and NEVER writes VF_CL_VIEWANGLES, so the
@@ -2509,12 +2537,24 @@ publicly WITH its fix, not before it.
     forger his `OK`, which is all it buys and is worth saying as such.
   - a non-finite column is its own fault, and a sidecar too broken to join at
     all makes the RECEIPT read FAULT rather than leaving the verdict empty.
-  STILL OPEN AND DEMONSTRATED: a save-lock hold moves the same epoch and writes
-  NO record of it (`SV_RecPause` is only reached on a cold rewind), so an
-  honest held run is still convicted -- 33-41% of one-frame ticks past cut,
-  cover reading 100%. The run is kept (`SV_TimerFreeze` marks it practice,
-  which is `RT_LAST`, not `RT_NONE`), so it reaches the board. DO NOT TREAT AN
-  ANGLE FAULT ON A RUN THAT MAY HAVE BEEN HELD AS A FINDING.
+  HISTORICAL HOLD FALSE POSITIVE (closed by Patch 785): save-lock/replay holds
+  previously moved that relationship without a record. New files declare
+  `holdclock 1`; an effective thaw writes `hold <raw mover horizon> <total frozen
+  ticks>` from the timer's existing accumulator, before the next input row.
+  The reader subtracts that total only from later angle timestamps. Raw input,
+  thresholds and ranking policy are unchanged. Legacy practice/prefix input
+  clocks and resume/retry/pause/session origins are explicitly unavailable to
+  BOTH angle rules; unavailable is not an innocent/clean measurement.
+  Verified: dedicated socket, walking start, replay hold/release, retained native
+  save prefix and sidecar, actual marker and fault-free join; the short native
+  capture is THIN, not a full angle verdict. Independent run-clock controls retain
+  tight coverage; altered sidecars still fault and the old reader fails the honest
+  held pair. Reader 327 checks, receipts 74 and sweep suite: zero failures. Same
+  bytes of 602 historical recordings / 383 sidecars: no new faulting files.
+  For the tiny native actor, freeze immediately after the first RUNNING/recording
+  observation on surf_dune: waiting to turn first let the map teleport re-arm the
+  timer. Those earlier logs are NOT acted hold controls. Also make the reader-test
+  helper reject a crashed child: empty stdout is not an empty fault list.
 - CROSS-RUN SIMILARITY IS COLLECTED AND NOT ENFORCED (surfd schema 10,
   `surfd/simcheck.py`).  A run submitted twice -- a PLAYBACK of a recording rather
   than a performance -- produces two clean board rows and nothing else in this tree
@@ -5744,6 +5784,13 @@ patch, Build bump, new public version or extra gate for ordinary feature work.
   restarts. Inspect destination hashes, active units and logs before repeating
   a transaction. Keep native promotion and progs/restarts separately recorded,
   and make preparation sequences fail-fast. A wrapper exit is not live state.
+  The measured trailer cause was MSYS argument conversion: a `pwsh -Command`
+  string beginning `./build.ps1` with `C:/...` later in it arrived as a Windows
+  path-list (`C;C:\Program Files\Git\...`). JSON was written to a file named C,
+  then the injected path separator became a failing command. An inert argv-only
+  control reproduced it; `MSYS2_ARG_CONV_EXCL='*'` preserved the exact command.
+  Use that exclusion and Windows paths for Bash-to-pwsh command strings. Recover
+  the actual result file unchanged instead of repeating the live transaction.
 - The live-lobby smoke must stage BOTH matching HL2 and ImGui plugins. A client
   can load the map without the latter but cannot prove the drawn board acted.
 

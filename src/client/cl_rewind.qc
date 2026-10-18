@@ -22,7 +22,6 @@
 ===========================================================================
 */
 
-#define RW_COUNT    3           // seconds counted before the hold lets go
 #define RW_CAMBACK  150         // chase camera: units behind the cursor
 #define RW_CAMUP    48          // ...and above it
 #define RW_RATE0    30          // samples a second a held scrub key moves at first
@@ -74,6 +73,9 @@ void() Rewind_RegisterCvars =
 {
 	registercommand("rewind");
 	registercvar("hud_rewind_chase", "0", CVAR_ARCHIVE);
+	// Patch 784: the count before the hold lets go, seconds; Lex asked for none
+	// (it was 3, RW_COUNT).  ESC still goes at once at any value.
+	registercvar("hud_rewind_countdown", "0", CVAR_ARCHIVE);
 };
 
 // The key bound to `rewind` (default.cfg), else "rewind".
@@ -526,7 +528,7 @@ void() Rewind_Answer =
 	rw_resn    = tr_nsamp;
 	rw_ack = 0;
 	tr_cur_on = FALSE;
-	rw_cd  = cltime + RW_COUNT;
+	rw_cd  = cltime + max(0, cvar("hud_rewind_countdown"));
 };
 
 // Every frame, with the other per-frame readers.
@@ -734,8 +736,9 @@ void(vector scr) Rewind_Draw =
 	Font_Set(ui_font_display);
 	if (rw_cd)
 	{
-		HUD_TextC([scr_x * 0.5, scr_y * 0.36, 0], ftos(ceil(rw_cd - cltime)),
-		          48 * ui_cv_scale, '0.45 0.85 1', 0.95);
+		if (rw_cd > cltime)         // Patch 784: no "0" for the frame of a count of none
+			HUD_TextC([scr_x * 0.5, scr_y * 0.36, 0], ftos(ceil(rw_cd - cltime)),
+			          48 * ui_cv_scale, '0.45 0.85 1', 0.95);
 		Font_Set(ui_font_ui);
 		HUD_TextC([scr_x * 0.5, scr_y * 0.46, 0], Rewind_ResumeInfo(),
 		          12 * ui_cv_scale, '0.6 0.9 1', 0.95);

@@ -2624,6 +2624,8 @@ string() Scores_CountLine =
 				s = strcat(s, ", every game");
 			if (Scores_ImpTotal() > ob_n)
 				s = sprintf("%s  (top %g of %g shown)", s, ob_n, Scores_ImpTotal());
+			if (ob_fromdisk)
+				s = strcat(s, "   saved copy");
 			if (ob_state == OBS_FETCH)
 				s = strcat(s, "   refreshing...");
 		}
@@ -2878,9 +2880,9 @@ float(float ow, float online) Scores_Cols =
 		sb_colr[i] = FALSE;
 
 	x = cw * 0.8;
-	sb_colx[SBK_RANK] = x + cw * 2.4;
+	sb_colx[SBK_RANK] = x + cw * 3.4;       // Patch 781: four digits; a 1000th row lost its first
 	sb_colr[SBK_RANK] = TRUE;
-	x = x + cw * 4;
+	x = x + cw * 5;
 	sb_colx[SBK_OWNER] = x;
 	x = x + ow + g + cw * 8.5;
 	sb_colx[SBK_TIME] = x;
@@ -3301,6 +3303,12 @@ void(vector scr) Scores_Draw =
 		{
 			s = pl_profilepick;
 			pl_profilepick = "";
+			if (ui_he_open)         // Patch 784: Av_Open refuses it; the board stays, as above
+			{
+				print("leaderboard: close the editor, then a profile can open\n");
+				strunzone(s);
+				return;
+			}
 			Scores_Close();
 			Av_OpenAt(!strcmp(s, "me") ? "" : s);
 			strunzone(s);
@@ -3669,7 +3677,9 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 		Scores_Open();
 		return TRUE;
 	}
+	// Patch 784: not over a replay or profile card, where the held board is dead.
 	if (evtype == IE_KEYDOWN && scanx == K_MOUSE2 && sc_held && rec_sb_open)
+	if (!(UI_CursorHeld() & (UIC_WATCH | UIC_AVATAR)))
 	{
 		Scores_Close();
 		/*
@@ -3858,14 +3868,21 @@ float(string cmd) Scores_ConsoleCommand =
 	{
 		if (!sc_held) Scores_NativeReset(TRUE);
 		sc_held = TRUE;
+		// Patch 784: over an open replay or profile card the pointer is already
+		// up, and a held board drops clicks (Patch 635) -- so it opens pinned,
+		// and a row or a name replaces what is open.  Letting go still closes it.
+		if (!rec_sb_open)
+		if (UI_CursorHeld() & (UIC_WATCH | UIC_AVATAR))
+			Scores_Open();
 		return TRUE;
 	}
 	if (argv(0) == "-showscores")
 	{
 		// Patch 663: a pinned board whose search field has the keyboard stays.
 		// Its player let go of the key to type; ESC or the key again closes it.
-		// Patch 666: and one showing who that search found.
-		if (rec_sb_open && (pf_q_focus || pf_q_open || pf_on_who != ""))
+		// Patch 666: and one showing who that search found.  Patch 784: and one
+		// fetching the replay it was asked for, which closes it when it lands.
+		if (rec_sb_open && (pf_q_focus || pf_q_open || pf_on_who != "" || rec_sb_wantrep))
 		{
 			sc_held = FALSE;
 			return TRUE;
@@ -4094,6 +4111,12 @@ float(string cmd) Scores_ConsoleCommand =
 		else if (argv(1) == "more")
 		{
 			Online_FetchMore();         // same guarded append the scroll list uses
+			return TRUE;
+		}
+		// Patch 781's arm: the online list's top row, for a look at four-digit ranks.
+		else if (argv(1) == "scrollto")
+		{
+			rec_sb_oscroll_y = max(0, stof(argv(2))) * rec_sb_rowh;
 			return TRUE;
 		}
 		else if (argv(1) == "pics")

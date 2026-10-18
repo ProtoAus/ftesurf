@@ -33,7 +33,8 @@ void() Players_AbsorbBoard =
 };
 float(float reqid, float code, string body) Players_BoardReply =
 {
-	local float root, rows, row, i;
+	local int root, rows, row;
+	local float i;
 	if (!pl_req || reqid != pl_req) return FALSE;
 	pl_req = 0;
 	root = 0;

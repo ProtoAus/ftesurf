@@ -87,7 +87,8 @@ def grade(rig):
             'menu sees connected snapshot': bool(re.search(r'ui_menu_probe: friends_count=128 client=2 screen=1', text)),
             'one authorised join path': text.count('Friends: asking lobby to join friend') == 1,
             'partial snapshot not published': bool(re.search(r'MENU_PARTIAL[\s\S]*?friends_count=128', text)),
-            'stale is unavailable, not offline': bool(re.search(r'MENU_STALE[\s\S]*?friends_draw=-1', text)),
+            # Patch 781: stale rows stay up, marked not fresh ("Updated N ago").
+            'stale is unavailable, not offline': bool(re.search(r'MENU_STALE[\s\S]*?friends_fresh=0', text)),
             'clear invalidates snapshot': bool(re.search(r'MENU_CLEARED[\s\S]*?friends_count=-1', text)),
         }
         if len(states) == 6:

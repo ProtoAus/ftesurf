@@ -153,7 +153,8 @@ void(entity e, string op, string who, string text) Social_Action =
 
 float(float reqid, float code, string body) Social_Reply =
 {
-	local float root, rows, row, friends, f, messages, m, i, j, n, ok;
+	local int root, rows, row, friends, f, messages, m;
+	local float i, j, n, ok;
 	local entity e;
 	local string token, hash, note, addr;
 

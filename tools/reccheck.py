@@ -293,7 +293,9 @@ HEAD_V8 = HEAD_V7
 #           difference it is not entitled to claim.  Shape only here: this tool
 #           does not know what geometry the server built, so a value it does not
 #           recognise is a note, not a fault.
-HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd"}
+# Patch 785: holdclock 1 declares cumulative frozen-tick accounting. Raw `in`
+# fields are unchanged; each `hold <mt> <frozen>` updates only the angle clock.
+HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd", "holdclock"}
 # v10 (Patch 364): no new header key.  A file is v10 exactly when it carries a
 # `pause`: the buffered writer rewrites line 0 when the first one lands.
 HEAD_V10 = HEAD_V9
@@ -961,6 +963,12 @@ def check_rec(path, verbose=False, *, data=None):
     # the cheap structure is the one to pick when the expensive one is already
     # there.
     ang_mt = array.array("i")
+    ang_frozen = 0           # Patch 785: cumulative exclusion for later angles
+    ang_prev = None          # floor within this origin, not a previous session
+    ang_holdmt = None
+    ang_holds = 0
+    ang_holdbad = False
+    holdclock = head.get("holdclock")
     ang_yaw = array.array("f")
     ang_pit = array.array("f")
     seeds = []              # (lineno, args) -- v9
@@ -1113,7 +1121,11 @@ def check_rec(path, verbose=False, *, data=None):
                 in_moveoor += 1
                 if in_moveoor_ln is None:
                     in_moveoor_ln = lineno + 1
-            ang_mt.append(mt)
+            if ang_holdmt is not None and mt < ang_holdmt:
+                r.fault("line %d: 'in' below the preceding hold horizon" % (lineno + 1))
+                ang_holdbad = True
+            ang_prev = mt - ang_frozen if holdclock == "1" else mt
+            ang_mt.append(ang_prev)
             ang_pit.append(ang[0])
             ang_yaw.append(ang[1])
             if in_pk is None or pk != in_pk:
@@ -1218,6 +1230,7 @@ def check_rec(path, verbose=False, *, data=None):
                 r.fault("line %d: 'split' before 'end' -- the writer emits them "
                         "after" % (lineno + 1))
         elif kind == "resume":
+            ang_frozen, ang_holdmt, ang_prev = 0, None, None
             # Build 17.  The run was resumed from a save state: everything after
             # this line is a fresh attempt at the same section, appended over the
             # abandoned one rather than beside it.
@@ -1235,6 +1248,7 @@ def check_rec(path, verbose=False, *, data=None):
             # (SV_SaveApplyState).
             spec_next = [(a, m, c, w or lineno + 1) for a, m, c, w in spec_next]
         elif kind == "retry":
+            ang_frozen, ang_holdmt, ang_prev = 0, None, None
             # Build 18.  The MAP was restarted underneath the run -- `retry` --
             # and the attempt was restored from a state written a moment before
             # it.  The player did not move.
@@ -1336,6 +1350,28 @@ def check_rec(path, verbose=False, *, data=None):
             # velocity in PreThink.  A span, not an event: E5 measured rides up to
             # 62 ticks (0.915 s) with no position discontinuity to fire on.
             rides.append((lineno + 1, tok[1:]))
+        elif kind == "hold" and ver >= 9:
+            # An authoritative server-clock edge, never a sidecar request.
+            a = tok[1:]
+            if len(a) != 2 or not all(is_int(x) for x in a):
+                r.fault("line %d: 'hold' takes <mt> <frozen> integers" % (lineno + 1))
+                ang_holdbad = True
+            else:
+                hmt, frozen = map(int, a)
+                if not 0 <= frozen <= hmt <= 2147483647:
+                    r.fault("line %d: 'hold' counters outside 0 <= frozen <= mt"
+                            % (lineno + 1))
+                    ang_holdbad = True
+                elif ((in_mt is not None and hmt < in_mt)
+                      or (ang_holdmt is not None and hmt < ang_holdmt)
+                      or frozen < ang_frozen
+                      or (holdclock == "1" and ang_prev is not None
+                          and hmt - frozen < ang_prev)):
+                    r.fault("line %d: 'hold' counters go backwards" % (lineno + 1))
+                    ang_holdbad = True
+                else:
+                    ang_frozen, ang_holdmt = frozen, hmt
+                    ang_holds += 1
         elif kind == "inend":
             # Build 85, v8.  `inend <mt> <carry>` -- the closing horizon, and
             # `instart`'s counterpart.  A record, not a key: the value does not
@@ -1409,6 +1445,7 @@ def check_rec(path, verbose=False, *, data=None):
                 sessions.append((lineno + 1, n, smt, stk))
                 cur_horizon = smt
                 in_mt = None
+                ang_frozen, ang_holdmt, ang_prev = 0, None, None
                 open_pause = None
         elif kind == "nonce" and ver >= 10:
             # Patch 416: a SECOND client was handed this run -- a Multi-Session
@@ -2636,17 +2673,25 @@ def check_rec(path, verbose=False, *, data=None):
     #
     # AND THE RECORDS THAT MOVE THE TICK EPOCH.  The join is
     # `view.ticks == in.mt - instart`, but the sidecar's column is
-    # STAT_FS_TIMERTICKS, which subtracts frozen ticks and carries restored ones
-    # (SV_TickCounted).  A resume, a retry, a pause or a v10
-    # session moves that epoch and the header's `instart` no longer describes
-    # it; a mis-joined row is an arbitrary angle difference, which the loose
-    # rule survives and a 0.05 deg rule does not.  No v9 pair in the corpus has
-    # one, so this is abstention on a mechanism read out of the source rather
-    # than a measurement -- which is the honest way round.
+    # STAT_FS_TIMERTICKS. Declared hold counters account for frozen ticks;
+    # resume/retry/pause/session still change the origin. Neither angle rule
+    # can convict on an unknown join, even when its resulting difference is large.
     r.angle_ghosts = list(ghost_windows)
     r.angle_epoch = [k for k, v in (("resume", resumes), ("retry", retries),
                                     ("pause", pauses), ("session", sessions))
                      if v]
+    if ang_mt:
+        r.info["holdclock"] = holdclock if holdclock is not None else "not stated"
+        r.info["hold_epochs"] = ang_holds
+        if holdclock is None:
+            # Flags are finalized only at close. A legacy prefix cannot exclude
+            # an unrecorded hold even when its placeholder flags still say 0.
+            if saw_end is None or r.info.get("clean") == "no" or ang_holds:
+                r.angle_epoch.append("legacy hold clock not stated")
+        elif holdclock != "1":
+            r.angle_epoch.append("unsupported hold clock %r" % holdclock)
+        if ang_holdbad:
+            r.angle_epoch.append("invalid hold clock")
     if len(ang_mt):
         r.angles = (ang_mt, ang_yaw, ang_pit, in_start or 0,
                     "in rows" if ver >= 9 else "in rows (.v_angle, pre-v9)", ver)
@@ -2865,6 +2910,14 @@ def angle_join(r, rec, frames):
     if not series:
         return
     mts, yaws, pits, instart, source, ver = series
+    if rec.angle_epoch:
+        # Neither rule can convict on a join whose clock origin is unknown.
+        why = "/".join(rec.angle_epoch)
+        r.info["angle_rule"] = "unavailable"
+        r.info["angle_off"] = "UNAVAILABLE -- clock epoch: %s" % why
+        r.note("the tight angle rule did not judge this pair: %s -- the sweep "
+               "rule is also unavailable without a trustworthy clock join" % why)
+        return
 
     # THE TIGHT RULE IS KEYED ON THE ANGLE SOURCE, NOT THE FILE VERSION, and
     # the difference is not academic: check_rec falls back to `samples`
@@ -3724,7 +3777,7 @@ def emit(r, verbose):
                   # whenever the body has rows, so the two disagreeing is
                   # visible at a glance and not only through the fault.
                   "instart", "inputs", "in_packets", "in_per_packet",
-                  "in_per_sample",
+                  "in_per_sample", "holdclock", "hold_epochs",
                   # Build 83, added in the same edit as the code that computes
                   # them, which is the rule the paragraph above sets after this
                   # tuple had swallowed a field twice.  It was nearly three:

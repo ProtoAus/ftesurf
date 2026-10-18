@@ -3533,6 +3533,15 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             ring and read (momentum.dll's shape) breaks it.
                             pm_verify HOLDs on any line where they differ.
 
+    hold <mt> <frozen>     Patch 785, additive in v9+. On an effective thaw,
+                          before further `in` rows: raw mover horizon and total
+                          frozen mover ticks since this timer origin. Subsequent
+                          input angles map to the run clock by subtracting this
+                          total. No wall time or change to the raw `in` fields.
+                          `holdclock 1` declares this accounting in a new header;
+                          legacy practice/prefix input clocks are not joinable.
+                          Resume/retry/session still require their own abstention.
+
   Then, written at close:
 
     inend <mt> <carry>      v8, build 85.  THE CLOSING HORIZON -- `instart`'s
@@ -4928,6 +4937,7 @@ void(entity e) SV_RecOpen =
 	  which a file's answer to this could change halfway down.
 	*/
 	SV_RecPut(e, sprintf("clock %s", e.run_t_clock ? "counted" : "sampled"));
+	SV_RecPut(e, "holdclock 1");
 	SV_RecPut(e, sprintf("owner %s", e.netname));
 	// Patch 360: kept (zoned) as the run's id for stage posts and the evidence
 	// file; a lobby appends its port -- 12 lobbies share one data dir.  Readers
@@ -9030,6 +9040,13 @@ void(entity e) SV_TimerFreezeFrame =
 	// accumulator has already taken this packet's frozen interval above, so the
 	// tick the player moves again is the first one counted with nothing to
 	// re-derive -- which is the whole of what build 75 needed three branches for.
+	// Patch 785: publish the run clock's exclusion before PreThink can append
+	// the first post-hold input row. A void/finish has no later input epoch.
+	if (e.run_t_frzon)
+	if (e.run_t_state == TS_RUNNING)
+	if (e.run_movetickrate > 0)
+	if (SV_RecLive(e))
+		SV_RecPut(e, sprintf("hold %d %d", e.run_movetick, e.run_t_frzticks));
 	e.run_t_frzon = FALSE;
 	e.run_t_frzat = 0;
 	e.run_t_flags = e.run_t_flags - (e.run_t_flags & TF_FROZEN);
