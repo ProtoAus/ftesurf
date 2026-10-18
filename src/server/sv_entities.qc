@@ -7228,6 +7228,7 @@ void() momentary_rot_button =
 		self.vbsp_rb_axis = '1 0 0';
 	else
 		self.vbsp_rb_axis = '0 1 0';
+	self.speed = fabs(self.speed);
 	if (!self.speed)
 		self.speed = 100;				// buttons.cpp:973
 	if (self.distance < 0)
@@ -7298,11 +7299,19 @@ void(entity e) SV_RotButtonPlace =
 	e.angles_z = anglemod(a_z);
 };
 
+float(entity e) SV_RotButtonEta =
+{
+	return e.vbsp_rb_t0 + fabs(e.vbsp_rb_ideal - e.vbsp_rb_pos) * e.distance / e.speed;
+};
+
 // A move whose clock has reached its goal ends here, and the goal it reached is kept
 // (+1, so 0 is "none") for the outputs: a later input may change vbsp_rb_ideal first.
+// On the eta too: float32 puts SV_RotButtonPos a hair short at about half of them.
+// One pending arrival at a time; a second waits a tick rather than replacing it.
 void(entity e) SV_RotButtonSettle =
 {
-	if (e.vbsp_rb_dir && SV_RotButtonPos(e) == e.vbsp_rb_ideal)
+	if (e.vbsp_rb_dir && !e.vbsp_rb_arrived)
+	if (SV_RotButtonPos(e) == e.vbsp_rb_ideal || time >= SV_RotButtonEta(e))
 	{
 		e.vbsp_rb_pos = e.vbsp_rb_ideal;
 		e.vbsp_rb_dir = 0;
@@ -7372,7 +7381,7 @@ void() SV_RotButtonFrame =
 			moving = TRUE;
 		if (e.vbsp_rb_dir)
 		{
-			eta = e.vbsp_rb_t0 + fabs(e.vbsp_rb_ideal - e.vbsp_rb_pos) * e.distance / e.speed;
+			eta = SV_RotButtonEta(e);
 			if (eta < next)
 				next = eta;
 		}
