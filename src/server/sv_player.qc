@@ -931,15 +931,20 @@ void(vector org, float haveang, vector ang) SV_SetPosSelf =
 };
 
 /*
-  Patch 797 (Lex): the player list's Teleport.  It is setpos to another
-  player's body and their aim, so the run takes setpos's class and the
-  recording nothing setpos does not already write.  Refused where spectate
-  refuses the same states, and where the standing hull would start in solid.
+  Patch 797 (Lex): the player list's Teleport.  The run ends first, as `!r`'s
+  move ends one (release, then SV_TimerVoid): a run that posted a stage is kept
+  closed where the body was, not left recording across a jump it has no `warp`
+  for -- setpos's gap (BACKLOG).  Then setpos's move, to just behind the target
+  with its aim.  Refused: a resume, a replay pin, ghost, a second teleport
+  inside TP_GAP, and nowhere to stand (players included where they collide).
 */
+#define TP_GAP 1                // s between one player's teleports: a click, not a leash
+.float run_tp_last;
 void(float n) SV_TpPlayer =
 {
 	local entity t;
 	local float ct;
+	local vector dest;
 
 	t = edict_num(n);                   // out of range: world
 	ct = clienttype(t);
@@ -961,13 +966,34 @@ void(float n) SV_TpPlayer =
 		sprint(self, PRINT_HIGH, "^3teleport:^7 leave ghost first\n");
 		return;
 	}
-	tracebox(t.origin, PM_HULL_MINS, PM_HULL_MAXS, t.origin, MOVE_NOMONSTERS, self);
-	if (trace_startsolid)
+	if (self.run_tp_last)
+	if (time - self.run_tp_last < TP_GAP)
 	{
-		sprint(self, PRINT_HIGH, sprintf("^3teleport:^7 no room to stand where %s is\n", Lobby_ChatName(t)));
+		sprint(self, PRINT_HIGH, "^3teleport:^7 one a second\n");
 		return;
 	}
-	SV_SetPosSelf(t.origin, TRUE, [t.v_angle_x, t.v_angle_y, 0]);
+
+	// 48 u behind them (a 16 u gap between hulls), else their own spot.  On a
+	// lobby that keeps your avatar out of their camera.
+	makevectors([0, t.v_angle_y, 0]);
+	tracebox(t.origin, PM_HULL_MINS, PM_HULL_MAXS, t.origin - v_forward * 48, MOVE_NOMONSTERS, t);
+	dest = t.origin;
+	if (!trace_startsolid)
+	if (trace_fraction == 1)
+		dest = trace_endpos;
+	// MOVE_NORMAL honours the lobby's pass-through dimensions (world.c:1944).
+	tracebox(dest, PM_HULL_MINS, PM_HULL_MAXS, dest, MOVE_NORMAL, self);
+	if (trace_startsolid)
+	{
+		sprint(self, PRINT_HIGH, sprintf("^3teleport:^7 no room to stand by %s\n", Lobby_ChatName(t)));
+		return;
+	}
+
+	self.run_tp_last = time;
+	SV_SpecRelease(self, "setpos");     // before the void, as SV_ZoneMoveAt's
+	SV_SaveLocRelease(self);
+	SV_TimerVoid(self, "teleported");
+	SV_SetPosSelf(dest, TRUE, [t.v_angle_x, t.v_angle_y, 0]);
 	sprint(self, PRINT_HIGH, sprintf("^5teleport:^7 to %s\n", Lobby_ChatName(t)));
 };
 
