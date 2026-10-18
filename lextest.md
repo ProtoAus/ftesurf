@@ -7,7 +7,7 @@ ceiling, brightest low and fading upward, like Momentum's (surf_boreas0000). It 
 Source "rope" effect; `vbsp_emit_ropes 0` turns it off. The big pink glow at its base and
 the floating specks are still off (child particles; BACKLOG). csprogs + the surf_boreas
 particle bake. Installs 2026-10-18T11:56:48Z (csprogs 75b75a77; C:\FTESurftesurf
-particles/surf_boreas.cfg 0d1f6cd7); lobbies with 89's deploy of QC main e3dfce05.
+particles/surf_boreas.cfg 0d1f6cd7); lobbies 2026-10-18T12:36Z (all 12, csprogs 75b75a77).
 
 "Beam ok / too wide / too narrow / too bright". Verdict PENDING.
 
@@ -15,8 +15,8 @@ particles/surf_boreas.cfg 0d1f6cd7); lobbies with 89's deploy of QC main e3dfce0
 
 Source's `momentary_rot_button`. The 115 marked non-solid (16 maps) stop being walls you
 can hit, as in Momentum; the 60 that loop themselves (surf_agony, surf_boreas,
-surf_illusion, surf_nyx, surf_summer, surf_summer_ksf) spin. qwprogs: installs 2026-10-18T11:56:48Z (fa94eb5d); lobbies with
-89's deploy of QC main e3dfce05. Older runs on those maps re-verified now read HOLD
+surf_illusion, surf_nyx, surf_summer, surf_summer_ksf) spin. qwprogs: installs 2026-10-18T11:56:48Z (fa94eb5d); lobbies
+2026-10-18T12:36Z (all 12, nobody on). Older runs on those maps re-verified now read HOLD
 (physents); the rule that makes them "not comparable" is next (your call: ship now).
 
 - **surf_boreas end room:** the magic circle and its symbols turn, and the three outer
