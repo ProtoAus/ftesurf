@@ -5,6 +5,36 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Source map visuals: what Patch 780 left out
+
+- **surf_devil's ramp props** (Lex, 18 Oct, saves 1-2): `stage03_ramp09_1` too warm and
+  flat, `stage03_curvedramp` too dark. A static prop without a .vhv bake is lit from one
+  point; Source evaluates local lights per vertex. `hl2_lightprobe 6048 -7584 -9664` shows
+  three warm lights near ramp09's centre applied to all 3264 units; from the curved ramp's
+  centre (`4736 -12192 -10752`) every light is blocked that its surface would see. Fix:
+  per-vertex (or per-pixel) local lights for unbaked props (engine
+  HL2_MODEL_LIGHTING.md §2).
+- **Static prop collision transforms are misindexed after a skipped record**
+  (plugins/hl2/mod_vbsp.c `VBSP_LoadStaticProps`: `prv->staticprops[i].transform` uses
+  the lump index `i`; the prop lives at the compacted `sent` slot). On maps that skip
+  records (P257's census: what_is_this, surf_shoria) later props collide with another
+  prop's transform. Found by P780's review, pre-existing. Movement-affecting: its own
+  patch and review.
+- **v25 (Strata) maps get no leaf ambient**: 171 of 185 carry an 8-byte-per-leaf index
+  lump and `VBSP_LoadLeafLight` returns at its size check, so their unbaked props light
+  from `hl2_lt_min` and worldlights only.
+- **Solid leaves' neighbour reference**: a leaf with no samples stores a neighbouring
+  leaf's index in `firstAmbientSample` (VRAD :694-703); FTE treats it as no data, so a
+  prop sampled inside solid falls to `hl2_lt_min` where Source borrows the neighbour.
+- **Wireframe**: drawn unlit (Source: VertexLitGeneric lighting) and fogged on the pass
+  arm; `$no_draw` is not honoured (surf_aquaflow's `devbbox` props draw as white wire
+  boxes, Source draws nothing); GL only -- GLES, core profiles, Vulkan, D3D and rtlight
+  shadow-map casters draw it filled.
+- **Missing-checker grid** covers T_GEN_DIFFUSE materials only: a pass-based UnlitGeneric
+  (`map X`) whose image fails keeps the texinfo scale, and so does a two-layer material
+  whose first layer alone is missing (surf_minigolf, bhop_angst). A probe that finds an
+  image by a route `LocateFile` misses leaves a mipless duplicate loaded until the next purge.
+
 ## surf_view and ent_view's pin: what Patch 776 left out
 
 - Site: engine `client/cl_ents.c` CLQ1_AddVisibleHulls (r_showhull) and every other
