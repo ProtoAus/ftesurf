@@ -2250,9 +2250,10 @@ float(float evtype, float scanx, float chary, float devid) Ev_InputEvent =
 		return TRUE;
 	}
 
-	// MOUSE3 lets go too, mirroring the gesture that took the cursor.  Its up
-	// then reaches Keys_Edge and SaveLoc_Key, as the taking press's up always did.
-	if (evtype == IE_KEYDOWN && (scanx == K_ESCAPE || scanx == K_MOUSE3))
+	// ESC, and since Patch 809 the key bound to ent_cursor (MOUSE3 in default.cfg)
+	// rather than MOUSE3 itself: taken here, before a results card could claim it.
+	if (evtype == IE_KEYDOWN)
+	if (scanx == K_ESCAPE || !strcmp(getkeybind(scanx), "ent_cursor"))
 	{
 		Ev_CursorOff();
 		print("^5ent_cursor^7: off\n");
@@ -2261,19 +2262,6 @@ float(float evtype, float scanx, float chary, float devid) Ev_InputEvent =
 	return FALSE;
 };
 
-/*
-  MOUSE3 asks for the cursor while the overlay is up, matching the results card's
-  gesture: MOUSE1/MOUSE2 are duck and jump, and MOUSE3 is the only free click in
-  the shipped config.  The card keeps it while a card is up -- it was there
-  first, and Results_PassiveKey is offered the press before this one is.
-
-  "UP" MEANS DRAWN, from the review.  Results_Open raises the card on every
-  finish whatever hud_results says; the cvar only decides whether it is drawn and
-  whether Results_PassiveKey answers (cl_results.qc:759).  Testing ui_rs_open
-  alone gave MOUSE3 away to an invisible card that then declined it as well, so
-  with hud_results 0 MOUSE3 did nothing after any finish until the next run
-  started.  This is the card's own test, so exactly one of the two answers.
-*/
 /*
   The overlay's on and off, as commands and as gestures see it.  Ev_On refuses
   exactly where Ev_CursorOn refused (no lump data yet) and drops the panel
@@ -2313,35 +2301,14 @@ void() Ev_Off =
 	print("^5ent_cursor^7: off\n");
 };
 
-/*
-  BUILD 84 (Patch 331): MOUSE3 TOGGLES THE OVERLAY, and ESC puts it away.  The
-  old gesture here was "take the cursor", which is precisely what the feature
-  request asked to stop happening; the panel it opened is one command away at
-  ent_panel for whoever wants the click-to-copy half.  ESC falls through when
-  the overlay is off, so the menu still gets it, and the results card is asked
-  first by the chain in cl_main.qc, so a card on screen keeps the key it always
-  had.
-*/
+// ESC puts the overlay away; it falls through when the overlay is off, so the
+// menu still gets it.  Patch 809: the toggle is the `ent_cursor` bind (MOUSE3 in
+// default.cfg, config_menu's Entity view row), no longer a hard-wired MOUSE3.
 float(float scanx) Ev_PassiveKey =
 {
-	if (ui_ev_cursor)
+	if (ui_ev_cursor || scanx != K_ESCAPE || !ui_ev_open)
 		return FALSE;
-
-	if (scanx == K_ESCAPE)
-	{
-		if (!ui_ev_open)
-			return FALSE;
-		Ev_Off();
-		return TRUE;
-	}
-
-	if (scanx != K_MOUSE3 || (ui_rs_open && cvar("hud_results")))
-		return FALSE;
-
-	if (ui_ev_open)
-		Ev_Off();
-	else
-		Ev_On();
+	Ev_Off();
 	return TRUE;
 };
 
@@ -2474,11 +2441,10 @@ float(string cmd) Ev_ConsoleCommand =
 	}
 
 	/*
-	  BUILD 56.  ent_cursor toggles the mouse mode (MOUSE3 does the same while the
-	  overlay is up).  ent_click, ent_copyrow and ent_copyall are the scripted
+	  BUILD 56.  ent_cursor toggles the mouse mode.  ent_click, ent_copyrow and ent_copyall are the scripted
 	  forms of the three things the mouse does, and they share its pick and copy
 	  functions -- but NOT its input path.  sui's hit test, the press/release
-	  pairing, the wheel, MOUSE3, ESC and the header-line copy are hand-only, so
+	  pairing, the wheel, ESC and the header-line copy are hand-only, so
 	  a green scripted run says nothing about those.
 	*/
 	/*
@@ -2486,13 +2452,19 @@ float(string cmd) Ev_ConsoleCommand =
 	  mouse.  Asked for as "make ent_cursor work without taking control of the
 	  player's mouse, just display a transparent overlay with whatever you're
 	  pointing at telling you what it is and the functions" -- and "have a
-	  ability to turn it off", which it now has three ways: `ent_cursor 0`,
-	  ESC, and MOUSE3.  The click-to-copy inspector it used to open still
+	  ability to turn it off": `ent_cursor 0`, ESC, or its bind again (MOUSE3 in
+	  default.cfg since Patch 809).  The click-to-copy inspector it used to open still
 	  exists, one name over, at ent_panel.
 	*/
 	if (argv(0) == "ent_cursor")
 	{
-		if (argv(1) == "0")
+		// Patch 809: its bind is how MOUSE3 let go of a taken cursor, overlay as it was.
+		if (argv(1) == "" && ui_ev_cursor)
+		{
+			Ev_CursorOff();
+			print("^5ent_cursor^7: off\n");
+		}
+		else if (argv(1) == "0")
 			Ev_Off();
 		else if (argv(1) == "1")
 			Ev_On();

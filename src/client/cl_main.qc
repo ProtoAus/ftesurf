@@ -1100,9 +1100,8 @@ float(float scanx) CL_ButtonBit =
 	if (scanx == K_SPACE)      return CLB_SPC;
 	if (scanx == K_MOUSE1)     return CLB_M1;
 	if (scanx == K_MOUSE2)     return CLB_M2;
-	// MOUSE3 belongs here too: it is the gesture that TAKES the cursor, so its
-	// press is consumed by Ev_PassiveKey or Results_PassiveKey -- and since the
-	// build-56 review, by Ev_InputEvent as well, which releases the cursor.
+	// MOUSE3 belongs here too: Results_PassiveKey takes its press while a card is
+	// up (Patch 809: ent_view's MOUSE3 is a bind now, not taken here).
 	if (scanx == K_MOUSE3)     return CLB_M3;
 	if (scanx == K_MWHEELUP)   return CLB_WUP;
 	if (scanx == K_MWHEELDOWN) return CLB_WDN;
@@ -1285,10 +1284,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		}
 		if (Friends_ToastKey(scanx))    // P788: F2 adds back, only while the toast is up
 			return TRUE;
-		// Build 56/84: MOUSE3 toggles the inspector overlay, and ESC puts it
-		// away (Patch 331 -- it used to take the cursor; that is ent_panel now).
-		// After the card on purpose -- the card was there first and keeps MOUSE3
-		// whenever one is up AND drawn (hud_results); see Ev_PassiveKey.
+		// ESC puts the inspector overlay away; its toggle is the ent_cursor bind
+		// (Patch 809).  After the card, which keeps ESC while one is up.
 		if (Ev_PassiveKey(scanx))
 			return TRUE;
 		/*

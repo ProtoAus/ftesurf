@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P809 — Entity view on any key
+
+Not installed yet (deploy line follows).
+
+- Mouse 3 still toggles the entity overlay, but as a normal bind now: K (key config) has an Entity
+  view row at the bottom of Menus; rebind or clear it there, or `bind mouse3 <anything>`.
+
+"Ok / <what differs>". Verdict PENDING.
+
 ## P811 — your saves follow you between the lobbies and a local game
 
 Not installed yet (deploy line follows).
