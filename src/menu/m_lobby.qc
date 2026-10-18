@@ -658,7 +658,7 @@ void() Lob_JoinClear =
 */
 void(float code, string body) Lob_JoinReply =
 {
-	local float  root;
+	local int    root;
 	local float  w;
 	local string ad, why, stt;
 
@@ -901,7 +901,7 @@ float()  Lob_JoinUntil  = { return lj_until; };
   saved as it came: each row is rebuilt from fields that each passed their own
   test, and a body that is not this grammar from its first line saves nothing.
 
-  Asked once per run of the menu, from the picker, behind Lob_Poll's consent
+  Asked from m_draw at boot and every 60 s after, behind Lob_Poll's consent
   test (the same disclosure to the same host).
 ===========================================================================
 */
@@ -995,14 +995,51 @@ string(string ln) Mdl_Row =
 	return strcat(ln, "\n");
 };
 
-float mdl_next;
+float mdl_next, mdl_sent;
+
+// A file's mtime as "YYYY-MM-DD HH:MM:SS" (sorts as text), or "" when unknown (a pak entry).
+string(string path) Mdl_Mtime =
+{
+	local searchhandle h;
+	local string s;
+
+	h = search_begin(path, 0, TRUE);
+	if (h < 0)
+		return "";
+	s = "";
+	if (search_getsize(h) > 0)
+		s = search_getfilemtime(h, 0);
+	search_end(h);
+	return s;
+};
+
+// Patch 781: the saved directory list is older than the shipped one (an update since it
+// was saved), so offline the shipped list is the newer of the two.
+float() Mdl_NetOlder =
+{
+	local string a, b;
+
+	a = Mdl_Mtime(MDL_FILE);
+	b = Mdl_Mtime("data/mapdl.txt");
+	if (a == "" || b == "")
+		return FALSE;
+	return (strcmp(a, b) < 0);
+};
 
 void() Mdl_Ask =
 {
 	local string dir;
 
 	if (mdl_state == MDLS_ASKED)
+	{
+		// The engine's HTTP client has no timeout. The id stays, so a late reply still lands.
+		if (time - mdl_sent > 10)
+		{
+			mdl_state = MDLS_NONE;
+			print("^5maplist:^7 the directory did not answer in 10 s -- asking again within a minute\n");
+		}
 		return;
+	}
 	if (time < mdl_next) return;
 	if (cvar("rec_terms") < FS_TERMS_ONLINE)
 		return;
@@ -1011,6 +1048,7 @@ void() Mdl_Ask =
 		return;
 	mdl_state = MDLS_ASKED;
 	mdl_next = time + 60;
+	mdl_sent = time;
 	mdl_req = Lob_NextReq();
 	if (!uri_get(strcat(dir, "/api/board?maps=1"), mdl_req))
 	{
@@ -1047,7 +1085,9 @@ float(float reqid, float code, string body) Mdl_Reply =
 		return TRUE;
 	}
 
-	// The same bytes as last time are the same list: nothing to write or reload.
+	// The same bytes as last time are the same list: nothing to write or reload --
+	// unless the saved copy is older than the shipped list, which ui_dl_load then
+	// prefers: rewritten, it is the newer again (Patch 781).
 	stamp = strcat("# net ", ftos(len), " ", ftos(crc16(FALSE, body)));
 	had = "";
 	fh = fopen(MDL_FILE, FILE_READ);
@@ -1058,6 +1098,7 @@ float(float reqid, float code, string body) Mdl_Reply =
 		fclose(fh);
 	}
 	if (had == stamp)
+	if (!Mdl_NetOlder())
 	{
 		mdl_state = MDLS_SAME;
 		print("^5maplist:^7 the directory's list is the one saved\n");

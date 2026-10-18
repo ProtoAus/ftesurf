@@ -2624,6 +2624,8 @@ string() Scores_CountLine =
 				s = strcat(s, ", every game");
 			if (Scores_ImpTotal() > ob_n)
 				s = sprintf("%s  (top %g of %g shown)", s, ob_n, Scores_ImpTotal());
+			if (ob_fromdisk)
+				s = strcat(s, "   saved copy");
 			if (ob_state == OBS_FETCH)
 				s = strcat(s, "   refreshing...");
 		}
@@ -2878,9 +2880,9 @@ float(float ow, float online) Scores_Cols =
 		sb_colr[i] = FALSE;
 
 	x = cw * 0.8;
-	sb_colx[SBK_RANK] = x + cw * 2.4;
+	sb_colx[SBK_RANK] = x + cw * 3.4;       // Patch 781: four digits; a 1000th row lost its first
 	sb_colr[SBK_RANK] = TRUE;
-	x = x + cw * 4;
+	x = x + cw * 5;
 	sb_colx[SBK_OWNER] = x;
 	x = x + ow + g + cw * 8.5;
 	sb_colx[SBK_TIME] = x;
@@ -4094,6 +4096,12 @@ float(string cmd) Scores_ConsoleCommand =
 		else if (argv(1) == "more")
 		{
 			Online_FetchMore();         // same guarded append the scroll list uses
+			return TRUE;
+		}
+		// Patch 781's arm: the online list's top row, for a look at four-digit ranks.
+		else if (argv(1) == "scrollto")
+		{
+			rec_sb_oscroll_y = max(0, stof(argv(2))) * rec_sb_rowh;
 			return TRUE;
 		}
 		else if (argv(1) == "pics")

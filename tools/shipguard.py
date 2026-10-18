@@ -171,6 +171,10 @@ DENY_EXACT = {
                           "before reading and truncated afterwards.",
     "data/mapbuild.txt": "Player's alternate map-build preferences, persisted "
                          "by ui_pick_set; absence keeps the default build.",
+    "data/friends_menu.txt": "Patch 781: the menu's last friends list (names and "
+                             "relations), written at runtime; absent, the panel "
+                             "waits for the first fetch.",
+    "data/friends_menu.tmp": "Patch 781: MF_Save's write-then-rename sibling.",
     "sound/": "A search root, not a file (cl_banner.qc's Bn_SndPath).",
     "maps/surf_666.bsp": "Harness literal (cl_board.qc test path), not content.",
     "maps/surf_kitsune.bsp": "Harness literal (cl_hud.qc test path), not content.",

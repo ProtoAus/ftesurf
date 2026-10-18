@@ -497,7 +497,7 @@ void() Profile_SearchAsk =
 // UI_NameShow's when it is drawn).
 
 // One row's PF_RF floats.
-void(float row, float *f, float at) Profile_RowF =
+void(int row, float *f, float at) Profile_RowF =
 {
 	f[at]     = json_get_float(json_find_object_child(row, "track"));
 	f[at + 1] = json_get_float(json_find_object_child(row, "leg"));
@@ -510,9 +510,10 @@ void(float row, float *f, float at) Profile_RowF =
 };
 
 // -> rows taken.
-float(float root) Profile_Rows =
+float(int root) Profile_Rows =
 {
-	local float rows, n, i, row, took;
+	local int rows, row;
+	local float n, i, took;
 
 	rows = json_find_object_child(root, "rows");
 	n = json_get_length(rows);
@@ -532,7 +533,8 @@ float(float root) Profile_Rows =
 
 void(string bdy) Profile_Parse =
 {
-	local float root, c, tiers, i, t;
+	local int root, c, tiers, t;
+	local float i;
 	local string h;
 
 	root = json_parse(bdy);
@@ -602,9 +604,10 @@ void(string bdy) Profile_Parse =
 };
 
 // -> maps taken.
-float(float root) Profile_TierRows =
+float(int root) Profile_TierRows =
 {
-	local float rows, n, i, row, at, took;
+	local int rows, row;
+	local float n, i, at, took;
 	local float *f;
 
 	rows = json_find_object_child(root, "maps");
@@ -629,7 +632,8 @@ float(float root) Profile_TierRows =
 
 void(string bdy, float more) Profile_TierParse =
 {
-	local float root, ok;
+	local int root;
+	local float ok;
 	local float *f;
 	local string h;
 
@@ -679,7 +683,8 @@ void(string bdy, float more) Profile_TierParse =
 
 void(string bdy) Profile_OnParse =
 {
-	local float root, rows, n, i, row;
+	local int root, rows, row;
+	local float n, i;
 	local float *f;
 	local string h;
 
@@ -719,7 +724,7 @@ void(string bdy) Profile_OnParse =
 
 void(string bdy) Profile_ParseMore =
 {
-	local float root;
+	local int root;
 
 	root = json_parse(bdy);
 	if (!root)
@@ -746,7 +751,8 @@ void(string bdy) Profile_ParseMore =
 
 void(string bdy) Profile_ParseHits =
 {
-	local float root, list, n, i, row, k;
+	local int root, list, row;
+	local float n, i, k;
 	local string h;
 
 	root = json_parse(bdy);

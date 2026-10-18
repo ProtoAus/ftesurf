@@ -824,7 +824,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	print("FTESurf CSQC loaded\n");
 };
 
-void() CSQC_Shutdown = { Friends_MenuClear(); Scores_NativeClose(); };
+void() CSQC_Shutdown = { Friends_MenuClear(); Scores_NativeClose(); if (obc_dirty) OBC_Save(); };
 
 /*
   Forced view angles from the server -- svc_setangle, its relative form, and
@@ -1533,6 +1533,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	  the entire cost of that.
 	*/
 	Online_MigrateFrame();
+	Online_Prefetch();              // Patch 781: the sections, ahead of the board
 	Watch_Frame((notmenu && !chat_typing && UI_CursorHeld() == UIC_WATCH));
 	// Patch 475: the live line's sampler.  Before clearscene with the other
 	// readers, and it takes at most one sample per command frame.

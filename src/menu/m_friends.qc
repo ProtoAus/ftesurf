@@ -2,10 +2,17 @@
 // to one fixed HTTPS service. No lobby capability, key seed or address in cvars.
 #define MF_SITE "https://play.proto.bar"
 string(string nonce, string op, string who) friends_sign = #0:friends_sign;
-float mf_epoch, mf_seen, mf_count, mf_mode, mf_rows;
-float mf_req, mf_wire, mf_phase, mf_at, mf_next;
+float(string src, string dst) frename = #0:frename;
+float mf_epoch, mf_seen, mf_seenmode, mf_count, mf_mode, mf_rows, mf_boot;
+float mf_req, mf_wire, mf_phase, mf_at, mf_next, mf_siglen, mf_sigcrc;
 string mf_op, mf_target, mf_note, mf_pick;
 vector mf_scroll;
+
+// Patch 781: the last list, names and relations only (no `who`, no presence),
+// shown as "Saved list" until a fresh one replaces it.
+#define MF_FILE  "data/friends_menu.txt"
+#define MF_TMP   "data/friends_menu.tmp"
+#define MF_HEAD  "FTESURF-FRIENDS 1"
 
 float(string s, float n) MF_Hex =
 {
@@ -17,6 +24,21 @@ float(string s, float n) MF_Hex =
 };
 float(string who) MF_WhoSafe = { return MF_Hex(who, FS_WHO_IDLEN); };
 float() MF_Count = { return mf_count; };
+
+// Rows held are this mode's and under 16 s old. P731: older is unavailable, not offline.
+float() MF_Fresh =
+{
+	if (mf_seen <= 0 || mf_seenmode != clientstate()) return FALSE;
+	return (time >= mf_seen && time - mf_seen <= 16);
+};
+
+string(float s) MF_Ago =
+{
+	s = max(0, floor(s));
+	if (s < 60) return sprintf("%g s", s);
+	if (s < 3600) return sprintf("%g min", floor(s / 60));
+	return sprintf("%g h", floor(s / 3600));
+};
 
 void(string s) MF_Note =
 {
@@ -42,12 +64,13 @@ void() MF_Cancel =
 	mf_op = mf_target = "";
 };
 
+// Held rows stay up; the header says why they are not fresh.
 void(string why) MF_Fail =
 {
 	MF_Cancel();
 	MF_PressClear();
-	mf_count = -1;
 	mf_next = time + 10;
+	mf_boot = TRUE;
 	MF_Note(why);
 };
 
@@ -79,12 +102,128 @@ void(string op, string who) MF_Ask =
 	}
 };
 
+// Written only when the names or relations changed; Windows rename cannot replace.
+void() MF_Save =
+{
+	local filestream fh;
+	local float i;
+	local string text;
+	text = "";
+	for (i = 0; i < mf_count; i = i + 1)
+		if (tokenize(bufstr_get(mf_rows, i)) == 6)
+		if (MF_WhoSafe(argv(0)))
+			text = strcat(text, argv(1), " \"", argv(3), "\"\n");
+	if (strlen(text) == mf_siglen && crc16(FALSE, text) == mf_sigcrc) return;
+	fh = fopen(MF_TMP, FILE_WRITE);
+	if (fh < 0) return;
+	fputs(fh, strcat(MF_HEAD, "\n"));
+	fputs(fh, text);
+	fclose(fh);
+	fremove(MF_FILE);
+	if (frename(MF_TMP, MF_FILE) != 0)
+	{
+		fremove(MF_TMP);
+		return;
+	}
+	mf_siglen = strlen(text);
+	mf_sigcrc = crc16(FALSE, text);
+};
+
+void() MF_LoadSaved =
+{
+	local filestream fh;
+	local float n, rel;
+	local string ln, text;
+	fh = fopen(MF_FILE, FILE_READ);
+	if (fh < 0) return;
+	if (fgets(fh) != MF_HEAD) { fclose(fh); return; }
+	n = 0;
+	text = "";
+	for (ln = fgets(fh); ln != "" && n < 128; ln = fgets(fh))
+	{
+		if (tokenize(ln) != 2) continue;
+		rel = stof(argv(0));
+		if (rel < 1 || rel > 4 || rel != floor(rel) || strlen(argv(1)) > 192) continue;
+		// `who` "-": no Join and no presence until a fresh list replaces it.
+		bufstr_set(mf_rows, n, sprintf("- %g 0 \"%s\" \"\" \"\"", rel, argv(1)));
+		text = strcat(text, ftos(rel), " \"", argv(1), "\"\n");
+		n = n + 1;
+	}
+	fclose(fh);
+	if (!n) return;
+	mf_count = n;
+	mf_siglen = strlen(text);
+	mf_sigcrc = crc16(FALSE, text);
+};
+
 void() MF_Init =
 {
 	registercvar("ui_friends_count", "-1", 0);
 	registercvar("ui_friends_epoch", "0", 0);
 	mf_count = mf_epoch = mf_mode = -1;
 	mf_rows = buf_create();
+	MF_LoadSaved();
+};
+
+/*
+  A new list replaces the held one.  The server's presence TTL is 16 s and a
+  lobby polls every 5 s, so one late poll reads a friend offline for one
+  reply: a row online (flag 1) in the last fresh list is carried online once,
+  as flag 2, with its old server and map.
+*/
+void(float stage, float n) MF_Swap =
+{
+	local float i, j;
+	local hashtable was;
+	local string who, nm;
+	if (mf_seen > 0 && mf_count > 0)
+	{
+		was = hash_createtab(256, EV_FLOAT);
+		for (i = 0; i < mf_count; i = i + 1)
+			if (tokenize(bufstr_get(mf_rows, i)) == 6)
+			if (stof(argv(2)) == 1)
+				hash_add(was, argv(0), i + 1, HASH_REPLACE | EV_FLOAT);
+		for (i = 0; i < n; i = i + 1)
+		{
+			if (tokenize(bufstr_get(stage, i)) != 6) continue;
+			if (stof(argv(1)) != 3 || stof(argv(2)) != 0) continue;
+			j = hash_get(was, argv(0), 0, EV_FLOAT);
+			if (!j) continue;
+			who = argv(0);
+			nm = argv(3);
+			tokenize(bufstr_get(mf_rows, j - 1));
+			bufstr_set(stage, i, sprintf("%s 3 2 \"%s\" \"%s\" \"%s\"", who, nm, argv(4), argv(5)));
+		}
+		hash_destroytab(was);
+	}
+	MF_PressClear();
+	buf_del(mf_rows);
+	mf_rows = stage;
+	mf_count = n;
+	mf_seen = time;
+	mf_seenmode = clientstate();
+	MF_Save();
+};
+
+// Connected: CSQC publishes a completed snapshot (~5 s); copy it so rows survive a disconnect.
+void() MF_TakeCvars =
+{
+	local float i, n, k, stage;
+	local string row;
+	n = cvar("ui_friends_count");
+	if (n < 0) return;
+	n = min(n, 128);
+	stage = buf_create();
+	k = 0;
+	for (i = 0; i < n; i = i + 1)
+	{
+		row = cvar_string(strcat("ui_friend_", ftos(i)));
+		if (tokenize(row) != 6) continue;
+		if (!MF_WhoSafe(argv(0))) continue;
+		bufstr_set(stage, k, row);
+		k = k + 1;
+	}
+	MF_Swap(stage, k);
 };
 
 void(float visible) MF_Poll =
@@ -93,9 +232,10 @@ void(float visible) MF_Poll =
 	mode = clientstate();
 	if (mode != mf_mode)
 	{
+		// Rows stay up across a connect or disconnect; MF_Fresh marks them stale.
 		MF_Cancel();
 		MF_PressClear();
-		mf_count = mf_epoch = -1;
+		mf_epoch = -1;
 		mf_next = 0;
 		mf_mode = mode;
 		MF_Note("");
@@ -106,27 +246,29 @@ void(float visible) MF_Poll =
 		if (epoch != mf_epoch)
 		{
 			mf_epoch = epoch;
-			mf_seen = time;
-			mf_count = bound(-1, cvar("ui_friends_count"), 128);
-			MF_PressClear();
+			MF_TakeCvars();
 		}
-		if (time < mf_seen || time - mf_seen > 16) mf_count = -1;
 		return;
 	}
-	if (mode != 1 || !visible || !MF_Online())
+	if (mode != 1 || !MF_Online())
 	{
 		MF_Cancel();
-		mf_count = -1;
-		mf_next = 0;
 		return;
 	}
 	if (!checkbuiltin(friends_sign))
 	{
-		mf_count = -1;
-		MF_Note("Update World of Surf to use Friends before joining a map.");
+		if (!strcmp(mf_note, ""))
+			MF_Note("Update World of Surf to use Friends before joining a map.");
 		return;
 	}
-	if (time < mf_seen || time - mf_seen > 16) mf_count = -1;
+	// Patch 781 (Lex): one list at launch with the panel hidden; after that a
+	// hidden panel finishes nothing, as P741 had it.
+	if (!visible)
+	if (mf_boot)
+	{
+		MF_Cancel();
+		return;
+	}
 	if (mf_req)
 	{
 		if (time < mf_at || time - mf_at > 8)
@@ -173,7 +315,12 @@ float(float reqid, float code, string body) MF_Reply =
 	mf_wire = 0;
 	if (!mf_req || reqid != mf_req) return TRUE;
 	mf_req = 0;
-	if (!MF_Active()) { MF_Cancel(); return TRUE; }
+	// A join needs the open panel; a list may land hidden (the launch fetch).
+	if (!strcmp(mf_op, "join"))
+	{
+		if (!MF_Active()) { MF_Cancel(); return TRUE; }
+	}
+	else if (!MF_Online() || clientstate() != 1) { MF_Cancel(); return TRUE; }
 	if (code || strlen(body) > 131072)
 	{
 		MF_Fail("Friends service unavailable. Your friends are not necessarily offline.");
@@ -281,12 +428,9 @@ float(float reqid, float code, string body) MF_Reply =
 	}
 	else
 	{
-		MF_PressClear();
-		buf_del(mf_rows);
-		mf_rows = stage;
-		mf_count = n;
-		mf_seen = time;
+		MF_Swap(stage, n);
 		mf_next = time + 5;
+		mf_boot = TRUE;
 		MF_Cancel();
 		MF_Note("");
 	}
@@ -296,9 +440,9 @@ float(float reqid, float code, string body) MF_Reply =
 
 void(vector pos, vector size) MF_Draw =
 {
-	local float i, rel, online, at;
+	local float i, rel, online, at, fresh;
 	local vector rp;
-	local string who, nm, server, map, status, id;
+	local string who, nm, server, map, status, id, ago;
 	sui_style_panel(pos, size, 12, 1);
 	sui_push_frame(pos, size);
 	sui_text('16 12 0', SZ_HEAD, "friends", COL_ACCENT, 1, 0);
@@ -307,6 +451,8 @@ void(vector pos, vector size) MF_Draw =
 		cvar_set("ui_maps_friends", "0");
 		MF_Cancel();
 	}
+	fresh = MF_Fresh();
+	ago = (mf_seen > 0) ? MF_Ago(time - mf_seen) : "";
 	if (!MF_Online())
 		ui_para('16 60 0', size_x - 32, SZ_LABEL, 20,
 		        "Friends needs online features enabled in Settings / Privacy.", COL_DIM, TRUE);
@@ -321,16 +467,22 @@ void(vector pos, vector size) MF_Draw =
 		        "No friends yet. In a lobby, add someone from TAB > Players.", COL_DIM, TRUE);
 	else
 	{
-		status = strcmp(mf_note, "") ? mf_note : "Private lobby presence";
+		if (fresh)
+			status = strcmp(mf_note, "") ? mf_note : "Private lobby presence";
+		else
+		{
+			status = (mf_seen > 0) ? strcat("Updated ", ago, " ago") : "Saved list";
+			if (mf_req)
+				status = strcat(status, " -- refreshing");
+			else if (strcmp(mf_note, ""))
+				status = strcat(status, " -- ", mf_note);
+		}
 		sui_text('16 52 0', '12 12 0', ui_fit_text(status, size_x - 32, '12 12 0'), COL_DIM, 1, 0);
 		sui_list_view_begin("mf_list", '12 76 0', [size_x - 24, size_y - 88], [size_x - 38, 102], mf_count, mf_scroll, [0, 8]);
 		rp = '0 0 0';
 		for (i = sui_list_item(rp); i > -1; i = sui_list_item(rp))
 		{
-			if (clientstate() == 2)
-				at = tokenize(cvar_string(strcat("ui_friend_", ftos(i))));
-			else
-				at = tokenize(bufstr_get(mf_rows, i));
+			at = tokenize(bufstr_get(mf_rows, i));
 			if (at != 6) continue;
 			who = argv(0);
 			rel = stof(argv(1));
@@ -342,17 +494,20 @@ void(vector pos, vector size) MF_Draw =
 			sui_style_box(rp, [size_x - 38, 96], 8, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
 			sui_text(rp + '10 8 0', SZ_ROW, ui_fit_text(nm, size_x - 60, SZ_ROW), COL_TEXT, 1, 0);
 			status = "Offline";
+			if (!fresh)
+				status = (mf_seen > 0) ? strcat("Offline as of ", ago, " ago") : "Checking...";
 			if (rel == 1) status = "Friend request sent";
 			if (rel == 2) status = "Incoming friend request";
 			if (rel == 4) status = "Blocked";
-			if (online) status = server;
-			sui_text(rp + '10 32 0', '12 12 0', ui_fit_text(status, size_x - 60, '12 12 0'), online ? SUI_THEME_GOOD : COL_DIM, 1, 0);
+			if (online) status = fresh ? server : strcat("Last seen: ", server);
+			sui_text(rp + '10 32 0', '12 12 0', ui_fit_text(status, size_x - 60, '12 12 0'), (online && fresh) ? SUI_THEME_GOOD : COL_DIM, 1, 0);
 			if (online)
 			{
 				sui_text(rp + '10 54 0', '12 12 0', ui_fit_text(map, size_x - 144, '12 12 0'), COL_DIM, 1, 0);
+				// Join asks the backend afresh; a stale row only offers the question.
+				if (MF_WhoSafe(who))
 				if (ui_button(id, rp + [size_x - 122, 54], [74, 28], "Join"))
 				if (!ui_join_busy())
-				if (MF_WhoSafe(who))
 				{
 					if (clientstate() == 2)
 						localcmd(sprintf("friends_menu_join %s\n", who));

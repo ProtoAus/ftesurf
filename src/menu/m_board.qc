@@ -235,6 +235,67 @@ void(float id) Mlb_Abandon =
 		mlb_dropi = 0;
 };
 
+/*
+  Patch 781: FIRST PAGES BY QUERY, so a switch back to a tab draws at once, and
+  the panel's other tabs asked one at a time once the first page is up.  Only
+  the plain first page (no offset, no picked time) is kept; MLB_CFRESH s.
+*/
+#define MLB_CN      12
+#define MLB_CFRESH  60
+float  mlb_ckey, mlb_cbody;     // strbufs, by slot
+float  mlb_ct[MLB_CN];          // time stored; 0 free
+float  mlb_preq, mlb_psent, mlb_pt;
+string mlb_pkey;
+
+string(float t) Mlb_CKey =
+{
+	return sprintf("%s %g %g %s %s", strtolower(mlb_map), mlb_track, mlb_leg, Mlb_Tier(t), mlb_style);
+};
+
+float(string key) Mlb_CFind =
+{
+	local float i;
+
+	if (!mlb_ckey)
+		return -1;
+	for (i = 0; i < MLB_CN; i = i + 1)
+		if (mlb_ct[i])
+		if (!strcmp(bufstr_get(mlb_ckey, i), key))
+			return i;
+	return -1;
+};
+
+void(string key, string body) Mlb_CPut =
+{
+	local float i, j;
+
+	if (!mlb_ckey)
+	{
+		mlb_ckey = buf_create();
+		mlb_cbody = buf_create();
+	}
+	i = Mlb_CFind(key);
+	if (i < 0)
+	{
+		i = 0;
+		for (j = 1; j < MLB_CN; j = j + 1)
+			if (mlb_ct[i])
+			if (!mlb_ct[j] || mlb_ct[j] < mlb_ct[i])
+				i = j;
+	}
+	bufstr_set(mlb_ckey, i, key);
+	bufstr_set(mlb_cbody, i, body);
+	mlb_ct[i] = time;
+};
+
+void(float id, float code, string body, float append) Mlb_Page;
+
+// The panel shows a plain first page: the cache may answer it.
+float() Mlb_CPlain =
+{
+	return (!mlb_offset && mlb_focuswho == "" && mlb_source == "");
+};
+
 // Empty the list.  The strbufs are bounded by mlb_n, not by their size.
 void() Mlb_ClearRows =
 {
@@ -287,6 +348,19 @@ float(float append) Mlb_Fetch =
 		else
 			mlb_state = MLBS_NODIR;
 		return FALSE;
+	}
+
+	if (!append)
+	if (Mlb_CPlain())
+	{
+		id = Mlb_CFind(Mlb_CKey(mlb_tab));
+		if (id >= 0)
+		if (time - mlb_ct[id] < MLB_CFRESH)
+		{
+			print(sprintf("^5board:^7 %s from the cache, %g s old\n", Mlb_Tier(mlb_tab), rint(time - mlb_ct[id])));
+			Mlb_Page(0, 0, bufstr_get(mlb_cbody, id), FALSE);
+			return TRUE;
+		}
 	}
 
 	off = mlb_offset;
@@ -619,7 +693,8 @@ void(float id, float code, string body, float append) Mlb_Page =
 */
 float(float reqid, float code, string body) Mlb_Reply =
 {
-	local float k, root;
+	local float k;
+	local int root;
 
 	if (!reqid)
 		return FALSE;
@@ -646,6 +721,30 @@ float(float reqid, float code, string body) Mlb_Reply =
 	{
 		mlb_req = 0;
 		Mlb_Page(reqid, code, body, FALSE);
+		if (!code)
+		if (mlb_state == MLBS_OK)
+		if (Mlb_CPlain())
+			Mlb_CPut(Mlb_CKey(mlb_tab), body);
+		return TRUE;
+	}
+	if (mlb_preq)
+	if (reqid == mlb_preq)
+	{
+		mlb_preq = 0;
+		if (!code)
+		if (strlen(body) < 1048576)
+		{
+			root = json_parse(body);
+			if (root)
+			{
+				if (json_find_object_child(root, "rows"))
+				if (!strcmp(mlb_pkey, sprintf("%s %g %g %s %s", strtolower(json_get_string(json_find_object_child(root, "map"))),
+				    json_get_float(json_find_object_child(root, "track")), json_get_float(json_find_object_child(root, "leg")),
+				    json_get_string(json_find_object_child(root, "tier")), json_get_string(json_find_object_child(root, "style")))))
+					Mlb_CPut(mlb_pkey, body);
+				json_free(root);
+			}
+		}
 		return TRUE;
 	}
 	if (mlb_mreq)
@@ -667,12 +766,59 @@ float(float reqid, float code, string body) Mlb_Reply =
 };
 
 // Called even without menu focus: consume browse data and expire pending replies.
+// Once the first page is up: one other tab's first page, asked ahead (Mlb_Poll).
+void() Mlb_Ahead =
+{
+	local float t, i;
+	local string url, key;
+
+	if (mlb_preq)
+	{
+		if (time - mlb_psent > MLB_DEADLINE)
+		{
+			Mlb_Abandon(mlb_preq);
+			mlb_preq = 0;
+		}
+		return;
+	}
+	if (mlb_state != MLBS_OK || !Mlb_CPlain() || strcmp(mlb_style, "clean"))
+		return;
+	if (time < mlb_pt || cvar("rec_terms") < FS_TERMS_ONLINE || cvar_string("lobby_dir") == "")
+		return;
+	for (t = 0; t < MLB_NTABS; t = t + 1)
+	{
+		if (t == mlb_tab)
+			continue;
+		key = Mlb_CKey(t);
+		i = Mlb_CFind(key);
+		if (i >= 0)
+		if (time - mlb_ct[i] < MLB_CFRESH)
+			continue;
+		url = strcat(sprintf("%s/api/board?map=%s&track=%g&leg=%g&tier=%s&style=%s",
+		              cvar_string("lobby_dir"), uri_escape(mlb_map), mlb_track, mlb_leg, Mlb_Tier(t), uri_escape(mlb_style)),
+		              sprintf("&limit=%g&offset=0", MLB_PAGE));
+		mlb_preq = Lob_NextReq();
+		mlb_psent = time;
+		mlb_pt = time + 0.4;
+		if (mlb_pkey != "") strunzone(mlb_pkey);
+		mlb_pkey = strzone(key);
+		if (!uri_get(url, mlb_preq))
+		{
+			mlb_preq = 0;
+			mlb_pt = time + 30;
+		}
+		return;
+	}
+};
+
 void() Mlb_PollRequest;
 void() Mlb_Poll =
 {
 	local float id;
 
 	Mlb_PollRequest();
+	if (mlb_open)
+		Mlb_Ahead();
 
 	if (mlb_req)
 	if (time - mlb_sent > MLB_DEADLINE)
