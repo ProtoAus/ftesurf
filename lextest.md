@@ -1,6 +1,35 @@
 # lextest.md — things waiting on a human
 
+## P791 — surf_boreas's end beam
+
+The beam over the end-room circle is drawn: a soft white column from the pit to the
+ceiling, brightest low and fading upward, like Momentum's (surf_boreas0000). It is a
+Source "rope" effect; `vbsp_emit_ropes 0` turns it off. The big pink glow at its base and
+the floating specks are still off (child particles; BACKLOG). csprogs + the surf_boreas
+particle bake. Installs 2026-10-18T11:56:48Z (csprogs 75b75a77; C:\FTESurftesurf
+particles/surf_boreas.cfg 0d1f6cd7); lobbies with 89's deploy of QC main e3dfce05.
+
+"Beam ok / too wide / too narrow / too bright". Verdict PENDING.
+
+## P790 — rotating buttons: surf_boreas's spinning floor symbols, and 115 walls that are not
+
+Source's `momentary_rot_button`. The 115 marked non-solid (16 maps) stop being walls you
+can hit, as in Momentum; the 60 that loop themselves (surf_agony, surf_boreas,
+surf_illusion, surf_nyx, surf_summer, surf_summer_ksf) spin. qwprogs: installs 2026-10-18T11:56:48Z (fa94eb5d); lobbies with
+89's deploy of QC main e3dfce05. Older runs on those maps re-verified now read HOLD
+(physents); the rule that makes them "not comparable" is next (your call: ship now).
+
+- **surf_boreas end room:** the magic circle and its symbols turn, and the three outer
+  medallions travel round the ring, like Momentum's.
+- **The 16 maps** (surf_agony, surf_antichamber, surf_gradient, surf_illusion, surf_lt_unicorn,
+  surf_nyx, surf_olivia, surf_summer(_ksf), surf_froots2, bhop_avantasia/collective/odyssey/
+  rpg, de_nam, surf_boreas): you pass through those decorations where you used to bump them.
+
+"Spins ok / something I used to stand on is gone at <map, spot>". Verdict PENDING.
+
 ## P789 — pictures beside names
+
+Live: lobbies 11:33Z (csprogs 748457d4), installs 11:36Z (menu eaf20c34), 18 Oct.
 
 - Watch a demo from TAB > Online: the demo window's title shows the player's picture
   (your own runs show yours; files with no known player show their first letter).
@@ -14,6 +43,8 @@ Verdict PENDING ("pictures everywhere" or where one is missing).
 
 ## P788 — friends: add back, the "added you" toast
 
+Live: game 11:33-11:36Z, surfd generation 943cbc9b at 11:48Z, 18 Oct.
+
 - When someone adds you: a toast at the right ("NAME added you as a friend", their
   picture, "F2 Add back"). F2 adds them back; it waits while TAB, a profile or the
   resume offer is up.
@@ -22,10 +53,11 @@ Verdict PENDING ("pictures everywhere" or where one is missing).
   while you are in a lobby.
 - Someone you add appears as "Added -- waiting for them to add you back": you see where
   they play and can join only once they add you back (they cannot watch you either).
-Live once surfd's P788 generation is cut over (the backend change); until then adds stay mutual.
 Verdict PENDING.
 
 ## P786 — spectate inside a trigger
+
+Live: lobbies 11:33Z (qwprogs 83ec27bd), installs 11:36Z (qwprogs 7a3a216d), 18 Oct.
 
 - Spectate (TAB > Players, a row) while standing in a start zone, a booster or any
   trigger: it now works, and the run stays ranked. Leaving spectate does not fire the

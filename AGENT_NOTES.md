@@ -96,6 +96,11 @@
   of it step 3 waiting on momrequests' lock, which only step 8 releases; step 3
   now gives up after 5 s (not yet run live).
 - friends29-01a13fef (36697da) is CLOSED and retained as the rollback generation.
+- P788 (2026-10-18 11:48:36Z): surfd788-20261018T1145 serves generation 943cbc9b
+  (branch deploy/surfd-p788: main ed45923c's surfd/ minus P774's unapproved journal
+  collection; only social.py differs from 8182c6f). surfd770-20261018T0000b is CLOSED
+  and retained as OLD. The stage needs src/release too (test_ksftopup reads its nginx).
+  Step 3's drain now gives up at 5 s (measured: 7 s from close to OPEN).
 - P788 ROLLBACK HAZARD: surfd generations from P770 to P787 upgrade every
   `accepted=0` row to a friendship on each poll, so rolling back past P788
   turns one-way adds into friendships (messages without consent, lists over
@@ -2574,7 +2579,7 @@ publicly WITH its fix, not before it.
   observation on surf_dune: waiting to turn first let the map teleport re-arm the
   timer. Those earlier logs are NOT acted hold controls. Also make the reader-test
   helper reject a crashed child: empty stdout is not an empty fault list.
-  Patch 790 follow-up: independent review found counter-conversion/projection
+  Patch 792 follow-up: independent review found counter-conversion/projection
   errors and receipt-layer loss of independent view faults on unavailable clocks.
   Bound ASCII counters before conversion; invalid projections fault without an
   angle judgment. Do not blindly promote old clock-reset diagnostics: repeated

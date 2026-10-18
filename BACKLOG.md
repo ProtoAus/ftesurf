@@ -97,23 +97,39 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## surf_boreas's end room and water: what Patches 783 and 787 left out
 
-- **The end beam is not drawn.** `tendies_endparticle05` (and `tendies_smollaser01`) are
-  `render_rope`: one ribbon through the particles in birth order, `laser01` (a soft
-  vertical stripe, core a fifth of its width). P787 declines ropes; before, they drew
-  as billboards of radius 1500 and whited out the room. The rope's width rule is in
-  Source's closed particles.lib: fit it to Momentum (Lex's surf_boreas0000.tga shows a
-  ~130-unit core). FTE `type beam` links particles of one spawn call only, so a rope
-  needs its own path (e.g. a per-frame trail between the system's live particles).
+- **render_rope, what Patch 791 leaves out.** The end beam is drawn (cl_emit.qc
+  Emit_RopeFrame) from a `rope` index line. Its width, 0.5 x radius, is fitted to ONE
+  Momentum screenshot (surf_boreas0000.tga, core ~120 units); a second map with a rope
+  beside its Momentum capture would test it. Not drawn: texel_size and
+  texture_scroll_rate (laser01 is uniform along the rope, so boreas shows nothing).
+  Refused rather than drawn wrong: a spawn box with spread (Source zigzags), a timed
+  emitter, operators outside pcf.py ROPE_OPS. The fade follows C_OP_FadeAndKill as read
+  (closed source); inverted or reordered fade windows are taken literally.
 - **Child systems stay off** (`vbsp_emit_psys_children 0`). With P787's bake the
   end room's `tendies_endparticle04` (tesla_glow, radius 800, 64/s, alpha 0.8-1) draws
   a saturated dome over the pit where Momentum shows a compact glow. Likely cause:
   Source on PC adds in linear light, so 25 stacked layers of a glow's dim edge stay
   dim; FTE adds gamma values and they saturate. Not measured beyond the one view.
   The default also waits on surf_tensor2's budget (cl_emit.qc, the cvar's comment).
-- **Spinning floor decorations**: surf_boreas's 19 `momentary_rot_button`s loop
-  themselves (`OnFullyClosed` -> `SetPositionImmediately 0`, `SetPosition 1`, 3600
-  degrees at 15-25/s). `sv_entities.qc` spawns the class as `func_wall`. All carry
-  SF_ROTBUTTON_NOTSOLID (buttons.h:16), so a client-side spin would not touch movement.
+- **Outputs aimed at a classname** (Source's fallback, cbase.cpp:944-958). Patch 790
+  takes it for `momentary_rot_button` only. The rest, census of 1,349 maps (35 maps):
+  `player_speedmod ModifySpeed` 24 on 1 map, `player SetDamageFilter` 13 on 10,
+  `info_particle_system Start/Stop/DestroyImmediately` 8 on 7, `env_cascade_light Kill` 5
+  on 3, `logic_timer Disable` 3, `player AddOutput` 2, `player Kill` 2, `func_bhop
+  Enable/Disable`, `trigger_multiple Enable`, `game_ui Deactivate`, `point_tesla TurnOn`.
+  The player ones change movement and dying: its own patch, with the maps run.
+- **Patch 790 moves the physents digest on 16 maps -- the rule bump it needs.** 115
+  momentary_rot_buttons went from SOLID_BSP to SOLID_NOT, and the `pe` digest
+  (sv_user.c:316) hashes solid brushes within 256 units. A run recorded before P790 and
+  verified after it reads `HOLD physents differ` (held, not rejected); surf_boreas's end
+  symbols are on every route. Lex, 18 Oct: ship P790 now, bump after -- a header rule
+  on the `proprule` precedent (sv_timer.qc, reccheck.py, the engine's pe check) so an
+  older file reads "not comparable". Evidence-chain work: its own patch and review rounds.
+- **momentary_rot_button, what Patch 790 leaves out**: the 16 solid ones stay frozen walls
+  (a rotating SOLID_BSP is the pusher question); a child orbits only a spinning yaw-axis
+  momentary_rot_button parent (the 4 children of frozen func_tracktrains spin in place);
+  `SetPositionImmediately` during a move stops it (Source keeps the move and fires on its
+  next MoveDone); Lock/Unlock, Use and the sounds are not done.
 - **`srgb?` keys other than `$fogcolor`** stay false (P783): $alpha .375,
   $overbrightfactor .75 and the `-dx10` tool textures compensate for Source's
   linear-light blending, which FTE does not do. 1,168 materials in 588 sources carry one.
