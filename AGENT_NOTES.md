@@ -1,5 +1,33 @@
 # AGENT_NOTES.md
 
+## Boards, friends and the map list that stay loaded (P781, 2026-10-18)
+
+- A JSON node handle is a byte offset into the QC heap: keep `json_parse`,
+  `json_find_object_child` and `json_get_child_at_index` results in `int`, never `float`.
+  Past float precision the offset rounds off its allocation, accessors read the wrong
+  node, and the only trace is `PR_memfree: pointer lacks marker - double-freed?` at the
+  `json_free`. Online_Parse had them in floats: on surf_kitsune (installed csprogs
+  d7316a58) the first KSF and every-game switches parsed as 0 rows with 4 marker errors in
+  each of two runs, and the board then never asked again ("no times" until a click back).
+  int handles: 100 rows, 0 errors. Same allocation sequence, same failures: a repeatable
+  control. P741 already said this for the menu.
+- `strreplace` and `fgets` stop at 4095 bytes (pr_bgcmd.c, fixed 4096 buffers): a 22 KB
+  board written through strreplace came back cut and was dropped on use. `strcat` and
+  `substring` have no cap; `strstrofs` and `substring` both count characters under UTF-8.
+- uri_get replies are delivered by world spawncount, which CSQC never bumps: a reply to the
+  last map's request reaches this map's VM with its id. Request ids now start from a
+  per-VM base (Online_NextReq 7e6+, steampic 1e6+, zone publish 6.1e6+).
+- The in-game cache (cl_online.qc OBC/OBP): first pages by "track leg tier style", 24
+  slots; the main leg's nine sections asked 2 s after load, 0.4 s apart (surfd allows 120
+  board requests a minute per address, avatars included); the first 24 rows' pictures
+  asked ahead to disk only (SteamPic_Warm, no slot); data/boards/<map>.txt holds the main
+  leg's copies. `scores status` prints the cache and the prefetch; `scores pics` the
+  pictures; `scores scrollto <row>` scrolls the online list. Arms: tmp/arm781e.py and
+  arm781g.py in board-20261018T0650Z (swap the build into the install for the run).
+- conbridge `log --all` did not return a session's first lines twice; grade from the
+  log file the session wrote. `scores status` prints every held row: with 1000 held the
+  client drew at 0.2 fps and a screenshot taken a second later showed the frame before.
+
 ## Sharing paint and saves (P777, 2026-10-18)
 
 - A client's reliable channel carries about one ~1428-byte packet a round trip; what

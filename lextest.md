@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P781 — leaderboards, friends and the map list load once and stay up
+
+In game (TAB): switch the source (WOS / Momentum / KSF) and the styles back and forth:
+each shows at once, with no "no times" that fixes itself on a click back (that was a bug
+in how the board read the reply, now fixed). The main leg's sections and their first 24
+players' pictures load at map start, and the next visit to a map opens on last time's
+board ("saved copy" in the footer until the fresh one lands). Ranks past 999 show all
+four digits. Main menu: the map picker is loaded when you open it, and Friends shows
+your list straight away, keeps it if a refresh fails ("Updated 40 s ago"), and opens on
+the last list ("Saved list") until the first fetch lands. Verdict PENDING ("loading ok",
+or which screen still blanks or waits).
+
 ## P779 — the Comparison window: you against the ghost's line
 
 hud_edit > Comparison (left side, under the Segments list; drag it anywhere). With your
