@@ -1,5 +1,24 @@
 # lextest.md — things waiting on a human
 
+## P811 — your saves follow you between the lobbies and a local game
+
+Not installed yet (deploy line follows).
+
+- In a lobby, save: a moment later that save is also in your own install. Start the same map
+  offline: it is in your list, as a practice placement (position, speed and view, no clock -- the
+  lobby keeps the timed run).
+- A save you made offline appears in the lobby a few seconds after you join that map, also as a
+  practice placement. The console says what happened: `saves: <map> -- N copied here, N sent to
+  the lobby, N deleted there, N moved to deleted/`.
+- Delete a save in a lobby and your install's copy goes too (moved to data/saves/<map>/deleted/,
+  never destroyed on your PC). Delete one offline and it goes from the lobby the next time you
+  join that map there. The first visit to each map only merges the two lists.
+- Your saves' pictures and Segments lists no longer land in the previous map's folder after a
+  lobby map change.
+- `cl_savesync 0` turns it off; `savesync status` shows the counts.
+
+"Saves follow ok / <what went missing or came back>". Verdict PENDING.
+
 ## P808 — rewind: the 3-2-1 is back; a save on the rewind keeps the run as it was there
 
 Not installed yet (deploy line follows).

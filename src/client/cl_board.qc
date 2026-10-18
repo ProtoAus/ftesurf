@@ -1729,11 +1729,17 @@ float(string fname) fremove = #0:fremove;
 // and what a client that has not done a saveloc op yet still reads correctly.
 string() CL_SaveRoot =
 {
-	local string r;
+	local string r, m;
 
 	r = cvar_string("cl_saveroot");
+	m = sprintf("data/saves/%s", serverkey("map"));
 	if (r == "")
-		r = sprintf("data/saves/%s", serverkey("map"));
+		return m;
+	// Patch 811: a root left from the last map is not this one's (19 Oct: two
+	// surf_dragon lobby saves wrote their seq.txt into surf_jumble's folder).
+	// Never the plain map folder either: a local game's saves live there.
+	if (strcmp(r, m) && strstrofs(r, strcat(m, "/@"), 0) != 0)
+		return strcat(m, "/@pending");
 	return r;
 };
 

@@ -270,6 +270,9 @@ client/cl_linegraph.qc
 client/cl_milk.qc
 // Patch 753: before cl_main.qc, which calls it
 client/cl_warpop.qc
+// Patch 811: lobby saves kept in this install and sent up from it; after cl_lobbytime.qc
+// (LT_StatsAreMine), before cl_share.qc (CSQC_Parse_Event) and cl_main.qc.
+client/cl_savesync.qc
 // Patch 777: sharing paint and saves; reads cl_paint.qc, cl_body.qc (Body_Find) and the
 // HUD's KeyMenu_Row; cl_paint.qc calls Share_OnPaint through a prototype.
 client/cl_share.qc

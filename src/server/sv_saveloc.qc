@@ -964,13 +964,14 @@ void(entity e, float blk) SV_SaveLocScanFor =
   SV_SaveLocBegin, 3/4/5/6 paid twice, Step's Begin and Load's).  At 999 saves a
   burst of sl_save or sl_del in one packet is seconds of disk work in one frame.
 */
+float sl_ratequiet;              // Patch 811: a savesync add/del pays this charge without the line
 float(entity e) SV_SaveLocRate =
 {
 	e.rec_sl_tok  = min(SL_TOKRATE, e.rec_sl_tok + (time - e.rec_sl_tokt) * SL_TOKRATE);
 	e.rec_sl_tokt = time;
 	if (e.rec_sl_tok < 1)
 	{
-		if (time - e.rec_sl_toksay > 1)
+		if (time - e.rec_sl_toksay > 1 && !sl_ratequiet)
 		{
 			sprint(e, PRINT_HIGH, "^3save: slow down\n");
 			e.rec_sl_toksay = time;
@@ -2777,6 +2778,12 @@ void(entity e) SV_SaveLocSync =
 		}
 };
 
+void(entity e) SV_SaveSyncPush;          // Patch 811: sv_savesync.qc
+float ss_quiet;                          // a delete the install is not told of
+float ss_nopush;                         // a create it is not told of
+void(entity e, float r) SV_SaveSyncGone;
+void(entity e) SV_SaveSyncDelAll;
+
 // One save/load event out to the client.  See STAT_FS_SLSEQ.
 void(entity e, float op, float id) SV_SaveLocEvent =
 {
@@ -2792,6 +2799,8 @@ void(entity e, float op, float id) SV_SaveLocEvent =
 		e.rec_sl_answer_op = e.rec_sl_slop;
 		e.rec_sl_answer_tick = rec_sl_tick[r];
 	}
+	if (op == SLOP_SAVED)
+		SV_SaveSyncPush(e);         // Patch 811: sv_savesync.qc
 };
 
 /*
@@ -3440,7 +3449,9 @@ void(entity e) SV_RewindDropGo =
 	sprint(e, PRINT_HIGH, sprintf("^7rewind: save %g, the last resume point, makes way\n",
 	                              r - base + 1));
 	rec_sl_quiet = TRUE;
+	ss_quiet = TRUE;                // Patch 811: never copied to the install (SV_SaveLocCreateAt)
 	SV_SaveLocDeleteRow(e, r - base + 1);
+	ss_quiet = FALSE;
 	rec_sl_quiet = FALSE;
 	SV_SaveGenBump(SL_Blk(e));      // Patch 751
 };
@@ -3543,7 +3554,12 @@ float(entity e, float t, vector near, float usenear, float go, float view) SV_Sa
 		SV_SaveKeepWindow(base, rec_sl_nb[blk]);
 	SV_SaveGenBump(blk);
 	e.rec_sl_index = rec_sl_nb[blk];
+	// Patch 811: a resume's row is a means the next resume deletes, and it shares the
+	// key of an S save at the same cursor, so the install gets neither its copy nor
+	// its delete (SV_RewindDropGo).
+	ss_nopush = go;
 	SV_SaveLocEvent(e, SLOP_SAVED, id);
+	ss_nopush = FALSE;
 	if (sl_sharefrom != "")         // Patch 777: a save another player sent (sv_share.qc)
 		sprint(e, PRINT_HIGH, sprintf("^7share: save ^2%g^7 (slot %s) from %s, %g u/s\n",
 		                              e.rec_sl_index, SL_NN(id), sl_sharefrom, floor(vlen([rw_v_x, rw_v_y, 0]))));
@@ -5125,6 +5141,7 @@ void(entity e, float n) SV_SaveLocDeleteRow =
 	  class Rec_ViewRetry's own fremove essay describes: it does not look broken,
 	  it looks like it worked.
 	*/
+	SV_SaveSyncGone(e, r);              // Patch 811: the install's copy goes as well
 	SV_RecCopyDrop(SL_RecPath(id));     // Patch 375: a pending copy must not recreate it
 	fremove(SL_StatePath(id));
 	fremove(SL_RecPath(id));
@@ -5324,8 +5341,11 @@ void(entity e) SV_SaveLocDeleteAllStep =
 		sprint(e, PRINT_HIGH, sprintf("^3save: delete-all stopped after %g\n",
 		                              e.rec_sl_delall - 1));
 	else
+	{
 		sprint(e, PRINT_HIGH, sprintf("^1deleted^7 all %g save state(s) on %s\n",
 		                              e.rec_sl_delall - 1, mapname));
+		SV_SaveSyncDelAll(e);       // Patch 811
+	}
 	e.rec_sl_delall = 0;
 };
 

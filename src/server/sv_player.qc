@@ -248,6 +248,9 @@ void() PutClientInServer =
 
 	// Multi-Session: the first spawn after a connect offers a paused run.
 	SV_MsOffer(self);
+	// Patch 811: this map's save root before any save answer is read -- the set that
+	// rides with a save's own command can land after the client has filed it.
+	SV_SaveRootFor(self);
 	self.run_inserver = TRUE;
 };
 
@@ -1054,6 +1057,11 @@ void(string cmd) SV_ParseClientCommand =
 	if (c == "share")                   // Patch 777: sv_share.qc
 	{
 		Share_Command(self, cmdargc);
+		return;
+	}
+	if (c == "savesync")                // Patch 811: sv_savesync.qc
+	{
+		SaveSync_Command(self, cmdargc);
 		return;
 	}
 	// The client can queue localcmd behind an already-buffered raw cmd. Its

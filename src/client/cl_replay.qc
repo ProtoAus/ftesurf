@@ -242,9 +242,7 @@ string(float id) Rec_SavePath =
 	local string r;
 
 	// Patch 333: same root the server spells -- see CL_SaveRoot in cl_board.qc.
-	r = cvar_string("cl_saveroot");
-	if (r == "")
-		r = sprintf("data/saves/%s", Rec_MapName());
+	r = CL_SaveRoot();
 	return sprintf("%s/save%s/run.view", r, FS_SaveSlotName(id));
 };
 

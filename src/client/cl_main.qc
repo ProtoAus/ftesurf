@@ -314,6 +314,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Av_RegisterCvars();
 	Paint_RegisterCvars();          // Patch 772
 	Share_RegisterCvars();          // Patch 777
+	SaveSync_Register();            // Patch 811
 	PTrail_RegisterCvars();
 	Players_RegisterCvars();
 	Friends_Register();
@@ -1687,6 +1688,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	Emit_Frame();
 	Paint_Frame();                  // Patch 772: the camera is final; the world pass draws it
 	Share_Frame();                  // Patch 777: the pick reads the same camera
+	SaveSync_Frame();               // Patch 811
 
 	// Build 66.  Beside Emit_Frame and for the same reason: VF_ORIGIN is final
 	// by this point, and the soundscape selection traces from it.  Cheap --
@@ -2298,6 +2300,8 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (Av_ConsoleCommand(cmd))
 		return TRUE;
 	if (Share_ConsoleCommand(cmd))  // Patch 777
+		return TRUE;
+	if (SaveSync_ConsoleCommand(cmd))  // Patch 811
 		return TRUE;
 	if (Paint_ConsoleCommand(cmd))  // Patch 772
 		return TRUE;

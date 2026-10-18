@@ -1,5 +1,21 @@
 # AGENT_NOTES.md
 
+## Saves kept with the install (P811, 2026-10-19)
+
+- The sync is keyed by SS_Same (origin and view within 0.05), never by row or folder id; its
+  ledger is client side (<cl_saveroot>/sync.txt, plus delall.txt for a delete-all not yet carried
+  out). Several rows at one key: only the first on each side is paired, and a delete moves one.
+  A delete is carried only from a whole listing (every counted row came, none deleted meanwhile,
+  every install file read). CSQC_Parse_Event errors on an unknown type, so SS_EV_* (20-23) are
+  read before the share window counts an event; SS_EV_END's kind byte keeps a listing's number
+  apart from a command's tag. The rewind's resume row is never listed, matched or pushed.
+- The server set `cl_saveroot` only with each saveloc command, and the client could file a save's
+  pictures before that set ran: the first save on a new lobby map wrote into the last map's
+  folder. PutClientInServer sets it now, and CL_SaveRoot refuses another map's root.
+- Rig: tools/p811savesync.py (lobby server and client install on separate basedirs, rcon for a
+  changelevel). `vote key <scan> <down>` feeds CL_InputEvent for an input-chain arm
+  (tools/p809entview.py).
+
 ## Rewind saves at the cursor (P808, 2026-10-19)
 
 - A save on the rewind's cursor and the rewind's resume are moments the client's live state has
