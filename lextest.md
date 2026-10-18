@@ -33,6 +33,26 @@ attempts: successful only" takes them off the demo line (and the run graph). "st
 only" from a board stage row now starts at the attempt that counted, not at the stage's
 first entry. Verdict PENDING ("demo fails ok" or what looks wrong).
 
+## P776 — `surf_view`, and ent_view's mouse1 / mouse2
+
+P776 went into both Windows installs at 2026-10-18T05:33:26Z (exe `bf1a9aac`) and 05:37:04Z
+(csprogs `81a2d0a1`). Both have since been replaced by builds that carry it: the exe by P780's
+`0fdede9f` (06:12:22Z, surf_view checked on it) and the csprogs by P777's `724c5599`
+(06:13:23Z, built on 03194e7e). Restart the game. The 12 lobbies still serve P773's csprogs:
+P777's deploy, which carries the ent_view mouse, waits for them to empty. surf_view is in the
+exe, so it works on any lobby; the mouse buttons on a lobby need that deploy.
+
+- **surf_view:** type `surf_view` on any surf map. Ramps you can surf get a red
+  stipple, teleport volumes are red boxes, and invisible walls or clips that stop you
+  are yellow. Type it again to turn it off. `surf_view_dist` (8192) sets how far it
+  reaches; `surf_view_fill` (0.25) how dense the stipple is.
+- **ent_view:** with `ent_view` on, aim at a trigger and press mouse1: the card stays
+  open when you look away and lists every key plus what the server says the entity
+  does. Mouse1 again closes it. Mouse2 copies it (paste anywhere with ctrl+V).
+  While ent_view is on, mouse1 and mouse2 do not duck or jump.
+
+"surf_view ok / wrong at <map, spot>" and "ent_view mouse ok". Verdict PENDING.
+
 ## P773 — paint sprays while held, Rate and Random; body/belt colour presets
 
 In both Windows installs since 2026-10-18T03:48:50Z (csprogs `f6103f93`, `.prev` P772's
