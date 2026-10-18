@@ -50,10 +50,13 @@ one hung 25 u up, stuck. Live: lobbies 2026-10-18T18:08Z (all 12, qwprogs 6b8707
 **Not fixed yet -- your surf_null report:** fresh in, the camera ~25 u too high until a
 jump, with the server's body on the floor. Seen once here, not again in three fresh
 connects. To capture it, type this once in the console (F8 is free in your config):
-`bind F8 "set cl_prederror 1; set hud_debug 1; set hud_eyetrace 3; cmd viewpos; waitms 1000; condump surfnull"`
+`bind F8 "set cl_prederror 1; set hud_debug 1; set hud_eyetrace 3; cl_predtrace 8; cmd viewpos; waitms 1500; condump surfnull"`
 then, console CLOSED, press F8 while the camera is high (before jumping). Typed into the
 console it cannot work: the HUD, and with it the eye trace, draws only with the console
-shut (cl_main.qc `notmenu`) -- both 19 Oct dumps came back without eye lines. Not
+shut (cl_main.qc `notmenu`) -- both 19 Oct dumps came back without eye lines. The F8 capture at 19:22Z showed it:
+`eye: cam 7299.722 org 7136.031 -> eye 163.691 | stat 64.000` -- the feet and the server
+agree, the camera is ~100 u high; cl_predtrace says whether the predicted viewheight
+or the step smoother's crouch carries it. Not
 reproduced here: four fresh connects, one reconnect, and local `map` then a lobby join
 all measured the eye at 64. Verdict PENDING.
 
