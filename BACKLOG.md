@@ -34,12 +34,30 @@ bound-check failure kills the VM (P795 took the menu down this way).
 
 ## Map visuals left open by Patches 799 and 802
 
-- Site: hl2 plugin `mat_vmt.c` UnlitGeneric branch (~2882-2937). A PlayerProximity -> Subtract
-  -> $alpha chain is honoured only for UnlitTwoTexture (~3138), measured from the render eye.
-  surf_tripportals' `PLAR/PLARS_HELL_WINDOW*` neon is UnlitGeneric and fades out by 400-1000
-  units in Source, measured from the PLAYER (proxyplayer.cpp:45-60), so through a portal from the
-  stage-1 start zone Source shows none of the hub's neon. Check: a Momentum screenshot from Lex's
-  tripportals save 2 against ours.
+- Site: hl2 plugin GLSL programs (`vmt/unlit` for additive, `lightmapped`, `vertexlit`,
+  `animated`, `twotexture`, `transition`) and UnlitGeneric's `alphaGen const` ($alpha) pass. None
+  applies the entity's alpha, so Source's renderamt fade, and a PlayerProximity fade, do not show
+  on those materials; P810 declines PlayerProximity there and does only UnlitGeneric's identity
+  pass. Additive needs care: since P783 some blend src_alpha/one and some one/one. Check: a
+  func_brush with rendermode 4, renderamt 128 on a LightmappedGeneric face, ours against Momentum.
+- Site: `sv_entities.qc` non-solid list. env_bubbles still draws its brush: Source sets render
+  alpha 0 (effects.cpp CBubbling::Spawn) and whether the engine skips a zero blend is in code we
+  do not have. 8 in 3 maps have faces the plugin draws (env_embers: none). Check: one against
+  Momentum.
+- Site: `sv_entities.qc` non-solid list. Classes Momentum never links, so never spawns or draws,
+  still draw here (P810/P807 review, not yet checked by hand): func_static (df_ori-dorado,
+  df_sdc-uk_26), func_buyzone (3 maps), func_overbounce (df_momentum_training), fog_volume (4 bhop
+  maps), func_bomb_target (1). Check: grep LINK_ENTITY_TO_CLASS in Momentum's game code, then one
+  map against Momentum.
+- Site: `sv_entities.qc` SV_IOEnable. Enable or Toggle on a member of the non-solid list makes it
+  SOLID_BSP (the `*` model test), a wall Source never has. Fired in the library: func_buyzone
+  Enable on surf_anthropomorphic, func_regenerate Enable on bhop_upward. P807's classes are out
+  of it (no model). Check: stand in the volume after the input on either map.
+- Site: `cl_proximity.qc` Prox_Resolve. Declined shapes Source fades per entity: about 190 brush
+  entities in 14 maps, among them bhop_rpg `nu/pane3` (85, invisible within 128 units in
+  Source), surf_arcade `pixelfadewall` (55), surf_centipedes' signs, `player_fade_near*` walls;
+  and bhop_plars_hell's alpha-tested `plar/plars_hell_window` (220), which Source cuts out at the
+  alpha test rather than fading. Each needs its arm to apply entity alpha first (the item above).
 - Site: `cl_portal.qc` APW_Resolve. func_areaportalwindow's BackgroundBModel (one map in the
   library) stays an ordinary server entity, unfaded. Check: census for the map, then compare
   with Momentum.

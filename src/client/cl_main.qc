@@ -145,6 +145,7 @@ void() CSQC_WorldLoaded =
 	PTrail_Reset();                 // ...and no trail line spans the load
 
 	Portal_LoadFromWorld();
+	Prox_LoadFromWorld();           // Patch 810: the PlayerProximity fades, after the portals
 	MilkSky_WorldLoaded();          // Patch 467: r_skybox is not archived
 
 	// The sprite entities, read from the same lump and for the same reason the
@@ -1650,6 +1651,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	}
 
 	RG_DrawBodies();                // Patch 746: the race ghosts, with the scene's other bodies
+	Prox_Frame();                   // Patch 810: before addentities, which calls Prox_Delta
 	addentities(MASK_ENGINE | MASK_VIEWMODEL);
 
 	// Zones go in BEFORE renderscene: R_BeginPolygon queues into the scene,

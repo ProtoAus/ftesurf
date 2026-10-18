@@ -9226,6 +9226,9 @@ void() SV_OnEntityNoSpawnFunction =
 	  to be seen and walked through, so dropping the model for the whole list
 	  would delete real scenery.  Non-solid is a class property; not-drawn is a
 	  material property.  Keep them separate.
+
+	  P807: except the five volumes inside the block whose Source client class
+	  never draws its brush, whatever the material.
 	*/
 	if (cn == "func_illusionary" || cn == "func_detail_illusionary" ||
 	    cn == "func_dustcloud"   || cn == "func_smokevolume"        ||
@@ -9245,6 +9248,17 @@ void() SV_OnEntityNoSpawnFunction =
 	{
 		self.solid = SOLID_NOT;
 		self.movetype = MOVETYPE_NONE;
+		// P807: Source never draws these brushes. ShouldDraw is false for C_Func_Dust,
+		// C_BaseParticleEntity and C_ColorCorrectionVolume; func_precipitation is kRenderEnvironmental
+		// and always transparent, so RENDER_GROUP_OTHER, "won't get drawn" (c_baseentity.cpp:5671).
+		// 112 of them in 34 maps have faces the plugin draws (surf_voyager's tools/toolsfog). Dropped
+		// as trigger_ is; the submodel stays precached for cl_emit.qc's probe.
+		if (cn == "func_dustmotes" || cn == "func_dustcloud" || cn == "func_smokevolume" ||
+		    cn == "func_precipitation" || cn == "color_correction_volume")
+		{
+			self.model = "";
+			self.modelindex = 0;
+		}
 		return;
 	}
 

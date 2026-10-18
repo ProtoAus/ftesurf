@@ -2083,6 +2083,14 @@ void() HE_MigrateDefaults =
 			print("hud: line labels now measure energy from your speedometer's zero (Line labels, Energy from)\n");
 		localcmd("seta hud_labels_rev 661\n");
 	}
+	// Patch 810: portals rendered per view, 2 -> 16 (Lex in surf_tripportals' hub: "much better").
+	registercvar("portal_cfg_rev", "0", CVAR_ARCHIVE);
+	if (cvar("portal_cfg_rev") < 810)
+	{
+		if (HE_MoveOne("r_portalmaxviews", 2, "16"))
+			print("portals: up to 16 now render in one view (r_portalmaxviews)\n");
+		localcmd("seta portal_cfg_rev 810\n");
+	}
 	registercvar("hud_layout_rev", "0", CVAR_ARCHIVE);
 	if (cvar("hud_layout_rev") >= 637)
 		return;
