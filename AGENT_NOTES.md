@@ -2380,7 +2380,10 @@ publicly WITH its fix, not before it.
   a player, idles or rewinds a run, or parks it must call `SV_SpecRelease` FIRST
   (the funnels: disconnect, SV_Shutdown, retry, load, SV_ZoneMove, setpos,
   respawn), and nothing may write to the recorder while `run_pmhold` is set.
-  Entry is refused while a trigger is touching the body or has not seen it leave.
+  Entry is refused only while a map output is due on the body (it would land on the
+  held body and the rollback undo it). Inside a trigger is allowed (Patch 786): the
+  sweep never counts a held body absent (SV_TouchHeld) and SV_TrigResume makes the
+  release no entry, so a hold neither ends a touch nor starts one.
   STAT_FS_SPEC 103: 0 off, n = watching entnum n, -3..-1 the countdown (when there is one).
   Harnesses: `p380verify` (derived files), `p382a/c/d` (+`p382t/e`), `p382verify`.
 - SPECTATING (Patch 385, `client/cl_spectate.qc`) drives that hold. The camera

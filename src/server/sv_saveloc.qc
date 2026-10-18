@@ -4718,7 +4718,7 @@ void(entity e, string why) SV_SpecRefuse =
 void(entity e, float n) SV_SpecStart =
 {
 	local entity t;
-	local float  pend;
+	local float  pend, intrig;
 
 	t = edict_num(n);
 	if (!SV_SpecOffered())
@@ -4781,25 +4781,26 @@ void(entity e, float n) SV_SpecStart =
 		SV_SpecRefuse(e, "a save is still landing");
 		return;
 	}
-	// A trigger's state (a push carrier, a `wait`) would run on in world time under
-	// a held body.  run_trig_pkn 0: no touch since connecting.
+	/*
+	  Patch 786: inside a trigger is allowed (Lex).  The hold keeps the body in its
+	  triggers -- the sweep does not count it absent (SV_TouchHeld) and the release
+	  is no entry (SV_TrigResume) -- so no enter or exit output fires at a held body
+	  or on the way out, and spectating in and out of a booster cannot re-fire it.
+	  An output already due on the body still refuses: it would land on the held
+	  body and the rollback would undo it.  run_trig_pkn 0: no touch since connecting.
+	*/
+	intrig = FALSE;
 	if (e.run_trig_pkn)
 	if (e.run_trig_pkn >= e.run_pkn)
-	{
-		SV_SpecRefuse(e, "a trigger is touching you -- step out of it first");
-		return;
-	}
+		intrig = TRUE;
 	pend = SV_TrigPending(e);
-	if (pend == 1)
-	{
-		SV_SpecRefuse(e, "a trigger has not seen you leave yet -- try again");
-		return;
-	}
 	if (pend == 2)
 	{
 		SV_SpecRefuse(e, "a map output is still due on you -- try again");
 		return;
 	}
+	if (pend)
+		intrig = TRUE;
 
 	if (e.run_t_state == TS_RUNNING)
 	{
@@ -4826,6 +4827,11 @@ void(entity e, float n) SV_SpecStart =
 			return;
 		}
 	}
+
+	e.run_sp_trig = intrig;
+	if (intrig)
+		dprint(sprintf("spectate: %s held inside a trigger (touch %g, pending %g)\n", e.netname,
+		               (e.run_trig_pkn >= e.run_pkn && e.run_trig_pkn) ? 1 : 0, pend));
 
 	e.run_sp_org  = e.origin;
 	e.run_sp_vel  = e.velocity;
@@ -4894,6 +4900,11 @@ void(entity e, string why) SV_SpecRelease =
 	{
 		e.groundentity = e.run_sp_gent;
 		rb = strcat(rb, " groundentity");
+	}
+	if (e.run_sp_trig)                  // Patch 786: after the rollback (the box)
+	{
+		SV_TrigResume(e, e.run_sp_t0);
+		e.run_sp_trig = FALSE;
 	}
 
 	if (e.vbsp_bhop_since)                          // the func_bhop dwell
@@ -4982,6 +4993,7 @@ void(entity e) SV_SpecForget =
 	e.run_sp_stat = 0;
 	e.pb_watch = world;
 	e.run_pkn = e.run_trig_pkn = 0;
+	e.run_sp_trig = FALSE;          // Patch 786
 };
 
 /*

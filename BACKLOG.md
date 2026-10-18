@@ -359,6 +359,22 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   The sweep must name the second as unreadable -- a third verdict, not a fault
   or a pass -- and still check the first.
 
+## Spectate inside a trigger (P786): what it left open
+
+- A trigger the body LEFT within the last 0.06-0.09 s reads occupied for the whole
+  hold (its exit fires after the release), so OnStartTouchAll/OnEndTouchAll for
+  other players on that trigger wait for it. The held player gains nothing.
+- SV_TrigResume finds a pad without outputs by box overlap, not by the brush: a
+  non-box pad the body is beside can have its enter edge suppressed for 0.05 s.
+- Neither the pad nor the `wait` half was driven: no reachable unfiltered floor pad
+  or OnTrigger echo was found (tmp scans in compare-20261018a). p786trig drives the
+  entry/exit half on surf_colony.
+- A trigger map I/O enables during a hold acts at the release (Patch 382's
+  world-time class); a StartDisabled teleport used to refuse the entry instead.
+- The replay handover writes `spec 0 ... replay` (P684); `replay` is missing from
+  the grammar's reason list in sv_timer.qc and from reccheck's SPEC_WHY (a note,
+  not a fault).
+
 ## Demo attempts filter hides an abandoned run's whole last stage (P778)
 
 - Site: `src/client/cl_watch.qc` `Watch_FailClose` (abandon branch) and the

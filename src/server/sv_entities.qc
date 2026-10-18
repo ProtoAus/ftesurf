@@ -840,20 +840,40 @@ void(entity p) SV_TouchForget =
 .vector run_sp_org, run_sp_vel;
 .float  run_sp_gnd;     // flags & FL_ONGROUND
 .entity run_sp_gent;
+.float  run_sp_trig;    // Patch 786: held inside a trigger: SV_TrigResume at the release
 void(entity e, string why) SV_SpecRelease;
 
-// The entry gate, touch half: a body a trigger touched on the last packet may not
-// be held.
+// A trigger that can act on p touched it on the last packet: since Patch 786 this
+// only marks the hold for SV_TrigResume.
 void(entity p) SV_TrigStamp =
 {
 	if (p.classname == "player")
 		p.run_trig_pkn = p.run_pkn + 1;
 };
 
+// Patch 786: the bits of m whose player is held by spectate.  The sweep keeps them
+// inside, so a hold neither ends a touch nor makes its release a new one.
+int(int m) SV_TouchHeld =
+{
+	local int   r, bit;
+	local float i;
+
+	r = 0;
+	for (i = 0; i < 32; i = i + 1)
+	{
+		bit = (int)1 << (int)i;
+		if (m & bit)
+		if (edict_num(i + 1).run_sp_phase)
+			r = r | bit;
+	}
+	return r;
+};
+
 // The entry gate, world-time half: 1 while a trigger has not yet seen p leave
 // (OnEndTouch fires 0.06-0.09 s after the last touch, SV_TriggerEndThink), 2 while
-// an output delayed with p as activator is pending; either would act on the held
-// body.  One edict walk, per entry request only.
+// an output delayed with p as activator is pending.  2 refuses the entry (it would
+// act on the held body); 1 is held through (SV_TouchHeld).  One edict walk, per
+// entry request only.
 float(entity p) SV_TrigPending =
 {
 	local entity t;
@@ -3716,6 +3736,8 @@ void() SV_TriggerEndThink =
 		    gone    absent for both, so >= 2 sweeps ~ 0.06 s: end it
 		*/
 		absent = self.vbsp_touch_in & ~self.vbsp_touch_seen;
+		if (absent)                     // Patch 786: a held body has not left
+			absent = absent & ~SV_TouchHeld(absent);
 		gone   = absent & self.vbsp_touch_out;
 		self.vbsp_touch_out = absent & ~gone;
 		a = world;
@@ -3750,6 +3772,8 @@ void() SV_TriggerEndThink =
 			SV_FireOutput(self, "OnEndTouchAll", a);
 	}
 
+	if (self.vbsp_touch_who.run_sp_phase)  // Patch 786, as above
+		self.vbsp_touch_when = time;
 	if (self.vbsp_touch_who && time - self.vbsp_touch_when > 0.05)
 	{
 		a = self.vbsp_touch_who;
@@ -5467,7 +5491,6 @@ void() trigger_teleport_touch =
 	local vector newpos;
 	local float  vmode, uselm, snapv, snapang;
 
-	SV_TrigStamp(other);                // Patch 382: the spectate entry gate
 	if (other.classname != "player")
 		return;
 	if (other.health <= 0)
@@ -5501,6 +5524,8 @@ void() trigger_teleport_touch =
 		return;
 	if (!SV_PassesFilter(self, other))
 		return;
+	// Patch 786: past the returns that leave you untouched (SV_TrigStamp).
+	SV_TrigStamp(other);
 
 	/*
 	  A teleport is a CBaseTrigger too, and 37 of surf_kitsune's carry outputs
@@ -5771,7 +5796,6 @@ void() trigger_teleport_relative_touch =
 {
 	local vector p;
 
-	SV_TrigStamp(other);                // Patch 382: the spectate entry gate
 	if (other.classname != "player")
 		return;
 	if (SV_TeleportBypassed(other))
@@ -5793,6 +5817,8 @@ void() trigger_teleport_relative_touch =
 	// outputs: surf_race's stage-5 lanes are two filtered boxes on one spot.
 	if (!SV_PassesFilter(self, other))
 		return;
+	// Patch 786: past the returns that leave you untouched (SV_TrigStamp).
+	SV_TrigStamp(other);
 	SV_TriggerIOTouch(self, other);
 
 	// absmin/absmax are symmetric about the model centre, so their midpoint is
@@ -6230,7 +6256,6 @@ void() trigger_push_touch =
 	local vector dir, push;
 	local float  spd;
 
-	SV_TrigStamp(other);                // Patch 382: the spectate entry gate
 	if (other.classname != "player")
 		return;
 	// MOVETYPE_NOCLIP falls into Source's do-nothing arm of the movetype
@@ -6246,6 +6271,8 @@ void() trigger_push_touch =
 	// how the next map's boosters end up firing for the wrong player.
 	if (!SV_PassesFilter(self, other))
 		return;
+	// Patch 786: past the returns that leave you untouched (SV_TrigStamp).
+	SV_TrigStamp(other);
 
 	SV_TriggerIOTouch(self, other);
 
@@ -6477,7 +6504,6 @@ void() trigger_setspeed_touch =
 	local float  hmode, vmode, hspeed, vspeed, cur, iv, old;
 	local vector ang, dir, vel;
 
-	SV_TrigStamp(other);                // Patch 382: the spectate entry gate
 	if (other.classname != "player")
 		return;
 	if (other.movetype == MOVETYPE_NOCLIP)
@@ -6486,6 +6512,8 @@ void() trigger_setspeed_touch =
 		return;
 	if (!SV_PassesFilter(self, other))
 		return;
+	// Patch 786: past the returns that leave you untouched (SV_TrigStamp).
+	SV_TrigStamp(other);
 
 	SV_TriggerIOTouch(self, other);
 	if (SV_MonolithB4Touch(self, other)) return;
@@ -7785,7 +7813,6 @@ void() trigger_multiple_touch =
 {
 	local int bit;
 
-	SV_TrigStamp(other);                // Patch 382: the spectate entry gate
 	if (other.classname != "player")
 		return;
 	if (other.health <= 0)
@@ -7805,6 +7832,11 @@ void() trigger_multiple_touch =
 	if (bit)
 	if (self.vbsp_once_done & bit)
 		return;
+
+	// Patch 786: where this trigger can still act on you (SV_TrigStamp): every
+	// effect it has is an output.
+	if (self.vbsp_io_out)
+		SV_TrigStamp(other);
 
 	SV_TriggerIOTouch(self, other);
 
@@ -7907,6 +7939,52 @@ void() trigger_multiple_touch =
 		self.solid = SOLID_NOT;
 		self.think = SUB_Remove;
 		self.nextthink = time + 0.1;
+	}
+};
+
+// Patch 786: leaving a spectate hold is not an entry.  The masks kept p inside
+// (SV_TouchHeld); a pad's enter edge and a `wait` run on world time, so the release
+// counts as the pad having just applied and p's OnTrigger as just fired -- fewer
+// fires than standing there would have given, never more.
+void(entity p, float t0) SV_TrigResume =
+{
+	local entity t;
+	local int    bit;
+	local float  w;
+
+	bit = SV_TouchBit(p);
+	for (t = nextent(world); t; t = nextent(t))
+	{
+		if (t.touch == trigger_setspeed_touch)
+		{
+			// No mask without outputs: a touch when the hold began, and the box.
+			if (t.vbsp_ss_stamp >= t0 - 0.05)
+			if (p.absmin_x <= t.absmax_x) if (p.absmax_x >= t.absmin_x)
+			if (p.absmin_y <= t.absmax_y) if (p.absmax_y >= t.absmin_y)
+			if (p.absmin_z <= t.absmax_z) if (p.absmax_z >= t.absmin_z)
+			{
+				t.vbsp_ss_stamp = time;
+				t.vbsp_ss_applied = time;
+			}
+		}
+		else if (t.touch == trigger_multiple_touch)
+		{
+			if (t.wait < 0)
+				continue;
+			if (bit)
+			{
+				if (!((t.vbsp_touch_in | t.vbsp_touch_seen) & bit))
+					continue;
+				if (time >= t.vbsp_io_next_ok)
+					t.vbsp_io_gate_seen = 0;
+				t.vbsp_io_gate_seen = t.vbsp_io_gate_seen | bit;
+			}
+			else if (t.vbsp_touch_who != p)
+				continue;
+			w = (t.wait > 0) ? t.wait : 0.2;
+			if (t.vbsp_io_next_ok < time + w)
+				t.vbsp_io_next_ok = time + w;
+		}
 	}
 };
 
