@@ -88,6 +88,36 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   whose first layer alone is missing (surf_minigolf, bhop_angst). A probe that finds an
   image by a route `LocateFile` misses leaves a mipless duplicate loaded until the next purge.
 
+## surf_boreas's end room and water: what Patches 783 and 787 left out
+
+- **The end beam is not drawn.** `tendies_endparticle05` (and `tendies_smollaser01`) are
+  `render_rope`: one ribbon through the particles in birth order, `laser01` (a soft
+  vertical stripe, core a fifth of its width). P787 declines ropes; before, they drew
+  as billboards of radius 1500 and whited out the room. The rope's width rule is in
+  Source's closed particles.lib: fit it to Momentum (Lex's surf_boreas0000.tga shows a
+  ~130-unit core). FTE `type beam` links particles of one spawn call only, so a rope
+  needs its own path (e.g. a per-frame trail between the system's live particles).
+- **Child systems stay off** (`vbsp_emit_psys_children 0`). With P787's bake the
+  end room's `tendies_endparticle04` (tesla_glow, radius 800, 64/s, alpha 0.8-1) draws
+  a saturated dome over the pit where Momentum shows a compact glow. Likely cause:
+  Source on PC adds in linear light, so 25 stacked layers of a glow's dim edge stay
+  dim; FTE adds gamma values and they saturate. Not measured beyond the one view.
+  The default also waits on surf_tensor2's budget (cl_emit.qc, the cvar's comment).
+- **Spinning floor decorations**: surf_boreas's 19 `momentary_rot_button`s loop
+  themselves (`OnFullyClosed` -> `SetPositionImmediately 0`, `SetPosition 1`, 3600
+  degrees at 15-25/s). `sv_entities.qc` spawns the class as `func_wall`. All carry
+  SF_ROTBUTTON_NOTSOLID (buttons.h:16), so a client-side spin would not touch movement.
+- **`srgb?` keys other than `$fogcolor`** stay false (P783): $alpha .375,
+  $overbrightfactor .75 and the `-dx10` tool textures compensate for Source's
+  linear-light blending, which FTE does not do. 1,168 materials in 588 sources carry one.
+- **`$vertexalpha`, `$selfillum` and `$basealphaenvmapmask` set their flag whatever
+  the value** (mat_vmt.c), so `$vertexalpha 0` still emits #VERTEXALPHA and `$selfillum 0`
+  still counts as self-illum. Source reads the value. P783's additive rule reads
+  `$vertexalpha`'s value (`vertexalpha_on`); the rest is pre-existing, found by its review.
+- **`hl2_vertexcolor 0` with P783's rule**: #VERTEXALPHA is dropped (mat_vmt.c, Patch 232)
+  but `VMT_AdditiveBlend` still picks SRC_ALPHA ONE for `$vertexalpha`, so the blend
+  reads the texture alpha alone (surf_boreas's ribbons show their wisps). Non-default.
+
 ## surf_view and ent_view's pin: what Patch 776 left out
 
 - Site: engine `client/cl_ents.c` CLQ1_AddVisibleHulls (r_showhull) and every other
@@ -1991,12 +2021,9 @@ as proof that every source path was built into it. No FPS improvement is claimed
   both effect sets and one combined index, a v5 parser reaches exact EOF on real
   fixtures, and corrupt input remains a visible failure rather than a partial
   successful overwrite.
-- **Boreas smoke material cannot load.** Isolated cold runtime prints
-  `materials/project_tendies/tendies_smoke.vtf: unsupported VTF image format 19`
-  and draws the missing texture. `plugins/hl2/img_vtf.c:ImageVTF_VtfToFTE` leaves
-  `VMF_BGRA4444=19` unsupported. Correctly generated particle scripts cannot fix
-  this. Falsifier: decode BGRA4444 channel/alpha fixtures exactly, load the real
-  smoke texture with no fallback, and inspect emitted smoke against Source.
+- **Boreas smoke material cannot load.** Fixed by Patch 783 (BGRA4444, BGRA5551 and
+  BGR565 expanded to 8 bits a channel); the ribbons are displacements, not particles,
+  and their painted alpha (0-6 of 255) keeps them nearly invisible, as in Source.
 - **Source fire: what Patches 643 and 656 do not draw.** `env_fire` is Source's
   own `env_fire_tiny/_small/_medium/_large`, with `env_fire_*_smoke` over the
   fires that are not Smokeless, lit where Source lights it and seen to 10,000
