@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Isolated, deny-by-default zone DRAFT service using linked Steam key proofs.
+"""Isolated, deny-by-default zone upload service using linked Steam key proofs.
 
-No surfd schema migration or live-zone/leaderboard writes. Run behind the existing
-HTTPS host on a loopback socket; do not replace a sealed surfd generation. The
+No surfd schema migration or leaderboard writes. Run behind the existing HTTPS
+host on a loopback socket; do not replace a sealed surfd generation. The
 operator creates this service's separate store and grants roles explicitly.
-Draft activation is a separate reviewed operation (see zonepub.md).
+P815: with publish directories configured, an admin's accepted upload is queued
+and written into each of them (the lobbies' zones/local and the site's zones)
+once no lobby has had the map loaded for a while (zonepub_publish.py, zonepub.md).
 """
 import argparse
 from contextlib import contextmanager
@@ -20,8 +22,12 @@ import sys
 import time
 from flask import Flask, jsonify, request
 import accounts
+import zonepub_publish as pub
 
 MAX_ZONE_BYTES = 262144
+# A string only P815's cl_zonepublish.qc carries: the P729 client signs the same kind and
+# posts the same body, from any server and any click.
+PUBLISH_MARKER = b'a command cannot start a publish'
 SITE = 'play.proto.bar:443'
 KIND = -6
 NAME = re.compile(r'[a-z0-9_-]{1,64}')
@@ -34,7 +40,11 @@ CREATE TABLE IF NOT EXISTS challenges(nonce TEXT PRIMARY KEY, map TEXT NOT NULL,
 CREATE TABLE IF NOT EXISTS drafts(id TEXT PRIMARY KEY, map TEXT NOT NULL,
  sha TEXT NOT NULL, steamid TEXT NOT NULL, pub TEXT NOT NULL, created INTEGER NOT NULL,
  body BLOB NOT NULL, UNIQUE(map,sha));
-'''
+''' + pub.SQL
+
+
+def valid_name(name):
+    return isinstance(name, str) and NAME.fullmatch(name) is not None
 
 
 @contextmanager
@@ -60,31 +70,48 @@ def initialize(path):
 
 
 def validate(body):
-    """Accept only complete bounded Momentum-v1 timer geometry within QC capacity."""
+    """Only what the game reads, read the same way: sh_zonefile.qc's limits, and no
+    construct the engine's JSON parser reads differently from Python's."""
     if not 16 <= len(body) <= MAX_ZONE_BYTES:
         raise ValueError('Zone file size outside supported range')
+    # The engine keeps duplicate keys (finds the first) and stores key escapes raw;
+    # no zone file needs either, and the shipped 648 contain neither.
+    if b'\\' in body: raise ValueError('Escapes are not accepted in zone files')
+    def pairs(items):
+        keys = [k for k, _ in items]
+        if len(keys) != len(set(keys)): raise ValueError('Duplicate key')
+        return dict(items)
     def constant(_):
         raise ValueError('Non-finite coordinate')
-    obj = json.loads(body.decode('utf-8'), parse_constant=constant)
-    # Bound the entire object too, including unknown upstream annotations.
+    def num(cast):
+        # The engine reads at most 127 characters of a number (json.c JSON_ReadFloat).
+        def parse(token):
+            if len(token) > 32: raise ValueError('Number too long')
+            return cast(token)
+        return parse
+    obj = json.loads(body.decode('utf-8'), parse_constant=constant, object_pairs_hook=pairs,
+                     parse_float=num(float), parse_int=num(int))
     todo, nodes = [(obj, 0)], 0
     while todo:
         item, depth = todo.pop(); nodes += 1
-        if depth > 24 or nodes > 50000:
-            raise ValueError('Zone structure too complex')
-        if isinstance(item, dict): todo.extend((v, depth+1) for v in item.values())
-        elif isinstance(item, list): todo.extend((v, depth+1) for v in item)
-        elif isinstance(item, float) and not math.isfinite(item): raise ValueError('Non-finite number')
+        if nodes > 50000: raise ValueError('Zone structure too complex')
+        if isinstance(item, (dict, list)):
+            kids = item.values() if isinstance(item, dict) else item
+            if kids and depth >= 16: raise ValueError('Zone structure too deep')
+            todo.extend((v, depth + 1) for v in kids)
+        elif isinstance(item, (int, float)) and not isinstance(item, bool):
+            if not (math.isfinite(item) and abs(item) <= 1e30): raise ValueError('Number out of range')
     if not isinstance(obj, dict) or type(obj.get('formatVersion')) is not int or obj.get('formatVersion') != 1:
         raise ValueError('Expected Momentum zone formatVersion 1')
     count = points = 0
     def number(x):
-        if isinstance(x, bool) or not isinstance(x, (int, float)) or abs(x) > 10000000 or not math.isfinite(x):
+        if isinstance(x, bool) or not isinstance(x, (int, float)) or abs(x) > 10000000:
             raise ValueError('Invalid zone coordinate')
         return x
-    def regions(value):
+    def regions(value, empty=False):
         nonlocal count, points
-        if not isinstance(value, list): raise ValueError('Expected regions')
+        if not isinstance(value, list) or len(value) > 128 or (not value and not empty):
+            raise ValueError('Expected regions')
         for r in value:
             if not isinstance(r, dict): raise ValueError('Expected region')
             p = r.get('points')
@@ -96,38 +123,56 @@ def validate(body):
                 raise ValueError('Collapsed polygon')
             number(r.get('bottom')); h = number(r.get('height'))
             if h <= 0: raise ValueError('Invalid zone height')
+            if 'teleDestPos' in r:
+                d = r['teleDestPos']
+                if not isinstance(d, list) or len(d) != 3: raise ValueError('Invalid teleport destination')
+                for v in d: number(v)
+            if 'teleDestYaw' in r: number(r['teleDestYaw'])
+            if 'teleDestTargetname' in r and (not isinstance(r['teleDestTargetname'], str)
+                                              or len(r['teleDestTargetname']) > 128):
+                raise ValueError('Invalid teleport target')
             count += 1; points += len(p)
             if count > 256 or points > 2048: raise ValueError('Zone file exceeds game table capacity')
         return len(value)
     tracks = obj.get('tracks')
     if not isinstance(tracks, dict) or not isinstance(tracks.get('main'), dict):
         raise ValueError('Missing main track')
-    bonuses = tracks.get('bonuses', [])
-    if not isinstance(bonuses, list) or len(bonuses) > 32: raise ValueError('Too many bonus tracks')
+    bonuses = tracks.get('bonuses')
+    if bonuses is None: bonuses = []
+    if not isinstance(bonuses, list) or len(bonuses) > 16: raise ValueError('Too many bonus tracks')
     for track in [tracks['main']] + bonuses:
         z = track.get('zones') if isinstance(track, dict) else None
         if not isinstance(z, dict): raise ValueError('Missing track zones')
         segs = z.get('segments')
-        if not isinstance(segs, list) or not segs: raise ValueError('Missing start zone')
+        if not isinstance(segs, list) or not 1 <= len(segs) <= 128: raise ValueError('Missing start zone')
         for seg in segs:
             cps = seg.get('checkpoints') if isinstance(seg, dict) else None
-            if not isinstance(cps, list) or not cps: raise ValueError('Missing segment start')
+            if not isinstance(cps, list) or not 1 <= len(cps) <= 128: raise ValueError('Missing segment start')
             for cp in cps:
-                if not isinstance(cp, dict) or not regions(cp.get('regions')): raise ValueError('Empty checkpoint')
+                if not isinstance(cp, dict): raise ValueError('Empty checkpoint')
+                regions(cp.get('regions'))
         end = z.get('end')
-        if not isinstance(end, dict) or not regions(end.get('regions')): raise ValueError('Missing finish zone')
-    global_regions = obj.get('globalRegions', {})
-    if not isinstance(global_regions, dict): raise ValueError('Invalid global regions')
-    for name in ('cancel', 'allowBhop', 'overbounce'):
-        if name in global_regions: regions(global_regions[name])
+        if not isinstance(end, dict): raise ValueError('Missing finish zone')
+        regions(end.get('regions'))
+    global_regions = obj.get('globalRegions')
+    if global_regions is not None:
+        if not isinstance(global_regions, dict): raise ValueError('Invalid global regions')
+        for value in global_regions.values(): regions(value, empty=True)
     return obj
 
 
-def create_app(store, account_db, game_files, clock=time.time, verify=None):
+SWEEP_LOG = '/srv/nvme/surfd/logs/sweep.log'
+
+
+def create_app(store, account_db, game_files, clock=time.time, verify=None, publish_dirs=(),
+               maps_fn=None, sweep_log=SWEEP_LOG):
     app = Flask(__name__)
     app.config['MAX_CONTENT_LENGTH'] = MAX_ZONE_BYTES + 1024
     store, account_db = Path(store), Path(account_db)
+    if maps_fn is None:     # account_db is surfd.db: its lobbies and replays tables too
+        maps_fn = lambda: pub.lobby_state(account_db, sweep_log, clock())
     games = tuple(Path(p) for p in game_files)
+    publish_dirs = tuple(Path(p) for p in publish_dirs)
     peer_salt = secrets.token_bytes(32)
     def fail(message, status): return jsonify(ok=0, error=message), status
     @app.before_request
@@ -141,20 +186,21 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None):
     def known_game(code):
         for path in games:
             try:
-                # No bulk reads, links or arbitrary request-selected file paths.
+                # No links or request-selected paths; one bounded read for hash and marker.
                 if path.is_symlink() or not path.is_file() or path.stat().st_size > 16*1024*1024: continue
                 with path.open('rb') as f:
                     before = os.fstat(f.fileno())
-                    h = hashlib.sha256()
-                    for block in iter(lambda: f.read(65536), b''): h.update(block)
+                    data = f.read(16*1024*1024 + 1)
                     after = os.fstat(f.fileno())
                 current = path.stat()
                 identity = lambda s: (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns)
                 if identity(before) != identity(after) or identity(after) != identity(current): continue
-                if secrets.compare_digest(h.hexdigest(), code): return True
+                # Publishing: only a csprogs carrying P815's upload flow, whatever is deployed.
+                if publish_dirs and PUBLISH_MARKER not in data: continue
+                if secrets.compare_digest(hashlib.sha256(data).hexdigest(), code): return True
             except OSError: continue
         return False
-    def signature(pub, nonce, code, sig):
+    def signature(pub_key, nonce, code, sig):
         message = (accounts.STATEMENT % (SITE, nonce, KIND, 1, code)).encode()
         ed = verify
         if ed is None:
@@ -162,7 +208,10 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None):
             if tools not in sys.path: sys.path.insert(0, tools)
             try: import ed25519 as ed
             except ImportError: return None
-        return bool(ed.verify(bytes.fromhex(pub), message, bytes.fromhex(sig)))
+        return bool(ed.verify(bytes.fromhex(pub_key), message, bytes.fromhex(sig)))
+    def apply(now):
+        return pub.apply_ready(connect, store, publish_dirs, valid_name, maps_fn, now, MAX_ZONE_BYTES)
+    app.config['ZONEPUB_APPLY'] = apply     # zonepub_wsgi.py's minute tick
     @app.after_request
     def private(response):
         response.headers['Cache-Control'] = 'no-store'
@@ -193,7 +242,7 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None):
         envelope = request.get_data(cache=False)
         match = PREFIX.match(envelope)
         if not match or not envelope.endswith(b'}'): return fail('Invalid upload proof', 400)
-        nonce, pub, sig, code = [x.decode('ascii') for x in match.groups()]
+        nonce, pub_key, sig, code = [x.decode('ascii') for x in match.groups()]
         raw = envelope[match.end():-1]
         now = int(clock())
         key = hashlib.sha256(nonce.encode()).hexdigest()
@@ -205,34 +254,61 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None):
                 db.execute('UPDATE challenges SET attempts=attempts+1 WHERE nonce=?', (key,))
         except sqlite3.Error: return fail('Zone uploads unavailable', 503)
         if not known_game(code): return fail('Update your game before uploading', 403)
-        ok = signature(pub, nonce, code, sig)
+        ok = signature(pub_key, nonce, code, sig)
         if ok is None: return fail('Signature verifier unavailable', 503)
         if not ok: return fail('Invalid upload proof', 403)
         try:
             # Existing linked Steam identity and bans; no caller-provided identity.
             with connect(account_db, readonly=True) as main:
-                state, sid = accounts.ranked_as(main, pub)
+                state, sid = accounts.ranked_as(main, pub_key)
             if state != accounts.RANK_LINKED: return fail('Link an unbanned Steam account first', 403)
             now = int(clock())
             with connect(store) as db:
                 db.execute('BEGIN IMMEDIATE')
                 if db.execute('SELECT 1 FROM roles WHERE steamid=?', (sid,)).fetchone() is None:
                     return fail('This Steam account is not a zone admin', 403)
-                key = hashlib.sha256(nonce.encode()).hexdigest()
                 grant = db.execute('SELECT * FROM challenges WHERE nonce=? AND created>=?', (key, now-180)).fetchone()
                 if grant is None: return fail('Upload confirmation expired or already used', 409)
                 if not secrets.compare_digest(hashlib.sha256(raw).hexdigest(), grant['sha']):
                     return fail('Saved zone file changed; start the upload again', 409)
                 try: validate(raw)
-                except (ValueError, TypeError, KeyError, RecursionError): return fail('Invalid or incomplete zone geometry', 400)
+                except (ValueError, TypeError, KeyError, RecursionError, UnicodeDecodeError):
+                    return fail('Invalid or incomplete zone geometry', 400)
+                rid = None
+                if publish_dirs:
+                    rid = pub.queue(db, grant['map'], raw, sid, now)
+                    if rid is None: return fail('Too many publishes this hour; try again later', 429)
+                    pub.log('queued', grant['map'], grant['sha'][:12], 'by', pub.who(db, sid))
                 prior = db.execute('SELECT id FROM drafts WHERE map=? AND sha=?', (grant['map'],grant['sha'])).fetchone()
                 if prior is None:
-                    if db.execute('SELECT COUNT(*) FROM drafts').fetchone()[0] >= 128: return fail('Draft store full; ask an operator', 507)
+                    count = db.execute('SELECT COUNT(*) FROM drafts').fetchone()[0]
+                    if count >= 128:
+                        if not publish_dirs: return fail('Draft store full; ask an operator', 507)
+                        # Publishing: a draft is history, so the oldest goes rather than the upload.
+                        db.execute('DELETE FROM drafts WHERE id IN (SELECT id FROM drafts ORDER BY created, id LIMIT ?)', (count-127,))
                     ident = secrets.token_hex(12)
-                    db.execute('INSERT INTO drafts VALUES(?,?,?,?,?,?,?)', (ident,grant['map'],grant['sha'],sid,pub,now,raw))
+                    db.execute('INSERT INTO drafts VALUES(?,?,?,?,?,?,?)', (ident,grant['map'],grant['sha'],sid,pub_key,now,raw))
                 else: ident = prior['id']
                 db.execute('DELETE FROM challenges WHERE nonce=?', (key,))
-            return jsonify(ok=1, draft=ident, note='Saved as an admin draft; review and activation are still required')
+            if not publish_dirs:
+                return jsonify(ok=1, draft=ident, note='Saved as an admin draft; review and activation are still required')
+            name = grant['map']
+            # The queued row's own kind, whoever applied it (this call or the minute tick).
+            try: apply(now)
+            except Exception as e: pub.log('apply after upload failed:', e)
+            try:
+                with connect(store, readonly=True) as db:
+                    row = db.execute('SELECT kind FROM publications WHERE id=?', (rid,)).fetchone()
+                done = row['kind'] if row else 'superseded'
+            except sqlite3.Error: done = 'pending'
+            if done in ('live', 'noop'):
+                return jsonify(ok=1, draft=ident, published=1, note='Published: lobbies time with these zones from '
+                               'their next map load' if done == 'live' else 'These zones are already live')
+            if done in ('failed', 'partial'):
+                return fail('Accepted, but the zone files could not be written; an operator must look', 500)
+            return jsonify(ok=1, draft=ident, published=0,
+                           note='Accepted: live once no lobby has had %s loaded for %d minutes and its runs are '
+                                'verified' % (name, pub.QUIET // 60))
         except sqlite3.Error: return fail('Zone uploads unavailable', 503)
     return app
 
@@ -293,12 +369,38 @@ def main():
     st.add_argument('--bsp', type=Path, required=True)
     st.add_argument('--output', type=Path, required=True)
     st.add_argument('--times', choices=('keep','hide','archive'), required=True)
+    for word, text in (('apply', 'publish what is pending and quiet now'),
+                       ('rollback', "put back what a map's publish replaced")):
+        p = sub.add_parser(word, help=text)
+        p.add_argument('--publish-dir', type=Path, action='append', required=True,
+                       help="the service's publish directories")
+        p.add_argument('--accounts', type=Path, default=Path('/srv/nvme/surfd/data/surfd.db'),
+                       help="surfd's database: its lobbies and replays tables")
+        p.add_argument('--sweep-log', type=Path, default=Path(SWEEP_LOG))
+    rb = sub.choices['rollback']
+    rb.add_argument('--map', required=True)
+    rb.add_argument('--id', type=int, help='that publish rather than the newest live one')
+    rb.add_argument('--anyway', action='store_true', help='even while a lobby has the map loaded')
     serve = sub.add_parser('serve')
     serve.add_argument('--accounts', type=Path, required=True)
     serve.add_argument('--game', type=Path, action='append', required=True)
+    serve.add_argument('--publish-dir', type=Path, action='append', default=[])
     serve.add_argument('--port', type=int, default=8087)
     args = ap.parse_args()
+    if args.command in ('apply', 'rollback') and hasattr(os, 'geteuid') and os.geteuid() == 0:
+        ap.error('run as the service user (proto), not root: the publish directories are proto-writable')
     if args.command == 'init': initialize(args.store); return
+    if args.command in ('apply', 'rollback'):
+        lobbies = lambda: pub.lobby_state(args.accounts, args.sweep_log, time.time())
+    if args.command == 'apply':
+        print(pub.apply_ready(connect, args.store, args.publish_dir, valid_name, lobbies,
+                              int(time.time()), MAX_ZONE_BYTES))
+        return
+    if args.command == 'rollback':
+        restored = pub.rollback(connect, args.store, args.publish_dir, args.map, valid_name, lobbies,
+                                int(time.time()), MAX_ZONE_BYTES, args.id, args.anyway)
+        print('Rolled back %s: %s' % (args.map, ', '.join(s[:12] if s else 'removed' for s in restored)))
+        return
     if args.command == 'stage':
         stage(args.store,args.draft,args.reviewed_sha256,args.bsp,args.output,args.times,args.reviewed_bsp_sha256)
         print('Reviewed geometry staged only; no live zones or existing times changed')
@@ -312,7 +414,7 @@ def main():
         print('Zone role updated')
         return
     # Development only; production uses a separately owned Gunicorn unit.
-    create_app(args.store, args.accounts, args.game).run(host='127.0.0.1', port=args.port)
+    create_app(args.store, args.accounts, args.game, publish_dirs=args.publish_dir).run(host='127.0.0.1', port=args.port)
 
 
 if __name__ == '__main__': main()

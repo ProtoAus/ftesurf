@@ -75,6 +75,8 @@ float  ui_ze_state;                 // ZE_*
 float  ze_track;                    // the track the panel shows: 0 main, 1.. a bonus
 float  ze_sel;                      // the selected zone, -1 none
 float  ze_dirty;                    // changed since the last save or load
+float  ze_saved_ok;                 // P815: the last ZoneEdit_Save put its file in place
+string ze_saved_sha;                // P815: sha256 of the bytes that save wrote (cl_zonepublish.qc)
 string ze_map;                      // the map the edits belong to
 float  ze_grid;                     // snap, units
 float  ze_snap;                     // 1 the grid, 0 the surface as hit
@@ -96,7 +98,7 @@ float  ze_rsig;                     // the table when a re-place began (count an
 float  ze_real_t;                   // cltime of the last MOUSE1 release a DEVICE made in the panel
 float  ze_click, ze_back;           // asked for by the input handler, done in the draw pass
 string ze_press;                    // `zone_edit press <id>`: that element counts as clicked once
-void() ZonePub_Begin;
+void(float real) ZonePub_Begin;
 void() ZonePub_Pump;
 float(float scan) ZonePub_Confirm;
 string() ZonePub_Line;
@@ -597,8 +599,15 @@ float(string path) ZoneEdit_WriteFile =
 */
 float() ZoneEdit_Hosting =
 {
-	return strstrofs(serverkey("ip"), "QLoopBack", 0) >= 0;
+	// P815: anchored, with a local server and no demo: an ICE connect name can contain
+	// "QLoopBack", and a demo's "ip" is its file name.
+	if (!isserver() || isdemo())
+		return FALSE;
+	return strstrofs(serverkey("ip"), "QLoopBack", 0) == 0;
 };
+
+// P815: Zone_SyncServer must not swap the table out from under an editor.
+float() ZoneEdit_Busy = { return (ui_ze_state != ZE_OFF || ze_dirty); };
 
 float() ZoneEdit_MayWrite =
 {
@@ -622,6 +631,7 @@ void(float force) ZoneEdit_Save =
 	local filestream f;
 	local float n, ok;
 
+	ze_saved_ok = FALSE;
 	if (ze_map == "" || ze_map != zone_mapname)
 	{
 		ZoneEdit_Note("no map to save zones for");
@@ -682,6 +692,8 @@ void(float force) ZoneEdit_Save =
 		return;
 	}
 	strunzone(was);
+	if (ze_saved_sha != "") strunzone(ze_saved_sha);
+	ze_saved_sha = strzone(strtolower(digest_hex("SHA256", Zone_ReadFile(part))));
 	// Windows will not rename over a file (cl_zonedl.qc): clear the target first.  Only a
 	// copy under data/ can be removed from here; a shipped file is simply read after ours.
 	f = fopen(path, FILE_READ);
@@ -699,6 +711,9 @@ void(float force) ZoneEdit_Save =
 	}
 	ze_saved_n = zone_count;
 	ze_dirty = FALSE;
+	ze_saved_ok = TRUE;
+	zone_own = TRUE;                // P815: now our own edit; Zone_SyncServer must leave it
+	zone_sync_wait = FALSE;
 	ze_sel = -1;
 	ZoneEdit_Note(sprintf("saved %g zones to data/%s (crc %s)", zone_count, path, zone_crc));
 };
@@ -1146,7 +1161,7 @@ float(string id) ZoneEdit_Clicked =
 	{
 		strunzone(ze_press);
 		ze_press = "";
-		return TRUE;
+		return (strcmp(id, "ze_upload") != 0);  // P815: a command never stands in for Publish's click
 	}
 	return sui_is_clicked(id);
 };
@@ -1167,7 +1182,7 @@ string(string id) ZoneEdit_Tip =
 	if (id == "ze_xyz") return "Round the selected zone's outline and vertical bounds to the chosen grid. Works in the panel; an invalid or collapsed outline is refused.";
 	if (id == "ze_gs") return "Use the world surface as hit instead of rounding placement to the grid. This is a snapping option, not the Surf gamemode. Click again to restore grid snapping.";
 	if (id == "ze_sv") return "Save the zones to this map's local JSON file on your machine. Reload the map to use them for timing in your hosted game. This does not upload zones or change a lobby's timing or times.";
-	if (id == "ze_upload") return "Upload this map's SAVED local zones to the NanoPi as an admin draft. Requires a linked zone-admin Steam account and a real Enter confirmation. Upload does not activate zones or alter existing times.";
+	if (id == "ze_upload") return "Publish this map's SAVED local zones to the lobbies. Requires a linked zone-admin Steam account and a real Enter confirmation. Lobbies time with them from their next map load; existing times stay.";
 	if (id == "ze_rl") return "Discard unsaved zone edits and read this map's zones again. Your saved local file takes priority; use Discard local file to stop using that override.";
 	if (id == "ze_fg") return "Delete this map's saved local zone override and reload the underlying zones. Unsaved zone edits are lost too. Map properties are separate and are not removed.";
 	if (id == "ze_settings") return "Edit local Surf/Bhop presets, speed cap, gravity and air acceleration for this map. Save settings and reload the hosted map to apply them; public lobbies are unchanged.";
@@ -1505,8 +1520,8 @@ void(vector scr) ZoneEdit_Panel =
 	if (ZoneEdit_Button(tp + [(bw + 4) * 2, 0], [bw, rowh], "ze_fg", "Discard local file", rsz,
 	                    (zone_source == ZSRC_LOCAL) ? ZEC_WARN : ZEC_DIM))
 		ZoneEdit_Forget();
-	if (ZoneEdit_Button(tp + [(bw + 4) * 3, 0], [bw, rowh], "ze_upload", "Upload saved", rsz, ZEC_TEXT))
-		ZonePub_Begin();
+	if (ZoneEdit_Button(tp + [(bw + 4) * 3, 0], [bw, rowh], "ze_upload", "Publish saved", rsz, ZEC_TEXT))
+		ZonePub_Begin(ze_real_t > 0 && cltime - ze_real_t < 0.25);
 	tp_y = tp_y + rowh + 4;
 	bw = (w - pad * 2 - 8) / 3;
 	if (ZoneEdit_Button(tp, [bw, rowh], "ze_settings", "Map properties", rsz, ZEC_TEXT)) ZoneEdit_SettingsOpen();
@@ -1790,7 +1805,7 @@ float(string cmd) ZoneEdit_ConsoleCommand =
 	if (a == "save")
 		ZoneEdit_Save(argv(2) == "force");
 	else if (a == "upload")
-		ZonePub_Begin();
+		ZonePub_Begin(FALSE);
 	else if (a == "forget")
 		ZoneEdit_Forget();
 	else if (a == "track")

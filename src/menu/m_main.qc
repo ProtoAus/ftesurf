@@ -3542,6 +3542,8 @@ void(string mapname) ui_playlocal_now =
 	localcmd("deathmatch 1\n");
 	localcmd("maxclients 2\n");
 	localcmd("coop 0\n");
+	// P815: this game reads the curated copy Mzd_Play just refreshed (sv_zones.qc).
+	localcmd("set sv_zones_curated 1\n");
 	localcmd(sprintf("map %S\n", mapname));
 
 	// The search that found this map has done its job.  Arm the field to empty

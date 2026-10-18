@@ -1,5 +1,23 @@
 # lextest.md — things waiting on a human
 
+## P815 — Publish saved: your zones on the lobbies, by themselves
+
+Not live until the Pi service is installed (one sudo command, in the session that built it) and
+your Steam account is granted the zone-admin role. The game half (installs and lobbies) is.
+
+- In a game YOU host (Play the map from the map list), `zone_edit`, edit, Save zones, then
+  **Publish saved**. The line under the buttons shows the map, zone count and crc: Enter
+  publishes, Esc cancels. On a lobby or anyone else's server Publish is refused on purpose.
+- The answer is either "Published" (no lobby had the map loaded for 10 minutes and its runs are
+  verified) or "Accepted: live once ..." -- it then goes live by itself, checked every minute.
+- After it is live: a lobby that loads the map times with your zones; a player who joins one
+  sees them, even on a map whose zones shipped with the game; old times stay on the board.
+- To undo: ask for a rollback of the map (the session runs `zonepub.py rollback --map <map>`).
+
+"Works / <what you saw: map, the message, what the lobby showed>". Verdict PENDING.
+
+## P814 — own online replay uses local per-frame view (pending deployment)
+
 ## P814 — own online replay uses local per-frame view (deployed; human check pending)
 
 Both Windows installs have the verified P814 programs. All 12 lobbies restarted

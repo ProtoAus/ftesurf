@@ -48,6 +48,7 @@
 // reaches it the way cl_online.qc reaches Players_AbsorbBoard.
 void(string map) ZoneDL_Want;
 void() ZoneDL_Frame;
+float() ZoneEdit_Busy;      // cl_zoneedit.qc: open or unsaved -- the table is being edited
 
 float  zone_cv_draw, zone_cv_dist, zone_cv_alpha, zone_cv_bonus;
 float  zone_cv_lines, zone_cv_thickness;
@@ -292,28 +293,27 @@ float() Zone_LoadFromBsp =
 	return n > 0;
 };
 
-void() Zone_LoadForMap =
+float zone_own;            // P815: the table is this install's own saved edit
+float zone_sync_wait;      // P815: the server's table is wanted, deferred until no run is in progress
+
+float(string map) Zone_LoadOrdinary =
 {
-	local string map;
-
-	map = serverkey("map");
-	zone_mapname = map;
-	Zone_Clear();
-
-	if (map == "")
-		return;
-
+	zone_own = FALSE;
 	// local BEFORE online: dropping a file in ftesurf/maps/zones/local/ has to
 	// override Momentum's shipped copy, which is the whole point of the
 	// directory.  (surf_drift is the test: local says 10 regions, online 12.)
+	// P815: own edit, then the published copy (curated), then the shipped
+	// library under the same local name -- sv_zones.qc's order.
 	//
-	// dl/ IS LAST OF THE THREE FILES, and that ordering is the safety property
+	// dl/ IS LAST OF THE FILES, and that ordering is the safety property
 	// rather than a preference: it holds what cl_zonedl.qc fetched from our
 	// mirror, and a fetched file must never beat one that shipped or one you
-	// edited.  A bad file there stops mattering the moment a real one arrives.
-	if (Zone_LoadJson(strcat("maps/zones/local/",  map, ".json"), ZSRC_LOCAL))
-		;
+	// edited -- unless the server names it as its own (Zone_SyncServer).
+	if (Zone_LoadJson(strcat("data/maps/zones/local/", map, ".json"), ZSRC_LOCAL))
+		zone_own = (whichpack(strcat("data/maps/zones/local/", map, ".json"), 0) == "");   // not a map's pack
 	else if (Zone_LoadJson(strcat("maps/zones/curated/", map, ".json"), ZSRC_ONLINE))
+		;
+	else if (Zone_LoadJson(strcat("maps/zones/local/",  map, ".json"), ZSRC_LOCAL))
 		;
 	else if (Zone_LoadJson(strcat("maps/zones/online/", map, ".json"), ZSRC_ONLINE))
 		;
@@ -325,28 +325,95 @@ void() Zone_LoadForMap =
 		// the common case, 1,156 of the 1,743 we hand out -- or it was zoned
 		// after the release this install came from.  One request settles it.
 	}
+	Zone_Hash();
+	return zone_count;
+};
+
+// P815: the server's serverinfo "zonecrc" names the table it times with. When ours
+// differs and is not our own edit, it wants the published copy.
+float() Zone_WantsServer =
+{
+	local string want;
+	want = serverkey("zonecrc");
+	return (!zone_own && want != "" && strcmp(want, zone_crc) != 0 && strcmp(serverkey("map"), zone_mapname) == 0);
+};
+
+float(string path, float src, string want) Zone_TryFile =
+{
+	Zone_Clear();
+	if (!Zone_LoadJson(path, src))
+		return FALSE;
+	Zone_Hash();
+	return (strcmp(zone_crc, want) == 0);
+};
+
+// Fetched files come only from our origin (cl_zonedl.qc ZDL_SOURCE, the menu's MZD_SOURCE):
+// the server's crc picks between copies this install holds, never supplies one.
+void(string map) Zone_SyncServer =
+{
+	local string want;
+	local float found;
+	zone_sync_wait = FALSE;
+	if (!Zone_WantsServer())
+		return;
+	if (getstatf(STAT_FS_TIMERSTATE) == TS_RUNNING || ZoneEdit_Busy())
+	{
+		zone_sync_wait = TRUE;      // never mid-run or mid-edit; ZoneDL_Frame retries
+		return;
+	}
+	want = strzone(serverkey("zonecrc"));
+	// Every copy we hold: a lobby still on the old table matches shipped or online.
+	found = Zone_TryFile(strcat("maps/zones/dl/", map, ".json"), ZSRC_DL, want);
+	if (!found)                     // QC || evaluates both sides
+		found = Zone_TryFile(strcat("maps/zones/curated/", map, ".json"), ZSRC_ONLINE, want);
+	if (!found)
+		found = Zone_TryFile(strcat("maps/zones/local/", map, ".json"), ZSRC_LOCAL, want);
+	if (!found)
+		found = Zone_TryFile(strcat("maps/zones/online/", map, ".json"), ZSRC_ONLINE, want);
+	if (found)
+		print(sprintf("zones: %g on %s (%s) crc %s, the server's table\n",
+		              zone_count, map, Zone_SourceName(zone_source), zone_crc));
+	else
+	{
+		Zone_Clear();
+		Zone_LoadOrdinary(map);
+	}
+	strunzone(want);
+};
+
+void() Zone_LoadForMap =
+{
+	local string map;
+
+	map = serverkey("map");
+	zone_mapname = map;
+	Zone_Clear();
+	zone_own = zone_sync_wait = FALSE;
+
+	if (map == "")
+		return;
+
+	Zone_LoadOrdinary(map);
 	// Refresh the non-authoritative client cache even with a populated table;
-	// never replace that table in the middle of the current connection/run.
+	// the table changes mid-connection only to the server's own (Zone_SyncServer).
 	ZoneDL_Want(map);
+	Zone_SyncServer(map);
 
 	/*
 	  BUILD 81: the client hashes its own table too, and the value is NOT written
 	  into any file from here -- see cl_lobbytime.qc's header, which deliberately
-	  does not carry one.  It exists so the two sides CAN be compared: the client
-	  loads the same three sources in the same order, so a disagreement means the
-	  player is looking at a different set of boxes from the ones the server is
-	  timing them against, which is a thing worth being able to ask.  Nothing asks
-	  yet; this is the half that has to exist first.
+	  does not carry one.  P815 is what asks: Zone_SyncServer compares it with the
+	  server's serverinfo "zonecrc".
 	*/
-	Zone_Hash();
 
 	// SILENT when there is nothing -- 783 Momentum maps and every one of the
 	// 1082 CS:S maps have no zone data at all, so this is the common case and
 	// must not print.
 	if (zone_count)
-		print(sprintf("zones: %g on %s (%s) crc %s\n",
+		print(sprintf("zones: %g on %s (%s) crc %s%s\n",
 		              zone_count, map, Zone_SourceName(zone_source),
-		              (zone_crc != "") ? zone_crc : "-"));
+		              (zone_crc != "") ? zone_crc : "-",
+		              (zone_crc != "" && strcmp(zone_crc, serverkey("zonecrc")) == 0) ? ", the server's" : ""));
 	else
 		dprint(sprintf("zones: none for %s\n", map));
 };
@@ -549,8 +616,9 @@ void() Zone_List =
 
 	  This is the CLIENT's table, which is not the one the .rec header states --
 	  the header carries the server's.  That is the point rather than a caveat:
-	  the two load the same three sources in the same order, so if they ever
-	  disagree the player is looking at different boxes from the ones timing them.
+	  the two load the same sources in the same order, so if they ever disagree
+	  the player is looking at different boxes from the ones timing them (P815:
+	  Zone_SyncServer then switches to a held copy matching the server's zonecrc).
 	*/
 	print(sprintf("zone_list: %g zones, %g points, source %s crc %s%s\n",
 	              zone_count, zone_ptcount, Zone_SourceName(zone_source),

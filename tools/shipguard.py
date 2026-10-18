@@ -196,10 +196,11 @@ DENY_PREFIX = {
     "maps/zones/online": "Resolves into the Momentum install, not our tree "
                          "(tools/zoneinstall.py). Not ours to ship.",
     "maps/zones/dl": "cl_zonedl.qc's HTTP fetch sandbox. Written at runtime into "
-                     "data/, and tried LAST of the three sources by design.",
+                     "data/, and tried LAST by design unless the server's zonecrc names it.",
     "maps/zones/curated/": "Mzd_Reply's validated fixed-origin runtime zone cache, "
-                            "refreshed before local play; shipped local zones "
-                            "still win and failed refreshes retain existing zones.",
+                            "refreshed before local play; it beats the shipped library "
+                            "(P815), an own edit beats it, and failed refreshes retain "
+                            "existing zones.",
     "maps/settings/local/": "Player-authored editor overrides and transaction "
                             "siblings; QC writes into data/maps/settings/local, "
                             "native hosted games only. Not shipped rulesets.",

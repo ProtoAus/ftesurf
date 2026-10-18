@@ -1,5 +1,40 @@
 # AGENT_NOTES.md
 
+## Zone publishing and velocity past 4096 (P812, P815, 2026-10-19)
+
+- P812: a PEXT2 bit with a reader, a writer and a PEXT2_CLIENTSUPPORT entry is still off until
+  Net_PextMask offers it -- the third time (125, 141, 812). Check `Using FTE extensions 0x...`
+  in a client log, not the code. MVDs keep a fixed recorder mask (sv_mvd.c), so their playback
+  still clamps velocity at 4095.9 per axis.
+- A prediction error that grows with speed: divide the per-tick `prederr` by the tick. 7.56 at
+  4600 u/s and 66.67 Hz was 69.0 - 61.44, i.e. a 4095.9 cap, not the map's sv_maxvelocity.
+- P815 publishes on acceptance (zonepub.md has the whole design). Five review rounds; what each
+  first cut got wrong is worth knowing before touching it:
+  - QC `fgets` drops a byte at every 4095: read a whole file with `FILE_READNL` (Zone_ReadFile).
+    276 of the 648 shipped zone files are longer.
+  - `data/<path>` reads only data/, but through EVERY mount, a map's own pack and a pure
+    server's packages included; an unprefixed path tries `data/` first the same way
+    (QC_FixFileName). "Own edit" means loose (`whichpack(path, 0) == ""`), and Publish works
+    only in a game this client hosts.
+  - `serverkey("ip")` containing QLoopBack is forgeable (ICE connect names, demo file names):
+    hosting is `isserver() && !isdemo()` and the address BEGINNING with QLoopBack.
+  - A server's choice of zone sources must not key on lobby cvars: sweep.py's verifier runs
+    without lobby.cfg, so it read another table. Picker games set `sv_zones_curated`; every
+    other server keeps one order.
+  - /lobbies.json drops a silent lobby instead of saying it cannot be heard; read surfd's
+    `lobbies` table (any row older than 30 s = nothing known). The sweeper can stall for over
+    an hour: gate on its ledger (OWED_SQL = sweep.pending's predicate), not on a fixed window.
+  - Python `json` keeps the last of a duplicate key and decodes key escapes; the engine keeps
+    the first and stores names raw. validate() refuses duplicates, backslashes and number
+    tokens over 32 characters.
+  - The P729 client signs the same kind and posts the same body from any server: publishing
+    accepts only a csprogs carrying P815's flow (`PUBLISH_MARKER`).
+- The arm (`tools/p815zones.py`) holds the published copy as the client's Momentum `online`
+  file and fetches nothing; it needs consent version 7 in the fixture's data/consent.txt, and
+  its hosted arm sets `sv_zones_curated` as the picker does.
+- An edited save state is refused until the next map ("that save changed on disk"): a fixture
+  that rewrites state.txt must restart the map, not reconnect.
+
 ## Rare movement bugs are in the recordings (P813, 2026-10-19)
 
 - A "rare, hard to capture" stop is already captured: every lobby run is a recording
@@ -12924,7 +12959,7 @@ blind fallback in `ui_map_backdrop` alive for as long as it lived.
   one arrives in serverinfo and is whatever host you connected to; a zone file
   from there would be a stranger deciding where this client thinks the start
   zone is. A server cannot set a client cvar. Empty switches it off.
-- **`dl/` is tried LAST of the three file sources, and that is the safety
+- **`dl/` is tried LAST of the file sources (P815: unless the server's zonecrc names it), and that is the safety
   property rather than a preference.** A fetched file can never beat a shipped
   one or your own edit, so a bad mirror stops mattering at the next release.
 - **It lands in `ftesurf/data/maps/zones/dl/`, not `ftesurf/maps/zones/dl/`.**

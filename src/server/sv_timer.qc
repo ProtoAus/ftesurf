@@ -2800,7 +2800,8 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             the body as `nonce <mt> <hex32>` -- see SV_RecNonce
     mapcrc <hex>            v4 key, build 73: the BSP THIS SERVER loaded
     zonesrc local|online|bsp  build 81.  WHICH OF THE THREE zone sources built
-                            the table this run was timed against.  INFORMATIONAL
+                            the table this run was timed against (P815: curated
+                            says online, an own edit local).  INFORMATIONAL
                             AND NOT VERIFIED, since engine Patch 463: it is a
                             directory name, the same table serves from any of
                             them, and `zonecrc` is what pins the table.  pm_verify
@@ -4995,9 +4996,9 @@ void(entity e) SV_RecOpen =
 
 	  mapcrc answers "which bytes did the physics run on".  It does not answer
 	  "which boxes decided the time", and on this game those are different files.
-	  SV_ZoneLoad tries maps/zones/local/<map>.json, then maps/zones/online/<map>
-	  .json, and only then the BSP's own trigger brushes (sv_zones.qc:173-178).
-	  Two of the three are not the map and can be re-authored at any moment, under
+	  SV_ZoneLoad tries an own edit, the curated refresh, maps/zones/local/<map>.json,
+	  maps/zones/online/<map>.json (P815's order), and only then the BSP's own trigger
+	  brushes.  All but the last are not the map and can be re-authored at any moment, under
 	  a standing record, with nothing in the file to notice.  The start tick and
 	  the finish tick are both a function of that table, so a recording that names
 	  its map and not its zones is not sufficient to re-simulate -- which is the

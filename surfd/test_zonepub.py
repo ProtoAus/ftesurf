@@ -3,6 +3,7 @@
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import sqlite3
 import sys
@@ -150,6 +151,233 @@ class Upload(unittest.TestCase):
         self.grant(); a=self.upload(self.challenge()); b=self.upload(self.challenge())
         self.assertEqual(a.status_code,200); self.assertEqual(b.status_code,200)
         self.assertEqual(a.json['draft'],b.json['draft']); self.assertEqual(len(self.drafts()),1)
+
+    def test_teleport_destination_fields_are_checked(self):
+        self.grant()
+        for bad in ([1,2], [1,'2',3], 'x', [1,2,float('nan')]):
+            obj=zone(); obj['tracks']['main']['zones']['segments'][0]['checkpoints'][0]['regions'][0]['teleDestPos']=bad
+            raw=json.dumps(obj).encode(); self.assertEqual(self.upload(self.challenge(raw),raw=raw).status_code,400)
+        obj=zone(); obj['tracks']['main']['zones']['segments'][0]['checkpoints'][0]['regions'][0]['teleDestTargetname']=7
+        raw=json.dumps(obj).encode(); self.assertEqual(self.upload(self.challenge(raw),raw=raw).status_code,400)
+        obj=zone(); r=obj['tracks']['main']['zones']['segments'][0]['checkpoints'][0]['regions'][0]
+        r.update(teleDestPos=[16,16,1], teleDestYaw=90)
+        raw=json.dumps(obj).encode(); self.assertEqual(self.upload(self.challenge(raw),raw=raw).status_code,200)
+
+
+class Publish(Upload):
+    """P815: an accepted admin upload is queued and written when its map is quiet."""
+    OLD = b'{"formatVersion":1,"old":true}'
+    def setUp(self):
+        super().setUp()
+        self.game.write_bytes(b'synthetic P815 game: ' + z.PUBLISH_MARKER)      # the P815 upload flow
+        self.code = hashlib.sha256(self.game.read_bytes()).hexdigest()
+        self.dirs = [self.root/'game_zones', self.root/'site_zones']
+        for d in self.dirs: d.mkdir()
+        self.dirs[0].joinpath('surf_fixture.json').write_bytes(self.OLD)
+        self.maps = set()                       # heard, and nobody on the map
+        self.owed, self.swept, self.stalled = set(), self.now, False
+        with z.connect(self.store) as db:       # watched long enough already
+            db.execute('INSERT INTO meta VALUES(?,?)', ('watch_since', self.now - 1000))
+            db.execute('INSERT INTO meta VALUES(?,?)', ('watch_last', self.now - 30))
+        self.app = z.create_app(self.store,self.main,[self.game],clock=lambda:self.now,verify=ed25519,
+                                publish_dirs=self.dirs,maps_fn=self.lobbies)
+        self.c = self.app.test_client()
+    def files(self):
+        return [(d/'surf_fixture.json').read_bytes() if (d/'surf_fixture.json').exists() else None for d in self.dirs]
+    def rows(self, kind=None):
+        with z.connect(self.store) as db:
+            q='SELECT * FROM publications'+(' WHERE kind=?' if kind else '')+' ORDER BY id'
+            return db.execute(q,(kind,) if kind else ()).fetchall()
+    def lobbies(self):
+        if self.maps is None: return None
+        return {'maps': self.maps, 'owed': self.owed, 'swept': self.swept, 'posted': getattr(self, 'posted', {})}
+    def apply(self): return self.app.config['ZONEPUB_APPLY'](self.now)
+    def wait(self, seconds):
+        # The service hears the lobbies every 60 s; a longer gap restarts the watch.
+        done = {}
+        for _ in range(seconds // 60):
+            self.now += 60
+            if not self.stalled: self.swept = self.now      # the sweeper's own log
+            done.update(self.apply())
+        return done
+    def rollback(self, dirs=None, **kw):
+        return z.pub.rollback(z.connect,self.store,dirs or self.dirs,'surf_fixture',z.valid_name,self.lobbies,
+                              self.now,z.MAX_ZONE_BYTES,**kw)
+    def raw2(self, h):
+        obj=zone(); obj['tracks']['main']['zones']['end']['regions'][0]['height']=h
+        return (json.dumps(obj)+'\n').encode()
+    def test_the_marker_is_the_client_source_s(self):
+        # Reword that note in cl_zonepublish.qc and every publish is refused: keep the two together.
+        src = (Path(__file__).resolve().parent.parent / 'src/client/cl_zonepublish.qc').read_bytes()
+        self.assertEqual(src.count(z.PUBLISH_MARKER), 1)
+    def test_a_client_without_the_p815_flow_cannot_publish(self):
+        self.grant(); self.game.write_bytes(b'the P729 draft client')
+        self.code = hashlib.sha256(self.game.read_bytes()).hexdigest()
+        self.assertEqual(self.upload(self.challenge()).status_code,403)
+        self.assertEqual(self.files(),[self.OLD,None]); self.assertFalse(self.rows())
+    def test_quiet_map_is_live_at_once_and_rollback_restores(self):
+        self.grant(); r=self.upload(self.challenge())
+        self.assertEqual(r.status_code,200,r.data); self.assertEqual(r.json['published'],1)
+        self.assertEqual(self.files(),[self.raw,self.raw])
+        if hasattr(os,'getuid'):
+            for d in self.dirs: self.assertEqual((d/'surf_fixture.json').stat().st_mode & 0o777, 0o644)
+        self.assertEqual([x.name for d in self.dirs for x in d.iterdir()],['surf_fixture.json']*2)
+        row=self.rows('live')[0]; self.assertEqual((row['steamid'],row['sha']),(SID,hashlib.sha256(self.raw).hexdigest()))
+        self.rollback()
+        self.assertEqual(self.files(),[self.OLD,None])
+        with self.assertRaises(ValueError): self.rollback()     # nothing live now
+    def test_a_lobby_on_the_map_holds_it_until_quiet(self):
+        self.grant(); self.maps={'surf_fixture','surf_other'}
+        r=self.upload(self.challenge()); self.assertEqual(r.json['published'],0)
+        self.assertIn('10 minutes',r.json['note']); self.assertEqual(self.files(),[self.OLD,None])
+        self.maps={'surf_other'}; self.assertEqual(self.wait(540),{})
+        self.assertEqual(self.files(),[self.OLD,None])
+        self.assertEqual(self.wait(60),{'surf_fixture':'live'})
+        self.assertEqual(self.files(),[self.raw,self.raw])
+    def test_a_verdict_owed_or_a_stalled_sweeper_holds_it(self):
+        self.grant(); self.owed={'surf_fixture'}
+        self.assertEqual(self.upload(self.challenge()).json['published'],0)
+        self.assertEqual(self.wait(700),{})
+        self.owed=set(); self.assertEqual(self.wait(60),{'surf_fixture':'live'})
+    def test_a_posted_stage_counts_as_a_sighting(self):
+        self.grant(); self.posted={'surf_fixture': self.now}
+        self.assertEqual(self.upload(self.challenge()).json['published'],0)
+        self.assertEqual(self.wait(540),{}); self.assertEqual(self.wait(60),{'surf_fixture':'live'})
+    def test_a_stalled_sweeper_holds_a_map_that_was_on_a_lobby(self):
+        self.grant(); self.maps={'surf_fixture'}; self.upload(self.challenge())
+        self.maps=set(); self.stalled=True; self.assertEqual(self.wait(1200),{})
+        self.stalled=False; self.assertEqual(self.wait(60),{'surf_fixture':'live'})
+    def test_rollback_supersedes_a_pending_publish_and_repairs_partial(self):
+        self.grant(); self.upload(self.challenge())
+        b=self.raw2(55); self.maps={'surf_fixture'}; self.upload(self.challenge(b),raw=b)   # waits
+        self.maps=set(); self.wait(660)          # it goes live: the newest state
+        b2=self.raw2(56); self.maps={'surf_fixture'}; self.upload(self.challenge(b2),raw=b2)
+        self.maps=set(); self.wait(540)
+        self.rollback(anyway=True)               # an operator's, while the newer upload waits
+        self.assertEqual(self.files(),[self.raw,self.raw])
+        self.assertEqual(self.wait(600),{})      # the pending publish was superseded
+        self.assertEqual(self.files(),[self.raw,self.raw])
+    def test_lobby_state_reads_surfd_like_mapwatch(self):
+        db=self.root/'surfd.db'; c=sqlite3.connect(db)
+        c.executescript("CREATE TABLE lobbies(node TEXT, map TEXT, last_seen INTEGER);"
+                        "CREATE TABLE assignments(node TEXT, map TEXT, asked_at INTEGER);"
+                        "CREATE TABLE runs(map TEXT, leg INTEGER, submitted INTEGER);"
+                        "CREATE TABLE replays(id INTEGER PRIMARY KEY, map TEXT, kind TEXT, checked INTEGER, submitted INTEGER, recheck_at INTEGER);"
+                        "CREATE TABLE verdicts(replay_id INTEGER, verdict TEXT, at INTEGER);")
+        log=self.root/'sweep.log'; log.write_text('x')
+        state=lambda: z.pub.lobby_state(db,log,self.now)
+        self.assertIsNone(state())                      # no lobby heard yet
+        c.executemany('INSERT INTO lobbies VALUES(?,?,?)',[('1','Surf_A',self.now-5),('2','surf_b',self.now-20)]); c.commit()
+        st=state(); self.assertEqual(st['maps'],{'surf_a','surf_b'}); self.assertEqual(st['owed'],set())
+        c.executemany('INSERT INTO replays VALUES(?,?,?,?,?,?)',[(1,'surf_a','run',0,1,0),(2,'surf_b','momentum',0,1,0),(3,'surf_c','evidence',1,1,0),(4,'surf_d','run',0,1,0)])
+        c.executemany('INSERT INTO verdicts VALUES(?,?,?)',[(4,'ERROR',5)]*3); c.commit()
+        self.assertEqual(state()['owed'],{'surf_a'})    # imported kinds, checked and spent rows are not owed
+        c.executemany('INSERT INTO assignments VALUES(?,?,?)',[('3','surf_e',self.now-10),('4','surf_f',self.now-900)])
+        c.executemany('INSERT INTO runs VALUES(?,?,?)',[('surf_g',1,self.now-50),('surf_g',0,self.now-5),('surf_h',0,self.now-5)]); c.commit()
+        st=state(); self.assertIn('surf_e',st['maps']); self.assertNotIn('surf_f',st['maps'])   # a recent assignment only
+        self.assertEqual(st['posted'],{'surf_g':self.now-50})                                    # stages only
+        c.execute("UPDATE lobbies SET last_seen=? WHERE node='2'",(self.now-31,)); c.commit()
+        self.assertIsNone(state())                      # one silent lobby: nothing is known
+        c.close()
+    def test_unheard_lobbies_or_a_fresh_watch_write_nothing(self):
+        self.grant(); self.maps=None
+        self.assertEqual(self.upload(self.challenge()).json['published'],0)
+        self.now+=5000; self.assertEqual(self.apply(),{})          # deaf for 5000 s: the watch restarts
+        self.maps=set(); self.assertEqual(self.wait(540),{})
+        self.assertEqual(self.wait(120),{'surf_fixture':'live'})
+    def test_newer_upload_supersedes_a_pending_one(self):
+        self.grant(); self.maps={'surf_fixture'}; b=self.raw2(99)
+        self.upload(self.challenge()); self.upload(self.challenge(b),raw=b)
+        self.maps=set(); self.wait(660)
+        self.assertEqual(self.files(),[b,b]); self.assertEqual(len(self.rows('superseded')),1)
+    def test_repeat_of_live_bytes_is_noop(self):
+        self.grant(); self.upload(self.challenge())
+        r=self.upload(self.challenge()); self.assertIn('already live',r.json['note'])
+        self.assertEqual(len(self.rows('live')),1)
+    def test_rate_limit(self):
+        self.grant()
+        for i in range(z.pub.RATE):
+            b=self.raw2(64+i); self.assertEqual(self.upload(self.challenge(b),raw=b).status_code,200)
+        b=self.raw2(999); self.assertEqual(self.upload(self.challenge(b),raw=b).status_code,429)
+        self.now+=3601; self.assertEqual(self.upload(self.challenge(b),raw=b).status_code,200)
+    def test_nonadmin_and_invalid_upload_write_nothing(self):
+        before=self.files(); self.assertEqual(self.upload(self.challenge()).status_code,403)
+        self.grant(); raw=json.dumps({'formatVersion':1,'tracks':{}}).encode()
+        self.assertEqual(self.upload(self.challenge(raw),raw=raw).status_code,400)
+        self.assertEqual(self.files(),before); self.assertFalse(self.rows())
+    def test_failed_second_write_restores_the_first(self):
+        self.grant(); real=z.pub.write_file; calls=[]
+        def flaky(path, body):
+            calls.append(path)
+            if len(calls)==2: raise OSError('disk full')
+            real(path, body)
+        with patch.object(z.pub,'write_file',flaky): r=self.upload(self.challenge())
+        self.assertEqual(r.status_code,500)
+        self.assertEqual(self.files(),[self.OLD,None]); self.assertEqual(len(self.rows('failed')),1)
+    def test_failed_restore_is_partial(self):
+        self.grant(); real=z.pub.write_file; calls=[]
+        def flaky(path, body):
+            calls.append(path)
+            if len(calls)>=2: raise OSError('disk full')
+            real(path, body)
+        with patch.object(z.pub,'write_file',flaky): r=self.upload(self.challenge())
+        self.assertEqual(r.status_code,500); self.assertEqual(len(self.rows('partial')),1)
+        rid=self.rows('partial')[0]['id']
+        with self.assertRaises(ValueError): self.rollback(to_id=rid)
+        self.rollback(to_id=rid,anyway=True); self.assertEqual(self.files(),[self.OLD,None])
+    def test_crash_while_applying_is_recovered(self):
+        self.grant(); self.maps={'surf_fixture'}; self.upload(self.challenge())
+        with z.connect(self.store) as db:
+            prev=json.dumps([[z.pub.key(d), (self.OLD.hex() if i==0 else None)] for i,d in enumerate(self.dirs)])
+            db.execute("UPDATE publications SET kind='applying', prev=? WHERE kind='pending'",(prev,))
+        for d in self.dirs: (d/'surf_fixture.json').write_bytes(self.raw)    # the writes had landed
+        self.apply(); self.assertEqual(len(self.rows('live')),1)
+    def test_recovered_row_gives_way_to_a_newer_upload(self):
+        self.grant(); self.maps={'surf_fixture'}; self.upload(self.challenge())
+        with z.connect(self.store) as db:
+            prev=json.dumps([[z.pub.key(d), (self.OLD.hex() if i==0 else None)] for i,d in enumerate(self.dirs)])
+            db.execute("UPDATE publications SET kind='applying', prev=? WHERE kind='pending'",(prev,))
+        b=self.raw2(77); self.upload(self.challenge(b),raw=b)      # files untouched: the crash came before any write
+        self.maps=set(); self.wait(660)
+        self.assertEqual(self.files(),[b,b]); self.assertEqual(len(self.rows('superseded')),1)
+    def test_rollback_with_directories_reversed_and_by_id(self):
+        self.grant(); self.upload(self.challenge())
+        b=self.raw2(99); self.upload(self.challenge(b),raw=b)
+        first=self.rows('live')[0]['id']
+        with self.assertRaises(ValueError): self.rollback(dirs=self.dirs[:1])
+        self.rollback(dirs=list(reversed(self.dirs)),to_id=first)
+        self.assertEqual(self.files(),[self.OLD,None])
+    def test_rollback_refuses_a_changed_file_and_a_busy_map(self):
+        self.grant(); self.upload(self.challenge())
+        (self.dirs[1]/'surf_fixture.json').write_bytes(b'someone else')
+        with self.assertRaises(ValueError): self.rollback()
+        (self.dirs[1]/'surf_fixture.json').write_bytes(self.raw)
+        self.maps={'surf_fixture'}
+        with self.assertRaises(ValueError): self.rollback()
+        self.rollback(anyway=True); self.assertEqual(self.files(),[self.OLD,None])
+    def test_symlinked_destination_is_refused(self):
+        self.grant(); target=self.root/'elsewhere.json'; target.write_bytes(b'x')
+        link=self.dirs[1]/'surf_fixture.json'
+        try: link.symlink_to(target)
+        except OSError: self.skipTest('no symlink privilege')
+        self.assertEqual(self.upload(self.challenge()).status_code,500)
+        self.assertEqual(target.read_bytes(),b'x'); self.assertEqual(self.files()[0],self.OLD)
+    def test_validator_refuses_what_the_game_reads_differently(self):
+        self.grant()
+        r=self.raw.decode()
+        bad=[r.replace('"height": 64','"height": -5, "height": 64',1),        # the engine reads the first
+             r.replace('"points"','"p\\u006fints"',1),                         # escaped key
+             r.replace('"bottom": 0','"bottom": 0, "x": 1e31',1)]              # number past 1e30
+        deep=zone(); t=deep
+        for _ in range(17): t['n']={}; t=t['n']
+        t['n']=[1]
+        bad.append(json.dumps(deep))
+        many=zone(); many['tracks']['bonuses']=[many['tracks']['main']]*17; bad.append(json.dumps(many))
+        gr=zone(); gr['globalRegions']={'cancel':{}}; bad.append(json.dumps(gr))
+        bad.append(r.replace('"bottom": 0','"bottom": 0.' + '0'*40 + '1',1))   # a number longer than the engine reads
+        for body in bad:
+            raw=body.encode(); self.assertEqual(self.upload(self.challenge(raw),raw=raw).status_code,400,body[:80])
+        self.assertEqual(self.files(),[self.OLD,None])
 
 
 if __name__ == '__main__': unittest.main()

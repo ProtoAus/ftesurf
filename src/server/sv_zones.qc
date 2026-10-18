@@ -160,6 +160,7 @@ void(entity e, string why) SV_TimerForgiveHop;
 void() SV_ZoneLoad =
 {
 	local entity p;
+	local float ok;
 
 	zone_mapname = mapname;
 	Zone_Clear();
@@ -174,15 +175,24 @@ void() SV_ZoneLoad =
 	}
 
 
-	if (Zone_LoadJson(strcat("maps/zones/local/",  mapname, ".json"), ZSRC_LOCAL))
-		;
-	// Trusted fixed-origin menu refresh, before local server startup. The
-	// client-only maps/zones/dl cache remains non-authoritative and unread.
-	else if (Zone_LoadJson(strcat("maps/zones/curated/", mapname, ".json"), ZSRC_ONLINE))
-		;
-	else if (Zone_LoadJson(strcat("maps/zones/online/", mapname, ".json"), ZSRC_ONLINE))
-		;
-	else
+	// P815, a game the map picker started (it sets sv_zones_curated): this install's own
+	// edit, then the curated refresh it just made -- the PUBLISHED copy, which must beat
+	// the shipped library under the same maps/zones/local name -- then that library.
+	// Anything else, lobbies and sweep.py's verifier alike, keeps the order it had, so
+	// the two read one table. maps/zones/local still tries data/ first through every
+	// mount (QC_FixFileName), a map's own pack too (BACKLOG). dl/ stays unread.
+	ok = FALSE;
+	if (cvar("sv_zones_curated"))
+	{
+		ok = Zone_LoadJson(strcat("data/maps/zones/local/", mapname, ".json"), ZSRC_LOCAL);
+		if (!ok)
+			ok = Zone_LoadJson(strcat("maps/zones/curated/", mapname, ".json"), ZSRC_ONLINE);
+	}
+	if (!ok)
+		ok = Zone_LoadJson(strcat("maps/zones/local/",  mapname, ".json"), ZSRC_LOCAL);
+	if (!ok)
+		ok = Zone_LoadJson(strcat("maps/zones/online/", mapname, ".json"), ZSRC_ONLINE);
+	if (!ok)
 		SV_ZoneLoadFromBsp();
 
 	/*
@@ -192,6 +202,9 @@ void() SV_ZoneLoad =
 	  hash in its header; see Zone_Hash for why the table and not the file.
 	*/
 	Zone_Hash();
+	// P815: what this server times with, so a client can show the same table
+	// (cl_zonedl.qc fetches it from its own fixed origin; this only names it).
+	forceinfokey(world, "zonecrc", zone_crc);
 
 	// Silent when empty: most maps have no zones and saying so every load
 	// would be noise.  CSQC prints the one visible line.

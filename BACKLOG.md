@@ -5,6 +5,48 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Zone publishing (P815) and velocity (P812): what is left
+
+- **A save carries a run across a publish.** `state.txt` records mapcrc, not zonecrc
+  (sv_saveloc.qc:1153); a load after a publish restores elapsed/segment/split under the new
+  table as TF_SEGMENT|TF_PRACTICE, and `style_of` posts the finish to the segmented board
+  with a clock spanning two tables (pm_verify REFUSEs it for the load). mapwatch's `played()`
+  holds a map with saves; P815 does not. Fix: zonecrc in saves, run state dropped on a
+  mismatch as `SV_MsStale` does. Falsifier: save mid-run, publish, load, finish: the board
+  row must not exist.
+- **The publish gate reads the sweep log's mtime.** A transition-guard REFUSED line, a caught
+  `evidence step failed` or a sweep that indexed nothing still moves it, so stage evidence
+  written in that window can be swept after the publish (REFUSE, never a false PASS; posted
+  stages are counted as sightings since round 3). Fix: sweep.py records the start of an
+  evidence step that completed, zonepub_publish.quiet gates on that.
+- **An own edit is not proof of authorship.** Any server whose CSQC runs can write
+  `data/maps/zones/local/<map>.json` on a visitor's machine; in a later hosted game it loads
+  as the admin's own and Publish sends what is on screen. Fix direction: the challenge reply
+  names how the upload differs from the live file (zones added/removed/moved, destinations),
+  shown before Enter.
+- **A map's own pack can supply zone names.** `maps/zones/local/<map>.json` resolves
+  `data/` first through every mount, a BSP's pakfile included, on lobbies too (before P815 as
+  well). Fix: the engine refuses `maps/zones/` and `data/` entries from map packs.
+- **zonecrc does not cover destinations.** `Zone_Hash` leaves out teleDest*, so a publish
+  that only moves spawns is never shown to a client by `Zone_SyncServer`.
+- **BSP-zoned maps never match the server's zonecrc** (server builds by type, client in lump
+  order): two failed `Zone_TryFile` loads per map load and landing; harmless.
+- **A table swap keeps per-table indices** (`ui_anchor_zone`, the race ghost's zone index):
+  held during a run, but outside one the anchor height stays the old zone's bottom.
+- **The uploader's BSP is not bound to the lobbies' build.** surfd/zonefit.py could gate it.
+- **Availability:** the challenge table (256 global, 8 per peer, 180 s) can be kept full from
+  many addresses; a publish can wait without limit while a lobby stays on the map or a verdict
+  is owed (logged hourly as `still pending`); a Pi content deploy that overwrites
+  `game/ftesurf/maps/zones/local` reverts publishes and rollback then refuses.
+- **MVD playback still clamps velocity at 4095.9 per axis** (P812): `demo.recorder`'s
+  fteprotocolextensions2 is fixed without PEXT2_BIGVELOCITY (sv_mvd.c:1634-1654). Adding it
+  changes the MVD format for readers older than bf24802ed and upstream FTE.
+- **The server's `info` names 0x4000 UNKNOWN** (sv_ccmds.c:3045). Cosmetic.
+- **The R2 mirror is a hand-started process** (`/srv/nvme/agent-work/r2-20261014T182635Z-d8268d`,
+  `r2mirror.py run --watch 900`): nothing restarts it after a reboot, and tools/r2gateway.md and
+  the 15 Oct commits still call the cutover pending although nginx has routed maps and zones
+  through the gateway since 15 Oct 07:19Z.
+
 ## Momentum parity: what the 19 Oct movement audit left open (P813 fixed the ramp stops)
 
 Read against Momentum's last public source (momentum-mod/game develop a299840b,

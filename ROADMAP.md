@@ -3,26 +3,18 @@
 ## Requested: Steam-authorized zone publication to the NanoPi (2026-10-12)
 
 Patch 671 adds the local editor controls, polygon authoring and six local map
-settings. The owner also requested making Proto an admin by Steam identity and
-uploading zones to the NanoPi R6C. Patch 729 implements the saved-zone draft
-client, separate deny-by-default role/proof service and reviewed-file staging
-(see zonepub.md). Installation/explicit role grant and authoritative/fleet
-activation remain outstanding; a draft is NOT a publication. On 12 Oct the
-owner confirmed Proto's Steam identity and chose reviewed activation, with an
-explicit per-publication choice for existing times (default keep). Identity
-confirmation is not itself a live privilege grant. Do not infer authority from
-a display name, repository owner, sample GUID or unverified client claims.
-Show geometry/rules revisions and the times choice during review; never delete
-or silently relabel existing times automatically.
+settings. Patch 729 built the upload client and the separate deny-by-default
+role/proof service; Patch 815 (19 Oct) makes an admin's accepted upload live:
+Lex, "admins (me, proto) ... hit upload ... so when the next time someone
+tries to connect to the map via the map picker, they get the new zone file.
+I want it to work automagically", and existing times KEPT. That replaces the
+12 Oct reviewed-activation choice. See zonepub.md.
 
-Use the existing authenticated Steam-account proof path with a server-side role
-and revocation, not client cvars, GUIDs, display names or embedded SSH/admin
-secrets. Upload a draft with bounded geometry/settings validation and a map/hash
-revision check. Explicit review/activation must update surfd's authoritative
-zone layer, lobby files and clients consistently, preserve rollback/provenance,
-and retain the existing evidence/ranked-policy contract. An upload is not a
-publication. Read the Pi operations and private evidence design before building
-this workflow. Local editing remains available without granting fleet rights.
+Outstanding: the Pi install (`tools/install_zonepub.py --apply`, Lex's one sudo
+run) and the role grant for his Steam account (by identity file, never a name).
+Map settings (speed cap, gravity, air acceleration) are not published: they stay
+local editor overrides (`maps/settings/local`, hosted games only). Do not infer
+authority from a display name, repository owner, sample GUID or a client claim.
 
 
 ## Body prediction for reset, load and rewind — requested 12 Oct 2026

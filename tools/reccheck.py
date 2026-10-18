@@ -200,9 +200,9 @@ HEAD_V4 = HEAD_V3 | {"flags", "leg", "mapcrc", "movetickrate"}
 #           build 81, and additive for the same reason mapcrc was.  mapcrc says
 #           which BSP the physics ran on; these say WHICH BOXES STARTED AND
 #           STOPPED THE CLOCK, which on this game is a different file.  The
-#           server tries maps/zones/local/<map>.json, then
-#           maps/zones/online/<map>.json, and only then the BSP's own trigger
-#           brushes -- so two of the three sources are not the map at all and can
+#           server tries an own edit, the curated refresh, maps/zones/local,
+#           maps/zones/online (P815's order), and only then the BSP's own trigger
+#           brushes -- so every source but the last is not the map at all and can
 #           be re-authored under a standing record with nothing to notice.
 #
 #           zonecrc IS OVER THE BUILT TABLE, NOT THE FILE, and that matters here
@@ -304,7 +304,7 @@ HEAD_V10 = HEAD_V9
 WARP_KINDS_V7 = ("tele", "telerel", "bhop", "speed", "push")
 WARP_KINDS_V9 = WARP_KINDS_V7 + ("lift", "zone", "pin")   # pin: Patch 477, the replay/rewind pin
 
-# The three sources SV_ZoneLoad tries, in its order.  `none` is deliberately NOT
+# The zonesrc tags SV_ZoneLoad writes (P815: curated says online, an own edit local).  `none` is deliberately NOT
 # here: the server only writes the key when it has a table, so a file claiming
 # `zonesrc none` is a writer that has gone wrong, not an untimed map.
 ZONE_SRCS = ("local", "online", "bsp")

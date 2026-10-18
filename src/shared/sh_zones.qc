@@ -11,6 +11,9 @@
 
       maps/zones/local/<map>.json      13 files, your own edits, WINS
       maps/zones/online/<map>.json    522 files, the shipped library
+  (P815, both VMs: data/maps/zones/local -- your own edit -- then the curated
+  refresh, then maps/zones/local -- the shipped library now, the lobbies' copies
+  on the Pi -- then online; dl/ last and client-only.)
 
   "AND APPEAR IN EXACTLY ZERO SHIPPED MAPS" is what this used to say, and it
   was wrong.  They appear in at least fifteen, as 189 brush entities --
@@ -234,7 +237,8 @@ string(float s) Zone_SourceTag =
   CONTAIN THE THING THE CLOCK IS A FUNCTION OF.
 
   A run's start and finish ticks are decided by the ZONE TABLE, and that table
-  has three possible sources, tried in order (sv_zones.qc:173-177):
+  has these sources, tried in order (SV_ZoneLoad; P815 added the first two):
+  data/maps/zones/local/<map>.json, maps/zones/curated/<map>.json,
   maps/zones/local/<map>.json, maps/zones/online/<map>.json, and only then the
   BSP's own trigger_momentum_timer_* brushes.  Two of those are files that are
   not the map and can be re-authored at any time, under a standing record, with
@@ -1393,15 +1397,23 @@ string(string path) Zone_ReadFile =
 	return s;
 };
 
+float(string text, string path, float src) Zone_LoadJsonText;
+
 float(string path, float src) Zone_LoadJson =
 {
 	local string text;
-	local int root, tracks, bonuses, gr;
-	local float i, n, ok;
 
 	text = Zone_ReadFile(path);
 	if (text == "")
 		return FALSE;
+	return Zone_LoadJsonText(text, path, src);
+};
+
+// P815: the bytes already in hand (an upload hashes exactly what it sends).
+float(string text, string path, float src) Zone_LoadJsonText =
+{
+	local int root, tracks, bonuses, gr;
+	local float i, n, ok;
 
 	root = json_parse(text);
 	if (!root)

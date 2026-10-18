@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Owner/root installation of a NEW isolated zone-draft service; default dry run.
+"""Owner/root installation of a NEW isolated zone upload/publish service; default dry run.
 
 Requires a clean inspected source commit, an exact nginx predecessor hash, and
 --apply. Never changes/restarts surfd, its DB/schema, or a lobby. No role grants.
@@ -25,6 +25,8 @@ STATE = Path('/srv/nvme/ftesurf-ops/zonepub-state')
 SITE = Path('/etc/nginx/sites-available/play.proto.bar.conf')
 SNIPPET = Path('/etc/nginx/snippets/ftesurf-zonepub.conf')
 UNIT = Path('/etc/systemd/system/ftesurf-zonepub.service')
+# P815: where an admin's accepted upload is written -- the lobbies' timing copy, then the site's.
+PUBLISH = (Path('/srv/nvme/ftesurf-server/game/ftesurf/maps/zones/local'), Path('/srv/nvme/ftesurf-site/zones'))
 NGINX = '''location ^~ /api/zones/ {
     limit_except POST { deny all; }
     client_max_body_size 264k;
@@ -38,6 +40,7 @@ NGINX = '''location ^~ /api/zones/ {
 }
 '''
 FILES = {'surfd/zonepub.py':'zonepub.py', 'surfd/zonepub_wsgi.py':'zonepub_wsgi.py',
+         'surfd/zonepub_publish.py':'zonepub_publish.py',
          'surfd/accounts.py':'accounts.py', 'tools/ed25519.py':'tools/ed25519.py'}
 
 
@@ -100,11 +103,20 @@ def main():
     ap.add_argument('--expected-nginx-sha256', required=True)
     ap.add_argument('--account-db', type=Path, default=Path('/srv/nvme/surfd/data/surfd.db'))
     ap.add_argument('--game', type=Path, action='append', required=True)
+    ap.add_argument('--publish-dir', type=Path, action='append',
+                    help="repeatable; default the lobbies' and the site's zone folders")
     ap.add_argument('--apply', action='store_true')
     a=ap.parse_args()
     if not re.fullmatch('[0-9a-f]{40}',a.commit): ap.error('Expected full inspected source SHA')
     if not re.fullmatch('[0-9a-f]{64}',a.expected_nginx_sha256): ap.error('Expected exact predecessor nginx SHA256')
-    for p in (a.source,a.account_db,*a.game): safe_path(p)
+    publish=tuple(a.publish_dir or PUBLISH)
+    for p in (a.source,a.account_db,*a.game,*publish): safe_path(p)
+    # P815: a proof names the csprogs that signed it; a .prev is the pre-publish client,
+    # whose upload flow (any server, any click) must not reach the publish directories.
+    if any(p.name != 'csprogs.dat' for p in a.game): raise RuntimeError('--game takes deployed csprogs.dat files only, no .prev')
+    for d in publish:
+        if d.is_symlink() or not d.is_dir() or d.stat().st_uid!=pwd.getpwnam('proto').pw_uid:
+            raise RuntimeError('Publish folder must be a real directory owned by proto: %s'%d)
     if run('git','-C',str(a.source),'rev-parse','HEAD').stdout.decode().strip()!=a.commit: raise RuntimeError('Source ref differs')
     status=run('git','-C',str(a.source),'status','--porcelain','--',*FILES).stdout
     if status: raise RuntimeError('Service source is not clean at the inspected commit')
@@ -123,6 +135,7 @@ def main():
     if backup.exists(): raise RuntimeError('nginx backup collision; nothing overwritten')
     run('/usr/bin/python3','-c','import flask,gunicorn')
     print('Preflight: clean source, exact nginx predecessor, separate new service/state, no role grants')
+    print('Publishes accepted admin uploads into: '+', '.join(str(p) for p in publish))
     if not a.apply:
         print('DRY RUN: no changes; owner may rerun under sudo with --apply')
         return
@@ -135,9 +148,10 @@ def main():
     owner=pwd.getpwnam('proto');STATE.mkdir(mode=0o700);os.chown(STATE,owner.pw_uid,owner.pw_gid)
     run('/usr/sbin/runuser','-u','proto','--','/usr/bin/python3',str(release/'zonepub.py'),'--store',str(STATE/'zones.sqlite3'),'init')
     env=dict(ZONEPUB_STORE=str(STATE/'zones.sqlite3'),ZONEPUB_ACCOUNTS=str(a.account_db),
-             ZONEPUB_GAMES=json.dumps([str(p) for p in a.game],separators=(',',':')),SURFD_TOOLS=str(release/'tools'),ZONEPUB_SOURCE=a.commit)
+             ZONEPUB_GAMES=json.dumps([str(p) for p in a.game],separators=(',',':')),SURFD_TOOLS=str(release/'tools'),ZONEPUB_SOURCE=a.commit,
+             ZONEPUB_PUBLISH=json.dumps([str(p) for p in publish],separators=(',',':')))
     unit='''[Unit]
-Description=World of Surf reviewed zone draft uploads
+Description=World of Surf admin zone uploads (published on acceptance)
 After=network.target
 [Service]
 User=proto
@@ -153,7 +167,7 @@ ProtectHome=yes
 ReadWritePaths=%s
 [Install]
 WantedBy=multi-user.target
-'''%(release,STATE)
+'''%(release,' '.join(str(p) for p in (STATE,*publish)))
     # systemd quoted Environment syntax: JSON quotes/backslashes are escaped.
     unit+='\n'  # add Environment within Service, not Install
     entries=''.join('Environment="%s=%s"\n'%(k,v.replace('\\','\\\\').replace('"','\\"')) for k,v in env.items())
@@ -192,7 +206,7 @@ WantedBy=multi-user.target
         # Keep exact source/state/unit/snippet and backup for inspection; do not
         # blanket-remove a partially installed service or any operator data.
         raise
-    print('Installed independent draft service; all accounts still denied until explicit grants')
+    print('Installed independent zone service; all accounts still denied until explicit grants')
 
 
 if __name__=='__main__': main()
