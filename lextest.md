@@ -1,11 +1,23 @@
 # lextest.md — things waiting on a human
 
+## P803 — a reconnect no longer spawns you inside your own old body
+
+`reconnect` on surf_null (or any map, on a server where players collide): you stand on
+the floor and can move. Before, the old body stayed solid on the spawn spot and the new
+one hung 25 u up, stuck. Live: lobbies 2026-10-18T18:08Z (all 12, qwprogs 6b8707e2, csprogs d064f238; smoke on lobby 1 passed); installs 18:04Z.
+
+**Not fixed yet -- your surf_null report:** fresh in, the camera ~25 u too high until a
+jump, with the server's body on the floor. Seen once here, not again in three fresh
+connects. When it happens, before jumping, in the console:
+`set hud_debug 1; set hud_eyetrace 3; cmd viewpos; condump surfnull` (writes
+ftesurf/surfnull.txt). Verdict PENDING.
+
 ## P797 — Teleport on the TAB player list
 
 TAB, Players: every other player's row has **Teleport** after Profile. Click it:
 the board closes and you stand just behind them, facing their way. A run you were
 on is cancelled, as `!r` cancels one. One teleport a second; "no room to stand" if
-they are inside a wall. Installs/lobbies: DEPLOY_797.
+they are inside a wall. Live: lobbies 2026-10-18T18:08Z (all 12, qwprogs 6b8707e2, csprogs d064f238; smoke on lobby 1 passed); installs 18:04Z.
 
 "Works / lands wrong at <map, spot> / button in the wrong place". Verdict PENDING.
 
@@ -15,14 +27,14 @@ A fresh install (or `ui_strip_test screen terms`) shows four lines, a box "Send 
 input journal for anti-cheat review (optional, online; F2 changes it)", and Quit /
 Full details / Play offline / Play online. Full details shows the old two cards. The main menu's
 "Input journal uploads" button is gone; F2 has "Input journal uploads: on/off ->
-Change". Installs: DEPLOY_796.
+Change". Live: installs 2026-10-18T18:04Z (menu 41128506).
 
 "Short enough / still too long / wording". Verdict PENDING.
 
 ## P795 — a map clicked in a profile no longer breaks the menu
 
 Open someone's profile in game, click a map: the board opens with pictures, and
-ESC still brings up World of Surf's menu, not Quake's. Installs: DEPLOY_795.
+ESC still brings up World of Surf's menu, not Quake's. Live: installs 2026-10-18T18:04Z (menu 41128506).
 
 "Fixed / still breaks". Verdict PENDING.
 
