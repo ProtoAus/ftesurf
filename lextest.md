@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P788 — friends: add back, the "added you" toast
+
+- When someone adds you: a toast at the right ("NAME added you as a friend", their
+  picture, "F2 Add back"). F2 adds them back; it waits while TAB, a profile or the
+  resume offer is up.
+- Your friends list (profile > Friends, and the main menu's Friends panel) shows people
+  who added you at the bottom, faded, with Add back. In the main menu, Add back works
+  while you are in a lobby.
+- Someone you add appears as "Added -- waiting for them to add you back": you see where
+  they play and can join only once they add you back (they cannot watch you either).
+Live once surfd's P788 generation is cut over (the backend change); until then adds stay mutual.
+Verdict PENDING.
+
 ## P786 — spectate inside a trigger
 
 - Spectate (TAB > Players, a row) while standing in a start zone, a booster or any
