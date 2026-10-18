@@ -384,6 +384,16 @@ float() Rec_ConsentOK =
 	return FALSE;
 };
 
+// Local journalling retains the offline tier; sending needs the online text.
+float() Rec_UploadConsentOK =
+{
+	if (rec_rp_consent >= FS_TERMS_ONLINE)
+		return TRUE;
+	if (cvar("rec_terms") >= FS_TERMS_ONLINE)
+		return TRUE;
+	return FALSE;
+};
+
 float() Rec_HidOK =
 {
 	if (!cvar("rec_hid"))
@@ -977,7 +987,7 @@ void() Rec_ViewEnd =
 		  nothing".  Local runs kept the guard; the remote ones, which are the
 		  only ones that upload, lost it.
 		*/
-		if (cvar("rec_upload") && Rec_ConsentOK()
+		if (cvar("rec_upload") && Rec_UploadConsentOK()
 		    && stof(serverkey("fs_ul")) >= 1 && rec_rp_nonce != ""
 		    && rec_rp_lines > FS_VIEWHEAD)
 		{
@@ -1430,7 +1440,7 @@ void() Rec_HidEnd =
 		  recording is on this disk already, so staging a journal for upload is
 		  megabytes of copying to hand the server a file it wrote itself.*/
 		// P774: online terms alone never permit a raw journal to leave disk.
-		if (cvar("rec_upload") && cvar("rec_hid_upload") && Rec_ConsentOK()
+		if (cvar("rec_upload") && cvar("rec_hid_upload") && Rec_UploadConsentOK()
 		    && checkextension("FTESURF_HID_HTTP") && Rec_ServerIsRemote()
 		    && stof(serverkey("fs_ul")) >= 2 && rec_rp_nonce != "")
 		{

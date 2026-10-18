@@ -824,7 +824,7 @@ float() ui_consent_read =
   Both buttons are now always drawn, and the lower one is a real answer rather
   than a dismissal.  See screen_terms.
 */
-void(float tier) ui_consent_write =
+float(float tier) ui_consent_write =
 {
 	local filestream fh;
 
@@ -832,7 +832,7 @@ void(float tier) ui_consent_write =
 	if (fh < 0)
 	{
 		print("^1could not write data/consent.txt\n");
-		return;
+		return FALSE;
 	}
 
 	// Never DOWNGRADE.  Someone who has already enabled lobbies and then
@@ -848,6 +848,12 @@ void(float tier) ui_consent_write =
 	fputs(fh, sprintf("version %g\n", tier));
 	fputs(fh, sprintf("accepted %s\n", strftime(TRUE, "%Y%m%d-%H%M%S")));
 	fclose(fh);
+	// FILE_WRITE may buffer successfully and fail only when closed.
+	if (ui_consent_read() != tier)
+	{
+		print("^1could not write data/consent.txt\n");
+		return FALSE;
+	}
 
 	ms_consent = tier;
 	ms_bgfor = -2;                 // re-evaluate online image permission
@@ -872,6 +878,7 @@ void(float tier) ui_consent_write =
 	  archived copy would be a second answer that could disagree with the first.
 	*/
 	cvar_set("rec_terms", ftos(tier));
+	return TRUE;
 };
 
 // A tier's colour on a map row: mint at the easy end through to rose.
@@ -5517,7 +5524,7 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_par(p, w, draw, "The people on the map see your position and view angle, and you see theirs. Voice and text chat reach everyone there.", COL_TEXT);
 		ui_tm_head(p, draw, "What is uploaded");
 		ui_tm_par(p, w, draw, "Your finish time goes to play.proto.bar and appears on a public leaderboard. That server also keeps its own recording of the run (positions, velocities and angles), which anyone can download from the board.", SUI_THEME_WARN);
-		ui_tm_par(p, w, draw, "Raw mouse and keyboard journals stay here unless you also tick the input journal box on the short version of this screen (or turn it on later with F2). It is off by default; playing online alone never ticks it. Opted-in journals go to play.proto.bar for anti-cheat review, not as public replays.", COL_TEXT);
+		ui_tm_par(p, w, draw, "Your client's view-angle sidecar also goes to that server for anti-cheat review (rec_upload controls it). Choosing play online includes raw mouse and keyboard event journals, with timings, sent to play.proto.bar over HTTPS for private review, not public replays. Untick the journal box on the summary to opt out, or stop uploads later with F2. Stopping does not delete evidence already received.", COL_TEXT);
 		ui_tm_par(p, w, draw, "With online features enabled, play.proto.bar refreshes the map list at startup and serves zones, leaderboards and player pictures. Selecting a map can fetch its backdrop from dl.proto.bar. These services see your IP address, as does any lobby you join.", COL_TEXT);
 		ui_tm_par(p, w, draw, "A zone admin can explicitly upload saved zones to play.proto.bar. They are stored with the linked account as private drafts until an operator reviews and activates them; uploading alone does not change existing times.", COL_TEXT);
 		ui_tm_head(p, draw, "Steam");
@@ -5556,13 +5563,17 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 #define TM_CARD  16
 #define TM_JBOX  34             // P796: the journal box's row and the gap under it
 float ui_steam_t0;      // when the Steam offer went up: how long to wait for the lobby list
-float ui_synth_t;       // when ui_key or ui_click last fed the menu an event; 0 never
+float ui_synth_t;       // when a helper last fed the menu an event; 0 never
+float ui_synth_pending; // survives suspended drawing and held clicks
+float ui_synth_aim;     // helper-selected focus needs real motion/navigation
 float ui_tm_ph, ui_tm_w, ui_tm_two, ui_tm_sx, ui_tm_sy;     // the terms as last laid out, for ui_strip_test
 float ui_tm_full;               // P796: the cards are up instead of the summary
 float ui_tm_jbox, ui_tm_jtouched;   // P796: the journal box; the player changed it on this visit
 
 float() ui_synth =
 {
+	if (ui_synth_pending || ui_synth_aim)
+		return TRUE;
 	if (ui_synth_t > 0)
 	if (time - ui_synth_t < 1.5)
 		return TRUE;
@@ -5575,7 +5586,7 @@ float(vector p, float w, float draw) ui_terms_short =
 	tm_y = 0;
 	ui_tm_dot(p, w, draw, "Each run is recorded on this PC: your position, speed and view, and your mouse and keyboard input.");
 	ui_tm_dot(p, w, draw, "Offline, nothing about a run leaves your PC.");
-	ui_tm_dot(p, w, draw, "Online, your times go on public leaderboards with the server's own recording of each run; other players see you and your chat, and our servers see your IP address.");
+	ui_tm_dot(p, w, draw, "Online, times and server replays are public. Your view-angle file and, unless you untick below, input journal go to play.proto.bar for anti-cheat review. Players see your play and chat; servers see your IP address.");
 	ui_tm_dot(p, w, draw, "Never recorded: what you type (only that a key was pressed, and when), or anything outside the game.");
 	return tm_y - 3;
 };
@@ -5590,8 +5601,8 @@ float() ui_tm_jcan =
 
 string(string s, float w, vector sz) ui_fit_text;
 
-// The whole row toggles.  Ticking takes a real click, as the answers do.  Until
-// the player changes it the box mirrors rec_hid_upload (screen_terms).
+// This is the next online answer's choice, not permission before that answer.
+// New online terms include journals by default; a real untick remains an opt-out.
 void(vector pos, float w) ui_tm_jdraw =
 {
 	local float hot;
@@ -5603,7 +5614,7 @@ void(vector pos, float w) ui_tm_jdraw =
 	              hot ? COL_ACCENT : SUI_THEME_EDGE, 1);
 	if (ui_tm_jbox)
 		sui_roundbox(pos + '5 8 0', '10 10 0', 3, SUI_THEME_GOOD, 1);
-	s = ui_fit_text("Send my input journal for anti-cheat review (optional, online; F2 changes it)",
+	s = ui_fit_text("Include input journal with online play (untick to opt out; F2 changes it)",
 	                w - 30, tm_sz);
 	sui_text(pos + [30, floor((26 - tm_sz_y) * 0.5)], tm_sz, s, hot ? COL_ACCENT : COL_TEXT, 1, 0);
 	if (sui_is_released("tm_journal"))
@@ -5623,28 +5634,21 @@ void(vector pos, float w) ui_tm_jdraw =
 	}
 };
 
-// An answer, and the box if the player changed it on this visit: an untick
-// with either answer, a tick only with the online tier on record.  A write that
-// failed below its tier keeps the change for the next press.
-void(float tier) ui_tm_answer =
+// Only a saved real answer applies the choice. Offline never enables uploads.
+float(float tier) ui_tm_answer =
 {
-	ui_consent_write(tier);
-	if (ms_consent < tier)
-		return;
-	if (ui_tm_jtouched)
+	if (!ui_consent_write(tier))
+		return FALSE;
 	if (ui_tm_jcan())
 	{
-		if (!ui_tm_jbox)
-		{
-			if (cvar("rec_hid_upload"))
-				localcmd_local("rec_hid_upload 0\n");
-		}
-		else if (tier >= FS_TERMS_ONLINE)
-		if (!cvar("rec_hid_upload"))
+		if (tier >= FS_TERMS_ONLINE && ui_tm_jbox)
 			localcmd_local("rec_hid_upload 1\n");
+		else
+			localcmd_local("rec_hid_upload 0\n");
 	}
 	ui_tm_jtouched = FALSE;
 	ui_tm_full = FALSE;
+	return TRUE;
 };
 
 void(vector screensize) screen_terms =
@@ -5655,7 +5659,12 @@ void(vector screensize) screen_terms =
 
 	ui_backdrop(screensize);
 	if (!ui_tm_jtouched)
-		ui_tm_jbox = (cvar("rec_hid_upload") != 0);
+	{
+		if (ms_consent < FS_TERMS_ONLINE)
+			ui_tm_jbox = TRUE;              // a proposed choice, never a native setter
+		else
+			ui_tm_jbox = (cvar("rec_hid_upload") != 0);
+	}
 	jb = (ui_tm_jcan() && !ui_tm_full) ? TM_JBOX : 0;  // the summary's: the cards have no room
 	fh = 0;                                 // the footnote's line, under the cards only
 
@@ -5764,14 +5773,14 @@ void(vector screensize) screen_terms =
 			print("menu: the terms take a real key or click, not ui_key or ui_click\n");
 		else
 		{
-			ui_tm_answer(FS_TERMS_ONLINE);
-			// Written, or the gate in m_draw has the terms straight back up.
-			if (ms_consent >= FS_TERMS_ONLINE)
-			if (!cvar("ui_bootcheck"))
+			if (ui_tm_answer(FS_TERMS_ONLINE))
 			{
-				menu_screen = SCREEN_STEAM;
-				ui_steam_t0 = time;
-				print("menu: the terms are taken with lobbies on; the Steam sign-in is offered\n");
+				if (!cvar("ui_bootcheck"))
+				{
+					menu_screen = SCREEN_STEAM;
+					ui_steam_t0 = time;
+					print("menu: the terms are taken with lobbies on; the Steam sign-in is offered\n");
+				}
 			}
 		}
 	}
@@ -6003,7 +6012,7 @@ void(vector screensize) screen_name =
 
 // Patch 467: PLAY / VISUALS / MUSIC / QUIT, drawn by m_milk.qc -- PLAY is the
 // old "create server".
-// P774: separate optional consent, never folded into online acceptance.
+// The online answer enables uploads; this panel also allows withdrawal.
 void(vector screensize) screen_journal =
 {
 	local vector p;
@@ -6012,14 +6021,14 @@ void(vector screensize) screen_journal =
 
 	ui_backdrop(screensize);
 	w = min(680, screensize_x - 32);
-	body = "Off by default. If you enable this, a public lobby may request your run's raw mouse and keyboard event journal, with timings. It is sent to play.proto.bar over HTTPS for anti-cheat review, not as a public replay. Console/menu text and activity outside the game window are not recorded.";
-	note = "This is separate from local recording and playing online. Turning it off stops new journal uploads and cancels an active one; it does not delete evidence already received. rec_hid 0 stops local journal recording too.";
+	body = "Accepting online play allows a public lobby to request your run's raw mouse and keyboard event journal, with timings. It is sent to play.proto.bar over HTTPS for private anti-cheat review, not as a public replay. Console/menu text and activity outside the game window are not recorded.";
+	note = "New online acceptance includes journals unless you opt out. Uploads also require the online terms; this panel can allow or stop them. Stopping cancels an active upload and prevents new ones, without deleting evidence already received. rec_hid 0 stops local recording too.";
 	h = ui_para('0 0 0', w - 48, SZ_LABEL, 22, body, COL_TEXT, FALSE);
 	nh = ui_para('0 0 0', w - 48, SZ_LABEL, 22, note, COL_DIM, FALSE);
 	ph = 162 + h + nh;
 	p = [floor((screensize_x - w) * 0.5), max(8, floor((screensize_y - ph) * 0.5))];
 	sui_style_box(p, [w, ph], 16, SUI_THEME_PANEL, SUI_THEME_EDGE, 0.97);
-	sui_text(p + '24 20 0', SZ_TITLE, "Optional input journal uploads", COL_TEXT, 1, 0);
+	sui_text(p + '24 20 0', SZ_TITLE, "Input journal uploads", COL_TEXT, 1, 0);
 	ui_para(p + '24 68 0', w - 48, SZ_LABEL, 22, body, COL_TEXT, TRUE);
 	ui_para(p + [24, 82 + h], w - 48, SZ_LABEL, 22, note, COL_DIM, TRUE);
 	by = p_y + ph - 58;
@@ -6036,11 +6045,19 @@ void(vector screensize) screen_journal =
 		if (ui_button("journal_choice", [p_x + 24, by], [240, 34], label, TRUE))
 		{
 			if (enabled)
+			{
+				ui_tm_jbox = FALSE;
+				ui_tm_jtouched = TRUE;
 				localcmd_local("rec_hid_upload 0\n");
+			}
 			else if (ui_synth())
 				print("menu: journal upload consent takes a real click or key, not ui_key/ui_click\n");
 			else
+			{
+				ui_tm_jbox = TRUE;
+				ui_tm_jtouched = TRUE;
 				localcmd_local("rec_hid_upload 1\n");
+			}
 		}
 	}
 	else
@@ -8177,6 +8194,9 @@ void(vector screensize) m_draw =
 	sui_menu_nav();
 	Font_Reset();
 	sui_end();
+	// Queued releases are now consumed; a held synthetic click may release later.
+	if (!sui_click_held())
+		ui_synth_pending = FALSE;
 };
 
 void() m_open =
@@ -8227,6 +8247,22 @@ void() Menu_RendererRestarted =
 
 float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 {
+	// Native motion/navigation replaces helper focus only after SUI draws it.
+	// A confirmation in this input batch can still name the old selection.
+	if (!ui_synth_pending)
+	if (ui_synth_aim)
+	{
+		if (evtype == IE_MOUSEABS)
+			ui_synth_aim = FALSE;
+		if (evtype == IE_MOUSEDELTA)
+		if (scanx != 0 || chary != 0)
+			ui_synth_aim = FALSE;
+		if (evtype == IE_KEYDOWN)
+		if (sui_input_dir(scanx) != '0 0 0')
+			ui_synth_aim = FALSE;
+		if (!ui_synth_aim)
+			ui_synth_pending = TRUE;
+	}
 	if (evtype == IE_KEYDOWN && scanx == K_F2)
 	if (ms_consent >= FS_TERMS_VERSION)
 	{
@@ -8678,7 +8714,9 @@ float(string cmd) m_consolecommand =
 
 	if (argv(0) == "ui_key")
 	{
-		ui_synth_t = time;          // Patch 647: not the player's hand (screen_terms)
+		ui_synth_t = time;
+		ui_synth_pending = TRUE;
+		ui_synth_aim = TRUE;
 		/*
 		  ONE SYNTHETIC KEYPRESS THROUGH THE MENU'S OWN HANDLER.
 
@@ -8840,7 +8878,9 @@ float(string cmd) m_consolecommand =
 
 	if (argv(0) == "ui_click")
 	{
-		ui_synth_t = time;          // Patch 647: not the player's hand (screen_terms)
+		ui_synth_t = time;
+		ui_synth_pending = TRUE;
+		ui_synth_aim = TRUE;
 		/*
 		  ONE MOUSE CLICK AT AN ABSOLUTE POSITION.
 
@@ -8912,7 +8952,6 @@ float(string cmd) m_consolecommand =
 		                       drawn, plus an offset. With `ui_mouse` this is a drag,
 		                       aimed without a pixel in the cfg.
 		*/
-		ui_synth_t = time;          // P796: it aims the player's next key (screen_terms)
 		if (substring(argv(1), 0, 1) == "@")
 		{
 			local int hi;
@@ -8926,6 +8965,8 @@ float(string cmd) m_consolecommand =
 					activate_mouse_cursor();
 					_sui_mouse_move(_action_elements[hi].pos + _action_elements[hi].size * 0.5
 					                + [stof(argv(2)), stof(argv(3)), 0], TRUE);
+					ui_synth_t = time;
+					ui_synth_aim = TRUE;
 					found = TRUE;
 				}
 			}
@@ -8936,9 +8977,12 @@ float(string cmd) m_consolecommand =
 		{
 			activate_mouse_cursor();
 			_sui_mouse_move([stof(argv(1)), stof(argv(2)), 0], TRUE);
+			ui_synth_t = time;
+			ui_synth_aim = TRUE;
 		}
-		print(sprintf("ui_hover: %g %g  mouse %g  tip %g [%s]\n", _cursor_position_x,
-		              _cursor_position_y, _cursor_is_mouse_active, sui_tip_visible, sui_tip_id));
+		print(sprintf("ui_hover: %g %g  mouse %g  tip %g [%s] aim %g pending %g\n", _cursor_position_x,
+		              _cursor_position_y, _cursor_is_mouse_active, sui_tip_visible, sui_tip_id,
+		              ui_synth_aim, ui_synth_pending));
 		return TRUE;
 	}
 
@@ -8950,6 +8994,8 @@ float(string cmd) m_consolecommand =
 		// Patch 655: a click by this command is no more the player's hand than
 		// ui_click's (Patch 647 stamped that one and ui_key, and left this door).
 		ui_synth_t = time;
+		ui_synth_pending = TRUE;
+		ui_synth_aim = TRUE;
 		mtook = Menu_InputEvent((argv(1) == "down") ? IE_KEYDOWN : IE_KEYUP, K_MOUSE1, 0, 0);
 		print(sprintf("ui_mouse: %s took %g  cursor %g %g\n", argv(1), mtook,
 		              _cursor_position_x, _cursor_position_y));

@@ -54,7 +54,7 @@ python3 -I /trusted/surfd_transition_guard.py --state-dir /owned/fence launch --
 ```
 
 The immutable manifest has the four required keys below and optionally
-`target_schema`. Omitted `target_schema` means **schema19 only**, preserving the
+`target_schema` and `runtime_profile`. Omitted `target_schema` means **schema19 only**, preserving the
 legacy six-file format. Explicit `target_schema` must be the JSON integer `19`
 or `20`; booleans, floats (including `20.0`), strings, null and unknown schemas
 refuse. The target is never inferred from a receipt or the dependency set.
@@ -64,7 +64,10 @@ refuse. The target is never inferred from a receipt or the dependency set.
 - `hashes`: raw SHA256 digests for exactly `surfd.py`, `ksfimport.py`,
   `ksfgrab.py`, `ksfprofile.py`, `tools/ksfconvert.py`, `tools/ksfreplay_info.py`
   for schema19 (legacy or explicit). Schema20 requires exactly those six **plus
-  `accounts.py` and `social.py`**. Missing or extra paths refuse; all hashes are
+  `accounts.py` and `social.py`**. The only optional runtime profile is the literal
+  `"runtime_profile":"hid-v1"`, valid only with schema20; it requires exactly those
+  eight files **plus `hidupload.py`**. Untagged nine-file sets, tagged missing-file
+  sets, unknown profiles and arbitrary extra paths refuse. All hashes are
   checked for candidate, ordinary launch and reopen. This pins the coordinated
   social/KSF group, **not** its complete import closure or application runtime.
   External acceptance must separately pin effective dependency origins, including
@@ -189,8 +192,8 @@ It does not fabricate/read schema acceptance, probe health, or produce this rece
 procedure must measure the manifest's target schema, markers, ready/health, exact fresh accepting
 process/start configuration, old-generation retirement and recovery preservation,
 then write the receipt. The example's `schema:19` is valid only for a legacy or
-explicit19 manifest; explicit20 requires receipt `schema:20` and its exact eight
-hashes. A20 receipt cannot reopen a19 guard or vice versa, even for the same
+explicit19 manifest; explicit20 requires receipt `schema:20` and its exact eight hashes (nine with
+`hid-v1`). A20 receipt cannot reopen a19 guard or vice versa, even for the same
 source home/generation. Schema18, missing/malformed/mismatched receipts and wrong
 hashes/generations refuse reopening. A new close invalidates old receipts via
 its closure ID. Receipts are not cryptographic attestations. Authorization to
@@ -301,8 +304,8 @@ proof is implied.
 module paths. Each wrapper verifies the dispatch helper bytes; the dispatcher
 verifies the guard bytes, acquires an ordinary shared admission lock through an
 O_RDONLY descriptor (compatible with a read-only source/service sandbox), checks
-OPEN, the fixed generation and all schema-specific source hashes (six for19,
-eight for20), then executes the genuine
+OPEN, the fixed generation and all schema/profile-specific source hashes (six
+for19, eight for20 or nine for20/hid-v1), then executes the genuine
 immutable source in the original module namespace. Its real source origin and
 `sys.modules` identity are preserved. Already loaded local dependencies from
 outside that runtime are refused rather than silently evicted.

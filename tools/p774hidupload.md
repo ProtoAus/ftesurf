@@ -8,13 +8,17 @@ installation. Ordinary builds/development deployment do not make a release.
 
 ## Contract
 
-- Existing recording consent and `rec_upload` still apply. Raw journal uploads
-  additionally require the separate **default-off** `rec_hid_upload` choice in
-  the first-boot terms' journal box (P796; F2's Input journal uploads row leads
-  to the same page this contract describes). Accepting online terms never
-  enables it. Both native switches preserve early local values and refuse remote
-  enablement; turning either off cancels an active journal upload. No account,
-  ranking or ban policy is enabled here.
+- Local recording still needs the offline tier. Client angle/journal uploads
+  additionally require the online tier and `rec_upload`. `rec_hid_upload` starts
+  off and is archived locally. Tier 7's explicit **play online** answer includes
+  private journal uploads by default after disclosing them on the short page;
+  its checkbox remains an explicit opt-out. Merely opening that page or having
+  an earlier online answer never upgrades permission. F2's **Input journal
+  uploads** row leads to Allow/Stop. Synthetic actions or helper-selected focus
+  cannot grant permission; real input and successful consent readback are needed.
+  Native switches still refuse remote enablement; turning either off cancels an
+  active upload, without deleting evidence already received. No account, ranking
+  or ban policy is enabled here.
 - The existing server-selected evidence request chooses nonce, kind and
   destination basename. Only an explicitly opted-in armed `.hid` can be sent,
   via the new native-only `rec_ul_http` verb. `.view` retains its original path.
@@ -36,6 +40,31 @@ installation. Ordinary builds/development deployment do not make a release.
   stored, and is never an anti-cheat verdict.
 - Evidence requests are still governed by the existing server collection policy
   (`run_evidence_ul`). This patch does not silently change the operator's policy.
+
+## Existing guarded/public installation
+
+Use `tools/surfd_successor/build_gen.py --hid` (after its three positional
+arguments) to include `hidupload.py` in both guard hashes and runtime witness.
+The builder verifies the predecessor's pinned guard separately, then installs the
+explicitly pinned successor guard and immutable schema20 `hid-v1` profile, whose
+exact nine-file hash set includes the collector. The witness also verifies its
+actual imported origin and application module identity. Do not edit the canonical
+import stub or omit the sealed runtime file.
+
+To add only the HID route and its three budgets to an existing public site:
+
+```
+sudo sh setup_public.sh --hid-only BACKUP_DIR SNIPPET_SHA256 ZONES_SHA256
+```
+
+Use the inspected committed `setup_public.sh` beside its `surfd.nginx`. Supply
+fresh SHA-256 values for `/etc/nginx/snippets/surfd.conf` and
+`/etc/nginx/conf.d/surfd-ratelimit.conf`, in that order, plus a new absolute backup
+directory with an existing ordinary parent. It preserves unrelated bytes, refuses
+stale/conflicting configs, tests nginx before reload, and conditionally restores
+only its own writes on failure. Independently edited configs are retained for
+inspection, not overwritten by rollback. This mode does not change vhosts,
+certificates, private server-write exposure or credentials.
 
 ## Verification
 

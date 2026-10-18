@@ -10,7 +10,7 @@ an answer to the terms is a key or a click on the screen, never a command.
 
 The default path, as a new player who wants it all:
   T  the terms come up by themselves; D then Enter takes "play online":
-     data/consent.txt says tier 4, and the menu says it offers the sign-in
+     data/consent.txt says the current online tier, and uploads are enabled
   S  on the offer, D then Enter takes "Sign in with Steam": the menu joins the
      rig's lobby, with the name still the factory default (the gate is waved
      through once)
@@ -43,13 +43,38 @@ def main():
     ap.add_argument("--map", default="bhop_eazy")
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--later", action="store_true")
+    ap.add_argument("--previous-online", action="store_true",
+                    help="seed the previous online tier; it must not grant the new permission")
+    ap.add_argument("--blocked-consent", action="store_true",
+                    help="make the consent path a directory to exercise write refusal")
+    ap.add_argument("--deferred-synth", action="store_true",
+                    help="queue synthetic confirmation while minimized beyond its quarantine")
+    ap.add_argument("--hover-synth", action="store_true",
+                    help="park helper-selected focus, then try a real confirmation after quarantine")
+    ap.add_argument("--batch-nav-confirm", action="store_true",
+                    help="queue native navigation and confirmation before one redraw")
+    ap.add_argument("--journal-optout", action="store_true",
+                    help="untick the short page's proposed journal choice using real navigation")
     a = ap.parse_args()
+    if a.batch_nav_confirm:
+        if a.deferred_synth:
+            ap.error("--batch-nav-confirm and --deferred-synth are separate arms")
+        a.hover_synth = True
     a.client = a.client or a.content / "ftesurf64.exe"
     a.progs = a.progs.resolve()
     a.output_dir = (a.output_dir or pathlib.Path(tempfile.gettempdir())).resolve()
-    tag = "offline" if a.offline else "later" if a.later else "signin"
+    if a.blocked_consent and (a.previous_online or a.offline):
+        ap.error("--blocked-consent needs a fresh online answer")
+    tag = "blocked" if a.blocked_consent else "previous" if a.previous_online else "offline" if a.offline else "later" if a.later else "signin"
+    online_tier = int(re.search(r"^#define FS_TERMS_ONLINE (\d+)",
+                                (L.ROOT / "src/shared/sh_defs.qc").read_text(), re.M).group(1))
 
     rig, gd, junctions = L.build_rig(a)
+    if a.previous_online:
+        (gd / "data").mkdir(exist_ok=True)
+        (gd / "data/consent.txt").write_text("FTESURF-CONSENT 1\nversion %d\n" % (online_tier - 1))
+    if a.blocked_consent:
+        (gd / "data/consent.txt").mkdir(parents=True)
     print("rig", rig)
     server = client = web = None
     try:
@@ -96,7 +121,7 @@ def main():
         client = subprocess.Popen(
             [str(a.client), "-plugin", "-nobrowse", *common, "+set", "log_name", "p647cl",
              "-window", "-nosound", "+set", "con_savehistory", "0", "+set", "cl_idlefps", "0",
-             "+set", "cl_maxfps", "100"],
+             "+set", "cl_maxfps", "100", "+set", "rec_hid_upload", "0"],
             cwd=a.content, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, startupinfo=si)
 
@@ -123,29 +148,144 @@ def main():
         send('set lobby_dir "http://127.0.0.1:%d"' % hport)
         send('set lobby_hosts "127.0.0.1"')
         time.sleep(1)
-        L.Keys.VK["d"] = 0x44                   # +moveright: the menu's cursor, one to the right
+        L.Keys.VK.update(a=0x41, d=0x44, w=0x57, s=0x53)
         keys = L.Keys(client.pid)
         consent = gd / "data" / "consent.txt"
-        L.check("T  a first boot: no consent file, and the terms screen draws (not one flat colour)",
-                (consent.exists(), shot("p647_1_terms")), (False, True))
-        n0 = len(asked)
 
+        def raw_value():
+            send("echo JOURNAL_PERMISSION_QUERY")
+            if not cl.wait("JOURNAL_PERMISSION_QUERY", 6):
+                return None
+            send("rec_hid_upload")
+            m = cl.wait(r'"rec_hid_upload" is "(\d)"', 6)
+            return m.group(1) if m else None
+
+        def native_batch():
+            # Freeze ONLY this owned fixture's window thread long enough to put
+            # all four native messages on its queue before its next input pump.
+            import ctypes
+            from ctypes import wintypes as W
+            k = ctypes.WinDLL("kernel32", use_last_error=True)
+            k.OpenThread.argtypes = (W.DWORD, W.BOOL, W.DWORD)
+            k.OpenThread.restype = W.HANDLE
+            k.GetProcessIdOfThread.argtypes = (W.HANDLE,)
+            k.GetProcessIdOfThread.restype = W.DWORD
+            k.SuspendThread.argtypes = k.ResumeThread.argtypes = (W.HANDLE,)
+            k.SuspendThread.restype = k.ResumeThread.restype = W.DWORD
+            k.CloseHandle.argtypes = (W.HANDLE,)
+            pid = W.DWORD()
+            tid = keys.u.GetWindowThreadProcessId(keys.hwnd, ctypes.byref(pid))
+            if pid.value != client.pid or client.poll() is not None:
+                raise RuntimeError("batch target is not our live fixture")
+            h = k.OpenThread(0x42, False, tid)  # SUSPEND_RESUME | QUERY_INFORMATION
+            if not h:
+                raise ctypes.WinError(ctypes.get_last_error())
+            try:
+                if k.GetProcessIdOfThread(h) != client.pid:
+                    raise RuntimeError("batch thread does not belong to our fixture")
+                prior = k.SuspendThread(h)
+                if prior == 0xFFFFFFFF:
+                    raise ctypes.WinError(ctypes.get_last_error())
+                try:
+                    if prior != 0:
+                        raise RuntimeError("fixture thread was already suspended")
+                    for name in ("a", "enter"):
+                        keys._post(keys.VK[name], True)
+                        keys._post(keys.VK[name], False)
+                finally:
+                    resumed = k.ResumeThread(h)
+                    if resumed != prior + 1:
+                        raise RuntimeError("fixture thread resume count changed")
+            finally:
+                k.CloseHandle(h)
+            return prior, resumed
+
+        if a.previous_online:
+            L.check("T  an older online answer grants neither uploads nor directory access",
+                    (re.findall(r"version (\d+)", consent.read_text()), raw_value(), asked),
+                    ([str(online_tier - 1)], "0", []))
+            send("ui_strip_test screen terms")
+            L.check("T  opening terms does not upgrade the old answer",
+                    (bool(cl.wait("ui_strip_test: screen terms", 6)), raw_value(),
+                     re.findall(r"version (\d+)", consent.read_text())),
+                    (True, "0", [str(online_tier - 1)]))
+        expected_path = (a.previous_online or a.blocked_consent)
+        L.check("T  terms draw with the expected fixture consent path",
+                (consent.exists(), shot("p647_1_terms")), (expected_path, True))
+        n0 = len(asked)
+        send("ui_key d")
+        time.sleep(0.3)                         # navigation must draw before confirmation
+        if a.deferred_synth:
+            keys.u.ShowWindow(keys.hwnd, 6)      # only this fixture window
+            time.sleep(0.4)
+            L.check("T  the fixture is minimized before synthetic input",
+                    bool(keys.u.IsIconic(keys.hwnd)), True)
+        if a.hover_synth:
+            send("ui_hover @tm_online")
+            L.check("T  the helper actually parked the pointer on the online answer",
+                    bool(cl.wait("ui_hover:", 6)), True)
+            time.sleep(2.2)
+            if a.batch_nav_confirm:
+                L.check("T  native navigation/confirmation queued before the fixture resumes",
+                        native_batch(), (0, 1))
+            else:
+                keys.press("enter")             # real confirmation cannot inherit helper aim
+        else:
+            send("ui_key enter")
+        if a.deferred_synth:
+            acted = cl.wait("ui_key: enter", 6)
+            start = time.monotonic()
+            time.sleep(2.2)
+            L.check("T  commands acted while drawing stayed suspended beyond quarantine",
+                    (bool(acted), bool(keys.u.IsIconic(keys.hwnd)), time.monotonic() - start > 1.5),
+                    (True, True, True))
+            keys.u.ShowWindow(keys.hwnd, 4)      # restore without activation
+        refused = cl.wait("the terms take a real key or click, not ui_key or ui_click", 6)
+        synthetic = (bool(refused), raw_value(), consent.exists())
+        L.check("T  synthetic online answer acts but grants no permission",
+                synthetic, (True, "0", expected_path))
+        if synthetic != (True, "0", expected_path):
+            return 1                           # never drive a mistakenly accepted offer
+        send("ui_hover @tm_accept")             # consistent offline focus after every arm
+        time.sleep(2)                           # time alone cannot authorize helper aim
+
+        if a.blocked_consent:
+            keys.press("d")
+            time.sleep(0.4)
+            keys.press("enter")
+            L.check("T  a real online answer whose write fails cannot enable uploads",
+                    (bool(cl.wait("could not write data/consent.txt", 6)), raw_value(),
+                     consent.is_dir(), asked[n0:]), (True, "0", True, []))
+            return 1 if L.FAILED else 0
         if a.offline:
-            keys.press("enter")                 # the default button: offline
+            keys.press("a")                    # real navigation replaces helper-selected focus
+            time.sleep(0.3)
+            keys.press("d")
+            time.sleep(0.3)
+            keys.press("enter")
             time.sleep(2)
             tier = re.findall(r"version (\d+)", consent.read_text()) if consent.exists() else None
             L.check("T  Enter on the default button is the offline answer: tier 1 on disk, no "
                     "Steam offer, and nothing was asked of the directory",
                     (tier, "Steam sign-in is offered" in cl.text(), asked[n0:]), (["1"], False, []))
+            L.check("T  offline answer leaves uploads disabled", raw_value(), "0")
             L.check("...and the main menu draws", shot("p647_2_main"), True)
         else:
+            if a.journal_optout:
+                keys.press("w")                # checkbox above the default offline answer
+                time.sleep(0.3)
+                keys.press("enter")
+                time.sleep(0.3)
+                keys.press("s")
+                time.sleep(0.3)
             keys.press("d")
             time.sleep(0.4)
             keys.press("enter")
             offered = cl.wait("the terms are taken with lobbies on; the Steam sign-in is offered", 10)
             tier = re.findall(r"version (\d+)", consent.read_text()) if consent.exists() else None
-            L.check("T  D then Enter is the online answer: tier 4 on disk, and the menu says it "
-                    "offers the sign-in", (tier, bool(offered)), (["4"], True))
+            L.check("T  real online answer records the new tier and enables uploads",
+                    (tier, bool(offered), raw_value()),
+                    ([str(online_tier)], True, "0" if a.journal_optout else "1"))
             end = time.time() + 12              # the offer polls the directory for a lobby
             while time.time() < end and "/lobbies.json" not in asked[n0:]:
                 time.sleep(0.5)

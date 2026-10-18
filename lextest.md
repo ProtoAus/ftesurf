@@ -90,6 +90,26 @@ ESC still brings up World of Surf's menu, not Quake's. Live: installs 2026-10-18
 
 "Fixed / still breaks". Verdict PENDING.
 
+## P804 — online acceptance includes input-journal uploads
+
+Owner approved activating the collector and accepting uploads through online
+play. Online tier 7 keeps the short P796 page and includes journal uploads by
+default, with its checkbox available as an explicit opt-out. Old online answers
+are not silently upgraded; offline permission stays separate. Client angle-file
+uploads are also disclosed. Installation/live-route status follows deployment.
+
+- Open the online terms, read the upload paragraph, and choose **play online**.
+  Leave the journal checkbox checked to include uploads, or untick it to opt
+  out. F2's Input journal uploads row should report the chosen state; its
+  **Stop journal uploads** control must remain available and switch it off.
+- Once the HTTPS collector is live, allow uploads with F2 or recheck the journal
+  box and accept online play, join a public lobby and finish one short run. Report whether the
+  upload panel/console shows an error. No need to send a journal or identity in
+  chat; the operator can inspect the private server-side arrival.
+
+Human readability/acceptance and a genuine consenting HTTPS finish: PENDING.
+Automated isolated answers are fixture checks, not this human acceptance.
+
 ## P800 — `r_budget_csqc`: CSQC by QC file; the panel's own time
 
 Engine patch-800 (exe 33466461, `git-7464-patch-800-0-g553f9a4bd`) in both installs since

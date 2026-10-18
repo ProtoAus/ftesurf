@@ -1,6 +1,7 @@
 #!/bin/sh
 # The surfd suite in a staged archive (the list surfd-deploy.ps1 runs).
-#   sh suite.sh STAGE    (STAGE holds surfd/, tools/, src/shared/ from git archive)
+#   sh suite.sh STAGE    (archive surfd/, tools/, src/shared/ and
+#                        src/release/ftesurf.nginx, used by test_ksftopup)
 set -e
 STAGE=$1
 mkdir -p $STAGE/tmp
@@ -8,7 +9,7 @@ cd $STAGE/surfd
 TMPDIR=$STAGE/tmp
 export TMPDIR
 rc=0
-for t in test_web test_recplot test_board test_join test_replays test_sweep test_surfd test_simcheck test_momboards test_momgrab test_momrequest test_accounts test_social test_ranked test_ksfimport test_ksfprofile test_ksftopup test_ksfgrab test_mapwatch test_zonefit test_variants test_mappool test_admin test_completion_pool; do
+for t in test_hidupload test_hid_proxy_install test_web test_recplot test_board test_join test_replays test_sweep test_surfd test_simcheck test_momboards test_momgrab test_momrequest test_accounts test_social test_ranked test_ksfimport test_ksfprofile test_ksftopup test_ksfgrab test_mapwatch test_zonefit test_variants test_mappool test_admin test_completion_pool; do
   [ -f "$t.py" ] || continue
   printf '%-16s ' "$t"
   if [ "$t" = test_ksfgrab ]; then set -- --out "$STAGE/tmp/ksfgrab"; else set --; fi

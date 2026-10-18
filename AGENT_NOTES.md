@@ -72,6 +72,27 @@
   with copied content, its own fmf (DISABLEHOMEDIR), `-nohome`, and the progs under test,
   so nothing touches the install. P777's arm (paint2 root, tmp/arm777b.py) is that rig.
 
+## Collector activation integration (P804, 2026-10-18)
+
+- A curated successor archive with only surfd/, tools/ and src/shared/ omits
+  `src/release/ftesurf.nginx`, which `test_ksftopup` reads. Include that exact
+  same-commit fixture. The measured failure was packaging-only: preserve the
+  first suite result, add the missing pinned fixture to the same stage, and rerun
+  only the affected arm; unrelated passed service checks remain valid.
+- A canonical-tree-only pNNN claim scan missed a concurrent worktree's P801.
+  After fetching both repositories, inspect untracked pNNN paths from every
+  registered worktree before claiming max+1. A later collision is not permission
+  to overwrite a published entry, lower ENGINE.txt's patch or rewind a peer's
+  engine pin/progs. Keep the pre-integration ref and evidence, integrate current
+  published source, and use a new source-bound generation rather than relabeling
+  a previously initialized guard.
+- Remote-tracking refs are shared by worktrees. A peer fetch advanced origin/main
+  between inspection and diff generation, so a frozen P804 candidate's supposed
+  doc-only comparison appeared to remove newly published P805 native code.
+  Generate review/delivery diffs with TWO explicit inspected SHAs, record them
+  beside the artifact, and separately recheck current origin at publication.
+  Artifact-base drift is not permission to discard the newer peer work.
+
 ## surfd successor generation, code only (P770, 2026-10-18)
 
 - The Pi's surfd is a sealed guarded generation; `surfd-deploy.ps1` refuses it
@@ -1287,8 +1308,13 @@ From `src/`, with pwsh 7 (NOT `powershell`):
 
     pwsh -NoProfile -Command "./build.ps1 -Jobs 8"
 
-- Default: compiles all three progs + plugin, deploys to `C:\FTESurf` AND
-  `C:\FTEQuake` (dual deploy is mandatory).
+- Current default: compiles the three progs into this checkout's `ftesurf/`.
+  In `build.ps1`, `-QuakeDir` is used only by the `-Engine` native/plugin copy
+  block; it does NOT redirect/copy QC from an isolated worktree to an install.
+  Copy only inspected-commit `.dat`/matching `.lno` artifacts intentionally into
+  BOTH `C:\FTESurf\ftesurf` and `C:\FTEQuake\ftesurf`, retaining predecessors
+  and checking destination hashes. Dual deployment remains mandatory; a successful
+  compile or an overridden `-QuakeDir` does not by itself prove either QC copy.
 - `-Engine`: also rebuilds the engine from the fteqw checkout; add `-Full`
   after any engine header change. Plugin rebuild is automatic. It builds the
   engine WORKING TREE, and `release.ps1` ships whatever it built. 0.1.8 went out

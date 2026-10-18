@@ -31,6 +31,126 @@ HOSTNAME_PUBLIC="${PUBLIC_HOST:-play.proto.bar}"
 PORTS="27510 27520 27530 27540 27550"
 
 [ "$(id -u)" = "0" ] || { echo "run me with sudo -- I install nginx config." >&2; exit 1; }
+
+# Add only the P774 route/zones to an existing site, without vhosts or certbot.
+# sudo sh setup_public.sh --hid-only BACKUP_DIR SNIPPET_SHA256 ZONES_SHA256
+if [ "${1:-}" = "--hid-only" ]; then
+    [ "$#" = 4 ] || { echo "usage: --hid-only BACKUP_DIR SNIPPET_SHA256 ZONES_SHA256" >&2; exit 1; }
+    SOURCE_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+    umask 077
+    python3 - "$SOURCE_DIR" "$2" "$3" "$4" <<'PY'
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import sys
+
+source, backup = Path(sys.argv[1]), Path(sys.argv[2])
+paths = [Path('/etc/nginx/snippets/surfd.conf'),
+         Path('/etc/nginx/conf.d/surfd-ratelimit.conf')]
+expected = sys.argv[3:5]
+if not backup.is_absolute() or backup.exists() or backup.is_symlink():
+    raise SystemExit('backup must be a new absolute directory')
+for parent in backup.parents:
+    if parent.is_symlink() or not parent.is_dir():
+        raise SystemExit('backup parent must be an ordinary directory')
+if any(not re.fullmatch('[0-9a-f]{64}', h) for h in expected):
+    raise SystemExit('expected SHA256 values required')
+if any(p.is_symlink() or not p.is_file() for p in paths):
+    raise SystemExit('nginx destinations must be ordinary files')
+before = [p.read_bytes() for p in paths]
+if [hashlib.sha256(b).hexdigest() for b in before] != expected:
+    raise SystemExit('nginx config changed; inspect fresh bytes before retrying')
+pattern = r'(?ms)^location = /api/hid \{\n.*?^\}'
+blocks = re.findall(pattern, (source / 'surfd.nginx').read_text())
+if len(blocks) != 1:
+    raise SystemExit('source must declare exactly one HID location')
+old_blocks = re.findall(pattern, before[0].decode())
+if old_blocks and old_blocks != blocks:
+    raise SystemExit('existing HID location differs; refusing to replace it')
+after = [before[0] if old_blocks else before[0] + b'\n' + blocks[0].encode() + b'\n', before[1]]
+zones = re.findall(r'(?m)^limit_(?:req|conn)_zone [^\n]*zone=surfdhid(?:ip|global)?:[^\n]*;$',
+                   (source / 'setup_public.sh').read_text())
+if len(zones) != 3:
+    raise SystemExit('source must declare all three HID budgets')
+for zone in zones:
+    name = re.search(r'zone=([^:]+):', zone).group(1)
+    old = [l.strip() for l in before[1].decode().splitlines()
+           if re.search(r'\bzone=' + re.escape(name) + ':', l) and not l.lstrip().startswith('#')]
+    if old and old != [zone]:
+        raise SystemExit('existing zone differs: ' + name)
+    if not old:
+        after[1] += b'\n' + zone.encode() + b'\n'
+backup.mkdir(mode=0o700)
+for p, data in zip(paths, before):
+    (backup / p.name).write_bytes(data)
+
+
+def replace_checked(path, previous, data):
+    if path.is_symlink() or not path.is_file() or path.read_bytes() != previous:
+        raise RuntimeError('config changed during installation: ' + str(path))
+    attrs = path.stat()
+    tmp = path.with_name(path.name + '.hid-new-' + str(os.getpid()))
+    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+            os.fchmod(f.fileno(), stat.S_IMODE(attrs.st_mode))
+            os.fchown(f.fileno(), attrs.st_uid, attrs.st_gid)
+        if path.is_symlink() or not path.is_file() or path.read_bytes() != previous:
+            raise RuntimeError('config changed before publication: ' + str(path))
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+
+installed = []
+reload_attempted = False
+try:
+    for i, p in enumerate(paths):
+        if before[i] != after[i]:
+            replace_checked(p, before[i], after[i])
+            installed.append(i)
+    subprocess.run(['nginx', '-t'], check=True)
+    if any(p.is_symlink() or not p.is_file() or p.read_bytes() != b for p, b in zip(paths, after)):
+        raise RuntimeError('config changed during validation; refusing reload')
+    reload_attempted = True
+    subprocess.run(['systemctl', 'reload', 'nginx'], check=True)
+    if any(p.is_symlink() or not p.is_file() for p in paths):
+        raise RuntimeError('config type changed during reload; refusing success receipt')
+    measured = [p.read_bytes() for p in paths]
+    if measured != after:
+        raise RuntimeError('config changed during reload; refusing success receipt')
+except BaseException:
+    blocked = []
+    for i in reversed(installed):
+        try:
+            replace_checked(paths[i], after[i], before[i])
+        except (OSError, RuntimeError) as e:
+            blocked.append(str(e))
+    if blocked or any(p.is_symlink() or not p.is_file() or p.read_bytes() != b
+                      for p, b in zip(paths, before)):
+        raise RuntimeError('rollback preserved peer edits; inspect config before any reload: ' + '; '.join(blocked))
+    if reload_attempted:
+        subprocess.run(['nginx', '-t'], check=True)
+        subprocess.run(['systemctl', 'reload', 'nginx'], check=True)
+    raise
+receipt = dict(utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+               before=dict(zip(map(str, paths), expected)),
+               after={str(p): hashlib.sha256(b).hexdigest() for p, b in zip(paths, measured)})
+(backup / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+print(json.dumps(receipt))
+PY
+    exit $?
+fi
+
 [ -f "$ENV_FILE" ] || { echo "no $ENV_FILE -- is SURFD_HOME right?" >&2; exit 1; }
 
 # --------------------------------------------------------------------------

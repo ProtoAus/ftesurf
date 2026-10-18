@@ -28,19 +28,6 @@ bound-check failure kills the VM (P795 took the menu down this way).
   changes (P805 review; not measured how often the flag flickers at constant height).
   Check: cl_predtrace while standing after a step up, with onground logged.
 
-- Site: `src/client/cl_replay.qc:378-385` (gate), used at :980 (angle sidecar) and
-  :1433 (journal). They require only the offline terms tier, so an offline-tier
-  player who joins a lobby by console `connect` still uploads the sidecar, and the
-  journal if `rec_hid_upload` is 1. Check: offline tier, `connect` to an `fs_ul 2`
-  lobby, finish a run; the server's evidence log names the upload. Gate on
-  FS_TERMS_ONLINE.
-- Site: `src/menu/m_main.qc` ui_terms_col. Neither terms text mentions the client's
-  own angle-sidecar upload (`rec_upload`, default 1; cl_replay.qc:979-1002). Adding
-  it is a disclosure change: Lex decides whether FS_TERMS_ONLINE moves with it.
-- Site: `src/menu/m_main.qc` ui_hover. It marks itself synthetic for 1.5 s
-  (ui_synth_t) but leaves the cursor parked in mouse mode, so `ui_hover @tm_journal`
-  (or @tm_online) and a 2 s wait aim the player's next real Enter or unmoved click.
-  A flag only real mouse motion clears would close it (P796 review round 2).
 - Site: `src/server/sv_player.qc` setpos branch. It lacks the resume, replay-pin and
   ghost refusals SV_TpPlayer has (both share SV_SetPosSelf). Check: `setpos` during a
   resume or a replay pin, against `tp_player` in the same state.
@@ -72,6 +59,17 @@ bound-check failure kills the VM (P795 took the menu down this way).
   and `save002` (anchorpos z 14880, off jumble's map), overwriting jumble's. A later jumble load
   of those slots restores dragon's run-line rows. Check: save on map A, change the lobby to map B,
   save, and list both maps' local save folders.
+
+## Online journal permission: native help still describes the old tier
+
+- Site: engine `client/cl_receipt.c`, `rec_hid_upload` description. P804's new
+  tier-7 online answer includes uploads unless explicitly opted out, but native
+  help still says online consent alone does not. This does not grant permission:
+  the saved real-input answer and native setter remain authoritative. Update the
+  description with the next native build, distinguishing old answers from the
+  new disclosure and preserving Stop semantics. Falsifier: the settings tooltip
+  and local cvar help must describe the same permission as the tier-7 screen.
+  Source: P804 independent client-privacy review, nonblocking P2.
 
 ## Held recording clocks: what the Patch 785 reviews found
 

@@ -58,14 +58,18 @@ def read_json(path, private=False):
 
 def manifest_check(m):
     keys = {"generation", "source_home", "hashes", "routes"}
-    require(type(m) is dict and set(m) in (keys, keys | {"target_schema"}),
-            "malformed manifest")
+    optional = {"target_schema", "runtime_profile"}
+    require(type(m) is dict and keys <= set(m) <= keys | optional, "malformed manifest")
     schema = target_schema(m)
+    files = SCHEMA_FILES[schema]
+    if "runtime_profile" in m:
+        require(schema == 20 and m["runtime_profile"] == "hid-v1", "unsupported runtime_profile")
+        files = files | {"hidupload.py"}
     require(type(m["generation"]) is str and
             re.fullmatch("[0-9a-f]{40}", m["generation"]), "full generation SHA required")
     require(plain_path(m["source_home"]).is_dir(), "missing source home")
-    require(type(m["hashes"]) is dict and set(m["hashes"]) == SCHEMA_FILES[schema],
-            "exact schema%d raw hash set required" % schema)
+    require(type(m["hashes"]) is dict and set(m["hashes"]) == files,
+            "exact schema%d/profile raw hash set required" % schema)
     for digest in m["hashes"].values():
         require(type(digest) is str and re.fullmatch("[0-9a-f]{64}", digest), "bad hash")
     require(type(m["routes"]) is dict and bool(m["routes"]), "routes required")

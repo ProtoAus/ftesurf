@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""P770: build a code-only successor surfd generation beside the serving one (same file
-set, schema 20, same guard and witness), from a staged git archive of an inspected commit.
+"""Build a code-only successor surfd generation (schema 20, pinned guard/witness).
 
-  python3 build_gen.py <root> <40-hex sha> <serving generation root>
+  python3 build_gen.py <root> <40-hex sha> <serving generation root> [--hid]
+
+--hid explicitly adds the signed journal collector to the sealed runtime file set.
 
 <root>/stage holds the archive, plus EXPECTED.json ({path: sha256} of every runtime file
 at <sha>, from git) and COMMIT, written by the operator from the commit. Writes <root>/runtime, <root>/control and, via the
@@ -19,7 +20,8 @@ import subprocess
 import sys
 
 P = pathlib.Path
-GUARD_SHA = 'af6c26b5df1e72cc0943c8ee8df4a124a202295fdc9e46ba7647672c93746a75'
+LEGACY_GUARD_SHA = 'af6c26b5df1e72cc0943c8ee8df4a124a202295fdc9e46ba7647672c93746a75'
+GUARD_SHA = '82eb55da19360032be1a309336655c747fcbc2c9e374d14f266e5293f94394d7'
 PI_ONLY = {'momfetch.py', 'msml.py'}     # on the Pi only, never in surfd/
 DISPATCH_SHA = '787373937cd6d2afc66f3ae9ef073e3f4e9b7e55f9d42c4af7ade52fde7eda49'
 HOME = P('/srv/nvme/surfd')
@@ -34,6 +36,7 @@ def sha(path):
 
 
 def main():
+    assert len(sys.argv) in (4, 5) and sys.argv[4:] in ([], ['--hid']), 'usage: ROOT SHA OLD [--hid]'
     root, gen, OLD = P(sys.argv[1]), sys.argv[2], P(sys.argv[3])
     OLDGEN = json.loads((OLD / 'state/manifest.json').read_text())['generation']
     assert re.fullmatch(r'[0-9a-f]{40}', gen), gen
@@ -46,8 +49,15 @@ def main():
 
     assert (stage / 'COMMIT').read_text().strip() == gen, 'stage is not this commit'
     expected = json.loads((stage / 'EXPECTED.json').read_text())
-    rels = sorted(str(p.relative_to(OLD / 'runtime')) for p in (OLD / 'runtime').rglob('*')
-                  if p.is_file() and '__pycache__' not in p.parts)
+    old_rels = {str(p.relative_to(OLD / 'runtime')) for p in (OLD / 'runtime').rglob('*')
+                if p.is_file() and '__pycache__' not in p.parts}
+    additions = {'hidupload.py'} - old_rels if sys.argv[4:] else set()
+    rels = sorted(old_rels | additions)
+    w = (OLD / 'control/witness_wsgi.py').read_text()
+    line = [l for l in w.splitlines() if l.startswith('expected={')]
+    assert len(line) == 1
+    old_hashes = ast.literal_eval(line[0][len('expected='):])
+    assert set(old_hashes) == old_rels, 'witness file set'
     origin = {}
     rt.mkdir(mode=0o700)
     for rel in rels:
@@ -58,7 +68,7 @@ def main():
         else:
             src = stage / 'surfd' / rel
         assert src.is_file(), rel
-        assert rel in PI_ONLY or sha(src) == expected[rel], 'stage file differs from git: ' + rel
+        assert sha(src) == (old_hashes[rel] if rel in PI_ONLY else expected[rel]), 'source differs from its pin: ' + rel
         origin[rel] = str(src)
         dst = rt / rel
         dst.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -67,8 +77,11 @@ def main():
 
     ctl.mkdir(mode=0o700)
     guard = OLD / 'control/surfd_transition_guard.py'
-    assert sha(guard) == GUARD_SHA
-    shutil.copyfile(guard, ctl / 'surfd_transition_guard.py')
+    old_guard_sha = sha(guard)
+    assert old_guard_sha in (LEGACY_GUARD_SHA, GUARD_SHA), 'unrecognized predecessor guard'
+    successor_guard = stage / 'tools/surfd_transition_guard.py'
+    assert sha(successor_guard) == GUARD_SHA, 'successor guard differs from its explicit pin'
+    shutil.copyfile(successor_guard, ctl / 'surfd_transition_guard.py')
     assert (OLD / 'control/gunicorn.conf.py').read_bytes() == b''
     shutil.copyfile(OLD / 'control/gunicorn.conf.py', ctl / 'gunicorn.conf.py')
 
@@ -77,7 +90,10 @@ def main():
     sub = lambda v: (str(root) + v[len(str(OLD)):]) if v.startswith(str(OLD) + '/') else v
     m['generation'] = gen
     m['source_home'] = str(rt)
-    m['hashes'] = {k: hashes[k] for k in m['hashes']}
+    profile_files = {'hidupload.py'} if 'hidupload.py' in hashes else set()
+    if profile_files:
+        m['runtime_profile'] = 'hid-v1'
+    m['hashes'] = {k: hashes[k] for k in set(m['hashes']) | profile_files}
     m['routes'] = {k: [sub(a) for a in v] for k, v in m['routes'].items()}
     for argv in m['routes'].values():
         for a in argv:
@@ -85,11 +101,19 @@ def main():
             assert not a.startswith(str(root) + '/') or P(a).exists(), 'route path missing: ' + a
     (ctl / 'guard-manifest.json').write_text(json.dumps(m, sort_keys=True) + '\n')
 
-    w = (OLD / 'control/witness_wsgi.py').read_text()
-    line = [l for l in w.splitlines() if l.startswith('expected={')]
-    assert len(line) == 1
-    assert set(ast.literal_eval(line[0][len('expected='):])) == set(rels), 'witness file set'
     w = w.replace(line[0], 'expected=' + repr(hashes))
+    if profile_files:
+        module_lines = [l for l in w.splitlines() if l.startswith('for rel in [')]
+        alias_lines = [l for l in w.splitlines() if l.startswith('for name in (')]
+        assert len(module_lines) == len(alias_lines) == 1, 'witness dependency shape'
+        modules = ast.literal_eval(module_lines[0][len('for rel in '):-1])
+        aliases = ast.literal_eval(alias_lines[0][len('for name in '):-1])
+        if 'hidupload.py' not in modules:
+            modules.append('hidupload.py')
+        if 'hidupload' not in aliases:
+            aliases += ('hidupload',)
+        w = w.replace(module_lines[0], 'for rel in ' + repr(modules) + ':')
+        w = w.replace(alias_lines[0], 'for name in ' + repr(aliases) + ':')
     assert w.count(str(OLD)) == 1 and w.count(OLDGEN) == 1
     w = w.replace(str(OLD), str(root)).replace(OLDGEN, gen)
     (ctl / 'witness_wsgi.py').write_text(w)
@@ -109,16 +133,16 @@ def main():
     (ctl / 'surfd_import_dispatch.py').chmod(0o400)
     ns = {'__name__': '_p770_dispatch'}
     exec(compile((ctl / 'surfd_import_dispatch.py').read_bytes(), 'surfd_import_dispatch.py', 'exec'), ns)
-    def render(where, generation, rel):
+    def render(where, generation, rel, guard_sha):
         return ns['render_wrapper'](dispatch_path=str(where / 'control/surfd_import_dispatch.py'),
                                     dispatch_sha256=DISPATCH_SHA,
                                     guard_path=str(where / 'control/surfd_transition_guard.py'),
-                                    guard_sha256=GUARD_SHA, state_dir=str(where / 'state'),
+                                    guard_sha256=guard_sha, state_dir=str(where / 'state'),
                                     generation=generation, source_relative=rel)
     for rel in STUBS:
         live = (HOME / rel).read_bytes()
-        assert live == render(OLD, OLDGEN, rel), 'live stub is not its rendering: ' + rel
-        for sub_dir, data in (('pre', live), ('stubs', render(root, gen, rel))):
+        assert live == render(OLD, OLDGEN, rel, old_guard_sha), 'live stub is not its rendering: ' + rel
+        for sub_dir, data in (('pre', live), ('stubs', render(root, gen, rel, GUARD_SHA))):
             out = ctl / sub_dir / rel
             out.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             out.write_bytes(data)
@@ -137,9 +161,7 @@ def main():
                        capture_output=True, text=True)
     print(r.stdout.strip(), r.stderr.strip())
     assert r.returncode == 0
-    changed = sorted(k for k in hashes if hashes[k] != json.loads(
-        json.dumps(ast.literal_eval([l for l in (OLD / 'control/witness_wsgi.py').read_text().splitlines()
-                                     if l.startswith('expected={')][0][len('expected='):])))[k])
+    changed = sorted(k for k in hashes if hashes[k] != old_hashes.get(k))
     print('files', len(rels), 'changed from the serving generation:', ' '.join(changed))
 
 

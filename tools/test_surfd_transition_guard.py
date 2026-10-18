@@ -59,7 +59,7 @@ def stop(p):
 
 
 class Fixture:
-    def __init__(self, root, target_schema=None):
+    def __init__(self, root, target_schema=None, runtime_profile=None):
         self.root = root
         root.mkdir(mode=0o700)
         self.token = uuid.uuid4().hex
@@ -84,6 +84,8 @@ class Fixture:
             "Path('candidate-acted').write_text('SERVER ACTED')\n"
             "while True: time.sleep(.02)\n")
         files = FILES + (("accounts.py", "social.py") if target_schema == 20 else ())
+        if runtime_profile == "hid-v1":
+            files += ("hidupload.py",)
         for name in files[2:]:
             (self.home / name).write_text("# synthetic source sentinel\n")
         self.hashes = {name: hashlib.sha256((self.home / name).read_bytes()).hexdigest()
@@ -96,6 +98,8 @@ class Fixture:
                                              "candidate-server.py"]
         if target_schema is not None:
             self.manifest["target_schema"] = target_schema
+        if runtime_profile is not None:
+            self.manifest["runtime_profile"] = runtime_profile
         self.state = root / "guard"
         self.manifest_path = root / "manifest.json"
         save(self.manifest_path, self.manifest)
@@ -412,6 +416,30 @@ def main():
     out.mkdir(mode=0o700)
     try:
         suite(out)
+        hid = Fixture(out / "hid-profile", target_schema=20, runtime_profile="hid-v1")
+        hid.reopen()  # A real fixed candidate must act with all nine hashes checked.
+        body = (hid.home / "hidupload.py").read_bytes()
+        (hid.home / "hidupload.py").write_bytes(body + b"# changed collector\n")
+        refused = hid.run("launch", "--generation", GEN, "--route", "manual", ok=False)
+        check("raw hash mismatch: hidupload.py" in refused.stderr, "collector was not sealed")
+        check(not (hid.home / "imports").exists(), "changed collector allowed application import")
+        (hid.home / "hidupload.py").write_bytes(body)
+        (hid.home / "release").touch()
+        hid.run("launch", "--generation", GEN, "--route", "manual")
+        check((hid.home / "imports").read_text() == "IMPORT ACTED\n", "restored collector did not act")
+        for label, changes in (("missing-hid", {"hashes": {k: v for k, v in hid.hashes.items() if k != "hidupload.py"}}),
+                               ("untagged-hid", {"runtime_profile": None}),
+                               ("unknown-profile", {"runtime_profile": "unapproved"})):
+            manifest = dict(hid.manifest, **changes)
+            if label == "untagged-hid":
+                del manifest["runtime_profile"]
+            path = hid.root / (label + ".json")
+            save(path, manifest)
+            r = subprocess.run([sys.executable, str(GUARD), "--state-dir", str(out / label),
+                                "init", "--manifest", str(path)], capture_output=True, text=True, timeout=5)
+            check(r.returncode == 2 and not (out / label).exists(), "profile admitted malformed hash set")
+        hid.run("close")
+        print("PASS explicit HID profile: candidate, altered-byte refusal, restored import and exact sets")
         save(out / "result.json", {"verdict": "PASS", "limits": "synthetic cooperative POSIX only"})
         return 0
     except Exception as exc:

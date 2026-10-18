@@ -31,6 +31,8 @@ patch    806
 # Patch 805 (engine, client exe): CL_CalcCrouch's extracrouch bounded to its branch's sign and
 # decayed from either side -- one long frame over a ground step-down pinned the camera up to
 # 100+ u above the feet until a jump (Lex, surf_null). Installs: exe a77d4a3f.
+# Patch 804 (QC/tools): disclosed online journal acceptance with an explicit opt-out, saved-answer
+# readback and input provenance; guarded collector activation and additive HID proxy installation.
 # Patch 802 (server exe + csprogs): the server adds a PVS camera at the far doorway of each open
 # linked portal in a client's PVS, so what is seen through a door is sent (surf_tripportals' hub
 # art through its start door); sv_portalpvs 0 turns it off. Portal doors show in noclip and
