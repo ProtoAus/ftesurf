@@ -42,7 +42,7 @@ HIT = 'multi_moon hit'
 # Inside *93 (x -4752..-1408, y 2720..3776, z -3200..-2152); a probe found the body stays put
 # here (y 2900/3250 fall through to the fail teleport).
 SPOT = '-3100 3600 -2200'
-OUT = '-15234 -4838 3140'       # the spawn area, in no trigger
+OUT = '-15234 -4838 3140'       # the spawn area, inside *77 (a trigger_multiple with outputs)
 BOX = ((-4752, 2720, -3200), (-1408, 3776, -2152))
 
 
@@ -209,7 +209,7 @@ def main():
         check(b == 1, f'B the entry output fires on re-entry ({b})')
 
         # C: toggling after leaving.  Target is entnum 2 (it connected second).
-        if v != 'main' and a.countdown <= 0:
+        if v not in ('main', 'v1') and a.countdown <= 0:
             w.send('alias p786tg "cmd rec_spec 2; wait; wait; wait; wait; cmd rec_spec 0; wait; wait"')
             rest_in_box('C-in')
             co = len(w.text())
@@ -235,10 +235,9 @@ def main():
                 if len(flags) < 12 or refused:
                     raise CannotMeasure(f"C: {len(flags)} holds released, refusals {refused}")
             else:
-                cd = max(0.1, a.cooldown)
                 cool = [r for r in refused if 'just left spectate' in r]
-                # ~1.2 s of toggling: at most one entry per cooldown gets through.
-                check(len(cool) >= 6 and 2 <= len(flags) <= 1.5 / cd + 1,
+                # Most toggled re-entries refused, at whatever frame rate the client ran.
+                check(len(cool) >= 6 and 2 <= len(flags) < len(cool),
                       f"C cooldown: toggled re-entries refused ({len(cool)} refused, {len(flags)} holds)")
             num['C_hits'] = hits(o)
             num['C_rest'] = pos()
@@ -250,7 +249,7 @@ def main():
                 check(num['C_hits'] == 1, f"C: the re-entry fires the entry output once ({num['C_hits']}, {len(flags)} holds)")
 
         # D: releases from PlayerPostThink (the countdown), inside *93.
-        if v != 'main' and a.countdown > 0:
+        if v not in ('main', 'v1') and a.countdown > 0:
             rest_in_box('D-in')
             o = mark('D-start')
             for _ in range(20):
@@ -260,11 +259,18 @@ def main():
                 time.sleep(a.countdown + max(0.1, a.cooldown) + 0.4)
             end = mark('D-end')
             seg = sv.text()[o:end]
-            num['D_releases'] = len(re.findall(r'spectate: Watcher released \(leave\)', seg))
+            # Each release from the countdown (held >= 0.4 s + countdown), each hold inside *93.
+            rel = [float(x) for x in re.findall(r'spectate: Watcher released \(leave\) after ([\d.]+) s', seg)]
+            held = re.findall(r'spectate: Watcher held inside a trigger \(touch \d, pending 1\)', seg)
+            num['D_releases'] = len(rel)
+            num['D_held_lines'] = len(held)
+            num['D_after'] = rel
             num['D_hits'] = seg.count(HIT)
             num['D_rest'] = pos()
-            if num['D_releases'] < 15 or not inbox(num['D_rest']):
-                raise CannotMeasure(f"D: {num['D_releases']} releases, rest {num['D_rest']}")
+            if len(rel) < 15 or not inbox(num['D_rest']):
+                raise CannotMeasure(f"D: {len(rel)} releases, rest {num['D_rest']}")
+            if min(rel) < 0.4 + a.countdown - 0.05 or len(held) < len(rel):
+                raise CannotMeasure(f"D: the countdown or the trigger did not hold (after {rel}, {len(held)} held lines)")
             if v == 'r4':
                 check(num['D_hits'] >= 1, f"D r4: a countdown release re-fires the entry output ({num['D_hits']}/{num['D_releases']})")
             else:

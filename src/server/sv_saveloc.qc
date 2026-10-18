@@ -4745,7 +4745,7 @@ void(entity e, float n) SV_SpecStart =
 		return;
 	}
 	if (e.run_sp_left)
-	if (time - e.run_sp_left < max(0.1, cvar("run_spec_cooldown")))
+	if (time - e.run_sp_left < max(0.15, cvar("run_spec_cooldown")))
 	{
 		SV_SpecRefuse(e, "you just left spectate -- try again");
 		return;
@@ -4934,8 +4934,8 @@ void(entity e, string why) SV_SpecRelease =
 
 	e.run_pmhold = 0;
 	e.run_sp_phase = 0;
-	if (why == "leave" || why == "notarget" || why == "move")
-		e.run_sp_left = time;       // Patch 786: run_spec_cooldown
+	if (why == "leave" || why == "notarget" || why == "move" || why == "replay")
+		e.run_sp_left = time;       // Patch 786: run_spec_cooldown (the body stays)
 	e.run_sp_lost = FALSE;
 	e.pb_watch = world;
 	e.run_sp_stat = 0;
@@ -4971,6 +4971,8 @@ void(entity e) SV_SpecFrame =
 		{
 			SV_SpecCount(e, TRUE);
 			sprint(e, PRINT_HIGH, "^3spectate:^7 nobody left to watch\n");
+			if (!e.run_sp_phase)
+				return;             // released at once (P784): no eye to steer
 		}
 	}
 

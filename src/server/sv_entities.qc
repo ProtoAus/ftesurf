@@ -7966,13 +7966,20 @@ void(entity p, float t0) SV_TrigResume =
 	bit = SV_TouchBit(p);
 	for (t = nextent(world); t; t = nextent(t))
 	{
-		if (t.vbsp_touch_who == p)
-			t.vbsp_touch_when = t.vbsp_touch_when + (time - t0);
-		if (bit)
-		if (t.vbsp_touch_in & bit)
+		// The touch, only where the body still is: a trigger left before the hold
+		// keeps its exit on time.
+		if ((bit && (t.vbsp_touch_in & bit)) || t.vbsp_touch_who == p)
+		if (p.absmin_x <= t.absmax_x) if (p.absmax_x >= t.absmin_x)
+		if (p.absmin_y <= t.absmax_y) if (p.absmax_y >= t.absmin_y)
+		if (p.absmin_z <= t.absmax_z) if (p.absmax_z >= t.absmin_z)
 		{
-			t.vbsp_touch_seen = t.vbsp_touch_seen | bit;
-			t.vbsp_touch_out = t.vbsp_touch_out - (t.vbsp_touch_out & bit);
+			if (t.vbsp_touch_who == p)
+				t.vbsp_touch_when = time;
+			if (bit)
+			{
+				t.vbsp_touch_seen = t.vbsp_touch_seen | bit;
+				t.vbsp_touch_out = t.vbsp_touch_out - (t.vbsp_touch_out & bit);
+			}
 		}
 		if (t.touch == trigger_setspeed_touch)
 		{

@@ -2384,8 +2384,9 @@ publicly WITH its fix, not before it.
   profile, and within `run_spec_cooldown` of a release. Inside a trigger is allowed (Patch 786): the
   sweep never counts a held body absent (SV_TouchHeld) and SV_TrigResume makes the
   release no entry and no exit (it counts as a touch), so a hold neither ends a
-  touch nor starts one. Re-entry after a release where the body stays waits
-  `run_spec_cooldown` (0.25 s, never under 0.1): holds toggled around the sweep
+  touch nor starts one. Re-entry after a release where the body stays (leave,
+  notarget, move, replay) waits `run_spec_cooldown` (0.25 s, never under 0.15):
+  holds toggled around the sweep
   would keep a LEFT trigger's touch alive (OnJump anywhere).
   STAT_FS_SPEC 103: 0 off, n = watching entnum n, -3..-1 the countdown (when there is one).
   Harnesses: `p380verify` (derived files), `p382a/c/d` (+`p382t/e`), `p382verify`.

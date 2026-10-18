@@ -367,7 +367,8 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   is shared per pad. Details are in the private notes, not here.
 - A trigger the body LEFT within the last 0.06-0.09 s reads occupied for the whole
   hold (its exit fires after the release), so OnStartTouchAll/OnEndTouchAll for
-  other players on that trigger wait for it. The held player gains nothing.
+  other players on that trigger wait for it (the release refreshes only triggers
+  the body's box still overlaps, so a left one ends on time after the release).
 - SV_TrigResume finds a pad without outputs by box overlap, not by the brush: a
   non-box pad the body is beside can have its enter edge suppressed for 0.05 s.
 - Neither the pad nor the `wait` half was driven: no reachable unfiltered floor pad
@@ -383,9 +384,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - A `wait` window another player also spent is not moved by a hold (moving it would
   delay them), so a held player's next OnTrigger there can come sooner in run time;
   an OnThink pad's first re-apply after a release likewise (it sets, never adds).
-- Entering spectate on the packet after a jump swallows that jump's OnJump: the held
-  branch rewrites run_wasground before the jump test. Honest
-  harm (mostly boosters); review of P786 r2. (sv_player.qc:441.)
 - A door's completion outputs (vbsp_mv_act) can reach a held player with no
   vbsp_iodelay, so SV_TrigPending cannot see them (older than P786).
 - setspeed's enter edge is keyed on world `time`; a client sending under 20

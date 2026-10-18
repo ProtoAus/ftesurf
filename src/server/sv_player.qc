@@ -438,7 +438,9 @@ void() PlayerPreThink =
 	if (self.run_pmhold)
 	{
 		SV_MonolithB4Reset(self);
-		self.run_wasground = ((self.flags & FL_ONGROUND) != 0);
+		// Patch 786: run_wasground is left alone -- the rollback restores the flags
+		// and velocity, so the first command after the release sees the jump edge
+		// it would have seen without the hold (rewriting it here swallowed OnJump).
 		self.run_basevelocity = '0 0 0';
 		self.run_pushlift = FALSE;  // Patch 411: this return is above its clear,
 		                            // and PostThink's is above run_pushed's, so a

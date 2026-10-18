@@ -880,7 +880,7 @@ void() worldspawn =
 	// client commands and player thinks, which come after this.  Patch 784: 0 (Lex).
 	registercvar("run_spec_countdown", "0");
 	// Patch 786: s between a release where the body stays and the next entry
-	// (0.1 at least, SV_SpecStart): holds toggled faster than the trigger sweep
+	// (0.15 at least, SV_SpecStart): holds toggled faster than the trigger sweep
 	// would keep a left trigger's touch alive, and each walks every edict twice.
 	registercvar("run_spec_cooldown", "0.25");
 
