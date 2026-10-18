@@ -5624,8 +5624,8 @@ void(vector pos, float w) ui_tm_jdraw =
 };
 
 // An answer, and the box if the player changed it on this visit: an untick
-// with either answer, a tick only with the online tier on record.  A failed
-// write keeps the change for the next press.
+// with either answer, a tick only with the online tier on record.  A write that
+// failed below its tier keeps the change for the next press.
 void(float tier) ui_tm_answer =
 {
 	ui_consent_write(tier);

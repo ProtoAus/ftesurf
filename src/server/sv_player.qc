@@ -973,14 +973,32 @@ void(float n) SV_TpPlayer =
 		return;
 	}
 
-	// 48 u behind them (a 16 u gap between hulls), else their own spot.  On a
-	// lobby that keeps your avatar out of their camera.
+	// 48 u behind them (a 16 u gap between hulls), else their own spot: on a
+	// lobby that keeps your avatar out of their camera.  A target on the ground
+	// is followed over a step (18 u up, then down to footing within 36 u) and
+	// never for a spot in mid-air; behind an airborne one is level with them.
 	makevectors([0, t.v_angle_y, 0]);
-	tracebox(t.origin, PM_HULL_MINS, PM_HULL_MAXS, t.origin - v_forward * 48, MOVE_NOMONSTERS, t);
 	dest = t.origin;
-	if (!trace_startsolid)
-	if (trace_fraction == 1)
-		dest = trace_endpos;
+	if (t.flags & FL_ONGROUND)
+	{
+		tracebox(t.origin + '0 0 18', PM_HULL_MINS, PM_HULL_MAXS, t.origin + '0 0 18' - v_forward * 48,
+		         MOVE_NORMAL, t);
+		if (!trace_startsolid)
+		if (trace_fraction == 1)
+		{
+			tracebox(trace_endpos, PM_HULL_MINS, PM_HULL_MAXS, trace_endpos - '0 0 36', MOVE_NORMAL, t);
+			if (!trace_startsolid)
+			if (trace_fraction < 1)
+				dest = trace_endpos;
+		}
+	}
+	else
+	{
+		tracebox(t.origin, PM_HULL_MINS, PM_HULL_MAXS, t.origin - v_forward * 48, MOVE_NORMAL, t);
+		if (!trace_startsolid)
+		if (trace_fraction == 1)
+			dest = trace_endpos;
+	}
 	// MOVE_NORMAL honours the lobby's pass-through dimensions (world.c:1944).
 	tracebox(dest, PM_HULL_MINS, PM_HULL_MAXS, dest, MOVE_NORMAL, self);
 	if (trace_startsolid)
