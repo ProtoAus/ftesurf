@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+## P812 — no prediction errors above ~4100 u/s (surf_joutsenlaulu)
+
+Both installs 2026-10-18T21:11Z: exe 7f8e25fb (git-7483-patch-812-0-g92f020ed3), dedicated
+server 3ff93982 (.prev a77d4a3f / 35384294). All 12 lobbies 21:13Z on native 7c72bbdf. The
+speed cap was right (9999 on joutsenlaulu); the game sent velocity in 16 bits, which tops out at
+4095.9 u/s per axis. Restart the game so the new exe is the one running.
+
+- surf_joutsenlaulu on a lobby: surf past 4500 u/s; the view should no longer jitter or snap.
+  `cl_prederror 4` in the console prints a line per correction; above 4100 it used to print
+  one every tick.
+- An older game (0.1.27) on the lobbies behaves as before (it cannot ask for the wider field).
+
+"Smooth / <what you saw, map and speed>". Verdict PENDING.
+
 ## P806 — Player in the key strip and the key panel
 
 Both installs 2026-10-18T19:52Z: csprogs 03feab73 (.prev 9bfeeb26); qwprogs and menu unchanged.
