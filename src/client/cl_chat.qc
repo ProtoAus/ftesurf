@@ -341,12 +341,15 @@ void(string line) Chat_Push =
   every server print here once it exists -- see the file header for the
   echo-everything-else rule that comes with it.
 */
+void(string msg) Ev_ServerPrint;   // cl_entview.qc, Patch 776: keeps ent_info's reply for a pinned card
+
 void(string msg, float level) CSQC_Parse_Print =
 {
 	local string line;
 
 	if (level != CHAT_LVL_PRINT)
 	{
+		Ev_ServerPrint(msg);
 		print(msg);
 		return;
 	}

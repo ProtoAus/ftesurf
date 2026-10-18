@@ -176,6 +176,28 @@ string ev_card_l[10];
 vector ev_card_col;
 
 /*
+  Patch 776: mouse1 PINS the hovered entity and expands its card, mouse2 copies
+  it (Ev_PassiveMouse).  The expanded lines are built once per change into
+  ev_pinl, already cut to width, because Chat_Fit is a stringwidth per character.
+  The server's half is the ent_info reply, caught off CSQC_Parse_Print for
+  EV_INFO_WAIT seconds after the pin asked (Ev_ServerPrint).
+*/
+float  ev_pinned;
+float  ev_pin;                  // ...its row
+float  ev_card_core;            // card lines above the outputs; the expanded card keeps them
+float  ev_hover_free;           // the last passive probe reached EV_PROBE touching nothing
+strbuf ev_pinl;                 // expanded lines, a style letter then the text
+float  ev_pinl_made;
+string ev_pinl_sig;             // what they were built for (strzone'd)
+strbuf ev_info;                 // the server's ent_info lines for ev_info_row
+float  ev_info_made;
+float  ev_info_row;
+float  ev_info_until;           // capture window end, cltime
+float  ev_info_got;             // its header line has arrived
+#define EV_INFO_WAIT 3
+#define EV_INFO_MAX  12
+
+/*
   BUILD 56 -- the cursor half.  See the essay above Ev_Copy.
 */
 float  ui_ev_cursor;            // the inspector holds the mouse (UIC_ENTVIEW)
@@ -249,6 +271,14 @@ void() Ev_Free =
 
 	ev_hover_row = -1;
 	ev_card_row  = -1;
+	ev_pinned = FALSE;
+	ev_info_until = 0;
+	if (ev_info_made)               // its rows are this table's numbers
+	{
+		buf_del(ev_info);
+		ev_info_made = FALSE;
+	}
+	strunzone(ev_pinl_sig); ev_pinl_sig = "";
 	/*Ev_HoverPublish is defined further down and fteqcc is one-pass, so the
 	  unpublish is inlined here: same two writes, no forward reference.*/
 	if (ev_hover_mdl != "")
@@ -1038,6 +1068,7 @@ void(float row) Ev_CardBuild =
 			                               (cn == "trigger_teleport") ? "goes to" : "fires", tgt);
 		ev_card_n = ev_card_n + 1;
 	}
+	ev_card_core = ev_card_n;
 
 	tokenize(bufstr_get(ev_ix, row));
 	first = stof(argv(0));
@@ -1070,7 +1101,7 @@ void(float row) Ev_CardBuild =
 
 	if (ev_card_n < 9)
 	{
-		ev_card_l[ev_card_n] = "ent_report full | ent_copy copy | ESC off";
+		ev_card_l[ev_card_n] = "mouse1 more | mouse2 copy | ESC off";
 		ev_card_n = ev_card_n + 1;
 	}
 };
@@ -1081,12 +1112,126 @@ void(float row) Ev_CardBuild =
   because the entity's projected centre can be off-screen for a trigger you
   are standing inside -- which is exactly the hover the card exists for.
 */
+/*
+  Patch 776: the pinned card's lines, rebuilt only when what they show changes
+  (ev_pinl_sig).  Each is a style letter -- t title, h heading, b body, d dim --
+  then its text, already cut to the card's width.
+*/
+void(float maxw, float tsz) Ev_PinBuild =
+{
+	local float i, first, n, ni, waiting;
+	local string sig;
+
+	ni = 0;
+	if (ev_info_made)
+	if (ev_info_row == ev_pin)
+		ni = buf_getsize(ev_info);
+	waiting = (ni == 0 && ev_info_until > cltime);
+	sig = sprintf("%g %g %g %g %g", ev_pin, ni, waiting, maxw, tsz);
+	if (ev_pinl_made)
+	if (!strcmp(sig, ev_pinl_sig))
+		return;
+	strunzone(ev_pinl_sig);
+	ev_pinl_sig = strzone(sig);
+	if (ev_pinl_made)
+		buf_del(ev_pinl);
+	ev_pinl = buf_create();
+	ev_pinl_made = TRUE;
+
+	if (ev_card_row != ev_pin)
+		Ev_CardBuild(ev_pin);
+	for (i = 0; i < ev_card_core; i = i + 1)
+		bufstr_add(ev_pinl, strcat((i == 0) ? "t" : "b", Chat_Fit(ev_card_l[i], maxw, tsz)), TRUE);
+
+	bufstr_add(ev_pinl, "hserver", TRUE);
+	if (ni > 0)
+		for (i = 0; i < ni; i = i + 1)
+			bufstr_add(ev_pinl, strcat("b  ", Chat_Fit(bufstr_get(ev_info, i), maxw, tsz)), TRUE);
+	else if (waiting)
+		bufstr_add(ev_pinl, "d  asking...", TRUE);
+	else
+		bufstr_add(ev_pinl, "d  no answer -- mouse1 twice asks again", TRUE);
+
+	tokenize(bufstr_get(ev_ix, ev_pin));
+	first = stof(argv(0));
+	n     = stof(argv(1));
+	bufstr_add(ev_pinl, sprintf("hkeys (%g)", n), TRUE);
+	for (i = 0; i < n; i = i + 1)
+		bufstr_add(ev_pinl, strcat("b  ", Chat_Fit(sprintf("%-22s %s", bufstr_get(ev_k, first + i),
+		                                          bufstr_get(ev_v, first + i)), maxw, tsz)), TRUE);
+};
+
+// The pinned card: where the hover card goes, but it stays when you look away.
+void() Ev_PinDraw =
+{
+	local vector p, vsize, col;
+	local float i, n, tsz, rowh, pad, mw, w, fit, shown, rows, a;
+	local string s, st, foot;
+
+	Font_Set(ui_font_mono);
+	vsize = getproperty(VF_SCREENVSIZE);
+	tsz   = Font_Px(8 * ui_cv_scale);
+	rowh  = tsz + 4 * ui_cv_scale;
+	pad   = 6 * ui_cv_scale;
+	Ev_PinBuild(vsize_x * 0.5 - 56 * ui_cv_scale, tsz);
+
+	a = 1 - (cltime - ev_copied_at) / 2;
+	foot = (ev_copied != "" && a > 0) ? "copied to the clipboard" : "mouse1 close | mouse2 copy | ESC off";
+	n = buf_getsize(ev_pinl);
+	fit = floor((vsize_y - 2 * pad - 32 * ui_cv_scale) / rowh) - 1;
+	shown = n;
+	if (shown > fit)
+		shown = fit - 1;             // room for the "+ N more" row
+	if (shown < 1)
+		shown = 1;
+	rows = shown + 1 + (n > shown);
+
+	mw = stringwidth(foot, TRUE, [tsz, tsz]);
+	for (i = 0; i < shown; i = i + 1)
+	{
+		w = stringwidth(bufstr_get(ev_pinl, i), TRUE, [tsz, tsz]);
+		if (w > mw)
+			mw = w;
+	}
+
+	p = [vsize_x * 0.5 + 28 * ui_cv_scale, vsize_y * 0.5 - rows * rowh * 0.5];
+	if (p_y < 16 * ui_cv_scale)
+		p_y = 16 * ui_cv_scale;
+	drawfill([p_x - pad, p_y - pad], [mw + 2 * pad, rows * rowh + 2 * pad], EVC_PANEL, 0.72);
+	drawfill([p_x - pad, p_y - pad], [2 * ui_cv_scale, rows * rowh + 2 * pad], EVC_SEL, 0.9);
+	for (i = 0; i < shown; i = i + 1)
+	{
+		s  = bufstr_get(ev_pinl, i);
+		st = substring(s, 0, 1);
+		s  = substring(s, 1, strlen(s) - 1);
+		if (!strcmp(st, "t"))      col = ev_card_col;
+		else if (!strcmp(st, "h")) col = EVC_LINE;
+		else if (!strcmp(st, "d")) col = EVC_DIM;
+		else                       col = EVC_TEXT;
+		HUD_Text(p, s, 8 * ui_cv_scale, col, 1);
+		p_y = p_y + rowh;
+	}
+	if (n > shown)
+	{
+		HUD_Text(p, sprintf("+ %g more -- mouse2 copies them all", n - shown), 8 * ui_cv_scale, EVC_DIM, 0.9);
+		p_y = p_y + rowh;
+	}
+	HUD_Text(p, foot, 8 * ui_cv_scale, (a > 0 && ev_copied != "") ? EVC_SEL : EVC_DIM, 0.9);
+};
+
 void() Ev_CardDraw =
 {
 	local vector p, vsize;
 	local float i, tsz, rowh, pad, mw, w;
 
-	if (!ui_ev_open || ui_ev_cursor || ev_hover_row < 0 || ev_card_row != ev_hover_row)
+	if (!ui_ev_open || ui_ev_cursor)
+		return;
+	if (ev_pinned)
+	{
+		Ev_PinDraw();
+		return;
+	}
+	if (ev_hover_row < 0 || ev_card_row != ev_hover_row)
 		return;
 
 	Font_Set(ui_font_mono);
@@ -1110,7 +1255,12 @@ void() Ev_CardDraw =
 		if (i == 0)
 			HUD_Text(p, ev_card_l[i], 8 * ui_cv_scale, ev_card_col, 1);
 		else if (i == ev_card_n - 1)
-			HUD_Text(p, ev_card_l[i], 8 * ui_cv_scale, '0.60 0.60 0.60', 0.8);
+		{
+			if (ev_copied != "" && cltime - ev_copied_at < 2)     // Patch 776: mouse2's answer
+				HUD_Text(p, "copied to the clipboard", 8 * ui_cv_scale, EVC_SEL, 1);
+			else
+				HUD_Text(p, ev_card_l[i], 8 * ui_cv_scale, '0.60 0.60 0.60', 0.8);
+		}
 		else
 			HUD_Text(p, ev_card_l[i], 8 * ui_cv_scale, '0.85 0.85 0.90', 0.95);
 		p_y = p_y + rowh;
@@ -1240,21 +1390,24 @@ void() Ev_Draw =
 	{
 		hover = Ev_Probe();
 		ev_hover_row = hover;
+		ev_hover_free = (trace_fraction >= 1);   // Patch 776: mouse1's standing-inside fallback
 		/*
 		  The dither faces and the card both key off the row, and both are
 		  change-triggered: the cvar write because cvar_set is a hash insert,
-		  the card because Ev_Key is a tokenize plus a scan.
+		  the card because Ev_Key is a tokenize plus a scan.  A pinned card keeps
+		  its own row (Patch 776).
 		*/
 		if (hover >= 0)
 		{
 			Ev_HoverPublish(bufstr_get(ev_mdl, hover));
-			if (hover != ev_card_row)
+			if (hover != ev_card_row && !ev_pinned)
 				Ev_CardBuild(hover);
 		}
 		else
 		{
 			Ev_HoverPublish("");
-			ev_card_row = -1;
+			if (!ev_pinned)
+				ev_card_row = -1;
 		}
 	}
 
@@ -1290,9 +1443,9 @@ void() Ev_Draw =
 			col   = '1 1 1';
 			alpha = 1;
 		}
-		else if (row == ev_sel && ui_ev_cursor)
+		else if ((row == ev_sel && ui_ev_cursor) || (ev_pinned && row == ev_pin && !ui_ev_cursor))
 		{
-			// The entity the panel is describing, so the two can be matched up.
+			// The entity the panel (or the pinned card) is describing, so the two can be matched up.
 			col   = EVC_SEL;
 			alpha = 1;
 		}
@@ -1495,20 +1648,19 @@ void(float idx) Ev_CopyRow =
 	Ev_Copy(s, s);
 };
 
-// The whole block as entity-lump text, with the summary line above it.
-void() Ev_CopyAll =
+/*
+  The whole block as entity-lump text, with the summary line above it -- and,
+  Patch 776, the server's ent_info lines below it as // comments when the pin
+  caught them for this row.
+*/
+void(float row) Ev_CopyEntity =
 {
-	local float  first, n, i;
+	local float  first, n, i, ni;
 	local string s, hdr;
 
-	if (ev_sel < 0 || ev_sel >= ev_n)
-	{
-		print("^3ent_copyall^7: nothing selected\n");
-		return;
-	}
 	// Ev_Summary tokenizes, so it goes FIRST and the index row is read after it.
-	hdr = Ev_Summary(ev_sel);
-	tokenize(bufstr_get(ev_ix, ev_sel));
+	hdr = Ev_Summary(row);
+	tokenize(bufstr_get(ev_ix, row));
 	first = stof(argv(0));
 	n     = stof(argv(1));
 
@@ -1517,7 +1669,145 @@ void() Ev_CopyAll =
 		s = strcat(s, sprintf("\"%s\" \"%s\"\n", bufstr_get(ev_k, first + i),
 		                                         bufstr_get(ev_v, first + i)));
 	s = strcat(s, "}\n");
-	Ev_Copy(s, sprintf("%s and its %g keys", hdr, n));
+	ni = 0;
+	if (ev_info_made)
+	if (ev_info_row == row)
+		ni = buf_getsize(ev_info);
+	for (i = 0; i < ni; i = i + 1)
+		s = strcat(s, "// server: ", bufstr_get(ev_info, i), "\n");
+	Ev_Copy(s, sprintf("%s and its %g keys%s", hdr, n, ni ? " and the server's answer" : ""));
+};
+
+void() Ev_CopyAll =
+{
+	if (ev_sel < 0 || ev_sel >= ev_n)
+	{
+		print("^3ent_copyall^7: nothing selected\n");
+		return;
+	}
+	Ev_CopyEntity(ev_sel);
+};
+
+/*
+  Patch 776: mouse1 pins.  The card stays on this entity when you look away, the
+  server is asked what it made of it (Ev_Report's request), and the console gets
+  the summary and every key -- the clipboard is mouse2's, so it is left alone.
+*/
+void() Ev_Unpin =
+{
+	if (!ev_pinned)
+		return;
+	ev_pinned = FALSE;
+	ev_info_until = 0;
+	ev_card_row = -1;               // the hover card rebuilds for whatever is under the crosshair
+};
+
+void(float row) Ev_Pin =
+{
+	local entity e;
+	local vector mid;
+
+	ev_pinned = TRUE;
+	ev_pin    = row;
+	Ev_CardBuild(row);
+	if (ev_info_made)
+		buf_del(ev_info);
+	ev_info      = buf_create();
+	ev_info_made = TRUE;
+	ev_info_row  = row;
+	ev_info_got  = FALSE;
+	ev_info_until = cltime + EV_INFO_WAIT;
+
+	print(sprintf("%s\n", Ev_Summary(row)));
+	Ev_PrintKeys(row);
+	for (e = ev_head; e; e = e.ev_next)
+		if (e.ev_row == row)
+			break;
+	if (e)
+	{
+		mid = (e.absmin + e.absmax) * 0.5;
+		localcmd(sprintf("cmd ent_info %s %.1f %.1f %.1f\n",
+		                 bufstr_get(ev_cn, row), mid_x, mid_y, mid_z));
+	}
+};
+
+/*
+  MOUSE1 and MOUSE2 while the passive overlay is up, called from CL_InputChain
+  ahead of Keys_Edge so the key HUD does not light the duck or jump the game
+  never got.  Both are taken whether or not anything is under the crosshair, so
+  the buttons mean one thing for as long as ent_view is on; CL_InputEvent pairs
+  each release with its press.
+*/
+float(float scanx) Ev_PassiveMouse =
+{
+	local float row;
+
+	if (!ui_ev_open || ui_ev_cursor)
+		return FALSE;
+
+	if (scanx == K_MOUSE1)
+	{
+		row = ev_hover_row;
+		// Standing in a volume and aiming at open space names it, as ent_here does.
+		if (row < 0 && ev_hover_free && ev_inside >= 0)
+			row = ev_inside;
+		if (row < 0)
+		{
+			if (ev_pinned)
+				Ev_Unpin();
+			else
+				print("^3ent_view^7: nothing under the crosshair\n");
+		}
+		else if (ev_pinned && row == ev_pin)
+			Ev_Unpin();
+		else
+			Ev_Pin(row);
+		return TRUE;
+	}
+
+	if (scanx == K_MOUSE2)
+	{
+		row = ev_pinned ? ev_pin : ev_hover_row;
+		if (row < 0)
+			print("^3ent_view^7: nothing to copy -- aim at an entity\n");
+		else
+			Ev_CopyEntity(row);
+		return TRUE;
+	}
+	return FALSE;
+};
+
+/*
+  Every server print passes here from CSQC_Parse_Print (cl_chat.qc), and only
+  while a pin waits is any of it kept: SV_EntInfo's header line, then its lines
+  that start with ten spaces.  A second header in the same window is someone
+  else's request, and ends the catch.
+*/
+void(string msg) Ev_ServerPrint =
+{
+	local string s, head;
+
+	if (!ev_info_made || ev_info_until < cltime)
+		return;
+	head = substring(msg, 0, 12);
+	if (!strcmp(head, "^5ent_info^7") || !strcmp(head, "^3ent_info^7") || !strcmp(head, "^1ent_info^7"))
+	{
+		if (ev_info_got)
+		{
+			ev_info_until = 0;
+			return;
+		}
+		ev_info_got = TRUE;
+		s = substring(msg, 14, strlen(msg) - 14);
+	}
+	else if (ev_info_got && !strcmp(substring(msg, 0, 10), "          "))
+		s = substring(msg, 10, strlen(msg) - 10);
+	else
+		return;
+	if (!strcmp(substring(s, strlen(s) - 1, 1), "\n"))
+		s = substring(s, 0, strlen(s) - 1);
+	if (buf_getsize(ev_info) < EV_INFO_MAX)
+		bufstr_add(ev_info, s, TRUE);
 };
 
 /*
@@ -1945,7 +2235,7 @@ void() Ev_On =
 	ui_ev_open   = TRUE;
 	ev_card_row  = -1;
 	ev_hover_row = -1;
-	print(sprintf("^5ent_cursor^7: on -- %g entities (%g brush, %g point); point at anything%s\n",
+	print(sprintf("^5ent_cursor^7: on -- %g entities (%g brush, %g point); point at anything, mouse1 for more, mouse2 to copy%s\n",
 	              ev_n, ev_brush_n, ev_point_n,
 	              ev_over ? sprintf(", %g over EV_MAX not listed", ev_over) : ""));
 };
@@ -1955,6 +2245,7 @@ void() Ev_Off =
 	if (!ui_ev_open && !ui_ev_cursor)
 		return;
 	Ev_CursorOff();
+	Ev_Unpin();
 	ui_ev_open = FALSE;
 	Ev_HoverPublish("");
 	ev_hover_row = -1;
@@ -2106,6 +2397,7 @@ float(string cmd) Ev_ConsoleCommand =
 		if (!ui_ev_open)
 		{
 			Ev_CursorOff();
+			Ev_Unpin();
 			Ev_HoverPublish("");
 			cvar_set("ent_view_active", "0");
 			cvar_set("ent_view_models", "");
@@ -2115,7 +2407,7 @@ float(string cmd) Ev_ConsoleCommand =
 		}
 		print(sprintf("^5ent_view^7: %s -- %g entities (%g brush, %g point)%s\n",
 		              ui_ev_open ? "on" : "off", ev_n, ev_brush_n, ev_point_n,
-		              ui_ev_open ? "; ent_panel for the click-to-copy inspector" : ""));
+		              ui_ev_open ? "; mouse1 for more, mouse2 to copy, ent_panel for the click-to-copy inspector" : ""));
 		if (ev_over)
 			print(sprintf("^3ent_view^7: %g entities past EV_MAX and not listed\n", ev_over));
 		return TRUE;

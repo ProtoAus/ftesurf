@@ -98,6 +98,13 @@ native client, teleport triggers have **red ordered-dither flat faces** at the
 map entity's actual position/rotation, not just a wire box. The hovered brush
 gets a denser fill. `ent_panel` opens the click-to-copy inspector.
 
+While `ent_view` is on, **mouse1** pins the entity under the crosshair and
+expands its card: every key, and the server's own answer (spawn function,
+solidity, outputs). The card stays when you look away; mouse1 on it again, or on
+nothing, closes it. **mouse2** copies the pinned (or hovered) entity to the
+clipboard as entity-lump text, with the server's answer as `//` comments. Both
+buttons stop ducking and jumping until `ent_view` is off (Patch 776).
+
 Nearby world **player-clip and monster-clip brushes** also show dithered collision
 faces. `ent_view_clips 0` hides that extra overlay; `ent_view_clips 1` restores it.
 `ent_view_dist` controls its range. Turning off `ent_view` removes the overlay.
@@ -105,6 +112,18 @@ This needs retained brush collision data (including Source/VBSP); it does not
 turn every nodraw surface or static-prop collision mesh into a clip brush.
 Existing explicit `r_showbrushes` debug settings take precedence and are left
 unchanged. Drawing never changes collision or movement.
+
+## Surf view
+
+`surf_view` toggles a visuals-only overlay (Patch 776, native client):
+**dithered red** on every face you can surf (steeper than you can stand on, not
+a wall: normal z from 0.1 to 0.7) and on every `trigger_*teleport*`, and
+**dithered yellow** on faces that stop the player but are not drawn (player
+clip, nodraw). It reads the map's collision, so an invisible ramp shows and a
+non-solid decoration does not: world brushes, displacements, static props with
+hull pieces, and solid brush entities. `surf_view_dist` (8192) sets its range
+and `surf_view_fill` (0.25) its density. It is depth-tested, so it marks only
+what you can see.
 
 ## What you need
 
