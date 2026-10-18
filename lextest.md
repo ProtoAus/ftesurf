@@ -49,8 +49,7 @@ one hung 25 u up, stuck. Live: lobbies 2026-10-18T18:08Z (all 12, qwprogs 6b8707
 
 **Not fixed yet -- your surf_null report:** fresh in, the camera ~25 u too high until a
 jump, with the server's body on the floor. Seen once here, not again in three fresh
-connects. When it happens, before jumping, in the console:
-once in the console (F8 is free in your config):
+connects. To capture it, type this once in the console (F8 is free in your config):
 `bind F8 "set cl_prederror 1; set hud_debug 1; set hud_eyetrace 3; cmd viewpos; waitms 1000; condump surfnull"`
 then, console CLOSED, press F8 while the camera is high (before jumping). Typed into the
 console it cannot work: the HUD, and with it the eye trace, draws only with the console
