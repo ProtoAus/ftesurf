@@ -164,7 +164,11 @@ string(string mark) MP_Of =
 		{
 			if (!mp_st[i]) { old = i; break; }
 			if (mp_st[i] == MP_ASK) continue;
-			if (old < 0 || mp_used[i] < mp_used[old]) old = i;
+			// Nested: QC's || evaluates both sides, and mp_used[-1] fails the bound check (P795).
+			if (old < 0)
+				old = i;
+			else if (mp_used[i] < mp_used[old])
+				old = i;
 		}
 		if (old < 0) return "";
 		if (mp_st[old])
