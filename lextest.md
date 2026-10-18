@@ -1,5 +1,28 @@
 # lextest.md — things waiting on a human
 
+## P780 — surf_me's pillars, the sinister ramp, surf_666's spawn, the missing-texture grid
+
+In both Windows installs since 2026-10-18T06:12:22Z: client `0fdede9f` (stamp
+git-7401-patch-780-0-g6cc72f4d8, carries P776), hl2 plugin `d3f9cd3d`, FTEQuake server
+`754cc3c6`; `.prev` is P776's `bf1a9aac` / plugin `f0d0a5e4`. Client-side only, lobbies
+need nothing. Restart the game. (Developed as P774; renumbered, see ENGINE_PATCHES.)
+
+- **surf_me saves 1-4:** the pillars should be one sandstone colour, like your Momentum
+  screenshots. The map's light table index wrapped past 65535, so pillars read other
+  places' light; 457 maps' light tables did the same, so props on big maps may look a
+  little different everywhere (brighter or darker toward what Source draws).
+- **surf_not_so_sinister save 1:** the ramp lit like the walls, not near black.
+- **surf_666 save 7:** the spawn is a grey wire grid over black (Source's "Wireframe"
+  material), not the purple checker. Maps whose ramps set `$wireframe` (surf_fortum,
+  surf_jaqen2, surf_zae) now draw those layers as lines too, as Source does.
+- **Missing textures:** the checker is 32-unit squares on any face whose image will not
+  load (`hl2_missinggrid`, 0 = old scaling).
+- **surf_devil saves 1-2:** NOT fixed: the ramps are lit from one point; the fix is
+  per-vertex lights for big models (BACKLOG).
+- Off switches if something looks worse: `hl2_lt_blend 0`, `hl2_lt_illumpos 0` (live).
+
+"Pillars ok / ramp ok / wire ok / props elsewhere look <better/worse at map, spot>". Verdict PENDING.
+
 ## P778 — demo playback: skip and hide failed stage attempts
 
 Open a replay of a run where you failed a stage and retried (back in the stage box, or
