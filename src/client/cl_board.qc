@@ -215,6 +215,7 @@ float() Board_Tick =
 // at SEQ_MAX and the merge rewrites the last row in place, so watching the ring
 // from outside cannot tell a scroll from a merge.  `merged` says which happened.
 void(float merged) Watch_SeqRow;
+void(float row) Cmp_Seg;             // Patch 779, cl_compare.qc
 
 /*
   Build 30.  Defined in cl_hud.qc, which compiles after this file -- same
@@ -2374,6 +2375,8 @@ void(float kind, float de, float emax, float dur, float v, float gravity,
 	*/
 	if (rec_wt_build)
 		Watch_SeqRow(merged);
+	else
+		Cmp_Seg(p);                 // Patch 779: the Comparison window's last row
 };
 
 /*
