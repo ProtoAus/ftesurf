@@ -2,6 +2,10 @@
 
 ## P784 — demos and profiles open over open ones; no countdowns
 
+Live on both installs since 07:41Z and all 12 lobbies since 07:42Z on 18 Oct (qwprogs
+`a8e57e85`, csprogs `fa53ccd0`; `.prev` `3956e634`/`e8f0dfd5`). P775, P778 and P779 went
+live with a1's P781 deploy at 07:37-07:38Z. Restart the game.
+
 - With a demo playing, hold TAB and click another run (Local or Online): it replaces the
   one playing. With a profile card open, hold TAB and click a name or "my profile": the
   card switches. Letting go of TAB while an online demo downloads keeps the board until
