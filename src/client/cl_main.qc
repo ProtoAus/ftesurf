@@ -1448,6 +1448,7 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 		return TRUE;
 	}
 
+	Paint_InputEvent(evtype, scanx);    // Patch 773: watches only
 	cl_input_real = TRUE;
 	took = CL_InputEvent(evtype, scanx, chary, devid);
 	cl_input_real = FALSE;

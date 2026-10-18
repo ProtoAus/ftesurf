@@ -213,6 +213,9 @@ vector() Av_MyRGB =
 	v = Av_Parse255(getplayerkeyvalue(player_localnum, "lrgb"));
 	if (v_x >= 0)
 		return v / 255;
+	// Patch 773: solo nothing resolves the ask, and an unresolved 0 is white.
+	if (cvar("cl_pcolour") < 1)
+		return Av_PaletteRGB(stof(getplayerkeyvalue(player_localnum, "lobbycolor")));
 	return Av_PaletteRGB(cvar("cl_pcolour"));
 };
 
@@ -389,6 +392,23 @@ void() Av_ClearRGB =
 	localcmd("setinfo lobbymark \"\"\n");
 	localcmd("setinfo lobbybody \"\"\n");
 	av_rgb = Av_MyRGB() * 255;
+};
+
+/*
+  Patch 773: a palette swatch sets the half the sliders edit, exactly, like
+  dragging them there.  It used to be a whole-body palette ask, which only a
+  lobby server resolves: solo the body stayed white and the sliders read 255.
+  The body's pick is also the palette ask, the index the trail and chat use.
+*/
+void(float i) Av_PickPalette =
+{
+	av_rgb = Av_PaletteRGB(i) * 255;
+	if (av_half)
+	{
+		localcmd(sprintf("setinfo lobbycolor \"%g\"\n", i));
+		localcmd("setinfo lobbyrgb \"\"\n");
+	}
+	Av_SendRGB();
 };
 
 void(float v) Av_SetR = { av_rgb_x = v; Av_SendRGB(); };
@@ -753,23 +773,51 @@ string(vector rgb) Av_255 =
 void(float v) Av_PaintSize = { cvar_set("paint_size", ftos((rint(v) + 1) * 4)); };
 void(float v) Av_PaintAlpha = { cvar_set("paint_alpha", ftos((rint(v) + 1) / 10)); };
 
+#define AV_PRATES "2 4 6 8 10 15 20 30 40 60 0"     // discs a second; 0 every frame
+void(float v) Av_PaintRate = { cvar_set("paint_rate", Gfx_Field(AV_PRATES, rint(v), " ")); };
+
+// The stop nearest paint_rate; 0 (every frame) is the top one.
+float() Av_PaintRateStop =
+{
+	local float i, r, d, best, bi;
+
+	r = cvar("paint_rate");
+	if (r <= 0)
+		return 10;
+	best = -1;
+	bi = 0;
+	for (i = 0; i < 10; i = i + 1)
+	{
+		d = fabs(stof(Gfx_Field(AV_PRATES, i, " ")) - r);
+		if (best < 0 || d < best)
+		{
+			best = d;
+			bi = i;
+		}
+	}
+	return bi;
+};
+
 /*
   The paint controls: a palette swatch or the body's colour, size and opacity,
   and the key.  Local cvars, not setinfo: nobody else sees your paint.
 */
 void(vector pos, float w, float psw, float slh) Av_PaintPanel =
 {
-	local float i, chw, sz, al;
+	local float i, chw, sz, al, rs;
 	local vector v;
 	local string k, s;
 
-	chw = ceil(av_hint * 6.5);
+	chw = ceil(av_hint * 5.5);
 	if (Profile_Chip("av_pclr", [pos_x + w - chw, pos_y - 3], [chw, ceil(av_hint * 1.8)],
 	                 sprintf("Clear %g", Paint_Count()), av_hint, FALSE))
 		Paint_Clear();
-	if (Profile_Chip("av_pbody", [pos_x + w - chw * 2 - 6, pos_y - 3], [chw, ceil(av_hint * 1.8)],
-	                 "Body", av_hint, cvar_string("paint_color") == ""))
+	if (Profile_Chip("av_pbody", [pos_x + w - chw - ceil(av_hint * 4.5) - 6, pos_y - 3],
+	                 [ceil(av_hint * 4.5), ceil(av_hint * 1.8)], "Body", av_hint, cvar_string("paint_color") == ""))
 		cvar_set("paint_color", "");
+	if (Profile_Chip("av_prnd", [pos_x + w - chw * 2 - ceil(av_hint * 4.5) - 12, pos_y - 3], [chw, ceil(av_hint * 1.8)],
+	                 "Random", av_hint, !strcmp(cvar_string("paint_color"), "random")))
+		cvar_set("paint_color", "random");
 	pos_y = Av_Head(pos, "PAINT") + 3;
 	v = Av_Parse255(cvar_string("paint_color"));
 	for (i = 1; i <= AV_COLOURS; i = i + 1)
@@ -787,9 +835,17 @@ void(vector pos, float w, float psw, float slh) Av_PaintPanel =
 	Av_Slider("av_pal", pos, [w, slh], 9, al * 10 - 1, "Opacity", sprintf("%g%%", rint(al * 100)),
 	          Av_PaintAlpha, 9);
 	pos_y = pos_y + slh + 2;
+	rs = Av_PaintRateStop();
+	Av_Slider("av_prt", pos, [w, slh], 10, rs, "Rate",
+	          rs >= 10 ? "max" : sprintf("%g/s", stof(Gfx_Field(AV_PRATES, rs, " "))), Av_PaintRate, 10);
+	pos_y = pos_y + slh + 2;
 	k = "";
 	if (checkbuiltin(findkeysforcommandex))
+	{
 		k = Gfx_Field(findkeysforcommandex("+paint"), 0, " ");
+		if (k == "")
+			k = Gfx_Field(findkeysforcommandex("paint"), 0, " ");
+	}
 	if (k == "")
 		s = "Bind Paint in the key panel (K) to spray. Only you see it.";
 	else
@@ -1034,22 +1090,21 @@ void(vector scr) Av_Draw =
 		rgbstr = getplayerkeyvalue(player_localnum, "lobbyrgb");
 		chw = ceil(hint * 6.5);
 		if (Profile_Chip("av_cauto", [x + lw - chw, y - 3], [chw, ceil(hint * 1.8)], "Random", hint,
-		                 want == 0 && rgbstr == ""))
+		                 want == 0 && rgbstr == "" && getplayerkeyvalue(player_localnum, "lobbybody") == ""))
 		{
 			Av_SetInfo("lobbycolor", 0);
 			Av_ClearRGB();
 		}
+		// Patch 773: the sliders show what the half wears, except while one is dragged.
+		if (!sui_is_held("av_r") && !sui_is_held("av_g") && !sui_is_held("av_b"))
+			av_rgb = (av_half ? Av_MyBody() : Av_MyMark()) * 255;
 		y = Av_Head([x, y], "COLOUR");
 		y = y + 3;
 		for (i = 1; i <= AV_COLOURS; i = i + 1)
 		{
-			if (Av_Swatch(sprintf("av_c%g", i), [x + (i - 1) * (sw + 6), y], sw, i, got == i,
-			              want == i && rgbstr == ""))
-			{
-				// A palette pick is whole-body: it clears both parts and lobbyrgb.
-				Av_SetInfo("lobbycolor", i);
-				Av_ClearRGB();
-			}
+			if (Av_Swatch(sprintf("av_c%g", i), [x + (i - 1) * (sw + 6), y], sw, i,
+			              !strcmp(Av_255(av_rgb * (1 / 255)), Av_255(Av_PaletteRGB(i))), FALSE))
+				Av_PickPalette(i);
 		}
 		y = y + sw + ceil(pad * 0.6);
 
@@ -1094,6 +1149,8 @@ void(vector scr) Av_Draw =
 			            floor(tv_x + 0.5), floor(tv_y + 0.5), floor(tv_z + 0.5), Av_ColourName(eff));
 		else if (got >= 1 && got <= AV_COLOURS)
 			s = sprintf("body %s", Av_ColourName(got));
+		else if (want >= 1 && want <= AV_COLOURS)      // solo: nothing resolves the ask
+			s = sprintf("body %s", Av_ColourName(want));
 		else
 			s = "body: the server's pick";
 		sui_text([x, y], [hint, hint], Chat_Fit(s, lw, hint), SUI_THEME_MUTED, 1, 0);
@@ -1154,7 +1211,7 @@ void(vector scr) Av_Draw =
 		pw  = sz_x - pad * 3 - lw;
 		px  = p_x + pad * 2 + lw;
 		psw = min(floor((pw - 11 * 4) / 12), ceil(tsz * 1.4));
-		ph  = ceil(hint * 1.6) + 3 + psw + 6 + (slh + 2) * 2 + hint;
+		ph  = ceil(hint * 1.6) + 3 + psw + 6 + (slh + 2) * 3 + hint;
 		Av_PaintPanel([px, p_y + sz_y - pad - ph], pw, psw, slh);
 
 		// ---- the body, standing on the card beside its controls
