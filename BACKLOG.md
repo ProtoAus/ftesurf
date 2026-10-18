@@ -60,6 +60,15 @@ bound-check failure kills the VM (P795 took the menu down this way).
   of those slots restores dragon's run-line rows. Check: save on map A, change the lobby to map B,
   save, and list both maps' local save folders.
 
+## Guarded service handoff: forced-stop fallback needs identity bounds
+
+- Site: `tools/surfd_successor/cutover.sh` old-master timeout and `rollback.sh`
+  candidate-stop loop. Their discovered-process SIGKILL fallback does not bind
+  each target to its measured birth/lifetime. P804 used existing guard commands
+  and PIDFD SIGTERM instead, with no forced escalation. Falsifier for a fix:
+  owned lookalike/stale-PID fixtures must remain untouched; only the measured
+  master can be signalled, and timeout must preserve evidence/refuse safely.
+
 ## Online journal permission: native help still describes the old tier
 
 - Site: engine `client/cl_receipt.c`, `rec_hid_upload` description. P804's new

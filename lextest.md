@@ -96,15 +96,22 @@ Owner approved activating the collector and accepting uploads through online
 play. Online tier 7 keeps the short P796 page and includes journal uploads by
 default, with its checkbox available as an explicit opt-out. Old online answers
 are not silently upgraded; offline permission stays separate. Client angle-file
-uploads are also disclosed. Installation/live-route status follows deployment.
+uploads are also disclosed.
+
+Installed from published QC `29b71b37`: both Windows installs at 2026-10-18T20:07Z,
+all 12 empty lobbies at 20:09Z; fresh actual served-client smoke passed. The guarded
+collector generation is serving internally since 20:50Z (schema 20, health12,
+old generation drained, new dispatchers/cron/momrequests verified). Public TLS
+health works; `/api/hid` is still 404 pending the owner's additive privileged
+nginx command. No existing-player consent was edited. This is NOT a human pass.
 
 - Open the online terms, read the upload paragraph, and choose **play online**.
   Leave the journal checkbox checked to include uploads, or untick it to opt
   out. F2's Input journal uploads row should report the chosen state; its
   **Stop journal uploads** control must remain available and switch it off.
 - Once the HTTPS collector is live, allow uploads with F2 or recheck the journal
-  box and accept online play, join a public lobby and finish one short run. Report whether the
-  upload panel/console shows an error. No need to send a journal or identity in
+  box and accept online play, join a public lobby and finish one short run.
+  Report whether the upload panel/console shows an error. No need to send a journal or identity in
   chat; the operator can inspect the private server-side arrival.
 
 Human readability/acceptance and a genuine consenting HTTPS finish: PENDING.

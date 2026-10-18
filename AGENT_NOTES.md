@@ -92,6 +92,24 @@
   Generate review/delivery diffs with TWO explicit inspected SHAs, record them
   beside the artifact, and separately recheck current origin at publication.
   Artifact-base drift is not permission to discard the newer peer work.
+- Windows Python text-mode SSH stdin turned LF into CRLF; `sh -s` rejected
+  `set -eu` before any shell action. Prefer existing commands through native SSH
+  argv, or a locally compiled Python script sent as UTF-8 BYTES. Preserve the
+  failure and continue the same owned transaction; no fresh root/reset is needed.
+- Derive the database from the actual live worker witness, not a plausible
+  `HOME/surfd.db`. The effective application DB is `HOME/data/surfd.db`; a legacy
+  root-level DB had schema0. The wrong-target preflight refused before a gate or
+  destination connection, and the verified empty owned snapshot was reused only
+  after binding the real worker's schema20 DB. Never lower the schema assertion.
+- A CLOSED candidate allows health only: real heartbeat/lobby/board requests are
+  fenced. Accept measured source/schema/live candidate + health, reopen through
+  the guard, THEN require health12 and ordinary reads. Requiring health12 before
+  reopen is circular. A board smoke needs a valid map/track/leg; empty HID body
+  is the declared length413 arm, not the later header-parser400 arm.
+- P804 used the documented guard steps with an identity-bound PIDFD graceful stop,
+  not the old helper's forced discovered-process fallback. No SIGKILL or database
+  restore. Canonical stubs/cron were exact CAS; the new momrequests process held
+  the new admission inode, and both retired locks were independently drained.
 
 ## surfd successor generation, code only (P770, 2026-10-18)
 
