@@ -2,6 +2,8 @@
 
 ## P789 — pictures beside names
 
+Live: lobbies 11:33Z (csprogs 748457d4), installs 11:36Z (menu eaf20c34), 18 Oct.
+
 - Watch a demo from TAB > Online: the demo window's title shows the player's picture
   (your own runs show yours; files with no known player show their first letter).
 - Chat: a player's message and a friend's PM start with their picture.
@@ -14,6 +16,8 @@ Verdict PENDING ("pictures everywhere" or where one is missing).
 
 ## P788 — friends: add back, the "added you" toast
 
+Live: game 11:33-11:36Z, surfd generation 943cbc9b at 11:48Z, 18 Oct.
+
 - When someone adds you: a toast at the right ("NAME added you as a friend", their
   picture, "F2 Add back"). F2 adds them back; it waits while TAB, a profile or the
   resume offer is up.
@@ -22,10 +26,11 @@ Verdict PENDING ("pictures everywhere" or where one is missing).
   while you are in a lobby.
 - Someone you add appears as "Added -- waiting for them to add you back": you see where
   they play and can join only once they add you back (they cannot watch you either).
-Live once surfd's P788 generation is cut over (the backend change); until then adds stay mutual.
 Verdict PENDING.
 
 ## P786 — spectate inside a trigger
+
+Live: lobbies 11:33Z (qwprogs 83ec27bd), installs 11:36Z (qwprogs 7a3a216d), 18 Oct.
 
 - Spectate (TAB > Players, a row) while standing in a start zone, a booster or any
   trigger: it now works, and the run stays ranked. Leaving spectate does not fire the
