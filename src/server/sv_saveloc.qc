@@ -3172,6 +3172,7 @@ float  *rw_slot[FS_MAXPLAYERS + 1];  // memalloc'd per slot on first use, kept
 .float rw_st;                   // run state at the last call
 vector rw_o, rw_v;              // SV_RewindFind's answer
 float  rw_pit, rw_yaw, rw_dk, rw_t;
+string sl_sharefrom;            // Patch 777: set around a create for another player's save
 float  rw_statebase;
 
 // On disconnect: the next player in the slot starts empty.
@@ -3543,6 +3544,10 @@ float(entity e, float t, vector near, float usenear, float go, float view) SV_Sa
 	SV_SaveGenBump(blk);
 	e.rec_sl_index = rec_sl_nb[blk];
 	SV_SaveLocEvent(e, SLOP_SAVED, id);
+	if (sl_sharefrom != "")         // Patch 777: a save another player sent (sv_share.qc)
+		sprint(e, PRINT_HIGH, sprintf("^7share: save ^2%g^7 (slot %s) from %s, %g u/s\n",
+		                              e.rec_sl_index, SL_NN(id), sl_sharefrom, floor(vlen([rw_v_x, rw_v_y, 0]))));
+	else
 	sprint(e, PRINT_HIGH, sprintf("^7rewind: save ^2%g^7 (slot %s) at %s, %g u/s%s\n",
 	                              e.rec_sl_index, SL_NN(id), SV_TimerString(rw_t),
 	                              floor(vlen([rw_v_x, rw_v_y, 0])),

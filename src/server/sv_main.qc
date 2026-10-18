@@ -195,6 +195,7 @@ void() StartFrame =
 	*/
 	Lobby_Heartbeat();
 	Social_Frame();
+	Share_Frame();                  // Patch 777: offers nobody answered
 
 	/*
 	  Patch 275.  Also after Lobby_Frame and for the same compile-order reason,

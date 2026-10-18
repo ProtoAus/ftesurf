@@ -20,6 +20,56 @@ transport/consent controls passed with synthetic fixture data; the following are
 
 Reply with "page readable / Allow and Stop work / left off" (or explicitly opted
 in and the run's map/time). No pass is recorded until you confirm what you observed.
+
+## P777 — share paint and saves with the player you look at; paint layouts per map
+
+In both Windows installs since 2026-10-18T06:13:23Z (csprogs `724c5599`, `.prev` P776's
+`81a2d0a1`; qwprogs `f1548792`, `.prev` `24e65490`), built from `03194e7e`, which also
+carries P776 and P778. The 12 lobbies are NOT yet on it: a player was on, and it goes
+there the moment they are empty (this entry will say when). Restart the game. Sharing
+needs you both on the same server (a lobby).
+
+- **Share:** look at another player and press **F** (key panel: "Share (look at a
+  player)"). A card opens: **1** paint together (you both see each other's paint from
+  now on, and what each already has), **2** send my paint (your saved layout for this
+  map, else what is up), **3** send my selected save. The other player gets a card and
+  presses **F3** to accept or **F4** to decline (20 s). Nothing moves until they accept.
+  `share_offers 0` declines every offer without showing it.
+- **A sent save** lands in their save list as a practice save at your speed ("share: save
+  N ... from <you>"), ready on their load key. It never carries your run.
+- **A sent layout** becomes theirs: it stays when you stop, and their Save layout keeps it.
+  From far away it comes slowly (about 30 marks a second at a 340 ms ping) so nobody is
+  dropped; the note says how many arrived.
+- **Layouts:** in P, PAINT: **Save layout** writes this map's paint, **Load** brings it
+  back, **Auto-load** (on) loads it when the map starts. Console: `paint_save <name>`,
+  `paint_load <name>` keep several per map.
+- `share stop` (or 1 on the card again) ends painting together.
+
+"Share ok / layout ok / save ok" or what looks wrong. Verdict PENDING.
+
+## P780 — surf_me's pillars, the sinister ramp, surf_666's spawn, the missing-texture grid
+
+In both Windows installs since 2026-10-18T06:12:22Z: client `0fdede9f` (stamp
+git-7401-patch-780-0-g6cc72f4d8, carries P776), hl2 plugin `d3f9cd3d`, FTEQuake server
+`754cc3c6`; `.prev` is P776's `bf1a9aac` / plugin `f0d0a5e4`. Client-side only, lobbies
+need nothing. Restart the game. (Developed as P774; renumbered, see ENGINE_PATCHES.)
+
+- **surf_me saves 1-4:** the pillars should be one sandstone colour, like your Momentum
+  screenshots. The map's light table index wrapped past 65535, so pillars read other
+  places' light; 457 maps' light tables did the same, so props on big maps may look a
+  little different everywhere (brighter or darker toward what Source draws).
+- **surf_not_so_sinister save 1:** the ramp lit like the walls, not near black.
+- **surf_666 save 7:** the spawn is a grey wire grid over black (Source's "Wireframe"
+  material), not the purple checker. Maps whose ramps set `$wireframe` (surf_fortum,
+  surf_jaqen2, surf_zae) now draw those layers as lines too, as Source does.
+- **Missing textures:** the checker is 32-unit squares on any face whose image will not
+  load (`hl2_missinggrid`, 0 = old scaling).
+- **surf_devil saves 1-2:** NOT fixed: the ramps are lit from one point; the fix is
+  per-vertex lights for big models (BACKLOG).
+- Off switches if something looks worse: `hl2_lt_blend 0`, `hl2_lt_illumpos 0` (live).
+
+"Pillars ok / ramp ok / wire ok / props elsewhere look <better/worse at map, spot>". Verdict PENDING.
+
 ## P778 — demo playback: skip and hide failed stage attempts
 
 Open a replay of a run where you failed a stage and retried (back in the stage box, or
@@ -29,6 +79,26 @@ landing half a second before the attempt that counted. hud_edit > Run lines > "D
 attempts: successful only" takes them off the demo line (and the run graph). "stage N
 only" from a board stage row now starts at the attempt that counted, not at the stage's
 first entry. Verdict PENDING ("demo fails ok" or what looks wrong).
+
+## P776 — `surf_view`, and ent_view's mouse1 / mouse2
+
+P776 went into both Windows installs at 2026-10-18T05:33:26Z (exe `bf1a9aac`) and 05:37:04Z
+(csprogs `81a2d0a1`). Both have since been replaced by builds that carry it: the exe by P780's
+`0fdede9f` (06:12:22Z, surf_view checked on it) and the csprogs by P777's `724c5599`
+(06:13:23Z, built on 03194e7e). Restart the game. The 12 lobbies still serve P773's csprogs:
+P777's deploy, which carries the ent_view mouse, waits for them to empty. surf_view is in the
+exe, so it works on any lobby; the mouse buttons on a lobby need that deploy.
+
+- **surf_view:** type `surf_view` on any surf map. Ramps you can surf get a red
+  stipple, teleport volumes are red boxes, and invisible walls or clips that stop you
+  are yellow. Type it again to turn it off. `surf_view_dist` (8192) sets how far it
+  reaches; `surf_view_fill` (0.25) how dense the stipple is.
+- **ent_view:** with `ent_view` on, aim at a trigger and press mouse1: the card stays
+  open when you look away and lists every key plus what the server says the entity
+  does. Mouse1 again closes it. Mouse2 copies it (paste anywhere with ctrl+V).
+  While ent_view is on, mouse1 and mouse2 do not duck or jump.
+
+"surf_view ok / wrong at <map, spot>" and "ent_view mouse ok". Verdict PENDING.
 
 ## P773 — paint sprays while held, Rate and Random; body/belt colour presets
 

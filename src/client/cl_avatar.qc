@@ -768,6 +768,9 @@ void(vector rpos, vector rsz) Av_Preview =
 void() Paint_Clear;
 float() Paint_Count;
 float() Paint_Size;
+void(string name) Paint_Save;       // Patch 777
+void(string name, float quiet) Paint_Load;
+float() Paint_LayoutCount;
 
 string(vector rgb) Av_255 =
 {
@@ -803,14 +806,15 @@ float() Av_PaintRateStop =
 };
 
 /*
-  The paint controls: a palette swatch or the body's colour, size and opacity,
-  and the key.  Local cvars, not setinfo: nobody else sees your paint.
+  The paint controls: a palette swatch or the body's colour, size, opacity, rate,
+  this map's layout (Patch 777) and the keys.  Local cvars, not setinfo: others
+  see your paint only through `share`.
 */
 void(vector pos, float w, float psw, float slh) Av_PaintPanel =
 {
-	local float i, chw, sz, al, rs;
+	local float i, chw, sz, al, rs, ln;
 	local vector v;
-	local string k, s;
+	local string k, s, sk;
 
 	chw = ceil(av_hint * 5.5);
 	if (Profile_Chip("av_pclr", [pos_x + w - chw, pos_y - 3], [chw, ceil(av_hint * 1.8)],
@@ -843,17 +847,32 @@ void(vector pos, float w, float psw, float slh) Av_PaintPanel =
 	Av_Slider("av_prt", pos, [w, slh], 10, rs, "Rate",
 	          rs >= 10 ? "max" : sprintf("%g/s", stof(Gfx_Field(AV_PRATES, rs, " "))), Av_PaintRate, 10);
 	pos_y = pos_y + slh + 2;
+	// Patch 777: this map's layout, data/paint/<map>.txt.
+	ln = Paint_LayoutCount();
+	chw = floor((w - 12) / 3);
+	if (Profile_Chip("av_psave", pos, [chw, ceil(av_hint * 1.8)], "Save layout", av_hint, FALSE))
+		Paint_Save("");
+	if (Profile_Chip("av_pload", [pos_x + chw + 6, pos_y], [chw, ceil(av_hint * 1.8)],
+	                 ln >= 0 ? sprintf("Load (%g)", ln) : "Load (none)", av_hint, FALSE))
+		Paint_Load("", FALSE);
+	if (Profile_Chip("av_pauto", [pos_x + chw * 2 + 12, pos_y], [chw, ceil(av_hint * 1.8)], "Auto-load",
+	                 av_hint, cvar("paint_autoload") != 0))
+		cvar_set("paint_autoload", cvar("paint_autoload") ? "0" : "1");
+	pos_y = pos_y + ceil(av_hint * 1.8) + 4;
 	k = "";
+	sk = "";
 	if (checkbuiltin(findkeysforcommandex))
 	{
 		k = Gfx_Field(findkeysforcommandex("+paint"), 0, " ");
 		if (k == "")
 			k = Gfx_Field(findkeysforcommandex("paint"), 0, " ");
+		sk = Gfx_Field(findkeysforcommandex("share"), 0, " ");
 	}
 	if (k == "")
-		s = "Bind Paint in the key panel (K) to spray. Only you see it.";
+		s = "Bind Paint (K) to spray";
 	else
-		s = sprintf("Hold %s to spray. Only you see it.", strtoupper(k));
+		s = sprintf("Hold %s to spray", strtoupper(k));
+	s = (sk != "") ? sprintf("%s, %s at a player to share.", s, strtoupper(sk)) : strcat(s, ".");
 	sui_text(pos, [av_hint, av_hint], Chat_Fit(s, w, av_hint), SUI_THEME_MUTED, 1, 0);
 };
 
@@ -1226,7 +1245,7 @@ void(vector scr) Av_Draw =
 		pw  = sz_x - pad * 3 - lw;
 		px  = p_x + pad * 2 + lw;
 		psw = min(floor((pw - 11 * 4) / 12), ceil(tsz * 1.4));
-		ph  = ceil(hint * 1.6) + 3 + psw + 6 + (slh + 2) * 3 + hint;
+		ph  = ceil(hint * 1.6) + 3 + psw + 6 + (slh + 2) * 3 + ceil(hint * 1.8) + 4 + hint;
 		Av_PaintPanel([px, p_y + sz_y - pad - ph], pw, psw, slh);
 
 		// ---- the body, standing on the card beside its controls

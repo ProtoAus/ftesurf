@@ -18,9 +18,16 @@
 
       +paint / -paint     hold to spray, paint_rate discs a second
       paint               one disc; a key bound to it also sprays while held
-      paint_clear         remove yours
+      paint_clear         remove it all, yours and what others sent
+      paint_save / paint_load [name]   this map's layout, data/paint/<map>[.name].txt
+                          (Patch 777); paint_autoload 1 loads the unnamed one with the map
       paint_fill <n> [deg]  n discs in a cone, for the stress arm
       paint_status        counts, the last hit and the cvars
+
+  Patch 777: every disc keeps what it was placed with (pt_dat), so it can be
+  saved and sent; other players' discs arrive through cl_share.qc.  A disc
+  whose face is not here yet -- a brush entity out of view is not in the
+  packet the clip reads -- waits in pt_pend and is tried again near you.
 ===========================================================================
 */
 
@@ -32,7 +39,21 @@ void(float handle) removedecal = #0:removedecal;
 #define PAINT_GAP    0.3        // of the size: a held key over one spot adds nothing
 #define PAINT_BEHIND 32         // how far past an unpaintable collision hit a visible face may be
 
+#define PD_N        12          // a disc: origin, normal, rgb 0..1, size, alpha, from (0 you, slot + 1)
+#define PAINT_PEND  8192        // discs waiting for their face
+#define PAINT_LOADF 400         // layout lines read a frame
+
 float *pt_ring;                 // handles, oldest at pt_tail
+float *pt_dat;                  // PD_N a ring cell
+float *pt_pend;                 // PD_N a waiting disc
+float pt_pn, pt_pnext, pt_pcur; // waiting; cltime of the next retry; its round-robin cursor
+var filestream pt_ldf = -1;     // a layout being read, PAINT_LOADF lines a frame
+string pt_ldpath;
+float pt_ldn, pt_ldwait;
+float pt_autoat;                // cltime this map's layout loads (0 none)
+float pt_layn;                  // discs in this map's saved layout: -1 none, -2 not counted
+float pt_rx;                    // discs other players sent
+void(vector o, vector n, vector col, float size, float alpha) Share_OnPaint;
 float pt_tail, pt_n;
 float pt_plus, pt_once;         // +paint is down; a disc is asked for this frame
 float pt_next;                  // cltime a still aim sprays again
@@ -105,11 +126,14 @@ void() Paint_RegisterCvars =
 	registercommand("paint_clear");
 	registercommand("paint_fill");
 	registercommand("paint_status");
+	registercommand("paint_save");
+	registercommand("paint_load");
 	registercvar("paint_color", "", CVAR_ARCHIVE);  // "r g b" 0..255; "" is your body colour; "random"
 	registercvar("paint_size",  "16", CVAR_ARCHIVE);
 	registercvar("paint_alpha", "0.9", CVAR_ARCHIVE);
 	registercvar("paint_max",   "8192", CVAR_ARCHIVE);
 	registercvar("paint_rate",  "20", CVAR_ARCHIVE);  // discs a second while held; 0 every frame
+	registercvar("paint_autoload", "1", CVAR_ARCHIVE);  // Patch 777: this map's saved layout
 };
 
 // A saturated hue: h 0..1 round the wheel, s 0..1.
@@ -145,6 +169,18 @@ float() Paint_Count = { return pt_n; };
 float() Paint_Size = { return bound(2, cvar("paint_size"), 256); };
 float() Paint_Max = { return bound(1, floor(cvar("paint_max")), PAINT_CAP); };
 
+void() Paint_Init =
+{
+	if (pt_ring)
+		return;
+	pt_ring = memalloc(PAINT_CAP * 4);
+	pt_dat = memalloc(PAINT_CAP * PD_N * 4);
+	pt_pend = memalloc(PAINT_PEND * PD_N * 4);
+	pt_probe = spawn();
+	pt_probe.hitcontentsmaski = CONTENTBITS_BOXSOLID;
+	pt_source = checkextension("FTESURF_DECAL_SOURCE");
+};
+
 void() Paint_DropOldest =
 {
 	removedecal(pt_ring[pt_tail]);
@@ -152,11 +188,21 @@ void() Paint_DropOldest =
 	pt_n = pt_n - 1;
 };
 
+void() Paint_LoadEnd =
+{
+	if (pt_ldf >= 0)
+		fclose(pt_ldf);
+	pt_ldf = -1;
+};
+
 void() Paint_Clear =
 {
 	while (pt_n > 0)
 		Paint_DropOldest();
 	pt_tail = 0;
+	pt_pn = 0;
+	pt_rx = 0;
+	Paint_LoadEnd();
 	pt_last = pt_lastn = '0 0 0';
 };
 
@@ -164,21 +210,25 @@ void() Paint_Clear =
 void() Paint_WorldLoaded =
 {
 	pt_tail = pt_n = 0;
+	pt_pn = pt_rx = 0;
+	Paint_LoadEnd();
 	pt_plus = pt_once = FALSE;
 	pt_key = pt_key2 = pt_downkey = 0;
 	pt_filln = 0;
 	pt_last = pt_lastn = '0 0 0';
+	pt_layn = -2;
+	// Late: the brush entities a layout's discs lie on arrive with the first packets.
+	pt_autoat = cvar("paint_autoload") ? cltime + 3 : 0;
 };
 
 // The disc at a hit, or -1 when no face there takes it.
-float(vector hit, vector n, entity e, vector col) Paint_Place =
+float(vector hit, vector n, entity e, vector col, float size, float alpha) Paint_Place =
 {
 	local vector tang;
-	local float size, depth;
+	local float depth;
 
 	if (e != world && !pt_source)
 		return -1;
-	size = Paint_Size();
 	if (fabs(n_z) < 0.9)
 		tang = normalize(crossproduct(n, '0 0 1'));
 	else
@@ -187,7 +237,143 @@ float(vector hit, vector n, entity e, vector col) Paint_Place =
 	// fades out within half the disc, and a curved surface under flat clip is reached.
 	depth = max(8, size);
 	return adddecal_static(PAINT_SHADER, hit, n * (1 / depth), tang * (1 / size),
-	                       col, [bound(0.05, cvar("paint_alpha"), 1), 1, 0], '0 1 1', '0 1 0');
+	                       col, [alpha, 1, 0], '0 1 1', '0 1 0');
+};
+
+void(float *d, float j, vector o, vector n, vector col, float size, float alpha, float from) Paint_Put =
+{
+	d[j] = o_x; d[j + 1] = o_y; d[j + 2] = o_z;
+	d[j + 3] = n_x; d[j + 4] = n_y; d[j + 5] = n_z;
+	d[j + 6] = col_x; d[j + 7] = col_y; d[j + 8] = col_z;
+	d[j + 9] = size; d[j + 10] = alpha; d[j + 11] = from;
+};
+
+void(float h, vector o, vector n, vector col, float size, float alpha, float from) Paint_Push =
+{
+	local float i;
+
+	i = (pt_tail + pt_n) % PAINT_CAP;
+	pt_ring[i] = h;
+	Paint_Put(pt_dat, i * PD_N, o, n, col, size, alpha, from);
+	pt_n = pt_n + 1;
+	while (pt_n > Paint_Max())
+		Paint_DropOldest();
+};
+
+/*
+  A disc from a layout or another player: placed now, or kept until its face is
+  here.  TRUE when it was placed.
+*/
+float(vector o, vector n, vector col, float size, float alpha, float from) Paint_Add =
+{
+	local float h;
+
+	Paint_Init();
+	if (!pt_made)
+		Paint_Shader();
+	size = bound(2, size, 256);
+	alpha = bound(0.05, alpha, 1);
+	if (pt_n >= PAINT_CAP)
+		Paint_DropOldest();
+	h = Paint_Place(o, n, world, col, size, alpha);
+	if (h >= 0)
+	{
+		Paint_Push(h, o, n, col, size, alpha, from);
+		return TRUE;
+	}
+	if (pt_pn < PAINT_PEND - 1)       // the last cell is Paint_LoadStep's scratch
+	{
+		Paint_Put(pt_pend, pt_pn * PD_N, o, n, col, size, alpha, from);
+		pt_pn = pt_pn + 1;
+	}
+	return FALSE;
+};
+
+vector(float *d, float j) Paint_O = { return [d[j], d[j + 1], d[j + 2]]; };
+vector(float *d, float j) Paint_N = { return [d[j + 3], d[j + 4], d[j + 5]]; };
+vector(float *d, float j) Paint_C = { return [d[j + 6], d[j + 7], d[j + 8]]; };
+
+// Once a second, up to 64 waiting discs within 4096u of the camera.
+void(vector cam) Paint_Retry =
+{
+	local float k, tries, j, h, last;
+
+	if (!pt_pn || cltime < pt_pnext)
+		return;
+	pt_pnext = cltime + 1;
+	tries = 0;
+	for (k = 0; k < pt_pn && tries < 64; k = k + 1)
+	{
+		if (pt_pcur >= pt_pn)
+			pt_pcur = 0;
+		j = pt_pcur * PD_N;
+		if (vlen(Paint_O(pt_pend, j) - cam) > 4096)
+		{
+			pt_pcur = pt_pcur + 1;
+			continue;
+		}
+		tries = tries + 1;
+		if (pt_n >= PAINT_CAP)
+			Paint_DropOldest();
+		h = Paint_Place(Paint_O(pt_pend, j), Paint_N(pt_pend, j), world, Paint_C(pt_pend, j),
+		                pt_pend[j + 9], pt_pend[j + 10]);
+		if (h < 0)
+		{
+			pt_pcur = pt_pcur + 1;
+			continue;
+		}
+		Paint_Push(h, Paint_O(pt_pend, j), Paint_N(pt_pend, j), Paint_C(pt_pend, j),
+		           pt_pend[j + 9], pt_pend[j + 10], pt_pend[j + 11]);
+		// The last waiting disc fills the hole; the cursor stays to try it next.
+		pt_pn = pt_pn - 1;
+		last = pt_pn * PD_N;
+		Paint_Put(pt_pend, j, Paint_O(pt_pend, last), Paint_N(pt_pend, last), Paint_C(pt_pend, last),
+		          pt_pend[last + 9], pt_pend[last + 10], pt_pend[last + 11]);
+	}
+};
+
+// Every disc a slot sent (from = slot + 1), placed or waiting.
+void(float from) Paint_DropFrom =
+{
+	local float k, w, j, i;
+
+	w = 0;
+	for (k = 0; k < pt_n; k = k + 1)
+	{
+		i = (pt_tail + k) % PAINT_CAP;
+		if (pt_dat[i * PD_N + 11] == from)
+		{
+			removedecal(pt_ring[i]);
+			continue;
+		}
+		j = (pt_tail + w) % PAINT_CAP;
+		if (j != i)
+		{
+			pt_ring[j] = pt_ring[i];
+			Paint_Put(pt_dat, j * PD_N, Paint_O(pt_dat, i * PD_N), Paint_N(pt_dat, i * PD_N),
+			          Paint_C(pt_dat, i * PD_N), pt_dat[i * PD_N + 9], pt_dat[i * PD_N + 10], pt_dat[i * PD_N + 11]);
+		}
+		w = w + 1;
+	}
+	pt_n = w;
+	w = 0;
+	for (k = 0; k < pt_pn; k = k + 1)
+	{
+		if (pt_pend[k * PD_N + 11] == from)
+			continue;
+		if (w != k)
+			Paint_Put(pt_pend, w * PD_N, Paint_O(pt_pend, k * PD_N), Paint_N(pt_pend, k * PD_N),
+			          Paint_C(pt_pend, k * PD_N), pt_pend[k * PD_N + 9], pt_pend[k * PD_N + 10], pt_pend[k * PD_N + 11]);
+		w = w + 1;
+	}
+	pt_pn = w;
+};
+
+// A disc another player sent (cl_share.qc).
+void(vector o, vector n, vector col, float size, float alpha, float from) Paint_Receive =
+{
+	Paint_Add(o, n, col, size, alpha, from);
+	pt_rx = pt_rx + 1;
 };
 
 /*
@@ -203,16 +389,10 @@ float(vector hit, vector n, entity e, vector col) Paint_Place =
 float(vector org, vector dir, float spaced) Paint_At =
 {
 	local vector n, hit, col;
-	local float h;
+	local float h, size, alpha;
 	local entity e;
 
-	if (!pt_ring)
-	{
-		pt_ring = memalloc(PAINT_CAP * 4);
-		pt_probe = spawn();
-		pt_probe.hitcontentsmaski = CONTENTBITS_BOXSOLID;
-		pt_source = checkextension("FTESURF_DECAL_SOURCE");
-	}
+	Paint_Init();
 	if (!pt_made)
 		Paint_Shader();
 
@@ -244,7 +424,9 @@ float(vector org, vector dir, float spaced) Paint_At =
 	pt_lastcol = col;
 	if (pt_n >= PAINT_CAP)
 		Paint_DropOldest();
-	h = Paint_Place(hit, n, e, col);
+	size = Paint_Size();
+	alpha = bound(0.05, cvar("paint_alpha"), 1);
+	h = Paint_Place(hit, n, e, col, size, alpha);
 	if (h < 0)
 	{
 		traceline(org, org + dir * PAINT_RANGE, MOVE_NOMONSTERS, world);
@@ -254,7 +436,7 @@ float(vector org, vector dir, float spaced) Paint_At =
 			n = trace_plane_normal;
 			hit = trace_endpos;
 			e = trace_ent;
-			h = Paint_Place(hit, n, e, col);
+			h = Paint_Place(hit, n, e, col, size, alpha);
 		}
 	}
 	if (h < 0)
@@ -267,12 +449,10 @@ float(vector org, vector dir, float spaced) Paint_At =
 		pt_nofacen = n;
 		return TRUE;
 	}
-	pt_ring[(pt_tail + pt_n) % PAINT_CAP] = h;
-	pt_n = pt_n + 1;
-	while (pt_n > Paint_Max())
-		Paint_DropOldest();
+	Paint_Push(h, hit, n, col, size, alpha, 0);
 	pt_placed = pt_placed + 1;
 	pt_lasth = h;
+	Share_OnPaint(hit, n, col, size, alpha);
 	return TRUE;
 };
 
@@ -294,6 +474,245 @@ void(vector org, float n, float deg) Paint_Fill =
 	print(sprintf("paint: fill %g, %g live\n", n, pt_n));
 };
 
+// Letters, digits, _ and - only: nothing a server or a console line could steer.
+string(string m) Paint_FileWord =
+{
+	local string c, o;
+	local float i;
+
+	o = "";
+	for (i = 0; i < strlen(m) && i < 64; i = i + 1)
+	{
+		c = substring(m, i, 1);
+		if (strstrofs("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-", c, 0) < 0)
+			c = "_";
+		o = strcat(o, c);
+	}
+	return o;
+};
+
+// data/paint/<map>.txt, or <map>.<name>.txt for a named one (`paint_save <name>`): no
+// map name has a dot, so a named layout is never another map's (review round 1).
+string(string name) Paint_LayoutPath =
+{
+	local string m;
+
+	m = Paint_FileWord(serverkey("map"));
+	if (m == "")
+		return "";
+	if (name != "")
+		return sprintf("data/paint/%s.%s.txt", m, Paint_FileWord(name));
+	return sprintf("data/paint/%s.txt", m);
+};
+
+/*
+  One `d` line: origin, normal, rgb 0..255, size, alpha.  Lines that do not
+  parse are skipped, so a hand-edited file loses only what it broke.
+*/
+float(string l, float *d, float j) Paint_ParseLine =
+{
+	local vector o, n, c;
+
+	if (tokenize(l) != 12 || argv(0) != "d")
+		return FALSE;
+	o = [stof(argv(1)), stof(argv(2)), stof(argv(3))];
+	n = [stof(argv(4)), stof(argv(5)), stof(argv(6))];
+	c = [stof(argv(7)), stof(argv(8)), stof(argv(9))] * (1 / 255);
+	if (!(vlen(n) > 0.9 && vlen(n) < 1.1))
+		return FALSE;
+	if (!(fabs(o_x) < 65536 && fabs(o_y) < 65536 && fabs(o_z) < 65536))
+		return FALSE;
+	Paint_Put(d, j, o, normalize(n), [bound(0, c_x, 1), bound(0, c_y, 1), bound(0, c_z, 1)],
+	          bound(2, stof(argv(10)), 256), bound(0.05, stof(argv(11)), 1), 0);
+	return TRUE;
+};
+
+void(filestream f, float *d, float j) Paint_WriteLine =
+{
+	fputs(f, sprintf("d %.2f %.2f %.2f %.4f %.4f %.4f", d[j], d[j + 1], d[j + 2], d[j + 3], d[j + 4], d[j + 5]),
+	      sprintf(" %g %g %g %g %.2f\n", rint(d[j + 6] * 255), rint(d[j + 7] * 255), rint(d[j + 8] * 255),
+	              d[j + 9], d[j + 10]));
+};
+
+// Everything on the map, waiting discs included.
+void(string name) Paint_Save =
+{
+	local string p;
+	local filestream f;
+	local float k;
+
+	p = Paint_LayoutPath(name);
+	if (p == "")
+		return;
+	if (pt_ldf >= 0)
+	{
+		print("paint: still loading; save when it is done\n");
+		return;
+	}
+	f = fopen(p, FILE_WRITE);
+	if (f < 0)
+	{
+		print(sprintf("paint: cannot write %s\n", p));
+		return;
+	}
+	fputs(f, "FTESURF-PAINT 1\n", sprintf("map %s\n", serverkey("map")));
+	for (k = 0; k < pt_n; k = k + 1)
+		Paint_WriteLine(f, pt_dat, ((pt_tail + k) % PAINT_CAP) * PD_N);
+	for (k = 0; k < pt_pn; k = k + 1)
+		Paint_WriteLine(f, pt_pend, k * PD_N);
+	fclose(f);
+	if (name == "")
+		pt_layn = pt_n + pt_pn;
+	print(sprintf("paint: saved %g to %s\n", pt_n + pt_pn, p));
+};
+
+// Replaces what is up; the lines are read PAINT_LOADF a frame by Paint_Frame.
+void(string name, float quiet) Paint_Load =
+{
+	local string p, l;
+	local filestream f;
+
+	p = Paint_LayoutPath(name);
+	if (p == "")
+		return;
+	f = fopen(p, FILE_READ);
+	if (f < 0)
+	{
+		if (name == "")
+			pt_layn = -1;
+		if (!quiet)
+			print(sprintf("paint: no layout saved for this map (%s)\n", p));
+		return;
+	}
+	if (strncmp(fgets(f), "FTESURF-PAINT ", 14))
+	{
+		fclose(f);
+		print(sprintf("paint: %s is not a paint layout\n", p));
+		return;
+	}
+	l = fgets(f);                   // "map <name>": a copied file says where it was made
+	if (substring(l, 0, 4) == "map ")
+	if (strcmp(substring(l, 4, -1), serverkey("map")))
+		print(sprintf("paint: %s was made on %s\n", p, substring(l, 4, -1)));
+	Paint_Clear();
+	pt_ldf = f;
+	pt_ldn = pt_ldwait = 0;
+	if (pt_ldpath)
+		strunzone(pt_ldpath);
+	pt_ldpath = strzone(p);
+};
+
+void() Paint_LoadStep =
+{
+	local string l;
+	local float i;
+	local filestream f;
+
+	f = pt_ldf;
+	for (i = 0; i < PAINT_LOADF; i = i + 1)
+	{
+		l = fgets(f);
+		if not (l)
+		{
+			Paint_LoadEnd();
+			if (!strcmp(pt_ldpath, Paint_LayoutPath("")))
+				pt_layn = pt_ldn;
+			print(sprintf("paint: loaded %g from %s%s\n", pt_ldn, pt_ldpath,
+			              pt_ldwait ? sprintf(", %g waiting for their surface to come into view", pt_ldwait) : ""));
+			return;
+		}
+		if (Paint_ParseLine(l, pt_pend, PAINT_PEND * PD_N - PD_N))   // the spare last cell as scratch
+		{
+			pt_ldn = pt_ldn + 1;
+			if (!Paint_Add(Paint_O(pt_pend, PAINT_PEND * PD_N - PD_N), Paint_N(pt_pend, PAINT_PEND * PD_N - PD_N),
+			               Paint_C(pt_pend, PAINT_PEND * PD_N - PD_N), pt_pend[PAINT_PEND * PD_N - PD_N + 9],
+			               pt_pend[PAINT_PEND * PD_N - PD_N + 10], 0))
+				pt_ldwait = pt_ldwait + 1;
+		}
+	}
+};
+
+/*
+  Up to `cap` discs into `d` (PD_N each) for cl_share.qc to stream: this map's saved
+  layout when `layout` and there is one, else what is up (`mine`: only yours).
+*/
+float(float *d, float cap, float layout, float mine) Paint_Copy =
+{
+	local float n, k, j;
+	local filestream f;
+	local string l;
+
+	n = 0;
+	if (layout)
+	{
+		f = fopen(Paint_LayoutPath(""), FILE_READ);
+		if (f >= 0)
+		{
+			while (n < cap)
+			{
+				l = fgets(f);
+				if not (l)
+					break;
+				if (Paint_ParseLine(l, d, n * PD_N))
+					n = n + 1;
+			}
+			fclose(f);
+			return n;
+		}
+	}
+	for (k = 0; k < pt_n && n < cap; k = k + 1)
+	{
+		j = ((pt_tail + k) % PAINT_CAP) * PD_N;
+		if (mine && pt_dat[j + 11])
+			continue;
+		Paint_Put(d, n * PD_N, Paint_O(pt_dat, j), Paint_N(pt_dat, j), Paint_C(pt_dat, j),
+		          pt_dat[j + 9], pt_dat[j + 10], 0);
+		n = n + 1;
+	}
+	for (k = 0; k < pt_pn && n < cap; k = k + 1)
+	{
+		j = k * PD_N;
+		if (mine && pt_pend[j + 11])
+			continue;
+		Paint_Put(d, n * PD_N, Paint_O(pt_pend, j), Paint_N(pt_pend, j), Paint_C(pt_pend, j),
+		          pt_pend[j + 9], pt_pend[j + 10], 0);
+		n = n + 1;
+	}
+	return n;
+};
+
+// Discs in this map's saved layout (-1 none), counted once a map and on save/load.
+float() Paint_LayoutCount =
+{
+	local float n;
+	local filestream f;
+	local string l;
+
+	if (pt_layn != -2)
+		return pt_layn;
+	f = fopen(Paint_LayoutPath(""), FILE_READ);
+	if (f < 0)
+	{
+		pt_layn = -1;
+		return -1;
+	}
+	n = 0;
+	while (TRUE)
+	{
+		l = fgets(f);
+		if not (l)
+			break;
+		if (substring(l, 0, 2) == "d ")
+			n = n + 1;
+	}
+	fclose(f);
+	pt_layn = n;
+	return n;
+};
+
+float() Paint_Waiting = { return pt_pn; };
+float() Paint_Received = { return pt_rx; };
+
 /*
   After the camera is final and before renderscene, so a disc is in this frame.
   A console command cannot aim: outside this window VF_ORIGIN is whichever scene
@@ -304,6 +723,18 @@ void() Paint_Frame =
 	local vector org;
 	local float r;
 
+	if (pt_autoat && cltime >= pt_autoat)
+	{
+		pt_autoat = 0;
+		if (pt_ring && pt_n)
+			pt_layn = -2;               // painting already: the layout waits for paint_load
+		else
+			Paint_Load("", TRUE);
+	}
+	if (pt_ldf >= 0)
+		Paint_LoadStep();
+	if (pt_pn)
+		Paint_Retry(getproperty(VF_ORIGIN));
 	if (!Paint_Held() && !pt_once && !pt_filln)
 		return;
 	org = getproperty(VF_ORIGIN);
@@ -381,6 +812,16 @@ float(string cmd) Paint_ConsoleCommand =
 		pt_once = TRUE;
 		return TRUE;
 	}
+	if (c == "paint_save")
+	{
+		Paint_Save(argv(1));
+		return TRUE;
+	}
+	if (c == "paint_load")
+	{
+		Paint_Load(argv(1), FALSE);
+		return TRUE;
+	}
 	if (c == "paint_clear")
 	{
 		Paint_Clear();
@@ -404,6 +845,8 @@ float(string cmd) Paint_ConsoleCommand =
 		print(sprintf("paint: last aim %v normal %v, handle %g, size %g colour %v alpha %g, source clip %g\n",
 		              pt_last, pt_lastn, pt_lasth, Paint_Size(), pt_lastcol * 255, cvar("paint_alpha"), pt_source));
 		print(sprintf("paint: rate %g, held %g key %g, aimed from %v\n", Paint_Rate(), Paint_Held(), pt_key, pt_lastorg));
+		print(sprintf("paint: received %g, waiting %g, layout %g, loading %g\n", pt_rx, pt_pn, Paint_LayoutCount(),
+		              pt_ldf >= 0));
 		return TRUE;
 	}
 	return FALSE;

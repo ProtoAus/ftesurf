@@ -330,6 +330,7 @@ void() ClientDisconnect =
 	// timer's teardown is the part that must not be skipped if this throws.
 	Lobby_ClientDisconnect(self);
 	Vote_ClientDisconnect(self);
+	Share_Disconnect(self);             // Patch 777: links, offers and streams to or from this slot
 	Account_Disconnect(self);           // Patch 615: an answer still out is nobody's now
 
 	// Patch 382: `spec 0 ... drop` before the park's `pause ... drop`.
@@ -889,6 +890,11 @@ void(string cmd) SV_ParseClientCommand =
 	{
 		if (cmdargc >= 3)
 			Social_Action(self, argv(1), argv(2), cmdargc >= 4 ? argv(3) : "");
+		return;
+	}
+	if (c == "share")                   // Patch 777: sv_share.qc
+	{
+		Share_Command(self, cmdargc);
 		return;
 	}
 	// The client can queue localcmd behind an already-buffered raw cmd. Its
