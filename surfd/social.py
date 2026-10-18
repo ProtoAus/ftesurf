@@ -32,7 +32,7 @@ MENU_STATEMENT = "FTESURF-FRIENDS 1\nserver play.proto.bar:443\nnonce %s\nop %s\
 
 
 def menu_target(op, who):
-    return (op == "list" and who == "-") or (op in ("join", "add") and len(who) == 8 and bool(MARK.fullmatch(who)))
+    return (op == "list" and who == "-") or (op == "join" and len(who) == 8 and bool(MARK.fullmatch(who)))
 SQL = """
 CREATE TABLE IF NOT EXISTS social_friends (
  lo TEXT NOT NULL, hi TEXT NOT NULL, asker TEXT NOT NULL,
@@ -151,25 +151,20 @@ def friend_rows(db, sid, now, lobby_ttl):
         rel = rel_of(r, sid)
         if rel == 5:
             continue                # being blocked is not shown
-        # P788: my own add shows where they are (P770's add needs no acceptance);
-        # theirs does not until I add back.
-        live = presence(db, other, now, lobby_ttl) if rel in (1, 3) and available else {
+        if rel == 2 and not available:
+            continue                # P788: a banned or deleted account's add is not offered
+        # P788: presence is for friendships only -- an add I have not returned
+        # must not let its author watch where I play.
+        live = presence(db, other, now, lobby_ttl) if rel == 3 and available else {
             "online": 0, "addr": "", "server": "", "map": ""}
         rows.append(dict(who=accounts.who_of(other), name=accounts.game_name(account["name"]) if available else "Unavailable account",
                          relation=rel, **live))
-    group = {3: 0, 1: 0, 2: 1, 4: 2}
+    # Incoming adds last ("at the bottom", Lex). They take no slot, and a block
+    # of one takes none either, so the list is cut at the 128 rows a reader
+    # takes: incoming adds first, unanswered ones waiting their turn.
+    group = {3: 0, 1: 0, 4: 1, 2: 2}
     rows.sort(key=lambda r: (group[r["relation"]], -r["online"], r["name"].casefold(), r["who"]))
-    # Incoming adds take no slot, so they alone could pass the 128 rows a
-    # reader takes: the rest wait until some are answered.
-    room = MAX_FRIENDS - sum(r["relation"] != 2 for r in rows)
-    out = []
-    for r in rows:
-        if r["relation"] == 2:
-            if room <= 0:
-                continue
-            room -= 1
-        out.append(r)
-    return out
+    return rows[:MAX_FRIENDS]
 
 
 def befriend(db, sid, other):
@@ -284,7 +279,7 @@ def register(app, d):
             # A consistent read snapshot. Do not touch sessions/seen: somebody
             # in the menu is not on a lobby and must not become joinable.
             with db:
-                db.execute("BEGIN IMMEDIATE" if op == "add" else "BEGIN")
+                db.execute("BEGIN")
                 account = db.execute("SELECT k.steamid FROM keylinks k JOIN accounts a USING(steamid)"
                                      " WHERE k.pub=? AND a.banned_at=0", (pub,)).fetchone()
                 if not account:
@@ -297,12 +292,7 @@ def register(app, d):
                     rows = [r for r in friend_rows(db, sid, now, d.lobby_ttl) if r["relation"] <= 3]
                     return reply({"ok": 1, "friends": rows})
                 other = resolve(db, who)
-                if op == "add":
-                    if not other or other == sid:
-                        return reply({"ok": 0, "error": "That Steam account is unavailable"}, 400)
-                    ok, text, status = befriend(db, sid, other)
-                    return reply({"ok": 1, "note": text} if ok else {"ok": 0, "error": text}, status)
-                if not other or relation(db, sid, other) not in (1, 3):
+                if not other or relation(db, sid, other) != 3:
                     return reply({"ok": 0, "error": "Add them as a friend first"}, 403)
                 live = presence(db, other, now, d.lobby_ttl)
                 if not live["online"]:
@@ -456,10 +446,9 @@ def register(app, d):
                             db.execute("DELETE FROM social_friends WHERE lo=? AND hi=?", (lo, hi))
                         note = "Unblocked"
                 else:
-                    # P788: my own add may join them; a message waits for theirs.
-                    if rel == 1 and op == "message":
+                    if rel == 1:            # P788: a join or message waits for theirs
                         return reply({"ok": 0, "error": "They have not added you back yet"}, 403)
-                    if rel not in (1, 3):
+                    if rel != 3:
                         return reply({"ok": 0, "error": "Add them as a friend first"}, 403)
                     live = presence(db, other, now, d.lobby_ttl)
                     if not live["online"]:

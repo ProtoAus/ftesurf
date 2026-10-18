@@ -106,10 +106,10 @@ class Friends(unittest.TestCase):
         rows = self.poll()
         self.assertEqual(rows[0]["friends"], rows[3]["friends"])
         mine, theirs = rows[0]["friends"][0], rows[1]["friends"][0]
-        self.assertEqual((mine["relation"], mine["online"]), (1, 1))      # my add shows presence
+        self.assertEqual((mine["relation"], mine["online"], mine["addr"]), (1, 0, ""))   # no watching
         self.assertEqual((theirs["relation"], theirs["online"], theirs["addr"]), (2, 0, ""))
         self.assertEqual(self.action(0, "add").status_code, 409)
-        self.assertEqual(self.action(0, "join").status_code, 200)
+        self.assertEqual(self.action(0, "join").status_code, 403)
         self.assertEqual(self.action(0, "message", text="hi").status_code, 403)
         self.assertEqual(self.action(1, "join", 0).status_code, 403)       # theirs shows nothing
         self.assertEqual(self.action(1, "add", 0).status_code, 200)        # add back
@@ -141,25 +141,34 @@ class Friends(unittest.TestCase):
                             (*F.pair(IDS[1], fan), fan))
         self.db.commit()
         self.assertEqual(self.action(1, "add", 0).status_code, 200)        # Bob still has room
+        self.assertEqual(self.action(1, "block", 2).status_code, 200)      # a block of a stranger
         rows = self.poll()[1]["friends"]
         self.assertEqual(len(rows), F.MAX_FRIENDS)
-        self.assertEqual(rows[0]["relation"], 1)                           # his own add first
-        self.assertEqual({r["relation"] for r in rows[1:]}, {2})
-        self.assertEqual(self.menu_read(self.menu_form(1))["friends"], rows)
+        self.assertEqual([r["relation"] for r in rows[:2]], [1, 4])        # his own rows first
+        self.assertEqual({r["relation"] for r in rows[2:]}, {2})
+        self.assertEqual(self.menu_read(self.menu_form(1))["friends"], [r for r in rows if r["relation"] != 4])
 
-    def test_menu_add_and_add_back_use_the_private_proof(self):
-        bob = A.who_of(IDS[1])
-        row = self.menu_read(self.menu_form(op="add", who=bob))
-        self.assertEqual((row["ok"], row["note"]), (1, "Friend added"), row)
-        S._rate.clear()
-        self.assertEqual(self.menu_read(self.menu_form(op="add", who=bob))["status"], 409)
-        self.assertEqual(self.menu_read(self.menu_form(1))["friends"][0]["relation"], 2)
-        S._rate.clear()
-        row = self.menu_read(self.menu_form(1, op="add", who=A.who_of(IDS[0])))
-        self.assertEqual((row["ok"], row["note"]), (1, "Friend added back"), row)
-        self.assertEqual(self.poll()[0]["friends"][0]["relation"], 3)
-        S._rate.clear()
-        self.assertEqual(self.menu_read(self.menu_form(op="add", who=A.who_of(IDS[0])))["status"], 400)
+    def test_blocked_incoming_adds_never_pass_the_reader_limit(self):
+        self.befriend()
+        for i in range(F.MAX_FRIENDS - 1):
+            pal = "765611984%08d" % i
+            self.db.execute("INSERT INTO accounts(steamid,name,created_at) VALUES(?,?,?)", (pal, "pal%d" % i, self.now))
+            self.db.execute("INSERT INTO social_friends(lo,hi,asker,accepted) VALUES(?,?,?,1)",
+                            (*F.pair(IDS[1], pal), pal))
+        for i in range(5):
+            fan = "765611985%08d" % i
+            self.db.execute("INSERT INTO accounts(steamid,name,created_at) VALUES(?,?,?)", (fan, "fan%d" % i, self.now))
+            self.db.execute("INSERT INTO social_friends(lo,hi,asker,accepted) VALUES(?,?,?,-1)",
+                            (*F.pair(IDS[1], fan), IDS[1]))
+        self.db.commit()
+        self.assertEqual(len(self.poll()[1]["friends"]), F.MAX_FRIENDS)
+
+    def test_banned_adder_is_not_offered_and_menu_cannot_add(self):
+        self.legacy_request()
+        self.db.execute("UPDATE accounts SET banned_at=? WHERE steamid=?", (self.now, IDS[0])); self.db.commit()
+        self.assertEqual(self.poll((1,))[0]["friends"], [])
+        r = self.client.get("/api/social/menu/challenge", query_string=dict(op="add", who=A.who_of(IDS[1])))
+        self.assertEqual((r.get_json()["ok"], r.get_json()["status"]), (0, 400))
 
     def test_block_ends_friendship_refuses_add_and_messages_and_is_hidden(self):
         self.befriend(); self.poll()
@@ -428,12 +437,12 @@ class Friends(unittest.TestCase):
         self.assertNotIn("token", row)
         self.assertNotIn("messages", row)
 
-    def test_menu_one_way_add_shows_presence_only_to_the_adder(self):
+    def test_menu_one_way_add_shows_no_presence_either_way(self):
         self.legacy_request()
         self.poll()
         row = self.menu_read(self.menu_form())["friends"][0]
-        self.assertEqual((row["relation"], row["online"]), (1, 1))
-        self.assertEqual(self.menu_read(self.menu_form(op="join", who=A.who_of(IDS[1])))["ok"], 1)
+        self.assertEqual((row["relation"], row["online"], row["addr"]), (1, 0, ""))
+        self.assertEqual(self.menu_read(self.menu_form(op="join", who=A.who_of(IDS[1])))["status"], 403)
         S._rate.clear()
         row = self.menu_read(self.menu_form(1))["friends"][0]
         self.assertEqual((row["relation"], row["online"], row["addr"]), (2, 0, ""))

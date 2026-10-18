@@ -96,6 +96,10 @@
   of it step 3 waiting on momrequests' lock, which only step 8 releases; step 3
   now gives up after 5 s (not yet run live).
 - friends29-01a13fef (36697da) is CLOSED and retained as the rollback generation.
+- P788 ROLLBACK HAZARD: surfd generations from P770 to P787 upgrade every
+  `accepted=0` row to a friendship on each poll, so rolling back past P788
+  turns one-way adds into friendships (messages without consent, lists over
+  128 rows). Delete them first: `DELETE FROM social_friends WHERE accepted=0`.
 
 ## Paint and the line trail (P772, 2026-10-18)
 
@@ -593,10 +597,11 @@ Multiple connections may prove even the SAME copied key: `(pub,node)` must NOT
 be unique. Refresh retires only its explicitly supplied previous capability.
 SSQC refreshes invalid sessions through Account_Hello; disconnected/recycled
 slots cannot receive an old reply. An add is one-way (accepted 0) until the
-other adds back (P788): the adder sees presence and may Join, the added sees
-an "added you" row (no presence) after friends and a once-per-account toast
-(data/friends_toasted.txt, shared by CSQC and menu); unanswered adds take no
-slot and are trimmed so a list stays <=128 rows for old readers.
+other adds back (P788); presence, Join and messages are for friendships only,
+so an add cannot watch anyone. The added sees an "added you" row last and a
+once-per-account in-game toast (data/friends_toasted.txt, F2 adds back); an
+unanswered add takes no slot, and friend_rows cuts every list at 128 rows.
+The menu route stays read-only (the engine signs only list/join).
 Messages require a mutual friendship/live presence, expire120s, max160 chars /
 320 UTF8 bytes, 32/recipient, 2048 total, 20 actions/minute/Steam account across
 installs. IDs/ACKs pass through QC as decimal strings, NEVER float32. Deliver

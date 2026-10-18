@@ -1227,6 +1227,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (Share_Key(scanx))           // Patch 777: F3/F4 answer an offer while watching
 			return TRUE;
 		if (evtype == IE_KEYDOWN)
+		if (!Timer_ResumeOffered())     // that F2 comes first, as below
 		if (Friends_ToastKey(scanx))    // Patch 788: and F2 adds back
 			return TRUE;
 		if (rec_sl_open || (rec_sl_holding && rec_sl_holdkey && scanx == rec_sl_holdkey))

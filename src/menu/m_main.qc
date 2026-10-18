@@ -141,7 +141,6 @@ void() MF_Init;
 void(float visible) MF_Poll;
 void() MF_ResumeJoin;
 void(vector pos, vector size) MF_Draw;
-void(vector screensize) MF_DrawToast;
 void() MM_Init;
 float() MM_Active;
 void(vector screensize) MM_Frame;
@@ -8055,7 +8054,6 @@ void(vector screensize) m_draw =
 		ui_status_toast(screensize);
 	}
 
-	MF_DrawToast(screensize);       // Patch 788
 	MM_DrawFps(screensize);
 	sui_menu_nav();
 	Font_Reset();

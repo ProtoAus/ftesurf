@@ -7,10 +7,6 @@ float mf_epoch, mf_seen, mf_seenmode, mf_count, mf_mode, mf_rows, mf_boot;
 float mf_req, mf_wire, mf_phase, mf_at, mf_next, mf_siglen, mf_sigcrc;
 string mf_op, mf_target, mf_note, mf_pick;
 vector mf_scroll;
-// P788: the disconnected menu's "added you" toast; CSQC shares the seen file.
-string mf_tw, mf_tn;
-float mf_tend;
-#define MF_SEEN "data/friends_toasted.txt"
 
 // Patch 781: the last list, names and relations only (no `who`, no presence),
 // shown as "Saved list" until a fresh one replaces it.
@@ -177,7 +173,7 @@ void() MF_Init =
 */
 void(float stage, float n) MF_Swap =
 {
-	local float i, j, rel;
+	local float i, j;
 	local hashtable was;
 	local string who, nm;
 	if (mf_seen > 0 && mf_count > 0)
@@ -190,14 +186,13 @@ void(float stage, float n) MF_Swap =
 		for (i = 0; i < n; i = i + 1)
 		{
 			if (tokenize(bufstr_get(stage, i)) != 6) continue;
-			rel = stof(argv(1));
-			if ((rel != 3 && rel != 1) || stof(argv(2)) != 0) continue;   // P788: my adds show presence
+			if (stof(argv(1)) != 3 || stof(argv(2)) != 0) continue;
 			j = hash_get(was, argv(0), 0, EV_FLOAT);
 			if (!j) continue;
 			who = argv(0);
 			nm = argv(3);
 			tokenize(bufstr_get(mf_rows, j - 1));
-			bufstr_set(stage, i, sprintf("%s %g 2 \"%s\" \"%s\" \"%s\"", who, rel, nm, argv(4), argv(5)));
+			bufstr_set(stage, i, sprintf("%s 3 2 \"%s\" \"%s\" \"%s\"", who, nm, argv(4), argv(5)));
 		}
 		hash_destroytab(was);
 	}
@@ -208,61 +203,6 @@ void(float stage, float n) MF_Swap =
 	mf_seen = time;
 	mf_seenmode = clientstate();
 	MF_Save();
-};
-
-// P788: the first incoming add in the list whose toast neither side has shown.
-void() MF_ToastPick =
-{
-	local filestream fh;
-	local float i;
-	local string seen, ln, who;
-	if (strcmp(mf_tw, "") || clientstate() != 1) return;
-	seen = " ";
-	fh = fopen(MF_SEEN, FILE_READ);
-	if (fh >= 0)
-	{
-		for (ln = fgets(fh); ln != "" && strlen(seen) < 2700; ln = fgets(fh))
-			if (MF_WhoSafe(ln)) seen = strcat(seen, ln, " ");
-		fclose(fh);
-	}
-	for (i = 0; i < mf_count; i = i + 1)
-	{
-		if (tokenize(bufstr_get(mf_rows, i)) != 6) continue;
-		who = argv(0);
-		if (stof(argv(1)) != 2 || !MF_WhoSafe(who)) continue;
-		if (strstrofs(seen, strcat(" ", who, " "), 0) >= 0) continue;
-		mf_tw = strzone(who);
-		mf_tn = strzone(uri_unescape(argv(3)));
-		mf_tend = time + 15;
-		fh = fopen(MF_SEEN, FILE_APPEND);
-		if (fh >= 0) { fputs(fh, strcat(who, "\n")); fclose(fh); }
-		return;
-	}
-};
-
-void() MF_ToastClear =
-{
-	if (strcmp(mf_tw, "")) strunzone(mf_tw);
-	if (strcmp(mf_tn, "")) strunzone(mf_tn);
-	mf_tw = mf_tn = "";
-};
-
-// Connected, CSQC asks over the lobby; disconnected, the signed menu route.
-void(string who) MF_AddBack =
-{
-	if (!MF_WhoSafe(who)) return;
-	if (clientstate() == 2)
-	{
-		localcmd(sprintf("friends_menu_add %s\n", who));
-		return;
-	}
-	if (mf_wire)
-	{
-		MF_Note("Finishing a previous Friends request. Try again shortly.");
-		return;
-	}
-	MF_Note("Adding them back...");
-	MF_Ask("add", who);
 };
 
 // Connected: CSQC publishes a completed snapshot (~5 s); copy it so rows survive a disconnect.
@@ -438,14 +378,6 @@ float(float reqid, float code, string body) MF_Reply =
 		json_free(root);
 		return TRUE;
 	}
-	if (!strcmp(mf_op, "add"))
-	{
-		MF_Cancel();
-		MF_Note(substring(json_get_string(json_find_object_child(root, "note")), 0, 240));
-		mf_next = time;                 // the list says what changed
-		json_free(root);
-		return TRUE;
-	}
 	if (!strcmp(mf_op, "join"))
 	{
 		addr = json_get_string(json_find_object_child(root, "addr"));
@@ -483,7 +415,7 @@ float(float reqid, float code, string body) MF_Reply =
 		who = json_get_string(json_find_object_child(o, "who"));
 		rel = json_get_float(json_find_object_child(o, "relation"));
 		if (!MF_WhoSafe(who) || rel < 1 || rel > 4 || rel != floor(rel)) break;
-		online = ((rel == 3 || rel == 1) && json_get_float(json_find_object_child(o, "online")) == 1);
+		online = (rel == 3 && json_get_float(json_find_object_child(o, "online")) == 1);
 		bufstr_set(stage, i, sprintf("%s %g %g \"%s\" \"%s\" \"%s\"", who, rel, online,
 			uri_escape(substring(json_get_string(json_find_object_child(o, "name")), 0, 64)),
 			uri_escape(substring(json_get_string(json_find_object_child(o, "server")), 0, 128)),
@@ -501,7 +433,6 @@ float(float reqid, float code, string body) MF_Reply =
 		mf_boot = TRUE;
 		MF_Cancel();
 		MF_Note("");
-		MF_ToastPick();
 	}
 	json_free(root);
 	return TRUE;
@@ -555,25 +486,26 @@ void(vector pos, vector size) MF_Draw =
 			if (at != 6) continue;
 			who = argv(0);
 			rel = stof(argv(1));
-			online = ((rel == 3 || rel == 1) && stof(argv(2)) != 0);
+			online = (rel == 3 && stof(argv(2)) != 0);
 			nm = uri_unescape(argv(3));
 			server = uri_unescape(argv(4));
 			map = uri_unescape(argv(5));
 			id = strcat("mf_join", who);
-			// P788: incoming adds, listed after friends, are drawn faded.
+			// P788: incoming adds, listed last, are drawn faded.
 			sui_style_box(rp, [size_x - 38, 96], 8, SUI_THEME_WELL, SUI_THEME_EDGE, rel == 2 ? 0.4 : 1);
 			sui_text(rp + '10 8 0', SZ_ROW, ui_fit_text(nm, size_x - 60, SZ_ROW), rel == 2 ? COL_DIM : COL_TEXT, 1, 0);
 			status = "Offline";
 			if (!fresh)
 				status = (mf_seen > 0) ? strcat("Offline as of ", ago, " ago") : "Checking...";
-			if (rel == 1) status = "Offline -- not added you back yet";
-			if (rel == 2) status = "Added you";
+			if (rel == 1) status = "Added -- waiting for them to add you back";
+			if (rel == 2) status = (clientstate() == 2) ? "Added you" : "Added you -- add them back in a lobby";
 			if (rel == 4) status = "Blocked";
 			if (online) status = fresh ? server : strcat("Last seen: ", server);
 			sui_text(rp + '10 32 0', '12 12 0', ui_fit_text(status, size_x - 60, '12 12 0'), (online && fresh) ? SUI_THEME_GOOD : COL_DIM, 1, 0);
-			if (rel == 2 && MF_WhoSafe(who))
+			// The menu route reads only; adding back goes through the lobby's game.
+			if (rel == 2 && clientstate() == 2 && MF_WhoSafe(who))
 			if (ui_button(strcat("mf_add", who), rp + [size_x - 146, 54], [98, 28], "Add back"))
-				MF_AddBack(who);
+				localcmd(sprintf("friends_menu_add %s\n", who));
 			if (online)
 			{
 				sui_text(rp + '10 54 0', '12 12 0', ui_fit_text(map, size_x - 144, '12 12 0'), COL_DIM, 1, 0);
@@ -592,29 +524,4 @@ void(vector pos, vector size) MF_Draw =
 		sui_list_view_end();
 	}
 	sui_pop_frame();
-};
-
-void(vector screensize) MF_DrawToast =
-{
-	local vector p;
-	local float w;
-	if (!strcmp(mf_tw, "")) return;
-	if (time >= mf_tend || clientstate() != 1)
-	{
-		MF_ToastClear();
-		return;
-	}
-	w = 340;
-	p = [screensize_x - w - 24, 96];
-	sui_style_panel(p, [w, 104], 10, 0.96);
-	sui_text(p + '16 12 0', SZ_ROW, ui_fit_text(mf_tn, w - 32, SZ_ROW), COL_TEXT, 1, 0);
-	sui_text(p + '16 36 0', SZ_LABEL, "added you as a friend", COL_DIM, 1, 0);
-	if (ui_button("mf_tadd", p + '16 62 0', [140, 30], "Add back"))
-	{
-		MF_AddBack(mf_tw);
-		MF_ToastClear();
-		return;
-	}
-	if (ui_button("mf_tlater", p + [w - 116, 62], [100, 30], "Later"))
-		MF_ToastClear();
 };

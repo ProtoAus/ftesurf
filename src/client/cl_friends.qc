@@ -9,7 +9,7 @@ string fr_notice, fr_msgpick, fr_profpick;
 float fr_joinuntil, fr_rowh, fr_wheel;
 // P788: the "added you" toast, once per account (fr_seen, data/friends_toasted.txt).
 string fr_seen, fr_tw, fr_tn;
-float fr_tend, fr_tsent;
+float fr_tend, fr_tsent, fr_tshown;
 void() Av_Close;
 void(string who) Av_OpenAt;
 
@@ -93,8 +93,9 @@ void() Friends_SeenLoad =
 	fr_seen = "";
 	f = fopen("data/friends_toasted.txt", FILE_READ);
 	if (f < 0) return;
+	// Friends_SeenAdd keeps the newest 300, so this reads it all.
 	for (l = fgets(f); l; l = fgets(f))
-		if (Friends_MarkSafe(l) && strlen(fr_seen) < 2700)
+		if (Friends_MarkSafe(l) && strlen(fr_seen) < 400 * 13)
 			fr_seen = strcat(fr_seen, " ", l);
 	fclose(f);
 	fr_seen = strzone(fr_seen);
@@ -119,7 +120,8 @@ void(string who) Friends_SeenAdd =
 	fclose(f);
 };
 
-// The first incoming add not toasted yet, at most one up at a time.
+// The first incoming add not toasted yet, at most one up at a time.  Its 12 s
+// and the seen mark start when it is first drawn (not under the menu).
 void() Friends_ToastPick =
 {
 	local float i;
@@ -129,12 +131,11 @@ void() Friends_ToastPick =
 	{
 		if (stof(bufstr_get(fr_buf, i * FR_FIELDS + 1)) != 2) continue;
 		who = bufstr_get(fr_buf, i * FR_FIELDS);
+		if (!Friends_MarkSafe(who)) continue;
 		if (strstrofs(strcat(fr_seen, " "), strcat(" ", who, " "), 0) >= 0) continue;
 		fr_tw = strzone(who);
 		fr_tn = strzone(bufstr_get(fr_buf, i * FR_FIELDS + 3));
-		fr_tend = cltime + 12;
-		fr_tsent = FALSE;
-		Friends_SeenAdd(who);
+		fr_tsent = fr_tshown = FALSE;
 		return;
 	}
 };
@@ -148,7 +149,7 @@ void() Friends_ToastClear =
 
 float(float scanx) Friends_ToastKey =
 {
-	if (scanx != K_F2 || fr_tw == "" || fr_tsent || cltime >= fr_tend) return FALSE;
+	if (scanx != K_F2 || fr_tw == "" || !fr_tshown || fr_tsent || cltime >= fr_tend) return FALSE;
 	Friends_Action("add", fr_tw);
 	fr_tsent = TRUE;
 	fr_tend = cltime + 1.5;
@@ -162,6 +163,12 @@ void(vector scr) Friends_DrawToast =
 	local string t;
 
 	if (fr_tw == "") return;
+	if (!fr_tshown)
+	{
+		fr_tshown = TRUE;
+		fr_tend = cltime + 12;
+		Friends_SeenAdd(fr_tw);
+	}
 	// Gone, or added back some other way: nothing left to answer.
 	if (cltime >= fr_tend || (!fr_tsent && Friends_Relation(fr_tw) != 2))
 	{
@@ -282,22 +289,19 @@ void(vector p, vector sz, float tsz, float hint) Friends_Draw =
 			fr_profpick = strzone(who);
 		}
 		s = "Offline";
-		if (rel == 1) s = "Offline -- not added you back yet";
+		if (rel == 1) s = "Added -- waiting for them to add you back";
 		if (rel == 2) s = "Added you -- add them back";
 		if (rel == 4) s = "Blocked: cannot add or message you";
-		if ((rel == 1 || rel == 3) && online)
+		if (rel == 3 && online)
 			s = strcat(bufstr_get(fr_buf, at + 5), "  /  ", bufstr_get(fr_buf, at + 4));
 		sui_text([x, lp_y + tsz * 1.65], [hint, hint], Chat_Fit(s, w - tsz * 3, hint),
 		         online ? SUI_THEME_GOOD : (rel == 2 ? SUI_THEME_DIM : SUI_THEME_MUTED), 1, 0);
 		y = lp_y + tsz * 2.45;
-		if ((rel == 1 || rel == 3) && online)
+		if (rel == 3 && online)
 		{
 			if (Profile_Chip(strcat("fr_join", who), [x, y], [bw, hint * 1.9], "Join", hint, FALSE))
 				Friends_Action("join", who);
 			x = x + bw + 4;
-		}
-		if (rel == 3 && online)
-		{
 			if (Profile_Chip(strcat("fr_msg", who), [x, y], [bw, hint * 1.9], "Message", hint, FALSE))
 				Friends_Message(who, nm);
 			x = x + bw + 4;
