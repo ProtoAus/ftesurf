@@ -2164,7 +2164,9 @@ def view_validation_cases():
     lines, good = held_clock_pair(holds=((0, 73),))
     yield "valid", lines, good, ""
     base = head(build(sweep=128, packets=600), "flags", 1)
-    yield "rotation", lines, view_for(base, rot=5), "angular"
+    rotated = view_for(base, rot=5)
+    yield "rotation", lines, rotated, "angular"
+    yield "rotation-ghost", lines, rotated + ["ghost 2 10 0"], "ghost' state"
     end = int(next(line.split()[1] for line in lines if line.startswith("end ")))
     for label, reason in (("nonfinite", "finite number"), ("width", "columns"),
                           ("negative-tick", "never negative"), ("past-end", "recording ends"),

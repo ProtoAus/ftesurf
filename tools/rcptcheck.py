@@ -527,11 +527,14 @@ def join_angles(r, want):
     independent = [m for m in v.faults if m not in bad]
     # A usable angular comparison does not make an invalid sidecar valid.
     # Unknown validation messages are faults too, not a whitelist escape.
+    validation = ("the .view has an independent validation fault: %s" % independent[0]
+                  if independent else None)
     if independent:
         r.angles = "FAULT"
         r.angles_detail = independent[0]
-        r.fault("the .view has an independent validation fault: %s" % independent[0])
-        return
+        if not bad:
+            r.fault(validation)
+            return
     off = v.info.get("angle_off")
     if off is None or v.info.get("angle_rule") == "unavailable":
         # No comparison may silently turn a fault into missing evidence.
@@ -546,7 +549,7 @@ def join_angles(r, want):
             r.note("the recording carries no angle stream to check the sidecar against")
             return
     solo = v.info.get("angle_solo", "")
-    detail = [off] + ([solo] if solo else [])
+    detail = independent + [off] + ([solo] if solo else [])
     detail.extend(n for n in v.notes if n.startswith("the tight angle rule did not judge this pair:"))
     r.angles_detail = "; ".join(detail)
     # BLIND IS ABOUT THE SWEEP RULE ONLY.  Nearly every run the fleet records
@@ -567,9 +570,12 @@ def join_angles(r, want):
     if bad:
         # SAID IN FULL, because the three facts TOGETHER are the finding and any
         # one of them alone reads as something milder.
+        # Keep this primary: sweep stores the first fault as its short reason.
         r.fault("the signature is over this .view, the .view hashes to the "
                 "digest that was signed, AND the .view does not describe this "
                 "recording: %s" % bad[0].split(": ", 1)[-1])
+        if validation:
+            r.fault(validation)
     elif r.angles == "BLIND":
         r.note("angles: %s" % r.angles_detail)
     elif off.startswith("BLIND"):

@@ -418,10 +418,15 @@ def test_usable_angles_keep_view_faults():
         check("usable %s: parsed faults cannot become a receipt OK" % label,
               (r.angles, bool(r.faults)), (expected, expected == "FAULT"))
         if reason not in ("", "angular"):
-            check("usable %s: content fault is not an angular conviction" % label,
+            check("usable %s: content and angle findings keep their own scope" % label,
                   (reason in r.angles_detail,
                    any("not this recording's" in x or "does not describe this recording" in x
-                       for x in r.faults), r.rec_report.view_reset_budget), (True, False, 0))
+                       for x in r.faults), r.rec_report.view_reset_budget),
+                  (True, label == "rotation-ghost", 0))
+        if label in ("rotation", "rotation-ghost"):
+            check("usable %s: actual comparison diagnostics survive" % label,
+                  all(parsed.info.get(k) and parsed.info[k] in r.angles_detail
+                      for k in ("angle_off", "angle_solo")), True)
 
 
 def test_signed_usable_view_faults():
@@ -429,6 +434,9 @@ def test_signed_usable_view_faults():
     sweep.TOOLS = fx.TOOLS
     rid = "20261018-000794-0"
     rec, good = fx.angle_pair(rid, still=False)
+    mixed_rec, rotated = fx.angle_pair(rid, rot=5, still=False)
+    check("signed mixed: rotation does not change the control recording", mixed_rec == rec, True)
+    mixed = rotated + "ghost 2 10 0\n"
     original_game = rcptcheck.GAME
     rc = fx.with_rec(surfd, sweep, rid, rec)
     bad = good.splitlines()
@@ -436,17 +444,21 @@ def test_signed_usable_view_faults():
     fields[3] = "nan"
     bad[4] = " ".join(fields)
     try:
-        for label, view, expected in (("valid", good, "VALID"),
-                                      ("nonfinite", "\n".join(bad) + "\n", "FAULT")):
+        for label, view, expected, reason in (("valid", good, "VALID", ""),
+                    ("nonfinite", "\n".join(bad) + "\n", "FAULT", "finite number"),
+                    ("mixed", mixed, "FAULT", "ghost' state")):
             path, _pub = fx.make_receipt(surfd.EVIDENCE_DIR, rid, view=view.encode("utf-8"))
             for mode in ({}, {"view_only": True}, {"rec_only": True}):
                 got = sweep.read_receipt(path, **mode)
                 check("signed usable %s %s: content grade and signature stay independent"
                       % (label, mode), (got[0], got[3], got[5]),
                       (expected, "OK" if label == "valid" else "FAULT", 1))
-                if label != "valid":
-                    check("signed usable %s: factual reason survives the sweep path" % mode,
-                          "finite number" in got[4] and "finite number" in got[13], True)
+                if reason:
+                    check("signed usable %s %s: content reason survives the sweep fields" % (label, mode),
+                          reason in got[13] and (label == "mixed" or reason in got[4]), True)
+                if label == "mixed":
+                    check("signed mixed %s: genuine angular proof also survives" % mode,
+                          "AND the .view does not describe this recording" in got[4], True)
     finally:
         rc.GAME = original_game
 
