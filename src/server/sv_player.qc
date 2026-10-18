@@ -370,6 +370,13 @@ void() ClientDisconnect =
 	// this end keeps an idle slot honest to anything that inspects it in
 	// between, and covers a teardown that never reaches a connect.
 	SV_CSQCForget(self);
+
+	// Patch 803: and the body goes.  The engine clears a leaving player's edict
+	// only for NQ progs (sv_user.c SV_DespawnClient), so it stood on as a solid
+	// box: a reconnect to another slot spawned inside it and could not move.
+	self.solid = SOLID_NOT;
+	self.movetype = MOVETYPE_NONE;
+	setorigin(self, self.origin);       // relink, out of the solid lists
 };
 
 void() ClientKill =
