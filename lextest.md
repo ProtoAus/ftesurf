@@ -1,5 +1,26 @@
 # lextest.md — things waiting on a human
 
+## P773 — paint sprays while held, Rate and Random; body/belt colour presets
+
+In both Windows installs since 2026-10-18T03:48:50Z (csprogs `f6103f93`, `.prev` P772's
+`04e58e23`) and on all 12 lobbies since 03:47:52Z (csprogs `f6103f93`; qwprogs unchanged
+at `24e65490`). Lobby smoke 03:51Z on 27510: the served csprogs hashes to f6103f93, the
+board drew, no QC error. Restart the game.
+
+- **Hold to spray:** hold `i` (or MOUSE3, your binds). Sweep: a continuous line, as
+  before. Hold still: a new disc every 1/Rate s (default 20 a second), so a see-through
+  colour builds up and Random keeps changing colour.
+- **Panel (P), PAINT:** Random chip (every disc its own colour), Body chip, and a Rate
+  slider (2-60 a second, or max = every frame).
+- **Body/belt colours:** pick Belt or Body, then a colour swatch: that half takes the
+  colour and the sliders show it (they used to jump to 255). Try it offline too.
+- **Z-fighting close to a wall:** NOT reproduced here. On surf_dune, square on at 2-16
+  units and along the wall at 2-8 units, paint drew solid on the old and new builds.
+  The paint is now pushed 0.125 units toward you, which is the usual cause. If you still
+  see it, say the map and where, and send `paint_status` right after.
+
+"Hold ok / rate feels <x> / presets ok / z-fight gone or still at <map, spot>". Verdict PENDING.
+
 ## P770 — Friends without accepting; TAB board switch, Styles, Players list
 
 Live on the 12 lobbies (qwprogs `24e65490`, 22:47Z) and in both Windows installs

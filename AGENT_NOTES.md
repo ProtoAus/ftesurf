@@ -1,5 +1,25 @@
 # AGENT_NOTES.md
 
+## Paint held, presets, and two-player rigs (P773, 2026-10-18)
+
+- An inline `shaderforname` `glslprogram` gets the attribute prelude (`v_position`,
+  `m_modelviewprojection`) but NOT sys/defs.h's uniforms: `e_eyepos` was undeclared, the
+  program failed, and FTE drew the stage's fallback, a square, with no QC error. The only
+  trace is `Vertex shader (<name>) compilation error` in the client log; grep for it after
+  any shader edit. A conbridge `stop --purge` deletes the session's screenshots and logs:
+  copy them out first.
+- Lex's close-wall z-fighting did not reproduce on surf_dune (square on at 2-16u, grazing
+  at 2-8u, both builds solid); the strafe-trainer bar crossing a centre crop, not
+  z-fighting, made the first comparisons differ. Crop above the centre.
+- `getplayerkeyvalue(player_localnum, ...)` is the server's echo of your userinfo, a
+  round trip behind `setinfo` on a lobby (instant solo, so solo shots hide it). A panel
+  that re-reads it every frame snaps its controls back; follow it only when it changes.
+- A second player from one install: two clients sharing a basedir share the `qkey` (one
+  guid), and one started with `-homedir` beside a running client wrote no log and did
+  nothing (alone it ran). tools/p744spec.py's rig works: each peer gets its own basedir
+  with copied content, its own fmf (DISABLEHOMEDIR), `-nohome`, and the progs under test,
+  so nothing touches the install. P777's arm (paint2 root, tmp/arm777b.py) is that rig.
+
 ## surfd successor generation, code only (P770, 2026-10-18)
 
 - The Pi's surfd is a sealed guarded generation; `surfd-deploy.ps1` refuses it
