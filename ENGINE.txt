@@ -25,13 +25,20 @@ commit   02305333d3809b4c5a8d7d384efc60b0ccc2a526
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-800
-patch    800
+patch    803
+# Patch 803 (qwprogs): ClientDisconnect makes the departed body SOLID_NOT -- the engine clears
+# only NQ progs' edicts, so a reconnect spawned inside its own old body and stuck. No native change.
 # Patch 800 (engine + qclib): `r_budget_csqc 1` breaks CSQC down by QC source file and, at
 # r_budget 3, function (qclib's profiler, on only while shown; renderscene and addentities are
 # excluded as other groups); the header shows the panel's own time. Client exe only; no QC change.
 # Patch 798 (csprogs): hud_edit's Display Info row (map info, key hints, chat, who's
 # watching, crosshair, text, number rate/step); no Spectate row; Mouse -> Input display
 # (keys + mouse); Board -> Boarding, Boarding -> Enter/Exit speeds. No native change.
+# Patch 797 (qwprogs + csprogs): the TAB player list's Teleport (`tp_player`): ends a run as
+# `!r` does, then setpos's move (now SV_SetPosSelf) to 48 u behind the target. No native change.
+# Patch 796 (menu): a four-line first-boot terms summary (full text behind "Full details");
+# the journal-upload choice is a box there and an F2 row, not a main-menu button.
+# Patch 795 (menu): MP_Of's slot choice nested -- `||` read mp_used[-1] and killed the menu VM.
 # Patch 794 (consumer): independent view validation faults cannot become receipt OK
 # merely because an angle comparison is usable. No native or threshold change.
 # Patch 793 (reader): bind initial held clocks to their fresh timer origin; restored
