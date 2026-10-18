@@ -2082,6 +2082,19 @@ def cold_clock_pair(why="load", resets=2, restore=True):
     return out, view
 
 
+def case_view_resume_slot_history():
+    base, view = retry_clock_pair()
+    for slot, valid in (("1", True), ("0", True), ("999", True),
+                        ("bad", False), ("1000", False), ("-1", False),
+                        ("1.0", False), ("\u0662", False), ("1" * 129, False)):
+        lines = ["resume %s %s" % (slot, l.split()[1]) if l.startswith("retry ") else l
+                 for l in base]
+        f, _notes, report = run(lines, view=view, report=True)
+        acted = (not f and "angle_rule     unavailable" in report) if valid else any(
+            "goes backwards" in x for x in f)
+        check(acted, "resume slot %s: valid history only grants reset allowance" % ascii(slot[:20]))
+
+
 def case_view_restore_history():
     for why, restore in (("load", True), ("retry", True), ("drop", False)):
         L, view = cold_clock_pair(why, restore=restore)
@@ -2334,7 +2347,7 @@ def main():
                case_angle_tight_rule_is_keyed_on_the_source_not_the_version,
                case_angle_hold_clock, case_angle_hold_legacy, case_angle_hold_origins,
                case_angle_hold_shape, case_angle_hold_conversion, case_view_retry_history,
-               case_view_restore_history,
+               case_view_restore_history, case_view_resume_slot_history,
                case_angle_splice, case_angle_no_sidecar_is_silent):
         # argv: case-name prefixes to run (default all).
         if sys.argv[1:] and not fn.__name__.startswith(tuple(sys.argv[1:])):

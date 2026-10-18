@@ -403,7 +403,14 @@ def test_retry_clock_faults():
              ("cold-load", 2, 2, "BLIND"), ("cold-retry", 2, 2, "BLIND"),
              ("cold-extra", 2, 3, "FAULT"), ("session-only", 2, 2, "BLIND"),
              ("session-extra", 2, 3, "FAULT"), ("cold-run-clock", 2, 2, "FAULT"),
-             ("legacy-resume", 2, 2, "BLIND"), ("legacy-extra", 2, 3, "FAULT")]
+             ("legacy-resume", 2, 2, "BLIND"), ("legacy-extra", 2, 3, "FAULT"),
+             ("slot-zero", 2, 2, "BLIND"), ("slot-upper", 2, 2, "BLIND"),
+             ("slot-text", 2, 2, "FAULT"), ("slot-range", 2, 2, "FAULT"),
+             ("slot-negative", 2, 2, "FAULT"), ("slot-fraction", 2, 2, "FAULT"),
+             ("slot-unicode", 2, 2, "FAULT"), ("slot-overlong", 2, 2, "FAULT")]
+    slots = {"slot-zero": "0", "slot-upper": "999", "slot-text": "bad",
+             "slot-range": "1000", "slot-negative": "-1", "slot-fraction": "1.0",
+             "slot-unicode": "\u0662", "slot-overlong": "1" * 129}
     for label, retries, resets, expected in cases:
         if label.startswith("cold-"):
             lines, view = vectors.cold_clock_pair("retry" if label == "cold-retry" else "load", resets)
@@ -411,8 +418,10 @@ def test_retry_clock_faults():
             lines, view = vectors.cold_clock_pair("drop", resets, restore=False)
         else:
             lines, view = vectors.retry_clock_pair(retries, resets)
-        if label.startswith("legacy-"):
-            lines = ["resume 1 " + l.split()[1] if l.startswith("retry ") else l for l in lines]
+        if label.startswith("legacy-") or label in slots:
+            slot = slots.get(label, "1")
+            lines = ["resume %s %s" % (slot, l.split()[1]) if l.startswith("retry ") else l
+                     for l in lines]
         if label == "invalid-marker":
             lines = ["retry --1" if l.startswith("retry ") else l for l in lines]
         elif label == "untrusted-view-claim":
@@ -438,8 +447,9 @@ def test_retry_clock_faults():
               bool(r.rec_report.faults), label == "invalid-recording")
         check("retry %s: captured digest check ACTED" % label,
               (("view", "retry.view") in r.digest_checked, r.digest_bad), (True, {}))
-        budget = 0 if label in ("missing", "invalid-marker", "untrusted-view-claim",
-                                "invalid-recording") else 2
+        invalid_slot = label in slots and label not in ("slot-zero", "slot-upper")
+        budget = 0 if invalid_slot or label in (
+            "missing", "invalid-marker", "untrusted-view-claim", "invalid-recording") else 2
         check("retry %s: server history counts each boundary once" % label,
               r.rec_report.view_reset_budget, budget)
         check("retry %s: source-authorized resets retain independent faults" % label,

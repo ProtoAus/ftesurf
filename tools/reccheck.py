@@ -2692,6 +2692,11 @@ def check_rec(path, verbose=False, *, data=None):
         for group, width in ((retries, 1), (resumes, 2)):
             for ln, a in group:
                 if len(a) == width and a[-1].isascii():
+                    if width == 2:
+                        # Integer writer slots: FS_RETRY_SLOT..FS_MAXSAVES (0..999).
+                        slot = a[0]
+                        if len(slot) > 3 or not slot.isascii() or not slot.isdigit():
+                            continue
                     if exact_finish_ticks(a[-1]) is not None:
                         events.append((ln, 1))
         pending_restore = False
