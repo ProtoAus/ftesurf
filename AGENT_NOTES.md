@@ -1307,6 +1307,13 @@ cannot be used, ask; do not silently scatter copies elsewhere.
 
 ## Build
 
+**QC-only dual deployment (P814 delivery tooling).** The old build had no QC
+secondary-copy step: a successful default build changed the primary csprogs but
+left C:\FTEQuake's prior bytes intact. Do not infer deployment from a clean compile
+or identical unchanged qw/menu outputs. The corrected default syncs the three VMs
+and available LNO companions to a present QuakeDir with .prev; NoDeploy skips that
+copy. Configs/tools remain separate ship items. Verify actual destination hashes.
+
 **Near-limit numeric constants (P814).** The current fteqcc process exited with
 Windows access violation and no compiler text when a float32-range validator used
 a near-limit numeric literal. The otherwise identical loops compiled with the

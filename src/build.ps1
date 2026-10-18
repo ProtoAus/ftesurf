@@ -222,6 +222,14 @@ try {
     }
 } finally { Pop-Location }
 
+# Generated artifacts only; native and QC deployment share .prev preservation.
+function Deploy($from, $to) {
+    if (-not (Test-Path $from)) { throw "missing build output: $from" }
+    if (Test-Path $to) { Copy-Item $to "$to.prev" -Force }
+    Copy-Item $from $to -Force
+    Ok ((Split-Path $to -Leaf) + "  <- " + (Get-Item $from).LastWriteTime)
+}
+
 # ------------------------------------------------------------ engine ---------
 if ($Engine) {
     # Use the same Windows Git view that inspected this checkout. MSYS Git can
@@ -299,13 +307,6 @@ if ($Engine) {
     if ($LASTEXITCODE -ne 0) { throw "plugins-rel failed" }
 
     # ------------------------------------------------------- deploy ---------
-    function Deploy($from, $to) {
-        if (-not (Test-Path $from)) { throw "missing build output: $from" }
-        if (Test-Path $to) { Copy-Item $to "$to.prev" -Force }
-        Copy-Item $from $to -Force
-        Ok ((Split-Path $to -Leaf) + "  <- " + (Get-Item $from).LastWriteTime)
-    }
-
     if ($NoDeploy) {
         Ok "NoDeploy: native outputs retained in $ReleaseDir; both installs untouched"
     } else {
@@ -329,6 +330,33 @@ if ($Engine) {
     }
     } finally {
         foreach ($key in $savedNativeEnv.Keys) { [Environment]::SetEnvironmentVariable($key, $savedNativeEnv[$key], 'Process') }
+    }
+}
+
+# QC-only builds must also update a present second install. Configs/tools remain
+# separate ship items; NoDeploy must not write either real install.
+if (-not $NoDeploy) {
+    if ($QuakeDir -and (Test-Path -LiteralPath $QuakeDir)) {
+        if ([IO.Path]::GetRelativePath($SurfDir, $QuakeDir) -ne '.') {
+            $qcTarget = Join-Path $QuakeDir 'ftesurf'
+            $qcNames = @('qwprogs.dat', 'csprogs.dat', 'menu.dat')
+            foreach ($n in $qcNames) {
+                if (-not (Test-Path -LiteralPath "$SurfDir\ftesurf\$n" -PathType Leaf)) {
+                    throw "missing QC output: $n"
+                }
+            }
+            New-Item -ItemType Directory -Path $qcTarget -Force | Out-Null
+            Step "QC deploy -> $qcTarget"
+            foreach ($n in ($qcNames + @('qwprogs.lno', 'csprogs.lno', 'menu.lno'))) {
+                if (Test-Path -LiteralPath "$SurfDir\ftesurf\$n" -PathType Leaf) {
+                    Deploy "$SurfDir\ftesurf\$n" (Join-Path $qcTarget $n)
+                }
+            }
+        } else {
+            Ok 'QC source and second install are the same -- copy skipped'
+        }
+    } else {
+        Ok "QC second install not present ($QuakeDir) -- copy skipped"
     }
 }
 
