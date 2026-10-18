@@ -8,9 +8,9 @@ OnStartTouch, so every entry is the server's own log line.  Its moon stands
 inside the box, so a body dropped at SPOT rests in the trigger.
   A  rest in *93, hold 2 s, leave: does the entry output fire again?
   B  out, then back in: the entry output fires again (the leave was seen).
-  C  rest in *93, step out and toggle spectate every few frames (raw rec_spec),
-     step back in mid-toggle: the entry output fires (holds do not keep a left
-     trigger's touch alive).
+  C  rest in *93, step out and toggle spectate every few frames (raw rec_spec):
+     each hold logs whether *93 still holds the touch ("pending 1"); v2 must
+     end it within the toggling and fire the entry output once on re-entry.
 --expect main (P784: A refused), v1 (ac6882ad: A accepted, re-fires on the
 release), r2 (c410d513: as v2 but C silent) or v2.  Exit 0 all held, 1 one failed, 2 could
 not measure (the body did not come to rest in the trigger).
@@ -200,23 +200,40 @@ def main():
         # C: toggling after leaving.  Target is entnum 2 (it connected second).
         if v != 'main':
             w.send('alias p786tg "cmd rec_spec 2; wait; wait; wait; wait; cmd rec_spec 0; wait; wait"')
+            rest_in_box('C-in')
+            co = len(w.text())
             o = mark('C-out')
-            w.send(f'cmd setpos {OUT}; ' + 'p786tg; ' * 12 + f'cmd setpos {SPOT}; ' + 'p786tg; ' * 6)
-            time.sleep(4.0)
+            w.send(f'cmd setpos {OUT}; ' + 'p786tg; ' * 12)
+            time.sleep(3.0)
             w.send('cmd rec_spec 0')
-            time.sleep(1.0)
+            time.sleep(0.5)
             seg = sv.text()[o:]
-            num['C_holds'] = len(re.findall(r'spectate: Watcher released \(leave\)', seg))
-            num['C_hits'] = seg.count(HIT)
+            holds = re.findall(r'spectate: Watcher (held inside a trigger \(touch \d, pending (\d)\)|released \(leave\))', seg)
+            # Each release ends a hold; a hold inside the touch logs its line first.
+            flags, inside = [], False
+            for whole, pend in holds:
+                if whole.startswith('held'):
+                    inside = pend == '1'
+                else:
+                    flags.append(inside)
+                    inside = False
+            num['C_out_holds'] = flags
+            refused = re.findall(r'spectate:(?:\^7)? ((?!stat |watching)[^\n]*)', w.text()[co:])
+            num['C_refused'] = refused
+            if len(flags) < 8 or refused:
+                raise CannotMeasure(f"C: {len(flags)} holds released, refusals {refused}")
+            o2 = mark('C-back')
+            w.send(f'cmd setpos {SPOT}')
+            time.sleep(2.0)
+            num['C_hits'] = hits(o2)
             num['C_rest'] = pos()
-            if num['C_holds'] < 6:
-                raise CannotMeasure(f"C: only {num['C_holds']} holds released")
             if not inbox(num['C_rest']):
                 raise CannotMeasure(f"C: not back inside *93 ({num['C_rest']})")
             if v == 'r2':
-                check(num['C_hits'] == 0, f"C r2: toggling kept the left trigger's touch ({num['C_hits']})")
+                check(all(flags), f"C r2: every hold kept the left trigger's touch ({flags})")
             else:
-                check(num['C_hits'] >= 1, f"C: the re-entry fires the entry output ({num['C_hits']}, {num['C_holds']} holds)")
+                check(flags[0] and not any(flags[4:]), f"C: the touch ended within the toggling ({flags})")
+                check(num['C_hits'] == 1, f"C: the re-entry fires the entry output once ({num['C_hits']})")
 
         for peer in peers:
             bad = [b for b in ('QC VM error', 'stack overflow') if b in peer.text()]
