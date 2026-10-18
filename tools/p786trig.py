@@ -8,8 +8,11 @@ OnStartTouch, so every entry is the server's own log line.  Its moon stands
 inside the box, so a body dropped at SPOT rests in the trigger.
   A  rest in *93, hold 2 s, leave: does the entry output fire again?
   B  out, then back in: the entry output fires again (the leave was seen).
+  C  rest in *93, step out and toggle spectate every few frames (raw rec_spec),
+     step back in mid-toggle: the entry output fires (holds do not keep a left
+     trigger's touch alive).
 --expect main (P784: A refused), v1 (ac6882ad: A accepted, re-fires on the
-release) or v2 (A accepted, silent).  Exit 0 all held, 1 one failed, 2 could
+release), r2 (c410d513: as v2 but C silent) or v2.  Exit 0 all held, 1 one failed, 2 could
 not measure (the body did not come to rest in the trigger).
 """
 import argparse
@@ -64,7 +67,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--out', type=Path, required=True)
     ap.add_argument('--progs', type=Path, required=True)
-    ap.add_argument('--expect', choices=('main', 'v1', 'v2'), required=True)
+    ap.add_argument('--expect', choices=('main', 'v1', 'r2', 'v2'), required=True)
     ap.add_argument('--port', type=int, default=27616)
     ap.add_argument('--content', type=Path, default=Path('C:/FTESurf'))
     ap.add_argument('--client', type=Path, default=Path('C:/FTESurf/ftesurf64.exe'))
@@ -132,20 +135,22 @@ def main():
         def hits(a0, a1=None):
             return sv.text()[a0:a1].count(HIT)
 
+        def inbox(q):
+            return all(BOX[0][i] < q[i] < BOX[1][i] for i in range(3))
+
         def rest_in_box(tag):
             o = mark(tag)
             w.send(f'cmd setpos {SPOT}')
             time.sleep(3.0)
             p0 = pos(); time.sleep(0.5); p1 = pos()
-            inside = all(BOX[0][i] < p1[i] < BOX[1][i] for i in range(3))
             num[tag] = {'rest': [p0, p1], 'hits': hits(o)}
-            if max(abs(p0[i] - p1[i]) for i in range(3)) > 0.5 or not inside:
+            if max(abs(p0[i] - p1[i]) for i in range(3)) > 0.5 or not inbox(p1):
                 raise CannotMeasure(f'{tag}: not at rest inside *93 ({p0} -> {p1})')
-            if hits(o) != 1:
-                raise CannotMeasure(f'{tag}: {hits(o)} entry outputs, not 1')
+            return hits(o)
 
         # A
-        rest_in_box('A-in')
+        if rest_in_box('A-in') != 1:
+            raise CannotMeasure(f"A-in: {num['A-in']['hits']} entry outputs, not 1")
         co, o = len(w.text()), len(sv.text())
         w.send('spectate next')
         time.sleep(1.0)
@@ -157,19 +162,27 @@ def main():
             check(not ok and 'trigger' in said, f'A main: refused inside *93 ({said!r})')
         else:
             check(ok, 'A accepted inside *93')
-            held = sv.text().find('spectate: Watcher held inside a trigger', o)
-            check(held >= 0, 'A server: held inside a trigger')
+            m = re.search(r'spectate: Watcher held inside a trigger \(touch (\d), pending (\d)\)', sv.text()[o:])
+            num['A_held'] = m.group(0) if m else ''
+            check(m is not None and m.group(2) == '1', f"A server: held inside a trigger, pending 1 ({num['A_held']!r})")
         if ok:
             time.sleep(1.0)
             o = len(sv.text())
             w.send('spectate off')
-            m = sv.wait(r'spectate: Watcher released \((\w+)\)[^\n]*', o, timeout=10)
+            try:
+                m = sv.wait(r'spectate: Watcher released \((\w+)\)[^\n]*', o, timeout=10)
+            except RuntimeError:
+                m = None
+            check(m is not None and m.group(1) == 'leave', 'A released (leave)')
+            if m is None:
+                raise CannotMeasure('no release line')
             num['A_release'] = m.group(0)
             rel = o + m.end()
             time.sleep(2.5)
             end = mark('A-after')
             num['A_hits_after'] = hits(rel, end)
             num['A_rest_after'] = pos()
+            check(inbox(num['A_rest_after']), f"A still inside *93 after the release ({num['A_rest_after']})")
             if v == 'v1':
                 check(num['A_hits_after'] >= 1, f"A v1: the entry output fires again on release ({num['A_hits_after']})")
             else:
@@ -181,8 +194,29 @@ def main():
         time.sleep(1.5)
         num['B_hits_out'] = hits(o)
         check(num['B_hits_out'] == 0, f"B no entry output on leaving ({num['B_hits_out']})")
-        rest_in_box('B-in')
-        check(True, 'B the entry output fires on re-entry (1)')
+        b = rest_in_box('B-in')
+        check(b == 1, f'B the entry output fires on re-entry ({b})')
+
+        # C: toggling after leaving.  Target is entnum 2 (it connected second).
+        if v != 'main':
+            w.send('alias p786tg "cmd rec_spec 2; wait; wait; wait; wait; cmd rec_spec 0; wait; wait"')
+            o = mark('C-out')
+            w.send(f'cmd setpos {OUT}; ' + 'p786tg; ' * 12 + f'cmd setpos {SPOT}; ' + 'p786tg; ' * 6)
+            time.sleep(4.0)
+            w.send('cmd rec_spec 0')
+            time.sleep(1.0)
+            seg = sv.text()[o:]
+            num['C_holds'] = len(re.findall(r'spectate: Watcher released \(leave\)', seg))
+            num['C_hits'] = seg.count(HIT)
+            num['C_rest'] = pos()
+            if num['C_holds'] < 6:
+                raise CannotMeasure(f"C: only {num['C_holds']} holds released")
+            if not inbox(num['C_rest']):
+                raise CannotMeasure(f"C: not back inside *93 ({num['C_rest']})")
+            if v == 'r2':
+                check(num['C_hits'] == 0, f"C r2: toggling kept the left trigger's touch ({num['C_hits']})")
+            else:
+                check(num['C_hits'] >= 1, f"C: the re-entry fires the entry output ({num['C_hits']}, {num['C_holds']} holds)")
 
         for peer in peers:
             bad = [b for b in ('QC VM error', 'stack overflow') if b in peer.text()]

@@ -4786,8 +4786,9 @@ void(entity e, float n) SV_SpecStart =
 	  triggers -- the sweep does not count it absent (SV_TouchHeld) and the release
 	  is no entry (SV_TrigResume) -- so no enter or exit output fires at a held body
 	  or on the way out, and spectating in and out of a booster cannot re-fire it.
-	  An output already due on the body still refuses: it would land on the held
-	  body and the rollback would undo it.  run_trig_pkn 0: no touch since connecting.
+	  An output already due on the body still refuses: it would act during the
+	  hold, sooner in the run's time than in play.  run_trig_pkn 0: no touch since
+	  connecting.
 	*/
 	intrig = FALSE;
 	if (e.run_trig_pkn)
@@ -4797,6 +4798,13 @@ void(entity e, float n) SV_SpecStart =
 	if (pend == 2)
 	{
 		SV_SpecRefuse(e, "a map output is still due on you -- try again");
+		return;
+	}
+	// The held branches reset Monolith B4's pad profile, which a mid-pad hold
+	// would skip the exit clamp of.
+	if (e.run_mono_phase)
+	{
+		SV_SpecRefuse(e, "finish the booster first");
 		return;
 	}
 	if (pend)
@@ -4901,11 +4909,11 @@ void(entity e, string why) SV_SpecRelease =
 		e.groundentity = e.run_sp_gent;
 		rb = strcat(rb, " groundentity");
 	}
-	if (e.run_sp_trig)                  // Patch 786: after the rollback (the box)
-	{
+	// Patch 786: after the rollback (the box), and only where the body stays.
+	if (e.run_sp_trig)
+	if (why == "leave" || why == "notarget" || why == "move")
 		SV_TrigResume(e, e.run_sp_t0);
-		e.run_sp_trig = FALSE;
-	}
+	e.run_sp_trig = FALSE;
 
 	if (e.vbsp_bhop_since)                          // the func_bhop dwell
 		e.vbsp_bhop_since = e.vbsp_bhop_since + (time - e.run_sp_t0);

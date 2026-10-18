@@ -371,6 +371,14 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   entry/exit half on surf_colony.
 - A trigger map I/O enables during a hold acts at the release (Patch 382's
   world-time class); a StartDisabled teleport used to refuse the entry instead.
+- Entering spectate on the packet after a jump swallows that jump's OnJump: the held
+  branch rewrites run_wasground (sv_player.qc:438) before the jump test. Honest
+  harm (mostly boosters); review of P786 r2.
+- A door's completion outputs (vbsp_mv_act) can reach a held player with no
+  vbsp_iodelay, so SV_TrigPending cannot see them (older than P786).
+- setspeed's enter edge is keyed on world `time`; a client sending under 20
+  packets a second may get an enter-only pad re-applied each packet without
+  spectating (inferred, not run; older than P786).
 - The replay handover writes `spec 0 ... replay` (P684); `replay` is missing from
   the grammar's reason list in sv_timer.qc and from reccheck's SPEC_WHY (a note,
   not a fault).

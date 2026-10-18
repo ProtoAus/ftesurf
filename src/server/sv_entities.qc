@@ -864,6 +864,7 @@ int(int m) SV_TouchHeld =
 		bit = (int)1 << (int)i;
 		if (m & bit)
 		if (edict_num(i + 1).run_sp_phase)
+		if (clienttype(edict_num(i + 1)) == CLIENTTYPE_REAL)
 			r = r | bit;
 	}
 	return r;
@@ -877,24 +878,26 @@ int(int m) SV_TouchHeld =
 float(entity p) SV_TrigPending =
 {
 	local entity t;
-	local float  n;
+	local float  n, r;
 	local int    bit;
 
 	n = num_for_edict(p) - 1;
 	bit = 0;
 	if (n >= 0 && n < 32)
 		bit = (int)1 << (int)n;
+	r = 0;
+	// The whole walk: since Patch 786 a 1 accepts, so a 2 later on must still win.
 	for (t = nextent(world); t; t = nextent(t))
 	{
 		if (t.vbsp_touch_who == p)
-			return 1;
+			r = 1;
 		if ((t.vbsp_touch_in | t.vbsp_touch_seen | t.vbsp_touch_out) & bit)
-			return 1;
+			r = 1;
 		if (t.enemy == p)
 		if (t.classname == "vbsp_iodelay")
 			return 2;
 	}
-	return 0;
+	return r;
 };
 
 /*
@@ -3706,7 +3709,7 @@ void(entity src, string name, entity act) SV_FireOutput =
 void() SV_TriggerEndThink =
 {
 	local entity a;
-	local int    gone, bit, absent;
+	local int    gone, bit, absent, held;
 	local float  i;
 
 	/*
@@ -3736,10 +3739,14 @@ void() SV_TriggerEndThink =
 		    gone    absent for both, so >= 2 sweeps ~ 0.06 s: end it
 		*/
 		absent = self.vbsp_touch_in & ~self.vbsp_touch_seen;
-		if (absent)                     // Patch 786: a held body has not left
-			absent = absent & ~SV_TouchHeld(absent);
+		// Patch 786: a held body's sweep does not happen -- not absent, and its
+		// absent-once kept, so toggling spectate cannot keep a touch alive.
+		held = 0;
+		if (absent)
+			held = SV_TouchHeld(absent);
+		absent = absent & ~held;
 		gone   = absent & self.vbsp_touch_out;
-		self.vbsp_touch_out = absent & ~gone;
+		self.vbsp_touch_out = (absent & ~gone) | (self.vbsp_touch_out & held);
 		a = world;
 
 		if (gone)
@@ -3772,9 +3779,10 @@ void() SV_TriggerEndThink =
 			SV_FireOutput(self, "OnEndTouchAll", a);
 	}
 
-	if (self.vbsp_touch_who.run_sp_phase)  // Patch 786, as above
-		self.vbsp_touch_when = time;
-	if (self.vbsp_touch_who && time - self.vbsp_touch_when > 0.05)
+	// Patch 786, as above: the clock skips the hold (SV_TrigResume adds it back).
+	if (self.vbsp_touch_who)
+	if (!self.vbsp_touch_who.run_sp_phase)
+	if (time - self.vbsp_touch_when > 0.05)
 	{
 		a = self.vbsp_touch_who;
 		self.vbsp_touch_who = world;
@@ -7944,8 +7952,8 @@ void() trigger_multiple_touch =
 
 // Patch 786: leaving a spectate hold is not an entry.  The masks kept p inside
 // (SV_TouchHeld); a pad's enter edge and a `wait` run on world time, so the release
-// counts as the pad having just applied and p's OnTrigger as just fired -- fewer
-// fires than standing there would have given, never more.
+// is no enter edge, and an expired window counts as p's OnTrigger just fired -- fewer
+// fires than standing there would have given, never more, and no one else's later.
 void(entity p, float t0) SV_TrigResume =
 {
 	local entity t;
@@ -7955,6 +7963,8 @@ void(entity p, float t0) SV_TrigResume =
 	bit = SV_TouchBit(p);
 	for (t = nextent(world); t; t = nextent(t))
 	{
+		if (t.vbsp_touch_who == p)
+			t.vbsp_touch_when = t.vbsp_touch_when + (time - t0);
 		if (t.touch == trigger_setspeed_touch)
 		{
 			// No mask without outputs: a touch when the hold began, and the box.
@@ -7962,10 +7972,7 @@ void(entity p, float t0) SV_TrigResume =
 			if (p.absmin_x <= t.absmax_x) if (p.absmax_x >= t.absmin_x)
 			if (p.absmin_y <= t.absmax_y) if (p.absmax_y >= t.absmin_y)
 			if (p.absmin_z <= t.absmax_z) if (p.absmax_z >= t.absmin_z)
-			{
 				t.vbsp_ss_stamp = time;
-				t.vbsp_ss_applied = time;
-			}
 		}
 		else if (t.touch == trigger_multiple_touch)
 		{
@@ -7975,15 +7982,18 @@ void(entity p, float t0) SV_TrigResume =
 			{
 				if (!((t.vbsp_touch_in | t.vbsp_touch_seen) & bit))
 					continue;
-				if (time >= t.vbsp_io_next_ok)
-					t.vbsp_io_gate_seen = 0;
-				t.vbsp_io_gate_seen = t.vbsp_io_gate_seen | bit;
 			}
 			else if (t.vbsp_touch_who != p)
 				continue;
+			// trigger_multiple_touch's gate: a window still open is only spent.
 			w = (t.wait > 0) ? t.wait : 0.2;
-			if (t.vbsp_io_next_ok < time + w)
+			if (time >= t.vbsp_io_next_ok)
+			{
+				t.vbsp_io_gate_seen = bit;
 				t.vbsp_io_next_ok = time + w;
+			}
+			else
+				t.vbsp_io_gate_seen = t.vbsp_io_gate_seen | bit;
 		}
 	}
 };
