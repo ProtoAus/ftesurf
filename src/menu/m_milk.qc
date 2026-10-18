@@ -1403,6 +1403,9 @@ void(float x, float y, float pitch) MM_MainItems =
 	}
 	if (MM_Item(3, "mm_quit", [x, y + pitch * 3], "QUIT", 0, -4))
 		localcmd("quit\n");
+	// Secondary widget: do not add a fifth index to the four-item scene rig.
+	if (ui_button("mm_journal", [x, y + pitch * 4 + 8], [250, 28], "Input journal uploads"))
+		menu_screen = SCREEN_JOURNAL;
 };
 
 // The analyser strip, straight off the engine's image.
@@ -1434,7 +1437,8 @@ void(vector sz) MM_MainPanel =
 	         sprintf("^9world  ^7%s     ^9move off the panel to look around", MM_WorldName(mm_world)), COL_DIM, 1, 0);
 	if (mm_playing != "")
 		sui_text([x, fy - 48], SZ_LABEL, sprintf("^9playing  ^7%s", mm_playing), COL_DIM, 1, 0);
-	if (sz_y - (y + 150 + pitch * 4) > 170)
+	// Keep the secondary privacy button clear of the optional analyser strip.
+	if (sz_y - (y + 150 + pitch * 4 + 42) > 170)
 		MM_Spectrum([x, fy - 130], [sz_x - x * 2, 70]);
 	if (clientstate() == 2)
 		sui_text([x + 4, y + 150 + pitch * 4 + 52], SZ_LABEL,

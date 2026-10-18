@@ -1429,7 +1429,9 @@ void() Rec_HidEnd =
 		/*Rec_ServerIsRemote, like the sidecar's branch: on a LISTEN server the
 		  recording is on this disk already, so staging a journal for upload is
 		  megabytes of copying to hand the server a file it wrote itself.*/
-		if (cvar("rec_upload") && Rec_ServerIsRemote()
+		// P774: online terms alone never permit a raw journal to leave disk.
+		if (cvar("rec_upload") && cvar("rec_hid_upload") && Rec_ConsentOK()
+		    && checkextension("FTESURF_HID_HTTP") && Rec_ServerIsRemote()
 		    && stof(serverkey("fs_ul")) >= 2 && rec_rp_nonce != "")
 		{
 			local string dst;
@@ -2221,6 +2223,7 @@ void() Rec_ViewInit =
 	  the journal, and the receipt's `view` digest does it for this.
 	*/
 	registercvar("rec_upload", "1");
+	registercvar("rec_hid_upload", "0");
 
 	/*
 	  Patch 416: the server's run nonce arrives as a stuffcmd.  Registered so it

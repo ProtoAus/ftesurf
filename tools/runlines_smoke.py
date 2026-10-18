@@ -24,6 +24,8 @@ def main():
     ap.add_argument('cfg', type=pathlib.Path)
     ap.add_argument('--content', type=pathlib.Path, default=pathlib.Path('C:/FTESurf'))
     ap.add_argument('--client', type=pathlib.Path, help='Explicit installed client for compatibility controls')
+    ap.add_argument('--client-arg', action='append', default=[],
+                    help='extra native client arguments, e.g. "+set rec_upload 0" for early-cvar controls')
     ap.add_argument('--output-dir', type=pathlib.Path)
     ap.add_argument('--ssqc', type=pathlib.Path, help='Explicit test fixture qwprogs.dat (copied, never swapped)')
     ap.add_argument('--csqc', type=pathlib.Path, help='Explicit test fixture csprogs.dat (copied, never swapped)')
@@ -141,7 +143,8 @@ def main():
                                        'runlines_server', *extra, '+map', a.map], cwd=a.content,
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         executable = a.client or a.content / 'ftesurf64.exe'
-        client = subprocess.Popen([str(executable), *common, '-window',
+        client_extra = [word for arg in a.client_arg for word in shlex.split(arg)]
+        client = subprocess.Popen([str(executable), *common, *client_extra, '-window',
                                    '+exec', 'cfg/test/runlines_smoke.cfg'], cwd=a.content,
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         client.wait(timeout=a.timeout)

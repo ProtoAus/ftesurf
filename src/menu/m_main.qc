@@ -130,6 +130,7 @@
 // taken with public lobbies on.  It has a "not now": an offer, not a gate.
 #define SCREEN_STEAM    6
 #define SCREEN_UPDATE   7
+#define SCREEN_JOURNAL  8
 void() MU_Init;
 void() MU_Poll;
 void(vector screensize) MU_Screen;
@@ -5509,7 +5510,7 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_par(p, w, draw, "The people on the map see your position and view angle, and you see theirs. Voice and text chat reach everyone there.", COL_TEXT);
 		ui_tm_head(p, draw, "What is uploaded");
 		ui_tm_par(p, w, draw, "Your finish time goes to play.proto.bar and appears on a public leaderboard. That server also keeps its own recording of the run (positions, velocities and angles), which anyone can download from the board.", SUI_THEME_WARN);
-		ui_tm_par(p, w, draw, "Your raw mouse and keyboard journal is NOT uploaded. It, and a copy of your lobby times, stay in this game's data folder here.", COL_TEXT);
+		ui_tm_par(p, w, draw, "Raw mouse and keyboard journals stay here unless you separately enable Input journal uploads. That choice is off by default; playing online alone never enables it. Opted-in journals go to play.proto.bar for anti-cheat review, not as public replays.", COL_TEXT);
 		ui_tm_par(p, w, draw, "With online features enabled, play.proto.bar refreshes the map list at startup and serves zones, leaderboards and player pictures. Selecting a map can fetch its backdrop from dl.proto.bar. These services see your IP address, as does any lobby you join.", COL_TEXT);
 		ui_tm_par(p, w, draw, "A zone admin can explicitly upload saved zones to play.proto.bar. They are stored with the linked account as private drafts until an operator reviews and activates them; uploading alone does not change existing times.", COL_TEXT);
 		ui_tm_head(p, draw, "Steam");
@@ -5883,6 +5884,49 @@ void(vector screensize) screen_name =
 
 // Patch 467: PLAY / VISUALS / MUSIC / QUIT, drawn by m_milk.qc -- PLAY is the
 // old "create server".
+// P774: separate optional consent, never folded into online acceptance.
+void(vector screensize) screen_journal =
+{
+	local vector p;
+	local float w, h, nh, ph, by, have, enabled;
+	local string body, note, label;
+
+	ui_backdrop(screensize);
+	w = min(680, screensize_x - 32);
+	body = "Off by default. If you enable this, a public lobby may request your run's raw mouse and keyboard event journal, with timings. It is sent to play.proto.bar over HTTPS for anti-cheat review, not as a public replay. Console/menu text and activity outside the game window are not recorded.";
+	note = "This is separate from local recording and playing online. Turning it off stops new journal uploads and cancels an active one; it does not delete evidence already received. rec_hid 0 stops local journal recording too.";
+	h = ui_para('0 0 0', w - 48, SZ_LABEL, 22, body, COL_TEXT, FALSE);
+	nh = ui_para('0 0 0', w - 48, SZ_LABEL, 22, note, COL_DIM, FALSE);
+	ph = 162 + h + nh;
+	p = [floor((screensize_x - w) * 0.5), max(8, floor((screensize_y - ph) * 0.5))];
+	sui_style_box(p, [w, ph], 16, SUI_THEME_PANEL, SUI_THEME_EDGE, 0.97);
+	sui_text(p + '24 20 0', SZ_TITLE, "Optional input journal uploads", COL_TEXT, 1, 0);
+	ui_para(p + '24 68 0', w - 48, SZ_LABEL, 22, body, COL_TEXT, TRUE);
+	ui_para(p + [24, 82 + h], w - 48, SZ_LABEL, 22, note, COL_DIM, TRUE);
+	by = p_y + ph - 58;
+	have = checkextension("FTESURF_HID_HTTP");
+	if (have)
+		have = checkbuiltin(localcmd_local);
+	enabled = cvar("rec_hid_upload");
+	label = enabled ? "Stop journal uploads" : "Allow journal uploads";
+	if (have)
+	{
+		if (ui_button("journal_choice", [p_x + 24, by], [240, 34], label, TRUE))
+		{
+			if (enabled)
+				localcmd_local("rec_hid_upload 0\n");
+			else if (ui_synth())
+				print("menu: journal upload consent takes a real click or key, not ui_key/ui_click\n");
+			else
+				localcmd_local("rec_hid_upload 1\n");
+		}
+	}
+	else
+		sui_text([p_x + 24, by + 8], SZ_LABEL, "Update the native client to enable uploads", SUI_THEME_WARN, 1, 0);
+	if (ui_button("journal_back", [p_x + w - 114, by], [90, 34], "Back"))
+		menu_screen = SCREEN_MAIN;
+};
+
 void(vector screensize) screen_main =
 {
 	ui_backdrop(screensize);
@@ -7695,6 +7739,7 @@ void() m_init =
 	  repeat it.
 	*/
 	registercvar("rec_terms", "0", 0);
+	registercvar("rec_hid_upload", "0", 0);
 	ms_consent = ui_consent_read();
 	cvar_set("rec_terms", ftos(ms_consent));
 	MU_Init();
@@ -7924,6 +7969,8 @@ void(vector screensize) m_draw =
 		Lob_Poll();                 // Patch 647: the offer joins one (consent is online by now)
 		screen_steam(screensize);
 	}
+	else if (menu_screen == SCREEN_JOURNAL)
+		screen_journal(screensize);
 	else if (menu_screen == SCREEN_NAME)
 		screen_name(screensize);
 	else if (menu_screen == SCREEN_CREATE)

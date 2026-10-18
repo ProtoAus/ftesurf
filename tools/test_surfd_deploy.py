@@ -58,6 +58,8 @@ class Tests(unittest.TestCase):
             cls.ksf_set.update({'surfd/accounts.py', 'surfd/social.py'})
         if run(['git', '-C', str(REPO), 'cat-file', '-e', cls.ref+':surfd/mapmanifest.py'], check=False).returncode == 0:
             cls.ksf_set.update({'surfd/admin.py', 'surfd/mapmanifest.py', 'surfd/templates/admin_maps.html'})
+        if run(['git', '-C', str(REPO), 'cat-file', '-e', cls.ref+':surfd/hidupload.py'], check=False).returncode == 0:
+            cls.ksf_set.add('surfd/hidupload.py')
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix=self._testMethodName+'-', dir=args.out)

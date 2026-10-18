@@ -2294,25 +2294,27 @@ in `cmd timer`.  NOTHING WRITES THEM INTO THE RECORDING -- an earlier line here
 said the server did -- so no file binds them to the evidence they describe).  What is left
 below is the collection side and the rules that still only note.
 
-- **THE FLEET COLLECTS ZERO JOURNALS, so there is no `.hid` corpus to calibrate
-  against.** Measured on the live host 2026-10-05: `19 rcpt, 14 view, 4 rec, 0
-  hid`, both lobby cfgs at `run_evidence_ul 1`. Raising it to `2` does not work
-  either — at 110 KB/s the client's 4 MiB staging cap refuses any journal past
-  ~38 s of run, and the transport is one ≤768-byte chunk per round trip. Two
-  exits: a transport that is not the netchan (the plan's own open item), or
-  ship the VERDICT instead of the file, which is what 484's counters are for and
-  costs bytes proportional to nothing -- **486 shipped that exit, so this item is
-  now about the raw files only, not about having no fleet signal at all.**
-  Falsifier:
-  `find <basedir>/data/evidence -name '*.hid' | wc -l` on the Pi. Until this
-  moves, every `.hid` rule below is calibrated on local journals only.
+- **COLLECT A REAL FLEET JOURNAL CORPUS before claiming fleet calibration.**
+  The historical 2026-10-05 observation was `19 rcpt, 14 view, 4 rec, 0 hid`,
+  with lobby collection at `run_evidence_ul 1`. **P774 implements the missing
+  off-netchan transport**: a signed, receipt-bound binary HTTPS request, native
+  consent enforcement and atomic digest-checked publication, tested beyond the
+  old 4 MiB limit. See `tools/p774hidupload.md` for the 64 MiB bound and actual
+  native old/new/consent controls. Deployment, collection policy, accepted player
+  consent and actual arrivals remain separate evidence; a synthetic transport
+  fixture does not calibrate an input rule. P486's compact counters already
+  provide a fleet signal independently of these raw files.
+  Falsifier: inspect the deployed generation/policy, count real complete `.hid`
+  siblings on the Pi, verify their signed receipt joins and record a new dated
+  cohort census. Until that corpus exists, the `.hid` rules below have only their
+  explicitly recorded local calibration.
 
   **AND NOTE WHICH CORPORA ARE FLEET-SIZED ALREADY, because it is not this one.**
   The `.rec` half IS available: the Pi's `data/runs/` holds the runs real players
   posted, and `tools/census/README.md` now records how to fetch it read-only and
   what it moved for `recsim.py` and `assist.py` (both of which had filed
   themselves as blocked on exactly that corpus).  `.hid` files are the ones that
-  cannot be had remotely, because they are the artifact the netchan cannot carry.
+  still need a real fleet census; P774 removes their old netchan-only obstacle.
 
 - **THE GHOST RULE IS A NOTE, AND NOTHING PERFORMS THE CORROBORATION IT ASKS
   FOR.** `hidcheck.check_identity`: a frame whose angle moved with zero device

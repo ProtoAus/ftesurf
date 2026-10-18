@@ -20,6 +20,7 @@
 #   GET/POST /api/momentum/N/SHA1 public, bounded demo queue, RATE LIMITED
 #   GET /api/social/menu/challenge and POST /api/social/menu: read-only Friends
 #                        proofs, NO capability mint/presence/graph mutations.
+#   POST /api/hid        signed journal, existing receipt only, bounded/rate limited
 #   POST /api/run        NOT proxied (write path; servers post to 127.0.0.1)
 #   POST /api/heartbeat  NOT proxied, and must never be -- see below
 #   everything else      404 from the vhost's own `location / { return 404; }`
@@ -59,6 +60,32 @@ location = /lobbies.json {
     # The menu polls this; let it be cached briefly to blunt a flood.
     proxy_cache_valid 200 2s;
     add_header X-Surfd-Proxied "1" always;
+}
+
+# P774: request buffering is deliberately ON. The network upload finishes at
+# nginx before the single gunicorn worker streams/hashes the buffered body.
+# Separate low-rate/connection budgets bound nginx's unauthenticated temp disk.
+location = /api/hid {
+    limit_req zone=surfdhid burst=2 nodelay;
+    limit_req_status 429;
+    limit_conn surfdhidip 1;
+    limit_conn surfdhidglobal 4;
+    limit_conn_status 429;
+    limit_except POST { deny all; }
+    client_max_body_size 67109888; # 64 MiB journal + 1024-byte signed header
+    client_body_timeout 15s;
+    proxy_request_buffering on;
+    proxy_pass http://127.0.0.1:8084/api/hid;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout 15s;
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
+    add_header Cache-Control "no-store" always;
 }
 
 location = /health {

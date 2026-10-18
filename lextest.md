@@ -1,5 +1,26 @@
 # lextest.md — things waiting on a human
 
+## P774 — optional input-journal uploads (PENDING)
+
+After the Patch 774 development build is installed, restart the game. Native
+transport/consent controls passed with synthetic fixture data; the following are
+**not yet human-confirmed**. This is not permission to upload anyone's data.
+
+- Main menu: **Input journal uploads** should open a readable separate page.
+  Check it at your normal window size and, if easy, 640x480. The small button
+  should not overlap the analyser or the four main menu entries.
+- It starts **off**. Accepting the online terms must not turn it on. If you agree
+  to share your run's raw mouse/keyboard journal with play.proto.bar for anti-cheat
+  review, click **Allow journal uploads**: the button should become **Stop journal
+  uploads**. Click Stop and it should return to Allow. A synthetic `ui_click`
+  cannot grant this permission. Leaving it off keeps journals local.
+- Only if you actually opt in: finish a lobby run longer than 40 seconds and tell
+  the operator the map/time. They can check the private receipt/digest/file join;
+  seeing the button change is not proof of receipt, physics or calibrated detection.
+
+Reply with "page readable / Allow and Stop work / left off" (or explicitly opted
+in and the run's map/time). No pass is recorded until you confirm what you observed.
+
 ## P773 — paint sprays while held, Rate and Random; body/belt colour presets
 
 In both Windows installs since 2026-10-18T03:48:50Z (csprogs `f6103f93`, `.prev` P772's

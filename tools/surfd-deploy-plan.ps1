@@ -53,8 +53,15 @@ function Get-SurfdDeployPlan {
     # are one generation; an app-only swap must not leave an older signature.
     $mapEntries = @('surfd/surfd.py', 'surfd/admin.py', 'surfd/mapmanifest.py',
                     'surfd/templates/admin_maps.html')
+    $hidEntries = @('surfd/surfd.py', 'surfd/hidupload.py')
     do {
         $before = $files.Count
+        if ($all -contains 'surfd/hidupload.py' -and
+            (@($files | Where-Object { $_ -in $hidEntries }).Count -gt 0)) {
+            foreach ($file in $hidEntries) {
+                if ($files -notcontains $file) { $added += $file; $files += $file }
+            }
+        }
         if ($all -contains 'surfd/mapmanifest.py' -and
             (@($files | Where-Object { $_ -in $mapEntries }).Count -gt 0)) {
             foreach ($file in $mapEntries) {
