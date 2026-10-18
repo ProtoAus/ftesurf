@@ -199,6 +199,9 @@ client/cl_spectate.qc
 client/cl_scores.qc
 client/cl_scores_native.qc
 client/cl_raceghost.qc
+// Patch 779: the Comparison window.  After cl_raceghost.qc (its line choice and
+// clock) and cl_timer.qc; cl_board.qc and cl_timer.qc prototype its two hooks.
+client/cl_compare.qc
 client/cl_portal.qc
 // AFTER cl_scores.qc, which owns Scores_LastOf -- the rank scan parses the same
 // <ticks>_<tag> filenames the leaderboard does and there is no second copy of

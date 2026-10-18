@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P779 — the Comparison window: you against the ghost's line
+
+hud_edit > Comparison (left side, under the Segments list; drag it anywhere). With your
+PB on the map (or a ticked board line) it compares while you run, ghost on or off:
+"now" is you against them where you are -- time to get here, speed, energy -- and the
+differences, green ahead, red behind. Splits (option): each checkpoint/stage/finish row,
+yours against their own crossing of it. Segments (option): your last Segments row's
+energy against theirs at that point ("you 300 / them 270 +30e"). Hidden in replays,
+rewind and spectate. Verdict PENDING ("comparison ok" or what to change: layout, which
+numbers, colours).
+
 ## P775 — a fail teleport back into your start resets the run
 
 On a staged map, `!s 3` (any stage), leave the box and fall into the map's fail

@@ -485,6 +485,9 @@ void(float s, float t) RG_At =
   A the slot's, so the ghost is at A + (rg_now - M) + hud_ghost_offset.
 */
 float rg_am;
+// Patch 779: the first slot anchored this frame, its anchor and rg_am, whether or not
+// its body is drawn (one past its end is dropped): the Comparison window's line.
+float rg_cmpslot, rg_cmpanc, rg_cmpam;
 float(float c) RG_Anchor =
 {
 	local float legc, leg;
@@ -521,6 +524,12 @@ float(float c, vector col) RG_Add =
 	a = RG_Anchor(c);
 	if (a < 0)
 		return FALSE;
+	if (rg_cmpslot < 0)
+	{
+		rg_cmpslot = c;
+		rg_cmpanc  = a;
+		rg_cmpam   = rg_am;
+	}
 	// A negative offset holds it where its clock starts until it is due.
 	t = max(a, a + (rg_now - rg_am) + cvar("hud_ghost_offset"));
 	RG_At(c, t);
@@ -550,6 +559,7 @@ void() RG_Frame =
 	local string pbr, mp;
 
 	rg_n = 0;
+	rg_cmpslot = -1;
 	rg_cv = cvar("hud_ghost");
 	st = getstatf(STAT_FS_TIMERSTATE);
 	if (st != rg_laststate)
@@ -558,7 +568,10 @@ void() RG_Frame =
 			rg_rescan = TRUE;       // a run ended: its PB may be new
 		rg_laststate = st;
 	}
+	// Patch 779: the Comparison window reads this frame's choice with the ghost off;
+	// with rg_cv 0 nothing below draws a body, a highlight or a tag.
 	if (!rg_cv)
+	if (!cvar("hud_compare"))
 		return;
 
 	rg_track  = getstatf(STAT_FS_TIMERTRACK);
@@ -709,7 +722,7 @@ void() RG_DrawBodies =
 // Before renderscene, as Trail_Pin: the 2D pass's projection (the lines' and the tags').
 void() RG_Pin =
 {
-	if (rg_n < 1)
+	if (rg_n < 1 || !rg_cv)
 		return;
 	if (!(rg_cv & 2) && !cvar("hud_ghost_names"))
 		return;
@@ -750,12 +763,11 @@ float rg_tagn;                  // drawn last frame (`raceghost`)
 float rg_tagd[RG_MAX];
 string rg_who;                  // RG_Name's picture mark, "" none
 
-string(float g) RG_Name =
+string(float s) RG_SlotName =
 {
-	local float s, i;
+	local float i;
 	local string nm;
 
-	s = rg_slot[g];
 	rg_who = "";
 	if (s >= LN_S_GHOST)
 	{
@@ -777,6 +789,8 @@ string(float g) RG_Name =
 	return nm;
 };
 
+string(float g) RG_Name = { return RG_SlotName(rg_slot[g]); };
+
 void(vector scr) RG_Tags =
 {
 	local float g, dist, far, a, tsz, icon, nw, x, near, k;
@@ -786,7 +800,7 @@ void(vector scr) RG_Tags =
 	rg_tagn = 0;
 	for (g = 0; g < RG_MAX; g = g + 1)
 		rg_tagd[g] = FALSE;
-	if (!cvar("hud_ghost_names") || rg_n < 1)
+	if (!cvar("hud_ghost_names") || rg_n < 1 || !rg_cv)
 		return;
 	if (rec_sb_open || av_open)
 		return;

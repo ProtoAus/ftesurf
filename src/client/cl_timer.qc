@@ -309,11 +309,14 @@ void(float kind, float seg, float ticks, float delta,
 	ui_sp_n = ui_sp_n + 1;
 };
 
+void(float row) Cmp_Split;            // Patch 779, cl_compare.qc
+
 void(float kind, float seg, float ticks, float delta) Timer_SplitsPush =
 {
 	local vector s;
 	s = HUD_SplitSample();
 	Timer_SplitsPushAt(kind, seg, ticks, delta, s_x, s_y);
+	Cmp_Split(ui_sp_n - 1);         // the live push only; a replay's rows are PushAt's
 };
 
 void() Timer_RegisterCvars =

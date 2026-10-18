@@ -338,6 +338,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Snds_RegisterCvars();           // build 66, env_soundscape
 	Trig_RegisterCvars();           // Patch 335, predicted triggers
 	Boarding_RegisterCvars();       // build 65, the Boarding window
+	Cmp_RegisterCvars();            // Patch 779, the Comparison window
 	HUD_EditRegisterCvars();
 	NM_RegisterCvars();             // Patch 270, the lobby network monitor
 	Body_RegisterCvars();           // Patch 383, the pose stream's bodies
@@ -1858,6 +1859,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Results_BoardWatch();         // Patch 357: after LT_Frame (see it)
 
 		Timer_Draw(scr);
+		Cmp_Draw(scr);                // Patch 779: after Timer_Draw, whose split it reads
 		Timer_DrawResumeOffer(scr);   // Multi-Session; draws whatever hud_timer says
 		Spec_Draw(scr);               // Patch 385: the banner and the countdown
 		Rewind_Draw(scr);             // Patch 477
@@ -2302,6 +2304,8 @@ float(string cmd) CSQC_ConsoleCommand =
 	if (MPad_ConsoleCommand(cmd))
 		return TRUE;
 	if (Boarding_ConsoleCommand(cmd))   // Patch 631: `boarding`, the window as text
+		return TRUE;
+	if (Cmp_ConsoleCommand(cmd))        // Patch 779: `compare`
 		return TRUE;
 	// Patch 393: the strafe bar's last drawn error and fill.
 	if (argv(0) == "hud_strafe_probe")

@@ -116,7 +116,7 @@ void() HE_ResetAll;             // build 66, and the same story
   both constants go to 16 rather than to exactly 15.  One spare row is the cheap
   way to not find this out the same way twice.
 */
-#define HE_MAX 28                // 26 rows since Patch 762's "Key hints"; two spare (HUDE_MAX moves with it)
+#define HE_MAX 28                // 27 rows since Patch 779's "Comparison"; one spare (HUDE_MAX moves with it)
 
 /*
   The chip rows below the element list that are always there.  Named because the
@@ -310,6 +310,9 @@ void() HE_BuildTable =
 	// outline here is usually the nominal one.
 	HE_Add("graph",   "Run graph",  "hud_linegraph_x", "hud_linegraph_y", "hud_linegraph", 0, HEA_RT, 150, 80);
 	HE_Text("hud_linegraph_size", "16 20 24 28", 8);     // UI; 16 at hud_scale 2
+	// Patch 779: you against the ghost's line (cl_compare.qc).
+	HE_Add("compare", "Comparison", "hud_compare_x", "hud_compare_y", "hud_compare", 0, HEA_LT, 240, 120);
+	HE_Text("hud_compare_size",  "12 14 16 20",  8);     // mono; 16 at hud_scale 2
 	// Patch 390: -1/-1 = attached left of the key block; a drag detaches it.
 	HE_Add("mouse",   "Mouse",      "hud_mouse_x",   "hud_mouse_y",   "hud_mouse",    0, HEA_LT,   83,  52);
 	// Patch 762: the bottom-left strip of menu keys (cl_keycfg.qc).
@@ -528,6 +531,15 @@ string(string id, float row) HE_OptDef =
 		return "";
 	}
 
+	if (id == "compare")
+	{
+		if (row == 0) return "hud_compare_splits|Splits|t||"
+		                     "|At each checkpoint and stage: your time, speed and energy over theirs, and the difference.";
+		if (row == 1) return "hud_compare_segs|Segments|t||"
+		                     "|At the end of each Segments row: your energy over theirs at that point, and the difference.";
+		return "";
+	}
+
 	if (id == "splits")
 	{
 		if (row == 0) return "hud_splits_speed|Speed column|t||"
@@ -737,6 +749,7 @@ string(string id) HE_Tip =
 	if (id == "lines")    return "The path a recording took, drawn through walls, with what happened along it.";
 	if (id == "labels")   return "What is written on the run lines: each run's name, and the numbers at its marks.";
 	if (id == "ghost")    return "A ghost of your PB, or of a ticked run, racing you from the moment you leave the start.";
+	if (id == "compare")  return "You against the ghost's line where you are: time to get here, speed and energy. Green is ahead.";
 	if (id == "graph")    return "Speed over time for the runs whose LINE box is ticked on the leaderboard. On screen only while one is.";
 	if (id == "mouse")    return "Your mouse as turn; the dot wraps at the edges. Replays and spectate show their view.";
 	return "";
@@ -1926,6 +1939,7 @@ void(float r) HE_Default =
 	if (id == "strafe")  localcmd("seta hud_strafe_x 0.5\nseta hud_strafe_y 0.42\n");
 	if (id == "trainer") localcmd("seta hud_trainer_x 0.2833\nseta hud_trainer_y 0.5963\n");
 	if (id == "graph")   localcmd("seta hud_linegraph_x 0.9667\nseta hud_linegraph_y 0.3435\n");
+	if (id == "compare") localcmd("seta hud_compare_x 0.0333\nseta hud_compare_y 0.66\n");   // Patch 779
 	if (id == "board")   localcmd("seta hud_board_x 0.5\nseta hud_board_y 0.5\n");
 	if (id == "speed")   localcmd("seta hud_speed_x 0.5\nseta hud_speed_y 0.6269\n");
 	if (id == "banner")  localcmd("seta hud_banner_x 0.5\nseta hud_banner_y 0.25\n");
@@ -2036,6 +2050,7 @@ void() HE_ResetAll =
 	localcmd("seta hud_lines_order 4\nseta hud_linegraph_plots 3\n");
 	localcmd("seta hud_lines_demo -1\nseta hud_lines_demo_far -1\n");      // Patch 745
 	localcmd("seta hud_watch_path_fails 1\n");                              // Patch 778
+	localcmd("seta hud_compare_splits 1\nseta hud_compare_segs 1\n");       // Patch 779
 	localcmd("seta hud_ghost 1\nseta hud_ghost_sync 0\nseta hud_ghost_pb 1\nseta hud_ghost_lines 4\n"
 	         "seta hud_ghost_offset 0\nseta hud_ghost_alpha 0.55\nseta hud_ghost_dither 1\nseta hud_ghost_near 96\n"
 	         "seta hud_ghost_names 1\n");
