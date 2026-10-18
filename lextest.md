@@ -1,5 +1,33 @@
 # lextest.md — things waiting on a human
 
+## P799 — glows behind ramps and panes; surf_dragon's window
+
+Both installs 2026-10-18T18:34Z: exe 4b4c91f8 (git-7477-patch-802-0-g1866f1052), hl2 plugin
+6a235275, csprogs 9bfeeb26, qwprogs 9ebfc493 (.prev 8abba595 / de079afd / d064f238 / 6b8707e2).
+All 12 lobbies 18:38Z on the same progs; lobby smoke passed. The glows need the new plugin, so
+restart the game.
+
+- surf_jumble stage 1: the wall-light glows no longer shine through the concrete ramps.
+- surf_dragon bonus 1 (your save 1): the black disc in the pit is gone when you stand near it; from
+  far away (past 600 units) it is drawn black, as Momentum's areaportal window does.
+- surf_dragon (your save 2): the glow behind the dragon picture on the wall shows through it.
+- Glass no longer hides a glow behind it, which is Source's rule.
+
+"Looks like Momentum / <what differs>". Verdict PENDING.
+
+## P802 — portals: noclip, and what you see through a door
+
+The noclip half is in the csprogs above (installs and lobbies). The tripportals half is the
+server: live in both installs (a local or listen game) since 18:34Z; the lobbies swap to the
+gated native (pm_dettest = Windows on five maps, p492voy PASS) automatically once all 12 are empty
+for 5 minutes. Until then a lobby still drops the hub art.
+
+- Noclip and spectating no longer hide the portal doors (only being outside the map does).
+- surf_tripportals: from the stage-1 start zone, looking back through the start door, the hub's
+  signs and neon are there, and they stay there walking back and forth.
+
+"Ok / <what differs>". Verdict PENDING.
+
 ## P801 — `r_frametime`: frame-time graph, 1% and 0.1% lows, stutters
 
 Engine patch-801 (exe 8abba595, `git-7472-patch-801-0-g5a5b1bfa6`) in both installs since 18:15Z
