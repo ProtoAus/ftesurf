@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   02305333d3809b4c5a8d7d384efc60b0ccc2a526
+commit   c21666d73cffdc48e9d2a9e549a3d6747a5b0dad
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,11 @@ commit   02305333d3809b4c5a8d7d384efc60b0ccc2a526
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-800
+tag      patch-801
 patch    803
+# Patch 801 (engine): `r_frametime 1` draws a frame-time graph (each column the slowest frame of its
+# slice) with average fps, 1% and 0.1% lows and a stutter count; r_frametime_dump lists the slowest
+# frames with a setpos each. Client exe only; no QC change.
 # Patch 803 (qwprogs): ClientDisconnect makes the departed body SOLID_NOT -- the engine clears
 # only NQ progs' edicts, so a reconnect spawned inside its own old body and stuck. No native change.
 # Patch 800 (engine + qclib): `r_budget_csqc 1` breaks CSQC down by QC source file and, at

@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P801 — `r_frametime`: frame-time graph, 1% and 0.1% lows, stutters
+
+Engine patch-801 (exe 8abba595, `git-7472-patch-801-0-g5a5b1bfa6`) in both installs since 18:15Z
+19 Oct; `.prev` is P800's 33466461. Client only.
+
+- `r_frametime 1` on a map you suspect: red spikes are stutters (over 2.5x the median frame).
+  The line above gives the average fps and the 1% / 0.1% lows over the last 30 s.
+- `r_frametime_dump` after a stutter: the slowest frames, each with a `setpos` to paste and go
+  back to the spot (needs cheats on a server that allows them). Paste the dump here.
+- `r_frametime_reset` at a run's start measures just that run.
+
+"Readable / caught the stutter / want <x>". Verdict PENDING.
+
 ## P803 — a reconnect no longer spawns you inside your own old body
 
 `reconnect` on surf_null (or any map, on a server where players collide): you stand on

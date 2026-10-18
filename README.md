@@ -151,6 +151,18 @@ the clipboard. `r_budget_window` (0.5 s) is the averaging window.
   0.27 at 3 (0.4 with the CSQC breakdown at 3). Off (`r_budget 0`), each timer is one
   check of a flag and nothing is drawn or queried.
 
+## Frame times and stutters
+
+`r_frametime 1` (Patch 801) draws a frame-time graph at the top right: the last 10 seconds
+(`r_frametime_seconds`), each column the slowest frame of its slice, so one spike is never
+averaged away. Green is normal, yellow over 1.5x the median frame, red over 2.5x (a stutter).
+Above it: average fps, the 1% and 0.1% lows (the average fps of the slowest 1% and 0.1% of
+frames), the median and worst frame, and the stutter count, over the last 30 seconds
+(`r_frametime_window`). `r_frametime_dump` prints the lows, the 50/90/99/99.9th percentile
+frames and the eight slowest frames, each with a `setpos` (where you stood and looked) to paste
+and go to the spot, and copies it all to the clipboard. `r_frametime_reset` starts the window
+again, for example at a run's start. It costs about 0.03 ms a frame on, nothing off.
+
 ## What you need
 
 **Windows x64, and Linux x86_64 as a beta** (`ftesurf.sh`). The build script is
