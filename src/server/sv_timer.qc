@@ -376,6 +376,11 @@ float  run_t_startstrict;
 */
 float  run_t_rearmstops;
 
+// Patch 775: run_tpreset, cached per map.  1: a map teleport into the box the run
+// armed in, or a stage run walking back into its own, resets it as `!r` does, from
+// rest (SV_TimerTryArm, SV_TimerBackInBox); 0 is the behaviour before it.
+float  run_t_tpreset;
+
 /*
   BUILD 83: run_startjitter, cached per map.  THE RANDOMIZED START, IN UNITS.
 
@@ -1639,6 +1644,12 @@ float() SV_RecEnabled =
   FOUR CLEARS, THEN: three that zero the velocity, and one that finishes a run first.
   [Patch 477: five -- a load at rest (SV_SaveLoadTag) -- and a tag a LOAD raised is
   also taken by this file's rest test after the arm, as a finish's is.]
+  [Patch 775: no new clear.  A map teleport into the box the run arms in arms that
+  same rest test (run_t_finfgv 2), and RAISES the tag when it arrives faster than a
+  walk across the ground, so the speed it keeps cannot carry past the clear, by the
+  finish's argument.  A stage run's walk back re-arms only at a walk's or a jump's
+  speed (SV_TimerBackInBox).  A START that is also the END is not finished by a
+  teleport into it on a surf map: three tracks' fall-offs land in both (round 3).]
 
   AND ON A DEDICATED SERVER THE GESTURE IS UNFORGEABLE BY MAP DATA, which is the
   second half of why this shape works where the count did not.  SV_ZoneChatCommand is
@@ -1877,8 +1888,25 @@ float() SV_RecEnabled =
   fresh hopped start before coming to rest and the pending forgiveness is dropped, or it
   would forgive the new one.  Also dropped at SV_TimerStart -- a forgiveness not taken
   before the next run began has expired.
+
+  [Patch 775: 2 = armed by a reset into the box the run arms in (a map teleport, or
+  a stage run's walk back: SV_TimerTryArm), which keeps the speed it arrived with
+  exactly as a finish does; 1 = a finish or a load.]
 */
 .float  run_t_finfgv;
+
+// Patch 775: a map teleport placed this player since the last SV_TimerFrame
+// (SV_TimerMapTeleport), and that frame's copy, which SV_TimerTryArm reads; per
+// packet, not per arrival.  run_t_tpfin: this packet also crosses the run's finish.
+.float  run_t_tpin;
+.float  run_t_tpnow;
+.float  run_t_tpfin;
+
+// Patch 775: called by every map teleport after its placement (sv_entities.qc).
+void(entity e) SV_TimerMapTeleport =
+{
+	e.run_t_tpin = TRUE;
+};
 
 /*
   The run clock is stopped.  Build 18.
@@ -10893,10 +10921,11 @@ float(entity e) SV_TimerJumpWatch =
 				cap = PM_RUN_SPEED;     // the mover's own fallback, sh_defs.qc
 			if (vlen(hv) <= cap)
 			{
-				dprint(sprintf("hop: %s's hopped-start taint cleared -- the finish "
+				dprint(sprintf("hop: %s's hopped-start taint cleared -- %s "
 				               "armed it and %.0f u/s is at or below sv_maxspeed "
 				               "%.0f, so there is no prespeed to launder\n",
-				               e.netname, vlen(hv), cap));
+				               e.netname, (e.run_t_finfgv == 2) ? "a reset into the box" : "the finish",
+				               vlen(hv), cap));
 				sprint(e, PRINT_HIGH,
 				       "^2start re-armed^7 -- the hopped start died with that run\n");
 				e.run_t_hopped  = FALSE;
@@ -12612,9 +12641,55 @@ void(entity e, float z) SV_TimerHandArm =
 		SV_TimerStitched(e);
 };
 
+/*
+  Patch 775: faster than a walk across the ground (the velocity and the latched
+  carrier, which becomes velocity within a command).  Not the vertical: a fail
+  teleport keeps its fall (VelocityMode 2) and lands on the box's floor, and
+  surf_polygon b4's START sits in an upward push that never lets a falling arrival
+  stand to be forgiven (review round 3).
+*/
+float(entity e) SV_TimerFast =
+{
+	local vector hv;
+	local float cap;
+
+	hv = e.velocity + e.run_basevel;
+	hv_z = 0;
+	cap = cvar("sv_maxspeed");
+	if (cap <= 0)
+		cap = PM_RUN_SPEED;
+	return vlen(hv) > cap + 1;
+};
+
+/*
+  Patch 775: a STAGE run back in its own box is over, as a run back in its START is
+  (a full run's stage box is the stage machine's, SV_StageFail, which keeps the run).
+  A teleport there counts; walking back counts only off bhop maps (walking through a
+  box changes nothing there, as for START), only from outside the whole box, not
+  across one of its seams (step 1 starts a run on leaving one region), and only at a
+  walk's or a jump's speed: a fall or a surf back in kept its speed, and a slope in
+  the box would start the next attempt with it (review round 2), so the run goes on
+  as before Patch 775.  Not when the same packet also finishes the run (step 3).
+*/
+float(entity e, float z) SV_TimerBackInBox =
+{
+	if (!run_t_tpreset || !e.run_t_stagerun || e.run_t_tpfin)
+		return FALSE;
+	if (!SV_ZoneSameBox(z, e.run_t_armzone))
+		return FALSE;
+	if (e.run_t_tpnow)
+		return TRUE;
+	if (run_t_bhopjump)
+		return FALSE;
+	if (!SV_TimerNotFast(e) || SV_TimerFast(e))
+		return FALSE;
+	return !SV_ZoneOccBox(e.run_t_armzone, e.run_t_lastorg, SV_RunHullMins(e), SV_RunHullMaxs(e));
+};
+
+
 void(entity e, float z) SV_TimerTryArm =
 {
-	local float stop, stops;
+	local float stop, stops, was, back, wasstage, fast;
 
 	/*
 	  On bhop, merely entering a START is not a new attempt while a clock is live
@@ -12630,9 +12705,13 @@ void(entity e, float z) SV_TimerTryArm =
 	  can switch to another start normally.  Stage zones are unchanged: this is a
 	  rule about the map/bonus START, not the independent stage-run handover.
 	*/
+	// Patch 775: except a map teleport back into this run's own START mid-run, which
+	// is a fail and resets it like `!r` (the arm below), unless it also finishes it.
 	if (run_t_bhopjump)
 	if (zone_type[z] == ZONE_START)
 	if (e.run_t_state == TS_RUNNING || e.run_t_state == TS_FINISHED)
+	if (!e.run_t_tpnow || e.run_t_state != TS_RUNNING || e.run_t_tpfin
+	    || !SV_ZoneSameBox(z, e.run_t_armzone))
 	{
 		e.run_t_dirty = (e.movetype == MOVETYPE_NOCLIP);
 		// Build 44: and the class latch on the same boundary, from the same kind
@@ -12648,11 +12727,15 @@ void(entity e, float z) SV_TimerTryArm =
 		return;
 	}
 
-	stops = FALSE;
+	stops = back = FALSE;
 	if (e.run_t_state == TS_RUNNING)
 	{
 		if (zone_type[z] != ZONE_START)
-			return;
+		{
+			if (!SV_TimerBackInBox(e, z))
+				return;
+			back = TRUE;
+		}
 		if (run_t_rearmstops)
 			stops = TRUE;
 	}
@@ -12696,6 +12779,15 @@ void(entity e, float z) SV_TimerTryArm =
 	if (zone_type[z] == ZONE_START)
 	if (!(e.run_t_state == TS_ARMED && e.run_t_armzone == z))
 		e.run_t_wantstage1 = FALSE;
+	// Patch 775: a stage-1 run a map teleport put back in its box stays stage 1, as
+	// `!r` keeps it (SV_TimerChatLeg).
+	if (e.run_t_tpnow)
+	if (e.run_t_state == TS_RUNNING)
+	if (e.run_t_stagerun)
+	if (e.run_t_startseg == 0)
+	if (e.run_t_track == 0)
+	if (SV_ZoneSameBox(z, e.run_t_armzone))
+		e.run_t_wantstage1 = TRUE;
 
 	/*
 	  BUILD 20: THE STOPPED CLOCK, AND WHY IT IS LATCHED HERE.
@@ -12716,11 +12808,44 @@ void(entity e, float z) SV_TimerTryArm =
 	  set the flag AFTER the arm, which zeroes run_t_flags.
 	*/
 	stop = e.run_t_ticks;
+	was = e.run_t_state;
+	wasstage = e.run_t_stagerun;
 	SV_TimerArm(e, z);
 	if (stops)
 	{
 		SV_TimerStopAt(e, stop);
 		sprint(e, PRINT_HIGH, "^3run cancelled^7 (back in the start)\n");
+	}
+	if (was == TS_RUNNING)          // Patch 775: the re-arm's own line
+		dprint(sprintf("timer: %s's %s re-armed in %s zone %g%s at %.0f u/s\n", e.netname,
+		               wasstage ? "stage run" : "run",
+		               (zone_type[z] == ZONE_START) ? "START" : "STAGE", z,
+		               e.run_t_tpnow ? " by a map teleport" : "",
+		               vlen([e.velocity_x + e.run_basevel_x, e.velocity_y + e.run_basevel_y, 0])));
+
+	/*
+	  Patch 775: `!r` is safe because it zeroes the velocity; this reset keeps it, so
+	  it starts from rest another way.  Arriving faster than a walk is a hopped start
+	  the rest test forgives (run_t_finfgv, SV_TimerJumpWatch): stop moving and the
+	  next start is clean, leave at that speed and it is practice.  Without this a
+	  speed-keeping teleport into the box (or a surf back into a stage run's own box)
+	  was a clean flying start -- on bhop maps, whose hop rule is off, a free one.
+	*/
+	// A walk back is never fast (SV_TimerBackInBox); a teleport may be.
+	fast = 0;
+	if (was == TS_RUNNING)
+	if (e.run_t_tpnow)
+		fast = SV_TimerFast(e);
+	if (fast)
+	{
+		if (!e.run_t_hopped)
+			sprint(e, PRINT_HIGH, "^3back in the box at speed^7 -- stop moving, "
+			       "or ^2!r^7, for a clean start\n");
+		dprint(sprintf("hop: %s re-armed at %.0f u/s, %.0f vertical -- tagged, forgiven at rest\n",
+		               e.netname, vlen([e.velocity_x + e.run_basevel_x,
+		                                e.velocity_y + e.run_basevel_y, 0]), e.velocity_z));
+		e.run_t_hopped = TRUE;
+		e.run_t_finfgv = 2;
 	}
 };
 
@@ -13350,6 +13475,7 @@ void(entity e) SV_TimerFrame =
 	local float az, ez, cp, cancel;
 	local float bhopz, bhopstate, bhopdirty, bhopcheat;
 	local float sz, sin, shit;      // build 43: OUR stage's own boundary box
+	local float tp;
 	local vector p, lastp;
 	local vector mn, mx;            // build 47: the hull the ruleset tests with
 
@@ -13408,6 +13534,11 @@ void(entity e) SV_TimerFrame =
 	// between recomputes from the movetype and would drop a taint that was
 	// earned before it.
 	bhopcheat = e.run_t_cheat;
+
+	// Patch 775: taken above every early return, so a teleport under a hold or a
+	// ghost is not read as an arrival by a later frame.
+	tp = e.run_t_tpin;
+	e.run_t_tpin = FALSE;
 
 	if (zone_count <= 0)
 		return;
@@ -13670,12 +13801,46 @@ void(entity e) SV_TimerFrame =
 	  stage 1.  Arming first would re-arm you as a STAGE run and throw away
 	  the track run you had just begun.
 	*/
+	e.run_t_tpnow = (tp && run_t_tpreset);
+	// Patch 775: step 3 below finishes the run on this packet's event: the re-arm must
+	// not cancel it first (agtricks' finish teleport lands inside its START and END).
+	e.run_t_tpfin = FALSE;
+	if (ez >= 0)
+	if (ez != e.run_t_evzone)
+	if (zone_track[ez] == e.run_t_track)
+	{
+		if (zone_type[ez] == ZONE_END)
+			e.run_t_tpfin = TRUE;
+		else if (e.run_t_stagerun)
+		if (zone_type[ez] == ZONE_STAGE)
+		if (zone_seg[ez] == e.run_t_startseg + 1)
+			e.run_t_tpfin = TRUE;
+	}
 	if (az != e.run_t_azone)
 	{
 		if (az >= 0)
 			SV_TimerTryArm(e, az);
 		e.run_t_azone = az;
 	}
+
+	/*
+	  Patch 775: a map teleport that leaves you armed in that box forgives a hopped
+	  start the way a finish does -- once grounded at or below sv_maxspeed, so the
+	  speed the teleport kept cannot carry the forgiveness (run_t_finfgv,
+	  SV_TimerJumpWatch).  Clearing it here outright would be Patch 445's
+	  map-handed forgiveness.
+	*/
+	if (e.run_t_tpnow)
+	if (e.run_t_hopped)
+	if (!e.run_t_finfgv)
+	if (e.run_t_state == TS_ARMED)
+	if (SV_ZoneSameBox(az, e.run_t_armzone))
+	{
+		dprint(sprintf("hop: %s teleported into the box with the tag up -- forgiveness "
+		               "armed, taken when grounded at or below sv_maxspeed\n", e.netname));
+		e.run_t_finfgv = 2;
+	}
+	e.run_t_tpnow = e.run_t_tpfin = FALSE;
 
 	// 3. Crossing a stage or end zone while the clock is running.
 	if (ez != e.run_t_evzone)
@@ -14222,6 +14387,7 @@ void() SV_TimerMapInit =
 
 	registercvar("run_starthop_strict", "1");
 	registercvar("run_rearmstops", "1");
+	registercvar("run_tpreset", "1");            // Patch 775
 	// Patch 445: 0, and the default moved in default.cfg/defaultuser.cfg with it.
 	// `!r` is the shipped clear now; this is the build-21 dwell forgiveness kept as
 	// an operator knob and as cfg/test/b21a.cfg's control arm.
@@ -14293,6 +14459,7 @@ void() SV_TimerMapInit =
 	registercvar("rec_stream", "0");          // build 66
 	run_t_startstrict = cvar("run_starthop_strict");
 	run_t_rearmstops  = cvar("run_rearmstops");
+	run_t_tpreset     = cvar("run_tpreset");
 	run_t_rearmhop    = cvar("run_rearmhop");
 	run_t_stagefail   = cvar("run_stagefail");
 	run_t_stagearm    = cvar("run_stagearm");

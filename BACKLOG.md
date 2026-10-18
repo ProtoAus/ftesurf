@@ -299,6 +299,28 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - Falsifier: the fixture (`onlinecache.py fixture` from r42), `hud_watch_path_fails 0`,
   `replay window 5`: `replay status` should show the stage's samples, not 1.
 
+## Fail-teleport reset (P775): what the four review rounds left open
+
+- **STARTâˆ©END tracks: a fall-off teleport must not finish the run.** P775 round 2 let a
+  teleport into a surf START that is also the END finish first; round 3 found 19
+  fall-off slabs on `surf_flyin_fortress` main, 54 on `surf_quirky` b9 and 20 on
+  `surf_ethereal` b1 land in both (VelocityMode 1/2), so any fall posted a clean
+  few-second time. Removed; those tracks keep the pre-P775 cancel (the denial entry
+  above). The real fix is local zone overrides moving each END to its finish teleport
+  (`tp_end`, `b1_end_tp`). Falsifier: on each track, a fall-off teleport cancels, the
+  finish teleport finishes. Census: the round-3 reviewer's `census.py` (STARTâˆ©END
+  destinations; landmark, relative and func_bhop teleports not covered).
+- **Honest routes that re-enter their own box are unmeasured.** A bhop-mode map whose
+  progress (not fail) teleport lands a running player in their own START, or a stage
+  route that passes back through its own box by teleport, now cancels. Full runs
+  already take `SV_StageFail` on the same geometry. Falsifier: the fleet's `restart`
+  records and pm_verify's r=3 START notes on bhop runs bound both cases.
+- **A teleport that keeps a fall into its own box is not tagged.** The arrival test is
+  horizontal (round 3: a vertical one left `surf_polygon` b4's START, inside an upward
+  push, practice for good). A slope inside the box under such a destination could turn
+  the fall into a flying start; the walk-in START re-arm ("cheapest prespeed route")
+  has the same shape and predates P775. Not censused.
+
 ## Disconnected Friends: live (P770); the owner's in-game check is open (P741)
 
 - Since 2026-10-17T22:58:21Z surfd generation 8182c6f (P770) serves P741's

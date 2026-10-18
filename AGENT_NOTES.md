@@ -1495,7 +1495,9 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
   rest-test forgiveness (`run_t_finfgv`) belongs only to a tag the load itself
   raised: a hop chain's stays `!r`'s, and `!r` or a raise-only restore drops a
   pending one. **The tag still survives a cancel zone, a map
-  teleport and a stage-boundary finish**, so an arm can read `hopped 1` many sections
+  teleport elsewhere and a stage-boundary finish** (Patch 775: a map teleport into the
+  box the run armed in re-arms it and arms the same rest forgiveness, and raises the
+  tag when it arrives faster than a walk; `run_tpreset 0` disables), so an arm can read `hopped 1` many sections
   after the jump that earned it; there is a chat reminder on each later fluffed start
   but nothing on the HUD. Walk out, then
   prove the run with `cmd timer` reading

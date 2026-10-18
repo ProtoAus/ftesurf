@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P775 — a fail teleport back into your start resets the run
+
+On a staged map, `!s 3` (any stage), leave the box and fall into the map's fail
+teleporter: you land back in the box with the clock reset ("run cancelled"), the practice
+tag gone, and leaving the box starts the stage -- and its ghost -- again. The same at the
+map's start, and on bhop maps. A run that was practice from a save-lock load or a hopped
+start is clean after the fail (a hopped start clears once you land and stand). If the
+teleporter keeps your speed and you leave at once, the start is practice ("back in the
+box at speed"): stop moving first, or `!r`. Not changed: a full run failing a later
+stage keeps the run's practice tag, as `!r` there does. Verdict PENDING ("teleport reset
+ok" or what looks wrong).
+
 ## P774 — optional input-journal uploads (PENDING)
 
 After the Patch 774 development build is installed, restart the game. Native

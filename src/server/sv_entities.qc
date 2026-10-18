@@ -18,6 +18,7 @@
   sv_zones.qc has the same block for the same reason.
 */
 void(entity e) SV_TimerWarped;
+void(entity e) SV_TimerMapTeleport;     // Patch 775
 
 /*
   BUILD 83.  The `warp` record -- state imposed on a player from outside the
@@ -5658,6 +5659,7 @@ void() trigger_teleport_touch =
 		  be rearranging working code to suit a log line.
 		*/
 		SV_RecWarp(other, "tele");
+		SV_TimerMapTeleport(other);
 		return;
 	}
 
@@ -5689,6 +5691,7 @@ void() trigger_teleport_touch =
 	// Deliberately NOT behind `run_teleport_warp` above -- that cvar decides a
 	// behaviour, and evidence may not share a gate with a behaviour flag.
 	SV_RecWarp(other, "tele");
+	SV_TimerMapTeleport(other);     // Patch 775: a reset if it lands you in your start
 };
 
 /*
@@ -5845,6 +5848,7 @@ void() trigger_teleport_relative_touch =
 	// vectors are centre+offset and '0 0 0'; earlier files carry origin+offset
 	// and the velocity through.  Readers use the vectors, never the kind.
 	SV_RecWarp(other, "telerel");
+	SV_TimerMapTeleport(other);     // Patch 775
 };
 
 void() trigger_teleport_relative =
@@ -8098,6 +8102,7 @@ void(entity b, entity pl) SV_BhopTeleport =
 	  in the grammar, and had better be told which it is holding.
 	*/
 	SV_RecWarp(pl, "bhop");
+	SV_TimerMapTeleport(pl);        // Patch 775
 
 	if (b.spawnflags & SF_BHOP_RESET_ON_FIRE)
 	{

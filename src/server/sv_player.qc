@@ -729,6 +729,7 @@ void() PlayerPostThink =
 	if (self.run_pmhold)
 	{
 		self.run_bhop_launch_zone = self.run_bhop_launch_denied = 0;
+		self.run_t_tpin = FALSE;         // Patch 775: no frame reads it
 		self.run_pushed = self.run_jumpcmd = FALSE;
 		SV_MonolithB4Reset(self);
 		if (self.run_t_state == TS_RUNNING)
