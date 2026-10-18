@@ -29,6 +29,42 @@ speed cap was right (9999 on joutsenlaulu); the game sent velocity in 16 bits, w
 
 "Smooth / <what you saw, map and speed>". Verdict PENDING.
 
+## P810 — surf_tripportals' neon fades with distance; 16 portals per view
+
+Both installs 2026-10-18T21:56Z: csprogs cafba01c, qwprogs bf5e014b (.prev bb4a94eb / 9ebfc493),
+FTESurf 2254d304; default.cfg in both. The lobbies wait for the check on the 0.1.27 exe (players
+there run this csprogs on it), which memory pressure stopped twice.
+
+- surf_tripportals: the neon frames on the floors, walls and doorways (plar/plars_hell_window*)
+  fade out as you walk away and back in as you come close, each piece as one, as in Momentum:
+  the cyan pieces are gone past 400 units, the gradient ones past about 667, the "far" ones past
+  1000, the credits text past 2000. From spawn, 24 of the 123 in view are drawn.
+- Through a portal that neon is measured from you, not from the portal, as Momentum does, so the
+  far side of a door shows little of it. Spectating or watching a replay measures from the player
+  you are watching; the ghost camera from itself.
+- Known difference: a piece part-way through its fade is dimmer than in your Momentum shots (0.72
+  against about 0.94 at the four floor frames around spawn). Ours follows the map's numbers; the
+  gap fits Momentum blending see-through surfaces in linear light, not proven.
+- `vbsp_proximity 0` turns the fade off (set before a map load it also stops the per-frame work;
+  the fade costs about 0.05 ms a frame).
+- r_portalmaxviews is 16 by default now. A config still on the old default (2) moves to 16 once; a
+  value you set yourself stays. Cost on this PC (`timerefresh`): the tripportals spawn room 5.6 ms a
+  frame at 2, 9.2 at 16, 2.6 at 16 with `r_portalrecursion 1`; kitsune's spawn 3.6 at 2, 3.2 at 16.
+
+"Looks like Momentum / <what differs>". Verdict PENDING.
+
+## P807 — volume brushes Source never draws (surf_voyager's FOG block)
+
+Same deploy as P810 (the qwprogs half).
+
+- surf_voyager (your local save 1): the block covered in FOG tiles is gone. Its smoke is still off
+  unless `vbsp_emit_smoke 1`, as before.
+- The same rule takes 112 brushes in 34 maps off screen: func_dustmotes, func_dustcloud,
+  func_smokevolume, func_precipitation and color_correction_volume, whose Source classes never draw
+  their brush. Only voyager was looked at; the other classes share the same one-line test.
+
+"Ok / <what differs>". Verdict PENDING.
+
 ## P806 — Player in the key strip and the key panel
 
 Both installs 2026-10-18T19:52Z: csprogs 03feab73 (.prev 9bfeeb26); qwprogs and menu unchanged.
@@ -57,9 +93,8 @@ restart the game.
 ## P802 — portals: noclip, and what you see through a door
 
 The noclip half is in the csprogs above (installs and lobbies). The tripportals half is the
-server: live in both installs (a local or listen game) since 18:34Z; the lobbies swap to the
-gated native (pm_dettest = Windows on five maps, p492voy PASS) automatically once all 12 are empty
-for 5 minutes. Until then a lobby still drops the hub art.
+server: live in both installs (a local or listen game) since 18:34Z and on all 12 lobbies since
+18:55Z (gated native, readback clean, lobby smoke 0 failures).
 
 - Noclip and spectating no longer hide the portal doors (only being outside the map does).
 - surf_tripportals: from the stage-1 start zone, looking back through the start door, the hub's
