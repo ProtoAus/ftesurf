@@ -22,6 +22,12 @@ bound-check failure kills the VM (P795 took the menu down this way).
 
 ## What the P796/P797 reviews found that predates them
 
+- Site: engine `client/cl_pred.c` CL_CalcCrouch's air branch. If the ground flag
+  flickers back on at an exactly unchanged height, `orgz - oldz` is 0, both ground branches
+  are skipped, and a NEGATIVE crouch (view up to ~20 u low) stays until the height next
+  changes (P805 review; not measured how often the flag flickers at constant height).
+  Check: cl_predtrace while standing after a step up, with onground logged.
+
 - Site: `src/client/cl_replay.qc:378-385` (gate), used at :980 (angle sidecar) and
   :1433 (journal). They require only the offline terms tier, so an offline-tier
   player who joins a lobby by console `connect` still uploads the sidecar, and the

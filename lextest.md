@@ -47,18 +47,12 @@ Engine patch-801 (exe 8abba595, `git-7472-patch-801-0-g5a5b1bfa6`) in both insta
 the floor and can move. Before, the old body stayed solid on the spawn spot and the new
 one hung 25 u up, stuck. Live: lobbies 2026-10-18T18:08Z (all 12, qwprogs 6b8707e2, csprogs d064f238; smoke on lobby 1 passed); installs 18:04Z.
 
-**Not fixed yet -- your surf_null report:** fresh in, the camera ~25 u too high until a
-jump, with the server's body on the floor. Seen once here, not again in three fresh
-connects. To capture it, type this once in the console (F8 is free in your config):
-`bind F8 "set cl_prederror 1; set hud_debug 1; set hud_eyetrace 3; cl_predtrace 8; cmd viewpos; waitms 1500; condump surfnull"`
-then, console CLOSED, press F8 while the camera is high (before jumping). Typed into the
-console it cannot work: the HUD, and with it the eye trace, draws only with the console
-shut (cl_main.qc `notmenu`) -- both 19 Oct dumps came back without eye lines. The F8 capture at 19:22Z showed it:
-`eye: cam 7299.722 org 7136.031 -> eye 163.691 | stat 64.000` -- the feet and the server
-agree, the camera is ~100 u high; cl_predtrace says whether the predicted viewheight
-or the step smoother's crouch carries it. Not
-reproduced here: four fresh connects, one reconnect, and local `map` then a lobby join
-all measured the eye at 64. Verdict PENDING.
+**P805 -- your surf_null report, fixed:** the camera ~100 u too high until a jump. Your
+F8 capture put it in the engine's step smoother (`crouch 103.208`, eye 64); one long
+frame over the spawn drop pinned it. Installs 2026-10-18T19:38:21Z: exe a77d4a3f
+(git-7479-patch-805), .prev 4b4c91f8. Spawn on surf_null a few times (and after a
+hitch): the view should sit at normal height at once. `unbind F8` when done.
+"Fixed / still high". Verdict PENDING.
 
 ## P797 — Teleport on the TAB player list
 
