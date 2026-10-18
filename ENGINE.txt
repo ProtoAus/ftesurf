@@ -25,7 +25,9 @@ commit   7d3db9ccd1b7cb5ee5d778e8305b456db554eb50
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-783
-patch    793
+patch    794
+# Patch 794 (consumer): independent view validation faults cannot become receipt OK
+# merely because an angle comparison is usable. No native or threshold change.
 # Patch 793 (reader): bind initial held clocks to their fresh timer origin; restored
 # initial origins abstain. Shared integer lexing is bounded ASCII. No native change.
 # Patch 792 (readers): bounded hold-counter parsing and safe projected timestamps;

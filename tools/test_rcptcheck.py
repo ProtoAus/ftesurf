@@ -392,6 +392,65 @@ def test_unavailable_angles_keep_view_faults():
             check("epoch valid: no unsupported angular-mismatch accusation", r.faults, [])
 
 
+def test_usable_angles_keep_view_faults():
+    import reccheck
+    import test_reccheck as vectors
+
+    for label, lines, view, reason in vectors.view_validation_cases():
+        raw = ("\n".join(lines) + "\n").encode("utf-8")
+        data = ("\n".join(view) + "\n").encode("utf-8")
+        rec = reccheck.check_rec("usable.rec", data=raw)
+        parsed = reccheck.check_view("usable.view", rec, data=data)
+        check("usable %s: trusted recording and tight comparison ACTED" % label,
+              (rec.faults, rec.angle_epoch, parsed.info.get("angle_rule")), ([], [], "tight"))
+        if reason not in ("", "angular"):
+            check("usable %s: intended independent parser fault ACTED" % label,
+                  any(reason in x for x in parsed.faults), True)
+        r = rcptcheck.Receipt("usable.rcpt")
+        r.recpath, r.recdata = "usable.rec", raw
+        r.file_bytes["usable.view"] = data
+        r.signed = [("view", hashlib.sha256(data).hexdigest())]
+        with mock.patch("builtins.open", side_effect=AssertionError("reopened captured evidence")):
+            rcptcheck.join_angles(r, {"view": "usable.view"})
+        check("usable %s: captured digest check ACTED" % label,
+              (("view", "usable.view") in r.digest_checked, r.digest_bad), (True, {}))
+        expected = "OK" if label == "valid" else "FAULT"
+        check("usable %s: parsed faults cannot become a receipt OK" % label,
+              (r.angles, bool(r.faults)), (expected, expected == "FAULT"))
+        if reason not in ("", "angular"):
+            check("usable %s: content fault is not an angular conviction" % label,
+                  (reason in r.angles_detail,
+                   any("not this recording's" in x or "does not describe this recording" in x
+                       for x in r.faults), r.rec_report.view_reset_budget), (True, False, 0))
+
+
+def test_signed_usable_view_faults():
+    surfd, sweep, _runs = fx.fresh()
+    sweep.TOOLS = fx.TOOLS
+    rid = "20261018-000794-0"
+    rec, good = fx.angle_pair(rid, still=False)
+    original_game = rcptcheck.GAME
+    rc = fx.with_rec(surfd, sweep, rid, rec)
+    bad = good.splitlines()
+    fields = bad[4].split()
+    fields[3] = "nan"
+    bad[4] = " ".join(fields)
+    try:
+        for label, view, expected in (("valid", good, "VALID"),
+                                      ("nonfinite", "\n".join(bad) + "\n", "FAULT")):
+            path, _pub = fx.make_receipt(surfd.EVIDENCE_DIR, rid, view=view.encode("utf-8"))
+            for mode in ({}, {"view_only": True}, {"rec_only": True}):
+                got = sweep.read_receipt(path, **mode)
+                check("signed usable %s %s: content grade and signature stay independent"
+                      % (label, mode), (got[0], got[3], got[5]),
+                      (expected, "OK" if label == "valid" else "FAULT", 1))
+                if label != "valid":
+                    check("signed usable %s: factual reason survives the sweep path" % mode,
+                          "finite number" in got[4] and "finite number" in got[13], True)
+    finally:
+        rc.GAME = original_game
+
+
 def test_initial_clock_origin():
     import test_reccheck as vectors
 
@@ -501,8 +560,8 @@ def main():
              test_absent_arrives_between_phases, test_explicit_view_and_bad_digest,
              test_missing_view_and_io, test_selected_rec_tail_io,
              test_unsigned_sibling_io, test_parser_bytes,
-             test_unavailable_angles_keep_view_faults, test_initial_clock_origin,
-             test_retry_clock_faults)
+             test_unavailable_angles_keep_view_faults, test_usable_angles_keep_view_faults,
+             test_signed_usable_view_faults, test_initial_clock_origin, test_retry_clock_faults)
     for test in tests:
         try:
             test()

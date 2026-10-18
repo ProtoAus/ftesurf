@@ -2159,6 +2159,44 @@ def held_clock_pair(holds=((150, 73), (350, 137)), sessions=()):
     return out, view
 
 
+def view_validation_cases():
+    """Independent sidecar faults while the unchanged angle join still ACTS."""
+    lines, good = held_clock_pair(holds=((0, 73),))
+    yield "valid", lines, good, ""
+    base = head(build(sweep=128, packets=600), "flags", 1)
+    yield "rotation", lines, view_for(base, rot=5), "angular"
+    end = int(next(line.split()[1] for line in lines if line.startswith("end ")))
+    for label, reason in (("nonfinite", "finite number"), ("width", "columns"),
+                          ("negative-tick", "never negative"), ("past-end", "recording ends"),
+                          ("run-clock", "run clock goes backwards"),
+                          ("local-resets", "cltime goes backwards"),
+                          ("ghost", "ghost' state")):
+        view = good[:]
+        if label == "ghost":
+            view.append("ghost 2 10 0")
+        elif label == "local-resets":
+            for i in range(4, len(view)):
+                fields = view[i].split()
+                fields[0] = "%.5f" % (float(fields[0]) - (100 if i >= 150 else 0)
+                                      - (100 if i >= 350 else 0))
+                view[i] = " ".join(fields)
+        else:
+            i = len(view) - 1 if label in ("past-end", "run-clock") else 4
+            fields = view[i].split()
+            if label == "nonfinite":
+                fields[3] = "nan"
+            elif label == "width":
+                fields = fields[:-1]
+            elif label == "negative-tick":
+                fields[2] = "-1"
+            elif label == "past-end":
+                fields[2] = str(end + 1)
+            elif label == "run-clock":
+                fields[2] = "0"
+            view[i] = " ".join(fields)
+        yield label, lines, view, reason
+
+
 def case_angle_hold_clock():
     L, view = held_clock_pair()
     f, n, report = run(L, view=view, report=True)

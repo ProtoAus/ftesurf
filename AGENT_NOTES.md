@@ -5008,6 +5008,16 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+- For a live WAL SQLite rollback, use the normal backup API on a pinned read-only
+  snapshot (`BEGIN`, read schema, `backup(destination)`, release the read snapshot).
+  A custom small-page incremental copy timed out while making partial progress;
+  the normal pinned-snapshot route completed. The guessed active-transaction cause
+  was falsified, so do not record it as the diagnosis. Record the uniquely owned
+  backup PID/start before copying and use a bounded deadline. Do this before taking
+  the short promotion flock, never hold a maintenance gate through backup/debugging.
+  An incomplete copy can still contain credentials/player data: keep it private,
+  mode 0600, explicitly NOT FOR RESTORE, until an authorized retention decision.
+
 **Fleet catch-up — 2026-10-12.**
 
 - Clean product `1f60e35` and pinned native `263d17686`/P679 are now live on all

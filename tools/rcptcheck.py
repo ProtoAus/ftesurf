@@ -521,14 +521,20 @@ def join_angles(r, want):
         r.note("the angle cross-check did not run (%r)" % exc)
         return
 
+    bad = [m for m in v.faults if "does not describe this recording" in m
+           or "does not match its sidecar" in m
+           or "the sidecar is not this recording's" in m]
+    independent = [m for m in v.faults if m not in bad]
+    # A usable angular comparison does not make an invalid sidecar valid.
+    # Unknown validation messages are faults too, not a whitelist escape.
+    if independent:
+        r.angles = "FAULT"
+        r.angles_detail = independent[0]
+        r.fault("the .view has an independent validation fault: %s" % independent[0])
+        return
     off = v.info.get("angle_off")
     if off is None or v.info.get("angle_rule") == "unavailable":
-        # Clock abstention does not suppress independent sidecar format faults.
-        # NOT COMPARABLE IS NOT A PASS.  If the sidecar is unreadable enough
-        # that no join happened at all -- no frames, a tick past the end of the
-        # recording, a clock that runs backwards -- then the file this receipt
-        # COMMITS TO is broken, and reporting "no angle stream" leaves the
-        # receipt VALID with an empty verdict.  The subject is the sidecar.
+        # No comparison may silently turn a fault into missing evidence.
         if v.faults:
             r.angles = "FAULT"
             r.angles_detail = v.faults[0]
@@ -543,9 +549,6 @@ def join_angles(r, want):
     detail = [off] + ([solo] if solo else [])
     detail.extend(n for n in v.notes if n.startswith("the tight angle rule did not judge this pair:"))
     r.angles_detail = "; ".join(detail)
-    bad = [m for m in v.faults if "does not describe this recording" in m
-           or "does not match its sidecar" in m
-           or "the sidecar is not this recording's" in m]
     # BLIND IS ABOUT THE SWEEP RULE ONLY.  Nearly every run the fleet records
     # has a still camera, so reporting BLIND whenever the sweep rule abstained
     # would put that word on the whole board while the one-frame rule was
