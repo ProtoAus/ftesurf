@@ -100,6 +100,10 @@ float  rec_wt_view0;             // ditto, and always FS_VIEWHEAD
 string rec_wt_path;              // the .rec we are playing
 float rec_wt_graphgravity;
 string rec_wt_owner;             // its `owner` header key
+string rec_wt_mark;              // Patch 789: the owner's picture mark, "" none
+string wt_nextmark;              // Patch 789: the board row's mark, set just before Watch_Open
+string(float slot) SteamPic_SlotMark;
+void(vector pos, float px, string mark, float has, string name) Profile_Face;
 string rec_wt_map;               // its `map` header key
 float  rec_wt_endticks;          // the `end` record's tick count
 float  rec_wt_nsamp;             // samples in the file
@@ -4361,10 +4365,12 @@ void() Rewind_Abandon;
 float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn =
 {
 	local float buf, leg;
-	local string vp;
+	local string vp, mark;
 
 	leg = rec_wt_wantleg;           // Patch 431: taken whatever happens below
 	rec_wt_wantleg = 0;
+	mark = wt_nextmark;             // Patch 789: likewise
+	wt_nextmark = "";
 
 	// Patch 744: spectate holds your segment column where the build pass would
 	// (Watch_SeqSave).  Spec_Request refuses the other order.
@@ -4552,6 +4558,12 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 	// waiting out a throttle window seeded by the last replay this session.
 	PVS_Forget();
 	UI_CursorClaim(UIC_WATCH);
+
+	// Patch 789: the board row's picture ("-": an online row without one); a local
+	// file under your name, yours.
+	if (mark == "" && rec_wt_owner != "" && rec_wt_owner == getplayerkeyvalue(player_localnum, "name"))
+		mark = getplayerkeyvalue(player_localnum, "*ahash");
+	rec_wt_mark = (mark != "" && mark != "-") ? strzone(mark) : "";
 
 	print(sprintf("replay: %s  %s  %s  %g samples%s\n",
 	              rec_wt_path, rec_wt_owner,
@@ -4807,7 +4819,7 @@ void(vector scr) Watch_Chrome =
 	if (strcmp(rec_wt_source, "ksf") == 0)
 		stitle = strcat(sprintf("KSF %s import (build unknown)  ", rec_wt_ksfstyle), stitle);
 
-	wtitle = stringwidth(stitle, TRUE, [small, small]);
+	wtitle = stringwidth(stitle, TRUE, [small, small]) + small + 4;     // Patch 789: the face
 	Font_Set(ui_font_mono);             // stable-width clock, like the board's time column
 	wclock = stringwidth(sclock, TRUE, [small, small]);
 	Font_Set(ui_font_ui);
@@ -4842,7 +4854,8 @@ void(vector scr) Watch_Chrome =
 	y  = p_y + pad;
 	bx = p_x + w - pad - bw;
 
-	sui_text([p_x + pad, y], [small, small], stitle, SUI_THEME_TEXT, 1, 0);
+	Profile_Face([p_x + pad, y], small, rec_wt_mark, rec_wt_mark != "", rec_wt_owner);
+	sui_text([p_x + pad + small + 4, y], [small, small], stitle, SUI_THEME_TEXT, 1, 0);
 
 	/*
 	  Where we are, against how long it is -- RIGHT-ALIGNED off the close button

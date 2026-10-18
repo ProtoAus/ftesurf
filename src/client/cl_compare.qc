@@ -496,7 +496,7 @@ void(vector scr) Cmp_Draw =
 {
 	local vector p;
 	local float sz, lh, y, live, sp, sg;
-	local string s;
+	local string s, img;
 
 	if (!cvar("hud_compare") || Cmp_Off())
 		return;
@@ -527,9 +527,17 @@ void(vector scr) Cmp_Draw =
 	y = p_y;
 	Font_Set(ui_font_mono);
 	s = Cmp_Ctx() ? RG_SlotName(cmp_cs) : "--";
-	if (strlen(s) > CMP_X5 - 4)
-		s = strcat(substring(s, 0, CMP_X5 - 5), "~");
-	HUD_Text([p_x, y, 0], strcat("vs ", s), sz, '0.65 0.85 1.00', 1);
+	if (strlen(s) > CMP_X5 - 6)         // Patch 789: two cells kept for the picture
+		s = strcat(substring(s, 0, CMP_X5 - 7), "~");
+	// Patch 789: their picture before the name (RG_SlotName leaves the mark in rg_who).
+	img = Cmp_Ctx() ? SteamPic_Of(rg_who) : "";
+	if (img != "")
+	{
+		drawpic([p_x, y, 0], img, [Font_Px(sz), Font_Px(sz)], '1 1 1', 1, 0);
+		HUD_Text([p_x + Font_Px(sz) + 3, y, 0], strcat("vs ", s), sz, '0.65 0.85 1.00', 1);
+	}
+	else
+		HUD_Text([p_x, y, 0], strcat("vs ", s), sz, '0.65 0.85 1.00', 1);
 	y = y + lh;
 	HUD_TextR([p_x + sz * CMP_CW * CMP_X2, y, 0], "time", sz, '0.55 0.60 0.68', 0.85);
 	HUD_TextR([p_x + sz * CMP_CW * CMP_X3, y, 0], "u/s", sz, '0.55 0.60 0.68', 0.85);

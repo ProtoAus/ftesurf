@@ -1192,6 +1192,7 @@ float(float reqid, float code, string body) Mdl_Reply =
 float(float reqid, float code, string body) Mlb_Reply;
 float(float reqid, float code, string body) Mzd_Reply;
 float(float reqid, float code, string body) MF_Reply;
+float(float reqid, float code, string bdy) MP_Reply;          // m_pics.qc, Patch 789
 
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
@@ -1212,6 +1213,8 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 
 	// Before the poll's test, which is a bare inequality and would swallow it.
 	if (MF_Reply(reqid, responsecode, resourcebody))
+		return;
+	if (MP_Reply(reqid, responsecode, resourcebody))
 		return;
 	if (Mlb_Reply(reqid, responsecode, resourcebody))
 		return;

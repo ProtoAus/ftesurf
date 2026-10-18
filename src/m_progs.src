@@ -24,6 +24,7 @@ milk_sys.qc
 // draws the rows with ui_thumb and resolves each lobby's map against ms_name.
 // Putting the drawing here instead would need both of those, which live below.
 menu/m_lobby.qc
+menu/m_pics.qc              // Patch 789: after m_lobby (Lob_NextReq), before its users
 menu/m_zonedl.qc
 menu/m_main.qc
 // Private CSQC snapshot view; uses the picker/UI helpers and forward MF_* declarations.

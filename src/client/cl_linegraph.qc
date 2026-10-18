@@ -2027,16 +2027,24 @@ float(float s, float b, float i, float f) LineGraph_LabelAt =
 void(float s, vector q, float a) LineGraph_NameDraw =
 {
 	local float f0, sz;
-	local string img;
+	local string img, who;
 
 	f0 = ui_font_cur;
 	Font_Set(ui_font_ui);
 	sz = lg_lab_sz;
+	// Patch 789: the replay's line carries its owner's picture, as board lines do.
+	who = "";
 	if (s > 0)
-	if (sb_ln_who[LN_BOARDINDEX(s)])
+	{
+		if (sb_ln_who[LN_BOARDINDEX(s)])
+			who = sb_ln_who[LN_BOARDINDEX(s)];
+	}
+	else
+		who = rec_wt_mark;
+	if (who != "")
 	{
 		// drawpic, as the name beside it is a raw drawstring: screen positions.
-		img = SteamPic_Of(sb_ln_who[LN_BOARDINDEX(s)]);
+		img = SteamPic_Of(who);
 		if (img != "")
 		{
 			drawpic(q, img, [sz, sz], '1 1 1', a, 0);
@@ -2121,8 +2129,12 @@ void() LineGraph_WorldLabels =
 		// Patch 640: room for the row's Steam picture before the name.
 		pw = 0;
 		if (s > 0)
-		if (sb_ln_who[LN_BOARDINDEX(s)])
-			pw = sz + 4;
+		{
+			if (sb_ln_who[LN_BOARDINDEX(s)])
+				pw = sz + 4;
+		}
+		else if (rec_wt_mark != "")
+			pw = sz + 4;                // Patch 789: the replay line's picture
 		nm = LineGraph_Name(s);         // made again when the name changed, its width forgotten
 		if (lg_name_w[s] <= 0)
 			lg_name_w[s] = stringwidth(nm, TRUE, [sz, sz]);

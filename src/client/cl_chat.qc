@@ -51,6 +51,8 @@
 #define CHAT_ROWS_MIN   10      // rows the box may use; hud_chat_lines counts messages
 
 string chat_ring[CHAT_RING];    // built display lines, strzone'd
+string chat_mark[CHAT_RING];    // Patch 789: the speaker's picture mark, strzone'd or ""
+string chat_push_mark;          // set just before Chat_Push by a caller that knows one
 float  chat_stamp[CHAT_RING];   // time of arrival; 0 = slot empty
 float  chat_write;              // next ring slot
 
@@ -329,6 +331,10 @@ void(string line) Chat_Push =
 	if (chat_ring[chat_write] != "")
 		strunzone(chat_ring[chat_write]);
 	chat_ring[chat_write]  = strzone(line);
+	if (chat_mark[chat_write] != "")
+		strunzone(chat_mark[chat_write]);
+	chat_mark[chat_write]  = (chat_push_mark != "") ? strzone(chat_push_mark) : "";
+	chat_push_mark = "";
 	chat_stamp[chat_write] = time;
 	chat_wrapn[chat_write] = 0;
 	chat_write = chat_write + 1;
@@ -362,6 +368,9 @@ void(string msg, float level) CSQC_Parse_Print =
 
 	line = Chat_BuildLine();
 	print(strcat(line, "\n"));
+	// The account's mark only: a board's guid digest (*phash) has no picture.
+	if (chat_ps_slot >= 0)
+		chat_push_mark = getplayerkeyvalue(chat_ps_slot, "*ahash");
 	Chat_Push(line);
 };
 
@@ -627,7 +636,8 @@ float(float j, float maxw, float sz) Chat_RowsOf =
 		return chat_wrapn[j];
 	if (chat_wrap[j] != "")
 		strunzone(chat_wrap[j]);
-	chat_wrap[j]  = Chat_Wrap(chat_ring[j], maxw, sz);
+	// A line with a picture wraps narrower, by the face (Chat_Draw).
+	chat_wrap[j]  = Chat_Wrap(chat_ring[j], maxw - ((chat_mark[j] != "") ? sz + 3 : 0), sz);
 	if (chat_wrap[j] != "")             // a zoned "" would read as unset and never be freed
 		chat_wrap[j] = strzone(chat_wrap[j]);
 	chat_wrapn[j] = chat_wr_n;
@@ -683,8 +693,8 @@ void(string rows, float n, float cut, vector p, float sz, float lh, float a, flo
 void(vector scr) Chat_Draw =
 {
 	local float life, fade, lines, szu, sz, lh, x, yb, maxw;
-	local float i, j, age, a, n, used, cap, room;
-	local string draft;
+	local float i, j, age, a, n, used, cap, room, ind;
+	local string draft, img;
 	local vector key;
 
 	draft = "";
@@ -804,7 +814,16 @@ void(vector scr) Chat_Draw =
 		// skybox.  NOT "like the rest of the HUD's text", which this said until
 		// Patch 443: HUD_Text drew plain when it was written, and Patch 440's ring
 		// and shadow for the mono face are opt-in (hud_font_outline).
-		Chat_DrawRows(chat_wrap[j], n, chat_wrapn[j] > n, [x, yb], sz, lh, a, maxw);
+		// Patch 789: the speaker's picture at the message's first row.
+		ind = 0;
+		if (chat_mark[j] != "")
+		{
+			ind = sz + 3;
+			img = SteamPic_Of(chat_mark[j]);
+			if (img != "")
+				drawpic([x, yb, 0], img, [sz, sz], '1 1 1', a, 0);
+		}
+		Chat_DrawRows(chat_wrap[j], n, chat_wrapn[j] > n, [x + ind, yb], sz, lh, a, maxw - ind);
 		chat_ordy[i] = chat_dr_y0;
 	}
 	Font_Reset();

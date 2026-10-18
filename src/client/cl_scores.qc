@@ -184,6 +184,7 @@ float rec_sb_momwant;            // explicit watch intent for a queued NanoPi de
 void() LineGraph_Open;
 float rec_sb_wantrep;
 float rec_sb_wantleg;            // Patch 395: open it at this board leg (its run's file)
+string rec_sb_wantmark;          // Patch 789: the row's picture mark ("-" an online row without one)
 float rec_sb_olpick;             // `scores olpick <row>` + 1: the next draw's click
 vector rec_sb_oscroll;           // the online list's own scroll position
 
@@ -1765,7 +1766,7 @@ void(vector lp, float idx) Scores_LineCell =
 float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 {
 	local vector lp;
-	local float idx, hot, on, cl, d, ticks, pick, fin;
+	local float idx, hot, on, cl, d, ticks, pick, fin, avp;
 	local string s, rid;
 
 	pick = -1;
@@ -1873,9 +1874,25 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 		Font_Set(ui_font_ui);
 
 		s = UI_NameShow(bufstr_get(rec_sb_bowner, idx), 0);
-		Scores_Cell(lp, SBK_OWNER, d,
-		            (s != "") ? s : "unknown", on ? SBC_TEXT : SBC_DIM,
-		            on ? 0.9 : 0.35);
+		// Patch 789: your own runs carry your picture, under the Online rows' width rule.
+		avp = 0;
+		if (sb_colx[SBK_TIME] - sb_colx[SBK_OWNER] - rec_sb_cw * 9.5 >= rec_sb_cw * 15)
+		if (getplayerkeyvalue(player_localnum, "*ahash") != "")
+			avp = rec_sb_rowh - 4 + ceil(rec_sb_cw * 0.6);
+		if (avp)
+		{
+			if (bufstr_get(rec_sb_bowner, idx) == getplayerkeyvalue(player_localnum, "name"))
+				SteamPic_Draw([lp_x + sb_colx[SBK_OWNER], lp_y + 2], rec_sb_rowh - 4,
+				              getplayerkeyvalue(player_localnum, "*ahash"), on ? 1 : 0.35);
+			Scores_Text([lp_x + sb_colx[SBK_OWNER] + avp, d], rec_sb_szrow,
+			            Chat_Fit((s != "") ? s : "unknown",
+			                     sb_colx[SBK_TIME] - sb_colx[SBK_OWNER] - rec_sb_cw * 9.5 - avp, rec_sb_szrow),
+			            on ? SBC_TEXT : SBC_DIM, on ? 0.9 : 0.35);
+		}
+		else
+			Scores_Cell(lp, SBK_OWNER, d,
+			            (s != "") ? s : "unknown", on ? SBC_TEXT : SBC_DIM,
+			            on ? 0.9 : 0.35);
 
 		if (sb_colon[SBK_DATE])
 		{
@@ -2474,6 +2491,7 @@ void(float pick) Scores_OnlineHandOff =
 		{
 			rec_sb_wantrep = rep;
 			rec_sb_wantleg = leg;
+			rec_sb_wantmark = strzone((bufstr_get(ob_bwho, pick) != "") ? bufstr_get(ob_bwho, pick) : "-");
 			if (!Online_ReplayFetchRow(pick))
 				print("^3scores:^7 could not ask for that replay -- "
 				      "check lobby_dir.\n");
@@ -2489,6 +2507,7 @@ void(float pick) Scores_OnlineHandOff =
 		if (om_state == OM_READY)
 		{
 			rec_sb_wantrep = om_rep;
+			rec_sb_wantmark = "-";
 			Online_ReplayFetchIn(om_rep, "");
 		}
 		else print(sprintf("^3scores:^7 demo unavailable: %s\n", om_why));
@@ -2544,8 +2563,10 @@ void(float pick) Scores_OnlineHandOff =
 	  neither -- but it clears rec_sb_wantleg, so the leg is taken first.
 	*/
 	leg = rec_sb_wantleg;
+	wt_nextmark = rec_sb_wantmark;  // Patch 789: handed over with the open, like the leg
 	rec_sb_wantrep = 0;
 	rec_sb_wantleg = 0;
+	rec_sb_wantmark = "";
 	Scores_Close();
 	rec_wt_wantleg = leg;           // Patch 431: cut to the stage as it opens
 	Watch_Open(path);

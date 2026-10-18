@@ -7947,6 +7947,7 @@ void(vector screensize) m_draw =
 	ui_prejoin_tick();
 
 	MF_Poll(menu_active && menu_screen == SCREEN_CREATE && cvar("ui_maps_friends"));
+	MP_Frame();                     // Patch 789: the menu's pictures
 	Mlb_Poll();
 	// Warm the catalogue on boot, even before the picker is opened. Mdl_Ask
 	// owns consent, in-flight and one-minute refresh guards.
@@ -8103,6 +8104,7 @@ void() Menu_RendererRestarted =
 {
 	MM_Invalidate();
 	_sui_rnd_forget();              // Patch 642: the corner masks went with the renderer
+	MP_Lost();                      // Patch 789: and the pictures
 };
 
 float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =

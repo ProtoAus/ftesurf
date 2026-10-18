@@ -493,7 +493,11 @@ void(vector pos, vector size) MF_Draw =
 			id = strcat("mf_join", who);
 			// P788: incoming adds, listed last, are drawn faded.
 			sui_style_box(rp, [size_x - 38, 96], 8, SUI_THEME_WELL, SUI_THEME_EDGE, rel == 2 ? 0.4 : 1);
-			sui_text(rp + '10 8 0', SZ_ROW, ui_fit_text(nm, size_x - 60, SZ_ROW), rel == 2 ? COL_DIM : COL_TEXT, 1, 0);
+			// Patch 789: their picture, as the in-game Friends tab draws it.
+			if (MF_WhoSafe(who))
+			if (!MP_Draw(rp + '10 10 0', 44, who, rel == 2 ? 0.45 : 1))
+				sui_roundbox(rp + '10 10 0', '44 44 0', 8, SUI_THEME_CHIP, rel == 2 ? 0.45 : 1);
+			sui_text(rp + '64 8 0', SZ_ROW, ui_fit_text(nm, size_x - 114, SZ_ROW), rel == 2 ? COL_DIM : COL_TEXT, 1, 0);
 			status = "Offline";
 			if (!fresh)
 				status = (mf_seen > 0) ? strcat("Offline as of ", ago, " ago") : "Checking...";
@@ -501,14 +505,14 @@ void(vector pos, vector size) MF_Draw =
 			if (rel == 2) status = (clientstate() == 2) ? "Added you" : "Added you -- add them back in a lobby";
 			if (rel == 4) status = "Blocked";
 			if (online) status = fresh ? server : strcat("Last seen: ", server);
-			sui_text(rp + '10 32 0', '12 12 0', ui_fit_text(status, size_x - 60, '12 12 0'), (online && fresh) ? SUI_THEME_GOOD : COL_DIM, 1, 0);
+			sui_text(rp + '64 32 0', '12 12 0', ui_fit_text(status, size_x - 114, '12 12 0'), (online && fresh) ? SUI_THEME_GOOD : COL_DIM, 1, 0);
 			// The menu route reads only; adding back goes through the lobby's game.
 			if (rel == 2 && clientstate() == 2 && MF_WhoSafe(who))
 			if (ui_button(strcat("mf_add", who), rp + [size_x - 146, 54], [98, 28], "Add back"))
 				localcmd(sprintf("friends_menu_add %s\n", who));
 			if (online)
 			{
-				sui_text(rp + '10 54 0', '12 12 0', ui_fit_text(map, size_x - 144, '12 12 0'), COL_DIM, 1, 0);
+				sui_text(rp + '64 54 0', '12 12 0', ui_fit_text(map, size_x - 198, '12 12 0'), COL_DIM, 1, 0);
 				// Join asks the backend afresh; a stale row only offers the question.
 				if (MF_WhoSafe(who))
 				if (ui_button(id, rp + [size_x - 122, 54], [74, 28], "Join"))

@@ -1012,11 +1012,14 @@ float(vector scr, float ox, float a) Bn_DrawFull =
 {
 	local float u, pass, tsz, hsz, ssz, dsz, psz, p2sz, gl, gh, gr, H, wl, wh, wr;
 	local float gap, x0, y0, xl, xr, k, span;
+	local string pic;
 
 	x0 = scr_x * cvar("hud_banner_x");
 	y0 = scr_y * cvar("hud_banner_y");
 	u = HUD_Size("hud_banner_size", 32 * ui_cv_scale) / 32;
 	tsz = hsz = ssz = dsz = psz = p2sz = wl = wh = wr = xl = xr = gap = 0;
+	// Patch 789: another player's banner shows their picture left of the title.
+	pic = ui_bn_mine ? "" : SteamPic_Of(SteamPic_SlotMark(ui_bn_slot));
 
 	// The three groups must clear both edges; one step down if they do not.
 	for (pass = 0; pass < 2; pass = pass + 1)
@@ -1031,6 +1034,8 @@ float(vector scr, float ox, float a) Bn_DrawFull =
 		p2sz = 8 * u;
 		gap  = 20 * u;
 		wl = max(Bn_W(ui_font_display, tsz, ui_bn_s_title), Bn_W(ui_font_ui, ssz, ui_bn_s_sub));
+		if (pic != "")
+			wl = wl + tsz + 2 * u + ssz + 4 * u;
 		wh = max(Bn_W(ui_font_display, hsz, ui_bn_s_time), Bn_W(ui_font_mono, dsz, ui_bn_dl));
 		wr = max(Bn_W(ui_font_display, psz, ui_bn_pl1), Bn_W(ui_font_ui, p2sz, ui_bn_pl2));
 		xl = x0 - wh * 0.5 - gap;
@@ -1060,6 +1065,8 @@ float(vector scr, float ox, float a) Bn_DrawFull =
 	HUD_Text([xr + ox, y0 + (H - gr) * 0.5], ui_bn_pl1, psz, ui_bn_plc, a);
 	Font_Set(ui_font_ui);
 	HUD_TextR([xl + ox, y0 + (H - gl) * 0.5 + tsz + 2 * u], ui_bn_s_sub, ssz, RSC_DIM, a);
+	if (pic != "")
+		drawpic([xl + ox - wl, y0 + (H - gl) * 0.5, 0], pic, [gl, gl], '1 1 1', a, 0);
 	HUD_Text([xr + ox, y0 + (H - gr) * 0.5 + psz + 2 * u], ui_bn_pl2, p2sz, ui_bn_pl2c, a);
 	Font_Set(ui_font_mono);
 	HUD_TextC([x0 + ox, y0 + (H - gh) * 0.5 + hsz + u], ui_bn_dl, dsz, ui_bn_dlc, a);

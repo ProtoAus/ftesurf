@@ -296,6 +296,15 @@ string(string mark) SteamPic_Of =
 	return sprintf("steampic/%g", old);
 };
 
+// Patch 789: a connected player's mark -- the account's, else the board's.
+string(float slot) SteamPic_SlotMark =
+{
+	local string s;
+	s = getplayerkeyvalue(slot, "*ahash");
+	if (s == "") s = getplayerkeyvalue(slot, "*phash");
+	return s;
+};
+
 // A mark's picture at `pos`, `px` square.  TRUE if there was one to draw.
 // sui_pic and not drawpic: a list row's position is its frame's, not the
 // screen's (the first cut drew nothing a screenshot could find).

@@ -71,6 +71,8 @@ strbuf mlb_brank;
 strbuf mlb_bname;
 strbuf mlb_btime;
 strbuf mlb_bdate;
+strbuf mlb_bwho;               // Patch 789: the row's picture mark, "" none
+float  mlb_anyav;               // some row has one: every name moves over
 
 string(float t) Mlb_Tier =
 {
@@ -506,6 +508,7 @@ void(string why) Mlb_Close =
 	buf_del(mlb_bname);
 	buf_del(mlb_btime);
 	buf_del(mlb_bdate);
+	buf_del(mlb_bwho);
 	print(sprintf("^5board:^7 closed %s (%s)\n", mlb_map, why));
 	strunzone(mlb_style);
 	strunzone(mlb_source);
@@ -546,6 +549,8 @@ void(string mapname, float t) Mlb_Open =
 	mlb_bname = buf_create();
 	mlb_btime = buf_create();
 	mlb_bdate = buf_create();
+	mlb_bwho  = buf_create();
+	mlb_anyav = FALSE;
 	mlb_open  = TRUE;
 	mlb_tab   = mlb_lasttab = t;
 	mlb_known = mlb_cksf = mlb_cmom = mlb_cours = 0;
@@ -571,6 +576,10 @@ void(float i, int row) Mlb_Row =
 	bufstr_set(mlb_bname, i, (s != "") ? s : "unknown");
 	bufstr_set(mlb_btime, i, Mlb_MsString(json_get_integer(json_find_object_child(row, "ms"))));
 	bufstr_set(mlb_bdate, i, Mlb_Date(json_get_integer(json_find_object_child(row, "when"))));
+	// Patch 789: `av` is surfd saying the player has a picture (cl_online.qc's rule).
+	bufstr_set(mlb_bwho, i, json_get_float(json_find_object_child(row, "av"))
+	           ? FS_GuidId(json_get_string(json_find_object_child(row, "player"))) : "");
+	if (bufstr_get(mlb_bwho, i) != "") mlb_anyav = TRUE;
 };
 
 void(string label, float i) Mlb_PrintRow =
@@ -868,8 +877,18 @@ void(vector rp, float i, float rw, float tr, float dr, float nw) Mlb_DrawRow =
 	sui_text([rp_x + dr - stringwidth(s, TRUE, SZ_ROW), ty], SZ_ROW, s, COL_DIM, 1, 0);
 	Font_Set(ui_font_ui);
 
-	sui_text([rp_x + MLB_NAME_X, ty], SZ_ROW,
-	         ui_fit_text(bufstr_get(mlb_bname, i), nw, SZ_ROW), COL_TEXT, 1, 0);
+	s = bufstr_get(mlb_bwho, i);
+	if (mlb_anyav)
+	{
+		if (s != "")
+		if (!MP_Draw([rp_x + MLB_NAME_X, rp_y + 2], MLB_ROW_H - 4, s, 1))
+			sui_roundbox([rp_x + MLB_NAME_X, rp_y + 2], [MLB_ROW_H - 4, MLB_ROW_H - 4], 4, SUI_THEME_CHIP, 1);
+		sui_text([rp_x + MLB_NAME_X + MLB_ROW_H, ty], SZ_ROW,
+		         ui_fit_text(bufstr_get(mlb_bname, i), nw - MLB_ROW_H, SZ_ROW), COL_TEXT, 1, 0);
+	}
+	else
+		sui_text([rp_x + MLB_NAME_X, ty], SZ_ROW,
+		         ui_fit_text(bufstr_get(mlb_bname, i), nw, SZ_ROW), COL_TEXT, 1, 0);
 };
 
 // The row after the last one held: what comes next, or why nothing does.

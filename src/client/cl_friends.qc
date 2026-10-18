@@ -440,6 +440,7 @@ float(string cmd) Friends_ConsoleCommand =
 		if (!muted)
 		{
 			s = strcat("^5[PM from ", nm, "^5]^7 ", s);
+			if (Friends_MarkSafe(argv(1))) chat_push_mark = argv(1);      // Patch 789
 			Chat_Push(s);
 			print(strcat(s, "\n")); // local only, never a server/public say
 		}

@@ -516,8 +516,8 @@ float(float scan) Share_Key =
 void(vector scr) Share_Draw =
 {
 	local vector p;
-	local float sc, w, h, hh, lsz, ssz, y, slot, idx, cnt, rows;
-	local string t, l;
+	local float sc, w, h, hh, lsz, ssz, y, slot, idx, cnt, rows, tx;
+	local string t, l, pic;
 
 	l = "";
 	sc  = ui_cv_scale;
@@ -556,12 +556,17 @@ void(vector scr) Share_Draw =
 		rows = 3;
 		t = strcat("Share with ", Share_Name(slot));
 	}
-	w = max(w, stringwidth(t, TRUE, [lsz, lsz]) + 40 * sc);
+	// Patch 789: the other player's picture before their name.
+	pic = SteamPic_Of(SteamPic_SlotMark(slot));
+	tx = (pic != "") ? hh : 0;
+	w = max(w, stringwidth(t, TRUE, [lsz, lsz]) + 40 * sc + tx);
 	p = [(scr_x - w) * 0.5, scr_y * 0.72, 0];       // under the speed readout
 	_sui_round_draw(p, [w, 3 * sc + hh + (sh_from ? h : 0) + rows * h + 3 * sc + ssz + 4 * sc, 0], 5 * sc,
 	                SUI_THEME_PANEL, 0.9);
 	y = p_y + 3 * sc;
-	HUD_Text([p_x + 6 * sc, y + (hh - 2 * sc - lsz) * 0.5], t, lsz, SUI_THEME_TEXT, 1);
+	if (pic != "")
+		drawpic([p_x + 6 * sc, y + sc, 0], pic, [hh - 4 * sc, hh - 4 * sc], '1 1 1', 1, 0);
+	HUD_Text([p_x + 6 * sc + tx, y + (hh - 2 * sc - lsz) * 0.5], t, lsz, SUI_THEME_TEXT, 1);
 	HUD_TextR([p_x + w - 6 * sc, y + (hh - 2 * sc - lsz) * 0.5],
 	          sprintf("%gs", ceil(max(0, (sh_from ? sh_fend : sh_toend) - cltime))), lsz, SUI_THEME_WARN, 1);
 	drawfill([p_x + 4 * sc, y + hh - 2 * sc, 0], [w - 8 * sc, 1, 0], SUI_THEME_EDGE_HI, 0.7, 0);

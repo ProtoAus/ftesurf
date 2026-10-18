@@ -905,7 +905,7 @@ float(float evtype, float scanx, float chary, float devid) Spec_InputEvent =
 */
 void(vector scr) Spec_DrawWatchers =
 {
-	local string s, nm;
+	local string s, nm, img;
 	local float i, j, n, sz, lh, bw, tw, slot;
 	local vector p, bp;
 
@@ -942,6 +942,7 @@ void(vector scr) Spec_DrawWatchers =
 		Font_Reset();
 		return;
 	}
+	bw = bw + Font_Px(sz) + 3;          // Patch 789: room for the pictures
 	drawfill([p_x - bw - sz * 0.5, p_y - sz * 0.25, 0], [bw + sz, lh * (n + 1) + sz * 0.2, 0],
 	         '0 0 0', 0.45, 0);
 
@@ -959,6 +960,10 @@ void(vector scr) Spec_DrawWatchers =
 		if (strstrofs(nm, "^", 0) < 0)
 			nm = strcat("^", Chat_ColourOf(slot), nm, "^7");
 		HUD_TextR(p, nm, sz, '1 1 1', 0.95);
+		img = SteamPic_Of(SteamPic_SlotMark(slot));     // Patch 789
+		if (img != "")
+			drawpic([p_x - stringwidth(nm, TRUE, [Font_Px(sz), Font_Px(sz)]) - Font_Px(sz) - 3, p_y, 0],
+			        img, [Font_Px(sz), Font_Px(sz)], '1 1 1', 0.95, 0);
 		p_y = p_y + lh;
 	}
 	Font_Reset();
@@ -970,7 +975,7 @@ void(vector scr) Spec_Draw =
 {
 	local vector p;
 	local float sz, t;
-	local string s, nm;
+	local string s, nm, img;
 
 	if (spc_stat < 0 || (spc_goat && cltime - spc_goat < 0.6))
 	{
@@ -990,8 +995,13 @@ void(vector scr) Spec_Draw =
 	Font_Set(ui_font_ui);
 	sz = 9 * ui_cv_scale;
 	p  = [scr_x * 0.5, scr_y * 0.84, 0];
-	HUD_TextC(p, strcat("^5WATCHING^7  ", nm, "^7  ^9", Spec_ModeName(spc_mode)),
-	          sz, '1 1 1', 0.95);
+	s  = strcat("^5WATCHING^7  ", nm, "^7  ^9", Spec_ModeName(spc_mode));
+	// Patch 789: the watched player's picture, left of the centred line.
+	img = SteamPic_Of(SteamPic_SlotMark(t));
+	if (img != "")
+		drawpic([p_x - stringwidth(s, TRUE, [Font_Px(sz), Font_Px(sz)]) * 0.5 - Font_Px(sz) - 4, p_y, 0],
+		        img, [Font_Px(sz), Font_Px(sz)], '1 1 1', 0.95, 0);
+	HUD_TextC(p, s, sz, '1 1 1', 0.95);
 	p_y = p_y + Font_Px(sz) + 3 * ui_cv_scale;
 	sz = 6.5 * ui_cv_scale;
 	HUD_TextC(p, "mouse1 next  -  mouse2 prev  -  space camera  -  esc back",
