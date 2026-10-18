@@ -8,9 +8,11 @@ OnStartTouch, so every entry is the server's own log line.  Its moon stands
 inside the box, so a body dropped at SPOT rests in the trigger.
   A  rest in *93, hold 2 s, leave: does the entry output fire again?
   B  out, then back in: the entry output fires again (the leave was seen).
-  C  rest in *93, step out and toggle spectate every few frames (raw rec_spec):
-     each hold logs whether *93 still holds the touch ("pending 1"); v2 must
-     end it within the toggling and fire the entry output once on re-entry.
+  C  rest in *93, step out and toggle spectate every few frames (raw rec_spec),
+     step back in mid-toggle and toggle on: v2 fires the entry output exactly
+     once (the touch ended while toggling, and holds inside do not re-fire);
+     r2 fires none (toggling kept the left touch).  The step-out spot is inside
+     *77, which has outputs, so the held lines' "pending" is not *93's.
   With --cooldown above 0 (the server's run_spec_cooldown), C instead expects
   the toggling's re-entries refused ("you just left spectate").
 --expect main (P784: A refused), v1 (ac6882ad: A accepted, re-fires on the
@@ -206,8 +208,8 @@ def main():
             rest_in_box('C-in')
             co = len(w.text())
             o = mark('C-out')
-            w.send(f'cmd setpos {OUT}; ' + 'p786tg; ' * 12)
-            time.sleep(3.0)
+            w.send(f'cmd setpos {OUT}; ' + 'p786tg; ' * 12 + f'cmd setpos {SPOT}; ' + 'p786tg; ' * 6)
+            time.sleep(4.5)
             w.send('cmd rec_spec 0')
             time.sleep(0.5)
             seg = sv.text()[o:]
@@ -228,22 +230,16 @@ def main():
                 check(len(cool) >= 6 and len(flags) <= 4,
                       f"C cooldown: toggled re-entries refused ({len(cool)} refused, {len(flags)} holds)")
                 flags = []
-            elif len(flags) < 8 or refused:
+            elif len(flags) < 12 or refused:
                 raise CannotMeasure(f"C: {len(flags)} holds released, refusals {refused}")
-            o2 = mark('C-back')
-            w.send(f'cmd setpos {SPOT}')
-            time.sleep(2.0)
-            num['C_hits'] = hits(o2)
+            num['C_hits'] = hits(o)
             num['C_rest'] = pos()
             if not inbox(num['C_rest']):
                 raise CannotMeasure(f"C: not back inside *93 ({num['C_rest']})")
-            if a.cooldown > 0:
-                check(num['C_hits'] == 1, f"C: the re-entry fires the entry output once ({num['C_hits']})")
-            elif v == 'r2':
-                check(all(flags), f"C r2: every hold kept the left trigger's touch ({flags})")
+            if v == 'r2' and a.cooldown <= 0:
+                check(num['C_hits'] == 0, f"C r2: toggling kept the left touch, no re-entry output ({num['C_hits']})")
             else:
-                check(flags[0] and not any(flags[4:]), f"C: the touch ended within the toggling ({flags})")
-                check(num['C_hits'] == 1, f"C: the re-entry fires the entry output once ({num['C_hits']})")
+                check(num['C_hits'] == 1, f"C: the re-entry fires the entry output once ({num['C_hits']}, {len(flags)} holds)")
 
         for peer in peers:
             bad = [b for b in ('QC VM error', 'stack overflow') if b in peer.text()]
