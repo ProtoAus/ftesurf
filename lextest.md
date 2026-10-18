@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P808 — rewind: the 3-2-1 is back; a save on the rewind keeps the run as it was there
+
+Not installed yet (deploy line follows).
+
+- Backspace, scrub back, ENTER: you are held for a 3-2-1 before you move again
+  (`hud_rewind_countdown 0` for none).
+- Backspace, scrub back, S (or your save key), then load that save: the Segments list on the left
+  shows the segments from your start up to that point, not the ones you surfed after it, and the
+  energy reference sits where the save is. The same after an ENTER resume.
+
+"Rewind ok / <what differs>". Verdict PENDING.
 ## P820 — demo playback: "successful only" on the bar, and imported demos' failed stages
 
 Both installs and all 12 lobbies since 2026-10-19T04:51Z (csprogs 74fbeba9; `.prev` 100068b0).

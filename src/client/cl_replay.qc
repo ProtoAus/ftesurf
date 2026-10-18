@@ -767,8 +767,13 @@ void(string s) Rec_ViewPut =
 
 void() Rec_ViewBegin =
 {
+	local float i;
+
 	rec_rp_lines = 0;
 	rec_rp_full  = FALSE;
+	// Patch 808: no mark is a line of the buffer begun here; those saves load cold.
+	for (i = 0; i <= FS_MAXSAVES; i = i + 1)
+		rec_rp_mark[i] = 0;
 	// Build 30: see the declaration.  A run that begins while already ghosting
 	// must open with a `ghost 1`, and clearing this here is what makes the
 	// ordinary edge test produce one on the first recorded frame.
@@ -874,10 +879,14 @@ void() Rec_ViewSample =
 
 void() Rec_ViewDrop =
 {
+	local float i;
+
 	if (rec_rp_view >= 1)
 		buf_del(rec_rp_view);
 	rec_rp_view  = 0;
 	rec_rp_lines = 0;
+	for (i = 0; i <= FS_MAXSAVES; i = i + 1)
+		rec_rp_mark[i] = 0;     // Patch 808: as Rec_ViewBegin
 };
 
 /*
@@ -1490,11 +1499,42 @@ void() Rec_HidEnd =
 */
 #define FS_VIEWTRIM 256
 
+// A sidecar line's run tick: a frame's third field, a `ghost` marker's fourth.
+float(string s) Rec_ViewLineTick =
+{
+	tokenize(s);
+	if (argv(0) == "ghost")
+		return stof(argv(3));
+	return stof(argv(2));
+};
+
+/*
+  Patch 808: a save or resume on the rewind's cursor is the row the rewind asked for
+  (SAVETICKS is its tick, never stale), seconds of frames behind the pinned head:
+  the backwards walk goes as far as it takes, from the buffer as the go found it
+  (rec_rp_golines: frames sampled after that, the load's own, are not the head's).
+  A buffer that already steps back (a load with no sidecar) keeps its step, visible
+  to a reader, rather than a prefix cut inside the older attempt.
+*/
+float  rec_rp_deep;
+float  rec_rp_golines;          // rec_rp_lines when the rewind sent its go; 0 none (cl_rewind.qc)
+
 float(float lines) Rec_ViewTrim =
 {
 	local float t, i, n;
 
 	t = getstatf(STAT_FS_SAVETICKS);
+	if (rec_rp_deep)
+	{
+		if (t < 0)
+			return lines;
+		i = lines;
+		if (rec_rp_golines > FS_VIEWHEAD && rec_rp_golines < i)
+			i = rec_rp_golines;
+		while (i > FS_VIEWHEAD && Rec_ViewLineTick(bufstr_get(rec_rp_view, i - 1)) > t)
+			i = i - 1;
+		return i;
+	}
 	if (t <= 0)
 		return lines;           // an idle save has no clock to trim against
 
@@ -1611,7 +1651,7 @@ float(string path, float buf) Watch_BufLoad;
 
 void(float id) Rec_ViewLoaded =
 {
-	local float buf;
+	local float buf, i;
 	// See Rec_ViewSaved.  Slot 0 is the retry point, and for it the cold branch
 	// below is the ONLY one that can ever run: a map restart shuts this VM down
 	// (CSQC_Shutdown in CLQW_ParseServerData), so rec_rp_mark is all zeroes by
@@ -1626,6 +1666,11 @@ void(float id) Rec_ViewLoaded =
 	{
 		rec_rp_lines = rec_rp_mark[id];
 		rec_rp_full  = FALSE;        // room again, so the cap may be re-reported
+		// Patch 808: a mark past the cut would warm-load this attempt's frames as that
+		// save's once the buffer regrows; those saves load from their files.
+		for (i = 0; i <= FS_MAXSAVES; i = i + 1)
+			if (rec_rp_mark[i] > rec_rp_lines)
+				rec_rp_mark[i] = 0;
 		return;
 	}
 
@@ -1675,6 +1720,9 @@ void(float id) Rec_ViewLoaded =
 
 	if (rec_rp_view >= 1)
 		buf_del(rec_rp_view);
+	// Patch 808: and every other mark was a line of the buffer just thrown away.
+	for (i = 0; i <= FS_MAXSAVES; i = i + 1)
+		rec_rp_mark[i] = 0;
 
 	// The buffer is the truth about the file; the remembered mark was only this
 	// session's claim about it, so it is replaced rather than trusted.
@@ -1750,7 +1798,7 @@ void() Rec_ViewRetry =
 */
 void() Rec_ViewSaveEvents =
 {
-	local float seq, op, id;
+	local float seq, op, id, k;
 
 	seq = getstatf(STAT_FS_SLSEQ);
 	if (seq == rec_rp_slseq)
@@ -1787,15 +1835,46 @@ void() Rec_ViewSaveEvents =
 	else if (rec_rp_slseq != 0 || seq == 1)
 	{
 		if (op == SLOP_SAVED)
+		{
+			rec_rp_deep = FALSE;
+			if (Rewind_Cursoring())
+				rec_rp_deep = (getstatf(STAT_FS_SAVETICKS) + 1 < getstatf(STAT_FS_TIMERTICKS));
 			Rec_ViewSaved(id);
+			rec_rp_deep = FALSE;
+		}
 		else if (op == SLOP_LOADED)
 		{
 			// Patch 477 review round 8: not for a demoted row (SAVETICKS -1),
 			// which loads idle -- no run for a prefix to continue, and a stale one
 			// at a reused id would splice into a run begun in this frame.  The
 			// cursor row's ticks: `sl_replay` (sv_cheats) does not move it.
+			// Patch 808: the rewind's resume row was never seen saved: its prefix is
+			// taken here, or the sidecar ran on from the head with the run's clock
+			// gone back to the cursor.
 			if (getstatf(STAT_FS_SAVETICKS) >= 0)
-				Rec_ViewLoaded(id);
+			{
+				if (Rewind_GoLoaded(seq))
+				{
+					// No other resume's file at this reused id may stand in for it.
+					fremove(Rec_SavePath(id));
+					rec_rp_mark[id] = 0;
+					rec_rp_deep = TRUE;
+					Rec_ViewSaved(id);
+					if (rec_rp_view >= 1)
+					{
+						rec_rp_lines = max(FS_VIEWHEAD, Rec_ViewTrim(rec_rp_lines));
+						rec_rp_full  = FALSE;
+						// A mark past the cut would warm-load the resumed attempt's
+						// frames as that save's: those saves load from their files.
+						for (k = 0; k <= FS_MAXSAVES; k = k + 1)
+							if (rec_rp_mark[k] > rec_rp_lines)
+								rec_rp_mark[k] = 0;
+					}
+					rec_rp_deep = FALSE;
+				}
+				else
+					Rec_ViewLoaded(id);
+			}
 		}
 	}
 

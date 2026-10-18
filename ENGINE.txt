@@ -32,6 +32,8 @@ patch    821
 # Patch 814 (csprogs + lobby config): own online full-run replays recover nonce-keyed local
 # per-frame views and retain a renderer-only cache; official lobbies request opted-in HTTPS
 # journals now that the collector is live. Native permission and legacy refusal unchanged.
+# Patch 808 (csprogs): the rewind's resume counts 3 s again (hud_rewind_countdown); a save on its
+# cursor and its resume carry that moment's Segments column and .view prefix, not the head's.
 # Patch 813 (engine, mover 8; client + server exe): at bump >= 1 in the air a fraction-0 hit
 # on a plane already clipped since the last progress goes to the ramp-fix recovery instead
 # of five identical planes and a velocity clear -- Lex's dead stop on a curved ramp

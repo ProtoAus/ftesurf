@@ -50,6 +50,9 @@ float  rw_sentat;               // cltime it went
 float  rw_goi;                  // ...and the cursor it went from
 float  rw_leave;                // it is the way out of a run on the clock (Rewind_Leave)
 float  rw_cd;                   // cltime the countdown ends; 0 = not counting
+vector rw_gop;                  // where the go's cursor was (Patch 808)
+float  rw_gosl;                 // STAT_FS_SLSEQ of the go's answered load; 0 none
+#define RW_GONEAR  256          // its row is the ring sample nearest that place
 float  rw_askat;                // cltime a clean run's first press asked; 0 = none
 float  rw_askgen;               // ...on this line (tr_gen): a new run is asked about afresh
 float  rw_resi;                 // the last resume's cursor, -1 none...
@@ -73,9 +76,9 @@ void() Rewind_RegisterCvars =
 {
 	registercommand("rewind");
 	registercvar("hud_rewind_chase", "0", CVAR_ARCHIVE);
-	// Patch 784: the count before the hold lets go, seconds; Lex asked for none
-	// (it was 3, RW_COUNT).  ESC still goes at once at any value.
-	registercvar("hud_rewind_countdown", "0", CVAR_ARCHIVE);
+	// The count before the hold lets go, seconds.  Patch 784 made it 0 at Lex's
+	// word; Patch 808 puts his 3 back.  ESC still goes at once at any value.
+	registercvar("hud_rewind_countdown", "3", CVAR_ARCHIVE);
 };
 
 // The key bound to `rewind` (default.cfg), else "rewind".
@@ -350,6 +353,8 @@ float() Rewind_Open =
 	}
 	rw_askat = 0;
 	rw_on  = TRUE;
+	rw_gosl = 0;
+	rec_rp_golines = 0;
 	rw_st0 = getstatf(STAT_FS_TIMERSTATE);
 	rw_seen = getstatf(STAT_FS_SLSEQ);
 	rw_ack = rw_cd = rw_dir = rw_leave = rw_pinseen = 0;
@@ -447,6 +452,8 @@ void() Rewind_Go =
 	}
 	rw_seq = getstatf(STAT_FS_SLSEQ);
 	rw_goi = floor(rw_i);
+	rw_gop = tr_cur_p;
+	rec_rp_golines = rec_rp_lines;
 	rw_reqtick = tr_tick;
 	rw_reqticks = (tr_tick > 0) ? rint(tr_cur_t / tr_tick) : 0;
 	rw_go_practice = tr_practice;
@@ -529,6 +536,30 @@ void() Rewind_Answer =
 	rw_ack = 0;
 	tr_cur_on = FALSE;
 	rw_cd  = cltime + max(0, cvar("hud_rewind_countdown"));
+	rw_gosl = getstatf(STAT_FS_SLSEQ);
+};
+
+/*
+  Patch 808: the load event numbered `seq` is this rewind's go (cl_board.qc,
+  cl_replay.qc), whichever of them reads it first and however late: a load under a
+  go in flight is its answer (Rewind_Answer reads it so), or the one it answered.
+  The row is the go's only if it is where the cursor was -- a typed `cmd sl_load`
+  in that round trip is not.
+*/
+float(float seq) Rewind_GoLoaded =
+{
+	if (!rw_ack)
+	if (!rw_gosl || seq != rw_gosl)
+		return FALSE;
+	return vlen([getstatf(STAT_FS_SLORG), getstatf(STAT_FS_SLORG + 1), getstatf(STAT_FS_SLORG + 2)]
+	            - rw_gop) <= RW_GONEAR;
+};
+
+// Patch 808: browsing, a save is the cursor's (SaveLoc_SaveCommand); with a go in
+// flight, the go's own row (one whose load is then refused keeps it).
+float() Rewind_Cursoring =
+{
+	return rw_on && !rw_cd;
 };
 
 // Every frame, with the other per-frame readers.
@@ -1035,6 +1066,18 @@ float() Rewind_Console =
 		cam = getproperty(VF_ORIGIN);
 		print(sprintf("rewind: camera height %.2f chase %g\n",
 		              cam_z - tr_cur_p_z, cvar("hud_rewind_chase")));
+		// Patch 808: the live sidecar's clock must never step back (a resume's join).
+		kup = oth = 0;
+		if (rec_rp_view >= 1)
+		for (k = FS_VIEWHEAD; k < rec_rp_lines; k = k + 1)
+		{
+			t = Rec_ViewLineTick(bufstr_get(rec_rp_view, k));
+			if (k > FS_VIEWHEAD && t < kup)
+				oth = oth + 1;
+			kup = t;
+		}
+		print(sprintf("rewind: view lines %g last tick %g back %g  column rows %g\n",
+		              rec_rp_lines, kup, oth, seq_n));
 	}
 	return TRUE;
 };
@@ -1093,6 +1136,7 @@ void() Rewind_Reset =
 	tr_cur_on = FALSE;
 	ui_rw_on = ui_rw_was = FALSE;
 	rw_nativeok = rw_go_ticket = rw_reqticks = rw_reqtick = 0;
+	rw_gosl = 0;
 	Rewind_SwReset();
 	Rewind_NavClear();
 };

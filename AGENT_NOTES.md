@@ -1,5 +1,31 @@
 # AGENT_NOTES.md
 
+## Rewind saves at the cursor (P808, 2026-10-19)
+
+- A save on the rewind's cursor and the rewind's resume are moments the client's live state has
+  moved past. Patch 502 made both timed (SAVETICKS >= 0), which put them back through Seq_Write and
+  Rec_ViewSaved, and both described the pinned head: anchorpos 170 u past the save on surf_dune, and
+  the view trim's 256-frame walk stopped 5 ticks short at 1000 fps. A cursor save is one the rewind
+  makes behind its pinned head (Rewind_Cursoring and SAVETICKS + 1 < TIMERTICKS). The resume is
+  Rewind_GoLoaded(seq): the server overwrites its SLOP_SAVED with the load in one frame, so the
+  client only sees LOADED, and Seq_SaveEvents (in HUD_Draw, also while browsing) and
+  Rec_ViewSaveEvents (Rec_ViewFrame) read it in different places of the frame -- latch by SLSEQ.
+- cl_board.qc's column history is keyed by the drawn body's tick (TIMERTICKS + unacked moves - 2,
+  cl_trail.qc's TR_LEAD); a mark from it takes anchorpos from STAT_FS_SLORG, because the restore's
+  guard waits for the body within SEG_JUMPDIST of it. ui_ground_z moves every grounded frame on a
+  slope: not a change worth a snapshot.
+- A .view warm mark is a line of ONE buffer: every reset of it (a load, Rec_ViewBegin,
+  Rec_ViewDrop, the resume's cut) must forget the marks past it, or a later warm load restores
+  another attempt's frames (pre-808 for ordinary loads).
+- An undefined macro used before its #define (TR_LEAD from cl_trail.qc, compiled after
+  cl_board.qc) made fteqcc segfault with no output; build.ps1 only says "fteqcc failed".
+  Bisect by file against the last good commit.
+- Rig: surf_dune's run lasts about a second after `cmd zone_goto 0` and a walk (its fail lands in
+  START, which re-arms), so open the rewind about 0.8 s in; cl_maxfps 1000 for a deep trim.
+  `rewind status` prints the live sidecar's backward steps. tools/p808rewind.py; `--lobby` gives the
+  server its own basedir (lobby_enable 1, lobby_dir "", lobby_master "", sv_guidkey, rec_enable 1,
+  lobby_norec 0). A local `map` exec'd at launch needs a `waitms 3000` first or waitmap gives up.
+- Python on Windows: Path.read_text/write_text turn an LF file into CRLF; edit QC as bytes.
 ## Zone publishing and velocity past 4096 (P812, P815, 2026-10-19)
 
 - P812: a PEXT2 bit with a reader, a writer and a PEXT2_CLIENTSUPPORT entry is still off until

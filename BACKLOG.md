@@ -5,6 +5,17 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## A rewind after a fail teleport re-armed the run closes at once (seen 19 Oct, P808's probe)
+
+- Sites: `cl_rewind.qc` Rewind_Frame (which close fires), `sv_timer.qc` SV_TimerArm/SV_RecDiscard.
+  surf_dune's fail lands in its START box, which re-arms the run (Patch 775 does the same for a stage
+  run's own box): the live line still holds the failed attempt (81 samples), BACKSPACE opens the
+  rewind (serial 1) and the next status reads `on 0 ... pin -1`, with no message either side. Even
+  open, a save or resume there is a practice placement: the arm's SV_RecDiscard dropped that
+  attempt's recorder, so SV_RewindWriteState refuses the ring's snapshots. Before Patch 775 a stage
+  run kept RUNNING through its own box and the rewind of a stage fail resumed timed. Undecided:
+  whether a re-armed attempt should resume segmented (its buffered recorder kept until the next
+  start) -- asked of Lex. Check: `tools/p808rewind.py --probe --lobby` (cfg/test/p808probe.cfg).
 ## Chat panel (P821): what the review left open
 
 - `src/client/cl_chat.qc` Chat_FieldKey reads Shift/Ctrl from `ui_kmods` (cl_keys.qc), which

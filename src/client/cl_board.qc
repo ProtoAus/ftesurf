@@ -1483,6 +1483,195 @@ float(float id) Seq_Unmark =
 };
 
 /*
+  Patch 808: the column as it stood, by run tick.  A save or a resume on the
+  rewind's cursor is a moment the column has moved past; Seq_Mark there wrote the
+  pinned head's rows and anchor (170 u past the save on surf_dune).  Seq_HistTake
+  keeps one at each change and every SEQH_EVERY ticks while a run is on the clock
+  (an air segment's ceiling grows every frame); Seq_HistMark puts the newest at or
+  before a tick into the seq_mk_ snapshot.  Keyed by the PREDICTED tick, as the
+  column follows the predicted body: the stat plus the moves not yet acknowledged.
+*/
+#define SEQH_N     2048         // ~7 a second at most changes: past the server ring's two minutes
+#define SEQH_EVERY 16           // ticks between two takes of an unchanged column
+#define SEQH_GAP   2            // ticks between two takes of a changing one
+#define SEQH_ROW   21           // floats before the rows, then 10 a row
+#define SEQH_W     (SEQH_ROW + SEQ_MAX * 10)
+float *seqh_t;                  // predicted run ticks at each; a ring
+float *seqh_s;                  // SEQH_W floats each
+float seqh_head, seqh_n, seqh_wrap;
+float seqh_start;               // the oldest is the run's start (not a load's restore)
+float seqh_sn, seqh_sg, seqh_sd, seqh_sk, seqh_se, seqh_sa, seqh_sz, seqh_sb, seqh_sv;
+
+// fromstart: a new run, whose state before the first take is its start.
+void(float fromstart) Seq_HistClear =
+{
+	seqh_head = seqh_n = seqh_wrap = 0;
+	seqh_start = fromstart;
+	seqh_sn = -1;                   // the next frame takes one
+};
+
+// The drawn body's tick: the stat plus the moves not acknowledged, less the two
+// the drawn state trails them by (cl_trail.qc's TR_LEAD, which compiles after this).
+float() Seq_HistTick =
+{
+	return getstatf(STAT_FS_TIMERTICKS) + bound(0, clientcommandframe - servercommandframe - 2, 64);
+};
+
+// Drop what is newer than tick t: a resume continues this run from there.
+void(float t) Seq_HistCut =
+{
+	while (seqh_n > 0 && seqh_t[(seqh_head - 1 + SEQH_N) % SEQH_N] > t)
+	{
+		seqh_head = (seqh_head - 1 + SEQH_N) % SEQH_N;
+		seqh_n = seqh_n - 1;
+	}
+	seqh_sn = -1;
+};
+
+void() Seq_HistTake =
+{
+	local float b, i, last, tk, newest, same;
+
+	tk = Seq_HistTick();
+	newest = (seqh_n > 0) ? seqh_t[(seqh_head - 1 + SEQH_N) % SEQH_N] : -1;
+	if (seqh_n > 0 && tk < newest)
+		Seq_HistCut(tk);            // the clock went back with no load seen
+	last = (seq_n > 0) ? seq_n - 1 : 0;
+	// A row closing always takes; any other change at most every SEQH_GAP ticks (a
+	// grounded frame on a slope moves ui_ground_z every frame, so it is not watched),
+	// and an unchanged column every SEQH_EVERY for the open segment's growing ceiling.
+	same = (seqh_sg == seq_gain[last] && seqh_sd == seq_dur[last] && seqh_sk == seg_kind &&
+	        seqh_se == seg_e0 && seqh_sa == ui_jump_have + 2 * ui_anchor_zone && seqh_sz == ui_jump_z &&
+	        seqh_sb == seg_bd_pend + 2 * seg_valid + 4 * ui_was_onground && seqh_sv == seg_bd_de);
+	if (seqh_sn == seq_n)
+	{
+		if (same && tk < newest + SEQH_EVERY)
+			return;
+		if (tk < newest + SEQH_GAP)
+			return;
+	}
+	if (!seqh_t)
+	{
+		seqh_t = memalloc(sizeof(float) * SEQH_N);
+		seqh_s = memalloc(sizeof(float) * SEQH_N * SEQH_W);
+	}
+	if (!seqh_t || !seqh_s)
+		return;
+	seqh_sn = seq_n; seqh_sg = seq_gain[last]; seqh_sd = seq_dur[last];
+	seqh_sk = seg_kind; seqh_se = seg_e0; seqh_sa = ui_jump_have + 2 * ui_anchor_zone;
+	seqh_sz = ui_jump_z; seqh_sb = seg_bd_pend + 2 * seg_valid + 4 * ui_was_onground;
+	seqh_sv = seg_bd_de;
+
+	seqh_t[seqh_head] = tk;
+	b = seqh_head * SEQH_W;
+	// Seq_Mark's fields, in its order.
+	seqh_s[b]      = seq_n;
+	seqh_s[b + 1]  = seq_haslaunch;
+	seqh_s[b + 2]  = (seg_kind != SEG_NONE);
+	seqh_s[b + 3]  = seg_kind;
+	seqh_s[b + 4]  = seg_sub;
+	seqh_s[b + 5]  = seg_e0;
+	seqh_s[b + 6]  = seg_emax;
+	seqh_s[b + 7]  = board_now - seg_t0;
+	seqh_s[b + 8]  = seg_valid;
+	seqh_s[b + 9]  = seg_bd_pend;
+	seqh_s[b + 10] = seg_bd_de;
+	seqh_s[b + 11] = seg_bd_v;
+	seqh_s[b + 12] = ui_jump_z;
+	seqh_s[b + 13] = ui_ground_z;
+	seqh_s[b + 14] = ui_was_onground;
+	seqh_s[b + 15] = ui_jump_have;
+	seqh_s[b + 16] = ui_anchor_z;
+	seqh_s[b + 17] = ui_anchor_zone;
+	seqh_s[b + 18] = ui_jump_lastorg_x;
+	seqh_s[b + 19] = ui_jump_lastorg_y;
+	seqh_s[b + 20] = ui_jump_lastorg_z;
+	for (i = 0; i < seq_n; i = i + 1)
+	{
+		b = seqh_head * SEQH_W + SEQH_ROW + i * 10;
+		seqh_s[b]     = seq_kind[i];
+		seqh_s[b + 1] = seq_gain[i];
+		seqh_s[b + 2] = seq_de[i];
+		seqh_s[b + 3] = seq_emax[i];
+		seqh_s[b + 4] = seq_dur[i];
+		seqh_s[b + 5] = seq_pct[i];
+		seqh_s[b + 6] = seq_launch[i];
+		seqh_s[b + 7] = seq_eend[i];
+		seqh_s[b + 8] = seq_sub[i];
+		seqh_s[b + 9] = seq_eref[i];
+	}
+	seqh_head = (seqh_head + 1) % SEQH_N;
+	if (seqh_n < SEQH_N)
+		seqh_n = seqh_n + 1;
+	else
+		seqh_wrap = TRUE;
+};
+
+// FALSE when nothing kept reaches back to tick t (the ring wrapped past it).
+float(float id, float t) Seq_HistMark =
+{
+	local float k, j, b, i, tick;
+
+	if (!seqh_t || seqh_n < 1)
+		return FALSE;
+	j = 0;
+	for (k = 0; k < seqh_n; k = k + 1)
+	{
+		j = (seqh_head - 1 - k + SEQH_N) % SEQH_N;
+		if (seqh_t[j] <= t)
+			break;
+	}
+	if (k >= seqh_n)
+	{
+		if (seqh_wrap || !seqh_start)
+			return FALSE;           // before what is kept, or before a load's restore
+		j = (seqh_head - seqh_n + SEQH_N) % SEQH_N;     // before the first take: the run's start
+	}
+	tick = serverkeyfloat("pm_ticrate");
+	if (tick <= 0)
+		tick = 0.015;
+	b = j * SEQH_W;
+	seq_mk_id        = id;
+	seq_mk_n         = seqh_s[b];
+	seq_mk_haslaunch = seqh_s[b + 1];
+	seq_mk_ok        = seqh_s[b + 2];
+	seq_mk_skind     = seqh_s[b + 3];
+	seq_mk_ssub      = seqh_s[b + 4];
+	seq_mk_se0       = seqh_s[b + 5];
+	seq_mk_semax     = seqh_s[b + 6];
+	seq_mk_sdur      = seqh_s[b + 7] + max(0, t - seqh_t[j]) * tick;
+	seq_mk_svalid    = seqh_s[b + 8];
+	seq_mk_bdpend    = seqh_s[b + 9];
+	seq_mk_bdde      = seqh_s[b + 10];
+	seq_mk_bdv       = seqh_s[b + 11];
+	seq_mk_ajz       = seqh_s[b + 12];
+	seq_mk_agz       = seqh_s[b + 13];
+	seq_mk_aong      = seqh_s[b + 14];
+	seq_mk_ahave     = seqh_s[b + 15];
+	seq_mk_az        = seqh_s[b + 16];
+	seq_mk_azone     = seqh_s[b + 17];
+	// Where the row IS (the cursor save's origin), not where the column was taken:
+	// the restore's guards wait for the body within SEG_JUMPDIST of it.
+	seq_mk_aorg      = [getstatf(STAT_FS_SLORG), getstatf(STAT_FS_SLORG + 1), getstatf(STAT_FS_SLORG + 2)];
+	for (i = 0; i < seq_mk_n; i = i + 1)
+	{
+		b = j * SEQH_W + SEQH_ROW + i * 10;
+		seq_mk_kind[i]   = seqh_s[b];
+		seq_mk_gain[i]   = seqh_s[b + 1];
+		seq_mk_de[i]     = seqh_s[b + 2];
+		seq_mk_emax[i]   = seqh_s[b + 3];
+		seq_mk_dur[i]    = seqh_s[b + 4];
+		seq_mk_pct[i]    = seqh_s[b + 5];
+		seq_mk_launch[i] = seqh_s[b + 6];
+		seq_mk_eend[i]   = seqh_s[b + 7];
+		seq_mk_sub[i]    = seqh_s[b + 8];
+		seq_mk_eref[i]   = seqh_s[b + 9];
+	}
+	dprint(sprintf("seq: slot %g from the column at tick %g (asked %g)\n", id, seqh_t[j], t));
+	return TRUE;
+};
+
+/*
   Append one row from a file.  Cold path only -- the warm one copies wholesale.
 
   The launch flag is NOT stored on disk: it is "the first air row", recomputed
@@ -1572,14 +1761,15 @@ string(float id) Seq_Path =
   it is "the first air row" and is recomputed, which keeps the sprintf inside
   the eight-parameter varargs cap with a slot to spare.
 */
-void(float id) Seq_Write =
+// Patch 808: the file is written from the seq_mk_ snapshot (Seq_Write marks the live
+// column first; a rewind save marks Seq_HistMark's).
+void(float id) Seq_WriteMk =
 {
 	local float fh, i;
 
 	if (id < FS_RETRY_SLOT || id > FS_MAXSAVES)
 		return;
 
-	Seq_Mark(id);
 	fremove(Seq_Path(id));
 
 	/*
@@ -1608,10 +1798,10 @@ void(float id) Seq_Write =
 		return;
 	}
 
-	dprint(sprintf("seq: save %g -- %g row(s) -> %s\n", id, seq_n, Seq_Path(id)));
+	dprint(sprintf("seq: save %g -- %g row(s) -> %s\n", id, seq_mk_n, Seq_Path(id)));
 
 	fputs(fh, "FTESURF-SEQ 1\n");
-	fputs(fh, sprintf("n %g\n", seq_n));
+	fputs(fh, sprintf("n %g\n", seq_mk_n));
 	/*
 	  BUILD 65 -- seq_eend GOES ON ITS OWN LINE, AND IT GOES FIRST.
 
@@ -1649,15 +1839,15 @@ void(float id) Seq_Write =
 	  rather than 0.  That fallback is what makes a build-65 or -66 file draw
 	  exactly as it drew before this build -- see Seq_Read.
 	*/
-	for (i = 0; i < seq_n; i = i + 1)
+	for (i = 0; i < seq_mk_n; i = i + 1)
 	{
-		fputs(fh, sprintf("rowe %.4f\n", seq_eend[i]));
-		fputs(fh, sprintf("rowref %.4f\n", seq_eref[i]));
-		if (seq_sub[i] != SEQSUB_NONE)
-			fputs(fh, sprintf("rowsub %g\n", seq_sub[i]));
+		fputs(fh, sprintf("rowe %.4f\n", seq_mk_eend[i]));
+		fputs(fh, sprintf("rowref %.4f\n", seq_mk_eref[i]));
+		if (seq_mk_sub[i] != SEQSUB_NONE)
+			fputs(fh, sprintf("rowsub %g\n", seq_mk_sub[i]));
 		fputs(fh, sprintf("row %g %.4f %.4f %.4f %.2f %.4f\n",
-		                  seq_kind[i], seq_de[i], seq_emax[i],
-		                  seq_dur[i], seq_pct[i], seq_gain[i]));
+		                  seq_mk_kind[i], seq_mk_de[i], seq_mk_emax[i],
+		                  seq_mk_dur[i], seq_mk_pct[i], seq_mk_gain[i]));
 	}
 
 	/*
@@ -1735,6 +1925,14 @@ void(float id) Seq_Write =
 	                  seq_mk_aorg_x, seq_mk_aorg_y, seq_mk_aorg_z));
 
 	fclose(fh);
+};
+
+void(float id) Seq_Write =
+{
+	if (id < FS_RETRY_SLOT || id > FS_MAXSAVES)
+		return;
+	Seq_Mark(id);
+	Seq_WriteMk(id);
 };
 
 /*
@@ -2053,10 +2251,13 @@ void() Board_ResetContact =
   dead before it can close a row from a pre-teleport e0.
 */
 float  seq_slseq;
+float(float seq) Rewind_GoLoaded;   // cl_rewind.qc, Patch 808
+float() Rewind_Cursoring;
+float() Rewind_Holds;
 
 void() Seq_SaveEvents =
 {
-	local float seq, op, id;
+	local float seq, op, id, k;
 
 	seq = getstatf(STAT_FS_SLSEQ);
 	if (seq == seq_slseq)
@@ -2074,10 +2275,14 @@ void() Seq_SaveEvents =
 	{
 		Board_ResetContact();
 		Seq_Read(FS_RETRY_SLOT);
+		Seq_HistClear(FALSE);
 	}
 	// Multi-Session: the player was placed, and no segment state survived.
 	else if (op == SLOP_RESUME)
+	{
 		Board_ResetContact();
+		Seq_HistClear(FALSE);
+	}
 	else if (seq_slseq != 0 || seq == 1)
 	{
 		// Patch 477 review round 8: a rewind's row (SAVETICKS -1) is the
@@ -2085,7 +2290,26 @@ void() Seq_SaveEvents =
 		// snapshot or file for it, and no stale snapshot left on its id.
 		if (op == SLOP_SAVED)
 		{
+			// Patch 808: a save on the rewind's cursor, behind its pinned head, is that
+			// moment's column -- or none, never the head's.  Nested: QC's && would mark
+			// a live save from the history too.
+			k = FALSE;
+			if (Rewind_Cursoring())
 			if (getstatf(STAT_FS_SAVETICKS) >= 0)
+			if (getstatf(STAT_FS_SAVETICKS) + 1 < getstatf(STAT_FS_TIMERTICKS))
+				k = TRUE;
+			if (k)
+			{
+				if (Seq_HistMark(id, getstatf(STAT_FS_SAVETICKS)))
+					Seq_WriteMk(id);
+				else
+				{
+					fremove(Seq_Path(id));
+					if (seq_mk_id == id)
+						seq_mk_id = -1;
+				}
+			}
+			else if (getstatf(STAT_FS_SAVETICKS) >= 0)
 				Seq_Write(id);
 			else if (seq_mk_id == id)
 				seq_mk_id = -1;
@@ -2111,9 +2335,34 @@ void() Seq_SaveEvents =
 				if (seq_mk_id == id)
 					seq_mk_id = -1;
 				Board_Warped();
+				Seq_HistClear(FALSE);
 			}
 			else
+			{
+				// Patch 808: the rewind's resume row was never seen saved (its save
+				// event is overwritten by the load in one server frame): its column
+				// is the history's at its tick, and the run goes on from there.
+				// Any other load starts the history at what it restored.
+				k = Rewind_GoLoaded(seq);
+				if (k)
+				{
+					// No other resume's file or snapshot at this reused id stands in;
+					// with no history for the tick the column starts empty, never the
+					// pinned head's.
+					fremove(Seq_Path(id));
+					if (seq_mk_id == id)
+						seq_mk_id = -1;
+					if (Seq_HistMark(id, getstatf(STAT_FS_SAVETICKS)))
+						Seq_WriteMk(id);
+					else
+						Seq_Clear();
+				}
 				Seq_Read(id);
+				if (k)
+					Seq_HistCut(getstatf(STAT_FS_SAVETICKS));
+				else
+					Seq_HistClear(FALSE);
+			}
 		}
 	}
 
@@ -2396,7 +2645,12 @@ void() Seq_Frame =
 		if (st == TS_RUNNING && seq_n > 0)
 			seq_fadeat = cltime;
 		if (st == TS_RUNNING)
+		{
 			seq_haslaunch = FALSE;
+			// Patch 808: a new run's history -- not a rewind's resume of a finished one.
+			if (!Rewind_Holds())
+				Seq_HistClear(TRUE);
+		}
 		seq_laststate = st;
 	}
 
@@ -2421,6 +2675,10 @@ void() Seq_Frame =
 	if (seq_fadeat > 0)
 		if (cltime - seq_fadeat >= SEQ_FADE)
 			Seq_Clear();
+	// Patch 808: not under the rewind's pin, which shows a moment it does not change.
+	if (st == TS_RUNNING && !board_ov_spec)
+	if (!Rewind_Holds())
+		Seq_HistTake();
 };
 
 /*
