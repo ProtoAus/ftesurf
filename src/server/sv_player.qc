@@ -870,6 +870,107 @@ void(entity e) SV_SaveLocGo =
 	}
 };
 
+// setpos's move, shared with tp_player (Patch 797); the essay is over setpos's
+// branch in SV_ParseClientCommand.
+void(vector org, float haveang, vector ang) SV_SetPosSelf =
+{
+	local vector was;
+
+	SV_SpecRelease(self, "setpos");     // Patch 382
+	SV_SaveLocRelease(self);
+	/*
+	  BUILD 44: A CHEAT, NOT A STITCH, and it is the one call in the class
+	  split that could honestly go the other way.
+
+	  The argument FOR stitch: setpos is this mod's own deliberately ungated
+	  command (see the essay over its branch in SV_ParseClientCommand), and it is reached
+	  mid-run for "put me at that ramp and let me try the next section" -- a
+	  practice gesture with legal physics, which is exactly what `segmented`
+	  is meant to name.
+
+	  The argument for cheat, which wins: it hands you a POSITION YOU DID NOT
+	  EARN.  That is noclip's whole argument and noclip is not in doubt, and a
+	  save-lock at least required you to have stood there once.  Landing it in
+	  the gentler bucket would let a run be teleported to the last ramp and
+	  labelled with the same word as somebody replaying a section they saved.
+
+	  One line either way.  Written down so a later change here is a decision.
+	*/
+	SV_TimerCheat(self);
+	self.run_t_handcarry = self.run_t_handcarry | TF_CHEAT;     // Patch 478 r11
+	// Patch 478 review round 7 (older than 478): and a finished stage run's
+	// handover, as a load drops it (Patch 436) -- the handover's arm re-read
+	// the class from the live state and started the next stage clean
+	// wherever this put the body.
+	if (self.run_t_state == TS_FINISHED)
+		self.run_t_pendarm = -1;
+
+	was = self.origin;
+	setorigin(self, org);
+	self.velocity = '0 0 0';
+	SV_ClearCarrier(self);          // Patch 400: or a push pays out here
+	SV_TimerWarped(self);
+
+	// Angles are optional, and all three arrive together or not at all --
+	// which is what the engine's own print emits.
+	//
+	// BOTH FIELDS GET THE FULL TRIPLE.  The engine sends .angles rather than
+	// .v_angle whenever fixangle is set (sv_send.c:1535), so the old
+	// `[0, v_angle_y, 0]` here silently dropped the pitch off the wire and
+	// this command could not aim up or down -- the same one-token bug as
+	// SV_SaveLocPlace, and the reason a scripted screenshot always came out
+	// level.  The engine's own setpos (sv_user.c:5605, Patch 165) writes
+	// both, and its comment is this bug.
+	if (haveang)
+	{
+		self.v_angle  = ang;
+		self.angles   = self.v_angle;
+		self.fixangle = TRUE;
+	}
+	SV_RewindWarped(self, was);     // Patch 477: last, it tokenizes
+};
+
+/*
+  Patch 797 (Lex): the player list's Teleport.  It is setpos to another
+  player's body and their aim, so the run takes setpos's class and the
+  recording nothing setpos does not already write.  Refused where spectate
+  refuses the same states, and where the standing hull would start in solid.
+*/
+void(float n) SV_TpPlayer =
+{
+	local entity t;
+	local float ct;
+
+	t = edict_num(n);                   // out of range: world
+	ct = clienttype(t);
+	if (t == self || t.classname != "player" || !t.run_inserver
+	    || (ct != CLIENTTYPE_REAL && ct != CLIENTTYPE_BOT))
+	{
+		sprint(self, PRINT_HIGH, "^3teleport:^7 nobody to go to there\n");
+		return;
+	}
+	if (SV_MsBusy(self))
+		return;
+	if (self.rec_wt_hold)
+	{
+		sprint(self, PRINT_HIGH, "^3teleport:^7 stop the replay first\n");
+		return;
+	}
+	if (self.rec_gh_on)
+	{
+		sprint(self, PRINT_HIGH, "^3teleport:^7 leave ghost first\n");
+		return;
+	}
+	tracebox(t.origin, PM_HULL_MINS, PM_HULL_MAXS, t.origin, MOVE_NOMONSTERS, self);
+	if (trace_startsolid)
+	{
+		sprint(self, PRINT_HIGH, sprintf("^3teleport:^7 no room to stand where %s is\n", Lobby_ChatName(t)));
+		return;
+	}
+	SV_SetPosSelf(t.origin, TRUE, [t.v_angle_x, t.v_angle_y, 0]);
+	sprint(self, PRINT_HIGH, sprintf("^5teleport:^7 to %s\n", Lobby_ChatName(t)));
+};
+
 void(string cmd) SV_ParseClientCommand =
 {
 	local string c;
@@ -1285,6 +1386,8 @@ void(string cmd) SV_ParseClientCommand =
 	// switches target); `rec_spec 0` starts the countdown back.  See SV_SpecStart.
 	if (c == "rec_spec")        { SV_SpecCmd(self, stof(argv(1)));        return; }
 	if (c == "rec_spec_nudge")  { SV_SpecNudge(self);                     return; }
+	// Patch 797: `tp_player <entnum>`, the player list's Teleport.
+	if (c == "tp_player")       { SV_TpPlayer(stof(argv(1)));             return; }
 
 	/*
 	  BUILD 43 -- WHERE THE DETACHED CAMERA IS, for the PVS and for nothing else.
@@ -1483,60 +1586,9 @@ void(string cmd) SV_ParseClientCommand =
 			return;
 		}
 
-		SV_SpecRelease(self, "setpos");     // Patch 382
-		SV_SaveLocRelease(self);
-		/*
-		  BUILD 44: A CHEAT, NOT A STITCH, and it is the one call in the class
-		  split that could honestly go the other way.
-
-		  The argument FOR stitch: setpos is this mod's own deliberately ungated
-		  command (see the paragraph above about the cheat gate), and it is reached
-		  mid-run for "put me at that ramp and let me try the next section" -- a
-		  practice gesture with legal physics, which is exactly what `segmented`
-		  is meant to name.
-
-		  The argument for cheat, which wins: it hands you a POSITION YOU DID NOT
-		  EARN.  That is noclip's whole argument and noclip is not in doubt, and a
-		  save-lock at least required you to have stood there once.  Landing it in
-		  the gentler bucket would let a run be teleported to the last ramp and
-		  labelled with the same word as somebody replaying a section they saved.
-
-		  One line either way.  Written down so a later change here is a decision.
-		*/
-		SV_TimerCheat(self);
-		self.run_t_handcarry = self.run_t_handcarry | TF_CHEAT;     // Patch 478 r11
-		// Patch 478 review round 7 (older than 478): and a finished stage run's
-		// handover, as a load drops it (Patch 436) -- the handover's arm re-read
-		// the class from the live state and started the next stage clean
-		// wherever this put the body.
-		if (self.run_t_state == TS_FINISHED)
-			self.run_t_pendarm = -1;
-
-		was = self.origin;
-		setorigin(self, [stof(argv(1)), stof(argv(2)), stof(argv(3))]);
-		self.velocity = '0 0 0';
-		SV_ClearCarrier(self);          // Patch 400: or a push pays out here
-		SV_TimerWarped(self);
-
-		// Angles are optional, and all three arrive together or not at all --
-		// which is what the engine's own print emits.
-		//
-		// BOTH FIELDS GET THE FULL TRIPLE.  The engine sends .angles rather than
-		// .v_angle whenever fixangle is set (sv_send.c:1535), so the old
-		// `[0, v_angle_y, 0]` here silently dropped the pitch off the wire and
-		// this command could not aim up or down -- the same one-token bug as
-		// SV_SaveLocPlace, and the reason a scripted screenshot always came out
-		// level.  The engine's own setpos (sv_user.c:5605, Patch 165) writes
-		// both, and its comment is this bug.
-		if (cmdargc >= 7)
-		{
-			self.v_angle  = [stof(argv(4)), stof(argv(5)), stof(argv(6))];
-			self.angles   = self.v_angle;
-			self.fixangle = TRUE;
-		}
-
+		SV_SetPosSelf([stof(argv(1)), stof(argv(2)), stof(argv(3))], cmdargc >= 7,
+		              [stof(argv(4)), stof(argv(5)), stof(argv(6))]);
 		sprint(self, PRINT_HIGH, sprintf("setpos: %v\n", self.origin));
-		SV_RewindWarped(self, was);     // Patch 477: last, it tokenizes
 		return;
 	}
 

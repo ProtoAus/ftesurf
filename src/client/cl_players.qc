@@ -4,7 +4,7 @@
    is the last added); only pinned-board clicks act. */
 #define PL_MAXSLOT 64
 #define PL_BMAX 64
-float pl_specpick, pl_rows, pl_bid, pl_bn, pl_req, pl_sent, pl_wait, pl_bgen;
+float pl_specpick, pl_tppick, pl_rows, pl_bid, pl_bn, pl_req, pl_sent, pl_wait, pl_bgen;
 float pl_rowh, pl_wheel;
 float pl_bticks[PL_BMAX];
 string pl_bmap, pl_profilepick;
@@ -120,7 +120,7 @@ float(string id, vector pos, vector sz, string label, float tsz, float on) Pl_Bl
 void(vector p, vector sz, float tsz) Players_Draw =
 {
 	local float i, j, n, rowh, hint, x, y, by, best, vmute, blocked, rel, me, on, hot, av, bh, rw;
-	local float wpro, wadd, wmute, wblk, ax, pbr, pingr, nx, nw;
+	local float wpro, wtp, wadd, wmute, wblk, ax, pbr, pingr, nx, nw;
 	local float slots[PL_MAXSLOT];
 	local vector lp, c;
 	local string who, ahash, nm, s, map, rid;
@@ -156,10 +156,11 @@ void(vector p, vector sz, float tsz) Players_Draw =
 	bh = ceil(hint * 2.1);
 	rw = sz_x - tsz;                    // the scrollbar's lane
 	wpro = Pl_ButtonW("Profile", "", "", hint);
+	wtp = Pl_ButtonW("Teleport", "", "", hint);
 	wadd = Pl_ButtonW("Add friend", "Requested", "Accept", hint);
 	wmute = Pl_ButtonW("Mute", "Unmute", "", hint);
 	wblk = Pl_ButtonW("Block", "Unblock", "", hint);
-	ax = rw - hint - wpro - wadd - wmute - wblk - 18;
+	ax = rw - hint - wpro - wtp - wadd - wmute - wblk - 24;
 	pbr = ax - hint * 2;
 	pingr = pbr - ceil(stringwidth("88:88.888", TRUE, [hint, hint])) - hint * 2;
 	nx = hint * 2 + av;
@@ -234,6 +235,10 @@ void(vector p, vector sz, float tsz) Players_Draw =
 		}
 		if (me) continue;
 		x = x + wpro + 6;
+		// Patch 797: the server's setpos to them (SV_TpPlayer).
+		if (Profile_Chip(sprintf("pl_tp%g", j), [x, by], [wtp, bh], "Teleport", hint, FALSE))
+		if (rec_sb_open) pl_tppick = j + 1;
+		x = x + wtp + 6;
 		if (rel == 3)
 			sui_text([x + (wadd - stringwidth("Friend", TRUE, [hint, hint])) * 0.5, by + (bh - hint) * 0.5],
 			         [hint, hint], "Friend", SUI_THEME_GOOD, 1, 0);

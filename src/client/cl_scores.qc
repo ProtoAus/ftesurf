@@ -2618,6 +2618,17 @@ float() Scores_SpecHandOff =
 	return TRUE;
 };
 
+// Patch 797: the row's Teleport; the server answers and refuses (SV_TpPlayer).
+float() Scores_TpHandOff =
+{
+	if (!pl_tppick)
+		return FALSE;
+	localcmd(sprintf("cmd tp_player %g\n", pl_tppick));
+	pl_tppick = 0;
+	Scores_Close();
+	return TRUE;
+};
+
 // The footer's count: what the list holds, for whichever source is up.
 string() Scores_CountLine =
 {
@@ -3336,6 +3347,7 @@ void(vector scr) Scores_Draw =
 			return;
 		}
 		if (Scores_SearchPick()) return;
+		if (Scores_TpHandOff()) return;
 		Scores_SpecHandOff();
 		return;
 	}
