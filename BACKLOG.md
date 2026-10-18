@@ -29,9 +29,19 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   list lands. Check: two accounts on one install.
 - Site: `src/client/cl_scores_native.qc`. The native table (`ui_native_scores`, off by
   default) sizes its own columns in the ImGui plugin; four-digit ranks were checked on
-  the SUI table only. Check: native table at rank 1000 (`scores scrollto 990`).
-- Site: `tools/test_menu_refresh.py`. Its stale-friends check now reads
-  `friends_fresh=0` (rows stay up); the test was edited, not rerun.
+  the SUI table only. Check: native table at rank 1000; it pages 24 rows by its Next
+  button, and `scores scrollto` moves only the SUI list, so an arm needs a page handle.
+- Site: `tools/test_menu_refresh.py` cannot grade the friends panel. It fails "F2
+  binding text", "one authorised join path" and "pixels did not change
+  friends_connected/friends_bottom" at both sizes on main ecd5e215 and on 1bd081a1
+  (before P781) alike: ui_gallery writes consent version 4, so MF_Draw shows "Friends
+  needs online features" and no rows or Join, and F2 is bound only in the owner's
+  ftesurf.cfg. Its stale check (`friends_fresh=0`) passes. Check: the fixture at
+  consent 6, then the three again.
+- Site: the installs' `ftesurf/cfg`. C:\FTESurf's checkout sits at P686 and progs
+  deploys copy .dat only, so config a patch adds reaches neither install unless copied
+  by hand: P777's `bind f share` was missing from both until 18 Oct 10:32Z (copied then,
+  `.pre-p781cfg-*` kept). Check: `git diff` main's ftesurf/cfg against each install's.
 - Site: `Online_NextReq`. Ids run up from a per-VM base without wrapping; past 8000
   requests in one map they reach the next base's range. Check: none needed below that.
 
