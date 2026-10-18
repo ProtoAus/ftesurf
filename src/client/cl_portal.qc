@@ -129,8 +129,8 @@ vector(vector org, vector ang) FS_PortalTransformView =
     2  THE VOID.  A portal recursed from outside the world samples PVS from a
        cluster that does not exist and renders nothing, at full price.  Patch
        206 gates the engine side on r_viewcluster == -1, and question 4's
-       checkpvs refuses every door from there: cluster -1's PVS row is empty
-       (VBSP_ClusterPVS).  P802 dropped the noclip test that stood here, which
+       checkpvs refuses every door from there on a vised map: cluster -1's PVS row
+       is empty (VBSP_ClusterPVS).  P802 dropped the noclip test that stood here, which
        hid every door from a noclipping player inside the map as well.
     3  FACING.  You cannot see through the back of a portal, and GLR_DrawPortal
        refuses one you are behind -- which, before Patch 206 taught its depth
@@ -317,10 +317,10 @@ void(entity state) Portal_NetState =
   RemapValClamped(eye distance to its box, FadeStartDist, FadeDist, TranslucencyLimit, 1)
   (c_func_areaportalwindow.cpp:129-140), and hides the target (func_areaportalwindow.cpp:81-87;
   SV_PortalWindowsActivate here).  276 windows on 73 maps; surf_dragon's toolsblack window21
-  vanishes inside 500 units.  BackgroundBModel (one map) is not drawn.
+  vanishes inside 500 units.  BackgroundBModel (one map) stays the server's ordinary entity.
 */
 .string apw_target;
-.float  apw_start, apw_end, apw_limit;
+.float  apw_start, apw_end, apw_limit, apw_done;
 float   vbsp_apw_n;
 
 float() APW_Predraw =
@@ -345,8 +345,8 @@ float() APW_Predraw =
 	return PREDRAW_AUTOADD;
 };
 
-// The first entity named by each window's target, as Source's FindEntityByName(NULL, ...)
-// takes it; names compare caseless, as the server's SV_RepairTargetCase makes them.
+// The first entity named by each window's target, caseless, as Source's FindEntityByName(NULL,
+// ...) and SV_PortalWindowsActivate take it.  A first match that is not a brush draws nothing.
 void() APW_Resolve =
 {
 	local string tok, key, nm, mdl, sorg;
@@ -365,11 +365,14 @@ void() APW_Resolve =
 			else if (key == "model")      mdl  = tok;
 			else if (key == "origin")     sorg = tok;
 		}
-		if (nm == "" || substring(mdl, 0, 1) != "*")
+		if (nm == "")
 			continue;
 		for (w = findchain(classname, "vbsp_apwindow"); w; w = w.chain)
 		{
-			if (w.apw_target != nm || w.model != "")
+			if (w.apw_target != nm || w.apw_done)
+				continue;
+			w.apw_done = TRUE;
+			if (substring(mdl, 0, 1) != "*")
 				continue;
 			setmodel(w, mdl);
 			setorigin(w, stov(sorg));
@@ -422,14 +425,14 @@ void() Portal_LoadForMap =
 	local string tok, key;
 	local string cn, nm, pn, sorg, sang, sw, sh, ssa, sd;
 	local string st, sfs, sfd, stl, lk;
-	local string sigfirst;
+	local string sigfirst, sigwfirst;
 	local float sigcount, sigwin;
 	local entity e;
 
 	Portal_Clear();
 	FS_PortalRegisterCvars();
 	sigcount = sigwin = 0;
-	sigfirst = "";
+	sigfirst = sigwfirst = "";
 	vbsp_lpd_map = serverkey("map");
 	if (vbsp_lpd_map == "")
 		return;
@@ -482,6 +485,8 @@ void() Portal_LoadForMap =
 		if (cn == "func_areaportalwindow")
 		{
 			sigwin = sigwin + 1;
+			if (sigwfirst == "")
+				sigwfirst = st;
 			if (st != "")
 			{
 				e = spawn();
@@ -611,7 +616,7 @@ void() Portal_LoadForMap =
 	  Patch 205 shipped with; a count that is short by a few is a one-way
 	  destination.
 	*/
-	vbsp_lpd_sig = sprintf("%g/%s/%g", sigcount, sigfirst, sigwin);
+	vbsp_lpd_sig = sprintf("%g/%s/%g/%s", sigcount, sigfirst, sigwin, sigwfirst);
 
 	/*
 	  The dprint runs unconditionally and the print does not, because a load that
@@ -674,32 +679,37 @@ void() Portal_LoadForMap =
 
 string() Portal_Signature =
 {
-	local string tok, key, cn, sorg, first;
+	local string tok, key, cn, sorg, first, st, wfirst;
 	local float n, nw;
 
 	n = nw = 0;
-	first = "";
+	first = wfirst = "";
 	getentitytoken(0);
 	while ((tok = getentitytoken()) != "")
 	{
 		if (tok != "{")
 			continue;
-		cn = sorg = "";
+		cn = sorg = st = "";
 		while ((key = getentitytoken()) != "" && key != "}")
 		{
 			tok = getentitytoken();
 			if      (key == "classname") cn   = tok;
 			else if (key == "origin")    sorg = tok;
+			else if (key == "target")    st   = tok;
 		}
 		if (cn == "func_areaportalwindow")
+		{
 			nw = nw + 1;
+			if (wfirst == "")
+				wfirst = st;
+		}
 		if (cn != "linked_portal_door")
 			continue;
 		n = n + 1;
 		if (first == "")
 			first = sorg;
 	}
-	return sprintf("%g/%s/%g", n, first, nw);
+	return sprintf("%g/%s/%g/%s", n, first, nw, wfirst);
 };
 
 /*

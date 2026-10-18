@@ -1855,12 +1855,17 @@ float(entity to, float changed) SV_TrigStateSend =
 	return TRUE;
 };
 
+// P799: a func_areaportalwindow's target, which the client draws (SV_PortalWindowsActivate).
+.float vbsp_apwhide;
+
 // Source kRenderTransAlpha (4) is normal alpha blending, not additive.
 // Native alpha 0 means opaque (sv_ents.c); exact zero needs EF_NODRAW.
 void(entity t) SV_BrushRenderState =
 {
 	local float hidden;
 
+	if (t.vbsp_apwhide)
+		t.effects = t.effects | EF_NODRAW;	// Source's InputAlpha leaves EF_NODRAW alone
 	if (t.classname != "func_brush")
 		return;
 	if (t.rendermode == 4)
@@ -1870,7 +1875,7 @@ void(entity t) SV_BrushRenderState =
 
 	hidden = (SV_Key2(t.StartDisabled, t.startdisabled) ||
 	          t.rendermode == RENDERMODE_NONE ||
-	          (t.rendermode == 4 && t.renderamt <= 0));
+	          (t.rendermode == 4 && t.renderamt <= 0) || t.vbsp_apwhide);
 	if (hidden)
 		t.effects = t.effects | EF_NODRAW;
 	else
@@ -1921,7 +1926,7 @@ void(entity t, float on) SV_IOEnable =
 	// Both spellings are read everywhere else through SV_Key2, so both are
 	// written here; leaving the other one set would re-disable on the next read.
 	t.StartDisabled = t.startdisabled = !on;
-	SV_BrushRenderState(t);
+	SV_BrushRenderState(t);		// also keeps an areaportal window's pane hidden
 	if (t.SendEntity == SV_TrigStateSend)
 		t.SendFlags = 1;
 
@@ -8093,8 +8098,10 @@ void() func_areaportalwindow =
 /*
   P799: the window's TARGET is the pane, and the client draws it with Source's distance fade
   (cl_portal.qc, APW_Predraw).  CFuncAreaPortalWindow::Activate takes the first entity its
-  target names and puts EF_NODRAW on it (func_areaportalwindow.cpp:81-87); the target keeps
-  its own solidity.  Runs from StartFrame's first frame, when every entity exists.
+  target names, caseless, and puts EF_NODRAW on it (func_areaportalwindow.cpp:81-87); the
+  target keeps its own solidity.  A first match that is not a brush is drawn by nobody, as in
+  Source.  Runs from StartFrame's first frame, before the map's spawn outputs fire, as Activate
+  precedes OnMapSpawn.
 */
 void() SV_PortalWindowsActivate =
 {
@@ -8104,9 +8111,14 @@ void() SV_PortalWindowsActivate =
 	{
 		if (w.classname != "func_areaportalwindow" || w.target == "")
 			continue;
-		t = find(world, targetname, w.target);
+		for (t = nextent(world); t; t = nextent(t))
+			if (t.targetname != "" && !strcasecmp(t.targetname, w.target))
+				break;
 		if (t && substring(t.model, 0, 1) == "*")
+		{
+			t.vbsp_apwhide = TRUE;
 			t.effects = t.effects | EF_NODRAW;
+		}
 	}
 };
 

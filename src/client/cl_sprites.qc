@@ -1172,7 +1172,7 @@ void(string mdl, vector org) Sprite_AddOccluder =
 */
 void() Sprite_LoadOccluders =
 {
-	local string tok, key, cn, model;
+	local string tok, key, cn, model, tn, panes;
 	local vector org;
 	local float  want, tier, solidity, startdisabled, hassolidity;
 
@@ -1185,13 +1185,35 @@ void() Sprite_LoadOccluders =
 	if (!want)
 		return;
 
+	/*
+	  P799: an areaportal window's pane never occludes.  Source draws it in the translucent
+	  pass (C_FuncAreaPortalWindow::IsTransparent), so the depth query does not see it.  Its
+	  targets, lowercased between newlines; a window can follow its pane in the lump.
+	*/
+	panes = "\n";
+	getentitytoken(0);
+	while ((tok = getentitytoken()) != "")
+	{
+		if (tok != "{")
+			continue;
+		cn = tn = "";
+		while ((key = getentitytoken()) != "" && key != "}")
+		{
+			tok = getentitytoken();
+			if      (key == "classname") cn = tok;
+			else if (key == "target")    tn = tok;
+		}
+		if (cn == "func_areaportalwindow" && tn != "")
+			panes = strcat(panes, strtolower(tn), "\n");
+	}
+
 	getentitytoken(0);
 	while ((tok = getentitytoken()) != "")
 	{
 		if (tok != "{")
 			continue;
 
-		cn = model = "";
+		cn = model = tn = "";
 		org = '0 0 0';
 		solidity = startdisabled = 0;
 		hassolidity = FALSE;
@@ -1201,6 +1223,7 @@ void() Sprite_LoadOccluders =
 			tok = getentitytoken();
 			if      (key == "classname") cn = tok;
 			else if (key == "model")     model = tok;
+			else if (key == "targetname") tn = tok;
 			else if (key == "origin")    org = Sprite_ParseVec(tok);
 			// Both spellings of each, the way sv_entities.qc's SV_Key2 reads
 			// them: the library writes "Solidity"/"solidity" and
@@ -1224,6 +1247,8 @@ void() Sprite_LoadOccluders =
 
 		tier = Sprite_OccluderTier(cn);
 		if (tier == 0 || tier > want)
+			continue;
+		if (tn != "" && strstrofs(panes, strcat("\n", strtolower(tn), "\n"), 0) >= 0)
 			continue;
 
 		/*
