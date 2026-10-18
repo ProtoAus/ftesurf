@@ -5,6 +5,32 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Held recording clocks: what the Patch 785 reviews found
+
+Two static reviews of 248867ee (18 Oct, before its lobby deploy). The recorder side is
+clean; these are the reader's, and none is reachable from an honest server.
+- Site: `tools/reccheck.py` pause/session parses. Their permissive `is_int` followed
+  by `int()` can still raise on malformed integer tokens; receipt handling then
+  reports unavailable rather than a recording-format fault. Check: a malformed
+  pause/session mover-counter token. The hold-parser case was fixed by Patch 792.
+- Site: `tools/reccheck.py` (~1362). A hold is bounded only by its own movetick, not by
+  the origin (instart or the session's mt). A damaged hold before the first `in` row
+  shifts every later angle, and the result faults the player's sidecar ("not this
+  recording's") rather than the recording. Fix: fault the hold against the origin, and
+  cross-check `end` ticks against `inend - instart - frozen` where the file has them.
+- Site: `tools/reccheck.py` legacy rule (~2683). Pre-P785 practice files abstain whether
+  or not they held: two local fixtures lost their angle faults (`data/runs/bhop_eazy/
+  main/cheat`, `data/runs/surf_garden/main/cheat`) and one receipt went OK to BLIND,
+  none into or out of FAULT. A closed v8+ file shows zero frozen ticks
+  (`end` ticks == `inend - instart`) and could be judged. A full `sweep.py
+  --reread-receipts` would overwrite stored angle FAULTs with the abstention.
+- Site: engine `sv_ccmds.c` pm_verify's record dispatch. No `hold` branch: a held,
+  finished file gets HOLD reading like a tick mismatch, not a REFUSE that names the hold.
+  No false PASS is possible (frozen ticks fail the comparison) and holds are practice.
+- Site: `tools/test_reccheck.py`. The resume and retry resets are not exercised (both
+  deleted still passes), and the injected-hold sidecar case passes whatever the view
+  parser does with the line.
+
 ## Frame budget: what Patch 782 left out
 
 - Site: engine `gl/gl_rmain.c` GLR_RenderView's `GLBudget_Set(GPUB_2D)`. The GPU's
