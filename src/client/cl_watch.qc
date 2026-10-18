@@ -732,42 +732,121 @@ string(float buf, string key) Watch_BufValue =
 	for (i = 0; i < buf_getsize(buf); i++)
 	{
 		s = bufstr_get(buf, i);
+		if (!strcmp(s, "begin"))
+			break;
 		if (!strcmp(substring(s, 0, n), prefix))
 			return substring(s, n, strlen(s) - n);
 	}
 	return "";
 };
 
+// Decimal grammar plus float32 finiteness; stof alone also accepts junk as zero.
+float(string s, float limit) Watch_OwnViewNumber =
+{
+	local float i, c, len, digits, expstart, value;
+
+	len = strlen(s);
+	i = digits = 0;
+	c = str2chr(s, i);
+	if (c == 43 || c == 45)
+		i++;
+	for (; i < len; i++)
+	{
+		c = str2chr(s, i);
+		if (c < 48 || c > 57)
+			break;
+		digits++;
+	}
+	if (str2chr(s, i) == 46)
+	{
+		i++;
+		for (; i < len; i++)
+		{
+			c = str2chr(s, i);
+			if (c < 48 || c > 57)
+				break;
+			digits++;
+		}
+	}
+	if (digits == 0)
+		return FALSE;
+	c = str2chr(s, i);
+	if (c == 69 || c == 101)
+	{
+		i++;
+		c = str2chr(s, i);
+		if (c == 43 || c == 45)
+			i++;
+		expstart = i;
+		for (; i < len; i++)
+		{
+			c = str2chr(s, i);
+			if (c < 48 || c > 57)
+				break;
+		}
+		if (i == expstart)
+			return FALSE;
+	}
+	if (i != len)
+		return FALSE;
+	value = stof(s);
+	return (value >= -limit && value <= limit);
+};
+
 float(float buf, string map, string nonce, float cached) Watch_OwnViewValid =
 {
-	local float i, n, rows;
+	local float i, j, n, rows, first, frames, column, limit;
 	local string s;
 
 	rows = buf_getsize(buf);
-	if (rows <= FS_VIEWHEAD)
+	first = FS_VIEWHEAD + cached;
+	if (rows <= first + cached)
 		return FALSE;
-	s = bufstr_get(buf, 0);
-	if (strcmp(s, "FTESURF-VIEW 2"))
-	if (strcmp(s, "FTESURF-VIEW 3"))
+	// Recover only the currently emitted native schema, not unknown versions.
+	if (strcmp(bufstr_get(buf, 0), "FTESURF-VIEW 2"))
 		return FALSE;
-	if (strcmp(Watch_BufValue(buf, "map"), map))
+	if (strcmp(bufstr_get(buf, 1 + cached), strcat("map ", map)))
+		return FALSE;
+	s = bufstr_get(buf, 2 + cached);
+	if (strcmp(s, "hid 0"))
+	if (strcmp(s, "hid 1"))
+		return FALSE;
+	if (strcmp(bufstr_get(buf, first - 1), "begin"))
 		return FALSE;
 	if (cached)
 	{
-		n = tokenize(bufstr_get(buf, 1));
-		if (n != 3)
+		if (strcmp(bufstr_get(buf, 1), sprintf("owncache %s %d", nonce, rows - 2)))
 			return FALSE;
-		if (strcmp(argv(0), "owncache"))
-			return FALSE;
-		if (strcmp(argv(1), nonce))
-			return FALSE;
-		if (strcmp(argv(2), sprintf("%g", rows - 1)))
+		if (strcmp(bufstr_get(buf, rows - 1), sprintf("owncache-end %s %d", nonce, rows - 2)))
 			return FALSE;
 	}
-	for (i = 0; i < rows; i++)
-		if (Watch_IsSample(bufstr_get(buf, i)))
-			return TRUE;
-	return FALSE;
+	// Full float32 range, without a near-limit numeric compiler literal.
+	limit = stof("3.4028234663852886e38");
+	frames = 0;
+	for (i = first; i < rows - cached; i++)
+	{
+		n = tokenize(bufstr_get(buf, i));
+		column = 0;
+		if (!strcmp(argv(0), "ghost"))
+		{
+			if (n != 4)
+				return FALSE;
+			if (strcmp(argv(1), "0"))
+			if (strcmp(argv(1), "1"))
+				return FALSE;
+			column = 1;
+		}
+		else
+		{
+			if (n != 6)
+				return FALSE;
+			frames++;
+		}
+		for (j = column; j < n; j++)
+			if (!Watch_OwnViewNumber(argv(j), limit))
+				return FALSE;
+	}
+	return (frames > 0);
 };
 
 float(string path, float buf) Watch_OwnViewLoad =
@@ -786,7 +865,7 @@ float(string path, float buf) Watch_OwnViewLoad =
 
 float(string path, float recbuf) Watch_OnlineOwnView =
 {
-	local float i, c, buf, fh, search, exists, good;
+	local float i, c, buf, trimmed, fh, search, exists, good;
 	local string nonce, map, source, cache;
 
 	if (strcmp(substring(path, 0, 12), "data/online/"))
@@ -815,8 +894,8 @@ float(string path, float recbuf) Watch_OnlineOwnView =
 		return 0;
 	}
 	source = strzone(sprintf("data/staged/%s.view", nonce));
-	cache = strzone(sprintf("%s_%s.ownview",
-		substring(path, 0, strlen(path) - 4), nonce));
+	// Bounded independently of the online map/player/database-ID filename.
+	cache = strzone(sprintf("data/online/own_%s.ownview", nonce));
 	exists = FALSE;
 	search = search_begin(cache, TRUE, TRUE);
 	if (search >= 0)
@@ -829,6 +908,20 @@ float(string path, float recbuf) Watch_OnlineOwnView =
 	if (buf >= 1)
 	if (Watch_OwnViewLoad(cache, buf))
 		good = Watch_OwnViewValid(buf, map, nonce, TRUE);
+	if (good)
+	{
+		// The completion record must never enter frame/index interpolation.
+		trimmed = buf_create_ex("string", 0);
+		if (trimmed >= 1)
+		{
+			for (i = 0; i < buf_getsize(buf) - 1; i++)
+				bufstr_add(trimmed, bufstr_get(buf, i), TRUE);
+			buf_del(buf);
+			buf = trimmed;
+		}
+		else
+			good = FALSE;
+	}
 	if (good)
 		print("replay: using your cached per-frame view\n");
 	else
@@ -844,16 +937,17 @@ float(string path, float recbuf) Watch_OnlineOwnView =
 			print("replay: recovered your staged per-frame view\n");
 			// Renderer-only cache, never submitted/graded evidence. Nonce-keyed
 			// names prevent borrowing frames after an equal-time row changes run.
-			// A counted header detects short copies; existing targets stay intact.
+			// Count and terminal record detect short copies; existing targets stay.
 			if (!exists)
 			{
 				fh = fopen(cache, FILE_WRITE);
 				if (fh >= 0)
 				{
 					fputs(fh, strcat(bufstr_get(buf, 0), "\n"));
-					fputs(fh, sprintf("owncache %s %g\n", nonce, buf_getsize(buf)));
+					fputs(fh, sprintf("owncache %s %d\n", nonce, buf_getsize(buf)));
 					for (i = 1; i < buf_getsize(buf); i++)
 						fputs(fh, strcat(bufstr_get(buf, i), "\n"));
+					fputs(fh, sprintf("owncache-end %s %d\n", nonce, buf_getsize(buf)));
 					fclose(fh);
 				}
 			}

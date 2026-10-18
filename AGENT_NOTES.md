@@ -1307,6 +1307,13 @@ cannot be used, ask; do not silently scatter copies elsewhere.
 
 ## Build
 
+**Near-limit numeric constants (P814).** The current fteqcc process exited with
+Windows access violation and no compiler text when a float32-range validator used
+a near-limit numeric literal. The otherwise identical loops compiled with the
+same bound converted from a decimal string at runtime. Preserve the native exit
+code; an empty compiler log is not a pass. The repaired viewer's valid-number and
+finite-overflow refusal controls ACT at runtime; this did not repair/rebuild qcc.
+
 - Windows Python `Path.write_text()` translates LF patch lines to CRLF. A generated
   exact-context `git apply --cached --check` then fails against LF index blobs.
   Emit patch bytes with `write_bytes(text.encode("utf-8"))`: the same contexts pass
