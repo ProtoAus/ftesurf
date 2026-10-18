@@ -371,6 +371,11 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   entry/exit half on surf_colony.
 - A trigger map I/O enables during a hold acts at the release (Patch 382's
   world-time class); a StartDisabled teleport used to refuse the entry instead.
+- The cooldown follows only releases where the body stays (leave, notarget, move);
+  ESC then a quick click on the board's row can still read "you just left spectate".
+- On the legacy one-toucher path (vbsp_mp 0, slots above 32; not lobbies) a hold
+  does not move a still-open `wait` window, so the held player's next OnTrigger can
+  come sooner in run time there.
 - A `wait` window another player also spent is not moved by a hold (moving it would
   delay them), so a held player's next OnTrigger there can come sooner in run time;
   an OnThink pad's first re-apply after a release likewise (it sets, never adds).

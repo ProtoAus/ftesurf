@@ -4745,7 +4745,7 @@ void(entity e, float n) SV_SpecStart =
 		return;
 	}
 	if (e.run_sp_left)
-	if (time - e.run_sp_left < cvar("run_spec_cooldown"))
+	if (time - e.run_sp_left < max(0.1, cvar("run_spec_cooldown")))
 	{
 		SV_SpecRefuse(e, "you just left spectate -- try again");
 		return;
@@ -4934,7 +4934,8 @@ void(entity e, string why) SV_SpecRelease =
 
 	e.run_pmhold = 0;
 	e.run_sp_phase = 0;
-	e.run_sp_left = time;           // Patch 786: run_spec_cooldown
+	if (why == "leave" || why == "notarget" || why == "move")
+		e.run_sp_left = time;       // Patch 786: run_spec_cooldown
 	e.run_sp_lost = FALSE;
 	e.pb_watch = world;
 	e.run_sp_stat = 0;

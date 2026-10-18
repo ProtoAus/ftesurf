@@ -2380,12 +2380,13 @@ publicly WITH its fix, not before it.
   a player, idles or rewinds a run, or parks it must call `SV_SpecRelease` FIRST
   (the funnels: disconnect, SV_Shutdown, retry, load, SV_ZoneMove, setpos,
   respawn), and nothing may write to the recorder while `run_pmhold` is set.
-  Entry is refused only while a map output is due on the body (it would land on the
-  held body and the rollback undo it). Inside a trigger is allowed (Patch 786): the
+  Entry is refused while a map output is due on the body, during Monolith B4's pad
+  profile, and within `run_spec_cooldown` of a release. Inside a trigger is allowed (Patch 786): the
   sweep never counts a held body absent (SV_TouchHeld) and SV_TrigResume makes the
-  release no entry, so a hold neither ends a touch nor starts one. A player counts
-  as held only after a sweep window (0.03 s), and re-entry waits `run_spec_cooldown`
-  (0.25 s): toggling around packets must not keep a left trigger's touch alive.
+  release no entry and no exit (it counts as a touch), so a hold neither ends a
+  touch nor starts one. Re-entry after a release where the body stays waits
+  `run_spec_cooldown` (0.25 s, never under 0.1): holds toggled around the sweep
+  would keep a LEFT trigger's touch alive (OnJump anywhere).
   STAT_FS_SPEC 103: 0 off, n = watching entnum n, -3..-1 the countdown (when there is one).
   Harnesses: `p380verify` (derived files), `p382a/c/d` (+`p382t/e`), `p382verify`.
 - SPECTATING (Patch 385, `client/cl_spectate.qc`) drives that hold. The camera

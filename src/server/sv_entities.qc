@@ -852,9 +852,8 @@ void(entity p) SV_TrigStamp =
 		p.run_trig_pkn = p.run_pkn + 1;
 };
 
-// Patch 786: the bits of m whose player has been held by spectate for a whole
-// sweep window (0.03 s), so a release and re-hold inside one window is absence.
-// The sweep keeps them inside: a hold neither ends a touch nor starts one.
+// Patch 786: the bits of m whose player is held by spectate.  The sweep keeps
+// them inside, and run_spec_cooldown keeps holds from being toggled around it.
 int(int m) SV_TouchHeld =
 {
 	local int   r, bit;
@@ -866,7 +865,6 @@ int(int m) SV_TouchHeld =
 		bit = (int)1 << (int)i;
 		if (m & bit)
 		if (edict_num(i + 1).run_sp_phase)
-		if (edict_num(i + 1).run_sp_t0 <= time - 0.03)
 		if (clienttype(edict_num(i + 1)) == CLIENTTYPE_REAL)
 			r = r | bit;
 	}
@@ -3784,7 +3782,7 @@ void() SV_TriggerEndThink =
 
 	// Patch 786, as above: the clock skips the hold (SV_TrigResume adds it back).
 	if (self.vbsp_touch_who)
-	if (!(self.vbsp_touch_who.run_sp_phase && self.vbsp_touch_who.run_sp_t0 <= time - 0.03))
+	if (!self.vbsp_touch_who.run_sp_phase)
 	if (time - self.vbsp_touch_when > 0.05)
 	{
 		a = self.vbsp_touch_who;
@@ -7953,10 +7951,12 @@ void() trigger_multiple_touch =
 	}
 };
 
-// Patch 786: leaving a spectate hold is not an entry.  The masks kept p inside
-// (SV_TouchHeld); a pad's enter edge and a `wait` run on world time, so the release
-// is no enter edge, and an expired window counts as p's OnTrigger just fired -- fewer
-// fires than standing there would have given, never more, and no one else's later.
+// Patch 786: leaving a spectate hold is not an entry, nor an exit.  The masks kept
+// p inside (SV_TouchHeld) and p is still there, so the release counts as a touch: a
+// release from PlayerPostThink comes before p's next move, and a sweep in between
+// must not see absence.  A pad's enter edge and a `wait` run on world time, so the
+// release is no enter edge, and an expired window counts as p's OnTrigger just
+// fired -- fewer fires than standing there would have given, never more.
 void(entity p, float t0) SV_TrigResume =
 {
 	local entity t;
@@ -7968,6 +7968,12 @@ void(entity p, float t0) SV_TrigResume =
 	{
 		if (t.vbsp_touch_who == p)
 			t.vbsp_touch_when = t.vbsp_touch_when + (time - t0);
+		if (bit)
+		if (t.vbsp_touch_in & bit)
+		{
+			t.vbsp_touch_seen = t.vbsp_touch_seen | bit;
+			t.vbsp_touch_out = t.vbsp_touch_out - (t.vbsp_touch_out & bit);
+		}
 		if (t.touch == trigger_setspeed_touch)
 		{
 			// No mask without outputs: a touch when the hold began, and the box.
@@ -7998,7 +8004,8 @@ void(entity p, float t0) SV_TrigResume =
 			}
 			else
 			{
-				if (t.vbsp_io_gate_seen == bit || !bit)
+				if (bit)                // a legacy window is everyone's: left alone
+				if (t.vbsp_io_gate_seen == bit)
 					t.vbsp_io_next_ok = t.vbsp_io_next_ok + (time - t0);
 				t.vbsp_io_gate_seen = t.vbsp_io_gate_seen | bit;
 			}

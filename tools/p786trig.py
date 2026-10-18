@@ -13,10 +13,13 @@ inside the box, so a body dropped at SPOT rests in the trigger.
      once (the touch ended while toggling, and holds inside do not re-fire);
      r2 fires none (toggling kept the left touch).  The step-out spot is inside
      *77, which has outputs, so the held lines' "pending" is not *93's.
-  With --cooldown above 0 (the server's run_spec_cooldown), C instead expects
-  the toggling's re-entries refused ("you just left spectate").
+  On v2 the server's run_spec_cooldown (never under 0.1 s) refuses most of the
+  toggled re-entries ("you just left spectate"); r2 has no cooldown.
+  D  (--countdown N > 0, instead of C) rest in *93 and hold/leave 20 times: each
+     release comes from PlayerPostThink after the countdown, before the next
+     move.  v2 fires no entry output; r4 (07239692's window rule) re-fires some.
 --expect main (P784: A refused), v1 (ac6882ad: A accepted, re-fires on the
-release), r2 (c410d513: as v2 but C keeps the touch) or v2.  Exit 0 all held, 1 one failed, 2 could
+release), r2 (c410d513: C keeps the left touch), r4 (c4ca4a6a: D re-fires) or v2.  Exit 0 all held, 1 one failed, 2 could
 not measure (the body did not come to rest in the trigger).
 """
 import argparse
@@ -71,9 +74,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--out', type=Path, required=True)
     ap.add_argument('--progs', type=Path, required=True)
-    ap.add_argument('--expect', choices=('main', 'v1', 'r2', 'v2'), required=True)
+    ap.add_argument('--expect', choices=('main', 'v1', 'r2', 'r4', 'v2'), required=True)
     ap.add_argument('--port', type=int, default=27616)
-    ap.add_argument('--cooldown', type=float, default=0)
+    ap.add_argument('--cooldown', type=float, default=0.25)
+    ap.add_argument('--countdown', type=float, default=0)
     ap.add_argument('--content', type=Path, default=Path('C:/FTESurf'))
     ap.add_argument('--client', type=Path, default=Path('C:/FTESurf/ftesurf64.exe'))
     ap.add_argument('--server', type=Path, default=Path('C:/FTEQuake/fteqwsv64.exe'))
@@ -110,7 +114,7 @@ def main():
         base = prepare(a, 'server')
         (base / 'ftesurf/probe.cfg').write_text('\n'.join(common + [
             f'sv_port {a.port}', 'sv_playerslots 4', 'sv_maxclients 4',
-            'set run_spec_countdown 0', f'set run_spec_cooldown {a.cooldown:g}', 'developer 1', 'log_developer 1',
+            f'set run_spec_countdown {a.countdown:g}', f'set run_spec_cooldown {a.cooldown:g}', 'developer 1', 'log_developer 1',
             f'map {MAP}']) + '\n')
         sv = Peer(a.server, base, 'probe.cfg', True); peers.append(sv)
         sv.wait(r'Server spawned\.', timeout=120)
@@ -175,7 +179,7 @@ def main():
             o = len(sv.text())
             w.send('spectate off')
             try:
-                m = sv.wait(r'spectate: Watcher released \((\w+)\)[^\n]*', o, timeout=10)
+                m = sv.wait(r'spectate: Watcher released \((\w+)\)[^\n]*', o, timeout=10 + a.countdown)
             except RuntimeError:
                 m = None
             check(m is not None and m.group(1) == 'leave', 'A released (leave)')
@@ -188,7 +192,9 @@ def main():
             num['A_hits_after'] = hits(rel, end)
             num['A_rest_after'] = pos()
             check(inbox(num['A_rest_after']), f"A still inside *93 after the release ({num['A_rest_after']})")
-            if v == 'v1':
+            if v == 'r4':
+                pass                    # its release can re-fire at random: recorded, D grades it
+            elif v == 'v1':
                 check(num['A_hits_after'] >= 1, f"A v1: the entry output fires again on release ({num['A_hits_after']})")
             else:
                 check(num['A_hits_after'] == 0, f"A v2: no entry output after release ({num['A_hits_after']})")
@@ -203,7 +209,7 @@ def main():
         check(b == 1, f'B the entry output fires on re-entry ({b})')
 
         # C: toggling after leaving.  Target is entnum 2 (it connected second).
-        if v != 'main':
+        if v != 'main' and a.countdown <= 0:
             w.send('alias p786tg "cmd rec_spec 2; wait; wait; wait; wait; cmd rec_spec 0; wait; wait"')
             rest_in_box('C-in')
             co = len(w.text())
@@ -225,22 +231,44 @@ def main():
             num['C_out_holds'] = flags
             refused = re.findall(r'spectate:(?:\^7)? ((?!stat |watching)[^\n]*)', w.text()[co:])
             num['C_refused'] = refused
-            if a.cooldown > 0:
+            if v == 'r2':
+                if len(flags) < 12 or refused:
+                    raise CannotMeasure(f"C: {len(flags)} holds released, refusals {refused}")
+            else:
+                cd = max(0.1, a.cooldown)
                 cool = [r for r in refused if 'just left spectate' in r]
                 # ~1.2 s of toggling: at most one entry per cooldown gets through.
-                check(len(cool) >= 6 and len(flags) <= 1.5 / a.cooldown + 1,
+                check(len(cool) >= 6 and 2 <= len(flags) <= 1.5 / cd + 1,
                       f"C cooldown: toggled re-entries refused ({len(cool)} refused, {len(flags)} holds)")
-                flags = []
-            elif len(flags) < 12 or refused:
-                raise CannotMeasure(f"C: {len(flags)} holds released, refusals {refused}")
             num['C_hits'] = hits(o)
             num['C_rest'] = pos()
             if not inbox(num['C_rest']):
                 raise CannotMeasure(f"C: not back inside *93 ({num['C_rest']})")
-            if v == 'r2' and a.cooldown <= 0:
+            if v == 'r2':
                 check(num['C_hits'] == 0, f"C r2: toggling kept the left touch, no re-entry output ({num['C_hits']})")
             else:
                 check(num['C_hits'] == 1, f"C: the re-entry fires the entry output once ({num['C_hits']}, {len(flags)} holds)")
+
+        # D: releases from PlayerPostThink (the countdown), inside *93.
+        if v != 'main' and a.countdown > 0:
+            rest_in_box('D-in')
+            o = mark('D-start')
+            for _ in range(20):
+                w.send('cmd rec_spec 2')
+                time.sleep(0.4)
+                w.send('cmd rec_spec 0')
+                time.sleep(a.countdown + max(0.1, a.cooldown) + 0.4)
+            end = mark('D-end')
+            seg = sv.text()[o:end]
+            num['D_releases'] = len(re.findall(r'spectate: Watcher released \(leave\)', seg))
+            num['D_hits'] = seg.count(HIT)
+            num['D_rest'] = pos()
+            if num['D_releases'] < 15 or not inbox(num['D_rest']):
+                raise CannotMeasure(f"D: {num['D_releases']} releases, rest {num['D_rest']}")
+            if v == 'r4':
+                check(num['D_hits'] >= 1, f"D r4: a countdown release re-fires the entry output ({num['D_hits']}/{num['D_releases']})")
+            else:
+                check(num['D_hits'] == 0, f"D: no entry output across {num['D_releases']} countdown releases ({num['D_hits']})")
 
         for peer in peers:
             bad = [b for b in ('QC VM error', 'stack overflow') if b in peer.text()]
