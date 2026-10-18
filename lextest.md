@@ -1,5 +1,23 @@
 # lextest.md — things waiting on a human
 
+## P783 + P787 — surf_boreas: the end-room smoke, the water's blue, the end particles
+
+In both Windows installs since 2026-10-18T09:47:16Z: client `e19f681d` (stamp
+git-7448-patch-783-0-g70d794dd3, carries P782), hl2 plugin `de079afd`; `.prev` is P782's
+`a7f3dfc4` / `0bd360e0`. surf_boreas's particle bake in C:\FTESurf\ftesurf since 09:35Z
+(`particles/surf_boreas.cfg` `15ccc3ca`). Client-side only, lobbies need nothing. Restart the game.
+
+- **surf_boreas save 1 (end room):** no missing-texture checker. The smoke ribbons are nearly
+  invisible, as in Source: their painted alpha is almost zero. The beam, the little floating
+  particles and the spinning floor symbols are still missing (BACKLOG).
+- **surf_boreas water (your 007 spot):** blue-tinted like Momentum's surf_boreas0001, the bottom
+  showing through; the deep lake by the end room fogs nearly solid blue, as Momentum's does far off.
+- **Elsewhere:** additive glows, smoke and light shafts that fade by alpha now fade as in Source
+  instead of adding at full strength. The 34 water materials with an srgb? fog colour take it
+  (most barely change). Not checked on other maps' screens.
+
+"Smoke ok / water ok / something got darker or vanished at <map, spot>". Verdict PENDING.
+
 ## P782 — `r_budget`: where each frame's time goes
 
 Engine patch-782 (exe a7f3dfc4, `git-7446-patch-782-0-gb77fbe44a`) is in both
