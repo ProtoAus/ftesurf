@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   7d3db9ccd1b7cb5ee5d778e8305b456db554eb50
+commit   02305333d3809b4c5a8d7d384efc60b0ccc2a526
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,11 @@ commit   7d3db9ccd1b7cb5ee5d778e8305b456db554eb50
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-783
-patch    794
+tag      patch-800
+patch    800
+# Patch 800 (engine + qclib): `r_budget_csqc 1` breaks CSQC down by QC source file and, at
+# r_budget 3, function (qclib's profiler, on only while shown; renderscene and addentities are
+# excluded as other groups); the header shows the panel's own time. Client exe only; no QC change.
 # Patch 794 (consumer): independent view validation faults cannot become receipt OK
 # merely because an angle comparison is usable. No native or threshold change.
 # Patch 793 (reader): bind initial held clocks to their fresh timer origin; restored

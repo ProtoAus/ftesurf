@@ -143,8 +143,13 @@ the clipboard. `r_budget_window` (0.5 s) is the averaging window.
   sky; 3D sky; portals and reflections; shadows; RT lights; transparent and
   effects; post-processing; HUD and 2D; and "Waiting on the CPU", the stretches the
   GPU spends waiting for the CPU, which do not count as GPU busy.
-- It times its own drawing under "HUD, 2D, this overlay": on the PC about 0.07 ms at
-  1, 0.17 at 2 and 0.27 at 3, that is 1%, 3% and 5% of a 5.4 ms frame.
+- **CSQC by QC file** (`r_budget_csqc 1`, Patch 800): the game code's time by source
+  file (cl_hud, cl_zones, ...), busiest first, on the QC total's scale; at 3 the
+  busiest functions under the top four. It runs the QC profiler while shown, which
+  slows QC (on the PC 0.57 to 0.67 ms); `r_budget_dump` lists sixteen files.
+- `panel` in the header is its own cost: on the PC about 0.08 ms at 1, 0.17 at 2 and
+  0.27 at 3 (0.4 with the CSQC breakdown at 3). Off (`r_budget 0`), each timer is one
+  check of a flag and nothing is drawn or queried.
 
 ## What you need
 

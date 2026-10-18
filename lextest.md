@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P800 — `r_budget_csqc`: CSQC by QC file; the panel's own time
+
+Engine patch-800 (exe 33466461, `git-7464-patch-800-0-g553f9a4bd`) in both installs since
+16:33Z 19 Oct; `.prev` is P783's e19f681d. Client only.
+
+- `r_budget 2` then `r_budget_csqc 1`: a "CSQC by QC file" section between CPU and GPU, one
+  bar per game source file, busiest first. `r_budget 3` adds the busiest functions under the
+  top four. `r_budget_csqc 0` turns the profiler off again (QC runs about 15% slower while on).
+- The header's cyan `panel` is what the panel itself costs this frame.
+
+"Readable / want <x> split out". Verdict PENDING.
+
 ## P791 — surf_boreas's end beam
 
 The beam over the end-room circle is drawn: a soft white column from the pit to the
