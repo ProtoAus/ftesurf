@@ -361,6 +361,10 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Spectate inside a trigger (P786): what it left open
 
+- Zero-tick pauses (P786 review, older than P786): a client that stops sending
+  moves for under a second spends no run time, and trigger logic that runs on
+  world time or touch edges acts differently meanwhile; and setspeed's enter edge
+  is shared per pad. Details are in the private notes, not here.
 - A trigger the body LEFT within the last 0.06-0.09 s reads occupied for the whole
   hold (its exit fires after the release), so OnStartTouchAll/OnEndTouchAll for
   other players on that trigger wait for it. The held player gains nothing.
