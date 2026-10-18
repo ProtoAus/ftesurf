@@ -2537,12 +2537,24 @@ publicly WITH its fix, not before it.
     forger his `OK`, which is all it buys and is worth saying as such.
   - a non-finite column is its own fault, and a sidecar too broken to join at
     all makes the RECEIPT read FAULT rather than leaving the verdict empty.
-  STILL OPEN AND DEMONSTRATED: a save-lock hold moves the same epoch and writes
-  NO record of it (`SV_RecPause` is only reached on a cold rewind), so an
-  honest held run is still convicted -- 33-41% of one-frame ticks past cut,
-  cover reading 100%. The run is kept (`SV_TimerFreeze` marks it practice,
-  which is `RT_LAST`, not `RT_NONE`), so it reaches the board. DO NOT TREAT AN
-  ANGLE FAULT ON A RUN THAT MAY HAVE BEEN HELD AS A FINDING.
+  HISTORICAL HOLD FALSE POSITIVE (closed by Patch 785): save-lock/replay holds
+  previously moved that relationship without a record. New files declare
+  `holdclock 1`; an effective thaw writes `hold <raw mover horizon> <total frozen
+  ticks>` from the timer's existing accumulator, before the next input row.
+  The reader subtracts that total only from later angle timestamps. Raw input,
+  thresholds and ranking policy are unchanged. Legacy practice/prefix input
+  clocks and resume/retry/pause/session origins are explicitly unavailable to
+  BOTH angle rules; unavailable is not an innocent/clean measurement.
+  Verified: dedicated socket, walking start, replay hold/release, retained native
+  save prefix and sidecar, actual marker and fault-free join; the short native
+  capture is THIN, not a full angle verdict. Independent run-clock controls retain
+  tight coverage; altered sidecars still fault and the old reader fails the honest
+  held pair. Reader 327 checks, receipts 74 and sweep suite: zero failures. Same
+  bytes of 602 historical recordings / 383 sidecars: no new faulting files.
+  For the tiny native actor, freeze immediately after the first RUNNING/recording
+  observation on surf_dune: waiting to turn first let the map teleport re-arm the
+  timer. Those earlier logs are NOT acted hold controls. Also make the reader-test
+  helper reject a crashed child: empty stdout is not an empty fault list.
 - CROSS-RUN SIMILARITY IS COLLECTED AND NOT ENFORCED (surfd schema 10,
   `surfd/simcheck.py`).  A run submitted twice -- a PLAYBACK of a recording rather
   than a performance -- produces two clean board rows and nothing else in this tree

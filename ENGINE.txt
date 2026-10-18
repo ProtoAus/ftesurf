@@ -25,7 +25,10 @@ commit   29ddd0a6a7f7e464d21ca60ce5aee561490e6bce
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-780
-patch    780
+patch    785
+# Patch 785 (qwprogs + reader): practice holds declare their frozen-tick clock.
+# Unresolved recording/sidecar joins are unavailable, not an angle verdict.
+# No native change; commit/tag pins remain Patch 780.
 # Patch 780 (engine + hl2 plugin): Source map visuals. The leaf-ambient sample index wraps past
 # 65535 (VRAD stores it in a short) and is rebuilt from the running count; the cube is VRAD's
 # inverse-square blend of the leaf's samples; static props with no lighting origin are lit
