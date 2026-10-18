@@ -115,18 +115,21 @@ uploads are also disclosed.
 Installed from published QC `29b71b37`: both Windows installs at 2026-10-18T20:07Z,
 all 12 empty lobbies at 20:09Z; fresh actual served-client smoke passed. The guarded
 collector generation is serving internally since 20:50Z (schema 20, health12,
-old generation drained, new dispatchers/cron/momrequests verified). Public TLS
-health works; `/api/hid` is still 404 pending the owner's additive privileged
-nginx command. No existing-player consent was edited. This is NOT a human pass.
+old generation drained, new dispatchers/cron/momrequests verified). Owner installed
+the additive public proxy21:29Z; independently verified21:30Z: exact installed
+bytes/preserved predecessor configs, trusted TLS health/directory200, GET HID403
+and declared empty-body413 from the actual handler. No existing-player consent
+was edited. This is NOT a human or valid signed-upload pass.
 
 - Open the online terms, read the upload paragraph, and choose **play online**.
   Leave the journal checkbox checked to include uploads, or untick it to opt
   out. F2's Input journal uploads row should report the chosen state; its
   **Stop journal uploads** control must remain available and switch it off.
-- Once the HTTPS collector is live, allow uploads with F2 or recheck the journal
-  box and accept online play, join a public lobby and finish one short run.
-  Report whether the upload panel/console shows an error. No need to send a journal or identity in
-  chat; the operator can inspect the private server-side arrival.
+- The HTTPS collector is live. In a freshly started client, allow uploads with F2
+  or recheck the journal box and accept online play, join a public lobby and finish
+  one short run. Report map/lobby and whether the upload panel/console shows an
+  error. No need to send a journal or identity in chat; the operator can inspect
+  the private receipt/file join.
 
 Human readability/acceptance and a genuine consenting HTTPS finish: PENDING.
 Automated isolated answers are fixture checks, not this human acceptance.

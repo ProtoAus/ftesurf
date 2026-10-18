@@ -127,9 +127,24 @@ drew the board (8 columns/type14), captured a screenshot and exited normally
 with zero QC errors. The screenshot was inspected. No terms or upload permission
 were granted by the smoke. The earlier installation hashes remain history.
 
-The production collector/proxy have NOT been installed: the active backend's
-immutable generation requires a coordinated supported handoff, and nginx needs
-privileged installation. The exact published snippet plus installer zones pass
-an isolated rootless nginx syntax check; that is not a live HTTPS route test.
-No collection policy, threshold, automatic punishment, Build number or release
-was enabled/bumped. Genuine consenting-player collection/calibration is pending.
+### P804 guarded collector and public proxy — 2026-10-18
+
+The earlier non-serving state is superseded. Published QC `29b71b37` installs the
+new disclosed online tier7 in both Windows installs and all12 empty lobbies
+(20:07–20:09Z), with a fresh served-client smoke. Old saved answers are not silently
+upgraded. Online acceptance includes uploads with a visible checkbox opt-out;
+native F2 Allow/Stop remains. No existing-player consent was rewritten.
+
+At20:50Z the source-bound schema20 collector generation became serving: new guard
+OPEN, retired generation fully drained, actual imported HID/source/lifetime and
+seven dispatcher/four cron/new momrequests admission bindings verified. No DB
+restore. Owner ran the additive `--hid-only` installation at21:29:25Z; nginx syntax
+and reload completed. Independent21:30:50Z checks prove both exact reviewed config
+suffixes and preserved predecessor bytes. Public trusted TLS health/directory
+return200, GET HID is refused403, and empty POST reaches the handler's declared413
+length refusal. Existing route-local body/rate/concurrency settings match reviewed
+source; this is not a live saturation or valid signed-upload pass.
+
+Deployment is complete. Human terms/F2 acceptance and a genuine consenting short
+online finish's signed HTTPS receipt/file join remain PENDING, as does cohort
+calibration. No threshold, automatic punishment, Build number or release bump.
