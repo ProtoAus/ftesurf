@@ -62,7 +62,9 @@ class UploadTests(unittest.TestCase):
 
         @self.app.post("/small")
         def small():
-            return str(len(request.get_data()))
+            # Flask 2.2 enforces this cap during form parsing, not get_data.
+            # Exercise the enforcing interface on both supported generations.
+            return str(len(request.form.get("payload", "")))
 
         self.client = self.app.test_client()
         self.blob = b"synthetic journal\n" * 2000
@@ -144,7 +146,7 @@ class UploadTests(unittest.TestCase):
         self.assert_clean()
 
     def test_body_cap_is_scoped_and_extra_body_rejected(self):
-        result = self.client.post("/small", data=b"a" * 20000)
+        result = self.client.post("/small", data={"payload": "a" * 20000})
         self.assertEqual(result.status_code, 413)
         self.assertEqual(self.post(packet(self.blob) + b"extra").status_code, 400)
         self.assertEqual(self.post(packet(self.blob), environ_overrides={

@@ -49,6 +49,10 @@ The backend suite covers a real >4 MiB body, dotted/plus map basenames, invalid
 identity/signature/commitment, traversal, malformed lengths/truncation, duplicate
 and conflicting evidence, temporary cleanup, and unchanged body limits elsewhere.
 `surfd-deploy.ps1` runs it against its exact committed staging tree.
+It also passes on production's Flask/Werkzeug 2.2.2 dependency generation. The
+non-journal cap control uses form parsing (older Werkzeug does not enforce that
+cap through raw `get_data`); a deliberate non-journal cap-increase mutant fails
+that same assertion. This is dependency/limit evidence, not a live installation.
 
 Native dedicated-socket controls used synthetic transport files and test-owned
 signing keys, not player data: 5,242,913 bytes arrived exactly with a matching
