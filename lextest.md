@@ -1,5 +1,22 @@
 # lextest.md — things waiting on a human
 
+## P814 — own online replay uses local per-frame view (pending deployment)
+
+- After the updated client programs are loaded, finish a full online run. Watch
+  your own replay while still on that map. With `hud_watch_info 1`, it should use
+  the per-frame view instead of warning that no sidecar was found; the camera and
+  FPS should follow the recorded frames, not just the server samples.
+- Watch that same cached replay after leaving/rejoining the map: it should still
+  have its per-frame view. Other players' private views are NOT publicly exposed,
+  and a stage slice or a run whose local source has already been cleared may
+  still use its `.rec` samples. No claim to reconstruct a missing old sidecar.
+- With your F2 raw-journal permission intentionally ON, make one short normal
+  public finish. The operator must separately verify its signed HTTPS ACK and
+  matching private file. Generic "Upload completed" alone is not that check.
+
+"Own replay has per-frame view / <what differed>". Verdict PENDING. Synthetic
+viewer controls pass; no human or real raw-journal acceptance claimed yet.
+
 ## P813 — no more dead stops on ramps (mover 8)
 
 Lobbies since 2026-10-18T21:20Z (native 06fee9ab, `pm_sourceversion` 8); both installs

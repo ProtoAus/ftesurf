@@ -720,6 +720,158 @@ float(string path, float buf) Watch_BufLoad =
 	return TRUE;
 };
 
+// P814: online names carry a database ID, while a player's private staged
+// view is keyed by the recording nonce. Never borrow it by name or duration.
+string(float buf, string key) Watch_BufValue =
+{
+	local float i, n;
+	local string s, prefix;
+
+	prefix = strcat(key, " ");
+	n = strlen(prefix);
+	for (i = 0; i < buf_getsize(buf); i++)
+	{
+		s = bufstr_get(buf, i);
+		if (!strcmp(substring(s, 0, n), prefix))
+			return substring(s, n, strlen(s) - n);
+	}
+	return "";
+};
+
+float(float buf, string map, string nonce, float cached) Watch_OwnViewValid =
+{
+	local float i, n, rows;
+	local string s;
+
+	rows = buf_getsize(buf);
+	if (rows <= FS_VIEWHEAD)
+		return FALSE;
+	s = bufstr_get(buf, 0);
+	if (strcmp(s, "FTESURF-VIEW 2"))
+	if (strcmp(s, "FTESURF-VIEW 3"))
+		return FALSE;
+	if (strcmp(Watch_BufValue(buf, "map"), map))
+		return FALSE;
+	if (cached)
+	{
+		n = tokenize(bufstr_get(buf, 1));
+		if (n != 3)
+			return FALSE;
+		if (strcmp(argv(0), "owncache"))
+			return FALSE;
+		if (strcmp(argv(1), nonce))
+			return FALSE;
+		if (strcmp(argv(2), sprintf("%g", rows - 1)))
+			return FALSE;
+	}
+	for (i = 0; i < rows; i++)
+		if (Watch_IsSample(bufstr_get(buf, i)))
+			return TRUE;
+	return FALSE;
+};
+
+float(string path, float buf) Watch_OwnViewLoad =
+{
+	local float fh, bytes;
+
+	fh = fopen(path, FILE_READ);
+	if (fh < 0)
+		return FALSE;
+	bytes = fsize(fh);
+	fclose(fh);
+	if (bytes <= 0 || bytes >= 67108864)
+		return FALSE;
+	return Watch_BufLoad(path, buf);
+};
+
+float(string path, float recbuf) Watch_OnlineOwnView =
+{
+	local float i, c, buf, fh, search, exists, good;
+	local string nonce, map, source, cache;
+
+	if (strcmp(substring(path, 0, 12), "data/online/"))
+		return 0;
+	// A full-run staged view must not be mistaken for a rebased stage slice.
+	if (strcmp(Watch_BufValue(recbuf, "leg"), "0"))
+		return 0;
+	nonce = strzone(Watch_BufValue(recbuf, "nonce"));
+	good = (strlen(nonce) == 32);
+	for (i = 0; i < strlen(nonce); i++)
+	{
+		c = str2chr(nonce, i);
+		if (!((c >= 48 && c <= 57) || (c >= 97 && c <= 102)))
+			good = FALSE;
+	}
+	if (!good)
+	{
+		strunzone(nonce);
+		return 0;
+	}
+	map = strzone(Watch_BufValue(recbuf, "map"));
+	if (strlen(map) == 0)
+	{
+		strunzone(nonce);
+		strunzone(map);
+		return 0;
+	}
+	source = strzone(sprintf("data/staged/%s.view", nonce));
+	cache = strzone(sprintf("%s_%s.ownview",
+		substring(path, 0, strlen(path) - 4), nonce));
+	exists = FALSE;
+	search = search_begin(cache, TRUE, TRUE);
+	if (search >= 0)
+	{
+		exists = (search_getsize(search) > 0);
+		search_end(search);
+	}
+	buf = buf_create_ex("string", 0);
+	good = FALSE;
+	if (buf >= 1)
+	if (Watch_OwnViewLoad(cache, buf))
+		good = Watch_OwnViewValid(buf, map, nonce, TRUE);
+	if (good)
+		print("replay: using your cached per-frame view\n");
+	else
+	{
+		if (buf >= 1)
+			buf_del(buf);
+		buf = buf_create_ex("string", 0);
+		if (buf >= 1)
+		if (Watch_OwnViewLoad(source, buf))
+			good = Watch_OwnViewValid(buf, map, nonce, FALSE);
+		if (good)
+		{
+			print("replay: recovered your staged per-frame view\n");
+			// Renderer-only cache, never submitted/graded evidence. Nonce-keyed
+			// names prevent borrowing frames after an equal-time row changes run.
+			// A counted header detects short copies; existing targets stay intact.
+			if (!exists)
+			{
+				fh = fopen(cache, FILE_WRITE);
+				if (fh >= 0)
+				{
+					fputs(fh, strcat(bufstr_get(buf, 0), "\n"));
+					fputs(fh, sprintf("owncache %s %g\n", nonce, buf_getsize(buf)));
+					for (i = 1; i < buf_getsize(buf); i++)
+						fputs(fh, strcat(bufstr_get(buf, i), "\n"));
+					fclose(fh);
+				}
+			}
+		}
+	}
+	strunzone(nonce);
+	strunzone(map);
+	strunzone(source);
+	strunzone(cache);
+	if (!good)
+	{
+		if (buf >= 1)
+			buf_del(buf);
+		return 0;
+	}
+	return buf;
+};
+
 // ---- Patch 378: the interpolation tables, built inside Watch_Scan's pass two ----
 
 void() Watch_TablesReset =
@@ -4425,7 +4577,7 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 	rec_wt_recn = buf_getsize(buf);
 	rec_wt_path = strzone(path);
 
-	vp = strcat(substring(path, 0, strlen(path) - 4), ".view");
+	vp = strzone(strcat(substring(path, 0, strlen(path) - 4), ".view"));
 	buf = 0;
 	if (rec_wt_noview || ksfmap != "")
 		print("replay: noview -- the sidecar is not loaded\n");
@@ -4433,18 +4585,21 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 		buf = buf_create_ex("string", 0);
 	if (buf >= 1)
 	{
-		if (Watch_BufLoad(vp, buf))
+		if (!Watch_BufLoad(vp, buf))
+		{
+			buf_del(buf);
+			buf = Watch_OnlineOwnView(rec_wt_path, rec_wt_rec);
+		}
+		if (buf >= 1)
 		{
 			rec_wt_view  = buf;
 			rec_wt_viewn = buf_getsize(buf);
 		}
 		else
-		{
-			buf_del(buf);
 			print(sprintf("replay: no sidecar at %s -- "
 			              "angles will be tick-rate and the turn keys are lost\n", vp));
-		}
 	}
+	strunzone(vp);
 
 	// The tag, from the name.  Only used as the fallback for a file with no
 	// `flags` header key; see Watch_Sample.
