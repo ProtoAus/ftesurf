@@ -5576,7 +5576,7 @@ float(vector p, float w, float draw) ui_terms_short =
 	ui_tm_dot(p, w, draw, "Each run is recorded on this PC: your position, speed and view, and your mouse and keyboard input.");
 	ui_tm_dot(p, w, draw, "Offline, nothing about a run leaves your PC.");
 	ui_tm_dot(p, w, draw, "Online, your times go on public leaderboards with the server's own recording of each run; other players see you and your chat, and our servers see your IP address.");
-	ui_tm_dot(p, w, draw, "Never recorded: what you type (only when a key was pressed), or anything outside the game.");
+	ui_tm_dot(p, w, draw, "Never recorded: what you type (only that a key was pressed, and when), or anything outside the game.");
 	return tm_y - 3;
 };
 
@@ -5603,7 +5603,7 @@ void(vector pos, float w) ui_tm_jdraw =
 	              hot ? COL_ACCENT : SUI_THEME_EDGE, 1);
 	if (ui_tm_jbox)
 		sui_roundbox(pos + '5 8 0', '10 10 0', 3, SUI_THEME_GOOD, 1);
-	s = ui_fit_text("Optional: send my input journal to play.proto.bar for anti-cheat review (online only; F2 changes it)",
+	s = ui_fit_text("Send my input journal for anti-cheat review (optional, online; F2 changes it)",
 	                w - 30, tm_sz);
 	sui_text(pos + [30, floor((26 - tm_sz_y) * 0.5)], tm_sz, s, hot ? COL_ACCENT : COL_TEXT, 1, 0);
 	if (sui_is_released("tm_journal"))
@@ -5623,17 +5623,26 @@ void(vector pos, float w) ui_tm_jdraw =
 	}
 };
 
-// An answer.  The box rides the online answer only, only when the player
-// changed it on this visit, and only with the online tier on record.
+// An answer, and the box if the player changed it on this visit: an untick
+// with either answer, a tick only with the online tier on record.  A failed
+// write keeps the change for the next press.
 void(float tier) ui_tm_answer =
 {
 	ui_consent_write(tier);
-	if (tier >= FS_TERMS_ONLINE)
-	if (ms_consent >= FS_TERMS_ONLINE)
+	if (ms_consent < tier)
+		return;
 	if (ui_tm_jtouched)
 	if (ui_tm_jcan())
-	if (ui_tm_jbox != (cvar("rec_hid_upload") != 0))
-		localcmd_local(ui_tm_jbox ? "rec_hid_upload 1\n" : "rec_hid_upload 0\n");
+	{
+		if (!ui_tm_jbox)
+		{
+			if (cvar("rec_hid_upload"))
+				localcmd_local("rec_hid_upload 0\n");
+		}
+		else if (tier >= FS_TERMS_ONLINE)
+		if (!cvar("rec_hid_upload"))
+			localcmd_local("rec_hid_upload 1\n");
+	}
 	ui_tm_jtouched = FALSE;
 	ui_tm_full = FALSE;
 };
