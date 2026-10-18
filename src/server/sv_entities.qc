@@ -7186,8 +7186,24 @@ void() button_target         = { func_wall(); };
 .float  vbsp_rb_ideal;
 .float  vbsp_rb_live;       // non-solid with a distance: it moves
 .float  vbsp_rb_parentdone;
+.float  vbsp_rb_arrived;    // set in SV_RotButtonFrame's first pass, fired in its second
 .entity vbsp_rb_parent;
 entity  vbsp_rb_driver;
+
+// A model with no faces (vbsp drops nodraw ones) or only tools/ faces draws nothing: a
+// carrier for props Source parents to it, which do not follow here (surf_nyx 20,
+// surf_gradient 15, all faceless).  Turning it would only cost the lobbies a packet a
+// frame.  Not gated on checkextension("DP_QC_GETSURFACE"): this server answers 0 to it
+// while the builtins work (surf_boreas reads end_wiccan off *1).
+float(entity e) SV_RotButtonDrawn =
+{
+	local float s;
+
+	for (s = 0; s < 4096 && getsurfacenumpoints(e, s) > 0; s = s + 1)
+		if (substring(strtolower(getsurfacetexture(e, s)), 0, 6) != "tools/")
+			return TRUE;
+	return FALSE;
+};
 
 void() momentary_rot_button =
 {
@@ -7204,7 +7220,7 @@ void() momentary_rot_button =
 	setmodel(self, self.model);
 	self.movetype = MOVETYPE_NONE;
 	self.solid = SOLID_NOT;
-	self.vbsp_io_solid = SOLID_NOT;		// an Enable must not make it a wall
+	self.vbsp_io_solid = SOLID_NOT;
 
 	if (self.spawnflags & SF_DOOR_ROTATE_ROLL)
 		self.vbsp_rb_axis = '0 0 1';
@@ -7223,7 +7239,11 @@ void() momentary_rot_button =
 	self.vbsp_rb_start = self.angles - self.vbsp_rb_axis * (self.distance * self.startposition);
 	self.vbsp_rb_pos = self.vbsp_rb_ideal = self.startposition;
 	self.vbsp_rb_org = self.origin;
-	self.vbsp_rb_live = self.distance > 0;
+	self.vbsp_rb_live = (self.distance > 0 && SV_RotButtonDrawn(self));
+	if (self.vbsp_rb_live)
+		dprint(sprintf("rotbutton %s: turns\n", self.model));
+	else
+		dprint(sprintf("rotbutton %s: still (no distance, or draws nothing)\n", self.model));
 };
 
 float(entity e) SV_RotButtonPos =
@@ -7259,6 +7279,8 @@ void(entity e) SV_RotButtonPlace =
 	}
 	a = e.vbsp_rb_start + e.vbsp_rb_axis * (SV_RotButtonPos(e) * e.distance);
 	p = e.vbsp_rb_parent;
+	if (p.classname != "momentary_rot_button")
+		p = world;						// killed since: its fields outlive it (ED_Free)
 	if (p)
 	{
 		// The parent's turn since spawn, applied to the child's offset and heading;
@@ -7276,37 +7298,53 @@ void(entity e) SV_RotButtonPlace =
 	e.angles_z = anglemod(a_z);
 };
 
+/*
+  Twenty times a second while anything turns; the clients lerp between.  TWO PASSES:
+  every arrival is settled before any output fires, because a zero-delay output runs
+  inline -- bhop_avantasia's first blimp to arrive sends its group SetPosition 1 through
+  a relay, and in one pass the rest were reset to "there already" before their own
+  arrival fired, and froze.  Source queues those events.
+*/
 void() SV_RotButtonFrame =
 {
-	local entity e, nx;
+	local entity e, nx, p;
 	local float moving;
 
-	moving = FALSE;
+	for (e = find(world, classname, "momentary_rot_button"); e; e = find(e, classname, "momentary_rot_button"))
+		if (e.vbsp_rb_live)
+		{
+			if (e.vbsp_rb_dir && SV_RotButtonPos(e) == e.vbsp_rb_ideal)
+			{
+				e.vbsp_rb_pos = e.vbsp_rb_ideal;
+				e.vbsp_rb_dir = 0;
+				e.vbsp_rb_t0 = time;
+				e.vbsp_rb_arrived = TRUE;
+			}
+			SV_RotButtonPlace(e);
+		}
 	for (e = find(world, classname, "momentary_rot_button"); e; e = nx)
 	{
 		nx = find(e, classname, "momentary_rot_button");	// an output may Kill e
-		if (!e.vbsp_rb_live)
+		if (!e.vbsp_rb_arrived)
 			continue;
-		if (e.vbsp_rb_dir && SV_RotButtonPos(e) == e.vbsp_rb_ideal)
-		{
-			e.vbsp_rb_pos = e.vbsp_rb_ideal;
-			e.vbsp_rb_dir = 0;
-			e.vbsp_rb_t0 = time;
-			SV_RotButtonPlace(e);
-			// OutputMovementComplete, buttons.cpp:1237-1246.
-			if (e.vbsp_rb_ideal == 1)
-				SV_FireOutput(e, "OnFullyClosed", e);
-			else if (e.vbsp_rb_ideal == 0)
-				SV_FireOutput(e, "OnFullyOpen", e);
+		e.vbsp_rb_arrived = FALSE;
+		// OutputMovementComplete, buttons.cpp:1237-1246.
+		if (e.vbsp_rb_ideal == 1)
+			SV_FireOutput(e, "OnFullyClosed", e);
+		else if (e.vbsp_rb_ideal == 0)
+			SV_FireOutput(e, "OnFullyOpen", e);
+		if (e.classname == "momentary_rot_button")
 			SV_FireOutput(e, "OnReachedPosition", e);
-		}
-		else
-			SV_RotButtonPlace(e);
-		if (e.vbsp_rb_dir || (e.vbsp_rb_parent && e.vbsp_rb_parent.vbsp_rb_dir))
+	}
+	// After the outputs, which may have started or stopped anything.
+	moving = FALSE;
+	for (e = find(world, classname, "momentary_rot_button"); e; e = find(e, classname, "momentary_rot_button"))
+	{
+		p = e.vbsp_rb_parent;
+		if (e.vbsp_rb_live && (e.vbsp_rb_dir || (p.classname == "momentary_rot_button" && p.vbsp_rb_dir)))
 			moving = TRUE;
 	}
-	// A delayed SetPosition (the loop's 0.01 s) wakes this again through SV_RotButtonSet.
-	self.nextthink = moving ? time : 0;
+	self.nextthink = moving ? time + 0.05 : 0;
 };
 
 void(entity t, float v, float now) SV_RotButtonSet =
@@ -7350,6 +7388,10 @@ float(entity t, string in, string pm) SV_RotButtonInput =
 {
 	if (t.classname != "momentary_rot_button")
 		return FALSE;
+	// Enable/Disable only gate Use in Source (buttons.cpp:1547-1580); here they would
+	// make the brush solid or hide it.
+	if (in == "enable" || in == "disable" || in == "toggle")
+		return TRUE;
 	if (in != "setposition" && in != "setpositionimmediately")
 		return FALSE;
 	if (t.vbsp_rb_live)					// a solid one is frozen and answers nothing
