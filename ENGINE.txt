@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   020f9ad3bc75b9796a6b86ab3b151078594f1e4d
+commit   7d3db9ccd1b7cb5ee5d778e8305b456db554eb50
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -25,7 +25,11 @@ commit   020f9ad3bc75b9796a6b86ab3b151078594f1e4d
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-783
-patch    787
+patch    791
+# Patch 791 (tools + csprogs + particles/surf_boreas.cfg): render_rope beams drawn as a
+# camera-facing strip from a `rope` index line (surf_boreas's end beam). No native change.
+# Patch 790 (qwprogs): momentary_rot_button non-solid under spawnflag 1, and the non-solid
+# ones turn on SetPosition (surf_boreas's floor symbols). No native change.
 # Patch 787 (tools + particles/surf_boreas.cfg): tools/pcf.py bakes each particle system with
 # its material's real image and Source's additive blend, and declines render_rope. No native change.
 # Patch 783 (engine + hl2 plugin): VTF BGRA4444/BGRA5551/BGR565 load (surf_boreas's end-room
