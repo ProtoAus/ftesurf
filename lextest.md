@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P786 — spectate inside a trigger
+
+- Spectate (TAB > Players, a row) while standing in a start zone, a booster or any
+  trigger: it now works, and the run stays ranked. Leaving spectate does not fire the
+  trigger again.
+- Re-entering spectate right after leaving it waits a quarter second ("you just left
+  spectate -- try again").
+Verdict PENDING.
+
 ## P783 + P787 — surf_boreas: the end-room smoke, the water's blue, the end particles
 
 In both Windows installs since 2026-10-18T09:47:16Z: client `e19f681d` (stamp
