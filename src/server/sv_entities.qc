@@ -1084,7 +1084,8 @@ float(entity p) SV_TrigPending =
   Set in each strip, read and cleared one command later beside the stamp it
   repairs (sv_player.qc) -- EXCEPT across a run_pmhold, where both PreThink and
   PostThink return early and the latch waits out the hold, which since Patch 786
-  it keeps: the rollback restores the stripped flags it repairs.  run_wasground itself is NOT widened: SV_TriggerIOTouch
+  it keeps: a release in place restores the stripped flags it repairs.
+  run_wasground itself is NOT widened: SV_TriggerIOTouch
   reads it for OnJump and that is a recorded event.
 
   PATCH 412, NOT DONE: THE TELEPORT STRIPS, and the pad's reasoning does not
