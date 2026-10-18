@@ -143,8 +143,8 @@ the clipboard. `r_budget_window` (0.5 s) is the averaging window.
   sky; 3D sky; portals and reflections; shadows; RT lights; transparent and
   effects; post-processing; HUD and 2D; and "Waiting on the CPU", the stretches the
   GPU spends waiting for the CPU, which do not count as GPU busy.
-- At about 190 fps on the PC it cost nothing measurable at 1, about 2% of the frame
-  at 2 and 3% at 3; it shows its own cost under "HUD, 2D, this overlay".
+- It times its own drawing under "HUD, 2D, this overlay": on the PC about 0.07 ms at
+  1, 0.17 at 2 and 0.27 at 3, that is 1%, 3% and 5% of a 5.4 ms frame.
 
 ## What you need
 

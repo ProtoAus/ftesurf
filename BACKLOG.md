@@ -18,9 +18,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - Site: engine `client/cl_screen.c` R_Budget_Draw. The panel draws with `font_console`
   and measures one glyph for its columns: a proportional console font would misalign
   the numbers. Check: `gl_font` set to a proportional TTF.
-- The overhead figures (level 1 free, 2 about 2%, 3 about 3% at ~190 fps) were measured
-  on the first cut, before self times moved to the runtime depth stack; the panel's own
-  row reads 0.29 ms at level 3. Check: arm782.sh's D shots on the current build.
 
 ## Board, friends and map list loading: what Patch 781 left out
 
