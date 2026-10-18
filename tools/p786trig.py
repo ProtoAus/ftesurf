@@ -13,11 +13,13 @@ inside the box, so a body dropped at SPOT rests in the trigger.
      once (the touch ended while toggling, and holds inside do not re-fire);
      r2 fires none (toggling kept the left touch).  The step-out spot is inside
      *77, which has outputs, so the held lines' "pending" is not *93's.
-  On v2 the server's run_spec_cooldown (never under 0.1 s) refuses most of the
+  On v2 the server's run_spec_cooldown (never under 0.15 s) refuses most of the
   toggled re-entries ("you just left spectate"); r2 has no cooldown.
   D  (--countdown N > 0, instead of C) rest in *93 and hold/leave 20 times: each
      release comes from PlayerPostThink after the countdown, before the next
      move.  v2 fires no entry output; r4 (07239692's window rule) re-fires some.
+     --watcher-fps 20 spaces the watcher's packets past the 0.03 s sweep, which
+     is when the release's touch refresh matters (a build without it re-fires).
 --expect main (P784: A refused), v1 (ac6882ad: A accepted, re-fires on the
 release), r2 (c410d513: C keeps the left touch), r4 (c4ca4a6a: D re-fires) or v2.  Exit 0 all held, 1 one failed, 2 could
 not measure (the body did not come to rest in the trigger).
@@ -74,10 +76,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--out', type=Path, required=True)
     ap.add_argument('--progs', type=Path, required=True)
-    ap.add_argument('--expect', choices=('main', 'v1', 'r2', 'r4', 'v2'), required=True)
+    ap.add_argument('--expect', choices=('main', 'v1', 'r2', 'r4', 'norefresh', 'v2'), required=True)
     ap.add_argument('--port', type=int, default=27616)
     ap.add_argument('--cooldown', type=float, default=0.25)
     ap.add_argument('--countdown', type=float, default=0)
+    ap.add_argument('--watcher-fps', type=float, default=100)
     ap.add_argument('--content', type=Path, default=Path('C:/FTESurf'))
     ap.add_argument('--client', type=Path, default=Path('C:/FTESurf/ftesurf64.exe'))
     ap.add_argument('--server', type=Path, default=Path('C:/FTEQuake/fteqwsv64.exe'))
@@ -121,7 +124,8 @@ def main():
         clients = []
         for folder, name in [('watcher', 'Watcher'), ('target', 'Target')]:
             base = prepare(a, folder)
-            (base / 'ftesurf/probe.cfg').write_text('\n'.join(common + [
+            fps = [f'set cl_maxfps {a.watcher_fps:g}', f'set cl_netfps {a.watcher_fps:g}'] if folder == 'watcher' else []
+            (base / 'ftesurf/probe.cfg').write_text('\n'.join(common + fps + [
                 'cl_threadedphysics 0', f'name "{name}"', f'connect 127.0.0.1:{a.port}']) + '\n')
             cl = Peer(a.client, base, 'probe.cfg'); peers.append(cl); clients.append(cl)
             cl.wait('FTESurf CSQC loaded', timeout=120)
@@ -192,7 +196,7 @@ def main():
             num['A_hits_after'] = hits(rel, end)
             num['A_rest_after'] = pos()
             check(inbox(num['A_rest_after']), f"A still inside *93 after the release ({num['A_rest_after']})")
-            if v == 'r4':
+            if v in ('r4', 'norefresh'):
                 pass                    # its release can re-fire at random: recorded, D grades it
             elif v == 'v1':
                 check(num['A_hits_after'] >= 1, f"A v1: the entry output fires again on release ({num['A_hits_after']})")
@@ -236,7 +240,7 @@ def main():
                     raise CannotMeasure(f"C: {len(flags)} holds released, refusals {refused}")
             else:
                 cool = [r for r in refused if 'just left spectate' in r]
-                # Most toggled re-entries refused, at whatever frame rate the client ran.
+                # Most toggled re-entries refused (needs the watcher above ~32 fps at 0.25 s).
                 check(len(cool) >= 6 and 2 <= len(flags) < len(cool),
                       f"C cooldown: toggled re-entries refused ({len(cool)} refused, {len(flags)} holds)")
             num['C_hits'] = hits(o)
@@ -256,7 +260,7 @@ def main():
                 w.send('cmd rec_spec 2')
                 time.sleep(0.4)
                 w.send('cmd rec_spec 0')
-                time.sleep(a.countdown + max(0.1, a.cooldown) + 0.4)
+                time.sleep(a.countdown + max(0.15, a.cooldown) + 0.4)
             end = mark('D-end')
             seg = sv.text()[o:end]
             # Each release from the countdown (held >= 0.4 s + countdown), each hold inside *93.
@@ -271,8 +275,8 @@ def main():
                 raise CannotMeasure(f"D: {len(rel)} releases, rest {num['D_rest']}")
             if min(rel) < 0.4 + a.countdown - 0.05 or len(held) < len(rel):
                 raise CannotMeasure(f"D: the countdown or the trigger did not hold (after {rel}, {len(held)} held lines)")
-            if v == 'r4':
-                check(num['D_hits'] >= 1, f"D r4: a countdown release re-fires the entry output ({num['D_hits']}/{num['D_releases']})")
+            if v in ('r4', 'norefresh'):
+                check(num['D_hits'] >= 1, f"D {v}: a countdown release re-fires the entry output ({num['D_hits']}/{num['D_releases']})")
             else:
                 check(num['D_hits'] == 0, f"D: no entry output across {num['D_releases']} countdown releases ({num['D_hits']})")
 

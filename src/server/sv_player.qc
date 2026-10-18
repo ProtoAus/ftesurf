@@ -438,13 +438,11 @@ void() PlayerPreThink =
 	if (self.run_pmhold)
 	{
 		SV_MonolithB4Reset(self);
-		// Patch 786: run_wasground is left alone -- the rollback restores the flags
-		// and velocity, so the first command after the release sees the jump edge
-		// it would have seen without the hold (rewriting it here swallowed OnJump).
+		// Patch 786: run_wasground and run_pushlift are left alone -- the rollback
+		// restores the flags and velocity, so the first command after the release
+		// sees the jump edge and the pad strip it would have seen without the hold
+		// (clearing them here swallowed OnJump and untagged a hop off a start pad).
 		self.run_basevelocity = '0 0 0';
-		self.run_pushlift = FALSE;  // Patch 411: this return is above its clear,
-		                            // and PostThink's is above run_pushed's, so a
-		                            // strip latched into a hold would outlive it
 		return;
 	}
 

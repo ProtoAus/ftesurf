@@ -376,6 +376,11 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   entry/exit half on surf_colony.
 - A trigger map I/O enables during a hold acts at the release (Patch 382's
   world-time class); a StartDisabled teleport used to refuse the entry instead.
+- The release refreshes a trigger whose BOX the body overlaps, so beside a non-box
+  brush trigger (or within ~2 u of a box one) a left trigger's exit can run up to
+  ~0.09 s of run time late; the cooldown keeps it from chaining. On the legacy
+  one-toucher path (vbsp_mp 0, slots above 32) a trigger outside the box ends at the
+  first sweep after the release, up to ~0.05 s early.
 - The cooldown follows only releases where the body stays (leave, notarget, move);
   ESC then a quick click on the board's row can still read "you just left spectate".
 - On the legacy one-toucher path (vbsp_mp 0, slots above 32; not lobbies) a hold
