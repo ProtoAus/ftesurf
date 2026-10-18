@@ -126,11 +126,12 @@ vector(vector org, vector ang) FS_PortalTransformView =
     1  vbsp_portal_render 0 -- apertures off entirely.  The physics still works,
        so the map is completable while the renderer is not trusted.  This is a
        real switch for the player, not a debug mode.
-    2  NOCLIPPING.  A portal recursed from outside the world samples PVS from a
+    2  THE VOID.  A portal recursed from outside the world samples PVS from a
        cluster that does not exist and renders nothing, at full price.  Patch
-       206 gates the engine side on r_viewcluster == -1; this gates the entity
-       side on the movetype FTESurf already networks (STAT_FS_MOVETYPE), so the
-       doors are not even offered to the renderer.
+       206 gates the engine side on r_viewcluster == -1, and question 4's
+       checkpvs refuses every door from there: cluster -1's PVS row is empty
+       (VBSP_ClusterPVS).  P802 dropped the noclip test that stood here, which
+       hid every door from a noclipping player inside the map as well.
     3  FACING.  You cannot see through the back of a portal, and GLR_DrawPortal
        refuses one you are behind -- which, before Patch 206 taught its depth
        mask the same test, is exactly where the transparent square came from.
@@ -241,11 +242,6 @@ float() FS_PortalPredraw =
 	if (!cvar("vbsp_portal_render"))
 		return PREDRAW_NEXT;
 
-	// Spectating and noclip both come through here; either way there is nothing
-	// worth spending a scene render on.
-	if (getstatf(STAT_FS_MOVETYPE) == MOVETYPE_NOCLIP)
-		return PREDRAW_NEXT;
-
 	// Portal_Offer's makevectors is safe here: v_* are written below, after it.
 	// cltime runs while paused; Portal_Refresh clears lpd_offertime.
 	eye = getproperty(VF_ORIGIN);
@@ -316,6 +312,74 @@ void(entity state) Portal_NetState =
 	Portal_Refresh(e);
 };
 
+/*
+  P799: func_areaportalwindow.  Source draws the window's TARGET brush itself, at
+  RemapValClamped(eye distance to its box, FadeStartDist, FadeDist, TranslucencyLimit, 1)
+  (c_func_areaportalwindow.cpp:129-140), and hides the target (func_areaportalwindow.cpp:81-87;
+  SV_PortalWindowsActivate here).  276 windows on 73 maps; surf_dragon's toolsblack window21
+  vanishes inside 500 units.  BackgroundBModel (one map) is not drawn.
+*/
+.string apw_target;
+.float  apw_start, apw_end, apw_limit;
+float   vbsp_apw_n;
+
+float() APW_Predraw =
+{
+	local vector eye, mn, mx, p;
+	local float a;
+
+	eye = getproperty(VF_ORIGIN);
+	mn = self.origin + self.mins;
+	mx = self.origin + self.maxs;
+	p_x = bound(mn_x, eye_x, mx_x);
+	p_y = bound(mn_y, eye_y, mx_y);
+	p_z = bound(mn_z, eye_z, mx_z);
+	if (self.apw_start == self.apw_end)
+		a = (vlen(p - eye) >= self.apw_end) ? 1 : self.apw_limit;
+	else
+		a = self.apw_limit + (1 - self.apw_limit) *
+		    bound(0, (vlen(p - eye) - self.apw_start) / (self.apw_end - self.apw_start), 1);
+	if (a <= 0)
+		return PREDRAW_NEXT;
+	self.alpha = a;
+	return PREDRAW_AUTOADD;
+};
+
+// The first entity named by each window's target, as Source's FindEntityByName(NULL, ...)
+// takes it; names compare caseless, as the server's SV_RepairTargetCase makes them.
+void() APW_Resolve =
+{
+	local string tok, key, nm, mdl, sorg;
+	local entity w;
+
+	getentitytoken(0);
+	while ((tok = getentitytoken()) != "")
+	{
+		if (tok != "{")
+			continue;
+		nm = mdl = sorg = "";
+		while ((key = getentitytoken()) != "" && key != "}")
+		{
+			tok = getentitytoken();
+			if      (key == "targetname") nm   = strtolower(tok);
+			else if (key == "model")      mdl  = tok;
+			else if (key == "origin")     sorg = tok;
+		}
+		if (nm == "" || substring(mdl, 0, 1) != "*")
+			continue;
+		for (w = findchain(classname, "vbsp_apwindow"); w; w = w.chain)
+		{
+			if (w.apw_target != nm || w.model != "")
+				continue;
+			setmodel(w, mdl);
+			setorigin(w, stov(sorg));
+			w.drawmask = MASK_ENGINE;
+			w.predraw = APW_Predraw;
+			vbsp_apw_n = vbsp_apw_n + 1;
+		}
+	}
+};
+
 void() Portal_Clear =
 {
 	local entity e, n;
@@ -326,8 +390,16 @@ void() Portal_Clear =
 		remove(e);
 		e = n;
 	}
+	e = findchain(classname, "vbsp_apwindow");
+	while (e)
+	{
+		n = e.chain;
+		remove(e);
+		e = n;
+	}
 	vbsp_lpd_shown = 0;
 	vbsp_lpd_held = 0;
+	vbsp_apw_n = 0;
 };
 
 /*
@@ -349,13 +421,14 @@ void() Portal_LoadForMap =
 {
 	local string tok, key;
 	local string cn, nm, pn, sorg, sang, sw, sh, ssa, sd;
+	local string st, sfs, sfd, stl, lk;
 	local string sigfirst;
-	local float sigcount;
+	local float sigcount, sigwin;
 	local entity e;
 
 	Portal_Clear();
 	FS_PortalRegisterCvars();
-	sigcount = 0;
+	sigcount = sigwin = 0;
 	sigfirst = "";
 	vbsp_lpd_map = serverkey("map");
 	if (vbsp_lpd_map == "")
@@ -385,9 +458,11 @@ void() Portal_LoadForMap =
 			continue;
 
 		cn = nm = pn = sorg = sang = sw = sh = ssa = sd = "";
+		st = sfs = sfd = stl = "";
 		while ((key = getentitytoken()) != "" && key != "}")
 		{
 			tok = getentitytoken();
+			lk = strtolower(key);
 			if      (key == "classname")     cn   = tok;
 			else if (key == "targetname")    nm   = tok;
 			else if (key == "partnername")   pn   = tok;
@@ -397,6 +472,26 @@ void() Portal_LoadForMap =
 			else if (key == "height")        sh   = tok;
 			else if (key == "startactive")   ssa  = tok;
 			else if (key == "StartDisabled") sd   = tok;
+			else if (key == "target")        st   = tok;
+			else if (lk == "fadestartdist")  sfs  = tok;
+			else if (lk == "fadedist")       sfd  = tok;
+			else if (lk == "translucencylimit") stl = tok;
+		}
+
+		// P799: windows are resolved to their target brushes after the walk, by APW_Resolve.
+		if (cn == "func_areaportalwindow")
+		{
+			sigwin = sigwin + 1;
+			if (st != "")
+			{
+				e = spawn();
+				e.classname = "vbsp_apwindow";
+				e.apw_target = strtolower(st);
+				e.apw_start = stof(sfs);
+				e.apw_end = stof(sfd);
+				e.apw_limit = stof(stl);
+			}
+			continue;
 		}
 
 		if (cn != "linked_portal_door")
@@ -505,6 +600,8 @@ void() Portal_LoadForMap =
 	for (e = findchain(classname, "vbsp_portal"); e; e = e.chain)
 		if (!e.lpd_ok)
 			vbsp_lpd_held = vbsp_lpd_held + 1;
+	if (findchain(classname, "vbsp_apwindow"))
+		APW_Resolve();
 
 	/*
 	  SILENT when the map has none, which is 1290 of the library's 1308 maps.
@@ -514,7 +611,7 @@ void() Portal_LoadForMap =
 	  Patch 205 shipped with; a count that is short by a few is a one-way
 	  destination.
 	*/
-	vbsp_lpd_sig = sprintf("%g/%s", sigcount, sigfirst);
+	vbsp_lpd_sig = sprintf("%g/%s/%g", sigcount, sigfirst, sigwin);
 
 	/*
 	  The dprint runs unconditionally and the print does not, because a load that
@@ -523,8 +620,8 @@ void() Portal_LoadForMap =
 	  The reload after a stale read is the successful outcome; it should be
 	  audible to anyone looking, and invisible to everyone else.
 	*/
-	dprint(sprintf("portals: loaded %s -> %g apertures, %g name-only, sig %s\n",
-		vbsp_lpd_map, vbsp_lpd_shown, vbsp_lpd_held, vbsp_lpd_sig));
+	dprint(sprintf("portals: loaded %s -> %g apertures, %g name-only, %g windows, sig %s\n",
+		vbsp_lpd_map, vbsp_lpd_shown, vbsp_lpd_held, vbsp_apw_n, vbsp_lpd_sig));
 
 
 	/*
@@ -578,9 +675,9 @@ void() Portal_LoadForMap =
 string() Portal_Signature =
 {
 	local string tok, key, cn, sorg, first;
-	local float n;
+	local float n, nw;
 
-	n = 0;
+	n = nw = 0;
 	first = "";
 	getentitytoken(0);
 	while ((tok = getentitytoken()) != "")
@@ -594,13 +691,15 @@ string() Portal_Signature =
 			if      (key == "classname") cn   = tok;
 			else if (key == "origin")    sorg = tok;
 		}
+		if (cn == "func_areaportalwindow")
+			nw = nw + 1;
 		if (cn != "linked_portal_door")
 			continue;
 		n = n + 1;
 		if (first == "")
 			first = sorg;
 	}
-	return sprintf("%g/%s", n, first);
+	return sprintf("%g/%s/%g", n, first, nw);
 };
 
 /*

@@ -281,6 +281,18 @@ float  spr_gskip_n;                     // glows that resolved one
 float  spr_gskip_multi;                 // glows inside more than one brush
 
 /*
+  P799: glares are traced against what Source's depth query sees, which is not the
+  traceline default.  WINDOW is out: VBSP gives translucent brushes TRANSLUCENT|WINDOW
+  (surf_dragon's dragon pane over an env_sprite is 0x10000002), and MASK_OPAQUE leaves
+  them out too.  SPR_CONTENTS_VISUAL asks the hl2 plugin for its draw-only geometry --
+  non-solid static props, as surf_jumble's ramps are (mod_vbsp.c VBSP_CONTENTS_VISUAL).
+  The mask rides on the passedict: the skipped occluder, or spr_gtracer when none is.
+*/
+#define SPR_CONTENTS_VISUAL 0x00000400i
+#define SPR_GLARE_MASK (CONTENTBIT_SOLID | CONTENTBIT_BODY | SPR_CONTENTS_VISUAL)
+entity spr_gtracer;
+
+/*
   QuakeC allows at most eight parameters and Sprite_Add already uses all eight,
   so the parameter-set index crosses the call boundary in a global.  Set it
   immediately before the call; the parser already accumulates into locals, and
@@ -1136,6 +1148,7 @@ void(string mdl, vector org) Sprite_AddOccluder =
 	e.spr_occluder = TRUE;
 	e.solid        = SOLID_BSP;
 	e.movetype     = MOVETYPE_NONE;
+	e.hitcontentsmaski = SPR_GLARE_MASK;    // read only when it is a glare's skip
 	setmodel(e, mdl);
 	setorigin(e, org);
 
@@ -1855,8 +1868,14 @@ void() Sprite_Glare =
 	local float  adapt, docorners, had, m, wrapped;
 	// BUILD 61: the interval-targeted budget.
 	local float  interval, vmax, ft;
+	local entity pass;              // P799: carries SPR_GLARE_MASK
 
 	eye = getproperty(VF_ORIGIN);
+	if (!spr_gtracer)
+	{
+		spr_gtracer = spawn();
+		spr_gtracer.hitcontentsmaski = SPR_GLARE_MASK;
+	}
 
 	decay = cvar("vbsp_glare_decay");
 	if (decay <= 0)
@@ -2171,7 +2190,10 @@ void() Sprite_Glare =
 		spr_gtraced_n = spr_gtraced_n + 1;
 
 		hits = 0;
-		traceline(eye, aim, MOVE_NOMONSTERS, spr_gskip[i]);
+		pass = spr_gskip[i];
+		if (pass == world)
+			pass = spr_gtracer;
+		traceline(eye, aim, MOVE_NOMONSTERS, pass);
 		if (trace_fraction >= 1)
 			hits = hits + 1;
 
@@ -2294,16 +2316,16 @@ void() Sprite_Glare =
 			n = n + 4;
 			spr_grays = spr_grays + 4;
 
-			traceline(eye, aim + (pr + pu) * off, MOVE_NOMONSTERS, spr_gskip[i]);
+			traceline(eye, aim + (pr + pu) * off, MOVE_NOMONSTERS, pass);
 			if (trace_fraction >= 1)
 				hits = hits + 1;
-			traceline(eye, aim + (pr - pu) * off, MOVE_NOMONSTERS, spr_gskip[i]);
+			traceline(eye, aim + (pr - pu) * off, MOVE_NOMONSTERS, pass);
 			if (trace_fraction >= 1)
 				hits = hits + 1;
-			traceline(eye, aim - (pr - pu) * off, MOVE_NOMONSTERS, spr_gskip[i]);
+			traceline(eye, aim - (pr - pu) * off, MOVE_NOMONSTERS, pass);
 			if (trace_fraction >= 1)
 				hits = hits + 1;
-			traceline(eye, aim - (pr + pu) * off, MOVE_NOMONSTERS, spr_gskip[i]);
+			traceline(eye, aim - (pr + pu) * off, MOVE_NOMONSTERS, pass);
 			if (trace_fraction >= 1)
 				hits = hits + 1;
 

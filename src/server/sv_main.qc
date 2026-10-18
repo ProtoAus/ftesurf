@@ -149,6 +149,7 @@ void() StartFrame =
 		// This is also the earliest it can run, for the same reason as above --
 		// materialising outputs needs every entity on the map to exist.
 		SV_EntityIOBuild();
+		SV_PortalWindowsActivate();
 
 		SV_EntityReport();
 

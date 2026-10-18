@@ -8067,11 +8067,10 @@ void() func_areaportal =
 };
 
 /*
-  func_areaportalwindow -- 70 instances.  A pane you see and shoot through that
-  additionally stops drawing what is beyond it past a distance.  The distance
-  fade needs per-frame work we have no hook for; the part that matters is that
-  it must not be a wall and must not seal an area, which is the same treatment
-  plus keeping the brush visible.
+  func_areaportalwindow -- 276 instances on 73 maps.  A pane you see and shoot
+  through that additionally stops drawing what is beyond it past a distance.  It
+  must not be a wall and must not seal an area; its pane fades on the client (see
+  SV_PortalWindowsActivate below).
 */
 void() func_areaportalwindow =
 {
@@ -8089,6 +8088,26 @@ void() func_areaportalwindow =
 	self.chain = vbsp_portal_first;
 	vbsp_portal_first = self;
 	vbsp_portal_n = vbsp_portal_n + 1;
+};
+
+/*
+  P799: the window's TARGET is the pane, and the client draws it with Source's distance fade
+  (cl_portal.qc, APW_Predraw).  CFuncAreaPortalWindow::Activate takes the first entity its
+  target names and puts EF_NODRAW on it (func_areaportalwindow.cpp:81-87); the target keeps
+  its own solidity.  Runs from StartFrame's first frame, when every entity exists.
+*/
+void() SV_PortalWindowsActivate =
+{
+	local entity w, t;
+
+	for (w = vbsp_portal_first; w; w = w.chain)
+	{
+		if (w.classname != "func_areaportalwindow" || w.target == "")
+			continue;
+		t = find(world, targetname, w.target);
+		if (t && substring(t.model, 0, 1) == "*")
+			t.effects = t.effects | EF_NODRAW;
+	}
 };
 
 /*
