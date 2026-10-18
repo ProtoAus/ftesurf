@@ -22,8 +22,11 @@ one hung 25 u up, stuck. Live: lobbies 2026-10-18T18:08Z (all 12, qwprogs 6b8707
 **Not fixed yet -- your surf_null report:** fresh in, the camera ~25 u too high until a
 jump, with the server's body on the floor. Seen once here, not again in three fresh
 connects. When it happens, before jumping, in the console:
-`set hud_debug 1; set hud_eyetrace 3; cmd viewpos; condump surfnull` (writes
-ftesurf/surfnull.txt). Verdict PENDING.
+`set hud_debug 1; set hud_eyetrace 3; cmd viewpos; waitms 500; condump surfnull`
+(writes ftesurf/surfnull.txt; the wait lets the eye lines print first -- the 18:48Z
+dump ran before them). Say whether the camera was high when you typed it. Not
+reproduced here: four fresh connects, one reconnect, and local `map` then a lobby
+join all measured the eye at 64. Verdict PENDING.
 
 ## P797 — Teleport on the TAB player list
 
