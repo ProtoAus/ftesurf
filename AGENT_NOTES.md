@@ -5714,6 +5714,26 @@ patch, Build bump, new public version or extra gate for ordinary feature work.
   rehash managed files and keep settings/data/edited-zone sentinels. This is NOT
   in-game/visual acceptance. Private local logs/fixtures are not public ship inputs.
 
+**P774 collection rollout preflight — 2026-10-18.**
+
+- Production Flask/Werkzeug is 2.2.2. The collector's scoped request subclass
+  supports it; do not assign Flask 3.1-only request properties. The small-route
+  body-cap falsifier must exercise form parsing: old Werkzeug's raw `get_data`
+  does not enforce that cap even without the collector. The same eight tests
+  pass on both dependency generations; an increased non-HID-cap mutant fails.
+- A pre-import immutable generation is not an ordinary surfd.py file. Compare
+  its pinned runtime/manifest before deploying; the generic copy/reload helper
+  cannot promote a new generation. Coordinate its supported handoff, never
+  replace the bootstrap or rebind/reset its grant to bypass the fence.
+- Validate the exact public snippet AND installer zones with rootless `nginx -t`
+  under the owned task root before requesting privileged installation. Passing
+  this does not prove the public HTTPS route is installed or used by a client.
+- Windows dedicated console output need not reach redirected stdout. Use an
+  explicit unique engine file log. Strip its timestamps before comparing
+  pm_dettest; current pigate filters census lines and compares nine named
+  result lines per map. Preserve/reuse a complete acting arm when only its
+  reader failed; do not rerun it just to satisfy a stale line-count assumption.
+
 ## Linux build, test rig and release (Patches 386-389, 0.1.11)
 
 - **BEFORE CUTTING ANYTHING: does the feature you are shipping READ A GENERATED

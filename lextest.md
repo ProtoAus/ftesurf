@@ -14,9 +14,13 @@ ok" or what looks wrong).
 
 ## P774 — optional input-journal uploads (PENDING)
 
-After the Patch 774 development build is installed, restart the game. Native
-transport/consent controls passed with synthetic fixture data; the following are
-**not yet human-confirmed**. This is not permission to upload anyone's data.
+Installed in C:\FTEQuake at 2026-10-18T06:44:56Z and C:\FTESurf at 06:46:30Z:
+native source `29ddd0a6a`, QC `ed6f9223` (also preserves P775/P777/P778/P780).
+Both installs' VM hashes match; applicable native/plugin hashes match the clean
+build. Restart the game. Native transport/consent controls passed with synthetic
+fixture data; the following are **not yet human-confirmed**. This is not permission
+to upload anyone's data. Collector/proxy and fleet rollout are still blocked;
+check the panel only until the operator confirms the real collector is live.
 
 - Main menu: **Input journal uploads** should open a readable separate page.
   Check it at your normal window size and, if easy, 640x480. The small button
@@ -26,8 +30,8 @@ transport/consent controls passed with synthetic fixture data; the following are
   review, click **Allow journal uploads**: the button should become **Stop journal
   uploads**. Click Stop and it should return to Allow. A synthetic `ui_click`
   cannot grant this permission. Leaving it off keeps journals local.
-- Only if you actually opt in: finish a lobby run longer than 40 seconds and tell
-  the operator the map/time. They can check the private receipt/digest/file join;
+- Only after the operator confirms the collector is live AND you actually opt
+  in: finish a lobby run longer than 40 seconds and tell the operator the map/time. They can check the private receipt/digest/file join;
   seeing the button change is not proof of receipt, physics or calibrated detection.
 
 Reply with "page readable / Allow and Stop work / left off" (or explicitly opted

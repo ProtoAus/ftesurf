@@ -72,3 +72,26 @@ acceptance. Real Allow/Stop and compact-window layout checks remain human checks
 in `lextest.md`. Record actual deployed
 commit/artifact hashes, live behavior and UTC separately. Do not deploy private
 fixture QC or substitute fixture acceptance for real lobby evidence.
+
+## Development installation record — 2026-10-18
+
+Both Windows installs are updated: C:\FTEQuake at 06:44:56Z and C:\FTESurf at
+06:46:30Z. Native executable source is `29ddd0a6a7f7e464d21ca60ce5aee561490e6bce`;
+QC is `ed6f92238f5c75a332afe616fed0b7e122974e18`, preserving the published peer
+features. Applicable native/plugin hashes match frozen clean outputs, all three
+VM hashes match between installs, ordinary `.prev`/owned rollback copies remain,
+and protected config/installed-list hashes are unchanged. No owner process was
+stopped. Human UI/consent acceptance remains pending.
+
+Native ARM also built and passed exact Windows parity on all nine non-census
+result lines on bhop_eazy, surf_ace and surf_boreas, including three prop-decided
+traces on the prop map. Both the known pin-1 recording and public pmsrcver-2
+fixture verified PASS (3107 and 4418 ticks). This proves compatibility, not input
+classification. The ARM server/progs have NOT been swapped while players remain.
+
+The production collector/proxy have NOT been installed: the active backend's
+immutable generation requires a coordinated supported handoff, and nginx needs
+privileged installation. The exact published snippet plus installer zones pass
+an isolated rootless nginx syntax check; that is not a live HTTPS route test.
+No collection policy, threshold, automatic punishment, Build number or release
+was enabled/bumped. Genuine consenting-player collection/calibration is pending.
