@@ -10,7 +10,8 @@ installation. Ordinary builds/development deployment do not make a release.
 
 - Existing recording consent and `rec_upload` still apply. Raw journal uploads
   additionally require the separate **default-off** `rec_hid_upload` choice in
-  the main menu's **Input journal uploads** panel. Accepting online terms never
+  the first-boot terms' journal box (P796; F2's Input journal uploads row leads
+  to the same page this contract describes). Accepting online terms never
   enables it. Both native switches preserve early local values and refuse remote
   enablement; turning either off cancels an active journal upload. No account,
   ranking or ban policy is enabled here.

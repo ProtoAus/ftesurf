@@ -5517,7 +5517,7 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_par(p, w, draw, "The people on the map see your position and view angle, and you see theirs. Voice and text chat reach everyone there.", COL_TEXT);
 		ui_tm_head(p, draw, "What is uploaded");
 		ui_tm_par(p, w, draw, "Your finish time goes to play.proto.bar and appears on a public leaderboard. That server also keeps its own recording of the run (positions, velocities and angles), which anyone can download from the board.", SUI_THEME_WARN);
-		ui_tm_par(p, w, draw, "Raw mouse and keyboard journals stay here unless you also tick the input journal box below (or turn it on later in the F2 panel). It is off by default; playing online alone never ticks it. Opted-in journals go to play.proto.bar for anti-cheat review, not as public replays.", COL_TEXT);
+		ui_tm_par(p, w, draw, "Raw mouse and keyboard journals stay here unless you also tick the input journal box on the short version of this screen (or turn it on later with F2). It is off by default; playing online alone never ticks it. Opted-in journals go to play.proto.bar for anti-cheat review, not as public replays.", COL_TEXT);
 		ui_tm_par(p, w, draw, "With online features enabled, play.proto.bar refreshes the map list at startup and serves zones, leaderboards and player pictures. Selecting a map can fetch its backdrop from dl.proto.bar. These services see your IP address, as does any lobby you join.", COL_TEXT);
 		ui_tm_par(p, w, draw, "A zone admin can explicitly upload saved zones to play.proto.bar. They are stored with the linked account as private drafts until an operator reviews and activates them; uploading alone does not change existing times.", COL_TEXT);
 		ui_tm_head(p, draw, "Steam");
@@ -5559,7 +5559,7 @@ float ui_steam_t0;      // when the Steam offer went up: how long to wait for th
 float ui_synth_t;       // when ui_key or ui_click last fed the menu an event; 0 never
 float ui_tm_ph, ui_tm_w, ui_tm_two, ui_tm_sx, ui_tm_sy;     // the terms as last laid out, for ui_strip_test
 float ui_tm_full;               // P796: the cards are up instead of the summary
-float ui_tm_jbox, ui_tm_jread;  // P796: the journal box; it was read from rec_hid_upload
+float ui_tm_jbox, ui_tm_jtouched;   // P796: the journal box; the player changed it on this visit
 
 float() ui_synth =
 {
@@ -5575,8 +5575,8 @@ float(vector p, float w, float draw) ui_terms_short =
 	tm_y = 0;
 	ui_tm_dot(p, w, draw, "Each run is recorded on this PC: your position, speed and view, and your mouse and keyboard input.");
 	ui_tm_dot(p, w, draw, "Offline, nothing about a run leaves your PC.");
-	ui_tm_dot(p, w, draw, "Online, your times go on public leaderboards with the server's own recording of each run, and other players see you and your chat.");
-	ui_tm_dot(p, w, draw, "Never recorded: anything you type, or anything outside the game.");
+	ui_tm_dot(p, w, draw, "Online, your times go on public leaderboards with the server's own recording of each run; other players see you and your chat, and our servers see your IP address.");
+	ui_tm_dot(p, w, draw, "Never recorded: what you type (only when a key was pressed), or anything outside the game.");
 	return tm_y - 3;
 };
 
@@ -5590,7 +5590,8 @@ float() ui_tm_jcan =
 
 string(string s, float w, vector sz) ui_fit_text;
 
-// The whole row toggles.  Ticking takes a real click, as the answers do.
+// The whole row toggles.  Ticking takes a real click, as the answers do.  Until
+// the player changes it the box mirrors rec_hid_upload (screen_terms).
 void(vector pos, float w) ui_tm_jdraw =
 {
 	local float hot;
@@ -5602,31 +5603,38 @@ void(vector pos, float w) ui_tm_jdraw =
 	              hot ? COL_ACCENT : SUI_THEME_EDGE, 1);
 	if (ui_tm_jbox)
 		sui_roundbox(pos + '5 8 0', '10 10 0', 3, SUI_THEME_GOOD, 1);
-	s = ui_fit_text("Also send my input journal to play.proto.bar for anti-cheat review (optional)",
+	s = ui_fit_text("Optional: send my input journal to play.proto.bar for anti-cheat review (online only; F2 changes it)",
 	                w - 30, tm_sz);
 	sui_text(pos + [30, floor((26 - tm_sz_y) * 0.5)], tm_sz, s, hot ? COL_ACCENT : COL_TEXT, 1, 0);
 	if (sui_is_released("tm_journal"))
 	{
 		if (ui_tm_jbox)
+		{
 			ui_tm_jbox = FALSE;
+			ui_tm_jtouched = TRUE;
+		}
 		else if (ui_synth())
 			print("menu: journal upload consent takes a real click or key, not ui_key/ui_click\n");
 		else
+		{
 			ui_tm_jbox = TRUE;
+			ui_tm_jtouched = TRUE;
+		}
 	}
 };
 
-// An answer, and the box with it once the file is written: a failed write
-// cannot leave uploads on.
+// An answer.  The box rides the online answer only, only when the player
+// changed it on this visit, and only with the online tier on record.
 void(float tier) ui_tm_answer =
 {
 	ui_consent_write(tier);
-	if (ms_consent < tier)
-		return;
+	if (tier >= FS_TERMS_ONLINE)
+	if (ms_consent >= FS_TERMS_ONLINE)
+	if (ui_tm_jtouched)
 	if (ui_tm_jcan())
 	if (ui_tm_jbox != (cvar("rec_hid_upload") != 0))
 		localcmd_local(ui_tm_jbox ? "rec_hid_upload 1\n" : "rec_hid_upload 0\n");
-	ui_tm_jread = FALSE;
+	ui_tm_jtouched = FALSE;
 	ui_tm_full = FALSE;
 };
 
@@ -5637,12 +5645,9 @@ void(vector screensize) screen_terms =
 	local string lab, lead, foot;
 
 	ui_backdrop(screensize);
-	if (!ui_tm_jread)
-	{
+	if (!ui_tm_jtouched)
 		ui_tm_jbox = (cvar("rec_hid_upload") != 0);
-		ui_tm_jread = TRUE;
-	}
-	jb = ui_tm_jcan() ? TM_JBOX : 0;
+	jb = (ui_tm_jcan() && !ui_tm_full) ? TM_JBOX : 0;  // the summary's: the cards have no room
 	fh = 0;                                 // the footnote's line, under the cards only
 
 	if (ui_tm_full)
@@ -6014,6 +6019,9 @@ void(vector screensize) screen_journal =
 		have = checkbuiltin(localcmd_local);
 	enabled = cvar("rec_hid_upload");
 	label = enabled ? "Stop journal uploads" : "Allow journal uploads";
+	// P796: first, so Back and not Allow is the keyboard's default.
+	if (ui_button("journal_back", [p_x + w - 114, by], [90, 34], "Back"))
+		menu_screen = SCREEN_UPDATE;        // reached from the F2 panel
 	if (have)
 	{
 		if (ui_button("journal_choice", [p_x + 24, by], [240, 34], label, TRUE))
@@ -6028,8 +6036,6 @@ void(vector screensize) screen_journal =
 	}
 	else
 		sui_text([p_x + 24, by + 8], SZ_LABEL, "Update the native client to enable uploads", SUI_THEME_WARN, 1, 0);
-	if (ui_button("journal_back", [p_x + w - 114, by], [90, 34], "Back"))
-		menu_screen = SCREEN_UPDATE;        // P796: reached from the F2 panel
 };
 
 void(vector screensize) screen_main =
@@ -8097,6 +8103,8 @@ void(vector screensize) m_draw =
 	*/
 	if (ms_consent < FS_TERMS_VERSION)
 		menu_screen = SCREEN_TERMS;
+	if (menu_screen != SCREEN_TERMS)
+		ui_tm_jtouched = FALSE;         // P796: left unanswered, the box mirrors the cvar again
 
 	// ROADMAP 9: the leaderboard panel lives only over the create screen.
 	if (menu_screen != SCREEN_CREATE)
@@ -8895,6 +8903,7 @@ float(string cmd) m_consolecommand =
 		                       drawn, plus an offset. With `ui_mouse` this is a drag,
 		                       aimed without a pixel in the cfg.
 		*/
+		ui_synth_t = time;          // P796: it aims the player's next key (screen_terms)
 		if (substring(argv(1), 0, 1) == "@")
 		{
 			local int hi;
