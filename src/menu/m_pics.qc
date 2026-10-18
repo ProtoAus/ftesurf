@@ -182,6 +182,17 @@ string(string mark) MP_Of =
 	return (mp_st[old] == MP_HAVE) ? sprintf("menupic/%g", old) : "";
 };
 
+// Slots holding a mark, for ui_board_test's status (P795's arm).
+float() MP_Held =
+{
+	local float i, n;
+	n = 0;
+	for (i = 0; i < MP_MAX; i = i + 1)
+		if (mp_st[i])
+			n = n + 1;
+	return n;
+};
+
 // A mark's picture at `pos`, `px` square (a frame position, like sui_text's).
 float(vector pos, float px, string mark, float a) MP_Draw =
 {

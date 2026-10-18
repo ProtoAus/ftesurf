@@ -1123,6 +1123,8 @@ void() Mlb_Status =
 	              mlb_n, Mlb_BoardCount(), mlb_more, mlb_req, mlb_mreq, mlb_mfail, mlb_mcode));
 	print(sprintf("^5board:^7   counts known %g: ksf %g momentum %g ranked %g; top row %g\n",
 	              mlb_known, mlb_cksf, mlb_cmom, mlb_cours, floor(mlb_scroll_y / MLB_ROW_H)));
+	print(sprintf("^5board:^7   pictures: rows have them %g; slots held %g, asked %g, from disk %g, fetched %g\n",
+	              mlb_anyav, MP_Held(), mp_asked, mp_disk, mp_got));
 	if (mlb_n > 0)
 	{
 		Mlb_PrintRow("first", 0);
