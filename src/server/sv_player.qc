@@ -943,7 +943,7 @@ void(vector org, float haveang, vector ang) SV_SetPosSelf =
 void(float n) SV_TpPlayer =
 {
 	local entity t;
-	local float ct;
+	local float ct, ds;
 	local vector dest;
 
 	t = edict_num(n);                   // out of range: world
@@ -979,6 +979,11 @@ void(float n) SV_TpPlayer =
 	// never for a spot in mid-air; behind an airborne one is level with them.
 	makevectors([0, t.v_angle_y, 0]);
 	dest = t.origin;
+	// The sweeps are the target's, and where players collide they must not stop
+	// on you.  Put back before anything moves: a zero that reached a move would
+	// silence every trigger (Lobby_ApplyDimensions).
+	ds = self.dimension_solid;
+	self.dimension_solid = 0;
 	if (t.flags & FL_ONGROUND)
 	{
 		tracebox(t.origin + '0 0 18', PM_HULL_MINS, PM_HULL_MAXS, t.origin + '0 0 18' - v_forward * 48,
@@ -999,6 +1004,7 @@ void(float n) SV_TpPlayer =
 		if (trace_fraction == 1)
 			dest = trace_endpos;
 	}
+	self.dimension_solid = ds;
 	// MOVE_NORMAL honours the lobby's pass-through dimensions (world.c:1944).
 	tracebox(dest, PM_HULL_MINS, PM_HULL_MAXS, dest, MOVE_NORMAL, self);
 	if (trace_startsolid)

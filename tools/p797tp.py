@@ -11,7 +11,8 @@ the server's own words to the Mover: `setpos:` / `teleport:` / `run cancelled` l
   run        mid-run, the teleport cancels the run as `!r` would (the timer goes idle),
              lands 48 u behind the Target with its yaw, and a second one inside a
              second is refused
-  solid      a Target inside solid: "no room to stand", no move
+  own body   the Mover inside the sweep's path where players collide: still behind
+  solid      the Target sunk 30 u into the floor: "no room to stand", no move
 
 --control runs the same gestures on progs without P797 and expects no `teleport:`
 line and no move from tp_player (setpos unchanged).
@@ -30,8 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from spec_chat_smoke import Peer  # noqa: E402
 from p744spec import MAP, prepare, sha  # noqa: E402
 
-SPOT = '-15000 -15100 -400 10 20 0'     # setpos's own arm: anywhere, then read back
-SOLID = '30000 30000 30000 0 0 0'       # outside the map: solid to every hull
+SPOT = '-15360 -14300 280 10 20 0'      # setpos's own arm: 10 u over the start area's floor (z 270.4)
 
 
 def vec(s):
@@ -114,11 +114,11 @@ def main():
         me, them = 1, 2
 
         # setpos: its body moved into SV_SetPosSelf.
-        out = said(mover, 'setpos ' + SPOT)
+        out = said(mover, 'setpos ' + SPOT, 2.5)          # and settle onto the floor
         p = pos(mover)
         notes['setpos'] = p
-        check('setpos: ' in out and near(p[:3], vec(SPOT)[:3], 1) and near(p[3:5], vec(SPOT)[3:5], 0.5),
-              'setpos moves and aims')
+        check('setpos: ' in out and near(p[:2], vec(SPOT)[:2], 1) and vec(SPOT)[2] - 16 <= p[2] <= vec(SPOT)[2]
+              and near(p[3:5], vec(SPOT)[3:5], 0.5), 'setpos moves and aims')
 
         # Refusals: world, an empty slot, yourself.
         for n in (0, 99, me):
@@ -160,18 +160,42 @@ def main():
             check('teleport:^7 to' in out or 'teleport: to' in out, 'the Mover is told it teleported')
             check('run cancelled' in out and 'running on' not in state and 'idle on' in state,
                   'the running run was cancelled, as !r cancels one, and the timer is idle')
-            check(near(after[:3], behind, 4), 'the Mover stands 48 u behind the Target')
+            # On footing within a step of theirs: the floor here rises toward the start.
+            check(near(after[:2], behind[:2], 4) and abs(after[2] - tp[2]) <= 18,
+                  'the Mover stands 48 u behind the Target, on footing within a step')
             check(abs((after[4] - tp[4] + 180) % 360 - 180) < 1, "the Mover has the Target's yaw")
             check('one a second' in again, 'a second teleport inside a second is refused')
 
-        # Solid: the Target outside the map.
-        target.send('setpos ' + SOLID)
-        time.sleep(1.5)
+        # Your own body: players collide on this server (lobby_nocollide 0), and the
+        # Mover stands 40 u behind the Target, inside the sweep's path.  The sweeps are
+        # the Target's and must pass through the Mover: it lands 48 u behind anyway.
+        tp = pos(target)
+        mover.send('setpos %.1f %.1f %.1f 0 90 0' % (tp[0], tp[1] - 40, tp[2] + 4))
+        time.sleep(2.0)
         before = pos(mover)
         out = said(mover, f'cmd tp_player {them}')
         after = pos(mover)
+        notes['own_body'] = {'target': tp, 'before': before, 'after': after}
+        if a.control:
+            check('teleport:' not in out and near(before[:3], after[:3], 1), 'own body: no teleport without P797')
+        else:
+            check(('teleport:^7 to' in out or 'teleport: to' in out) and near(after[:2], [tp[0], tp[1] - 48], 4),
+                  "the Mover's own body behind the Target does not block it")
+
+        # Solid: setpos (which checks nothing) sinks the Target 30 u into the floor it
+        # stands on, so its box straddles the floor plane -- deeper than the engine's
+        # 16 u unstick reaches.  Every spot the teleport can try starts in solid.
+        time.sleep(1.2)                                      # past TP_GAP
+        tp = pos(target)
+        target.send('setpos %.1f %.1f %.1f 0 90 0' % (tp[0], tp[1], tp[2] - 30))
+        time.sleep(0.5)
+        tw = pos(target)
+        before = pos(mover)
+        out = said(mover, f'cmd tp_player {them}')
+        after = pos(mover)
+        notes['taken'] = {'target': tw, 'mover': before, 'out': out.strip()[-200:]}
         check(('no room to stand' not in out if a.control else 'no room to stand' in out)
-              and near(before[:3], after[:3], 64), 'a Target in solid: refused, no move')
+              and near(before[:3], after[:3], 1), "a Target sunk in the floor: refused, no move")
     finally:
         for peer in reversed(peers):
             peer.stop()
