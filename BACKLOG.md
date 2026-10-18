@@ -117,6 +117,13 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   on 3, `logic_timer Disable` 3, `player AddOutput` 2, `player Kill` 2, `func_bhop
   Enable/Disable`, `trigger_multiple Enable`, `game_ui Deactivate`, `point_tesla TurnOn`.
   The player ones change movement and dying: its own patch, with the maps run.
+- **Patch 790 moves the physents digest on 16 maps -- the rule bump it needs.** 115
+  momentary_rot_buttons went from SOLID_BSP to SOLID_NOT, and the `pe` digest
+  (sv_user.c:316) hashes solid brushes within 256 units. A run recorded before P790 and
+  verified after it reads `HOLD physents differ` (held, not rejected); surf_boreas's end
+  symbols are on every route. Lex, 18 Oct: ship P790 now, bump after -- a header rule
+  on the `proprule` precedent (sv_timer.qc, reccheck.py, the engine's pe check) so an
+  older file reads "not comparable". Evidence-chain work: its own patch and review rounds.
 - **momentary_rot_button, what Patch 790 leaves out**: the 16 solid ones stay frozen walls
   (a rotating SOLID_BSP is the pusher question); a child orbits only a spinning yaw-axis
   momentary_rot_button parent (the 4 children of frozen func_tracktrains spin in place);
