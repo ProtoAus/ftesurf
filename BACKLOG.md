@@ -5,6 +5,30 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## surf_view and ent_view's pin: what Patch 776 left out
+
+- Site: engine `client/cl_ents.c` CLQ1_AddVisibleHulls (r_showhull) and every other
+  R_CullSphere at CL_LinkPacketEntities time. Its frustum is whichever view rendered
+  last; on surf_boreas (3D sky) it culled 85,992 of surf_view's 86,076 faces looking
+  over the map, so r_showhull may drop props on 3D-sky or portal maps. Check:
+  r_showhull 1 on surf_boreas, looking over the valley, against a build that skips the cull.
+- Site: `src/server/sv_zones.qc` SV_EntInfo. It answers the smallest box of the class
+  that holds the asked point, so a large trigger whose centre lies in a smaller one of
+  its class is described as the small one, by ent_here and by a pinned card alike.
+  An echoed request token (client sends, server prints in the header) would also end the
+  last attribution gap: two same-class entities with no `*N`, targetname or target
+  pinned within one round trip. Check: pin a big untargeted trigger_multiple around a
+  small one; the card's solidity/outputs are the small one's.
+- Site: `client/cl_ents.c` SurfView_Build. Static props with no hull pieces (traced as
+  their model) and Q3 patches/triangle soups are not drawn; on a mover below version 7 a
+  prop collides as its mesh while the overlay shows its hull. Check: `surf_view` prints
+  "N of M static prop(s) have no hull pieces".
+- Site: the same. From outside the playable map (noclip above the sky), the 3D sky
+  room's and other hidden areas' faces show floating in the sky: nothing is PVS-culled,
+  only depth-tested. Check: surf_boreas, setpos 1500 above the start, yaw 90.
+- Site: the same, SurfView_Teleports. A teleport parented to a mover is drawn where
+  the lump puts it. Check: a map with a moving trigger_teleport.
+
 ## Paint: what Patch 772 left out
 
 - Site: engine `client/cl_ents.c` CL_ClipPersistDecal. Static props take no decal

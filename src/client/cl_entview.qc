@@ -1152,7 +1152,7 @@ void(float maxw, float tsz) Ev_PinBuild =
 	else if (waiting)
 		bufstr_add(ev_pinl, "d  asking...", TRUE);
 	else
-		bufstr_add(ev_pinl, "d  no answer -- mouse1 twice asks again", TRUE);
+		bufstr_add(ev_pinl, "d  no answer -- unpin and pin it again to ask", TRUE);
 
 	tokenize(bufstr_get(ev_ix, ev_pin));
 	first = stof(argv(0));
@@ -1180,7 +1180,7 @@ void() Ev_PinDraw =
 	a = 1 - (cltime - ev_copied_at) / 2;
 	foot = "mouse1 close | mouse2 copy | ESC off";
 	if (Spec_Active())          // spectate may take the mouse buttons first
-		foot = "ent_report full | ESC off";
+		foot = "ESC off";      // ent_report would describe the hovered entity, not this one
 	if (ev_copied != "" && a > 0)
 		foot = "copied to the clipboard";
 	n = buf_getsize(ev_pinl);
@@ -1856,9 +1856,11 @@ void(string msg) Ev_ServerPrint =
 	if (ev_info_cur == 2)
 	{
 		ev_info_cur = 0;
-		if (strcmp(Ev_Quoted(s, "targetname '"), Ev_Key(ev_info_row, "targetname")))
+		// Case-blind: SV_RepairTargetCase rewrites a target to its destination's spelling
+		// (surf_kitsune's "Red" is "red" on the server), and AddOutput can rename.
+		if (strcasecmp(Ev_Quoted(s, "targetname '"), Ev_Key(ev_info_row, "targetname")))
 			return;
-		if (strcmp(Ev_Quoted(s, "  target '"), Ev_Key(ev_info_row, "target")))
+		if (strcasecmp(Ev_Quoted(s, "  target '"), Ev_Key(ev_info_row, "target")))
 			return;
 		ev_info_got = TRUE;
 		ev_info_cur = 1;
