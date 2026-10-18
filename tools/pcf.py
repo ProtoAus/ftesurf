@@ -260,7 +260,7 @@ def translate_rope(d, e, content):
         fade = [float(fd.get(k, dv)) for k, dv in (("start_fade_in_time", 0.0), ("end_fade_in_time", 0.5),
                                                     ("start_fade_out_time", 0.5), ("end_fade_out_time", 1.0))]
     mat = re.sub(r"\.vmt$", "", (e.get("material") or "").replace("\\", "/"), flags=re.I)
-    if not mat:
+    if not mat.strip():
         raise Untranslated("render_rope with no material: not drawn")
     image, blend, look = mat, "blendalpha", "material %s: no content given, drawn by its name, rope" % mat
     if content is not None:
