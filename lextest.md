@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+## P790 — rotating buttons: surf_boreas's spinning floor symbols, and 115 walls that are not
+
+Source's `momentary_rot_button`. The 115 marked non-solid (16 maps) stop being walls you
+can hit, as in Momentum; the 60 that loop themselves (surf_agony, surf_boreas,
+surf_illusion, surf_nyx, surf_summer, surf_summer_ksf) spin. qwprogs; DEPLOY STATE BELOW.
+
+- **surf_boreas end room:** the magic circle and its symbols turn, and the three outer
+  medallions travel round the ring, like Momentum's.
+- **The 16 maps** (surf_agony, surf_antichamber, surf_gradient, surf_illusion, surf_lt_unicorn,
+  surf_nyx, surf_olivia, surf_summer(_ksf), surf_froots2, bhop_avantasia/collective/odyssey/
+  rpg, de_nam, surf_boreas): you pass through those decorations where you used to bump them.
+
+"Spins ok / something I used to stand on is gone at <map, spot>". Verdict PENDING.
+
 ## P789 — pictures beside names
 
 Live: lobbies 11:33Z (csprogs 748457d4), installs 11:36Z (menu eaf20c34), 18 Oct.

@@ -110,10 +110,18 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   Source on PC adds in linear light, so 25 stacked layers of a glow's dim edge stay
   dim; FTE adds gamma values and they saturate. Not measured beyond the one view.
   The default also waits on surf_tensor2's budget (cl_emit.qc, the cvar's comment).
-- **Spinning floor decorations**: surf_boreas's 19 `momentary_rot_button`s loop
-  themselves (`OnFullyClosed` -> `SetPositionImmediately 0`, `SetPosition 1`, 3600
-  degrees at 15-25/s). `sv_entities.qc` spawns the class as `func_wall`. All carry
-  SF_ROTBUTTON_NOTSOLID (buttons.h:16), so a client-side spin would not touch movement.
+- **Outputs aimed at a classname** (Source's fallback, cbase.cpp:944-958). Patch 790
+  takes it for `momentary_rot_button` only. The rest, census of 1,349 maps (35 maps):
+  `player_speedmod ModifySpeed` 24 on 1 map, `player SetDamageFilter` 13 on 10,
+  `info_particle_system Start/Stop/DestroyImmediately` 8 on 7, `env_cascade_light Kill` 5
+  on 3, `logic_timer Disable` 3, `player AddOutput` 2, `player Kill` 2, `func_bhop
+  Enable/Disable`, `trigger_multiple Enable`, `game_ui Deactivate`, `point_tesla TurnOn`.
+  The player ones change movement and dying: its own patch, with the maps run.
+- **momentary_rot_button, what Patch 790 leaves out**: the 16 solid ones stay frozen walls
+  (a rotating SOLID_BSP is the pusher question); a child orbits only a spinning yaw-axis
+  momentary_rot_button parent (the 4 children of frozen func_tracktrains spin in place);
+  `SetPositionImmediately` during a move stops it (Source keeps the move and fires on its
+  next MoveDone); Lock/Unlock, Use and the sounds are not done.
 - **`srgb?` keys other than `$fogcolor`** stay false (P783): $alpha .375,
   $overbrightfactor .75 and the `-dx10` tool textures compensate for Source's
   linear-light blending, which FTE does not do. 1,168 materials in 588 sources carry one.
