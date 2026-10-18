@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P791 — surf_boreas's end beam
+
+The beam over the end-room circle is drawn: a soft white column from the pit to the
+ceiling, brightest low and fading upward, like Momentum's (surf_boreas0000). It is a
+Source "rope" effect; `vbsp_emit_ropes 0` turns it off. The big pink glow at its base and
+the floating specks are still off (child particles; BACKLOG). csprogs + the surf_boreas
+particle bake; DEPLOY STATE BELOW.
+
+"Beam ok / too wide / too narrow / too bright". Verdict PENDING.
+
 ## P790 — rotating buttons: surf_boreas's spinning floor symbols, and 115 walls that are not
 
 Source's `momentary_rot_button`. The 115 marked non-solid (16 maps) stop being walls you

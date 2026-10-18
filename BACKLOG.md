@@ -97,13 +97,14 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## surf_boreas's end room and water: what Patches 783 and 787 left out
 
-- **The end beam is not drawn.** `tendies_endparticle05` (and `tendies_smollaser01`) are
-  `render_rope`: one ribbon through the particles in birth order, `laser01` (a soft
-  vertical stripe, core a fifth of its width). P787 declines ropes; before, they drew
-  as billboards of radius 1500 and whited out the room. The rope's width rule is in
-  Source's closed particles.lib: fit it to Momentum (Lex's surf_boreas0000.tga shows a
-  ~130-unit core). FTE `type beam` links particles of one spawn call only, so a rope
-  needs its own path (e.g. a per-frame trail between the system's live particles).
+- **render_rope, what Patch 791 leaves out.** The end beam is drawn (cl_emit.qc
+  Emit_RopeFrame) from a `rope` index line. Its width, 0.5 x radius, is fitted to ONE
+  Momentum screenshot (surf_boreas0000.tga, core ~120 units); a second map with a rope
+  beside its Momentum capture would test it. Not drawn: texel_size and
+  texture_scroll_rate (laser01 is uniform along the rope, so boreas shows nothing).
+  Refused rather than drawn wrong: a spawn box with spread (Source zigzags), a timed
+  emitter, operators outside pcf.py ROPE_OPS. The fade follows C_OP_FadeAndKill as read
+  (closed source); inverted or reordered fade windows are taken literally.
 - **Child systems stay off** (`vbsp_emit_psys_children 0`). With P787's bake the
   end room's `tendies_endparticle04` (tesla_glow, radius 800, 64/s, alpha 0.8-1) draws
   a saturated dome over the pit where Momentum shows a compact glow. Likely cause:
