@@ -35,7 +35,7 @@ def sha(path):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--engine', type=Path, required=True, help='client exe; fteplug_hl2_x64.dll is taken from beside it')
+    p.add_argument('--engine', type=Path, required=True, help='client exe; matching HL2 and ImGui plugins are taken from beside it')
     p.add_argument('--menu', type=Path, required=True, help='menu.dat (client-local, never served)')
     p.add_argument('--csprogs', type=Path, required=True, help='the csprogs.dat that was deployed; only its hash is used')
     p.add_argument('--addr', default='192.168.1.102:27510', help='lobby host:port (27510 or 27520..27620, never 27698)')
@@ -47,8 +47,9 @@ def main():
     out = a.out.resolve()
     if not any((d / 'OWNER.md').is_file() for d in [out, *out.parents]):
         p.error('--out requires an ancestor OWNER.md')
-    plugin = a.engine.parent / 'fteplug_hl2_x64.dll'
-    for need in (a.engine, a.menu, a.csprogs, plugin, ROOT / 'default.fmf'):
+    plugins = [a.engine.parent / name for name in
+               ('fteplug_hl2_x64.dll', 'fteplug_ui_imgui_x64.dll')]
+    for need in (a.engine, a.menu, a.csprogs, *plugins, ROOT / 'default.fmf'):
         if not need.is_file():
             print('CANNOT RUN: missing', need)
             return 2
@@ -64,7 +65,9 @@ def main():
     shutil.copy2(ROOT / 'ftesurf/fs_addons.default.txt', game / 'fs_addons.txt')
     shutil.copy2(a.menu, game / 'menu.dat')                 # csprogs.dat is deliberately NOT copied
     shutil.copy2(a.engine, rig / 'ftesurf64.exe')
-    shutil.copy2(plugin, rig / plugin.name)                 # Source BSPs need it
+    # Source BSPs and the drawn board require both matching native plugins.
+    for plugin in plugins:
+        shutil.copy2(plugin, rig / plugin.name)
     shutil.copy2(ROOT / 'default.fmf', rig / 'default.fmf')
     lines = ['cfg_save_auto 0', 'log_enable 1', 'log_dir logs', 'log_name pismoke', 'con_notifytime 0',
              'con_notifylines 0', 'developer 0', 'cl_idlefps 0', 'cl_maxfps 100', 'vid_vsync 0',

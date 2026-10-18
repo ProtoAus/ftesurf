@@ -87,7 +87,15 @@ Native ARM also built and passed exact Windows parity on all nine non-census
 result lines on bhop_eazy, surf_ace and surf_boreas, including three prop-decided
 traces on the prop map. Both the known pin-1 recording and public pmsrcver-2
 fixture verified PASS (3107 and 4418 ticks). This proves compatibility, not input
-classification. The ARM server/progs have NOT been swapped while players remain.
+classification. Once all lobbies became empty, the ordinary build.ps1 -Pi path
+shipped matching progs and retained .prev without Force. Native ARM files were
+promoted at 07:04:55Z; all 12 native-version readbacks matched by 07:10:22Z.
+Final 07:15:12Z hashes match both Windows installs' three VMs and the fleet's two
+VMs/native/plugin. Current matching VMs are from fa6f8aff (also preserving P779).
+A fresh isolated client with no local csprogs downloaded the exact served hash,
+drew the board (8 columns/type14), captured a screenshot and exited normally
+with zero QC errors. The screenshot was inspected. No terms or upload permission
+were granted by the smoke. The earlier installation hashes remain history.
 
 The production collector/proxy have NOT been installed: the active backend's
 immutable generation requires a coordinated supported handoff, and nginx needs

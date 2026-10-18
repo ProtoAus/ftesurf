@@ -5733,6 +5733,19 @@ patch, Build bump, new public version or extra gate for ordinary feature work.
   pm_dettest; current pigate filters census lines and compares nine named
   result lines per map. Preserve/reuse a complete acting arm when only its
   reader failed; do not rerun it just to satisfy a stale line-count assumption.
+- `systemctl restart` success can precede useful RCON startup responses. Read
+  each native version after bounded readiness waits; do not restart a correct
+  unit again because an early reply or reader was unavailable. `/proc/PID/exe`
+  may be protected from the SSH account: do not bypass that protection. Pair
+  canonical file hashes with actual loopback native-version readbacks instead.
+  Read SURFD_RCON_PASSWORD from the documented surfd.env inside the remote
+  script; never print it or pass it in SSH/process arguments.
+- Optional post-build result capture can fail AFTER the real progs swap and
+  restarts. Inspect destination hashes, active units and logs before repeating
+  a transaction. Keep native promotion and progs/restarts separately recorded,
+  and make preparation sequences fail-fast. A wrapper exit is not live state.
+- The live-lobby smoke must stage BOTH matching HL2 and ImGui plugins. A client
+  can load the map without the latter but cannot prove the drawn board acted.
 
 ## Linux build, test rig and release (Patches 386-389, 0.1.11)
 

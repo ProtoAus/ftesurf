@@ -30,7 +30,10 @@ native source `29ddd0a6a`, QC `ed6f9223` (also preserves P775/P777/P778/P780).
 Both installs' VM hashes match; applicable native/plugin hashes match the clean
 build. Restart the game. Native transport/consent controls passed with synthetic
 fixture data; the following are **not yet human-confirmed**. This is not permission
-to upload anyone's data. Collector/proxy and fleet rollout are still blocked;
+to upload anyone's data. All 12 lobbies were updated without Force once empty:
+matching ARM version readbacks by 2026-10-18T07:10:22Z, final VM hashes at 07:15:12Z
+match both Windows installs (QC fa6f8aff, including P779). A fresh served-client
+board smoke passes with zero QC errors. Collector/proxy rollout is still blocked;
 check the panel only until the operator confirms the real collector is live.
 
 - Main menu: **Input journal uploads** should open a readable separate page.
