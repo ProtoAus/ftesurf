@@ -194,6 +194,7 @@ float  ev_info_made;
 float  ev_info_row;
 float  ev_info_until;           // capture window end, cltime
 float  ev_info_got;             // its header line has arrived
+float  ev_info_cur;             // ...and was the last header seen, so ten-space lines are its
 #define EV_INFO_WAIT 3
 #define EV_INFO_MAX  12
 
@@ -1176,7 +1177,11 @@ void() Ev_PinDraw =
 	Ev_PinBuild(vsize_x * 0.5 - 56 * ui_cv_scale, tsz);
 
 	a = 1 - (cltime - ev_copied_at) / 2;
-	foot = (ev_copied != "" && a > 0) ? "copied to the clipboard" : "mouse1 close | mouse2 copy | ESC off";
+	foot = "mouse1 close | mouse2 copy | ESC off";
+	if (Spec_Active())
+		foot = "spectating: the mouse buttons are the camera's | ESC off";
+	if (ev_copied != "" && a > 0)
+		foot = "copied to the clipboard";
 	n = buf_getsize(ev_pinl);
 	fit = floor((vsize_y - 2 * pad - 32 * ui_cv_scale) / rowh) - 1;
 	shown = n;
@@ -1258,6 +1263,8 @@ void() Ev_CardDraw =
 		{
 			if (ev_copied != "" && cltime - ev_copied_at < 2)     // Patch 776: mouse2's answer
 				HUD_Text(p, "copied to the clipboard", 8 * ui_cv_scale, EVC_SEL, 1);
+			else if (Spec_Active())     // spectate takes the mouse buttons first
+				HUD_Text(p, "ent_report full | ent_copy copy | ESC off", 8 * ui_cv_scale, '0.60 0.60 0.60', 0.8);
 			else
 				HUD_Text(p, ev_card_l[i], 8 * ui_cv_scale, '0.60 0.60 0.60', 0.8);
 		}
@@ -1716,6 +1723,7 @@ void(float row) Ev_Pin =
 	ev_info_made = TRUE;
 	ev_info_row  = row;
 	ev_info_got  = FALSE;
+	ev_info_cur  = FALSE;
 	ev_info_until = cltime + EV_INFO_WAIT;
 
 	print(sprintf("%s\n", Ev_Summary(row)));
@@ -1780,27 +1788,43 @@ float(float scanx) Ev_PassiveMouse =
 /*
   Every server print passes here from CSQC_Parse_Print (cl_chat.qc), and only
   while a pin waits is any of it kept: SV_EntInfo's header line, then its lines
-  that start with ten spaces.  A second header in the same window is someone
-  else's request, and ends the catch.
+  that start with ten spaces.  The header must name the pinned row's classname,
+  and its "*N" when both have one -- a reply to an earlier pin, to one the server's
+  0.25 s cooldown dropped, or to ent_here would otherwise be filed under this one
+  (review of Patch 776).  Only the first matching reply is kept.
 */
 void(string msg) Ev_ServerPrint =
 {
-	local string s, head;
+	local string s, head, cn, mdl;
+	local float a, b;
 
 	if (!ev_info_made || ev_info_until < cltime)
 		return;
 	head = substring(msg, 0, 12);
 	if (!strcmp(head, "^5ent_info^7") || !strcmp(head, "^3ent_info^7") || !strcmp(head, "^1ent_info^7"))
 	{
+		ev_info_cur = FALSE;
 		if (ev_info_got)
-		{
-			ev_info_until = 0;
 			return;
+		s   = substring(msg, 14, strlen(msg) - 14);
+		cn  = bufstr_get(ev_cn, ev_info_row);
+		mdl = bufstr_get(ev_mdl, ev_info_row);
+		if (strcmp(substring(s, 0, strlen(cn) + 2), strcat("'", cn, "'")))
+			return;
+		a = strstrofs(s, "model '", 0);
+		if (a >= 0)
+		if (strcmp(mdl, ""))
+		{
+			b = strstrofs(s, "'", a + 7);
+			if (b < 0)
+				return;
+			if (strcmp(substring(s, a + 7, b - a - 7), mdl))
+				return;
 		}
 		ev_info_got = TRUE;
-		s = substring(msg, 14, strlen(msg) - 14);
+		ev_info_cur = TRUE;
 	}
-	else if (ev_info_got && !strcmp(substring(msg, 0, 10), "          "))
+	else if (ev_info_cur && !strcmp(substring(msg, 0, 10), "          "))
 		s = substring(msg, 10, strlen(msg) - 10);
 	else
 		return;
