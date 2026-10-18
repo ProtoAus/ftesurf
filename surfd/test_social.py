@@ -85,9 +85,10 @@ class Friends(unittest.TestCase):
 
     def befriend(self):
         self.assertEqual(self.action(0, "add").status_code, 200)
+        self.assertEqual(self.action(1, "add", 0).status_code, 200)    # P788: Bob adds back
 
     def legacy_request(self):
-        # A request a pre-P770 service stored: Alice asked, Bob never accepted.
+        # Alice's add Bob has not returned (a pre-P770 request is the same row).
         self.db.execute("INSERT INTO social_friends(lo,hi,asker) VALUES(?,?,?)", (*F.pair(IDS[0], IDS[1]), IDS[0]))
         self.db.commit()
 
@@ -100,28 +101,65 @@ class Friends(unittest.TestCase):
         self.assertEqual(F.digest(r["social"]), self.db.execute("SELECT token FROM social_sessions WHERE pub=?", (PUBS[0],)).fetchone()[0])
         self.assertNotEqual(r["social"], F.digest(r["social"]))
 
-    def test_add_is_mutual_at_once_and_cross_install_identity(self):
+    def test_add_is_one_way_until_added_back_and_cross_install_identity(self):
         self.assertEqual(self.action(0, "add").status_code, 200)
         rows = self.poll()
         self.assertEqual(rows[0]["friends"], rows[3]["friends"])
-        self.assertEqual(rows[0]["friends"][0]["relation"], 3)
-        self.assertEqual((rows[1]["friends"][0]["relation"], rows[1]["friends"][0]["online"]), (3, 1))
+        mine, theirs = rows[0]["friends"][0], rows[1]["friends"][0]
+        self.assertEqual((mine["relation"], mine["online"]), (1, 1))      # my add shows presence
+        self.assertEqual((theirs["relation"], theirs["online"], theirs["addr"]), (2, 0, ""))
         self.assertEqual(self.action(0, "add").status_code, 409)
+        self.assertEqual(self.action(0, "join").status_code, 200)
+        self.assertEqual(self.action(0, "message", text="hi").status_code, 403)
+        self.assertEqual(self.action(1, "join", 0).status_code, 403)       # theirs shows nothing
+        self.assertEqual(self.action(1, "add", 0).status_code, 200)        # add back
+        rows = self.poll()
+        self.assertEqual((rows[0]["friends"][0]["relation"], rows[1]["friends"][0]["relation"]), (3, 3))
         self.assertEqual(self.action(1, "add", 0).status_code, 409)
         self.assertEqual(self.action(1, "accept", 0).status_code, 409)
         self.assertEqual(self.action(3, "remove").status_code, 200)
         self.assertEqual(self.poll()[0]["friends"], [])
         self.assertEqual(self.poll()[1]["friends"], [])
 
-    def test_legacy_request_becomes_friendship_by_add_or_poll(self):
+    def test_accept_adds_back_decline_removes_and_poll_keeps_one_way(self):
         self.legacy_request()
-        self.assertEqual(self.action(1, "add", 0).status_code, 200)
+        rows = self.poll()
+        self.assertEqual((rows[0]["friends"][0]["relation"], rows[1]["friends"][0]["relation"]), (1, 2))
+        self.assertEqual(self.db.execute("SELECT count(*) FROM social_friends WHERE accepted=0").fetchone()[0], 1)
+        self.assertEqual(self.action(1, "accept", 0).status_code, 200)
         self.assertEqual(self.poll()[0]["friends"][0]["relation"], 3)
         self.assertEqual(self.action(0, "remove").status_code, 200)
         self.legacy_request()
-        rows = self.poll()
-        self.assertEqual((rows[0]["friends"][0]["relation"], rows[1]["friends"][0]["relation"]), (3, 3))
-        self.assertEqual(self.db.execute("SELECT count(*) FROM social_friends WHERE accepted=0").fetchone()[0], 0)
+        self.assertEqual(self.action(1, "remove", 0).status_code, 200)     # Decline
+        self.assertEqual(self.poll()[0]["friends"], [])
+
+    def test_incoming_adds_take_no_slot_and_list_stays_readable(self):
+        for i in range(F.MAX_FRIENDS + 10):
+            fan = "765611983%08d" % i
+            self.db.execute("INSERT INTO accounts(steamid,name,created_at) VALUES(?,?,?)", (fan, "fan%d" % i, self.now))
+            self.db.execute("INSERT INTO social_friends(lo,hi,asker,accepted) VALUES(?,?,?,0)",
+                            (*F.pair(IDS[1], fan), fan))
+        self.db.commit()
+        self.assertEqual(self.action(1, "add", 0).status_code, 200)        # Bob still has room
+        rows = self.poll()[1]["friends"]
+        self.assertEqual(len(rows), F.MAX_FRIENDS)
+        self.assertEqual(rows[0]["relation"], 1)                           # his own add first
+        self.assertEqual({r["relation"] for r in rows[1:]}, {2})
+        self.assertEqual(self.menu_read(self.menu_form(1))["friends"], rows)
+
+    def test_menu_add_and_add_back_use_the_private_proof(self):
+        bob = A.who_of(IDS[1])
+        row = self.menu_read(self.menu_form(op="add", who=bob))
+        self.assertEqual((row["ok"], row["note"]), (1, "Friend added"), row)
+        S._rate.clear()
+        self.assertEqual(self.menu_read(self.menu_form(op="add", who=bob))["status"], 409)
+        self.assertEqual(self.menu_read(self.menu_form(1))["friends"][0]["relation"], 2)
+        S._rate.clear()
+        row = self.menu_read(self.menu_form(1, op="add", who=A.who_of(IDS[0])))
+        self.assertEqual((row["ok"], row["note"]), (1, "Friend added back"), row)
+        self.assertEqual(self.poll()[0]["friends"][0]["relation"], 3)
+        S._rate.clear()
+        self.assertEqual(self.menu_read(self.menu_form(op="add", who=A.who_of(IDS[0])))["status"], 400)
 
     def test_block_ends_friendship_refuses_add_and_messages_and_is_hidden(self):
         self.befriend(); self.poll()
@@ -390,15 +428,16 @@ class Friends(unittest.TestCase):
         self.assertNotIn("token", row)
         self.assertNotIn("messages", row)
 
-    def test_menu_legacy_request_redacts_presence_until_a_poll(self):
+    def test_menu_one_way_add_shows_presence_only_to_the_adder(self):
         self.legacy_request()
-        row = self.menu_read(self.menu_form())["friends"][0]
-        self.assertEqual((row["relation"], row["online"], row["addr"]), (1, 0, ""))
-        self.assertEqual(self.menu_read(self.menu_form(op="join", who=A.who_of(IDS[1])))["status"], 403)
         self.poll()
-        S._rate.clear()
         row = self.menu_read(self.menu_form())["friends"][0]
-        self.assertEqual((row["relation"], row["online"]), (3, 1))
+        self.assertEqual((row["relation"], row["online"]), (1, 1))
+        self.assertEqual(self.menu_read(self.menu_form(op="join", who=A.who_of(IDS[1])))["ok"], 1)
+        S._rate.clear()
+        row = self.menu_read(self.menu_form(1))["friends"][0]
+        self.assertEqual((row["relation"], row["online"], row["addr"]), (2, 0, ""))
+        self.assertEqual(self.menu_read(self.menu_form(1, op="join", who=A.who_of(IDS[0])))["status"], 403)
 
     def test_menu_invalid_fields_ticket_and_signature_fail_closed(self):
         self.befriend(); self.poll()

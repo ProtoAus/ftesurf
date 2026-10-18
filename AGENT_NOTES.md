@@ -592,8 +592,12 @@ presence expires16s and Join resolves the directory again at click time.
 Multiple connections may prove even the SAME copied key: `(pub,node)` must NOT
 be unique. Refresh retires only its explicitly supplied previous capability.
 SSQC refreshes invalid sessions through Account_Hello; disconnected/recycled
-slots cannot receive an old reply. Pending requests disclose no presence.
-Messages require mutual acceptance/live presence, expire120s, max160 chars /
+slots cannot receive an old reply. An add is one-way (accepted 0) until the
+other adds back (P788): the adder sees presence and may Join, the added sees
+an "added you" row (no presence) after friends and a once-per-account toast
+(data/friends_toasted.txt, shared by CSQC and menu); unanswered adds take no
+slot and are trimmed so a list stays <=128 rows for old readers.
+Messages require a mutual friendship/live presence, expire120s, max160 chars /
 320 UTF8 bytes, 32/recipient, 2048 total, 20 actions/minute/Steam account across
 installs. IDs/ACKs pass through QC as decimal strings, NEVER float32. Deliver
 max2/poll and ACK after reliable private enqueue. No public reader or proxy

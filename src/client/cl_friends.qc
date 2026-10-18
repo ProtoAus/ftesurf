@@ -7,6 +7,9 @@ float fr_buf, fr_stage, fr_ready, fr_n, fr_sn, fr_loading;
 vector fr_scroll;
 string fr_notice, fr_msgpick, fr_profpick;
 float fr_joinuntil, fr_rowh, fr_wheel;
+// P788: the "added you" toast, once per account (fr_seen, data/friends_toasted.txt).
+string fr_seen, fr_tw, fr_tn;
+float fr_tend, fr_tsent;
 void() Av_Close;
 void(string who) Av_OpenAt;
 
@@ -64,15 +67,14 @@ void(string op, string who) Friends_Action =
 	if (op == "join") fr_joinuntil = cltime + 15;
 };
 
-// P770: Add makes the friendship at once. 1 and 2 are only seen on a service
-// older than P770, which still keeps requests.
+// P788: an add is one-way (relation 1 mine, 2 theirs) until the other adds back.
 string(string who) Friends_AddLabel =
 {
 	local float r;
 	r = Friends_Relation(who);
 	if (r == 3) return "Friends";
-	if (r == 2) return "Accept";
-	if (r == 1) return "Requested";
+	if (r == 2) return "Add back";
+	if (r == 1) return "Added";
 	return "Add friend";
 };
 
@@ -80,8 +82,114 @@ void(string who) Friends_Add =
 {
 	local float r;
 	r = Friends_Relation(who);
-	if (!r) Friends_Action("add", who);
-	if (r == 2) Friends_Action("accept", who);
+	if (!r || r == 2) Friends_Action("add", who);
+};
+
+void() Friends_SeenLoad =
+{
+	local float f;
+	local string l;
+	if (fr_seen != "") strunzone(fr_seen);
+	fr_seen = "";
+	f = fopen("data/friends_toasted.txt", FILE_READ);
+	if (f < 0) return;
+	for (l = fgets(f); l; l = fgets(f))
+		if (Friends_MarkSafe(l) && strlen(fr_seen) < 2700)
+			fr_seen = strcat(fr_seen, " ", l);
+	fclose(f);
+	fr_seen = strzone(fr_seen);
+};
+
+// Newest 300 kept: an account toasted that long ago may toast again.
+void(string who) Friends_SeenAdd =
+{
+	local float f, n, i;
+	local string s;
+	s = strcat(fr_seen, " ", who);
+	n = tokenize(s);
+	if (n > 300) s = "";
+	if (n > 300)
+		for (i = n - 300; i < n; i = i + 1) s = strcat(s, " ", argv(i));
+	if (fr_seen != "") strunzone(fr_seen);
+	fr_seen = strzone(s);
+	f = fopen("data/friends_toasted.txt", FILE_WRITE);
+	if (f < 0) return;
+	n = tokenize(fr_seen);
+	for (i = 0; i < n; i = i + 1) fputs(f, strcat(argv(i), "\n"));
+	fclose(f);
+};
+
+// The first incoming add not toasted yet, at most one up at a time.
+void() Friends_ToastPick =
+{
+	local float i;
+	local string who;
+	if (fr_tw != "" || !fr_ready) return;
+	for (i = 0; i < fr_n; i = i + 1)
+	{
+		if (stof(bufstr_get(fr_buf, i * FR_FIELDS + 1)) != 2) continue;
+		who = bufstr_get(fr_buf, i * FR_FIELDS);
+		if (strstrofs(strcat(fr_seen, " "), strcat(" ", who, " "), 0) >= 0) continue;
+		fr_tw = strzone(who);
+		fr_tn = strzone(bufstr_get(fr_buf, i * FR_FIELDS + 3));
+		fr_tend = cltime + 12;
+		fr_tsent = FALSE;
+		Friends_SeenAdd(who);
+		return;
+	}
+};
+
+void() Friends_ToastClear =
+{
+	if (fr_tw != "") strunzone(fr_tw);
+	if (fr_tn != "") strunzone(fr_tn);
+	fr_tw = fr_tn = "";
+};
+
+float(float scanx) Friends_ToastKey =
+{
+	if (scanx != K_F2 || fr_tw == "" || fr_tsent || cltime >= fr_tend) return FALSE;
+	Friends_Action("add", fr_tw);
+	fr_tsent = TRUE;
+	fr_tend = cltime + 1.5;
+	return TRUE;
+};
+
+void(vector scr) Friends_DrawToast =
+{
+	local vector p;
+	local float sc, w, h, hh, lsz, pic, y;
+	local string t;
+
+	if (fr_tw == "") return;
+	// Gone, or added back some other way: nothing left to answer.
+	if (cltime >= fr_tend || (!fr_tsent && Friends_Relation(fr_tw) != 2))
+	{
+		Friends_ToastClear();
+		Friends_ToastPick();
+		return;
+	}
+	sc = ui_cv_scale;
+	Font_Set(ui_font_ui);
+	lsz = Font_Px(8 * sc);
+	h = 14 * sc;
+	hh = 15 * sc;
+	pic = 2 * hh;
+	t = Chat_Fit(fr_tn, 120 * sc, lsz);
+	w = max(150 * sc, stringwidth(t, TRUE, [lsz, lsz]) + pic + 40 * sc);
+	p = [scr_x - w - 8 * sc, scr_y * 0.3, 0];
+	_sui_round_draw(p, [w, 3 * sc + pic + 2 * sc + h + 3 * sc, 0], 5 * sc, SUI_THEME_PANEL, 0.9);
+	y = p_y + 3 * sc;
+	if (!SteamPic_Draw([p_x + 6 * sc, y], pic, fr_tw, 1))
+		_sui_round_draw([p_x + 6 * sc, y, 0], [pic, pic, 0], 4 * sc, SUI_THEME_CHIP, 1);
+	HUD_Text([p_x + pic + 12 * sc, y + (hh - lsz) * 0.5], t, lsz, SUI_THEME_TEXT, 1);
+	HUD_TextR([p_x + w - 6 * sc, y + (hh - lsz) * 0.5], sprintf("%gs", ceil(max(0, fr_tend - cltime))),
+	          lsz, SUI_THEME_WARN, 1);
+	HUD_Text([p_x + pic + 12 * sc, y + hh + (hh - lsz) * 0.5],
+	         fr_tsent ? "adding them back..." : "added you as a friend", lsz, SUI_THEME_DIM, 1);
+	y = y + pic + 2 * sc;
+	KeyMenu_Row([p_x, y], w, h, "F2", "Add back", fr_tsent ? KM_INERT : KM_HOT, lsz, sc);
+	Font_Reset();
 };
 
 void(string who, string nm) Friends_Message =
@@ -161,9 +269,11 @@ void(vector p, vector sz, float tsz, float hint) Friends_Draw =
 		rel = stof(bufstr_get(fr_buf, at + 1));
 		online = stof(bufstr_get(fr_buf, at + 2));
 		nm = bufstr_get(fr_buf, at + 3);
-		sui_roundbox(lp + '0 1 0', [w, rowh - 3], hint * 0.5, SUI_THEME_WELL, 0.8);
-		if (!SteamPic_Draw(lp + [hint * 0.5, hint * 0.5], tsz * 2, who, 1))
-			sui_roundbox(lp + [hint * 0.5, hint * 0.5], [tsz * 2, tsz * 2], hint * 0.5, SUI_THEME_CHIP, 1);
+		// P788: incoming adds, listed after friends, are drawn faded.
+		sui_roundbox(lp + '0 1 0', [w, rowh - 3], hint * 0.5, SUI_THEME_WELL, rel == 2 ? 0.35 : 0.8);
+		if (!SteamPic_Draw(lp + [hint * 0.5, hint * 0.5], tsz * 2, who, rel == 2 ? 0.45 : 1))
+			sui_roundbox(lp + [hint * 0.5, hint * 0.5], [tsz * 2, tsz * 2], hint * 0.5, SUI_THEME_CHIP,
+			             rel == 2 ? 0.45 : 1);
 		x = lp_x + tsz * 2 + hint;
 		if (Profile_Chip(strcat("fr_profile", who), [x, lp_y + 2], [w - tsz * 2 - hint, tsz * 1.5],
 		                 Chat_Fit(nm, w - tsz * 3, tsz), tsz, FALSE))
@@ -172,27 +282,30 @@ void(vector p, vector sz, float tsz, float hint) Friends_Draw =
 			fr_profpick = strzone(who);
 		}
 		s = "Offline";
-		if (rel == 1) s = "Friend request sent";
-		if (rel == 2) s = "Wants to be your friend";
+		if (rel == 1) s = "Offline -- not added you back yet";
+		if (rel == 2) s = "Added you -- add them back";
 		if (rel == 4) s = "Blocked: cannot add or message you";
-		if (rel == 3 && online)
+		if ((rel == 1 || rel == 3) && online)
 			s = strcat(bufstr_get(fr_buf, at + 5), "  /  ", bufstr_get(fr_buf, at + 4));
 		sui_text([x, lp_y + tsz * 1.65], [hint, hint], Chat_Fit(s, w - tsz * 3, hint),
-		         online ? SUI_THEME_GOOD : SUI_THEME_MUTED, 1, 0);
+		         online ? SUI_THEME_GOOD : (rel == 2 ? SUI_THEME_DIM : SUI_THEME_MUTED), 1, 0);
 		y = lp_y + tsz * 2.45;
-		if (rel == 3 && online)
+		if ((rel == 1 || rel == 3) && online)
 		{
 			if (Profile_Chip(strcat("fr_join", who), [x, y], [bw, hint * 1.9], "Join", hint, FALSE))
 				Friends_Action("join", who);
 			x = x + bw + 4;
+		}
+		if (rel == 3 && online)
+		{
 			if (Profile_Chip(strcat("fr_msg", who), [x, y], [bw, hint * 1.9], "Message", hint, FALSE))
 				Friends_Message(who, nm);
 			x = x + bw + 4;
 		}
 		if (rel == 2)
 		{
-			if (Profile_Chip(strcat("fr_accept", who), [x, y], [bw, hint * 1.9], "Accept", hint, FALSE))
-				Friends_Action("accept", who);
+			if (Profile_Chip(strcat("fr_accept", who), [x, y], [bw, hint * 1.9], "Add back", hint, FALSE))
+				Friends_Action("add", who);
 			x = x + bw + 4;
 		}
 		if (rel == 4)
@@ -200,8 +313,7 @@ void(vector p, vector sz, float tsz, float hint) Friends_Draw =
 			if (Profile_Chip(strcat("fr_unblock", who), [x, y], [bw, hint * 1.9], "Unblock", hint, FALSE))
 				Friends_Action("unblock", who);
 		}
-		else if (Profile_Chip(strcat("fr_del", who), [x, y], [bw, hint * 1.9],
-		                 rel == 2 ? "Decline" : (rel == 1 ? "Cancel" : "Remove"), hint, FALSE))
+		else if (Profile_Chip(strcat("fr_del", who), [x, y], [bw, hint * 1.9], "Remove", hint, FALSE))
 			Friends_Action("remove", who);
 	}
 	sui_list_view_end();
@@ -227,6 +339,7 @@ void() Friends_Register =
 	Friends_MenuClear();
 	fr_buf = buf_create();
 	fr_stage = buf_create();
+	Friends_SeenLoad();
 	registercommand("friend_clear");
 	registercommand("friend_begin");
 	registercommand("friend_row");
@@ -236,6 +349,7 @@ void() Friends_Register =
 	registercommand("friend_join");
 	registercommand("friends_status");
 	registercommand("friends_menu_join");
+	registercommand("friends_menu_add");
 };
 
 float(string cmd) Friends_ConsoleCommand =
@@ -248,6 +362,11 @@ float(string cmd) Friends_ConsoleCommand =
 	if (c == "friends_menu_join" && n == 2)
 	{
 		Friends_MenuJoin(argv(1));
+		return TRUE;
+	}
+	if (c == "friends_menu_add" && n == 2)      // P788: the menu's Add back while connected
+	{
+		if (Friends_Relation(argv(1)) == 2) Friends_Action("add", argv(1));
 		return TRUE;
 	}
 	if (c == "friend_clear")
@@ -286,6 +405,7 @@ float(string cmd) Friends_ConsoleCommand =
 			tmp = fr_buf; fr_buf = fr_stage; fr_stage = tmp;
 			fr_n = fr_sn; fr_ready = TRUE; fr_loading = FALSE;
 			Friends_MenuPublish();
+			Friends_ToastPick();
 		}
 		return TRUE;
 	}
@@ -322,6 +442,7 @@ float(string cmd) Friends_ConsoleCommand =
 	if (c == "friends_status")
 	{
 		print(sprintf("friends: ready %g rows %g loading %g\n", fr_ready, fr_n, fr_loading));
+		print(sprintf("friends: toast \"%s\" %s sent %g left %.1f\n", fr_tn, fr_tw, fr_tsent, max(0, fr_tend - cltime)));
 		print(sprintf("friends: scroll %.1f wheel %g\n", fr_scroll_y, fr_wheel));
 		return TRUE;
 	}

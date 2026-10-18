@@ -1226,6 +1226,9 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (evtype == IE_KEYDOWN)
 		if (Share_Key(scanx))           // Patch 777: F3/F4 answer an offer while watching
 			return TRUE;
+		if (evtype == IE_KEYDOWN)
+		if (Friends_ToastKey(scanx))    // Patch 788: and F2 adds back
+			return TRUE;
 		if (rec_sl_open || (rec_sl_holding && rec_sl_holdkey && scanx == rec_sl_holdkey))
 		if (SaveLoc_Key(scanx, evtype == IE_KEYDOWN))
 			return TRUE;
@@ -1277,6 +1280,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 			localcmd("cmd ms_resume\n");
 			return TRUE;
 		}
+		if (Friends_ToastKey(scanx))    // P788: F2 adds back, only while the toast is up
+			return TRUE;
 		// Build 56/84: MOUSE3 toggles the inspector overlay, and ESC puts it
 		// away (Patch 331 -- it used to take the cursor; that is ent_panel now).
 		// After the card on purpose -- the card was there first and keeps MOUSE3
@@ -1870,6 +1875,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Gfx_Draw(scr);
 		Vote_Draw(scr);                 // Patch 372: over saveloc, gfx and the chatbox
 		Share_Draw(scr);                // Patch 777
+		Friends_DrawToast(scr);         // Patch 788
 		KC_HintDraw(scr);               // Patch 762: the bottom-left key strip
 		// Reads two cvars the hl2 plugin writes at map load, and self-limits to
 		// the first twenty seconds of a map -- see the essay above it.

@@ -32,7 +32,7 @@ MENU_STATEMENT = "FTESURF-FRIENDS 1\nserver play.proto.bar:443\nnonce %s\nop %s\
 
 
 def menu_target(op, who):
-    return (op == "list" and who == "-") or (op == "join" and len(who) == 8 and bool(MARK.fullmatch(who)))
+    return (op == "list" and who == "-") or (op in ("join", "add") and len(who) == 8 and bool(MARK.fullmatch(who)))
 SQL = """
 CREATE TABLE IF NOT EXISTS social_friends (
  lo TEXT NOT NULL, hi TEXT NOT NULL, asker TEXT NOT NULL,
@@ -88,8 +88,9 @@ def pair(a, b):
 
 
 def rel_of(row, me):
-    # 1 sent / 2 received (pre-P770 requests), 3 friends. P770 blocks: accepted
-    # -1 is the asker's block, -2 both sides'. 4 blocked by me, 5 by them only.
+    # P788: accepted 0 is a one-way add -- 1 I added them, 2 they added me -- until
+    # the other adds back (3, friends). P770 blocks: accepted -1 is the asker's
+    # block, -2 both sides'. 4 blocked by me, 5 by them only.
     if row["accepted"] == -2:
         return 4
     if row["accepted"] < 0:
@@ -98,9 +99,10 @@ def rel_of(row, me):
 
 
 def slots(db, who):
-    # Another account's block of `who` is invisible to them, so it takes no slot.
+    # Another account's block of `who`, or add that `who` has not returned, was
+    # not `who`'s choice, so it takes no slot.
     return db.execute("SELECT COUNT(*) FROM social_friends WHERE (lo=? OR hi=?)"
-                      " AND NOT (accepted=-1 AND asker<>?)", (who, who, who)).fetchone()[0]
+                      " AND NOT (accepted IN (-1,0) AND asker<>?)", (who, who, who)).fetchone()[0]
 
 
 def relation(db, a, b):
@@ -149,12 +151,46 @@ def friend_rows(db, sid, now, lobby_ttl):
         rel = rel_of(r, sid)
         if rel == 5:
             continue                # being blocked is not shown
-        live = presence(db, other, now, lobby_ttl) if rel == 3 and available else {
+        # P788: my own add shows where they are (P770's add needs no acceptance);
+        # theirs does not until I add back.
+        live = presence(db, other, now, lobby_ttl) if rel in (1, 3) and available else {
             "online": 0, "addr": "", "server": "", "map": ""}
         rows.append(dict(who=accounts.who_of(other), name=accounts.game_name(account["name"]) if available else "Unavailable account",
                          relation=rel, **live))
-    return sorted(rows, key=lambda r: (r["relation"] == 4, -r["relation"], -r["online"],
-                                       r["name"].casefold(), r["who"]))
+    group = {3: 0, 1: 0, 2: 1, 4: 2}
+    rows.sort(key=lambda r: (group[r["relation"]], -r["online"], r["name"].casefold(), r["who"]))
+    # Incoming adds take no slot, so they alone could pass the 128 rows a
+    # reader takes: the rest wait until some are answered.
+    room = MAX_FRIENDS - sum(r["relation"] != 2 for r in rows)
+    out = []
+    for r in rows:
+        if r["relation"] == 2:
+            if room <= 0:
+                continue
+            room -= 1
+        out.append(r)
+    return out
+
+
+def befriend(db, sid, other):
+    """P788's add: one-way until the other account adds back. (ok, note|error, status)."""
+    rel = relation(db, sid, other)
+    lo, hi = pair(sid, other)
+    if rel == 3:
+        return 0, "You are already friends", 409
+    if rel == 1:
+        return 0, "You already added them", 409
+    if rel == 4:
+        return 0, "Unblock them first", 409
+    if rel == 5:
+        return 0, "Could not add that player", 409
+    if slots(db, sid) >= MAX_FRIENDS:
+        return 0, "Friends list is full", 409
+    if rel == 2:
+        db.execute("UPDATE social_friends SET accepted=1 WHERE lo=? AND hi=?", (lo, hi))
+        return 1, "Friend added back", 200
+    db.execute("INSERT INTO social_friends(lo,hi,asker,accepted) VALUES(?,?,?,0)", (lo, hi, sid))
+    return 1, "Friend added", 200
 
 
 def register(app, d):
@@ -248,7 +284,7 @@ def register(app, d):
             # A consistent read snapshot. Do not touch sessions/seen: somebody
             # in the menu is not on a lobby and must not become joinable.
             with db:
-                db.execute("BEGIN")
+                db.execute("BEGIN IMMEDIATE" if op == "add" else "BEGIN")
                 account = db.execute("SELECT k.steamid FROM keylinks k JOIN accounts a USING(steamid)"
                                      " WHERE k.pub=? AND a.banned_at=0", (pub,)).fetchone()
                 if not account:
@@ -261,7 +297,12 @@ def register(app, d):
                     rows = [r for r in friend_rows(db, sid, now, d.lobby_ttl) if r["relation"] <= 3]
                     return reply({"ok": 1, "friends": rows})
                 other = resolve(db, who)
-                if not other or relation(db, sid, other) != 3:
+                if op == "add":
+                    if not other or other == sid:
+                        return reply({"ok": 0, "error": "That Steam account is unavailable"}, 400)
+                    ok, text, status = befriend(db, sid, other)
+                    return reply({"ok": 1, "note": text} if ok else {"ok": 0, "error": text}, status)
+                if not other or relation(db, sid, other) not in (1, 3):
                     return reply({"ok": 0, "error": "Add them as a friend first"}, 403)
                 live = presence(db, other, now, d.lobby_ttl)
                 if not live["online"]:
@@ -305,8 +346,6 @@ def register(app, d):
                 db.execute("BEGIN IMMEDIATE")
                 db.execute("DELETE FROM social_messages WHERE sent<?", (now - MESSAGE_TTL,))
                 db.execute("DELETE FROM social_sessions WHERE issued<?", (now - SESSION_TTL,))
-                # A request left by a service older than P770 is a friendship now.
-                db.execute("UPDATE social_friends SET accepted=1 WHERE accepted=0")
                 # Full-node snapshot. Tokens of disconnected slots cannot keep presence alive.
                 db.execute("UPDATE social_sessions SET seen=0 WHERE node=?", (node,))
                 for r in roster:
@@ -372,28 +411,12 @@ def register(app, d):
                 asked = op
                 if op == "remove" and rel in (4, 5):
                     op = "unblock"          # only my own block is mine to lift
-                if op == "add":
-                    # P770: no requests. Add makes both accounts friends at once.
-                    if rel == 3:
-                        return reply({"ok": 0, "error": "You are already friends"}, 409)
-                    if rel == 4:
-                        return reply({"ok": 0, "error": "Unblock them first"}, 409)
-                    if rel == 5:
-                        return reply({"ok": 0, "error": "Could not add that player"}, 409)
-                    if rel:
-                        db.execute("UPDATE social_friends SET accepted=1 WHERE lo=? AND hi=?", (lo, hi))
-                    else:
-                        for who in (sid, other):
-                            if slots(db, who) >= MAX_FRIENDS:
-                                return reply({"ok": 0, "error": "Friends list is full"}, 409)
-                        db.execute("INSERT INTO social_friends(lo,hi,asker,accepted) VALUES(?,?,?,1)",
-                                   (lo, hi, sid))
-                    note = "Friend added"
+                if op == "add" or (op == "accept" and rel == 2):
+                    ok, note, status = befriend(db, sid, other)
+                    if not ok:
+                        return reply({"ok": 0, "error": note}, status)
                 elif op == "accept":
-                    if rel != 2:
-                        return reply({"ok": 0, "error": "No incoming request"}, 409)
-                    db.execute("UPDATE social_friends SET accepted=1 WHERE lo=? AND hi=?", (lo, hi))
-                    note = "Friend request accepted"
+                    return reply({"ok": 0, "error": "They have not added you"}, 409)
                 elif op == "remove":
                     db.execute("DELETE FROM social_friends WHERE lo=? AND hi=?", (lo, hi))
                     db.execute("DELETE FROM social_messages WHERE (sender=? AND recipient=?) OR"
@@ -433,7 +456,10 @@ def register(app, d):
                             db.execute("DELETE FROM social_friends WHERE lo=? AND hi=?", (lo, hi))
                         note = "Unblocked"
                 else:
-                    if rel != 3:
+                    # P788: my own add may join them; a message waits for theirs.
+                    if rel == 1 and op == "message":
+                        return reply({"ok": 0, "error": "They have not added you back yet"}, 403)
+                    if rel not in (1, 3):
                         return reply({"ok": 0, "error": "Add them as a friend first"}, 403)
                     live = presence(db, other, now, d.lobby_ttl)
                     if not live["online"]:
