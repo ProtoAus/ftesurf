@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P789 — pictures beside names
+
+- Watch a demo from TAB > Online: the demo window's title shows the player's picture
+  (your own runs show yours; files with no known player show their first letter).
+- Chat: a player's message and a friend's PM start with their picture.
+- Comparison window ("vs NAME"), the spectator line ("WATCHING NAME") and the Spec:
+  list, another player's completion banner, the share card, your own TAB Local rows,
+  and the replay's line label all carry the picture too.
+- Main menu: the map screen's Friends panel and the leaderboard show pictures (built and
+  reviewed; the test rig could not reach that screen while connected, so not yet seen).
+Verdict PENDING ("pictures everywhere" or where one is missing).
+
 ## P788 — friends: add back, the "added you" toast
 
 - When someone adds you: a toast at the right ("NAME added you as a friend", their
