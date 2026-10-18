@@ -5517,7 +5517,7 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_par(p, w, draw, "The people on the map see your position and view angle, and you see theirs. Voice and text chat reach everyone there.", COL_TEXT);
 		ui_tm_head(p, draw, "What is uploaded");
 		ui_tm_par(p, w, draw, "Your finish time goes to play.proto.bar and appears on a public leaderboard. That server also keeps its own recording of the run (positions, velocities and angles), which anyone can download from the board.", SUI_THEME_WARN);
-		ui_tm_par(p, w, draw, "Raw mouse and keyboard journals stay here unless you separately enable Input journal uploads. That choice is off by default; playing online alone never enables it. Opted-in journals go to play.proto.bar for anti-cheat review, not as public replays.", COL_TEXT);
+		ui_tm_par(p, w, draw, "Raw mouse and keyboard journals stay here unless you also tick the input journal box below (or turn it on later in the F2 panel). It is off by default; playing online alone never ticks it. Opted-in journals go to play.proto.bar for anti-cheat review, not as public replays.", COL_TEXT);
 		ui_tm_par(p, w, draw, "With online features enabled, play.proto.bar refreshes the map list at startup and serves zones, leaderboards and player pictures. Selecting a map can fetch its backdrop from dl.proto.bar. These services see your IP address, as does any lobby you join.", COL_TEXT);
 		ui_tm_par(p, w, draw, "A zone admin can explicitly upload saved zones to play.proto.bar. They are stored with the linked account as private drafts until an operator reviews and activates them; uploading alone does not change existing times.", COL_TEXT);
 		ui_tm_head(p, draw, "Steam");
@@ -5548,12 +5548,18 @@ float(float c, vector p, float w, float draw) ui_terms_col =
       commands, and a console line can be somebody else's: for a moment after
       either the answers do nothing and say why;
     - taking the online answer goes on to the Steam offer (screen_steam).
+  Patch 796 (Lex: "way too long ... make it shorter and sweet"): a first boot
+  shows ui_terms_short; the two cards are behind "Full details".  The input
+  journal upload, P774's separate consent, is a box here, not a menu button.
 */
 #define TM_PAD   28
 #define TM_CARD  16
+#define TM_JBOX  34             // P796: the journal box's row and the gap under it
 float ui_steam_t0;      // when the Steam offer went up: how long to wait for the lobby list
 float ui_synth_t;       // when ui_key or ui_click last fed the menu an event; 0 never
 float ui_tm_ph, ui_tm_w, ui_tm_two, ui_tm_sx, ui_tm_sy;     // the terms as last laid out, for ui_strip_test
+float ui_tm_full;               // P796: the cards are up instead of the summary
+float ui_tm_jbox, ui_tm_jread;  // P796: the journal box; it was read from rec_hid_upload
 
 float() ui_synth =
 {
@@ -5563,18 +5569,94 @@ float() ui_synth =
 	return FALSE;
 };
 
+// P796: the summary.  It says nothing ui_terms_col does not.
+float(vector p, float w, float draw) ui_terms_short =
+{
+	tm_y = 0;
+	ui_tm_dot(p, w, draw, "Each run is recorded on this PC: your position, speed and view, and your mouse and keyboard input.");
+	ui_tm_dot(p, w, draw, "Offline, nothing about a run leaves your PC.");
+	ui_tm_dot(p, w, draw, "Online, your times go on public leaderboards with the server's own recording of each run, and other players see you and your chat.");
+	ui_tm_dot(p, w, draw, "Never recorded: anything you type, or anything outside the game.");
+	return tm_y - 3;
+};
+
+// Uploading needs the engine's HTTPS sender: without it there is no box.
+float() ui_tm_jcan =
+{
+	if (!checkextension("FTESURF_HID_HTTP"))
+		return FALSE;
+	return checkbuiltin(localcmd_local);
+};
+
+string(string s, float w, vector sz) ui_fit_text;
+
+// The whole row toggles.  Ticking takes a real click, as the answers do.
+void(vector pos, float w) ui_tm_jdraw =
+{
+	local float hot;
+	local string s;
+
+	sui_action_element(pos, [w, 26], "tm_journal", sui_noop);
+	hot = sui_is_hovered("tm_journal");
+	sui_style_box(pos + '0 3 0', '20 20 0', 5, ui_tm_jbox ? SUI_THEME_GOOD_BG : SUI_THEME_WELL,
+	              hot ? COL_ACCENT : SUI_THEME_EDGE, 1);
+	if (ui_tm_jbox)
+		sui_roundbox(pos + '5 8 0', '10 10 0', 3, SUI_THEME_GOOD, 1);
+	s = ui_fit_text("Also send my input journal to play.proto.bar for anti-cheat review (optional)",
+	                w - 30, tm_sz);
+	sui_text(pos + [30, floor((26 - tm_sz_y) * 0.5)], tm_sz, s, hot ? COL_ACCENT : COL_TEXT, 1, 0);
+	if (sui_is_released("tm_journal"))
+	{
+		if (ui_tm_jbox)
+			ui_tm_jbox = FALSE;
+		else if (ui_synth())
+			print("menu: journal upload consent takes a real click or key, not ui_key/ui_click\n");
+		else
+			ui_tm_jbox = TRUE;
+	}
+};
+
+// An answer, and the box with it once the file is written: a failed write
+// cannot leave uploads on.
+void(float tier) ui_tm_answer =
+{
+	ui_consent_write(tier);
+	if (ms_consent < tier)
+		return;
+	if (ui_tm_jcan())
+	if (ui_tm_jbox != (cvar("rec_hid_upload") != 0))
+		localcmd_local(ui_tm_jbox ? "rec_hid_upload 1\n" : "rec_hid_upload 0\n");
+	ui_tm_jread = FALSE;
+	ui_tm_full = FALSE;
+};
+
 void(vector screensize) screen_terms =
 {
 	local vector p, q;
-	local float w, colw, two, ha, hb, cards, ph, by, x, head, big, strip;
+	local float w, colw, two, ha, hb, cards, ph, by, x, head, big, strip, jb, fh;
 	local string lab, lead, foot;
 
 	ui_backdrop(screensize);
+	if (!ui_tm_jread)
+	{
+		ui_tm_jbox = (cvar("rec_hid_upload") != 0);
+		ui_tm_jread = TRUE;
+	}
+	jb = ui_tm_jcan() ? TM_JBOX : 0;
+	fh = 0;                                 // the footnote's line, under the cards only
 
-	lead = "World of Surf times your runs and keeps a file for each one. This is what is recorded, and where it goes.";
+	if (ui_tm_full)
+	{
+		lead = "World of Surf times your runs and keeps a file for each one. This is what is recorded, and where it goes.";
+		w = min(1240, screensize_x - 32);
+	}
+	else
+	{
+		lead = "The short version. Choosing below means you have read it.";
+		w = min(700, screensize_x - 32);
+	}
 	foot = "Your answer is kept in a file on this machine. It is a record that you agreed, not a lock.";
-	w = min(1240, screensize_x - 32);
-	two = (w >= 700);
+	two = (ui_tm_full && w >= 700);
 	colw = two ? floor((w - TM_PAD * 2 - 16) * 0.5) - TM_CARD * 2 : w - TM_PAD * 2 - TM_CARD * 2;
 	// At 16 px, and again at 12 where that is taller than the window.
 	ha = hb = ph = head = cards = 0;
@@ -5582,11 +5664,17 @@ void(vector screensize) screen_terms =
 	{
 		ui_tm_size(big);
 		head = 66 + ui_para('0 0 0', w - TM_PAD * 2, tm_sz, tm_pitch, lead, COL_DIM, FALSE) + 14;
-		ha = ui_terms_col(0, '0 0 0', colw, FALSE);
-		hb = ui_terms_col(1, '0 0 0', colw, FALSE);
-		x = tm_pitch + 14 + TM_CARD * 2;           // a card's own title and padding
-		cards = two ? max(ha, hb) + x : ha + hb + 2 * x + 12;
-		ph = head + cards + 12 + tm_pitch + 14 + 34 + 24;
+		if (ui_tm_full)
+		{
+			fh = tm_pitch + 14;
+			ha = ui_terms_col(0, '0 0 0', colw, FALSE);
+			hb = ui_terms_col(1, '0 0 0', colw, FALSE);
+			x = tm_pitch + 14 + TM_CARD * 2;           // a card's own title and padding
+			cards = two ? max(ha, hb) + x : ha + hb + 2 * x + 12;
+		}
+		else
+			cards = ui_terms_short('0 0 0', w - TM_PAD * 2, FALSE);
+		ph = head + cards + 12 + fh + jb + 34 + 24;
 		if (ph <= screensize_y - 16)
 			break;
 	}
@@ -5607,57 +5695,62 @@ void(vector screensize) screen_terms =
 	Font_Set(ui_font_ui);
 	ui_para([p_x + TM_PAD, p_y + 66], w - TM_PAD * 2, tm_sz, tm_pitch, lead, COL_DIM, TRUE);
 
-	// The two cards: side by side, or one under the other in a narrow window.
-	q = [p_x + TM_PAD, p_y + head];
-	x = tm_pitch + 14;
-	by = two ? max(ha, hb) : ha;
-	sui_style_box(q, [colw + TM_CARD * 2, by + x + TM_CARD * 2], 12, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
-	sui_text([q_x + TM_CARD, q_y + TM_CARD], tm_sz, "ON THIS MACHINE", COL_DIM, 1, 0);
-	ui_terms_col(0, [q_x + TM_CARD, q_y + TM_CARD + x], colw, TRUE);
-	if (two)
-		q = [q_x + colw + TM_CARD * 2 + 16, q_y];
+	if (!ui_tm_full)
+		ui_terms_short([p_x + TM_PAD, p_y + head], w - TM_PAD * 2, TRUE);
 	else
-		q = [q_x, q_y + ha + x + TM_CARD * 2 + 12];
-	by = two ? max(ha, hb) : hb;
-	sui_style_box(q, [colw + TM_CARD * 2, by + x + TM_CARD * 2], 12, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
-	sui_text([q_x + TM_CARD, q_y + TM_CARD], tm_sz, "PUBLIC LOBBIES", COL_DIM, 1, 0);
-	sui_text([q_x + TM_CARD + stringwidth("PUBLIC LOBBIES", TRUE, tm_sz) + 10, q_y + TM_CARD],
-	         tm_sz, "only if you turn them on below", SUI_THEME_MUTED, 1, 0);
-	ui_terms_col(1, [q_x + TM_CARD, q_y + TM_CARD + x], colw, TRUE);
+	{
+		// The two cards: side by side, or one under the other in a narrow window.
+		q = [p_x + TM_PAD, p_y + head];
+		x = tm_pitch + 14;
+		by = two ? max(ha, hb) : ha;
+		sui_style_box(q, [colw + TM_CARD * 2, by + x + TM_CARD * 2], 12, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
+		sui_text([q_x + TM_CARD, q_y + TM_CARD], tm_sz, "ON THIS MACHINE", COL_DIM, 1, 0);
+		ui_terms_col(0, [q_x + TM_CARD, q_y + TM_CARD + x], colw, TRUE);
+		if (two)
+			q = [q_x + colw + TM_CARD * 2 + 16, q_y];
+		else
+			q = [q_x, q_y + ha + x + TM_CARD * 2 + 12];
+		by = two ? max(ha, hb) : hb;
+		sui_style_box(q, [colw + TM_CARD * 2, by + x + TM_CARD * 2], 12, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
+		sui_text([q_x + TM_CARD, q_y + TM_CARD], tm_sz, "PUBLIC LOBBIES", COL_DIM, 1, 0);
+		sui_text([q_x + TM_CARD + stringwidth("PUBLIC LOBBIES", TRUE, tm_sz) + 10, q_y + TM_CARD],
+		         tm_sz, "only if you turn them on below", SUI_THEME_MUTED, 1, 0);
+		ui_terms_col(1, [q_x + TM_CARD, q_y + TM_CARD + x], colw, TRUE);
+	}
 
-	// The footnote and the buttons' row; on a strip of their own where the
-	// panel runs off the screen even at 12 px.
+	// The journal box, the footnote and the buttons' row; on a strip of their
+	// own where the panel runs off the screen even at 12 px.
 	by = p_y + ph - 24 - 34;
 	strip = (by + 34 + 10 > screensize_y);
 	if (strip)
 	{
 		by = screensize_y - 34 - 10;
-		sui_fill([p_x, by - tm_pitch - 18], [w, 34 + tm_pitch + 28], SUI_THEME_PANEL, 1, 0);
-		sui_fill([p_x, by - tm_pitch - 18], [w, 1], SUI_THEME_EDGE, 1, 0);
+		sui_fill([p_x, by - fh - jb - 4], [w, fh + jb + 48], SUI_THEME_PANEL, 1, 0);
+		sui_fill([p_x, by - fh - jb - 4], [w, 1], SUI_THEME_EDGE, 1, 0);
 	}
-	sui_text([p_x + TM_PAD, by - tm_pitch - 10], tm_sz, foot, SUI_THEME_MUTED, 1, 0);
+	if (ui_tm_full)
+		sui_text([p_x + TM_PAD, by - tm_pitch - 10], tm_sz, foot, SUI_THEME_MUTED, 1, 0);
 
 	// Placed from their labels' widths (ui_button grows to fit one): at fixed
 	// widths the first cut drew one over the other.
-	lab = (ms_consent >= FS_TERMS_VERSION) ? "Not now: stay offline" : "I understand: play offline";
-	ha = stringwidth("I understand: play online", TRUE, SZ_LABEL) + 28;
+	lab = (ms_consent >= FS_TERMS_VERSION) ? "Stay offline" : "Play offline";
+	ha = stringwidth("Play online", TRUE, SZ_LABEL) + 28;
 	hb = stringwidth(lab, TRUE, SZ_LABEL) + 28;
 	if (ui_button("tm_accept", [p_x + w - TM_PAD - ha - 12 - hb, by], [hb, 34], lab))
 	{
 		if (ui_synth())
 			print("menu: the terms take a real key or click, not ui_key or ui_click\n");
 		else
-			ui_consent_write(FS_TERMS_VERSION);
+			ui_tm_answer(FS_TERMS_VERSION);
 	}
 
-	if (ui_button("tm_online", [p_x + w - TM_PAD - ha, by], [ha, 34],
-	              "I understand: play online", TRUE))
+	if (ui_button("tm_online", [p_x + w - TM_PAD - ha, by], [ha, 34], "Play online", TRUE))
 	{
 		if (ui_synth())
 			print("menu: the terms take a real key or click, not ui_key or ui_click\n");
 		else
 		{
-			ui_consent_write(FS_TERMS_ONLINE);
+			ui_tm_answer(FS_TERMS_ONLINE);
 			// Written, or the gate in m_draw has the terms straight back up.
 			if (ms_consent >= FS_TERMS_ONLINE)
 			if (!cvar("ui_bootcheck"))
@@ -5671,6 +5764,11 @@ void(vector screensize) screen_terms =
 
 	if (ui_button("tm_exit", [p_x + TM_PAD, by], [72, 34], "Quit"))
 		localcmd("quit\n");
+	if (ui_button("tm_more", [p_x + TM_PAD + 84, by], [120, 34], ui_tm_full ? "Summary" : "Full details"))
+		ui_tm_full = !ui_tm_full;
+	// Last, so an answer stays the keyboard's default element, not the box.
+	if (jb)
+		ui_tm_jdraw([p_x + TM_PAD, by - fh - jb], w - TM_PAD * 2);
 };
 
 /*
@@ -5931,7 +6029,7 @@ void(vector screensize) screen_journal =
 	else
 		sui_text([p_x + 24, by + 8], SZ_LABEL, "Update the native client to enable uploads", SUI_THEME_WARN, 1, 0);
 	if (ui_button("journal_back", [p_x + w - 114, by], [90, 34], "Back"))
-		menu_screen = SCREEN_MAIN;
+		menu_screen = SCREEN_UPDATE;        // P796: reached from the F2 panel
 };
 
 void(vector screensize) screen_main =
@@ -6759,10 +6857,11 @@ void(string what, string arg) ui_strip_test =
 	{
 		// Patch 647: the two first-boot screens, to look at.  Neither word
 		// answers a screen: an answer is a click or a key on it.
-		if (arg == "terms" || arg == "steam")
+		if (arg == "terms" || arg == "termsfull" || arg == "steam")
 		{
 			print(sprintf("ui_strip_test: screen %s\n", arg));
-			menu_screen = (arg == "terms") ? SCREEN_TERMS : SCREEN_STEAM;
+			menu_screen = (arg == "steam") ? SCREEN_STEAM : SCREEN_TERMS;
+			ui_tm_full = (arg == "termsfull");      // P796: the summary, or the cards
 			ui_steam_t0 = time;
 			return;
 		}
@@ -6772,6 +6871,8 @@ void(string what, string arg) ui_strip_test =
 			print(sprintf("ui_strip_test: terms panel %g x %g, text %g px, %s, window %g x %g\n",
 			              ui_tm_w, ui_tm_ph, tm_sz_x, ui_tm_two ? "two columns" : "one column",
 			              ui_tm_sx, ui_tm_sy));
+			print(sprintf("ui_strip_test: terms %s, journal box %g\n",
+			              ui_tm_full ? "full" : "summary", ui_tm_jbox));
 			return;
 		}
 		print(sprintf("ui_strip_test: screen %s\n", (arg == "create") ? "create" : "main"));
@@ -8119,6 +8220,11 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && menu_screen == SCREEN_UPDATE)
 	{
 		menu_screen = SCREEN_MAIN;
+		return TRUE;
+	}
+	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && menu_screen == SCREEN_JOURNAL)
+	{
+		menu_screen = SCREEN_UPDATE;        // P796: where it is reached from
 		return TRUE;
 	}
 	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && menu_screen == SCREEN_CREATE)

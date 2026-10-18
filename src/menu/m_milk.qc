@@ -1403,9 +1403,7 @@ void(float x, float y, float pitch) MM_MainItems =
 	}
 	if (MM_Item(3, "mm_quit", [x, y + pitch * 3], "QUIT", 0, -4))
 		localcmd("quit\n");
-	// Secondary widget: do not add a fifth index to the four-item scene rig.
-	if (ui_button("mm_journal", [x, y + pitch * 4 + 8], [250, 28], "Input journal uploads"))
-		menu_screen = SCREEN_JOURNAL;
+	// P796: journal uploads moved to the first boot's terms box and the F2 panel.
 };
 
 // The analyser strip, straight off the engine's image.

@@ -105,12 +105,25 @@ void(vector screensize) MU_Status =
 	MU_StatusLine(right, 58, w, '12 12 0', strcat("Latest: ", latest), COL_DIM);
 };
 
+// P796: the journal upload's way back, now the first boot's box is its way in.
+// Drawn last, so it is never the panel's keyboard default.
+void(float x, float y, float w) MU_JournalRow =
+{
+	if (!ui_tm_jcan())
+		return;
+	sui_text([x + 24, y + 378], SZ_LABEL, cvar("rec_hid_upload") ? "Input journal uploads: on" : "Input journal uploads: off",
+	         COL_DIM, 1, 0);
+	if (ui_button("mu_journal", [x + w - 124, y + 370], [100, 30], "Change"))
+		menu_screen = SCREEN_JOURNAL;
+};
+
 void(vector screensize) MU_Screen =
 {
-	local float x, y, w, h, consent, frac;
+	local float x, y, y0, w, h, consent, frac;
 	local string st, title, detail;
 	x = floor(screensize_x * 0.5) - 300;
 	y = max(36, floor(screensize_y * 0.5) - 210);
+	y0 = y;
 	w = 600;
 	consent = cvar("update_consent");
 	st = cvar_string("update_state");
@@ -134,6 +147,7 @@ void(vector screensize) MU_Screen =
 			MU_Action(5);
 			menu_screen = SCREEN_MAIN;
 		}
+		MU_JournalRow(x, y0, w);
 		return;
 	}
 	title = "Checking for updates";
@@ -185,4 +199,5 @@ void(vector screensize) MU_Screen =
 	if (ui_button("mu_back", [x + 292, y + 140], [160, 36], "Back")) menu_screen = SCREEN_MAIN;
 	if (ui_button("mu_disable", [x + 24, y + 188], [210, 30], "Disable automatic updates"))
 		MU_Action(5);
+	MU_JournalRow(x, y0, w);
 };
