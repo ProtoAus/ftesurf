@@ -39,6 +39,34 @@ bound-check failure kills the VM (P795 took the menu down this way).
   ghost refusals SV_TpPlayer has (both share SV_SetPosSelf). Check: `setpos` during a
   resume or a replay pin, against `tp_player` in the same state.
 
+## Map visuals left open by Patches 799 and 802
+
+- Site: hl2 plugin `mat_vmt.c` UnlitGeneric branch (~2882-2937). A PlayerProximity -> Subtract
+  -> $alpha chain is honoured only for UnlitTwoTexture (~3138), measured from the render eye.
+  surf_tripportals' `PLAR/PLARS_HELL_WINDOW*` neon is UnlitGeneric and fades out by 400-1000
+  units in Source, measured from the PLAYER (proxyplayer.cpp:45-60), so through a portal from the
+  stage-1 start zone Source shows none of the hub's neon. Check: a Momentum screenshot from Lex's
+  tripportals save 2 against ours.
+- Site: `cl_portal.qc` APW_Resolve. func_areaportalwindow's BackgroundBModel (one map in the
+  library) stays an ordinary server entity, unfaded. Check: census for the map, then compare
+  with Momentum.
+- Site: hl2 plugin `VBSP_BuildVisualBIH`. A scaled static prop occludes glows at scale 1 and
+  ignores its fade distance (bihtransform_s has no scale; the movement tree has the same gap).
+- Site: engine `gl/shader.h` shaderpass_t. Its D3D11/VK-only tail makes every `shader_t` field
+  past `passes[]` sit 128 bytes earlier in the plugin build than in the engine. Nothing in the
+  plugin reads one today; anything that does will read garbage. Check: print
+  offsetof(shader_t, sort) compiled with `-DFTEPLUGIN` and with `-DGLQUAKE -DVKQUAKE
+  -DD3D11QUAKE` (8672 against 8800 on 19 Oct).
+
+## Client save root outlives a map change (found 19 Oct, not fixed)
+
+- Site: `cl_board.qc` CL_SaveRoot / Seq_Path. `cl_saveroot` (stuffed by the server, Patch 333)
+  outlived a map change: on 19 Oct Lex's two surf_dragon lobby saves (state.txt 15:56Z and
+  15:58Z on the Pi) wrote their client `seq.txt` into `data/saves/surf_jumble/@<guid>/save001`
+  and `save002` (anchorpos z 14880, off jumble's map), overwriting jumble's. A later jumble load
+  of those slots restores dragon's run-line rows. Check: save on map A, change the lobby to map B,
+  save, and list both maps' local save folders.
+
 ## Held recording clocks: what the Patch 785 reviews found
 
 Two static reviews of 248867ee (18 Oct, before its lobby deploy) seeded this list.
