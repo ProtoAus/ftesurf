@@ -89,6 +89,7 @@ float av_half;                  // which part the sliders edit: 0 belt, 1 body
 string av_name_text;
 float av_name_caret;
 vector av_rgb;                    // PATCH 341: the RGB sliders' 0..255 state
+string av_seen;                   // Patch 773: the half and its worn colour the sliders last took
 
 entity av_prev;                 // the preview body
 vector av_self_prev;            // Av_SelfTrail's last feet, for the teleport cut
@@ -395,10 +396,10 @@ void() Av_ClearRGB =
 };
 
 /*
-  Patch 773: a palette swatch sets the half the sliders edit, exactly, like
-  dragging them there.  It used to be a whole-body palette ask, which only a
-  lobby server resolves: solo the body stayed white and the sliders read 255.
-  The body's pick is also the palette ask, the index the trail and chat use.
+  Patch 773: a palette swatch sets the half the sliders edit.  The body's pick is
+  the palette ask a lobby resolves for everyone (a colour another player holds is
+  not granted), so body, trail and chat stay one colour; solo nothing resolves it
+  and Av_MyRGB wears the ask.  The belt takes the colour exactly.
 */
 void(float i) Av_PickPalette =
 {
@@ -407,8 +408,10 @@ void(float i) Av_PickPalette =
 	{
 		localcmd(sprintf("setinfo lobbycolor \"%g\"\n", i));
 		localcmd("setinfo lobbyrgb \"\"\n");
+		localcmd("setinfo lobbybody \"\"\n");
 	}
-	Av_SendRGB();
+	else
+		Av_SendRGB();
 };
 
 void(float v) Av_SetR = { av_rgb_x = v; Av_SendRGB(); };
@@ -568,8 +571,9 @@ void() Av_Open =
 	av_other = "";
 	av_name_text = getplayerkeyvalue(player_localnum, "name");
 	av_name_caret = strlen(av_name_text);
-	av_rgb = Av_MyMark() * 255;
-	av_half = 0;
+	// Patch 773: one colour (no belt of its own) opens on the body, so a swatch colours you.
+	av_half = (getplayerkeyvalue(player_localnum, "lobbymark") == "");
+	av_rgb = (av_half ? Av_MyBody() : Av_MyMark()) * 255;
 	av_namefocus = FALSE;
 	Profile_Reset();
 	Profile_Stale(60);
@@ -1095,9 +1099,20 @@ void(vector scr) Av_Draw =
 			Av_SetInfo("lobbycolor", 0);
 			Av_ClearRGB();
 		}
-		// Patch 773: the sliders show what the half wears, except while one is dragged.
-		if (!sui_is_held("av_r") && !sui_is_held("av_g") && !sui_is_held("av_b"))
-			av_rgb = (av_half ? Av_MyBody() : Av_MyMark()) * 255;
+		/*
+		  Patch 773: the sliders follow what the half wears when that CHANGES: a lobby
+		  echoes a setinfo a round trip later, and reading it every frame snapped a
+		  knob back and let the next drag send the stale channels.
+		*/
+		s = sprintf("%g %s", av_half, Av_255(av_half ? Av_MyBody() : Av_MyMark()));
+		if (strcmp(s, av_seen))
+		{
+			if (!sui_is_held("av_r") && !sui_is_held("av_g") && !sui_is_held("av_b"))
+				av_rgb = (av_half ? Av_MyBody() : Av_MyMark()) * 255;
+			if (av_seen)
+				strunzone(av_seen);
+			av_seen = strzone(s);
+		}
 		y = Av_Head([x, y], "COLOUR");
 		y = y + 3;
 		for (i = 1; i <= AV_COLOURS; i = i + 1)

@@ -34,10 +34,10 @@ void(float handle) removedecal = #0:removedecal;
 
 float *pt_ring;                 // handles, oldest at pt_tail
 float pt_tail, pt_n;
-float pt_hold, pt_once;
-float pt_next;                  // cltime of the held key's next disc
+float pt_plus, pt_once;         // +paint is down; a disc is asked for this frame
+float pt_next;                  // cltime a still aim sprays again
 float pt_downkey;               // a key bound to `paint` went down; its bind runs after
-float pt_key;                   // the key a `paint` hold ends on (0: +paint's own release)
+float pt_key, pt_key2;          // keys bound to `paint` holding the spray, each until its release
 vector pt_lastcol, pt_lastorg;
 float pt_filln, pt_filldeg;      // a paint_fill waiting for Paint_Frame's camera
 float pt_placed, pt_nohit, pt_nonworld, pt_nogeom, pt_skipped;
@@ -65,11 +65,11 @@ void() Paint_Shader =
 			"void main()\n{\n"
 			" tc = v_texcoord;\n"
 			" vc = v_colour;\n"
-			// Patch 773: 0.25u toward the eye along its own ray (same pixel). polygonoffset
+			// Patch 773: 0.125u toward the eye along its own ray (same pixel). polygonoffset
 			// alone is depth-buffer steps, a few thousandths of a unit at arm's length.
 			" vec3 d = e_eyepos - v_position;\n"
 			" float l = max(length(d), 0.001);\n"
-			" gl_Position = m_modelviewprojection * vec4(v_position + d * (min(0.25, l * 0.25) / l), 1.0);\n"
+			" gl_Position = m_modelviewprojection * vec4(v_position + d * (min(0.125, l * 0.25) / l), 1.0);\n"
 			"}\n#endif\n"
 			"#ifdef FRAGMENT_SHADER\n"
 			"void main()\n{\n"
@@ -139,6 +139,7 @@ vector() Paint_RGB =
 };
 
 float() Paint_Rate = { return bound(0, cvar("paint_rate"), 1000); };
+float() Paint_Held = { return pt_plus || pt_key || pt_key2; };
 
 float() Paint_Count = { return pt_n; };
 float() Paint_Size = { return bound(2, cvar("paint_size"), 256); };
@@ -163,8 +164,8 @@ void() Paint_Clear =
 void() Paint_WorldLoaded =
 {
 	pt_tail = pt_n = 0;
-	pt_hold = pt_once = FALSE;
-	pt_key = pt_downkey = 0;
+	pt_plus = pt_once = FALSE;
+	pt_key = pt_key2 = pt_downkey = 0;
 	pt_filln = 0;
 	pt_last = pt_lastn = '0 0 0';
 };
@@ -191,14 +192,15 @@ float(vector hit, vector n, entity e, vector col) Paint_Place =
 
 /*
   One disc along `dir` from `org`.  `spaced`: skip a hit within PAINT_GAP of the
-  last in the same colour, which would only use up the ring (a held key on one spot).
+  last; a held key repeats on one spot at paint_rate instead (Paint_Frame).  TRUE
+  when a disc was tried.
   The aim stops at player collision first -- a func_illusionary ramp is drawn over
   clip, at the clip -- and when no face is there, at the first visible solid along
   the same line if that is within PAINT_BEHIND of it.  Further than that, the
   collision belonged to something with no faces to paint (a static prop, an
   invisible wall) and painting what lies beyond it would mark the wrong place.
 */
-void(vector org, vector dir, float spaced) Paint_At =
+float(vector org, vector dir, float spaced) Paint_At =
 {
 	local vector n, hit, col;
 	local float h;
@@ -221,19 +223,18 @@ void(vector org, vector dir, float spaced) Paint_At =
 		pt_nohit = pt_nohit + 1;
 		pt_missorg = org;
 		pt_misssolid = trace_startsolid;
-		return;
+		return FALSE;
 	}
 	n = trace_plane_normal;
 	hit = trace_endpos;
 	e = trace_ent;
 	col = Paint_RGB();
 	if (spaced)
-	if (col == pt_lastcol)
 	if (n * pt_lastn > 0.99)
 	if (vlen(hit - pt_last) < Paint_Size() * PAINT_GAP)
 	{
 		pt_skipped = pt_skipped + 1;
-		return;
+		return FALSE;
 	}
 
 	// Spaced whether or not it lands: a key held on an unpaintable spot tries once.
@@ -264,7 +265,7 @@ void(vector org, vector dir, float spaced) Paint_At =
 			pt_nogeom = pt_nogeom + 1;  // sky, a nodraw face, or no face in reach
 		pt_noface = hit;
 		pt_nofacen = n;
-		return;
+		return TRUE;
 	}
 	pt_ring[(pt_tail + pt_n) % PAINT_CAP] = h;
 	pt_n = pt_n + 1;
@@ -272,6 +273,7 @@ void(vector org, vector dir, float spaced) Paint_At =
 		Paint_DropOldest();
 	pt_placed = pt_placed + 1;
 	pt_lasth = h;
+	return TRUE;
 };
 
 // n discs in a cone of `deg` around the view: a sunflower spiral, each in a new spot.
@@ -302,22 +304,25 @@ void() Paint_Frame =
 	local vector org;
 	local float r;
 
-	if (!pt_hold && !pt_once && !pt_filln)
+	if (!Paint_Held() && !pt_once && !pt_filln)
 		return;
-	// A held key: one disc every 1/paint_rate s, at most one a frame (0 = every frame).
-	if (!pt_once && !pt_filln && cltime < pt_next)
-		return;
-	r = Paint_Rate();
-	if (pt_once || r <= 0)
-		pt_next = cltime;
-	if (r > 0)
-		pt_next = max(pt_next + 1 / r, cltime);
 	org = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
+	r = Paint_Rate();
+	/*
+	  Held: a disc every frame the aim has moved PAINT_GAP of a disc (a sweep draws
+	  a line), and on one spot a disc every 1/paint_rate s (every frame at 0), so a
+	  still spray builds up and a random colour keeps changing.
+	*/
 	if (pt_filln)
 		Paint_Fill(org, pt_filln, pt_filldeg);
-	else
-		Paint_At(org, v_forward, !pt_once);
+	else if (pt_once || r <= 0 || cltime >= pt_next)
+	{
+		Paint_At(org, v_forward, FALSE);
+		pt_next = (pt_once || r <= 0) ? cltime + ((r > 0) ? 1 / r : 0) : max(pt_next + 1 / r, cltime);
+	}
+	else if (Paint_At(org, v_forward, TRUE))
+		pt_next = cltime + 1 / r;
 	pt_once = FALSE;
 	pt_filln = 0;
 };
@@ -331,7 +336,8 @@ void(float evtype, float scanx) Paint_InputEvent =
 {
 	if (evtype == IE_KEYDOWN)
 	{
-		if (!strcmp(getkeybind(scanx), "paint"))
+		// The bind the engine runs for the modifiers held (cl_keys.qc), first command only.
+		if (!strcmp(strtrim(Gfx_Field(Keys_BindNow(scanx), 0, ";")), "paint"))
 			pt_downkey = scanx;
 	}
 	else if (evtype == IE_KEYUP)
@@ -339,10 +345,9 @@ void(float evtype, float scanx) Paint_InputEvent =
 		if (scanx == pt_downkey)
 			pt_downkey = 0;
 		if (pt_key && scanx == pt_key)
-		{
-			pt_hold = FALSE;
 			pt_key = 0;
-		}
+		if (pt_key2 && scanx == pt_key2)
+			pt_key2 = 0;
 	}
 };
 
@@ -353,24 +358,25 @@ float(string cmd) Paint_ConsoleCommand =
 	c = argv(0);
 	if (c == "+paint")
 	{
-		pt_hold = TRUE;
-		pt_key = 0;
+		pt_plus = TRUE;
 		pt_once = TRUE;     // the press itself always lands
 		return TRUE;
 	}
 	if (c == "-paint")
 	{
-		pt_hold = FALSE;
+		pt_plus = FALSE;
 		return TRUE;
 	}
 	if (c == "paint")
 	{
 		if (pt_downkey)
 		{
-			if (pt_hold && pt_key == pt_downkey)
-				return TRUE;    // a key repeat of the hold already running
-			pt_hold = TRUE;
-			pt_key = pt_downkey;
+			if (pt_downkey == pt_key || pt_downkey == pt_key2)
+				return TRUE;    // that key is holding already
+			if (!pt_key)
+				pt_key = pt_downkey;
+			else
+				pt_key2 = pt_downkey;
 		}
 		pt_once = TRUE;
 		return TRUE;
@@ -397,7 +403,7 @@ float(string cmd) Paint_ConsoleCommand =
 		              (pt_noface == '0 0 0') ? "" : getsurfacetexture(world, getsurfacenearpoint(world, pt_noface))));
 		print(sprintf("paint: last aim %v normal %v, handle %g, size %g colour %v alpha %g, source clip %g\n",
 		              pt_last, pt_lastn, pt_lasth, Paint_Size(), pt_lastcol * 255, cvar("paint_alpha"), pt_source));
-		print(sprintf("paint: rate %g, held %g key %g, aimed from %v\n", Paint_Rate(), pt_hold, pt_key, pt_lastorg));
+		print(sprintf("paint: rate %g, held %g key %g, aimed from %v\n", Paint_Rate(), Paint_Held(), pt_key, pt_lastorg));
 		return TRUE;
 	}
 	return FALSE;
