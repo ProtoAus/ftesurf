@@ -98,7 +98,7 @@ void() Friends_SeenLoad =
 		if (Friends_MarkSafe(l) && strlen(fr_seen) < 400 * 13)
 			fr_seen = strcat(fr_seen, " ", l);
 	fclose(f);
-	fr_seen = strzone(fr_seen);
+	if (fr_seen != "") fr_seen = strzone(fr_seen);
 };
 
 // Newest 300 kept: an account toasted that long ago may toast again.
@@ -133,8 +133,9 @@ void() Friends_ToastPick =
 		who = bufstr_get(fr_buf, i * FR_FIELDS);
 		if (!Friends_MarkSafe(who)) continue;
 		if (strstrofs(strcat(fr_seen, " "), strcat(" ", who, " "), 0) >= 0) continue;
+		if (Chat_Silenced(bufstr_get(fr_buf, i * FR_FIELDS + 3))) continue;
 		fr_tw = strzone(who);
-		fr_tn = strzone(bufstr_get(fr_buf, i * FR_FIELDS + 3));
+		fr_tn = strzone(strcat(bufstr_get(fr_buf, i * FR_FIELDS + 3), ""));
 		fr_tsent = fr_tshown = FALSE;
 		return;
 	}
@@ -147,9 +148,16 @@ void() Friends_ToastClear =
 	fr_tw = fr_tn = "";
 };
 
+// Not over the board, the profile card or a resume offer (that F2 is theirs).
+float() Friends_ToastCovered =
+{
+	return (rec_sb_open || (UI_CursorHeld() & UIC_AVATAR) || Timer_ResumeOffered());
+};
+
 float(float scanx) Friends_ToastKey =
 {
 	if (scanx != K_F2 || fr_tw == "" || !fr_tshown || fr_tsent || cltime >= fr_tend) return FALSE;
+	if (Friends_ToastCovered() || Friends_Relation(fr_tw) != 2) return FALSE;
 	Friends_Action("add", fr_tw);
 	fr_tsent = TRUE;
 	fr_tend = cltime + 1.5;
@@ -163,18 +171,23 @@ void(vector scr) Friends_DrawToast =
 	local string t;
 
 	if (fr_tw == "") return;
+	// Gone, or added back some other way: nothing left to answer.
+	if ((fr_tshown && cltime >= fr_tend) || (!fr_tsent && Friends_Relation(fr_tw) != 2))
+	{
+		Friends_ToastClear();
+		Friends_ToastPick();
+		return;
+	}
+	if (Friends_ToastCovered())
+	{
+		if (fr_tshown) fr_tend = fr_tend + frametime;      // paused under it
+		return;
+	}
 	if (!fr_tshown)
 	{
 		fr_tshown = TRUE;
 		fr_tend = cltime + 12;
 		Friends_SeenAdd(fr_tw);
-	}
-	// Gone, or added back some other way: nothing left to answer.
-	if (cltime >= fr_tend || (!fr_tsent && Friends_Relation(fr_tw) != 2))
-	{
-		Friends_ToastClear();
-		Friends_ToastPick();
-		return;
 	}
 	sc = ui_cv_scale;
 	Font_Set(ui_font_ui);

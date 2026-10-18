@@ -159,9 +159,8 @@ def friend_rows(db, sid, now, lobby_ttl):
             "online": 0, "addr": "", "server": "", "map": ""}
         rows.append(dict(who=accounts.who_of(other), name=accounts.game_name(account["name"]) if available else "Unavailable account",
                          relation=rel, **live))
-    # Incoming adds last ("at the bottom", Lex). They take no slot, and a block
-    # of one takes none either, so the list is cut at the 128 rows a reader
-    # takes: incoming adds first, unanswered ones waiting their turn.
+    # Incoming adds last ("at the bottom", Lex). They take no slot, so the list
+    # is cut at the 128 rows a reader takes; only incoming adds are ever cut.
     group = {3: 0, 1: 0, 4: 1, 2: 2}
     rows.sort(key=lambda r: (group[r["relation"]], -r["online"], r["name"].casefold(), r["who"]))
     return rows[:MAX_FRIENDS]
@@ -413,14 +412,17 @@ def register(app, d):
                                " (sender=? AND recipient=?)", (sid, other, other, sid))
                     note = "Friend / request removed"
                 elif op == "block":
-                    # With no acceptance, Block is how an account refuses one:
-                    # it ends a friendship and refuses their add and messages.
+                    # Block is how an account refuses another: it ends a
+                    # friendship or an add and refuses their adds and messages.
                     # Their block does not stand in for mine: they could lift it.
                     if rel == 5:
                         if slots(db, sid) >= MAX_FRIENDS:
                             return reply({"ok": 0, "error": "Friends list is full"}, 409)
                         db.execute("UPDATE social_friends SET accepted=-2 WHERE lo=? AND hi=?", (lo, hi))
                     elif rel in (1, 2, 3):
+                        # Their add took none of my slots; my block of it takes one.
+                        if rel == 2 and slots(db, sid) >= MAX_FRIENDS:
+                            return reply({"ok": 0, "error": "Friends list is full"}, 409)
                         db.execute("UPDATE social_friends SET asker=?,accepted=-1 WHERE lo=? AND hi=?",
                                    (sid, lo, hi))
                     elif rel == 0:

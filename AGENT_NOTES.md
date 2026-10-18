@@ -99,7 +99,9 @@
 - P788 ROLLBACK HAZARD: surfd generations from P770 to P787 upgrade every
   `accepted=0` row to a friendship on each poll, so rolling back past P788
   turns one-way adds into friendships (messages without consent, lists over
-  128 rows). Delete them first: `DELETE FROM social_friends WHERE accepted=0`.
+  128 rows). Delete them after rollback.sh has stopped the successor and before
+  it reopens OLD (between its steps 3 and 4), or an add made in between turns:
+  `DELETE FROM social_friends WHERE accepted=0`.
 
 ## Paint and the line trail (P772, 2026-10-18)
 

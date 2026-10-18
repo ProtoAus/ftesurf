@@ -148,20 +148,20 @@ class Friends(unittest.TestCase):
         self.assertEqual({r["relation"] for r in rows[2:]}, {2})
         self.assertEqual(self.menu_read(self.menu_form(1))["friends"], [r for r in rows if r["relation"] != 4])
 
-    def test_blocked_incoming_adds_never_pass_the_reader_limit(self):
+    def test_a_full_list_cannot_block_an_incoming_add_past_the_limit(self):
         self.befriend()
         for i in range(F.MAX_FRIENDS - 1):
             pal = "765611984%08d" % i
             self.db.execute("INSERT INTO accounts(steamid,name,created_at) VALUES(?,?,?)", (pal, "pal%d" % i, self.now))
             self.db.execute("INSERT INTO social_friends(lo,hi,asker,accepted) VALUES(?,?,?,1)",
                             (*F.pair(IDS[1], pal), pal))
-        for i in range(5):
-            fan = "765611985%08d" % i
-            self.db.execute("INSERT INTO accounts(steamid,name,created_at) VALUES(?,?,?)", (fan, "fan%d" % i, self.now))
-            self.db.execute("INSERT INTO social_friends(lo,hi,asker,accepted) VALUES(?,?,?,-1)",
-                            (*F.pair(IDS[1], fan), IDS[1]))
+        self.db.execute("INSERT INTO social_friends(lo,hi,asker,accepted) VALUES(?,?,?,0)",
+                        (*F.pair(IDS[1], IDS[2]), IDS[2]))
         self.db.commit()
-        self.assertEqual(len(self.poll()[1]["friends"]), F.MAX_FRIENDS)
+        self.assertEqual(self.action(1, "block", 2).status_code, 409)     # full: refused
+        self.assertEqual(self.action(1, "remove", 2).status_code, 200)    # Decline still works
+        rows = self.poll()[1]["friends"]
+        self.assertEqual((len(rows), {r["relation"] for r in rows}), (F.MAX_FRIENDS, {3}))
 
     def test_banned_adder_is_not_offered_and_menu_cannot_add(self):
         self.legacy_request()
