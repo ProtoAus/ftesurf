@@ -20,6 +20,15 @@ transport/consent controls passed with synthetic fixture data; the following are
 
 Reply with "page readable / Allow and Stop work / left off" (or explicitly opted
 in and the run's map/time). No pass is recorded until you confirm what you observed.
+## P778 — demo playback: skip and hide failed stage attempts
+
+Open a replay of a run where you failed a stage and retried (back in the stage box, or
+`!r`). The playback bar marks the failed attempts in yellow beside the red still
+stretches; the "skip fails (N)" chip beside "skip still" jumps them while playing,
+landing half a second before the attempt that counted. hud_edit > Run lines > "Demo
+attempts: successful only" takes them off the demo line (and the run graph). "stage N
+only" from a board stage row now starts at the attempt that counted, not at the stage's
+first entry. Verdict PENDING ("demo fails ok" or what looks wrong).
 
 ## P773 — paint sprays while held, Rate and Random; body/belt colour presets
 

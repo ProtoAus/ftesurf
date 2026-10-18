@@ -365,6 +365,24 @@ float *rec_wt_zl;               // every END, STAGE and CHECKPOINT region, table
 float  rec_wt_pw0[WT_STGMAX];         // a seg's `stagepost` window, ticks; -1 none
 float  rec_wt_pw1[WT_STGMAX];
 float  rec_wt_abandon;                // an `abandon` record: no finish row
+
+/*
+  Patch 778: THE FAILED ATTEMPTS, "show only successful stages ... like the remove
+  stills".  An attempt starts at `stagestart <seg>` (leaving the box) and fails at
+  `restart <seg>` (back in it, or `!r`).  A segment that restarted is unsuccessful
+  from its `stage` entry to its last attempt's start; an abandoned run's last one to
+  the end.  One span a segment, run seconds, in order (Watch_Scan pass one).
+*/
+#define WT_FAILMAX 24
+#define WT_FAILLEAD 0.5               // a skip lands this far ahead of the attempt
+float  rec_wt_ft0[WT_FAILMAX];
+float  rec_wt_ft1[WT_FAILMAX];
+float  rec_wt_ftseg[WT_FAILMAX];
+float  rec_wt_ftn;
+float  rec_wt_ftover;                 // spans past WT_FAILMAX, reported by `replay status`
+float  rec_wt_ftline;                 // hud_watch_path_fails the line was built with
+float  rec_wt_la[WT_STGMAX];          // a seg's last attempt: `stagestart` or `restart` tick
+float  wt_fseg, wt_fent, wt_frest, wt_fss;  // pass one's segment, entry, restart, start
 float  rec_wt_winseg;                 // the window's seg, -1 none
 float  rec_wt_wint0, rec_wt_wint1;    // its start and stop, run seconds
 // Patch 431: what the bar, seeks and playback cover -- the file, or the window
@@ -660,6 +678,7 @@ void() Watch_Free =
 	rec_wt_inf = __NULL__;
 	Line_Clear(0);
 	rec_wt_evn  = 0;
+	rec_wt_ftn  = 0;                // Patch 778
 	rec_wt_on   = FALSE;
 	rec_wt_wincut = FALSE;          // Patch 395: no window survives the file
 	rec_wt_winseg = -1;
@@ -1152,13 +1171,45 @@ float(float i) Watch_Flags =
 	return fl;
 };
 
+// Patch 778: pass one's segment as a failed span, if it restarted (or the run was
+// abandoned in it); endb is the trailer's tick for that last case.
+void(float endb, float aband) Watch_FailClose =
+{
+	local float a, b;
+
+	a = b = -1;
+	if (aband && wt_fent >= 0)
+	{
+		a = wt_fent;
+		b = endb;
+	}
+	else if (wt_frest >= 0)
+	{
+		a = max(wt_fent, 0);
+		b = (wt_fss >= 0) ? wt_fss : wt_frest;     // no `stagestart` at run_stagearm 0
+	}
+	if (b > a)
+	{
+		if (rec_wt_ftn < WT_FAILMAX)
+		{
+			rec_wt_ft0[rec_wt_ftn]   = a * rec_wt_tickrate;
+			rec_wt_ft1[rec_wt_ftn]   = b * rec_wt_tickrate;
+			rec_wt_ftseg[rec_wt_ftn] = wt_fseg;
+			rec_wt_ftn = rec_wt_ftn + 1;
+		}
+		else
+			rec_wt_ftover = rec_wt_ftover + 1;
+	}
+	wt_frest = wt_fss = -1;
+};
+
 void() Watch_Scan =
 {
 	local float i, n, c, ver, nextix;
 	local string s;
 	local float vp, vq;
 	local float wpseg, wpdur, wpend;
-	local float mrate;
+	local float mrate, k;
 
 	rec_wt_rec0     = 0;
 	rec_wt_nsamp    = 0;
@@ -1306,8 +1357,11 @@ void() Watch_Scan =
 	{
 		rec_wt_pw0[i] = -1;
 		rec_wt_pw1[i] = -1;
+		rec_wt_la[i]  = -1;
 	}
 	rec_wt_abandon = FALSE;
+	rec_wt_ftn = rec_wt_ftover = 0;
+	wt_fseg = wt_fent = wt_frest = wt_fss = -1;
 	wpseg = -1;
 	wpdur = 0;
 	rec_wt_bdn_n  = 0;
@@ -1372,6 +1426,38 @@ void() Watch_Scan =
 			rec_wt_abandon = TRUE;
 			continue;
 		}
+		// Patch 778: the attempts (see rec_wt_ft0).
+		if (argv(0) == "stagestart")
+		{
+			if (n >= 3)
+			{
+				k = stof(argv(1));
+				if (k == wt_fseg)
+				if (wt_frest >= 0)
+					wt_fss = stof(argv(2));
+				if (k >= 0 && k < WT_STGMAX)
+					rec_wt_la[k] = stof(argv(2));
+			}
+			continue;
+		}
+		if (argv(0) == "restart")
+		{
+			if (n >= 3)
+			{
+				if (stof(argv(1)) != wt_fseg)
+				{
+					Watch_FailClose(-1, FALSE);
+					wt_fseg = stof(argv(1));
+					wt_fent = -1;       // no `stage` record for it: from the run's start
+				}
+				wt_frest = stof(argv(2));
+				wt_fss = -1;
+				k = stof(argv(1));
+				if (k >= 0 && k < WT_STGMAX)
+					rec_wt_la[k] = wt_frest;    // the stage's clock re-opens here
+			}
+			continue;
+		}
 		if (wpseg >= 0)
 		{
 			wpend = -1;
@@ -1394,12 +1480,21 @@ void() Watch_Scan =
 		if (argv(0) == "end")
 		{
 			rec_wt_endticks = stof(argv(1));
+			Watch_FailClose(rec_wt_endticks, rec_wt_abandon);     // Patch 778
 			// end <ticks> <samples> <pad> <cps>.  Guarded on the width rather
 			// than assumed: a REC 2 trailer is two fields and argv(3) of it is
 			// "", which stofs to a confident zero.
 			if (n >= 4)
 				rec_wt_pad = stof(argv(3));
 			continue;
+		}
+
+		if (argv(0) == "stage")         // Patch 778: a new segment's entry
+		if (n >= 3)
+		{
+			Watch_FailClose(-1, FALSE);
+			wt_fseg = stof(argv(1));
+			wt_fent = stof(argv(2));
 		}
 
 		if (rec_wt_evn >= WT_EVMAX)
@@ -1428,6 +1523,8 @@ void() Watch_Scan =
 			continue;
 		}
 	}
+
+	Watch_FailClose(-1, FALSE);     // Patch 778: a file with no trailer
 
 	// ---- the seek index, t0 and t1 -----------------------------------------
 	rec_wt_ixstep = ceil(rec_wt_nsamp / (WT_IDX - 1));
@@ -1660,6 +1757,7 @@ void(float ra, float rb) Watch_ScanRange =
 	local float t, spd, idlim, idmin, idpad, idfrom, idon, idnow;
 	local vector v, nrm, wsh;
 	local float fl, key;
+	local float fon, fi, fgap, fany, fbrk, fhide;
 
 	rec_wt_bt0 = ra;
 	rec_wt_bt1 = rb;
@@ -1698,6 +1796,11 @@ void(float ra, float rb) Watch_ScanRange =
 	Line_Tick(0, rec_wt_tickrate);
 	Line_GraphGravity(0, rec_wt_graphgravity);
 	Line_Owner(0, rec_wt_owner);
+	// Patch 778: hud_watch_path_fails 0 leaves the failed attempts off the line.
+	rec_wt_ftline = (cvar("hud_watch_path_fails") != 0);
+	fon = !rec_wt_ftline;
+	fi = 0;
+	fgap = fany = FALSE;
 
 	/*
 	  The dead-air thresholds, read ONCE.  Registered by Watch_Init with these
@@ -1803,10 +1906,36 @@ void(float ra, float rb) Watch_ScanRange =
 		                   stof(argv(WT_C_NORM + 2))] : '0 0 0';
 		wsh = Watch_WishOf(stof(argv(WT_C_YAW)), stof(argv(WT_C_MOVE)),
 		                   stof(argv(WT_C_MOVE + 1)));
-		if (ln_xon[0])
-			Line_Plane(0, nrm, fl & WT_F_DUCKED);   // Patch 628: for the ramp's edge
-		Line_Point(0, o, v, fl, t, (c > 0) ? rec_wt_snlast : 0, rec_wt_sstitch,
-		           [stof(argv(WT_C_YAW)), nrm_z, wsh * nrm]);
+		// Patch 778: a failed attempt's samples are left out, and the line breaks
+		// where it resumes (a teleport's join, inside the stage's box).
+		fhide = FALSE;
+		if (fon)
+		{
+			while (fi < rec_wt_ftn)
+			{
+				if (t < rec_wt_ft1[fi])
+					break;
+				fi = fi + 1;
+			}
+			if (fi < rec_wt_ftn)
+			if (t >= rec_wt_ft0[fi])
+				fhide = TRUE;
+		}
+		if (fhide)
+			fgap = TRUE;
+		else
+		{
+			fbrk = (c > 0) ? rec_wt_snlast : 0;
+			if (fgap)
+			if (fany)
+				fbrk = TRUE;
+			if (ln_xon[0])
+				Line_Plane(0, nrm, fl & WT_F_DUCKED);   // Patch 628: for the ramp's edge
+			Line_Point(0, o, v, fl, t, fbrk, rec_wt_sstitch,
+			           [stof(argv(WT_C_YAW)), nrm_z, wsh * nrm]);
+			fgap = FALSE;
+			fany = TRUE;
+		}
 		rec_wt_spt    = t;
 		rec_wt_spo    = o;
 		rec_wt_spv    = v;
@@ -1815,7 +1944,8 @@ void(float ra, float rb) Watch_ScanRange =
 		rec_wt_sfrc   = FALSE;
 		rec_wt_sveto  = FALSE;
 		rec_wt_sdkrst = FALSE;
-		rec_wt_sstitch = FALSE;
+		if (!fhide)
+			rec_wt_sstitch = FALSE;   // Patch 778: a hidden sample hands its stitch on
 
 		c = c + 1;
 		if (t > rb)
@@ -1867,6 +1997,7 @@ float wt_lj_graphgravity;
 float  wt_lj_tick, wt_lj_mtick, wt_lj_fleg, wt_lj_seg;
 float  wt_lj_track;             // Patch 622: the file's `track`, for Line_Leg
 float  wt_lj_wseg, wt_lj_wdur, wt_lj_pa, wt_lj_pb, wt_lj_sa, wt_lj_sb, wt_lj_end;
+float  wt_lj_ss;                // Patch 778: the leg's last `stagestart`/`restart` tick, -1 none
 float  wt_lj_ta, wt_lj_tb;      // the window, run seconds
 float  wt_lj_c, wt_lj_pt, wt_lj_frc, wt_lj_veto, wt_lj_ride;
 float  wt_lj_stitch;             // a save state came back in this interval
@@ -1926,9 +2057,23 @@ void(float seg, float src) Watch_StageSpan =
 		if (sg == seg + 1)
 		{
 			wt_ws_b = tk;
-			return;
+			break;
 		}
 	}
+
+	// Patch 778: and from its last attempt, where the stage's own clock starts
+	// (SV_StageStart, or SV_StageOpen at a fail), as a `stagepost` window does.
+	// Only inside a window found: a missing `stage` record still finds none.
+	tk = -1;
+	if (src)
+		tk = wt_lj_ss;
+	else if (seg >= 0)
+	if (seg < WT_STGMAX)
+		tk = rec_wt_la[seg];
+	if (wt_ws_a >= 0)
+	if (tk > wt_ws_a)
+	if (tk < wt_ws_b)
+		wt_ws_a = tk;
 };
 
 void() Watch_LineJobStop =
@@ -2035,6 +2180,7 @@ float(float slot, string path, float leg) Watch_LineJobStart =
 	wt_lj_track = 0;
 	wt_lj_wseg  = -1;
 	wt_lj_pa = wt_lj_pb = wt_lj_sa = wt_lj_sb = wt_lj_end = -1;
+	wt_lj_ss = -1;
 	// Patch 441: the JOB's table, cleared for this file.  Patch 437 cleared the
 	// replay's here instead, which is why a board line stole the splits and the
 	// finish of a replay that was already open.
@@ -2152,7 +2298,7 @@ float() Watch_LineJobStep =
 			}
 			// Watch_Scan's pass one for one stage: `stagepost` then the closing
 			// `stage`/`end`, and the `stage` records around it for an old file.
-			if (c != 115 && c != 101)           // 's' 'e'
+			if (c != 115 && c != 101 && c != 114)   // 's' 'e' 'r'
 				continue;
 			n = tokenize(s);
 			seg = wt_lj_leg - 1;
@@ -2162,6 +2308,15 @@ float() Watch_LineJobStep =
 				wt_lj_wdur = stof(argv(2));
 				continue;
 			}
+			if (argv(0) == "stagestart" || argv(0) == "restart")
+			{
+				if (n >= 3)
+				if (stof(argv(1)) == seg)
+					wt_lj_ss = stof(argv(2));
+				continue;
+			}
+			if (c == 114)
+				continue;
 			k = -1;
 			if (argv(0) == "end")
 			{
@@ -4813,6 +4968,19 @@ void(vector scr) Watch_Chrome =
 		sui_fill([p_x + pad + xa, y + (small + 4) * 0.5 - th * 0.5],
 		         [xb - xa, th], SUI_THEME_BAD, 0.9, 0);
 	}
+	// Patch 778: the failed attempts, butter, the same way.
+	if (rec_wt_vt1 > rec_wt_vt0)
+	for (i = 0; i < rec_wt_ftn; i = i + 1)
+	{
+		if (rec_wt_ft1[i] < rec_wt_vt0 || rec_wt_ft0[i] > rec_wt_vt1)
+			continue;
+		xa = bound(0, bw * (rec_wt_ft0[i] - rec_wt_vt0) / (rec_wt_vt1 - rec_wt_vt0), bw);
+		xb = bound(0, bw * (rec_wt_ft1[i] - rec_wt_vt0) / (rec_wt_vt1 - rec_wt_vt0), bw);
+		if (xb - xa < 1)
+			xb = xa + 1;
+		sui_fill([p_x + pad + xa, y + (small + 4) * 0.5 - th * 0.5],
+		         [xb - xa, th], SUI_THEME_WARN, 0.75, 0);
+	}
 
 	/*
 	  THE PLAYHEAD, and there was not one.
@@ -4902,6 +5070,23 @@ void(vector scr) Watch_Chrome =
 
 	if (sui_is_released("wt_skip"))
 		localcmd(skon ? "hud_watch_skipidle 0\n" : "hud_watch_skipidle 1\n");
+
+	// Patch 778: and the failed attempts, its twin, left of it.
+	skon = cvar("hud_watch_skipfail");
+	s = (rec_wt_ftn > 0) ? sprintf("skip fails (%g)", rec_wt_ftn) : "skip fails";
+	xb = stringwidth(s, TRUE, [tiny, tiny]) + pad;
+	if (skx - gap - xb >= p_x + pad)        // a very large hud_watch_scale: left out
+	{
+	skx = skx - gap - xb;
+	skw = skw + gap + xb;
+	sui_action_element([skx, y - 2], [xb, tiny + 4], "wt_skipfail", sui_noop);
+	sui_roundbox([skx, y - 2], [xb, tiny + 4], (tiny + 4) * 0.5,
+	             sui_is_hovered("wt_skipfail") ? SUI_THEME_HOVER : SUI_THEME_CHIP, 1);
+	sui_text([skx + pad * 0.5, y], [tiny, tiny], s,
+	         (skon && rec_wt_ftn > 0) ? SUI_THEME_WARN : SUI_THEME_DIM, 1, 0);
+	if (sui_is_released("wt_skipfail"))
+		localcmd(skon ? "hud_watch_skipfail 0\n" : "hud_watch_skipfail 1\n");
+	}
 
 	// Patch 431: a stage window's cut, and the way back to the whole run.
 	if (rec_wt_winseg >= 0)
@@ -5351,6 +5536,18 @@ void(float navfocus) Watch_Frame =
 		return;
 	}
 
+	// Patch 778: the line filter's switch rebuilds what was built, as a cut does.
+	if (rec_wt_ftn > 0)
+	if (rec_wt_ftline != (cvar("hud_watch_path_fails") != 0))
+	{
+		Watch_ScanRange(rec_wt_bt0, rec_wt_bt1);
+		Watch_BuildSeq();
+		Watch_LineRange();
+		Watch_Seek(rec_wt_time);
+		print(sprintf("replay: line rebuilt, failed attempts %s\n",
+		              rec_wt_ftline ? "shown" : "left out"));
+	}
+
 	dt = cltime - rec_wt_lastreal;
 	rec_wt_lastreal = cltime;
 	dtcl = dt;
@@ -5434,6 +5631,30 @@ void(float navfocus) Watch_Frame =
 			if (rec_wt_time < rec_wt_idt1[i])
 			{
 				Watch_Seek(rec_wt_idt1[i] + rec_wt_tickrate);
+				break;
+			}
+		}
+
+		// Patch 778: and the failed attempts, landing WT_FAILLEAD before the one that
+		// succeeded, so you see it leave the box.  Only a jump that saves more than
+		// WT_FAILLEAD is taken: a stage window's 1 s lead-in starts inside the span.
+		// Not the stage a window is cut to (an abandoned one's span is all of it), and
+		// not at the cut's end, which the window-end check below owns.
+		if (rec_wt_ftn > 0)
+		if (rec_wt_time < rec_wt_vt1)
+		if (cvar("hud_watch_skipfail"))
+		for (i = 0; i < rec_wt_ftn; i = i + 1)
+		{
+			if (rec_wt_time < rec_wt_ft0[i])
+				break;
+			if (rec_wt_wincut)
+			if (rec_wt_ftseg[i] == rec_wt_winseg)
+				continue;
+			if (rec_wt_time < rec_wt_ft1[i] - 2 * WT_FAILLEAD)
+			{
+				print(sprintf("replay: skipped failed stage %g attempts %.3f..%.3f\n",
+				              rec_wt_ftseg[i] + 1, rec_wt_time, rec_wt_ft1[i] - WT_FAILLEAD));
+				Watch_Seek(rec_wt_ft1[i] - WT_FAILLEAD);
 				break;
 			}
 		}
@@ -5604,6 +5825,7 @@ string(float track, float leg, string tag) Watch_BestOnLeg =
 void() Watch_Status =
 {
 	local vector sv;
+	local float i;
 	if (!rec_wt_open)
 	{
 		print("replay: nothing loaded\n");
@@ -5649,6 +5871,12 @@ void() Watch_Status =
 	              rec_wt_idn,
 	              (rec_wt_idover > 0) ? sprintf(" (+%g dropped)", rec_wt_idover) : "",
 	              cvar("hud_watch_skipidle")));
+	print(sprintf("  fails %g span(s)%s  skip %g  line %s\n", rec_wt_ftn,
+	              (rec_wt_ftover > 0) ? sprintf(" (+%g dropped)", rec_wt_ftover) : "",
+	              cvar("hud_watch_skipfail"), rec_wt_ftline ? "all" : "successful only"));
+	for (i = 0; i < rec_wt_ftn; i = i + 1)
+		print(sprintf("    stage %g failed %.3f..%.3f\n", rec_wt_ftseg[i] + 1,
+		              rec_wt_ft0[i], rec_wt_ft1[i]));
 	/*
 	  The screen-space drawer's last frame.  Three numbers because "the line is
 	  not there" has three different causes and they need telling apart: mode/0
@@ -6339,4 +6567,6 @@ void() Watch_RegisterCvars =
 	registercvar("hud_watch_idle_time", "0.5", CVAR_ARCHIVE);
 	registercvar("hud_watch_idle_pad", "0", CVAR_ARCHIVE);
 	registercvar("hud_watch_skipidle", "1", CVAR_ARCHIVE);
+	registercvar("hud_watch_skipfail", "0", CVAR_ARCHIVE);     // Patch 778
+	registercvar("hud_watch_path_fails", "1", CVAR_ARCHIVE);   // 0: successful attempts only
 };

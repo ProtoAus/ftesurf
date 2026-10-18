@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   647cb92bc151860c3937ba4a4cb2fa1e07e97fb8
+commit   29ddd0a6a7f7e464d21ca60ce5aee561490e6bce
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,13 +24,25 @@ commit   647cb92bc151860c3937ba4a4cb2fa1e07e97fb8
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-774
-patch    774
+tag      patch-780
+patch    780
+# Patch 780 (engine + hl2 plugin): Source map visuals. The leaf-ambient sample index wraps past
+# 65535 (VRAD stores it in a short) and is rebuilt from the running count; the cube is VRAD's
+# inverse-square blend of the leaf's samples; static props with no lighting origin are lit
+# from the model's $illumposition; Wireframe/$wireframe materials draw as lines
+# (fte_wireframe); a face whose image will not load draws the checker at hl2_missinggrid units.
+# surf_me's pillars, surf_not_so_sinister's ramp, surf_666's spawn. Client exe + plugin DLL.
+# Patch 776 (engine + csprogs): `surf_view` draws a dither over collision -- red on surfable
+# faces (normal z 0.1..0.7, displacements both sides, prop hull pieces) and every
+# trigger_*teleport*, yellow on player-solid nodraw/clip faces; csprogs: ent_view mouse1 pins
+# and expands the card with the server's ent_info answer, mouse2 copies it. Client exe for
+# surf_view; the csprogs runs on older engines (tested on 0.1.26).
 # Patch 774 (engine + collector): signed, nonce-bound input journals use fixed-origin HTTPS
 # instead of the 4 MiB game netchan. Raw uploads require separate default-off consent;
 # old clients keep raw data local. View transport and ranking stay intact. Atomic digest-
 # checked publication never replaces evidence.
 # Requires matching native client/server, collector module and nginx route. See tools/p774hidupload.md.
+# The commit pin includes both P774 and P780; the earlier patch-780 tag predates their merge.
 # Patch 772 (engine + csprogs): paint. adddecal_static's srange_z 1 (FTESURF_DECAL_SOURCE) also
 # clips to displacements and to brush entities in model space, and persistent decals are frustum-
 # culled; csprogs adds `paint` and draws the player trail as a line. Client exe only; the csprogs

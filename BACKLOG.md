@@ -5,6 +5,60 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Source map visuals: what Patch 780 left out
+
+- **surf_devil's ramp props** (Lex, 18 Oct, saves 1-2): `stage03_ramp09_1` too warm and
+  flat, `stage03_curvedramp` too dark. A static prop without a .vhv bake is lit from one
+  point; Source evaluates local lights per vertex. `hl2_lightprobe 6048 -7584 -9664` shows
+  three warm lights near ramp09's centre applied to all 3264 units; from the curved ramp's
+  centre (`4736 -12192 -10752`) every light is blocked that its surface would see. Fix:
+  per-vertex (or per-pixel) local lights for unbaked props (engine
+  HL2_MODEL_LIGHTING.md §2).
+- **Static prop collision transforms are misindexed after a skipped record**
+  (plugins/hl2/mod_vbsp.c `VBSP_LoadStaticProps`: `prv->staticprops[i].transform` uses
+  the lump index `i`; the prop lives at the compacted `sent` slot). On maps that skip
+  records (P257's census: what_is_this, surf_shoria) later props collide with another
+  prop's transform. Found by P780's review, pre-existing. Movement-affecting: its own
+  patch and review.
+- **v25 (Strata) maps get no leaf ambient**: 171 of 185 carry an 8-byte-per-leaf index
+  lump and `VBSP_LoadLeafLight` returns at its size check, so their unbaked props light
+  from `hl2_lt_min` and worldlights only.
+- **Solid leaves' neighbour reference**: a leaf with no samples stores a neighbouring
+  leaf's index in `firstAmbientSample` (VRAD :694-703); FTE treats it as no data, so a
+  prop sampled inside solid falls to `hl2_lt_min` where Source borrows the neighbour.
+- **Wireframe**: drawn unlit (Source: VertexLitGeneric lighting) and fogged on the pass
+  arm; `$no_draw` is not honoured (surf_aquaflow's `devbbox` props draw as white wire
+  boxes, Source draws nothing); GL only -- GLES, core profiles, Vulkan, D3D and rtlight
+  shadow-map casters draw it filled.
+- **Missing-checker grid** covers T_GEN_DIFFUSE materials only: a pass-based UnlitGeneric
+  (`map X`) whose image fails keeps the texinfo scale, and so does a two-layer material
+  whose first layer alone is missing (surf_minigolf, bhop_angst). A probe that finds an
+  image by a route `LocateFile` misses leaves a mipless duplicate loaded until the next purge.
+
+## surf_view and ent_view's pin: what Patch 776 left out
+
+- Site: engine `client/cl_ents.c` CLQ1_AddVisibleHulls (r_showhull) and every other
+  R_CullSphere at CL_LinkPacketEntities time. Its frustum is whichever view rendered
+  last; on surf_boreas (3D sky) it culled 85,992 of surf_view's 86,076 faces looking
+  over the map, so r_showhull may drop props on 3D-sky or portal maps. Check:
+  r_showhull 1 on surf_boreas, looking over the valley, against a build that skips the cull.
+- Site: `src/server/sv_zones.qc` SV_EntInfo. It answers the smallest box of the class
+  that holds the asked point, so a large trigger whose centre lies in a smaller one of
+  its class is described as the small one, by ent_here and by a pinned card alike.
+  An echoed request token (client sends, server prints in the header) would also end the
+  last attribution gap: two same-class entities with no `*N`, targetname or target
+  pinned within one round trip. Check: pin a big untargeted trigger_multiple around a
+  small one; the card's solidity/outputs are the small one's.
+- Site: `client/cl_ents.c` SurfView_Build. Static props with no hull pieces (traced as
+  their model) and Q3 patches/triangle soups are not drawn; on a mover below version 7 a
+  prop collides as its mesh while the overlay shows its hull. Check: `surf_view` prints
+  "N of M static prop(s) have no hull pieces".
+- Site: the same. From outside the playable map (noclip above the sky), the 3D sky
+  room's and other hidden areas' faces show floating in the sky: nothing is PVS-culled,
+  only depth-tested. Check: surf_boreas, setpos 1500 above the start, yaw 90.
+- Site: the same, SurfView_Teleports. A teleport parented to a mover is drawn where
+  the lump puts it. Check: a map with a moving trigger_teleport.
+
 ## Paint: what Patch 772 left out
 
 - Site: engine `client/cl_ents.c` CL_ClipPersistDecal. Static props take no decal
@@ -214,6 +268,16 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - Falsifier: a scratch dir with one good `.rec` and one that cannot be opened.
   The sweep must name the second as unreadable -- a third verdict, not a fault
   or a pass -- and still check the first.
+
+## Demo attempts filter hides an abandoned run's whole last stage (P778)
+
+- Site: `src/client/cl_watch.qc` `Watch_FailClose` (abandon branch) and the
+  `hud_watch_path_fails` filter in `Watch_ScanRange`. An abandoned run's last stage is
+  one failed span from its entry to the end, so with "Demo attempts: successful only"
+  the "stage N only" window of that stage draws almost no line ("1 shown" in `replay
+  status` on the 990042 fixture). The skip already leaves the cut stage alone.
+- Falsifier: the fixture (`onlinecache.py fixture` from r42), `hud_watch_path_fails 0`,
+  `replay window 5`: `replay status` should show the stage's samples, not 1.
 
 ## Disconnected Friends: live (P770); the owner's in-game check is open (P741)
 

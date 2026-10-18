@@ -1253,6 +1253,10 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 
 	if (evtype == IE_KEYDOWN)
 	{
+		// Patch 776: ent_view's mouse1/mouse2, before Keys_Edge so the key HUD
+		// shows no duck or jump the game never got.  See Ev_PassiveMouse.
+		if (Ev_PassiveMouse(scanx))
+			return TRUE;
 		Keys_Edge(scanx, TRUE);
 
 		// Build 48: the two gestures that ASK the passive card for the cursor,

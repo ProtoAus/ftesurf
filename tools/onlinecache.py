@@ -231,6 +231,7 @@ def windows(path):
     if rate <= 0:
         rate = f32(PM_TICK)
     pw0, pw1 = [-1.0] * WT_STGMAX, [-1.0] * WT_STGMAX
+    la = [-1.0] * WT_STGMAX     # Patch 778: a seg's last `stagestart` or `restart` tick
     ev, endticks, abandon, wpseg, wpdur = [], 0.0, False, -1, 0.0
     t0 = t1 = None
     for l in lines[body:]:
@@ -250,6 +251,10 @@ def windows(path):
         if tok[0] == 'abandon':
             abandon = True
             continue
+        if tok[0] in ('stagestart', 'restart'):
+            if len(tok) >= 3 and 0 <= int(float(tok[1])) < WT_STGMAX:
+                la[int(float(tok[1]))] = f32(float(tok[2]))
+            continue
         if wpseg >= 0:
             wpend = -1.0
             if tok[0] == 'end':
@@ -267,7 +272,7 @@ def windows(path):
             continue
         if tok[0] in ('stage', 'cp') and len(tok) >= 3:
             ev.append((tok[0], int(float(tok[1])), f32(float(tok[2]))))
-    return {'rate': rate, 'pw0': pw0, 'pw1': pw1, 'ev': ev, 'end': endticks,
+    return {'rate': rate, 'pw0': pw0, 'pw1': pw1, 'la': la, 'ev': ev, 'end': endticks,
             'abandon': abandon, 't0': t0 or 0.0, 't1': t1 or 0.0}
 
 
@@ -286,6 +291,9 @@ def stage_window(w, seg):
             if s == seg + 1:
                 b = tick
                 break
+        # Patch 778: from the stage's last attempt, where its own clock starts.
+        if a >= 0 and a < w['la'][seg] < b:
+            a = w['la'][seg]
     if a < 0 or b <= a:
         return None
     rate = w['rate']
@@ -324,7 +332,8 @@ PINNED_WINDOWS = [   # (id, 0-based seg, the line)
     (18, 1, 'replay: stage 2 window 7.8750..17.2350 s from 6.8750 (ticks 525..1149, stagepost)'),
     (18, 0, 'replay: stage 1 window 0.0000..6.6300 s from -1.0000 (ticks 0..442, stagepost)'),
     (16, 2, 'replay: stage 3 window 23.7800..36.8600 s from 22.7800 (ticks 2378..3686, stagepost)'),
-    (3, 1, 'replay: stage 2 window 8.5350..20.5500 s from 7.5350 (ticks 569..1370, stage records)'),
+    # Patch 778: from `stagestart 1 688`, the stage's own clock, not `stage 1 569`.
+    (3, 1, 'replay: stage 2 window 10.3200..20.5500 s from 9.3200 (ticks 688..1370, stage records)'),
     (18, 8, 'replay: no window for stage 9 in this file'),
 ]
 
