@@ -175,6 +175,9 @@ DENY_EXACT = {
                              "relations), written at runtime; absent, the panel "
                              "waits for the first fetch.",
     "data/friends_menu.tmp": "Patch 781: MF_Save's write-then-rename sibling.",
+    "data/friends_toasted.txt": "Patch 788: the accounts whose added-you toast was "
+                                "shown, written at runtime by cl_friends.qc "
+                                "(Friends_SeenAdd); absent, none has been.",
     "sound/": "A search root, not a file (cl_banner.qc's Bn_SndPath).",
     "maps/surf_666.bsp": "Harness literal (cl_board.qc test path), not content.",
     "maps/surf_kitsune.bsp": "Harness literal (cl_hud.qc test path), not content.",
