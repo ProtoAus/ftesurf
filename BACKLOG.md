@@ -5,6 +5,40 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Index guards on one side of && / || (found sweeping for P795's shape)
+
+QC evaluates both sides, so a guard beside an array read does not guard it, and a
+bound-check failure kills the VM (P795 took the menu down this way).
+- Site: `src/client/cl_triggers.qc:630` TG_IOApply, `if (s >= 0 && tg_kind[s])` with
+  `s = io_src[o]`, which is -1 (another entity) or -3 (logic_auto). Reached for a
+  `!self` output whose owner is not a predicted trigger; on such a map the CSQC
+  aborts. Fix: nest the if. Check: a map (or fixture) with `logic_auto` OnMapSpawn
+  `!self,...` or a non-trigger `!self` output; `cl_trigdebug 2` and the console's
+  "Progs boundcheck failed".
+- Not faults, but out-of-range reads: `cl_online.qc:2158` (`ob_wrow[i]`) and
+  `cl_lines.qc:1135` (`ln_fgn[s]` in a ternary) index memalloc'd pointers, which are not
+  bound-checked; `cl_trainer.qc:334` reads `trn_s_dur[i]` with `i = trn_n - 1`, safe
+  only while `trn_dir` implies `trn_n >= 1`.
+
+## What the P796/P797 reviews found that predates them
+
+- Site: `src/client/cl_replay.qc:378-385` (gate), used at :980 (angle sidecar) and
+  :1433 (journal). They require only the offline terms tier, so an offline-tier
+  player who joins a lobby by console `connect` still uploads the sidecar, and the
+  journal if `rec_hid_upload` is 1. Check: offline tier, `connect` to an `fs_ul 2`
+  lobby, finish a run; the server's evidence log names the upload. Gate on
+  FS_TERMS_ONLINE.
+- Site: `src/menu/m_main.qc` ui_terms_col. Neither terms text mentions the client's
+  own angle-sidecar upload (`rec_upload`, default 1; cl_replay.qc:979-1002). Adding
+  it is a disclosure change: Lex decides whether FS_TERMS_ONLINE moves with it.
+- Site: `src/menu/m_main.qc` ui_hover. It marks itself synthetic for 1.5 s
+  (ui_synth_t) but leaves the cursor parked in mouse mode, so `ui_hover @tm_journal`
+  (or @tm_online) and a 2 s wait aim the player's next real Enter or unmoved click.
+  A flag only real mouse motion clears would close it (P796 review round 2).
+- Site: `src/server/sv_player.qc` setpos branch. It lacks the resume, replay-pin and
+  ghost refusals SV_TpPlayer has (both share SV_SetPosSelf). Check: `setpos` during a
+  resume or a replay pin, against `tp_player` in the same state.
+
 ## Held recording clocks: what the Patch 785 reviews found
 
 Two static reviews of 248867ee (18 Oct, before its lobby deploy) seeded this list.
@@ -3347,6 +3381,8 @@ below is the collection side and the rules that still only note.
   cheat latch does not survive the arm it caused. Worth speed only where a fall
   can leave the box. Fix: ground-snap a setpos that lands in a start or stage
   zone, as SV_SaveLocPickInZone does, or keep its cheat latch across that arm.
+  P797's `tp_player` (SV_SetPosSelf) reaches it from the player list, behind a
+  target that is airborne in a box (P797 review, code-read).
 - **A HOST-SIDE INABILITY TO VERIFY IS RECORDED PERMANENTLY AGAINST THE PLAYER'S
   RUN.** `pm_verify` answers PASS / HOLD / REFUSE, and REFUSE is documented as
   "cannot say, never a judgement on the run" -- but `surfd/sweep.py:236-238` sets

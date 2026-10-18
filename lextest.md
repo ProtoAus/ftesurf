@@ -1,5 +1,31 @@
 # lextest.md — things waiting on a human
 
+## P797 — Teleport on the TAB player list
+
+TAB, Players: every other player's row has **Teleport** after Profile. Click it:
+the board closes and you stand just behind them, facing their way. A run you were
+on is cancelled, as `!r` cancels one. One teleport a second; "no room to stand" if
+they are inside a wall. Installs/lobbies: DEPLOY_797.
+
+"Works / lands wrong at <map, spot> / button in the wrong place". Verdict PENDING.
+
+## P796 — the short "Before you play", and the journal box
+
+A fresh install (or `ui_strip_test screen terms`) shows four lines, a box "Send my
+input journal for anti-cheat review (optional, online; F2 changes it)", and Quit /
+Full details / Play offline / Play online. Full details shows the old two cards. The main menu's
+"Input journal uploads" button is gone; F2 has "Input journal uploads: on/off ->
+Change". Installs: DEPLOY_796.
+
+"Short enough / still too long / wording". Verdict PENDING.
+
+## P795 — a map clicked in a profile no longer breaks the menu
+
+Open someone's profile in game, click a map: the board opens with pictures, and
+ESC still brings up World of Surf's menu, not Quake's. Installs: DEPLOY_795.
+
+"Fixed / still breaks". Verdict PENDING.
+
 ## P800 — `r_budget_csqc`: CSQC by QC file; the panel's own time
 
 Engine patch-800 (exe 33466461, `git-7464-patch-800-0-g553f9a4bd`) in both installs since
@@ -200,9 +226,9 @@ match both Windows installs (QC fa6f8aff, including P779). A fresh served-client
 board smoke passes with zero QC errors. Collector/proxy rollout is still blocked;
 check the panel only until the operator confirms the real collector is live.
 
-- Main menu: **Input journal uploads** should open a readable separate page.
-  Check it at your normal window size and, if easy, 640x480. The small button
-  should not overlap the analyser or the four main menu entries.
+- Since P796 the way in is the box on the first-boot terms (with "Play online") and
+  the way back is F2's **Input journal uploads: on/off -> Change**, which opens the
+  separate page; the main-menu button is gone.
 - It starts **off**. Accepting the online terms must not turn it on. If you agree
   to share your run's raw mouse/keyboard journal with play.proto.bar for anti-cheat
   review, click **Allow journal uploads**: the button should become **Stop journal
