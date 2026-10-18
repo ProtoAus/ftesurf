@@ -1248,6 +1248,12 @@ cannot be used, ask; do not silently scatter copies elsewhere.
 
 ## Build
 
+- Windows Python `Path.write_text()` translates LF patch lines to CRLF. A generated
+  exact-context `git apply --cached --check` then fails against LF index blobs.
+  Emit patch bytes with `write_bytes(text.encode("utf-8"))`: the same contexts pass
+  without whitespace-ignore flags. Diagnose line endings before changing anchors
+  or staging a whole mixed/shared file (P793 delivery bookkeeping, 18 Oct).
+
 **Native isolation pitfall (historical P541; rechecked P729).** That older
 `build.ps1 -Engine -NoDeploy` suppressed only QC deployment and still copied
 native outputs to both installs. Current source has a native NoDeploy guard;

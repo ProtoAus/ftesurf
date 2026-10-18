@@ -392,6 +392,45 @@ def test_unavailable_angles_keep_view_faults():
             check("epoch valid: no unsupported angular-mismatch accusation", r.faults, [])
 
 
+def test_initial_clock_origin():
+    import test_reccheck as vectors
+
+    trusted, good = vectors.held_clock_pair(holds=((0, 73),))
+    invalid = trusted[:]
+    ix = next(i for i, line in enumerate(invalid) if line.startswith("hold "))
+    fields = invalid[ix].split()
+    fields[2] = str(int(fields[2]) + 1)
+    invalid[ix] = " ".join(fields)
+    base = vectors.build(sweep=128, packets=600)
+    restored = vectors.head(base[:], "instart", "%d %d" %
+                            (vectors.HORIZON, vectors.HORIZON - 50))
+    nonfinite = vectors.view_for(base)
+    nonfinite[4] = "10.01 1 nan 0 0 0"
+    cases = [("trusted", trusted, good, False, "OK"),
+             ("before-origin", invalid, good, True, "BLIND"),
+             ("restored", restored, vectors.view_for(base, rot=5), False, "BLIND"),
+             ("restored-nonfinite", restored, nonfinite, False, "FAULT")]
+    for label, lines, view, bad_rec, expected in cases:
+        data = ("\n".join(view) + "\n").encode("utf-8")
+        r = rcptcheck.Receipt("origin.rcpt")
+        r.recpath = "origin.rec"
+        r.recdata = ("\n".join(lines) + "\n").encode("utf-8")
+        r.file_bytes["origin.view"] = data
+        r.signed = [("view", hashlib.sha256(data).hexdigest())]
+        with mock.patch("builtins.open", side_effect=AssertionError("reopened captured evidence")):
+            rcptcheck.join_angles(r, {"view": "origin.view"})
+        check("origin %s: digest check ACTED on captured bytes" % label,
+              (("view", "origin.view") in r.digest_checked, r.digest_bad), (True, {}))
+        check("origin %s: recording format result is independent" % label,
+              bool(r.rec_report.faults), bad_rec)
+        check("origin %s: receipt classification respects clock authority" % label,
+              (r.angles, bool(r.faults)), (expected, expected == "FAULT"))
+        if label != "trusted":
+            check("origin %s: no unsupported angular conviction" % label,
+                  any("not this recording's" in x or "does not describe this recording" in x
+                      for x in r.faults), False)
+
+
 def test_retry_clock_faults():
     import test_reccheck as vectors
 
@@ -462,7 +501,8 @@ def main():
              test_absent_arrives_between_phases, test_explicit_view_and_bad_digest,
              test_missing_view_and_io, test_selected_rec_tail_io,
              test_unsigned_sibling_io, test_parser_bytes,
-             test_unavailable_angles_keep_view_faults, test_retry_clock_faults)
+             test_unavailable_angles_keep_view_faults, test_initial_clock_origin,
+             test_retry_clock_faults)
     for test in tests:
         try:
             test()

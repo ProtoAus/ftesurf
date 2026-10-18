@@ -2224,6 +2224,70 @@ def case_angle_hold_origins():
           "clock abstention does not suppress independent sidecar format faults")
 
 
+def case_angle_initial_origin():
+    L, view = held_clock_pair(holds=((0, 73),))
+    faults, _, report = run(L, view=view, report=True)
+    check(not faults and "angle_rule     tight" in report,
+          "a first hold projecting exactly to the initial origin still ACTS")
+    ix = next(i for i, line in enumerate(L) if line.startswith("hold "))
+    fields = L[ix].split()
+    fields[2] = str(int(fields[2]) + 1)
+    bad = L[:]
+    bad[ix] = " ".join(fields)
+    faults, _, report = run(bad, view=view, report=True)
+    check(any("initial timer origin" in x for x in faults),
+          "a first exclusion cannot consume ticks before the initial origin")
+    check("angle_rule     unavailable" in report,
+          "an impossible first exclusion cannot judge either angular rule")
+    bad = L[:]
+    bad[ix] = "hold %d 0" % (HORIZON - 1)
+    faults, _, report = run(bad, view=view, report=True)
+    check(any("trace's own horizon" in x for x in faults),
+          "a hold cannot precede the recording's raw trace horizon")
+    check("angle_rule     unavailable" in report,
+          "an impossible raw hold horizon also withholds both angle rules")
+    base = head(build(sweep=128, packets=600), "flags", 1)
+    faults, _ = run(L, view=view_for(base, rot=5))
+    check(any("sidecar" in x for x in faults),
+          "trusted initial clock accounting still detects a rotated sidecar")
+
+
+def case_angle_initial_restore():
+    base = build(sweep=128, packets=600)
+    for declared in (False, True):
+        L = insert_before(base[:], "begin", "holdclock 1") if declared else base[:]
+        L = head(L, "instart", "%d %d" % (HORIZON, HORIZON - 50))
+        faults, _, report = run(L, view=view_for(base, rot=5), report=True)
+        check(not faults and "angle_rule     unavailable" in report
+              and "initial timer origin unavailable" in report,
+              "%s initial restored origin cannot silently convict"
+              % ("declared" if declared else "legacy"))
+        bad = view_for(base)
+        bad[4] = "10.01 1 nan 0 0 0"
+        faults, _ = run(L, view=bad)
+        check(any("not a number" in x or "NaN" in x or "finite" in x for x in faults),
+              "initial-origin abstention preserves independent sidecar faults")
+
+
+def case_integer_tokens():
+    cases = []
+    S = build(ver=10, sessions=((5, 10, "retry"),))
+    for kind, positions in (("pause", (1, 3)), ("session", (1, 2, 4))):
+        for pos in positions:
+            cases.append((S, kind, pos))
+    cases += [(build(), "instart", 1), (build(), "zonerule", 1),
+              (build(), "inend", 1),
+              (build(warps=((0, HORIZON, "tele"),)), "warp", 1),
+              (build(rides=((0, HORIZON, "arm", 0, 0, 0),)), "ride", 1)]
+    for L, kind, pos in cases:
+        for token in ("--1", "\u00b2", "1" * 5000):
+            bad = edit(L, kind, pos, token)
+            faults, _ = run(bad)
+            check(any(kind in x for x in faults),
+                  "%s field %d rejects malformed integer %s without a reader crash"
+                  % (kind, pos, ascii(token[:16])))
+
+
 def case_angle_hold_conversion():
     for token in ("--1", "\u00b2", "1" * 5000):
         L = build()
@@ -2232,14 +2296,14 @@ def case_angle_hold_conversion():
         f, _ = run(L)
         check(any("'hold'" in x for x in f),
               "noncanonical hold counter %r completes with a format fault" % token[:20])
-    for mt in (-2, 2147483648):
+    for mt in (-2147483648, 2147483648):
         L = insert_before(build(), "begin", "holdclock 1")
         ix = next(i for i, l in enumerate(L) if l.startswith("in "))
         f = L[ix].split()
         f[2] = str(mt)
         L[ix] = " ".join(f)
         if mt < 0:
-            L.insert(ix, "hold 2147483647 2147483647")
+            L.insert(ix, "hold 2147483647 %d" % (2147483647 - HORIZON))
         faults, _notes, report = run(L, view=view_for(build()), report=True)
         check(any("projected angle tick" in x for x in faults),
               "projected counter %s reports instead of overflowing the angle array" % mt)
@@ -2346,7 +2410,9 @@ def main():
                case_angle_tight_rule_abstains_where_the_epoch_moves,
                case_angle_tight_rule_is_keyed_on_the_source_not_the_version,
                case_angle_hold_clock, case_angle_hold_legacy, case_angle_hold_origins,
-               case_angle_hold_shape, case_angle_hold_conversion, case_view_retry_history,
+               case_angle_hold_shape, case_angle_hold_conversion,
+               case_angle_initial_origin, case_angle_initial_restore, case_integer_tokens,
+               case_view_retry_history,
                case_view_restore_history, case_view_resume_slot_history,
                case_angle_splice, case_angle_no_sidecar_is_silent):
         # argv: case-name prefixes to run (default all).

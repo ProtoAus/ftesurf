@@ -503,7 +503,12 @@ def is_float(s):
 
 
 def is_int(s):
-    return s.lstrip("-").isdigit()
+    # Native %d fields are ASCII with at most one sign. Bound conversion work
+    # too: isdigit accepts characters int rejects and arbitrarily long tokens.
+    if not s or len(s) > 128:
+        return False
+    digits = s[1:] if s.startswith("-") else s
+    return digits.isascii() and digits.isdigit()
 
 
 def exact_finish_ticks(token):
@@ -769,7 +774,7 @@ def check_rec(path, verbose=False, *, data=None):
         if len(zr) != 3:
             r.fault("zonerule takes 3 fields (swept hull hull_live), has %d"
                     % len(zr))
-        elif not all(x.lstrip("-").isdigit() for x in zr):
+        elif not all(is_int(x) for x in zr):
             r.fault("zonerule %r has a non-integer field" % zrul)
         r.info["zones"] = "%s %s rule %s" % (zsrc, zcrc, zrul)
     else:
@@ -812,14 +817,14 @@ def check_rec(path, verbose=False, *, data=None):
     # where the RUN's clock begins.  SV_TimerStart sets them equal; only a
     # save-state resume moves the second one, and only downwards.  So start > mt
     # is a run that began after its own recording did, which no path produces.
-    in_start = None         # the horizon, or None if this file states no trace
+    in_start = in_run = None  # trace horizon and declared timer origin
     inst = head.get("instart")
     if inst is not None:
         f = inst.split()
         if len(f) != 2:
             r.fault("instart takes 2 fields (movetick starttick), has %d"
                     % len(f))
-        elif not all(x.lstrip("-").isdigit() for x in f):
+        elif not all(is_int(x) for x in f):
             r.fault("instart %r has a non-integer field" % inst)
         else:
             in_start, in_run = int(f[0]), int(f[1])
@@ -966,6 +971,10 @@ def check_rec(path, verbose=False, *, data=None):
     ang_mt = array.array("i")
     ang_frozen = 0           # Patch 785: cumulative exclusion for later angles
     ang_prev = None          # floor within this origin, not a previous session
+    # Only a fresh equal instart binds the timer origin. Restores carry elapsed
+    # ticks separately; their session horizon is not a serialized timer origin.
+    ang_origin = (in_start if in_start is not None and in_start >= 0
+                  and in_run == in_start else None)
     ang_holdmt = None
     ang_holds = 0
     ang_holdbad = False
@@ -1131,6 +1140,10 @@ def check_rec(path, verbose=False, *, data=None):
                         % (lineno + 1))
                 ang_holdbad = True
                 ang_prev = 0       # placeholder only; invalid clock cannot be judged
+            elif holdclock == "1" and ang_origin is not None and ang_prev < ang_origin:
+                r.fault("line %d: 'in' projected angle tick is below the initial "
+                        "timer origin" % (lineno + 1))
+                ang_holdbad = True
             ang_mt.append(ang_prev)
             ang_pit.append(ang[0])
             ang_yaw.append(ang[1])
@@ -1237,6 +1250,7 @@ def check_rec(path, verbose=False, *, data=None):
                         "after" % (lineno + 1))
         elif kind == "resume":
             ang_frozen, ang_holdmt, ang_prev = 0, None, None
+            ang_origin = None
             # Build 17.  The run was resumed from a save state: everything after
             # this line is a fresh attempt at the same section, appended over the
             # abandoned one rather than beside it.
@@ -1255,6 +1269,7 @@ def check_rec(path, verbose=False, *, data=None):
             spec_next = [(a, m, c, w or lineno + 1) for a, m, c, w in spec_next]
         elif kind == "retry":
             ang_frozen, ang_holdmt, ang_prev = 0, None, None
+            ang_origin = None
             # Build 18.  The MAP was restarted underneath the run -- `retry` --
             # and the attempt was restored from a state written a moment before
             # it.  The player did not move.
@@ -1370,6 +1385,15 @@ def check_rec(path, verbose=False, *, data=None):
                     r.fault("line %d: 'hold' counters outside 0 <= frozen <= mt"
                             % (lineno + 1))
                     ang_holdbad = True
+                elif cur_horizon is not None and hmt < cur_horizon:
+                    r.fault("line %d: 'hold' is below the trace's own horizon"
+                            % (lineno + 1))
+                    ang_holdbad = True
+                elif (holdclock == "1" and ang_origin is not None
+                      and hmt - frozen < ang_origin):
+                    r.fault("line %d: 'hold' projects before the initial timer origin"
+                            % (lineno + 1))
+                    ang_holdbad = True
                 elif ((in_mt is not None and hmt < in_mt)
                       or (ang_holdmt is not None and hmt < ang_holdmt)
                       or frozen < ang_frozen
@@ -1454,6 +1478,7 @@ def check_rec(path, verbose=False, *, data=None):
                 cur_horizon = smt
                 in_mt = None
                 ang_frozen, ang_holdmt, ang_prev = 0, None, None
+                ang_origin = None
                 open_pause = None
         elif kind == "nonce" and ver >= 10:
             # Patch 416: a SECOND client was handed this run -- a Multi-Session
@@ -1610,7 +1635,7 @@ def check_rec(path, verbose=False, *, data=None):
                 r.fault("line %d: 'warp' takes 9 fields "
                         "(pk mt kind ox oy oz vx vy vz), has %d" % (ln, len(a)))
                 continue
-            if not all(x.lstrip("-").isdigit() for x in a[:2]):
+            if not all(is_int(x) for x in a[:2]):
                 r.fault("line %d: 'warp' pk/mt are not integers: %r %r"
                         % (ln, a[0], a[1]))
                 continue
@@ -1659,7 +1684,7 @@ def check_rec(path, verbose=False, *, data=None):
                 r.fault("line %d: 'ride' takes 6 fields "
                         "(pk mt what bx by bz), has %d" % (ln, len(a)))
                 continue
-            if not all(x.lstrip("-").isdigit() for x in a[:2]):
+            if not all(is_int(x) for x in a[:2]):
                 r.fault("line %d: 'ride' pk/mt are not integers: %r %r"
                         % (ln, a[0], a[1]))
                 continue
@@ -1710,7 +1735,7 @@ def check_rec(path, verbose=False, *, data=None):
         if len(a) != 2:
             r.fault("line %d: 'inend' takes 2 fields (mt carry), has %d"
                     % (ln, len(a)))
-        elif not a[0].lstrip("-").isdigit():
+        elif not is_int(a[0]):
             r.fault("line %d: 'inend' mt is not an integer: %r" % (ln, a[0]))
         elif not is_float(a[1]):
             r.fault("line %d: 'inend' carry is not a number: %r" % (ln, a[1]))
@@ -2713,6 +2738,8 @@ def check_rec(path, verbose=False, *, data=None):
                                     ("pause", pauses), ("session", sessions))
                      if v]
     if ang_mt:
+        if in_start is None or in_run != in_start or in_start < 0:
+            r.angle_epoch.append("initial timer origin unavailable")
         r.info["holdclock"] = holdclock if holdclock is not None else "not stated"
         r.info["hold_epochs"] = ang_holds
         if holdclock is None:

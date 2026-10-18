@@ -7,17 +7,16 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Held recording clocks: what the Patch 785 reviews found
 
-Two static reviews of 248867ee (18 Oct, before its lobby deploy). The recorder side is
-clean; these are the reader's, and none is reachable from an honest server.
-- Site: `tools/reccheck.py` pause/session parses. Their permissive `is_int` followed
-  by `int()` can still raise on malformed integer tokens; receipt handling then
-  reports unavailable rather than a recording-format fault. Check: a malformed
-  pause/session mover-counter token. The hold-parser case was fixed by Patch 792.
-- Site: `tools/reccheck.py` (~1362). A hold is bounded only by its own movetick, not by
-  the origin (instart or the session's mt). A damaged hold before the first `in` row
-  shifts every later angle, and the result faults the player's sidecar ("not this
-  recording's") rather than the recording. Fix: fault the hold against the origin, and
-  cross-check `end` ticks against `inend - instart - frozen` where the file has them.
+Two static reviews of 248867ee (18 Oct, before its lobby deploy) seeded this list.
+Fixed items are removed; remaining reader/verifier contracts need acting controls.
+- Site: `tools/reccheck.py` hold-origin/final-clock validation. Patch 793 bounds the
+  first fresh projected origin and every raw trace horizon; initial restored headers
+  abstain. A post-restore/session horizon is not a timer-start/carry tuple, so its
+  projected origin remains unvalidated and angle-unavailable. Final-clock consistency
+  also remains open: the writer documents a live `inend` on a frozen finish, and the
+  synthetic builder models packet time separately from trailer time. Do not add a
+  guessed equality. Check: capture native finished/held/restored files, then alter
+  origin/closing totals; diagnose the recording without blaming its sidecar.
 - Site: `tools/reccheck.py` legacy rule (~2683). Pre-P785 practice files abstain whether
   or not they held: two local fixtures lost their angle faults (`data/runs/bhop_eazy/
   main/cheat`, `data/runs/surf_garden/main/cheat`) and one receipt went OK to BLIND,
