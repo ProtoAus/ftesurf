@@ -5744,6 +5744,13 @@ patch, Build bump, new public version or extra gate for ordinary feature work.
   restarts. Inspect destination hashes, active units and logs before repeating
   a transaction. Keep native promotion and progs/restarts separately recorded,
   and make preparation sequences fail-fast. A wrapper exit is not live state.
+  The measured trailer cause was MSYS argument conversion: a `pwsh -Command`
+  string beginning `./build.ps1` with `C:/...` later in it arrived as a Windows
+  path-list (`C;C:\Program Files\Git\...`). JSON was written to a file named C,
+  then the injected path separator became a failing command. An inert argv-only
+  control reproduced it; `MSYS2_ARG_CONV_EXCL='*'` preserved the exact command.
+  Use that exclusion and Windows paths for Bash-to-pwsh command strings. Recover
+  the actual result file unchanged instead of repeating the live transaction.
 - The live-lobby smoke must stage BOTH matching HL2 and ImGui plugins. A client
   can load the map without the latter but cannot prove the drawn board acted.
 
