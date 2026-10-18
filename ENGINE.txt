@@ -25,7 +25,9 @@ commit   59f666876907563a2bc983581347afd677322385
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-805
-patch    805
+patch    806
+# Patch 806 (csprogs): config_menu gains a Player row (hud_player, P) under Menus, and the
+# bottom-left key strip shows P Player between HUD and Noclip. No native change.
 # Patch 805 (engine, client exe): CL_CalcCrouch's extracrouch bounded to its branch's sign and
 # decayed from either side -- one long frame over a ground step-down pinned the camera up to
 # 100+ u above the feet until a jump (Lex, surf_null). Installs: exe a77d4a3f.

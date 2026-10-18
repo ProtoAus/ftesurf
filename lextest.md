@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P806 — Player in the key strip and the key panel
+
+Both installs 2026-10-18T19:52Z: csprogs 03feab73 (.prev 9bfeeb26); qwprogs and menu unchanged.
+
+- The bottom-left strip reads Z Saves, X Graphics, C HUD, P Player, V Noclip, Bksp Rewind, K Keys
+  (K Keys is `config_menu`; it was already there).
+- `config_menu` (K): Player is the last row under Menus; rebinding it moves the strip's key too.
+
+"Ok / <what differs>". Verdict PENDING.
+
 ## P799 — glows behind ramps and panes; surf_dragon's window
 
 Both installs 2026-10-18T18:34Z: exe 4b4c91f8 (git-7477-patch-802-0-g1866f1052), hl2 plugin

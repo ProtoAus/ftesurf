@@ -21,7 +21,7 @@
 ===========================================================================
 */
 
-#define KC_N        24
+#define KC_N        25
 
 // FTE names it; #630 in the engine table. checkbuiltin-gated in KC_SetBind.
 void(float keynum, string bindcmd, optional float bindmap, optional float modifier) setkeybind = #0:setkeybind;
@@ -44,18 +44,19 @@ string(float i) KC_Def =
 	if (i == 9)  return "hud|HUD editor|hud_edit||c|Menus";
 	if (i == 10) return "gfx|Graphics|gfx_menu||x|Menus";
 	if (i == 11) return "keys|Key config|config_menu||k|Menus";
-	if (i == 12) return "savemenu|Save menu|save_menu|saveloc_menu;mom_saveloc_close|z|Saves";
-	if (i == 13) return "save|Save|sl_save|mom_saveloc_create|1|Saves";
-	if (i == 14) return "load|Load (hold)|+sl_hold|sl_load;+mom_saveloc_current;mom_saveloc_current|2|Saves";
-	if (i == 15) return "delete|Delete|sl_del|mom_saveloc_remove_current|4|Saves";
-	if (i == 16) return "prev|Previous save|sl_prev|mom_saveloc_nav_prev||Saves";
-	if (i == 17) return "next|Next save|sl_next|mom_saveloc_nav_next||Saves";
-	if (i == 18) return "restart|Restart|goto_start|say !r|r|Run";
-	if (i == 19) return "respawn|Respawn|goto_spawn|say !m|m|Run";
-	if (i == 20) return "rewind|Rewind|rewind||BACKSPACE|Run";
-	if (i == 21) return "noclip|Noclip|noclip||v|Run";
-	if (i == 22) return "paint|Paint (hold)|+paint|paint||Run";     // Patch 772: unbound by default
-	if (i == 23) return "share|Share (look at a player)|share||f|Run";  // Patch 777
+	if (i == 12) return "player|Player|hud_player||p|Menus";   // Patch 806
+	if (i == 13) return "savemenu|Save menu|save_menu|saveloc_menu;mom_saveloc_close|z|Saves";
+	if (i == 14) return "save|Save|sl_save|mom_saveloc_create|1|Saves";
+	if (i == 15) return "load|Load (hold)|+sl_hold|sl_load;+mom_saveloc_current;mom_saveloc_current|2|Saves";
+	if (i == 16) return "delete|Delete|sl_del|mom_saveloc_remove_current|4|Saves";
+	if (i == 17) return "prev|Previous save|sl_prev|mom_saveloc_nav_prev||Saves";
+	if (i == 18) return "next|Next save|sl_next|mom_saveloc_nav_next||Saves";
+	if (i == 19) return "restart|Restart|goto_start|say !r|r|Run";
+	if (i == 20) return "respawn|Respawn|goto_spawn|say !m|m|Run";
+	if (i == 21) return "rewind|Rewind|rewind||BACKSPACE|Run";
+	if (i == 22) return "noclip|Noclip|noclip||v|Run";
+	if (i == 23) return "paint|Paint (hold)|+paint|paint||Run";     // Patch 772: unbound by default
+	if (i == 24) return "share|Share (look at a player)|share||f|Run";  // Patch 777
 	return "";
 };
 
@@ -64,23 +65,25 @@ string(float i, float f) KC_F = { return Gfx_Field(KC_Def(i), f, "|"); };
 // The strip's items: rows of the table above, in the order asked for.
 float(float n) KC_HintRow =
 {
-	if (n == 0) return 12;      // save menu
+	if (n == 0) return 13;      // save menu
 	if (n == 1) return 10;      // graphics
 	if (n == 2) return 9;       // hud editor
-	if (n == 3) return 21;      // noclip
-	if (n == 4) return 20;      // rewind
-	if (n == 5) return 11;      // key config
+	if (n == 3) return 12;      // player
+	if (n == 4) return 22;      // noclip
+	if (n == 5) return 21;      // rewind
+	if (n == 6) return 11;      // key config
 	return -1;
 };
-#define KC_HINTS 6
+#define KC_HINTS 7
 
 string(float n) KC_HintLabel =
 {
 	if (n == 0) return "Saves";
 	if (n == 1) return "Graphics";
 	if (n == 2) return "HUD";
-	if (n == 3) return "Noclip";
-	if (n == 4) return "Rewind";
+	if (n == 3) return "Player";
+	if (n == 4) return "Noclip";
+	if (n == 5) return "Rewind";
 	return "Keys";
 };
 
@@ -852,10 +855,10 @@ void(vector scr) KC_Draw =
 	// Left column: movement and the menus. Right: saves, the run, turning.
 	c0 = [p_x + pad, 0, 0];
 	c1 = [p_x + pad + colw + gap, 0, 0];
-	for (i = 0; i <= 11; i = i + 1)
+	for (i = 0; i <= 12; i = i + 1)
 		y = KC_ColumnRow(i, c0, y, labw, chipw, colw, rh, sc);
 	y = y0;
-	for (i = 12; i < KC_N; i = i + 1)
+	for (i = 13; i < KC_N; i = i + 1)
 		y = KC_ColumnRow(i, c1, y, labw, chipw, colw, rh, sc);
 	KC_Heading([c1_x, y, 0], colw, "Turning and mouse", sc);
 	y = y + rh;

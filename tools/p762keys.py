@@ -238,7 +238,7 @@ def run(a, base, check, bound, saves, shot, start, VK):
             got = bound(cl, key)
             check(got == want, f'default.cfg binds {key} to {want}', str(got))
         m = cl.query('config_menu hint', r'config_menu: hint \[([^\]]*)\] shown (\d)')
-        check(m.group(1) == 'Z|Saves;X|Graphics;C|HUD;V|Noclip;Bksp|Rewind;K|Keys' and m.group(2) == '1',
+        check(m.group(1) == 'Z|Saves;X|Graphics;C|HUD;P|Player;V|Noclip;Bksp|Rewind;K|Keys' and m.group(2) == '1',
               'hint names the bound keys', m.group(1))
         shot(cl, 'p762_hud')
 
@@ -282,7 +282,7 @@ def run(a, base, check, bound, saves, shot, start, VK):
         check(bound(cl, 'v') == '', "noclip's old key v is cleared")
         check('X: Noclip (was Graphics)' in cl.text()[off:], 'the status line names what x used to do')
         m = cl.query('config_menu hint', r'config_menu: hint \[([^\]]*)\]')
-        check(m.group(1) == 'Z|Saves;C|HUD;X|Noclip;Bksp|Rewind;K|Keys', 'hint follows the new binds', m.group(1))
+        check(m.group(1) == 'Z|Saves;C|HUD;P|Player;X|Noclip;Bksp|Rewind;K|Keys', 'hint follows the new binds', m.group(1))
 
         cl.send('config_menu yaw 210')
         cl.send('config_menu sens 1.5')
@@ -332,7 +332,7 @@ def run(a, base, check, bound, saves, shot, start, VK):
             got = bound(cl, key)
             check(got == want, f'reset: {key} is {want or "cleared"}', str(got))
         m = cl.query('config_menu hint', r'config_menu: hint \[([^\]]*)\]')
-        check(m.group(1) == 'Z|Saves;X|Graphics;C|HUD;V|Noclip;Bksp|Rewind;K|Keys', 'reset: hint back', m.group(1))
+        check(m.group(1) == 'Z|Saves;X|Graphics;C|HUD;P|Player;V|Noclip;Bksp|Rewind;K|Keys', 'reset: hint back', m.group(1))
         # The reset's binds were made by the panel (insecure level): game-code commands must run from them.
         n0 = saves(cl)
         cl.key(VK['1'], 1.5)
