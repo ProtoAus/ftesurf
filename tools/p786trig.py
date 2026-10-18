@@ -227,7 +227,8 @@ def main():
             num['C_refused'] = refused
             if a.cooldown > 0:
                 cool = [r for r in refused if 'just left spectate' in r]
-                check(len(cool) >= 6 and len(flags) <= 4,
+                # ~1.2 s of toggling: at most one entry per cooldown gets through.
+                check(len(cool) >= 6 and len(flags) <= 1.5 / a.cooldown + 1,
                       f"C cooldown: toggled re-entries refused ({len(cool)} refused, {len(flags)} holds)")
                 flags = []
             elif len(flags) < 12 or refused:
