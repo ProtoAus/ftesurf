@@ -1,5 +1,29 @@
 # AGENT_NOTES.md
 
+## Sharing paint and saves (P777, 2026-10-18)
+
+- A client's reliable channel carries about one ~1428-byte packet a round trip; what
+  queues past that is cleared ("Outgoing message overflow", net_chan.c) along with any
+  other command in it. A server drops a client whose reliable backlog passes 16 x 1200
+  bytes (sv_nchan.c MAX_BACK_BUFFERS). Window anything streamed over `sendevent` or
+  `MULTICAST_ONE_R` on acknowledgement, not on time: P777's first cut sent 200 discs a
+  second and, at +300 ms (`cl_delay_packets` on both clients), delivered 89 of 1500 while
+  telling the receiver all 1500 came; its time-based fix still let a receiver suspended
+  for 8 s be dropped. tools/p777lag.py measures both (`--delay`, `--freeze`); localhost
+  shows neither.
+- A stall timer that starts at 0 fires the moment a window first fills: P777's first
+  window cut doubled its load at every stream start and overflowed.
+- Ping: CSQC `getplayerkeyvalue(slot, "ping")`, SSQC `infokey(player, "ping")`.
+  `MULTICAST_ONE_R_NOSPECS` is 10 (q2game.h); `MULTICAST_ONE_R` also reaches whoever
+  spectates the target.
+- A sent save is `SV_SaveLocCreateAt(target, ..., view TRUE)` with `rw_*` set: the
+  replay-point row `sl_saveview` already makes (idle, no run, speed under `rwvel`). Clear
+  the target's `rec_sl_requesttag` first, or the gift answers their last save ticket.
+- Two players in one rig: tools/p777share.py (p744spec's per-peer basedirs). The first
+  thing to check in a failed late step is the client's last screenshot: a black frame
+  means it stopped drawing, and anything that runs from CSQC_UpdateView (the share pick)
+  then never happens.
+
 ## Paint held, presets, and two-player rigs (P773, 2026-10-18)
 
 - An inline `shaderforname` `glslprogram` gets the attribute prelude (`v_position`,

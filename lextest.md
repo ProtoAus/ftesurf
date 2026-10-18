@@ -1,5 +1,31 @@
 # lextest.md — things waiting on a human
 
+## P777 — share paint and saves with the player you look at; paint layouts per map
+
+In both Windows installs since 2026-10-18T06:13:23Z (csprogs `724c5599`, `.prev` P776's
+`81a2d0a1`; qwprogs `f1548792`, `.prev` `24e65490`), built from `03194e7e`, which also
+carries P776 and P778. The 12 lobbies are NOT yet on it: a player was on, and it goes
+there the moment they are empty (this entry will say when). Restart the game. Sharing
+needs you both on the same server (a lobby).
+
+- **Share:** look at another player and press **F** (key panel: "Share (look at a
+  player)"). A card opens: **1** paint together (you both see each other's paint from
+  now on, and what each already has), **2** send my paint (your saved layout for this
+  map, else what is up), **3** send my selected save. The other player gets a card and
+  presses **F3** to accept or **F4** to decline (20 s). Nothing moves until they accept.
+  `share_offers 0` declines every offer without showing it.
+- **A sent save** lands in their save list as a practice save at your speed ("share: save
+  N ... from <you>"), ready on their load key. It never carries your run.
+- **A sent layout** becomes theirs: it stays when you stop, and their Save layout keeps it.
+  From far away it comes slowly (about 30 marks a second at a 340 ms ping) so nobody is
+  dropped; the note says how many arrived.
+- **Layouts:** in P, PAINT: **Save layout** writes this map's paint, **Load** brings it
+  back, **Auto-load** (on) loads it when the map starts. Console: `paint_save <name>`,
+  `paint_load <name>` keep several per map.
+- `share stop` (or 1 on the card again) ends painting together.
+
+"Share ok / layout ok / save ok" or what looks wrong. Verdict PENDING.
+
 ## P780 — surf_me's pillars, the sinister ramp, surf_666's spawn, the missing-texture grid
 
 In both Windows installs since 2026-10-18T06:12:22Z: client `0fdede9f` (stamp

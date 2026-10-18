@@ -5,6 +5,26 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Share and layouts: what Patch 777 left out
+
+- Site: `src/client/cl_paint.qc` Paint_Add / Paint_Push. Received discs share the ring
+  (`paint_max`, 8192) with your own, so a partner's fast spray pushes your oldest paint
+  out (the server passes 300 discs a second, about 27 s to replace all of it). Check:
+  `paint_status` live count of your own discs while a partner sprays at max.
+- Site: `src/server/sv_share.qc` Share_Answer (SH_SAVE). A sent save is position,
+  speed, angles and duck only, with no map-progress name (`targetname`); on maps whose
+  teleports read it, the receiver's load can go to a different destination than the
+  sender's would. Check: send a save from a stage behind a named trigger and compare loads.
+- Site: `Paint_LayoutPath`. A layout is keyed by map NAME, not by build (`*mapcrc`), so
+  a different build of the same name places discs where that build's faces were. Check:
+  load a layout on two builds of one map.
+- Site: `Share_Pick`. The pick is the nearest player by angle within ~3.5 degrees or a
+  body's width, not a trace against the body. Check: two players nearly in line.
+- Site: `src/client/cl_share.qc` Share_SetLinked. A link drops the partner slot's live
+  discs before their dump (no copies on a re-link); keyed by slot, it also drops the live
+  paint of whoever held that slot before. Check: a player leaves, another takes the slot
+  and links: the first player's discs go.
+
 ## Source map visuals: what Patch 780 left out
 
 - **surf_devil's ramp props** (Lex, 18 Oct, saves 1-2): `stage03_ramp09_1` too warm and
