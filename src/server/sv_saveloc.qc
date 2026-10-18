@@ -4744,6 +4744,12 @@ void(entity e, float n) SV_SpecStart =
 			SV_SpecWatch(e, t);
 		return;
 	}
+	if (e.run_sp_left)
+	if (time - e.run_sp_left < cvar("run_spec_cooldown"))
+	{
+		SV_SpecRefuse(e, "you just left spectate -- try again");
+		return;
+	}
 
 	if (e.rec_sl_hold)
 	{
@@ -4928,6 +4934,7 @@ void(entity e, string why) SV_SpecRelease =
 
 	e.run_pmhold = 0;
 	e.run_sp_phase = 0;
+	e.run_sp_left = time;           // Patch 786: run_spec_cooldown
 	e.run_sp_lost = FALSE;
 	e.pb_watch = world;
 	e.run_sp_stat = 0;
@@ -5002,6 +5009,7 @@ void(entity e) SV_SpecForget =
 	e.pb_watch = world;
 	e.run_pkn = e.run_trig_pkn = 0;
 	e.run_sp_trig = FALSE;          // Patch 786
+	e.run_sp_left = 0;
 };
 
 /*

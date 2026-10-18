@@ -841,6 +841,7 @@ void(entity p) SV_TouchForget =
 .float  run_sp_gnd;     // flags & FL_ONGROUND
 .entity run_sp_gent;
 .float  run_sp_trig;    // Patch 786: held inside a trigger: SV_TrigResume at the release
+.float  run_sp_left;    // Patch 786: server time of the last release (run_spec_cooldown)
 void(entity e, string why) SV_SpecRelease;
 
 // A trigger that can act on p touched it on the last packet: since Patch 786 this

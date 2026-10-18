@@ -11,8 +11,10 @@ inside the box, so a body dropped at SPOT rests in the trigger.
   C  rest in *93, step out and toggle spectate every few frames (raw rec_spec):
      each hold logs whether *93 still holds the touch ("pending 1"); v2 must
      end it within the toggling and fire the entry output once on re-entry.
+  With --cooldown above 0 (the server's run_spec_cooldown), C instead expects
+  the toggling's re-entries refused ("you just left spectate").
 --expect main (P784: A refused), v1 (ac6882ad: A accepted, re-fires on the
-release), r2 (c410d513: as v2 but C silent) or v2.  Exit 0 all held, 1 one failed, 2 could
+release), r2 (c410d513: as v2 but C keeps the touch) or v2.  Exit 0 all held, 1 one failed, 2 could
 not measure (the body did not come to rest in the trigger).
 """
 import argparse
@@ -69,6 +71,7 @@ def main():
     ap.add_argument('--progs', type=Path, required=True)
     ap.add_argument('--expect', choices=('main', 'v1', 'r2', 'v2'), required=True)
     ap.add_argument('--port', type=int, default=27616)
+    ap.add_argument('--cooldown', type=float, default=0)
     ap.add_argument('--content', type=Path, default=Path('C:/FTESurf'))
     ap.add_argument('--client', type=Path, default=Path('C:/FTESurf/ftesurf64.exe'))
     ap.add_argument('--server', type=Path, default=Path('C:/FTEQuake/fteqwsv64.exe'))
@@ -105,7 +108,7 @@ def main():
         base = prepare(a, 'server')
         (base / 'ftesurf/probe.cfg').write_text('\n'.join(common + [
             f'sv_port {a.port}', 'sv_playerslots 4', 'sv_maxclients 4',
-            'set run_spec_countdown 0', 'developer 1', 'log_developer 1',
+            'set run_spec_countdown 0', f'set run_spec_cooldown {a.cooldown:g}', 'developer 1', 'log_developer 1',
             f'map {MAP}']) + '\n')
         sv = Peer(a.server, base, 'probe.cfg', True); peers.append(sv)
         sv.wait(r'Server spawned\.', timeout=120)
@@ -220,7 +223,12 @@ def main():
             num['C_out_holds'] = flags
             refused = re.findall(r'spectate:(?:\^7)? ((?!stat |watching)[^\n]*)', w.text()[co:])
             num['C_refused'] = refused
-            if len(flags) < 8 or refused:
+            if a.cooldown > 0:
+                cool = [r for r in refused if 'just left spectate' in r]
+                check(len(cool) >= 6 and len(flags) <= 4,
+                      f"C cooldown: toggled re-entries refused ({len(cool)} refused, {len(flags)} holds)")
+                flags = []
+            elif len(flags) < 8 or refused:
                 raise CannotMeasure(f"C: {len(flags)} holds released, refusals {refused}")
             o2 = mark('C-back')
             w.send(f'cmd setpos {SPOT}')
@@ -229,7 +237,9 @@ def main():
             num['C_rest'] = pos()
             if not inbox(num['C_rest']):
                 raise CannotMeasure(f"C: not back inside *93 ({num['C_rest']})")
-            if v == 'r2':
+            if a.cooldown > 0:
+                check(num['C_hits'] == 1, f"C: the re-entry fires the entry output once ({num['C_hits']})")
+            elif v == 'r2':
                 check(all(flags), f"C r2: every hold kept the left trigger's touch ({flags})")
             else:
                 check(flags[0] and not any(flags[4:]), f"C: the touch ended within the toggling ({flags})")
