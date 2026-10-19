@@ -1955,7 +1955,15 @@ def check_rec(path, verbose=False, *, data=None):
     # seed is a note: the grammar does not say the seed is compulsory, and the
     # writer omits it when the engine publishes no *pmstate.
     if ver >= 9:
-        after_session = set(sl + 1 for sl, _n, _m, _t in sessions)
+        closing_lines = {cl for cl, _a in clockends}
+        after_session = set()
+        for sl, _n, _m, _t in sessions:
+            following = sl + 1
+            # Closing metadata has no lifecycle authority; other intervening
+            # records still break the writer's immediate session/seed pair.
+            while following in closing_lines:
+                following += 1
+            after_session.add(following)
         for n, (ln, a) in enumerate(seeds):
             if n and ln in after_session:
                 pass                    # v10: each session restates the state

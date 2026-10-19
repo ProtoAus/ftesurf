@@ -2958,6 +2958,61 @@ def case_v11_closing_spectate_authority():
                   "closing placement still exposes independent count damage for %s" % label)
 
 
+def case_v11_closing_session_seed_authority():
+    """Only closing declarations are transparent at a session/seed boundary."""
+    from reccheck import check_rec
+
+    base, view = cold_clock_pair("load")
+    base[0] = "FTESURF-REC 11"
+    base = insert_before(base, "inend", "clockend sampled")
+    ix = next(i for i, l in enumerate(base) if l.startswith("end "))
+    tail = base[ix].split()
+    if len(tail) == 11:
+        tail.append("0")
+    tail.append("1")
+    base[ix] = " ".join(tail)
+    control = check_rec("session.rec", data=("\n".join(base) + "\n").encode())
+    check(not control.faults and control.view_reset_budget == 2,
+          "session boundary control validates exactly two reset allowances")
+    variants = (("relocated", ["clockend sampled"], False, 0),
+                ("duplicate", ["clockend sampled"], True, 1),
+                ("malformed relocated", ["clockend counted bad 0 0"], False, 1),
+                ("malformed duplicate", ["clockend counted bad 0 0"], True, 1),
+                ("consecutive", ["clockend sampled", "clockend counted bad 0 0"], True, 1))
+    for session in range(sum(l.startswith("session ") for l in base)):
+        for name, closers, keep_terminal, expected in variants:
+            lines = [l for l in base if keep_terminal or not l.startswith("clockend ")]
+            sl = [i for i, l in enumerate(lines) if l.startswith("session ")][session]
+            lines[sl + 1:sl + 1] = closers
+            ix = next(i for i, l in enumerate(lines) if l.startswith("end "))
+            tail = lines[ix].split()
+            tail[-1] = str(len(closers) + int(keep_terminal))
+            lines[ix] = " ".join(tail)
+            rec = check_rec("session.rec", data=("\n".join(lines) + "\n").encode())
+            check(rec.view_reset_budget == control.view_reset_budget,
+                  "%s at session %d preserves exact reset budget" % (name, session))
+            faults, _notes, report = run(lines, view=view, report=True)
+            check(len(faults) == expected and all("clockend" in f for f in faults)
+                  and "angle_rule     unavailable" in report,
+                  "%s at session %d adds no VIEW blame or angular grant" % (name, session))
+            badview = view[:]
+            fields = badview[-1].split(); fields[2] = "-1"; badview[-1] = " ".join(fields)
+            faults, _ = run(lines, view=badview)
+            check(len(faults) == expected + 1 and any("never negative" in f for f in faults),
+                  "%s at session %d preserves independent VIEW damage" % (name, session))
+            faults, _ = run(bump_end(lines, "inputs"), view=view)
+            check(any("input records" in f for f in faults)
+                  and any("goes backwards" in f for f in faults),
+                  "%s at session %d cannot hide legacy damage" % (name, session))
+        intervening = base[:]
+        sl = [i for i, l in enumerate(intervening) if l.startswith("session ")][session]
+        sample = next(l for l in base if l and l[0] in "-0123456789")
+        intervening.insert(sl + 1, sample)
+        faults, _ = run(intervening, view=view)
+        check(any("second 'seed'" in f for f in faults),
+              "a real intervening sample still breaks session %d seed adjacency" % session)
+
+
 def case_v11_fzin():
     base = v11_fixture(sweep=128, packets=300)
     excluded = edit(base, "in", 0, "fzin", which=10)
@@ -3037,7 +3092,8 @@ def main():
                case_hold_closing_horizon, case_closing_carry_nonnegative,
                case_closing_carry_exact_sign,
                case_v11_clock, case_v11_closing_restore_authority,
-               case_v11_closing_spectate_authority, case_v11_fzin,
+               case_v11_closing_spectate_authority,
+               case_v11_closing_session_seed_authority, case_v11_fzin,
                case_imposition_closing_horizon,
                case_imposition_abandon_horizon, case_imposition_restore_allowance,
                case_imposition_boundary_authority,
