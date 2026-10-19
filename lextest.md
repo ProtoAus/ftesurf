@@ -30,7 +30,7 @@ Checked on lobby 27610: surf_apollo runs 10000. Record: tools/lobby-engine-p841-
 - On a map whose cap changed, go past 3500 where you used to be clamped. In the console, `movement`
   names the zone file and `sv_maxvelocity` reads the new cap. Lobby examples: surf_apollo 10000,
   surf_boreas 5000, surf_demise 5000, bhop_sandtrap 10000. 164 lobby maps changed, all upward; 74 of
-  them are `_css`/`_ksf` builds that take the plain map's Momentum cap (your call in BACKLOG).
+  them are `_css`/`_ksf` builds that take the plain map's Momentum cap (your call, 20 Oct: keep it).
 - A run parked on one of those maps before the update is dropped when you come back ("the speed cap
   changed"): it was played under the old cap.
 - Zone editor in a game you host: Map properties > Speed cap > Apply > Save settings, then Save zones.

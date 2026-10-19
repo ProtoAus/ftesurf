@@ -296,10 +296,6 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
 
 ## Speed caps from zone files (P841): what the reviews left
 
-- **For Lex: the 74 `_css`/`_ksf` lobby builds take the plain map's Momentum cap** (mapwatch copies the
-  plain map's zone file to them, mapwatch.py:1886). Momentum never ran those builds and their boards
-  hold KSF imports set under KSF's cap (unverified value). Keep, or strip `maxVelocity` from copied
-  files (mapwatch + a one-off pass over game/ftesurf/maps/zones/local and the dl caches).
 - **For Lex: mapwatch now changes physics unattended.** Its rule takes Momentum zone files whose
   tracks match (mapwatch.py:1437-1445), so a Momentum change to `maxVelocity` alone lands at the next
   map load with nothing on the board. Matches "use Momentum's"; say if a cap change should be held.

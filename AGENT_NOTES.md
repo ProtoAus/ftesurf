@@ -46,6 +46,8 @@
   set at spawn; a later `sv_maxvelocity` does not reach it without a client): a deploy gate on a
   map whose cap changed DIFFERS by design. Prove it with the crossover (each native at the other's
   cap, planted before the map loads).
+- `_css`/`_ksf` copies (mapwatch.py:1886) take the plain map's Momentum cap: Lex, 20 Oct, "keep the
+  plain map's Momentum cap, don't force 3500" (74 lobby maps; their boards hold KSF imports).
 - THE LOBBIES' ZONE FILES ARE MOSTLY MOMENTUM'S OWN: game/ftesurf/maps/zones/local holds ~68 (the
   publish target), and maps/zones/online resolves through the mounted `momentum` dir
   (game/momentum/maps/zones/online, ~1,200). A census of this repo's 648 is not the lobbies'.
