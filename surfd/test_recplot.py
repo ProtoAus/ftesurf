@@ -395,15 +395,20 @@ def case_track_filter():
 def case_track_bounds():
     many = "FTESURF-REC 9\nbegin\n" + "\n".join(S(i * 0.015, i) for i in range(1000)) + "\n"
     r = recplot.track(write("thin.rec", many), (), max_samples=100)
-    check("track: 1000 samples at max 100 keep every 10th, and say so",
-          (r["thin"], r["samples"], "thin 10" in r["rec"].split("begin")[0], r["capped"]), (10, 100, True, False))
+    check("track: 1000 samples at max 100 keep every 11th and the last, and say so",
+          (r["thin"], r["samples"], "thin 11" in r["rec"].split("begin")[0], r["capped"]), (11, 92, True, False))
     snap = "FTESURF-REC 9\nbegin\n" + "\n".join(
         S(i * 0.015, i) + ("\nwarp 1 1 tele 0 0 0 0 0 0" if i == 3 else "") for i in range(100)) + "\n"
     r = recplot.track(write("snap.rec", snap), (), max_samples=10)
     check("track: the sample after a snap is kept although thinning would drop it",
-          [ln.split()[1] if ln[0].isdigit() else ln.split()[0] for ln in body_lines(r)][:4], ["0.00", "warp", "4.00", "10.00"])
+          [ln.split()[1] if ln[0].isdigit() else ln.split()[0] for ln in body_lines(r)][:4], ["0.00", "warp", "4.00", "13.00"])
     warps = "FTESURF-REC 9\nbegin\n" + "\n".join(
         "warp 1 1 tele 0 0 0 0 0 0\n" + S(i * 0.015, i) for i in range(500)) + "\n"
+    many_snaps = "FTESURF-REC 9\nbegin\n" + "\n".join(
+        S(i * 0.015, i) + ("\nwarp 1 1 tele 0 0 0 0 0 0" if i < 100 and i % 2 else "") for i in range(200)) + "\n"
+    r = recplot.track(write("snaps.rec", many_snaps), (), max_samples=100)
+    check("track: 50 snaps in the first half do not cost the finish",
+          (body_lines(r)[-1].split()[1], r["capped"]), ("199.00", False))
     r = recplot.track(write("warps.rec", warps), (), max_samples=50)
     check("track: snaps do not lift the sample cap", (r["samples"], r["capped"]), (50, True))
     cps = "FTESURF-REC 9\nbegin\n" + "cp 1 1\n" * 10000
@@ -416,6 +421,13 @@ def case_track_bounds():
     cut = recplot.track(write("cut.rec", whole), (), max_bytes=len(whole) - 5)
     check("track: a budget-cut line is not read, and the cut is said",
           (cut["samples"], cut["truncated"]), (1, True))
+    lines = "FTESURF-REC 9\nbegin\n" + "1\n" * 50 + S(0) + "\n"
+    saved, recplot.TRACK_MAX_LINES = recplot.TRACK_MAX_LINES, 40
+    try:
+        r = recplot.track(write("lines.rec", lines), ())
+    finally:
+        recplot.TRACK_MAX_LINES = saved
+    check("track: the line cap stops both passes and says so", (r["samples"], r["truncated"]), (0, True))
     check("track: the version must be on line 1, as parse() wants",
           recplot.track(write("late.rec", "map x\nFTESURF-REC 9\nbegin\n"), ())["ok"], False)
     check("track: no begin is not a track",

@@ -1252,6 +1252,10 @@ def main():
     check("...and a kept answer needs no build", get(m, "/board/api/run/%d/track" % rid).status_code, 200)
     m._track_lock.release()
     check("control: the kept answer is the built one", r2.get_data(), r.get_data())
+    with open(path, "a") as fh:            # a replaced file is read again, not served from memory
+        fh.write("split 2 6\n")
+    check("a changed recording is rebuilt, not served from memory",
+          "split 2 6" in body(get(m, "/board/api/run/%d/track" % rid, ip="198.51.100.11"))["rec"], True)
     lines = t["rec"].split("\n")
     head = lines[:lines.index("begin")]
     tail = [x for x in lines[lines.index("begin") + 1:] if x]

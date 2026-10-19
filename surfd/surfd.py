@@ -4927,8 +4927,8 @@ WEB_PROFILE_ROWS = 100   # rows on one profile page
 WEB_PROFILE_MAX = 5000   # cap on `limit`; the largest real profile is 2,575 rows
 WEB_RUN_MAX = 30         # run-path fetches per RATE_WINDOW per source
 # The 3D viewer's track (Patch 825): one per watch, two when racing the record.
-# recplot.track costs ~1 s and ~80 MiB on the largest recording here (23.7 MB,
-# measured on the PC), so one runs at a time and the answer is kept.
+# recplot.track takes ~0.75 s and ~12 MiB on the largest recording here (23.7 MB,
+# measured on the PC; the Pi is slower), so one runs at a time and the answer is kept.
 WEB_TRACK_MAX = 10
 WEB_TRACK_CACHE = 6
 
@@ -5759,7 +5759,7 @@ def web_run(rid):
 
 _track_lock = threading.Lock()          # one recplot.track at a time
 _track_cache_lock = threading.Lock()
-_track_cache = collections.OrderedDict()  # (rid, size, mtime_ns) -> body
+_track_cache = collections.OrderedDict()  # (rid, path, size, mtime_ns) -> body
 
 
 @app.get("/board/api/run/<int:rid>/track")
@@ -5778,7 +5778,7 @@ def web_run_track(rid):
         st = os.stat(path)
     except OSError:
         return fail(404, "no recording on this node")
-    key = (rid, st.st_size, st.st_mtime_ns)
+    key = (rid, path, st.st_size, st.st_mtime_ns)
     with _track_cache_lock:
         body = _track_cache.get(key)
         if body is not None:

@@ -75,7 +75,7 @@ let graph: HTMLCanvasElement | null = null;   // the speed traces, drawn once
 async function fetchJSON(url: string): Promise<any> {
     for (let tries = 0; ; tries++) {
         const r = await fetch(url, { credentials: 'omit' });
-        if (r.status === 503 && tries < 5) {
+        if (r.status === 503 && tries < 3) {   // each try spends one of the route's 10 a minute
             await new Promise((res) => setTimeout(res, 1000 * (Number(r.headers.get('Retry-After')) || 2)));
             continue;
         }

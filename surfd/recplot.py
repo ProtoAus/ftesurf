@@ -431,11 +431,14 @@ def _parse(fh, max_bytes, max_points):
 #   records the timer's, `warp 0 0 <kind>` for warp and portal (the input-row
 #           indices mean nothing without the `in` rows), ride's arm/disarm; never
 #           in, pm, pe, mc, seed or zseed
-# Bounded: two passes of _lines over at most max_bytes, at most max_samples
-# samples (every k-th one, `thin <k>`, keeping the one after a snap while room
-# remains) and max_records records. Version on line 1, as parse() requires.
+# Bounded: two passes of _lines over at most max_bytes and TRACK_MAX_LINES lines,
+# at most max_samples samples and max_records records. A sample is kept when it
+# is every k-th (`thin <k>`), the one after a snap, or the last; k leaves room for
+# the snaps the first pass counted, so a run with many teleports keeps its finish.
+# Version on line 1, as parse() requires.
 
 TRACK_MAX_BYTES = 32 << 20
+TRACK_MAX_LINES = 1000000      # the largest local recording has 238,452
 TRACK_MAX_SAMPLES = 60000
 TRACK_MAX_RECORDS = 4000
 _TRACK_TIMER = {"stage": 2, "stagestart": 2, "cp": 2, "restart": 2, "resume": 2,
@@ -453,14 +456,27 @@ def track(path, head_keys, max_bytes=TRACK_MAX_BYTES, max_samples=TRACK_MAX_SAMP
             raise ValueError("max_bytes must be a nonnegative integer")
         with open(path, "rb") as fh:
             st = {"truncated": False}
-            total = sum(1 for text, _ in _lines(fh, max_bytes, st) if _is_sample(text))
+            total = snaps = 0
+            for text, _ in _track_lines(fh, max_bytes, st):
+                if _is_sample(text):
+                    total += 1
+                elif text.startswith(("warp ", "portal ")):
+                    snaps += 1
             fh.seek(0)
-            return _track(fh, frozenset(head_keys), max_bytes, max(1, int(max_samples)),
-                          max(0, int(max_records)), total)
+            return _track(fh, frozenset(head_keys), max_bytes, max(2, int(max_samples)),
+                          max(0, int(max_records)), total, snaps)
     except OSError as e:
         return {"ok": False, "error": "cannot read: %s" % (e.strerror or type(e).__name__)}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": "parse failed: %s" % type(e).__name__}
+
+
+def _track_lines(fh, max_bytes, st):
+    for i, ln in enumerate(_lines(fh, max_bytes, st)):
+        if i >= TRACK_MAX_LINES:
+            st["truncated"] = True
+            return
+        yield ln
 
 
 def _track_sample(tok):
@@ -492,9 +508,9 @@ def _track_record(tok):
     return None
 
 
-def _track(fh, head_keys, max_bytes, max_samples, max_records, total):
+def _track(fh, head_keys, max_bytes, max_samples, max_records, total, snaps):
     st = {"truncated": False}
-    it = _lines(fh, max_bytes, st)
+    it = _track_lines(fh, max_bytes, st)
     first = next(it, None)
     m = _VERSION.match(first[0].lstrip("﻿")) if first else None
     if not m:
@@ -521,7 +537,9 @@ def _track(fh, head_keys, max_bytes, max_samples, max_records, total):
         return {"ok": False, "error": "no 'begin'"}
     if vh is not None and dvh is not None and 0 < vh < 512 and 0 < dvh < 512:
         head.append("eye %g %g" % (vh, dvh))
-    thin = -(-total // max_samples)
+    # Regular samples get what the snaps and the last sample leave, but never
+    # less than half: past that a file is mostly teleports and the cap decides.
+    thin = -(-total // max(max_samples // 2, max_samples - 1 - snaps))
     if thin > 1:
         head.append("thin %d" % thin)
 
@@ -530,7 +548,7 @@ def _track(fh, head_keys, max_bytes, max_samples, max_records, total):
         if overlong or not text:
             continue
         if _is_sample(text):
-            keep = pending or n % thin == 0
+            keep = pending or n % thin == 0 or n == total - 1
             n += 1
             if not keep:
                 continue
