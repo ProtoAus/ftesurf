@@ -1,8 +1,8 @@
 // FTESurf's updater and launcher share one signed feed, ledger and permission.
 // No HTTP before explicit update consent. The server cannot set these engine cvars.
 // Menu-only engine capability; intentionally absent from server-supplied CSQC.
-// P823: no Updates screen. The terms answer is the permission (Play online on,
-// offline off; ui_tm_answer), and the title menu's corner shows the state.
+// P823: no Updates screen. Play online on the terms turns the permission on
+// (ui_tm_answer); the title menu's corner shows the state and turns it off or on.
 float(float action) gameupdate = #0;
 float(float action) MU_Action =
 {
@@ -74,8 +74,8 @@ void(float right, float y, float width, vector size, string text, vector color) 
 
 void(vector screensize) MU_Status =
 {
-	local string st, label, latest, current;
-	local float w, right, consent, bw;
+	local string st, label, latest, current, err, word;
+	local float w, right, consent, bw, x, y;
 	st = cvar_string("update_state");
 	consent = cvar("update_consent");
 	current = cvar_string("ui_release_version");
@@ -88,7 +88,8 @@ void(vector screensize) MU_Status =
 	else if (strcmp(st, "uptodate") == 0) label = "Up to date";
 	else if (strcmp(st, "downloading") == 0 || strcmp(st, "applying") == 0) label = "Updating...";
 	else if (strcmp(st, "available") == 0) label = "Update available";
-	else if (strcmp(st, "restart") == 0 || strcmp(st, "launcher") == 0) label = "Update ready";
+	else if (strcmp(st, "restart") == 0) label = "Update ready";
+	else if (strcmp(st, "launcher") == 0) label = "Update needs the launcher";
 	else if (strcmp(st, "error") == 0) label = "Update check unavailable";
 	w = min(320, screensize_x - 32);
 	right = screensize_x - 16;
@@ -96,21 +97,58 @@ void(vector screensize) MU_Status =
 	MU_StatusLine(right, 16, w, SZ_LABEL, label, COL_ACCENT);
 	MU_StatusLine(right, 38, w, '12 12 0', strcat("Your version: ", current), COL_TEXT);
 	MU_StatusLine(right, 58, w, '12 12 0', strcat("Latest: ", latest), COL_DIM);
+	// The Updates screen's message line: a failed check, restart or launcher handoff says why.
+	err = "";
+	if (consent == 1)
+	if (strcmp(st, "error") == 0 || strcmp(st, "restart") == 0 || strcmp(st, "launcher") == 0)
+		err = cvar_string("update_error");
+	y = 82;
+	if (strlen(err))
+	{
+		MU_StatusLine(right, 78, w, '12 12 0', err, SUI_THEME_WARN);
+		y = 100;
+	}
 	if (menu_screen != SCREEN_MAIN)
 		return;
-	// The screen's two deeds that have no other home: finishing an update, and turning
-	// updates on for an online player who turned them off before P823.
-	if (consent == 1 && clientstate() == 1)
-	if (strcmp(st, "restart") == 0 || strcmp(st, "launcher") == 0)
+	// Right to left: the switch, then what the state asks for. The switch is the old
+	// screen's Disable, which earlier terms promised; turning on needs online terms.
+	x = right;
+	if (consent == 1)
 	{
-		bw = stringwidth("Restart to update", TRUE, SZ_LABEL) + 28;
-		if (ui_button("mu_restart", [right - bw, 80], [bw, 28], "Restart to update", TRUE))
-			MU_Action(6);
+		bw = stringwidth("Turn off updates", TRUE, SZ_LABEL) + 28;
+		x = x - bw;
+		if (ui_button("mu_disable", [x, y], [bw, 28], "Turn off updates"))
+			MU_Consent(FALSE);
+		x = x - 8;
 	}
-	if (consent != 1 && ms_consent >= FS_TERMS_ONLINE)
+	else if (ms_consent >= FS_TERMS_ONLINE)
 	{
 		bw = stringwidth("Turn on updates", TRUE, SZ_LABEL) + 28;
-		if (ui_button("mu_enable", [right - bw, 80], [bw, 28], "Turn on updates"))
-			MU_Consent(TRUE);
+		x = x - bw;
+		if (ui_button("mu_enable", [x, y], [bw, 28], "Turn on updates"))
+		{
+			if (ui_synth())
+				print("menu: updates are turned on by a real click or key, not ui_key/ui_click\n");
+			else
+				MU_Consent(TRUE);
+		}
+	}
+	if (consent != 1)
+		return;
+	word = "";
+	if (clientstate() == 1)
+	if (strcmp(st, "restart") == 0 || strcmp(st, "launcher") == 0)
+		word = (strcmp(st, "launcher") == 0) ? "Restart through launcher" : "Restart to update";
+	if (strlen(word))
+	{
+		bw = stringwidth(word, TRUE, SZ_LABEL) + 28;
+		if (ui_button("mu_restart", [x - bw, y], [bw, 28], word, TRUE))
+			MU_Action(6);
+	}
+	else if (strcmp(st, "error") == 0)
+	{
+		bw = stringwidth("Check again", TRUE, SZ_LABEL) + 28;
+		if (ui_button("mu_check", [x - bw, y], [bw, 28], "Check again"))
+			MU_Action(1);
 	}
 };

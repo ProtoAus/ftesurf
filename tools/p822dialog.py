@@ -18,6 +18,7 @@ own window (p615link.Keys), which reach the engine as a device's.
   6 reopened, a real MOUSE1 press signs and posts (published=1)      shot p822_published
   7 reopened, the service refuses the challenge: Not published       shot p822_refused
     and a real Esc closes it
+  8 reopened, look mode (`zone_edit mouse`) cancels it and a real Enter posts nothing
 Each step grades the client's own lines and the bodies the service received.
 """
 import argparse
@@ -237,6 +238,15 @@ def main():
         check(shot('p822_refused'), '7 the Not published page is on screen')
         keys.press('esc')
         check(maybe(r'publish dialog closed'), '7 a real Esc closes it')
+        # 8 (review F1): a dialog the editor stops showing is cancelled, not left armed
+        n2 = len(svc.drafts())
+        cl.send('zone_edit press ze_upload'); wait(r'publish dialog waiting'); page(2)
+        cl.send('zone_edit mouse')                       # look mode: the panel's cursor goes
+        gone = maybe(r'zone upload cancelled or expired')
+        keys.press('enter'); time.sleep(1.5)
+        check(gone and len(svc.drafts()) == n2 and 'upload sent' not in cl.text()[at:],
+              '8 look mode cancels the dialog, and a real Enter after it posts nothing')
+        cl.send('zone_edit mouse')
         t = cl.text()
         check(not re.search(r'(?i)qc (error|crash)|stack overflow|runaway|exceeds MAX_ACTION_ELEMENTS', t),
               'no QC faults, and the dialog fit in SUI\'s element cap')

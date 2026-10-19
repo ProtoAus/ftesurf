@@ -5516,7 +5516,7 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_head(p, draw, "What is never recorded");
 		ui_tm_par(p, w, draw, "Anything you type. While the console or a menu has focus the journal keeps the timing of a keypress and drops which key it was, so a password typed in the console cannot end up in a file. Nothing outside this game's window is watched, ever.", COL_TEXT);
 		ui_tm_head(p, draw, "Updates");
-		ui_tm_par(p, w, draw, "Choosing Play online also keeps World of Surf up to date: it checks proto.bar and downloads game-owned files from dl.proto.bar. Those services see your IP address; settings, recordings and mounted game assets are not uploaded. Playing offline, the game does not check for updates.", COL_TEXT);
+		ui_tm_par(p, w, draw, "Choosing Play online also turns on automatic updates: World of Surf checks proto.bar and downloads game-owned files from dl.proto.bar. Those services see your IP address; settings, recordings and mounted game assets are not uploaded. Play offline does not turn them on. The title menu's top-right corner turns them off.", COL_TEXT);
 		ui_tm_head(p, draw, "Turning it off");
 		ui_tm_par(p, w, draw, "rec_hid 0 stops the raw input journal. Runs recorded without it are marked as such, rather than passing as runs that had one.", COL_TEXT);
 	}
@@ -5588,8 +5588,8 @@ float(vector p, float w, float draw) ui_terms_short =
 {
 	tm_y = 0;
 	ui_tm_dot(p, w, draw, "Each run is recorded on this PC: your position, speed and view, and your mouse and keyboard input.");
-	ui_tm_dot(p, w, draw, "Offline, nothing about a run leaves your PC, and the game does not check for updates.");
-	ui_tm_dot(p, w, draw, "Online, times and server replays are public. Your view-angle file and, unless you untick below, input journal go to play.proto.bar for anti-cheat review. Updates come from proto.bar. Players see your play and chat; servers see your IP address.");
+	ui_tm_dot(p, w, draw, "Offline, nothing about a run leaves your PC.");
+	ui_tm_dot(p, w, draw, "Online, times and server replays are public. Your view-angle file and, unless you untick below, input journal go to play.proto.bar for anti-cheat review. Playing online also turns on automatic updates from proto.bar. Players see your play and chat; servers see your IP address.");
 	ui_tm_dot(p, w, draw, "Never recorded: what you type (only that a key was pressed, and when), or anything outside the game.");
 	return tm_y - 3;
 };
@@ -5638,12 +5638,13 @@ void(vector pos, float w) ui_tm_jdraw =
 };
 
 // Only a saved real answer applies the choice. Offline never enables uploads.
-// P823: it is the update permission too, as the text above says.
+// P823: Play online also turns updates on, as the text above says; offline leaves them.
 float(float tier) ui_tm_answer =
 {
 	if (!ui_consent_write(tier))
 		return FALSE;
-	MU_Consent(tier >= FS_TERMS_ONLINE);
+	if (tier >= FS_TERMS_ONLINE)
+		MU_Consent(TRUE);
 	if (ui_tm_jcan())
 	{
 		if (tier >= FS_TERMS_ONLINE && ui_tm_jbox)

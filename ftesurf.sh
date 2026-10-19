@@ -62,7 +62,7 @@ fi
 # Do not bypass a present bootstrap after a failure; it may be refusing a bad update.
 if [ "$runner" != ./ftesurf64 ]; then
     # First desktop start has no terminal for consent; play without a check.
-    # Leave permission unset so the game's Updates pane can ask for opt-in.
+    # Leave permission unset so Play online in the game can ask for opt-in.
     if [ ! -t 0 ] && [ ! -e ./.ftesurf-updater/consent ] && [ ! -L ./.ftesurf-updater/consent ]; then
         set -- --offline -- "$@"
     else

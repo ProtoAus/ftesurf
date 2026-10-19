@@ -203,7 +203,7 @@ def main():
             raise AssertionError('missing actor: ' + actor)
         # P823: no Updates screen. Its buttons were the menu's way into these engine commands;
         # Restart to update is the title menu's corner button.
-        UPDATE_CMDS = {'mu_enable': 'update_permission 1', 'mu_disable': 'update_permission 0',
+        UPDATE_CMDS = {'mu_enable': 'update_permission 1\nupdate_check auto', 'mu_disable': 'update_permission 0',
                        'mu_off': 'update_permission 0', 'mu_check': 'update_check force'}
         def click(button):
             if button in UPDATE_CMDS: return UPDATE_CMDS[button] + '\nwait 60\n'

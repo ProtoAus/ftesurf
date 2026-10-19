@@ -40,13 +40,24 @@ void(string said, float bad, float live) ZonePub_Answer =
 void() ZonePub_Pump =
 {
 	if (!zp_state) return;
+	// The dialog is drawn only on the panel with the cursor up. Anywhere else it is not on
+	// screen, and a press meant for the editor (Enter closes a polygon) must not publish.
 	if (zp_state == ZP_DONE)
 	{
-		if (!ui_ze_state || strcmp(zp_map, serverkey("map")) != 0) ZonePub_Cancel();
+		if (ui_ze_state != ZE_PANEL || strcmp(zp_map, serverkey("map")) != 0) ZonePub_Cancel();
+		return;
+	}
+	// Sent: nothing here changes what went, so only its answer or its silence ends it.
+	if (zp_state == ZP_UPLOAD)
+	{
+		if (gettime(0) > zp_until)
+			ZonePub_Answer("No answer from the zone service. The upload may still have arrived; "
+			               "check before publishing again.", TRUE, FALSE);
 		return;
 	}
 	// Also when the table on screen is no longer what the dialog names.
-	if (!ui_ze_state || strcmp(zp_map, serverkey("map")) != 0 || gettime(0) > zp_until
+	if (ui_ze_state != ZE_PANEL || ze_settings || !ze_cursor
+	 || strcmp(zp_map, serverkey("map")) != 0 || gettime(0) > zp_until
 	 || ze_dirty || strcmp(zone_crc, zp_crc) != 0)
 	{
 		ZonePub_Cancel();
@@ -138,6 +149,7 @@ void() ZonePub_Send =
 
 void() ZonePub_Go =
 {
+	if (zp_shown != zp_state) return;     // a reply lands between frames: act on the page drawn
 	if (zp_state == ZP_CONFIRM) ZonePub_Send();
 	else if (zp_state == ZP_DONE) ZonePub_Cancel();
 };
@@ -223,7 +235,12 @@ void(vector scr) ZonePub_Draw =
 	ZonePub_Pump();
 	zp_go_s = zp_no_s = '0 0 0';
 	if (!zp_state && zp_shown) print("zone_edit: publish dialog closed\n");
-	if (!zp_state) { zp_shown = 0; return; }
+	if (!zp_state)
+	{
+		zp_shown = 0;
+		if (strcmp(substring(ze_press, 0, 3), "zp_") == 0) { strunzone(ze_press); ze_press = ""; }
+		return;
+	}
 	pad = 12 * ui_cv_scale;
 	tsz = Font_Px(11 * ui_cv_scale);
 	rsz = Font_Px(8 * ui_cv_scale);
@@ -297,6 +314,7 @@ string(float code) ZonePub_Refused =
 	if (code == 409) return "The confirmation expired or the saved file changed. Try again.";
 	if (code == 429) return "Too many uploads for now. Try again later.";
 	if (code == 400 || code == 413) return "The zone service refused this file.";
+	if (code == 500) return "Accepted, but the lobbies' copies could not be written. Ask an operator to look.";
 	return "Zone uploads are unavailable right now; your saved file is unchanged";
 };
 

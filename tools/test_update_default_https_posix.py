@@ -612,7 +612,7 @@ def main():
             return text
         def click(game, button, marker):
             # P823: no Updates screen; its buttons were these engine commands.
-            cmd = {'mu_off': 'update_permission 0', 'mu_enable': 'update_permission 1'}.get(button)
+            cmd = {'mu_off': 'update_permission 0', 'mu_enable': 'update_permission 1; update_check auto'}.get(button)
             game.send((cmd if cmd else 'ui_hover @' + button + '; ui_mouse down; ui_mouse up') + '; echo ' + marker)
             return game.wait(marker)
         g = start('https-control')

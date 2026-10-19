@@ -122,8 +122,10 @@ def main():
             [str(a.client), "-plugin", "-nobrowse", *common, "+set", "log_name", "p647cl",
              "-window", "-nosound", "+set", "con_savehistory", "0", "+set", "cl_idlefps", "0",
              "+set", "cl_maxfps", "100", "+set", "rec_hid_upload", "0",
-             # P823: an online answer turns updates on; never let it fetch the real feed.
-             "+set", "update_autocheck", "0"],
+             # P823: an online answer turns updates on; never let it fetch the real feed
+             # (the title menu's ten-minute recheck is forced and ignores autocheck).
+             "+set", "update_autocheck", "0", "+set", "update_allow_insecure", "1",
+             "+set", "update_manifest_url", "http://127.0.0.1:9/p823-no-feed.json"],
             cwd=a.content, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, startupinfo=si)
 
@@ -276,7 +278,7 @@ def main():
                     "Steam offer, and nothing was asked of the directory",
                     (tier, "Steam sign-in is offered" in cl.text(), asked[n0:]), (["1"], False, []))
             L.check("T  offline answer leaves uploads disabled", raw_value(), "0")
-            L.check("U  P823: the offline answer turns updates off", updates(), "0")
+            L.check("U  P823: the offline answer leaves the update permission alone", updates(), None)
             L.check("...and the main menu draws", shot("p647_2_main"), True)
         else:
             if a.journal_optout:

@@ -5,7 +5,8 @@ WM_KEYDOWN/UP go only to a HWND whose PID is our retained Popen handle. F3's
 console actor proves Key_Event/binds ran; ui_key is NOT used to test F2.
 State pictures use a separately compiled, NEVER DEPLOYABLE menu fixture that
 changes only MU_Status's read-only status inputs and instruments text geometry.
-They do not test updater permission, HTTP, verification or restart authority.
+Its corner buttons (P823) are drawn, never clicked: they do not test updater
+permission, HTTP, verification or restart authority.
 """
 import argparse
 import ctypes as C
@@ -199,6 +200,12 @@ def layout_fixture(a):
     return fixture / 'menu.dat'
 
 
+LABELS = {'idle': 'Updates', 'checking': 'Checking for updates', 'uptodate': 'Up to date',
+          'error': 'Update check unavailable', 'downloading': 'Updating...', 'applying': 'Updating...',
+          'available': 'Update available', 'launcher': 'Update needs the launcher',
+          'restart': 'Update ready', 'off': 'Updates off', 'custom': 'Update ready'}
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     for option in ('engine', 'artifacts', 'control-artifacts', 'qcc', 'out'):
@@ -243,7 +250,8 @@ def main():
             trio = lines[index * 3:index * 3 + 3]
             good = good and len(trio) == 3 and all(float(r) == size[0] - 16 and float(w) <= 320 for r, _, w, _ in trio)
             if trio:
-                good = good and '[F2]' not in trio[0][3]   # P823: Restart to update is a button
+                # P823: each state's own label (the F2 hint is a button now, judged in the PNGs).
+                good = good and trio[0][3] == LABELS[state]
             good = good and len(list((rig / 'ftesurf/screenshots').glob(state + '.*'))) == 1
         results[f'layout-{size[0]}'] = {'pass': good, 'rig': str(rig), 'drawn_lines': lines}
         if not good:
