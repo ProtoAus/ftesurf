@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P849 — no "Can't register variable" lines at launch
+
+Installed 2026-10-19T18:30:47Z (UTC): ftesurf64.exe / fteqw64.exe 780afe5a in both installs (846 + 849;
+.prev = 846's 320a6806). The six "Can't register variable r_budget ... r_frametime_window, already
+defined" lines came from those cvars being registered again at each renderer start; harmless, now gone.
+
+"Gone / still there". Verdict PENDING.
+
 ## P846 — the console: map typing, Tab, Enter, clicks, `
 
 Installed 2026-10-19T18:06:25Z (UTC): ftesurf64.exe / fteqw64.exe 320a6806 in both installs
@@ -17,7 +25,7 @@ Installed 2026-10-19T18:06:25Z (UTC): ftesurf64.exe / fteqw64.exe 320a6806 in bo
 - A map dropped in by another program (Momentum) shows after the next map load, or after
   `sv_mapcompletioncache 0` then `sv_mapcompletioncache 1`.
 
-"All fine / <which one, what happened>". Verdict PENDING.
+CONFIRMED by Lex ("Epic! all works", 20 Oct local).
 
 ## P843-P845 — fire behind the grate, see-through walls, goto_spawn
 
