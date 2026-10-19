@@ -40,6 +40,7 @@ patch    855
 # (.prev 2f86a702); page re-rendered 20:05Z.
 # Patch 855 (viewer, surfd/web/watch.js): static props whose MDL texture entry has clientmaterial
 # set (Propper writes 1) are drawn (surf_null: 46 of 81 were not); HDR maps draw in Chromium.
+# Live 2026-10-19 21:01Z: surfd 37456de3 (surfd855 root), watch.js 52da42c7.
 # Patch 848 (qwprogs + csprogs): `reset` is the old goto_start (!r); goto_start sends !r unless the
 # run is past its leg's first segment (STAT_FS_TIMERSTARTSEG), then the track's start (!m / !b N).
 # Patch 847 (client engine + csprogs): DRAWFLAG_UNDERBLEND sorts a CSQC polygon before the blended

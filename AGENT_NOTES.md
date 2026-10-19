@@ -1,5 +1,22 @@
 # AGENT_NOTES.md
 
+## The 3D viewer and Propper props, HDR maps in Chromium (P855, 2026-10-20)
+
+- **Missing props were never missing content**: noclip's Studio.ts asserted `clientmaterial === 0`, a stale
+  pointer slot that Propper sets to 1; the throw escaped the prop's construction and the page counted
+  nothing (watchState's missing-object count reads 0). Mounting CS:S/HL2/Momentum changed no pixel on 10
+  views. When a map shows holes where the game has props, grep the console for "Assert fail" first.
+- **Chromium and Firefox take different paths on HDR maps**: Chromium turns auto-exposure on, Firefox
+  does not, so a bug behind auto-exposure (P855's debug-canvas read of `window.main`) shows only in
+  Chrome/Edge, and one behind it hides the other. Check both: `FF=1 node tools/shot.mjs ...`.
+- **Re-vendoring**: the noclip clone is not kept; fetch the pinned commit shallow (`git fetch --depth 1
+  origin <UPSTREAM.txt sha>`), and first re-run vendor.py with the unchanged PATCHES: it must reproduce the
+  committed tree (0 files) and `npm run build` the committed watch.js, or a later diff means more than
+  your patch. `npm ci` holds back esbuild's postinstall here and the build still works.
+- **LIVE 2026-10-19 (UTC)**: surfd generation 37456de3 from `/srv/nvme/agent-work/surfd855-20261019T2056Z`
+  since 21:01:19Z (OLD surfd853 CLOSED, kept); watch.js 52da42c7. The live page for run 23168, shot
+  headless at 15.5/43.3 s: 0 asserts in Firefox and Chrome, the platforms under the player.
+
 ## Tier completion by kind (P853) and the launcher-first page (P852), 2026-10-20
 
 - **One rule says which kind a map is**: `mapmanifest.map_mode`, pool_policy's `surf_` / `bhop_`

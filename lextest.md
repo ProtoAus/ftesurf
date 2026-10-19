@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P855 — the 3D viewer's missing props (surf_null), and Chrome
+
+Live 2026-10-19 21:01Z (UTC): watch.js 52da42c7.
+
+- Reload https://proto.bar/ftesurf/board/watch.html#r=23168 (Ctrl+F5): the bhop platforms the run lands
+  on (around 0:15 and 0:43), the arches and the hub signs are there now.
+- In Chrome or Edge, HDR maps (surf_null, surf_lux, ...) used to say "The 3D view failed on this map";
+  they should play now.
+
+"Looks right / <map and time where something is still missing>". Verdict PENDING.
+
 ## P853 — tier completion filtered All / Surf / Bhop
 
 Live 2026-10-19 (UTC): surfd 02ed71c2 (20:44Z), csprogs d28a06aa on the 12 lobbies and both installs.
