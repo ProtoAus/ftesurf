@@ -5,6 +5,25 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Slow clock (P840): calibration and the limits review left open
+
+- **`run_slowclock` 5 is not calibrated.** Every lobby `.rec` now ends with `clk ... <behind>`: read
+  a week of them (honest players, Wi-Fi, someone uploading or streaming) before lowering it. The
+  rig's honest arms read 0; review round 3's model put an oscillating upload queue (0.25 s swings
+  every 4.5 s) at 2.4 s in 3 minutes and Wi-Fi hold-and-release at ~1 s in 10 minutes -- both look
+  exactly like a client that slows and catches up. A ping-based correction (queueing raises ping,
+  under-reported msec does not) would allow a lower bound; unmeasured.
+- **Repaid pauses under the 0.2 s hysteresis are free** (sv_timer.qc SV_ClockFrame): a client that
+  freezes 0.15 s and catches up within a second reads 0. Each cycle is bounded, the count is not.
+  Sizing the hysteresis from measured lobby jitter is the fix; the private plan has the numbers.
+- **Stage rows are judged on the whole run so far** (SV_StageSubmitFlags): a short stage can hold up
+  to the run's bound, and a kept abandon's file has no `clk` to explain a stage row's demotion.
+  Per-stage snapshots of the eleven fields with a scaled bound would close both.
+- **The unranked line's detail shares one slot** (`lobby_rq_*`): a stage close overwrites it before
+  a slow surfd reply to the finish arrives. Cosmetic.
+- **Below ~5 fps the client loses time for real** (cl_input.c's 200 ms caps) and the run reads as a
+  slow clock -- true, and the message says so, but it is not slow motion.
+
 ## Left open by Patch 846 (console completion, 20 Oct)
 
 - The Ctrl+F find bar still types `` ` `` (keys.c, the con_findmode block runs before Patch 846's

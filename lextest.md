@@ -1,5 +1,20 @@
 # lextest.md — things waiting on a human
 
+## P840 — the unranked line says which setting; slow-motion runs are caught
+
+Live 2026-10-19 (UTC): csprogs 2f86a702 / qwprogs babf2b9b on both installs and all 12
+lobbies (19:00Z), surfd 3334069f (18:56:50Z).
+
+- On a lobby, `m_accel 1`, finish any timed run: chat should read "board: unranked (input mode:
+  m_accel is on) -- not on the online board". Set it back to 0 and the next run ranks as before.
+- In the admin run list a community run shows its reason after the tier ("community clean (input
+  mode)"); a new run's page shows `clock: behind ...` (0 for a normal run) and `prof`.
+- A slowed client (like Mark's two runs) now finishes as "unranked (slow clock: the game clock lost
+  N s to real time)". If an honest run of yours ever reads slow clock, say which map, your
+  connection (Wi-Fi? uploading or streaming?) and the run id.
+
+"Works / <what looked wrong>". Verdict PENDING.
+
 ## P851 — m is goto_start, r is reset
 
 __DEPLOYED851__

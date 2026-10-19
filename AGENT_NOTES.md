@@ -1,5 +1,35 @@
 # AGENT_NOTES.md
 
+## Slow clock and the profile reason (P840, 2026-10-20)
+
+- `SV_ProfileWhy` is the profile predicate now (`SV_ProfileBroken` = not PW_OK); `inprof` (header,
+  the start's verdict) and `prof` (the finish's) name it. `run_t_pwhy` is only for the chat line.
+- THE SLOW-CLOCK STATE IS ELEVEN FIELDS (`run_t_ck*`) AND LIVES IN FOUR PLACES: `SV_ClockReset`
+  (SV_TimerStart), the `slowclk` line of SV_SaveWriteState (retry slot, lobby saves, Multi-Session
+  park), the rewind ring (sv_rewindstate.qc m[b+55..64], RW_STATECOLS 60) and SV_SaveApplyState,
+  which applies the line unconditionally (no key = zeros). A new field goes in all four.
+- It accumulates the DEBT (wall minus game), not wall and game sums: QC floats are 32-bit and a
+  carried sum larger than the restored clocks rounds every later add (review round 2's model).
+- A server stall is excused by `time - sv_ck_frame` (set in StartFrame): SV_Frame reads packets
+  before SV_Physics, so that is the server's own frame gap. Move that hook and it stops working.
+- Zero-time usercmds after a spectate release or a restore are skipped until the first timed
+  packet or 1 s (Spec_InputFrame zeroes time; a spawn sends 0-msec moves).
+- `retry` typed at a console is the ENGINE's reconnect; cl_main.qc's handler only takes it with
+  `rec_retry` set on the client. A harness sends `cmd rec_retry`.
+- `run_prestrafe` drops +forward in a start box, and at `cl_forwardspeed` under ~60 ground
+  friction (stopspeed 75) beats acceleration: a slow walk out of a box needs both handled.
+  bhop_eazy teleports a body that walks past x -200; cfg/test/p840.zones.json stays before it.
+- THE TEST ACTOR (tools/p840clock.py `actor`) scales `input_timelength` in CSQC_Input_Frame --
+  the engine reads it back as the usercmd's msec (pr_csqc.c cs_get_input_state). msec alone gives
+  two samples per tick, which reccheck's sample-rate rule already faults; the lobby runs' shape is
+  msec x0.5 AND cl_netfps 33.33, which reccheck passes. Never ship the actor.
+- `run_slowclock` 5 is a guess until `clk` is read off lobby runs (BACKLOG).
+- LIVE 2026-10-19 (UTC): surfd generation 3334069f from /srv/nvme/agent-work/surfd840-20261019T1850Z since 18:56:50Z (OLD surfd839 CLOSED, kept);
+  QC from main 1266bed1 (P840 + P851) at 19:00Z: qwprogs babf2b9b, csprogs 2f86a702, menu
+  07fa02c8 in both installs and all 12 lobbies (`.prev` a747542c / 9f35b36a), lobby smoke
+  passed; reccheck 77524170 in C:\FTESurf\tools, C:\FTEQuake\tools (`.pre840`) and the
+  Pi's game/tools (`.pre840-20261019T190013Z`). Hashes are SHA-256 prefixes.
+
 ## Glow and embers under glass, reset / goto_start (P847-P848, 2026-10-20)
 
 - A CSQC polygon could only be pushed LATER (ADD to additive, NODEPTHTEST to banner);
