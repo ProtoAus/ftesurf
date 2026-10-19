@@ -17,6 +17,8 @@ import shutil
 import socket
 import sqlite3
 import subprocess
+import sys
+import tempfile
 import time
 import urllib.request
 
@@ -41,7 +43,8 @@ NGINX = '''location ^~ /api/zones/ {
 '''
 FILES = {'surfd/zonepub.py':'zonepub.py', 'surfd/zonepub_wsgi.py':'zonepub_wsgi.py',
          'surfd/zonepub_publish.py':'zonepub_publish.py',
-         'surfd/accounts.py':'accounts.py', 'tools/ed25519.py':'tools/ed25519.py'}
+         'surfd/accounts.py':'accounts.py', 'surfd/steam.py':'steam.py',   # accounts imports steam
+         'tools/ed25519.py':'tools/ed25519.py'}
 
 
 def sha(body): return hashlib.sha256(body).hexdigest()
@@ -60,6 +63,19 @@ def check_accounts(path):
 def check_port(port=8087):
     with socket.socket() as probe:
         probe.bind(('127.0.0.1', port))
+
+
+def check_imports(blobs):
+    # The release directory holds only FILES: they must import with nothing else beside them
+    # (the first --apply died in `init` on accounts.py's `import steam`).
+    with tempfile.TemporaryDirectory() as d:
+        for dest, body in blobs.items():
+            p = Path(d) / dest; p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(body)
+        env = {k: v for k, v in os.environ.items() if k != 'PYTHONPATH'}
+        r = subprocess.run([sys.executable, '-c', 'import zonepub, zonepub_publish, accounts'],
+                           cwd=d, env=env, capture_output=True, timeout=30)
+    if r.returncode:
+        raise RuntimeError('Service files do not import on their own: ' + r.stderr.decode(errors='replace')[-400:])
 
 
 def check_unit():
@@ -131,6 +147,7 @@ def main():
     check_accounts(a.account_db)
     check_port()
     check_unit()
+    check_imports(blobs)
     backup=SITE.with_name(SITE.name+'.pre-zonepub-'+a.commit[:12])
     if backup.exists(): raise RuntimeError('nginx backup collision; nothing overwritten')
     run('/usr/bin/python3','-c','import flask,gunicorn')
