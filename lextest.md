@@ -1,5 +1,25 @@
 # lextest.md — things waiting on a human
 
+## P821 — the chat box: select, copy, a real text field
+
+Both installs 2026-10-19T05:27:54Z and all 12 lobbies 05:29Z: csprogs 1337a98f (.prev 74fbeba9);
+qwprogs 234261dd and menu.dat 15a24f21 unchanged.
+A fresh client on lobby 1 was served it and drew the board (pi_lobby_smoke, 05:37Z).
+
+- Open chat (your chat key). A dark box fades in where the chat sits, holding the whole chat
+  history with a text field at the bottom, and the mouse cursor appears. Enter, Esc or the console
+  key closes it and the mouse goes back to looking.
+- Drag over a message to select it (across messages too); double-click a word, triple-click a whole
+  message. Ctrl+C or right-click copies it ("Copied" shows top right); paste it somewhere outside the
+  game to check. Colour codes are not copied.
+- In the field: click to place the caret, drag to select, Shift+arrows, Ctrl+arrows by word,
+  Ctrl+Backspace, Ctrl+A/C/X, Ctrl+V (the game asks first, as before), Up/Down for lines you sent.
+  The field shows the raw text, so `^1` stays visible while you type.
+- The wheel (or PgUp/PgDn) scrolls the history. The chat text is one size smaller (20; a saved 24
+  moved once).
+
+"Works / <what you saw>". Verdict PENDING.
+
 ## P809 — Entity view on any key
 
 Not installed yet (deploy line follows).
