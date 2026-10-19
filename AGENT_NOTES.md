@@ -1,5 +1,54 @@
 # AGENT_NOTES.md
 
+## The 3D run viewer (P825, 2026-10-19)
+
+`surfd/web/watch.html#r=<rid>` plays a board run over noclip.website's Source
+renderer; source and build in `src/viewer/` (its README). The bundle
+`surfd/web/watch.js` is built and committed, because surfd ships what git holds.
+
+- **What leaves the process**: `/board/api/run/<rid>/track` is a filtered
+  FTESURF-REC (`recplot.track`): WEB_HEAD_KEYS, `eye` out of pmpin, 11 sample
+  columns re-formatted from parsed numbers, and the timer/snap/ride records.
+  `in`, `pm`, `pe`, `mc`, seeds, pmpin and the integrity keys never leave. Its
+  gate is the run page's own (`_web_run_file`); its rate bucket is its own.
+  test_web 6b2 and test_recplot's track cases hold it, and five mutants (pmpin
+  passed, `in` kept, kind gate dropped, bucket shared, CSP unscoped) each failed
+  it. One build at a time (503 + Retry-After to the next caller), six kept,
+  10/min: on the largest local recording (23.7 MB) it takes 0.75 s and 12 MiB
+  on the PC (i9-9900K) and sends 4.2 MB, 1.4 MB gzipped; the Pi is unmeasured.
+- **test_web's evidence row was refused for its NAME.** Its leaf `ev_0001.rec`
+  fails `_EVLEAF_OK`, so "an EVIDENCE row is never public" never reached the
+  kind gate. It has a real file and a /api/replay control now.
+- **Valve content never comes from us.** The viewer reads CS:S/HL2 VPKs from a
+  folder the visitor picks (Chromium remembers it; others use a directory
+  input), by `File.slice`; what is still missing is a flat colour from its name
+  (`missing.ts`), lit by the map's lightmaps. noclip asserts on any missing file
+  (its own fallback, editor/obsolete.vmt, is HL2 content), so `MapFileSystem`
+  answers every .vmt and counts what it stood in for.
+- **noclip searches VPKs before the map's pakfile** -- the reverse of the game
+  since P765 and of Source. `MapFileSystem.fetchFileData` puts the pakfile first.
+- **Import order is load-bearing.** main.ts must import `SourceEngine/Main.js`
+  before anything else from the renderer: entered through BSPFile, the Materials
+  cycle evaluates Material_Eyes before MaterialBase and the page dies with
+  "Class extends value undefined".
+- **The BSP** comes from the picked folder first, else
+  `play.proto.bar/maps/<map>.bsp`. That route 302s to a presigned R2 URL, and a
+  browser checks CORS on BOTH hops; after a cross-origin redirect the Origin is
+  `null`, so R2's policy must allow `*`. Neither is set until the owner applies
+  them (BACKLOG); the CSP already names both hosts.
+- **A new surfd file does not ship by itself.** A successor generation's file set
+  is the SERVING generation's (`build_gen.py`); P825 added `--add web/<file>`.
+  A new Python module would also need the witness's module and alias lines,
+  which is why the track filter lives in recplot.py.
+- **Testing in a browser**: `src/viewer/tools/serve.py` (with `--steam` to mount a
+  local Steam folder over HTTP, 127.0.0.1 only) and `tools/shot.mjs`
+  (puppeteer-core outside the repo). Headless Edge 155 exits at once on this PC
+  with no output; Chrome works and reports the RTX 2080 SUPER through ANGLE. A
+  failed launch can leave headless browsers holding the profile: stop only the
+  ones whose command line names your own root.
+- board.css has a `.watch` (the runs table's pill button); a page-level
+  `class="watch"` drew the whole page as a pill. The viewer's classes are `w*`.
+
 ## Rewind over a failed attempt (P817, 2026-10-19)
 
 - A run on the clock that re-arms (SV_TimerTryArm: a fail into its box, a walk back) keeps its

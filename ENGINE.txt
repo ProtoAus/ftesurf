@@ -26,6 +26,9 @@ commit   ebc96a0810c3e312ec7edf13d4a0ab6f253bc595
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-816
 patch    826
+# Patch 825 (surfd + web): the board plays a run in 3D -- surfd/web/watch.html over noclip's
+# Source renderer (src/viewer), a gated /board/api/run/<rid>/track, Valve content only from
+# the visitor's own disk. No QC, engine or player-file change.
 # Patch 826 (surfd zonepub + installer): refusals answer 200 with ok=0 and the reason, so the
 # game shows it (a non-200 body never reaches QC); install_zonepub.py --upgrade swaps a release.
 # Patch 823 (menu): the terms, Steam and journal panels in the Dusk style; no Updates

@@ -5,6 +5,44 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## 3D run viewer (P825): what is left
+
+- **The map download needs CORS on both hops; owner's sudo and Cloudflare.** Until both are
+  set, watch.html reads the BSP from the visitor's own game folder only. (1) The installed
+  `/etc/nginx/snippets/ftesurf-maps.conf` needs the four `add_header Access-Control-Allow-Origin
+  "*" always;` lines `tools/r2gateway.nginx` now has, then `nginx -t` and a reload; the
+  gateway installer pins that file's hash (`nginx_before_sha256`), so its next install takes
+  the new one. (2) The R2 bucket behind the presigned URLs needs a CORS policy allowing
+  origin `*` (after a cross-origin redirect the browser sends `Origin: null`), GET/HEAD,
+  header Range, exposing Content-Length. Check: `curl -sI -H 'Origin: https://proto.bar'
+  https://play.proto.bar/maps/surf_beginner.bsp` shows the header on the 302, and the
+  Location's reply carries it too.
+- **Zones are not drawn.** Their JSON is public (`/ftesurf/maps/zones/local/<map>.json`, the
+  same CORS lines cover it); start/end/stage regions would go in the overlay.
+- **No stage deltas against an import.** Imports carry no `split` records, so the splits
+  table's delta column is empty racing a Momentum or KSF record; the HUD's live gap is
+  position-matched instead. Stage times from zone crossings (P750's inference) would fill it.
+- **The run line has no depth test** (a 2D overlay), so it shows through walls; the player and
+  the record are dots, not models.
+- **Props from Valve content are skipped without a game folder**, and noclip logs "Missing
+  object" for each to the console.
+- **Not tried:** Strata maps (BSP v25, 185 of 1,926; noclip's VTF reader asserts minor <= 5
+  and has no BC7/BC6H), maps over 100 MB (98 of them; memory and download unmeasured), phones
+  and low-end GPUs, Firefox/Safari's directory input on a whole Steam folder, and whether
+  noclip animates movers the game freezes at spawn (sv_entities.qc).
+- **`/api/replay/<rid>` has no kind or tier gate** (surfd.py `replay()`): only a banned owner's
+  rows are refused, so evidence-kind and review-rejected recordings resolve by id, input rows
+  included. The game fetches community ghosts there, so the answer is to refuse evidence and
+  rejected rows as `_web_run_file` does and keep community. test_web 6b's evidence control
+  shows the difference. Details: the private tree's
+  `checkpoints/p825-public-surface-findings-20261019.md`.
+- **`/api/board` rows carry `player` raw** (surfd.py ~2661), and the route takes
+  `tier=community`, whose `player` would be an install guid -- which AGENT_NOTES' public-surface
+  rule says is never published. Measured 2026-10-19: 0 community rows on the 4 maps sampled,
+  and ranked rows are SteamID64 (public), so latent on that sample. Answer: omit it, or send
+  `web_handle`, for tiers other than ranked and imported, after checking what the client keys
+  on it. Same private note.
+
 ## Publish dialog (P822) and first-boot screens (P823): what the reviews left
 
 - **An answer that arrives with the editor closed is only a console line** (P822).
