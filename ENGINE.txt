@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   ebc96a0810c3e312ec7edf13d4a0ab6f253bc595
+commit   675dcf7fa60da56595721a779061c80f2b3bdb4b
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,12 +24,18 @@ commit   ebc96a0810c3e312ec7edf13d4a0ab6f253bc595
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-816
-patch    830
-# Patch 830 (surfd): /api/replay refuses a review-rejected run; evidence stays (stage rows' lines).
+tag      patch-831
+patch    831
+# Patch 831 (client engine + hl2 plugin): props drawn in runs. Opaque model batches sorted
+# (r_batchsort), multi-mesh batches as one glMultiDrawElements (r_multidraw), a run of one
+# model's props as one instanced draw of vertexlit.glsl's INSTANCED permutation (r_instancing),
+# the world walk skips planes a parent is inside (hl2_clipflags). surf_demise's spawn ~5.0 ->
+# 3.45 ms. Installs only; players get it with the next release.
+# Patch 830 (surfd): /api/replay refuses a review-rejected recording, and evidence of a run
+# whose recording was rejected; unreviewed evidence stays (stage rows' lines read it).
 # Patch 829 (surfd + web): the 3D viewer draws zones and, in the map's depth, the run line and
-# the game's body; imports get stage times from the zones; board rows link 3D; map_index
-# rescans off the request path. No QC, engine or player-file change.
+# the game's body; imports get stage times from the zones; board rows link 3D; a new surfd
+# worker reads the map scan's timer answers off disk. No QC, engine or player-file change.
 # Patch 828 (reader): inend cannot precede the last declared hold boundary in its current
 # mover origin. No timer-span equality, format, native pin, threshold or permission change.
 # Patch 827 (csprogs): the live line's Line_End redoes only what new samples touch; it rebuilt
