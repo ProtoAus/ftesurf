@@ -2155,7 +2155,8 @@ void(entity e) SV_TimerMapTeleport =
 // Patch 375: a lobby save-load keeps its stream.  See SV_RecSnapshot.
 .float  rec_rec_ver;             // line 0 as written; 11 captures delayed-thaw inputs
 .float  rec_rec_partlob;         // the part file's name as opened: 1 lobby, 2 plain, 0 not yet
-.float  rec_rec_inmt, rec_rec_incy; // the last `in` row's <mt> <carry> (or instart's, 0)
+.float  rec_rec_inmt, rec_rec_incy; // the last input row's <mt> <carry> (or instart's, 0)
+.float  rec_rec_infz;            // landed release tail; cleared when a new freeze latches
 .float  rec_rec_gen;             // warm rewinds since the serial began
 .float  rec_rec_genbuf;          // strbuf: the mark each of them truncated to
 .string rec_rec_branch;          // local attachment, NOT the evidence run ID
@@ -2393,7 +2394,7 @@ int   rec_snap_bytes;                   // SV_RecSnapshot -> SV_RecSaveKeys, one
 int   rs_bytes;                         // the save being loaded: 0 = no stream copy
 float rs_gen, rs_ver, rs_flagofs, rs_pend;
 float rs_in, rs_pk, rs_warp, rs_ride, rs_pm, rs_pe, rs_portal, rs_pinned;
-float rs_pauses, rs_sess, rs_inmt, rs_incy;
+float rs_pauses, rs_sess, rs_inmt, rs_incy, rs_infz;
 string rs_rid, rs_branch;
 
 float(entity e, float gen, float mark) SV_RecCutOK =
@@ -4955,6 +4956,7 @@ void(entity e) SV_RecOpen =
 	SV_RecGenBegin(e);
 	e.rec_rec_ver = 11;
 	e.rec_rec_inmt = -1;
+	e.rec_rec_infz = FALSE;
 	e.rec_mc_n = e.rec_mc_bad = 0;      // Patch 376
 	e.rec_mc_badrow = -1;
 	e.rec_mc_sup = 0;                   // Patch 405
@@ -5491,17 +5493,15 @@ float(entity e) SV_RecKeepEvidence =
 	flags = e.run_t_flags - (e.run_t_flags & TF_RECORDING) - (e.run_t_flags & TF_FROZEN);
 	SV_RecPut(e, sprintf("abandon %d", ticks));
 	SV_RecState(e);
-	// P477: do not fly a pinned last row through the browse. P842: a released
-	// row can precede packet-end thaw; never close behind that actual input.
+	// P477: do not fly a pinned last row through the browse. P842: only an
+	// actual release input permits closing past the pin before packet-end thaw.
 	endmt = e.run_movetick;
 	endcarry = e.run_movecarry;
 	if (e.run_t_frzon)
 	{
 		endmt = e.run_t_frzmt;
 		endcarry = e.run_t_frzcarry;
-		if (e.rec_rec_ver == 11)
-		if (e.rec_rec_inmt > endmt ||
-		    (e.rec_rec_inmt == endmt && e.rec_rec_incy > endcarry))
+		if (e.rec_rec_ver == 11 && e.rec_rec_infz)
 		{
 			endmt = e.run_movetick;
 			endcarry = e.run_movecarry;
@@ -6359,7 +6359,7 @@ void(entity e, filestream f) SV_RecSaveKeys =
 	fputs(f, sprintf("recstate %d %d %d %d\n", e.rec_rec_pm, e.rec_rec_pe, e.rec_rec_portal, e.rec_rec_pinned));
 	fputs(f, sprintf("recsess %d %d\n", e.rec_rec_pauses, e.rec_rec_sess));
 	if (e.rec_rec_inmt >= 0)
-		fputs(f, sprintf("reclast %d %.9g\n", e.rec_rec_inmt, e.rec_rec_incy));
+		fputs(f, sprintf("reclast %d %.9g %d\n", e.rec_rec_inmt, e.rec_rec_incy, e.rec_rec_infz));
 	rec_snap_bytes = 0;
 };
 
@@ -6376,7 +6376,7 @@ void() SV_RecKeysReset =
 	rs_ver = 9;
 	rs_flagofs = -1;
 	rs_pend = rs_in = rs_pk = rs_warp = rs_ride = rs_pm = rs_pe = rs_portal = 0;
-	rs_pinned = rs_pauses = rs_sess = rs_incy = 0;
+	rs_pinned = rs_pauses = rs_sess = rs_incy = rs_infz = 0;
 	rs_inmt = -1;
 };
 
@@ -6396,7 +6396,11 @@ float(string k, float n) SV_RecKeyRead =
 	if (k == "recsess" && n >= 3)
 		{ rs_pauses = stof(argv(1)); rs_sess = stof(argv(2)); return TRUE; }
 	if (k == "reclast" && n >= 3)
-		{ rs_inmt = stof(argv(1)); rs_incy = stof(argv(2)); return TRUE; }
+	{
+		rs_inmt = stof(argv(1)); rs_incy = stof(argv(2));
+		rs_infz = (n >= 4 && stof(argv(3)) == 1);
+		return TRUE;
+	}
 	return FALSE;
 };
 
@@ -6418,6 +6422,7 @@ void(entity e, float mark, float samples, float padn, float cps) SV_RecRestore =
 	e.rec_rec_sesspend = rs_pend;
 	e.rec_rec_inmt = rs_inmt;
 	e.rec_rec_incy = rs_incy;
+	e.rec_rec_infz = rs_infz;
 	e.rec_rec_bvset = FALSE;
 	e.rec_rec_pcset = FALSE;
 	e.rec_rec_epoch = 0;
@@ -6525,6 +6530,8 @@ void(entity e) SV_RecRecount =
 	e.rec_rec_in = e.rec_rec_warp = e.rec_rec_ride = 0;
 	e.rec_rec_pm = e.rec_rec_pe = e.rec_rec_portal = 0;
 	e.rec_rec_pauses = e.rec_rec_sess = e.rec_rec_pinned = 0;     // Patch 364
+	e.rec_rec_inmt = -1;
+	e.rec_rec_incy = e.rec_rec_infz = 0;
 	last = -1;
 	pend = FALSE;
 	for (i = 0; i < e.rec_rec_lines; i = i + 1)
@@ -6577,6 +6584,9 @@ void(entity e) SV_RecRecount =
 	{
 		tokenize(bufstr_get(e.rec_rec_buf, last));
 		pk = stof(argv(1)) + 1;
+		e.rec_rec_inmt = stof(argv(2));
+		e.rec_rec_incy = stof(argv(3));
+		e.rec_rec_infz = !strcmp(argv(0), "fzin");
 		if (e.rec_rec_pk < pk)
 			e.rec_rec_pk = pk;
 	}
@@ -9424,6 +9434,7 @@ void(entity e) SV_TimerFreezeFrame =
 		if (!e.run_t_frzon)
 		{
 			e.run_t_frzon = TRUE;
+			e.rec_rec_infz = FALSE;       // a previous hold's release is not this tail
 			e.run_t_frzat = now - e.run_t_startsec - e.run_t_frzsec;
 			// The last `in` row's end: SV_TimerInFrame writes none from here on.
 			e.run_t_frzmt    = e.run_movetick;
@@ -13602,6 +13613,7 @@ void(entity e) SV_TimerInFrame =
 	{
 		e.rec_rec_inmt = e.run_movetick;    // Patch 375: a stream's `pause` reads these
 		e.rec_rec_incy = e.run_movecarry;
+		e.rec_rec_infz = e.run_t_frzon;
 	}
 
 	/*

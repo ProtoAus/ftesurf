@@ -53,6 +53,7 @@ void(entity e, float b) SV_RewindStateSample =
 	m[b+47] = e.rec_rec_sess;
 	m[b+48] = e.rec_rec_inmt;
 	m[b+49] = e.rec_rec_incy;
+	m[b+65] = e.rec_rec_infz;
 	m[b+50] = e.run_t_handcarry;
 	m[b+51] = e.run_t_clock;
 	m[b+54] = e.run_t_pendarm;
@@ -245,7 +246,7 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 		fputs(f, sprintf("recstate %d %d %d %d\n", m[b+42], m[b+43], m[b+44], m[b+45]));
 		fputs(f, sprintf("recsess %d %d\n", m[b+46], m[b+47]));
 		if (m[b+48] >= 0)
-			fputs(f, sprintf("reclast %d %.9g\n", m[b+48], m[b+49]));
+			fputs(f, sprintf("reclast %d %.9g %d\n", m[b+48], m[b+49], m[b+65]));
 	}
 	if (go)
 		fputs(f, sprintf("rewindgo %d\n", seq));

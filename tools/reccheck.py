@@ -1117,9 +1117,10 @@ def check_rec(path, verbose=False, *, data=None):
             exp = []
         elif ver >= 9:
             okc = EXP_OK_V9.get(tok[0], ())
-            if ver == 11 and tok[0] == "end":
-                okc = set(okc) | {12}  # new closing count is validated separately
-            exp = [x for n, x in enumerate(tok) if n not in okc and EXP_RE.match(x)]
+            # All v11 suffix tokens belong to closing validation. The eleven
+            # legacy fields still keep their original lexical checks.
+            legacy = tok[:12] if ver == 11 and tok[0] == "end" else tok
+            exp = [x for n, x in enumerate(legacy) if n not in okc and EXP_RE.match(x)]
         else:
             exp = [x for x in tok if EXP_RE.match(x)]
         if exp:
@@ -1138,7 +1139,7 @@ def check_rec(path, verbose=False, *, data=None):
                         % (lineno + 1, "a sample" if is_sample(tok[0]) else
                            "an 'in' row" if tok[0] == "in" else "a %r line" % tok[0],
                            spec_open[0]))
-        if trailer_at is None and tok[0] in ("clockend", "inend", "end"):
+        if trailer_at is None and tok[0] in ("inend", "end"):
             trailer_at = (lineno + 1, tok[0])
 
         if is_sample(tok[0]):
@@ -2818,17 +2819,21 @@ def check_rec(path, verbose=False, *, data=None):
         else:
             want_end = 4
         missing_clock_count = (ver == 11 and len(args) == 11)
-        if len(args) != want_end and not missing_clock_count:
+        if len(args) != want_end and not (ver == 11 and len(args) >= 11):
             r.fault("line %d: 'end' takes %d fields in a v%d file, has %d"
                     % (ln, want_end, ver, len(args)))
         else:
-            # Only the new last field is missing: still validate EVERY old field.
-            # This is closing damage, not permission to forget session history.
-            if missing_clock_count:
-                r.fault("line %d: 'end' is missing its v11 clockend count" % ln)
+            # A damaged new suffix cannot suppress validation of intact legacy
+            # fields, or grant/revoke independently validated reset history.
+            if ver == 11 and len(args) != want_end:
+                if missing_clock_count:
+                    r.fault("line %d: 'end' is missing its v11 clockend count" % ln)
+                else:
+                    r.fault("line %d: 'end' has extra fields after its v11 "
+                            "clockend count (%d fields)" % (ln, len(args)))
                 independent_closing_faults += 1
             e_ticks, e_n, e_pad, e_cp = (float(x) for x in args[:4])
-            if want_end >= 12 and not missing_clock_count:
+            if want_end >= 12 and len(args) >= 12:
                 if not is_int(args[11]) or exact_finish_ticks(args[11]) != len(clockends):
                     r.fault("'end' clockend count is not the body's exact count %d"
                             % len(clockends))

@@ -2861,6 +2861,16 @@ def case_v11_clock():
     ix = next(i for i, l in enumerate(bad) if l.startswith("clockend "))
     bad[ix] = "clockend counted"
     faults_with(bad, "invalid clockend", "missing native components report, not crash")
+    for suffix in ("0", "1e0"):
+        extra = base[:]
+        ix = next(i for i, l in enumerate(extra) if l.startswith("end "))
+        extra[ix] += " " + suffix
+        faults, _ = run(extra)
+        check(len(faults) == 1 and "clockend" in faults[0],
+              "counted footer extra %s adds no false equation fault" % suffix)
+        faults, _ = run(bump_end(extra, "inputs"))
+        check(any("input records" in f for f in faults),
+              "counted footer extra %s still validates old input count" % suffix)
 
 
 def case_v11_closing_restore_authority():
@@ -2874,7 +2884,9 @@ def case_v11_closing_restore_authority():
                 ("missing count", bad, "missing", 2),
                 ("word count", bad, "bad", 2),
                 ("exponent count", bad, "1e0", 2),
-                ("wrong count", bad, "0", 2))
+                ("wrong count", bad, "0", 2),
+                ("extra token", bad, "1 0", 2),
+                ("extra exponent token", bad, "1 1e0", 2))
     for label, pair in (("warm retries", retry_clock_pair()),
                         ("cold loads", cold_clock_pair("load"))):
         base, view = pair
@@ -2902,17 +2914,48 @@ def case_v11_closing_restore_authority():
             faults, _ = run(lines, view=badview)
             check(len(faults) == expected + 1 and any("never negative" in f for f in faults),
                   "%s preserves an independent VIEW fault for %s" % (name, label))
-            if name == "missing count":
+            if name in ("missing count", "extra token", "extra exponent token"):
                 faults, _ = run(bump_end(lines, "inputs"), view=view)
                 check(any("input records" in f for f in faults)
                       and any("goes backwards" in f for f in faults),
-                      "missing new counter does not hide old input-count damage for %s" % label)
+                      "%s does not hide old input-count damage for %s" % (name, label))
                 tail = lines[ix].split(); tail[11] = str(int(tail[11]) + 1)
                 wrong = lines[:]; wrong[ix] = " ".join(tail)
                 faults, _ = run(wrong, view=view)
                 check(any("sessions" in f for f in faults)
                       and any("goes backwards" in f for f in faults),
-                      "missing new counter does not hide old session-count damage for %s" % label)
+                      "%s does not hide old session-count damage for %s" % (name, label))
+
+
+def case_v11_closing_spectate_authority():
+    """A closing declaration cannot become an authoritative spectate boundary."""
+    for label, pair in (("warm retries", retry_clock_pair()),
+                        ("cold loads", cold_clock_pair("load"))):
+        base, view = pair
+        base = spectated(base)
+        faults, _notes, report = run(base, view=view, report=True)
+        check(not faults and "angle_rule     unavailable" in report,
+              "%s spectate control consumes both validated resets" % label)
+        for closer, expected in (("clockend sampled", 0),
+                                 ("clockend counted bad 0 0", 1)):
+            lines = base[:]
+            lines[0] = "FTESURF-REC 11"
+            lines = insert_before(lines, "spec", closer)
+            ix = next(i for i, l in enumerate(lines) if l.startswith("end "))
+            tail = lines[ix].split()
+            if len(tail) == 11:
+                tail.append("0")
+            tail.append("1")
+            lines[ix] = " ".join(tail)
+            faults, _notes, report = run(lines, view=view, report=True)
+            check(len(faults) == expected and all("clockend" in f for f in faults),
+                  "%s before spectate does not reclassify %s history" % (closer, label))
+            check("angle_rule     unavailable" in report,
+                  "closing-only placement keeps %s angular judgement unavailable" % label)
+            faults, _ = run(bump_end(lines, "inputs"), view=view)
+            check(any("input records" in f for f in faults)
+                  and any("goes backwards" in f for f in faults),
+                  "closing placement still exposes independent count damage for %s" % label)
 
 
 def case_v11_fzin():
@@ -2993,7 +3036,8 @@ def main():
                case_angle_initial_origin, case_angle_initial_restore, case_integer_tokens,
                case_hold_closing_horizon, case_closing_carry_nonnegative,
                case_closing_carry_exact_sign,
-               case_v11_clock, case_v11_closing_restore_authority, case_v11_fzin,
+               case_v11_clock, case_v11_closing_restore_authority,
+               case_v11_closing_spectate_authority, case_v11_fzin,
                case_imposition_closing_horizon,
                case_imposition_abandon_horizon, case_imposition_restore_allowance,
                case_imposition_boundary_authority,
