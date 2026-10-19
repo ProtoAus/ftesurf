@@ -274,7 +274,8 @@ export class BaseEntity {
 
     private findSequenceLabel(label: string): number {
         label = label.toLowerCase();
-        return this.modelStudio!.modelData.seq.findIndex((seq) => seq.label === label);
+        if (this.modelStudio === null) return -1; // FTESurf: the model failed to load
+        return this.modelStudio.modelData.seq.findIndex((seq) => seq.label === label);
     }
 
     // TODO(jstpierre): Move all this to a baseanimation type class?

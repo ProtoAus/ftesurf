@@ -392,7 +392,23 @@ let last = 0, frames = 0;
 (window as any).watchSeek = (t: number, m?: CamMode) => { T = t; if (m) setMode(m); };
 (window as any).watchGhost = () => toggleGhost();
 
+// One bad frame must not stop the page: the loop always schedules the next, and
+// a renderer that keeps throwing says so once instead of leaving a black view.
+let renderError = '';
 function loop(now: number): void {
+    try {
+        step(now);
+    } catch (e) {
+        if (renderError === '') {
+            renderError = String((e as Error)?.message ?? e);
+            console.error(e);
+            status(`The 3D view failed on this map (${renderError}). The run's numbers below still work.`);
+        }
+    }
+    requestAnimationFrame(loop);
+}
+
+function step(now: number): void {
     const dt = last === 0 ? 0 : Math.min(now - last, 100);
     last = now;
     if (view !== null && rec !== null) {
@@ -413,7 +429,6 @@ function loop(now: number): void {
         drawGraph();
         frames++;
     }
-    requestAnimationFrame(loop);
 }
 
 function setPlaying(p: boolean): void {

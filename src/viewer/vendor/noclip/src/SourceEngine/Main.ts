@@ -1209,6 +1209,7 @@ export class SourceWorldViewRenderer {
 
     public currentProjectedLightRenderer: ProjectedLightRenderer | null = null;
     public outputColorTargetID: GfxrRenderTargetID | null = null;
+    public outputDepthTargetID: GfxrRenderTargetID | null = null; // FTESurf: world.ts draws into it
     public outputColorTextureID: GfxrResolveTextureID | null = null;
 
     public flashlight: Flashlight | null = null;
@@ -1380,6 +1381,7 @@ export class SourceWorldViewRenderer {
         });
 
         const mainDepthTargetID = builder.createRenderTargetID(mainDepthDesc, `${this.name} - Main Depth`);
+        this.outputDepthTargetID = mainDepthTargetID;
 
         builder.pushPass((pass) => {
             pass.setDebugName('Main');
@@ -1464,6 +1466,7 @@ export class SourceWorldViewRenderer {
         this.skyboxView.reset();
         this.enabled = false;
         this.outputColorTargetID = null;
+        this.outputDepthTargetID = null;
         this.outputColorTextureID = null;
     }
 }
@@ -1657,6 +1660,7 @@ export class SourceRenderer implements SceneGfx {
     public renderHelper: GfxRenderHelper;
     public skyboxRenderer: SkyboxRenderer | null = null;
     public bspRenderers: BSPRenderer[] = [];
+    public onWorldPasses: ((builder: GfxrGraphBuilder, color: GfxrRenderTargetID, depth: GfxrRenderTargetID) => void) | null = null; // FTESurf
 
     private textureMapping = nArray(5, () => new TextureMapping());
     private bindingMapping: string[] = [LateBindingTexture.Camera, LateBindingTexture.FramebufferColor, LateBindingTexture.FramebufferDepth, LateBindingTexture.WaterReflection, LateBindingTexture.ProjectedLightDepth];
@@ -2016,6 +2020,8 @@ export class SourceRenderer implements SceneGfx {
 
         this.mainViewRenderer.pushPasses(this, builder, mainColorDesc);
         const mainColorTargetID = assertExists(this.mainViewRenderer.outputColorTargetID);
+        if (this.onWorldPasses !== null)
+            this.onWorldPasses(builder, mainColorTargetID, assertExists(this.mainViewRenderer.outputDepthTargetID));
 
         this.renderHelper.pushTemplateRenderInst();
 
