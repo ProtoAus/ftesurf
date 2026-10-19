@@ -32,6 +32,10 @@
 - The arm (`tools/p815zones.py`) holds the published copy as the client's Momentum `online`
   file and fetches nothing; it needs consent version 7 in the fixture's data/consent.txt, and
   its hosted arm sets `sv_zones_curated` as the picker does.
+- ON THE PI, nginx's `sites-enabled/play.proto.bar.conf` IS A REGULAR FILE, not a link to
+  sites-available (the R2 gateway's include went into it by hand on 15 Oct). Edit and hash that
+  one; a backup must not go into sites-enabled, which nginx loads whole. P815's first installs
+  edited the copy nginx never reads and probed a 404.
 - An edited save state is refused until the next map ("that save changed on disk"): a fixture
   that rewrites state.txt must restart the map, not reconnect.
 
@@ -4449,6 +4453,12 @@ material behind it; not map completeness or native/prediction acceptance.
 
 ## Imported runs: Momentum Mod and KSF
 
+- Patch 820: an import has no `stagestart`/`restart` records, so its failed stage
+  attempts come from the zone pass (cl_watch.qc Watch_ZoneEvents) running
+  SV_TimerFrame's stage machine: the box by identity, occupancy a POINT test. The
+  first cut used the pass's swept hull test and filed every near miss as a fail
+  (a review sweep of 2,485 imports: 35 s of a good surf_tibet stage hidden).
+  16 of the 17 surf_dune main imports here hold failed attempts.
 - (Patch 635 has since taken the Imported tab out: the Online list asks for
   the combined tier unless its filter is on. "The TAB board: every game by
   default".)
@@ -5898,6 +5908,11 @@ Getting this wrong kills the restart keys silently, so it gets its own section.
   (client) and `cmd vote` (server) print both sides.
 - A test that lowers lobby_cycle must raise it again before a map change: on
   the next map a short period opens the end-of-map vote on its first frame.
+- Patch 819: the first real player into an empty lobby restarts the clock
+  (Vote_ClientConnect -> Vote_FreshClock). ClientConnect runs BEFORE
+  PutClientInServer sets classname "player", and again for every client after a
+  changelevel, so it counts the others (Vote_LiveBut) and skips a map's first
+  begin, whose freshly latched clock is already whole. Arm: cfg/test/p819clock.cfg.
 
 ## Release preflight and immutable candidate handoff (2026-10-16)
 

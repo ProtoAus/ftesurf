@@ -5,6 +5,27 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Lobby clock (P819) and imported attempts (P820): what the reviews left open
+
+- P819, `src/server/sv_vote.qc` Vote_Extend against `sv_lobby.qc` Lobby_Cycle's hold: an
+  !extend in a hold's last hour puts the deadline past `lobby_cycle_hold`'s cap, so the
+  change then goes at once with only the minute/ten-second warnings, never "runs still
+  going are paused". Pre-existing; the 3600 s step widened it from the last 10 minutes.
+  Check: lobby_cycle 60, lobby_cycle_hold 120, a run going, !extend at hold0 + 70.
+- P819: a lone player who reconnects gets the reset (a fresh hour, unused extensions, a
+  cleared !rtv and voted map; a lone runner in a hold restarts its cap) -- the request's
+  letter, Lex to say if it should need the lobby empty for a while. One whose game
+  crashed and rejoins before the engine times the old slot out gets none.
+- P819: no arm runs a second client to show the reset NOT firing while someone is in
+  (Vote_LiveBut; reviewed, not run).
+- P820, `src/client/cl_watch.qc` Watch_ZoneEvents: the tick's event is the first END of
+  any track, else the first STAGE (P750's rule), so where another track's END covers a
+  stage box (surf_gekar: main stage 4 is bonus 1's END) that split, and that stage's
+  attempts, never come. Check: `replay status` on a surf_gekar main import. Whether the
+  server's own scan shares it is not measured.
+- P820: imported stage runs get no failed spans (the server writes no `restart` for a
+  stage run either), so one where the player fell back into the box shows every attempt.
+
 ## Zone publishing (P815) and velocity (P812): what is left
 
 - **A save carries a run across a publish.** `state.txt` records mapcrc, not zonecrc
@@ -356,6 +377,10 @@ Fixed items are removed; remaining reader/verifier contracts need acting control
   only depth-tested. Check: surf_boreas, setpos 1500 above the start, yaw 90.
 - Site: the same, SurfView_Teleports. A teleport parented to a mover is drawn where
   the lump puts it. Check: a map with a moving trigger_teleport.
+- Site: the same (P818 review). Quake 2 maps build no collision tree and Quake 3 maps
+  only with `_q3bsp_bihtraces 1`, so surf_view draws nothing there (the first-frame
+  line says so); Q3 patches are skipped even then. Brush entities are drawn but not in
+  the first-frame counts.
 
 ## Paint: what Patch 772 left out
 

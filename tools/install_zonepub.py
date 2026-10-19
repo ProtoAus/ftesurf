@@ -17,12 +17,18 @@ import shutil
 import socket
 import sqlite3
 import subprocess
+import sys
+import tempfile
 import time
 import urllib.request
 
 ROOT = Path('/srv/nvme/ftesurf-ops/zonepub')
 STATE = Path('/srv/nvme/ftesurf-ops/zonepub-state')
-SITE = Path('/etc/nginx/sites-available/play.proto.bar.conf')
+# The file nginx LOADS (nginx.conf includes sites-enabled/*). On the Pi it is a regular file, not a
+# link to sites-available, so the first install edited a copy nginx never read and probed a 404.
+ENABLED = Path('/etc/nginx/sites-enabled/play.proto.bar.conf')
+SITE = ENABLED.resolve() if ENABLED.is_symlink() else ENABLED
+BACKUPS = Path('/etc/nginx')   # never sites-enabled: a backup there would be loaded as config
 SNIPPET = Path('/etc/nginx/snippets/ftesurf-zonepub.conf')
 UNIT = Path('/etc/systemd/system/ftesurf-zonepub.service')
 # P815: where an admin's accepted upload is written -- the lobbies' timing copy, then the site's.
@@ -41,7 +47,8 @@ NGINX = '''location ^~ /api/zones/ {
 '''
 FILES = {'surfd/zonepub.py':'zonepub.py', 'surfd/zonepub_wsgi.py':'zonepub_wsgi.py',
          'surfd/zonepub_publish.py':'zonepub_publish.py',
-         'surfd/accounts.py':'accounts.py', 'tools/ed25519.py':'tools/ed25519.py'}
+         'surfd/accounts.py':'accounts.py', 'surfd/steam.py':'steam.py',   # accounts imports steam
+         'tools/ed25519.py':'tools/ed25519.py'}
 
 
 def sha(body): return hashlib.sha256(body).hexdigest()
@@ -60,6 +67,19 @@ def check_accounts(path):
 def check_port(port=8087):
     with socket.socket() as probe:
         probe.bind(('127.0.0.1', port))
+
+
+def check_imports(blobs):
+    # The release directory holds only FILES: they must import with nothing else beside them
+    # (the first --apply died in `init` on accounts.py's `import steam`).
+    with tempfile.TemporaryDirectory() as d:
+        for dest, body in blobs.items():
+            p = Path(d) / dest; p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(body)
+        env = {k: v for k, v in os.environ.items() if k != 'PYTHONPATH'}
+        r = subprocess.run([sys.executable, '-c', 'import zonepub, zonepub_publish, accounts'],
+                           cwd=d, env=env, capture_output=True, timeout=30)
+    if r.returncode:
+        raise RuntimeError('Service files do not import on their own: ' + r.stderr.decode(errors='replace')[-400:])
 
 
 def check_unit():
@@ -131,7 +151,8 @@ def main():
     check_accounts(a.account_db)
     check_port()
     check_unit()
-    backup=SITE.with_name(SITE.name+'.pre-zonepub-'+a.commit[:12])
+    check_imports(blobs)
+    backup=BACKUPS/(SITE.name+'.pre-zonepub-'+a.commit[:12])
     if backup.exists(): raise RuntimeError('nginx backup collision; nothing overwritten')
     run('/usr/bin/python3','-c','import flask,gunicorn')
     print('Preflight: clean source, exact nginx predecessor, separate new service/state, no role grants')
@@ -193,8 +214,16 @@ WantedBy=multi-user.target
         if SITE.read_bytes()!=before: raise RuntimeError('nginx changed during service setup')
         SITE.write_bytes(wanted);written=True
         run('/usr/sbin/nginx','-t')
+        # The route must be in the configuration nginx loads, not only in the file written.
+        if b'location ^~ /api/zones/' not in run('/usr/sbin/nginx','-T').stdout:
+            raise RuntimeError('nginx -T does not show the zone route; nothing is public')
         run('/usr/bin/systemctl','reload','nginx')
-        probe_app(a.commit,'https://play.proto.bar/api/zones/challenge')
+        for attempt in range(20):       # a reload's old workers answer for a moment
+            try:
+                probe_app(a.commit,'https://play.proto.bar/api/zones/challenge'); break
+            except (OSError, ValueError, RuntimeError):
+                if attempt==19: raise
+                time.sleep(0.5)
         if service_witness(release)!=witness: raise RuntimeError('Service master changed during public verification')
     except Exception:
         if written and SITE.read_bytes()==wanted:

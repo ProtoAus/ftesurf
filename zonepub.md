@@ -63,6 +63,14 @@ that also carries P815's upload flow (zonepub.py `PUBLISH_MARKER`), because the
 P729 client signs the same kind and posts the same body from any server. The
 installer takes `--game` as `csprogs.dat` files only, never a `.prev`.
 
+Installed 2026-10-19T04:05Z by the owner, release d9bf33b4
+(`/srv/nvme/ftesurf-ops/zonepub/<commit>`, state `/srv/nvme/ftesurf-ops/zonepub-state`); the
+role is granted. Two first `--apply` runs failed safe and taught the preflight: the release
+directory holds only FILES, which must import alone (accounts.py imports steam), and nginx loads
+`sites-enabled/play.proto.bar.conf`, a regular file on the Pi (it carries the R2 gateway's
+include), not a link to sites-available. A failed run leaves the unit and snippet (root) and the
+state directory: a rerun refuses until they are removed.
+
 Not checked: that the uploader's BSP is the build the lobbies load (zones are
 by map name). A wrong-build upload is visible at once in the game; roll it back.
 

@@ -53,5 +53,12 @@ class Install(unittest.TestCase):
         with patch.object(i.urllib.request,'urlopen',return_value=contextlib.nullcontext(response)):
             with self.assertRaises(RuntimeError):i.probe_app(source)
 
+    def test_release_files_import_on_their_own(self):
+        root=Path(__file__).resolve().parent.parent
+        blobs={dest:(root/src).read_bytes() for src,dest in i.FILES.items()}
+        i.check_imports(blobs)
+        blobs.pop('steam.py')
+        with self.assertRaises(RuntimeError):i.check_imports(blobs)
+
 
 if __name__=='__main__':unittest.main()

@@ -48,7 +48,7 @@ void() Vote_Cvars =
 	registercvar("lobby_vote_time", "25");
 	registercvar("lobby_vote_maps", "5");
 	registercvar("lobby_vote_cooldown", "120");
-	registercvar("lobby_extend_time", "600");
+	registercvar("lobby_extend_time", "3600");  // Patch 819: was 600
 	registercvar("lobby_extend_max", "2");
 	registercvar("lobby_rtv_ratio", "0.6");
 	registercvar("lobby_rtv_delay", "60");
@@ -60,6 +60,23 @@ float() Vote_Step = { return bound(60, cvar("lobby_extend_time"), 3600); };
 float(entity p) Vote_IsLive =
 {
 	return p.vote_here && clienttype(p) == CLIENTTYPE_REAL;
+};
+
+float(entity skip) Vote_LiveBut =
+{
+	local entity p;
+	local float n;
+
+	n = 0;
+	p = find(world, classname, "player");
+	while (p)
+	{
+		if (p != skip)
+		if (Vote_IsLive(p))
+			n = n + 1;
+		p = find(p, classname, "player");
+	}
+	return n;
 };
 
 float() Vote_Live =
@@ -952,6 +969,39 @@ float(entity p, string c, float argc) Vote_Command =
 	return FALSE;
 };
 
+// Patch 819: the first player into an empty lobby gets a whole period, its
+// extensions and a ballot of its own: what the last players voted leaves with them.
+// A change already issued or forced keeps its moment.
+void() Vote_FreshClock =
+{
+	local float per;
+
+	per = cvar("lobby_cycle");
+	if (per <= 0 || !lobby_cyc_next)
+		return;
+	if (lobby_cyc_moving || lobby_vt_force || lobby_cyc_holdend)
+		return;
+	per = max(per, 60);                         // Lobby_Cycle's floor
+	// A map's first begin: every client re-runs ClientConnect after a changelevel, onto
+	// the clock this map just latched (a big map's load can take the first minute).
+	if (!vote_extn && lobby_vt_next == "" && !lobby_vt_kind)
+	if (fabs(lobby_cyc_next - (time + per)) < 60)
+		return;
+	print(sprintf("vote: first player in an empty lobby -- %s on %s (was %s, %g extension(s))\n",
+	       Time_Clock(per), mapname, Time_Clock(max(lobby_cyc_next - time, 0)), vote_extn));
+	if (lobby_vt_kind)
+		Vote_Cancel();                          // nobody is left to vote in it
+	Lobby_CycleGo(per, "");
+	lobby_cyc_warn = Lobby_WarnLvl(per);        // as the latch: a short period gets no "N left"
+	vote_extn = 0;
+	lobby_vt_ext = 0;
+	if (lobby_vt_next != "")
+		strunzone(lobby_vt_next);
+	lobby_vt_next = "";
+	Vote_RtvClear();
+	vote_dirty = TRUE;
+};
+
 // Every begin, map changes included (edicts are recycled; *vpick outlives a map).
 void(entity p) Vote_ClientConnect =
 {
@@ -963,6 +1013,9 @@ void(entity p) Vote_ClientConnect =
 	p.vote_cmdat = p.vote_echoat = 0;
 	p.vote_pkpub = 0;
 	forceinfokey(p, "*vpick", "");
+	if (clienttype(p) == CLIENTTYPE_REAL)
+	if (!Vote_LiveBut(p))                       // p's classname is set later, in PutClientInServer
+		Vote_FreshClock();
 };
 
 void(entity p) Vote_ClientDisconnect =
