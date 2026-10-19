@@ -100,8 +100,8 @@ float  ze_click, ze_back;           // asked for by the input handler, done in t
 string ze_press;                    // `zone_edit press <id>`: that element counts as clicked once
 void(float real) ZonePub_Begin;
 void() ZonePub_Pump;
-float(float scan) ZonePub_Confirm;
-string() ZonePub_Line;
+float(float scan) ZonePub_Key;
+void(vector scr) ZonePub_Draw;
 string ze_note;                     // one line for the panel's foot
 float  ze_note_t;
 float  ze_saved_n;                  // zones in the last file written (the status line)
@@ -1184,7 +1184,7 @@ string(string id) ZoneEdit_Tip =
 	if (id == "ze_xyz") return "Round the selected zone's outline and vertical bounds to the chosen grid. Works in the panel; an invalid or collapsed outline is refused.";
 	if (id == "ze_gs") return "Use the world surface as hit instead of rounding placement to the grid. This is a snapping option, not the Surf gamemode. Click again to restore grid snapping.";
 	if (id == "ze_sv") return "Save the zones to this map's local JSON file on your machine. Reload the map to use them for timing in your hosted game. This does not upload zones or change a lobby's timing or times.";
-	if (id == "ze_upload") return "Publish this map's SAVED local zones to the lobbies. Requires a linked zone-admin Steam account and a real Enter confirmation. Lobbies time with them from their next map load; existing times stay.";
+	if (id == "ze_upload") return "Publish this map's SAVED local zones to the lobbies. Requires a linked zone-admin Steam account; a dialog asks before anything is sent. Lobbies time with them from their next map load; existing times stay.";
 	if (id == "ze_rl") return "Discard unsaved zone edits and read this map's zones again. Your saved local file takes priority; use Discard local file to stop using that override.";
 	if (id == "ze_fg") return "Delete this map's saved local zone override and reload the underlying zones. Unsaved zone edits are lost too. Map properties are separate and are not removed.";
 	if (id == "ze_settings") return "Edit local Surf/Bhop presets, speed cap, gravity and air acceleration for this map. Save settings and reload the hosted map to apply them; public lobbies are unchanged.";
@@ -1318,7 +1318,7 @@ void(vector scr) ZoneEdit_Panel =
 	{
 		ZoneEdit_SettingsDraw(p, w, tp_y, rowh, rsz);
 		sui_text([p_x + pad, p_y + h - rowh], [rsz, rsz], ze_note, ZEC_WARN, 1, 0);
-		drawresetcliparea(); sui_end(); Font_Reset(); return;
+		drawresetcliparea(); ZonePub_Draw(scr); sui_end(); Font_Reset(); return;
 	}
 
 	// Tracks: main, each bonus there is, and the next one.
@@ -1540,9 +1540,7 @@ void(vector scr) ZoneEdit_Panel =
 	tp_y = tp_y + rowh + 4;
 
 	a = 1 - (cltime - ze_note_t) / 6;
-	if (strlen(ZonePub_Line()))
-		sui_text(tp, [rsz, rsz], ZonePub_Line(), ZEC_WARN, 1, 0);
-	else if (ze_note != "" && a > 0)
+	if (ze_note != "" && a > 0)
 		sui_text(tp, [rsz, rsz], ze_note, SUI_THEME_GOOD, min(1, a * 3), 0);
 	else if (serverkey("board") != "ranked")
 		sui_text(tp, [rsz, rsz], "saved zones time your own game after the map is loaded again", ZEC_DIM, 1, 0);
@@ -1550,6 +1548,7 @@ void(vector scr) ZoneEdit_Panel =
 		sui_text(tp, [rsz, rsz], "saved zones change what you see here, not this server's timing", ZEC_DIM, 1, 0);
 
 	drawresetcliparea();
+	ZonePub_Draw(scr);
 	sui_end();
 	Font_Reset();
 };
@@ -1602,8 +1601,7 @@ float(float evtype, float scanx, float chary, float devid) ZoneEdit_InputEvent =
 		memfill8(ze_field_keys, 0i, sizeof(float) * ZE_KEYCOUNT);
 	}
 
-	if (ui_ze_state == ZE_PANEL && ze_cursor && !ze_settings)
-	if (ZonePub_Confirm(scanx))
+	if (ZonePub_Key(scanx))
 	{
 		ze_field_keys[scanx] = 3;
 		return TRUE;
