@@ -643,8 +643,8 @@ string(string id, float row) HE_OptDef =
 		if (row == 3) return "hud_lines_order|Board lines show|c|0 4 8 16|all near;next 4 s;next 8 s;next 16 s|Only the stretch of each ticked run that comes next from where you are, so a later part of the route does not show through a wall.";
 		// Patch 745: the replay's own two, each able to follow the setting above it.
 		if (row == 4) return "hud_lines_demo|Demo line shows|c|-1 0 4 8 16|as board lines;whole;next 4 s;next 8 s;next 16 s|While you watch a replay: the stretch of its line ahead of the playhead (and a quarter of that behind), faded at both ends, or all of it.";
-		// Patch 778: the replay bar's "skip fails" is the playback half.
-		if (row == 5) return "hud_watch_path_fails|Demo attempts|c|1 0|all;successful only|While you watch a replay: leave the stage attempts that failed (back in the stage's box, or !r) off its line. The replay bar's skip fails chip skips them in playback.";
+		// Patch 778: the line half; Patch 820's "successful only" chip on the replay bar sets both.
+		if (row == 5) return "hud_watch_path_fails|Demo attempts|c|1 0|all;successful only|While you watch a replay: leave the stage attempts that failed (back in the stage's box, or !r) off its line. The replay bar's successful only chip also skips them in playback.";
 		// Patch 632: one colouring for your own line and one for the others; 5 is
 		// each group's plain colour and the default.
 		if (row == 6) return "hud_lines_color_own|Your line|c|5 0 1 2 3 4|blue;speed;gain;contact;energy;air control|The line of the run you are making: plain blue, or coloured by one of five readings of the run.";

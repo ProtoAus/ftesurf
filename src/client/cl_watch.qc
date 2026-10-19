@@ -387,7 +387,7 @@ float  rec_wt_ftover;                 // spans past WT_FAILMAX, reported by `rep
 float  rec_wt_ftline;                 // hud_watch_path_fails the line was built with
 float  rec_wt_la[WT_STGMAX];          // a seg's last attempt: `stagestart` or `restart` tick
 float  wt_fseg, wt_fent, wt_frest, wt_fss;  // pass one's segment, entry, restart, start
-float  wt_zin;                        // Patch 820: the zone pass's body is in its segment's box
+float  wt_zsz, wt_zarm, wt_zhold;     // Patch 820: the zone pass's stage box and its state
 float  rec_wt_winseg;                 // the window's seg, -1 none
 float  rec_wt_wint0, rec_wt_wint1;    // its start and stop, run seconds
 // Patch 431: what the bar, seeks and playback cover -- the file, or the window
@@ -3228,7 +3228,7 @@ void() Watch_SeqRestore =
 */
 void() Watch_ZoneEvents =
 {
-	local float i, k, n, z, c, t, fl, far, ty, ez, cp, hit, own, tk;
+	local float i, k, n, z, c, t, fl, far, ty, ez, cp, hit, tk;
 	local vector o, v, mx;
 	local string s;
 
@@ -3249,7 +3249,8 @@ void() Watch_ZoneEvents =
 		rec_wt_zcz = -1;
 		wt_fseg = rec_wt_zseg;      // Patch 820: pass one's span state, which it left closed
 		wt_fent = wt_frest = wt_fss = -1;
-		wt_zin = TRUE;              // a stage run's file opens at its box: not a restart
+		wt_zsz = -1;
+		wt_zarm = wt_zhold = FALSE;
 	}
 	for (k = 0; k < WT_ZBUDGET && rec_wt_zat < rec_wt_recn && rec_wt_zon == 1; k = k + 1)
 	{
@@ -3300,7 +3301,6 @@ void() Watch_ZoneEvents =
 			}
 			// Nested: QC's && reads both sides, and zone_track[-1] is a VM error.
 			tk = rint(t / rec_wt_tickrate);
-			own = FALSE;
 			if (ez >= 0)
 			if (zone_track[ez] == rec_wt_track)
 			{
@@ -3318,27 +3318,58 @@ void() Watch_ZoneEvents =
 					Watch_FailClose(-1, FALSE);     // Patch 820: as pass one's `stage`
 					wt_fseg = rec_wt_zseg;
 					wt_fent = tk;
-					wt_zin = TRUE;
+					wt_zarm = TRUE;                 // SV_StageOpen
+					wt_zhold = FALSE;
+					wt_zsz = -1;                    // SV_StageZone: by identity, first in the table
+					for (z = 0; z < zone_count; z = z + 1)
+						if (zone_type[z] == ZONE_STAGE)
+						if (zone_track[z] == rec_wt_track)
+						if (zone_seg[z] == rec_wt_zseg)
+						if (wt_zsz < 0)
+							wt_zsz = z;
 				}
-				if (zone_type[ez] == ZONE_STAGE)
-				if (zone_seg[ez] == rec_wt_zseg)
-					own = TRUE;
 			}
 			/*
-			  Patch 820: an import's attempts, which it has no records of: leaving the
-			  segment's own box is a `stagestart`, landing back in it a `restart`
-			  (SV_StageOpen's rule).  Spans as pass one's (rec_wt_ft0).
+			  Patch 820: an import's attempts, which it has no records of, by
+			  SV_TimerFrame's stage machine (whole runs, past stage 1): armed, in the
+			  box (a point test) holds; leaving after a hold is a `stagestart`; not
+			  even touching it disarms; back in it disarmed is a `restart`, which
+			  re-arms.  Spans as pass one's (rec_wt_ft0), and rec_wt_la for windows.
 			*/
-			if (own != wt_zin)
+			if (wt_zsz >= 0)
+			if (rec_wt_zon == 1)
 			{
-				if (own)
+				if (wt_zarm)
+				{
+					if (Zone_PointInside(wt_zsz, o))
+						wt_zhold = TRUE;
+					else if (wt_zhold)
+					{
+						if (wt_frest >= 0)
+							wt_fss = tk;
+						if (wt_fseg < WT_STGMAX)
+							rec_wt_la[wt_fseg] = tk;
+						wt_zarm = wt_zhold = FALSE;
+					}
+					else
+					{
+						if (far)
+							hit = Zone_BoxInside(wt_zsz, o, PM_HULL_MINS, mx);
+						else
+							hit = Zone_BoxSwept(wt_zsz, rec_wt_zpo, o, PM_HULL_MINS, mx);
+						if (!hit)
+							wt_zarm = FALSE;    // flown through
+					}
+				}
+				else if (Zone_PointInside(wt_zsz, o))
 				{
 					wt_frest = tk;
 					wt_fss = -1;
+					if (wt_fseg < WT_STGMAX)
+						rec_wt_la[wt_fseg] = tk;
+					wt_zarm = TRUE;
+					wt_zhold = FALSE;
 				}
-				else if (wt_frest >= 0)
-					wt_fss = tk;
-				wt_zin = own;
 			}
 			if (rec_wt_zon == 1)
 			if (cp != rec_wt_zcz)
@@ -5373,8 +5404,9 @@ void(vector scr) Watch_Chrome =
 		localcmd(skon ? "hud_watch_skipidle 0\n" : "hud_watch_skipidle 1\n");
 
 	// Patch 778: and the failed attempts, its twin, left of it.  Patch 820: one switch
-	// for both halves of "successful stages only", the skip and the line.
-	skon = (cvar("hud_watch_skipfail") && !cvar("hud_watch_path_fails"));
+	// for both halves of "successful stages only", the skip and the line: lit when either
+	// is on (hud_edit sets the line alone), a click clears both or sets both.
+	skon = (cvar("hud_watch_skipfail") || !cvar("hud_watch_path_fails"));
 	s = (rec_wt_ftn > 0) ? sprintf("successful only (%g failed)", rec_wt_ftn) : "successful only";
 	xb = stringwidth(s, TRUE, [tiny, tiny]) + pad;
 	if (skx - gap - xb >= p_x + pad)        // a very large hud_watch_scale: left out
