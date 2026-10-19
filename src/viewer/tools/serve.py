@@ -3,7 +3,7 @@
     python tools/serve.py --maps DIR --rec ID=FILE.rec [--info ID=FILE.json] [--steam DIR] [--port 8825]
 
 Then open http://127.0.0.1:8825/board/watch.html#r=ID. /board/ is surfd/web,
-/board/api/run/ID/track is surfd's rectrack over FILE.rec, /board/api/run/ID
+/board/api/run/ID/track is surfd's recplot.track over FILE.rec, /board/api/run/ID
 is FILE.json (a saved copy of the live route) or 404, and /maps/NAME.bsp is
 DIR/NAME.bsp. --steam serves a Steam `common` folder at /steam/ with HEAD and
 Range, which watch.html#...&steam=1 mounts as if it had been picked (127.0.0.1
@@ -20,7 +20,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 SURFD = os.path.normpath(os.path.join(HERE, '..', '..', '..', 'surfd'))
 sys.path.insert(0, SURFD)
-import rectrack  # noqa: E402
+import recplot  # noqa: E402
 
 TYPES = {'.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
          '.svg': 'image/svg+xml', '.ttf': 'font/ttf'}
@@ -92,7 +92,7 @@ def main():
                 return self.steam(unquote(p[len('/steam/'):]))
             m = re.fullmatch(r'/board/api/run/(\d+)/track', p)
             if m and m.group(1) in recs:
-                r = rectrack.track(recs[m.group(1)], HEAD_KEYS)
+                r = recplot.track(recs[m.group(1)], HEAD_KEYS)
                 if not r.get('ok'):
                     return self.send(422, b'{}', 'application/json')
                 body = json.dumps({'v': 1, 'rid': int(m.group(1)), 'rec': r['rec'], 'thin': r['thin'],

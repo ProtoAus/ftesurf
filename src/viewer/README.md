@@ -33,7 +33,7 @@ package.json), and it prints the bundle's sha256.
 
 ## What the server sends
 
-`/board/api/run/<rid>/track` (surfd `web_run_track`, `rectrack.py`) is a filtered
+`/board/api/run/<rid>/track` (surfd `web_run_track`, `recplot.track`) is a filtered
 FTESURF-REC: the run page's header allowlist plus `eye`, 11 sample columns, the
 timer/snap/ride records. Same gate as `/board/api/run/<rid>`. `src/rec.ts` reads it
 and a whole .rec from disk alike.

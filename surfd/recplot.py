@@ -2,6 +2,7 @@
 recplot.py -- a .rec file as plot data for the owner's run page (Patch 359).
 
     parse(path, max_bytes=8 MiB, max_points=1500) -> dict
+    track(path, head_keys, ...) -> dict    the 3D viewer's filtered copy (Patch 825)
 
 Stdlib only, never raises, bounded: max_bytes is an exact nonnegative integer.
 At most max_bytes are acquired; reaching the allowance conservatively reports
@@ -415,3 +416,144 @@ def _parse(fh, max_bytes, max_points):
                   "duration": round(max(tmax or 0.0, 0.0), 3)},
         "notes": notes, "truncated": st["truncated"],
     }
+
+
+# ---- the 3D viewer's copy (Patch 825) ---------------------------------------
+#
+# track() is a recording as surfd/web/watch.html plays it: an FTESURF-REC file
+# itself, so src/viewer/src/rec.ts reads it and a .rec from disk with one parser.
+# What it keeps is an ALLOWLIST, like the run page's head:
+#   header  the caller's head_keys (printable ASCII, VALUE_MAX), plus `eye <stand>
+#           <duck>` from pmpin's two view heights; pmpin, mapcrc, zonecrc, zonerule,
+#           nonce, instart and startjit stay in the file
+#   samples the first 11 columns (t, origin, velocity, pitch, yaw, flags, keys),
+#           re-formatted from parsed numbers; the moves and the ramp normal stay
+#   records the timer's, `warp 0 0 <kind>` for warp and portal (the input-row
+#           indices mean nothing without the `in` rows), ride's arm/disarm; never
+#           in, pm, pe, mc, seed or zseed
+# Bounded: two passes of _lines over at most max_bytes, at most max_samples
+# samples (every k-th one, `thin <k>`, keeping the one after a snap while room
+# remains) and max_records records. Version on line 1, as parse() requires.
+
+TRACK_MAX_BYTES = 32 << 20
+TRACK_MAX_SAMPLES = 60000
+TRACK_MAX_RECORDS = 4000
+_TRACK_TIMER = {"stage": 2, "stagestart": 2, "cp": 2, "restart": 2, "resume": 2,
+                "ghost": 2, "split": 2, "retry": 1, "abandon": 1, "end": 1}
+_KIND = re.compile(r"[a-z]{1,16}$")
+_NOT_ASCII = re.compile(r"[^\x20-\x7e]")
+_VIEWH = re.compile(r"(?:^| )viewheight=(\S{1,24})")
+_DUCKH = re.compile(r" duckviewheight=(\S{1,24})")
+
+
+def track(path, head_keys, max_bytes=TRACK_MAX_BYTES, max_samples=TRACK_MAX_SAMPLES,
+          max_records=TRACK_MAX_RECORDS):
+    try:
+        if type(max_bytes) is not int or max_bytes < 0:
+            raise ValueError("max_bytes must be a nonnegative integer")
+        with open(path, "rb") as fh:
+            st = {"truncated": False}
+            total = sum(1 for text, _ in _lines(fh, max_bytes, st) if _is_sample(text))
+            fh.seek(0)
+            return _track(fh, frozenset(head_keys), max_bytes, max(1, int(max_samples)),
+                          max(0, int(max_records)), total)
+    except OSError as e:
+        return {"ok": False, "error": "cannot read: %s" % (e.strerror or type(e).__name__)}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": "parse failed: %s" % type(e).__name__}
+
+
+def _track_sample(tok):
+    if len(tok) < 11:
+        return None
+    v = _vec(tok[:9])
+    fl, keys = _int(tok[9]), _int(tok[10])
+    if v is None or fl is None or keys is None or not (0 <= fl < 1 << 16 and 0 <= keys < 1 << 16):
+        return None
+    return "%.4f %.2f %.2f %.2f %.2f %.2f %.2f %.1f %.1f %d %d" % (tuple(v) + (fl, keys))
+
+
+def _track_record(tok):
+    k = tok[0]
+    if k in _TRACK_TIMER:
+        f = [_int(t) for t in tok[1:1 + _TRACK_TIMER[k]]]
+        if len(f) < _TRACK_TIMER[k] or None in f:
+            return None
+        return " ".join([k] + [str(x) for x in f])
+    if k in ("warp", "portal"):
+        # v9 warp: <pk> <mt> <row> <kind> ...; older: <pk> <mt> <kind> ...
+        kind = "portal" if k == "portal" else (tok[3] if len(tok) > 3 else "")
+        if k == "warp" and _num(kind) is not None and len(tok) > 4:
+            kind = tok[4]
+        return "warp 0 0 %s" % kind if _KIND.match(kind) else None
+    if k == "ride" and len(tok) >= 7 and _KIND.match(tok[3]):
+        b = _vec(tok[4:7])
+        return None if b is None else "ride 0 0 %s %.3f %.3f %.3f" % (tok[3], b[0], b[1], b[2])
+    return None
+
+
+def _track(fh, head_keys, max_bytes, max_samples, max_records, total):
+    st = {"truncated": False}
+    it = _lines(fh, max_bytes, st)
+    first = next(it, None)
+    m = _VERSION.match(first[0].lstrip("﻿")) if first else None
+    if not m:
+        return {"ok": False, "error": "not an FTESURF-REC file"}
+
+    head, seen, vh, dvh = [], set(), None, None
+    for _ in range(HEAD_LINES):
+        ln = next(it, None)
+        if ln is None:
+            return {"ok": False, "error": "no 'begin'"}
+        text, overlong = ln
+        if text == "begin":
+            break
+        key, _, val = text.partition(" ")
+        if overlong or key in seen:
+            continue
+        seen.add(key)
+        if key == "pmpin":
+            a, b = _VIEWH.search(val), _DUCKH.search(" " + val)
+            vh, dvh = (_num(a.group(1)) if a else None), (_num(b.group(1)) if b else None)
+        elif key in head_keys:
+            head.append("%s %s" % (key, _NOT_ASCII.sub("", val).strip()[:VALUE_MAX]))
+    else:
+        return {"ok": False, "error": "no 'begin'"}
+    if vh is not None and dvh is not None and 0 < vh < 512 and 0 < dvh < 512:
+        head.append("eye %g %g" % (vh, dvh))
+    thin = -(-total // max_samples)
+    if thin > 1:
+        head.append("thin %d" % thin)
+
+    out, n, kept, records, splits, pending, capped = [], 0, 0, 0, 0, False, False
+    for text, overlong in it:
+        if overlong or not text:
+            continue
+        if _is_sample(text):
+            keep = pending or n % thin == 0
+            n += 1
+            if not keep:
+                continue
+            if kept >= max_samples:
+                capped = True
+                continue
+            line = _track_sample(text.split())
+            if line is not None:
+                out.append(line)
+                kept += 1
+                pending = False
+            continue
+        if records >= max_records:
+            capped = True
+            continue
+        line = _track_record(text.split())
+        if line is None or (line.startswith("split ") and splits >= MAX_SPLITS):
+            continue
+        splits += line.startswith("split ")
+        out.append(line)
+        records += 1
+        pending = pending or line.startswith("warp ")
+
+    text = "\n".join(["FTESURF-REC %d" % int(m.group(1))] + head + ["begin"] + out) + "\n"
+    return {"ok": True, "rec": text, "samples": kept, "thin": thin,
+            "truncated": st["truncated"], "capped": capped}

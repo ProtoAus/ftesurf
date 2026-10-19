@@ -72,10 +72,17 @@ let graph: HTMLCanvasElement | null = null;   // the speed traces, drawn once
 
 // ---- loading ---------------------------------------------------------------
 
+// surfd builds one track at a time and says 503 to the next caller (Patch 825).
 async function fetchJSON(url: string): Promise<any> {
-    const r = await fetch(url, { credentials: 'omit' });
-    if (!r.ok) throw new Error(`${url}: ${r.status}`);
-    return r.json();
+    for (let tries = 0; ; tries++) {
+        const r = await fetch(url, { credentials: 'omit' });
+        if (r.status === 503 && tries < 5) {
+            await new Promise((res) => setTimeout(res, 1000 * (Number(r.headers.get('Retry-After')) || 2)));
+            continue;
+        }
+        if (!r.ok) throw new Error(`${url}: ${r.status}`);
+        return r.json();
+    }
 }
 
 async function loadRunFromBoard(rid: number): Promise<void> {

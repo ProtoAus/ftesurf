@@ -1239,6 +1239,19 @@ def main():
     r = get(m, "/board/api/run/%d/track" % rid)
     check("a run has a track", r.status_code, 200)
     t = body(r)
+    check("...and says only what the viewer reads", sorted(t),
+          ["capped", "rec", "rid", "samples", "thin", "truncated", "v"])
+    m._track_lock.acquire()
+    m._track_cache.clear()
+    busy = get(m, "/board/api/run/%d/track" % rid)
+    m._track_lock.release()
+    check("a second build while one runs is 503, retry soon",
+          (busy.status_code, busy.headers.get("Retry-After")), (503, "2"))
+    r2 = get(m, "/board/api/run/%d/track" % rid)
+    m._track_lock.acquire()
+    check("...and a kept answer needs no build", get(m, "/board/api/run/%d/track" % rid).status_code, 200)
+    m._track_lock.release()
+    check("control: the kept answer is the built one", r2.get_data(), r.get_data())
     lines = t["rec"].split("\n")
     head = lines[:lines.index("begin")]
     tail = [x for x in lines[lines.index("begin") + 1:] if x]
@@ -1277,9 +1290,9 @@ def main():
     check("control: approved back, it has a track again",
           get(m, "/board/api/run/%d/track" % rid).status_code, 200)
     codes = [get(m, "/board/api/run/%d/track" % rid, ip="198.51.100.10").status_code
-             for _ in range(m.WEB_RUN_MAX + 1)]
+             for _ in range(m.WEB_TRACK_MAX + 1)]
     check("the track has its own bucket",
-          (codes.count(200), codes[-1]), (m.WEB_RUN_MAX, 429))
+          (codes.count(200), codes[-1]), (m.WEB_TRACK_MAX, 429))
     check("...which does not spend the run page's",
           get(m, "/board/api/run/%d" % rid, ip="198.51.100.10").status_code, 200)
 
@@ -1289,8 +1302,10 @@ def main():
         check("/board/%s is 200 %s" % (name, mime), (r.status_code, r.mimetype), (200, mime))
     check("the viewer page may fetch the map host and R2, and nothing else new",
           get(m, "/board/watch.html").headers.get("Content-Security-Policy"),
-          m.WEB_CSP.replace("connect-src 'self'", "connect-src 'self' https://play.proto.bar"
-                            " https://*.r2.cloudflarestorage.com"))
+          m.WEB_CSP.replace("connect-src 'self'", "connect-src 'self' https://play.proto.bar "
+                            + m.WEB_R2_ORIGIN))
+    check("...naming the bucket's own endpoint, not every account's",
+          bool(re.fullmatch(r"https://[0-9a-f]{32}\.r2\.cloudflarestorage\.com", m.WEB_R2_ORIGIN)), True)
     check("...and every other board path keeps the board's",
           [get(m, "/board/" + x).headers.get("Content-Security-Policy") == m.WEB_CSP
            for x in ("", "watch.js", "api/run/%d/track" % rid)], [True, True, True])

@@ -17,6 +17,7 @@ Deliberate design notes:
     distinct nodes is capped, and each source IP is rate limited.
 """
 
+import collections
 import hashlib
 import hmac
 import ipaddress
@@ -41,7 +42,6 @@ import zonefit          # bounded BSP entity/model reader for legacy timers
 import ksftopup         # bounded, board-scoped requests; no network in HTTP
 import ksfprofile       # resolved profile demand, paced by the same importer
 import recplot          # .rec -> plot data; stdlib only, never raises
-import rectrack         # .rec -> the 3D viewer's filtered copy (Patch 825)
 import steam            # the only module that asks Steam anything
 
 # --------------------------------------------------------------------------
@@ -4569,12 +4569,14 @@ WEB_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; "
            "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 # The 3D viewer's page (Patch 825) also fetches the map's BSP the way the game
 # does: play.proto.bar/maps/<map>.bsp, which answers with a presigned redirect
-# into R2 (tools/r2gateway.md). CSP checks every hop, so both hosts are named.
-# Each hop also needs CORS from its own server; until it has it, the page reads
-# the BSP from the viewer's own game folder instead.
+# into R2 (tools/r2gateway.md). CSP checks every hop, so both hosts are named --
+# the bucket's own endpoint, not *.r2.cloudflarestorage.com, which is any
+# account's. Every map download's 302 names it already. Each hop also needs
+# CORS from its own server; until it has it, the page reads the BSP from the
+# viewer's own game folder instead.
+WEB_R2_ORIGIN = "https://2a2e9751dc963919eb0896275279ba13.r2.cloudflarestorage.com"
 WEB_CSP_WATCH = WEB_CSP.replace(
-    "connect-src 'self'",
-    "connect-src 'self' https://play.proto.bar https://*.r2.cloudflarestorage.com")
+    "connect-src 'self'", "connect-src 'self' https://play.proto.bar " + WEB_R2_ORIGIN)
 # The web board is ranked only, like the in-game board since Patch 355: a
 # community (demoted) run is never counted or listed here.  A map opens on the
 # first of these with rows, else the first board it has.
@@ -4924,6 +4926,11 @@ GAME_PROFILE_MAX = 200   # ...and the most it may be asked for
 WEB_PROFILE_ROWS = 100   # rows on one profile page
 WEB_PROFILE_MAX = 5000   # cap on `limit`; the largest real profile is 2,575 rows
 WEB_RUN_MAX = 30         # run-path fetches per RATE_WINDOW per source
+# The 3D viewer's track (Patch 825): one per watch, two when racing the record.
+# recplot.track costs ~1 s and ~80 MiB on the largest recording here (23.7 MB,
+# measured on the PC), so one runs at a time and the answer is kept.
+WEB_TRACK_MAX = 10
+WEB_TRACK_CACHE = 6
 
 # What a public run page may see of a recording's header.  AN ALLOWLIST AND NOT
 # A BLOCKLIST: `mapcrc`, `zonecrc`, `zonerule`, `nonce` and `pmpin` are the
@@ -5682,7 +5689,7 @@ def web_player(handle):
                   "limit": limit, "rows": out}, "max-age=30")
 
 
-def _web_run_file(rid, now, bucket):
+def _web_run_file(rid, now, bucket, cap):
     """The public run routes' gate: ``(row, path, None)`` or ``(.., .., response)``.
 
     WHAT MAKES THIS SAFE TO EXPOSE is that the caller names a `replays` row and
@@ -5691,7 +5698,7 @@ def _web_run_file(rid, now, bucket):
     their own allowlists name.  A rejected run is a 404 here because it is absent
     from the board: a path nobody can find a row for should not be reachable by id.
     """
-    if not rate_ok(rate_key(), now, WEB_RUN_MAX, bucket):
+    if not rate_ok(rate_key(), now, cap, bucket):
         return None, None, fail(429, "rate limited")
     try:
         db = get_db()
@@ -5724,7 +5731,7 @@ def web_run(rid):
     marks, from recplot -- the same parser the admin run page reads.  Only
     WEB_HEAD_KEYS of the header is serialised (_web_run_file is the gate)."""
     now = int(time.time())
-    row, path, refused = _web_run_file(rid, now, "webrun")
+    row, path, refused = _web_run_file(rid, now, "webrun", WEB_RUN_MAX)
     if refused is not None:
         return refused
     plot = recplot.parse(path)
@@ -5750,23 +5757,54 @@ def web_run(rid):
     }, "max-age=300")
 
 
+_track_lock = threading.Lock()          # one recplot.track at a time
+_track_cache_lock = threading.Lock()
+_track_cache = collections.OrderedDict()  # (rid, size, mtime_ns) -> body
+
+
 @app.get("/board/api/run/<int:rid>/track")
 def web_run_track(rid):
     """One recording at full rate for the 3D viewer (watch.html, Patch 825):
-    rectrack's filtered FTESURF-REC text -- WEB_HEAD_KEYS of the header, eye
-    heights, the 11 sample columns, the timer and snap records -- behind the
-    same gate as the run page.  Its own rate bucket, so watching a run does not
-    spend the run page's."""
+    recplot.track's filtered FTESURF-REC text -- WEB_HEAD_KEYS of the header,
+    eye heights, the 11 sample columns, the timer and snap records -- behind the
+    same gate as the run page, in a bucket of its own.  One is built at a time
+    (another caller gets 503 and retries) and the last few answers are kept,
+    keyed on the file's size and mtime so a replaced file is read again."""
     now = int(time.time())
-    _row, path, refused = _web_run_file(rid, now, "webtrack")
+    _row, path, refused = _web_run_file(rid, now, "webtrack", WEB_TRACK_MAX)
     if refused is not None:
         return refused
-    out = rectrack.track(path, WEB_HEAD_KEYS)
-    if not out.get("ok"):
-        log.warning("web run %d untrackable: %s", rid, out.get("error"))
-        return fail(422, "the recording could not be read")
-    return _json({"v": 1, "rid": rid, "rec": out["rec"], "samples": out["samples"],
-                  "thin": out["thin"], "truncated": out["truncated"]}, "max-age=300")
+    try:
+        st = os.stat(path)
+    except OSError:
+        return fail(404, "no recording on this node")
+    key = (rid, st.st_size, st.st_mtime_ns)
+    with _track_cache_lock:
+        body = _track_cache.get(key)
+        if body is not None:
+            _track_cache.move_to_end(key)
+    if body is None:
+        if not _track_lock.acquire(blocking=False):
+            resp = fail(503, "busy, try again")
+            resp.headers["Retry-After"] = "2"
+            return resp
+        try:
+            out = recplot.track(path, WEB_HEAD_KEYS)
+        finally:
+            _track_lock.release()
+        if not out.get("ok"):
+            log.warning("web run %d untrackable: %s", rid, out.get("error"))
+            return fail(422, "the recording could not be read")
+        body = json.dumps({"v": 1, "rid": rid, "rec": out["rec"], "samples": out["samples"],
+                           "thin": out["thin"], "truncated": out["truncated"],
+                           "capped": out["capped"]}, separators=(",", ":"))
+        with _track_cache_lock:
+            _track_cache[key] = body
+            while len(_track_cache) > WEB_TRACK_CACHE:
+                _track_cache.popitem(last=False)
+    resp = Response(body, status=200, mimetype="application/json")
+    resp.headers["Cache-Control"] = "max-age=300"
+    return resp
 
 
 @app.after_request

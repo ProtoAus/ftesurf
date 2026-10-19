@@ -341,6 +341,117 @@ def case_never_raises():
     check("error text carries no path", "nope" in recplot.parse(cases[0][1])["error"], False)
 
 
+# ---- recplot.track: the 3D viewer's copy (Patch 825) ------------------------
+TRACK_KEYS = ("map", "track", "leg", "tickrate", "movetickrate", "clock", "flags", "momdemo")
+
+
+def body_lines(r):
+    lines = r["rec"].split("\n")
+    return lines[lines.index("begin") + 1:-1]
+
+
+def case_track_filter():
+    path = write("tr.rec", "\n".join([
+        "FTESURF-REC 9", "map surf_x begin", "map surf_dup", "track 0", "leg 0",
+        "tickrate 0.015", "clock counted", "owner Someone", "runid 20270115-000000-1",
+        "mapcrc 11223344", "zonecrc 99887766", "zonerule strict", "nonce " + "ab" * 16,
+        "instart 1 1", "startjit 0", "momdemo " + "e9" * 20,
+        "pmpin trisoup=1 duckviewheight=45 viewheight=62 gravity=800", "flags 0", "begin",
+        "seed 1 2 3", "zseed 0 0",
+        S(0.0, 1, 2, 3, 100, 0, 0), "in 1 1 0.01 1.25 90 0 450 0 0 0", "mc 1 3 -2",
+        "warp 2 2 1 tele 500 600 700 0 0 0 0", "pm 2 abc", "pe 2 123",
+        S(0.015, 500, 600, 700), "warp 3 3 speed 0 0 0 1 1 1",
+        "portal 4 4 1 10 10 10 0 0 0", "ride 5 5 arm 0 0 250", "ride 6 6 off nan 0 0",
+        "board 0.03 1 0 0 1 300 0 0", "stagepost 1 3 250",
+        "stagestart 1 3", "cp 1 4", "restart 1 5", "retry 6", "resume 2 7", "ghost 1 8",
+        "abandon 9", "stage 2 10", "cp x 4", S(0.03, 10, 10, 10), "inend 6 0",
+        "end 11 3 0 0 1 1 1 1 1 1 0", "split 1 4", "split 2 10", ""]))
+    r = recplot.track(path, TRACK_KEYS)
+    head = r["rec"].split("\n")[:r["rec"].split("\n").index("begin")]
+    check("track: version, allowlisted keys once each, ASCII only, eye from pmpin", head,
+          ["FTESURF-REC 9", "map surf_xbegin", "track 0", "leg 0", "tickrate 0.015",
+           "clock counted", "momdemo " + "e9" * 20, "flags 0", "eye 62 45"])
+    check("track: records rewritten from parsed fields, the rest dropped", body_lines(r), [
+        "0.0000 1.00 2.00 3.00 100.00 0.00 0.00 0.0 90.0 1 0",
+        "warp 0 0 tele",
+        "0.0150 500.00 600.00 700.00 0.00 0.00 0.00 0.0 90.0 1 0",
+        "warp 0 0 speed", "warp 0 0 portal", "ride 0 0 arm 0.000 0.000 250.000",
+        "stagestart 1 3", "cp 1 4", "restart 1 5", "retry 6", "resume 2 7", "ghost 1 8",
+        "abandon 9", "stage 2 10",
+        "0.0300 10.00 10.00 10.00 0.00 0.00 0.00 0.0 90.0 1 0",
+        "end 11", "split 1 4", "split 2 10"])
+    check("track: no integrity key or input record survives",
+          [k for k in ("owner", "runid", "mapcrc", "zonecrc", "zonerule", "nonce", "instart",
+                       "startjit", "pmpin", "seed", "\nin ", "\nmc ", "\npm ", "\npe ", "board",
+                       "stagepost", "inend", "trisoup") if k in r["rec"]], [])
+    check("track: counts", (r["ok"], r["samples"], r["thin"], r["truncated"], r["capped"]),
+          (True, 3, 1, False, False))
+    old = recplot.track(write("tr7.rec", "FTESURF-REC 7\nbegin\n" + S(0) + "\nwarp 1 1 bhop 0 0 0 0 0 0\n"), ())
+    check("track: a pre-v9 warp's kind is its third field", body_lines(old)[1:], ["warp 0 0 bhop"])
+    big = recplot.track(write("treye.rec", "FTESURF-REC 9\npmpin viewheight=9999 duckviewheight=45\nbegin\n"), ())
+    check("track: an eye height out of range is not published", big["rec"], "FTESURF-REC 9\nbegin\n")
+
+
+def case_track_bounds():
+    many = "FTESURF-REC 9\nbegin\n" + "\n".join(S(i * 0.015, i) for i in range(1000)) + "\n"
+    r = recplot.track(write("thin.rec", many), (), max_samples=100)
+    check("track: 1000 samples at max 100 keep every 10th, and say so",
+          (r["thin"], r["samples"], "thin 10" in r["rec"].split("begin")[0], r["capped"]), (10, 100, True, False))
+    snap = "FTESURF-REC 9\nbegin\n" + "\n".join(
+        S(i * 0.015, i) + ("\nwarp 1 1 tele 0 0 0 0 0 0" if i == 3 else "") for i in range(100)) + "\n"
+    r = recplot.track(write("snap.rec", snap), (), max_samples=10)
+    check("track: the sample after a snap is kept although thinning would drop it",
+          [ln.split()[1] if ln[0].isdigit() else ln.split()[0] for ln in body_lines(r)][:4], ["0.00", "warp", "4.00", "10.00"])
+    warps = "FTESURF-REC 9\nbegin\n" + "\n".join(
+        "warp 1 1 tele 0 0 0 0 0 0\n" + S(i * 0.015, i) for i in range(500)) + "\n"
+    r = recplot.track(write("warps.rec", warps), (), max_samples=50)
+    check("track: snaps do not lift the sample cap", (r["samples"], r["capped"]), (50, True))
+    cps = "FTESURF-REC 9\nbegin\n" + "cp 1 1\n" * 10000
+    r = recplot.track(write("cps.rec", cps), (), max_records=100)
+    check("track: records are capped", (len(body_lines(r)), r["capped"]), (100, True))
+    splits = "FTESURF-REC 9\nbegin\n" + "".join("split %d %d\n" % (i, i) for i in range(600))
+    check("track: splits stop at MAX_SPLITS",
+          len(body_lines(recplot.track(write("sp.rec", splits), ()))), recplot.MAX_SPLITS)
+    whole = "FTESURF-REC 9\nbegin\n" + S(0.0, 1) + "\n" + S(0.015, 2) + "\n"
+    cut = recplot.track(write("cut.rec", whole), (), max_bytes=len(whole) - 5)
+    check("track: a budget-cut line is not read, and the cut is said",
+          (cut["samples"], cut["truncated"]), (1, True))
+    check("track: the version must be on line 1, as parse() wants",
+          recplot.track(write("late.rec", "map x\nFTESURF-REC 9\nbegin\n"), ())["ok"], False)
+    check("track: no begin is not a track",
+          recplot.track(write("nob.rec", "FTESURF-REC 9\nmap x\n" + S(0) + "\n"), ())["ok"], False)
+
+
+def case_track_never_raises():
+    rnd = random.Random(825)
+    paths = [os.path.join(TMP, "nope.rec"), None, TMP, write("te.rec", b"")]
+    for i in range(30):
+        paths.append(write("tr%d.rec" % i, bytes(rnd.randrange(256) for _ in range(5000))))
+        junk = "\n".join(rnd.choice(["cp", "warp", "portal", "end", "split", "in", "-1", "1e5", "ride",
+                                     "resume", "retry", "ghost", "abandon", "stage", "0", " "]) + " " +
+                         " ".join(rnd.choice(["1", "-2", "nan", "inf", "tele", "arm", "", "3.5", "1e400",
+                                              "x", "1_0", "٣"]) for _ in range(rnd.randrange(14)))
+                         for _ in range(300))
+        paths.append(write("tf%d.rec" % i, "FTESURF-REC 9\nmap m\nbegin\n" + junk))
+    raised, bad = [], []
+    for p in paths:
+        try:
+            r = recplot.track(p, ("map",))
+            json.dumps(r, allow_nan=False)
+            if r["ok"]:
+                for ln in body_lines(r):
+                    t = ln.split()
+                    if not (len(t) == 11 or t[0] in ("warp", "ride", "end", "split", "cp", "stage", "stagestart",
+                                                       "restart", "retry", "resume", "ghost", "abandon")):
+                        bad.append(ln)
+                    if any(not c.isascii() for c in ln):
+                        bad.append(ln)
+        except Exception as e:  # noqa: BLE001
+            raised.append(repr(e))
+    check("track: never raises (%d inputs), strict JSON" % len(paths), raised, [])
+    check("track: every body line is one the viewer reads, all ASCII", bad[:3], [])
+
+
 def case_corpus():
     root = os.environ.get("RECPLOT_CORPUS") or os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "..", "ftesurf", "data", "runs")
@@ -378,7 +489,7 @@ def main():
     for case in (case_v3_v4, case_v5_stage, case_v7_warp, case_v9, case_padding, case_nonfinite,
                  case_long_lines, case_missing_begin, case_non_utf8, case_rates, case_downsample,
                  case_trailer_notes, case_unknown_records, case_resume_rebase, case_spec,
-                 case_never_raises,
+                 case_never_raises, case_track_filter, case_track_bounds, case_track_never_raises,
                  case_corpus):
         print("%s:" % case.__name__)
         case()

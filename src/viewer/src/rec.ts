@@ -10,7 +10,8 @@ export const FL_ONGROUND = 1, FL_DUCKED = 2, FL_JUMP = 4, FL_RAMP = 16;
 export const KEY_FORWARD = 1, KEY_BACK = 2, KEY_LEFT = 4, KEY_RIGHT = 8, KEY_JUMP = 16, KEY_DUCK = 32;
 
 const DUCK_T = 0.4, UNDUCK_T = 0.2;     // pm_source.c PMSRC_TIME_TO_DUCK / UNDUCK
-const FORCE_KINDS = new Set(['tele', 'telerel', 'bhop', 'zone']);
+// `portal` is the server's form of a portal record (recplot.track writes it as a warp kind).
+const FORCE_KINDS = new Set(['tele', 'telerel', 'bhop', 'zone', 'portal']);
 const NEVER_KINDS = new Set(['speed', 'push', 'lift']);
 
 export type RecEventKind = 'stage' | 'stagestart' | 'cp' | 'restart' | 'retry' | 'resume' | 'warp' | 'ghost' | 'abandon';
