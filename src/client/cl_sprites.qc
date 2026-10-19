@@ -293,6 +293,18 @@ float  spr_gskip_multi;                 // glows inside more than one brush
 entity spr_gtracer;
 
 /*
+  Patch 847: an ADDITIVE sprite is drawn in the additive bucket, after the map's blended
+  surfaces, so a glow behind a $translucent grate drew over it (surf_dune's braziers). Source
+  sorts sprites with the translucent world. One with a translucent brush between it and the eye
+  (spr_utracer's mask is WINDOW alone: VBSP gives those TRANSLUCENT|WINDOW) is drawn with
+  DRAWFLAG_UNDERBLEND, before them. A sprite's answer is refreshed every eighth frame.
+*/
+#define DRAWFLAG_UNDERBLEND 0x2000      // engine Patch 847; an older engine ignores the bit
+entity spr_utracer;
+float *spr_under;                       // [SPR_MAX] the last answer, 1 = under
+float  spr_uframe, spr_under_n;         // the stagger; last frame's count drawn under
+
+/*
   QuakeC allows at most eight parameters and Sprite_Add already uses all eight,
   so the parameter-set index crosses the call boundary in a global.  Set it
   immediately before the call; the parser already accumulates into locals, and
@@ -1447,6 +1459,9 @@ void() Sprite_LoadForMap =
 	*/
 	Sprite_LoadOccluders();
 	spr_n = beam_n = 0;
+	if (spr_under)
+		for (mat = 0; mat < SPR_MAX; mat = mat + 1)
+			spr_under[mat] = 0;                // Patch 847: positions are reused
 
 	/*
 	  BUILD 53: forget the last map's glare answers.
@@ -2459,7 +2474,7 @@ void() Sprite_Draw =
 	local float  i, m, maxdist, drawn, dbg, mo;
 	local vector eye, fwd, vright, vpright, vpup, r, u, dd;
 	local vector a, b, c, d, side, mid;
-	local float  flags, glare, useglare, useglare_on;
+	local float  flags, glare, useglare, useglare_on, underon;
 	local float  g_total, g_hidden, g_fading;
 	// BUILD 58.  srcmode gates the Source dimming terms; the count they were
 	// applied to lives in the global spr_dim_n, for the reason given there.
@@ -2539,6 +2554,14 @@ void() Sprite_Draw =
 	// BUILD 52.  One read per frame, not one per sprite; and the trace/ramp pass
 	// runs before the draw so this frame's alphas are this frame's answers.
 	useglare_on = cvar("vbsp_glare");
+	underon = cvar("vbsp_sprite_under");
+	if (underon && !spr_under)
+	{
+		spr_under = memalloc(sizeof(float) * SPR_MAX);
+		spr_utracer = spawn();
+		spr_utracer.hitcontentsmaski = 0x00000002i;
+	}
+	spr_uframe = spr_uframe + 1;
 	if (useglare_on)
 		Sprite_Glare();
 
@@ -2588,6 +2611,8 @@ void() Sprite_Draw =
 		// the picture happening to look the same.
 		print(sprintf("  source dimming: %s, %g sprite(s) dimmed last frame; glare rays %g\n",
 		              srcmode ? "on" : "OFF", spr_dim_n, cvar("vbsp_glare_rays")));
+		print(sprintf("  under the blended surfaces (vbsp_sprite_under %g): %g additive sprite(s) last frame\n",
+		              underon, spr_under_n));
 		for (m = 0; m < sprmat_n; m = m + 1)
 			print(sprintf("  %2g %-40s %gx%g  orient %g\n",
 			              m, sprmat_name[m], sprmat_w[m], sprmat_h[m], sprmat_orient[m]));
@@ -2621,6 +2646,7 @@ void() Sprite_Draw =
 	// Reset HERE rather than at the top of the function: the census above has
 	// already printed it, so what it printed is last frame's finished total.
 	spr_dim_n = 0;
+	spr_under_n = 0;
 
 	for (m = 0; m < sprmat_n; m = m + 1)
 	{
@@ -2682,6 +2708,20 @@ void() Sprite_Draw =
 			}
 			if (spr_add[i])
 				flags = flags | DRAWFLAG_ADD;
+			if (spr_add[i])
+			if (underon)
+			{
+				if (!((i + spr_uframe) & 7))
+				{
+					traceline(eye, spr_org[i], MOVE_NOMONSTERS, spr_utracer);
+					spr_under[i] = (trace_fraction < 1);
+				}
+				if (spr_under[i])
+				{
+					flags = flags | DRAWFLAG_UNDERBLEND;
+					spr_under_n = spr_under_n + 1;
+				}
+			}
 
 			/*
 			  BUILD 52.  An additive billboard is a light glare, so it is drawn

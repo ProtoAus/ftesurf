@@ -704,6 +704,8 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	  is per-run -- see the trap file. Set it to 0 to see what was reported.
 	*/
 	registercvar("vbsp_sprite_source", "1");
+	// Patch 847: an additive sprite behind a translucent window is drawn under it. 0: over it.
+	registercvar("vbsp_sprite_under", "1", CVAR_ARCHIVE);
 
 	/*
 	  BUILD 58 -- THE FLARE INTENSITY, and why it is a knob rather than a fix.
