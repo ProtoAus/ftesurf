@@ -2991,6 +2991,15 @@ publicly WITH its fix, not before it.
   Compare exact carry sign when binary64 yields zero: negative nonzero tokens
   can underflow to -0. Read the coefficient without exponent arithmetic so huge
   exponents cannot overflow parsing; genuine signed-zero spellings stay legal.
+- Reader-only promotion on live installs (P838): prepare immutable source outside
+  maintenance gates, then refresh CURRENT data/config/progs/native/index guards
+  and process identities at the actual boundary. Staged journals can move during
+  enumeration/hashing; ask early for a small owner quiet window instead of
+  dropping volatile current-file guards or repeating failed inventories. The
+  6.59 GB Pi transaction held the sweep lock for 109 s; preparation is additional.
+  Earlier missing paths are separate observations, not proof of loss or a claim
+  of preservation across unrelated hours. Count distinct matching digests, not
+  files, and load expected identities from provenance rather than retyping hashes.
 - CROSS-RUN SIMILARITY IS COLLECTED AND NOT ENFORCED (surfd schema 10,
   `surfd/simcheck.py`).  A run submitted twice -- a PLAYBACK of a recording rather
   than a performance -- produces two clean board rows and nothing else in this tree
