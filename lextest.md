@@ -1,5 +1,23 @@
 # lextest.md — things waiting on a human
 
+## P837 — the run graph is drawn once and reused
+
+Live 2026-10-19 (UTC): csprogs f1f94d56 on both installs and all 12 lobbies, with
+ftesurf/glsl/ftesurf_lgcache.glsl in both installs. On the lobbies a 0.1.27 client has no such file
+and draws the graph as before (checked on 0.1.27).
+
+- The run graph panel (top right) is now drawn into an image when something on it changes (a line
+  added, the view moved, a name arriving, and at least every 2 s) and that image is put on screen
+  each frame; your own curve, the replay's cursor and the dots are still drawn live over it. With
+  your config and eight board lines: 0.38 ms less a frame (QC -0.35 ms; 4.74 -> 4.27 ms at voyager's
+  spawn). Riding, it was redrawn 3 times in 2,350 frames; in a replay, 2 times in 4,600.
+- It must look the same: paused, it differs from the old drawing by at most 7 of 255 levels, in
+  rounding, and the scene still shows through the panel. If anything on it looks wrong or out of
+  date, `hud_linegraph_cache 0` in the console goes back to the old drawing live -- say what you saw
+  and whether that cures it.
+
+"Faster / <what looks off, where>". Verdict PENDING.
+
 ## P835 — the 3D viewer runs faster on heavy maps
 
 surfd 2026-10-19T12:20:25Z: generation e58d9d0e (main), root

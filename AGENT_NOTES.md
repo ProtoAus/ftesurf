@@ -1,5 +1,18 @@
 # AGENT_NOTES.md
 
+## The HUD run graph's cache (P837, 2026-10-19)
+
+- LineGraph_HudStill draws into two render targets only when LineGraph_CacheSame says an input
+  changed (and every 2 s). A NEW INPUT TO THE STILL LAYER MUST JOIN THAT KEY, or the panel shows
+  the old picture until the refresh. The live run's curve and the heads are drawn every frame.
+- Grade it on pixels with the game paused: `hud_linegraph_cache 0` against 1 in one process
+  (direct against direct is 0 pixels; cached is within a few levels). `linegraph status` prints
+  how many frames were composited and how many redrawn.
+- Engine shader facts it rests on: inline `glslprogram` is shader-level only, and a pass then keeps
+  one map; a pass's `blendfunc` must come before its second map (after it, it lands on the merged
+  sub-pass and never reaches GL); `!!samps 2` declares one sampler named s_2, not two. In a 2D
+  render target the projection is flipped but drawsetcliparea is converted as the screen's.
+
 ## Board-line names natively (P836, 2026-10-19)
 
 - `lines_label` (engine pr_csqc_lines.inc) and LineGraph_WorldLabels' QC loop are ONE

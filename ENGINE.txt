@@ -25,7 +25,10 @@ commit   39afb825f8925fb136127863fc469b2bbd80a04b
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-836
-patch    836
+patch    837
+# Patch 837 (csprogs + glsl/ftesurf_lgcache.glsl): the HUD run graph's still layer is drawn into
+# two render targets when it changes and composited each frame; no engine change. Lex's setup:
+# frame -0.38 ms. Lobbies csprogs f1f94d56; installs without the glsl draw it directly.
 # Patch 836 (client engine + csprogs): builtin lines_label looks along a board line for where
 # its name can sit, natively; the QC loop stays as the fallback (released engines) and must
 # change with it. Board-line names: QC -0.40 ms a frame in Lex's setup. Lobbies csprogs 23d5301a.

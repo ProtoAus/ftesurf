@@ -72,6 +72,12 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
   (+0.41 ms; its curves are native already), and ClipSkyPolygon (~7.5% of his frame on voyager;
   clipping whole sky polygons instead of fan triangles gives the same bounds mathematically, not
   bit for bit, so it needs a picture A/B).
+- **Run graph: Patch 837 cached its still layer** in two render targets (frame -0.38 ms in Lex's
+  setup, the panel within 7 of 255 levels). Left there: a screenshot_mega whose frame is a rebuild
+  sends the rest of that frame's HUD to the back buffer (the csprogs cannot see the screenshot's
+  framebuffer, nor capturedemo's: the switch back from a 2D target binds FBO 0 -- milk's targets
+  share it; an engine fix would return to vid.framebuffer); the replay's playhead dot is not held
+  in its plot. vid_restart crashes now and then on HL2 maps with or without it (voyager, dune).
 - **After 836, priced again in Lex's setup (19 Oct, one process, 4 pairs each):** run graph +0.39 ms
   of QC (+0.50 frame), board lines +0.555 (they also show the graph), key hints +0.13, trainer +0.08,
   names +0.07. A clean profile window (board lines on vs off, two processes) splits it, in
