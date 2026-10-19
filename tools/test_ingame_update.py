@@ -152,7 +152,7 @@ def main():
                        f'update_allow_insecure 1\nupdate_manifest_url "{base}/update.json"\n'
                        'name UpdaterRig\nruleset_allow_in 1\n' + extra + '\n'
                        'in 3 exec cfg/test/updater-steps.cfg\n')
-        (cfg.parent / 'updater-steps.cfg').write_text(f'cfg_save_auto 0\nmenu_restart\nwait 60\nui_updates\nwait 500\nui_update_probe\nupdate_info\nscreenshot {logname}.png\nwait 30\nquit\n')
+        (cfg.parent / 'updater-steps.cfg').write_text(f'cfg_save_auto 0\nmenu_restart\nwait 60\nwait 500\nui_update_probe\nupdate_info\nscreenshot {logname}.png\nwait 30\nquit\n')
         stdout = (dest / 'stdout.log').open('wb')
         # Sys_Error execs xmessage when stderr is redirected. A private stderr
         # PTY makes cold refusals exit instead of leaving an owned modal behind.
@@ -200,7 +200,7 @@ def main():
         assert probes, 'menu draw/probe control did not act'
         permission_path = dest / '.ftesurf-updater/consent'
         permission = permission_path.read_text().strip() if permission_path.exists() else '-1'
-        assert f'consent={permission} ' in probes[-1] and 'screen=7 client=1' in probes[-1], probes[-1]
+        assert f'consent={permission} ' in probes[-1] and 'screen=0 client=1' in probes[-1], probes[-1]
         assert (dest / 'ftesurf/screenshots' / f'{logname}.png').exists(), 'menu pixels were not captured'
         return logs
     try:

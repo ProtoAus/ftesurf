@@ -99,10 +99,10 @@ class Graders(unittest.TestCase):
         self.assertFalse(gate.has_actor(stamp + 'HTTPS_READY_OLD\n', 'HTTPS_READY'))
         self.assertTrue(gate.has_actor(stamp + 'HTTPS_READY\n', 'HTTPS_READY'))
 
-    def test_real_return_requires_updates_pane(self):
-        good = '2026-10-13 15:00:00 HTTPS_REAL_RETURNING_GAME\nui_update_probe: consent=1 state=uptodate screen=7 client=1\nmanifest     : ' + gate.FEED
+    def test_real_return_requires_title_menu(self):
+        good = '2026-10-13 15:00:00 HTTPS_REAL_RETURNING_GAME\nui_update_probe: consent=1 state=uptodate screen=0 client=1\nmanifest     : ' + gate.FEED
         gate.grade_return(good)
-        for text in [good.replace('screen=7', 'screen=0'), good.replace('client=1', 'client=2'),
+        for text in [good.replace('screen=0', 'screen=7'), good.replace('client=1', 'client=2'),
                      good.replace('state=uptodate', 'state=idle'), good.replace(' HTTPS_REAL_RETURNING_GAME', ' echo HTTPS_REAL_RETURNING_GAME'),
                      good.replace(gate.FEED, 'http://127.0.0.1/update.json')]:
             with self.assertRaises(AssertionError): gate.grade_return(text)

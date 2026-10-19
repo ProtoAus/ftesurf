@@ -172,15 +172,20 @@ def main():
             assert p.poll() is None, f'client exited before {actor}'
             time.sleep(0.05)
         raise AssertionError('missing actor: ' + actor)
+    # P823: no Updates screen. Its buttons were the menu's way into these engine commands;
+    # Restart to update is the title menu's corner button.
+    UPDATE_CMDS = {'mu_enable': 'update_permission 1', 'mu_disable': 'update_permission 0',
+                   'mu_off': 'update_permission 0', 'mu_check': 'update_check force'}
     def click(id):
-        return f'ui_updates\nwait 60\nui_hover @{id}\nwait 5\nui_mouse down\nwait 5\nui_mouse up\nwait 60\n'
+        if id in UPDATE_CMDS: return UPDATE_CMDS[id] + '\nwait 60\n'
+        return f'ui_hover @{id}\nwait 5\nui_mouse down\nwait 5\nui_mouse up\nwait 60\n'
     def start(dest, name, steps, env=None, manifest_url=None):
         cfgdir = dest / 'ftesurf/cfg/test'; cfgdir.mkdir(parents=True, exist_ok=True)
         (cfgdir / (name + '.cfg')).write_text('cfg_save_auto 0\ncl_idlefps 0\ncl_maxfps 100\nvid_fullscreen 0\nvid_width 1280\nvid_height 720\nvolume 0\nmusicvolume 0\n'
             f'developer 1\nlog_developer 1\nlog_name {name}\nlog_enable 1\n'
             f'update_allow_insecure 1\nupdate_manifest_url "{manifest_url or url + "/update.json"}"\n'
             f'name UpdaterRig\nruleset_allow_in 1\nin 2 exec cfg/test/{name}-steps.cfg\n')
-        (cfgdir / (name + '-steps.cfg')).write_text('cfg_save_auto 0\nmenu_restart\nwait 60\nui_updates\nwait 100\n' + steps)
+        (cfgdir / (name + '-steps.cfg')).write_text('cfg_save_auto 0\nmenu_restart\nwait 60\nwait 100\n' + steps)
         stdout = (dest / (name + '-stdout.log')).open('wb')
         p = subprocess.Popen([str(dest / 'ftesurf64.exe'), '-nohome', '-basedir', str(dest), '-manifest', str(dest / 'default.fmf'), '-window',
                               '+set', 'cfg_save_auto', '0', '+set', 'name', 'UpdaterRig', '+exec', f'cfg/test/{name}.cfg'],
@@ -280,7 +285,7 @@ def main():
         if a.arm in ['all', 'toggle']:
             dest = install('toggle', 0); hits.clear()
             steps = click('mu_enable') + 'wait 400\nui_update_probe\nupdate_info\n'
-            steps += click('mu_disable') + 'ui_update_probe\nui_updates\nwait 60\n'
+            steps += click('mu_disable') + 'ui_update_probe\nwait 60\n'
             steps += click('mu_enable') + 'wait 400\nui_update_probe\nupdate_info\nscreenshot toggle.png\nquit\n'
             p = start(dest, 'toggle', steps); text = finish(p, dest, 'toggle')
             probes = [l for l in text.splitlines() if 'ui_update_probe:' in l]
@@ -295,7 +300,7 @@ def main():
             p = start(dest, 'missing', steps); text = finish(p, dest, 'missing')
             assert 'launcher is missing or could not start' in text and 'handoff-actor: survived missing launcher' in text
             probes = [line for line in text.splitlines() if 'ui_update_probe:' in line]
-            assert len(probes) == 2 and all('consent=1 state=restart screen=7 client=1' in line for line in probes), probes
+            assert len(probes) == 2 and all('consent=1 state=restart screen=0 client=1' in line for line in probes), probes
             reason = 'Restart was not started: launcher is missing or could not start.'
             assert f'last error   : {reason}' in text and f'"update_error" is "{reason}' in text, 'failed restart did not publish its pane error'
             assert 'https://proto.bar/ftesurf/, put it beside FTESurf and retry.' in text
@@ -311,7 +316,7 @@ def main():
                 steps = 'wait 400\nui_update_probe\n' + click('mu_restart') + 'ui_update_probe\nupdate_info\nupdate_error\nscreenshot missing-engine.png\nquit\n'
                 p = start(dest, 'missing-engine', steps); text = finish(p, dest, 'missing-engine')
                 probes = [line for line in text.splitlines() if 'ui_update_probe:' in line]
-                assert len(probes) == 2 and all('consent=1 state=launcher screen=7 client=1' in line for line in probes), probes
+                assert len(probes) == 2 and all('consent=1 state=launcher screen=0 client=1' in line for line in probes), probes
                 assert f'last error   : {reason}' in text and f'"update_error" is "{reason}' in text
                 assert hits['/update.json'] == 1 and objects() == 0, dict(hits)
                 assert (dest / fixture_rel).read_bytes() == b'old updater control\n'

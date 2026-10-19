@@ -1165,7 +1165,7 @@ your sensitivity first.  A fresh install has no ftesurf.cfg.
 3.  Start ftesurf.bat. It runs the signed-update bootstrap when present.
     The first terminal launch asks permission before checking; without a
     terminal, the first launch starts the installed game without a bootstrap
-    check or saved permission. Enable updates in the game's Updates pane.
+    check or saved permission. Choosing Play online in the game turns updates on.
     ftesurf-launcher.exe --offline skips the bootstrap check without changing
     saved permission; the game's own auto-check still follows that permission.
     ftesurf.bat uses the engine directly only if the bootstrap is absent.
@@ -1528,8 +1528,8 @@ yours), OpenGL, and an X11 or Wayland desktop.
 3.  Run ./ftesurf.sh (or ./ftesurf.sh <mapname>). It runs the signed-update
     bootstrap when present. The first terminal launch asks permission before
     checking. The first desktop launch without a terminal starts the installed
-    game without a bootstrap check or saved permission; enable updates in the
-    game's Updates pane. Later launches follow the saved permission.
+    game without a bootstrap check or saved permission; choosing Play online
+    in the game turns updates on. Later launches follow the saved permission.
     ./ftesurf-launcher --offline skips the bootstrap check without changing
     permission; the game's own auto-check still follows that permission.
     Engine options are forwarded, for example:

@@ -121,7 +121,9 @@ def main():
         client = subprocess.Popen(
             [str(a.client), "-plugin", "-nobrowse", *common, "+set", "log_name", "p647cl",
              "-window", "-nosound", "+set", "con_savehistory", "0", "+set", "cl_idlefps", "0",
-             "+set", "cl_maxfps", "100", "+set", "rec_hid_upload", "0"],
+             "+set", "cl_maxfps", "100", "+set", "rec_hid_upload", "0",
+             # P823: an online answer turns updates on; never let it fetch the real feed.
+             "+set", "update_autocheck", "0"],
             cwd=a.content, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, startupinfo=si)
 
@@ -151,6 +153,10 @@ def main():
         L.Keys.VK.update(a=0x41, d=0x44, w=0x57, s=0x53)
         keys = L.Keys(client.pid)
         consent = gd / "data" / "consent.txt"
+        permission = rig / ".ftesurf-updater" / "consent"
+
+        def updates():
+            return permission.read_text().strip() if permission.exists() else None
 
         def raw_value():
             send("echo JOURNAL_PERMISSION_QUERY")
@@ -202,8 +208,8 @@ def main():
 
         if a.previous_online:
             L.check("T  an older online answer grants neither uploads nor directory access",
-                    (re.findall(r"version (\d+)", consent.read_text()), raw_value(), asked),
-                    ([str(online_tier - 1)], "0", []))
+                    (re.findall(r"version (\d+)", consent.read_text()), raw_value(), asked, updates()),
+                    ([str(online_tier - 1)], "0", [], None))
             send("ui_strip_test screen terms")
             L.check("T  opening terms does not upgrade the old answer",
                     (bool(cl.wait("ui_strip_test: screen terms", 6)), raw_value(),
@@ -244,6 +250,7 @@ def main():
         synthetic = (bool(refused), raw_value(), consent.exists())
         L.check("T  synthetic online answer acts but grants no permission",
                 synthetic, (True, "0", expected_path))
+        L.check("U  P823: ...nor the update permission", updates(), None)
         if synthetic != (True, "0", expected_path):
             return 1                           # never drive a mistakenly accepted offer
         send("ui_hover @tm_accept")             # consistent offline focus after every arm
@@ -269,6 +276,7 @@ def main():
                     "Steam offer, and nothing was asked of the directory",
                     (tier, "Steam sign-in is offered" in cl.text(), asked[n0:]), (["1"], False, []))
             L.check("T  offline answer leaves uploads disabled", raw_value(), "0")
+            L.check("U  P823: the offline answer turns updates off", updates(), "0")
             L.check("...and the main menu draws", shot("p647_2_main"), True)
         else:
             if a.journal_optout:
@@ -286,6 +294,7 @@ def main():
             L.check("T  real online answer records the new tier and enables uploads",
                     (tier, bool(offered), raw_value()),
                     ([str(online_tier)], True, "0" if a.journal_optout else "1"))
+            L.check("U  P823: the online answer turns updates on", updates(), "1")
             end = time.time() + 12              # the offer polls the directory for a lobby
             while time.time() < end and "/lobbies.json" not in asked[n0:]:
                 time.sleep(0.5)
@@ -317,8 +326,10 @@ def main():
                 # must fall between the offer and the join.  (How many maps is
                 # the rig's business: its maps are in no mounted game, so 0.)
                 text = cl.text()
-                at = [text.find("the Steam sign-in is offered"),
-                      text.find("duplicate entries coalesced"), text.find("Steam sign-in: joining")]
+                # The list also loads at boot now: the load that counts is the one after the offer.
+                offer = text.find("the Steam sign-in is offered")
+                at = [offer, text.find("duplicate entries coalesced", max(offer, 0)),
+                      text.find("Steam sign-in: joining")]
                 L.check("S  ...and the map list was loaded for that join's map check",
                         (min(at) >= 0, at == sorted(at)), (True, True))
                 box = cl.wait("press Enter to link your Steam account", 30)

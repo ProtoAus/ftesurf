@@ -33,9 +33,9 @@ def config(a, size, port, http, native):
              'ui_maps_large 1', 'ui_maps_friends 0', 'ui_maps_modes 127',
              f'ui_mapdl_url "http://127.0.0.1:{http}/maps"',
              'name MenuFixture', 'log_dir logs', 'log_name gallery', 'log_enable 1',
-             'waitms 1200', 'menu_restart', 'waitms 2000', 'ui_updates', 'ui_key escape', 'waitms 300']
+             'waitms 1200', 'menu_restart', 'waitms 2000', 'ui_journal', 'ui_key escape', 'waitms 300']
     lines += shot('main')
-    lines += ['bind F2', 'ui_key f2', 'waitms 300', 'ui_update_probe'] + shot('updates')
+    lines += ['bind F2', 'ui_key f2', 'waitms 300', 'ui_update_probe'] + shot('journal')
     lines += ['ui_key escape', 'waitms 300'] + click('mm_play') + ['waitms 900']
     lines += ['echo MENU_LARGE', 'ui_menu_probe'] + shot('large')
     lines += click('cs_filters') + ['echo MENU_FILTERS', 'ui_menu_probe'] + shot('filters')
@@ -52,7 +52,7 @@ def config(a, size, port, http, native):
         rel = 1 if i == 1 else 3
         online = 1 if i != 2 else 0
         lines += [f'friend_row {i+1:08x} {rel} {online} Friend%20{i+1:03d} Lobby%20One surf_fixture']
-    lines += ['friend_end', 'friends_status', 'ui_updates', 'waitms 200', 'ui_key escape', 'waitms 200']
+    lines += ['friend_end', 'friends_status', 'ui_journal', 'waitms 200', 'ui_key escape', 'waitms 200']
     lines += click('mm_play') + click('cs_friends')
     lines += ['echo MENU_FRIENDS', 'ui_menu_probe'] + shot('friends_connected')
     lines += click('mf_join00000001')
@@ -80,8 +80,8 @@ def grade(rig):
         for name, data in re.findall(r'MENU_(LARGE|FILTERS|FILTERED|COLLAPSED|COMPACT|SCROLLED)[\s\S]*?ui_menu_probe: ([^\r\n]+)', text):
             states[name] = {k: float(v) for k, v in re.findall(r'(\w+)=(-?[\d.]+)', data)}
         checks = {
-            'QC F2 handler opens updater': bool(re.search(r'ui_update_probe: .*screen=7', text)),
-            'F2 binding text exists (not dispatch proof)': 'ui_updates' in text and '"F2"' in text,
+            'QC F2 handler opens the journal panel (P823)': bool(re.search(r'ui_update_probe: .*screen=8', text)),
+            'F2 binding text exists (not dispatch proof)': 'ui_journal' in text and '"F2"' in text,
             'all layout actors': len(states) == 6,
             '128 completed friends': 'friends: ready 1 rows 128 loading 0' in text,
             'menu sees connected snapshot': bool(re.search(r'ui_menu_probe: friends_count=128 client=2 screen=1', text)),

@@ -129,11 +129,11 @@
 // Patch 647: the Steam sign-in, offered once, straight after the terms are
 // taken with public lobbies on.  It has a "not now": an offer, not a gate.
 #define SCREEN_STEAM    6
-#define SCREEN_UPDATE   7
+// 7 was the Updates screen until P823; the number is not reused.
 #define SCREEN_JOURNAL  8
 void() MU_Init;
 void() MU_Poll;
-void(vector screensize) MU_Screen;
+void(float on) MU_Consent;
 void(vector screensize) MU_Status;
 float() MF_Count;
 float() MF_Fresh;
@@ -5515,8 +5515,8 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_par(p, w, draw, "Replaying your runs, and telling a real run from a scripted one.", COL_TEXT);
 		ui_tm_head(p, draw, "What is never recorded");
 		ui_tm_par(p, w, draw, "Anything you type. While the console or a menu has focus the journal keeps the timing of a keypress and drops which key it was, so a password typed in the console cannot end up in a file. Nothing outside this game's window is watched, ever.", COL_TEXT);
-		ui_tm_head(p, draw, "Optional automatic updates");
-		ui_tm_par(p, w, draw, "Updates have a separate on/off choice. If enabled, World of Surf checks proto.bar and downloads game-owned files from dl.proto.bar. Those services see your IP address; settings, recordings and mounted game assets are not uploaded. Disable updates from the main menu's Updates panel.", COL_TEXT);
+		ui_tm_head(p, draw, "Updates");
+		ui_tm_par(p, w, draw, "Choosing Play online also keeps World of Surf up to date: it checks proto.bar and downloads game-owned files from dl.proto.bar. Those services see your IP address; settings, recordings and mounted game assets are not uploaded. Playing offline, the game does not check for updates.", COL_TEXT);
 		ui_tm_head(p, draw, "Turning it off");
 		ui_tm_par(p, w, draw, "rec_hid 0 stops the raw input journal. Runs recorded without it are marked as such, rather than passing as runs that had one.", COL_TEXT);
 	}
@@ -5528,7 +5528,7 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_par(p, w, draw, "Your finish time goes to play.proto.bar and appears on a public leaderboard. That server also keeps its own recording of the run (positions, velocities and angles), which anyone can download from the board.", SUI_THEME_WARN);
 		ui_tm_par(p, w, draw, "Your client's view-angle sidecar also goes to that server for anti-cheat review (rec_upload controls it). Choosing play online includes raw mouse and keyboard event journals, with timings, sent to play.proto.bar over HTTPS for private review, not public replays. Untick the journal box on the summary to opt out, or stop uploads later with F2. Stopping does not delete evidence already received.", COL_TEXT);
 		ui_tm_par(p, w, draw, "With online features enabled, play.proto.bar refreshes the map list at startup and serves zones, leaderboards and player pictures. Selecting a map can fetch its backdrop from dl.proto.bar. These services see your IP address, as does any lobby you join.", COL_TEXT);
-		ui_tm_par(p, w, draw, "A zone admin can explicitly upload saved zones to play.proto.bar. They are stored with the linked account as private drafts until an operator reviews and activates them; uploading alone does not change existing times.", COL_TEXT);
+		ui_tm_par(p, w, draw, "A zone admin can upload saved zones to play.proto.bar. They are stored with the linked account and go live on the lobbies once none of them has the map loaded; existing times stay.", COL_TEXT);
 		ui_tm_head(p, draw, "Steam");
 		ui_tm_par(p, w, draw, "A ranked time needs a Steam account linked to this game. You sign in on Steam's own page in your browser; the game never sees your password. play.proto.bar keeps your Steam ID, name and profile picture and, for this install, the key and id that name it, where and when it was linked, and when and how often it sends ranked runs.", COL_TEXT);
 		ui_tm_par(p, w, draw, "Once linked, your Steam name is your name on lobbies, and it and your picture are shown with your times, in the game and on proto.bar, where they link to your Steam profile and sit beside your Momentum Mod and KSF records.", COL_TEXT);
@@ -5561,7 +5561,8 @@ float(float c, vector p, float w, float draw) ui_terms_col =
   shows ui_terms_short; the two cards are behind "Full details".  The input
   journal upload, P774's separate consent, is a box here, not a menu button.
 */
-#define TM_PAD   28
+#define TM_PAD   16             // P823: the Dusk panels' margin
+#define TM_TOP   48             // under the 24 px heading at 12, as on the other panels
 #define TM_CARD  16
 #define TM_JBOX  34             // P796: the journal box's row and the gap under it
 float ui_steam_t0;      // when the Steam offer went up: how long to wait for the lobby list
@@ -5587,8 +5588,8 @@ float(vector p, float w, float draw) ui_terms_short =
 {
 	tm_y = 0;
 	ui_tm_dot(p, w, draw, "Each run is recorded on this PC: your position, speed and view, and your mouse and keyboard input.");
-	ui_tm_dot(p, w, draw, "Offline, nothing about a run leaves your PC.");
-	ui_tm_dot(p, w, draw, "Online, times and server replays are public. Your view-angle file and, unless you untick below, input journal go to play.proto.bar for anti-cheat review. Players see your play and chat; servers see your IP address.");
+	ui_tm_dot(p, w, draw, "Offline, nothing about a run leaves your PC, and the game does not check for updates.");
+	ui_tm_dot(p, w, draw, "Online, times and server replays are public. Your view-angle file and, unless you untick below, input journal go to play.proto.bar for anti-cheat review. Updates come from proto.bar. Players see your play and chat; servers see your IP address.");
 	ui_tm_dot(p, w, draw, "Never recorded: what you type (only that a key was pressed, and when), or anything outside the game.");
 	return tm_y - 3;
 };
@@ -5637,10 +5638,12 @@ void(vector pos, float w) ui_tm_jdraw =
 };
 
 // Only a saved real answer applies the choice. Offline never enables uploads.
+// P823: it is the update permission too, as the text above says.
 float(float tier) ui_tm_answer =
 {
 	if (!ui_consent_write(tier))
 		return FALSE;
+	MU_Consent(tier >= FS_TERMS_ONLINE);
 	if (ui_tm_jcan())
 	{
 		if (tier >= FS_TERMS_ONLINE && ui_tm_jbox)
@@ -5688,7 +5691,7 @@ void(vector screensize) screen_terms =
 	for (big = 1; big >= 0; big = big - 1)
 	{
 		ui_tm_size(big);
-		head = 66 + ui_para('0 0 0', w - TM_PAD * 2, tm_sz, tm_pitch, lead, COL_DIM, FALSE) + 14;
+		head = TM_TOP + ui_para('0 0 0', w - TM_PAD * 2, tm_sz, tm_pitch, lead, COL_DIM, FALSE) + 14;
 		if (ui_tm_full)
 		{
 			fh = tm_pitch + 14;
@@ -5699,7 +5702,7 @@ void(vector screensize) screen_terms =
 		}
 		else
 			cards = ui_terms_short('0 0 0', w - TM_PAD * 2, FALSE);
-		ph = head + cards + 12 + fh + jb + 34 + 24;
+		ph = head + cards + 12 + fh + jb + 30 + 16;
 		if (ph <= screensize_y - 16)
 			break;
 	}
@@ -5713,12 +5716,11 @@ void(vector screensize) screen_terms =
 	if (p_y < 8)
 		p_y = 8;
 
-	sui_style_box(p, [w, ph], 16, SUI_THEME_PANEL, SUI_THEME_EDGE, 0.97);
+	sui_style_panel(p, [w, ph], 12, 1);
 
-	Font_Set(ui_font_display);
-	sui_text([p_x + TM_PAD, p_y + 22], SZ_TITLE, "Before you play", COL_TEXT, 1, 0);
 	Font_Set(ui_font_ui);
-	ui_para([p_x + TM_PAD, p_y + 66], w - TM_PAD * 2, tm_sz, tm_pitch, lead, COL_DIM, TRUE);
+	sui_text([p_x + 16, p_y + 12], SZ_HEAD, "before you play", COL_ACCENT, 1, 0);
+	ui_para([p_x + TM_PAD, p_y + TM_TOP], w - TM_PAD * 2, tm_sz, tm_pitch, lead, COL_DIM, TRUE);
 
 	if (!ui_tm_full)
 		ui_terms_short([p_x + TM_PAD, p_y + head], w - TM_PAD * 2, TRUE);
@@ -5728,7 +5730,7 @@ void(vector screensize) screen_terms =
 		q = [p_x + TM_PAD, p_y + head];
 		x = tm_pitch + 14;
 		by = two ? max(ha, hb) : ha;
-		sui_style_box(q, [colw + TM_CARD * 2, by + x + TM_CARD * 2], 12, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
+		sui_style_box(q, [colw + TM_CARD * 2, by + x + TM_CARD * 2], 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
 		sui_text([q_x + TM_CARD, q_y + TM_CARD], tm_sz, "ON THIS MACHINE", COL_DIM, 1, 0);
 		ui_terms_col(0, [q_x + TM_CARD, q_y + TM_CARD + x], colw, TRUE);
 		if (two)
@@ -5736,7 +5738,7 @@ void(vector screensize) screen_terms =
 		else
 			q = [q_x, q_y + ha + x + TM_CARD * 2 + 12];
 		by = two ? max(ha, hb) : hb;
-		sui_style_box(q, [colw + TM_CARD * 2, by + x + TM_CARD * 2], 12, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
+		sui_style_box(q, [colw + TM_CARD * 2, by + x + TM_CARD * 2], 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
 		sui_text([q_x + TM_CARD, q_y + TM_CARD], tm_sz, "PUBLIC LOBBIES", COL_DIM, 1, 0);
 		sui_text([q_x + TM_CARD + stringwidth("PUBLIC LOBBIES", TRUE, tm_sz) + 10, q_y + TM_CARD],
 		         tm_sz, "only if you turn them on below", SUI_THEME_MUTED, 1, 0);
@@ -5745,12 +5747,12 @@ void(vector screensize) screen_terms =
 
 	// The journal box, the footnote and the buttons' row; on a strip of their
 	// own where the panel runs off the screen even at 12 px.
-	by = p_y + ph - 24 - 34;
-	strip = (by + 34 + 10 > screensize_y);
+	by = p_y + ph - 16 - 30;
+	strip = (by + 30 + 10 > screensize_y);
 	if (strip)
 	{
-		by = screensize_y - 34 - 10;
-		sui_fill([p_x, by - fh - jb - 4], [w, fh + jb + 48], SUI_THEME_PANEL, 1, 0);
+		by = screensize_y - 30 - 10;
+		sui_fill([p_x, by - fh - jb - 4], [w, fh + jb + 44], SUI_THEME_PANEL, 1, 0);
 		sui_fill([p_x, by - fh - jb - 4], [w, 1], SUI_THEME_EDGE, 1, 0);
 	}
 	if (ui_tm_full)
@@ -5761,7 +5763,7 @@ void(vector screensize) screen_terms =
 	lab = (ms_consent >= FS_TERMS_VERSION) ? "Stay offline" : "Play offline";
 	ha = stringwidth("Play online", TRUE, SZ_LABEL) + 28;
 	hb = stringwidth(lab, TRUE, SZ_LABEL) + 28;
-	if (ui_button("tm_accept", [p_x + w - TM_PAD - ha - 12 - hb, by], [hb, 34], lab))
+	if (ui_button("tm_accept", [p_x + w - TM_PAD - ha - 12 - hb, by], [hb, 30], lab))
 	{
 		if (ui_synth())
 			print("menu: the terms take a real key or click, not ui_key or ui_click\n");
@@ -5769,7 +5771,7 @@ void(vector screensize) screen_terms =
 			ui_tm_answer(FS_TERMS_VERSION);
 	}
 
-	if (ui_button("tm_online", [p_x + w - TM_PAD - ha, by], [ha, 34], "Play online", TRUE))
+	if (ui_button("tm_online", [p_x + w - TM_PAD - ha, by], [ha, 30], "Play online", TRUE))
 	{
 		if (ui_synth())
 			print("menu: the terms take a real key or click, not ui_key or ui_click\n");
@@ -5787,9 +5789,9 @@ void(vector screensize) screen_terms =
 		}
 	}
 
-	if (ui_button("tm_exit", [p_x + TM_PAD, by], [72, 34], "Quit"))
+	if (ui_button("tm_exit", [p_x + TM_PAD, by], [72, 30], "Quit"))
 		localcmd("quit\n");
-	if (ui_button("tm_more", [p_x + TM_PAD + 84, by], [120, 34], ui_tm_full ? "Summary" : "Full details"))
+	if (ui_button("tm_more", [p_x + TM_PAD + 84, by], [120, 30], ui_tm_full ? "Summary" : "Full details"))
 		ui_tm_full = !ui_tm_full;
 	// Last, so an answer stays the keyboard's default element, not the box.
 	if (jb)
@@ -5902,31 +5904,30 @@ void(vector screensize) screen_steam =
 	w = min(620, screensize_x - 32);
 	card = ui_steam_card('0 0 0', w - TM_PAD * 2 - TM_CARD * 2, FALSE) + TM_CARD * 2;
 	noteh = ui_para('0 0 0', w - TM_PAD * 2, tm_sz, tm_pitch, note, SUI_THEME_MUTED, FALSE);
-	ph = 108 + card + 14 + max(noteh, tm_pitch * 3) + 18 + 34 + TM_PAD;
+	ph = TM_TOP + tm_pitch + 16 + card + 14 + max(noteh, tm_pitch * 3) + 18 + 30 + 16;
 	p = [floor((screensize_x - w) * 0.5), floor((screensize_y - ph) * 0.5)];
 	if (p_y < 8)
 		p_y = 8;
 
-	sui_style_box(p, [w, ph], 16, SUI_THEME_PANEL, SUI_THEME_EDGE, 0.97);
+	sui_style_panel(p, [w, ph], 12, 1);
 
-	Font_Set(ui_font_display);
-	sui_text([p_x + TM_PAD, p_y + 24], SZ_TITLE, "Sign in with Steam", COL_TEXT, 1, 0);
 	Font_Set(ui_font_ui);
-	sui_text([p_x + TM_PAD, p_y + 68], tm_sz,
+	sui_text([p_x + 16, p_y + 12], SZ_HEAD, "sign in with Steam", COL_ACCENT, 1, 0);
+	sui_text([p_x + TM_PAD, p_y + TM_TOP], tm_sz,
 	         "Link this game to your Steam account, once.", COL_DIM, 1, 0);
 
-	y = p_y + 108;
-	sui_style_box([p_x + TM_PAD, y], [w - TM_PAD * 2, card], 12, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
+	y = p_y + TM_TOP + tm_pitch + 16;
+	sui_style_box([p_x + TM_PAD, y], [w - TM_PAD * 2, card], 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
 	ui_steam_card([p_x + TM_PAD + TM_CARD, y + TM_CARD], w - TM_PAD * 2 - TM_CARD * 2, TRUE);
 	ui_para([p_x + TM_PAD, y + card + 14], w - TM_PAD * 2, tm_sz, tm_pitch, note,
 	        (pick < 0 && waited >= 8) ? SUI_THEME_WARN : SUI_THEME_MUTED, TRUE);
 
-	y = p_y + ph - TM_PAD - 34;
+	y = p_y + ph - 16 - 30;
 	if (pick >= 0)
 	{
-		if (ui_button("st_later", [p_x + w - TM_PAD - 200 - 12 - 100, y], [100, 34], "Not now"))
+		if (ui_button("st_later", [p_x + w - TM_PAD - 200 - 12 - 100, y], [100, 30], "Not now"))
 			ui_steam_later();
-		if (ui_button("st_go", [p_x + w - TM_PAD - 200, y], [200, 34], "Sign in with Steam", TRUE))
+		if (ui_button("st_go", [p_x + w - TM_PAD - 200, y], [200, 30], "Sign in with Steam", TRUE))
 		{
 			if (ui_synth())
 				print("menu: the sign-in takes a real key or click, not ui_key or ui_click\n");
@@ -5934,7 +5935,7 @@ void(vector screensize) screen_steam =
 				ui_steam_go();
 		}
 	}
-	else if (ui_button("st_later", [p_x + w - TM_PAD - 120, y], [120, 34],
+	else if (ui_button("st_later", [p_x + w - TM_PAD - 120, y], [120, 30],
 	                   (Lob_Count() == 0 && waited < 8) ? "Not now" : "Continue"))
 		ui_steam_later();
 };
@@ -6025,26 +6026,27 @@ void(vector screensize) screen_journal =
 	w = min(680, screensize_x - 32);
 	body = "Accepting online play allows a public lobby to request your run's raw mouse and keyboard event journal, with timings. It is sent to play.proto.bar over HTTPS for private anti-cheat review, not as a public replay. Console/menu text and activity outside the game window are not recorded.";
 	note = "New online acceptance includes journals unless you opt out. Uploads also require the online terms; this panel can allow or stop them. Stopping cancels an active upload and prevents new ones, without deleting evidence already received. rec_hid 0 stops local recording too.";
-	h = ui_para('0 0 0', w - 48, SZ_LABEL, 22, body, COL_TEXT, FALSE);
-	nh = ui_para('0 0 0', w - 48, SZ_LABEL, 22, note, COL_DIM, FALSE);
-	ph = 162 + h + nh;
+	h = ui_para('0 0 0', w - 32, SZ_LABEL, 20, body, COL_TEXT, FALSE);
+	nh = ui_para('0 0 0', w - 32, SZ_LABEL, 20, note, COL_DIM, FALSE);
+	ph = TM_TOP + h + 14 + nh + 18 + 30 + 16;
 	p = [floor((screensize_x - w) * 0.5), max(8, floor((screensize_y - ph) * 0.5))];
-	sui_style_box(p, [w, ph], 16, SUI_THEME_PANEL, SUI_THEME_EDGE, 0.97);
-	sui_text(p + '24 20 0', SZ_TITLE, "Input journal uploads", COL_TEXT, 1, 0);
-	ui_para(p + '24 68 0', w - 48, SZ_LABEL, 22, body, COL_TEXT, TRUE);
-	ui_para(p + [24, 82 + h], w - 48, SZ_LABEL, 22, note, COL_DIM, TRUE);
-	by = p_y + ph - 58;
+	sui_style_panel(p, [w, ph], 12, 1);
+	Font_Set(ui_font_ui);
+	sui_text(p + '16 12 0', SZ_HEAD, "input journal uploads", COL_ACCENT, 1, 0);
+	ui_para(p + [16, TM_TOP], w - 32, SZ_LABEL, 20, body, COL_TEXT, TRUE);
+	ui_para(p + [16, TM_TOP + h + 14], w - 32, SZ_LABEL, 20, note, COL_DIM, TRUE);
+	by = p_y + ph - 16 - 30;
 	have = checkextension("FTESURF_HID_HTTP");
 	if (have)
 		have = checkbuiltin(localcmd_local);
 	enabled = cvar("rec_hid_upload");
 	label = enabled ? "Stop journal uploads" : "Allow journal uploads";
 	// P796: first, so Back and not Allow is the keyboard's default.
-	if (ui_button("journal_back", [p_x + w - 114, by], [90, 34], "Back"))
-		menu_screen = SCREEN_UPDATE;        // reached from the F2 panel
+	if (ui_button("journal_back", [p_x + w - 16 - 90, by], [90, 30], "Back"))
+		menu_screen = SCREEN_MAIN;
 	if (have)
 	{
-		if (ui_button("journal_choice", [p_x + 24, by], [240, 34], label, TRUE))
+		if (ui_button("journal_choice", [p_x + 16, by], [240, 30], label, TRUE))
 		{
 			if (enabled)
 			{
@@ -6063,7 +6065,7 @@ void(vector screensize) screen_journal =
 		}
 	}
 	else
-		sui_text([p_x + 24, by + 8], SZ_LABEL, "Update the native client to enable uploads", SUI_THEME_WARN, 1, 0);
+		sui_text([p_x + 16, by + 7], SZ_LABEL, "Update the native client to enable uploads", SUI_THEME_WARN, 1, 0);
 };
 
 void(vector screensize) screen_main =
@@ -7890,9 +7892,10 @@ void() m_init =
 	registercvar("ui_maps_large", "1", 32);
 	registercvar("ui_maps_friends", "0", 32);
 	// Repair P731's level30 ui_updates bind too; menu commands reject that level.
+	// P823: F2 opens the journal panel (ui_journal); ui_updates was its name before.
 	if (checkbuiltin(localcmd_local))
 	if (getkeybind(K_F2) == "" || getkeybind(K_F2) == "menu_save" || getkeybind(K_F2) == "ui_updates")
-		localcmd_local("bind F2 ui_updates\n");
+		localcmd_local("bind F2 ui_journal\n");
 	if (ms_consent < FS_TERMS_VERSION)
 		menu_screen = SCREEN_TERMS;
 
@@ -7944,6 +7947,7 @@ void() m_init =
 	ui_dl_migrate_url();
 
 	registercommand("ui_updates");
+	registercommand("ui_journal");
 	registercommand("ui_update_probe");
 	registercommand("ui_menu_probe");
 	registercommand("ui_maplist");
@@ -8140,9 +8144,7 @@ void(vector screensize) m_draw =
 		Mlb_Close("left the create screen");
 
 	MU_Poll();
-	if (menu_screen == SCREEN_UPDATE)
-		MU_Screen(screensize);
-	else if (menu_screen == SCREEN_TERMS)
+	if (menu_screen == SCREEN_TERMS)
 		screen_terms(screensize);
 	else if (menu_screen == SCREEN_STEAM)
 	{
@@ -8269,17 +8271,12 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 	if (ms_consent >= FS_TERMS_VERSION)
 	{
 		sui_text_unfocus();
-		menu_screen = SCREEN_UPDATE;
-		return TRUE;
-	}
-	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && menu_screen == SCREEN_UPDATE)
-	{
-		menu_screen = SCREEN_MAIN;
+		menu_screen = SCREEN_JOURNAL;
 		return TRUE;
 	}
 	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && menu_screen == SCREEN_JOURNAL)
 	{
-		menu_screen = SCREEN_UPDATE;        // P796: where it is reached from
+		menu_screen = SCREEN_MAIN;
 		return TRUE;
 	}
 	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && menu_screen == SCREEN_CREATE)
@@ -8459,9 +8456,9 @@ float(string cmd) m_consolecommand =
 {
 	tokenize(cmd);
 
-	if (strcmp(argv(0), "ui_updates") == 0)
+	if (strcmp(argv(0), "ui_journal") == 0 || strcmp(argv(0), "ui_updates") == 0)
 	{
-		menu_screen = SCREEN_UPDATE;
+		menu_screen = SCREEN_JOURNAL;
 		m_open();
 		return TRUE;
 	}

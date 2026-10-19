@@ -159,7 +159,7 @@ def native_config(kind):
               'custom': ['bind F2 "echo CORNER CUSTOM F2 ACTED"']}[kind]
     return lines + ['bind F3 "echo CORNER NATIVE F3 ACTED"',
                     'bind F4 "echo CORNER NATIVE F4 ACTED; ui_update_probe; screenshot native_f2; waitms 500; echo CORNER FINISHED; quit"',
-                    'menu_restart', 'waitms 1500', 'ui_updates', 'ui_key escape',
+                    'menu_restart', 'waitms 1500', 'ui_journal', 'ui_key escape',
                     'waitms 500', 'bind F2', 'echo CORNER KEY READY']
 
 
@@ -168,7 +168,7 @@ def layout_fixture(a):
     fixture.mkdir()
     original = (ROOT / 'src/menu/m_update.qc').read_text()
     start = original.index('void(vector screensize) MU_Status =')
-    end = original.index('void(vector screensize) MU_Screen =')
+    end = len(original)                   # P823: MU_Status is the file's last function
     body = original[start:end].replace('"update_state"', '"corner_state"').replace(
         '"update_version"', '"corner_latest"').replace('"update_consent"', '"corner_consent"')
     source = original[:start] + body + original[end:]
@@ -210,8 +210,8 @@ def main():
     results = {}
     for name, artifacts, kind, expected in (
         ('control-legacy', a.control_artifacts, 'legacy', 0),
-        ('subject-legacy', a.artifacts, 'legacy', 7),
-        ('subject-blank', a.artifacts, 'blank', 7),
+        ('subject-legacy', a.artifacts, 'legacy', 8),
+        ('subject-blank', a.artifacts, 'blank', 8),
         ('subject-custom', a.artifacts, 'custom', 0)):
         rig, text = run(a, name, artifacts / 'menu.dat', native_config(kind), native=True)
         probes = re.findall(r'ui_update_probe: .*screen=(\d+)', text)
@@ -226,7 +226,7 @@ def main():
     fixture = layout_fixture(a)
     states = ('idle', 'checking', 'uptodate', 'error', 'downloading', 'applying', 'available', 'launcher', 'restart', 'off', 'custom')
     for size in ((1280, 720), (800, 600)):
-        cfg = base_config() + ['bind F2 ui_updates', 'menu_restart', 'waitms 1500', 'ui_updates', 'ui_key escape', 'waitms 500',
+        cfg = base_config() + ['bind F2 ui_journal', 'menu_restart', 'waitms 1500', 'ui_journal', 'ui_key escape', 'waitms 500',
                                'set ui_release_version 9.8.7', 'set corner_latest 9.8.8']
         for state in states:
             cfg += [f'set corner_state {"restart" if state in ("off", "custom") else state}',
@@ -243,7 +243,7 @@ def main():
             trio = lines[index * 3:index * 3 + 3]
             good = good and len(trio) == 3 and all(float(r) == size[0] - 16 and float(w) <= 320 for r, _, w, _ in trio)
             if trio:
-                good = good and ('[F2]' in trio[0][3]) == (state in ('available', 'launcher', 'restart'))
+                good = good and '[F2]' not in trio[0][3]   # P823: Restart to update is a button
             good = good and len(list((rig / 'ftesurf/screenshots').glob(state + '.*'))) == 1
         results[f'layout-{size[0]}'] = {'pass': good, 'rig': str(rig), 'drawn_lines': lines}
         if not good:

@@ -201,14 +201,19 @@ def main():
                 assert p.poll() is None, f'game exited before {actor}; see {dest}'
                 time.sleep(0.05)
             raise AssertionError('missing actor: ' + actor)
+        # P823: no Updates screen. Its buttons were the menu's way into these engine commands;
+        # Restart to update is the title menu's corner button.
+        UPDATE_CMDS = {'mu_enable': 'update_permission 1', 'mu_disable': 'update_permission 0',
+                       'mu_off': 'update_permission 0', 'mu_check': 'update_check force'}
         def click(button):
-            return f'ui_updates\nwait 60\nui_hover @{button}\nwait 5\nui_mouse down\nwait 5\nui_mouse up\nwait 60\n'
+            if button in UPDATE_CMDS: return UPDATE_CMDS[button] + '\nwait 60\n'
+            return f'ui_hover @{button}\nwait 5\nui_mouse down\nwait 5\nui_mouse up\nwait 60\n'
         def start(dest, name, steps, autocheck=1):
             cfg = dest / 'ftesurf/cfg/test'; cfg.mkdir(parents=True, exist_ok=True)
             (cfg / (name + '.cfg')).write_text('cfg_save_auto 0\ncl_idlefps 0\ncl_maxfps 100\nvid_fullscreen 0\nvid_width 1280\nvid_height 720\nvolume 0\nmusicvolume 0\n'
                 + f'developer 1\nlog_developer 1\nlog_name {name}\nlog_enable 1\nupdate_allow_insecure 1\nupdate_manifest_url "{url}"\nupdate_autocheck {autocheck}\n'
                 + f'name UpdaterRig\nruleset_allow_in 1\nin 2 exec cfg/test/{name}-steps.cfg\n')
-            (cfg / (name + '-steps.cfg')).write_text('cfg_save_auto 0\nmenu_restart\nwait 60\nui_updates\n' + steps)
+            (cfg / (name + '-steps.cfg')).write_text('cfg_save_auto 0\nmenu_restart\nwait 60\n' + steps)
             return spawn([str(dest / 'ftesurf64'), '-nohome', '-basedir', str(dest), '-manifest', str(dest / 'default.fmf'), '-window', '+set', 'cfg_save_auto', '0', '+exec', f'cfg/test/{name}.cfg'], dest, name)
         def finish(p, dest, name, error=None):
             p.wait(timeout=40); drain(p); protected(dest)
@@ -294,7 +299,7 @@ def main():
             cfg = dest / 'ftesurf/cfg/test'; cfg.mkdir(parents=True, exist_ok=True)
             (cfg / 'return.cfg').write_text('cfg_save_auto 0\ncl_idlefps 0\ncl_maxfps 100\nvid_fullscreen 0\nvid_width 1280\nvid_height 720\nvolume 0\nmusicvolume 0\n'
                 + f'log_name returned\nlog_enable 1\nupdate_allow_insecure 1\nupdate_manifest_url "{url}"\nin 2 exec cfg/test/return-steps.cfg\n')
-            (cfg / 'return-steps.cfg').write_text('cfg_save_auto 0\nmenu_restart\nwait 60\nui_updates\nwait 200\nui_update_probe\nupdate_info\necho posix-actor: real returning engine\nscreenshot returned.png\nquit\n')
+            (cfg / 'return-steps.cfg').write_text('cfg_save_auto 0\nmenu_restart\nwait 60\nwait 200\nui_update_probe\nupdate_info\necho posix-actor: real returning engine\nscreenshot returned.png\nquit\n')
         def returned(dest, version):
             until = time.monotonic() + 40
             while not (dest / 'adapter-exit.json').exists():

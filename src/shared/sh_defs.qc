@@ -1104,6 +1104,8 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 // explicit permission. The new disclosure and endpoint ship together.
 // Tier 7 includes private raw-journal uploads in the explicit online answer.
 // Tier-6 answers promised separate permission and must be asked again.
+// P823: a new online answer is also the update permission. Still 7: earlier
+// answers keep the update choice they made, so nobody gets more than they read.
 #define FS_TERMS_ONLINE 7
 
 #define TS_IDLE      0   // nothing armed

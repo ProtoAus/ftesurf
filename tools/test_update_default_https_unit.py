@@ -55,12 +55,13 @@ class Grades(unittest.TestCase):
         dest, rows = self.rows(); rows.append({'pid': 5, 'image': 'C:/outside/actor.exe', 'argv': 'actor.exe', 'exit': 0})
         with self.assertRaises(AssertionError): grade_handoff(rows, dest, 1)
 
-    def test_title_screen_rejected(self):
+    # P823: no Updates screen (7); a returning game is graded on the title menu.
+    def test_old_updates_screen_rejected(self):
         with self.assertRaises(AssertionError):
-            grade_return('ui_update_probe: consent=1 state=uptodate screen=0 client=1\nmanifest     : ' + FEED)
+            grade_return('ui_update_probe: consent=1 state=uptodate screen=7 client=1\nmanifest     : ' + FEED)
 
-    def test_updates_pane_accepted(self):
-        grade_return('ui_update_probe: consent=1 state=uptodate screen=7 client=1\nmanifest     : ' + FEED)
+    def test_title_menu_accepted(self):
+        grade_return('ui_update_probe: consent=1 state=uptodate screen=0 client=1\nmanifest     : ' + FEED)
 
     def test_product_nonzero_rejected(self):
         _, rows = self.rows(); rows[2]['exit'] = 109

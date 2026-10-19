@@ -83,7 +83,7 @@ def grade_handoff(rows, dest, initial_pid):
 
 
 def grade_return(text):
-    assert any('ui_update_probe: consent=1 state=uptodate screen=7 client=1' in line for line in text.splitlines()), 'returning Updates pane did not act'
+    assert any('ui_update_probe: consent=1 state=uptodate screen=0 client=1' in line for line in text.splitlines()), 'returning title menu did not act'
     assert 'manifest     : ' + FEED in text
 
 
@@ -294,21 +294,21 @@ def main():
             (cfgdir / (name + '.cfg')).write_text('cfg_save_auto 0\ncl_idlefps 0\ncl_maxfps 100\nvid_fullscreen 0\nvid_width 1280\nvid_height 720\n'
                 'volume 0\nmusicvolume 0\ncon_savehistory 0\ndeveloper 1\nlog_developer 1\n'
                 f'log_name {name}\nlog_enable 1\nruleset_allow_in 1\nin 4 exec cfg/test/{name}-steps.cfg\n')
-            (cfgdir / (name + '-steps.cfg')).write_text('cfg_save_auto 0\nmenu_restart\nwait 100\nui_updates\nwait 200\necho HTTPS_READY\n')
+            (cfgdir / (name + '-steps.cfg')).write_text('cfg_save_auto 0\nmenu_restart\nwait 100\nwait 200\necho HTTPS_READY\n')
             return OwnedGame([str(engine), '-plugin', '-nohome', '-basedir', str(dest), '-manifest', str(dest / 'default.fmf'),
                               '-window', '+set', 'cfg_save_auto', '0', '+exec', 'cfg/test/' + name + '.cfg'], dest, evidence, name)
         def probe(game, marker):
             game.send('ui_update_probe; update_info; update_manifest_url; update_allow_insecure; echo ' + marker)
             text = game.wait(marker)
             assert 'manifest     : ' + FEED in text and '"update_allow_insecure" is "0"' in text
-            assert 'client=1' in text and 'screen=7' in text and 'ui_hover: no control' not in text
+            assert 'client=1' in text and 'screen=0' in text and 'ui_hover: no control' not in text
             return text
         def click(game, button, marker):
-            game.send('ui_updates')
-            time.sleep(.8)
+            # P823: no Updates screen; its buttons were these engine commands.
+            cmd = {'mu_off': 'update_permission 0', 'mu_enable': 'update_permission 1'}.get(button)
             # Same console batch: physical input cannot overwrite the SUI cursor
             # between the authentic hover/down/up callbacks on a busy desktop.
-            game.send('ui_hover @' + button + '; ui_mouse down; ui_mouse up; echo ' + marker)
+            game.send((cmd if cmd else 'ui_hover @' + button + '; ui_mouse down; ui_mouse up') + '; echo ' + marker)
             return game.wait(marker)
         def export_logs():
             for log in (dest / 'ftesurf/logs').glob('https-*.log'):
@@ -323,7 +323,6 @@ def main():
             assert not (meta / 'consent').exists()
             before = (meta / 'state.json').read_bytes()
             click(g, 'mu_off', 'HTTPS_OFF_CLICKED')
-            g.send('ui_updates'); time.sleep(.8)
             assert 'consent=0 state=disabled' in probe(g, 'HTTPS_OFF_PROBED')
             assert (meta / 'consent').read_bytes() == b'0\n' and (meta / 'state.json').read_bytes() == before
             click(g, 'mu_enable', 'HTTPS_ENABLE_CLICKED')
@@ -357,7 +356,7 @@ def main():
                 (cfgdir / 'https-return.cfg').write_text('cfg_save_auto 0\ncl_idlefps 0\ncl_maxfps 100\nvid_fullscreen 0\nvolume 0\nmusicvolume 0\n'
                     f'log_name {ret}\nlog_enable 1\ndeveloper 1\nlog_developer 1\nruleset_allow_in 1\n'
                     f'echo HTTPS_REAL_RETURNING_GAME\nin 4 exec cfg/test/{ret}-steps.cfg\n')
-                (cfgdir / (ret + '-steps.cfg')).write_text('cfg_save_auto 0\nmenu_restart\nwait 100\nui_updates\nwait 200\n'
+                (cfgdir / (ret + '-steps.cfg')).write_text('cfg_save_auto 0\nmenu_restart\nwait 100\nwait 200\n'
                     'ui_update_probe\nupdate_info\necho HTTPS_RETURN_PANE_READY\n'
                     f'screenshot {ret}.png\nwait 60\nquit\n')
                 click(g, 'mu_restart', 'HTTPS_RESTART_CLICKED')
