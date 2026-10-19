@@ -67,7 +67,7 @@ class Upgrade(unittest.TestCase):
         release=i.ROOT.as_posix()+'/'+commit
         env=dict(ZONEPUB_STORE='/s/zones.sqlite3',ZONEPUB_ACCOUNTS='/a.db',ZONEPUB_GAMES=json.dumps(['/g/csprogs.dat']),
                  SURFD_TOOLS=release+'/tools',ZONEPUB_SOURCE=commit,ZONEPUB_PUBLISH=json.dumps(['/p1','/p2']))
-        return i.unit_text(release,env,['/s','/p1','/p2'])
+        return i.unit_text(release,env,[i.STATE.as_posix(),'/p1','/p2'])
     def test_upgraded_unit_is_a_fresh_install_of_the_new_commit(self):
         a,b='a'*40,'b'*40
         self.assertEqual(i.upgraded_unit(self.unit(a),b),(a,self.unit(b)))
@@ -79,7 +79,10 @@ class Upgrade(unittest.TestCase):
         with self.assertRaises(RuntimeError):i.upgraded_unit(a,'a'*40)
     def test_upgrade_refuses_a_hand_edited_unit(self):
         a=self.unit('a'*40); rel=i.ROOT.as_posix()+'/'+'a'*40
-        for bad in (a.replace('User=proto','User=root'), a.replace('ReadWritePaths=/s','ReadWritePaths='+rel+' /s')):
+        s=i.STATE.as_posix()
+        for bad in (a.replace('User=proto','User=root'), a.replace('ReadWritePaths='+s,'ReadWritePaths='+rel+' '+s),
+                    a.replace('Restart=on-failure','Environment="LD_PRELOAD=/x.so"\nRestart=on-failure'),
+                    a.replace('ReadWritePaths='+s,'ReadWritePaths=/')):
             with self.assertRaises(RuntimeError):i.upgraded_unit(bad,'b'*40)
 
 

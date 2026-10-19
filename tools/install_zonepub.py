@@ -160,7 +160,11 @@ def upgraded_unit(old, new_commit):
     if not m: raise RuntimeError('The installed unit names no release under ' + root)
     cur = m.group(1)
     if cur == new_commit: raise RuntimeError('That release is already the installed one')
-    if (unit_text(release, env, rw) != old or env.get('ZONEPUB_SOURCE') != cur
+    # The parameters too: the six keys the install writes, and write access only where it gives it.
+    keys = {'ZONEPUB_STORE', 'ZONEPUB_ACCOUNTS', 'ZONEPUB_GAMES', 'SURFD_TOOLS', 'ZONEPUB_SOURCE', 'ZONEPUB_PUBLISH'}
+    try: writable = [STATE.as_posix()] + json.loads(env.get('ZONEPUB_PUBLISH', 'null'))
+    except (TypeError, ValueError): writable = None
+    if (unit_text(release, env, rw) != old or env.get('ZONEPUB_SOURCE') != cur or set(env) != keys or rw != writable
             or env.get('SURFD_TOOLS') != release + '/tools' or old.count(release) != 2):
         raise RuntimeError('The installed unit is not exactly what this installer writes; inspect it first')
     new_release = root + '/' + new_commit
@@ -228,8 +232,13 @@ def upgrade(a):
         healthy(release,a.commit,'https://play.proto.bar/api/zones/challenge')
     except BaseException:           # Ctrl-C and a timed-out restart too
         print('Upgrade failed; putting release %s back' % cur[:12])
-        put(old)
-        healthy(ROOT/cur,cur,'http://127.0.0.1:8087/api/zones/challenge')
+        try:
+            put(old)
+            healthy(ROOT/cur,cur,'http://127.0.0.1:8087/api/zones/challenge')
+        except BaseException:
+            print('ROLLBACK FAILED: the unit on disk is the %s one; run `systemctl status ftesurf-zonepub` and '
+                  '`systemctl daemon-reload; systemctl restart ftesurf-zonepub`' % ('old' if UNIT.read_text()==old else 'NEW'))
+            raise
         print('Upgrade failed: release %s is serving again; %s is kept for inspection' % (cur[:12], release))
         raise
     print('Upgraded the zone service to %s; release %s stays on disk as the way back' % (a.commit[:12], cur[:12]))
