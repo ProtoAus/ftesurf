@@ -1,5 +1,50 @@
 # AGENT_NOTES.md
 
+## Saves kept with the install (P811, 2026-10-19)
+
+- The sync is keyed by SS_Same (origin and view within 0.05), never by row or folder id; its
+  ledger is client side (<lobby root>/sync.txt, plus delall.txt for a delete-all not yet carried
+  out). Several rows at one key: only the first on each side is paired, and a delete moves one.
+  A delete is carried only from a whole listing (every counted row came, none deleted meanwhile,
+  every install file read). CSQC_Parse_Event errors on an unknown type, so SS_EV_* (20-23) are
+  read before the share window counts an event; SS_EV_END's kind byte keeps a listing's number
+  apart from a command's tag. The rewind's resume row is never listed, matched or pushed.
+- The client's save root is STAT_FS_SAVEROOT, a string stat (SV_SaveRootFor), not a stuffed
+  `set cl_saveroot`. A SERVER-SET CVAR READS BACK LATCHED IN CSQC: cvar_string returns
+  latched_string (pr_bgcmd.c:1898), which for a server-set cvar is its value from before the server
+  took it, so every map after a session's first named the first one's folder. The console shows it:
+  `"cl_saveroot" is` the latch, `Effective value is` the real one. CL_SaveRoot sends a root not in
+  yet, or another map's, to @pending. cl_saveroot_test (nothing sets it) is an arm's scratch root.
+- Rig: tools/p811savesync.py (lobby server and client install on separate basedirs, rcon for a
+  changelevel). `vote key <scan> <down>` feeds CL_InputEvent for an input-chain arm
+  (tools/p809entview.py).
+
+## Rewind saves at the cursor (P808, 2026-10-19)
+
+- A save on the rewind's cursor and the rewind's resume are moments the client's live state has
+  moved past. Patch 502 made both timed (SAVETICKS >= 0), which put them back through Seq_Write and
+  Rec_ViewSaved, and both described the pinned head: anchorpos 170 u past the save on surf_dune, and
+  the view trim's 256-frame walk stopped 5 ticks short at 1000 fps. A cursor save is one the rewind
+  makes behind its pinned head (Rewind_Cursoring and SAVETICKS + 1 < TIMERTICKS). The resume is
+  Rewind_GoLoaded(seq): the server overwrites its SLOP_SAVED with the load in one frame, so the
+  client only sees LOADED, and Seq_SaveEvents (in HUD_Draw, also while browsing) and
+  Rec_ViewSaveEvents (Rec_ViewFrame) read it in different places of the frame -- latch by SLSEQ.
+- cl_board.qc's column history is keyed by the drawn body's tick (TIMERTICKS + unacked moves - 2,
+  cl_trail.qc's TR_LEAD); a mark from it takes anchorpos from STAT_FS_SLORG, because the restore's
+  guard waits for the body within SEG_JUMPDIST of it. ui_ground_z moves every grounded frame on a
+  slope: not a change worth a snapshot.
+- A .view warm mark is a line of ONE buffer: every reset of it (a load, Rec_ViewBegin,
+  Rec_ViewDrop, the resume's cut) must forget the marks past it, or a later warm load restores
+  another attempt's frames (pre-808 for ordinary loads).
+- An undefined macro used before its #define (TR_LEAD from cl_trail.qc, compiled after
+  cl_board.qc) made fteqcc segfault with no output; build.ps1 only says "fteqcc failed".
+  Bisect by file against the last good commit.
+- Rig: surf_dune's run lasts about a second after `cmd zone_goto 0` and a walk (its fail lands in
+  START, which re-arms), so open the rewind about 0.8 s in; cl_maxfps 1000 for a deep trim.
+  `rewind status` prints the live sidecar's backward steps. tools/p808rewind.py; `--lobby` gives the
+  server its own basedir (lobby_enable 1, lobby_dir "", lobby_master "", sv_guidkey, rec_enable 1,
+  lobby_norec 0). A local `map` exec'd at launch needs a `waitms 3000` first or waitmap gives up.
+- Python on Windows: Path.read_text/write_text turn an LF file into CRLF; edit QC as bytes.
 ## Zone publishing and velocity past 4096 (P812, P815, 2026-10-19)
 
 - P812: a PEXT2 bit with a reader, a writer and a PEXT2_CLIENTSUPPORT entry is still off until
@@ -1777,10 +1822,9 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
   so — the arm then exercises the unhandled path and passes by never happening.
   `registercvar` it and read it with `cvar()`, and set it AFTER the map, because
   registercvar resets a value set earlier (the `cl_trigdebug` trap). Related, and
-  why Patch 438 needed a new command: the server STUFFS `set cl_saveroot
-  "data/saves/<map>"` on every `sl_` command, so a client-side save root cannot be
-  overridden at all — `sl_replay <slot>` fires the load event with no save behind
-  it (no placement, no clock, no row) for exactly that reason.
+  why Patch 438 needed a new command: `sl_load` reads the server's own save root,
+  which no client setting moves — `sl_replay <slot>` fires the load event with no
+  save behind it (no placement, no clock, no row) for exactly that reason.
 - A HARNESS SCRATCH PATH MUST BE INSIDE THE GAMEDIR. `FS_LoadFile` locates with
   `FS_GAME`, so `%TEMP%` or the install root opens nothing and `fopen(FILE_READ)`
   returns -1 with NO "Access denied" line — which reads as a reader bug and is a
@@ -1999,9 +2043,9 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   wrong one until P407/P411 (`launch 0 ... cap 290` at 1809 u/s); it is 0 since
   2026-09-21 (Lex: boosters count, speed does not matter).
 - Client→server: `cmd sl_*`-style registered command strings.
-  Server→client: `stuffcmd` (e.g. `set cl_saveroot`), stats, sprint, csqc
+  Server→client: `stuffcmd`, stats, sprint, csqc
   entity fields. MIRRORS SPLIT BY TYPE: floats ride a stuffed `set` read with
-  `cvar()`; STRINGS must ride `forceinfokey(p, "*key", …)` read with
+  `cvar()` (the value; `cvar_string` returns the pre-server latch, P811); STRINGS must ride `forceinfokey(p, "*key", …)` read with
   `getplayerkeyvalue(player_localnum, "*key")` (`*wrank`, `*phash`) — a stuffed
   `set` is Cvar_LockFromServer, and `cvar_string` then returns the LATCHED
   pre-override string while `cvar()` still reads the effective value.

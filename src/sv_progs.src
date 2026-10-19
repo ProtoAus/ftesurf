@@ -49,6 +49,8 @@ server/sv_account.qc
 // Patch 777: paint and saves between players; after sv_saveloc.qc (SV_SaveLocCreateAt, the
 // rows), before sv_player.qc and sv_main.qc, which call it.
 server/sv_share.qc
+// Patch 811: lobby saves and the install's; after sv_share.qc (SH_MC_ONE), before sv_player.qc.
+server/sv_savesync.qc
 server/sv_player.qc
 server/sv_maptier.qc
 server/sv_main.qc

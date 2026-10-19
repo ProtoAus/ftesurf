@@ -5,6 +5,38 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Save sync (P811): what the reviews left
+
+- A delete-all sweep that stops partway sends no SS_EV_DELALL and, under rec_sl_delall, no
+  per-row deletes: the install learns of those deletes only at the next listing, where the
+  lost-folder guard may send them back up. `sv_saveloc.qc` SV_SaveLocDeleteAllStep.
+- A delete carried to the lobby in the first seconds of a map goes through SV_SaveLocDeleteRow,
+  which releases anyone parked at or after the row (a player holding the load key).
+- Two connections on one guid (another lobby) can change the block mid-listing with no event to
+  this client; the "whole" test counts rows, so a skipped row can read as deleted there and its
+  install copy be moved to deleted/ (recoverable). `cl_savesync.qc` SaveSync_Plan.
+- SaveSync_PicLater writes up to ~5 s later without checking the slot still holds that row.
+- Lists over 400 rows on either side are not synced at all (SS_ROWS, the plan is pairwise).
+- On a remote server that is not a lobby (lobby_enable 0, or lobby_nosaveloc) the server's root is
+  the plain map folder, and the client writes seq.txt, run.view and trail.txt at the server's save
+  ids into the install's own data/saves/<map>: a joined friend's game can overwrite a local save's
+  picture and Segments list. Older than P811 (Patch 333). `cl_board.qc` CL_SaveRoot.
+- Leaks, bounded per map: `.sl_rootstat` is not unzoned when ED_Clear reuses a slot, and the
+  engine memsets `client->statss` at spawn without freeing (sv_user.c:2452).
+- tools/p438view.py now points `cl_saveroot_test` at its scratch dir (its `+set cl_saveroot` only
+  worked through the latch the root stat removed); not rerun since.
+
+## A rewind after a fail teleport re-armed the run closes at once (seen 19 Oct, P808's probe)
+
+- Sites: `cl_rewind.qc` Rewind_Frame (which close fires), `sv_timer.qc` SV_TimerArm/SV_RecDiscard.
+  surf_dune's fail lands in its START box, which re-arms the run (Patch 775 does the same for a stage
+  run's own box): the live line still holds the failed attempt (81 samples), BACKSPACE opens the
+  rewind (serial 1) and the next status reads `on 0 ... pin -1`, with no message either side. Even
+  open, a save or resume there is a practice placement: the arm's SV_RecDiscard dropped that
+  attempt's recorder, so SV_RewindWriteState refuses the ring's snapshots. Before Patch 775 a stage
+  run kept RUNNING through its own box and the rewind of a stage fail resumed timed. Undecided:
+  whether a re-armed attempt should resume segmented (its buffered recorder kept until the next
+  start) -- asked of Lex. Check: `tools/p808rewind.py --probe --lobby` (cfg/test/p808probe.cfg).
 ## Chat panel (P821): what the review left open
 
 - `src/client/cl_chat.qc` Chat_FieldKey reads Shift/Ctrl from `ui_kmods` (cl_keys.qc), which
@@ -173,15 +205,6 @@ bound-check failure kills the VM (P795 took the menu down this way).
   plugin reads one today; anything that does will read garbage. Check: print
   offsetof(shader_t, sort) compiled with `-DFTEPLUGIN` and with `-DGLQUAKE -DVKQUAKE
   -DD3D11QUAKE` (8672 against 8800 on 19 Oct).
-
-## Client save root outlives a map change (found 19 Oct, not fixed)
-
-- Site: `cl_board.qc` CL_SaveRoot / Seq_Path. `cl_saveroot` (stuffed by the server, Patch 333)
-  outlived a map change: on 19 Oct Lex's two surf_dragon lobby saves (state.txt 15:56Z and
-  15:58Z on the Pi) wrote their client `seq.txt` into `data/saves/surf_jumble/@<guid>/save001`
-  and `save002` (anchorpos z 14880, off jumble's map), overwriting jumble's. A later jumble load
-  of those slots restores dragon's run-line rows. Check: save on map A, change the lobby to map B,
-  save, and list both maps' local save folders.
 
 ## Guarded service handoff: forced-stop fallback needs identity bounds
 

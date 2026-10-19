@@ -499,6 +499,7 @@
 #define STAT_FS_WOPLEGS        171  // .. 176
 #define WOPLEG_CHUNKS          6
 #define STAT_FS_WOPACK         177  // the last op's command, sent with what it moved
+#define STAT_FS_SAVEROOT       178  // Patch 811: the player's save root, a string (SV_SaveRootFor)
 #define SL_TOKRATE             20   // sl_ commands a second, burst and sustained (SV_SaveLocRate)
 #define WOPD_NONE  0                // no prediction: the server would refuse or cannot say
 #define WOPD_KEEP  1                // destination, angles kept
@@ -2257,6 +2258,33 @@ string(float id) FS_SaveSlotName =
 // The width FS_SaveSlotName always returns, which the directory scan needs in
 // order to read an id back out of a filename.  Stated once, beside the writer.
 #define FS_SAVENAMELEN 3
+
+// Patch 811: a lobby block and the install's own list kept the same
+// (sv_savesync.qc, cl_savesync.qc).  CSQC_Parse_Event types; cl_share.qc has 1-5.
+#define SS_EV_ROW     20        // tag, id, seq, origin, velocity, pitch, yaw, flags
+#define SS_EV_END     21        // a listing page: next row (0 done), rows, status
+#define SS_EV_DEL     22        // tag, origin, pitch, yaw of a row that went
+#define SS_EV_DELALL  23        // a delete-all finished
+#define SS_PAGE       16        // rows a `savesync list` answers
+#define SS_TOL        0.05      // units and degrees: one save in both lists
+#define SSF_DUCK      1
+#define SSF_TIMED     2         // the lobby row has a clock (the install's copy does not)
+#define SSF_NEW       4         // an add's answer: this row was made by it, not found
+
+// The same save in both lists: its place and view agree within SS_TOL.  Never a row
+// number or folder id, which the two lists do not share.
+float(vector o1, float p1, float y1, vector o2, float p2, float y2) SS_Same =
+{
+	local float dy;
+
+	if (fabs(o1_x - o2_x) > SS_TOL)     // most pairs part here: the lists are compared pairwise
+		return FALSE;
+	if (vlen(o1 - o2) > SS_TOL || fabs(p1 - p2) > SS_TOL)
+		return FALSE;
+	dy = fabs(y1 - y2);
+	dy = dy - 360 * floor(dy / 360);
+	return (dy <= SS_TOL || 360 - dy <= SS_TOL);
+};
 
 /*
 ===========================================================================

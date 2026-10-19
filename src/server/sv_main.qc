@@ -415,6 +415,7 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_WOPLEGS + 4,    EV_STRING, wop_legs4);
 	clientstat(STAT_FS_WOPLEGS + 5,    EV_STRING, wop_legs5);
 	clientstat(STAT_FS_WOPACK,         EV_FLOAT, wop_ack);
+	clientstat(STAT_FS_SAVEROOT,       EV_STRING, sl_rootstat);
 	clientstat(STAT_FS_SLACK,          EV_FLOAT, rec_sl_ack);
 	clientstat(STAT_FS_SLTRAILTAG,     EV_FLOAT, rec_sl_eventtag);
 	clientstat(STAT_FS_SLSAVEACK,      EV_FLOAT, rec_sl_answer_tag);

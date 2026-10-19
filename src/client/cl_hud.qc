@@ -5770,6 +5770,9 @@ void(vector scr) HUD_Draw =
 	if (ui_rw_on)
 	{
 		// Do not differentiate scrubs as physics or mutate live board history.
+		// Patch 808: but read the save events, so each S save gets its column now.
+		if (!board_ov_spec)
+			Seq_SaveEvents();
 		if (ui_cv_speed) HUD_DrawSpeed(scr, ui_rw_vel, ui_rw_org);
 		if (ui_cv_mapinfo) HUD_DrawMapInfo(scr);
 		HUD_DrawSubmitWarn(scr);

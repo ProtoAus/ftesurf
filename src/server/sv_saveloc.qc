@@ -828,10 +828,11 @@ string(string g) SV_SaveSanitise =
 /*
   Set sl_root for this player and TELL THEM, because the client writes two of
   the four files in a slot -- seq.txt from cl_board.qc, run.view from
-  cl_replay.qc -- and spells their paths from the same root.  One stuffcmd per
-  saveloc operation is a `set` of a cvar the client never registers, and it
-  means the two VMs cannot drift: the server is the only place that knows the
-  lobby state, the guid and the map name at once.
+  cl_replay.qc -- and spells their paths from the same root.  The server is the
+  only place that knows the lobby state, the guid and the map name at once.
+  Patch 811: told by STAT_FS_SAVEROOT, not a stuffed `set cl_saveroot`: CSQC's
+  cvar_string returns a server-set cvar's value from before the server took it
+  (latched_string), so every map after a session's first named the first's.
 */
 // Patch 428: the root alone, for work that is not a gesture (SV_SaveLocFrame's
 // sweep): sl_root is one global every player's command re-points.
@@ -849,10 +850,15 @@ void(entity e) SV_SaveRootSet =
 		sl_root = sprintf("data/saves/%s", mapname);
 };
 
+.string sl_rootstat;             // STAT_FS_SAVEROOT; zoned
 void(entity e) SV_SaveRootFor =
 {
 	SV_SaveRootSet(e);
-	stuffcmd(e, sprintf("set cl_saveroot \"%s\"\n", sl_root));
+	if (!strcmp(e.sl_rootstat, sl_root))
+		return;
+	if (e.sl_rootstat != "")
+		strunzone(e.sl_rootstat);
+	e.sl_rootstat = strzone(sl_root);
 };
 
 /*
@@ -964,13 +970,14 @@ void(entity e, float blk) SV_SaveLocScanFor =
   SV_SaveLocBegin, 3/4/5/6 paid twice, Step's Begin and Load's).  At 999 saves a
   burst of sl_save or sl_del in one packet is seconds of disk work in one frame.
 */
+float sl_ratequiet;              // Patch 811: a savesync add/del pays this charge without the line
 float(entity e) SV_SaveLocRate =
 {
 	e.rec_sl_tok  = min(SL_TOKRATE, e.rec_sl_tok + (time - e.rec_sl_tokt) * SL_TOKRATE);
 	e.rec_sl_tokt = time;
 	if (e.rec_sl_tok < 1)
 	{
-		if (time - e.rec_sl_toksay > 1)
+		if (time - e.rec_sl_toksay > 1 && !sl_ratequiet)
 		{
 			sprint(e, PRINT_HIGH, "^3save: slow down\n");
 			e.rec_sl_toksay = time;
@@ -2777,6 +2784,12 @@ void(entity e) SV_SaveLocSync =
 		}
 };
 
+void(entity e) SV_SaveSyncPush;          // Patch 811: sv_savesync.qc
+float ss_quiet;                          // a delete the install is not told of
+float ss_nopush;                         // a create it is not told of
+void(entity e, float r) SV_SaveSyncGone;
+void(entity e) SV_SaveSyncDelAll;
+
 // One save/load event out to the client.  See STAT_FS_SLSEQ.
 void(entity e, float op, float id) SV_SaveLocEvent =
 {
@@ -2792,6 +2805,8 @@ void(entity e, float op, float id) SV_SaveLocEvent =
 		e.rec_sl_answer_op = e.rec_sl_slop;
 		e.rec_sl_answer_tick = rec_sl_tick[r];
 	}
+	if (op == SLOP_SAVED)
+		SV_SaveSyncPush(e);         // Patch 811: sv_savesync.qc
 };
 
 /*
@@ -3440,7 +3455,9 @@ void(entity e) SV_RewindDropGo =
 	sprint(e, PRINT_HIGH, sprintf("^7rewind: save %g, the last resume point, makes way\n",
 	                              r - base + 1));
 	rec_sl_quiet = TRUE;
+	ss_quiet = TRUE;                // Patch 811: never copied to the install (SV_SaveLocCreateAt)
 	SV_SaveLocDeleteRow(e, r - base + 1);
+	ss_quiet = FALSE;
 	rec_sl_quiet = FALSE;
 	SV_SaveGenBump(SL_Blk(e));      // Patch 751
 };
@@ -3543,7 +3560,12 @@ float(entity e, float t, vector near, float usenear, float go, float view) SV_Sa
 		SV_SaveKeepWindow(base, rec_sl_nb[blk]);
 	SV_SaveGenBump(blk);
 	e.rec_sl_index = rec_sl_nb[blk];
+	// Patch 811: a resume's row is a means the next resume deletes, and it shares the
+	// key of an S save at the same cursor, so the install gets neither its copy nor
+	// its delete (SV_RewindDropGo).
+	ss_nopush = go;
 	SV_SaveLocEvent(e, SLOP_SAVED, id);
+	ss_nopush = FALSE;
 	if (sl_sharefrom != "")         // Patch 777: a save another player sent (sv_share.qc)
 		sprint(e, PRINT_HIGH, sprintf("^7share: save ^2%g^7 (slot %s) from %s, %g u/s\n",
 		                              e.rec_sl_index, SL_NN(id), sl_sharefrom, floor(vlen([rw_v_x, rw_v_y, 0]))));
@@ -5072,8 +5094,8 @@ void(entity e) SV_SaveLocHoldFrame =
   directory entry.
 */
 // Patch 428: the row half of SV_SaveLocDelete, so a delete-all passes the gate
-// once -- SV_SaveLocBegin stuffs cl_saveroot, and 999 of those overflow the
-// client's reliable channel.
+// once -- SV_SaveLocBegin stuffed cl_saveroot then, and 999 of those overflowed
+// the client's reliable channel.
 void(entity e, float n) SV_SaveLocDeleteRow =
 {
 	local float i, id, r, blk, base, cnt;
@@ -5125,6 +5147,7 @@ void(entity e, float n) SV_SaveLocDeleteRow =
 	  class Rec_ViewRetry's own fremove essay describes: it does not look broken,
 	  it looks like it worked.
 	*/
+	SV_SaveSyncGone(e, r);              // Patch 811: the install's copy goes as well
 	SV_RecCopyDrop(SL_RecPath(id));     // Patch 375: a pending copy must not recreate it
 	fremove(SL_StatePath(id));
 	fremove(SL_RecPath(id));
@@ -5324,8 +5347,11 @@ void(entity e) SV_SaveLocDeleteAllStep =
 		sprint(e, PRINT_HIGH, sprintf("^3save: delete-all stopped after %g\n",
 		                              e.rec_sl_delall - 1));
 	else
+	{
 		sprint(e, PRINT_HIGH, sprintf("^1deleted^7 all %g save state(s) on %s\n",
 		                              e.rec_sl_delall - 1, mapname));
+		SV_SaveSyncDelAll(e);       // Patch 811
+	}
 	e.rec_sl_delall = 0;
 };
 

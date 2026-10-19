@@ -1,5 +1,64 @@
 # lextest.md — things waiting on a human
 
+## P821 — the chat box: select, copy, a real text field
+
+Both installs 2026-10-19T05:27:54Z and all 12 lobbies 05:29Z: csprogs 1337a98f (.prev 74fbeba9);
+qwprogs 234261dd and menu.dat 15a24f21 unchanged.
+A fresh client on lobby 1 was served it and drew the board (pi_lobby_smoke, 05:37Z).
+
+- Open chat (your chat key). A dark box fades in where the chat sits, holding the whole chat
+  history with a text field at the bottom, and the mouse cursor appears. Enter, Esc or the console
+  key closes it and the mouse goes back to looking.
+- Drag over a message to select it (across messages too); double-click a word, triple-click a whole
+  message. Ctrl+C or right-click copies it ("Copied" shows top right); paste it somewhere outside the
+  game to check. Colour codes are not copied.
+- In the field: click to place the caret, drag to select, Shift+arrows, Ctrl+arrows by word,
+  Ctrl+Backspace, Ctrl+A/C/X, Ctrl+V (the game asks first, as before), Up/Down for lines you sent.
+  The field shows the raw text, so `^1` stays visible while you type.
+- The wheel (or PgUp/PgDn) scrolls the history. The chat text is one size smaller (20; a saved 24
+  moved once).
+
+"Works / <what you saw>". Verdict PENDING.
+
+## P809 — Entity view on any key
+
+Not installed yet (deploy line follows).
+
+- Mouse 3 still toggles the entity overlay, but as a normal bind now: K (key config) has an Entity
+  view row at the bottom of Menus; rebind or clear it there, or `bind mouse3 <anything>`.
+
+"Ok / <what differs>". Verdict PENDING.
+
+## P811 — your saves follow you between the lobbies and a local game
+
+Not installed yet (deploy line follows).
+
+- In a lobby, save: a moment later that save is also in your own install. Start the same map
+  offline: it is in your list, as a practice placement (position, speed and view, no clock -- the
+  lobby keeps the timed run).
+- A save you made offline appears in the lobby a few seconds after you join that map, also as a
+  practice placement. The console says what happened: `saves: <map> -- N copied here, N sent to
+  the lobby, N deleted there, N moved to deleted/`.
+- Delete a save in a lobby and your install's copy goes too (moved to data/saves/<map>/deleted/,
+  never destroyed on your PC). Delete one offline and it goes from the lobby the next time you
+  join that map there. The first visit to each map only merges the two lists.
+- After a lobby map change your saves' pictures and Segments lists land in the new map's folder
+  (they went to the first map you played that session), and the copying carries on there.
+- `cl_savesync 0` turns it off; `savesync status` shows the counts.
+
+"Saves follow ok / <what went missing or came back>". Verdict PENDING.
+
+## P808 — rewind: the 3-2-1 is back; a save on the rewind keeps the run as it was there
+
+Not installed yet (deploy line follows).
+
+- Backspace, scrub back, ENTER: you are held for a 3-2-1 before you move again
+  (`hud_rewind_countdown 0` for none).
+- Backspace, scrub back, S (or your save key), then load that save: the Segments list on the left
+  shows the segments from your start up to that point, not the ones you surfed after it, and the
+  energy reference sits where the save is. The same after an ENTER resume.
+
+"Rewind ok / <what differs>". Verdict PENDING.
 ## P820 — demo playback: "successful only" on the bar, and imported demos' failed stages
 
 Both installs and all 12 lobbies since 2026-10-19T04:51Z (csprogs 74fbeba9; `.prev` 100068b0).
