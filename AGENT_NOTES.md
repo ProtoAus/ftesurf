@@ -1,5 +1,53 @@
 # AGENT_NOTES.md
 
+## Story and Event mode (P854, 2026-10-20)
+
+- **The list is data, not code**: surfd reads `/srv/nvme/surfd/data/story.txt` (SURFD_STORY) on
+  every stat change; `surfd/story.txt` is its source in git and `python tools/story_push.py` checks
+  it with surfd's own parser, checks every map against the live `?maps=1`, copies it and waits until
+  `?story=list` serves its sha256[:12]. A map the Pi does not list stops the push (`--force` for one
+  on its way: mapwatch lists a hand-added BSP only at its next `23 */6` run). The grammar is the
+  file's header. A successor generation never carries the list.
+- **A run is whose key signed it** (`_story_calc`): a guid is the client's to choose and
+  `keylinks.player` is the lobby's copy of it, so review round 1 moved a victim's medals with one
+  link, and round 2 took an unsigned guid with FIRST KEY WINS (the attacker signs first). A
+  community row counts for an account only when its own run's receipt verified (`sig = 1`) with a
+  key linked to it; unsigned rows stay the guid's. The menu's who-am-I (social.py menu_read,
+  `story=1` on the Friends list proof) is the key's account, else the newest guid it signed for.
+  Rows read through `runs_live` (the query repeats its WHERE text: 131 rows on the Pi, not three
+  million).
+- **The recompute is off the request** (`_story_kick`): a stale answer is served while one thread
+  works out the next; only a worker's first answer, or one for a changed file, is waited for.
+- **Menu rig recipe**: `tools/story_fixture.py --home <scratch>` runs this checkout's surfd on
+  127.0.0.1 with made-up players (map_index patched from mapdl.net.txt); `tools/runlines_smoke.py
+  cfg/test/p854story.cfg --mount --mqc <menu.dat> --put data/consent.txt=... --put data/mapmeta.txt=<install's>
+  --put data/mapdl.net.txt=<install's> [--put data/story_me.txt=<handle file>]`. Without mapmeta and
+  mapdl the thumbnails are black and Play finds no row. `ui_story [tab N|view <handle>|sel N|probe]`
+  drives the screen; `story_probe:` lines grade it.
+- **fteqcc binds `?:` tighter than `&&`**: `(on || hot) && !locked ? A : B` compiled as
+  `(on || hot) && (!locked ? A : B)` (F314, implicit int-to-vector cast). Bracket the condition.
+- **LIVE 2026-10-19 (UTC)**: surfd generation d0fd1bf9 from `/srv/nvme/agent-work/surfd854-20261019T2133Z`
+  since 21:38:49Z (OLD surfd855 CLOSED, kept: the next deploy builds from OLD=surfd854); story.txt rev
+  3ab0fa470bc6; menu.dat 79219f4e in both installs (.prev 07fa02c8). surf_sinister.bsp (sha256
+  593f5281bc96) added to the Pi's momentum/maps and both installs' ftesurf/maps, unzoned.
+
+## The 3D viewer and Propper props, HDR maps in Chromium (P855, 2026-10-20)
+
+- **Missing props were never missing content**: noclip's Studio.ts asserted `clientmaterial === 0`, a stale
+  pointer slot that Propper sets to 1; the throw escaped the prop's construction and the page counted
+  nothing (watchState's missing-object count reads 0). Mounting CS:S/HL2/Momentum changed no pixel on 10
+  views. When a map shows holes where the game has props, grep the console for "Assert fail" first.
+- **Chromium and Firefox take different paths on HDR maps**: Chromium turns auto-exposure on, Firefox
+  does not, so a bug behind auto-exposure (P855's debug-canvas read of `window.main`) shows only in
+  Chrome/Edge, and one behind it hides the other. Check both: `FF=1 node tools/shot.mjs ...`.
+- **Re-vendoring**: the noclip clone is not kept; fetch the pinned commit shallow (`git fetch --depth 1
+  origin <UPSTREAM.txt sha>`), and first re-run vendor.py with the unchanged PATCHES: it must reproduce the
+  committed tree (0 files) and `npm run build` the committed watch.js, or a later diff means more than
+  your patch. `npm ci` holds back esbuild's postinstall here and the build still works.
+- **LIVE 2026-10-19 (UTC)**: surfd generation 37456de3 from `/srv/nvme/agent-work/surfd855-20261019T2056Z`
+  since 21:01:19Z (OLD surfd853 CLOSED, kept); watch.js 52da42c7. The live page for run 23168, shot
+  headless at 15.5/43.3 s: 0 asserts in Firefox and Chrome, the platforms under the player.
+
 ## Tier completion by kind (P853) and the launcher-first page (P852), 2026-10-20
 
 - **One rule says which kind a map is**: `mapmanifest.map_mode`, pool_policy's `surf_` / `bhop_`

@@ -19,9 +19,10 @@ const exe = browsers.find((p) => existsSync(p));
 mkdirSync(out, { recursive: true });
 
 const browser = await puppeteer.launch({
-    executablePath: exe, headless: true, dumpio: !!process.env.SHOT_DUMPIO,
+    browser: process.env.FF ? 'firefox' : 'chrome',   // FF=1: Firefox, which skips Chromium's HDR auto-exposure (P855)
+    executablePath: process.env.FF ? 'C:/Program Files/Mozilla Firefox/firefox.exe' : exe, headless: true, dumpio: !!process.env.SHOT_DUMPIO,
     userDataDir: path.join(out, `profile-${Date.now()}`),
-    args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--window-size=1400,1000'],
+    args: process.env.FF ? [] : ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--window-size=1400,1000'],
     defaultViewport: { width: 1400, height: 1000 },
 });
 try {

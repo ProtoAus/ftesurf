@@ -5,6 +5,27 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Story mode (P854): what review left open
+
+- **A transferred community time ties an install's guid to its account.** `?story=player` of a
+  linked account shows the exact ms of rows its install set before linking, and `/api/board`
+  community rows publish those rows' raw guid; matching the two links them. Lex asked for the
+  transfer; the root is the community rows' `player` exposure already recorded under P829.
+- **Runs without a verified receipt never follow a link**: rows from before receipts, or a run
+  whose receipt was not read, stay under the install's guid after it links, so a linked player can
+  show twice on the Players tab (the account and "old name"). By design (review round 2); the
+  receipt is the only proof of whose run it was.
+- **`reach N` means "stage N-1 finished in any run"**, not "reached stage N inside one run": a
+  stage-only run of N-1 earns it (FS_LegOf). Fine for a fun ladder; a run-scoped check needs the
+  recording (the nofail work).
+- **A chapter can close again**: bars are worked out from the file each time, so raising a bar or
+  tightening a time takes a chapter (and medals) away. The design page offered a ratchet (a chapter
+  stays open once opened); not built, it needs per-player state.
+- **Players tab, rank chips**: a reply for the previous chip shows until the next lands
+  (Sty_ParsePlayers does not check sty_plist). Cosmetic.
+- **`milk_bootcheck 5` now aims at entries 2 and 3** (VISUALS and MUSIC moved down one for STORY);
+  not run since.
+
 ## Profile arms write a stale terms version (found by P853, 20 Oct)
 
 - **tools/p663profile.py writes `data/consent.txt` with `version 4`**; FS_TERMS_ONLINE (sh_defs.qc) is 7,

@@ -1,5 +1,31 @@
 # lextest.md — things waiting on a human
 
+## P854 — Story and Event mode
+
+STORY is on the main menu, between PLAY and VISUALS (menu.dat in both installs). The list is your
+100 levels, repeats removed, ordered by tier in chapters of five, 25 blank levels for you; silver
+and gold times are PLACEHOLDERS (your surf_demise 1:05 / 1:01 scaled by each map's record). Edit
+`surfd/story.txt` and run `python tools/story_push.py` to change it live.
+
+- Open STORY: the ladder loads, chapter 1 is open, chapter 2 on is greyed "LOCKED, opens at N".
+- Play level 2 (surf_demise): it joins a lobby. Finish the map; reopen STORY within a minute or two:
+  the bronze is lit and the trophy count moved.
+- Players tab: you are listed; click another player to see their ladder, "My story" goes back.
+- Events tab: its own trophies and chapters.
+
+"Story ok / <what to change>". Verdict PENDING.
+
+## P855 — the 3D viewer's missing props (surf_null), and Chrome
+
+Live 2026-10-19 21:01Z (UTC): watch.js 52da42c7.
+
+- Reload https://proto.bar/ftesurf/board/watch.html#r=23168 (Ctrl+F5): the bhop platforms the run lands
+  on (around 0:15 and 0:43), the arches and the hub signs are there now.
+- In Chrome or Edge, HDR maps (surf_null, surf_lux, ...) used to say "The 3D view failed on this map";
+  they should play now.
+
+"Looks right / <map and time where something is still missing>". Verdict PENDING.
+
 ## P853 — tier completion filtered All / Surf / Bhop
 
 Live 2026-10-19 (UTC): surfd 02ed71c2 (20:44Z), csprogs d28a06aa on the 12 lobbies and both installs.

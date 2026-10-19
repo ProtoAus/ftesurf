@@ -1,0 +1,409 @@
+// The Story and Event lists (Patch 854). The server reads its copy,
+// /srv/nvme/surfd/data/story.txt, within a minute of a change: edit this one
+// and run `python tools/story_push.py` (it checks the file first).
+//
+//   list <id> "Title"           a ladder; the menu shows story and events
+//   unlock 60%                  a chapter opens at this share of the trophies
+//                               the chapters before it offer (put it before
+//                               the list's first chapter)
+//   chapter "Title" [unlock N]  N trophies by hand instead; chapters open in
+//                               order, and the first is always open
+//   level <map> [bonus N]       one level; `level soon` is an empty slot
+//     bronze|silver|gold <challenge> ["text"]
+//
+// Challenges: finish | time m:ss[.mmm] (strictly under) | reach N (stage N-1
+// finished in any run) |
+// nofail | wonly | via <spot>. The last three show as "coming soon" and earn
+// nothing yet. A level with no medal lines gets a bronze for finishing.
+// Medals count WOS runs only (lobby runs, no saves; never Momentum or KSF),
+// and a level is worth its best medal: bronze 1, silver 2, gold 3.
+//
+// Silver and gold times below are PLACEHOLDERS: Lex's surf_demise 1:05 / 1:01
+// scaled by each track's record on any board (1.75x and 1.64x).
+
+list story "Story"
+unlock 60%
+chapter "Tier 1"
+level surf_colin_blaster_69000
+  bronze reach 9        "Get to the last stage"
+  silver finish         "Complete the map"
+  gold   nofail         "First try every stage"
+level surf_demise
+  bronze finish
+  silver time 1:05
+  gold   time 1:01          // record 0:37.115
+level surf_mesa
+  bronze finish
+  silver time 1:26
+  gold   time 1:21          // record 0:48.761
+level surf_ace
+  bronze finish
+  silver time 1:11
+  gold   time 1:06          // record 0:40.136
+level surf_garden
+  bronze finish
+  silver time 2:13
+  gold   time 2:05          // record 1:15.450
+chapter "Tier 1"
+level surf_zoomathon
+  bronze finish
+  silver time 3:11
+  gold   time 2:59          // record 1:48.628
+level surf_aesthetic
+  bronze finish
+  silver time 1:22
+  gold   time 1:17          // record 0:46.710
+level surf_anzchamps
+  bronze finish
+  silver time 2:13
+  gold   time 2:05          // record 1:15.840
+level surf_nuclear
+  bronze finish
+  silver time 1:41
+  gold   time 1:35          // record 0:57.315
+level surf_r-ne
+  bronze finish
+  silver time 1:39
+  gold   time 1:33          // record 0:56.272
+chapter "Tier 1"
+level surf_utopia
+  bronze finish
+  silver time 1:34
+  gold   time 1:28          // record 0:53.364
+level surf_botanica
+  bronze finish
+  silver time 1:46
+  gold   time 1:40          // record 1:00.270
+level surf_citypop
+  bronze finish
+  silver time 1:09
+  gold   time 1:05          // record 0:38.951
+level surf_lovetunnel
+  bronze finish
+  silver time 1:17
+  gold   time 1:13          // record 0:43.904
+level surf_sodacity
+  bronze finish
+  silver time 1:09
+  gold   time 1:05          // record 0:39.040
+chapter "Tier 1"
+level surf_kitsune
+  bronze finish
+  silver time 1:46
+  gold   time 1:39          // record 0:59.970
+level soon
+level soon
+level soon
+level soon
+chapter "Tier 2"
+level surf_me
+  bronze finish
+  silver time 3:04
+  gold   time 2:53          // record 1:44.730
+level surf_colin_blaster_69000 bonus 5
+  bronze finish
+  silver time 2:52
+  gold   time 2:41          // record 1:37.785
+level surf_anoobis
+  bronze finish
+  silver time 1:12
+  gold   time 1:08          // record 0:41.067
+level surf_cyberwave
+  bronze finish
+  silver time 1:41
+  gold   time 1:35          // record 0:57.465
+level surf_borderlands
+  bronze finish
+  silver time 2:39
+  gold   time 2:29          // record 1:30.238
+chapter "Tier 2"
+level surf_hotwheels
+  bronze finish
+  silver time 1:30
+  gold   time 1:24          // record 0:50.835
+level surf_classics
+  bronze finish
+  silver time 10:43
+  gold   time 10:04          // record 6:06.900
+level surf_classics2
+  bronze finish
+  silver time 5:58
+  gold   time 5:36          // record 3:24.195
+level surf_sandtrap2
+  bronze finish
+  silver time 1:24
+  gold   time 1:19          // record 0:47.505
+level surf_not_so_sinister_ksf
+  bronze finish
+  silver time 2:15
+  gold   time 2:06          // record 1:16.620
+chapter "Tier 2"
+level surf_not_so_disaster
+  bronze finish
+  silver time 2:05
+  gold   time 1:57          // record 1:11.175
+level surf_fruits
+  bronze finish
+  silver time 2:43
+  gold   time 2:33          // record 1:32.669
+level surf_vegetables                 // no zones yet
+level soon
+level soon
+chapter "Tier 3"
+level surf_executioner
+  bronze finish
+  silver time 1:28
+  gold   time 1:23          // record 0:49.940
+level surf_fruits2                 // no zones yet
+level surf_classics3
+  bronze finish
+  silver time 24:35
+  gold   time 23:04          // record 14:01.680
+level surf_fiellu
+  bronze finish
+  silver time 1:31
+  gold   time 1:25          // record 0:51.615
+level surf_whoknows
+  bronze finish
+  silver time 1:43
+  gold   time 1:36          // record 0:58.395
+chapter "Tier 3"
+level surf_borderlands_h
+  bronze finish
+  silver time 2:53
+  gold   time 2:42          // record 1:38.400
+level soon
+level soon
+level soon
+level soon
+chapter "Tier 4"
+level surf_loweffort
+  bronze finish
+  silver time 1:51
+  gold   time 1:45          // record 1:03.300
+level surf_kaaba
+  bronze finish
+  silver time 2:08
+  gold   time 2:00          // record 1:12.839
+level surf_rise
+  bronze finish
+  silver time 1:07
+  gold   time 1:03          // record 0:37.741
+level surf_runewords2_lod
+  bronze finish
+  silver time 2:06
+  gold   time 1:58          // record 1:11.460
+level surf_yellow
+  bronze finish
+  silver time 1:40
+  gold   time 1:34          // record 0:56.835
+chapter "Tier 4"
+level surf_whoknows2
+  bronze finish
+  silver time 1:47
+  gold   time 1:40          // record 1:00.552
+level surf_whoknows3
+  bronze finish
+  silver time 1:57
+  gold   time 1:50          // record 1:06.525
+level surf_runewords
+  bronze finish
+  silver time 3:04
+  gold   time 2:52          // record 1:44.594
+level surf_runewords2
+  bronze finish
+  silver time 3:04
+  gold   time 2:52          // record 1:44.639
+level soon
+chapter "Tier 5"
+level surf_stonework3                 // no zones yet
+level surf_spacemonkeys
+  bronze finish
+  silver time 2:55
+  gold   time 2:44          // record 1:39.449
+level surf_ab
+  bronze finish
+  silver time 11:41
+  gold   time 10:58          // record 6:39.959
+level surf_monkeys2
+  bronze finish
+  silver time 2:38
+  gold   time 2:29          // record 1:30.135
+level soon
+chapter "Tier 6"
+level surf_666
+  bronze finish
+  silver time 5:08
+  gold   time 4:49          // record 2:55.830
+level surf_earthmover
+  bronze finish
+  silver time 1:56
+  gold   time 1:49          // record 1:06.175
+level surf_bugs
+  bronze finish
+  silver time 1:03
+  gold   time 0:59          // record 0:35.625
+level surf_monkeys
+  bronze finish
+  silver time 2:40
+  gold   time 2:30          // record 1:31.124
+level surf_garden_h
+  bronze finish
+  silver time 3:12
+  gold   time 3:00          // record 1:49.425
+chapter "Tier 6"
+level surf_sinister_evil
+  bronze finish
+  silver time 2:20
+  gold   time 2:11          // record 1:19.575
+level soon
+level soon
+level soon
+level soon
+chapter "Tier 7"
+level surf_sandtrap2 bonus 4
+  bronze finish
+  silver time 0:14
+  gold   time 0:13          // record 0:07.827
+level surf_whynot
+  bronze finish
+  silver time 3:12
+  gold   time 3:00          // record 1:49.200
+level surf_hades2
+  bronze finish
+  silver time 2:52
+  gold   time 2:42          // record 1:37.994
+level surf_spectra
+  bronze finish
+  silver time 2:42
+  gold   time 2:32          // record 1:32.328
+level surf_starvald                 // no zones yet
+chapter "Tier 7"
+level surf_olivia                 // no zones yet
+level surf_sidistic
+  bronze finish
+  silver time 3:31
+  gold   time 3:18          // record 2:00.420
+level soon
+level soon
+level soon
+chapter "Tier 8"
+level surf_axiom bonus 4
+  bronze finish
+  silver time 0:25
+  gold   time 0:24          // record 0:14.235
+level surf_prosurf
+  bronze finish
+  silver time 4:49
+  gold   time 4:31          // record 2:44.834
+level surf_hunty
+  bronze finish
+  silver time 3:41
+  gold   time 3:28          // record 2:06.150
+level surf_sinister                 // no zones yet
+level surf_corruption
+  bronze finish
+  silver time 5:04
+  gold   time 4:46          // record 2:53.430
+chapter "Tier 8"
+level surf_ruse
+  bronze finish
+  silver time 2:26
+  gold   time 2:17          // record 1:22.920
+level surf_dune
+  bronze finish
+  silver time 1:52
+  gold   time 1:45          // record 1:03.644
+level surf_exonic
+  bronze finish
+  silver time 2:55
+  gold   time 2:44          // record 1:39.615
+level surf_gigapede
+  bronze finish
+  silver time 2:58
+  gold   time 2:47          // record 1:41.113
+level surf_joutsenlaulu
+  bronze finish
+  silver time 6:44
+  gold   time 6:19          // record 3:50.295
+chapter "Tier 9"
+level surf_devil
+  bronze finish
+  silver time 5:48
+  gold   time 5:27          // record 3:18.495
+level surf_doomsday
+  bronze finish
+  silver time 6:21
+  gold   time 5:57          // record 3:37.050
+level surf_tensor2
+  bronze finish
+  silver time 5:50
+  gold   time 5:29          // record 3:19.830
+level soon
+level soon
+chapter "Tier 10"
+level surf_anubis
+  bronze finish
+  silver time 38:47
+  gold   time 36:23          // record 22:08.220
+level soon
+level soon
+level soon
+level soon
+
+list events "Events"
+chapter
+level soon
+level soon
+level surf_legends
+  gold   finish         "Beat surf_legends"
+level surf_leet_xl_beta7z                 // no zones yet
+  gold   finish         "Beat surf_leet_xl_beta7z"
+level surf_voyager
+  gold   via other      "Beat it without the main route"
+chapter
+level surf_leidenfrost
+  bronze time 1:12     
+  silver time 1:04     
+  gold   time 0:56     
+level surf_cyberwave
+  gold   finish         "Beat surf_cyberwave"
+level surf_zoomathon
+  gold   finish         "Play it with max fog (for fun, not checked)"
+level surf_1998                 // no zones yet
+  gold   finish         "Finish surf_1998"
+level surf_dragon bonus 1
+  gold   finish         "Finish bonus 1"
+chapter
+level surf_board_this
+  gold   finish         "Beat surf_board_this"
+level surf_anoobis
+  gold   wonly          "Beat it W-only"
+level surf_fiellu bonus 4
+  gold   via ramp       "Reach the final ramp of bonus 4"
+level surf_4am bonus 4
+  gold   finish         "Beat bonus 4"
+level surf_kvas bonus 4
+  gold   finish         "Beat bonus 4"
+chapter
+level bhop_futile
+  gold   finish         "Beat bhop_futile"
+level surf_blackheart
+  gold   finish         "Beat surf_blackheart"
+level surf_facility bonus 4
+  gold   finish         "Beat bonus 4"
+level surf_bugs bonus 4
+  gold   finish         "Beat bonus 4"
+level surf_gigapede bonus 4
+  gold   finish         "Beat bonus 4"
+chapter
+level surf_gigapede bonus 3
+  gold   finish         "Beat bonus 3"
+level surf_prosurf bonus 4
+  gold   finish         "Beat bonus 4"
+level surf_medley bonus 4
+  gold   finish         "Beat bonus 4"
+level surf_monolith bonus 4
+  gold   finish         "Beat bonus 4"
+level surf_dune bonus 10
+  gold   finish         "Beat bonus 10"

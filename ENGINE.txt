@@ -25,7 +25,7 @@ commit   dc93205067ca0889c6d0441b51483f16d8ffcc29
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-842
-patch    853
+patch    855
 # Patch 842 (qwprogs/readers + native verifier): format 11 keeps actual released-packet
 # inputs as fzin and declares the final native clock without granting held verification.
 # Retained v9/v10 prefixes keep their contracts; v11 stays v11. Native ordinary zero-
@@ -43,6 +43,9 @@ patch    853
 # and the in-game card (`completion.modes`, `&mode=` on the tier lists; `hud_player kind`).
 # Live 2026-10-19: surfd 02ed71c2 (20:44Z), csprogs d28a06aa on the 12 lobbies and both installs
 # (.prev 2f86a702); page re-rendered 20:05Z.
+# Patch 855 (viewer, surfd/web/watch.js): static props whose MDL texture entry has clientmaterial
+# set (Propper writes 1) are drawn (surf_null: 46 of 81 were not); HDR maps draw in Chromium.
+# Live 2026-10-19 21:01Z: surfd 37456de3 (surfd855 root), watch.js 52da42c7.
 # Patch 848 (qwprogs + csprogs): `reset` is the old goto_start (!r); goto_start sends !r unless the
 # run is past its leg's first segment (STAT_FS_TIMERSTARTSEG), then the track's start (!m / !b N).
 # Patch 847 (client engine + csprogs): DRAWFLAG_UNDERBLEND sorts a CSQC polygon before the blended

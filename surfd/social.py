@@ -273,6 +273,13 @@ def register(app, d):
         msg = (MENU_STATEMENT % (nonce, op, who)).encode("ascii")
         if not ed.verify(bytes.fromhex(pub), msg, bytes.fromhex(sig)):
             return reply({"ok": 0, "error": "Friends identity could not be verified"}, 403)
+        if op == "list" and f.get("story") == "1" and getattr(d, "story_who", None):
+            # P854: the Story screen asks who this key plays as, on the same
+            # read-only proof; an unlinked install answers too.
+            try:
+                return reply({"ok": 1, "who": d.story_who(d.get_db(), pub)})
+            except sqlite3.Error:
+                return reply({"ok": 0, "error": "Story unavailable"}, 503)
         try:
             db = d.get_db()
             # A consistent read snapshot. Do not touch sessions/seen: somebody

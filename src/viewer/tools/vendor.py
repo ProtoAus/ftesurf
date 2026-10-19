@@ -222,6 +222,18 @@ PATCHES = [
     ('SourceEngine/StaticDetailObject.ts',
      '        if (!visible)\n            return;\n\n        if ((this as any).debug)\n',
      '        if (!visible)\n            return;\n\n        if (this.moveView !== null) {\n            const view = renderContext.currentView;\n            renderContext.currentView = this.moveView;\n            this.moveView = null;\n            try {\n                this.studioModelInstance.movement(renderContext);\n            } catch {\n                // Not drawn this frame; from the next it moves where upstream does, and\n                // throws there, before anything of the frame is prepared.\n                this.moveKind = 1;\n                return;\n            } finally {\n                renderContext.currentView = view;\n            }\n        }\n\n        if ((this as any).debug)\n'),
+    # P855: clientmaterial is a runtime pointer slot like `material` (whose assert upstream
+    # already dropped); Propper writes 1, and the assert threw the model away: 46 of
+    # surf_null's 81 static props never drew.
+    ('SourceEngine/Studio.ts',
+     '            assert(clientmaterial === 0);\n',
+     '            // FTESurf: a stale pointer slot like material above (Propper writes 1); not checked.\n'),
+    # P855: on an HDR map Chromium turns auto-exposure on, whose histogram asks for the debug
+    # canvas; that reads noclip's own page (window.main), which the viewer has not, and the
+    # 3D view failed on every frame of every HDR map.
+    ('DebugJunk.ts',
+     '        window.main.toplevel.insertBefore(canvas, window.main.canvas);\n',
+     '        window.main?.toplevel.insertBefore(canvas, window.main.canvas); // FTESurf: no noclip page\n'),
 ]
 
 ROOTS = [
