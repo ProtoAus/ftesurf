@@ -135,6 +135,14 @@ renderer; source and build in `src/viewer/` (its README). The bundle
   the first A/B here read 5,800 fps as a win under memory pressure: the page now says so and
   watchState carries `contextLost`. Live on surfd e58d9d0e since 12:20:25Z (surfd835 root,
   from OLD surfd834): surf_demise eye 94/69/92 fps on the live page against 52/48/57.
+- **Deferring noclip work is exact only where nothing keeps state (P839)**: a static prop's
+  movement runs material proxies, and every time-driven proxy reads the frame's globalTime, but
+  proxies also read and write their material's params by name, so an Add into its own source
+  accumulates per call and a proxy reading a later one's output lags (review's simulation: 0.240
+  against 0.120 after 60 skipped frames). Only proxy-free props defer. `tools/pixels.mjs` pins
+  the scene clock (watchHold) and VOIDs a run whose views are not distinct and stable; one round
+  whose map never finished building gave six identical hashes at 5,500 fps. Live on surfd
+  21b01ff6 since 16:13:52Z (surfd839, from OLD surfd835).
 - **What the viewer keeps (P834)**: Cache Storage for the bytes, one IndexedDB record per
   entry (`idb.ts`; a per-tab manifest lost the other tab's entries, review), LRU to the smaller of
   the budget and 40% of the site's quota. A map is reused while the R2 download's Content-Length

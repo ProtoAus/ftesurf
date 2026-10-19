@@ -95,6 +95,9 @@ tools/vendor.py) give the same visible sets from less work: +16% (surf_beginner)
 (the water check reusing the main view's set) only applies with one BSPRenderer, which is all
 this viewer makes. `tools/fps.mjs` is the A/B: vsync off, camera held, pages alternated. GRADE
 ITS STATE LINE: a lost WebGL context renders nothing thousands of times a second.
+Patch 839 moves a static prop with no material proxy only when a view draws it (+11..+16%
+on surf_demise); `tools/pixels.mjs` checks such a change pixel for pixel with the scene clock
+pinned (`watchHold`).
 
 ## Checks
 

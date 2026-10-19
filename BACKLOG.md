@@ -123,10 +123,10 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
 
 ## 3D run viewer (P825, P829): what is left
 
-- **Viewer fps, next (P835 measured):** static-prop `movement` re-picks each prop's LOD every
-  frame (~15% of a surf_demise frame after P835); doing it only for props that pass visibility
-  needs its side effects checked first. The graph's playhead as CSS instead of a canvas redraw
-  saves ~0.2 ms. `--dev` bundles throw "reading 'toplevel'" inside render on surf_demise
+- **Viewer fps, next:** P839 defers movement only for static props with no material proxy (a
+  proxy can keep state in its material's params between calls); props with one still move every
+  frame. Which surf_demise props those are, and what they cost, is unmeasured. (noclip's static
+  props pick no LOD: `getLODModelIndex` is 0.) `--dev` bundles throw "reading 'toplevel'" inside render on surf_demise
   (production bundles do not). noclip's `calcPVS` copies `numclusters` words where
   `numclusters / 32` would do (harmless).
 - **P834's remembered folders are untested**: showDirectoryPicker needs a real click, so the

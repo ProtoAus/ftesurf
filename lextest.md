@@ -18,6 +18,17 @@ and draws the graph as before (checked on 0.1.27).
 
 "Faster / <what looks off, where>". Verdict PENDING.
 
+## P839 — the 3D viewer: a little faster again on prop-heavy maps
+
+surfd 2026-10-19T16:13:52Z: generation 21b01ff6 (main), root
+/srv/nvme/agent-work/surfd839-20261019T1607Z; watch.js 7d8fd334. Rollback: surfd835 (e58d9d0e).
+
+- surf_demise and other prop-heavy maps: measured here +11 to +16% fps over P835 (first person,
+  109/78/107 -> 121/87/117). The picture is the same, pixel for pixel.
+- The white playhead on the speed graph should look and move exactly as before.
+
+"Smoother / <what looks wrong>". Verdict PENDING.
+
 ## P835 — the 3D viewer runs faster on heavy maps
 
 surfd 2026-10-19T12:20:25Z: generation e58d9d0e (main), root
