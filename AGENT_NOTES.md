@@ -32,6 +32,10 @@
 - The arm (`tools/p815zones.py`) holds the published copy as the client's Momentum `online`
   file and fetches nothing; it needs consent version 7 in the fixture's data/consent.txt, and
   its hosted arm sets `sv_zones_curated` as the picker does.
+- ON THE PI, nginx's `sites-enabled/play.proto.bar.conf` IS A REGULAR FILE, not a link to
+  sites-available (the R2 gateway's include went into it by hand on 15 Oct). Edit and hash that
+  one; a backup must not go into sites-enabled, which nginx loads whole. P815's first installs
+  edited the copy nginx never reads and probed a 404.
 - An edited save state is refused until the next map ("that save changed on disk"): a fixture
   that rewrites state.txt must restart the map, not reconnect.
 
