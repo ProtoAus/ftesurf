@@ -34,8 +34,9 @@ renderer; source and build in `src/viewer/` (its README). The bundle
 - **The BSP** comes from the picked folder first, else
   `play.proto.bar/maps/<map>.bsp`. That route 302s to a presigned R2 URL, and a
   browser checks CORS on BOTH hops; after a cross-origin redirect the Origin is
-  `null`, so R2's policy must allow `*`. Neither is set until the owner applies
-  them (BACKLOG); the CSP already names both hosts.
+  `null`, so R2's policy must allow `*`. Both set by Lex 19 Oct ~08:06Z (nginx via
+  apply-cors.sh, the `ftesurf-public` bucket policy in Cloudflare's dashboard) and
+  checked with curl: the 302 and R2's 206 both carry `Access-Control-Allow-Origin: *`.
 - **A new surfd file does not ship by itself.** A successor generation's file set
   is the SERVING generation's (`build_gen.py`); P825 added `--add web/<file>`.
   A new Python module would also need the witness's module and alias lines,
