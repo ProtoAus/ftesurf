@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P827 — your own line no longer stalls a long run
+
+Not deployed yet.
+
+- Run a map for several minutes with your line on, `r_budget 3` and `r_budget_csqc 1`: under
+  cl_lines, Line_End should stay near 0 however long the run (it read 0.43 ms a frame on
+  surf_boreas, and grew with the run). `r_frametime 1` should show no stutter four times a second.
+- Nothing about the line looks different: colours, breaks and the speed range are the same.
+
+"Line ok / <what differs>". Verdict PENDING.
+
 ## P825 — watch a run in 3D in the browser
 
 surfd 2026-10-19T07:23:25Z: generation 7cc5cbbf (main), root

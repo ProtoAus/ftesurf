@@ -5,6 +5,49 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Frame time: CPU levers (Lex's r_budget dumps, 19 Oct)
+
+Seven `r_budget_dump`s with `r_budget_csqc 1` (surf_boreas x2, surf_demise x2, surf_tensor2,
+surf_joutsenlaulu, surf_sidistic; demo lines and every HUD element on, `hl2_water 3`, the owner's
+`r_renderscale 2`): all CPU-bound, GPU 0.21-2.28 ms of 1.62-7.18 ms frames. The main thread's
+rows: CSQC 0.79-3.83 ms, draw submission 0.09-3.27, HL2 PrepareFrame 0.04-0.89, the panel
+itself 0.37-0.47. A QC function's profiled time includes the builtins it calls (qclib
+pr_exec.c:604-614, entry to exit), so a QC row is not all interpreter. Patch 827 took the first
+(Line_End). Engine citations are at ebc96a081. Measured unless marked "read".
+
+- **Glares: occlusion on the GPU.** `Sprite_Glare` 1.63 ms of surf_tensor2's 3.54 ms of QC, its
+  cost the tracelines (build 59's fit: 27.1 us a ray, cl_sprites.qc). Source asks the GPU
+  (c_pixel_visibility.cpp); the 50 ms ramp already hides a frame or two of latency. Needs a
+  builtin; tracing stays the fallback (old engines via checkbuiltin). Check: same view, CSQC
+  row and the glare luma, trace against query.
+- **HUD work redone every frame.** `hud_font_outline 2` (the default) draws a mono string 10
+  times (HUD_TextDraw 0.07-0.23 ms); a rounded box is 7 drawsubpic (_sui_round_draw 0.07-0.19);
+  KC_HintDraw splits and measures its strip each frame though KC_Refresh runs every 0.5 s
+  (0.04 on every map); Trn_Timeline grades every tick column each frame (0.07-0.11); Font_Px
+  scans the ladder per call (0.04-0.11). Cache in QC first, then one-call builtins (outlined
+  text, rounded box). A render-target cache of slow panels is possible (cl_milk.qc draws 2D
+  into one) once alpha compositing and 1:1 pixels are checked.
+- **Graph and compare.** LineGraph_Simplify re-cuts the whole live curve each time lv_head
+  moves (0.09-0.11 ms); Cmp_Nearest 0.06-0.11.
+- **Draw submission (read).** No instancing (render.h:100). `vid_gl_context_compatibility 1`
+  (renderer.c:625) means no VAO or stream VBOs: each batch re-points its attributes and a
+  multi-mesh batch copies its indices through alloca (gl_backend.c:3496-3546); multi-draw is on
+  the core path only. With `r_blendsort 1`, a world blend list the plane sort reorders goes out
+  one face a batch (GLBE_SubmitBlendedWorld, gl_backend.c:7777-7865): a candidate, unmeasured,
+  for surf_joutsenlaulu's 1.17 ms transparent row on 452 draws. Check first, one toggle at a
+  time at a fixed save: `r_blendsort 0`, `r_model_mincoverage 0.005`, compatibility 0.
+- **HL2 PrepareFrame (read).** Every static prop is visited every view and each visible one is
+  its own scene entity (mod_vbsp.c:9524-9837); surf_demise reads 551-864 entity batches.
+  Bucket props by cluster; group or instance identical props (per-prop vertex lighting makes
+  instancing more than a flag).
+- **Full water costs CPU first here**: each capture re-submits the scene. Besides sharing
+  captures (the water budget entry below), refraction could read the drawn scene's copy.
+- **Threads, last (read).** qclib's JIT is x86-32 only and off (progslib.h:39-41); the worker
+  pool is WG_MAIN/WG_LOADER; Vulkan records one command buffer and has none of the GL-only
+  FTESurf paths (blend sort, fake shadows, GPU timing).
+- At `r_shadows 2` every entity batch uploads 16 fake-shadow matrices (SP_FAKESHADOWMATRIX,
+  gl_backend.c:4350). The owner runs `r_shadows 0`, so these dumps do not include it.
+
 ## 3D run viewer (P825): what is left
 
 - **The map download needs CORS on both hops; owner's sudo and Cloudflare.** Until both are

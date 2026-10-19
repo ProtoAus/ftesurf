@@ -25,7 +25,9 @@ commit   ebc96a0810c3e312ec7edf13d4a0ab6f253bc595
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-816
-patch    826
+patch    827
+# Patch 827 (csprogs): the live line's Line_End redoes only what new samples touch; it rebuilt
+# the whole line every 16 samples, ~1 us a sample (a ~20 ms stall every 250 ms at 5 minutes).
 # Patch 825 (surfd + web): the board plays a run in 3D -- surfd/web/watch.html over noclip's
 # Source renderer (src/viewer), a gated /board/api/run/<rid>/track, Valve content only from
 # the visitor's own disk. No QC, engine or player-file change.

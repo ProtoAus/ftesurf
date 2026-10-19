@@ -3112,6 +3112,15 @@ publicly WITH its fix, not before it.
 
 ## The run line (Patches 432, 449-453)
 
+- Patch 827: Line_End RESUMES where the slot's last pass stopped (`ln_endn`/`ln_endb`), so
+  the live line's pass every 16 samples costs the same at any length. Exact only because
+  Line_Add appends and nothing else writes `ln_n` or the sample arrays (Line_Clear and the
+  past-the-cap halving zero `ln_endn`): new code that rewrites, drops or moves a slot's
+  samples must zero `ln_endn[s]` too. A shorter line or a moved base already forces a whole
+  pass, but a line that grew back past the mark would not. Its offline A/B
+  (`perfplan-20261019/artifacts/p827vm.py`, on the review626 VM) feeds two csprogs one
+  stream and compares every table bit for bit; only its halving-after-a-gap scenario catches
+  a missing reset. `lines native` counts whole and partial passes.
 - Patch 746: THE RACE GHOST, `src/client/cl_raceghost.qc` (prefix `RG_`; the `ghost`
   command and `ghost_*` cvars are the unrelated freecam). Ghosts are LINE SLOTS: your
   PB in two slots added at the END of the table (67 a stage's at LN_CAP2, 68 a whole
