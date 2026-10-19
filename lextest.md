@@ -47,7 +47,8 @@ A fresh client on lobby 1 was served it and drew the board (pi_lobby_smoke, 05:3
 
 ## P809 — Entity view on any key
 
-Not installed yet (deploy line follows).
+Live 19 Oct 05:40Z in both installs and on all 12 lobbies (qwprogs 9155b799, csprogs bcb0c1cf;
+the lobbies' .prev is P821's 234261dd / 1337a98f). Lobby smoke on the 0.1.27 exe passed.
 
 - Mouse 3 still toggles the entity overlay, but as a normal bind now: K (key config) has an Entity
   view row at the bottom of Menus; rebind or clear it there, or `bind mouse3 <anything>`.
@@ -56,7 +57,8 @@ Not installed yet (deploy line follows).
 
 ## P811 — your saves follow you between the lobbies and a local game
 
-Not installed yet (deploy line follows).
+Live 19 Oct 05:40Z in both installs and on all 12 lobbies (qwprogs 9155b799, csprogs bcb0c1cf;
+the lobbies' .prev is P821's 234261dd / 1337a98f). Lobby smoke on the 0.1.27 exe passed.
 
 - In a lobby, save: a moment later that save is also in your own install. Start the same map
   offline: it is in your list, as a practice placement (position, speed and view, no clock -- the
@@ -75,7 +77,8 @@ Not installed yet (deploy line follows).
 
 ## P808 — rewind: the 3-2-1 is back; a save on the rewind keeps the run as it was there
 
-Not installed yet (deploy line follows).
+Live 19 Oct 05:40Z in both installs and on all 12 lobbies (qwprogs 9155b799, csprogs bcb0c1cf;
+the lobbies' .prev is P821's 234261dd / 1337a98f). Lobby smoke on the 0.1.27 exe passed.
 
 - Backspace, scrub back, ENTER: you are held for a 3-2-1 before you move again
   (`hud_rewind_countdown 0` for none).
