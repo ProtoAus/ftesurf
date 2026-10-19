@@ -31,7 +31,7 @@ surfd 2026-10-19T08:02:56Z: generation 9ae4a941 (main), root
   zoom; Free: drag to look, WASD to fly); **Race the record** puts the combined board's best
   recorded run beside yours as a gold dot, with the gap at the top.
 
-"Works / <what looks wrong, and on which map>". Verdict PENDING.
+"Works / <what looks wrong, and on which map>". CONFIRMED by Lex 2026-10-19 ("yep it works!"), after the CORS steps; per-map checks not reported.
 
 ## P817 — after a fail, the rewind carries on your run (timed, segmented)
 
