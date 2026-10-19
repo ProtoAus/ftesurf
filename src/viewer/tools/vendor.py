@@ -17,6 +17,42 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STUBS = os.path.join(HERE, 'stubs')
 OUT = os.path.join(HERE, 'vendor', 'noclip')
 
+# Small edits to upstream files, applied after the copy, each matching exactly
+# once (vendor.py stops otherwise). UPSTREAM.txt marks a patched file.
+PATCHES = [
+    # The run viewer draws its line, zones and players into the main view's
+    # colour and depth targets (src/viewer/src/world.ts): keep the depth target...
+    ('SourceEngine/Main.ts',
+     '    public outputColorTargetID: GfxrRenderTargetID | null = null;\n',
+     '    public outputColorTargetID: GfxrRenderTargetID | null = null;\n'
+     '    public outputDepthTargetID: GfxrRenderTargetID | null = null; // FTESurf: world.ts draws into it\n'),
+    ('SourceEngine/Main.ts',
+     '        const mainDepthTargetID = builder.createRenderTargetID(mainDepthDesc, `${this.name} - Main Depth`);\n',
+     '        const mainDepthTargetID = builder.createRenderTargetID(mainDepthDesc, `${this.name} - Main Depth`);\n'
+     '        this.outputDepthTargetID = mainDepthTargetID;\n'),
+    ('SourceEngine/Main.ts',
+     '        this.outputColorTargetID = null;\n',
+     '        this.outputColorTargetID = null;\n'
+     '        this.outputDepthTargetID = null;\n'),
+    # ...and give the renderer one hook, after the main view, before bloom and grading.
+    ('SourceEngine/Main.ts',
+     '    public bspRenderers: BSPRenderer[] = [];\n',
+     '    public bspRenderers: BSPRenderer[] = [];\n'
+     '    public onWorldPasses: ((builder: GfxrGraphBuilder, color: GfxrRenderTargetID, depth: GfxrRenderTargetID) => void) | null = null; // FTESurf\n'),
+    ('SourceEngine/Main.ts',
+     '        const mainColorTargetID = assertExists(this.mainViewRenderer.outputColorTargetID);\n',
+     '        const mainColorTargetID = assertExists(this.mainViewRenderer.outputColorTargetID);\n'
+     '        if (this.onWorldPasses !== null)\n'
+     '            this.onWorldPasses(builder, mainColorTargetID, assertExists(this.mainViewRenderer.outputDepthTargetID));\n'),
+    # An entity whose model failed to load (a prop from content nobody provided)
+    # still spawns, and spawn() looked its default animation up in a null model:
+    # a TypeError every frame, and a black view (surf_prosurf, run 21127).
+    ('SourceEngine/EntitySystem.ts',
+     '        return this.modelStudio!.modelData.seq.findIndex((seq) => seq.label === label);\n',
+     '        if (this.modelStudio === null) return -1; // FTESurf: the model failed to load\n'
+     '        return this.modelStudio.modelData.seq.findIndex((seq) => seq.label === label);\n'),
+]
+
 ROOTS = [
     'SourceEngine/Main.ts',
     'SourceEngine/BSPFile.ts',
@@ -75,7 +111,8 @@ def main():
         shutil.rmtree(OUT)
     lines = [f'noclip.website {commit}', 'https://github.com/magcius/noclip.website',
              'MIT licence: LICENSE beside this file.',
-             'Files marked "stub" are FTESurf replacements from src/viewer/stubs/.', '']
+             'Files marked "stub" are FTESurf replacements from src/viewer/stubs/;',
+             '"patched" ones carry the edits in tools/vendor.py PATCHES.', '']
     for rel in sorted(seen):
         frm = source(rel, src)
         dst = os.path.join(OUT, 'src', rel)
@@ -84,10 +121,17 @@ def main():
         # of the CRLF copy would not match a checkout.
         with open(frm, 'rb') as fh:
             data = fh.read().replace(b'\r\n', b'\n')
+        tag = 'stub' if frm.startswith(STUBS) else 'upstream'
+        for prel, old, new in PATCHES:
+            if prel == rel:
+                n = data.count(old.encode())
+                if n != 1:
+                    raise SystemExit(f'patch for {rel} matches {n} times: {old[:60]!r}')
+                data = data.replace(old.encode(), new.encode())
+                tag = 'patched'
         with open(dst, 'wb') as fh:
             fh.write(data)
         digest = hashlib.sha256(data).hexdigest()[:16]
-        tag = 'stub' if frm.startswith(STUBS) else 'upstream'
         lines.append(f'{digest} {tag:8} {rel}')
     with open(os.path.join(sys.argv[1], 'LICENSE'), 'rb') as fh:
         lic = fh.read().replace(b'\r\n', b'\n')

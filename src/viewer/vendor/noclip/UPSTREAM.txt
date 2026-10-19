@@ -1,7 +1,8 @@
 noclip.website fd973ff240233c63883750a557c62baf6ff2a6c7
 https://github.com/magcius/noclip.website
 MIT licence: LICENSE beside this file.
-Files marked "stub" are FTESurf replacements from src/viewer/stubs/.
+Files marked "stub" are FTESurf replacements from src/viewer/stubs/;
+"patched" ones carry the edits in tools/vendor.py PATCHES.
 
 534eafa47e37f5e8 upstream ArrayBufferSlice.ts
 f1a25ad7370a18e9 upstream Ascii85.ts
@@ -30,10 +31,10 @@ dd0968e2b8e1db8c upstream SaveManager.ts
 5ee7bfa33d892668 upstream SceneBase.ts
 aea9a65e2a473f2d upstream SourceEngine/BSPFile.ts
 247326764aaa4093 upstream SourceEngine/DMX.ts
-f88f0296d0ad946d upstream SourceEngine/EntitySystem.ts
+b058b3ef7b8be249 patched  SourceEngine/EntitySystem.ts
 d8f9b475252c7efb upstream SourceEngine/GMA.ts
 ffa00f2f3fb6dbc4 upstream SourceEngine/LuminanceHistogram.ts
-ab85deda1e957026 upstream SourceEngine/Main.ts
+28239e946fd02776 patched  SourceEngine/Main.ts
 371097df0f632fd1 upstream SourceEngine/Materials/Lightmap.ts
 5ef6797eca7847f3 upstream SourceEngine/Materials/MaterialBase.ts
 d51304fcda798017 upstream SourceEngine/Materials/MaterialCache.ts
