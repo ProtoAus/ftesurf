@@ -36,6 +36,8 @@ patch    853
 # "Full package" links; no ftesurf.bat / ftesurf_debug.bat in the next release.
 # Patch 853 (surfd + board + csprogs): tier completion filtered All / Surf / Bhop on the web profile
 # and the in-game card (`completion.modes`, `&mode=` on the tier lists; `hud_player kind`).
+# Live 2026-10-19: surfd 02ed71c2 (20:44Z), csprogs d28a06aa on the 12 lobbies and both installs
+# (.prev 2f86a702); page re-rendered 20:05Z.
 # Patch 848 (qwprogs + csprogs): `reset` is the old goto_start (!r); goto_start sends !r unless the
 # run is past its leg's first segment (STAT_FS_TIMERSTARTSEG), then the track's start (!m / !b N).
 # Patch 847 (client engine + csprogs): DRAWFLAG_UNDERBLEND sorts a CSQC polygon before the blended

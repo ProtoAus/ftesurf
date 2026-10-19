@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P853 — tier completion filtered All / Surf / Bhop
+
+Live 2026-10-19 (UTC): surfd 02ed71c2 (20:44Z), csprogs d28a06aa on the 12 lobbies and both installs.
+
+- Website: open a player (Players, or your own) -> "Maps finished, by difficulty" has All / Surf / Bhop
+  with each one's done / total; pick Bhop and click a tier: only bhop maps. The link keeps it (`&cm=`).
+- In game: P (Player) -> your Stats, or anyone's: the same three chips over the bars; pick one and
+  click a tier bar: "TIER 3 BHOP MAPS". `hud_player kind bhop` does the same from the console.
+
+"Works / <what looked wrong>". Verdict PENDING.
+
 ## P852 — the download page leads with the launcher
 
 Live 2026-10-19 20:05Z (UTC) on proto.bar/ftesurf (0.1.28's page re-rendered). The two launcher

@@ -1,5 +1,34 @@
 # AGENT_NOTES.md
 
+## Tier completion by kind (P853) and the launcher-first page (P852), 2026-10-20
+
+- **One rule says which kind a map is**: `mapmanifest.map_mode`, pool_policy's `surf_` / `bhop_`
+  prefixes. Every map `_completion_scope` counts is one of the two (disabled() drops the rest), so
+  `completion.modes.surf` + `.bhop` add up to the whole, per tier and unrated. The per-kind lists are
+  `/board/api/player/<h>/maps?mode=` and the game's `player=&ct=&mode=`, both echo `mode`.
+- **The game keeps the three tables in one memalloc'd block** (`pf_cmt`, PF_CMF floats each), not
+  globals: the VM is near fteqcc's globals limit and the old 36 bar floats are gone. A tier answer
+  whose `mode` differs from the kind on show is dropped like an older ask's. `hud_player kind
+  all|surf|bhop` (card open only), and `hud_player status` ends `kind N split N`.
+- **A profile arm needs consent version 7** (FS_TERMS_ONLINE): at 4 the card answers PFS_NOTERMS
+  (`breakdown 4`) and asks nothing; p663profile.py still writes 4 (BACKLOG). tools/p853kind.py is the
+  console-only arm, `--old-surfd` the compatibility control.
+- **A surfd stage needs `src/viewer/src`**: test_web reads it (P825). Archive with `git -c
+  core.autocrlf=false archive <sha> surfd tools src/shared src/release src/viewer/src`.
+- **sitepage.ps1 works again** (P852): it re-renders the page for a live release and renames only the
+  changed files into `releases/<v>/` under publish.sh's lock, old copies in `.sitepage-prev/`, never
+  update.json. Run it from PowerShell, or with `MSYS_NO_PATHCONV=1` from Git Bash: Git Bash turns a
+  `-SiteRoot /srv/...` argument into a Windows path and the live-release check refuses.
+- **The standalone launchers carry `Content-Disposition`** naming them `ftesurf-launcher(.exe)`, the
+  name the engine's update handoff runs (qkupdate.c QKU_Restart_f); release.ps1 sets and checks it.
+  0.1.28's two objects were re-uploaded with it (same bytes). An overwrite's new header took about a
+  second to show at dl.proto.bar; a release key is always new.
+- **LIVE 2026-10-19 (UTC)**: page 20:05Z (index.html only, `.sitepage-prev/0.1.28-20261019T200516Z`);
+  surfd generation 02ed71c2 from `/srv/nvme/agent-work/surfd853-20261019T2033Z` since 20:44:43Z (OLD
+  surfd840 CLOSED, kept); csprogs d28a06aa on all 12 lobbies (`.prev` 2f86a702), C:\FTEQuake and
+  C:\FTESurf (`.prev` 2f86a702), qwprogs/menu unchanged (babf2b9b / 07fa02c8); pi_lobby_smoke on
+  27510 at 20:47Z was served d28a06aa and drew the board.
+
 ## Slow clock and the profile reason (P840, 2026-10-20)
 
 - `SV_ProfileWhy` is the profile predicate now (`SV_ProfileBroken` = not PW_OK); `inprof` (header,
