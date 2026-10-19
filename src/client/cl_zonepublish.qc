@@ -78,6 +78,7 @@ void(float real) ZonePub_Begin =
 	local string body;
 	ZonePub_Pump();
 	if (zp_state) { ZoneEdit_Note("a zone upload is already pending"); return; }
+	if (ui_ze_state != ZE_PANEL || ze_settings) { ZoneEdit_Note("finish placing first"); return; }
 	if (zp_next >= 6199998) { ZoneEdit_Note("restart the game before another upload"); return; }
 	if (!real) { ZoneEdit_Note("click Publish saved: a command cannot start a publish"); return; }
 	if (!ZoneEdit_Hosting())
@@ -108,7 +109,10 @@ void(float real) ZonePub_Begin =
 	zp_map = strzone(ze_map); zp_body = strzone(body);
 	zp_sha = strzone(strtolower(digest_hex("SHA256", body)));
 	zp_state = ZP_CHALLENGE; zp_until = gettime(0) + 120;
-	zp_next = max(zp_next + 1, 6100000); zp_req = id = zp_next;
+	// A map change restarts this VM's counter and the engine hands a late reply to the new
+	// VM, so ids start somewhere else each time (review: an old answer shown as the new one).
+	if (zp_next < 6100000) zp_next = 6100000 + floor(random() * 80000);
+	zp_next = zp_next + 1; zp_req = id = zp_next;
 	print(sprintf("zone_edit: publish dialog open for %s (%g zones, crc %s)\n", zp_map, zp_count, zp_crc));
 	if (!uri_post(strcat(ZP_BASE, "challenge"), id, "application/json",
 	              sprintf("{\"map\":\"%s\",\"sha\":\"%s\"}", zp_map, zp_sha)))
@@ -170,6 +174,7 @@ float(float scan) ZonePub_Key =
 {
 	ZonePub_Pump();
 	if (!zp_state) return FALSE;
+	if (ui_ze_state != ZE_PANEL || !ze_cursor) return FALSE;   // not on screen: the editor's keys
 	if (scan == K_ESCAPE) { ZonePub_Back(); return TRUE; }
 	if (scan == K_ENTER || scan == K_KP_ENTER) { ZonePub_Go(); return TRUE; }
 	if (scan == K_MOUSE1)
