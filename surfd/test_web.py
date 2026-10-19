@@ -1207,6 +1207,30 @@ def main():
     m._scan_maps = real_scan
     check("the run page never waits on a library scan, and names the map anyway",
           (len(scans), r["map"], r["disp"]), (0, "bhop_eazy", "bhop_eazy"))
+
+    # P829: a stale index answers at once and is rescanned once, on a thread.
+    import time as _time
+    m.maps_reset()
+    first, _z = m.map_index(now=1000.0)
+    gate, scans = threading.Event(), []
+    def slow_scan():
+        scans.append(1)
+        gate.wait(5)
+        return {"surf_new": "surf_new"}, frozenset()
+    m._scan_maps = slow_scan
+    t0 = _time.monotonic()
+    stale = [m.map_index(now=1000.0 + m.MAPS_TTL + 1)[0] for _ in range(3)]
+    waited = _time.monotonic() - t0
+    check("a stale library answers at once, from the old index",
+          (waited < 1.0, all(s is first for s in stale)), (True, True))
+    check("...and three stale calls start one rescan between them", len(scans), 1)
+    gate.set()
+    for th in threading.enumerate():
+        if th.name == "maps-refresh":
+            th.join(5)
+    check("...whose result is the next answer", sorted(m.map_index(now=1000.0 + m.MAPS_TTL + 2)[0]), ["surf_new"])
+    m._scan_maps = real_scan
+    m.maps_reset()
     check("an unknown run is 404", get(m, "/board/api/run/99999").status_code, 404)
     check("a run whose file is gone is 404",
           get(m, "/board/api/run/%d" % unplottable(m, "run")).status_code, 404)

@@ -41,6 +41,7 @@ def main():
     ap.add_argument('--info', action='append', default=[])
     ap.add_argument('--steam')
     ap.add_argument('--board', help='a saved /board/api/map reply, answered to any query')
+    ap.add_argument('--zones', help='a folder of <map>.json zone files, served at /zones/')
     ap.add_argument('--port', type=int, default=8825)
     a = ap.parse_args()
     recs = dict(x.split('=', 1) for x in a.rec)
@@ -106,6 +107,12 @@ def main():
                 if f is None:
                     return self.send(404, b'{"error":"no such run"}', 'application/json')
                 return self.send(200, open(f, 'rb').read(), 'application/json')
+            m = re.fullmatch(r'/zones/([A-Za-z0-9_.-]+)\.json', p)
+            if m and a.zones:
+                f = os.path.join(a.zones, m.group(1) + '.json')
+                if os.path.isfile(f):
+                    return self.send(200, open(f, 'rb').read(), 'application/json')
+                return self.send(404, b'', 'text/plain')
             m = re.fullmatch(r'/maps/([A-Za-z0-9_.-]+)\.bsp', p)
             if m:
                 f = os.path.join(a.maps, m.group(1) + '.bsp')

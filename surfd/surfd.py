@@ -1867,12 +1867,35 @@ def _scan_maps():
     return bsp, frozenset(zone)
 
 
+def _refresh_maps(now):
+    try:
+        bsp, zone = _scan_maps()
+        with _maps_lock:
+            _maps_cache["at"], _maps_cache["bsp"], _maps_cache["zone"] = now, bsp, zone
+        log.info("map library: %d installed, %d with zones (%s, refreshed)",
+                 len(bsp), len(zone), MAPS_DIR)
+    finally:
+        with _maps_lock:
+            _maps_cache["busy"] = False
+
+
 def map_index(now=None):
-    """The installed library, cached for MAPS_TTL.  Returns (bsp, zone)."""
+    """The installed library, cached for MAPS_TTL.  Returns (bsp, zone).
+
+    Only the first call scans in the request.  A stale cache is answered as it
+    is and rescanned once on a thread (Patch 829): the scan opens every
+    zone-less BSP (zonefit.has_timer), and inside a request it outlasted nginx's
+    5 s on the Pi, so the board, the map page and the run page said 504."""
     now = time.monotonic() if now is None else now
     with _maps_lock:
         at = _maps_cache["at"]
         if at is not None and now - at < MAPS_TTL:
+            return _maps_cache["bsp"], _maps_cache["zone"]
+        if at is not None:
+            if not _maps_cache.get("busy"):
+                _maps_cache["busy"] = True
+                threading.Thread(target=_refresh_maps, args=(now,), daemon=True,
+                                 name="maps-refresh").start()
             return _maps_cache["bsp"], _maps_cache["zone"]
     bsp, zone = _scan_maps()
     with _maps_lock:

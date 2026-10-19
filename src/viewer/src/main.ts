@@ -9,16 +9,18 @@ import ArrayBufferSlice from '../vendor/noclip/src/ArrayBufferSlice.js';
 import { BSPFile } from '../vendor/noclip/src/SourceEngine/BSPFile.js';
 import { Fetcher, GameFiles, HttpSource, MapFileSystem, Mount } from './files.js';
 import { newPose, poseAt, Pose, sampleAt, wrap } from './playback.js';
-import { Fit, FL_DUCKED, FL_ONGROUND, KEY_BACK, KEY_DUCK, KEY_FORWARD, KEY_JUMP, KEY_LEFT, KEY_RIGHT, parseRec, Rec } from './rec.js';
+import { FL_DUCKED, FL_ONGROUND, KEY_BACK, KEY_DUCK, KEY_FORWARD, KEY_JUMP, KEY_LEFT, KEY_RIGHT, parseRec, Rec } from './rec.js';
 import { View } from './view.js';
+import { drawBody, drawRunLine, drawZones, zoneLabelPoint } from './world.js';
+import { inferSplits, parseZones, Zone } from './zones.js';
 
-// The R2-backed map route the game downloads from (cfg/default.cfg cl_download_mapsrc);
-// a page served from this machine reads its own /maps/ (src/viewer/tools/serve.py).
+// The R2-backed routes the game downloads from (cfg/default.cfg cl_download_mapsrc,
+// cl_download_zonesrc); a page served from this machine reads src/viewer/tools/serve.py's.
 const LOCAL_DEV = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
 const MAP_URL = (name: string) => (LOCAL_DEV ? `/maps/${name}.bsp` : `https://play.proto.bar/maps/${name}.bsp`);
+const ZONE_URL = (name: string) => (LOCAL_DEV ? `/zones/${name}.json` : `https://play.proto.bar/ftesurf/maps/zones/local/${name}.json`);
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
-const PATH_POINTS = 600;    // run line vertices in the window, whatever the sample rate
-const PATH_BEHIND = 2, PATH_AHEAD = 8;   // seconds of run line around the playhead
+const PLAYER = { r: 0.35, g: 0.75, b: 1, a: 1 }, GHOST = { r: 0.91, g: 0.77, b: 0.42, a: 1 };
 
 type CamMode = 'eye' | 'chase' | 'top' | 'free';
 
@@ -64,16 +66,21 @@ const pose: Pose = newPose();
 let orbitYaw = 0, orbitPitch = 20, orbitDist = 160;
 let maxSpeed = 1;
 // The run raced against: the combined board's record (or its second, when this
-// is the record), drawn as a gold marker at the same run time.
+// is the record), drawn at the same run time.
 let ghost: { rec: Rec; info: any } | null = null;
 const gpose: Pose = newPose();
 let graph: HTMLCanvasElement | null = null;   // the speed traces, drawn once
+let zones: Zone[] = [];
+// Each run's stage splits (1-based stage -> seconds): recorded, or inferred from
+// the zones for a run that recorded none (imports), which `approx` marks.
+interface Splits { t: Map<number, number>; approx: boolean }
+let runSplits: Splits = { t: new Map(), approx: false };
+let ghostSplits: Splits = { t: new Map(), approx: false };
 
 // ---- loading ---------------------------------------------------------------
 
 // surfd builds one track at a time and says 503 to the next caller (Patch 825);
-// nginx says 504 after 5 s, which the first run request after surfd's map index
-// expires (MAPS_TTL) can take -- the scan finishes anyway, so once more is warm.
+// nginx says 504 when a request outlasts 5 s.
 async function fetchJSON(url: string): Promise<any> {
     for (let tries = 0; ; tries++) {
         const r = await fetch(url, { credentials: 'omit' });
@@ -104,8 +111,49 @@ function setRec(r: Rec): void {
     maxSpeed = 1;
     for (let i = 0; i < r.n; i++)
         maxSpeed = Math.max(maxSpeed, Math.hypot(r.v[i * 3], r.v[i * 3 + 1]));
-    buildTimeline();
     if (runInfo === null) showInfoFromRec(r);
+    computeSplits();
+}
+
+// The zone file the game downloads (maps/zones/local). Most maps have none, and
+// that is silent: the page works without zones, it just draws and infers less.
+async function loadZones(): Promise<void> {
+    zones = [];
+    const map = mapName, of = rec;
+    if (map === '') return;
+    let got: Zone[] = [];
+    try {
+        const r = await fetch(ZONE_URL(map), { credentials: 'omit' });
+        if (r.ok) got = parseZones(await r.json(), Number(of?.head.get('track') ?? 0));
+    } catch {
+        got = [];
+    }
+    if (of !== rec) return;   // another recording was opened meanwhile
+    zones = got;
+    computeSplits();
+}
+
+function recordedSplits(info: any): Map<number, number> {
+    const rate = Number(info?.rate) || 0.015;
+    return new Map(((info?.splits || []) as [number, number][]).map(([seg, ticks]) => [seg, ticks * rate]));
+}
+
+function splitsFor(r: Rec | null, info: any): Splits {
+    const recorded = info ? recordedSplits(info) : new Map(r?.splits.map((s) => [s.seg, s.t]) ?? []);
+    if (recorded.size > 0 || r === null || zones.length === 0) return { t: recorded, approx: false };
+    return { t: new Map(inferSplits(r, zones).map((s) => [s.seg, s.t])), approx: true };
+}
+
+// Splits for both runs, and, for a run that recorded no stage events, stage
+// events from the inferred splits so the HUD and timeline can name the stage.
+function computeSplits(): void {
+    runSplits = splitsFor(rec, runInfo);
+    ghostSplits = ghost ? splitsFor(ghost.rec, ghost.info) : { t: new Map(), approx: false };
+    if (rec !== null && runSplits.approx && !rec.events.some((e) => e.kind === 'stage' || e.kind === 'stagestart'))
+        for (const [seg, t] of runSplits.t) rec.events.push({ kind: 'stage', t, n: seg });
+    rec?.events.sort((a, b) => a.t - b.t);
+    buildTimeline();
+    showSplits();
 }
 
 async function bspBytes(name: string): Promise<ArrayBufferSlice> {
@@ -186,11 +234,32 @@ async function buildScene(view: View, bytes: ArrayBufferSlice, mine: number): Pr
     if (worldspawn.skyname)
         renderer.skyboxRenderer = new SkyboxRenderer(renderContext, worldspawn.skyname);
     renderer.bspRenderers.push(bspRenderer);
+    renderer.onWorldPasses = (builder, colour, depth) => {
+        const dd = renderer.renderHelper.debugDraw;
+        const mv = renderer.mainViewRenderer.mainView;
+        dd.beginFrame(mv.clipFromViewMatrix, mv.viewFromWorldMatrix, view.canvas.width, view.canvas.height);
+        drawWorld(mv.cameraPos);
+        dd.pushPasses(builder, colour, depth);
+    };
+    drawTo = renderer;
 
     if (mine !== mapLoads) { renderer.destroy(view.device); return; }
     if (view.scene !== null) view.scene.destroy(view.device);
     view.scene = renderer;
     status('');
+}
+
+// ---- the 3D overlay: zones, the run line, the bodies ---------------------------
+
+let drawTo: SourceRenderer | null = null;
+
+function drawWorld(cam: vec3): void {
+    if (rec === null || drawTo === null) return;
+    const dd = drawTo.renderHelper.debugDraw;
+    if ($<HTMLInputElement>('wzones').checked) drawZones(dd, zones, cam);
+    if ($<HTMLInputElement>('wpath').checked) drawRunLine(dd, rec, T, cam, maxSpeed);
+    if (ghost !== null && T <= ghost.rec.t[ghost.rec.n - 1]) drawBody(dd, gpose, cam, GHOST);
+    if (mode !== 'eye') drawBody(dd, pose, cam, PLAYER);
 }
 
 // ---- game files ------------------------------------------------------------
@@ -265,13 +334,7 @@ function placeCamera(v: View): void {
 
 const scratch = vec3.create(), scratch2 = vec3.create();
 
-function speedColour(sp: number): string {
-    // The run line's ramp: slow is blue, fast is gold.
-    const f = Math.min(1, sp / Math.max(maxSpeed, 1));
-    const h = 210 - f * 170;
-    return `hsl(${h} 90% 60%)`;
-}
-
+// Labels in 2D over the 3D: the record's name above its body, zone names.
 function drawOverlay(v: View): void {
     const c = $<HTMLCanvasElement>('woverlay');
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -283,58 +346,27 @@ function drawOverlay(v: View): void {
     const g = c.getContext('2d')!;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);
-    if (rec === null || rec.n === 0 || !($<HTMLInputElement>('wpath').checked)) return;
-
-    g.lineWidth = 2;
-    g.lineCap = 'round';
-    // A teleport between two drawn points must break the line, not streak across
-    // the map: a segment is drawn only if no pair inside it is a snap.
-    const lo = sampleAt(rec, T - PATH_BEHIND), hi = sampleAt(rec, T + PATH_AHEAD);
-    const stride = Math.max(1, Math.ceil((hi - lo + 1) / PATH_POINTS));
-    let prev: vec3 | null = null, last = -1;
-    for (let k = lo; k < hi + stride; k += stride) {
-        const i = Math.min(k, hi);   // the window's last sample is always drawn
-        let snapped = false;
-        for (let j = Math.max(last, lo); j >= 0 && j < i; j++)
-            if (rec.fit[j] === Fit.Snap) { snapped = true; break; }
-        const p = v.project(rec.o[i * 3], rec.o[i * 3 + 1], rec.o[i * 3 + 2] + 2, prev === scratch ? scratch2 : scratch);
-        if (p !== null && prev !== null && !snapped) {
-            g.strokeStyle = speedColour(Math.hypot(rec.v[i * 3], rec.v[i * 3 + 1]));
-            g.globalAlpha = rec.t[i] <= T ? 0.35 : 0.9;
-            g.beginPath();
-            g.moveTo(prev[0], prev[1]);
-            g.lineTo(p[0], p[1]);
-            g.stroke();
-        }
-        prev = p;
-        last = i;
-    }
-    g.globalAlpha = 1;
-    if (ghost !== null) {
-        const p = v.project(gpose.x, gpose.y, gpose.z + 36, scratch);
-        if (p !== null) {
-            const rpx = Math.max(4, Math.min(24, 8000 / p[2]));
-            g.fillStyle = '#E8C56A';
-            g.strokeStyle = '#1a1406';
-            g.lineWidth = 2;
-            g.beginPath();
-            g.arc(p[0], p[1], rpx, 0, Math.PI * 2);
-            g.fill();
-            g.stroke();
-        }
-    }
-    if (mode !== 'eye') {
-        // The player: a hull outline would need depth; a marker reads fine.
-        const p = v.project(pose.x, pose.y, pose.z + 36, scratch);
-        if (p !== null) {
-            const rpx = Math.max(4, Math.min(28, 9000 / p[2]));
-            g.fillStyle = '#59bfff';
-            g.strokeStyle = '#00131f';
-            g.lineWidth = 2;
-            g.beginPath();
-            g.arc(p[0], p[1], rpx, 0, Math.PI * 2);
-            g.fill();
-            g.stroke();
+    if (rec === null) return;
+    g.font = '600 12px system-ui, sans-serif';
+    g.textAlign = 'center';
+    g.lineWidth = 3;
+    g.strokeStyle = 'rgba(0,0,0,.75)';
+    const label = (text: string, p: vec3 | null, colour: string) => {
+        if (p === null) return;
+        g.fillStyle = colour;
+        g.strokeText(text, p[0], p[1]);
+        g.fillText(text, p[0], p[1]);
+    };
+    if (ghost !== null && T <= ghost.rec.t[ghost.rec.n - 1])
+        label(plain(ghost.info.name), v.project(gpose.x, gpose.y, gpose.z + 90, scratch), '#E8C56A');
+    if ($<HTMLInputElement>('wzones').checked) {
+        for (const z of zones) {
+            const at = zoneLabelPoint(z, scratch2);
+            const p = v.project(at[0], at[1], at[2] + 16, scratch);
+            if (p === null || p[2] > 6000) continue;
+            const name = z.kind === 'start' ? 'Start' : z.kind === 'end' ? 'End'
+                : z.kind === 'stage' ? `Stage ${z.seg + 1}` : `Checkpoint ${z.ord}`;
+            label(name, p, z.kind === 'end' ? '#ff8a7a' : z.kind === 'stage' ? '#E8C56A' : z.kind === 'start' ? '#7be38f' : '#8fd4ff');
         }
     }
 }
@@ -388,13 +420,15 @@ let last = 0, frames = 0;
     ghost: ghost ? { name: ghost.info.name, samples: ghost.rec.n, at: [gpose.x, gpose.y, gpose.z], gap: ghostGap() } : null,
     mounts: files.mounts.map((m) => m.game), status: $('wstatus').hidden ? '' : $('wstatus').textContent,
     eye: [pose.x, pose.y, pose.eyeZ, pose.pitch, pose.yaw],
+    zones: zones.length, splits: [...runSplits.t].map(([s, t]) => [s, +t.toFixed(3)]), approx: runSplits.approx,
+    ghostSplits: [...ghostSplits.t].map(([s, t]) => [s, +t.toFixed(3)]), error: renderError, missingObjects,
 });
 (window as any).watchSeek = (t: number, m?: CamMode) => { T = t; if (m) setMode(m); };
 (window as any).watchGhost = () => toggleGhost();
 
 // One bad frame must not stop the page: the loop always schedules the next, and
 // a renderer that keeps throwing says so once instead of leaving a black view.
-let renderError = '';
+let renderError = '', missingObjects = 0;
 function loop(now: number): void {
     try {
         step(now);
@@ -472,23 +506,19 @@ function showInfo(r: any): void {
     }
     const back = $<HTMLAnchorElement>('wback');
     back.href = `./#r=${r.rid}`;
-    showSplits();
-}
-
-function splitTimes(info: any): Map<number, number> {
-    const rate = Number(info?.rate) || 0.015;
-    return new Map(((info?.splits || []) as [number, number][]).map(([seg, ticks]) => [seg, ticks * rate]));
 }
 
 function showSplits(): void {
     const sp = $('wsplits');
     sp.textContent = '';
-    const mine = splitTimes(runInfo), theirs = ghost ? splitTimes(ghost.info) : new Map<number, number>();
-    $('wsplitvs').textContent = ghost ? `vs ${plain(ghost.info.name)}` : '';
+    const mine = runSplits.t, theirs = ghostSplits.t;
+    const approx = runSplits.approx || (ghost !== null && ghostSplits.approx);
+    $('wsplitvs').textContent = (ghost ? `vs ${plain(ghost.info.name)}` : '') + (approx ? ' · ≈ from the zones' : '');
     let prev = 0;
     for (const [seg, t] of mine) {
         const tr = el('tr', null);
-        tr.append(el('td', null, `Stage ${seg}`), el('td', 'num', fmt(t)), el('td', 'num dim', '+' + (t - prev).toFixed(3)));
+        tr.append(el('td', null, `Stage ${seg}`), el('td', 'num', (runSplits.approx ? '≈' : '') + fmt(t)),
+            el('td', 'num dim', '+' + (t - prev).toFixed(3)));
         const g = theirs.get(seg);
         if (ghost) {
             const d = g === undefined ? null : t - g;
@@ -508,7 +538,7 @@ async function toggleGhost(): Promise<void> {
         ghost = null;
         b.textContent = 'Race the record';
         $('wghostinfo').textContent = '';
-        showSplits();
+        computeSplits();
         graph = null;
         return;
     }
@@ -527,7 +557,7 @@ async function toggleGhost(): Promise<void> {
         ghost = { rec: parseRec(track.rec), info };
         b.textContent = 'Stop racing';
         $('wghostinfo').textContent = `Racing ${plain(info.name)} (#${row.r}, ${fmt(info.ms / 1000)}${info.tr !== runInfo.tr ? ', ' + (TIER_NAMES[info.tr] ?? info.tr) : ''}).`;
-        showSplits();
+        computeSplits();
         graph = null;
     } catch (e) {
         $('wghostinfo').textContent = `The record could not be loaded (${(e as Error).message}).`;
@@ -537,7 +567,7 @@ async function toggleGhost(): Promise<void> {
 }
 
 // Horizontal speed against run time, this run blue and the ghost gold; the
-// playhead and stage ticks are drawn over it each frame.
+// playhead is drawn over it each frame.
 function drawGraph(): void {
     const c = $<HTMLCanvasElement>('wgraph');
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -605,7 +635,6 @@ function showInfoFromRec(r: Rec): void {
     dl.textContent = '';
     dlRow(dl, 'map', r.head.get('map') ?? '?');
     dlRow(dl, 'samples', String(r.n));
-    $('wsplitbox').hidden = true;
 }
 
 function computeStats(r: Rec): void {
@@ -683,7 +712,7 @@ function wire(): void {
             graph = null;
             setRec(r);
             computeStats(r);
-            await loadMap();
+            await Promise.all([loadZones(), loadMap()]);
         } catch (err) {
             status(`That recording could not be played (${(err as Error).message}).`);
         }
@@ -710,6 +739,12 @@ function wire(): void {
     $('wgl').addEventListener('wheel', (e) => {
         if (mode === 'chase') orbitDist = Math.max(40, Math.min(1200, orbitDist * (e.deltaY > 0 ? 1.1 : 0.9)));
     }, { passive: true });
+    // A prop whose model could not be loaded rejects a promise noclip never
+    // awaits (assertExists, "Missing object"): the prop is skipped, which is what
+    // we want. Counted in watchState, since the same text is any assertExists.
+    window.addEventListener('unhandledrejection', (e) => {
+        if (/^Missing object/.test(String(e.reason?.message ?? ''))) { e.preventDefault(); missingObjects++; }
+    });
 }
 
 async function main(): Promise<void> {
@@ -738,8 +773,7 @@ async function main(): Promise<void> {
         const at = Number(hash.get('t'));
         if (Number.isFinite(at) && hash.has('t')) T = Math.max(t0, Math.min(t1, at));
         poseAt(rec!, T, pose);
-        sampleAt(rec!, T);
-        await loadMap();
+        await Promise.all([loadZones(), loadMap()]);
     } catch (e) {
         status(`This run could not be loaded (${(e as Error).message}).`);
     }

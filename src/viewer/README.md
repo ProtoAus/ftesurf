@@ -21,7 +21,9 @@ package.json), and it prints the bundle's sha256.
 - `src/` is ours: `rec.ts` reads FTESURF-REC, `playback.ts` interpolates it as
   `tools/watchtrace.py` (cl_watch.qc's model) does, `view.ts` is the frame loop,
   `files.ts` reads the viewer's own game folder, `missing.ts` stands in for
-  textures nobody provided, `main.ts` is the page.
+  textures nobody provided, `zones.ts` reads the map's zone file and infers stage
+  times from it, `world.ts` draws zones, the run line and the bodies into the 3D
+  view (Patch 829), `main.ts` is the page.
 - `vendor/noclip/` is a copy of the import closure of noclip's
   `SourceEngine/Main.ts` (MIT, LICENSE inside), made by
   `python tools/vendor.py <noclip checkout>`. `vendor/noclip/UPSTREAM.txt` names
@@ -45,13 +47,31 @@ The BSP comes from the viewer's game folder when one was picked, else from
 Valve content (CS:S, HL2) only ever comes from the viewer's own disk, read by VPK
 slices. What is still missing is drawn as a flat colour from its name.
 
+## Zones and stage times (Patch 829)
+
+The zone file is the one the game downloads,
+`https://play.proto.bar/ftesurf/maps/zones/local/<map>.json`; a map without one
+draws no zones and infers nothing. A run whose recording has no `split` records
+(every import) gets its stage times from the first touch of each stage zone in
+order, shown with ≈. `tools/zones_check.ts` compares that inference with the
+recorded splits: 52 of 52 within 0.05 s on 19 Oct, splits at a restart not
+compared. The surf_666 AnnA/p426 harness fixtures were made on another zone set
+and are left out.
+
+World drawing goes through noclip's DebugDraw on the main view's colour and depth
+(the `onWorldPasses` patch in `tools/vendor.py`), so what is behind the map is
+drawn at 15%.
+
 ## Checks
 
     python tools/lzma_ref.py MAP.bsp > ref.txt
     npx esbuild tools/lzma_check.ts --bundle --platform=node --outfile=<tmp>/c.cjs
     node <tmp>/c.cjs MAP.bsp ref.txt            # TS LZMA against Python's
 
-    python tools/serve.py --maps <dir of .bsp> --rec ID=run.rec --info ID=run.json [--steam <steamapps/common>]
+    npx esbuild tools/zones_check.ts --bundle --platform=node --outfile=<tmp>/z.cjs
+    node <tmp>/z.cjs RUN.rec ZONES.json [RUN.rec ZONES.json ...]
+
+    python tools/serve.py --maps <dir of .bsp> --rec ID=run.rec --info ID=run.json [--zones <dir of zone .json>] [--steam <steamapps/common>]
     PUPPETEER_DIR=<dir with puppeteer-core> node tools/shot.mjs "http://127.0.0.1:8825/board/watch.html#r=ID" <out> 20,eye 20,chase
 
 `surfd/test_web.py` section 6b2 covers the route, its gate and the page's CSP.

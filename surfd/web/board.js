@@ -404,6 +404,7 @@
       var act = el('td', 'act');
       if (r.rep) {
         act.appendChild(link('watch', '#r=' + r.rep, 'Watch'));
+        act.appendChild(link('watch', 'watch.html#r=' + r.rep, '3D'));
       } else if (r.run) {
         act.appendChild(link('watch dim', '#r=' + r.run, 'Full run'));
       }
@@ -1009,7 +1010,10 @@
       tr.appendChild(el('td', 'num', fmt(r.ms)));
       tr.appendChild(el('td', 'date', day(r.when)));
       var act = el('td', 'act');
-      if (r.rep) { act.appendChild(link('watch', '#r=' + r.rep, 'Watch')); }
+      if (r.rep) {
+        act.appendChild(link('watch', '#r=' + r.rep, 'Watch'));
+        act.appendChild(link('watch', 'watch.html#r=' + r.rep, '3D'));
+      }
       var ob = boardUrl(r.tr, r.map);
       if (ob) {
         var o = outLink(ob, r.tr === 'ksf' ? 'KSF ↗' : 'MOM ↗');
