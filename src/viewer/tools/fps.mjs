@@ -22,10 +22,15 @@ const [recFile, ...pages] = process.argv.slice(2);
       const p = await b.newPage();
       await p.goto('http://127.0.0.1:8825/board/' + page, { waitUntil: 'load' });
       await (await p.$('#wrecfile')).uploadFile(recFile);
-      for (let i = 0; i < 240; i++) {
+      let ready = false;
+      for (let i = 0; i < 480 && !ready; i++) {
         const s = await p.evaluate(() => window.watchState());
-        if (s.scene && s.status === '' && s.samples > 0) break;
-        await new Promise((r) => setTimeout(r, 250));
+        ready = s.scene && s.status === '' && s.samples > 0 && s.builds > 0;
+        if (!ready) await new Promise((r) => setTimeout(r, 250));
+      }
+      if (!ready) {        // the map never finished building: nothing below would be a measurement
+        console.log(JSON.stringify({ page, VOID: 'not ready after 120 s' }));
+        continue;
       }
       const row = { page };
       for (const t of [1, 15, 30]) {

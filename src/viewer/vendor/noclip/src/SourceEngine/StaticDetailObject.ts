@@ -539,6 +539,7 @@ export class StaticPropRenderer {
     private materialParams = new EntityMaterialParameters();
     private lightingOrigin = vec3.create();
     private moveView: SourceRenderContext['currentView'] | null = null; // FTESurf: see movement
+    private moveKind = 0;   // FTESurf: 0 a material still loading, 1 a proxy (moves every frame), 2 none
 
     constructor(renderContext: SourceRenderContext, private bspRenderer: BSPRenderer, private staticProp: StaticProp) {
         this.createInstance(renderContext, bspRenderer);
@@ -573,11 +574,34 @@ export class StaticPropRenderer {
         }
     }
 
-    // FTESurf: what movement sets on a static prop (material proxies, eyes) is read only
-    // when it is drawn, and depends only on the frame's time and the view current here (the
-    // main view), so it runs at the first view that draws the prop, with this view put back.
+    // FTESurf: for a prop with no material proxy, what movement sets ($color/$alpha, eyes)
+    // is read only when it is drawn and depends only on the view current here (the main
+    // view), so it runs at the first view that draws the prop, with this view put back. A
+    // proxy can keep state in its material's params between calls (an Add into its own
+    // source), so a prop with one, or with a material still loading, moves every frame.
     public movement(renderContext: SourceRenderContext): void {
-        this.moveView = this.studioModelInstance !== null ? renderContext.currentView : null;
+        this.moveView = null;
+        if (this.studioModelInstance === null)
+            return;
+        if (this.moveKind === 0)
+            this.moveKind = this.proxyKind();
+        if (this.moveKind === 2)
+            this.moveView = renderContext.currentView;
+        else
+            this.studioModelInstance.movement(renderContext);
+    }
+
+    private proxyKind(): number {
+        for (const part of (this.studioModelInstance as any).bodyPartInstance) {
+            for (const mesh of part.getLODInstance(0).meshInstance) {
+                const m = mesh.materialInstance;
+                if (m === null || !m.isMaterialLoaded())
+                    return 0;
+                if (m.proxyDriver !== null)
+                    return 1;
+            }
+        }
+        return 2;
     }
 
     public prepareToRender(renderContext: SourceRenderContext, renderInstManager: GfxRenderInstManager): void {
@@ -607,9 +631,17 @@ export class StaticPropRenderer {
         if (this.moveView !== null) {
             const view = renderContext.currentView;
             renderContext.currentView = this.moveView;
-            this.studioModelInstance.movement(renderContext);
-            renderContext.currentView = view;
             this.moveView = null;
+            try {
+                this.studioModelInstance.movement(renderContext);
+            } catch {
+                // Not drawn this frame; from the next it moves where upstream does, and
+                // throws there, before anything of the frame is prepared.
+                this.moveKind = 1;
+                return;
+            } finally {
+                renderContext.currentView = view;
+            }
         }
 
         if ((this as any).debug)

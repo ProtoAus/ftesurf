@@ -67,7 +67,9 @@
 .tick.stage { background: var(--gold); height: 8px; }
 .wclock { font-family: var(--mono); font-size: 13px; color: var(--dim); white-space: nowrap; }
 .wgraphbox { position: relative; margin-top: 6px; }
-.wplayhead { position: absolute; top: 1px; bottom: 1px; left: 1px; width: 1px; background: #fff; pointer-events: none; }
+/* Inside the canvas's border and its rounded corners, which clipped the line it replaces. */
+.wgraphclip { position: absolute; inset: 1px; border-radius: 6px; overflow: hidden; pointer-events: none; }
+.wplayhead { position: absolute; top: 0; bottom: 0; left: 0; width: 1px; background: #fff; }
 .wgraph { display: block; width: 100%; height: 56px; cursor: crosshair; touch-action: none;
   background: var(--panel); border: 1px solid var(--border); border-radius: 7px; }
 .wrace { margin: 12px 0 0; font-size: 13px; }

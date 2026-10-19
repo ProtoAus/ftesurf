@@ -20,10 +20,15 @@ const [recFile, ...pages] = process.argv.slice(2);
       const p = await b.newPage();
       await p.goto('http://127.0.0.1:8825/board/' + page, { waitUntil: 'load' });
       await (await p.$('#wrecfile')).uploadFile(recFile);
-      for (let i = 0; i < 240; i++) {
+      let ready = false;
+      for (let i = 0; i < 480 && !ready; i++) {
         const s = await p.evaluate(() => window.watchState());
-        if (s.scene && s.status === '' && s.samples > 0) break;
-        await new Promise((r) => setTimeout(r, 250));
+        ready = s.scene && s.status === '' && s.samples > 0 && s.builds > 0;
+        if (!ready) await new Promise((r) => setTimeout(r, 250));
+      }
+      if (!ready) {        // the map never finished building: nothing below would be a measurement
+        console.log(JSON.stringify({ page, VOID: 'not ready after 120 s' }));
+        continue;
       }
       await p.evaluate(() => { window.watchHold(1000); window.watchSet('clean', true); });
       const canvas = await p.$('#wgl');
@@ -46,6 +51,9 @@ const [recFile, ...pages] = process.argv.slice(2);
       }
       const st = await p.evaluate(() => window.watchState());
       row.state = { contextLost: st.contextLost, error: st.error, missing: st.missing };
+      const distinct = new Set(row.hashes.map((h) => h.split(':')[1])).size;
+      if (st.contextLost || distinct < row.hashes.length || row.hashes.some((h) => h.includes('!=')))
+        row.VOID = `views not distinct and stable (${distinct} of ${row.hashes.length} distinct) or context lost`;
       console.log(JSON.stringify(row));
     } finally { await b.close(); }
   }

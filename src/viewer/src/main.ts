@@ -749,10 +749,14 @@ function drawGraph(): void {
         g.drawImage(graph, 0, 0);
         graphShown = graph;
     }
-    const x = Math.round((T - t0) / span * w) / dpr;
+    // As the canvas line was: at a whole canvas pixel, max(1, dpr) of them wide, and off
+    // the canvas (not shown) at the run's very end.
+    const xc = Math.round((T - t0) / span * w);
     const ph = $('wplayhead');
-    const tr = `translateX(${x}px)`;
+    ph.hidden = xc >= w;
+    const tr = `translateX(${xc / dpr}px)`, wd = `${Math.max(1, 1 / dpr)}px`;
     if (ph.style.transform !== tr) ph.style.transform = tr;
+    if (ph.style.width !== wd) ph.style.width = wd;
 }
 
 // The time between this run and the ghost at the same PLACE: T minus when the
