@@ -2299,6 +2299,11 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   A dedicated overlay without package-manager state needs explicit `plug_load hl2`;
   merely copying the DLL does not load it (`plug_loaddefault` defaults to 1).
   A golden recording refusing for a different map is not an acting clock control.
+  Follow the actor's actual waitmap gate before walking; a delay alone does not
+  establish spawn. Menu startup reloads consent from `consent.txt`, so an earlier
+  `rec_terms` cvar can be overwritten. Where required, use the existing harness
+  `--put` with a uniquely owned synthetic OFFLINE fixture, journals/uploads off;
+  never replace personal consent or treat scripted input as a hardware baseline.
   `seed_csprogs.py` also removes every `.tmp`/`.dcl` in its cache: run it only in
   an owned build cache, then publish just the verified content-named DAT without
   replacing a different existing file. Do not clean a playing client's downloads.
@@ -2921,6 +2926,18 @@ publicly WITH its fix, not before it.
   old session's larger counter must not constrain a new session. Native capture
   plus a closing-only mutant exposed the missing bound. This is raw chronology,
   not a proof that elapsed trailer ticks equal a projected mover span.
+  Patch 833: ordinary finish closers also reach valid `warp`/`ride` raw
+  observations in the current parsed context. Post-move warps can be above the
+  last pre-move input. Kept `abandon` is different: frozen evidence can close
+  at the freeze latch BEFORE later raw state changes (grammar over SV_RecOpen).
+  No universal live-counter bound is sound there; do not change the writer.
+  Only validated restore/session records isolate contexts, never a raw token
+  match (`session` is unknown below v10). The maximum observation matters;
+  `pm`/`pe`/`portal` have packet ordinals, not raw mover-counter witnesses.
+  An independent closing-observation fault must not erase valid restore reset
+  allowances: that manufactures sidecar clock faults while the angle join is
+  unavailable. Cross ordinary-close contradictions with multi-restore controls,
+  not just kept-abandon; preserve the recording fault and independent view faults.
 - CROSS-RUN SIMILARITY IS COLLECTED AND NOT ENFORCED (surfd schema 10,
   `surfd/simcheck.py`).  A run submitted twice -- a PLAYBACK of a recording rather
   than a performance -- produces two clean board rows and nothing else in this tree

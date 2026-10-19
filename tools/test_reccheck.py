@@ -2297,6 +2297,183 @@ def case_angle_initial_origin():
           "trusted initial clock accounting still detects a rotated sidecar")
 
 
+def case_imposition_closing_horizon():
+    """A post-move warp / frozen carrier can outlive the final input row."""
+    def with_marker(kind, mt, ver=9, **kw):
+        if kind == "warp":
+            kw["warps"] = ((PACKETS - 1, mt, "tele"),)
+        else:
+            kw["rides"] = ((PACKETS - 1, mt, "arm", 0, 0, 0),)
+        return build(ver=ver, **kw)
+
+    for ver in (8, 9, 10):
+        end = int(next(l.split()[1] for l in build(ver=ver) if l.startswith("inend ")))
+        for kind in ("warp", "ride"):
+            tail = with_marker(kind, end, ver)
+            ok_clean(tail, "v%d closing exactly on the final %s passes" % (ver, kind))
+            ok_clean(edit(tail, "inend", 1, end + 1),
+                     "v%d closing after the final %s passes" % (ver, kind))
+            faults_with(edit(tail, "inend", 1, end - 1), "'%s' observation" % kind,
+                        "v%d closing before the final %s faults specifically" % (ver, kind))
+
+    end = int(next(l.split()[1] for l in build() if l.startswith("inend ")))
+    # Warp touch order is not a sorted track. A later lower stamp cannot erase
+    # the earlier observation, whether or not this writer emits that ordering.
+    many = build(warps=((PACKETS - 1, end + 2, "tele"),
+                       (PACKETS - 1, end + 1, "tele")))
+    ok_clean(edit(many, "inend", 1, end + 2), "closing reaches the maximum warp, not just the last")
+    faults_with(edit(many, "inend", 1, end + 1), "'warp' observation",
+                "an earlier larger warp still bounds closing")
+
+    for kind in ("warp", "ride"):
+        tail = with_marker(kind, end + 1)
+        part = [l for l in tail if not l.startswith(("inend ", "end "))]
+        faults, _ = run(part, name="t.part")
+        check(not faults, "a final %s in a live prefix needs no invented closer" % kind)
+        late = with_marker(kind, end)
+        marker = next(l for l in late if l.startswith(kind + " "))
+        late.remove(marker)
+        close = next(i for i, l in enumerate(late) if l.startswith("inend "))
+        late.insert(close + 1, marker)
+        ok_clean(late, "a %s row after the closer still permits equal raw counters" % kind)
+        faults_with(edit(late, "inend", 1, end - 1), "'%s' observation" % kind,
+                    "moving a %s row after the closer cannot erase its observation" % kind)
+        for boundary in ("resume 3 40", "retry 40"):
+            reset = insert_before(tail, "inend", boundary)
+            ok_clean(reset, "a prior %s does not constrain closing across %s"
+                     % (kind, boundary.split()[0]))
+
+        reset = with_marker(kind, end, ver=10, sessions=((PACKETS - 2, 10, "retry"),))
+        marker = next(l for l in reset if l.startswith(kind + " "))
+        reset.remove(marker)
+        pause_mt = int(next(l.split()[1] for l in reset if l.startswith("pause ")))
+        f = marker.split()
+        f[1:3] = [str(PACKETS - 2), str(pause_mt)]
+        if kind == "warp":
+            f[3] = str(PACKETS - 2)
+        reset = insert_before(reset, "pause", " ".join(f))
+        current = int(next(l.split()[1] for l in reset if l.startswith("inend ")))
+        check(pause_mt > current, "the %s session control actually resets to a smaller counter" % kind)
+        ok_clean(reset, "an old-session %s cannot bound the new session's closer" % kind)
+        f[1:3] = [str(PACKETS - 1), str(current)]
+        if kind == "warp":
+            f[3] = str(PACKETS - 1)
+        new = insert_before(reset, "inend", " ".join(f))
+        new = bump_end(new, "warps" if kind == "warp" else "rides")
+        ok_clean(new, "a current-session %s can equal its closer" % kind)
+        faults_with(edit(new, "inend", 1, current - 1), "'%s' observation" % kind,
+                    "the new session's own %s still bounds closing" % kind)
+
+        # `inend` itself is not declared before v8. Do not invent a new
+        # counter contract from records under a version that cannot state it.
+        old = with_marker(kind, end + 1, ver=7)
+        old = insert_before(old, "end", "inend %d 0.003" % end)
+        ok_clean(old, "a v7 %s with an undeclared closer keeps legacy handling" % kind)
+        malformed = edit(tail, kind, 2, "bad")
+        faults, _ = run(malformed)
+        check(any("pk/mt are not integers" in x for x in faults)
+              and not any("observation" in x for x in faults),
+              "a malformed %s is not promoted to a closing observation" % kind)
+
+    unknown = build(warps=((PACKETS - 1, end, "newhandler"),))
+    faults, notes = run(unknown)
+    check(not faults and any("newhandler" in x for x in notes),
+          "an unknown warp kind retains open vocabulary at a valid raw boundary")
+    faults_with(edit(unknown, "inend", 1, end - 1), "'warp' observation",
+                "an unknown warp handler still carries the known raw counter field")
+    ok_clean(build(pms=((end + 1000, PACKETS - 1),)),
+             "a pm packet ordinal is not a raw closing-horizon observation")
+
+
+def case_imposition_abandon_horizon():
+    """Kept frozen evidence closes at the freeze latch, not its later state."""
+    for ver in (8, 9, 10):
+        end = int(next(l.split()[1] for l in build(ver=ver) if l.startswith("inend ")))
+        for kind in ("warp", "ride"):
+            kw = ({"warps": ((PACKETS - 1, end + 1, "tele"),)} if kind == "warp"
+                  else {"rides": ((PACKETS - 1, end + 1, "arm", 0, 0, 0),)})
+            kept = head(staged(ver=ver, pre=["abandon %d" % PACKETS], **kw), "flags", 1)
+            ok_clean(kept, "v%d frozen kept %s may exceed the latched closer" % (ver, kind))
+            faults_with(drop_kinds(kept, ("abandon",)), "'%s' observation" % kind,
+                        "v%d the same %s still faults at an ordinary live closer" % (ver, kind))
+            if ver == 9:
+                faults_with(edit(kept, kind, 2, "bad"), "pk/mt are not integers",
+                            "kept evidence still validates %s fields" % kind)
+                if kind == "warp":
+                    faults_with(edit(kept, "abandon", 1, PACKETS - 1), "trailer says",
+                                "the frozen exception does not hide an invalid abandon")
+
+    for label, pair in (("warm retries", retry_clock_pair()),
+                        ("cold loads", cold_clock_pair("load"))):
+        lines, view = pair
+        end = int(next(l.split()[1] for l in lines if l.startswith("inend ")))
+        for kind in ("warp", "ride"):
+            marker = ("warp %d %d %d tele 0 0 64 0 0 0 0"
+                      % (PACKETS - 1, end + 1, PACKETS - 1) if kind == "warp"
+                      else "ride %d %d arm 0 0 0" % (PACKETS - 1, end + 1))
+            kept = lines[:]
+            for rec in STAGED + [marker, "abandon %d" % PACKETS]:
+                kept = insert_before(kept, "inend", rec)
+            kept = bump_end(kept, "warps" if kind == "warp" else "rides")
+            faults, _notes, report = run(kept, view=view, report=True)
+            check(not faults and "angle_rule     unavailable" in report,
+                  "frozen kept %s with two %s stays unavailable, not a false fault" % (kind, label))
+            bad = view[:]
+            f = bad[-1].split(); f[2] = "-1"; bad[-1] = " ".join(f)
+            faults, _ = run(kept, view=bad)
+            check(any("never negative" in x for x in faults),
+                  "a frozen %s with %s preserves an independent sidecar fault" % (kind, label))
+
+
+def case_imposition_restore_allowance():
+    """An independent closer fault cannot revoke valid client clock resets."""
+    for label, pair in (("warm retries", retry_clock_pair()),
+                        ("cold loads", cold_clock_pair("load"))):
+        lines, view = pair
+        end = int(next(l.split()[1] for l in lines if l.startswith("inend ")))
+        for kind in ("warp", "ride"):
+            marker = ("warp %d %d %d tele 0 0 64 0 0 0 0"
+                      % (PACKETS - 1, end + 1, PACKETS - 1) if kind == "warp"
+                      else "ride %d %d arm 0 0 0" % (PACKETS - 1, end + 1))
+            live = edit(lines, "inend", 1, end + 1)
+            for rec in STAGED + [marker]:
+                live = insert_before(live, "inend", rec)
+            live = bump_end(live, "warps" if kind == "warp" else "rides")
+            faults, _notes, report = run(live, view=view, report=True)
+            check(not faults and "angle_rule     unavailable" in report,
+                  "ordinary %s with two %s has a clean unavailable control" % (kind, label))
+            lower = edit(live, "inend", 1, end)
+            faults, _notes, report = run(lower, view=view, report=True)
+            check(len(faults) == 1 and "'%s' observation" % kind in faults[0],
+                  "ordinary %s closer fault preserves two %s without sidecar faults" % (kind, label))
+            check("angle_rule     unavailable" in report,
+                  "faulting %s closer with %s does not invent an angular judgement" % (kind, label))
+            bad = view[:]
+            f = bad[-1].split(); f[2] = "-1"; bad[-1] = " ".join(f)
+            faults, _ = run(lower, view=bad)
+            check(len(faults) == 2 and any("never negative" in x for x in faults)
+                  and any("'%s' observation" % kind in x for x in faults),
+                  "faulting %s closer with %s preserves only the independent view fault" % (kind, label))
+
+
+def case_imposition_boundary_authority():
+    end = int(next(l.split()[1] for l in build() if l.startswith("inend ")))
+    for kind in ("warp", "ride"):
+        kw = ({"warps": ((PACKETS - 1, end + 1, "tele"),)} if kind == "warp"
+              else {"rides": ((PACKETS - 1, end + 1, "arm", 0, 0, 0),)})
+        for ver in (8, 9):
+            tail = build(ver=ver, **kw)
+            for rec in ("session", "session 2 10 0.003 40"):
+                faults_with(insert_before(tail, "inend", rec), "'%s' observation" % kind,
+                            "v%d unknown %s cannot erase the %s bound" % (ver, rec, kind))
+        for rec in ("resume bad 40", "resume 1000 40", "retry nan"):
+            faults_with(insert_before(build(**kw), "inend", rec), "'%s' observation" % kind,
+                        "invalid %s cannot erase the %s bound" % (rec, kind))
+        for rec in ("session", "session 2 10 0.003 40"):
+            faults_with(insert_before(build(ver=10, **kw), "inend", rec), "'%s' observation" % kind,
+                        "a malformed/unpaired v10 %s cannot erase the %s bound" % (rec, kind))
+
+
 def case_hold_closing_horizon():
     """A final thaw is a raw observation even without another input row."""
     base = insert_before(head(build(), "flags", 1), "begin", "holdclock 1")
@@ -2528,7 +2705,9 @@ def main():
                case_angle_hold_shape, case_angle_hold_restore_boundaries,
                case_angle_hold_conversion,
                case_angle_initial_origin, case_angle_initial_restore, case_integer_tokens,
-               case_hold_closing_horizon,
+               case_hold_closing_horizon, case_imposition_closing_horizon,
+               case_imposition_abandon_horizon, case_imposition_restore_allowance,
+               case_imposition_boundary_authority,
                case_view_retry_history,
                case_view_restore_history, case_view_resume_slot_history,
                case_angle_splice, case_angle_no_sidecar_is_silent):

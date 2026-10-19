@@ -25,7 +25,10 @@ commit   a4a152701b3e06051a3f53151492c3cb99979620
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-832
-patch    832
+patch    833
+# Patch 833 (reader): ordinary finish closers reach warp/ride observations in their parsed
+# context, without erasing valid restore allowances. Kept abandon may use a freeze latch;
+# no timer equality/format/pin/permission change.
 # Patch 832 (client engine): r_blendsort 2 stopped re-checking a batch's eligibility once per
 # face (quadratic; 11.7% of a frame in Lex's setup). Mode 2's transparent row on surf_voyager
 # 1.40 -> 0.80 ms. Installs only; players get it with the next release.

@@ -529,6 +529,17 @@ def exact_finish_ticks(token):
     return None
 
 
+def valid_restore_args(args, width):
+    """Only writer-shaped restore metadata can authorize a context boundary."""
+    if width not in (1, 2) or len(args) != width or not args[-1].isascii():
+        return False
+    if width == 2:
+        slot = args[0]       # FS_RETRY_SLOT..FS_MAXSAVES (0..999).
+        if len(slot) > 3 or not slot.isascii() or not slot.isdigit():
+            return False
+    return exact_finish_ticks(args[-1]) is not None
+
+
 def check_pairs(r, where, toks, numeric=True):
     """v9 `name=value` lists (pmpin, pm, seed).  Readers match BY NAME, so a
     malformed token or a repeated name is a fault.  -> number of pairs."""
@@ -990,6 +1001,7 @@ def check_rec(path, verbose=False, *, data=None):
     # walk is in (instart's, then each session's <mt>).
     pauses = []             # (lineno, mt, ticks, why)
     sessions = []           # (lineno, n, mt, ticks)
+    session_edges = []      # only session records that passed their validation
     open_pause = None       # the pause no session has answered yet
     renonces = []           # Patch 416: body `nonce` records (lineno, mt, hex)
     cur_horizon = in_start
@@ -1455,6 +1467,7 @@ def check_rec(path, verbose=False, *, data=None):
                 pauses.append((lineno + 1, pmt, ptk, why))
                 open_pause = (lineno + 1, pmt, ptk, why)
         elif kind == "session" and ver >= 10:
+            session_faults = len(r.faults)
             # Patch 364: the next session begins on a restarted mover counter.
             # <mt> is its horizon; <pk>, <row>, sample <t> and the clock run on.
             a = tok[1:]
@@ -1475,6 +1488,8 @@ def check_rec(path, verbose=False, *, data=None):
                     r.fault("line %d: 'session %d' where session %d comes next"
                             % (lineno + 1, n, len(sessions) + 2))
                 sessions.append((lineno + 1, n, smt, stk))
+                if len(r.faults) == session_faults:
+                    session_edges.append(lineno + 1)
                 cur_horizon = smt
                 in_mt = None
                 ang_frozen, ang_holdmt, ang_prev = 0, None, None
@@ -1608,6 +1623,9 @@ def check_rec(path, verbose=False, *, data=None):
     if pauses:
         r.info["pauses"] = ", ".join(w for _l, _m, _t, w in pauses)
 
+    # Valid raw observations, not the packet ordinals in pm/pe/portal.
+    imposition_mts = []
+
     # ---- the imposed-state records, build 83 -------------------------------
     #
     # `warp <pk> <mt> <kind> <ox oy oz> <vx vy vz>` -- nine fields after the
@@ -1622,6 +1640,7 @@ def check_rec(path, verbose=False, *, data=None):
         kinds = {}
         known = WARP_KINDS_V9 if ver >= 9 else WARP_KINDS_V7
         for ln, a, seen in warps:
+            imposition_faults = len(r.faults)
             if ver >= 9:
                 if len(a) != 11:
                     r.fault("line %d: 'warp' takes 11 fields (pk mt row kind "
@@ -1654,6 +1673,8 @@ def check_rec(path, verbose=False, *, data=None):
             if h is not None and mt < h:
                 r.fault("line %d: warp at movetick %d is below the trace's "
                         "horizon %d" % (ln, mt, h))
+            if len(r.faults) == imposition_faults:
+                imposition_mts.append((ln, "warp", mt))
         if kinds:
             r.info["warps"] = ", ".join(
                 "%s x%d" % (k, n) for k, n in sorted(kinds.items()))
@@ -1680,6 +1701,7 @@ def check_rec(path, verbose=False, *, data=None):
         prev_mt = None
         prev_sess = 0
         for ln, a in rides:
+            imposition_faults = len(r.faults)
             if len(a) != 6:
                 r.fault("line %d: 'ride' takes 6 fields "
                         "(pk mt what bx by bz), has %d" % (ln, len(a)))
@@ -1717,6 +1739,8 @@ def check_rec(path, verbose=False, *, data=None):
                         "carrier track is written per command and cannot go "
                         "backwards" % (ln, mt, prev_mt))
             prev_mt = mt
+            if len(r.faults) == imposition_faults:
+                imposition_mts.append((ln, "ride", mt))
         if whats:
             r.info["rides"] = ", ".join(
                 "%s x%d" % (k, n) for k, n in sorted(whats.items()))
@@ -1730,6 +1754,7 @@ def check_rec(path, verbose=False, *, data=None):
     # `inend <mt> <carry>`.  THE PAIR IS WRITTEN UNDER ONE CONDITION -- both
     # gated on the mover counter existing -- so a file with one and not the other
     # is saying something about itself, and which one is missing says what.
+    imposition_closer_fault = False
     if in_end is not None:
         ln, a = in_end
         if len(a) != 2:
@@ -1750,6 +1775,23 @@ def check_rec(path, verbose=False, *, data=None):
             if holdclock == "1" and ang_holdmt is not None and e_mt < ang_holdmt:
                 r.fault("line %d: inend %d is below the last 'hold' horizon %d "
                         "in this mover origin" % (ln, e_mt, ang_holdmt))
+            if ver >= 8 and not abandons:
+                # A normal finish closes on the live counter. Kept abandon
+                # may instead close at a freeze latch, before later warp/ride
+                # observations; the format cannot distinguish that case.
+                edges = session_edges[:]
+                edges.extend(rl for rl, a in resumes if valid_restore_args(a, 2))
+                edges.extend(rl for rl, a in retries if valid_restore_args(a, 1))
+                origin = max((rl for rl in edges if rl < ln), default=0)
+                next_origin = min((rl for rl in edges if rl > ln), default=len(lines) + 1)
+                observed = [x for x in imposition_mts if origin < x[0] < next_origin]
+                if observed:
+                    mln, mkind, mmt = max(observed, key=lambda x: x[2])
+                    if e_mt < mmt:
+                        r.fault("line %d: inend %d is below the '%s' observation %d "
+                                "in this trace segment (line %d)"
+                                % (ln, e_mt, mkind, mmt, mln))
+                        imposition_closer_fault = True
             # AND IT MUST NOT PRECEDE THE LAST `in` ROW, which is the whole
             # reason it is written: the final row's duration is inend minus that
             # row's <mt>, and a negative duration is not a rounding question.
@@ -2714,20 +2756,15 @@ def check_rec(path, verbose=False, *, data=None):
     # resume/retry/pause/session still change the origin. Neither angle rule
     # can convict on an unknown join, even when its resulting difference is large.
     r.angle_ghosts = list(ghost_windows)
-    if not r.faults:
+    # A sole imposition/closer contradiction does not invalidate reset history.
+    if not r.faults or (imposition_closer_fault and len(r.faults) == 1):
         # A restored prefix may carry a client-clock restart. Cold restores also
         # open a mover session: count that same boundary once, not twice.
         events = [(ln, 0) for ln, *_ in pauses] + [(ln, 2) for ln, *_ in sessions]
         for group, width in ((retries, 1), (resumes, 2)):
             for ln, a in group:
-                if len(a) == width and a[-1].isascii():
-                    if width == 2:
-                        # Integer writer slots: FS_RETRY_SLOT..FS_MAXSAVES (0..999).
-                        slot = a[0]
-                        if len(slot) > 3 or not slot.isascii() or not slot.isdigit():
-                            continue
-                    if exact_finish_ticks(a[-1]) is not None:
-                        events.append((ln, 1))
+                if valid_restore_args(a, width):
+                    events.append((ln, 1))
         pending_restore = False
         for _ln, kind in sorted(events):
             if kind == 0:
