@@ -34,6 +34,9 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   `map_index()` rescans the library inside the request, and nginx gives /ftesurf/board/ 5 s).
   Seen twice on 19 Oct (once just after the P825 cutover); a retry a second later is 0.1 s.
   The run page shows the error; watch.js retries once. Fix: rescan off the request path.
+- **test_web.py leaves its temp homes behind** (`%TEMP%\surfd-web-*`, one per `fresh()`): 3,612
+  had piled up on the PC since 20 Sep, 327 of them from P825's runs alone (removed). Clean up in
+  the suite's own exit, as AGENT_NOTES asks of suites.
 - **`/api/replay/<rid>` has no kind or tier gate** (surfd.py `replay()`): only a banned owner's
   rows are refused, so evidence-kind and review-rejected recordings resolve by id, input rows
   included. The game fetches community ghosts there, so the answer is to refuse evidence and
