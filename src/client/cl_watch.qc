@@ -387,6 +387,7 @@ float  rec_wt_ftover;                 // spans past WT_FAILMAX, reported by `rep
 float  rec_wt_ftline;                 // hud_watch_path_fails the line was built with
 float  rec_wt_la[WT_STGMAX];          // a seg's last attempt: `stagestart` or `restart` tick
 float  wt_fseg, wt_fent, wt_frest, wt_fss;  // pass one's segment, entry, restart, start
+float  wt_zin;                        // Patch 820: the zone pass's body is in its segment's box
 float  rec_wt_winseg;                 // the window's seg, -1 none
 float  rec_wt_wint0, rec_wt_wint1;    // its start and stop, run seconds
 // Patch 431: what the bar, seeks and playback cover -- the file, or the window
@@ -3227,7 +3228,7 @@ void() Watch_SeqRestore =
 */
 void() Watch_ZoneEvents =
 {
-	local float i, k, n, z, c, t, fl, far, ty, ez, cp, hit;
+	local float i, k, n, z, c, t, fl, far, ty, ez, cp, hit, own, tk;
 	local vector o, v, mx;
 	local string s;
 
@@ -3246,6 +3247,9 @@ void() Watch_ZoneEvents =
 				rec_wt_zn = rec_wt_zn + 1;
 			}
 		rec_wt_zcz = -1;
+		wt_fseg = rec_wt_zseg;      // Patch 820: pass one's span state, which it left closed
+		wt_fent = wt_frest = wt_fss = -1;
+		wt_zin = TRUE;              // a stage run's file opens at its box: not a restart
 	}
 	for (k = 0; k < WT_ZBUDGET && rec_wt_zat < rec_wt_recn && rec_wt_zon == 1; k = k + 1)
 	{
@@ -3295,6 +3299,8 @@ void() Watch_ZoneEvents =
 					ez = z;
 			}
 			// Nested: QC's && reads both sides, and zone_track[-1] is a VM error.
+			tk = rint(t / rec_wt_tickrate);
+			own = FALSE;
 			if (ez >= 0)
 			if (zone_track[ez] == rec_wt_track)
 			{
@@ -3306,10 +3312,33 @@ void() Watch_ZoneEvents =
 				{
 					rec_wt_evkind[rec_wt_evn] = SPK_STAGE;
 					rec_wt_evseg[rec_wt_evn]  = zone_seg[ez];
-					rec_wt_evtick[rec_wt_evn] = rint(t / rec_wt_tickrate);
+					rec_wt_evtick[rec_wt_evn] = tk;
 					rec_wt_evn = rec_wt_evn + 1;
 					rec_wt_zseg = zone_seg[ez];
+					Watch_FailClose(-1, FALSE);     // Patch 820: as pass one's `stage`
+					wt_fseg = rec_wt_zseg;
+					wt_fent = tk;
+					wt_zin = TRUE;
 				}
+				if (zone_type[ez] == ZONE_STAGE)
+				if (zone_seg[ez] == rec_wt_zseg)
+					own = TRUE;
+			}
+			/*
+			  Patch 820: an import's attempts, which it has no records of: leaving the
+			  segment's own box is a `stagestart`, landing back in it a `restart`
+			  (SV_StageOpen's rule).  Spans as pass one's (rec_wt_ft0).
+			*/
+			if (own != wt_zin)
+			{
+				if (own)
+				{
+					wt_frest = tk;
+					wt_fss = -1;
+				}
+				else if (wt_frest >= 0)
+					wt_fss = tk;
+				wt_zin = own;
 			}
 			if (rec_wt_zon == 1)
 			if (cp != rec_wt_zcz)
@@ -3333,6 +3362,13 @@ void() Watch_ZoneEvents =
 	}
 	if (rec_wt_zat >= rec_wt_recn)
 		rec_wt_zon = 2;
+	if (rec_wt_zon == 2)            // Patch 820: the pass's last call
+	{
+		Watch_FailClose(-1, FALSE);
+		if (rec_wt_ftn > 0)
+		if (rec_wt_ftline == 0)
+			rec_wt_ftline = -1;     // built before the spans were known: the frame rebuilds it
+	}
 };
 
 string(vector v) Watch_V5 = { return sprintf("%.5f %.5f %.5f", v_x, v_y, v_z); };
@@ -5336,9 +5372,10 @@ void(vector scr) Watch_Chrome =
 	if (sui_is_released("wt_skip"))
 		localcmd(skon ? "hud_watch_skipidle 0\n" : "hud_watch_skipidle 1\n");
 
-	// Patch 778: and the failed attempts, its twin, left of it.
-	skon = cvar("hud_watch_skipfail");
-	s = (rec_wt_ftn > 0) ? sprintf("skip fails (%g)", rec_wt_ftn) : "skip fails";
+	// Patch 778: and the failed attempts, its twin, left of it.  Patch 820: one switch
+	// for both halves of "successful stages only", the skip and the line.
+	skon = (cvar("hud_watch_skipfail") && !cvar("hud_watch_path_fails"));
+	s = (rec_wt_ftn > 0) ? sprintf("successful only (%g failed)", rec_wt_ftn) : "successful only";
 	xb = stringwidth(s, TRUE, [tiny, tiny]) + pad;
 	if (skx - gap - xb >= p_x + pad)        // a very large hud_watch_scale: left out
 	{
@@ -5350,7 +5387,8 @@ void(vector scr) Watch_Chrome =
 	sui_text([skx + pad * 0.5, y], [tiny, tiny], s,
 	         (skon && rec_wt_ftn > 0) ? SUI_THEME_WARN : SUI_THEME_DIM, 1, 0);
 	if (sui_is_released("wt_skipfail"))
-		localcmd(skon ? "hud_watch_skipfail 0\n" : "hud_watch_skipfail 1\n");
+		localcmd(skon ? "hud_watch_skipfail 0; hud_watch_path_fails 1\n"
+		              : "hud_watch_skipfail 1; hud_watch_path_fails 0\n");
 	}
 
 	// Patch 431: a stage window's cut, and the way back to the whole run.
