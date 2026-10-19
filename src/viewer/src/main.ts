@@ -75,6 +75,7 @@ let maxSpeed = 1;
 let ghost: { rec: Rec; info: any } | null = null;
 const gpose: Pose = newPose();
 let graph: HTMLCanvasElement | null = null;   // the speed traces, drawn once
+let graphShown: HTMLCanvasElement | null = null;   // the traces now on the page's canvas
 let zones: Zone[] = [];
 // Each run's stage splits (1-based stage -> seconds): recorded, or inferred from
 // the zones for a run that recorded none (imports), which `approx` marks.
@@ -546,6 +547,7 @@ let last = 0, frames = 0;
 (window as any).watchSet = (k: keyof Settings, v: any) => { (settings as any)[k] = v; showSettings(document, settings); applySettings(k); };
 (window as any).watchSeek = (t: number, m?: CamMode) => { T = t; if (m) setMode(m); };
 (window as any).watchGhost = () => toggleGhost();
+(window as any).watchHold = (ms: number | null) => { if (view !== null) view.holdTime = ms; };
 
 // One bad frame must not stop the page: the loop always schedules the next, and
 // a renderer that keeps throwing says so once instead of leaving a black view.
@@ -738,13 +740,19 @@ function drawGraph(): void {
         if (ghost) trace(1, 'rgba(232,197,106,.7)');
         trace(0, en ? '#c9b8ff' : '#59bfff');
     }
-    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
-    const g = c.getContext('2d')!;
-    g.clearRect(0, 0, w, h);
-    g.drawImage(graph, 0, 0);
-    const x = (T - t0) / span * w;
-    g.fillStyle = '#fff';
-    g.fillRect(Math.round(x), 0, Math.max(1, dpr), h);
+    // The traces go onto the page once per change; the playhead is its own element,
+    // moved by a transform, so a frame repaints one pixel column and not the canvas.
+    if (graphShown !== graph || c.width !== w || c.height !== h) {
+        if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+        const g = c.getContext('2d')!;
+        g.clearRect(0, 0, w, h);
+        g.drawImage(graph, 0, 0);
+        graphShown = graph;
+    }
+    const x = Math.round((T - t0) / span * w) / dpr;
+    const ph = $('wplayhead');
+    const tr = `translateX(${x}px)`;
+    if (ph.style.transform !== tr) ph.style.transform = tr;
 }
 
 // The time between this run and the ghost at the same PLACE: T minus when the

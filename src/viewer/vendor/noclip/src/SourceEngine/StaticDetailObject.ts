@@ -538,6 +538,7 @@ export class StaticPropRenderer {
     private bbox = new AABB();
     private materialParams = new EntityMaterialParameters();
     private lightingOrigin = vec3.create();
+    private moveView: SourceRenderContext['currentView'] | null = null; // FTESurf: see movement
 
     constructor(renderContext: SourceRenderContext, private bspRenderer: BSPRenderer, private staticProp: StaticProp) {
         this.createInstance(renderContext, bspRenderer);
@@ -572,9 +573,11 @@ export class StaticPropRenderer {
         }
     }
 
+    // FTESurf: what movement sets on a static prop (material proxies, eyes) is read only
+    // when it is drawn, and depends only on the frame's time and the view current here (the
+    // main view), so it runs at the first view that draws the prop, with this view put back.
     public movement(renderContext: SourceRenderContext): void {
-        if (this.studioModelInstance !== null)
-            this.studioModelInstance.movement(renderContext);
+        this.moveView = this.studioModelInstance !== null ? renderContext.currentView : null;
     }
 
     public prepareToRender(renderContext: SourceRenderContext, renderInstManager: GfxRenderInstManager): void {
@@ -600,6 +603,14 @@ export class StaticPropRenderer {
 
         if (!visible)
             return;
+
+        if (this.moveView !== null) {
+            const view = renderContext.currentView;
+            renderContext.currentView = this.moveView;
+            this.studioModelInstance.movement(renderContext);
+            renderContext.currentView = view;
+            this.moveView = null;
+        }
 
         if ((this as any).debug)
             this.materialParams.lightCache!.debugDrawLights(renderContext.currentView);

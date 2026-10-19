@@ -77,7 +77,10 @@
     </div>
     <span id="wclock" class="wclock">0:00.000 / 0:00.000</span>
   </div>
-  <canvas id="wgraph" class="wgraph" aria-label="speed or energy over the run; click to seek"></canvas>
+  <div class="wgraphbox">
+    <canvas id="wgraph" class="wgraph" aria-label="speed or energy over the run; click to seek"></canvas>
+    <div id="wplayhead" class="wplayhead" aria-hidden="true"></div>
+  </div>
   <div class="wbar wbar2">
     <div class="wgroup" role="group" aria-label="camera">
       <button class="wbtn" type="button" data-cam="eye" aria-pressed="true" title="1">First person</button>

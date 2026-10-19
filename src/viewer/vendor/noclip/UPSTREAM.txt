@@ -51,7 +51,7 @@ fcf6c28bf2a60691 upstream SourceEngine/Materials/Material_Water.ts
 3673eadd97881cd9 upstream SourceEngine/Materials/WorldLight.ts
 ab4beb450a5be7cc upstream SourceEngine/ParticleSystem.ts
 0c1c185894d4573f upstream SourceEngine/Sprite.ts
-2ea8bfe269664246 upstream SourceEngine/StaticDetailObject.ts
+098ca3423a465e53 patched  SourceEngine/StaticDetailObject.ts
 96aae356b661f7d4 upstream SourceEngine/Studio.ts
 5f8c0ea72f52b3eb upstream SourceEngine/UberShader.ts
 c5fb8f5bcaf1a325 upstream SourceEngine/VMT.ts

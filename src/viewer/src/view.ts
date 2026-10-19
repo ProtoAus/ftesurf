@@ -24,6 +24,7 @@ export class View {
     public free = new FPSCameraController();
     public freeOn = false;
     public fovY = 90 * DEG;   // set from the horizontal FOV each frame
+    public holdTime: number | null = null;   // the scene clock pinned (watchHold), for pixel comparisons
 
     private swapChain: GfxSwapChain;
     private renderInput: ViewerRenderInput;
@@ -95,8 +96,8 @@ export class View {
 
         mat4.mul(this.clipFromWorld, cam.clipFromWorldMatrix, noclipFromSource);
 
-        this.renderInput.deltaTime = dtMs;
-        this.sceneTime += dtMs;
+        this.renderInput.deltaTime = this.holdTime !== null ? 0 : dtMs;
+        this.sceneTime = this.holdTime ?? this.sceneTime + dtMs;
         this.renderInput.time = this.sceneTime;
         this.renderInput.backbufferWidth = w;
         this.renderInput.backbufferHeight = h;

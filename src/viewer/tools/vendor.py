@@ -212,6 +212,16 @@ PATCHES = [
      '            b.copy(scratchAABB);\n'
      '            this.visClusters = null;\n'
      '            let visible = false;\n'),
+    # P839: static props move at the first view that draws them.
+    ('SourceEngine/StaticDetailObject.ts',
+     '    private lightingOrigin = vec3.create();\n\n    constructor(renderContext: SourceRenderContext, private bspRenderer: BSPRenderer, private staticProp: StaticProp) {\n',
+     "    private lightingOrigin = vec3.create();\n    private moveView: SourceRenderContext['currentView'] | null = null; // FTESurf: see movement\n\n    constructor(renderContext: SourceRenderContext, private bspRenderer: BSPRenderer, private staticProp: StaticProp) {\n"),
+    ('SourceEngine/StaticDetailObject.ts',
+     '    public movement(renderContext: SourceRenderContext): void {\n        if (this.studioModelInstance !== null)\n            this.studioModelInstance.movement(renderContext);\n    }\n',
+     "    // FTESurf: what movement sets on a static prop (material proxies, eyes) is read only\n    // when it is drawn, and depends only on the frame's time and the view current here (the\n    // main view), so it runs at the first view that draws the prop, with this view put back.\n    public movement(renderContext: SourceRenderContext): void {\n        this.moveView = this.studioModelInstance !== null ? renderContext.currentView : null;\n    }\n"),
+    ('SourceEngine/StaticDetailObject.ts',
+     '        if (!visible)\n            return;\n\n        if ((this as any).debug)\n',
+     '        if (!visible)\n            return;\n\n        if (this.moveView !== null) {\n            const view = renderContext.currentView;\n            renderContext.currentView = this.moveView;\n            this.studioModelInstance.movement(renderContext);\n            renderContext.currentView = view;\n            this.moveView = null;\n        }\n\n        if ((this as any).debug)\n'),
 ]
 
 ROOTS = [
