@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+## P836 — names on board lines cost less
+
+Live 2026-10-19: both installs exe ff0f0a2d (git-7520-patch-836-0-g39afb825f; .prev 444005d7 =
+P832), csprogs 23d5301a on both installs and all 12 lobbies (.prev ed8d2e63). On the lobbies a
+released 0.1.27 client keeps the old way of placing names (checked on a live lobby).
+
+- With your config and eight board lines, the names on the lines cost about half a millisecond a
+  frame. The engine now does that search: QC time 0.40 ms lower at voyager's spawn, 0.13-0.15 ms
+  lower while riding a replay.
+- The names must sit exactly where they did. If one sits somewhere odd, say where; `lines native`
+  in the console shows whether the new search ran ("names looked for natively N").
+
+"Faster / <what looks off, where>". Verdict PENDING.
+
 ## P832 — your `r_blendsort 2` was costing ~1.2 ms a frame
 
 Live in both installs 2026-10-19 (exe 444005d7, git-7517-patch-832-0-ga4a152701; .prev 544446a8 =

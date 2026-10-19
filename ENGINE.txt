@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   a4a152701b3e06051a3f53151492c3cb99979620
+commit   39afb825f8925fb136127863fc469b2bbd80a04b
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,11 @@ commit   a4a152701b3e06051a3f53151492c3cb99979620
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-832
-patch    833
+tag      patch-836
+patch    836
+# Patch 836 (client engine + csprogs): builtin lines_label looks along a board line for where
+# its name can sit, natively; the QC loop stays as the fallback (released engines) and must
+# change with it. Board-line names: QC -0.40 ms a frame in Lex's setup. Lobbies csprogs 23d5301a.
 # Patch 833 (reader): ordinary finish closers reach warp/ride observations in their parsed
 # context, without erasing valid restore allowances. Kept abandon may use a freeze latch;
 # no timer equality/format/pin/permission change.

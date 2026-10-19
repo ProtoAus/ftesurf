@@ -64,8 +64,14 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
   program setup per blended face, and ClipSkyPolygon (~7.5% there, mode 1 pays it too). Each HUD
   feature toggled in that process (paired medians of 3 pairs, frame ms): `hud_lines_board`
   +0.84 (QC +0.74), `hud_linegraph` +0.41, `hud_keyhint` +0.11, `hud_font_outline 2` vs 0 +0.08;
-  hud_compare, hud_trainer, hud_chat, hud_lines_names, hud_trail within noise. Board lines are
-  the biggest item left in his setup.
+  hud_compare, hud_trainer, hud_chat, hud_lines_names, hud_trail within noise. Of the board
+  lines, the names (`hud_linegraph_labels`) were +0.475 ms of QC: Patch 836 moved their search into
+  the engine (lines_label; QC -0.40 ms at voyager's spawn, -0.13 riding). A QC-only rewrite of that
+  search (group spheres nearest first, an inline near test) was exact and measured nothing. Left:
+  the rest of the board lines (~0.7 ms of QC: Line_Follow, Line_Marks, Line_Find), the run graph
+  (+0.41 ms; its curves are native already), and ClipSkyPolygon (~7.5% of his frame on voyager;
+  clipping whole sky polygons instead of fan triangles gives the same bounds mathematically, not
+  bit for bit, so it needs a picture A/B).
 - **HL2 PrepareFrame.** Patch 831's clip flags took it 0.87 -> 0.72 ms at demise's spawn. Left:
   every static prop is still visited every view (2,350 on demise, twice with a sky camera) and
   each visible one copied into a scene entity (mod_vbsp.c, the prop loop); BE_GenModelBatches

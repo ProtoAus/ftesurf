@@ -1,5 +1,16 @@
 # AGENT_NOTES.md
 
+## Board-line names natively (P836, 2026-10-19)
+
+- `lines_label` (engine pr_csqc_lines.inc) and LineGraph_WorldLabels' QC loop are ONE
+  specification: same samples, same order, same float arithmetic (vlen is sqrt(DotProduct), the
+  near test is the VM's own dot product, project() is CS_ProjectPoint shared with PF_cs_project).
+  Released engines and every lobby client without it run the QC loop. Change both or neither.
+- The proof was a check build (`#ifdef LG_LABCHECK`, in the source) that ran both every frame and
+  compared all six outputs: 94,485 looks, 0 mismatches. Rebuild it that way after any change.
+- The cost was the search, not the drawing: `hud_linegraph_labels` 1 vs 0 priced it in one
+  process; `profile_csqc` alone could not (its windows were a frame long under r_budget).
+
 ## Props drawn in runs (P831, 2026-10-19)
 
 The GL renderer sorts opaque model batches (`r_batchsort`) and draws a run of one model's
