@@ -52,6 +52,17 @@ def pool_policy(name, zone_files):
     return "Not a surf or zoned bhop map"
 
 
+MODES = ("surf", "bhop")
+
+
+def map_mode(name):
+    """"surf" or "bhop" by pool_policy's prefixes (the profile's filter, P853), else ""."""
+    for mode in MODES:
+        if name.startswith(mode + "_"):
+            return mode
+    return ""
+
+
 def disabled(db, names=(), zone_files=frozenset()):
     off = {r[0] for r in db.execute("SELECT map FROM map_pool WHERE enabled=0")}
     return off | {name for name in names if pool_policy(name, zone_files)}

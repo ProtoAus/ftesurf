@@ -102,6 +102,21 @@ def main():
     gm = c.get('/api/board',query_string={'player':handle,'ct':'2'}).get_json()
     check('in-game completion list is the website population', {m['map'] for m in gm.get('maps',[])}, expected)
     check('in-game done and total match website', (gm.get('done'),gm.get('total')), (3,5))
+    # P853: surf / bhop filter, same population split by kind.
+    modes = profile['completion'].get('modes') or {}
+    check('modes split the total', [(modes.get(k) or {}).get(f) for k in ('surf','bhop') for f in ('done','of')], [2,3,1,2])
+    check('modes add up to the whole', sum(modes[k]['of'] for k in modes), profile['completion']['of'])
+    check('mode tier rows', [(t['tier'],t['done'],t['of']) for t in modes['bhop']['tiers']], [(2,1,2)])
+    check('in-game summary carries the modes', game.get('completion', {}).get('modes'), modes)
+    for mode, want in (('surf', {'surf_done','surf_next','surf_unzoned'}), ('bhop', {'bhop_done','bhop_next'})):
+        wm = c.get(f'/board/api/player/{handle}/maps', query_string={'mode':mode}).get_json()
+        check('website list for '+mode, ({m['map'] for t in wm['tiers'] for m in t['maps']}, wm.get('mode')), (want, mode))
+        gm = c.get('/api/board',query_string={'player':handle,'ct':'2','mode':mode}).get_json()
+        check('in-game list for '+mode, ({m['map'] for m in gm.get('maps',[])}, gm.get('mode')), (want, mode))
+        check('in-game done/total for '+mode, (gm.get('done'),gm.get('total')),
+              (modes[mode]['done'], modes[mode]['of']))
+    check('a bad mode is refused (web)', c.get(f'/board/api/player/{handle}/maps', query_string={'mode':'kz'}).status_code, 400)
+    check('a bad mode is refused (game)', c.get('/api/board',query_string={'player':handle,'ct':'2','mode':'kz'}).status_code, 400)
     check('admin login acts', A.login(c,'completion fixture').status_code,302)
     with c.session_transaction(path='/admin') as ss:
         csrf = ss['csrf']

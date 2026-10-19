@@ -25,7 +25,7 @@ commit   994b744505e2a4fe3be3b59290cd19733ba64ebe
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-850
-patch    852
+patch    853
 # Patch 850 (client engine): water captures and 3D sky rooms stop redrawing the outer views' props
 # (r_nestedents) and the 3D sky where the view has no sky surface (r_skyroomneed 2); r_viewstats.
 # Exe fa31c2ee (git-7555-patch-850-0-g994b74450 = 847 + 849 + 850), hl2 plugin 1829790d, in both
@@ -34,6 +34,8 @@ patch    852
 # starts Restart run (m), Reset stage (r), Go to spawn (no key).
 # Patch 852 (release tooling + site): the page leads with the launchers; the archives are the
 # "Full package" links; no ftesurf.bat / ftesurf_debug.bat in the next release.
+# Patch 853 (surfd + board + csprogs): tier completion filtered All / Surf / Bhop on the web profile
+# and the in-game card (`completion.modes`, `&mode=` on the tier lists; `hud_player kind`).
 # Patch 848 (qwprogs + csprogs): `reset` is the old goto_start (!r); goto_start sends !r unless the
 # run is past its leg's first segment (STAT_FS_TIMERSTARTSEG), then the track's start (!m / !b N).
 # Patch 847 (client engine + csprogs): DRAWFLAG_UNDERBLEND sorts a CSQC polygon before the blended

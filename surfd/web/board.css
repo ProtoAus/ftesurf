@@ -273,6 +273,7 @@ table.runs { width: 100%; border-collapse: collapse; margin-top: 6px; font-size:
 .note-imported { border-left-color: var(--foreign); }
 
 /* ---- profile ------------------------------------------------------------ */
+.compmode { margin: 0 0 10px; }
 .comp { display: flex; flex-direction: column; gap: 5px; }
 .crow { display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
 .crow-dim { color: var(--dim); }

@@ -73,10 +73,13 @@ string pf_name, pf_handle;
 float  pf_src, pf_n, pf_maps, pf_last, pf_wr, pf_wrc, pf_top10, pf_av, pf_total, pf_t;
 float  pf_bt_ours, pf_bt_mom, pf_bt_ksf;
 float  pf_ksfstate, pf_ksfskip; // 1 pending, 2 checked, 3 bounded/incomplete
-float  pf_c_has, pf_c_n, pf_c_done, pf_c_of, pf_c_unt;
-float  pf_c_tier[PF_TIERS];
-float  pf_c_td[PF_TIERS];
-float  pf_c_to[PF_TIERS];
+float  pf_c_has, pf_c_done, pf_c_of;   // every map: the "maps finished" figure
+// Maps finished by tier, of every kind (0), surf (1) and bhop (2) alone (P853), PF_CMF floats
+// each: of, done, untiered, tiers, then PF_TIERS each of tier, done, of.
+#define PF_CMF      (4 + PF_TIERS * 3)
+float *pf_cmt;
+float  pf_cm;               // the kind on show
+float  pf_c_modes;          // the answer split them (a surfd before P853 does not)
 float  pf_rn;
 float  pf_bmap;             // strbuf: a row's map
 float *pf_rf;               // PF_ROWS * PF_RF
@@ -125,7 +128,18 @@ void() Profile_Alloc =
 	pf_ct_bmap = buf_create();
 	pf_on_f = memalloc(sizeof(float) * PF_ONROWS * PF_RF);
 	pf_on_ms = memalloc(sizeof(int) * PF_ONROWS);
+	pf_cmt = memalloc(sizeof(float) * PF_CMF * 3);
 	pf_s_sel = -1;
+};
+
+// The `&mode=` a tier's list is asked with, for the kind on show.
+string() Profile_ModeArg =
+{
+	if (pf_cm == 1)
+		return "&mode=surf";
+	if (pf_cm == 2)
+		return "&mode=bhop";
+	return "";
 };
 
 // Anything that contacts a server needs the online terms: Online_Fetch has the essay.
@@ -306,8 +320,8 @@ void() Profile_TierAsk =
 		pf_ct_state = g;
 		return;
 	}
-	pf_ct_req = Profile_Get(sprintf("%s/api/board?player=%s&ct=%s&limit=%g", cvar_string("lobby_dir"),
-	                                pf_who, pf_ct, PF_CTPAGE));
+	pf_ct_req = Profile_Get(sprintf("%s/api/board?player=%s&ct=%s%s&limit=%g", cvar_string("lobby_dir"),
+	                                pf_who, pf_ct, Profile_ModeArg(), PF_CTPAGE));
 	pf_ct_state = pf_ct_req ? PFS_ASK : PFS_FAIL;
 	pf_ct_code = 0;
 	pf_ct_sent = cltime;
@@ -329,6 +343,23 @@ void(float t) Profile_TierShow =
 	pf_ct = s;
 	pf_ct_again = FALSE;
 	Profile_TierAsk();
+};
+
+// `k`: 0 every kind of map, 1 surf, 2 bhop (P853). A tier's list on show is asked again.
+void(float k) Profile_ModeShow =
+{
+	Profile_Alloc();
+	if (!pf_c_modes || k < 0 || k > 2)
+		k = 0;
+	if (k == pf_cm)
+		return;
+	pf_cm = k;
+	dprint(sprintf("profile: kind %g\n", pf_cm));
+	if (pf_ct != "")
+	{
+		pf_ct_again = FALSE;
+		Profile_TierAsk();
+	}
 };
 
 // `who`: a search row's handle, or the 8-hex mark the game knows a player by.
@@ -393,8 +424,8 @@ void() Profile_TierMore =
 		return;
 	pf_ct_more_n = pf_ct_more_n + 1;
 	pf_ct_more_at = cltime + PF_MOREWAIT;
-	pf_ct_more_req = Profile_Get(sprintf("%s/api/board?player=%s&ct=%s&offset=%g&limit=%g",
-	                                     cvar_string("lobby_dir"), pf_who, pf_ct, pf_ct_n,
+	pf_ct_more_req = Profile_Get(sprintf("%s/api/board?player=%s&ct=%s%s&offset=%g&limit=%g",
+	                                     cvar_string("lobby_dir"), pf_who, pf_ct, Profile_ModeArg(), pf_ct_n,
 	                                     min(PF_CTPAGE, PF_CTROWS - pf_ct_n)));
 	pf_ct_more_sent = cltime;
 };
@@ -531,10 +562,33 @@ float(int root) Profile_Rows =
 	return took;
 };
 
+// One completion table (`c`, absent reads as nothing) into pf_cmt's slot `k`.
+void(int c, float k) Profile_CompRead =
+{
+	local int tiers, t;
+	local float i, n, at;
+	local float *f;
+
+	f = pf_cmt;
+	at = k * PF_CMF;
+	tiers = json_find_object_child(c, "tiers");
+	n = min(PF_TIERS, json_get_length(tiers));
+	f[at]     = json_get_float(json_find_object_child(c, "of"));
+	f[at + 1] = json_get_float(json_find_object_child(c, "done"));
+	f[at + 2] = json_get_float(json_find_object_child(c, "untiered"));
+	f[at + 3] = n;
+	for (i = 0; i < n; i = i + 1)
+	{
+		t = json_get_child_at_index(tiers, i);
+		f[at + 4 + i]                = json_get_float(json_find_object_child(t, "tier"));
+		f[at + 4 + PF_TIERS + i]     = json_get_float(json_find_object_child(t, "done"));
+		f[at + 4 + PF_TIERS * 2 + i] = json_get_float(json_find_object_child(t, "of"));
+	}
+};
+
 void(string bdy) Profile_Parse =
 {
-	local int root, c, tiers, t;
-	local float i;
+	local int root, c;
 	local string h;
 
 	root = json_parse(bdy);
@@ -573,19 +627,16 @@ void(string bdy) Profile_Parse =
 	pf_ksfskip = json_get_float(json_find_object_child(c, "unavailable"));
 	// No catalogue on the server is `null`, and reads as a table of nothing.
 	c = json_find_object_child(root, "completion");
-	tiers = json_find_object_child(c, "tiers");
 	pf_c_of   = json_get_float(json_find_object_child(c, "of"));
 	pf_c_done = json_get_float(json_find_object_child(c, "done"));
-	pf_c_unt  = json_get_float(json_find_object_child(c, "untiered"));
 	pf_c_has  = (pf_c_of > 0);
-	pf_c_n = min(PF_TIERS, json_get_length(tiers));
-	for (i = 0; i < pf_c_n; i = i + 1)
-	{
-		t = json_get_child_at_index(tiers, i);
-		pf_c_tier[i] = json_get_float(json_find_object_child(t, "tier"));
-		pf_c_td[i]   = json_get_float(json_find_object_child(t, "done"));
-		pf_c_to[i]   = json_get_float(json_find_object_child(t, "of"));
-	}
+	Profile_CompRead(c, 0);
+	c = json_find_object_child(c, "modes");
+	pf_c_modes = (json_get_length(c) > 0);
+	Profile_CompRead(json_find_object_child(c, "surf"), 1);
+	Profile_CompRead(json_find_object_child(c, "bhop"), 2);
+	if (!pf_c_modes)
+		pf_cm = 0;
 	pf_rn = 0;
 	Profile_Rows(root);
 	json_free(root);
@@ -643,6 +694,8 @@ void(string bdy, float more) Profile_TierParse =
 	ok = (root && strlen(h) == 12 && Profile_IsWho(h) && substring(h, 0, strlen(pf_who)) == pf_who);
 	if (ok)
 		ok = (json_get_string(json_find_object_child(root, "ct")) == pf_ct);
+	if (ok)
+		ok = !strcmp(json_get_string(json_find_object_child(root, "mode")), substring(Profile_ModeArg(), 6, -1));
 	if (ok && more)
 		ok = (json_get_float(json_find_object_child(root, "offset")) == pf_ct_n);
 	if (!ok)
@@ -676,9 +729,9 @@ void(string bdy, float more) Profile_TierParse =
 	if (pf_ct_total < pf_ct_n)
 		pf_ct_total = pf_ct_n;
 	f = pf_ct_f;
-	dprint(sprintf("profile: tier %s of %s: %g maps of %g held, %g finished, first %s %g\n", pf_ct, pf_who,
-	               pf_ct_n, pf_ct_total, pf_ct_done, (pf_ct_n > 0) ? bufstr_get(pf_ct_bmap, 0) : "-",
-	               (pf_ct_n > 0) ? f[0] : 0));
+	dprint(sprintf("profile: tier %s of %s: %g maps of %g held, %g finished, first %s %g\n",
+	               strcat(pf_ct, Profile_ModeArg()), pf_who, pf_ct_n, pf_ct_total, pf_ct_done,
+	               (pf_ct_n > 0) ? bufstr_get(pf_ct_bmap, 0) : "-", (pf_ct_n > 0) ? f[0] : 0));
 };
 
 void(string bdy) Profile_OnParse =
@@ -1328,7 +1381,8 @@ void(vector p, vector sz, float tsz, float hint) Profile_DrawTier =
 
 	Font_Set(ui_font_ui);
 	y = p_y;
-	s = (pf_ct == "u") ? "UNRATED MAPS" : sprintf("TIER %s MAPS", pf_ct);
+	s = (pf_cm == 1) ? " SURF" : ((pf_cm == 2) ? " BHOP" : "");
+	s = (pf_ct == "u") ? sprintf("UNRATED%s MAPS", s) : sprintf("TIER %s%s MAPS", pf_ct, s);
 	if (pf_ct_state == PFS_OK)
 		s = sprintf("%s   %g of %g finished", s, pf_ct_done, pf_ct_total);
 	sui_text([p_x, y], [hint, hint], s, SUI_THEME_MUTED, 1, 0);
@@ -1527,7 +1581,7 @@ float(vector p, vector sz, float tsz, float hint) Profile_DrawOn =
 void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 {
 	local float i, x, y, w, tw, th, n, cols, rowh, lh, c0, c1, c2, c3, bw, at, r, retry;
-	local float tier, td, tof, rest, on, hot;
+	local float tier, td, tof, rest, on, hot, cb, ch;
 	local float *f;
 	local string s, rid;
 	local vector lp, col, bo, bs;
@@ -1601,7 +1655,27 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 	// ---- maps finished, by difficulty: two columns of bars, and a last one for
 	// the maps nobody has rated.  A BAR IS A CONTROL (Patch 666): its tier's
 	// maps take the results' place, and the bar again gives them back.
-	if (pf_c_has && pf_c_n > 0)
+	// P853: All / Surf / Bhop above them, each with its figure; the bars and a
+	// tier's list are of the kind chosen.
+	f = pf_cmt;
+	if (pf_c_has && pf_c_modes)
+	{
+		Font_Set(ui_font_ui);
+		ch = ceil(hint * 1.8);
+		x = p_x;
+		for (i = 0; i < 3; i = i + 1)
+		{
+			s = sprintf("%s %g/%g", (i == 1) ? "Surf" : ((i == 2) ? "Bhop" : "All"), f[i * PF_CMF + 1],
+			            f[i * PF_CMF]);
+			w = stringwidth(s, TRUE, [hint, hint]) + hint * 2;
+			if (Profile_Chip(sprintf("pf_cm%g", i), [x, y], [w, ch], s, hint, pf_cm == i))
+				Profile_ModeShow(i);
+			x = x + w + hint * 0.5;
+		}
+		y = y + ch + hint * 0.6;
+	}
+	cb = pf_cm * PF_CMF;
+	if (pf_c_has && f[cb] > 0)
 	{
 		cols = (sz_x > tsz * 34) ? 2 : 1;
 		lh = ceil(hint * 1.9);
@@ -1609,15 +1683,15 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 		c0 = ceil(hint * 4.6);                              // "Unrated"
 		c1 = ceil(hint * 4.5);                              // "123/456"
 		Font_Set(ui_font_ui);
-		n = pf_c_n + ((pf_c_unt > 0) ? 1 : 0);
-		rest = pf_c_done;
+		n = f[cb + 3] + ((f[cb + 2] > 0) ? 1 : 0);
+		rest = f[cb + 1];
 		for (i = 0; i < n; i = i + 1)
 		{
-			if (i < pf_c_n)
+			if (i < f[cb + 3])
 			{
-				tier = pf_c_tier[i];
-				td = pf_c_td[i];
-				tof = pf_c_to[i];
+				tier = f[cb + 4 + i];
+				td = f[cb + 4 + PF_TIERS + i];
+				tof = f[cb + 4 + PF_TIERS * 2 + i];
 				rest = rest - td;
 				s = sprintf("Tier %g", tier);
 			}
@@ -1625,7 +1699,7 @@ void(vector p, vector sz, float ttl, float tsz, float hint) Profile_DrawStats =
 			{
 				tier = -1;
 				td = max(0, rest);                      // finished, and in no tier
-				tof = pf_c_unt;
+				tof = f[cb + 2];
 				s = "Unrated";
 			}
 			x = p_x + hint * 0.5 + (i - floor(i / cols) * cols) * (w + hint + tsz * 1.5);
