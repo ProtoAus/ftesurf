@@ -2297,6 +2297,83 @@ def case_angle_initial_origin():
           "trusted initial clock accounting still detects a rotated sidecar")
 
 
+def case_closing_carry_exact_sign():
+    """Underflow is not signed zero; exponent magnitude cannot erase sign."""
+    for ver in (9, 10):
+        base = build(ver=ver, sweep=128, packets=600)
+        for value, negative in (("-1e-999", True), ("-0e-999", False),
+                                ("-1e-323", True), ("1e-999", False),
+                                ("-1e-999999999999999999999999999", True),
+                                ("-0e-999999999999999999999999999", False)):
+            faults, _ = run(edit(base, "inend", 2, value))
+            check((len(faults) == 1 and "inend carry" in faults[0]) if negative
+                  else not faults,
+                  "v%d closing carry %s keeps exact sign and genuine zero" % (ver, value))
+    base = build(ver=8, sweep=128, packets=600)
+    for value, negative in (("-0." + "0" * 400 + "1", True),
+                            ("-0." + "0" * 400, False),
+                            ("0." + "0" * 400 + "1", False)):
+        faults, _ = run(edit(base, "inend", 2, value))
+        check((len(faults) == 1 and "inend carry" in faults[0]) if negative
+              else not faults,
+              "v8 decimal closing carry preserves exact nonzero sign=%s" % negative)
+
+
+def case_closing_carry_nonnegative():
+    """The native mover clamps its remainder; this is not a timer equality."""
+    for ver in (8, 9, 10):
+        base = build(ver=ver, sweep=128, packets=600)
+        for value in ("0", "-0", "0.003", "0.000000001"):
+            faults, _ = run(edit(base, "inend", 2, value))
+            check(not faults, "v%d closing carry %s remains legal" % (ver, value))
+        for value in ("-0.001", "-1", "-0.000000001"):
+            faults, _ = run(edit(base, "inend", 2, value))
+            check(len(faults) == 1 and "inend carry" in faults[0]
+                  and "negative" in faults[0],
+                  "v%d rejects only the negative closing carry %s" % (ver, value))
+    old = build(ver=7, sweep=128, packets=600)
+    end = int(next(l.split()[2] for l in reversed(old) if l.startswith("in "))) + 1
+    faults, _ = run(insert_before(old, "end", "inend %d -0.001" % end))
+    check(not faults, "pre-v8 closing record has no new carry assertion")
+    for label, pair in (("warm retries", retry_clock_pair()),
+                        ("cold loads", cold_clock_pair("load"))):
+        lines, view = pair
+        lower = edit(lines, "inend", 2, "-0.001")
+        faults, _notes, report = run(lower, view=view, report=True)
+        check(len(faults) == 1 and "inend carry" in faults[0],
+              "negative carry with two %s preserves source resets" % label)
+        check("angle_rule     unavailable" in report,
+              "negative carry with %s does not invent an angle judgement" % label)
+        bad = view[:]
+        f = bad[-1].split(); f[2] = "-1"; bad[-1] = " ".join(f)
+        faults, _ = run(lower, view=bad)
+        check(len(faults) == 2 and any("never negative" in x for x in faults)
+              and any("inend carry" in x for x in faults),
+              "negative carry with %s preserves only the independent view fault" % label)
+        end = int(next(l.split()[1] for l in lines if l.startswith("inend ")))
+        for kind in ("warp", "ride"):
+            marker = ("warp %d %d %d tele 0 0 64 0 0 0 0"
+                      % (PACKETS - 1, end + 1, PACKETS - 1) if kind == "warp"
+                      else "ride %d %d arm 0 0 0" % (PACKETS - 1, end + 1))
+            live = lines
+            for row in STAGED + [marker]:
+                live = insert_before(live, "inend", row)
+            live = bump_end(live, "warps" if kind == "warp" else "rides")
+            faults, _ = run(live, view=view)
+            check(len(faults) == 1 and "'%s' observation" % kind in faults[0],
+                  "existing %s closer fault with %s is an acting control" % (kind, label))
+            lower = edit(live, "inend", 2, "-0.001")
+            faults, _ = run(lower, view=view)
+            check(len(faults) == 2 and any("inend carry" in x for x in faults)
+                  and any("'%s' observation" % kind in x for x in faults),
+                  "both independent closer faults with %s/%s preserve resets" % (kind, label))
+            faults, _ = run(lower, view=bad)
+            check(len(faults) == 3 and any("inend carry" in x for x in faults)
+                  and any("'%s' observation" % kind in x for x in faults)
+                  and any("never negative" in x for x in faults),
+                  "both closer faults with %s/%s retain independent view fault" % (kind, label))
+
+
 def case_imposition_closing_horizon():
     """A post-move warp / frozen carrier can outlive the final input row."""
     def with_marker(kind, mt, ver=9, **kw):
@@ -2705,7 +2782,9 @@ def main():
                case_angle_hold_shape, case_angle_hold_restore_boundaries,
                case_angle_hold_conversion,
                case_angle_initial_origin, case_angle_initial_restore, case_integer_tokens,
-               case_hold_closing_horizon, case_imposition_closing_horizon,
+               case_hold_closing_horizon, case_closing_carry_nonnegative,
+               case_closing_carry_exact_sign,
+               case_imposition_closing_horizon,
                case_imposition_abandon_horizon, case_imposition_restore_allowance,
                case_imposition_boundary_authority,
                case_view_retry_history,

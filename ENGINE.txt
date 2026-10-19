@@ -25,7 +25,11 @@ commit   39afb825f8925fb136127863fc469b2bbd80a04b
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-836
-patch    837
+patch    838
+# Patch 838 (reader): v8+ closing carry cannot be negative, including decimal underflow;
+# its exact coefficient preserves true signed zero. The native mover clamps the remainder.
+# Signed zero stays legal. Independent closing faults retain validated restore allowances;
+# no upper bound, elapsed equality, native pin, format, permission or policy change.
 # Patch 837 (csprogs + glsl/ftesurf_lgcache.glsl): the HUD run graph's still layer is drawn into
 # two render targets when it changes and composited each frame; no engine change. Lex's setup:
 # frame -0.38 ms. Lobbies csprogs f1f94d56; installs without the glsl draw it directly.

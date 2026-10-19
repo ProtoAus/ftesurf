@@ -1754,7 +1754,7 @@ def check_rec(path, verbose=False, *, data=None):
     # `inend <mt> <carry>`.  THE PAIR IS WRITTEN UNDER ONE CONDITION -- both
     # gated on the mover counter existing -- so a file with one and not the other
     # is saying something about itself, and which one is missing says what.
-    imposition_closer_fault = False
+    independent_closing_faults = 0
     if in_end is not None:
         ln, a = in_end
         if len(a) != 2:
@@ -1767,6 +1767,16 @@ def check_rec(path, verbose=False, *, data=None):
         else:
             e_mt = int(a[0])
             r.info["inend"] = a[0]
+            if ver >= 8:
+                closing_carry = float(a[1])
+                if closing_carry == 0:
+                    # Binary64 can erase a nonzero sign. The exact coefficient
+                    # distinguishes it from signed zero without exponent work.
+                    closing_carry = Decimal(a[1].lower().partition("e")[0])
+                if closing_carry < 0:
+                    r.fault("line %d: inend carry %s is negative -- the native mover "
+                            "clamps its remainder to zero" % (ln, a[1]))
+                    independent_closing_faults += 1
             h = horizon_at(ln)
             if h is not None and e_mt < h:
                 r.fault("line %d: inend %d is below the trace's horizon %d -- "
@@ -1791,7 +1801,7 @@ def check_rec(path, verbose=False, *, data=None):
                         r.fault("line %d: inend %d is below the '%s' observation %d "
                                 "in this trace segment (line %d)"
                                 % (ln, e_mt, mkind, mmt, mln))
-                        imposition_closer_fault = True
+                        independent_closing_faults += 1
             # AND IT MUST NOT PRECEDE THE LAST `in` ROW, which is the whole
             # reason it is written: the final row's duration is inend minus that
             # row's <mt>, and a negative duration is not a rounding question.
@@ -2756,8 +2766,9 @@ def check_rec(path, verbose=False, *, data=None):
     # resume/retry/pause/session still change the origin. Neither angle rule
     # can convict on an unknown join, even when its resulting difference is large.
     r.angle_ghosts = list(ghost_windows)
-    # A sole imposition/closer contradiction does not invalidate reset history.
-    if not r.faults or (imposition_closer_fault and len(r.faults) == 1):
+    # These independent closing diagnostics do not invalidate reset history;
+    # any other recording fault keeps the existing eligibility guard closed.
+    if len(r.faults) == independent_closing_faults:
         # A restored prefix may carry a client-clock restart. Cold restores also
         # open a mover session: count that same boundary once, not twice.
         events = [(ln, 0) for ln, *_ in pauses] + [(ln, 2) for ln, *_ in sessions]

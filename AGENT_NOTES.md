@@ -2982,6 +2982,15 @@ publicly WITH its fix, not before it.
   allowances: that manufactures sidecar clock faults while the angle join is
   unavailable. Cross ordinary-close contradictions with multi-restore controls,
   not just kept-abandon; preserve the recording fault and independent view faults.
+  Patch 838: native closing carry is nonnegative (PMSrc_PlayerMove explicitly
+  clamps before publishing; this predates run_movecarry). Signed zero is legal;
+  no upper quantum bound or timer equality follows. Count only the reader's own
+  independent closing diagnostics for reset-history eligibility, including two
+  simultaneous contradictions; any unrelated recording fault still closes that
+  guard. Legacy v8 exponent-format checks are separate: use decimal controls.
+  Compare exact carry sign when binary64 yields zero: negative nonzero tokens
+  can underflow to -0. Read the coefficient without exponent arithmetic so huge
+  exponents cannot overflow parsing; genuine signed-zero spellings stay legal.
 - CROSS-RUN SIMILARITY IS COLLECTED AND NOT ENFORCED (surfd schema 10,
   `surfd/simcheck.py`).  A run submitted twice -- a PLAYBACK of a recording rather
   than a performance -- produces two clean board rows and nothing else in this tree
