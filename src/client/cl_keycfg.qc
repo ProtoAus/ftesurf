@@ -28,9 +28,9 @@ void(float keynum, string bindcmd, optional float bindmap, optional float modifi
 #define KC_STATUS_T 4           // seconds a bind's result stays on the status line
 
 // id|label|command a rebind writes|other bindings that count as this row (;)|default.cfg's keys|group
-// Restart/Respawn ship as `say !r`/`say !m` (default.cfg).  Restart is rebound as
-// the same warp under its command name (cl_warpop.qc); Respawn as `say !m` itself,
-// since goto_spawn is the map's spawn entity (Patch 845).
+// Restart/Respawn ship as `say !r`/`say !m` (default.cfg) and are rebound under a
+// command name (cl_warpop.qc).  Since Patch 845 Respawn's, goto_spawn, is the map's
+// spawn entity while the shipped `say !m` is still the start of the map.
 string(float i) KC_Def =
 {
 	if (i == 0)  return "forward|Forward|+forward||w|Movement";
@@ -54,7 +54,7 @@ string(float i) KC_Def =
 	if (i == 18) return "prev|Previous save|sl_prev|mom_saveloc_nav_prev||Saves";
 	if (i == 19) return "next|Next save|sl_next|mom_saveloc_nav_next||Saves";
 	if (i == 20) return "restart|Restart|goto_start|say !r|r|Run";
-	if (i == 21) return "respawn|Respawn|say !m||m|Run";
+	if (i == 21) return "respawn|Respawn|goto_spawn|say !m|m|Run";
 	if (i == 22) return "rewind|Rewind|rewind||BACKSPACE|Run";
 	if (i == 23) return "noclip|Noclip|noclip||v|Run";
 	if (i == 24) return "paint|Paint (hold)|+paint|paint||Run";     // Patch 772: unbound by default

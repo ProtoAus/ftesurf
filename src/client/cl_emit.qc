@@ -925,7 +925,7 @@ float  em_flnofloor;            // with no floor within 1024, left where they ar
 float  em_flinside;             // whose entity is inside something solid, left too
 float  em_fldropover;           // brush entities past FL_DROPSOLIDS, not stood up
 float  em_flin, em_flthin;      // last frame: sheet fires in reach, and those thinned
-float  em_flunder, em_flover;   // since load: emitting fires traced blocked, and clear
+float  em_flunder, em_flover;   // since load: emissions traced blocked, and clear (a fire a frame each)
 
 // The system (layer 0, sequences 3-5) and its _b child (layer 1, sequences 0-2):
 //   radius min max | alpha min max | grey min max | rotation +- | spawn disc |
@@ -1384,7 +1384,9 @@ float() Emit_FlameRepair =
 	for (cls = 0; cls < 4; cls = cls + 1)
 		if (em_flmask & pow(2, cls))
 			break;
+	// The first of each half: a class sends both in one frame (Patch 843).
 	if (particleeffectquery(em_flfx[cls * FL_SLOTS], 0) != "")
+	if (particleeffectquery(em_flfx[cls * FL_SLOTS + FL_UNDER], 0) != "")
 		return FALSE;
 	em_flmask = 0;
 	return TRUE;
@@ -4076,7 +4078,7 @@ void() Emit_List =
 				              2 * ((em_smwant & 1) + (em_smwant & 2) / 2 + (em_smwant & 4) / 4) + (em_smwant & 8) / 2));
 			print(sprintf("  env_fire: %g in reach (%g units), %g of them past %g and thinned\n",
 			              em_flin, FL_REACH, em_flthin, FL_NEAR));
-			print(sprintf("  env_fire: flame under the blended surfaces: %g of %g effects answering, vbsp_emit_flameunder %g; since load %g emitting fires had something between, %g did not\n",
+			print(sprintf("  env_fire: flame under the blended surfaces: %g of %g effects answering, vbsp_emit_flameunder %g; since load %g fire-frames had something between, %g did not\n",
 			              un, 12 * ((em_flwant & 1) + (em_flwant & 2) / 2 + (em_flwant & 4) / 4 + (em_flwant & 8) / 8),
 			              cvar("vbsp_emit_flameunder"), em_flunder, em_flover));
 		}

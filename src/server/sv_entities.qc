@@ -1905,6 +1905,7 @@ void(entity t) SV_BrushRenderState =
 		{
 			t.vbsp_rmhide = FALSE;
 			if (!SV_Key2(t.StartDisabled, t.startdisabled))
+			if (!t.vbsp_apwhide)
 				t.effects = t.effects - (t.effects & EF_NODRAW);
 		}
 		return;
@@ -3298,7 +3299,15 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		return;
 	}
 	if (in == "turnoff")        { t.effects = t.effects | EF_NODRAW;    return; }
-	if (in == "turnon")         { t.effects = t.effects - (t.effects & EF_NODRAW); return; }
+	// P844: and another class's rendermode may hide it again (None, renderamt 0).
+	if (in == "turnon")
+	{
+		t.effects = t.effects - (t.effects & EF_NODRAW);
+		t.vbsp_rmhide = FALSE;
+		if (t.classname != "func_brush")
+			SV_BrushRenderState(t);
+		return;
+	}
 
 	// Build 63.  logic_relay -- 2,506 Trigger fires across 120 maps, the most
 	// common unimplemented input in the library that is not cosmetic.

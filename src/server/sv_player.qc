@@ -1032,6 +1032,37 @@ void(float n) SV_TpPlayer =
 	sprint(self, PRINT_HIGH, sprintf("^5teleport:^7 to %s\n", Lobby_ChatName(t)));
 };
 
+/*
+  Patch 845: goto_spawn -- `kill`'s respawn at the map's spawn entity, with the run
+  ended first as `!r`'s move ends one (SV_TimerVoid).  SV_TimerSpawn clears the finish
+  tag outright; a finish the client has not read yet (a packet) keeps it here, as
+  SV_RecDiscard keeps it for `!m`, or its sidecar is dropped and its receipt unsigned.
+*/
+void() SV_SpawnGoto =
+{
+	local float tag, leg, tk, saved, bytes;
+
+	SV_SpecRelease(self, "respawn");
+	SV_SaveLocRelease(self);
+	SV_WatchRelease(self);
+	SV_TimerVoid(self, "teleported");
+	tag   = self.rec_rec_tag;
+	leg   = self.rec_rec_leg;
+	tk    = self.rec_rec_ticks;
+	saved = self.rec_rec_saved;
+	bytes = self.rec_rec_bytes;
+	PutClientInServer();
+	if (tag != RT_NONE)
+	{
+		self.rec_rec_tag   = tag;
+		self.rec_rec_leg   = leg;
+		self.rec_rec_ticks = tk;
+		self.rec_rec_saved = saved;
+		self.rec_rec_bytes = bytes;
+	}
+	sprint(self, PRINT_HIGH, "^5goto_spawn:^7 back at the map's spawn\n");
+};
+
 void(string cmd) SV_ParseClientCommand =
 {
 	local string c;
@@ -1795,18 +1826,8 @@ void(string cmd) SV_ParseClientCommand =
 	  rename.
 	*/
 	if (c == "zone_restart") { was = self.origin; SV_ZoneChatCommand("!m", 0); SV_RewindWarped(self, was); return; }
-	// Patch 845: goto_spawn, the map's spawn entity -- `kill`'s respawn, refused as `!m` is
-	// while a paused run is being restored.
-	if (c == "zone_spawn")
-	{
-		if (SV_MsBusy(self))
-			return;
-		was = self.origin;
-		PutClientInServer();
-		SV_RewindWarped(self, was);
-		sprint(self, PRINT_HIGH, "^5goto_spawn:^7 back at the map's spawn\n");
-		return;
-	}
+	// Patch 845: refused, as `!m` is, while a paused run is being restored.
+	if (c == "zone_spawn") { if (!SV_MsBusy(self)) SV_SpawnGoto(); return; }
 	if (c == "zone_reset")   { was = self.origin; SV_ZoneChatCommand("!r", 0); SV_RewindWarped(self, was); return; }
 	// Multi-Session.  Not `run_resume`: that is the cvar's name.
 	if (c == "ms_resume")    { SV_MsAccept(self);     return; }

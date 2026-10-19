@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Patch 753: `!r`, goto_spawn and a held save load are predicted -- no prederr.
+"""Patch 753: `!r`, `!m` and a held save load are predicted -- no prederr.
 
 A real dedicated socket with sv_minping (so the client predicts several commands
 ahead) and one client on surf_dune.  Each gesture is made away from where it puts
@@ -7,7 +7,7 @@ the body, and the client's own `prederr:` lines (cl_prederror 4, the snap-back
 meter) are counted from the gesture until 1.5 s after it settles:
 
   reset   walk out, `say !r`                      (the chat path, CSQC_ChatSay)
-  spawn   walk out, `goto_spawn`
+  spawn   walk out, `say !m` (goto_spawn until Patch 845)
   load    crouch-jump, save at the top of the jump, land, stand, walk away,
           `+sl_hold` for a second and `-sl_hold`: the save is ducked in the air
           and the release unducks it there, the trick that shifted z
@@ -253,9 +253,9 @@ def main():
         back = pos()
         check(abs(back[0] - start[0]) + abs(back[1] - start[1]) < 2, 'say !r put the body back at the start')
         walk()
-        w2 = window('spawn', lambda: cl.send('goto_spawn'))
+        w2 = window('spawn', lambda: cl.send('say !m'))
         back2 = pos()
-        check(abs(back2[0] - start[0]) + abs(back2[1] - start[1]) < 2, 'goto_spawn put the body at the start')
+        check(abs(back2[0] - start[0]) + abs(back2[1] - start[1]) < 2, 'say !m put the body at the start')
 
         walk(0.8)
 
@@ -338,14 +338,14 @@ def main():
                   'threaded: the server ran no op')
         elif a.control:
             check(len(w['prederr']) > 0, 'control: say !r corrects the prediction')
-            check(len(w2['prederr']) > 0, 'control: goto_spawn (zone_restart) corrects it')
+            check(len(w2['prederr']) > 0, 'control: say !m (zone_restart) corrects it')
             check(len(w3['prederr']) > 0, 'control: the held load corrects it')
         else:
             check([o for o, _ in w['client_ops']] == ['201'] and [o for o, _ in w['server_ops']] == ['201'],
                   'say !r rode one command on both sides')
             check(w['client_ops'][0][1] == w['server_ops'][0][1], 'the server ran it at that command')
             check([o for o, _ in w2['client_ops']] == ['202'] and [o for o, _ in w2['server_ops']] == ['202'],
-                  'goto_spawn rode one command on both sides')
+                  'say !m rode one command on both sides')
             check([o for o, _ in w3['server_ops']] == ['203', '204'], 'the load and its release rode commands')
             for tag, ww in (('reset', w), ('spawn', w2)):
                 check(not ww['prederr'], f'{tag}: no prederr')
