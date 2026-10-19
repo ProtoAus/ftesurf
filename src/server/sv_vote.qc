@@ -982,9 +982,17 @@ void() Vote_FreshClock =
 	if (lobby_cyc_moving || lobby_vt_force || lobby_cyc_holdend)
 		return;
 	per = max(per, 60);                         // Lobby_Cycle's floor
+	// A map's first begin: every client re-runs ClientConnect after a changelevel, onto
+	// the clock this map just latched (a big map's load can take the first minute).
+	if (!vote_extn && lobby_vt_next == "" && !lobby_vt_kind)
+	if (fabs(lobby_cyc_next - (time + per)) < 60)
+		return;
 	print(sprintf("vote: first player in an empty lobby -- %s on %s (was %s, %g extension(s))\n",
 	       Time_Clock(per), mapname, Time_Clock(max(lobby_cyc_next - time, 0)), vote_extn));
+	if (lobby_vt_kind)
+		Vote_Cancel();                          // nobody is left to vote in it
 	Lobby_CycleGo(per, "");
+	lobby_cyc_warn = Lobby_WarnLvl(per);        // as the latch: a short period gets no "N left"
 	vote_extn = 0;
 	lobby_vt_ext = 0;
 	if (lobby_vt_next != "")
