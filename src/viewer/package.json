@@ -1,0 +1,21 @@
+{
+  "name": "ftesurf-run-viewer",
+  "private": true,
+  "license": "GPL-2.0-or-later",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "crc-32": "1.2.2",
+    "fflate": "0.8.2",
+    "gl-matrix": "3.4.3"
+  },
+  "devDependencies": {
+    "@types/webxr": "0.5.22",
+    "@webgpu/types": "^0.1.64",
+    "esbuild": "0.25.10",
+    "typescript": "5.8.3"
+  }
+}

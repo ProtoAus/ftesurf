@@ -57,3 +57,8 @@ src/defs/*.qc       linguist-generated=true
 #  GitHub maps .qc to QuakeC already; this only guards against a .qc being
 #  re-detected as something else.
 *.qc                linguist-language=QuakeC
+
+# The 3D run viewer (Patch 825): the bundle is built by src/viewer (npm run build),
+# and vendor/noclip is a copy of noclip.website made by src/viewer/tools/vendor.py.
+surfd/web/watch.js          -diff linguist-generated=true
+src/viewer/vendor/**        linguist-vendored=true

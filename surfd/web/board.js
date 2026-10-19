@@ -699,7 +699,10 @@
     dlRow(dl, 'recording', (body.bytes > 0
       ? (body.bytes / 1024).toFixed(0) + ' KiB' : 'size unknown'));
     if (body.truncated) { dlRow(dl, 'note', 'the file was read up to a limit'); }
-    $('rundl').href = '../api/replay/' + body.rid;
+    // The game's own replay route: /board/ is proxied from proto.bar, /api/ only
+    // from play.proto.bar, so a relative ../api/ link 404s (Patch 825).
+    $('rundl').href = 'https://play.proto.bar/api/replay/' + body.rid;
+    $('run3d').href = 'watch.html#r=' + body.rid;
 
     var sp = $('runsplits');
     sp.textContent = '';

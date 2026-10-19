@@ -1,0 +1,926 @@
+
+import { mat4, quat, ReadonlyMat4, ReadonlyVec3, ReadonlyVec4, vec3, vec4 } from 'gl-matrix';
+import { AABB, Frustum } from './Geometry.js';
+import { projectionMatrixConvertClipSpaceNearZ } from './gfx/helpers/ProjectionHelpers.js';
+import { projectionMatrixReverseDepth } from './gfx/helpers/ReversedDepthHelpers.js';
+import { GfxClipSpaceNearZ, GfxPlatform, GfxViewportOrigin } from './gfx/platform/GfxPlatform.js';
+import InputManager from './InputManager.js';
+import { calcUnitSphericalCoordinates, clampRange, getMatrixAxis, getMatrixAxisX, getMatrixAxisY, lerpAngle, Mat4Identity, MathConstants, projectionMatrixForCuboid, projectionMatrixForFrustum, Vec3UnitY, Vec3Zero } from './MathHelpers.js';
+import { GlobalSaveManager } from './SaveManager.js';
+import { CameraAnimationManager, InterpolationStep, StudioPanel } from './Studio.js';
+import { assert } from './util.js';
+import { WebXRContext, WebXRInputManager } from './WebXR.js';
+import { drawScreenSpaceBox, drawScreenSpaceText, getDebugOverlayCanvas2D } from './DebugJunk.js';
+
+// TODO(jstpierre): All of the cameras and camera controllers need a pretty big overhaul.
+
+export class Camera {
+    public clipSpaceNearZ: GfxClipSpaceNearZ;
+
+    // Converts to view space from world space.
+    // Should be called viewFromWorldMatrix
+    public viewMatrix = mat4.create();
+
+    // The world matrix is the camera's model matrix -- that is, it converts from
+    // view space to the abstract world space.
+    // Should be called worldFromViewMatrix
+    public worldMatrix = mat4.create();
+
+    // Converts to (OpenGL) NDC/clip space from view space.
+    // Should be called clipFromViewMatrix
+    public projectionMatrix = mat4.create();
+
+    // Combined view/projection matrix, using our new naming convention.
+    public clipFromWorldMatrix = mat4.create();
+
+    // Camera's linear (aka positional) velocity. Instantaneous for the frame.
+    public linearVelocity = vec3.create();
+
+    public frustum = new Frustum();
+    
+    public static DefaultFovY = MathConstants.TAU / 6;
+    public fovY: number = Camera.DefaultFovY;
+
+    public aspect: number;
+    public isOrthographic: boolean = false;
+
+    // Frustum configuration.
+    public left: number;
+    public right: number;
+    public bottom: number;
+    public top: number;
+    public near: number;
+    public far: number;
+
+    private forceInfiniteFarPlane: boolean = false;
+
+    public identity(): void {
+        mat4.identity(this.worldMatrix);
+        mat4.identity(this.viewMatrix);
+    }
+
+    public worldMatrixUpdated(): void {
+        mat4.invert(this.viewMatrix, this.worldMatrix);
+        this.updateClipFromWorld();
+    }
+
+    public setPerspective(fovY: number, aspect: number, n: number, f: number = Infinity): void {
+        this.fovY = fovY;
+        this.aspect = aspect;
+        this.isOrthographic = false;
+
+        if (this.forceInfiniteFarPlane)
+            f = Infinity;
+
+        const nearY = Math.tan(fovY * 0.5) * n;
+        const nearX = nearY * aspect;
+        this.setFrustum(-nearX, nearX, -nearY, nearY, n, f);
+    }
+
+    public setOrthographic(orthoScaleY: number, aspect: number, n: number, f: number): void {
+        this.aspect = aspect;
+        this.isOrthographic = true;
+
+        const nearY = orthoScaleY;
+        const nearX = orthoScaleY * aspect;
+        this.setFrustum(-nearX, nearX, -nearY, nearY, n, f);
+    }
+
+    public setClipPlanes(n: number, f: number = Infinity): void {
+        if (this.isOrthographic) {
+            // this.setOrthographic(this.orthoScaleY, this.aspect, n, f);
+        } else {
+            this.setPerspective(this.fovY, this.aspect, n, f);
+        }
+    }
+
+    private updateClipFromWorld(): void {
+        mat4.mul(this.clipFromWorldMatrix, this.projectionMatrix, this.viewMatrix);
+        this.frustum.updateClipFrustum(this.clipFromWorldMatrix, this.clipSpaceNearZ);
+    }
+
+    public updateProjectionMatrix(): void {
+        if (this.isOrthographic)
+            projectionMatrixForCuboid(this.projectionMatrix, this.left, this.right, this.bottom, this.top, this.near, this.far);
+        else
+            projectionMatrixForFrustum(this.projectionMatrix, this.left, this.right, this.bottom, this.top, this.near, this.far);
+        projectionMatrixReverseDepth(this.projectionMatrix);
+        projectionMatrixConvertClipSpaceNearZ(this.projectionMatrix, this.clipSpaceNearZ, GfxClipSpaceNearZ.NegativeOne);
+
+        this.updateClipFromWorld();
+    }
+
+    private setFrustum(left: number, right: number, bottom: number, top: number, near: number, far: number): void {
+        this.left = left;
+        this.right = right;
+        this.bottom = bottom;
+        this.top = top;
+        this.near = near;
+        this.far = far;
+        this.updateProjectionMatrix();
+    }
+
+    public newFrame(): void {
+    }
+}
+
+export function computeViewMatrix(out: mat4, camera: Camera): void {
+    mat4.copy(out, camera.viewMatrix);
+}
+
+export function computeViewMatrixSkybox(out: mat4, camera: Camera): void {
+    mat4.copy(out, camera.viewMatrix);
+    out[12] = 0;
+    out[13] = 0;
+    out[14] = 0;
+}
+
+const scratchVec3a = vec3.create();
+const scratchVec3b = vec3.create();
+const scratchVec3c = vec3.create();
+const scratchVec3d = vec3.create();
+const scratchVec3e = vec3.create();
+const scratchVec3f = vec3.create();
+const scratchMat4 = mat4.create();
+const scratchQuat = quat.create();
+
+/**
+ * Computes a view-space depth given {@param viewMatrix} and {@param aabb} in world-space.
+ * 
+ * This is computed by taking the depth of the center of the passed-in {@param aabb}.
+ * 
+ * The convention of "view-space depth" is that 0 is near plane, +z is further away.
+ *
+ * The returned value is not clamped to the near or far planes -- that is, the depth
+ * value is less than zero if the camera is behind the point.
+ *
+ * The returned value can be passed directly to {@see GfxRenderInst.setSortKeyDepth},
+ * which will clamp if the value is below 0.
+ */
+export function computeViewSpaceDepthFromWorldSpaceAABB(viewMatrix: ReadonlyMat4, aabb: AABB, v: vec3 = scratchVec3a): number {
+    aabb.centerPoint(v);
+    return computeViewSpaceDepthFromWorldSpacePoint(viewMatrix, v);
+}
+
+/**
+ * Computes a view-space depth given {@param viewMatrix} and {@param v} in world-space.
+ * 
+ * The convention of "view-space depth" is that 0 is near plane, +z is further away.
+ *
+ * The returned value is not clamped to the near or far planes &mdash; that is, the depth
+ * value is less than zero if the camera is behind the point.
+ *
+ * The returned value can be passed directly to {@see GfxRenderInst.setSortKeyDepth},
+ * which will clamp if the value is below 0.
+ */
+export function computeViewSpaceDepthFromWorldSpacePoint(viewMatrix: ReadonlyMat4, v: ReadonlyVec3): number {
+    return -(viewMatrix[2] * v[0] + viewMatrix[6] * v[1] + viewMatrix[10] * v[2] + viewMatrix[14]);
+}
+
+export function divideByW(dst: vec4, src: ReadonlyVec4): void {
+    dst[0] = src[0] / src[3];
+    dst[1] = src[1] / src[3];
+    dst[2] = src[2] / src[3];
+    dst[3] = 1.0;
+}
+
+export enum CameraUpdateResult {
+    Unchanged,
+    Changed,
+    ImportantChange,
+}
+
+export interface CameraController {
+    camera: Camera;
+    forceUpdate: boolean;
+    cameraUpdateForced(): void;
+    update(inputManager: InputManager, dt: number, sceneTimeScale: number): CameraUpdateResult;
+    setSceneMoveSpeedMult(v: number): void;
+    getKeyMoveSpeed(): number | null;
+    setKeyMoveSpeed(speed: number): void;
+}
+
+export interface CameraControllerClass {
+    new(): CameraController;
+}
+
+// Movement speeds have been designed for a 60fps experience.
+const FPS = 1000/60;
+
+function mat33mul(dst: mat4, a: ReadonlyMat4, b: ReadonlyMat4): void {
+    const b00 = b[0] , b10 = b[1] , b20 = b[2],
+          b01 = b[4] , b11 = b[5] , b21 = b[6],
+          b02 = b[8] , b12 = b[9] , b22 = b[10];
+
+    const a00 = a[0], a01 = a[4], a02 = a[8];
+    dst[0]  = a00*b00 + a01*b10 + a02*b20;
+    dst[4]  = a00*b01 + a01*b11 + a02*b21;
+    dst[8]  = a00*b02 + a01*b12 + a02*b22;
+
+    const a10 = a[1], a11 = a[5], a12 = a[9];
+    dst[1]  = a10*b00 + a11*b10 + a12*b20;
+    dst[5]  = a10*b01 + a11*b11 + a12*b21;
+    dst[9]  = a10*b02 + a11*b12 + a12*b22;
+
+    const a20 = a[2], a21 = a[6], a22 = a[10];
+    dst[2]  = a20*b00 + a21*b10 + a22*b20;
+    dst[6]  = a20*b01 + a21*b11 + a22*b21;
+    dst[10] = a20*b02 + a21*b12 + a22*b22;
+}
+
+export class FPSCameraController implements CameraController {
+    public camera: Camera;
+    public forceUpdate: boolean = false;
+    public useWorldUp: boolean = true;
+    public onkeymovespeed: () => void = () => {};
+
+    private linearMoveDir = vec3.create();
+    private rotateAngles = vec3.create();
+
+    private keyMoveSpeed = 60;
+    private keyMoveFastMult = 5;
+    private keyMoveSlowMult = 0.1;
+    private linearMoveAcceleration = 1/5;
+    private keyMoveDrag = 0.8;
+    private keyAngleChangeVelFast = 0.1;
+    private keyAngleChangeVelSlow = 0.02;
+    public isHoverModeAvailable = true;
+    private isInHoverMode = false;
+
+    private mouseLookSpeed = 500;
+    private isMoving = false;
+
+    public sceneMoveSpeedMult = 1;
+
+    public cameraUpdateForced(): void {
+        vec3.zero(this.linearMoveDir);
+    }
+
+    public setSceneMoveSpeedMult(v: number): void {
+        this.sceneMoveSpeedMult = v;
+    }
+
+    public setKeyMoveSpeed(speed: number): void {
+        this.keyMoveSpeed = Math.max(speed, 1);
+    }
+
+    public getKeyMoveSpeed(): number {
+        return this.keyMoveSpeed;
+    }
+
+    public update(inputManager: InputManager, dt: number): CameraUpdateResult {
+        const camera = this.camera;
+        let updated = false;
+
+        if (inputManager.isKeyDown('KeyB')) {
+            mat4.identity(camera.worldMatrix);
+            this.cameraUpdateForced();
+            updated = true;
+        }
+
+        const isShiftPressed = inputManager.isKeyDown('ShiftLeft') || inputManager.isKeyDown('ShiftRight');
+        const isSlashPressed = inputManager.isKeyDown('IntlBackslash') || inputManager.isKeyDown('Backslash');
+
+        const keyMoveMult =
+            isShiftPressed ? this.keyMoveFastMult :
+            isSlashPressed ? this.keyMoveSlowMult :
+            1;
+
+        const keyMoveSpeedCap = this.keyMoveSpeed * keyMoveMult;
+
+        const linearMoveVelocity = keyMoveSpeedCap * this.linearMoveAcceleration;
+        const linearMoveDir = this.linearMoveDir;
+
+        const keyMoveThreshold = 0.1;
+
+        if (inputManager.isKeyDown('KeyW') || inputManager.isKeyDown('ArrowUp') || (inputManager.buttons & 3) === 3) {
+            linearMoveDir[2] = clampRange(linearMoveDir[2] - linearMoveVelocity, keyMoveSpeedCap);
+        } else if (inputManager.isKeyDown('KeyS') || inputManager.isKeyDown('ArrowDown')) {
+            linearMoveDir[2] = clampRange(linearMoveDir[2] + linearMoveVelocity, keyMoveSpeedCap);
+        } else if (Math.abs(linearMoveDir[2]) >= keyMoveThreshold) {
+            linearMoveDir[2] *= this.keyMoveDrag;
+            if (Math.abs(linearMoveDir[2]) < keyMoveThreshold) { linearMoveDir[2] = 0.0; }
+        }
+
+        linearMoveDir[2] += -inputManager.getPinchDeltaDist() * linearMoveVelocity;
+
+        if (inputManager.isKeyDown('KeyA') || inputManager.isKeyDown('ArrowLeft')) {
+            linearMoveDir[0] = clampRange(linearMoveDir[0] - linearMoveVelocity, keyMoveSpeedCap);
+        } else if (inputManager.isKeyDown('KeyD') || inputManager.isKeyDown('ArrowRight')) {
+            linearMoveDir[0] = clampRange(linearMoveDir[0] + linearMoveVelocity, keyMoveSpeedCap);
+        } else if (Math.abs(linearMoveDir[0]) >= keyMoveThreshold) {
+            linearMoveDir[0] *= this.keyMoveDrag;
+            if (Math.abs(linearMoveDir[0]) < keyMoveThreshold) linearMoveDir[0] = 0.0;
+        }
+
+        linearMoveDir[0] += -inputManager.getTouchDeltaX() * linearMoveVelocity;
+
+        const swapQE = GlobalSaveManager.loadSetting<boolean>('SwapQE', false);
+        const keyDownQE = swapQE ? 'KeyE' : 'KeyQ';
+        const keyUpQE = swapQE ? 'KeyQ' : 'KeyE';
+
+        if (inputManager.isKeyDown(keyDownQE) || inputManager.isKeyDown('PageDown') || (inputManager.isKeyDown('ControlLeft') && inputManager.isKeyDown('Space')) || inputManager.isKeyDown('KeyC')) {
+            linearMoveDir[1] = clampRange(linearMoveDir[1] - linearMoveVelocity, keyMoveSpeedCap);
+        } else if (inputManager.isKeyDown(keyUpQE) || inputManager.isKeyDown('PageUp') || inputManager.isKeyDown('Space')) {
+            linearMoveDir[1] = clampRange(linearMoveDir[1] + linearMoveVelocity, keyMoveSpeedCap);
+        } else if (Math.abs(linearMoveDir[1]) >= keyMoveThreshold) {
+            linearMoveDir[1] *= this.keyMoveDrag;
+            if (Math.abs(linearMoveDir[1]) < keyMoveThreshold) linearMoveDir[1] = 0.0;
+        }
+
+        linearMoveDir[1] += inputManager.getTouchDeltaY() * linearMoveVelocity;
+
+        // Construct our basis
+        const viewRight = scratchVec3b;
+        const upAxis = scratchVec3c;
+        const viewForward = scratchVec3d;
+        getMatrixAxis(viewRight, upAxis, viewForward, camera.worldMatrix);
+
+        if (this.useWorldUp) {
+            vec3.copy(upAxis, Vec3UnitY);
+        }
+
+        // Hover Mode
+        if (this.isHoverModeAvailable){
+            if (inputManager.isKeyDownEventTriggered("KeyX")) {
+                this.isInHoverMode = !this.isInHoverMode;
+            }
+            if (this.isInHoverMode) {
+                viewForward[1] = viewRight[1] = 0;
+                vec3.normalize(viewForward, viewForward);
+                vec3.normalize(viewRight, viewRight);
+            }
+        }
+
+        const linearVelocity = camera.linearVelocity;
+        if (!vec3.exactEquals(linearMoveDir, Vec3Zero)) {
+            vec3.scale(linearVelocity, viewRight, linearMoveDir[0]);
+            vec3.scaleAndAdd(linearVelocity, linearVelocity, viewForward, linearMoveDir[2]);
+            vec3.scaleAndAdd(linearVelocity, linearVelocity, upAxis, linearMoveDir[1]);
+
+            vec3.scale(linearVelocity, linearVelocity, this.sceneMoveSpeedMult * (dt / FPS));
+
+            camera.worldMatrix[12] += linearVelocity[0];
+            camera.worldMatrix[13] += linearVelocity[1];
+            camera.worldMatrix[14] += linearVelocity[2];
+            updated = true;
+        } else {
+            vec3.copy(linearVelocity, Vec3Zero);
+        }
+
+        const invertXMult = inputManager.invertX ? -1 : 1;
+        const invertYMult = inputManager.invertY ? -1 : 1;
+        const dx = inputManager.getMouseDeltaX() * (-1 / this.mouseLookSpeed) * invertXMult;
+        const dy = inputManager.getMouseDeltaY() * (-1 / this.mouseLookSpeed) * invertYMult;
+
+        const rotateAngles = this.rotateAngles;
+        vec3.zero(rotateAngles);
+
+        // Rotation around up axis (yaw)
+        rotateAngles[0] += dx;
+
+        // Rotation around view right (pitch)
+        rotateAngles[1] += dy;
+
+        // rotateAngles[2] is rotation around view forward (roll)
+
+        const keyAngleChangeVel = isShiftPressed ? this.keyAngleChangeVelFast : this.keyAngleChangeVelSlow;
+        if (inputManager.isKeyDown('KeyJ'))
+            rotateAngles[0] += keyAngleChangeVel * invertXMult;
+        else if (inputManager.isKeyDown('KeyL'))
+            rotateAngles[0] -= keyAngleChangeVel * invertXMult;
+        if (inputManager.isKeyDown('KeyI'))
+            rotateAngles[1] += keyAngleChangeVel * invertYMult;
+        else if (inputManager.isKeyDown('KeyK'))
+            rotateAngles[1] -= keyAngleChangeVel * invertYMult;
+        if (inputManager.isKeyDown('KeyU'))
+            rotateAngles[2] -= keyAngleChangeVel;
+        else if (inputManager.isKeyDown('KeyO'))
+            rotateAngles[2] += keyAngleChangeVel;
+
+        if (!vec3.exactEquals(rotateAngles, Vec3Zero)) {
+            // Construct our rotation matrix from our angle changes.
+            mat4.rotate(scratchMat4, Mat4Identity, rotateAngles[0], upAxis);
+            mat4.rotate(scratchMat4, scratchMat4, rotateAngles[1], viewRight);
+            mat4.rotate(scratchMat4, scratchMat4, rotateAngles[2], viewForward);
+
+            // Rotate the upper 3x3 without touching translation.
+            mat33mul(camera.worldMatrix, scratchMat4, camera.worldMatrix);
+
+            updated = true;
+
+            if (Math.abs(rotateAngles[0]) < 0.0001) rotateAngles[0] = 0.0;
+            if (Math.abs(rotateAngles[1]) < 0.0001) rotateAngles[1] = 0.0;
+        }
+
+        if (updated)
+            this.isMoving = true;
+
+        let important = false;
+        if (this.isMoving && vec3.exactEquals(rotateAngles, Vec3Zero) && vec3.exactEquals(camera.linearVelocity, Vec3Zero)) {
+            important = true;
+            this.isMoving = false;
+        }
+
+        this.camera.isOrthographic = false;
+        this.camera.worldMatrixUpdated();
+
+        this.forceUpdate = false;
+
+        return important ? CameraUpdateResult.ImportantChange : updated ? CameraUpdateResult.Changed : CameraUpdateResult.Unchanged;
+    }
+}
+
+export class StudioCameraController extends FPSCameraController {
+    public isAnimationPlaying: boolean = false;
+    private interpStep: InterpolationStep = new InterpolationStep();
+    public override isHoverModeAvailable: boolean = false;
+
+    constructor(private animationManager: CameraAnimationManager, private studioPanel: StudioPanel) {
+        super();
+    }
+
+    public override update(inputManager: InputManager, dt: number): CameraUpdateResult {
+        let result;
+
+        if (this.isAnimationPlaying) {
+            result = this.updateAnimation(dt);
+            if (result === CameraUpdateResult.Changed)
+                this.camera.worldMatrixUpdated();
+            // Set result to unchanged to prevent needless savestate creation during playback.
+            result = CameraUpdateResult.Unchanged;
+        } else {
+            result = super.update(inputManager, dt);
+
+            this.studioPanel.drawWorldHelpers(this.camera.clipFromWorldMatrix);
+        }
+
+        return result;
+    }
+
+    public updateAnimation(dt: number): CameraUpdateResult {
+        if (this.animationManager.isAnimationFinished()) {
+            this.studioPanel.stopAnimation();
+            return CameraUpdateResult.Unchanged;
+        }
+
+        this.animationManager.updateElapsedTime(dt);
+        this.animationManager.getAnimFrame(this.interpStep);
+        mat4.targetTo(this.camera.worldMatrix, this.interpStep.pos, this.interpStep.lookAtPos, Vec3UnitY);
+        mat4.rotateZ(this.camera.worldMatrix, this.camera.worldMatrix, this.interpStep.bank);
+        this.studioPanel.onAnimationAdvance(this.animationManager.getElapsedTimeSeconds());
+        return CameraUpdateResult.Changed;
+    }
+
+    public setToPosition(setStep: InterpolationStep): void {
+        mat4.targetTo(this.camera.worldMatrix, setStep.pos, setStep.lookAtPos, Vec3UnitY);
+        mat4.rotateZ(this.camera.worldMatrix, this.camera.worldMatrix, setStep.bank);
+        this.camera.worldMatrixUpdated();
+    }
+}
+
+export class XRCameraController {
+    public cameras: Camera[] = [];
+
+    public offset = vec3.create();
+
+    public worldScale: number = 70; // Roughly the size of Banjo in Banjo Kazooie
+
+    public update(webXRContext: WebXRContext, xrInputManager: WebXRInputManager): boolean {
+        if (!webXRContext.xrSession)
+            return false;
+
+        const cameraMoveSpeed = this.worldScale;
+        const keyMovement = xrInputManager.getTranslationDelta();
+        vec3.scale(keyMovement, keyMovement, cameraMoveSpeed);
+
+        let updated = false;
+        if (!vec3.exactEquals(keyMovement, Vec3Zero)) {            
+            const viewMovementSpace = webXRContext.xrViewerSpace.getOffsetReferenceSpace(
+                new XRRigidTransform(
+                    new DOMPointReadOnly(keyMovement[0], 0, keyMovement[2], 1), {x:0, y:0, z:1.0, w: 1.0}));
+            const pose = webXRContext.currentFrame.getPose(viewMovementSpace, webXRContext.xrLocalSpace);
+
+            if (pose) {
+                this.offset[0] += pose.transform.position.x;
+                this.offset[1] += keyMovement[1];
+                this.offset[2] += pose.transform.position.z;
+            }
+
+            updated = true;
+        }
+
+        // Ensure the number of XR cameras matches the number of views
+        if (webXRContext.views.length !== this.cameras.length) {
+            for (let i = this.cameras.length; i < webXRContext.views.length; i++)
+                this.cameras.push(new Camera());
+            this.cameras.length = webXRContext.views.length;
+        }
+
+        assert(this.cameras.length === webXRContext.views.length);
+        for (let i = 0; i < this.cameras.length; i++) {
+            const camera = this.cameras[i];
+            const xrView = webXRContext.views[i];
+
+            const cameraWorldMatrix = scratchMat4;
+            mat4.copy(cameraWorldMatrix, xrView.transform.matrix);
+            const cameraWorldMatrixTranslation = scratchVec3c;
+            mat4.getTranslation(cameraWorldMatrixTranslation, cameraWorldMatrix);
+            const originalViewTranslation = scratchVec3d;
+            mat4.getTranslation(originalViewTranslation, cameraWorldMatrix);
+
+            // Scale up view position and add offset
+            const cameraScale = scratchVec3e;
+            const cameraOrientation = scratchQuat;
+            mat4.getScaling(cameraScale, cameraWorldMatrix);
+            mat4.getRotation(cameraOrientation, cameraWorldMatrix);
+
+            const cameraAdditionalOffset = scratchVec3f;
+            vec3.copy(cameraAdditionalOffset, this.offset);
+            vec3.sub(cameraAdditionalOffset, cameraAdditionalOffset, originalViewTranslation);
+            vec3.scaleAndAdd(cameraWorldMatrixTranslation, cameraAdditionalOffset, cameraWorldMatrixTranslation, this.worldScale);
+
+            mat4.fromRotationTranslationScale(cameraWorldMatrix, cameraOrientation, cameraWorldMatrixTranslation, cameraScale);
+            mat4.copy(camera.worldMatrix, cameraWorldMatrix);
+
+            camera.isOrthographic = false;
+
+            // Unpack the projection matrix to get required parameters for setting clip / frustrum etc...
+            const cameraProjectionMatrix = xrView.projectionMatrix;
+            mat4.copy(camera.projectionMatrix, cameraProjectionMatrix);
+            const fov = 2.0*Math.atan(1.0/cameraProjectionMatrix[5]);
+            const aspect = cameraProjectionMatrix[5] / cameraProjectionMatrix[0];
+
+            // WebXR doesn't automatically support EXT_clip_control when used with OpenGL. Convert for us.
+            // https://github.com/immersive-web/webxr/issues/1442
+            const vendorInfo = webXRContext.device.queryVendorInfo();
+            if (vendorInfo.platform === GfxPlatform.WebGL2 && vendorInfo.clipSpaceNearZ === GfxClipSpaceNearZ.Zero)
+                projectionMatrixConvertClipSpaceNearZ(camera.projectionMatrix, vendorInfo.clipSpaceNearZ, GfxClipSpaceNearZ.NegativeOne);
+
+            // Extract camera properties
+            // TODO(jstpierre): Just trust the original projection matrix
+            camera.fovY = fov;
+            camera.aspect = aspect;
+            camera.worldMatrixUpdated();
+
+            updated = true;
+        }
+
+        return updated;
+    }
+}
+
+export class OrbitCameraController implements CameraController {
+    public camera: Camera;
+    public forceUpdate: boolean = false;
+    public onkeymovespeed: () => void = () => {};
+
+    public x: number = -Math.PI / 2;
+    public y: number = 2;
+    public z: number = -150;
+    public zTarget: number = -150;
+    public orbitSpeed: number = -0.05;
+    public orbitXVel: number = 0;
+    public xVel: number = 0;
+    public yVel: number = 0;
+
+    public translation = vec3.create();
+    public txVel: number = 0;
+    public tyVel: number = 0;
+
+    public sceneMoveSpeedMult = 1;
+
+    constructor(public shouldOrbit: boolean = false) {
+    }
+
+    public cameraUpdateForced(): void {
+    }
+
+    public deserialize(state: string): void {
+    }
+
+    public setSceneMoveSpeedMult(v: number): void {
+        this.sceneMoveSpeedMult = v;
+    }
+
+    public setKeyMoveSpeed(speed: number): void {
+    }
+
+    public getKeyMoveSpeed(): number | null {
+        return null;
+    }
+
+    public update(inputManager: InputManager, dt: number, sceneTimeScale: number): CameraUpdateResult {
+        if (inputManager.isKeyDownEventTriggered('KeyR')) {
+            this.shouldOrbit = !this.shouldOrbit;
+        }
+
+        if (inputManager.isKeyDownEventTriggered('Numpad5')) {
+            this.shouldOrbit = false;
+            this.xVel = this.yVel = 0;
+        }
+
+        if (inputManager.isKeyDownEventTriggered('KeyB')) {
+            this.shouldOrbit = false;
+            this.xVel = this.yVel = 0;
+            this.txVel = this.tyVel = 0;
+            this.xVel = this.yVel = 0;
+            vec3.zero(this.translation);
+        }
+
+        const shouldOrbit = this.shouldOrbit;
+
+        const invertXMult = inputManager.invertX ? -1 : 1;
+        const invertYMult = inputManager.invertY ? -1 : 1;
+
+        // Get new velocities from inputs.
+        if (!!(inputManager.buttons & 4)) {
+            this.txVel += inputManager.dx * (-10 - Math.min(this.z, 0.01)) / -5000;
+            this.tyVel += inputManager.dy * (-10 - Math.min(this.z, 0.01)) /  5000;
+        } else if (inputManager.isDragging()) {
+            this.xVel += inputManager.dx / -200 * invertXMult;
+            this.yVel += inputManager.dy / -200 * invertYMult;
+        } else if (shouldOrbit) {
+            if (Math.abs(this.xVel) < Math.abs(this.orbitSpeed))
+                this.orbitXVel += (this.orbitSpeed * 1/50);
+        }
+        let keyVelX = 0, keyVelY = 0;
+        if (inputManager.isKeyDown('KeyA'))
+            keyVelX += 0.02;
+        if (inputManager.isKeyDown('KeyD'))
+            keyVelX -= 0.02;
+        if (inputManager.isKeyDown('KeyW'))
+            keyVelY += 0.02;
+        if (inputManager.isKeyDown('KeyS'))
+            keyVelY -= 0.02;
+        const isShiftPressed = inputManager.isKeyDown('ShiftLeft') || inputManager.isKeyDown('ShiftRight');
+
+        if (isShiftPressed) {
+            this.xVel += -keyVelX;
+            this.yVel += -keyVelY;
+        } else {
+            this.txVel += keyVelX;
+            this.tyVel += -keyVelY;
+        }
+
+        this.orbitXVel = clampRange(this.orbitXVel, 2);
+        this.xVel = clampRange(this.xVel, 2);
+        this.yVel = clampRange(this.yVel, 2);
+
+        let zTargetAdjAmt = inputManager.dz * 80.0;
+        if (inputManager.isKeyDown('KeyQ'))
+            zTargetAdjAmt -= 80.0;
+        if (inputManager.isKeyDown('KeyE'))
+            zTargetAdjAmt += 80.0;
+        this.zTarget += zTargetAdjAmt * this.sceneMoveSpeedMult;
+        if (this.zTarget > -10)
+            this.zTarget = -10;
+        let zTargetDelta = this.zTarget - this.z;
+
+        const updated = this.forceUpdate || this.xVel !== 0 || this.orbitXVel !== 0 || this.yVel !== 0 || zTargetDelta !== 0 || this.txVel !== 0 || this.tyVel !== 0;
+        if (updated) {
+            // Apply velocities.
+            const drag = (inputManager.isDragging() || isShiftPressed) ? 0.86 : 0.94;
+
+            this.x += -(this.xVel + (this.orbitXVel * sceneTimeScale)) / 10;
+            this.xVel *= drag;
+            this.orbitXVel *= drag;
+
+            this.y += -this.yVel / 10;
+            this.yVel *= drag;
+
+            this.txVel *= drag;
+            this.tyVel *= drag;
+
+            const kSpringZ = 0.1;
+            this.z += zTargetDelta * kSpringZ;
+
+            getMatrixAxisX(scratchVec3a, this.camera.worldMatrix);
+            vec3.scaleAndAdd(this.translation, this.translation, scratchVec3a, this.txVel);
+
+            getMatrixAxisY(scratchVec3a, this.camera.worldMatrix);
+            vec3.scaleAndAdd(this.translation, this.translation, scratchVec3a, this.tyVel);
+
+            const eyePos = scratchVec3a;
+            calcUnitSphericalCoordinates(eyePos, this.x, this.y);
+            vec3.scale(eyePos, eyePos, this.z);
+            vec3.add(eyePos, eyePos, this.translation);
+            this.camera.isOrthographic = false;
+            mat4.targetTo(this.camera.worldMatrix, eyePos, this.translation, Vec3UnitY);
+            this.camera.worldMatrixUpdated();
+            this.forceUpdate = false;
+        }
+
+        // Don't bother updating the Orbit camera since we don't read it from URL.
+        return CameraUpdateResult.Unchanged;
+    }
+}
+
+function snapToMultIncr(n: number, incr: number): number {
+    return Math.floor(n / incr) * incr + incr;
+}
+
+export class OrthoCameraController implements CameraController {
+    public camera: Camera;
+    public forceUpdate: boolean = false;
+    public onkeymovespeed: () => void = () => {};
+
+    public x: number = -Math.PI / 2;
+    public y: number = 2;
+    public z: number = -200;
+    public zTarget: number = -200;
+    public orbitSpeed: number = -0.05;
+    public xTarget: number = this.x;
+    public yTarget: number = this.y;
+
+    public translation = vec3.create();
+    public txVel: number = 0;
+    public tyVel: number = 0;
+    public shouldOrbit: boolean = false;
+    private farPlane = 500000;
+    private nearPlane = -this.farPlane;
+
+    private sceneMoveSpeedMult = 1;
+
+    constructor() {
+    }
+
+    public setSceneMoveSpeedMult(v: number): void {
+        this.sceneMoveSpeedMult = v;
+    }
+
+    public cameraUpdateForced(): void {
+    }
+
+    public deserialize(state: string): void {
+    }
+
+    public setKeyMoveSpeed(speed: number): void {
+    }
+
+    public getKeyMoveSpeed(): number | null {
+        return null;
+    }
+
+    public update(inputManager: InputManager, dt: number): CameraUpdateResult {
+        if (inputManager.isKeyDownEventTriggered('KeyR')) {
+            this.shouldOrbit = !this.shouldOrbit;
+        }
+
+        if (inputManager.isKeyDownEventTriggered('Numpad5')) {
+            this.shouldOrbit = false;
+        }
+
+        if (inputManager.isKeyDownEventTriggered('Numpad8')) {
+            // Top view.
+            this.xTarget = -Math.PI * 0.5;
+            this.yTarget = Math.PI - 0.001;
+        }
+
+        if (inputManager.isKeyDownEventTriggered('Numpad4')) {
+            // Left view.
+            this.xTarget = 0;
+            this.yTarget = Math.PI * 0.5;
+        }
+
+        if (inputManager.isKeyDownEventTriggered('Numpad6')) {
+            // Right view.
+            this.xTarget = Math.PI;
+            this.yTarget = Math.PI * 0.5;
+        }
+
+        if (inputManager.isKeyDownEventTriggered('Numpad2')) {
+            // Front view.
+            this.xTarget = -Math.PI * 0.5;
+            this.yTarget = Math.PI * 0.5;
+        }
+
+        if (inputManager.isKeyDownEventTriggered('KeyB')) {
+            this.txVel = this.tyVel = 0;
+            vec3.zero(this.translation);
+        }
+
+        const shouldOrbit = this.shouldOrbit;
+
+        const invertXMult = inputManager.invertX ? -1 : 1;
+        const invertYMult = inputManager.invertY ? -1 : 1;
+
+        // Get new velocities from inputs.
+        if (!!(inputManager.buttons & 4)) {
+            this.txVel += inputManager.dx * (-10 - Math.min(-this.z, 0.01)) / -5000;
+            this.tyVel += inputManager.dy * (-10 - Math.min(-this.z, 0.01)) /  5000;
+        } else if (inputManager.isDragging()) {
+            this.xTarget += inputManager.dx / 200 * invertXMult;
+            this.yTarget += inputManager.dy / 200 * invertYMult;
+        } else if (shouldOrbit) {
+            this.xTarget += this.orbitSpeed * 1/25;
+        }
+
+        let zTargetAdjAmt = inputManager.dz * 80.0;
+        if (inputManager.isKeyDown('KeyQ'))
+            zTargetAdjAmt -= 80.0;
+        if (inputManager.isKeyDown('KeyE'))
+            zTargetAdjAmt += 80.0;
+        this.zTarget += zTargetAdjAmt;
+        if (this.zTarget > -10)
+            this.zTarget = -10;
+        let zTargetDelta = this.zTarget - this.z;
+
+        const isShiftPressed = inputManager.isKeyDown('ShiftLeft') || inputManager.isKeyDown('ShiftRight');
+        if (!isShiftPressed) {
+            if (inputManager.isKeyDown('KeyA'))
+                this.txVel += 0.02;
+            if (inputManager.isKeyDown('KeyD'))
+                this.txVel -= 0.02;
+            if (inputManager.isKeyDown('KeyW'))
+                this.tyVel -= 0.02;
+            if (inputManager.isKeyDown('KeyS'))
+                this.tyVel += 0.02;
+        } else {
+            if (inputManager.isKeyDownEventTriggered('KeyA'))
+                this.xTarget = snapToMultIncr(this.xTarget, +Math.PI / 4);
+            if (inputManager.isKeyDownEventTriggered('KeyD'))
+                this.xTarget = snapToMultIncr(this.xTarget, -Math.PI / 4);
+            if (inputManager.isKeyDownEventTriggered('KeyW')) {
+                this.yTarget = snapToMultIncr(this.yTarget, +Math.PI / 8);
+                if (this.yTarget === Math.PI)
+                    this.yTarget -= 0.001;
+            }
+            if (inputManager.isKeyDownEventTriggered('KeyS')) {
+                this.yTarget = snapToMultIncr(this.yTarget - 0.001, -Math.PI / 8);
+                if (this.yTarget === Math.PI)
+                    this.yTarget += 0.001;
+            }
+        }
+
+        this.xTarget = this.xTarget % MathConstants.TAU;
+        this.yTarget = this.yTarget % MathConstants.TAU;
+
+        const updated = this.forceUpdate || this.xTarget !== this.x || this.yTarget !== this.y || zTargetDelta !== 0 || this.txVel !== 0 || this.tyVel !== 0;
+        if (updated) {
+            this.x = lerpAngle(this.x, this.xTarget, 0.1);
+            this.y = lerpAngle(this.y, this.yTarget, 0.1);
+
+            const drag = (inputManager.isDragging() || isShiftPressed) ? 0.92 : 0.96;
+
+            this.txVel *= drag;
+            this.tyVel *= drag;
+
+            const kSpringZ = 0.1;
+            this.z += zTargetDelta * kSpringZ;
+
+            getMatrixAxisX(scratchVec3a, this.camera.worldMatrix);
+            vec3.scaleAndAdd(this.translation, this.translation, scratchVec3a, this.txVel * this.z * this.sceneMoveSpeedMult);
+
+            getMatrixAxisY(scratchVec3a, this.camera.worldMatrix);
+            vec3.scaleAndAdd(this.translation, this.translation, scratchVec3a, this.tyVel * this.z * this.sceneMoveSpeedMult);
+
+            this.forceUpdate = false;
+        }
+
+        const eyePos = scratchVec3a;
+
+        calcUnitSphericalCoordinates(eyePos, this.x, this.y);
+        vec3.scale(eyePos, eyePos, -this.farPlane / 2);
+        vec3.add(eyePos, eyePos, this.translation);
+        mat4.targetTo(this.camera.worldMatrix, eyePos, this.translation, Vec3UnitY);
+        this.camera.setOrthographic(-this.z * 10 * this.sceneMoveSpeedMult, this.camera.aspect, this.nearPlane, this.farPlane);
+        this.camera.worldMatrixUpdated();
+
+        return updated ? CameraUpdateResult.Changed : CameraUpdateResult.Unchanged;
+    }
+}
+
+function texProjCamera(dst: mat4, clipFromViewMatrix: ReadonlyMat4, scaleS: number, scaleT: number, transS: number, transT: number): void {
+    const projMtx = clipFromViewMatrix;
+
+    // Avoid multiplications where we know the result will be 0.
+    dst[0]  = projMtx[0]  * scaleS;
+    dst[4]  = 0.0;
+    dst[8]  = projMtx[8]  * scaleS + projMtx[11] * transS;
+    dst[12] = projMtx[12] * scaleS + projMtx[15] * transS;
+
+    dst[1]  = 0.0;
+    dst[5]  = projMtx[5]  * scaleT;
+    dst[9]  = projMtx[9]  * scaleT + projMtx[11] * transT;
+    dst[13] = projMtx[12] * scaleT + projMtx[15] * transT;
+
+    // Move from third column.
+    dst[2]  = 0.0;
+    dst[6]  = 0.0;
+    dst[10] = projMtx[11];
+    dst[14] = projMtx[15];
+
+    // Fill with junk to try and signal when something has gone horribly wrong. This should go unused,
+    // since this is supposed to generate a mat4x3 matrix.
+    dst[3]  = 9999.0;
+    dst[7]  = 9999.0;
+    dst[11] = 9999.0;
+    dst[15] = 9999.0;
+}
+
+export function texProjCameraSceneTex(dst: mat4, clipFromViewMatrix: ReadonlyMat4, flipYScale: number): void {
+    // Map from -1 to 1 to 0 to 1.
+    let scaleS = 0.5, scaleT = -0.5 * flipYScale, transS = 0.5, transT = 0.5;
+    texProjCamera(dst, clipFromViewMatrix, scaleS, scaleT, transS, transT);
+}

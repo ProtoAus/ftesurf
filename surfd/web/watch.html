@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Watch a run · World of Surf</title>
+<!-- The 3D run viewer (Patch 825). watch.js is built from src/viewer/ by
+     `npm run build` there; the run comes from api/run/<rid> and its /track. -->
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="board.css">
+<link rel="stylesheet" href="watch.css">
+<script src="watch.js" defer></script>
+</head>
+<body class="wpage">
+<header class="nav">
+  <div class="nav-in">
+    <a class="brand" href="../"><span>WORLD OF</span><b>SURF</b></a>
+    <nav class="links">
+      <a id="wback" href="./">Back to the run</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wwrap">
+  <div class="whead">
+    <h1 id="wtitle">Watch a run</h1>
+    <div id="wtime" class="wtime"></div>
+  </div>
+
+  <div id="wstage" class="wstage">
+    <canvas id="wgl" class="wgl"></canvas>
+    <canvas id="woverlay" class="woverlay"></canvas>
+    <div class="hud">
+      <div class="hud-top"><span id="hstage" class="hstage"></span><span id="htime" class="htime">0:00.000</span></div>
+      <div class="hud-speed"><b id="hspeed">0</b><span>u/s</span><span id="hvz" class="hvz"></span></div>
+      <div class="hud-keys" aria-label="keys held">
+        <span id="kw" class="key k-w">W</span>
+        <span id="ka" class="key k-a">A</span><span id="ks" class="key k-s">S</span><span id="kd" class="key k-d">D</span>
+        <span id="kj" class="key k-j">JUMP</span><span id="kc" class="key k-c">DUCK</span>
+        <span id="kg" class="key k-g">GROUND</span>
+      </div>
+    </div>
+    <div id="wstatus" class="wstatus busy">Loading…</div>
+  </div>
+
+  <div class="wbar">
+    <button id="wplay" class="wbtn wplay" type="button" aria-pressed="false">Play</button>
+    <div class="wseekbox">
+      <input id="wseek" class="wseek" type="range" min="0" max="1" step="0.001" value="0" aria-label="run time">
+      <div id="wticks" class="wticks" aria-hidden="true"></div>
+    </div>
+    <span id="wclock" class="wclock">0:00.000 / 0:00.000</span>
+  </div>
+  <div class="wbar wbar2">
+    <div class="wgroup" role="group" aria-label="camera">
+      <button class="wbtn" type="button" data-cam="eye" aria-pressed="true" title="1">First person</button>
+      <button class="wbtn" type="button" data-cam="chase" aria-pressed="false" title="2">Chase</button>
+      <button class="wbtn" type="button" data-cam="top" aria-pressed="false" title="3">Overhead</button>
+      <button class="wbtn" type="button" data-cam="free" aria-pressed="false" title="4: drag to look, WASD to fly">Free</button>
+    </div>
+    <label class="wopt">Speed
+      <select id="wspeed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+    </label>
+    <label class="wopt">FOV
+      <select id="wfov"><option value="90">90</option><option value="100">100</option><option value="106" selected>106</option><option value="120">120</option></select>
+    </label>
+    <label class="wopt"><input id="wpath" type="checkbox" checked> Run line</label>
+    <button id="wfull" class="wbtn" type="button">Full screen</button>
+  </div>
+
+  <div class="wcols">
+    <section class="wcard">
+      <h2>The run</h2>
+      <dl id="winfo" class="wdl"></dl>
+      <div id="wsplitbox" hidden>
+        <h3>Splits</h3>
+        <table class="wsplits"><tbody id="wsplits"></tbody></table>
+      </div>
+    </section>
+    <section id="wfiles" class="wcard wfiles">
+      <h2>Map textures</h2>
+      <p>Maps come with their own textures, but most also use some from Counter-Strike: Source and Half-Life 2, which can't be served here. Pick your Steam <code>steamapps/common</code> folder (or a game's folder) and those are read from your disk. Nothing is uploaded.</p>
+      <button id="wpick" class="wbtn" type="button">Choose a game folder…</button>
+      <input id="wdir" type="file" webkitdirectory hidden>
+      <ul id="wmounts" class="wmounts"></ul>
+      <p class="dim">Or watch a recording from your own disk: <input id="wrecfile" type="file" accept=".rec"></p>
+      <p class="dim small">Keys: Space play/pause · ←/→ 5 s (Shift: 1 s) · , and . speed · 1–4 cameras. 3D map rendering is noclip.website's Source renderer (MIT).</p>
+    </section>
+  </div>
+</main>
+</body>
+</html>

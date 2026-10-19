@@ -41,6 +41,7 @@ import zonefit          # bounded BSP entity/model reader for legacy timers
 import ksftopup         # bounded, board-scoped requests; no network in HTTP
 import ksfprofile       # resolved profile demand, paced by the same importer
 import recplot          # .rec -> plot data; stdlib only, never raises
+import rectrack         # .rec -> the 3D viewer's filtered copy (Patch 825)
 import steam            # the only module that asks Steam anything
 
 # --------------------------------------------------------------------------
@@ -4283,7 +4284,9 @@ def replay(rid):
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 WEB_FILES = {"board.js": "text/javascript", "board.css": "text/css",
-             "runview.js": "text/javascript", "link.css": "text/css"}
+             "runview.js": "text/javascript", "link.css": "text/css",
+             "watch.html": "text/html", "watch.js": "text/javascript",
+             "watch.css": "text/css"}
 WEB_RATE_MAX = 120       # API reads per RATE_WINDOW per source, bucket "web"
 # One 960px JPEG per map, built by tools/mapshots_web.py from the 1280x720
 # `medium` in gfx/mapshots and named for the MAP, not for Momentum's uuid --
@@ -4564,6 +4567,14 @@ WEB_PAGE = 50            # rows per /board/api/map call
 WEB_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; "
            "font-src 'self'; connect-src 'self'; img-src 'self'; "
            "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+# The 3D viewer's page (Patch 825) also fetches the map's BSP the way the game
+# does: play.proto.bar/maps/<map>.bsp, which answers with a presigned redirect
+# into R2 (tools/r2gateway.md). CSP checks every hop, so both hosts are named.
+# Each hop also needs CORS from its own server; until it has it, the page reads
+# the BSP from the viewer's own game folder instead.
+WEB_CSP_WATCH = WEB_CSP.replace(
+    "connect-src 'self'",
+    "connect-src 'self' https://play.proto.bar https://*.r2.cloudflarestorage.com")
 # The web board is ranked only, like the in-game board since Patch 355: a
 # community (demoted) run is never counted or listed here.  A map opens on the
 # first of these with rows, else the first board it has.
@@ -5671,20 +5682,17 @@ def web_player(handle):
                   "limit": limit, "rows": out}, "max-age=30")
 
 
-@app.get("/board/api/run/<int:rid>")
-def web_run(rid):
-    """One recording as plot data: the moving dot, the speed trace and the
-    marks, from recplot -- the same parser the admin run page reads.
+def _web_run_file(rid, now, bucket):
+    """The public run routes' gate: ``(row, path, None)`` or ``(.., .., response)``.
 
     WHAT MAKES THIS SAFE TO EXPOSE is that the caller names a `replays` row and
     surfd decides which file that is (see /api/replay's own note), the kind and
-    tier are checked against allowlists, and only WEB_HEAD_KEYS of the header
-    is serialised.  A rejected run is a 404 here because it is absent from the
-    board: a path nobody can find a row for should not be reachable by id.
+    tier are checked against allowlists, and the callers serialise only what
+    their own allowlists name.  A rejected run is a 404 here because it is absent
+    from the board: a path nobody can find a row for should not be reachable by id.
     """
-    now = int(time.time())
-    if not rate_ok(rate_key(), now, WEB_RUN_MAX, "webrun"):
-        return fail(429, "rate limited")
+    if not rate_ok(rate_key(), now, WEB_RUN_MAX, bucket):
+        return None, None, fail(429, "rate limited")
     try:
         db = get_db()
         row = db.execute(
@@ -5694,19 +5702,31 @@ def web_run(rid):
             + " AS rejected FROM replays p WHERE p.id=?", (rid,)).fetchone()
     except sqlite3.Error as exc:
         log.exception("web run db error: %s", exc)
-        return fail(500, "storage error")
+        return None, None, fail(500, "storage error")
     if row is None:
-        return fail(404, "no such run")
+        return None, None, fail(404, "no such run")
     if (row["kind"] not in WEB_RUN_KINDS or row["tier"] not in WEB_RUN_TIERS
             or row["rejected"]):
-        return fail(404, "no such run")
+        return None, None, fail(404, "no such run")
 
     path, why = replay_file(row)
     if path is None:
         if why != "missing":
             log.error("web run %d refused (%s): %r/%r", rid, why,
                       row["map_dir"], row["leaf"])
-        return fail(404, "no recording on this node")
+        return None, None, fail(404, "no recording on this node")
+    return row, path, None
+
+
+@app.get("/board/api/run/<int:rid>")
+def web_run(rid):
+    """One recording as plot data: the moving dot, the speed trace and the
+    marks, from recplot -- the same parser the admin run page reads.  Only
+    WEB_HEAD_KEYS of the header is serialised (_web_run_file is the gate)."""
+    now = int(time.time())
+    row, path, refused = _web_run_file(rid, now, "webrun")
+    if refused is not None:
+        return refused
     plot = recplot.parse(path)
     if not plot.get("ok"):
         log.warning("web run %d unplottable: %s", rid, plot.get("error"))
@@ -5730,10 +5750,30 @@ def web_run(rid):
     }, "max-age=300")
 
 
+@app.get("/board/api/run/<int:rid>/track")
+def web_run_track(rid):
+    """One recording at full rate for the 3D viewer (watch.html, Patch 825):
+    rectrack's filtered FTESURF-REC text -- WEB_HEAD_KEYS of the header, eye
+    heights, the 11 sample columns, the timer and snap records -- behind the
+    same gate as the run page.  Its own rate bucket, so watching a run does not
+    spend the run page's."""
+    now = int(time.time())
+    _row, path, refused = _web_run_file(rid, now, "webtrack")
+    if refused is not None:
+        return refused
+    out = rectrack.track(path, WEB_HEAD_KEYS)
+    if not out.get("ok"):
+        log.warning("web run %d untrackable: %s", rid, out.get("error"))
+        return fail(422, "the recording could not be read")
+    return _json({"v": 1, "rid": rid, "rec": out["rec"], "samples": out["samples"],
+                  "thin": out["thin"], "truncated": out["truncated"]}, "max-age=300")
+
+
 @app.after_request
 def web_headers(resp):
     if request.path.startswith("/board/"):
-        resp.headers["Content-Security-Policy"] = WEB_CSP
+        resp.headers["Content-Security-Policy"] = (
+            WEB_CSP_WATCH if request.path == "/board/watch.html" else WEB_CSP)
         resp.headers["X-Content-Type-Options"] = "nosniff"
         resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         resp.headers.setdefault("Cache-Control", "no-cache")

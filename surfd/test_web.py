@@ -154,6 +154,52 @@ end 3 1 0 0 0
 """
 
 
+# The 3D viewer's fixture (6b2): the route must keep the timer, snap and ride
+# records and the 11 sample columns, and drop the rest.
+TRACK_REC = """FTESURF-REC 9
+map bhop_eazy
+track 0
+startseg 0
+leg 0
+tickrate 0.01
+movetickrate 0.01
+clock counted
+owner P1
+runid 20270115-000000-1
+mapcrc 11223344
+zonesrc online
+zonecrc 99887766
+zonerule strict
+instart 1 1
+startjit 0
+nonce deadbeefdeadbeefdeadbeefdeadbeef
+pmpin trisoup=1 viewheight=62 duckviewheight=45 gravity=800
+flags 0
+begin
+seed 1 2 3 4 5 6 0 surfacefriction=1
+zseed 0 0
+0.0000 100.00 200.00 300.00 250.00 0.00 0.00 1.5 90.0 1 0 0 0 0 0 0 1
+in 1 1 0.0100 1.2500 90.0000 0 450 0 0 0
+mc 1 3 -2
+0.0150 103.75 200.00 300.00 300.00 40.00 0.00 1.5 90.0 1 1 450 0 0 0 0 1
+warp 2 2 1 tele 500 600 700 0 0 0 0
+pm 2 abc
+pe 2 123456
+0.0300 500.00 600.00 700.00 0.00 0.00 0.00 0 0 1 0 0 0 0 0 0 1
+ride 3 3 arm 0 0 250
+board 0.03 1 0 0 1 300 0 0
+stagestart 1 3
+portal 4 4 1 10 10 10 0 0 0
+0.0450 10.00 10.00 10.00 0.00 0.00 0.00 0 0 1 0 0 0 0 0 0 1
+stagepost 1 3 250
+stage 1 4
+0.0600 10.00 10.00 10.00 0.00 0.00 0.00 0 0 1 0 0 0 0 0 0 1
+inend 6 0
+end 6 5 0 0 1 1 1 1 1 1 0
+split 1 4
+"""
+
+
 def write_rec(m, kind, mapname, track, leg, name, momdemo=None):
     root = m.RUNS_DIR if kind == "run" else m.MOMENTUM_DIR
     d = os.path.join(root, mapname, m.leg_dir(track, leg))
@@ -213,15 +259,23 @@ def unplottable(m, kind):
 
 
 def evidence_row(m):
+    """An evidence row WITH its file under KEEP_DIR, so a 404 for it is the kind
+    gate's. Until Patch 825 its leaf was 'ev_0001.rec', which fails _EVLEAF_OK,
+    so the public routes refused it for its name and never reached the gate."""
+    lf = "20270115-000000-1.rec"
     conn = sqlite3.connect(m._test_db)
     cur = conn.execute(
         "INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style,"
         " player, name, ticks, tickrate, millis, flags, node, submitted, kind)"
-        " VALUES ('bhop_eazy','bhop_eazy',0,0,'ev_0001.rec','ranked','clean',"
-        " 'p1','P1',3000,100.0,30000,0,'p27510',1800000000,'evidence')")
+        " VALUES ('bhop_eazy','bhop_eazy',0,0,?,'ranked','clean',"
+        " 'p1','P1',3000,100.0,30000,0,'p27510',1800000000,'evidence')", (lf,))
     rid = cur.lastrowid
     conn.commit()
     conn.close()
+    d = os.path.join(m.KEEP_DIR, "bhop_eazy")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, lf), "w") as fh:
+        fh.write(REC_BODY % {"map": "bhop_eazy", "track": 0, "leg": 0, "extra": ""})
     return rid
 
 
@@ -1148,8 +1202,11 @@ def main():
     check("an unknown run is 404", get(m, "/board/api/run/99999").status_code, 404)
     check("a run whose file is gone is 404",
           get(m, "/board/api/run/%d" % unplottable(m, "run")).status_code, 404)
+    ev = evidence_row(m)
+    check("control: the evidence row's file resolves (/api/replay has no kind gate)",
+          get(m, "/api/replay/%d" % ev).status_code, 200)
     check("an EVIDENCE row is never public",
-          get(m, "/board/api/run/%d" % evidence_row(m)).status_code, 404)
+          get(m, "/board/api/run/%d" % ev).status_code, 404)
     check("a community run's path is never public",
           get(m, "/board/api/run/%d" % community_row(m)).status_code, 404)
     add_review(m, rid, "reject")
@@ -1169,6 +1226,88 @@ def main():
           (codes.count(200), codes[-1]), (m.WEB_RUN_MAX, 429))
     check("...which does not close the board",
           get(m, "/board/api/maps", ip="198.51.100.9").status_code, 200)
+
+    # ---- the 3D viewer (Patch 825) ------------------------------------------
+    print("\n--- 6b2. the 3D viewer's track --")
+    m = fresh()
+    submit(m, "bhop_eazy", "p1", 3000)
+    rid = body(get(m, "/board/api/map?map=bhop_eazy"))["rows"][0]["rep"]
+    path = write_rec(m, "run", "bhop_eazy", 0, 0, leaf(3000, "p1"))
+    # Every record the route must drop, and the ones it must keep, in one file.
+    with open(path, "w") as fh:
+        fh.write(TRACK_REC)
+    r = get(m, "/board/api/run/%d/track" % rid)
+    check("a run has a track", r.status_code, 200)
+    t = body(r)
+    lines = t["rec"].split("\n")
+    head = lines[:lines.index("begin")]
+    tail = [x for x in lines[lines.index("begin") + 1:] if x]
+    check("the track is an FTESURF-REC file of the recording's version", head[0], "FTESURF-REC 9")
+    check("its header is WEB_HEAD_KEYS the file states, plus the eye heights",
+          sorted(x.split()[0] for x in head[1:]),
+          sorted(["map", "track", "leg", "startseg", "tickrate", "movetickrate",
+                  "clock", "flags", "eye"]))
+    check("...the eye heights read out of pmpin", "eye 62 45" in head, True)
+    leaked = [k for k in ("mapcrc", "zonecrc", "zonerule", "nonce", "pmpin", "zonesrc",
+                          "instart", "startjit", "owner", "runid", "viewheight",
+                          "trisoup", "deadbeef") if k in r.get_data(as_text=True)]
+    check("no integrity key or pmpin field reaches the browser", leaked, [])
+    kinds = sorted({x.split()[0] for x in tail if not (x[0] == "-" or x[0].isdigit())})
+    check("the body keeps only the records the viewer acts on", kinds,
+          ["end", "ride", "split", "stage", "stagestart", "warp"])
+    check("...and every sample is the 11 columns it reads",
+          sorted({len(x.split()) for x in tail if x[0] == "-" or x[0].isdigit()}), [11])
+    check("...with the samples all there", t["samples"], 5)
+    check("a v9 warp is its kind alone", [x for x in tail if x.startswith("warp")],
+          ["warp 0 0 tele", "warp 0 0 portal"])
+    check("control: the file really had what was dropped",
+          all(k in TRACK_REC for k in ("\nin ", "\nmc ", "\npm ", "\npe ", "\nseed ",
+                                      "\nzseed ", "\nboard ", "\nstagepost ")), True)
+    ev = evidence_row(m)
+    check("control: the evidence row's file is there to be served",
+          get(m, "/api/replay/%d" % ev).status_code, 200)
+    for name, row in (("an unknown run", 99999), ("a run whose file is gone", unplottable(m, "run")),
+                      ("an EVIDENCE row", ev), ("a community run", community_row(m))):
+        check("%s has no track" % name,
+              get(m, "/board/api/run/%d/track" % row).status_code, 404)
+    add_review(m, rid, "reject")
+    check("a rejected run's track goes with its board row",
+          get(m, "/board/api/run/%d/track" % rid).status_code, 404)
+    add_review(m, rid, "approve")
+    check("control: approved back, it has a track again",
+          get(m, "/board/api/run/%d/track" % rid).status_code, 200)
+    codes = [get(m, "/board/api/run/%d/track" % rid, ip="198.51.100.10").status_code
+             for _ in range(m.WEB_RUN_MAX + 1)]
+    check("the track has its own bucket",
+          (codes.count(200), codes[-1]), (m.WEB_RUN_MAX, 429))
+    check("...which does not spend the run page's",
+          get(m, "/board/api/run/%d" % rid, ip="198.51.100.10").status_code, 200)
+
+    for name, mime in (("watch.html", "text/html"), ("watch.js", "text/javascript"),
+                       ("watch.css", "text/css")):
+        r = get(m, "/board/" + name)
+        check("/board/%s is 200 %s" % (name, mime), (r.status_code, r.mimetype), (200, mime))
+    check("the viewer page may fetch the map host and R2, and nothing else new",
+          get(m, "/board/watch.html").headers.get("Content-Security-Policy"),
+          m.WEB_CSP.replace("connect-src 'self'", "connect-src 'self' https://play.proto.bar"
+                            " https://*.r2.cloudflarestorage.com"))
+    check("...and every other board path keeps the board's",
+          [get(m, "/board/" + x).headers.get("Content-Security-Policy") == m.WEB_CSP
+           for x in ("", "watch.js", "api/run/%d/track" % rid)], [True, True, True])
+    page = open(os.path.join(HERE, "web", "watch.html"), encoding="utf-8").read()
+    src = ""
+    vdir = os.path.join(HERE, "..", "src", "viewer", "src")
+    for f in sorted(os.listdir(vdir)):
+        src += open(os.path.join(vdir, f), encoding="utf-8").read()
+    want = set(re.findall(r"\$(?:<\w+>)?\('([^']+)'\)", src))
+    check("every id the viewer reaches for is in watch.html",
+          sorted(want - set(re.findall(r'id="([^"]+)"', page))), [])
+    check("control: the viewer names ids", len(want) > 20, True)
+    check("the viewer's own source assigns no markup",
+          [k for k in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write")
+           if k in src], [])
+    check("no absolute board/site URL in watch.html",
+          [x.group(0) for x in absolute.finditer(page)], [])
 
     print("\n--- 6c. the map screenshot ---------------------------------------")
     # The name in the URL is a board key run through clean_map, and what comes

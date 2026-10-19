@@ -1,0 +1,85 @@
+/* The 3D run viewer (watch.html); board.css supplies the palette and header. */
+.wwrap { max-width: 1280px; margin: 0 auto; padding: 20px 22px 64px; }
+.whead { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.whead h1 { font-family: var(--display); font-weight: 400; font-size: 34px; letter-spacing: .02em; margin: 0; }
+.wtime { font-family: var(--mono); font-size: 20px; color: var(--gold); }
+
+.wstage {
+  position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 78vh;
+  background: #050507; border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+}
+.wstage:fullscreen { max-height: none; border-radius: 0; border: 0; }
+.wgl, .woverlay { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.wgl { cursor: grab; touch-action: none; }
+.woverlay { pointer-events: none; }
+
+.hud { position: absolute; inset: 0; pointer-events: none; font-family: var(--mono); color: #fff; text-shadow: 0 1px 2px #000; }
+.hud-top { position: absolute; top: 12px; left: 0; right: 0; text-align: center; }
+.htime { font-size: 26px; font-weight: 600; }
+.hstage { display: block; font-size: 13px; color: var(--dim); }
+.hud-speed { position: absolute; bottom: 86px; left: 0; right: 0; text-align: center; }
+.hud-speed b { font-size: 34px; font-weight: 700; }
+.hud-speed span { font-size: 13px; color: var(--dim); margin-left: 6px; }
+.hud-speed .hvz { display: block; margin: 0; }
+.hud-keys {
+  position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+  display: grid; grid-template-columns: repeat(3, 34px) 8px 58px 58px 70px; grid-template-rows: 26px 26px; gap: 4px;
+}
+.key {
+  display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600;
+  border: 1px solid rgba(255,255,255,.28); border-radius: 5px; background: rgba(0,0,0,.35); color: rgba(255,255,255,.55);
+}
+.key.on { background: var(--accent); border-color: var(--accent); color: #00131f; text-shadow: none; }
+.k-w { grid-column: 2; grid-row: 1; }
+.k-a { grid-column: 1; grid-row: 2; } .k-s { grid-column: 2; grid-row: 2; } .k-d { grid-column: 3; grid-row: 2; }
+.k-j { grid-column: 5; grid-row: 2; } .k-c { grid-column: 6; grid-row: 2; }
+.k-g { grid-column: 7; grid-row: 2; }
+.k-g.on { background: rgba(232,197,106,.85); border-color: var(--gold); }
+
+.wstatus {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: min(560px, 90%);
+  padding: 14px 18px; border-radius: 10px; background: rgba(17,17,22,.92); border: 1px solid var(--border);
+  font-size: 14px; text-align: center;
+}
+.wstatus.busy::before {
+  content: ''; display: inline-block; width: 12px; height: 12px; margin-right: 10px; vertical-align: -1px;
+  border: 2px solid var(--dim); border-top-color: var(--accent); border-radius: 50%; animation: wspin 0.8s linear infinite;
+}
+@keyframes wspin { to { transform: rotate(360deg); } }
+
+.wbar { display: flex; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+.wbar2 { gap: 16px; }
+.wbtn {
+  font: inherit; font-size: 13px; color: var(--text); background: var(--row); border: 1px solid var(--border);
+  border-radius: 7px; padding: 6px 12px; cursor: pointer;
+}
+.wbtn:hover { background: var(--hover); }
+.wbtn[aria-pressed="true"] { background: var(--sel); border-color: var(--accent); }
+.wplay { min-width: 70px; }
+.wgroup { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.wseekbox { position: relative; flex: 1; min-width: 180px; }
+.wseek { width: 100%; accent-color: var(--accent); }
+.wticks { position: absolute; left: 0; right: 0; top: -3px; height: 6px; pointer-events: none; }
+.tick { position: absolute; width: 2px; height: 6px; background: var(--dim); transform: translateX(-1px); }
+.tick.stage { background: var(--gold); height: 8px; }
+.wclock { font-family: var(--mono); font-size: 13px; color: var(--dim); white-space: nowrap; }
+.wopt { font-size: 13px; color: var(--dim); display: inline-flex; align-items: center; gap: 6px; }
+.wopt select { font: inherit; color: var(--text); background: var(--row); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
+
+.wcols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
+@media (max-width: 760px) { .wcols { grid-template-columns: 1fr; } .hud-keys { transform: translateX(-50%) scale(.8); } }
+.wcard { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+.wcard h2 { font-family: var(--display); font-weight: 400; font-size: 22px; letter-spacing: .03em; margin: 0 0 10px; }
+.wcard h3 { font-size: 14px; margin: 14px 0 6px; color: var(--dim); }
+.wcard p { font-size: 14px; margin: 0 0 10px; }
+.wdl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: 14px; }
+.wdl dt { color: var(--dim); }
+.wdl dd { margin: 0; }
+.wsplits { width: 100%; border-collapse: collapse; font-size: 14px; }
+.wsplits td { padding: 3px 4px; border-top: 1px solid var(--line); cursor: pointer; }
+.wsplits tr:hover td { background: var(--hover); }
+.num { font-family: var(--mono); text-align: right; }
+.dim { color: var(--dim); }
+.small { font-size: 12px; }
+.wfiles.ask { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.wmounts { margin: 10px 0; padding-left: 18px; font-size: 14px; }
