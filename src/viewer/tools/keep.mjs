@@ -47,16 +47,36 @@ const pick = (s) => ({ status: s.status, scene: s.scene, map: s.map, mounts: s.m
     await ready(p, 'reload (map kept)');
     // A newer build on the server: the kept copy's version no longer matches.
     await new Promise((r) => setTimeout(r, 2000));
-    const staled = await p.evaluate(async () => {
-      const c = await caches.open('ftesurf-maps-v1');
-      const k = 'https://viewer.store/ftesurf-maps-v1/__manifest';
-      const m = await (await c.match(k)).json();
-      for (const e of Object.values(m)) e.v = 'an older build';
-      await c.put(k, new Response(JSON.stringify(m)));
-      return Object.keys(m);
-    });
+    const staled = await p.evaluate(() => new Promise((res, rej) => {
+      const q = indexedDB.open('ftesurf-viewer', 2);
+      q.onerror = () => rej(q.error);
+      q.onsuccess = () => {
+        const os = q.result.transaction('meta', 'readwrite').objectStore('meta');
+        const keys = [];
+        const c = os.openCursor();
+        c.onsuccess = () => {
+          const cur = c.result;
+          if (cur === null) { res(keys); return; }
+          if (String(cur.key).startsWith('ftesurf-maps-v1\n')) {
+            keys.push(String(cur.key).split('\n')[1]);
+            cur.update({ ...cur.value, v: 'an older build' });
+          }
+          cur.continue();
+        };
+      };
+    }));
     await p.reload({ waitUntil: 'load' });
     await ready(p, `reload (kept version made stale: ${staled})`);
+    // Two tabs keeping different maps at once: each keeps its own records.
+    if (process.env.KEEP_SECOND) {
+      const q = await b.newPage();
+      await Promise.all([q.goto(process.env.KEEP_SECOND, { waitUntil: 'load' }), p.reload({ waitUntil: 'load' })]);
+      await Promise.all([ready(q, 'second tab'), ready(p, 'first tab again')]);
+      await new Promise((r) => setTimeout(r, 2500));
+      await q.close();
+      await p.reload({ waitUntil: 'load' });
+      await ready(p, 'after two tabs');
+    }
     if (folder) {
       const input = await p.$('#wdir');
       const b0 = await p.evaluate(() => window.watchState().builds);

@@ -80,7 +80,11 @@ class HandleSource implements Source {
             }
         };
         const d = await this.dir(path);
-        if (d !== null) await walk(d, '');
+        try {
+            if (d !== null) await walk(d, '');
+        } catch {
+            // A folder that went away or refused mid-walk: what was listed stands.
+        }
         return out;
     }
 }

@@ -14,8 +14,8 @@ import { DebugDraw } from '../vendor/noclip/src/gfx/helpers/DebugDraw.js';
 import { View } from './view.js';
 import { drawBody, drawRunLine, drawZones, zoneLabelPoint } from './world.js';
 import { inferSplits, parseZones, Zone } from './zones.js';
-import { energy, equivSpeed, gravityOf, jumpRefs, startRef } from './energy.js';
-import { folderPermission, rememberFolder, savedFolders } from './handles.js';
+import { energy, equivSpeed, gravityOf, runZero, zeros, Zeros } from './energy.js';
+import { folderPermission, forgetFolders, rememberFolder, savedFolders } from './handles.js';
 import { bindSettings, loadSettings, saveSettings, Settings, showSettings } from './settings.js';
 import { GB, gameFiles, maps } from './store.js';
 
@@ -82,8 +82,8 @@ interface Splits { t: Map<number, number>; approx: boolean }
 let runSplits: Splits = { t: new Map(), approx: false };
 let ghostSplits: Splits = { t: new Map(), approx: false };
 const settings: Settings = loadSettings();
-// Energy (energy.ts): this run's gravity, its last-jump zeros, its start's zero.
-let grav = 800, jumpRef: Float32Array | null = null, zeroStart = 0;
+// Energy (energy.ts): this run's gravity and its two zeros at every sample.
+let grav = 800, zs: Zeros | null = null;
 let lastFs: MapFileSystem | null = null;
 let mapSource = '', builds = 0;   // where the last BSP came from; scenes built
 
@@ -124,15 +124,9 @@ function setRec(r: Rec): void {
     if (runInfo === null) showInfoFromRec(r);
     zones = [];
     grav = gravityOf(r);
-    jumpRef = jumpRefs(r);
-    zeroStart = startRef(r, null);
+    zs = zeros(r, []);
     graph = null;
     computeSplits();
-}
-
-function startFloor(): number | null {
-    const z = zones.find((x) => x.kind === 'start');
-    return z ? z.regions[0].bottom : null;
 }
 
 // The zone file the game downloads (maps/zones/local). Most maps have none, and
@@ -150,7 +144,7 @@ async function loadZones(): Promise<void> {
     }
     if (of !== rec) return;   // another recording was opened meanwhile
     zones = got;
-    if (rec !== null) zeroStart = startRef(rec, startFloor());
+    if (rec !== null) zs = zeros(rec, zones);
     graph = null;
     computeSplits();
 }
@@ -181,11 +175,11 @@ function computeSplits(): void {
 
 async function bspBytes(name: string): Promise<ArrayBufferSlice> {
     const local = await files.findMap(name);
-    if (local !== null) {
+    const fromFolder = async () => {
         status(`Reading ${name}.bsp from your game files…`, true);
         mapSource = 'folder';
-        return new ArrayBufferSlice(await local.arrayBuffer());
-    }
+        return new ArrayBufferSlice(await local!.arrayBuffer());
+    };
     status(`Downloading ${name}.bsp…`, true);
     // A kept copy is used when the download's length and date say it is the
     // same build (the route redirects to a new signed URL each time, so the
@@ -196,6 +190,7 @@ async function bspBytes(name: string): Promise<ArrayBufferSlice> {
         r = await fetch(MAP_URL(name), { credentials: 'omit', signal: ac.signal });
         if (!r.ok) throw new Error(`map download: ${r.status}`);
     } catch (e) {
+        if (local !== null) return fromFolder();
         const any = await maps.get(name);
         if (any === null) throw e;
         status(`Offline: using the copy of ${name}.bsp kept on this PC…`, true);
@@ -203,6 +198,12 @@ async function bspBytes(name: string): Promise<ArrayBufferSlice> {
         return new ArrayBufferSlice(any);
     }
     const total = Number(r.headers.get('content-length') ?? 0);
+    // A game folder's copy, when it is the size of the server's build: another
+    // build of the same name (a Momentum or CS:S install's) is not the run's map.
+    if (local !== null && (local as File).size === total) {
+        ac.abort();
+        return fromFolder();
+    }
     const ver = `${total}|${r.headers.get('last-modified') ?? ''}`;
     const kept = total > 0 ? await maps.get(name, ver) : null;
     if (kept !== null && kept.byteLength === total) {
@@ -348,7 +349,7 @@ async function pickNative(): Promise<void> {
     try {
         const h = await w.showDirectoryPicker({ id: 'steamgame', mode: 'read' });
         const found = await files.addHandle(h);
-        if (found.some((m) => m.game !== 'maps folder' || m.maps !== null)) void rememberFolder(h);
+        if (found.some((m) => m.game !== 'maps folder')) void rememberFolder(h);
         await addedFiles(found);
     } catch (e) {
         if ((e as Error).name !== 'AbortError') status(String(e));
@@ -359,9 +360,15 @@ async function pickNative(): Promise<void> {
 // permission, else a button, since asking needs a click.
 async function reconnectFolders(): Promise<void> {
     const box = $('wreconnect');
-    for (const h of await savedFolders()) {
+    const saved = await savedFolders();
+    $('wforget').hidden = saved.length === 0;
+    for (const h of saved) {
         if (await folderPermission(h, false) === 'granted') {
-            await files.addHandle(h);
+            try {
+                await files.addHandle(h);
+            } catch {
+                // A folder that cannot be read now: the page goes on without it.
+            }
             continue;
         }
         const b = el('button', 'wbtn', `Use ${h.name} again`) as HTMLButtonElement;
@@ -465,13 +472,15 @@ function setText(id: string, s: string): void {
 }
 
 // The zero energy is measured from at T (energy.ts).
+// NaN when it is the start zone's and the feet have been in none yet.
 function energyZero(): number {
-    if (settings.energyZero === 'jump' && jumpRef !== null && rec !== null)
-        return jumpRef[sampleAt(rec, T)];
-    return zeroStart;
+    if (rec === null || zs === null) return NaN;
+    const i = sampleAt(rec, T);
+    return settings.energyZero === 'jump' && zs.jump !== null ? zs.jump[i] : zs.anchor[i];
 }
 
 function energyText(e: number): string {
+    if (Number.isNaN(e)) return '— energy (no start zone yet)';
     const sp = settings.energyUnits === 'speed';
     const v = Math.round(sp ? equivSpeed(e, grav) : e);
     return `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v)} ${sp ? 'u/s' : 'u'} energy`;
@@ -693,9 +702,10 @@ function drawGraph(): void {
         graph = document.createElement('canvas');
         graph.width = w; graph.height = h;
         const g = graph.getContext('2d')!;
-        const en = settings.graph === 'energy', floor = startFloor();
+        const en = settings.graph === 'energy';
         const runs = ghost ? [rec, ghost.rec] : [rec];
-        const zero = runs.map((r) => startRef(r, floor)), gr = runs.map((r) => gravityOf(r));
+        const zero = en ? runs.map((r) => runZero(r, r === rec && zs !== null ? zs : zeros(r, zones))) : [0, 0];
+        const gr = runs.map((r) => gravityOf(r));
         const val = (k: number, i: number) => {
             const r = runs[k], v = r.v;
             return en ? energy(r.o[i * 3 + 2], v[i * 3], v[i * 3 + 1], v[i * 3 + 2], gr[k]) - zero[k] : Math.hypot(v[i * 3], v[i * 3 + 1]);
@@ -830,6 +840,11 @@ function wire(): void {
         const t = e.target as Node;
         if (!$('wset').hidden && !$('wset').contains(t) && t !== $('wsetbtn') && t !== $('wsetbar')) showPanel(false);
     });
+    $('wforget').addEventListener('click', async () => {
+        await forgetFolders();
+        $('wreconnect').textContent = '';
+        $('wforget').hidden = true;
+    });
     $('wclearstore').addEventListener('click', async () => {
         if (!confirm('Clear the maps and textures kept in this browser?')) return;
         await Promise.all([maps.clear(), gameFiles.clear()]);
@@ -891,6 +906,7 @@ function wire(): void {
     });
     document.addEventListener('keydown', (e) => {
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;     // the browser's own shortcuts
         if (e.code === 'Space') { e.preventDefault(); $('wplay').click(); }
         else if (e.code === 'ArrowLeft') seekBy(e.shiftKey ? -1 : -5);
         else if (e.code === 'ArrowRight') seekBy(e.shiftKey ? 1 : 5);
@@ -921,7 +937,7 @@ async function main(): Promise<void> {
     await Promise.all([maps.open(), gameFiles.open()]);
     applySettings('storeGB');
     showStore();
-    await reconnectFolders();
+    await reconnectFolders().catch(() => undefined);
     try {
         view = new View($<HTMLCanvasElement>('wgl'), fetcher);
     } catch (e) {
