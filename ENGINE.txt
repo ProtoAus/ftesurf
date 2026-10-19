@@ -25,7 +25,7 @@ commit   ebc96a0810c3e312ec7edf13d4a0ab6f253bc595
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-816
-patch    820
+patch    821
 # Patch 816 (engine verifier + native help): native pm_verify refuses unsupported positive
 # or malformed hold accounting, preserving inert zeros. Existing online journal acceptance,
 # opt-out and Stop are described accurately; no permission, format or mover change.

@@ -2091,6 +2091,14 @@ void() HE_MigrateDefaults =
 			print("portals: up to 16 now render in one view (r_portalmaxviews)\n");
 		localcmd("seta portal_cfg_rev 810\n");
 	}
+	// Patch 821: the chat a size smaller, 24 -> 20, to fit its panel.
+	registercvar("hud_chat_rev", "0", CVAR_ARCHIVE);
+	if (cvar("hud_chat_rev") < 821)
+	{
+		if (HE_MoveOne("hud_chat_size", 24, "20"))
+			print("chat: the chat text is a size smaller now (hud_chat_size 20)\n");
+		localcmd("seta hud_chat_rev 821\n");
+	}
 	registercvar("hud_layout_rev", "0", CVAR_ARCHIVE);
 	if (cvar("hud_layout_rev") >= 637)
 		return;

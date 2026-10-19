@@ -211,6 +211,7 @@ float  rec_sb_open;             // the leaderboard is up
 #define UIC_ACCOUNT  128        // cl_account.qc   -- the Steam link box, while it types or waits (Patch 653)
 // 256 is UIC_ZONEEDIT, defined in cl_zoneedit.qc (Patch 669).
 #define UIC_KEYCFG   512        // cl_keycfg.qc    -- the key configuration panel (Patch 762)
+#define UIC_CHAT     1024       // cl_chat.qc      -- the open chat panel (Patch 821)
 
 float ui_cursor_claims;         // bitmask of UIC_*; 0 means the game has the mouse
 

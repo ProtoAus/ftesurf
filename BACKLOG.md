@@ -5,6 +5,13 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Chat panel (P821): what the review left open
+
+- `src/client/cl_chat.qc` Chat_FieldKey reads Shift/Ctrl from `ui_kmods` (cl_keys.qc), which
+  misses a modifier edge made under the console or before a map change: a Ctrl let go under the
+  console stays held, so Backspace deletes words and the arrows jump words until Ctrl is pressed
+  again. Check: hold Ctrl, open the console, let go, close it, open chat, type, press Backspace.
+
 ## Lobby clock (P819) and imported attempts (P820): what the reviews left open
 
 - P819, `src/server/sv_vote.qc` Vote_Extend against `sv_lobby.qc` Lobby_Cycle's hold: an
@@ -185,21 +192,10 @@ bound-check failure kills the VM (P795 took the menu down this way).
   owned lookalike/stale-PID fixtures must remain untouched; only the measured
   master can be signalled, and timeout must preserve evidence/refuse safely.
 
-## Online journal permission: native help still describes the old tier
-
-- Site: engine `client/cl_receipt.c`, `rec_hid_upload` description. P804's new
-  tier-7 online answer includes uploads unless explicitly opted out, but native
-  help still says online consent alone does not. This does not grant permission:
-  the saved real-input answer and native setter remain authoritative. Update the
-  description with the next native build, distinguishing old answers from the
-  new disclosure and preserving Stop semantics. Falsifier: the settings tooltip
-  and local cvar help must describe the same permission as the tier-7 screen.
-  Source: P804 independent client-privacy review, nonblocking P2.
-
 ## Held recording clocks: what the Patch 785 reviews found
 
 Two static reviews of 248867ee (18 Oct, before its lobby deploy) seeded this list.
-Fixed items are removed; remaining reader/verifier contracts need acting controls.
+Fixed items are removed; remaining reader contracts need acting controls.
 - Site: `tools/reccheck.py` hold-origin/final-clock validation. Patch 793 bounds the
   first fresh projected origin and every raw trace horizon; initial restored headers
   abstain. A post-restore/session horizon is not a timer-start/carry tuple, so its
@@ -214,9 +210,6 @@ Fixed items are removed; remaining reader/verifier contracts need acting control
   none into or out of FAULT. A closed v8+ file shows zero frozen ticks
   (`end` ticks == `inend - instart`) and could be judged. A full `sweep.py
   --reread-receipts` would overwrite stored angle FAULTs with the abstention.
-- Site: engine `sv_ccmds.c` pm_verify's record dispatch. No `hold` branch: a held,
-  finished file gets HOLD reading like a tick mismatch, not a REFUSE that names the hold.
-  No false PASS is possible (frozen ticks fail the comparison) and holds are practice.
 
 ## Frame budget: what Patch 782 left out
 

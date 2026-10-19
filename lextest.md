@@ -14,7 +14,7 @@ Restart the game.
   when either part is on.
 
 "Demo filter ok", or the demo and stage where a good attempt was hidden or a fail stayed.
-Verdict PENDING.
+Verdict CONFIRMED by Lex, 2026-10-19 (~05:05Z), on the report of all three: "flawless, I like it."
 
 ## P819 — lobby maps run an hour, !extend adds an hour, the first player in gets a full hour
 
@@ -27,7 +27,8 @@ lobby_extend_time 3600, backups `*.pre819-20261019T045018Z`).
 - If you are alone and reconnect, the hour starts again: that is "first joins an empty
   server" taken literally. Say if it should wait until the lobby has been empty for a while.
 
-"Clock ok", or what the clock read and when. Verdict PENDING.
+Verdict CONFIRMED by Lex, 2026-10-19 (~05:05Z), on the report of all three: "flawless, I like it." The lone-reconnect question
+(should a reset wait until the lobby has been empty a while?) was not answered: left as built.
 
 ## P818 — surf_view: red resets, yellow clip, blue ramps
 
@@ -41,7 +42,8 @@ Both installs since 2026-10-19T04:55Z (exe f49207dd = git-7496-patch-818-0-g306a
   no longer yellow (on surf_dune the spawn view was yellow edge to edge), and ramps are no
   longer the teleports' red. `surf_view_fill` (0.25) sets how dense the stipple is.
 
-"surf_view ok", or the map and the spot that is the wrong colour. Verdict PENDING.
+Verdict CONFIRMED by Lex, 2026-10-19 (~05:05Z), on the report of all three: "flawless, I like it." Covers the clip-ramp-is-blue
+choice named in the report.
 
 ## P815 — Publish saved: your zones on the lobbies, by themselves
 

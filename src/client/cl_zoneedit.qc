@@ -810,8 +810,10 @@ string() ZoneEdit_Blocker =
 	if (rec_wt_open)  return "a replay";
 	if (ui_rs_cursor) return "the results card";
 	if (ui_ev_cursor) return "the entity inspector";
-	// Subtraction, not &~ (UI_CursorRelease's reason).
+	// Subtraction, not &~ (UI_CursorRelease's reason).  The open chat (P821) is no panel:
+	// it draws no sui bracket and takes every event while it is up.
 	others = UI_CursorHeld() - (UI_CursorHeld() & UIC_ZONEEDIT);
+	others = others - (others & UIC_CHAT);
 	if (others)
 		return sprintf("the panel holding the mouse (cursor claims %g)", others);
 	return "";

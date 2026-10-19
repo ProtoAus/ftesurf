@@ -82,6 +82,43 @@ float  chat_kd[CHAT_KN];        // presses the draft took, still held (Patch 477
 float  chat_dn[CHAT_DN];        // keys down, whoever took them (round 25)
 float  chat_rep;                // this KEYDOWN is an OS repeat of a key already down
 
+// Patch 821: an open draft is a panel -- the history, a one-line field, and the
+// mouse (UIC_CHAT) to select and copy with.  The field draws its text raw.
+#define CHAT_SENT_MAX   20      // sent lines Up/Down recall
+#define CHAT_FADE_IN    0.12    // s
+#define CHAT_FADE_OUT   0.18
+#define CHAT_MULTI      0.35    // s between the clicks of a double or triple click
+float  chat_caret;              // the field's caret, a byte of chat_buf
+var float chat_anchor = -1;     // ...the selection's fixed end, -1 none
+float  chat_fx;                 // px the field's text is scrolled left
+float  chat_blink;              // cltime of the last key: the caret shows solid from it
+float  chat_box_a, chat_box_t;  // the panel's fade 0..1, and cltime of its last step
+float  chat_scroll;             // history rows scrolled up from the newest
+float  chat_scroll_hold;        // lines that came in while scrolled: the view stays where it was
+float  chat_rows_n;             // rows the whole history wraps to (last draw)
+vector chat_ms;                 // the cursor, from IE_MOUSEABS
+float  chat_ms_ok;              // ...which has moved since the panel opened: no position comes before
+float  chat_drag;               // mouse1 held from a press on 1 the field, 2 the history
+float  chat_clk_t, chat_clk_n;  // the last press's cltime and how many clicks it made
+vector chat_clk_p;
+// The history's selection: each end is (ring slot, its stamp, offset into its Chat_Plain).
+// A slot whose stamp moved was overwritten, and the selection goes with it.
+float  chat_sel_on;
+float  chat_sa_j, chat_sa_t, chat_sa_o;     // where the drag began
+float  chat_sb_j, chat_sb_t, chat_sb_o;     // where it is now
+float  chat_s0_j, chat_s0_o, chat_s1_j, chat_s1_o;  // the two in reading order (Chat_SelNorm)
+float  chat_hh_j, chat_hh_o;    // Chat_HistHit's answer
+string chat_sent;               // sent lines, newest first, "\n"-joined
+float  chat_sent_i;             // the sent line on show, -1 = the one being typed
+string chat_sent_keep;          // ...which waits here meanwhile
+string chat_copied;             // the last copy, for chat_rows
+var float chat_copied_t = -100;
+// Where the last draw put things, for the mouse.
+vector chat_box_p, chat_box_s, chat_fld_p, chat_fld_s;
+float  chat_fld_tx;             // the field text's x, its scroll included
+float  chat_his_y0, chat_his_y1;
+float  chat_dr_x;
+
 // Prototype: Chat_InputEvent submits through it, and it is defined last.
 void(string cmd, string text) Chat_RunSafe;
 float(string text) WarpOp_Chat;  // cl_warpop.qc, Patch 753
@@ -337,6 +374,8 @@ void(string line) Chat_Push =
 	chat_push_mark = "";
 	chat_stamp[chat_write] = time;
 	chat_wrapn[chat_write] = 0;
+	if (chat_scroll > 0)
+		chat_scroll_hold = min(CHAT_RING, chat_scroll_hold + 1);
 	chat_write = chat_write + 1;
 	if (chat_write >= CHAT_RING)
 		chat_write = 0;
@@ -690,15 +729,371 @@ void(string rows, float n, float cut, vector p, float sz, float lh, float a, flo
 	}
 };
 
+/*
+  PATCH 821: SELECTING IN THE HISTORY.  An offset is into Chat_Plain of the whole
+  line -- the bytes that draw, by Chat_Wrap's units -- so it survives a re-wrap.
+  A row is that line with the spaces at its break dropped, so a row's start is
+  found by its own plain text from where the last row ended.
+*/
+float(string s, float i, float n, float l) Chat_PlainLen =
+{
+	if (Chat_CodeLen(s, i, n) > 0)
+		return (substring(s, i, 2) == "^^") ? 1 : 0;
+	return (str2chr(s, i) < 32) ? 0 : l;
+};
+
+string(string s) Chat_Plain =
+{
+	local float i, n, l, c;
+	local string out;
+
+	n = strlen(s);
+	out = "";
+	i = 0;
+	while (i < n)
+	{
+		l = Chat_UnitLen(s, i, n);
+		c = Chat_PlainLen(s, i, n, l);
+		if (c == l)
+			out = strcat(out, substring(s, i, l));
+		else if (c == 1)
+			out = strcat(out, "^");
+		i = i + l;
+	}
+	return out;
+};
+
+string(string rows, float r) Chat_Row =
+{
+	local float s, e;
+
+	s = 0;
+	for (; r > 0; r = r - 1)
+	{
+		e = strstrofs(rows, "\n", s);
+		if (e < 0)
+			return "";
+		s = e + 1;
+	}
+	e = strstrofs(rows, "\n", s);
+	if (e < 0)
+		e = strlen(rows);
+	return substring(rows, s, e - s);
+};
+
+// Where row r of slot j starts in Chat_Plain(chat_ring[j]).
+float(float j, float r) Chat_RowAt =
+{
+	local float k, o, f;
+	local string p, q;
+
+	p = Chat_Plain(chat_ring[j]);
+	o = 0;
+	for (k = 0; k <= r; k = k + 1)
+	{
+		q = Chat_Plain(Chat_Row(chat_wrap[j], k));
+		f = strstrofs(p, q, o);
+		if (f >= 0)
+			o = f;
+		if (k < r)
+			o = o + strlen(q);
+	}
+	return o;
+};
+
+// The plain offset in row t nearest pixel px from its start.
+float(string t, float px, float sz) Chat_RowHit =
+{
+	local float i, n, l, k, c, w, pw;
+
+	n = strlen(t);
+	i = 0;
+	k = 0;
+	pw = 0;
+	while (i < n)
+	{
+		l = Chat_UnitLen(t, i, n);
+		c = Chat_PlainLen(t, i, n, l);
+		i = i + l;
+		if (c > 0)
+		{
+			w = stringwidth(substring(t, 0, i), TRUE, [sz, sz]);
+			if (px < (pw + w) * 0.5)
+				return k;
+			pw = w;
+			k = k + c;
+		}
+	}
+	return k;
+};
+
+// The x of plain offset o in row t.
+float(string t, float o, float sz) Chat_RowX =
+{
+	local float i, n, l, k;
+
+	n = strlen(t);
+	i = 0;
+	k = 0;
+	while (i < n && k < o)
+	{
+		l = Chat_UnitLen(t, i, n);
+		k = k + Chat_PlainLen(t, i, n, l);
+		i = i + l;
+	}
+	return stringwidth(substring(t, 0, i), TRUE, [sz, sz]);
+};
+
+// 0 = the newest line, the ring's oldest is CHAT_RING - 1.
+float(float j) Chat_Age =
+{
+	j = chat_write - 1 - j;
+	if (j < 0)
+		j = j + CHAT_RING;
+	return j;
+};
+
+// The two ends in reading order into chat_s0_* / chat_s1_*.  -> something is selected.
+float() Chat_SelNorm =
+{
+	local float ka, kb;
+
+	if (!chat_sel_on)
+		return FALSE;
+	if (chat_stamp[chat_sa_j] != chat_sa_t || chat_stamp[chat_sb_j] != chat_sb_t)
+	{
+		chat_sel_on = FALSE;
+		return FALSE;
+	}
+	ka = Chat_Age(chat_sa_j);
+	kb = Chat_Age(chat_sb_j);
+	if (ka > kb || (ka == kb && chat_sa_o <= chat_sb_o))
+	{
+		chat_s0_j = chat_sa_j; chat_s0_o = chat_sa_o;
+		chat_s1_j = chat_sb_j; chat_s1_o = chat_sb_o;
+	}
+	else
+	{
+		chat_s0_j = chat_sb_j; chat_s0_o = chat_sb_o;
+		chat_s1_j = chat_sa_j; chat_s1_o = chat_sa_o;
+	}
+	return (chat_s0_j != chat_s1_j || chat_s0_o != chat_s1_o);
+};
+
+// The selected history as text, one line per message.
+string() Chat_SelText =
+{
+	local float j, k, a, b;
+	local string out, p;
+
+	if (!Chat_SelNorm())
+		return "";
+	out = "";
+	for (k = Chat_Age(chat_s0_j); k >= 0; k = k - 1)
+	{
+		j = chat_write - 1 - k;
+		if (j < 0)
+			j = j + CHAT_RING;
+		p = Chat_Plain(chat_ring[j]);
+		a = (j == chat_s0_j) ? chat_s0_o : 0;
+		b = (j == chat_s1_j) ? chat_s1_o : strlen(p);
+		p = (b > a) ? substring(p, a, b - a) : "";
+		out = (j == chat_s0_j) ? p : strcat(out, "\n", p);
+		if (j == chat_s1_j)
+			break;
+	}
+	return out;
+};
+
+// The selection behind slot j's n rows, drawn from p.
+void(float j, vector p, float n, float sz, float lh, float a) Chat_SelDraw =
+{
+	local float k, lo, hi, r, o, f, e, x0, x1;
+	local string pl, t, q;
+
+	if (!Chat_SelNorm())
+		return;
+	k = Chat_Age(j);
+	if (k > Chat_Age(chat_s0_j) || k < Chat_Age(chat_s1_j))
+		return;
+	lo = (j == chat_s0_j) ? chat_s0_o : 0;
+	hi = (j == chat_s1_j) ? chat_s1_o : 100000;
+	pl = Chat_Plain(chat_ring[j]);
+	o = 0;
+	for (r = 0; r < n; r = r + 1)
+	{
+		t = Chat_Row(chat_wrap[j], r);
+		q = Chat_Plain(t);
+		f = strstrofs(pl, q, o);
+		if (f >= 0)
+			o = f;
+		e = o + strlen(q);
+		if (hi > o && lo < e)
+		{
+			x0 = Chat_RowX(t, max(lo, o) - o, sz);
+			x1 = Chat_RowX(t, min(hi, e) - o, sz);
+			if (x1 > x0)
+				drawfill([p_x + x0, p_y + lh * r - (lh - sz) * 0.5], [x1 - x0, lh], SUI_THEME_SELECTED, a, 0);
+		}
+		o = e;
+	}
+};
+
+// The history under the cursor into chat_hh_j / chat_hh_o, clamped to the rows
+// drawn.  -> any are.
+float(vector m) Chat_HistHit =
+{
+	local float i, j, r, sz, lh, y, ind;
+	local string t;
+
+	if (chat_ordn <= 0)
+		return FALSE;
+	sz = chat_wkey_y;
+	lh = sz * 1.35;
+	// Row r's band is its highlight's (Chat_SelDraw), half the leading above the glyphs.
+	y = bound(chat_his_y0, m_y, chat_his_y1 - 0.01) + (lh - sz) * 0.5;
+	Font_Set(ui_font_ui);
+	for (i = 0; i < chat_ordn; i = i + 1)       // newest first, from the bottom up
+	{
+		if (y < chat_ordy[i] && i < chat_ordn - 1)
+			continue;
+		j = chat_ord[i];
+		if (chat_wrapn[j] <= 0)                   // rewritten or re-wrapped since it was drawn
+			break;
+		chat_hh_j = j;
+		r = floor((y - chat_ordy[i]) / lh);
+		if (r < 0)
+			chat_hh_o = 0;
+		else if (r >= chat_ordr[i])
+			chat_hh_o = strlen(Chat_Plain(chat_ring[j]));
+		else
+		{
+			ind = (chat_mark[j] != "") ? sz + 3 : 0;
+			t = Chat_Row(chat_wrap[j], r);
+			chat_hh_o = Chat_RowAt(j, r) + Chat_RowHit(t, m_x - chat_dr_x - ind, sz);
+		}
+		Font_Reset();
+		return TRUE;
+	}
+	Font_Reset();
+	return FALSE;
+};
+
+float(string s, float i) Chat_WordStart =
+{
+	while (i > 0 && str2chr(s, i - 1) != 32)
+		i = i - 1;
+	return i;
+};
+
+float(string s, float i) Chat_WordEnd =
+{
+	local float n;
+
+	n = strlen(s);
+	while (i < n && str2chr(s, i) != 32)
+		i = i + 1;
+	return i;
+};
+
+float() Chat_FieldSelected =
+{
+	return chat_anchor >= 0 && chat_anchor != chat_caret;
+};
+
+// The caret nearest pixel px, in the field as last drawn.
+float(float px) Chat_FieldHit =
+{
+	local float i, n, w, pw, sz;
+
+	sz = chat_wkey_y;
+	px = px - chat_fld_tx;
+	n = strlen(chat_buf);
+	pw = 0;
+	Font_Set(ui_font_ui);
+	for (i = 1; i <= n; i = i + 1)
+	{
+		w = stringwidth(substring(chat_buf, 0, i), FALSE, [sz, sz]);
+		if (px < (pw + w) * 0.5)
+			break;
+		pw = w;
+	}
+	Font_Reset();
+	return i - 1;
+};
+
+// The field at the panel's foot: box, the PM's name, selection, text, caret.  It
+// scrolls sideways to keep the caret in it.
+void(float x, float yb, float maxw, float fh, float sz, float a) Chat_DrawField =
+{
+	local vector p, tp;
+	local float inset, avail, pw, cx, tw, x0, x1, r;
+	local string pre;
+
+	p = [x, yb - fh];
+	r = ceil(sz * 0.3);
+	_sui_round_draw(p, [maxw, fh], r, chat_typing ? SUI_THEME_ACCENT : SUI_THEME_EDGE, a);
+	_sui_round_draw(p + '1 1 0', [maxw - 2, fh - 2], max(0, r - 1), SUI_THEME_WELL, a);
+	inset = ceil(sz * 0.5);
+	tp = [p_x + inset, p_y + floor((fh - sz) * 0.5)];
+	pw = 0;
+	if (chat_private != "")
+	{
+		pre = strcat("to ", chat_private_name, "^7:");
+		drawstring(tp, pre, [sz, sz], SUI_THEME_ACCENT2, a, 0);
+		pw = stringwidth(pre, TRUE, [sz, sz]) + ceil(sz * 0.4);
+	}
+	avail = maxw - inset * 2 - pw;
+	tw = stringwidth(chat_buf, FALSE, [sz, sz]);
+	cx = stringwidth(substring(chat_buf, 0, chat_caret), FALSE, [sz, sz]);
+	if (cx - chat_fx > avail)
+		chat_fx = cx - avail;
+	if (cx < chat_fx)
+		chat_fx = cx;
+	if (chat_fx > max(0, tw - avail))
+		chat_fx = max(0, tw - avail);
+	chat_fld_p = p;
+	chat_fld_s = [maxw, fh];
+	chat_fld_tx = tp_x + pw - chat_fx;
+
+	drawsetcliparea(tp_x + pw - 2, p_y + 1, avail + 4, fh - 2);
+	if (chat_buf == "")
+		drawrawstring([tp_x + pw, tp_y], "Enter sends, Esc closes", [sz, sz], SUI_THEME_MUTED, a, 0);
+	else
+	{
+		if (Chat_FieldSelected())
+		{
+			x0 = stringwidth(substring(chat_buf, 0, min(chat_anchor, chat_caret)), FALSE, [sz, sz]);
+			x1 = stringwidth(substring(chat_buf, 0, max(chat_anchor, chat_caret)), FALSE, [sz, sz]);
+			drawfill([chat_fld_tx + x0, tp_y - 1], [x1 - x0, sz + 2], SUI_THEME_SELECTED, a, 0);
+		}
+		drawrawstring([chat_fld_tx, tp_y], chat_buf, [sz, sz], SUI_THEME_TEXT, a, 0);
+	}
+	if (chat_typing)
+	if (!(floor((cltime - chat_blink) * 2) & 1))
+		drawfill([chat_fld_tx + cx, tp_y - 1], [max(1, floor(sz / 12)), sz + 2], SUI_THEME_ACCENT, a, 0);
+	drawresetcliparea();
+};
+
 void(vector scr) Chat_Draw =
 {
 	local float life, fade, lines, szu, sz, lh, x, yb, maxw;
-	local float i, j, age, a, n, used, cap, room, ind;
-	local string draft, img;
-	local vector key;
+	local float i, j, age, a, n, used, cap, room, ind, ba, dt, pad, fh, hb, top, total, y, cn, cr, cdone, ca, r, w;
+	local string img;
+	local vector key, bp, bs;
 
-	draft = "";
-	if (!cvar("hud_chat"))
+	// Patch 821: the panel fades in while a draft is open, and out after.
+	dt = bound(0, cltime - chat_box_t, 0.1);
+	chat_box_t = cltime;
+	if (chat_typing)
+		chat_box_a = min(1, chat_box_a + dt / CHAT_FADE_IN);
+	else
+		chat_box_a = max(0, chat_box_a - dt / CHAT_FADE_OUT);
+	ba = chat_box_a * chat_box_a * (3 - 2 * chat_box_a);
+	if (chat_typing)
+	if (!UI_CursorHeld())               // the panel that had it let go (Chat_Open)
+		UI_CursorClaim(UIC_CHAT);
+	if (!cvar("hud_chat") && ba <= 0)
 		return;
 
 	life  = cvar("hud_chat_time");   if (life <= 0)  life = 30;
@@ -722,7 +1117,11 @@ void(vector scr) Chat_Draw =
 	x    = scr_x * cvar("hud_chat_x");
 	yb   = scr_y * cvar("hud_chat_y");
 	maxw = scr_x * 0.45;
+	pad  = ceil(sz * 0.5);
+	fh   = ceil(sz * 1.75);              // the field
+	hb   = yb - pad - fh - ceil(sz * 0.4);   // the history's foot, open or shut: opening moves no line
 	chat_dr_bottom = yb;
+	chat_dr_x = x;
 
 	// Wrapped rows are good for one width, size and font.
 	key = [maxw, sz, stringwidth("abcdefghij", TRUE, [sz, sz])];
@@ -732,40 +1131,22 @@ void(vector scr) Chat_Draw =
 			chat_wrapn[i] = 0;
 		chat_wkey = key;
 	}
+	chat_dft_n  = 1;                     // the field's one row, for chat_rows
+	chat_dft_y0 = yb - pad - fh + floor((fh - sz) * 0.5);
+	chat_dft_yl = chat_dft_y0;
 
 	/*
-	  THE DRAFT at the very bottom, first row on top (Patch 370: it used to grow
-	  upward).  Wrapped with the cursor always in, so the blink cannot re-wrap
-	  it.  Idle it is one blank row: the room the messages always sit above
-	  (341bis), so the box does not jump when you start typing.
-	*/
-	chat_dft_n  = 1;
-	chat_dft_y0 = yb - lh;
-	chat_dft_yl = yb - lh;
-	if (chat_typing)
-	{
-		draft = Chat_Wrap(strcat(chat_private != "" ? strcat("^5PM to ", chat_private_name, "^7 > ") : "> ", chat_buf, "_"), maxw, sz);
-		chat_dft_n = chat_wr_n;
-		if (!(floor(time * 2) & 1))
-			draft = strcat(substring(draft, 0, strlen(draft) - 1), " ");
-		Chat_DrawRows(draft, chat_dft_n, FALSE, [x, yb - lh * chat_dft_n], sz, lh, 1, maxw);
-		chat_dft_y0 = chat_dr_y0;
-		chat_dft_yl = chat_dr_yl;
-	}
-	yb = yb - lh * chat_dft_n;
-
-	/*
-	  Newest first, skipping the expired (a negative age is a previous map's
-	  stamp).  At most hud_chat_lines messages in at most max(lines, 10) rows,
-	  and older messages only whole.  The newest always shows, and is cut ("..")
-	  only when it alone is taller than the room above the draft.
+	  At most hud_chat_lines messages in at most max(lines, 10) rows above the
+	  field's place, and older messages only whole.  The newest always shows, and
+	  is cut ("..") only when it alone is taller than the room.  Open, the panel
+	  holds every line in the ring in up to that many rows, scrolled by the wheel.
 	*/
 	room = scr_y * 0.02;
 	if (vt_box_z > 0)                   // Patch 372: a vote box above, in the chat's column
-	if (vt_boxtop < yb)
+	if (vt_boxtop < hb)
 	if (vt_box_x < x + maxw && vt_box_y > x)
 		room = max(room, vt_box_z + lh * 0.25);
-	room = floor((yb - room) / lh);
+	room = floor((hb - pad - room) / lh);
 	if (room < 1)
 		room = 1;
 	cap = max(lines, CHAT_ROWS_MIN);
@@ -773,8 +1154,124 @@ void(vector scr) Chat_Draw =
 		cap = room;
 	chat_dr_cap  = cap;
 	chat_dr_room = room;
-
 	chat_ordn = 0;
+
+	if (ba > 0)
+	{
+		total = 0;
+		for (i = 0; i < CHAT_RING; i = i + 1)
+		{
+			j = chat_write - 1 - i;
+			if (j < 0)
+				j = j + CHAT_RING;
+			if (chat_ring[j] == "" || chat_stamp[j] <= 0 || time < chat_stamp[j])
+				continue;
+			total = total + Chat_RowsOf(j, maxw, sz);
+		}
+		for (i = 0; i < chat_scroll_hold; i = i + 1)   // new lines under a scrolled view
+		{
+			j = chat_write - 1 - i;
+			if (j < 0)
+				j = j + CHAT_RING;
+			if (chat_ring[j] != "")
+				chat_scroll = chat_scroll + Chat_RowsOf(j, maxw, sz);
+		}
+		chat_scroll_hold = 0;
+		chat_rows_n = total;
+		used = bound(min(3, cap), total, cap);  // the panel's rows: as many as the history, 3 to cap
+		top  = hb - used * lh;
+		chat_scroll = bound(0, chat_scroll, max(0, total - used));
+
+		sui_style_hud(scr);
+		bp = [x - pad, top - pad];
+		bs = [maxw + pad * 2, yb - bp_y];       // its foot at hud_chat_y, clear of the key strip
+		r  = ceil(sz * 0.45);
+		_sui_round_draw(bp + '-2 -1 0', bs + '4 4 0', r + 2, '0 0 0', 0.2 * ba);
+		_sui_round_draw(bp, bs, r, SUI_THEME_EDGE, 0.95 * ba);
+		_sui_round_draw(bp + '1 1 0', bs - '2 2 0', r - 1, SUI_THEME_PANEL, 0.88 * ba);
+		chat_box_p  = bp;
+		chat_box_s  = bs;
+		chat_his_y0 = top;
+		chat_his_y1 = hb;
+
+		/*
+		  A line also keeps the alpha the shut box would give it, so a line that
+		  is still on show shut does not fade with the panel.  cdone ends that set
+		  where the shut box's loop would break.
+		*/
+		drawsetcliparea(bp_x, top, bs_x, used * lh);
+		y = hb + chat_scroll * lh;
+		cn = 0;
+		cr = 0;
+		cdone = FALSE;
+		for (i = 0; i < CHAT_RING; i = i + 1)
+		{
+			j = chat_write - 1 - i;
+			if (j < 0)
+				j = j + CHAT_RING;
+			if (chat_ring[j] == "" || chat_stamp[j] <= 0)
+				continue;
+			age = time - chat_stamp[j];
+			if (age < 0)
+				continue;
+			n  = chat_wrapn[j];
+			ca = 0;
+			if (!cdone)
+			if (age <= life)
+			{
+				if (cn >= lines || cr >= cap || (cn > 0 && cr + n > cap))
+					cdone = TRUE;
+				else
+				{
+					ca = (age <= life - fade) ? 1 : 1 - (age - (life - fade)) / fade;
+					cn = cn + 1;
+					cr = cr + n;
+				}
+			}
+			y = y - lh * n;
+			if (y + lh * n <= top)
+				break;
+			if (y >= hb)
+				continue;
+			chat_ord[chat_ordn]  = j;
+			chat_ordr[chat_ordn] = n;
+			chat_ordy[chat_ordn] = y;
+			chat_ordn = chat_ordn + 1;
+			a = max(ca, ba);
+			ind = 0;
+			if (chat_mark[j] != "")
+			{
+				ind = sz + 3;
+				img = SteamPic_Of(chat_mark[j]);
+				if (img != "")
+					drawpic([x, y, 0], img, [sz, sz], '1 1 1', a, 0);
+			}
+			Chat_SelDraw(j, [x + ind, y], n, sz, lh, ba);
+			Chat_DrawRows(chat_wrap[j], n, FALSE, [x + ind, y], sz, lh, a, maxw - ind);
+		}
+		drawresetcliparea();
+
+		if (total > used)                // the scroll thumb, in the right-hand padding
+		{
+			w = max(sz, (hb - top) * used / total);
+			drawfill([bp_x + bs_x - pad * 0.5 - 1, top + (hb - top - w) * (1 - chat_scroll / (total - used))],
+			         [2, w], SUI_THEME_EDGE_HI, ba, 0);
+		}
+		if (cltime - chat_copied_t < 1.5)
+		{
+			a = ba * min(1, (1.5 - (cltime - chat_copied_t)) / 0.4);
+			w = stringwidth("Copied", FALSE, [sz, sz]) + pad * 2;
+			_sui_round_draw([bp_x + bs_x - w - pad * 0.5, bp_y + pad * 0.5], [w, ceil(sz * 1.4)],
+			                ceil(sz * 0.3), SUI_THEME_GOOD_BG, a);
+			drawrawstring([bp_x + bs_x - w - pad * 0.5 + pad, bp_y + pad * 0.5 + ceil(sz * 0.2)], "Copied",
+			              [sz, sz], SUI_THEME_GOOD, a, 0);
+		}
+		Chat_DrawField(x, yb - pad, maxw, fh, sz, ba);
+		Font_Reset();
+		return;
+	}
+
+	yb = hb;
 	used = 0;
 	for (i = 0; i < CHAT_RING; i = i + 1)
 	{
@@ -871,6 +1368,16 @@ void() Chat_DumpRows =
 		print(sprintf("chat_rows: draft len %g\n", strlen(chat_buf)));
 		Chat_DumpBlock("draft", rows, chat_wr_n);
 	}
+	// Patch 821: the panel, the field and both selections.
+	print(sprintf("chat_rows: panel %.2f claims %g x %.1f box %v %v\n", chat_box_a, UI_CursorHeld(), chat_dr_x,
+	              chat_box_p, chat_box_s));
+	print(sprintf("chat_rows: field %v %v tx %.1f caret %g anchor %g fx %.1f\n", chat_fld_p, chat_fld_s,
+	              chat_fld_tx, chat_caret, chat_anchor, chat_fx));
+	print(sprintf("chat_rows: scroll %g of %g sent %g |%s|\n", chat_scroll, chat_rows_n, chat_sent_i,
+	              strreplace("^", "^^", chat_buf)));
+	print(sprintf("chat_rows: sel %g |%s|\n", Chat_SelNorm(),
+	              strreplace("\n", "\\n", strreplace("^", "^^", Chat_SelText()))));
+	print(sprintf("chat_rows: copied |%s|\n", strreplace("\n", "\\n", strreplace("^", "^^", chat_copied))));
 	for (i = 0; i < chat_ordn; i = i + 1)
 	{
 		j = chat_ord[i];
@@ -898,7 +1405,7 @@ void() Chat_RegisterCvars =
 	registercvar("hud_chat_lines", "6",     CVAR_ARCHIVE);
 	registercvar("hud_chat_time",  "30",    CVAR_ARCHIVE);
 	registercvar("hud_chat_fade",  "5",     CVAR_ARCHIVE);
-	registercvar("hud_chat_size",  "24",    CVAR_ARCHIVE);
+	registercvar("hud_chat_size",  "20",    CVAR_ARCHIVE);   // Patch 821: was 24 (HE_MigrateDefaults)
 
 	chat_typing = FALSE;
 	chat_buf    = "";
@@ -908,6 +1415,7 @@ void() Chat_RegisterCvars =
 	registercommand("chat_say");
 	registercommand("chat_open");       // Patch 392: a plain "open chat" name
 	registercommand("chat_rows");
+	registercommand("chat_mouse");      // Patch 821: the cursor through the input chain (cl_main.qc)
 };
 
 /*
@@ -992,6 +1500,368 @@ void(float evtype, float scanx) Chat_Track =
 		chat_dn[f] = scanx;
 };
 
+// Patch 821: every way a draft opens and closes comes through these two, and the
+// mouse with them.
+void(string t) Chat_Open =
+{
+	Chat_PrivateClear();
+	chat_typing = TRUE;
+	chat_buf    = t;
+	chat_caret  = strlen(t);
+	chat_anchor = -1;
+	chat_fx     = 0;
+	chat_scroll = 0;
+	chat_sel_on = FALSE;
+	chat_drag   = 0;
+	chat_sent_i = -1;
+	chat_blink  = cltime;
+	chat_ms_ok  = FALSE;
+	Chat_TookReset();
+	// Only a free mouse: the inspector and the zone editor let go of theirs (and the
+	// editor closes) when another claim appears.  One already up shows the cursor.
+	if (!UI_CursorHeld())
+		UI_CursorClaim(UIC_CHAT);
+};
+
+void() Chat_Close =
+{
+	Chat_PrivateClear();
+	chat_typing = FALSE;
+	chat_buf    = "";
+	chat_caret  = 0;
+	chat_anchor = -1;
+	chat_sel_on = FALSE;
+	chat_drag   = 0;
+	chat_scroll = 0;
+	UI_CursorRelease(UIC_CHAT);
+};
+
+// Cut the field's selection out.  -> there was one.
+float() Chat_FieldCut =
+{
+	local float a, b;
+
+	if (!Chat_FieldSelected())
+	{
+		chat_anchor = -1;
+		return FALSE;
+	}
+	a = min(chat_anchor, chat_caret);
+	b = max(chat_anchor, chat_caret);
+	chat_buf = strcat(substring(chat_buf, 0, a), substring(chat_buf, b, strlen(chat_buf) - b));
+	chat_caret  = a;
+	chat_anchor = -1;
+	return TRUE;
+};
+
+// Typed or pasted text at the caret, over the selection; the draft is capped so a
+// held key cannot grow it past what say itself would take.
+void(string s) Chat_Insert =
+{
+	local float n;
+
+	Chat_FieldCut();
+	n = CHAT_DRAFT_MAX - strlen(chat_buf);
+	if (n <= 0)
+		return;
+	if (strlen(s) > n)
+		s = substring(s, 0, n);
+	chat_buf = strcat(substring(chat_buf, 0, chat_caret), s,
+	                  substring(chat_buf, chat_caret, strlen(chat_buf) - chat_caret));
+	chat_caret = chat_caret + strlen(s);
+};
+
+// The caret to `to`; with Shift held the field's selection stretches there.
+void(float to, float shift) Chat_CaretTo =
+{
+	if (shift)
+	{
+		if (chat_anchor < 0)
+			chat_anchor = chat_caret;
+		chat_sel_on = FALSE;            // one selection at a time
+	}
+	else
+		chat_anchor = -1;
+	chat_caret = bound(0, to, strlen(chat_buf));
+	if (chat_anchor == chat_caret)
+		chat_anchor = -1;
+};
+
+// The field's selection if it has one, else the history's, onto the clipboard.
+void() Chat_Copy =
+{
+	local string s;
+
+	if (Chat_FieldSelected())
+		s = substring(chat_buf, min(chat_anchor, chat_caret), fabs(chat_anchor - chat_caret));
+	else
+		s = Chat_SelText();
+	if (s == "")
+		return;
+	if (!checkbuiltin(clipboard_set))
+		return;
+	clipboard_set(0, s);
+	chat_copied   = s;
+	chat_copied_t = cltime;
+};
+
+void(string t) Chat_SentAdd =
+{
+	local float n, i;
+	local string s;
+
+	n = 0;
+	if (chat_sent != "")
+	{
+		n = tokenizebyseparator(chat_sent, "\n");
+		if (strcmp(argv(0), t) == 0)
+			return;
+	}
+	s = t;
+	for (i = 0; i < n && i < CHAT_SENT_MAX - 1; i = i + 1)
+		s = strcat(s, "\n", argv(i));
+	chat_sent = s;
+};
+
+// Up (d 1) is an older sent line, Down (d -1) a newer one, past the newest the
+// line that was being typed.
+void(float d) Chat_Recall =
+{
+	local float n, i;
+
+	n = (chat_sent != "") ? tokenizebyseparator(chat_sent, "\n") : 0;
+	i = bound(-1, chat_sent_i + d, n - 1);
+	if (i == chat_sent_i)
+		return;
+	if (chat_sent_i < 0)
+		chat_sent_keep = chat_buf;
+	chat_sent_i = i;
+	chat_buf = (i < 0) ? chat_sent_keep : sprintf("%s", argv(i));
+	chat_caret  = strlen(chat_buf);
+	chat_anchor = -1;
+};
+
+float(vector m, vector p, vector s) Chat_In =
+{
+	return m_x >= p_x && m_x < p_x + s_x && m_y >= p_y && m_y < p_y + s_y;
+};
+
+// MOUSE1 down: the caret or a selection, in the field or the history.  A double
+// click takes a word, a triple the whole line.
+void() Chat_Press =
+{
+	local float at, shift;
+	local string p;
+
+	if (!chat_ms_ok)
+		return;
+	shift = (ui_kmods & 3);
+	if (cltime - chat_clk_t < CHAT_MULTI && vlen(chat_ms - chat_clk_p) < 6)
+		chat_clk_n = chat_clk_n + 1;
+	else
+		chat_clk_n = 1;
+	chat_clk_t = cltime;
+	chat_clk_p = chat_ms;
+	chat_drag  = 0;
+
+	if (Chat_In(chat_ms, chat_fld_p, chat_fld_s))
+	{
+		chat_sel_on = FALSE;
+		at = Chat_FieldHit(chat_ms_x);
+		if (chat_clk_n == 2)
+		{
+			chat_anchor = Chat_WordStart(chat_buf, at);
+			chat_caret  = Chat_WordEnd(chat_buf, at);
+		}
+		else if (chat_clk_n >= 3)
+		{
+			chat_anchor = 0;
+			chat_caret  = strlen(chat_buf);
+		}
+		else
+		{
+			if (!shift)
+				chat_anchor = at;
+			else if (chat_anchor < 0)
+				chat_anchor = chat_caret;
+			chat_caret = at;
+			chat_drag  = 1;
+			return;                     // the release drops an empty selection
+		}
+		if (chat_anchor == chat_caret)
+			chat_anchor = -1;
+		return;
+	}
+	if (Chat_In(chat_ms, [chat_box_p_x, chat_his_y0], [chat_box_s_x, chat_his_y1 - chat_his_y0]))
+	if (Chat_HistHit(chat_ms))
+	{
+		chat_anchor = -1;
+		p = Chat_Plain(chat_ring[chat_hh_j]);
+		if (chat_clk_n == 1)
+		{
+			if (!shift || !Chat_SelNorm())
+			{
+				chat_sa_j = chat_hh_j;
+				chat_sa_t = chat_stamp[chat_hh_j];
+				chat_sa_o = chat_hh_o;
+			}
+			chat_drag = 2;
+		}
+		else
+		{
+			chat_sa_j = chat_hh_j;
+			chat_sa_t = chat_stamp[chat_hh_j];
+			chat_sa_o = (chat_clk_n == 2) ? Chat_WordStart(p, chat_hh_o) : 0;
+			chat_hh_o = (chat_clk_n == 2) ? Chat_WordEnd(p, chat_hh_o) : strlen(p);
+		}
+		chat_sb_j = chat_hh_j;
+		chat_sb_t = chat_stamp[chat_hh_j];
+		chat_sb_o = chat_hh_o;
+		chat_sel_on = TRUE;
+		return;
+	}
+	chat_sel_on = FALSE;                // a press beside both lets the history's go
+};
+
+void() Chat_DragTo =
+{
+	if (chat_drag == 1)
+		chat_caret = Chat_FieldHit(chat_ms_x);
+	else if (chat_drag == 2)
+	if (Chat_HistHit(chat_ms))
+	{
+		chat_sb_j = chat_hh_j;
+		chat_sb_t = chat_stamp[chat_hh_j];
+		chat_sb_o = chat_hh_o;
+	}
+};
+
+// A key for the field.  A chord is Ctrl without Alt, known by its control code
+// or, with no character, by the key under Ctrl (sui_handle_text_input's rule).
+void(float scanx, float chary) Chat_FieldKey =
+{
+	local float shift, ctrl, n, chord, to;
+
+	shift = (ui_kmods & 3);
+	ctrl  = (ui_kmods & 48);
+	n = strlen(chat_buf);
+	chat_caret = bound(0, chat_caret, n);
+	if (chat_anchor > n)
+		chat_anchor = -1;
+
+	chord = 0;
+	if (!(ui_kmods & 12))
+	{
+		if (chary == 1 || chary == 3 || chary == 24)
+			chord = chary + 96;
+		else if (chary == 0 && ctrl && scanx >= 'a' && scanx <= 'z')
+			chord = scanx;
+	}
+	if (chord)
+	{
+		if (chord == 'a' && n > 0)
+		{
+			chat_anchor = 0;
+			chat_caret  = n;
+			chat_sel_on = FALSE;
+		}
+		else if (chord == 'c')
+			Chat_Copy();
+		else if (chord == 'x' && Chat_FieldSelected())
+		{
+			Chat_Copy();
+			Chat_FieldCut();
+		}
+		return;
+	}
+	if (scanx == K_INS && ctrl)
+	{
+		Chat_Copy();
+		return;
+	}
+	if (scanx == K_BACKSPACE)
+	{
+		if (!Chat_FieldCut())
+		{
+			to = chat_caret - 1;
+			if (ctrl)                   // the word before the caret, as Ctrl+Left goes
+			{
+				to = chat_caret;
+				while (to > 0 && str2chr(chat_buf, to - 1) == 32)
+					to = to - 1;
+				to = Chat_WordStart(chat_buf, to);
+			}
+			if (to >= 0)
+			{
+				chat_buf = strcat(substring(chat_buf, 0, to), substring(chat_buf, chat_caret, n - chat_caret));
+				chat_caret = to;
+			}
+		}
+		return;
+	}
+	if (scanx == K_DEL)
+	{
+		if (shift && Chat_FieldSelected())
+			Chat_Copy();                // Shift+Delete is a cut
+		if (!Chat_FieldCut())
+		{
+			to = chat_caret + 1;
+			if (ctrl)
+			{
+				to = Chat_WordEnd(chat_buf, chat_caret);
+				while (to < n && str2chr(chat_buf, to) == 32)
+					to = to + 1;
+			}
+			if (to <= n)
+				chat_buf = strcat(substring(chat_buf, 0, chat_caret), substring(chat_buf, to, n - to));
+		}
+		return;
+	}
+	if (scanx == K_LEFTARROW)
+	{
+		if (ctrl)
+		{
+			to = chat_caret;
+			while (to > 0 && str2chr(chat_buf, to - 1) == 32)
+				to = to - 1;
+			to = Chat_WordStart(chat_buf, to);
+		}
+		else if (!shift && Chat_FieldSelected())
+			to = min(chat_anchor, chat_caret);
+		else
+			to = chat_caret - 1;
+		Chat_CaretTo(to, shift);
+		return;
+	}
+	if (scanx == K_RIGHTARROW)
+	{
+		if (ctrl)
+		{
+			to = Chat_WordEnd(chat_buf, chat_caret);
+			while (to < n && str2chr(chat_buf, to) == 32)
+				to = to + 1;
+		}
+		else if (!shift && Chat_FieldSelected())
+			to = max(chat_anchor, chat_caret);
+		else
+			to = chat_caret + 1;
+		Chat_CaretTo(to, shift);
+		return;
+	}
+	if (scanx == K_HOME || scanx == K_END)
+	{
+		Chat_CaretTo((scanx == K_HOME) ? 0 : n, shift);
+		return;
+	}
+	if (scanx == K_UPARROW || scanx == K_DOWNARROW)
+	{
+		Chat_Recall((scanx == K_UPARROW) ? 1 : -1);
+		return;
+	}
+	if (chary >= 32 && chary < 127)
+		Chat_Insert(chr2str(chary));
+};
+
 float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 {
 	local string b;
@@ -1011,62 +1881,90 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 		// they are bound to -- `bind enter messagemode` made its ENTER a draft.
 		if (Rewind_Owns(scanx))
 			return FALSE;
-		Chat_PrivateClear();
-		chat_typing = TRUE;
-		chat_buf    = "";
-		Chat_TookReset();
+		Chat_Open("");
 		return TRUE;
 	}
 
 	// Typing.  Presses belong to the draft except the console's own key, which
-	// has to stay reachable; releases are its own only (Chat_Took).
+	// has to stay reachable; releases are its own only (Chat_Took).  The cursor
+	// is the panel's, and TRUE for it keeps the view still.
+	if (evtype == IE_MOUSEABS)
+	{
+		chat_ms = [scanx, chary];
+		chat_ms_ok = TRUE;
+		Chat_DragTo();
+		return TRUE;
+	}
 	if (evtype == IE_KEYUP)
+	{
+		if (scanx == K_MOUSE1)
+		{
+			if (chat_drag == 1 && chat_anchor == chat_caret)
+				chat_anchor = -1;
+			if (chat_drag == 2 && chat_sa_j == chat_sb_j && chat_sa_o == chat_sb_o)
+				chat_sel_on = FALSE;
+			chat_drag = 0;
+		}
 		return Chat_Took(scanx, FALSE);
+	}
 	if (evtype != IE_KEYDOWN)
 		return TRUE;
 
 	if (getkeybind(scanx) == "toggleconsole")
 	{
-		chat_typing = FALSE;             // abandon, do not fight the console
+		Chat_Close();                    // abandon, do not fight the console
 		return FALSE;
 	}
 	if (!chat_rep)                   // round 25: a repeat of a key held into the draft is not its press
 		Chat_Took(scanx, TRUE);
+	chat_blink = cltime;
 
-	if (scanx == K_ENTER)
+	if (scanx == K_ENTER || scanx == K_KP_ENTER)
 	{
 		if (strtrim(chat_buf) != "")
 		{
+			if (chat_private == "")       // a private line never comes back to go public
+				Chat_SentAdd(chat_buf);
 			if (chat_private != "")
 				localcmd(sprintf("cmd friend message %s %s\n", chat_private, uri_escape(chat_buf)));
 			else if (!WarpOp_Chat(chat_buf))
 				Chat_RunSafe("cmd say", chat_buf);
 		}
-		Chat_PrivateClear();
-		chat_typing = FALSE;
+		Chat_Close();
 		return TRUE;
 	}
 	if (scanx == K_ESCAPE)
 	{
-		Chat_PrivateClear();
-		chat_typing = FALSE;
+		Chat_Close();
 		return TRUE;
 	}
-	if (scanx == K_BACKSPACE)
+	if (scanx == K_MOUSE1)
 	{
-		if (strlen(chat_buf) > 0)
-			chat_buf = substring(chat_buf, 0, strlen(chat_buf) - 1);
+		if (!chat_rep)
+			Chat_Press();
+		return TRUE;
+	}
+	if (scanx == K_MOUSE2)
+	{
+		Chat_Copy();                     // as ent_view's mouse2 copies
+		return TRUE;
+	}
+	if (scanx == K_MWHEELUP || scanx == K_MWHEELDOWN || scanx == K_PGUP || scanx == K_PGDN)
+	{
+		if (scanx == K_MWHEELUP)   chat_scroll = chat_scroll + 3;
+		if (scanx == K_MWHEELDOWN) chat_scroll = chat_scroll - 3;
+		if (scanx == K_PGUP)       chat_scroll = chat_scroll + max(1, chat_dr_cap - 1);
+		if (scanx == K_PGDN)       chat_scroll = chat_scroll - max(1, chat_dr_cap - 1);
+		chat_scroll = max(0, chat_scroll);  // the draw bounds the top
 		return TRUE;
 	}
 
 	if (scanx == 'v' || scanx == K_INS)
+	if (!(ui_kmods & 48) || scanx == 'v')   // Ctrl+Insert is a copy
 	if (sui_paste_ask())                // Patch 667: Chat_Paste gets what the player allows
 		return TRUE;
 
-	// Printable characters only; the draft is capped so a held key cannot
-	// grow it past what say itself would take.
-	if (chary >= 32 && chary < 127 && strlen(chat_buf) < CHAT_DRAFT_MAX)
-		chat_buf = strcat(chat_buf, chr2str(chary));
+	Chat_FieldKey(scanx, chary);
 	return TRUE;
 };
 
@@ -1075,8 +1973,7 @@ float(float c) Chat_Paste =
 {
 	if (!chat_typing)
 		return FALSE;
-	if (strlen(chat_buf) < CHAT_DRAFT_MAX)
-		chat_buf = strcat(chat_buf, chr2str(c));
+	Chat_Insert(chr2str(c));
 	return TRUE;
 };
 
@@ -1101,10 +1998,7 @@ float(string cmd) Chat_ConsoleCommand =
 		t = (i == 1) ? argv(1) : strcat(t, " ", argv(i));
 	if (strlen(t) > CHAT_DRAFT_MAX)
 		t = substring(t, 0, CHAT_DRAFT_MAX);
-	Chat_PrivateClear();
-	chat_typing = TRUE;
-	chat_buf    = t;
-	Chat_TookReset();
+	Chat_Open(t);
 	return TRUE;
 };
 
@@ -1139,10 +2033,7 @@ float(string args, float team) CSQC_ChatSay =
 		return TRUE;           // Patch 753: `!r` / `!m` predicted, not sent as chat
 	if (strtrim(args) != "")
 		return FALSE;          // `say <text>` is a send, not a draft
-	Chat_PrivateClear();
-	chat_typing = TRUE;
-	chat_buf    = "";
-	Chat_TookReset();
+	Chat_Open("");
 	return TRUE;
 };
 
@@ -1174,10 +2065,7 @@ void(string cmd, string text) Chat_RunSafe =
 
 void(string who, string nm) Chat_Private =
 {
-	Chat_PrivateClear();
+	Chat_Open("");
 	chat_private = strzone(who);
 	chat_private_name = strzone(nm);
-	chat_typing = TRUE;
-	chat_buf = "";
-	Chat_TookReset();
 };
