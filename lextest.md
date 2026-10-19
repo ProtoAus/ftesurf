@@ -23,7 +23,9 @@ LightmappedGeneric/UnlitGeneric brushes still draw solid for them until a releas
 
 ## P841 — maps run at Momentum's speed cap
 
-Live: DEPLOY-PENDING.
+Live 2026-10-19 17:53Z on all 12 lobbies (native 05006df6, qwprogs 10eac633, csprogs e2b7936e) and
+both installs' QC; C:\FTEQuake's exes; C:\FTESurf\ftesurf64.exe once the game running at deploy closed.
+Checked on lobby 27610: surf_apollo runs 10000. Record: tools/lobby-engine-p841-20261019.md.
 
 - On a map whose cap changed, go past 3500 where you used to be clamped. In the console, `movement`
   names the zone file and `sv_maxvelocity` reads the new cap. Lobby examples: surf_apollo 10000,
