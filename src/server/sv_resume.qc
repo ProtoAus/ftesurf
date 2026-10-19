@@ -30,6 +30,7 @@
 .float  run_ms_pct;     // last published copy step (10%)
 .vector run_ms_org;     // parked here while R/C runs
 .float  rec_ms_src, rec_ms_dst, rec_ms_left, rec_ms_total, rec_ms_flagofs;
+.float  rec_ms_ver;              // actual copied header; v11 must not become v10
 entity  rec_ms_owner;   // one copy per lobby: the first fgets reads the whole file
 
 // ms.txt, read by SV_MsReadMeta and consumed in the same call.
@@ -639,10 +640,13 @@ void(entity e) SV_MsCopyStep =
 			SV_MsCountdown(e);
 			return;
 		}
-		// A file with a `pause` is v10; a stream could not rewrite line 0 in place.
+		// A paused v9 stream becomes v10; v11 keeps its input/clock contract.
 		if (e.rec_ms_left == e.rec_ms_total)
-		if (l == "FTESURF-REC 9")
-			l = "FTESURF-REC 10";
+		{
+			if (strcmp(l, "FTESURF-REC 9") == 0)
+				l = "FTESURF-REC 10";
+			e.rec_ms_ver = stof(substring(l, 12, -1));
+		}
 		// The version line may have grown a byte: take the offset from this copy.
 		if (substring(l, 0, 6) == "flags ")
 			e.rec_ms_flagofs = fseek(e.rec_ms_dst);
@@ -731,8 +735,8 @@ void(entity e) SV_MsRecAttach =
 		e.rec_rec_lastbc = e.run_boardcount;
 		e.rec_rec_sesspend = 1 + e.rec_rec_pinned;
 		e.rec_rec_serial = SV_RecNextSerial();
-		SV_RecGenBegin(e);              // new local attachment; the copy wrote line 0 as 10
-		e.rec_rec_ver = 10;
+		SV_RecGenBegin(e);              // new local attachment, actual copied schema
+		e.rec_rec_ver = e.rec_ms_ver;
 		e.rec_rec_inmt = -1;            // no `in` row read back: a cold load before one writes no pause
 		e.rec_rec_leg = e.run_t_track * 100 + FS_LegOf(e.run_t_startseg, e.run_t_stagerun) + 1;
 		e.run_t_flags = e.run_t_flags | TF_RECORDING;

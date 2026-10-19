@@ -53,6 +53,7 @@ import io
 import math
 import os
 import re
+import struct
 import sys
 from decimal import Decimal, InvalidOperation
 
@@ -80,7 +81,8 @@ EXP_RE = re.compile(r"^[+-]?\d+(\.\d+)?[eE][+-]?\d+$")
 EXP_OK_V9 = {"in": {3}, "warp": set(range(5, 11)), "ride": {4, 5, 6},
              "seed": set(range(1, 7)), "portal": set(range(4, 10)),
              "inend": {2}, "pause": {2}, "session": {3},     # Patch 364: <carry>
-             "spec": set(range(4, 11))}                      # Patch 382: <carry> <o> <v>
+             "spec": set(range(4, 11)),                      # Patch 382: <carry> <o> <v>
+             "fzin": {3}, "clockend": {3}}                   # P842: native carry
 
 SURFDIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUNS = os.path.join(SURFDIR, "ftesurf", "data", "runs")
@@ -299,6 +301,8 @@ HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd", "holdclock"}
 # v10 (Patch 364): no new header key.  A file is v10 exactly when it carries a
 # `pause`: the buffered writer rewrites line 0 when the first one lands.
 HEAD_V10 = HEAD_V9
+# P842: v11 adds excluded-clock release inputs and a counted closing declaration.
+COLUMNS[11] = COLUMNS[10]
 
 # v9 warp kinds.  v8 and older keep the five, so their notes do not move.
 WARP_KINDS_V7 = ("tele", "telerel", "bhop", "speed", "push")
@@ -527,6 +531,48 @@ def exact_finish_ticks(token):
     except InvalidOperation:
         pass
     return None
+
+
+def qc_float(value):
+    """One actual QC float32 rounding, not a learned timer tolerance."""
+    try:
+        out = struct.unpack("<f", struct.pack("<f", value))[0]
+    except (OverflowError, struct.error) as exc:
+        raise ValueError("outside float32 range") from exc
+    if not math.isfinite(out):
+        raise ValueError("not finite float32")
+    return out
+
+
+def declared_closing_ticks(mt, args):
+    """Re-evaluate a v11 declaration, NOT independent movement/time evidence."""
+    if len(args) != 4 or args[0] != "counted":
+        raise ValueError("counted takes start, tickcarry and frozen")
+    if not is_int(args[1]) or not is_int(args[3]):
+        raise ValueError("start/frozen must be ASCII integer counters")
+    start, frozen = int(args[1]), int(args[3])
+    for value in (start, frozen) + (() if mt is None else (mt,)):
+        if not 0 <= value <= 2147483647 or qc_float(value) != value:
+            raise ValueError("counter is not a nonnegative QC float32 integer")
+    token = args[2]
+    if len(token) > 128 or re.fullmatch(
+            r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", token) is None:
+        raise ValueError("tickcarry is not an ASCII decimal")
+    try:
+        exact = Decimal(token)
+        if not exact.is_finite() or exact < 0:
+            raise ValueError("tickcarry must be finite and nonnegative")
+        carry = qc_float(float(exact))
+    except InvalidOperation as exc:
+        raise ValueError("invalid tickcarry decimal") from exc
+    if exact and carry == 0:
+        raise ValueError("nonzero tickcarry underflows float32")
+    if mt is None:
+        return None             # shape/type validation without an invented horizon
+    ticks = qc_float(qc_float(qc_float(mt - start) + carry) - frozen)
+    if not 0 <= ticks <= 2147483647:
+        raise ValueError("counted accessor unavailable/outside stored tick range")
+    return int(ticks)       # SV_RecTrailer's %d after SV_TimerTicks returns ct
 
 
 def valid_restore_args(args, width):
@@ -1012,7 +1058,10 @@ def check_rec(path, verbose=False, *, data=None):
     spec_windows = []       # closed: (held wall seconds or None, why)
     spec_next = []          # 0s awaiting the next counter-bearing line: (ln, mt, carry,
                             # line of the warm rewind since, or None)
-    trailer_at = None       # (lineno, kind) of the first inend/end
+    clockends = []          # v11 close declarations; not restore/epoch authority
+    has_fzin = False
+    thawrows = 0
+    trailer_at = None       # (lineno, kind) of the first closing declaration
     gh_open = None          # line of the `ghost 1` no `ghost 0` has closed yet
     seen_positive = False
     bad_cols = 0
@@ -1040,7 +1089,7 @@ def check_rec(path, verbose=False, *, data=None):
 
         # Patch 382: NOTHING is written between a 1 and its 0.  A trailer line
         # inside one is faulted once, at the `spec` after it or as never closed.
-        if spec_open is not None and tok[0] not in ("spec", "inend", "end", "split"):
+        if spec_open is not None and tok[0] not in ("spec", "clockend", "inend", "end", "split"):
             spec_open[3] += 1
             if spec_open[3] == 1:
                 r.fault("line %d: %s inside the spec window opened at line %d -- "
@@ -1048,7 +1097,7 @@ def check_rec(path, verbose=False, *, data=None):
                         % (lineno + 1, "a sample" if is_sample(tok[0]) else
                            "an 'in' row" if tok[0] == "in" else "a %r line" % tok[0],
                            spec_open[0]))
-        if trailer_at is None and tok[0] in ("inend", "end"):
+        if trailer_at is None and tok[0] in ("clockend", "inend", "end"):
             trailer_at = (lineno + 1, tok[0])
 
         if is_sample(tok[0]):
@@ -1097,7 +1146,12 @@ def check_rec(path, verbose=False, *, data=None):
         # and would hold the whole trace in memory for a count.  They are
         # summarised as they stream past instead; the only state kept is the
         # three running comparisons that need the previous row.
-        if tok[0] == "in":
+        if tok[0] in ("in", "fzin"):
+            excluded = tok[0] == "fzin"
+            if excluded:
+                has_fzin = True
+                if ver != 11:
+                    r.fault("line %d: 'fzin' requires format 11" % (lineno + 1))
             spec_pend, spec_next = spec_next, []
             # v9 appends <fl>; <fwd side up> become integers.
             if ver >= 9 and len(tok) != 12:
@@ -1132,6 +1186,7 @@ def check_rec(path, verbose=False, *, data=None):
                 continue
 
             inrows += 1
+            thawrows += excluded
             # Patch 493.  Both counters run whether or not the file states a
             # bound: `worst` is the number a bound gets chosen from, and reporting
             # it for an unbounded file is what makes an abstention visible rather
@@ -1146,19 +1201,20 @@ def check_rec(path, verbose=False, *, data=None):
             if ang_holdmt is not None and mt < ang_holdmt:
                 r.fault("line %d: 'in' below the preceding hold horizon" % (lineno + 1))
                 ang_holdbad = True
-            ang_prev = mt - ang_frozen if holdclock == "1" else mt
-            if not -2147483648 <= ang_prev <= 2147483647:
-                r.fault("line %d: 'in' projected angle tick is outside signed-32 range"
-                        % (lineno + 1))
-                ang_holdbad = True
-                ang_prev = 0       # placeholder only; invalid clock cannot be judged
-            elif holdclock == "1" and ang_origin is not None and ang_prev < ang_origin:
-                r.fault("line %d: 'in' projected angle tick is below the initial "
-                        "timer origin" % (lineno + 1))
-                ang_holdbad = True
-            ang_mt.append(ang_prev)
-            ang_pit.append(ang[0])
-            ang_yaw.append(ang[1])
+            if not excluded:
+                ang_prev = mt - ang_frozen if holdclock == "1" else mt
+                if not -2147483648 <= ang_prev <= 2147483647:
+                    r.fault("line %d: 'in' projected angle tick is outside signed-32 range"
+                            % (lineno + 1))
+                    ang_holdbad = True
+                    ang_prev = 0       # invalid clock cannot be judged
+                elif holdclock == "1" and ang_origin is not None and ang_prev < ang_origin:
+                    r.fault("line %d: 'in' projected angle tick is below the initial "
+                            "timer origin" % (lineno + 1))
+                    ang_holdbad = True
+                ang_mt.append(ang_prev)
+                ang_pit.append(ang[0])
+                ang_yaw.append(ang[1])
             if in_pk is None or pk != in_pk:
                 in_packets += 1
             spec_restates(r, lineno + 1, "the 'in' row", mt, carry, spec_pend)
@@ -1250,6 +1306,9 @@ def check_rec(path, verbose=False, *, data=None):
             continue
 
         kind = tok[0]
+        if kind == "clockend":
+            clockends.append((lineno + 1, tok[1:]))
+            continue
         records.append((lineno + 1, kind, tok[1:]))
         if kind == "end":
             if saw_end is not None:
@@ -2650,7 +2709,9 @@ def check_rec(path, verbose=False, *, data=None):
         # one missing fact but a WRONG carrier held for every command after it,
         # which does not heal.  The count is the only handle a reader has on that.
         # v9 (build 87): TEN -- <pms> <pes> <portals>, exact, counted like <rides>.
-        if ver >= 10:
+        if ver == 11:
+            want_end = 12               # P842: required closing declaration
+        elif ver >= 10:
             want_end = 11               # Patch 364: <sessions>
         elif ver >= 9:
             want_end = 10
@@ -2667,6 +2728,11 @@ def check_rec(path, verbose=False, *, data=None):
                     % (ln, want_end, ver, len(args)))
         else:
             e_ticks, e_n, e_pad, e_cp = (float(x) for x in args[:4])
+            if want_end >= 12:
+                if exact_finish_ticks(args[11]) != len(clockends):
+                    r.fault("'end' clockend count is not the body's exact count %d"
+                            % len(clockends))
+                    independent_closing_faults += 1
             if want_end >= 11:
                 if int(float(args[10])) != len(sessions):
                     r.fault("'end' says %d sessions, the file has %d"
@@ -2727,6 +2793,42 @@ def check_rec(path, verbose=False, *, data=None):
             # Cross-file assertions cannot use the legacy int(float) projection.
             r.finish_ticks = exact_finish_ticks(args[0])
             r.info["time"] = e_ticks * tickrate
+
+    # P842: terminal declaration is independent of restore-history permission.
+    # It checks a writer's own arithmetic, never substitutes for native replay.
+    clock_faults = len(r.faults)
+    r.info["fzin"] = thawrows
+    r.info["clockends"] = len(clockends)
+    if clockends and ver != 11:
+        r.fault("'clockend' requires format 11")
+    elif ver == 11:
+        if len(clockends) > 1 or (saw_end is not None and len(clockends) != 1):
+            r.fault("v11 finished recording requires exactly one 'clockend'")
+        if len(clockends) == 1:
+            ln, a = clockends[0]
+            mode = a[0] if a else ""
+            r.info["closing_clock"] = mode or "malformed"
+            if mode == "counted":
+                try:
+                    # Validate types even when an independently damaged inend
+                    # leaves no trustworthy closing horizon for the equation.
+                    mt = None
+                    if in_end is not None and len(in_end[1]) == 2 and is_int(in_end[1][0]):
+                        mt = int(in_end[1][0])
+                    expected = declared_closing_ticks(mt, a)
+                    if saw_end is not None:
+                        if expected is None:
+                            r.fault("line %d: counted clockend needs a closing inend" % ln)
+                        elif r.finish_ticks != expected:
+                            r.fault("line %d: counted clockend predicts %d ticks, "
+                                    "not the exact 'end' tick count" % (ln, expected))
+                except ValueError as exc:
+                    r.fault("line %d: invalid clockend: %s" % (ln, exc))
+            elif mode not in ("sampled", "pending", "kept") or len(a) != 1:
+                r.fault("line %d: invalid clockend kind/fields" % ln)
+            elif mode == "kept" and saw_end is not None and not any(k == "abandon" for _, k, _ in records):
+                r.fault("line %d: kept clockend requires an abandon" % ln)
+    independent_closing_faults += len(r.faults) - clock_faults
 
     # ---- rate, measured ----------------------------------------------------
     run = [t for t, _ in samples if t >= 0]
@@ -2789,6 +2891,8 @@ def check_rec(path, verbose=False, *, data=None):
     r.angle_epoch = [k for k, v in (("resume", resumes), ("retry", retries),
                                     ("pause", pauses), ("session", sessions))
                      if v]
+    if has_fzin:
+        r.angle_epoch.append("excluded-clock release inputs (v11)")
     if ang_mt:
         if in_start is None or in_run != in_start or in_start < 0:
             r.angle_epoch.append("initial timer origin unavailable")

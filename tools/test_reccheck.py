@@ -213,7 +213,7 @@ def build(instart=True, inputs=True, ver=9, startjit=None, warps=(),
 # See build()'s docstring for what that cost the first time.
 END_FIELD = {"ticks": 1, "samples": 2, "padding": 3, "cp": 4,
              "inputs": 5, "warps": 6, "rides": 7,
-             "pms": 8, "pes": 9, "portals": 10, "sessions": 11}
+             "pms": 8, "pes": 9, "portals": 10, "sessions": 11, "clocks": 12}
 
 
 def bump_end(lines, field, delta=1):
@@ -2722,6 +2722,106 @@ def case_angle_no_sidecar_is_silent():
           "a recording with no sidecar draws no angle finding")
 
 
+def v11_fixture(*, frozen=0, **kw):
+    """Synthetic grammar-only declaration, not a native replay/hardware pass."""
+    lines = build(**kw)
+    lines[0] = "FTESURF-REC 11"
+    close = next(i for i, l in enumerate(lines) if l.startswith("inend "))
+    mt = int(lines[close].split()[1])
+    lines.insert(close, "clockend counted %d 0 %d" % (HORIZON, frozen))
+    ix = next(i for i, l in enumerate(lines) if l.startswith("end "))
+    tail = lines[ix].split()
+    tail[1] = str(mt - HORIZON - frozen)
+    if len(tail) == 11:
+        tail.append("0")                  # v9 builder had no session column
+    tail.append("1")                      # exactly one closing declaration
+    lines[ix] = " ".join(tail)
+    return lines
+
+
+def case_v11_clock():
+    base = v11_fixture()
+    ok_clean(base, "v11 counted declaration acts on a matched footer")
+    faults_with(bump_end(base, "ticks"), "clockend predicts",
+                "one changed rank tick contradicts declared clock state")
+    faults_with(bump_end(base, "clocks"), "clockend count",
+                "closing declaration count is independently bound")
+    faults_with(drop_kinds(base, ("clockend",)), "exactly one",
+                "dropping the required witness is not absence-as-zero")
+    doubled = insert_before(base[:], "inend", "clockend counted %d 0 0" % HORIZON)
+    faults_with(doubled, "exactly one", "duplicate clock witnesses have no authority")
+    ok_clean(v11_fixture(frozen=10),
+             "unthawed final exclusion needs no invented thaw hold (grammar only)")
+    for value in ("-1e-99999", "1e-99999", "nan", "inf", "1e100"):
+        faults_with(edit(base, "clockend", 3, value), "invalid clockend",
+                    "impossible source tickcarry %s is rejected" % value)
+    for value in ("0", "-0", "0.0", "-0e-99999"):
+        ok_clean(edit(base, "clockend", 3, value),
+                 "mathematical zero tickcarry %s stays valid" % value)
+    # Large integer additions really round in QC float32, unlike Python ints.
+    rounded = edit(base, "inend", 1, 16777216)
+    rounded = edit(rounded, "clockend", 2, 0)
+    rounded = edit(rounded, "clockend", 3, 1)
+    rounded = edit(rounded, "end", 1, 16777216)
+    ok_clean(rounded, "declared clock emulates float32 addition, not integer algebra")
+    faults_with(bump_end(rounded, "ticks"), "clockend predicts",
+                "integer-algebra neighbor does not pass the float32 model")
+    faults_with(edit(base, "clockend", 2, 16777217), "invalid clockend",
+                "an impossible float32 origin is not rounded into acceptance")
+    faults_with(edit(base, "clockend", 1, "other"), "invalid clockend",
+                "unknown closing-clock modes are not guessed")
+    bad = base[:]
+    ix = next(i for i, l in enumerate(bad) if l.startswith("clockend "))
+    bad[ix] = "clockend counted"
+    faults_with(bad, "invalid clockend", "missing native components report, not crash")
+
+
+def case_v11_closing_restore_authority():
+    """A broken new close declaration cannot revoke validated clock resets."""
+    for label, pair in (("warm retries", retry_clock_pair()),
+                        ("cold loads", cold_clock_pair("load"))):
+        lines, view = pair
+        faults, _notes, report = run(lines, view=view, report=True)
+        check(not faults and "angle_rule     unavailable" in report,
+              "%s control actually consumes both validated resets" % label)
+        lines = lines[:]
+        lines[0] = "FTESURF-REC 11"
+        lines = insert_before(lines, "inend", "clockend counted bad 0 0")
+        ix = next(i for i, l in enumerate(lines) if l.startswith("end "))
+        tail = lines[ix].split()
+        if len(tail) == 11:
+            tail.append("0")
+        tail.append("1")
+        lines[ix] = " ".join(tail)
+        faults, _notes, report = run(lines, view=view, report=True)
+        check(len(faults) == 1 and "invalid clockend" in faults[0],
+              "invalid v11 closer preserves both %s without sidecar blame" % label)
+        check("angle_rule     unavailable" in report,
+              "invalid v11 closer grants no angular judgement for %s" % label)
+        badview = view[:]
+        fields = badview[-1].split(); fields[2] = "-1"; badview[-1] = " ".join(fields)
+        faults, _ = run(lines, view=badview)
+        check(len(faults) == 2 and any("never negative" in f for f in faults)
+              and any("invalid clockend" in f for f in faults),
+              "invalid v11 closer preserves an independent VIEW fault for %s" % label)
+
+
+def case_v11_fzin():
+    base = v11_fixture(sweep=128, packets=300)
+    excluded = edit(base, "in", 0, "fzin", which=10)
+    faults, _notes, out = run(excluded, view=view_for(base), report=True)
+    check(not faults, "excluded-clock input counts as a real input without a fake angle tick")
+    check("angle_rule     unavailable" in out,
+          "release-phase clock joins abstain explicitly pending a sound model")
+    badview = view_for(base, nan_at=20)
+    faults, _ = run(excluded, view=badview)
+    check(bool(faults), "excluded phase does not hide independently malformed VIEW metadata")
+    faults_with(bump_end(excluded, "inputs"), "'end' says",
+                "fzin participates in the existing exact input count")
+    old = edit(build(), "in", 0, "fzin", which=10)
+    faults_with(old, "requires format 11", "old prefixes cannot silently claim new input semantics")
+
+
 def main():
     for fn in (case_control,
                case_no_horizon, case_horizon_without_rows,
@@ -2784,6 +2884,7 @@ def main():
                case_angle_initial_origin, case_angle_initial_restore, case_integer_tokens,
                case_hold_closing_horizon, case_closing_carry_nonnegative,
                case_closing_carry_exact_sign,
+               case_v11_clock, case_v11_closing_restore_authority, case_v11_fzin,
                case_imposition_closing_horizon,
                case_imposition_abandon_horizon, case_imposition_restore_allowance,
                case_imposition_boundary_authority,

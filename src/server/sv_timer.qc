@@ -2086,7 +2086,7 @@ void(entity e) SV_TimerMapTeleport =
 .float  rec_rec_stream;          // this run is being streamed, not buffered
 .float  rec_rec_flagofs;         // byte offset of the reserved `flags` line
 // Patch 375: a lobby save-load keeps its stream.  See SV_RecSnapshot.
-.float  rec_rec_ver;             // line 0 of the stream as written: 9 or 10
+.float  rec_rec_ver;             // line 0 as written; 11 captures delayed-thaw inputs
 .float  rec_rec_partlob;         // the part file's name as opened: 1 lobby, 2 plain, 0 not yet
 .float  rec_rec_inmt, rec_rec_incy; // the last `in` row's <mt> <carry> (or instart's, 0)
 .float  rec_rec_gen;             // warm rewinds since the serial began
@@ -2224,6 +2224,18 @@ float(entity e) SV_RecLive =
 	if (e.rec_rec_stream)
 		return e.rec_rec_fh >= 0;
 	return e.rec_rec_buf >= 1;
+};
+
+// P842: movement can resume before the clock's PostThink thaw. Keep pinned
+// input suppressed; v11 records actual commands in the released packet.
+float(entity e) SV_RecMoveTrace =
+{
+	if (!e.run_t_frzon)
+		return TRUE;
+	if (e.rec_rec_ver == 11)
+	if (!e.run_t_freeze)
+		return TRUE;
+	return FALSE;
 };
 
 /*
@@ -2770,7 +2782,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 ===========================================================================
   The recorder
 
-  FTESURF-REC 9, in full, because four different things are going to read this
+  FTESURF-REC 11, in full, because four different things are going to read this
   and a grammar spread across five functions is one nobody can check against.
 
   (This heading said "FTESURF-REC 5" while the writer emitted 6, from build 82
@@ -2778,7 +2790,8 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
   who edits this block by following its own title documents the wrong version,
   and that is a trap worth one sentence.)
 
-    FTESURF-REC 9           always first; 10 once a `pause` is written (Patch 364)
+    FTESURF-REC 11          new recordings (P842); retained v9/v10 prefixes keep
+                            their version, with v9 -> v10 on pause (Patch 364)
     map <name>              header, one key per line, ANY ORDER, and an
     track <n>               unknown key MUST be skipped rather than rejected --
     startseg <n>            that rule is what let v3 add three keys to v2's
@@ -3551,7 +3564,26 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                           legacy practice/prefix input clocks are not joinable.
                           Resume/retry/session still require their own abstention.
 
+    fzin <pk> <mt> <carry> <fwd> <side> <up> <pit> <yaw> <roll> <bt> <fl>
+                          v11 (P842): actual `in` fields, but movement released
+                          before the clock latch's PostThink thaw. Counted in
+                          <inputs>; NOT an ordinary counted-angle epoch. Pinned
+                          inputs remain omitted. No movement/timer change and
+                          no claim that the omitted held interval is replayable.
+
   Then, written at close:
+
+    clockend counted <start> <tickcarry> <frozen>
+                          v11: current native timer origin, carried rank ticks
+                          (%.9g), FINAL cumulative excluded mover ticks. Uses
+                          live `inend`, including an unthawed exclusion. QC
+                          float32 arithmetic, then the trailer's integer cast.
+                          Declared-state integrity, NOT independent simulation.
+    clockend sampled      v11: sampled clock; no native rank equation claimed.
+    clockend pending      v11: negative/unavailable counted-clock accessor.
+    clockend kept         v11: kept/abandon prefix uses its own horizon; no live
+                          closing-clock equation claimed. Exactly one clockend,
+                          counted by <clocks>, so a dropped line is detectable.
 
     inend <mt> <carry>      v8, build 85.  THE CLOSING HORIZON -- `instart`'s
                             counterpart, written at close.  Patch 477: in a file
@@ -3577,6 +3609,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
     end <ticks> <samples> <padding> <checkpoints> <inputs> <warps> <rides>
         <pms> <pes> <portals>                                   (v9, one line)
         <sessions>                                              (v10: `session`s)
+        <clocks>                                                (v11: clockend)
     split <seg> <ticks>     one per completed segment, ascending
 
   <pms> <pes> <portals> ARE v9 AND COUNTED BY LANDED LINE, like <rides>: `pm` is a
@@ -4684,7 +4717,7 @@ void(entity e) SV_RecState =
 	// pinned body read as that move's physents (a HOLD on a kept abandon).  The
 	// freeze's own packet writes them here, at PostThink, before the latch; a
 	// thaw's first PreThink binds the net change to the last pre-freeze row.
-	if (e.run_t_frzon)
+	if (!SV_RecMoveTrace(e))
 		return;
 	row = e.rec_rec_in - 1;
 
@@ -4829,7 +4862,7 @@ void(entity e) SV_RecOpen =
 	SV_RecFailDrop(e);                  // Patch 817: you left the start
 	SV_RecCopyFlush(e);                 // Patch 375: the part file is about to be reopened
 	SV_RecGenBegin(e);
-	e.rec_rec_ver = 9;
+	e.rec_rec_ver = 11;
 	e.rec_rec_inmt = -1;
 	e.rec_mc_n = e.rec_mc_bad = 0;      // Patch 376
 	e.rec_mc_badrow = -1;
@@ -4953,7 +4986,7 @@ void(entity e) SV_RecOpen =
 	  already joined to the row that shows it.  Same shape as the padding ring:
 	  the cheap route was the one that added nothing.
 	*/
-	SV_RecPut(e, "FTESURF-REC 9");
+	SV_RecPut(e, "FTESURF-REC 11");
 	SV_RecPut(e, sprintf("map %s", mapname));
 	SV_RecPut(e, sprintf("track %g", e.run_t_track));
 	SV_RecPut(e, sprintf("startseg %g", e.run_t_startseg));
@@ -5316,8 +5349,25 @@ void(entity e) SV_RecOpen =
   data/evidence/<map>/<runid>.rec, outside data/runs so no list shows it;
   swept after run_evidence_days (SV_EvidenceSweep).  TRUE when it took the file.
 */
-// The `end` trailer.  Two sprintfs: ten values against the eight-argument cap.
-// Patch 364: an 11th field, <sessions>, in a v10 file (one with a `pause`).
+// P842: final declared clock components, not a substitute for simulation.
+// Kept prefixes have a different horizon; do not apply live offsets to them.
+void(entity e, float kept) SV_RecClockEnd =
+{
+	if (e.rec_rec_ver != 11)
+		return;
+	if (kept)
+		SV_RecPut(e, "clockend kept");
+	else if (!e.run_t_clock)
+		SV_RecPut(e, "clockend sampled");
+	else if (SV_TickCounted(e) < 0)
+		SV_RecPut(e, "clockend pending");
+	else
+		SV_RecPut(e, sprintf("clockend counted %d %.9g %d",
+		                     e.run_t_starttick, e.run_t_tickcarry, e.run_t_frzticks));
+};
+
+// The `end` trailer. Two sprintfs: ten values against the eight-argument cap.
+// v11 always includes sessions and one required closing declaration.
 void(entity e, float ticks) SV_RecTrailer =
 {
 	local string s;
@@ -5326,7 +5376,9 @@ void(entity e, float ticks) SV_RecTrailer =
 	           sprintf("%d %d %d %d %d",
 	                   e.rec_rec_warp, e.rec_rec_ride, e.rec_rec_pm,
 	                   e.rec_rec_pe, e.rec_rec_portal));
-	if (e.rec_rec_pauses > 0)
+	if (e.rec_rec_ver == 11)
+		s = strcat(s, sprintf(" %d 1", e.rec_rec_sess));
+	else if (e.rec_rec_pauses > 0)
 		s = strcat(s, sprintf(" %d", e.rec_rec_sess));
 	SV_RecPut(e, s);
 };
@@ -5345,6 +5397,7 @@ float(entity e) SV_RecKeepEvidence =
 	// Patch 477 review round 10: a frozen run's last row ends at the freeze, not
 	// after the browse -- pm_verify flies a last row to `inend`, and a finish
 	// latched inside it read the whole pause as ticks (a false HOLD).
+	SV_RecClockEnd(e, TRUE);
 	if (e.run_movetickrate > 0)
 	if (e.run_t_frzon)
 		SV_RecPut(e, sprintf("inend %d %.9g", e.run_t_frzmt, e.run_t_frzcarry));
@@ -5842,6 +5895,7 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 	// BUILD 87: a pin, physent or portal change on the FINISHING move has no
 	// PreThink after it to be written from.
 	SV_RecState(e);
+	SV_RecClockEnd(e, FALSE);
 
 	if (e.run_movetickrate > 0)
 		SV_RecPut(e, sprintf("inend %d %.9g",
@@ -6325,8 +6379,8 @@ float(entity e, string path, float mark, float serial,
 	fh = fopen(SV_RecPartPath(e), FS_FILE_WRITESTREAM);
 	if (fh < 0)
 		return FALSE;
-	ofs = (rs_ver == 10) ? 15 : 14;     // "FTESURF-REC 9\n" or "...10\n"
-	fputs(fh, "FTESURF-REC 10\n");
+	ofs = (rs_ver >= 10) ? 15 : 14;     // two-digit version, or v9
+	fputs(fh, sprintf("FTESURF-REC %d\n", (rs_ver == 11) ? 11 : 10));
 	n = fappendrange(fh, path, ofs, b - ofs + 1);   // one over: the copy must END at b
 	if (n != b - ofs)
 	{
@@ -6338,7 +6392,7 @@ float(entity e, string path, float mark, float serial,
 	}
 	e.rec_rec_fh = fh;
 	e.rec_rec_stream = TRUE;
-	e.rec_rec_ver = 10;
+	e.rec_rec_ver = (rs_ver == 11) ? 11 : 10;
 	e.rec_rec_flagofs = (rs_flagofs >= 0) ? rs_flagofs + 15 - ofs : -1;
 	SV_RecRestore(e, mark, samples, padn, cps);
 	SV_RecGenBegin(e);
@@ -6360,6 +6414,7 @@ void(entity e) SV_RecRecount =
 	local float i, c, last, pend, pk;
 	local string l;
 
+	e.rec_rec_ver = stof(substring(bufstr_get(e.rec_rec_buf, 0), 12, -1));
 	e.rec_rec_in = e.rec_rec_warp = e.rec_rec_ride = 0;
 	e.rec_rec_pm = e.rec_rec_pe = e.rec_rec_portal = 0;
 	e.rec_rec_pauses = e.rec_rec_sess = e.rec_rec_pinned = 0;     // Patch 364
@@ -6369,7 +6424,8 @@ void(entity e) SV_RecRecount =
 	{
 		l = bufstr_get(e.rec_rec_buf, i);
 		c = str2chr(l, 0);
-		if (c == 105 && substring(l, 0, 3) == "in ")              // i
+		if ((c == 105 && substring(l, 0, 3) == "in ") ||
+		    (c == 102 && substring(l, 0, 5) == "fzin "))          // i / f
 		{
 			e.rec_rec_in = e.rec_rec_in + 1;
 			last = i;
@@ -6457,7 +6513,7 @@ void(entity e, string why, float ticks) SV_RecPause =
 	for (i = e.rec_rec_lines - 1; i >= 0; i = i - 1)
 	{
 		l = bufstr_get(e.rec_rec_buf, i);
-		if (substring(l, 0, 3) == "in ")
+		if (substring(l, 0, 3) == "in " || substring(l, 0, 5) == "fzin ")
 		{
 			tokenize(l);
 			mt = argv(2);
@@ -13202,6 +13258,7 @@ void(entity e) SV_TimerInFrame =
 	local float bt;                 // the three mover bits, repacked
 	local float was;                // rec_rec_lines before the write
 	local float fl;                 // v9: the state the engine reads next
+	local string row;               // v11: explicit excluded-clock release input
 
 	if (e.run_t_state != TS_RUNNING)
 		return;
@@ -13226,7 +13283,7 @@ void(entity e) SV_TimerInFrame =
 	  writers on ONE rule also means the interleaving a reader groups by never
 	  develops a span with inputs and no sample to terminate it.
 	*/
-	if (e.run_t_frzon)
+	if (!SV_RecMoveTrace(e))
 		return;
 
 	/*
@@ -13277,11 +13334,14 @@ void(entity e) SV_TimerInFrame =
 	if (e.movetype != MOVETYPE_WALK) fl = fl + 4;
 
 	was = e.rec_rec_lines;
-	SV_RecPut(e, strcat(sprintf("in %d %d %.9g %d %d %d ",
-	                            e.rec_rec_pk, e.run_movetick, e.run_movecarry,
-	                            e.movement_x, e.movement_y, e.movement_z),
-	                    sprintf("%.4f %.4f %.4f %d %d",
-	                            input_angles_x, input_angles_y, input_angles_z, bt, fl)));
+	row = strcat(sprintf("in %d %d %.9g %d %d %d ",
+	                     e.rec_rec_pk, e.run_movetick, e.run_movecarry,
+	                     e.movement_x, e.movement_y, e.movement_z),
+	             sprintf("%.4f %.4f %.4f %d %d",
+	                     input_angles_x, input_angles_y, input_angles_z, bt, fl));
+	if (e.run_t_frzon)
+		row = strcat("fz", row);
+	SV_RecPut(e, row);
 	if (e.rec_rec_lines > was)
 	{
 		e.rec_rec_inmt = e.run_movetick;    // Patch 375: a stream's `pause` reads these

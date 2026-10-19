@@ -238,11 +238,13 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
                 elif line.startswith("begin"):
                     body = True
                 continue
-            if line.startswith("in "):
+            if line.startswith(("in ", "fzin ")):
+                if line.startswith("fzin ") and r.ver != 11:
+                    raise MalformedRec("excluded-clock input requires format 11")
                 if max_moves is not None and len(r.moves) >= max_moves:
                     raise SourceLimit("source move limit reached")
                 f = line.split()
-                # in <pk> <mt> <carry> <fwd side up> <pit> <yaw> <roll> <bt> [<fl>]
+                # in/fzin <pk> <mt> <carry> <fwd side up> <pit yaw roll> <bt> [<fl>]
                 #     0    1    2       3   4   5    6     7    8     9    10
                 if len(f) < 11:
                     raise MalformedRec("malformed input row")
