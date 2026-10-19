@@ -1,5 +1,21 @@
 # lextest.md — things waiting on a human
 
+## P832 — your `r_blendsort 2` was costing ~1.2 ms a frame
+
+Live in both installs 2026-10-19 (exe 444005d7, git-7517-patch-832-0-ga4a152701; .prev 544446a8 =
+P831). Client only: players get it with the next release.
+
+- Your config has `r_blendsort 2` (the default is 1). With your config on surf_voyager and eight
+  board lines, mode 2 cost 1.35 ms over mode 1, and most of it was one check repeated once per
+  glass/water face. Mode 2's transparent row is 1.40 -> 0.80 ms now; nothing it draws changed.
+- Measured in the same setup, what else costs frame time (feature on minus off): board lines
+  0.84 ms, the line graph 0.41, the key hint strip 0.11, outlined text 0.08; compare, trainer,
+  chat, line names and the trail were within noise. Board lines are the next thing I am cutting.
+- Mode 2 still costs ~0.6 ms over mode 1 there. If you do not need its glass ordering on a map,
+  `r_blendsort 1` is cheaper.
+
+"Faster / <what looks off, where>". Verdict PENDING.
+
 ## P829 — the 3D viewer: zones, stage times, a real body, Watch in 3D from the board
 
 surfd 2026-10-19T10:04:51Z: generation 9b917197 (main), root

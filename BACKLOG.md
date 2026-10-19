@@ -30,7 +30,10 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
   cost the tracelines (build 59's fit: 27.1 us a ray, cl_sprites.qc). Profiled after 831 at its
   spawn: world traces ~13% of the frame (BIH ~7%, World_ClipToLinks 5.1% walking the linked
   entities -- likely the brush occluder copies) and the QC interpreter 14% (the sprite loops over
-  all 429 glares every frame). Source asks the GPU
+  all 429 glares every frame). BUT toggled live at that spawn (overlay defaults, 10 pairs):
+  `vbsp_glare` on minus off is only +0.135 ms of frame (QC +0.13), and the brush occluders
+  (`vbsp_glare_brush` 2 vs 0) +0.000, so the traces there are mostly not the glares. Lex's 1.63 ms
+  was under `r_budget_csqc 1`'s profiler and his view. Source asks the GPU
   (c_pixel_visibility.cpp); the 50 ms ramp already hides a frame or two of latency. Needs a
   builtin; tracing stays the fallback (old engines via checkbuiltin). Check: same view, CSQC
   row and the glare luma, trace against query.
@@ -50,10 +53,19 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
   mesh, frames with a realtime light. `vid_gl_context_compatibility 0` measured no faster on its
   own (and whether it made a core context was not shown). With `r_blendsort 1`, a world blend list
   the plane sort reorders goes out one face a batch (GLBE_SubmitBlendedWorld): `r_blendsort 0`
-  changed nothing at the spawns measured, and Lex's 1.1-1.3 ms transparent rows did not reproduce
-  there, so his HUD/lines are the next suspect. GLBE_SelectEntity's glLoadMatrixf per entity
+  changed nothing at the spawns measured. Lex's 1.1-1.3 ms transparent rows were his
+  `r_blendsort 2` (next bullet). GLBE_SelectEntity's glLoadMatrixf per entity
   (1.3% of demise, more on tensor2's sprite batches) is NOT dead weight: unskinned models'
   ftetransform() is ftransform() in the compatibility profile.
+- **Lex's own setup (measured 19 Oct, after 831).** His ftesurf.cfg on surf_voyager with eight
+  board lines (`hud_ghost 3`, `r_renderscale 2`): frame 4.66 ms, CSQC 1.40, transparent 1.38 --
+  that row was `r_blendsort 2` (mode 1 0.18, mode 0 0.16). Patch 832 removed a per-face re-check
+  that made mode 2's gather quadratic (1.40 -> 0.80). Mode 2 still costs ~0.6 ms over mode 1: one
+  program setup per blended face, and ClipSkyPolygon (~7.5% there, mode 1 pays it too). Each HUD
+  feature toggled in that process (paired medians of 3 pairs, frame ms): `hud_lines_board`
+  +0.84 (QC +0.74), `hud_linegraph` +0.41, `hud_keyhint` +0.11, `hud_font_outline 2` vs 0 +0.08;
+  hud_compare, hud_trainer, hud_chat, hud_lines_names, hud_trail within noise. Board lines are
+  the biggest item left in his setup.
 - **HL2 PrepareFrame.** Patch 831's clip flags took it 0.87 -> 0.72 ms at demise's spawn. Left:
   every static prop is still visited every view (2,350 on demise, twice with a sky camera) and
   each visible one copied into a scene entity (mod_vbsp.c, the prop loop); BE_GenModelBatches
