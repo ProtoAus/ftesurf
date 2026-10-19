@@ -1352,6 +1352,13 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  bare hash is not a map name.
 	*/
 	fputs(f, sprintf("hopped %d\n", e.run_t_hopped));
+	// Patch 840: the run's clock comparison so far (run_t_ckwall), so a resume
+	// continues it rather than starting it again.  Not `clock`: that key is the
+	// counted/sampled word above.
+	fputs(f, sprintf("slowclk %.4f %d %d %.4f %.4f ", e.run_t_ckwt, e.run_t_ckgaps,
+	                 e.run_t_ckncr, e.run_t_ckcr, e.run_t_ckd));
+	fputs(f, sprintf("%.4f %.4f %d %.4f %.4f\n", e.run_t_cktr, e.run_t_ckpk, e.run_t_ckup,
+	                 e.run_t_cku, e.run_t_ckcb));
 	// Which save this attempt was already resumed from, if any.  Only `retry`
 	// reads it back -- a load overwrites it with its own slot -- but without it
 	// a retry of a shadow run restores TF_SHADOW from `flags` and then reports
@@ -1685,6 +1692,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local float cht;                // build 44, the cheat latch
 	local float hcy;                // Patch 478 r11, run_t_handcarry
 	local float hop;                // Patch 445, the hopped-start taint
+	local float ckwt, ckn, ckncr, ckcr, ckd, cktr, ckpk, ckup, cku, ckcb;   // Patch 840, `slowclk`
 	local float rwd;                // Patch 477, a rewind save (see REWIND)
 	local string fcrc;              // Patch 450, the file's *mapcrc ("" = absent)
 	local float srun;               // build 57, a stage-only run; -1 = the key was absent
@@ -1716,6 +1724,8 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	// unhopped.  Explicit because fteqcc does not zero locals.
 	hop = 0;
 	rwd = 0;
+	ckwt = ckn = ckncr = ckcr = ckd = cktr = ckpk = ckup = cku = 0;   // Patch 840
+	ckcb = RUN_CK_FREE;
 	// Patch 450.  A string local is as un-zeroed as a float one, and this one is
 	// COMPARED rather than summed, so garbage here would be worse than a wrong value.
 	fcrc = "";
@@ -1759,6 +1769,10 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (k == "cheat")      { cht = stof(argv(1)); continue; }
 		if (k == "handcarry")  { hcy = stof(argv(1)); continue; }
 		if (k == "hopped")     { hop = stof(argv(1)); continue; }
+		if (k == "slowclk")    { if (n >= 11) { ckwt = stof(argv(1)); ckn = stof(argv(2));
+		                         ckncr = stof(argv(3)); ckcr = stof(argv(4)); ckd = stof(argv(5));
+		                         cktr = stof(argv(6)); ckpk = stof(argv(7)); ckup = stof(argv(8));
+		                         cku = stof(argv(9)); ckcb = stof(argv(10)); } continue; }
 		if (k == "rewound")    { rwd = stof(argv(1)); continue; }
 		// Patch 450, and ROUND 8 corrected what this said.  It claimed argv(1) is ""
 		// when the writer emitted an empty crc.  THIS LINE IS NEVER REACHED IN THAT
@@ -2102,6 +2116,21 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		SV_TimerResume(e, ticks, elapsed);
 	else
 		e.run_t_ticks = ticks;
+	// Patch 840: the clock comparison the save carried (SV_RewindWriteState
+	// writes it too).  Without the key -- an older file -- it starts at zero:
+	// the locals' defaults above.
+	{
+		e.run_t_ckwt   = ckwt;
+		e.run_t_ckgaps = ckn;
+		e.run_t_ckncr  = ckncr;
+		e.run_t_ckcr   = ckcr;
+		e.run_t_ckd    = ckd;
+		e.run_t_cktr   = cktr;
+		e.run_t_ckpk   = ckpk;
+		e.run_t_ckup   = ckup;
+		e.run_t_cku    = cku;
+		e.run_t_ckcb   = ckcb;
+	}
 
 	/*
 	  Every load is practice.  Only a load of a RUNNING save is a shadow run.
@@ -3201,7 +3230,7 @@ void(entity e) SV_SaveLocCreate =
 #define RW_EVERY   2            // run ticks between samples: ~33 a second at 0.015
 #define RW_CAP     4000         // two minutes/player; physics + bounded save-state snapshots
 #define RW_STATEBASE 10
-#define RW_STATECOLS 50
+#define RW_STATECOLS 60         // Patch 840: 55-64 the slow-clock state
 #define RW_SPLITBASE (RW_STATEBASE + RW_STATECOLS)
 #define RW_CPBASE    (RW_SPLITBASE + FS_MAXSPLITS)
 #define RW_STRIDE    (RW_CPBASE + FS_MAXCPS)
@@ -4984,6 +5013,8 @@ void(entity e, string why) SV_SpecRelease =
 		e.vbsp_bhop_since = e.vbsp_bhop_since + (time - e.run_sp_t0);
 	if (e.run_t_state == TS_RUNNING)                // `cmd timer`'s sampled side
 		e.run_t_startwall = e.run_t_startwall + (time - e.run_sp_t0);
+	e.run_t_ckwall = e.run_t_ckwall + (time - e.run_sp_t0);   // Patch 840, the same span
+	e.run_t_ckskip = time + 1;      // ...and the zero-time usercmds still in flight
 
 	SV_TimerSpecMark(e, FALSE, why);
 

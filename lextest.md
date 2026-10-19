@@ -1,5 +1,77 @@
 # lextest.md — things waiting on a human
 
+## P840 — the unranked line says which setting; slow-motion runs are caught
+
+Live 2026-10-19 (UTC): csprogs 2f86a702 / qwprogs babf2b9b on both installs and all 12
+lobbies (19:00Z), surfd 3334069f (18:56:50Z).
+
+- On a lobby, `m_accel 1`, finish any timed run: chat should read "board: unranked (input mode:
+  m_accel is on) -- not on the online board". Set it back to 0 and the next run ranks as before.
+- In the admin run list a community run shows its reason after the tier ("community clean (input
+  mode)"); a new run's page shows `clock: behind ...` (0 for a normal run) and `prof`.
+- A slowed client (like Mark's two runs) now finishes as "unranked (slow clock: the game clock lost
+  N s to real time)". If an honest run of yours ever reads slow clock, say which map, your
+  connection (Wi-Fi? uploading or streaming?) and the run id.
+
+"Works / <what looked wrong>". Verdict PENDING.
+
+## P851 — m is goto_start, r is reset
+
+__DEPLOYED851__
+
+- Your own config still has m = goto_spawn and r = goto_start (the game keeps saved binds). To take
+  the new ones: Key config (K) -> "reset keys" (every key back to how it ships), or in the console
+  `bind m goto_start; bind r reset`. A fresh install gets them by itself.
+- The key panel's Run group starts Restart run (goto_start, m), Reset stage (reset, r), Go to spawn
+  (goto_spawn, no key): click a slot to bind any of the three.
+
+"m ok / r ok / panel ok". Verdict PENDING.
+
+## P847-P848 — the glow behind the grate; reset and goto_start
+
+Live 2026-10-19 UTC: client exe 775a1956 (git-7546-patch-847-0-gb3f34daf9 = 846 + 849 + 847) in both
+installs 18:40:52Z (.prev 780afe5a); qwprogs a747542c / csprogs 9f35b36a (main 519b0f46) in both installs
+and on all 12 lobbies 18:41Z (read back; .prev 10eac633 / e2b7936e). On the lobbies a 0.1.28 client
+ignores the new draw flag (glow over the grate as before); reset / goto_start work there (checked).
+
+- surf_dune, your old save-2 spot at the grate: the brazier's orange glow and its embers now stay
+  behind the bar too (they drew over it). `vbsp_sprite_under 0` shows the old order.
+- `reset` (new) is what goto_start was: the start of the leg you are on, so mid-run on a staged map
+  it restarts the stage with the clock running. `goto_start` (your r) now restarts the run: mid-run
+  past stage 1 it goes to the start of the map (or the bonus); anywhere else it is `!r` as before,
+  your save in the start box included. The key panel has a Reset stage row (unbound for you).
+- Shipped keys: a fresh install still binds r to `say !r` (= Reset stage). Should r ship as
+  goto_start, and m as goto_spawn (P845)?
+
+"Glow ok / reset ok / goto_start ok / <what looks off>". Verdict PENDING.
+
+## P849 — no "Can't register variable" lines at launch
+
+Installed 2026-10-19T18:30:47Z (UTC): ftesurf64.exe / fteqw64.exe 780afe5a in both installs (846 + 849;
+.prev = 846's 320a6806). The six "Can't register variable r_budget ... r_frametime_window, already
+defined" lines came from those cvars being registered again at each renderer start; harmless, now gone.
+
+"Gone / still there". Verdict PENDING.
+
+## P846 — the console: map typing, Tab, Enter, clicks, `
+
+Installed 2026-10-19T18:06:25Z (UTC): ftesurf64.exe / fteqw64.exe 320a6806 in both installs
+(engine main 7e962cb6a, carries P841 and 843-845; .prev = P841's 50191398).
+
+- Type `map surf_n` letter by letter: no judder. Each key was ~140 ms here and is now 0.3 ms
+  (the first key after a map load builds the list, ~24 ms).
+- `cl_ya`, Down, Enter: the line becomes `cl_yawspeed ` with its value shown under it. Type a
+  number, Enter sets it. `map surf_n`, Down, Enter on `map surf_null`: it loads at once.
+- Type `cl_y` and press Tab once: it types the first row (the green hint).
+- Click a row in the dropdown: it is typed into the line (nothing runs until Enter). Not tested
+  with a real mouse here, only against a screenshot.
+- With text typed, `` ` `` closes the console; `~` (shift) still types.
+- The `[focus] window is NOT foreground ...` line no longer appears in the console.
+- A map dropped in by another program (Momentum) shows after the next map load, or after
+  `sv_mapcompletioncache 0` then `sv_mapcompletioncache 1`.
+
+CONFIRMED by Lex ("Epic! all works", 20 Oct local).
+
 ## P843-P845 — fire behind the grate, see-through walls, goto_spawn
 
 Live 2026-10-19 UTC: both installs at 17:46Z (QC main 4569d279: qwprogs b69cae2b, csprogs d08cf6ff;
@@ -36,8 +108,9 @@ Checked on lobby 27610: surf_apollo runs 10000. Record: tools/lobby-engine-p841-
 - Zone editor in a game you host: Map properties > Speed cap > Apply > Save settings, then Save zones.
   The save line says "speed cap N", and the Publish dialog says "Speed cap N goes with it". After a
   publish lands, `sv_maxvelocity` on that lobby reads N from its next map load.
-- The publish service's own check (an out-of-range cap refused by name) needs your sudo:
-  `install_zonepub.py --upgrade` (dry run as proto first). Without it the editor still never sends one.
+- The publish service refuses an out-of-range cap by name: you ran `install_zonepub.py --upgrade`,
+  release 17c03829 live ~18:07Z 19 Oct (zonepub.py 1940a3bd = the commit's; role and the two
+  publications kept; 189d9f08 stays on disk as the way back).
 
 "Feels right / <map>: <what is off>". Verdict PENDING.
 

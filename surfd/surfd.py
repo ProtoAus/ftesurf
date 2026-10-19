@@ -441,6 +441,7 @@ TF_NOPROFILE = 2048     # QC build 72; sh_defs.qc holds the essay
 TF_NOMAP = 4096         # QC build 73 / engine Patch 321; sh_defs.qc holds the essay
 TF_NOCLOCK = 8192       # QC build 76 / engine Patch 325; sh_defs.qc holds the essay
 TF_NOCOUNTS = 65536     # Patch 406: cursor data instead of mouse counts (cl_prydoncursor)
+TF_SLOWCLOCK = 524288   # Patch 840: the game clock fell behind real time (slow motion)
 # Multi-Session (sv_resume.qc): resumed across a drop or a map change.  Display
 # and evidence only -- style_of and certifiable deliberately never read it.
 TF_MULTISESSION = 16384
@@ -2094,9 +2095,13 @@ def certifiable(flags):
     It still only demotes.  A quiet gate survives a false negative where an
     accusation does not, and that rule does not bend just because this bit is
     harder to reach by accident than the other five.  Lex's call 2026-09-20.
+
+    PATCH 840 ADDS TF_SLOWCLOCK: steady packets carried markedly less game time
+    than the lobby's clock saw pass, i.e. the run was played in slow motion.
+    The time itself is honest game time, which is why nothing else caught it.
     """
     return not (flags & (TF_NOJOURNAL | TF_NORULESET | TF_NOPROFILE | TF_NOMAP
-                         | TF_NOCLOCK | TF_NOCOUNTS))
+                         | TF_NOCLOCK | TF_NOCOUNTS | TF_SLOWCLOCK))
 
 
 # --------------------------------------------------------------------------

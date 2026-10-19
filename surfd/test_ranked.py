@@ -221,6 +221,11 @@ check("an uncertifiable run of a linked install is the ACCOUNT's on the communit
       "the reason is the run's, not the account's",
       (answer(r), board(m, "community")),
       ((200, True, "community", "", 1), [("community", SID, 40000)]))
+TF_SLOWCLOCK = 524288       # Patch 840: the first flags word past six digits
+r = submit(m, GUID1, 3900, PUB1, flags=TF_SLOWCLOCK)
+check("Patch 840: a slow-clock run is demoted to the community board like the others",
+      (answer(r), board(m, "community")),
+      ((200, True, "community", "", 1), [("community", SID, 39000)]))
 
 print("\n--- 6. the switch")
 m = fresh(linked=None)

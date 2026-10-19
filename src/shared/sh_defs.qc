@@ -161,6 +161,7 @@
 #define STAT_FS_TIMERSPLIT  58   // ticks at the last split
 #define STAT_FS_TIMERDELTA  59   // that split minus the PB's, in ticks (signed)
 #define STAT_FS_TIMERPB     60   // this leg's personal best, in ticks; 0 = none
+#define STAT_FS_TIMERSTARTSEG 116 // Patch 848: run_t_startseg, the segment the leg began at
 
 // The save-lock list, so the menu can draw "3/7" without owning the data.
 #define STAT_FS_SAVECOUNT   61
@@ -1677,8 +1678,19 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 */
 #define TF_MOVEOOR 262144
 
+/*
+  Patch 840: the game clock fell behind real time while packets kept arriving --
+  a client reporting less msec than elapsed (a slowed process clock, a modified
+  client), i.e. the run was played in slow motion.  The counted clock stays
+  honest about game time, so nothing else sees it.  SV_SlowClock has the rule;
+  the run's `clk` record states the bound and the measurement.  A demotion like
+  the bits above, not an accusation.  FIRST BIT PAST 2^19: every flags print
+  must be %d or ftos -- %g turns 1048575 into exponent form.
+*/
+#define TF_SLOWCLOCK 524288
+
 #define TF_UNCERT   (TF_NOJOURNAL | TF_NORULESET | TF_NOPROFILE | TF_NOMAP | TF_NOCLOCK \
-                     | TF_NOCOUNTS)
+                     | TF_NOCOUNTS | TF_SLOWCLOCK)
 
 /*
   THE `inprof` GRAMMAR, WRITTEN ONCE FOR BOTH ENDS.
@@ -2064,25 +2076,69 @@ float(float ver) FS_ProfileFields =
 
   A CVAR THE WRITER DOES NOT HAVE IS NEVER A FAULT.  See TF_NOPROFILE.
 */
-float(float have, float raw, float filt, float acc, float grant) FS_ProfileBroken =
+// Patch 840: WHICH test failed, so a demotion can name it.  PW_OK is 0.  The
+// first four are the reported profile (FS_ProfileWhy); the last three are the
+// server's (SV_ProfileWhy).  Words are FS_ProfileWord's, also the .rec's.
+#define PW_OK        0
+#define PW_RAWOFF    1
+#define PW_FILTER    2
+#define PW_ACCEL     3
+#define PW_NOGRANT   4
+#define PW_SILENT    5
+#define PW_PLATFORM  6
+#define PW_CHANGED   7
+
+float(float have, float raw, float filt, float acc, float grant) FS_ProfileWhy =
 {
 	if (have & IPH_RAW)
 	if (raw <= 0)
-		return TRUE;            // OS-summed, OS-accelerated deltas
+		return PW_RAWOFF;       // OS-summed, OS-accelerated deltas
 
 	if (have & IPH_FILTER)
 	if (filt != 0)
-		return TRUE;            // deltas smeared across frames
+		return PW_FILTER;       // deltas smeared across frames
 
 	if (have & IPH_ACCEL)
 	if (acc != 0)
-		return TRUE;            // counts -> angle is not linear
+		return PW_ACCEL;        // counts -> angle is not linear
 
 	if (have & IPH_GRANT)
 	if (grant == 0)
-		return TRUE;            // asked for raw input, bound nothing, fell back
+		return PW_NOGRANT;      // asked for raw input, bound nothing, fell back
 
-	return FALSE;
+	return PW_OK;
+};
+
+float(float have, float raw, float filt, float acc, float grant) FS_ProfileBroken =
+{
+	return FS_ProfileWhy(have, raw, filt, acc, grant) != PW_OK;
+};
+
+// One token, no spaces: the .rec's `inprof`/`prof` field.
+string(float why) FS_ProfileWord =
+{
+	if (why == PW_OK)       return "ok";
+	if (why == PW_RAWOFF)   return "rawinput";
+	if (why == PW_FILTER)   return "m_filter";
+	if (why == PW_ACCEL)    return "m_accel";
+	if (why == PW_NOGRANT)  return "rawmice";
+	if (why == PW_SILENT)   return "silent";
+	if (why == PW_PLATFORM) return "platform";
+	if (why == PW_CHANGED)  return "changed";
+	return "unknown";
+};
+
+// ...and the sentence the finisher reads.
+string(float why) FS_ProfileText =
+{
+	if (why == PW_RAWOFF)   return "in_rawinput is off";
+	if (why == PW_FILTER)   return "m_filter is on";
+	if (why == PW_ACCEL)    return "m_accel is on";
+	if (why == PW_NOGRANT)  return "raw input found no mouse (try in_restart)";
+	if (why == PW_SILENT)   return "the game never reported its input settings";
+	if (why == PW_PLATFORM) return "only the Windows game ranks";
+	if (why == PW_CHANGED)  return "an input setting changed during the run";
+	return "";
 };
 
 /*
@@ -2155,6 +2211,7 @@ string(float flags) FS_RunKindName =
 // player's setting or disk -- `cmd timer` has the detail.
 string(float flags) FS_CertWhy =
 {
+	if (flags & TF_SLOWCLOCK) return "slow clock";      // Patch 840
 	if (flags & TF_NOJOURNAL) return "no journal";
 	if (flags & TF_NORULESET) return "no ruleset";
 	if (flags & TF_NOPROFILE) return "input mode";

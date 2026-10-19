@@ -5,15 +5,42 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Slow clock (P840): calibration and the limits review left open
+
+- **`run_slowclock` 5 is not calibrated.** Every lobby `.rec` now ends with `clk ... <behind>`: read
+  a week of them (honest players, Wi-Fi, someone uploading or streaming) before lowering it. The
+  rig's honest arms read 0; review round 3's model put an oscillating upload queue (0.25 s swings
+  every 4.5 s) at 2.4 s in 3 minutes and Wi-Fi hold-and-release at ~1 s in 10 minutes -- both look
+  exactly like a client that slows and catches up. A ping-based correction (queueing raises ping,
+  under-reported msec does not) would allow a lower bound; unmeasured.
+- **Repaid pauses under the 0.2 s hysteresis are free** (sv_timer.qc SV_ClockFrame): a client that
+  freezes 0.15 s and catches up within a second reads 0. Each cycle is bounded, the count is not.
+  Sizing the hysteresis from measured lobby jitter is the fix; the private plan has the numbers.
+- **Stage rows are judged on the whole run so far** (SV_StageSubmitFlags): a short stage can hold up
+  to the run's bound, and a kept abandon's file has no `clk` to explain a stage row's demotion.
+  Per-stage snapshots of the eleven fields with a scaled bound would close both.
+- **The unranked line's detail shares one slot** (`lobby_rq_*`): a stage close overwrites it before
+  a slow surfd reply to the finish arrives. Cosmetic.
+- **Below ~5 fps the client loses time for real** (cl_input.c's 200 ms caps) and the run reads as a
+  slow clock -- true, and the message says so, but it is not slow motion.
+
+## Left open by Patch 846 (console completion, 20 Oct)
+
+- The Ctrl+F find bar still types `` ` `` (keys.c, the con_findmode block runs before Patch 846's
+  bind test). And in find mode, a click on a completion popup that sits inside the console (the
+  fullscreen console, or the popup flipped above) reaches the row's link and overwrites the
+  "find:" footer, as before 846. Falsifier: con_findmode open, `` ` `` closes the console.
+- After TAB on a fully typed cvar, row 1 is highlighted (CompleteCommand's step), so ENTER types
+  `name ` rather than printing the value. Intended for now (the highlight is visible); revisit if
+  Lex finds it odd.
+- con_selftest prints the popup's click map but cannot check it against the drawn rows (it reads
+  the record the click reads). A check would need the hovered conline_t from a painted frame with
+  the cursor placed on each row.
+
 ## Left open by Patches 843-845 (20 Oct)
 
-- Site: `cl_sprites.qc` glare draw (Sprite_Quad, DRAWFLAG_ADD|DRAWFLAG_NODEPTHTEST). A glow sprite
-  behind a translucent world surface draws over it (surf_dune: the brazier's glow08 halo over
-  GRATE1A from Lex's save 2). Source sorts it with the translucent world, so the grate's bars
-  cover it. The engine puts such a polygon in the additive bucket (gl_alias.c BE_GenPolyBatches):
-  needs a twin material in an earlier sort, or an engine flag. Check: the save-2 shot.
-- Site: `cl_emit.qc` env_fire. Embers (slot 12) and the smoke (always `sort banner`) do not follow
-  P843's choice, so smoke in front of a translucent surface goes under it. The trace hits only
+- Site: `cl_emit.qc` env_fire. The smoke (always `sort banner`) does not follow P843's choice
+  (the embers do since P847), so smoke in front of a translucent surface goes under it. The trace hits only
   solids: a non-solid translucent brush entity (func_illusionary glass) or water between the eye
   and a fire does not put it under. Particles alive when the choice flips keep their bucket.
 - Site: hl2 plugin `vmt/vertexlit`, `animated`, `twotexture`, `transition`, and `vmt/unlit`'s
@@ -30,9 +57,9 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   SV_TimerSpawn clears a just-finished run's tag (sidecar dropped, receipt unsigned within a
   packet of the finish) and, offline, leaks the run's strbuf (rec_rec_buf -1 before the idle).
   SV_SpawnGoto (P845) shows the fix: SV_TimerVoid first, carry the tag across.
-- Site: `cl_keycfg.qc` row 21. Respawn counts both goto_spawn (spawn entity) and the shipped
-  `say !m` (start of the map), and "reset to defaults" binds m to goto_spawn. Lex to decide
-  whether default.cfg's m should be goto_spawn.
+- Site: `cl_sprites.qc` P847 trace. A sprite whose answer flips while particles or the trace's
+  0.25 s age lag behind draws in the old bucket for that long; env_lightglow glows (drawn over
+  everything, as Source) are not traced.
 
 ## Release tooling: what 0.1.28 hit (19 Oct)
 

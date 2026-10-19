@@ -56,6 +56,17 @@ void(entity e, float b) SV_RewindStateSample =
 	m[b+50] = e.run_t_handcarry;
 	m[b+51] = e.run_t_clock;
 	m[b+54] = e.run_t_pendarm;
+	// Patch 840: the slow-clock state, so a rewind's go continues the measure.
+	m[b+55] = e.run_t_ckwt;
+	m[b+56] = e.run_t_ckgaps;
+	m[b+57] = e.run_t_ckncr;
+	m[b+58] = e.run_t_ckcr;
+	m[b+59] = e.run_t_ckd;
+	m[b+60] = e.run_t_cktr;
+	m[b+61] = e.run_t_ckpk;
+	m[b+62] = e.run_t_ckup;
+	m[b+63] = e.run_t_cku;
+	m[b+64] = e.run_t_ckcb;
 	// Two exact 16-bit limbs, never a byte offset rounded through float32.
 	bytes = 0i;
 	if (e.rec_rec_stream && e.rec_rec_fh >= 0)
@@ -209,6 +220,9 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 	}
 	fputs(f, sprintf("flags %d\npb %d\ndirty %d\ncheat %d\nhopped %d\nfromsave %d\nhandcarry %d\n",
 	                 flags, m[b+19], m[b+20], m[b+21], m[b+22], m[b+23], m[b+50]));
+	// Patch 840: as SV_SaveWriteState spells it.
+	fputs(f, sprintf("slowclk %.4f %d %d %.4f %.4f ", m[b+55], m[b+56], m[b+57], m[b+58], m[b+59]));
+	fputs(f, sprintf("%.4f %.4f %d %.4f %.4f\n", m[b+60], m[b+61], m[b+62], m[b+63], m[b+64]));
 	fputs(f, sprintf("azone %d\nevzone %d\narmzone %d\ncpzone %d\ncpmax %d\npendarm %d\n",
 	                 m[b+24], m[b+25], m[b+26], m[b+27], m[b+28], m[b+54]));
 	for (i = 1; i < FS_MAXSPLITS; i = i + 1)

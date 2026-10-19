@@ -891,16 +891,16 @@ vector(float i) Emit_PsysVel =
   blended surface, which never write depth, so surf_dune's braziers drew over
   the $translucent grate in front of them.  A fire with anything between it and
   the eye (VBSP makes translucent brushes TRANSLUCENT|WINDOW, which a default
-  traceline hits) emits slots 17-28 instead: the same flame under
+  traceline hits) emits slots 17-29 instead: the same flame under
   ftesurf_flameu, `sort underwater`, after the smoke's banner and before the
-  map's blended surfaces.  Unblocked fires keep `additive`, so glass or water
+  map's blended surfaces, and since Patch 847 its embers under ftesurf_dotu.  Unblocked fires keep `additive`, so glass or water
   BEHIND a fire still goes under it.  vbsp_emit_flameunder 0 is the old order.
 
   NOT DRAWN: env_fire_random_puff, and the blend between two frames.
 ===========================================================================
 */
-#define FL_SLOTS       29       // per size class: 6 + 6 flame effects, 1 embers, 2 + 2 smoke, 12 flame under
-#define FL_UNDER       17       // slots 0-11 again, drawn before the blended surfaces
+#define FL_SLOTS       30       // per size class: 6 + 6 flame effects, 1 embers, 2 + 2 smoke, 13 under
+#define FL_UNDER       17       // slots 0-12 again, drawn before the blended surfaces
 #define FL_ATLAS       "materials/particle/fire_burning_character/fire_burning_character.vtf"
 #define FL_SMOKE1      "materials/particle/smoke1/smoke1.vtf"
 #define FL_VISTA       "materials/particle/vistasmokev1/vistasmokev1.vtf"
@@ -996,7 +996,7 @@ string(float cls, float layer, float seq, float flip, string nm, float under) Em
 // Radius 1-3 in Source, of particle/particle_glow_05, whose glow is down to half
 // at 0.12 of the sprite; ftesurf_dot is at 0.37 (both measured), so a third of
 // the size draws the same speck.  At full size they were the old orbs again.
-string(float cls, string nm) Emit_EmberBlock =
+string(float cls, string nm, float under) Emit_EmberBlock =
 {
 	local string s;
 
@@ -1006,8 +1006,10 @@ string(float cls, string nm) Emit_EmberBlock =
 	else               s = "0.5 2  48  48  25  40";
 	tokenize(s);
 	// No alphadelta: the engine then fades it to nothing over its own life.
-	s = sprintf("r_part %s\n{\ntexture ftesurf_dot\nblend adda\nscalefactor 1\nscale 1.25 3.75\nrgb 169 16 16\nrgbrand 69 188 2\nrgbrandsync 1\nalpha 1\ndie %g %g\ncount 1\n",
-	            nm, stof(argv(0)), stof(argv(1)));
+	// Patch 847: the twin names ftesurf_dotu, whose own blendfunc adds (Emit_FlameShader); a
+	// `blend adda` would look up ftesurf_dotu#ADDA and build the engine's additive-sort one.
+	s = sprintf("r_part %s\n{\ntexture %s\nscalefactor 1\nscale 1.25 3.75\nrgb 169 16 16\nrgbrand 69 188 2\nrgbrandsync 1\nalpha 1\ndie %g %g\ncount 1\n",
+	            nm, under ? "ftesurf_dotu\nblend blendalpha" : "ftesurf_dot\nblend adda", stof(argv(0)), stof(argv(1)));
 	return strcat(s, sprintf("spawnmode ball\nspawnorg %g %g\norgbias 0 0 %g\nveladd 0\nvelbias 0 0 %g\nvelwrand 15 15 13\ngravity %g\nflurry 20\n}\n",
 	            stof(argv(2)) * 0.5, stof(argv(2)), stof(argv(3)), stof(argv(4)), -stof(argv(5))));
 };
@@ -1223,6 +1225,11 @@ void() Emit_FlameShader =
 		"polygonoffset\nsurfaceparm noshadows\nsurfaceparm nodlight\n}\n";
 	shaderforname("ftesurf_flame", strcat(s, "additive", t));
 	shaderforname("ftesurf_flameu", strcat(s, "underwater", t));
+	// Patch 847: the embers' twin -- p_script.c's BM_ADDA template on their image, sorted under.
+	shaderforname("ftesurf_dotu",
+		"{\nprogram defaultsprite\nnomipmaps\nsort underwater\n"
+		"{\nmap particles/ftesurf_dot\nblendfunc GL_SRC_ALPHA GL_ONE\nrgbgen vertex\nalphagen vertex\nnodepth\n}\n"
+		"polygonoffset\nsurfaceparm noshadows\nsurfaceparm nodlight\n}\n");
 };
 
 // Why this client cannot draw the sheet, or "" when it can.  The atlas is
@@ -1285,7 +1292,7 @@ string() Emit_SmokeWhy =
 // each way round, 6-11 the _b child's, 12 the embers.  env_fire_tiny's system
 // draws sequence 3 alone, so its six slots share two effects.  13 and 14 are
 // the smoke (vistasmokev1's two loops, or smoke1 twice), 15 and 16
-// env_fire_large_smoke_b's, 17-28 slots 0-11 under ftesurf_flameu.
+// env_fire_large_smoke_b's, 17-29 slots 0-12 under ftesurf_flameu and ftesurf_dotu.
 void(float cls) Emit_FlameDefine =
 {
 	local float s, seq, layer;
@@ -1326,8 +1333,10 @@ void(float cls) Emit_FlameDefine =
 		em_flfx[cls * FL_SLOTS + FL_UNDER + s] = particleeffectnum(strcat(nm, "u"));
 	}
 	nm = sprintf("ftesurf_fl%ge", cls);
-	localcmd(Emit_EmberBlock(cls, nm));
+	localcmd(Emit_EmberBlock(cls, nm, FALSE));
+	localcmd(Emit_EmberBlock(cls, strcat(nm, "u"), TRUE));
 	em_flfx[cls * FL_SLOTS + 12] = particleeffectnum(nm);
+	em_flfx[cls * FL_SLOTS + FL_UNDER + 12] = particleeffectnum(strcat(nm, "u"));
 	dprint(sprintf("emit: flame class %g defined\n", cls));
 };
 
@@ -1412,7 +1421,7 @@ float(float cls, float smoke, float under) Emit_FlameSlot =
 		s = 13 + floor(random() * 1.999);
 	else
 		s = 15 + floor(random() * 1.999);
-	if (under && s < 12)
+	if (under && s < 13)
 		s = s + FL_UNDER;
 	return em_flfx[cls * FL_SLOTS + s];
 };
@@ -4053,7 +4062,7 @@ void() Emit_List =
 		else
 		{
 			// Slots 0-12 of a class are its flame and embers, 13-16 its smoke,
-			// 17-28 its flame under.
+			// 17-29 its flame and embers under.
 			tot = sm = un = 0;
 			for (k = 0; k < 4 * FL_SLOTS; k = k + 1)
 				if (em_flmask & pow(2, floor(k / FL_SLOTS)))
@@ -4078,8 +4087,8 @@ void() Emit_List =
 				              2 * ((em_smwant & 1) + (em_smwant & 2) / 2 + (em_smwant & 4) / 4) + (em_smwant & 8) / 2));
 			print(sprintf("  env_fire: %g in reach (%g units), %g of them past %g and thinned\n",
 			              em_flin, FL_REACH, em_flthin, FL_NEAR));
-			print(sprintf("  env_fire: flame under the blended surfaces: %g of %g effects answering, vbsp_emit_flameunder %g; since load %g fire-frames had something between, %g did not\n",
-			              un, 12 * ((em_flwant & 1) + (em_flwant & 2) / 2 + (em_flwant & 4) / 4 + (em_flwant & 8) / 8),
+			print(sprintf("  env_fire: flame and embers under the blended surfaces: %g of %g effects answering, vbsp_emit_flameunder %g; since load %g fire-frames had something between, %g did not\n",
+			              un, 13 * ((em_flwant & 1) + (em_flwant & 2) / 2 + (em_flwant & 4) / 4 + (em_flwant & 8) / 8),
 			              cvar("vbsp_emit_flameunder"), em_flunder, em_flover));
 		}
 		print(sprintf("  env_fire: %g may carry a light (no spawnflags 32)\n", em_flglow));

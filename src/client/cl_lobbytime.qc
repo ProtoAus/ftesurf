@@ -645,7 +645,7 @@ void(float track, float leg, float ticks, float flags) LT_Keep =
 	fputs(fh, sprintf("tickrate %g\n", tick));
 	fputs(fh, sprintf("owner %s\n", LT_Owner()));
 	fputs(fh, sprintf("runid %s-l%g\n", strftime(TRUE, "%Y%m%d-%H%M%S"), leg));
-	fputs(fh, sprintf("flags %g\n", flags));
+	fputs(fh, sprintf("flags %d\n", flags));       // %g goes exponent at 1000000 (P840's bit)
 	fputs(fh, sprintf("clock %s\n", (flags & TF_NOCLOCK) ? "sampled" : "counted"));
 	fputs(fh, sprintf("lobby %s\n", LT_Host()));
 

@@ -43,7 +43,11 @@ HEAD_KEYS = frozenset((
     # tell a demo-sourced import from one derived from positions.  Safe to
     # publish: it names a public demo, and surfd's own allowlist is still what
     # decides what leaves the process.
-    "momdemo").split())
+    "momdemo "
+    # Patch 840: the start's input-profile verdict, for the owner's run page.
+    # Not in WEB_HEAD_KEYS, so the /board/ routes leave it out; /api/replay
+    # serves the raw file, this line included, as it does mapcrc and nonce.
+    "inprof").split())
 TICK_RECS = frozenset(("cp", "stage", "stagestart", "restart", "resume", "ghost"))  # <n> <ticks>
 COUNTED = ("in", "pe", "pm", "seed", "zseed", "board", "inend", "ride", "portal",
            "spec")     # spec: windows, parsed before the counted fallback
@@ -201,6 +205,7 @@ def _parse(fh, max_bytes, max_points):
     in_mt = None
     rebase = None       # resume/retry: SV_TimerResume sets starttick = movetick - ticks
     spec_open = None    # the open spectate window's `spec 1`: (t, x, y, wall)
+    cert = {"prof": None, "clk": None}   # Patch 840: the finish's verdicts
 
     def mark(k, num, t, x=None, y=None, **extra):
         nonlocal marks_dropped
@@ -332,6 +337,20 @@ def _parse(fh, max_bytes, max_points):
             why = (_WORD.sub("", a[12])[:24] or "?") if len(a) > 12 else "?"
             mark("spec", None, ticks_t(ticks), vec[0], vec[1], held=held, why=why)
             spec_open = None
+        elif kw == "prof":
+            # Patch 840: the finish's input-profile verdict, one word.
+            if len(a) != 1:
+                bad_recs += 1
+                continue
+            cert["prof"] = _WORD.sub("", a[0])[:24]
+        elif kw == "clk":
+            # Patch 840: bound hyst allow wall stalls credited debt behind (the
+            # grammar block over SV_RecOpen).
+            vals = [_num(x) for x in a]
+            if len(vals) != 8 or any(v is None or abs(v) > VALUE_LIMIT for v in vals):
+                bad_recs += 1
+                continue
+            cert["clk"] = vals
         elif kw == "end":
             end = [_int(x) for x in a[:16]]
         elif kw in counts:
@@ -414,7 +433,7 @@ def _parse(fh, max_bytes, max_points):
         "marks": marks, "splits": splits, "end": end, "counts": counts,
         "stats": {"max_speed": round(top, 1), "avg_speed": round(avg, 1),
                   "duration": round(max(tmax or 0.0, 0.0), 3)},
-        "notes": notes, "truncated": st["truncated"],
+        "notes": notes, "truncated": st["truncated"], "cert": cert,
     }
 
 

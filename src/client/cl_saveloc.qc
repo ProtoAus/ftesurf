@@ -627,13 +627,16 @@ float(float scan) SaveLoc_LoadsOn =
 	return rec_sl_open && scan >= '3' && scan <= '6';
 };
 
-// The key bound to `say !r` (default.cfg), else "!r".
+// The key that restarts the run: goto_start's (Patch 848), else `say !r`'s (default.cfg),
+// else "!r".
 string() SaveLoc_RestartKey =
 {
 	local string k;
 	local float sp;
 
-	k = findkeysforcommandex("say !r");
+	k = findkeysforcommandex("goto_start");
+	if (k == "")
+		k = findkeysforcommandex("say !r");
 	sp = strstrofs(k, " ", 0);
 	if (sp > 0)
 		k = substring(k, 0, sp);

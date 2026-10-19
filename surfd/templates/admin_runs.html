@@ -104,12 +104,21 @@ function renderChips(counts) {
   }
 }
 
+// sh_defs.qc FS_CertWhy, worst first (Patch 840): why a run is not ranked.
+const CERT_WORDS = [[524288, "slow clock"], [512, "no journal"], [1024, "no ruleset"],
+  [2048, "input mode"], [4096, "other map"], [8192, "old clock"], [65536, "input counts"]];
+function certWhy(f) {
+  const w = CERT_WORDS.find(([bit]) => Number(f) & bit);
+  return w ? w[1] : "";
+}
+
 function runRow(r) {
   const tr = el("tr", "link");
   tr.dataset.rid = r.id;
   const cells = [
     el("td", "num mono", r.id), el("td", "", r.map_dir), el("td", "", legLabel(r)),
-    el("td", "", r.kind === "evidence" ? "stage evidence" : r.tier + " " + r.style),
+    el("td", "", r.kind === "evidence" ? "stage evidence" : r.tier + " " + r.style +
+       (r.tier === "community" && certWhy(r.flags) ? " (" + certWhy(r.flags) + ")" : "")),
     el("td", "", r.name),
     el("td", "num mono", fmtMs(r.ms)), el("td", "", fmtDate(r.submitted))];
   const v = el("td"); v.appendChild(pill(r.verdict, VERDICT_CLS[r.verdict]));

@@ -306,7 +306,7 @@ def unsigned_why(k):
 def _runs_base(keys):
     return """
 SELECT p.id, p.kind, p.map, p.map_dir, p.track, p.leg, p.tier, p.style, p.name,
-       p.millis AS ms, p.submitted, p.checked, p.recheck_at, v.verdict,
+       p.millis AS ms, p.flags, p.submitted, p.checked, p.recheck_at, v.verdict,
        COALESCE(e.verdict = 'ERROR', 0) AS error,
        COALESCE(v.reason LIKE '%stage rows not posted in this recording%', 0)
            AS stage_note,

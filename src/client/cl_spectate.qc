@@ -204,7 +204,7 @@ void() Spec_TurnRelease =
 // board, the menus and votes, and the default binds that end the window on the
 // server (noclip: "move"; `say !r`: "retry").  Anything else -- an alias, +klook,
 // a roll, force_centerview -- could turn the held aim, so its press is swallowed.
-#define SPEC_CMDS " +forward +back +moveleft +moveright +moveup +movedown +speed +jump +duck +attack +attack2 +use +showscores +voip toggleconsole say say_team messagemode messagemode2 chat_say chat_open togglemenu hud_edit hud_player run_compare gfx_menu saveloc_menu vote spectate ghost noclip screenshot quit fullscreen_toggle vid_toggle sl_save sl_load sl_prev sl_next sl_first sl_last sl_goto sl_start sl_del sl_clear sl_list sl_status +saveloc_hold sl_hold save_menu +sl_hold goto_start goto_spawn config_menu ent_cursor "
+#define SPEC_CMDS " +forward +back +moveleft +moveright +moveup +movedown +speed +jump +duck +attack +attack2 +use +showscores +voip toggleconsole say say_team messagemode messagemode2 chat_say chat_open togglemenu hud_edit hud_player run_compare gfx_menu saveloc_menu vote spectate ghost noclip screenshot quit fullscreen_toggle vid_toggle sl_save sl_load sl_prev sl_next sl_first sl_last sl_goto sl_start sl_del sl_clear sl_list sl_status +saveloc_hold sl_hold save_menu +sl_hold goto_start goto_spawn reset config_menu ent_cursor "
 
 // One command: its first word, to a space or a tab, quotes stripped.
 float(string c) Spec_CmdAllowed =
