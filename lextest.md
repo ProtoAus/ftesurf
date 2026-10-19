@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P835 — the 3D viewer runs faster on heavy maps
+
+surfd 2026-10-19T12:20:25Z: generation e58d9d0e (main), root
+/srv/nvme/agent-work/surfd835-20261019T1300Z; watch.js 2465f49d. Rollback: surfd834 (cb9b4603).
+
+- Open a run on a heavy map (surf_demise, surf_boreas) and play it: it should be smoother.
+  Measured here (vsync off, first person held): surf_demise 52/48/57 -> 94/69/92 fps; playback
+  62 -> 92. The picture is the same, pixel for pixel.
+- If the view ever goes black with a message about the graphics card, reload: the browser
+  took the GPU back (it can when memory runs short).
+
+"Smoother / <what looks wrong>". Verdict PENDING.
+
 ## P834 — the 3D viewer: Display settings, energy, maps kept on your PC
 
 surfd 2026-10-19T11:46:53Z: generation cb9b4603 (main), root
