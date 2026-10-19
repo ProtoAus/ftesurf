@@ -1,5 +1,32 @@
 # AGENT_NOTES.md
 
+## Story and Event mode (P854, 2026-10-20)
+
+- **The list is data, not code**: surfd reads `/srv/nvme/surfd/data/story.txt` (SURFD_STORY) on
+  every stat change; `surfd/story.txt` is its source in git and `python tools/story_push.py` checks
+  it with surfd's own parser, checks every map against the live `?maps=1`, copies it and waits until
+  `?story=list` serves its sha256[:12]. A map the Pi does not list stops the push (`--force` for one
+  on its way: mapwatch lists a hand-added BSP only at its next `23 */6` run). The grammar is the
+  file's header. A successor generation never carries the list.
+- **A run is whose key signed it** (`_story_calc`): a guid is the client's to choose and
+  `keylinks.player` is the lobby's copy of it, so review round 1 moved a victim's medals with one
+  link, and round 2 took an unsigned guid with FIRST KEY WINS (the attacker signs first). A
+  community row counts for an account only when its own run's receipt verified (`sig = 1`) with a
+  key linked to it; unsigned rows stay the guid's. The menu's who-am-I (social.py menu_read,
+  `story=1` on the Friends list proof) is the key's account, else the newest guid it signed for.
+  Rows read through `runs_live` (the query repeats its WHERE text: 131 rows on the Pi, not three
+  million).
+- **The recompute is off the request** (`_story_kick`): a stale answer is served while one thread
+  works out the next; only a worker's first answer, or one for a changed file, is waited for.
+- **Menu rig recipe**: `tools/story_fixture.py --home <scratch>` runs this checkout's surfd on
+  127.0.0.1 with made-up players (map_index patched from mapdl.net.txt); `tools/runlines_smoke.py
+  cfg/test/p854story.cfg --mount --mqc <menu.dat> --put data/consent.txt=... --put data/mapmeta.txt=<install's>
+  --put data/mapdl.net.txt=<install's> [--put data/story_me.txt=<handle file>]`. Without mapmeta and
+  mapdl the thumbnails are black and Play finds no row. `ui_story [tab N|view <handle>|sel N|probe]`
+  drives the screen; `story_probe:` lines grade it.
+- **fteqcc binds `?:` tighter than `&&`**: `(on || hot) && !locked ? A : B` compiled as
+  `(on || hot) && (!locked ? A : B)` (F314, implicit int-to-vector cast). Bracket the condition.
+
 ## The 3D viewer and Propper props, HDR maps in Chromium (P855, 2026-10-20)
 
 - **Missing props were never missing content**: noclip's Studio.ts asserted `clientmaterial === 0`, a stale

@@ -38,3 +38,5 @@ menu/m_update.qc
 // create screen's state); m_main.qc and m_lobby.qc's URI_Get_Callback reach it
 // through the Mlb_* prototypes.
 menu/m_board.qc
+// Patch 854: last, it draws with everything above (ui_*, MF_* proof, MP_Draw).
+menu/m_story.qc

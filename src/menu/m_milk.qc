@@ -79,8 +79,8 @@ float  mm_last, mm_asp;
 float  mm_hlon, mm_hlnext;
 vector mm_titlepos, mm_titlecur;   // MM_Title's position last frame, for the feedback glow; x < 0 = none
 vector mm_hlpos, mm_hlsize;
-float  mm_itemx[4];             // eased hover offset per main item
-float  mm_itemhot[4];           // hovered last frame, for the tick on entry
+float  mm_itemx[5];             // eased hover offset per main item
+float  mm_itemhot[5];           // hovered last frame, for the tick on entry
 
 // The two panel slots.  mm_pslot holds the current station's; the other is
 // the one the camera just left, collapsing.  Slot s draws $rt:mm_ui<s>.
@@ -301,6 +301,7 @@ float() MM_StationFor =
 {
 	if (mm_art >= 0)                   return mm_art;
 	if (menu_screen == SCREEN_CREATE)  return MS_PLAY;
+	if (menu_screen == SCREEN_STORY)   return MS_PLAY;
 	if (menu_screen == SCREEN_VISUALS) return MS_VIS;
 	if (menu_screen == SCREEN_MUSIC)   return MS_MUSIC;
 	return MS_MAIN;
@@ -1385,7 +1386,7 @@ void(vector pos) MM_Title =
 	Font_Set(ui_font_ui);
 };
 
-// The four entries, from `y` down at `pitch`.
+// The five entries, from `y` down at `pitch`.
 void(float x, float y, float pitch) MM_MainItems =
 {
 	if (MM_Item(0, "mm_play", [x, y], "PLAY", 16, 0))
@@ -1394,14 +1395,16 @@ void(float x, float y, float pitch) MM_MainItems =
 		ui_create_open();
 		ui_refilter();
 	}
-	if (MM_Item(1, "mm_vis", [x, y + pitch], "VISUALS", 0, 6))
+	if (MM_Item(1, "mm_story", [x, y + pitch], "STORY", 8, 3))
+		Sty_Open();
+	if (MM_Item(2, "mm_vis", [x, y + pitch * 2], "VISUALS", 0, 6))
 		menu_screen = SCREEN_VISUALS;
-	if (MM_Item(2, "mm_music", [x, y + pitch * 2], "MUSIC", -16, 0))
+	if (MM_Item(3, "mm_music", [x, y + pitch * 3], "MUSIC", -16, 0))
 	{
 		menu_screen = SCREEN_MUSIC;
 		MM_MusicScan();
 	}
-	if (MM_Item(3, "mm_quit", [x, y + pitch * 3], "QUIT", 0, -4))
+	if (MM_Item(4, "mm_quit", [x, y + pitch * 4], "QUIT", 0, -4))
 		localcmd("quit\n");
 	// P796: journal uploads moved to the first boot's terms box and the F2 panel.
 };
@@ -1431,15 +1434,18 @@ void(vector sz) MM_MainPanel =
 
 	// The foot: what is playing, the world, and the one hint.
 	fy = sz_y - 40;
-	sui_text([x, fy - 18], SZ_LABEL,
-	         sprintf("^9world  ^7%s     ^9move off the panel to look around", MM_WorldName(mm_world)), COL_DIM, 1, 0);
+	// Under QUIT only: five entries reach the foot on panels below ~780 px.
+	if (fy - 18 > y + 150 + pitch * 4 + MM_ITEM_H)
+		sui_text([x, fy - 18], SZ_LABEL,
+		         sprintf("^9world  ^7%s     ^9move off the panel to look around", MM_WorldName(mm_world)), COL_DIM, 1, 0);
 	if (mm_playing != "")
+	if (fy - 48 > y + 150 + pitch * 4 + MM_ITEM_H)
 		sui_text([x, fy - 48], SZ_LABEL, sprintf("^9playing  ^7%s", mm_playing), COL_DIM, 1, 0);
 	// Keep the secondary privacy button clear of the optional analyser strip.
-	if (sz_y - (y + 150 + pitch * 4 + 42) > 170)
+	if (sz_y - (y + 150 + pitch * 5 + 42) > 170)
 		MM_Spectrum([x, fy - 130], [sz_x - x * 2, 70]);
 	if (clientstate() == 2)
-		sui_text([x + 4, y + 150 + pitch * 4 + 52], SZ_LABEL,
+		sui_text([x + 4, y + 150 + pitch * 5 + 52], SZ_LABEL,
 		         sprintf("^9esc  back to %s", serverkey("map")), COL_DIM, 1, 0);
 };
 
@@ -1466,7 +1472,7 @@ void(vector screensize) MM_ScreenMain =
 	MM_MainItems(x, y, MM_ITEM_H);
 
 	if (clientstate() == 2)
-		sui_text([x + 4, y + MM_ITEM_H * 4 + 52], SZ_LABEL,
+		sui_text([x + 4, y + MM_ITEM_H * 5 + 52], SZ_LABEL,
 		         sprintf("^9esc  back to %s", serverkey("map")), COL_DIM, 1, 0);
 	else if (MM_Active())
 		sui_text([x + 4, screensize_y - 48], SZ_LABEL,
@@ -2096,7 +2102,7 @@ void() MM_BootTick =
 	{
 		if (mm_bc_step == 1 && t > 4)
 		{
-			sp = MM_BcItemScreen(1);
+			sp = MM_BcItemScreen(2);
 			cvar_set("milk_fakemouse", sprintf("%g %g", sp_x, sp_y));
 			MM_BcPanel("rest");
 			mm_bc_step = 2;
@@ -2124,14 +2130,14 @@ void() MM_BootTick =
 			localcmd("screenshot milk_panel_orbit\n");
 			// Aim at VISUALS again WITHOUT letting the orbit settle: the trace
 			// must follow the moved panel.
-			sp = MM_BcItemScreen(1);
+			sp = MM_BcItemScreen(2);
 			ui = MM_MouseToUI(sp);
 			print(sprintf("milk_bootcheck: pick orbited-at-rest-coords mouse %v -> ui %v\n", sp, ui));
 			mm_bc_step = 5;
 		}
 		else if (mm_bc_step == 5 && t > 11)
 		{
-			sp = MM_BcItemScreen(2);
+			sp = MM_BcItemScreen(3);
 			cvar_set("milk_fakemouse", sprintf("%g %g", sp_x, sp_y));
 			mm_bc_step = 6;
 		}

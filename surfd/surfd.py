@@ -27,6 +27,7 @@ import logging.handlers
 import math
 import os
 import re
+import shlex
 import shutil
 import sqlite3
 import stat
@@ -3845,6 +3846,8 @@ def board():
         return game_players(request.args.get("players"), now)
     if request.args.get("player") is not None:      # ...and game_player
         return game_player(request.args.get("player"), now)
+    if request.args.get("story") is not None:       # Patch 854: see game_story
+        return game_story(request.args.get("story"), now)
 
     mapname = clean_map(request.args.get("map"))
     if not mapname:
@@ -4693,6 +4696,472 @@ def game_avatar(who, now):
     if not h:
         return fail(404, "not found")
     return _avatar_file(h, ".txt", "text/plain")
+# --------------------------------------------------------------------------
+# Story and Event mode (Patch 854)
+# --------------------------------------------------------------------------
+# The ladder is data/story.txt, the owner's file (repo copy surfd/story.txt,
+# pushed by tools/story_push.py); its grammar is in that file's header.  Medals
+# are worked out from WOS board rows on every refresh -- ranked and community,
+# clean style, never an imported tier -- so an edit never loses anybody's runs
+# and nothing here is stored.  An unlinked install's community run counts for
+# the account its signing key was later linked to (see _story_calc).
+# All three replies ride /api/board for game_avatar's reason.
+
+STORY_FILE = os.environ.get("SURFD_STORY", os.path.join(DATA_DIR, "story.txt"))
+STORY_TTL = 60              # seconds the worked-out medals are reused
+STORY_FILE_MAX = 256 * 1024
+STORY_LISTS_MAX = 4
+STORY_CHAPTERS_MAX = 40     # per list
+STORY_LEVELS_MAX = 200      # per list
+STORY_PLAYERS_MAX = 100     # rows one ?story=players reply carries
+STORY_TEXT_MAX = 80
+STORY_MEDALS = {"bronze": "b", "silver": "s", "gold": "g"}
+STORY_POINTS = {"b": 1, "s": 2, "g": 3}
+STORY_KINDS = ("finish", "time", "reach", "nofail", "wonly", "via")
+STORY_LIVE = ("finish", "time", "reach")        # what board rows can decide
+_STORY_ID = re.compile(r"[a-z][a-z0-9_]{0,15}\Z")
+_STORY_TIME = re.compile(r"(?:(\d{1,3}):([0-5]\d)|(\d{1,4}))(?:\.(\d{1,3}))?\Z", re.ASCII)
+_STORY_INT = re.compile(r"[0-9]{1,4}\Z")
+
+_story_lock = threading.Lock()
+_story_cold = threading.Lock()
+_story = {"stat": None, "conf": None, "at": None, "rev": "", "calc": None, "calc_rev": "",
+          "busy": False}
+
+
+def _story_words(line):
+    """One line's words, shlex-quoted, with a // comment cut off outside quotes."""
+    quote = False
+    for i, ch in enumerate(line):
+        if ch == '"':
+            quote = not quote
+        elif not quote and line.startswith("//", i):
+            line = line[:i]
+            break
+    return shlex.split(line)
+
+
+def _story_ms(word):
+    m = _STORY_TIME.fullmatch(word)
+    if not m:
+        return None
+    mins, secs, bare, frac = m.groups()
+    s = int(mins) * 60 + int(secs) if mins is not None else int(bare)
+    return s * 1000 + (int((frac + "00")[:3]) if frac else 0)
+
+
+def _story_clock(ms):
+    s, ms = divmod(ms, 1000)
+    return "%d:%02d%s" % (s // 60, s % 60, (".%03d" % ms).rstrip("0").rstrip(".") if ms else "")
+
+
+def story_text(ch, track):
+    """A challenge's line when the file gives none."""
+    k, v = ch["k"], ch.get("v", 0)
+    if k == "finish":
+        return "Finish bonus %d" % track if track else "Complete the map"
+    if k == "time":
+        return "Sub " + _story_clock(v)
+    if k == "reach":
+        return "Reach stage %d" % v
+    return {"nofail": "First try every stage", "wonly": "W only",
+            "via": "Take the other route"}[k]
+
+
+def story_parse(text):
+    """-> (lists, problems).  Tolerant: a bad line is reported and skipped."""
+    lists, problems = [], []
+    cur = chap = lvl = None
+    pct = 60                        # before any list: every later list's default
+
+    def bad(n, why):
+        problems.append("line %d: %s" % (n, why))
+
+    for n, raw in enumerate(text.splitlines(), 1):
+        try:
+            w = _story_words(raw)
+        except ValueError:
+            bad(n, "unbalanced quotes")
+            continue
+        if not w:
+            continue
+        key, args = w[0].lower(), w[1:]
+        if key == "list":
+            if len(lists) >= STORY_LISTS_MAX or not args or not _STORY_ID.fullmatch(args[0]) \
+                    or any(L["id"] == args[0] for L in lists):
+                bad(n, "list needs a new short id")
+                cur = None
+                continue
+            cur = {"id": args[0], "title": clean_text(args[1] if len(args) > 1 else args[0],
+                                                      STORY_TEXT_MAX), "pct": pct, "chapters": []}
+            if len(args) > 2:
+                bad(n, "list <id> \"Title\"")
+            lists.append(cur)
+            chap = lvl = None
+        elif key == "unlock":
+            # A list's own share, so it goes before that list's first chapter;
+            # one chapter's bar is `chapter "T" unlock N`.
+            v = re.fullmatch(r"([0-9]{1,3})%", args[0]) if len(args) == 1 else None
+            if not v or not 0 <= int(v.group(1)) <= 100:
+                bad(n, "unlock wants a percent, like 60%")
+            elif cur is not None and cur["chapters"]:
+                bad(n, "unlock N% goes before the list's first chapter")
+            elif cur is not None:
+                cur["pct"] = int(v.group(1))
+            else:
+                pct = int(v.group(1))
+        elif cur is None:
+            bad(n, "%s before any list" % key)
+        elif key == "chapter":
+            if len(cur["chapters"]) >= STORY_CHAPTERS_MAX:
+                bad(n, "too many chapters")
+                continue
+            unlock = None
+            if len(args) == 3 and args[1].lower() == "unlock" and _STORY_INT.fullmatch(args[2]):
+                if cur["chapters"]:
+                    unlock = int(args[2])
+                else:
+                    bad(n, "the first chapter is always open")
+            elif len(args) > 1:
+                bad(n, "chapter \"title\" [unlock N]")
+            chap = {"title": clean_text(args[0] if args else "", STORY_TEXT_MAX) or "",
+                    "unlock": unlock, "levels": []}
+            cur["chapters"].append(chap)
+            lvl = None
+        elif key == "level":
+            if sum(len(c["levels"]) for c in cur["chapters"]) >= STORY_LEVELS_MAX:
+                bad(n, "too many levels")
+                lvl = None
+                continue
+            if chap is None:
+                chap = {"title": "", "unlock": None, "levels": []}
+                cur["chapters"].append(chap)
+            if args[:1] == ["soon"] or not args:
+                lvl = {"map": "", "track": 0, "ch": []}
+            else:
+                name = clean_map(args[0])
+                track = 0
+                if len(args) == 3 and args[1].lower() == "bonus" and _STORY_INT.fullmatch(args[2]):
+                    track = int(args[2])
+                elif len(args) != 1:
+                    bad(n, "level <map> [bonus N]")
+                if not name or not 0 <= track <= MAX_TRACK:
+                    bad(n, "not a map name: %s" % args[0])
+                    lvl = None
+                    continue
+                lvl = {"map": name, "track": track, "ch": []}
+            chap["levels"].append(lvl)
+        elif key in STORY_MEDALS:
+            if lvl is None or not lvl["map"]:
+                bad(n, "%s outside a level" % key)
+                continue
+            m = STORY_MEDALS[key]
+            kind = args[0].lower() if args else ""
+            need = 2 if kind in ("time", "reach", "via") else 1
+            body, text = args[:need], (args[need] if len(args) == need + 1 else None)
+            ch = {"m": m, "k": kind}
+            if len(args) not in (need, need + 1) or kind not in STORY_KINDS:
+                body = []
+            if kind == "time" and len(body) == 2 and _story_ms(body[1]):
+                ch["v"] = _story_ms(body[1])
+            elif kind == "reach" and len(body) == 2 and _STORY_INT.fullmatch(body[1]) \
+                    and 1 <= int(body[1]) <= MAX_LEG:
+                ch["v"] = int(body[1])
+            elif kind == "via" and len(body) == 2:
+                ch["v"] = clean_text(body[1], 32)
+            elif kind in ("finish", "nofail", "wonly") and len(body) == 1:
+                pass
+            else:
+                bad(n, "%s: finish | time m:ss | reach N | nofail | wonly | via <name>" % key)
+                continue
+            if any(c["m"] == m for c in lvl["ch"]):
+                bad(n, "%s given twice" % key)
+                continue
+            ch["t"] = clean_text(text, STORY_TEXT_MAX) if text else story_text(ch, lvl["track"])
+            lvl["ch"].append(ch)
+        else:
+            bad(n, "unknown word %s" % key)
+    for L in lists:
+        for c in L["chapters"]:
+            for lv in c["levels"]:
+                if lv["map"] and not lv["ch"]:
+                    lv["ch"].append({"m": "b", "k": "finish", "t": story_text(
+                        {"k": "finish"}, lv["track"])})
+                lv["ch"].sort(key=lambda c: STORY_POINTS[c["m"]])
+    return lists, problems
+
+
+def _story_conf():
+    """The parsed file, re-read when its stat changes.  (lists, rev) or (None, "")."""
+    try:
+        st = os.stat(STORY_FILE)
+        key = (st.st_mtime_ns, st.st_size, st.st_ino)
+        if key == _story["stat"]:
+            return _story["conf"], _story["rev"]
+        if st.st_size > STORY_FILE_MAX:
+            raise ValueError("story file over %d bytes" % STORY_FILE_MAX)
+        with open(STORY_FILE, "rb") as fh:
+            data = fh.read(STORY_FILE_MAX + 1)
+        lists, problems = story_parse(data.decode("utf-8", "replace"))
+    except FileNotFoundError:
+        return None, ""
+    except (OSError, ValueError) as exc:
+        log.warning("story: %s unreadable, keeping the last list: %s", STORY_FILE, exc)
+        if "key" in locals():
+            _story["stat"] = key        # once per change of the file, not per request
+        return _story["conf"], _story["rev"]
+    for p in problems[:20]:
+        log.warning("story: %s", p)
+    _story["stat"], _story["conf"] = key, lists
+    _story["rev"] = hashlib.sha256(data).hexdigest()[:12]
+    _story["at"] = None
+    log.info("story: %s read, %d list(s), %d problem(s)", STORY_FILE, len(lists), len(problems))
+    return lists, _story["rev"]
+
+
+def _story_ident(db):
+    """(names, banned, linked): accounts' display names, banned SteamIDs, and
+    install key -> the account it is linked to."""
+    names, banned = {}, set()
+    for sid, name, ban in db.execute("SELECT steamid, name, banned_at FROM accounts"):
+        names[sid] = accounts.game_name(name) if name else ""
+        if ban:
+            banned.add(sid)
+    linked = {pub: sid for pub, sid in db.execute("SELECT pub, steamid FROM keylinks")
+              if sid in names}
+    return names, banned, linked
+
+
+def _story_calc(db, lists, now):
+    names, banned, linked = _story_ident(db)
+    want = {(lv["map"], lv["track"]) for L in lists for c in L["chapters"]
+            for lv in c["levels"] if lv["map"]}
+    maps = sorted({m for m, _ in want})
+    best, reach, latest = {}, {}, {}
+    for i in range(0, len(maps), 400):
+        part = maps[i:i + 400]
+        # A run the owner rejected earns nothing (the replays gate VER_SQL reads).
+        # The NOT IN term is runs_live's own WHERE, so the plan walks the few
+        # thousand WOS rows and not every imported time on these maps.
+        # A RUN IS WHOSE KEY SIGNED IT: a guid's row counts for an account only
+        # when that run's own receipt verified with a key linked to it (stage
+        # rows share the run's runid).  The guid is the client's to choose and
+        # keylinks.player is the lobby's copy of it, so neither may move a row,
+        # and no key moves a run it did not sign (review, two rounds).
+        for mapname, track, leg, player, name, ms, at, pub in db.execute(
+                "SELECT r.map, r.track, r.leg, r.player, r.name, r.millis, r.submitted, rc.pub"
+                " FROM runs r LEFT JOIN receipts rc ON rc.runid = r.runid AND rc.sig = 1"
+                " AND rc.pub <> '' AND r.runid NOT IN ('', '-')"
+                " WHERE r.map IN (%s) AND r.tier IN (?, ?) AND r.style = ?"
+                " AND r.tier NOT IN (%s)"
+                " AND NOT EXISTS (SELECT 1 FROM replays p WHERE p.id = r.replay_id AND %s)"
+                % (",".join("?" * len(part)), ", ".join("'%s'" % t for t in TIERS_IMPORTED),
+                   _REJECTED_SQL),
+                part + [TIER_RANKED, TIER_COMMUNITY, STYLE_CLEAN]):
+            who = player if player in names else linked.get(pub, player)
+            if (mapname, track) not in want or who in banned:
+                continue
+            if at > latest.get(who, (0, ""))[0]:
+                latest[who] = (at, name)
+            k = (who, mapname, track)
+            if leg == 0:
+                if ms > 0 and ms < best.get(k, 1 << 62):
+                    best[k] = ms
+            elif leg > reach.get(k, 0):
+                reach[k] = leg
+    bsp, zoned = map_index()
+    people = set(w for w, _, _ in best) | set(w for w, _, _ in reach)
+    out = []
+    for L in lists:
+        levels, bars, avail = [], [], 0
+        for c in L["chapters"]:
+            bars.append(0 if not bars else c["unlock"] if c["unlock"] is not None
+                        else -(-avail * L["pct"] // 100))
+            for lv in c["levels"]:
+                timed = bool(lv["map"]) and lv["map"] in zoned
+                live = [ch for ch in lv["ch"] if ch["k"] in STORY_LIVE]
+                if timed and live:
+                    avail += max(STORY_POINTS[ch["m"]] for ch in live)
+                levels.append(dict(lv, chap=len(bars) - 1, timed=timed,
+                                   name=bsp.get(lv["map"], lv["map"])))
+        mine = {}
+        for who in people:
+            got = []
+            for i, lv in enumerate(levels):
+                if not lv["map"]:
+                    continue
+                k = (who, lv["map"], lv["track"])
+                ms, leg = best.get(k), reach.get(k, 0)
+                pts = 0
+                for ch in lv["ch"]:
+                    if ch["k"] == "finish":
+                        ok = ms is not None
+                    elif ch["k"] == "time":
+                        ok = ms is not None and ms < ch["v"]
+                    elif ch["k"] == "reach":     # leg k = stage k done, so stage k+1 reached
+                        ok = ms is not None or (leg > 0 and leg >= ch["v"] - 1)
+                    else:
+                        ok = False
+                    if ok:
+                        pts = max(pts, STORY_POINTS[ch["m"]])
+                if pts or ms is not None:
+                    got.append((i, pts, ms or 0))
+            if got:
+                t = sum(p for _, p, _ in got)
+                opened = 1
+                for j in range(1, len(bars)):
+                    if t < bars[j]:
+                        break
+                    opened = j + 1
+                mine[who] = {"t": t, "open": opened, "lv": got,
+                             "n": [sum(1 for _, p, _ in got if p == v) for v in (1, 2, 3)]}
+        hold = [[0, 0, 0] for _ in levels]
+        for e in mine.values():
+            for i, p, _ in e["lv"]:
+                for v in range(p):
+                    hold[i][v] += 1
+        out.append({"id": L["id"], "title": L["title"], "pct": L["pct"], "bars": bars,
+                    "titles": [c["title"] for c in L["chapters"]], "levels": levels,
+                    "hold": hold, "mine": mine})
+    handles = {web_handle(w): w for w in people}
+
+    def shown(w):
+        # A Steam name the game cannot draw falls back to the row's; a row named
+        # by its raw guid (submit_run's blank name) is never published as one.
+        nm = names.get(w) if names.get(w) not in (None, "", "player") else latest.get(w, (0, ""))[1]
+        return "unnamed" if not nm or re.fullmatch(r"[0-9a-f]{32}", nm) else nm
+
+    who_name = {w: shown(w) for w in people}
+    return {"lists": out, "handles": handles, "names": who_name, "at": now}
+
+
+def _story_kick(lists, rev, now):
+    """Work the ladder out again on a thread, one at a time, as _people_kick."""
+    if _story.get("busy"):
+        return
+    _story["busy"] = True
+
+    def work():
+        try:
+            conn = connect()
+            try:
+                calc = _story_calc(conn, lists, now)
+            finally:
+                conn.close()
+            with _story_lock:
+                if _story["rev"] == rev:
+                    _story["calc"], _story["at"], _story["calc_rev"] = calc, now, rev
+        except Exception:
+            log.exception("story: recompute failed")
+        finally:
+            with _story_lock:
+                _story["busy"] = False
+
+    try:
+        threading.Thread(target=work, name="story", daemon=True).start()
+    except Exception:
+        log.exception("story: recompute not started")
+        _story["busy"] = False
+
+
+def _story_current(db, now):
+    """The worked-out ladder and the file's revision, or (None, "") when there
+    is no file.  A stale answer is served while a thread works out the next;
+    only a process's first answer, or one for a changed file, is waited for."""
+    with _story_lock:
+        lists, rev = _story_conf()
+        if lists is None:
+            return None, ""
+        fresh = _story["at"] is not None and 0 <= now - _story["at"] < STORY_TTL
+        if _story.get("calc_rev") == rev and _story["calc"] is not None:
+            if not fresh:
+                _story_kick(lists, rev, now)
+            return _story["calc"], rev
+    with _story_cold:                   # one first build, not one per thread
+        with _story_lock:
+            if _story.get("calc_rev") == rev and _story["calc"] is not None:
+                return _story["calc"], rev
+        calc = _story_calc(db, lists, now)
+        with _story_lock:
+            if _story["rev"] == rev:
+                _story["calc"], _story["at"], _story["calc_rev"] = calc, now, rev
+        return calc, rev
+
+
+def story_who(db, pub):
+    """The handle a menu's proven install key plays as: its linked account's;
+    else the newest guid it has signed a run for (whose unmoved rows are that
+    guid's); else ""."""
+    row = db.execute("SELECT k.steamid, a.banned_at FROM keylinks k JOIN accounts a USING(steamid)"
+                     " WHERE k.pub = ?", (pub,)).fetchone()
+    if row:
+        return "" if row[1] else web_handle(row[0])
+    for (guid,) in db.execute("SELECT player FROM pubkeys WHERE pub = ? ORDER BY last_at DESC",
+                              (pub,)):
+        if accounts.install_ok(guid, True):
+            return web_handle(guid)
+    return ""
+
+
+def game_story(what, now):
+    """?story=list | players&list=<id> | player&who=<handle>: Patch 854's
+    three reads for the menu's Story screen."""
+    if what not in ("list", "players", "player"):
+        return fail(400, "bad story")
+    try:
+        db = get_db()
+        calc, rev = _story_current(db, now)
+        have = avatars(now, db)["game"] if calc is not None else set()
+    except sqlite3.Error as exc:
+        log.exception("story db error: %s", exc)
+        return fail(500, "storage error")
+    except Exception:                   # a bug in the ladder, not the service
+        log.exception("story: working the ladder out failed")
+        return fail(503, "story unavailable")
+    if calc is None:
+        return fail(404, "no story")
+
+    def av(who):
+        return accounts.who_of(who) if who in have else ""
+
+    body = {"v": 1, "t": now, "rev": rev}
+    if what == "list":
+        body["lists"] = [{
+            "id": L["id"], "title": L["title"], "pct": L["pct"],
+            "chapters": [{"title": t, "bar": b} for t, b in zip(L["titles"], L["bars"])],
+            "levels": [{"map": lv["name"], "track": lv["track"], "chap": lv["chap"],
+                        "timed": 1 if lv["timed"] else 0, "hold": h,
+                        "ch": [{"m": c["m"], "k": c["k"], "t": c["t"],
+                                "live": 1 if c["k"] in STORY_LIVE else 0} for c in lv["ch"]]}
+                       for lv, h in zip(L["levels"], L["hold"])]}
+            for L in calc["lists"]]
+    elif what == "players":
+        lid = request.args.get("list", "")
+        L = next((L for L in calc["lists"] if L["id"] == lid), None)
+        if L is None:
+            return fail(404, "no such list")
+        rows = sorted(L["mine"].items(), key=lambda kv: (
+            -kv[1]["t"], -kv[1]["n"][2], -kv[1]["n"][1], calc["names"][kv[0]].casefold(), kv[0]))
+        rows = [kv for kv in rows if kv[1]["t"] > 0]
+        body.update(list=lid, total=len(rows), players=[
+            {"who": web_handle(w), "name": calc["names"][w], "t": e["t"], "open": e["open"],
+             "g": e["n"][2], "s": e["n"][1], "b": e["n"][0], "av": av(w)}
+            for w, e in rows[:STORY_PLAYERS_MAX]])
+    else:
+        h = request.args.get("who", "")
+        if not re.fullmatch(r"[0-9a-f]{%d}" % WEB_HANDLE_LEN, h):
+            return fail(400, "bad player")
+        w = calc["handles"].get(h)
+        body.update(who=h, name=calc["names"].get(w, "") if w else "", av=av(w) if w else "",
+                    lists=[{"id": L["id"], "t": L["mine"].get(w, {}).get("t", 0),
+                            "open": L["mine"].get(w, {}).get("open", 1),
+                            "lv": [list(x) for x in L["mine"].get(w, {}).get("lv", [])]}
+                           for L in calc["lists"]])
+    resp = Response(game_json(body), status=200, mimetype="application/json")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 WEB_MAPS_TTL = 60        # seconds the serialized maps list is reused
 WEB_PAGE = 50            # rows per /board/api/map call
 WEB_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; "
@@ -6063,7 +6532,8 @@ accounts.register(app, types.SimpleNamespace(
 social.register(app, types.SimpleNamespace(
     get_db=get_db, clock=lambda: time.time(), secret=lambda: SECRET,
     setting=setting, rate_key=rate_key,
-    rate_ok=rate_ok, clean_text=clean_text, game_json=game_json, lobby_ttl=LOBBY_TTL))
+    rate_ok=rate_ok, clean_text=clean_text, game_json=game_json, lobby_ttl=LOBBY_TTL,
+    story_who=story_who))
 
 hidupload.register(app, types.SimpleNamespace(
     log=log, clock=lambda: time.time(), rate_ok=rate_ok, rate_key=rate_key,

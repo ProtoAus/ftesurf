@@ -131,6 +131,12 @@
 #define SCREEN_STEAM    6
 // 7 was the Updates screen until P823; the number is not reused.
 #define SCREEN_JOURNAL  8
+// Patch 854: Story and Event mode, in m_story.qc (compiled last).
+#define SCREEN_STORY    9
+void() Sty_Open;
+void() Sty_Esc;
+void(vector screensize) screen_story;
+void(string what, string arg) Sty_Command;
 void() MU_Init;
 void() MU_Poll;
 void(float on) MU_Consent;
@@ -7949,6 +7955,7 @@ void() m_init =
 
 	registercommand("ui_updates");
 	registercommand("ui_journal");
+	registercommand("ui_story");
 	registercommand("ui_update_probe");
 	registercommand("ui_menu_probe");
 	registercommand("ui_maplist");
@@ -8177,6 +8184,11 @@ void(vector screensize) m_draw =
 			_action_elements_index = acts;
 			Mlb_Draw(screensize);
 		}
+	}
+	else if (menu_screen == SCREEN_STORY)
+	{
+		ui_backdrop(screensize);
+		screen_story(screensize);
 	}
 	else if (menu_screen == SCREEN_VISUALS)
 	{
@@ -8439,6 +8451,11 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 				return TRUE;
 			}
 
+			if (menu_screen == SCREEN_STORY)
+			{
+				Sty_Esc();
+				return TRUE;
+			}
 			if (menu_screen == SCREEN_VISUALS || menu_screen == SCREEN_MUSIC)
 				menu_screen = SCREEN_MAIN;
 			else if (clientstate() == 2)
@@ -8461,6 +8478,11 @@ float(string cmd) m_consolecommand =
 	{
 		menu_screen = SCREEN_JOURNAL;
 		m_open();
+		return TRUE;
+	}
+	if (strcmp(argv(0), "ui_story") == 0)
+	{
+		Sty_Command(argv(1), argv(2));
 		return TRUE;
 	}
 	if (strcmp(argv(0), "ui_menu_probe") == 0)
