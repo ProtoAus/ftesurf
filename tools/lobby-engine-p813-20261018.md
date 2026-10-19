@@ -41,7 +41,15 @@ fteqwsv64 `c6dbcef3` (`.prev` `3ff93982`), built `-Engine -Full -NoDeploy` from 
 at `408ab2244` and copied by hand (the worktree's plugins-rel lacked cod/ode inputs; the
 plugins are unchanged, as at P805 and P812).
 
+## Client
+
+`tools/pi_lobby_smoke.py` against 27510 (bhop_ambience) with the installed client
+`219c737c`: the downloaded csprogs is the served `b7c29da0`, the board drew (cols 8 type 14),
+no QC error, screenshot read (the key strip shows P Player). Failures 0. 2026-10-19 14:30 local.
+
 ## Limits
 
+The census behind ENGINE_PATCHES.md 813 stopped at 42 of 57 maps (low-memory reaping); its
+probe build is retired (`notes/stopprobe-diag.patch` in the task root rebuilds it).
 No human has played on mover 8 yet. An old client exe (0.1.27) on a mover-8 lobby predicts
 the old stop where the server now recovers, and is corrected.
