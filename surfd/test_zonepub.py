@@ -179,6 +179,19 @@ class Upload(unittest.TestCase):
         r.update(teleDestPos=[16,16,1], teleDestYaw=90)
         raw=json.dumps(obj).encode(); self.assertEqual(self.upload(self.challenge(raw),raw=raw).status_code,200)
 
+    def test_speed_cap_is_bounded(self):
+        """P841: maxVelocity sets the lobbies' cap; the engine ignores it outside 1..100000."""
+        for bad in (0.5, 100001, -1, '5000', True, 1e30):
+            obj=zone(); obj['maxVelocity']=bad
+            self.assertRaises(ValueError, z.validate, json.dumps(obj).encode())
+        for good in (0, 1, 5000, 9999.5, 100000):
+            obj=zone(); obj['maxVelocity']=good
+            z.validate(json.dumps(obj).encode())
+        self.grant(); obj=zone(); obj['maxVelocity']=200000; raw=json.dumps(obj).encode()
+        r=self.upload(self.challenge(raw),raw=raw)
+        self.assertEqual((r.status_code, r.json['error']), (400, 'maxVelocity must be 0 or 1..100000'))
+        self.assertFalse(self.drafts())
+
 
 class Publish(Upload):
     """P815: an accepted admin upload is queued and written when its map is quiet."""

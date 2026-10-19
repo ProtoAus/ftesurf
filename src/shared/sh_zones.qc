@@ -191,6 +191,8 @@ float  zone_ptcount;
 float  zone_source;                 // ZSRC_*
 string zone_mapname;                // what the tables were built for
 float  zone_overflow;               // hit a cap on this map
+float  zone_maxvel;                 // P841: the file's maxVelocity, 0 = none; not in zone_crc.
+                                    // The server's cap comes from the engine (sv_phys.c).
 string zone_crc;                    // build 81: 8 hex of sha256 over the BUILT
                                     // table, "" until Zone_Hash runs.  See it.
 
@@ -376,6 +378,7 @@ void() Zone_Clear =
 	zone_ptcount = 0;
 	zone_source = ZSRC_NONE;
 	zone_overflow = FALSE;
+	zone_maxvel = 0;
 
 	// Build 81: the hash describes the table that just went away.  Released
 	// HERE rather than at the top of Zone_Hash alone, because Zone_LoadJson
@@ -1424,6 +1427,11 @@ float(string text, string path, float src) Zone_LoadJsonText =
 
 	Zone_Clear();
 	ok = TRUE;
+	// P841: as the engine takes it (sv_phys.c SV_LoadZoneRuleset): a number in 1..100000.
+	if (json_get_value_type(json_find_object_child(root, "maxVelocity")) == 1i)
+		zone_maxvel = json_get_float(json_find_object_child(root, "maxVelocity"));
+	if (!(zone_maxvel >= 1 && zone_maxvel <= 100000))
+		zone_maxvel = 0;
 
 	tracks = json_find_object_child(root, "tracks");
 

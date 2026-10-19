@@ -103,6 +103,11 @@ def validate(body):
             if not (math.isfinite(item) and abs(item) <= 1e30): raise ValueError('Number out of range')
     if not isinstance(obj, dict) or type(obj.get('formatVersion')) is not int or obj.get('formatVersion') != 1:
         raise ValueError('Expected Momentum zone formatVersion 1')
+    # P841: the lobbies' speed cap. 0 is "not set"; the engine ignores anything outside 1..100000.
+    if 'maxVelocity' in obj:
+        mv = obj['maxVelocity']
+        if isinstance(mv, bool) or not isinstance(mv, (int, float)) or not (mv == 0 or 1 <= mv <= 100000):
+            raise ValueError('maxVelocity must be 0 or 1..100000')
     count = points = 0
     def number(x):
         if isinstance(x, bool) or not isinstance(x, (int, float)) or abs(x) > 10000000:
@@ -274,7 +279,10 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
                 if not secrets.compare_digest(hashlib.sha256(raw).hexdigest(), grant['sha']):
                     return fail('Saved zone file changed; start the upload again', 409)
                 try: validate(raw)
-                except (ValueError, TypeError, KeyError, RecursionError, UnicodeDecodeError):
+                except ValueError as e:
+                    if str(e).startswith('maxVelocity'): return fail(str(e), 400)   # P841
+                    return fail('Invalid or incomplete zone geometry', 400)
+                except (TypeError, KeyError, RecursionError, UnicodeDecodeError):
                     return fail('Invalid or incomplete zone geometry', 400)
                 rid = None
                 if publish_dirs:

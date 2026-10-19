@@ -5,7 +5,7 @@
   FTE has exposed a full JSON reader to QuakeC since 2022 -- to BOTH modules,
   SSQC (pr_cmds.c:11690-11702) and CSQC (pr_csqc.c:6937-6945), implemented in
   common/pr_bgcmd.c:784-920.  The defs dumps in src/defs/ predate it, and
-  regenerating 158 KB of dumped platform defs to pick up seven builtins is a
+  regenerating 158 KB of dumped platform defs to pick up eight builtins is a
   worse trade than declaring them here.
 
   They are all NAME-RESOLVED extension builtins (#0:name), which is how FTE
@@ -37,3 +37,4 @@ int(int node, int idx)    json_get_child_at_index = #0:json_get_child_at_index;
 int(int node, string key) json_find_object_child  = #0:json_find_object_child;
 float(int node)           json_get_float          = #0:json_get_float;
 string(int node)          json_get_string         = #0:json_get_string;
+int(int node)             json_get_value_type     = #0:json_get_value_type; // 1 number (common.h json_type_*)

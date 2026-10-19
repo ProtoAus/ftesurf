@@ -114,6 +114,7 @@ float ze_lastrow, ze_lastclick;
 float ze_settings, ze_field, ze_caret, ze_mode;
 string ze_text;
 float ze_values[MAPSET_COUNT];
+float ze_cap_open;                  // P841: the Speed cap the panel opened with
 float *ze_field_keys;
 
 float() ZoneEdit_PolygonValid;
@@ -568,7 +569,10 @@ float(string path) ZoneEdit_WriteFile =
 	for (z = 0; z < zone_count; z = z + 1)
 		if (zone_track[z] > top)
 			top = zone_track[z];
-	fputs(f, "{\"formatVersion\":1,\"tracks\":{\"main\":");
+	fputs(f, "{\"formatVersion\":1,");
+	if (zone_maxvel > 0)            // P841: the map's speed cap, which a published file carries
+		fputs(f, sprintf("\"maxVelocity\":%s,", ZoneEdit_Num(zone_maxvel)));
+	fputs(f, "\"tracks\":{\"main\":");
 	ZoneEdit_WriteTrack(f, 0);
 	fputs(f, ",\"bonuses\":[");
 	for (t = 1; t <= top; t = t + 1)
@@ -629,7 +633,7 @@ void(float force) ZoneEdit_Save =
 {
 	local string path, part, was;
 	local filestream f;
-	local float n, ok;
+	local float n, ok, mv;
 
 	ze_saved_ok = FALSE;
 	if (ze_map == "" || ze_map != zone_mapname)
@@ -664,11 +668,12 @@ void(float force) ZoneEdit_Save =
 		return;
 	}
 	n = zone_count;
+	mv = zone_maxvel;
 	was = strzone(zone_crc);
 	ok = Zone_LoadJson(part, ZSRC_LOCAL);
 	if (ok)
 		Zone_Hash();
-	if (!ok || zone_count != n || zone_crc != was)
+	if (!ok || zone_count != n || zone_crc != was || zone_maxvel != mv)
 	{
 		// Not what was on screen: the old file stays as it is.
 		fremove(part);
@@ -715,7 +720,8 @@ void(float force) ZoneEdit_Save =
 	zone_own = TRUE;                // P815: now our own edit; Zone_SyncServer must leave it
 	zone_sync_wait = FALSE;
 	ze_sel = -1;
-	ZoneEdit_Note(sprintf("saved %g zones to data/%s (crc %s)", zone_count, path, zone_crc));
+	ZoneEdit_Note(sprintf("saved %g zones to data/%s (crc %s)%s", zone_count, path, zone_crc,
+	                      zone_maxvel > 0 ? sprintf(", speed cap %g", zone_maxvel) : ""));
 };
 
 // The way back from a save: this machine's own copy goes, and the map's zones are read
@@ -1184,19 +1190,19 @@ string(string id) ZoneEdit_Tip =
 	if (id == "ze_xyz") return "Round the selected zone's outline and vertical bounds to the chosen grid. Works in the panel; an invalid or collapsed outline is refused.";
 	if (id == "ze_gs") return "Use the world surface as hit instead of rounding placement to the grid. This is a snapping option, not the Surf gamemode. Click again to restore grid snapping.";
 	if (id == "ze_sv") return "Save the zones to this map's local JSON file on your machine. Reload the map to use them for timing in your hosted game. This does not upload zones or change a lobby's timing or times.";
-	if (id == "ze_upload") return "Publish this map's SAVED local zones to the lobbies. Requires a linked zone-admin Steam account; a dialog asks before anything is sent. Lobbies time with them from their next map load; existing times stay.";
+	if (id == "ze_upload") return "Publish this map's SAVED local zones, and their speed cap, to the lobbies. Requires a linked zone-admin Steam account; a dialog asks before anything is sent. Lobbies time with them from their next map load; existing times stay.";
 	if (id == "ze_rl") return "Discard unsaved zone edits and read this map's zones again. Your saved local file takes priority; use Discard local file to stop using that override.";
 	if (id == "ze_fg") return "Delete this map's saved local zone override and reload the underlying zones. Unsaved zone edits are lost too. Map properties are separate and are not removed.";
-	if (id == "ze_settings") return "Edit local Surf/Bhop presets, speed cap, gravity and air acceleration for this map. Save settings and reload the hosted map to apply them; public lobbies are unchanged.";
+	if (id == "ze_settings") return "Edit local Surf/Bhop presets, speed cap, gravity and air acceleration for this map. Save settings and reload the hosted map to apply them. The speed cap also goes in the zone file, so Publish sends it to the lobbies; the rest stay local.";
 	if (id == "ze_look") return "Give the mouse back to aiming and flying without closing the editor. Mouse2 returns the cursor to this window; V toggles noclip.";
 	if (id == "ze_cl") return "Close the editor without saving. Unsaved zone edits stay in memory until the map changes; reopen the editor to continue or save them.";
 	if (id == "ze_mode_surf") return "Stage Surf mode: 66.67 Hz physics and air acceleration 150. Keeps your chosen speed cap and gravity. Save settings and reload your hosted map to apply.";
 	if (id == "ze_mode_bhop") return "Stage Bhop mode: 100 Hz physics and air acceleration 1000. Keeps your chosen speed cap and gravity. Save settings and reload your hosted map to apply.";
-	if (id == "ze_ms0") return "Speed cap: limits movement velocity, not ordinary walking speed. Higher values allow faster surfing or bhopping. Enter 1 to 100000; Apply stages the value, Save settings and map reload make it active locally.";
+	if (id == "ze_ms0") return "Speed cap: limits movement velocity, not ordinary walking speed. Higher values allow faster surfing or bhopping. Enter 1 to 100000; Apply stages the value, Save settings and map reload make it active locally. It is also the zone file's maxVelocity: Save zones and Publish saved to set it on the lobbies.";
 	if (id == "ze_ms1") return "Gravity: downward acceleration in map units per second squared. Lower values give longer, higher jumps. Enter 1 to 10000; this map's saved setting applies only after a hosted map reload.";
 	if (id == "ze_ms2") return "Air acceleration: how strongly movement input changes your velocity while airborne. Surf presets 150; Bhop presets 1000. Enter 0 to 10000; save and reload the hosted map to apply.";
 	if (id == "ze_msapply") return "Validate the number and stage it in this properties panel. Enter does the same. This does not save to disk or change the active physics yet.";
-	if (id == "ze_mssave") return "Save this map's mode and three numeric properties locally, including the active text field. Requires the P673+ engine and a hosted map reload to apply. Does not change public lobbies or upload anything.";
+	if (id == "ze_mssave") return "Save this map's mode and three numeric properties locally, including the active text field. Requires a hosted map reload to apply. A changed speed cap is also staged in the zones; nothing is uploaded until Publish saved.";
 	if (id == "ze_msback") return "Return to the zone tools without saving properties. Use Save settings first: reopening properties reads the saved values, not your unsaved changes.";
 	if (id == "ze_t0") return "Show the main course. Tracks have separate starts, stages, checkpoints and finishes.";
 	if (substring(id, 0, 4) == "ze_t") return "Show a bonus course. A +b tab is the next unused bonus track; select it and add zones to build that course.";

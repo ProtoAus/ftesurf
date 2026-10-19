@@ -9,6 +9,7 @@
 #define ZP_DONE      4   // the service's answer, on screen until OK
 #define ZP_BASE "https://play.proto.bar/api/zones/"
 float zp_state, zp_req, zp_next, zp_until, zp_count, zp_bad, zp_live, zp_shown;
+float zp_cap;                       // P841: the saved file's maxVelocity, 0 = not set
 string zp_map, zp_body, zp_sha, zp_nonce, zp_crc, zp_said;
 vector zp_go_p, zp_go_s, zp_no_p, zp_no_s;   // the dialog's buttons as last drawn; a zero size is no button
 
@@ -21,7 +22,7 @@ void() ZonePub_Cancel =
 	if (strlen(zp_crc)) strunzone(zp_crc);
 	if (strlen(zp_said)) strunzone(zp_said);
 	zp_map = zp_body = zp_sha = zp_nonce = zp_crc = zp_said = "";
-	zp_state = zp_req = zp_count = zp_bad = zp_live = 0;
+	zp_state = zp_req = zp_count = zp_bad = zp_live = zp_cap = 0;
 	zp_go_s = zp_no_s = '0 0 0';
 };
 
@@ -29,10 +30,10 @@ void() ZonePub_Cancel =
 void(string said, float bad, float live) ZonePub_Answer =
 {
 	local string map, crc;
-	local float n;
-	map = strzone(zp_map); crc = strzone(zp_crc); n = zp_count;
+	local float n, cap;
+	map = strzone(zp_map); crc = strzone(zp_crc); n = zp_count; cap = zp_cap;
 	ZonePub_Cancel();
-	zp_map = map; zp_crc = crc; zp_count = n;
+	zp_map = map; zp_crc = crc; zp_count = n; zp_cap = cap;
 	zp_said = strzone(said); zp_bad = bad; zp_live = live;
 	zp_state = ZP_DONE;
 };
@@ -105,7 +106,7 @@ void(float real) ZonePub_Begin =
 	{
 		ZoneEdit_Note("NOT published: the saved file does not read back as what was saved"); return;
 	}
-	zp_crc = strzone(zone_crc); zp_count = zone_count;
+	zp_crc = strzone(zone_crc); zp_count = zone_count; zp_cap = zone_maxvel;
 	zp_map = strzone(ze_map); zp_body = strzone(body);
 	zp_sha = strzone(strtolower(digest_hex("SHA256", body)));
 	zp_state = ZP_CHALLENGE; zp_until = gettime(0) + 120;
@@ -113,7 +114,7 @@ void(float real) ZonePub_Begin =
 	// VM, so ids start somewhere else each time (review: an old answer shown as the new one).
 	if (zp_next < 6100000) zp_next = 6100000 + floor(random() * 80000);
 	zp_next = zp_next + 1; zp_req = id = zp_next;
-	print(sprintf("zone_edit: publish dialog open for %s (%g zones, crc %s)\n", zp_map, zp_count, zp_crc));
+	print(sprintf("zone_edit: publish dialog open for %s (%g zones, crc %s, speed cap %g)\n", zp_map, zp_count, zp_crc, zp_cap));
 	if (!uri_post(strcat(ZP_BASE, "challenge"), id, "application/json",
 	              sprintf("{\"map\":\"%s\",\"sha\":\"%s\"}", zp_map, zp_sha)))
 		ZonePub_Answer("The zone upload service could not be reached. Nothing was sent.", TRUE, FALSE);
@@ -265,7 +266,8 @@ void(vector scr) ZonePub_Draw =
 		if (zp_state == ZP_CHALLENGE) body = "Asking the zone service...";
 		else if (zp_state == ZP_UPLOAD) { body = "Publishing..."; go = "Publishing"; }
 		else body = sprintf("Your saved file goes to every lobby. They switch to it once none of them has "
-		                    "had %s loaded for 10 minutes and its runs are verified. Existing times stay.", zp_map);
+		                    "had %s loaded for 10 minutes and its runs are verified. Existing times stay. %s", zp_map,
+		                    zp_cap > 0 ? sprintf("Speed cap %g goes with it.", zp_cap) : "It sets no speed cap.");
 	}
 
 	// Measure, then draw: the box fits what it says.
