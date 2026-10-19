@@ -5,6 +5,23 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Publish dialog (P822) and first-boot screens (P823): what the reviews left
+
+- **zonepub's refusals are worded from status codes.** A non-200 reply reaches QC with no
+  body (httpclient.c keeps no file for it), so a 403 reads "update the game, link Steam, or
+  ask for the role" instead of which. Fix: zonepub.py answers refusals 200 with ok=0 (needs
+  the owner's sudo reinstall).
+- **An answer that arrives with the editor closed is only a console line** (P822).
+- **An offline-tier player who turns updates off can turn them on again only by accepting
+  online play** (P823, deliberate: turning on needs the online text); `update_permission 1`
+  in the console still works.
+- **Not run for P823:** test_update_corner.py (its control wants a pre-P733 menu),
+  test_update_handoff.py (a frozen stage), the two posix updater tests (the Linux rig).
+  The corner's error line is pictured by none of them.
+- **test_ingame_update.py's cold-forged arm expects pre-P703 wording** ("Unverified or linked
+  recovery entry"); the engine says "Invalid recovery tuple; nothing installed." Every
+  menu arm before it passes on P823.
+
 ## Save sync (P811): what the reviews left
 
 - A delete-all sweep that stops partway sends no SS_EV_DELALL and, under rec_sl_delall, no

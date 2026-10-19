@@ -5,9 +5,11 @@
 The editor's **Publish saved** button (its own device click; `zone_edit upload`
 and any other command are refused) reads this install's OWN saved JSON whole
 (`data/maps/zones/local/`, not the loose shipped copy), refuses unless those
-bytes hash to the table on screen, shows map, zone count and crc, and on a
-real Enter submits them with a distinct zone-upload proof from the native
-key-event signer. Old engines fail with an update message.
+bytes hash to the table on screen, and opens a dialog with map, zone count and
+crc (P822). Its Publish -- the mouse press itself, or Enter -- submits them with
+a distinct zone-upload proof from the native key-event signer; the dialog is
+cancelled whenever the panel stops showing it. Old engines fail with an update
+message.
 
 **Publication is automatic since P815** (Lex, 19 Oct: "I want it to work
 automagically"; existing times are KEPT). This replaces the 12 Oct "upload is

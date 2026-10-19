@@ -1,5 +1,30 @@
 # lextest.md — things waiting on a human
 
+## P823 — The first-boot screens look like the other menus; no Updates screen
+
+DEPLOYED_P823
+
+- The terms ("before you play"), the Steam offer and F2's journal panel are drawn like
+  Friends and Play: shadowed panel, lowercase blue heading, the same buttons. To see them
+  without a fresh install: `ui_strip_test screen terms`, `... termsfull`, `... steam` in the
+  console, and F2.
+- There is no Updates screen. Play online on the terms turns updates on; Play offline leaves
+  them as they were. The title menu's top-right corner says the state and has **Turn off
+  updates** (or **Turn on updates**), **Restart to update** when one is waiting, and **Check
+  again** after a failed check. Your own choice from before stays.
+
+"Looks right / <which screen looks wrong>". Verdict PENDING.
+
+## P822 — Publish saved asks in a dialog
+
+DEPLOYED_P822
+
+- In a game you host: `zone_edit`, Save zones, **Publish saved**. A dialog names the map,
+  the zone count and the crc: **Publish** (or Enter) sends, **Cancel** (or Esc) does not.
+  It then shows the service's answer (Published / Accepted / Not published) until OK.
+
+"Works / <what the dialog said>". Verdict PENDING.
+
 ## P821 — the chat box: select, copy, a real text field
 
 Both installs 2026-10-19T05:27:54Z and all 12 lobbies 05:29Z: csprogs 1337a98f (.prev 74fbeba9);
@@ -112,8 +137,8 @@ d9bf33b4) and your Steam account holds the zone-admin role: publishing works now
 live no earlier than 10 minutes after the service started watching the lobbies.
 
 - In a game YOU host (Play the map from the map list), `zone_edit`, edit, Save zones, then
-  **Publish saved**. The line under the buttons shows the map, zone count and crc: Enter
-  publishes, Esc cancels. On a lobby or anyone else's server Publish is refused on purpose.
+  **Publish saved**, then **Publish** in its dialog (P822). On a lobby or anyone else's
+  server Publish is refused on purpose.
 - The answer is either "Published" (no lobby had the map loaded for 10 minutes and its runs are
   verified) or "Accepted: live once ..." -- it then goes live by itself, checked every minute.
 - After it is live: a lobby that loads the map times with your zones; a player who joins one
