@@ -180,6 +180,7 @@ void(string rendererdescription) CSQC_RendererRestarted =
 	SteamPic_Lost();                // Patch 640: its textures and shaders went with it
 	Paint_Lost();                   // Patch 772: re-register before the decals re-resolve
 	PTrail_Lost();
+	LineGraph_CacheLost();         // Patch 837
 };
 
 // Before renderscene, every frame; ticks only when the sim is due.

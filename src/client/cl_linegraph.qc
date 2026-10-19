@@ -43,6 +43,32 @@ float lg_rgen[2], lg_rv0[2], lg_rv1[2];
 float lg_hud;                   // the HUD graph drew this frame
 vector lg_hudp, lg_huds;        // ...its first plot's place and size, for `linegraph status`
 /*
+  Patch 837: the HUD graph's still layer -- panel, header, frames, legend, the ticked runs'
+  curves -- is drawn into two render targets when something it shows changes, and composited
+  every frame; the live run's curve and the heads go over it each frame. Two targets because the
+  panel is translucent and fills blend unpremultiplied: the one cleared black holds the colour
+  the layer adds, and the one cleared white differs from it by how much of the scene shows
+  through, whatever mix of blends drew it. hud_linegraph_cache 0 draws it directly.
+*/
+#define LG_STILL 1              // LineGraph_Curves' layers: every ticked run's curve
+#define LG_LIVE  2              // ...and the live run's
+#define LGK_K   "lg_cachek"
+#define LGK_W   "lg_cachew"
+#define LGK_MAT "lg_cache"
+#define LGK_FMT 2               // RGBA16F (milk_sys.qc's MILK_FMT_RGBA16F), negated for nearest
+float lgk_ok;                   // the targets hold the layer of the key below
+float lgk_mat;                  // 1 its material is defined, -1 its program is not installed
+float lgk_flip;                 // the targets' height while drawing into them, else 0
+vector lgk_vs, lgk_p, lgk_wh, lgk_r0, lgk_r1;
+float lgk_u, lgk_sz, lgk_hsz, lgk_n, lgk_plots, lgk_have, lgk_fok, lgk_font, lgk_gen;
+float lgk_v0, lgk_v1, lgk_asm, lgk_lv;
+float lgk_av[LG_SLOTS], lgk_sel[LG_SLOTS];
+string lgk_nm[LG_SLOTS];
+float lgk_draws, lgk_builds;    // frames composited, and of them drawn again (`linegraph status`)
+// The layout LineGraph_Hud worked out, which LineGraph_HudStill draws.
+vector lgh_p, lgh_pp;
+float lgh_w, lgh_h, lgh_u, lgh_sz, lgh_hsz, lgh_n, lgh_plots, lgh_have, lgh_lw, lgh_ph;
+/*
   What is drawn every frame: each curve cut down, once, to the fewest vertices
   that stay within a physical pixel of what its bins hold (the filter keeps half
   a pixel from the points it is fed, and a bin's low and high are fed when they
@@ -281,6 +307,7 @@ void() LineGraph_Register =
 {
 	registercvar("hud_linegraph", "1", CVAR_ARCHIVE);
 	registercvar("hud_linegraph_labels", "1", CVAR_ARCHIVE);
+	registercvar("hud_linegraph_cache", "1", CVAR_ARCHIVE);     // Patch 837: the still layer from a render target
 	registercvar("hud_linegraph_live", "1", CVAR_ARCHIVE);     // Patch 622: your own run on the graphs
 	// Patch 610. Under the map info, clear of the key block the old bottom-right
 	// panel covered. 1 speed, 2 energy, 3 both.
@@ -897,7 +924,7 @@ void(vector p, float base, float sx, float sy, float energy, vector r, float s, 
 	Plot_StripEnd();
 };
 
-void(vector p, vector size, float energy, vector r, float wpx) LineGraph_Curves =
+void(vector p, vector size, float energy, vector r, float wpx, float layer) LineGraph_Curves =
 {
 	local float s, sx, sy, base;
 	if (!lg_fok || !r_z) return;
@@ -923,8 +950,10 @@ void(vector p, vector size, float energy, vector r, float wpx) LineGraph_Curves 
 	}
 	// Highest slot first: the replay and the first board line end up on top, and
 	// the live run over them all, wider.
+	if (layer & LG_STILL)
 	for (s = LN_S_TRAIL - 1; s >= 0; s = s - 1)
 		LineGraph_Curve(p, base, sx, sy, energy, r, s, wpx);
+	if (layer & LG_LIVE)
 	if (lv_slot >= 0)
 		LineGraph_Curve(p, base, sx, sy, energy, r, lv_slot, wpx * 1.5);
 };
@@ -989,52 +1018,31 @@ void(vector p, vector size, float energy, vector r, float d) LineGraph_LiveHead 
   The HUD graph: the ticked runs' speed (and energy) against time, small enough
   to play beside. hud_linegraph switches it; hud_edit's `graph` row moves it.
 */
-void(vector scr, float have) LineGraph_Hud =
+// A clip rectangle that holds in the cache's targets too: their 2D projection is flipped
+// (GL_Set2D) and the scissor is converted as the screen's, so there it lands mirrored.
+void(float x, float y, float w, float h) LineGraph_Clip =
 {
-	local float sz, u, hsz, w, h, ph, plots, s, y, x, lw, rows, e, tw, n;
-	local vector p, bp, pp, r;
+	if (lgk_flip)
+		y = lgk_flip - y - h;
+	drawsetcliparea(x, y, w, h);
+};
+
+// Patch 837: the HUD graph's still layer at LineGraph_Hud's layout (lgh_*): onto the screen,
+// or into the cache's targets.
+void() LineGraph_HudStill =
+{
+	local float u, hsz, lw, ph, n, plots, s, y, x, rows, e, tw;
+	local vector pp, r;
 	local string name;
 
-	Font_Set(ui_font_ui);
-	u = cvar("hud_scale");
-	if (u <= 0) u = 2;
-	u = min(u, scr_x / 640);        // a narrow window gets a smaller graph, as it does a smaller board
-	sz  = Font_Px(HUD_Size("hud_linegraph_size", 8 * u));
-	u   = sz / 8;
-	hsz = Font_Px(6 * u);
-	w   = 150 * u;
-	ph  = 40 * u;
-	plots = cvar("hud_linegraph_plots");
-	n = (plots >= 3) ? 2 : 1;
-
-	// The legend wraps; count its rows before the box is drawn.
-	rows = 1;
-	x = 0;
-	lw = w - 12 * u;
-	for (s = 0; s < LG_SLOTS; s = s + 1)
-	{
-		if (!lg_available[s] || !lg_selected[s]) continue;
-		tw = 6 * u + stringwidth(LineGraph_Name(s), TRUE, [hsz, hsz]) + 5 * u;
-		if (x > 0)
-		if (x + tw > lw + 5 * u) { rows = rows + 1; x = 0; }
-		x = x + tw;
-	}
-	if (rows > 3) rows = 3;
-
-	h = (3 + PLOT_BAND) * u + n * ph + (n - 1) * 4 * u + 10 * u + rows * 8 * u + 4 * u;
-	bp = [scr_x * cvar("hud_linegraph_x"), scr_y * cvar("hud_linegraph_y"), 0];
-	p  = [floor(bp_x - w), floor(bp_y), 0];
-	Plot_Panel(p, [w, h], u);
-	y = p_y + Plot_Header(p, w, u, sz, "Run graph", (have == 1) ? "1 run" : sprintf("%g runs", have), SUI_THEME_MUTED);
-	pp = [p_x + 6 * u, y + 2 * u, 0];
-	lg_hud = TRUE;
-	lg_hudp = pp;
-	lg_huds = [lw, ph, 0];
+	u = lgh_u;      hsz = lgh_hsz;  lw = lgh_lw;    ph = lgh_ph;
+	n = lgh_n;      plots = lgh_plots;              pp = lgh_pp;
+	Plot_Panel(lgh_p, [lgh_w, lgh_h], u);
+	Plot_Header(lgh_p, lgh_w, u, lgh_sz, "Run graph", (lgh_have == 1) ? "1 run" : sprintf("%g runs", lgh_have), SUI_THEME_MUTED);
 
 	// ---- fills and text ----------------------------------------------------
 	if (!lg_fok)
 	{
-		lg_blanks = lg_blanks + 1;
 		_sui_round_draw(pp, [lw, n * ph + (n - 1) * 4 * u], 2 * u, SUI_THEME_WELL, 0.75);
 		Plot_Text(pp + [4 * u, 4 * u], "building...", hsz, SUI_THEME_MUTED, 1);
 	}
@@ -1068,13 +1076,201 @@ void(vector scr, float have) LineGraph_Hud =
 		x = x + tw;
 	}
 
-	// ---- curves, then fills ------------------------------------------------
+	// ---- the ticked runs' curves ---------------------------------------------
+	if (lg_fok)
+	{
+		e = (plots == 2);
+		r = LineGraph_RangeY(e);
+		LineGraph_Clip(pp_x, pp_y, lw, ph);
+		LineGraph_Curves(pp, [lw, ph], e, r, 1.5, LG_STILL);
+		drawresetcliparea();
+		if (n == 2)
+		{
+			r = LineGraph_RangeY(TRUE);
+			LineGraph_Clip(pp_x, pp_y + ph + 4 * u, lw, ph);
+			LineGraph_Curves(pp + [0, ph + 4 * u], [lw, ph], TRUE, r, 1.5, LG_STILL);
+			drawresetcliparea();
+		}
+	}
+};
+
+// TRUE when everything the still layer reads is what the targets were drawn from; it keeps the
+// new values either way. Names count only where the legend shows them.
+float(vector vs) LineGraph_CacheSame =
+{
+	local float s, same, e, on;
+	local vector r0, r1;
+	local string nm;
+
+	e = (lgh_plots == 2);
+	r0 = LineGraph_RangeY(e);
+	r1 = '0 0 0';
+	if (lgh_n == 2)
+		r1 = LineGraph_RangeY(TRUE);
+	same = lgk_ok;
+	if (vs != lgk_vs) same = FALSE;
+	if (lgh_p != lgk_p) same = FALSE;
+	if ([lgh_w, lgh_h, lgh_lw] != lgk_wh) same = FALSE;
+	if (lgh_u != lgk_u) same = FALSE;
+	if (lgh_sz != lgk_sz) same = FALSE;
+	if (lgh_hsz != lgk_hsz) same = FALSE;
+	if (lgh_n != lgk_n) same = FALSE;
+	if (lgh_plots != lgk_plots) same = FALSE;
+	if (lgh_have != lgk_have) same = FALSE;
+	if (lg_fok != lgk_fok) same = FALSE;
+	if (ui_font_ui != lgk_font) same = FALSE;
+	if (lg_gen != lgk_gen) same = FALSE;
+	if (lg_v0 != lgk_v0) same = FALSE;
+	if (lg_v1 != lgk_v1) same = FALSE;
+	if (r0 != lgk_r0) same = FALSE;
+	if (r1 != lgk_r1) same = FALSE;
+	if (LineGraph_Assumed() != lgk_asm) same = FALSE;
+	if (lv_slot != lgk_lv) same = FALSE;
+	lgk_vs = vs;        lgk_p = lgh_p;          lgk_wh = [lgh_w, lgh_h, lgh_lw];
+	lgk_u = lgh_u;      lgk_sz = lgh_sz;        lgk_hsz = lgh_hsz;      lgk_n = lgh_n;
+	lgk_plots = lgh_plots;  lgk_have = lgh_have;    lgk_fok = lg_fok;   lgk_font = ui_font_ui;
+	lgk_gen = lg_gen;   lgk_v0 = lg_v0;         lgk_v1 = lg_v1;         lgk_r0 = r0;
+	lgk_r1 = r1;        lgk_asm = LineGraph_Assumed();                  lgk_lv = lv_slot;
+	for (s = 0; s < LG_SLOTS; s = s + 1)
+	{
+		if (lg_available[s] != lgk_av[s]) same = FALSE;
+		if (lg_selected[s] != lgk_sel[s]) same = FALSE;
+		lgk_av[s] = lg_available[s];
+		lgk_sel[s] = lg_selected[s];
+		on = lg_available[s];
+		if (!lg_selected[s]) on = FALSE;
+		nm = "";
+		if (on) nm = LineGraph_Name(s);
+		if (nm != lgk_nm[s])
+		{
+			same = FALSE;
+			if (lgk_nm[s]) strunzone(lgk_nm[s]);
+			lgk_nm[s] = strzone(nm);
+		}
+	}
+	return same;
+};
+
+// Composites the still layer, drawing the targets again first when it changed. FALSE: draw it
+// directly -- hud_linegraph_cache 0, not GL (milk's test: a 2D target is an empty function on
+// Vulkan), or 2D units that are not the screen's pixels: a target is drawn in its own pixels,
+// and a cache resampled onto the screen would blur.
+float() LineGraph_CacheDraw =
+{
+	local vector vs, ps, pad;
+	local float h;
+
+	vs = getproperty(VF_SCREENVSIZE);
+	ps = getproperty(VF_SCREENPSIZE);
+	if (!cvar("hud_linegraph_cache") || !Milk_Supported() || vs_x != ps_x || vs_y != ps_y)
+	{
+		lgk_ok = FALSE;
+		return FALSE;
+	}
+	if (!lgk_mat)
+	{
+		// The program ships with the game; an install from before it draws directly.
+		lgk_mat = -1;
+		h = search_begin("glsl/ftesurf_lgcache.glsl", TRUE, TRUE);
+		if (h >= 0)
+		{
+			if (search_getsize(h) > 0)
+				lgk_mat = 1;
+			search_end(h);
+		}
+		// blendfunc before the maps: after the second, it would land on the merged sub-pass,
+		// whose blend bits never reach GL (only the leader's do).
+		if (lgk_mat > 0)
+			shaderforname(LGK_MAT, strcat("{\n{\nprogram ftesurf_lgcache\nblendfunc gl_one gl_one_minus_src_alpha\nmap $rt:",
+			                              LGK_K, "\nmap $rt:", LGK_W, "\n}\n}\n"));
+	}
+	if (lgk_mat < 0)
+	{
+		lgk_ok = FALSE;
+		return FALSE;
+	}
+	if (!LineGraph_CacheSame(vs))
+	{
+		pad = '2 2 0';
+		lgk_flip = ps_y;
+		setproperty(VF_RT_DESTCOLOUR, LGK_K, 0 - LGK_FMT, ps);
+		drawfill(lgh_p - pad, [lgh_w, lgh_h] + pad * 2, '0 0 0', 1, 0);
+		LineGraph_HudStill();
+		setproperty(VF_RT_DESTCOLOUR, LGK_W, 0 - LGK_FMT, ps);
+		drawfill(lgh_p - pad, [lgh_w, lgh_h] + pad * 2, '1 1 1', 1, 0);
+		LineGraph_HudStill();
+		setproperty(VF_RT_DESTCOLOUR, "");
+		lgk_flip = 0;
+		lgk_ok = TRUE;
+		lgk_builds = lgk_builds + 1;
+	}
+	drawsubpic(lgh_p, [lgh_w, lgh_h], LGK_MAT, [lgh_p_x / ps_x, lgh_p_y / ps_y],
+	           [lgh_w / ps_x, lgh_h / ps_y], '1 1 1', 1, 0);
+	lgk_draws = lgk_draws + 1;
+	return TRUE;
+};
+
+// After a renderer restart the targets are gone (CSQC_RendererRestarted).
+void() LineGraph_CacheLost =
+{
+	lgk_ok = FALSE;
+};
+
+void(vector scr, float have) LineGraph_Hud =
+{
+	local float sz, u, hsz, w, h, ph, plots, s, y, x, lw, rows, e, tw, n;
+	local vector p, bp, pp, r;
+
+	Font_Set(ui_font_ui);
+	u = cvar("hud_scale");
+	if (u <= 0) u = 2;
+	u = min(u, scr_x / 640);        // a narrow window gets a smaller graph, as it does a smaller board
+	sz  = Font_Px(HUD_Size("hud_linegraph_size", 8 * u));
+	u   = sz / 8;
+	hsz = Font_Px(6 * u);
+	w   = 150 * u;
+	ph  = 40 * u;
+	plots = cvar("hud_linegraph_plots");
+	n = (plots >= 3) ? 2 : 1;
+
+	// The legend wraps; count its rows before the box is drawn.
+	rows = 1;
+	x = 0;
+	lw = w - 12 * u;
+	for (s = 0; s < LG_SLOTS; s = s + 1)
+	{
+		if (!lg_available[s] || !lg_selected[s]) continue;
+		tw = 6 * u + stringwidth(LineGraph_Name(s), TRUE, [hsz, hsz]) + 5 * u;
+		if (x > 0)
+		if (x + tw > lw + 5 * u) { rows = rows + 1; x = 0; }
+		x = x + tw;
+	}
+	if (rows > 3) rows = 3;
+
+	h = (3 + PLOT_BAND) * u + n * ph + (n - 1) * 4 * u + 10 * u + rows * 8 * u + 4 * u;
+	bp = [scr_x * cvar("hud_linegraph_x"), scr_y * cvar("hud_linegraph_y"), 0];
+	p  = [floor(bp_x - w), floor(bp_y), 0];
+	y = p_y + (3 * u + PLOT_BAND * u);  // Plot_Header's height
+	pp = [p_x + 6 * u, y + 2 * u, 0];
+	lg_hud = TRUE;
+	lg_hudp = pp;
+	lg_huds = [lw, ph, 0];
+	if (!lg_fok)
+		lg_blanks = lg_blanks + 1;
+	lgh_p = p;          lgh_pp = pp;        lgh_w = w;          lgh_h = h;
+	lgh_u = u;          lgh_sz = sz;        lgh_hsz = hsz;      lgh_n = n;
+	lgh_plots = plots;  lgh_have = have;    lgh_lw = lw;        lgh_ph = ph;
+	if (!LineGraph_CacheDraw())
+		LineGraph_HudStill();
+
+	// ---- the live run's curve, then the heads' fills, over it every frame. Plot 2's still
+	// curves now go before plot 1's heads: each is clipped to its own plot, which they keep out of.
 	if (lg_fok)
 	{
 		e = (plots == 2);
 		r = LineGraph_RangeY(e);
 		drawsetcliparea(pp_x, pp_y, lw, ph);
-		LineGraph_Curves(pp, [lw, ph], e, r, 1.5);
+		LineGraph_Curves(pp, [lw, ph], e, r, 1.5, LG_LIVE);
 		drawresetcliparea();
 		LineGraph_Playhead(pp, [lw, ph], e, r, 4 * u);
 		LineGraph_LiveHead(pp, [lw, ph], e, r, 4 * u);
@@ -1082,7 +1278,7 @@ void(vector scr, float have) LineGraph_Hud =
 		{
 			r = LineGraph_RangeY(TRUE);
 			drawsetcliparea(pp_x, pp_y + ph + 4 * u, lw, ph);
-			LineGraph_Curves(pp + [0, ph + 4 * u], [lw, ph], TRUE, r, 1.5);
+			LineGraph_Curves(pp + [0, ph + 4 * u], [lw, ph], TRUE, r, 1.5, LG_LIVE);
 			drawresetcliparea();
 			LineGraph_Playhead(pp + [0, ph + 4 * u], [lw, ph], TRUE, r, 4 * u);
 			LineGraph_LiveHead(pp + [0, ph + 4 * u], [lw, ph], TRUE, r, 4 * u);
@@ -1889,10 +2085,10 @@ void(vector scr, float have) LineGraph_Panel =
 	if (lg_fok)
 	{
 		drawsetcliparea(plot_x, plot_y, pw, ph);
-		LineGraph_Curves(plot, [pw, ph], FALSE, r0, 2);
+		LineGraph_Curves(plot, [pw, ph], FALSE, r0, 2, LG_STILL | LG_LIVE);
 		drawresetcliparea();
 		drawsetcliparea(plot_x, y0 + rec_sb_szhead + 6, pw, ph);
-		LineGraph_Curves([plot_x, y0 + rec_sb_szhead + 6], [pw, ph], TRUE, r1, 2);
+		LineGraph_Curves([plot_x, y0 + rec_sb_szhead + 6], [pw, ph], TRUE, r1, 2, LG_STILL | LG_LIVE);
 		drawresetcliparea();
 		LineGraph_Playhead(plot, [pw, ph], FALSE, r0, 7);
 		LineGraph_Playhead([plot_x, y0 + rec_sb_szhead + 6], [pw, ph], TRUE, r1, 7);
@@ -2538,6 +2734,8 @@ float(string cmd) LineGraph_Command =
 		// generation (it moves when they are cut again), and an alignment waiting to settle.
 		print(sprintf("linegraph: liveops rebuilds %g blanks %g curves %g pending %g\n",
 		              lv_rebuilds, lg_blanks, lg_gen, lv_pend));
+		print(sprintf("linegraph: cache %g frames composited %g of them drawn again %g\n",
+		              lgk_ok, lgk_draws, lgk_builds));
 		// The timer's own stats, which the alignment reads, and the HUD graph's first plot.
 		print(sprintf("linegraph: timer state %g seg %g of %g track %g clock %.4f base %.4f\n",
 		              getstatf(STAT_FS_TIMERSTATE), getstatf(STAT_FS_TIMERSEG), getstatf(STAT_FS_TIMERSEGS),
