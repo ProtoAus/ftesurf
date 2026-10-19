@@ -1910,7 +1910,7 @@ export class SourceRenderer implements SceneGfx {
         // Reflection is only supported on the first BSP renderer (maybe we should just kill the concept of having multiple...)
         if (this.renderContext.enableExpensiveWater && this.mainViewRenderer.drawWorld) {
             const bspRenderer = this.bspRenderers[0], bsp = bspRenderer.bsp;
-            if (bspRenderer.lastGatherView !== this.mainViewRenderer.mainView)
+            if (this.bspRenderers.length > 1 || bspRenderer.lastGatherView !== this.mainViewRenderer.mainView) // FTESurf: one BSP only
                 bspRenderer.gatherLiveSets(null, bspRenderer.liveLeafSet, this.mainViewRenderer.mainView);
             const leafwater = bsp.findLeafWaterForPoint(this.mainViewRenderer.mainView.cameraPos, bspRenderer.liveLeafSet);
             if (leafwater !== null) {

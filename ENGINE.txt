@@ -29,6 +29,8 @@ patch    836
 # Patch 836 (client engine + csprogs): builtin lines_label looks along a board line for where
 # its name can sit, natively; the QC loop stays as the fallback (released engines) and must
 # change with it. Board-line names: QC -0.40 ms a frame in Lex's setup. Lobbies csprogs 23d5301a.
+# Patch 835 (surfd web): the 3D viewer's renderer does its visibility walks with less work
+# (vendor patches A-E): +16..+94% fps, pixels unchanged. No QC, engine or player file.
 # Patch 834 (surfd web): the 3D viewer's Display panel and clean view, the game's energy readout
 # and both its zeros, maps and game textures kept in the browser. No QC, engine or player file.
 # Patch 833 (reader): ordinary finish closers reach warp/ride observations in their parsed

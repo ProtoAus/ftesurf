@@ -34,7 +34,7 @@ dd0968e2b8e1db8c upstream SaveManager.ts
 52dba90cf64a8001 patched  SourceEngine/EntitySystem.ts
 d8f9b475252c7efb upstream SourceEngine/GMA.ts
 ffa00f2f3fb6dbc4 upstream SourceEngine/LuminanceHistogram.ts
-f77594981cadc1eb patched  SourceEngine/Main.ts
+d5b5898c9c1c7659 patched  SourceEngine/Main.ts
 371097df0f632fd1 upstream SourceEngine/Materials/Lightmap.ts
 5ef6797eca7847f3 upstream SourceEngine/Materials/MaterialBase.ts
 d51304fcda798017 upstream SourceEngine/Materials/MaterialCache.ts

@@ -116,6 +116,11 @@ renderer; source and build in `src/viewer/` (its README). The bundle
   GL draws 1-px lines, so the run line is a ribbon of triangles; a segment within 48 units of
   the camera is skipped and a zone the camera is inside is only outlined -- each had filled
   the view.
+- **The viewer is CPU-bound in noclip, not the GPU (P835)**: the five vendor patches A-E
+  (tools/vendor.py) cut surf_demise's BSP walks (42% of CPU before) with identical visible
+  sets; +16..+94% fps. A lost WebGL context renders nothing thousands of times a second, and
+  the first A/B here read 5,800 fps as a win under memory pressure: the page now says so and
+  watchState carries `contextLost`.
 - **What the viewer keeps (P834)**: Cache Storage for the bytes, one IndexedDB record per
   entry (`idb.ts`; a per-tab manifest lost the other tab's entries, review), LRU to the smaller of
   the budget and 40% of the site's quota. A map is reused while the R2 download's Content-Length

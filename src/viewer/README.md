@@ -85,6 +85,17 @@ refuses). Measured 19 Oct on the PC: picking Counter-Strike Source lists 21,845 
 5.1 s; all of `common`, 300,487 files in 96 s, of which `files.ts`'s KEEP filter keeps
 8,700.
 
+## Frame time (Patch 835)
+
+On heavy maps the viewer is CPU-bound in noclip's per-frame JavaScript: a canvas twice the
+size costs at most 6%, and our own drawing (world, graph, HUD, labels) is about 0.45 ms a
+frame. On surf_demise `gatherLiveSets` was 42% of the CPU. Five vendor patches (A-E in
+tools/vendor.py) give the same visible sets from less work: +16% (surf_beginner) to +94%
+(surf_boreas), surf_demise playback 62 -> 92 fps, pixels byte-identical on 12 views. Patch B
+(the water check reusing the main view's set) only applies with one BSPRenderer, which is all
+this viewer makes. `tools/fps.mjs` is the A/B: vsync off, camera held, pages alternated. GRADE
+ITS STATE LINE: a lost WebGL context renders nothing thousands of times a second.
+
 ## Checks
 
     python tools/lzma_ref.py MAP.bsp > ref.txt

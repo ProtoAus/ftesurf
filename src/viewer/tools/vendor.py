@@ -147,7 +147,7 @@ PATCHES = [
      '                this.lastGatherView = renderContext.currentView;\n'),
     ('SourceEngine/Main.ts',
      '            bspRenderer.gatherLiveSets(null, bspRenderer.liveLeafSet, this.mainViewRenderer.mainView);\n',
-     '            if (bspRenderer.lastGatherView !== this.mainViewRenderer.mainView)\n'
+     '            if (this.bspRenderers.length > 1 || bspRenderer.lastGatherView !== this.mainViewRenderer.mainView) // FTESurf: one BSP only\n'
      '                bspRenderer.gatherLiveSets(null, bspRenderer.liveLeafSet, this.mainViewRenderer.mainView);\n'),
     ('SourceEngine/BSPFile.ts',
      '    private findLeafWaterForPointR(p: ReadonlyVec3, liveLeafSet: Set<number>, nodeid: number): BSPLeafWaterData | null {\n'
