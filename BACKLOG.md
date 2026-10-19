@@ -62,13 +62,13 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
 ## 3D run viewer (P825): what is left
 
 - **The map download needs CORS on both hops; owner's sudo and Cloudflare.** Until both are
-  set, watch.html reads the BSP from the visitor's own game folder only. (1) The installed
-  `/etc/nginx/snippets/ftesurf-maps.conf` needs the four `add_header Access-Control-Allow-Origin
-  "*" always;` lines `tools/r2gateway.nginx` now has, then `nginx -t` and a reload; the
-  gateway installer pins that file's hash (`nginx_before_sha256`), so its next install takes
-  the new one. (2) The R2 bucket behind the presigned URLs needs a CORS policy allowing
-  origin `*` (after a cross-origin redirect the browser sends `Origin: null`), GET/HEAD,
-  header Range, exposing Content-Length. Check: `curl -sI -H 'Origin: https://proto.bar'
+  set, watch.html reads the BSP from the visitor's own game folder only. (1) `sudo sh
+  /srv/nvme/agent-work/surfd825b-20261019T0720Z/apply-cors.sh` installs the snippet rendered
+  from `tools/r2gateway.nginx` (the live file was verified equal to the pre-P825 template; the
+  script refuses if it changed, keeps `.pre-p825`, restores on a failed `nginx -t`). The gateway
+  installer pins that file's hash (`nginx_before_sha256`), so its next install takes the new
+  one. (2) R2 bucket `ftesurf-public`, Settings, CORS policy: origin `*` (after a cross-origin
+  redirect the browser sends `Origin: null`), GET/HEAD, header Range, exposing Content-Length. Check: `curl -sI -H 'Origin: https://proto.bar'
   https://play.proto.bar/maps/surf_beginner.bsp` shows the header on the 302, and the
   Location's reply carries it too.
 - **Zones are not drawn.** Their JSON is public (`/ftesurf/maps/zones/local/<map>.json`, the
@@ -84,10 +84,10 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
   and has no BC7/BC6H), maps over 100 MB (98 of them; memory and download unmeasured), phones
   and low-end GPUs, Firefox/Safari's directory input on a whole Steam folder, and whether
   noclip animates movers the game freezes at spawn (sv_entities.qc).
-- **The first `/board/api/run` after surfd's map index expires can 504** (MAPS_TTL 300 s;
-  `map_index()` rescans the library inside the request, and nginx gives /ftesurf/board/ 5 s).
-  Seen twice on 19 Oct (once just after the P825 cutover); a retry a second later is 0.1 s.
-  The run page shows the error; watch.js retries once. Fix: rescan off the request path.
+- **Routes that call `map_index()` rescan the library inside the request** every MAPS_TTL
+  (300 s): `zonefit.has_timer` opens each zone-less BSP, which outlasted nginx's 5 s on the Pi
+  (the run route 504'd twice on 19 Oct before P825 moved it to `map_index_cached()`). The maps
+  list, the board and /api/join still pay it. Fix: rescan off the request path.
 - **test_web.py leaves its temp homes behind** (`%TEMP%\surfd-web-*`, one per `fresh()`): 3,612
   had piled up on the PC since 20 Sep, 327 of them from P825's runs alone (removed). Clean up in
   the suite's own exit, as AGENT_NOTES asks of suites.

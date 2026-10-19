@@ -15,15 +15,18 @@ adecfe6c everywhere); qwprogs 45013167 and menu.dat f6cf5764 unchanged. Lobby sm
 
 ## P825 — watch a run in 3D in the browser
 
-surfd 2026-10-19T07:23:25Z: generation 7cc5cbbf (main), root
-/srv/nvme/agent-work/surfd825b-20261019T0720Z; watch.js a50f4bf0. The first P825 generation
-(10f09dc8, 07:15:36Z) is closed and kept for rollback, as is pi.dev's P804 one.
+surfd 2026-10-19T08:02:56Z: generation 9ae4a941 (main), root
+/srv/nvme/agent-work/surfd825c-20261019T0800Z; watch.js 4981b720. Earlier P825 generations
+(10f09dc8, 7cc5cbbf) and pi.dev's P804 one are closed and kept for rollback.
 
 - On any run page (e.g. https://proto.bar/ftesurf/board/#r=21367) press **Watch in 3D**.
-- Press **Choose a game folder…** and pick `C:\Program Files (x86)\Steam\steamapps\common`
-  (Chrome/Edge ask to allow reading it once). The map draws with its textures; nothing is
-  uploaded. Until the two CORS steps in BACKLOG are done, the page needs this folder to draw
-  the map at all.
+- Press **Copy** beside the path, then **Choose a game folder…**, paste it into the window's
+  address bar and choose `Counter-Strike Source` (not `common` itself: Chrome refuses anything
+  under Program Files through its other picker, and `common` is every game you own). The
+  browser asks to "upload" it; the page reads the map's files on your PC and sends nothing.
+  Until the two CORS steps below are done, the page needs this folder to draw the map at all.
+- CORS, one command each: `sudo sh /srv/nvme/agent-work/surfd825b-20261019T0720Z/apply-cors.sh`
+  on the Pi, and the R2 bucket `ftesurf-public`'s CORS policy in Cloudflare (BACKLOG).
 - **Play**, drag the timeline or click the speed graph; cameras 1–4 (Chase: drag to turn, wheel to
   zoom; Free: drag to look, WASD to fly); **Race the record** puts the combined board's best
   recorded run beside yours as a gold dot, with the gap at the top.

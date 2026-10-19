@@ -46,13 +46,19 @@ renderer; source and build in `src/viewer/` (its README). The bundle
   with no output; Chrome works and reports the RTX 2080 SUPER through ANGLE. A
   failed launch can leave headless browsers holding the profile: stop only the
   ones whose command line names your own root.
+- **Chrome's and Edge's folder picker (showDirectoryPicker) refuses anything under Program
+  Files** ("contains system files"), which is where Steam keeps its default library -- Lex hit
+  it on the first try. The folder input (`webkitdirectory`) reads it, so that is the main
+  button, aimed at `Counter-Strike Source` (21,845 files; the input lists them all, and
+  `common` is every game). puppeteer's `uploadFile(<dir>)` on that input drives it headless.
 - board.css has a `.watch` (the runs table's pill button); a page-level
   `class="watch"` drew the whole page as a pill. The viewer's classes are `w*`.
 - **Deployed** 19 Oct as two successor generations (build_gen.py, suite.sh, cutover.sh):
   10f09dc8 at 07:15:36Z (root surfd825-20261019T0815Z; its name's time is wrong, it was
   made at ~07:10Z) and 7cc5cbbf at 07:23:25Z (surfd825b-20261019T0720Z). Each cutover gave
   about 9 s of 503s. The P804 generation (pi.dev's) and 10f09dc8 are CLOSED and kept for
-  rollback.sh. On the Pi, recplot.track over the largest file there (a 59 MB evidence
+  rollback.sh. A third, 9ae4a941 at 08:02:56Z (surfd825c-20261019T0800Z), took the run
+  route off the map scan and changed the folder picker (below). On the Pi, recplot.track over the largest file there (a 59 MB evidence
   recording; the 32 MiB read cap applies) takes 1.67 s at nice 10; nginx gives 5 s.
 
 ## Rewind over a failed attempt (P817, 2026-10-19)
