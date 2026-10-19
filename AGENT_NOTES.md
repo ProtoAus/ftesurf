@@ -26,6 +26,10 @@
   drives the screen; `story_probe:` lines grade it.
 - **fteqcc binds `?:` tighter than `&&`**: `(on || hot) && !locked ? A : B` compiled as
   `(on || hot) && (!locked ? A : B)` (F314, implicit int-to-vector cast). Bracket the condition.
+- **LIVE 2026-10-19 (UTC)**: surfd generation d0fd1bf9 from `/srv/nvme/agent-work/surfd854-20261019T2133Z`
+  since 21:38:49Z (OLD surfd855 CLOSED, kept: the next deploy builds from OLD=surfd854); story.txt rev
+  3ab0fa470bc6; menu.dat 79219f4e in both installs (.prev 07fa02c8). surf_sinister.bsp (sha256
+  593f5281bc96) added to the Pi's momentum/maps and both installs' ftesurf/maps, unzoned.
 
 ## The 3D viewer and Propper props, HDR maps in Chromium (P855, 2026-10-20)
 
