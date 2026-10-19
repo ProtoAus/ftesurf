@@ -1,6 +1,7 @@
 /*
   Patch 753: `!r`, `!m`, goto_start and the save-lock load key, predicted
-  (goto_spawn was `!m` until Patch 845 made it the map's spawn).
+  (goto_spawn was `!m` until Patch 845 made it the map's spawn; goto_start was `!r`
+  until Patch 848 gave that to `reset`).
 
   Each op rides ONE outgoing usercmd's impulse (WOP_*); the server applies it at
   that command (SV_WarpOpCommand) and CSQC_PredictPlayerPreMove below applies the
@@ -64,6 +65,7 @@ void() WarpOp_RegisterCvars =
 {
 	registercvar("cl_warpop", "1");
 	registercommand("goto_start");
+	registercommand("reset");
 	registercommand("goto_spawn");
 };
 
@@ -722,10 +724,28 @@ float(string text) WarpOp_Chat =
 
 float() WarpOp_Console =
 {
-	if (argv(0) == "goto_start")
+	local float n;
+
+	// Patch 848: reset is `!r`, the start of the leg you are on (mid-run on a staged map, a
+	// stage restart); goto_start is the start of the run: the track's, `!m` or `!b N`.
+	if (argv(0) == "reset")
 	{
 		if (!WarpOp_Reset(WOP_RESET))
 			localcmd("cmd zone_reset\n");
+		return TRUE;
+	}
+	if (argv(0) == "goto_start")
+	{
+		n = getstatf(STAT_FS_TIMERTRACK);     // the last armed track: 0 main, N bonus N
+		if (n > 0)
+		{
+			if (n > WOP_BONUSES)
+				localcmd(sprintf("cmd say \"!b %g\"\n", n));
+			else if (!WarpOp_Reset(WOP_BONUS1 + n - 1))
+				localcmd(sprintf("cmd say \"!b %g\"\n", n));
+		}
+		else if (!WarpOp_Reset(WOP_SPAWN))
+			localcmd("cmd zone_restart\n");
 		return TRUE;
 	}
 	// Patch 845: the map's spawn entity, where joining puts you, not `!m`'s start zone.

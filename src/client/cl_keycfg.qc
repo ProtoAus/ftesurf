@@ -21,7 +21,7 @@
 ===========================================================================
 */
 
-#define KC_N        26
+#define KC_N        27
 
 // FTE names it; #630 in the engine table. checkbuiltin-gated in KC_SetBind.
 void(float keynum, string bindcmd, optional float bindmap, optional float modifier) setkeybind = #0:setkeybind;
@@ -30,7 +30,8 @@ void(float keynum, string bindcmd, optional float bindmap, optional float modifi
 // id|label|command a rebind writes|other bindings that count as this row (;)|default.cfg's keys|group
 // Restart/Respawn ship as `say !r`/`say !m` (default.cfg) and are rebound, and reset,
 // under a command name (cl_warpop.qc).  Since Patch 845 Respawn's, goto_spawn, is the
-// map's spawn entity while the shipped `say !m` is still the start of the map.
+// map's spawn entity while the shipped `say !m` is still the start of the map.  Since
+// Patch 848 Restart's goto_start is the start of the run and `say !r` is Reset stage's.
 string(float i) KC_Def =
 {
 	if (i == 0)  return "forward|Forward|+forward||w|Movement";
@@ -53,12 +54,13 @@ string(float i) KC_Def =
 	if (i == 17) return "delete|Delete|sl_del|mom_saveloc_remove_current|4|Saves";
 	if (i == 18) return "prev|Previous save|sl_prev|mom_saveloc_nav_prev||Saves";
 	if (i == 19) return "next|Next save|sl_next|mom_saveloc_nav_next||Saves";
-	if (i == 20) return "restart|Restart|goto_start|say !r|r|Run";
+	if (i == 20) return "restart|Restart|goto_start||r|Run";
 	if (i == 21) return "respawn|Respawn|goto_spawn|say !m|m|Run";
 	if (i == 22) return "rewind|Rewind|rewind||BACKSPACE|Run";
 	if (i == 23) return "noclip|Noclip|noclip||v|Run";
 	if (i == 24) return "paint|Paint (hold)|+paint|paint||Run";     // Patch 772: unbound by default
 	if (i == 25) return "share|Share (look at a player)|share||f|Run";  // Patch 777
+	if (i == 26) return "reset|Reset stage|reset|say !r||Run";      // Patch 848
 	return "";
 };
 
@@ -835,7 +837,7 @@ void(vector scr) KC_Draw =
 	colw  = labw + 2 * chipw + 6 * sc + 12 * sc;
 	gap   = 12 * sc;
 	panw  = pad * 2 + colw * 2 + gap;
-	panh  = 6 * sc + 18 * sc + 17 * rh + 4 * sc + rh + 2 * sc + 4 * sc + 10 * sc + 6 * sc;
+	panh  = 6 * sc + 18 * sc + 18 * rh + 4 * sc + rh + 2 * sc + 4 * sc + 10 * sc + 6 * sc;
 	p = [floor((scr_x - panw) * 0.5), floor((scr_y - panh) * 0.5), 0];
 
 	kc_hov_i = -1;
@@ -868,7 +870,7 @@ void(vector scr) KC_Draw =
 	y = y + rh;
 	KC_Slider(2, [c1_x, y, 0], labw, colw, rh, sc);
 
-	y = y0 + 17 * rh + 4 * sc;
+	y = y0 + 18 * rh + 4 * sc;
 	sui_fill([p_x + pad, y - 2 * sc, 0], [panw - pad * 2, 1, 0], SUI_THEME_EDGE_HI, 0.7, 0);
 	bw = 64 * sc;
 	if (KC_Button("kc_reset", [p_x + pad, y, 0], [bw, rh, 0],
