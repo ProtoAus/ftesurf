@@ -873,7 +873,7 @@
                      .filter(function (k) { return n0(bt[k]) > 0; }).length > 1 };
     if (c) {
       var want = readHash();
-      renderComp(body.who, c, c.modes && c.modes[want.cm] ? want.cm : '', want.ct);
+      renderComp(body.who, c, c.modes && (want.cm === 'surf' || want.cm === 'bhop') ? want.cm : '', want.ct);
     }
     profileRows(body, state.prof.page);
   }

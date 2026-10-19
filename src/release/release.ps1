@@ -2097,7 +2097,7 @@ if (-not $SkipUpload -or -not $SkipSite) {
         $headers = Join-Path $OutDir "verify-$($artifact.Name).headers"
         Native 'curl.exe' @('--fail', '--silent', '--show-error', '--location', '--max-time', '120', '--dump-header', $headers, '--output', $check, $artifact.Url) 'download standalone launcher' | Out-Null
         if ((Get-FileHash -LiteralPath $check -Algorithm SHA256).Hash.ToLowerInvariant() -ne $artifact.Sha) { Fail "public standalone launcher SHA256 mismatch: $($artifact.Name)" }
-        if (-not (Select-String -LiteralPath $headers -SimpleMatch -Quiet "filename=`"$saveAs`"")) { Fail "public standalone launcher is not served as $saveAs (Content-Disposition): $($artifact.Name)" }
+        if (-not (Select-String -LiteralPath $headers -SimpleMatch -Quiet "filename=`"$saveAs`"")) { Fail "public standalone launcher is not served as $saveAs (Content-Disposition): $($artifact.Name); an object uploaded without the header is kept by --immutable: re-upload it once with the header and without --immutable" }
         Remove-Item -LiteralPath $check, $headers
         Good "$($artifact.Name): public SHA256 matches verified bootstrap; saved as $saveAs"
     }

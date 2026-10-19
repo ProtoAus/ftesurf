@@ -95,10 +95,14 @@ else {
         & scp @sshOpts -q $f.FullName "${PiHost}:$live/.$($f.Name).new"
         if ($LASTEXITCODE -ne 0) { Fail "scp $($f.Name) failed" }
     }
+    # Plain commands, so set -e stops at the first failure (it ignores one inside an && chain);
+    # publish.sh's lock, so a release cannot swap `static` in between.
     $swap = @($send | ForEach-Object {
         $n = $_.Name
-        "chmod a+r '.$n.new' && { [ ! -e '$n' ] || cp -p -- '$n' '$keep/'; } && mv -f -- '.$n.new' '$n'" })
-    & ssh @sshOpts $PiHost ("set -e; mkdir -p '$keep'; cd '$live'; " + ($swap -join '; '))
+        "chmod a+r '.$n.new'; [ ! -e '$n' ] || cp -p -- '$n' '$keep/'; mv -f -- '.$n.new' '$n'" })
+    & ssh @sshOpts $PiHost ("set -e; exec 9>'$SiteRoot/.publish.lock'; flock -x 9; " +
+        "[ `"`$(readlink '$SiteRoot/static')`" = 'releases/$Version' ]; mkdir -p '$keep'; cd '$live'; " +
+        ($swap -join '; '))
     if ($LASTEXITCODE -ne 0) { Fail "swap on the Pi failed; check $live for .*.new files" }
     Write-Host "replaced $(($send | ForEach-Object Name) -join ', '); old copies in $keep"
 }

@@ -5,6 +5,13 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Profile arms write a stale terms version (found by P853, 20 Oct)
+
+- **tools/p663profile.py writes `data/consent.txt` with `version 4`**; FS_TERMS_ONLINE (sh_defs.qc) is 7,
+  so Profile_Gate answers PFS_NOTERMS and the card asks surfd nothing (`hud_player status` reads
+  `breakdown 4`). Its arms that need an answer cannot pass as written. p853kind.py writes 7. Check: grep
+  `version [0-9]` in tools/p6*.py against FS_TERMS_ONLINE; run p663profile and read `breakdown`.
+
 ## Slow clock (P840): calibration and the limits review left open
 
 - **`run_slowclock` 5 is not calibrated.** Every lobby `.rec` now ends with `clk ... <behind>`: read
