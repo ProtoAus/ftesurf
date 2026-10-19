@@ -64,8 +64,9 @@ renderer; source and build in `src/viewer/` (its README). The bundle
 - **Zones, inferred stage times, bodies (P829).** Zones come from the file the game downloads
   (`/ftesurf/maps/zones/local/<map>.json`). An import has no `split` records, so its stage
   times are the first touch of each stage zone in order (`zones.ts`: Zone_BoxInside's test,
-  PNPOLY and the 32x32 rect, hull 62/45; each tick's travel swept in 8-unit steps; a stage never
-  touched is skipped, not the end of the search), marked with a ≈ sign. Against recorded
+  PNPOLY and the 32x32 rect, always the standing 62 as the timer does; each tick's travel swept
+  in 2-unit steps; a stage never touched is skipped, not the end of the search, and the row
+  after the gap shows no stage time), marked with a ≈ sign. Against recorded
   splits: 52 of 52 within 0.05 s; the surf_666 AnnA/p426 harness fixtures were made on another
   zone set and miss. THE FIRST CUT WAS A CONVEX TEST, and 155 of the library's 1,741 stage
   regions are concave: 20 tracks stalled, 63 splits lost, none of them in the 52 (a review
@@ -78,9 +79,13 @@ renderer; source and build in `src/viewer/` (its README). The bundle
 - **The 504s were each new worker's first map scan, not the TTL rescans.** Measured on the Pi
   19 Oct: zonefit.has_timer over 2,151 BSPs took 20.8 s cold and 0.014 s warm (its lru_cache),
   and gunicorn recycles the one worker every ~5,000 requests (about every 18 min that day). P829
-  keeps the answers in `data/maps_timer_cache.json` (stem + stat) so a new worker stats the files
-  instead, and one scan runs at a time (`_maps_scan_lock`). The first cut moved the TTL rescan
-  to a thread -- the cheap case -- and served an index of any age after a quiet spell (review).
+  keeps the answers in `data/maps_timer_cache.json` (stem + stat + zonefit.py's own hash) so a
+  new worker stats the files instead, and one scan runs at a time (`_maps_scan_lock`). Only real
+  answers are kept: `zonefit.timer_read` says None for an OSError or a MemoryError, which
+  `has_timer` folds into False. Entries merge rather than replace, so a scan that lists nothing
+  does not empty it. The first cut moved the TTL rescan to a thread -- the cheap case -- and
+  served an index of any age after a quiet spell (review round 1); the second kept failed reads
+  as "untimed" across deploys (round 2).
 
 ## Rewind over a failed attempt (P817, 2026-10-19)
 

@@ -143,7 +143,8 @@ function recordedSplits(info: any): Map<number, number> {
 function splitsFor(r: Rec | null, info: any): Splits {
     const recorded = info ? recordedSplits(info) : new Map(r?.splits.map((s) => [s.seg, s.t]) ?? []);
     if (recorded.size > 0 || r === null || zones.length === 0) return { t: recorded, approx: false };
-    return { t: new Map(inferSplits(r, zones).map((s) => [s.seg, s.t])), approx: true };
+    const inferred = new Map(inferSplits(r, zones).map((s) => [s.seg, s.t]));
+    return { t: inferred, approx: inferred.size > 0 };
 }
 
 // Splits for both runs, and, for a run that recorded no stage events, stage
@@ -512,11 +513,11 @@ function showSplits(): void {
     const mine = runSplits.t, theirs = ghostSplits.t;
     const approx = runSplits.approx || (ghost !== null && ghostSplits.approx);
     $('wsplitvs').textContent = (ghost ? `vs ${plain(ghost.info.name)}` : '') + (approx ? ' · ≈ from the zones' : '');
-    let prev = 0;
+    let prev = 0, prevSeg = 0;
     for (const [seg, t] of mine) {
         const tr = el('tr', null);
         tr.append(el('td', null, `Stage ${seg}`), el('td', 'num', (runSplits.approx ? '≈' : '') + fmt(t)),
-            el('td', 'num dim', '+' + (t - prev).toFixed(3)));
+            el('td', 'num dim', seg === prevSeg + 1 ? '+' + (t - prev).toFixed(3) : '—'));
         const g = theirs.get(seg);
         if (ghost) {
             const d = g === undefined ? null : t - g;
@@ -526,6 +527,7 @@ function showSplits(): void {
         tr.addEventListener('click', () => { T = Math.max(t0, t - 1); });
         sp.append(tr);
         prev = t;
+        prevSeg = seg;
     }
     $('wsplitbox').hidden = mine.size === 0;
 }
@@ -544,10 +546,11 @@ async function toggleGhost(): Promise<void> {
     const of = runInfo;
     b.disabled = true;
     try {
-        const q = new URLSearchParams({ map: runInfo.map, track: String(runInfo.track), leg: String(runInfo.leg),
-            style: runInfo.style || 'clean', tier: 'combined' });
+        const q = new URLSearchParams({ map: of.map, track: String(of.track), leg: String(of.leg),
+            style: of.style || 'clean', tier: 'combined' });
         const board = await fetchJSON(`api/map?${q}`);
-        const row = (board.rows || []).find((x: any) => x.rep > 0 && x.rep !== runInfo.rid);
+        if (of !== runInfo) return;   // another recording was opened meanwhile
+        const row = (board.rows || []).find((x: any) => x.rep > 0 && x.rep !== of.rid);
         if (row === undefined) {
             $('wghostinfo').textContent = 'No other recorded run on this board.';
             return;
@@ -556,7 +559,7 @@ async function toggleGhost(): Promise<void> {
         if (of !== runInfo) return;   // another recording was opened meanwhile
         ghost = { rec: parseRec(track.rec), info };
         b.textContent = 'Stop racing';
-        $('wghostinfo').textContent = `Racing ${plain(info.name)} (#${row.r}, ${fmt(info.ms / 1000)}${info.tr !== runInfo.tr ? ', ' + (TIER_NAMES[info.tr] ?? info.tr) : ''}).`;
+        $('wghostinfo').textContent = `Racing ${plain(info.name)} (#${row.r}, ${fmt(info.ms / 1000)}${info.tr !== of.tr ? ', ' + (TIER_NAMES[info.tr] ?? info.tr) : ''}).`;
         computeSplits();
         graph = null;
     } catch (e) {

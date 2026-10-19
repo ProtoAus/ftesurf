@@ -93,7 +93,14 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
   `/board/api/run` 404s it. Older than P830 (its review found it); whether a reject should hide an
   import at all is Lex's call.
 - **The very first scan after a deploy with no `data/maps_timer_cache.json` is still ~21 s in a
-  request** (once; every later worker reads the file). Seed it before a cutover if that matters.
+  request** (once; every later worker reads the file), and so is the first after anything that
+  changes every BSP's ctime (`chown -R`, a copy to a new disk): the key includes ctime, as
+  zonefit's lru_cache does. A deploy can take it with one request of its own straight after the
+  cutover.
+- **Inferred stage times are sampled, not swept exactly**: 2-unit steps along each tick, where
+  the game's `Zone_BoxSwept` is exact (at 8 units a review measured ~0.1% of grazing passes
+  missed). And the game stops splitting after a missed stage; the viewer goes on and shows the
+  row after the gap with no stage time.
 - Closed by P829/P830: zones drawn; stage deltas against imports; depth-tested run line and the
   game's body for player and ghost; each new worker's 20 s map scan (persisted timer answers);
   `/api/replay` refuses a review-rejected run or evidence recording, and any recording of a run

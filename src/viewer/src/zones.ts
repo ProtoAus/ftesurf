@@ -2,7 +2,7 @@
 // polygons, one in ten of them concave (sh_zones.qc's point-in-zone note).
 // segments[k].checkpoints[0] is stage k's start zone, the rest are checkpoints,
 // zones.end the finish; tracks.main is the run, tracks.bonuses[] the bonuses.
-import { Fit, FL_DUCKED, Rec } from './rec.js';
+import { Fit, Rec } from './rec.js';
 
 export type ZoneKind = 'start' | 'stage' | 'checkpoint' | 'end';
 
@@ -21,9 +21,12 @@ export interface Zone {
     regions: Region[];
 }
 
-// sh_zones.qc ZT_MINS '-16 -16 0', ZT_STAND_MAXS '16 16 62', ZT_DUCK_MAXS '16 16 45'.
-const HULL_HALF = 16, HULL_STAND = 62, HULL_DUCK = 45;
-const SWEEP_STEP = 8;   // units between the points tested along one tick's travel
+// sh_zones.qc ZT_MINS '-16 -16 0', ZT_STAND_MAXS '16 16 62'. The timer tests the
+// standing hull even ducked (run_zone_hull_live 0), so a duck cannot move a split.
+const HULL_HALF = 16, HULL_STAND = 62;
+// Units between the points tested along one tick's travel. The game's sweep is
+// exact (Zone_BoxSwept); at 8 units ~0.1% of grazing passes were missed (review).
+const SWEEP_STEP = 2;
 
 function regions(list: any): Region[] {
     const out: Region[] = [];
@@ -107,25 +110,35 @@ export function touches(r: Region, x: number, y: number, z: number, h: number): 
     return false;
 }
 
-function zoneTouches(zone: Zone, x: number, y: number, z: number, h: number): boolean {
-    return zone.regions.some((r) => touches(r, x, y, z, h));
+function zoneTouches(zone: Zone, x: number, y: number, z: number): boolean {
+    return zone.regions.some((r) => touches(r, x, y, z, HULL_STAND));
+}
+
+// Whether the hull's travel from a to b can reach any region's box at all.
+function sweepNear(zone: Zone, ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean {
+    return zone.regions.some((r) => Math.max(ax, bx) + HULL_HALF >= r.minX && Math.min(ax, bx) - HULL_HALF <= r.maxX
+        && Math.max(ay, by) + HULL_HALF >= r.minY && Math.min(ay, by) - HULL_HALF <= r.maxY
+        && Math.max(az, bz) >= r.bottom - HULL_STAND && Math.min(az, bz) <= r.top);
 }
 
 // The first sample index at or after `from` whose tick touched the zone: the
 // sample itself, or the travel from the one before it (not across a teleport).
-function firstTouch(rec: Rec, zone: Zone, from: number): number {
+// A sample still touching `held` does not count: the game reports the first
+// stage region a tick touches, in order, and only when that changes.
+function firstTouch(rec: Rec, zone: Zone, from: number, held: Zone | null): number {
     for (let i = from; i < rec.n; i++) {
         if (rec.t[i] < 0) continue;
         if (rec.end !== null && rec.t[i] > rec.end) break;
-        const h = rec.fl[i] & FL_DUCKED ? HULL_DUCK : HULL_STAND;
         const x = rec.o[i * 3], y = rec.o[i * 3 + 1], z = rec.o[i * 3 + 2];
-        if (zoneTouches(zone, x, y, z, h)) return i;
+        if (held !== null && zoneTouches(held, x, y, z)) continue;
+        if (zoneTouches(zone, x, y, z)) return i;
         if (i === 0 || rec.t[i - 1] < 0 || rec.fit[i - 1] === Fit.Snap) continue;
         const px = rec.o[i * 3 - 3], py = rec.o[i * 3 - 2], pz = rec.o[i * 3 - 1];
+        if (!sweepNear(zone, px, py, pz, x, y, z)) continue;
         const steps = Math.ceil(Math.hypot(x - px, y - py, z - pz) / SWEEP_STEP);
         for (let s = 1; s < steps; s++) {
             const f = s / steps;
-            if (zoneTouches(zone, px + (x - px) * f, py + (y - py) * f, pz + (z - pz) * f, h)) return i;
+            if (zoneTouches(zone, px + (x - px) * f, py + (y - py) * f, pz + (z - pz) * f)) return i;
         }
     }
     return -1;
@@ -134,16 +147,18 @@ function firstTouch(rec: Rec, zone: Zone, from: number): number {
 // When the run first entered each stage's start zone, in order, from its own
 // samples: the splits of a run that recorded none (Momentum and KSF imports).
 // Entering stage k's zone ends stage k (1-based), as a native `split k` does. A
-// stage never touched is skipped, and the next is still searched.
+// stage never touched is skipped and the next still searched (the game would
+// stop; the page marks the row after a gap as having no stage time).
 export function inferSplits(rec: Rec, zones: Zone[]): { seg: number; t: number }[] {
     const stages = zones.filter((z) => z.kind === 'stage').sort((a, b) => a.seg - b.seg);
     const out: { seg: number; t: number }[] = [];
-    let from = 0;
+    let from = 0, held: Zone | null = null;
     for (const st of stages) {
-        const i = firstTouch(rec, st, from);
+        const i = firstTouch(rec, st, from, held);
         if (i < 0) continue;
         out.push({ seg: st.seg, t: rec.t[i] });
-        from = i;
+        from = i + 1;
+        held = st;
     }
     return out;
 }

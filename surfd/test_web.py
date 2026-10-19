@@ -1209,12 +1209,15 @@ def main():
 
     # P829: a new worker reads the timer answers off disk instead of every BSP.
     m.maps_reset()
-    reads = []
-    real_has = m.zonefit.has_timer
+    reads, fail_next = [], []
+    real_read = m.zonefit.timer_read
     def counting(path):
         reads.append(path)
-        return real_has(path)
-    m.zonefit.has_timer = counting
+        if fail_next and os.path.basename(path) == fail_next[0]:
+            fail_next.pop()
+            return None                         # an OSError or MemoryError just now
+        return real_read(path)
+    m.zonefit.timer_read = counting
     cache = os.path.join(m.DATA_DIR, "maps_timer_cache.json")
     if os.path.exists(cache):
         os.remove(cache)
@@ -1241,7 +1244,44 @@ def main():
     reads.clear()
     check("...a corrupt cache is a cold scan with the right answer",
           (m.map_index(now=1000.0) == first, len(reads)), (True, n0))
-    m.zonefit.has_timer = real_has
+    def cold(text=None):
+        if text is not None:
+            with open(cache, "w") as fh:
+                fh.write(text)
+        m.maps_reset()
+        reads.clear()
+        return m.map_index(now=1000.0) == first, len(reads)
+    check("...so is one nested past the recursion limit, without raising",
+          cold("[" * 200000), (True, n0))
+    def entry():
+        with open(cache) as fh:
+            return json.load(fh)["maps"].get("surf_nozone")
+    cold()
+    good = open(cache).read()
+    check("control: a warm cache reads nothing", cold(), (True, 0))
+    check("...a flag that is not a bool is not believed",
+          cold(good.replace(json.dumps(entry()).replace(" ", ""),
+                            json.dumps(entry()[:3] + ["no"]).replace(" ", ""))), (True, n0))
+    check("...nor another zonefit's answers",
+          cold(good.replace('"rule":"%s"' % m._TIMER_RULE, '"rule":"0000000000000000"')), (True, n0))
+    cold(good)
+    fail_next.append("surf_nozone.bsp")
+    os.utime(bsp, ns=(st.st_atime_ns, st.st_mtime_ns + 2 * 10**9))
+    m.maps_reset()
+    reads.clear()
+    m.map_index(now=1000.0)
+    check("a read that failed is not kept", entry(), None)
+    check("...and the next worker reads it again", cold(), (True, 1))
+    # The same MAPS_DIR listing nothing (moved aside and back): a name filter
+    # that matches nothing, since a moved file's ctime changes on Linux.
+    real_ok = m._MAPNAME_OK
+    m._MAPNAME_OK = re.compile(r"(?!)")
+    m.maps_reset()
+    empty = m.map_index(now=1000.0)[0]
+    m._MAPNAME_OK = real_ok
+    check("a scan of an empty listing does not empty the cache",
+          (empty, entry() is not None, cold()), ({}, True, (True, 0)))
+    m.zonefit.timer_read = real_read
 
     # ...and threads that find it stale together wait for one scan.
     m.maps_reset()
@@ -1429,8 +1469,9 @@ def main():
     check("...and not once the run is rejected", get(m, "/api/replay/%d" % ev2).status_code, 404)
     add_review(m, rid, "approve")
     add_review(m, ev2, "reject")
-    check("...and a rejected copy hides the run's own recording, as on the board",
-          get(m, "/api/replay/%d" % rid).status_code, 404)
+    check("a rejected evidence copy leaves the run's own recording served, as its row stands",
+          (get(m, "/api/replay/%d" % rid).status_code,
+           [r["rep"] for r in body(get(m, "/api/board?map=bhop_eazy"))["rows"]]), (200, [rid]))
 
     print("\n--- 6c. the map screenshot ---------------------------------------")
     # The name in the URL is a board key run through clean_map, and what comes

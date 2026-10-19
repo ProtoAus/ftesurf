@@ -29,6 +29,7 @@ import os
 import re
 import shutil
 import sqlite3
+import stat
 import threading
 import time
 import types
@@ -1863,7 +1864,7 @@ def _scan_maps():
     zone.update(zone_file_index())
 
     known = _timer_cache_load()
-    seen = {}
+    keep = dict(known)          # merged, not replaced: a short listing must not empty it
     for key, stem in bsp.items():
         if key in zone:
             continue
@@ -1874,12 +1875,20 @@ def _scan_maps():
             continue
         sig = [st.st_mtime_ns, st.st_ctime_ns, st.st_size]
         hit = known.get(stem)
-        timed = hit[3] if hit is not None and hit[:3] == sig else zonefit.has_timer(path)
-        seen[stem] = sig + [bool(timed)]
+        if hit is not None and hit[:3] == sig:
+            timed = hit[3]
+        else:
+            timed = zonefit.timer_read(path)
+            if timed is None:
+                keep.pop(stem, None)        # not kept: the next scan reads it again
+            else:
+                keep[stem] = sig + [timed]
         if timed:
             zone.add(key)
-    if seen != known:
-        _timer_cache_save(seen)
+    if len(keep) > TIMER_CACHE_MAX:
+        keep = {k: v for k, v in keep.items() if k.lower() in bsp}
+    if keep != known:
+        _timer_cache_save(keep)
     return bsp, frozenset(zone)
 
 
@@ -1887,21 +1896,41 @@ def _scan_maps():
 # recycles the one worker every ~5,000 requests (~18 min on 19 Oct), and each new
 # process opened every zone-less BSP again inside whichever request came first --
 # 20.8 s on the Pi for 2,151 maps, against 0.014 s once its lru_cache was warm.
-# Keyed by stem and stat, as that cache is.  Never created outside DATA_DIR.
+# Keyed by stem and stat, as that cache is, and by zonefit.py's own bytes, so a
+# changed rule reads everything again.  Never created outside DATA_DIR.
+TIMER_CACHE_MAX = 50000          # entries; the library is 2,151
+TIMER_CACHE_BYTES = 8 << 20
+try:
+    with open(zonefit.__file__, "rb") as _fh:
+        _TIMER_RULE = hashlib.sha256(_fh.read()).hexdigest()[:16]
+except OSError:
+    _TIMER_RULE = None
+
+
 def _timer_cache_path():
     return os.path.join(DATA_DIR, "maps_timer_cache.json")
 
 
 def _timer_cache_load():
+    """{stem: [mtime_ns, ctime_ns, size, timed]}, or {} for anything else.  Never
+    raises, never blocks: a regular file of bounded size or nothing."""
+    if _TIMER_RULE is None:
+        return {}
+    path = _timer_cache_path()
     try:
-        with open(_timer_cache_path(), encoding="utf-8") as fh:
+        st = os.stat(path)
+        if not stat.S_ISREG(st.st_mode) or st.st_size > TIMER_CACHE_BYTES:
+            return {}
+        with open(path, encoding="utf-8") as fh:
             d = json.load(fh)
-        if d.get("v") == 1 and d.get("dir") == MAPS_DIR and isinstance(d.get("maps"), dict):
-            return {k: v for k, v in d["maps"].items()
-                    if isinstance(v, list) and len(v) == 4 and all(isinstance(n, int) for n in v[:3])}
-    except (OSError, ValueError, AttributeError):
-        pass
-    return {}
+        if (not isinstance(d, dict) or d.get("v") != 1 or d.get("rule") != _TIMER_RULE
+                or d.get("dir") != MAPS_DIR or not isinstance(d.get("maps"), dict)):
+            return {}
+        return {k: v for k, v in d["maps"].items()
+                if isinstance(k, str) and isinstance(v, list) and len(v) == 4
+                and all(type(n) is int for n in v[:3]) and type(v[3]) is bool}
+    except (OSError, ValueError, RecursionError, MemoryError):
+        return {}
 
 
 def _timer_cache_save(seen):
@@ -1911,7 +1940,8 @@ def _timer_cache_save(seen):
     tmp = "%s.%d.tmp" % (path, os.getpid())
     try:
         with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump({"v": 1, "dir": MAPS_DIR, "maps": seen}, fh, separators=(",", ":"))
+            json.dump({"v": 1, "rule": _TIMER_RULE, "dir": MAPS_DIR, "maps": seen}, fh,
+                      separators=(",", ":"))
         os.replace(tmp, path)
     except OSError as exc:
         log.warning("map timer cache %s not written: %s", path, exc)
@@ -4301,12 +4331,15 @@ def replay(rid):
             (rid,),
         ).fetchone()
         # Patch 830: a review-rejected recording is off its board, so its id
-        # names nothing here either, as on the run page -- and so is any other
-        # recording of a run whose recording was rejected (_run_rejected, the
-        # board's rule).  Imports are another board's and stay.
+        # names nothing here either, as on the run page.  Evidence also goes
+        # with its run: it is only ever served as the parent of stage rows, and
+        # restage parks those once _run_rejected says so.  A run's own recording
+        # answers to its own review alone -- its leg-0 row stands (restand) when
+        # an evidence copy is rejected.  Imports are another board's and stay.
         hidden = row is not None and row["kind"] in ("run", "evidence") and (
-            row["rejected"] or (row["runid"] not in ("", "-") and _run_rejected(
-                db, (row["map"], row["track"], row["player"], row["runid"]))))
+            row["rejected"] or (row["kind"] == "evidence" and row["runid"] not in ("", "-")
+                                and _run_rejected(db, (row["map"], row["track"],
+                                                       row["player"], row["runid"]))))
     except sqlite3.Error as exc:
         log.exception("replay db error: %s", exc)
         return fail(500, "storage error")

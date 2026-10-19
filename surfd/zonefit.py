@@ -40,8 +40,10 @@ _TARGETNAME = re.compile(rb'"targetname"\s*"([^"]*)"', re.I)
 _OWN_TIMER = re.compile(rb'"classname"\s*"trigger_momentum_timer_', re.I)
 
 
-def _lump(fh, idx):
-    """One lump's bytes, LZMA undone, or None when it cannot be had whole."""
+def _lump(fh, idx, strict=False):
+    """One lump's bytes, LZMA undone, or None when it cannot be had whole.
+    `strict` lets a MemoryError through: on the swapless Pi it is the moment's,
+    not the file's (timer_read)."""
     fh.seek(0)
     hdr = fh.read(HDRSZ)
     if len(hdr) < HDRSZ or hdr[:4] != b"VBSP":
@@ -70,7 +72,11 @@ def _lump(fh, idx):
     try:
         dec = lzma.LZMADecompressor(format=lzma.FORMAT_RAW, filters=flt)
         return dec.decompress(raw[17:17 + lsize], max_length=actual)
-    except (lzma.LZMAError, ValueError, MemoryError):
+    except MemoryError:
+        if strict:
+            raise
+        return None
+    except (lzma.LZMAError, ValueError):
         return None
 
 
@@ -92,6 +98,22 @@ def _has_timer(path, mtime, ctime, size):
             ents, models = _lump(fh, 0), _lump(fh, 14)
     except OSError:
         return False
+    return _timer_in(ents, models)
+
+
+def timer_read(path):
+    """has_timer's answer, or None when the file could not be read just now (an
+    OSError, a MemoryError): an answer surfd may keep across restarts, and a
+    failure it must not (Patch 829)."""
+    try:
+        with open(path, "rb") as fh:
+            ents, models = _lump(fh, 0, True), _lump(fh, 14, True)
+    except (OSError, MemoryError):
+        return None
+    return _timer_in(ents, models)
+
+
+def _timer_in(ents, models):
     if ents is None or models is None or len(models) % 48:
         return False
     found = set()

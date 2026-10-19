@@ -49,7 +49,7 @@ def main():
             directory = S.ZONES_LOCAL_DIR if name == 'bhop_done' else S.ZONES_DIR
             (Path(directory)/(name+'.json')).write_text('{}')
     # An independently acknowledged embedded timer must not imply a zone FILE.
-    S.zonefit.has_timer = lambda p: Path(p).stem == 'bhop_embedded'
+    S.zonefit.timer_read = lambda p: Path(p).stem == 'bhop_embedded'   # the scan's reader (P829)
     S.maps_reset()
     bsp, timed = S.map_index()
     check('embedded-timer double actually reports a timed map', 'bhop_embedded' in timed, True)
