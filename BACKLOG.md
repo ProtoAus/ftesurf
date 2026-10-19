@@ -15,6 +15,17 @@ itself 0.37-0.47. A QC function's profiled time includes the builtins it calls (
 pr_exec.c:604-614, entry to exit), so a QC row is not all interpreter. Patch 827 took the first
 (Line_End). Engine citations are at ebc96a081. Measured unless marked "read".
 
+Re-measured the same day at each map's spawn, overlay defaults (`profile_csqc`, `r_budget_dump`;
+logs in the perfplan-20261019 root): surf_demise runs 26.5k QC instructions a frame, ~0.08 ms at
+P827's ~3 ns each, while its CSQC row reads 0.76 ms -- so CSQC is mostly the builtins QC calls
+(draws, text, strings, traces). Cut those calls; QC-side memos are not worth it (Font_Px is
+4,000 instructions, ~12 us). surf_demise's opaque row is 2.32 ms for 914 entity batches
+(~2.5 us each) and PrepareFrame 0.96: the prop path is its biggest lever. The 1.1-1.3 ms
+transparent rows in Lex's dumps read 0.10-0.40 here, so his HUD/line setup adds them (which
+part is unmeasured). An untouched view drifted 2.68 -> 3.54 ms between 1.5 s windows on
+surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0` and
+`r_model_mincoverage 0.005` were inside that at these spawns.
+
 - **Glares: occlusion on the GPU.** `Sprite_Glare` 1.63 ms of surf_tensor2's 3.54 ms of QC, its
   cost the tracelines (build 59's fit: 27.1 us a ray, cl_sprites.qc). Source asks the GPU
   (c_pixel_visibility.cpp); the 50 ms ramp already hides a frame or two of latency. Needs a
