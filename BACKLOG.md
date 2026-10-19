@@ -38,10 +38,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   SV_TimerSpawn clears a just-finished run's tag (sidecar dropped, receipt unsigned within a
   packet of the finish) and, offline, leaks the run's strbuf (rec_rec_buf -1 before the idle).
   SV_SpawnGoto (P845) shows the fix: SV_TimerVoid first, carry the tag across.
-- Site: `cl_keycfg.qc` row 21. Respawn counts both goto_spawn (spawn entity) and the shipped
-  `say !m` (start of the map), and "reset to defaults" binds m to goto_spawn. Lex to decide
-  whether default.cfg's m should be goto_spawn; likewise whether r should ship as goto_start
-  (P848: today default.cfg's `say !r` is the Reset stage row and Restart has no default key).
 - Site: `cl_sprites.qc` P847 trace. A sprite whose answer flips while particles or the trace's
   0.25 s age lag behind draws in the old bucket for that long; env_lightglow glows (drawn over
   everything, as Source) are not traced.

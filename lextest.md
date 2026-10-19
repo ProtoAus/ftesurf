@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P851 — m is goto_start, r is reset
+
+__DEPLOYED851__
+
+- Your own config still has m = goto_spawn and r = goto_start (the game keeps saved binds). To take
+  the new ones: Key config (K) -> "reset keys" (every key back to how it ships), or in the console
+  `bind m goto_start; bind r reset`. A fresh install gets them by itself.
+- The key panel's Run group starts Restart run (goto_start, m), Reset stage (reset, r), Go to spawn
+  (goto_spawn, no key): click a slot to bind any of the three.
+
+"m ok / r ok / panel ok". Verdict PENDING.
+
 ## P847-P848 — the glow behind the grate; reset and goto_start
 
 Live 2026-10-19 UTC: client exe 775a1956 (git-7546-patch-847-0-gb3f34daf9 = 846 + 849 + 847) in both

@@ -25,7 +25,9 @@ commit   2db147d7a82bd24687b98bf2209848e5d7e4af58
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-847
-patch    849
+patch    851
+# Patch 851 (csprogs + default.cfg): m is goto_start, r is reset (Lex); the key panel's Run group
+# starts Restart run (m), Reset stage (r), Go to spawn (no key).
 # Patch 848 (qwprogs + csprogs): `reset` is the old goto_start (!r); goto_start sends !r unless the
 # run is past its leg's first segment (STAT_FS_TIMERSTARTSEG), then the track's start (!m / !b N).
 # Patch 847 (client engine + csprogs): DRAWFLAG_UNDERBLEND sorts a CSQC polygon before the blended

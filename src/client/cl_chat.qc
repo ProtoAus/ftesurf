@@ -2098,7 +2098,7 @@ float(string cmd) Chat_ConsoleCommand =
 
   The engine offers the whole command here before it sends anything
   (zqtp.c:3774), and patch 341 took BOTH forms -- which broke every caller that
-  passes text.  `say !r` and `say !m` are the R and M binds in default.cfg:864
+  passes text.  `say !r` and `say !m` were the R and M binds in default.cfg until Patch 851
   and defaultuser.cfg:96, `!s N`/`!b N` are how you reach a stage or a bonus,
   and six cfgs under cfg/test/ drive runs with them: all of them silently
   opened a prefilled typing line and sent nothing, so the restart keys did
