@@ -2,8 +2,9 @@
 
 ## P815 — Publish saved: your zones on the lobbies, by themselves
 
-Not live until the Pi service is installed (one sudo command, in the session that built it) and
-your Steam account is granted the zone-admin role. The game half (installs and lobbies) is.
+Both installs and all 12 lobbies 2026-10-19T03:44Z: qwprogs f08f6fc1, csprogs 100068b0 (.prev
+b7c29da0), menu.dat 15a24f21. Publishing itself is not live until the Pi service is installed
+(one sudo command, in the session that built it) and your Steam account is granted the role.
 
 - In a game YOU host (Play the map from the map list), `zone_edit`, edit, Save zones, then
   **Publish saved**. The line under the buttons shows the map, zone count and crc: Enter
