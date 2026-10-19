@@ -48,6 +48,12 @@ renderer; source and build in `src/viewer/` (its README). The bundle
   ones whose command line names your own root.
 - board.css has a `.watch` (the runs table's pill button); a page-level
   `class="watch"` drew the whole page as a pill. The viewer's classes are `w*`.
+- **Deployed** 19 Oct as two successor generations (build_gen.py, suite.sh, cutover.sh):
+  10f09dc8 at 07:15:36Z (root surfd825-20261019T0815Z; its name's time is wrong, it was
+  made at ~07:10Z) and 7cc5cbbf at 07:23:25Z (surfd825b-20261019T0720Z). Each cutover gave
+  about 9 s of 503s. The P804 generation (pi.dev's) and 10f09dc8 are CLOSED and kept for
+  rollback.sh. On the Pi, recplot.track over the largest file there (a 59 MB evidence
+  recording; the 32 MiB read cap applies) takes 1.67 s at nice 10; nginx gives 5 s.
 
 ## Rewind over a failed attempt (P817, 2026-10-19)
 

@@ -1,5 +1,22 @@
 # lextest.md — things waiting on a human
 
+## P825 — watch a run in 3D in the browser
+
+surfd 2026-10-19T07:23:25Z: generation 7cc5cbbf (main), root
+/srv/nvme/agent-work/surfd825b-20261019T0720Z; watch.js a50f4bf0. The first P825 generation
+(10f09dc8, 07:15:36Z) is closed and kept for rollback, as is pi.dev's P804 one.
+
+- On any run page (e.g. https://proto.bar/ftesurf/board/#r=21367) press **Watch in 3D**.
+- Press **Choose a game folder…** and pick `C:\Program Files (x86)\Steam\steamapps\common`
+  (Chrome/Edge ask to allow reading it once). The map draws with its textures; nothing is
+  uploaded. Until the two CORS steps in BACKLOG are done, the page needs this folder to draw
+  the map at all.
+- **Play**, drag the timeline or click the speed graph; cameras 1–4 (Chase: drag to turn, wheel to
+  zoom; Free: drag to look, WASD to fly); **Race the record** puts the combined board's best
+  recorded run beside yours as a gold dot, with the gap at the top.
+
+"Works / <what looks wrong, and on which map>". Verdict PENDING.
+
 ## P817 — after a fail, the rewind carries on your run (timed, segmented)
 
 Live 19 Oct 06:56Z in both installs and on all 12 lobbies (qwprogs 45013167, csprogs adecfe6c;
