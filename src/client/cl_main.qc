@@ -2176,6 +2176,19 @@ float(string cmd) CSQC_ConsoleCommand =
 		return TRUE;
 	}
 
+	// Patch 821.  `chat_mouse <x> <y> [<scan> <0|1>]`: the cursor to x y, then a
+	// button, each through the whole chain as `vote key` does.
+	if (argv(0) == "chat_mouse")
+	{
+		local float cm_took, cm_scan;
+		cm_scan = stof(argv(3));
+		cm_took = CL_InputEvent(IE_MOUSEABS, stof(argv(1)), stof(argv(2)), 0);
+		if (cm_scan)
+			cm_took = CL_InputEvent(stof(argv(4)) ? IE_KEYDOWN : IE_KEYUP, cm_scan, 0, 0);
+		print(sprintf("chat_mouse: %s %s scan %g took %g\n", argv(1), argv(2), cm_scan, cm_took));
+		return TRUE;
+	}
+
 	if (argv(0) == "timer")
 	{
 		/*

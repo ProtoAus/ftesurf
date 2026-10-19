@@ -25,7 +25,7 @@ commit   f0656e9b436e62bce65524e0f5b9bb034392f7b0
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-813
-patch    820
+patch    821
 # Patch 815 (qwprogs + csprogs + menu + surfd zonepub): an admin's zone upload is published by
 # itself once no lobby has the map and its runs are verified; Publish only in a hosted game; a
 # client shows the lobby's zones by serverinfo zonecrc; picker games read the curated copy.

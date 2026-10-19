@@ -5,6 +5,13 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Chat panel (P821): what the review left open
+
+- `src/client/cl_chat.qc` Chat_FieldKey reads Shift/Ctrl from `ui_kmods` (cl_keys.qc), which
+  misses a modifier edge made under the console or before a map change: a Ctrl let go under the
+  console stays held, so Backspace deletes words and the arrows jump words until Ctrl is pressed
+  again. Check: hold Ctrl, open the console, let go, close it, open chat, type, press Backspace.
+
 ## Lobby clock (P819) and imported attempts (P820): what the reviews left open
 
 - P819, `src/server/sv_vote.qc` Vote_Extend against `sv_lobby.qc` Lobby_Cycle's hold: an
