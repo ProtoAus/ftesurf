@@ -54,8 +54,10 @@ speed cap was right (9999 on joutsenlaulu); the game sent velocity in 16 bits, w
 ## P810 — surf_tripportals' neon fades with distance; 16 portals per view
 
 Both installs 2026-10-18T21:56Z: csprogs cafba01c, qwprogs bf5e014b (.prev bb4a94eb / 9ebfc493),
-FTESurf 2254d304; default.cfg in both. The lobbies wait for the check on the 0.1.27 exe (players
-there run this csprogs on it), which memory pressure stopped twice.
+FTESurf 2254d304; default.cfg in both. Since 23:20Z the installs, and since 2026-10-19T00:51Z all
+12 lobbies, carry it inside the outside session's P814 build (csprogs b7c29da0, qwprogs
+bf5e014b); 62's lobby smoke on the 219c737c client passed. Not yet run on the 0.1.27 exe, which
+lobby players download.
 
 - surf_tripportals: the neon frames on the floors, walls and doorways (plar/plars_hell_window*)
   fade out as you walk away and back in as you come close, each piece as one, as in Momentum:
