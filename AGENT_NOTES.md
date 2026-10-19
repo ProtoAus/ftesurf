@@ -25,6 +25,42 @@
 - The owner's config binds `m` to goto_spawn (the key panel writes the row's command): read
   ftesurf.cfg before changing what a command means. Verified and deployed state: lextest.md.
 
+## Map speed caps from zone files (P841, 2026-10-19)
+
+- A map's cap is, last wins: cfg/default.cfg 3500, cfg/lobby/mode_*.cfg, cfg/maps/map_<map>.cfg
+  (80 maps, read out of entity lumps), the zone file's top-level `maxVelocity` (Momentum's own
+  value), then a hosted game's zone-editor settings (`data/maps/settings/local`, never lobbies).
+  `movement` names the files; the engine prints `map ruleset: <map> sv_maxvelocity N from <file>`.
+- The engine (sv_phys.c SV_LoadZoneRuleset) picks the file before any entity exists, so it copies
+  SV_ZoneLoad's names and order rather than asking QC; QC also skips a file whose regions do not
+  build and reads packs, and then prints `zones: <map> asks maxVelocity N, this server runs ...`
+  (only when ITS file asks). Change one, change both.
+- RULESETS LOAD BEFORE THE PREVIOUS MAP'S PAKFILE IS DROPPED (sv_init.c: SV_ApplyGamemode, then
+  the temporary packs go, then the new map's mounts). Every map-load ruleset read -- data/mapmeta.txt,
+  cfg/lobby/mode_*, cfg/maps/map_*, the hosted settings file, zone files -- goes through
+  SV_RulesetLoadLoose: FSLF_IGNORELINKS (a pak symlink otherwise reports its TARGET's directory),
+  a directory search path that is not temporary/server/untrusted (and for cfgs not an addon mount:
+  downloads land in those), read through the judged location with a NULL name (a name makes
+  FS_OpenReadLocation decompress xz/gzip first). A new ruleset reader must use it.
+- A dedicated server's `pm_dettest` mover hash follows the map's cap (the mover reads movevars,
+  set at spawn; a later `sv_maxvelocity` does not reach it without a client): a deploy gate on a
+  map whose cap changed DIFFERS by design. Prove it with the crossover (each native at the other's
+  cap, planted before the map loads).
+- THE LOBBIES' ZONE FILES ARE MOSTLY MOMENTUM'S OWN: game/ftesurf/maps/zones/local holds ~68 (the
+  publish target), and maps/zones/online resolves through the mounted `momentum` dir
+  (game/momentum/maps/zones/online, ~1,200). A census of this repo's 648 is not the lobbies'.
+- The engine's JSON nodes point into the parsed text (json.c JSON_CreateNode keeps bodystart):
+  read every value before freeing the file buffer.
+- `maxVelocity` 0 means unset (12 shipped files). pm_verify replays a file's own pinned cap, so a
+  raised cap does not touch old recordings' verdicts.
+- Multi-Session stamps the cap into ms.txt (`maxvel`) and drops a slot whose cap differs; deploy the
+  QC before an engine that changes caps, or an old-QC slot resumes ranked at the new cap.
+- A Linux sv-rel restamp must also touch client/m_download.c and server/sv_sys_unix.c (the Windows
+  list in memory is 13 files); grep the binary for one `git-NNNN` stamp.
+- Arms: tools/p841caps.py (dedicated server, seven maps, planted packed/linked/zone-less/out-of-range
+  /curated files; --control with the old exe), cfg/test/p841editor.cfg + tools/p841editor.py (hosted
+  editor round trip, needs `--put data/maps/settings/local/surf_dune.cfg=<cap 3500 settings>`).
+
 ## The HUD run graph's cache (P837, 2026-10-19)
 
 - LineGraph_HudStill draws into two render targets only when LineGraph_CacheSame says an input

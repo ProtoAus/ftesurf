@@ -294,6 +294,42 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
 - P820: imported stage runs get no failed spans (the server writes no `restart` for a
   stage run either), so one where the player fell back into the box shows every attempt.
 
+## Speed caps from zone files (P841): what the reviews left
+
+- **For Lex: the 74 `_css`/`_ksf` lobby builds take the plain map's Momentum cap** (mapwatch copies the
+  plain map's zone file to them, mapwatch.py:1886). Momentum never ran those builds and their boards
+  hold KSF imports set under KSF's cap (unverified value). Keep, or strip `maxVelocity` from copied
+  files (mapwatch + a one-off pass over game/ftesurf/maps/zones/local and the dl caches).
+- **For Lex: mapwatch now changes physics unattended.** Its rule takes Momentum zone files whose
+  tracks match (mapwatch.py:1437-1445), so a Momentum change to `maxVelocity` alone lands at the next
+  map load with nothing on the board. Matches "use Momentum's"; say if a cap change should be held.
+- **`maxVelocity: 0` is read as "not set"** (12 shipped files) from the value alone; Momentum's own
+  handling was not read. Falsifier: its zone loader, or one of those maps in Momentum past 3500.
+- **The engine and QC can take different files, and only one direction is reported.** The engine
+  takes the first trusted file with a non-empty region array; QC needs a region that builds and reads
+  packs. QC warns only when ITS file asks for a cap the server is not running (sv_zones.qc), so an
+  engine cap from a file QC skipped, while QC's file has none, is silent. A scan of 689 shipped and
+  installed files found 0 disagreements. Fix: the engine publishes the file it took; QC compares paths.
+- **A timed save carries a run across a cap change** as it does across a publish (above): saves
+  record neither zonecrc nor the cap. Segmented by design (Lex accepts lax segmented runs); the
+  planned zonecrc-in-saves fix should take the cap too. Multi-Session (ranked) checks the cap since P841.
+- **`SV_RetryApply` carries a clean run across `map_restart` with no zone or cap comparison.** A
+  publish cannot hit it (publishes land only on quiet maps); hand-copied zone files on a busy lobby can.
+- **A client's downloads can set its own hosted cap:** zone files may come from addon directories
+  (Momentum's mount) and downloads land in one. Bounded 1..100000, unranked, no wider than what a
+  downloaded zone file already does to hosted timing.
+- **Client per-map cfg execs read map packs** (render and particle layers), and **a client's HTTP
+  downloads can create files in its trusted gamedir** that its later offline/hosted games read as
+  rulesets. Details in the private tree (p841-map-pak-rulesets.md). Not P841's code; lobbies never
+  download.
+- **The previous map's pak can hide a zone file** (it is the top hit, refused, and the trusted copy
+  under it is not reached): it can only suppress a cap. The asset cache can make a zone file packed
+  in an automounted VPK count on later visits but not the first.
+- **The board has no cap column:** a run's cap is only in its recording's pin, which the web hides.
+- **Clients before 0.1.28 mispredict past 4096 per axis** (no P812), now on 148 more lobby maps.
+- **Hosted games: a pre-841 Multi-Session slot on a map with an editor cap** other than cfg/maps or
+  3500 is dropped once as "the speed cap changed".
+
 ## Zone publishing (P815) and velocity (P812): what is left
 
 - **A save carries a run across a publish.** `state.txt` records mapcrc, not zonecrc

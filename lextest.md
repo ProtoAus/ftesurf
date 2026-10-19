@@ -17,6 +17,24 @@ Deployment line added when the installs and lobbies carry it.
 
 "Grate ok / glass ok / m ok / <map + what looks off>". Verdict PENDING.
 
+## P841 — maps run at Momentum's speed cap
+
+Live: DEPLOY-PENDING.
+
+- On a map whose cap changed, go past 3500 where you used to be clamped. In the console, `movement`
+  names the zone file and `sv_maxvelocity` reads the new cap. Lobby examples: surf_apollo 10000,
+  surf_boreas 5000, surf_demise 5000, bhop_sandtrap 10000. 164 lobby maps changed, all upward; 74 of
+  them are `_css`/`_ksf` builds that take the plain map's Momentum cap (your call in BACKLOG).
+- A run parked on one of those maps before the update is dropped when you come back ("the speed cap
+  changed"): it was played under the old cap.
+- Zone editor in a game you host: Map properties > Speed cap > Apply > Save settings, then Save zones.
+  The save line says "speed cap N", and the Publish dialog says "Speed cap N goes with it". After a
+  publish lands, `sv_maxvelocity` on that lobby reads N from its next map load.
+- The publish service's own check (an out-of-range cap refused by name) needs your sudo:
+  `install_zonepub.py --upgrade` (dry run as proto first). Without it the editor still never sends one.
+
+"Feels right / <map>: <what is off>". Verdict PENDING.
+
 ## P837 — the run graph is drawn once and reused
 
 Live 2026-10-19 (UTC): csprogs f1f94d56 on both installs and all 12 lobbies, with
