@@ -5,6 +5,7 @@
 //   PUPPETEER_DIR=<dir with puppeteer-core> node tools/fps.mjs REC_FILE PAGE [PAGE ...]
 // PAGE is a page under http://127.0.0.1:8825/board/ (tools/serve.py), e.g. watch.html and a
 // copy pointing at a control bundle.
+import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -15,8 +16,9 @@ const [recFile, ...pages] = process.argv.slice(2);
 (async () => {
   const out = [];
   for (const page of pages) {
+    const profile = path.join(process.env.TEMP ?? '.', 'fps-profile-' + Date.now());
     const b = await puppeteer.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true,
-      userDataDir: path.join(process.env.TEMP ?? '.', 'fps-profile-' + Date.now()),
+      userDataDir: profile,
       args: ['--use-angle=d3d11', '--window-size=1400,1000', '--disable-gpu-vsync', '--disable-frame-rate-limit'], defaultViewport: { width: 1400, height: 1000 } });
     try {
       const p = await b.newPage();
@@ -46,6 +48,9 @@ const [recFile, ...pages] = process.argv.slice(2);
       row.state = { contextLost: st.contextLost, map: st.map, mapSource: st.mapSource, status: st.status, eye: st.eye.map((x) => Math.round(x)), missing: st.missing, builds: st.builds, T: st.T };
       out.push(row);
       console.log(JSON.stringify(row));
-    } finally { await b.close(); }
+    } finally {
+      await b.close();
+      fs.rmSync(profile, { recursive: true, force: true });
+    }
   }
 })();

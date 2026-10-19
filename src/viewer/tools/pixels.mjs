@@ -6,6 +6,7 @@
 // PAGE is under http://127.0.0.1:8825/board/ (tools/serve.py): watch.html and a copy that
 // loads a control bundle. Grade the state line as tools/fps.mjs says.
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 
@@ -13,8 +14,9 @@ const puppeteer = createRequire(path.join(process.env.PUPPETEER_DIR ?? '.', 'x.j
 const [recFile, ...pages] = process.argv.slice(2);
 (async () => {
   for (const page of pages) {
+    const profile = path.join(process.env.TEMP ?? '.', 'pixels-profile-' + Date.now());
     const b = await puppeteer.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true,
-      userDataDir: path.join(process.env.TEMP ?? '.', 'pixels-profile-' + Date.now()),
+      userDataDir: profile,
       args: ['--use-angle=d3d11', '--window-size=1400,1000', '--disable-gpu-vsync', '--disable-frame-rate-limit'], defaultViewport: { width: 1400, height: 1000 } });
     try {
       const p = await b.newPage();
@@ -55,6 +57,9 @@ const [recFile, ...pages] = process.argv.slice(2);
       if (st.contextLost || distinct < row.hashes.length || row.hashes.some((h) => h.includes('!=')))
         row.VOID = `views not distinct and stable (${distinct} of ${row.hashes.length} distinct) or context lost`;
       console.log(JSON.stringify(row));
-    } finally { await b.close(); }
+    } finally {
+      await b.close();
+      fs.rmSync(profile, { recursive: true, force: true });
+    }
   }
 })();
