@@ -1156,16 +1156,25 @@ float(vector vs) LineGraph_CacheSame =
 
 // Composites the still layer, drawing the targets again first when it changed. FALSE: draw it
 // directly -- hud_linegraph_cache 0, not GL (milk's test: a 2D target is an empty function on
-// Vulkan), or 2D units that are not the screen's pixels: a target is drawn in its own pixels,
-// and a cache resampled onto the screen would blur.
+// Vulkan), 2D units that are not the screen's pixels (a target is drawn in its own pixels, and a
+// cache resampled onto the screen would blur), a panel whose far corner is off screen (a target
+// cannot be empty), or a demo while capturedemo has its own size: that frame goes into a
+// framebuffer the switch back cannot return to.
 float() LineGraph_CacheDraw =
 {
 	local vector vs, ps, pad;
-	local float h;
+	local float h, off;
 
 	vs = getproperty(VF_SCREENVSIZE);
 	ps = getproperty(VF_SCREENPSIZE);
-	if (!cvar("hud_linegraph_cache") || !Milk_Supported() || vs_x != ps_x || vs_y != ps_y)
+	off = (!cvar("hud_linegraph_cache") || !Milk_Supported() || vs_x != ps_x || vs_y != ps_y);
+	if (ceil(lgh_p_x + lgh_w) < 1 || ceil(lgh_p_y + lgh_h) < 1)
+		off = TRUE;
+	if (isdemo())
+	if (cvar("capturedemowidth"))
+	if (cvar("capturedemoheight"))
+		off = TRUE;
+	if (off)
 	{
 		lgk_ok = FALSE;
 		return FALSE;
