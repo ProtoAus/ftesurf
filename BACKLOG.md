@@ -20,13 +20,8 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Left open by Patches 843-845 (20 Oct)
 
-- Site: `cl_sprites.qc` glare draw (Sprite_Quad, DRAWFLAG_ADD|DRAWFLAG_NODEPTHTEST). A glow sprite
-  behind a translucent world surface draws over it (surf_dune: the brazier's glow08 halo over
-  GRATE1A from Lex's save 2). Source sorts it with the translucent world, so the grate's bars
-  cover it. The engine puts such a polygon in the additive bucket (gl_alias.c BE_GenPolyBatches):
-  needs a twin material in an earlier sort, or an engine flag. Check: the save-2 shot.
-- Site: `cl_emit.qc` env_fire. Embers (slot 12) and the smoke (always `sort banner`) do not follow
-  P843's choice, so smoke in front of a translucent surface goes under it. The trace hits only
+- Site: `cl_emit.qc` env_fire. The smoke (always `sort banner`) does not follow P843's choice
+  (the embers do since P847), so smoke in front of a translucent surface goes under it. The trace hits only
   solids: a non-solid translucent brush entity (func_illusionary glass) or water between the eye
   and a fire does not put it under. Particles alive when the choice flips keep their bucket.
 - Site: hl2 plugin `vmt/vertexlit`, `animated`, `twotexture`, `transition`, and `vmt/unlit`'s
@@ -45,7 +40,11 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   SV_SpawnGoto (P845) shows the fix: SV_TimerVoid first, carry the tag across.
 - Site: `cl_keycfg.qc` row 21. Respawn counts both goto_spawn (spawn entity) and the shipped
   `say !m` (start of the map), and "reset to defaults" binds m to goto_spawn. Lex to decide
-  whether default.cfg's m should be goto_spawn.
+  whether default.cfg's m should be goto_spawn; likewise whether r should ship as goto_start
+  (P848: today default.cfg's `say !r` is the Reset stage row and Restart has no default key).
+- Site: `cl_sprites.qc` P847 trace. A sprite whose answer flips while particles or the trace's
+  0.25 s age lag behind draws in the old bucket for that long; env_lightglow glows (drawn over
+  everything, as Source) are not traced.
 
 ## Release tooling: what 0.1.28 hit (19 Oct)
 

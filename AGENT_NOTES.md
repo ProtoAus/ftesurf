@@ -1,5 +1,20 @@
 # AGENT_NOTES.md
 
+## Glow and embers under glass, reset / goto_start (P847-P848, 2026-10-20)
+
+- A CSQC polygon could only be pushed LATER (ADD to additive, NODEPTHTEST to banner);
+  DRAWFLAG_UNDERBLEND (0x2000, engine 847) is the one flag that moves it earlier. An older
+  engine ignores the bit, so a lobby csprogs can set it (checked on the 0.1.28 exe).
+- A per-sprite trace in the draw loop needs a budget: a glare ray measured 27 us and maps carry
+  hundreds of sprites; trace after the glare check, in view, a few a frame, by time not frames.
+- From surf_dune's stage-1 start every glow is hidden by the glare check, so a glow arm there
+  measures nothing: use the spot where the glow is drawn (Lex's save 2), and print what was drawn.
+- conbridge `send -forward` is read as an option by argparse: `send -- -forward`.
+- A teleport trigger moves a noclip setpos: surf_dune's (-12153 2380 15190) lands at the stage-1
+  start. Read `cmd viewpos` after a setpos before trusting the picture.
+- goto_start keeps !r (P415's save in the box, the latched zone) wherever !r is the run's start;
+  only past the leg's first segment, where !r is a stage restart, does it go to !m / !b N.
+
 ## Fire under glass, brush rendermodes, goto_spawn (P843-P845, 2026-10-20)
 
 - A particle shader's `sort` IS its order against the map: banner < underwater < BLEND <

@@ -1,5 +1,23 @@
 # lextest.md — things waiting on a human
 
+## P847-P848 — the glow behind the grate; reset and goto_start
+
+Live 2026-10-19 UTC: client exe 775a1956 (git-7546-patch-847-0-gb3f34daf9 = 846 + 849 + 847) in both
+installs 18:40:52Z (.prev 780afe5a); qwprogs a747542c / csprogs 9f35b36a (main 519b0f46) in both installs
+and on all 12 lobbies 18:41Z (read back; .prev 10eac633 / e2b7936e). On the lobbies a 0.1.28 client
+ignores the new draw flag (glow over the grate as before); reset / goto_start work there (checked).
+
+- surf_dune, your old save-2 spot at the grate: the brazier's orange glow and its embers now stay
+  behind the bar too (they drew over it). `vbsp_sprite_under 0` shows the old order.
+- `reset` (new) is what goto_start was: the start of the leg you are on, so mid-run on a staged map
+  it restarts the stage with the clock running. `goto_start` (your r) now restarts the run: mid-run
+  past stage 1 it goes to the start of the map (or the bonus); anywhere else it is `!r` as before,
+  your save in the start box included. The key panel has a Reset stage row (unbound for you).
+- Shipped keys: a fresh install still binds r to `say !r` (= Reset stage). Should r ship as
+  goto_start, and m as goto_spawn (P845)?
+
+"Glow ok / reset ok / goto_start ok / <what looks off>". Verdict PENDING.
+
 ## P849 — no "Can't register variable" lines at launch
 
 Installed 2026-10-19T18:30:47Z (UTC): ftesurf64.exe / fteqw64.exe 780afe5a in both installs (846 + 849;

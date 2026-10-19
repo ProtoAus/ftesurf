@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   2afb833847f2d0633245a3926c4df772ad89acef
+commit   2db147d7a82bd24687b98bf2209848e5d7e4af58
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,12 @@ commit   2afb833847f2d0633245a3926c4df772ad89acef
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-849
+tag      patch-847
 patch    849
+# Patch 848 (qwprogs + csprogs): `reset` is the old goto_start (!r); goto_start sends !r unless the
+# run is past its leg's first segment (STAT_FS_TIMERSTARTSEG), then the track's start (!m / !b N).
+# Patch 847 (client engine + csprogs): DRAWFLAG_UNDERBLEND sorts a CSQC polygon before the blended
+# surfaces; additive sprites and embers behind a translucent brush use it. Exe 775a1956 = 846+849+847.
 # Patch 849 (client engine): r_budget/r_frametime's six cvars are registered once (CLSCR_Init), not on
 # every renderer start, so a launch no longer prints "Can't register variable ..., already defined".
 # Exe 780afe5a in both installs (846 + 849).
