@@ -238,8 +238,12 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
                 elif line.startswith("begin"):
                     body = True
                 continue
-            if line.startswith(("in ", "fzin ")):
-                if line.startswith("fzin ") and r.ver != 11:
+            # Own the new keyword before parsing payload: whitespace variants
+            # and even a bare malformed fzin must not vanish as unknown records.
+            tag = line.split(None, 1)[:1]
+            excluded = tag == ["fzin"]
+            if line.startswith("in ") or excluded:
+                if excluded and r.ver != 11:
                     raise MalformedRec("excluded-clock input requires format 11")
                 if max_moves is not None and len(r.moves) >= max_moves:
                     raise SourceLimit("source move limit reached")

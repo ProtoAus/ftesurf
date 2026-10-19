@@ -2777,33 +2777,55 @@ def case_v11_clock():
 
 
 def case_v11_closing_restore_authority():
-    """A broken new close declaration cannot revoke validated clock resets."""
+    """Every closing-only failure stays separate from validated clock resets."""
+    bad = "clockend counted bad 0 0"
+    variants = (("word origin", bad, None, 1),
+                ("exponent origin", "clockend counted 1e0 0 0", None, 1),
+                ("exponent frozen", "clockend counted 0 0 0e0", None, 1),
+                ("exponent kind", "clockend 1e0", None, 1),
+                ("exponent extra", "clockend counted 0 0 0 1e0", None, 1),
+                ("missing count", bad, "missing", 2),
+                ("word count", bad, "bad", 2),
+                ("exponent count", bad, "1e0", 2),
+                ("wrong count", bad, "0", 2))
     for label, pair in (("warm retries", retry_clock_pair()),
                         ("cold loads", cold_clock_pair("load"))):
-        lines, view = pair
-        faults, _notes, report = run(lines, view=view, report=True)
+        base, view = pair
+        faults, _notes, report = run(base, view=view, report=True)
         check(not faults and "angle_rule     unavailable" in report,
               "%s control actually consumes both validated resets" % label)
-        lines = lines[:]
-        lines[0] = "FTESURF-REC 11"
-        lines = insert_before(lines, "inend", "clockend counted bad 0 0")
-        ix = next(i for i, l in enumerate(lines) if l.startswith("end "))
-        tail = lines[ix].split()
-        if len(tail) == 11:
-            tail.append("0")
-        tail.append("1")
-        lines[ix] = " ".join(tail)
-        faults, _notes, report = run(lines, view=view, report=True)
-        check(len(faults) == 1 and "invalid clockend" in faults[0],
-              "invalid v11 closer preserves both %s without sidecar blame" % label)
-        check("angle_rule     unavailable" in report,
-              "invalid v11 closer grants no angular judgement for %s" % label)
-        badview = view[:]
-        fields = badview[-1].split(); fields[2] = "-1"; badview[-1] = " ".join(fields)
-        faults, _ = run(lines, view=badview)
-        check(len(faults) == 2 and any("never negative" in f for f in faults)
-              and any("invalid clockend" in f for f in faults),
-              "invalid v11 closer preserves an independent VIEW fault for %s" % label)
+        for name, closer, count, expected in variants:
+            lines = base[:]
+            lines[0] = "FTESURF-REC 11"
+            lines = insert_before(lines, "inend", closer)
+            ix = next(i for i, l in enumerate(lines) if l.startswith("end "))
+            tail = lines[ix].split()
+            if len(tail) == 11:
+                tail.append("0")
+            if count != "missing":
+                tail.append("1" if count is None else count)
+            lines[ix] = " ".join(tail)
+            faults, _notes, report = run(lines, view=view, report=True)
+            check(len(faults) == expected and all("clockend" in f for f in faults),
+                  "%s preserves both %s without sidecar blame" % (name, label))
+            check("angle_rule     unavailable" in report,
+                  "%s grants no angular judgement for %s" % (name, label))
+            badview = view[:]
+            fields = badview[-1].split(); fields[2] = "-1"; badview[-1] = " ".join(fields)
+            faults, _ = run(lines, view=badview)
+            check(len(faults) == expected + 1 and any("never negative" in f for f in faults),
+                  "%s preserves an independent VIEW fault for %s" % (name, label))
+            if name == "missing count":
+                faults, _ = run(bump_end(lines, "inputs"), view=view)
+                check(any("input records" in f for f in faults)
+                      and any("goes backwards" in f for f in faults),
+                      "missing new counter does not hide old input-count damage for %s" % label)
+                tail = lines[ix].split(); tail[11] = str(int(tail[11]) + 1)
+                wrong = lines[:]; wrong[ix] = " ".join(tail)
+                faults, _ = run(wrong, view=view)
+                check(any("sessions" in f for f in faults)
+                      and any("goes backwards" in f for f in faults),
+                      "missing new counter does not hide old session-count damage for %s" % label)
 
 
 def case_v11_fzin():

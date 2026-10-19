@@ -5385,7 +5385,7 @@ void(entity e, float ticks) SV_RecTrailer =
 
 float(entity e) SV_RecKeepEvidence =
 {
-	local float ticks, flags, fh;
+	local float ticks, flags, fh, endmt, endcarry;
 	local string dst;
 
 	if (e.rec_rec_posts <= 0 || e.rec_rec_rid == "")
@@ -5394,15 +5394,25 @@ float(entity e) SV_RecKeepEvidence =
 	flags = e.run_t_flags - (e.run_t_flags & TF_RECORDING) - (e.run_t_flags & TF_FROZEN);
 	SV_RecPut(e, sprintf("abandon %d", ticks));
 	SV_RecState(e);
-	// Patch 477 review round 10: a frozen run's last row ends at the freeze, not
-	// after the browse -- pm_verify flies a last row to `inend`, and a finish
-	// latched inside it read the whole pause as ticks (a false HOLD).
+	// P477: do not fly a pinned last row through the browse. P842: a released
+	// row can precede packet-end thaw; never close behind that actual input.
+	endmt = e.run_movetick;
+	endcarry = e.run_movecarry;
+	if (e.run_t_frzon)
+	{
+		endmt = e.run_t_frzmt;
+		endcarry = e.run_t_frzcarry;
+		if (e.rec_rec_ver == 11)
+		if (e.rec_rec_inmt > endmt ||
+		    (e.rec_rec_inmt == endmt && e.rec_rec_incy > endcarry))
+		{
+			endmt = e.run_movetick;
+			endcarry = e.run_movecarry;
+		}
+	}
 	SV_RecClockEnd(e, TRUE);
 	if (e.run_movetickrate > 0)
-	if (e.run_t_frzon)
-		SV_RecPut(e, sprintf("inend %d %.9g", e.run_t_frzmt, e.run_t_frzcarry));
-	else
-		SV_RecPut(e, sprintf("inend %d %.9g", e.run_movetick, e.run_movecarry));
+		SV_RecPut(e, sprintf("inend %d %.9g", endmt, endcarry));
 	SV_RecTrailer(e, ticks);
 	dst = sprintf("data/evidence/%s/%s.rec", mapname, e.rec_rec_rid);
 	if (e.rec_rec_stream)

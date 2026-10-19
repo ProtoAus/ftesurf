@@ -1076,8 +1076,14 @@ def check_rec(path, verbose=False, *, data=None):
         if first_body is None:
             first_body = lineno + 1
 
-        if ver >= 9:
+        if ver == 11 and tok[0] == "clockend":
+            # Its strict type/shape parser owns ALL closing-only diagnostics,
+            # including malformed kinds/extra fields: none revoke restore history.
+            exp = []
+        elif ver >= 9:
             okc = EXP_OK_V9.get(tok[0], ())
+            if ver == 11 and tok[0] == "end":
+                okc = set(okc) | {12}  # new closing count is validated separately
             exp = [x for n, x in enumerate(tok) if n not in okc and EXP_RE.match(x)]
         else:
             exp = [x for x in tok if EXP_RE.match(x)]
@@ -2723,13 +2729,19 @@ def check_rec(path, verbose=False, *, data=None):
             want_end = 5
         else:
             want_end = 4
-        if len(args) != want_end:
+        missing_clock_count = (ver == 11 and len(args) == 11)
+        if len(args) != want_end and not missing_clock_count:
             r.fault("line %d: 'end' takes %d fields in a v%d file, has %d"
                     % (ln, want_end, ver, len(args)))
         else:
+            # Only the new last field is missing: still validate EVERY old field.
+            # This is closing damage, not permission to forget session history.
+            if missing_clock_count:
+                r.fault("line %d: 'end' is missing its v11 clockend count" % ln)
+                independent_closing_faults += 1
             e_ticks, e_n, e_pad, e_cp = (float(x) for x in args[:4])
-            if want_end >= 12:
-                if exact_finish_ticks(args[11]) != len(clockends):
+            if want_end >= 12 and not missing_clock_count:
+                if not is_int(args[11]) or exact_finish_ticks(args[11]) != len(clockends):
                     r.fault("'end' clockend count is not the body's exact count %d"
                             % len(clockends))
                     independent_closing_faults += 1

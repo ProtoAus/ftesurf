@@ -41,6 +41,25 @@ class Parsing(Fixture):
         verdict, detail = rs.compare_paths(str(self.a), str(self.b))
         self.assertEqual((verdict, detail['match'], detail['compared']), ('compared', 1.0, 80))
 
+    def test_release_keyword_whitespace_and_malformed_payload_are_not_dropped(self):
+        base = recording().replace('FTESURF-REC 9', 'FTESURF-REC 11')
+        original = base.splitlines()[44]
+        for prefix in ('fzin ', 'fzin\t', ' \tfzin\t'):
+            with self.subTest(prefix=repr(prefix)):
+                text = base.replace(original, prefix + original[3:])
+                self.a.write_text(text)
+                r = rs.parse_rec(str(self.a))
+                self.assertEqual([len(r.mt), len(r.moves), len(r.btns)], [80]*3)
+                self.assertEqual(r.moves[40], (40, 5, 0))
+                verdict, detail = rs.compare_paths(str(self.a), str(self.b))
+                self.assertEqual((verdict, detail['match'], detail['compared']), ('compared', 1.0, 80))
+        for row in ('fzin', ' \tfzin\t', 'fzin\tbad'):
+            self.a.write_text(base.replace(original, row))
+            self.assertIsNone(rs.parse_rec(str(self.a)))
+            self.assertEqual(rs.compare_paths(str(self.a), str(self.b))[0], 'malformed input')
+        self.a.write_text(base.replace(original, 'fzin\t' + original[3:]).replace('FTESURF-REC 11', 'FTESURF-REC 9'))
+        self.assertIsNone(rs.parse_rec(str(self.a)))
+
     def test_each_malformed_required_row_abstains(self):
         for position in (0, 40, 79):
             for column in (2, 4, 5, 6, 10):
