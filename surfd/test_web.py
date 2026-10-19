@@ -1209,6 +1209,7 @@ def main():
 
     # P829: a new worker reads the timer answers off disk instead of every BSP.
     m.maps_reset()
+    m._timer_mem.clear()                        # earlier sections scanned in this process
     reads, fail_next = [], []
     real_read = m.zonefit.timer_read
     def counting(path):
@@ -1226,7 +1227,7 @@ def main():
     check("control: a cold scan with no cache reads every zone-less BSP",
           (n0 > 0, os.path.exists(cache)), (True, True))
     m.maps_reset()
-    m.zonefit._has_timer.cache_clear()          # a new process
+    m._timer_mem.clear()                        # a new process
     reads.clear()
     check("a new worker with the cache reads none, and answers the same",
           (len(reads), m.map_index(now=1000.0) == first, len(reads)), (0, True, 0))
@@ -1240,7 +1241,7 @@ def main():
     with open(cache, "w") as fh:
         fh.write("{not json")
     m.maps_reset()
-    m.zonefit._has_timer.cache_clear()
+    m._timer_mem.clear()
     reads.clear()
     check("...a corrupt cache is a cold scan with the right answer",
           (m.map_index(now=1000.0) == first, len(reads)), (True, n0))
@@ -1249,6 +1250,7 @@ def main():
             with open(cache, "w") as fh:
                 fh.write(text)
         m.maps_reset()
+        m._timer_mem.clear()
         reads.clear()
         return m.map_index(now=1000.0) == first, len(reads)
     check("...so is one nested past the recursion limit, without raising",
@@ -1281,6 +1283,19 @@ def main():
     m._MAPNAME_OK = real_ok
     check("a scan of an empty listing does not empty the cache",
           (empty, entry() is not None, cold()), ({}, True, (True, 0)))
+    # A cache that can be neither read nor written (here a directory in its place):
+    # the worker still reads each BSP once, as its lru_cache did before P829.
+    os.remove(cache)
+    os.makedirs(cache)
+    m.maps_reset()
+    m._timer_mem.clear()                        # a new worker
+    counts = []
+    for k in range(3):
+        reads.clear()
+        m.map_index(now=5000.0 + k * (m.MAPS_TTL + 1))
+        counts.append(len(reads))
+    os.rmdir(cache)
+    check("an unusable cache file still costs a worker one read per BSP", counts, [n0, 0, 0])
     m.zonefit.timer_read = real_read
 
     # ...and threads that find it stale together wait for one scan.

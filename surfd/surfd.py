@@ -1863,7 +1863,11 @@ def _scan_maps():
 
     zone.update(zone_file_index())
 
-    known = _timer_cache_load()
+    disk = _timer_cache_load()
+    # This process's own answers too: the file may be unreadable or unwritable
+    # (a full volume, a new zonefit rule), and then it alone would be no memory.
+    known = dict(_timer_mem)
+    known.update(disk)
     keep = dict(known)          # merged, not replaced: a short listing must not empty it
     for key, stem in bsp.items():
         if key in zone:
@@ -1887,7 +1891,9 @@ def _scan_maps():
             zone.add(key)
     if len(keep) > TIMER_CACHE_MAX:
         keep = {k: v for k, v in keep.items() if k.lower() in bsp}
-    if keep != known:
+    _timer_mem.clear()
+    _timer_mem.update(keep)
+    if keep != disk:
         _timer_cache_save(keep)
     return bsp, frozenset(zone)
 
@@ -1899,6 +1905,7 @@ def _scan_maps():
 # Keyed by stem and stat, as that cache is, and by zonefit.py's own bytes, so a
 # changed rule reads everything again.  Never created outside DATA_DIR.
 TIMER_CACHE_MAX = 50000          # entries; the library is 2,151
+_timer_mem = {}                  # the last scan's answers, under _maps_scan_lock
 TIMER_CACHE_BYTES = 8 << 20
 try:
     with open(zonefit.__file__, "rb") as _fh:
@@ -1943,7 +1950,7 @@ def _timer_cache_save(seen):
             json.dump({"v": 1, "rule": _TIMER_RULE, "dir": MAPS_DIR, "maps": seen}, fh,
                       separators=(",", ":"))
         os.replace(tmp, path)
-    except OSError as exc:
+    except (OSError, MemoryError) as exc:
         log.warning("map timer cache %s not written: %s", path, exc)
         try:
             os.remove(tmp)

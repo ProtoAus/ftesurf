@@ -108,9 +108,9 @@ def timer_read(path):
     try:
         with open(path, "rb") as fh:
             ents, models = _lump(fh, 0, True), _lump(fh, 14, True)
+        return _timer_in(ents, models)
     except (OSError, MemoryError):
         return None
-    return _timer_in(ents, models)
 
 
 def _timer_in(ents, models):
