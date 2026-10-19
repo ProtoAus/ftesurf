@@ -79,12 +79,25 @@ void(entity e, float f, float b) SV_RewindWriteName =
 		fputs(f, sprintf("targetname %S\n", substring(name, 1, -1)));
 };
 
+// Patch 817: SV_RecCutOK's test against the kept failed attempt's generations.
+float(entity e, float gen, float mark) SV_RecFailCutOK =
+{
+	local float g;
+
+	if (gen < 0 || gen > e.rec_fa_gen)
+		return FALSE;
+	for (g = gen + 1; g <= e.rec_fa_gen; g = g + 1)
+		if (e.rec_fa_genbuf < 1 || stof(bufstr_get(e.rec_fa_genbuf, g)) < mark)
+			return FALSE;
+	return TRUE;
+};
+
 float(entity e, float id, float seq, float go) SV_RewindWriteState =
 {
 	local float *m;
-	local float b, f, fh, i, mark;
+	local float b, f, fh, i, mark, fa, stream, buf;
 	local int bytes;
-	local string path;
+	local string path, src, branch, rid;
 	m = rw_slot[num_for_edict(e)];
 	b = rw_statebase;
 	mark = m[b+29];
@@ -92,21 +105,58 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 	// but it cannot claim a clock with no prefix behind it.
 	if (!(m[b+18] & TF_RECORDING) || mark <= 0)
 		return FALSE;
-	if (e.rec_rec_serial != m[b+33] || e.rec_rec_lines < mark)
-		return FALSE;
-	if (!SV_RecCutOK(e, m[b+34], mark))
-		return FALSE;                 // regrowth cannot resurrect an abandoned prefix
+	// Patch 817: or the attempt a re-arm ended, kept (SV_RecFailKeep).
+	fa = (e.rec_rec_serial != m[b+33] || e.rec_rec_lines < mark);
+	if (fa)
+	{
+		if (!e.rec_fa_on || e.rec_fa_serial != m[b+33] || e.rec_fa_lines < mark)
+			return FALSE;
+		if (!SV_RecFailCutOK(e, m[b+34], mark))
+			return FALSE;
+		stream = e.rec_fa_stream;
+		buf = e.rec_fa_buf;
+		src = e.rec_fa_path;
+		branch = e.rec_fa_branch;
+		rid = e.rec_fa_rid;
+	}
+	else
+	{
+		if (!SV_RecCutOK(e, m[b+34], mark))
+			return FALSE;             // regrowth cannot resurrect an abandoned prefix
+		stream = e.rec_rec_stream;
+		buf = e.rec_rec_buf;
+		src = SV_RecPartPath(e);
+		branch = e.rec_rec_branch;
+		rid = e.rec_rec_rid;
+	}
 	bytes = ((int)m[b+52] << 16i) | (int)m[b+53];
-	if (e.rec_rec_stream)
+	if (stream)
 	if (bytes <= 0i || bytes > FS_RECCOPY_MAX)
 		return FALSE;
 	path = SL_RecPath(id);
 	if (bytes > 0i)
 	{
-		if (!e.rec_rec_stream || e.rec_rec_fh < 0)
+		if (!stream)
 			return FALSE;
-		if (fsize(e.rec_rec_fh) < bytes)
-			return FALSE;
+		if (fa)
+		{
+			if (bytes > e.rec_fa_bytes)
+				return FALSE;
+			fh = fopen(src, FILE_READ);
+			if (fh < 0)
+				return FALSE;         // a failed rename (SV_RecDiscard) or keep
+			i = (fsize(fh) < bytes);
+			fclose(fh);
+			if (i)
+				return FALSE;
+		}
+		else
+		{
+			if (e.rec_rec_fh < 0)
+				return FALSE;
+			if (fsize(e.rec_rec_fh) < bytes)
+				return FALSE;
+		}
 		if (e.rec_cp_q < 1)
 		{
 			e.rec_cp_q = buf_create_ex("string", 0);
@@ -116,16 +166,16 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 			return FALSE;
 		SV_RecCopyDrop(path);
 		bufstr_set(e.rec_cp_q, buf_getsize(e.rec_cp_q),
-		           sprintf("%s 0 %s %s", itos(bytes), SV_RecPartPath(e), path));
+		           sprintf("%s 0 %s %s", itos(bytes), src, path));
 	}
 	else
 	{
-		if (e.rec_rec_buf < 1)
+		if (buf < 1)
 			return FALSE;
 		fh = fopen(path, FILE_WRITE);
 		if (fh < 0)
 			return FALSE;
-		buf_writefile(fh, e.rec_rec_buf, 0, mark);
+		buf_writefile(fh, buf, 0, mark);
 		fclose(fh);
 	}
 	f = fopen(SL_StatePath(id), FILE_WRITE);
@@ -155,10 +205,10 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 	fputs(f, sprintf("reclines %d\nrecsamples %d\nrecpad %d\nreccp %d\nrecserial %d\nrecgen %d\n",
 	                 mark, m[b+30], m[b+31], m[b+32], m[b+33], m[b+34]));
 	// The snapshot's serial/cut gate above proves this is still its attachment.
-	if (strcmp(e.rec_rec_branch, ""))
-		fputs(f, sprintf("recbranch %s\n", e.rec_rec_branch));
-	if (strcmp(e.rec_rec_rid, ""))
-		fputs(f, sprintf("recrid %s\n", e.rec_rec_rid));
+	if (strcmp(branch, ""))
+		fputs(f, sprintf("recbranch %s\n", branch));
+	if (strcmp(rid, ""))
+		fputs(f, sprintf("recrid %s\n", rid));
 	if (bytes > 0i)
 	{
 		fputs(f, sprintf("recbytes %s\nrecstream %d %d %d\n", itos(bytes), m[b+35], m[b+36], m[b+37]));

@@ -2094,6 +2094,13 @@ void(entity e) SV_TimerMapTeleport =
 .string rec_rec_branch;          // local attachment, NOT the evidence run ID
 .float  rec_cp_q;                // strbuf: pending save copies, "<bytes> <done> <dst>"
 .float  rec_cp_head;             // the next one to work on
+// Patch 817: the attempt a re-arm ended (SV_RecFailKeep), kept for the rewind until the
+// next recording opens: a go or save over it cuts its prefix from here
+// (SV_RewindWriteState), and the load that follows is a timed save's cold load.
+.float  rec_fa_on, rec_fa_take;  // take: SV_RecDiscard hands its file or buffer over
+.float  rec_fa_serial, rec_fa_lines, rec_fa_gen, rec_fa_genbuf, rec_fa_buf, rec_fa_stream, rec_fa_own;
+.int    rec_fa_bytes;
+.string rec_fa_path, rec_fa_branch, rec_fa_rid;    // zoned
 // Patch 376: the client's mouse counts, in-band (engine cl_input.c CL_SendCounts),
 // read for the command being run.  See the `mc` record.
 vector  input_cursor_trace_start, input_cursor_trace_endpos;
@@ -4735,12 +4742,88 @@ void(entity e) SV_RecState =
   the wall clock to the second plus the sample counter, which is unique unless
   two runs on the same leg start in the same second on the same profile.
 */
+// Patch 817.  Flushes first: a go's or a save's queued copy may read the file.
+void(entity e) SV_RecFailDrop =
+{
+	if (!e.rec_fa_on)
+		return;
+	SV_RecCopyFlush(e);
+	if (e.rec_fa_buf >= 1)
+		buf_del(e.rec_fa_buf);
+	if (e.rec_fa_genbuf >= 1)
+		buf_del(e.rec_fa_genbuf);
+	if (e.rec_fa_own)
+		fremove(e.rec_fa_path);
+	if (e.rec_fa_path != "")
+		strunzone(e.rec_fa_path);
+	if (e.rec_fa_branch != "")
+		strunzone(e.rec_fa_branch);
+	if (e.rec_fa_rid != "")
+		strunzone(e.rec_fa_rid);
+	e.rec_fa_path = "";
+	e.rec_fa_branch = "";
+	e.rec_fa_rid = "";
+	e.rec_fa_on = FALSE;
+	e.rec_fa_take = FALSE;
+	e.rec_fa_own = FALSE;
+	e.rec_fa_stream = FALSE;
+	e.rec_fa_buf = 0;
+	e.rec_fa_genbuf = 0;
+	e.rec_fa_serial = 0;
+	e.rec_fa_lines = 0;
+	e.rec_fa_gen = 0;
+	e.rec_fa_bytes = 0i;
+};
+
+// Patch 817: before SV_TimerArm's discard of a run that was on the clock.  What
+// SV_RewindWriteState reads of the live recorder, and SV_RecDiscard's file or
+// buffer (rec_fa_take) instead of its delete.
+void(entity e) SV_RecFailKeep =
+{
+	local string p;
+
+	SV_RecFailDrop(e);
+	if (!SV_RecLive(e) || e.rec_rec_lines <= 0)
+		return;
+	e.rec_fa_serial = e.rec_rec_serial;
+	e.rec_fa_lines = e.rec_rec_lines;
+	e.rec_fa_gen = e.rec_rec_gen;
+	e.rec_fa_genbuf = e.rec_rec_genbuf;
+	e.rec_rec_genbuf = 0;               // SV_RecGenReset would delete it
+	if (e.rec_rec_branch != "")
+		e.rec_fa_branch = strzone(e.rec_rec_branch);
+	if (e.rec_rec_rid != "")
+		e.rec_fa_rid = strzone(e.rec_rec_rid);
+	e.rec_fa_stream = e.rec_rec_stream;
+	if (e.rec_rec_stream)
+	{
+		e.rec_fa_bytes = fsize(e.rec_rec_fh);
+		// The evidence keep renames the part file (SV_RecKeepEvidence's name): the
+		// same prefix but its flags line, which the resumed run's close rewrites.
+		if (e.rec_rec_posts > 0 && e.rec_rec_rid != "")
+			e.rec_fa_path = strzone(sprintf("data/evidence/%s/%s.rec", mapname, e.rec_rec_rid));
+		else
+		{
+			p = SV_RecPartPath(e);
+			e.rec_fa_path = strzone(strcat(substring(p, 0, strlen(p) - 4), "-fail.rec"));
+			e.rec_fa_own = TRUE;
+		}
+	}
+	e.rec_fa_take = TRUE;
+	e.rec_fa_on = TRUE;
+	dprint(sprintf("timer: the failed attempt kept for the rewind: %g lines, %s\n", e.rec_fa_lines,
+	               e.rec_fa_stream ? e.rec_fa_path : "buffered"));
+};
+
 void(entity e) SV_RecOpen =
 {
 	local float i, s, base;
 	local string mcrc;	// build 73; `s` above is the padding-ring index, not a string
 	local string pin;	// build 87
 
+	if (e.rec_fa_on)
+		dprint("timer: a new recording drops the kept attempt\n");
+	SV_RecFailDrop(e);                  // Patch 817: you left the start
 	SV_RecCopyFlush(e);                 // Patch 375: the part file is about to be reopened
 	SV_RecGenBegin(e);
 	e.rec_rec_ver = 9;
@@ -5418,7 +5501,12 @@ void(entity e) SV_RecDiscard =
 	if (SV_RecKeepEvidence(e))          // Patch 360: posted stages keep the file
 	{
 		if (!e.rec_rec_stream)
-			buf_del(e.rec_rec_buf);
+		{
+			if (e.rec_fa_take)
+				e.rec_fa_buf = e.rec_rec_buf;   // Patch 817
+			else
+				buf_del(e.rec_rec_buf);
+		}
 		live = FALSE;
 		// Patch 426: kept, so the receipt the client signs next is held for.
 		// No sidecar is asked for (RT_NONE, leg 0, as before): an abandon's
@@ -5457,8 +5545,18 @@ void(entity e) SV_RecDiscard =
 		{
 			if (e.rec_rec_fh >= 0)
 				fclose(e.rec_rec_fh);
-			fremove(SV_RecPartPath(e));
+			// Patch 817: to SV_RecFailKeep's name; a failed rename loses it as before
+			if (e.rec_fa_take)
+			{
+				fremove(e.rec_fa_path);
+				if (frename(SV_RecPartPath(e), e.rec_fa_path) != 0)
+					fremove(SV_RecPartPath(e));
+			}
+			else
+				fremove(SV_RecPartPath(e));
 		}
+		else if (e.rec_fa_take)
+			e.rec_fa_buf = e.rec_rec_buf;       // Patch 817
 		else
 			buf_del(e.rec_rec_buf);
 
@@ -5499,6 +5597,9 @@ void(entity e) SV_RecDiscard =
 	if (e.rec_rec_nonce != "")
 		strunzone(e.rec_rec_nonce);
 	e.rec_rec_nonce = "";
+	e.rec_fa_take = FALSE;
+	if (e.rec_fa_on && !e.rec_fa_stream && e.rec_fa_buf < 1)
+		SV_RecFailDrop(e);              // Patch 817: nothing was handed over
 };
 
 /*
@@ -11200,6 +11301,11 @@ float(entity e, string word, float n) SV_TimerChatLeg =
 void(entity e, float z) SV_TimerArm =
 {
 	e.run_t_handcarry = 0;          // Patch 478 r11: SV_TimerHandArm reads it first
+	// Patch 817: a run on the clock that re-arms (a fail into its box, a walk back)
+	// keeps its recording for the rewind until the next one opens -- through a `!r`
+	// in the box, as "until you leave the start" (Lex, 19 Oct).
+	if (e.run_t_state == TS_RUNNING)
+		SV_RecFailKeep(e);
 	SV_RecDiscard(e);
 	e.run_t_armsec = SV_ClockSec(e);    // Patch 360: see SV_TimerStart
 	SV_TimerClearSplits(e);

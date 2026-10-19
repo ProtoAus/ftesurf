@@ -356,6 +356,7 @@ void() ClientDisconnect =
 	// writes the file, and a leaked handle is one of MAX_QC_FILES gone for
 	// the rest of the session.
 	SV_TimerIdle(self);
+	SV_RecFailDrop(self);               // Patch 817: an edict is reused uncleared
 	SV_TimerReleaseSlot(self);
 	SV_RecEndHold(self, "", "", 0);     // Patch 426: nobody is left to sign it
 

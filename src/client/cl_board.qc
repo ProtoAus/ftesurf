@@ -2278,6 +2278,7 @@ void() Board_ResetContact =
 float  seq_slseq;
 float(float seq) Rewind_GoLoaded;   // cl_rewind.qc, Patch 808
 float() Rewind_Cursoring;
+float() Rewind_OverFail;
 float() Rewind_Holds;
 
 void() Seq_SaveEvents =
@@ -2323,7 +2324,7 @@ void() Seq_SaveEvents =
 			k = FALSE;
 			if (Rewind_Cursoring())
 			if (getstatf(STAT_FS_SAVETICKS) >= 0)
-			if (getstatf(STAT_FS_SAVETICKS) + 1 < getstatf(STAT_FS_TIMERTICKS))
+			if (getstatf(STAT_FS_SAVETICKS) + 1 < getstatf(STAT_FS_TIMERTICKS) || Rewind_OverFail())
 				k = TRUE;
 			if (k)
 			{

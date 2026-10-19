@@ -555,6 +555,13 @@ float(float seq) Rewind_GoLoaded =
 	            - rw_gop) <= RW_GONEAR;
 };
 
+// Patch 817: open over the attempt a re-arm ended (the run back in its box): every
+// save is the cursor's, and the server cuts it from that attempt's kept recording.
+float() Rewind_OverFail =
+{
+	return rw_on && rw_st0 == TS_ARMED;
+};
+
 // Patch 808: browsing, a save is the cursor's (SaveLoc_SaveCommand); with a go in
 // flight, the go's own row (one whose load is then refused keeps it).
 float() Rewind_Cursoring =

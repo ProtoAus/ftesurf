@@ -887,6 +887,27 @@ void() Rec_ViewDrop =
 		rec_rp_mark[i] = 0;     // Patch 808: as Rec_ViewBegin
 };
 
+// Patch 817: the frames of the attempt a re-arm ended, for a save or go on the rewind
+// over it (the server keeps its recording, SV_RecFailKeep); until a run is recording.
+float rec_fa_view, rec_fa_lines;
+
+void() Rec_ViewFailDrop =
+{
+	if (rec_fa_view >= 1)
+		buf_del(rec_fa_view);
+	rec_fa_view = 0;
+	rec_fa_lines = 0;
+};
+
+void() Rec_ViewFailKeep =
+{
+	Rec_ViewFailDrop();
+	rec_fa_view = rec_rp_view;
+	rec_fa_lines = rec_rp_lines;
+	rec_rp_view = 0;
+	Rec_ViewDrop();
+};
+
 /*
   The run ended.  Write, or throw away.
 
@@ -949,8 +970,12 @@ void() Rec_ViewEnd =
 
 	if (tag == RT_NONE || leg < 1)
 	{
-		// Voided, or the server was not keeping this one either.
-		Rec_ViewDrop();
+		// Voided, or the server was not keeping this one either.  Patch 817: back
+		// in its box, for the rewind.
+		if (getstatf(STAT_FS_TIMERSTATE) == TS_ARMED)
+			Rec_ViewFailKeep();
+		else
+			Rec_ViewDrop();
 		return;
 	}
 
@@ -1796,7 +1821,7 @@ void() Rec_ViewRetry =
 */
 void() Rec_ViewSaveEvents =
 {
-	local float seq, op, id, k;
+	local float seq, op, id, k, i;
 
 	seq = getstatf(STAT_FS_SLSEQ);
 	if (seq == rec_rp_slseq)
@@ -1837,9 +1862,26 @@ void() Rec_ViewSaveEvents =
 		if (op == SLOP_SAVED)
 		{
 			rec_rp_deep = FALSE;
-			if (Rewind_Cursoring())
-				rec_rp_deep = (getstatf(STAT_FS_SAVETICKS) + 1 < getstatf(STAT_FS_TIMERTICKS));
-			Rec_ViewSaved(id);
+			if (Rewind_OverFail() && rec_fa_view >= 1)
+			{
+				// Patch 817: from that attempt's frames; no warm mark, the live
+				// buffer is another run's.
+				k = rec_rp_view;
+				i = rec_rp_lines;
+				rec_rp_view = rec_fa_view;
+				rec_rp_lines = rec_fa_lines;
+				rec_rp_deep = TRUE;
+				Rec_ViewSaved(id);
+				rec_rp_view = k;
+				rec_rp_lines = i;
+				rec_rp_mark[id] = 0;
+			}
+			else
+			{
+				if (Rewind_Cursoring())
+					rec_rp_deep = (getstatf(STAT_FS_SAVETICKS) + 1 < getstatf(STAT_FS_TIMERTICKS));
+				Rec_ViewSaved(id);
+			}
 			rec_rp_deep = FALSE;
 		}
 		else if (op == SLOP_LOADED)
@@ -1855,6 +1897,17 @@ void() Rec_ViewSaveEvents =
 			{
 				if (Rewind_GoLoaded(seq))
 				{
+					// Patch 817: a go over a re-armed attempt continues its frames
+					// (this frame's rising edge began an empty buffer).
+					if (Rewind_OverFail() && rec_fa_view >= 1)
+					{
+						if (rec_rp_view >= 1)
+							buf_del(rec_rp_view);
+						rec_rp_view = rec_fa_view;
+						rec_rp_lines = rec_fa_lines;
+						rec_fa_view = 0;
+						rec_fa_lines = 0;
+					}
 					// No other resume's file at this reused id may stand in for it.
 					fremove(Rec_SavePath(id));
 					rec_rp_mark[id] = 0;
@@ -2167,6 +2220,8 @@ void() Rec_ViewFrame =
 	  a mark belonging to a run that no longer exists.
 	*/
 	Rec_ViewSaveEvents();
+	if (rec)
+		Rec_ViewFailDrop();             // Patch 817: resumed above, or a new run
 
 	/*
 	  BUILD 24: the stage-record edge, and it runs beside the save edge because it
