@@ -2,7 +2,9 @@
 
 ## P827 — your own line no longer stalls a long run
 
-Not deployed yet.
+Live 2026-10-19 07:32Z in both installs and on all 12 lobbies: csprogs ed8d2e63 (.prev
+adecfe6c everywhere); qwprogs 45013167 and menu.dat f6cf5764 unchanged. Lobby smoke on the
+0.1.27 exe passed (lobby 1 served ed8d2e63, the board drew).
 
 - Run a map for several minutes with your line on, `r_budget 3` and `r_budget_csqc 1`: under
   cl_lines, Line_End should stay near 0 however long the run (it read 0.43 ms a frame on
