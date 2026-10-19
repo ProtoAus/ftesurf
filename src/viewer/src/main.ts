@@ -9,7 +9,7 @@ import ArrayBufferSlice from '../vendor/noclip/src/ArrayBufferSlice.js';
 import { BSPFile } from '../vendor/noclip/src/SourceEngine/BSPFile.js';
 import { Fetcher, GameFiles, HttpSource, MapFileSystem, Mount } from './files.js';
 import { newPose, poseAt, Pose, sampleAt, wrap } from './playback.js';
-import { FL_DUCKED, FL_ONGROUND, KEY_BACK, KEY_DUCK, KEY_FORWARD, KEY_JUMP, KEY_LEFT, KEY_RIGHT, parseRec, Rec } from './rec.js';
+import { Fit, FL_DUCKED, FL_ONGROUND, KEY_BACK, KEY_DUCK, KEY_FORWARD, KEY_JUMP, KEY_LEFT, KEY_RIGHT, parseRec, Rec } from './rec.js';
 import { View } from './view.js';
 
 // The R2-backed map route the game downloads from (cfg/default.cfg cl_download_mapsrc);
@@ -17,7 +17,7 @@ import { View } from './view.js';
 const LOCAL_DEV = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
 const MAP_URL = (name: string) => (LOCAL_DEV ? `/maps/${name}.bsp` : `https://play.proto.bar/maps/${name}.bsp`);
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
-const PATH_POINTS = 1500;   // overlay path vertices, whatever the run's length
+const PATH_POINTS = 600;    // run line vertices in the window, whatever the sample rate
 const PATH_BEHIND = 2, PATH_AHEAD = 8;   // seconds of run line around the playhead
 
 type CamMode = 'eye' | 'chase' | 'top' | 'free';
@@ -62,7 +62,6 @@ let playing = false, speed = 1;
 let mode: CamMode = 'eye';
 const pose: Pose = newPose();
 let orbitYaw = 0, orbitPitch = 20, orbitDist = 160;
-let pathIdx: Int32Array | null = null;
 let maxSpeed = 1;
 // The run raced against: the combined board's record (or its second, when this
 // is the record), drawn as a gold marker at the same run time.
@@ -94,6 +93,7 @@ async function loadRunFromBoard(rid: number): Promise<void> {
 }
 
 function setRec(r: Rec): void {
+    if (r.n === 0) throw new Error('this recording has no samples');
     rec = r;
     t0 = r.n > 0 ? Math.max(r.t[0], -1) : 0;
     t1 = r.end ?? (r.n > 0 ? r.t[r.n - 1] : 0);
@@ -102,9 +102,6 @@ function setRec(r: Rec): void {
     maxSpeed = 1;
     for (let i = 0; i < r.n; i++)
         maxSpeed = Math.max(maxSpeed, Math.hypot(r.v[i * 3], r.v[i * 3 + 1]));
-    const stride = Math.max(1, Math.ceil(r.n / PATH_POINTS));
-    pathIdx = new Int32Array(Math.ceil(r.n / stride));
-    for (let i = 0, j = 0; i < r.n; i += stride) pathIdx[j++] = i;
     buildTimeline();
     if (runInfo === null) showInfoFromRec(r);
 }
@@ -135,8 +132,11 @@ async function bspBytes(name: string): Promise<ArrayBufferSlice> {
     return new ArrayBufferSlice(buf.buffer);
 }
 
+let mapLoads = 0;   // a newer load wins; an older one finishing late is dropped
+
 async function loadMap(): Promise<void> {
     if (view === null || mapName === '') return;
+    const mine = ++mapLoads;
     let bytes: ArrayBufferSlice;
     try {
         bytes = await bspBytes(mapName);
@@ -147,7 +147,14 @@ async function loadMap(): Promise<void> {
     }
     status(`Building ${mapName}…`, true);
     await new Promise((r) => setTimeout(r, 0));
+    try {
+        await buildScene(view, bytes, mine);
+    } catch (e) {
+        status(`${mapName} could not be drawn (${(e as Error).message}).`);
+    }
+}
 
+async function buildScene(view: View, bytes: ArrayBufferSlice, mine: number): Promise<void> {
     const fs = new MapFileSystem(fetcher);
     for (const m of files.mounts)
         for (const stem of m.vpks)
@@ -166,6 +173,7 @@ async function loadMap(): Promise<void> {
         renderer.skyboxRenderer = new SkyboxRenderer(renderContext, worldspawn.skyname);
     renderer.bspRenderers.push(bspRenderer);
 
+    if (mine !== mapLoads) { renderer.destroy(view.device); return; }
     if (view.scene !== null) view.scene.destroy(view.device);
     view.scene = renderer;
     status('');
@@ -206,12 +214,14 @@ async function pickFolder(): Promise<void> {
 
 // ---- playback, camera, overlay --------------------------------------------
 
+// The stage the run is on, 1-based; 0 on a map without stages. `stage <seg>` and
+// `stagestart <seg>` name the 0-based segment entered (`!s n` is seg n-1).
 function stageAt(t: number): number {
-    if (rec === null) return 0;
+    if (rec === null || !rec.events.some((e) => e.kind === 'stage' || e.kind === 'stagestart')) return 0;
     let s = 0;
     for (const e of rec.events)
         if (e.t <= t && (e.kind === 'stage' || e.kind === 'stagestart')) s = e.n;
-    return s;
+    return s + 1;
 }
 
 function placeCamera(v: View): void {
@@ -252,16 +262,22 @@ function drawOverlay(v: View): void {
     const g = c.getContext('2d')!;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);
-    if (rec === null || pathIdx === null || !($<HTMLInputElement>('wpath').checked)) return;
+    if (rec === null || rec.n === 0 || !($<HTMLInputElement>('wpath').checked)) return;
 
     g.lineWidth = 2;
     g.lineCap = 'round';
-    let prev: vec3 | null = null;
-    for (let k = 0; k < pathIdx.length; k++) {
-        const i = pathIdx[k];
-        if (rec.t[i] < T - PATH_BEHIND || rec.t[i] > T + PATH_AHEAD) { prev = null; continue; }
-        const p = v.project(rec.o[i * 3], rec.o[i * 3 + 1], rec.o[i * 3 + 2] + 2, k & 1 ? scratch : scratch2);
-        if (p !== null && prev !== null && rec.fit[pathIdx[k - 1]] !== 0) {
+    // A teleport between two drawn points must break the line, not streak across
+    // the map: a segment is drawn only if no pair inside it is a snap.
+    const lo = sampleAt(rec, T - PATH_BEHIND), hi = sampleAt(rec, T + PATH_AHEAD);
+    const stride = Math.max(1, Math.ceil((hi - lo + 1) / PATH_POINTS));
+    let prev: vec3 | null = null, last = -1;
+    for (let k = lo; k < hi + stride; k += stride) {
+        const i = Math.min(k, hi);   // the window's last sample is always drawn
+        let snapped = false;
+        for (let j = Math.max(last, lo); j >= 0 && j < i; j++)
+            if (rec.fit[j] === Fit.Snap) { snapped = true; break; }
+        const p = v.project(rec.o[i * 3], rec.o[i * 3 + 1], rec.o[i * 3 + 2] + 2, prev === scratch ? scratch2 : scratch);
+        if (p !== null && prev !== null && !snapped) {
             g.strokeStyle = speedColour(Math.hypot(rec.v[i * 3], rec.v[i * 3 + 1]));
             g.globalAlpha = rec.t[i] <= T ? 0.35 : 0.9;
             g.beginPath();
@@ -269,7 +285,8 @@ function drawOverlay(v: View): void {
             g.lineTo(p[0], p[1]);
             g.stroke();
         }
-        prev = p === null ? null : vec3.clone(p);
+        prev = p;
+        last = i;
     }
     g.globalAlpha = 1;
     if (ghost !== null) {
@@ -338,7 +355,7 @@ function buildTimeline(): void {
         if (e.kind !== 'stage' && e.kind !== 'cp') continue;
         const m = el('span', e.kind === 'stage' ? 'tick stage' : 'tick');
         m.style.left = `${((e.t - t0) / span) * 100}%`;
-        m.title = e.kind === 'stage' ? `Stage ${e.n} at ${fmt(e.t)}` : `Checkpoint ${e.n} at ${fmt(e.t)}`;
+        m.title = e.kind === 'stage' ? `Stage ${e.n + 1} at ${fmt(e.t)}` : `Checkpoint ${e.n} at ${fmt(e.t)}`;
         ticks.append(m);
     }
 }
@@ -568,10 +585,17 @@ function computeStats(r: Rec): void {
         const side = r.keys[i] & (KEY_LEFT | KEY_RIGHT);
         if (side !== 0 && side !== (KEY_LEFT | KEY_RIGHT) && side !== lastSide) { strafes++; lastSide = side; }
     }
+    // Some imports carry no ground flag (KSF before ksfground) or no keys at all;
+    // a stat from a column that is zero throughout is not a stat.
+    let anyGround = false, anyKeys = false;
+    for (let i = 0; i < r.n && !(anyGround && anyKeys); i++) {
+        anyGround = anyGround || (r.fl[i] & FL_ONGROUND) !== 0;
+        anyKeys = anyKeys || r.keys[i] !== 0;
+    }
     const dl = $('winfo');
-    dlRow(dl, 'jumps', String(jumps));
-    dlRow(dl, 'strafes', String(strafes));
-    if (total > 0) dlRow(dl, 'in the air', `${Math.round(air / total * 100)}%`);
+    if (anyGround) dlRow(dl, 'jumps', String(jumps));
+    if (anyKeys) dlRow(dl, 'strafes', String(strafes));
+    if (anyGround && total > 0) dlRow(dl, 'in the air', `${Math.round(air / total * 100)}%`);
 }
 
 // ---- wiring -------------------------------------------------------------------
@@ -598,15 +622,26 @@ function wire(): void {
     gc.addEventListener('pointermove', (e) => { if (gc.hasPointerCapture(e.pointerId)) seekGraph(e); });
     $<HTMLInputElement>('wdir').addEventListener('change', async (e) => {
         const list = (e.target as HTMLInputElement).files;
-        if (list && list.length) await addedFiles(await files.addList(list));
+        try {
+            if (list && list.length) await addedFiles(await files.addList(list));
+        } catch (err) {
+            status(`That folder could not be read (${(err as Error).message}).`);
+        }
     });
     $<HTMLInputElement>('wrecfile').addEventListener('change', async (e) => {
         const f = (e.target as HTMLInputElement).files?.[0];
         if (!f) return;
-        runInfo = null;
-        setRec(parseRec(await f.text()));
-        computeStats(rec!);
-        await loadMap();
+        try {
+            const r = parseRec(await f.text());
+            runInfo = null;
+            ghost = null;
+            graph = null;
+            setRec(r);
+            computeStats(r);
+            await loadMap();
+        } catch (err) {
+            status(`That recording could not be played (${(err as Error).message}).`);
+        }
     });
     $('wfull').addEventListener('click', () => {
         const s = $('wstage');

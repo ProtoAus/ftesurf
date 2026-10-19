@@ -63,6 +63,9 @@ export function missingTexture(path: string): ArrayBufferSlice {
 }
 
 export function missingMaterial(path: string): ArrayBufferSlice {
+    // VMT.ts asks for materials/materials/<path> after missing <path>.
+    if (path.startsWith('materials/materials/'))
+        path = path.slice('materials/'.length);
     let text: string;
     if (path.startsWith('materials/tools/'))
         text = '"LightmappedGeneric" { "%compiletrigger" "1" }';

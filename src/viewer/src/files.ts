@@ -177,8 +177,13 @@ export class Fetcher extends DataFetcher {
 export class MapFileSystem extends SourceFileSystem {
     public missing = new Set<string>();
 
+    // Only VMT.ts's last retry, `materials/<path>` after a real miss, is told yes
+    // for a file nobody has, so its name still picks the stand-in's colour. Every
+    // other question gets the truth: a model's cdmaterials search takes the first
+    // folder that answers yes.
     public override hasEntry(resolvedPath: string): boolean {
-        return super.hasEntry(resolvedPath) || resolvedPath.endsWith('.vmt');
+        return super.hasEntry(resolvedPath) ||
+            (resolvedPath.startsWith('materials/materials/') && resolvedPath.endsWith('.vmt'));
     }
 
     public override async fetchFileData(resolvedPath: string): Promise<ArrayBufferSlice | null> {
@@ -193,7 +198,7 @@ export class MapFileSystem extends SourceFileSystem {
         if (found !== null)
             return found;
         if (resolvedPath.endsWith('.vmt')) {
-            this.missing.add(resolvedPath);
+            this.missing.add(resolvedPath.replace(/^materials\/materials\//, 'materials/'));
             return missingMaterial(resolvedPath);
         }
         if (resolvedPath.endsWith('.vtf')) {

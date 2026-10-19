@@ -81,7 +81,13 @@ export function parseRec(text: string): Rec {
         if (k === 'FTESURF-REC') ver = parseFloat(val);
         else head.set(k, val);
     }
-    tickrate = parseFloat(head.get('movetickrate') ?? head.get('tickrate') ?? '') || 0.015;
+    // Seconds per tick, movetickrate first; 0 there means "no engine value"
+    // (the grammar), and a value over 1 is Hz, as recplot._rate reads them.
+    tickrate = 0.015;
+    for (const key of ['movetickrate', 'tickrate']) {
+        const r = parseFloat(head.get(key) ?? '');
+        if (r > 0) { tickrate = r > 1 ? 1 / r : r; break; }
+    }
     // `eye` is the public route's form of pmpin's two heights; a local file has pmpin.
     const eyeKey = head.get('eye'), pm = head.get('pmpin');
     if (eyeKey !== undefined) {

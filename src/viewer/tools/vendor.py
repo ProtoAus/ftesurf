@@ -89,7 +89,10 @@ def main():
         digest = hashlib.sha256(data).hexdigest()[:16]
         tag = 'stub' if frm.startswith(STUBS) else 'upstream'
         lines.append(f'{digest} {tag:8} {rel}')
-    shutil.copyfile(os.path.join(sys.argv[1], 'LICENSE'), os.path.join(OUT, 'LICENSE'))
+    with open(os.path.join(sys.argv[1], 'LICENSE'), 'rb') as fh:
+        lic = fh.read().replace(b'\r\n', b'\n')
+    with open(os.path.join(OUT, 'LICENSE'), 'wb') as fh:
+        fh.write(lic)
     lines += ['', 'bare imports: ' + ', '.join(sorted(bare))]
     with open(os.path.join(OUT, 'UPSTREAM.txt'), 'w', encoding='utf-8', newline='\n') as fh:
         fh.write('\n'.join(lines) + '\n')
