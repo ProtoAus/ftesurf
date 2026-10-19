@@ -247,6 +247,9 @@ export class BaseEntity {
         }
     }
 
+    private visBox = new AABB(); // FTESurf: last frame's bounds, and the clusters under them
+    private visClusters: number[] | null = null;
+
     public checkVisible(renderContext: SourceRenderContext): boolean {
         if (!this.shouldDraw())
             return false;
@@ -256,6 +259,22 @@ export class BaseEntity {
                 return false;
 
             const bsp = this.bspRenderer.bsp, pvs = renderContext.currentView.pvs;
+            const b = this.visBox;
+            if (b.min[0] === scratchAABB.min[0] && b.min[1] === scratchAABB.min[1] && b.min[2] === scratchAABB.min[2] &&
+                b.max[0] === scratchAABB.max[0] && b.max[1] === scratchAABB.max[1] && b.max[2] === scratchAABB.max[2]) {
+                if (this.visClusters === null) {
+                    const clusters: number[] = [];
+                    bsp.queryAABB(scratchAABB, (leaf) => { clusters.push(leaf.cluster); return true; });
+                    this.visClusters = clusters;
+                }
+                const c = this.visClusters;
+                for (let i = 0; i < c.length; i++)
+                    if (pvs.getBit(c[i]))
+                        return true;
+                return false;
+            }
+            b.copy(scratchAABB);
+            this.visClusters = null;
             let visible = false;
             bsp.queryAABB(scratchAABB, (leaf) => {
                 if (pvs.getBit(leaf.cluster)) {

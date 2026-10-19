@@ -51,6 +51,167 @@ PATCHES = [
      '        return this.modelStudio!.modelData.seq.findIndex((seq) => seq.label === label);\n',
      '        if (this.modelStudio === null) return -1; // FTESurf: the model failed to load\n'
      '        return this.modelStudio.modelData.seq.findIndex((seq) => seq.label === label);\n'),
+    # P835: the per-frame CPU of a big surf map (surf_demise 49-85 fps, CPU-bound on this PC).
+    # Each change gives the same answer with less work; tools/p835 measured them.
+    # 1. The world walk: per view, the nodes with a leaf of the view's PVS beneath them
+    #    (rebuilt when the PVS words change) -- the rest the leaf test rejects anyway --
+    #    and each face added to the live set once per walk: a surf map's leaves list a
+    #    face hundreds of times (surf_demise at its start: 350k adds for 1,670 faces).
+    ('SourceEngine/Main.ts',
+     '    public gatherLiveSets(liveFaceSet: Set<number> | null, liveLeafSet: Set<number> | null, view: SourceEngineView, nodeid: number = 0, modelMatrix: ReadonlyMat4 | null = null): void {\n'
+     '        if (nodeid >= 0) {\n'
+     '            // node\n'
+     '            const node = this.bsp.nodelist[nodeid];\n'
+     '\n'
+     '            if (!view.frustum.contains(transformAABB(node.bbox, modelMatrix)))\n'
+     '                return;\n'
+     '\n'
+     '            this.gatherLiveSets(liveFaceSet, liveLeafSet, view, node.child0, modelMatrix);\n'
+     '            this.gatherLiveSets(liveFaceSet, liveLeafSet, view, node.child1, modelMatrix);\n',
+     '    public lastGatherView: SourceEngineView | null = null; // FTESurf: the view the live sets hold\n'
+     '    private pvsNodeCache = new Map<SourceEngineView, { words: Uint32Array, live: Uint8Array }>();\n'
+     '    private faceStamp: Uint32Array | null = null;\n'
+     '    private faceGen = 0;\n'
+     '\n'
+     '    private pvsLiveNodes(view: SourceEngineView): Uint8Array {\n'
+     '        const words = view.pvs.words;\n'
+     '        let c = this.pvsNodeCache.get(view);\n'
+     '        if (c !== undefined) {\n'
+     '            let same = true;\n'
+     '            for (let i = 0; i < words.length; i++)\n'
+     '                if (c.words[i] !== words[i]) { same = false; break; }\n'
+     '            if (same)\n'
+     '                return c.live;\n'
+     '        } else {\n'
+     '            c = { words: new Uint32Array(words.length), live: new Uint8Array(this.bsp.nodelist.length) };\n'
+     '            this.pvsNodeCache.set(view, c);\n'
+     '        }\n'
+     '        c.words.set(words);\n'
+     '        const live = c.live, nodes = this.bsp.nodelist, leaves = this.bsp.leaflist, pvs = view.pvs;\n'
+     '        const mark = (id: number): boolean => {\n'
+     '            if (id < 0)\n'
+     '                return pvs.getBit(leaves[-id - 1].cluster);\n'
+     '            const node = nodes[id];\n'
+     '            const a = mark(node.child0), b = mark(node.child1);\n'
+     '            live[id] = (a || b) ? 1 : 0;\n'
+     '            return a || b;\n'
+     '        };\n'
+     '        mark(0);\n'
+     '        return live;\n'
+     '    }\n'
+     '\n'
+     '    public gatherLiveSets(liveFaceSet: Set<number> | null, liveLeafSet: Set<number> | null, view: SourceEngineView, nodeid: number = 0, modelMatrix: ReadonlyMat4 | null = null, live: Uint8Array | null = null): void {\n'
+     '        if (nodeid === 0 && live === null) {\n'
+     '            live = this.pvsLiveNodes(view);\n'
+     '            if (this.faceStamp === null)\n'
+     '                this.faceStamp = new Uint32Array(this.bsp.faceInfos.length);\n'
+     '            this.faceGen = (this.faceGen + 1) >>> 0;\n'
+     '            if (this.faceGen === 0) { this.faceStamp.fill(0); this.faceGen = 1; }\n'
+     '        }\n'
+     '        if (nodeid >= 0) {\n'
+     '            // node\n'
+     '            if (live !== null && live[nodeid] === 0)\n'
+     '                return;\n'
+     '            const node = this.bsp.nodelist[nodeid];\n'
+     '\n'
+     '            if (!view.frustum.contains(transformAABB(node.bbox, modelMatrix)))\n'
+     '                return;\n'
+     '\n'
+     '            this.gatherLiveSets(liveFaceSet, liveLeafSet, view, node.child0, modelMatrix, live);\n'
+     '            this.gatherLiveSets(liveFaceSet, liveLeafSet, view, node.child1, modelMatrix, live);\n'),
+    ('SourceEngine/Main.ts',
+     '            if (liveFaceSet !== null)\n'
+     '                for (let i = 0; i < leaf.faces.length; i++)\n'
+     '                    liveFaceSet.add(leaf.faces[i]);\n',
+     '            if (liveFaceSet !== null) {\n'
+     '                const stamp = this.faceStamp, gen = this.faceGen;\n'
+     '                for (let i = 0; i < leaf.faces.length; i++) {\n'
+     '                    const f = leaf.faces[i];\n'
+     '                    if (stamp === null) {\n'
+     '                        liveFaceSet.add(f);\n'
+     '                    } else if (stamp[f] !== gen) {\n'
+     '                        stamp[f] = gen;\n'
+     '                        liveFaceSet.add(f);\n'
+     '                    }\n'
+     '                }\n'
+     '            }\n'),
+    # 2. The water test walked the world again with the main view, straight after the
+    #    main view's own walk had filled the same set; and searched every node for water.
+    ('SourceEngine/Main.ts',
+     '            this.liveLeafSet.clear();\n',
+     '            this.liveLeafSet.clear();\n'
+     '            this.lastGatherView = null;\n'),
+    ('SourceEngine/Main.ts',
+     '                this.gatherLiveSets(this.liveFaceSet, this.liveLeafSet, renderContext.currentView);\n',
+     '                this.gatherLiveSets(this.liveFaceSet, this.liveLeafSet, renderContext.currentView);\n'
+     '                this.lastGatherView = renderContext.currentView;\n'),
+    ('SourceEngine/Main.ts',
+     '            bspRenderer.gatherLiveSets(null, bspRenderer.liveLeafSet, this.mainViewRenderer.mainView);\n',
+     '            if (bspRenderer.lastGatherView !== this.mainViewRenderer.mainView)\n'
+     '                bspRenderer.gatherLiveSets(null, bspRenderer.liveLeafSet, this.mainViewRenderer.mainView);\n'),
+    ('SourceEngine/BSPFile.ts',
+     '    private findLeafWaterForPointR(p: ReadonlyVec3, liveLeafSet: Set<number>, nodeid: number): BSPLeafWaterData | null {\n'
+     '        if (nodeid < 0) {\n',
+     '    private waterBelow: Uint8Array | null = null; // FTESurf: nodes with a water leaf beneath\n'
+     '\n'
+     '    private markWaterBelow(): Uint8Array {\n'
+     '        const below = new Uint8Array(this.nodelist.length);\n'
+     '        const mark = (id: number): boolean => {\n'
+     '            if (id < 0)\n'
+     '                return this.leaflist[-id - 1].leafwaterdata !== -1;\n'
+     '            const node = this.nodelist[id];\n'
+     '            const a = mark(node.child0), b = mark(node.child1);\n'
+     '            below[id] = (a || b) ? 1 : 0;\n'
+     '            return a || b;\n'
+     '        };\n'
+     '        mark(0);\n'
+     '        return below;\n'
+     '    }\n'
+     '\n'
+     '    private findLeafWaterForPointR(p: ReadonlyVec3, liveLeafSet: Set<number>, nodeid: number): BSPLeafWaterData | null {\n'
+     '        if (nodeid >= 0 && this.waterBelow !== null && this.waterBelow[nodeid] === 0)\n'
+     '            return null;\n'
+     '        if (nodeid < 0) {\n'),
+    ('SourceEngine/BSPFile.ts',
+     '        if (this.leafwaterdata.length === 0)\n'
+     '            return null;\n'
+     '\n'
+     '        return this.findLeafWaterForPointR(p, liveLeafSet, 0);\n',
+     '        if (this.leafwaterdata.length === 0)\n'
+     '            return null;\n'
+     '\n'
+     '        if (this.waterBelow === null)\n'
+     '            this.waterBelow = this.markWaterBelow();\n'
+     '        return this.findLeafWaterForPointR(p, liveLeafSet, 0);\n'),
+    # 3. An entity's PVS test walked the tree for its bounds every frame (206 a frame on
+    #    surf_demise); bounds that held still since the last frame keep their clusters.
+    ('SourceEngine/EntitySystem.ts',
+     '    public checkVisible(renderContext: SourceRenderContext): boolean {\n',
+     '    private visBox = new AABB(); // FTESurf: last frame\'s bounds, and the clusters under them\n'
+     '    private visClusters: number[] | null = null;\n'
+     '\n'
+     '    public checkVisible(renderContext: SourceRenderContext): boolean {\n'),
+    ('SourceEngine/EntitySystem.ts',
+     '            const bsp = this.bspRenderer.bsp, pvs = renderContext.currentView.pvs;\n'
+     '            let visible = false;\n',
+     '            const bsp = this.bspRenderer.bsp, pvs = renderContext.currentView.pvs;\n'
+     '            const b = this.visBox;\n'
+     '            if (b.min[0] === scratchAABB.min[0] && b.min[1] === scratchAABB.min[1] && b.min[2] === scratchAABB.min[2] &&\n'
+     '                b.max[0] === scratchAABB.max[0] && b.max[1] === scratchAABB.max[1] && b.max[2] === scratchAABB.max[2]) {\n'
+     '                if (this.visClusters === null) {\n'
+     '                    const clusters: number[] = [];\n'
+     '                    bsp.queryAABB(scratchAABB, (leaf) => { clusters.push(leaf.cluster); return true; });\n'
+     '                    this.visClusters = clusters;\n'
+     '                }\n'
+     '                const c = this.visClusters;\n'
+     '                for (let i = 0; i < c.length; i++)\n'
+     '                    if (pvs.getBit(c[i]))\n'
+     '                        return true;\n'
+     '                return false;\n'
+     '            }\n'
+     '            b.copy(scratchAABB);\n'
+     '            this.visClusters = null;\n'
+     '            let visible = false;\n'),
 ]
 
 ROOTS = [

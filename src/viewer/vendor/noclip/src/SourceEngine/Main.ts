@@ -716,16 +716,57 @@ export class BSPRenderer {
             this.staticPropRenderers[i].movement(renderContext);
     }
 
-    public gatherLiveSets(liveFaceSet: Set<number> | null, liveLeafSet: Set<number> | null, view: SourceEngineView, nodeid: number = 0, modelMatrix: ReadonlyMat4 | null = null): void {
+    public lastGatherView: SourceEngineView | null = null; // FTESurf: the view the live sets hold
+    private pvsNodeCache = new Map<SourceEngineView, { words: Uint32Array, live: Uint8Array }>();
+    private faceStamp: Uint32Array | null = null;
+    private faceGen = 0;
+
+    private pvsLiveNodes(view: SourceEngineView): Uint8Array {
+        const words = view.pvs.words;
+        let c = this.pvsNodeCache.get(view);
+        if (c !== undefined) {
+            let same = true;
+            for (let i = 0; i < words.length; i++)
+                if (c.words[i] !== words[i]) { same = false; break; }
+            if (same)
+                return c.live;
+        } else {
+            c = { words: new Uint32Array(words.length), live: new Uint8Array(this.bsp.nodelist.length) };
+            this.pvsNodeCache.set(view, c);
+        }
+        c.words.set(words);
+        const live = c.live, nodes = this.bsp.nodelist, leaves = this.bsp.leaflist, pvs = view.pvs;
+        const mark = (id: number): boolean => {
+            if (id < 0)
+                return pvs.getBit(leaves[-id - 1].cluster);
+            const node = nodes[id];
+            const a = mark(node.child0), b = mark(node.child1);
+            live[id] = (a || b) ? 1 : 0;
+            return a || b;
+        };
+        mark(0);
+        return live;
+    }
+
+    public gatherLiveSets(liveFaceSet: Set<number> | null, liveLeafSet: Set<number> | null, view: SourceEngineView, nodeid: number = 0, modelMatrix: ReadonlyMat4 | null = null, live: Uint8Array | null = null): void {
+        if (nodeid === 0 && live === null) {
+            live = this.pvsLiveNodes(view);
+            if (this.faceStamp === null)
+                this.faceStamp = new Uint32Array(this.bsp.faceInfos.length);
+            this.faceGen = (this.faceGen + 1) >>> 0;
+            if (this.faceGen === 0) { this.faceStamp.fill(0); this.faceGen = 1; }
+        }
         if (nodeid >= 0) {
             // node
+            if (live !== null && live[nodeid] === 0)
+                return;
             const node = this.bsp.nodelist[nodeid];
 
             if (!view.frustum.contains(transformAABB(node.bbox, modelMatrix)))
                 return;
 
-            this.gatherLiveSets(liveFaceSet, liveLeafSet, view, node.child0, modelMatrix);
-            this.gatherLiveSets(liveFaceSet, liveLeafSet, view, node.child1, modelMatrix);
+            this.gatherLiveSets(liveFaceSet, liveLeafSet, view, node.child0, modelMatrix, live);
+            this.gatherLiveSets(liveFaceSet, liveLeafSet, view, node.child1, modelMatrix, live);
 
             // Node surfaces are func_detail meshes, but they appear to also be in leaves... we probably don't need them.
         } else {
@@ -739,9 +780,18 @@ export class BSPRenderer {
             if (!view.frustum.contains(transformAABB(leaf.bbox, modelMatrix)))
                 return;
 
-            if (liveFaceSet !== null)
-                for (let i = 0; i < leaf.faces.length; i++)
-                    liveFaceSet.add(leaf.faces[i]);
+            if (liveFaceSet !== null) {
+                const stamp = this.faceStamp, gen = this.faceGen;
+                for (let i = 0; i < leaf.faces.length; i++) {
+                    const f = leaf.faces[i];
+                    if (stamp === null) {
+                        liveFaceSet.add(f);
+                    } else if (stamp[f] !== gen) {
+                        stamp[f] = gen;
+                        liveFaceSet.add(f);
+                    }
+                }
+            }
 
             if (liveLeafSet !== null)
                 liveLeafSet.add(leafnum);
@@ -759,12 +809,14 @@ export class BSPRenderer {
             this.liveSurfaceSet.clear();
             this.liveFaceSet.clear();
             this.liveLeafSet.clear();
+            this.lastGatherView = null;
 
             const worldModel = this.models[0];
             if (worldModel.checkFrustum(renderContext)) {
                 assert(worldModel.model.headnode === 0);
                 assert(worldModel.modelMatrix === null);
                 this.gatherLiveSets(this.liveFaceSet, this.liveLeafSet, renderContext.currentView);
+                this.lastGatherView = renderContext.currentView;
 
                 for (const faceIdx of this.liveFaceSet.values()) {
                     const lightmapUpdater = this.lightmapUpdaters[faceIdx];
@@ -1858,7 +1910,8 @@ export class SourceRenderer implements SceneGfx {
         // Reflection is only supported on the first BSP renderer (maybe we should just kill the concept of having multiple...)
         if (this.renderContext.enableExpensiveWater && this.mainViewRenderer.drawWorld) {
             const bspRenderer = this.bspRenderers[0], bsp = bspRenderer.bsp;
-            bspRenderer.gatherLiveSets(null, bspRenderer.liveLeafSet, this.mainViewRenderer.mainView);
+            if (bspRenderer.lastGatherView !== this.mainViewRenderer.mainView)
+                bspRenderer.gatherLiveSets(null, bspRenderer.liveLeafSet, this.mainViewRenderer.mainView);
             const leafwater = bsp.findLeafWaterForPoint(this.mainViewRenderer.mainView.cameraPos, bspRenderer.liveLeafSet);
             if (leafwater !== null) {
                 const waterZ = leafwater.surfaceZ;

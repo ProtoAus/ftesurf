@@ -86,6 +86,7 @@ const settings: Settings = loadSettings();
 let grav = 800, zs: Zeros | null = null;
 let lastFs: MapFileSystem | null = null;
 let mapSource = '', builds = 0;   // where the last BSP came from; scenes built
+let contextLost = false;          // the browser took the GPU back: every draw is a no-op after
 
 // ---- loading ---------------------------------------------------------------
 
@@ -540,7 +541,7 @@ let last = 0, frames = 0;
     zones: zones.length, splits: [...runSplits.t].map(([s, t]) => [s, +t.toFixed(3)]), approx: runSplits.approx,
     ghostSplits: [...ghostSplits.t].map(([s, t]) => [s, +t.toFixed(3)]), error: renderError, missingObjects,
     settings: { ...settings }, energy: shown.get('henergy') ?? '', kept: { maps: maps.info(), game: gameFiles.info() },
-    fromKept: lastFs?.fromKept ?? 0, missing: lastFs?.missing.size ?? 0, mapSource, builds,
+    fromKept: lastFs?.fromKept ?? 0, missing: lastFs?.missing.size ?? 0, mapSource, builds, contextLost,
 });
 (window as any).watchSet = (k: keyof Settings, v: any) => { (settings as any)[k] = v; showSettings(document, settings); applySettings(k); };
 (window as any).watchSeek = (t: number, m?: CamMode) => { T = t; if (m) setMode(m); };
@@ -944,6 +945,13 @@ async function main(): Promise<void> {
         status(String((e as Error).message));
         return;
     }
+    // A lost WebGL context (the browser freeing GPU memory, a driver reset) leaves a
+    // black view that still "renders" thousands of empty frames a second. Say so.
+    view.canvas.addEventListener('webglcontextlost', (e) => {
+        e.preventDefault();
+        contextLost = true;
+        status('The 3D view lost the graphics card (the browser can take it back when memory runs short). Reload the page to bring it back.');
+    });
     requestAnimationFrame(loop);
 
     const hash = new URLSearchParams(location.hash.slice(1));

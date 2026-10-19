@@ -29,12 +29,12 @@ a8ea2964158b3ea2 upstream Program.ts
 dd0968e2b8e1db8c upstream SaveManager.ts
 5448a220b6d9a319 upstream SaveState.ts
 5ee7bfa33d892668 upstream SceneBase.ts
-aea9a65e2a473f2d upstream SourceEngine/BSPFile.ts
+855ce84b1c65bacb patched  SourceEngine/BSPFile.ts
 247326764aaa4093 upstream SourceEngine/DMX.ts
-b058b3ef7b8be249 patched  SourceEngine/EntitySystem.ts
+52dba90cf64a8001 patched  SourceEngine/EntitySystem.ts
 d8f9b475252c7efb upstream SourceEngine/GMA.ts
 ffa00f2f3fb6dbc4 upstream SourceEngine/LuminanceHistogram.ts
-28239e946fd02776 patched  SourceEngine/Main.ts
+f77594981cadc1eb patched  SourceEngine/Main.ts
 371097df0f632fd1 upstream SourceEngine/Materials/Lightmap.ts
 5ef6797eca7847f3 upstream SourceEngine/Materials/MaterialBase.ts
 d51304fcda798017 upstream SourceEngine/Materials/MaterialCache.ts

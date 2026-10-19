@@ -2037,7 +2037,25 @@ export class BSPFile {
         this.indexData = indexBuffer.finalize();
     }
 
+    private waterBelow: Uint8Array | null = null; // FTESurf: nodes with a water leaf beneath
+
+    private markWaterBelow(): Uint8Array {
+        const below = new Uint8Array(this.nodelist.length);
+        const mark = (id: number): boolean => {
+            if (id < 0)
+                return this.leaflist[-id - 1].leafwaterdata !== -1;
+            const node = this.nodelist[id];
+            const a = mark(node.child0), b = mark(node.child1);
+            below[id] = (a || b) ? 1 : 0;
+            return a || b;
+        };
+        mark(0);
+        return below;
+    }
+
     private findLeafWaterForPointR(p: ReadonlyVec3, liveLeafSet: Set<number>, nodeid: number): BSPLeafWaterData | null {
+        if (nodeid >= 0 && this.waterBelow !== null && this.waterBelow[nodeid] === 0)
+            return null;
         if (nodeid < 0) {
             const leafidx = -nodeid - 1;
             if (liveLeafSet.has(leafidx)) {
@@ -2068,6 +2086,8 @@ export class BSPFile {
         if (this.leafwaterdata.length === 0)
             return null;
 
+        if (this.waterBelow === null)
+            this.waterBelow = this.markWaterBelow();
         return this.findLeafWaterForPointR(p, liveLeafSet, 0);
     }
 
