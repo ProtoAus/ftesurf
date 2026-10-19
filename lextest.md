@@ -2,7 +2,8 @@
 
 ## P823 — The first-boot screens look like the other menus; no Updates screen
 
-DEPLOYED_P823
+Both installs and all 12 lobbies 2026-10-19T05:52Z (build.ps1 -Pi at main 183ad609): csprogs
+fda04aa2 (.prev bcb0c1cf), menu.dat f6cf5764 (.prev 6aa9f756), qwprogs 9155b799 unchanged.
 
 - The terms ("before you play"), the Steam offer and F2's journal panel are drawn like
   Friends and Play: shadowed panel, lowercase blue heading, the same buttons. To see them
@@ -17,7 +18,8 @@ DEPLOYED_P823
 
 ## P822 — Publish saved asks in a dialog
 
-DEPLOYED_P822
+Both installs and all 12 lobbies 2026-10-19T05:52Z (build.ps1 -Pi at main 183ad609): csprogs
+fda04aa2 (.prev bcb0c1cf), menu.dat f6cf5764 (.prev 6aa9f756), qwprogs 9155b799 unchanged.
 
 - In a game you host: `zone_edit`, Save zones, **Publish saved**. A dialog names the map,
   the zone count and the crc: **Publish** (or Enter) sends, **Cancel** (or Esc) does not.
