@@ -1360,6 +1360,22 @@ def main():
     check("no absolute board/site URL in watch.html",
           [x.group(0) for x in absolute.finditer(page)], [])
 
+    # ---- a rejected run's replay (Patch 830) ---------------------------------
+    print("\n--- 6b3. /api/replay refuses a rejected run (P830) --")
+    m = fresh()
+    submit(m, "bhop_eazy", "p1", 3000)
+    rb = body(get(m, "/api/board?map=bhop_eazy"))
+    rid = rb["rows"][0]["rep"]
+    write_rec(m, "run", "bhop_eazy", 0, 0, leaf(3000, "p1"))
+    check("control: the ranked run's replay is served", get(m, "/api/replay/%d" % rid).status_code, 200)
+    add_review(m, rid, "reject")
+    check("a rejected run's replay is not", get(m, "/api/replay/%d" % rid).status_code, 404)
+    add_review(m, rid, "approve")
+    check("...and is again once approved", get(m, "/api/replay/%d" % rid).status_code, 200)
+    ev = evidence_row(m)
+    check("an evidence recording stays served (stage rows' ghosts read it)",
+          get(m, "/api/replay/%d" % ev).status_code, 200)
+
     print("\n--- 6c. the map screenshot ---------------------------------------")
     # The name in the URL is a board key run through clean_map, and what comes
     # back is joined to one directory. These arms exist because that is the only

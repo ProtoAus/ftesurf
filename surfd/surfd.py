@@ -4252,10 +4252,11 @@ def replay(rid):
     try:
         db = get_db()
         row = db.execute(
-            "SELECT map_dir, track, leg, leaf, kind, bytes,"
+            "SELECT p.map_dir, p.track, p.leg, p.leaf, p.kind, p.bytes,"
             " COALESCE((SELECT a.banned_at FROM accounts a"
-            "            WHERE a.steamid = replays.player), 0) AS owner_banned"
-            " FROM replays WHERE id = ?",
+            "            WHERE a.steamid = p.player), 0) AS owner_banned, "
+            + _REJECTED_SQL + " AS rejected"
+            " FROM replays p WHERE p.id = ?",
             (rid,),
         ).fetchone()
     except sqlite3.Error as exc:
@@ -4269,6 +4270,10 @@ def replay(rid):
     # those after the ban.  An imported demo is another board's and stays.
     if row is None or (
             row["owner_banned"] and row["kind"] in ("run", "evidence")):
+        return fail(404, "no such replay")
+    # Patch 830: a review-rejected run is off its board, so its id names nothing
+    # here either, as on the run page.  Evidence stays: stage rows' ghosts read it.
+    if row["rejected"] and row["kind"] == "run":
         return fail(404, "no such replay")
 
     leaf = row["leaf"]
