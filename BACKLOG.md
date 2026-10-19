@@ -96,6 +96,15 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
 
 ## 3D run viewer (P825, P829): what is left
 
+- **P834's remembered folders are untested**: showDirectoryPicker needs a real click, so the
+  IndexedDB handle, the silent remount and the "Use … again" button never ran headless. Firefox
+  and Safari's Cache Storage quotas (budgets cap at 40% of the site's quota each) are unmeasured.
+- **The start-zone energy zero reads only the run's own track's zones**; the game's
+  HUD_UpdateAnchor walks every track's, so a bonus route through a main-track stage zone would
+  re-anchor in the game and not here.
+- **Picking all of `common` takes Chrome ~96 s** (300,487 files listed, 8,700 kept); the page
+  recommends one game folder at a time.
+
 - **The gateway installer pins the maps snippet's hash** (`nginx_before_sha256`): since P825's
   CORS lines (applied 19 Oct ~08:06Z, backup `ftesurf-maps.conf.pre-p825`), its next install
   must take the new one (sha256 a117932e...).

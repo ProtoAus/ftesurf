@@ -1,5 +1,25 @@
 # lextest.md — things waiting on a human
 
+## P834 — the 3D viewer: Display settings, energy, maps kept on your PC
+
+surfd 2026-10-19T11:46:53Z: generation cb9b4603 (main), root
+/srv/nvme/agent-work/surfd834-20261019T1145Z; watch.js fc3346fa. Rollback: surfd829 (9b917197).
+
+- **Display** (top right of the 3D view, also below it): tick what you want in the map (run
+  line, zones, zone names, bodies, the record's name) and on screen (timer, stage, gap, speed,
+  vertical speed, energy, keys). It is remembered. **H** is the clean view: only the map and the
+  bodies.
+- **Energy** sits under the speed, as in the game: height plus speed²/2g, from the last jump
+  (or the start zone, in the panel), as units or u/s. The graph under the timeline can show
+  energy instead of speed.
+- **A map downloads once**: open the same run again and it says "Using the copy … kept on this
+  PC" (until the server has a newer build).
+- **Choose your Counter-Strike Source folder once** (5 s): the textures that map used are kept,
+  so next time it looks the same with no folder. Momentum Mod's own textures now load from its
+  folder too. The "Kept on this PC" lines show what is stored; Clear empties it.
+
+"Works / <what looks wrong>". Verdict PENDING.
+
 ## P836 — names on board lines cost less
 
 Live 2026-10-19: both installs exe ff0f0a2d (git-7520-patch-836-0-g39afb825f; .prev 444005d7 =

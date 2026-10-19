@@ -116,6 +116,20 @@ renderer; source and build in `src/viewer/` (its README). The bundle
   GL draws 1-px lines, so the run line is a ribbon of triangles; a segment within 48 units of
   the camera is skipped and a zone the camera is inside is only outlined -- each had filled
   the view.
+- **What the viewer keeps (P834)**: Cache Storage for the bytes, one IndexedDB record per
+  entry (`idb.ts`; a per-tab manifest lost the other tab's entries, review), LRU to the smaller of
+  the budget and 40% of the site's quota. A map is reused while the R2 download's Content-Length
+  and Last-Modified match (both readable cross-origin after the redirect; the signed URL changes
+  per request, so the HTTP cache never hits). A game file is kept only when it came from the
+  visitor's VPKs or loose mounts, never the pakfile or a stand-in. `tools/keep.mjs` grades it
+  through watchState (mapSource, fromKept, kept); surf_beginner: 20 missing without a folder, 1
+  with CS:S, 1 on a reload with no folder, 65 files read back.
+- **The viewer's energy zeros are the game's (P834)**: `energy.ts` zeros() ports
+  HUD_UpdateJumpRef and HUD_UpdateAnchor; 0 differing samples against ports of both on 60 runs.
+  THE TELEPORT RE-BASE NEEDS BOTH TESTS: the game's is a 512-unit step in one frame, a thinned
+  track takes such steps without teleporting, and the recording's own teleport marks include
+  short teleports the game does not re-base on (surf_rookie: 897 samples off by up to 56 u with
+  marks alone).
 - **The 504s were each new worker's first map scan, not the TTL rescans.** Measured on the Pi
   19 Oct: zonefit.has_timer over 2,151 BSPs took 20.8 s cold and 0.014 s warm (its lru_cache),
   and gunicorn recycles the one worker every ~5,000 requests (about every 18 min that day). P829
