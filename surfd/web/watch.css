@@ -17,6 +17,9 @@
 .hud-top { position: absolute; top: 12px; left: 0; right: 0; text-align: center; }
 .htime { font-size: 26px; font-weight: 600; }
 .hstage { display: block; font-size: 13px; color: var(--dim); }
+.hgap { display: block; font-size: 14px; color: #ff8a7a; }
+.hgap.ahead, .ahead { color: #7be38f; }
+.behind { color: #ff8a7a; }
 .hud-speed { position: absolute; bottom: 86px; left: 0; right: 0; text-align: center; }
 .hud-speed b { font-size: 34px; font-weight: 700; }
 .hud-speed span { font-size: 13px; color: var(--dim); margin-left: 6px; }
@@ -63,6 +66,9 @@
 .tick { position: absolute; width: 2px; height: 6px; background: var(--dim); transform: translateX(-1px); }
 .tick.stage { background: var(--gold); height: 8px; }
 .wclock { font-family: var(--mono); font-size: 13px; color: var(--dim); white-space: nowrap; }
+.wgraph { display: block; width: 100%; height: 56px; margin-top: 6px; cursor: crosshair; touch-action: none;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 7px; }
+.wrace { margin: 12px 0 0; font-size: 13px; }
 .wopt { font-size: 13px; color: var(--dim); display: inline-flex; align-items: center; gap: 6px; }
 .wopt select { font: inherit; color: var(--text); background: var(--row); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
 

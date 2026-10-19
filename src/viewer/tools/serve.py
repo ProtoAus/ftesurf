@@ -40,6 +40,7 @@ def main():
     ap.add_argument('--rec', action='append', default=[])
     ap.add_argument('--info', action='append', default=[])
     ap.add_argument('--steam')
+    ap.add_argument('--board', help='a saved /board/api/map reply, answered to any query')
     ap.add_argument('--port', type=int, default=8825)
     a = ap.parse_args()
     recs = dict(x.split('=', 1) for x in a.rec)
@@ -97,6 +98,8 @@ def main():
                 body = json.dumps({'v': 1, 'rid': int(m.group(1)), 'rec': r['rec'], 'thin': r['thin'],
                                    'truncated': r['truncated']}).encode()
                 return self.send(200, body, 'application/json')
+            if p == '/board/api/map' and a.board:
+                return self.send(200, open(a.board, 'rb').read(), 'application/json')
             m = re.fullmatch(r'/board/api/run/(\d+)', p)
             if m:
                 f = infos.get(m.group(1))

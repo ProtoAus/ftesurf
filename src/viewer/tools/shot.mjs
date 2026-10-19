@@ -1,5 +1,5 @@
 // Screenshots of the run viewer in a real browser (Chrome or Edge, with its GPU).
-//   node tools/shot.mjs URL OUTDIR [t,mode ...]     e.g. 12,eye 30,chase 30,top
+//   node tools/shot.mjs URL OUTDIR [t,mode | ghost ...]     e.g. 12,eye ghost 30,chase
 // Needs puppeteer-core installed in the directory PUPPETEER_DIR names (it is not
 // a viewer dependency). Prints the page's console, watchState() after load and at each
 // shot, and the WebGL renderer, so a black frame says why.
@@ -49,6 +49,11 @@ for (;;) {
 console.log(`loaded after ${Date.now() - t0} ms: ${JSON.stringify(st)}`);
 
 for (const s of shots.length ? shots : ['5,eye']) {
+    if (s === 'ghost') {   // race the record from here on
+        await page.evaluate(() => window.watchGhost());
+        await new Promise((r) => setTimeout(r, 2000));
+        continue;
+    }
     const [t, mode] = s.split(',');
     await page.evaluate((t, m) => window.watchSeek(Number(t), m), Number(t), mode);
     await new Promise((r) => setTimeout(r, 1500));

@@ -31,7 +31,7 @@
     <canvas id="wgl" class="wgl"></canvas>
     <canvas id="woverlay" class="woverlay"></canvas>
     <div class="hud">
-      <div class="hud-top"><span id="hstage" class="hstage"></span><span id="htime" class="htime">0:00.000</span></div>
+      <div class="hud-top"><span id="hstage" class="hstage"></span><span id="htime" class="htime">0:00.000</span><span id="hgap" class="hgap"></span></div>
       <div class="hud-speed"><b id="hspeed">0</b><span>u/s</span><span id="hvz" class="hvz"></span></div>
       <div class="hud-keys" aria-label="keys held">
         <span id="kw" class="key k-w">W</span>
@@ -51,6 +51,7 @@
     </div>
     <span id="wclock" class="wclock">0:00.000 / 0:00.000</span>
   </div>
+  <canvas id="wgraph" class="wgraph" aria-label="speed over the run; click to seek"></canvas>
   <div class="wbar wbar2">
     <div class="wgroup" role="group" aria-label="camera">
       <button class="wbtn" type="button" data-cam="eye" aria-pressed="true" title="1">First person</button>
@@ -72,8 +73,9 @@
     <section class="wcard">
       <h2>The run</h2>
       <dl id="winfo" class="wdl"></dl>
+      <p class="wrace"><button id="wghost" class="wbtn" type="button">Race the record</button> <span id="wghostinfo" class="dim"></span></p>
       <div id="wsplitbox" hidden>
-        <h3>Splits</h3>
+        <h3>Splits <span id="wsplitvs" class="dim"></span></h3>
         <table class="wsplits"><tbody id="wsplits"></tbody></table>
       </div>
     </section>

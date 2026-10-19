@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Build a code-only successor surfd generation (schema 20, pinned guard/witness).
 
-  python3 build_gen.py <root> <40-hex sha> <serving generation root> [--hid]
+  python3 build_gen.py <root> <40-hex sha> <serving generation root> [--hid] [--add web/<file> ...]
 
 --hid explicitly adds the signed journal collector to the sealed runtime file set.
+--add adds a new static file under web/ (P825: watch.html/js/css), hash-pinned by
+EXPECTED.json like the rest; a new Python module needs the witness's module and
+alias lines too, which this does not write.
 
 <root>/stage holds the archive, plus EXPECTED.json ({path: sha256} of every runtime file
 at <sha>, from git) and COMMIT, written by the operator from the commit. Writes <root>/runtime, <root>/control and, via the
@@ -36,8 +39,15 @@ def sha(path):
 
 
 def main():
-    assert len(sys.argv) in (4, 5) and sys.argv[4:] in ([], ['--hid']), 'usage: ROOT SHA OLD [--hid]'
+    usage = 'usage: ROOT SHA OLD [--hid] [--add web/<file> ...]'
+    assert len(sys.argv) >= 4, usage
     root, gen, OLD = P(sys.argv[1]), sys.argv[2], P(sys.argv[3])
+    rest = sys.argv[4:]
+    hid = '--hid' in rest
+    rest = [a for a in rest if a != '--hid']
+    assert rest[:1] in ([], ['--add']) and (len(rest) != 1), usage
+    web_adds = set(rest[1:])
+    assert all(re.fullmatch(r'web/[A-Za-z0-9_][A-Za-z0-9_.-]*\.(html|js|css)', a) for a in web_adds), usage
     OLDGEN = json.loads((OLD / 'state/manifest.json').read_text())['generation']
     assert re.fullmatch(r'[0-9a-f]{40}', gen), gen
     assert root.resolve() == root and str(root).startswith('/srv/nvme/agent-work/'), root
@@ -51,7 +61,9 @@ def main():
     expected = json.loads((stage / 'EXPECTED.json').read_text())
     old_rels = {str(p.relative_to(OLD / 'runtime')) for p in (OLD / 'runtime').rglob('*')
                 if p.is_file() and '__pycache__' not in p.parts}
-    additions = {'hidupload.py'} - old_rels if sys.argv[4:] else set()
+    additions = ({'hidupload.py'} if hid else set()) | web_adds
+    assert not (web_adds & old_rels), 'already in the serving generation: ' + ' '.join(sorted(web_adds & old_rels))
+    additions -= old_rels
     rels = sorted(old_rels | additions)
     w = (OLD / 'control/witness_wsgi.py').read_text()
     line = [l for l in w.splitlines() if l.startswith('expected={')]

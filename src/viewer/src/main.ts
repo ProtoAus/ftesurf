@@ -64,6 +64,11 @@ const pose: Pose = newPose();
 let orbitYaw = 0, orbitPitch = 20, orbitDist = 160;
 let pathIdx: Int32Array | null = null;
 let maxSpeed = 1;
+// The run raced against: the combined board's record (or its second, when this
+// is the record), drawn as a gold marker at the same run time.
+let ghost: { rec: Rec; info: any } | null = null;
+const gpose: Pose = newPose();
+let graph: HTMLCanvasElement | null = null;   // the speed traces, drawn once
 
 // ---- loading ---------------------------------------------------------------
 
@@ -260,6 +265,19 @@ function drawOverlay(v: View): void {
         prev = p === null ? null : vec3.clone(p);
     }
     g.globalAlpha = 1;
+    if (ghost !== null) {
+        const p = v.project(gpose.x, gpose.y, gpose.z + 36, scratch);
+        if (p !== null) {
+            const rpx = Math.max(4, Math.min(24, 8000 / p[2]));
+            g.fillStyle = '#E8C56A';
+            g.strokeStyle = '#1a1406';
+            g.lineWidth = 2;
+            g.beginPath();
+            g.arc(p[0], p[1], rpx, 0, Math.PI * 2);
+            g.fill();
+            g.stroke();
+        }
+    }
     if (mode !== 'eye') {
         // The player: a hull outline would need depth; a marker reads fine.
         const p = v.project(pose.x, pose.y, pose.z + 36, scratch);
@@ -283,6 +301,13 @@ function updateHud(): void {
     $('hvz').textContent = (pose.vz >= 0 ? '+' : '') + Math.round(pose.vz);
     const st = stageAt(T);
     $('hstage').textContent = st > 0 ? `Stage ${st}` : (T < 0 ? 'Start' : '');
+    let gap = '';
+    const d = ghostGap();
+    if (d !== null) {
+        gap = `${d <= 0 ? '−' : '+'}${Math.abs(d).toFixed(2)} vs ${plain(ghost!.info.name)}`;
+        $('hgap').classList.toggle('ahead', d <= 0);
+    }
+    $('hgap').textContent = gap;
     const k = pose.keys;
     const on = (id: string, b: boolean) => $(id).classList.toggle('on', b);
     on('kw', !!(k & KEY_FORWARD)); on('ka', !!(k & KEY_LEFT)); on('ks', !!(k & KEY_BACK)); on('kd', !!(k & KEY_RIGHT));
@@ -315,10 +340,12 @@ let last = 0, frames = 0;
 // What the page says it did, for tools/shot.mjs (and anyone's console).
 (window as any).watchState = () => ({
     frames, T, mode, playing, map: mapName, samples: rec?.n ?? 0, scene: view?.scene !== null,
+    ghost: ghost ? { name: ghost.info.name, samples: ghost.rec.n, at: [gpose.x, gpose.y, gpose.z], gap: ghostGap() } : null,
     mounts: files.mounts.map((m) => m.game), status: $('wstatus').hidden ? '' : $('wstatus').textContent,
     eye: [pose.x, pose.y, pose.eyeZ, pose.pitch, pose.yaw],
 });
 (window as any).watchSeek = (t: number, m?: CamMode) => { T = t; if (m) setMode(m); };
+(window as any).watchGhost = () => toggleGhost();
 
 function loop(now: number): void {
     const dt = last === 0 ? 0 : Math.min(now - last, 100);
@@ -329,6 +356,7 @@ function loop(now: number): void {
             if (T >= t1) { T = t1; setPlaying(false); }
         }
         poseAt(rec, T, pose);
+        if (ghost !== null) poseAt(ghost.rec, T, gpose);
         if (mode === 'chase' && view.input.buttons & 1) {
             orbitYaw = wrap(orbitYaw - view.input.getMouseDeltaX() * 0.25);
             orbitPitch = Math.max(-80, Math.min(85, orbitPitch + view.input.getMouseDeltaY() * 0.25));
@@ -337,6 +365,7 @@ function loop(now: number): void {
         view.frame(dt, Number($<HTMLSelectElement>('wfov').value));
         drawOverlay(view);
         updateHud();
+        drawGraph();
         frames++;
     }
     requestAnimationFrame(loop);
@@ -383,19 +412,130 @@ function showInfo(r: any): void {
     }
     const back = $<HTMLAnchorElement>('wback');
     back.href = `./#r=${r.rid}`;
+    showSplits();
+}
+
+function splitTimes(info: any): Map<number, number> {
+    const rate = Number(info?.rate) || 0.015;
+    return new Map(((info?.splits || []) as [number, number][]).map(([seg, ticks]) => [seg, ticks * rate]));
+}
+
+function showSplits(): void {
     const sp = $('wsplits');
     sp.textContent = '';
-    const rate = Number(r.rate) || 0.015;
+    const mine = splitTimes(runInfo), theirs = ghost ? splitTimes(ghost.info) : new Map<number, number>();
+    $('wsplitvs').textContent = ghost ? `vs ${plain(ghost.info.name)}` : '';
     let prev = 0;
-    for (const [seg, ticks] of (r.splits || []) as [number, number][]) {
+    for (const [seg, t] of mine) {
         const tr = el('tr', null);
-        const t = ticks * rate;
         tr.append(el('td', null, `Stage ${seg}`), el('td', 'num', fmt(t)), el('td', 'num dim', '+' + (t - prev).toFixed(3)));
+        const g = theirs.get(seg);
+        if (ghost) {
+            const d = g === undefined ? null : t - g;
+            tr.append(el('td', 'num ' + (d === null ? 'dim' : d <= 0 ? 'ahead' : 'behind'),
+                d === null ? '—' : (d <= 0 ? '−' : '+') + Math.abs(d).toFixed(3)));
+        }
         tr.addEventListener('click', () => { T = Math.max(t0, t - 1); });
         sp.append(tr);
         prev = t;
     }
-    $('wsplitbox').hidden = (r.splits || []).length === 0;
+    $('wsplitbox').hidden = mine.size === 0;
+}
+
+async function toggleGhost(): Promise<void> {
+    const b = $<HTMLButtonElement>('wghost');
+    if (ghost !== null) {
+        ghost = null;
+        b.textContent = 'Race the record';
+        $('wghostinfo').textContent = '';
+        showSplits();
+        graph = null;
+        return;
+    }
+    if (runInfo === null) return;
+    b.disabled = true;
+    try {
+        const q = new URLSearchParams({ map: runInfo.map, track: String(runInfo.track), leg: String(runInfo.leg),
+            style: runInfo.style || 'clean', tier: 'combined' });
+        const board = await fetchJSON(`api/map?${q}`);
+        const row = (board.rows || []).find((x: any) => x.rep > 0 && x.rep !== runInfo.rid);
+        if (row === undefined) {
+            $('wghostinfo').textContent = 'No other recorded run on this board.';
+            return;
+        }
+        const [info, track] = await Promise.all([fetchJSON(`api/run/${row.rep}`), fetchJSON(`api/run/${row.rep}/track`)]);
+        ghost = { rec: parseRec(track.rec), info };
+        b.textContent = 'Stop racing';
+        $('wghostinfo').textContent = `Racing ${plain(info.name)} (#${row.r}, ${fmt(info.ms / 1000)}${info.tr !== runInfo.tr ? ', ' + (TIER_NAMES[info.tr] ?? info.tr) : ''}).`;
+        showSplits();
+        graph = null;
+    } catch (e) {
+        $('wghostinfo').textContent = `The record could not be loaded (${(e as Error).message}).`;
+    } finally {
+        b.disabled = false;
+    }
+}
+
+// Horizontal speed against run time, this run blue and the ghost gold; the
+// playhead and stage ticks are drawn over it each frame.
+function drawGraph(): void {
+    const c = $<HTMLCanvasElement>('wgraph');
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.max(1, Math.round(c.clientWidth * dpr)), h = Math.max(1, Math.round(c.clientHeight * dpr));
+    if (rec === null) return;
+    const span = Math.max(t1 - t0, 1e-3);
+    const top = Math.max(maxSpeed, ghost ? ghostMax() : 0, 1);
+    if (graph === null || graph.width !== w || graph.height !== h) {
+        graph = document.createElement('canvas');
+        graph.width = w; graph.height = h;
+        const g = graph.getContext('2d')!;
+        const trace = (r: Rec, colour: string) => {
+            g.strokeStyle = colour;
+            g.lineWidth = dpr;
+            g.beginPath();
+            const stride = Math.max(1, Math.floor(r.n / (w * 2)));
+            for (let i = 0; i < r.n; i += stride) {
+                const x = (r.t[i] - t0) / span * w, y = h - Math.hypot(r.v[i * 3], r.v[i * 3 + 1]) / top * (h - 2) - 1;
+                if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+            }
+            g.stroke();
+        };
+        if (ghost) trace(ghost.rec, 'rgba(232,197,106,.7)');
+        trace(rec, '#59bfff');
+    }
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    const g = c.getContext('2d')!;
+    g.clearRect(0, 0, w, h);
+    g.drawImage(graph, 0, 0);
+    const x = (T - t0) / span * w;
+    g.fillStyle = '#fff';
+    g.fillRect(Math.round(x), 0, Math.max(1, dpr), h);
+}
+
+// The time between this run and the ghost at the same PLACE: T minus when the
+// ghost was nearest to where the player is now, searched within GAP_WINDOW s of
+// T so a map that doubles back cannot match the wrong pass. Splits need not
+// exist (imports have none). Null when the ghost was never near.
+const GAP_WINDOW = 30, GAP_NEAR = 256;
+
+function ghostGap(): number | null {
+    if (ghost === null || rec === null || T < 0) return null;
+    const g = ghost.rec;
+    const hi = sampleAt(g, T + GAP_WINDOW);
+    let best = -1, bd = GAP_NEAR * GAP_NEAR;
+    for (let j = sampleAt(g, T - GAP_WINDOW); j <= hi; j++) {
+        const dx = g.o[j * 3] - pose.x, dy = g.o[j * 3 + 1] - pose.y, dz = g.o[j * 3 + 2] - pose.z;
+        const dd = dx * dx + dy * dy + dz * dz;
+        if (dd < bd) { bd = dd; best = j; }
+    }
+    return best < 0 ? null : T - g.t[best];
+}
+
+function ghostMax(): number {
+    let m = 0;
+    const r = ghost!.rec;
+    for (let i = 0; i < r.n; i++) m = Math.max(m, Math.hypot(r.v[i * 3], r.v[i * 3 + 1]));
+    return m;
 }
 
 function showInfoFromRec(r: Rec): void {
@@ -441,6 +581,14 @@ function wire(): void {
     for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-cam]')))
         b.addEventListener('click', () => setMode(b.dataset.cam as CamMode));
     $('wpick').addEventListener('click', () => { void pickFolder(); });
+    $('wghost').addEventListener('click', () => { void toggleGhost(); });
+    const gc = $<HTMLCanvasElement>('wgraph');
+    const seekGraph = (e: PointerEvent) => {
+        const r = gc.getBoundingClientRect();
+        T = t0 + Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (t1 - t0);
+    };
+    gc.addEventListener('pointerdown', (e) => { gc.setPointerCapture(e.pointerId); seekGraph(e); });
+    gc.addEventListener('pointermove', (e) => { if (gc.hasPointerCapture(e.pointerId)) seekGraph(e); });
     $<HTMLInputElement>('wdir').addEventListener('change', async (e) => {
         const list = (e.target as HTMLInputElement).files;
         if (list && list.length) await addedFiles(await files.addList(list));
