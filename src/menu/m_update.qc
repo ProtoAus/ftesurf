@@ -105,8 +105,14 @@ void(vector screensize) MU_Status =
 	y = 82;
 	if (strlen(err))
 	{
-		MU_StatusLine(right, 78, w, '12 12 0', err, SUI_THEME_WARN);
-		y = 100;
+		// Wrapped when long, as the screen did: the actionable part (a URL, the retry) comes last.
+		if (stringwidth(err, TRUE, '12 12 0') <= w)
+		{
+			MU_StatusLine(right, 78, w, '12 12 0', err, SUI_THEME_WARN);
+			y = 100;
+		}
+		else
+			y = 78 + ui_para([right - w, 78], w, '12 12 0', 15, err, SUI_THEME_WARN, TRUE) + 6;
 	}
 	if (menu_screen != SCREEN_MAIN)
 		return;
