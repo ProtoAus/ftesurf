@@ -1801,6 +1801,8 @@ void() Rec_ViewSaveEvents =
 	seq = getstatf(STAT_FS_SLSEQ);
 	if (seq == rec_rp_slseq)
 		return;
+	if (CL_SaveEventsWait())
+		return;
 
 	op = getstatf(STAT_FS_SLOP);
 	id = FS_SlopId(op);

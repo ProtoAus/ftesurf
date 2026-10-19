@@ -479,6 +479,7 @@ void() Trail_Frame =
 	sq = getstatf(STAT_FS_SLSEQ);
 	op = SLOP_NONE;
 	if (sq != tr_slseq)
+	if (!CL_SaveEventsWait())
 	{
 		tr_slseq = sq;
 		op = FS_SlopOp(getstatf(STAT_FS_SLOP));

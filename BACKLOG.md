@@ -17,6 +17,14 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   install copy be moved to deleted/ (recoverable). `cl_savesync.qc` SaveSync_Plan.
 - SaveSync_PicLater writes up to ~5 s later without checking the slot still holds that row.
 - Lists over 400 rows on either side are not synced at all (SS_ROWS, the plan is pairwise).
+- On a remote server that is not a lobby (lobby_enable 0, or lobby_nosaveloc) the server's root is
+  the plain map folder, and the client writes seq.txt, run.view and trail.txt at the server's save
+  ids into the install's own data/saves/<map>: a joined friend's game can overwrite a local save's
+  picture and Segments list. Older than P811 (Patch 333). `cl_board.qc` CL_SaveRoot.
+- Leaks, bounded per map: `.sl_rootstat` is not unzoned when ED_Clear reuses a slot, and the
+  engine memsets `client->statss` at spawn without freeing (sv_user.c:2452).
+- tools/p438view.py now points `cl_saveroot_test` at its scratch dir (its `+set cl_saveroot` only
+  worked through the latch the root stat removed); not rerun since.
 
 ## A rewind after a fail teleport re-armed the run closes at once (seen 19 Oct, P808's probe)
 

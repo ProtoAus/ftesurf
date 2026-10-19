@@ -22,8 +22,8 @@ Not installed yet (deploy line follows).
 - Delete a save in a lobby and your install's copy goes too (moved to data/saves/<map>/deleted/,
   never destroyed on your PC). Delete one offline and it goes from the lobby the next time you
   join that map there. The first visit to each map only merges the two lists.
-- Your saves' pictures and Segments lists no longer land in the previous map's folder after a
-  lobby map change.
+- After a lobby map change your saves' pictures and Segments lists land in the new map's folder
+  (they went to the first map you played that session), and the copying carries on there.
 - `cl_savesync 0` turns it off; `savesync status` shows the counts.
 
 "Saves follow ok / <what went missing or came back>". Verdict PENDING.

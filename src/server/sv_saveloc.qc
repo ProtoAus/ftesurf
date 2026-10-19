@@ -5094,8 +5094,8 @@ void(entity e) SV_SaveLocHoldFrame =
   directory entry.
 */
 // Patch 428: the row half of SV_SaveLocDelete, so a delete-all passes the gate
-// once -- SV_SaveLocBegin stuffs cl_saveroot, and 999 of those overflow the
-// client's reliable channel.
+// once -- SV_SaveLocBegin stuffed cl_saveroot then, and 999 of those overflowed
+// the client's reliable channel.
 void(entity e, float n) SV_SaveLocDeleteRow =
 {
 	local float i, id, r, blk, base, cnt;

@@ -3,15 +3,18 @@
 ## Saves kept with the install (P811, 2026-10-19)
 
 - The sync is keyed by SS_Same (origin and view within 0.05), never by row or folder id; its
-  ledger is client side (<cl_saveroot>/sync.txt, plus delall.txt for a delete-all not yet carried
+  ledger is client side (<lobby root>/sync.txt, plus delall.txt for a delete-all not yet carried
   out). Several rows at one key: only the first on each side is paired, and a delete moves one.
   A delete is carried only from a whole listing (every counted row came, none deleted meanwhile,
   every install file read). CSQC_Parse_Event errors on an unknown type, so SS_EV_* (20-23) are
   read before the share window counts an event; SS_EV_END's kind byte keeps a listing's number
   apart from a command's tag. The rewind's resume row is never listed, matched or pushed.
-- The server set `cl_saveroot` only with each saveloc command, and the client could file a save's
-  pictures before that set ran: the first save on a new lobby map wrote into the last map's
-  folder. PutClientInServer sets it now, and CL_SaveRoot refuses another map's root.
+- The client's save root is STAT_FS_SAVEROOT, a string stat (SV_SaveRootFor), not a stuffed
+  `set cl_saveroot`. A SERVER-SET CVAR READS BACK LATCHED IN CSQC: cvar_string returns
+  latched_string (pr_bgcmd.c:1898), which for a server-set cvar is its value from before the server
+  took it, so every map after a session's first named the first one's folder. The console shows it:
+  `"cl_saveroot" is` the latch, `Effective value is` the real one. CL_SaveRoot sends a root not in
+  yet, or another map's, to @pending. cl_saveroot_test (nothing sets it) is an arm's scratch root.
 - Rig: tools/p811savesync.py (lobby server and client install on separate basedirs, rcon for a
   changelevel). `vote key <scan> <down>` feeds CL_InputEvent for an input-chain arm
   (tools/p809entview.py).
@@ -1819,10 +1822,9 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
   so — the arm then exercises the unhandled path and passes by never happening.
   `registercvar` it and read it with `cvar()`, and set it AFTER the map, because
   registercvar resets a value set earlier (the `cl_trigdebug` trap). Related, and
-  why Patch 438 needed a new command: the server STUFFS `set cl_saveroot
-  "data/saves/<map>"` on every `sl_` command, so a client-side save root cannot be
-  overridden at all — `sl_replay <slot>` fires the load event with no save behind
-  it (no placement, no clock, no row) for exactly that reason.
+  why Patch 438 needed a new command: `sl_load` reads the server's own save root,
+  which no client setting moves — `sl_replay <slot>` fires the load event with no
+  save behind it (no placement, no clock, no row) for exactly that reason.
 - A HARNESS SCRATCH PATH MUST BE INSIDE THE GAMEDIR. `FS_LoadFile` locates with
   `FS_GAME`, so `%TEMP%` or the install root opens nothing and `fopen(FILE_READ)`
   returns -1 with NO "Access denied" line — which reads as a reader bug and is a
@@ -2041,9 +2043,9 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
   wrong one until P407/P411 (`launch 0 ... cap 290` at 1809 u/s); it is 0 since
   2026-09-21 (Lex: boosters count, speed does not matter).
 - Client→server: `cmd sl_*`-style registered command strings.
-  Server→client: `stuffcmd` (e.g. `set cl_saveroot`), stats, sprint, csqc
+  Server→client: `stuffcmd`, stats, sprint, csqc
   entity fields. MIRRORS SPLIT BY TYPE: floats ride a stuffed `set` read with
-  `cvar()`; STRINGS must ride `forceinfokey(p, "*key", …)` read with
+  `cvar()` (the value; `cvar_string` returns the pre-server latch, P811); STRINGS must ride `forceinfokey(p, "*key", …)` read with
   `getplayerkeyvalue(player_localnum, "*key")` (`*wrank`, `*phash`) — a stuffed
   `set` is Cvar_LockFromServer, and `cvar_string` then returns the LATCHED
   pre-override string while `cvar()` still reads the effective value.

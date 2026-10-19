@@ -1736,11 +1736,30 @@ string() CL_SaveRoot =
 	r = getstats(STAT_FS_SAVEROOT);
 	m = sprintf("data/saves/%s", serverkey("map"));
 	// Not in yet, or the last map's (19 Oct: two surf_dragon lobby saves wrote
-	// their seq.txt into surf_jumble's folder).  Never the plain map folder: a
-	// local game's saves live there.
+	// their seq.txt into surf_jumble's folder).  The plain map folder only when
+	// the server names it (a local game, lobby_nosaveloc).
 	if (strcmp(r, m) && strstrofs(r, strcat(m, "/@"), 0) != 0)
 		return strcat(m, "/@pending");
 	return r;
+};
+
+float() LT_StatsAreMine;
+
+// Patch 811: the save-event listeners (Seq_SaveEvents, Rec_ViewSaveEvents, Trail_Frame)
+// leave an event unread while this holds.  String stats follow number stats in a packet
+// (sv_send.c:2416), so a spawn's restore or a retry can show before its root; an engine
+// spectator's stats and a demo's are another player's.
+float cl_rootwait;
+float() CL_SaveEventsWait =
+{
+	if (isdemo() || !LT_StatsAreMine())
+		return TRUE;
+	if (getstats(STAT_FS_SAVEROOT) != "")
+		return FALSE;
+	if (getstatf(STAT_FS_SLSEQ) != cl_rootwait)
+		dprint(sprintf("saves: event %g waits for its root\n", getstatf(STAT_FS_SLSEQ)));
+	cl_rootwait = getstatf(STAT_FS_SLSEQ);
+	return TRUE;
 };
 
 string(float id) Seq_Path =
@@ -2267,6 +2286,8 @@ void() Seq_SaveEvents =
 
 	seq = getstatf(STAT_FS_SLSEQ);
 	if (seq == seq_slseq)
+		return;
+	if (CL_SaveEventsWait())
 		return;
 
 	op = getstatf(STAT_FS_SLOP);
