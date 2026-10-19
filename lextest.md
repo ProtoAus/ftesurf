@@ -1,6 +1,11 @@
 # lextest.md — things waiting on a human
 
-## P814 — own online replay uses local per-frame view (pending deployment)
+## P814 — own online replay uses local per-frame view (deployed; human check pending)
+
+Both Windows installs have the verified P814 programs. All 12 lobbies restarted
+2026-10-19 00:51–00:53Z; progs hashes match both installs and every lobby publishes
+latched `fs_ul 2`. The guarded HTTPS collector remains open. Personal permission
+settings were not changed. This is deployment evidence, NOT a human acceptance.
 
 - After the updated client programs are loaded, finish a full online run. Watch
   your own replay while still on that map. With `hud_watch_info 1`, it should use

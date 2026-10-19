@@ -2072,6 +2072,14 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Anti-cheat and run evidence
 
+- **Minimal native overlays and live download caches need different handling.**
+  A dedicated overlay without package-manager state needs explicit `plug_load hl2`;
+  merely copying the DLL does not load it (`plug_loaddefault` defaults to 1).
+  A golden recording refusing for a different map is not an acting clock control.
+  `seed_csprogs.py` also removes every `.tmp`/`.dcl` in its cache: run it only in
+  an owned build cache, then publish just the verified content-named DAT without
+  replacing a different existing file. Do not clean a playing client's downloads.
+
 - **Held-clock tests need independent origins and a matching sidecar control.**
   The old suite stayed green with both resume/retry frozen-state resets removed.
   Its first-origin hold-floor check acted, but disabling only the post-session
