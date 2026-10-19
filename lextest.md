@@ -25,7 +25,7 @@ the board (pi_lobby_smoke).
 - Type past the end of a line: the field grows to 2 (then 3) rows and the box grows upward with
   it. Click, drag-select and copy work on every row.
 
-"Works / <what you saw, and the settings you picked>". Verdict PENDING.
+Verdict CONFIRMED by Lex, 2026-10-19 (~06:40Z), on P824's report (P821 with it): "I aprove. 10/10". The settings chosen were not reported.
 
 ## P823 — The first-boot screens look like the other menus; no Updates screen
 
@@ -73,7 +73,7 @@ A fresh client on lobby 1 was served it and drew the board (pi_lobby_smoke, 05:3
 - The wheel (or PgUp/PgDn) scrolls the history. The chat text is one size smaller (20; a saved 24
   moved once).
 
-"Works / <what you saw>". Verdict PENDING.
+Verdict CONFIRMED by Lex, 2026-10-19 (~06:40Z), on P824's report (P821 with it): "I aprove. 10/10".
 
 ## P809 — Entity view on any key
 
