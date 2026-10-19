@@ -1984,6 +1984,9 @@ float lg_lab_sz;                                // the size they were measured a
 // `float lg_gen;` without a word. The first cut of this counted frames in it, and
 // eight lines' graph cost 3.2 ms more a frame.
 float lg_lab_gen[LN_SLOTS], lg_lab_frame;
+#ifdef LG_LABCHECK
+float lgc_n, lgc_bad, lgc_hit, lgc_next;
+#endif
 /*
   A label's point has to be where its text can be read: in front of the eye and inside
   the screen, less a margin and the text's own width. (The first cut took the nearest
@@ -2182,25 +2185,108 @@ void() LineGraph_WorldLabels =
 		// The two closer looks below are stride * 2 samples each; past eight names 128.
 		walk = (names <= 8) ? stride * 2 : min(stride * 2, 128);
 		fine = max(1, ceil(stride * 2 / walk));
-		for (i = ia; i <= ib; i = i + stride)
+		// Patch 836: lines_label is this loop natively, the same samples on the same arithmetic;
+		// the loop stays for an engine without it, and the two change together.
+		k = 0;
+		if (ln_llp)
 		{
-			d = vlen(ln_pos[b + i] - ln_eye);
-			if (d >= best) continue;        // cbest is never over best: neither can gain
-			if (far > 0)                // 0 is "never fade", not "nothing in range"
-			if (d > far) continue;
-			k = LineGraph_LabelAt(s, b, i, 0);
-			if (!k) continue;
-			if (k == 2)
+			ln_llp[LL_BASE] = b;
+			ln_llp[LL_COUNT] = ln_n[s];
+			ln_llp[LL_FIRST] = ia;
+			ln_llp[LL_LAST] = ib;
+			ln_llp[LL_STRIDE] = stride;
+			ln_llp[LL_CUT] = (s == 0 && !lgl_ahead);    // LineGraph_LabelAt's playhead
+			ln_llp[LL_TCUT] = rec_wt_time;
+			ln_llp[LL_FAR] = far;
+			ln_llp[LL_NEAR] = LN_NEAR;
+			ln_llp[LL_GUARD] = LN_GUARD;
+			ln_llp[LL_PX] = ln_px;
+			ln_llp[LL_EYE] = ln_eye_x;  ln_llp[LL_EYE + 1] = ln_eye_y;  ln_llp[LL_EYE + 2] = ln_eye_z;
+			ln_llp[LL_FWD] = ln_fwd_x;  ln_llp[LL_FWD + 1] = ln_fwd_y;  ln_llp[LL_FWD + 2] = ln_fwd_z;
+			ln_llp[LL_LO] = lgl_lo_x;   ln_llp[LL_LO + 1] = lgl_lo_y;
+			ln_llp[LL_HI] = lgl_hi_x;   ln_llp[LL_HI + 1] = lgl_hi_y;
+			k = lines_label(ln_llp, LL_SIZE);
+		}
+		if (k)
+		{
+			ln_llbn = ln_llbn + 1;
+			best = ln_llp[LL_BEST];
+			cbest = ln_llp[LL_CBEST];
+			bi = ln_llp[LL_BI];
+			ci = ln_llp[LL_CI];
+			at = [ln_llp[LL_AT], ln_llp[LL_AT + 1], ln_llp[LL_AT + 2]];
+			aw = [ln_llp[LL_AW], ln_llp[LL_AW + 1], ln_llp[LL_AW + 2]];
+#ifdef LG_LABCHECK
 			{
-				best = d;
-				at = lgl_q;
-				aw = lgl_p;
-				bi = i;
+				local float ob, oc, obi, oci;
+				local vector oat, oaw;
+				ob = oc = 99999999;
+				oat = oaw = '0 0 0';
+				obi = oci = -1;
+				for (i = ia; i <= ib; i = i + stride)
+				{
+					d = vlen(ln_pos[b + i] - ln_eye);
+					if (d >= ob) continue;        // oc is never over ob: neither can gain
+					if (far > 0)                // 0 is "never fade", not "nothing in range"
+					if (d > far) continue;
+					k = LineGraph_LabelAt(s, b, i, 0);
+					if (!k) continue;
+					if (k == 2)
+					{
+						ob = d;
+						oat = lgl_q;
+						oaw = lgl_p;
+						obi = i;
+					}
+					if (d < oc)
+					{
+						oc = d;
+						oci = i;
+					}
+				}
+				lgc_n = lgc_n + 1;
+				if (bi >= 0) lgc_hit = lgc_hit + 1;
+				if (ob != best || oc != cbest || obi != bi || oci != ci || oat != at || oaw != aw)
+				{
+					lgc_bad = lgc_bad + 1;
+					if (lgc_bad <= 20)
+					{
+						print(sprintf("LGCHECK MISMATCH s %g bi %g/%g ci %g/%g", s, bi, obi, ci, oci));
+						print(sprintf(" best %g/%g cbest %g/%g\n", best, ob, cbest, oc));
+					}
+				}
+				if (cltime > lgc_next)
+				{
+					lgc_next = cltime + 2;
+					print(sprintf("LGCHECK native looks %g mismatches %g with a place %g\n", lgc_n, lgc_bad, lgc_hit));
+				}
 			}
-			if (d < cbest)
+#endif
+		}
+		else
+		{
+			if (ln_llp)
+				ln_llbno = ln_llbno + 1;
+			for (i = ia; i <= ib; i = i + stride)
 			{
-				cbest = d;
-				ci = i;
+				d = vlen(ln_pos[b + i] - ln_eye);
+				if (d >= best) continue;        // cbest is never over best: neither can gain
+				if (far > 0)                // 0 is "never fade", not "nothing in range"
+				if (d > far) continue;
+				k = LineGraph_LabelAt(s, b, i, 0);
+				if (!k) continue;
+				if (k == 2)
+				{
+					best = d;
+					at = lgl_q;
+					aw = lgl_p;
+					bi = i;
+				}
+				if (d < cbest)
+				{
+					cbest = d;
+					ci = i;
+				}
 			}
 		}
 		// None of the 256 on screen: the line may still cross it between two of them,

@@ -453,6 +453,7 @@ float(float *pts, float n, vector org, vector scale, vector rgb, float alpha) li
 void(vector *pos, vector *col, float *t, float *brk, float *born, float samples, float bornsamples) lines_arrays = #0;
 void(vector *cc, float *cr, float *cerr, vector *gc, float *gr, float chunks, float groups, float levels) lines_lod = #0;
 float(float *parm, float count) lines_draw = #0;
+float(float *parm, float count) lines_label = #0;     // Patch 836: LineGraph_WorldLabels' first look
 // Patch 763: engine 763+ leaves a block marked by this out of its tempstring collector, which
 // read all of Line_Alloc's ~80 MB every ~415 frames (a ~20 ms frame). Float and vector blocks only.
 float(__variant *ptr) memnostrings = #0;
@@ -508,6 +509,32 @@ float  ln_nath;                 // the engine has the builtins and was told wher
 float  ln_nat;                  // ... and this frame draws with them
 float  ln_natn, ln_natno;       // passes it drew, and refused, since start (`lines native`)
 float  *ln_np;
+// Patch 836: lines_label's block (engine pr_csqc_lines.inc, LL_*).
+#define LL_VERSION   0
+#define LL_BASE      1
+#define LL_COUNT     2
+#define LL_FIRST     3
+#define LL_LAST      4
+#define LL_STRIDE    5
+#define LL_CUT       6
+#define LL_TCUT      7
+#define LL_FAR       8
+#define LL_NEAR      9
+#define LL_GUARD     10
+#define LL_PX        11
+#define LL_EYE       12
+#define LL_FWD       15
+#define LL_LO        18
+#define LL_HI        20
+#define LL_BEST      22
+#define LL_CBEST     23
+#define LL_BI        24
+#define LL_CI        25
+#define LL_AT        26
+#define LL_AW        29
+#define LL_SIZE      32
+float  *ln_llp;                 // null without the builtin
+float  ln_llbn, ln_llbno;       // names looked for with it, and refused (`lines native`)
 
 // Patch 649: the per-slot tables.  Allocated, because csprogs has no global definitions to
 // spare for one of each a slot (AGENT_NOTES, "CSPROGS SITS AT FTEQCC'S GLOBAL LIMIT").
@@ -699,6 +726,11 @@ void() Line_Alloc =
 		          LN_TOTAL / LN_CHUNK / LN_GROUP, LN_LEVELS);
 		ln_np = memalloc(sizeof(float) * LP_SIZE);
 		ln_nath = TRUE;
+		if (checkbuiltin(lines_label))
+		{
+			ln_llp = memalloc(sizeof(float) * LL_SIZE);
+			ln_llp[LL_VERSION] = 1;
+		}
 	}
 	ln_allocms = (gettime(1) - ln_allocms) * 1000;
 };
@@ -4155,6 +4187,7 @@ float() Line_Console =
 		// Patch 827. gettime(1) is whole milliseconds, so a short pass reads 0.
 		print(sprintf("lines: ends %g whole, %g from where the last stopped; last %g ms, longest %g ms\n",
 		              ln_endfull, ln_endpart, ln_endms, ln_endmax));
+		print(sprintf("lines: names looked for natively %g, refused %g\n", ln_llbn, ln_llbno));
 		// Patch 760: the pool, and each line's place in it.
 		Line_PoolPrint();
 		return TRUE;
