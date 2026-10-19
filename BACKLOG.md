@@ -5,6 +5,14 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Release tooling: what 0.1.28 hit (19 Oct)
+
+- **`ConvertTo-WslPath` takes WSL's cold-start notice as the path.** When the WSL VM has idled
+  down, its first command prints "wsl: Failed to start the systemd user session for 'root'" before
+  wslpath's answer; release.ps1 threw it as the path at step 14 (Linux pack) and attempt 1 of 0.1.28
+  stopped there (tools/release028.md). Take the last line that starts with `/`, or start the distro
+  first. Until then: hold the distro up during preparation (`wsl -d Ubuntu-22.04 --exec sleep 3600`).
+
 ## Frame time: CPU levers (Lex's r_budget dumps, 19 Oct)
 
 Seven `r_budget_dump`s with `r_budget_csqc 1` (surf_boreas x2, surf_demise x2, surf_tensor2,
