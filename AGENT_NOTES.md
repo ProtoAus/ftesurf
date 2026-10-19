@@ -84,7 +84,9 @@ renderer; source and build in `src/viewer/` (its README). The bundle
   made at ~07:10Z) and 7cc5cbbf at 07:23:25Z (surfd825b-20261019T0720Z). Each cutover gave
   about 9 s of 503s. The P804 generation (pi.dev's) and 10f09dc8 are CLOSED and kept for
   rollback.sh. A third, 9ae4a941 at 08:02:56Z (surfd825c-20261019T0800Z), took the run
-  route off the map scan and changed the folder picker (below). On the Pi, recplot.track over the largest file there (a 59 MB evidence
+  route off the map scan and changed the folder picker (below). P829/P830 went out as
+  9b917197 at 10:04:51Z (surfd829-20261019T1000Z, from OLD surfd825d); the first scan after it
+  wrote data/maps_timer_cache.json in 10.8 s, a map route then took 0.27 s. On the Pi, recplot.track over the largest file there (a 59 MB evidence
   recording; the 32 MiB read cap applies) takes 1.67 s at nice 10; nginx gives 5 s.
 - **Zones, inferred stage times, bodies (P829).** Zones come from the file the game downloads
   (`/ftesurf/maps/zones/local/<map>.json`). An import has no `split` records, so its stage

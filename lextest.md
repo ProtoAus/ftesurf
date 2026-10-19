@@ -1,5 +1,24 @@
 # lextest.md — things waiting on a human
 
+## P829 — the 3D viewer: zones, stage times, a real body, Watch in 3D from the board
+
+surfd 2026-10-19T10:04:51Z: generation 9b917197 (main), root
+/srv/nvme/agent-work/surfd829-20261019T1000Z; watch.js c7874e4a. Rollback: surfd825d (c881a82d).
+
+- On any map board, each recorded row now has **3D** beside **Watch**.
+- Start, stage, checkpoint and end zones are drawn as tinted boxes with their names (**Zones**
+  turns them off). The run line and the bodies are hidden by the map now: behind a wall they
+  show faintly, not at full strength.
+- Your body and the record's are the game's player shape (blue you, gold the record), the
+  game's height. In First person you see the record's, not your own.
+- **Race the record** against a Momentum or KSF run: the splits table now has its stage times,
+  marked ≈ (worked out from the zones, since imports record none). On surf_beginner against
+  .x they read 2.265, 6.645, 12.09 ...
+- The board, map and run pages should no longer say 504 now and then (each restart of the
+  server re-read all 2,151 maps for 20 s; it reads a list it keeps now).
+
+"Works / <what looks wrong, and on which map>". Verdict PENDING.
+
 ## P831 — props drawn in runs: more fps on rock- and tree-heavy maps
 
 Live in both installs 2026-10-19 (exe 544446a8, git-7515-patch-831-0-g675dcf7fa; .prev 1d27c817;
