@@ -335,8 +335,9 @@ Fixed items are removed; remaining reader contracts need acting controls.
 - Site: `tools/reccheck.py` hold-origin/final-clock validation. Patch 793 bounds the
   first fresh projected origin and every raw trace horizon; initial restored headers
   abstain. A post-restore/session horizon is not a timer-start/carry tuple, so its
-  projected origin remains unvalidated and angle-unavailable. Final-clock consistency
-  also remains open: the writer documents a live `inend` on a frozen finish, and the
+  projected origin remains unvalidated and angle-unavailable. Patch 828 bounds a
+  closing `inend` against the last current-origin hold boundary; that is raw chronology,
+  not final-clock equality. Final-clock consistency also remains open: the writer documents a live `inend` on a frozen finish, and the
   synthetic builder models packet time separately from trailer time. Do not add a
   guessed equality. Check: capture native finished/held/restored files, then alter
   origin/closing totals; diagnose the recording without blaming its sidecar.
