@@ -21,7 +21,7 @@ export function getDebugOverlayCanvas2D(): CanvasRenderingContext2D {
         canvas.style.left = '0';
         canvas.style.pointerEvents = 'none';
 
-        window.main.toplevel.insertBefore(canvas, window.main.canvas);
+        window.main?.toplevel.insertBefore(canvas, window.main.canvas); // FTESurf: no noclip page
         _debugOverlayCanvas = ctx;
 
         prepareFrameDebugOverlayCanvas2D();

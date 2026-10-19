@@ -25,7 +25,7 @@ commit   994b744505e2a4fe3be3b59290cd19733ba64ebe
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-850
-patch    853
+patch    855
 # Patch 850 (client engine): water captures and 3D sky rooms stop redrawing the outer views' props
 # (r_nestedents) and the 3D sky where the view has no sky surface (r_skyroomneed 2); r_viewstats.
 # Exe fa31c2ee (git-7555-patch-850-0-g994b74450 = 847 + 849 + 850), hl2 plugin 1829790d, in both
@@ -38,6 +38,8 @@ patch    853
 # and the in-game card (`completion.modes`, `&mode=` on the tier lists; `hud_player kind`).
 # Live 2026-10-19: surfd 02ed71c2 (20:44Z), csprogs d28a06aa on the 12 lobbies and both installs
 # (.prev 2f86a702); page re-rendered 20:05Z.
+# Patch 855 (viewer, surfd/web/watch.js): static props whose MDL texture entry has clientmaterial
+# set (Propper writes 1) are drawn (surf_null: 46 of 81 were not); HDR maps draw in Chromium.
 # Patch 848 (qwprogs + csprogs): `reset` is the old goto_start (!r); goto_start sends !r unless the
 # run is past its leg's first segment (STAT_FS_TIMERSTARTSEG), then the track's start (!m / !b N).
 # Patch 847 (client engine + csprogs): DRAWFLAG_UNDERBLEND sorts a CSQC polygon before the blended

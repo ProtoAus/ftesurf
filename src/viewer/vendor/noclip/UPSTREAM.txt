@@ -17,7 +17,7 @@ d88144ed77f41f97 upstream Common/Compression/Deflate.ts
 0ae8a5b43cb56764 upstream DataFetcher.ts
 e58267caa2613a5f upstream DataShare.ts
 4bd4a03bd788711b stub     DebugFloaters.ts
-7f181a7c50425d90 upstream DebugJunk.ts
+25d5848573d97a22 patched  DebugJunk.ts
 7cac9b11c0860110 upstream DefaultSaveStates.json
 e62ca3ca47f03a6e upstream DownloadUtils.ts
 4b0f608ef9fefa79 upstream Geometry.ts
@@ -52,7 +52,7 @@ fcf6c28bf2a60691 upstream SourceEngine/Materials/Material_Water.ts
 ab4beb450a5be7cc upstream SourceEngine/ParticleSystem.ts
 0c1c185894d4573f upstream SourceEngine/Sprite.ts
 be0d374ac65b77bf patched  SourceEngine/StaticDetailObject.ts
-96aae356b661f7d4 upstream SourceEngine/Studio.ts
+d6a0cf3df193a862 patched  SourceEngine/Studio.ts
 5f8c0ea72f52b3eb upstream SourceEngine/UberShader.ts
 c5fb8f5bcaf1a325 upstream SourceEngine/VMT.ts
 71d5b9cf092fa094 upstream SourceEngine/VPK.ts
