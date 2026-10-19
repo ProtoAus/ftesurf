@@ -54,11 +54,14 @@ vector lg_hudp, lg_huds;        // ...its first plot's place and size, for `line
 #define LG_LIVE  2              // ...and the live run's
 #define LGK_K   "lg_cachek"
 #define LGK_W   "lg_cachew"
-#define LGK_MAT "lg_cache"
 #define LGK_FMT 2               // RGBA16F (milk_sys.qc's MILK_FMT_RGBA16F), negated for nearest
 float lgk_ok;                   // the targets hold the layer of the key below
 float lgk_mat;                  // 1 its material is defined, -1 its program is not installed
+float lgk_matgen;               // ...and its name's generation: a renderer restart frees the material
+string lgk_matname;             // and a name drawn while it is gone stays the missing picture for good
 float lgk_flip;                 // the targets' height while drawing into them, else 0
+float lgk_next;                 // gettime(0) by which the layer is drawn again whatever the key says
+vector lgk_rt;                  // the targets' size: the screen as far as the panel's far corner
 vector lgk_vs, lgk_p, lgk_wh, lgk_r0, lgk_r1;
 float lgk_u, lgk_sz, lgk_hsz, lgk_n, lgk_plots, lgk_have, lgk_fok, lgk_font, lgk_gen;
 float lgk_v0, lgk_v1, lgk_asm, lgk_lv;
@@ -1181,39 +1184,53 @@ float() LineGraph_CacheDraw =
 		// blendfunc before the maps: after the second, it would land on the merged sub-pass,
 		// whose blend bits never reach GL (only the leader's do).
 		if (lgk_mat > 0)
-			shaderforname(LGK_MAT, strcat("{\n{\nprogram ftesurf_lgcache\nblendfunc gl_one gl_one_minus_src_alpha\nmap $rt:",
+		{
+			if (lgk_matname)
+				strunzone(lgk_matname);
+			lgk_matname = strzone(sprintf("lg_cache%g", lgk_matgen));
+			shaderforname(lgk_matname, strcat("{\n{\nprogram ftesurf_lgcache\nblendfunc gl_one gl_one_minus_src_alpha\nmap $rt:",
 			                              LGK_K, "\nmap $rt:", LGK_W, "\n}\n}\n"));
+		}
 	}
 	if (lgk_mat < 0)
 	{
 		lgk_ok = FALSE;
 		return FALSE;
 	}
+	// Drawn again at least every 2 s whatever the key says: a screenshot_mega or a capturedemo
+	// of another size draws into its own framebuffer, which the switch back cannot return to and
+	// the csprogs cannot see, so a layer drawn then would be wrong with an unchanged key.
+	if (gettime(0) >= lgk_next)
+		lgk_ok = FALSE;
 	if (!LineGraph_CacheSame(vs))
 	{
 		pad = '2 2 0';
-		lgk_flip = ps_y;
-		setproperty(VF_RT_DESTCOLOUR, LGK_K, 0 - LGK_FMT, ps);
+		lgk_rt = [min(ps_x, ceil(lgh_p_x + lgh_w) + 2), min(ps_y, ceil(lgh_p_y + lgh_h) + 2), 0];
+		lgk_flip = lgk_rt_y;
+		setproperty(VF_RT_DESTCOLOUR, LGK_K, 0 - LGK_FMT, lgk_rt);
 		drawfill(lgh_p - pad, [lgh_w, lgh_h] + pad * 2, '0 0 0', 1, 0);
 		LineGraph_HudStill();
-		setproperty(VF_RT_DESTCOLOUR, LGK_W, 0 - LGK_FMT, ps);
+		setproperty(VF_RT_DESTCOLOUR, LGK_W, 0 - LGK_FMT, lgk_rt);
 		drawfill(lgh_p - pad, [lgh_w, lgh_h] + pad * 2, '1 1 1', 1, 0);
 		LineGraph_HudStill();
 		setproperty(VF_RT_DESTCOLOUR, "");
 		lgk_flip = 0;
 		lgk_ok = TRUE;
+		lgk_next = gettime(0) + 2;
 		lgk_builds = lgk_builds + 1;
 	}
-	drawsubpic(lgh_p, [lgh_w, lgh_h], LGK_MAT, [lgh_p_x / ps_x, lgh_p_y / ps_y],
-	           [lgh_w / ps_x, lgh_h / ps_y], '1 1 1', 1, 0);
+	drawsubpic(lgh_p, [lgh_w, lgh_h], lgk_matname, [lgh_p_x / lgk_rt_x, lgh_p_y / lgk_rt_y],
+	           [lgh_w / lgk_rt_x, lgh_h / lgk_rt_y], '1 1 1', 1, 0);
 	lgk_draws = lgk_draws + 1;
 	return TRUE;
 };
 
-// After a renderer restart the targets are gone (CSQC_RendererRestarted).
+// After a renderer restart the targets and the material are gone (CSQC_RendererRestarted).
 void() LineGraph_CacheLost =
 {
 	lgk_ok = FALSE;
+	lgk_mat = 0;
+	lgk_matgen = lgk_matgen + 1;
 };
 
 void(vector scr, float have) LineGraph_Hud =
@@ -1264,7 +1281,8 @@ void(vector scr, float have) LineGraph_Hud =
 		LineGraph_HudStill();
 
 	// ---- the live run's curve, then the heads' fills, over it every frame. Plot 2's still
-	// curves now go before plot 1's heads: each is clipped to its own plot, which they keep out of.
+	// curves now go before plot 1's heads; the live head's dot is held inside its plot, but the
+	// replay's playhead dot is not, and one off its plot's range now lies over plot 2's curves.
 	if (lg_fok)
 	{
 		e = (plots == 2);
