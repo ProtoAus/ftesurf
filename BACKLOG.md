@@ -42,8 +42,8 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 ## Rewind over a failed attempt (P817): what the reviews left
 
 - Saves written before P817 carry no span verdict, and a cold load of one re-latches, so a step
-  inside its prefix is forgiven (no worse than before). Closing it needs a marker key and would
-  demote honest old saves: Lex's call. `sv_saveloc.qc` SV_SaveLoadLatch.
+  inside its prefix is forgiven (no worse than before). Left so (Lex, 19 Oct): a marker key would
+  demote honest old saves. `sv_saveloc.qc` SV_SaveLoadLatch.
 - A save cut from a live rewind is judged at the write, not at its snapshot: a step after the
   snapshot over-taints the resumed run (a warm go did the same before).
 - Engine `observe` then `join` re-runs ClientConnect (SV_CSQCForget) with no new serverdata, so
@@ -57,7 +57,7 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   the server kept nothing: memory only, the saves there are demoted and write no view.
 - A save cut from the kept attempt names that attempt's `recrid`; a cold load never adopts it
   today, and only that keeps the resumed run's stage posts and evidence keep off that id.
-- Undecided (Lex): a `!b` / `!s` in the box after a fail leaves the main-track attempt resumable.
+- A `!b` / `!s` in the box after a fail leaves the main-track attempt resumable: fine (Lex, 19 Oct).
 ## Chat panel (P821): what the review left open
 
 - `src/client/cl_chat.qc` Chat_FieldKey reads Shift/Ctrl from `ui_kmods` (cl_keys.qc), which

@@ -2,7 +2,8 @@
 
 ## P817 — after a fail, the rewind carries on your run (timed, segmented)
 
-Not installed yet (deploy line follows).
+Live 19 Oct 06:56Z in both installs and on all 12 lobbies (qwprogs 45013167, csprogs adecfe6c;
+the lobbies' .prev is 9155b799 / ea4e1a84). Lobby smoke on the 0.1.27 exe passed.
 
 - On a map whose fail puts you back in the start box (surf_dune does), press Backspace once: the
   rewind opens on the attempt you just failed. Scrub back to before the fail and press ENTER: a
