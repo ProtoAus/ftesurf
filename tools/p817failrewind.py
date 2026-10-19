@@ -101,6 +101,35 @@ def grade(sv, cl, svlog, control):
     return faults
 
 
+def grade_prof(sv, cl, control):
+    """--prof (cfg p817prof): an off-profile step in the box reaches the save; the load latches."""
+    log = (cl / "logs/p817prof.log").read_text(errors="replace")
+    faults = 0
+
+    def check(name, ok, detail):
+        nonlocal faults
+        faults += not ok
+        print(("PASS" if ok else "FAIL"), name, "--", detail, flush=True)
+
+    box = section(log, "BOX")
+    bad = [float(m.split()[4]) for m in re.findall(r'inprof:  ev "([^"]*)"', box)]
+    check("prof-step", len(bad) >= 2 and bad[-1] > bad[0], f"the client's bad count in the box {bad}")
+    saved = re.search(r"rewind: save (\d+) \(slot (\d+)\)", section(log, "S"))
+    roots = sorted((sv / f"data/saves/{MAP}").glob("@*")) or [sv / f"data/saves/{MAP}"]
+    st = state_of(roots[0] / f"save{int(saved[2]):03}" / "state.txt") if saved else {}
+    flags = int(st.get("flags", "-1"))
+    marked = flags >= 0 and bool(flags & 2048)
+    latch = re.findall(r"inprof:  key \"[^\"]*\"  badat (-?\d+)  noprofile (\d)", section(log, "LOAD"))
+    if control:
+        check("s-flags (control: unmarked)", st.get("state") == "2" and not marked, f"state {st.get('state')} flags {flags}")
+        check("load-latch (control: none)", latch and latch[-1] == ("-1", "0"), f"after the load {latch}")
+    else:
+        check("s-flags", st.get("state") == "2" and marked, f"state {st.get('state')} flags {flags} (TF_NOPROFILE 2048)")
+        check("load-latch", latch and int(latch[-1][0]) >= 0 and latch[-1][1] == "1", f"after the load badat/noprofile {latch}")
+    print(f"{faults} failed")
+    return faults
+
+
 def run(args, svroot, clroot, lobby):
     common = lambda r: ["-basedir", str(r), "-manifest", str(r / "default.fmf")]
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
@@ -114,7 +143,7 @@ def run(args, svroot, clroot, lobby):
         si = subprocess.STARTUPINFO()
         si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         si.wShowWindow = 4          # shown, not activated
-        client = subprocess.Popen([args.exe, *common(clroot), "-window", "+exec", "cfg/test/p817fail.cfg"],
+        client = subprocess.Popen([args.exe, *common(clroot), "-window", "+exec", f"cfg/test/{args.cfg}.cfg"],
                                   cwd=INSTALL, startupinfo=si, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             client.wait(timeout=180)
@@ -137,7 +166,9 @@ def main():
     ap.add_argument("--port", type=int, default=27561)
     ap.add_argument("--lobby", action="store_true")
     ap.add_argument("--control", action="store_true")
+    ap.add_argument("--prof", action="store_true", help="cfg p817prof: the start latches")
     args = ap.parse_args()
+    args.cfg = "p817prof" if args.prof else "p817fail"
     args.out.mkdir(parents=True, exist_ok=True)
     rig = args.out / time.strftime("rig-%Y%m%dT%H%M%S")
     made = []
@@ -145,12 +176,12 @@ def main():
         if args.lobby:
             sv, m = prepare(rig / "server", args.progs, [], args.port)
             made += m
-            cl, m = prepare(rig / "client", args.progs, ["p817fail"], args.port)
+            cl, m = prepare(rig / "client", args.progs, [args.cfg], args.port)
             made += m
             run(args, rig / "server", rig / "client", True)
             svlogp = rig / "server/ftesurf/logs/p817server.log"
         else:
-            sv, m = prepare(rig, args.progs, ["p817fail"], args.port)
+            sv, m = prepare(rig, args.progs, [args.cfg], args.port)
             made += m
             cl = sv
             run(args, rig, rig, False)
@@ -158,10 +189,12 @@ def main():
     finally:
         unjunction(made)
     print("rig:", rig)
-    if not (cl / "logs/p817fail.log").exists():
+    if not (cl / f"logs/{args.cfg}.log").exists():
         print("FAIL no client log")
         return 1
     svlog = svlogp.read_text(errors="replace") if svlogp.exists() else ""
+    if args.prof:
+        return grade_prof(sv, cl, args.control)
     return grade(sv, cl, svlog, args.control)
 
 

@@ -42,6 +42,8 @@ patch    826
 # Patch 814 (csprogs + lobby config): own online full-run replays recover nonce-keyed local
 # per-frame views and retain a renderer-only cache; official lobbies request opted-in HTTPS
 # journals now that the collector is live. Native permission and legacy refusal unchanged.
+# Patch 817 (qwprogs + csprogs): a fail that re-arms the run keeps its recording until the next one
+# opens, so a save or ENTER on the rewind over it resumes the run timed and segmented.
 # Patch 809 (csprogs, default.cfg): MOUSE3 is `bind MOUSE3 ent_cursor`, not hard-wired; config_menu
 # has an Entity view row. default.cfg changes: copy it to both installs.
 # Patch 811 (qwprogs + csprogs): a lobby's saves are copied into the player's install and the

@@ -39,8 +39,19 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - tools/p438view.py now points `cl_saveroot_test` at its scratch dir (its `+set cl_saveroot` only
   worked through the latch the root stat removed); not rerun since.
 
-## A rewind after a fail teleport re-armed the run closes at once (seen 19 Oct, P808's probe)
+## Rewind over a failed attempt (P817): what the reviews left
 
+- A save taken during a run has no span check of its own: a profile step or ruleset breach before
+  it is caught only if the run that loads it still holds the start latch. P817's saves compare the
+  kept attempt's latches; the plain save route and P808's live rewind save do not.
+  `sv_timer.qc` SV_TimerProfile / SV_TimerRuleset, the save writers.
+- Over the evidence-keep path (posted stages) a save's run.rec carries the abandon's flags line
+  until the resumed run's close rewrites it: it can only over-taint. No arm runs that path.
+- The client keeps a re-armed attempt's frames on any falling edge into ARMED, a `!r` too, where
+  the server kept nothing: memory only, the saves there are demoted and write no view.
+- A save cut from the kept attempt names that attempt's `recrid`; a cold load never adopts it
+  today, and only that keeps the resumed run's stage posts and evidence keep off that id.
+- Undecided (Lex): a `!b` / `!s` in the box after a fail leaves the main-track attempt resumable.
 - Sites: `cl_rewind.qc` Rewind_Frame (which close fires), `sv_timer.qc` SV_TimerArm/SV_RecDiscard.
   surf_dune's fail lands in its START box, which re-arms the run (Patch 775 does the same for a stage
   run's own box): the live line still holds the failed attempt (81 samples), BACKSPACE opens the

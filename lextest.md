@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P817 — after a fail, the rewind carries on your run (timed, segmented)
+
+Not installed yet (deploy line follows).
+
+- On a map whose fail puts you back in the start box (surf_dune does), press Backspace once: the
+  rewind opens on the attempt you just failed. Scrub back to before the fail and press ENTER: a
+  3-2-1, then the run goes on from there, timed and segmented, its Segments list up to that point.
+- Or press S there instead: that save is a timed one (loading it carries the run on, segmented),
+  not the practice placement it was.
+- A `!r` in the box keeps the failed attempt; leaving the start for a new one drops it.
+
+"Fail rewind ok / <what differs>". Verdict PENDING.
 ## P826 — a refused publish says why
 
 Live 2026-10-19 ~07:05Z: the owner ran `install_zonepub.py --upgrade` (release 189d9f08;

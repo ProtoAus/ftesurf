@@ -1,5 +1,25 @@
 # AGENT_NOTES.md
 
+## Rewind over a failed attempt (P817, 2026-10-19)
+
+- A run on the clock that re-arms (SV_TimerTryArm: a fail into its box, a walk back) keeps its
+  recording: SV_RecFailKeep runs before the arm's SV_RecDiscard, which hands its buffer or part
+  file over (rec_fa_take) -- renamed to <part>-fail.rec, or the evidence path when
+  SV_RecKeepEvidence took it. SV_RewindWriteState cuts from it when the live recorder is not the
+  snapshot's; the go or save then loads cold, as any timed save. Dropped at SV_RecOpen, at every
+  load (the rebase leaves none of its samples), at a disconnect and in SV_Shutdown.
+- The kept attempt carries its start latches (run_t_pbad / run_t_rbreach, which SV_TimerArm
+  resets): a save cut from it is marked no-profile / no-ruleset if they moved since. A timed load
+  with no latch takes one as SV_MsApply does.
+- FTEQCC SEGFAULTS, WITH NO OUTPUT, ON A FIELD READ BEFORE ITS DECLARATION (rec_rec_serial is at
+  sv_timer.qc ~2700): new recorder functions go above SV_RecOpen, not beside the fields.
+- fsize() on a FILE_READ handle reads the whole file; the keep records the byte count instead,
+  and 0 after a failed rename.
+- With the run ARMED the rewind has no confirm prompt, so a second `rewind` closes it: P808's
+  probe read that as "closes at once".
+- Rig: tools/p817failrewind.py [--lobby] [--prof] [--control]; the server runs developer 1 and
+  prints what it kept and dropped.
+
 ## Saves kept with the install (P811, 2026-10-19)
 
 - The sync is keyed by SS_Same (origin and view within 0.05), never by row or folder id; its
