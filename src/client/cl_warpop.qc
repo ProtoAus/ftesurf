@@ -726,8 +726,10 @@ float() WarpOp_Console =
 {
 	local float n;
 
-	// Patch 848: reset is `!r`, the start of the leg you are on (mid-run on a staged map, a
-	// stage restart); goto_start is the start of the run: the track's, `!m` or `!b N`.
+	// Patch 848: reset is `!r`, the start of the leg you are on (mid-run past the leg's first
+	// segment, a stage restart: SV_TimerWouldRestartSeg). goto_start is the start of the run:
+	// `!r` too, keeping its save in the box (P415) and its latched zone, except there, where it
+	// is the track's start, `!m` or `!b N`.
 	if (argv(0) == "reset")
 	{
 		if (!WarpOp_Reset(WOP_RESET))
@@ -736,16 +738,23 @@ float() WarpOp_Console =
 	}
 	if (argv(0) == "goto_start")
 	{
-		n = getstatf(STAT_FS_TIMERTRACK);     // the last armed track: 0 main, N bonus N
-		if (n > 0)
+		if (getstatf(STAT_FS_TIMERSTATE) == TS_RUNNING)
+		if (getstatf(STAT_FS_TIMERSEG) > getstatf(STAT_FS_TIMERSTARTSEG))
 		{
-			if (n > WOP_BONUSES)
-				localcmd(sprintf("cmd say \"!b %g\"\n", n));
-			else if (!WarpOp_Reset(WOP_BONUS1 + n - 1))
-				localcmd(sprintf("cmd say \"!b %g\"\n", n));
+			n = getstatf(STAT_FS_TIMERTRACK);     // 0 main, N bonus N
+			if (n > 0)
+			{
+				if (n > WOP_BONUSES)
+					localcmd(sprintf("cmd say \"!b %g\"\n", n));
+				else if (!WarpOp_Reset(WOP_BONUS1 + n - 1))
+					localcmd(sprintf("cmd say \"!b %g\"\n", n));
+			}
+			else if (!WarpOp_Reset(WOP_SPAWN))
+				localcmd("cmd zone_restart\n");
+			return TRUE;
 		}
-		else if (!WarpOp_Reset(WOP_SPAWN))
-			localcmd("cmd zone_restart\n");
+		if (!WarpOp_Reset(WOP_RESET))
+			localcmd("cmd zone_reset\n");
 		return TRUE;
 	}
 	// Patch 845: the map's spawn entity, where joining puts you, not `!m`'s start zone.

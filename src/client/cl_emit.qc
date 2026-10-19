@@ -1292,7 +1292,7 @@ string() Emit_SmokeWhy =
 // each way round, 6-11 the _b child's, 12 the embers.  env_fire_tiny's system
 // draws sequence 3 alone, so its six slots share two effects.  13 and 14 are
 // the smoke (vistasmokev1's two loops, or smoke1 twice), 15 and 16
-// env_fire_large_smoke_b's, 17-28 slots 0-11 under ftesurf_flameu.
+// env_fire_large_smoke_b's, 17-29 slots 0-12 under ftesurf_flameu and ftesurf_dotu.
 void(float cls) Emit_FlameDefine =
 {
 	local float s, seq, layer;
@@ -4062,7 +4062,7 @@ void() Emit_List =
 		else
 		{
 			// Slots 0-12 of a class are its flame and embers, 13-16 its smoke,
-			// 17-28 its flame under.
+			// 17-29 its flame and embers under.
 			tot = sm = un = 0;
 			for (k = 0; k < 4 * FL_SLOTS; k = k + 1)
 				if (em_flmask & pow(2, floor(k / FL_SLOTS)))

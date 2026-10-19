@@ -161,6 +161,7 @@
 #define STAT_FS_TIMERSPLIT  58   // ticks at the last split
 #define STAT_FS_TIMERDELTA  59   // that split minus the PB's, in ticks (signed)
 #define STAT_FS_TIMERPB     60   // this leg's personal best, in ticks; 0 = none
+#define STAT_FS_TIMERSTARTSEG 116 // Patch 848: run_t_startseg, the segment the leg began at
 
 // The save-lock list, so the menu can draw "3/7" without owning the data.
 #define STAT_FS_SAVECOUNT   61

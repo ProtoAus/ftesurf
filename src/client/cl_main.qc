@@ -706,6 +706,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	registercvar("vbsp_sprite_source", "1");
 	// Patch 847: an additive sprite behind a translucent window is drawn under it. 0: over it.
 	registercvar("vbsp_sprite_under", "1", CVAR_ARCHIVE);
+	registercvar("vbsp_sprite_under_rays", "2", CVAR_ARCHIVE);   // its traces a frame at most
 
 	/*
 	  BUILD 58 -- THE FLARE INTENSITY, and why it is a knob rather than a fix.

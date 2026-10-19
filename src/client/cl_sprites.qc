@@ -297,12 +297,15 @@ entity spr_gtracer;
   surfaces, so a glow behind a $translucent grate drew over it (surf_dune's braziers). Source
   sorts sprites with the translucent world. One with a translucent brush between it and the eye
   (spr_utracer's mask is WINDOW alone: VBSP gives those TRANSLUCENT|WINDOW) is drawn with
-  DRAWFLAG_UNDERBLEND, before them. A sprite's answer is refreshed every eighth frame.
+  DRAWFLAG_UNDERBLEND, before them. vbsp_sprite_under_rays bounds the rays a frame
+  (a glare ray measured 27 us), and a sprite is asked again only after SPR_UNDER_AGE.
 */
 #define DRAWFLAG_UNDERBLEND 0x2000      // engine Patch 847; an older engine ignores the bit
 entity spr_utracer;
+#define SPR_UNDER_AGE 0.25
 float *spr_under;                       // [SPR_MAX] the last answer, 1 = under
-float  spr_uframe, spr_under_n;         // the stagger; last frame's count drawn under
+float *spr_utime;                       // [SPR_MAX] when it was asked
+float  spr_under_n, spr_utraced;        // last frame: drawn under; rays since load
 
 /*
   QuakeC allows at most eight parameters and Sprite_Add already uses all eight,
@@ -1461,7 +1464,8 @@ void() Sprite_LoadForMap =
 	spr_n = beam_n = 0;
 	if (spr_under)
 		for (mat = 0; mat < SPR_MAX; mat = mat + 1)
-			spr_under[mat] = 0;                // Patch 847: positions are reused
+			spr_under[mat] = spr_utime[mat] = 0;   // Patch 847: positions are reused
+	spr_utraced = 0;
 
 	/*
 	  BUILD 53: forget the last map's glare answers.
@@ -2474,7 +2478,7 @@ void() Sprite_Draw =
 	local float  i, m, maxdist, drawn, dbg, mo;
 	local vector eye, fwd, vright, vpright, vpup, r, u, dd;
 	local vector a, b, c, d, side, mid;
-	local float  flags, glare, useglare, useglare_on, underon;
+	local float  flags, glare, useglare, useglare_on, underon, ub;
 	local float  g_total, g_hidden, g_fading;
 	// BUILD 58.  srcmode gates the Source dimming terms; the count they were
 	// applied to lives in the global spr_dim_n, for the reason given there.
@@ -2558,10 +2562,11 @@ void() Sprite_Draw =
 	if (underon && !spr_under)
 	{
 		spr_under = memalloc(sizeof(float) * SPR_MAX);
+		spr_utime = memalloc(sizeof(float) * SPR_MAX);
 		spr_utracer = spawn();
 		spr_utracer.hitcontentsmaski = 0x00000002i;
 	}
-	spr_uframe = spr_uframe + 1;
+	ub = cvar("vbsp_sprite_under_rays");
 	if (useglare_on)
 		Sprite_Glare();
 
@@ -2611,8 +2616,8 @@ void() Sprite_Draw =
 		// the picture happening to look the same.
 		print(sprintf("  source dimming: %s, %g sprite(s) dimmed last frame; glare rays %g\n",
 		              srcmode ? "on" : "OFF", spr_dim_n, cvar("vbsp_glare_rays")));
-		print(sprintf("  under the blended surfaces (vbsp_sprite_under %g): %g additive sprite(s) last frame\n",
-		              underon, spr_under_n));
+		print(sprintf("  under the blended surfaces (vbsp_sprite_under %g, %g rays a frame): %g additive sprite(s) last frame, %g rays since load\n",
+		              underon, cvar("vbsp_sprite_under_rays"), spr_under_n, spr_utraced));
 		for (m = 0; m < sprmat_n; m = m + 1)
 			print(sprintf("  %2g %-40s %gx%g  orient %g\n",
 			              m, sprmat_name[m], sprmat_w[m], sprmat_h[m], sprmat_orient[m]));
@@ -2708,20 +2713,6 @@ void() Sprite_Draw =
 			}
 			if (spr_add[i])
 				flags = flags | DRAWFLAG_ADD;
-			if (spr_add[i])
-			if (underon)
-			{
-				if (!((i + spr_uframe) & 7))
-				{
-					traceline(eye, spr_org[i], MOVE_NOMONSTERS, spr_utracer);
-					spr_under[i] = (trace_fraction < 1);
-				}
-				if (spr_under[i])
-				{
-					flags = flags | DRAWFLAG_UNDERBLEND;
-					spr_under_n = spr_under_n + 1;
-				}
-			}
 
 			/*
 			  BUILD 52.  An additive billboard is a light glare, so it is drawn
@@ -2746,6 +2737,28 @@ void() Sprite_Draw =
 			}
 			else
 				glare = 1;
+
+			// Patch 847: asked again after SPR_UNDER_AGE, at most `ub` rays a frame, only for an
+			// additive sprite that is drawn and roughly in view; the rest keep their answer.
+			if (spr_add[i])
+			if (underon)
+			{
+				if (ub > 0)
+				if (time - spr_utime[i] > SPR_UNDER_AGE)
+				if (normalize(dd) * fwd > 0.4)
+				{
+					traceline(eye, spr_org[i], MOVE_NOMONSTERS, spr_utracer);
+					spr_under[i] = (trace_fraction < 1);
+					spr_utime[i] = time;
+					ub = ub - 1;
+					spr_utraced = spr_utraced + 1;
+				}
+				if (spr_under[i])
+				{
+					flags = flags | DRAWFLAG_UNDERBLEND;
+					spr_under_n = spr_under_n + 1;
+				}
+			}
 
 			a = spr_org[i] - r + u;
 			b = spr_org[i] + r + u;

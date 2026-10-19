@@ -54,13 +54,13 @@ string(float i) KC_Def =
 	if (i == 17) return "delete|Delete|sl_del|mom_saveloc_remove_current|4|Saves";
 	if (i == 18) return "prev|Previous save|sl_prev|mom_saveloc_nav_prev||Saves";
 	if (i == 19) return "next|Next save|sl_next|mom_saveloc_nav_next||Saves";
-	if (i == 20) return "restart|Restart|goto_start||r|Run";
+	if (i == 20) return "restart|Restart|goto_start|||Run";
 	if (i == 21) return "respawn|Respawn|goto_spawn|say !m|m|Run";
 	if (i == 22) return "rewind|Rewind|rewind||BACKSPACE|Run";
 	if (i == 23) return "noclip|Noclip|noclip||v|Run";
 	if (i == 24) return "paint|Paint (hold)|+paint|paint||Run";     // Patch 772: unbound by default
 	if (i == 25) return "share|Share (look at a player)|share||f|Run";  // Patch 777
-	if (i == 26) return "reset|Reset stage|reset|say !r||Run";      // Patch 848
+	if (i == 26) return "reset|Reset stage|reset|say !r|r|Run";     // Patch 848: default.cfg's r
 	return "";
 };
 

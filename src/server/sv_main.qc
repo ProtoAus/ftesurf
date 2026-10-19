@@ -269,6 +269,7 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_TIMERSEG,    EV_FLOAT,  run_t_seg);
 	clientstat(STAT_FS_TIMERSEGS,   EV_FLOAT,  run_t_segs);
 	clientstat(STAT_FS_TIMERTRACK,  EV_FLOAT,  run_t_track);
+	clientstat(STAT_FS_TIMERSTARTSEG, EV_FLOAT, run_t_startseg);   // Patch 848
 	clientstat(STAT_FS_TIMERFLAGS,  EV_FLOAT,  run_t_flags);
 	clientstat(STAT_FS_TIMERSPLIT,  EV_FLOAT,  run_t_split);
 	clientstat(STAT_FS_TIMERDELTA,  EV_FLOAT,  run_t_delta);
