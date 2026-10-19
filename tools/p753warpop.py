@@ -338,7 +338,7 @@ def main():
                   'threaded: the server ran no op')
         elif a.control:
             check(len(w['prederr']) > 0, 'control: say !r corrects the prediction')
-            check(len(w2['prederr']) > 0, 'control: say !m (zone_restart) corrects it')
+            check(len(w2['prederr']) > 0, 'control: say !m corrects it')
             check(len(w3['prederr']) > 0, 'control: the held load corrects it')
         else:
             check([o for o, _ in w['client_ops']] == ['201'] and [o for o, _ in w['server_ops']] == ['201'],

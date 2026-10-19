@@ -3299,13 +3299,16 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		return;
 	}
 	if (in == "turnoff")        { t.effects = t.effects | EF_NODRAW;    return; }
-	// P844: and another class's rendermode may hide it again (None, renderamt 0).
+	// P844: and the rendermode may hide it again (None, renderamt 0), as may a window
+	// pane's; a func_brush's StartDisabled is not consulted, TurnOn being its enable.
 	if (in == "turnon")
 	{
 		t.effects = t.effects - (t.effects & EF_NODRAW);
 		t.vbsp_rmhide = FALSE;
 		if (t.classname != "func_brush")
 			SV_BrushRenderState(t);
+		else if (SV_BrushRenderMode(t) || t.vbsp_apwhide)
+			t.effects = t.effects | EF_NODRAW;
 		return;
 	}
 
