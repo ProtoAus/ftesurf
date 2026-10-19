@@ -41,10 +41,11 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Rewind over a failed attempt (P817): what the reviews left
 
-- A cold load takes its profile latch only once the client has reported (the silence rule would
-  mark it at the load): a load in the first frames after a connect or a retry keeps -1, and that
-  run's resumed span is checked for its standing state only. SV_MsApply holds for the report
-  instead. `sv_saveloc.qc` SV_SaveApplyState.
+- Saves written before P817 carry no span verdict, and a cold load of one re-latches, so a step
+  inside its prefix is forgiven (no worse than before). Closing it needs a marker key and would
+  demote honest old saves: Lex's call. `sv_saveloc.qc` SV_SaveLoadLatch.
+- A save cut from a live rewind is judged at the write, not at its snapshot: a step after the
+  snapshot over-taints the resumed run (a warm go did the same before).
 - Over the evidence-keep path (posted stages) a save's run.rec carries the abandon's flags line
   until the resumed run's close rewrites it: it can only over-taint. No arm runs that path.
 - The client keeps a re-armed attempt's frames on any falling edge into ARMED, a `!r` too, where

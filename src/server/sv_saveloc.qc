@@ -1654,6 +1654,25 @@ float sl_voided;
 */
 float sl_mapsame;
 
+// Patch 817: a running state that did not continue its own recording takes its own
+// start latches, as SV_MsApply does -- the edict's are another run's, or a fresh
+// edict's 0.  The prefix's verdict is in the save's flags (SV_SaveWriteState,
+// SV_RewindWriteState).  With no profile report since this connection's serverdata
+// (every retry: map_restart), CSQC's counter restarted at 0 with it, which is then the
+// exact baseline; latching through SV_TimerProfile there would fire the silence rule.
+void(entity e) SV_SaveLoadLatch =
+{
+	e.run_t_rbreach = -1;
+	SV_TimerRuleset(e, TRUE);
+	if (e.run_t_pev != 0)
+	{
+		e.run_t_pbad = -1;
+		SV_TimerProfile(e, TRUE);
+	}
+	else
+		e.run_t_pbad = 0;
+};
+
 float(entity e, float id, float retry) SV_SaveApplyState =
 {
 	local filestream f;
@@ -2262,16 +2281,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (rec_rewind_cold)
 		{
 			SV_RecPause(e, retry ? "retry" : "load", ticks);
-			// Patch 817: and its own start latches, as SV_MsApply takes them -- the
-			// edict's are another run's, or a fresh edict's 0.  The prefix's verdict
-			// is in the save's flags (SV_SaveWriteState, SV_RewindWriteState).  The
-			// profile waits for the client's first report: the silence rule would
-			// mark the run for good.
-			e.run_t_rbreach = -1;
-			SV_TimerRuleset(e, TRUE);
-			e.run_t_pbad = -1;
-			if (e.run_t_pev != 0)
-				SV_TimerProfile(e, TRUE);
+			SV_SaveLoadLatch(e);        // Patch 817
 		}
 		if (retry)
 			SV_RecPut(e, sprintf("retry %d", ticks));
@@ -2464,7 +2474,11 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 			e.run_t_cpzone = zs_cp;
 		}
 		else
+		{
 			SV_RecDiscard(e);
+			if (st == TS_RUNNING)
+				SV_SaveLoadLatch(e);    // Patch 817: running on, unrecorded
+		}
 		// Patch 426: recording stopped with nothing live to discard, so no end
 		// handler cleared the hold -- and the client signs this edge with the
 		// RUNTICKS it now sees.  A hold with those ticks would take that

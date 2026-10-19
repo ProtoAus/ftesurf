@@ -130,6 +130,58 @@ def grade_prof(sv, cl, control):
     return faults
 
 
+def grade_prof2(sv, cl, control):
+    """--prof2 (cfg p817prof2): a plain save after an off-profile step mid-run carries it."""
+    log = (cl / "logs/p817prof2.log").read_text(errors="replace")
+    faults = 0
+
+    def check(name, ok, detail):
+        nonlocal faults
+        faults += not ok
+        print(("PASS" if ok else "FAIL"), name, "--", detail, flush=True)
+
+    sv_ = section(log, "SAVE")
+    saved = re.search(r"save (\d+) \(slot (\d+)\)", sv_)
+    ts = timer(sv_)
+    check("ran", saved is not None and ts and ts["state"] == "running", f"save line {saved[0] if saved else None}; {ts}")
+    roots = sorted((sv / f"data/saves/{MAP}").glob("@*")) or [sv / f"data/saves/{MAP}"]
+    st = state_of(roots[0] / f"save{int(saved[2]):03}" / "state.txt") if saved else {}
+    flags = int(st.get("flags", "-1"))
+    marked = flags >= 0 and bool(flags & 2048)
+    after = re.findall(r"inprof:  key \"[^\"]*\"  badat (-?\d+)  noprofile (\d)", section(log, "LOAD"))
+    tl = timer(section(log, "LOAD"))
+    check("loaded", tl and tl["state"] == "running" and tl["class"] == "segmented", f"after the load {tl}")
+    if control:
+        check("save-flags (control: unmarked)", st.get("state") == "2" and not marked, f"state {st.get('state')} flags {flags}")
+        check("resumed (control: clean)", after and after[-1][1] == "0", f"after the load {after}")
+    else:
+        check("save-flags", st.get("state") == "2" and marked, f"state {st.get('state')} flags {flags} (TF_NOPROFILE 2048)")
+        check("resumed", after and after[-1][1] == "1" and int(after[-1][0]) >= 0, f"after the load badat/noprofile {after}")
+    print(f"{faults} failed")
+    return faults
+
+
+def grade_retry(sv, cl, control):
+    """--retry (cfg p817retry): the restored run's profile latch is 0, not -1."""
+    log = (cl / "logs/p817retry.log").read_text(errors="replace")
+    faults = 0
+
+    def check(name, ok, detail):
+        nonlocal faults
+        faults += not ok
+        print(("PASS" if ok else "FAIL"), name, "--", detail, flush=True)
+
+    tb, ta = timer(section(log, "BEFORE")), timer(section(log, "AFTER"))
+    restored = "run restored" in section(log, "AFTER") or "retry -- run restored" in log
+    check("retried", tb and tb["state"] == "running" and ta and ta["state"] == "running" and restored,
+          f"before {tb}; after {ta}; restored {restored}")
+    latch = re.findall(r"inprof:  key \"[^\"]*\"  badat (-?\d+)  noprofile (\d)", section(log, "AFTER"))
+    want = "-1" if control else "0"
+    check(f"latch{' (control: -1)' if control else ''}", latch and latch[-1][0] == want, f"after the retry badat/noprofile {latch}")
+    print(f"{faults} failed")
+    return faults
+
+
 def run(args, svroot, clroot, lobby):
     common = lambda r: ["-basedir", str(r), "-manifest", str(r / "default.fmf")]
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
@@ -167,8 +219,10 @@ def main():
     ap.add_argument("--lobby", action="store_true")
     ap.add_argument("--control", action="store_true")
     ap.add_argument("--prof", action="store_true", help="cfg p817prof: the start latches")
+    ap.add_argument("--prof2", action="store_true", help="cfg p817prof2: a plain save carries its verdict")
+    ap.add_argument("--retry", action="store_true", help="cfg p817retry: a retry's profile baseline")
     args = ap.parse_args()
-    args.cfg = "p817prof" if args.prof else "p817fail"
+    args.cfg = "p817retry" if args.retry else "p817prof2" if args.prof2 else ("p817prof" if args.prof else "p817fail")
     args.out.mkdir(parents=True, exist_ok=True)
     rig = args.out / time.strftime("rig-%Y%m%dT%H%M%S")
     made = []
@@ -193,6 +247,10 @@ def main():
         print("FAIL no client log")
         return 1
     svlog = svlogp.read_text(errors="replace") if svlogp.exists() else ""
+    if args.retry:
+        return grade_retry(sv, cl, args.control)
+    if args.prof2:
+        return grade_prof2(sv, cl, args.control)
     if args.prof:
         return grade_prof(sv, cl, args.control)
     return grade(sv, cl, svlog, args.control)
