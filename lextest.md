@@ -36,8 +36,9 @@ Checked on lobby 27610: surf_apollo runs 10000. Record: tools/lobby-engine-p841-
 - Zone editor in a game you host: Map properties > Speed cap > Apply > Save settings, then Save zones.
   The save line says "speed cap N", and the Publish dialog says "Speed cap N goes with it". After a
   publish lands, `sv_maxvelocity` on that lobby reads N from its next map load.
-- The publish service's own check (an out-of-range cap refused by name) needs your sudo:
-  `install_zonepub.py --upgrade` (dry run as proto first). Without it the editor still never sends one.
+- The publish service refuses an out-of-range cap by name: you ran `install_zonepub.py --upgrade`,
+  release 17c03829 live ~18:07Z 19 Oct (zonepub.py 1940a3bd = the commit's; role and the two
+  publications kept; 189d9f08 stays on disk as the way back).
 
 "Feels right / <map>: <what is off>". Verdict PENDING.
 
