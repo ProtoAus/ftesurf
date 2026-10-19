@@ -2,7 +2,9 @@
 
 ## P826 — a refused publish says why
 
-DEPLOYED_P826
+Live 2026-10-19 ~07:05Z: the owner ran `install_zonepub.py --upgrade` (release 189d9f08;
+d9bf33b4 kept as the way back). Public HTTPS: a refusal answers 200 with ok=0 and its reason;
+the role and the live surf_null publication are untouched. No game deploy was needed.
 
 - Publishing without the role, from an old game, or too often now names the reason in the
   dialog ("This Steam account is not a zone admin", "Update your game before uploading", ...)
