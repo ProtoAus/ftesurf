@@ -72,6 +72,19 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
   (+0.41 ms; its curves are native already), and ClipSkyPolygon (~7.5% of his frame on voyager;
   clipping whole sky polygons instead of fan triangles gives the same bounds mathematically, not
   bit for bit, so it needs a picture A/B).
+- **After 836, priced again in Lex's setup (19 Oct, one process, 4 pairs each):** run graph +0.39 ms
+  of QC (+0.50 frame), board lines +0.555 (they also show the graph), key hints +0.13, trainer +0.08,
+  names +0.07. A clean profile window (board lines on vs off, two processes) splits it, in
+  profiler-inflated us a frame: the graph ~330 (LineGraph_Curve's native strips 140, LineGraph_Hud
+  67, _sui_round_draw 55 -- each graph dot is two rounded boxes of 7 drawsubpic --, HUD_TextDraw 43);
+  Line_Follow 53 (9,086 QC instructions), Line_Marks 35, Line_Find 31 (a binary search, ~48 calls).
+  The exact QC cuts left are ~0.1 ms together. The graph's cost is drawing every frame; caching it
+  (an image redrawn when it changes, or its strips' vertices) or cheaper dots/outlines all move
+  pixels, so they are Lex's call.
+- **`profile_csqc` only measures its first window.** Enable, then dumps 3 s apart, at voyager's
+  spawn (19 Oct): CSQC_UpdateView's instruction count was 189,336, then 441, 147, 294 (it runs
+  ~147 a frame), with or without the no-reset argument and with `pr_enable_profiling 1`. So any
+  window after the first holds one to three frames. Until fixed: one clean window per process.
 - **HL2 PrepareFrame.** Patch 831's clip flags took it 0.87 -> 0.72 ms at demise's spawn. Left:
   every static prop is still visited every view (2,350 on demise, twice with a sky camera) and
   each visible one copied into a scene entity (mod_vbsp.c, the prop loop); BE_GenModelBatches
