@@ -2072,6 +2072,15 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Anti-cheat and run evidence
 
+- **Held-clock tests need independent origins and a matching sidecar control.**
+  The old suite stayed green with both resume/retry frozen-state resets removed.
+  Its first-origin hold-floor check acted, but disabling only the post-session
+  floor still passed. New cases put a smaller cumulative exclusion after each
+  restore and a hold before the new session's first input. Test an injected view
+  hold against an otherwise matching pair too: an already mismatched pair faults
+  even if the parser silently ignores that line. These are regression controls,
+  not new reader semantics or proof of restored/final-clock eligibility.
+
 - **Verifier observations need stable source bytes (Patch 599).** Fresh SHA-256
   before runner admission must match a known-current filing digest. Fresh reads
   after runner/row/stage checks must match the admitted bytes; evidence requires

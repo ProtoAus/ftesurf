@@ -2217,6 +2217,11 @@ def case_angle_hold_clock():
         check(any("sidecar" in x or "does not describe" in x for x in f),
               "%s sidecar rotation still faults with honest server clock edges" % what)
     injected = view[:4] + ["hold 999999 999999"] + view[4:]
+    f, _, report = run(L, view=injected, report=True)
+    check(any("3 columns, expected 6" in x for x in f),
+          "a sidecar hold is a format fault even with an otherwise matching clock")
+    check("angle_rule     tight" in report,
+          "rejecting a sidecar hold does not suppress the remaining angle comparison")
     f, _ = run(missing, view=injected)
     check(any("sidecar" in x for x in f),
           "a sidecar-supplied edge cannot repair the authoritative clock")
@@ -2326,6 +2331,44 @@ def case_integer_tokens():
             check(any(kind in x for x in faults),
                   "%s field %d rejects malformed integer %s without a reader crash"
                   % (kind, pos, ascii(token[:16])))
+
+
+def case_angle_hold_restore_boundaries():
+    # Frozen ticks belong to a timer origin, not to the whole file. Keep the
+    # raw mover counter continuous but start a smaller total after each restore.
+    for kind in ("resume", "retry"):
+        lines, _ = held_clock_pair(holds=((150, 73), (350, 13)))
+        out, n = [], 0
+        for line in lines:
+            fields = line.split()
+            if fields[0] == "in":
+                if n == 300:
+                    out.append("resume slot 300" if kind == "resume" else "retry 300")
+                n += 1
+            elif fields[0] == "hold" and n > 300:
+                fields[2] = "13"
+                line = " ".join(fields)
+            out.append(line)
+        faults, _ = run(out)
+        check(not faults, "%s resets frozen totals before the next hold" % kind)
+        if faults:
+            print("        got: %s" % faults)
+
+    # No preceding input/hold in this session can lend its floor to this check.
+    lines, _ = held_clock_pair(holds=(), sessions=((299, 2000, "drop"),))
+    lines = head(lines, "flags", 16385)       # TF_CHEAT | TF_MULTISESSION
+    session = next(i for i, line in enumerate(lines) if line.startswith("session "))
+    first = next(i for i in range(session + 1, len(lines))
+                 if lines[i].startswith("in "))
+    lines.insert(first, "hold 2000 0")
+    faults, _ = run(lines)
+    check(not faults, "a first hold at the new session horizon is clean")
+    if faults:
+        print("        got: %s" % faults)
+    lines[first] = "hold 1999 0"
+    faults, _ = run(lines)
+    check(any("'hold' is below the trace's own horizon" in f for f in faults),
+          "a hold before the first session input still obeys that session's horizon")
 
 
 def case_angle_hold_conversion():
@@ -2450,7 +2493,8 @@ def main():
                case_angle_tight_rule_abstains_where_the_epoch_moves,
                case_angle_tight_rule_is_keyed_on_the_source_not_the_version,
                case_angle_hold_clock, case_angle_hold_legacy, case_angle_hold_origins,
-               case_angle_hold_shape, case_angle_hold_conversion,
+               case_angle_hold_shape, case_angle_hold_restore_boundaries,
+               case_angle_hold_conversion,
                case_angle_initial_origin, case_angle_initial_restore, case_integer_tokens,
                case_view_retry_history,
                case_view_restore_history, case_view_resume_slot_history,

@@ -154,9 +154,6 @@ Fixed items are removed; remaining reader/verifier contracts need acting control
 - Site: engine `sv_ccmds.c` pm_verify's record dispatch. No `hold` branch: a held,
   finished file gets HOLD reading like a tick mismatch, not a REFUSE that names the hold.
   No false PASS is possible (frozen ticks fail the comparison) and holds are practice.
-- Site: `tools/test_reccheck.py`. The resume and retry resets are not exercised (both
-  deleted still passes), and the injected-hold sidecar case passes whatever the view
-  parser does with the line.
 
 ## Frame budget: what Patch 782 left out
 
