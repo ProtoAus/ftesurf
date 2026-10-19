@@ -17,8 +17,6 @@ b7c29da0), menu.dat 15a24f21. Publishing itself is not live until the Pi service
 
 "Works / <what you saw: map, the message, what the lobby showed>". Verdict PENDING.
 
-## P814 — own online replay uses local per-frame view (pending deployment)
-
 ## P814 — own online replay uses local per-frame view (deployed; human check pending)
 
 Both Windows installs have the verified P814 programs. All 12 lobbies restarted
@@ -38,8 +36,16 @@ settings were not changed. This is deployment evidence, NOT a human acceptance.
   public finish. The operator must separately verify its signed HTTPS ACK and
   matching private file. Generic "Upload completed" alone is not that check.
 
-"Own replay has per-frame view / <what differed>". Verdict PENDING. Synthetic
-viewer controls pass; no human or real raw-journal acceptance claimed yet.
+Owner-reported 2026-10-19: a genuine 21.920 s finish reported journal HTTP stored /
+digest acknowledged and own replay recovered the staged per-frame view. Independent
+server-side checks verified the signature, expected server endpoint, kept journal,
+matching HID/view digests and lengths, and all three 2,192-tick totals; recording,
+view and journal readers have zero faults. This closes real collection acceptance,
+not calibration or attestation. No personal permission was changed by the operator.
+
+Still PENDING: actual camera/key-display visual confirmation, and the cache after
+leaving/rejoining the map. The console's recovery message is not a visual pass.
+"Own replay camera and keys look right / <what differed>".
 
 ## P813 — no more dead stops on ramps (mover 8)
 
