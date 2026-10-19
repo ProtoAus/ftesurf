@@ -1,5 +1,48 @@
 # lextest.md — things waiting on a human
 
+## P820 — demo playback: "successful only" on the bar, and imported demos' failed stages
+
+Both installs and all 12 lobbies since 2026-10-19T04:51Z (csprogs 74fbeba9; `.prev` 100068b0).
+Restart the game.
+
+- Open a Momentum or KSF demo of a staged map where the player fell and went again (on
+  surf_dune 16 of the 17 main imports here do). The bar marks the failed attempts in yellow.
+- Click **successful only (N failed)** at the right of the bar's bottom row: the failed
+  attempts' lines go, and playback jumps over them, landing half a second before the attempt
+  that worked. Click again to see everything. Your own demos work the same, from the same chip.
+- hud_edit > Run lines > Demo attempts still sets the line part on its own; the chip is lit
+  when either part is on.
+
+"Demo filter ok", or the demo and stage where a good attempt was hidden or a fail stayed.
+Verdict PENDING.
+
+## P819 — lobby maps run an hour, !extend adds an hour, the first player in gets a full hour
+
+All 12 lobbies since 2026-10-19T04:51Z (qwprogs 234261dd, lobby cfgs lobby_cycle 3600 and
+lobby_extend_time 3600, backups `*.pre819-20261019T045018Z`).
+
+- Join an empty lobby: `!timeleft` (or the clock on the HUD) reads about 1:00:00, whatever was
+  left when it emptied.
+- `!extend`, or Extend on the end-of-map ballot, adds 60 minutes (two per map, as before).
+- If you are alone and reconnect, the hour starts again: that is "first joins an empty
+  server" taken literally. Say if it should wait until the lobby has been empty for a while.
+
+"Clock ok", or what the clock read and when. Verdict PENDING.
+
+## P818 — surf_view: red resets, yellow clip, blue ramps
+
+Both installs since 2026-10-19T04:55Z (exe f49207dd = git-7496-patch-818-0-g306a6304d; `.prev`
+219c737c). Client only, so it works on the lobbies too. Restart the game.
+
+- `surf_view` on any surf map. Blue: faces steeper than 45 degrees you can surf, invisible
+  clip ramps included. Red: teleport (reset) trigger volumes. Yellow: the other faces of clip
+  and invisible brushes. Nothing else is coloured.
+- What changed from before: the hidden backs of ramps and the map's invisible outer shell are
+  no longer yellow (on surf_dune the spawn view was yellow edge to edge), and ramps are no
+  longer the teleports' red. `surf_view_fill` (0.25) sets how dense the stipple is.
+
+"surf_view ok", or the map and the spot that is the wrong colour. Verdict PENDING.
+
 ## P815 — Publish saved: your zones on the lobbies, by themselves
 
 Both installs and all 12 lobbies 2026-10-19T03:44Z: qwprogs f08f6fc1, csprogs 100068b0 (.prev
