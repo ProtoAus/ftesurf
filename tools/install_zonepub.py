@@ -142,19 +142,29 @@ WantedBy=multi-user.target
     return unit.replace('Restart=on-failure\n', entries + 'Restart=on-failure\n')
 
 
+def parse_unit(text):
+    release = re.search(r'^WorkingDirectory=(\S+)$', text, re.M)
+    rw = re.search(r'^ReadWritePaths=(.*)$', text, re.M)
+    if not release or not rw: raise RuntimeError('The installed unit is not one this installer wrote')
+    env = {k: v.replace('\\"', '"').replace('\\\\', '\\')
+           for k, v in re.findall(r'^Environment="([A-Z_]+)=(.*)"$', text, re.M)}
+    return release.group(1), env, rw.group(1).split(' ')
+
+
 def upgraded_unit(old, new_commit):
-    """P826: the installed unit with only its release swapped -- WorkingDirectory, SURFD_TOOLS and
-    ZONEPUB_SOURCE; everything else (games, publish dirs, sandbox) stays as installed."""
+    """P826: only a unit this installer wrote, byte for byte, with only its release swapped
+    (WorkingDirectory, SURFD_TOOLS, ZONEPUB_SOURCE). A hand-edited unit is refused, not carried."""
     root = ROOT.as_posix()
-    m = re.search(r'^WorkingDirectory=%s/([0-9a-f]{40})$' % re.escape(root), old, re.M)
+    release, env, rw = parse_unit(old)
+    m = re.fullmatch(re.escape(root) + r'/([0-9a-f]{40})', release)
     if not m: raise RuntimeError('The installed unit names no release under ' + root)
     cur = m.group(1)
     if cur == new_commit: raise RuntimeError('That release is already the installed one')
-    if old.count('Environment="ZONEPUB_SOURCE=%s"\n' % cur) != 1: raise RuntimeError('The installed unit does not name its source once')
-    new = old.replace('%s/%s' % (root, cur), '%s/%s' % (root, new_commit)).replace('ZONEPUB_SOURCE=' + cur, 'ZONEPUB_SOURCE=' + new_commit)
-    if sum(1 for x, y in zip(old.splitlines(), new.splitlines()) if x != y) != 3:
-        raise RuntimeError('Unexpected unit shape; inspect it before upgrading')
-    return cur, new
+    if (unit_text(release, env, rw) != old or env.get('ZONEPUB_SOURCE') != cur
+            or env.get('SURFD_TOOLS') != release + '/tools' or old.count(release) != 2):
+        raise RuntimeError('The installed unit is not exactly what this installer writes; inspect it first')
+    new_release = root + '/' + new_commit
+    return cur, unit_text(new_release, dict(env, SURFD_TOOLS=new_release + '/tools', ZONEPUB_SOURCE=new_commit), rw)
 
 
 def healthy(release, commit, url):
@@ -179,10 +189,17 @@ def upgrade(a):
     old=UNIT.read_text()
     cur,new=upgraded_unit(old,a.commit)
     release=ROOT/a.commit
-    if release.exists() or release.is_symlink(): raise RuntimeError('That release directory already exists')
+    if release.exists() or release.is_symlink():
+        raise RuntimeError('%s already exists (a failed upgrade leaves it after the unit swap): inspect it, '
+                           'then remove it as root to retry' % release)
+    # The way back must exist, be what is running, and the unit on disk be what systemd runs.
+    if (ROOT/cur).is_symlink() or not (ROOT/cur).is_dir(): raise RuntimeError('The installed release is missing; no way back')
+    if run('/usr/bin/systemctl','show','--value','--property=NeedDaemonReload','ftesurf-zonepub.service').stdout.strip()!=b'no':
+        raise RuntimeError('The unit on disk has edits systemd has not loaded; inspect it first')
     if run('/usr/bin/systemctl','show','--value','--property=ActiveState','ftesurf-zonepub.service').stdout.decode().strip()!='active':
         raise RuntimeError('The installed service is not running; inspect it before upgrading')
     check_imports(blobs)
+    service_witness(ROOT/cur)
     probe_app(cur)                  # the starting point answers as the release its unit names
     print('Preflight: clean source; installed release %s answers; state, grants and nginx are kept' % cur[:12])
     if not a.apply:
@@ -190,19 +207,27 @@ def upgrade(a):
         return
     if os.geteuid()!=0: raise RuntimeError('Owner sudo/root is required for --apply')
     release.mkdir(mode=0o755)
-    for dest,body in blobs.items():
-        p=release/dest;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(body);p.chmod(0o644)
-    (release/'SOURCE.json').write_text(json.dumps(dict(commit=a.commit,files={k:sha(v) for k,v in blobs.items()}),indent=2)+'\n')
-    # The schema is CREATE ... IF NOT EXISTS: a release's new tables, nothing else.
-    run('/usr/sbin/runuser','-u','proto','--','/usr/bin/python3',str(release/'zonepub.py'),'--store',str(STATE/'zones.sqlite3'),'init')
+    try:
+        for dest,body in blobs.items():
+            p=release/dest;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(body);p.chmod(0o644)
+        (release/'SOURCE.json').write_text(json.dumps(dict(commit=a.commit,files={k:sha(v) for k,v in blobs.items()}),indent=2)+'\n')
+        # The schema is CREATE ... IF NOT EXISTS: a release's new tables, nothing else.
+        run('/usr/sbin/runuser','-u','proto','--','/usr/bin/python3',str(release/'zonepub.py'),'--store',str(STATE/'zones.sqlite3'),'init')
+    except BaseException:
+        shutil.rmtree(release)      # made by this run a moment ago, before the service saw it
+        raise
     def put(text):
         tmp=UNIT.with_name(UNIT.name+'.upgrade-tmp'); tmp.write_text(text); tmp.chmod(0o644); os.replace(tmp,UNIT)
-        run('/usr/bin/systemctl','daemon-reload'); run('/usr/bin/systemctl','restart','ftesurf-zonepub.service')
-    put(new)
+        run('/usr/bin/systemctl','daemon-reload')
+        # A release that dies at boot can spend the start limit; a manual restart is refused then.
+        subprocess.run(['/usr/bin/systemctl','reset-failed','ftesurf-zonepub.service'],capture_output=True,timeout=30)
+        run('/usr/bin/systemctl','restart','ftesurf-zonepub.service')
     try:
+        put(new)
         healthy(release,a.commit,'http://127.0.0.1:8087/api/zones/challenge')
         healthy(release,a.commit,'https://play.proto.bar/api/zones/challenge')
-    except Exception:
+    except BaseException:           # Ctrl-C and a timed-out restart too
+        print('Upgrade failed; putting release %s back' % cur[:12])
         put(old)
         healthy(ROOT/cur,cur,'http://127.0.0.1:8087/api/zones/challenge')
         print('Upgrade failed: release %s is serving again; %s is kept for inspection' % (cur[:12], release))

@@ -320,7 +320,7 @@ string(float code) ZonePub_Refused =
 	if (code == 409) return "The confirmation expired or the saved file changed. Try again.";
 	if (code == 429) return "Too many uploads for now. Try again later.";
 	if (code == 400 || code == 413) return "The zone service refused this file.";
-	if (code == 500) return "Accepted, but the lobbies' copies could not be written. Ask an operator to look.";
+	if (code == 500) return "The zone service failed on this upload. Ask an operator to look.";
 	return "Zone uploads are unavailable right now; your saved file is unchanged";
 };
 

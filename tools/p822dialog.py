@@ -16,8 +16,8 @@ own window (p615link.Keys), which reach the engine as a device's.
     (the draft's zones are the saved file's bytes, its nonce the one issued)
   5 OK by command closes it
   6 reopened, a real MOUSE1 press signs and posts (published=1)      shot p822_published
-  7 reopened, the service refuses the challenge: Not published       shot p822_refused
-    and a real Esc closes it
+  7 reopened, the service refuses the challenge (P826: 200, ok=0): its reason is shown,
+    shot p822_refused, a real Esc closes it; 7b the same as a bare 403 is worded by code
   8 reopened, look mode (`zone_edit mouse`) cancels it and a real Enter posts nothing
 Each step grades the client's own lines and the bodies the service received.
 """
@@ -78,8 +78,10 @@ class Service:
                 if kind == 'challenge':
                     req = json.loads(body)
                     if svc.refuse_next:
-                        svc.refuse_next = False
-                        out, code = {'ok': 0, 'error': 'Not a zone admin'}, 403
+                        old, svc.refuse_next = svc.refuse_next == 'old', False
+                        # P826: 200 with ok=0 and the reason; a pre-P826 service sent a bare 403.
+                        out = {'ok': 0, 'error': 'This Steam account is not a zone admin', 'status': 403}
+                        code = 403 if old else 200
                     else:
                         n = secrets.token_hex(16); svc.nonces.append(n)
                         out, code = {'ok': 1, 'nonce': n, 'map': req['map'], 'sha': req['sha']}, 200
@@ -232,12 +234,17 @@ def main():
         # 7
         svc.refuse_next = True
         cl.send('zone_edit press ze_upload')
-        check(maybe(r'upload answered: Refused: update the game, link your Steam account'),
-              '7 a 403 refusal is answered in words (the reply body never reaches QC)')
+        check(maybe(r'upload answered: This Steam account is not a zone admin'),
+              '7 a refusal (200, ok=0) shows the service\'s own reason')
         page(4)
         check(shot('p822_refused'), '7 the Not published page is on screen')
         keys.press('esc')
         check(maybe(r'publish dialog closed'), '7 a real Esc closes it')
+        svc.refuse_next = 'old'
+        cl.send('zone_edit press ze_upload')
+        check(maybe(r'upload answered: Refused: update the game, link your Steam account'),
+              '7b a pre-P826 bare 403 (no body reaches QC) is worded from its code')
+        page(4); keys.press('esc'); maybe(r'publish dialog closed')
         # 8 (review F1): a dialog the editor stops showing is cancelled, not left armed
         n2 = len(svc.drafts())
         cl.send('zone_edit press ze_upload'); wait(r'publish dialog waiting'); page(2)

@@ -77,6 +77,10 @@ class Upgrade(unittest.TestCase):
                     a+'Environment="ZONEPUB_SOURCE='+'a'*40+'"\n'):
             with self.assertRaises(RuntimeError):i.upgraded_unit(bad,'b'*40)
         with self.assertRaises(RuntimeError):i.upgraded_unit(a,'a'*40)
+    def test_upgrade_refuses_a_hand_edited_unit(self):
+        a=self.unit('a'*40); rel=i.ROOT.as_posix()+'/'+'a'*40
+        for bad in (a.replace('User=proto','User=root'), a.replace('ReadWritePaths=/s','ReadWritePaths='+rel+' /s')):
+            with self.assertRaises(RuntimeError):i.upgraded_unit(bad,'b'*40)
 
 
 if __name__=='__main__':unittest.main()
