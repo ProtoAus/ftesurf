@@ -1,5 +1,46 @@
 # lextest.md — things waiting on a human
 
+## P853 — tier completion filtered All / Surf / Bhop
+
+Live 2026-10-19 (UTC): surfd 02ed71c2 (20:44Z), csprogs d28a06aa on the 12 lobbies and both installs.
+
+- Website: open a player (Players, or your own) -> "Maps finished, by difficulty" has All / Surf / Bhop
+  with each one's done / total; pick Bhop and click a tier: only bhop maps. The link keeps it (`&cm=`).
+- In game: P (Player) -> your Stats, or anyone's: the same three chips over the bars; pick one and
+  click a tier bar: "TIER 3 BHOP MAPS". `hud_player kind bhop` does the same from the console.
+
+"Works / <what looked wrong>". Verdict PENDING.
+
+## P852 — the download page leads with the launcher
+
+Live 2026-10-19 20:05Z (UTC) on proto.bar/ftesurf (0.1.28's page re-rendered). The two launcher
+downloads now save as `ftesurf-launcher.exe` / `ftesurf-launcher` (R2 header), the name the game's
+"restart to update" looks for.
+
+- Open https://proto.bar/ftesurf/ (refresh): the buttons are the launchers, "Full package: Windows ·
+  Linux" under them, no ftesurf.bat or "Existing alpha installs" text.
+- Click Download for Windows: the browser should save `ftesurf-launcher.exe` (not
+  `ftesurf-launcher-0.1.28.exe`). Run it from an EMPTY folder: it asks "Download World of Surf?" and
+  installs into that folder (it installs wherever it sits, so not in Downloads).
+
+"Page ok / <what to change>". Verdict PENDING.
+
+## P850 — full water costs less (surf_boreas save 006)
+
+Live 2026-10-19 19:57Z (UTC): client exe fa31c2ee + hl2 plugin 1829790d in both installs
+(.prev 775a1956 / 2b60d9c3). Rig, your cfg, 1600x900: 8.86 -> 4.14 ms a frame at the save; the
+installed build read 3.86 ms there with the defaults.
+
+- Load save 006 with full reflections and dump `r_budget` again: "3D sky" should be gone and
+  "Portals & reflections" smaller. `r_viewstats` (twice, a second apart) prints views, 3D skies
+  drawn/skipped and props passed over.
+- The picture should be the same as before. `r_skyroomneed 0` and `r_nestedents 0` bring the old
+  behaviour back live, to compare.
+- Anywhere the 3D sky now goes missing (a black or frozen patch where sky was, through a window,
+  a door or in a reflection): say the map and spot, and whether `r_skyroomneed 0` fixes it.
+
+"fps ok / looks the same / <what changed>". Verdict PENDING.
+
 ## P840 — the unranked line says which setting; slow-motion runs are caught
 
 Live 2026-10-19 (UTC): csprogs 2f86a702 / qwprogs babf2b9b on both installs and all 12

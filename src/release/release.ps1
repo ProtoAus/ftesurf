@@ -219,8 +219,8 @@ $ShipRootFiles = @(
     # Its third-party notices are THIRD-PARTY.txt, generated below.
     'fteplug_ui_imgui_x64.dll'
     'default.fmf'            # carries the 66.667 Hz / 15 ms tick constants
-    'ftesurf.bat'            # sets the CWD FTE takes basedir from; seeds fs_addons.txt
-    'ftesurf_debug.bat'
+    # P852: no ftesurf.bat / ftesurf_debug.bat. ftesurf-launcher.exe (staged below)
+    # starts the game with the install as its CWD, and fs_addons.txt ships generated.
     'LICENSE'                # GPLv2. Required alongside a redistributed binary.
 )
 $ShipGameFiles = @(
@@ -1047,24 +1047,6 @@ foreach ($b in $skewSet) {
     }
 }
 
-# Normalise the launchers to CRLF in the STAGE (never in the working tree).
-#
-# .gitattributes declares `*.bat text eol=crlf`, so a fresh clone gets CRLF --
-# but git will not fix a working-tree copy that is already LF: it normalises on
-# add, LF normalises to LF, and `git status` stays clean. Both launchers in this
-# tree are LF-only for that reason, so the archive would ship whatever this one
-# machine happens to hold rather than what the repository declares.
-#
-# Measured on Windows 11 build 26100: cmd.exe runs the LF launcher correctly --
-# multi-line if/else, goto, and nested for/if all behave -- so this is not a
-# live break, and the .gitattributes warning does not reproduce here. It is
-# removing a "works on mine" dependency from the shipped artifact, which is the
-# reason that attribute exists at all.
-foreach ($b in @(Get-ChildItem -LiteralPath $StageDir -Filter '*.bat' -File -Recurse)) {
-    $t = [System.IO.File]::ReadAllText($b.FullName) -replace "`r`n", "`n" -replace "`n", "`r`n"
-    [System.IO.File]::WriteAllText($b.FullName, $t, (New-Object System.Text.ASCIIEncoding))
-}
-
 # =============================================================================
 #  SHIP fs_addons.txt, GENERATED FROM THE .default MASTER.
 #
@@ -1162,14 +1144,12 @@ your sensitivity first.  A fresh install has no ftesurf.cfg.
     Both CS:GO Source 1 layouts are found automatically. Modern CS2's Source 2
     game/csgo content is not an interchangeable asset pack.
 
-3.  Start ftesurf.bat. It runs the signed-update bootstrap when present.
-    The first terminal launch asks permission before checking; without a
-    terminal, the first launch starts the installed game without a bootstrap
-    check or saved permission. Choosing Play online in the game turns updates on.
-    ftesurf-launcher.exe --offline skips the bootstrap check without changing
-    saved permission; the game's own auto-check still follows that permission.
-    ftesurf.bat uses the engine directly only if the bootstrap is absent.
-    To forward engine options: ftesurf.bat -window +map <mapname>.
+3.  Start ftesurf-launcher.exe. It checks for a signed update, then starts
+    the game. The first launch asks permission before checking; choosing
+    Play online in the game turns updates on.
+    ftesurf-launcher.exe --offline skips the check without changing saved
+    permission; the game's own auto-check still follows that permission.
+    To forward engine options: ftesurf-launcher.exe -- -window +map <mapname>.
 
     The launcher is a separate bootstrap, NOT self-updated by the normal
     feed. To upgrade it, exit both game and launcher, then extract a newer
@@ -1414,7 +1394,7 @@ if ($onlyArchive.Count -or $onlyStage.Count) {
     Fail $m
 }
 foreach ($must in @('ftesurf64.exe', 'ftesurf-launcher.exe', 'fteplug_hl2_x64.dll', 'fteplug_ui_imgui_x64.dll', 'THIRD-PARTY.txt',
-        'default.fmf', 'ftesurf.bat', 'LICENSE', 'notices/bootstrap.txt',
+        'default.fmf', 'LICENSE', 'notices/bootstrap.txt',
         'ftesurf/csprogs.dat', 'ftesurf/qwprogs.dat', 'ftesurf/menu.dat',
         'ftesurf/fs_addons.default.txt', 'ftesurf/cfg/default.cfg')) {
     if (-not $setA.Contains($must)) { Fail "archive is missing a required file: $must" }
@@ -2101,18 +2081,25 @@ if (-not $SkipUpload) {
 if (-not $SkipUpload -or -not $SkipSite) {
     Step 'Publish and round-trip standalone launchers'
     foreach ($artifact in $launcherArtifacts) {
+        # P852: the page's main download. Saved under the name the engine's update
+        # handoff runs (qkupdate.c QKU_Restart_f), not the versioned key.
+        $saveAs = if ($artifact.Platform -eq 'win64') { 'ftesurf-launcher.exe' } else { 'ftesurf-launcher' }
         if (-not $SkipUpload) {
             foreach ($suffix in @('', '.sha256')) {
                 $type = if ($suffix) { 'text/plain; charset=utf-8' } else { 'application/octet-stream' }
-                Native 'rclone' @('copyto', "$($artifact.Path)$suffix", "${Remote}:$Bucket/$($artifact.Key)$suffix", '--bind', '0.0.0.0',
-                    '--immutable', '--header-upload', 'Cache-Control: public, max-age=31536000, immutable', '--header-upload', "Content-Type: $type") 'rclone standalone launcher' | Out-Null
+                $rcArgs = @('copyto', "$($artifact.Path)$suffix", "${Remote}:$Bucket/$($artifact.Key)$suffix", '--bind', '0.0.0.0',
+                    '--immutable', '--header-upload', 'Cache-Control: public, max-age=31536000, immutable', '--header-upload', "Content-Type: $type")
+                if (-not $suffix) { $rcArgs += @('--header-upload', "Content-Disposition: attachment; filename=`"$saveAs`"") }
+                Native 'rclone' $rcArgs 'rclone standalone launcher' | Out-Null
             }
         }
         $check = Join-Path $OutDir "verify-$($artifact.Name)"
-        Native 'curl.exe' @('--fail', '--silent', '--show-error', '--location', '--max-time', '120', '--output', $check, $artifact.Url) 'download standalone launcher' | Out-Null
+        $headers = Join-Path $OutDir "verify-$($artifact.Name).headers"
+        Native 'curl.exe' @('--fail', '--silent', '--show-error', '--location', '--max-time', '120', '--dump-header', $headers, '--output', $check, $artifact.Url) 'download standalone launcher' | Out-Null
         if ((Get-FileHash -LiteralPath $check -Algorithm SHA256).Hash.ToLowerInvariant() -ne $artifact.Sha) { Fail "public standalone launcher SHA256 mismatch: $($artifact.Name)" }
-        Remove-Item -LiteralPath $check
-        Good "$($artifact.Name): public SHA256 matches verified bootstrap"
+        if (-not (Select-String -LiteralPath $headers -SimpleMatch -Quiet "filename=`"$saveAs`"")) { Fail "public standalone launcher is not served as $saveAs (Content-Disposition): $($artifact.Name); an object uploaded without the header is kept by --immutable: re-upload it once with the header and without --immutable" }
+        Remove-Item -LiteralPath $check, $headers
+        Good "$($artifact.Name): public SHA256 matches verified bootstrap; saved as $saveAs"
     }
     Step 'Publish and round-trip verify every referenced update object'
     $updateProof = Publish-UpdateObjects -Feed $updateFeed -WorkRoot $publishWorkDir -Destination "${Remote}:$Bucket/$Prefix/update/objects" `

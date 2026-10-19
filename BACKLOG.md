@@ -5,6 +5,13 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Profile arms write a stale terms version (found by P853, 20 Oct)
+
+- **tools/p663profile.py writes `data/consent.txt` with `version 4`**; FS_TERMS_ONLINE (sh_defs.qc) is 7,
+  so Profile_Gate answers PFS_NOTERMS and the card asks surfd nothing (`hud_player status` reads
+  `breakdown 4`). Its arms that need an answer cannot pass as written. p853kind.py writes 7. Check: grep
+  `version [0-9]` in tools/p6*.py against FS_TERMS_ONLINE; run p663profile and read `breakdown`.
+
 ## Slow clock (P840): calibration and the limits review left open
 
 - **`run_slowclock` 5 is not calibrated.** Every lobby `.rec` now ends with `clk ... <behind>`: read
@@ -169,8 +176,11 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
   The `r_cubelight` and `r_reflectcube` counters now count instanced props once a run, or not at
   all for the cube. `vid_restart` on surf_demise crashes the build before 831 as well
   (0xC0000005, installed exe 1d27c817, rig run 19 Oct), so 831's restart path is untested.
-- **Full water costs CPU first here**: each capture re-submits the scene. Besides sharing
-  captures (the water budget entry below), refraction could read the drawn scene's copy.
+- **Full water costs CPU first here**: each capture re-submits the scene. P850 stopped captures
+  redrawing the outer views' props and an unseen 3D sky (Lex's boreas save 006: 8.86 -> 4.14 ms on
+  the rig). Left: sharing captures between batches on one plane (the water budget entry below),
+  refraction reading the drawn scene's copy instead of a scene render, and the shadow code's own
+  caster walks (gl_shadow.c 3264/3375/4601), which still walk every outer copy in a nested view.
 - **Threads, last (read).** qclib's JIT is x86-32 only and off (progslib.h:39-41); the worker
   pool is WG_MAIN/WG_LOADER; Vulkan records one command buffer and has none of the GL-only
   FTESurf paths (blend sort, fake shadows, GPU timing).
@@ -1027,7 +1037,9 @@ Fixed items are removed; remaining reader contracts need acting controls.
   nothing covers it. It is cosmetic, it is the corner case Patch 208 accepted, and the
   default FBO path paints only the exact aperture.
 - Water reflection and refraction views draw the unclipped sky too. Where refraction
-  leaves pixels uncovered, they show the whole skyroom instead of black.
+  leaves pixels uncovered, they show the whole skyroom instead of black. Since P850
+  (`r_skyroomneed`) only a capture that has sky surfaces of its own, or sits inside a
+  portal view, draws the skyroom; the others leave their clear colour in a seam.
 
 ## Mode2 limits left by P748
 

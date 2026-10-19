@@ -60,11 +60,11 @@ $tplPath = Join-Path $PSScriptRoot 'page.template.html'
 $winKeys = @('VERSION', 'FILENAME', 'URL', 'LAUNCHER_URL', 'LAUNCHER_SHA256', 'SIZE_HUMAN', 'SIZE_BYTES', 'SHA256', 'DATE', 'QCBUILD', 'ENGINEPATCH')
 $lxKeys  = @('LINUX_URL', 'LINUX_LAUNCHER_URL', 'LINUX_LAUNCHER_SHA256', 'LINUX_FILENAME', 'LINUX_SIZE_HUMAN', 'LINUX_SIZE_BYTES', 'LINUX_SHA256', 'LINUX_GLIBC', 'LINUX_ENGINE')
 $tpl = Split-PageBlocks ([System.IO.File]::ReadAllText($tplPath))
-Check 'template: three blocks' { $tpl.Pairs -eq 3 }
-Check 'template: manual launcher upgrade is visible and links both platforms' {
-    $tpl.Kept.Contains('download the new launcher once') -and
-    $tpl.Kept.Contains('href="@@LAUNCHER_URL@@"') -and $tpl.Kept.Contains('href="@@LINUX_LAUNCHER_URL@@"') -and
-    -not $tpl.Outside.Contains('@@LINUX_LAUNCHER_URL@@')
+Check 'template: two blocks' { $tpl.Pairs -eq 2 }
+Check 'template: the launchers are the buttons, the archives the full package (P852)' {
+    $tpl.Kept.Contains('class="btn" href="@@LAUNCHER_URL@@"') -and $tpl.Kept.Contains('class="btn alt" href="@@LINUX_LAUNCHER_URL@@"') -and
+    $tpl.Kept.Contains('Full package:') -and $tpl.Kept.Contains('<a href="@@URL@@"') -and
+    -not $tpl.Kept.Contains('ftesurf.bat') -and -not $tpl.Outside.Contains('@@LINUX_LAUNCHER_URL@@')
 }
 Check 'preflight: actual receipt renderer and template agree' {
     $contract = Test-ReleaseTemplate ([IO.File]::ReadAllText($tplPath))

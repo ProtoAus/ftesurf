@@ -850,8 +850,9 @@
           'A map counts once the main track is finished');
     }
 
-    var comp = $('pcomp'), wrap = $('compwrap');
-    comp.textContent = '';
+    var wrap = $('compwrap');
+    $('pcomp').textContent = '';
+    $('compmode').hidden = true;
     if (!c) {
       // A MISSING CATALOGUE IS NOT 0%.  surfd sends completion: null when it has
       // no map difficulty data, and the page has to say that rather than draw
@@ -864,55 +865,88 @@
     } else {
       $('compnote').hidden = true;
       wrap.hidden = c.tiers.length === 0;
-      // `&ct=<tier>` (or `u`, the unrated maps) in the address opens that
-      // tier's maps, so "which tier 3 maps has she left" is a link.
-      var want = readHash().ct;
-      c.tiers.forEach(function (t) {
-        var row = el('button', 'crow cbtn');
-        row.type = 'button';
-        row.setAttribute('aria-expanded', 'false');
-        var lbl = el('span', 'ck', 'Tier ' + t.tier);
-        lbl.title = 'Momentum difficulty tier ' + t.tier + ': show the maps';
-        row.appendChild(lbl);
-        row.appendChild(bar(t.done, t.of));
-        row.appendChild(el('span', 'cv', t.done + ' / ' + t.of));
-        comp.appendChild(row);
-        var box = el('div', 'cmaps');
-        box.hidden = true;
-        comp.appendChild(box);
-        row.addEventListener('click', function () { toggleTier(body.who, t.tier, row, box); });
-        if (want === String(t.tier)) { window.setTimeout(function () { row.click(); }, 0); }
-      });
-      if (c.untiered) {
-        var note = el('button', 'crow crow-dim cbtn');
-        note.type = 'button';
-        note.setAttribute('aria-expanded', 'false');
-        note.appendChild(el('span', 'ck', 'Unrated'));
-        note.appendChild(el('span', 'cfree',
-          c.untiered + ' maps carry no difficulty tier'));
-        comp.appendChild(note);
-        var ubox = el('div', 'cmaps');
-        ubox.hidden = true;
-        comp.appendChild(ubox);
-        note.addEventListener('click', function () { toggleTier(body.who, null, note, ubox); });
-        if (want === 'u') { window.setTimeout(function () { note.click(); }, 0); }
-      }
     }
 
     var bt = body.by_tier || {};
-    state.prof = { handle: body.who, shown: 0, total: 0, page: body.limit || 100,
+    state.prof = { handle: body.who, shown: 0, total: 0, page: body.limit || 100, maps: {},
                    multi: ['ranked', 'momentum', 'ksf']
                      .filter(function (k) { return n0(bt[k]) > 0; }).length > 1 };
+    if (c) {
+      var want = readHash();
+      renderComp(body.who, c, c.modes && (want.cm === 'surf' || want.cm === 'bhop') ? want.cm : '', want.ct);
+    }
     profileRows(body, state.prof.page);
   }
 
+  // `&cm=surf|bhop` (P853) and `&ct=<tier>` (or `u`, the unrated maps) in the
+  // address, so "which tier 3 bhop maps has she left" is a link.
+  function compHash(handle, mode, tier) {
+    if (history.replaceState) {
+      history.replaceState(null, '', '#p=' + encodeURIComponent(handle) + (mode ? '&cm=' + mode : '') +
+        (tier === undefined ? '' : '&ct=' + (tier === null ? 'u' : tier)));
+    }
+  }
+
+  // The bars of every kind of map, or of surf or bhop alone (P853). A surfd
+  // before P853 sends no `modes`, and the switch stays hidden.
+  var COMP_MODES = [['', 'All'], ['surf', 'Surf'], ['bhop', 'Bhop']];
+  function renderComp(handle, c, mode, open) {
+    var comp = $('pcomp'), seg = $('compmode'), shown = mode ? c.modes[mode] : c;
+    comp.textContent = '';
+    seg.textContent = '';
+    seg.hidden = !c.modes;
+    if (c.modes) {
+      COMP_MODES.forEach(function (m) {
+        var t = m[0] ? c.modes[m[0]] : c;
+        seg.appendChild(tabButton(m[1], t.done + ' / ' + t.of, m[0] === mode, function () {
+          if (m[0] === mode) { return; }
+          compHash(handle, m[0]);
+          renderComp(handle, c, m[0], null);
+        }));
+      });
+    }
+    shown.tiers.forEach(function (t) {
+      var row = el('button', 'crow cbtn');
+      row.type = 'button';
+      row.setAttribute('aria-expanded', 'false');
+      var lbl = el('span', 'ck', 'Tier ' + t.tier);
+      lbl.title = 'Momentum difficulty tier ' + t.tier + ': show the maps';
+      row.appendChild(lbl);
+      row.appendChild(bar(t.done, t.of));
+      row.appendChild(el('span', 'cv', t.done + ' / ' + t.of));
+      comp.appendChild(row);
+      var box = el('div', 'cmaps');
+      box.hidden = true;
+      comp.appendChild(box);
+      row.addEventListener('click', function () { toggleTier(handle, t.tier, row, box, mode); });
+      if (open === String(t.tier)) { window.setTimeout(function () { row.click(); }, 0); }
+    });
+    if (shown.untiered) {
+      var note = el('button', 'crow crow-dim cbtn');
+      note.type = 'button';
+      note.setAttribute('aria-expanded', 'false');
+      note.appendChild(el('span', 'ck', 'Unrated'));
+      note.appendChild(el('span', 'cfree',
+        shown.untiered + ' maps carry no difficulty tier'));
+      comp.appendChild(note);
+      var ubox = el('div', 'cmaps');
+      ubox.hidden = true;
+      comp.appendChild(ubox);
+      note.addEventListener('click', function () { toggleTier(handle, null, note, ubox, mode); });
+      if (open === 'u') { window.setTimeout(function () { note.click(); }, 0); }
+    }
+    if (!shown.of) { comp.appendChild(el('p', 'cwait', 'No ' + mode + ' maps on this site')); }
+  }
+
   // WHICH MAPS, per difficulty tier: finished (in which game, with the time)
-  // and not yet.  One request for the whole list, the first time a tier is
-  // opened, kept for the profile on screen.
-  function tierMaps(handle) {
+  // and not yet.  One request for the whole list (of the kind on show), the
+  // first time a tier is opened, kept for the profile on screen.
+  function tierMaps(handle, mode) {
     var P = state.prof;
-    if (!P.maps) { P.maps = get('api/player/' + encodeURIComponent(handle) + '/maps'); }
-    return P.maps;
+    if (!P.maps[mode]) {
+      P.maps[mode] = get('api/player/' + encodeURIComponent(handle) + '/maps' + (mode ? '?mode=' + mode : ''));
+    }
+    return P.maps[mode];
   }
 
   function mapList(title, maps, done) {
@@ -937,18 +971,15 @@
     return wrap;
   }
 
-  function toggleTier(handle, tier, row, box) {
+  function toggleTier(handle, tier, row, box, mode) {
     var open = box.hidden;
     box.hidden = !open;
     row.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (history.replaceState) {
-      history.replaceState(null, '', '#p=' + encodeURIComponent(handle) +
-        (open ? '&ct=' + (tier === null ? 'u' : tier) : ''));
-    }
+    compHash(handle, mode, open ? tier : undefined);
     if (!open || box.firstChild) { return; }
     box.appendChild(el('p', 'cwait', 'Loading…'));
     var P = state.prof;
-    tierMaps(handle).then(function (body) {
+    tierMaps(handle, mode).then(function (body) {
       if (state.prof !== P) { return; }
       var g = tier === null ? body.unrated
         : (body.tiers || []).filter(function (t) { return t.tier === tier; })[0];
@@ -961,7 +992,7 @@
       box.appendChild(mapList('Not yet', left, false));
     }, function (e) {
       if (state.prof !== P) { return; }
-      P.maps = null;
+      P.maps[mode] = null;
       box.textContent = '';
       box.appendChild(el('p', 'cwait', e.message));
     });

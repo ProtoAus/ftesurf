@@ -1409,6 +1409,11 @@ float(string cmd) Av_ConsoleCommand =
 		else
 			Profile_TierShow(stof(argv(2)));
 	}
+	else if (argv(1) == "kind")             // P853: the bars' kind of map, `all`, `surf` or `bhop`
+	{
+		if (av_open)                        // as `tier`: no card, no ask
+			Profile_ModeShow((argv(2) == "surf") ? 1 : ((argv(2) == "bhop") ? 2 : 0));
+	}
 	else if (argv(1) == "status")
 		print(strcat(sprintf("hud_player: open %g page %g view \"%s\" breakdown %g of \"%s\" rows %g/%g",
 		                     av_open, av_tab, av_other, pf_state, pf_who, pf_rn, pf_total),
@@ -1421,7 +1426,8 @@ float(string cmd) Av_ConsoleCommand =
 		             // Patch 666, at the end: an older arm reads the line up to here.
 		             sprintf("  tier \"%s\" %g maps %g/%g done %g", pf_ct, pf_ct_state, pf_ct_n, pf_ct_total,
 		                     pf_ct_done),
-		             sprintf("  bar %g,%g %gx%g\n", pf_bar_p_x, pf_bar_p_y, pf_bar_sz_x, pf_bar_sz_y)));
+		             sprintf("  bar %g,%g %gx%g", pf_bar_p_x, pf_bar_p_y, pf_bar_sz_x, pf_bar_sz_y),
+		             sprintf("  kind %g split %g\n", pf_cm, pf_c_modes)));
 	else
 		Av_Toggle();
 	return TRUE;

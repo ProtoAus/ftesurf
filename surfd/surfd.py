@@ -5448,12 +5448,21 @@ def _completion(done, have_main, tiers):
     """
     if tiers is None:
         return None
+    import mapmanifest
     # The denominator is the maps this site actually knows a main board for,
     # not every map Momentum has rated -- a percentage against maps nobody here
     # can load is not a completion figure.
     have, _playable, _bsp = _completion_scope(have_main)
+    out = _tier_table(done, have, tiers)
+    # P853: the same table for each kind of map, for the profiles' surf / bhop filter.
+    out["modes"] = {mode: _tier_table(done, {m for m in have if mapmanifest.map_mode(m) == mode}, tiers)
+                    for mode in mapmanifest.MODES}
+    return out
+
+
+def _tier_table(done, maps, tiers):
     table = {}
-    for m in have:
+    for m in maps:
         t = tiers.get(m)
         if t is None:
             continue
@@ -5461,10 +5470,10 @@ def _completion(done, have_main, tiers):
         row["of"] += 1
         if m in done:
             row["done"] += 1
-    untiered = sum(1 for m in have if m not in tiers)
+    untiered = sum(1 for m in maps if m not in tiers)
     return {"tiers": [table[k] for k in sorted(table)],
             "untiered": untiered,
-            "done": len(done & have), "of": len(have)}
+            "done": len(done & maps), "of": len(maps)}
 
 
 def steam2(sid64):
@@ -5619,7 +5628,8 @@ def game_player(raw, now):
     `&ct=<tier>` (a difficulty tier's number, or `u` for the unrated) is that
     tier's maps, the ones the player has finished first, each with their
     fastest main time; the site's /board/api/player/<h>/maps, a tier at a
-    time and paged, because the unrated alone are eight hundred.
+    time and paged, because the unrated alone are eight hundred. `&mode=surf`
+    or `bhop` with it keeps that kind of map (P853).
     `&on=<map>` is the player's rows on one map, every leg, main track first:
     what a board's search shows of somebody.  A second build shows its map's
     imported rows, as its board does (_board_scope).  `ct` is read first where
@@ -5632,6 +5642,9 @@ def game_player(raw, now):
     ct = request.args.get("ct")
     if ct is not None and not re.fullmatch(r"[1-9][0-9]?|u", ct):
         return fail(400, "bad tier")
+    mode = request.args.get("mode", "")
+    if mode not in ("", "surf", "bhop"):
+        return fail(400, "bad mode")
     on = None
     if ct is None and request.args.get("on") is not None:
         on = clean_map(request.args.get("on"))
@@ -5658,7 +5671,7 @@ def game_player(raw, now):
         log.exception("game player db error: %s", exc)
         return fail(500, "storage error")
     if ct is not None:
-        groups, rated = _tier_maps(ranked, main_maps)
+        groups, rated = _tier_maps(ranked, main_maps, mode)
         maps = groups.get(None if ct == "u" else int(ct), {"maps": []})["maps"]
         maps = [m for m in maps if "ms" in m] + [m for m in maps if "ms" not in m]
         out = []
@@ -5668,7 +5681,8 @@ def game_player(raw, now):
                 row["ms"], row["tr"], row["s"] = m["ms"], m["tr"], m["s"]
             out.append(row)
         return Response(game_json(
-            {"v": 1, "t": now, "who": handle, "name": me["name"], "ct": ct, "rated": 1 if rated else 0,
+            {"v": 1, "t": now, "who": handle, "name": me["name"], "ct": ct, "mode": mode,
+             "rated": 1 if rated else 0,
              "done": sum(1 for m in maps if "ms" in m), "offset": offset, "total": len(maps),
              "limit": limit, "maps": out}), status=200, mimetype="application/json")
     bsp, _zoned = map_index()
@@ -5701,11 +5715,13 @@ def game_player(raw, now):
         status=200, mimetype="application/json")
 
 
-def _tier_maps(ranked, main_maps):
+def _tier_maps(ranked, main_maps, mode=""):
     """({tier or None: {"tier", "of", "done", "maps": [...]}}, rated) for one
     player's _profile_rows: every map the site holds a main board for, by
     difficulty tier (None is unrated), each with the player's fastest main
-    time where they have one.  The site's lists and the game's are this."""
+    time where they have one.  The site's lists and the game's are this.
+    `mode` "surf" or "bhop" keeps that kind of map only (P853)."""
+    import mapmanifest
     best = {}                   # map -> [fastest main time, its game, {games}, its style]
     for r, _rk, _of in ranked:
         if r["track"] or r["leg"]:
@@ -5718,6 +5734,8 @@ def _tier_maps(ranked, main_maps):
     tiers = map_tiers()
     groups = {}
     for key in sorted(have, key=lambda k: bsp.get(k, k).lower()):
+        if mode and mapmanifest.map_mode(key) != mode:
+            continue
         row = {"map": bsp.get(key, key), "have": 1 if key in playable else 0}
         mine = best.get(key)
         if mine is not None:
@@ -5742,6 +5760,9 @@ def web_player_maps(handle):
         return fail(429, "rate limited")
     if not re.fullmatch(r"[0-9a-f]{%d}" % WEB_HANDLE_LEN, handle or ""):
         return fail(400, "bad player")
+    mode = request.args.get("mode", "")
+    if mode not in ("", "surf", "bhop"):
+        return fail(400, "bad mode")
     try:
         db = get_db()
         player = player_of(db, handle, now)
@@ -5752,8 +5773,8 @@ def web_player_maps(handle):
     except sqlite3.Error as exc:
         log.exception("web player maps db error: %s", exc)
         return fail(500, "storage error")
-    groups, rated = _tier_maps(ranked, main_maps)
-    return _json({"v": 1, "t": now, "who": handle, "rated": rated,
+    groups, rated = _tier_maps(ranked, main_maps, mode)
+    return _json({"v": 1, "t": now, "who": handle, "rated": rated, "mode": mode,
                   "tiers": [groups[k] for k in sorted(k for k in groups if k is not None)],
                   "unrated": groups.get(None)}, "max-age=30")
 

@@ -8,9 +8,9 @@
   Every value on the page comes from that release's receipt
   (dist\ftesurf-<v>.json) through releaselib's Get-ReceiptTokens, so the page
   states what release.ps1 rendered for the same archive.  version.json is the
-  one release.ps1 wrote (host withheld) and is kept byte for byte.  After
-  publish.sh swaps the page in, every file is fetched back from the live site
-  and compared by sha256.
+  one release.ps1 wrote (host withheld) and is kept byte for byte.  Only files
+  that differ from the live release's are replaced, in its own directory; then
+  every file is fetched back from the live site and compared by sha256.
 #>
 param(
     [string]$Version,
@@ -46,7 +46,9 @@ if ($tok.Linux) { foreach ($k in $tok.Linux.Keys) { $html = $html.Replace("@@$k@
 if ($html -match '@@([A-Z0-9_]+)@@') { Fail "template token $($Matches[0]) was not substituted" }
 $d = @(Compare-TokenSets (Get-TemplateTokens $pb.Outside) @($tok.Windows.Keys))
 if ($d.Count) { Fail ("template tokens and the receipt's disagree: " + ($d -join '; ')) }
-$lxNames = @('LINUX_URL', 'LINUX_FILENAME', 'LINUX_SIZE_HUMAN', 'LINUX_SIZE_BYTES', 'LINUX_SHA256', 'LINUX_GLIBC', 'LINUX_ENGINE')
+# release.ps1's contract (Test-ReleaseTemplate), not a list of our own: a hand list
+# here missed the launcher tokens P738 added.
+try { $lxNames = (Test-ReleaseTemplate (Get-Content -LiteralPath (Join-Path $RelDir 'page.template.html') -Raw)).LinuxKeys } catch { Fail $_.Exception.Message }
 $d = @(Compare-TokenSets (Get-TemplateTokens $pb.Inside) $lxNames)
 if ($d.Count) { Fail ("the LINUX blocks' tokens disagree: " + ($d -join '; ')) }
 
@@ -67,16 +69,43 @@ Write-Host "rendered $pageDir -- $($files.Count) files ($($siteFiles -join ', ')
 foreach ($k in $tok.Windows.Keys) { Write-Host ("  {0,-12} {1}" -f $k, $tok.Windows[$k]) }
 if ($DryRun) { Write-Host 'dry run: nothing published'; exit 0 }
 
-# --- publish (release.ps1's path: scp each file, then publish.sh) --------------
+# --- publish: the changed files, inside the live release's own directory --------
+# publish.sh only takes a NEW version with its signed feed (P738), so it cannot
+# re-render one. Each changed file is renamed over its old copy, which is kept in
+# .sitepage-prev/ outside the served tree; update.json and update-verified.json
+# are never sent.
 $sshOpts = @('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10')
-& ssh @sshOpts $PiHost "mkdir -p '$SiteRoot/.incoming/$Version'"
+$live = "$SiteRoot/releases/$Version"
+$cur = & ssh @sshOpts $PiHost "readlink '$SiteRoot/static'"
 if ($LASTEXITCODE -ne 0) { Fail "cannot reach $PiHost over ssh" }
-foreach ($f in $files) {
-    & scp @sshOpts -q $f.FullName "${PiHost}:$SiteRoot/.incoming/$Version/$($f.Name)"
-    if ($LASTEXITCODE -ne 0) { Fail "scp $($f.Name) failed" }
+if ("$cur".Trim() -cne "releases/$Version") { Fail "$Version is not the live release (static -> $cur)" }
+$remote = @{}
+foreach ($line in @(& ssh @sshOpts $PiHost "cd '$live' && sha256sum -- *")) {
+    if ($line -match '^([0-9a-f]{64})  (\S+)$') { $remote[$Matches[2]] = $Matches[1] }
 }
-& ssh @sshOpts $PiHost "sh '$SiteRoot/publish.sh' '$Version'"
-if ($LASTEXITCODE -ne 0) { Fail 'publish.sh failed on the Pi' }
+if (-not $remote.Count) { Fail "could not hash $live on the Pi" }
+$send = @($files | Where-Object {
+    $_.Name -notin @('update.json', 'update-verified.json') -and
+    $remote[$_.Name] -cne (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() })
+foreach ($f in $send) { if ($f.Name -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') { Fail "unexpected site file name: $($f.Name)" } }
+if (-not $send.Count) { Write-Host 'every file already matches the live page' }
+else {
+    $keep = "$SiteRoot/.sitepage-prev/$Version-$([DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'))"
+    foreach ($f in $send) {
+        & scp @sshOpts -q $f.FullName "${PiHost}:$live/.$($f.Name).new"
+        if ($LASTEXITCODE -ne 0) { Fail "scp $($f.Name) failed" }
+    }
+    # Plain commands, so set -e stops at the first failure (it ignores one inside an && chain);
+    # publish.sh's lock, so a release cannot swap `static` in between.
+    $swap = @($send | ForEach-Object {
+        $n = $_.Name
+        "chmod a+r '.$n.new'; [ ! -e '$n' ] || cp -p -- '$n' '$keep/'; mv -f -- '.$n.new' '$n'" })
+    & ssh @sshOpts $PiHost ("set -e; exec 9>'$SiteRoot/.publish.lock'; flock -x 9; " +
+        "[ `"`$(readlink '$SiteRoot/static')`" = 'releases/$Version' ]; mkdir -p '$keep'; cd '$live'; " +
+        ($swap -join '; '))
+    if ($LASTEXITCODE -ne 0) { Fail "swap on the Pi failed; check $live for .*.new files" }
+    Write-Host "replaced $(($send | ForEach-Object Name) -join ', '); old copies in $keep"
+}
 
 # --- read every file back from the live site -----------------------------------
 # No --compressed: without Accept-Encoding nginx sends the file itself, so the
