@@ -7,7 +7,7 @@ import { Color } from '../vendor/noclip/src/Color.js';
 import { DebugDraw } from '../vendor/noclip/src/gfx/helpers/DebugDraw.js';
 import { Fit, FL_DUCKED, Rec } from './rec.js';
 import { Pose, sampleAt } from './playback.js';
-import { Region, Zone, ZoneKind } from './zones.js';
+import { inRing, Region, Zone, ZoneKind } from './zones.js';
 
 const LINE_BEHIND = 2, LINE_AHEAD = 8;   // seconds of run line around the playhead
 const LINE_POINTS = 600;                 // ribbon vertices in that window at most
@@ -15,9 +15,9 @@ const LINE_WIDTH = 3;                    // units
 const LINE_NEAR = 48;                    // units: closer to the camera than this, not drawn
 
 // mkplayermodel.py's body: a prism over this pentagon, nose on +X, origin at the
-// feet, as tall as the hull standing (72) or ducked (54).
+// feet, as tall as the hull standing (62) or ducked (45), sh_defs.qc PM_*_MAXS.
 const BODY = [[-16, -16], [16, -16], [23.255, 0], [16, 16], [-16, 16]];
-const BODY_H = 72, BODY_DUCK_H = 54;
+const BODY_H = 62, BODY_DUCK_H = 45;
 const LIGHT = vec3.normalize(vec3.create(), [0.35, 0.25, 0.9]);
 
 export const ZONE_COLOURS: Record<ZoneKind, Color> = {
@@ -29,6 +29,16 @@ export const ZONE_COLOURS: Record<ZoneKind, Color> = {
 
 const a = vec3.create(), b = vec3.create(), c = vec3.create(), d = vec3.create();
 const side = vec3.create(), dir = vec3.create(), toCam = vec3.create(), n = vec3.create();
+
+// The closest the segment a-b comes to q.
+function segDistance(q: vec3, a: vec3, b: vec3): number {
+    vec3.sub(dir, b, a);
+    vec3.sub(toCam, q, a);
+    const len2 = vec3.squaredLength(dir);
+    const f = len2 > 0 ? Math.max(0, Math.min(1, vec3.dot(toCam, dir) / len2)) : 0;
+    vec3.scaleAndAdd(toCam, a, dir, f);
+    return vec3.distance(q, toCam);
+}
 
 function shade(base: Color, normal: vec3, alpha: number): Color {
     const l = 0.5 + 0.5 * Math.max(0, vec3.dot(normal, LIGHT));
@@ -63,11 +73,12 @@ export function drawRunLine(dd: DebugDraw, rec: Rec, T: number, cam: vec3, maxSp
             if (!snapped) {
                 vec3.set(a, rec.o[prev * 3], rec.o[prev * 3 + 1], rec.o[prev * 3 + 2] + 2);
                 vec3.set(b, rec.o[i * 3], rec.o[i * 3 + 1], rec.o[i * 3 + 2] + 2);
+                // A segment that passes by the camera would fill the screen.
+                const near = segDistance(cam, a, b) <= LINE_NEAR;
                 vec3.sub(dir, b, a);
                 vec3.sub(toCam, cam, a);
                 vec3.cross(side, dir, toCam);
-                // A segment that passes by the camera would fill the screen.
-                if (vec3.squaredLength(side) > 1e-6 && vec3.distance(cam, a) > LINE_NEAR && vec3.distance(cam, b) > LINE_NEAR) {
+                if (!near && vec3.squaredLength(side) > 1e-6) {
                     vec3.scale(side, vec3.normalize(side, side), LINE_WIDTH / 2);
                     const col = speedColour(Math.hypot(rec.v[i * 3], rec.v[i * 3 + 1]), maxSpeed, rec.t[i] <= T ? 0.45 : 0.95);
                     vec3.add(c, a, side); vec3.sub(a, a, side);
@@ -123,7 +134,7 @@ function drawRegion(dd: DebugDraw, r: Region, col: Color, cam: vec3): void {
             dd.drawTriSolidP(a, c, d, fill);
         }
     }
-    if (fill.a === 0) return;
+    if (fill.a === 0 || !r.convex) return;   // a fan from p[0] fills outside a concave ring
     vec3.set(a, p[0], p[1], r.top);
     for (let i = 1; i + 1 < m; i++) {
         vec3.set(b, p[i * 2], p[i * 2 + 1], r.top); vec3.set(c, p[i * 2 + 2], p[i * 2 + 3], r.top);
@@ -132,15 +143,7 @@ function drawRegion(dd: DebugDraw, r: Region, col: Color, cam: vec3): void {
 }
 
 function insidePrism(r: Region, q: vec3): boolean {
-    if (q[2] < r.bottom || q[2] > r.top) return false;
-    const p = r.pts, m = p.length / 2;
-    let inside = false;
-    for (let i = 0, j = m - 1; i < m; j = i++) {
-        const yi = p[i * 2 + 1], yj = p[j * 2 + 1];
-        if ((yi > q[1]) !== (yj > q[1]) && q[0] < (p[j * 2] - p[i * 2]) * (q[1] - yi) / (yj - yi) + p[i * 2])
-            inside = !inside;
-    }
-    return inside;
+    return q[2] >= r.bottom && q[2] <= r.top && inRing(r, q[0], q[1]);
 }
 
 export function drawZones(dd: DebugDraw, zones: Zone[], cam: vec3): void {

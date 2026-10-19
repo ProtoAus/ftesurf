@@ -61,6 +61,26 @@ renderer; source and build in `src/viewer/` (its README). The bundle
   rollback.sh. A third, 9ae4a941 at 08:02:56Z (surfd825c-20261019T0800Z), took the run
   route off the map scan and changed the folder picker (below). On the Pi, recplot.track over the largest file there (a 59 MB evidence
   recording; the 32 MiB read cap applies) takes 1.67 s at nice 10; nginx gives 5 s.
+- **Zones, inferred stage times, bodies (P829).** Zones come from the file the game downloads
+  (`/ftesurf/maps/zones/local/<map>.json`). An import has no `split` records, so its stage
+  times are the first touch of each stage zone in order (`zones.ts`: Zone_BoxInside's test,
+  PNPOLY and the 32x32 rect, hull 62/45; each tick's travel swept in 8-unit steps; a stage never
+  touched is skipped, not the end of the search), marked with a ≈ sign. Against recorded
+  splits: 52 of 52 within 0.05 s; the surf_666 AnnA/p426 harness fixtures were made on another
+  zone set and miss. THE FIRST CUT WAS A CONVEX TEST, and 155 of the library's 1,741 stage
+  regions are concave: 20 tracks stalled, 63 splits lost, none of them in the 52 (a review
+  found it, probing all 648 zone files; 0 and 0 now). The hull is Momentum's 62/45, not CS:S's
+  72/54 -- mkplayermodel.py records the same mistake lasting eleven builds. World drawing is the `onWorldPasses` patch in `tools/vendor.py`: DebugDraw on the main
+  view's colour and depth after its passes, so the map hides what is behind it to a 15% tint.
+  GL draws 1-px lines, so the run line is a ribbon of triangles; a segment within 48 units of
+  the camera is skipped and a zone the camera is inside is only outlined -- each had filled
+  the view.
+- **The 504s were each new worker's first map scan, not the TTL rescans.** Measured on the Pi
+  19 Oct: zonefit.has_timer over 2,151 BSPs took 20.8 s cold and 0.014 s warm (its lru_cache),
+  and gunicorn recycles the one worker every ~5,000 requests (about every 18 min that day). P829
+  keeps the answers in `data/maps_timer_cache.json` (stem + stat) so a new worker stats the files
+  instead, and one scan runs at a time (`_maps_scan_lock`). The first cut moved the TTL rescan
+  to a thread -- the cheap case -- and served an index of any age after a quiet spell (review).
 
 ## Rewind over a failed attempt (P817, 2026-10-19)
 

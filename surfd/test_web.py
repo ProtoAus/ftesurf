@@ -258,11 +258,10 @@ def unplottable(m, kind):
     return rid
 
 
-def evidence_row(m):
+def evidence_row(m, lf="20270115-000000-1.rec"):
     """An evidence row WITH its file under KEEP_DIR, so a 404 for it is the kind
     gate's. Until Patch 825 its leaf was 'ev_0001.rec', which fails _EVLEAF_OK,
     so the public routes refused it for its name and never reached the gate."""
-    lf = "20270115-000000-1.rec"
     conn = sqlite3.connect(m._test_db)
     cur = conn.execute(
         "INSERT INTO replays (map, map_dir, track, leg, leaf, tier, style,"
@@ -1208,27 +1207,63 @@ def main():
     check("the run page never waits on a library scan, and names the map anyway",
           (len(scans), r["map"], r["disp"]), (0, "bhop_eazy", "bhop_eazy"))
 
-    # P829: a stale index answers at once and is rescanned once, on a thread.
-    import time as _time
+    # P829: a new worker reads the timer answers off disk instead of every BSP.
     m.maps_reset()
-    first, _z = m.map_index(now=1000.0)
-    gate, scans = threading.Event(), []
+    reads = []
+    real_has = m.zonefit.has_timer
+    def counting(path):
+        reads.append(path)
+        return real_has(path)
+    m.zonefit.has_timer = counting
+    cache = os.path.join(m.DATA_DIR, "maps_timer_cache.json")
+    if os.path.exists(cache):
+        os.remove(cache)
+    first = m.map_index(now=1000.0)
+    n0 = len(reads)
+    check("control: a cold scan with no cache reads every zone-less BSP",
+          (n0 > 0, os.path.exists(cache)), (True, True))
+    m.maps_reset()
+    m.zonefit._has_timer.cache_clear()          # a new process
+    reads.clear()
+    check("a new worker with the cache reads none, and answers the same",
+          (len(reads), m.map_index(now=1000.0) == first, len(reads)), (0, True, 0))
+    bsp = os.path.join(m.MAPS_DIR, "surf_nozone.bsp")
+    st = os.stat(bsp)
+    os.utime(bsp, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
+    m.maps_reset()
+    reads.clear()
+    m.map_index(now=1000.0)
+    check("...a changed BSP is read again, alone", [os.path.basename(r) for r in reads], ["surf_nozone.bsp"])
+    with open(cache, "w") as fh:
+        fh.write("{not json")
+    m.maps_reset()
+    m.zonefit._has_timer.cache_clear()
+    reads.clear()
+    check("...a corrupt cache is a cold scan with the right answer",
+          (m.map_index(now=1000.0) == first, len(reads)), (True, n0))
+    m.zonefit.has_timer = real_has
+
+    # ...and threads that find it stale together wait for one scan.
+    m.maps_reset()
+    gate, scans, got = threading.Event(), [], []
     def slow_scan():
         scans.append(1)
         gate.wait(5)
         return {"surf_new": "surf_new"}, frozenset()
     m._scan_maps = slow_scan
-    t0 = _time.monotonic()
-    stale = [m.map_index(now=1000.0 + m.MAPS_TTL + 1)[0] for _ in range(3)]
-    waited = _time.monotonic() - t0
-    check("a stale library answers at once, from the old index",
-          (waited < 1.0, all(s is first for s in stale)), (True, True))
-    check("...and three stale calls start one rescan between them", len(scans), 1)
+    ths = [threading.Thread(target=lambda: got.append(m.map_index(now=2000.0)[0])) for _ in range(3)]
+    for th in ths:
+        th.start()
+    for _ in range(50):
+        if scans:
+            break
+        threading.Event().wait(0.02)
+    threading.Event().wait(0.3)          # the other two are past the TTL check by now
     gate.set()
-    for th in threading.enumerate():
-        if th.name == "maps-refresh":
-            th.join(5)
-    check("...whose result is the next answer", sorted(m.map_index(now=1000.0 + m.MAPS_TTL + 2)[0]), ["surf_new"])
+    for th in ths:
+        th.join(5)
+    check("three cold callers at once run one scan and all get its answer",
+          (len(scans), [sorted(x) for x in got]), (1, [["surf_new"]] * 3))
     m._scan_maps = real_scan
     m.maps_reset()
     check("an unknown run is 404", get(m, "/board/api/run/99999").status_code, 404)
@@ -1373,8 +1408,29 @@ def main():
     add_review(m, rid, "approve")
     check("...and is again once approved", get(m, "/api/replay/%d" % rid).status_code, 200)
     ev = evidence_row(m)
-    check("an evidence recording stays served (stage rows' ghosts read it)",
+    check("an unreviewed evidence recording stays served (stage rows' lines read it)",
           get(m, "/api/replay/%d" % ev).status_code, 200)
+    add_review(m, ev, "reject")
+    check("a rejected evidence recording is not", get(m, "/api/replay/%d" % ev).status_code, 404)
+    # The same run's evidence copy: the board's rule (_run_rejected) is run-wide.
+    conn = sqlite3.connect(m._test_db)
+    player = conn.execute("SELECT player FROM replays WHERE id=?", (rid,)).fetchone()[0]
+    conn.execute("UPDATE replays SET runid='r830', bound=1 WHERE id=?", (rid,))
+    conn.commit()
+    conn.close()
+    ev2 = evidence_row(m, "20270115-000000-2.rec")
+    conn = sqlite3.connect(m._test_db)
+    conn.execute("UPDATE replays SET runid='r830', bound=1, player=? WHERE id=?", (player, ev2))
+    conn.commit()
+    conn.close()
+    check("control: the run's evidence copy is served while the run stands",
+          get(m, "/api/replay/%d" % ev2).status_code, 200)
+    add_review(m, rid, "reject")
+    check("...and not once the run is rejected", get(m, "/api/replay/%d" % ev2).status_code, 404)
+    add_review(m, rid, "approve")
+    add_review(m, ev2, "reject")
+    check("...and a rejected copy hides the run's own recording, as on the board",
+          get(m, "/api/replay/%d" % rid).status_code, 404)
 
     print("\n--- 6c. the map screenshot ---------------------------------------")
     # The name in the URL is a board key run through clean_map, and what comes

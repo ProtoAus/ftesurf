@@ -25,7 +25,11 @@ commit   ebc96a0810c3e312ec7edf13d4a0ab6f253bc595
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-816
-patch    828
+patch    830
+# Patch 830 (surfd): /api/replay refuses a review-rejected run; evidence stays (stage rows' lines).
+# Patch 829 (surfd + web): the 3D viewer draws zones and, in the map's depth, the run line and
+# the game's body; imports get stage times from the zones; board rows link 3D; map_index
+# rescans off the request path. No QC, engine or player-file change.
 # Patch 828 (reader): inend cannot precede the last declared hold boundary in its current
 # mover origin. No timer-span equality, format, native pin, threshold or permission change.
 # Patch 827 (csprogs): the live line's Line_End redoes only what new samples touch; it rebuilt

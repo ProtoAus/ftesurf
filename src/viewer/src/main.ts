@@ -10,6 +10,7 @@ import { BSPFile } from '../vendor/noclip/src/SourceEngine/BSPFile.js';
 import { Fetcher, GameFiles, HttpSource, MapFileSystem, Mount } from './files.js';
 import { newPose, poseAt, Pose, sampleAt, wrap } from './playback.js';
 import { FL_DUCKED, FL_ONGROUND, KEY_BACK, KEY_DUCK, KEY_FORWARD, KEY_JUMP, KEY_LEFT, KEY_RIGHT, parseRec, Rec } from './rec.js';
+import { DebugDraw } from '../vendor/noclip/src/gfx/helpers/DebugDraw.js';
 import { View } from './view.js';
 import { drawBody, drawRunLine, drawZones, zoneLabelPoint } from './world.js';
 import { inferSplits, parseZones, Zone } from './zones.js';
@@ -112,6 +113,7 @@ function setRec(r: Rec): void {
     for (let i = 0; i < r.n; i++)
         maxSpeed = Math.max(maxSpeed, Math.hypot(r.v[i * 3], r.v[i * 3 + 1]));
     if (runInfo === null) showInfoFromRec(r);
+    zones = [];
     computeSplits();
 }
 
@@ -238,10 +240,9 @@ async function buildScene(view: View, bytes: ArrayBufferSlice, mine: number): Pr
         const dd = renderer.renderHelper.debugDraw;
         const mv = renderer.mainViewRenderer.mainView;
         dd.beginFrame(mv.clipFromViewMatrix, mv.viewFromWorldMatrix, view.canvas.width, view.canvas.height);
-        drawWorld(mv.cameraPos);
+        drawWorld(dd, mv.cameraPos);
         dd.pushPasses(builder, colour, depth);
     };
-    drawTo = renderer;
 
     if (mine !== mapLoads) { renderer.destroy(view.device); return; }
     if (view.scene !== null) view.scene.destroy(view.device);
@@ -251,11 +252,8 @@ async function buildScene(view: View, bytes: ArrayBufferSlice, mine: number): Pr
 
 // ---- the 3D overlay: zones, the run line, the bodies ---------------------------
 
-let drawTo: SourceRenderer | null = null;
-
-function drawWorld(cam: vec3): void {
-    if (rec === null || drawTo === null) return;
-    const dd = drawTo.renderHelper.debugDraw;
+function drawWorld(dd: DebugDraw, cam: vec3): void {
+    if (rec === null) return;
     if ($<HTMLInputElement>('wzones').checked) drawZones(dd, zones, cam);
     if ($<HTMLInputElement>('wpath').checked) drawRunLine(dd, rec, T, cam, maxSpeed);
     if (ghost !== null && T <= ghost.rec.t[ghost.rec.n - 1]) drawBody(dd, gpose, cam, GHOST);
@@ -365,7 +363,7 @@ function drawOverlay(v: View): void {
             const p = v.project(at[0], at[1], at[2] + 16, scratch);
             if (p === null || p[2] > 6000) continue;
             const name = z.kind === 'start' ? 'Start' : z.kind === 'end' ? 'End'
-                : z.kind === 'stage' ? `Stage ${z.seg + 1}` : `Checkpoint ${z.ord}`;
+                : z.kind === 'stage' ? `Stage ${z.seg + 1}` : `Checkpoint ${z.cp}`;
             label(name, p, z.kind === 'end' ? '#ff8a7a' : z.kind === 'stage' ? '#E8C56A' : z.kind === 'start' ? '#7be38f' : '#8fd4ff');
         }
     }
@@ -543,6 +541,7 @@ async function toggleGhost(): Promise<void> {
         return;
     }
     if (runInfo === null) return;
+    const of = runInfo;
     b.disabled = true;
     try {
         const q = new URLSearchParams({ map: runInfo.map, track: String(runInfo.track), leg: String(runInfo.leg),
@@ -554,6 +553,7 @@ async function toggleGhost(): Promise<void> {
             return;
         }
         const [info, track] = await Promise.all([fetchJSON(`api/run/${row.rep}`), fetchJSON(`api/run/${row.rep}/track`)]);
+        if (of !== runInfo) return;   // another recording was opened meanwhile
         ghost = { rec: parseRec(track.rec), info };
         b.textContent = 'Stop racing';
         $('wghostinfo').textContent = `Racing ${plain(info.name)} (#${row.r}, ${fmt(info.ms / 1000)}${info.tr !== runInfo.tr ? ', ' + (TIER_NAMES[info.tr] ?? info.tr) : ''}).`;

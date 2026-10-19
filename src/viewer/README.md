@@ -53,8 +53,9 @@ The zone file is the one the game downloads,
 `https://play.proto.bar/ftesurf/maps/zones/local/<map>.json`; a map without one
 draws no zones and infers nothing. A run whose recording has no `split` records
 (every import) gets its stage times from the first touch of each stage zone in
-order, shown with ≈. `tools/zones_check.ts` compares that inference with the
-recorded splits: 52 of 52 within 0.05 s on 19 Oct, splits at a restart not
+order, shown with ≈; the touch test is the game's (`Zone_BoxInside`), because
+one region in ten is concave. `tools/zones_check.ts` compares that inference with
+the recorded splits: 52 of 52 within 0.05 s on 19 Oct, splits at a restart not
 compared. The surf_666 AnnA/p426 harness fixtures were made on another zone set
 and are left out.
 

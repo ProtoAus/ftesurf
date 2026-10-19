@@ -1801,6 +1801,7 @@ def clean_map(raw):
 # WHAT COMES BACK OUT IS THE ON-DISK SPELLING, because that is what goes to
 # `changelevel`.  FTE's own filesystem is case-sensitive on Linux too.
 _maps_lock = threading.Lock()
+_maps_scan_lock = threading.Lock()      # held across a scan; _maps_lock only around the cache
 # "at" None = never scanned.  -1.0 read as fresh for the first MAPS_TTL after
 # boot (monotonic() counts from boot on Linux): every map "not installed".
 _maps_cache = {"at": None, "bsp": {}, "zone": frozenset()}
@@ -1861,50 +1862,89 @@ def _scan_maps():
 
     zone.update(zone_file_index())
 
+    known = _timer_cache_load()
+    seen = {}
     for key, stem in bsp.items():
-        if key not in zone and zonefit.has_timer(os.path.join(MAPS_DIR, stem + ".bsp")):
+        if key in zone:
+            continue
+        path = os.path.join(MAPS_DIR, stem + ".bsp")
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        sig = [st.st_mtime_ns, st.st_ctime_ns, st.st_size]
+        hit = known.get(stem)
+        timed = hit[3] if hit is not None and hit[:3] == sig else zonefit.has_timer(path)
+        seen[stem] = sig + [bool(timed)]
+        if timed:
             zone.add(key)
+    if seen != known:
+        _timer_cache_save(seen)
     return bsp, frozenset(zone)
 
 
-def _refresh_maps(now):
+# zonefit.has_timer's answers, kept across worker restarts (Patch 829): gunicorn
+# recycles the one worker every ~5,000 requests (~18 min on 19 Oct), and each new
+# process opened every zone-less BSP again inside whichever request came first --
+# 20.8 s on the Pi for 2,151 maps, against 0.014 s once its lru_cache was warm.
+# Keyed by stem and stat, as that cache is.  Never created outside DATA_DIR.
+def _timer_cache_path():
+    return os.path.join(DATA_DIR, "maps_timer_cache.json")
+
+
+def _timer_cache_load():
     try:
-        bsp, zone = _scan_maps()
-        with _maps_lock:
-            _maps_cache["at"], _maps_cache["bsp"], _maps_cache["zone"] = now, bsp, zone
-        log.info("map library: %d installed, %d with zones (%s, refreshed)",
-                 len(bsp), len(zone), MAPS_DIR)
-    finally:
-        with _maps_lock:
-            _maps_cache["busy"] = False
+        with open(_timer_cache_path(), encoding="utf-8") as fh:
+            d = json.load(fh)
+        if d.get("v") == 1 and d.get("dir") == MAPS_DIR and isinstance(d.get("maps"), dict):
+            return {k: v for k, v in d["maps"].items()
+                    if isinstance(v, list) and len(v) == 4 and all(isinstance(n, int) for n in v[:3])}
+    except (OSError, ValueError, AttributeError):
+        pass
+    return {}
+
+
+def _timer_cache_save(seen):
+    path = _timer_cache_path()
+    if not os.path.isdir(os.path.dirname(path)):
+        return
+    tmp = "%s.%d.tmp" % (path, os.getpid())
+    try:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump({"v": 1, "dir": MAPS_DIR, "maps": seen}, fh, separators=(",", ":"))
+        os.replace(tmp, path)
+    except OSError as exc:
+        log.warning("map timer cache %s not written: %s", path, exc)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 def map_index(now=None):
     """The installed library, cached for MAPS_TTL.  Returns (bsp, zone).
 
-    Only the first call scans in the request.  A stale cache is answered as it
-    is and rescanned once on a thread (Patch 829): the scan opens every
-    zone-less BSP (zonefit.has_timer), and inside a request it outlasted nginx's
-    5 s on the Pi, so the board, the map page and the run page said 504."""
+    One scan at a time (Patch 829): a thread that finds the cache stale waits
+    for a scan already running and takes its answer.  With the timer cache warm
+    a scan is a listing and a stat per map; see _timer_cache_path."""
     now = time.monotonic() if now is None else now
     with _maps_lock:
         at = _maps_cache["at"]
         if at is not None and now - at < MAPS_TTL:
             return _maps_cache["bsp"], _maps_cache["zone"]
-        if at is not None:
-            if not _maps_cache.get("busy"):
-                _maps_cache["busy"] = True
-                threading.Thread(target=_refresh_maps, args=(now,), daemon=True,
-                                 name="maps-refresh").start()
-            return _maps_cache["bsp"], _maps_cache["zone"]
-    bsp, zone = _scan_maps()
-    with _maps_lock:
-        _maps_cache["at"] = now
-        _maps_cache["bsp"] = bsp
-        _maps_cache["zone"] = zone
-        log.info("map library: %d installed, %d with zones (%s)",
-                 len(bsp), len(zone), MAPS_DIR)
-        return bsp, zone
+    with _maps_scan_lock:
+        with _maps_lock:
+            at = _maps_cache["at"]
+            if at is not None and now - at < MAPS_TTL:      # scanned while this one waited
+                return _maps_cache["bsp"], _maps_cache["zone"]
+        bsp, zone = _scan_maps()
+        with _maps_lock:
+            _maps_cache["at"] = now
+            _maps_cache["bsp"] = bsp
+            _maps_cache["zone"] = zone
+            log.info("map library: %d installed, %d with zones (%s)",
+                     len(bsp), len(zone), MAPS_DIR)
+            return bsp, zone
 
 
 def map_index_cached():
@@ -4252,13 +4292,21 @@ def replay(rid):
     try:
         db = get_db()
         row = db.execute(
-            "SELECT p.map_dir, p.track, p.leg, p.leaf, p.kind, p.bytes,"
+            "SELECT p.map_dir, p.map, p.track, p.leg, p.leaf, p.kind, p.bytes,"
+            " p.player, p.runid,"
             " COALESCE((SELECT a.banned_at FROM accounts a"
             "            WHERE a.steamid = p.player), 0) AS owner_banned, "
             + _REJECTED_SQL + " AS rejected"
             " FROM replays p WHERE p.id = ?",
             (rid,),
         ).fetchone()
+        # Patch 830: a review-rejected recording is off its board, so its id
+        # names nothing here either, as on the run page -- and so is any other
+        # recording of a run whose recording was rejected (_run_rejected, the
+        # board's rule).  Imports are another board's and stay.
+        hidden = row is not None and row["kind"] in ("run", "evidence") and (
+            row["rejected"] or (row["runid"] not in ("", "-") and _run_rejected(
+                db, (row["map"], row["track"], row["player"], row["runid"]))))
     except sqlite3.Error as exc:
         log.exception("replay db error: %s", exc)
         return fail(500, "storage error")
@@ -4271,9 +4319,7 @@ def replay(rid):
     if row is None or (
             row["owner_banned"] and row["kind"] in ("run", "evidence")):
         return fail(404, "no such replay")
-    # Patch 830: a review-rejected run is off its board, so its id names nothing
-    # here either, as on the run page.  Evidence stays: stage rows' ghosts read it.
-    if row["rejected"] and row["kind"] == "run":
+    if hidden:
         return fail(404, "no such replay")
 
     leaf = row["leaf"]

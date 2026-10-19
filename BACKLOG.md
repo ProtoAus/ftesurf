@@ -59,43 +59,46 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
 - At `r_shadows 2` every entity batch uploads 16 fake-shadow matrices (SP_FAKESHADOWMATRIX,
   gl_backend.c:4350). The owner runs `r_shadows 0`, so these dumps do not include it.
 
-## 3D run viewer (P825): what is left
+## 3D run viewer (P825, P829): what is left
 
-- **Zones are not drawn.** Their JSON is public and CORS-readable
-  (`/ftesurf/maps/zones/local/<map>.json`); start/end/stage regions would go in the overlay.
 - **The gateway installer pins the maps snippet's hash** (`nginx_before_sha256`): since P825's
   CORS lines (applied 19 Oct ~08:06Z, backup `ftesurf-maps.conf.pre-p825`), its next install
   must take the new one (sha256 a117932e...).
-- **No stage deltas against an import.** Imports carry no `split` records, so the splits
-  table's delta column is empty racing a Momentum or KSF record; the HUD's live gap is
-  position-matched instead. Stage times from zone crossings (P750's inference) would fill it.
-- **The run line has no depth test** (a 2D overlay), so it shows through walls; the player and
-  the record are dots, not models.
-- **Props from Valve content are skipped without a game folder**, and noclip logs "Missing
-  object" for each to the console.
+- **Inferred stage times (P829) are checked only against our own recordings**: 52 of 52
+  recorded splits within 0.05 s (`src/viewer/tools/zones_check.ts`, 8 maps, all convex), plus
+  a synthetic reach test over all 648 zone files (every stage zone reachable). Against
+  Momentum's or KSF's own split times for the same demo: unmeasured.
+- **What is behind the map is drawn at 15%** (DebugDraw's depth tint), not hidden: the run line
+  and bodies read through walls faintly. Lex has not judged it.
+- **Props from Valve content are skipped without a game folder.** noclip's "Missing object"
+  rejections for them are counted in `watchState().missingObjects` (19 on surf_prosurf b4),
+  not logged.
 - **Not tried:** Strata maps (BSP v25, 185 of 1,926; noclip's VTF reader asserts minor <= 5
   and has no BC7/BC6H), maps over 100 MB (98 of them; memory and download unmeasured), phones
   and low-end GPUs, Firefox/Safari's directory input on a whole Steam folder, and whether
   noclip animates movers the game freezes at spawn (sv_entities.qc).
-- **Routes that call `map_index()` rescan the library inside the request** every MAPS_TTL
-  (300 s): `zonefit.has_timer` opens each zone-less BSP, which outlasted nginx's 5 s on the Pi
-  (the run route 504'd twice on 19 Oct before P825 moved it to `map_index_cached()`). The maps
-  list, the board and /api/join still pay it. Fix: rescan off the request path.
 - **test_web.py leaves its temp homes behind** (`%TEMP%\surfd-web-*`, one per `fresh()`): 3,612
   had piled up on the PC since 20 Sep, 327 of them from P825's runs alone (removed). Clean up in
   the suite's own exit, as AGENT_NOTES asks of suites.
-- **`/api/replay/<rid>` has no kind or tier gate** (surfd.py `replay()`): only a banned owner's
-  rows are refused, so evidence-kind and review-rejected recordings resolve by id, input rows
-  included. The game fetches community ghosts there, so the answer is to refuse evidence and
-  rejected rows as `_web_run_file` does and keep community. test_web 6b's evidence control
-  shows the difference. Details: the private tree's
-  `checkpoints/p825-public-surface-findings-20261019.md`.
-- **`/api/board` rows carry `player` raw** (surfd.py ~2661), and the route takes
-  `tier=community`, whose `player` would be an install guid -- which AGENT_NOTES' public-surface
-  rule says is never published. Measured 2026-10-19: 0 community rows on the 4 maps sampled,
-  and ranked rows are SteamID64 (public), so latent on that sample. Answer: omit it, or send
-  `web_handle`, for tiers other than ranked and imported, after checking what the client keys
-  on it. Same private note.
+- **`/api/board` rows carry `player` raw** (surfd.py `board_rows`), and on `tier=community` that
+  is an install guid, which AGENT_NOTES' public-surface rule says is never published. P830
+  checked what the client keys on it: its own row, the menu board's focus, the players cache and
+  the owner pick all hash it with `FS_GuidId`, and test_board's community checks read rows by it,
+  so blanking it loses the own-row mark. Measured on the Pi 19 Oct: 1 community row in the
+  table; ranked rows are SteamID64 while `SURFD_RANKED_LINKED=1` (guids again in legacy mode).
+  The answer needs both sides: the server sends the 8-hex `FS_GuidId` digest on each row, the
+  client prefers it, and once a release carrying that is out the server stops sending `player`
+  for those rows. Details: the private tree's `checkpoints/p825-public-surface-findings-20261019.md`.
+- **A rejected IMPORTED row stays on the board and on `/api/replay`** (kind momentum/ksf), while
+  `/board/api/run` 404s it. Older than P830 (its review found it); whether a reject should hide an
+  import at all is Lex's call.
+- **The very first scan after a deploy with no `data/maps_timer_cache.json` is still ~21 s in a
+  request** (once; every later worker reads the file). Seed it before a cutover if that matters.
+- Closed by P829/P830: zones drawn; stage deltas against imports; depth-tested run line and the
+  game's body for player and ghost; each new worker's 20 s map scan (persisted timer answers);
+  `/api/replay` refuses a review-rejected run or evidence recording, and any recording of a run
+  whose recording was rejected (the board's `_run_rejected`); unreviewed evidence stays, since
+  stage rows' board lines read it through `_PARENT_SQL`.
 
 ## Publish dialog (P822) and first-boot screens (P823): what the reviews left
 
