@@ -21,7 +21,8 @@ package.json), and it prints the bundle's sha256.
 - `src/` is ours: `rec.ts` reads FTESURF-REC, `playback.ts` interpolates it as
   `tools/watchtrace.py` (cl_watch.qc's model) does, `view.ts` is the frame loop,
   `files.ts` reads the viewer's own game folder, `missing.ts` stands in for
-  textures nobody provided, `zones.ts` reads the map's zone file and infers stage
+  textures nobody provided, `store.ts`, `handles.ts`, `settings.ts` and `energy.ts` are
+  Patch 834's (below), `zones.ts` reads the map's zone file and infers stage
   times from it, `world.ts` draws zones, the run line and the bodies into the 3D
   view (Patch 829), `main.ts` is the page.
 - `vendor/noclip/` is a copy of the import closure of noclip's
@@ -62,6 +63,27 @@ and are left out.
 World drawing goes through noclip's DebugDraw on the main view's colour and depth
 (the `onWorldPasses` patch in `tools/vendor.py`), so what is behind the map is
 drawn at 15%.
+
+## Display settings, energy, what is kept (Patch 834)
+
+`settings.ts` binds every `data-set="<key>"` control in watch.html (the Display panel
+inside the stage, so it works in full screen, and the storage controls in the files card)
+and remembers them in localStorage. The clean view (H) hides the HUD, labels, run line
+and zones and keeps the bodies. Energy (`energy.ts`) is the game's `Strafe_Energy`,
+z + |v|²/2g, from `hud_energy_ref`'s two zeros: the ground under the last jump (default;
+before the first jump it follows the ground) or the start zone's floor; gravity 800 unless a
+local .rec's `pmpin` says otherwise. A recording with no ground flags (some imports) can
+only use the start.
+
+`store.ts` keeps, in Cache Storage: downloaded maps (one version per map, matched to the
+download's Content-Length and Last-Modified; both are readable after the redirect to R2, and
+the signed URL changes per request, so the browser's own cache never matches) and every
+file a map read from the visitor's games (`MapFileSystem`: pakfile, then the games, then
+what was kept). Each store is trimmed least-recently-used to its budget. `handles.ts`
+remembers folders picked with showDirectoryPicker (never under Program Files, which Chrome
+refuses). Measured 19 Oct on the PC: picking Counter-Strike Source lists 21,845 files in
+5.1 s; all of `common`, 300,487 files in 96 s, of which `files.ts`'s KEEP filter keeps
+8,700.
 
 ## Checks
 

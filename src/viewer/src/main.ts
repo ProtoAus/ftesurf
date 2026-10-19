@@ -14,6 +14,10 @@ import { DebugDraw } from '../vendor/noclip/src/gfx/helpers/DebugDraw.js';
 import { View } from './view.js';
 import { drawBody, drawRunLine, drawZones, zoneLabelPoint } from './world.js';
 import { inferSplits, parseZones, Zone } from './zones.js';
+import { energy, equivSpeed, gravityOf, jumpRefs, startRef } from './energy.js';
+import { folderPermission, rememberFolder, savedFolders } from './handles.js';
+import { bindSettings, loadSettings, saveSettings, Settings, showSettings } from './settings.js';
+import { GB, gameFiles, maps } from './store.js';
 
 // The R2-backed routes the game downloads from (cfg/default.cfg cl_download_mapsrc,
 // cl_download_zonesrc); a page served from this machine reads src/viewer/tools/serve.py's.
@@ -77,6 +81,11 @@ let zones: Zone[] = [];
 interface Splits { t: Map<number, number>; approx: boolean }
 let runSplits: Splits = { t: new Map(), approx: false };
 let ghostSplits: Splits = { t: new Map(), approx: false };
+const settings: Settings = loadSettings();
+// Energy (energy.ts): this run's gravity, its last-jump zeros, its start's zero.
+let grav = 800, jumpRef: Float32Array | null = null, zeroStart = 0;
+let lastFs: MapFileSystem | null = null;
+let mapSource = '', builds = 0;   // where the last BSP came from; scenes built
 
 // ---- loading ---------------------------------------------------------------
 
@@ -114,7 +123,16 @@ function setRec(r: Rec): void {
         maxSpeed = Math.max(maxSpeed, Math.hypot(r.v[i * 3], r.v[i * 3 + 1]));
     if (runInfo === null) showInfoFromRec(r);
     zones = [];
+    grav = gravityOf(r);
+    jumpRef = jumpRefs(r);
+    zeroStart = startRef(r, null);
+    graph = null;
     computeSplits();
+}
+
+function startFloor(): number | null {
+    const z = zones.find((x) => x.kind === 'start');
+    return z ? z.regions[0].bottom : null;
 }
 
 // The zone file the game downloads (maps/zones/local). Most maps have none, and
@@ -132,6 +150,8 @@ async function loadZones(): Promise<void> {
     }
     if (of !== rec) return;   // another recording was opened meanwhile
     zones = got;
+    if (rec !== null) zeroStart = startRef(rec, startFloor());
+    graph = null;
     computeSplits();
 }
 
@@ -163,12 +183,35 @@ async function bspBytes(name: string): Promise<ArrayBufferSlice> {
     const local = await files.findMap(name);
     if (local !== null) {
         status(`Reading ${name}.bsp from your game files…`, true);
+        mapSource = 'folder';
         return new ArrayBufferSlice(await local.arrayBuffer());
     }
     status(`Downloading ${name}.bsp…`, true);
-    const r = await fetch(MAP_URL(name), { credentials: 'omit' });
-    if (!r.ok) throw new Error(`map download: ${r.status}`);
+    // A kept copy is used when the download's length and date say it is the
+    // same build (the route redirects to a new signed URL each time, so the
+    // browser's own cache never matches); the download is then dropped.
+    const ac = new AbortController();
+    let r: Response;
+    try {
+        r = await fetch(MAP_URL(name), { credentials: 'omit', signal: ac.signal });
+        if (!r.ok) throw new Error(`map download: ${r.status}`);
+    } catch (e) {
+        const any = await maps.get(name);
+        if (any === null) throw e;
+        status(`Offline: using the copy of ${name}.bsp kept on this PC…`, true);
+        mapSource = 'kept offline';
+        return new ArrayBufferSlice(any);
+    }
     const total = Number(r.headers.get('content-length') ?? 0);
+    const ver = `${total}|${r.headers.get('last-modified') ?? ''}`;
+    const kept = total > 0 ? await maps.get(name, ver) : null;
+    if (kept !== null && kept.byteLength === total) {
+        ac.abort();
+        status(`Using the copy of ${name}.bsp kept on this PC…`, true);
+        mapSource = 'kept';
+        return new ArrayBufferSlice(kept);
+    }
+    mapSource = 'download';
     const reader = r.body!.getReader();
     const parts: Uint8Array[] = [];
     let got = 0;
@@ -182,6 +225,8 @@ async function bspBytes(name: string): Promise<ArrayBufferSlice> {
     const buf = new Uint8Array(got);
     let off = 0;
     for (const p of parts) { buf.set(p, off); off += p.byteLength; }
+    if (settings.keepMaps && total > 0 && got === total)
+        void maps.put(name, buf, ver).then(showStore);
     return new ArrayBufferSlice(buf.buffer);
 }
 
@@ -208,10 +253,13 @@ async function loadMap(): Promise<void> {
 }
 
 async function buildScene(view: View, bytes: ArrayBufferSlice, mine: number): Promise<void> {
-    const fs = new MapFileSystem(fetcher);
-    for (const m of files.mounts)
+    const fs = new MapFileSystem(fetcher, gameFiles, settings.keepGame);
+    for (const m of files.mounts) {
         for (const stem of m.vpks)
             await fs.createVPKMount(stem);
+        if (m.loose !== null) fs.addLoose(m.loose.base, m.loose.files);
+    }
+    lastFs = fs;
     const bsp = new BSPFile(bytes, mapName);
     if (bsp.pakfile !== null) fs.addPakFile(bsp.pakfile);
 
@@ -248,15 +296,19 @@ async function buildScene(view: View, bytes: ArrayBufferSlice, mine: number): Pr
     if (mine !== mapLoads) { renderer.destroy(view.device); return; }
     if (view.scene !== null) view.scene.destroy(view.device);
     view.scene = renderer;
+    builds++;
     status('');
+    setTimeout(showStore, 3000);   // the textures it kept land as they load
 }
 
 // ---- the 3D overlay: zones, the run line, the bodies ---------------------------
 
 function drawWorld(dd: DebugDraw, cam: vec3): void {
     if (rec === null) return;
-    if ($<HTMLInputElement>('wzones').checked) drawZones(dd, zones, cam);
-    if ($<HTMLInputElement>('wpath').checked) drawRunLine(dd, rec, T, cam, maxSpeed);
+    const s = settings;
+    if (s.zones && !s.clean) drawZones(dd, zones, cam);
+    if (s.line && !s.clean) drawRunLine(dd, rec, T, cam, maxSpeed);
+    if (!s.bodies) return;
     if (ghost !== null && T <= ghost.rec.t[ghost.rec.n - 1]) drawBody(dd, gpose, cam, GHOST);
     if (mode !== 'eye') drawBody(dd, pose, cam, PLAYER);
 }
@@ -295,10 +347,44 @@ async function pickNative(): Promise<void> {
     }
     try {
         const h = await w.showDirectoryPicker({ id: 'steamgame', mode: 'read' });
-        await addedFiles(await files.addHandle(h));
+        const found = await files.addHandle(h);
+        if (found.some((m) => m.game !== 'maps folder' || m.maps !== null)) void rememberFolder(h);
+        await addedFiles(found);
     } catch (e) {
         if ((e as Error).name !== 'AbortError') status(String(e));
     }
+}
+
+// Folders remembered from the picker: mounted at once if the browser kept the
+// permission, else a button, since asking needs a click.
+async function reconnectFolders(): Promise<void> {
+    const box = $('wreconnect');
+    for (const h of await savedFolders()) {
+        if (await folderPermission(h, false) === 'granted') {
+            await files.addHandle(h);
+            continue;
+        }
+        const b = el('button', 'wbtn', `Use ${h.name} again`) as HTMLButtonElement;
+        b.type = 'button';
+        b.addEventListener('click', async () => {
+            if (await folderPermission(h, true) !== 'granted') return;
+            b.remove();
+            await addedFiles(await files.addHandle(h));
+        });
+        box.append(b);
+    }
+    showMounts();
+}
+
+function mb(bytes: number): string {
+    return bytes >= GB ? `${(bytes / GB).toFixed(1)} GB` : `${Math.round(bytes / 1048576)} MB`;
+}
+
+function showStore(): void {
+    const m = maps.info(), g = gameFiles.info();
+    $('wmapstore').textContent = !maps.usable ? '(this browser keeps nothing here)'
+        : `${m.count} map${m.count === 1 ? '' : 's'}, ${mb(m.bytes)}`;
+    $('wgamestore').textContent = !gameFiles.usable ? '' : `${g.count} file${g.count === 1 ? '' : 's'}, ${mb(g.bytes)}`;
 }
 
 // ---- playback, camera, overlay --------------------------------------------
@@ -356,9 +442,10 @@ function drawOverlay(v: View): void {
         g.strokeText(text, p[0], p[1]);
         g.fillText(text, p[0], p[1]);
     };
-    if (ghost !== null && T <= ghost.rec.t[ghost.rec.n - 1])
-        label(plain(ghost.info.name), v.project(gpose.x, gpose.y, gpose.z + 90, scratch), '#E8C56A');
-    if ($<HTMLInputElement>('wzones').checked) {
+    if (settings.clean) return;
+    if (settings.ghostName && ghost !== null && T <= ghost.rec.t[ghost.rec.n - 1])
+        label(plain(ghost.info.name), v.project(gpose.x, gpose.y, gpose.z + 80, scratch), '#E8C56A');
+    if (settings.zones && settings.zoneNames) {
         for (const z of zones) {
             const at = zoneLabelPoint(z, scratch2);
             const p = v.project(at[0], at[1], at[2] + 16, scratch);
@@ -370,27 +457,49 @@ function drawOverlay(v: View): void {
     }
 }
 
+const shown = new Map<string, string>();
+function setText(id: string, s: string): void {
+    if (shown.get(id) === s) return;
+    shown.set(id, s);
+    $(id).textContent = s;
+}
+
+// The zero energy is measured from at T (energy.ts).
+function energyZero(): number {
+    if (settings.energyZero === 'jump' && jumpRef !== null && rec !== null)
+        return jumpRef[sampleAt(rec, T)];
+    return zeroStart;
+}
+
+function energyText(e: number): string {
+    const sp = settings.energyUnits === 'speed';
+    const v = Math.round(sp ? equivSpeed(e, grav) : e);
+    return `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v)} ${sp ? 'u/s' : 'u'} energy`;
+}
+
 function updateHud(): void {
     if (rec === null) return;
-    $('htime').textContent = fmt(Math.min(T, t1));
-    $('hspeed').textContent = String(Math.round(Math.hypot(pose.vx, pose.vy)));
-    $('hvz').textContent = (pose.vz >= 0 ? '+' : '') + Math.round(pose.vz);
+    setText('wclock', `${fmt(Math.max(T, t0))} / ${fmt(t1)}`);
+    $<HTMLInputElement>('wseek').value = String(T);
+    if (settings.clean) return;
+    setText('htime', fmt(Math.min(T, t1)));
+    setText('hspeed', String(Math.round(Math.hypot(pose.vx, pose.vy))));
+    setText('hvz', (pose.vz >= 0 ? '+' : '') + Math.round(pose.vz));
+    setText('henergy', energyText(energy(pose.z, pose.vx, pose.vy, pose.vz, grav) - energyZero()));
     const st = stageAt(T);
-    $('hstage').textContent = st > 0 ? `Stage ${st}` : (T < 0 ? 'Start' : '');
+    setText('hstage', st > 0 ? `Stage ${st}` : (T < 0 ? 'Start' : ''));
     let gap = '';
     const d = ghostGap();
     if (d !== null) {
         gap = `${d <= 0 ? '−' : '+'}${Math.abs(d).toFixed(2)} vs ${plain(ghost!.info.name)}`;
         $('hgap').classList.toggle('ahead', d <= 0);
     }
-    $('hgap').textContent = gap;
+    setText('hgap', gap);
     const k = pose.keys;
     const on = (id: string, b: boolean) => $(id).classList.toggle('on', b);
     on('kw', !!(k & KEY_FORWARD)); on('ka', !!(k & KEY_LEFT)); on('ks', !!(k & KEY_BACK)); on('kd', !!(k & KEY_RIGHT));
     on('kj', !!(k & KEY_JUMP)); on('kc', !!(k & KEY_DUCK) || !!(pose.fl & FL_DUCKED));
     on('kg', !!(pose.fl & FL_ONGROUND));
-    $<HTMLInputElement>('wseek').value = String(T);
-    $('wclock').textContent = `${fmt(Math.max(T, t0))} / ${fmt(t1)}`;
 }
 
 function buildTimeline(): void {
@@ -421,7 +530,10 @@ let last = 0, frames = 0;
     eye: [pose.x, pose.y, pose.eyeZ, pose.pitch, pose.yaw],
     zones: zones.length, splits: [...runSplits.t].map(([s, t]) => [s, +t.toFixed(3)]), approx: runSplits.approx,
     ghostSplits: [...ghostSplits.t].map(([s, t]) => [s, +t.toFixed(3)]), error: renderError, missingObjects,
+    settings: { ...settings }, energy: shown.get('henergy') ?? '', kept: { maps: maps.info(), game: gameFiles.info() },
+    fromKept: lastFs?.fromKept ?? 0, missing: lastFs?.missing.size ?? 0, mapSource, builds,
 });
+(window as any).watchSet = (k: keyof Settings, v: any) => { (settings as any)[k] = v; showSettings(document, settings); applySettings(k); };
 (window as any).watchSeek = (t: number, m?: CamMode) => { T = t; if (m) setMode(m); };
 (window as any).watchGhost = () => toggleGhost();
 
@@ -569,32 +681,51 @@ async function toggleGhost(): Promise<void> {
     }
 }
 
-// Horizontal speed against run time, this run blue and the ghost gold; the
-// playhead is drawn over it each frame.
+// Horizontal speed, or energy from the start, against run time: this run blue,
+// the ghost gold. The playhead is drawn over it each frame.
 function drawGraph(): void {
     const c = $<HTMLCanvasElement>('wgraph');
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const w = Math.max(1, Math.round(c.clientWidth * dpr)), h = Math.max(1, Math.round(c.clientHeight * dpr));
     if (rec === null) return;
     const span = Math.max(t1 - t0, 1e-3);
-    const top = Math.max(maxSpeed, ghost ? ghostMax() : 0, 1);
     if (graph === null || graph.width !== w || graph.height !== h) {
         graph = document.createElement('canvas');
         graph.width = w; graph.height = h;
         const g = graph.getContext('2d')!;
-        const trace = (r: Rec, colour: string) => {
+        const en = settings.graph === 'energy', floor = startFloor();
+        const runs = ghost ? [rec, ghost.rec] : [rec];
+        const zero = runs.map((r) => startRef(r, floor)), gr = runs.map((r) => gravityOf(r));
+        const val = (k: number, i: number) => {
+            const r = runs[k], v = r.v;
+            return en ? energy(r.o[i * 3 + 2], v[i * 3], v[i * 3 + 1], v[i * 3 + 2], gr[k]) - zero[k] : Math.hypot(v[i * 3], v[i * 3 + 1]);
+        };
+        let lo = en ? Infinity : 0, hi = 1;
+        for (let k = 0; k < runs.length; k++)
+            for (let i = 0; i < runs[k].n; i++) {
+                const y = val(k, i);
+                if (y < lo) lo = y;
+                if (y > hi) hi = y;
+            }
+        const range = Math.max(hi - lo, 1);
+        const trace = (k: number, colour: string) => {
+            const r = runs[k];
             g.strokeStyle = colour;
             g.lineWidth = dpr;
             g.beginPath();
             const stride = Math.max(1, Math.floor(r.n / (w * 2)));
             for (let i = 0; i < r.n; i += stride) {
-                const x = (r.t[i] - t0) / span * w, y = h - Math.hypot(r.v[i * 3], r.v[i * 3 + 1]) / top * (h - 2) - 1;
+                const x = (r.t[i] - t0) / span * w, y = h - (val(k, i) - lo) / range * (h - 2) - 1;
                 if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
             }
             g.stroke();
         };
-        if (ghost) trace(ghost.rec, 'rgba(232,197,106,.7)');
-        trace(rec, '#59bfff');
+        if (en && lo < 0) {                 // the start's level, when the run goes below it
+            g.fillStyle = 'rgba(255,255,255,.18)';
+            g.fillRect(0, Math.round(h - (0 - lo) / range * (h - 2) - 1), w, 1);
+        }
+        if (ghost) trace(1, 'rgba(232,197,106,.7)');
+        trace(0, en ? '#c9b8ff' : '#59bfff');
     }
     if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
     const g = c.getContext('2d')!;
@@ -622,13 +753,6 @@ function ghostGap(): number | null {
         if (dd < bd) { bd = dd; best = j; }
     }
     return best < 0 ? null : T - g.t[best];
-}
-
-function ghostMax(): number {
-    let m = 0;
-    const r = ghost!.rec;
-    for (let i = 0; i < r.n; i++) m = Math.max(m, Math.hypot(r.v[i * 3], r.v[i * 3 + 1]));
-    return m;
 }
 
 function showInfoFromRec(r: Rec): void {
@@ -670,7 +794,47 @@ function computeStats(r: Rec): void {
 
 function seekBy(d: number): void { T = Math.max(t0, Math.min(t1, T + d)); }
 
+const HIDE: (keyof Settings)[] = ['timer', 'stage', 'gap', 'speed', 'vz', 'energy', 'keys'];
+
+function applySettings(key: keyof Settings | null): void {
+    const st = $('wstage');
+    for (const k of HIDE) st.classList.toggle(`hide-${k}`, !settings[k]);
+    st.classList.toggle('clean', settings.clean);
+    $('wclean').setAttribute('aria-pressed', settings.clean ? 'true' : 'false');
+    if (key === 'graph') graph = null;
+    if (key === 'storeGB' || key === null) {
+        void maps.setBudget(settings.storeGB * GB).then(showStore);
+        void gameFiles.setBudget(settings.storeGB * GB).then(showStore);
+    }
+    shown.clear();     // a shown element may have been hidden and changed meanwhile
+}
+
+function toggleClean(): void {
+    settings.clean = !settings.clean;
+    saveSettings(settings);
+    applySettings('clean');
+}
+
+function showPanel(open: boolean): void {
+    $('wset').hidden = !open;
+    $('wsetbtn').setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
 function wire(): void {
+    bindSettings(document, settings, (k) => applySettings(k));
+    applySettings(null);
+    $('wsetbtn').addEventListener('click', () => showPanel($('wset').hidden));
+    $('wsetbar').addEventListener('click', () => showPanel($('wset').hidden));
+    $('wclean').addEventListener('click', toggleClean);
+    document.addEventListener('pointerdown', (e) => {
+        const t = e.target as Node;
+        if (!$('wset').hidden && !$('wset').contains(t) && t !== $('wsetbtn') && t !== $('wsetbar')) showPanel(false);
+    });
+    $('wclearstore').addEventListener('click', async () => {
+        if (!confirm('Clear the maps and textures kept in this browser?')) return;
+        await Promise.all([maps.clear(), gameFiles.clear()]);
+        showStore();
+    });
     $('wplay').addEventListener('click', () => {
         if (T >= t1) T = Math.max(t0, 0);
         setPlaying(!playing);
@@ -734,6 +898,8 @@ function wire(): void {
         else if (e.code === 'Digit2') setMode('chase');
         else if (e.code === 'Digit3') setMode('top');
         else if (e.code === 'Digit4') setMode('free');
+        else if (e.code === 'KeyH' && mode !== 'free') toggleClean();
+        else if (e.code === 'Escape') showPanel(false);
         else if (e.code === 'Comma' || e.code === 'Period') {
             const i = SPEEDS.indexOf(speed) + (e.code === 'Comma' ? -1 : 1);
             if (i >= 0 && i < SPEEDS.length) { speed = SPEEDS[i]; $<HTMLSelectElement>('wspeed').value = String(speed); }
@@ -752,6 +918,10 @@ function wire(): void {
 
 async function main(): Promise<void> {
     wire();
+    await Promise.all([maps.open(), gameFiles.open()]);
+    applySettings('storeGB');
+    showStore();
+    await reconnectFolders();
     try {
         view = new View($<HTMLCanvasElement>('wgl'), fetcher);
     } catch (e) {

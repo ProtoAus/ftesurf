@@ -3,9 +3,10 @@
 // costs only the textures the map names.
 import ArrayBufferSlice from '../vendor/noclip/src/ArrayBufferSlice.js';
 import { DataFetcher, NamedArrayBufferSlice } from '../vendor/noclip/src/DataFetcher.js';
-import { SourceFileSystem } from '../vendor/noclip/src/SourceEngine/Main.js';
+import { LooseMount, SourceFileSystem } from '../vendor/noclip/src/SourceEngine/Main.js';
 import { decompressZipFileEntry } from '../vendor/noclip/src/ZipFile.js';
 import { MISSING_DIR, missingMaterial, missingTexture } from './missing.js';
+import { Store } from './store.js';
 
 export const LOCAL = 'local:';
 
@@ -19,6 +20,7 @@ export interface Readable {
 // A file by a path relative to whatever folder the viewer picked.
 interface Source {
     file(path: string): Promise<Readable | null>;
+    list(dir: string): Promise<string[]>;      // every file under dir/, relative to dir
 }
 
 class HttpFile implements Readable {
@@ -42,55 +44,92 @@ export class HttpSource implements Source {
         const r = await fetch(url, { method: 'HEAD' });
         return r.ok ? new HttpFile(url) : null;
     }
+    public async list(): Promise<string[]> { return []; }
 }
 
 class HandleSource implements Source {
     constructor(private root: FileSystemDirectoryHandle) {}
 
-    public async file(path: string): Promise<Readable | null> {
+    private async dir(path: string): Promise<FileSystemDirectoryHandle | null> {
         let dir = this.root;
-        const parts = path.split('/');
         try {
-            for (let i = 0; i < parts.length - 1; i++)
-                dir = await dir.getDirectoryHandle(parts[i]);
-            return await (await dir.getFileHandle(parts[parts.length - 1])).getFile();
+            for (const p of path.split('/').filter((s) => s !== ''))
+                dir = await dir.getDirectoryHandle(p);
+            return dir;
         } catch {
             return null;
         }
     }
+
+    public async file(path: string): Promise<Readable | null> {
+        const cut = path.lastIndexOf('/');
+        const dir = await this.dir(cut < 0 ? '' : path.slice(0, cut));
+        try {
+            return dir === null ? null : await (await dir.getFileHandle(path.slice(cut + 1))).getFile();
+        } catch {
+            return null;
+        }
+    }
+
+    public async list(path: string): Promise<string[]> {
+        const out: string[] = [];
+        const walk = async (d: FileSystemDirectoryHandle, pre: string) => {
+            for await (const [name, h] of (d as any).entries()) {
+                if (h.kind === 'directory') await walk(h, `${pre}${name}/`);
+                else out.push(pre + name);
+            }
+        };
+        const d = await this.dir(path);
+        if (d !== null) await walk(d, '');
+        return out;
+    }
 }
+
+// What a picked folder is kept for: VPKs, the BSPs in a maps folder, the games'
+// signature files, and Momentum's loose content. A whole Steam `common` is 300k
+// files (96 s for Chrome to list on the PC, 19 Oct) of which ~8,700 are these.
+const KEEP = /\.vpk$|(^|\/)maps\/[^/]+\.bsp$|^[^/]+\.bsp$|momentum\.fgd$|(^|momentum\/)(materials|models)\//i;
 
 class ListSource implements Source {
     private byPath = new Map<string, File>();
 
     constructor(files: FileList) {
         // webkitRelativePath starts with the picked folder's own name; drop it.
-        for (const f of Array.from(files)) {
+        for (let i = 0; i < files.length; i++) {
+            const f = files[i];
             const rel = f.webkitRelativePath || f.name;
             const cut = rel.indexOf('/');
-            this.byPath.set((cut > 0 ? rel.slice(cut + 1) : rel).toLowerCase(), f);
+            const path = (cut > 0 ? rel.slice(cut + 1) : rel).toLowerCase();
+            if (KEEP.test(path)) this.byPath.set(path, f);
         }
     }
 
     public async file(path: string): Promise<Readable | null> {
         return this.byPath.get(path.toLowerCase()) ?? null;
     }
+
+    public async list(dir: string): Promise<string[]> {
+        const pre = dir === '' ? '' : dir.toLowerCase() + '/';
+        return [...this.byPath.keys()].filter((p) => p.startsWith(pre)).map((p) => p.slice(pre.length));
+    }
 }
 
 // Each game from Steam's `common`, its own folder, or its gamedir, known by a
 // file only it has. `rank` is mount priority, lowest first: the game's
 // fs_addons order (cstrike before hl2), then Momentum's bundled HL2 copy last.
+// Momentum keeps its own textures and models loose, not in VPKs.
 const GAMES = [
-    { name: 'Momentum Mod', dirs: ['Momentum Mod Playtest/momentum', 'momentum', ''], sig: 'momentum.fgd', vpks: [], maps: true, rank: 0 },
-    { name: 'Counter-Strike: Source', dirs: ['Counter-Strike Source/cstrike', 'cstrike', ''], sig: 'cstrike_pak_dir.vpk', vpks: ['cstrike_pak'], maps: true, rank: 1 },
-    { name: 'Half-Life 2', dirs: ['Half-Life 2/hl2', 'hl2', ''], sig: 'hl2_textures_dir.vpk', vpks: ['hl2_textures', 'hl2_misc'], maps: false, rank: 2 },
-    { name: 'Momentum Mod (HL2 content)', dirs: ['Momentum Mod Playtest/mount', 'mount', ''], sig: 'hl2_dir.vpk', vpks: ['hl2'], maps: false, rank: 3 },
+    { name: 'Momentum Mod', dirs: ['Momentum Mod Playtest/momentum', 'momentum', ''], sig: 'momentum.fgd', vpks: [], loose: ['materials', 'models'], maps: true, rank: 0 },
+    { name: 'Counter-Strike: Source', dirs: ['Counter-Strike Source/cstrike', 'cstrike', ''], sig: 'cstrike_pak_dir.vpk', vpks: ['cstrike_pak'], loose: [], maps: true, rank: 1 },
+    { name: 'Half-Life 2', dirs: ['Half-Life 2/hl2', 'hl2', ''], sig: 'hl2_textures_dir.vpk', vpks: ['hl2_textures', 'hl2_misc', 'hl2_pak'], loose: [], maps: false, rank: 2 },
+    { name: 'Momentum Mod (HL2 content)', dirs: ['Momentum Mod Playtest/mount', 'mount', ''], sig: 'hl2_dir.vpk', vpks: ['hl2'], loose: [], maps: false, rank: 3 },
 ];
 
 export interface Mount {
     game: string;
     rank: number;
     vpks: string[];         // LOCAL path stems of VPK sets
+    loose: { base: string; files: string[] } | null;   // LOCAL base and paths under it
     maps: string | null;    // LOCAL directory of BSPs
 }
 
@@ -118,13 +157,18 @@ export class GameFiles {
                 for (const v of g.vpks)
                     if (await src.file(`${base}${v}_dir.vpk`) !== null)
                         vpks.push(`${LOCAL}${si}/${base}${v}`);
-                found.push({ game: g.name, rank: g.rank, vpks, maps: g.maps ? `${LOCAL}${si}/${base}maps` : null });
+                const loose: string[] = [];
+                for (const l of g.loose)
+                    for (const f of await src.list(base + l))
+                        loose.push(`${l}/${f}`);
+                found.push({ game: g.name, rank: g.rank, vpks, maps: g.maps ? `${LOCAL}${si}/${base}maps` : null,
+                    loose: loose.length ? { base: `${LOCAL}${si}${d ? '/' + d : ''}`, files: loose } : null });
                 break;
             }
         }
         // No game in it: a folder of BSPs, picked directly.
         if (found.length === 0)
-            found.push({ game: 'maps folder', rank: 9, vpks: [], maps: `${LOCAL}${si}` });
+            found.push({ game: 'maps folder', rank: 9, vpks: [], loose: null, maps: `${LOCAL}${si}` });
         this.mounts.push(...found);
         this.mounts.sort((a, b) => a.rank - b.rank);
         return found;
@@ -171,18 +215,38 @@ export class Fetcher extends DataFetcher {
     }
 }
 
+// noclip's LooseMount asks Array.includes per lookup; a set, for a few thousand files.
+class SetLooseMount extends LooseMount {
+    private set: Set<string>;
+    constructor(path: string, files: string[]) {
+        super(path, files);
+        this.set = new Set(files.map((f) => f.toLowerCase()));
+    }
+    public override hasEntry(resolvedPath: string): boolean { return this.set.has(resolvedPath); }
+}
+
 // A map's own pakfile wins over mounted games, as in the game since Patch 765
-// and in Source itself; noclip searches its VPKs first. What nothing provides
-// is stood in for (missing.ts) and counted, so the page can say what it lacks.
+// and in Source itself; noclip searches its VPKs first. Then the games, then what
+// an earlier visit kept from them (`kept`), and what nothing provides is stood
+// in for (missing.ts) and counted, so the page can say what it lacks.
 export class MapFileSystem extends SourceFileSystem {
     public missing = new Set<string>();
+    public fromKept = 0;
+
+    constructor(fetcher: DataFetcher, private kept: Store, private keepNew: boolean) {
+        super(fetcher);
+    }
+
+    public addLoose(base: string, files: string[]): void {
+        this.loose.push(new SetLooseMount(base, files));
+    }
 
     // Only VMT.ts's last retry, `materials/<path>` after a real miss, is told yes
     // for a file nobody has, so its name still picks the stand-in's colour. Every
     // other question gets the truth: a model's cdmaterials search takes the first
     // folder that answers yes.
     public override hasEntry(resolvedPath: string): boolean {
-        return super.hasEntry(resolvedPath) ||
+        return super.hasEntry(resolvedPath) || this.kept.has(resolvedPath) ||
             (resolvedPath.startsWith('materials/materials/') && resolvedPath.endsWith('.vmt'));
     }
 
@@ -194,9 +258,18 @@ export class MapFileSystem extends SourceFileSystem {
         }
         if (resolvedPath.startsWith(MISSING_DIR))
             return missingTexture(resolvedPath);
+        // Past the pakfile, anything super finds is the visitor's own game files.
         const found = await super.fetchFileData(resolvedPath);
-        if (found !== null)
+        if (found !== null) {
+            if (this.keepNew && !this.kept.has(resolvedPath))
+                void this.kept.put(resolvedPath, found.copyToBuffer());
             return found;
+        }
+        const stored = await this.kept.get(resolvedPath);
+        if (stored !== null) {
+            this.fromKept++;
+            return new ArrayBufferSlice(stored);
+        }
         if (resolvedPath.endsWith('.vmt')) {
             this.missing.add(resolvedPath.replace(/^materials\/materials\//, 'materials/'));
             return missingMaterial(resolvedPath);

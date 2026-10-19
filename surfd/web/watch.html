@@ -32,13 +32,39 @@
     <canvas id="woverlay" class="woverlay"></canvas>
     <div class="hud">
       <div class="hud-top"><span id="hstage" class="hstage"></span><span id="htime" class="htime">0:00.000</span><span id="hgap" class="hgap"></span></div>
-      <div class="hud-speed"><b id="hspeed">0</b><span>u/s</span><span id="hvz" class="hvz"></span></div>
+      <div class="hud-speed"><b id="hspeed" class="hsp">0</b><span class="hsp hu">u/s</span><span id="hvz" class="hvz"></span><span id="henergy" class="henergy"></span></div>
       <div class="hud-keys" aria-label="keys held">
         <span id="kw" class="key k-w">W</span>
         <span id="ka" class="key k-a">A</span><span id="ks" class="key k-s">S</span><span id="kd" class="key k-d">D</span>
         <span id="kj" class="key k-j">JUMP</span><span id="kc" class="key k-c">DUCK</span>
         <span id="kg" class="key k-g">GROUND</span>
       </div>
+    </div>
+    <button id="wsetbtn" class="wsetbtn" type="button" aria-expanded="false" aria-controls="wset" title="Display settings">Display</button>
+    <div id="wset" class="wset" hidden>
+      <div class="wset-h"><b>Display</b><button id="wclean" class="wbtn" type="button" aria-pressed="false" title="H">Clean view</button></div>
+      <fieldset><legend>In the map</legend>
+        <label><input type="checkbox" data-set="line"> Run line</label>
+        <label><input type="checkbox" data-set="zones"> Zones</label>
+        <label><input type="checkbox" data-set="zoneNames"> Zone names</label>
+        <label><input type="checkbox" data-set="bodies"> Player bodies</label>
+        <label><input type="checkbox" data-set="ghostName"> Record's name</label>
+      </fieldset>
+      <fieldset><legend>On screen</legend>
+        <label><input type="checkbox" data-set="timer"> Timer</label>
+        <label><input type="checkbox" data-set="stage"> Stage</label>
+        <label><input type="checkbox" data-set="gap"> Gap to the record</label>
+        <label><input type="checkbox" data-set="speed"> Speed</label>
+        <label><input type="checkbox" data-set="vz"> Vertical speed</label>
+        <label><input type="checkbox" data-set="energy"> Energy</label>
+        <label><input type="checkbox" data-set="keys"> Keys</label>
+      </fieldset>
+      <fieldset><legend>Energy</legend>
+        <label>Shown as <select data-set="energyUnits"><option value="units">height (u)</option><option value="speed">speed (u/s)</option></select></label>
+        <label>Zero at <select data-set="energyZero"><option value="jump">the last jump</option><option value="start">the start zone</option></select></label>
+        <label>Graph <select data-set="graph"><option value="speed">speed</option><option value="energy">energy</option></select></label>
+      </fieldset>
+      <p class="small dim">Energy is height plus speed²/2g, as in the game's HUD. H toggles the clean view.</p>
     </div>
     <div id="wstatus" class="wstatus busy">Loading…</div>
   </div>
@@ -51,7 +77,7 @@
     </div>
     <span id="wclock" class="wclock">0:00.000 / 0:00.000</span>
   </div>
-  <canvas id="wgraph" class="wgraph" aria-label="speed over the run; click to seek"></canvas>
+  <canvas id="wgraph" class="wgraph" aria-label="speed or energy over the run; click to seek"></canvas>
   <div class="wbar wbar2">
     <div class="wgroup" role="group" aria-label="camera">
       <button class="wbtn" type="button" data-cam="eye" aria-pressed="true" title="1">First person</button>
@@ -65,8 +91,7 @@
     <label class="wopt">FOV
       <select id="wfov"><option value="90">90</option><option value="100">100</option><option value="106" selected>106</option><option value="120">120</option></select>
     </label>
-    <label class="wopt"><input id="wpath" type="checkbox" checked> Run line</label>
-    <label class="wopt"><input id="wzones" type="checkbox" checked> Zones</label>
+    <button id="wsetbar" class="wbtn" type="button" aria-controls="wset">Display…</button>
     <button id="wfull" class="wbtn" type="button">Full screen</button>
   </div>
 
@@ -82,15 +107,21 @@
     </section>
     <section id="wfiles" class="wcard wfiles">
       <h2>Textures from your games</h2>
-      <p>Maps bring most of their own textures. The rest come from Counter-Strike: Source and Half-Life 2, which only your own copy can provide. Choose your <b>Counter-Strike Source</b> folder:</p>
+      <p>Maps download by themselves and bring most of their own textures. The rest come from your own Counter-Strike: Source, Half-Life 2 or Momentum Mod. Choose a game's folder once: what each map uses from it is kept in this browser, so later visits need no folder.</p>
       <p class="wpathrow"><code id="wsteampath">C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Source</code> <button id="wcopy" class="wbtn" type="button">Copy</button></p>
       <p><button id="wpick" class="wbtn" type="button">Choose a game folder…</button></p>
-      <p class="dim small">Paste the path into the window's address bar. Your browser will ask to "upload" the folder: this page only reads the files the map needs, on your computer, and sends nothing. Add <code>Half-Life 2</code> or <code>Momentum Mod Playtest</code> from the same <code>common</code> folder the same way.</p>
-      <p class="dim small">Steam library on another drive? <a href="#" id="wnative">Use Chrome's or Edge's folder picker</a> (it cannot open folders under Program Files).</p>
+      <p class="dim small">Paste the path into the window's address bar. Your browser will ask to "upload" it: this page only reads, on your computer, the files the map needs, and sends nothing. Add <code>Half-Life 2</code> or <code>Momentum Mod Playtest</code> the same way. All of <code>common</code> also works, but the browser lists every file in it first (about 1½ minutes for 300,000 files).</p>
+      <p class="dim small">Steam library on another drive? <a href="#" id="wnative">Use Chrome's or Edge's folder picker</a>: it remembers the folder for next time (it cannot open folders under Program Files).</p>
       <input id="wdir" type="file" webkitdirectory hidden>
+      <div id="wreconnect" class="wreconnect"></div>
       <ul id="wmounts" class="wmounts"></ul>
+      <h3>Kept on this PC</h3>
+      <p class="small"><label><input type="checkbox" data-set="keepMaps"> Keep downloaded maps</label> <span id="wmapstore" class="dim"></span></p>
+      <p class="small"><label><input type="checkbox" data-set="keepGame"> Keep the textures maps used from your games</label> <span id="wgamestore" class="dim"></span></p>
+      <p class="small">Up to <select data-set="storeGB"><option value="1">1 GB</option><option value="4">4 GB</option><option value="16">16 GB</option><option value="64">64 GB</option></select> each, least recently used first out. <button id="wclearstore" class="wbtn" type="button">Clear</button></p>
+      <p class="dim small">Kept in this browser only; nothing is uploaded. The browser may clear it if your disk runs short.</p>
       <p class="dim">Or watch a recording from your own disk: <input id="wrecfile" type="file" accept=".rec"></p>
-      <p class="dim small">Keys: Space play/pause · ←/→ 5 s (Shift: 1 s) · , and . speed · 1–4 cameras. 3D map rendering is noclip.website's Source renderer (MIT).</p>
+      <p class="dim small">Keys: Space play/pause · ←/→ 5 s (Shift: 1 s) · , and . speed · 1–4 cameras · H clean view. 3D map rendering is noclip.website's Source renderer (MIT).</p>
     </section>
   </div>
 </main>
