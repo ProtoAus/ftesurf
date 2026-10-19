@@ -22,8 +22,11 @@ void() SV_Shutdown =
 	SV_MsShutdown();
 	p = world;
 	while ((p = find(p, classname, "player")))
+	{
 		if (p.rec_rec_posts > 0)
 			SV_RecDiscard(p);
+		SV_RecFailDrop(p);              // Patch 817: or its -fail.rec outlives the map
+	}
 };
 
 /*

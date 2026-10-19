@@ -2099,7 +2099,8 @@ void(entity e) SV_TimerMapTeleport =
 // (SV_RewindWriteState), and the load that follows is a timed save's cold load.
 .float  rec_fa_on, rec_fa_take;  // take: SV_RecDiscard hands its file or buffer over
 .float  rec_fa_serial, rec_fa_lines, rec_fa_gen, rec_fa_genbuf, rec_fa_buf, rec_fa_stream, rec_fa_own;
-.int    rec_fa_bytes;
+.int    rec_fa_bytes;            // 0: the file did not survive (a failed rename)
+.float  rec_fa_pbad, rec_fa_rbreach;    // the attempt's start latches (SV_TimerArm resets them)
 .string rec_fa_path, rec_fa_branch, rec_fa_rid;    // zoned
 // Patch 376: the client's mouse counts, in-band (engine cl_input.c CL_SendCounts),
 // read for the command being run.  See the `mc` record.
@@ -4788,6 +4789,8 @@ void(entity e) SV_RecFailKeep =
 	e.rec_fa_serial = e.rec_rec_serial;
 	e.rec_fa_lines = e.rec_rec_lines;
 	e.rec_fa_gen = e.rec_rec_gen;
+	e.rec_fa_pbad = e.run_t_pbad;
+	e.rec_fa_rbreach = e.run_t_rbreach;
 	e.rec_fa_genbuf = e.rec_rec_genbuf;
 	e.rec_rec_genbuf = 0;               // SV_RecGenReset would delete it
 	if (e.rec_rec_branch != "")
@@ -5365,6 +5368,7 @@ float(entity e) SV_RecKeepEvidence =
 		if (frename(SV_RecPartPath(e), dst) != 0)
 		{
 			fremove(SV_RecPartPath(e));
+			e.rec_fa_bytes = 0i;        // Patch 817: nothing kept there
 			return TRUE;                // the handle is gone either way
 		}
 	}
@@ -5550,7 +5554,10 @@ void(entity e) SV_RecDiscard =
 			{
 				fremove(e.rec_fa_path);
 				if (frename(SV_RecPartPath(e), e.rec_fa_path) != 0)
+				{
 					fremove(SV_RecPartPath(e));
+					e.rec_fa_bytes = 0i;
+				}
 			}
 			else
 				fremove(SV_RecPartPath(e));
@@ -5598,7 +5605,8 @@ void(entity e) SV_RecDiscard =
 		strunzone(e.rec_rec_nonce);
 	e.rec_rec_nonce = "";
 	e.rec_fa_take = FALSE;
-	if (e.rec_fa_on && !e.rec_fa_stream && e.rec_fa_buf < 1)
+	if (e.rec_fa_on)
+	if (e.rec_fa_stream ? e.rec_fa_bytes <= 0i : e.rec_fa_buf < 1)
 		SV_RecFailDrop(e);              // Patch 817: nothing was handed over
 };
 

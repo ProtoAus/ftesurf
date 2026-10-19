@@ -2206,6 +2206,13 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		{
 			e.run_t_flags = e.run_t_flags | TF_SHADOW;
 			e.run_t_fromsave = id;
+			// Patch 817: a load after an arm has no start latches (-1, SV_TimerArm):
+			// taken here as SV_MsApply takes them, so the span to the finish is
+			// checked.  A warm load keeps the run's own.
+			if (e.run_t_rbreach < 0)
+				SV_TimerRuleset(e, TRUE);
+			if (e.run_t_pbad < 0)
+				SV_TimerProfile(e, TRUE);
 		}
 		else
 			e.run_t_fromsave = 0;
@@ -3953,6 +3960,7 @@ void(entity e, float n) SV_SaveLocLoad =
 	if (e.rec_rec_serial != oldserial || !(e.run_t_flags & TF_RECORDING))
 		e.rw_goid = e.rw_goseq = 0; // a cold/demoted load cannot delete another run's row
 	SV_RewindRebase(e);
+	SV_RecFailDrop(e);              // Patch 817: the rebase left none of its samples
 	SV_SaveLocEvent(e, SLOP_LOADED, id);
 
 	if (e.run_t_state == TS_RUNNING)

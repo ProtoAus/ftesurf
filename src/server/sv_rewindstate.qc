@@ -95,7 +95,7 @@ float(entity e, float gen, float mark) SV_RecFailCutOK =
 float(entity e, float id, float seq, float go) SV_RewindWriteState =
 {
 	local float *m;
-	local float b, f, fh, i, mark, fa, stream, buf;
+	local float b, f, fh, i, mark, fa, stream, buf, flags;
 	local int bytes;
 	local string path, src, branch, rid;
 	m = rw_slot[num_for_edict(e)];
@@ -141,14 +141,7 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 		if (fa)
 		{
 			if (bytes > e.rec_fa_bytes)
-				return FALSE;
-			fh = fopen(src, FILE_READ);
-			if (fh < 0)
-				return FALSE;         // a failed rename (SV_RecDiscard) or keep
-			i = (fsize(fh) < bytes);
-			fclose(fh);
-			if (i)
-				return FALSE;
+				return FALSE;         // 0 after a failed rename (SV_RecDiscard, the keep)
 		}
 		else
 		{
@@ -192,8 +185,21 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 	SV_RewindWriteName(e, f, b);
 	fputs(f, sprintf("track %d\nstartseg %d\nstagerun %d\nseg %d\nsegs %d\nsplit %d\ndelta %d\n",
 	                 m[b+10], m[b+11], m[b+12], m[b+13], m[b+14], m[b+16], m[b+17]));
+	// Patch 817: the start latches against now -- a profile step or a ruleset breach
+	// since the attempt began is in the prefix or in the box after it; either way
+	// the resume carries it (SV_ProfileBroken, SV_RulesetBroken).  A kept attempt
+	// never outlives the connection, so the counter is this client life's.
+	flags = m[b+18];
+	if (fa)
+	{
+		if (e.rec_fa_pbad >= 0 && e.run_t_pev != 0 && e.run_t_pevbad != e.rec_fa_pbad)
+			flags = flags | TF_NOPROFILE;
+		if (e.rec_fa_rbreach >= 0 && tokenize(serverkey("*ruleset")) >= 4)
+		if (stof(argv(3)) != e.rec_fa_rbreach)
+			flags = flags | TF_NORULESET;
+	}
 	fputs(f, sprintf("flags %d\npb %d\ndirty %d\ncheat %d\nhopped %d\nfromsave %d\nhandcarry %d\n",
-	                 m[b+18], m[b+19], m[b+20], m[b+21], m[b+22], m[b+23], m[b+50]));
+	                 flags, m[b+19], m[b+20], m[b+21], m[b+22], m[b+23], m[b+50]));
 	fputs(f, sprintf("azone %d\nevzone %d\narmzone %d\ncpzone %d\ncpmax %d\npendarm %d\n",
 	                 m[b+24], m[b+25], m[b+26], m[b+27], m[b+28], m[b+54]));
 	for (i = 1; i < FS_MAXSPLITS; i = i + 1)

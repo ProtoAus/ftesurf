@@ -2220,8 +2220,10 @@ void() Rec_ViewFrame =
 	  a mark belonging to a run that no longer exists.
 	*/
 	Rec_ViewSaveEvents();
+	// Patch 817: resumed above, or a new run -- once no event waits (CL_SaveEventsWait).
 	if (rec)
-		Rec_ViewFailDrop();             // Patch 817: resumed above, or a new run
+	if (getstatf(STAT_FS_SLSEQ) == rec_rp_slseq)
+		Rec_ViewFailDrop();
 
 	/*
 	  BUILD 24: the stage-record edge, and it runs beside the save edge because it
