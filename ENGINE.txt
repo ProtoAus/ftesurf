@@ -25,7 +25,7 @@ commit   ebc96a0810c3e312ec7edf13d4a0ab6f253bc595
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-816
-patch    823
+patch    824
 # Patch 823 (menu): the terms, Steam and journal panels in the Dusk style; no Updates
 # screen -- Play online is the update permission, the title menu's corner turns it off/on,
 # restarts to update and shows errors; F2 opens the journal panel. FS_TERMS_ONLINE stays 7.

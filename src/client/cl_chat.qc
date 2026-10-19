@@ -90,7 +90,15 @@ float  chat_rep;                // this KEYDOWN is an OS repeat of a key already
 #define CHAT_MULTI      0.35    // s between the clicks of a double or triple click
 float  chat_caret;              // the field's caret, a byte of chat_buf
 var float chat_anchor = -1;     // ...the selection's fixed end, -1 none
-float  chat_fx;                 // px the field's text is scrolled left
+// Patch 824: the field wraps, and grows a row at a time.  Row r is
+// chat_buf[chat_fr[r] .. chat_fr[r + 1]) (the last runs to the end).
+#define CHAT_FR_MAX     16
+float  chat_fr[CHAT_FR_MAX];
+float  chat_fr_n;               // rows; 0 = wrap again
+string chat_fr_buf;             // ...the text, width and size they were wrapped for
+float  chat_fr_w, chat_fr_sz, chat_fr_face;
+float  chat_fld_pw;             // the PM label's width before the text
+float  chat_fld_ty;             // the first row's text y
 float  chat_blink;              // cltime of the last key: the caret shows solid from it
 float  chat_box_a, chat_box_t;  // the panel's fade 0..1, and cltime of its last step
 float  chat_scroll;             // history rows scrolled up from the newest
@@ -1001,19 +1009,88 @@ float() Chat_FieldSelected =
 	return chat_anchor >= 0 && chat_anchor != chat_caret;
 };
 
-// The caret nearest pixel px, in the field as last drawn.
-float(float px) Chat_FieldHit =
+// Patch 824: the field's text in rows w wide (raw, as drawn), each ending after a
+// space where one fits; a word wider than a row is cut.  The font must be set.
+void(float w, float sz) Chat_FieldWrap =
 {
-	local float i, n, w, pw, sz;
+	local float n, s, i, sp, e;
+
+	if (chat_fr_n > 0)
+	if (strcmp(chat_fr_buf, chat_buf) == 0)
+	if (chat_fr_w == w && chat_fr_sz == sz)
+	if (chat_fr_face == stringwidth("abcdefghij", FALSE, [sz, sz]))
+		return;
+	chat_fr_buf  = chat_buf;
+	chat_fr_w    = w;
+	chat_fr_sz   = sz;
+	chat_fr_face = stringwidth("abcdefghij", FALSE, [sz, sz]);
+	n = strlen(chat_buf);
+	chat_fr[0] = 0;
+	chat_fr_n  = 1;
+	s = 0;
+	while (chat_fr_n < CHAT_FR_MAX)
+	{
+		sp = -1;
+		for (i = s; i < n; i = i + 1)
+		{
+			if (stringwidth(substring(chat_buf, s, i + 1 - s), FALSE, [sz, sz]) > w)
+				break;
+			if (str2chr(chat_buf, i) == 32)
+				sp = i + 1;
+		}
+		if (i >= n)
+			break;
+		if (str2chr(chat_buf, i) == 32)     // the space that did not fit ends the row
+			e = i + 1;
+		else if (sp > s)
+			e = sp;
+		else
+			e = max(i, s + 1);
+		chat_fr[chat_fr_n] = e;
+		chat_fr_n = chat_fr_n + 1;
+		s = e;
+	}
+};
+
+// The row byte c is drawn on: a break's own byte starts the next row.
+float(float c) Chat_FieldRow =
+{
+	local float r;
+
+	for (r = chat_fr_n - 1; r > 0; r = r - 1)
+		if (c >= chat_fr[r])
+			return r;
+	return 0;
+};
+
+// The field's label and rows for this frame.  -> its height.
+float(float maxw, float sz, float lh) Chat_FieldLayout =
+{
+	chat_fld_pw = 0;
+	if (chat_private != "")
+		chat_fld_pw = stringwidth(strcat("to ", chat_private_name, "^7:"), TRUE, [sz, sz]) + ceil(sz * 0.4);
+	Chat_FieldWrap(max(sz * 3, maxw - ceil(sz * 0.5) * 2 - chat_fld_pw), sz);
+	return ceil(sz * 1.75) + lh * (chat_fr_n - 1);
+};
+
+// The caret nearest the cursor m, in the field as last drawn.
+float(vector m) Chat_FieldHit =
+{
+	local float i, r, s, e, w, pw, sz, lh, px;
 
 	sz = chat_wkey_y;
-	px = px - chat_fld_tx;
-	n = strlen(chat_buf);
+	lh = sz * 1.35;
+	r = bound(0, floor((m_y - chat_fld_ty + (lh - sz) * 0.5) / lh), max(0, chat_fr_n - 1));
+	s = chat_fr[r];
+	e = (r + 1 < chat_fr_n) ? chat_fr[r + 1] : strlen(chat_buf);
+	if (r + 1 < chat_fr_n && e > s && str2chr(chat_buf, e - 1) == 32)
+		e = e - 1;                          // the space a row ends on; past it is the next row
+	px = m_x - chat_fld_tx;
 	pw = 0;
 	Font_Set(ui_font_ui);
-	for (i = 1; i <= n; i = i + 1)
+	for (i = s + 1; i <= e; i = i + 1)
 	{
-		w = stringwidth(substring(chat_buf, 0, i), FALSE, [sz, sz]);
+		w = stringwidth(substring(chat_buf, s, i - s), FALSE, [sz, sz]);
 		if (px < (pw + w) * 0.5)
 			break;
 		pw = w;
@@ -1022,56 +1099,53 @@ float(float px) Chat_FieldHit =
 	return i - 1;
 };
 
-// The field at the panel's foot: box, the PM's name, selection, text, caret.  It
-// scrolls sideways to keep the caret in it.
-void(float x, float yb, float maxw, float fh, float sz, float a) Chat_DrawField =
+// The field at the panel's foot, fh tall from Chat_FieldLayout: box, the PM's
+// name, the selection, the rows, the caret.
+void(float x, float yb, float maxw, float fh, float sz, float lh, float a) Chat_DrawField =
 {
 	local vector p, tp;
-	local float inset, avail, pw, cx, tw, x0, x1, r;
-	local string pre;
+	local float inset, avail, r, s, e, a0, a1, x0, x1, y, rad;
 
 	p = [x, yb - fh];
-	r = ceil(sz * 0.3);
-	_sui_round_draw(p, [maxw, fh], r, chat_typing ? SUI_THEME_ACCENT : SUI_THEME_EDGE, a);
-	_sui_round_draw(p + '1 1 0', [maxw - 2, fh - 2], max(0, r - 1), SUI_THEME_WELL, a);
+	rad = ceil(sz * 0.3);
+	_sui_round_draw(p, [maxw, fh], rad, chat_typing ? SUI_THEME_ACCENT : SUI_THEME_EDGE, a);
+	_sui_round_draw(p + '1 1 0', [maxw - 2, fh - 2], max(0, rad - 1), SUI_THEME_WELL, a);
 	inset = ceil(sz * 0.5);
-	tp = [p_x + inset, p_y + floor((fh - sz) * 0.5)];
-	pw = 0;
+	tp = [p_x + inset, p_y + floor((ceil(sz * 1.75) - sz) * 0.5)];
 	if (chat_private != "")
-	{
-		pre = strcat("to ", chat_private_name, "^7:");
-		drawstring(tp, pre, [sz, sz], SUI_THEME_ACCENT2, a, 0);
-		pw = stringwidth(pre, TRUE, [sz, sz]) + ceil(sz * 0.4);
-	}
-	avail = maxw - inset * 2 - pw;
-	tw = stringwidth(chat_buf, FALSE, [sz, sz]);
-	cx = stringwidth(substring(chat_buf, 0, chat_caret), FALSE, [sz, sz]);
-	if (cx - chat_fx > avail)
-		chat_fx = cx - avail;
-	if (cx < chat_fx)
-		chat_fx = cx;
-	if (chat_fx > max(0, tw - avail))
-		chat_fx = max(0, tw - avail);
-	chat_fld_p = p;
-	chat_fld_s = [maxw, fh];
-	chat_fld_tx = tp_x + pw - chat_fx;
+		drawstring(tp, strcat("to ", chat_private_name, "^7:"), [sz, sz], SUI_THEME_ACCENT2, a, 0);
+	avail = maxw - inset * 2 - chat_fld_pw;
+	chat_fld_p  = p;
+	chat_fld_s  = [maxw, fh];
+	chat_fld_tx = tp_x + chat_fld_pw;
+	chat_fld_ty = tp_y;
 
-	drawsetcliparea(tp_x + pw - 2, p_y + 1, avail + 4, fh - 2);
+	drawsetcliparea(chat_fld_tx - 2, p_y + 1, avail + 4, fh - 2);
 	if (chat_buf == "")
-		drawrawstring([tp_x + pw, tp_y], "Enter sends, Esc closes", [sz, sz], SUI_THEME_MUTED, a, 0);
-	else
+		drawrawstring([chat_fld_tx, tp_y], "Enter sends, Esc closes", [sz, sz], SUI_THEME_MUTED, a, 0);
+	a0 = min(chat_anchor, chat_caret);
+	a1 = Chat_FieldSelected() ? max(chat_anchor, chat_caret) : a0;
+	for (r = 0; r < chat_fr_n; r = r + 1)
 	{
-		if (Chat_FieldSelected())
+		s = chat_fr[r];
+		e = (r + 1 < chat_fr_n) ? chat_fr[r + 1] : strlen(chat_buf);
+		y = tp_y + lh * r;
+		if (a1 > s && a0 < e)
 		{
-			x0 = stringwidth(substring(chat_buf, 0, min(chat_anchor, chat_caret)), FALSE, [sz, sz]);
-			x1 = stringwidth(substring(chat_buf, 0, max(chat_anchor, chat_caret)), FALSE, [sz, sz]);
-			drawfill([chat_fld_tx + x0, tp_y - 1], [x1 - x0, sz + 2], SUI_THEME_SELECTED, a, 0);
+			x0 = stringwidth(substring(chat_buf, s, max(a0, s) - s), FALSE, [sz, sz]);
+			x1 = stringwidth(substring(chat_buf, s, min(a1, e) - s), FALSE, [sz, sz]);
+			drawfill([chat_fld_tx + x0, y - 1], [x1 - x0, sz + 2], SUI_THEME_SELECTED, a, 0);
 		}
-		drawrawstring([chat_fld_tx, tp_y], chat_buf, [sz, sz], SUI_THEME_TEXT, a, 0);
+		if (e > s)
+			drawrawstring([chat_fld_tx, y], substring(chat_buf, s, e - s), [sz, sz], SUI_THEME_TEXT, a, 0);
 	}
 	if (chat_typing)
 	if (!(floor((cltime - chat_blink) * 2) & 1))
-		drawfill([chat_fld_tx + cx, tp_y - 1], [max(1, floor(sz / 12)), sz + 2], SUI_THEME_ACCENT, a, 0);
+	{
+		r = Chat_FieldRow(chat_caret);
+		x0 = stringwidth(substring(chat_buf, chat_fr[r], chat_caret - chat_fr[r]), FALSE, [sz, sz]);
+		drawfill([chat_fld_tx + x0, tp_y + lh * r - 1], [max(1, floor(sz / 12)), sz + 2], SUI_THEME_ACCENT, a, 0);
+	}
 	drawresetcliparea();
 };
 
@@ -1079,13 +1153,15 @@ void(vector scr) Chat_Draw =
 {
 	local float life, fade, lines, szu, sz, lh, x, yb, maxw;
 	local float i, j, age, a, n, used, cap, room, ind, ba, dt, pad, fh, hb, top, total, y, cn, cr, cdone, ca, r, w;
+	local float bg;
 	local string img;
 	local vector key, bp, bs;
 
-	// Patch 821: the panel fades in while a draft is open, and out after.
+	// Patch 821: the panel fades in while a draft is open, and out after.  Patch 824:
+	// and while hud_edit is up, so its settings show as they are changed.
 	dt = bound(0, cltime - chat_box_t, 0.1);
 	chat_box_t = cltime;
-	if (chat_typing)
+	if (chat_typing || (ui_he_open && cvar("hud_chat")))
 		chat_box_a = min(1, chat_box_a + dt / CHAT_FADE_IN);
 	else
 		chat_box_a = max(0, chat_box_a - dt / CHAT_FADE_OUT);
@@ -1104,9 +1180,9 @@ void(vector scr) Chat_Draw =
 	szu   = cvar("hud_chat_size");
 	if (szu <= 0)
 	{
-		szu = 4 * cvar("hud_scale");
+		szu = 10 * cvar("hud_scale");     // Patch 824: 20 at hud_scale 2, the default (was 4)
 		if (szu <= 0)
-			szu = 8;
+			szu = 20;
 	}
 	// Font_Set before Font_Px: the snap used to run on whatever face the last
 	// drawer left (HUD_DrawSeq's essay is the same bug).
@@ -1116,10 +1192,11 @@ void(vector scr) Chat_Draw =
 
 	x    = scr_x * cvar("hud_chat_x");
 	yb   = scr_y * cvar("hud_chat_y");
-	maxw = scr_x * 0.45;
+	maxw = scr_x * bound(0.15, cvar("hud_chat_w"), 0.9);   // Patch 824: was 0.45
 	pad  = ceil(sz * 0.5);
-	fh   = ceil(sz * 1.75);              // the field
-	hb   = yb - pad - fh - ceil(sz * 0.4);   // the history's foot, open or shut: opening moves no line
+	fh   = Chat_FieldLayout(maxw, sz, lh);
+	// The history's foot, open or shut, so opening moves no line; a field that grows lifts them.
+	hb   = yb - pad - fh - ceil(sz * 0.4);
 	chat_dr_bottom = yb;
 	chat_dr_x = x;
 
@@ -1131,12 +1208,12 @@ void(vector scr) Chat_Draw =
 			chat_wrapn[i] = 0;
 		chat_wkey = key;
 	}
-	chat_dft_n  = 1;                     // the field's one row, for chat_rows
-	chat_dft_y0 = yb - pad - fh + floor((fh - sz) * 0.5);
-	chat_dft_yl = chat_dft_y0;
+	chat_dft_n  = chat_fr_n;             // the field's rows, for chat_rows
+	chat_dft_y0 = yb - pad - fh + floor((ceil(sz * 1.75) - sz) * 0.5);
+	chat_dft_yl = chat_dft_y0 + lh * (chat_fr_n - 1);
 
 	/*
-	  At most hud_chat_lines messages in at most max(lines, 10) rows above the
+	  At most hud_chat_lines messages in at most hud_chat_rows rows above the
 	  field's place, and older messages only whole.  The newest always shows, and
 	  is cut ("..") only when it alone is taller than the room.  Open, the panel
 	  holds every line in the ring in up to that many rows, scrolled by the wheel.
@@ -1149,7 +1226,9 @@ void(vector scr) Chat_Draw =
 	room = floor((hb - pad - room) / lh);
 	if (room < 1)
 		room = 1;
-	cap = max(lines, CHAT_ROWS_MIN);
+	cap = cvar("hud_chat_rows");
+	if (cap <= 0)
+		cap = CHAT_ROWS_MIN;
 	if (cap > room)
 		cap = room;
 	chat_dr_cap  = cap;
@@ -1178,7 +1257,8 @@ void(vector scr) Chat_Draw =
 		}
 		chat_scroll_hold = 0;
 		chat_rows_n = total;
-		used = bound(min(3, cap), total, cap);  // the panel's rows: as many as the history, 3 to cap
+		// The panel's rows: all of them (hud_chat_full), or as many as the history, 3 to cap.
+		used = cvar("hud_chat_full") ? cap : bound(min(3, cap), total, cap);
 		top  = hb - used * lh;
 		chat_scroll = bound(0, chat_scroll, max(0, total - used));
 
@@ -1186,11 +1266,13 @@ void(vector scr) Chat_Draw =
 		bp = [x - pad, top - pad];
 		bs = [maxw + pad * 2, yb - bp_y];       // its foot at hud_chat_y, clear of the key strip
 		r  = ceil(sz * 0.45);
-		_sui_round_draw(bp + '-2 -1 0', bs + '4 4 0', r + 2, '0 0 0', 0.2 * ba);
-		_sui_round_draw(bp, bs, r, SUI_THEME_EDGE, 0.95 * ba);
-		_sui_round_draw(bp + '1 1 0', bs - '2 2 0', r - 1, SUI_THEME_PANEL, 0.88 * ba);
+		bg = bound(0, cvar("hud_chat_bg"), 1);
+		_sui_round_draw(bp + '-2 -1 0', bs + '4 4 0', r + 2, '0 0 0', 0.2 * min(1, bg / 0.88) * ba);
+		_sui_round_draw(bp, bs, r, SUI_THEME_EDGE, min(1, bg + 0.07) * ba);
+		_sui_round_draw(bp + '1 1 0', bs - '2 2 0', r - 1, SUI_THEME_PANEL, bg * ba);
 		chat_box_p  = bp;
 		chat_box_s  = bs;
+		HUD_Rect("chat", bp, bs, [x, yb]);    // Patch 824: hud_edit's box; the anchor is hud_chat_x/y
 		chat_his_y0 = top;
 		chat_his_y1 = hb;
 
@@ -1266,7 +1348,7 @@ void(vector scr) Chat_Draw =
 			drawrawstring([bp_x + bs_x - w - pad * 0.5 + pad, bp_y + pad * 0.5 + ceil(sz * 0.2)], "Copied",
 			              [sz, sz], SUI_THEME_GOOD, a, 0);
 		}
-		Chat_DrawField(x, yb - pad, maxw, fh, sz, ba);
+		Chat_DrawField(x, yb - pad, maxw, fh, sz, lh, ba);
 		Font_Reset();
 		return;
 	}
@@ -1371,8 +1453,12 @@ void() Chat_DumpRows =
 	// Patch 821: the panel, the field and both selections.
 	print(sprintf("chat_rows: panel %.2f claims %g x %.1f box %v %v\n", chat_box_a, UI_CursorHeld(), chat_dr_x,
 	              chat_box_p, chat_box_s));
-	print(sprintf("chat_rows: field %v %v tx %.1f caret %g anchor %g fx %.1f\n", chat_fld_p, chat_fld_s,
-	              chat_fld_tx, chat_caret, chat_anchor, chat_fx));
+	print(sprintf("chat_rows: field %v %v tx %.1f caret %g anchor %g rows %g\n", chat_fld_p, chat_fld_s,
+	              chat_fld_tx, chat_caret, chat_anchor, chat_fr_n));
+	rows = "";
+	for (i = 0; i < chat_fr_n; i = i + 1)
+		rows = strcat(rows, " ", ftos(chat_fr[i]));
+	print(sprintf("chat_rows: field starts%s ty %.1f\n", rows, chat_fld_ty));
 	print(sprintf("chat_rows: scroll %g of %g sent %g |%s|\n", chat_scroll, chat_rows_n, chat_sent_i,
 	              strreplace("^", "^^", chat_buf)));
 	print(sprintf("chat_rows: sel %g |%s|\n", Chat_SelNorm(),
@@ -1406,6 +1492,11 @@ void() Chat_RegisterCvars =
 	registercvar("hud_chat_time",  "30",    CVAR_ARCHIVE);
 	registercvar("hud_chat_fade",  "5",     CVAR_ARCHIVE);
 	registercvar("hud_chat_size",  "20",    CVAR_ARCHIVE);   // Patch 821: was 24 (HE_MigrateDefaults)
+	// Patch 824: the box's width (of the screen's), rows, full height open, opacity.
+	registercvar("hud_chat_w",     "0.35",  CVAR_ARCHIVE);
+	registercvar("hud_chat_rows",  "10",    CVAR_ARCHIVE);
+	registercvar("hud_chat_full",  "0",     CVAR_ARCHIVE);
+	registercvar("hud_chat_bg",    "0.88",  CVAR_ARCHIVE);
 
 	chat_typing = FALSE;
 	chat_buf    = "";
@@ -1509,7 +1600,7 @@ void(string t) Chat_Open =
 	chat_buf    = t;
 	chat_caret  = strlen(t);
 	chat_anchor = -1;
-	chat_fx     = 0;
+	chat_fr_n   = 0;
 	chat_scroll = 0;
 	chat_sel_on = FALSE;
 	chat_drag   = 0;
@@ -1667,7 +1758,7 @@ void() Chat_Press =
 	if (Chat_In(chat_ms, chat_fld_p, chat_fld_s))
 	{
 		chat_sel_on = FALSE;
-		at = Chat_FieldHit(chat_ms_x);
+		at = Chat_FieldHit(chat_ms);
 		if (chat_clk_n == 2)
 		{
 			chat_anchor = Chat_WordStart(chat_buf, at);
@@ -1726,7 +1817,7 @@ void() Chat_Press =
 void() Chat_DragTo =
 {
 	if (chat_drag == 1)
-		chat_caret = Chat_FieldHit(chat_ms_x);
+		chat_caret = Chat_FieldHit(chat_ms);
 	else if (chat_drag == 2)
 	if (Chat_HistHit(chat_ms))
 	{

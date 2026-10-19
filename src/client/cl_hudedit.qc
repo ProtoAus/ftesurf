@@ -101,6 +101,7 @@ void() HE_ResetAll;             // build 66, and the same story
 #define HEA_LC  2               // left-x,   centre-y
 #define HEA_RC  3               // right-x,  centre-y   (the segment column)
 #define HEA_RT  4               // right-x,  top-y      (build 34: the map info block)
+#define HEA_LB  5               // left-x,   bottom-y   (Patch 824: the chat box)
 
 /*
   BUILD 65: 12 -> 16, and the pair still has to move together.
@@ -116,7 +117,7 @@ void() HE_ResetAll;             // build 66, and the same story
   both constants go to 16 rather than to exactly 15.  One spare row is the cheap
   way to not find this out the same way twice.
 */
-#define HE_MAX 28                // 27 rows since Patch 779's "Comparison"; one spare (HUDE_MAX moves with it)
+#define HE_MAX 30                // 28 rows since Patch 824's "Chat"; spares (HUDE_MAX moves with it)
 
 /*
   The chip rows below the element list that are always there.  Named because the
@@ -198,6 +199,7 @@ float  he_base[HE_MAX];
 float  he_listed[HE_MAX];
 
 float  he_n;
+var float he_chatrow = -1;   // Patch 824: the chat row, whose box goes under the others (pass one)
 
 /*
   BUILD 65 -- WHICH ROW'S OPTIONS ARE OPEN.  -1 is none, and it is the state the
@@ -316,6 +318,11 @@ void() HE_BuildTable =
 	// Patch 798: listed as Input display, the key block and the pad together; its
 	// outline out in the world is still "Mouse" (HUD_EditDraw).
 	HE_Add("mouse",   "Input display", "hud_mouse_x", "hud_mouse_y",  "hud_mouse",    0, HEA_LT,   83,  52);
+	// Patch 824: the chat box; its anchor is the bottom-left corner (Chat_Draw hands it
+	// over), and while the editor is up the box draws open so its settings show.
+	HE_Add("chat",    "Chat",       "hud_chat_x",    "hud_chat_y",    "hud_chat",     0, HEA_LB,  340, 170);
+	he_chatrow = he_n - 1;
+	HE_Text("hud_chat_size",     "16 20 24 28", 10);     // UI; 20 at hud_scale 2
 	// Patch 798: switches for elements with no list row of their own, options only.
 	HE_Add("display", "Display Info", "",             "",              "",             0, HEA_CT,    0,   0);
 	/*
@@ -617,19 +624,36 @@ string(string id, float row) HE_OptDef =
 		                     "|On a server with a time limit: the time left on this map, then the next map.";
 		if (row == 2) return "hud_keyhint|Key hints|t||"
 		                     "|The strip of menu keys along the bottom left. Drag its outline to move it.";
-		if (row == 3) return "hud_chat|Chat|t||"
-		                     "|The chat box, and what you are typing. Off still prints chat to the console.";
-		if (row == 4) return "hud_specby|Who's watching|t||"
+		if (row == 3) return "hud_specby|Who's watching|t||"
 		                     "|List the players spectating you, under the map info.";
 		// 0 is off; the engine's own, -1, prints as the number and steps to 1.
-		if (row == 5) return "hud_crosshair|Crosshair|c|1 2 3 0|1;2;3;off"
+		if (row == 4) return "hud_crosshair|Crosshair|c|1 2 3 0|1;2;3;off"
 		                     "|Cycle the three crosshairs and off. 32 px, fully opaque.";
-		if (row == 6) return "hud_font_outline|Text|c|0 1 2|plain;outline;shadow"
+		if (row == 5) return "hud_font_outline|Text|c|0 1 2|plain;outline;shadow"
 		                     "|Dark outline around the text drawn in the Google face, and a grey drop shadow behind it -- the timer and the speed take the shadow too. plain is the old look; outline skips the second pass.";
-		if (row == 7) return "hud_update|Number rate|c|-1 10 20 30 0|tick;10Hz;20Hz;30Hz;frame"
+		if (row == 6) return "hud_update|Number rate|c|-1 10 20 30 0|tick;10Hz;20Hz;30Hz;frame"
 		                     "|How often the speed, energy and turn-rate numbers re-read. Not the timer.";
-		if (row == 8) return "hud_round|Number step|c|1 2 5 0|1;2;5;off"
+		if (row == 7) return "hud_round|Number step|c|1 2 5 0|1;2;5;off"
 		                     "|Round those same numbers to the nearest 1, 2 or 5 u/s. 1 changes nothing.";
+		return "";
+	}
+
+	// Patch 824: the chat box.  Width and rows also set where the shut lines wrap
+	// and how many fit.
+	if (id == "chat")
+	{
+		if (row == 0) return "hud_chat_w|Width|c|0.25 0.3 0.35 0.4 0.45 0.5|25%;30%;35%;40%;45%;50%"
+		                     "|How wide the box is, as a share of the screen. Longer lines wrap.";
+		if (row == 1) return "hud_chat_rows|Height|c|4 6 8 10 12 16|4 rows;6 rows;8 rows;10 rows;12 rows;16 rows"
+		                     "|How many rows of chat the box holds. Open, older chat scrolls with the wheel.";
+		if (row == 2) return "hud_chat_full|Open height|c|0 1|fit the chat;full"
+		                     "|Open, the box is as tall as the chat in it, or always the full height above.";
+		if (row == 3) return "hud_chat_lines|Shut, show|c|2 4 6 8 10|2 messages;4 messages;6 messages;8 messages;10 messages"
+		                     "|How many recent messages stay on screen while the chat is shut.";
+		if (row == 4) return "hud_chat_time|Stays for|c|10 20 30 60 120|10 s;20 s;30 s;1 min;2 min"
+		                     "|How long a message stays while the chat is shut. It fades over its last 5 s.";
+		if (row == 5) return "hud_chat_bg|Box|c|0.5 0.7 0.88 1|50%;70%;88%;solid"
+		                     "|How see-through the open box is.";
 		return "";
 	}
 
@@ -774,7 +798,8 @@ string(string id) HE_Tip =
 	if (id == "compare")  return "You against the ghost's line where you are: time to get here, speed and energy. Green is ahead.";
 	if (id == "graph")    return "Speed over time for the runs whose LINE box is ticked on the leaderboard. On screen only while one is.";
 	if (id == "mouse")    return "Your keys and your mouse as turn. Replays and spectate show the player's.";
-	if (id == "display")  return "Map info, key hints, chat and who's watching on or off; the crosshair, the text and the numbers.";
+	if (id == "chat")     return "The chat box: its size and how long chat stays. Open chat (your chat key) to select and copy.";
+	if (id == "display")  return "Map info, key hints and who's watching on or off; the crosshair, the text and the numbers.";
 	return "";
 };
 
@@ -879,6 +904,7 @@ vector(float r, vector a, vector sz) HE_BoxOf =
 	// edge in both -- and takes no y offset, because its anchor is already the top.
 	if (he_an[r] == HEA_RC || he_an[r] == HEA_RT) p_x = a_x - sz_x;
 	if (he_an[r] == HEA_LC || he_an[r] == HEA_RC) p_y = a_y - sz_y * 0.5;
+	if (he_an[r] == HEA_LB) p_y = a_y - sz_y;
 	return p;
 };
 
@@ -1113,7 +1139,7 @@ float(string id, vector pos, vector sz, string label, float on, float sc,
 
 void(vector scr) HUD_EditDraw =
 {
-	local float i, k, r, sc, psc, lim, held, mode, x, y, w, rowh, panw;
+	local float i, k, r, sc, psc, lim, held, mode, x, y, w, rowh, panw, ii;
 	local vector p, sz, a, b, np, fix, op, os;
 	local string s;
 
@@ -1173,8 +1199,12 @@ void(vector scr) HUD_EditDraw =
 	  two most likely to be sitting on top of something, which is the order you
 	  want.
 	*/
-	for (i = 0; i < he_n; i = i + 1)
+	for (ii = 0; ii < he_n; ii = ii + 1)
 	{
+		// Patch 824: the chat box is the biggest and sits under others, so it goes first.
+		i = ii;
+		if (he_chatrow >= 0)
+			i = (ii == 0) ? he_chatrow : ((ii <= he_chatrow) ? ii - 1 : ii);
 		/*
 		  BUILD 65: a row with no position cvars is listed in the panel and has no
 		  presence out in the world.  The crosshair is screen centre by definition,
@@ -1901,6 +1931,7 @@ void(float r) HE_Default =
 	if (id == "specby")  localcmd("seta hud_specby_x 0.99\nseta hud_specby_y 0.18\n");
 	// Patch 798: missing since Patch 762, so the strip's reset chip did nothing.
 	if (id == "keyhint") localcmd("seta hud_keyhint_x 0.0333\nseta hud_keyhint_y 0.955\n");
+	if (id == "chat")    localcmd("seta hud_chat_x 0.05\nseta hud_chat_y 0.95\n");   // Patch 824
 
 	/*
 	  BUILD 65 (until Patch 637, see above HE_Default).  boarding's pair is the -1
@@ -2002,6 +2033,9 @@ void() HE_ResetAll =
 	         "seta hud_ghost_offset 0\nseta hud_ghost_alpha 0.55\nseta hud_ghost_dither 1\nseta hud_ghost_near 96\n"
 	         "seta hud_ghost_names 1\n");
 	localcmd("seta hud_chat 1\n");          // Patch 798: default.cfg never sets it
+	// Patch 824: the Chat pane's, literals for the same reason (only the game code registers them).
+	localcmd("seta hud_chat_size 20\nseta hud_chat_w 0.35\nseta hud_chat_rows 10\nseta hud_chat_full 0\n"
+	         "seta hud_chat_lines 6\nseta hud_chat_time 30\nseta hud_chat_bg 0.88\n");
 
 	// And the panel itself, which can be dragged into a corner like anything else.
 	HE_ResetCvar("hud_edit_panel_x");

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Patch 821: an open chat is a panel -- history, a field, a selection, the mouse.
+"""Patches 821 and 824: an open chat is a panel -- history, a field, a selection, the mouse;
+its width, height and full-height switch, a field that wraps, and hud_edit's Chat pane.
 
 One windowed client hosting a listen server on a generated map, in an owned
 basedir under --out (beneath an OWNER.md).  Keys go through the whole input
@@ -31,6 +32,8 @@ K_LCTRL, K_LSHIFT, K_HOME, K_END = 133, 134, 151, 152
 K_MOUSE1, K_MOUSE2, K_WHEELUP = 512, 513, 515
 LONG = ('alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike '
         'november oscar papa quebec romeo sierra tango uniform victor whiskey')
+WRAP = ('the quick brown fox jumps over the lazy dog and then keeps on running down '
+        'the long road until the night falls')
 NUM = r'(-?[\d.]+)'
 VEC = r"'?" + NUM + ' ' + NUM + ' ' + NUM + r"'?"
 
@@ -112,6 +115,7 @@ def prepare(a):
         'scr_sshot_type png', 'con_notifylines 0', 'set name Tester', f'sv_port {a.port}',
         'set sv_floodprotect 0',        # the filler lines come faster than 4 in 4 s
         'seta hud_chat_size 24',        # a config saved before 821, at the old default
+        'seta hud_chat_bg 0.5',         # P824: saved first, so 0.5 is its default -- reset all must not keep it
         'set hud_chat 1', 'set hud_chat_lines 6', 'set hud_chat_time 600',
         'set hud_chat_x 0.05', 'set hud_chat_y 0.95',
         'map p821.map']) + '\n')
@@ -122,8 +126,12 @@ def rows(t):
     """chat_rows' state, from the last dump in t."""
     at = t.rfind('chat_rows: maxw ')
     t = t[at:]
-    head = re.search(r'chat_rows: maxw ' + NUM + ' sz ' + NUM + ' lh ' + NUM, t)
-    panel = re.search(r'chat_rows: panel ' + NUM + ' claims ' + NUM + ' x ' + NUM, t)
+    head = re.search(r'chat_rows: maxw ' + NUM + ' sz ' + NUM + ' lh ' + NUM + ' lines ' + NUM
+                     + ' cap ' + NUM, t)
+    panel = re.search(r'chat_rows: panel ' + NUM + ' claims ' + NUM + ' x ' + NUM + ' box ' + VEC
+                      + ' ' + VEC, t)
+    starts = re.search(r'chat_rows: field starts((?: \d+)+) ty ' + NUM, t)
+    frows = re.search(r' rows (\d+)\n', t[t.find('chat_rows: field '):])
     fld = re.search(r'chat_rows: field ' + VEC + ' ' + VEC + ' tx ' + NUM + ' caret ' + NUM
                     + ' anchor ' + NUM, t)
     scr = re.search(r'chat_rows: scroll ' + NUM + ' of ' + NUM + ' sent ' + NUM + r' \|(.*)\|', t)
@@ -135,6 +143,9 @@ def rows(t):
         msgs.append({'n': int(m.group(2)), 'y0': float(m.group(4)), 'rows': body})
     return {
         'maxw': float(head.group(1)), 'sz': float(head.group(2)), 'lh': float(head.group(3)),
+        'cap': int(float(head.group(5))), 'box': [float(panel.group(i)) for i in range(4, 10)],
+        'starts': [int(v) for v in starts.group(1).split()], 'ty': float(starts.group(2)),
+        'frows': int(frows.group(1)),
         'panel': float(panel.group(1)), 'claims': int(float(panel.group(2))), 'x': float(panel.group(3)),
         'field': [float(fld.group(i)) for i in range(1, 7)], 'tx': float(fld.group(7)),
         'caret': int(float(fld.group(8))), 'anchor': int(float(fld.group(9))),
@@ -214,6 +225,26 @@ def main():
         check(r['panel'] == 1 and r['claims'] == 1024, 'open: the panel faded in and holds the mouse alone',
               (r['panel'], r['claims']))
         check(r['sz'] == 20, 'the chat text is drawn at 20', r['sz'])
+        check(abs(r['maxw'] - 0.35 * 1280) < 1, 'P824: the box is 35% of the screen wide', r['maxw'])
+        fit_h = r['box'][4]
+        c.send('set hud_chat_full 1')
+        time.sleep(.4)
+        r2 = dump()
+        want = (r['cap'] - max(min(3, r['cap']), min(r['total'], r['cap']))) * r['lh']
+        check(want > 0 and abs(r2['box'][4] - fit_h - want) < 1.5,
+              'P824: full height opens the box its whole height with only a few lines in it',
+              (fit_h, r2['box'][4], want))
+        c.send('screenshot p824_full')
+        time.sleep(.5)
+        c.send('set hud_chat_rows 6')
+        time.sleep(.4)
+        r3 = dump()
+        check(abs(r2['box'][4] - r3['box'][4] - 4 * r['lh']) < 1.5,
+              'P824: Height 6 makes the full box four rows shorter than 10', (r2['box'][4], r3['box'][4]))
+        c.send('set hud_chat_rows 10')
+        time.sleep(.3)
+        c.send('set hud_chat_full 0')
+        time.sleep(.3)
         c.send('screenshot p821_open')
 
         def find(word):
@@ -316,6 +347,35 @@ def main():
         check(dump()['copied'] == 'abc ' and clip == 'abc ',
               'the field selection is what ctrl+c copies, onto the Windows clipboard', clip == 'abc ')
 
+        # P824: the field wraps and grows a row at a time.
+        key(ord('a'), 1, (K_LCTRL,))
+        key(K_BACKSPACE)
+        one = dump()
+        for ch in WRAP:
+            key(ord(ch), ord(ch))
+        time.sleep(.4)
+        r = dump()
+        n, grew = r['frows'], r['box'][4] - one['box'][4]
+        check(r['buf'] == WRAP and one['frows'] == 1 and n >= 2
+              and abs(r['field'][4] - (35 + r['lh'] * (n - 1))) < 1 and abs(grew - r['lh'] * (n - 1)) < 1.5,
+              'P824: a long line wraps the field onto more rows and the box grows by them',
+              (n, r['field'][4], grew))
+        row2 = r['ty'] + r['lh'] * 1.5
+        mouse(r['tx'] + 1, row2, K_MOUSE1, 1)
+        mouse(r['tx'] + 1, row2, K_MOUSE1, 0)
+        time.sleep(.3)
+        k = dump()['caret']
+        check(len(r['starts']) >= 2 and k == r['starts'][1], 'P824: a click at the second row puts the caret there',
+              (k, r['starts']))
+        c.send('screenshot p824_wrap')
+        time.sleep(.6)
+        key(ord('a'), 1, (K_LCTRL,))
+        key(K_BACKSPACE)
+        for ch in 'abc ':
+            key(ord(ch), ord(ch))
+        time.sleep(.3)
+        check(dump()['frows'] == 1, 'P824: emptied, the field is one row again')
+
         key(K_ENTER)
         time.sleep(.6)
         r = dump()
@@ -395,6 +455,66 @@ def main():
               (z0, h0, h1, z1, z2))
         c.send('zone_edit')
         time.sleep(1)
+        # P824: hud_edit draws the box open, lists Chat with it, and its pane works.
+        c.send('hud_edit on')
+        time.sleep(.8)
+        r = dump()
+        st = c.query(r'  chat +(on|off) +x +([\d.]+) y +([\d.]+)  ([^\n]*)', 'hud_edit status')
+        check(r['panel'] == 1 and r['claims'] == 4 and 'drawn' in st.group(4),
+              'P824: hud_edit shows the box open, takes only its own claim, and lists Chat as drawn',
+              (r['panel'], r['claims'], st.group(0).strip()))
+        c.query(r'sui_hover \[he_sel_chat\]', 'hud_edit ui hover he_sel_chat')
+        c.send('hud_edit ui down mouse1')
+        time.sleep(.3)
+        c.send('hud_edit ui up mouse1')
+        time.sleep(.6)
+        at = len(c.text())
+        c.query(r'sui_panel open', 'hud_edit ui')
+        time.sleep(.4)
+        ids = set(re.findall(r'sui_element \[(he_(?:o|sz)_[^\]]*)\]', c.text()[at:]))
+        wantids = {'he_o_hud_chat_' + k for k in ('w', 'rows', 'full', 'lines', 'time', 'bg')}
+        check(wantids <= ids and any(i.startswith('he_sz_chat') for i in ids),
+              'P824: the Chat pane has width, height, full height, shut lines, time, box and size',
+              sorted(i for i in ids if 'chat' in i))
+        c.send('screenshot p824_pane')
+        time.sleep(.5)
+        c.query(r'sui_hover \[he_o_hud_chat_w\]', 'hud_edit ui hover he_o_hud_chat_w')
+        c.send('hud_edit ui down mouse1')
+        time.sleep(.3)
+        c.send('hud_edit ui up mouse1')
+        time.sleep(.6)
+        w = c.query(r'"hud_chat_w" is "([^"]*)"', 'hud_chat_w').group(1)
+        r = dump()
+        check(abs(float(w) - 0.4) < 1e-4 and abs(r['maxw'] - 0.4 * 1280) < 1,
+              'P824: the Width chip steps 35% to 40% and the box follows', (w, r['maxw']))
+        c.send('screenshot p824_wider')
+        time.sleep(.5)
+        c.send('set hud_chat 0')
+        time.sleep(.6)
+        r = dump()
+        st = c.query(r'  chat +(on|off) +x +([\d.]+) y +([\d.]+)  ([^\n]*)', 'hud_edit status')
+        check(r['panel'] == 0 and st.group(1) == 'off' and 'not drawn' in st.group(4),
+              'P824: Chat switched off, the editor draws no box and lists it not drawn',
+              (r['panel'], st.group(0).strip()))
+        c.send('set hud_chat 1')
+        time.sleep(.4)
+        pre = c.query(r'"hud_chat_bg" is [^\n]*', 'hud_chat_bg').group(0)   # shows its default
+        print('  before reset all:', pre, flush=True)
+        for _ in range(2):              # reset all asks once, then does it
+            c.query(r'sui_hover \[he_rstall\]', 'hud_edit ui hover he_rstall')
+            c.send('hud_edit ui down mouse1')
+            time.sleep(.3)
+            c.send('hud_edit ui up mouse1')
+            time.sleep(.6)
+        bg = c.query(r'"hud_chat_bg" is "([^"]*)"', 'hud_chat_bg').group(1)
+        w = c.query(r'"hud_chat_w" is "([^"]*)"', 'hud_chat_w').group(1)
+        check(abs(float(bg) - 0.88) < 1e-4 and abs(float(w) - 0.35) < 1e-4,
+              'P824: reset all puts Box back to 88% (saved first at 50%) and Width to 35%', (bg, w))
+        c.send('hud_edit off')
+        time.sleep(.6)
+        r = dump()
+        check(r['panel'] == 0 and r['claims'] == 0, 'P824: hud_edit closed, the box goes and so does the mouse',
+              (r['panel'], r['claims']))
         focus = re.findall(r'\[focus\] window is foreground[^\n]*', c.text())
         check(not focus, 'the window never had the focus (no owner click reached it)', focus[:2])
     finally:
