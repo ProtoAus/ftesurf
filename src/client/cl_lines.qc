@@ -386,6 +386,18 @@ float  *ln_sgen;
 float  *ln_scgen;
 float  ln_npaint;               // whole repaints of lines that are not the live run's (`lines native`)
 float  ln_allocms;              // what Line_Alloc took, ms
+// Patch 827: the samples, and the base, the slot's last Line_End covered; 0 = none. A
+// later one redoes only what samples past it touch; redoing the whole line every sixteen
+// samples read 0.43 ms a frame in Lex's r_budget_csqc on surf_boreas (19 Oct).
+float  *ln_endn;
+float  *ln_endb;
+// ... and the live run's speed sums so far, Line_SpeedRange's, carried on.
+float  *ln_srn;
+float  *ln_srsum;
+float  *ln_srsq;
+float  *ln_srmn;
+float  *ln_srmx;
+float  ln_endms, ln_endmax, ln_endfull, ln_endpart;    // `lines native`
 float  ln_cslo, ln_cshi, ln_ccown, ln_ccoth;
 float  ln_nseg, ln_nclip, ln_nwild, ln_npt;  // the last Line_Draw, for status
 vector ln_bbmin, ln_bbmax, ln_first;
@@ -612,6 +624,13 @@ void() Line_AllocSlots =
 	ln_fgn = memalloc(sizeof(float) * LN_SLOTS);
 	ln_inf = memalloc(sizeof(float) * LN_SLOTS);
 	ln_tintd = memalloc(sizeof(float) * LN_SLOTS);
+	ln_endn = memalloc(sizeof(float) * LN_SLOTS);
+	ln_endb = memalloc(sizeof(float) * LN_SLOTS);
+	ln_srn = memalloc(sizeof(float) * LN_SLOTS);
+	ln_srsum = memalloc(sizeof(float) * LN_SLOTS);
+	ln_srsq = memalloc(sizeof(float) * LN_SLOTS);
+	ln_srmn = memalloc(sizeof(float) * LN_SLOTS);
+	ln_srmx = memalloc(sizeof(float) * LN_SLOTS);
 };
 
 void() Line_Alloc =
@@ -836,6 +855,7 @@ void(float s) Line_Clear =
 	ln_owner[s] = "";
 	ln_on[s] = FALSE;
 	ln_n[s]  = 0;
+	ln_endn[s] = 0;
 	ln_published[s] = 0;
 	ln_tintd[s] = ln_drawf[s] = 0;
 	ln_g[s] = ln_start[s] = 0;
@@ -1323,6 +1343,7 @@ void(float s, vector o, float spd, float vz, float q, float t, float brk, float 
 		if (ln_brk[b + LN_C(s) - 1])
 			ln_pbrk[s] = TRUE;
 		n = LN_C(s) / 2;
+		ln_endn[s] = 0;             // every sample moved
 		ln_published[s] = ceil(ln_published[s] / 2);
 		ln_step[s] = ln_step[s] * 2;
 	}
@@ -1781,9 +1802,26 @@ void(float s, vector o, vector v, float fl, float t, float brk, float stitch,
   min..max.  A stop after a teleport or a restart put min at 0 and drew a whole
   stage one green (p432shot).
 */
+void(float s, float n, float sum, float sq, float mn, float mx) Line_SpeedSet =
+{
+	local float v, sd;
+
+	ln_lo[s] = 0;
+	ln_hi[s] = 1;
+	if (n > 0)
+	{
+		v = sum / n;
+		sd = sqrt(max(0, sq / n - v * v));
+		ln_lo[s] = max(mn, v - 2 * sd);
+		ln_hi[s] = min(mx, v + 2 * sd);
+		if (ln_hi[s] <= ln_lo[s])
+			ln_hi[s] = ln_lo[s] + 1;
+	}
+};
+
 void(float s, float ia, float ib, float tsc) Line_SpeedRange =
 {
-	local float b, i, v, n, sum, sq, mn, mx, sd;
+	local float b, i, v, n, sum, sq, mn, mx;
 
 	b = LN_B(s);
 	n = sum = sq = 0;
@@ -1800,41 +1838,61 @@ void(float s, float ia, float ib, float tsc) Line_SpeedRange =
 		sq = sq + v * v;
 		n = n + 1;
 	}
-	ln_lo[s] = 0;
-	ln_hi[s] = 1;
-	if (n > 0)
-	{
-		v = sum / n;
-		sd = sqrt(max(0, sq / n - v * v));
-		ln_lo[s] = max(mn, v - 2 * sd);
-		ln_hi[s] = min(mx, v + 2 * sd);
-		if (ln_hi[s] <= ln_lo[s])
-			ln_hi[s] = ln_lo[s] + 1;
-	}
+	Line_SpeedSet(s, n, sum, sq, mn, mx);
 };
 
 // The tables drawing needs: chunk spheres, the break list, the gain.
 void(float s) Line_End =
 {
-	local float b, n, c, i, i0, i1, j0, j1, k, dt;
+	local float b, n, c, i, i0, i1, j0, j1, k, dt, from, v;
 	local vector mn, mx, p;
 
 	b = LN_B(s);
 	n = ln_n[s];
+	ln_endms = gettime(1);
 	Line_PoolShrink(s);             // Patch 760
+	// Patch 827: every table below is a function of the samples it covers, and Line_Add
+	// only appends (the halving and Line_Clear zero ln_endn), so the work starts at the
+	// first chunk, group or gain the samples from `from` on can reach.  The sums run in
+	// the same order as a whole pass, so the result is the same to the bit.
+	from = (ln_endb[s] == b && ln_endn[s] <= n) ? ln_endn[s] : 0;
+	ln_endn[s] = n;
+	ln_endb[s] = b;
+	if (from)
+		ln_endpart = ln_endpart + 1;
+	else
+		ln_endfull = ln_endfull + 1;
 	// Patch 632: your own line has a speed range too.  Only Line_Range set one and
 	// nothing calls it for the trail, so "speed" over your line alone was 0..0 and
 	// every point the slow end's red (58 of 58 on a 116-point line, the review).
 	if (LN_TRAIL(s))
-		Line_SpeedRange(s, 0, n - 1, -99999999);
+	{
+		if (!from)
+		{
+			ln_srn[s] = ln_srsum[s] = ln_srsq[s] = 0;
+			ln_srmn[s] = 99999;
+			ln_srmx[s] = 0;
+		}
+		for (i = from; i < n; i = i + 1)
+		{
+			v = ln_spd[b + i];
+			ln_srmn[s] = min(ln_srmn[s], v);
+			ln_srmx[s] = max(ln_srmx[s], v);
+			ln_srsum[s] = ln_srsum[s] + v;
+			ln_srsq[s] = ln_srsq[s] + v * v;
+			ln_srn[s] = ln_srn[s] + 1;
+		}
+		Line_SpeedSet(s, ln_srn[s], ln_srsum[s], ln_srsq[s], ln_srmn[s], ln_srmx[s]);
+	}
 	// One demo fade, not a stagger restarted every chunk. Live births belong
 	// to sample arrival in Line_Add; bulk rebuilds never reset their ages.
 	if (s == 0)
 		for (i = ln_published[s]; i < n; i = i + 1)
 			ln_born[Line_BirthBase(s) + i] = cltime;
 	ln_published[s] = n;
-	ln_bkn[s] = 0;
-	for (i = 1; i < n; i = i + 1)
+	if (!from)
+		ln_bkn[s] = 0;
+	for (i = max(1, from); i < n; i = i + 1)
 		if (ln_brk[b + i])
 		if (ln_bkn[s] < LN_BKCAP)
 		{
@@ -1843,7 +1901,7 @@ void(float s) Line_End =
 		}
 
 	// Each chunk's box takes the point before it, so the joining segment is in.
-	for (c = 0; c * LN_CHUNK < n; c = c + 1)
+	for (c = floor(from / LN_CHUNK); c * LN_CHUNK < n; c = c + 1)
 	{
 		i0 = max(0, c * LN_CHUNK - 1);
 		i1 = min(n, (c + 1) * LN_CHUNK);
@@ -1862,7 +1920,7 @@ void(float s) Line_End =
 		ln_cr[LN_B(s) / LN_CHUNK + c]  = vlen(mx - mn) * 0.5;
 		ln_cbk[LN_B(s) / LN_CHUNK + c] = k;
 	}
-	for (c = 0; c * LN_CHUNK * LN_GROUP < n; c = c + 1)
+	for (c = floor(from / (LN_CHUNK * LN_GROUP)); c * LN_CHUNK * LN_GROUP < n; c = c + 1)
 	{
 		i0 = max(0, c * LN_CHUNK * LN_GROUP - 1);
 		i1 = min(n, (c + 1) * LN_CHUNK * LN_GROUP);
@@ -1879,7 +1937,7 @@ void(float s) Line_End =
 	}
 
 	// Gain, u/s per s, over up to two samples each side within the same piece.
-	for (i = 0; i < n; i = i + 1)
+	for (i = max(0, from - 2); i < n; i = i + 1)
 	{
 		j0 = i;
 		j1 = i;
@@ -1901,7 +1959,7 @@ void(float s) Line_End =
 	  from the polyline through every 2^L-th point (the chunk's first and last
 	  kept), in units.  A chunk holding a break never strides.
 	*/
-	for (c = 0; c * LN_CHUNK < n; c = c + 1)
+	for (c = floor(from / LN_CHUNK); c * LN_CHUNK < n; c = c + 1)
 	{
 		i0 = c * LN_CHUNK;
 		i1 = min(n, i0 + LN_CHUNK) - 1;
@@ -1930,6 +1988,8 @@ void(float s) Line_End =
 	ln_ib[s] = n - 1;
 	ln_on[s] = (n >= 2);
 	ln_sgen[s] = ln_sgen[s] + 1;
+	ln_endms = (gettime(1) - ln_endms) * 1000;
+	ln_endmax = max(ln_endmax, ln_endms);
 };
 
 /*
@@ -4092,6 +4152,9 @@ float() Line_Console =
 		              ln_lbshown, ln_lbhidden, ln_declutter, ln_labfar));
 		print(sprintf("lines: repainted %g times (the live run's own not counted); tables made in %.1f ms\n",
 		              ln_npaint, ln_allocms));
+		// Patch 827. gettime(1) is whole milliseconds, so a short pass reads 0.
+		print(sprintf("lines: ends %g whole, %g from where the last stopped; last %g ms, longest %g ms\n",
+		              ln_endfull, ln_endpart, ln_endms, ln_endmax));
 		// Patch 760: the pool, and each line's place in it.
 		Line_PoolPrint();
 		return TRUE;
