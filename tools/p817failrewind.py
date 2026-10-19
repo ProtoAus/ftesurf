@@ -111,7 +111,8 @@ def grade_prof(sv, cl, control):
         faults += not ok
         print(("PASS" if ok else "FAIL"), name, "--", detail, flush=True)
 
-    box = section(log, "BOX")
+    # The second reply lands after the S marker (a round trip).
+    box = section(log, "BOX") + section(log, "S").split("rewind: on")[0]
     bad = [float(m.split()[4]) for m in re.findall(r'inprof:  ev "([^"]*)"', box)]
     check("prof-step", len(bad) >= 2 and bad[-1] > bad[0], f"the client's bad count in the box {bad}")
     saved = re.search(r"rewind: save (\d+) \(slot (\d+)\)", section(log, "S"))
@@ -161,8 +162,9 @@ def grade_prof2(sv, cl, control):
     return faults
 
 
-def grade_retry(sv, cl, control):
-    """--retry (cfg p817retry): the restored run's profile latch is 0, not -1."""
+def grade_retry(sv, cl, svlog, control):
+    """--retry (cfg p817retry): the restored run's profile latch is 0, not -1.  Read from the
+    server's own line: the restored run can slide into the fail and re-arm within a second."""
     log = (cl / "logs/p817retry.log").read_text(errors="replace")
     faults = 0
 
@@ -171,13 +173,11 @@ def grade_retry(sv, cl, control):
         faults += not ok
         print(("PASS" if ok else "FAIL"), name, "--", detail, flush=True)
 
-    tb, ta = timer(section(log, "BEFORE")), timer(section(log, "AFTER"))
-    restored = "run restored" in section(log, "AFTER") or "retry -- run restored" in log
-    check("retried", tb and tb["state"] == "running" and ta and ta["state"] == "running" and restored,
-          f"before {tb}; after {ta}; restored {restored}")
-    latch = re.findall(r"inprof:  key \"[^\"]*\"  badat (-?\d+)  noprofile (\d)", section(log, "AFTER"))
-    want = "-1" if control else "0"
-    check(f"latch{' (control: -1)' if control else ''}", latch and latch[-1][0] == want, f"after the retry badat/noprofile {latch}")
+    tb = timer(section(log, "BEFORE"))
+    restored = "retry -- run restored" in log
+    check("retried", tb and tb["state"] == "running" and restored, f"before {tb}; restored {restored}")
+    latch = re.findall(r"timer: a load's latches: profile (-?\d+) ruleset (-?\d+)( \(no report since serverdata\))?", svlog)
+    check("latch", latch and latch[-1][0] == "0" and latch[-1][2] != "", f"the server's latch lines {latch}")
     print(f"{faults} failed")
     return faults
 
@@ -248,7 +248,7 @@ def main():
         return 1
     svlog = svlogp.read_text(errors="replace") if svlogp.exists() else ""
     if args.retry:
-        return grade_retry(sv, cl, args.control)
+        return grade_retry(sv, cl, svlog, args.control)
     if args.prof2:
         return grade_prof2(sv, cl, args.control)
     if args.prof:

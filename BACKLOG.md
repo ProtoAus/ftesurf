@@ -46,6 +46,11 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   demote honest old saves: Lex's call. `sv_saveloc.qc` SV_SaveLoadLatch.
 - A save cut from a live rewind is judged at the write, not at its snapshot: a step after the
   snapshot over-taints the resumed run (a warm go did the same before).
+- Engine `observe` then `join` re-runs ClientConnect (SV_CSQCForget) with no new serverdata, so
+  CSQC keeps its counters and never re-sends: every run after it is TF_NOPROFILE and TF_NOJOURNAL
+  until a reconnect or map change (older than P817), and a cold load there latches the profile at
+  0 against a counter that may be higher (over-taint). `pr_csqc_formenus 1` may do the same before
+  begin. `cl_replay.qc` the report caches, Rec_ViewInit.
 - Over the evidence-keep path (posted stages) a save's run.rec carries the abandon's flags line
   until the resumed run's close rewrites it: it can only over-taint. No arm runs that path.
 - The client keeps a re-armed attempt's frames on any falling edge into ARMED, a `!r` too, where
@@ -53,15 +58,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - A save cut from the kept attempt names that attempt's `recrid`; a cold load never adopts it
   today, and only that keeps the resumed run's stage posts and evidence keep off that id.
 - Undecided (Lex): a `!b` / `!s` in the box after a fail leaves the main-track attempt resumable.
-- Sites: `cl_rewind.qc` Rewind_Frame (which close fires), `sv_timer.qc` SV_TimerArm/SV_RecDiscard.
-  surf_dune's fail lands in its START box, which re-arms the run (Patch 775 does the same for a stage
-  run's own box): the live line still holds the failed attempt (81 samples), BACKSPACE opens the
-  rewind (serial 1) and the next status reads `on 0 ... pin -1`, with no message either side. Even
-  open, a save or resume there is a practice placement: the arm's SV_RecDiscard dropped that
-  attempt's recorder, so SV_RewindWriteState refuses the ring's snapshots. Before Patch 775 a stage
-  run kept RUNNING through its own box and the rewind of a stage fail resumed timed. Undecided:
-  whether a re-armed attempt should resume segmented (its buffered recorder kept until the next
-  start) -- asked of Lex. Check: `tools/p808rewind.py --probe --lobby` (cfg/test/p808probe.cfg).
 ## Chat panel (P821): what the review left open
 
 - `src/client/cl_chat.qc` Chat_FieldKey reads Shift/Ctrl from `ui_kmods` (cl_keys.qc), which

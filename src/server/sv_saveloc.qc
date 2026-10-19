@@ -1671,6 +1671,8 @@ void(entity e) SV_SaveLoadLatch =
 	}
 	else
 		e.run_t_pbad = 0;
+	dprint(sprintf("timer: a load's latches: profile %g ruleset %g%s\n", e.run_t_pbad, e.run_t_rbreach,
+	               e.run_t_pev ? "" : " (no report since serverdata)"));
 };
 
 float(entity e, float id, float retry) SV_SaveApplyState =
