@@ -71,11 +71,13 @@ let graph: HTMLCanvasElement | null = null;   // the speed traces, drawn once
 
 // ---- loading ---------------------------------------------------------------
 
-// surfd builds one track at a time and says 503 to the next caller (Patch 825).
+// surfd builds one track at a time and says 503 to the next caller (Patch 825);
+// nginx says 504 after 5 s, which the first run request after surfd's map index
+// expires (MAPS_TTL) can take -- the scan finishes anyway, so once more is warm.
 async function fetchJSON(url: string): Promise<any> {
     for (let tries = 0; ; tries++) {
         const r = await fetch(url, { credentials: 'omit' });
-        if (r.status === 503 && tries < 3) {   // each try spends one of the route's 10 a minute
+        if ((r.status === 503 || (r.status === 504 && tries === 0)) && tries < 3) {   // each try spends one of the route's 10 a minute
             await new Promise((res) => setTimeout(res, 1000 * (Number(r.headers.get('Retry-After')) || 2)));
             continue;
         }

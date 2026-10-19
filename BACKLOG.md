@@ -30,6 +30,10 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   and has no BC7/BC6H), maps over 100 MB (98 of them; memory and download unmeasured), phones
   and low-end GPUs, Firefox/Safari's directory input on a whole Steam folder, and whether
   noclip animates movers the game freezes at spawn (sv_entities.qc).
+- **The first `/board/api/run` after surfd's map index expires can 504** (MAPS_TTL 300 s;
+  `map_index()` rescans the library inside the request, and nginx gives /ftesurf/board/ 5 s).
+  Seen twice on 19 Oct (once just after the P825 cutover); a retry a second later is 0.1 s.
+  The run page shows the error; watch.js retries once. Fix: rescan off the request path.
 - **`/api/replay/<rid>` has no kind or tier gate** (surfd.py `replay()`): only a banned owner's
   rows are refused, so evidence-kind and review-rejected recordings resolve by id, input rows
   included. The game fetches community ghosts there, so the answer is to refuse evidence and
