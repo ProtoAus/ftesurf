@@ -2,8 +2,12 @@
 
 ## P843-P845 — fire behind the grate, see-through walls, goto_spawn
 
-Pushed 2026-10-19 UTC (20 Oct local): QC main, engine main b02bc5ae8 (tag patch-844, the hl2 plugin).
-Deployment line added when the installs and lobbies carry it.
+Live 2026-10-19 UTC: both installs at 17:46Z (QC main 4569d279: qwprogs b69cae2b, csprogs d08cf6ff;
+fteplug_hl2_x64.dll 2b60d9c3 from engine main b02bc5ae8, tag patch-844, .prev dd6dce96); then with
+P841 at 17:51Z by ftesurf-0a's -Pi from main 6c006453: qwprogs 10eac633 / csprogs e2b7936e on all 12
+lobbies and both installs (read back on the Pi). Lobby players on the 0.1.28 client get the server
+side (fades, hides, additive, goto_spawn, the flame order) but not the plugin's alpha, so faded
+LightmappedGeneric/UnlitGeneric brushes still draw solid for them until a release.
 
 - surf_dune, your save 2: the flame stays behind the grate now. The soft orange glow around it
   still shows over the grate (a separate glow sprite; BACKLOG). Smoke: it is drawn, but on
