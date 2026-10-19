@@ -8,9 +8,11 @@
   SV_RecKeepEvidence took it. SV_RewindWriteState cuts from it when the live recorder is not the
   snapshot's; the go or save then loads cold, as any timed save. Dropped at SV_RecOpen, at every
   load (the rebase leaves none of its samples), at a disconnect and in SV_Shutdown.
-- The kept attempt carries its start latches (run_t_pbad / run_t_rbreach, which SV_TimerArm
-  resets): a save cut from it is marked no-profile / no-ruleset if they moved since. A timed load
-  with no latch takes one as SV_MsApply does.
+- Profile and ruleset spans: every timed save carries the finish's verdict so far
+  (SV_SaveWriteState, SV_RewindWriteState's live branch; a save cut from the kept attempt compares
+  that attempt's start latches, run_t_pbad / run_t_rbreach, which SV_TimerArm resets), and every
+  cold load takes its own start latches as SV_MsApply does. Before P817 a cold load kept another
+  run's latch (or a fresh edict's 0, not -1) and the finish compared against it.
 - FTEQCC SEGFAULTS, WITH NO OUTPUT, ON A FIELD READ BEFORE ITS DECLARATION (rec_rec_serial is at
   sv_timer.qc ~2700): new recorder functions go above SV_RecOpen, not beside the fields.
 - fsize() on a FILE_READ handle reads the whole file; the keep records the byte count instead,

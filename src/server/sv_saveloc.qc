@@ -1273,6 +1273,14 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	// session's number.  A file cannot assert any of the three, and a save taken
 	// in the round trip before the answer landed would otherwise clear a bit the
 	// client had already earned.
+	// Patch 817: the finish's profile and ruleset verdict so far (it only ever sets a
+	// bit), so a load that re-latches cannot forgive a step inside the prefix.
+	if (e.run_t_state == TS_RUNNING)
+	{
+		if (e.run_t_pev != 0)         // not before its first report (a retry's restart)
+			SV_TimerProfile(e, FALSE);
+		SV_TimerRuleset(e, FALSE);
+	}
 	fputs(f, sprintf("flags %d\n",
 	                 e.run_t_flags - (e.run_t_flags & (TF_FROZEN | TF_STOPPED | TF_NONCE))));
 	fputs(f, sprintf("pb %d\n", e.run_t_pb));
@@ -2206,13 +2214,6 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		{
 			e.run_t_flags = e.run_t_flags | TF_SHADOW;
 			e.run_t_fromsave = id;
-			// Patch 817: a load after an arm has no start latches (-1, SV_TimerArm):
-			// taken here as SV_MsApply takes them, so the span to the finish is
-			// checked.  A warm load keeps the run's own.
-			if (e.run_t_rbreach < 0)
-				SV_TimerRuleset(e, TRUE);
-			if (e.run_t_pbad < 0)
-				SV_TimerProfile(e, TRUE);
 		}
 		else
 			e.run_t_fromsave = 0;
@@ -2259,7 +2260,19 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		*/
 		// Patch 364: a prefix read off disk opens a new session (v10).
 		if (rec_rewind_cold)
+		{
 			SV_RecPause(e, retry ? "retry" : "load", ticks);
+			// Patch 817: and its own start latches, as SV_MsApply takes them -- the
+			// edict's are another run's, or a fresh edict's 0.  The prefix's verdict
+			// is in the save's flags (SV_SaveWriteState, SV_RewindWriteState).  The
+			// profile waits for the client's first report: the silence rule would
+			// mark the run for good.
+			e.run_t_rbreach = -1;
+			SV_TimerRuleset(e, TRUE);
+			e.run_t_pbad = -1;
+			if (e.run_t_pev != 0)
+				SV_TimerProfile(e, TRUE);
+		}
 		if (retry)
 			SV_RecPut(e, sprintf("retry %d", ticks));
 		else

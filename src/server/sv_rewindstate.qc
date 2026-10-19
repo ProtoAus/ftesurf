@@ -198,6 +198,15 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 		if (stof(argv(3)) != e.rec_fa_rbreach)
 			flags = flags | TF_NORULESET;
 	}
+	else
+	{
+		// The live run's, as the finish would read it now (SV_SaveWriteState too).
+		if (e.run_t_pev != 0)
+		if (SV_ProfileBroken(e))
+			flags = flags | TF_NOPROFILE;
+		if (SV_RulesetBroken(e))
+			flags = flags | TF_NORULESET;
+	}
 	fputs(f, sprintf("flags %d\npb %d\ndirty %d\ncheat %d\nhopped %d\nfromsave %d\nhandcarry %d\n",
 	                 flags, m[b+19], m[b+20], m[b+21], m[b+22], m[b+23], m[b+50]));
 	fputs(f, sprintf("azone %d\nevzone %d\narmzone %d\ncpzone %d\ncpmax %d\npendarm %d\n",

@@ -41,10 +41,10 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Rewind over a failed attempt (P817): what the reviews left
 
-- A save taken during a run has no span check of its own: a profile step or ruleset breach before
-  it is caught only if the run that loads it still holds the start latch. P817's saves compare the
-  kept attempt's latches; the plain save route and P808's live rewind save do not.
-  `sv_timer.qc` SV_TimerProfile / SV_TimerRuleset, the save writers.
+- A cold load takes its profile latch only once the client has reported (the silence rule would
+  mark it at the load): a load in the first frames after a connect or a retry keeps -1, and that
+  run's resumed span is checked for its standing state only. SV_MsApply holds for the report
+  instead. `sv_saveloc.qc` SV_SaveApplyState.
 - Over the evidence-keep path (posted stages) a save's run.rec carries the abandon's flags line
   until the resumed run's close rewrites it: it can only over-taint. No arm runs that path.
 - The client keeps a re-armed attempt's frames on any falling edge into ARMED, a `!r` too, where
