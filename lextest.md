@@ -24,9 +24,9 @@ surfd 2026-10-19T08:02:56Z: generation 9ae4a941 (main), root
   address bar and choose `Counter-Strike Source` (not `common` itself: Chrome refuses anything
   under Program Files through its other picker, and `common` is every game you own). The
   browser asks to "upload" it; the page reads the map's files on your PC and sends nothing.
-  Until the two CORS steps below are done, the page needs this folder to draw the map at all.
-- CORS, one command each: `sudo sh /srv/nvme/agent-work/surfd825b-20261019T0720Z/apply-cors.sh`
-  on the Pi, and the R2 bucket `ftesurf-public`'s CORS policy in Cloudflare (BACKLOG).
+  The folder is optional: since Lex's CORS steps (19 Oct ~08:06Z, nginx snippet a117932e and the
+  `ftesurf-public` bucket policy, both checked from outside) the map downloads by itself and the
+  folder only adds the CS:S/HL2 textures. Measured: run 21367 ready in 2.6 s with no folder.
 - **Play**, drag the timeline or click the speed graph; cameras 1–4 (Chase: drag to turn, wheel to
   zoom; Free: drag to look, WASD to fly); **Race the record** puts the combined board's best
   recorded run beside yours as a gold dot, with the gap at the top.

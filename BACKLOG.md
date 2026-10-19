@@ -61,18 +61,11 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
 
 ## 3D run viewer (P825): what is left
 
-- **The map download needs CORS on both hops; owner's sudo and Cloudflare.** Until both are
-  set, watch.html reads the BSP from the visitor's own game folder only. (1) `sudo sh
-  /srv/nvme/agent-work/surfd825b-20261019T0720Z/apply-cors.sh` installs the snippet rendered
-  from `tools/r2gateway.nginx` (the live file was verified equal to the pre-P825 template; the
-  script refuses if it changed, keeps `.pre-p825`, restores on a failed `nginx -t`). The gateway
-  installer pins that file's hash (`nginx_before_sha256`), so its next install takes the new
-  one. (2) R2 bucket `ftesurf-public`, Settings, CORS policy: origin `*` (after a cross-origin
-  redirect the browser sends `Origin: null`), GET/HEAD, header Range, exposing Content-Length. Check: `curl -sI -H 'Origin: https://proto.bar'
-  https://play.proto.bar/maps/surf_beginner.bsp` shows the header on the 302, and the
-  Location's reply carries it too.
-- **Zones are not drawn.** Their JSON is public (`/ftesurf/maps/zones/local/<map>.json`, the
-  same CORS lines cover it); start/end/stage regions would go in the overlay.
+- **Zones are not drawn.** Their JSON is public and CORS-readable
+  (`/ftesurf/maps/zones/local/<map>.json`); start/end/stage regions would go in the overlay.
+- **The gateway installer pins the maps snippet's hash** (`nginx_before_sha256`): since P825's
+  CORS lines (applied 19 Oct ~08:06Z, backup `ftesurf-maps.conf.pre-p825`), its next install
+  must take the new one (sha256 a117932e...).
 - **No stage deltas against an import.** Imports carry no `split` records, so the splits
   table's delta column is empty racing a Momentum or KSF record; the HUD's live gap is
   position-matched instead. Stage times from zone crossings (P750's inference) would fill it.
