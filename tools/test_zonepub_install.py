@@ -61,4 +61,22 @@ class Install(unittest.TestCase):
         with self.assertRaises(RuntimeError):i.check_imports(blobs)
 
 
+class Upgrade(unittest.TestCase):
+    # P826: an upgrade's unit is exactly what a fresh install of the new commit would write.
+    def unit(self, commit):
+        release=i.ROOT.as_posix()+'/'+commit
+        env=dict(ZONEPUB_STORE='/s/zones.sqlite3',ZONEPUB_ACCOUNTS='/a.db',ZONEPUB_GAMES=json.dumps(['/g/csprogs.dat']),
+                 SURFD_TOOLS=release+'/tools',ZONEPUB_SOURCE=commit,ZONEPUB_PUBLISH=json.dumps(['/p1','/p2']))
+        return i.unit_text(release,env,['/s','/p1','/p2'])
+    def test_upgraded_unit_is_a_fresh_install_of_the_new_commit(self):
+        a,b='a'*40,'b'*40
+        self.assertEqual(i.upgraded_unit(self.unit(a),b),(a,self.unit(b)))
+    def test_upgrade_refuses_what_it_cannot_read(self):
+        a=self.unit('a'*40)
+        for bad in (self.unit('c'*40).replace('ZONEPUB_SOURCE','ZONEPUB_X'), a.replace(i.ROOT.as_posix(),'/elsewhere'),
+                    a+'Environment="ZONEPUB_SOURCE='+'a'*40+'"\n'):
+            with self.assertRaises(RuntimeError):i.upgraded_unit(bad,'b'*40)
+        with self.assertRaises(RuntimeError):i.upgraded_unit(a,'a'*40)
+
+
 if __name__=='__main__':unittest.main()

@@ -174,7 +174,9 @@ def create_app(store, account_db, game_files, clock=time.time, verify=None, publ
     games = tuple(Path(p) for p in game_files)
     publish_dirs = tuple(Path(p) for p in publish_dirs)
     peer_salt = secrets.token_bytes(32)
-    def fail(message, status): return jsonify(ok=0, error=message), status
+    # P826: a refusal answers 200 with ok=0. The game's HTTP client keeps no body for any
+    # other status (httpclient.c), so the reason would never reach the player.
+    def fail(message, status): return jsonify(ok=0, error=message, status=status), 200
     @app.before_request
     def body_budget():
         # Older Werkzeug does not enforce MAX_CONTENT_LENGTH in get_data().

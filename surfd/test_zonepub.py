@@ -19,6 +19,16 @@ PUB = ed25519.publickey(SEED).hex()
 SID = '76561198000000001'
 
 
+class Coded:
+    """A test client whose refusals carry their code again: since P826 a refusal answers 200
+    with ok=0 and the code in the body, and these tests assert the code."""
+    def __init__(self, c): self.c = c
+    def post(self, *a, **kw):
+        r = self.c.post(*a, **kw)
+        if r.status_code == 200 and r.is_json and r.json.get('ok') == 0: r.status_code = r.json['status']
+        return r
+
+
 def zone():
     r = dict(points=[[0,0],[32,0],[32,32],[0,32]],bottom=0,height=64)
     return dict(formatVersion=1, tracks=dict(main=dict(zones=dict(
@@ -39,7 +49,7 @@ class Upload(unittest.TestCase):
         db.execute('INSERT INTO accounts VALUES(?,0)', (SID,)); db.execute('INSERT INTO keylinks VALUES(?,?)',(PUB,SID)); db.commit(); db.close()
         self.now = 10000
         self.app = z.create_app(self.store,self.main,[self.game],clock=lambda:self.now,verify=ed25519)
-        self.c = self.app.test_client()
+        self.c = Coded(self.app.test_client())
         self.raw = (json.dumps(zone(), indent=2)+'\n').encode()
     def grant(self):
         with z.connect(self.store) as db: db.execute('INSERT OR IGNORE INTO roles VALUES(?)',(SID,))
@@ -67,6 +77,12 @@ class Upload(unittest.TestCase):
         self.assertNotIn(SID,r.get_data(as_text=True)); self.assertIn('no-store',r.headers['Cache-Control'])
     def test_linked_nonadmin_is_denied(self):
         self.assertEqual(self.upload(self.challenge()).status_code,403)
+        self.assertFalse(self.drafts())
+    def test_refusal_reaches_the_game_with_its_reason(self):
+        # P826: on the wire a refusal is 200, ok=0, the reason and the code (the raw client).
+        r = self.c.c.post('/api/zones/draft',data=self.envelope(self.challenge()),content_type='application/json')
+        self.assertEqual((r.status_code, r.json['ok'], r.json['status']), (200, 0, 403))
+        self.assertEqual(r.json['error'], 'This Steam account is not a zone admin')
         self.assertFalse(self.drafts())
     def test_banned_and_unlinked_are_denied(self):
         self.grant()
@@ -110,7 +126,7 @@ class Upload(unittest.TestCase):
         self.assertEqual(self.c.post('/api/zones/challenge',json=dict(map='surf_fixture',sha='a'*64),
                          environ_overrides={'CONTENT_LENGTH':'','wsgi.input_terminated':True}).status_code,411)
         missing=self.root/'missing.db'
-        c=z.create_app(missing,self.main,[self.game]).test_client()
+        c=Coded(z.create_app(missing,self.main,[self.game]).test_client())
         self.assertEqual(c.post('/api/zones/challenge',json=dict(map='surf_ok',sha='a'*64)).status_code,503)
         self.assertFalse(missing.exists())
     def test_review_stages_only_exact_bytes_and_requires_explicit_times_policy(self):
@@ -181,7 +197,7 @@ class Publish(Upload):
             db.execute('INSERT INTO meta VALUES(?,?)', ('watch_last', self.now - 30))
         self.app = z.create_app(self.store,self.main,[self.game],clock=lambda:self.now,verify=ed25519,
                                 publish_dirs=self.dirs,maps_fn=self.lobbies)
-        self.c = self.app.test_client()
+        self.c = Coded(self.app.test_client())
     def files(self):
         return [(d/'surf_fixture.json').read_bytes() if (d/'surf_fixture.json').exists() else None for d in self.dirs]
     def rows(self, kind=None):

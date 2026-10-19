@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P826 — a refused publish says why
+
+DEPLOYED_P826
+
+- Publishing without the role, from an old game, or too often now names the reason in the
+  dialog ("This Steam account is not a zone admin", "Update your game before uploading", ...)
+  instead of one sentence covering all three. Nothing to do unless a refusal happens.
+
 ## P824 — the chat box in hud_edit: width, height, full height; the field grows
 
 Both installs and all 12 lobbies 2026-10-19T06:25Z: csprogs ea4e1a84 (.prev fda04aa2, P822/P823's);
@@ -31,7 +39,8 @@ fda04aa2 (.prev bcb0c1cf), menu.dat f6cf5764 (.prev 6aa9f756), qwprogs 9155b799 
   updates** (or **Turn on updates**), **Restart to update** when one is waiting, and **Check
   again** after a failed check. Your own choice from before stays.
 
-"Looks right / <which screen looks wrong>". Verdict PENDING.
+Lex, 19 Oct: "I like the update". Post-deploy lobby smoke on the 0.1.27 exe passed (06:28Z:
+lobby served fda04aa2, board drew, no QC error).
 
 ## P822 — Publish saved asks in a dialog
 

@@ -311,8 +311,9 @@ void(vector scr) ZonePub_Draw =
 	else if (ZoneEdit_Clicked("zp_go")) ZonePub_Go();
 };
 
-// A non-200 reply reaches QC with no body (p822dialog step 7: the service's JSON error
-// arrived empty), so zonepub.py's refusals are told apart by their codes alone.
+// A non-200 reply reaches QC with no body (httpclient.c keeps no file), so zonepub.py answers
+// its refusals 200 with ok=0 and the reason (P826). These words are for what never gets that
+// far: nginx's own 413, a 502 while the service restarts, a service older than P826.
 string(float code) ZonePub_Refused =
 {
 	if (code == 403) return "Refused: update the game, link your Steam account, or ask for the zone-admin role.";

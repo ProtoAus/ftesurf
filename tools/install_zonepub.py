@@ -4,6 +4,7 @@
 Requires a clean inspected source commit, an exact nginx predecessor hash, and
 --apply. Never changes/restarts surfd, its DB/schema, or a lobby. No role grants.
 Refuses existing destination files rather than taking ownership of a peer service.
+--upgrade (P826) moves the installed service onto a new release and nothing else.
 """
 import argparse
 import contextlib
@@ -116,18 +117,116 @@ def probe_app(commit, url='http://127.0.0.1:8087/api/zones/challenge'):
         raise RuntimeError('New service challenge control did not act')
 
 
+def unit_text(release, env, writable):
+    unit = """[Unit]
+Description=World of Surf admin zone uploads (published on acceptance)
+After=network.target
+[Service]
+User=proto
+Group=proto
+UMask=0077
+WorkingDirectory=%s
+ExecStart=/usr/bin/python3 -m gunicorn --bind 127.0.0.1:8087 --workers 1 --threads 2 --timeout 15 --access-logfile /dev/null zonepub_wsgi:app
+Restart=on-failure
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=%s
+[Install]
+WantedBy=multi-user.target
+""" % (release, ' '.join(writable))
+    # systemd quoted Environment syntax: JSON quotes/backslashes are escaped.
+    unit += '\n'  # add Environment within Service, not Install
+    entries = ''.join('Environment="%s=%s"\n' % (k, v.replace('\\', '\\\\').replace('"', '\\"')) for k, v in env.items())
+    return unit.replace('Restart=on-failure\n', entries + 'Restart=on-failure\n')
+
+
+def upgraded_unit(old, new_commit):
+    """P826: the installed unit with only its release swapped -- WorkingDirectory, SURFD_TOOLS and
+    ZONEPUB_SOURCE; everything else (games, publish dirs, sandbox) stays as installed."""
+    root = ROOT.as_posix()
+    m = re.search(r'^WorkingDirectory=%s/([0-9a-f]{40})$' % re.escape(root), old, re.M)
+    if not m: raise RuntimeError('The installed unit names no release under ' + root)
+    cur = m.group(1)
+    if cur == new_commit: raise RuntimeError('That release is already the installed one')
+    if old.count('Environment="ZONEPUB_SOURCE=%s"\n' % cur) != 1: raise RuntimeError('The installed unit does not name its source once')
+    new = old.replace('%s/%s' % (root, cur), '%s/%s' % (root, new_commit)).replace('ZONEPUB_SOURCE=' + cur, 'ZONEPUB_SOURCE=' + new_commit)
+    if sum(1 for x, y in zip(old.splitlines(), new.splitlines()) if x != y) != 3:
+        raise RuntimeError('Unexpected unit shape; inspect it before upgrading')
+    return cur, new
+
+
+def healthy(release, commit, url):
+    for attempt in range(20):       # a restart's or a reload's old workers answer for a moment
+        try:
+            witness = service_witness(release); probe_app(commit, url)
+            if service_witness(release) != witness: raise RuntimeError('Service master changed during probe')
+            return witness
+        except (OSError, ValueError, RuntimeError):
+            if attempt == 19: raise
+            time.sleep(.5)
+
+
+def upgrade(a):
+    """P826: the running service onto a new release. State, role grants, nginx and the unit's other
+    lines are kept; a failure puts the old unit back and the old release serving again."""
+    if run('git','-C',str(a.source),'rev-parse','HEAD').stdout.decode().strip()!=a.commit: raise RuntimeError('Source ref differs')
+    if run('git','-C',str(a.source),'status','--porcelain','--',*FILES).stdout: raise RuntimeError('Service source is not clean at the inspected commit')
+    blobs={dest:(a.source/src).read_bytes() for src,dest in FILES.items()}
+    if UNIT.is_symlink() or not UNIT.is_file() or not STATE.is_dir() or not SNIPPET.is_file():
+        raise RuntimeError('No installed zone service to upgrade (unit, state and nginx snippet)')
+    old=UNIT.read_text()
+    cur,new=upgraded_unit(old,a.commit)
+    release=ROOT/a.commit
+    if release.exists() or release.is_symlink(): raise RuntimeError('That release directory already exists')
+    if run('/usr/bin/systemctl','show','--value','--property=ActiveState','ftesurf-zonepub.service').stdout.decode().strip()!='active':
+        raise RuntimeError('The installed service is not running; inspect it before upgrading')
+    check_imports(blobs)
+    probe_app(cur)                  # the starting point answers as the release its unit names
+    print('Preflight: clean source; installed release %s answers; state, grants and nginx are kept' % cur[:12])
+    if not a.apply:
+        print('DRY RUN: no changes; owner may rerun under sudo with --apply')
+        return
+    if os.geteuid()!=0: raise RuntimeError('Owner sudo/root is required for --apply')
+    release.mkdir(mode=0o755)
+    for dest,body in blobs.items():
+        p=release/dest;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(body);p.chmod(0o644)
+    (release/'SOURCE.json').write_text(json.dumps(dict(commit=a.commit,files={k:sha(v) for k,v in blobs.items()}),indent=2)+'\n')
+    # The schema is CREATE ... IF NOT EXISTS: a release's new tables, nothing else.
+    run('/usr/sbin/runuser','-u','proto','--','/usr/bin/python3',str(release/'zonepub.py'),'--store',str(STATE/'zones.sqlite3'),'init')
+    def put(text):
+        tmp=UNIT.with_name(UNIT.name+'.upgrade-tmp'); tmp.write_text(text); tmp.chmod(0o644); os.replace(tmp,UNIT)
+        run('/usr/bin/systemctl','daemon-reload'); run('/usr/bin/systemctl','restart','ftesurf-zonepub.service')
+    put(new)
+    try:
+        healthy(release,a.commit,'http://127.0.0.1:8087/api/zones/challenge')
+        healthy(release,a.commit,'https://play.proto.bar/api/zones/challenge')
+    except Exception:
+        put(old)
+        healthy(ROOT/cur,cur,'http://127.0.0.1:8087/api/zones/challenge')
+        print('Upgrade failed: release %s is serving again; %s is kept for inspection' % (cur[:12], release))
+        raise
+    print('Upgraded the zone service to %s; release %s stays on disk as the way back' % (a.commit[:12], cur[:12]))
+
+
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--source', type=Path, required=True)
     ap.add_argument('--commit', required=True)
-    ap.add_argument('--expected-nginx-sha256', required=True)
+    ap.add_argument('--expected-nginx-sha256')
     ap.add_argument('--account-db', type=Path, default=Path('/srv/nvme/surfd/data/surfd.db'))
-    ap.add_argument('--game', type=Path, action='append', required=True)
+    ap.add_argument('--game', type=Path, action='append')
     ap.add_argument('--publish-dir', type=Path, action='append',
                     help="repeatable; default the lobbies' and the site's zone folders")
     ap.add_argument('--apply', action='store_true')
+    ap.add_argument('--upgrade', action='store_true', help='move the installed service onto --commit (P826)')
     a=ap.parse_args()
     if not re.fullmatch('[0-9a-f]{40}',a.commit): ap.error('Expected full inspected source SHA')
+    if a.upgrade:
+        safe_path(a.source)
+        return upgrade(a)
+    if not a.expected_nginx_sha256 or not a.game: ap.error('A new install needs --expected-nginx-sha256 and --game')
     if not re.fullmatch('[0-9a-f]{64}',a.expected_nginx_sha256): ap.error('Expected exact predecessor nginx SHA256')
     publish=tuple(a.publish_dir or PUBLISH)
     for p in (a.source,a.account_db,*a.game,*publish): safe_path(p)
@@ -171,28 +270,7 @@ def main():
     env=dict(ZONEPUB_STORE=str(STATE/'zones.sqlite3'),ZONEPUB_ACCOUNTS=str(a.account_db),
              ZONEPUB_GAMES=json.dumps([str(p) for p in a.game],separators=(',',':')),SURFD_TOOLS=str(release/'tools'),ZONEPUB_SOURCE=a.commit,
              ZONEPUB_PUBLISH=json.dumps([str(p) for p in publish],separators=(',',':')))
-    unit='''[Unit]
-Description=World of Surf admin zone uploads (published on acceptance)
-After=network.target
-[Service]
-User=proto
-Group=proto
-UMask=0077
-WorkingDirectory=%s
-ExecStart=/usr/bin/python3 -m gunicorn --bind 127.0.0.1:8087 --workers 1 --threads 2 --timeout 15 --access-logfile /dev/null zonepub_wsgi:app
-Restart=on-failure
-NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectSystem=strict
-ProtectHome=yes
-ReadWritePaths=%s
-[Install]
-WantedBy=multi-user.target
-'''%(release,' '.join(str(p) for p in (STATE,*publish)))
-    # systemd quoted Environment syntax: JSON quotes/backslashes are escaped.
-    unit+='\n'  # add Environment within Service, not Install
-    entries=''.join('Environment="%s=%s"\n'%(k,v.replace('\\','\\\\').replace('"','\\"')) for k,v in env.items())
-    unit=unit.replace('Restart=on-failure\n',entries+'Restart=on-failure\n')
+    unit=unit_text(release,env,[str(p) for p in (STATE,*publish)])
     snippet=NGINX.encode(); wanted=before.replace(anchor,anchor+b'\n    include snippets/ftesurf-zonepub.conf;')
     backup.write_bytes(before);backup.chmod(0o600)
     written=unit_written=False

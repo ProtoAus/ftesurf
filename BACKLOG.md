@@ -7,10 +7,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 ## Publish dialog (P822) and first-boot screens (P823): what the reviews left
 
-- **zonepub's refusals are worded from status codes.** A non-200 reply reaches QC with no
-  body (httpclient.c keeps no file for it), so a 403 reads "update the game, link Steam, or
-  ask for the role" instead of which. Fix: zonepub.py answers refusals 200 with ok=0 (needs
-  the owner's sudo reinstall).
 - **An answer that arrives with the editor closed is only a console line** (P822).
 - **An offline-tier player who turns updates off can turn them on again only by accepting
   online play** (P823, deliberate: turning on needs the online text); `update_permission 1`

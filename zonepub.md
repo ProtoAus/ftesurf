@@ -73,6 +73,13 @@ directory holds only FILES, which must import alone (accounts.py imports steam),
 include), not a link to sites-available. A failed run leaves the unit and snippet (root) and the
 state directory: a rerun refuses until they are removed.
 
+Refusals answer 200 with `ok:0`, `error` and `status` (P826): the game's HTTP client keeps no
+body for any other status, so a 403's reason never reached the player. A new release goes in
+with `install_zonepub.py --upgrade --source <checkout> --commit <sha> [--apply]`: it requires
+the installed unit, state and snippet, writes `zonepub/<sha>`, runs the idempotent `init`, and
+rewrites only the unit's WorkingDirectory, SURFD_TOOLS and ZONEPUB_SOURCE; it probes loopback
+and public HTTPS and on any failure puts the old unit back and the old release serving.
+
 Not checked: that the uploader's BSP is the build the lobbies load (zones are
 by map name). A wrong-build upload is visible at once in the game; roll it back.
 
