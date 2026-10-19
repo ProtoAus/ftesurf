@@ -2959,8 +2959,8 @@ def case_v11_closing_spectate_authority():
 
 
 def case_v11_closing_session_seed_authority():
-    """Only closing declarations are transparent at a session/seed boundary."""
-    from reccheck import check_rec
+    """Closing declarations are transparent at initial and restored seed boundaries."""
+    from reccheck import check_rec, check_view
 
     base, view = cold_clock_pair("load")
     base[0] = "FTESURF-REC 11"
@@ -2979,10 +2979,12 @@ def case_v11_closing_session_seed_authority():
                 ("malformed relocated", ["clockend counted bad 0 0"], False, 1),
                 ("malformed duplicate", ["clockend counted bad 0 0"], True, 1),
                 ("consecutive", ["clockend sampled", "clockend counted bad 0 0"], True, 1))
-    for session in range(sum(l.startswith("session ") for l in base)):
+    # -1 is the initial begin/seed boundary; the rest are restored sessions.
+    for session in range(-1, sum(l.startswith("session ") for l in base)):
         for name, closers, keep_terminal, expected in variants:
             lines = [l for l in base if keep_terminal or not l.startswith("clockend ")]
-            sl = [i for i, l in enumerate(lines) if l.startswith("session ")][session]
+            sl = (lines.index("begin") if session < 0 else
+                  [i for i, l in enumerate(lines) if l.startswith("session ")][session])
             lines[sl + 1:sl + 1] = closers
             ix = next(i for i, l in enumerate(lines) if l.startswith("end "))
             tail = lines[ix].split()
@@ -3005,12 +3007,45 @@ def case_v11_closing_session_seed_authority():
                   and any("goes backwards" in f for f in faults),
                   "%s at session %d cannot hide legacy damage" % (name, session))
         intervening = base[:]
-        sl = [i for i, l in enumerate(intervening) if l.startswith("session ")][session]
+        sl = (intervening.index("begin") if session < 0 else
+              [i for i, l in enumerate(intervening) if l.startswith("session ")][session])
         sample = next(l for l in base if l and l[0] in "-0123456789")
         intervening.insert(sl + 1, sample)
         faults, _ = run(intervening, view=view)
-        check(any("second 'seed'" in f for f in faults),
+        placement = "not the first line" if session < 0 else "second 'seed'"
+        check(any(placement in f for f in faults),
               "a real intervening sample still breaks session %d seed adjacency" % session)
+
+    # Check every body boundary, not just the two adjacency sites already found.
+    view_bytes = ("\n".join(view) + "\n").encode()
+    for label, source in (("restores", base), ("spectate/restores", spectated(base))):
+        baseline = check_rec("positions.rec", data=("\n".join(source) + "\n").encode())
+        bv = check_view("positions.view", baseline, data=view_bytes)
+        check(not baseline.faults and not bv.faults and baseline.view_reset_budget == 2,
+              "%s all-position control actually validates two resets" % label)
+        bare = [l for l in source if not l.startswith("clockend ")]
+        for kind, original, closer, count, expected in (
+                ("relocated", bare, "clockend sampled", 1, 0),
+                ("malformed", bare, "clockend counted bad 0 0", 1, 1),
+                ("duplicate", source, "clockend counted bad 0 0", 2, 1)):
+            failures, acted = [], 0
+            for pos in range(original.index("begin") + 1, len(original) + 1):
+                lines = original[:]
+                lines.insert(pos, closer)
+                ix = next(i for i, l in enumerate(lines) if l.startswith("end "))
+                tail = lines[ix].split(); tail[-1] = str(count); lines[ix] = " ".join(tail)
+                rec = check_rec("positions.rec", data=("\n".join(lines) + "\n").encode())
+                vr = check_view("positions.view", rec, data=view_bytes)
+                acted += 1
+                if (len(rec.faults) != expected or any("clockend" not in f for f in rec.faults)
+                        or rec.view_reset_budget != baseline.view_reset_budget or vr.faults
+                        or vr.info.get("angle_rule") != bv.info.get("angle_rule")):
+                    failures.append((pos, rec.faults, vr.faults, rec.view_reset_budget))
+            check(not failures and acted > 0,
+                  "%s %s stays outside lifecycle authority at all %d body positions"
+                  % (label, kind, acted))
+            if failures:
+                print("        first boundary failures=%s" % failures[:3])
 
 
 def case_v11_fzin():

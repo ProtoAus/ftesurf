@@ -1077,7 +1077,7 @@ def check_rec(path, verbose=False, *, data=None):
     zseeds = []             # (lineno, args, rows so far) -- v9, build 88
     pms, pes, portals = [], [], []   # (lineno, args, in rows before it) -- v9
     mcs = []                         # Patch 376: the client's mouse counts
-    first_body = None       # line number of the first body line (seed goes there)
+    first_body = None       # first lifecycle line (v11 closing metadata is separate)
     # v10: `pause` / `session`.  cur_horizon is the horizon of the session the
     # walk is in (instart's, then each session's <mt>).
     pauses = []             # (lineno, mt, ticks, why)
@@ -1096,7 +1096,7 @@ def check_rec(path, verbose=False, *, data=None):
     clockends = []          # v11 close declarations; not restore/epoch authority
     has_fzin = False
     thawrows = 0
-    trailer_at = None       # (lineno, kind) of the first closing declaration
+    trailer_at = None       # (lineno, kind) of the first legacy trailer
     gh_open = None          # line of the `ghost 1` no `ghost 0` has closed yet
     seen_positive = False
     bad_cols = 0
@@ -1108,7 +1108,7 @@ def check_rec(path, verbose=False, *, data=None):
             r.note("blank line at %d" % (lineno + 1))
             continue
         tok = s.split()
-        if first_body is None:
+        if first_body is None and not (ver == 11 and tok[0] == "clockend"):
             first_body = lineno + 1
 
         if ver == 11 and tok[0] == "clockend":
