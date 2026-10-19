@@ -44,14 +44,11 @@
   has not run" sentinel rather than a place anyone can stand, and that is the
   guard in Trail_Sample.
 
-  THE LINE_END BUDGET.  Line_End rebuilds the chunk spheres, the break list, the
-  gain column and the stride errors in one O(n) pass -- right for a file read
-  once, wrong per sample on a line that grows all run.  It is called every
-  TR_BUILD samples instead, so the head of the line lags by up to that many
-  samples behind a player who is standing at the head of it looking forward.
-  `trail` prints the pass count and the sample count so the cost can be READ
-  rather than guessed at; Line_End is chunk-local everywhere except its gain
-  window, so an incremental form is available if a reading ever asks for one.
+  THE LINE_END BUDGET.  It is called every TR_BUILD samples, so the head of the
+  line lags by up to that many behind a player standing at it looking forward.
+  Since Patch 827 a pass resumes where the last stopped (the new samples plus at
+  most one 512-sample group); before, it redid the whole line, ~1 us a sample.
+  `trail` prints the pass and sample counts, `lines native` whole against partial.
 
   IT IS A PICTURE AND NOTHING ELSE.  Nothing here is sent anywhere, nothing here
   is evidence, and the run's real recording is the server's .rec exactly as
