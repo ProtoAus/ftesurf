@@ -25,11 +25,20 @@ commit   e1f507dad0688fdb7f3229c97c53f219c5851d48
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-842
-patch    842
+patch    845
 # Patch 842 (qwprogs/readers + native verifier): format 11 keeps actual released-packet
 # inputs as fzin and declares the final native clock without granting held verification.
 # Retained v9/v10 prefixes keep their contracts; v11 stays v11. Native ordinary zero-
 # exclusion compatibility remains; unsupported positive/excluded state still refuses.
+# Patch 845 (qwprogs + csprogs): goto_spawn is the map's spawn entity (zone_spawn: the respawn,
+# with the run voided first so a just-finished run keeps its tag); `!m` unchanged.
+# Patch 844 (qwprogs + hl2 plugin): every brush entity's rendermode (1/2/4 fade, 5 adds, 10 and
+# renderamt 0 hide); vmt/lightmapped and vmt/unlit multiply alpha by the entity's. Plugin only.
+# Patch 843 (csprogs): a fire with anything between it and the eye draws its flame before the
+# blended surfaces (sort underwater), so a $translucent grate in front covers it.
+# Patch 841 (engine + qwprogs + csprogs + zonepub): a Momentum zone file's maxVelocity sets the map's
+# speed cap (after cfg/maps); every map-load ruleset file is read only from a trusted directory, never
+# a pak or a pak symlink. The editor writes the cap into zone files and Publish carries it.
 # Patch 838 (reader): v8+ closing carry cannot be negative, including decimal underflow;
 # its exact coefficient preserves true signed zero. The native mover clamps the remainder.
 # Signed zero stays legal. Independent closing faults retain validated restore allowances;

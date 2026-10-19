@@ -1858,28 +1858,83 @@ float(entity to, float changed) SV_TrigStateSend =
 // P799: a func_areaportalwindow's target, which the client draws (SV_PortalWindowsActivate).
 .float vbsp_apwhide;
 
-// Source kRenderTransAlpha (4) is normal alpha blending, not additive.
-// Native alpha 0 means opaque (sv_ents.c); exact zero needs EF_NODRAW.
+#define EF_ADDITIVE 32
+.float vbsp_rmhide;             // P844: EF_NODRAW set by the rendermode, not by I/O
+
+// Source kRenderTransAlpha (4) is normal alpha blending, not additive; so are
+// TransColor (1) and TransTexture (2), and TransAdd (5) adds (const.h RenderMode_t).
+// Native alpha 0 means opaque (sv_ents.c); exact zero needs EF_NODRAW.  TRUE when
+// the mode hides it: None, or a zero renderamt (C_BaseEntity::ShouldDraw).
+// 3 and 6-9 are drawn as before.
+float(entity t) SV_BrushRenderMode =
+{
+	local float m;
+
+	m = t.rendermode;
+	if (m == 1 || m == 2 || m == 4 || m == 5)
+	{
+		t.alpha = bound(0, t.renderamt, 255) / 255;
+		if (m == 5)
+			t.effects = t.effects | EF_ADDITIVE;
+		return (t.renderamt <= 0);
+	}
+	if (m == 0)
+		t.alpha = 1;
+	return (m == RENDERMODE_NONE);
+};
+
 void(entity t) SV_BrushRenderState =
 {
 	local float hidden;
 
 	if (t.vbsp_apwhide)
 		t.effects = t.effects | EF_NODRAW;	// Source's InputAlpha leaves EF_NODRAW alone
+	// P844: every brush class has a rendermode, not only func_brush (P683).  The
+	// others own their EF_NODRAW (I/O, toggles): the mode takes back only its own.
 	if (t.classname != "func_brush")
+	{
+		if (substring(t.model, 0, 1) != "*")
+			return;
+		if (SV_BrushRenderMode(t))
+		{
+			if (!(t.effects & EF_NODRAW))
+				t.vbsp_rmhide = TRUE;
+			t.effects = t.effects | EF_NODRAW;
+		}
+		else if (t.vbsp_rmhide)
+		{
+			t.vbsp_rmhide = FALSE;
+			if (!SV_Key2(t.StartDisabled, t.startdisabled))
+			if (!t.vbsp_apwhide)
+				t.effects = t.effects - (t.effects & EF_NODRAW);
+		}
 		return;
-	if (t.rendermode == 4)
-		t.alpha = bound(0, t.renderamt, 255) / 255;
-	else if (t.rendermode == 0)
-		t.alpha = 1;
-
-	hidden = (SV_Key2(t.StartDisabled, t.startdisabled) ||
-	          t.rendermode == RENDERMODE_NONE ||
-	          (t.rendermode == 4 && t.renderamt <= 0) || t.vbsp_apwhide);
+	}
+	hidden = SV_BrushRenderMode(t);
+	hidden = (SV_Key2(t.StartDisabled, t.startdisabled) || hidden || t.vbsp_apwhide);
 	if (hidden)
 		t.effects = t.effects | EF_NODRAW;
 	else
 		t.effects = t.effects - (t.effects & EF_NODRAW);
+};
+
+// P844: the brush entities that did not spawn through SV_BrushRenderInit, once the
+// lump is built (StartFrame).
+void() SV_BrushRenderAll =
+{
+	local entity e;
+	local float n;
+
+	n = 0;
+	for (e = nextent(world); e; e = nextent(e))
+		if (e.classname != "func_brush")
+		if (e.rendermode)
+		if (substring(e.model, 0, 1) == "*")
+		{
+			SV_BrushRenderState(e);
+			n = n + 1;
+		}
+	dprint(sprintf("brush render: %g brush entities besides func_brush carry a rendermode\n", n));
 };
 
 void(entity t) SV_BrushRenderInit =
@@ -3244,7 +3299,18 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		return;
 	}
 	if (in == "turnoff")        { t.effects = t.effects | EF_NODRAW;    return; }
-	if (in == "turnon")         { t.effects = t.effects - (t.effects & EF_NODRAW); return; }
+	// P844: and the rendermode may hide it again (None, renderamt 0), as may a window
+	// pane's; a func_brush's StartDisabled is not consulted, TurnOn being its enable.
+	if (in == "turnon")
+	{
+		t.effects = t.effects - (t.effects & EF_NODRAW);
+		t.vbsp_rmhide = FALSE;
+		if (t.classname != "func_brush")
+			SV_BrushRenderState(t);
+		else if (SV_BrushRenderMode(t) || t.vbsp_apwhide)
+			t.effects = t.effects | EF_NODRAW;
+		return;
+	}
 
 	// Build 63.  logic_relay -- 2,506 Trigger fires across 120 maps, the most
 	// common unimplemented input in the library that is not cosmetic.
@@ -3516,14 +3582,14 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		if (in == "fadeout") { SV_AmbientStop(t); return; }
 	}
 
-	if (in == "alpha" && t.classname == "func_brush")
+	if (in == "alpha" && substring(t.model, 0, 1) == "*")
 	{
 		t.renderamt = bound(0, stof(pm), 255);
 		SV_BrushRenderState(t);
 		return;
 	}
 
-	// Other classes and Color inputs still have no native render-state adapter.
+	// Point entities and Color inputs still have no native render-state adapter.
 	if (in == "color" || in == "alpha")
 		return;
 

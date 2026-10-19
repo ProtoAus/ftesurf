@@ -35,6 +35,7 @@ entity  rec_ms_owner;   // one copy per lobby: the first fgets reads the whole f
 
 // ms.txt, read by SV_MsReadMeta and consumed in the same call.
 float  ms_ticks, ms_seg, ms_segs, ms_track, ms_leg, ms_sess, ms_day, ms_tickrate;
+float  ms_maxvel;               // P841: -1 = a slot written before the cap was recorded
 float  ms_lines, ms_bytes, ms_n, ms_padn, ms_cp, ms_in, ms_pk, ms_warp, ms_ride;
 float  ms_pm, ms_pe, ms_portal, ms_pauses, ms_rsess, ms_posts, ms_pinned, ms_full;
 float  ms_stseg, ms_sttick, ms_starmed, ms_legzone, ms_legtrack, ms_legseg;
@@ -109,6 +110,7 @@ void(entity e, float ticks, string why, string mode, float bytes) SV_MsWriteMeta
 		fputs(f, sprintf("zonecrc %s\n", zone_crc));
 	fputs(f, sprintf("zonerule %d %d %d\n", run_t_swept, run_t_hull, run_t_hulllive));
 	fputs(f, sprintf("tickrate %.9g\n", run_t_tick));
+	fputs(f, sprintf("maxvel %.9g\n", cvar("sv_maxvelocity")));     // P841
 	fputs(f, sprintf("rec %s\n", mode));
 	fputs(f, sprintf("recbytes %d\n", bytes));
 	// Every `end` counter, and what SV_RecOpen resets: the resume continues them.
@@ -131,6 +133,7 @@ float(string path) SV_MsReadMeta =
 	local float n, ok;
 
 	ms_ticks = ms_seg = ms_segs = ms_track = ms_leg = ms_sess = ms_day = ms_tickrate = 0;
+	ms_maxvel = -1;
 	ms_lines = ms_n = ms_padn = ms_cp = ms_in = ms_pk = ms_warp = ms_ride = 0;
 	ms_pm = ms_pe = ms_portal = ms_pauses = ms_rsess = ms_posts = ms_pinned = ms_full = 0;
 	ms_bytes = -1;
@@ -158,6 +161,7 @@ float(string path) SV_MsReadMeta =
 		else if (k == "mapcrc")    ms_mapcrc = argv(1);
 		else if (k == "zonecrc")   ms_zonecrc = argv(1);
 		else if (k == "tickrate")  ms_tickrate = stof(argv(1));
+		else if (k == "maxvel")    ms_maxvel = stof(argv(1));
 		else if (k == "rec")       ms_rec = argv(1);
 		else if (k == "recbytes")  ms_bytes = stof(argv(1));
 		else if (k == "runid")     ms_rid = argv(1);
@@ -240,6 +244,12 @@ string() SV_MsStale =
 		if (fabs(ms_tickrate - run_t_tick) > 0.000001)
 			return "the tick rate changed";
 	}
+	// P841: a publish can change the cap alone (zone_crc leaves it out). A slot from before
+	// the cap was recorded ran cfg/maps' value or cfg/default.cfg's 3500.
+	if (ms_maxvel < 0)
+		ms_maxvel = SV_MapCfgFloat("sv_maxvelocity", 3500);
+	if (fabs(ms_maxvel - cvar("sv_maxvelocity")) > 0.001)
+		return "the speed cap changed";
 	days = cvar("run_resume_days");
 	if (days > 0)
 	if (ms_day > 0)

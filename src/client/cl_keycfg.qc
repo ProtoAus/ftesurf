@@ -28,8 +28,9 @@ void(float keynum, string bindcmd, optional float bindmap, optional float modifi
 #define KC_STATUS_T 4           // seconds a bind's result stays on the status line
 
 // id|label|command a rebind writes|other bindings that count as this row (;)|default.cfg's keys|group
-// Restart/Respawn ship as `say !r`/`say !m` (default.cfg) and are rebound as the
-// same warp under its command name (cl_warpop.qc: both reach SV_ZoneChatCommand).
+// Restart/Respawn ship as `say !r`/`say !m` (default.cfg) and are rebound, and reset,
+// under a command name (cl_warpop.qc).  Since Patch 845 Respawn's, goto_spawn, is the
+// map's spawn entity while the shipped `say !m` is still the start of the map.
 string(float i) KC_Def =
 {
 	if (i == 0)  return "forward|Forward|+forward||w|Movement";

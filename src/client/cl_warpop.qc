@@ -1,5 +1,6 @@
 /*
-  Patch 753: `!r`, `!m`, goto_start/goto_spawn and the save-lock load key, predicted.
+  Patch 753: `!r`, `!m`, goto_start and the save-lock load key, predicted
+  (goto_spawn was `!m` until Patch 845 made it the map's spawn).
 
   Each op rides ONE outgoing usercmd's impulse (WOP_*); the server applies it at
   that command (SV_WarpOpCommand) and CSQC_PredictPlayerPreMove below applies the
@@ -727,10 +728,11 @@ float() WarpOp_Console =
 			localcmd("cmd zone_reset\n");
 		return TRUE;
 	}
+	// Patch 845: the map's spawn entity, where joining puts you, not `!m`'s start zone.
+	// A respawn, so not predicted.
 	if (argv(0) == "goto_spawn")
 	{
-		if (!WarpOp_Reset(WOP_SPAWN))
-			localcmd("cmd zone_restart\n");
+		localcmd("cmd zone_spawn\n");
 		return TRUE;
 	}
 	return FALSE;

@@ -1,5 +1,68 @@
 # AGENT_NOTES.md
 
+## Fire under glass, brush rendermodes, goto_spawn (P843-P845, 2026-10-20)
+
+- A particle shader's `sort` IS its order against the map: banner < underwater < BLEND <
+  additive < nearest, and r_blendsort 2 sorts only BLEND. A blended world face writes no depth,
+  so anything in a later bucket draws over it at any distance. P843 picks the bucket per fire
+  from a trace. `sort blend` would not help a scripted particle: with a `pdraw` it leaves the
+  scene tris for the render queue, drawn after everything (p_script.c PScript_DrawParticleTypes).
+- A default CSQC traceline hits a translucent world brush (VBSP: TRANSLUCENT|WINDOW); the glare
+  mask (cl_sprites.qc SPR_GLARE_MASK) leaves WINDOW out on purpose. Pick by the question.
+- "No smoke" can be smoke that is there: diff two frames 2.5 s apart before touching numbers.
+  surf_dune's env_fire_tiny/_small smoke differs in a 250-pixel column and is invisible by eye.
+- A respawn (SV_TimerSpawn) clears a finished run's tag outright; `!m` (SV_RecDiscard) keeps it
+  while nothing is live. A finish followed by a respawn within a packet loses its sidecar and its
+  receipt. goto_spawn voids first and carries the tag across (SV_SpawnGoto); `kill`, `cmd respawn`
+  and `cmd restart` still have the race (BACKLOG).
+- A test client can carry a test plugin without touching an install: plugins load from the
+  exe's own folder (FS_BINARYPATH), so a copied ftesurf64.exe in a task root with the plugin
+  beside it, run with the install as cwd (conbridge --client), loads it (`plug_list`: $system).
+  Test progs go in under new names: `+set sv_progs <name> +set sv_csqc_progname <name>.dat` on
+  the server and seed_csprogs.py for the client. A missing sv_progs file falls back to
+  qwprogs.dat in silence: prove the build with a line only it prints.
+- A fresh engine worktree's plugin links zlib1.dll unless ARCHLIBS is passed (objdump -p).
+- The owner's config binds `m` to goto_spawn (the key panel writes the row's command): read
+  ftesurf.cfg before changing what a command means. Verified and deployed state: lextest.md.
+
+## Map speed caps from zone files (P841, 2026-10-19)
+
+- A map's cap is, last wins: cfg/default.cfg 3500, cfg/lobby/mode_*.cfg, cfg/maps/map_<map>.cfg
+  (80 maps, read out of entity lumps), the zone file's top-level `maxVelocity` (Momentum's own
+  value), then a hosted game's zone-editor settings (`data/maps/settings/local`, never lobbies).
+  `movement` names the files; the engine prints `map ruleset: <map> sv_maxvelocity N from <file>`.
+- The engine (sv_phys.c SV_LoadZoneRuleset) picks the file before any entity exists, so it copies
+  SV_ZoneLoad's names and order rather than asking QC; QC also skips a file whose regions do not
+  build and reads packs, and then prints `zones: <map> asks maxVelocity N, this server runs ...`
+  (only when ITS file asks). Change one, change both.
+- RULESETS LOAD BEFORE THE PREVIOUS MAP'S PAKFILE IS DROPPED (sv_init.c: SV_ApplyGamemode, then
+  the temporary packs go, then the new map's mounts). Every map-load ruleset read -- data/mapmeta.txt,
+  cfg/lobby/mode_*, cfg/maps/map_*, the hosted settings file, zone files -- goes through
+  SV_RulesetLoadLoose: FSLF_IGNORELINKS (a pak symlink otherwise reports its TARGET's directory),
+  a directory search path that is not temporary/server/untrusted (and for cfgs not an addon mount:
+  downloads land in those), read through the judged location with a NULL name (a name makes
+  FS_OpenReadLocation decompress xz/gzip first). A new ruleset reader must use it.
+- A dedicated server's `pm_dettest` mover hash follows the map's cap (the mover reads movevars,
+  set at spawn; a later `sv_maxvelocity` does not reach it without a client): a deploy gate on a
+  map whose cap changed DIFFERS by design. Prove it with the crossover (each native at the other's
+  cap, planted before the map loads).
+- `_css`/`_ksf` copies (mapwatch.py:1886) take the plain map's Momentum cap: Lex, 20 Oct, "keep the
+  plain map's Momentum cap, don't force 3500" (74 lobby maps; their boards hold KSF imports).
+- THE LOBBIES' ZONE FILES ARE MOSTLY MOMENTUM'S OWN: game/ftesurf/maps/zones/local holds ~68 (the
+  publish target), and maps/zones/online resolves through the mounted `momentum` dir
+  (game/momentum/maps/zones/online, ~1,200). A census of this repo's 648 is not the lobbies'.
+- The engine's JSON nodes point into the parsed text (json.c JSON_CreateNode keeps bodystart):
+  read every value before freeing the file buffer.
+- `maxVelocity` 0 means unset (12 shipped files). pm_verify replays a file's own pinned cap, so a
+  raised cap does not touch old recordings' verdicts.
+- Multi-Session stamps the cap into ms.txt (`maxvel`) and drops a slot whose cap differs; deploy the
+  QC before an engine that changes caps, or an old-QC slot resumes ranked at the new cap.
+- A Linux sv-rel restamp must also touch client/m_download.c and server/sv_sys_unix.c (the Windows
+  list in memory is 13 files); grep the binary for one `git-NNNN` stamp.
+- Arms: tools/p841caps.py (dedicated server, seven maps, planted packed/linked/zone-less/out-of-range
+  /curated files; --control with the old exe), cfg/test/p841editor.cfg + tools/p841editor.py (hosted
+  editor round trip, needs `--put data/maps/settings/local/surf_dune.cfg=<cap 3500 settings>`).
+
 ## The HUD run graph's cache (P837, 2026-10-19)
 
 - LineGraph_HudStill draws into two render targets only when LineGraph_CacheSame says an input

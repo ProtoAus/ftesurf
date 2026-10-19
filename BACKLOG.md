@@ -5,6 +5,35 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Left open by Patches 843-845 (20 Oct)
+
+- Site: `cl_sprites.qc` glare draw (Sprite_Quad, DRAWFLAG_ADD|DRAWFLAG_NODEPTHTEST). A glow sprite
+  behind a translucent world surface draws over it (surf_dune: the brazier's glow08 halo over
+  GRATE1A from Lex's save 2). Source sorts it with the translucent world, so the grate's bars
+  cover it. The engine puts such a polygon in the additive bucket (gl_alias.c BE_GenPolyBatches):
+  needs a twin material in an earlier sort, or an engine flag. Check: the save-2 shot.
+- Site: `cl_emit.qc` env_fire. Embers (slot 12) and the smoke (always `sort banner`) do not follow
+  P843's choice, so smoke in front of a translucent surface goes under it. The trace hits only
+  solids: a non-solid translucent brush entity (func_illusionary glass) or water between the eye
+  and a fire does not put it under. Particles alive when the choice flips keep their bucket.
+- Site: hl2 plugin `vmt/vertexlit`, `animated`, `twotexture`, `transition`, and `vmt/unlit`'s
+  ADDITIVE branch under ONE/ONE: entity alpha still not applied (P844 did lightmapped and unlit's
+  blended path), nor UnlitGeneric's `alphaGen const` ($alpha) pass; additive under one/one needs
+  RGB scaled (since P783 some blend src_alpha/one, some one/one). P810 still declines
+  PlayerProximity on these programs and could now take lightmapped/unlit. lightmapped under
+  ENVFROMBASE drops the mask only below alpha 1, so a mode-5 brush at renderamt 255 is still
+  mask-weighted; `$selfillum` is not handled.
+- Site: `sv_entities.qc` SV_BrushRenderMode. Modes 3 (321 brush entities), 8 and 9 on brushes are
+  drawn as before; rendercolor tints only func_brush; glare occluders (cl_sprites.qc) ignore
+  rendermode. Check each against Momentum.
+- Site: `sv_player.qc` ClientKill and `cmd respawn` / `cmd restart`: PutClientInServer's
+  SV_TimerSpawn clears a just-finished run's tag (sidecar dropped, receipt unsigned within a
+  packet of the finish) and, offline, leaks the run's strbuf (rec_rec_buf -1 before the idle).
+  SV_SpawnGoto (P845) shows the fix: SV_TimerVoid first, carry the tag across.
+- Site: `cl_keycfg.qc` row 21. Respawn counts both goto_spawn (spawn entity) and the shipped
+  `say !m` (start of the map), and "reset to defaults" binds m to goto_spawn. Lex to decide
+  whether default.cfg's m should be goto_spawn.
+
 ## Release tooling: what 0.1.28 hit (19 Oct)
 
 - **`ConvertTo-WslPath` takes WSL's cold-start notice as the path.** When the WSL VM has idled
@@ -265,6 +294,38 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
 - P820: imported stage runs get no failed spans (the server writes no `restart` for a
   stage run either), so one where the player fell back into the box shows every attempt.
 
+## Speed caps from zone files (P841): what the reviews left
+
+- **For Lex: mapwatch now changes physics unattended.** Its rule takes Momentum zone files whose
+  tracks match (mapwatch.py:1437-1445), so a Momentum change to `maxVelocity` alone lands at the next
+  map load with nothing on the board. Matches "use Momentum's"; say if a cap change should be held.
+- **`maxVelocity: 0` is read as "not set"** (12 shipped files) from the value alone; Momentum's own
+  handling was not read. Falsifier: its zone loader, or one of those maps in Momentum past 3500.
+- **The engine and QC can take different files, and only one direction is reported.** The engine
+  takes the first trusted file with a non-empty region array; QC needs a region that builds and reads
+  packs. QC warns only when ITS file asks for a cap the server is not running (sv_zones.qc), so an
+  engine cap from a file QC skipped, while QC's file has none, is silent. A scan of 689 shipped and
+  installed files found 0 disagreements. Fix: the engine publishes the file it took; QC compares paths.
+- **A timed save carries a run across a cap change** as it does across a publish (above): saves
+  record neither zonecrc nor the cap. Segmented by design (Lex accepts lax segmented runs); the
+  planned zonecrc-in-saves fix should take the cap too. Multi-Session (ranked) checks the cap since P841.
+- **`SV_RetryApply` carries a clean run across `map_restart` with no zone or cap comparison.** A
+  publish cannot hit it (publishes land only on quiet maps); hand-copied zone files on a busy lobby can.
+- **A client's downloads can set its own hosted cap:** zone files may come from addon directories
+  (Momentum's mount) and downloads land in one. Bounded 1..100000, unranked, no wider than what a
+  downloaded zone file already does to hosted timing.
+- **Client per-map cfg execs read map packs** (render and particle layers), and **a client's HTTP
+  downloads can create files in its trusted gamedir** that its later offline/hosted games read as
+  rulesets. Details in the private tree (p841-map-pak-rulesets.md). Not P841's code; lobbies never
+  download.
+- **The previous map's pak can hide a zone file** (it is the top hit, refused, and the trusted copy
+  under it is not reached): it can only suppress a cap. The asset cache can make a zone file packed
+  in an automounted VPK count on later visits but not the first.
+- **The board has no cap column:** a run's cap is only in its recording's pin, which the web hides.
+- **Clients before 0.1.28 mispredict past 4096 per axis** (no P812), now on 148 more lobby maps.
+- **Hosted games: a pre-841 Multi-Session slot on a map with an editor cap** other than cfg/maps or
+  3500 is dropped once as "the speed cap changed".
+
 ## Zone publishing (P815) and velocity (P812): what is left
 
 - **A save carries a run across a publish.** `state.txt` records mapcrc, not zonecrc
@@ -371,12 +432,6 @@ bound-check failure kills the VM (P795 took the menu down this way).
 
 ## Map visuals left open by Patches 799 and 802
 
-- Site: hl2 plugin GLSL programs (`vmt/unlit` for additive, `lightmapped`, `vertexlit`,
-  `animated`, `twotexture`, `transition`) and UnlitGeneric's `alphaGen const` ($alpha) pass. None
-  applies the entity's alpha, so Source's renderamt fade, and a PlayerProximity fade, do not show
-  on those materials; P810 declines PlayerProximity there and does only UnlitGeneric's identity
-  pass. Additive needs care: since P783 some blend src_alpha/one and some one/one. Check: a
-  func_brush with rendermode 4, renderamt 128 on a LightmappedGeneric face, ours against Momentum.
 - Site: `sv_entities.qc` non-solid list. env_bubbles still draws its brush: Source sets render
   alpha 0 (effects.cpp CBubbling::Spawn) and whether the engine skips a zero blend is in code we
   do not have. 8 in 3 maps have faces the plugin draws (env_embers: none). Check: one against

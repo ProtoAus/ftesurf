@@ -151,6 +151,7 @@ void() StartFrame =
 		// one; before the report, because the report prints the wiring count.
 		// This is also the earliest it can run, for the same reason as above --
 		// materialising outputs needs every entity on the map to exist.
+		SV_BrushRenderAll();        // P844: before the window panes, which hide theirs
 		SV_PortalWindowsActivate();
 		SV_EntityIOBuild();
 

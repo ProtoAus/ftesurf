@@ -211,6 +211,13 @@ void() SV_ZoneLoad =
 	dprint(sprintf("zones(sv): %g on %s (%s) crc %s\n",
 	               zone_count, mapname, Zone_SourceName(zone_source),
 	               (zone_crc != "") ? zone_crc : "-"));
+	// P841: the engine set the cap from the first loose file in this order with a region
+	// (sv_phys.c). Say when the file timed with asks for another: one this loader skipped,
+	// a packed one, an older engine, or a hosted game's map settings.
+	if (zone_maxvel > 0)
+	if (fabs(zone_maxvel - cvar("sv_maxvelocity")) > 0.001)
+		print(sprintf("^3zones: %s asks maxVelocity %g, this server runs sv_maxvelocity %g\n",
+		              mapname, zone_maxvel, cvar("sv_maxvelocity")));
 
 	// The timer's tables hang off the same load, and for the same reason:
 	// this is the first point at which the map is known and its entities

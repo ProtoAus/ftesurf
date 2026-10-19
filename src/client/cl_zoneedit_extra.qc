@@ -275,6 +275,7 @@ void() ZoneEdit_SettingsOpen =
 		fclose(fh);
 	}
 	ze_settings = TRUE; ze_field = -1;
+	ze_cap_open = ze_values[0];
 	if (sui_text_has_focus("ze_value")) sui_text_unfocus();
 };
 
@@ -365,8 +366,22 @@ void() ZoneEdit_SettingsSave =
 			{ ZoneEdit_Note("Settings restore failed: previous file is in .prev"); return; }
 		fremove(part); ZoneEdit_Note("Settings rename failed; previous settings restored"); return;
 	}
-	ZoneEdit_Note("Saved locally; P673+ engine and map reload required");
 	print(sprintf("zone_edit: settings saved %s maxvelocity %g\n", MapSet_Path(ze_map), ze_values[0]));
+	// P841: the speed cap is the zone file's maxVelocity too, so Publish carries it -- only a
+	// value edited in this panel: the field opens on the local cvar or an old settings file.
+	if (zone_count > 0)
+	if (ze_values[0] != ze_cap_open)
+	if (ze_values[0] != zone_maxvel)
+	{
+		zone_maxvel = ze_values[0];
+		ze_dirty = TRUE;
+	}
+	if (zone_count > 0)             // with no zones yet the edit stays pending for the next save
+		ze_cap_open = ze_values[0];
+	if (ze_dirty && zone_maxvel == ze_values[0])
+		ZoneEdit_Note(sprintf("Saved locally; speed cap %g reaches lobbies with the zones: Save zones, then Publish saved", zone_maxvel));
+	else
+		ZoneEdit_Note("Saved locally; reload the hosted map to apply");
 };
 
 void(vector p, float tsz, string text, vector col) ZoneEdit_Text =
@@ -379,7 +394,7 @@ void(vector p, float w, float y, float rowh, float tsz) ZoneEdit_SettingsDraw =
 	local float i;
 	local vector fp;
 	local string id, tip;
-	ZoneEdit_Text([p_x + 8, y + 4], tsz, "MAP PROPERTIES  /  local game only; reload to apply", ZEC_DIM);
+	ZoneEdit_Text([p_x + 8, y + 4], tsz, "MAP PROPERTIES  /  reload the hosted map to apply", ZEC_DIM);
 	y = y + rowh * 1.4;
 	if (ZoneEdit_Button([p_x + 8, y], [w * 0.48 - 8, rowh], "ze_mode_surf", "Surf", tsz, ze_mode == 1 ? ZEC_SEL : ZEC_TEXT)) ZoneEdit_SettingMode(1);
 	if (ZoneEdit_Button([p_x + w * 0.5, y], [w * 0.48 - 8, rowh], "ze_mode_bhop", "Bhop", tsz, ze_mode == 2 ? ZEC_SEL : ZEC_TEXT)) ZoneEdit_SettingMode(2);
@@ -417,7 +432,7 @@ void(vector p, float w, float y, float rowh, float tsz) ZoneEdit_SettingsDraw =
 	y = y + rowh;
 	ZoneEdit_Text([p_x + 8, y + 4], tsz, "Defaults: ground movement stays map-authored", ZEC_DIM);
 	y = y + rowh;
-	ZoneEdit_Text([p_x + 8, y + 4], tsz, "Upload: not enabled yet; reviewed publication planned", ZEC_DIM);
+	ZoneEdit_Text([p_x + 8, y + 4], tsz, "Lobbies: the speed cap only, with Save zones + Publish", ZEC_DIM);
 };
 
 void(vector p) ZoneEdit_DragStart =

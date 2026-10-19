@@ -1,5 +1,46 @@
 # lextest.md — things waiting on a human
 
+## P843-P845 — fire behind the grate, see-through walls, goto_spawn
+
+Live 2026-10-19 UTC: both installs at 17:46Z (QC main 4569d279: qwprogs b69cae2b, csprogs d08cf6ff;
+fteplug_hl2_x64.dll 2b60d9c3 from engine main b02bc5ae8, tag patch-844, .prev dd6dce96); then with
+P841 at 17:51Z by ftesurf-0a's -Pi from main 6c006453: qwprogs 10eac633 / csprogs e2b7936e on all 12
+lobbies and both installs (read back on the Pi). Lobby players on the 0.1.28 client get the server
+side (fades, hides, additive, goto_spawn, the flame order) but not the plugin's alpha, so faded
+LightmappedGeneric/UnlitGeneric brushes still draw solid for them until a release.
+
+- surf_dune, your save 2: the flame stays behind the grate now. The soft orange glow around it
+  still shows over the grate (a separate glow sprite; BACKLOG). Smoke: it is drawn, but on
+  surf_dune's dark brick it cannot be seen -- Source's smoke for small fires is 16-24% opaque
+  and dark. If you look at the same spot in Momentum, say whether you see smoke there.
+- bhop_eazy: the coloured glass is see-through and tinted at spawn. Brushes everywhere now take
+  their rendermode: fades, additive signs (kz_bhop_beginner's numbers lose their black squares),
+  and rendermode 10 hidden as in Source. Anything that looks different from Momentum: say where.
+- `goto_spawn` (your m key) puts you where joining puts you -- on surf_dune the end room. `say
+  !m` still goes to the start of the map. Should a fresh install's m be goto_spawn too?
+
+"Grate ok / glass ok / m ok / <map + what looks off>". Verdict PENDING.
+
+## P841 — maps run at Momentum's speed cap
+
+Live 2026-10-19 17:53Z on all 12 lobbies (native 05006df6, qwprogs 10eac633, csprogs e2b7936e) and
+both installs' QC; C:\FTEQuake's exes; C:\FTESurf\ftesurf64.exe once the game running at deploy closed.
+Checked on lobby 27610: surf_apollo runs 10000. Record: tools/lobby-engine-p841-20261019.md.
+
+- On a map whose cap changed, go past 3500 where you used to be clamped. In the console, `movement`
+  names the zone file and `sv_maxvelocity` reads the new cap. Lobby examples: surf_apollo 10000,
+  surf_boreas 5000, surf_demise 5000, bhop_sandtrap 10000. 164 lobby maps changed, all upward; 74 of
+  them are `_css`/`_ksf` builds that take the plain map's Momentum cap (your call, 20 Oct: keep it).
+- A run parked on one of those maps before the update is dropped when you come back ("the speed cap
+  changed"): it was played under the old cap.
+- Zone editor in a game you host: Map properties > Speed cap > Apply > Save settings, then Save zones.
+  The save line says "speed cap N", and the Publish dialog says "Speed cap N goes with it". After a
+  publish lands, `sv_maxvelocity` on that lobby reads N from its next map load.
+- The publish service's own check (an out-of-range cap refused by name) needs your sudo:
+  `install_zonepub.py --upgrade` (dry run as proto first). Without it the editor still never sends one.
+
+"Feels right / <map>: <what is off>". Verdict PENDING.
+
 ## P837 — the run graph is drawn once and reused
 
 Live 2026-10-19 (UTC): csprogs f1f94d56 on both installs and all 12 lobbies, with

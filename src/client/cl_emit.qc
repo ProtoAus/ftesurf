@@ -887,10 +887,20 @@ vector(float i) Emit_PsysVel =
   instead (c_fire_smoke.cpp:173-186), which is the same flame as its child under
   a column of smoke: Emit_SmokeSpec.  39% of the library's fires.
 
+  BEHIND GLASS (Patch 843).  The flame's `sort additive` comes after every
+  blended surface, which never write depth, so surf_dune's braziers drew over
+  the $translucent grate in front of them.  A fire with anything between it and
+  the eye (VBSP makes translucent brushes TRANSLUCENT|WINDOW, which a default
+  traceline hits) emits slots 17-28 instead: the same flame under
+  ftesurf_flameu, `sort underwater`, after the smoke's banner and before the
+  map's blended surfaces.  Unblocked fires keep `additive`, so glass or water
+  BEHIND a fire still goes under it.  vbsp_emit_flameunder 0 is the old order.
+
   NOT DRAWN: env_fire_random_puff, and the blend between two frames.
 ===========================================================================
 */
-#define FL_SLOTS       17       // per size class: 6 + 6 flame effects, 1 embers, 2 + 2 smoke
+#define FL_SLOTS       29       // per size class: 6 + 6 flame effects, 1 embers, 2 + 2 smoke, 12 flame under
+#define FL_UNDER       17       // slots 0-11 again, drawn before the blended surfaces
 #define FL_ATLAS       "materials/particle/fire_burning_character/fire_burning_character.vtf"
 #define FL_SMOKE1      "materials/particle/smoke1/smoke1.vtf"
 #define FL_VISTA       "materials/particle/vistasmokev1/vistasmokev1.vtf"
@@ -915,6 +925,7 @@ float  em_flnofloor;            // with no floor within 1024, left where they ar
 float  em_flinside;             // whose entity is inside something solid, left too
 float  em_fldropover;           // brush entities past FL_DROPSOLIDS, not stood up
 float  em_flin, em_flthin;      // last frame: sheet fires in reach, and those thinned
+float  em_flunder, em_flover;   // since load: emissions traced blocked, and clear (a fire a frame each)
 
 // The system (layer 0, sequences 3-5) and its _b child (layer 1, sequences 0-2):
 //   radius min max | alpha min max | grey min max | rotation +- | spawn disc |
@@ -956,7 +967,7 @@ vector(float cls) Emit_FlameRates =
   A sprite's half-side is 0.2652 * scale at scalefactor 1 and rotation 45
   (particles/ftesurf.cfg, UNITS), so scale is the radius times 3.771.
 */
-string(float cls, float layer, float seq, float flip, string nm) Emit_FlameBlock =
+string(float cls, float layer, float seq, float flip, string nm, float under) Emit_FlameBlock =
 {
 	local float rmin, rmax, rmid, die, fps;
 	local string s;
@@ -968,8 +979,8 @@ string(float cls, float layer, float seq, float flip, string nm) Emit_FlameBlock
 	fps  = stof(argv(13));
 	die  = Emit_FlameFrames(seq) / fps;
 
-	s = sprintf("r_part %s\n{\ntexture ftesurf_flame\ntype normal\nblend blendalpha\nscalefactor 1\nscale %g %g\nrotation %g %g\n",
-	            nm, rmin * 3.771, rmax * 3.771, 45 - stof(argv(6)), 45 + stof(argv(6)));
+	s = sprintf("r_part %s\n{\ntexture %s\ntype normal\nblend blendalpha\nscalefactor 1\nscale %g %g\nrotation %g %g\n",
+	            nm, under ? "ftesurf_flameu" : "ftesurf_flame", rmin * 3.771, rmax * 3.771, 45 - stof(argv(6)), 45 + stof(argv(6)));
 	s = strcat(s, sprintf("rgb %g %g %g\nrgbrand %g %g 0\nalpha 1\nalphadelta %g\ndie %g\ncount 1\n",
 	            stof(argv(2)), stof(argv(4)), rmid,
 	            stof(argv(3)) - stof(argv(2)), stof(argv(5)) - stof(argv(4)), -1 / die, die));
@@ -1170,12 +1181,14 @@ void(float cls, float layer) Emit_SmokeShader =
   close, and a pile of layers levels off instead of burning out.
 
   Registered again on every map load and every repair: a renderer restart
-  forgets a shader made this way.
+  forgets a shader made this way.  Twice: ftesurf_flameu differs only in its
+  sort (Patch 843, the essay over FL_SLOTS).
 */
 void() Emit_FlameShader =
 {
-	shaderforname("ftesurf_flame",
-		"{\nglslprogram\n{\n"
+	local string s, t;
+
+	s = "{\nglslprogram\n{\n"
 		"!!ver 110\n"
 		"!!samps img=0\n"
 		"varying vec2 tc;\n"
@@ -1204,9 +1217,12 @@ void() Emit_FlameShader =
 		" float k = (pow(0.325 * (1.0 - pa) + m, 0.4545) - pow(m, 0.4545)) / 0.6;\n"
 		" gl_FragColor = vec4(pow(c, vec3(0.4545)), 1.0 - k);\n"
 		"}\n#endif\n"
-		"}\nsort additive\ncull disable\n"
+		"}\nsort ";
+	t = "\ncull disable\n"
 		"{\nmap " FL_ATLAS "\nblendfunc gl_one gl_one_minus_src_alpha\nrgbgen vertex\nalphagen vertex\nnodepth\n}\n"
-		"polygonoffset\nsurfaceparm noshadows\nsurfaceparm nodlight\n}\n");
+		"polygonoffset\nsurfaceparm noshadows\nsurfaceparm nodlight\n}\n";
+	shaderforname("ftesurf_flame", strcat(s, "additive", t));
+	shaderforname("ftesurf_flameu", strcat(s, "underwater", t));
 };
 
 // Why this client cannot draw the sheet, or "" when it can.  The atlas is
@@ -1269,7 +1285,7 @@ string() Emit_SmokeWhy =
 // each way round, 6-11 the _b child's, 12 the embers.  env_fire_tiny's system
 // draws sequence 3 alone, so its six slots share two effects.  13 and 14 are
 // the smoke (vistasmokev1's two loops, or smoke1 twice), 15 and 16
-// env_fire_large_smoke_b's.
+// env_fire_large_smoke_b's, 17-28 slots 0-11 under ftesurf_flameu.
 void(float cls) Emit_FlameDefine =
 {
 	local float s, seq, layer;
@@ -1302,8 +1318,12 @@ void(float cls) Emit_FlameDefine =
 			seq = (cls == 0) ? 3 : seq + 3;
 		nm = sprintf("ftesurf_fl%g%s%g%s", cls, layer ? "b" : "a", seq, (s & 1) ? "f" : "");
 		if (cls || layer || s < 2)
-			localcmd(Emit_FlameBlock(cls, layer, seq, s & 1, nm));
+		{
+			localcmd(Emit_FlameBlock(cls, layer, seq, s & 1, nm, FALSE));
+			localcmd(Emit_FlameBlock(cls, layer, seq, s & 1, strcat(nm, "u"), TRUE));
+		}
 		em_flfx[cls * FL_SLOTS + s] = particleeffectnum(nm);
+		em_flfx[cls * FL_SLOTS + FL_UNDER + s] = particleeffectnum(strcat(nm, "u"));
 	}
 	nm = sprintf("ftesurf_fl%ge", cls);
 	localcmd(Emit_EmberBlock(cls, nm));
@@ -1312,7 +1332,8 @@ void(float cls) Emit_FlameDefine =
 };
 
 /*
-  ONE CLASS A FRAME, from Emit_Frame.  A class is 14-16 KB of text and the
+  ONE CLASS A FRAME, from Emit_Frame.  A class was 14-16 KB of text (about
+  twice that since Patch 843's twins) and the
   command buffer drops, whole and with one console line, whatever does not fit
   under cmd_maxbuffersize (65536; cmd.c, Cbuf_AddText).  surf_classics2 and
   surf_road_to_hell use all four classes, 61 KB: sent in one go at map load it
@@ -1363,15 +1384,17 @@ float() Emit_FlameRepair =
 	for (cls = 0; cls < 4; cls = cls + 1)
 		if (em_flmask & pow(2, cls))
 			break;
+	// The first of each half: a class sends both in one frame (Patch 843).
 	if (particleeffectquery(em_flfx[cls * FL_SLOTS], 0) != "")
+	if (particleeffectquery(em_flfx[cls * FL_SLOTS + FL_UNDER], 0) != "")
 		return FALSE;
 	em_flmask = 0;
 	return TRUE;
 };
 
 // The effect for the next particle of a sheet fire of size class cls, with or
-// without its smoke.
-float(float cls, float smoke) Emit_FlameSlot =
+// without its smoke, its flame under the blended surfaces or over them.
+float(float cls, float smoke, float under) Emit_FlameSlot =
 {
 	local vector v, w;
 	local float r, s;
@@ -1389,6 +1412,8 @@ float(float cls, float smoke) Emit_FlameSlot =
 		s = 13 + floor(random() * 1.999);
 	else
 		s = 15 + floor(random() * 1.999);
+	if (under && s < 12)
+		s = s + FL_UNDER;
 	return em_flfx[cls * FL_SLOTS + s];
 };
 
@@ -1867,6 +1892,9 @@ void() Emit_RegisterCvars =
 	registercvar("vbsp_emit_flame",   "1", CVAR_ARCHIVE);
 	// The smoke Source puts over a fire that is not Smokeless.  Read at map load.
 	registercvar("vbsp_emit_firesmoke", "1", CVAR_ARCHIVE);
+	// Patch 843: a flame with something between it and the eye is drawn under the
+	// map's blended surfaces.  0 draws every flame over them.  Read every frame.
+	registercvar("vbsp_emit_flameunder", "1", CVAR_ARCHIVE);
 	registercvar("vbsp_emit_spark",   "1", CVAR_ARCHIVE);
 	// Off by default: a churning approximation of a static haze, on 45 maps.
 	registercvar("vbsp_emit_smoke",   "0", CVAR_ARCHIVE);
@@ -2715,7 +2743,7 @@ void() Emit_LoadForMap =
 	em_flwant = em_flmask = 0;
 	em_flwhy = Emit_FlameWhy();
 	em_smwhy = Emit_SmokeWhy();
-	em_smwant = em_flsmoke = em_flglow = 0;
+	em_smwant = em_flsmoke = em_flglow = em_flunder = em_flover = 0;
 	em_fldropwant = em_fldrop = em_fldropsum = em_fldropmax = em_flnofloor = em_flinside = em_fldropover = 0;
 	Emit_MoteFree();
 	dm_why = Emit_MoteWhy();
@@ -3570,8 +3598,8 @@ vector(float i) Emit_PointIn =
 */
 void() Emit_Frame =
 {
-	local float i, n, ft, thr, budget, dscale, d, lights, lit, k, mdem;
-	local float wdust, wember, wbubble, wfire, wspark, wsmoke, wstack, wpsys;
+	local float i, n, ft, thr, budget, dscale, d, lights, lit, k, mdem, under;
+	local float wdust, wember, wbubble, wfire, wspark, wsmoke, wstack, wpsys, wunder;
 	local vector eye, v;
 
 	em_fpsn = em_fpsn + 1;
@@ -3702,6 +3730,7 @@ void() Emit_Frame =
 	wsmoke  = cvar("vbsp_emit_smoke");
 	wstack  = cvar("vbsp_emit_stack");
 	wpsys   = cvar("vbsp_emit_psys");
+	wunder  = cvar("vbsp_emit_flameunder");
 
 	// ---- pass 1: cull, and total the demand
 	em_demand = 0;
@@ -3827,6 +3856,20 @@ void() Emit_Frame =
 			if (!em_trail[i])
 				n = 4;
 			n = n * em_burst[i];
+			// Patch 843: something between the eye and the flame puts it under
+			// the blended surfaces (+16: over the rim of its brazier).
+			under = FALSE;
+			if (em_eff[i] < 0)
+			if (em_kind[i] == EK_FIRE)
+			if (wunder)
+			{
+				traceline(eye, em_mid[i] + '0 0 16', MOVE_NOMONSTERS, world);
+				under = (trace_fraction < 1);
+				if (under)
+					em_flunder = em_flunder + 1;
+				else
+					em_flover = em_flover + 1;
+			}
 			while (n > 0)
 			{
 				v = em_vel[i] + Emit_RandDir() * em_jit[i];
@@ -3848,7 +3891,7 @@ void() Emit_Frame =
 				{
 					// -1 to -4 are the size classes, -5 to -8 the same with smoke.
 					k = -1 - em_eff[i];
-					pointparticles(Emit_FlameSlot(k & 3, k >= 4), em_mid[i], '0 0 1', 1);
+					pointparticles(Emit_FlameSlot(k & 3, k >= 4, under), em_mid[i], '0 0 1', 1);
 				}
 				else if (em_life[i])
 				{
@@ -3918,7 +3961,7 @@ void() Emit_Frame =
 */
 void() Emit_List =
 {
-	local float k, tot, sm;
+	local float k, tot, sm, un, sl;
 
 	print(sprintf("^3emit:^7 map %s, %g emitters, %g effect handles\n",
 	              vbsp_em_map, em_n, EM_FX_N));
@@ -4009,16 +4052,20 @@ void() Emit_List =
 			print(sprintf("  env_fire: orbs, because %s\n", em_flwhy));
 		else
 		{
-			// Slots 0-12 of a class are its flame and embers, 13-16 its smoke.
-			tot = sm = 0;
+			// Slots 0-12 of a class are its flame and embers, 13-16 its smoke,
+			// 17-28 its flame under.
+			tot = sm = un = 0;
 			for (k = 0; k < 4 * FL_SLOTS; k = k + 1)
 				if (em_flmask & pow(2, floor(k / FL_SLOTS)))
 				if (particleeffectquery(em_flfx[k], 0) != "")
 				{
-					if (k - floor(k / FL_SLOTS) * FL_SLOTS < 13)
+					sl = k - floor(k / FL_SLOTS) * FL_SLOTS;
+					if (sl < 13)
 						tot = tot + 1;
-					else
+					else if (sl < FL_UNDER)
 						sm = sm + 1;
+					else
+						un = un + 1;
 				}
 			print(sprintf("  env_fire: flame sheet, size classes %g (1 tiny 2 small 4 medium 8 large), %g of their %g effects answering\n",
 			              em_flwant, tot, 13 * ((em_flwant & 1) + (em_flwant & 2) / 2 + (em_flwant & 4) / 4 + (em_flwant & 8) / 8)));
@@ -4031,6 +4078,9 @@ void() Emit_List =
 				              2 * ((em_smwant & 1) + (em_smwant & 2) / 2 + (em_smwant & 4) / 4) + (em_smwant & 8) / 2));
 			print(sprintf("  env_fire: %g in reach (%g units), %g of them past %g and thinned\n",
 			              em_flin, FL_REACH, em_flthin, FL_NEAR));
+			print(sprintf("  env_fire: flame under the blended surfaces: %g of %g effects answering, vbsp_emit_flameunder %g; since load %g fire-frames had something between, %g did not\n",
+			              un, 12 * ((em_flwant & 1) + (em_flwant & 2) / 2 + (em_flwant & 4) / 4 + (em_flwant & 8) / 8),
+			              cvar("vbsp_emit_flameunder"), em_flunder, em_flover));
 		}
 		print(sprintf("  env_fire: %g may carry a light (no spawnflags 32)\n", em_flglow));
 		print(sprintf("  env_fire: %g without Don't drop: %g lit on what is under them (mean %g, most %g units), %g with nothing within 1024, %g inside something\n",
