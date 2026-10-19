@@ -53,25 +53,23 @@
       <p class="eyebrow" title="@@DATE@@ &middot; QuakeC build @@QCBUILD@@ &middot; engine patch @@ENGINEPATCH@@">@@VERSION@@ &middot; Free and open source</p>
       <h1 class="hero-brand"><img src="worldofsurf-wordmark.svg" width="720" height="320" alt="World of Surf"></h1>
       <p class="lede">Surf and bhop with Counter-Strike: Source and Momentum Mod movement.</p>
+      <!-- The launcher installs the game into its own folder and updates it. R2 serves
+           it with Content-Disposition naming it ftesurf-launcher(.exe), the name the
+           engine's update handoff runs (qkupdate.c QKU_Restart_f); `download` alone
+           is ignored cross-origin. -->
       <div class="cta">
-        <a class="btn" href="@@URL@@" download="@@FILENAME@@" title="@@SIZE_BYTES@@ bytes &middot; SHA-256: @@SHA256@@">Download for Windows
-          <small>x64 &middot; @@SIZE_HUMAN@@</small></a>
+        <a class="btn" href="@@LAUNCHER_URL@@" download="ftesurf-launcher.exe" title="Installs and updates World of Surf &middot; SHA-256: @@LAUNCHER_SHA256@@">Download for Windows
+          <small>x64 &middot; launcher</small></a>
         <!--LINUX-BEGIN-->
-        <a class="btn alt" href="@@LINUX_URL@@" download="@@LINUX_FILENAME@@" title="Tested in WSL only &middot; glibc @@LINUX_GLIBC@@+ &middot; @@LINUX_SIZE_BYTES@@ bytes &middot; engine patch @@LINUX_ENGINE@@ &middot; SHA-256: @@LINUX_SHA256@@">Download for Linux
-          <small>x86_64 &middot; @@LINUX_SIZE_HUMAN@@ &middot; beta, unranked</small></a>
+        <a class="btn alt" href="@@LINUX_LAUNCHER_URL@@" download="ftesurf-launcher" title="Tested in WSL only &middot; glibc @@LINUX_GLIBC@@+ &middot; engine patch @@LINUX_ENGINE@@ &middot; SHA-256: @@LINUX_LAUNCHER_SHA256@@">Download for Linux
+          <small>x86_64 &middot; launcher &middot; beta, unranked</small></a>
         <!--LINUX-END-->
       </div>
       <p class="requirements-inline">Requires Momentum Mod Playtest, Counter-Strike: Source and Half-Life 2.</p>
-      <p class="launch-note">Extract and run <code>ftesurf.bat</code> (Windows)
-      <!--LINUX-BEGIN-->
-        or <code>./ftesurf.sh</code> (Linux)
-      <!--LINUX-END-->
-      </p>
-      <p class="launch-note"><strong>Existing alpha installs: download the new launcher once.</strong>
-        Close the game and launcher, replace the launcher in your existing game folder, then run it to update.
-        <a href="@@LAUNCHER_URL@@" download="ftesurf-launcher.exe" title="SHA-256: @@LAUNCHER_SHA256@@">Windows launcher</a> (save as <code>ftesurf-launcher.exe</code>)
+      <p class="launch-note">Full package:
+        <a href="@@URL@@" download="@@FILENAME@@" title="@@SIZE_BYTES@@ bytes &middot; SHA-256: @@SHA256@@">Windows</a> (@@SIZE_HUMAN@@)
         <!--LINUX-BEGIN-->
-        &middot; <a href="@@LINUX_LAUNCHER_URL@@" download="ftesurf-launcher" title="SHA-256: @@LINUX_LAUNCHER_SHA256@@">Linux launcher</a> (save as <code>ftesurf-launcher</code> and <code>chmod +x</code>)
+        &middot; <a href="@@LINUX_URL@@" download="@@LINUX_FILENAME@@" title="@@LINUX_SIZE_BYTES@@ bytes &middot; SHA-256: @@LINUX_SHA256@@">Linux</a> (@@LINUX_SIZE_HUMAN@@)
         <!--LINUX-END-->
       </p>
     </div>

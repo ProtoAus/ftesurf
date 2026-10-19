@@ -91,27 +91,38 @@ class CopyTests(unittest.TestCase):
     def test_direct_platform_downloads_and_receipt(self):
         doc = source(HOME)
         page = Content(doc)
-        for platform in ('', 'LINUX_'):
+        # P852: the buttons are the launchers; the archives are the "Full package" links.
+        for platform, save in (('', 'ftesurf-launcher.exe'), ('LINUX_', 'ftesurf-launcher')):
             with self.subTest(platform=platform or 'WINDOWS'):
                 buttons = [attrs for tag, attrs in page.attrs
-                           if tag == 'a' and attrs.get('href') == f'@@{platform}URL@@']
+                           if tag == 'a' and attrs.get('href') == f'@@{platform}LAUNCHER_URL@@']
                 self.assertEqual(len(buttons), 1)
-                self.assertEqual(buttons[0]['download'], f'@@{platform}FILENAME@@')
-                self.assertIn(f'@@{platform}SHA256@@', buttons[0]['title'])
-                self.assertIn(f'@@{platform}SIZE_BYTES@@', buttons[0]['title'])
+                self.assertEqual(buttons[0]['download'], save)
+                self.assertIn(f'@@{platform}LAUNCHER_SHA256@@', buttons[0]['title'])
                 self.assertIn('btn', buttons[0]['class'].split())
-        for value in ('id="download"', '<code>ftesurf.bat</code>', '<code>./ftesurf.sh</code>',
-                      'Momentum Mod Playtest', 'Counter-Strike: Source', 'Half-Life 2',
-                      'beta, unranked', 'Tested in WSL only', 'href="version.json"',
+                full = [attrs for tag, attrs in page.attrs
+                        if tag == 'a' and attrs.get('href') == f'@@{platform}URL@@']
+                self.assertEqual(len(full), 1)
+                self.assertEqual(full[0]['download'], f'@@{platform}FILENAME@@')
+                self.assertIn(f'@@{platform}SHA256@@', full[0]['title'])
+                self.assertIn(f'@@{platform}SIZE_BYTES@@', full[0]['title'])
+                self.assertNotIn('btn', full[0].get('class', '').split())
+        for value in ('id="download"', 'Full package', 'Momentum Mod Playtest', 'Counter-Strike: Source',
+                      'Half-Life 2', 'beta, unranked', 'Tested in WSL only', 'href="version.json"',
                       'href="LICENSE.txt"', 'QuakeC build @@QCBUILD@@', 'patch @@ENGINEPATCH@@'):
             with self.subTest(value=value):
                 self.assertIn(value, doc)
+        for value in ('ftesurf.bat', 'ftesurf.sh', 'Existing alpha installs', 'save as'):
+            with self.subTest(gone=value):
+                self.assertNotIn(value, doc)
         outside = re.sub(r"<!--LINUX-BEGIN-->.*?<!--LINUX-END-->", "", doc, flags=re.S)
         self.assertEqual(set(re.findall(r"@@([A-Z0-9_]+)@@", outside)),
-                         {"VERSION", "FILENAME", "URL", "SIZE_HUMAN", "SIZE_BYTES", "SHA256", "DATE", "QCBUILD", "ENGINEPATCH"})
+                         {"VERSION", "FILENAME", "URL", "SIZE_HUMAN", "SIZE_BYTES", "SHA256", "DATE", "QCBUILD",
+                          "ENGINEPATCH", "LAUNCHER_URL", "LAUNCHER_SHA256"})
         self.assertEqual(set(re.findall(r"@@(LINUX_[A-Z0-9_]+)@@", doc)),
                          {"LINUX_URL", "LINUX_FILENAME", "LINUX_SIZE_HUMAN", "LINUX_SIZE_BYTES",
-                          "LINUX_SHA256", "LINUX_GLIBC", "LINUX_ENGINE"})
+                          "LINUX_SHA256", "LINUX_GLIBC", "LINUX_ENGINE", "LINUX_LAUNCHER_URL",
+                          "LINUX_LAUNCHER_SHA256"})
 
 
 if __name__ == "__main__":

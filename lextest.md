@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+## P852 — the download page leads with the launcher
+
+Live 2026-10-19 20:05Z (UTC) on proto.bar/ftesurf (0.1.28's page re-rendered). The two launcher
+downloads now save as `ftesurf-launcher.exe` / `ftesurf-launcher` (R2 header), the name the game's
+"restart to update" looks for.
+
+- Open https://proto.bar/ftesurf/ (refresh): the buttons are the launchers, "Full package: Windows ·
+  Linux" under them, no ftesurf.bat or "Existing alpha installs" text.
+- Click Download for Windows: the browser should save `ftesurf-launcher.exe` (not
+  `ftesurf-launcher-0.1.28.exe`). Run it from an EMPTY folder: it asks "Download World of Surf?" and
+  installs into that folder (it installs wherever it sits, so not in Downloads).
+
+"Page ok / <what to change>". Verdict PENDING.
+
 ## P850 — full water costs less (surf_boreas save 006)
 
 Live 2026-10-19 19:57Z (UTC): client exe fa31c2ee + hl2 plugin 1829790d in both installs
