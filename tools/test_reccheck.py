@@ -2297,6 +2297,38 @@ def case_angle_initial_origin():
           "trusted initial clock accounting still detects a rotated sidecar")
 
 
+def case_hold_closing_horizon():
+    """A final thaw is a raw observation even without another input row."""
+    base = insert_before(head(build(), "flags", 1), "begin", "holdclock 1")
+    end = int(next(l.split()[1] for l in base if l.startswith("inend ")))
+    for frozen in (0, 1):
+        tail = insert_before(base, "inend", "hold %d %d" % (end, frozen))
+        ok_clean(tail, "closing exactly on the final hold (%d frozen) passes" % frozen)
+        ok_clean(edit(tail, "inend", 1, end + 1),
+                 "closing after the final hold (%d frozen) passes" % frozen)
+        bad = edit(tail, "inend", 1, end - 1)
+        faults_with(bad, "last 'hold' horizon",
+                    "closing before the final hold (%d frozen) faults specifically" % frozen)
+        future = head(bad, "holdclock", 2)
+        faults, _ = run(future)
+        check(not faults, "an unsupported hold clock does not acquire v1 horizon semantics")
+        part = [l for l in tail if not l.startswith(("inend ", "end "))]
+        faults, _ = run(part, name="t.part")
+        check(not faults, "a final hold in a live prefix needs no invented closing horizon")
+
+    # The old raw counter is larger than the new session's closing horizon.
+    reset, _ = held_clock_pair(holds=((150, 73),), sessions=((299, 10, "drop"),))
+    reset = head(reset, "flags", 16385)
+    end = int(next(l.split()[1] for l in reset if l.startswith("inend ")))
+    old = int(next(l.split()[1] for l in reset if l.startswith("hold ")))
+    check(old > end, "the reset control actually has an earlier-origin hold beyond this footer")
+    ok_clean(reset, "an earlier-origin hold cannot bound the new session's footer")
+    current = insert_before(reset, "inend", "hold %d 1" % end)
+    ok_clean(current, "a final hold in the new session can equal its closing horizon")
+    faults_with(edit(current, "inend", 1, end - 1), "last 'hold' horizon",
+                "the current-origin final hold still bounds a reset session")
+
+
 def case_angle_initial_restore():
     base = build(sweep=128, packets=600)
     for declared in (False, True):
@@ -2496,6 +2528,7 @@ def main():
                case_angle_hold_shape, case_angle_hold_restore_boundaries,
                case_angle_hold_conversion,
                case_angle_initial_origin, case_angle_initial_restore, case_integer_tokens,
+               case_hold_closing_horizon,
                case_view_retry_history,
                case_view_restore_history, case_view_resume_slot_history,
                case_angle_splice, case_angle_no_sidecar_is_silent):

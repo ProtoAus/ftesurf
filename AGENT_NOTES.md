@@ -2859,6 +2859,11 @@ publicly WITH its fix, not before it.
   Reader 363 / receipt 183 and sweep pass. Same 602/383 corpus: no new faults;
   two old cold-load false faults removed, both still unavailable. Test subprocess
   stdout must explicitly use UTF-8, matching the fixture files, not Windows CP1252.
+  Patch 828: a thaw may be the last event, after the final input row. `inend` must
+  also reach that last declared `hold` horizon in the CURRENT mover origin; an
+  old session's larger counter must not constrain a new session. Native capture
+  plus a closing-only mutant exposed the missing bound. This is raw chronology,
+  not a proof that elapsed trailer ticks equal a projected mover span.
 - CROSS-RUN SIMILARITY IS COLLECTED AND NOT ENFORCED (surfd schema 10,
   `surfd/simcheck.py`).  A run submitted twice -- a PLAYBACK of a recording rather
   than a performance -- produces two clean board rows and nothing else in this tree

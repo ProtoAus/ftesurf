@@ -1746,6 +1746,10 @@ def check_rec(path, verbose=False, *, data=None):
             if h is not None and e_mt < h:
                 r.fault("line %d: inend %d is below the trace's horizon %d -- "
                         "the run ended before it began" % (ln, e_mt, h))
+            # A thaw can be the final event, with no later input to bound it.
+            if holdclock == "1" and ang_holdmt is not None and e_mt < ang_holdmt:
+                r.fault("line %d: inend %d is below the last 'hold' horizon %d "
+                        "in this mover origin" % (ln, e_mt, ang_holdmt))
             # AND IT MUST NOT PRECEDE THE LAST `in` ROW, which is the whole
             # reason it is written: the final row's duration is inend minus that
             # row's <mt>, and a negative duration is not a rounding question.
