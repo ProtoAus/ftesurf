@@ -1,0 +1,78 @@
+{
+ "dataTimestamp": 1727538791396,
+ "formatVersion": 1,
+ "tracks": {
+  "main": {
+   "zones": {
+    "segments": [
+     {
+      "limitStartGroundSpeed": false,
+      "checkpointsRequired": true,
+      "checkpointsOrdered": true,
+      "checkpoints": [
+       {
+        "regions": [
+         {
+          "points": [
+           [
+            -480,
+            -480
+           ],
+           [
+            -480,
+            -224
+           ],
+           [
+            -352,
+            -224
+           ],
+           [
+            -352,
+            -480
+           ]
+          ],
+          "bottom": 48.0,
+          "height": 160,
+          "teleDestPos": [
+           -416,
+           -352,
+           64.03125
+          ],
+          "teleDestYaw": 0
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "end": {
+     "regions": [
+      {
+       "points": [
+        [
+         -272,
+         -480
+        ],
+        [
+         -272,
+         -224
+        ],
+        [
+         -240,
+         -224
+        ],
+        [
+         -240,
+         -480
+        ]
+       ],
+       "bottom": 48.0,
+       "height": 160
+      }
+     ]
+    }
+   },
+   "stagesEndAtStageStarts": true
+  }
+ }
+}

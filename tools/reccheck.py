@@ -295,7 +295,8 @@ HEAD_V8 = HEAD_V7
 #           recognise is a note, not a fault.
 # Patch 785: holdclock 1 declares cumulative frozen-tick accounting. Raw `in`
 # fields are unchanged; each `hold <mt> <frozen>` updates only the angle clock.
-HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd", "holdclock"}
+HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd", "holdclock",
+                     "inprof"}      # Patch 840, additive
 # v10 (Patch 364): no new header key.  A file is v10 exactly when it carries a
 # `pause`: the buffered writer rewrites line 0 when the first one lands.
 HEAD_V10 = HEAD_V9
@@ -373,6 +374,20 @@ TF_NONCE = 131072
 # the stated bound with the bit clear is a fault, because the rows and the bit are
 # written by the same command and a file cannot have one without the other.
 TF_MOVEOOR = 262144
+# Patch 840.  TF_NOPROFILE's reasons now ride the file: the header's `inprof`
+# (the start's verdict) and the body's `prof` (the finish's), both written by the
+# same predicate that sets the bit in the same packet -- so a verdict that is not
+# `ok` with the bit clear is a fault after `end`.  The converse is a note: a
+# loaded save carries the bit without either verdict seeing it.
+TF_NOPROFILE = 2048
+PROF_WORDS = ("ok", "rawinput", "m_filter", "m_accel", "rawmice", "silent",
+              "platform", "changed")
+# Patch 840.  The game clock fell behind server time (slow motion).  The
+# finish's `clk` record states its own bound and the measure judged against it,
+# so the bit is judged from the file alone, outside CLK_EPS of the boundary (the
+# record prints %.3f): slow with the bit clear is a fault; the converse a note.
+TF_SLOWCLOCK = 524288
+CLK_EPS = 0.002
 SPEC_WHY = ("leave", "drop", "rotate", "server", "retry", "load", "zone",
             "setpos", "respawn", "move", "notarget")
 # The edge identity: <ticks> <mt> <carry> <ox oy oz> <vx vy vz> <fl>, token 2..11.
@@ -943,11 +958,31 @@ def check_rec(path, verbose=False, *, data=None):
     else:
         r.info.pop("movebnd", None)
 
+    # Patch 840: `inprof <verdict> <have> <raw> <filt> <acc> <grant>`.
+    # The numbers are the client's report as printed (a typed `m_accel nan` is
+    # honest), and a later writer may know more words: notes, never faults.  Only
+    # a known word takes part in the TF_NOPROFILE check below.
+    inprof_word = None
+    ip = head.get("inprof")
+    if ip is not None:
+        a = ip.split()
+        r.info["inprof"] = ip.strip()
+        if not a:
+            r.note("header 'inprof' is empty")
+        elif a[0] not in PROF_WORDS:
+            r.note("header 'inprof' verdict %r is not one this tool knows" % a[0])
+        else:
+            inprof_word = a[0]
+            if len(a) != 6:
+                r.note("header 'inprof' has %d fields after its verdict, not 5" % (len(a) - 1))
+
     # ---- body --------------------------------------------------------------
     samples = []            # (t, cols)
     padding = 0
     records = []            # (lineno, kind, args)
     saw_end = None
+    profs = []              # (lineno, word) -- Patch 840: the finish's profile verdict
+    clks = []               # (lineno, floats) -- Patch 840: the finish's clock record
     splits = []
     resumes = []            # (lineno, args) -- build 17 save states
     retries = []            # (lineno, args) -- build 18 `retry`, see below
@@ -1530,6 +1565,31 @@ def check_rec(path, verbose=False, *, data=None):
                            "and the header's key is where a first session's "
                            "nonce goes" % (lineno + 1))
                 renonces.append((lineno + 1, int(a[0]), a[1]))
+        elif kind == "prof" and ver >= 9:
+            # Patch 840: one word, the finish's SV_ProfileWhy.  An unknown word is
+            # a later writer's, so a note (spec_why's precedent).
+            if len(tok) != 2:
+                r.fault("line %d: 'prof' takes one verdict word, has %r"
+                        % (lineno + 1, tok[1:]))
+            elif tok[1] not in PROF_WORDS:
+                r.note("line %d: 'prof' verdict %r is not one this tool knows"
+                       % (lineno + 1, tok[1]))
+            else:
+                profs.append((lineno + 1, tok[1]))
+        elif kind == "clk" and ver >= 9:
+            # Patch 840: <bound> <hyst> <allow> <wall> <stalls> <credited> <debt>
+            # <behind>, written once by the finish.  The debt may be negative
+            # (surplus); nothing may be NaN.
+            try:
+                v = [float(x) for x in tok[1:]]
+            except ValueError:
+                v = None
+            if (v is None or len(v) != 8 or any(not math.isfinite(x) for x in v)
+                    or any(not (v[i] >= 0) for i in (0, 1, 2, 3, 4, 5, 7))):
+                r.fault("line %d: 'clk' takes 8 finite numbers, all but the debt "
+                        "non-negative, has %r" % (lineno + 1, tok[1:]))
+            else:
+                clks.append((lineno + 1, v))
         elif kind == "zseed" and ver >= 9:
             # build 88: the timer latches the start packet left, for pm_verify.
             # Additive (no bump); written once, before the first `in` row.
@@ -2514,6 +2574,34 @@ def check_rec(path, verbose=False, *, data=None):
                            "or a pause epoch can produce this honestly" % (
                                fv, movebnd, in_movemax))
                 r.info["moveoor_bit"] = "yes" if (fv & TF_MOVEOOR) else "no"
+
+            # Patch 840: the profile verdicts and the clock record against the bits.
+            if saw_end is not None:
+                bad = [w for w in ([inprof_word] + [w for _l, w in profs])
+                       if w not in (None, "ok")]
+                if bad and not (fv & TF_NOPROFILE):
+                    r.fault("the file's profile verdict is %r and header flags %d "
+                            "does not say TF_NOPROFILE -- one predicate wrote both"
+                            % (bad[0], fv))
+                elif (fv & TF_NOPROFILE) and (inprof_word is not None or profs) \
+                        and not bad:
+                    r.note("header flags %d says TF_NOPROFILE and every verdict in "
+                           "the file is ok -- a loaded save can carry the bit" % fv)
+            if clks:
+                _l, (bound, hyst, allow, wall, stalls, cred, debt, short) = clks[-1]
+                r.info["clk"] = ("behind %.3f s over %.3f s  debt %.3f  stalls %d "
+                                 "(%.3f s credited)  bound %g" % (short, wall, debt, stalls,
+                                                                  cred, bound))
+                if len(clks) > 1:
+                    r.note("%d 'clk' records; the finish writes one" % len(clks))
+                if saw_end is not None and bound > 0:
+                    if short >= bound + CLK_EPS and not (fv & TF_SLOWCLOCK):
+                        r.fault("'clk' at line %d is %.3f s behind (bound %g) and header "
+                                "flags %d does not say TF_SLOWCLOCK" % (_l, short, bound, fv))
+                    elif short < bound - CLK_EPS and (fv & TF_SLOWCLOCK):
+                        r.note("header flags %d says TF_SLOWCLOCK and 'clk' is under "
+                               "its own bound -- a loaded save can carry the bit" % fv)
+                r.info["slowclock_bit"] = "yes" if (fv & TF_SLOWCLOCK) else "no"
 
             # Patch 364: the bit and the Multi-Session pauses agree, both ways.
             # A retry or a cold load starts a session too, and sets no bit.
@@ -3922,6 +4010,8 @@ def emit(r, verbose):
                   # that a file the checker abstained on is distinguishable from
                   # one it judged and found clean.
                   "movebnd", "moveoor", "moveoor_bit",
+                  # Patch 840, same edit as the code that assigns them.
+                  "inprof", "clk", "slowclock_bit",
                   "ticks", "time", "rate", "view_version", "hid", "frames",
                   "fps", "usercmds", "frames_per_cmd",
                   # Added in the same edit as angle_join, per the rule four

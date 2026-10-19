@@ -1573,6 +1573,93 @@ def case_movebnd():
                "the key in a v8 file is a note: v9 is where it was added")
 
 
+def case_profile_verdict():
+    """Patch 840: the header's `inprof` and the body's `prof` name the profile
+    verdict that SV_TimerProfile acts on in the same packet, so a known verdict
+    that is not ok beside a clear TF_NOPROFILE is a fault (after `end`); the
+    converse is a note (a loaded save carries the bit), and so is anything this
+    tool does not know -- a later writer's word, a NaN the player typed."""
+    ok_clean(insert_before(build(), "begin", "inprof ok 15 1 0 0 1"),
+             "an ok start verdict with the bit clear passes clean")
+    b = insert_before(build(), "begin", "inprof m_accel 15 1 0 1 1")
+    faults_with(b, "does not say TF_NOPROFILE",
+                "a bad start verdict with the bit clear is a fault")
+    ok_clean(head(b, "flags", str(2048)),
+             "...and the same file with TF_NOPROFILE passes clean")
+    b = insert_before(insert_before(build(), "begin", "inprof ok 15 1 0 0 1"),
+                      "inend", "prof changed")
+    faults_with(b, "does not say TF_NOPROFILE",
+                "a bad finish verdict with the bit clear is a fault")
+    ok_clean(head(b, "flags", str(2048)),
+             "...and with the bit set passes clean")
+    notes_with(head(insert_before(build(), "begin", "inprof ok 15 1 0 0 1"),
+                    "flags", str(2048)),
+               "loaded save",
+               "the bit with every verdict ok is a note, not a fault")
+    notes_with(insert_before(build(), "begin", "inprof bogus 15 1 0 0 1"),
+               "not one this tool knows", "an unknown start verdict is a note")
+    notes_with(insert_before(build(), "inend", "prof bogus"),
+               "not one this tool knows", "an unknown finish verdict is a note")
+    ok_clean(head(insert_before(build(), "begin", "inprof m_accel 15 1 0 nan 1"),
+                  "flags", str(2048)),
+             "a NaN in the report is not a fault of its own")
+    notes_with(insert_before(build(), "begin", "inprof ok 15 1 0"),
+               "fields after its verdict", "a short inprof is a note")
+    faults_with(insert_before(build(), "inend", "prof"),
+                "'prof' takes one verdict word", "a bare prof is a fault")
+    b = insert_before(build(), "begin", "inprof m_accel 15 1 0 1 1")
+    b = [l for l in b if not l.startswith("end ")]
+    f, n = run(b, name="run.rec")
+    check(not any("TF_NOPROFILE" in x for x in f),
+          "an unclosed file is not judged against its flags word")
+
+
+def clk(behind, wall=60.0, stalls=0, cred=0.0, debt=None, bound=1):
+    """A `clk` line.  `debt` defaults to `behind`."""
+    if debt is None:
+        debt = behind
+    return "clk %g 0.2 0.5 %.3f %d %.3f %.3f %.3f" % (bound, wall, stalls, cred, debt, behind)
+
+
+def case_slow_clock():
+    """Patch 840: the finish's `clk` states its bound and the measure (summed
+    debt rises), so the bit is judged from the file alone: clearly behind with
+    TF_SLOWCLOCK clear is a fault, clearly not with it set is a note, bound 0
+    judges nothing.  What the measure means is the writer's (SV_ClockFrame)."""
+    slow = clk(48.8, 99.0)
+    honest = clk(0.0, 9.6, 1, 0.5, -0.32)
+    ok_clean(insert_before(build(), "inend", honest),
+             "an honest clk (one stall, surplus after it) with the bit clear passes clean")
+    b = insert_before(build(), "inend", slow)
+    faults_with(b, "does not say TF_SLOWCLOCK", "48.8 s behind with the bit clear is a fault")
+    ok_clean(head(b, "flags", str(524288)), "...and with TF_SLOWCLOCK set passes clean")
+    notes_with(head(insert_before(build(), "inend", honest), "flags", str(524288)),
+               "under its own bound", "the bit over an honest clk is a note")
+    ok_clean(insert_before(build(), "inend", clk(48.8, 99.0, bound=0)),
+             "bound 0 (off) judges nothing")
+    faults_with(insert_before(build(), "inend", clk(1.3, 300.0, debt=0.0)),
+                "does not say TF_SLOWCLOCK",
+                "1.3 s behind after the debt was repaid (debt 0) is still slow")
+    ok_clean(insert_before(build(), "inend", clk(1.0)),
+             "exactly at the bound is not judged slow with the bit clear")
+    ok_clean(head(insert_before(build(), "inend", clk(1.0)), "flags", str(524288)),
+             "...nor judged honest with the bit set")
+    ok_clean(insert_before(build(), "inend", "clk 1 0.2 0.5 9 1 0.5 -0.4 0"),
+             "a negative debt (surplus) is legal")
+    faults_with(insert_before(build(), "inend", "clk 1 0.2 0.5 99 0 0"),
+                "'clk' takes 8", "a short clk is a fault")
+    faults_with(insert_before(build(), "inend", "clk 1 0.2 0.5 -9 0 0 0 0"),
+                "'clk' takes 8", "a negative wall is a fault")
+    faults_with(insert_before(build(), "inend", "clk 1 0.2 0.5 9 0 0 nan 0"),
+                "'clk' takes 8", "a NaN clk field is a fault")
+    f, n, out = run(insert_before(build(), "inend", slow), report=True)
+    check("clk" in out and "behind 48.800" in out, "-v prints the clk line with how far behind")
+    b = [l for l in insert_before(build(), "inend", slow) if not l.startswith("end ")]
+    f, n = run(b, name="run.rec")
+    check(not any("TF_SLOWCLOCK" in x for x in f),
+          "an unclosed file is not judged against its flags word")
+
+
 def case_angle_control():
     """THE PAIR THAT MUST PASS.  Everything below is a mutation of this one, so
     a fault here would make every arm under it unreadable."""
@@ -2759,7 +2846,7 @@ def main():
                case_spec_next_row_restates, case_spec_where, case_spec_flag_and_finish,
                case_spec_unknown_why_is_a_note, case_spec_below_v9_is_unknown,
                case_nonce_header, case_nonce_record, case_nonce_flag,
-               case_movebnd,
+               case_movebnd, case_profile_verdict, case_slow_clock,
                case_angle_control, case_angle_blind_is_said_out_loud,
                case_angle_rotated, case_angle_one_frame_rule,
                case_angle_one_frame_rule_reaches_a_still_camera,

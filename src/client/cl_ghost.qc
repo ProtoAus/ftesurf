@@ -578,7 +578,7 @@ void() Ghost_Status =
 	print(sprintf("  model %s   body %s alpha %g\n",
 	              Ghost_Model(),
 	              cvar("ghost_body") ? "on" : "off", cvar("ghost_alpha")));
-	print(sprintf("  timer %s, flags %g\n",
+	print(sprintf("  timer %s, flags %d\n",
 	              (getstatf(STAT_FS_TIMERSTATE) == TS_RUNNING) ? "running" : "not running",
 	              getstatf(STAT_FS_TIMERFLAGS)));
 };

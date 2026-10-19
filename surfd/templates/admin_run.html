@@ -136,7 +136,7 @@ const HAVE_RCON = {{ have_rcon | tojson }};
 const MAPNAME = /^[a-z0-9_]{1,63}$/;          // admin.MAPNAME, the lobby map control's rule
 const HEAD_KEYS = ["map", "track", "leg", "startseg", "tickrate", "movetickrate",
   "clock", "owner", "runid", "mapcrc", "zonesrc", "zonecrc", "zonerule", "instart",
-  "startjit", "flags"];
+  "startjit", "flags", "inprof"];
 const TRACE_KEYS = ["trisoup", "rotboxes", "portalcsg"];   // the pin's trace cvars
 const VERDICT_CLS = {PASS: "up", HOLD: "warn", ERROR: "down"};
 const DECISION_CLS = {approve: "up", reject: "down"};
@@ -146,7 +146,10 @@ const MARK_COLOUR = {cp: "#7fe0a0", stage: "#ffd79a", stagestart: "#ffd79a",
   ghost: "#c59dff", warp: "#ffae57", portal: "#d38cff", spec: "#5fd3e0"};
 const SPEED_LINES = ["cp", "stage", "stagestart", "split", "resume", "retry", "restart", "ghost", "spec"];
 // surfd.py TF_MULTISESSION / TF_SPEC: markers on a run that still ranks.
-const FLAG_WORDS = [[16384, "multi-session"], [32768, "spectated"]];
+// sh_defs.qc FS_CertWhy, worst first (Patch 840): why a run is not ranked.
+const CERT_WORDS = [[524288, "slow clock"], [512, "no journal"], [1024, "no ruleset"],
+  [2048, "input mode"], [4096, "other map"], [8192, "old clock"], [65536, "input counts"]];
+const FLAG_WORDS = [[16384, "multi-session"], [32768, "spectated"]].concat(CERT_WORDS);
 let RUN = null, PLOT = null;
 
 function el(tag, cls, text) {
@@ -903,6 +906,15 @@ function renderHead(P) {
   const specs = P.marks.filter(m => m.k === "spec");
   if (specs.length) dlRow(dl, "spectate", specs.map(specLabel).join(", "));
   dlRow(dl, "end", P.end ? P.end.map(x => x == null ? "?" : x).join(" ") : "no trailer");
+  // Patch 840: the finish's verdicts (absent on files written before it).
+  const cert = P.cert || {};
+  if (cert.prof) dlRow(dl, "prof", cert.prof);
+  if (cert.clk) {
+    const [bound, hyst, allow, wall, stalls, cred, debt, behind] = cert.clk;
+    dlRow(dl, "clock", "behind " + behind.toFixed(3) + " s over " + wall.toFixed(3) +
+          " s (bound " + bound + "); debt " + debt.toFixed(3) + " s; " + stalls +
+          " stall(s), " + cred.toFixed(3) + " s credited");
+  }
 
   // Unknown records are shown but do NOT open the card: the format is additive
   // by design, so a reader meeting a record it does not know is a newer writer,

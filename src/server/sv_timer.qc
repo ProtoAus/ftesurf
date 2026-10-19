@@ -1216,6 +1216,72 @@ float rec_retry_armed;
 .float  run_t_startwall;         // sv.time at the start; SV_TickReport ONLY
 
 /*
+  Patch 840: game time against server time, per packet, over the whole run --
+  zeroed at the start, carried by saves (`slowclk`), so a retry, a load or a
+  Multi-Session resume continues it.  run_t_ckd is the DEBT: wall minus game.
+  A packet interval of RUN_CK_GAP or more is a stall (an honest client never
+  leaves one: 150 ms frame cap, carried msec remainders) and a loss of at least
+  RUN_CK_HYST is credited up to RUN_CK_ALLOW -- what an honest stall loses
+  before the engine's forced moves fill the silence -- from a bucket of
+  RUN_CK_FREE that refills one a minute.  A stall of the SERVER (its own frame
+  gap, which no client can make) is excused outright, before any of this.
+  THE TEST SUMS EVERY RISE OF THE DEBT, each less RUN_CK_HYST: surplus can
+  repay a debt (the engine lets a client run 0.5 s ahead) but not unspend it,
+  so slow-then-catch-up cycles add up; jitter swings under RUN_CK_HYST add
+  nothing.  The debt is accumulated, not wall and game sums: QC floats are
+  32-bit, and a carried sum larger than the restored clocks rounds every add.
+*/
+.float  run_t_ckwall;            // previous packet's `time`
+.float  run_t_ckwt;              // wall seconds measured (reported)
+.float  run_t_ckgaps;            // stalls seen
+.float  run_t_ckncr;             // stalls credited
+.float  run_t_ckcb;              // credits in the bucket (refills 1 a minute, at most RUN_CK_FREE)
+.float  run_t_ckcr;              // seconds credited
+.float  run_t_ckd;               // the debt, net of credits
+.float  run_t_cktr;              // its trough since the last confirmed rise
+.float  run_t_ckpk;              // its peak while rising
+.float  run_t_ckup;              // rising
+.float  run_t_cku;               // confirmed rises, each less RUN_CK_HYST
+.float  run_t_ckskip;            // until then a zero-time packet is not counted
+#define RUN_CK_GAP   0.15        // a packet interval this long is a stall, not a pace
+#define RUN_CK_ALLOW 0.5         // what one honest stall may lose (sv_send.c's forced moves)
+#define RUN_CK_FREE  4           // the stall bucket's size; it refills one per minute
+#define RUN_CK_HYST  0.2         // a debt swing smaller than this is jitter
+float   run_t_slowclk;           // run_slowclock, cached per map: seconds; 0 = off
+float   sv_ck_frame;             // the end of the last world tick (SV_ClockServerFrame)
+float   sv_ck_excuse;            // a server frame gap at least this long is the server's stall
+
+/*
+  StartFrame's `time` is the tick's START (sv_phys.c SV_Physics: physicstime, then
+  += frametime after), so the end is time + frametime -- sv.time once caught up.
+  An idle dedicated server still wakes every max(sv_maxtic, sv_mintic), and a frame
+  under sv_mintic runs no tick, so a client pacing its packets reaches at most
+  that plus sv_mintic: only a longer gap is excused (review rounds 4-5).
+*/
+void() SV_ClockServerFrame =
+{
+	sv_ck_frame  = time + frametime;
+	sv_ck_excuse = max(RUN_CK_GAP, max(cvar("sv_maxtic"), cvar("sv_mintic"))
+	                               + cvar("sv_mintic") + 0.05);
+};
+
+void(entity e) SV_ClockReset =
+{
+	e.run_t_ckwall = time;
+	e.run_t_ckwt   = 0;
+	e.run_t_ckgaps = 0;
+	e.run_t_ckncr  = 0;
+	e.run_t_ckcb   = RUN_CK_FREE;
+	e.run_t_ckcr   = 0;
+	e.run_t_ckd    = 0;
+	e.run_t_cktr   = 0;
+	e.run_t_ckpk   = 0;
+	e.run_t_ckup   = 0;
+	e.run_t_cku    = 0;
+	e.run_t_ckskip = 0;
+};
+
+/*
 ===========================================================================
   BUILD 76 -- THE ONE CLOCK EVERYTHING IN THIS FILE IS NOW MEASURED AGAINST.
 
@@ -1726,6 +1792,7 @@ float() SV_RecEnabled =
   mark a run for something that happened before it started.
 */
 .float  run_t_pbad;
+.float  run_t_pwhy;              // Patch 840: the PW_* that first set TF_NOPROFILE
 
 /*
   PATCH 493: THE MOVE-COLUMN RANGE MARKER'S COUNTERS.
@@ -2898,6 +2965,13 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             hypothetical -- they carry move values in the thousands
                             (`side=2325 / fwd=-1067`) and no bit, and they are
                             honest harness output.
+    inprof <why> <have> <raw> <filt> <acc> <grant>
+                            Patch 840, additive (v9+).  The input profile the START
+                            was judged on: SV_ProfileWhy's word (FS_ProfileWord: ok
+                            rawinput m_filter m_accel rawmice silent platform
+                            changed), then CSQC's report as the server held it (all
+                            0 when it never spoke, which `silent` already says).
+                            Not ok means TF_NOPROFILE was set in the same packet.
     begin                   header ends here; everything after is a record
 
   THE THREE ZONE KEYS ARE ADDITIVE AND ARE ABSENT ON A MAP WITH NO ZONES, which
@@ -3550,6 +3624,21 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                           `holdclock 1` declares this accounting in a new header;
                           legacy practice/prefix input clocks are not joinable.
                           Resume/retry/session still require their own abstention.
+
+  Written by the finish, before close (Patch 840, additive in v9+):
+
+    prof <why>              the finish's SV_ProfileWhy word, as `inprof`'s first
+                            field.  Not ok means TF_NOPROFILE is set.
+    clk <bound> <hyst> <allow> <wall> <stalls> <credited> <debt> <behind>
+                            the game clock against server time over the run, saves
+                            included (SV_ClockFrame): wall seconds measured, packet
+                            intervals of RUN_CK_GAP or more, the seconds credited to
+                            them (each up to <allow>), the debt (wall minus game, net
+                            of credits; negative is surplus) and <behind>, every rise
+                            of the debt less <hyst>, summed; all %.3f but <stalls>.
+                            TF_SLOWCLOCK iff bound > 0 and behind >= bound (a loaded
+                            save's flags can also carry the bit).  Absent: the
+                            sampled clock, or a server older than this.
 
   Then, written at close:
 
@@ -4818,6 +4907,8 @@ void(entity e) SV_RecFailKeep =
 	               e.rec_fa_stream ? e.rec_fa_path : "buffered"));
 };
 
+float(entity e) SV_ProfileWhy;          // Patch 840: the header's verdict
+
 void(entity e) SV_RecOpen =
 {
 	local float i, s, base;
@@ -5257,6 +5348,12 @@ void(entity e) SV_RecOpen =
 	*/
 	if (run_t_movebnd > 0)
 		SV_RecPut(e, sprintf("movebnd %g", run_t_movebnd));
+
+	// Patch 840: the profile the start was judged on -- verdict, then CSQC's
+	// report (zeros when it never spoke: the verdict says `silent`).
+	SV_RecPut(e, sprintf("inprof %s %g %g %g %g %g", FS_ProfileWord(SV_ProfileWhy(e)),
+	                     e.run_t_pevhave, e.run_t_pevraw, e.run_t_pevfilt,
+	                     e.run_t_pevacc, e.run_t_pevgrant));
 
 	SV_RecPut(e, "begin");
 
@@ -7644,7 +7741,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	bufstr_set(buf, buf_getsize(buf), sprintf("owner %s", e.netname));
 	bufstr_set(buf, buf_getsize(buf),
 	           sprintf("runid %s-s%g", strftime(TRUE, "%Y%m%d-%H%M%S"), seg));
-	bufstr_set(buf, buf_getsize(buf), sprintf("flags %g", i));
+	bufstr_set(buf, buf_getsize(buf), sprintf("flags %d", i));
 
 	/*
 	  BUILD 81: mapcrc AND THE ZONE PIN, both of which this writer had been
@@ -8599,6 +8696,8 @@ float(entity e, float seg, float dur) SV_StageFillable =
 float(entity e) SV_JournalBroken;
 float(entity e) SV_RulesetBroken;
 float(entity e) SV_ProfileBroken;
+float(entity e) SV_SlowClock;
+void(entity e) Lobby_RqDetail;
 
 // The stage's own taint plus the run's certification holes, re-checked now:
 // surfd demotes on those bits (TF_UNCERT), exactly as it does a finish.
@@ -8611,6 +8710,7 @@ float(entity e) SV_StageSubmitFlags =
 	if (SV_RulesetBroken(e)) f = f | TF_NORULESET;
 	if (SV_ProfileBroken(e)) f = f | TF_NOPROFILE;
 	if (e.rec_mc_sup)        f = f | TF_NOCOUNTS;   // Patch 406
+	if (SV_SlowClock(e))     f = f | TF_SLOWCLOCK;  // Patch 840
 	return f;
 };
 
@@ -8669,6 +8769,7 @@ void(entity e, float ticks) SV_StageClose =
 	// Patch 360: a primed stage of a main run is posted to its stage board --
 	// above every refusal below, which are about writing a local file.
 	e.run_st_endlaunch = e.run_st_launch;
+	Lobby_RqDetail(e);                  // ABOVE the braceless if: it gates the submit
 	if (SV_StageFillable(e, seg, e.run_st_endticks))
 	if (Lobby_SubmitStage(e, e.run_t_track, FS_LegOf(seg, TRUE), e.run_st_endticks,
 	                      SV_StageSubmitFlags(e)))
@@ -8920,6 +9021,8 @@ void(entity e, float ticks, float elapsed) SV_TimerResume =
 	e.run_t_frzticks  = 0;
 	e.run_t_lastsec   = now;
 	e.run_t_lastmt    = e.run_movetick;
+	e.run_t_ckwall    = time;               // Patch 840: the save's `slowclk` carries the sums
+	e.run_t_ckskip    = time + 1;           // ...and a restore's zero-time usercmds are not a pace
 
 	/*
 	  WHICH CLOCK THE RESTORED RUN IS ON IS DECIDED BY THIS ENGINE, not by the
@@ -9071,6 +9174,118 @@ void(entity e) SV_TimerThaw =
   no longer reachable under a save-lock hold, which runs no zone tests; the run
   starts on the release packet.  A replay pin still can.]
 */
+/*
+  Patch 840: one packet of the clock comparison (see run_t_ckwall).  `dg` is the
+  game seconds the mover consumed since the last packet.  Only a running clock
+  on the counted model: holds stop the run clock, spectate and parks skip
+  PlayerPostThink (their spans are rebased out: SV_SpecRelease), and on the
+  sampled clock game time IS server time.  A ghost IS measured: its usercmds
+  keep their time (cl_ghost.qc zeroes only moves and buttons).  The zero-time
+  usercmds in flight when a spectate or a restore ends are skipped, until the
+  first packet that carries time or a second, whichever is first.
+*/
+void(entity e, float dg) SV_ClockFrame =
+{
+	local float dw, s, c, fg;
+
+	dw = time - e.run_t_ckwall;
+	e.run_t_ckwall = time;
+	if (dw < 0)                     // a rebase from a client command's hook (physics time)
+		dw = 0;
+	// The server's own stall: packets are read before the frame's StartFrame
+	// (sv_main.c SV_Frame), so this is the gap since the last one.
+	fg = time - sv_ck_frame;
+	if (sv_ck_excuse > 0)
+	if (fg >= sv_ck_excuse)
+		dw = dw - min(dw, fg);
+	if (e.run_t_state != TS_RUNNING || e.run_t_frzon || !e.run_t_clock)
+		return;
+	if (e.run_pmhold || e.run_sp_phase || e.run_ms_phase)
+		return;
+	if (dg <= 0)
+	if (time < e.run_t_ckskip)
+		return;
+	e.run_t_ckskip = 0;
+	s = dw - dg;
+	e.run_t_ckwt = e.run_t_ckwt + dw;
+	e.run_t_ckcb = min(RUN_CK_FREE, e.run_t_ckcb + dw / 60);
+	if (dw >= RUN_CK_GAP)
+	{
+		e.run_t_ckgaps = e.run_t_ckgaps + 1;
+		if (s >= RUN_CK_HYST)       // a smaller loss cannot make a counted rise alone
+		if (e.run_t_ckcb >= 1)
+		{
+			c = min(s, RUN_CK_ALLOW);
+			s = s - c;
+			e.run_t_ckcr  = e.run_t_ckcr + c;
+			e.run_t_ckncr = e.run_t_ckncr + 1;
+			e.run_t_ckcb  = e.run_t_ckcb - 1;
+		}
+	}
+	e.run_t_ckd = e.run_t_ckd + s;
+
+	// The swings: a rise is confirmed when the debt falls RUN_CK_HYST off its peak.
+	if (e.run_t_ckup)
+	{
+		if (e.run_t_ckd > e.run_t_ckpk)
+			e.run_t_ckpk = e.run_t_ckd;
+		else if (e.run_t_ckd < e.run_t_ckpk - RUN_CK_HYST)
+		{
+			e.run_t_cku  = e.run_t_cku + max(0, e.run_t_ckpk - e.run_t_cktr - RUN_CK_HYST);
+			e.run_t_cktr = e.run_t_ckd;
+			e.run_t_ckup = FALSE;
+		}
+	}
+	else if (e.run_t_ckd < e.run_t_cktr)
+		e.run_t_cktr = e.run_t_ckd;
+	else if (e.run_t_ckd > e.run_t_cktr + RUN_CK_HYST)
+	{
+		e.run_t_ckup = TRUE;
+		e.run_t_ckpk = e.run_t_ckd;
+	}
+};
+
+// Seconds the game clock fell behind beyond jitter: the confirmed rises and
+// the one in progress, each less RUN_CK_HYST.
+float(entity e) SV_ClockShort =
+{
+	if (e.run_t_ckup)
+		return e.run_t_cku + max(0, e.run_t_ckpk - e.run_t_cktr - RUN_CK_HYST);
+	return e.run_t_cku;
+};
+
+// Nothing measured -- off, sampled clock -- is no.
+float(entity e) SV_SlowClock =
+{
+	if (run_t_slowclk <= 0 || !e.run_t_clock)
+		return FALSE;
+	return SV_ClockShort(e) >= run_t_slowclk;
+};
+
+// Patch 840: what the unranked line says beyond FS_CertWhy's word.  Latched at
+// the submission, before its reply can arrive (Lobby_SubmitRun's order note).
+void(entity e) Lobby_RqDetail =
+{
+	e.lobby_rq_pwhy  = e.run_t_pwhy;
+	if (e.lobby_rq_pwhy == PW_OK)       // a restored TF_NOPROFILE: what holds now
+		e.lobby_rq_pwhy = SV_ProfileWhy(e);
+	e.lobby_rq_ckshort = SV_ClockShort(e);
+};
+
+// The finish's latch, and the record that lets reccheck judge the bit from the
+// file alone: bound, hysteresis, allowance, wall measured, stalls, seconds
+// credited, the debt, and the summed rises the bit is judged on.
+void(entity e) SV_TimerSlowClock =
+{
+	if (SV_SlowClock(e))
+		e.run_t_flags = e.run_t_flags | TF_SLOWCLOCK;
+	if (e.run_t_clock)
+	if (SV_RecLive(e))
+		SV_RecPut(e, strcat(sprintf("clk %.3f %.3f %.3f ", run_t_slowclk, RUN_CK_HYST, RUN_CK_ALLOW),
+		                    sprintf("%.3f %d %.3f %.3f %.3f", e.run_t_ckwt, e.run_t_ckgaps,
+		                            e.run_t_ckcr, e.run_t_ckd, SV_ClockShort(e))));
+};
+
 void(entity e) SV_TimerFreezeFrame =
 {
 	local float now;
@@ -9113,9 +9328,15 @@ void(entity e) SV_TimerFreezeFrame =
 		// `time`, a different clock from the mover seconds it reads from now on.
 		e.run_t_startsec = SV_ClockSec(e) - e.run_t_resumesec;
 		e.run_t_startwall = time - e.run_t_resumesec;
+		// Patch 840: the previous-packet readings were taken on the old clock.
+		e.run_t_lastsec = SV_ClockSec(e);
+		e.run_t_lastmt  = e.run_movetick;
+		e.run_t_ckwall  = time;
+		e.run_t_ckskip  = time + 1;     // the spawn's zero-time usercmds
 	}
 
 	now = SV_ClockSec(e);
+	SV_ClockFrame(e, now - e.run_t_lastsec);    // Patch 840: before lastsec moves
 	if (e.run_t_frzon && e.run_t_starttick >= 0)
 	{
 		e.run_t_frzticks = e.run_t_frzticks + (e.run_movetick - e.run_t_lastmt);
@@ -10048,8 +10269,12 @@ float(entity e) SV_ProfileKeyBroken =
   between the counts and the angle and still fails.  Each test is written the way
   the cvar it reads actually behaves rather than to a house style.
 */
-float(entity e) SV_ProfileBroken =
+// Patch 840: the predicate below returns WHICH test failed (PW_*), so the
+// recording and the finish line can name it; SV_ProfileBroken is "not PW_OK".
+float(entity e) SV_ProfileWhy =
 {
+	local float w;
+
 	/*
 	  BUILD 78: THE SOURCE IS THE EVENT, AND SILENCE IS A FAULT.
 
@@ -10072,18 +10297,19 @@ float(entity e) SV_ProfileBroken =
 	  having every cvar is not.
 	*/
 	if (e.run_t_pev == 0)
-		return TRUE;
+		return PW_SILENT;
 
 	// Linux beta (Lex, 2026-09-19): only Windows clients rank.  in_rawinput exists only in
 	// in_win.c, so no IPH_RAW means Linux/macOS/SDL -- where device-targeted XTEST and
 	// compositor injection cannot be seen (engine Patch 387's ceiling).
 	if (!(e.run_t_pevhave & IPH_RAW))
-		return TRUE;
+		return PW_PLATFORM;
 
-	// The RULE is FS_ProfileBroken in sh_defs.qc and is not repeated here.
-	if (FS_ProfileBroken(e.run_t_pevhave, e.run_t_pevraw,
-	                     e.run_t_pevfilt, e.run_t_pevacc, e.run_t_pevgrant))
-		return TRUE;
+	// The RULE is FS_ProfileWhy in sh_defs.qc and is not repeated here.
+	w = FS_ProfileWhy(e.run_t_pevhave, e.run_t_pevraw,
+	                  e.run_t_pevfilt, e.run_t_pevacc, e.run_t_pevgrant);
+	if (w != PW_OK)
+		return w;
 
 	/*
 	  ...and the span the snapshot above cannot see.  run_t_pbad is latched at
@@ -10101,9 +10327,14 @@ float(entity e) SV_ProfileBroken =
 	  statement about a player, which is the one failure this bit may not have.
 	*/
 	if (e.run_t_pbad >= 0 && e.run_t_pevbad != e.run_t_pbad)
-		return TRUE;
+		return PW_CHANGED;
 
-	return FALSE;
+	return PW_OK;
+};
+
+float(entity e) SV_ProfileBroken =
+{
+	return SV_ProfileWhy(e) != PW_OK;
 };
 
 /*
@@ -10127,6 +10358,8 @@ float(entity e) SV_ProfileBroken =
 */
 void(entity e, float atstart) SV_TimerProfile =
 {
+	local float w;
+
 	if (atstart)
 	{
 		/*
@@ -10151,8 +10384,12 @@ void(entity e, float atstart) SV_TimerProfile =
 			e.run_t_pbad = e.run_t_pevbad;
 	}
 
-	if (SV_ProfileBroken(e))
-		e.run_t_flags = e.run_t_flags | TF_NOPROFILE;
+	w = SV_ProfileWhy(e);
+	if (w == PW_OK)
+		return;
+	if (e.run_t_pwhy == PW_OK)
+		e.run_t_pwhy = w;               // Patch 840: the first reason seen, for the finish line
+	e.run_t_flags = e.run_t_flags | TF_NOPROFILE;
 };
 
 /*
@@ -11370,6 +11607,7 @@ void(entity e, float z) SV_TimerArm =
 	// for the life of the client, so 0 is both a legitimate value and the wrong
 	// default.  See run_t_pbad and SV_ProfileBroken.
 	e.run_t_pbad        = -1;
+	e.run_t_pwhy        = PW_OK;
 	// Build 74: -1 for the third time, and the reason is the sharpest of the
 	// three -- run_movetick is reset PER MAP, so 0 is not merely a legitimate
 	// value, it is the value every counter holds for the first seconds of every
@@ -12028,6 +12266,11 @@ void(entity e, float ticks) SV_TimerFinish =
 	// the clock started AND the set-and-unset window that leaves both ends
 	// reading clean.  Same shape, same reason.  See SV_TimerProfile.
 	SV_TimerProfile(e, FALSE);
+	// Patch 840: the finish's verdict beside the header's start one, so a file
+	// says which setting demoted it and when.
+	if (SV_RecLive(e))
+		SV_RecPut(e, strcat("prof ", FS_ProfileWord(SV_ProfileWhy(e))));
+	SV_TimerSlowClock(e);
 
 	// Patch 406: and the counts channel.  No latch function and no re-read --
 	// rec_mc_sup is a COUNT taken per command across the whole run, so it
@@ -12141,6 +12384,7 @@ void(entity e, float ticks) SV_TimerFinish =
 		                Lobby_ChatName(e), Lobby_Where(e.run_t_track), SV_TimerString(ticks),
 		                (pb > 0) ? strcat(", ", SV_TimerString(pb - ticks), " faster") : ""));
 
+	Lobby_RqDetail(e);
 	Lobby_SubmitRun(e, e.run_t_track, leg, ticks, e.run_t_flags,
 	                SV_RecKeptLeaf(e), e.rec_rec_bytes, e.rec_rec_full);
 
@@ -12587,6 +12831,8 @@ void(entity e) SV_TimerStart =
 	e.run_t_lastmt    = e.run_movetick;
 	e.run_t_lastsec   = e.run_t_startsec;
 	e.run_t_startwall = time;       // report only -- see the field
+	SV_ClockReset(e);
+	e.run_t_pwhy = PW_OK;           // Patch 840: a loaded ARMED save is not armed again
 
 	// Leaving the start zone is the reset you asked for: the stopped time from
 	// the last attempt comes off the screen here and not before, so it is still
@@ -14543,6 +14789,13 @@ void() SV_TimerMapInit =
 	  (TF_MOVEOOR); demotes nothing.
 	*/
 	registercvar("run_movebound", "2000");
+	// Patch 840: seconds the game clock may fall behind before the run is demoted
+	// (TF_SLOWCLOCK); 0 = off.  The 19 Oct half-speed lobby runs were 28 s and 49 s
+	// behind; tools/p840clock.py's honest arms (a 1.5 s stall, a retry) read 0.
+	// 5 and not lower UNTIL LOBBY VALUES ARE MEASURED (`clk` is in every file): an
+	// upload queue that rises and drains, or Wi-Fi that holds packets, adds up like
+	// a client that slows and catches up (review round 3's model: 2.4 s in 3 min).
+	registercvar("run_slowclock", "5");
 	registercvar("run_evidence_days", "30");  // Patch 360: abandoned-run evidence kept this long
 	registercvar("rec_runarchive", "1");      // build 48
 	registercvar("run_class", "1");           // build 44, and see the trap above
@@ -14609,6 +14862,7 @@ void() SV_TimerMapInit =
 	  already have and the price of a file that can be checked against itself.
 	*/
 	run_t_movebnd     = cvar("run_movebound");    // Patch 493
+	run_t_slowclk     = max(0, cvar("run_slowclock"));    // Patch 840, cached for the same reason
 	localcmd(sprintf("serverinfo run_startcap %g\n", run_t_startcap));
 	localcmd("serverinfo fs_counts 1\n");     // Patch 376: clients send mouse counts
 	/*
@@ -14874,11 +15128,11 @@ void(entity e) SV_TimerReport =
 	  under acceleration and is not admitting to it now.
 	*/
 	sprint(e, PRINT_HIGH,
-	       sprintf("        inprof:  key \"%s\"  badat %g  noprofile %g  would %g\n",
+	       sprintf("        inprof:  key \"%s\"  badat %g  noprofile %g  would %g  why %s\n",
 	               infokey(e, "inprof"),
 	               e.run_t_pbad,
 	               (e.run_t_flags & TF_NOPROFILE) ? 1 : 0,
-	               SV_ProfileBroken(e)));
+	               SV_ProfileBroken(e), FS_ProfileWord(SV_ProfileWhy(e))));
 	/*
 	  Build 78.  WHAT CSQC SAID, BESIDE WHAT THE KEY SAYS, because from here on
 	  only the first of those decides anything and a reader of the line above
@@ -15086,6 +15340,11 @@ void(entity e) SV_TimerReport =
 	  where a human running `cmd timer` mid-run will find it.
 	*/
 	sprint(e, PRINT_HIGH, strcat("        ", SV_TickReport(e), "\n"));
+	// Patch 840: the run's clock comparison, saves included (run_t_ckwall).
+	sprint(e, PRINT_HIGH,
+	       sprintf("        clock: wall %.3f debt %.3f behind %.3f  stalls %g credited %g (%.3f s)  slowclock %g\n",
+	               e.run_t_ckwt, e.run_t_ckd, SV_ClockShort(e), e.run_t_ckgaps,
+	               e.run_t_ckncr, e.run_t_ckcr, (e.run_t_flags & TF_SLOWCLOCK) ? 1 : 0));
 	pl = SV_RecNormal(e);
 	sprint(e, PRINT_HIGH, sprintf("        rec plane: %.3f %.3f %.3f  (fl %g, v4 bit 16 = ramp)\n",
 	       pl_x, pl_y, pl_z, SV_RecFlags(e)));

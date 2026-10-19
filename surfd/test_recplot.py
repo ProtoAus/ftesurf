@@ -273,6 +273,21 @@ def case_unknown_records():
           (recplot.MAX_MARKS, 100, recplot.MAX_UNKNOWN_NAMES))
 
 
+def case_cert():
+    # Patch 840: the start's profile verdict (header) and the finish's (body).
+    body = [S(0.0), S(0.015), "prof m_accel", "clk 1 0.2 0.5 99.000 0 0.000 49.215 49.015",
+            "end 1 2 0 0"]
+    r = recplot.parse(rec("cert.rec", 9, body, head=HEAD + ["inprof m_accel 15 1 0 1 1"]))
+    check("inprof is a header key", r["head"].get("inprof"), "m_accel 15 1 0 1 1")
+    check("prof and clk parse and are not unknown", (r["cert"], r["counts"]["unknown"]),
+          ({"prof": "m_accel", "clk": [1.0, 0.2, 0.5, 99.0, 0.0, 0.0, 49.215, 49.015]}, 0))
+    r = recplot.parse(rec("cert0.rec", 9, [S(0.0), "end 1 1 0 0"]))
+    check("a file without them says so", r["cert"], {"prof": None, "clk": None})
+    r = recplot.parse(rec("cert2.rec", 9, [S(0.0), "clk 1 2", "end 1 1 0 0"]))
+    check("a short clk is a malformed record", (r["cert"]["clk"], notes_with(r, "1 malformed")),
+          (None, ["1 malformed record(s) skipped"]))
+
+
 def case_resume_rebase():
     body = ["in 1 1000 0 0 0 0 0 0 0 0", S(0.0), "resume 3 50", "in 2 2000 0 0 0 0 0 0 0 0",
             "warp 2 2010 tele 1 2 3 4 5 6", S(0.75)]
@@ -500,7 +515,7 @@ def case_corpus():
 def main():
     for case in (case_v3_v4, case_v5_stage, case_v7_warp, case_v9, case_padding, case_nonfinite,
                  case_long_lines, case_missing_begin, case_non_utf8, case_rates, case_downsample,
-                 case_trailer_notes, case_unknown_records, case_resume_rebase, case_spec,
+                 case_trailer_notes, case_unknown_records, case_cert, case_resume_rebase, case_spec,
                  case_never_raises, case_track_filter, case_track_bounds, case_track_never_raises,
                  case_corpus):
         print("%s:" % case.__name__)

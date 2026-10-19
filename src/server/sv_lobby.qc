@@ -172,6 +172,8 @@
 .float   lobby_rq_leg;
 .float   lobby_rq_ticks;
 .float   lobby_rq_flags;        // the submitted flags: FS_CertWhy for the unranked line
+.float   lobby_rq_pwhy;         // Patch 840: PW_* behind "input mode" (Lobby_RqDetail)
+.float   lobby_rq_ckshort;      // ...and seconds behind, behind "slow clock"
 // A stage posted from a main run (Patch 360) waits on its OWN id and answers into
 // `*srank`, so the final stage and the finish, posted in one frame, both land.
 .float   lobby_sq_id;
@@ -2515,6 +2517,12 @@ void(entity e, float flags) Lobby_SayUnranked =
 	why = FS_CertWhy(flags);
 	if (why == "")
 		why = "not certified";      // surfd and TF_UNCERT disagree: worth seeing
+	// Patch 840: the setting behind the word, for the one player who can change it.
+	else if (why == "slow clock")
+		why = sprintf("slow clock: the game clock lost %.1f s to real time", e.lobby_rq_ckshort);
+	else if (why == "input mode")
+	if (e.lobby_rq_pwhy != PW_OK)
+		why = strcat("input mode: ", FS_ProfileText(e.lobby_rq_pwhy));
 	sprint(e, PRINT_CHAT, sprintf("^5board:^7 ^3unranked (%s)^7 -- not on the "
 	       "online board\n", why));
 };
@@ -3115,7 +3123,7 @@ void(entity e, float track, float leg, float ticks, float flags,
 	  are actually going up.  The KEY is not printed and never is; the body is
 	  not printed for the same reason.
 	*/
-	print(sprintf("^5board:^7 submitting %s track %g leg %g -- %g ticks, flags %g\n",
+	print(sprintf("^5board:^7 submitting %s track %g leg %g -- %g ticks, flags %d\n",
 	              mapname, track, leg, ticks, flags));
 	/*
 	  THE RECORDING ON ITS OWN LINE, and only when there is one.
@@ -3163,7 +3171,7 @@ float(entity e, float track, float leg, float ticks, float flags) Lobby_SubmitSt
 	lobby_run_sent = lobby_run_sent + 1;
 	uri_post(strcat(url, "/api/run"), e.lobby_sq_id,
 	         "application/x-www-form-urlencoded", body);
-	print(sprintf("^5board:^7 submitting %s track %g leg %g -- %g ticks, flags %g (stage)\n",
+	print(sprintf("^5board:^7 submitting %s track %g leg %g -- %g ticks, flags %d (stage)\n",
 	              mapname, track, leg, ticks, flags));
 	return TRUE;
 };

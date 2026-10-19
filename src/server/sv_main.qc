@@ -133,6 +133,7 @@ void() SV_UpdateMovementServerInfo =
 
 void() StartFrame =
 {
+	SV_ClockServerFrame();          // Patch 840: the server's own frame gap
 	// Armed by worldspawn, so this is the first frame AFTER the entity lump
 	// was built rather than the first frame of any kind -- StartFrame does get
 	// called before the map's entities exist, and reporting there reads zero.

@@ -1220,7 +1220,7 @@ void() Bn_Status =
 	              ui_bn_kind, ui_bn_test, cltime - ui_bn_at,
 	              (ui_bn_outat > 0) ? cltime - ui_bn_outat : -1,
 	              (ui_bn_exit > 0) ? ui_bn_exit - cltime : -1));
-	print(sprintf("banner: subject track %g leg %g ticks %g flags %g word %g pb %g\n",
+	print(sprintf("banner: subject track %g leg %g ticks %g flags %d word %g pb %g\n",
 	              ui_bn_track, ui_bn_leg, ui_bn_ticks, ui_bn_flags, ui_bn_word, ui_bn_pb));
 	print(sprintf("banner: mine %g slot %g sub %g local #%g of %g replyat %.2f\n",
 	              ui_bn_mine, ui_bn_slot, ui_bn_sub, ui_bn_lrank, ui_bn_lof,
