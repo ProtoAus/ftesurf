@@ -1296,6 +1296,21 @@ def main():
         counts.append(len(reads))
     os.rmdir(cache)
     check("an unusable cache file still costs a worker one read per BSP", counts, [n0, 0, 0])
+    # A full volume: the old file still reads, every save fails, and a BSP changed
+    # since the last good one. This process's answer must beat the file's.
+    m._timer_mem.clear()
+    m.maps_reset()
+    m.map_index(now=9000.0)                     # a good save
+    real_save = m._timer_cache_save
+    m._timer_cache_save = lambda keep: None
+    os.utime(bsp, ns=(st.st_atime_ns, st.st_mtime_ns + 3 * 10**9))
+    counts = []
+    for k in range(3):
+        reads.clear()
+        m.map_index(now=9000.0 + (k + 1) * (m.MAPS_TTL + 1))
+        counts.append(len(reads))
+    m._timer_cache_save = real_save
+    check("...and a full volume reads a changed BSP once, not every rescan", counts, [1, 0, 0])
     m.zonefit.timer_read = real_read
 
     # ...and threads that find it stale together wait for one scan.

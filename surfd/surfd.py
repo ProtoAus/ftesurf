@@ -1866,9 +1866,10 @@ def _scan_maps():
     disk = _timer_cache_load()
     # This process's own answers too: the file may be unreadable or unwritable
     # (a full volume, a new zonefit rule), and then it alone would be no memory.
-    known = dict(_timer_mem)
-    known.update(disk)
-    keep = dict(known)          # merged, not replaced: a short listing must not empty it
+    # Per map, whichever copy matches the file now: a failed save leaves the
+    # disk's behind, another process's save can put it ahead.
+    keep = dict(disk)           # merged, not replaced: a short listing must not empty it
+    keep.update(_timer_mem)
     for key, stem in bsp.items():
         if key in zone:
             continue
@@ -1878,9 +1879,11 @@ def _scan_maps():
         except OSError:
             continue
         sig = [st.st_mtime_ns, st.st_ctime_ns, st.st_size]
-        hit = known.get(stem)
-        if hit is not None and hit[:3] == sig:
+        hit = next((h for h in (_timer_mem.get(stem), disk.get(stem))
+                    if h is not None and h[:3] == sig), None)
+        if hit is not None:
             timed = hit[3]
+            keep[stem] = hit
         else:
             timed = zonefit.timer_read(path)
             if timed is None:

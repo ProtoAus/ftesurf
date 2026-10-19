@@ -85,7 +85,9 @@ renderer; source and build in `src/viewer/` (its README). The bundle
   `has_timer` folds into False. Entries merge rather than replace, so a scan that lists nothing
   does not empty it. The first cut moved the TTL rescan to a thread -- the cheap case -- and
   served an index of any age after a quiet spell (review round 1); the second kept failed reads
-  as "untimed" across deploys (round 2).
+  as "untimed" across deploys (round 2); the third dropped has_timer's lru_cache with it, so an
+  unwritable file meant a 20 s scan every 300 s (round 3) -- `_timer_mem` keeps the last
+  answers in the process as well.
 
 ## Rewind over a failed attempt (P817, 2026-10-19)
 
