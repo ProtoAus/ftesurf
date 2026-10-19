@@ -5,6 +5,35 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Left open by Patches 843-845 (20 Oct)
+
+- Site: `cl_sprites.qc` glare draw (Sprite_Quad, DRAWFLAG_ADD|DRAWFLAG_NODEPTHTEST). A glow sprite
+  behind a translucent world surface draws over it (surf_dune: the brazier's glow08 halo over
+  GRATE1A from Lex's save 2). Source sorts it with the translucent world, so the grate's bars
+  cover it. The engine puts such a polygon in the additive bucket (gl_alias.c BE_GenPolyBatches):
+  needs a twin material in an earlier sort, or an engine flag. Check: the save-2 shot.
+- Site: `cl_emit.qc` env_fire. Embers (slot 12) and the smoke (always `sort banner`) do not follow
+  P843's choice, so smoke in front of a translucent surface goes under it. The trace hits only
+  solids: a non-solid translucent brush entity (func_illusionary glass) or water between the eye
+  and a fire does not put it under. Particles alive when the choice flips keep their bucket.
+- Site: hl2 plugin `vmt/vertexlit`, `animated`, `twotexture`, `transition`, and `vmt/unlit`'s
+  ADDITIVE branch under ONE/ONE: entity alpha still not applied (P844 did lightmapped and unlit's
+  blended path), nor UnlitGeneric's `alphaGen const` ($alpha) pass; additive under one/one needs
+  RGB scaled (since P783 some blend src_alpha/one, some one/one). P810 still declines
+  PlayerProximity on these programs and could now take lightmapped/unlit. lightmapped under
+  ENVFROMBASE drops the mask only below alpha 1, so a mode-5 brush at renderamt 255 is still
+  mask-weighted; `$selfillum` is not handled.
+- Site: `sv_entities.qc` SV_BrushRenderMode. Modes 3 (321 brush entities), 8 and 9 on brushes are
+  drawn as before; rendercolor tints only func_brush; glare occluders (cl_sprites.qc) ignore
+  rendermode. Check each against Momentum.
+- Site: `sv_player.qc` ClientKill and `cmd respawn` / `cmd restart`: PutClientInServer's
+  SV_TimerSpawn clears a just-finished run's tag (sidecar dropped, receipt unsigned within a
+  packet of the finish) and, offline, leaks the run's strbuf (rec_rec_buf -1 before the idle).
+  SV_SpawnGoto (P845) shows the fix: SV_TimerVoid first, carry the tag across.
+- Site: `cl_keycfg.qc` row 21. Respawn counts both goto_spawn (spawn entity) and the shipped
+  `say !m` (start of the map), and "reset to defaults" binds m to goto_spawn. Lex to decide
+  whether default.cfg's m should be goto_spawn.
+
 ## Release tooling: what 0.1.28 hit (19 Oct)
 
 - **`ConvertTo-WslPath` takes WSL's cold-start notice as the path.** When the WSL VM has idled
@@ -371,12 +400,6 @@ bound-check failure kills the VM (P795 took the menu down this way).
 
 ## Map visuals left open by Patches 799 and 802
 
-- Site: hl2 plugin GLSL programs (`vmt/unlit` for additive, `lightmapped`, `vertexlit`,
-  `animated`, `twotexture`, `transition`) and UnlitGeneric's `alphaGen const` ($alpha) pass. None
-  applies the entity's alpha, so Source's renderamt fade, and a PlayerProximity fade, do not show
-  on those materials; P810 declines PlayerProximity there and does only UnlitGeneric's identity
-  pass. Additive needs care: since P783 some blend src_alpha/one and some one/one. Check: a
-  func_brush with rendermode 4, renderamt 128 on a LightmappedGeneric face, ours against Momentum.
 - Site: `sv_entities.qc` non-solid list. env_bubbles still draws its brush: Source sets render
   alpha 0 (effects.cpp CBubbling::Spawn) and whether the engine skips a zero blend is in code we
   do not have. 8 in 3 maps have faces the plugin draws (env_embers: none). Check: one against

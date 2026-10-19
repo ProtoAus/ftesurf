@@ -1,5 +1,22 @@
 # lextest.md — things waiting on a human
 
+## P843-P845 — fire behind the grate, see-through walls, goto_spawn
+
+Pushed 2026-10-19 UTC (20 Oct local): QC main, engine main b02bc5ae8 (tag patch-844, the hl2 plugin).
+Deployment line added when the installs and lobbies carry it.
+
+- surf_dune, your save 2: the flame stays behind the grate now. The soft orange glow around it
+  still shows over the grate (a separate glow sprite; BACKLOG). Smoke: it is drawn, but on
+  surf_dune's dark brick it cannot be seen -- Source's smoke for small fires is 16-24% opaque
+  and dark. If you look at the same spot in Momentum, say whether you see smoke there.
+- bhop_eazy: the coloured glass is see-through and tinted at spawn. Brushes everywhere now take
+  their rendermode: fades, additive signs (kz_bhop_beginner's numbers lose their black squares),
+  and rendermode 10 hidden as in Source. Anything that looks different from Momentum: say where.
+- `goto_spawn` (your m key) puts you where joining puts you -- on surf_dune the end room. `say
+  !m` still goes to the start of the map. Should a fresh install's m be goto_spawn too?
+
+"Grate ok / glass ok / m ok / <map + what looks off>". Verdict PENDING.
+
 ## P837 — the run graph is drawn once and reused
 
 Live 2026-10-19 (UTC): csprogs f1f94d56 on both installs and all 12 lobbies, with

@@ -1,5 +1,30 @@
 # AGENT_NOTES.md
 
+## Fire under glass, brush rendermodes, goto_spawn (P843-P845, 2026-10-20)
+
+- A particle shader's `sort` IS its order against the map: banner < underwater < BLEND <
+  additive < nearest, and r_blendsort 2 sorts only BLEND. A blended world face writes no depth,
+  so anything in a later bucket draws over it at any distance. P843 picks the bucket per fire
+  from a trace. `sort blend` would not help a scripted particle: with a `pdraw` it leaves the
+  scene tris for the render queue, drawn after everything (p_script.c PScript_DrawParticleTypes).
+- A default CSQC traceline hits a translucent world brush (VBSP: TRANSLUCENT|WINDOW); the glare
+  mask (cl_sprites.qc SPR_GLARE_MASK) leaves WINDOW out on purpose. Pick by the question.
+- "No smoke" can be smoke that is there: diff two frames 2.5 s apart before touching numbers.
+  surf_dune's env_fire_tiny/_small smoke differs in a 250-pixel column and is invisible by eye.
+- A respawn (SV_TimerSpawn) clears a finished run's tag outright; `!m` (SV_RecDiscard) keeps it
+  while nothing is live. A finish followed by a respawn within a packet loses its sidecar and its
+  receipt. goto_spawn voids first and carries the tag across (SV_SpawnGoto); `kill`, `cmd respawn`
+  and `cmd restart` still have the race (BACKLOG).
+- A test client can carry a test plugin without touching an install: plugins load from the
+  exe's own folder (FS_BINARYPATH), so a copied ftesurf64.exe in a task root with the plugin
+  beside it, run with the install as cwd (conbridge --client), loads it (`plug_list`: $system).
+  Test progs go in under new names: `+set sv_progs <name> +set sv_csqc_progname <name>.dat` on
+  the server and seed_csprogs.py for the client. A missing sv_progs file falls back to
+  qwprogs.dat in silence: prove the build with a line only it prints.
+- A fresh engine worktree's plugin links zlib1.dll unless ARCHLIBS is passed (objdump -p).
+- The owner's config binds `m` to goto_spawn (the key panel writes the row's command): read
+  ftesurf.cfg before changing what a command means. Verified and deployed state: lextest.md.
+
 ## The HUD run graph's cache (P837, 2026-10-19)
 
 - LineGraph_HudStill draws into two render targets only when LineGraph_CacheSame says an input

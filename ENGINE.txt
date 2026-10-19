@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   39afb825f8925fb136127863fc469b2bbd80a04b
+commit   b02bc5ae82d3036b80b04d0abaa185ef1814a4c7
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,14 @@ commit   39afb825f8925fb136127863fc469b2bbd80a04b
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-836
-patch    838
+tag      patch-844
+patch    845
+# Patch 845 (qwprogs + csprogs): goto_spawn is the map's spawn entity (zone_spawn: the respawn,
+# with the run voided first so a just-finished run keeps its tag); `!m` unchanged.
+# Patch 844 (qwprogs + hl2 plugin): every brush entity's rendermode (1/2/4 fade, 5 adds, 10 and
+# renderamt 0 hide); vmt/lightmapped and vmt/unlit multiply alpha by the entity's. Plugin only.
+# Patch 843 (csprogs): a fire with anything between it and the eye draws its flame before the
+# blended surfaces (sort underwater), so a $translucent grate in front covers it.
 # Patch 838 (reader): v8+ closing carry cannot be negative, including decimal underflow;
 # its exact coefficient preserves true signed zero. The native mover clamps the remainder.
 # Signed zero stays legal. Independent closing faults retain validated restore allowances;
