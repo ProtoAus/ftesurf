@@ -1,5 +1,24 @@
 # lextest.md — things waiting on a human
 
+## P846 — the console: map typing, Tab, Enter, clicks, `
+
+Installed 2026-10-19T18:06:25Z (UTC): ftesurf64.exe / fteqw64.exe 320a6806 in both installs
+(engine main 7e962cb6a, carries P841 and 843-845; .prev = P841's 50191398).
+
+- Type `map surf_n` letter by letter: no judder. Each key was ~140 ms here and is now 0.3 ms
+  (the first key after a map load builds the list, ~24 ms).
+- `cl_ya`, Down, Enter: the line becomes `cl_yawspeed ` with its value shown under it. Type a
+  number, Enter sets it. `map surf_n`, Down, Enter on `map surf_null`: it loads at once.
+- Type `cl_y` and press Tab once: it types the first row (the green hint).
+- Click a row in the dropdown: it is typed into the line (nothing runs until Enter). Not tested
+  with a real mouse here, only against a screenshot.
+- With text typed, `` ` `` closes the console; `~` (shift) still types.
+- The `[focus] window is NOT foreground ...` line no longer appears in the console.
+- A map dropped in by another program (Momentum) shows after the next map load, or after
+  `sv_mapcompletioncache 0` then `sv_mapcompletioncache 1`.
+
+"All fine / <which one, what happened>". Verdict PENDING.
+
 ## P843-P845 — fire behind the grate, see-through walls, goto_spawn
 
 Live 2026-10-19 UTC: both installs at 17:46Z (QC main 4569d279: qwprogs b69cae2b, csprogs d08cf6ff;

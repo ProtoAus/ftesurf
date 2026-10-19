@@ -1684,6 +1684,10 @@ Pass `ARCHLIBS=C:/msys64/home/Lex/fteqw/engine/libs-x86_64-w64-mingw32` and
 compare `objdump -p <exe>`'s DLL names with the installed binary's. It also
 stamps nothing (`.git` is a file there): supply `SVN_VERSION` and `SVNREVISION`,
 and make the patch tag ANNOTATED or `git describe --long` skips it.
+Run that make from pwsh, as build.ps1 does, not from the Bash tool (P846): under
+Git Bash's runtime, msys make handed gcc no usable TMP and every compile died on
+`Cannot create temporary file in C:\WINDOWS\` (Error 127 on quakedef.h.gch),
+whatever TMP the script exported.
 
 **Dependency appearance after partial compilation (P729).** Prepare the owned
 link to the dependency cache BEFORE the first make. A failed first build can

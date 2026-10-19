@@ -5,6 +5,19 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Left open by Patch 846 (console completion, 20 Oct)
+
+- The Ctrl+F find bar still types `` ` `` (keys.c, the con_findmode block runs before Patch 846's
+  bind test). And in find mode, a click on a completion popup that sits inside the console (the
+  fullscreen console, or the popup flipped above) reaches the row's link and overwrites the
+  "find:" footer, as before 846. Falsifier: con_findmode open, `` ` `` closes the console.
+- After TAB on a fully typed cvar, row 1 is highlighted (CompleteCommand's step), so ENTER types
+  `name ` rather than printing the value. Intended for now (the highlight is visible); revisit if
+  Lex finds it odd.
+- con_selftest prints the popup's click map but cannot check it against the drawn rows (it reads
+  the record the click reads). A check would need the hovered conline_t from a painted frame with
+  the cursor placed on each row.
+
 ## Left open by Patches 843-845 (20 Oct)
 
 - Site: `cl_sprites.qc` glare draw (Sprite_Quad, DRAWFLAG_ADD|DRAWFLAG_NODEPTHTEST). A glow sprite
