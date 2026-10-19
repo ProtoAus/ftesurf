@@ -1,5 +1,22 @@
 # lextest.md — things waiting on a human
 
+## P824 — the chat box in hud_edit: width, height, full height; the field grows
+
+Both installs and all 12 lobbies 2026-10-19T06:25Z: csprogs ea4e1a84 (.prev fda04aa2, P822/P823's);
+qwprogs 9155b799 and menu.dat f6cf5764 unchanged. A fresh client on lobby 1 was served it and drew
+the board (pi_lobby_smoke).
+
+- The box is narrower: 35% of the screen (it was 45%).
+- `hud_edit` -> **Chat** (its own row now, with on/off, size and drag). While hud_edit is open the
+  chat box shows itself open, so each change is visible as you make it. Its pane:
+  Width (25-50%), Height (rows the box holds), Open height (fit the chat / full: the whole height
+  even with little chat in it), Shut, show (messages left on screen while chat is shut), Stays for,
+  Box (how see-through). Drag the box to move it; reset puts it back bottom left.
+- Type past the end of a line: the field grows to 2 (then 3) rows and the box grows upward with
+  it. Click, drag-select and copy work on every row.
+
+"Works / <what you saw, and the settings you picked>". Verdict PENDING.
+
 ## P823 — The first-boot screens look like the other menus; no Updates screen
 
 Both installs and all 12 lobbies 2026-10-19T05:52Z (build.ps1 -Pi at main 183ad609): csprogs
