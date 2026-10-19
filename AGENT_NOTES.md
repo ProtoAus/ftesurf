@@ -1,5 +1,30 @@
 # AGENT_NOTES.md
 
+## Props drawn in runs (P831, 2026-10-19)
+
+The GL renderer sorts opaque model batches (`r_batchsort`) and draws a run of one model's
+props as ONE instanced draw of `plugins/hl2/glsl/vmt/vertexlit.glsl`'s INSTANCED permutation
+(`r_instancing`); multi-mesh batches use glMultiDrawElements (`r_multidraw`); the hl2 world
+walk passes frustum clip flags down (`hl2_clipflags`). Each is a live cvar for an A/B in one
+process; `r_batchsort 2` and `r_instancing 2` print one frame's lists, runs and gates.
+
+- **THE CONTRACT: vertexlit.glsl's per-entity inputs are packed by hand.** Under INSTANCED, the
+  names e_eyepos, e_light_ambient/dir/mul, e_light_ambientcube, e_colourident and m_model are
+  #defines over texels of `s_instdata`, which GLBE_SubmitInstancedRun (gl_backend.c) fills,
+  18 a prop, from the same values BE_Program_Set_Attributes would upload. A NEW per-entity
+  uniform read by vertexlit.glsl must get a texel there and a #define there, or every instanced
+  prop silently reads the run's first prop's value. Uniforms the run shares by construction
+  (time via shaderTime, fog, bones of a static pose, cvars) need nothing.
+- **Grade a picture change paused.** `pausable 1` then `pause`, and two shots of one setting are
+  identical (the animated mist otherwise differs by ~100k pixels). Instancing on vs off: 0 px on
+  most maps, 1 px at 6/255 on demise, 33 px of edge rounding on a boreas view.
+- **Prove a gate acted from its own report.** The first cut found no candidates at all (the
+  prop programs sit on pass 0, not shader->prog) and a review's "these props are skinned"
+  turned instancing off entirely (bones 0); only the report lines showed either.
+- **Where the frame goes:** `tools/sampler.py` samples one rig client's main thread ~1 kHz and
+  names functions from the build's `fteqw64.exe.db` and the hl2 plugin's own symbols; time in
+  the GL driver is charged to the nearest engine call on the stack. Profile, then change.
+
 ## The 3D run viewer (P825, 2026-10-19)
 
 `surfd/web/watch.html#r=<rid>` plays a board run over noclip.website's Source

@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+## P831 — props drawn in runs: more fps on rock- and tree-heavy maps
+
+Live in both installs 2026-10-19 (exe 544446a8, git-7515-patch-831-0-g675dcf7fa; .prev 1d27c817;
+hl2 plugin dd6dce96). Client only: the lobbies are unchanged, and players get it with the next release.
+
+- surf_demise and surf_boreas should run noticeably faster: at demise's spawn the frame went from
+  about 5.0 to 3.45 ms in the rig (boreas 343 -> 397 fps from the instancing alone). Your saves with
+  `r_budget 3`, against your earlier dumps, will show it with your own HUD.
+- Props must look exactly as before. If a rock, tree or crystal looks wrong or flickers, type
+  `r_instancing 0` (the new drawing off, live) and say whether that cures it.
+- `r_instancing 2` prints one frame's instanced draws in the console, if you are curious.
+
+"Faster / <what looks off, where>". Verdict PENDING.
+
 ## P827 — your own line no longer stalls a long run
 
 Live 2026-10-19 07:32Z in both installs and on all 12 lobbies: csprogs ed8d2e63 (.prev

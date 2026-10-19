@@ -27,7 +27,10 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
 `r_model_mincoverage 0.005` were inside that at these spawns.
 
 - **Glares: occlusion on the GPU.** `Sprite_Glare` 1.63 ms of surf_tensor2's 3.54 ms of QC, its
-  cost the tracelines (build 59's fit: 27.1 us a ray, cl_sprites.qc). Source asks the GPU
+  cost the tracelines (build 59's fit: 27.1 us a ray, cl_sprites.qc). Profiled after 831 at its
+  spawn: world traces ~13% of the frame (BIH ~7%, World_ClipToLinks 5.1% walking the linked
+  entities -- likely the brush occluder copies) and the QC interpreter 14% (the sprite loops over
+  all 429 glares every frame). Source asks the GPU
   (c_pixel_visibility.cpp); the 50 ms ramp already hides a frame or two of latency. Needs a
   builtin; tracing stays the fallback (old engines via checkbuiltin). Check: same view, CSQC
   row and the glare luma, trace against query.
@@ -40,17 +43,31 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
   into one) once alpha compositing and 1:1 pixels are checked.
 - **Graph and compare.** LineGraph_Simplify re-cuts the whole live curve each time lv_head
   moves (0.09-0.11 ms); Cmp_Nearest 0.06-0.11.
-- **Draw submission (read).** No instancing (render.h:100). `vid_gl_context_compatibility 1`
-  (renderer.c:625) means no VAO or stream VBOs: each batch re-points its attributes and a
-  multi-mesh batch copies its indices through alloca (gl_backend.c:3496-3546); multi-draw is on
-  the core path only. With `r_blendsort 1`, a world blend list the plane sort reorders goes out
-  one face a batch (GLBE_SubmitBlendedWorld, gl_backend.c:7777-7865): a candidate, unmeasured,
-  for surf_joutsenlaulu's 1.17 ms transparent row on 452 draws. Check first, one toggle at a
-  time at a fixed save: `r_blendsort 0`, `r_model_mincoverage 0.005`, compatibility 0.
-- **HL2 PrepareFrame (read).** Every static prop is visited every view and each visible one is
-  its own scene entity (mod_vbsp.c:9524-9837); surf_demise reads 551-864 entity batches.
-  Bucket props by cluster; group or instance identical props (per-prop vertex lighting makes
-  instancing more than a flag).
+- **Draw submission: Patch 831 did the big part** (batch sort, multidraw in the compatibility
+  profile, instanced props; surf_demise's spawn ~5.0 -> 3.45 ms). What its profile leaves
+  (`tools/sampler.py`, demise spawn after 831): the GL driver still 27.6% of the frame, mostly
+  under the remaining draws. Not instanced: props without a VRAD bake, batches with more than one
+  mesh, frames with a realtime light. `vid_gl_context_compatibility 0` measured no faster on its
+  own (and whether it made a core context was not shown). With `r_blendsort 1`, a world blend list
+  the plane sort reorders goes out one face a batch (GLBE_SubmitBlendedWorld): `r_blendsort 0`
+  changed nothing at the spawns measured, and Lex's 1.1-1.3 ms transparent rows did not reproduce
+  there, so his HUD/lines are the next suspect. GLBE_SelectEntity's glLoadMatrixf per entity
+  (1.3% of demise, more on tensor2's sprite batches) is NOT dead weight: unskinned models'
+  ftetransform() is ftransform() in the compatibility profile.
+- **HL2 PrepareFrame.** Patch 831's clip flags took it 0.87 -> 0.72 ms at demise's spawn. Left:
+  every static prop is still visited every view (2,350 on demise, twice with a sky camera) and
+  each visible one copied into a scene entity (mod_vbsp.c, the prop loop); BE_GenModelBatches
+  then PVS-tests every entity again, the plugin's props included (no free entity flag marks
+  them); sky polygon clipping (ClipSkyPolygon + R_CalcSkyChainBounds) ~3% of demise, but its
+  bounds decide where the skybox is drawn, so dropping them can change the picture. Bucket the
+  props by cluster.
+- **Patch 831's own open items.** Its realtime-light gate guards a hazard NOT demonstrated: with
+  world realtime lights on at demise's spawn, a build without the gate drew the same picture
+  instanced (1 px), so it may be giving up speed for nothing while a light is live. No AMD or
+  Intel machine has compiled the INSTANCED permutation (a failure falls back and turns it off).
+  The `r_cubelight` and `r_reflectcube` counters now count instanced props once a run, or not at
+  all for the cube. `vid_restart` on surf_demise crashes the build before 831 as well
+  (0xC0000005, installed exe 1d27c817, rig run 19 Oct), so 831's restart path is untested.
 - **Full water costs CPU first here**: each capture re-submits the scene. Besides sharing
   captures (the water budget entry below), refraction could read the drawn scene's copy.
 - **Threads, last (read).** qclib's JIT is x86-32 only and off (progslib.h:39-41); the worker
