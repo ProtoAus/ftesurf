@@ -1795,6 +1795,18 @@ void(string cmd) SV_ParseClientCommand =
 	  rename.
 	*/
 	if (c == "zone_restart") { was = self.origin; SV_ZoneChatCommand("!m", 0); SV_RewindWarped(self, was); return; }
+	// Patch 845: goto_spawn, the map's spawn entity -- `kill`'s respawn, refused as `!m` is
+	// while a paused run is being restored.
+	if (c == "zone_spawn")
+	{
+		if (SV_MsBusy(self))
+			return;
+		was = self.origin;
+		PutClientInServer();
+		SV_RewindWarped(self, was);
+		sprint(self, PRINT_HIGH, "^5goto_spawn:^7 back at the map's spawn\n");
+		return;
+	}
 	if (c == "zone_reset")   { was = self.origin; SV_ZoneChatCommand("!r", 0); SV_RewindWarped(self, was); return; }
 	// Multi-Session.  Not `run_resume`: that is the cvar's name.
 	if (c == "ms_resume")    { SV_MsAccept(self);     return; }
