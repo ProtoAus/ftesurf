@@ -24,11 +24,12 @@ commit   994b744505e2a4fe3be3b59290cd19733ba64ebe
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-847
+tag      patch-850
 patch    851
 # Patch 850 (client engine): water captures and 3D sky rooms stop redrawing the outer views' props
 # (r_nestedents) and the 3D sky where the view has no sky surface (r_skyroomneed 2); r_viewstats.
-# On engine main (tag patch-850), NOT yet installed: the stamped build was reaped for low memory.
+# Exe fa31c2ee (git-7555-patch-850-0-g994b74450 = 847 + 849 + 850), hl2 plugin 1829790d, in both
+# installs 2026-10-19 19:57Z (.prev 775a1956 / 2b60d9c3). Client only: the lobbies are unaffected.
 # Patch 851 (csprogs + default.cfg): m is goto_start, r is reset (Lex); the key panel's Run group
 # starts Restart run (m), Reset stage (r), Go to spawn (no key).
 # Patch 848 (qwprogs + csprogs): `reset` is the old goto_start (!r); goto_start sends !r unless the

@@ -1,5 +1,21 @@
 # lextest.md — things waiting on a human
 
+## P850 — full water costs less (surf_boreas save 006)
+
+Live 2026-10-19 19:57Z (UTC): client exe fa31c2ee + hl2 plugin 1829790d in both installs
+(.prev 775a1956 / 2b60d9c3). Rig, your cfg, 1600x900: 8.86 -> 4.14 ms a frame at the save; the
+installed build read 3.86 ms there with the defaults.
+
+- Load save 006 with full reflections and dump `r_budget` again: "3D sky" should be gone and
+  "Portals & reflections" smaller. `r_viewstats` (twice, a second apart) prints views, 3D skies
+  drawn/skipped and props passed over.
+- The picture should be the same as before. `r_skyroomneed 0` and `r_nestedents 0` bring the old
+  behaviour back live, to compare.
+- Anywhere the 3D sky now goes missing (a black or frozen patch where sky was, through a window,
+  a door or in a reflection): say the map and spot, and whether `r_skyroomneed 0` fixes it.
+
+"fps ok / looks the same / <what changed>". Verdict PENDING.
+
 ## P840 — the unranked line says which setting; slow-motion runs are caught
 
 Live 2026-10-19 (UTC): csprogs 2f86a702 / qwprogs babf2b9b on both installs and all 12
