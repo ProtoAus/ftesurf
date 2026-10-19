@@ -19,7 +19,7 @@
   at once reads as a lost folder and is copied back instead.  After that, every
   save the lobby makes is copied here as it lands and a delete there moves this
   install's copy once no lobby row of that key is left.  The ledger is
-  <cl_saveroot>/sync.txt, beside the lobby rows' pictures; none (the first visit)
+  <the lobby root>/sync.txt, beside the lobby rows' pictures; none (the first visit)
   is a union.
 
   A copy here is a placement -- idle timer, no run, the velocity kept -- because
@@ -50,7 +50,7 @@
 float  ss_state;                // 0 asking soon, 1 listing, 2 planning, 3 the queue, 4 live, -1 off
 float  ss_at, ss_tries, ss_req, ss_page, ss_lcnt, ss_ldel;
 float  ss_tag, ss_tagn;         // the queued command in flight; 0 none
-string ss_map, ss_root;         // zoned: this map; the lobby root (cl_saveroot) as listed
+string ss_map, ss_root;         // zoned: this map; the lobby root (STAT_FS_SAVEROOT) as listed
 float  ss_alloc, ss_trashn;
 vector *ss_lo; vector *ss_lv; float *ss_lp; float *ss_ly; float *ss_lid; float *ss_lf; float *ss_lm;
 float  ss_ln;                   // lobby rows; ss_lid 0 = gone
@@ -587,7 +587,7 @@ void() SaveSync_Plan =
 
 	if (ss_root != "")
 		strunzone(ss_root);
-	ss_root = strzone(cvar_string("cl_saveroot"));
+	ss_root = strzone(getstats(STAT_FS_SAVEROOT));
 	if (strstrofs(ss_root, sprintf("data/saves/%s/@", ss_map), 0) != 0)
 	{
 		ss_state = -1;              // not a lobby block this client can name
@@ -838,7 +838,7 @@ void() SaveSync_Frame =
 	else if (ss_state == 2)
 	{
 		if (cltime >= ss_at)
-			SaveSync_Plan();        // after the last page: cl_saveroot's stuffcmd has run
+			SaveSync_Plan();        // after the last page
 	}
 	else if (ss_state == 3)
 		SaveSync_Step();
@@ -1009,10 +1009,10 @@ void(float t) SaveSync_Event =
 		// lost-folder guard allows, which is what the player asked for.  Live, it is
 		// carried out below and leaves no marker.
 		if (ss_state < 3)
-		if (strstrofs(cvar_string("cl_saveroot"), sprintf("data/saves/%s/@", serverkey("map")), 0) == 0)
+		if (strstrofs(getstats(STAT_FS_SAVEROOT), sprintf("data/saves/%s/@", serverkey("map")), 0) == 0)
 		{
 			ss_sawdelall = TRUE;
-			c = fopen(strcat(cvar_string("cl_saveroot"), "/delall.txt"), FILE_WRITE);
+			c = fopen(strcat(getstats(STAT_FS_SAVEROOT), "/delall.txt"), FILE_WRITE);
 			if (c >= 0)
 			{
 				fputs(c, "delall\n");

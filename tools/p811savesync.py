@@ -251,37 +251,37 @@ cmd zone_goto 0
 waitms 600
 sl_save
 waitms 1500
-echo ==== P811 ROOTA ====
-cl_saveroot
 rcon changelevel {MAP2}
 waitms 14000
 menu_restart
 ui_close
 waitms 2000
-echo ==== P811 ROOTB ====
-cl_saveroot
 cmd zone_goto 0
 waitms 800
 sl_save
 waitms 2500
 echo ==== P811 ROOT ====
-cl_saveroot
+savesync status
 cmd sl_list
 waitms 500
 quit
 """, timeout=150)
-            mine = sorted(cl.glob(f"data/saves/{MAP2}/@*/save*/seq.txt"))
+            # The lobby's own folder: @<guid>, not @pending (the root not in) or another map's.
+            mine = sorted(q for q in cl.glob(f"data/saves/{MAP2}/@*/save*/seq.txt")
+                          if re.fullmatch(r"@[0-9a-f]{32}", q.parent.parent.name))
             stray = [q for q in cl.glob(f"data/saves/{MAP}/@*/save*/seq.txt")
                      if re.search(r"^anchorpos \S+ \S+ 6[0-9]\.", q.read_text(errors="replace"), re.M)]
             check("new-map-root", len(mine) >= 1 and not stray,
-                  f"{MAP2}'s save files {[str(q.relative_to(cl)) for q in mine]}; under {MAP}: {[str(q.relative_to(cl)) for q in stray]}")
+                  f"{MAP2}'s save files {[str(q.relative_to(cl)) for q in cl.glob(f'data/saves/{MAP2}/@*/save*/seq.txt')]}; under {MAP}: {[str(q.relative_to(cl)) for q in stray]}")
+            rl = (rig / "client/ftesurf/logs/p811root.log").read_text(errors="replace")
+            st = re.findall(r"savesync: state (-?\d+) map (\S+) root (\S*)", rl.split("==== P811 ROOT ====")[-1])
+            check("new-map-sync", bool(st) and st[0][0] == "4" and st[0][1] == MAP2
+                  and re.fullmatch(rf"data/saves/{MAP2}/@[0-9a-f]{{32}}", st[0][2]) is not None,
+                  f"after the changelevel: {st}")
         finally:
             if server.poll() is None:
                 server.terminate()
                 server.wait(timeout=10)
-        rootlog = (rig / "client/ftesurf/logs/p811root.log")
-        rl = rootlog.read_text(errors="replace") if rootlog.exists() else ""
-        print("root values:", re.findall(r'"cl_saveroot" is "([^"]*)"', rl))
         loc = client(args, rig / "client", "p811local", f"""waitms 3000
 map {MAP}
 waitmap 60

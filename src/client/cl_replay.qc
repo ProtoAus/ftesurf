@@ -1618,7 +1618,7 @@ void(float id) Rec_ViewSaved =
 	buf_writefile(fh, rec_rp_view, 0, lines);
 	fclose(fh);
 	// Patch 443: and the one that DID write says where, because the path is
-	// cl_saveroot-relative and the server's own save root is a different tree --
+	// under the client's root (CL_SaveRoot) and the server's own is a different tree --
 	// which is the other half of why R2 could not be graded.
 	dprint(sprintf("replay: view prefix %g lines -> %s\n", lines, Rec_SavePath(id)));
 

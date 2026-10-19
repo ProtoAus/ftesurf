@@ -1723,21 +1723,21 @@ float(string fname) fremove = #0:fremove;
 // files have to land in, across two VMs.  See the essay in sh_defs.qc.
 //
 // Patch 333: the ROOT of that directory is the server's to know -- in a lobby
-// it carries the player's own @guid component -- and it arrives as a stuffcmd
-// `set cl_saveroot` on every saveloc operation (SV_SaveRootFor).  The fallback
-// is the old map-root spelling, which is what a non-lobby server sends anyway
-// and what a client that has not done a saveloc op yet still reads correctly.
+// it carries the player's own @guid component (SV_SaveRootFor).  Patch 811: it
+// comes as STAT_FS_SAVEROOT; the stuffed cl_saveroot before it read back latched,
+// so every map after a session's first named the first one's folder.
 string() CL_SaveRoot =
 {
 	local string r, m;
 
-	r = cvar_string("cl_saveroot");
+	r = cvar_string("cl_saveroot_test");    // arms only (p438view); no server sets it
+	if (r != "")
+		return r;
+	r = getstats(STAT_FS_SAVEROOT);
 	m = sprintf("data/saves/%s", serverkey("map"));
-	if (r == "")
-		return m;
-	// Patch 811: a root left from the last map is not this one's (19 Oct: two
-	// surf_dragon lobby saves wrote their seq.txt into surf_jumble's folder).
-	// Never the plain map folder either: a local game's saves live there.
+	// Not in yet, or the last map's (19 Oct: two surf_dragon lobby saves wrote
+	// their seq.txt into surf_jumble's folder).  Never the plain map folder: a
+	// local game's saves live there.
 	if (strcmp(r, m) && strstrofs(r, strcat(m, "/@"), 0) != 0)
 		return strcat(m, "/@pending");
 	return r;

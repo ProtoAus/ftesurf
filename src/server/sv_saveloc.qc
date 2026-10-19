@@ -828,10 +828,11 @@ string(string g) SV_SaveSanitise =
 /*
   Set sl_root for this player and TELL THEM, because the client writes two of
   the four files in a slot -- seq.txt from cl_board.qc, run.view from
-  cl_replay.qc -- and spells their paths from the same root.  One stuffcmd per
-  saveloc operation is a `set` of a cvar the client never registers, and it
-  means the two VMs cannot drift: the server is the only place that knows the
-  lobby state, the guid and the map name at once.
+  cl_replay.qc -- and spells their paths from the same root.  The server is the
+  only place that knows the lobby state, the guid and the map name at once.
+  Patch 811: told by STAT_FS_SAVEROOT, not a stuffed `set cl_saveroot`: CSQC's
+  cvar_string returns a server-set cvar's value from before the server took it
+  (latched_string), so every map after a session's first named the first's.
 */
 // Patch 428: the root alone, for work that is not a gesture (SV_SaveLocFrame's
 // sweep): sl_root is one global every player's command re-points.
@@ -849,10 +850,15 @@ void(entity e) SV_SaveRootSet =
 		sl_root = sprintf("data/saves/%s", mapname);
 };
 
+.string sl_rootstat;             // STAT_FS_SAVEROOT; zoned
 void(entity e) SV_SaveRootFor =
 {
 	SV_SaveRootSet(e);
-	stuffcmd(e, sprintf("set cl_saveroot \"%s\"\n", sl_root));
+	if (!strcmp(e.sl_rootstat, sl_root))
+		return;
+	if (e.sl_rootstat != "")
+		strunzone(e.sl_rootstat);
+	e.sl_rootstat = strzone(sl_root);
 };
 
 /*

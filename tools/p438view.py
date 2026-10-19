@@ -21,7 +21,7 @@ read the file the driver had GENERATED, so it compared that file with itself, an
 run with --keep shows no written-back .view exists at all.  See writeback().
 
 It writes to a scratch directory UNDER THE INSTALL ROOT (C:\\FTESurf\\p438view)
-and points cl_saveroot at it, so no shared fixture in data/ is touched -- and the
+and points cl_saveroot_test at it, so no shared fixture in data/ is touched -- and the
 scratch has to be inside the basedir, because the client's file layer cannot
 reach %TEMP% at all.
 
@@ -58,7 +58,7 @@ EXPECTED_SMALL = b""     # the 1.6 KB one's (slot 902), which is the LAST load
 
 
 def generate(mb):
-    """The sidecar, at the path Rec_SavePath(901) resolves to under cl_saveroot."""
+    """The sidecar, at the path Rec_SavePath(901) resolves to under cl_saveroot_test."""
     global EXPECTED, EXPECTED_SMALL
     n = int(mb * 1024 * 1024 / 38)
     os.makedirs(SLOT, exist_ok=True)
@@ -89,12 +89,12 @@ def generate(mb):
     # which is what buf_getsize counts, and what the mark is set from.
     print("the reader will report %d lines" % (n + 4))
     # The path the client will spell: relative to its GAMEDIR, forward slashes.
-    print("cl_saveroot will be %s" % RELROOT)
+    print("cl_saveroot_test will be %s" % RELROOT)
     return size, n + 4
 
 
 def extra_dir():
-    """Where the run's own write-back can land: the server resolves cl_saveroot to
+    """Where the run's own write-back can land: the server resolves cl_saveroot_test to
     the same scratch name the cfg sets, under data/."""
     return os.path.join(GAMEDIR, "data", RELROOT)
 
@@ -111,7 +111,7 @@ def slots_now():
 
 def cleanup_saves(before):
     """The cfg's R2 save lands in the SERVER's save root (data/saves/surf_4am),
-    which the scratch cl_saveroot does not move -- one new slot per run.  Remove
+    which the scratch cl_saveroot_test does not move -- one new slot per run.  Remove
     the slots THIS RUN MADE: the ones that were not there before it started.
 
     PATCH 441 REWROTE THIS, because the old test was RECENCY -- any slot whose
@@ -254,7 +254,7 @@ def run(exe, timeout):
         os.remove(LOG)
     flags = 0x08000000 if os.name == "nt" else 0
     p = subprocess.Popen([os.path.join(ROOT, exe), "-WindowStyle", "Minimized",
-                          "+set", "cl_saveroot", RELROOT,
+                          "+set", "cl_saveroot_test", RELROOT,
                           "+exec", CFG], cwd=ROOT, creationflags=flags,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     t0 = time.time()
