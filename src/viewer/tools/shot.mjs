@@ -1,5 +1,5 @@
 // Screenshots of the run viewer in a real browser (Chrome or Edge, with its GPU).
-//   node tools/shot.mjs URL OUTDIR [t,mode | ghost ...]     e.g. 12,eye ghost 30,chase
+//   node tools/shot.mjs URL OUTDIR [t,mode | ghost | dir:PATH ...]   e.g. 12,eye ghost 30,chase
 // Needs puppeteer-core installed in the directory PUPPETEER_DIR names (it is not
 // a viewer dependency). Prints the page's console, watchState() after load and at each
 // shot, and the WebGL renderer, so a black frame says why.
@@ -49,6 +49,18 @@ for (;;) {
 console.log(`loaded after ${Date.now() - t0} ms: ${JSON.stringify(st)}`);
 
 for (const s of shots.length ? shots : ['5,eye']) {
+    if (s.startsWith('dir:')) {   // a folder given to the "Choose a game folder" input
+        const input = await page.$('#wdir');
+        const before = (await page.evaluate(() => window.watchState())).mounts.length;
+        await input.uploadFile(s.slice(4));
+        for (let i = 0; i < 120; i++) {
+            const st = await page.evaluate(() => window.watchState());
+            if (st.mounts.length > before && st.scene && st.status === '') break;
+            await new Promise((r) => setTimeout(r, 1000));
+        }
+        console.log(`after ${s}: ${JSON.stringify(await page.evaluate(() => window.watchState()))}`);
+        continue;
+    }
     if (s === 'ghost') {   // race the record from here on
         await page.evaluate(() => window.watchGhost());
         await new Promise((r) => setTimeout(r, 2000));

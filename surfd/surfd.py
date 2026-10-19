@@ -1884,6 +1884,15 @@ def map_index(now=None):
         return bsp, zone
 
 
+def map_index_cached():
+    """The last map_index() answer, however old, or empty -- never a scan.  For
+    a page that only wants a display name: the rescan opens every zone-less BSP
+    (zonefit.has_timer), and on the first run request after MAPS_TTL it outlasted
+    nginx's 5 s and the run page and the 3D viewer said 504 (P825)."""
+    with _maps_lock:
+        return _maps_cache["bsp"], _maps_cache["zone"]
+
+
 def maps_reset():
     """Drop the cached library.  For tests, and for a future admin control."""
     with _maps_lock:
@@ -5739,7 +5748,7 @@ def web_run(rid):
         log.warning("web run %d unplottable: %s", rid, plot.get("error"))
         return fail(422, "the recording could not be read")
 
-    bsp, _zoned = map_index()
+    bsp, _zoned = map_index_cached()
     head = {k: plot["head"][k] for k in WEB_HEAD_KEYS if k in plot["head"]}
     return _json({
         "v": 1, "t": now, "rid": rid,

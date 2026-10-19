@@ -1199,6 +1199,14 @@ def main():
           [k for k in ("mapcrc", "nonce", "pmpin", "zonerule", "runid")
            if k in json.dumps(rd) + json.dumps(rp)], [])
 
+    scans = []
+    real_scan = m._scan_maps
+    m._scan_maps = lambda: scans.append(1) or real_scan()
+    m.maps_reset()
+    r = body(get(m, "/board/api/run/%d" % rows["FromDemo"]["rep"]))
+    m._scan_maps = real_scan
+    check("the run page never waits on a library scan, and names the map anyway",
+          (len(scans), r["map"], r["disp"]), (0, "bhop_eazy", "bhop_eazy"))
     check("an unknown run is 404", get(m, "/board/api/run/99999").status_code, 404)
     check("a run whose file is gone is 404",
           get(m, "/board/api/run/%d" % unplottable(m, "run")).status_code, 404)

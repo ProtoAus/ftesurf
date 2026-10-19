@@ -80,9 +80,12 @@
       </div>
     </section>
     <section id="wfiles" class="wcard wfiles">
-      <h2>Map textures</h2>
-      <p>Maps come with their own textures, but most also use some from Counter-Strike: Source and Half-Life 2, which can't be served here. Pick your Steam <code>steamapps/common</code> folder (or a game's folder) and those are read from your disk. Nothing is uploaded.</p>
-      <button id="wpick" class="wbtn" type="button">Choose a game folder…</button>
+      <h2>Textures from your games</h2>
+      <p>Maps bring most of their own textures. The rest come from Counter-Strike: Source and Half-Life 2, which only your own copy can provide. Choose your <b>Counter-Strike Source</b> folder:</p>
+      <p class="wpathrow"><code id="wsteampath">C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Source</code> <button id="wcopy" class="wbtn" type="button">Copy</button></p>
+      <p><button id="wpick" class="wbtn" type="button">Choose a game folder…</button></p>
+      <p class="dim small">Paste the path into the window's address bar. Your browser will ask to "upload" the folder: this page only reads the files the map needs, on your computer, and sends nothing. Add <code>Half-Life 2</code> or <code>Momentum Mod Playtest</code> from the same <code>common</code> folder the same way.</p>
+      <p class="dim small">Steam library on another drive? <a href="#" id="wnative">Use Chrome's or Edge's folder picker</a> (it cannot open folders under Program Files).</p>
       <input id="wdir" type="file" webkitdirectory hidden>
       <ul id="wmounts" class="wmounts"></ul>
       <p class="dim">Or watch a recording from your own disk: <input id="wrecfile" type="file" accept=".rec"></p>

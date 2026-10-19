@@ -77,7 +77,7 @@ let graph: HTMLCanvasElement | null = null;   // the speed traces, drawn once
 async function fetchJSON(url: string): Promise<any> {
     for (let tries = 0; ; tries++) {
         const r = await fetch(url, { credentials: 'omit' });
-        if ((r.status === 503 || (r.status === 504 && tries === 0)) && tries < 3) {   // each try spends one of the route's 10 a minute
+        if ((r.status === 503 || r.status === 504) && tries < 3) {   // each try spends one of the route's rate
             await new Promise((res) => setTimeout(res, 1000 * (Number(r.headers.get('Retry-After')) || 2)));
             continue;
         }
@@ -166,6 +166,18 @@ async function buildScene(view: View, bytes: ArrayBufferSlice, mine: number): Pr
 
     const loadContext = new SourceLoadContext(fs);
     const renderContext = new SourceRenderContext(view.device, loadContext);
+    // noclip asserts on a VTF it cannot read (Strata's 7.6, an unknown format) and
+    // the material is lost; the flat stand-in is drawn instead.
+    const mc = renderContext.materialCache as any;
+    const fetchVTF = mc.fetchVTFInternal.bind(mc);
+    mc.fetchVTFInternal = async (name: string, srgb: boolean, key: string) => {
+        try {
+            return await fetchVTF(name, srgb, key);
+        } catch {
+            fs.missing.add(`materials/${name}.vtf (unreadable)`);
+            return fetchVTF(`__missing/${name}`, srgb, key);
+        }
+    };
     const renderer = new SourceRenderer(view.context, renderContext);
     if (bsp.cubemaps[0] !== undefined)
         await renderContext.materialCache.bindLocalCubemap(bsp.cubemaps[0]);
@@ -196,21 +208,28 @@ function showMounts(): void {
 async function addedFiles(found: Mount[]): Promise<void> {
     showMounts();
     if (found.length === 0) return;
+    if (found.every((m) => m.vpks.length === 0) && !(await files.findMap(mapName))) {
+        status(`No game content in that folder. Choose Counter-Strike Source (or Half-Life 2, or Momentum Mod Playtest) inside steamapps\\common.`);
+        return;
+    }
     $('wfiles').classList.remove('ask');
     await loadMap();
 }
 
-async function pickFolder(): Promise<void> {
+// The folder input first: Chrome's and Edge's folder picker refuses anything
+// under Program Files ("contains system files"), which is where Steam keeps its
+// default library. The picker stays for a library on another drive.
+async function pickNative(): Promise<void> {
     const w = window as any;
-    if (typeof w.showDirectoryPicker === 'function') {
-        try {
-            const h = await w.showDirectoryPicker({ id: 'steamcommon', mode: 'read' });
-            await addedFiles(await files.addHandle(h));
-        } catch (e) {
-            if ((e as Error).name !== 'AbortError') status(String(e));
-        }
-    } else {
+    if (typeof w.showDirectoryPicker !== 'function') {
         $('wdir').click();
+        return;
+    }
+    try {
+        const h = await w.showDirectoryPicker({ id: 'steamgame', mode: 'read' });
+        await addedFiles(await files.addHandle(h));
+    } catch (e) {
+        if ((e as Error).name !== 'AbortError') status(String(e));
     }
 }
 
@@ -613,7 +632,16 @@ function wire(): void {
     $<HTMLSelectElement>('wspeed').addEventListener('change', (e) => { speed = Number((e.target as HTMLSelectElement).value); });
     for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('[data-cam]')))
         b.addEventListener('click', () => setMode(b.dataset.cam as CamMode));
-    $('wpick').addEventListener('click', () => { void pickFolder(); });
+    $('wpick').addEventListener('click', () => $('wdir').click());
+    $('wnative').addEventListener('click', (e) => { e.preventDefault(); void pickNative(); });
+    $('wcopy').addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText($('wsteampath').textContent ?? '');
+            $('wcopy').textContent = 'Copied';
+        } catch {
+            $('wcopy').textContent = 'Select and copy it';
+        }
+    });
     $('wghost').addEventListener('click', () => { void toggleGhost(); });
     const gc = $<HTMLCanvasElement>('wgraph');
     const seekGraph = (e: PointerEvent) => {
