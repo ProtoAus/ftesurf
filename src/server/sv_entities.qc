@@ -1635,13 +1635,19 @@ void(string fields) SV_LateStash =
 
 void() SV_LateSpawnAll =
 {
-	local float i, j, n, ntok, fld;
+	local float i, j, n, ntok, fld, last;
 	local entity e;
 
 	vbsp_map_team = 3;
 	if (!find(world, classname, "info_player_counterterrorist"))
 	if (find(world, classname, "info_player_terrorist"))
 		vbsp_map_team = 2;
+
+	// The numbering the physent digest of older recordings depends on: an arm compares it.
+	last = 0;
+	for (e = nextent(world); e; e = nextent(e))
+		last = num_for_edict(e);
+	dprint(sprintf("lump: last edict #%g\n", last));
 
 	if (vbsp_late_buf <= 0)
 		return;
