@@ -2064,15 +2064,17 @@ float(float ver) FS_ProfileFields =
   measurement, -1 is the absence of one.
 
   A ZERO GRANT IS A REAL DEMOTION FOR SOME INNOCENT PLAYERS, AND THAT IS THE
-  CORRECT ANSWER RATHER THAN AN OVERSIGHT.  A player on RDP, or on a machine
-  whose only pointer is a precision touchpad, or one who plugged their mouse in
-  after the engine enumerated, genuinely IS feeding the game OS-summed and
+  CORRECT ANSWER RATHER THAN AN OVERSIGHT.  A player on RDP, or one who plugged
+  their mouse in after the engine enumerated, can feed the game OS-summed and
   OS-accelerated deltas through INS_Accumulate.  The yaw identity cannot be
   checked against that, which is precisely what this bit means and precisely why
   it is a quiet demotion and not an accusation: nothing is printed at the player,
   nothing calls them a cheat, and the remedy -- in_rawinput_rdp, or replugging
   and typing in_restart -- is theirs and costs them one run.  Demoting a run we
-  cannot check is the safe direction; ranking it is not.
+  cannot check is the safe direction; ranking it is not. Touchpad use alone does
+  not imply grant0: P468's pad exposes a virtual RIM_TYPEMOUSE collection and its
+  qualified reports use the ordinary raw path. Use the measured grant, not the
+  physical pointer's label.
 
   A CVAR THE WRITER DOES NOT HAVE IS NEVER A FAULT.  See TF_NOPROFILE.
 */

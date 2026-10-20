@@ -57,6 +57,34 @@ def case_full_and_no_backfill():
             restore_game(rc)
 
 
+def case_touchpad_count():
+    from test_journal_snapshots import touchpad_journal
+    for count in (0, 6, -1):
+        s, sw, c, now, rc, rp = setup()
+        try:
+            hid = touchpad_journal(count).encode()
+            with open(rp[:-5] + '.view', 'rb') as f:
+                view = f.read()
+            suite.make_receipt(s.EVIDENCE_DIR, os.path.basename(rp)[:-5], hid=hid,
+                               view=view, age=now - 2*s.EVIDENCE_SETTLE)
+            ctl = observation(rc, rp)
+            expected = {'touchpad': count} if count >= 0 else {}
+            check('pad: existing reader CONTROL ACTS',
+                  {k: v for k, v in ctl.journal_metrics['metrics'].items() if k == 'touchpad'}, expected)
+            check('pad: full receipt step ACTS', sw.receipt_step(c, now=now), (1, 0))
+            check('pad: declared count stored exactly or unavailable',
+                  {k: v for k, v in snapshot(c)['metrics'].items() if k == 'touchpad'}, expected)
+            check('pad: no verdict change',
+                  (row(c)['journal'], row(c)['verdict']), ('OK' if count > 0 else 'BLIND', 'VALID'))
+            saved, sightings = row(c), keys(c)
+            with mock.patch.object(rc, 'join_journal', wraps=rc.join_journal) as acted:
+                got = sw.receipt_step(c, now=now + 60)
+            check('pad: no historical reread/backfill',
+                  (got, acted.call_count, row(c), keys(c)), ((0, 0), 0, saved, sightings))
+        finally:
+            restore_game(rc)
+
+
 def case_migration():
     s, sw, c, now, rc, rp = setup()
     try:
@@ -181,8 +209,8 @@ def main():
 
     try:
         with mock.patch.object(suite, 'fresh', side_effect=tracked_fresh):
-            for case in (case_full_and_no_backfill, case_migration, case_late_journal_and_io,
-                         case_partial_history, case_late_view_and_identity):
+            for case in (case_full_and_no_backfill, case_touchpad_count, case_migration,
+                         case_late_journal_and_io, case_partial_history, case_late_view_and_identity):
                 try:
                     case()
                 except Exception as e:

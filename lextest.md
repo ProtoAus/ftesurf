@@ -4366,13 +4366,14 @@ Everything below is live and was read back, not assumed.
    7000 --delay 1.0 --go` -- whenever you choose to run it. Never automatic.
 ### Decisions only you can make
 
-- **The touchpad fix (468) and ranked runs** (3 Oct: held out of 0.1.20 -- still
-  open for a later release). It lets a laptop touchpad turn the
-  view, which it could not before. The catch, from Fable's own notes: the
-  server cannot tell touchpad movement from mouse movement in a run's
-  recording, and that weakens the injection check for anyone with a precision
-  touchpad. It is in no release yet. My suggestion: keep it out of ranked runs
-  until the run records the touchpad count. Your call.
+- **Precision touchpads: policy decided20Oct; feel check still PENDING.** Owner
+  approved precision pads for ranked runs under the same human-input rule and
+  recording accepted-report counts. The existing consented HID journal records
+  that count; this is not a universal ordinary-REC count or hardware-attestation
+  claim. The old3Oct eligibility question is answered, not waiting for a new call.
+  Small manual check on the current build: use only the pad to look around and
+  tap one menu item; confirm looking works and the tap acts once without sticking.
+  No actual device/gesture confirmation or new public release decision is recorded.
 - **A message of the day for the restart rule** (above).
 - **The menu music doesn't ship** in releases yet -- ~100 MB of WAV needs
   converting to OGG (section 8). 3 Oct: not in 0.1.20; listen to the generated

@@ -5,6 +5,16 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Receipt angle-reason test: stale resume prose (found while checking P861)
+
+- **`surfd/test_receipt_angle_reasons.py:case_real_observations` expects `joined
+  across a resume`**, while the reader now reports `UNAVAILABLE -- clock epoch:
+  resume`. Clean published92dc1af2 and P861 reproduce the same lone wording failure;
+  both still pass the independent BLIND verdict, stored reason and signature/history
+  controls. Falsifier: `python surfd/test_receipt_angle_reasons.py`; update the
+  assertion to the current contract without relaxing the acting verdict/storage
+  checks. No reader/verdict repair belongs to P861's new journal metric.
+
 ## Story mode phase 2 (P856): what review left open
 
 - **A medal can go untold**: a finish's answer is matched to the player's newest post only

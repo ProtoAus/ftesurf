@@ -371,7 +371,8 @@ function renderRun(j) {
       const labels = {view_records: "view records (frame opportunities)",
         identity_judged: "union judged frames", identity_yaw_judged: "yaw judged frames",
         identity_pitch_judged: "pitch judged frames", join_windows: "counts-join windows",
-        join_checked: "counts-join checked windows"};
+        join_checked: "counts-join checked windows",
+        touchpad: "accepted touchpad reports (journal span)"};
       for (const [name, value] of Object.entries(c.journal_metrics.metrics).sort()) {
         const text = typeof value === "object"
           ? Object.entries(value).sort().map(([k, v]) => k + ": " + v).join(", ") || "none"
@@ -379,6 +380,9 @@ function renderRun(j) {
         metrics.append(el("dt", "", labels[name] || name.replaceAll("_", " ")),
                        el("dd", "mono", text));
       }
+      if (!Object.prototype.hasOwnProperty.call(c.journal_metrics.metrics, "touchpad"))
+        metrics.append(el("dt", "", labels.touchpad),
+                       el("dd", "muted", "unavailable (not in stored snapshot)"));
       if (!Object.keys(c.journal_metrics.metrics).length)
         panel.append(el("span", "muted", "reader ran; no numeric measurements available"));
       panel.append(metrics);

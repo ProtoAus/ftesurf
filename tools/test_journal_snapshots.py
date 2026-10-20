@@ -9,9 +9,24 @@ from unittest import mock
 
 import hidcheck
 import rcptcheck
-from test_hidcheck import Journal, run
+from test_hidcheck import Journal, MOUSE0, PAD, run
 from test_journal_diagnostics import (mouse_journal, fault_journal, unresolved_journal,
                                       receipt_for, join_journal)
+
+
+def touchpad_journal(count=6):
+    """Existing HID accepted-report source, not a new input/count channel."""
+    j = Journal(devices=[MOUSE0, PAD])
+    if count > 0:
+        j.devices = [MOUSE0, ('touchpad', '1', PAD[2])]
+    yaw = 0.0
+    for i in range(max(0, count)):
+        j.frame(3000 + i)
+        j.mouse(4, 0, dev=1)
+        yaw += j.k * 4
+        j.view(4, 0, 10.0, yaw)
+        j.pad(1, 7)
+    return j.end(touchpad=count, padreports=count * 7 if count >= 0 else -1)
 
 
 class JournalSnapshots(unittest.TestCase):
@@ -48,6 +63,36 @@ class JournalSnapshots(unittest.TestCase):
         self.assertGreater(h.info['join_checked'], 0)
         self.assertEqual(r.journal_metrics['metrics']['join_checked'], h.info['join_checked'])
         self.assertIs(r.journal_metrics['metrics']['join_declared_transform_profile'], True)
+
+    def test_accepted_touchpad_count_uses_existing_hid_recording(self):
+        for count in (0, 6):
+            with self.subTest(count=count):
+                text = touchpad_journal(count)
+                h, r = run(text), receipt_for(text)
+                self.assertTrue(h.ok, h.faults)
+                self.assertEqual(h.info['touchpad'], count)  # reader ACTED
+                self.assertEqual(r.journal, 'OK' if count else 'BLIND')
+                self.assertEqual(r.journal_metrics['metrics']['touchpad'], count)
+                self.assertEqual(r.journal_metrics, rcptcheck.journal_snapshot(h.info))
+                self.assertNotIn('touchpad_digitizer_reports', r.journal_metrics['metrics'])
+                self.assertNotIn(PAD[2], json.dumps(r.journal_metrics))
+                if count:
+                    self.assertEqual(h.info['identity_judged'], count - 1)
+
+    def test_touchpad_unavailable_is_not_zero(self):
+        for text in (mouse_journal([(2, 0)] * 6), touchpad_journal(-1)):
+            h, r = run(text), receipt_for(text)
+            self.assertTrue(h.ok, h.faults)
+            self.assertNotIn('touchpad', h.info)
+            self.assertNotIn('touchpad', r.journal_metrics['metrics'])
+
+    def test_touchpad_snapshot_is_a_bounded_integer_count(self):
+        for value in (-1, True, 1.0, '1', float('nan'), float('inf'), 10**12 + 1, 10**1000):
+            snap = rcptcheck.journal_snapshot({'touchpad': value, 'identity_judged': 2})
+            self.assertEqual(snap['metrics'], {'identity_judged': 2}, repr(value))
+        for value in (0, 6, 10**12):
+            snap = rcptcheck.journal_snapshot({'touchpad': value})
+            self.assertEqual(snap['metrics'], {'touchpad': value})
 
     def test_allowlist_and_finite_values(self):
         info = dict(identity_mouse_frames=0, identity_mouse_pct=float('nan'),

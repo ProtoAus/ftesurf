@@ -64,7 +64,7 @@ JOURNAL_METRICS = frozenset((
     "identity_mouse_frames", "identity_no_mouse_frames", "identity_mouse_pct",
     "identity_no_mouse_longest", "join_checked", "join_broke", "join_transforms",
     "join_windows", "join_first_exempt", "join_unjoinable", "join_transforms_checked",
-    "join_transforms_unjoinable",
+    "join_transforms_unjoinable", "touchpad",
 )) | frozenset("identity_%s_%s" % (axis, field)
               for axis in ("yaw", "pitch") for field in
               ("judged", "mouse_frames", "no_mouse_frames", "mouse_pct", "no_mouse_longest"))
@@ -80,8 +80,12 @@ def journal_snapshot(info):
     def number(v):
         return type(v) in (int, float) and v >= 0 and math.isfinite(v)
 
+    # Existing HID journal-span accepted reports, not gestures/rejections or a
+    # human-input verdict. Missing/unsupported stays absent, measured zero stays0.
     metrics = {k: info[k] for k in sorted(JOURNAL_METRICS)
-               if k in info and number(info[k])}
+               if k in info
+               and (k != "touchpad" or type(info[k]) is int and 0 <= info[k] <= 10**12)
+               and number(info[k])}
     for axis in ("yaw", "pitch"):
         key = "identity_%s_exclusions" % axis
         if isinstance(info.get(key), dict):

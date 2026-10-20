@@ -39,7 +39,7 @@ def case_api():
     client = m.app.test_client()
     check('API: login CONTROL ACTS', at.login(client, 'test password only').status_code, 302)
     snap = {'version': 1, 'metrics': {'identity_judged': 5, 'identity_mouse_frames': 0,
-                                    'identity_yaw_exclusions': {'seed': 1},
+                                    'touchpad': 0, 'identity_yaw_exclusions': {'seed': 1},
                                     'join_declared_transform_profile': False}}
     for raw, expected in (
             ('', None), (json.dumps(snap), snap), ('{broken', None),
@@ -51,6 +51,14 @@ def case_api():
             ('{"version":1,"metrics":{"identity_judged":-1}}', None),
             ('{"version":1,"metrics":{"identity_mouse_frames":"<script>bad</script>"}}', None),
             ('{"version":1,"metrics":{"identity_yaw_exclusions":{"<img>":1}}}', None),
+            ('{"version":1,"metrics":{"touchpad":6}}', {'version': 1, 'metrics': {'touchpad': 6}}),
+            ('{"version":1,"metrics":{"touchpad":1000000000000}}',
+             {'version': 1, 'metrics': {'touchpad': 10**12}}),
+            ('{"version":1,"metrics":{"touchpad":true}}', None),
+            ('{"version":1,"metrics":{"touchpad":1.0}}', None),
+            ('{"version":1,"metrics":{"touchpad":-1}}', None),
+            ('{"version":1,"metrics":{"touchpad":1000000000001}}', None),
+            ('{"version":1,"metrics":{"touchpad_digitizer_reports":1}}', None),
             ('{"version":1,"metrics":{"nonce":1}}', None), (' '*8193, None),
             ('{"version":1,"metrics":{}}', {'version': 1, 'metrics': {}})):
         c.execute('UPDATE receipts SET journal_metrics=?', (raw,));c.commit()
@@ -101,7 +109,9 @@ console.log(JSON.stringify({text:flat(nodes.rcpt),summary}));
                 ({'version':1,'metrics':{}}, 'reader ran; no numeric measurements available'),
                 ({'version':1,'metrics':{'identity_yaw_judged':5,'identity_yaw_mouse_frames':0,
                                        'identity_yaw_exclusions':{'seed':1},'join_checked':4}},
-                 'yaw judged frames5')):
+                 'yaw judged frames5'),
+                ({'version':1,'metrics':{'touchpad':0}}, 'accepted touchpad reports (journal span)0'),
+                ({'version':1,'metrics':{'touchpad':6}}, 'accepted touchpad reports (journal span)6')):
             receipt = dict(journal_metrics=snap, journal='FAULT', journal_reason='<img> & <script>bad</script>',
                            verdict='VALID', angles='OK', pub='key', at=1, identity_bound=True)
             p = subprocess.run(['node',path,json.dumps(receipt)],capture_output=True,text=True)
@@ -111,10 +121,13 @@ console.log(JSON.stringify({text:flat(nodes.rcpt),summary}));
             check('DOM: snapshot/unknown displayed',phrase in result['text'],True)
             check('DOM: content FAULT never changes signature summary',result['summary'],False)
             check('DOM: diagnostic prose stays literal','<img> & <script>bad</script>' in result['text'],True)
-            if snap and snap['metrics']:
+            if snap and 'identity_yaw_judged' in snap['metrics']:
                 check('DOM: measured zero remains zero','identity yaw mouse frames0' in result['text'],True)
                 check('DOM: exclusion ledger/denominator visible',
                       ('seed: 1' in result['text'], 'counts-join checked windows4' in result['text']), (True,True))
+            if snap and 'touchpad' not in snap['metrics']:
+                check('DOM: absent pad count is explicit unknown',
+                      'unavailable (not in stored snapshot)' in result['text'], True)
 
 
 def main():

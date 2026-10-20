@@ -25,7 +25,11 @@ commit   dc93205067ca0889c6d0441b51483f16d8ffcc29
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-842
-patch    858
+patch    861
+# Patch 861 (receipt reader + private admin): retain the existing consented HID
+# accepted-touchpad report count in bounded stored metrics; missing stays unknown,
+# measured zero stays zero. No new collection, grant, verdict, rank or public data.
+# Native commit/tag unchanged; ordinary REC counters do not gain a new wire.
 # Patch 858 (qwprogs): kill, respawn and restart share goto_spawn's safe lifecycle;
 # pending finish fields survive and live recordings close before their handle is reset.
 # Fresh-connection spawns still clear terminal state. Native commit/tag unchanged.
