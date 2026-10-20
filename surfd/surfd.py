@@ -4788,7 +4788,15 @@ STORY_RUNS_DDL = (
     " top INTEGER NOT NULL DEFAULT -1, spots TEXT NOT NULL DEFAULT '');"
     "CREATE INDEX IF NOT EXISTS story_runs_map ON story_runs (map, track, leg, at);"
     "CREATE UNIQUE INDEX IF NOT EXISTS story_runs_run ON story_runs (runid, map, track, leg)"
-    " WHERE runid <> '';")
+    " WHERE runid <> '';"
+    # When a track's finishes began to be logged, and whether a WOS finish was on
+    # the board then (`first` cannot be known past one).  Written once, never moved.
+    "CREATE TABLE IF NOT EXISTS story_tracks (map TEXT NOT NULL, track INTEGER NOT NULL,"
+    " began INTEGER NOT NULL, prior INTEGER NOT NULL, PRIMARY KEY (map, track));")
+# A WOS full-run board row on a track, the `prior` of story_tracks.
+_STORY_PRIOR_SQL = ("EXISTS (SELECT 1 FROM runs WHERE map = ? AND track = ? AND leg = 0"
+                    " AND tier IN ('%s', '%s') AND style = '%s'%%s)"
+                    % (TIER_RANKED, TIER_COMMUNITY, STYLE_CLEAN))
 
 _story_lock = threading.Lock()
 _story_cold = threading.Lock()
@@ -5058,10 +5066,11 @@ def _story_conf():
         return _story["conf"], _story["rev"]
     for p in problems[:20]:
         log.warning("story: %s", p)
-    _story["stat"], _story["conf"] = key, lists
-    _story["rev"] = hashlib.sha256(data).hexdigest()[:12]
+    rev = hashlib.sha256(data).hexdigest()[:12]
+    if rev != _story["rev"]:
+        _story["recent"] = {}       # keyed by level index, which an edit moves
+    _story["stat"], _story["conf"], _story["rev"] = key, lists, rev
     _story["at"] = None
-    _story["recent"] = {}           # keyed by level index, which an edit moves
     log.info("story: %s read, %d list(s), %d problem(s)", STORY_FILE, len(lists), len(problems))
     return lists, _story["rev"]
 
@@ -5159,25 +5168,39 @@ _STORY_SUM_SQL = (
 
 
 def _story_first_row(db, mapname, track, win, owner):
-    """(owner, at, id) of the first logged finish of this track inside `win`
-    whose owner can hold a medal, or None -- also when a board row shows
-    somebody finished before it (a time from before the log began: who was
-    first then is not known, so nobody is)."""
+    """(owner, id) of the first logged finish of this track inside `win`, in
+    the order rows were logged, whose owner can hold a medal; or None.  None
+    too when the log may have missed the first: the track was logged from
+    `began` with a WOS finish already on the board, and `win` (all time when
+    undated) starts before that.  A board row's own time moves on every
+    improvement, so it is never what orders finishers."""
+    got = db.execute("SELECT began, prior FROM story_tracks WHERE map = ? AND track = ?",
+                     (mapname, track)).fetchone()
     lo, hi = win if win is not None else (0, 1 << 62)
-    for player, pub, at, rowid in db.execute(
-            "SELECT s.player, s.pub, s.at, s.id FROM story_runs s WHERE s.map = ? AND s.track = ?"
-            " AND s.leg = 0 AND s.at >= ? AND s.at < ? AND %s ORDER BY s.at, s.id LIMIT 20"
+    if got is None or (got[1] and got[0] > lo):
+        return None
+    for player, pub, rowid in db.execute(
+            "SELECT s.player, s.pub, s.id FROM story_runs s WHERE s.map = ? AND s.track = ?"
+            " AND s.leg = 0 AND s.at >= ? AND s.at < ? AND %s ORDER BY s.id LIMIT 20"
             % _STORY_LIVE_SQL, (mapname, track, lo, hi)):
         who = owner(player, pub)
-        if who is None:
-            continue
-        if db.execute(
-                "SELECT 1 FROM runs WHERE map = ? AND track = ? AND leg = 0 AND tier IN (?, ?)"
-                " AND style = ? AND submitted >= ? AND submitted < ? LIMIT 1",
-                (mapname, track, TIER_RANKED, TIER_COMMUNITY, STYLE_CLEAN, lo, at)).fetchone():
-            return None
-        return who, at, rowid
+        if who is not None:
+            return who, rowid
     return None
+
+
+def _story_owner_db(db):
+    """submit_run's side of _story_calc's owner(): a player's account, or the
+    account its key is linked to; None for a banned one."""
+    def owner(player, pub):
+        row = db.execute("SELECT banned_at FROM accounts WHERE steamid = ?", (player,)).fetchone()
+        if row is None and pub:
+            got = db.execute("SELECT a.steamid, a.banned_at FROM keylinks k JOIN accounts a"
+                             " USING(steamid) WHERE k.pub = ?", (pub,)).fetchone()
+            if got is not None:
+                player, row = got[0], (got[1],)
+        return None if row is not None and row[0] else player
+    return owner
 
 
 def _story_calc(db, lists, now):
@@ -5185,9 +5208,18 @@ def _story_calc(db, lists, now):
     want = {(lv["map"], lv["track"]) for L in lists for c in L["chapters"]
             for lv in c["levels"] if lv["map"]}
     maps = sorted({m for m, _ in want})
-    wins = [lv["win"] for L in lists for c in L["chapters"] for lv in c["levels"]
-            if lv["map"] and lv["win"]]
     best, legs, sums, rows, latest = {}, {}, {}, {}, {}
+    with db:                        # a track listed from now on is logged from now on
+        for mapname, track in sorted(want):
+            db.execute("INSERT OR IGNORE INTO story_tracks (map, track, began, prior)"
+                       " VALUES (?, ?, ?, %s)" % (_STORY_PRIOR_SQL % ""),
+                       (mapname, track, now, mapname, track))
+    dated = {}                      # a level's dates -> its tracks
+    for L in lists:
+        for c in L["chapters"]:
+            for lv in c["levels"]:
+                if lv["map"] and lv["win"]:
+                    dated.setdefault(lv["win"], set()).add((lv["map"], lv["track"]))
 
     def owner(player, pub, name="", at=0):
         who = player if player in names else linked.get(pub, player)
@@ -5235,24 +5267,29 @@ def _story_calc(db, lists, now):
              ratio, spots) in db.execute(_STORY_SUM_SQL % marks, part):
             if (mapname, track) not in want:
                 continue
-            who = owner(player, pub, name, at)
+            who = owner(player, pub)        # MAX(name) is not the newest name
             if who is not None:
                 sums.setdefault((who, mapname, track), []).append(StorySum(
                     ms, bool(nofail), bool(wonly), bool(nojump), bool(sw), bool(hsw), top, ratio,
                     spots or ""))
-        # A dated level reads its own days' finishes one by one, stage times too.
-        if wins:
-            for mapname, track, leg, player, pub, name, ms, prevms, at, fails, inmask, top, spots \
-                    in db.execute(
-                        "SELECT s.map, s.track, s.leg, s.player, s.pub, s.name, s.millis, s.prevms,"
-                        " s.at, s.fails, s.inmask, s.top, s.spots FROM story_runs s"
-                        " WHERE s.map IN (%s) AND s.at >= ? AND s.at < ? AND %s"
-                        % (marks, _STORY_LIVE_SQL),
-                        part + [min(w[0] for w in wins), max(w[1] for w in wins)]):
-                who = owner(player, pub, name, at) if (mapname, track) in want else None
-                if who is not None:
-                    rows.setdefault((who, mapname, track), []).append(
-                        (leg, at, _story_sum(ms, prevms, fails, inmask, top, spots)))
+    # A dated level reads its own days' finishes one by one, stage times too:
+    # each set of dates on its own tracks, a row once however many cover it.
+    seen = set()
+    for (lo, hi), tracks in dated.items():
+        dmaps = sorted({m for m, _ in tracks})
+        for rid, mapname, track, leg, player, pub, name, ms, prevms, at, fails, inmask, top, \
+                spots in db.execute(
+                    "SELECT s.id, s.map, s.track, s.leg, s.player, s.pub, s.name, s.millis,"
+                    " s.prevms, s.at, s.fails, s.inmask, s.top, s.spots FROM story_runs s"
+                    " WHERE s.map IN (%s) AND s.at >= ? AND s.at < ? AND %s"
+                    % (",".join("?" * len(dmaps)), _STORY_LIVE_SQL), dmaps + [lo, hi]):
+            if rid in seen or (mapname, track) not in tracks:
+                continue
+            seen.add(rid)
+            who = owner(player, pub, name, at)
+            if who is not None:
+                rows.setdefault((who, mapname, track), []).append(
+                    (leg, at, _story_sum(ms, prevms, fails, inmask, top, spots)))
     bsp, zoned = map_index()
     people = {k[0] for k in best} | {k[0] for k in legs} | {k[0] for k in sums} | \
         {k[0] for k in rows}
@@ -5569,6 +5606,13 @@ def story_finish(db, before, mapname, track, leg, who, pub, name, ms, prevms, no
         return []
     fails, inmask, topspeed = facts if leg == 0 else (-1, -1, -1)
     with db:
+        # The track's ledger row, if this is its first logged finish: was another
+        # finish on the board before this one (this run's own row is written)?
+        if leg == 0:
+            db.execute("INSERT OR IGNORE INTO story_tracks (map, track, began, prior)"
+                       " VALUES (?, ?, ?, %s)"
+                       % (_STORY_PRIOR_SQL % " AND (player <> ? OR submitted < ?)"),
+                       (mapname, track, now, mapname, track, who, now))
         cur = db.execute(
             "INSERT OR IGNORE INTO story_runs (map, track, leg, player, pub, name, millis, prevms,"
             " at, runid, replay_id, fails, inmask, top) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -5594,8 +5638,8 @@ def story_finish(db, before, mapname, track, leg, who, pub, name, ms, prevms, no
         for lv in L["levels"]:
             if lv["map"] == mapname and lv["track"] == track and lv["win"] not in firsts \
                     and any(ch["k"] == "first" for ch in lv["ch"]):
-                got = _story_first_row(db, mapname, track, lv["win"], lambda p, k: p)
-                firsts[lv["win"]] = got is not None and got[2] == rowid
+                got = _story_first_row(db, mapname, track, lv["win"], _story_owner_db(db))
+                firsts[lv["win"]] = got is not None and got[1] == rowid
     events = []
     with _story_lock:
         _story["seq"] += 1

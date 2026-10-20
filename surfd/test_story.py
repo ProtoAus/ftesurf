@@ -78,7 +78,7 @@ class Story(unittest.TestCase):
         self.db = S.connect()
         self.addCleanup(self.db.close)
         for t in ("runs", "replays", "reviews", "accounts", "keylinks", "pubkeys", "receipts",
-                  "story_runs", "runpins"):
+                  "story_runs", "story_tracks", "runpins"):
             self.db.execute("DELETE FROM " + t)
         for sid, name, ban in ((A, "Alice", 0), (B, "Bob", 0), (C, "Carl", 1)):
             self.db.execute("INSERT INTO accounts(steamid,name,created_at,banned_at) VALUES(?,?,?,?)",
@@ -498,6 +498,47 @@ class Story2(Story):
         # The finish's answer agrees: a later finisher is not told first.
         self.settle()
         self.assertEqual(self.post("surf_one", G3, 40000), [])
+
+    def test_first_stays_unknown_when_an_older_time_moves(self):
+        (HOME / "story.txt").write_text('list story "S"\nchapter\nlevel surf_two\n  gold first\n')
+        self.run_row("surf_two", A, 70000)                      # on the board before the log
+        self.settle()                                           # the ledger: logged from now, prior
+        self.srun("surf_two", B, 80000, at=self.now + 100)
+        self.db.execute("UPDATE runs SET submitted = ? WHERE player = ?", (self.now + 500, A))
+        self.db.commit()                                        # A improved since
+        self.settle()
+        self.assertEqual((self.mine(A)[2], self.mine(B)[2]), ({0: (0, 70000)}, {0: (0, 80000)}))
+
+    def test_first_is_in_logged_order_in_the_answer_and_the_ladder(self):
+        (HOME / "story.txt").write_text('list story "S"\nchapter\nlevel surf_three\n  gold first\n'
+                                        '  bronze finish\n')
+        self.settle()                                           # empty board: prior 0
+        self.srun("surf_three", C, 30000, at=self.now - 9)      # banned: holds nothing
+        self.srun("surf_three", G2, 31000, at=self.now + 5)     # logged first, later clock
+        self.srun("surf_three", G3, 32000, at=self.now)
+        self.settle()
+        self.assertEqual((self.mine(G2)[2][0][0], self.mine(G3)[2][0][0]), (3, 1))
+        # A banned account's earlier row does not stop the answer telling the first.
+        (HOME / "story.txt").write_text('list story "S"\nchapter\nlevel surf_one\n  gold first\n'
+                                        '  bronze finish\n')
+        self.settle()
+        self.srun("surf_one", C, 30000)
+        self.assertEqual(self.post("surf_one", G1, 40000, pub=PUB[1]),
+                         [("g", 1, "Be the first to finish", 3, "")])
+        self.settle()
+        self.assertEqual(self.mine(B)[2][0][0], 3)
+
+    def test_dated_first_needs_the_log_to_cover_the_dates(self):
+        (HOME / "story.txt").write_text('list ev "E"\ndates 2027-01-10 2027-01-20\nchapter\n'
+                                        'level surf_two\n  gold first\n  bronze finish\n')
+        self.srun("surf_two", G2, 50000)
+        for prior, want in ((1, 1), (0, 3)):
+            self.db.execute("DELETE FROM story_tracks")
+            self.db.execute("INSERT INTO story_tracks VALUES ('surf_two', 0, ?, ?)",
+                            (self.now - 10, prior))             # began after the dates opened
+            self.db.commit()
+            self.settle()
+            self.assertEqual(self.mine(G2, "ev")[2][0][0], want)
 
     def test_a_dated_stage_keeps_its_medal_when_bettered_later(self):
         (HOME / "story.txt").write_text('list ev "E"\ndates 2027-01-10 2027-01-20\nchapter\n'

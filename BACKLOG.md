@@ -23,6 +23,10 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   restart loses unread runs, and a recording past STORY_SPOT_LINES is read that far.
 - **Two finishes of one player in the same moment** could both be told one medal (the told list
   is read with the standing before either is logged). Lobbies post once per finish.
+- **`first` assumes a listed track stays listed**: story_tracks.began is written once, so a track
+  taken off the lists (finishes not logged) and put back later can award `first` to a later
+  finisher. A respawn in the same server frame as the answer can also merge `*story` with its
+  clearing and lose the toast (the chat line still prints).
 
 ## Story mode (P854): what review left open
 
