@@ -9893,12 +9893,15 @@ void(entity t, entity att, float dmg) SV_EntityDamage =
 	}
 	if (t.vbsp_brk == 2)
 	{
-		SV_FireOutput(t, "OnDamaged", att);		// CPhysBox's, even when refused (physobj.cpp:806)
-		if (dmg < t.minhealthdmg)
-			return;
-		t.health = t.health - dmg;
-		dprint(sprintf("damage: %s %s health %g\n", t.classname, t.model, t.health));
-		SV_FireOutput(t, "OnHealthChanged", att);
+		// CPhysBox::OnTakeDamage (physobj.cpp:806-811): the damage first (refused under
+		// minhealthdmg), then OnDamaged either way; the break last, as remove() is at once.
+		if (dmg >= t.minhealthdmg)
+		{
+			t.health = t.health - dmg;
+			dprint(sprintf("damage: %s %s health %g\n", t.classname, t.model, t.health));
+			SV_FireOutput(t, "OnHealthChanged", att);
+		}
+		SV_FireOutput(t, "OnDamaged", att);
 		if (t.health <= 0)
 			SV_BreakableBreak(t, att);
 	}
