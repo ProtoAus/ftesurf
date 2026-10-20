@@ -374,7 +374,12 @@ function ConvertFrom-PatchNotes ([string]$Text, [string]$Version, [string]$Date,
     [ordered]@{ format = 1; releases = @($rels | Select-Object -First $Keep) }
 }
 
-function ConvertTo-PatchNotesJson ($Notes) { ($Notes | ConvertTo-Json -Depth 6 -Compress) + "`n" }
+# 200 KB, under the menu's 256 KiB MPN_MAXLEN: past it every client would drop the file.
+function ConvertTo-PatchNotesJson ($Notes) {
+    $j = ($Notes | ConvertTo-Json -Depth 6 -Compress) + "`n"
+    if ($j.Length -gt 200000) { throw "patch notes: patchnotes.json is $($j.Length) bytes; the menu reads at most 262144 -- lower -Keep" }
+    return $j
+}
 
 # Exercise the actual receipt renderer before any compiler/packer runs. There is
 # no second hard-coded token list for the publisher to drift away from.

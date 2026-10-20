@@ -77,7 +77,7 @@ float(string st) MU_Pending =
 };
 
 // Digits and two dots, as release.ps1 stamps ui_release_version. A server can set that
-// cvar, so nothing else is shown as a version or written into a command line.
+// cvar, so nothing else becomes the notes' title or reaches a command line.
 float(string v) MU_IsVer =
 {
 	local float i, n, c, dots;
@@ -563,6 +563,7 @@ void(vector screensize) MU_Status =
 			mpn_open = TRUE;
 			mpn_closed = FALSE;
 			mpn_scroll = '0 0 0';
+			if (mpn_state == MPNS_FAIL) mpn_next = 0;      // a click asks again now
 		}
 	}
 };
@@ -574,6 +575,7 @@ void(string what) MU_NotesCommand =
 	{
 		mpn_open = TRUE;
 		mpn_closed = FALSE;
+		if (mpn_state == MPNS_FAIL) mpn_next = 0;
 	}
 	else if (!strcmp(what, "close"))
 		MU_NotesClose();

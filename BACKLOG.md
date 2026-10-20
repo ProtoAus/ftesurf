@@ -19,6 +19,11 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   needed. Check at the next release: a 0.1.29 install at the title shows "Update 0.1.30" with
   0.1.30 tagged NEW.
 - PATCHNOTES.md's "highest patch first" is advice; nothing checks it.
+- From the fix review (nits): an empty update_version reads as "never closed" (mpn_closedupd), so a
+  pending "launcher" state on a platform the feed does not cover never shows the panel by itself;
+  update_autocheck 0 gates the asks, not the showing of notes already held; at 640 px the panel
+  starts at x=304, near the main menu's item hit areas (not checked against clicks). Outside P876:
+  MU_Poll's 600 s title-menu recheck (MU_Action(1)) runs even with update_autocheck 0.
 
 ## Map entities after P869-P874: what is left
 
