@@ -41,10 +41,22 @@ BINDING = ('map', 'track', 'leg', 'style', 'player', 'runid', 'millis', 'when', 
 STYLES = {0: 'FW', 1: 'SW', 2: 'HSW', 3: 'BW'}
 
 
-def candidate(mp, zone, mode, raw):
+def stages_of(cache, mp):
+    """A staged map's stage count from the crawler's cached map row, else 0. Never asks."""
+    try:
+        info = K.map_info(mp, cache, K.Pacer(0, 0))
+    except K.OverBudget:
+        return 0
+    n = info.get('cp_count') if info and info.get('isLinear') is False else 0
+    return n if type(n) is int and 0 < n <= K.KSF_STAGES else 0
+
+
+def candidate(mp, zone, mode, raw, stages=0):
+    """Patch 891: a stage zone is a candidate on a map of `stages` stages. KSF records
+    each stage in its own file, so nothing is cut from a longer run."""
     if not isinstance(raw, dict) or S.clean_map(mp) != mp or mode not in STYLES:
         return None
-    if zone != 0 and not 31 <= zone <= 99:  # no fabricated stage cut
+    if zone != 0 and not 31 <= zone <= 99 and not 1 <= zone <= stages:
         return None
     file = raw.get('file')
     m = FILE.fullmatch(file) if isinstance(file, str) else None
@@ -54,15 +66,21 @@ def candidate(mp, zone, mode, raw):
     if (int(m[1]) != mode or int(m[2]) != raw.get('playerID')
             or int(m[3]) != r['when']):
         return None
-    return dict(r, file=file, seconds=raw['time'], bonus=r['track'],
-                mode=mode, record_id=raw['record_id'])
+    j = dict(r, file=file, seconds=raw['time'], bonus=r['track'],
+             mode=mode, record_id=raw['record_id'])
+    if r['leg']:
+        j['last'] = zone == stages
+    return j
 
 
 def valid_job(job):
     try:
         return (isinstance(job, dict) and re.fullmatch(r'[a-z0-9_]{1,64}', job['map'])
                 and type(job['track']) is int and 0 <= job['track'] <= 69
-                and job['bonus'] == job['track'] and job['leg'] == 0
+                and type(job['leg']) is int
+                and ((job['leg'] == 0 and job['bonus'] == job['track'] and 'last' not in job)
+                     or (job['track'] == 0 and job['bonus'] == 0 and 1 <= job['leg'] <= K.KSF_STAGES
+                         and type(job.get('last')) is bool))
                 and job['mode'] in STYLES and job['style'] == K.KSF_MODES[job['mode']]
                 and isinstance(job['file'], str) and FILE.fullmatch(job['file'])
                 and re.fullmatch(r'[0-9]{17}', job['player'])
@@ -77,12 +95,13 @@ def current(conn, job):
     if not valid_job(job):
         return False
     row = conn.execute(
-        'SELECT runid, millis, submitted FROM runs WHERE map=? AND track=? AND leg=0'
+        'SELECT runid, millis, submitted FROM runs WHERE map=? AND track=? AND leg=?'
         ' AND style=? AND player=? AND tier=?'
         ' AND NOT EXISTS (SELECT 1 FROM ksf_unbound u WHERE u.map=runs.map'
         ' AND u.track=runs.track AND u.leg=runs.leg AND u.style=runs.style'
         ' AND u.player=runs.player)',
-        (job['map'], job['track'], job['style'], job['player'], S.TIER_KSF)).fetchone()
+        (job['map'], job['track'], job['leg'], job['style'], job['player'],
+         S.TIER_KSF)).fetchone()
     return bool(row and row['runid'] == job['runid'] and row['millis'] == job['millis']
                 and row['submitted'] == job['when'])
 
@@ -93,9 +112,9 @@ def ready(conn, job):
         return False
     row = conn.execute(
         'SELECT p.* FROM runs r JOIN replays p ON p.id=r.replay_id'
-        ' WHERE r.tier=? AND r.map=? AND r.track=? AND r.leg=0 AND r.style=?'
+        ' WHERE r.tier=? AND r.map=? AND r.track=? AND r.leg=? AND r.style=?'
         ' AND r.player=? AND r.runid=? AND r.millis=? AND r.submitted=?',
-        (S.TIER_KSF, job['map'], job['track'], job['style'], job['player'],
+        (S.TIER_KSF, job['map'], job['track'], job['leg'], job['style'], job['player'],
          job['runid'], job['millis'], job['when'])).fetchone()
     return readable_replay(row)
 
@@ -123,8 +142,6 @@ def pending_deferral(conn, key):
                 or mode not in ('0', '1', '2', '3') or not runid):
             return False
         zone = int(zone)
-        if zone != 0 and not 31 <= zone <= 99:
-            return False
         track, leg = K.zone_track_leg(zone)
         row = conn.execute(
             'SELECT p.* FROM runs r LEFT JOIN replays p ON p.id=r.replay_id'
@@ -135,20 +152,20 @@ def pending_deferral(conn, key):
         return False
 
 
-def fresh(conn, state, jobs, mp, zone, mode, raw, now):
+def fresh(conn, state, jobs, mp, zone, mode, raw, now, stages=0):
     """(key, job, deferral) for an exact current PB not yet linked or queued."""
-    j = candidate(mp, zone, mode, raw)
+    j = candidate(mp, zone, mode, raw, stages)
     if not j:
         return None
     # Backfill pre-P704 identity only from the same official timestamp
     # and millis. Never let an old cached PB replace a newer one.
     conn.execute('UPDATE runs SET runid=? WHERE tier=? AND map=? AND track=?'
-                 ' AND leg=0 AND style=? AND player=? AND millis=?'
+                 ' AND leg=? AND style=? AND player=? AND millis=?'
                  " AND submitted=? AND runid='' AND replay_id=0"
                  " AND NOT EXISTS (SELECT 1 FROM ksf_unbound u WHERE u.map=runs.map"
                  " AND u.track=runs.track AND u.leg=runs.leg AND u.style=runs.style"
                  " AND u.player=runs.player)",
-                 (j['runid'], S.TIER_KSF, j['map'], j['track'], j['style'],
+                 (j['runid'], S.TIER_KSF, j['map'], j['track'], j['leg'], j['style'],
                   j['player'], j['millis'], j['when']))
     if not current(conn, j) or ready(conn, j):
         return None
@@ -187,8 +204,9 @@ def discover_wanted(cache, state, conn, prio):
         if not m or p.is_symlink() or p.stat().st_size > 8 << 20:
             continue
         mp, zone, mode = m[1], int(m[2]), int(m[3] or 0)
+        stages = stages_of(cache, mp) if 1 <= zone <= K.KSF_STAGES else 0
         for raw in K.board_load(cache, mp, zone, mode)['rows']:
-            got = fresh(conn, state, jobs, mp, zone, mode, raw, now)
+            got = fresh(conn, state, jobs, mp, zone, mode, raw, now, stages)
             if not got:
                 continue
             if len(jobs) >= MAX_QUEUE:
@@ -226,9 +244,10 @@ def discover(cache, state, conn, prio=()):
         if not m or p.is_symlink() or p.parent.is_symlink() or p.stat().st_size > 8 << 20:
             continue
         mp, zone, mode = m[1], int(m[2]), int(m[3] or 0)
+        stages = stages_of(cache, mp) if 1 <= zone <= K.KSF_STAGES else 0
         doc = K.board_load(cache, mp, zone, mode)
         for raw in doc['rows']:
-            got = fresh(conn, state, jobs, mp, zone, mode, raw, now)
+            got = fresh(conn, state, jobs, mp, zone, mode, raw, now, stages)
             if not got:
                 continue
             key, j, deferred = got
@@ -383,14 +402,15 @@ def install(conn, job, data):
     if shutil.disk_usage(parent).free < (256 << 20):
         raise OSError('KSF archive reserve below 256 MiB')
     text, info = C.convert(data, job['map'], job['bonus'], STYLES[job['mode']],
-                           job['name'], job['seconds'])
+                           job['name'], job['seconds'], stage=job['leg'],
+                           last=job.get('last', False))
     ticks = info['stop'] - info['start']
     # Archive naming grammar, source hash distinguishes styles/equal-time runs.
     sid = hashlib.sha256(job['player'].encode()).hexdigest()[:8]
     body = text.encode('utf-8')
     digest = hashlib.sha256(body).hexdigest()
     leaf = '%07d_ksf%s-%s_run.rec' % (ticks, digest[:9], sid)
-    directory = root / job['map'] / S.leg_dir(job['track'], 0)
+    directory = root / job['map'] / S.leg_dir(job['track'], job['leg'])
     original = root / '.originals' / (info['sha256'] + '.rec')
     # Same containment contract as serving; never write through an archive link.
     target = directory / leaf
@@ -419,20 +439,21 @@ def install(conn, job, data):
             ' ON CONFLICT(map,track,leg,leaf) DO UPDATE SET bytes=excluded.bytes,'
             ' sha=excluded.sha,seen=excluded.seen'
             " WHERE replays.kind='ksf' AND replays.runid=excluded.runid",
-            (job['map'], leaf, len(body), digest, job['map'], job['track'], 0,
+            (job['map'], leaf, len(body), digest, job['map'], job['track'], job['leg'],
              # Patch 757: the row's time, which the converter bound; the frame count
              # can differ by more than a tick (tools/p757ksfconvert.md). ticks stays the file's.
              job['player'], ticks, 1 / K.KSF_TICK, job['millis'],
              int(time.time()), 'ksf-' + info['sha256'][:20], job['when'],
              S.TIER_KSF, job['style'], job['name']))
         indexed = conn.execute('SELECT id,kind,runid FROM replays WHERE map=? AND track=?'
-                               ' AND leg=0 AND leaf=?', (job['map'], job['track'], leaf)).fetchone()
+                               ' AND leg=? AND leaf=?',
+                               (job['map'], job['track'], job['leg'], leaf)).fetchone()
         if indexed['kind'] != 'ksf' or indexed['runid'] != 'ksf-' + info['sha256'][:20]:
             raise ValueError('archive leaf belongs to another recording kind')
         rid = indexed['id']
         conn.execute('UPDATE runs SET replay_id=? WHERE tier=? AND map=? AND track=?'
-                     ' AND leg=0 AND style=? AND player=? AND runid=? AND millis=? AND submitted=?',
-                     (rid, S.TIER_KSF, job['map'], job['track'], job['style'],
+                     ' AND leg=? AND style=? AND player=? AND runid=? AND millis=? AND submitted=?',
+                     (rid, S.TIER_KSF, job['map'], job['track'], job['leg'], job['style'],
                       job['player'], job['runid'], job['millis'], job['when']))
     return rid
 
@@ -529,9 +550,21 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
             except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
                 # Refusal belongs to the HOST, not whichever demo happened to
                 # be asked. All non-2xx/redirects/network failures stop this tick.
+                code = getattr(e, 'code', 0)
+                if job.get('netfail') and code not in (403, 429):
+                    # Patch 891: the same file failing again is the file. surf_ab's replay broke
+                    # mid-body on every ask from 19 Oct, and re-asking it first after each park
+                    # parked everything for days. A host that is down fails the next file too.
+                    if key in state['failed'] or len(state['failed']) < MAX_FAILED:
+                        state['failed'][key] = now + 7 * 86400
+                        jobs.pop(key, None)
+                    else:
+                        job.update(retry=now + 7 * 86400, terminal=True)
+                    print('KSF demo set aside: network %d twice on one file' % code)
+                    continue
+                job['netfail'] = 1
                 n = int(park.get('n') or 0) + 1
                 wait = min(K.COOLDOWN * 2 ** min(n - 1, 8), K.COOLDOWN_MAX)
-                code = getattr(e, 'code', 0)
                 K._save(os.path.join(cache, '.refused'),
                         dict(at=now, until=now + wait, n=n, why='demo network %d' % code))
                 job['retry'] = now + wait

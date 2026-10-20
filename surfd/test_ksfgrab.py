@@ -29,8 +29,7 @@ import ksfgrab as G
 import ksfprofile as P
 
 
-def binary(version=2):
-    marks = [(0, 2, 1), (2, 3, 1), (6, 2, 99)]
+def binary(version=2, marks=((0, 2, 1), (2, 3, 1), (6, 2, 99))):
     h = struct.pack('<4i', version, 99, 500, len(marks))
     if version == 3:
         h += struct.pack('<2i', 18, 0)
@@ -1299,6 +1298,104 @@ print('RESTART_COUNTS='+json.dumps([made, linked, *counts]))
         self.assertEqual(base['rows'][0]['rep'],rid)
         self.assertEqual(variant['rows'][0]['rep'],0)
         self.assertEqual(base['rows'][0]['ms'],variant['rows'][0]['ms'])
+
+    def stage_map(self, stages=4, linear=False):
+        K._save(os.path.join(self.cache, 'maps', 'surf_test.json'),
+                [dict(name='surf_test', isLinear=linear, cp_count=stages, b_count=0)])
+
+    def test_stage_count_is_read_from_the_cache_only(self):
+        with patch.object(K, 'fetch', side_effect=AssertionError('no request')):
+            self.assertEqual(G.stages_of(self.cache, 'surf_test'), 0)
+            self.stage_map()
+            self.assertEqual(G.stages_of(self.cache, 'surf_test'), 4)
+            for kwargs in (dict(linear=True), dict(stages=31), dict(stages=0)):
+                self.stage_map(**kwargs)
+                self.assertEqual(G.stages_of(self.cache, 'surf_test'), 0, kwargs)
+
+    def test_stage_candidates_and_jobs(self):
+        self.assertIsNone(G.candidate('surf_test', 3, 0, self.r))         # stage count unknown
+        self.assertIsNone(G.candidate('surf_test', 5, 0, self.r, 4))      # past the last stage
+        j = G.candidate('surf_test', 3, 0, self.r, 4)
+        self.assertEqual((j['track'], j['leg'], j['bonus'], j['last']), (0, 3, 0, False))
+        self.assertTrue(G.candidate('surf_test', 4, 0, self.r, 4)['last'])
+        self.assertTrue(G.valid_job(j))
+        for k, v in (('bonus', 3), ('track', 1), ('last', 1), ('leg', 31), ('leg', 0)):
+            bad = dict(j); bad[k] = v
+            self.assertFalse(G.valid_job(bad), (k, v))
+        bad = dict(j); del bad['last']
+        self.assertFalse(G.valid_job(bad))
+        self.assertNotIn('last', self.job)
+        self.assertFalse(G.valid_job(dict(self.job, last=False)))
+
+    def test_stage_install_links_its_leg(self):
+        K.write_rows([K.rec_row('surf_test', 3, 0, self.r)])
+        job = G.candidate('surf_test', 3, 0, self.r, 4)
+        rid = G.install(self.conn, job, binary(marks=[(0, 2, 3), (2, 3, 3), (6, 2, 4)]))
+        self.assertTrue(rid)
+        self.assertTrue(G.ready(self.conn, job))
+        self.assertFalse(G.ready(self.conn, self.job))       # the main row stays unlinked
+        row = self.conn.execute('SELECT * FROM replays WHERE id=?', (rid,)).fetchone()
+        self.assertEqual((row['track'], row['leg'], row['kind']), (0, 3, 'ksf'))
+        path, _ = S.replay_file(row)
+        self.assertEqual(Path(path).parent.name, S.leg_dir(0, 3))
+        self.assertIn('\nstartseg 2\nleg 3\n', Path(path).read_text())
+        self.assertEqual(self.conn.execute('SELECT replay_id FROM runs WHERE tier=? AND leg=3',
+                                           (S.TIER_KSF,)).fetchone()[0], rid)
+        # The last stage's unbookmarked finish is placed by the row's time.
+        K.write_rows([K.rec_row('surf_test', 4, 0, self.r)])
+        last = G.candidate('surf_test', 4, 0, self.r, 4)
+        rid = G.install(self.conn, last, binary(marks=[(0, 2, 4), (2, 3, 4)]))
+        path, _ = S.replay_file(self.conn.execute('SELECT * FROM replays WHERE id=?', (rid,)).fetchone())
+        self.assertIn('\nksfstop timed\n', Path(path).read_text())
+        # A stage file under a main job is still refused by its bookmarks.
+        with self.assertRaises(ValueError):
+            G.install(self.conn, self.job, binary(marks=[(0, 2, 3), (2, 3, 3), (6, 2, 4)]))
+
+    def test_stage_boards_are_discovered_and_linked(self):
+        K.write_rows([K.rec_row('surf_test', 3, 0, self.r)])
+        K._save(K.board_path(self.cache, 'surf_test', 3), dict(rows=[self.r], done=True))
+        stage = binary(marks=[(0, 2, 3), (2, 3, 3), (6, 2, 4)])
+        with patch.object(G.time, 'sleep'):
+            self.assertEqual(G.tick(self.cache, download=lambda f: stage), (0, 0))
+            self.stage_map()
+            self.assertEqual(G.tick(self.cache, download=lambda f: stage), (1, 1))
+        self.assertTrue(G.ready(self.conn, G.candidate('surf_test', 3, 0, self.r, 4)))
+
+    def test_one_broken_file_is_set_aside_not_the_host(self):
+        other = raw(playerID=8, steamID='STEAM_0:0:124', record_id=112,
+                    file='replay_css_5_0_8_1700000000.rec')
+        K.write_rows([K.rec_row('surf_test', 0, 0, other)])
+        self.board([self.r, other])
+        asked = []
+
+        def serve(file):
+            asked.append(file)
+            if file == self.r['file']:
+                raise http.client.IncompleteRead(b'part', 8)
+            return binary()
+        base = int(time.time())
+        with patch.object(G.time, 'sleep'):
+            with patch.object(G.time, 'time', return_value=base):
+                self.assertEqual(G.tick(self.cache, download=serve), (1, 0))
+            with patch.object(G.time, 'time', return_value=base + K.COOLDOWN + 1):
+                self.assertEqual(G.tick(self.cache, download=serve), (2, 1))
+        self.assertEqual(asked, [self.r['file'], self.r['file'], other['file']])
+        self.assertEqual(K._load(os.path.join(self.cache, '.refused'))['at'], base)
+        state = K._load(os.path.join(self.cache, 'demos.json'))
+        self.assertEqual(state['jobs'], {})
+        self.assertEqual([k.split('|')[3] for k in state['failed']], [self.job['runid']])
+        # A refusal is the host's however often it comes, and the job keeps its place.
+        for name in ('.refused', 'demos.json'):
+            (Path(self.cache)/name).unlink(missing_ok=True)
+
+        def refuse(file):
+            raise urllib.error.HTTPError('public', 429, 'refused', {}, io.BytesIO())
+        with patch.object(G.time, 'sleep'):
+            for i in range(2):
+                with patch.object(G.time, 'time', return_value=base + i * (K.COOLDOWN + 1)):
+                    self.assertEqual(G.tick(self.cache, download=refuse), (1, 0))
+        self.assertEqual(K._load(os.path.join(self.cache, '.refused'))['n'], 2)
+        self.assertEqual(K._load(os.path.join(self.cache, 'demos.json'))['failed'], {})
 
     def test_path_kind_and_escape_refusal(self):
         rid = G.install(self.conn, self.job, binary())

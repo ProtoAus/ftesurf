@@ -152,6 +152,51 @@ class Convert(unittest.TestCase):
             want = (1 if fwd > 0 else 2 if fwd < 0 else 0) | (8 if side > 0 else 4 if side < 0 else 0)
             self.assertEqual(int(sample[10]) & 15, want)
 
+    def test_stage_is_its_own_recording(self):
+        # Patch 891: stage N exits zone N and finishes entering zone N+1, filed as leg N.
+        text, info = C.convert(binary(marks=[(0, 2, 3, ''), (2, 3, 3, ''), (6, 2, 4, '')]),
+                               'surf_test', stage=3)
+        self.assertEqual((info['start'], info['stop'], info['stage'], info['timed_stop']), (2, 6, 3, False))
+        self.assertIn('track 0\nstartseg 2\nleg 3\n', text)
+        self.assertNotIn('ksfstop', text)
+        for marks in ([(0, 2, 3, ''), (2, 3, 3, ''), (6, 2, 5, '')],          # not the next stage
+                      [(0, 2, 3, ''), (2, 3, 3, ''), (6, 2, 99, '')],         # end zone, not last
+                      [(0, 2, 3, ''), (2, 3, 3, ''), (6, 2, 4, ''), (7, 2, 4, '')],
+                      [(0, 2, 3, ''), (1, 3, 3, ''), (2, 3, 3, ''), (6, 2, 4, '')],
+                      [(0, 2, 3, ''), (2, 3, 3, '')]):
+            with self.subTest(marks=marks), self.assertRaises(ValueError):
+                C.convert(binary(marks=marks), 'surf_test', stage=3, seconds=.06)
+        good = binary(marks=[(0, 2, 3, ''), (2, 3, 3, ''), (6, 2, 4, '')])
+        for kwargs in ({'stage': 31}, {'stage': -1}, {'stage': 3, 'bonus': 1}, {'last': True},
+                       {'stage': 3, 'last': 1}):
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                C.convert(good, 'surf_test', **kwargs)
+        # A stage recording that begins inside its zone needs the official time, as P757's.
+        lead = binary(marks=[(2, 3, 3, ''), (6, 2, 4, '')])
+        with self.assertRaises(ValueError): C.convert(lead, 'surf_test', stage=3)
+        self.assertEqual(C.convert(lead, 'surf_test', stage=3, seconds=.06)[1]['stop'], 6)
+
+    def test_last_stage_finish_is_the_official_time(self):
+        last = [(0, 2, 9, ''), (2, 3, 9, '')]
+        text, info = C.convert(binary(marks=last), 'surf_test', stage=9, last=True, seconds=.06)
+        self.assertEqual((info['start'], info['stop'], info['timed_stop']), (2, 6, True))
+        self.assertIn('leg 9\n', text)
+        self.assertIn('ksfstop timed\n', text)
+        self.assertEqual(text.splitlines()[-1], 'end 4 7 2 0')
+        # A file that ends on the tick before its sub-tick finish keeps its last frame.
+        self.assertEqual(C.convert(binary(marks=last), 'surf_test', stage=9, last=True,
+                                   seconds=.105)[1]['stop'], 8)
+        for seconds in (None, .15, math.nan, -1):
+            with self.subTest(seconds=seconds), self.assertRaises(ValueError):
+                C.convert(binary(marks=last), 'surf_test', stage=9, last=True, seconds=seconds)
+        # The end zone, when bookmarked, is the finish; not a timed one.
+        text, info = C.convert(binary(marks=last + [(6, 2, 99, '')]), 'surf_test', stage=9, last=True)
+        self.assertEqual((info['stop'], info['timed_stop']), (6, False))
+        self.assertNotIn('ksfstop', text)
+        # Only the last stage may go unbookmarked.
+        with self.assertRaises(ValueError):
+            C.convert(binary(marks=last), 'surf_test', stage=9, seconds=.06)
+
     def test_owner_cannot_inject_header(self):
         text, _ = C.convert(binary(), 'surf_test', owner='Hi\nnonce bad\r"x"//foo')
         self.assertNotIn('\nnonce ', text)

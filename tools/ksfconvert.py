@@ -34,20 +34,37 @@ def classify(target):
     return ('other', n)
 
 
-def interval(bookmarks, bonus, lead_ok=False):
+def interval(bookmarks, bonus, lead_ok=False, stage=0, last=False):
     """One unambiguous start-exit and finish-entry, never full-file fallbacks.
 
     KSF bonus start/end share zone30+N. Named triggers distinguish them; the
     unclassified-target form requires an entry at/before the one exit and exactly
-    one later entry (the plugin's second-entry rule). Stage imports are not
-    supported by this converter yet.
+    one later entry (the plugin's second-entry rule).
 
     Patch 757: lead_ok accepts a recording that begins inside the start zone (no
     entry before its one exit: 10 of 17 refusals, each a 334-tick lead-in), for a
     caller whose official time then binds the interval.
+
+    Patch 891: a stage file is its own recording (KSF serves one per stage). Stage N
+    exits zone N and finishes entering zone N+1; the last stage finishes in the end
+    zone, which none of surf_kepler's 13 stage-9 files bookmarks, so a stop of None
+    asks the caller to place it by the official time.
     """
     if any(a['tick'] > b['tick'] for a, b in zip(bookmarks, bookmarks[1:])):
         raise ValueError('bookmarks are out of order')
+    if stage:
+        starts = [m['tick'] for m in bookmarks if m['zone'] == stage and m['touch'] == 3]
+        if len(starts) != 1:
+            raise ValueError('stage needs exactly one start-zone exit')
+        start = starts[0]
+        if not lead_ok and not any(m['zone'] == stage and m['touch'] == 2 and m['tick'] <= start
+                                   for m in bookmarks):
+            raise ValueError('stage has no initial start-zone entry')
+        stops = [m['tick'] for m in bookmarks if m['tick'] > start and m['touch'] == 2
+                 and m['zone'] == (99 if last else stage + 1)]
+        if len(stops) > 1 or not (stops or last):
+            raise ValueError('stage needs exactly one finish-zone entry')
+        return start, (stops[0] if stops else None)
     zone = 30 + bonus if bonus else 1
     marks = [m for m in bookmarks if m['zone'] == zone]
     starts = []
@@ -83,19 +100,35 @@ def clean_owner(owner):
                    for c in owner).replace('//', ' ').strip()[:64] or '?'
 
 
-def convert(data, mapname, bonus=0, style='FW', owner='?', seconds=None):
+def convert(data, mapname, bonus=0, style='FW', owner='?', seconds=None, stage=0, last=False):
     if not re.fullmatch(r'[a-z0-9_]{1,64}', mapname):
         raise ValueError('map must be a plain lowercase map name')
     if type(bonus) is not int or not 0 <= bonus <= 69:
         raise ValueError('bonus must be 0 (main) or 1..69')
+    if type(stage) is not int or not 0 <= stage <= 30 or (stage and bonus):
+        raise ValueError('stage must be 0 or 1..30, and only on the main track')
+    if type(last) is not bool or (last and not stage):
+        raise ValueError('last is a stage flag')
     if style not in STYLES:
         raise ValueError('style must be FW, SW, HSW or BW')
     info = K.inspect(data)
-    start, stop = interval(info['bookmarks'], bonus, lead_ok=seconds is not None)
-    if stop + 1 > 200000:
-        raise ValueError('playback exceeds the 200000-frame conversion bound')
+    start, stop = interval(info['bookmarks'], bonus, lead_ok=seconds is not None,
+                           stage=stage, last=last)
     # CSS 66t, also the current ksfimport.py TICK. No CSS100/CSGO rate guessed.
     dt = 0.015
+    timed = stop is None
+    if timed:
+        # The last stage's finish is unbookmarked: the official time places it. A file
+        # that ends at the finish ends on the tick before (the timer counts sub-tick).
+        if seconds is None or not math.isfinite(seconds) or seconds <= 0:
+            raise ValueError('an unbookmarked stage finish needs the official time')
+        stop = start + round(seconds / dt)
+        if stop > info['frames'] - 1:
+            if stop - (info['frames'] - 1) > 2:
+                raise ValueError('official time runs past the recording')
+            stop = info['frames'] - 1
+    if stop + 1 > 200000:
+        raise ValueError('playback exceeds the 200000-frame conversion bound')
     duration = (stop - start) * dt
     off = 16
     if info['version'] == 3:
@@ -127,11 +160,14 @@ def convert(data, mapname, bonus=0, style='FW', owner='?', seconds=None):
     # Never turn it into native DUCKED. Neither version records a ramp plane.
     digest = hashlib.sha256(data).hexdigest()
     out = io.StringIO()
-    out.write('FTESURF-REC 5\nmap %s\ntrack %d\nstartseg 0\nleg 0\n' % (mapname, bonus))
+    out.write('FTESURF-REC 5\nmap %s\ntrack %d\nstartseg %d\nleg %d\n'
+              % (mapname, bonus, max(stage - 1, 0), stage))
     out.write('tickrate 0.015\nmovetickrate 0.015\nclock sampled\nowner %s\n' % clean_owner(owner))
     out.write('runid ksf-%s\nforeign ksf %s\nmapbuild unknown\n' % (digest[:20], digest))
     out.write('ksfdemo %d %d %d %s\nksfground %d\nksfmoves %d\n' %
               (info['version'], start, stop, style, ground, moves))
+    if timed:
+        out.write('ksfstop timed\n')    # additive: the finish frame is the official time's
     out.write('moves %s\n' % ('recorded' if moves else 'buttons 1'))
     if seconds is not None:
         out.write('ksftime %.9f\n' % seconds)
@@ -169,7 +205,7 @@ def convert(data, mapname, bonus=0, style='FW', owner='?', seconds=None):
     out.write('end %d %d %d 0\n' % (stop - start, stop + 1, start))
     return out.getvalue(), dict(info, start=start, stop=stop, seconds=duration,
                                 official_seconds=seconds, repeats=repeats, sha256=digest,
-                                map=mapname, bonus=bonus, style=style,
+                                map=mapname, bonus=bonus, stage=stage, timed_stop=timed, style=style,
                                 ground_recorded=ground, moves_recorded=moves,
                                 duck_state='unknown', map_build='unknown')
 
@@ -179,6 +215,8 @@ def main():
     p.add_argument('replay', type=Path, help='local binary from the CSS/66t viewer')
     p.add_argument('--map', required=True)
     p.add_argument('--bonus', type=int, default=0, help='0 = main, N = bonus N (not a stage)')
+    p.add_argument('--stage', type=int, default=0, help='N = stage N of the main track')
+    p.add_argument('--last-stage', action='store_true', help='the map has no stage after this one')
     p.add_argument('--style', required=True, choices=STYLES, help='external board binding, not header kind')
     p.add_argument('--owner', default='?', help='display alias, not proof of player identity')
     p.add_argument('--seconds', type=float,
@@ -188,7 +226,8 @@ def main():
     try:
         with a.replay.open('rb') as f:
             data = f.read(K.MAX_BYTES + 1)
-        text, info = convert(data, a.map, a.bonus, a.style, a.owner, a.seconds)
+        text, info = convert(data, a.map, a.bonus, a.style, a.owner, a.seconds,
+                             stage=a.stage, last=a.last_stage)
         # Parse everything before creating a file. Do not mutate an existing recording.
         a.out.parent.mkdir(parents=True, exist_ok=True)
         with a.out.open('x', encoding='utf-8', newline='\n') as f:
