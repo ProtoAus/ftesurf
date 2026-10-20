@@ -2879,6 +2879,14 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             rule before Patch 869, when they were all inert.
                             Patch 882: limitmovement and slide join them at
                             pmsrcver 10.
+    entfile <n>             Patch 890: which entity lump the map loaded with
+                            (serverinfo *entfile): 0 its own; else 24 bits, an
+                            entity fix's hash (its bytes, CRLF as LF) xor a
+                            .ent's crc16, an xor of 0 stored as 1.  A fix can
+                            renumber or change the physents `pe` checks, so a
+                            verifier whose value differs refuses, and refuses
+                            one that is not a decimal in 0..16777215.  Absent
+                            = 0 (before Patch 890; no install shipped a .ent).
     proprule <n>            which prop-geometry rule built this run's collision
                             world.  Absent or 0 = prop scale as the map wrote it;
                             1 = floored to the 1/16 the wire carries, so the
@@ -5156,6 +5164,7 @@ void(entity e) SV_RecOpen =
 	*/
 	SV_RecPut(e, "proprule 1");
 	SV_RecPut(e, sprintf("momtrig %g", e.run_momon));     // Patch 869, additive
+	SV_RecPut(e, strcat("entfile ", ftos(stof(serverkey("*entfile")))));     // Patch 890: "" = 0
 	/*
 	  BUILD 76: WHICH OF THE TWO CLOCKS TIMED THIS RUN.  `counted` or `sampled`.
 
