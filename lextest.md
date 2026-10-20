@@ -1,5 +1,21 @@
 # lextest.md — things waiting on a human
 
+## P876 — patch notes on the download page and the title menu
+
+What each update changes, as dot points per patch (PATCHNOTES.md), on the right of
+https://proto.bar/worldofsurf/ and on the game's title screen.
+
+- The page: a "Patch notes" panel on the right (below the downloads on a phone), scrolling inside
+  itself. Live since 12:14Z 20 Oct with 0.1.28's notes (sitepage.ps1); 0.1.29's arrive with 0.1.29.
+- In the game, once 0.1.29 is out and installed: "What's new in 0.1.29" on the right of the title
+  screen. The wheel and the bar scroll it; Close hides it for good; "Patch notes" in the top-right
+  corner opens it again. At 0.1.30 it should read "Update 0.1.30", 0.1.30 tagged NEW (not seen yet).
+- Your dev installs have the new menu (085bd9a2) but no release version, so there only the "Patch
+  notes" button opens it, and only while updates are turned on.
+
+"Page panel / in-game panel / scrolling ok, or <what looks wrong>" (size, position, the wording of
+the notes). Verdict PENDING.
+
 ## P869 — Momentum's anti-bhop triggers (onehop, multihop, progress, catapult)
 
 Momentum's section triggers now work (16 maps): a onehop platform sends you back on your second
