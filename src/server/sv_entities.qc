@@ -7971,7 +7971,7 @@ void(entity t, entity p) SV_MapTextTo =
 {
 	WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET);
 	WriteByte(MSG_MULTICAST, MM_EV_TEXT);
-	WriteByte(MSG_MULTICAST, t.channel ? t.channel : 1);
+	WriteByte(MSG_MULTICAST, t.channel);      // a missing key is channel 0, not 1
 	WriteFloat(MSG_MULTICAST, t.vbsp_gt_x);
 	WriteFloat(MSG_MULTICAST, t.vbsp_gt_y);
 	WriteByte(MSG_MULTICAST, t.vbsp_gt_fx);
@@ -8032,9 +8032,7 @@ void(entity t, entity p, float rev) SV_MapFadeTo =
 	if (rev)
 	{
 		fl = (fl & 1) ? fl - 1 : fl + 1;   // FadeReverse runs the other way
-		dur = SV_Key2(t.ReverseFadeDuration, t.reversefadeduration);
-		if (dur <= 0)
-			dur = t.duration;
+		dur = SV_Key2(t.ReverseFadeDuration, t.reversefadeduration);   // 0 clears at once
 	}
 	WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET);
 	WriteByte(MSG_MULTICAST, MM_EV_FADE);
@@ -8071,6 +8069,9 @@ void(entity t, float amp) SV_MapShake =
 	local float a, d;
 
 	dprint(sprintf("env_shake %s: amplitude %g\n", t.targetname, amp));
+	// 32 "don't shake view" shakes ropes and physics only; a frequency of 0 shakes nothing.
+	if (amp > 0 && (t.spawnflags & 32 || t.frequency <= 0))
+		return;
 	for (p = find(world, classname, "player"); p; p = find(p, classname, "player"))
 	{
 		a = amp;

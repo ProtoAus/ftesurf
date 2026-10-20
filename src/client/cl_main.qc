@@ -1630,7 +1630,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		if (mmsh != '0 0 0')
 		{
 			setproperty(VF_ORIGIN, getproperty(VF_ORIGIN) + mmsh);
-			setproperty(VF_ANGLES, getproperty(VF_ANGLES) + mmsh * 0.5);
+			setproperty(VF_ANGLES, getproperty(VF_ANGLES) + [0, 0, mmsh_x * 0.5]);   // roll only (view_effects.cpp:324)
 		}
 	}
 

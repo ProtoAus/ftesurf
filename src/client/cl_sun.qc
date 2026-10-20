@@ -9,10 +9,12 @@
     glow   size `overlaysize` (-1 = size) x6, colour overlaycolor (or the core's
            when 0 0 0), alpha 0.75 looking straight at the sun falling to 0 at a
            dot of 0.9 (c_sun.h C_SunGlowOverlay).
-  Visibility is UpdateGlowObstruction's trace: a ray along the direction that
-  hits anything but a sky side hides it, faded over cl_sun_decay_rate's 0.05 s.
+  Visibility is UpdateGlowObstruction's trace (CONTENTS_SOLID): a ray along the
+  direction that hits anything but a sky side hides it, faded over
+  cl_sun_decay_rate's 0.05 s.  Drawn without depth, as light_glow02_add_noz is.
   Direction: use_angles takes angles with the pitch key's override
-  (SetupLightNormalFromProps), else the sun's origin minus its target's.
+  (SetupLightNormalFromProps), else the sun's origin minus its target's (the
+  first, any case); no target, or one that is not there, keeps CSun's (0,0,1).
   vbsp_sun 0 hides it (gfx menu).
 ===========================================================================
 */
@@ -22,6 +24,7 @@ vector sun_col, sun_ocol;
 float  sun_size, sun_osize;
 string sun_mat, sun_omat;
 float  sun_vis;                 // 0..1, the obstruction fade
+entity sun_probe;               // the trace's mask: CONTENTBIT_SOLID, so glass shows the sun
 
 string(string m) Sun_Shader =
 {
@@ -98,11 +101,13 @@ void() Sun_LoadForMap =
 				pitch = ang_x;
 			sun_dir = -[h_x * cos(pitch * M_PI / 180), h_y * cos(pitch * M_PI / 180), sin(pitch * M_PI / 180)];
 		}
-		else
+		else if (target != "")
 		{
-			want = strzone(target);
+			want = strzone(strtolower(target));
 			sun_dir = org;       // resolved against the target below
 		}
+		else
+			sun_dir = '0 0 1';   // CSun's default: an empty name finds nothing
 		maxc = max(rgb_x, max(rgb_y, rgb_z));
 		sun_col = (maxc > 0) ? rgb * (1 / maxc) : '1 1 1';
 		sun_ocol = (orgb != '0 0 0') ? orgb * (1 / 255) : sun_col;
@@ -116,9 +121,10 @@ void() Sun_LoadForMap =
 	if (want != "")
 	{
 		// A second walk for the target: it may come before or after the sun.
+		found = FALSE;
 		torg = '0 0 0';
 		getentitytoken(0);
-		while ((tok = getentitytoken()) != "")
+		while (!found && (tok = getentitytoken()) != "")
 		{
 			if (tok != "{")
 				continue;
@@ -131,13 +137,16 @@ void() Sun_LoadForMap =
 				if (key == "targetname") tname = tok;
 				else if (key == "origin") org = stov(tok);
 			}
-			if (tname == want)
+			if (strtolower(tname) == want)
+			{
 				torg = org;
+				found = TRUE;
+			}
 		}
-		sun_dir = sun_dir - torg;
 		strunzone(want);
+		sun_dir = found ? sun_dir - torg : '0 0 1';
 		if (sun_dir == '0 0 0')
-			return;
+			sun_dir = '0 0 1';
 	}
 	sun_dir = normalize(sun_dir);
 	sun_have = TRUE;
@@ -157,7 +166,7 @@ void(string mat, vector eye, float hs, vector col, float a) Sun_Quad =
 	up = normalize(crossproduct(rt, sun_dir));
 	rt = rt * hs;
 	up = up * hs;
-	R_BeginPolygon(mat, DRAWFLAG_ADD);
+	R_BeginPolygon(mat, DRAWFLAG_ADD | DRAWFLAG_NODEPTHTEST);
 	R_PolygonVertex(base - rt + up, '0 0 0', col, a);
 	R_PolygonVertex(base + rt + up, '1 0 0', col, a);
 	R_PolygonVertex(base + rt - up, '1 1 0', col, a);
@@ -181,7 +190,12 @@ void() Sun_Draw =
 		sun_vis = 0;
 		return;                 // behind the view: nothing of it is on screen
 	}
-	traceline(eye, eye + sun_dir * 32768, MOVE_NOMONSTERS, world);
+	if (!sun_probe)
+	{
+		sun_probe = spawn();
+		sun_probe.hitcontentsmaski = CONTENTBIT_SOLID;
+	}
+	traceline(eye, eye + sun_dir * 32768, MOVE_NOMONSTERS, sun_probe);
 	// SURF_SKY does not come through a VBSP trace; the side's name does (cl_emit.qc's rain).
 	target = (trace_fraction >= 1 || substring(strtolower(trace_surfacename), 0, 4) == "sky/") ? 1 : 0;
 	sun_vis = target ? min(1, sun_vis + frametime / 0.05) : max(0, sun_vis - frametime / 0.05);

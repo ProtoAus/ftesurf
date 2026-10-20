@@ -11,7 +11,7 @@
 ===========================================================================
 */
 
-#define MM_CHANNELS 6
+#define MM_CHANNELS 8       // game_text's channel mod 8 (Source keeps 16; the library writes 0-6)
 
 float  mm_t0[MM_CHANNELS];          // cltime the message arrived; 0 = empty
 string mm_msg[MM_CHANNELS];
@@ -62,7 +62,7 @@ void(float t) MapMsg_Event =
 
 	if (t == MM_EV_TEXT)
 	{
-		ch = bound(0, readbyte() - 1, MM_CHANNELS - 1);
+		ch = readbyte() % MM_CHANNELS;
 		mm_pos[ch] = [readfloat(), readfloat(), 0];
 		mm_fx[ch] = readbyte();
 		mm_col[ch] = MapMsg_ReadRGB();
@@ -82,7 +82,9 @@ void(float t) MapMsg_Event =
 	{
 		ch = readbyte();
 		s = readstring();
-		if (ch)
+		if (ch && s == mm_hint && cltime < mm_hint_t1)
+			mm_hint_t1 = cltime + 6;    // the same hint again holds it, as Source's does
+		else if (ch)
 		{
 			if (mm_hint != "")
 				strunzone(mm_hint);
@@ -129,6 +131,20 @@ float(float ch, float e) MapMsg_Alpha =
 	return bound(0, a, 1);
 };
 
+// message.cpp XPosition/YPosition: -1 centres, another negative counts from the far
+// edge, else a fraction of the screen; then held on screen.
+float(float f, float w, float tot) MapMsg_Pos =
+{
+	local float v;
+	if (f == -1)
+		v = (tot - w) * 0.5;
+	else if (f < 0)
+		v = (1 + f) * tot - w;
+	else
+		v = f * tot;
+	return bound(0, v, max(0, tot - w));
+};
+
 void(vector scr) MapMsg_DrawText =
 {
 	local float ch, e, a, sz, w, n, shown, settled, i, j, base, vis, sv, fin, fxt, ft, t;
@@ -169,15 +185,13 @@ void(vector scr) MapMsg_DrawText =
 		}
 		else
 		{
+			// Effect 1 draws as 0: Source 2013's flicker is compiled out (message.cpp:385).
 			a = MapMsg_Alpha(ch, e);
 			if (a < 0)
 			{
 				mm_t0[ch] = 0;
 				continue;
 			}
-			// effect 1 flickers between the two colours.
-			if (mm_fx[ch] == 1 && mod(floor(e / max(0.05, fxt)), 2))
-				c = mm_col2[ch];
 		}
 		// Lines are "\n"-separated, as Source splits them; untyped characters
 		// keep their place, so a centred line does not grow from the middle.
@@ -188,9 +202,8 @@ void(vector scr) MapMsg_DrawText =
 			line = argv(i);
 			w = stringwidth(line, TRUE, [sz, sz]);
 			mp = mm_pos[ch];
-			p_x = (mp_x < 0) ? (scr_x - w) * 0.5 : mp_x * (scr_x - w);
-			p_y = (mp_y < 0) ? (scr_y - n * sz * 1.2) * 0.5 : mp_y * (scr_y - n * sz * 1.2);
-			p_y = p_y + i * sz * 1.2;
+			p_x = MapMsg_Pos(mp_x, w, scr_x);
+			p_y = MapMsg_Pos(mp_y, n * sz * 1.2, scr_y) + i * sz * 1.2;
 			vis = bound(0, shown - base, strlen(line));
 			sv = bound(0, settled - base, vis);
 			if (sv > 0)

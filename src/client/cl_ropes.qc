@@ -10,7 +10,8 @@
   parented (moving) ropes are not simulated.  One camera-facing strip per
   segment (one per 48 units, 4 to 16) with the span's RopeMaterial, Width
   wide, lit once at load from the lightgrid; spans past vbsp_ropes_dist or
-  behind the eye are skipped.  vbsp_ropes 0 hides them (gfx menu).
+  outside an 80-degree cone round the view are skipped, and past 2048 units
+  every other point is drawn.  vbsp_ropes 0 hides them (gfx menu).
 
   A frame builds one side vector per point and one polygon begin per span.
   bhop_canals (235 spans, the library's most) measured +0.24-0.49 ms of CSQC at
@@ -148,7 +149,7 @@ void() Ropes_Draw =
 {
 	local entity e;
 	local vector eye, fwd, d, a, b, sa, sb, t;
-	local float k, n, f, maxd, v0, hw, sag;
+	local float k, n, f, maxd, v0, hw, sag, dl, step, kp;
 	local vector p0, dp;
 
 	if (!ropes_n || !cvar("vbsp_ropes"))
@@ -160,11 +161,13 @@ void() Ropes_Draw =
 	for (e = ropes_head; e; e = e.rope_next)
 	{
 		d = e.rope_mid - eye;
-		if (d * fwd < -e.rope_rad)
-			continue;               // wholly behind the eye
-		if (maxd > 0 && vlen(d) > maxd + e.rope_rad)
+		dl = vlen(d);
+		if (d * fwd + e.rope_rad < dl * 0.17)
+			continue;               // outside an 80-degree cone round the view
+		if (maxd > 0 && dl > maxd + e.rope_rad)
 			continue;
 		n = e.rope_n;
+		step = (dl > 2048 + e.rope_rad) ? 2 : 1;
 		p0 = e.rope_p0;
 		dp = e.rope_dp;
 		sag = e.rope_sag * 4;
@@ -176,8 +179,10 @@ void() Ropes_Draw =
 		sb = normalize(crossproduct(t, eye - b)) * hw;
 		v0 = 0;
 		R_BeginPolygon(e.rope_mat, 0);
-		for (k = 1; k <= n; k = k + 1)
+		kp = 0;
+		for (k = step; kp < n; k = k + step)
 		{
+			k = min(k, n);
 			a = b;
 			sa = sb;
 			f = k / n;
@@ -186,10 +191,11 @@ void() Ropes_Draw =
 			sb = normalize(crossproduct(t, eye - b)) * hw;
 			R_PolygonVertex(a - sa, [0, v0, 0], e.rope_col, 1);
 			R_PolygonVertex(a + sa, [1, v0, 0], e.rope_col, 1);
-			R_PolygonVertex(b + sb, [1, v0 + e.rope_tex, 0], e.rope_col, 1);
-			R_PolygonVertex(b - sb, [0, v0 + e.rope_tex, 0], e.rope_col, 1);
+			R_PolygonVertex(b + sb, [1, v0 + e.rope_tex * (k - kp), 0], e.rope_col, 1);
+			R_PolygonVertex(b - sb, [0, v0 + e.rope_tex * (k - kp), 0], e.rope_col, 1);
 			R_EndPolygon();
-			v0 = v0 + e.rope_tex;
+			v0 = v0 + e.rope_tex * (k - kp);
+			kp = k;
 		}
 	}
 };
