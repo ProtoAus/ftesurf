@@ -4788,16 +4788,22 @@ STORY_RUNS_DDL = (
     " top INTEGER NOT NULL DEFAULT -1, spots TEXT NOT NULL DEFAULT '');"
     "CREATE INDEX IF NOT EXISTS story_runs_map ON story_runs (map, track, leg, at);"
     "CREATE INDEX IF NOT EXISTS story_runs_order ON story_runs (map, track, leg, id);"
+    "CREATE INDEX IF NOT EXISTS story_runs_who ON story_runs (map, track, leg, player);"
     "CREATE UNIQUE INDEX IF NOT EXISTS story_runs_run ON story_runs (runid, map, track, leg)"
     " WHERE runid <> '';"
     # When a track's finishes began to be logged, and whether a WOS finish was on
     # the board then (`first` cannot be known past one).  Written once, never moved.
     "CREATE TABLE IF NOT EXISTS story_tracks (map TEXT NOT NULL, track INTEGER NOT NULL,"
     " began INTEGER NOT NULL, prior INTEGER NOT NULL, PRIMARY KEY (map, track));")
-# A WOS full-run board row on a track, the `prior` of story_tracks.
-_STORY_PRIOR_SQL = ("EXISTS (SELECT 1 FROM runs WHERE map = ? AND track = ? AND leg = 0"
-                    " AND tier IN ('%s', '%s') AND style = '%s'%%s)"
-                    % (TIER_RANKED, TIER_COMMUNITY, STYLE_CLEAN))
+# A finish the log does not hold: a WOS full-run board row on a track (map, track)
+# whose player has no logged finish there -- from before the log, or one whose
+# story_finish failed after the board write.  story_tracks' `prior`, and
+# _story_first_row's check with a lower bound on the row's time (%s: "" or one).
+_STORY_UNLOGGED_SQL = (
+    "EXISTS (SELECT 1 FROM runs r WHERE r.map = ? AND r.track = ? AND r.leg = 0"
+    " AND r.tier IN ('%s', '%s') AND r.style = '%s'%%s AND NOT EXISTS (SELECT 1 FROM"
+    " story_runs s INDEXED BY story_runs_who WHERE s.map = r.map AND s.track = r.track"
+    " AND s.leg = 0 AND s.player = r.player))" % (TIER_RANKED, TIER_COMMUNITY, STYLE_CLEAN))
 
 _story_lock = threading.Lock()
 _story_cold = threading.Lock()
@@ -5180,6 +5186,11 @@ def _story_first_row(db, mapname, track, win, owner):
     lo, hi = win if win is not None else (0, 1 << 62)
     if got is None or (got[1] and got[0] > lo):
         return None
+    # A finish on the board the log lost (its story_finish failed after the board
+    # write) could be the first: unknown.  Its row's time only moves later.
+    if db.execute("SELECT " + _STORY_UNLOGGED_SQL % ("" if win is None else " AND r.submitted >= ?"),
+                  (mapname, track) + (() if win is None else (lo,))).fetchone()[0]:
+        return None
     # A cursor in id order, stopped at the first owner who can hold it: undated,
     # story_runs_order walks it; dated, the window bounds it.
     when, args = ("", ()) if win is None else (" AND s.at >= ? AND s.at < ?", (lo, hi))
@@ -5202,7 +5213,7 @@ def _story_track_began(db, mapname, track, now):
                   (mapname, track)).fetchone() is None:
         with db:
             db.execute("INSERT OR IGNORE INTO story_tracks (map, track, began, prior)"
-                       " VALUES (?, ?, ?, %s)" % (_STORY_PRIOR_SQL % ""),
+                       " VALUES (?, ?, ?, %s)" % (_STORY_UNLOGGED_SQL % ""),
                        (mapname, track, now, mapname, track))
 
 
@@ -5297,7 +5308,8 @@ def _story_calc(db, lists, now):
         for rid, mapname, track, leg, player, pub, name, ms, prevms, at, fails, inmask, top, \
                 spots in db.execute(
                     "SELECT s.id, s.map, s.track, s.leg, s.player, s.pub, s.name, s.millis,"
-                    " s.prevms, s.at, s.fails, s.inmask, s.top, s.spots FROM story_runs s"
+                    " s.prevms, s.at, s.fails, s.inmask, s.top, s.spots"
+                    " FROM story_runs s INDEXED BY story_runs_map"
                     " WHERE s.map IN (%s) AND s.at >= ? AND s.at < ? AND %s"
                     % (",".join("?" * len(dmaps)), _STORY_LIVE_SQL), dmaps + [lo, hi]):
             if rid in seen or (mapname, track) not in tracks:

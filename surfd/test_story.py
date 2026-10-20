@@ -6,6 +6,7 @@ import hashlib
 import os
 from pathlib import Path
 import shutil
+import sqlite3
 import sys
 import tempfile
 import threading
@@ -545,6 +546,24 @@ class Story2(Story):
         self.srun("surf_one", G2, 31000)
         self.settle()
         self.assertEqual(self.mine(G2)[2][0][0], 3)
+
+    def test_a_finish_the_log_lost_makes_first_unknown(self):
+        (HOME / "story.txt").write_text('list story "S"\nchapter\nlevel surf_one\n  gold first\n'
+                                        '  bronze finish\n')
+        self.settle()
+        with patch.object(S, "story_finish", side_effect=sqlite3.OperationalError("busy")):
+            self.post("surf_one", G3, 40000)                    # on the board, not in the log
+        self.post("surf_one", G2, 45000)
+        self.settle()
+        self.assertEqual((self.mine(G2)[2][0][0], self.mine(G3)[2][0][0]), (1, 1))
+
+    def test_a_busy_ledger_write_does_not_withhold_first(self):
+        (HOME / "story.txt").write_text('list story "S"\nchapter\nlevel surf_one\n  gold first\n')
+        with patch.object(S, "_story_track_began", side_effect=sqlite3.OperationalError("busy")):
+            self.post("surf_one", G3, 40000)                    # logged, untold, no ledger row
+        self.settle()                                           # the pass writes it: G3 is logged
+        self.assertEqual(tuple(self.db.execute("SELECT prior FROM story_tracks").fetchone()), (0,))
+        self.assertEqual(self.mine(G3)[2][0][0], 3)
 
     def test_dated_first_needs_the_log_to_cover_the_dates(self):
         (HOME / "story.txt").write_text('list ev "E"\ndates 2027-01-10 2027-01-20\nchapter\n'
