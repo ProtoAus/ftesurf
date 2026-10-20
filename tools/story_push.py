@@ -7,7 +7,7 @@ The check is surfd's own parser (imported against a throwaway home), then every
 map against the board's live map list (/api/board?maps=1, else the menu's
 cached copy, said which): a map the Pi does not serve stops the push unless
 --force (a typo looks exactly like that); no zones or disabled is only
-reported.  Without --check the file is copied over ssh (temp name, then rename)
+reported, and so is a `via` whose spot the file never marks.  Without --check the file is copied over ssh (temp name, then rename)
 and the live board is asked which revision it serves: the push is done only
 when that is this file's sha256[:12].
 """
@@ -35,7 +35,8 @@ def parse(text):
         sys.path[:0] = [str(ROOT / "surfd"), str(ROOT / "tools")]
         logging.disable(logging.CRITICAL)
         import surfd
-        return surfd.story_parse(text)
+        lists, problems = surfd.story_parse(text)
+        return lists, problems, surfd.story_unspotted(lists)
     finally:
         logging.disable(logging.NOTSET)
         shutil.rmtree(home, ignore_errors=True)
@@ -78,9 +79,11 @@ def main():
     a = ap.parse_args()
 
     data = Path(a.file).read_bytes()
-    lists, problems = parse(data.decode("utf-8", "replace"))
+    lists, problems, unspotted = parse(data.decode("utf-8", "replace"))
     for p in problems:
         print("PROBLEM", p)
+    for lid, m, spot in unspotted:          # legal: shown "coming soon" until marked
+        print("NO SPOT     %s  %s  via %s (add: spot %s <x> <y> <z> [radius])" % (lid, m, spot, spot))
     have, source = served(a.board)
     print("maps checked against %s" % source)
     unserved = 0

@@ -71,12 +71,14 @@ class Story(unittest.TestCase):
         self.maps.start()
         self.addCleanup(self.maps.stop)
         S._rate.clear()
-        S._story.update(stat=None, conf=None, at=None, rev="", calc=None, calc_rev="", busy=False)
+        S._story.update(stat=None, conf=None, at=None, rev="", calc=None, calc_rev="", busy=False,
+                        again=False, seq=0, recent={})
         (HOME / "story.txt").write_text(STORY)
         self.client = S.app.test_client()
         self.db = S.connect()
         self.addCleanup(self.db.close)
-        for t in ("runs", "replays", "reviews", "accounts", "keylinks", "pubkeys", "receipts"):
+        for t in ("runs", "replays", "reviews", "accounts", "keylinks", "pubkeys", "receipts",
+                  "story_runs", "runpins"):
             self.db.execute("DELETE FROM " + t)
         for sid, name, ban in ((A, "Alice", 0), (B, "Bob", 0), (C, "Carl", 1)):
             self.db.execute("INSERT INTO accounts(steamid,name,created_at,banned_at) VALUES(?,?,?,?)",
@@ -179,11 +181,11 @@ class Story(unittest.TestCase):
         self.assertEqual((t, opened), (4, 2))   # chapter 2's hand-set bar is 4
         _, body = self.get(story="list")
         story = body["lists"][0]
-        # First chapter offers surf_one 2 (nofail is not live) + surf_two 3; surf_dark has no zones.
+        # Chapter 2's bar is set by hand; surf_dark has no zones.
         self.assertEqual([c["bar"] for c in story["chapters"]], [0, 4])
         self.assertEqual(story["levels"][3]["timed"], 0)
         self.assertEqual(story["levels"][1]["hold"], [1, 1, 1])
-        self.assertEqual([c["live"] for c in story["levels"][0]["ch"]], [1, 1, 0])
+        self.assertEqual([c["live"] for c in story["levels"][0]["ch"]], [1, 1, 1])   # P856: nofail
 
     def test_unlinked_rows_follow_their_own_key_and_strangers_stand_alone(self):
         self.run_row("surf_two", G1, 64000, tier="community", name="old guid name", runid="r-g1")
@@ -284,6 +286,210 @@ class Story(unittest.TestCase):
         form = {k: bad[k] for k in ("nonce", "expires", "ticket")}
         form.update(op="list", who="-", pub=PUB[1], story="1", sig="00" * 64)
         self.assertEqual(self.client.post("/api/social/menu", data=form).get_json()["ok"], 0)
+
+
+# Patch 856: challenges about one run, dates, places and the finish's answer.
+# self.now is 2027-01-15 08:00 UTC.
+STORY2 = """list story "Story"
+chapter "One"
+level surf_two
+  bronze finish
+  silver nofail
+  gold   wonly
+level surf_one
+  bronze nojump
+  silver speed 3000
+  gold   via ramp
+  spot ramp 100 200 300 64
+level surf_three
+  bronze stage 2 0:10
+  silver rank 2
+  gold   first
+level surf_two bonus 1
+  gold improve 10%
+chapter "Two" unlock 3
+level surf_dark
+list events "Events"
+dates 2027-01-10 2027-01-20
+chapter
+level surf_three
+  gold time 0:30
+level surf_one
+  dates 2026-12-01 2026-12-31
+  gold finish
+"""
+
+
+class Story2(Story):
+    def setUp(self):
+        super().setUp()
+        (HOME / "story.txt").write_text(STORY2)
+
+    def post(self, mapname, guid, ms, pub=None, src="127.0.0.1", track=0, runid=None, **facts):
+        form = {"key": "testkey", "map": mapname, "track": str(track), "leg": "0", "player": guid,
+                "name": "Proto", "ticks": str(ms // 10), "tickrate": "100", "flags": "0",
+                "node": "p27510", "runid": runid or "r%d-%s-%d" % (ms, guid[:3], track)}
+        if pub:
+            form["pub"] = pub
+        form.update({k: str(v) for k, v in facts.items()})
+        r = self.client.post("/api/run", data=form, environ_base={"REMOTE_ADDR": src})
+        self.assertEqual(r.status_code, 200, r.get_data(True))
+        return [(e["m"], e["n"], e["t"], e["tot"], e["ch"]) for e in r.get_json().get("story", [])]
+
+    def srun(self, mapname, player, ms, at=None, track=0, prevms=0, fails=-1, inmask=-1, top=-1,
+             spots="", runid="", pub=""):
+        self.db.execute("INSERT INTO story_runs(map,track,player,pub,name,millis,prevms,at,runid,"
+                        "fails,inmask,top,spots) VALUES(?,?,?,?,'n',?,?,?,?,?,?,?,?)",
+                        (mapname, track, player, pub, ms, prevms, self.now if at is None else at,
+                         runid, fails, inmask, top, spots))
+        self.db.commit()
+
+    def settle(self):
+        """Work the ladder out again and wait for the thread."""
+        self.now += S.STORY_TTL + 1
+        self.get(story="list")
+        for _ in range(200):
+            if not S._story["busy"]:
+                break
+            threading.Event().wait(0.05)
+
+    def test_grammar(self):
+        lists, problems = S.story_parse(STORY2)
+        self.assertEqual(problems, [])
+        lv = [x for c in lists[0]["chapters"] for x in c["levels"]]
+        self.assertEqual([(c["k"], c.get("v"), c.get("w")) for x in lv for c in x["ch"]], [
+            ("finish", None, None), ("nofail", None, None), ("wonly", None, None),
+            ("nojump", None, None), ("speed", 3000, None), ("via", "ramp", None),
+            ("stage", 2, 10000), ("rank", 2, None), ("first", None, None),
+            ("improve", 10, None), ("finish", None, None)])
+        self.assertEqual(lv[1]["spots"], {"ramp": (100.0, 200.0, 300.0, 64.0)})
+        self.assertEqual([x["t"] for x in lv[2]["ch"]],
+                         ["Stage 2 under 0:10", "Top 2 on the WOS board", "Be the first to finish"])
+        ev = [x for c in lists[1]["chapters"] for x in c["levels"]]
+        self.assertEqual(ev[0]["win"], (1799539200, 1800489600))     # 10 Jan 00:00 to 21 Jan 00:00
+        self.assertEqual(ev[1]["win"], (1796083200, 1798761600))     # its own December
+        self.assertEqual(lv[0]["win"], None)
+        lists, problems = S.story_parse(
+            'list a "A"\nchapter\nspot x 1 2 3\nlevel surf_a\n  spot y 1 2\n  spot z 1 2 3 9000\n'
+            '  dates 2027-01-05 2027-01-01\n  gold improve 0%\n  silver via Bad-Name\n'
+            '  bronze via other\nchapter\ndates 2027-01-01 2027-01-02\n')
+        self.assertEqual([p[:8] for p in problems],
+                         ["line 3: ", "line 5: ", "line 6: ", "line 7: ", "line 8: ", "line 9: ",
+                          "line 12:"], problems)
+        self.assertEqual(S.story_unspotted(lists), [("a", "surf_a", "other")])
+
+    def test_a_finish_answers_the_medal_it_earned(self):
+        # Unlinked, no key: a community run of the install's guid.
+        self.assertEqual(self.post("surf_two", G3, 90000, sfails=1, smask=1 | 4, stop=900),
+                         [("b", 1, "Complete the map", 1, "")])
+        self.assertEqual(self.post("surf_two", G3, 95000, sfails=0, smask=1 | 4, stop=900),
+                         [("s", 1, "First try every stage", 2, "")])
+        self.assertEqual(self.post("surf_two", G3, 99000, sfails=0, smask=1 | 16 | 32, stop=900),
+                         [("g", 1, "W only", 3, "Two")])                  # 3 opens chapter Two
+        self.assertEqual(self.post("surf_two", G3, 98000, sfails=0, smask=1), [])  # held already
+        self.assertEqual(self.post("surf_two", G3, 98000, sfails=0, smask=1), [])  # the same post
+        self.settle()                    # the ladder agrees once it is worked out again
+        t, opened, lv = self.mine(G3)
+        self.assertEqual((t, opened, lv[0]), (3, 2, (3, 90000)))
+        self.assertEqual(S._story["recent"], {})
+        rows = self.db.execute("SELECT player, fails, inmask, top FROM story_runs ORDER BY id").fetchall()
+        self.assertEqual([tuple(r) for r in rows], [(G3, 1, 5, 900), (G3, 0, 5, 900),
+                                                   (G3, 0, 49, 900), (G3, 0, 1, -1)])
+
+    def test_facts_need_a_trusted_lobby_and_a_key_names_the_account(self):
+        self.post("surf_two", "d" * 32, 90000, src="203.0.113.5", sfails=0, smask=1)
+        self.assertEqual(tuple(self.db.execute("SELECT fails, inmask, top FROM story_runs").fetchone()),
+                         (-1, -1, -1))
+        # PUB[1] is linked to Bob: the run is his account's.
+        self.assertEqual(self.post("surf_two", G1, 91000, pub=PUB[1], sfails=0, smask=1),
+                         [("g", 1, "W only", 3, "Two")])
+        self.assertEqual(tuple(self.db.execute(
+            "SELECT player, pub FROM story_runs WHERE millis = 91000").fetchone()), (B, PUB[1]))
+
+    def test_a_key_linked_later_takes_its_own_runs_only(self):
+        self.srun("surf_two", G2, 90000, fails=0, pub=PUB[2])
+        self.srun("surf_two", G2, 90000, inmask=1, pub=PUB[3])       # another key under that guid
+        self.db.execute("INSERT INTO keylinks(pub,steamid,player,linked_at) VALUES(?,?,?,?)",
+                        (PUB[2], A, G2, self.now))
+        self.db.commit()
+        self.assertEqual(self.mine(A)[2][0], (2, 90000))             # nofail moved, wonly did not
+        self.assertEqual(self.mine(G2)[2][0], (3, 90000))
+
+    def test_one_run_challenges_places_and_dates(self):
+        self.srun("surf_one", A, 50000, inmask=1)                        # no jump: bronze
+        self.srun("surf_one", B, 50000, inmask=17, top=3000)             # 3000 u/s: silver
+        self.srun("surf_one", G2, 50000, spots="ramp")                   # via ramp: gold
+        self.run_row("surf_three", A, 0, leg=2)                          # stage 2 time not known
+        self.run_row("surf_three", B, 9000, leg=2)                       # stage 2 under 0:10
+        self.srun("surf_three", A, 40000, at=self.now - 100)             # the first finisher
+        self.srun("surf_three", B, 30000, at=self.now - 50)
+        self.srun("surf_three", G2, 35000, at=self.now - 10)
+        self.srun("surf_two", A, 89000, track=1, prevms=100000)          # 11% better
+        self.srun("surf_two", B, 95000, track=1, prevms=100000)          # 5%: no
+        self.srun("surf_two", G2, 50000, track=1, prevms=0)              # no best before it: no
+        _, _, a = self.mine(A)
+        _, _, b = self.mine(B)
+        _, _, g = self.mine(G2)
+        self.assertEqual((a[1][0], b[1][0], g[1][0]), (1, 2, 3))
+        self.assertEqual((a[2][0], b[2][0], g[2][0]), (3, 2, 2))       # A first; B, G2 top 2
+        self.assertEqual((a[3][0], b[3][0], g[3][0]), (3, 0, 0))
+        # Events: open 10-20 Jan.  A run before the dates counts nothing.
+        self.srun("surf_three", C, 20000)                                # banned
+        self.srun("surf_three", "e" * 32, 20000, at=self.now - 30 * 86400)
+        self.srun("surf_three", "f" * 32, 29000)
+        self.srun("surf_one", "f" * 32, 50000, at=1797000000)            # in its December
+        self.srun("surf_one", "e" * 32, 50000)                           # after it ended
+        self.settle()
+        _, _, e = self.mine("e" * 32, "events")
+        _, _, f = self.mine("f" * 32, "events")
+        self.assertEqual((e, f), ({}, {0: (3, 29000), 1: (3, 50000)}))
+        _, body = self.get(story="list")
+        ev = body["lists"][1]["levels"]
+        self.assertEqual([(x["from"], x["to"], x["in"]) for x in ev],
+                         [(1799539200, 1800489600, [1799539200 - self.now, 1800489600 - self.now]),
+                          (1796083200, 1798761600, [1796083200 - self.now, 1798761600 - self.now])])
+        self.assertNotIn("in", body["lists"][0]["levels"][0])
+
+    def test_a_rejected_recording_earns_nothing_here_either(self):
+        self.receipt("r-bad", PUB[3], G3, 100)
+        self.db.execute("UPDATE replays SET map = 'surf_two' WHERE runid = 'r-bad'")
+        rid = self.db.execute("SELECT id FROM replays WHERE runid = 'r-bad'").fetchone()[0]
+        self.db.execute("INSERT INTO reviews(replay_id, decision, at) VALUES(?, 'reject', ?)",
+                        (rid, self.now))
+        self.db.commit()
+        self.srun("surf_two", G3, 50000, inmask=1, fails=0, runid="r-bad")
+        self.srun("surf_two", G3, 60000, runid="r-ok")
+        self.assertEqual(self.mine(G3)[2][0], (1, 60000))
+
+    def test_a_recording_is_read_for_its_spots(self):
+        rec = HOME / "spots.rec"
+        rec.write_text("FTESURF-REC 11\nmap surf_one\nbegin\n"
+                       "-0.1 100 200 300 0 0 0 0 0 1 0\n"            # in the spot, before the start
+                       "0.0 0 0 0 0 0 0 0 0 1 0\n"
+                       "in 1 2 3 0 0 0 0 0 0 0 0\n"
+                       "0.1 400 0 0 0 0 0 0 0 1 0\n"                 # passes (100,200) 200 off: no
+                       "0.2 5000 5000 0 0 0 0 0 0 1 0\n"             # a teleport's jump: no segment
+                       "0.3 5000 5000 280 0 0 0 0 0 1 0\n"
+                       "0.4 5100 5000 280 0 0 0 0 0 1 0\n"
+                       "end 1 2 3\n")
+        self.assertEqual(S._story_spot_read(str(rec), {"ramp": (100.0, 200.0, 300.0, 64.0)}), set())
+        self.assertEqual(S._story_spot_read(str(rec), {"far": (5050.0, 5040.0, 290.0, 64.0)}),
+                         {"far"})
+        self.assertEqual(S._story_spot_read(str(rec), {"jump": (2500.0, 2500.0, 0.0, 64.0)}), set())
+        self.srun("surf_one", A, 50000)
+        rowid = self.db.execute("SELECT id FROM story_runs").fetchone()[0]
+        S._story_spot_queue(rowid, str(rec), {"ramp": (5050.0, 5000.0, 280.0, 64.0)})
+        for _ in range(100):
+            if self.db.execute("SELECT spots FROM story_runs").fetchone()[0]:
+                break
+            threading.Event().wait(0.05)
+        self.assertEqual(self.db.execute("SELECT spots FROM story_runs").fetchone()[0], "ramp")
+        self.now += S.STORY_TTL + 1
+        self.assertEqual(self.mine(A)[2][1][0], 3)
+
+
+for _n in [n for n in vars(Story) if n.startswith("test_")]:
+    setattr(Story2, _n, None)           # Story2 inherits the helpers, not the tests
 
 
 if __name__ == "__main__":

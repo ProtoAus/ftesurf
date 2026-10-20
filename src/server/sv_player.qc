@@ -607,6 +607,7 @@ void() PlayerPreThink =
 	  rather than behind it.
 	*/
 	SV_MoveBoundFrame(self);
+	SV_StoryFrame(self);            // Patch 856: reads the same moves, writes nothing of them
 	SV_TimerInFrame(self);
 };
 

@@ -1892,6 +1892,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		// where it does); under the profile card and the board, which cover it.
 		fr_tsheld = sc_held;
 		Friends_DrawToast(scr);
+		StoryToast_Draw(scr);           // Patch 856: a medal the lobby just told
 
 		/*
 		  PATCH 340: the avatar customizer, under the leaderboard and over the

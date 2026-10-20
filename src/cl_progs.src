@@ -177,6 +177,8 @@ client/cl_profile.qc
 client/cl_friends.qc
 // Install-local menu snapshot adapter, after the friend cache it reads.
 client/cl_menu_friends.qc
+// Patch 856: the Story medal toast; HUD_Text from cl_hud.qc, drawn by cl_main.qc.
+client/cl_story.qc
 // Patch 772: the trail line, fed by cl_avatar.qc and cl_body.qc; paint reads cl_avatar.qc's colours.
 client/cl_ptrail.qc
 client/cl_avatar.qc

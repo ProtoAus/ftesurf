@@ -18,6 +18,7 @@ Deliberate design notes:
 """
 
 import collections
+import datetime
 import hashlib
 import hmac
 import ipaddress
@@ -1598,6 +1599,8 @@ def migrate():
         # Patch 660: Steam's picture for a board row's player who is no account
         # of ours (steamsync.people).  Not a schema bump, for momusers' reason.
         conn.execute(BOARDPICS_DDL)
+        # Patch 856: the Story ladder's per-finish log.  Not a bump, for momusers'.
+        conn.executescript(STORY_RUNS_DDL)
         import mapmanifest
         conn.execute(mapmanifest.DDL)
         conn.commit()
@@ -3290,6 +3293,26 @@ def submit_run():
 
     millis = int(round(ticks * 1000.0 / tickrate))
 
+    # Patch 856: the Story ladder's log of this finish (story_finish): what the
+    # lobby counted of the run, and the key its connection proved.
+    trusted = is_trusted(src, TRUSTED_SOURCES)
+    sfacts = story_facts(request.form, trusted)
+    spub = request.form.get("pub") or ""
+    if not trusted or not re.fullmatch(r"[0-9a-f]{64}", spub):
+        spub = ""
+    story_rec = story_was = None
+
+    def story(prevms):
+        if story_was is None or leg or style != STYLE_CLEAN                 or tier not in (TIER_RANKED, TIER_COMMUNITY):
+            return {}
+        try:
+            ev = story_finish(db, story_was, mapname, track, player, spub, name, millis, prevms,
+                              now, runid, sfacts, story_rec)
+        except Exception:               # never the run's answer
+            log.exception("story: logging a finish on %s failed", mapname)
+            return {}
+        return {"story": ev} if ev else {}
+
     # ------------------------------------------------------------------
     # THE RECORDING THIS RUN LEFT BEHIND.
     #
@@ -3425,6 +3448,7 @@ def submit_run():
             fileless = False
             hdr_runid = meta[0].get("runid", "")
             fsha = _file_sha(path, key0)
+            story_rec = path
             # A post with no runid (a TF_SHADOW continuation: its file is rebuilt
             # from the run it was cut from, header and all) compares none -- it
             # dropped every such leaf since 06a5a01 (review round 6).
@@ -3436,6 +3460,7 @@ def submit_run():
                 log.warning("rec leaf %r disagrees with the row it is filed on"
                             " (%s) from %s; dropping the leaf", leaf, bad, src)
                 leaf = ""
+                story_rec = None
 
     # A REFUSED recbytes IS LOGGED, because the silent fallback hid a real bug
     # for a whole deploy.  The sender spelled 1128886 as `1.12889e+06` (QC's %g
@@ -3468,6 +3493,11 @@ def submit_run():
         recbytes = fsize
 
     db = get_db()
+    if leg == 0 and style == STYLE_CLEAN:
+        try:
+            story_was = story_before(db, mapname, track, now)
+        except Exception:               # never the run's answer
+            log.exception("story: the ladder before a finish on %s failed", mapname)
     try:
         with db:
             # THE LEDGER ROW GOES IN FIRST, ABOVE THE IMPROVEMENT TEST, and the
@@ -3753,7 +3783,7 @@ def submit_run():
                 return jsonify(
                     {"ok": True, "stored": False, "best": prev["millis"],
                      "rank": rank, "of": of, "rep": rid, "tier": tier,
-                     "prevms": prev["millis"], "why": acct_why}
+                     "prevms": prev["millis"], "why": acct_why, **story(prev["millis"])}
                 )
 
             db.execute(
@@ -3789,7 +3819,7 @@ def submit_run():
     return jsonify({"ok": True, "stored": True, "best": millis,
                     "rank": rank, "of": of, "rep": rid, "tier": tier,
                     "prevms": prev["millis"] if prev is not None else 0,
-                    "why": acct_why})
+                    "why": acct_why, **story(prev["millis"] if prev is not None else 0)})
 
 
 def _ban_late(db, player):
@@ -4697,15 +4727,18 @@ def game_avatar(who, now):
         return fail(404, "not found")
     return _avatar_file(h, ".txt", "text/plain")
 # --------------------------------------------------------------------------
-# Story and Event mode (Patch 854)
+# Story and Event mode (Patches 854, 856)
 # --------------------------------------------------------------------------
 # The ladder is data/story.txt, the owner's file (repo copy surfd/story.txt,
 # pushed by tools/story_push.py); its grammar is in that file's header.  Medals
-# are worked out from WOS board rows on every refresh -- ranked and community,
-# clean style, never an imported tier -- so an edit never loses anybody's runs
-# and nothing here is stored.  An unlinked install's community run counts for
-# the account its signing key was later linked to (see _story_calc).
-# All three replies ride /api/board for game_avatar's reason.
+# are worked out on every refresh, never stored, from two sources: WOS board
+# rows (ranked and community, clean style, never an imported tier) and, since
+# Patch 856, story_runs -- one row per clean lobby finish on a listed map, with
+# what the lobby counted (stage resets, keys, top speed) and the spots its
+# recording passed.  The board keeps a player's best only; a challenge about one
+# run ("no stage reset") or a date needs every run.  An edit never loses runs.
+# An unlinked install's run counts for the account its key was later linked to
+# (see _story_calc).  All three replies ride /api/board for game_avatar's reason.
 
 STORY_FILE = os.environ.get("SURFD_STORY", os.path.join(DATA_DIR, "story.txt"))
 STORY_TTL = 60              # seconds the worked-out medals are reused
@@ -4715,18 +4748,43 @@ STORY_CHAPTERS_MAX = 40     # per list
 STORY_LEVELS_MAX = 200      # per list
 STORY_PLAYERS_MAX = 100     # rows one ?story=players reply carries
 STORY_TEXT_MAX = 80
+STORY_SPOTS_MAX = 32        # per map
+STORY_RUNS_MAX = 2000000    # story_runs rows; past it finishes are not logged
+STORY_SPOT_REACH = 128      # a spot's default radius, units
 STORY_MEDALS = {"bronze": "b", "silver": "s", "gold": "g"}
 STORY_POINTS = {"b": 1, "s": 2, "g": 3}
-STORY_KINDS = ("finish", "time", "reach", "nofail", "wonly", "via")
-STORY_LIVE = ("finish", "time", "reach")        # what board rows can decide
+# A challenge and the words after it: t a time, n a count, p a percent, s a spot.
+STORY_ARGS = {"finish": "", "time": "t", "reach": "n", "stage": "nt", "nofail": "",
+              "wonly": "", "nojump": "", "speed": "n", "via": "s", "first": "",
+              "rank": "n", "improve": "p"}
+STORY_KINDS = tuple(STORY_ARGS)
+STORY_NMAX = {"reach": MAX_LEG, "stage": MAX_LEG, "speed": 99999, "rank": 1000}
+# FSI_* (shared/sh_defs.qc), the lobby's smask: what W-only and no-jump read.
+STORY_FSI_NOTW = 2 | 4 | 8          # back, left, right
+STORY_FSI_JUMP = 16
 _STORY_ID = re.compile(r"[a-z][a-z0-9_]{0,15}\Z")
 _STORY_TIME = re.compile(r"(?:(\d{1,3}):([0-5]\d)|(\d{1,4}))(?:\.(\d{1,3}))?\Z", re.ASCII)
-_STORY_INT = re.compile(r"[0-9]{1,4}\Z")
+_STORY_INT = re.compile(r"[0-9]{1,5}\Z")
+_STORY_DATE = re.compile(r"(\d{4})-(\d{2})-(\d{2})\Z", re.ASCII)
+_STORY_COORD = re.compile(r"-?[0-9]{1,6}(?:\.[0-9]+)?\Z")
+
+STORY_RUNS_DDL = (
+    "CREATE TABLE IF NOT EXISTS story_runs ("
+    " id INTEGER PRIMARY KEY, map TEXT NOT NULL, track INTEGER NOT NULL,"
+    " player TEXT NOT NULL, pub TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '',"
+    " millis INTEGER NOT NULL, prevms INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL,"
+    " runid TEXT NOT NULL DEFAULT '', fails INTEGER NOT NULL DEFAULT -1,"
+    " inmask INTEGER NOT NULL DEFAULT -1, top INTEGER NOT NULL DEFAULT -1,"
+    " spots TEXT NOT NULL DEFAULT '');"
+    "CREATE INDEX IF NOT EXISTS story_runs_map ON story_runs (map, track);")
 
 _story_lock = threading.Lock()
 _story_cold = threading.Lock()
 _story = {"stat": None, "conf": None, "at": None, "rev": "", "calc": None, "calc_rev": "",
-          "busy": False}
+          "busy": False, "again": False, "seq": 0, "recent": {}}
+_story_spotq = collections.deque(maxlen=256)
+_story_spot_ev = threading.Event()
+_story_spot_worker = []
 
 
 def _story_words(line):
@@ -4750,6 +4808,18 @@ def _story_ms(word):
     return s * 1000 + (int((frac + "00")[:3]) if frac else 0)
 
 
+def _story_day(word):
+    """YYYY-MM-DD -> that day's 00:00 UTC in epoch seconds, or None."""
+    m = _STORY_DATE.fullmatch(word)
+    if not m:
+        return None
+    try:
+        return int(datetime.datetime(int(m[1]), int(m[2]), int(m[3]),
+                                     tzinfo=datetime.timezone.utc).timestamp())
+    except ValueError:
+        return None
+
+
 def _story_clock(ms):
     s, ms = divmod(ms, 1000)
     return "%d:%02d%s" % (s // 60, s % 60, (".%03d" % ms).rstrip("0").rstrip(".") if ms else "")
@@ -4764,13 +4834,35 @@ def story_text(ch, track):
         return "Sub " + _story_clock(v)
     if k == "reach":
         return "Reach stage %d" % v
-    return {"nofail": "First try every stage", "wonly": "W only",
-            "via": "Take the other route"}[k]
+    if k == "stage":
+        return "Stage %d under %s" % (v, _story_clock(ch["w"]))
+    if k == "speed":
+        return "Hit %d u/s" % v
+    if k == "via":
+        return "Pass the %s spot" % v
+    if k == "rank":
+        return "Top %d on the WOS board" % v
+    if k == "improve":
+        return "Beat your best by %d%%" % v
+    return {"nofail": "First try every stage", "wonly": "W only", "nojump": "No jumping",
+            "first": "Be the first to finish"}[k]
+
+
+def _story_arg(kind, code, word):
+    if code == "t":
+        return _story_ms(word)
+    if code == "n":
+        v = int(word) if _STORY_INT.fullmatch(word) else 0
+        return v if 1 <= v <= STORY_NMAX[kind] else None
+    if code == "p":
+        m = re.fullmatch(r"([0-9]{1,2})%?", word)
+        return int(m[1]) if m and 1 <= int(m[1]) <= 99 else None
+    return word.lower() if _STORY_ID.fullmatch(word.lower()) else None
 
 
 def story_parse(text):
     """-> (lists, problems).  Tolerant: a bad line is reported and skipped."""
-    lists, problems = [], []
+    lists, problems, spots = [], [], {}
     cur = chap = lvl = None
     pct = 60                        # before any list: every later list's default
 
@@ -4793,7 +4885,8 @@ def story_parse(text):
                 cur = None
                 continue
             cur = {"id": args[0], "title": clean_text(args[1] if len(args) > 1 else args[0],
-                                                      STORY_TEXT_MAX), "pct": pct, "chapters": []}
+                                                      STORY_TEXT_MAX), "pct": pct, "chapters": [],
+                   "win": None}
             if len(args) > 2:
                 bad(n, "list <id> \"Title\"")
             lists.append(cur)
@@ -4812,6 +4905,17 @@ def story_parse(text):
                 pct = int(v.group(1))
         elif cur is None:
             bad(n, "%s before any list" % key)
+        elif key == "dates":
+            # The whole list's (before its first chapter) or one level's (in it).
+            d = [_story_day(a) for a in args]
+            if len(d) != 2 or None in d or d[1] < d[0]:
+                bad(n, "dates <first day> <last day>, like 2026-10-24 2026-11-02")
+            elif lvl is not None and lvl["map"]:
+                lvl["win"] = (d[0], d[1] + 86400)
+            elif not cur["chapters"]:
+                cur["win"] = (d[0], d[1] + 86400)
+            else:
+                bad(n, "dates goes before the list's first chapter, or inside a level")
         elif key == "chapter":
             if len(cur["chapters"]) >= STORY_CHAPTERS_MAX:
                 bad(n, "too many chapters")
@@ -4837,7 +4941,7 @@ def story_parse(text):
                 chap = {"title": "", "unlock": None, "levels": []}
                 cur["chapters"].append(chap)
             if args[:1] == ["soon"] or not args:
-                lvl = {"map": "", "track": 0, "ch": []}
+                lvl = {"map": "", "track": 0, "ch": [], "win": None}
             else:
                 name = clean_map(args[0])
                 track = 0
@@ -4849,34 +4953,48 @@ def story_parse(text):
                     bad(n, "not a map name: %s" % args[0])
                     lvl = None
                     continue
-                lvl = {"map": name, "track": track, "ch": []}
+                lvl = {"map": name, "track": track, "ch": [], "win": None}
             chap["levels"].append(lvl)
+        elif key == "spot":
+            # spot <name> <x> <y> <z> [radius]: a place on this level's map that
+            # `via <name>` asks a run to pass; `cmd viewpos` in game reads x y z.
+            if lvl is None or not lvl["map"]:
+                bad(n, "spot outside a level")
+                continue
+            if len(args) not in (4, 5) or not _STORY_ID.fullmatch(args[0].lower()) \
+                    or not all(_STORY_COORD.fullmatch(a) for a in args[1:]):
+                bad(n, "spot <name> <x> <y> <z> [radius]")
+                continue
+            r = float(args[4]) if len(args) == 5 else STORY_SPOT_REACH
+            have = spots.setdefault(lvl["map"], {})
+            if not 8 <= r <= 4096:
+                bad(n, "a spot's radius is 8 to 4096")
+            elif len(have) >= STORY_SPOTS_MAX and args[0].lower() not in have:
+                bad(n, "too many spots on %s" % lvl["map"])
+            else:
+                have[args[0].lower()] = tuple(float(a) for a in args[1:4]) + (r,)
         elif key in STORY_MEDALS:
             if lvl is None or not lvl["map"]:
                 bad(n, "%s outside a level" % key)
                 continue
             m = STORY_MEDALS[key]
             kind = args[0].lower() if args else ""
-            need = 2 if kind in ("time", "reach", "via") else 1
-            body, text = args[:need], (args[need] if len(args) == need + 1 else None)
-            ch = {"m": m, "k": kind}
-            if len(args) not in (need, need + 1) or kind not in STORY_KINDS:
-                body = []
-            if kind == "time" and len(body) == 2 and _story_ms(body[1]):
-                ch["v"] = _story_ms(body[1])
-            elif kind == "reach" and len(body) == 2 and _STORY_INT.fullmatch(body[1]) \
-                    and 1 <= int(body[1]) <= MAX_LEG:
-                ch["v"] = int(body[1])
-            elif kind == "via" and len(body) == 2:
-                ch["v"] = clean_text(body[1], 32)
-            elif kind in ("finish", "nofail", "wonly") and len(body) == 1:
-                pass
-            else:
-                bad(n, "%s: finish | time m:ss | reach N | nofail | wonly | via <name>" % key)
+            spec = STORY_ARGS.get(kind)
+            need = 1 + len(spec or "")
+            vals = [_story_arg(kind, c, a) for c, a in zip(spec or "", args[1:need])]
+            if spec is None or len(args) not in (need, need + 1) or None in vals:
+                bad(n, "%s: finish | time m:ss | reach N | stage N m:ss | nofail | wonly | "
+                       "nojump | speed N | via <spot> | first | rank N | improve N%%" % key)
                 continue
+            ch = {"m": m, "k": kind}
+            if vals:
+                ch["v"] = vals[0]
+            if len(vals) > 1:
+                ch["w"] = vals[1]
             if any(c["m"] == m for c in lvl["ch"]):
                 bad(n, "%s given twice" % key)
                 continue
+            text = args[need] if len(args) == need + 1 else None
             ch["t"] = clean_text(text, STORY_TEXT_MAX) if text else story_text(ch, lvl["track"])
             lvl["ch"].append(ch)
         else:
@@ -4888,7 +5006,21 @@ def story_parse(text):
                     lv["ch"].append({"m": "b", "k": "finish", "t": story_text(
                         {"k": "finish"}, lv["track"])})
                 lv["ch"].sort(key=lambda c: STORY_POINTS[c["m"]])
+                lv["win"] = lv.get("win") or L["win"]
+                lv["spots"] = spots.get(lv["map"], {})
     return lists, problems
+
+
+def story_unspotted(lists):
+    """[(list id, map, spot)] for each `via` whose spot the file never marks."""
+    return [(L["id"], lv["map"], ch["v"]) for L in lists for c in L["chapters"]
+            for lv in c["levels"] for ch in lv["ch"]
+            if ch["k"] == "via" and ch["v"] not in lv["spots"]]
+
+
+def _story_live(ch, lv):
+    """Whether a challenge can be decided: a `via` needs its spot marked."""
+    return ch["k"] != "via" or ch["v"] in lv.get("spots", {})
 
 
 def _story_conf():
@@ -4932,12 +5064,72 @@ def _story_ident(db):
     return names, banned, linked
 
 
+# One story_runs row as the ladder reads it.
+StoryRun = collections.namedtuple("StoryRun", "ms prevms at fails inmask top spots")
+
+
+def _story_ok(ch, lv, who, v):
+    """Whether `who` holds challenge `ch` of level `lv`.  v: what is known of
+    them there -- ms (best full run), leg (deepest stage row), legms {leg: ms},
+    runs [StoryRun], first (the first finisher), rank (a callable)."""
+    k = ch["k"]
+    ms, runs = v["ms"], v["runs"]
+    if k == "finish":
+        return ms is not None
+    if k == "time":
+        return ms is not None and ms < ch["v"]
+    if k == "reach":                 # leg k = stage k done, so stage k+1 reached
+        return ms is not None or (v["leg"] > 0 and v["leg"] >= ch["v"] - 1)
+    if k == "stage":
+        t = v["legms"].get(ch["v"])
+        return t is not None and t < ch["w"]
+    if k == "nofail":
+        return any(r.fails == 0 for r in runs)
+    if k == "wonly":
+        return any(r.inmask >= 0 and not r.inmask & STORY_FSI_NOTW for r in runs)
+    if k == "nojump":
+        return any(r.inmask >= 0 and not r.inmask & STORY_FSI_JUMP for r in runs)
+    if k == "speed":
+        return any(r.top >= ch["v"] for r in runs)
+    if k == "via":
+        return _story_live(ch, lv) and any(ch["v"] in r.spots.split() for r in runs)
+    if k == "first":
+        return v["first"] == who
+    if k == "rank":
+        return 0 < v["rank"]() <= ch["v"]
+    if k == "improve":
+        return any(r.prevms > 0 and r.ms * 100 <= r.prevms * (100 - ch["v"]) for r in runs)
+    return False
+
+
+def _story_pts(lv, who, v):
+    """(points, the text of the challenge that gave them)."""
+    pts, text = 0, ""
+    for ch in lv["ch"]:
+        if STORY_POINTS[ch["m"]] > pts and _story_ok(ch, lv, who, v):
+            pts, text = STORY_POINTS[ch["m"]], ch["t"]
+    return pts, text
+
+
+def _story_open(win, now):
+    return win is None or win[0] <= now < win[1]
+
+
 def _story_calc(db, lists, now):
     names, banned, linked = _story_ident(db)
     want = {(lv["map"], lv["track"]) for L in lists for c in L["chapters"]
             for lv in c["levels"] if lv["map"]}
     maps = sorted({m for m, _ in want})
-    best, reach, latest = {}, {}, {}
+    best, legs, runs, fins, latest = {}, {}, {}, {}, {}
+
+    def owner(player, pub, name, at):
+        who = player if player in names else linked.get(pub, player)
+        if who in banned:
+            return None
+        if at > latest.get(who, (0, ""))[0]:
+            latest[who] = (at, name)
+        return who
+
     for i in range(0, len(maps), 400):
         part = maps[i:i + 400]
         # A run the owner rejected earns nothing (the replays gate VER_SQL reads).
@@ -4958,19 +5150,43 @@ def _story_calc(db, lists, now):
                 % (",".join("?" * len(part)), ", ".join("'%s'" % t for t in TIERS_IMPORTED),
                    _REJECTED_SQL),
                 part + [TIER_RANKED, TIER_COMMUNITY, STYLE_CLEAN]):
-            who = player if player in names else linked.get(pub, player)
-            if (mapname, track) not in want or who in banned:
+            if (mapname, track) not in want:
                 continue
-            if at > latest.get(who, (0, ""))[0]:
-                latest[who] = (at, name)
+            who = owner(player, pub, name, at)
+            if who is None:
+                continue
             k = (who, mapname, track)
             if leg == 0:
-                if ms > 0 and ms < best.get(k, 1 << 62):
-                    best[k] = ms
-            elif leg > reach.get(k, 0):
-                reach[k] = leg
+                if ms <= 0:
+                    continue
+                best.setdefault(k, []).append((ms, at))
+                fins.setdefault((mapname, track), []).append((at, who))
+            else:
+                legs.setdefault(k, []).append((leg, ms, at))
+        # Patch 856: every clean lobby finish since, with its facts.  The key is
+        # the one the lobby says this run's connection proved (submit_run's `pub`,
+        # trusted sources only): the same "whose key" rule as the receipt above.
+        # A run whose recording the owner rejected earns nothing here either.
+        for mapname, track, player, pub, name, ms, prevms, at, fails, inmask, top, spots in \
+                db.execute(
+                    "SELECT s.map, s.track, s.player, s.pub, s.name, s.millis, s.prevms, s.at,"
+                    " s.fails, s.inmask, s.top, s.spots FROM story_runs s"
+                    " WHERE s.map IN (%s) AND NOT (s.runid NOT IN ('', '-') AND EXISTS ("
+                    "SELECT 1 FROM replays p WHERE p.map = s.map AND p.track = s.track"
+                    " AND p.runid = s.runid AND %s))"
+                    % (",".join("?" * len(part)), _REJECTED_SQL), part):
+            if (mapname, track) not in want or ms <= 0:
+                continue
+            who = owner(player, pub, name, at)
+            if who is None:
+                continue
+            runs.setdefault((who, mapname, track), []).append(
+                StoryRun(ms, prevms, at, fails, inmask, top, spots))
+            fins.setdefault((mapname, track), []).append((at, who))
+    for v in fins.values():
+        v.sort()
     bsp, zoned = map_index()
-    people = set(w for w, _, _ in best) | set(w for w, _, _ in reach)
+    people = {k[0] for k in best} | {k[0] for k in legs} | {k[0] for k in runs}
     out = []
     for L in lists:
         levels, bars, avail = [], [], 0
@@ -4979,42 +5195,60 @@ def _story_calc(db, lists, now):
                         else -(-avail * L["pct"] // 100))
             for lv in c["levels"]:
                 timed = bool(lv["map"]) and lv["map"] in zoned
-                live = [ch for ch in lv["ch"] if ch["k"] in STORY_LIVE]
-                if timed and live:
+                live = [ch for ch in lv["ch"] if _story_live(ch, lv)]
+                # A dated level counts toward the bars only while it is open.
+                if timed and live and _story_open(lv["win"], now):
                     avail += max(STORY_POINTS[ch["m"]] for ch in live)
                 levels.append(dict(lv, chap=len(bars) - 1, timed=timed,
                                    name=bsp.get(lv["map"], lv["map"])))
         mine = {}
-        for who in people:
-            got = []
-            for i, lv in enumerate(levels):
-                if not lv["map"]:
-                    continue
+        for i, lv in enumerate(levels):
+            if not lv["map"]:
+                continue
+            win, mt = lv["win"], (lv["map"], lv["track"])
+            inw = (lambda at: True) if win is None else (lambda at, w=win: w[0] <= at < w[1])
+            first = next((w for at, w in fins.get(mt, ()) if inw(at)), None)
+            field = {}
+
+            def view(who):
                 k = (who, lv["map"], lv["track"])
-                ms, leg = best.get(k), reach.get(k, 0)
-                pts = 0
-                for ch in lv["ch"]:
-                    if ch["k"] == "finish":
-                        ok = ms is not None
-                    elif ch["k"] == "time":
-                        ok = ms is not None and ms < ch["v"]
-                    elif ch["k"] == "reach":     # leg k = stage k done, so stage k+1 reached
-                        ok = ms is not None or (leg > 0 and leg >= ch["v"] - 1)
-                    else:
-                        ok = False
-                    if ok:
-                        pts = max(pts, STORY_POINTS[ch["m"]])
-                if pts or ms is not None:
-                    got.append((i, pts, ms or 0))
-            if got:
-                t = sum(p for _, p, _ in got)
-                opened = 1
-                for j in range(1, len(bars)):
-                    if t < bars[j]:
-                        break
-                    opened = j + 1
-                mine[who] = {"t": t, "open": opened, "lv": got,
-                             "n": [sum(1 for _, p, _ in got if p == v) for v in (1, 2, 3)]}
+                rs = [r for r in runs.get(k, ()) if inw(r.at)]
+                fast = [ms for ms, at in best.get(k, ()) if inw(at)] + [r.ms for r in rs]
+                legms, deep = {}, 0
+                for leg, ms, at in legs.get(k, ()):
+                    if inw(at):
+                        deep = max(deep, leg)
+                        if ms > 0:
+                            legms[leg] = min(ms, legms.get(leg, ms))
+                return {"ms": min(fast) if fast else None, "leg": deep, "legms": legms,
+                        "runs": rs, "first": first, "rank": lambda: rank(who)}
+
+            def rank(who):
+                # Best full runs on this level (in its dates), ties sharing a place.
+                if not field:
+                    for p in people:
+                        b = view(p)["ms"]
+                        if b is not None:
+                            field[p] = b
+                    field[None] = None
+                me = field.get(who)
+                return 0 if me is None else 1 + sum(
+                    1 for p, b in field.items() if p is not None and b < me)
+
+            for who in people:
+                v = view(who)
+                pts, _ = _story_pts(lv, who, v)
+                if pts or v["ms"] is not None:
+                    mine.setdefault(who, []).append((i, pts, v["ms"] or 0))
+        for who, got in list(mine.items()):
+            t = sum(p for _, p, _ in got)
+            opened = 1
+            for j in range(1, len(bars)):
+                if t < bars[j]:
+                    break
+                opened = j + 1
+            mine[who] = {"t": t, "open": opened, "lv": got,
+                         "n": [sum(1 for _, p, _ in got if p == v) for v in (1, 2, 3)]}
         hold = [[0, 0, 0] for _ in levels]
         for e in mine.values():
             for i, p, _ in e["lv"]:
@@ -5036,10 +5270,13 @@ def _story_calc(db, lists, now):
 
 
 def _story_kick(lists, rev, now):
-    """Work the ladder out again on a thread, one at a time, as _people_kick."""
+    """Work the ladder out again on a thread, one at a time, as _people_kick.
+    Called under _story_lock.  A kick while one runs queues one more after it."""
     if _story.get("busy"):
+        _story["again"] = True
         return
-    _story["busy"] = True
+    _story["busy"], _story["again"] = True, False
+    seq = _story["seq"]
 
     def work():
         try:
@@ -5048,14 +5285,22 @@ def _story_kick(lists, rev, now):
                 calc = _story_calc(conn, lists, now)
             finally:
                 conn.close()
+            calc["seq"] = seq
             with _story_lock:
                 if _story["rev"] == rev:
                     _story["calc"], _story["at"], _story["calc_rev"] = calc, now, rev
+                    # A medal told before this pass began is in it now.
+                    _story["recent"] = {k: e for k, e in _story["recent"].items()
+                                        if e[1] > seq}
         except Exception:
             log.exception("story: recompute failed")
         finally:
             with _story_lock:
                 _story["busy"] = False
+                if _story["again"]:
+                    lists2, rev2 = _story_conf()
+                    if lists2 is not None:
+                        _story_kick(lists2, rev2, int(time.time()))
 
     try:
         threading.Thread(target=work, name="story", daemon=True).start()
@@ -5081,11 +5326,209 @@ def _story_current(db, now):
         with _story_lock:
             if _story.get("calc_rev") == rev and _story["calc"] is not None:
                 return _story["calc"], rev
+            seq = _story["seq"]
         calc = _story_calc(db, lists, now)
+        calc["seq"] = seq
         with _story_lock:
             if _story["rev"] == rev:
                 _story["calc"], _story["at"], _story["calc_rev"] = calc, now, rev
         return calc, rev
+
+
+# --- Patch 856: a lobby finish, logged and answered ------------------------
+
+def story_facts(form, trusted):
+    """(fails, inmask, top) from a lobby's post: -1 for each not sent.  Only a
+    trusted source's, like `runid` and `pub`; Lobby_SubmitRun sends them for a
+    full run made in one session (a resumed run's earlier part is not known)."""
+    if not trusted:
+        return (-1, -1, -1)
+    return tuple(-1 if v is None else v for v in (
+        strict_int(form.get("sfails"), 0, 1000000), strict_int(form.get("smask"), 0, 0xFFFF),
+        strict_int(form.get("stop"), 0, 1000000)))
+
+
+def _story_spot_read(path, spots):
+    """The spots a recording's in-run samples pass within reach of.  A sample
+    line is `t ox oy oz ...` after `begin` (sv_timer.qc's grammar block); t < 0
+    is the pre-start padding.  Between two samples the path is a straight
+    segment, unless it jumps a teleport's distance."""
+    hit, prev, body = set(), None, False
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if not body:
+                body = line.startswith("begin")
+                continue
+            if not (line[:1].isdigit() or line[:1] == "-"):
+                continue
+            w = line.split(None, 4)
+            try:
+                t, p = float(w[0]), (float(w[1]), float(w[2]), float(w[3]))
+            except (ValueError, IndexError):
+                continue
+            if t < 0:
+                continue
+            a = prev if prev is not None and sum((x - y) ** 2 for x, y in zip(prev, p)) \
+                < 1024 ** 2 else p
+            for name, (sx, sy, sz, r) in spots.items():
+                if name in hit:
+                    continue
+                d = (p[0] - a[0], p[1] - a[1], p[2] - a[2])
+                dd = d[0] ** 2 + d[1] ** 2 + d[2] ** 2
+                f = 0.0 if dd == 0 else max(0.0, min(1.0, (
+                    (sx - a[0]) * d[0] + (sy - a[1]) * d[1] + (sz - a[2]) * d[2]) / dd))
+                q = (a[0] + f * d[0] - sx, a[1] + f * d[1] - sy, a[2] + f * d[2] - sz)
+                if q[0] ** 2 + q[1] ** 2 + q[2] ** 2 <= r * r:
+                    hit.add(name)
+            prev = p
+    return hit
+
+
+def _story_spot_loop():
+    while True:
+        _story_spot_ev.wait()
+        _story_spot_ev.clear()
+        while _story_spotq:
+            rowid, path, spots = _story_spotq.popleft()
+            try:
+                hit = _story_spot_read(path, spots)
+                if hit:
+                    conn = connect()
+                    try:
+                        with conn:
+                            conn.execute("UPDATE story_runs SET spots = ? WHERE id = ?",
+                                         (" ".join(sorted(hit)), rowid))
+                    finally:
+                        conn.close()
+                    with _story_lock:
+                        _story["seq"] += 1
+                        _story["at"] = None     # the next read works the ladder out again
+                log.info("story: run %d passed %s", rowid, " ".join(sorted(hit)) or "no spot")
+            except Exception:
+                log.exception("story: reading spots of run %d failed", rowid)
+
+
+def _story_spot_queue(rowid, path, spots):
+    _story_spotq.append((rowid, path, spots))
+    if not _story_spot_worker:
+        t = threading.Thread(target=_story_spot_loop, name="story-spots", daemon=True)
+        t.start()
+        _story_spot_worker.append(t)
+    _story_spot_ev.set()
+
+
+def _story_first(db, mapname, track, who, rowid, win):
+    """Whether nobody else finished this track before story_runs row `rowid`
+    (inside `win`).  Board rows stand in for the time before the log began."""
+    lo, hi = win if win is not None else (0, 1 << 62)
+    if db.execute("SELECT 1 FROM story_runs WHERE map = ? AND track = ? AND id < ?"
+                  " AND player <> ? AND at >= ? AND at < ? LIMIT 1",
+                  (mapname, track, rowid, who, lo, hi)).fetchone():
+        return False
+    return db.execute(
+        "SELECT 1 FROM runs WHERE map = ? AND track = ? AND leg = 0 AND tier IN (?, ?)"
+        " AND style = ? AND player <> ? AND submitted >= ? AND submitted < ? LIMIT 1",
+        (mapname, track, TIER_RANKED, TIER_COMMUNITY, STYLE_CLEAN, who, lo, hi)
+    ).fetchone() is None
+
+
+def story_before(db, mapname, track, now):
+    """The worked-out ladder as it stood before a finish on this track touches
+    the board -- (calc, rev, the medals told since it was worked out) for
+    story_finish -- or None when no level is on it.  A cold process works it out
+    here, once.  The three are read together: a pass landing between them
+    would drop a told medal its calc does not hold."""
+    with _story_lock:
+        lists, _ = _story_conf()
+    if lists is None or not any(lv["map"] == mapname and lv["track"] == track
+                                for L in lists for c in L["chapters"] for lv in c["levels"]):
+        return None
+    calc, rev = _story_current(db, now)
+    with _story_lock:
+        if _story["calc"] is not None and _story["calc_rev"] == rev:
+            calc = _story["calc"]
+        return calc, rev, dict(_story["recent"])
+
+
+def story_finish(db, before, mapname, track, who, pub, name, ms, prevms, now, runid, facts, rec):
+    """Log one clean full lobby finish and work out the medals it just earned,
+    for submit_run's answer: [{l, n, map, m, t, tot, ch}] -- list title, level
+    number, map, medal, the challenge's text, the list's trophies now, and the
+    chapter this opened ("" none).  "New" is against `before` (story_before).  A `via` is read off the recording after the
+    answer and earns at the next refresh, untold; `rank` is never told."""
+    with _story_lock:
+        lists, rev = _story_conf()
+    if lists is None or not any(lv["map"] == mapname and lv["track"] == track
+                                for L in lists for c in L["chapters"] for lv in c["levels"]):
+        return []
+    top = db.execute("SELECT MAX(id) FROM story_runs").fetchone()[0] or 0
+    if top >= STORY_RUNS_MAX:
+        log.warning("story: %d logged finishes; not logging more", top)
+        return []
+    if runid and db.execute("SELECT 1 FROM story_runs WHERE runid = ? AND map = ? AND track = ?",
+                            (runid, mapname, track)).fetchone():
+        return []                       # a retried post of a run already logged
+    calc, crev, recent = before
+    fails, inmask, topspeed = facts
+    with db:
+        rowid = db.execute(
+            "INSERT INTO story_runs (map, track, player, pub, name, millis, prevms, at, runid,"
+            " fails, inmask, top) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (mapname, track, who, pub, name, ms, prevms, now, runid or "", fails, inmask,
+             topspeed)).lastrowid
+    spots = {}
+    for L in lists:
+        for c in L["chapters"]:
+            for lv in c["levels"]:
+                if lv["map"] == mapname and lv["track"] == track and _story_open(lv["win"], now) \
+                        and any(ch["k"] == "via" and _story_live(ch, lv) for ch in lv["ch"]):
+                    spots.update(lv["spots"])
+    if spots and rec:
+        _story_spot_queue(rowid, rec, spots)
+    run = StoryRun(ms, prevms, now, fails, inmask, topspeed, "")
+    firsts = {}                     # a level's dates -> whether this was the first finish
+    for L in lists:
+        for c in L["chapters"]:
+            for lv in c["levels"]:
+                if lv["map"] == mapname and lv["track"] == track and lv["win"] not in firsts                         and any(ch["k"] == "first" for ch in lv["ch"]):
+                    firsts[lv["win"]] = _story_first(db, mapname, track, who, rowid, lv["win"])
+    events = []
+    with _story_lock:
+        _story["seq"] += 1
+        if calc is None or crev != _story["rev"]:
+            return []                   # the file changed under this run: nothing to compare
+        for L in calc["lists"]:
+            mine = L["mine"].get(who, {})
+            held = {i: p for i, p, _ in mine.get("lv", ())}
+            base = mine.get("t", 0)
+            for (w, lid, i), (p, _) in recent.items():
+                if w == who and lid == L["id"] and p > held.get(i, 0):
+                    base += p - held.get(i, 0)
+                    held[i] = p
+            for i, lv in enumerate(L["levels"]):
+                if lv["map"] != mapname or lv["track"] != track or not _story_open(lv["win"], now):
+                    continue
+                first = who if firsts.get(lv["win"]) else None
+                pts, text = _story_pts(lv, who, {"ms": ms, "leg": 0, "legms": {}, "runs": [run],
+                                                 "first": first, "rank": lambda: 0})
+                if pts <= held.get(i, 0):
+                    continue
+                was, base = base, base + pts - held.get(i, 0)
+                held[i] = pts
+                _story["recent"][(who, L["id"], i)] = (pts, _story["seq"])
+                opened = ""
+                for j in range(1, len(L["bars"])):
+                    if was < L["bars"][j] <= base:
+                        opened = L["titles"][j] or "Chapter %d" % (j + 1)
+                events.append({"l": L["title"], "n": i + 1, "map": lv["name"],
+                               "m": "bsg"[pts - 1], "t": re.sub(r'[\\"|;]', "", text),
+                               "tot": base, "ch": re.sub(r'[\\"|;]', "", opened)})
+        if events:
+            _story_kick(lists, rev, now)
+    for e in events:
+        log.info("story: %s earned %s on %s (%s %d), %d trophies", who, e["m"], mapname,
+                 e["l"], e["n"], e["tot"])
+    return events
 
 
 def story_who(db, pub):
@@ -5129,10 +5572,15 @@ def game_story(what, now):
         body["lists"] = [{
             "id": L["id"], "title": L["title"], "pct": L["pct"],
             "chapters": [{"title": t, "bar": b} for t, b in zip(L["titles"], L["bars"])],
-            "levels": [{"map": lv["name"], "track": lv["track"], "chap": lv["chap"],
+            # A dated level: from/to its first second and the second after its last
+            # day, and `in` the same from now (the menu cannot hold an epoch exactly).
+            "levels": [dict({"map": lv["name"], "track": lv["track"], "chap": lv["chap"],
                         "timed": 1 if lv["timed"] else 0, "hold": h,
+                        "from": lv["win"][0] if lv["win"] else 0,
+                        "to": lv["win"][1] if lv["win"] else 0,
                         "ch": [{"m": c["m"], "k": c["k"], "t": c["t"],
-                                "live": 1 if c["k"] in STORY_LIVE else 0} for c in lv["ch"]]}
+                                "live": 1 if _story_live(c, lv) else 0} for c in lv["ch"]]},
+                        **({"in": [lv["win"][0] - now, lv["win"][1] - now]} if lv["win"] else {}))
                        for lv, h in zip(L["levels"], L["hold"])]}
             for L in calc["lists"]]
     elif what == "players":

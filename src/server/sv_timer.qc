@@ -8496,6 +8496,7 @@ void(entity e, float ticks) SV_StageStart =
 void(entity e, float ticks) SV_StageFail =
 {
 	e.run_st_fails = e.run_st_fails + 1;
+	e.lobby_sty_fails = e.lobby_sty_fails + 1;      // Patch 856: "first try every stage"
 
 	e.run_t_split = ticks;
 	e.run_t_delta = 0;
@@ -11493,6 +11494,7 @@ void(entity e) SV_TimerRestartSeg =
 
 	sprint(e, PRINT_HIGH, sprintf("^3stage %g restarted^7 -- the run clock keeps going\n",
 	                              e.run_t_seg + 1));
+	e.lobby_sty_fails = e.lobby_sty_fails + 1;      // Patch 856
 
 	SV_RecPut(e, sprintf("restart %d %d", e.run_t_seg, now));
 
@@ -12876,6 +12878,7 @@ void(entity e) SV_TimerStart =
 
 	e.run_t_state = TS_RUNNING;
 	e.run_t_ticks = 0;
+	e.lobby_sty_fails = e.lobby_sty_mask = e.lobby_sty_top = 0;     // Patch 856
 
 	/*
 	  BUILD 74/76: THE CLOCK STARTS, AND IT IS ONE READING TAKEN TWO WAYS.
@@ -13518,6 +13521,29 @@ void(entity e) SV_MoveBoundFrame =
 	e.run_t_moveoor = e.run_t_moveoor + 1;
 	if (!(e.run_t_flags & TF_MOVEOOR))
 		e.run_t_flags = e.run_t_flags | TF_MOVEOOR;
+};
+
+// Patch 856: the Story ladder's per-run facts, from what the mover is handed
+// (W-only and no-jump read the moves, not a key report) and the speed it carries.
+void(entity e) SV_StoryFrame =
+{
+	local float m, v;
+
+	if (e.run_t_state != TS_RUNNING)
+		return;
+	if (e.run_t_frzon)
+		return;
+	m = e.lobby_sty_mask;
+	if (e.movement_x > 0) m = m | FSI_FWD;
+	if (e.movement_x < 0) m = m | FSI_BACK;
+	if (e.movement_y < 0) m = m | FSI_LEFT;
+	if (e.movement_y > 0) m = m | FSI_RIGHT;
+	if (e.button2) m = m | FSI_JUMP;
+	if (e.button4) m = m | FSI_DUCK;
+	e.lobby_sty_mask = m;
+	v = vlen([e.velocity_x, e.velocity_y, 0]);
+	if (v > e.lobby_sty_top)
+		e.lobby_sty_top = floor(v);
 };
 
 void(entity e) SV_TimerInFrame =
@@ -15518,6 +15544,9 @@ void(entity e) SV_TimerReport =
 	sprint(e, PRINT_HIGH,
 	       sprintf("        stage class: stitch %g cheat %g\n",
 	               e.run_st_stitch ? 1 : 0, e.run_st_cheat ? 1 : 0));
+	// Patch 856: what Lobby_SubmitRun will tell the Story ladder of this run.
+	sprint(e, PRINT_HIGH, sprintf("        story: fails %g mask %g top %g\n",
+	                              e.lobby_sty_fails, e.lobby_sty_mask, e.lobby_sty_top));
 	/*
 	  BUILD 48 VERIFICATION: the close report and the PB latch, which nothing in
 	  this function printed.  These five are what stats 85..89 carry; the client

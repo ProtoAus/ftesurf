@@ -1,22 +1,38 @@
-// The Story and Event lists (Patch 854). The server reads its copy,
+// The Story and Event lists (Patches 854, 856). The server reads its copy,
 // /srv/nvme/surfd/data/story.txt, within a minute of a change: edit this one
 // and run `python tools/story_push.py` (it checks the file first).
 //
-//   list <id> "Title"           a ladder; the menu shows story and events
+//   list <id> "Title"           a ladder; the menu shows up to three, then Players
 //   unlock 60%                  a chapter opens at this share of the trophies
 //                               the chapters before it offer (put it before
 //                               the list's first chapter)
+//   dates 2026-10-24 2026-11-02 only runs on these days count (UTC, both days
+//                               in): before the first chapter for the whole
+//                               list, or inside a level for that level
 //   chapter "Title" [unlock N]  N trophies by hand instead; chapters open in
 //                               order, and the first is always open
 //   level <map> [bonus N]       one level; `level soon` is an empty slot
 //     bronze|silver|gold <challenge> ["text"]
+//     spot <name> <x> <y> <z> [radius]   a place on this map for `via`; stand
+//                               there and type `cmd viewpos` in game for x y z
+//                               (radius 128 if left out)
 //
-// Challenges: finish | time m:ss[.mmm] (strictly under) | reach N (stage N-1
-// finished in any run) |
-// nofail | wonly | via <spot>. The last three show as "coming soon" and earn
-// nothing yet. A level with no medal lines gets a bronze for finishing.
-// Medals count WOS runs only (lobby runs, no saves; never Momentum or KSF),
-// and a level is worth its best medal: bronze 1, silver 2, gold 3.
+// Challenges, each about the player's WOS runs on that level:
+//   finish             finish it                 time m:ss[.mmm]  strictly under
+//   reach N            stage N-1 finished in any run
+//   stage N m:ss       stage N's own time under m:ss
+//   nofail             one run with no stage reset ("first try every stage")
+//   wonly              one run that never pressed back, left or right
+//   nojump             one run that never jumped
+//   speed N            one run that reached N u/s across the ground
+//   via <spot>         one run that passed the spot
+//   first              the first player to finish (inside the dates, if any)
+//   rank N             top N of the WOS players on it (inside the dates)
+//   improve N%         one run N% faster than your best before it
+// A level with no medal lines gets a bronze for finishing. Medals count WOS
+// runs only (lobby runs, no saves; never Momentum or KSF), and a level is worth
+// its best medal: bronze 1, silver 2, gold 3. The one-run challenges count runs
+// from 20 Oct 2026 on, when the lobbies started reporting them.
 //
 // Silver and gold times below are PLACEHOLDERS: Lex's surf_demise 1:05 / 1:01
 // scaled by each track's record on any board (1.75x and 1.64x).
@@ -407,3 +423,47 @@ level surf_monolith bonus 4
   gold   finish         "Beat bonus 4"
 level surf_dune bonus 10
   gold   finish         "Beat bonus 10"
+
+list halloween "Halloween"
+dates 2026-10-24 2026-11-02
+chapter "Trick or Treat"
+level surf_spooky
+  bronze finish
+  silver improve 10%    "Beat your best by 10%"
+  gold   rank 3         "Top 3 this Halloween"
+level surf_road_to_hell
+  bronze finish
+  silver nofail         "No falls"
+  gold   rank 3         "Top 3 this Halloween"
+level surf_not_so_sinister
+  bronze finish
+  silver nofail         "No falls"
+  gold   wonly          "W only, if you dare"
+level surf_beginner_hell
+  bronze finish
+  silver nofail         "No falls"
+  gold   improve 10%    "Beat your best by 10%"
+chapter "Haunted" unlock 6
+level surf_666
+  bronze finish
+  silver nofail         "No falls"
+  gold   first          "First to beat it this Halloween"
+level surf_hades
+  bronze finish
+  silver nofail         "No falls"
+  gold   rank 3         "Top 3 this Halloween"
+level surf_blackheart
+  bronze finish
+  gold   rank 3         "Top 3 this Halloween"
+chapter "Nightmare" unlock 14
+level surf_devil
+  bronze finish
+  gold   nofail         "No falls"
+level surf_hades2
+  bronze finish
+  gold   nofail         "No falls"
+level surf_sinister2
+  bronze finish
+  gold   nofail         "No falls"
+level surf_doomsday
+  gold   finish         "Survive Doomsday"

@@ -174,6 +174,13 @@
 .float   lobby_rq_flags;        // the submitted flags: FS_CertWhy for the unranked line
 .float   lobby_rq_pwhy;         // Patch 840: PW_* behind "input mode" (Lobby_RqDetail)
 .float   lobby_rq_ckshort;      // ...and seconds behind, behind "slow clock"
+// Patch 856: what the run on the clock did, for the Story ladder: stage resets and
+// restarts, the FSI_* bits its moves used, top horizontal speed.  Zeroed at the
+// start (SV_TimerStart), counted by sv_timer.qc, sent by Lobby_SubmitRun.
+.float   lobby_sty_fails;
+.float   lobby_sty_mask;
+.float   lobby_sty_top;
+.float   lobby_sty_serial;      // the *story toasts sent this connection
 // A stage posted from a main run (Patch 360) waits on its OWN id and answers into
 // `*srank`, so the final stage and the finish, posted in one frame, both land.
 .float   lobby_sq_id;
@@ -2563,6 +2570,65 @@ void(entity e, float rank, float of, float prevms) Lobby_SayBoardPB =
 		                nm, where, t, pos));
 };
 
+/*
+  Patch 856: the Story medals this finish earned -- surfd's `story`, [{l, n, map,
+  m, t, tot, ch}] (story_finish).  Each goes to the finisher's chat, a gold to the
+  lobby, and the best of them into `*story` for the HUD's toast (cl_story.qc):
+  "<serial> <b|s|g> <trophies>|<map>|<challenge> -- <list> <n>|<chapter opened>".
+  surfd strips \ " | ; from the free text.
+*/
+void(entity e, int root) Lobby_StoryTell =
+{
+	local int arr, o;
+	local float i, n, m, best;
+	local string mk, word, mp, t, ln, ch, toast;
+
+	arr = json_find_object_child(root, "story");
+	n = json_get_length(arr);
+	best = 0;
+	toast = "";
+	for (i = 0; i < n; i = i + 1)
+	{
+		if (i >= 4)
+			break;
+		o  = json_get_child_at_index(arr, i);
+		mk = json_get_string(json_find_object_child(o, "m"));
+		m  = 0;
+		if (!strcmp(mk, "b")) m = 1;
+		if (!strcmp(mk, "s")) m = 2;
+		if (!strcmp(mk, "g")) m = 3;
+		if (!m)
+			continue;
+		word = "^xc85bronze";
+		if (m == 2) word = "^xccesilver";
+		if (m == 3) word = "^xfc3gold";
+		mp = strcat(substring(json_get_string(json_find_object_child(o, "map")), 0, 48));
+		t  = strcat(substring(json_get_string(json_find_object_child(o, "t")), 0, 64));
+		ln = strcat(substring(json_get_string(json_find_object_child(o, "l")), 0, 32), " ",
+		            ftos(json_get_float(json_find_object_child(o, "n"))));
+		ch = strcat(substring(json_get_string(json_find_object_child(o, "ch")), 0, 48));
+		sprint(e, PRINT_CHAT, sprintf("^5story:^7 %s^7 on %s -- %s (%s, %g trophies)\n", word,
+		       mp, t, ln, json_get_float(json_find_object_child(o, "tot"))));
+		if (ch != "")
+			sprint(e, PRINT_CHAT, sprintf("^5story:^7 chapter ^3%s^7 is open\n", ch));
+		if (m == 3)
+		if (Lobby_AnnOn())
+			Lobby_SayOthers(e, sprintf("^5story:^7 %s took %s^7 on %s (%s)\n",
+			                Lobby_ChatName(e), word, mp, ln));
+		if (m > best)
+		{
+			best = m;
+			toast = sprintf("%s %g|%s|%s -- %s|%s", mk,
+			                json_get_float(json_find_object_child(o, "tot")), mp, t, ln, ch);
+		}
+	}
+	if (best)
+	{
+		e.lobby_sty_serial = e.lobby_sty_serial + 1;
+		forceinfokey(e, "*story", sprintf("%g %s", e.lobby_sty_serial, toast));
+	}
+};
+
 void(float reqid, float code, string body) Lobby_RunReply =
 {
 	local entity who;
@@ -2638,6 +2704,10 @@ void(float reqid, float code, string body) Lobby_RunReply =
 	// unlinked, banned.  Matched below, never printed.
 	awhy   = strcat(json_get_string(json_find_object_child(root, "why")));
 	okv    = json_get_float(json_find_object_child(root, "ok"));
+	if (who != world)
+	if (!isstage)
+	if (!code)
+		Lobby_StoryTell(who, root);
 	if (root)
 		json_free(root);
 	// For the finish card: unranked for want of an account, not for the run.
@@ -3076,6 +3146,12 @@ void(entity e, float track, float leg, float ticks, float flags,
 	body = Lobby_RunBody(e, track, leg, ticks, flags, rec, recbytes, rectrunc);
 	if (body == "")
 		return;
+	// Patch 856: a full run made in one session only; a resumed run's first part
+	// was counted by a session that is gone.
+	if (leg == 0)
+	if (!(flags & TF_MULTISESSION))
+		body = sprintf("%s&sfails=%d&smask=%d&stop=%d", body, e.lobby_sty_fails,
+		               e.lobby_sty_mask, e.lobby_sty_top);
 	url = cvar_string("lobby_master");
 
 	/*

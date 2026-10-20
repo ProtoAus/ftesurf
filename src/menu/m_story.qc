@@ -8,8 +8,8 @@
   proof (m_friends.qc: op list, plus story=1) and kept in data/story_me.txt for
   when the menu cannot sign (in a game, or an engine without friends_sign).
 */
-#define STY_LISTS       2
-#define STY_TABS        3           // story, events, players
+#define STY_LISTS       3
+#define STY_TABS        4           // the lists, then players
 #define STY_ROW_H       52
 #define STY_PROW_H      44
 #define STY_SIDE_W      300
@@ -33,7 +33,8 @@ float sty_chtitle[STY_LISTS], sty_chbar[STY_LISTS], sty_rows[STY_LISTS], sty_pro
 float sty_nlv[STY_LISTS], sty_nch[STY_LISTS], sty_nrow[STY_LISTS];
 float sty_t[STY_LISTS], sty_open[STY_LISTS], sty_sel[STY_LISTS];
 string sty_lid[STY_LISTS], sty_ltitle[STY_LISTS];
-vector sty_scr0, sty_scr1, sty_scr2;
+vector sty_scr0, sty_scr1, sty_scr2, sty_scr3;
+float sty_lrecv;                    // `time` when the ladder arrived: dated levels count from it
 float sty_pl, sty_npl, sty_pltotal;
 // One request each: the list, one player's progress, the ranking, the proof.
 float sty_lreq, sty_lst, sty_lat;
@@ -184,6 +185,8 @@ void(string body) Sty_ParseList =
 	local int root, lists, o, chs, lvs, lv, hold, ch, c;
 	local float L, n, j, k, m, track, chap, timed, kinds, tb, kb, ks, kg;
 	local string info, rev, mk;
+	local int win;
+	local float dated;
 
 	root = json_parse(body);
 	if (!root)
@@ -259,7 +262,13 @@ void(string body) Sty_ParseList =
 			               json_get_float(json_get_child_at_index(hold, 0)),
 			               json_get_float(json_get_child_at_index(hold, 1)),
 			               json_get_float(json_get_child_at_index(hold, 2)));
-			bufstr_set(sty_lvinfo[L], k, strcat(info, sprintf("%g %g %g", kb, ks, kg)));
+			// Patch 856: a dated level's seconds until it opens and until it ends.
+			win = json_find_object_child(lv, "in");
+			dated = json_get_length(win);
+			bufstr_set(sty_lvinfo[L], k, strcat(info, sprintf("%g %g %g ", kb, ks, kg),
+			           sprintf("%g %d %d", dated == 2,
+			                   json_get_float(json_get_child_at_index(win, 0)),
+			                   json_get_float(json_get_child_at_index(win, 1)))));
 		}
 		// Chapters after the last level still get their header row.
 		while (chap < sty_nch[L] - 1)
@@ -271,6 +280,7 @@ void(string body) Sty_ParseList =
 		if (sty_sel[L] >= sty_nlv[L]) sty_sel[L] = 0;
 	}
 	sty_n = n;
+	sty_lrecv = time;
 	if (sty_tab < STY_LISTS && sty_tab >= n) sty_tab = 0;
 	sty_idxcount = -1;
 	json_free(root);
@@ -528,8 +538,11 @@ float(float L, float i) Sty_MapRow =
 	local float r;
 	if (sty_idxcount != ms_count)
 	{
-		buf_del(sty_lvidx[0]); sty_lvidx[0] = buf_create();
-		buf_del(sty_lvidx[1]); sty_lvidx[1] = buf_create();
+		for (r = 0; r < STY_LISTS; r = r + 1)
+		{
+			buf_del(sty_lvidx[r]);
+			sty_lvidx[r] = buf_create();
+		}
 		sty_idxcount = ms_count;
 	}
 	s = bufstr_get(sty_lvidx[L], i);
@@ -594,6 +607,25 @@ vector(float L, float i) Sty_Kinds =
 {
 	if (tokenize(bufstr_get(sty_lvinfo[L], i)) < 9) return '-1 -1 -1';
 	return [stof(argv(6)), stof(argv(7)), stof(argv(8))];
+};
+
+string(float s) Sty_Span =
+{
+	if (s >= 86400) return sprintf("%gd %gh", floor(s / 86400), floor((s % 86400) / 3600));
+	if (s >= 3600) return sprintf("%gh %gm", floor(s / 3600), floor((s % 3600) / 60));
+	return sprintf("%gm", max(1, ceil(s / 60)));
+};
+
+// Patch 856: a dated level's state -- "" undated, else opens in / ends in / ended.
+string(float L, float i) Sty_When =
+{
+	local float gone;
+	if (tokenize(bufstr_get(sty_lvinfo[L], i)) < 12) return "";
+	if (stof(argv(9)) != 1) return "";
+	gone = time - sty_lrecv;
+	if (stof(argv(10)) - gone > 0) return strcat("opens in ", Sty_Span(stof(argv(10)) - gone));
+	if (stof(argv(11)) - gone > 0) return strcat("ends in ", Sty_Span(stof(argv(11)) - gone));
+	return "ended";
 };
 
 void(vector pos, float w) Sty_Hero =
@@ -692,10 +724,11 @@ void(vector rp, vector rs, float L, float j, float hot) Sty_ChapterRow =
 void(vector rp, vector rs, float L, float i, float on, float hot) Sty_LevelRow =
 {
 	local float track, chap, timed, locked, row, a, med, ms, m, nx, tw;
-	local string map, sub, tm;
+	local string map, sub, tm, when;
 	local vector kinds;
 
 	map = bufstr_get(sty_lvmap[L], i);
+	when = Sty_When(L, i);
 	tokenize(bufstr_get(sty_lvinfo[L], i));
 	track = stof(argv(0));
 	chap = stof(argv(1));
@@ -727,6 +760,8 @@ void(vector rp, vector rs, float L, float i, float on, float hot) Sty_LevelRow =
 	sui_text([nx + 92, rp_y + 7], SZ_ROW, ui_fit_text(map, tw, SZ_ROW),
 	         ((on || hot) && !locked) ? COL_ACCENT : COL_TEXT, a, 0);
 	sub = track ? sprintf("bonus %g", track) : "";
+	if (when != "")
+		sub = strcat(sub, sub == "" ? "" : "  ", "^xfc3", when, "^7");
 	if (!timed)
 		sub = strcat(sub, sub == "" ? "" : "  ", "^9no zones yet^7");
 	else if (locked)
@@ -813,7 +848,9 @@ void(vector pos, vector size, float L) Sty_Side =
 	sui_text([pos_x + 12, y], SZ_ROW, ui_fit_text(track ? sprintf("%s  bonus %g", map, track) : map,
 	         size_x - 24, SZ_ROW), COL_TEXT, 1, 0);
 	y = y + 22;
-	sui_text([pos_x + 12, y], SZ_LABEL, sprintf("Level %g, chapter %g", i + 1, chap + 1), COL_DIM, 1, 0);
+	txt = Sty_When(L, i);
+	sui_text([pos_x + 12, y], SZ_LABEL, sprintf("Level %g, chapter %g%s", i + 1, chap + 1,
+	         txt == "" ? "" : strcat(", ", txt)), COL_DIM, 1, 0);
 	y = y + 30;
 	for (m = 0; m < 3; m = m + 1)
 	{
@@ -978,9 +1015,12 @@ void(vector screensize) screen_story =
 			if (L == 0)
 				sui_list_view_begin("sty_list0", [17, y + 1], ls - '2 2 0', [ls_x - 16, STY_ROW_H],
 				                    sty_nrow[L], sty_scr0, [0, 10]);
-			else
+			else if (L == 1)
 				sui_list_view_begin("sty_list1", [17, y + 1], ls - '2 2 0', [ls_x - 16, STY_ROW_H],
 				                    sty_nrow[L], sty_scr1, [0, 10]);
+			else
+				sui_list_view_begin("sty_list2", [17, y + 1], ls - '2 2 0', [ls_x - 16, STY_ROW_H],
+				                    sty_nrow[L], sty_scr3, [0, 10]);
 			rp = '0 0 0';
 			for (idx = sui_list_item(rp); idx > -1; idx = sui_list_item(rp))
 			{
@@ -1045,6 +1085,7 @@ void(string what, string arg) Sty_Command =
 		      sprintf("sel %g map %s medal %g ms %g\n", i, map == "" ? "-" : map, med, ms));
 		print(sprintf("story_probe: players %g of %g on %s locked %g\n", sty_npl, sty_pltotal,
 		              sty_n ? sty_lid[sty_kfor] : "-", (i < sty_nlv[L]) ? Sty_Locked(L, i) : -1));
+		print(sprintf("story_probe: list %s when %S\n", sty_lid[L], (i < sty_nlv[L]) ? Sty_When(L, i) : ""));
 		return;
 	}
 	Sty_Open();
