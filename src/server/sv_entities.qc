@@ -1579,6 +1579,15 @@ float(entity f, entity act) SV_VelocityFilter =
 */
 strbuf vbsp_late_buf;
 
+// Unset at spawn.  A string "0" is a value: snapvelocitytodestangles "0" and an
+// absent key read differently (SV_KeyTri).
+float(float fld, string val) SV_LateIsUnset =
+{
+	if (entityfieldtype(fld) == EV_STRING)
+		return (val == "");
+	return (val == "" || val == "0" || val == "'0 0 0'" || val == "0 0 0");
+};
+
 void(string fields) SV_LateStash =
 {
 	local float i, n, fld;
@@ -1593,7 +1602,7 @@ void(string fields) SV_LateStash =
 		if (!fld)
 			continue;
 		val = getentityfieldstring(fld, self);
-		if (val != "" && val != "0" && val != "'0 0 0'" && val != "0 0 0")
+		if (!SV_LateIsUnset(fld, val))
 			rec = strcat(rec, "\t", nm, "\t", val);
 	}
 	if (vbsp_late_buf <= 0)
