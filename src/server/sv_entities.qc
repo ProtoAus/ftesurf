@@ -10216,7 +10216,6 @@ void() func_physbox =
 	if (wasfreed(self) || !self.notsolid)
 		return;
 	self.solid = SOLID_NOT;
-	self.vbsp_io_solid = SOLID_NOT;
 	setorigin(self, self.origin);
 };
 //FTESurf Patch 256: `class CPhysBoxMultiplayer : public CPhysBox` -- the

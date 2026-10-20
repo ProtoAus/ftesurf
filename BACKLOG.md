@@ -17,9 +17,25 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   collisions): 226 of the 229 lack SF_PHYSBOX_MOTIONDISABLED. Here they stay drawn where they
   spawned. Mostly invisible axles under phys_motor (surf_lovetunnel); a Momentum screenshot settles
   whether any visible one is meant to vanish.
+- The client's own SOLID_BSP copies from the entity lump do not read `notsolid`: Emit_DropFires
+  (cl_emit.qc:2588-2640) drops a fire onto a notsolid physbox, and the sprite occluder copies count it.
+  Cosmetic; no census of env_fire above one.
+- A recording verified after P884 that touched one of these boxes HOLDs as `state: N packets differ`
+  (sv_ccmds.c:6449 is tested before the physents reason at :6451), which reads like a forgery. Say so in
+  the P790/P884 rule bump.
 - A notsolid physbox cannot be hit by the test shot (traces skip SOLID_NOT), as in Source; Break by
   map I/O still works. No map sends Enable/Disable/Toggle to one (census 21 Oct), so SV_IOEnable's
   SOLID_BSP fallback for vbsp_io_solid 0 is not reached by the library.
+
+## Start-hop rule (P885): what review left open
+
+- Under `run_zone_hull_live 1` (off by default) SV_TimerHopInStart applies this packet's hull to the
+  previous packet's point, so leaving through the box's top or bottom ducked, standing and hopping on
+  the next packet can be judged. Marks an honest run practice in that corner only.
+- The fly-through itself (bhop outside, cross a start box in the air, never rest) still RANKS when the
+  landing is a ramp, as before P885 (the ramp settles the start). No exit-speed cap: run_startcap is 0.
+- The jump watch runs once per packet from run_t_lastorg, so with several commands per packet a hop is
+  judged by where the packet began (predates P885).
 
 ## Patch notes (P876): what review left open
 

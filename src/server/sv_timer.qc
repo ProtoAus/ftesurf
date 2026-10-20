@@ -1525,6 +1525,9 @@ float() SV_RecEnabled =
 .float  run_t_airsec;             // SV_ClockSec this air phase began;    0 = grounded
 .float  run_t_lastvz;
 .float  run_t_startok;
+// Patch 885: this attempt stood in the box for the dwell while ARMED, so its speed is a
+// standing start's; only then is a hop outside the box left alone.  Cleared by SV_TimerArm.
+.float  run_t_boxrest;
 /*
   Jumps since the arm.  DIAGNOSTIC ONLY -- the rule is the dwell, not the count -- but
   "how many jumps did it think I took" is the first question anyone asks of a rule that
@@ -10917,6 +10920,24 @@ void(entity e) SV_TimerBhopLaunchCommand =
 	}
 };
 
+// Patch 885: the hop is in a start -- the arm's box, or a START being stood in (review 1:
+// another track's start on a bhop map), at the launch test's pre-move point and hull.
+float(entity e) SV_TimerHopInStart =
+{
+	local vector mn, mx;
+
+	mn = SV_RunHullMins(e);
+	mx = SV_RunHullMaxs(e);
+	if (SV_ZoneInBox(e.run_t_armzone, e.run_t_lastorg, mn, mx))
+		return TRUE;
+	if (e.run_t_azone >= 0)
+	if (e.run_t_azone < zone_count)
+	if (zone_type[e.run_t_azone] == ZONE_START)
+	if (SV_ZoneInBox(e.run_t_azone, e.run_t_lastorg, mn, mx))
+		return TRUE;
+	return FALSE;
+};
+
 float(entity e) SV_TimerJumpWatch =
 {
 	local float ong, vz, jumped, dwell, want, settleok, launchz, bhopz;
@@ -10941,6 +10962,9 @@ float(entity e) SV_TimerJumpWatch =
 	dwell = 0;
 	if (e.run_t_groundsec > 0)
 		dwell = SV_ClockSec(e) - e.run_t_groundsec;
+	if (e.run_t_state == TS_ARMED)
+	if (dwell >= want)
+		e.run_t_boxrest = TRUE;
 
 	/*
 	  BHOP LAUNCH / RE-LAUNCH.
@@ -11171,11 +11195,11 @@ float(entity e) SV_TimerJumpWatch =
 		    e.run_bhop_launch_zone != e.run_t_armzone + 1)
 		if (!e.run_pushed || e.run_jumpcmd)
 		if (e.run_t_state == TS_ARMED || e.run_t_state == TS_RUNNING)
-		// Patch 885: only a hop taken inside the start box -- the launch test's hull and
-		// pre-move point.  Once the hull is out the clock is running, and surf_tendies'
-		// route is one jump out of the box and a hop on the booster beyond it.
-		if (e.run_t_state == TS_ARMED ||
-		    SV_ZoneInBox(e.run_t_armzone, e.run_t_lastorg, SV_RunHullMins(e), SV_RunHullMaxs(e)))
+		// Patch 885: a hop outside the start is left alone once the attempt stood in the
+		// box (surf_tendies: one jump out, a hop on the booster beyond it).  Review 1: an
+		// attempt that only flew through the box keeps the old judgment, or speed built
+		// outside it would rank.
+		if (e.run_t_state == TS_ARMED || !e.run_t_boxrest || SV_TimerHopInStart(e))
 		{
 			if (dwell < want)
 			{
@@ -11784,6 +11808,7 @@ void(entity e, float z) SV_TimerArm =
 	  you do while standing in the box.
 	*/
 	e.run_t_startok  = FALSE;
+	e.run_t_boxrest  = FALSE;
 	e.run_t_jumps    = 0;
 
 	/*

@@ -12,12 +12,14 @@ owner's saves (-1106.8 11246.7 yaw 64.7, measured 21 Oct); the cfg's turn is aim
 Result 21 Oct (qwprogs control 4ab61a33 / fixed d8a47ba9): p884 E `solid BSP` / `solid NOT`,
 F z -696.0 / -1112.1; p885 H `practice 1` / `practice 0` (both running, jumps 2, out at
 x -996), I `hopped 1` on both.
+Review 1 (qwprogs 89550455): p885walk W `practice 1` on control and the fix, `practice 0` on
+7cfaae5a (--side v1=...) -- the unrested fly-through hole; p885hop H still `practice 0`.
 """
 import argparse, hashlib, os, shutil, subprocess, time
 
 ROOT = r"C:\FTESurf"
 GAME = os.path.join(ROOT, "ftesurf")
-ARMS = {"p884phys": "surf_lovetunnel", "p885hop": "surf_tendies"}
+ARMS = {"p884phys": "surf_lovetunnel", "p885hop": "surf_tendies", "p885walk": "surf_tendies"}
 PROGS = ("qwprogs.dat", "csprogs.dat")
 
 
@@ -56,11 +58,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--control", required=True)
     ap.add_argument("--fixed", required=True)
+    ap.add_argument("--side", action="append", default=[], metavar="NAME=DIR",
+                    help="another build to run after these two")
     ap.add_argument("--cfgdir", default=os.path.join(GAME, "cfg", "test"))
     ap.add_argument("--out", required=True)
     ap.add_argument("arms", nargs="*")
     a = ap.parse_args()
     sides = {"control": a.control, "fixed": a.fixed}
+    sides.update(x.split("=", 1) for x in a.side)
     arms = a.arms or list(ARMS)
     os.makedirs(a.out, exist_ok=True)
     inst = {f: sha(os.path.join(GAME, f)) for f in PROGS}
@@ -77,7 +82,7 @@ def main():
             if ours:
                 shutil.copy2(os.path.join(a.cfgdir, arm + ".cfg"), cfg)
             before = listing(m)
-            for side in ("control", "fixed"):
+            for side in sides:
                 for f in PROGS:
                     shutil.copy2(os.path.join(sides[side], f), os.path.join(GAME, f))
                 print("%s %s qwprogs %s" % (arm, side, sha(os.path.join(GAME, "qwprogs.dat"))), flush=True)
