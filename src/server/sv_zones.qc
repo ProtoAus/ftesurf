@@ -507,6 +507,8 @@ void(entity p, entity t, float z) SV_MomZoneTeleport =
 
 	if (z < 0 || z >= zone_count)
 		return;
+	if (zone_type[z] != ZONE_START && zone_type[z] != ZONE_STAGE)
+		return;                     // a save from before a zone update may name another kind
 	os = self;
 	self = p;
 	org = SV_ZoneDest(z, yaw, haveyaw);

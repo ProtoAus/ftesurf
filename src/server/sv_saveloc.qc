@@ -1187,6 +1187,7 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	fputs(f, sprintf("momprog %S %g %g\n", e.run_progtrig ? e.run_progtrig.model : "",
 	                 e.run_prognum, e.run_progzone));
 	fputs(f, sprintf("onehops %S\n", SV_MomOnehopList(e)));
+	fputs(f, sprintf("momon %g\n", e.run_momon));
 
 	// The timer.
 	fputs(f, sprintf("state %d\n", e.run_t_state));
@@ -1719,7 +1720,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local string drid;              // Patch 426: the run the Patch 360 discard kept
 	local vector rorg, rvel;
 	local string savedname, savedcls, mprog, mohs;
-	local float  mnum, mzone;
+	local float  mnum, mzone, mmon;
 	local float hasname;
 
 	sl_voided = FALSE;
@@ -1749,7 +1750,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	savedname = "";
 	savedcls = "";                  // Patch 865
 	mprog = mohs = "";              // Patch 869
-	mnum = mzone = -1;
+	mnum = mzone = mmon = -1;
 	hasname = FALSE;
 	srun = -1;                      // a pre-57 save file: derived from startseg below
 	sgs = 1;
@@ -1806,6 +1807,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (k == "srcclass")   { savedcls = argv(1); continue; }   // Patch 865
 		if (k == "momprog")    { mprog = argv(1); mnum = stof(argv(2)); mzone = stof(argv(3)); continue; }
 		if (k == "onehops")    { mohs = argv(1); continue; }
+		if (k == "momon")      { mmon = stof(argv(1)); continue; }
 
 		if (k == "azone")      { az = stof(argv(1)); continue; }
 		if (k == "evzone")     { ez = stof(argv(1)); continue; }
@@ -1867,8 +1869,6 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		e.targetname = savedname;
 		e.run_srcclass = savedcls;     // Patch 865: the class filters' marker
 	}
-	// Patch 869: never the abandoned future's progress (an older save clears it).
-	SV_MomProgressRestore(e, mprog, mnum, mzone, mohs);
 
 	/*
 	  PATCH 450: THE MAP COMPARISON, made here because the whole file has been read and
@@ -1997,6 +1997,13 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	e.run_t_evzone   = ez;
 	e.run_t_armzone  = am;
 	e.run_t_cpzone   = cz;
+	// Patch 869: Momentum progress, never the abandoned future's.  With no record (an
+	// older save, a rewind) a running state goes back to its own arm zone; the run's
+	// trigger switch is the save's, else the cvar now.
+	if (mprog == "" && mzone < 0 && st == TS_RUNNING)
+		mzone = am;
+	SV_MomProgressRestore(e, mprog, mnum, mzone, mohs);
+	e.run_momon = (mmon >= 0) ? mmon : vbsp_momtrig;
 	/*
 	  Patch 436: A PENDARM IS NOT A LATCH, IT IS AN ARM THAT HAS NOT HAPPENED.
 

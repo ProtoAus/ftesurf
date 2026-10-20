@@ -468,6 +468,9 @@ void() PlayerPreThink =
 	}
 
 	SV_GravityFrame(self);          // Patch 865: trigger_gravity persist 0
+	// Patch 869: trigger_userinput's edges, per command (PostThink runs per packet).
+	self.vbsp_ui_held = self.vbsp_ui_now;
+	self.vbsp_ui_now = SV_UserKeys(self);
 
 	// Patch 499: the pin owns the movetype -- per usercmd and ahead of the mover,
 	// so no command is moved with a movetype the pin did not choose.  Essay at
@@ -782,8 +785,7 @@ void() PlayerPostThink =
 	// +use, for maps that wire a func_button.  A rising edge on .button5 and a
 	// short trace; nothing at all happens on a map that wires nothing.
 	SV_UseFrame(self);
-	SV_ShootFrame(self);
-	self.vbsp_ui_held = SV_UserKeys(self);     // Patch 869: trigger_userinput's last command            // Patch 865: +attack, the test shot
+	SV_ShootFrame(self);            // Patch 865: +attack, the test shot
 
 	/*
 	  The timer, the zone scan and the recorder, once per usercmd.

@@ -195,6 +195,7 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 	fputs(f, sprintf("angles %.4f %.4f\nduck %d\nstate %d\nticks %d\nelapsed %.6f\n",
 	                 rw_pit, rw_yaw, rw_dk, TS_RUNNING, rw_t, m[b+15]));
 	SV_RewindWriteName(e, f, b);
+	fputs(f, sprintf("momon %g\n", e.run_momon));     // Patch 869: the run's trigger switch
 	fputs(f, sprintf("track %d\nstartseg %d\nstagerun %d\nseg %d\nsegs %d\nsplit %d\ndelta %d\n",
 	                 m[b+10], m[b+11], m[b+12], m[b+13], m[b+14], m[b+16], m[b+17]));
 	// Patch 817: the start latches against now -- a profile step or a ruleset breach

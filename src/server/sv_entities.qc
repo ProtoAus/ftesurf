@@ -7582,8 +7582,8 @@ void(entity p, entity t, entity dest) SV_MomTeleport =
 
 void(entity p, entity t, float z) SV_MomZoneTeleport;  // sv_zones.qc: the zone's destination
 
-// A failed hop: the trigger's target, else the progress trigger, else its zone.
-// teleport_progress reads no target (mom_triggers.cpp CTriggerTeleportProgress).
+// A failed hop: the trigger's target (HandleTeleport's m_target wins), else the
+// progress trigger, else its zone.
 void(entity t, entity p, float usetarget) SV_MomFail =
 {
 	local entity d;
@@ -7616,22 +7616,38 @@ void() trigger_momentum_progress_touch =
 };
 void() trigger_momentum_progress = { if (SV_MomTrigSpawn()) self.touch = trigger_momentum_progress_touch; };
 
-// A hold begins (entry, or a touch no slot holds): the older of two others is dropped.
+float(entity t, entity p) SV_MomTouching =
+{
+	local int bit;
+	bit = SV_TouchBit(p);
+	return (t && bit && ((t.vbsp_touch_in | t.vbsp_touch_seen) & bit));
+};
+
+// A hold begins (entry, or a touch no slot holds).  A slot whose trigger is still
+// touched is never given up, so three tiled volumes cannot keep resetting each other:
+// the new one waits and the held ones run out.
 void(entity t, entity p) SV_MomHoldEnter =
 {
+	if (p.vbsp_mh_trig == t)
+	{
+		p.vbsp_mh_t0 = time;
+		return;
+	}
 	if (p.vbsp_mh_trig2 == t)
 	{
 		p.vbsp_mh_t02 = time;
 		return;
 	}
-	if (p.vbsp_mh_trig && p.vbsp_mh_trig != t)
-	if (!p.vbsp_mh_trig2 || p.vbsp_mh_t02 < p.vbsp_mh_t0)
+	if (!p.vbsp_mh_trig || !SV_MomTouching(p.vbsp_mh_trig, p))
 	{
-		p.vbsp_mh_trig2 = p.vbsp_mh_trig;
-		p.vbsp_mh_t02 = p.vbsp_mh_t0;
+		p.vbsp_mh_trig = t;
+		p.vbsp_mh_t0 = time;
 	}
-	p.vbsp_mh_trig = t;
-	p.vbsp_mh_t0 = time;
+	else if (!p.vbsp_mh_trig2 || !SV_MomTouching(p.vbsp_mh_trig2, p))
+	{
+		p.vbsp_mh_trig2 = t;
+		p.vbsp_mh_t02 = time;
+	}
 };
 
 // CTriggerMultihop::Touch, which the onehop inherits: standing in it past `hold` teleports.
@@ -7726,7 +7742,7 @@ void() trigger_momentum_teleport_progress_touch =
 		return;
 	if (!SV_TouchEntered(self, other))
 		return;
-	SV_MomFail(self, other, FALSE);
+	SV_MomFail(self, other, TRUE);
 };
 void() trigger_momentum_teleport_progress = { if (SV_MomTrigSpawn()) self.touch = trigger_momentum_teleport_progress_touch; };
 
@@ -7764,7 +7780,7 @@ void() trigger_reversespeed = { trigger_momentum_reversespeed(); };
 // CTriggerUserInput (mom_triggers.cpp:1199): outputs on a key while inside.
 // Keys: 0 fwd, 1 back, 2 left, 3 right, 4 jump, 5 duck, 6 attack, 7 attack2.
 .float  lookedkey, lookedkey2, lookedkey3;
-.float  vbsp_ui_held;           // on the player: last command's key mask
+.float  vbsp_ui_held, vbsp_ui_now;   // on the player: the last command's keys, this one's (PreThink)
 
 float(entity p) SV_UserKeys =
 {
@@ -7810,7 +7826,7 @@ void() trigger_momentum_userinput_touch =
 	if (!SV_MomTrigGate())
 		return;
 	SV_TouchEntered(self, other);
-	now = SV_UserKeys(other);
+	now = other.vbsp_ui_now;
 	was = other.vbsp_ui_held;
 	SV_UserInputKey(self, other, self.lookedkey, now, was);
 	if (self.lookedkey2 != self.lookedkey)
