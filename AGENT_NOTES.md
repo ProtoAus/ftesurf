@@ -660,6 +660,15 @@ renderer; source and build in `src/viewer/` (its README). The bundle
   imports through a stub and holds the old admission lock SHARED for good, so
   the old guard drains only after `systemctl --user restart momrequests`. A
   `/srv/nvme/surfd/*.py` hash matching neither generation is a stub, not drift.
+- A post-publish smoke failure is not necessarily a failed handoff. P861's old
+  operator checks requested `/api/board` without its required map (400), then
+  expected an empty `/api/hid` POST to return 400. The actual length guard returns
+  413 before creating a temporary body; 400 belongs to later malformed headers.
+  Preserve the failed check/source, inspect the actual live generation, guards,
+  routes and unit binding, and correct the reader against the source contract.
+  Do not replay grants/reopen/CAS or roll back a healthy new service merely to
+  rerun a stale readback. Use an explicit existing map/track/leg/tier/style/limit
+  board query and distinguish source-confirmed refusal from genuine upload proof.
 - The runtime's file set is the serving runtime's, not `surfd/`: `momfetch.py` and
   `msml.py` exist only on the Pi. `/srv/nvme/agent-work` is setgid; a new root
   inherits 2700 and the guard refuses ("requires owner-only modes") until the root

@@ -1,7 +1,8 @@
 #!/bin/sh
 # The surfd suite in a staged archive (the list surfd-deploy.ps1 runs).
-#   sh suite.sh STAGE    (archive surfd/, tools/, src/shared/ and
-#                        src/release/ftesurf.nginx, used by test_ksftopup)
+#   sh suite.sh STAGE    (archive surfd/, tools/, src/shared/, src/viewer/src/
+#                        and src/release/ftesurf.nginx: test_web and test_ksftopup
+#                        read these source fixtures, not just the sealed runtime)
 set -e
 STAGE=$1
 mkdir -p $STAGE/tmp
