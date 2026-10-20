@@ -1,6 +1,6 @@
 /*
 ===========================================================================
-  cl_ropes.qc -- move_rope / keyframe_rope (Patch 874).  135 maps.
+  cl_ropes.qc -- move_rope / keyframe_rope (Patch 874).  181 maps.
 
   A rope runs from a move_rope through the keyframe_ropes its NextKey chain
   names.  Source simulates each span (c_rope.cpp); a static rope at rest is the
@@ -9,18 +9,23 @@
   Slack (sag h from L ~ D + 8h^2 / 3D).  Wind, collision, breaking, dangling and
   parented (moving) ropes are not simulated.  One camera-facing strip per
   segment (one per 48 units, 4 to 16) with the span's RopeMaterial, Width
-  wide, lit once at load from the lightgrid; spans past vbsp_ropes_dist are
-  skipped.  vbsp_ropes 0 hides them (gfx menu).  Each span is a CSQC entity,
-  so no global arrays.
+  wide, lit once at load from the lightgrid; spans past vbsp_ropes_dist or
+  behind the eye are skipped.  vbsp_ropes 0 hides them (gfx menu).
+
+  A frame builds one side vector per point and one polygon begin per span.
+  bhop_canals (235 spans, the library's most) measured +0.24-0.49 ms of CSQC at
+  its densest heading with two per segment.  A point array would cost 3 globals
+  a vector, and csprogs is near fteqcc's 131072.
 ===========================================================================
 */
-.vector rope_p0, rope_p1;
-.float  rope_sag, rope_w, rope_n, rope_tex;     // rope_tex: V per segment
+.vector rope_p0, rope_dp, rope_mid;
+.float  rope_sag, rope_rad, rope_w, rope_n, rope_tex;   // rope_tex: V per segment
 .string rope_mat;
 .vector rope_col;
+.entity rope_next;
 
 float  ropes_n;
-string ropes_map;
+entity ropes_head;
 
 string(string m) Rope_Shader =
 {
@@ -35,15 +40,19 @@ string(string m) Rope_Shader =
 void() Ropes_LoadForMap =
 {
 	local string tok, key, cn, tname, next, mat;
-	local vector org;
-	local float slack, width, tscale, i, j, n, d, th;
+	local vector org, p0, p1;
+	local float slack, width, tscale, i, j, n, d, th, k, sag;
 	local strbuf names, recs;
 	local entity e;
 	local string rec;
 
-	ropes_map = serverkey("map");
-	for (e = find(world, classname, "rope_span"); e; e = find(world, classname, "rope_span"))
+	while (ropes_head)
+	{
+		e = ropes_head;
+		ropes_head = e.rope_next;
+		strunzone(e.rope_mat);
 		remove(e);
+	}
 	ropes_n = 0;
 
 	// One record per rope point: "nextkey\torigin\tslack\twidth\tmaterial\ttexscale"
@@ -93,30 +102,40 @@ void() Ropes_LoadForMap =
 				break;
 		if (j >= n)
 			continue;
-		e = spawn();
-		e.classname = "rope_span";
-		e.rope_p0 = stov(argv(1));
+		p0 = stov(argv(1));
 		slack = stof(argv(2));
-		e.rope_w = max(0.5, stof(argv(3)));
-		e.rope_mat = strzone(argv(4));
+		width = max(0.5, stof(argv(3)));
+		mat = argv(4);
 		tscale = max(0.01, stof(argv(5)));
 		tokenizebyseparator(bufstr_get(recs, j), "\t");
-		e.rope_p1 = stov(argv(1));
-		d = vlen(e.rope_p1 - e.rope_p0);
+		p1 = stov(argv(1));
+		d = vlen(p1 - p0);
 		// Source splines its nodes; straight pieces this long read as kinks (Subdiv+2 did).
-		e.rope_n = bound(4, ceil((d + slack) / 48), 16);
+		k = bound(4, ceil((d + slack) / 48), 16);
+		sag = (d > 1 && slack > 0) ? sqrt(3 * d * slack / 8) : 0;
+
+		e = spawn();
+		e.rope_w = width;
+		e.rope_n = k;
+		e.rope_mat = strzone(mat);
+		e.rope_p0 = p0;
+		e.rope_dp = p1 - p0;
+		e.rope_sag = sag;
+		e.rope_mid = (p0 + p1) * 0.5 - '0 0 1' * sag * 0.5;
+		e.rope_rad = d * 0.5 + sag;
 		// c_rope.cpp:1756-1759: 4/TextureScale pixels a unit of rope, over the texture's height.
 		th = drawgetimagesize(e.rope_mat) * '0 1 0';
 		if (th <= 0)
 			th = 64;
-		e.rope_tex = (d + slack) / e.rope_n * 4 / (tscale * th);
-		e.rope_sag = (d > 1 && slack > 0) ? sqrt(3 * d * slack / 8) : 0;
-		e.rope_col = getlight((e.rope_p0 + e.rope_p1) * 0.5 - '0 0 1' * e.rope_sag * 0.5) * (1 / 255);
+		e.rope_tex = (d + slack) / k * 4 / (tscale * th);
+		e.rope_col = getlight(e.rope_mid) * (1 / 255);
 		if (e.rope_col == '0 0 0')
 			e.rope_col = '0.5 0.5 0.5';
 		e.rope_col_x = min(1, e.rope_col_x);
 		e.rope_col_y = min(1, e.rope_col_y);
 		e.rope_col_z = min(1, e.rope_col_z);
+		e.rope_next = ropes_head;
+		ropes_head = e;
 		ropes_n = ropes_n + 1;
 	}
 	buf_del(names);
@@ -125,50 +144,52 @@ void() Ropes_LoadForMap =
 		dprint(sprintf("ropes: %g span(s)\n", ropes_n));
 };
 
-vector(entity e, float t) Rope_Point =
-{
-	return e.rope_p0 + (e.rope_p1 - e.rope_p0) * t - '0 0 4' * (e.rope_sag * t * (1 - t));
-};
-
 void() Ropes_Draw =
 {
 	local entity e;
-	local vector eye, fwd, a, b, sa, sb;
-	local float k, n, maxd, v0, v1;
+	local vector eye, fwd, d, a, b, sa, sb, t;
+	local float k, n, f, maxd, v0, hw, sag;
+	local vector p0, dp;
 
-	if (serverkey("map") != ropes_map)
-		Ropes_LoadForMap();
 	if (!ropes_n || !cvar("vbsp_ropes"))
 		return;
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
 	fwd = v_forward;
 	maxd = cvar("vbsp_ropes_dist");
-	for (e = find(world, classname, "rope_span"); e; e = find(e, classname, "rope_span"))
+	for (e = ropes_head; e; e = e.rope_next)
 	{
-		a = (e.rope_p0 + e.rope_p1) * 0.5;
-		if (maxd > 0 && vlen(a - eye) > maxd + vlen(e.rope_p1 - e.rope_p0) * 0.5)
-			continue;
-		// Behind the camera, both ends and the middle.
-		if ((e.rope_p0 - eye) * fwd < 0 && (e.rope_p1 - eye) * fwd < 0 && (a - eye) * fwd < 0)
+		d = e.rope_mid - eye;
+		if (d * fwd < -e.rope_rad)
+			continue;               // wholly behind the eye
+		if (maxd > 0 && vlen(d) > maxd + e.rope_rad)
 			continue;
 		n = e.rope_n;
+		p0 = e.rope_p0;
+		dp = e.rope_dp;
+		sag = e.rope_sag * 4;
+		hw = e.rope_w * 0.5;
+		// One side vector per point, shared by the two segments that meet there;
+		// the tangent at a point is the parabola's derivative.
+		b = p0;
+		t = dp - '0 0 1' * sag;
+		sb = normalize(crossproduct(t, eye - b)) * hw;
 		v0 = 0;
-		b = e.rope_p0;
+		R_BeginPolygon(e.rope_mat, 0);
 		for (k = 1; k <= n; k = k + 1)
 		{
 			a = b;
-			b = Rope_Point(e, k / n);
-			v1 = v0 + e.rope_tex;
-			sa = normalize(crossproduct(b - a, eye - a)) * (e.rope_w * 0.5);
-			sb = normalize(crossproduct(b - a, eye - b)) * (e.rope_w * 0.5);
-			R_BeginPolygon(e.rope_mat, 0);
+			sa = sb;
+			f = k / n;
+			b = p0 + dp * f - '0 0 1' * (sag * f * (1 - f));
+			t = dp - '0 0 1' * (sag * (1 - 2 * f));
+			sb = normalize(crossproduct(t, eye - b)) * hw;
 			R_PolygonVertex(a - sa, [0, v0, 0], e.rope_col, 1);
 			R_PolygonVertex(a + sa, [1, v0, 0], e.rope_col, 1);
-			R_PolygonVertex(b + sb, [1, v1, 0], e.rope_col, 1);
-			R_PolygonVertex(b - sb, [0, v1, 0], e.rope_col, 1);
+			R_PolygonVertex(b + sb, [1, v0 + e.rope_tex, 0], e.rope_col, 1);
+			R_PolygonVertex(b - sb, [0, v0 + e.rope_tex, 0], e.rope_col, 1);
 			R_EndPolygon();
-			v0 = v1;
+			v0 = v0 + e.rope_tex;
 		}
 	}
 };

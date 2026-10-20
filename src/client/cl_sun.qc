@@ -17,7 +17,6 @@
 ===========================================================================
 */
 float  sun_have;
-string sun_map;
 vector sun_dir;
 vector sun_col, sun_ocol;
 float  sun_size, sun_osize;
@@ -42,7 +41,6 @@ void() Sun_LoadForMap =
 	local vector h;
 	local string want;
 
-	sun_map = serverkey("map");
 	sun_have = FALSE;
 	sun_vis = 0;
 	if (sun_mat != "") strunzone(sun_mat);
@@ -172,8 +170,6 @@ void() Sun_Draw =
 	local vector eye, fwd;
 	local float dot, ga, target;
 
-	if (serverkey("map") != sun_map)
-		Sun_LoadForMap();
 	if (!sun_have || !cvar("vbsp_sun"))
 		return;
 	eye = getproperty(VF_ORIGIN);

@@ -166,6 +166,8 @@ void() CSQC_WorldLoaded =
 	// here for the same reason -- func_dustmotes alone is 4999 instances across
 	// 464 maps and had never drawn anything.  cl_emit.qc.
 	Emit_LoadFromWorld();
+	Sun_LoadForMap();               // Patch 874
+	Ropes_LoadForMap();
 
 	// Build 66.  env_soundscape, out of the same lump and here for the same
 	// reason -- 1,702 across 125 maps, and until this ran a map had no way to
