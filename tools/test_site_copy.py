@@ -116,6 +116,10 @@ class CopyTests(unittest.TestCase):
             with self.subTest(gone=value):
                 self.assertNotIn(value, doc)
         outside = re.sub(r"<!--LINUX-BEGIN-->.*?<!--LINUX-END-->", "", doc, flags=re.S)
+        # P857: the launcher installs where it is started; the chmod hint only beside a Linux button.
+        self.assertIn('Put it in its own folder, then run it', outside)
+        self.assertIn('(Linux: <code>chmod +x</code>)', doc)
+        self.assertNotIn('chmod', outside)
         self.assertEqual(set(re.findall(r"@@([A-Z0-9_]+)@@", outside)),
                          {"VERSION", "FILENAME", "URL", "SIZE_HUMAN", "SIZE_BYTES", "SHA256", "DATE", "QCBUILD",
                           "ENGINEPATCH", "LAUNCHER_URL", "LAUNCHER_SHA256"})
