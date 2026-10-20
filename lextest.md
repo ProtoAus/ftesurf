@@ -12,6 +12,8 @@ anti-bhop family off (your toggle); a run keeps the setting it started with.
 - surf_mom_training: the catapults launch you.
 - bhop_floodwaters: falling into the water sends you back to the last checkpoint area.
 
+Live in both installs and on the 12 lobbies since 10:43Z 20 Oct (qwprogs e36359f7, csprogs f44565dc;
+lobby smoke passed on the installed and the 0.1.28 exe).
 "Training rooms / catapults / floodwaters ok, or <map and what differs>". Verdict PENDING.
 
 ## P870 — map text, hints, screen fades and shakes
@@ -23,11 +25,15 @@ coloured flashes, camera shakes). hud_edit > Display Info has "Map messages" and
 - surf_s_t_a_t_i_o_n: the credit hint at the start.
 - bhop_wuyan: a coloured flash at each stage teleport.
 
+Live in both installs and on the 12 lobbies since 10:43Z 20 Oct (qwprogs e36359f7, csprogs f44565dc;
+lobby smoke passed on the installed and the 0.1.28 exe).
 "Text / hints / fades / shakes look right, or <map and what is off>" (size and font especially).
 Verdict PENDING.
 
 ## P873 — trigger soundscapes
 
+Live in both installs and on the 12 lobbies since 10:43Z 20 Oct (qwprogs e36359f7, csprogs f44565dc;
+lobby smoke passed on the installed and the 0.1.28 exe).
 Soundscapes a map switches with trigger volumes now switch (bhop_pokemans_xd's rooms), and
 env_soundscape_proxy plays its soundscape. "Sounds change between rooms, or <map>". Verdict PENDING.
 
@@ -39,6 +45,8 @@ env_sun draws Source's sun glow over the sky (247 maps) and ropes/cables hang be
 - bhop_eazy / bhop_forevertranslucent: look up toward the sun, the glow is there.
 - bhop_kiitovittu / bhop_canals: cables hang between the poles.
 
+Live in both installs and on the 12 lobbies since 10:43Z 20 Oct (qwprogs e36359f7, csprogs f44565dc;
+lobby smoke passed on the installed and the 0.1.28 exe).
 "Sun / ropes look right, or <map>"; and the frame rate on bhop_canals with Ropes on vs off.
 Verdict PENDING.
 
@@ -118,6 +126,8 @@ T/CT teleports, walls a map breaks open, point_teleport, and a silent shot for s
   Offline only; a lobby needs `lobby_shoot 1`. On a lobby, map Breaks stay shut
   (`lobby_mapedits 0`): one player's break would change the map for everyone.
 
+Live in both installs and on the 12 lobbies since 10:43Z 20 Oct (qwprogs e36359f7, csprogs f44565dc;
+lobby smoke passed on the installed and the 0.1.28 exe).
 "Gravity / gates / towers / shot ok, or <map and what differs>". Verdict PENDING.
 
 ## P863 — the HUD costs less, same picture
