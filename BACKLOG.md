@@ -46,6 +46,28 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   LEAF_FLAGS_SKY its 2D-sky faces could go unfilled (bhop_recharge 1 door, bhop_2shiny2shuckle 11).
   Lex runs r_portalareas 1; untested at 0.
 
+## HDR cubes, .phy unwrap, stand-ins (P887-P889): what is left
+
+- P887: surf_demise's panes keep a purple env_cubemap sheen G/B ~11-16 above Momentum's (panel p50
+  (24,14,21) against (17,3,5)). Every map's load prints "N env_cubemap(s), N whose baked VTF is
+  missing" (demise 1/1, boreas 32/32) -- but that count is taken with TEXLOADED right after an
+  async request (mod_vbsp.c ~11647), so it may only mean "not loaded yet". Not established which
+  cube the panes use.
+- P888: outside the mover the wrapped geometry is what QC sees: traceline/tracebox and the helpers
+  that mirror the mover (sv_saveloc.qc:404-406 save ground/embedded class, sv_zones.qc:431
+  SV_ZoneDest's drop) read the old triangles at mover 9. Falsifier: sl_save at surf_pantheon -1443
+  1516 5675 classes the row grounded. surf_view (com_bih.c:2677) draws unwrapped pieces at any pin;
+  pm_dispprobe's triangle numbers at 9 are the twin's. The fixtrace counter counts a render-mesh
+  fallback as unwrapped (0 of 400 today); pantheon's "unwrapped decided" is 0 by geometry (a clip
+  brush over ramp07) -- gate on "wrapped N" and fixtrace != proptrace.
+- P889: stand-ins rank below everything, not in the game's own slot: cstrike/csgo share 616 .phy
+  (614 differ), csgo/portal2 15 (14), so a player missing both gets the earlier pack's. 21 of 4,753
+  tf and 1 of 1,038 portal2 stand-in .phy differ from the real game's (none of the 84 the lobbies
+  needed). Stand-ins add ~36k indexed files (~0.75 s on a warm map load) for a non-owner.
+- P889: 130 map paks carry 4,149 paths a stand-in also has (214 .phy differ, 67 maps); fine on the
+  P889 native (the map pak ranks above stand-ins), wrong on an older native -- never ship the Pi's
+  placeholders dir without the P889 native.
+
 ## Physics boxes (P884): what is left
 
 - **Debris and multiplayer physboxes are solid here and not in Source's rules.** SF_PHYSBOX_DEBRIS

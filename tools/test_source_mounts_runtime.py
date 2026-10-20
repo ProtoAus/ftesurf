@@ -121,10 +121,12 @@ map """ + mapname + "\necho SOURCE-MAP-ACTED\n")
                 assert "texture \"brick/brickfloor001a\"" in current, "control did not request missing material"
             else:
                 assert "hl2_dir.vpk became referenced" in current, "automatic base pack was not consumed"
-                assert "placeholder.vpk" not in current, "other-game placeholders mounted"
                 assert "File is" in current, "file-location probe did not resolve"
                 paths = current.split("SOURCE-PATH-BEGIN")[-1].split("SOURCE-PATH-END")[0]
                 assert paths.count("mount/hl2_dir.vpk") == 1, "missing/duplicate base searchpath"
+                # P889: a stand-in mounts for a game that is not installed, always below the base pack.
+                if "placeholder.vpk" in paths:
+                    assert paths.find("mount/hl2_dir.vpk") < paths.find("placeholder.vpk"), "a stand-in outranks the base pack"
                 if "csgo" in label:
                     assert "fs_automount: surf_tensor2 needs" in current, "optional dependency did not act"
                     assert "pak01_dir.vpk became referenced" in current, "CS:GO pack not consumed"

@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P887-P889 — surf_demise's ramp, surf_pantheon's floating ramp, surf_nuclear's spawn hub
+
+Live since 23:13Z 20 Oct UTC (10:13 21 Oct your time) in both installs, the lobbies since 22:14Z.
+- surf_demise save 3: the ramp's panels are dark red with scratches now (the layer under the glass
+  reflects its HDR sky at Source's brightness). Still not Momentum: the glass's own purple sheen is
+  brighter here (BACKLOG). "demise better / still wrong".
+- surf_pantheon save 1: you drop off the floating spot onto the ramp's real surface. Needs the new
+  exe offline, or a lobby on the new native (mover 9); a lobby still on mover 8 floats you as before.
+- surf_nuclear on a lobby: spawn, drop into the hub, stand on the walkways, no prediction errors.
+- Other maps: props from TF2/CS:GO/Portal 2 you do not own now show as grey stand-in shapes, as
+  in Momentum, and collide. Verdicts PENDING.
+
 ## P877 — the blue haze under boreas's water (save 8)
 
 Source fogs what you see through the water toward the water's fog colour by how deep it is, and then

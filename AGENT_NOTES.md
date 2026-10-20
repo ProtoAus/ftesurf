@@ -5857,7 +5857,10 @@ script rather than passing it as an argument, where `ps` would show it.
   cstrike, hl2}` hold VPKs from a Windows Steam install, mounted by the Pi's
   `fs_addons.txt`, and a lobby mounts new content only on restart. There is no
   Steam and no `data/mapdeps.txt`, so fs_automount mounts nothing: props from the
-  CS:GO/TF2/Portal/Momentum-`mount` packs are NOT solid on the server. `hl2` was
+  CS:GO/TF2/Portal/Momentum-`mount` packs were NOT solid on the server -- until P889 (2026-10-20 22:14Z):
+  `game/placeholders` holds Momentum's tf/csgo/portal2 stand-in VPKs (named 1tf_/2csgo_/3portal2_, one
+  shared mtime, so they load in Momentum's order) as the LAST fs_addons.txt line, served by the P889
+  native (an older native ranks a map pak below them: never one without the other). `hl2` was
   empty until 2026-09-20 (bhop_monster_jam collided 2142 of 6048 prop faces);
   with the 31 `hl2_*.vpk` copied in, the Pi's pm_dettest equals Windows. Prove
   any content change the same way (`cfg/test/p386det.cfg`, a spare port).
@@ -5917,7 +5920,8 @@ script rather than passing it as an argument, where `ps` would show it.
   PAST 492: an old verifier reads only the header's pmsrcver, so a Multi-Session
   run parked before a 492 deploy and resumed after it (pin 1 in the header, 2 in
   a later `pm` record) HOLDs there. Nor past 756, 758, 764 or 813 once a lobby has run
-  them: an older verifier REFUSEs pin-5, -6, -7 and -8 files, and the sweeper
+  them, nor past 889 (mover 9, 2026-10-20T22:14Z, tools/lobby-engine-p889-20261020.md): an older
+  verifier REFUSEs pin-5, -6, -7, -8 and -9 files, and the sweeper
   treats REFUSE as final. The fleet has run 764 since 2026-10-17T19:37Z
   (`tools/lobby-engine-p764-20261017.md`) and 813 since 2026-10-18T21:20Z. The
   P764 gate's known-PASS surf_boreas 0003107 HOLDs on physents (18 rows, first 1945) on
@@ -6816,6 +6820,10 @@ Source water is still an approximation; modes 0/3/4 remain distinct choices.
   old Momentum/mount dependency specs also select only that pack. No owner
   fs_addons.txt rewrite or generated mapdeps refresh is required. Other-game
   placeholder VPKs are excluded. The scanner treats this as base content.
+  P889 (21 Oct) mounts those stand-ins too, LAST, only for a game whose content pack is
+  missing (fs_standins 1; 2 always, 0 never), hashed at depth + 0x100000 so a map pak or an
+  automounted real game above them keeps the incremental hash. The lobbies get them as a
+  `placeholders` dir, the last fs_addons.txt line, with the P889 native.
 - P679 resolves both CS:GO Source 1 folder aliases by checking pak01_dir.vpk,
   not merely whether CS2's install directory exists. Explicit Steam-root
   overrides precede registry/VDF installs across both aliases; requested layout

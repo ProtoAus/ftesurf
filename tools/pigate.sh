@@ -2,10 +2,13 @@
 # The engine deploy gate on the Pi (AGENTS.md, the Pi engine paragraph), as one
 # script since Patch 492:
 #   sh pigate.sh <binary> <port> <dir holding p492voy.rec and surf_voyager.json>
-# pm_dettest on bhop_eazy, surf_ace and surf_boreas -- compare every line with the
-# Windows build's; surf_ace's displacements reach the triangle path bhop_eazy lacks,
-# surf_boreas's ramp props the convex pieces (Patch 764: proptrace must say a prop
-# piece decided some traces, or its line compares nothing) --
+# pm_dettest on bhop_eazy, surf_ace, surf_boreas, surf_pantheon and surf_axil -- compare
+# every line with the Windows build's; surf_ace's displacements reach the triangle path
+# bhop_eazy lacks, surf_boreas's ramp props the convex pieces (Patch 764: proptrace must
+# say a prop piece decided some traces, or its line compares nothing), pantheon's and
+# axil's .phy hulls past 65,536 copied points (Patch 888: fixtrace must differ from
+# proptrace and print a nonzero "wrapped N"; pantheon's "unwrapped decided" is 0 by
+# geometry, a clip brush sits over ramp07) --
 # then pm_verify of a pin-1 file the sweeper PASSed (PASSMAP/PASSREC override
 # it), and of p492voy.rec (pmsrcver 2) through a throwaway overlay, since the
 # Pi has no zone file for surf_voyager.  A
@@ -20,7 +23,7 @@ GAME=/srv/nvme/ftesurf-server/game
 OV=/tmp/pigate-ov.$$
 echo "== $BIN md5 $(md5sum "$BIN" | cut -c1-32)"
 cd "$GAME" || exit 2
-for m in bhop_eazy surf_ace surf_boreas; do
+for m in bhop_eazy surf_ace surf_boreas surf_pantheon surf_axil; do
   timeout 600 "$BIN" -basedir "$GAME" +set sv_public 0 +set sv_port "$PORT" +set rec_enable 0 \
     +set lobby_master "" +map "$m" +wait +wait +wait +pm_dettest +quit 2>&1 \
     | grep -a "pm_dettest [a-z]" | grep -av tickcensus | sed "s/^/$m /"

@@ -25,6 +25,16 @@
 - KSF recordings of single stages can be watched from the stage boards, starting with surf_kepler's.
 - KSF recordings download again: one broken file on KSF's side had stopped them since 19 October.
 
+### P889 Props from games you do not own collide
+- Momentum's stand-in models for TF2, CS:S, CS:GO and Portal 2 load last when the game is not installed, so their props collide as in Momentum.
+- surf_nuclear's spawn hub stands on the lobbies again; 16 more maps use these props.
+
+### P888 Prop ramps with collision past their edges
+- Large prop ramps no longer grow invisible slopes: 845 prop placements on 72 maps, surf_pantheon's floating ramp among them, collide where they are drawn.
+
+### P887 HDR reflections at the right brightness
+- Reflections from HDR cubemaps were drawn several times too dark: surf_demise's first ramp shows its red panels again, and 414 materials on 45 maps brighten.
+
 ### P885 Hops after the start zone are yours
 - Stand in the start zone, jump out once, and the hops after it count: surf_tendies' booster hop no longer makes the run practice.
 - Bunny hopping inside the start zone, or flying through it without stopping, still does.
