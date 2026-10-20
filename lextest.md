@@ -28,8 +28,8 @@ your exe: the restart read the map after freeing it, and ent_view drew with shad
 - In a map: `vid_restart` a few times, then `ent_view`, aim at a trigger, `vid_restart` with it open.
 - Panel redraw (hud_fps) keeps working after a restart.
 
-Exe 8b8cb611 in both installs since 2026-10-20 19:39:45Z UTC (.prev e1cf5c31); the lobbies are
-unchanged. "Restarts / ent_view ok, or <what crashed>". Verdict PENDING.
+In both installs since 2026-10-20 19:39:45Z UTC (exe 8b8cb611); since 20:41Z carried by ftesurf-19's
+P880 exe dbf587c8. The lobbies are unchanged. "Restarts / ent_view ok, or <what crashed>". Verdict PENDING.
 
 ## P876 — patch notes on the download page and the title menu
 
