@@ -4787,6 +4787,7 @@ STORY_RUNS_DDL = (
     " fails INTEGER NOT NULL DEFAULT -1, inmask INTEGER NOT NULL DEFAULT -1,"
     " top INTEGER NOT NULL DEFAULT -1, spots TEXT NOT NULL DEFAULT '');"
     "CREATE INDEX IF NOT EXISTS story_runs_map ON story_runs (map, track, leg, at);"
+    "CREATE INDEX IF NOT EXISTS story_runs_order ON story_runs (map, track, leg, id);"
     "CREATE UNIQUE INDEX IF NOT EXISTS story_runs_run ON story_runs (runid, map, track, leg)"
     " WHERE runid <> '';"
     # When a track's finishes began to be logged, and whether a WOS finish was on
@@ -5179,14 +5180,30 @@ def _story_first_row(db, mapname, track, win, owner):
     lo, hi = win if win is not None else (0, 1 << 62)
     if got is None or (got[1] and got[0] > lo):
         return None
+    # A cursor in id order, stopped at the first owner who can hold it: undated,
+    # story_runs_order walks it; dated, the window bounds it.
+    when, args = ("", ()) if win is None else (" AND s.at >= ? AND s.at < ?", (lo, hi))
     for player, pub, rowid in db.execute(
             "SELECT s.player, s.pub, s.id FROM story_runs s WHERE s.map = ? AND s.track = ?"
-            " AND s.leg = 0 AND s.at >= ? AND s.at < ? AND %s ORDER BY s.id LIMIT 20"
-            % _STORY_LIVE_SQL, (mapname, track, lo, hi)):
+            " AND s.leg = 0%s AND %s ORDER BY s.id" % (when, _STORY_LIVE_SQL),
+            (mapname, track) + args):
         who = owner(player, pub)
         if who is not None:
             return who, rowid
     return None
+
+
+def _story_track_began(db, mapname, track, now):
+    """Write a track's ledger row unless it has one: logged from `now`, and
+    whether a WOS finish is on the board already.  story_before calls it before
+    the finish touches the board, so its own row is never the `prior`; a ladder
+    pass registers the listed tracks nobody has finished since."""
+    if db.execute("SELECT 1 FROM story_tracks WHERE map = ? AND track = ?",
+                  (mapname, track)).fetchone() is None:
+        with db:
+            db.execute("INSERT OR IGNORE INTO story_tracks (map, track, began, prior)"
+                       " VALUES (?, ?, ?, %s)" % (_STORY_PRIOR_SQL % ""),
+                       (mapname, track, now, mapname, track))
 
 
 def _story_owner_db(db):
@@ -5209,11 +5226,11 @@ def _story_calc(db, lists, now):
             for lv in c["levels"] if lv["map"]}
     maps = sorted({m for m, _ in want})
     best, legs, sums, rows, latest = {}, {}, {}, {}, {}
-    with db:                        # a track listed from now on is logged from now on
+    try:                            # a track listed from now on is logged from now on
         for mapname, track in sorted(want):
-            db.execute("INSERT OR IGNORE INTO story_tracks (map, track, began, prior)"
-                       " VALUES (?, ?, ?, %s)" % (_STORY_PRIOR_SQL % ""),
-                       (mapname, track, now, mapname, track))
+            _story_track_began(db, mapname, track, now)
+    except sqlite3.OperationalError as exc:
+        log.warning("story: track ledger not written this pass: %s", exc)
     dated = {}                      # a level's dates -> its tracks
     for L in lists:
         for c in L["chapters"]:
@@ -5572,7 +5589,10 @@ def story_before(db, mapname, track, leg, now):
         calc = _story["calc"] if _story["calc_rev"] == rev else None
         if calc is None or _story["at"] is None or not 0 <= now - _story["at"] < STORY_TTL:
             _story_kick(lists, rev, now)
-        return calc, rev, dict(_story["recent"])
+        got = calc, rev, dict(_story["recent"])
+    if leg == 0:
+        _story_track_began(db, mapname, track, now)
+    return got
 
 
 def _story_wanted(lists, mapname, track, leg, now):
@@ -5606,13 +5626,6 @@ def story_finish(db, before, mapname, track, leg, who, pub, name, ms, prevms, no
         return []
     fails, inmask, topspeed = facts if leg == 0 else (-1, -1, -1)
     with db:
-        # The track's ledger row, if this is its first logged finish: was another
-        # finish on the board before this one (this run's own row is written)?
-        if leg == 0:
-            db.execute("INSERT OR IGNORE INTO story_tracks (map, track, began, prior)"
-                       " VALUES (?, ?, ?, %s)"
-                       % (_STORY_PRIOR_SQL % " AND (player <> ? OR submitted < ?)"),
-                       (mapname, track, now, mapname, track, who, now))
         cur = db.execute(
             "INSERT OR IGNORE INTO story_runs (map, track, leg, player, pub, name, millis, prevms,"
             " at, runid, replay_id, fails, inmask, top) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",

@@ -528,6 +528,24 @@ class Story2(Story):
         self.settle()
         self.assertEqual(self.mine(B)[2][0][0], 3)
 
+    def test_the_ledger_is_written_before_the_finish_touches_the_board(self):
+        (HOME / "story.txt").write_text('list story "S"\nchapter\nlevel surf_one\n  gold first\n')
+        with patch.object(S, "_story_kick", lambda *a: None):      # no pass to race it
+            self.post("surf_one", G3, 40000)
+        self.assertEqual(tuple(self.db.execute("SELECT began, prior FROM story_tracks").fetchone()),
+                         (self.now, 0))
+        self.settle()
+        self.assertEqual(self.mine(G3)[2][0][0], 3)
+
+    def test_first_looks_past_any_number_of_banned_finishers(self):
+        (HOME / "story.txt").write_text('list story "S"\nchapter\nlevel surf_one\n  gold first\n')
+        self.settle()
+        for _ in range(25):
+            self.srun("surf_one", C, 30000)
+        self.srun("surf_one", G2, 31000)
+        self.settle()
+        self.assertEqual(self.mine(G2)[2][0][0], 3)
+
     def test_dated_first_needs_the_log_to_cover_the_dates(self):
         (HOME / "story.txt").write_text('list ev "E"\ndates 2027-01-10 2027-01-20\nchapter\n'
                                         'level surf_two\n  gold first\n  bronze finish\n')
