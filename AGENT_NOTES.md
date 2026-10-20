@@ -1,5 +1,28 @@
 # AGENT_NOTES.md
 
+## Renderer restarts free every shader and the models (P883, 2026-10-20)
+
+- `R_ShutdownRenderer` (vid_restart, a mode or fullscreen change) frees every shader_t and, through
+  Mod_Shutdown, the whole mod_known array; cl.worldmodel and cl.model_precache[] keep pointing into it
+  until R_ApplyRenderer_Load reloads. VID_DeInit, window messages (GLAppActivate -> V_UpdatePalette)
+  and the new renderer's font, texture and shader loads all run in between: ask V_WorldIsSource /
+  V_WorldHasDeluxe there, not cl.worldmodel.
+- Engine code must not keep a shader_t* or model_t* across frames without a shutdown hook: look a
+  shader up each frame (R_RegisterShader is a hash lookup) or drop it at renderer shutdown. An address
+  key on the world model does not prove the same world: Mod_Init mallocs a same-size mod_known after
+  the free, which can land at the old address (P883's lamp meshes).
+- A crash in a shipped exe: `python tools/crashmap.py <db> C:/FTESurf/crashaddr.txt --check
+  C:/FTESurf/ftesurf64.exe`. The logger writes beside the exe that crashed (a rig's --client copy has
+  its own file); symbols come from a rebuild of the stamped commit, and --check proves the layout. In a
+  rig the crash shows as the log ending (here after "Hardware gamma is not supported"), exit 3221225477.
+- P883's ent_view control survived its run: the freed shader's block had been reused, so it drew with
+  the wrong shader instead of crashing. A check build printing the cached pointer beside
+  R_ShaderFind's answer showed the staleness in one run.
+- Deploy exe stamp: read `git describe --long --always --dirty` with Windows git before msys2 goes first
+  on PATH (msys2's git calls the worktree dirty); patch tags are annotated (`describe` skips a
+  lightweight one); clear the objects first (an incremental build kept the old stamp's objects, and
+  one binary carried two stamps).
+
 ## The HUD's cached layers (P871, 2026-10-20)
 
 - A panel joins a hud_fps layer only if it does nothing but draw: on a paste frame its function is

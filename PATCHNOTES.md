@@ -28,6 +28,10 @@
 ### P884 Physics boxes that Source leaves passable
 - Physics boxes a map marks not solid no longer stop you: 229 on 30 maps, among them surf_lovetunnel's butterfly axles.
 
+### P883 vid_restart and ent_view crashes
+- Restarting the renderer in a map (vid_restart, or changing the video mode, fullscreen or window) no longer crashes the game.
+- The entity viewer (ent_view) no longer crashes the game after such a restart.
+
 ### P876 Patch notes on the site and in the game
 - The download page lists what changed in each update down its right-hand side
 - The title screen shows what's new when an update is ready, and once after it installs

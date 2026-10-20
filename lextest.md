@@ -19,6 +19,18 @@ save 10: you should drop straight through, and the route past the butterflies sh
 `ent_here` on one now reads `solid NOT`. "lovetunnel ok, or <where it still stops you>". Verdict
 PENDING.
 
+## P883 — vid_restart and ent_view crashes
+
+Restarting the renderer in a map (`vid_restart`, or a video mode, fullscreen or window change) no
+longer crashes the game, and neither does ent_view afterwards. Both came from the crash file beside
+your exe: the restart read the map after freeing it, and ent_view drew with shaders the restart freed.
+
+- In a map: `vid_restart` a few times, then `ent_view`, aim at a trigger, `vid_restart` with it open.
+- Panel redraw (hud_fps) keeps working after a restart.
+
+Exe 8b8cb611 in both installs since 2026-10-20 19:39:45Z UTC (.prev e1cf5c31); the lobbies are
+unchanged. "Restarts / ent_view ok, or <what crashed>". Verdict PENDING.
+
 ## P876 — patch notes on the download page and the title menu
 
 What each update changes, as dot points per patch (PATCHNOTES.md), on the right of

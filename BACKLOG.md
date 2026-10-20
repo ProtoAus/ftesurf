@@ -353,10 +353,6 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
   MPad's A/D latches (MPad_Frame inside MPad_Draw), Timer_Draw's edge machine and split sampling,
   Cmp_Draw's latch, Chat_Draw's cursor claim and hit areas, the Friends and Story toasts. Contiguous
   runs only: HUD_Draw's panels interleave pure and impure ones, so each split decides how many layers.
-- **vid_restart crashes the rig client** (0xC0000005 just after "Hardware gamma is not supported") on
-  surf_sidistic AND on poop.bsp (a Q1 map) with the installed exe 9c39795c and its csprogs, Lex's cfg in
-  a 1600x900 window (20 Oct, P871's arms). Not map-format specific. Until it is found, hud_fps's
-  renderer-restart path (HC_Lost: new names, targets made again) is untested.
 - hud_fps on a screenshot_mega frame where the Milk sky or Patch 837's graph cache already switched
   targets: the layers cache onto the screen (that frame's shot already lost the HUD after the earlier
   switch). An engine fix would return to the frame's own target instead of FBO 0.
@@ -393,7 +389,7 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
   sends the rest of that frame's HUD to the back buffer (the csprogs cannot see the screenshot's
   framebuffer, nor capturedemo's: the switch back from a 2D target binds FBO 0 -- milk's targets
   share it; an engine fix would return to vid.framebuffer); the replay's playhead dot is not held
-  in its plot. vid_restart crashes now and then on HL2 maps with or without it (voyager, dune).
+  in its plot.
 - **After 836, priced again in Lex's setup (19 Oct, one process, 4 pairs each):** run graph +0.39 ms
   of QC (+0.50 frame), board lines +0.555 (they also show the graph), key hints +0.13, trainer +0.08,
   names +0.07. A clean profile window (board lines on vs off, two processes) splits it, in
@@ -419,8 +415,8 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
   instanced (1 px), so it may be giving up speed for nothing while a light is live. No AMD or
   Intel machine has compiled the INSTANCED permutation (a failure falls back and turns it off).
   The `r_cubelight` and `r_reflectcube` counters now count instanced props once a run, or not at
-  all for the cube. `vid_restart` on surf_demise crashes the build before 831 as well
-  (0xC0000005, installed exe 1d27c817, rig run 19 Oct), so 831's restart path is untested.
+  all for the cube. 831's restart path has not been run since Patch 883 fixed the
+  restart crash (it crashed the build before 831 too).
 - **Full water costs CPU first here**: each capture re-submits the scene. P850 stopped captures
   redrawing the outer views' props and an unseen 3D sky (Lex's boreas save 006: 8.86 -> 4.14 ms on
   the rig). Left: sharing captures between batches on one plane (the water budget entry below),
@@ -1078,22 +1074,26 @@ Fixed items are removed; remaining reader contracts need acting controls.
 - Falsifier: the grader counts the name apart (`lnde` minus the line's one name)
   and passes on e8afa04's csprogs with `runlines_labels.cfg`.
 
-## `vid_restart` ends a rig test client (seen in P755's arm)
+## `p715pics.py`'s online board never asks
 
-- Site: unknown (engine or rig). `tools/p755pics.py`'s warm arm sends
-  `vid_restart`; the client's log stops after "Hardware gamma is not
-  supported" and the process is gone, with no Windows error record. Same on
-  the unpatched build with the same `C:/FTESurf/ftesurf64.exe`, so not the
-  picture cache; `p715pics.py` passed this step on 15 Oct.
-- Falsifier: one isolated client, any map, `vid_restart` -- it must keep
-  running and draw. Then bisect engine builds if it does not.
-- Also: `p715pics.py` sets `rec_terms 5`; FS_TERMS_ONLINE is now 6, so its online
-  board never asks and every arm measures nothing until it is updated.
-- 2026-10-18 (P766's arm): the 758 install exe (`cf52c386`) died the same way in
-  borderless with surf_dune loaded. The log stops after "Destroyed 156/345 images",
-  exit 0xc0000005, and this time there IS a crash record: `crashaddr.txt` rva
-  0x303844, the same rva as an earlier record from 02:00 local. A `vid_restart`
-  before the map loads never ended a client in seven runs.
+- `p715pics.py` sets `rec_terms 5`; FS_TERMS_ONLINE is now 6, so its online board never asks and
+  every arm measures nothing until it is updated. (Its `vid_restart` crash, and P755's and P766's,
+  was the use-after-free Patch 883 fixed.)
+
+## Renderer restart leftovers (Patch 883)
+
+- With `r_glsl_precache 1`, a restart that also changes `r_deluxemapping` compiles bump
+  permutations against the old world's deluxe answer, kept until a shader reload. Likely fix:
+  V_WorldFreed(false) compares the kept answer with the reloaded world's and calls
+  Shader_NeedReload. Not reproduced; neither cvar is set in the shipped cfgs.
+- A restart between CL_LoadModels stages (mid map load) leaves cl.model_precache[] pointing at
+  freed models, and cl_parse.c later copies one into cl.worldmodel. Upstream behaviour.
+- The lamp-mesh fix (Sh_FlushMapLights) is not reproduced: on surf_sidistic the reloaded world
+  came back at a new address in both restarts, so the old code reloaded too. A falsifier needs
+  a map whose lamps win cells (props near point lamps) and a restart whose mod_known lands at
+  the old address.
+- fluidadj_model (q1bsp.c) is keyed on the world's address: a restart that reloads the same map
+  is harmless; a different map at the same address was not constructed.
 
 ## KSF converter: P757 is live; its falsifier is not run yet
 
