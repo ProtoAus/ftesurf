@@ -36,7 +36,8 @@ Two stages are each there for one line, and each has its own control:
         has to SAY it saw the load's step and did not tell it, or a refused load would pass.
 
 Against a server the door is a teleporter the client predicts (the log has cl_triggers.qc's
-`prediction hook alive`), and its break has to be of that kind; on a listen server it is kinematic.
+`prediction hook alive`), and its break has to be of that kind; on a listen server it is kinematic
+(the arm sets cl_predict_listen 0, which Patch 862 needs to keep the listen arm on that rule).
 
 EXIT STATUSES. 0: measured and right. 1: measured and wrong. 2: CANNOT MEASURE -- a log is missing
 or unfinished, a stage or a dump is short, or the body is not where its stage should have left it,

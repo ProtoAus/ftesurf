@@ -2511,8 +2511,10 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
     player's runtime targetname (`filter_activator_name` — outputs rename the
     player). Missing or unimplemented filters FAIL OPEN exactly as the server
     does, so those triggers ARE predicted (336). `.rec`/`.hid` evidence is
-    untouched by any of this, and LISTEN SERVERS GATE THE HOOK OFF — a listen
-    server never exercises prediction at all.
+    untouched by any of this. A LISTEN SERVER RUNS THE HOOK TOO since Patch 862
+    (`cl_predict_listen 1`; SV_RunCmd reloads everything it writes); the warp-op
+    pre-move hook and the hold gate stay off there. Arms written for the old gate
+    (p335a B, runlines_seglive's listen arm) set `cl_predict_listen 0`.
   - Patch 338 mirrors only the Enable/Disable half of entity I/O, ZERO DELAY
     ONLY: touch edges of predicted slots, event-only trigger_multiples, and
     `logic_auto`'s OnMapSpawn. A demotion fixpoint keeps everything else

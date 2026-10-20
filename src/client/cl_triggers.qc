@@ -1276,9 +1276,9 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 	tg_lastseq = seq;
 	tg_io_clock = tg_io_clock + msec;
 
-	// One-shot proof of life for the headless tests: on a listen server the
-	// engine gates the hook off (SSQC owns the triggers there) and this line
-	// must NOT appear; against a remote server it must appear exactly once.
+	// One-shot proof of life for the headless tests: it appears exactly once
+	// against a remote server, and on a listen server unless cl_predict_listen 0
+	// gates the hook off there (Patch 862).
 	if (!tg_hookseen)
 	{
 		tg_hookseen = 1;
@@ -1810,8 +1810,8 @@ float(string cmd) Trig_ConsoleCommand =
 	if (argv(0) == "trig_here")
 	{
 		// The hull from the last predicted command, at the predicted origin;
-		// on a listen server (where the hook is gated off) that is stale, so
-		// fall back to the Source player hull.
+		// where the hook never ran (cl_predict_listen 0 offline) there is none,
+		// so fall back to the Source player hull.
 		o = pmove_org;
 		if (tg_pmins == '0 0 0' && tg_pmaxs == '0 0 0')
 		{

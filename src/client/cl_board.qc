@@ -3866,8 +3866,8 @@ void() Board_LineBroke =
 /*
   Patch 616: the same for the LIVE body, once a frame before Board_Frame.
 
-  A MAP TELEPORTER THE CLIENT PREDICTED (a dedicated server only: on a listen
-  server the engine does not run the hook).  tele is the command cl_triggers.qc
+  A MAP TELEPORTER THE CLIENT PREDICTED (on a listen server too since Patch 862,
+  unless cl_predict_listen 0).  tele is the command cl_triggers.qc
   last predicted one on, and last the command its hook last ran on -- the upper
   of the two states the drawn body lies between, since cl_pred.c stops its
   replay there.  The engine blends a move under 128 u between the two, so every
