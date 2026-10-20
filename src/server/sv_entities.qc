@@ -1591,6 +1591,13 @@ float(float fld, string val) SV_LateIsUnset =
 
 // getentityfieldstring tests field 0's type for "unset" (pr_bgcmd.c PF_getentityfieldstring,
 // fdef->type for fdef[fidx].type), so a vector whose x is 0 reads "": read its components.
+string(float fld, entity e) SV_FieldComp =
+{
+	local string v;
+	v = getentityfieldstring(fld, e);
+	return (v == "") ? "0" : v;
+};
+
 string(float fld, entity e) SV_FieldStr =
 {
 	local string nm;
@@ -1598,9 +1605,9 @@ string(float fld, entity e) SV_FieldStr =
 	if (entityfieldtype(fld) != EV_VECTOR)
 		return getentityfieldstring(fld, e);
 	nm = entityfieldname(fld);
-	return sprintf("%s %s %s", ftos(stof(getentityfieldstring(findentityfield(strcat(nm, "_x")), e))),
-	               ftos(stof(getentityfieldstring(findentityfield(strcat(nm, "_y")), e))),
-	               ftos(stof(getentityfieldstring(findentityfield(strcat(nm, "_z")), e))));
+	return sprintf("%s %s %s", SV_FieldComp(findentityfield(strcat(nm, "_x")), e),
+	               SV_FieldComp(findentityfield(strcat(nm, "_y")), e),
+	               SV_FieldComp(findentityfield(strcat(nm, "_z")), e));
 };
 
 void(string fields) SV_LateStash =
