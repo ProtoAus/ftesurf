@@ -5,6 +5,19 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Listen-server trigger prediction (P862): what review left open
+
+- **A cleared carrier is cashed out after `!r` on a push**: only the warp-op pre-move hook's
+  PMPI_CLEARCARRIER clears the client's ring, and that hook stays off on a listen server, so riding
+  a trigger_push and typing `!r` restores ring[N-1] and overshoots for a round trip (pr_csqc.c
+  ~10715-10739). Same against a remote server with `cl_warpop 0` or after `setpos`.
+- **Splitscreen**: cl_triggers.qc's `tg_lastseq` and IO ring are single globals while the engine's
+  rings are per seat; seat 1's lower sequence restarts seat 0's chain.
+- **The carrier ring is unexercised offline** (garden has no pushes): bhop_mom_training_beta
+  playtest is in lextest.
+- `PF_runclientphys` never loads basevelocity (pr_cmds.c ~10351): nothing calls it today, but an
+  SSQC `runstandardplayerphysics` would inherit the client's X/Y carrier on a listen server.
+
 ## Decorative movers (P860): what review left open
 
 - **AddOutput after admission**: `SV_SpRawSelfOnly` (sv_entities.qc) and the name-group check run

@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P862 — surf_garden judder on the teleport to the next stage (offline)
+
+Playing offline, the game never predicted map teleports (only online lobbies did), so each stage
+teleport showed you a frame past it and snapped back (`prederr ... off by 9223`). Offline now
+predicts them like a lobby does.
+
+- surf_garden, offline: finish a stage into the next. No snap, and no `prederr` line in the console.
+- bhop_mom_training_beta, offline: ride the push pads and speed pads for a minute. They should feel
+  exactly as before; if a pad jerks you back, say which and `cl_predict_listen 0` turns this off.
+
+In both installs 06:50Z (exe 9c39795c). A 20-25 ms frame at the moment a stage finishes is separate
+(the finish's own work, on both builds). "Teleports ok / <map + pad>". Verdict PENDING.
+
 ## P860 — the spinning dagger in surf_gigapede's spawn
 
 Source's decorative movers now move: a rotator nobody can touch spins, a non-solid sliding brush
@@ -32,8 +45,8 @@ spawn 5.27 -> 3.46 ms. Nothing should look different.
 - Play surf_garden from the spawn through stage 5: the fps counter should sit much higher. If you
   still see a drop to ~50 fps, `frametimes` in the console there and send the line.
 
-In both installs 06:29Z (exe c292b9aa). The teleport judder between stages is separate (P862, in
-progress). "Garden fps ok / <where it still drops>". Verdict PENDING.
+In both installs 06:29Z (exe c292b9aa; now carried by P862's 9c39795c). The teleport judder is P862,
+above. "Garden fps ok / <where it still drops>". Verdict PENDING.
 
 ## P856 — Story challenges, the medal toast, the Halloween tab
 

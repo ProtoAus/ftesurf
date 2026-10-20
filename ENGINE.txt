@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   c4ffae5c31d8f679e0f2278e85b5c4ac407dd661
+commit   6b762da5d80f61b0576dbb5941b50b31434fe557
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,12 @@ commit   c4ffae5c31d8f679e0f2278e85b5c4ac407dd661
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-864
+tag      patch-862
 patch    864
+# Patch 862 (client exe): the CSQC trigger mirror predicts on a listen server too (cl_predict_listen 1):
+# offline stage teleports no longer snap back a frame later. Exe 9c39795c (git-7582-patch-862-0-g6b762da5d,
+# = 859 + 864 + 862), both installs 2026-10-20 06:50Z (.prev c292b9aa). qwprogs 613468f1 (P860) on the
+# 12 lobbies and both installs 06:44Z; csprogs unchanged 4f49f974.
 # Patch 860 (qwprogs): non-solid/faceless func_rotating spin, self-driven non-solid func_movelinear
 # slide, SOLID_NOT props follow; no collision moves and no edict is allocated at load (physents as main).
 # Patch 864 (client exe): no water reflection/refraction capture inside another (r_portalrecursion 2
