@@ -66,7 +66,7 @@ your exe: the restart read the map after freeing it, and ent_view drew with shad
 - Panel redraw (hud_fps) keeps working after a restart.
 
 In both installs since 2026-10-20 19:39:45Z UTC (exe 8b8cb611); since 20:41Z carried by ftesurf-19's
-P880 exe dbf587c8. The lobbies are unchanged. "Restarts / ent_view ok, or <what crashed>". Verdict PENDING.
+builds (P880 dbf587c8, then P877/P878 2b3d9817 at 21:09Z). The lobbies are unchanged. "Restarts / ent_view ok, or <what crashed>". Verdict PENDING.
 
 ## P876 — patch notes on the download page and the title menu
 
