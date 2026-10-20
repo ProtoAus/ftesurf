@@ -249,6 +249,7 @@ float(float a, float b) SV_Key2 = { return a ? a : b; };
 .string uselandmarkangles;
 .string snapvelocitytodestangles;
 .string UseDestinationAngles;    // func_bhop, point_teleport
+.string usedestinationangles;    // point_teleport: 138 of the 143 that write 1 spell it so
 
 // -1 = the map never wrote this key at all.  0 / 1 = it did, and meant it.
 float(string a, string b) SV_KeyTri =
@@ -1588,6 +1589,20 @@ float(float fld, string val) SV_LateIsUnset =
 	return (val == "" || val == "0" || val == "'0 0 0'" || val == "0 0 0");
 };
 
+// getentityfieldstring tests field 0's type for "unset" (pr_bgcmd.c PF_getentityfieldstring,
+// fdef->type for fdef[fidx].type), so a vector whose x is 0 reads "": read its components.
+string(float fld, entity e) SV_FieldStr =
+{
+	local string nm;
+
+	if (entityfieldtype(fld) != EV_VECTOR)
+		return getentityfieldstring(fld, e);
+	nm = entityfieldname(fld);
+	return sprintf("%s %s %s", ftos(stof(getentityfieldstring(findentityfield(strcat(nm, "_x")), e))),
+	               ftos(stof(getentityfieldstring(findentityfield(strcat(nm, "_y")), e))),
+	               ftos(stof(getentityfieldstring(findentityfield(strcat(nm, "_z")), e))));
+};
+
 void(string fields) SV_LateStash =
 {
 	local float i, n, fld;
@@ -1601,7 +1616,7 @@ void(string fields) SV_LateStash =
 		fld = findentityfield(nm);
 		if (!fld)
 			continue;
-		val = getentityfieldstring(fld, self);
+		val = SV_FieldStr(fld, self);
 		if (!SV_LateIsUnset(fld, val))
 			rec = strcat(rec, "\t", nm, "\t", val);
 	}
@@ -1935,18 +1950,24 @@ void(entity t, string who, entity act) SV_PointTeleport =
 	else
 		p = SV_FindByName(who, world);
 	if (!p || p.classname != "player")
+	{
+		if (SV_CensusAdd("point_teleport of a non-player"))
+			dprint(sprintf("^3point_teleport %s: '%s' is not a player; brushes stay put\n", t.targetname, who));
 		return;
+	}
 
 	if (SV_MapMoveHeld(p))
 		return;
 	dprint(sprintf("point_teleport %s: %s to %v\n", t.targetname, p.netname, t.origin));
 	SV_PlacePlayer(p, t.origin);
-	if (SV_KeyTri(t.UseDestinationAngles, "") > 0)
+	// Absent is Source's own point_teleport (pointteleport.cpp:143 Teleport with the
+	// entity's angles); the Momentum FGD's key, when written, decides.
+	if (SV_KeyTri(t.UseDestinationAngles, t.usedestinationangles) != 0)
 	{
 		p.angles = [0, t.angles_y, 0];
 		p.v_angle = p.angles;
 		p.fixangle = TRUE;
-		if (SV_KeyTri(t.snapvelocitytodestangles, "") != 0)
+		if (SV_KeyTri(t.snapvelocitytodestangles, "") > 0)
 		{
 			hs = vlen([p.velocity_x, p.velocity_y, 0]);
 			makevectors(p.angles);
@@ -1972,7 +1993,7 @@ void(entity t, string who, entity act) SV_PointTeleport =
 	SV_TimerMapTeleport(p);
 };
 
-void() point_teleport = { SV_LateStash("targetname target spawnflags origin angles VelocityMode velocitymode SetSpeed setspeed UseDestinationAngles snapvelocitytodestangles"); };
+void() point_teleport = { SV_LateStash("targetname target spawnflags origin angles VelocityMode velocitymode SetSpeed setspeed UseDestinationAngles usedestinationangles snapvelocitytodestangles"); };
 
 /*
   Patch 865: func_breakable / func_breakable_surf / func_physbox break.  Break
@@ -1982,6 +2003,7 @@ void() point_teleport = { SV_LateStash("targetname target spawnflags origin angl
 */
 #define SF_BREAK_TRIGGER_ONLY 1
 .float vbsp_brk;            // 1 breakable, 2 also takes damage
+.float minhealthdmg;        // less damage than this is not taken (func_break.cpp:823)
 // Latched in StartFrame: off on a lobby unless lobby_mapedits.  A Break or a
 // retargeted teleport there changes the map for every player, and pm_verify
 // replays on an unbroken copy (physents HOLD on later runs).
@@ -2057,16 +2079,18 @@ void(entity t, string param) SV_IOAddOutput =
 	// A retargeted teleport (200 outputs on 10 maps); the touch resolves it each time.
 	if (k == "target")
 	{
+		local entity dst;
+		dst = SV_FindByName(v, world);
 		if (vbsp_mapedit_ok)
-			t.target = v;
+			t.target = dst ? dst.targetname : v;
 		return;
 	}
 	// A player's origin is a teleport (331 outputs on 17 maps): velocity kept.
 	// Named origin/angles writes stay inert: a moved destination would need the
 	// client mirror (cl_triggers.qc) to demote every teleport aimed at it.
 	if (k == "origin")
+	if (t.classname == "player")
 	{
-		if (t.classname == "player")
 		if (!SV_MapMoveHeld(t))
 		{
 			SV_PlacePlayer(t, stov(v));
@@ -2075,17 +2099,11 @@ void(entity t, string param) SV_IOAddOutput =
 		}
 		return;
 	}
+	// Source's "angles" keyvalue is SetAbsAngles (baseentity_shared.cpp:406-415):
+	// a player's model, never their view.
 	if (k == "angles")
-	{
-		if (t.classname == "player")
-		if (!SV_MapMoveHeld(t))
-		{
-			t.angles = stov(v);
-			t.v_angle = t.angles;
-			t.fixangle = TRUE;
-		}
+	if (t.classname == "player")
 		return;
-	}
 
 	/*
 	  FTESurf Patch 256.  `gravity` -- 2239 outputs across 208 of the 1310 maps,
@@ -6267,8 +6285,7 @@ void() trigger_gravity_touch =
 		return;
 	if (SV_Key2(self.StartDisabled, self.startdisabled))
 		return;
-	if (!SV_PassesFilter(self, other))
-		return;
+	// No filter: Source's GravityTouch reads none (triggers.cpp:2506).
 	SV_TrigStamp(other);
 	SV_TriggerIOTouch(self, other);
 
@@ -9032,6 +9049,8 @@ void(entity t, entity att, float dmg) SV_EntityDamage =
 	}
 	if (t.vbsp_brk == 2)
 	{
+		if (dmg < t.minhealthdmg)
+			return;
 		SV_FireOutput(t, "OnDamaged", att);		// CPhysBox's; inert on CBreakable
 		t.health = t.health - dmg;
 		dprint(sprintf("damage: %s %s health %g\n", t.classname, t.model, t.health));
