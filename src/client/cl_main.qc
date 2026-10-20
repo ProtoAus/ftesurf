@@ -341,6 +341,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Emit_RegisterCvars();
 	Snds_RegisterCvars();           // build 66, env_soundscape
 	MapMsg_Init();                  // Patch 870, map text and screen effects
+	Ropes_RegisterCvars();          // Patch 874, env_sun and ropes
 	Trig_RegisterCvars();           // Patch 335, predicted triggers
 	Boarding_RegisterCvars();       // build 65, the Boarding window
 	Cmp_RegisterCvars();            // Patch 779, the Comparison window
@@ -1679,6 +1680,8 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// world objects, and one behind a wall has to be hidden by it.  Costs one
 	// string compare on the frames where there is nothing to draw.
 	Sprite_Draw();
+	Sun_Draw();                     // Patch 874: in the world pass, as the sprites
+	Ropes_Draw();
 
 	// The replay's path, for exactly the same reason and through exactly the
 	// same primitive -- a route that drew over the walls would be unreadable.

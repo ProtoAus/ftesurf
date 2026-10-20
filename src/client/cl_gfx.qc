@@ -46,7 +46,7 @@ float ui_gfx_waterbudget;       // LOCAL native renderer + loaded plugin capabil
   from ten settings to twenty-six and cost four more keystrokes, which is the
   whole point of having paged rather than found a tenth key.
 */
-#define GFX_ROWS     28         // highest row index (build 49 added Map particles)
+#define GFX_ROWS     30         // highest row index (Patch 874 added Sun and Ropes)
 #define GFX_PER_PAGE 6          // digits 1..6; 7 reloads, 8/9 page, 0 closes
 
 void() Gfx_WaterSupport =
@@ -420,6 +420,8 @@ string(float row) Gfx_Def =
 	  BY NUMBER and ui_gfx_page remembers a position across builds.
 	*/
 	if (row == 28) return "vbsp_emit|Map particles|0 1|Off;On|";
+	if (row == 29) return "vbsp_sun|Sun|0 1|Off;On|";       // Patch 874, cl_sun.qc
+	if (row == 30) return "vbsp_ropes|Ropes|0 1|Off;On|";   // cl_ropes.qc
 
 	return "";
 };
@@ -529,6 +531,10 @@ string(float row) Gfx_Inert =
 	// does not grey itself out the moment you switch the feature off.
 	if (cv == "vbsp_emit" && !em_any)
 		return "map has none";
+	if (cv == "vbsp_sun" && !sun_have)
+		return "map has no env_sun";
+	if (cv == "vbsp_ropes" && !ropes_n)
+		return "map has no ropes";
 
 	/*
 	  THE TWO COLLISION ROWS ARE NOT THE PLAYER'S TO TURN OFF.  A surf map needs
