@@ -26,6 +26,8 @@ commit   6b762da5d80f61b0576dbb5941b50b31434fe557
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-862
 patch    864
+# Patch 863 (csprogs): the HUD's per-frame work cut by a third, same pixels -- Font_Px memo,
+# the energy/turn rings searched from the oldest end, the trainer trace and key strip cached.
 # Patch 862 (client exe): the CSQC trigger mirror predicts on a listen server too (cl_predict_listen 1):
 # offline stage teleports no longer snap back a frame later. Exe 9c39795c (git-7582-patch-862-0-g6b762da5d,
 # = 859 + 864 + 862), both installs 2026-10-20 06:50Z (.prev c292b9aa). qwprogs 613468f1 (P860) on the

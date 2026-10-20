@@ -1,5 +1,20 @@
 # AGENT_NOTES.md
 
+## The HUD's per-frame caches (P863, 2026-10-20)
+
+- Four caches; each is keyed on every input it reads, and A NEW INPUT MUST JOIN ITS KEY. The key
+  strip (kc_hl*: kc_cacheat, ui_cv_scale, the font size, screen size, both pixel ratios); Font_Px
+  (the ladder's offset and want -- the ladders only parse constant strings); the trainer's trace
+  (trn_tl: trn_p_gen, which every new write to trn_p_t/r/d must bump, the view's range and span,
+  the panel's geometry, trn_cap); the energy and turn rings' oldest-end search (only while
+  ui_ehist_ok / ui_thist_ok >= the ring's length, i.e. every live sample stored in time order).
+- The check build: `#define P863CHECK` as the first line of src/shared/sh_font.qc. HUD_Draw prints
+  `p863check:` mismatch counts every 2 s; `set p863_olddraw 1` draws the key strip the old way for a
+  paused pixel A/B. Rebuild it that way after changing any of the four.
+- Price HUD panels with `r_budget_csqc 0`: the per-file profiler added ~0.14 ms to a 0.54 ms CSQC row
+  in one process, more on call-heavy code. A loaded trainer in a rig: `trainer feed 3`, alternate
+  `+moveleft;+left` and `+moveright;+right`, then `trainer feed 1` keeps the jump.
+
 ## Story challenges, dates, medal toasts (P856, 2026-10-20)
 
 - **Two sources, by kind** (`_story_calc`): finish/time/reach/stage on an undated level read

@@ -1,5 +1,21 @@
 # lextest.md — things waiting on a human
 
+## P863 — the HUD costs less, same picture
+
+Your surf_sidistic dumps were CPU-bound on the HUD's own code. With your cfg and every panel on,
+the panels cost 0.35 ms of a 0.94 ms frame, and the strafe trainer full of strafes took the HUD to
+1 ms. P863 stops redoing work that had not changed (font sizes, the key strip's layout, the
+trainer's columns, two speed/turn averages): about a third less QC a frame, nothing drawn
+differently. On the rig: the HUD 0.77 -> ~0.65 ms with a jump on the trainer, 1.05 -> ~0.83 ms
+while strafing in the air.
+
+- Play sidistic as you did for the dumps, everything on: the HUD should look exactly as before,
+  and fps should be higher. For a fair number use `r_budget 1` with `r_budget_csqc 0`: the per-file
+  QC list costs ~0.14 ms itself, and level 3 ~0.15 ms more than level 1.
+
+On the 12 lobbies and in both installs since 07:28Z (csprogs ea0fe712, menu 7801ca1b; .prev 4f49f974 /
+368d6040). "HUD ok / <what looks different>". Verdict PENDING.
+
 ## P862 — surf_garden judder on the teleport to the next stage (offline)
 
 Playing offline, the game never predicted map teleports (only online lobbies did), so each stage

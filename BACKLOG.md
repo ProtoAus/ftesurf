@@ -204,13 +204,18 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
   (c_pixel_visibility.cpp); the 50 ms ramp already hides a frame or two of latency. Needs a
   builtin; tracing stays the fallback (old engines via checkbuiltin). Check: same view, CSQC
   row and the glare luma, trace against query.
-- **HUD work redone every frame.** `hud_font_outline 2` (the default) draws a mono string 10
-  times (HUD_TextDraw 0.07-0.23 ms); a rounded box is 7 drawsubpic (_sui_round_draw 0.07-0.19);
-  KC_HintDraw splits and measures its strip each frame though KC_Refresh runs every 0.5 s
-  (0.04 on every map); Trn_Timeline grades every tick column each frame (0.07-0.11); Font_Px
-  scans the ladder per call (0.04-0.11). Cache in QC first, then one-call builtins (outlined
-  text, rounded box). A render-target cache of slow panels is possible (cl_milk.qc draws 2D
-  into one) once alpha compositing and 1:1 pixels are checked.
+- **HUD work redone every frame: Patch 863 did the QC part** (the key strip's layout, Font_Px, the
+  energy and turn rings, the trainer's trace columns: -34% QC instructions, same pixels). Left,
+  priced on surf_sidistic with Lex's cfg (20 Oct, no QC profiler): every panel on is 0.35 ms of a
+  0.94 ms frame (sampled: interpreter ~0.14, GL driver ~0.11, text ~0.03, strings ~0.03). A rounded
+  box is 7 drawsubpic, each looking its picture up by name in the engine (R_LoadShader: copy,
+  COM_CleanUpPath, hash; with cvar() lookups the hashing was ~3.5% of the frame) -- a lookup cache
+  keyed on the name and a shader-table generation, or a one-call box builtin, is engine work;
+  inlining the box's QC helpers ran 20% more instructions and measured nothing. Each switch between
+  fill, mask (one shader per radius) and font is a GL draw (~2.8 us in the driver; all panels add
+  39). `hud_font_outline 2` draws a mono string 10 times. Drawing the fixed panels into a target at
+  a capped rate (P837's two-target composite) would cut most of the rest but moves the numbers in
+  time: Lex's call.
 - **Graph and compare.** LineGraph_Simplify re-cuts the whole live curve each time lv_head
   moves (0.09-0.11 ms); Cmp_Nearest 0.06-0.11.
 - **Draw submission: Patch 831 did the big part** (batch sort, multidraw in the compatibility
