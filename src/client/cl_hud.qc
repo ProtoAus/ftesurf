@@ -714,6 +714,7 @@ float  ui_ehist_head;       // next slot to write, wrapped -- NOT a total count,
 float  ui_ehist_len;        // because a float counter loses integer precision
                             // past 2^24 and this runs every frame
 float  ui_ehist_lastt;      // cltime of the newest stored sample
+float  ui_ehist_ok;         // Patch 863: samples stored since the clock last stepped back
 float  ui_eta;              // dE/dt as a fraction of the physical ceiling
 
 void() HUD_ClearEnergyHistory;      // defined below; the anchor reset calls it
@@ -1716,7 +1717,10 @@ void(vector org, vector vel, float onground) HUD_UpdateJumpRef =
 */
 float(float e, float now, float window) HUD_EnergyRate =
 {
-	local float i, slot, old_t, old_e, span, interval;
+	local float i, slot, old_t, old_e, span, interval, nx;
+#ifdef P863CHECK
+	local float ct, ce, fast;
+#endif
 
 	/*
 	  RATE-LIMITED SAMPLING, and this is the fix for a readout that was dead.
@@ -1738,6 +1742,9 @@ float(float e, float now, float window) HUD_EnergyRate =
 
 	if (!ui_ehist_len || now - ui_ehist_lastt >= interval || now < ui_ehist_lastt)
 	{
+		if (now < ui_ehist_lastt)
+			ui_ehist_ok = 0;
+		ui_ehist_ok = min(ui_ehist_ok + 1, EWIN);
 		ui_ehist_e[ui_ehist_head] = e;
 		ui_ehist_t[ui_ehist_head] = now;
 		ui_ehist_lastt = now;
@@ -1753,7 +1760,42 @@ float(float e, float now, float window) HUD_EnergyRate =
 	// one, so it does not matter whether this frame pushed a sample or not.
 	old_t = now;
 	old_e = e;
+#ifdef P863CHECK
+	fast = (ui_ehist_len && ui_ehist_ok >= ui_ehist_len);
+	ct = now;
+	ce = e;
 	for (i = 0; i < ui_ehist_len; i = i + 1)
+	{
+		slot = ui_ehist_head - 1 - i;
+		while (slot < 0)
+			slot = slot + EWIN;
+		ct = ui_ehist_t[slot];
+		ce = ui_ehist_e[slot];
+		if (now - ct >= window)
+			break;
+	}
+#endif
+	if (ui_ehist_len && ui_ehist_ok >= ui_ehist_len)
+	{
+		// Patch 863: every live sample in time order, so the ones a window old are the
+		// oldest few and the newest of them is the scan below's answer. 3.6k QC ops a frame.
+		slot = ui_ehist_head - ui_ehist_len;
+		if (slot < 0)
+			slot = slot + EWIN;
+		if (now - ui_ehist_t[slot] >= window)
+			for (i = ui_ehist_len - 1; i > 0; i = i - 1)
+			{
+				nx = slot + 1;
+				if (nx >= EWIN)
+					nx = 0;
+				if (now - ui_ehist_t[nx] < window)
+					break;
+				slot = nx;
+			}
+		old_t = ui_ehist_t[slot];
+		old_e = ui_ehist_e[slot];
+	}
+	else for (i = 0; i < ui_ehist_len; i = i + 1)
 	{
 		slot = ui_ehist_head - 1 - i;
 		while (slot < 0)
@@ -1763,6 +1805,14 @@ float(float e, float now, float window) HUD_EnergyRate =
 		if (now - old_t >= window)
 			break;
 	}
+#ifdef P863CHECK
+	if (fast)
+	{
+		p863_eng_n += 1;
+		if (ct != old_t || ce != old_e)
+			p863_eng_bad += 1;
+	}
+#endif
 
 	span = now - old_t;
 	if (span < window * 0.5 || span <= 0)
@@ -1775,6 +1825,7 @@ void() HUD_ClearEnergyHistory =
 	ui_ehist_head  = 0;
 	ui_ehist_len   = 0;
 	ui_ehist_lastt = 0;
+	ui_ehist_ok    = 0;
 	ui_eta         = 0;
 };
 
@@ -5474,6 +5525,7 @@ float ui_thist_p[TWIN];         // cumulative |d_yaw|
 float ui_thist_n[TWIN];         // cumulative  d_yaw
 float ui_thist_t[TWIN];
 float ui_thist_head, ui_thist_len, ui_thist_lastt;
+float ui_thist_ok;              // Patch 863: as ui_ehist_ok
 float ui_yawpath, ui_yawnet;    // running totals, degrees
 
 void() HUD_ClearTurnHistory =
@@ -5481,6 +5533,7 @@ void() HUD_ClearTurnHistory =
 	ui_thist_head  = 0;
 	ui_thist_len   = 0;
 	ui_thist_lastt = 0;
+	ui_thist_ok    = 0;
 	ui_yawpath     = 0;
 	ui_yawnet      = 0;
 	ui_turnrate    = 0;
@@ -5516,8 +5569,11 @@ void() HUD_ClearTurnHistory =
 */
 void(float dt) HUD_UpdateTurn =
 {
-	local float yaw, d, i, slot, old_t, old_p, old_n, span, net, interval;
+	local float yaw, d, i, slot, old_t, old_p, old_n, span, net, interval, nx;
 	local vector ang;
+#ifdef P863CHECK
+	local float ct, cp, cn, fast;
+#endif
 
 	// fteqcc cannot swizzle a call's return value -- it needs a real lvalue.
 	ang = getproperty(VF_ANGLES);
@@ -5541,6 +5597,9 @@ void(float dt) HUD_UpdateTurn =
 
 	if (!ui_thist_len || board_now - ui_thist_lastt >= interval || board_now < ui_thist_lastt)
 	{
+		if (board_now < ui_thist_lastt)
+			ui_thist_ok = 0;
+		ui_thist_ok = min(ui_thist_ok + 1, TWIN);
 		ui_thist_p[ui_thist_head] = ui_yawpath;
 		ui_thist_n[ui_thist_head] = ui_yawnet;
 		ui_thist_t[ui_thist_head] = board_now;
@@ -5555,7 +5614,42 @@ void(float dt) HUD_UpdateTurn =
 	// Walk back for the newest sample already older than the window.  As with
 	// the energy ring, the recent end is the live running total.
 	old_t = board_now;  old_p = ui_yawpath;  old_n = ui_yawnet;
+#ifdef P863CHECK
+	fast = (ui_thist_len && ui_thist_ok >= ui_thist_len);
+	ct = board_now;  cp = ui_yawpath;  cn = ui_yawnet;
 	for (i = 0; i < ui_thist_len; i = i + 1)
+	{
+		slot = ui_thist_head - 1 - i;
+		while (slot < 0)
+			slot = slot + TWIN;
+		ct = ui_thist_t[slot];
+		cp = ui_thist_p[slot];
+		cn = ui_thist_n[slot];
+		if (board_now - ct >= ui_cv_smooth)
+			break;
+	}
+#endif
+	if (ui_thist_len && ui_thist_ok >= ui_thist_len)
+	{
+		// Patch 863: from the oldest end, as HUD_EnergyRate.
+		slot = ui_thist_head - ui_thist_len;
+		if (slot < 0)
+			slot = slot + TWIN;
+		if (board_now - ui_thist_t[slot] >= ui_cv_smooth)
+			for (i = ui_thist_len - 1; i > 0; i = i - 1)
+			{
+				nx = slot + 1;
+				if (nx >= TWIN)
+					nx = 0;
+				if (board_now - ui_thist_t[nx] < ui_cv_smooth)
+					break;
+				slot = nx;
+			}
+		old_t = ui_thist_t[slot];
+		old_p = ui_thist_p[slot];
+		old_n = ui_thist_n[slot];
+	}
+	else for (i = 0; i < ui_thist_len; i = i + 1)
 	{
 		slot = ui_thist_head - 1 - i;
 		while (slot < 0)
@@ -5566,6 +5660,14 @@ void(float dt) HUD_UpdateTurn =
 		if (board_now - old_t >= ui_cv_smooth)
 			break;
 	}
+#ifdef P863CHECK
+	if (fast)
+	{
+		p863_turn_n += 1;
+		if (ct != old_t || cp != old_p || cn != old_n)
+			p863_turn_bad += 1;
+	}
+#endif
 
 	span = board_now - old_t;
 	if (span <= 0.0001)
@@ -5747,6 +5849,16 @@ void(vector scr) HUD_Draw =
 
 	HUD_ReadCvars();
 	Font_Check();
+#ifdef P863CHECK
+	if (cltime - p863_at > 2 || cltime < p863_at)
+	{
+		p863_at = cltime;
+		print(sprintf("p863check: fpx %g/%g ring %g/%g turn %g/%g", p863_fpx_bad, p863_fpx_n,
+		              p863_eng_bad, p863_eng_n, p863_turn_bad, p863_turn_n));
+		print(sprintf(" trace %g/%g (%g columns) keyhint %g/%g\n", p863_trn_bad, p863_trn_n,
+		              p863_cols_n, p863_kc_bad, p863_kc_n));
+	}
+#endif
 
 	/*
 	  BUILD 31.  Two frame-level jobs, both of which have to happen before any

@@ -102,6 +102,13 @@ string kc_keys[KC_N];           // each row's keys, space-separated engine names
 float  kc_cnt[KC_N];
 float  kc_cacheat;              // cltime of the last read; 0 = read now
 string kc_hint;                 // "KEY|label;KEY|label;..." for the strip
+// Patch 863: the strip's measured layout, kept until its text, size, font or screen changes and
+// re-taken at each KC_Refresh. Per item: [0] chip width, [1] key text's offset in it,
+// [2] label width; the strings are zoned beside it.
+float *kc_hl;
+string *kc_hs;
+float kc_hl_n, kc_hl_w, kc_hl_at, kc_hl_sc, kc_hl_lsz, kc_hl_rx, kc_hl_font;
+vector kc_hl_scr;
 
 void() KC_Register =
 {
@@ -220,6 +227,7 @@ void() KC_Refresh =
 		if (kc_hint != "")
 			strunzone(kc_hint);
 		kc_hint = (h == "") ? "" : strzone(h);
+		kc_hl_at = -1;              // a command can change it inside one cltime: measure again
 	}
 	kc_cacheat = cltime;
 };
@@ -918,22 +926,56 @@ void(vector scr) KC_Draw =
 		KC_Close();
 };
 
-/*
-  The strip along the bottom left: the key each menu and gesture is on, read
-  from the binds, so it shows the player's own keys. Unbound items are left out.
-*/
-void(vector scr) KC_HintDraw =
+void(float sc, float lsz, vector scr) KC_HintMeasure =
+{
+	local float i, cap, gap, sw;
+	local string it, k, lab;
+
+	if (!kc_hl)
+	{
+		kc_hl = memalloc(sizeof(float) * KC_HINTS * 3);
+		kc_hs = memalloc(sizeof(string) * KC_HINTS * 2);
+	}
+	for (i = 0; i < kc_hl_n; i = i + 1)
+	{
+		strunzone(kc_hs[i * 2]);
+		strunzone(kc_hs[i * 2 + 1]);
+	}
+	cap = 11 * sc - 3 * sc;
+	gap = 6 * sc;
+	kc_hl_w = 3 * sc;
+	for (i = 0; i < KC_HINTS; i = i + 1)
+	{
+		it = Gfx_Field(kc_hint, i, ";");
+		if (it == "")
+			break;
+		k = Gfx_Field(it, 0, "|");
+		lab = Gfx_Field(it, 1, "|");
+		sw = stringwidth(k, TRUE, [lsz, lsz]);
+		kc_hl[i * 3] = max(cap, sw + 4 * sc);
+		kc_hl[i * 3 + 1] = (kc_hl[i * 3] - sw) * 0.5;
+		kc_hl[i * 3 + 2] = stringwidth(lab, TRUE, [lsz, lsz]);
+		kc_hs[i * 2] = strzone(k);
+		kc_hs[i * 2 + 1] = strzone(lab);
+		kc_hl_w = kc_hl_w + kc_hl[i * 3] + 3 * sc + kc_hl[i * 3 + 2] + gap;
+	}
+	kc_hl_n = i;
+	kc_hl_w = kc_hl_w - gap + 4 * sc;
+	kc_hl_at = kc_cacheat;
+	kc_hl_sc = sc;
+	kc_hl_lsz = lsz;
+	kc_hl_scr = [scr_x, scr_y, sui_style_pixel_ratio_y];
+	kc_hl_rx = sui_style_pixel_ratio_x;
+	kc_hl_font = ui_font_gen;
+};
+
+#ifdef P863CHECK
+// The strip as it was drawn before Patch 863, for the paused pixel A/B (p863_olddraw 1).
+void(vector scr) KC_HintDrawOld =
 {
 	local float sc, n, i, x, h, cap, lsz, kw, lw, w, gap;
 	local string it, k, lab;
 	local vector p;
-
-	if (!cvar("hud_keyhint") || kc_open || rec_wt_open || rec_wt_on || spc_hud)
-		return;
-	if (cltime - kc_cacheat > 0.5 || !kc_cacheat)
-		KC_Refresh();
-	if (kc_hint == "")
-		return;
 
 	sc  = ui_cv_scale;
 	Font_Set(ui_font_ui);
@@ -942,8 +984,6 @@ void(vector scr) KC_HintDraw =
 	cap = h - 3 * sc;
 	gap = 6 * sc;
 	n = KC_HINTS;
-
-	// Measure first: the card is drawn under the items.
 	w = 3 * sc;
 	for (i = 0; i < n; i = i + 1)
 	{
@@ -956,6 +996,27 @@ void(vector scr) KC_HintDraw =
 		      + stringwidth(lab, TRUE, [lsz, lsz]) + gap;
 	}
 	w = w - gap + 4 * sc;
+
+	// The layout cache's numbers, as this frame works them out.
+	p863_kc_n += 1;
+	if (w != kc_hl_w || i != kc_hl_n)
+		p863_kc_bad += 1;
+	for (i = 0; i < kc_hl_n; i = i + 1)
+	{
+		it = Gfx_Field(kc_hint, i, ";");
+		k = Gfx_Field(it, 0, "|");
+		lab = Gfx_Field(it, 1, "|");
+		kw = max(cap, stringwidth(k, TRUE, [lsz, lsz]) + 4 * sc);
+		if (kw != kc_hl[i * 3] || (kw - stringwidth(k, TRUE, [lsz, lsz])) * 0.5 != kc_hl[i * 3 + 1]
+		    || stringwidth(lab, TRUE, [lsz, lsz]) != kc_hl[i * 3 + 2]
+		    || k != kc_hs[i * 2] || lab != kc_hs[i * 2 + 1])
+			p863_kc_bad += 1;
+	}
+	if (!cvar("p863_olddraw"))
+	{
+		Font_Reset();
+		return;
+	}
 
 	p = [scr_x * cvar("hud_keyhint_x"), scr_y * cvar("hud_keyhint_y"), 0];
 	_sui_round_draw(p, [w, h, 0], 4 * sc, SUI_THEME_PANEL, 0.75);
@@ -978,4 +1039,78 @@ void(vector scr) KC_HintDraw =
 	}
 	Font_Reset();
 	HUD_Rect("keyhint", p, [w, h, 0], p);
+};
+#endif
+
+/*
+  The strip along the bottom left: the key each menu and gesture is on, read
+  from the binds, so it shows the player's own keys. Unbound items are left out.
+  Patch 863: every chip, then every word, so the strip is three GL draws, not two an
+  item. No chip touches another item's words, so the order changes no pixel.
+*/
+void(vector scr) KC_HintDraw =
+{
+	local float sc, i, x, h, cap, lsz, gap, ty;
+	local vector p;
+
+	if (!cvar("hud_keyhint") || kc_open || rec_wt_open || rec_wt_on || spc_hud)
+		return;
+	if (cltime - kc_cacheat > 0.5 || !kc_cacheat)
+		KC_Refresh();
+	if (kc_hint == "")
+		return;
+
+	sc  = ui_cv_scale;
+	Font_Set(ui_font_ui);
+	lsz = Font_Px(7 * sc);
+	h   = 11 * sc;
+	cap = h - 3 * sc;
+	gap = 6 * sc;
+	if (kc_hl_at != kc_cacheat || kc_hl_sc != sc || kc_hl_lsz != lsz
+	    || kc_hl_scr != [scr_x, scr_y, sui_style_pixel_ratio_y] || kc_hl_rx != sui_style_pixel_ratio_x
+	    || kc_hl_font != ui_font_gen)
+		KC_HintMeasure(sc, lsz, scr);
+#ifdef P863CHECK
+	KC_HintDrawOld(scr);
+	if (cvar("p863_olddraw"))
+		return;
+	Font_Set(ui_font_ui);
+#endif
+
+	p = [scr_x * cvar("hud_keyhint_x"), scr_y * cvar("hud_keyhint_y"), 0];
+	_sui_round_draw(p, [kc_hl_w, h, 0], 4 * sc, SUI_THEME_PANEL, 0.75);
+	ty = p_y + (h - lsz) * 0.5;
+	x = p_x + 3 * sc;
+	// Under 6 pixels between items a glyph's edge, or the fallback font's shadow and ring,
+	// could reach the next chip: then each item whole, in the old order.
+	if (gap * sui_style_pixel_ratio_x < 6)
+	{
+		for (i = 0; i < kc_hl_n; i = i + 1)
+		{
+			_sui_round_draw([x, p_y + 1.5 * sc, 0], [kc_hl[i * 3], cap, 0], 2 * sc, SUI_THEME_CHIP, 1);
+			HUD_TextDraw([x + kc_hl[i * 3 + 1], ty], kc_hs[i * 2], lsz, SUI_THEME_TEXT, 1);
+			x = x + kc_hl[i * 3] + 3 * sc;
+			HUD_TextDraw([x, ty], kc_hs[i * 2 + 1], lsz, SUI_THEME_DIM, 1);
+			x = x + kc_hl[i * 3 + 2] + gap;
+		}
+		Font_Reset();
+		HUD_Rect("keyhint", p, [kc_hl_w, h, 0], p);
+		return;
+	}
+	for (i = 0; i < kc_hl_n; i = i + 1)
+	{
+		_sui_round_draw([x, p_y + 1.5 * sc, 0], [kc_hl[i * 3], cap, 0], 2 * sc, SUI_THEME_CHIP, 1);
+		x = x + kc_hl[i * 3] + 3 * sc;
+		x = x + kc_hl[i * 3 + 2] + gap;
+	}
+	x = p_x + 3 * sc;
+	for (i = 0; i < kc_hl_n; i = i + 1)
+	{
+		HUD_TextDraw([x + kc_hl[i * 3 + 1], ty], kc_hs[i * 2], lsz, SUI_THEME_TEXT, 1);
+		x = x + kc_hl[i * 3] + 3 * sc;
+		HUD_TextDraw([x, ty], kc_hs[i * 2 + 1], lsz, SUI_THEME_DIM, 1);
+		x = x + kc_hl[i * 3 + 2] + gap;
+	}
+	Font_Reset();
+	HUD_Rect("keyhint", p, [kc_hl_w, h, 0], p);
 };

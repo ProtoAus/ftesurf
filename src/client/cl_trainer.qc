@@ -139,6 +139,7 @@ float trn_p_n;
 float trn_p_t[TRN_PTS * TRN_BLOCKS];
 float trn_p_r[TRN_PTS * TRN_BLOCKS];         // turn rate / ideal; -1 = no answer
 float trn_p_d[TRN_PTS * TRN_BLOCKS];         // key direction at that tick, 0 = none
+float trn_p_gen;                // Patch 863: one more at every write above (Trn_TraceCols)
 
 // --- the kept jumps (Patch 621): a ring of TRN_HIST, numbered from 1 ---------
 float trh_n;                    // jumps kept
@@ -461,6 +462,7 @@ void(float t1, float how) Trn_Keep =
 		trn_p_r[pb + i] = trn_p_r[i];
 		trn_p_d[pb + i] = trn_p_d[i];
 	}
+	trn_p_gen = trn_p_gen + 1;
 	trh_num[k]  = trh_seq;
 	trh_t0[k]   = trn_j_t0;
 	trh_t1[k]   = t1;
@@ -767,6 +769,7 @@ void(float dt, float yaw, float side, float sp, float st, float rateok) Trn_Samp
 	trn_p_r[trn_p_n] = (ideal > 0.001) ? (rate / ideal) : -1;
 	trn_p_d[trn_p_n] = dir;
 	trn_p_n = trn_p_n + 1;
+	trn_p_gen = trn_p_gen + 1;
 };
 
 // Discontinuities discard the open span, not completed history.
@@ -929,10 +932,78 @@ string(float v) Trn_Signed =
   and drew as a few pixels; a tick past the range draws full height. The shaded
   band is +-20%, grade A's.
 */
+/*
+  Patch 863: the trace's columns, worked out again only when a tick lands or the panel
+  moves or resizes (about 60 a second, against hundreds of frames). trn_tl holds the
+  inputs below; trn_tlv a column's place, size and colour, as the drawfill takes them.
+*/
+#define TRN_TLKEY 12
+float *trn_tl;
+vector *trn_tlv;
+float trn_tl_n;
+
+void(float x0, float tw, float xmax, float t0, float span, float ty, float ch, float tk) Trn_TraceCols =
+{
+	local float i, x, r, dev, k;
+	local vector c;
+
+	if (!trn_tl)
+	{
+		trn_tl = memalloc(sizeof(float) * TRN_TLKEY);
+		trn_tlv = memalloc(sizeof(vector) * TRN_PTS * 3);
+		trn_tl[4] = -1;                 // no span is negative: the first call builds
+	}
+	if (trn_tl[0] == trn_p_gen && trn_tl[1] == trv_pa && trn_tl[2] == trv_pe && trn_tl[3] == t0
+	    && trn_tl[4] == span && trn_tl[5] == x0 && trn_tl[6] == tw && trn_tl[7] == xmax
+	    && trn_tl[8] == ty && trn_tl[9] == ch && trn_tl[10] == tk && trn_tl[11] == trn_cap)
+		return;
+	trn_tl[0] = trn_p_gen;  trn_tl[1] = trv_pa;  trn_tl[2] = trv_pe;  trn_tl[3] = t0;
+	trn_tl[4] = span;       trn_tl[5] = x0;      trn_tl[6] = tw;      trn_tl[7] = xmax;
+	trn_tl[8] = ty;         trn_tl[9] = ch;      trn_tl[10] = tk;     trn_tl[11] = trn_cap;
+	trn_tl_n = 0;
+	for (i = trv_pa; i < trv_pe; i = i + 1)
+	{
+		if (trn_p_t[i] < t0)
+			continue;
+		r = trn_p_r[i];
+		if (r < 0)
+			continue;                   // no answer: a gap, not a zero
+
+		x = floor(x0 + ((trn_p_t[i] - t0) / span) * tw);
+		if (x + tk > xmax)
+			x = xmax - tk;
+		dev = (r - 1) / TRN_DEV;
+		if (dev >  1) dev =  1;
+		if (dev < -1) dev = -1;
+
+		// The ratio is the grade's only input, so hand it over as one: turn = r
+		// against ideal = 1 is the same fraction Strafe_Quality would divide.
+		c = Plot_Quality(Strafe_Quality(r, 1, trn_cap, trn_cap));
+		dev = floor(dev * ch + 0.5);
+		k = trn_tl_n * 3;
+		if (dev >= 0)
+		{
+			trn_tlv[k] = [x, ty - dev];
+			trn_tlv[k + 1] = [tk, dev + 1];
+		}
+		else
+		{
+			trn_tlv[k] = [x, ty];
+			trn_tlv[k + 1] = [tk, 0 - dev];
+		}
+		trn_tlv[k + 2] = c;
+		trn_tl_n = trn_tl_n + 1;
+	}
+};
+
 void(vector p, float w, float u, float hsz, float trace) Trn_Timeline =
 {
-	local float i, span, t0, x, x2, gut, tw, bh, cy, r, dev, ch, ty, tk, th, u1;
+	local float i, span, t0, x, x2, gut, tw, bh, cy, ch, ty, tk, th, u1, k;
 	local vector c;
+#ifdef P863CHECK
+	local float r, dev;
+	local vector cp, cs;
+#endif
 
 	u1 = max(1, floor(u));              // a unit's worth of gap, in whole pixels
 	t0 = trv_t0;
@@ -963,30 +1034,46 @@ void(vector p, float w, float u, float hsz, float trace) Trn_Timeline =
 		drawfill([p_x + gut, ty], [tw, 1], SUI_THEME_EDGE_HI, 0.8, 0);
 		// One tick's width, so neighbouring columns meet.
 		tk = max(1, ceil(tw * trn_tick / span));
+		Trn_TraceCols(p_x + gut, tw, p_x + w, t0, span, ty, ch, tk);
+#ifdef P863CHECK
+		// The columns as the loop before Patch 863 drew them, against the cache.
+		k = 0;
 		for (i = trv_pa; i < trv_pe; i = i + 1)
 		{
 			if (trn_p_t[i] < t0)
 				continue;
 			r = trn_p_r[i];
 			if (r < 0)
-				continue;                   // no answer: a gap, not a zero
-
+				continue;
 			x = floor(p_x + gut + ((trn_p_t[i] - t0) / span) * tw);
 			if (x + tk > p_x + w)
 				x = p_x + w - tk;
 			dev = (r - 1) / TRN_DEV;
 			if (dev >  1) dev =  1;
 			if (dev < -1) dev = -1;
-
-			// The ratio is the grade's only input, so hand it over as one: turn = r
-			// against ideal = 1 is the same fraction Strafe_Quality would divide.
 			c = Plot_Quality(Strafe_Quality(r, 1, trn_cap, trn_cap));
 			dev = floor(dev * ch + 0.5);
 			if (dev >= 0)
-				drawfill([x, ty - dev], [tk, dev + 1], c, 0.9, 0);
+			{
+				cp = [x, ty - dev];
+				cs = [tk, dev + 1];
+			}
 			else
-				drawfill([x, ty], [tk, 0 - dev], c, 0.9, 0);
+			{
+				cp = [x, ty];
+				cs = [tk, 0 - dev];
+			}
+			p863_cols_n += 1;
+			if (k >= trn_tl_n * 3 || trn_tlv[k] != cp || trn_tlv[k + 1] != cs || trn_tlv[k + 2] != c)
+				p863_trn_bad += 1;
+			k = k + 3;
 		}
+		if (k != trn_tl_n * 3)
+			p863_trn_bad += 1;
+		p863_trn_n += 1;
+#endif
+		for (k = 0; k < trn_tl_n * 3; k = k + 3)
+			drawfill(trn_tlv[k], trn_tlv[k + 1], trn_tlv[k + 2], 0.9, 0);
 		Plot_Text([p_x, ty - ch + u1], "fast", hsz, SUI_THEME_MUTED, 1);
 		Plot_Text([p_x, ty + ch - hsz - u1], "slow", hsz, SUI_THEME_MUTED, 1);
 	}

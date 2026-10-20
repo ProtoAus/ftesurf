@@ -181,6 +181,7 @@ void(string rendererdescription) CSQC_RendererRestarted =
 	Paint_Lost();                   // Patch 772: re-register before the decals re-resolve
 	PTrail_Lost();
 	LineGraph_CacheLost();         // Patch 837
+	ui_font_gen = ui_font_gen + 1;  // Patch 863: the fonts were baked again
 };
 
 // Before renderscene, every frame; ticks only when the sim is due.

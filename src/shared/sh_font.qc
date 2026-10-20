@@ -270,6 +270,7 @@ float ui_lad_disp_first, ui_lad_disp_n;
 float ui_lad_mono_first, ui_lad_mono_n;
 float ui_lad_dsm_first,  ui_lad_dsm_n;
 float ui_font_cur;              // the slot Font_Set last selected
+float ui_font_gen;              // Patch 863: one more at each Font_Init and renderer restart
 
 float(string sizes, float first) Font_ParseLadder =
 {
@@ -301,6 +302,34 @@ float(string sizes, float first) Font_ParseLadder =
   load returned 0.  ui_font_ready is left to drive the retry and the warning,
   where wanting all three IS the right question.
 */
+#ifdef P863CHECK
+// Patch 863's check build: each new computation beside the one it replaced, mismatches
+// counted and printed by HUD_Draw every 2 s. `#define P863CHECK` at the top of this file.
+float p863_fpx_n, p863_fpx_bad, p863_eng_n, p863_eng_bad, p863_turn_n, p863_turn_bad;
+float p863_trn_n, p863_trn_bad, p863_cols_n, p863_kc_n, p863_kc_bad, p863_at;
+float(float first, float n, float want) Font_PxOld =
+{
+	local float i, best, bd, d;
+	best = ui_lad[first];
+	bd   = fabs(want - best);
+	for (i = 1; i < n; i = i + 1)
+	{
+		d = fabs(want - ui_lad[first + i]);
+		if (d < bd)
+		{
+			bd   = d;
+			best = ui_lad[first + i];
+		}
+	}
+	return best;
+};
+#endif
+
+// Patch 863: the last four answers. The ladders are parsed only from the constant strings
+// above, so (where a ladder starts, want) settles the answer; 43M QC ops in 3 s of Lex's HUD.
+float fpx_first[4], fpx_want[4], fpx_got[4];
+float fpx_fill, fpx_next;
+
 float(float want) Font_Px =
 {
 	local float i, first, n, best, bd, d;
@@ -314,17 +343,45 @@ float(float want) Font_Px =
 	if (n <= 0)
 		return want;
 
+	for (i = 0; i < fpx_fill; i = i + 1)
+		if (fpx_want[i] == want)
+		if (fpx_first[i] == first)
+		{
+#ifdef P863CHECK
+			p863_fpx_n += 1;
+			if (Font_PxOld(first, n, want) != fpx_got[i])
+				p863_fpx_bad += 1;
+#endif
+			return fpx_got[i];
+		}
+
+	// |d| inline: fabs is a builtin call per rung, and only the comparisons read it.
 	best = ui_lad[first];
-	bd   = fabs(want - best);
+	bd   = want - best;
+	if (bd < 0) bd = 0 - bd;
 	for (i = 1; i < n; i = i + 1)
 	{
-		d = fabs(want - ui_lad[first + i]);
+		d = want - ui_lad[first + i];
+		if (d < 0) d = 0 - d;
 		if (d < bd)
 		{
 			bd   = d;
 			best = ui_lad[first + i];
 		}
 	}
+	fpx_first[fpx_next] = first;
+	fpx_want[fpx_next] = want;
+	fpx_got[fpx_next] = best;
+	fpx_next = fpx_next + 1;
+	if (fpx_next >= 4)
+		fpx_next = 0;
+	if (fpx_fill < 4)
+		fpx_fill = fpx_fill + 1;
+#ifdef P863CHECK
+	p863_fpx_n += 1;
+	if (Font_PxOld(first, n, want) != best)
+		p863_fpx_bad += 1;
+#endif
 	return best;
 };
 
@@ -366,6 +423,7 @@ void() Font_Init =
 	ui_font_ready = (ui_font_ui != 0 && ui_font_display != 0 && ui_font_mono != 0
 	                 && ui_font_dispsm != 0);
 	ui_font_tries = ui_font_tries + 1;
+	ui_font_gen = ui_font_gen + 1;
 
 	if (!ui_font_ready && ui_font_tries >= 3)
 	{
