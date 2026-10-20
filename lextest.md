@@ -37,6 +37,15 @@ Live 2026-10-19 (UTC): surfd 02ed71c2 (20:44Z), csprogs d28a06aa on the 12 lobbi
 
 "Works / <what looked wrong>". Verdict PENDING.
 
+## P857 — "Put it in its own folder" on the download page
+
+Live 2026-10-20 00:58Z (UTC): under the two buttons, "Put it in its own folder, then run it (Linux:
+`chmod +x`)". The Linux half shows only on a release with a Linux build.
+
+- Open https://proto.bar/ftesurf/ (refresh) and read the line under the buttons.
+
+"Ok / <wording you want>". Verdict PENDING.
+
 ## P852 — the download page leads with the launcher
 
 Live 2026-10-19 20:05Z (UTC) on proto.bar/ftesurf (0.1.28's page re-rendered). The two launcher
