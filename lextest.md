@@ -56,6 +56,19 @@ save 10: you should drop straight through, and the route past the butterflies sh
 `ent_here` on one now reads `solid NOT`. "lovetunnel ok, or <where it still stops you>". Verdict
 PENDING.
 
+## P891 — KSF recordings on surf_kepler
+
+KSF times for all of surf_kepler's stages and both bonuses are on the boards, and 48 KSF
+recordings can be watched: main (21), bonus 1 (10), bonus 2 (17), on the KSF rows of the Online
+boards. The 96 stage recordings are downloaded and wait for the surfd update (P891), which also
+lets the crawler fetch stage recordings for every map.
+
+- Main and bonuses now: open surf_kepler's KSF board, watch rossberg's 58.88 (rank 1).
+- Stages, after the update: stage 3 rank 1 (rossberg 5.214), and stage 9 (its finish is placed
+  by the KSF time, as no file marks it).
+
+"Main / bonus recordings play ok, or <what looks wrong>". Verdict PENDING.
+
 ## P883 — vid_restart and ent_view crashes
 
 Restarting the renderer in a map (`vid_restart`, or a video mode, fullscreen or window change) no

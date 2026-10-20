@@ -1,5 +1,27 @@
 # AGENT_NOTES.md
 
+## KSF stage demos and the stuck demo grab (P891, 2026-10-20)
+
+- KSF serves each stage as its own replay (a series per stage: kepler's main is 4459, stages
+  4460-4468, bonuses 4469/4470). A stage-N file bookmarks entry and exit of zone N and entry of
+  N+1; none of kepler's 13 last-stage files bookmarks a finish, so ksfconvert places it by the
+  official time from the exit (`ksfstop timed`; it lands within 368 u of the other runs' mean,
+  as tight as the bookmarked stages' 170-777). ksfgrab takes stage boards only when the cached
+  map row is staged (stages_of, no request); a stage job carries `last`.
+- From 19 Oct 19:21Z every demo resume asked surf_ab's replay first, which KSF aborts after
+  156,217 bytes (curl: HTTP/2 INTERNAL_ERROR), and parked the shared crawler 6 h, so nothing was
+  grabbed for a day. Set aside by hand 20 Oct 22:29Z (demos.json `failed`, 7 days; backup in the
+  Pi's /tmp/ksfprobe). P891: every failure still parks; a file failing the way only a file can
+  (404/500, BodyBroken after the headers) twice in 14 days is set aside.
+- By-hand KSF work on the Pi runs the live generation's code through /srv/nvme/surfd's stubs
+  (sys.path that directory, python3.11 -I). Its import guard refuses a runtime module loaded
+  from elsewhere ("preloaded runtime module outside source_home"): new grabber code reaches the
+  database only as a new generation (tools/surfd_successor).
+- Null-ID main rows (ksf_unbound, from the schema-18 migration) bind only from a page fetched in
+  the same --go run. `--from-maps --depth N` applies to every board and the index's row count
+  decides what a board wants, so a full board fetched earlier never refetches: reset its cursor
+  to 1 and call board_page (rewalk_step's shape), then map_rows + write_rows. 200 kepler rows.
+
 ## Renderer restarts free every shader and the models (P883, 2026-10-20)
 
 - `R_ShutdownRenderer` (vid_restart, a mode or fullscreen change) frees every shader_t and, through

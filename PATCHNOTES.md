@@ -21,6 +21,10 @@
 
 ## next
 
+### P891 KSF stage recordings
+- KSF recordings of single stages can be watched from the stage boards, starting with surf_kepler's.
+- KSF recordings download again: one broken file on KSF's side had stopped them since 19 October.
+
 ### P885 Hops after the start zone are yours
 - Stand in the start zone, jump out once, and the hops after it count: surf_tendies' booster hop no longer makes the run practice.
 - Bunny hopping inside the start zone, or flying through it without stopping, still does.

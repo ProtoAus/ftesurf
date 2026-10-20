@@ -1141,8 +1141,15 @@ Fixed items are removed; remaining reader contracts need acting controls.
   it, for the web app and (through /srv/nvme/surfd's import stubs) the crawler. Before that the crawler refused demos that begin inside the start zone
   and ones whose official time is over a tick from the frame count (17 of 155 on
   2026-10-17, tools/p757ksfconvert.md).
-- KSF STAGE demos are still refused (`interval` reads only main and bonus). None
-  was among the 17; design from a fetched stage replay's bookmarks.
+- KSF STAGE demos: Patch 891 imports them (each stage is its own KSF file), designed
+  from surf_kepler's 100 stage files. Live only once a surfd generation carries P891
+  (the sealed generation's import guard refuses a backfill run from other code); the
+  100 kept originals wait in the Pi's data/ksfstages/surf_kepler/ with their board rows.
+- P891 leftovers: the last stage's unbookmarked finish (placed by the official time) is
+  measured on one map; another map's last stage may bookmark zone 99 or N+1. The
+  client's own converter (cl_ksf.qc, `replay` of a local KSF file) reads main and bonus
+  only. Four of kepler's 100 stage files disagree with their own board time and stay
+  refused; two answer HTTP 500 upstream.
 - Falsifier (the cutover is done): `python -m unittest test_ksfconvert` passes in
   tools/, and the 17 files in that note link when asked. They hold no job, strike
   or tombstone (7c's targeted runs called ksfgrab.install directly), so nothing
