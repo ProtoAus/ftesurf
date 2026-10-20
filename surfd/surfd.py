@@ -3498,7 +3498,8 @@ def submit_run():
     rid = 0
     if trusted and style == STYLE_CLEAN:
         try:
-            story_was = story_before(db, mapname, track, leg, now)
+            story_was = story_before(db, mapname, track, leg, now, player, spub, name, millis,
+                                     runid)
         except Exception:               # never the run's answer; logged, untold
             log.exception("story: the ladder before a finish on %s failed", mapname)
             story_was = (None, "", {})
@@ -4776,7 +4777,10 @@ _STORY_DATE = re.compile(r"(\d{4})-(\d{2})-(\d{2})\Z", re.ASCII)
 _STORY_COORD = re.compile(r"-?[0-9]{1,6}(?:\.[0-9]+)?\Z")
 
 # One row per clean lobby finish a level wants (story_before): full runs on
-# any listed track, stage times only for an open dated level about stages.
+# any listed track, stage times only for an open dated level about stages.  A
+# full run's row is reserved (done 0) before the run touches the board, so the
+# log orders finishers and a finish whose story_finish never ran keeps its place
+# for `first`; story_finish completes it (done 1), and only done rows count as runs.
 STORY_RUNS_DDL = (
     "CREATE TABLE IF NOT EXISTS story_runs ("
     " id INTEGER PRIMARY KEY, map TEXT NOT NULL, track INTEGER NOT NULL,"
@@ -4785,7 +4789,8 @@ STORY_RUNS_DDL = (
     " millis INTEGER NOT NULL, prevms INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL,"
     " runid TEXT NOT NULL DEFAULT '', replay_id INTEGER NOT NULL DEFAULT 0,"
     " fails INTEGER NOT NULL DEFAULT -1, inmask INTEGER NOT NULL DEFAULT -1,"
-    " top INTEGER NOT NULL DEFAULT -1, spots TEXT NOT NULL DEFAULT '');"
+    " top INTEGER NOT NULL DEFAULT -1, spots TEXT NOT NULL DEFAULT '',"
+    " done INTEGER NOT NULL DEFAULT 1);"
     "CREATE INDEX IF NOT EXISTS story_runs_map ON story_runs (map, track, leg, at);"
     "CREATE INDEX IF NOT EXISTS story_runs_order ON story_runs (map, track, leg, id);"
     "CREATE INDEX IF NOT EXISTS story_runs_who ON story_runs (map, track, leg, player);"
@@ -4795,10 +4800,8 @@ STORY_RUNS_DDL = (
     # the board then (`first` cannot be known past one).  Written once, never moved.
     "CREATE TABLE IF NOT EXISTS story_tracks (map TEXT NOT NULL, track INTEGER NOT NULL,"
     " began INTEGER NOT NULL, prior INTEGER NOT NULL, PRIMARY KEY (map, track));")
-# A finish the log does not hold: a WOS full-run board row on a track (map, track)
-# whose player has no logged finish there -- from before the log, or one whose
-# story_finish failed after the board write.  story_tracks' `prior`, and
-# _story_first_row's check with a lower bound on the row's time (%s: "" or one).
+# story_tracks' `prior`: a WOS full-run board row on the track (map, track) whose
+# player the log has no row of -- a finish from before the log.  (%s: "".)
 _STORY_UNLOGGED_SQL = (
     "EXISTS (SELECT 1 FROM runs r WHERE r.map = ? AND r.track = ? AND r.leg = 0"
     " AND r.tier IN ('%s', '%s') AND r.style = '%s'%%s AND NOT EXISTS (SELECT 1 FROM"
@@ -5169,7 +5172,7 @@ _STORY_SUM_SQL = (
     " MAX(s.inmask >= 0 AND (s.inmask & %d) = 0), MAX(s.top),"
     " MIN(CASE WHEN s.prevms > 0 THEN CAST(s.millis AS REAL) / s.prevms END),"
     " GROUP_CONCAT(NULLIF(s.spots, ''), ' ')"
-    " FROM story_runs s WHERE s.map IN (%%s) AND s.leg = 0 AND %s"
+    " FROM story_runs s WHERE s.map IN (%%s) AND s.leg = 0 AND s.done = 1 AND %s"
     " GROUP BY s.map, s.track, s.player, s.pub"
     % (STORY_FSI_NOTW, STORY_FSI_JUMP, STORY_FSI_SIDE, STORY_FSI_HSWBAD, _STORY_LIVE_SQL))
 
@@ -5185,11 +5188,6 @@ def _story_first_row(db, mapname, track, win, owner):
                      (mapname, track)).fetchone()
     lo, hi = win if win is not None else (0, 1 << 62)
     if got is None or (got[1] and got[0] > lo):
-        return None
-    # A finish on the board the log lost (its story_finish failed after the board
-    # write) could be the first: unknown.  Its row's time only moves later.
-    if db.execute("SELECT " + _STORY_UNLOGGED_SQL % ("" if win is None else " AND r.submitted >= ?"),
-                  (mapname, track) + (() if win is None else (lo,))).fetchone()[0]:
         return None
     # A cursor in id order, stopped at the first owner who can hold it: undated,
     # story_runs_order walks it; dated, the window bounds it.
@@ -5301,24 +5299,27 @@ def _story_calc(db, lists, now):
                     ms, bool(nofail), bool(wonly), bool(nojump), bool(sw), bool(hsw), top, ratio,
                     spots or ""))
     # A dated level reads its own days' finishes one by one, stage times too:
-    # each set of dates on its own tracks, a row once however many cover it.
+    # each set of dates on each of its tracks (the window index's full prefix:
+    # full runs, then the few stage rows), a row once however many cover it.
     seen = set()
     for (lo, hi), tracks in dated.items():
-        dmaps = sorted({m for m, _ in tracks})
-        for rid, mapname, track, leg, player, pub, name, ms, prevms, at, fails, inmask, top, \
-                spots in db.execute(
-                    "SELECT s.id, s.map, s.track, s.leg, s.player, s.pub, s.name, s.millis,"
-                    " s.prevms, s.at, s.fails, s.inmask, s.top, s.spots"
-                    " FROM story_runs s INDEXED BY story_runs_map"
-                    " WHERE s.map IN (%s) AND s.at >= ? AND s.at < ? AND %s"
-                    % (",".join("?" * len(dmaps)), _STORY_LIVE_SQL), dmaps + [lo, hi]):
-            if rid in seen or (mapname, track) not in tracks:
-                continue
-            seen.add(rid)
-            who = owner(player, pub, name, at)
-            if who is not None:
-                rows.setdefault((who, mapname, track), []).append(
-                    (leg, at, _story_sum(ms, prevms, fails, inmask, top, spots)))
+        for (dmap, dtrack), legs_sql in ((t, l) for t in sorted(tracks)
+                                         for l in ("s.leg = 0", "s.leg > 0")):
+            for rid, mapname, track, leg, player, pub, name, ms, prevms, at, fails, inmask, top, \
+                    spots in db.execute(
+                        "SELECT s.id, s.map, s.track, s.leg, s.player, s.pub, s.name, s.millis,"
+                        " s.prevms, s.at, s.fails, s.inmask, s.top, s.spots"
+                        " FROM story_runs s INDEXED BY story_runs_map"
+                        " WHERE s.map = ? AND s.track = ? AND %s AND s.at >= ? AND s.at < ?"
+                        " AND s.done = 1 AND %s" % (legs_sql, _STORY_LIVE_SQL),
+                        (dmap, dtrack, lo, hi)):
+                if rid in seen:
+                    continue
+                seen.add(rid)
+                who = owner(player, pub, name, at)
+                if who is not None:
+                    rows.setdefault((who, mapname, track), []).append(
+                        (leg, at, _story_sum(ms, prevms, fails, inmask, top, spots)))
     bsp, zoned = map_index()
     people = {k[0] for k in best} | {k[0] for k in legs} | {k[0] for k in sums} | \
         {k[0] for k in rows}
@@ -5587,13 +5588,15 @@ def _story_spot_queue(rowid, path, spots):
     _story_spot_ev.set()
 
 
-def story_before(db, mapname, track, leg, now):
+def story_before(db, mapname, track, leg, now, who="", pub="", name="", ms=0, runid=""):
     """What a finish on this track needs before it touches the board, for
     story_finish: (calc, rev, the medals told since calc was worked out), read
     together -- a pass landing between them would drop a told medal its calc
-    does not hold -- or None when no level wants the finish logged.  Never
-    works the ladder out here: a cold or stale one is kicked to a thread and
-    this finish is logged untold (submit_run must not wait on a pass)."""
+    does not hold -- or None when no level wants the finish logged.  A full
+    run's track ledger and its story_runs row are written here, before the run
+    touches the board (see STORY_RUNS_DDL).  Never works the ladder out: a cold
+    or stale one is kicked to a thread and this finish is logged untold
+    (submit_run must not wait on a pass)."""
     with _story_lock:
         lists, rev = _story_conf()
         if lists is None or not _story_wanted(lists, mapname, track, leg, now):
@@ -5602,8 +5605,13 @@ def story_before(db, mapname, track, leg, now):
         if calc is None or _story["at"] is None or not 0 <= now - _story["at"] < STORY_TTL:
             _story_kick(lists, rev, now)
         got = calc, rev, dict(_story["recent"])
-    if leg == 0:
+    top = db.execute("SELECT MAX(id) FROM story_runs").fetchone()[0] or 0
+    if leg == 0 and top < STORY_RUNS_MAX:
         _story_track_began(db, mapname, track, now)
+        with db:
+            db.execute("INSERT OR IGNORE INTO story_runs (map, track, leg, player, pub, name,"
+                       " millis, at, runid, done) VALUES (?,?,0,?,?,?,?,?,?,0)",
+                       (mapname, track, who, pub, name, ms, now, runid or ""))
     return got
 
 
@@ -5637,15 +5645,29 @@ def story_finish(db, before, mapname, track, leg, who, pub, name, ms, prevms, no
         log.warning("story: %d logged finishes; not logging more", top)
         return []
     fails, inmask, topspeed = facts if leg == 0 else (-1, -1, -1)
+    rowid = None
     with db:
-        cur = db.execute(
-            "INSERT OR IGNORE INTO story_runs (map, track, leg, player, pub, name, millis, prevms,"
-            " at, runid, replay_id, fails, inmask, top) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (mapname, track, leg, who, pub, name, ms, prevms, now, runid or "", rid or 0, fails,
-             inmask, topspeed))
-    if cur.rowcount != 1 or leg:
+        # story_before's reservation of this run (this request's: same map, track,
+        # player, clock and runid), completed; else, as for a stage, a new row.
+        got = None if leg else db.execute(
+            "SELECT id FROM story_runs WHERE map = ? AND track = ? AND leg = 0 AND player = ?"
+            " AND at = ? AND runid = ? AND done = 0 ORDER BY id DESC LIMIT 1",
+            (mapname, track, who, now, runid or "")).fetchone()
+        if got is not None:
+            db.execute("UPDATE story_runs SET pub = ?, name = ?, millis = ?, prevms = ?,"
+                       " replay_id = ?, fails = ?, inmask = ?, top = ?, done = 1 WHERE id = ?",
+                       (pub, name, ms, prevms, rid or 0, fails, inmask, topspeed, got[0]))
+            rowid = got[0]
+        else:
+            cur = db.execute(
+                "INSERT OR IGNORE INTO story_runs (map, track, leg, player, pub, name, millis,"
+                " prevms, at, runid, replay_id, fails, inmask, top)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (mapname, track, leg, who, pub, name, ms, prevms, now, runid or "", rid or 0,
+                 fails, inmask, topspeed))
+            rowid = cur.lastrowid if cur.rowcount == 1 else None
+    if rowid is None or leg:
         return []                       # a retried post of a run already logged, or a stage
-    rowid = cur.lastrowid
     with _story_lock:
         lists = _story["conf"]
     spots = {}

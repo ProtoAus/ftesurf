@@ -24,7 +24,11 @@
   story_before before a finish touches the board, or by a ladder pass for a listed track nobody
   has finished since) holds `began` and `prior` (a WOS finish already on the board), and a track
   with prior whose dates (all time, undated) start before `began` has no `first`. Written after
-  the board row it counted the finisher itself (review round 3). Never order finishers by a board row's `submitted` (it moves on every
+  the board row it counted the finisher itself (review round 3). A full run's story_runs row is
+  RESERVED there too (done 0) and completed by story_finish (done 1): the log orders finishers
+  before the board does, and a finish whose story_finish failed keeps its place. A check for
+  "board rows the log lacks" was tried instead and withdrawn (round 5): the normal gap between a
+  board write and its log row, and untrusted posts, read as lost finishes. Never order finishers by a board row's `submitted` (it moves on every
   improvement and on a restand) or by `at` (the request's start: two overlapping requests told
   two firsts in review). The answer uses the same function with a db-backed owner (bans too).
 - **`*story` is emptied at every spawn** (PutClientInServer): the client gets a player's big info

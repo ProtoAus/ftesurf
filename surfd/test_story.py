@@ -351,8 +351,10 @@ class Story2(Story):
         """Work the ladder out again and wait for the thread."""
         self.now += S.STORY_TTL + 1
         self.get(story="list")
+        # Until the pass kicked at this clock is installed: a previous test's thread
+        # can clear `busy` under this one (setUp resets the shared state).
         for _ in range(200):
-            if not S._story["busy"]:
+            if not S._story["busy"] and S._story["at"] == self.now:
                 break
             threading.Event().wait(0.05)
 
@@ -547,15 +549,26 @@ class Story2(Story):
         self.settle()
         self.assertEqual(self.mine(G2)[2][0][0], 3)
 
-    def test_a_finish_the_log_lost_makes_first_unknown(self):
+    def test_a_finish_whose_log_never_completed_keeps_its_place(self):
         (HOME / "story.txt").write_text('list story "S"\nchapter\nlevel surf_one\n  gold first\n'
                                         '  bronze finish\n')
         self.settle()
         with patch.object(S, "story_finish", side_effect=sqlite3.OperationalError("busy")):
-            self.post("surf_one", G3, 40000)                    # on the board, not in the log
+            self.post("surf_one", G3, 40000)                    # reserved before the board, never done
+        self.assertEqual(self.db.execute("SELECT player, done FROM story_runs").fetchall()[0][:],
+                         (G3, 0))
         self.post("surf_one", G2, 45000)
         self.settle()
-        self.assertEqual((self.mine(G2)[2][0][0], self.mine(G3)[2][0][0]), (1, 1))
+        self.assertEqual((self.mine(G2)[2][0][0], self.mine(G3)[2][0][0]), (1, 3))
+
+    def test_a_post_from_outside_the_lobbies_takes_nothing_back(self):
+        (HOME / "story.txt").write_text('list story "S"\nchapter\nlevel surf_one\n  gold first\n'
+                                        '  bronze finish\n')
+        self.settle()
+        self.assertEqual(self.post("surf_one", G2, 45000), [("g", 1, "Be the first to finish", 3, "")])
+        self.post("surf_one", G3, 40000, src="203.0.113.5")     # keyed, untrusted: not logged
+        self.settle()
+        self.assertEqual(self.mine(G2)[2][0][0], 3)
 
     def test_a_busy_ledger_write_does_not_withhold_first(self):
         (HOME / "story.txt").write_text('list story "S"\nchapter\nlevel surf_one\n  gold first\n')

@@ -23,10 +23,9 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   restart loses unread runs, and a recording past STORY_SPOT_LINES is read that far.
 - **Two finishes of one player in the same moment** could both be told one medal (the told list
   is read with the standing before either is logged). Lobbies post once per finish.
-- **A lost finish is forgotten once its player logs another**: a finish on the board but not in
-  story_runs (story_finish failed after the board write) makes `first` unknown only while that
-  player has no logged finish there; a later logged one hides it, and a later finisher can take
-  `first`. Reserving the story_runs row in story_before (completed by story_finish) would close it.
+- **`first` and finishes the log never sees**: a keyed post from outside SURFD_TRUSTED is not
+  logged, so if one ever finishes a track first, the first lobby finisher logged after it takes
+  `first`. Only the lobbies post today.
 - **`first` assumes a listed track stays listed**: story_tracks.began is written once, so a track
   taken off the lists (finishes not logged) and put back later can award `first` to a later
   finisher. A respawn in the same server frame as the answer can also merge `*story` with its
