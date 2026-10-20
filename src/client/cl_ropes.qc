@@ -30,12 +30,21 @@ entity ropes_head;
 
 string(string m) Rope_Shader =
 {
+	local float fh;
+
 	m = strtolower(m);
 	if (substring(m, strlen(m) - 4, 4) == ".vmt")
 		m = substring(m, 0, strlen(m) - 4);
 	if (m == "")
 		m = "cable/cable";
-	return m;
+	// Patch 886: the Source material when there is one.  A bare name finds only a texture
+	// of that name: cable/cable did, single_chain, string lights and banners were no_texture.
+	// fopen, not whichpack, which answers "" inside a mounted .vpk.
+	fh = fopen(strcat("materials/", m, ".vmt"), FILE_READ);
+	if (fh < 0)
+		return m;
+	fclose(fh);
+	return strcat(m, ".vmt");
 };
 
 void() Ropes_LoadForMap =
