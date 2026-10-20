@@ -2326,6 +2326,11 @@ string(float id) FS_SaveSlotName =
 #define SS_EV_END     21        // a listing page: next row (0 done), rows, status
 #define SS_EV_DEL     22        // tag, origin, pitch, yaw of a row that went
 #define SS_EV_DELALL  23        // a delete-all finished
+// Patch 870: the map's messages and screen effects (sv_entities.qc SV_MapMsg*, cl_mapmsg.qc).
+#define MM_EV_TEXT    30        // game_text: channel, x, y, effect, colours, timings, message
+#define MM_EV_HINT    31        // env_hudhint: show/hide, message
+#define MM_EV_FADE    32        // env_fade: flags, colour, alpha, duration, hold
+#define MM_EV_SHAKE   33        // env_shake: amplitude (0 stops), frequency, duration
 #define SS_PAGE       16        // rows a `savesync list` answers
 #define SS_TOL        0.05      // units and degrees: one save in both lists
 #define SSF_DUCK      1

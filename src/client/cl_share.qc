@@ -280,6 +280,11 @@ void() CSQC_Parse_Event =
 	local float size, alpha;
 
 	t = readbyte();
+	if (t >= MM_EV_TEXT && t <= MM_EV_SHAKE)    // Patch 870
+	{
+		MapMsg_Event(t);
+		return;
+	}
 	if (t >= SS_EV_ROW && t <= SS_EV_DELALL)    // Patch 811, before the share window counts it
 	{
 		SaveSync_Event(t);

@@ -638,6 +638,11 @@ string(string id, float row) HE_OptDef =
 		// Patch 871: cl_hudcache.qc. Engines without FTESURF_2D_COVERAGE draw every frame whatever it says.
 		if (row == 8) return "hud_fps|Panel redraw|c|0 240 144 120 60 -1|frame;240/s;144/s;120/s;60/s;tick"
 		                     "|How often the strafe trainer, net and boarding panels and the key hints are redrawn; between, the last picture is pasted. Cheaper at high fps. frame is every frame; a game older than this update always is.";
+		// Patch 870.
+		if (row == 9) return "hud_mapmsg|Map messages|t||"
+		                     "|Text the map puts on screen (stage names, hints, credits).";
+		if (row == 10) return "hud_mapfx|Map screen effects|t||"
+		                     "|The map's screen fades and camera shakes.";
 		return "";
 	}
 

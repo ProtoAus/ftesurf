@@ -1312,6 +1312,8 @@ void(entity t, entity act)             SV_MoverOnUseLocked;
   hook is the only way to read that key at all, which is a neat demonstration
   of what it is for -- see the math_counter note below.
 */
+.float  vbsp_gt_x, vbsp_gt_y, vbsp_gt_fx;   // Patch 870: game_text's x, y, effect (see SV_MapText)
+
 void(string key, string value) ED_ParseUnknownEpair =
 {
 	if (value == "")
@@ -1340,6 +1342,10 @@ void(string key, string value) ED_ParseUnknownEpair =
 		self.vbsp_io_raw = strcat(self.vbsp_io_raw, key, "\t", value, "\n");
 		return;
 	}
+
+	if (key == "x") { self.vbsp_gt_x = stof(value); return; }
+	if (key == "y") { self.vbsp_gt_y = stof(value); return; }
+	if (key == "effect") { self.vbsp_gt_fx = stof(value); return; }
 
 	if (key == "max" || key == "Max")
 	{
@@ -2166,6 +2172,12 @@ void(entity t, string param) SV_IOAddOutput =
 			t.run_srcclass = v;
 			dprint(sprintf("addoutput: %s classname %s\n", t.netname, v));
 		}
+		return;
+	}
+	// Patch 870: game_text's text (190 outputs on 8 maps).
+	if (k == "message")
+	{
+		t.message = v;
 		return;
 	}
 	// A retargeted teleport (200 outputs on 10 maps); the touch resolves it each time.
@@ -3614,6 +3626,7 @@ void(entity pl) SV_AmbientResend =
 };
 
 float(entity t, string input, string param, entity act) SV_PortalInput;
+float(entity t, string in, string pm, entity act) SV_MapMsgInput;   // Patch 870
 
 void(entity t, entity o, entity act) SV_ApplyInput =
 {
@@ -4063,6 +4076,8 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		if (in == "fadeout") { SV_AmbientStop(t); return; }
 	}
 
+	if (SV_MapMsgInput(t, in, pm, act))     // Patch 870
+		return;
 	// Patch 865.
 	if (in == "break" || in == "shatter")
 	if (t.vbsp_brk)
@@ -7889,6 +7904,193 @@ void() trigger_momentum_catapult = { trigger_catapult(); };
 
 // filter_momentum_progress, re-created after the lump (SV_LateStash).
 void() filter_momentum_progress = { SV_LateStash("targetname Negated negated progress_check"); };
+
+/*
+===========================================================================
+  Patch 870: the map's messages and screen effects -- game_text, env_hudhint,
+  env_fade, env_shake -- sent to csprogs as MM_EV_* events (cl_mapmsg.qc).
+  Point entities, re-created after the lump (SV_LateStash) so their inputs
+  land.  game_text's x, y and effect reach the hook as unknown keys: QC has no
+  `.x`, and a field called `effect` crashes fteqcc (it is DP_SV_EFFECT's builtin).
+===========================================================================
+*/
+.float  channel, fadein, fadeout, holdtime, fxtime;
+.vector color2;
+.float  duration, amplitude, frequency;
+.float  ReverseFadeDuration, reversefadeduration;
+
+#define MM_MC_ONE 10        // MULTICAST_ONE_R_NOSPECS, as sv_share.qc's SH_MC_ONE
+
+void() game_text   = { SV_LateStash("targetname message vbsp_gt_x vbsp_gt_y vbsp_gt_fx color color2 fadein fadeout holdtime fxtime channel spawnflags"); };
+void() env_hudhint = { SV_LateStash("targetname message spawnflags"); };
+void() env_fade    = { SV_LateStash("targetname duration holdtime renderamt rendercolor spawnflags ReverseFadeDuration reversefadeduration"); };
+void() env_shake   = { SV_LateStash("targetname origin amplitude radius duration frequency spawnflags"); };
+
+void(vector c) SV_MMWriteRGB =
+{
+	WriteByte(MSG_MULTICAST, bound(0, c_x, 255));
+	WriteByte(MSG_MULTICAST, bound(0, c_y, 255));
+	WriteByte(MSG_MULTICAST, bound(0, c_z, 255));
+};
+
+void(entity t, entity p) SV_MapTextTo =
+{
+	WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET);
+	WriteByte(MSG_MULTICAST, MM_EV_TEXT);
+	WriteByte(MSG_MULTICAST, t.channel ? t.channel : 1);
+	WriteFloat(MSG_MULTICAST, t.vbsp_gt_x);
+	WriteFloat(MSG_MULTICAST, t.vbsp_gt_y);
+	WriteByte(MSG_MULTICAST, t.vbsp_gt_fx);
+	SV_MMWriteRGB(t.color);
+	SV_MMWriteRGB(t.color2);
+	WriteFloat(MSG_MULTICAST, t.fadein);
+	WriteFloat(MSG_MULTICAST, t.fadeout);
+	WriteFloat(MSG_MULTICAST, t.holdtime);
+	WriteFloat(MSG_MULTICAST, t.fxtime);
+	WriteString(MSG_MULTICAST, t.message);
+	msg_entity = p;
+	multicast('0 0 0', MM_MC_ONE);
+};
+
+// game_text: spawnflags 1 shows it to every player, otherwise to the activator.
+void(entity t, entity act) SV_MapText =
+{
+	local entity p;
+	dprint(sprintf("game_text %s: '%s'\n", t.targetname, t.message));
+	if (t.spawnflags & 1)
+	{
+		for (p = find(world, classname, "player"); p; p = find(p, classname, "player"))
+			SV_MapTextTo(t, p);
+	}
+	else if (act.classname == "player")
+		SV_MapTextTo(t, act);
+};
+
+void(entity t, entity p, float show) SV_MapHintTo =
+{
+	WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET);
+	WriteByte(MSG_MULTICAST, MM_EV_HINT);
+	WriteByte(MSG_MULTICAST, show);
+	WriteString(MSG_MULTICAST, show ? t.message : "");
+	msg_entity = p;
+	multicast('0 0 0', MM_MC_ONE);
+};
+
+// env_hudhint: spawnflags 1 all players, otherwise the activator.
+void(entity t, entity act, float show) SV_MapHint =
+{
+	local entity p;
+	dprint(sprintf("env_hudhint %s: %g '%s'\n", t.targetname, show, t.message));
+	if (t.spawnflags & 1)
+	{
+		for (p = find(world, classname, "player"); p; p = find(p, classname, "player"))
+			SV_MapHintTo(t, p, show);
+	}
+	else if (act.classname == "player")
+		SV_MapHintTo(t, act, show);
+};
+
+void(entity t, entity p, float rev) SV_MapFadeTo =
+{
+	local float fl, dur;
+	fl = t.spawnflags & (1 | 2 | 8);
+	dur = t.duration;
+	if (rev)
+	{
+		fl = (fl & 1) ? fl - 1 : fl + 1;   // FadeReverse runs the other way
+		dur = SV_Key2(t.ReverseFadeDuration, t.reversefadeduration);
+		if (dur <= 0)
+			dur = t.duration;
+	}
+	WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET);
+	WriteByte(MSG_MULTICAST, MM_EV_FADE);
+	WriteByte(MSG_MULTICAST, fl);
+	SV_MMWriteRGB(stov(t.rendercolor));
+	WriteByte(MSG_MULTICAST, bound(0, t.renderamt, 255));
+	WriteFloat(MSG_MULTICAST, dur);
+	WriteFloat(MSG_MULTICAST, t.holdtime);
+	msg_entity = p;
+	multicast('0 0 0', MM_MC_ONE);
+};
+
+// env_fade: spawnflags 4 the activator only, otherwise every player.
+void(entity t, entity act, float rev) SV_MapFade =
+{
+	local entity p;
+	dprint(sprintf("env_fade %s: rev %g\n", t.targetname, rev));
+	if (t.spawnflags & 4)
+	{
+		if (act.classname == "player")
+			SV_MapFadeTo(t, act, rev);
+		return;
+	}
+	for (p = find(world, classname, "player"); p; p = find(p, classname, "player"))
+		SV_MapFadeTo(t, p, rev);
+};
+
+// env_shake (UTIL_ScreenShake): spawnflags 1 everyone at full amplitude,
+// otherwise players inside `radius`, falling linearly to 0 at its edge; 4
+// shakes players in the air too.  amp 0 stops a shake.
+void(entity t, float amp) SV_MapShake =
+{
+	local entity p;
+	local float a, d;
+
+	dprint(sprintf("env_shake %s: amplitude %g\n", t.targetname, amp));
+	for (p = find(world, classname, "player"); p; p = find(p, classname, "player"))
+	{
+		a = amp;
+		if (!(t.spawnflags & 1) && t.radius > 0)
+		{
+			d = vlen(p.origin - t.origin);
+			if (d > t.radius)
+				continue;
+			a = amp * (1 - d / t.radius);
+		}
+		if (amp > 0 && !(t.spawnflags & 4) && !(p.flags & FL_ONGROUND))
+			continue;
+		WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET);
+		WriteByte(MSG_MULTICAST, MM_EV_SHAKE);
+		WriteFloat(MSG_MULTICAST, a);
+		WriteFloat(MSG_MULTICAST, t.frequency);
+		WriteFloat(MSG_MULTICAST, t.duration);
+		msg_entity = p;
+		multicast('0 0 0', MM_MC_ONE);
+	}
+};
+
+// The ladder's arm, called from SV_ApplyInput; TRUE when it took the input.
+float(entity t, string in, string pm, entity act) SV_MapMsgInput =
+{
+	if (t.classname == "game_text")
+	{
+		if (in == "display")       { SV_MapText(t, act);    return TRUE; }
+		if (in == "settext")       { t.message = pm;        return TRUE; }
+		if (in == "settextcolor")  { t.color = stov(pm);    return TRUE; }
+		if (in == "settextcolor2") { t.color2 = stov(pm);   return TRUE; }
+		return FALSE;
+	}
+	if (t.classname == "env_hudhint")
+	{
+		if (in == "showhudhint") { SV_MapHint(t, act, TRUE);  return TRUE; }
+		if (in == "hidehudhint") { SV_MapHint(t, act, FALSE); return TRUE; }
+		return FALSE;
+	}
+	if (t.classname == "env_fade")
+	{
+		if (in == "fade")        { SV_MapFade(t, act, FALSE); return TRUE; }
+		if (in == "fadereverse") { SV_MapFade(t, act, TRUE);  return TRUE; }
+		return FALSE;
+	}
+	if (t.classname == "env_shake")
+	{
+		if (in == "startshake") { SV_MapShake(t, t.amplitude); return TRUE; }
+		if (in == "stopshake")  { SV_MapShake(t, 0);           return TRUE; }
+		if (in == "amplitude")  { t.amplitude = stof(pm);      return TRUE; }
+		if (in == "frequency")  { t.frequency = stof(pm);      return TRUE; }
+	}
+	return FALSE;
+};
 
 /*
 ===========================================================================

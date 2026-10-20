@@ -138,6 +138,7 @@ void() CSQC_WorldLoaded =
 	LineGraph_Reset();
 	Trail_Reset();
 	RG_Reset();                     // Patch 746: and the race ghost's two PB slots
+	MapMsg_Reset();                 // Patch 870: no text or fade carried across a map change
 	Trail_RequestReset();
 	Rewind_Reset();                 // Patch 477: and the rewind on top of it
 	Paint_WorldLoaded();            // Patch 772: the engine dropped the decals with the map
@@ -339,6 +340,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	*/
 	Emit_RegisterCvars();
 	Snds_RegisterCvars();           // build 66, env_soundscape
+	MapMsg_Init();                  // Patch 870, map text and screen effects
 	Trig_RegisterCvars();           // Patch 335, predicted triggers
 	Boarding_RegisterCvars();       // build 65, the Boarding window
 	Cmp_RegisterCvars();            // Patch 779, the Comparison window
@@ -1618,6 +1620,16 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// everything below that reads VF_ORIGIN.
 	Spec_Frame();
 	SaveLoc_Camera();               // Patch 430: a load drawn before its reply
+	// Patch 870: env_shake moves the camera only, never the body.
+	{
+		local vector mmsh;
+		mmsh = MapMsg_ShakeOffset();
+		if (mmsh != '0 0 0')
+		{
+			setproperty(VF_ORIGIN, getproperty(VF_ORIGIN) + mmsh);
+			setproperty(VF_ANGLES, getproperty(VF_ANGLES) + mmsh * 0.5);
+		}
+	}
 
 	/*
 	  The map's 3D skybox, if it has one.  See cl_decals.qc for where the
@@ -1735,6 +1747,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		// Patch 606: the UI style for every 2D panel this frame, including the
 		// HUD-stack menus that draw outside a sui bracket.
 		sui_style_hud(scr);
+		MapMsg_DrawFade(scr);           // Patch 870: env_fade, under every panel
 
 		/*
 		  Patch 270.  NM_Frame samples the engine's received-delta counters and
@@ -1884,6 +1897,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Rewind_Draw(scr);             // Patch 477
 		Spec_DrawWatchers(scr);       // Patch 429: who is watching you
 		Results_DrawToast(scr);
+		MapMsg_Draw(scr);               // Patch 870: game_text and env_hudhint
 		SaveLoc_Draw(scr);
 		Gfx_Draw(scr);
 		Vote_Draw(scr);                 // Patch 372: over saveloc, gfx and the chatbox
