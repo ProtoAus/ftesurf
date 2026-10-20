@@ -5,6 +5,18 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Decorative movers (P860): what review left open
+
+- **AddOutput after admission**: `SV_SpRawSelfOnly` (sv_entities.qc) and the name-group check run
+  once; a later `AddOutput OnFullyOpen x:...` onto an admitted func_movelinear, or `AddOutput
+  targetname <mover>` onto a frozen entity, would get round them. 0 in the library (review census).
+- **Only props follow**: sprites, sprite trails, spotlights, particles and brush children of a
+  moving carrier stay where they spawned (census rows `child_other_*` in the P860 root's
+  artifacts/census_spin.txt: env_sprite 60, env_lightglow 18, func_rotating 77 ...).
+- **Lobby packets**: up to 56 edicts on bhop_lost_world_v2 change pose 20 times a second; if a lobby's
+  bandwidth matters, measure there before raising the rate.
+- **StopAtStartPos** is approximated (3 uses, surf_lt_omnific).
+
 ## Refract glass at hl2_refract 0 (P859): what is still not Source
 
 - **No warp or blur**: `$refractamount`/`$bluramount` do nothing at 0 (mode 1 warps, without

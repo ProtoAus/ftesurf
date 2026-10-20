@@ -26,6 +26,8 @@ commit   c4ffae5c31d8f679e0f2278e85b5c4ac407dd661
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-864
 patch    864
+# Patch 860 (qwprogs): non-solid/faceless func_rotating spin, self-driven non-solid func_movelinear
+# slide, SOLID_NOT props follow; no collision moves and no edict is allocated at load (physents as main).
 # Patch 864 (client exe): no water reflection/refraction capture inside another (r_portalrecursion 2
 # had surf_garden render 1+2+4 views; 5.88 -> 2.74 ms facing the ponds). Patch 859 (hl2 plugin):
 # hl2_refract 0 draws Refract glass as Source's tint + cubemap without the warp (white/opaque panes

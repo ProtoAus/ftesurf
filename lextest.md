@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P860 — the spinning dagger in surf_gigapede's spawn
+
+Source's decorative movers now move: a rotator nobody can touch spins, a non-solid sliding brush
+bobs on its own loop, and props parented to them follow. Nothing solid moves, so runs are unchanged.
+
+- surf_gigapede save 10: the dagger turns (about 40 degrees a second) and bobs up and down 8 units.
+- Any map you know has spinning decorations (fans, signs, crystals) should spin now too: 282 maps.
+
+On the lobbies and both installs (qwprogs). "Dagger ok / <a map where something moves wrongly>".
+Verdict PENDING.
+
 ## P859 — glass that drew white or as a flat picture (surf_spectra, surf_garden, surf_gigapede)
 
 With Glass "Translucent" (hl2_refract 0, your setting) a Source glass pane now shows what is behind
