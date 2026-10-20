@@ -29,8 +29,8 @@
 <meta name="twitter:image:alt" content="World of Surf wordmark on a dark background">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="stylesheet" href="site.css?v=p720">
-<script src="site.js" defer></script>
+<link rel="stylesheet" href="site.css?v=p876">
+<script src="site.js?v=p876" defer></script>
 </head>
 <body class="landing">
 
@@ -50,34 +50,41 @@
   <section class="hero">
     <canvas id="runline" data-src="hero-run.json" aria-hidden="true"></canvas>
     <div class="wrap">
-      <p class="eyebrow" title="@@DATE@@ &middot; QuakeC build @@QCBUILD@@ &middot; engine patch @@ENGINEPATCH@@">@@VERSION@@ &middot; Free and open source</p>
-      <h1 class="hero-brand"><img src="worldofsurf-wordmark.svg" width="720" height="320" alt="World of Surf"></h1>
-      <p class="lede">Surf and bhop with Counter-Strike: Source and Momentum Mod movement.</p>
-      <!-- The launcher installs the game into its own folder and updates it. R2 serves
-           it with Content-Disposition naming it ftesurf-launcher(.exe), the name the
-           engine's update handoff runs (qkupdate.c QKU_Restart_f); `download` alone
-           is ignored cross-origin. -->
-      <div class="cta">
-        <a class="btn" href="@@LAUNCHER_URL@@" download="ftesurf-launcher.exe" title="Installs and updates World of Surf &middot; SHA-256: @@LAUNCHER_SHA256@@">Download for Windows
-          <small>x64 &middot; launcher</small></a>
-        <!--LINUX-BEGIN-->
-        <a class="btn alt" href="@@LINUX_LAUNCHER_URL@@" download="ftesurf-launcher" title="Tested in WSL only &middot; glibc @@LINUX_GLIBC@@+ &middot; engine patch @@LINUX_ENGINE@@ &middot; SHA-256: @@LINUX_LAUNCHER_SHA256@@">Download for Linux
-          <small>x86_64 &middot; launcher &middot; beta, unranked</small></a>
-        <!--LINUX-END-->
+      <div class="hero-main">
+        <p class="eyebrow" title="@@DATE@@ &middot; QuakeC build @@QCBUILD@@ &middot; engine patch @@ENGINEPATCH@@">@@VERSION@@ &middot; Free and open source</p>
+        <h1 class="hero-brand"><img src="worldofsurf-wordmark.svg" width="720" height="320" alt="World of Surf"></h1>
+        <p class="lede">Surf and bhop with Counter-Strike: Source and Momentum Mod movement.</p>
+        <!-- The launcher installs the game into its own folder and updates it. R2 serves
+             it with Content-Disposition naming it ftesurf-launcher(.exe), the name the
+             engine's update handoff runs (qkupdate.c QKU_Restart_f); `download` alone
+             is ignored cross-origin. -->
+        <div class="cta">
+          <a class="btn" href="@@LAUNCHER_URL@@" download="ftesurf-launcher.exe" title="Installs and updates World of Surf &middot; SHA-256: @@LAUNCHER_SHA256@@">Download for Windows
+            <small>x64 &middot; launcher</small></a>
+          <!--LINUX-BEGIN-->
+          <a class="btn alt" href="@@LINUX_LAUNCHER_URL@@" download="ftesurf-launcher" title="Tested in WSL only &middot; glibc @@LINUX_GLIBC@@+ &middot; engine patch @@LINUX_ENGINE@@ &middot; SHA-256: @@LINUX_LAUNCHER_SHA256@@">Download for Linux
+            <small>x86_64 &middot; launcher &middot; beta, unranked</small></a>
+          <!--LINUX-END-->
+        </div>
+        <!-- P857: the launcher installs into the folder it is started from. -->
+        <p class="launch-note">Put it in its own folder, then run it
+          <!--LINUX-BEGIN-->
+          (Linux: <code>chmod +x</code>)
+          <!--LINUX-END-->
+        </p>
+        <p class="requirements-inline">Requires Momentum Mod Playtest, Counter-Strike: Source and Half-Life 2.</p>
+        <p class="launch-note">Full package:
+          <a href="@@URL@@" download="@@FILENAME@@" title="@@SIZE_BYTES@@ bytes &middot; SHA-256: @@SHA256@@">Windows</a> (@@SIZE_HUMAN@@)
+          <!--LINUX-BEGIN-->
+          &middot; <a href="@@LINUX_URL@@" download="@@LINUX_FILENAME@@" title="@@LINUX_SIZE_BYTES@@ bytes &middot; SHA-256: @@LINUX_SHA256@@">Linux</a> (@@LINUX_SIZE_HUMAN@@)
+          <!--LINUX-END-->
+        </p>
       </div>
-      <!-- P857: the launcher installs into the folder it is started from. -->
-      <p class="launch-note">Put it in its own folder, then run it
-        <!--LINUX-BEGIN-->
-        (Linux: <code>chmod +x</code>)
-        <!--LINUX-END-->
-      </p>
-      <p class="requirements-inline">Requires Momentum Mod Playtest, Counter-Strike: Source and Half-Life 2.</p>
-      <p class="launch-note">Full package:
-        <a href="@@URL@@" download="@@FILENAME@@" title="@@SIZE_BYTES@@ bytes &middot; SHA-256: @@SHA256@@">Windows</a> (@@SIZE_HUMAN@@)
-        <!--LINUX-BEGIN-->
-        &middot; <a href="@@LINUX_URL@@" download="@@LINUX_FILENAME@@" title="@@LINUX_SIZE_BYTES@@ bytes &middot; SHA-256: @@LINUX_SHA256@@">Linux</a> (@@LINUX_SIZE_HUMAN@@)
-        <!--LINUX-END-->
-      </p>
+      <!-- P876: site.js fills this from patchnotes.json (PATCHNOTES.md, rendered by release.ps1). -->
+      <aside class="notes" id="patchnotes" data-src="patchnotes.json" aria-labelledby="notes-h" hidden>
+        <h2 id="notes-h">Patch notes</h2>
+        <div class="notes-list" tabindex="0"></div>
+      </aside>
     </div>
   </section>
 </main>

@@ -147,6 +147,8 @@ __pycache__/
 # The work list of features asked for and not built yet, with what to build and
 # what needs deciding -- BACKLOG.md's sibling for things that are not defects.
 !/ROADMAP.md
+# P876: the players' patch notes; each release renders them into patchnotes.json.
+!/PATCHNOTES.md
 !/ENGINE.txt
 !/VERSION
 !/default.fmf

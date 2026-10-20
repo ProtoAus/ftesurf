@@ -309,6 +309,70 @@ function Copy-SiteFiles ([string]$From, [string]$To) {
     return $names
 }
 
+# --- patch notes -----------------------------------------------------------------------
+# PATCHNOTES.md -> patchnotes.json beside update.json, read by the page's side panel
+# (site.js) and the title menu (m_update.qc). Newest release first: `## next` (the
+# one being prepared) or `## <version> <yyyy-mm-dd>`; `### P<n> <title>`; `- <point>`
+# one line each. Other lines are prose and skipped. Printable ASCII and no ^: the
+# menu draws ^ as a colour code. -Version: `next` becomes that release, dated -Date.
+# -Upto: re-rendering a live release, so `next` and anything newer are left out.
+function ConvertFrom-PatchNotes ([string]$Text, [string]$Version, [string]$Date, [string]$Upto) {
+    if ([bool]$Version -eq [bool]$Upto) { throw 'patch notes: give -Version (preparing) or -Upto (a live release)' }
+    if ($Version -and $Date -notmatch '^\d{4}-\d{2}-\d{2}$') { throw "patch notes: -Date '$Date' is not yyyy-mm-dd" }
+    $rels = [System.Collections.Generic.List[object]]::new()
+    $nums = @{}
+    $rel = $null; $pat = $null; $keep = $false; $prev = $null; $n = 0
+    $endPatch = { if ($pat -and -not $pat.points.Count) { throw "patch notes: P$($pat.patch) has no points" } }
+    $endRelease = {
+        . $endPatch
+        if ($rel -and $rel.version -and -not $rel.patches.Count) { throw "patch notes: release $($rel.version) has no patches" }
+    }
+    foreach ($line in ($Text -split "`r?`n")) {
+        $n++
+        $isRel = $line.StartsWith('## '); $isPat = $line.StartsWith('### '); $isPt = $line.StartsWith('- ')
+        if (-not ($isRel -or $isPat -or $isPt)) { continue }
+        if ($line -cmatch '[^\x20-\x7E]' -or $line.Contains('^')) { throw "patch notes line ${n}: printable ASCII only, and no ^" }
+        if ($isRel) {
+            . $endRelease; $pat = $null
+            $h = $line.Substring(3).Trim()
+            if ($h -ceq 'next') {
+                if ($rels.Count -or $prev) { throw "patch notes line ${n}: ## next must be the first release" }
+                $v = $Version; $d = $Date; $keep = [bool]$Version
+            } elseif ($h -cmatch '^(\d+\.\d+\.\d+) (\d{4}-\d{2}-\d{2})$') {
+                $v = $Matches[1]; $d = $Matches[2]
+                if ($prev -and [version]$v -ge [version]$prev) { throw "patch notes line ${n}: $v is not older than $prev above it" }
+                $keep = $Upto -eq '' -or [version]$v -le [version]$Upto
+            } else { throw "patch notes line ${n}: expected '## next' or '## <version> <yyyy-mm-dd>'" }
+            if ($v) { $prev = $v }
+            $rel = [ordered]@{ version = $v; date = $d; patches = [System.Collections.Generic.List[object]]::new() }
+            if ($keep) { $rels.Add($rel) }
+            continue
+        }
+        if ($isPat) {
+            if (-not $rel) { throw "patch notes line ${n}: a patch before any release" }
+            . $endPatch
+            if ($line -cnotmatch '^### P(\d{1,5}) (\S.{0,79})$') { throw "patch notes line ${n}: expected '### P<number> <title>', title up to 80 characters" }
+            $p = [int]$Matches[1]
+            if ($nums.ContainsKey($p)) { throw "patch notes line ${n}: P$p appears twice" }
+            $nums[$p] = 1
+            $pat = [ordered]@{ patch = $p; title = $Matches[2].Trim(); points = [System.Collections.Generic.List[string]]::new() }
+            $rel.patches.Add($pat)
+            continue
+        }
+        if (-not $pat) { throw "patch notes line ${n}: a point before any patch" }
+        $t = $line.Substring(2).Trim()
+        if (-not $t -or $t.Length -gt 250) { throw "patch notes line ${n}: a point is 1 to 250 characters" }
+        $pat.points.Add($t)
+    }
+    . $endRelease
+    if ($Version -and (-not $rels.Count -or $rels[0].version -cne $Version)) {
+        throw "patch notes: nothing for $Version -- add a '## next' section with its patches"
+    }
+    [ordered]@{ format = 1; releases = $rels }
+}
+
+function ConvertTo-PatchNotesJson ($Notes) { ($Notes | ConvertTo-Json -Depth 6 -Compress) + "`n" }
+
 # Exercise the actual receipt renderer before any compiler/packer runs. There is
 # no second hard-coded token list for the publisher to drift away from.
 function Test-ReleaseTemplate ([string]$Text) {

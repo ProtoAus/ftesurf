@@ -1194,6 +1194,7 @@ float(float reqid, float code, string body) Mzd_Reply;
 float(float reqid, float code, string body) MF_Reply;
 float(float reqid, float code, string bdy) MP_Reply;          // m_pics.qc, Patch 789
 float(float reqid, float code, string body) Sty_Reply;        // m_story.qc, Patch 854
+float(float reqid, float code, string body) MU_NotesReply;    // m_update.qc, Patch 876
 
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
@@ -1224,6 +1225,8 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 	if (Mdl_Reply(reqid, responsecode, resourcebody))
 		return;
 	if (Sty_Reply(reqid, responsecode, resourcebody))
+		return;
+	if (MU_NotesReply(reqid, responsecode, resourcebody))
 		return;
 
 	if (reqid != lb_req)

@@ -178,6 +178,8 @@ DENY_EXACT = {
     "data/friends_toasted.txt": "Patch 788: the accounts whose added-you toast was "
                                 "shown, written at runtime by cl_friends.qc "
                                 "(Friends_SeenAdd); absent, none has been.",
+    "data/story_me.txt": "Patch 854: this install's Story handle, written at runtime "
+                         "by m_story.qc (Sty_SaveMe); absent, the menu asks surfd.",
     "sound/": "A search root, not a file (cl_banner.qc's Bn_SndPath).",
     "maps/surf_666.bsp": "Harness literal (cl_board.qc test path), not content.",
     "maps/surf_kitsune.bsp": "Harness literal (cl_hud.qc test path), not content.",

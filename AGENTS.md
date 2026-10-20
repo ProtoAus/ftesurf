@@ -184,6 +184,9 @@ Naming: `pi.dev` is the coding agent (`.pi/`, `Start-Pi.cmd`, the `pi` command).
    in the engine's ENGINE_PATCHES.md and bumps ENGINE.txt's patch. Engine
    commit/tag pins move only for engine work; qcbuild ONLY on the user's Build NN
    decision. Tooling/docs-only setup does not claim an engine/product patch.
+   A patch players can see or feel also adds its dot points under `## next` in
+   PATCHNOTES.md (format in its header); the download page and the title menu
+   show them, and a release refuses a missing `next`.
 5. Before claiming a patch/committing, fetch both repos and take max+1 over patch
    headings AND untracked pNNN test files. Claim one number, not a range.
 6. Commit and push each verified feature. Never `git add -A`. The index is shared:

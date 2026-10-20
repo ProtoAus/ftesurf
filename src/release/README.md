@@ -24,6 +24,9 @@ write `VERSION`, probe R2 or contact the server. It is not build acceptance.
 
 ## 2. Prepare exactly one candidate
 
+`PATCHNOTES.md` needs a `## next` section: the preflight refuses without one, and the
+render names it this version in the page's `patchnotes.json` (P876).
+
 Use the existing Linux builder for the engine pin when needed:
 
 ```powershell
@@ -106,7 +109,8 @@ silent rollback or permission to mint another version. Visual/play acceptance is
 separate and may use a small owner check recorded in `lextest.md`.
 
 After successful publication/acceptance, record the released `VERSION` and UTC
-provenance in the source release commit; promotion itself does not edit a possibly
+provenance in the source release commit, and rename PATCHNOTES.md's `## next` to
+`## <version> <yyyy-mm-dd>` there; promotion itself does not edit a possibly
 advanced working tree. Do not bump qcbuild without the owner's Build NN decision.
 Tooling-only maintenance is not a new product patch, version or public release.
 

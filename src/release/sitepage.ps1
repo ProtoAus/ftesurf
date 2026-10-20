@@ -64,6 +64,9 @@ Copy-Item -LiteralPath (Join-Path $SurfDir 'ftesurf\gfx\fonts\BebasNeueRegular.t
 Copy-Item -LiteralPath (Join-Path $SurfDir 'ftesurf\gfx\fonts\OFL.txt') -Destination $pageDir
 Copy-Item -LiteralPath (Join-Path $SurfDir 'LICENSE') -Destination (Join-Path $pageDir 'LICENSE.txt')
 try { $siteFiles = @(Copy-SiteFiles (Join-Path $RelDir 'site') $pageDir) } catch { Fail $_.Exception.Message }
+# Released sections only: `## next` is not in this release.
+try { $notes = ConvertFrom-PatchNotes ([System.IO.File]::ReadAllText((Join-Path $SurfDir 'PATCHNOTES.md'))) -Upto $Version } catch { Fail $_.Exception.Message }
+[System.IO.File]::WriteAllText((Join-Path $pageDir 'patchnotes.json'), (ConvertTo-PatchNotesJson $notes), (New-Object System.Text.UTF8Encoding $false))
 $files = @(Get-ChildItem -LiteralPath $pageDir -File | Sort-Object Name)
 Write-Host "rendered $pageDir -- $($files.Count) files ($($siteFiles -join ', '))"
 foreach ($k in $tok.Windows.Keys) { Write-Host ("  {0,-12} {1}" -f $k, $tok.Windows[$k]) }

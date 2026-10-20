@@ -141,6 +141,8 @@ void() MU_Init;
 void() MU_Poll;
 void(float on) MU_Consent;
 void(vector screensize) MU_Status;
+void(vector screensize) MU_Notes;
+void(string what) MU_NotesCommand;
 float() MF_Count;
 float() MF_Fresh;
 void() MF_Init;
@@ -7957,6 +7959,7 @@ void() m_init =
 	registercommand("ui_journal");
 	registercommand("ui_story");
 	registercommand("ui_update_probe");
+	registercommand("ui_notes");
 	registercommand("ui_menu_probe");
 	registercommand("ui_maplist");
 	registercommand("ui_browse");
@@ -8204,6 +8207,7 @@ void(vector screensize) m_draw =
 	{
 		screen_main(screensize);
 		MU_Status(screensize);
+		MU_Notes(screensize);
 		ui_status_toast(screensize);
 	}
 
@@ -8491,6 +8495,11 @@ float(string cmd) m_consolecommand =
 			cvar("ui_maps_filters"), cvar("ui_maps_large"), cvar("ui_maps_friends"), ui_cs_rows,
 			ms_viewcount, ms_tier, ms_scroll_y));
 		print(sprintf("ui_menu_probe: friends_count=%g client=%g screen=%g friends_draw=%g friends_fresh=%g\n", cvar("ui_friends_count"), clientstate(), menu_screen, MF_Count(), MF_Fresh()));
+		return TRUE;
+	}
+	if (strcmp(argv(0), "ui_notes") == 0)
+	{
+		MU_NotesCommand(argv(1));
 		return TRUE;
 	}
 	if (strcmp(argv(0), "ui_update_probe") == 0)

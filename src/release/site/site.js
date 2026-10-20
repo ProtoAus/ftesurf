@@ -1,4 +1,4 @@
-// The site's one script: the hero's run line, the copy buttons, the fade-ups.
+// The site's one script: the hero's run line, the patch notes, the copy buttons, the fade-ups.
 // Fixed in every release -- release.ps1 substitutes nothing here, and the copy
 // buttons read their text out of the DOM.
 (function () {
@@ -49,6 +49,46 @@
         io.observe(b);
       }
     });
+  }
+
+  // ---- patch notes (P876): PATCHNOTES.md as release.ps1 rendered it, newest first ----
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) { e.className = cls; }
+    if (text != null) { e.textContent = text; }
+    return e;
+  }
+  function patchNotes(box, rels) {
+    var list = box.querySelector('.notes-list');
+    rels.forEach(function (r, i) {
+      var sec = el('div', 'nrel'), h = el('h3', null, r.version), d = /^(\d{4})-(\d\d)-(\d\d)$/.exec(r.date || '');
+      if (d) {
+        var t = el('time', null, (+d[3]) + ' ' + MONTHS[+d[2] - 1] + ' ' + d[1]);
+        t.setAttribute('datetime', r.date);
+        h.appendChild(t);
+      }
+      if (i === 0) { h.appendChild(el('span', 'nnew', 'Latest')); }
+      sec.appendChild(h);
+      (r.patches || []).forEach(function (p) {
+        var a = el('article', 'npatch'), ph = el('h4'), ul = el('ul');
+        ph.appendChild(el('span', 'nnum', 'P' + p.patch));
+        ph.appendChild(document.createTextNode(p.title));
+        (p.points || []).forEach(function (s) { ul.appendChild(el('li', null, s)); });
+        a.appendChild(ph);
+        a.appendChild(ul);
+        sec.appendChild(a);
+      });
+      list.appendChild(sec);
+    });
+    box.parentNode.classList.add('has-notes');
+    box.hidden = false;
+  }
+  var notes = document.getElementById('patchnotes');
+  if (notes && window.fetch) {
+    fetch(notes.getAttribute('data-src'), { credentials: 'omit' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d && d.releases && d.releases.length) { patchNotes(notes, d.releases); } }, function () {});
   }
 
   // ---- the hero: a real run's path, coloured by speed as the game colours it ----

@@ -294,6 +294,40 @@ try {
     }
 } finally { Remove-Item -LiteralPath $sd, $sd2 -Recurse -Force -ErrorAction SilentlyContinue }
 
+# --- patch notes ----------------------------------------------------------------------
+$pn = "# notes`n<!--`n  prose`n-->`n## next`n`n### P12 Two`n- a`n- b`n`n## 0.1.2 2026-10-01`n### P11 One`n- c`n"
+function Notes ([string]$t, [string]$v = '0.1.3') { ConvertFrom-PatchNotes $t -Version $v -Date '2026-10-20' }
+Check 'notes: next becomes the release being prepared' {
+    $r = Notes $pn
+    $r.releases.Count -eq 2 -and $r.releases[0].version -ceq '0.1.3' -and $r.releases[0].date -ceq '2026-10-20' -and
+        $r.releases[0].patches[0].patch -eq 12 -and $r.releases[0].patches[0].points.Count -eq 2 -and $r.releases[1].patches[0].title -ceq 'One'
+}
+Check 'notes: a live re-render leaves next out' { $r = ConvertFrom-PatchNotes $pn -Upto '0.1.2'; $r.releases.Count -eq 1 -and $r.releases[0].version -ceq '0.1.2' }
+Check 'notes: a live re-render leaves newer releases out' { (ConvertFrom-PatchNotes $pn -Upto '0.1.1').releases.Count -eq 0 }
+Check 'notes: an empty next is fine in a re-render' { (ConvertFrom-PatchNotes "## next`n`n## 0.1.2 2026-10-01`n### P1 x`n- y`n" -Upto '0.1.2').releases.Count -eq 1 }
+Check 'notes: JSON keeps one-element lists as lists' {
+    (ConvertTo-PatchNotesJson (ConvertFrom-PatchNotes $pn -Upto '0.1.2')) -ceq ('{"format":1,"releases":[{"version":"0.1.2","date":"2026-10-01","patches":[{"patch":11,"title":"One","points":["c"]}]}]}' + "`n")
+}
+Check 'notes: nothing for the release throws' { Throws { Notes "## 0.1.2 2026-10-01`n### P1 x`n- y`n" } '*nothing for 0.1.3*' }
+Check 'notes: an empty next throws when preparing' { Throws { Notes "## next`n## 0.1.2 2026-10-01`n### P1 x`n- y`n" } '*has no patches*' }
+Check 'notes: a patch with no points throws' { Throws { Notes "## next`n### P5 x`n### P4 y`n- z`n" } '*P5 has no points*' }
+Check 'notes: an older release above a newer throws' { Throws { Notes "## next`n### P5 x`n- z`n## 0.1.1 2026-10-01`n### P4 y`n- z`n## 0.1.2 2026-10-02`n### P3 y`n- z`n" } '*not older*' }
+Check 'notes: next below a release throws' { Throws { Notes "## 0.1.3 2026-10-01`n### P4 y`n- z`n## next`n### P5 x`n- z`n" } '*must be the first*' }
+Check 'notes: a patch twice throws' { Throws { Notes "## next`n### P5 x`n- z`n## 0.1.2 2026-10-01`n### P5 y`n- z`n" } '*P5 appears twice*' }
+Check 'notes: next beside its own version throws' { Throws { Notes "## next`n### P5 x`n- z`n## 0.1.3 2026-10-01`n### P4 y`n- z`n" } '*0.1.3 is not older than 0.1.3*' }
+Check 'notes: non-ASCII throws' { Throws { Notes "## next`n### P5 x`n- caf$([char]0xE9)`n" } '*printable ASCII*' }
+Check 'notes: a caret throws' { Throws { Notes "## next`n### P5 x`n- ^1red`n" } '*no ^*' }
+Check 'notes: a point before a patch throws' { Throws { Notes "## next`n- z`n" } '*point before any patch*' }
+Check 'notes: a patch before a release throws' { Throws { Notes "### P5 x`n- z`n" } '*before any release*' }
+Check 'notes: a release without a date throws' { Throws { Notes "## next`n### P5 x`n- z`n## 0.1.2`n### P4 y`n- z`n" } "*expected '## next'*" }
+Check 'notes: a patch without a number throws' { Throws { Notes "## next`n### Five x`n- z`n" } '*### P<number>*' }
+Check 'notes: a point past 250 characters throws' { Throws { Notes "## next`n### P5 x`n- $('a' * 251)`n" } '*1 to 250*' }
+# Every line is checked, next included; the preflight is what requires a next.
+Check 'notes: the real PATCHNOTES.md reads' {
+    $r = ConvertFrom-PatchNotes ([System.IO.File]::ReadAllText((Join-Path $SurfDir 'PATCHNOTES.md'))) -Upto (Get-ReleaseVersion ([System.IO.File]::ReadAllText((Join-Path $SurfDir 'VERSION'))) '')
+    $null -ne $r
+}
+
 # --- mutation control ------------------------------------------------------------------
 # Each guard below is deleted from a copy of the library; its negative test must
 # then FAIL, or the test was not measuring that guard.
@@ -312,6 +346,9 @@ Check 'mutant: no owner guard -> its test fails' {
 }
 Check 'mutant: no CR guard -> its test fails' {
     -not (Test-Mutant 'has CR bytes' { Throws { Read-LinuxBuildInfo (BiFile $biGood.Replace("`n", "`r`n")) } '*CR*' })
+}
+Check 'mutant: no notes character guard -> its test fails' {
+    -not (Test-Mutant 'printable ASCII only' { Throws { Notes "## next`n### P5 x`n- ^1red`n" } '*no ^*' })
 }
 
 Check 'mutant: no site-token guard -> its test fails' {
