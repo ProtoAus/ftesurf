@@ -1,5 +1,20 @@
 # lextest.md — things waiting on a human
 
+## P856 — Story challenges, the medal toast, the Halloween tab
+
+STORY now decides "first try every stage", W-only, no jumping, KSF sideways / half-sideways,
+speed, stage times, first finisher, top N and "beat your best by N%", and levels can be dated.
+A finish that earns a medal says so: a toast at the top of the screen, a chat line for you, and a
+line to the lobby for a gold. A third tab, Halloween (24 Oct to 2 Nov, 11 spooky maps), is a
+ready event to keep, change or delete in `surfd/story.txt`.
+
+- Play STORY level 1 (surf_colin_blaster_69000) or any level you have no medal on, online, and
+  finish it: the toast and the chat line come with the finish card. Gold is announced to others.
+- Open STORY: three tabs and Players; Halloween's levels say "opens in ..." until the 24th.
+- `cmd timer` mid-run prints `story: fails .. mask .. top .. sent 1` (what the lobby will send).
+
+"Story 2 ok / <what to change>". Verdict PENDING.
+
 ## P854 — Story and Event mode
 
 STORY is on the main menu, between PLAY and VISUALS (menu.dat in both installs). The list is your

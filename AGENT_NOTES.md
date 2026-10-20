@@ -1,5 +1,45 @@
 # AGENT_NOTES.md
 
+## Story challenges, dates, medal toasts (P856, 2026-10-20)
+
+- **Two sources, by kind** (`_story_calc`): finish/time/reach/stage on an undated level read
+  board rows (best only); everything about ONE run (nofail, wonly, nojump, sw, hsw, speed, via,
+  improve) reads `story_runs`, one row per clean lobby finish a level wants (`story_before`:
+  any listed track's full runs; stage rows only for an open dated level about stages). Undated
+  levels read `_STORY_SUM_SQL`, a per-owner summary in SQLite (a pass in Python cost ~9 us a
+  logged row); dated levels read their own days' rows, because a best-only board row moves out
+  of the dates when it improves.
+- **The facts are the lobby's** (`SV_StoryFrame` in PreThink, `SV_StageFail`/`SV_TimerRestartSeg`
+  for fails), zeroed by `SV_TimerStart`, which also sets `lobby_sty_ok`. A run carried onto a
+  fresh edict (`retry` is a map restart) has it 0 and sends no facts: before that flag, retry
+  zeroed the facts mid-run and a strafed run posted as W-only (control measured). Stage-only and
+  resumed (TF_MULTISESSION) runs send none. `cmd timer` prints `story: fails mask top sent`.
+- **The answer's medals** (`story_finish`) are against `story_before`'s snapshot: calc, rev and
+  the told-medals overlay read together under `_story_lock`. story_before NEVER works the ladder
+  out (a cold or stale one is kicked to a thread; that finish is logged untold): a cold pass
+  inside /api/run would hold gunicorn's 4 threads. The overlay is keyed by level index and
+  cleared when the file's revision changes.
+- **`first`** is the first LOGGED finish inside the dates, in insertion (id) order, and nobody
+  when the log may have missed the first: `story_tracks` (written once per track, by the first
+  ladder pass that lists it or its first logged finish) holds `began` and `prior` (a WOS finish
+  already on the board), and a track with prior whose dates (all time, undated) start before
+  `began` has no `first`. Never order finishers by a board row's `submitted` (it moves on every
+  improvement and on a restand) or by `at` (the request's start: two overlapping requests told
+  two firsts in review). The answer uses the same function with a db-backed owner (bans too).
+- **`*story` is emptied at every spawn** (PutClientInServer): the client gets a player's big info
+  keys some frames after it starts drawing, so a medal of the last map arrived as "new" on the
+  next (control measured, after retry). cl_story.qc also ignores the first value it reads.
+- **Rig recipe**: `tools/p856stub.py 18856 <log>` (scripted `story` answers, logs the facts),
+  then `tools/runlines_smoke.py cfg/test/p856toast.cfg --mount --dedicated --map surf_666 --port
+  27606 --server-arg "+exec cfg/test/p856sv.cfg" --put data/maps/zones/local/surf_666.json=
+  ftesurf/cfg/test/p360sf.zones.json --put data/consent.txt=<file> --ssqc/--csqc/--mqc <build>`:
+  P371's walkable fixture, four real finishes (W4 retries). Own-edit zones load from `data/`, so
+  the overlay's `--put` reaches them.
+- **A Written edit script is not safe from escapes either**: Python turned `"...)\n"` in a
+  '''-string into a real newline inside three QC strings, and fteqcc SEGFAULTED (rc 139, no
+  output) -- which looks exactly like a field read before its declaration. Build escapes as
+  `chr(92) + 'n'`; a silent fteqcc crash: look for a newline inside a string first.
+
 ## Story and Event mode (P854, 2026-10-20)
 
 - **The list is data, not code**: surfd reads `/srv/nvme/surfd/data/story.txt` (SURFD_STORY) on
