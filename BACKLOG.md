@@ -26,6 +26,11 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - **`first` and finishes the log never sees**: a keyed post from outside SURFD_TRUSTED is not
   logged, so if one ever finishes a track first, the first lobby finisher logged after it takes
   `first`. Only the lobbies post today.
+- **A never-completed reservation is reached by a reject only through its runid** (replay_id is
+  written at completion): a re-post with no runid of a rejected recording, refused before
+  story_finish, can hold `first` if that player has an older board row. And every finish on a
+  listed track commits its reservation before the board write: a locked database can add up to
+  the 5 s busy timeout to the answer (it already could for the board write itself).
 - **`first` assumes a listed track stays listed**: story_tracks.began is written once, so a track
   taken off the lists (finishes not logged) and put back later can award `first` to a later
   finisher. A respawn in the same server frame as the answer can also merge `*story` with its

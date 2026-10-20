@@ -561,6 +561,33 @@ class Story2(Story):
         self.settle()
         self.assertEqual((self.mine(G2)[2][0][0], self.mine(G3)[2][0][0]), (1, 3))
 
+    def test_a_re_post_completes_the_run_its_first_answer_lost(self):
+        (HOME / "story.txt").write_text('list story "S"\nchapter\nlevel surf_one\n  bronze finish\n'
+                                        '  gold nofail\n')
+        self.settle()
+        with patch.object(S, "story_finish", side_effect=sqlite3.OperationalError("busy")):
+            self.post("surf_one", G3, 40000, runid="r-again", sfails=0, smask=1)
+        self.now += 3
+        self.post("surf_one", G3, 40000, runid="r-again", sfails=0, smask=1)
+        self.assertEqual([tuple(r) for r in self.db.execute("SELECT done, fails FROM story_runs")],
+                         [(1, 0)])
+        self.settle()
+        self.assertEqual(self.mine(G3)[2][0][0], 3)
+
+    def test_a_run_the_board_refused_holds_no_first(self):
+        (HOME / "story.txt").write_text('list story "S"\nchapter\nlevel surf_one\n  gold first\n'
+                                        '  bronze finish\n')
+        self.settle()
+        with patch.object(S, "_runs_full", lambda db, leg: True):
+            r = self.client.post("/api/run", data={
+                "key": "testkey", "map": "surf_one", "track": "0", "leg": "0", "player": G3,
+                "name": "Proto", "ticks": "4000", "tickrate": "100", "flags": "0",
+                "node": "p27510", "runid": "r-full"})
+        self.assertEqual(r.status_code, 429)                    # reserved, never on the board
+        self.assertEqual(self.post("surf_one", G2, 45000), [("g", 1, "Be the first to finish", 3, "")])
+        self.settle()
+        self.assertEqual(self.mine(G2)[2][0][0], 3)
+
     def test_a_post_from_outside_the_lobbies_takes_nothing_back(self):
         (HOME / "story.txt").write_text('list story "S"\nchapter\nlevel surf_one\n  gold first\n'
                                         '  bronze finish\n')

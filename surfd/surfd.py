@@ -5177,6 +5177,15 @@ _STORY_SUM_SQL = (
     % (STORY_FSI_NOTW, STORY_FSI_JUMP, STORY_FSI_SIDE, STORY_FSI_HSWBAD, _STORY_LIVE_SQL))
 
 
+# A reservation whose story_finish never ran counts for `first` only if its run
+# reached the board: its player has a WOS full-run row there (a refused run --
+# the run cap, a storage error -- has none).
+_STORY_ONBOARD_SQL = (
+    "EXISTS (SELECT 1 FROM runs r WHERE r.map = s.map AND r.track = s.track AND r.leg = 0"
+    " AND r.player = s.player AND r.tier IN ('%s', '%s') AND r.style = '%s')"
+    % (TIER_RANKED, TIER_COMMUNITY, STYLE_CLEAN))
+
+
 def _story_first_row(db, mapname, track, win, owner):
     """(owner, id) of the first logged finish of this track inside `win`, in
     the order rows were logged, whose owner can hold a medal; or None.  None
@@ -5194,7 +5203,8 @@ def _story_first_row(db, mapname, track, win, owner):
     when, args = ("", ()) if win is None else (" AND s.at >= ? AND s.at < ?", (lo, hi))
     for player, pub, rowid in db.execute(
             "SELECT s.player, s.pub, s.id FROM story_runs s WHERE s.map = ? AND s.track = ?"
-            " AND s.leg = 0%s AND %s ORDER BY s.id" % (when, _STORY_LIVE_SQL),
+            " AND s.leg = 0%s AND %s AND (s.done = 1 OR %s) ORDER BY s.id"
+            % (when, _STORY_LIVE_SQL, _STORY_ONBOARD_SQL),
             (mapname, track) + args):
         who = owner(player, pub)
         if who is not None:
@@ -5640,19 +5650,21 @@ def story_finish(db, before, mapname, track, leg, who, pub, name, ms, prevms, no
     against `before`.  A `via` is read off the recording after the answer and
     earns at the next refresh, untold; `rank` is never told."""
     calc, crev, recent = before
-    top = db.execute("SELECT MAX(id) FROM story_runs").fetchone()[0] or 0
-    if top >= STORY_RUNS_MAX:
-        log.warning("story: %d logged finishes; not logging more", top)
-        return []
     fails, inmask, topspeed = facts if leg == 0 else (-1, -1, -1)
     rowid = None
     with db:
-        # story_before's reservation of this run (this request's: same map, track,
-        # player, clock and runid), completed; else, as for a stage, a new row.
+        # The run's reservation, completed: by its runid whatever post made it (a
+        # re-post of a run whose first answer failed), else this request's own
+        # (same player and clock, no runid).  Else, as for a stage, a new row.
         got = None if leg else db.execute(
-            "SELECT id FROM story_runs WHERE map = ? AND track = ? AND leg = 0 AND player = ?"
-            " AND at = ? AND runid = ? AND done = 0 ORDER BY id DESC LIMIT 1",
-            (mapname, track, who, now, runid or "")).fetchone()
+            "SELECT id FROM story_runs WHERE map = ? AND track = ? AND leg = 0 AND done = 0"
+            " AND runid = ? AND (runid <> '' OR (player = ? AND at = ?))"
+            " ORDER BY id DESC LIMIT 1",
+            (mapname, track, runid or "", who, now)).fetchone()
+        if got is None and (db.execute("SELECT MAX(id) FROM story_runs").fetchone()[0] or 0) \
+                >= STORY_RUNS_MAX:
+            log.warning("story: %d logged finishes; not logging more", STORY_RUNS_MAX)
+            return []
         if got is not None:
             db.execute("UPDATE story_runs SET pub = ?, name = ?, millis = ?, prevms = ?,"
                        " replay_id = ?, fails = ?, inmask = ?, top = ?, done = 1 WHERE id = ?",
