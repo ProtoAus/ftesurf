@@ -298,7 +298,8 @@ HEAD_V8 = HEAD_V7
 # Patch 785: holdclock 1 declares cumulative frozen-tick accounting. Raw `in`
 # fields are unchanged; each `hold <mt> <frozen>` updates only the angle clock.
 HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd", "holdclock",
-                     "inprof"}      # Patch 840, additive
+                     "inprof",      # Patch 840, additive
+                     "momtrig"}     # Patch 869, additive
 # v10 (Patch 364): no new header key.  A file is v10 exactly when it carries a
 # `pause`: the buffered writer rewrites line 0 when the first one lands.
 HEAD_V10 = HEAD_V9

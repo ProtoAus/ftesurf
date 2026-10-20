@@ -782,7 +782,8 @@ void() PlayerPostThink =
 	// +use, for maps that wire a func_button.  A rising edge on .button5 and a
 	// short trace; nothing at all happens on a map that wires nothing.
 	SV_UseFrame(self);
-	SV_ShootFrame(self);            // Patch 865: +attack, the test shot
+	SV_ShootFrame(self);
+	self.vbsp_ui_held = SV_UserKeys(self);     // Patch 869: trigger_userinput's last command            // Patch 865: +attack, the test shot
 
 	/*
 	  The timer, the zone scan and the recorder, once per usercmd.

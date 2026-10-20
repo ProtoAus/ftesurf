@@ -2871,6 +2871,9 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
     clock counted|sampled   v5, build 76.  Which clock produced every time in
                             this file.  Absent means sampled, which is what every
                             file before build 76 meant
+    momtrig 0|1             Patch 869: were Momentum's bhop-control triggers live
+                            (run_momtriggers, latched at the start).  Absent = the
+                            rule before Patch 869, when they were all inert
     proprule <n>            which prop-geometry rule built this run's collision
                             world.  Absent or 0 = prop scale as the map wrote it;
                             1 = floored to the 1/16 the wire carries, so the
@@ -3256,7 +3259,11 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 
                               tele     trigger_teleport; since Patch 865
                                        also point_teleport's Teleport and
-                                       AddOutput origin at the player
+                                       AddOutput origin at the player; since
+                                       Patch 869 the Momentum teleports
+                                       (onehop, multihop, teleport_progress)
+                              catapult trigger_catapult's launch (Patch 869)
+                              reverse  trigger_reversespeed (Patch 869)
                               telerel  trigger_teleport_relative
                               bhop     func_bhop's teleport
                               speed    trigger_setspeed
@@ -5135,6 +5142,7 @@ void(entity e) SV_RecOpen =
 	    1           prop scale floored to 1/16, matching the wire and the client
 	*/
 	SV_RecPut(e, "proprule 1");
+	SV_RecPut(e, sprintf("momtrig %g", e.run_momon));     // Patch 869, additive
 	/*
 	  BUILD 76: WHICH OF THE TWO CLOCKS TIMED THIS RUN.  `counted` or `sampled`.
 
@@ -11638,10 +11646,6 @@ void(entity e, float z) SV_TimerArm =
 
 	e.run_t_state    = TS_ARMED;
 	e.run_t_armzone  = z;
-	// Patch 869: Momentum makes a START or stage zone the progress trigger
-	// (SetCurrentProgressTrigger, which clears onehops).  Every arm route lands here.
-	if (zone_type[z] == ZONE_START || zone_type[z] == ZONE_STAGE)
-		SV_MomProgressReset(e);
 	e.run_t_track    = zone_track[z];
 	e.run_t_startseg = zone_seg[z];
 	e.run_t_seg      = zone_seg[z];
@@ -12878,11 +12882,30 @@ float(entity e) SV_RunStartJitter =
 	return FALSE;
 };
 
+// Patch 869 (prototypes in sv_entities.qc): the run's Momentum-trigger rule, latched
+// at its start and written as `momtrig`; outside a run, the cvar.
+float(entity p) SV_MomOn =
+{
+	if (p.run_t_state == TS_RUNNING)
+		return p.run_momon;
+	return vbsp_momtrig;
+};
+
+// CBaseMomentumTrigger::PassesTriggerFilters: a track_number other than -1 takes only
+// that track's player.
+float(entity t, entity p) SV_MomTrackOK =
+{
+	if (t.track_number == "" || stof(t.track_number) < 0)
+		return TRUE;
+	return (p.run_t_track == stof(t.track_number));
+};
+
 void(entity e) SV_TimerStart =
 {
 	local float pr, ln;
 
 	e.run_t_state = TS_RUNNING;
+	e.run_momon = vbsp_momtrig;     // Patch 869: before SV_RecOpen writes `momtrig`
 	e.run_t_ticks = 0;
 	e.lobby_sty_fails = e.lobby_sty_mask = e.lobby_sty_top = 0;     // Patch 856
 	e.lobby_sty_ok = TRUE;
@@ -13167,6 +13190,10 @@ void(entity e, float z) SV_TimerTryArm =
 		e.gravity = 0;
 		e.vbsp_grav_trig = world;
 	}
+	// Patch 869: and a START or stage zone entered is the progress trigger
+	// (SetCurrentProgressTrigger, which clears onehops), running or not.
+	if (zone_type[z] == ZONE_START || zone_type[z] == ZONE_STAGE)
+		SV_MomProgressAt(e, z);
 
 	/*
 	  On bhop, merely entering a START is not a new attempt while a clock is live

@@ -1641,86 +1641,6 @@ void(string fields) SV_LateStash =
 	remove(self);
 };
 
-/*
-  Patch 869: a BRUSH trigger the engine used to free (no spawn function) is
-  stashed whole -- every string/float/vector field its keys or the I/O
-  accumulator set, outputs included -- and SV_LateSpawnAll re-creates it through
-  its own spawn function, with vbsp_late_now set, before SV_EntityIOBuild.
-*/
-strbuf vbsp_late_full;
-float  vbsp_late_now;
-
-string(string s) SV_LateEsc   = { return strreplace("\n", chr2str(30), strreplace("\t", chr2str(29), s)); };
-string(string s) SV_LateUnesc = { return strreplace(chr2str(30), "\n", strreplace(chr2str(29), "\t", s)); };
-
-void() SV_LateStashAll =
-{
-	local float i, n, t, l;
-	local string rec, nm, val;
-
-	rec = "";
-	n = numentityfields();
-	for (i = 1; i < n; i = i + 1)
-	{
-		t = entityfieldtype(i);
-		if (t != EV_STRING && t != EV_FLOAT && t != EV_VECTOR)
-			continue;
-		nm = entityfieldname(i);
-		l = strlen(nm);
-		if (t == EV_FLOAT && l > 2 && substring(nm, l - 2, 1) == "_")
-		if (entityfieldtype(findentityfield(substring(nm, 0, l - 2))) == EV_VECTOR)
-			continue;               // a component of a vector carried whole
-		if (nm == "modelindex" || nm == "absmin" || nm == "absmax" || nm == "mins" || nm == "maxs"
-		 || nm == "size" || nm == "solid" || nm == "movetype" || nm == "nextthink" || nm == "ltime")
-			continue;
-		val = SV_FieldStr(i, self);
-		if (SV_LateIsUnset(i, val))
-			continue;
-		rec = strcat(rec, nm, "\t", SV_LateEsc(val), "\t");
-	}
-	if (vbsp_late_full <= 0)
-		vbsp_late_full = buf_create();
-	bufstr_add(vbsp_late_full, rec, TRUE);
-	remove(self);
-};
-
-void() SV_LateSpawnFull =
-{
-	local float i, j, n, ntok, fld;
-	local entity e, oself;
-
-	if (vbsp_late_full <= 0)
-		return;
-	oself = self;
-	n = buf_getsize(vbsp_late_full);
-	for (i = 0; i < n; i = i + 1)
-	{
-		e = spawn();
-		ntok = tokenizebyseparator(bufstr_get(vbsp_late_full, i), "\t");
-		for (j = 0; j + 1 < ntok; j = j + 2)
-		{
-			fld = findentityfield(argv(j));
-			if (fld)
-				putentityfieldstring(fld, e, SV_LateUnesc(argv(j + 1)));
-		}
-		self = e;
-		vbsp_late_now = TRUE;
-		if (isfunction(e.classname))
-			callfunction(e.classname);
-		else
-			remove(e);
-		vbsp_late_now = FALSE;
-		// setmodel linked it before the spawn function set SOLID_BSPTRIGGER; relink,
-		// or the touch list never holds it (floodwaters' teleport_progress *300).
-		if (!wasfreed(e))
-			setorigin(e, e.origin);
-	}
-	self = oself;
-	dprint(sprintf("late spawn: %g brush trigger(s) re-created after the lump\n", n));
-	buf_del(vbsp_late_full);
-	vbsp_late_full = 0;
-};
-
 void() SV_LateSpawnAll =
 {
 	local float i, j, n, ntok, fld, last;
@@ -1737,7 +1657,6 @@ void() SV_LateSpawnAll =
 		last = num_for_edict(e);
 	dprint(sprintf("lump: last edict #%g\n", last));
 
-	SV_LateSpawnFull();
 	if (vbsp_late_buf <= 0)
 		return;
 	n = buf_getsize(vbsp_late_buf);
@@ -7423,10 +7342,15 @@ void() trigger_momentum_setspeed = { trigger_setspeed(); };
   Entry is SV_TouchEntered: the masks SV_TriggerIOTouch keeps, kept here for
   triggers that act on entry whether or not they own outputs.  Velocity writes
   record a `warp` (kinds: tele for the teleports, catapult, reverse) and set
-  run_pushed on a lift, as trigger_setspeed does.
+  run_pushed on a lift, as trigger_setspeed does.  A run latches the switch at
+  its start (run_momon, the header's `momtrig`), so a run is played under one rule.
 ===========================================================================
 */
 float vbsp_momtrig;     // run_momtriggers, latched in StartFrame
+.float run_momon;       // ...and per run, at SV_TimerStart
+.string track_number;   // CBaseMomentumTrigger: absent or -1 = every track
+float(entity p) SV_MomOn;                   // sv_timer.qc: the run's latch, else the cvar
+float(entity t, entity p) SV_MomTrackOK;    // sv_timer.qc: track_number against the run's track
 
 float(entity trig, entity act) SV_TouchEntered =
 {
@@ -7467,11 +7391,14 @@ float() SV_MomTrigGate =
 		return FALSE;
 	if (!SV_PassesFilter(self, other))
 		return FALSE;
+	if (!SV_MomTrackOK(self, other))
+		return FALSE;
 	SV_TrigStamp(other);
 	return TRUE;
 };
 
-// FALSE: freed (no brush) or stashed until the first frame (SV_LateStashAll).
+// Spawned in place: SV_OnEntityNoSpawnFunction KEPT a trigger_* edict (inert), so
+// the map's numbering is what it was.  FALSE: no brush, freed.
 float() SV_MomTrigSpawn =
 {
 	if (!self.model)
@@ -7479,15 +7406,11 @@ float() SV_MomTrigSpawn =
 		remove(self);
 		return FALSE;
 	}
-	if (!vbsp_late_now)
-	{
-		SV_LateStashAll();
-		return FALSE;
-	}
 	SV_BindInvisibleBrush();
 	self.movetype = MOVETYPE_NONE;
 	self.solid = SOLID_BSPTRIGGER;
 	self.vbsp_io_solid = SOLID_BSPTRIGGER;
+	setorigin(self, self.origin);   // relink as a trigger: setmodel linked it SOLID_NOT
 	return TRUE;
 };
 
@@ -7505,21 +7428,25 @@ void(entity p, vector vel, string kind) SV_MomSetVelocity =
 /*
   The progress system: trigger_momentum_progress sets the player's progress
   trigger and number (SetCurrentProgressTrigger) and clears their onehops; a
-  multihop/onehop/teleport_progress with no target teleports there.  Momentum
-  also makes start and stage zones progress triggers; zones here are not
-  entities, so those cases have no destination and do nothing.
+  multihop/onehop/teleport_progress with no target teleports there.  Entering a
+  START or stage zone makes it the progress trigger (mom_player.cpp:1025, 1136);
+  zones are not entities, so the player goes to the zone's own destination
+  (SV_MomZoneTeleport, sv_zones.qc).  Saves carry it all (`momprog`, `onehops`).
 */
 .entity run_progtrig;
+.float  run_progzone;           // the START/stage zone entered last, -1 none
 .float  progress_number;
 .string teleport_destination;   // the shipped FGD's progress destination
 .string hold;                   // seconds; absent = 0.5 (CTriggerMultihop's constructor)
-.float  stop, fail;
+.float  fail;
 .string resetang;
 .vector velocityscale;
 .int    vbsp_onehop;            // on a onehop: players who have landed on it
 .float  vbsp_onehop_fired;      // OnHopNoLongerJumpable, once until a reset
-.entity vbsp_mh_trig;           // on the player: the multihop they are in...
-.float  vbsp_mh_t0;             // ...since when
+// On the player, two multihop/onehop holds: Momentum keeps an enter time per trigger
+// (m_mapOnStartTouchedTimes), and one slot let two touching volumes reset each other.
+.entity vbsp_mh_trig, vbsp_mh_trig2;
+.float  vbsp_mh_t0, vbsp_mh_t02;
 
 int(entity p) SV_PlayerBit =
 {
@@ -7544,14 +7471,55 @@ void(entity p) SV_OnehopsClear =
 	}
 };
 
-// A START/stage arm (SV_TimerArm) or a respawn: Momentum makes that zone the
-// progress trigger.  Zones are not entities, so no destination; onehops clear.
-void(entity p) SV_MomProgressReset =
+void(entity p) SV_MomHoldClear =
+{
+	p.vbsp_mh_trig = p.vbsp_mh_trig2 = world;
+};
+
+// Entering START/stage zone z (SV_TimerTryArm), or -1 at a respawn: that zone is the
+// progress trigger now, and onehops clear.
+void(entity p, float z) SV_MomProgressAt =
 {
 	p.run_progtrig = world;
 	p.run_prognum = -1;
-	p.vbsp_mh_trig = world;
+	p.run_progzone = z;
+	SV_MomHoldClear(p);
 	SV_OnehopsClear(p);
+};
+void(entity p) SV_MomProgressReset = { SV_MomProgressAt(p, -1); };
+
+// For a save: the onehops this player has landed on, as models.
+string(entity p) SV_MomOnehopList =
+{
+	local entity e;
+	local int bit;
+	local string l;
+
+	bit = SV_PlayerBit(p);
+	l = "";
+	for (e = find(world, classname, "trigger_momentum_onehop"); e; e = find(e, classname, "trigger_momentum_onehop"))
+		if (e.vbsp_onehop & bit)
+			l = strcat(l, (l != "") ? " " : "", e.model);
+	return l;
+};
+
+// A save's progress back on the player.  An absent record (an older save) clears it.
+void(entity p, string prog, float num, float zone, string ohs) SV_MomProgressRestore =
+{
+	local entity e;
+	local float i, n;
+	local int bit;
+
+	SV_MomProgressAt(p, zone);
+	if (prog != "")
+		p.run_progtrig = find(world, model, prog);
+	p.run_prognum = num;
+	bit = SV_PlayerBit(p);
+	n = tokenize(ohs);
+	for (i = 0; i < n; i = i + 1)
+		for (e = find(world, model, argv(i)); e; e = find(e, model, argv(i)))
+			if (e.classname == "trigger_momentum_onehop")
+				e.vbsp_onehop = e.vbsp_onehop | bit;
 };
 
 entity(entity p) SV_ProgressDest =
@@ -7563,22 +7531,18 @@ entity(entity p) SV_ProgressDest =
 	return t;
 };
 
-// MomTeleportEntity (mom_triggers.cpp:749), landmark mode aside.  The `stop` key is
-// the old multihop's velocity reset.
-void(entity p, entity t, entity dest) SV_MomTeleport =
+// MomTeleportEntity (mom_triggers.cpp:749), landmark mode aside.  Mode 1 resets the
+// velocity, 2 keeps only a fall, 3 redirects along the destination's angles.
+void(entity p, entity t, vector org, vector dang) SV_MomTeleportTo =
 {
-	local vector sc, org, ang;
+	local vector sc, ang;
 	local float spd, vm;
 
-	if (!dest)
-		return;
 	sc = t.velocityscale;
 	if (sc == '0 0 0')
 		sc = '1 1 1';
 	p.velocity = [p.velocity_x * sc_x, p.velocity_y * sc_y, p.velocity_z * sc_z];
 	vm = t.mode;
-	if (t.stop)
-		vm = 1;
 	if (vm == 1)
 		p.velocity = '0 0 0';
 	else if (vm == 2)
@@ -7586,17 +7550,14 @@ void(entity p, entity t, entity dest) SV_MomTeleport =
 	else if (vm == 3)
 	{
 		spd = vlen(p.velocity);
-		makevectors(dest.angles);
+		makevectors(dang);
 		p.velocity = v_forward * spd;
 	}
-	org = dest.origin;
-	if (substring(dest.model, 0, 1) == "*")
-		org = (dest.absmin + dest.absmax) * 0.5;	// a progress brush: its middle
 	dprint(sprintf("momtrigger %s %s: teleport to %v mode %g\n", t.classname, t.model, org, vm));
 	SV_PlacePlayer(p, org + '0 0 1');
 	if (SV_KeyTri(t.resetang, "") != 0 || vm == 3)
 	{
-		ang = [0, dest.angles_y, 0];
+		ang = [0, dang_y, 0];
 		p.angles = ang;
 		p.v_angle = ang;
 		p.fixangle = TRUE;
@@ -7607,16 +7568,43 @@ void(entity p, entity t, entity dest) SV_MomTeleport =
 	SV_TimerMapTeleport(p);
 };
 
-entity(entity t, entity p) SV_MomTeleDest =
+void(entity p, entity t, entity dest) SV_MomTeleport =
 {
-	if (t.target != "")
-		return SV_FindByName(t.target, world);
-	return SV_ProgressDest(p);
+	local vector org;
+
+	if (!dest)
+		return;
+	org = dest.origin;
+	if (substring(dest.model, 0, 1) == "*")
+		org = (dest.absmin + dest.absmax) * 0.5;	// a progress brush: its middle
+	SV_MomTeleportTo(p, t, org, dest.angles);
+};
+
+void(entity p, entity t, float z) SV_MomZoneTeleport;  // sv_zones.qc: the zone's destination
+
+// A failed hop: the trigger's target, else the progress trigger, else its zone.
+// teleport_progress reads no target (mom_triggers.cpp CTriggerTeleportProgress).
+void(entity t, entity p, float usetarget) SV_MomFail =
+{
+	local entity d;
+
+	if (usetarget && t.target != "")
+	{
+		SV_MomTeleport(p, t, SV_FindByName(t.target, world));
+		return;
+	}
+	d = SV_ProgressDest(p);
+	if (d)
+		SV_MomTeleport(p, t, d);
+	else if (p.run_progzone >= 0)
+		SV_MomZoneTeleport(p, t, p.run_progzone);
 };
 
 void() trigger_momentum_progress_touch =
 {
-	if (!vbsp_momtrig || !SV_MomTrigGate())
+	if (!SV_MomOn(other))
+		return;
+	if (!SV_MomTrigGate())
 		return;
 	if (!SV_TouchEntered(self, other))
 		return;
@@ -7628,27 +7616,52 @@ void() trigger_momentum_progress_touch =
 };
 void() trigger_momentum_progress = { if (SV_MomTrigSpawn()) self.touch = trigger_momentum_progress_touch; };
 
+// A hold begins (entry, or a touch no slot holds): the older of two others is dropped.
+void(entity t, entity p) SV_MomHoldEnter =
+{
+	if (p.vbsp_mh_trig2 == t)
+	{
+		p.vbsp_mh_t02 = time;
+		return;
+	}
+	if (p.vbsp_mh_trig && p.vbsp_mh_trig != t)
+	if (!p.vbsp_mh_trig2 || p.vbsp_mh_t02 < p.vbsp_mh_t0)
+	{
+		p.vbsp_mh_trig2 = p.vbsp_mh_trig;
+		p.vbsp_mh_t02 = p.vbsp_mh_t0;
+	}
+	p.vbsp_mh_trig = t;
+	p.vbsp_mh_t0 = time;
+};
+
 // CTriggerMultihop::Touch, which the onehop inherits: standing in it past `hold` teleports.
 void(entity t, entity p) SV_MomHoldCheck =
 {
-	if (p.vbsp_mh_trig != t)
+	local float t0;
+
+	if (p.vbsp_mh_trig == t)
+		t0 = p.vbsp_mh_t0;
+	else if (p.vbsp_mh_trig2 == t)
+		t0 = p.vbsp_mh_t02;
+	else
 		return;
-	if (time - p.vbsp_mh_t0 >= ((t.hold != "") ? stof(t.hold) : 0.5))
+	if (time - t0 >= ((t.hold != "") ? stof(t.hold) : 0.5))
 	{
-		p.vbsp_mh_trig = world;
-		SV_MomTeleport(p, t, SV_MomTeleDest(t, p));
+		SV_MomHoldClear(p);
+		SV_MomFail(t, p, TRUE);
 	}
 };
 
+float(entity t, entity p) SV_MomHeld = { return (p.vbsp_mh_trig == t || p.vbsp_mh_trig2 == t); };
+
 void() trigger_momentum_multihop_touch =
 {
-	if (!vbsp_momtrig || !SV_MomTrigGate())
+	if (!SV_MomOn(other))
 		return;
-	if (SV_TouchEntered(self, other) || other.vbsp_mh_trig != self)
-	{
-		other.vbsp_mh_trig = self;
-		other.vbsp_mh_t0 = time;
-	}
+	if (!SV_MomTrigGate())
+		return;
+	if (SV_TouchEntered(self, other) || !SV_MomHeld(self, other))
+		SV_MomHoldEnter(self, other);
 	SV_MomHoldCheck(self, other);
 };
 void() trigger_momentum_multihop = { if (SV_MomTrigSpawn()) self.touch = trigger_momentum_multihop_touch; };
@@ -7659,21 +7672,25 @@ void() trigger_momentum_onehop_touch =
 	local entity e;
 	local int bit;
 
-	if (!vbsp_momtrig || !SV_MomTrigGate())
+	if (!SV_MomOn(other))
+		return;
+	if (!SV_MomTrigGate())
 		return;
 	if (!SV_TouchEntered(self, other))
 	{
+		if (!SV_MomHeld(self, other))
+			SV_MomHoldEnter(self, other);
 		SV_MomHoldCheck(self, other);
 		return;
 	}
 	bit = SV_PlayerBit(other);
 	if (self.vbsp_onehop & bit)
 	{
-		SV_MomTeleport(other, self, SV_MomTeleDest(self, other));
+		SV_MomHoldClear(other);
+		SV_MomFail(self, other, TRUE);
 		return;
 	}
-	other.vbsp_mh_trig = self;
-	other.vbsp_mh_t0 = time;
+	SV_MomHoldEnter(self, other);
 	// AddOnehop (mom_player.cpp:707): reset-flagged onehops leave the list.
 	for (e = find(world, classname, "trigger_momentum_onehop"); e; e = find(e, classname, "trigger_momentum_onehop"))
 		if (e.spawnflags & SF_TELEPORT_RESET_ONEHOP)
@@ -7690,7 +7707,9 @@ void() trigger_momentum_onehop = { if (SV_MomTrigSpawn()) self.touch = trigger_m
 
 void() trigger_momentum_resetonehop_touch =
 {
-	if (!vbsp_momtrig || !SV_MomTrigGate())
+	if (!SV_MomOn(other))
+		return;
+	if (!SV_MomTrigGate())
 		return;
 	if (!SV_TouchEntered(self, other))
 		return;
@@ -7701,11 +7720,13 @@ void() trigger_momentum_resetonehop = { if (SV_MomTrigSpawn()) self.touch = trig
 
 void() trigger_momentum_teleport_progress_touch =
 {
-	if (!vbsp_momtrig || !SV_MomTrigGate())
+	if (!SV_MomOn(other))
+		return;
+	if (!SV_MomTrigGate())
 		return;
 	if (!SV_TouchEntered(self, other))
 		return;
-	SV_MomTeleport(other, self, SV_ProgressDest(other));
+	SV_MomFail(self, other, FALSE);
 };
 void() trigger_momentum_teleport_progress = { if (SV_MomTrigSpawn()) self.touch = trigger_momentum_teleport_progress_touch; };
 
@@ -7718,7 +7739,9 @@ void() trigger_momentum_reversespeed_touch =
 	local vector v;
 	local float entered;
 
-	if (!vbsp_momtrig || !SV_MomTrigGate())
+	if (!SV_MomOn(other))
+		return;
+	if (!SV_MomTrigGate())
 		return;
 	entered = SV_TouchEntered(self, other);
 	if (!entered)
@@ -7764,16 +7787,27 @@ void(entity t, entity p, float k, float now, float was) SV_UserInputKey =
 	if (k < 0 || k > 7)
 		return;
 	b = pow(2, k);		// SV_UserKeys' bit for Momentum's key number
-	if ((now & b) && !(was & b)) SV_FireOutput(t, "OnKeyPressed", p);
-	if (now & b)                 SV_FireOutput(t, "OnKeyHeld", p);
-	if (!(now & b) && (was & b)) SV_FireOutput(t, "OnKeyReleased", p);
+	if ((now & b) && !(was & b))
+	{
+		dprint(sprintf("userinput %s: key %g pressed\n", t.model, k));
+		SV_FireOutput(t, "OnKeyPressed", p);
+	}
+	if (now & b)
+		SV_FireOutput(t, "OnKeyHeld", p);
+	if (!(now & b) && (was & b))
+	{
+		dprint(sprintf("userinput %s: key %g released\n", t.model, k));
+		SV_FireOutput(t, "OnKeyReleased", p);
+	}
 };
 
 void() trigger_momentum_userinput_touch =
 {
 	local float now, was;
 
-	if (!vbsp_momtrig || !SV_MomTrigGate())
+	if (!SV_MomOn(other))
+		return;
+	if (!SV_MomTrigGate())
 		return;
 	SV_TouchEntered(self, other);
 	now = SV_UserKeys(other);
@@ -10442,6 +10476,9 @@ void(entity p, float t0) SV_TrigResume =
 	local int    bit;
 	local float  w;
 
+	// Patch 869: the multihop/onehop holds resume where they stopped.
+	p.vbsp_mh_t0 = p.vbsp_mh_t0 + (time - t0);
+	p.vbsp_mh_t02 = p.vbsp_mh_t02 + (time - t0);
 	bit = SV_TouchBit(p);
 	for (t = nextent(world); t; t = nextent(t))
 	{

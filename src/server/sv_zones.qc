@@ -497,6 +497,23 @@ vector(float n, __out float yaw, __out float haveyaw) SV_ZoneDest =
 	return dest;
 };
 
+// Patch 869 (prototype in sv_entities.qc): a START/stage zone as Momentum's progress
+// trigger -- the destination `!s` would take, the move as the failed trigger's.
+void(entity p, entity t, float z) SV_MomZoneTeleport =
+{
+	local entity os;
+	local vector org;
+	local float yaw, haveyaw;
+
+	if (z < 0 || z >= zone_count)
+		return;
+	os = self;
+	self = p;
+	org = SV_ZoneDest(z, yaw, haveyaw);
+	self = os;
+	SV_MomTeleportTo(p, t, org, [0, haveyaw ? yaw : p.angles_y, 0]);
+};
+
 /*
   `stuck` -- what is holding me, right now.
 

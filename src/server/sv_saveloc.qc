@@ -1183,6 +1183,10 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	// Patch 735: the map's progress marker, including an explicitly empty name.
 	fputs(f, sprintf("targetname %S\n", e.targetname));
 	fputs(f, sprintf("srcclass %S\n", e.run_srcclass));   // Patch 865, additive
+	// Patch 869, additive: Momentum progress and the onehops landed on.
+	fputs(f, sprintf("momprog %S %g %g\n", e.run_progtrig ? e.run_progtrig.model : "",
+	                 e.run_prognum, e.run_progzone));
+	fputs(f, sprintf("onehops %S\n", SV_MomOnehopList(e)));
 
 	// The timer.
 	fputs(f, sprintf("state %d\n", e.run_t_state));
@@ -1714,7 +1718,8 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local float hadrec;             // Patch 441 r3: ...and when the LOAD began
 	local string drid;              // Patch 426: the run the Patch 360 discard kept
 	local vector rorg, rvel;
-	local string savedname, savedcls;
+	local string savedname, savedcls, mprog, mohs;
+	local float  mnum, mzone;
 	local float hasname;
 
 	sl_voided = FALSE;
@@ -1743,6 +1748,8 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	fcrc = "";
 	savedname = "";
 	savedcls = "";                  // Patch 865
+	mprog = mohs = "";              // Patch 869
+	mnum = mzone = -1;
 	hasname = FALSE;
 	srun = -1;                      // a pre-57 save file: derived from startseg below
 	sgs = 1;
@@ -1797,6 +1804,8 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (k == "mapcrc")     { fcrc = argv(1); continue; }
 		if (k == "targetname") { savedname = argv(1); hasname = TRUE; continue; }
 		if (k == "srcclass")   { savedcls = argv(1); continue; }   // Patch 865
+		if (k == "momprog")    { mprog = argv(1); mnum = stof(argv(2)); mzone = stof(argv(3)); continue; }
+		if (k == "onehops")    { mohs = argv(1); continue; }
 
 		if (k == "azone")      { az = stof(argv(1)); continue; }
 		if (k == "evzone")     { ez = stof(argv(1)); continue; }
@@ -1858,6 +1867,8 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		e.targetname = savedname;
 		e.run_srcclass = savedcls;     // Patch 865: the class filters' marker
 	}
+	// Patch 869: never the abandoned future's progress (an older save clears it).
+	SV_MomProgressRestore(e, mprog, mnum, mzone, mohs);
 
 	/*
 	  PATCH 450: THE MAP COMPARISON, made here because the whole file has been read and
