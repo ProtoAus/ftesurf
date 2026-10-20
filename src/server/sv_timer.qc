@@ -11638,6 +11638,16 @@ void(entity e, float z) SV_TimerArm =
 
 	e.run_t_state    = TS_ARMED;
 	e.run_t_armzone  = z;
+	// Patch 865 review: a START resets gravity, as Momentum's start zone does
+	// (mom_player.cpp:1015 ResetMovementProperties) -- a trigger_gravity or an
+	// AddOutput gravity with no reset would otherwise carry into the run.
+	if (zone_type[z] == ZONE_START)
+	{
+		if (e.gravity)
+			dprint(sprintf("gravity: %s reset at the start (was %g)\n", e.netname, e.gravity));
+		e.gravity = 0;
+		e.vbsp_grav_trig = world;
+	}
 	e.run_t_track    = zone_track[z];
 	e.run_t_startseg = zone_seg[z];
 	e.run_t_seg      = zone_seg[z];

@@ -1901,6 +1901,16 @@ string(string s) SV_IOTrim =
 
 // Patch 865: an origin a map imposes on a player outside a touch (AddOutput origin,
 // point_teleport).  The caller writes the `tele` warp after any velocity change.
+// A held body (spectate, run_pmhold) is not moved by the map: the warp would land
+// inside the held window (pm_verify HOLDs) and SV_SpecRelease would undo the move.
+float(entity p) SV_MapMoveHeld =
+{
+	if (!p.run_pmhold)
+		return FALSE;
+	dprint(sprintf("map move: %s is held, skipped\n", p.netname));
+	return TRUE;
+};
+
 void(entity p, vector org) SV_PlacePlayer =
 {
 	setorigin(p, org);
@@ -1927,6 +1937,8 @@ void(entity t, string who, entity act) SV_PointTeleport =
 	if (!p || p.classname != "player")
 		return;
 
+	if (SV_MapMoveHeld(p))
+		return;
 	dprint(sprintf("point_teleport %s: %s to %v\n", t.targetname, p.netname, t.origin));
 	SV_PlacePlayer(p, t.origin);
 	if (SV_KeyTri(t.UseDestinationAngles, "") > 0)
@@ -1970,11 +1982,20 @@ void() point_teleport = { SV_LateStash("targetname target spawnflags origin angl
 */
 #define SF_BREAK_TRIGGER_ONLY 1
 .float vbsp_brk;            // 1 breakable, 2 also takes damage
+// Latched in StartFrame: off on a lobby unless lobby_mapedits.  A Break or a
+// retargeted teleport there changes the map for every player, and pm_verify
+// replays on an unbroken copy (physents HOLD on later runs).
+float  vbsp_mapedit_ok;
 
 void(entity t, entity act) SV_BreakableBreak =
 {
 	if (!t.vbsp_brk)
 		return;
+	if (!vbsp_mapedit_ok)
+	{
+		dprint(sprintf("break: %s %s held on a lobby (lobby_mapedits 0)\n", t.classname, t.model));
+		return;
+	}
 	t.vbsp_brk = 0;
 	dprint(sprintf("break: %s %s\n", t.classname, t.model));
 	SV_FireOutput(t, "OnBreak", act);
@@ -2036,7 +2057,8 @@ void(entity t, string param) SV_IOAddOutput =
 	// A retargeted teleport (200 outputs on 10 maps); the touch resolves it each time.
 	if (k == "target")
 	{
-		t.target = v;
+		if (vbsp_mapedit_ok)
+			t.target = v;
 		return;
 	}
 	// A player's origin is a teleport (331 outputs on 17 maps): velocity kept.
@@ -2045,6 +2067,7 @@ void(entity t, string param) SV_IOAddOutput =
 	if (k == "origin")
 	{
 		if (t.classname == "player")
+		if (!SV_MapMoveHeld(t))
 		{
 			SV_PlacePlayer(t, stov(v));
 			SV_RecWarp(t, "tele");
@@ -2055,6 +2078,7 @@ void(entity t, string param) SV_IOAddOutput =
 	if (k == "angles")
 	{
 		if (t.classname == "player")
+		if (!SV_MapMoveHeld(t))
 		{
 			t.angles = stov(v);
 			t.v_angle = t.angles;

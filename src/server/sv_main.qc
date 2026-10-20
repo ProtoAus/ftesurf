@@ -192,6 +192,8 @@ void() StartFrame =
 	registercvar("run_shoot", "1");
 	registercvar("lobby_shoot", "0");
 	vbsp_shoot_ok = (cvar("run_shoot") && (!lobby_on || cvar("lobby_shoot")));
+	registercvar("lobby_mapedits", "0");
+	vbsp_mapedit_ok = (!lobby_on || cvar("lobby_mapedits"));
 	Pose_Frame();                   // Patch 383: spectator counts and the publish gap
 	Pose_SpecBy();                  // Patch 429: who watches whom, after the counts
 	SV_SpecPublish();               // Patch 382: reads what Lobby_Frame just cached
