@@ -25,6 +25,7 @@ float  sun_size, sun_osize;
 string sun_mat, sun_omat;
 float  sun_vis;                 // 0..1, the obstruction fade
 entity sun_probe;               // the trace's mask: CONTENTBIT_SOLID, so glass shows the sun
+float  sun_seen;                // the last visibility printed: -1 none yet
 
 string(string m) Sun_Shader =
 {
@@ -46,6 +47,7 @@ void() Sun_LoadForMap =
 
 	sun_have = FALSE;
 	sun_vis = 0;
+	sun_seen = -1;
 	if (sun_mat != "") strunzone(sun_mat);
 	if (sun_omat != "") strunzone(sun_omat);
 	sun_mat = sun_omat = "";
@@ -198,6 +200,11 @@ void() Sun_Draw =
 	traceline(eye, eye + sun_dir * 32768, MOVE_NOMONSTERS, sun_probe);
 	// SURF_SKY does not come through a VBSP trace; the side's name does (cl_emit.qc's rain).
 	target = (trace_fraction >= 1 || substring(strtolower(trace_surfacename), 0, 4) == "sky/") ? 1 : 0;
+	if (target != sun_seen)
+	{
+		sun_seen = target;
+		dprint(sprintf("env_sun: %s\n", target ? "visible" : strcat("hidden by ", trace_surfacename)));
+	}
 	sun_vis = target ? min(1, sun_vis + frametime / 0.05) : max(0, sun_vis - frametime / 0.05);
 	if (sun_vis <= 0)
 		return;
