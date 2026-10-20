@@ -238,6 +238,10 @@ void(float why, string cls, string name) TG_Skip =
 #define TFR_UNKNOWN 1
 #define TFR_FAIL    0
 float  tf_n, tf_over;
+// P865: filter_activator_team/class.  The map's team is SV_LateSpawnAll's rule;
+// tf_clsdyn says an output renames the player's class, so class filters are UNKNOWN.
+string tf_arg[TF_MAX];            // filterclass, or filterteam as text
+float  tf_team, tf_clsdyn, tf_ctspawn, tf_tspawn;
 string tf_name[TF_MAX];
 string tf_class[TF_MAX];
 string tf_filt[TF_MAX];           // the filter's OWN filtername (match name)
@@ -262,6 +266,16 @@ float(string want) TF_Find =
 	return -1;
 };
 
+// SV_NamesMatch: case-insensitive, `*` ends a prefix.
+float(string q, string n) TF_NamesMatch =
+{
+	local float p;
+	p = strstrofs(q, "*", 0);
+	if (p >= 0)
+		return !strcasecmp(substring(n, 0, p), substring(q, 0, p));
+	return !strcasecmp(q, n);
+};
+
 float(float r, float depth) TF_EvalD;
 float(float r, float depth) TF_EvalD =
 {
@@ -271,6 +285,20 @@ float(float r, float depth) TF_EvalD =
 		return TFR_PASS;                // missing filter: Source passes
 	if (tf_class[r] == "filter_activator_name")
 		return TFR_UNKNOWN;             // act.targetname is output state
+	if (tf_class[r] == "filter_velocity")
+		return TFR_UNKNOWN;             // the player's speed
+	if (tf_class[r] == "filter_activator_team" || tf_class[r] == "filter_activator_class")
+	{
+		if (tf_class[r] == "filter_activator_team")
+			pass = (stof(tf_arg[r]) == tf_team);
+		else if (tf_clsdyn)
+			return TFR_UNKNOWN;
+		else
+			pass = TF_NamesMatch(tf_arg[r], "player");
+		if (tf_neg[r])
+			pass = !pass;
+		return pass ? TFR_PASS : TFR_FAIL;
+	}
 	if (tf_class[r] != "filter_multi")
 		return TFR_PASS;                // unimplemented class: fail open
 
@@ -488,16 +516,26 @@ void(string key, string val) TG_IOParse =
 	else if (lk == "modifyspeed") inp = IN_MODSPD;
 	else if (lk == "addoutput")
 	{
-		// SV_IOAddOutput implements exactly three keys; anything else is a
-		// census line and inert, so it is not recorded at all.
+		// The keys SV_IOAddOutput implements; anything else is a census line
+		// and inert, so it is not recorded at all.  P865: origin and angles at
+		// a player move it (a named target is inert on the server), classname
+		// feeds class filters (UNKNOWN once any output writes it), and a
+		// retargeted teleport is a state the mirror cannot follow.
 		inp = IN_ADDOUT;
 		p0 = (nt > 2) ? strtolower(argv(2)) : "";
 		sp = strstrofs(p0, " ", 0);
 		w = (sp < 0) ? p0 : substring(p0, 0, sp);
-		if (w == "basevelocity" || w == "gravity")
+		if (w == "basevelocity" || w == "gravity" || w == "origin" || w == "angles")
 			parm = IOP_PMOVE;
 		else if (w == "targetname")
 			parm = IOP_TNAME;
+		else if (w == "classname")
+		{
+			parm = IOP_TNAME;
+			tf_clsdyn = 1;
+		}
+		else if (w == "target")
+			inp = IN_STATE;
 		else
 			return;
 	}
@@ -1403,7 +1441,7 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 void() Trig_LoadForMap =
 {
 	local string tok, key, cn, mdl;
-	local string target, landmark, filt, tname, uselm_s, snapv_s;
+	local string target, landmark, filt, tname, uselm_s, snapv_s, farg;
 	local vector org, ang, pushdir, ssang, ssdir;
 	local float  spawnflags, disabled, vmode, tspeed, speed;
 	local float  hmode, hs, hsmode, vsmode, hsp, vsp, ssstrict;
@@ -1426,6 +1464,7 @@ void() Trig_LoadForMap =
 	tg_c_filtok = 0;
 	tf_n = 0;
 	tf_over = 0;
+	tf_clsdyn = tf_ctspawn = tf_tspawn = 0;
 	tg_sk_n = 0;
 	tg_needload = 0;
 	io_n = 0;
@@ -1447,7 +1486,7 @@ void() Trig_LoadForMap =
 		opened = TRUE;
 
 		cn = mdl = "";
-		target = landmark = filt = tname = uselm_s = snapv_s = "";
+		target = landmark = filt = tname = uselm_s = snapv_s = farg = "";
 		org = ang = pushdir = ssang = ssdir = '0 0 0';
 		spawnflags = disabled = vmode = tspeed = speed = 0;
 		hmode = hs = hsmode = vsmode = hsp = vsp = ssstrict = 0;
@@ -1511,6 +1550,7 @@ void() Trig_LoadForMap =
 			else if (key == "spawnflags")             spawnflags = stof(tok);
 			else if (key == "startdisabled")          disabled = stof(tok);
 			else if (key == "filtername")             filt     = tok;
+			else if (key == "filterclass" || key == "filterteam") farg = tok;
 			else if (key == "uselandmarkangles")      uselm_s  = tok;
 			else if (key == "snapvelocitytodestangles") snapv_s = tok;
 			else if (key == "velocitymode")           vmode    = stof(tok);
@@ -1539,6 +1579,11 @@ void() Trig_LoadForMap =
 		// The targetname table takes EVERY entity, point or brush: the
 		// server's find(world, targetname, ...) does not care what class the
 		// destination is, and neither may this.
+		if (cn == "info_player_counterterrorist")
+			tf_ctspawn = 1;
+		else if (cn == "info_player_terrorist")
+			tf_tspawn = 1;
+
 		if (tname != "" && tt_n < TG_TT_MAX)
 		{
 			tt_name[tt_n] = tname;
@@ -1559,6 +1604,7 @@ void() Trig_LoadForMap =
 				tf_filt[tf_n]  = filt;
 				tf_neg[tf_n]   = negu ? negu : negl;
 				tf_type[tf_n]  = ftype;
+				tf_arg[tf_n]   = farg;
 				for (fi = 0; fi < 8; fi = fi + 1)
 					tf_sub[tf_n * 8 + fi] =
 						(tg_p_subu[fi] != "") ? tg_p_subu[fi] : tg_p_subl[fi];
@@ -1692,6 +1738,8 @@ void() Trig_LoadForMap =
 		tg_needload = 1;
 		return;
 	}
+
+	tf_team = (tf_ctspawn || !tf_tspawn) ? 3 : 2;
 
 	// Filter resolution, after the walk.  A trigger whose verdict is not a
 	// static PASS is demoted: edict freed, kind zeroed, box inverted so every

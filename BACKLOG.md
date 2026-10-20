@@ -5,6 +5,24 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Map entities (P865): what is left
+
+- A breakable broken mid-run changes the physents, and pm_verify does not run map I/O, so a run that
+  crosses one HOLDs on physents (same class as an I/O-toggled func_brush). Falsifier: a run on
+  bhop_cheesemania through a tower pad, swept by the verifier.
+- Still fail open (pass everyone): filter_activator_context (20 triggers / 4 maps),
+  filter_momentum_surface_collision (159 / 40), filter_momentum_timer_progress (31 / 5),
+  filter_momentum_collectibles (5 / 1). The shipped FGD's filter_multi Filter09..16 are not read.
+- AddOutput origin/angles at a NAMED entity stay inert: moving a destination needs cl_triggers.qc to
+  demote every teleport aimed at it. AddOutput solid/mins/maxs (168 outputs on 50 maps) is not
+  implemented.
+- Break: no gibs, no sound; prop_dynamic(_override)'s Break (87 inputs) is not implemented.
+- surf_frus trigger_multiple *16 (OnTrigger failtele) never fired with the player standing in it in
+  the P865 arm, while *6 on the same map fires its point_teleport. Unexplained. Falsifier:
+  `setpos 4640 7168 15400` on surf_frus, expect `point_teleport failtele`.
+- trigger_hurt stays inert: Momentum players take no damage, but its 93 OnHurt/OnHurtPlayer outputs
+  on 30 maps never fire here.
+
 ## Listen-server trigger prediction (P862): what review left open
 
 - **A cleared carrier is cashed out after `!r` on a push**: only the warp-op pre-move hook's

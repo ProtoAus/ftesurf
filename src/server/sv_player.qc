@@ -134,6 +134,7 @@ void() PutClientInServer =
 	  map entity on the NEXT map.
 	*/
 	self.targetname   = "";
+	self.run_srcclass = "";           // Patch 865: AddOutput classname, same reasoning
 	self.run_speedmod  = 0;
 	self.vbsp_bhop_on   = world;
 	self.vbsp_bhop_since = 0;
@@ -152,6 +153,7 @@ void() PutClientInServer =
 	// nothing in any cvar to explain it.  Zero means one on both sides
 	// (pm_source.c, gamemovement.cpp:3113), so clearing is the correct reset.
 	self.gravity = 0;
+	self.vbsp_grav_trig = world;      // Patch 865: no trigger_gravity reset owed
 
 	// Patch 249.  A carrier is per-position state: respawning inside a push
 	// volume with last life's basevelocity still held would cash it out on the
@@ -462,6 +464,8 @@ void() PlayerPreThink =
 		self.run_basevelocity = '0 0 0';
 		return;
 	}
+
+	SV_GravityFrame(self);          // Patch 865: trigger_gravity persist 0
 
 	// Patch 499: the pin owns the movetype -- per usercmd and ahead of the mover,
 	// so no command is moved with a movetype the pin did not choose.  Essay at
@@ -776,6 +780,7 @@ void() PlayerPostThink =
 	// +use, for maps that wire a func_button.  A rising edge on .button5 and a
 	// short trace; nothing at all happens on a map that wires nothing.
 	SV_UseFrame(self);
+	SV_ShootFrame(self);            // Patch 865: +attack, the test shot
 
 	/*
 	  The timer, the zone scan and the recorder, once per usercmd.

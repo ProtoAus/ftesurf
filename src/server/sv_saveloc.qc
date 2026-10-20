@@ -1171,6 +1171,7 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	fputs(f, sprintf("duck %d\n", (e.pmove_flags & PMF_DUCKED) ? 1 : 0));
 	// Patch 735: the map's progress marker, including an explicitly empty name.
 	fputs(f, sprintf("targetname %S\n", e.targetname));
+	fputs(f, sprintf("srcclass %S\n", e.run_srcclass));   // Patch 865, additive
 
 	// The timer.
 	fputs(f, sprintf("state %d\n", e.run_t_state));
@@ -1702,7 +1703,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local float hadrec;             // Patch 441 r3: ...and when the LOAD began
 	local string drid;              // Patch 426: the run the Patch 360 discard kept
 	local vector rorg, rvel;
-	local string savedname;
+	local string savedname, savedcls;
 	local float hasname;
 
 	sl_voided = FALSE;
@@ -1730,6 +1731,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	// COMPARED rather than summed, so garbage here would be worse than a wrong value.
 	fcrc = "";
 	savedname = "";
+	savedcls = "";                  // Patch 865
 	hasname = FALSE;
 	srun = -1;                      // a pre-57 save file: derived from startseg below
 	sgs = 1;
@@ -1783,6 +1785,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		// block below the fclose, not by this read.
 		if (k == "mapcrc")     { fcrc = argv(1); continue; }
 		if (k == "targetname") { savedname = argv(1); hasname = TRUE; continue; }
+		if (k == "srcclass")   { savedcls = argv(1); continue; }   // Patch 865
 
 		if (k == "azone")      { az = stof(argv(1)); continue; }
 		if (k == "evzone")     { ez = stof(argv(1)); continue; }
@@ -1842,6 +1845,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	{
 		SV_TouchRelocate(e);
 		e.targetname = savedname;
+		e.run_srcclass = savedcls;     // Patch 865: the class filters' marker
 	}
 
 	/*
@@ -2947,6 +2951,7 @@ float(float base, float cnt) SV_SaveFreeID =
 float  sl_fseq, sl_fticks, sl_fgo;
 float  sl_fhasname;
 string sl_fname;
+string sl_fcls;                 // Patch 865
 vector sl_forg;
 
 float(float id) SV_SaveReadIdent =
@@ -2962,6 +2967,7 @@ float(float id) SV_SaveReadIdent =
 	sl_fgo = 0;
 	sl_fhasname = FALSE;
 	sl_fname = "";
+	sl_fcls = "";
 	sl_fticks = 0;
 	sl_forg = '0 0 0';
 	dem = FALSE;
@@ -2972,6 +2978,7 @@ float(float id) SV_SaveReadIdent =
 			continue;
 		k = argv(0);
 		if (k == "targetname") { sl_fname = argv(1); sl_fhasname = TRUE; continue; }
+		if (k == "srcclass")   { sl_fcls = argv(1); continue; }
 		if (k == "seq")     { sl_fseq = stof(argv(1)); continue; }
 		if (k == "rewindgo") { sl_fgo = stof(argv(1)); continue; }
 		if (k == "ticks")   { sl_fticks = stof(argv(1)); continue; }
@@ -3056,7 +3063,10 @@ void(float row) SV_SaveDemote =
 	fputs(f, sprintf("duck %d\n", rec_sl_duck[row] ? 1 : 0));
 	// Preserve the original marker, not the demoting player's current progress.
 	if (sl_fhasname)
+	{
 		fputs(f, sprintf("targetname %S\n", sl_fname));
+		fputs(f, sprintf("srcclass %S\n", sl_fcls));
+	}
 	fputs(f, "demoted 1\n");       // for the reader: everything else defaults to an idle timer
 	fclose(f);
 

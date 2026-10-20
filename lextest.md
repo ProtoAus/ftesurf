@@ -1,5 +1,23 @@
 # lextest.md — things waiting on a human
 
+## P865 — gravity zones, team and class gates, breakable walls, point_teleport, a test shot
+
+Map entities that did nothing before now work (an entity census of the 1,753 KSF/Momentum maps
+found them missing): gravity volumes, Momentum's class-tagged teleports, one team for CS:S's
+T/CT teleports, walls a map breaks open, point_teleport, and a silent shot for shoot-the-target maps.
+
+- bhop_decimus: the inverted-gravity rooms flip you, and leaving one puts gravity back.
+- bhop_landmark2 / bhop_bluebox / bhop_redbox: the "class" checkpoints (a teleport that only fires
+  after you reached a platform) behave as in Momentum.
+- surf_graphia, surf_amplitude_encore: the T/CT "jail" teleports always send you to the CT side.
+- bhop_cheesemania: the four towers break when you step on their pads.
+- Test shot: bind a key to +attack (MOUSE1/MOUSE2 are duck/jump by default, so e.g.
+  `bind MOUSE4 +attack`), then on bhop_eazy_v2 shoot the thin strip at the bottom of the wall
+  before the glass: the glass breaks.
+  Offline only; a lobby needs `lobby_shoot 1`.
+
+"Gravity / gates / towers / shot ok, or <map and what differs>". Verdict PENDING.
+
 ## P863 — the HUD costs less, same picture
 
 Your surf_sidistic dumps were CPU-bound on the HUD's own code. With your cfg and every panel on,

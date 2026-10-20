@@ -3254,7 +3254,9 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             question.  Every writer is inside the handler that
                             performed the imposition and names itself:
 
-                              tele     trigger_teleport
+                              tele     trigger_teleport; since Patch 865
+                                       also point_teleport's Teleport and
+                                       AddOutput origin at the player
                               telerel  trigger_teleport_relative
                               bhop     func_bhop's teleport
                               speed    trigger_setspeed

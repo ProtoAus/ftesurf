@@ -98,13 +98,12 @@ void(entity e, vector bv) SV_RecRidePay;
   SF_BUTTON_LOCKED is the same bit as SF_DOOR_LOCKED (2048), which is already
   #defined further down beside SV_UseFrame -- it is not repeated here.
 
-  SF_BUTTON_DAMAGE (512) is named and deliberately never read; see the OnDamaged
-  note in SV_UseFrame for why that one can never work in this game.
+  SF_BUTTON_DAMAGE (512) is read by the test shot's SV_EntityDamage (Patch 865).
 */
 #define SF_BUTTON_DONTMOVE          1       // buttons.h:15
 #define SF_BUTTON_TOGGLE            32      // buttons.h:17
 #define SF_BUTTON_TOUCH             256     // buttons.h:18
-#define SF_BUTTON_DAMAGE            512     // buttons.h:19 -- never read, see below
+#define SF_BUTTON_DAMAGE            512     // buttons.h:19, SV_EntityDamage
 #define SF_BUTTON_USE               1024    // buttons.h:20 "Use Activates"
 #define SF_DOOR_NO_AUTO_RETURN      32      // doors.h:26
 #define SF_DOOR_PUSE                256     // doors.h:30 "Use Opens"
@@ -249,6 +248,7 @@ float(float a, float b) SV_Key2 = { return a ? a : b; };
 .string UseLandmarkAngles;
 .string uselandmarkangles;
 .string snapvelocitytodestangles;
+.string UseDestinationAngles;    // func_bhop, point_teleport
 
 // -1 = the map never wrote this key at all.  0 / 1 = it did, and meant it.
 float(string a, string b) SV_KeyTri =
@@ -1468,6 +1468,177 @@ entity(string want, entity from) SV_FindByName =
 .float  vbsp_filterdone;
 
 /*
+  Patch 865: filter_activator_team, filter_activator_class and filter_velocity.
+
+  Team: everyone is one team, the team of the class the map spawns players at
+  (SelectSpawnPoint tries CT before T).  79 of the 98 maps with T-only and CT-only
+  teleports overlap them with different destinations, so passing both would leave
+  the destination to touch order.  Momentum's player stays on team 0 and fails both.
+
+  Class: Source's NamesMatch -- case-insensitive, `*` ends a prefix.  Maps rename
+  the player's classname to mark progress (AddOutput classname, 1,226 outputs on
+  91 maps; most class filters test "1".."7"), so the player carries that name in
+  .run_srcclass and .classname stays "player".
+*/
+.string filterclass;
+.float  filterteam;
+.string run_srcclass;
+// filter_velocity: the shipped FGD's keys, then the older filter_momentum_velocity
+// keys that five library entities carry under the new classname.
+.float  SpeedThreshold, Dimension, MatchMode, YawAngle;
+.float  mode, above, enablehorizontal, horizontalvelocity, enablevertical, verticalvelocity;
+.float  ignoresign;
+.vector velocityvector, velocityaxes;
+float   vbsp_map_team;
+
+float(string q, string n) SV_NamesMatch =
+{
+	local float p;
+
+	p = strstrofs(q, "*", 0);
+	if (p >= 0)
+		return !strcasecmp(substring(n, 0, p), substring(q, 0, p));
+	return !strcasecmp(q, n);
+};
+
+string(entity act) SV_SrcClass =
+{
+	if (act.classname == "player" && act.run_srcclass != "")
+		return act.run_srcclass;
+	return act.classname;
+};
+
+// One axis of CFilterVelocity::CheckPerAxisVelocity (mom_triggers.cpp:235).
+float(float c, float s, float ax, float abv, float ign) SV_VelocityAxis =
+{
+	if (!ax)
+		return TRUE;
+	if (ign)
+		c = fabs(c);
+	return abv ? (c > s) : (c < s);
+};
+
+float(entity f, entity act) SV_VelocityFilter =
+{
+	local vector v;
+	local float s, pass;
+
+	if (act.classname != "player")
+		return FALSE;
+	v = act.velocity;
+	if (f.SpeedThreshold || f.Dimension || f.MatchMode)
+	{
+		if (f.Dimension == 1)
+		{
+			makevectors([0, f.YawAngle, 0]);
+			s = v_forward_x * v_x + v_forward_y * v_y;
+		}
+		else if (f.Dimension == 2)
+			s = fabs(v_z);
+		else if (f.Dimension == 3)
+			s = vlen(v);
+		else
+			s = vlen([v_x, v_y, 0]);
+		if (f.MatchMode == 1)
+			return (s <= f.SpeedThreshold);
+		return (s >= f.SpeedThreshold);
+	}
+	// CFilterVelocity (mom_triggers.cpp:198-255): mode 0 total, 1 per axis.
+	if (f.mode == 1)
+	{
+		pass = SV_VelocityAxis(v_x, f.velocityvector_x, f.velocityaxes_x, f.above, f.ignoresign);
+		pass = (pass && SV_VelocityAxis(v_y, f.velocityvector_y, f.velocityaxes_y, f.above, f.ignoresign));
+		pass = (pass && SV_VelocityAxis(v_z, f.velocityvector_z, f.velocityaxes_z, f.above, f.ignoresign));
+		return pass;
+	}
+	pass = TRUE;
+	if (f.enablehorizontal)
+	{
+		s = vlen([v_x, v_y, 0]);
+		if (f.above ? !(s > f.horizontalvelocity) : !(s < f.horizontalvelocity))
+			pass = FALSE;
+	}
+	if (f.enablevertical)
+	{
+		s = fabs(v_z);
+		if (f.above ? !(s > f.verticalvelocity) : !(s < f.verticalvelocity))
+			pass = FALSE;
+	}
+	return pass;
+};
+
+/*
+  Patch 865: point entities given a spawn function here were freed at spawn
+  before, and the next entity in the lump took the slot.  Keeping them would
+  renumber every later solid, and the per-move physent digest (sv_user.c
+  SV_PhysentDigest) numbers entities: runs recorded before a deploy would HOLD.
+  So the spawn function stashes the named fields and frees the slot as before;
+  SV_LateSpawnAll re-creates them on the first frame, after every map entity.
+  Outputs are not carried (a filter's OnPass/OnFail answers TestActivator,
+  31 inputs in the library).
+*/
+strbuf vbsp_late_buf;
+
+void(string fields) SV_LateStash =
+{
+	local float i, n, fld;
+	local string rec, nm, val;
+
+	rec = strcat("classname\t", self.classname);
+	n = tokenize(fields);
+	for (i = 0; i < n; i = i + 1)
+	{
+		nm = argv(i);
+		fld = findentityfield(nm);
+		if (!fld)
+			continue;
+		val = getentityfieldstring(fld, self);
+		if (val != "" && val != "0" && val != "'0 0 0'" && val != "0 0 0")
+			rec = strcat(rec, "\t", nm, "\t", val);
+	}
+	if (vbsp_late_buf <= 0)
+		vbsp_late_buf = buf_create();
+	bufstr_add(vbsp_late_buf, rec, TRUE);
+	remove(self);
+};
+
+void() SV_LateSpawnAll =
+{
+	local float i, j, n, ntok, fld;
+	local entity e;
+
+	vbsp_map_team = 3;
+	if (!find(world, classname, "info_player_counterterrorist"))
+	if (find(world, classname, "info_player_terrorist"))
+		vbsp_map_team = 2;
+
+	if (vbsp_late_buf <= 0)
+		return;
+	n = buf_getsize(vbsp_late_buf);
+	for (i = 0; i < n; i = i + 1)
+	{
+		e = spawn();
+		ntok = tokenizebyseparator(bufstr_get(vbsp_late_buf, i), "\t");
+		for (j = 0; j + 1 < ntok; j = j + 2)
+		{
+			fld = findentityfield(argv(j));
+			if (fld)
+				putentityfieldstring(fld, e, argv(j + 1));
+		}
+		e.solid = SOLID_NOT;
+		e.movetype = MOVETYPE_NONE;
+		setorigin(e, e.origin);
+	}
+	dprint(sprintf("late spawn: %g point entities re-created after the lump; team %g\n", n, vbsp_map_team));
+	buf_del(vbsp_late_buf);
+	vbsp_late_buf = 0;
+};
+
+void() filter_activator_team  = { SV_LateStash("targetname filterteam Negated negated"); };
+void() filter_activator_class = { SV_LateStash("targetname filterclass Negated negated"); };
+void() filter_velocity        = { SV_LateStash("targetname Negated negated SpeedThreshold Dimension MatchMode YawAngle mode above enablehorizontal horizontalvelocity enablevertical verticalvelocity ignoresign velocityvector velocityaxes"); };
+
+/*
   FTESurf Patch 256 splits the PREDICATE out of SV_PassesFilter, because the
   two callers ask opposite questions of the same test.
 
@@ -1603,7 +1774,18 @@ float(entity f, entity act, float depth) SV_FilterPassesD =
 		return pass;
 	}
 
-	return TRUE;							// censused by the caller -- fail open
+	// Patch 865.
+	if (f.classname == "filter_activator_team")
+		pass = (act.classname == "player" && f.filterteam == vbsp_map_team);
+	else if (f.classname == "filter_activator_class")
+		pass = SV_NamesMatch(f.filterclass, SV_SrcClass(act));
+	else if (f.classname == "filter_velocity")
+		pass = SV_VelocityFilter(f, act);
+	else
+		return TRUE;						// censused by the caller -- fail open
+	if (SV_Key2(f.Negated, f.negated))
+		pass = !pass;
+	return pass;
 };
 
 float(entity f, entity act) SV_FilterPasses =
@@ -1640,6 +1822,9 @@ float(entity trig, entity act) SV_PassesFilter =
 		if (trig.ui_filter)
 		if (trig.ui_filter.classname != "filter_activator_name")
 		if (trig.ui_filter.classname != "filter_multi")
+		if (trig.ui_filter.classname != "filter_activator_team")
+		if (trig.ui_filter.classname != "filter_activator_class")
+		if (trig.ui_filter.classname != "filter_velocity")
 			if (SV_CensusAdd(strcat("filter ", trig.ui_filter.classname)))
 				dprint(sprintf("^3filter: %s is not implemented -- '%s' passes "
 				               "everything\n", trig.ui_filter.classname,
@@ -1705,6 +1890,88 @@ string(string s) SV_IOTrim =
 	return substring(s, a, b - a);
 };
 
+// Patch 865: an origin a map imposes on a player outside a touch (AddOutput origin,
+// point_teleport).  The caller writes the `tele` warp after any velocity change.
+void(entity p, vector org) SV_PlacePlayer =
+{
+	setorigin(p, org);
+	p.flags = p.flags - (p.flags & FL_ONGROUND);
+	if (cvar("run_teleport_warp"))
+		SV_TimerWarped(p);
+};
+
+/*
+  Patch 865: point_teleport's Teleport input (pointteleport.cpp, and the shipped
+  FGD's Momentum keys: UseDestinationAngles default 0, VelocityMode as on
+  trigger_teleport).  Players only: moving a brush would change the physents
+  nothing records.  The entity is re-created by SV_LateSpawnAll.
+*/
+void(entity t, string who, entity act) SV_PointTeleport =
+{
+	local entity p;
+	local float vmode, spd, hs;
+
+	if (who == "!activator" || who == "!player" || who == "!caller")
+		p = act;
+	else
+		p = SV_FindByName(who, world);
+	if (!p || p.classname != "player")
+		return;
+
+	dprint(sprintf("point_teleport %s: %s to %v\n", t.targetname, p.netname, t.origin));
+	SV_PlacePlayer(p, t.origin);
+	if (SV_KeyTri(t.UseDestinationAngles, "") > 0)
+	{
+		p.angles = [0, t.angles_y, 0];
+		p.v_angle = p.angles;
+		p.fixangle = TRUE;
+		if (SV_KeyTri(t.snapvelocitytodestangles, "") != 0)
+		{
+			hs = vlen([p.velocity_x, p.velocity_y, 0]);
+			makevectors(p.angles);
+			p.velocity = v_forward * hs + '0 0 1' * p.velocity_z;
+		}
+	}
+	vmode = SV_Key2(t.VelocityMode, t.velocitymode);
+	if (vmode == 1)
+		p.velocity = '0 0 0';
+	else if (vmode == 2)
+		p.velocity = [0, 0, min(p.velocity_z, 0)];
+	else if (vmode == 3)
+	{
+		spd = SV_Key2(t.SetSpeed, t.setspeed);
+		if (spd <= 0)
+			spd = vlen(p.velocity);
+		makevectors(t.angles);
+		p.velocity = v_forward * spd;
+	}
+	if (vmode == 1 || vmode == 2 || vmode == 3)
+		SV_ClearCarrier(p);
+	SV_RecWarp(p, "tele");
+	SV_TimerMapTeleport(p);
+};
+
+void() point_teleport = { SV_LateStash("targetname target spawnflags origin angles VelocityMode velocitymode SetSpeed setspeed UseDestinationAngles snapvelocitytodestangles"); };
+
+/*
+  Patch 865: func_breakable / func_breakable_surf / func_physbox break.  Break
+  (and Shatter) from the map, or damage from the test shot (SV_ShootFrame) when
+  it takes damage: health > 0 and not SF_BREAK_TRIGGER_ONLY (func_break.cpp:262).
+  OnBreak fires, then the entity goes, as CBreakable::Die removes it.  No gibs.
+*/
+#define SF_BREAK_TRIGGER_ONLY 1
+.float vbsp_brk;            // 1 breakable, 2 also takes damage
+
+void(entity t, entity act) SV_BreakableBreak =
+{
+	if (!t.vbsp_brk)
+		return;
+	t.vbsp_brk = 0;
+	dprint(sprintf("break: %s %s\n", t.classname, t.model));
+	SV_FireOutput(t, "OnBreak", act);
+	remove(t);
+};
+
 void(entity t, string param) SV_IOAddOutput =
 {
 	local string k, v;
@@ -1743,6 +2010,47 @@ void(entity t, string param) SV_IOAddOutput =
 	if (k == "targetname")
 	{
 		t.targetname = v;
+		return;
+	}
+
+	// Patch 865: the other keys maps write.  classname on the player is the
+	// progress marker class filters read (see .run_srcclass); .classname stays.
+	if (k == "classname")
+	{
+		if (t.classname == "player")
+		{
+			t.run_srcclass = v;
+			dprint(sprintf("addoutput: %s classname %s\n", t.netname, v));
+		}
+		return;
+	}
+	// A retargeted teleport (200 outputs on 10 maps); the touch resolves it each time.
+	if (k == "target")
+	{
+		t.target = v;
+		return;
+	}
+	// A player's origin is a teleport (331 outputs on 17 maps): velocity kept.
+	// Named origin/angles writes stay inert: a moved destination would need the
+	// client mirror (cl_triggers.qc) to demote every teleport aimed at it.
+	if (k == "origin")
+	{
+		if (t.classname == "player")
+		{
+			SV_PlacePlayer(t, stov(v));
+			SV_RecWarp(t, "tele");
+			SV_TimerMapTeleport(t);
+		}
+		return;
+	}
+	if (k == "angles")
+	{
+		if (t.classname == "player")
+		{
+			t.angles = stov(v);
+			t.v_angle = t.angles;
+			t.fixangle = TRUE;
+		}
 		return;
 	}
 
@@ -2332,14 +2640,18 @@ float(string lk) SV_IOOutputKnown =
 	    onfullyopen / onfullyclosed  are claims about where a brush IS, and
 	      nothing in this build moves one.  func_movelinear's 818 OnFullyOpen
 	      across 63 maps stay censused, correctly.
-	    ondamaged / onbreak          have no possible fire site in a game with
-	      no damage system -- see the essay in SV_UseFrame.
+	    (ondamaged / onbreak were here until Patch 865 gave them fire sites.)
 	*/
 	if (lk == "onin")         return TRUE;	// SV_ButtonAtTop
 	if (lk == "onout")        return TRUE;	// SV_ButtonHome
 	if (lk == "onuselocked")  return TRUE;	// SV_MoverOnUseLocked
 	if (lk == "onopen")       return TRUE;	// SV_DoorOpen
 	if (lk == "onclose")      return TRUE;	// SV_DoorClose
+
+	// Patch 865.
+	if (lk == "onbreak")         return TRUE;	// SV_BreakableBreak
+	if (lk == "ondamaged")       return TRUE;	// SV_EntityDamage
+	if (lk == "onhealthchanged") return TRUE;	// SV_EntityDamage
 
 	/*
 	  logic_case's sixteen, as one prefix test rather than sixteen literals --
@@ -3600,6 +3912,21 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 		if (in == "fadeout") { SV_AmbientStop(t); return; }
 	}
 
+	// Patch 865.
+	if (in == "break" || in == "shatter")
+	if (t.vbsp_brk)
+	{
+		SV_BreakableBreak(t, act);
+		return;
+	}
+	if (t.classname == "point_teleport")
+	{
+		if (in == "teleport" || in == "teleporttocurrentpos")
+			{ SV_PointTeleport(t, t.target, act); return; }
+		if (in == "teleportentity")
+			{ SV_PointTeleport(t, pm, act);       return; }
+	}
+
 	if (in == "alpha" && substring(t.model, 0, 1) == "*")
 	{
 		t.renderamt = bound(0, stof(pm), 255);
@@ -4245,16 +4572,8 @@ void(entity pl) SV_UseFrame =
 	  keeps the old behaviour, because for a func_brush or a trigger wired to
 	  OnPressed that behaviour is all there is.
 
-	  WHAT STILL CANNOT WORK, so the census keeps meaning "nobody has looked at
-	  this": OnDamaged.  It is func_button's second largest dead output -- 1,187
-	  outputs across 32 maps -- and Source fires it from CBaseButton::OnTakeDamage
-	  (buttons.cpp:309) under the "Damage activates" spawnflag.  This game has
-	  no damage system and no weapons: sv_player.qc sets takedamage DAMAGE_NO on
-	  the player and nothing anywhere calls T_Damage.  There is no honest fire
-	  site, so `ondamaged` is deliberately NOT in SV_IOOutputKnown -- adding a
-	  name there without a fire site is the failure that essay calls the worse
-	  one, because silence then reads as "implemented".  func_breakable's
-	  OnBreak (276) is dead for the same reason.
+	  OnDamaged and OnBreak have fire sites since Patch 865: the test shot
+	  (SV_ShootFrame -> SV_EntityDamage) and the Break input.
 
 	  FOUR OF THE 23 ARE UNREACHABLE and that is worth saying rather than
 	  discovering later: they also carry the passable spawnflags, so SV_SpawnDoor
@@ -5895,6 +6214,70 @@ void() trigger_teleport =
 	self.vbsp_io_solid = SOLID_BSPTRIGGER;
 	if (SV_Key2(self.StartDisabled, self.startdisabled))
 		vbsp_tele_disabled_n = vbsp_tele_disabled_n + 1;
+};
+
+/*
+  Patch 865: trigger_gravity -- 402 on 87 maps.  Source sets the toucher's
+  multiplier and never puts it back (triggers.cpp:2506); Momentum's FGD adds
+  `persist`, where 0 restores 1 on leaving.  An absent key keeps the old games'
+  behaviour (295 of the 402 write none), so the key is read as text.  The write
+  is the AddOutput gravity path's: .gravity, published in the pin.  Gravity 0
+  means 1 on both sides (pm_source.c, gamemovement.cpp:3113).
+*/
+.string persist;
+.entity vbsp_grav_trig;     // on the player: a persist-0 trigger whose reset is owed
+.float  vbsp_grav_touch;    // ...and it touched them since the last PreThink
+
+void() trigger_gravity_touch =
+{
+	if (other.classname != "player")
+		return;
+	if (SV_Key2(self.StartDisabled, self.startdisabled))
+		return;
+	if (!SV_PassesFilter(self, other))
+		return;
+	SV_TrigStamp(other);
+	SV_TriggerIOTouch(self, other);
+
+	if (other.gravity != self.gravity)
+		dprint(sprintf("trigger_gravity %s: gravity %g persist '%s'\n", self.model, self.gravity, self.persist));
+	other.gravity = self.gravity;
+	if (self.persist != "" && !stof(self.persist))
+	{
+		other.vbsp_grav_trig = self;
+		other.vbsp_grav_touch = TRUE;
+	}
+	else
+		other.vbsp_grav_trig = world;
+};
+
+// Called per command from PlayerPreThink: touches run after the move, so a
+// command whose move left the volume reaches here with the flag still clear.
+void(entity p) SV_GravityFrame =
+{
+	if (!p.vbsp_grav_trig)
+		return;
+	if (!p.vbsp_grav_touch)
+	{
+		dprint(sprintf("trigger_gravity %s: left, gravity restored\n", p.vbsp_grav_trig.model));
+		p.gravity = 0;
+		p.vbsp_grav_trig = world;
+	}
+	p.vbsp_grav_touch = FALSE;
+};
+
+void() trigger_gravity =
+{
+	if (!self.model)
+	{
+		remove(self);
+		return;
+	}
+	SV_BindInvisibleBrush();
+	self.movetype = MOVETYPE_NONE;
+	self.solid = SOLID_BSPTRIGGER;
+	self.touch = trigger_gravity_touch;
+	self.vbsp_io_solid = SOLID_BSPTRIGGER;
 };
 
 /*
@@ -8579,6 +8962,94 @@ void(entity t, entity act) SV_ButtonUse =
 };
 
 /*
+  Patch 865: damage, from the test shot only.  A button takes it under "Damage
+  activates" or a legacy health key (CBaseButton::OnTakeDamage, buttons.cpp:290;
+  ButtonResponseToTouch :561); a breakable that takes damage loses health and
+  breaks at 0 (func_break.cpp:818).  711 damage-activated buttons on 90 maps,
+  575 of them wired to OnDamaged (bhop_badges' shot boosts).
+*/
+void(entity t, entity att, float dmg) SV_EntityDamage =
+{
+	local float code;
+
+	if (t.vbsp_mv_kind == MVK_BUTTON)
+	{
+		if (!(t.spawnflags & SF_BUTTON_DAMAGE) && !t.health)
+			return;
+		if (t.vbsp_mv_state == TS_GOING_UP || t.vbsp_mv_state == TS_GOING_DOWN)
+			return;
+		code = BUTTON_ACTIVATE;
+		if (t.vbsp_mv_state == TS_AT_TOP)
+		{
+			if (t.vbsp_mv_stay || !(t.spawnflags & SF_BUTTON_TOGGLE))
+				return;
+			code = BUTTON_RETURN;
+		}
+		dprint(sprintf("damage: button %s code %g locked %g\n", t.model, code, t.vbsp_mv_locked));
+		SV_FireOutput(t, "OnDamaged", att);
+		if (t.vbsp_mv_locked)
+			return;
+		t.vbsp_mv_act = att;
+		SV_FireOutput(t, "OnPressed", att);
+		if (code == BUTTON_RETURN)
+			SV_ButtonReturn1(t);
+		else
+			SV_ButtonActivate1(t);
+		return;
+	}
+	if (t.vbsp_brk == 2)
+	{
+		SV_FireOutput(t, "OnDamaged", att);		// CPhysBox's; inert on CBreakable
+		t.health = t.health - dmg;
+		dprint(sprintf("damage: %s %s health %g\n", t.classname, t.model, t.health));
+		SV_FireOutput(t, "OnHealthChanged", att);
+		if (t.health <= 0)
+			SV_BreakableBreak(t, att);
+	}
+};
+
+/*
+  Patch 865: a silent test shot.  +attack fires once per press along the view;
+  `run_shoot_damage` per hit.  Gated by run_shoot, and by lobby_shoot on a lobby,
+  where a break is everyone's.  A break changes the physents mid-run,
+  so a verifier that does not run the map's I/O HOLDs on it (BACKLOG).
+*/
+.float vbsp_lastshot;
+float  vbsp_shoot_ok;           // latched in StartFrame: run_shoot, and lobby_shoot on a lobby
+
+void(entity pl) SV_ShootFrame =
+{
+	local vector src;
+	local int mask;
+
+	if (!pl.button0)
+	{
+		pl.vbsp_lastshot = FALSE;
+		return;
+	}
+	if (pl.vbsp_lastshot)
+		return;
+	pl.vbsp_lastshot = TRUE;
+	if (!vbsp_shoot_ok || !vbsp_io_on)
+		return;
+
+	makevectors(pl.v_angle);
+	src = pl.origin + pl.view_ofs;
+	// CS:S bullets trace MASK_SOLID|DEBRIS, which hits grates; the plugin loads a
+	// grate as PLAYERCLIP|MONSTERCLIP (hl2_contents_remap), so MONSTERCLIP is the
+	// bit that finds them -- bhop_eazy_v2's shot target is one.  Plain player clip
+	// stays transparent to the shot, as it is to bullets.
+	mask = pl.hitcontentsmaski;
+	pl.hitcontentsmaski = CONTENTBITS_POINTSOLID | CONTENTBIT_MONSTERCLIP;
+	traceline(src, src + v_forward * 8192, FALSE, pl);
+	pl.hitcontentsmaski = mask;
+	dprint(sprintf("shot: %s %s at %v\n", trace_ent.classname, trace_ent.model, trace_endpos));
+	if (!trace_ent || trace_ent == world)
+		return;
+	SV_EntityDamage(trace_ent, pl, cvar("run_shoot_damage"));
+};
+
+/*
   CBaseDoor's Open / Close, doors.cpp:1008 and :1091.
 
   OnOpen and OnClose fire at the START of the move and mean "this door has been
@@ -8816,6 +9287,8 @@ void() SV_SpawnBreakable =
 {
 	func_button();
 	self.vbsp_mv_kind = 0;
+	// Patch 865: Break / Shatter / the test shot (SV_BreakableBreak).
+	self.vbsp_brk = (self.health > 0 && !(self.spawnflags & SF_BREAK_TRIGGER_ONLY)) ? 2 : 1;
 };
 
 void() func_breakable      = { SV_SpawnBreakable(); };
@@ -8966,14 +9439,8 @@ void() func_occluder =
   VVIS consumes at compile time, and a census of all 1308 installed maps finds
   ZERO instances.  Same story as func_detail below.
 
-  point_teleport -- 34 instances -- is a different kind of nothing.  It is real
-  and it compiles into the map, but it only ever does anything when a
-  logic_relay or a trigger fires its Teleport input, and we model no entity I/O
-  at all.  Removed silently rather than left to the catch-all, so it stops
-  showing up in ent_census as an open question: implementing it without inputs
-  would be implementing a teleport that can never fire.
+  point_teleport has its Teleport input since Patch 865 (SV_PointTeleport).
 */
-void() point_teleport = { remove(self); };
 
 /*
 ===========================================================================
@@ -9305,8 +9772,8 @@ void() trigger_once =
 
 // Tri-state for the reason SV_KeyTri exists: the FGD default is 1, so "the
 // mapper wrote 0" and "the mapper wrote nothing" mean opposite things and a
-// .float cannot tell them apart.  All 1122 of arcane's write 1.
-.string UseDestinationAngles;
+// .float cannot tell them apart.  All 1122 of arcane's write 1.  Declared with
+// the other tri-state keys (point_teleport reads it too).
 
 // Source's landing-counter reset flags.  Both of arcane's are set and both are
 // inert there, because LandingLimit 0 means unlimited on all 1122 -- the time

@@ -145,6 +145,7 @@ void() StartFrame =
 		// called before the map's entities exist" trap the comment above
 		// records -- and it is early enough, because nothing resolves a target
 		// until a player touches something, which is strictly after this frame.
+		SV_LateSpawnAll();          // Patch 865: before the case repair, which reads them
 		SV_RepairTargetCase();
 
 		// Build 37: after the case repair, because an output's target is
@@ -186,6 +187,11 @@ void() StartFrame =
 	// the dimension pass -- which has to run either way, because turning the
 	// lobby off has to put player collision back the way it was.
 	Lobby_Frame();
+	// Patch 865: the test shot (SV_ShootFrame), off on a lobby unless lobby_shoot.
+	// Registered beside the read: StartFrame runs before worldspawn's registrations.
+	registercvar("run_shoot", "1");
+	registercvar("lobby_shoot", "0");
+	vbsp_shoot_ok = (cvar("run_shoot") && (!lobby_on || cvar("lobby_shoot")));
 	Pose_Frame();                   // Patch 383: spectator counts and the publish gap
 	Pose_SpecBy();                  // Patch 429: who watches whom, after the counts
 	SV_SpecPublish();               // Patch 382: reads what Lobby_Frame just cached
@@ -866,6 +872,8 @@ void() worldspawn =
 	  needs to know which side of it a run was set on.
 	*/
 	registercvar("run_setspeed", "1");
+
+	registercvar("run_shoot_damage", "100");   // Patch 865: the test shot's damage
 
 	/*
 	  The arm SV_RetryPoint sets and SV_TimerMapInit latches.  Registered so it
