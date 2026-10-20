@@ -8222,11 +8222,8 @@ float(entity t, string in, string pm) SV_SpinInput =
 			SV_SpRotTarget(t, 0);
 		}
 		else if (in == "toggle")
-		{
-			if (t.solid != SOLID_NOT)
-				return FALSE;			// the old path's solidity flip, for a solid carrier
-			SV_SpRotTarget(t, (v > 0) ? 0 : t.vbsp_sp_max);
-		}
+			return FALSE;	// main's solidity flip, never a spin toggle: collision stays main's
+			                // (a mover made solid is dropped by SV_IOEnable's hook)
 		else if (in == "reverse")
 		{
 			t.vbsp_sp_stopping = FALSE;
