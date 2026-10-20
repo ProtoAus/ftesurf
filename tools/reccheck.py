@@ -307,7 +307,8 @@ COLUMNS[11] = COLUMNS[10]
 
 # v9 warp kinds.  v8 and older keep the five, so their notes do not move.
 WARP_KINDS_V7 = ("tele", "telerel", "bhop", "speed", "push")
-WARP_KINDS_V9 = WARP_KINDS_V7 + ("lift", "zone", "pin")   # pin: Patch 477, the replay/rewind pin
+WARP_KINDS_V9 = WARP_KINDS_V7 + ("lift", "zone", "pin",   # pin: Patch 477, the replay/rewind pin
+                                 "catapult", "reverse")  # Patch 869: Momentum triggers
 
 # The zonesrc tags SV_ZoneLoad writes (P815: curated says online, an own edit local).  `none` is deliberately NOT
 # here: the server only writes the key when it has a table, so a file claiming

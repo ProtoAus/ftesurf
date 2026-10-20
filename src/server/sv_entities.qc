@@ -1484,6 +1484,8 @@ entity(string want, entity from) SV_FindByName =
 .string filterclass;
 .float  filterteam;
 .string run_srcclass;
+.float  run_prognum;            // Patch 869: -1 none (m_iProgressNumber)
+.float  progress_check;         // Patch 869: filter_momentum_progress
 // filter_velocity: the shipped FGD's keys, then the older filter_momentum_velocity
 // keys that five library entities carry under the new classname.
 .float  SpeedThreshold, Dimension, MatchMode, YawAngle;
@@ -1633,6 +1635,86 @@ void(string fields) SV_LateStash =
 	remove(self);
 };
 
+/*
+  Patch 869: a BRUSH trigger the engine used to free (no spawn function) is
+  stashed whole -- every string/float/vector field its keys or the I/O
+  accumulator set, outputs included -- and SV_LateSpawnAll re-creates it through
+  its own spawn function, with vbsp_late_now set, before SV_EntityIOBuild.
+*/
+strbuf vbsp_late_full;
+float  vbsp_late_now;
+
+string(string s) SV_LateEsc   = { return strreplace("\n", chr2str(30), strreplace("\t", chr2str(29), s)); };
+string(string s) SV_LateUnesc = { return strreplace(chr2str(30), "\n", strreplace(chr2str(29), "\t", s)); };
+
+void() SV_LateStashAll =
+{
+	local float i, n, t, l;
+	local string rec, nm, val;
+
+	rec = "";
+	n = numentityfields();
+	for (i = 1; i < n; i = i + 1)
+	{
+		t = entityfieldtype(i);
+		if (t != EV_STRING && t != EV_FLOAT && t != EV_VECTOR)
+			continue;
+		nm = entityfieldname(i);
+		l = strlen(nm);
+		if (t == EV_FLOAT && l > 2 && substring(nm, l - 2, 1) == "_")
+		if (entityfieldtype(findentityfield(substring(nm, 0, l - 2))) == EV_VECTOR)
+			continue;               // a component of a vector carried whole
+		if (nm == "modelindex" || nm == "absmin" || nm == "absmax" || nm == "mins" || nm == "maxs"
+		 || nm == "size" || nm == "solid" || nm == "movetype" || nm == "nextthink" || nm == "ltime")
+			continue;
+		val = SV_FieldStr(i, self);
+		if (SV_LateIsUnset(i, val))
+			continue;
+		rec = strcat(rec, nm, "\t", SV_LateEsc(val), "\t");
+	}
+	if (vbsp_late_full <= 0)
+		vbsp_late_full = buf_create();
+	bufstr_add(vbsp_late_full, rec, TRUE);
+	remove(self);
+};
+
+void() SV_LateSpawnFull =
+{
+	local float i, j, n, ntok, fld;
+	local entity e, oself;
+
+	if (vbsp_late_full <= 0)
+		return;
+	oself = self;
+	n = buf_getsize(vbsp_late_full);
+	for (i = 0; i < n; i = i + 1)
+	{
+		e = spawn();
+		ntok = tokenizebyseparator(bufstr_get(vbsp_late_full, i), "\t");
+		for (j = 0; j + 1 < ntok; j = j + 2)
+		{
+			fld = findentityfield(argv(j));
+			if (fld)
+				putentityfieldstring(fld, e, SV_LateUnesc(argv(j + 1)));
+		}
+		self = e;
+		vbsp_late_now = TRUE;
+		if (isfunction(e.classname))
+			callfunction(e.classname);
+		else
+			remove(e);
+		vbsp_late_now = FALSE;
+		// setmodel linked it before the spawn function set SOLID_BSPTRIGGER; relink,
+		// or the touch list never holds it (floodwaters' teleport_progress *300).
+		if (!wasfreed(e))
+			setorigin(e, e.origin);
+	}
+	self = oself;
+	dprint(sprintf("late spawn: %g brush trigger(s) re-created after the lump\n", n));
+	buf_del(vbsp_late_full);
+	vbsp_late_full = 0;
+};
+
 void() SV_LateSpawnAll =
 {
 	local float i, j, n, ntok, fld, last;
@@ -1649,6 +1731,7 @@ void() SV_LateSpawnAll =
 		last = num_for_edict(e);
 	dprint(sprintf("lump: last edict #%g\n", last));
 
+	SV_LateSpawnFull();
 	if (vbsp_late_buf <= 0)
 		return;
 	n = buf_getsize(vbsp_late_buf);
@@ -1818,6 +1901,8 @@ float(entity f, entity act, float depth) SV_FilterPassesD =
 		pass = SV_NamesMatch(f.filterclass, SV_SrcClass(act));
 	else if (f.classname == "filter_velocity")
 		pass = SV_VelocityFilter(f, act);
+	else if (f.classname == "filter_momentum_progress")
+		pass = (act.classname == "player" && act.run_prognum >= f.progress_check);	// Patch 869
 	else
 		return TRUE;						// censused by the caller -- fail open
 	if (SV_Key2(f.Negated, f.negated))
@@ -1862,6 +1947,7 @@ float(entity trig, entity act) SV_PassesFilter =
 		if (trig.ui_filter.classname != "filter_activator_team")
 		if (trig.ui_filter.classname != "filter_activator_class")
 		if (trig.ui_filter.classname != "filter_velocity")
+		if (trig.ui_filter.classname != "filter_momentum_progress")
 			if (SV_CensusAdd(strcat("filter ", trig.ui_filter.classname)))
 				dprint(sprintf("^3filter: %s is not implemented -- '%s' passes "
 				               "everything\n", trig.ui_filter.classname,
@@ -2704,6 +2790,14 @@ float(string lk) SV_IOOutputKnown =
 	if (lk == "onuselocked")  return TRUE;	// SV_MoverOnUseLocked
 	if (lk == "onopen")       return TRUE;	// SV_DoorOpen
 	if (lk == "onclose")      return TRUE;	// SV_DoorClose
+
+	// Patch 869.
+	if (lk == "onresetonehops")      return TRUE;	// progress / resetonehop touch
+	if (lk == "onhopnolongerjumpable") return TRUE;	// trigger_momentum_onehop_touch
+	if (lk == "onkeypressed")        return TRUE;	// SV_UserInputKey
+	if (lk == "onkeyheld")           return TRUE;	// SV_UserInputKey
+	if (lk == "onkeyreleased")       return TRUE;	// SV_UserInputKey
+	if (lk == "oncatapulted")        return TRUE;	// trigger_catapult_touch
 
 	// Patch 865.
 	if (lk == "onbreak")         return TRUE;	// SV_BreakableBreak
@@ -7304,6 +7398,497 @@ void() trigger_setspeed =
 
 // Same entity under Momentum's own prefix.
 void() trigger_momentum_setspeed = { trigger_setspeed(); };
+
+/*
+===========================================================================
+  Patch 869: Momentum's movement triggers (mom_triggers.cpp in game-develop;
+  keys as the library writes them).  run_momtriggers 0 makes the bhop-control
+  family inert (Lex: a toggle for now); trigger_catapult is outside it.
+
+  Entry is SV_TouchEntered: the masks SV_TriggerIOTouch keeps, kept here for
+  triggers that act on entry whether or not they own outputs.  Velocity writes
+  record a `warp` (kinds: tele for the teleports, catapult, reverse) and set
+  run_pushed on a lift, as trigger_setspeed does.
+===========================================================================
+*/
+float vbsp_momtrig;     // run_momtriggers, latched in StartFrame
+
+float(entity trig, entity act) SV_TouchEntered =
+{
+	local int bit;
+	local float entered;
+
+	bit = SV_TouchBit(act);
+	if (bit)
+		entered = !((trig.vbsp_touch_in | trig.vbsp_touch_seen) & bit);
+	else
+		entered = (trig.vbsp_touch_who != act);
+	SV_TriggerIOTouch(trig, act);
+	if (bit)
+		trig.vbsp_touch_seen = trig.vbsp_touch_seen | bit;
+	else
+	{
+		trig.vbsp_touch_who = act;
+		trig.vbsp_touch_when = time;
+	}
+	if (trig.nextthink <= 0)
+	{
+		trig.think = SV_TriggerEndThink;
+		trig.nextthink = time + 0.02;
+	}
+	return entered;
+};
+
+// The gates every movement trigger here shares; TRUE when it may act on `other`.
+float() SV_MomTrigGate =
+{
+	if (other.classname != "player" || other.health <= 0)
+		return FALSE;
+	if (other.movetype == MOVETYPE_NOCLIP)
+		return FALSE;
+	if (SV_Key2(self.StartDisabled, self.startdisabled))
+		return FALSE;
+	if (!SV_TriggerTakesPlayers(self))
+		return FALSE;
+	if (!SV_PassesFilter(self, other))
+		return FALSE;
+	SV_TrigStamp(other);
+	return TRUE;
+};
+
+// FALSE: freed (no brush) or stashed until the first frame (SV_LateStashAll).
+float() SV_MomTrigSpawn =
+{
+	if (!self.model)
+	{
+		remove(self);
+		return FALSE;
+	}
+	if (!vbsp_late_now)
+	{
+		SV_LateStashAll();
+		return FALSE;
+	}
+	SV_BindInvisibleBrush();
+	self.movetype = MOVETYPE_NONE;
+	self.solid = SOLID_BSPTRIGGER;
+	self.vbsp_io_solid = SOLID_BSPTRIGGER;
+	return TRUE;
+};
+
+void(entity p, vector vel, string kind) SV_MomSetVelocity =
+{
+	if (vel_z > PM_NONJUMP_VEL)
+	if (vel_z > p.velocity_z)
+		p.run_pushed = TRUE;
+	p.velocity = vel;
+	p.flags = p.flags - (p.flags & FL_ONGROUND);
+	SV_ClearCarrier(p);
+	SV_RecWarp(p, kind);
+};
+
+/*
+  The progress system: trigger_momentum_progress sets the player's progress
+  trigger and number (SetCurrentProgressTrigger) and clears their onehops; a
+  multihop/onehop/teleport_progress with no target teleports there.  Momentum
+  also makes start and stage zones progress triggers; zones here are not
+  entities, so those cases have no destination and do nothing.
+*/
+.entity run_progtrig;
+.float  progress_number;
+.string teleport_destination;   // the shipped FGD's progress destination
+.string hold;                   // seconds; absent = 0.5 (CTriggerMultihop's constructor)
+.float  stop, fail;
+.string resetang;
+.vector velocityscale;
+.int    vbsp_onehop;            // on a onehop: players who have landed on it
+.float  vbsp_onehop_fired;      // OnHopNoLongerJumpable, once until a reset
+.entity vbsp_mh_trig;           // on the player: the multihop they are in...
+.float  vbsp_mh_t0;             // ...since when
+
+int(entity p) SV_PlayerBit =
+{
+	local float n;
+	n = num_for_edict(p) - 1;
+	if (n < 0 || n >= 32)
+		return 0;
+	return (int)1 << (int)n;
+};
+
+void(entity p) SV_OnehopsClear =
+{
+	local entity e;
+	local int bit;
+
+	bit = SV_PlayerBit(p);
+	for (e = find(world, classname, "trigger_momentum_onehop"); e; e = find(e, classname, "trigger_momentum_onehop"))
+	{
+		if (e.vbsp_onehop & bit)
+			e.vbsp_onehop_fired = FALSE;
+		e.vbsp_onehop = e.vbsp_onehop & ~bit;
+	}
+};
+
+// A START/stage arm (SV_TimerArm) or a respawn: Momentum makes that zone the
+// progress trigger.  Zones are not entities, so no destination; onehops clear.
+void(entity p) SV_MomProgressReset =
+{
+	p.run_progtrig = world;
+	p.run_prognum = -1;
+	p.vbsp_mh_trig = world;
+	SV_OnehopsClear(p);
+};
+
+entity(entity p) SV_ProgressDest =
+{
+	local entity t;
+	t = p.run_progtrig;
+	if (t && t.teleport_destination != "")
+		return SV_FindByName(t.teleport_destination, world);
+	return t;
+};
+
+// MomTeleportEntity (mom_triggers.cpp:749), landmark mode aside.  The `stop` key is
+// the old multihop's velocity reset.
+void(entity p, entity t, entity dest) SV_MomTeleport =
+{
+	local vector sc, org, ang;
+	local float spd, vm;
+
+	if (!dest)
+		return;
+	sc = t.velocityscale;
+	if (sc == '0 0 0')
+		sc = '1 1 1';
+	p.velocity = [p.velocity_x * sc_x, p.velocity_y * sc_y, p.velocity_z * sc_z];
+	vm = t.mode;
+	if (t.stop)
+		vm = 1;
+	if (vm == 1)
+		p.velocity = '0 0 0';
+	else if (vm == 2)
+		p.velocity = [0, 0, min(p.velocity_z, 0)];
+	else if (vm == 3)
+	{
+		spd = vlen(p.velocity);
+		makevectors(dest.angles);
+		p.velocity = v_forward * spd;
+	}
+	org = dest.origin;
+	if (substring(dest.model, 0, 1) == "*")
+		org = (dest.absmin + dest.absmax) * 0.5;	// a progress brush: its middle
+	dprint(sprintf("momtrigger %s %s: teleport to %v mode %g\n", t.classname, t.model, org, vm));
+	SV_PlacePlayer(p, org + '0 0 1');
+	if (SV_KeyTri(t.resetang, "") != 0 || vm == 3)
+	{
+		ang = [0, dest.angles_y, 0];
+		p.angles = ang;
+		p.v_angle = ang;
+		p.fixangle = TRUE;
+	}
+	if (vm)
+		SV_ClearCarrier(p);
+	SV_RecWarp(p, "tele");
+	SV_TimerMapTeleport(p);
+};
+
+entity(entity t, entity p) SV_MomTeleDest =
+{
+	if (t.target != "")
+		return SV_FindByName(t.target, world);
+	return SV_ProgressDest(p);
+};
+
+void() trigger_momentum_progress_touch =
+{
+	if (!vbsp_momtrig || !SV_MomTrigGate())
+		return;
+	if (!SV_TouchEntered(self, other))
+		return;
+	SV_FireOutput(self, "OnResetOnehops", other);
+	dprint(sprintf("momtrigger progress %s: number %g\n", self.model, self.progress_number));
+	other.run_progtrig = self;
+	other.run_prognum = self.progress_number;
+	SV_OnehopsClear(other);
+};
+void() trigger_momentum_progress = { if (SV_MomTrigSpawn()) self.touch = trigger_momentum_progress_touch; };
+
+// CTriggerMultihop::Touch, which the onehop inherits: standing in it past `hold` teleports.
+void(entity t, entity p) SV_MomHoldCheck =
+{
+	if (p.vbsp_mh_trig != t)
+		return;
+	if (time - p.vbsp_mh_t0 >= ((t.hold != "") ? stof(t.hold) : 0.5))
+	{
+		p.vbsp_mh_trig = world;
+		SV_MomTeleport(p, t, SV_MomTeleDest(t, p));
+	}
+};
+
+void() trigger_momentum_multihop_touch =
+{
+	if (!vbsp_momtrig || !SV_MomTrigGate())
+		return;
+	if (SV_TouchEntered(self, other) || other.vbsp_mh_trig != self)
+	{
+		other.vbsp_mh_trig = self;
+		other.vbsp_mh_t0 = time;
+	}
+	SV_MomHoldCheck(self, other);
+};
+void() trigger_momentum_multihop = { if (SV_MomTrigSpawn()) self.touch = trigger_momentum_multihop_touch; };
+
+#define SF_TELEPORT_RESET_ONEHOP 32768
+void() trigger_momentum_onehop_touch =
+{
+	local entity e;
+	local int bit;
+
+	if (!vbsp_momtrig || !SV_MomTrigGate())
+		return;
+	if (!SV_TouchEntered(self, other))
+	{
+		SV_MomHoldCheck(self, other);
+		return;
+	}
+	bit = SV_PlayerBit(other);
+	if (self.vbsp_onehop & bit)
+	{
+		SV_MomTeleport(other, self, SV_MomTeleDest(self, other));
+		return;
+	}
+	other.vbsp_mh_trig = self;
+	other.vbsp_mh_t0 = time;
+	// AddOnehop (mom_player.cpp:707): reset-flagged onehops leave the list.
+	for (e = find(world, classname, "trigger_momentum_onehop"); e; e = find(e, classname, "trigger_momentum_onehop"))
+		if (e.spawnflags & SF_TELEPORT_RESET_ONEHOP)
+			e.vbsp_onehop = e.vbsp_onehop & ~bit;
+	self.vbsp_onehop = self.vbsp_onehop | bit;
+	dprint(sprintf("momtrigger onehop %s: first landing\n", self.model));
+	if (!self.vbsp_onehop_fired)
+	{
+		self.vbsp_onehop_fired = TRUE;
+		SV_FireOutput(self, "OnHopNoLongerJumpable", other);
+	}
+};
+void() trigger_momentum_onehop = { if (SV_MomTrigSpawn()) self.touch = trigger_momentum_onehop_touch; };
+
+void() trigger_momentum_resetonehop_touch =
+{
+	if (!vbsp_momtrig || !SV_MomTrigGate())
+		return;
+	if (!SV_TouchEntered(self, other))
+		return;
+	SV_FireOutput(self, "OnResetOnehops", other);
+	SV_OnehopsClear(other);
+};
+void() trigger_momentum_resetonehop = { if (SV_MomTrigSpawn()) self.touch = trigger_momentum_resetonehop_touch; };
+
+void() trigger_momentum_teleport_progress_touch =
+{
+	if (!vbsp_momtrig || !SV_MomTrigGate())
+		return;
+	if (!SV_TouchEntered(self, other))
+		return;
+	SV_MomTeleport(other, self, SV_ProgressDest(other));
+};
+void() trigger_momentum_teleport_progress = { if (SV_MomTrigSpawn()) self.touch = trigger_momentum_teleport_progress_touch; };
+
+// CTriggerReverseSpeed (mom_triggers.cpp:1718), under both classnames.
+.float  reversehorizontal, ReverseHorizontal, reversevertical, ReverseVertical;
+.float  vbsp_rs_next;
+
+void() trigger_momentum_reversespeed_touch =
+{
+	local vector v;
+	local float entered;
+
+	if (!vbsp_momtrig || !SV_MomTrigGate())
+		return;
+	entered = SV_TouchEntered(self, other);
+	if (!entered)
+	{
+		if (!SV_Key2(self.OnThink, self.onthink) || time < self.vbsp_rs_next)
+			return;
+	}
+	self.vbsp_rs_next = time + max(0.01, SV_Key2(self.Interval, self.interval));
+	v = other.velocity;
+	if (SV_Key2(self.ReverseHorizontal, self.reversehorizontal))
+		v = [-v_x, -v_y, v_z];
+	if (SV_Key2(self.ReverseVertical, self.reversevertical))
+		v_z = -v_z;
+	dprint(sprintf("momtrigger reversespeed %s: %v -> %v\n", self.model, other.velocity, v));
+	SV_MomSetVelocity(other, v, "reverse");
+};
+void() trigger_momentum_reversespeed = { if (SV_MomTrigSpawn()) self.touch = trigger_momentum_reversespeed_touch; };
+void() trigger_reversespeed = { trigger_momentum_reversespeed(); };
+
+// CTriggerUserInput (mom_triggers.cpp:1199): outputs on a key while inside.
+// Keys: 0 fwd, 1 back, 2 left, 3 right, 4 jump, 5 duck, 6 attack, 7 attack2.
+.float  lookedkey, lookedkey2, lookedkey3;
+.float  vbsp_ui_held;           // on the player: last command's key mask
+
+float(entity p) SV_UserKeys =
+{
+	local float m;
+	m = 0;
+	if (p.movement_x > 0) m = m | 1;
+	if (p.movement_x < 0) m = m | 2;
+	if (p.movement_y < 0) m = m | 4;
+	if (p.movement_y > 0) m = m | 8;
+	if (p.button2)        m = m | 16;
+	if (p.button4)        m = m | 32;
+	if (p.button0)        m = m | 64;
+	if (p.button3)        m = m | 128;
+	return m;
+};
+
+void(entity t, entity p, float k, float now, float was) SV_UserInputKey =
+{
+	local float b;
+	if (k < 0 || k > 7)
+		return;
+	b = pow(2, k);		// SV_UserKeys' bit for Momentum's key number
+	if ((now & b) && !(was & b)) SV_FireOutput(t, "OnKeyPressed", p);
+	if (now & b)                 SV_FireOutput(t, "OnKeyHeld", p);
+	if (!(now & b) && (was & b)) SV_FireOutput(t, "OnKeyReleased", p);
+};
+
+void() trigger_momentum_userinput_touch =
+{
+	local float now, was;
+
+	if (!vbsp_momtrig || !SV_MomTrigGate())
+		return;
+	SV_TouchEntered(self, other);
+	now = SV_UserKeys(other);
+	was = other.vbsp_ui_held;
+	SV_UserInputKey(self, other, self.lookedkey, now, was);
+	if (self.lookedkey2 != self.lookedkey)
+		SV_UserInputKey(self, other, self.lookedkey2, now, was);
+	if (self.lookedkey3 != self.lookedkey && self.lookedkey3 != self.lookedkey2)
+		SV_UserInputKey(self, other, self.lookedkey3, now, was);
+};
+void() trigger_momentum_userinput = { if (SV_MomTrigSpawn()) self.touch = trigger_momentum_userinput_touch; };
+void() trigger_userinput = { trigger_momentum_userinput(); };
+
+/*
+  CTriggerMomentumCatapult (mom_triggers.cpp:2254), also trigger_catapult.  The
+  library writes TF2's camelCase keys (and a lowercase twin on three maps); the
+  four with defaults that are not zero are read as text.
+*/
+.string playerSpeed, playerspeed, lowerThreshold, lowerthreshold, upperThreshold, upperthreshold, heightOffset;
+.float  useThresholdCheck, usethresholdcheck, entryAngleTolerance, entryangletolerance;
+.float  useExactVelocity, useexactvelocity, exactVelocityChoiceType, exactvelocitychoicetype;
+.float  onlyCheckVelocity, onlyvelocitycheck;   // the datadesc's name, and TF2's that maps write
+.vector launchDirection, launchdirection;
+.string launchTarget, launchtarget;
+.float  vbsp_cat_next;
+
+float(string a, string b, float def) SV_KeyNum =
+{
+	if (a != "") return stof(a);
+	if (b != "") return stof(b);
+	return def;
+};
+
+vector(entity t, entity p, entity tgt, float spd) SV_CatapultAim =
+{
+	local vector org, d, dxy, lo, hi, gdir;
+	local float g, t0, ax, az, disc, alo, ahi;
+
+	org = p.origin + [0, 0, SV_KeyNum(t.heightOffset, "", 32)];
+	d = tgt.origin - org;
+	g = cvar("sv_gravity");
+	if (SV_Key2(t.useExactVelocity, t.useexactvelocity))
+	{
+		dxy = [d_x, d_y, 0];
+		ax = vlen(dxy);
+		az = d_z;
+		disc = spd * spd * spd * spd - g * (g * ax * ax + 2 * az * spd * spd);
+		if (spd >= sqrt(g * (az + vlen(d))) && disc >= 0 && ax > 0.001)
+		{
+			disc = sqrt(disc);
+			alo = atan((spd * spd - disc) / (g * ax));
+			ahi = atan((spd * spd + disc) / (g * ax));
+			gdir = normalize(dxy);
+			lo = spd * (gdir * cos(alo) + '0 0 1' * sin(alo));
+			hi = spd * (gdir * cos(ahi) + '0 0 1' * sin(ahi));
+			if (SV_Key2(t.exactVelocityChoiceType, t.exactvelocitychoicetype) == 1)
+				return lo;
+			if (SV_Key2(t.exactVelocityChoiceType, t.exactvelocitychoicetype) == 2)
+				return hi;
+			return (p.velocity * lo < p.velocity * hi) ? lo : hi;
+		}
+	}
+	// CalculateLaunchVelocity: time from distance at speed, then gravity back in.
+	t0 = vlen(d) / spd;
+	if (t0 <= 0)
+		return '0 0 0';
+	return d * (1 / t0) + [0, 0, 0.5 * g * t0];
+};
+
+void() trigger_catapult_touch =
+{
+	local float spd, lo, hi, ok, ang;
+	local entity tgt;
+	local vector dir, v;
+
+	if (!SV_MomTrigGate())
+		return;
+	if (!SV_TouchEntered(self, other))
+	{
+		if (!SV_Key2(self.EveryTick, self.everytick))
+		{
+			if (!SV_Key2(self.OnThink, self.onthink) || time < self.vbsp_cat_next)
+				return;
+		}
+	}
+	spd = SV_Key2(self.Interval, self.interval);
+	self.vbsp_cat_next = time + ((spd > 0) ? spd : 1);
+
+	spd = SV_KeyNum(self.playerSpeed, self.playerspeed, 450);
+	tgt = world;
+	if (self.launchTarget != "" || self.launchtarget != "")
+		tgt = SV_FindByName((self.launchTarget != "") ? self.launchTarget : self.launchtarget, world);
+	makevectors(self.launchDirection + self.launchdirection);	// one of the two is zero
+	dir = v_forward;
+
+	if (SV_Key2(self.useThresholdCheck, self.usethresholdcheck))
+	{
+		lo = bound(0, SV_KeyNum(self.lowerThreshold, self.lowerthreshold, 0.15), 1);
+		hi = bound(0, SV_KeyNum(self.upperThreshold, self.upperthreshold, 0.30), 1);
+		v = other.velocity;
+		ok = (vlen(v) > spd - spd * lo && vlen(v) < spd + spd * hi);
+		if (ok)
+		{
+			if (tgt)
+				ang = normalize(tgt.origin - other.origin) * normalize(v);
+			else
+				ang = dir * normalize(v);
+			ok = (ang >= bound(-1, SV_Key2(self.entryAngleTolerance, self.entryangletolerance), 1));
+		}
+		if (!ok)
+			return;
+		if (self.onlyCheckVelocity || self.onlyvelocitycheck)
+		{
+			SV_FireOutput(self, "OnCatapulted", other);
+			return;
+		}
+	}
+	if (tgt)
+		v = SV_CatapultAim(self, other, tgt, spd);
+	else
+		v = dir * spd;
+	dprint(sprintf("catapult %s: %v\n", self.model, v));
+	SV_MomSetVelocity(other, v, "catapult");
+	SV_FireOutput(self, "OnCatapulted", other);
+};
+void() trigger_catapult = { if (SV_MomTrigSpawn()) self.touch = trigger_catapult_touch; };
+void() trigger_momentum_catapult = { trigger_catapult(); };
+
+// filter_momentum_progress, re-created after the lump (SV_LateStash).
+void() filter_momentum_progress = { SV_LateStash("targetname Negated negated progress_check"); };
 
 /*
 ===========================================================================

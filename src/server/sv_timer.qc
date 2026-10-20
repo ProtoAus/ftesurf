@@ -11638,6 +11638,10 @@ void(entity e, float z) SV_TimerArm =
 
 	e.run_t_state    = TS_ARMED;
 	e.run_t_armzone  = z;
+	// Patch 869: Momentum makes a START or stage zone the progress trigger
+	// (SetCurrentProgressTrigger, which clears onehops).  Every arm route lands here.
+	if (zone_type[z] == ZONE_START || zone_type[z] == ZONE_STAGE)
+		SV_MomProgressReset(e);
 	e.run_t_track    = zone_track[z];
 	e.run_t_startseg = zone_seg[z];
 	e.run_t_seg      = zone_seg[z];

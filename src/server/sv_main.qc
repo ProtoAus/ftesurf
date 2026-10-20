@@ -194,6 +194,10 @@ void() StartFrame =
 	vbsp_shoot_ok = (cvar("run_shoot") && (!lobby_on || cvar("lobby_shoot")));
 	registercvar("lobby_mapedits", "0");
 	vbsp_mapedit_ok = (!lobby_on || cvar("lobby_mapedits"));
+	// Patch 869: Momentum's bhop-control triggers (multihop, onehop, progress,
+	// reversespeed, userinput); 0 makes them inert.
+	registercvar("run_momtriggers", "1");
+	vbsp_momtrig = cvar("run_momtriggers");
 	Pose_Frame();                   // Patch 383: spectator counts and the publish gap
 	Pose_SpecBy();                  // Patch 429: who watches whom, after the counts
 	SV_SpecPublish();               // Patch 382: reads what Lobby_Frame just cached
