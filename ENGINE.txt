@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   016faa83c01c052f5d5978abf40f603bf8adf3f4
+commit   0a884e46490e095e42426da8de2b25f96bc3d527
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,14 @@ commit   016faa83c01c052f5d5978abf40f603bf8adf3f4
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-880
+tag      patch-878
 patch    885
+# Patches 877, 878 (hl2 plugin + client exe): Source water's under-water haze -- the refraction view's
+# height fog toward $fogcolor, then the water's own lerp (boreas save 8 within 8.7/255 of Momentum's shot,
+# old 17.6); Refract props occlude each other -- Source's blend rule, model panes back to front each over a
+# fresh screen copy, opaque ones writing depth (boreas save 9's icicles). Exe 2b3d9817
+# (git-7623-patch-878-0-g0a884e464, carries P880 and P883), hl2 26c81233, server b9949d6f, both installs
+# 2026-10-20 21:09Z (.prev dbf587c8 / ccbb8264). QC unchanged. Client only.
 # Patch 880 (client exe + hl2 plugin): on Source maps the 3D sky takes the sky camera's own vis and area
 # (surf_tendies saves 3/5: 148/151 -> ~1,000 fps, its eye had drawn the whole map from inside solid), and
 # draws only where the eye's leaf has LEAF_FLAGS_SKY (save 5 shows the 2D sky, as Momentum); portal views

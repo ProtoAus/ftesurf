@@ -5,6 +5,36 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Water fog (P877): what is left
+
+- **Eye under water**: the refraction capture is water-fogged over the whole eye distance (the view fog
+  is chosen once per frame, gl_rmain.c ~2796, and the capture copies r_refdef, ~1719); Source draws it
+  with AIR fog (viewrender.cpp:5944), lerps by the surface's distance (water_ps2x_helper.h:182-183),
+  then FinalOutput's squared range fog. Fogstart 0, fogend 1000, surface 200 away, wall 600: Source
+  keeps 0.768 of the wall, we keep 0.32. Fix in the capture's fog state. Not measurable on boreas or
+  surf_aesthetic (their water is a fail zone).
+- **Momentum's near water is bluer** (boreas save 8): no fitted model reproduces it; the submerged rock is
+  dark there, bright here.
+- An `$abovewater 0` face seen from air below floating water gets no haze (Source lerps by distance).
+- The plane depth on the refracted ray is float32-noisy (invs from eyeDepth(gl_FragCoord.z), water.glsl
+  ~185-190): up to ~1-3 units within 1000, ~10-20 at 4000-8000 for 100-200-row offsets -> a 1-2 px
+  shoreline band; 1.0/tf.w would be < 0.1 but needs a live check first.
+- Faces with -0.5 < normal z < 0 seen from inside the water take above-water fog (steep tops' bottom
+  faces via P233, leaning water walls, entity water rotated past 60 degrees); frequency unmeasured.
+- No `$fogcolor`: Source uses [1 0 0] with a warning (water.cpp:85-89); ours keeps 0.2,0.3,0.2.
+- `$blurrefract 1` applies `$refracttint` but has no blur stage.
+
+## Refract order (P878): what is left
+
+- World and brush glass does not occlude by depth, and draws before model panes: a Refract prop behind
+  a world window draws over it.
+- Nested views (portal, 3D sky, a water capture's world panes) sample the last top-level copy (P866).
+- Blended/additive content in front of a screen-copy pane (particles, paint on the glass) is drawn
+  before it, so it is refracted; an additive pane adds it twice. Source draws it after the pane.
+- Vulkan/D3D11 get the plugin's depth write without the GL ordering (the plugin's programs are GL-only).
+- `$masked`, `$noalphamod` and entity fade alpha are ignored by the blend rule; no packed material uses
+  the first two, boreas's 44 Refract props have fade 0.
+
 ## 3D sky (P880): what review left open
 
 - The first sky_camera wins (CSQC's rule); Source takes the SF_SKY_MASTER one, else the last constructed
@@ -95,8 +125,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
 - **Lex's game draws ~2.2x a fresh client** at surf_garden save 3 (6,023 against 2,803 draws, same
   cfg): unexplained. Needs his `r_viewstats` from that save (lextest P868).
-- **Boreas's under-water haze**: Source fogs the world inside its refraction render; ours fogs only
-  in the water shader by depth. Check: boreas save 8 against Momentum's surf_boreas0002.tga.
 - No refraction blur on water. Captures are 0.5x the framebuffer; Source's are 1024^2.
 - P868's under-water exception (3D sky kept in the refraction) is unmeasured in game.
 - P866: glass seen in a reflection or through a portal shows the last main-view copy.

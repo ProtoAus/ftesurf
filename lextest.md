@@ -1,5 +1,28 @@
 # lextest.md — things waiting on a human
 
+## P877 — the blue haze under boreas's water (save 8)
+
+Source fogs what you see through the water toward the water's fog colour by how deep it is, and then
+fogs the surface again; ours did only the second. Now both, measured against your Momentum shot of
+save 8: the water's colour is within 8.7/255 of Momentum's (17.6 before). Still different: Momentum's
+near water is bluer still, and the submerged rock mid-picture is dark there and bright here.
+
+- surf_boreas save 8 and save 2: blue haze under the surface.
+- Any water that now looks too foggy or too blue: say the map and spot.
+
+In both installs 21:09Z (exe 2b3d9817). "Haze ok / <map + spot>". Verdict PENDING.
+
+## P878 — boreas save 9: icicles from behind drawn in front
+
+Source draws glass props that copy the screen back to front, each over a fresh copy, and lets the
+opaque ones hide what is behind them. Ours drew them in submission order without depth, so a far
+icicle could cover a near one. Now as Source for props; world glass draws as before.
+
+- surf_boreas save 9 and the icicle clusters: near icicles cover far ones, nothing cuts across.
+- Glass elsewhere (spectra save 20, gigapede save 9, garden's fountain): as before.
+
+In both installs 21:09Z (exe 2b3d9817). "Icicles ok / <what still sorts wrong>". Verdict PENDING.
+
 ## P880 — surf_tendies: the window's fps drop and the missing sky (saves 2/3/5/6)
 
 The window was ordinary glass; what cost 10x was the 3D sky seen through it. Its eye (a scaled copy of
