@@ -1,5 +1,48 @@
 # lextest.md — things waiting on a human
 
+## P867 + P875 — water that moves (surf_garden save 4, surf_boreas save 8)
+
+Your water was static because the game took a CS:S mapping-pack `dev/water_normal.vtf` from your
+cstrike folder (one frame, 1024x1024, strong ripples) over HL2's (29 frames, gentle), which is
+Momentum's. P875 mounts a Source game's loose files under its packs, as Momentum does; P867 animates
+those frames and scrolls the bump as Source's water shader does, with Source's tint and distortion.
+
+- surf_garden save 4: the canal ripples and moves, finer than before, the walls visible through it.
+- surf_boreas save 8: the water scrolls and is no longer magnified. Known difference: Momentum's
+  has a blue haze under the surface there; ours is clearer.
+- Anything else from your CS:S folder that looks different now: say the map. The census found 15
+  files changing source, all water textures and HL2 scripts nothing reads.
+
+In both installs 09:41Z (exe e1cf5c31, hl2 44d2b48c). "Water ok / <map + what differs>". Verdict PENDING.
+
+## P868 — water reflections cost what Source's do (surf_garden saves at ~120 fps)
+
+Every water capture drew the 3D sky and every prop and player; Source's water reflection draws the
+flat 2D skybox instead and entities only when the material asks for them. P868 does the same. With
+your cfg on the rig, saves 1-4: 13-16% less frame time (save 1 2.95 -> 2.51 ms); save 5 4.4 -> 3.2 ms.
+In reflections the skyline is the 2D sky, and props/players are gone where Source leaves them out.
+
+- Garden saves 1-3 again: fps should be higher. That alone will not reach Source's numbers: at save
+  3 your game draws about twice what a fresh client does (6,023 draw calls against 2,803). Please
+  send `r_budget 3` there plus `r_viewstats`, typed twice a few seconds apart (it reports since the
+  last call: CPU and draws per kind of view), so the extra draws can be placed.
+- The old picture: `r_waterskyroom 1` (3D sky in captures), `r_waterforcereflectentities 1`.
+
+In both installs 09:41Z. "Garden fps <number> / dumps". Verdict PENDING.
+
+## P866 — "Refracting" glass (hl2_refract 1): the garden fountain, the boreas icicles
+
+- surf_garden save 5: the statue seen through rippling falling water, not a frozen smear.
+- surf_boreas save 9: the icicles icy and reflecting, not see-through.
+- surf_spectra save 20 / surf_gigapede save 9: glass as before, slightly cheaper.
+
+In both installs 09:41Z. "Glass ok / <what differs from Momentum>". Verdict PENDING.
+
+## P872 — r_frametime reads the last second
+
+`r_frametime 1`: the first number is now the last second's fps (it should agree with show_fps), then
+the 30 s average, 1% low, 0.1% low. In both installs 09:41Z. "ok / <what reads wrong>".
+
 ## P865 — gravity zones, team and class gates, breakable walls, point_teleport, a test shot
 
 Map entities that did nothing before now work (an entity census of the 1,753 KSF/Momentum maps

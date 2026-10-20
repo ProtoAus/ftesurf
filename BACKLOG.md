@@ -5,6 +5,27 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Water, glass and the finish frame (P866-P868, P875): what is left
+
+- **Lex's game draws ~2.2x a fresh client** at surf_garden save 3 (6,023 against 2,803 draws, same
+  cfg): unexplained. Needs his `r_viewstats` from that save (lextest P868).
+- **Boreas's under-water haze**: Source fogs the world inside its refraction render; ours fogs only
+  in the water shader by depth. Check: boreas save 8 against Momentum's surf_boreas0002.tga.
+- No refraction blur on water. Captures are 0.5x the framebuffer; Source's are 1024^2.
+- P868's under-water exception (3D sky kept in the refraction) is unmeasured in game.
+- P866: glass seen in a reflection or through a portal shows the last main-view copy.
+- P867: if another material's frame array is still bound on unit 3 when the water's frames failed,
+  the frame check passes and shows those frames (wrong picture, not a mirror).
+- P875: Momentum's full mount order (hl2_dir.vpk above cstrike's VPK and HL2) changes 22,969
+  winners incl. 182 .phy: needs a design and a physents plan.
+- **The finish frame is 23.5 ms** (logging off, garden): ~6.5 ms evidence IO over two frames
+  (SV_RecClose, RecRcpt, Rec_ViewEnd, Rec_StagedClear: a recorder change, needs design + review);
+  RG_PBFind 2.2 ms (search_begin over every mount incl. VPKs; the gamedir alone would do); Results_Rank
+  1.1 ms; ~10 ms not in QC (probably the finish card's first draw), unmeasured. A stage teleport's
+  spike was never measured on its own. Arm: `r_budget 3` with a short window across a finish.
+- surf_boreas's prop `models/project_tendies//icicles/icicle_01.mdl` prints "empty directory name"
+  (the map's own path; fs.c skips the empty segment and loads it). Cosmetic, on old and new exes.
+
 ## Map entities (P865): what is left
 
 - A breakable broken mid-run changes the physents, and pm_verify does not run map I/O, so a run that
