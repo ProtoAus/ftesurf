@@ -11638,16 +11638,6 @@ void(entity e, float z) SV_TimerArm =
 
 	e.run_t_state    = TS_ARMED;
 	e.run_t_armzone  = z;
-	// Patch 865 review: a START resets gravity, as Momentum's start zone does
-	// (mom_player.cpp:1015 ResetMovementProperties) -- a trigger_gravity or an
-	// AddOutput gravity with no reset would otherwise carry into the run.
-	if (zone_type[z] == ZONE_START)
-	{
-		if (e.gravity)
-			dprint(sprintf("gravity: %s reset at the start (was %g)\n", e.netname, e.gravity));
-		e.gravity = 0;
-		e.vbsp_grav_trig = world;
-	}
 	e.run_t_track    = zone_track[z];
 	e.run_t_startseg = zone_seg[z];
 	e.run_t_seg      = zone_seg[z];
@@ -13161,6 +13151,18 @@ float(entity e, float z) SV_TimerBackInBox =
 void(entity e, float z) SV_TimerTryArm =
 {
 	local float stop, stops, was, back, wasstage, fast;
+
+	// Patch 865 review: entering a START resets gravity, as Momentum's zone entry does
+	// (mom_player.cpp:1015 ResetMovementProperties); a trigger_gravity or AddOutput
+	// gravity would otherwise carry into the run.  On entry, not at the arm: a bhop
+	// START arms at the jump, after the map may have set gravity inside it.
+	if (zone_type[z] == ZONE_START)
+	{
+		if (e.gravity)
+			dprint(sprintf("gravity: %s reset at the start (was %g)\n", e.netname, e.gravity));
+		e.gravity = 0;
+		e.vbsp_grav_trig = world;
+	}
 
 	/*
 	  On bhop, merely entering a START is not a new attempt while a clock is live

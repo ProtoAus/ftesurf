@@ -534,6 +534,17 @@ float(entity e, float r) SL_RowGrounded =
 */
 // .rec_sl_hold is declared in sv_timer.qc, whose SV_TimerFrame reads it.
 .float rec_wt_hold;              // the replay pin (see WATCHING below); here for SV_SaveLocHold
+
+// Patch 865 (prototype in sv_entities.qc): a body the map must not move -- a spectate
+// hold, the replay pin, the save-lock park, a resume countdown.  The warp would land in
+// the frozen window (pm_verify HOLDs) and the release or the park's drift check undo it.
+float(entity p) SV_MapMoveHeld =
+{
+	if (!(p.run_pmhold || p.rec_wt_hold || p.rec_sl_hold || p.run_ms_phase))
+		return FALSE;
+	dprint(sprintf("map move: %s is held, skipped\n", p.netname));
+	return TRUE;
+};
 .float rec_wt_pin;               // Patch 477: STAT_FS_PIN -- the rewind's open serial while its pin is held, -serial once refused or let go, else 0
 .float rec_sl_holdrow;
 .float rec_sl_holdmove;          // the movetype to give back on release

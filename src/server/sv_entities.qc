@@ -1923,15 +1923,8 @@ string(string s) SV_IOTrim =
 
 // Patch 865: an origin a map imposes on a player outside a touch (AddOutput origin,
 // point_teleport).  The caller writes the `tele` warp after any velocity change.
-// A held body (spectate, run_pmhold) is not moved by the map: the warp would land
-// inside the held window (pm_verify HOLDs) and SV_SpecRelease would undo the move.
-float(entity p) SV_MapMoveHeld =
-{
-	if (!p.run_pmhold)
-		return FALSE;
-	dprint(sprintf("map move: %s is held, skipped\n", p.netname));
-	return TRUE;
-};
+// A held body is not moved by the map; defined in sv_saveloc.qc, after the hold fields.
+float(entity p) SV_MapMoveHeld;
 
 void(entity p, vector org) SV_PlacePlayer =
 {
@@ -9056,9 +9049,9 @@ void(entity t, entity att, float dmg) SV_EntityDamage =
 	}
 	if (t.vbsp_brk == 2)
 	{
+		SV_FireOutput(t, "OnDamaged", att);		// CPhysBox's, even when refused (physobj.cpp:806)
 		if (dmg < t.minhealthdmg)
 			return;
-		SV_FireOutput(t, "OnDamaged", att);		// CPhysBox's; inert on CBreakable
 		t.health = t.health - dmg;
 		dprint(sprintf("damage: %s %s health %g\n", t.classname, t.model, t.health));
 		SV_FireOutput(t, "OnHealthChanged", att);
