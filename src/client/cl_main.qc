@@ -320,6 +320,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	Friends_Register();
 	PlayerLabels_Register();
 	Trn_RegisterCvars();            // Patch 462: the strafe trainer
+	HC_Register();                  // Patch 871: hud_fps
 	// The online board's two console handles.  No cvars of its own: the
 	// directory URL is lobby_dir, which the menu progs already own and archive.
 	Online_RegisterCommands();
@@ -1746,35 +1747,42 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 
 		HUD_Draw(scr);
 		MPad_Draw(scr);                 // Patch 390: after HUD_Draw's clock; both of its paths
-		NM_Draw(scr);
-		// Patch 462.  AFTER HUD_Draw, which is where ui_cv_scale is read and
-		// where the layout registry is emptied, and well before HUD_EditDraw,
-		// which consumes the rect this publishes.  It claims no cursor and
-		// draws with drawfill/HUD_Text only, so it has no ordering relationship
-		// with any of the panels below.
-		if (!ui_rw_on) Trn_Draw(scr);
+		// Patch 871: hud_fps. These three only draw, so they may be drawn into a target a few
+		// hundred times a second and pasted between (cl_hudcache.qc); the key strip is layer 1.
+		HC_Frame();
+		if (HC_Begin(0))
+		{
+			NM_Draw(scr);
+			// Patch 462.  AFTER HUD_Draw, which is where ui_cv_scale is read and
+			// where the layout registry is emptied, and well before HUD_EditDraw,
+			// which consumes the rect this publishes.  It claims no cursor and
+			// draws with drawfill/HUD_Text only, so it has no ordering relationship
+			// with any of the panels below.
+			if (!ui_rw_on) Trn_Draw(scr);
 
-		/*
-		  BUILD 65 -- the Boarding window.
+			/*
+			  BUILD 65 -- the Boarding window.
 
-		  CALLED FROM HERE RATHER THAN FROM HUD_Draw, and it is a compile-order
-		  fact rather than a choice: cl_boarding.qc has to come after cl_hud.qc to
-		  use HUD_Text/HUD_Size/HUD_Rect, so HUD_Draw cannot name Boarding_Draw
-		  without a forward declaration that would exist only to reverse the
-		  dependency it already has.
+			  CALLED FROM HERE RATHER THAN FROM HUD_Draw, and it is a compile-order
+			  fact rather than a choice: cl_boarding.qc has to come after cl_hud.qc to
+			  use HUD_Text/HUD_Size/HUD_Rect, so HUD_Draw cannot name Boarding_Draw
+			  without a forward declaration that would exist only to reverse the
+			  dependency it already has.
 
-		  AFTER HUD_Draw and not before, because ui_board_bottom is what the Board
-		  panel published THIS frame and this window stacks under it by default --
-		  the same one-way handshake ui_strafe_bottom performs one link up the
-		  chain.  Reading it before would lay this block out against last frame's
-		  Board panel, which is the exact fidget build 31 removed from that panel's
-		  own relationship with the strafe bar.
-		*/
-		Boarding_ReadCvars();
-		// No live ramp grade on an inspection cursor; a watched body has one once
-		// its samples feed the segment machine (Patch 744).
-		if ((!spc_hud || spc_hfed) && !ui_rw_on)
-			Boarding_Draw(scr, ui_board_bottom);
+			  AFTER HUD_Draw and not before, because ui_board_bottom is what the Board
+			  panel published THIS frame and this window stacks under it by default --
+			  the same one-way handshake ui_strafe_bottom performs one link up the
+			  chain.  Reading it before would lay this block out against last frame's
+			  Board panel, which is the exact fidget build 31 removed from that panel's
+			  own relationship with the strafe bar.
+			*/
+			Boarding_ReadCvars();
+			// No live ramp grade on an inspection cursor; a watched body has one once
+			// its samples feed the segment machine (Patch 744).
+			if ((!spc_hud || spc_hfed) && !ui_rw_on)
+				Boarding_Draw(scr, ui_board_bottom);
+		}
+		HC_End(0);
 
 		/*
 		  PATCH 340: the chatbox.  Here rather than at the top of the panel
@@ -1880,10 +1888,14 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Gfx_Draw(scr);
 		Vote_Draw(scr);                 // Patch 372: over saveloc, gfx and the chatbox
 		Share_Draw(scr);                // Patch 777
-		KC_HintDraw(scr);               // Patch 762: the bottom-left key strip
-		// Reads two cvars the hl2 plugin writes at map load, and self-limits to
-		// the first twenty seconds of a map -- see the essay above it.
-		Gfx_DrawMissing(scr);
+		if (HC_Begin(1))                // Patch 871: hud_fps's second layer
+		{
+			KC_HintDraw(scr);           // Patch 762: the bottom-left key strip
+			// Reads two cvars the hl2 plugin writes at map load, and self-limits to
+			// the first twenty seconds of a map -- see the essay above it.
+			Gfx_DrawMissing(scr);
+		}
+		HC_End(1);
 
 		// The replay's own chrome, LAST, so the scrub bar and the close button
 		// sit over the panels rather than under them.
@@ -2287,6 +2299,8 @@ float(string cmd) CSQC_ConsoleCommand =
 	// +showscores arrives here as a plain console command -- the engine offers
 	// TAB's bind to CSQC before it turns its own scoreboard on (sbar.c:788).
 	if (LineGraph_Command(cmd))
+		return TRUE;
+	if (HC_Command(cmd))
 		return TRUE;
 	if (Trn_Command(cmd))
 		return TRUE;

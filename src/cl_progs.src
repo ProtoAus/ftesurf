@@ -269,6 +269,8 @@ client/cl_linegraph.qc
 // and the pmove_* globals; cl_main.qc calls MilkSky_Init/_WorldLoaded/_Frame,
 // so it only has to precede that file.  Placed after cl_entview.qc so that
 // file stays "last before cl_main" in every sense its comment relies on.
+// Patch 871: the HUD layers' cache; before cl_milk.qc (its restart hook) and cl_main.qc.
+client/cl_hudcache.qc
 client/cl_milk.qc
 // Patch 753: before cl_main.qc, which calls it
 client/cl_warpop.qc
