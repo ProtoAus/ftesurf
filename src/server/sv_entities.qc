@@ -2026,20 +2026,27 @@ void() point_teleport = { SV_LateStash("targetname target spawnflags origin angl
 // replays on an unbroken copy (physents HOLD on later runs).
 float  vbsp_mapedit_ok;
 
-void(entity t, entity act) SV_BreakableBreak =
+// `then`, if set, is an output fired after OnBreak and before the removal (a physbox's
+// OnDamaged).  FALSE when the break was held (or there was none to do).
+float(entity t, entity act, string then) SV_BreakableBreakThen =
 {
 	if (!t.vbsp_brk)
-		return;
+		return FALSE;
 	if (!vbsp_mapedit_ok)
 	{
 		dprint(sprintf("break: %s %s held on a lobby (lobby_mapedits 0)\n", t.classname, t.model));
-		return;
+		return FALSE;
 	}
 	t.vbsp_brk = 0;
 	dprint(sprintf("break: %s %s\n", t.classname, t.model));
 	SV_FireOutput(t, "OnBreak", act);
-	remove(t);
+	if (then != "" && !wasfreed(t))
+		SV_FireOutput(t, then, act);
+	if (!wasfreed(t))
+		remove(t);
+	return TRUE;
 };
+void(entity t, entity act) SV_BreakableBreak = { SV_BreakableBreakThen(t, act, ""); };
 
 void(entity t, string param) SV_IOAddOutput =
 {
@@ -9898,16 +9905,19 @@ void(entity t, entity att, float dmg) SV_EntityDamage =
 	if (t.vbsp_brk == 2)
 	{
 		// CPhysBox::OnTakeDamage (physobj.cpp:806-811): the damage first (refused under
-		// minhealthdmg), then OnDamaged either way; the break last, as remove() is at once.
+		// minhealthdmg) and its break with OnBreak (func_break.cpp Die), then OnDamaged
+		// either way; the removal comes after both.
 		if (dmg >= t.minhealthdmg)
 		{
 			t.health = t.health - dmg;
 			dprint(sprintf("damage: %s %s health %g\n", t.classname, t.model, t.health));
 			SV_FireOutput(t, "OnHealthChanged", att);
 		}
+		if (wasfreed(t))
+			return;
+		if (t.health <= 0 && SV_BreakableBreakThen(t, att, "OnDamaged"))
+			return;
 		SV_FireOutput(t, "OnDamaged", att);
-		if (t.health <= 0)
-			SV_BreakableBreak(t, att);
 	}
 };
 
