@@ -2,6 +2,9 @@
 
 ## P885 — a hop after you leave the start zone does not make the run practice
 
+Live with P884 in both installs and on all 12 lobbies since 17:56Z 20 Oct UTC (04:56 21 Oct your
+time; qwprogs 89550455); lobby smoke passed (served csprogs 25e272c3, board drew).
+
 surf_tendies: one jump out of the start zone, land on the booster and hop off it -- the run keeps
 going as a real run (no "hopped start" / "practice run" lines). A bunny hop chain INSIDE the start
 zone still says "hopped start" and makes the run practice, as before -- and so does an attempt that
