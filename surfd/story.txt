@@ -21,9 +21,14 @@
 //   finish             finish it                 time m:ss[.mmm]  strictly under
 //   reach N            stage N-1 finished in any run
 //   stage N m:ss       stage N's own time under m:ss
-//   nofail             one run with no stage reset ("first try every stage")
+//   nofail             one run with no stage reset ("first try every stage"):
+//                      a fall that sends you back to the stage's start, or !r;
+//                      a fall to a checkpoint, or on a linear map, is not one
 //   wonly              one run that never pressed back, left or right
 //   nojump             one run that never jumped
+//   sw                 one run on W and S only (KSF's sideways)
+//   hsw                one run that never moved on one key's axis alone: every
+//                      strafe with W or S held (KSF's half-sideways)
 //   speed N            one run that reached N u/s across the ground
 //   via <spot>         one run that passed the spot
 //   first              the first player to finish (inside the dates, if any)
@@ -433,24 +438,24 @@ level surf_spooky
   gold   rank 3         "Top 3 this Halloween"
 level surf_road_to_hell
   bronze finish
-  silver nofail         "No falls"
+  silver nofail         "No stage resets"
   gold   rank 3         "Top 3 this Halloween"
 level surf_not_so_sinister
   bronze finish
-  silver nofail         "No falls"
+  silver nofail         "No stage resets"
   gold   wonly          "W only, if you dare"
 level surf_beginner_hell
   bronze finish
-  silver nofail         "No falls"
+  silver nofail         "No stage resets"
   gold   improve 10%    "Beat your best by 10%"
 chapter "Haunted" unlock 6
 level surf_666
   bronze finish
-  silver nofail         "No falls"
+  silver nofail         "No stage resets"
   gold   first          "First to beat it this Halloween"
 level surf_hades
   bronze finish
-  silver nofail         "No falls"
+  silver nofail         "No stage resets"
   gold   rank 3         "Top 3 this Halloween"
 level surf_blackheart
   bronze finish
@@ -458,12 +463,12 @@ level surf_blackheart
 chapter "Nightmare" unlock 14
 level surf_devil
   bronze finish
-  gold   nofail         "No falls"
+  gold   nofail         "No stage resets"
 level surf_hades2
   bronze finish
-  gold   nofail         "No falls"
+  gold   nofail         "No stage resets"
 level surf_sinister2
   bronze finish
-  gold   nofail         "No falls"
+  gold   nofail         "No stage resets"
 level surf_doomsday
   gold   finish         "Survive Doomsday"

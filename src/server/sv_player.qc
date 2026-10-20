@@ -90,6 +90,10 @@ void() PutClientInServer =
 	local entity spot;
 
 	self.run_statowner = num_for_edict(self);
+	// Patch 856: a medal told on the last map is not news on this one.  The
+	// client's copy of the key arrives some frames after it draws (cl_story.qc).
+	if (infokey(self, "*story") != "")
+		forceinfokey(self, "*story", "");
 
 	// Patch 382: `kill` while spectating -- before SV_TimerSpawn idles the recorder.
 	SV_SpecRelease(self, "respawn");

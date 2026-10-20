@@ -5,6 +5,25 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Story mode phase 2 (P856): what review left open
+
+- **A medal can go untold**: a finish's answer is matched to the player's newest post only
+  (Lobby_RunReply), so a second finish posted before the first answer lands (short bhop runs), or
+  a map change in between, drops the first answer's `story`; surfd has already counted it told.
+  The menu shows the medal. Also untold by design: the first finish after a surfd restart or a
+  story.txt push (story_before never works the ladder out inside a run's answer), `rank`, `via`.
+- **`nofail` counts stage resets only**: a fall back into the current stage's start box, or a
+  stage `!r`. A fall onto a checkpoint, into the previous stage's box, or anywhere on a linear map
+  is not one; the header says so. A run-scoped fall count needs the teleports (`warp` records).
+- **story_runs only grows**: _STORY_SUM_SQL sums it per owner in SQLite (measured before this:
+  ~9 us a row in Python, the reason it moved to SQL); past ~500k rows add a summary table kept on
+  insert. Logging stops at STORY_RUNS_MAX (2M) with a warning. Lobbies post from trusted sources
+  only, so a key holder elsewhere logs nothing.
+- **Spot reads are best effort**: the queue (256) lives in the worker process, so a recycle or
+  restart loses unread runs, and a recording past STORY_SPOT_LINES is read that far.
+- **Two finishes of one player in the same moment** could both be told one medal (the told list
+  is read with the standing before either is logged). Lobbies post once per finish.
+
 ## Story mode (P854): what review left open
 
 - **A transferred community time ties an install's guid to its account.** `?story=player` of a
@@ -21,8 +40,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - **A chapter can close again**: bars are worked out from the file each time, so raising a bar or
   tightening a time takes a chapter (and medals) away. The design page offered a ratchet (a chapter
   stays open once opened); not built, it needs per-player state.
-- **Players tab, rank chips**: a reply for the previous chip shows until the next lands
-  (Sty_ParsePlayers does not check sty_plist). Cosmetic.
 - **`milk_bootcheck 5` now aims at entries 2 and 3** (VISUALS and MUSIC moved down one for STORY);
   not run since.
 

@@ -12879,6 +12879,7 @@ void(entity e) SV_TimerStart =
 	e.run_t_state = TS_RUNNING;
 	e.run_t_ticks = 0;
 	e.lobby_sty_fails = e.lobby_sty_mask = e.lobby_sty_top = 0;     // Patch 856
+	e.lobby_sty_ok = TRUE;
 
 	/*
 	  BUILD 74/76: THE CLOCK STARTS, AND IT IS ONE READING TAKEN TWO WAYS.
@@ -13525,6 +13526,8 @@ void(entity e) SV_MoveBoundFrame =
 
 // Patch 856: the Story ladder's per-run facts, from what the mover is handed
 // (W-only and no-jump read the moves, not a key report) and the speed it carries.
+// STY_HSWBAD: a move on one axis only, which KSF's half-sideways style refuses.
+#define STY_HSWBAD 1024
 void(entity e) SV_StoryFrame =
 {
 	local float m, v;
@@ -13540,6 +13543,12 @@ void(entity e) SV_StoryFrame =
 	if (e.movement_y > 0) m = m | FSI_RIGHT;
 	if (e.button2) m = m | FSI_JUMP;
 	if (e.button4) m = m | FSI_DUCK;
+	if (e.movement_x != 0)
+	{
+		if (e.movement_y == 0) m = m | STY_HSWBAD;
+	}
+	else if (e.movement_y != 0)
+		m = m | STY_HSWBAD;
 	e.lobby_sty_mask = m;
 	v = vlen([e.velocity_x, e.velocity_y, 0]);
 	if (v > e.lobby_sty_top)
@@ -15545,8 +15554,9 @@ void(entity e) SV_TimerReport =
 	       sprintf("        stage class: stitch %g cheat %g\n",
 	               e.run_st_stitch ? 1 : 0, e.run_st_cheat ? 1 : 0));
 	// Patch 856: what Lobby_SubmitRun will tell the Story ladder of this run.
-	sprint(e, PRINT_HIGH, sprintf("        story: fails %g mask %g top %g\n",
-	                              e.lobby_sty_fails, e.lobby_sty_mask, e.lobby_sty_top));
+	sprint(e, PRINT_HIGH, sprintf("        story: fails %g mask %g top %g sent %g\n",
+	                              e.lobby_sty_fails, e.lobby_sty_mask, e.lobby_sty_top,
+	                              e.lobby_sty_ok ? 1 : 0));
 	/*
 	  BUILD 48 VERIFICATION: the close report and the PB latch, which nothing in
 	  this function printed.  These five are what stats 85..89 carry; the client

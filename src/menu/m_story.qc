@@ -35,7 +35,7 @@ float sty_t[STY_LISTS], sty_open[STY_LISTS], sty_sel[STY_LISTS];
 string sty_lid[STY_LISTS], sty_ltitle[STY_LISTS];
 vector sty_scr0, sty_scr1, sty_scr2, sty_scr3;
 float sty_lrecv;                    // `time` when the ladder arrived: dated levels count from it
-float sty_pl, sty_npl, sty_pltotal;
+float sty_pl, sty_npl, sty_pltotal, sty_plfor;
 // One request each: the list, one player's progress, the ranking, the proof.
 float sty_lreq, sty_lst, sty_lat;
 float sty_preq, sty_pst, sty_pat;
@@ -281,6 +281,7 @@ void(string body) Sty_ParseList =
 	}
 	sty_n = n;
 	sty_lrecv = time;
+	if (sty_plist >= n) sty_plist = 0;
 	if (sty_tab < STY_LISTS && sty_tab >= n) sty_tab = 0;
 	sty_idxcount = -1;
 	json_free(root);
@@ -358,6 +359,7 @@ void(string body) Sty_ParsePlayers =
 			"\"", uri_escape(substring(json_get_string(json_find_object_child(o, "name")), 0, 64)), "\""));
 	}
 	sty_npl = n;
+	sty_plfor = sty_kfor;
 	sty_pltotal = json_get_float(json_find_object_child(root, "total"));
 	json_free(root);
 	sty_kst = STY_OK;
@@ -894,7 +896,8 @@ void(vector pos, vector size) Sty_Players =
 	local vector rp, rs;
 
 	sui_style_box(pos, size, 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
-	if (sty_npl == 0)
+	// Another chip's ranking is not shown under this one while it loads (P856).
+	if (sty_npl == 0 || sty_plfor != sty_plist)
 	{
 		sui_text(pos + '12 12 0', SZ_ROW, sty_kst == STY_ASK ? "Loading players..." :
 		         sty_kst == STY_FAIL ? "The board did not answer. Try again shortly." :

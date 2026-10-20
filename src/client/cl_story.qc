@@ -1,7 +1,8 @@
 // Patch 856: the Story medal toast.  Lobby_StoryTell (sv_lobby.qc) writes `*story`
 // on the finisher: "<serial> <b|s|g> <trophies>|<map>|<challenge> -- <list> <n>|<chapter>".
 // A new value shows for 7 s, top centre.  The first value a csprogs reads is not
-// news: the key outlives a map change, the csprogs does not.
+// news, and the server empties the key at every spawn: a medal of the last map
+// arriving late on this one is "" by then.
 
 float sty_tinit, sty_tstart, sty_tend, sty_tm, sty_ttot;
 string sty_tkey, sty_tmap, sty_ttext, sty_tch;
@@ -14,7 +15,7 @@ void() StoryToast_Poll =
 	if (sty_tinit && !strcmp(v, sty_tkey))
 		return;
 	if (sty_tkey != "") strunzone(sty_tkey);
-	sty_tkey = strzone(v);
+	sty_tkey = (v == "") ? "" : strzone(v);
 	if (!sty_tinit)
 	{
 		sty_tinit = TRUE;

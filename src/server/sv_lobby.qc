@@ -180,7 +180,10 @@
 .float   lobby_sty_fails;
 .float   lobby_sty_mask;
 .float   lobby_sty_top;
-.float   lobby_sty_serial;      // the *story toasts sent this connection
+.float   lobby_sty_serial;      // the *story toasts sent on this map
+// Set by SV_TimerStart: a run carried onto a fresh edict (`retry` is a map
+// restart) reads 0, and its facts are not sent -- they start at the restore.
+.float   lobby_sty_ok;
 // A stage posted from a main run (Patch 360) waits on its OWN id and answers into
 // `*srank`, so the final stage and the finish, posted in one frame, both land.
 .float   lobby_sq_id;
@@ -2575,7 +2578,7 @@ void(entity e, float rank, float of, float prevms) Lobby_SayBoardPB =
   m, t, tot, ch}] (story_finish).  Each goes to the finisher's chat, a gold to the
   lobby, and the best of them into `*story` for the HUD's toast (cl_story.qc):
   "<serial> <b|s|g> <trophies>|<map>|<challenge> -- <list> <n>|<chapter opened>".
-  surfd strips \ " | ; from the free text.
+  surfd strips \ " | ; from the free text; | is taken out here too.
 */
 void(entity e, int root) Lobby_StoryTell =
 {
@@ -2602,11 +2605,12 @@ void(entity e, int root) Lobby_StoryTell =
 		word = "^xc85bronze";
 		if (m == 2) word = "^xccesilver";
 		if (m == 3) word = "^xfc3gold";
-		mp = strcat(substring(json_get_string(json_find_object_child(o, "map")), 0, 48));
-		t  = strcat(substring(json_get_string(json_find_object_child(o, "t")), 0, 64));
-		ln = strcat(substring(json_get_string(json_find_object_child(o, "l")), 0, 32), " ",
-		            ftos(json_get_float(json_find_object_child(o, "n"))));
-		ch = strcat(substring(json_get_string(json_find_object_child(o, "ch")), 0, 48));
+		// | splits the toast's fields: never trusted to have been stripped.
+		mp = strreplace("|", "/", substring(json_get_string(json_find_object_child(o, "map")), 0, 48));
+		t  = strreplace("|", "/", substring(json_get_string(json_find_object_child(o, "t")), 0, 64));
+		ln = strcat(strreplace("|", "/", substring(json_get_string(json_find_object_child(o, "l")),
+		            0, 32)), " ", ftos(json_get_float(json_find_object_child(o, "n"))));
+		ch = strreplace("|", "/", substring(json_get_string(json_find_object_child(o, "ch")), 0, 48));
 		sprint(e, PRINT_CHAT, sprintf("^5story:^7 %s^7 on %s -- %s (%s, %g trophies)\n", word,
 		       mp, t, ln, json_get_float(json_find_object_child(o, "tot"))));
 		if (ch != "")
@@ -3150,6 +3154,7 @@ void(entity e, float track, float leg, float ticks, float flags,
 	// was counted by a session that is gone.
 	if (leg == 0)
 	if (!(flags & TF_MULTISESSION))
+	if (e.lobby_sty_ok)
 		body = sprintf("%s&sfails=%d&smask=%d&stop=%d", body, e.lobby_sty_fails,
 		               e.lobby_sty_mask, e.lobby_sty_top);
 	url = cvar_string("lobby_master");

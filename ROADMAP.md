@@ -2,17 +2,17 @@
 
 ## Requested: Story and Event mode, the parts not built yet (Lex, 20 Oct 2026)
 
-Patch 854 built the ladder: STORY on the main menu, medals from WOS rows (finish, time, reach,
-bonuses), chapters that open on trophies, a Players tab, the list in `surfd/story.txt`. Lex's
-calls: a level is worth its best medal; unlinked players earn and keep it on linking; saves never
-count unless a challenge says so; events are a separate ladder; "not serious cheat detection" for
-the recording challenges. Still to build, in Lex's order of interest:
-- `nofail` ("first try every stage") and `wonly`: read the recording when the run arrives
-  (`restart` records; the sample `keys` mask). `via <spot>`: a spot drawn with the zone editor.
-- A medal toast in game the moment one lands, and a lobby chat line for golds.
-- Event ideas for Lex to pick from are on the design page (claude.ai artifact "WOS Story Mode"):
-  dated weekly/daily events, single-stage times, first finisher, PB improvement, top-N, KSF styles
-  (sw/hsw/bw), speed traps, scheduled race nights, mutator lobbies.
+Patch 854 built the ladder (STORY on the main menu, medals from WOS rows, chapters on trophies,
+a Players tab, the list in `surfd/story.txt`); Patch 856 the one-run challenges (nofail, wonly,
+nojump, sw, hsw, speed, via spots), stage/first/rank/improve, `dates`, the medal toast and chat
+line, and a third list (a Halloween event). Lex's calls: a level is worth its best medal;
+unlinked players earn and keep it on linking; saves never count unless a challenge says so;
+events are a separate ladder; "not serious cheat detection". Still to build, from the event
+ideas on the design page (claude.ai artifact "WOS Story Mode"), waiting on Lex's pick:
+- KSF's backwards style (`bw`): a per-move view-against-velocity test in SV_StoryFrame.
+- Lobby features: a scheduled race night (everyone starts together, top three medal), a
+  mutator weekend (one lobby's gravity or speed cap, its own board), a bingo card screen.
+- A chapter that stays open once opened (per-player state; see BACKLOG "A chapter can close").
 
 ## Requested: Steam-authorized zone publication to the NanoPi (2026-10-12)
 
