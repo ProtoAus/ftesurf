@@ -6067,7 +6067,9 @@ void() trigger_teleport_touch =
 	*/
 	SV_TriggerIOTouch(self, other);
 
-	dest = find(world, targetname, self.target);
+	dest = world;
+	if (self.target != "")          // Patch 881: find("") returns client slot 0, not world
+		dest = find(world, targetname, self.target);
 	if (!dest)
 	{
 		dprint(sprintf("trigger_teleport: no destination '%s'\n", self.target));

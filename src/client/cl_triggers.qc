@@ -972,7 +972,9 @@ vector(vector a, vector b) TG_VMax =
   ONE trigger's submodel -- a zero-length clip, which is exactly the server's
   test: player touches are dispatched by World_LinkEdict's World_TouchAllLinks
   AFTER the move (sv_user.c:8350), as World_ClipMoveToEntity(..., origin,
-  mins, maxs, origin, ...) with MASK_WORLDSOLID (world.c:2046-2048).  The
+  mins, maxs, origin, ...) with every contents bit on a Source map (world.c,
+  Patch 881; it was MASK_WORLDSOLID, which missed GRATE-only brushes) -- hence
+  TG_Probe as the pass entity, whose hitcontentsmaski the trace takes.  The
   first cut swept [org0..org1] instead and measured the cost: a graze of a
   trigger edge that the server's endpoint test never saw fired the client
   alone, and one 203-unit prederr followed -- the snap-back this patch exists
@@ -982,11 +984,23 @@ vector(vector a, vector b) TG_VMax =
   the QC global, pr_csqc.c), and the flags reach World_ClipMoveToEntity
   through PF_cs_tracebox's `nomonsters|MOVE_IGNOREHULL` parameter.
 */
+// Patch 881: the pass entity for trigger probes; a trace takes its mask (world.c World_Move).
+entity tg_probe;
+entity() TG_Probe =
+{
+	if (!tg_probe)
+	{
+		tg_probe = spawn();
+		tg_probe.hitcontentsmaski = -1i;
+	}
+	return tg_probe;
+};
+
 float(entity trig, vector o0, vector o1) TG_Overlaps =
 {
 	other = trig;
 	tracebox(o1, predmove_mins, predmove_maxs, o1,
-	         MOVE_TRIGGERS | MOVE_OTHERONLY, world);
+	         MOVE_TRIGGERS | MOVE_OTHERONLY, TG_Probe());
 	return trace_startsolid || trace_allsolid || trace_fraction < 1;
 };
 
@@ -1263,7 +1277,7 @@ void(float seq) TG_ChainStart =
 			other = tg_ent[i];
 			tracebox(predmove_org0, predmove_mins, predmove_maxs,
 			         predmove_org0,
-			         MOVE_TRIGGERS | MOVE_OTHERONLY, world);
+			         MOVE_TRIGGERS | MOVE_OTHERONLY, TG_Probe());
 			probe = trace_startsolid || trace_allsolid || trace_fraction < 1;
 			if (tg_cv_debug >= 2)
 				print(sprintf("trig: seed #%g seq %g probe %g eff %g lastin %g in %g\n",
@@ -1289,7 +1303,7 @@ void(float seq) TG_ChainStart =
 			continue;
 		other = tg_ent[i];
 		tracebox(predmove_org0, predmove_mins, predmove_maxs, predmove_org0,
-		         MOVE_TRIGGERS | MOVE_OTHERONLY, world);
+		         MOVE_TRIGGERS | MOVE_OTHERONLY, TG_Probe());
 		if (trace_startsolid || trace_allsolid)
 			tg_ssinseq[i] = seq - 1;     // inside at the ack: edge is history
 		else
@@ -1878,7 +1892,7 @@ float(string cmd) Trig_ConsoleCommand =
 			if (o_z + tg_pmaxs_z < b0_z || o_z + tg_pmins_z > b1_z)
 				continue;
 			other = tg_ent[i];
-			tracebox(o, tg_pmins, tg_pmaxs, o, MOVE_TRIGGERS | MOVE_OTHERONLY, world);
+			tracebox(o, tg_pmins, tg_pmaxs, o, MOVE_TRIGGERS | MOVE_OTHERONLY, TG_Probe());
 			hit = trace_startsolid || trace_allsolid;
 			print(sprintf("trig: #%g kind %g %s target '%s' flags %g%s\n",
 			              i, tg_kind[i], hit ? "INSIDE" : "box only",
@@ -1960,7 +1974,7 @@ float(string cmd) Trig_ConsoleCommand =
 		print(sprintf("trig: probe box %v..%v org %v\n", b0, b1,
 		              tg_ent[i].origin));
 		other = tg_ent[i];
-		tracebox(o, tg_pmins, tg_pmaxs, o, MOVE_TRIGGERS | MOVE_OTHERONLY, world);
+		tracebox(o, tg_pmins, tg_pmaxs, o, MOVE_TRIGGERS | MOVE_OTHERONLY, TG_Probe());
 		print(sprintf("trig: probe at %v -> startsolid %g allsolid %g frac %g endpos %v\n",
 		              o, trace_startsolid, trace_allsolid, trace_fraction,
 		              trace_endpos));
@@ -1987,7 +2001,7 @@ float(string cmd) Trig_ConsoleCommand =
 			    o_z < b0_z || o_z > b1_z)
 				continue;
 			other = tg_ent[i];
-			tracebox(o, tg_pmins, tg_pmaxs, o, MOVE_TRIGGERS | MOVE_OTHERONLY, world);
+			tracebox(o, tg_pmins, tg_pmaxs, o, MOVE_TRIGGERS | MOVE_OTHERONLY, TG_Probe());
 			hit = trace_startsolid || trace_allsolid;
 			print(sprintf("trig: at #%g kind %g model '%s' target '%s' box %v..%v -> %s\n",
 			              i, tg_kind[i], tg_ent[i].model,

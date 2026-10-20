@@ -702,6 +702,8 @@ void() Snds_LoadEntities =
 };
 
 // The triggerable row of a trigger entered since the last call, -1 none.
+entity() TG_Probe;     // cl_triggers.qc, Patch 881: the trigger probes' pass entity
+
 float() Snds_TrigEntered =
 {
 	local entity e;
@@ -711,7 +713,7 @@ float() Snds_TrigEntered =
 	for (e = find(world, classname, "ss_trig"); e; e = find(e, classname, "ss_trig"))
 	{
 		other = e;
-		tracebox(pmove_org, '-16 -16 0', '16 16 62', pmove_org, MOVE_TRIGGERS | MOVE_OTHERONLY, world);
+		tracebox(pmove_org, '-16 -16 0', '16 16 62', pmove_org, MOVE_TRIGGERS | MOVE_OTHERONLY, TG_Probe());
 		inside = (trace_startsolid || trace_allsolid || trace_fraction < 1);
 		if (inside && !e.ssc_in)
 			best = e.ssc_ix;
