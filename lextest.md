@@ -4,7 +4,8 @@
 
 surf_tendies: one jump out of the start zone, land on the booster and hop off it -- the run keeps
 going as a real run (no "hopped start" / "practice run" lines). A bunny hop chain INSIDE the start
-zone still says "hopped start" and makes the run practice, as before. "tendies ok, or <what it said>".
+zone still says "hopped start" and makes the run practice, as before -- and so does an attempt that
+never stood in the start (flying through it, then hopping). "tendies ok, or <what it said>".
 Verdict PENDING.
 
 ## P884 — not-solid physics boxes (surf_lovetunnel save 10)

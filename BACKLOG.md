@@ -34,6 +34,10 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   the next packet can be judged. Marks an honest run practice in that corner only.
 - The fly-through itself (bhop outside, cross a start box in the air, never rest) still RANKS when the
   landing is a ramp, as before P885 (the ramp settles the start). No exit-speed cap: run_startcap is 0.
+- run_t_boxrest checks the dwell, not the speed: a ground phase that began outside (sliding in at V)
+  sets it after 0.25 s at about 0.37V. Not a regression -- main's RUNNING ground settle frees the same
+  slide -- except for a start you can only leave airborne. Sketch: also require !SV_TimerFast(e)
+  (P454/P775's cap; needs a prototype above SV_TimerJumpWatch) and an arm that slides in at speed.
 - The jump watch runs once per packet from run_t_lastorg, so with several commands per packet a hop is
   judged by where the packet began (predates P885).
 
