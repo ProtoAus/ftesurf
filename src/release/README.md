@@ -109,9 +109,10 @@ silent rollback or permission to mint another version. Visual/play acceptance is
 separate and may use a small owner check recorded in `lextest.md`.
 
 After successful publication/acceptance, record the released `VERSION` and UTC
-provenance in the source release commit, and rename PATCHNOTES.md's `## next` to
-`## <version> <yyyy-mm-dd>` there; promotion itself does not edit a possibly
-advanced working tree. Do not bump qcbuild without the owner's Build NN decision.
+provenance in the source release commit, and add `## <version> <yyyy-mm-dd>` to
+PATCHNOTES.md under the patches that shipped (the sealed `site-<v>/patchnotes.json`
+lists them; any added to `## next` since stay above it). The next preflight refuses
+a missing heading. Promotion itself does not edit a possibly advanced working tree. Do not bump qcbuild without the owner's Build NN decision.
 Tooling-only maintenance is not a new product patch, version or public release.
 
 ## Maintenance acceptance — 2026-10-16

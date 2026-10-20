@@ -14,6 +14,7 @@ float(float action) MU_Action =
 float mu_checked;
 float mu_lastcheck;
 float mu_apply_sent;
+float mu_live;                  // gameupdate answered: this is FTESurf's updater (QKU_MenuAction)
 // The menu identifies its own compiled version, not an unverified install ledger.
 #ifndef UI_MENU_VERSION
 #define UI_MENU_VERSION "development"
@@ -21,19 +22,19 @@ float mu_apply_sent;
 
 /*
   P876: patch notes. patchnotes.json sits beside update.json (PATCHNOTES.md, rendered
-  by release.ps1) and is asked only under the update permission. The title menu shows
-  it while an update is pending, once after one installs (until Close sets
-  ui_notes_seen), and from the corner's Patch notes button. mpn_items holds the reply
+  by release.ps1) and is asked only where the updater itself would ask (MU_NotesCan);
+  the automatic showings also need update_autocheck. The title menu shows it while an
+  update is pending, once after one installs (until Close sets ui_notes_seen), and from
+  the corner's Patch notes button. mpn_items holds the reply
   as "R<version> <date>", "PP<n> <title>", "B<point>"; mpn_lines the same wrapped to
   the panel, the first character the kind (G gap, Q/C a title's/point's next line).
 */
-#define MPN_URL      "https://proto.bar/ftesurf/patchnotes.json"
 #define MPN_MAXLEN   262144
 #define MPN_MAXREL   12
 #define MPN_MAXITEM  2000
 #define MPN_MAXLINE  4000
 #define MPN_WAIT     15
-#define MPN_RETRY    120
+#define MPN_RETRY    600         // the updater's own re-check interval
 #define MPN_ROW      22
 #define MPN_INDENT   18
 #define MPN_SZ       '16 16 0'
@@ -47,7 +48,8 @@ strbuf mpn_items, mpn_lines;
 float  mpn_state, mpn_req, mpn_sent, mpn_next, mpn_wrapw, mpn_hascur;
 float  mpn_open, mpn_closed, mpn_shown;
 vector mpn_scroll;
-string mpn_forver;
+string mpn_forver, mpn_askver; // update_version at the last good reply / the ask in flight
+string mpn_closedupd;           // update_version when Close was pressed
 float  mu_foot;                 // where MU_Status's corner ends; the panel starts under it
 
 void() MU_Init =
@@ -74,6 +76,26 @@ float(string st) MU_Pending =
 	        !strcmp(st, "restart") || !strcmp(st, "launcher"));
 };
 
+// Digits and two dots, as release.ps1 stamps ui_release_version. A server can set that
+// cvar, so nothing else is shown as a version or written into a command line.
+float(string v) MU_IsVer =
+{
+	local float i, n, c, dots;
+	n = strlen(v);
+	if (n < 5 || n > 16)
+		return FALSE;
+	dots = 0;
+	for (i = 0; i < n; i++)
+	{
+		c = str2chr(v, i);
+		if (c == 46)
+			dots++;
+		else if (c < 48 || c > 57)
+			return FALSE;
+	}
+	return (dots == 2);
+};
+
 // An update waiting, or the installed release's notes not yet closed.
 float(string st) MU_NotesAuto =
 {
@@ -81,35 +103,46 @@ float(string st) MU_NotesAuto =
 	if (MU_Pending(st))
 		return TRUE;
 	cur = cvar_string("ui_release_version");
-	return (cur != "" && strcmp(cur, cvar_string("ui_notes_seen")) != 0);
+	return (MU_IsVer(cur) && strcmp(cur, cvar_string("ui_notes_seen")) != 0);
+};
+
+string() MU_NotesUrl;
+
+// Where the updater itself would ask: FTESurf's, on, and allowed.
+float() MU_NotesCan =
+{
+	if (!mu_live || !cvar("update_enabled") || cvar("update_consent") != 1)
+		return FALSE;
+	return (MU_NotesUrl() != "");
 };
 
 float() MU_NotesShown =
 {
 	local string st;
-	if (menu_screen != SCREEN_MAIN || cvar("update_consent") != 1)
+	if (menu_screen != SCREEN_MAIN || !MU_NotesCan())
 		return FALSE;
 	if (mpn_open)
 		return TRUE;
-	if (mpn_closed || mpn_state != MPNS_OK)
+	if (mpn_state != MPNS_OK)
 		return FALSE;
 	st = cvar_string("update_state");
 	if (MU_Pending(st))
-		return TRUE;
+		return (strcmp(cvar_string("update_version"), mpn_closedupd) != 0);
+	if (mpn_closed)
+		return FALSE;
 	return (MU_NotesAuto(st) && mpn_hascur);
 };
 
-// Beside the updater's update.json, under its https rule; else the public copy.
+// Beside the updater's update.json, under its https rule; "" when the feed is not one.
 string() MU_NotesUrl =
 {
 	local string m;
 	local float n;
 	m = cvar_string("update_manifest_url");
 	n = strlen(m);
-	if (n > 12 && !strcmp(substring(m, n - 12, 12), "/update.json"))
-		m = strcat(substring(m, 0, n - 12), "/patchnotes.json");
-	else
-		m = MPN_URL;
+	if (n <= 12 || strcmp(substring(m, n - 12, 12), "/update.json"))
+		return "";
+	m = strcat(substring(m, 0, n - 12), "/patchnotes.json");
 	if (strcmp(substring(m, 0, 8), "https://") && !cvar("update_allow_insecure"))
 		return "";
 	return m;
@@ -129,7 +162,10 @@ void(string st) MU_NotesAsk =
 		}
 		return;
 	}
-	if (!mpn_open && !MU_NotesAuto(st))
+	if (!MU_NotesCan())
+		return;
+	if (!mpn_open)
+	if (!MU_NotesAuto(st) || !cvar("update_autocheck"))
 		return;
 	if (mpn_state == MPNS_OK && !strcmp(mpn_forver, cvar_string("update_version")))
 		return;
@@ -138,8 +174,8 @@ void(string st) MU_NotesAsk =
 	url = MU_NotesUrl();
 	if (url == "")
 		return;
-	if (mpn_forver != "") strunzone(mpn_forver);
-	mpn_forver = strzone(cvar_string("update_version"));
+	if (mpn_askver != "") strunzone(mpn_askver);
+	mpn_askver = (cvar_string("update_version") == "") ? "" : strzone(cvar_string("update_version"));
 	mpn_next = time + MPN_RETRY;
 	mpn_sent = time;
 	mpn_req = Lob_NextReq();
@@ -225,6 +261,8 @@ float(float reqid, float code, string body) MU_NotesReply =
 	json_free(root);
 	mpn_state = MPNS_OK;
 	mpn_wrapw = 0;
+	if (mpn_forver != "") strunzone(mpn_forver);
+	mpn_forver = (mpn_askver == "") ? "" : strzone(mpn_askver);
 	print(sprintf("^5notes:^7 %g releases, %g items; installed %s listed %g\n", nr, buf_getsize(mpn_items),
 	              cvar_string("ui_release_version"), mpn_hascur));
 	return TRUE;
@@ -290,8 +328,10 @@ void() MU_NotesClose =
 	local string cur;
 	mpn_open = FALSE;
 	mpn_closed = TRUE;
+	if (mpn_closedupd != "") strunzone(mpn_closedupd);
+	mpn_closedupd = (cvar_string("update_version") == "") ? "" : strzone(cvar_string("update_version"));
 	cur = cvar_string("ui_release_version");
-	if (cur != "")
+	if (MU_IsVer(cur))
 		MM_Seta("ui_notes_seen", cur);
 };
 
@@ -302,15 +342,16 @@ void(vector screensize) MU_Notes =
 	local float w, h, i, bw, cur, vn, sp;
 	local string ln, k, t, title, tag, st;
 
-	mpn_shown = MU_NotesShown();
-	if (!mpn_shown)
+	mpn_shown = FALSE;
+	if (!MU_NotesShown())
 		return;
 	Font_Set(ui_font_ui);
-	w = min(440, floor(screensize_x * 0.34));
+	w = min(440, max(floor(screensize_x * 0.34), min(320, screensize_x - 32)));
 	pos = [screensize_x - 16 - w, mu_foot + 12];
 	h = screensize_y - pos_y - 24;
 	if (w < 260 || h < 180)
 		return;
+	mpn_shown = TRUE;
 	sui_style_box(pos, [w, h], 9, SUI_THEME_WELL, SUI_THEME_EDGE, 0.94);
 
 	st = cvar_string("update_state");
@@ -363,8 +404,13 @@ void(vector screensize) MU_Notes =
 			if (strcmp(substring(bufstr_get(mpn_lines, i - 1), 0, 1), "R"))
 				sui_fill(rp + '0 1 0', [w - 48, 1], SUI_THEME_EDGE, 0.6, 0);
 			sp = strstrofs(t, " ", 0);
-			sui_text(rp + '0 6 0', '12 12 0', substring(t, 0, sp), COL_DIM, 1, 0);
-			sui_text(rp + [stringwidth(substring(t, 0, sp), TRUE, '12 12 0') + 6, 3], MPN_SZ, substring(t, sp + 1, -1), COL_ACCENT, 1, 0);
+			if (sp < 0)
+				sui_text(rp + '0 3 0', MPN_SZ, t, COL_ACCENT, 1, 0);
+			else
+			{
+				sui_text(rp + '0 6 0', '12 12 0', substring(t, 0, sp), COL_DIM, 1, 0);
+				sui_text(rp + [stringwidth(substring(t, 0, sp), TRUE, '12 12 0') + 6, 3], MPN_SZ, substring(t, sp + 1, -1), COL_ACCENT, 1, 0);
+			}
 		}
 		else if (!strcmp(k, "Q"))
 			sui_text(rp + '0 3 0', MPN_SZ, t, COL_ACCENT, 1, 0);
@@ -385,14 +431,14 @@ void() MU_Poll =
 	if (ms_consent < FS_TERMS_VERSION) return;
 	if (cvar("update_consent") != 1) return;
 	st = cvar_string("update_state");
-	MU_NotesAsk(st);
 	if (!mu_checked)
 	{
 		mu_checked = TRUE;
 		mu_lastcheck = time;
-		MU_Action(0);
+		mu_live = MU_Action(0);
 		return;
 	}
+	MU_NotesAsk(st);
 	// A long-running session sees new releases when it returns to the title menu.
 	if (menu_screen == SCREEN_MAIN && clientstate() == 1)
 	if (time - mu_lastcheck > 600)
@@ -509,7 +555,7 @@ void(vector screensize) MU_Status =
 	}
 	// P876: the notes again after a Close, or before anything showed them.
 	if (!mpn_shown)
-	if (MU_NotesUrl() != "")
+	if (MU_NotesCan())
 	{
 		bw = stringwidth("Patch notes", TRUE, SZ_LABEL) + 28;
 		if (ui_button("mu_notes", [x - bw, y], [bw, 28], "Patch notes"))

@@ -316,12 +316,14 @@ function Copy-SiteFiles ([string]$From, [string]$To) {
 # one line each. Other lines are prose and skipped. Printable ASCII and no ^: the
 # menu draws ^ as a colour code. -Version: `next` becomes that release, dated -Date.
 # -Upto: re-rendering a live release, so `next` and anything newer are left out.
-function ConvertFrom-PatchNotes ([string]$Text, [string]$Version, [string]$Date, [string]$Upto) {
+# Only the newest -Keep releases are returned: the menu refuses a reply over 256 KiB.
+function ConvertFrom-PatchNotes ([string]$Text, [string]$Version, [string]$Date, [string]$Upto, [int]$Keep = 12) {
     if ([bool]$Version -eq [bool]$Upto) { throw 'patch notes: give -Version (preparing) or -Upto (a live release)' }
-    if ($Version -and $Date -notmatch '^\d{4}-\d{2}-\d{2}$') { throw "patch notes: -Date '$Date' is not yyyy-mm-dd" }
+    $isDate = { param($d) $t = [datetime]::MinValue; [datetime]::TryParseExact($d, 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$t) }
+    if ($Version -and -not (& $isDate $Date)) { throw "patch notes: -Date '$Date' is not yyyy-mm-dd" }
     $rels = [System.Collections.Generic.List[object]]::new()
     $nums = @{}
-    $rel = $null; $pat = $null; $keep = $false; $prev = $null; $n = 0
+    $rel = $null; $pat = $null; $inRange = $false; $prev = $null; $next = $false; $n = 0
     $endPatch = { if ($pat -and -not $pat.points.Count) { throw "patch notes: P$($pat.patch) has no points" } }
     $endRelease = {
         . $endPatch
@@ -336,16 +338,17 @@ function ConvertFrom-PatchNotes ([string]$Text, [string]$Version, [string]$Date,
             . $endRelease; $pat = $null
             $h = $line.Substring(3).Trim()
             if ($h -ceq 'next') {
-                if ($rels.Count -or $prev) { throw "patch notes line ${n}: ## next must be the first release" }
-                $v = $Version; $d = $Date; $keep = [bool]$Version
-            } elseif ($h -cmatch '^(\d+\.\d+\.\d+) (\d{4}-\d{2}-\d{2})$') {
+                if ($next -or $prev) { throw "patch notes line ${n}: ## next must be the first release, and only once" }
+                $v = $Version; $d = $Date; $inRange = [bool]$Version; $next = $true
+            } elseif ($h -cmatch '^((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)) (\S+)$') {
                 $v = $Matches[1]; $d = $Matches[2]
+                if (-not (& $isDate $d)) { throw "patch notes line ${n}: '$d' is not a date (yyyy-mm-dd)" }
                 if ($prev -and [version]$v -ge [version]$prev) { throw "patch notes line ${n}: $v is not older than $prev above it" }
-                $keep = $Upto -eq '' -or [version]$v -le [version]$Upto
+                $inRange = $Upto -eq '' -or [version]$v -le [version]$Upto
             } else { throw "patch notes line ${n}: expected '## next' or '## <version> <yyyy-mm-dd>'" }
             if ($v) { $prev = $v }
             $rel = [ordered]@{ version = $v; date = $d; patches = [System.Collections.Generic.List[object]]::new() }
-            if ($keep) { $rels.Add($rel) }
+            if ($inRange) { $rels.Add($rel) }
             continue
         }
         if ($isPat) {
@@ -368,7 +371,7 @@ function ConvertFrom-PatchNotes ([string]$Text, [string]$Version, [string]$Date,
     if ($Version -and (-not $rels.Count -or $rels[0].version -cne $Version)) {
         throw "patch notes: nothing for $Version -- add a '## next' section with its patches"
     }
-    [ordered]@{ format = 1; releases = $rels }
+    [ordered]@{ format = 1; releases = @($rels | Select-Object -First $Keep) }
 }
 
 function ConvertTo-PatchNotesJson ($Notes) { ($Notes | ConvertTo-Json -Depth 6 -Compress) + "`n" }

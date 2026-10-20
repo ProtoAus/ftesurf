@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """Patch 876: the title menu's patch notes, read from a local patchnotes.json.
 
-Two clients, one after the other, each in its own basedir under --out (p744spec.py's
+Four clients, one after the other, each in its own basedir under --out (p744spec.py's
 fixture). A loopback HTTP server stands in for proto.bar: update_manifest_url points
 at it (update_allow_insecure 1), so the notes URL is its /patchnotes.json.
 
-  subject   p744's fixture manifest, so update_consent reads 1 with the updater inert
-            (qkupdate.c); ui_release_version is set to the newest release in the file,
-            so the panel is "What's new". Graded on the menu's own lines: it asked the
-            server, parsed the releases, showed the panel, Close hid it and wrote
-            ui_notes_seen, a menu_restart kept it hidden, ui_notes open showed it again.
-  control   the real default.fmf, so update_consent is -1 (nothing decided): the menu
-            must not ask, and the server must see no request.
+  subject   the real default.fmf and .ftesurf-updater/consent "1": FTESurf's updater,
+            live and allowed (its own check of /update.json 404s). ui_release_version is
+            the newest release in the file, so the panel is "What's new". Graded on the
+            menu's own lines: it asked, parsed the releases, showed the panel, Close hid
+            it and wrote ui_notes_seen, a menu_restart kept it hidden, ui_notes open
+            showed it again.
+  inert     p744's fixture manifest: update_consent reads 1 but the updater is not
+            FTESurf's and does nothing (qkupdate.c QKU_MenuAction) -- no request.
+  noperm    the real manifest with no permission file (update_consent -1) -- no request.
+  noauto    as subject with update_autocheck 0: nothing until ui_notes open, then asked.
 
 Screenshots (open, scrolled, closed, reopened) are kept for looking at.
 """
@@ -78,13 +81,16 @@ class Quiet(http.server.SimpleHTTPRequestHandler):
         Quiet.seen.append(self.path)
 
 
-def run(a, name, manifest_real, version, port):
+def run(a, name, version, port, real=True, permit=True, extra=()):
     base = prepare(a, name)
     game = base / 'ftesurf'
     (game / 'data/consent.txt').write_text(f'FTESURF-CONSENT 1\nversion {a.tier}\naccepted 20261020-000000\n')
-    if manifest_real:
+    if real:
         shutil.copy2(a.content / 'default.fmf', base / 'default.fmf')
         assert not (base / '.ftesurf-updater/consent').exists()
+        if permit:
+            (base / '.ftesurf-updater').mkdir()
+            (base / '.ftesurf-updater/consent').write_text('1\n')
     (game / 'probe.cfg').write_text(CFG)
     proc = subprocess.Popen(
         [str(a.client), '-nohome', '-noreset', '-nobrowse', '-basedir', str(base),
@@ -92,7 +98,7 @@ def run(a, name, manifest_real, version, port):
          '-nosound', '+set', 'cfg_save_auto', '0',
          '+set', 'update_manifest_url', f'http://127.0.0.1:{port}/update.json',
          '+set', 'update_allow_insecure', '1', '+set', 'ui_release_version', version,
-         '+exec', 'probe.cfg'],
+         *extra, '+exec', 'probe.cfg'],
         cwd='C:/FTESurf', stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     quit_ok = True
     try:
@@ -144,7 +150,7 @@ def main():
         print(('PASS ' if ok else 'FAIL ') + name, flush=True)
 
     try:
-        log, ok = run(a, 'subject', False, newest, a.port)
+        log, ok = run(a, 'subject', newest, a.port)
         asked = Quiet.seen[:]
         st = re.findall(r'ui_notes: state (\S+) shown (\S+) items (\S+) lines (\S+) wrap (\S+) scroll (\S+)', log)
         inst = re.findall(r'ui_notes: installed (\S*) listed (\S+) seen (\S*) url (\S*)', log)
@@ -166,14 +172,26 @@ def main():
         check(full and inst[7][3] == '', 'subject: no http URL without update_allow_insecure')
         check(not re.search(r'(?i)boundcheck|runaway|stack overflow|QC crash|PR_memfree', log), 'subject: no menu VM faults')
 
+        for name, kw in (('inert', {'real': False}), ('noperm', {'permit': False})):
+            Quiet.seen.clear()
+            log, ok = run(a, name, newest, a.port, **kw)
+            st = re.findall(r'ui_notes: state (\S+) shown (\S+)', log)
+            report[name] = {'requests': Quiet.seen[:], 'status': st}
+            check(ok and 'P876 ARM COMPLETE' in log, f'{name}: the cfg ran to its end')
+            check('/patchnotes.json' not in Quiet.seen and 'asking http' not in log, f'{name}: no request')
+            check(len(st) == 8 and all(s == ('0', '0') for s in st), f'{name}: nothing loaded or shown, even when opened')
+
         Quiet.seen.clear()
-        log, ok = run(a, 'control', True, newest, a.port)
+        log, ok = run(a, 'noauto', newest, a.port, extra=('+set', 'update_autocheck', '0'))
         st = re.findall(r'ui_notes: state (\S+) shown (\S+)', log)
-        report['control'] = {'requests': Quiet.seen[:], 'status': st,
-                             'probes': re.findall(r'ui_update_probe: ([^\n]*)', log)}
-        check(ok and 'P876 ARM COMPLETE' in log, 'control: the cfg ran to its end')
-        check(not Quiet.seen and 'asking http' not in log, 'control: no permission, no request')
-        check(len(st) == 8 and all(s == ('0', '0') for s in st), 'control: nothing loaded or shown, even when opened')
+        report['noauto'] = {'requests': Quiet.seen[:], 'status': st}
+        opened = [m.start() for m in re.finditer(r'ui_notes: state', log)]
+        ask = log.find('asking http')
+        check(ok and 'P876 ARM COMPLETE' in log, 'noauto: the cfg ran to its end')
+        check(len(st) == 8 and all(s == ('0', '0') for s in st[:6]) and st[6][1] == '1',
+              'noauto: nothing shown until ui_notes open, then shown')
+        check(len(opened) == 8 and ask > opened[5] and Quiet.seen.count('/patchnotes.json') == 1,
+              'noauto: asked once, and only after the open')
     finally:
         httpd.shutdown()
     report['failures'] = sum(1 for c in checks if not c['pass'])

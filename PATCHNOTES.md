@@ -8,9 +8,10 @@
 
   Every patch a player can see or feel gets an entry under "## next" in the commit
   that lands it. The release names "next" (release.ps1 refuses one without it), and
-  the release record commit renames it to "## <version> <yyyy-mm-dd>".
+  the release record commit adds "## <version> <yyyy-mm-dd>" under the patches that
+  shipped. The newest 12 releases are published.
 
-  Lines the release reads, and nothing else:
+  Lines the release reads, starting at column 0, and nothing else:
     "## next" or "## <version> <yyyy-mm-dd>"   newest release first
     "### P<number> <title>"                    highest patch first, title up to 80 characters
     "- <point>"                                one line each, up to 250 characters

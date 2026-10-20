@@ -66,6 +66,7 @@ Copy-Item -LiteralPath (Join-Path $SurfDir 'LICENSE') -Destination (Join-Path $p
 try { $siteFiles = @(Copy-SiteFiles (Join-Path $RelDir 'site') $pageDir) } catch { Fail $_.Exception.Message }
 # Released sections only: `## next` is not in this release.
 try { $notes = ConvertFrom-PatchNotes ([System.IO.File]::ReadAllText((Join-Path $SurfDir 'PATCHNOTES.md'))) -Upto $Version } catch { Fail $_.Exception.Message }
+if (-not $notes.releases.Count -or $notes.releases[0].version -cne $Version) { Fail "PATCHNOTES.md has no '## $Version <date>' section: add it under the patches that shipped" }
 [System.IO.File]::WriteAllText((Join-Path $pageDir 'patchnotes.json'), (ConvertTo-PatchNotesJson $notes), (New-Object System.Text.UTF8Encoding $false))
 $files = @(Get-ChildItem -LiteralPath $pageDir -File | Sort-Object Name)
 Write-Host "rendered $pageDir -- $($files.Count) files ($($siteFiles -join ', '))"

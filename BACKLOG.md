@@ -5,6 +5,21 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Patch notes (P876): what review left open
+
+- **Unsigned text under a signed title.** patchnotes.json is outside update.json's signature, so
+  whoever holds the web host (not the signing key) can put any text under "Update <v>". Fix: its
+  hash in the signed feed (updatefeed.ps1) and a check in m_update.qc MU_NotesReply. Falsifier: a
+  tampered file on the p876notes.py loopback server must not draw.
+- **Engine JSON parser depth** (pre-existing, not run): json.c JSON_ParseNode recurses with no
+  limit, and httpclient.c buffers a body up to 2 GB before the menu's 256 KiB test; ~20 KB of `[`
+  should overflow the stack. The updater parses update.json's outer layer the same way. Falsifier:
+  that body served to `ui_notes open` must not crash the client.
+- **"Update <v>" not seen in a rig**: update_state is engine read-only and a newer signed feed is
+  needed. Check at the next release: a 0.1.29 install at the title shows "Update 0.1.30" with
+  0.1.30 tagged NEW.
+- PATCHNOTES.md's "highest patch first" is advice; nothing checks it.
+
 ## Map entities after P869-P874: what is left
 
 - trigger_momentum_limitmovement (119 on 36 maps) and trigger_momentum_slide (2 on 2) need the

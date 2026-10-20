@@ -434,8 +434,11 @@ if (-not $SetupSite) {
     Step 'Fast release preflight (no compiler/packer/network)'
     $targetVersion = Get-ReleaseVersion ([IO.File]::ReadAllText((Join-Path $SurfDir 'VERSION'))) $Bump
     $templateContract = Test-ReleaseTemplate ([IO.File]::ReadAllText((Join-Path $RelDir 'page.template.html')))
-    try { $notesCount = (ConvertFrom-PatchNotes ([IO.File]::ReadAllText((Join-Path $SurfDir 'PATCHNOTES.md'))) -Version $targetVersion -Date ([DateTime]::UtcNow.ToString('yyyy-MM-dd'))).releases[0].patches.Count } catch { Fail $_.Exception.Message }
-    Info "PATCHNOTES.md: $notesCount patches for $targetVersion"
+    try { $notesCheck = ConvertFrom-PatchNotes ([IO.File]::ReadAllText((Join-Path $SurfDir 'PATCHNOTES.md'))) -Version $targetVersion -Date ([DateTime]::UtcNow.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)) } catch { Fail $_.Exception.Message }
+    # The release below `next` must be the one out now: a forgotten heading would file its patches under this one.
+    $notesPrev = (Get-ReleaseVersion ([IO.File]::ReadAllText((Join-Path $SurfDir 'VERSION'))) '')
+    if ($notesCheck.releases.Count -lt 2 -or $notesCheck.releases[1].version -cne $notesPrev) { Fail "PATCHNOTES.md: no '## $notesPrev <date>' section under '## next' -- the last release's heading was not added" }
+    Info "PATCHNOTES.md: $($notesCheck.releases[0].patches.Count) patches for $targetVersion"
     Native 'python' @((Join-Path $SurfDir 'tools/shipguard.py'), '--release-policy') 'release asset/policy preflight' | ForEach-Object { Write-Host $_ }
     if ($PreflightOnly) { Good "release preflight PASS; target $targetVersion; no build or publication"; return }
     if ($FirstUpdateFeed.IsPresent -eq [bool]$PreviousUpdateFeed) { Fail 'choose -FirstUpdateFeed OR -PreviousUpdateFeed explicitly before building' }
@@ -1743,7 +1746,7 @@ if (-not $SkipSite) {
     # site.css, site.js, anticheat.html and the pictures (src/release/site).
     try { $siteFiles = @(Copy-SiteFiles (Join-Path $RelDir 'site') $pageDir) } catch { Fail $_.Exception.Message }
     # The page's side panel and the title menu read this (releaselib ConvertFrom-PatchNotes).
-    try { $notes = ConvertFrom-PatchNotes ([IO.File]::ReadAllText((Join-Path $SurfDir 'PATCHNOTES.md'))) -Version $Ver -Date $nowUtc.ToString('yyyy-MM-dd') } catch { Fail $_.Exception.Message }
+    try { $notes = ConvertFrom-PatchNotes ([IO.File]::ReadAllText((Join-Path $SurfDir 'PATCHNOTES.md'))) -Version $Ver -Date $nowUtc.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture) } catch { Fail $_.Exception.Message }
     [System.IO.File]::WriteAllText((Join-Path $pageDir 'patchnotes.json'), (ConvertTo-PatchNotesJson $notes), (New-Object System.Text.UTF8Encoding $false))
     # THE PUBLISHED RECEIPT IS NOT A BYTE COPY OF THE dist\ ONE, and this is the
     # only field they differ in.  `tool.host` is the operator's own name for

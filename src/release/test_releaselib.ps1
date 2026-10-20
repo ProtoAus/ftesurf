@@ -321,6 +321,13 @@ Check 'notes: a point before a patch throws' { Throws { Notes "## next`n- z`n" }
 Check 'notes: a patch before a release throws' { Throws { Notes "### P5 x`n- z`n" } '*before any release*' }
 Check 'notes: a release without a date throws' { Throws { Notes "## next`n### P5 x`n- z`n## 0.1.2`n### P4 y`n- z`n" } "*expected '## next'*" }
 Check 'notes: a patch without a number throws' { Throws { Notes "## next`n### Five x`n- z`n" } '*### P<number>*' }
+Check 'notes: a second next throws in a re-render too' { Throws { ConvertFrom-PatchNotes "## next`n## next`n## 0.1.2 2026-10-01`n### P1 x`n- y`n" -Upto '0.1.2' } '*only once*' }
+Check 'notes: a leading-zero version throws' { Throws { Notes "## next`n### P5 x`n- z`n## 0.1.02 2026-10-01`n### P4 y`n- z`n" } "*expected '## next'*" }
+Check 'notes: an impossible date throws' { Throws { Notes "## next`n### P5 x`n- z`n## 0.1.2 2026-13-45`n### P4 y`n- z`n" } '*not a date*' }
+Check 'notes: only the newest -Keep releases are written' {
+    $r = ConvertFrom-PatchNotes "## 0.1.3 2026-10-03`n### P3 c`n- z`n## 0.1.2 2026-10-02`n### P2 b`n- z`n## 0.1.1 2026-10-01`n### P1 a`n- z`n" -Upto '0.1.3' -Keep 2
+    $r.releases.Count -eq 2 -and $r.releases[1].version -ceq '0.1.2'
+}
 Check 'notes: a point past 250 characters throws' { Throws { Notes "## next`n### P5 x`n- $('a' * 251)`n" } '*1 to 250*' }
 # Every line is checked, next included; the preflight is what requires a next.
 Check 'notes: the real PATCHNOTES.md reads' {
