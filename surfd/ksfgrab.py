@@ -36,6 +36,7 @@ MAX_QUEUE = 256
 MAX_RECOVER = 2
 MAX_FAILED = 2048
 MAX_PROVENANCE = 16 << 10
+FILEFAIL_DAYS = 14         # Patch 891: a file's own failures this far apart are one fault
 SCAN = 32
 BINDING = ('map', 'track', 'leg', 'style', 'player', 'runid', 'millis', 'when', 'file')
 STYLES = {0: 'FW', 1: 'SW', 2: 'HSW', 3: 'BW'}
@@ -482,6 +483,11 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                        if (type(t) is int and t > now) or
                        (isinstance(t, dict) and type(t.get('retry')) is int
                         and type(t.get('strikes')) is int and 0 < t['strikes'] < 3)}
+    # Patch 891: when each file was last set aside for failing the way only a file can.
+    # Kept past the set-aside, so a file still broken when it returns goes back on one park.
+    marks = state.get('filefail') if isinstance(state.get('filefail'), dict) else {}
+    marks = {k: t for k, t in marks.items() if type(t) is int and 0 <= now - t <= FILEFAIL_DAYS * 86400}
+    state['filefail'] = dict(sorted(marks.items(), key=lambda kt: kt[1])[-MAX_FAILED:])
     if len(state['failed']) > MAX_FAILED:
         # Older writers appended terminal failures after their initial truncation.
         # Preserve that input verbatim; normal expiry can unblock a later tick.
@@ -570,12 +576,15 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                 # (404/500, or a body broken after the headers) twice in 14 days is not asked
                 # first again. surf_ab's broke mid-body on every ask from 19 Oct, parking all.
                 if code in (404, 500) or isinstance(getattr(e, 'reason', None), BodyBroken):
-                    if now - job.get('filefail', 0) <= 14 * 86400:
+                    seen = max([t for t in (job.get('filefail'), state['filefail'].get(key))
+                                if type(t) is int] + [0])
+                    if now - seen <= FILEFAIL_DAYS * 86400:
                         if key in state['failed'] or len(state['failed']) < MAX_FAILED:
                             state['failed'][key] = now + 7 * 86400
                             jobs.pop(key, None)
                         else:
                             job.update(retry=now + 7 * 86400, terminal=True)
+                        state['filefail'][key] = now
                         print('KSF demo set aside: the same file failed twice')
                     else:
                         job['filefail'] = now

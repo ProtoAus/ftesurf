@@ -1384,6 +1384,25 @@ print('RESTART_COUNTS='+json.dumps([made, linked, *counts]))
         state = K._load(os.path.join(self.cache, 'demos.json'))
         self.assertEqual(state['jobs'], {})
         self.assertEqual([k.split('|')[3] for k in state['failed']], [self.job['runid']])
+        # Still broken when it comes back a week later: set aside on its first failure.
+        back = base + (K.COOLDOWN * 2 + 1) + 7 * 86400 + 60
+        with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=back):
+            self.assertEqual(G.tick(self.cache, download=serve), (1, 0))
+        self.assertEqual(asked[3:], [self.r['file']])
+        self.assertEqual(K._load(os.path.join(self.cache, '.refused'))['n'], 3)
+        self.assertEqual(len(K._load(os.path.join(self.cache, 'demos.json'))['failed']), 1)
+        # An HTTP 500 for the one file is that file's too.
+        for name in ('.refused', 'demos.json'):
+            (Path(self.cache)/name).unlink(missing_ok=True)
+        self.conn.execute('UPDATE runs SET replay_id=0'); self.conn.commit()
+
+        def five(file):
+            raise urllib.error.HTTPError('public', 500, 'broken', {}, io.BytesIO())
+        with patch.object(G.time, 'sleep'):
+            for i in range(2):
+                with patch.object(G.time, 'time', return_value=base + i * (K.COOLDOWN * 2 + 1)):
+                    self.assertEqual(G.tick(self.cache, download=five), (1, 0))
+        self.assertEqual(len(K._load(os.path.join(self.cache, 'demos.json'))['failed']), 1)
         # What a host that is down or refusing answers never sets a file aside.
         for failure in (urllib.error.HTTPError('public', 429, 'refused', {}, io.BytesIO()),
                         urllib.error.HTTPError('public', 503, 'busy', {}, io.BytesIO()),
