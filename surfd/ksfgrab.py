@@ -308,21 +308,30 @@ def fetch(file):
         deadline = time.monotonic() + 30
         parts = []
         size = 0
-        while True:
-            if time.monotonic() >= deadline:
-                raise TimeoutError('replay body deadline')
-            # read1 makes ONE buffered/socket read, rather than waiting forever
-            # to fill a large read() from a peer trickling bytes under timeout.
-            chunk = r.read1(min(64 << 10, MAX_BYTES + 1 - size))
-            if not chunk:
-                break
-            size += len(chunk)
-            if size > MAX_BYTES:
-                raise ValueError('replay exceeds byte cap')
-            parts.append(chunk)
-        if expected is not None and size != expected:
-            raise http.client.IncompleteRead(b'', expected - size)
+        try:
+            while True:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError('replay body deadline')
+                # read1 makes ONE buffered/socket read, rather than waiting forever
+                # to fill a large read() from a peer trickling bytes under timeout.
+                chunk = r.read1(min(64 << 10, MAX_BYTES + 1 - size))
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > MAX_BYTES:
+                    raise ValueError('replay exceeds byte cap')
+                parts.append(chunk)
+            if expected is not None and size != expected:
+                raise http.client.IncompleteRead(b'', expected - size)
+        except TimeoutError:
+            raise                       # a trickle is the host's
+        except (OSError, http.client.HTTPException) as exc:
+            raise BodyBroken('%s after the headers' % type(exc).__name__) from exc
     return b''.join(parts)
+
+
+class BodyBroken(OSError):
+    """Patch 891: the host answered for this file and its body broke after the headers."""
 
 
 def transport(download, file):
@@ -550,25 +559,26 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
             except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
                 # Refusal belongs to the HOST, not whichever demo happened to
                 # be asked. All non-2xx/redirects/network failures stop this tick.
-                code = getattr(e, 'code', 0)
-                if job.get('netfail') and code not in (403, 429):
-                    # Patch 891: the same file failing again is the file. surf_ab's replay broke
-                    # mid-body on every ask from 19 Oct, and re-asking it first after each park
-                    # parked everything for days. A host that is down fails the next file too.
-                    if key in state['failed'] or len(state['failed']) < MAX_FAILED:
-                        state['failed'][key] = now + 7 * 86400
-                        jobs.pop(key, None)
-                    else:
-                        job.update(retry=now + 7 * 86400, terminal=True)
-                    print('KSF demo set aside: network %d twice on one file' % code)
-                    continue
-                job['netfail'] = 1
                 n = int(park.get('n') or 0) + 1
                 wait = min(K.COOLDOWN * 2 ** min(n - 1, 8), K.COOLDOWN_MAX)
+                code = getattr(e, 'code', 0)
                 K._save(os.path.join(cache, '.refused'),
                         dict(at=now, until=now + wait, n=n, why='demo network %d' % code))
                 job['retry'] = now + wait
                 print('KSF demos refused: network %d; shared crawler parked' % code)
+                # Patch 891: the host still parks, but a file that failed the way only a file can
+                # (404/500, or a body broken after the headers) twice in 14 days is not asked
+                # first again. surf_ab's broke mid-body on every ask from 19 Oct, parking all.
+                if code in (404, 500) or isinstance(getattr(e, 'reason', None), BodyBroken):
+                    if now - job.get('filefail', 0) <= 14 * 86400:
+                        if key in state['failed'] or len(state['failed']) < MAX_FAILED:
+                            state['failed'][key] = now + 7 * 86400
+                            jobs.pop(key, None)
+                        else:
+                            job.update(retry=now + 7 * 86400, terminal=True)
+                        print('KSF demo set aside: the same file failed twice')
+                    else:
+                        job['filefail'] = now
                 break
             except (OSError, ValueError) as e:
                 job['retry'] = now + 86400

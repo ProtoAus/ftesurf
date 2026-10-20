@@ -64,6 +64,10 @@ def interval(bookmarks, bonus, lead_ok=False, stage=0, last=False):
                  and m['zone'] == (99 if last else stage + 1)]
         if len(stops) > 1 or not (stops or last):
             raise ValueError('stage needs exactly one finish-zone entry')
+        # A timed finish has only the clock to go on: anything bookmarked after the exit
+        # (a next stage a stale stage count missed, a re-entry) means it is not this shape.
+        if not stops and any(m['tick'] > start for m in bookmarks):
+            raise ValueError('an unbookmarked finish needs nothing bookmarked after the exit')
         return start, (stops[0] if stops else None)
     zone = 30 + bonus if bonus else 1
     marks = [m for m in bookmarks if m['zone'] == zone]
@@ -127,6 +131,8 @@ def convert(data, mapname, bonus=0, style='FW', owner='?', seconds=None, stage=0
             if stop - (info['frames'] - 1) > 2:
                 raise ValueError('official time runs past the recording')
             stop = info['frames'] - 1
+    if stop <= start:
+        raise ValueError('empty interval')
     if stop + 1 > 200000:
         raise ValueError('playback exceeds the 200000-frame conversion bound')
     duration = (stop - start) * dt
@@ -143,12 +149,12 @@ def convert(data, mapname, bonus=0, style='FW', owner='?', seconds=None, stage=0
         # repeating the frame before while the body moves, and BW 3.99 over 57,053 (a
         # dropped frame cannot be counted on a route that teleports). So 2.5 ticks, plus
         # each repeated frame, plus one a 10,000 frames. A wrong run is seconds off.
-        last = None
+        prev = None
         for i in range(start, stop + 1):
             rec = K.PREFIX.unpack_from(data, off + i * stride)
-            if last == rec[1:4] and math.hypot(*rec[7:10]) >= 50:
+            if prev == rec[1:4] and math.hypot(*rec[7:10]) >= 50:
                 repeats += 1
-            last = rec[1:4]
+            prev = rec[1:4]
         tol = dt * (2.5 + repeats + (stop - start) / 10000)
         if not math.isfinite(seconds) or seconds <= 0 or abs(seconds - duration) > tol:
             raise ValueError('public time %.6f differs from bookmark interval %.3f by over %.3f s'

@@ -1371,31 +1371,50 @@ print('RESTART_COUNTS='+json.dumps([made, linked, *counts]))
         def serve(file):
             asked.append(file)
             if file == self.r['file']:
-                raise http.client.IncompleteRead(b'part', 8)
+                raise G.BodyBroken('ConnectionResetError after the headers')
             return binary()
         base = int(time.time())
         with patch.object(G.time, 'sleep'):
-            with patch.object(G.time, 'time', return_value=base):
-                self.assertEqual(G.tick(self.cache, download=serve), (1, 0))
-            with patch.object(G.time, 'time', return_value=base + K.COOLDOWN + 1):
-                self.assertEqual(G.tick(self.cache, download=serve), (2, 1))
+            for i, made in enumerate(((1, 0), (1, 0), (1, 1))):
+                with patch.object(G.time, 'time', return_value=base + i * (K.COOLDOWN * 2 + 1)):
+                    self.assertEqual(G.tick(self.cache, download=serve), made)
+                if i < 2:   # every failure still parks the host
+                    self.assertEqual(K._load(os.path.join(self.cache, '.refused'))['n'], i + 1)
         self.assertEqual(asked, [self.r['file'], self.r['file'], other['file']])
-        self.assertEqual(K._load(os.path.join(self.cache, '.refused'))['at'], base)
         state = K._load(os.path.join(self.cache, 'demos.json'))
         self.assertEqual(state['jobs'], {})
         self.assertEqual([k.split('|')[3] for k in state['failed']], [self.job['runid']])
-        # A refusal is the host's however often it comes, and the job keeps its place.
-        for name in ('.refused', 'demos.json'):
-            (Path(self.cache)/name).unlink(missing_ok=True)
+        # What a host that is down or refusing answers never sets a file aside.
+        for failure in (urllib.error.HTTPError('public', 429, 'refused', {}, io.BytesIO()),
+                        urllib.error.HTTPError('public', 503, 'busy', {}, io.BytesIO()),
+                        ConnectionRefusedError('down'), TimeoutError('slow')):
+            for name in ('.refused', 'demos.json'):
+                (Path(self.cache)/name).unlink(missing_ok=True)
 
-        def refuse(file):
-            raise urllib.error.HTTPError('public', 429, 'refused', {}, io.BytesIO())
-        with patch.object(G.time, 'sleep'):
-            for i in range(2):
-                with patch.object(G.time, 'time', return_value=base + i * (K.COOLDOWN + 1)):
-                    self.assertEqual(G.tick(self.cache, download=refuse), (1, 0))
-        self.assertEqual(K._load(os.path.join(self.cache, '.refused'))['n'], 2)
-        self.assertEqual(K._load(os.path.join(self.cache, 'demos.json'))['failed'], {})
+            def fail(file):
+                raise failure
+            with self.subTest(failure=failure), patch.object(G.time, 'sleep'):
+                for i in range(3):
+                    with patch.object(G.time, 'time', return_value=base + i * (K.COOLDOWN * 4 + 1)):
+                        self.assertEqual(G.tick(self.cache, download=fail), (1, 0))
+                self.assertEqual(K._load(os.path.join(self.cache, '.refused'))['n'], 3)
+                self.assertEqual(K._load(os.path.join(self.cache, 'demos.json'))['failed'], {})
+
+    def test_only_a_body_broken_after_the_headers_is_the_files(self):
+        class Body:
+            headers = {}
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read1(self, count): raise ConnectionResetError('reset mid-body')
+        with patch.object(G.urllib.request, 'build_opener') as build:
+            build.return_value.open.return_value = Body()
+            with self.assertRaises(urllib.error.URLError) as cm:
+                G.transport(G.fetch, self.r['file'])
+            self.assertIsInstance(cm.exception.reason, G.BodyBroken)
+            build.return_value.open.side_effect = ConnectionRefusedError('down')
+            with self.assertRaises(urllib.error.URLError) as cm:
+                G.transport(G.fetch, self.r['file'])
+            self.assertNotIsInstance(cm.exception.reason, G.BodyBroken)
 
     def test_path_kind_and_escape_refusal(self):
         rid = G.install(self.conn, self.job, binary())

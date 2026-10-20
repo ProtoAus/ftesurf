@@ -193,9 +193,15 @@ class Convert(unittest.TestCase):
         text, info = C.convert(binary(marks=last + [(6, 2, 99, '')]), 'surf_test', stage=9, last=True)
         self.assertEqual((info['stop'], info['timed_stop']), (6, False))
         self.assertNotIn('ksfstop', text)
-        # Only the last stage may go unbookmarked.
+        # Only the last stage may go unbookmarked, and only with nothing bookmarked after
+        # its exit: a next stage (a stale stage count) or a re-entry is another shape.
         with self.assertRaises(ValueError):
             C.convert(binary(marks=last), 'surf_test', stage=9, seconds=.06)
+        for extra in ((6, 2, 10, ''), (4, 2, 9, '')):
+            with self.subTest(extra=extra), self.assertRaises(ValueError):
+                C.convert(binary(marks=last + [extra]), 'surf_test', stage=9, last=True, seconds=.06)
+        with self.assertRaises(ValueError):    # under half a tick: an empty interval
+            C.convert(binary(marks=last), 'surf_test', stage=9, last=True, seconds=.007)
 
     def test_owner_cannot_inject_header(self):
         text, _ = C.convert(binary(), 'surf_test', owner='Hi\nnonce bad\r"x"//foo')

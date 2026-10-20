@@ -87,8 +87,14 @@ Input is bounded at 64 MiB; converted playback is bounded at 200,000 frames.
   with `--seconds` binding it (Patch 757). Main ends at
   zone99 entry. Bonus N uses zone30+N: named standard triggers disambiguate
   start/end; the unclassified-target-name fallback requires exactly one later
-  entry (including nonempty names outside the documented numeric namespace). Multiple
-  intervals, stages or missing boundaries are refused, never full-file timed.
+  entry (including nonempty names outside the documented numeric namespace). Stage N
+  (`--stage N`, Patch 891; KSF records each stage as its own file) runs from its one
+  exit of zone N to the one later entry into zone N+1. The last stage (`--last-stage`)
+  ends at a zone99 entry when one is bookmarked; none of surf_kepler's 13 last-stage
+  files has one, so the official time from the exit places the finish (`--seconds`
+  required, `ksfstop timed` written), at most 2 ticks past the file's last frame,
+  which it then takes. Multiple intervals or missing boundaries are refused, never
+  full-file timed.
 - Preserve pre-roll, rebase time to the start bookmark, include the finish
   sample, exclude post-roll. The displayed duration is the **bookmark clock**;
   the separately retained official time can differ by the bound above.
