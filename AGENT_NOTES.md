@@ -40,6 +40,11 @@
   ftesurf/cfg/test/p360sf.zones.json --put data/consent.txt=<file> --ssqc/--csqc/--mqc <build>`:
   P371's walkable fixture, four real finishes (W4 retries). Own-edit zones load from `data/`, so
   the overlay's `--put` reaches them.
+- **LIVE 2026-10-20 (UTC)**: lobbies 12/12 on qwprogs 60d3776b / csprogs 4f49f974 (about
+  03:01Z, carrying P858); both installs those plus menu.dat 368d6040 (.prev = P858/P854's);
+  surfd generation f8cdcd4a serving from `/srv/nvme/agent-work/surfd856-20261020T0300Z` since
+  03:05:38Z (OLD surfd854 CLOSED, kept: the next deploy builds from OLD=surfd856); story.txt rev
+  7c98ff08e2cc; story_tracks registered 101 tracks at 03:05:44Z (8 with prior). Patch log 0edcb0d4e.
 - **A Written edit script is not safe from escapes either**: Python turned `"...)\n"` in a
   '''-string into a real newline inside three QC strings, and fteqcc SEGFAULTED (rc 139, no
   output) -- which looks exactly like a field read before its declaration. Build escapes as

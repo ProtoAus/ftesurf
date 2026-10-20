@@ -13,6 +13,7 @@ ready event to keep, change or delete in `surfd/story.txt`.
 - Open STORY: three tabs and Players; Halloween's levels say "opens in ..." until the 24th.
 - `cmd timer` mid-run prints `story: fails .. mask .. top .. sent 1` (what the lobby will send).
 
+Live 2026-10-20 03:05Z (UTC): lobbies, both installs, surfd f8cdcd4a, story.txt 7c98ff08e2cc.
 "Story 2 ok / <what to change>". Verdict PENDING.
 
 ## P854 — Story and Event mode
