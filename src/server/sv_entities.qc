@@ -1248,7 +1248,10 @@ float(entity e, string lk) SV_RotButtonOutputKnown;
 .float  movedistance;       // map key
 .float  vbsp_sp_cand;       // set at spawn: SPK_ROT / SPK_LIN might move
 .float  vbsp_sp_spawnt;
+.float  vbsp_sp_kind;       // SPK_* once SV_SpResolve admits it
+float   vbsp_sp_resolved, vbsp_sp_nextt;    // per map, SV_EntityReset
 void() SV_SpWake;
+void(entity e) SV_SpDrop;
 float(entity t, string in, string pm) SV_SpinInput;
 float(entity e, string lk) SV_SpinOutputKnown;
 
@@ -1984,6 +1987,8 @@ void(entity t, float on) SV_IOEnable =
 	{
 		if (t.model != "" && substring(t.model, 0, 1) == "*")
 			t.solid = t.vbsp_io_solid ? t.vbsp_io_solid : SOLID_BSP;
+		if (t.vbsp_sp_kind && t.solid != SOLID_NOT)
+			SV_SpDrop(t);				// Patch 860: never solid while moving
 		t.effects = t.effects - (t.effects & EF_NODRAW);
 		if (t.vbsp_slide_skin && t.solid != SOLID_NOT)
 			t.skin = t.vbsp_slide_skin;
@@ -4789,6 +4794,8 @@ void() SV_EntityReset =
 	// Build 37.  Same trap as every counter above: these are globals and they
 	// would otherwise accumulate across every map loaded in a session.
 	vbsp_io_n = vbsp_io_fired = 0;
+	vbsp_sp_resolved = FALSE;		// Patch 860
+	vbsp_sp_nextt = 0;
 
 	/*
 	  Build 63.  vbsp_io_depth in particular MUST be cleared here, and it is the
@@ -7233,14 +7240,13 @@ void(float notsolidbit) SV_SpawnPassableBrush =
 	self.vbsp_io_solid = self.solid;
 };
 
-// Patch 860: every output (read at spawn, from the parse accumulator) targets the
-// entity itself, so moving it and firing them changes nothing else on the map.
+// Patch 860: every output (read at spawn, from the parse accumulator) is an input the
+// driver handles, sent to the entity itself, so moving it changes nothing else.
 float(entity e) SV_SpRawSelfOnly =
 {
-	local string rec, v, tgt, esc;
-	local float p0, pn, ptab, s;
+	local string rec, v, tgt, in, sep;
+	local float p0, pn, ptab;
 
-	esc = chr2str(27);
 	p0 = 0;
 	while (1)
 	{
@@ -7253,11 +7259,14 @@ float(entity e) SV_SpRawSelfOnly =
 		if (ptab < 0)
 			continue;
 		v = substring(rec, ptab + 1, -1);
-		s = strstrofs(v, esc, 0);
-		if (s < 0)
-			s = strstrofs(v, ",", 0);
-		tgt = (s < 0) ? v : substring(v, 0, s);
+		sep = (strstrofs(v, chr2str(27), 0) >= 0) ? chr2str(27) : ",";
+		if (tokenizebyseparator(v, sep) < 2)
+			continue;					// no input: SV_EntityIOBuild drops it too
+		tgt = argv(0);
+		in = strtolower(argv(1));
 		if (strcasecmp(tgt, "!self") && (e.targetname == "" || strcasecmp(tgt, e.targetname)))
+			return FALSE;
+		if (in != "open" && in != "close" && in != "setposition" && in != "setspeed")
 			return FALSE;
 	}
 	return TRUE;
@@ -7591,10 +7600,12 @@ float(entity e, string lk) SV_RotButtonOutputKnown =
   output it owns targets itself (SV_SpRawSelfOnly).  Followers are SOLID_NOT prop_*.
   Poses come from clocks, as SV_RotButtonPlace's do, composed down the parent chain
   in Source's matrix convention (AngleMatrix/MatrixAngles, mathlib_base.cpp); the
-  edicts are written at most 20 times a second and the clients lerp between.
-  Library census (1,349 maps): 955 non-solid drawn START_ON rotators turn, 506 props
-  follow, 425 non-solid movelinears qualify; 284 maps gain motion, bhop_lost_world_v2
-  most (56 edicts).
+  edicts are written at most 20 times a second and the clients lerp between.  A mover
+  that goes solid is put back where it spawned and dropped (SV_SpDrop), and a name
+  shared with anything frozen keeps the whole group frozen.  Nothing allocates an
+  edict (see SV_SpWake).  Library census (1,926 maps): 948 non-solid drawn START_ON
+  rotators turn, 506 props follow, 412 non-solid movelinears qualify; 282 maps gain
+  motion, bhop_lost_world_v2 most (56 edicts).
 */
 #define SF_ROTATING_START_ON    1       // util.h:504
 #define SF_ROTATING_BACKWARDS   2
@@ -7602,11 +7613,11 @@ float(entity e, string lk) SV_RotButtonOutputKnown =
 #define SF_ROTATING_X_AXIS      8
 #define SF_ROTATING_ACCDCC      16      // bmodels.cpp:19
 
-.float  vbsp_sp_kind;       // SPK_* once SV_SpResolve admits it
 .float  vbsp_sp_depth;      // 1 + the parent's; 0 = nothing drawn depends on it
 .float  vbsp_sp_draw;       // writes its own pose: drawn and SOLID_NOT
 .float  vbsp_sp_need;
-.float  vbsp_sp_sized;
+.float  vbsp_sp_sized, vbsp_sp_wrote, vbsp_sp_grpbad, vbsp_sp_printt;
+.vector vbsp_sp_o0, vbsp_sp_a0, vbsp_sp_mins0, vbsp_sp_maxs0;    // as spawned, for SV_SpDrop
 .entity vbsp_sp_parent;
 .vector vbsp_sp_lorg, vbsp_sp_lang;     // spawn pose in the parent's spawn frame
 .vector vbsp_sp_wo, vbsp_sp_wf, vbsp_sp_wl, vbsp_sp_wu;    // world pose, this frame
@@ -7618,8 +7629,7 @@ float(entity e, string lk) SV_RotButtonOutputKnown =
 .float  vbsp_sp_useat, vbsp_sp_stopping, vbsp_sp_stopat;
 // func_movelinear: position 0..1 as the rot button's (SV_RotButtonPos).
 .float  vbsp_sp_pos, vbsp_sp_ideal, vbsp_sp_dir, vbsp_sp_arrived;
-float   vbsp_sp_resolved, vbsp_sp_maxdepth, vbsp_sp_wnow;
-entity  vbsp_sp_driver;
+float   vbsp_sp_maxdepth, vbsp_sp_wnow, vbsp_sp_dev;
 vector  vbsp_sp_bf, vbsp_sp_bl, vbsp_sp_bu;
 
 // Source's AngleMatrix columns: forward, left, up.
@@ -7792,12 +7802,13 @@ void(entity e) SV_SpRotUse =
 
 void() SV_SpResolve =
 {
-	local entity e, p;
+	local entity e, p, q;
 	local float c, more, nturn, nslide, nfollow, f;
 	local string pn;
 	local vector pf, pl, pu, d;
 
 	vbsp_sp_resolved = TRUE;
+	vbsp_sp_dev = cvar("developer");
 	for (e = findfloat(world, vbsp_sp_cand, SPK_ROT); e; e = findfloat(e, vbsp_sp_cand, SPK_ROT))
 	{
 		e.vbsp_sp_draw = SV_RotButtonDrawn(e);
@@ -7824,32 +7835,51 @@ void() SV_SpResolve =
 			e.vbsp_sp_up = 2 * e.vbsp_sp_max * f;	// 0.2 max f per 0.1 s
 			e.vbsp_sp_dn = e.vbsp_sp_max * f;		// 0.1 max f per 0.1 s
 		}
-		e.vbsp_sp_w0 = e.vbsp_sp_wt = bound(0 - e.vbsp_sp_max, e.speed, e.vbsp_sp_max);
+		// At rest: Spawn zeroes m_flSpeed whatever the `speed` key says (bmodels.cpp:668).
 		e.vbsp_sp_t0 = time;
 		if (e.spawnflags & SF_ROTATING_START_ON)
 			e.vbsp_sp_useat = e.vbsp_sp_spawnt + 0.2;	// SUB_CallUseToggle
 	}
 	for (e = findfloat(world, vbsp_sp_cand, SPK_LIN); e; e = findfloat(e, vbsp_sp_cand, SPK_LIN))
 	{
-		e.vbsp_sp_kind = SPK_LIN;
-		e.vbsp_sp_draw = SV_RotButtonDrawn(e);
 		makevectors(e.movedir);
-		e.vbsp_sp_axis = v_forward;
 		if (e.speed <= 0)
 			e.speed = 100;
 		if (e.movedistance <= 0)
 			e.movedistance = fabs(v_forward_x) * (e.size_x - 2) + fabs(v_forward_y) * (e.size_y - 2)
 			               + fabs(v_forward_z) * (e.size_z - 2) - e.lip;
 		if (e.movedistance <= 0)
-			e.vbsp_sp_kind = 0;
+			continue;
+		e.vbsp_sp_kind = SPK_LIN;
+		e.vbsp_sp_draw = SV_RotButtonDrawn(e);
+		e.vbsp_sp_axis = v_forward;
 		e.vbsp_sp_pos = e.vbsp_sp_ideal = e.startposition;
 	}
+	// One name, one object: if anything else answering to a mover's name stays frozen,
+	// the whole group does (surf_era's painting1_move is a non-solid *180 and a solid *181).
+	for (e = nextent(world); e; e = nextent(e))
+		if (e.vbsp_sp_kind && e.targetname != "")
+			for (q = nextent(world); q; q = nextent(q))
+				if (q.targetname != "" && !q.vbsp_sp_kind && !strcasecmp(q.targetname, e.targetname))
+				{
+					e.vbsp_sp_grpbad = TRUE;
+					break;
+				}
+	for (e = nextent(world); e; e = nextent(e))
+		if (e.vbsp_sp_grpbad)
+		{
+			for (q = nextent(world); q; q = nextent(q))
+				if (q.targetname != "" && !strcasecmp(q.targetname, e.targetname))
+					q.vbsp_sp_kind = 0;
+			dprint(sprintf("spin %s: stays, %s also names something frozen\n", e.model, e.targetname));
+		}
 	for (e = nextent(world); e; e = nextent(e))
 		if (!e.vbsp_sp_kind && e.parentname != "" && e.solid == SOLID_NOT && e.model != "")
 		if (substring(e.classname, 0, 5) == "prop_")
 			e.vbsp_sp_kind = SPK_FOLLOW;
 
-	// Parents: the first entity by that name, as Source's SetParent finds it.
+	// Parents: the first entity by that name, as Source's SetParent finds it.  Only a
+	// mover is a root, so every placed chain ends at one.
 	for (e = nextent(world); e; e = nextent(e))
 	{
 		if (!e.vbsp_sp_kind)
@@ -7864,10 +7894,9 @@ void() SV_SpResolve =
 		if (p == e || !p.vbsp_sp_kind)
 			p = world;
 		e.vbsp_sp_parent = p;
-		if (!p)
+		if (!p && e.vbsp_sp_kind != SPK_FOLLOW)
 			e.vbsp_sp_depth = 1;
 	}
-	vbsp_sp_maxdepth = 1;
 	more = TRUE;
 	while (more)
 	{
@@ -7876,32 +7905,27 @@ void() SV_SpResolve =
 			if (e.vbsp_sp_kind && !e.vbsp_sp_depth && e.vbsp_sp_parent.vbsp_sp_depth)
 			{
 				e.vbsp_sp_depth = e.vbsp_sp_parent.vbsp_sp_depth + 1;
-				vbsp_sp_maxdepth = max(vbsp_sp_maxdepth, e.vbsp_sp_depth);
 				more = TRUE;
 			}
+		if (!more)
+			for (e = nextent(world); e; e = nextent(e))
+				if (e.vbsp_sp_kind && e.vbsp_sp_kind != SPK_FOLLOW && !e.vbsp_sp_depth)
+				{
+					e.vbsp_sp_parent = world;	// a loop of parents: moves on its own
+					e.vbsp_sp_depth = 1;
+					more = TRUE;
+				}
 	}
-	// A follower with nothing moving above it, or a loop of parents, stays put; a
-	// mover in a loop moves on its own.
+	// Whatever is left reached no mover: a follower of a still prop, or of nothing.
 	for (e = nextent(world); e; e = nextent(e))
-	{
-		if (!e.vbsp_sp_kind || e.vbsp_sp_depth)
-			continue;
-		if (e.vbsp_sp_kind == SPK_FOLLOW)
+		if (e.vbsp_sp_kind == SPK_FOLLOW && !e.vbsp_sp_depth)
 			e.vbsp_sp_kind = 0;
-		else
-		{
-			e.vbsp_sp_parent = world;
-			e.vbsp_sp_depth = 1;
-		}
-	}
-	for (e = nextent(world); e; e = nextent(e))
-		if (e.vbsp_sp_kind == SPK_FOLLOW && !e.vbsp_sp_parent.vbsp_sp_kind)
-			e.vbsp_sp_kind = 0;			// its parent was a follower dropped above
 	// Only what something drawn depends on runs: mark each drawn mover's chain.
 	for (e = nextent(world); e; e = nextent(e))
 		if (e.vbsp_sp_kind == SPK_FOLLOW || (e.vbsp_sp_kind && e.vbsp_sp_draw))
 			for (p = e; p && !p.vbsp_sp_need; p = p.vbsp_sp_parent)
 				p.vbsp_sp_need = TRUE;
+	vbsp_sp_maxdepth = 1;
 	nturn = 0;
 	nslide = 0;
 	nfollow = 0;
@@ -7914,6 +7938,11 @@ void() SV_SpResolve =
 			e.vbsp_sp_depth = 0;
 			continue;
 		}
+		vbsp_sp_maxdepth = max(vbsp_sp_maxdepth, e.vbsp_sp_depth);
+		e.vbsp_sp_o0 = e.origin;
+		e.vbsp_sp_a0 = e.angles;
+		e.vbsp_sp_mins0 = e.mins;
+		e.vbsp_sp_maxs0 = e.maxs;
 		p = e.vbsp_sp_parent;
 		if (!p)
 		{
@@ -7954,10 +7983,33 @@ void() SV_SpResolve =
 	dprint(sprintf("spin: %g turn, %g slide, %g follow\n", nturn, nslide, nfollow));
 };
 
+// Back where it spawned and out of the driver: it went solid, so its collision is
+// the frozen one again (SV_IOEnable, SV_SpWrite).
+void(entity e) SV_SpDrop =
+{
+	if (!e.vbsp_sp_draw && e.vbsp_sp_kind != SPK_FOLLOW)
+		return;							// its own edict never moves: nothing to undo
+	if (e.vbsp_sp_wrote)
+	{
+		e.vbsp_sp_wrote = FALSE;
+		e.angles = e.vbsp_sp_a0;
+		setsize(e, e.vbsp_sp_mins0, e.vbsp_sp_maxs0);
+		setorigin(e, e.vbsp_sp_o0);
+	}
+	dprint(sprintf("spin %s: went solid, back at its spawn pose and stopped\n", e.model));
+	e.vbsp_sp_kind = 0;
+	e.vbsp_sp_depth = 0;
+};
+
 void(entity e, vector o, vector a) SV_SpWrite =
 {
 	local float r;
 
+	if (e.solid != SOLID_NOT)
+	{
+		SV_SpDrop(e);
+		return;
+	}
 	a_x = anglemod(a_x);
 	a_y = anglemod(a_y);
 	a_z = anglemod(a_z);
@@ -7973,8 +8025,15 @@ void(entity e, vector o, vector a) SV_SpWrite =
 		r = max(vlen(e.mins), vlen(e.maxs));
 		setsize(e, '-1 -1 -1' * r, '1 1 1' * r);
 	}
+	e.vbsp_sp_wrote = TRUE;
 	e.angles = a;
 	setorigin(e, o);
+	if (vbsp_sp_dev)
+	if (time >= e.vbsp_sp_printt)
+	{
+		e.vbsp_sp_printt = time + 1;
+		dprint(sprintf("spin %s #%g at %s angles %s\n", e.model, num_for_edict(e), vtos(o), vtos(a)));
+	}
 };
 
 void(entity e) SV_SpPlace =
@@ -8104,19 +8163,15 @@ void() SV_SpFrame =
 		}
 	}
 	next = max(next, time);
-	self.nextthink = (moving || next == time) ? next : 0;
+	vbsp_sp_nextt = (moving || next == time) ? next : 0;
 };
 
+// No driver edict: one spawned while the map loads renumbers every entity after it,
+// and SV_PhysentDigest hashes solid entities' numbers.  StartFrame calls SV_SpFrame.
 void() SV_SpWake =
 {
-	if (!vbsp_sp_driver || vbsp_sp_driver.classname != "vbsp_spindriver")
-	{
-		vbsp_sp_driver = spawn();
-		vbsp_sp_driver.classname = "vbsp_spindriver";
-		vbsp_sp_driver.think = SV_SpFrame;
-	}
-	if (!vbsp_sp_driver.nextthink || vbsp_sp_driver.nextthink > time)
-		vbsp_sp_driver.nextthink = time;
+	if (!vbsp_sp_nextt || vbsp_sp_nextt > time)
+		vbsp_sp_nextt = max(time, 0.001);	// time is 0 while the map loads; 0 is asleep
 };
 
 float(entity t, string in, string pm) SV_SpinInput =
@@ -8155,22 +8210,32 @@ float(entity t, string in, string pm) SV_SpinInput =
 	{
 		SV_SpRotTheta(t, time);
 		v = vbsp_sp_wnow;
-		if (in != "toggle" && in != "stopatstartpos")
-			t.vbsp_sp_stopping = FALSE;
-		// Input handlers, bmodels.cpp:1175-1240.
+		// Input handlers, bmodels.cpp:1175-1240; the stopping flag clears where theirs does.
 		if (in == "start")
+		{
+			t.vbsp_sp_stopping = FALSE;
 			SV_SpRotTarget(t, t.vbsp_sp_max);
+		}
 		else if (in == "stop")
+		{
+			t.vbsp_sp_stopping = FALSE;
 			SV_SpRotTarget(t, 0);
+		}
 		else if (in == "toggle")
+		{
+			if (t.solid != SOLID_NOT)
+				return FALSE;			// the old path's solidity flip, for a solid carrier
 			SV_SpRotTarget(t, (v > 0) ? 0 : t.vbsp_sp_max);
+		}
 		else if (in == "reverse")
 		{
+			t.vbsp_sp_stopping = FALSE;
 			t.vbsp_sp_rev = !t.vbsp_sp_rev;
 			SV_SpRotTarget(t, v);
 		}
 		else if (in == "setspeed")
 		{
+			t.vbsp_sp_stopping = FALSE;
 			v = stof(pm);
 			t.vbsp_sp_rev = (v < 0);
 			SV_SpRotTarget(t, bound(0, fabs(v), 1) * t.vbsp_sp_max);
@@ -8182,6 +8247,7 @@ float(entity t, string in, string pm) SV_SpinInput =
 		}
 		else if (in == "startbackward")
 		{
+			t.vbsp_sp_stopping = FALSE;
 			t.vbsp_sp_rev = TRUE;
 			SV_SpRotTarget(t, t.vbsp_sp_max);
 		}

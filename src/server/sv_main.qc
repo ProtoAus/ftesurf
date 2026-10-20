@@ -174,6 +174,9 @@ void() StartFrame =
 		*/
 		zone_entsready = TRUE;
 	}
+	if (vbsp_sp_nextt)
+	if (time >= vbsp_sp_nextt)
+		SV_SpFrame();               // Patch 860: decorative movers, no edict of their own
 
 	SV_BrushRenderTestFrame();
 	SV_UpdateMovementServerInfo();
