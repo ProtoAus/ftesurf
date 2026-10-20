@@ -5,6 +5,25 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Map entities after P869-P874: what is left
+
+- trigger_momentum_limitmovement (119 on 36 maps) and trigger_momentum_slide (2 on 2) need the
+  engine: movement runs in pm_source.c, so masking buttons or forcing a slide is an engine field
+  the recorder and pm_verify must carry. Its own engine patch, with run_momtriggers as the toggle.
+- Unmeasured in an arm: the zone fallback (a failed hop before any progress trigger goes to the
+  START/stage destination -- the harness has no zone data for the maps that have one), the switch
+  surviving a restore (no zoned Momentum-trigger map in the harness), three tiled multihops (none
+  in the library; the one overlapping pair, bhop_lego2 *191/*193, meets in mid-air).
+- Landmark teleports (`landmark` on Momentum teleports) are not implemented. Momentum savelocs carry
+  gravity (mom_system_saveloc.cpp:194); saves here do not.
+- Rewinds carry no Momentum progress: a rewound running state goes back to its arm zone's progress.
+- Latent defaults (every library instance writes the key): reversespeed's Interval floors at 0.01
+  against Momentum's 1.0, and absent Reverse* keys read false against Momentum's true.
+- Ropes are static: no wind, collision, breaking or dangling ends; parented (moving) ropes are drawn
+  where they spawned. env_fade's modulate draws as a blend (FTE's drawfill has no modulate; no
+  library map uses it). The soundscape trigger probe follows the body (pmove_org), not a spectating
+  camera.
+
 ## Water, glass and the finish frame (P866-P868, P875): what is left
 
 - **Lex's game draws ~2.2x a fresh client** at surf_garden save 3 (6,023 against 2,803 draws, same
@@ -27,6 +46,22 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   (the map's own path; fs.c skips the empty segment and loads it). Cosmetic, on old and new exes.
 
 ## Map entities (P865): what is left
+
+- A stage start does not reset gravity (only a START does, on entry, as Momentum's zone entry);
+  Momentum does not either, but a stage run is boarded separately. The bhop walk-in reset (a START
+  re-entered while running) is unmeasured: the arm could not walk a body into cheesemania's box.
+- On a lobby, `lobby_mapedits 0` also holds AddOutput target on func_train paths (kz_lain,
+  bkz_junglebhop) and surf_treefort's timer-cycled teleport: offline and lobby play different map
+  logic there (the lobby side is what was live before P865).
+- Engine: PF_getentityfieldstring (common/pr_bgcmd.c) tests `fdef->type` (field 0's) for "unset"
+  instead of `fdef[fidx].type`, so a vector whose x is 0 reads "". The mod reads vectors by
+  component (SV_FieldStr); the engine line wants `fdef[fidx].type`.
+- surf_happyhug: the case-repaired retarget of sMako_next lands at tp_sroxy and the map's own
+  blocktp_sRoxy (*418) then sometimes sends on to tp_sRoxy_start (timing-dependent map logic; the
+  p865r2 arm's T case reads either).
+- bhop_kiitovittu: from ~4 s after load, the wall top-left of the view at 144 4676 330 yaw 90 draws
+  with the lattice's material over stale console text, intermittently, with ropes on or off and on
+  builds before P874 (P874 rope arm). Unexplained.
 
 - A breakable broken mid-run changes the physents, and pm_verify does not run map I/O, so a run that
   crosses one HOLDs on physents (same class as an I/O-toggled func_brush). Falsifier: a run on

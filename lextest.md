@@ -1,5 +1,47 @@
 # lextest.md — things waiting on a human
 
+## P869 — Momentum's anti-bhop triggers (onehop, multihop, progress, catapult)
+
+Momentum's section triggers now work (16 maps): a onehop platform sends you back on your second
+landing, or if you stand on it past its hold time; a multihop sends you back if you stand on it;
+progress triggers set where you are sent; trigger_catapult launches. `run_momtriggers 0` turns the
+anti-bhop family off (your toggle); a run keeps the setting it started with.
+
+- bhop_mom_training_beta: the onehop room (land on a platform twice = back to the room's start)
+  and the multihop room (stand still = back).
+- surf_mom_training: the catapults launch you.
+- bhop_floodwaters: falling into the water sends you back to the last checkpoint area.
+
+"Training rooms / catapults / floodwaters ok, or <map and what differs>". Verdict PENDING.
+
+## P870 — map text, hints, screen fades and shakes
+
+game_text, env_hudhint, env_fade and env_shake are drawn (stage names, credits, "Unlocked" hints,
+coloured flashes, camera shakes). hud_edit > Display Info has "Map messages" and "Map screen effects".
+
+- bhop_grid2: "Bunnyhop Grid 2" types out in blue at the start.
+- surf_s_t_a_t_i_o_n: the credit hint at the start.
+- bhop_wuyan: a coloured flash at each stage teleport.
+
+"Text / hints / fades / shakes look right, or <map and what is off>" (size and font especially).
+Verdict PENDING.
+
+## P873 — trigger soundscapes
+
+Soundscapes a map switches with trigger volumes now switch (bhop_pokemans_xd's rooms), and
+env_soundscape_proxy plays its soundscape. "Sounds change between rooms, or <map>". Verdict PENDING.
+
+## P874 — the sun and ropes
+
+env_sun draws Source's sun glow over the sky (247 maps) and ropes/cables hang between their points
+(181 maps). Graphics menu rows "Sun" and "Ropes" turn them off.
+
+- bhop_eazy / bhop_forevertranslucent: look up toward the sun, the glow is there.
+- bhop_kiitovittu / bhop_canals: cables hang between the poles.
+
+"Sun / ropes look right, or <map>"; and the frame rate on bhop_canals with Ropes on vs off.
+Verdict PENDING.
+
 ## P871 — Panel redraw (hud_fps): the trainer and key hints drawn less often
 
 hud_edit -> Display Info -> **Panel redraw**: frame (as before) / 240/s / 144/s / 120/s / 60/s / tick.
@@ -73,7 +115,8 @@ T/CT teleports, walls a map breaks open, point_teleport, and a silent shot for s
 - Test shot: bind a key to +attack (MOUSE1/MOUSE2 are duck/jump by default, so e.g.
   `bind MOUSE4 +attack`), then on bhop_eazy_v2 shoot the thin strip at the bottom of the wall
   before the glass: the glass breaks.
-  Offline only; a lobby needs `lobby_shoot 1`.
+  Offline only; a lobby needs `lobby_shoot 1`. On a lobby, map Breaks stay shut
+  (`lobby_mapedits 0`): one player's break would change the map for everyone.
 
 "Gravity / gates / towers / shot ok, or <map and what differs>". Verdict PENDING.
 
