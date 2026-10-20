@@ -133,10 +133,12 @@
   mask (cl_sprites.qc SPR_GLARE_MASK) leaves WINDOW out on purpose. Pick by the question.
 - "No smoke" can be smoke that is there: diff two frames 2.5 s apart before touching numbers.
   surf_dune's env_fire_tiny/_small smoke differs in a 250-pixel column and is invisible by eye.
-- A respawn (SV_TimerSpawn) clears a finished run's tag outright; `!m` (SV_RecDiscard) keeps it
-  while nothing is live. A finish followed by a respawn within a packet loses its sidecar and its
-  receipt. goto_spawn voids first and carries the tag across (SV_SpawnGoto); `kill`, `cmd respawn`
-  and `cmd restart` still have the race (BACKLOG).
+- A raw spawn (SV_TimerSpawn) clears a finished run's tag outright; `!m` (SV_RecDiscard)
+  keeps it while nothing is live. P845's goto_spawn voided first and carried the tag across;
+  at that point `kill`, `cmd respawn` and `cmd restart` still lost an unread finish.
+  **P858 repaired those three paths:** all explicit respawns now use SV_PlayerRespawn,
+  preserving pending finish fields and releasing live recording handles before spawn.
+  Fresh-connection spawns deliberately remain blank.
 - A test client can carry a test plugin without touching an install: plugins load from the
   exe's own folder (FS_BINARYPATH), so a copied ftesurf64.exe in a task root with the plugin
   beside it, run with the install as cwd (conbridge --client), loads it (`plug_list`: $system).
