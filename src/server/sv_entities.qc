@@ -5182,8 +5182,11 @@ float vbsp_targetfix_n;
 float vbsp_lpd_n, vbsp_lpd_unpaired;
 entity vbsp_lpd_reporter;	// Patch 207: deferred count, see linked_portal_door_report
 
+entity  vbsp_ml_head;                               // Patch 882: the map's limit and slide triggers
+
 void() SV_EntityReset =
 {
+	vbsp_ml_head = world;                           // Patch 882: it would hold the last map's edicts
 	vbsp_prop_n = vbsp_prop_solid_n = vbsp_prop_scaled_n = vbsp_prop_dropped_n = 0;
 	vbsp_prop_requant_n = 0;
 	vbsp_prop_nophy_n = 0;
@@ -7789,6 +7792,129 @@ void() trigger_momentum_reversespeed_touch =
 };
 void() trigger_momentum_reversespeed = { if (SV_MomTrigSpawn()) self.touch = trigger_momentum_reversespeed_touch; };
 void() trigger_reversespeed = { trigger_momentum_reversespeed(); };
+
+/*
+  Patch 882: trigger_momentum_limitmovement (CTriggerLimitMovement, mom_triggers.cpp:1275;
+  119 on 36 maps) and trigger_momentum_slide (CTriggerSlide, :1662).  Each command's move
+  gets the triggers the body overlaps where the move starts (SV_MomLimitFrame), which is
+  where the last move's touches were, and after a warp is the destination.  The engine
+  applies them at mover 10 (pin keys momlimit, momcool, momslide).  Overlapping triggers OR
+  their flags.
+*/
+.float  run_momlimit, run_momcool, run_momslide;    // read by the engine each move
+.string BhopCooldown, bhopcooldown;                 // the shipped FGD's; absent is 0.2 s
+// The slide's keys, both spellings (Momentum's CamelCase; func_slide redeclares disablegravity).
+.float  StuckOnGround, stuckonground, AllowingJump, allowingjump, DisableGravity, disablegravity;
+.entity vbsp_ml_next;                               // vbsp_ml_head: above SV_EntityReset
+
+void() SV_MomLimitAdd =
+{
+	if (!SV_MomTrigSpawn())
+		return;
+	self.vbsp_ml_next = vbsp_ml_head;
+	vbsp_ml_head = self;
+};
+void() trigger_momentum_limitmovement = { SV_MomLimitAdd(); };
+void() trigger_momentum_slide = { SV_MomLimitAdd(); };
+
+void() SV_MomLimitRelist =
+{
+	local entity t;
+
+	vbsp_ml_head = world;
+	for (t = find(world, classname, "trigger_momentum_limitmovement"); t; t = find(t, classname, "trigger_momentum_limitmovement"))
+	{
+		t.vbsp_ml_next = vbsp_ml_head;
+		vbsp_ml_head = t;
+	}
+	for (t = find(world, classname, "trigger_momentum_slide"); t; t = find(t, classname, "trigger_momentum_slide"))
+	{
+		t.vbsp_ml_next = vbsp_ml_head;
+		vbsp_ml_head = t;
+	}
+};
+
+// SV_MomTrigGate's tests without its touch stamp, and the I/O state a touch implies.
+// MOVE_OTHERONLY ignores SOLID_NOT, so a trigger the map disabled is tested here.
+float(entity t, entity p) SV_MomLimitTouches =
+{
+	local int hm;
+	local entity was;
+	local float hit;
+
+	if (t.solid != SOLID_BSPTRIGGER || SV_Key2(t.StartDisabled, t.startdisabled))
+		return FALSE;
+	if (p.absmin_x > t.absmax_x || p.absmin_y > t.absmax_y || p.absmin_z > t.absmax_z ||
+	    p.absmax_x < t.absmin_x || p.absmax_y < t.absmin_y || p.absmax_z < t.absmin_z)
+		return FALSE;                               // the bounds first: one trace a trigger is not free
+	if (!SV_TriggerTakesPlayers(t) || !SV_MomTrackOK(t, p))
+		return FALSE;
+	if (!SV_PassesFilter(t, p))
+		return FALSE;
+	// The engine's touch test clips with every contents bit (Patch 881); so does this.
+	hm = p.hitcontentsmaski;
+	was = other;
+	p.hitcontentsmaski = -1i;
+	other = t;
+	tracebox(p.origin, p.mins, p.maxs, p.origin, MOVE_TRIGGERS | MOVE_OTHERONLY, p);
+	p.hitcontentsmaski = hm;
+	other = was;
+	hit = (trace_startsolid || trace_allsolid || trace_fraction < 1);
+	return hit;
+};
+
+// Per command from PlayerPreThink, before the engine reads run_mom*.
+void(entity p) SV_MomLimitFrame =
+{
+	local float lim, slide, cool, f;
+	local string s;
+	local entity t;
+
+	lim = 0;
+	slide = 0;
+	cool = 0;
+	if (vbsp_ml_head)
+	if (SV_MomOn(p))
+	if (p.health > 0 && p.movetype != MOVETYPE_NOCLIP)
+		for (t = vbsp_ml_head; t; t = t.vbsp_ml_next)
+		{
+			// A trigger the map Killed may be a reused edict now: list them afresh.
+			if (t.classname != "trigger_momentum_limitmovement" && t.classname != "trigger_momentum_slide")
+			{
+				SV_MomLimitRelist();
+				SV_MomLimitFrame(p);
+				return;
+			}
+			if (!SV_MomLimitTouches(t, p))
+				continue;
+			if (t.classname == "trigger_momentum_slide")
+			{
+				f = 8;                              // PMSLIDE_ACTIVE: a slide with every key 0
+				if (SV_Key2(t.StuckOnGround, t.stuckonground))
+					f = f | SLIDE_STAYON;
+				if (SV_Key2(t.AllowingJump, t.allowingjump))
+					f = f | SLIDE_ALLOWJUMP;
+				if (SV_Key2(t.DisableGravity, t.disablegravity))
+					f = f | SLIDE_NOGRAVITY;
+				slide = slide | f;
+				continue;
+			}
+			f = floor(t.spawnflags / 8192) & 511;   // SF_LIMIT_* are bits 13..21
+			lim = lim | f;
+			if (f & 64)
+			{
+				s = SV_KeyS2(t.BhopCooldown, t.bhopcooldown);
+				cool = max(cool, (s == "") ? 0.2 : bound(0, stof(s), 60));
+			}
+		}
+	if (!(lim & 64))
+		cool = 0;
+	if (p.run_momlimit != lim || p.run_momslide != slide || p.run_momcool != cool)
+		dprint(sprintf("momlimit %s: limit %g slide %g cool %g\n", p.netname, lim, slide, cool));
+	p.run_momlimit = lim;
+	p.run_momslide = slide;
+	p.run_momcool = cool;
+};
 
 // CTriggerUserInput (mom_triggers.cpp:1199): outputs on a key while inside.
 // Keys: 0 fwd, 1 back, 2 left, 3 right, 4 jump, 5 duck, 6 attack, 7 attack2.

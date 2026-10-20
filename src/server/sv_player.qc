@@ -479,6 +479,7 @@ void() PlayerPreThink =
 	SV_WatchHoldMove(self);
 	if (self.run_pmhold) SV_MonolithB4Reset(self);
 	else SV_MonolithB4Command(self);
+	SV_MomLimitFrame(self);         // Patch 882: after the movetype is final, before the move
 
 	// BUILD 87 (v9): what the PREVIOUS move changed (pin, physents, portals),
 	// written before this command's `ride` and `in` rows.  See SV_RecState.
@@ -528,6 +529,7 @@ void() PlayerPreThink =
 	// move, which the stamp above cannot see.  See .run_pushlift.
 	if (self.run_wasground || self.run_pushlift)
 	if (self.button2)
+	if (!(self.run_momlimit & 16) || cvar("pm_sourceversion") < 10)  // Patch 882: mover 10 strips it
 	{
 		self.run_jumpcmd = TRUE;
 		SV_TimerBhopLaunchCommand(self);

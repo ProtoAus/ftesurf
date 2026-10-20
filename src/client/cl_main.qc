@@ -893,6 +893,8 @@ float(vector newang, float isdelta) CSQC_Parse_SetAngles =
 float run_ps_ground;             // cltime we last touched down, 0 = airborne
 float run_ps_jumpheld;           // jump was down on the previous input frame
 float run_ps_left;               // ...and we have actually left the ground since
+float run_ps_jumpat;             // Patch 882: cltime of the jump edge that took W
+#define STAT_MOMLIMIT 22         // engine-written (ftequakers P882): limitmovement bits, 16 = jump
 //run_ps_release ("suppressing +forward right now") is declared in cl_keys.qc:
 //the key block draws it and cl_hud.qc compiles before this file.
 
@@ -939,12 +941,15 @@ void() PreStrafe_InputFrame =
 	else if (!run_ps_ground)
 		run_ps_ground = cltime;
 
-	// Rising edge of jump, from a standing start, with W actually held.
+	// Rising edge of jump, from a standing start, with W actually held -- and no jump limit
+	// to strip it (Patch 882: the body stayed down with W taken for as long as jump was held).
 	if (jump && !run_ps_jumpheld && input_movevalues_x > 0 &&
-	    run_ps_ground && (cltime - run_ps_ground) >= PreStrafe_Dwell())
+	    run_ps_ground && (cltime - run_ps_ground) >= PreStrafe_Dwell() &&
+	    !(getstatf(STAT_MOMLIMIT) & 16))
 	{
 		run_ps_release = TRUE;
 		run_ps_left    = FALSE;
+		run_ps_jumpat  = cltime;
 	}
 	run_ps_jumpheld = jump;
 
@@ -955,6 +960,8 @@ void() PreStrafe_InputFrame =
 		run_ps_left = TRUE;
 	else if (run_ps_left)
 		run_ps_release = FALSE;          // landed: the next hop keeps its W
+	else if ((getstatf(STAT_MOMLIMIT) & 16) || cltime - run_ps_jumpat > 0.5)
+		run_ps_release = FALSE;          // Patch 882: still down -- a limit or cooldown took the jump
 
 	if (input_movevalues_x <= 0)
 		run_ps_release = FALSE;          // you let go: hand it straight back

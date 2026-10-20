@@ -2876,7 +2876,9 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             file before build 76 meant
     momtrig 0|1             Patch 869: were Momentum's bhop-control triggers live
                             (run_momtriggers, latched at the start).  Absent = the
-                            rule before Patch 869, when they were all inert
+                            rule before Patch 869, when they were all inert.
+                            Patch 882: limitmovement and slide join them at
+                            pmsrcver 10.
     proprule <n>            which prop-geometry rule built this run's collision
                             world.  Absent or 0 = prop scale as the map wrote it;
                             1 = floored to the 1/16 the wire carries, so the
@@ -2969,6 +2971,9 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             engine does not publish: the physics are then UNKNOWN.
                             Readers still take keys in any order; `after flags`
                             is where the writer puts it, not a rule to check.
+                            Patch 882 (pmsrcver 10) appends momlimit momcool
+                            momslide, the limitmovement/slide triggers' inputs:
+                            73 names at 10, 70 below (absent ones are 0).
     movebnd <n>             Patch 493.  THE BOUND THIS FILE'S MOVE COLUMNS WERE
                             JUDGED AGAINST: an `in` row whose |fwd|, |side| or |up|
                             exceeds it sets TF_MOVEOOR in `flags` and is counted.
@@ -3411,6 +3416,11 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             the engine saved it after the start packet's last
                             move.  A replay seeds from this, not from the %.2f
                             sample.  The start LATCH is still taken on trust.
+                            Patch 882 adds landticks (ticks since landing, the
+                            bhop cooldown's clock, 0..1000000), required for an
+                            exact replay at pmsrcver 10 and unused below it; a
+                            present value that does not read makes the state
+                            unknown at any version.
     zseed <name=value ...>  v9, build 88, additive (no bump): once, before the
                             first `in` row -- the timer latches the START packet
                             left: evzone azone cpzone track startseg stagerun, and
