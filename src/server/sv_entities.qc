@@ -7619,8 +7619,12 @@ void() trigger_momentum_progress = { if (SV_MomTrigSpawn()) self.touch = trigger
 float(entity t, entity p) SV_MomTouching =
 {
 	local int bit;
+	if (!t)
+		return FALSE;
 	bit = SV_TouchBit(p);
-	return (t && bit && ((t.vbsp_touch_in | t.vbsp_touch_seen) & bit));
+	if (!bit)
+		return (t.vbsp_touch_who == p);    // vbsp_mp 0 or a slot past 32: SV_TouchEntered's own fallback
+	return ((t.vbsp_touch_in | t.vbsp_touch_seen) & bit) != 0;
 };
 
 // A hold begins (entry, or a touch no slot holds).  A slot whose trigger is still

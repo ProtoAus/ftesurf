@@ -1998,12 +1998,24 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	e.run_t_armzone  = am;
 	e.run_t_cpzone   = cz;
 	// Patch 869: Momentum progress, never the abandoned future's.  With no record (an
-	// older save, a rewind) a running state goes back to its own arm zone; the run's
-	// trigger switch is the save's, else the cvar now.
+	// older save, a rewind) a running state goes back to the leg it is on (a full run
+	// past stage 1 to that stage's box, not the START).  The switch is the save's; a
+	// running save without one predates P869, when the triggers were inert.
 	if (mprog == "" && mzone < 0 && st == TS_RUNNING)
-		mzone = am;
+	{
+		// The zone armed in when it is this leg's (nine maps have twin zones per leg).
+		if (am >= 0 && zone_track[am] == tr && zone_seg[am] == sg)
+			mzone = am;
+		else
+			mzone = SV_ZoneFindLeg(tr, sg);
+		if (mzone < 0)
+			mzone = am;
+	}
 	SV_MomProgressRestore(e, mprog, mnum, mzone, mohs);
-	e.run_momon = (mmon >= 0) ? mmon : vbsp_momtrig;
+	if (mmon >= 0)
+		e.run_momon = mmon;
+	else
+		e.run_momon = (st == TS_RUNNING) ? 0 : vbsp_momtrig;
 	/*
 	  Patch 436: A PENDARM IS NOT A LATCH, IT IS AN ARM THAT HAS NOT HAPPENED.
 

@@ -882,7 +882,6 @@ void(entity e) SV_MsApply =
 	// profile flip inside this session is caught at the finish.
 	e.run_t_rbreach = -1;
 	e.run_t_pbad = -1;
-	e.run_momon = vbsp_momtrig;     // Patch 869: the Momentum-trigger switch, as at a start
 	SV_TimerJournal(e);
 	SV_TimerRuleset(e, TRUE);
 	SV_TimerProfile(e, TRUE);

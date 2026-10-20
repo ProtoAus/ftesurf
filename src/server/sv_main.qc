@@ -197,7 +197,7 @@ void() StartFrame =
 	// Patch 869: Momentum's bhop-control triggers (multihop, onehop, progress,
 	// reversespeed, userinput); 0 makes them inert.
 	registercvar("run_momtriggers", "1");
-	vbsp_momtrig = cvar("run_momtriggers");
+	vbsp_momtrig = (cvar("run_momtriggers") != 0);   // 0 or 1: saves read -1 as "no key"
 	Pose_Frame();                   // Patch 383: spectator counts and the publish gap
 	Pose_SpecBy();                  // Patch 429: who watches whom, after the counts
 	SV_SpecPublish();               // Patch 382: reads what Lobby_Frame just cached
