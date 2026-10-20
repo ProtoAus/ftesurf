@@ -25,7 +25,7 @@ commit   1364ef815525a8249c2e53bcd50d3302e4797db2
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-875
-patch    884
+patch    885
 # Patch 876 (menu.dat + release tooling + site): PATCHNOTES.md's dot points become patchnotes.json beside
 # update.json; the download page lists them on its right, the title menu while an update is pending or new.
 # Patches 866-868, 872, 875 (client exe + hl2 plugin, + ftesurf-d3's P871 engine half): Refracting glass

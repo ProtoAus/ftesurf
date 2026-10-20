@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P885 — a hop after you leave the start zone does not make the run practice
+
+surf_tendies: one jump out of the start zone, land on the booster and hop off it -- the run keeps
+going as a real run (no "hopped start" / "practice run" lines). A bunny hop chain INSIDE the start
+zone still says "hopped start" and makes the run practice, as before. "tendies ok, or <what it said>".
+Verdict PENDING.
+
 ## P884 — not-solid physics boxes (surf_lovetunnel save 10)
 
 The box you stood on at save 10 is the butterflies' motor axle ("butterflyentrance", a 16-unit

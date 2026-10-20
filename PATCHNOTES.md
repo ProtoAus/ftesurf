@@ -21,6 +21,9 @@
 
 ## next
 
+### P885 Hops after the start zone are yours
+- Only a hop taken inside the start zone makes the run practice. Jumping out once and then hopping, such as onto surf_tendies' booster, now counts.
+
 ### P884 Physics boxes that Source leaves passable
 - Physics boxes a map marks not solid no longer stop you: 229 on 30 maps, among them surf_lovetunnel's butterfly axles.
 

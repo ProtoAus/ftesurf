@@ -11171,6 +11171,11 @@ float(entity e) SV_TimerJumpWatch =
 		    e.run_bhop_launch_zone != e.run_t_armzone + 1)
 		if (!e.run_pushed || e.run_jumpcmd)
 		if (e.run_t_state == TS_ARMED || e.run_t_state == TS_RUNNING)
+		// Patch 885: only a hop taken inside the start box -- the launch test's hull and
+		// pre-move point.  Once the hull is out the clock is running, and surf_tendies'
+		// route is one jump out of the box and a hop on the booster beyond it.
+		if (e.run_t_state == TS_ARMED ||
+		    SV_ZoneInBox(e.run_t_armzone, e.run_t_lastorg, SV_RunHullMins(e), SV_RunHullMaxs(e)))
 		{
 			if (dwell < want)
 			{
