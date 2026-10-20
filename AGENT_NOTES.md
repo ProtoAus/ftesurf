@@ -20,10 +20,11 @@
   inside /api/run would hold gunicorn's 4 threads. The overlay is keyed by level index and
   cleared when the file's revision changes.
 - **`first`** is the first LOGGED finish inside the dates, in insertion (id) order, and nobody
-  when the log may have missed the first: `story_tracks` (written once per track, by the first
-  ladder pass that lists it or its first logged finish) holds `began` and `prior` (a WOS finish
-  already on the board), and a track with prior whose dates (all time, undated) start before
-  `began` has no `first`. Never order finishers by a board row's `submitted` (it moves on every
+  when the log may have missed the first: `story_tracks` (written once per track, by
+  story_before before a finish touches the board, or by a ladder pass for a listed track nobody
+  has finished since) holds `began` and `prior` (a WOS finish already on the board), and a track
+  with prior whose dates (all time, undated) start before `began` has no `first`. Written after
+  the board row it counted the finisher itself (review round 3). Never order finishers by a board row's `submitted` (it moves on every
   improvement and on a restand) or by `at` (the request's start: two overlapping requests told
   two firsts in review). The answer uses the same function with a db-backed owner (bans too).
 - **`*story` is emptied at every spawn** (PutClientInServer): the client gets a player's big info
