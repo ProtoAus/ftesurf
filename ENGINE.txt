@@ -29,6 +29,8 @@ patch    858
 # Patch 858 (qwprogs): kill, respawn and restart share goto_spawn's safe lifecycle;
 # pending finish fields survive and live recordings close before their handle is reset.
 # Fresh-connection spawns still clear terminal state. Native commit/tag unchanged.
+# Delivered both Windows installs and12 Pi lobbies 2026-10-20, verified01:40Z;
+# exact scope/hashes/limits: tools/lobby-progs-p858-20261020.md.
 # Patch 842 (qwprogs/readers + native verifier): format 11 keeps actual released-packet
 # inputs as fzin and declares the final native clock without granting held verification.
 # Retained v9/v10 prefixes keep their contracts; v11 stays v11. Native ordinary zero-

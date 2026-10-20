@@ -5634,6 +5634,12 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+- **A version reply has a banner as well as a build line (P858 readback).** The
+  first `FTE[^\r\n]*` match is only `FTE QW`, not the following `FTE git-...` stamp.
+  Strip colour markup and select the exact expected build line; preserve the
+  failed readback, do not restart healthy units or infer a native mismatch from
+  the generic banner. All12 corrected live reads matched the unchanged842 build.
+
 - For a live WAL SQLite rollback, use the normal backup API on a pinned read-only
   snapshot (`BEGIN`, read schema, `backup(destination)`, release the read snapshot).
   A custom small-page incremental copy timed out while making partial progress;
