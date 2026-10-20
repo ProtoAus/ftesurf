@@ -5,6 +5,17 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## 3D sky (P880): what review left open
+
+- The first sky_camera wins (CSQC's rule); Source takes the SF_SKY_MASTER one, else the last constructed
+  (SkyCamera.cpp:23-29). Only surf_indecisive has two, sharing one origin.
+- RT_PORTALCAMERA (gl_rmain.c:1825-1846) never sets pvsorigin, so such a view tests a stale point; needs
+  a tagindex-0xffff attachment FTESurf never makes.
+- The mirror fallback (view type 0) re-tests the leaf at the mesh centre where Source inherits.
+- With r_portalareas 0 a door view uses the near view's area bits; on a door whose exit lacks
+  LEAF_FLAGS_SKY its 2D-sky faces could go unfilled (bhop_recharge 1 door, bhop_2shiny2shuckle 11).
+  Lex runs r_portalareas 1; untested at 0.
+
 ## Physics boxes (P884): what is left
 
 - **Debris and multiplayer physboxes are solid here and not in Source's rules.** SF_PHYSBOX_DEBRIS

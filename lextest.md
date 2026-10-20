@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+## P880 — surf_tendies: the window's fps drop and the missing sky (saves 2/3/5/6)
+
+The window was ordinary glass; what cost 10x was the 3D sky seen through it. Its eye (a scaled copy of
+yours) sat inside solid above the sky room at saves 3 and 5, so the 3D sky drew the whole map from
+inside a wall. It now looks from the sky camera itself, as Source does, and like Source it draws the
+3D sky only where the map says it can be seen; everywhere on tendies that is the flat 2D sky.
+
+- Saves 3 and 5: about 1,000 fps on the rig with your cfg (148 and 151 before), and save 5 shows the
+  blue 2D sky with clouds and the sun where the grey skyline was. Saves 2 and 6 as before.
+- Any map where the far 3D skyline (buildings, mountains) used to show and is now just the flat sky,
+  or the other way round: say the map and spot. `hl2_3dskyleaf 0` brings the old choice back.
+
+In both installs 20:41Z (exe dbf587c8, also carries P883). "Tendies ok / <map + spot>". Verdict PENDING.
+
 ## P885 — a hop after you leave the start zone does not make the run practice
 
 Live with P884 in both installs and on all 12 lobbies since 17:56Z 20 Oct UTC (04:56 21 Oct your
