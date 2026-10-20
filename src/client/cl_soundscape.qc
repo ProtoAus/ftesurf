@@ -544,28 +544,38 @@ float(string path) Snds_ReadFile =
   reads the CLIENT's own worldmodel entity string (pr_csqc.c:4396-4428), so
   nothing crosses the wire and the server does not need to know this exists.
 
-  ONLY env_soundscape.  env_soundscape_proxy (251, 12 maps) names another
-  ENTITY through MainSoundscapeName and copies its script index at Activate
-  (soundscape.cpp:38-62); env_soundscape_triggerable (339, 55 maps) is driven
-  by trigger_soundscape brush touches, which is a server->client path this
-  build does not add.  Both are counted and reported rather than silently
-  skipped, so the gap stays visible.
+  Patch 873: env_soundscape_proxy is a candidate at its own origin and radius
+  playing the env_soundscape that MainSoundscapeName names (soundscape.cpp:38);
+  env_soundscape_triggerable is never a distance candidate (its Think is empty,
+  :476) and plays while you are inside a trigger_soundscape naming it, the most
+  recently entered winning (DelegateStartTouch/EndTouch, :420-467).  The
+  triggers are tested here against the predicted hull, as cl_triggers.qc tests
+  its own; their Enable/Disable inputs (81 on 7 maps) are server state this
+  cannot see, so StartDisabled ones are left out.
 ===========================================================================
 */
-float ss_skipped_cls;
+float ss_trig_n;          // trigger_soundscape probes this map
+.float ssc_ix;          // on an "ss_trig" probe: the triggerable's ss_ent row
+.float ssc_in, ssc_when;
+#define SS_RAD_TRIG -2  // a triggerable's row: never chosen by distance (Snds_Pick)
 
 void() Snds_LoadEntities =
 {
-	local string tok, key, cn, nm, org;
-	local float rad, dis;
+	local string tok, key, cn, nm, org, tname, mainnm, mdl;
+	local float rad, dis, i, j, n;
+	local strbuf ssnames, proxies, trigs;
+	local entity e;
 
+	ssnames = buf_create();         // env_soundscape: "targetname\tsoundscape"
+	proxies = buf_create();         // proxy: "origin\tradius\tmain"
+	trigs = buf_create();           // trigger_soundscape: "model\ttriggerable\torigin"
 	getentitytoken(0);				// reset to the start of the lump
 	while ((tok = getentitytoken()) != "")
 	{
 		if (tok != "{")
 			continue;
 
-		cn = nm = org = "";
+		cn = nm = org = tname = mainnm = mdl = "";
 		rad = 0;
 		dis = 0;
 
@@ -578,11 +588,35 @@ void() Snds_LoadEntities =
 			else if (key == "origin")        org = tok;
 			else if (key == "radius")        rad = stof(tok);
 			else if (key == "startdisabled") dis = stof(tok);
+			else if (key == "targetname")    tname = tok;
+			else if (key == "mainsoundscapename") mainnm = tok;
+			else if (key == "model")         mdl = tok;
 		}
 
-		if (cn == "env_soundscape_proxy" || cn == "env_soundscape_triggerable")
+		if (cn == "env_soundscape" && tname != "" && nm != "")
+			bufstr_add(ssnames, strcat(strtolower(tname), "\t", strtolower(nm)), TRUE);
+		if (cn == "env_soundscape_proxy")
 		{
-			ss_skipped_cls = ss_skipped_cls + 1;
+			if (!dis && rad != 0 && org != "" && mainnm != "")
+				bufstr_add(proxies, sprintf("%s\t%g\t%s", org, rad, strtolower(mainnm)), TRUE);
+			continue;
+		}
+		if (cn == "trigger_soundscape")
+		{
+			if (!dis && substring(mdl, 0, 1) == "*" && nm != "")
+				bufstr_add(trigs, strcat(mdl, "\t", strtolower(nm), "\t", org), TRUE);
+			continue;
+		}
+		if (cn == "env_soundscape_triggerable")
+		{
+			if (nm == "" || tname == "" || ss_ent_n >= SS_MAXENT)
+				continue;
+			// The row carries the targetname in the origin slot: nothing reads a
+			// triggerable's origin, and a trigger finds its row by that name.
+			bufstr_add(ss_ent_name, strtolower(nm), TRUE);
+			bufstr_add(ss_ent_org,  strtolower(tname), TRUE);
+			bufstr_add(ss_ent_rad,  ftos(SS_RAD_TRIG), TRUE);
+			ss_ent_n = ss_ent_n + 1;
 			continue;
 		}
 		if (cn != "env_soundscape" || nm == "" || org == "")
@@ -613,6 +647,88 @@ void() Snds_LoadEntities =
 		bufstr_add(ss_ent_rad,  ftos(rad), TRUE);
 		ss_ent_n = ss_ent_n + 1;
 	}
+
+	// Proxies, now that every env_soundscape's name is known.
+	n = buf_getsize(proxies);
+	for (i = 0; i < n && ss_ent_n < SS_MAXENT; i = i + 1)
+	{
+		tokenizebyseparator(bufstr_get(proxies, i), "\t");
+		org = argv(0);
+		rad = stof(argv(1));
+		mainnm = argv(2);
+		for (j = 0; j < buf_getsize(ssnames); j = j + 1)
+		{
+			tokenizebyseparator(bufstr_get(ssnames, j), "\t");
+			if (argv(0) != mainnm)
+				continue;
+			bufstr_add(ss_ent_name, argv(1), TRUE);
+			bufstr_add(ss_ent_org,  org, TRUE);
+			bufstr_add(ss_ent_rad,  ftos(rad), TRUE);
+			ss_ent_n = ss_ent_n + 1;
+			break;
+		}
+	}
+
+	// trigger_soundscape probes, the same SOLID_BSPTRIGGER edicts cl_triggers.qc makes.
+	for (e = find(world, classname, "ss_trig"); e; e = find(world, classname, "ss_trig"))
+		remove(e);
+	n = buf_getsize(trigs);
+	for (i = 0; i < n; i = i + 1)
+	{
+		tokenizebyseparator(bufstr_get(trigs, i), "\t");
+		mdl = argv(0);
+		tname = argv(1);
+		for (j = 0; j < ss_ent_n; j = j + 1)
+		{
+			if (stof(bufstr_get(ss_ent_rad, j)) != SS_RAD_TRIG)
+				continue;
+			if (bufstr_get(ss_ent_org, j) != tname)
+				continue;
+			e = spawn();
+			e.classname = "ss_trig";
+			setmodel(e, mdl);
+			e.solid = 22;		// SOLID_BSPTRIGGER, as cl_triggers.qc's TG_SOLID_BSPTRIGGER
+			setorigin(e, stov(argv(2)));	// links it as a trigger; a brush authored with an origin key sits there
+			e.ssc_ix = j;
+			ss_trig_n = ss_trig_n + 1;
+			break;
+		}
+	}
+	buf_del(ssnames);
+	buf_del(proxies);
+	buf_del(trigs);
+};
+
+// The triggerable row the player is inside a trigger for, most recently entered; -1 none.
+float() Snds_TrigPick =
+{
+	local entity e;
+	local float best, when, inside;
+
+	best = -1;
+	when = -1;
+	for (e = find(world, classname, "ss_trig"); e; e = find(e, classname, "ss_trig"))
+	{
+		other = e;
+		tracebox(pmove_org, '-16 -16 0', '16 16 62', pmove_org, MOVE_TRIGGERS | MOVE_OTHERONLY, world);
+		inside = (trace_startsolid || trace_allsolid || trace_fraction < 1);
+		if (!inside)
+		{
+			e.ssc_in = FALSE;
+			continue;
+		}
+		if (!e.ssc_in)
+		{
+			e.ssc_in = TRUE;
+			e.ssc_when = time;
+		}
+		if (e.ssc_when > when)
+		{
+			when = e.ssc_when;
+			best = e.ssc_ix;
+		}
+	}
+	return best;
 };
 
 /*
@@ -945,7 +1061,7 @@ void() Snds_LoadForMap =
 	Snds_Alloc();
 	ss_map = serverkey("map");
 	ss_active = -1;
-	ss_dropped_pos = ss_missing = ss_skipped_cls = 0;
+	ss_dropped_pos = ss_missing = ss_trig_n = 0;
 	ss_files_try = ss_files_ok = ss_lines = 0;
 
 	if (ss_map == "")
@@ -1032,7 +1148,9 @@ void() Snds_Frame =
 	if (time >= ss_next)
 	{
 		ss_next = time + 0.25;
-		pick = Snds_Pick(eye);
+		pick = Snds_TrigPick();         // Patch 873: a trigger_soundscape you are in wins
+		if (pick < 0)
+			pick = Snds_Pick(eye);
 		if (pick >= 0)
 		{
 			def = Snds_DefIndex(bufstr_get(ss_ent_name, pick));
@@ -1161,9 +1279,8 @@ void() Snds_Report =
 	if (ss_dropped_pos)
 		print(sprintf("^3  %g rule(s) dropped -- they need position0..7, which this "
 		              "build does not resolve^7\n", ss_dropped_pos));
-	if (ss_skipped_cls)
-		print(sprintf("^3  %g env_soundscape_proxy/_triggerable skipped -- not "
-		              "implemented^7\n", ss_skipped_cls));
+	if (ss_trig_n)
+		print(sprintf("  %g trigger_soundscape volume(s) drive triggerable soundscapes\n", ss_trig_n));
 
 	for (i = 0; i < ss_ent_n && ss_dbg; i = i + 1)
 		print(sprintf("      ent %g  %-30s r=%-7s %s\n", i,
