@@ -1,5 +1,26 @@
 # AGENT_NOTES.md
 
+## The HUD's cached layers (P871, 2026-10-20)
+
+- A panel joins a hud_fps layer only if it does nothing but draw: on a paste frame its function is
+  not called. The audit (BACKLOG "Frame time") lists what keeps the others out: HUD_DrawSpeed's
+  per-call gain, HUD_DrawStrafe's per-frame dt smoothing and ui_gnd_since, HUD_DrawKeys' and
+  MPad's A/D latches (MPad_Frame runs inside MPad_Draw), the timer's edge machine, Cmp_Draw's latch,
+  Chat_Draw's cursor claim and hit areas, the Friends and Story toasts' lifecycles. A NEW panel put
+  inside a layer must pass the same test.
+- A layer sits where its panels were: only CONTIGUOUS runs of pure panels can share one, or the
+  stacking against the live panels between them changes.
+- Coverage mode is engine state (VF_RT_COVERAGE, r2d_coverage): HC_Begin/HC_End are the only
+  places that set it, always around a bound target, and the engine clears it after UpdateView. The
+  engine's fill_trans has `maskalpha`; coverage mode ignores it. A pass that modulates (DST_COLOR) is
+  not representable in one alpha -- nothing in the layers does.
+- `hudcache` prints mode, why (1 off, 2 engine, 3 not 1:1, 4 editor or cursor, 5 capture) and
+  redraw/paste counts. An arm that sets hud_fps must grade that line: the first P871 arm measured
+  nothing because the HUD was drawing directly the whole time.
+- r_budget windows: after toggling a setting wait more than TWO windows before r_budget_dump. With a
+  1 s window and 1.3 s waits every dump measured the previous setting, and the first table read
+  backwards.
+
 ## The HUD's per-frame caches (P863, 2026-10-20)
 
 - Four caches; each is keyed on every input it reads, and A NEW INPUT MUST JOIN ITS KEY. The key

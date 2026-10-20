@@ -33,6 +33,8 @@ patch    875
 # Exe e1cf5c31 (git-7599-patch-875-0-g1364ef815), hl2 44d2b48c, both installs 2026-10-20 09:41Z (.prev
 # 9c39795c / 5c9fa5ab). Client only: fs.c is shared, so check a server's mounts before shipping one.
 # csprogs 243bb4be (fdea7b24 without P865, by d3) in both installs; qwprogs unchanged 613468f1.
+# Patch 871 (client exe + csprogs): hud_fps -- the trainer, net, boarding and key-strip panels drawn at a
+# capped rate into a coverage target (VF_RT_COVERAGE, FTESURF_2D_COVERAGE) and pasted every frame.
 # Patch 863 (csprogs): the HUD's per-frame work cut by a third, same pixels -- Font_Px memo,
 # the energy/turn rings searched from the oldest end, the trainer trace and key strip cached.
 # Patch 862 (client exe): the CSQC trigger mirror predicts on a listen server too (cl_predict_listen 1):

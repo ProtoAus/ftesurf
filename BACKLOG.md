@@ -255,6 +255,20 @@ surf_tensor2: a toggle worth under ~20% needs alternated repeats; `r_blendsort 0
   39). `hud_font_outline 2` draws a mono string 10 times. Drawing the fixed panels into a target at
   a capped rate (P837's two-target composite) would cut most of the rest but moves the numbers in
   time: Lex's call.
+- **hud_fps (Patch 871), what is not in its layers yet.** Layer 0 is NM_Draw, Trn_Draw and the
+  Boarding window, layer 1 the key strip. The rest of the fixed HUD keeps state as it draws and needs
+  that split first (the audit in AGENT_NOTES "The HUD's cached layers"): HUD_DrawSpeed's per-call gain
+  colour, HUD_DrawStrafe's per-frame dt smoothing (HUD_SmoothIdeal) and ui_gnd_since, HUD_DrawKeys' and
+  MPad's A/D latches (MPad_Frame inside MPad_Draw), Timer_Draw's edge machine and split sampling,
+  Cmp_Draw's latch, Chat_Draw's cursor claim and hit areas, the Friends and Story toasts. Contiguous
+  runs only: HUD_Draw's panels interleave pure and impure ones, so each split decides how many layers.
+- **vid_restart crashes the rig client** (0xC0000005 just after "Hardware gamma is not supported") on
+  surf_sidistic AND on poop.bsp (a Q1 map) with the installed exe 9c39795c and its csprogs, Lex's cfg in
+  a 1600x900 window (20 Oct, P871's arms). Not map-format specific. Until it is found, hud_fps's
+  renderer-restart path (HC_Lost: new names, targets made again) is untested.
+- hud_fps on a screenshot_mega frame where the Milk sky or Patch 837's graph cache already switched
+  targets: the layers cache onto the screen (that frame's shot already lost the HUD after the earlier
+  switch). An engine fix would return to the frame's own target instead of FBO 0.
 - **Graph and compare.** LineGraph_Simplify re-cuts the whole live curve each time lv_head
   moves (0.09-0.11 ms); Cmp_Nearest 0.06-0.11.
 - **Draw submission: Patch 831 did the big part** (batch sort, multidraw in the compatibility

@@ -1,5 +1,21 @@
 # lextest.md — things waiting on a human
 
+## P871 — Panel redraw (hud_fps): the trainer and key hints drawn less often
+
+hud_edit -> Display Info -> **Panel redraw**: frame (as before) / 240/s / 144/s / 120/s / 60/s / tick.
+At anything but "frame" the strafe trainer, the net panel, the Enter/Exit speeds window and the key
+hints are drawn that many times a second into a picture that is pasted every frame. On the rig with
+your cfg (sidistic, every panel on, trainer full of strafes): the HUD 0.65 -> 0.40 ms, the frame
+1.1 -> 0.85 ms (~900 -> ~1170 fps). Speed, timer, strafe bar, keys, input display and chat still
+draw every frame; they keep state as they draw, so they are not in it yet.
+
+- Set 144/s (or your monitor's rate) and play sidistic with the trainer on: it should look the same,
+  updating a little less often, and fps should go up. Try "tick" too.
+- While the HUD editor or a menu is open it draws every frame, so you cannot see the setting there.
+
+In both installs (exe e1cf5c31, csprogs 243bb4be) and on the 12 lobbies since 10:25Z; an older game
+draws every frame whatever it says. "Panel redraw ok / <what looks wrong>". Verdict PENDING.
+
 ## P867 + P875 — water that moves (surf_garden save 4, surf_boreas save 8)
 
 Your water was static because the game took a CS:S mapping-pack `dev/water_normal.vtf` from your
