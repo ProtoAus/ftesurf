@@ -81,10 +81,6 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - Site: `sv_entities.qc` SV_BrushRenderMode. Modes 3 (321 brush entities), 8 and 9 on brushes are
   drawn as before; rendercolor tints only func_brush; glare occluders (cl_sprites.qc) ignore
   rendermode. Check each against Momentum.
-- Site: `sv_player.qc` ClientKill and `cmd respawn` / `cmd restart`: PutClientInServer's
-  SV_TimerSpawn clears a just-finished run's tag (sidecar dropped, receipt unsigned within a
-  packet of the finish) and, offline, leaks the run's strbuf (rec_rec_buf -1 before the idle).
-  SV_SpawnGoto (P845) shows the fix: SV_TimerVoid first, carry the tag across.
 - Site: `cl_sprites.qc` P847 trace. A sprite whose answer flips while particles or the trace's
   0.25 s age lag behind draws in the old bucket for that long; env_lightglow glows (drawn over
   everything, as Source) are not traced.

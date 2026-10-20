@@ -2536,6 +2536,14 @@ archive), `ftesurf/data/**` (player data), `installed.lst`, `crashaddr.txt`.
 
 ## Anti-cheat and run evidence
 
+- **Explicit respawns are not fresh connection spawns (Patch 858).** `kill`,
+  `cmd respawn`, `cmd restart` and `goto_spawn` share `SV_PlayerRespawn`: void live
+  evidence before `SV_TimerSpawn` resets its handle, then preserve a completed
+  tag/leg/ticks/saved/bytes handshake. Raw `PutClientInServer` remains the blank
+  fresh-connection path. Native QC controls reproduce both the old lost finish
+  and retained strbuf on all three commands; the allocator actually reclaims the
+  slot after repair. Seeded protocol controls are not natural-finish/signature proof.
+
 - **Minimal native overlays and live download caches need different handling.**
   A dedicated overlay without package-manager state needs explicit `plug_load hl2`;
   merely copying the DLL does not load it (`plug_loaddefault` defaults to 1).

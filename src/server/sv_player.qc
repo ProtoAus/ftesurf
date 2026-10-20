@@ -383,10 +383,12 @@ void() ClientDisconnect =
 	setorigin(self, self.origin);       // relink, out of the solid lists
 };
 
+void() SV_PlayerRespawn;
+
 void() ClientKill =
 {
 	// 'kill' is the reset-to-spawn button, not suicide -- there is no combat.
-	PutClientInServer();
+	SV_PlayerRespawn();
 };
 
 void() SetNewParms    = { };
@@ -1032,13 +1034,10 @@ void(float n) SV_TpPlayer =
 	sprint(self, PRINT_HIGH, sprintf("^5teleport:^7 to %s\n", Lobby_ChatName(t)));
 };
 
-/*
-  Patch 845: goto_spawn -- `kill`'s respawn at the map's spawn entity, with the run
-  ended first as `!r`'s move ends one (SV_TimerVoid).  SV_TimerSpawn clears the finish
-  tag outright; a finish the client has not read yet (a packet) keeps it here, as
-  SV_RecDiscard keeps it for `!m`, or its sidecar is dropped and its receipt unsigned.
-*/
-void() SV_SpawnGoto =
+// P845/858: explicit respawns close live evidence before SV_TimerSpawn drops its
+// handle. Preserve a finish the client has not read yet; fresh connections still
+// use PutClientInServer directly and inherit no terminal state.
+void() SV_PlayerRespawn =
 {
 	local float tag, leg, tk, saved, bytes;
 
@@ -1060,6 +1059,11 @@ void() SV_SpawnGoto =
 		self.rec_rec_saved = saved;
 		self.rec_rec_bytes = bytes;
 	}
+};
+
+void() SV_SpawnGoto =
+{
+	SV_PlayerRespawn();
 	sprint(self, PRINT_HIGH, "^5goto_spawn:^7 back at the map's spawn\n");
 };
 
@@ -1178,7 +1182,7 @@ void(string cmd) SV_ParseClientCommand =
 
 	if (c == "respawn" || c == "restart")
 	{
-		PutClientInServer();
+		SV_PlayerRespawn();
 		return;
 	}
 
