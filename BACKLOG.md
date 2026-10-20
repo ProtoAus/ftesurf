@@ -5,6 +5,21 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Refract glass at hl2_refract 0 (P859): what is still not Source
+
+- **No warp or blur**: `$refractamount`/`$bluramount` do nothing at 0 (mode 1 warps, without
+  `$refracttint` or the `$envmap` term, and with the dudv offset unscaled by `$refractamount` --
+  `vmt/refract.glsl`). Falsifier: surf_garden's fountain in Momentum ripples; here it is a flat tint.
+- **Mode 2 (the default) no longer dithers texture-less panes**: 907 materials now sort as blended
+  (and envmapped ones draw two passes). If a glass-heavy map loses fps at hl2_refract 2, that is why.
+- **`$basetexture` Refract (18 materials)** keeps the old plain translucency, not base x tint.
+
+## Nested water captures (P864)
+
+- A DarkPlaces `dp_camera` + `dp_reflect` shader can still nest its reflection (the gate tests the
+  shader, not the capture about to run); no Source material makes one. Nested water is skipped, not
+  drawn cheaply: a pond seen in another pond's reflection shows its bed with no surface.
+
 ## Receipt angle-reason test: stale resume prose (found while checking P861)
 
 - **`surfd/test_receipt_angle_reasons.py:case_real_observations` expects `joined

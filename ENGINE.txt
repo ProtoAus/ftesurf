@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   dc93205067ca0889c6d0441b51483f16d8ffcc29
+commit   c4ffae5c31d8f679e0f2278e85b5c4ac407dd661
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,13 @@ commit   dc93205067ca0889c6d0441b51483f16d8ffcc29
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-842
-patch    861
+tag      patch-864
+patch    864
+# Patch 864 (client exe): no water reflection/refraction capture inside another (r_portalrecursion 2
+# had surf_garden render 1+2+4 views; 5.88 -> 2.74 ms facing the ponds). Patch 859 (hl2 plugin):
+# hl2_refract 0 draws Refract glass as Source's tint + cubemap without the warp (white/opaque panes
+# on 386 + 86 maps). Exe c292b9aa (git-7578-patch-864-0-gc4ffae5c3), hl2 5c9fa5ab, server 2c490d63,
+# both installs 2026-10-20 06:29Z (.prev a9242516 / 1e7a39de / 1814e7da). Client only.
 # Patch 861 (receipt reader + private admin): retain the existing consented HID
 # accepted-touchpad report count in bounded stored metrics; missing stays unknown,
 # measured zero stays zero. No new collection, grant, verdict, rank or public data.

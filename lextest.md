@@ -1,5 +1,29 @@
 # lextest.md — things waiting on a human
 
+## P859 — glass that drew white or as a flat picture (surf_spectra, surf_garden, surf_gigapede)
+
+With Glass "Translucent" (hl2_refract 0, your setting) a Source glass pane now shows what is behind
+it, tinted, plus its cubemap reflection -- Momentum's look without the ripple warp ("Refracting" has
+the warp). Your three reports were all this one material type.
+
+- surf_spectra save 020: the window beside you is dark see-through glass, not white.
+- surf_garden save 005: the stone fountain is visible; its water is a faint blue tint.
+- surf_gigapede save 009: the pink strip shows the red lava wall behind it through the pink.
+
+In both installs 06:29Z. "Glass ok / <what differs from Momentum>". Verdict PENDING.
+
+## P864 — surf_garden frame rate (water inside water)
+
+Water reflections were being rendered again inside each water reflection (7 views a frame facing
+the ponds). Measured with your settings at the stage-5 save: 5.88 -> 2.74 ms (about 170 -> 365 fps),
+spawn 5.27 -> 3.46 ms. Nothing should look different.
+
+- Play surf_garden from the spawn through stage 5: the fps counter should sit much higher. If you
+  still see a drop to ~50 fps, `frametimes` in the console there and send the line.
+
+In both installs 06:29Z (exe c292b9aa). The teleport judder between stages is separate (P862, in
+progress). "Garden fps ok / <where it still drops>". Verdict PENDING.
+
 ## P856 — Story challenges, the medal toast, the Halloween tab
 
 STORY now decides "first try every stage", W-only, no jumping, KSF sideways / half-sideways,
