@@ -10206,7 +10206,19 @@ void() SV_SpawnBreakable =
 
 void() func_breakable      = { SV_SpawnBreakable(); };
 void() func_breakable_surf = { SV_SpawnBreakable(); };
-void() func_physbox        = { SV_SpawnBreakable(); };
+// Patch 884: "notsolid" is m_bNotSolidToWorld -> FSOLID_NOT_SOLID (physobj.cpp:458), so
+// the player passes through it.  229 in 30 maps; surf_lovetunnel's butterflies'
+// motor axles stopped a run mid-map.
+.float notsolid;
+void() func_physbox =
+{
+	SV_SpawnBreakable();
+	if (wasfreed(self) || !self.notsolid)
+		return;
+	self.solid = SOLID_NOT;
+	self.vbsp_io_solid = SOLID_NOT;
+	setorigin(self, self.origin);
+};
 //FTESurf Patch 256: `class CPhysBoxMultiplayer : public CPhysBox` -- the
 //multiplayer subclass differs only in its VPhysics shadow, which we have none
 //of, so it is the same entity here.  111 instances / 19 maps.

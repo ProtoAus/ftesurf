@@ -5,6 +5,22 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Physics boxes (P884): what is left
+
+- **Debris and multiplayer physboxes are solid here and not in Source's rules.** SF_PHYSBOX_DEBRIS
+  (0x4000) is COLLISION_GROUP_DEBRIS, which collides with nothing but COLLISION_GROUP_NONE
+  (gamerules.cpp:688): 58 on 12 maps (rj_doom 22, bhop_communityjump 12). func_physbox_multiplayer
+  is COLLISION_GROUP_PUSHAWAY (props.cpp:5465), not solid to player movement outside HL2MP
+  (gamerules.cpp:664): 111 on 19 maps. Both read from the SDK only; Momentum's gamerules are not in
+  the tree, so a Momentum run through one decides it. Physents digest moves like P790/P884.
+- **A notsolid physbox that is awake falls through the world in Source** (VPhysics, motion on, no
+  collisions): 226 of the 229 lack SF_PHYSBOX_MOTIONDISABLED. Here they stay drawn where they
+  spawned. Mostly invisible axles under phys_motor (surf_lovetunnel); a Momentum screenshot settles
+  whether any visible one is meant to vanish.
+- A notsolid physbox cannot be hit by the test shot (traces skip SOLID_NOT), as in Source; Break by
+  map I/O still works. No map sends Enable/Disable/Toggle to one (census 21 Oct), so SV_IOEnable's
+  SOLID_BSP fallback for vbsp_io_solid 0 is not reached by the library.
+
 ## Patch notes (P876): what review left open
 
 - **Unsigned text under a signed title.** patchnotes.json is outside update.json's signature, so
@@ -856,6 +872,8 @@ Fixed items are removed; remaining reader contracts need acting controls.
   symbols are on every route. Lex, 18 Oct: ship P790 now, bump after -- a header rule
   on the `proprule` precedent (sv_timer.qc, reccheck.py, the engine's pe check) so an
   older file reads "not comparable". Evidence-chain work: its own patch and review rounds.
+  PATCH 884 IS THE SAME CLASS: 229 notsolid func_physboxes on 30 maps went SOLID_BSP -> SOLID_NOT
+  (surf_flatliners 64, surf_arcade 30, bhop_inmomentum_gfl_final 25, surf_lovetunnel 11, ...).
 - **momentary_rot_button, what Patch 790 leaves out**: the 16 solid ones stay frozen walls
   (a rotating SOLID_BSP is the pusher question); a child orbits only a spinning yaw-axis
   momentary_rot_button parent (the 4 children of frozen func_tracktrains spin in place);

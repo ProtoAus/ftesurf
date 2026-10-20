@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P884 — not-solid physics boxes (surf_lovetunnel save 10)
+
+The box you stood on at save 10 is the butterflies' motor axle ("butterflyentrance", a 16-unit
+cube) and the one beside it is a 4,112-unit wall; both say "notsolid", which Source honours. Load
+save 10: you should drop straight through, and the route past the butterflies should not stop you.
+`ent_here` on one now reads `solid NOT`. "lovetunnel ok, or <where it still stops you>". Verdict
+PENDING.
+
 ## P876 — patch notes on the download page and the title menu
 
 What each update changes, as dot points per patch (PATCHNOTES.md), on the right of
