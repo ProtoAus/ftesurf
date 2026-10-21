@@ -135,13 +135,15 @@
 #define SCREEN_STORY    9
 void() Sty_Open;
 void() Sty_Esc;
+void() Sty_Prefetch;
 void(vector screensize) screen_story;
 void(string what, string arg) Sty_Command;
 void() MU_Init;
 void() MU_Poll;
 void(float on) MU_Consent;
-void(vector screensize) MU_Status;
-void(vector screensize) MU_Notes;
+float(vector pos, float w) MU_StatusAt;
+void(vector pos, vector size) MU_NotesAt;
+void(vector screensize) MU_Hint;
 void(string what) MU_NotesCommand;
 float() MF_Count;
 float() MF_Fresh;
@@ -5580,6 +5582,7 @@ float ui_synth_aim;     // helper-selected focus needs real motion/navigation
 float ui_tm_ph, ui_tm_w, ui_tm_two, ui_tm_sx, ui_tm_sy;     // the terms as last laid out, for ui_strip_test
 float ui_tm_full;               // P796: the cards are up instead of the summary
 float ui_tm_jbox, ui_tm_jtouched;   // P796: the journal box; the player changed it on this visit
+float ui_tm_review;                 // P902: opened from F2 by someone with nothing left to accept
 
 float() ui_synth =
 {
@@ -5728,7 +5731,7 @@ void(vector screensize) screen_terms =
 	sui_style_panel(p, [w, ph], 12, 1);
 
 	Font_Set(ui_font_ui);
-	sui_text([p_x + 16, p_y + 12], SZ_HEAD, "before you play", COL_ACCENT, 1, 0);
+	sui_text([p_x + 16, p_y + 12], SZ_HEAD, (ui_tm_review && ms_consent >= FS_TERMS_ONLINE) ? "the terms you accepted" : "before you play", COL_ACCENT, 1, 0);
 	ui_para([p_x + TM_PAD, p_y + TM_TOP], w - TM_PAD * 2, tm_sz, tm_pitch, lead, COL_DIM, TRUE);
 
 	if (!ui_tm_full)
@@ -5767,6 +5770,16 @@ void(vector screensize) screen_terms =
 	if (ui_tm_full)
 		sui_text([p_x + TM_PAD, by - tm_pitch - 10], tm_sz, foot, SUI_THEME_MUTED, 1, 0);
 
+	// P902: read from F2 at the top tier, there is nothing to answer -- Back, and no write.
+	if (ui_tm_review && ms_consent >= FS_TERMS_ONLINE)
+	{
+		if (ui_button("tm_back", [p_x + w - TM_PAD - 100, by], [100, 30], "Back", TRUE))
+		{
+			ui_tm_full = FALSE;
+			menu_screen = SCREEN_JOURNAL;
+		}
+		return;
+	}
 	// Placed from their labels' widths (ui_button grows to fit one): at fixed
 	// widths the first cut drew one over the other.
 	lab = (ms_consent >= FS_TERMS_VERSION) ? "Stay offline" : "Play offline";
@@ -6024,57 +6037,93 @@ void(vector screensize) screen_name =
 
 // Patch 467: PLAY / VISUALS / MUSIC / QUIT, drawn by m_milk.qc -- PLAY is the
 // old "create server".
-// The online answer enables uploads; this panel also allows withdrawal.
+// P902 (Lex): F2 holds what the title screen used to show -- the patch notes and the
+// updater -- with the input journal and the terms, one page each behind tabs: a 1600x900
+// window here is ~690x390 menu units, and the four did not fit one panel. The title screen
+// keeps a hint line (MU_Hint); the first boot's terms screen is still the gate.
+float ui_f2_tab;                    // 0 patch notes, 1 updates, 2 input journal, 3 terms
 void(vector screensize) screen_journal =
 {
 	local vector p;
-	local float w, h, nh, ph, by, have, enabled;
-	local string body, note, label;
+	local float w, h, lw, x, y, k, have, enabled;
+	local string body, note, label, terms, rid;
 
 	ui_backdrop(screensize);
-	w = min(680, screensize_x - 32);
-	body = "Accepting online play allows a public lobby to request your run's raw mouse and keyboard event journal, with timings. It is sent to play.proto.bar over HTTPS for private anti-cheat review, not as a public replay. Console/menu text and activity outside the game window are not recorded.";
-	note = "New online acceptance includes journals unless you opt out. Uploads also require the online terms; this panel can allow or stop them. Stopping cancels an active upload and prevents new ones, without deleting evidence already received. rec_hid 0 stops local recording too.";
-	h = ui_para('0 0 0', w - 32, SZ_LABEL, 20, body, COL_TEXT, FALSE);
-	nh = ui_para('0 0 0', w - 32, SZ_LABEL, 20, note, COL_DIM, FALSE);
-	ph = TM_TOP + h + 14 + nh + 18 + 30 + 16;
-	p = [floor((screensize_x - w) * 0.5), max(8, floor((screensize_y - ph) * 0.5))];
-	sui_style_panel(p, [w, ph], 12, 1);
+	w = min(760, screensize_x - 32);
+	h = min(560, screensize_y - 32);
+	p = [floor((screensize_x - w) * 0.5), floor((screensize_y - h) * 0.5)];
+	sui_style_panel(p, [w, h], 12, 1);
 	Font_Set(ui_font_ui);
-	sui_text(p + '16 12 0', SZ_HEAD, "input journal uploads", COL_ACCENT, 1, 0);
-	ui_para(p + [16, TM_TOP], w - 32, SZ_LABEL, 20, body, COL_TEXT, TRUE);
-	ui_para(p + [16, TM_TOP + h + 14], w - 32, SZ_LABEL, 20, note, COL_DIM, TRUE);
-	by = p_y + ph - 16 - 30;
-	have = checkextension("FTESURF_HID_HTTP");
-	if (have)
-		have = checkbuiltin(localcmd_local);
-	enabled = cvar("rec_hid_upload");
-	label = enabled ? "Stop journal uploads" : "Allow journal uploads";
 	// P796: first, so Back and not Allow is the keyboard's default.
-	if (ui_button("journal_back", [p_x + w - 16 - 90, by], [90, 30], "Back"))
-		menu_screen = SCREEN_MAIN;
-	if (have)
+	if (ui_button("journal_back", [p_x + w - 16 - 90, p_y + 12], [90, 30], "Back"))
 	{
-		if (ui_button("journal_choice", [p_x + 16, by], [240, 30], label, TRUE))
+		menu_screen = SCREEN_MAIN;
+		return;
+	}
+	x = p_x + 16;
+	for (k = 0; k < 4; k = k + 1)
+	{
+		rid = strcat("f2_tab", ftos(k));
+		label = (k == 0) ? "Patch notes" : (k == 1) ? "Updates" : (k == 2) ? "Input journal" : "Terms";
+		x = x + ui_chip([x, p_y + 14], rid, label, ui_f2_tab == k) + 8;
+		if (sui_is_released(rid)) ui_f2_tab = k;
+	}
+	lw = w - 32;
+	y = p_y + 14 + CHIP_H + 18;
+
+	if (ui_f2_tab == 0)
+		MU_NotesAt([p_x + 16, y], [lw, p_y + h - 16 - y]);
+	else if (ui_f2_tab == 1)
+		MU_StatusAt([p_x + 16, y], lw);
+	else if (ui_f2_tab == 2)
+	{
+		body = "Accepting online play allows a public lobby to request your run's raw mouse and keyboard event journal, with timings. It is sent to play.proto.bar over HTTPS for private anti-cheat review, not as a public replay. Console/menu text and activity outside the game window are not recorded.";
+		note = "New online acceptance includes journals unless you opt out. Uploads also require the online terms; this page can allow or stop them. Stopping cancels an active upload and prevents new ones, without deleting evidence already received. rec_hid 0 stops local recording too.";
+		y = y + ui_para([p_x + 16, y], lw, SZ_LABEL, 20, body, COL_TEXT, TRUE) + 14;
+		y = y + ui_para([p_x + 16, y], lw, SZ_LABEL, 20, note, COL_DIM, TRUE) + 18;
+		have = checkextension("FTESURF_HID_HTTP");
+		if (have)
+			have = checkbuiltin(localcmd_local);
+		enabled = cvar("rec_hid_upload");
+		label = enabled ? "Stop journal uploads" : "Allow journal uploads";
+		if (have)
 		{
-			if (enabled)
+			if (ui_button("journal_choice", [p_x + 16, y], [240, 30], label, TRUE))
 			{
-				ui_tm_jbox = FALSE;
-				ui_tm_jtouched = TRUE;
-				localcmd_local("rec_hid_upload 0\n");
-			}
-			else if (ui_synth())
-				print("menu: journal upload consent takes a real click or key, not ui_key/ui_click\n");
-			else
-			{
-				ui_tm_jbox = TRUE;
-				ui_tm_jtouched = TRUE;
-				localcmd_local("rec_hid_upload 1\n");
+				if (enabled)
+				{
+					ui_tm_jbox = FALSE;
+					ui_tm_jtouched = TRUE;
+					localcmd_local("rec_hid_upload 0\n");
+				}
+				else if (ui_synth())
+					print("menu: journal upload consent takes a real click or key, not ui_key/ui_click\n");
+				else
+				{
+					ui_tm_jbox = TRUE;
+					ui_tm_jtouched = TRUE;
+					localcmd_local("rec_hid_upload 1\n");
+				}
 			}
 		}
+		else
+			sui_text([p_x + 16, y + 7], SZ_LABEL, "Update the native client to enable uploads", SUI_THEME_WARN, 1, 0);
 	}
 	else
-		sui_text([p_x + 16, by + 7], SZ_LABEL, "Update the native client to enable uploads", SUI_THEME_WARN, 1, 0);
+	{
+		// Below the online tier the button opens the terms screen itself, with its two answers.
+		if (ms_consent >= FS_TERMS_ONLINE)
+			terms = "You have accepted the terms for offline and online play. The Updates and Input journal pages turn updates and journal uploads off.";
+		else
+			terms = "You have accepted the terms for offline play. Public lobbies, the board, story and updates need the online terms: Play online or the button below shows them, and nothing changes until you choose.";
+		y = y + ui_para([p_x + 16, y], lw, SZ_LABEL, 20, terms, COL_TEXT, TRUE) + 18;
+		if (ui_button("journal_terms", [p_x + 16, y], [170, 30], "Read the terms"))
+		{
+			ui_tm_full = TRUE;
+			ui_tm_review = TRUE;
+			menu_screen = SCREEN_TERMS;
+		}
+	}
 };
 
 void(vector screensize) screen_main =
@@ -8147,7 +8196,10 @@ void(vector screensize) m_draw =
 	if (ms_consent < FS_TERMS_VERSION)
 		menu_screen = SCREEN_TERMS;
 	if (menu_screen != SCREEN_TERMS)
+	{
 		ui_tm_jtouched = FALSE;         // P796: left unanswered, the box mirrors the cvar again
+		ui_tm_review = FALSE;
+	}
 
 	// ROADMAP 9: the leaderboard panel lives only over the create screen.
 	if (menu_screen != SCREEN_CREATE)
@@ -8206,8 +8258,8 @@ void(vector screensize) m_draw =
 	else
 	{
 		screen_main(screensize);
-		MU_Status(screensize);
-		MU_Notes(screensize);
+		MU_Hint(screensize);
+		Sty_Prefetch();             // P905: the ladder before the first STORY click
 		ui_status_toast(screensize);
 	}
 
@@ -8418,7 +8470,14 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 			  consent screen you can wave away is not one worth drawing.
 			*/
 			if (menu_screen == SCREEN_TERMS)
+			{
+				if (ui_tm_review && ms_consent >= FS_TERMS_ONLINE)
+				{
+					ui_tm_full = FALSE;
+					menu_screen = SCREEN_JOURNAL;   // P902: a review, not the gate
+				}
 				return TRUE;
+			}
 
 			// Patch 647: the Steam offer is an offer; ESC is its "not now".
 			if (menu_screen == SCREEN_STEAM)
@@ -8478,8 +8537,15 @@ float(string cmd) m_consolecommand =
 {
 	tokenize(cmd);
 
+	// P902: ui_journal [notes|updates|journal|terms] (F2 keeps the last page, Updates when
+	// one waits for a restart); ui_updates is the Updates page.
 	if (strcmp(argv(0), "ui_journal") == 0 || strcmp(argv(0), "ui_updates") == 0)
 	{
+		if (argv(0) == "ui_updates" || argv(1) == "updates") ui_f2_tab = 1;
+		else if (argv(1) == "notes") ui_f2_tab = 0;
+		else if (argv(1) == "journal") ui_f2_tab = 2;
+		else if (argv(1) == "terms") ui_f2_tab = 3;
+		else if (cvar_string("update_state") == "restart" || cvar_string("update_state") == "launcher") ui_f2_tab = 1;
 		menu_screen = SCREEN_JOURNAL;
 		m_open();
 		return TRUE;

@@ -15,6 +15,7 @@
 #define STY_SIDE_W      300
 #define STY_FRESH       60          // seconds a reply is reused
 #define STY_WAIT        15          // seconds before an unanswered ask has failed
+#define STY_RETRY       5           // P905: seconds before a failed ladder ask is tried again
 #define STY_ME_FILE     "data/story_me.txt"
 #define STY_ME_HEAD     "FTESURF-STORYME 1"
 #define STY_GOLD        SUI_THEME_WARN
@@ -130,7 +131,9 @@ void() Sty_AskList =
 
 void() Sty_AskProg =
 {
-	if (sty_who == "" || sty_pst == STY_ASK) return;
+	// P905: never before the ladder -- an answer that lands first matches no list, reads
+	// as 0 trophies and chapter 1, and stood until the list's own re-ask (Sty_Reply).
+	if (sty_who == "" || sty_pst == STY_ASK || sty_lst != STY_OK) return;
 	sty_preq = Sty_Get(strcat("story=player&who=", sty_who));
 	sty_pst = sty_preq ? STY_ASK : STY_FAIL;
 	sty_pat = time;
@@ -481,18 +484,46 @@ void() Sty_Poll =
 	{
 		sty_lreq = 0;
 		sty_lst = STY_FAIL;
+		sty_lat = time;
 		Sty_Set("The board did not answer. Try again shortly.", sty_lnote);
 	}
 	if (sty_pst == STY_ASK && time - sty_pat > STY_WAIT) { sty_preq = 0; sty_pst = STY_FAIL; }
 	if (sty_kst == STY_ASK && time - sty_kat > STY_WAIT) { sty_kreq = 0; sty_kst = STY_FAIL; }
 	if (sty_mphase && time - sty_mat > STY_WAIT) sty_mphase = 0;
 	Sty_AskMe();
-	if (sty_lst != STY_ASK && time - sty_lat > STY_FRESH)
+	// P905: a failed ladder is asked again after STY_RETRY, not a whole STY_FRESH.
+	if (sty_lst != STY_ASK && time - sty_lat > ((sty_lst == STY_FAIL) ? STY_RETRY : STY_FRESH))
 		Sty_AskList();
 	if (sty_lst == STY_OK && sty_pst != STY_ASK && sty_who != "" && time - sty_pat > STY_FRESH)
 		Sty_AskProg();
 	if (sty_tab == STY_TABS - 1 && sty_kst != STY_ASK && (sty_kfor != sty_plist || time - sty_kat > STY_FRESH))
 		Sty_AskPlayers(sty_plist);
+};
+
+// P905 (Lex: "sometimes it doesn't load on first click"): the ladder, the saved "me" and
+// its progress are asked from the title screen once online play is allowed, so the first
+// STORY click finds them; a failed ask is tried again after STY_RETRY, three times at most.
+float sty_pref;
+void() Sty_Prefetch =
+{
+	if (!Sty_Online() || !Sty_Init())
+		return;
+	if (sty_lst == STY_ASK && time - sty_lat > STY_WAIT)
+	{
+		sty_lreq = 0;
+		sty_lst = STY_FAIL;
+		sty_lat = time;
+	}
+	if (sty_lst == STY_OK || sty_lst == STY_ASK || sty_pref >= 3)
+		return;
+	if (sty_lst == STY_FAIL && time - sty_lat < STY_RETRY)
+		return;
+	sty_pref = sty_pref + 1;
+	if (sty_me == "") Sty_LoadMe();
+	if (sty_who == "" && sty_me != "") Sty_View(sty_me);
+	Sty_AskList();
+	Sty_AskMe();
+	print(sprintf("^5story:^7 prefetch %g from the title screen\n", sty_pref));
 };
 
 void() Sty_Open =

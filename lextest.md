@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P902, P905 — F2 holds updates, patch notes, journal and terms; story loads before the click
+
+- Title screen: no update corner, no Patch notes button or panel; top right is text only --
+  "Your version", "Latest" (lit when newer, "unknown" with updates off), and a dim line
+  "F2  patch notes, updates, input journal, terms" (plus "Update ready -- restart the game (F2)"
+  when one is). F2: four tabs -- Patch notes, Updates (on/off, Restart, Check again), Input journal
+  (the same text and Allow/Stop switch), Terms (what you accepted; "Read the terms" shows them with
+  a Back button, nothing to answer). Below the online terms, that button is the real terms screen.
+- STORY on a fresh start shows the ladder and your trophies on the first click (they load on the
+  title screen). surf_tendies (Tier 1) and surf_affliction (Tier 2) are in the ladder once the
+  story file is pushed; their challenges are placeholders for you to set. Verdicts PENDING.
+
 ## P894, P895 — graphics settings without a map reload; surf_pantheon's waterfalls at 2x
 
 - surf_pantheon at your r_renderscale 2: the start area should run ~275 fps instead of ~125 (its

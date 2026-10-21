@@ -22,12 +22,12 @@ float mu_live;                  // gameupdate answered: this is FTESurf's update
 
 /*
   P876: patch notes. patchnotes.json sits beside update.json (PATCHNOTES.md, rendered
-  by release.ps1) and is asked only where the updater itself would ask (MU_NotesCan);
-  the automatic showings also need update_autocheck. The title menu shows it while an
-  update is pending, once after one installs (until Close sets ui_notes_seen), and from
-  the corner's Patch notes button. mpn_items holds the reply
-  as "R<version> <date>", "PP<n> <title>", "B<point>"; mpn_lines the same wrapped to
-  the panel, the first character the kind (G gap, Q/C a title's/point's next line).
+  by release.ps1) and is asked only where the updater itself would ask (MU_NotesCan).
+  P902 (Lex): no panel or buttons on the title screen any more -- the notes, the
+  updater's state and switch, the input journal and the terms are all in F2
+  (screen_journal), and the notes are asked only while F2 is up. mpn_items holds the
+  reply as "R<version> <date>", "PP<n> <title>", "B<point>"; mpn_lines the same wrapped
+  to the column, the first character the kind (G gap, Q/C a title's/point's next line).
 */
 #define MPN_MAXLEN   262144
 #define MPN_MAXREL   12
@@ -46,11 +46,8 @@ float mu_live;                  // gameupdate answered: this is FTESurf's update
 
 strbuf mpn_items, mpn_lines;
 float  mpn_state, mpn_req, mpn_sent, mpn_next, mpn_wrapw, mpn_hascur;
-float  mpn_open, mpn_closed, mpn_shown;
 vector mpn_scroll;
 string mpn_forver, mpn_askver; // update_version at the last good reply / the ask in flight
-string mpn_closedupd;           // update_version when Close was pressed
-float  mu_foot;                 // where MU_Status's corner ends; the panel starts under it
 
 void() MU_Init =
 {
@@ -96,16 +93,6 @@ float(string v) MU_IsVer =
 	return (dots == 2);
 };
 
-// An update waiting, or the installed release's notes not yet closed.
-float(string st) MU_NotesAuto =
-{
-	local string cur;
-	if (MU_Pending(st))
-		return TRUE;
-	cur = cvar_string("ui_release_version");
-	return (MU_IsVer(cur) && strcmp(cur, cvar_string("ui_notes_seen")) != 0);
-};
-
 string() MU_NotesUrl;
 
 // Where the updater itself would ask: FTESurf's, on, and allowed.
@@ -114,23 +101,6 @@ float() MU_NotesCan =
 	if (!mu_live || !cvar("update_enabled") || cvar("update_consent") != 1)
 		return FALSE;
 	return (MU_NotesUrl() != "");
-};
-
-float() MU_NotesShown =
-{
-	local string st;
-	if (menu_screen != SCREEN_MAIN || !MU_NotesCan())
-		return FALSE;
-	if (mpn_open)
-		return TRUE;
-	if (mpn_state != MPNS_OK)
-		return FALSE;
-	st = cvar_string("update_state");
-	if (MU_Pending(st))
-		return (strcmp(cvar_string("update_version"), mpn_closedupd) != 0);
-	if (mpn_closed)
-		return FALSE;
-	return (MU_NotesAuto(st) && mpn_hascur);
 };
 
 // Beside the updater's update.json, under its https rule; "" when the feed is not one.
@@ -148,7 +118,7 @@ string() MU_NotesUrl =
 	return m;
 };
 
-// Once while something would show it, again when the feed names a new version.
+// Once while F2 is up, again when the feed names a new version.
 void(string st) MU_NotesAsk =
 {
 	local string url;
@@ -164,8 +134,7 @@ void(string st) MU_NotesAsk =
 	}
 	if (!MU_NotesCan())
 		return;
-	if (!mpn_open)
-	if (!MU_NotesAuto(st) || !cvar("update_autocheck"))
+	if (menu_screen != SCREEN_JOURNAL)      // P902: asked only while F2 is up
 		return;
 	if (mpn_state == MPNS_OK && !strcmp(mpn_forver, cvar_string("update_version")))
 		return;
@@ -323,62 +292,33 @@ float(string v) MU_VerNum =
 	return stof(argv(0)) * 1000000 + stof(argv(1)) * 1000 + stof(argv(2));
 };
 
-void() MU_NotesClose =
+// P902: F2's Patch notes page, MPN_ROW rows in a list view.
+void(vector pos, vector size) MU_NotesAt =
 {
-	local string cur;
-	mpn_open = FALSE;
-	mpn_closed = TRUE;
-	if (mpn_closedupd != "") strunzone(mpn_closedupd);
-	mpn_closedupd = (cvar_string("update_version") == "") ? "" : strzone(cvar_string("update_version"));
-	cur = cvar_string("ui_release_version");
-	if (MU_IsVer(cur))
-		MM_Seta("ui_notes_seen", cur);
-};
+	local vector rp;
+	local float iw, i, cur, vn, sp;
+	local string ln, k, t, tag;
 
-// The panel down the right, under the corner; MPN_ROW rows in a list view.
-void(vector screensize) MU_Notes =
-{
-	local vector pos, rp;
-	local float w, h, i, bw, cur, vn, sp;
-	local string ln, k, t, title, tag, st;
-
-	mpn_shown = FALSE;
-	if (!MU_NotesShown())
-		return;
 	Font_Set(ui_font_ui);
-	w = min(440, max(floor(screensize_x * 0.34), min(320, screensize_x - 32)));
-	pos = [screensize_x - 16 - w, mu_foot + 12];
-	h = screensize_y - pos_y - 24;
-	if (w < 260 || h < 180)
-		return;
-	mpn_shown = TRUE;
-	sui_style_box(pos, [w, h], 9, SUI_THEME_WELL, SUI_THEME_EDGE, 0.94);
-
-	st = cvar_string("update_state");
-	cur = MU_VerNum(cvar_string("ui_release_version"));
-	if (MU_Pending(st) && cvar_string("update_version") != "")
-		title = strcat("Update ", cvar_string("update_version"));
-	else if (MU_NotesAuto(st) && mpn_hascur)
-		title = strcat("What's new in ", cvar_string("ui_release_version"));
-	else
-		title = "Patch notes";
-	bw = stringwidth("Close", TRUE, SZ_LABEL) + 28;
-	if (ui_button("mpn_close", [pos_x + w - 10 - bw, pos_y + 9], [bw, 28], "Close"))
+	iw = size_x - 16;
+	if (!MU_NotesCan())
 	{
-		MU_NotesClose();
+		ui_para(pos, size_x, SZ_LABEL, 20, (cvar("update_consent") == 1) ? "This build does not use the update server, so it has no patch notes."
+		        : "The patch notes come with the updates: turn them on in the Updates page to see what each one changes.", COL_DIM, TRUE);
 		return;
 	}
-	sui_text([pos_x + 16, pos_y + 14], '20 20 0', ui_fit_text(title, w - bw - 40, '20 20 0'), COL_ACCENT, 1, 0);
-	sui_fill([pos_x + 1, pos_y + 46], [w - 2, 1], SUI_THEME_EDGE, 1, 0);
-
 	if (mpn_state != MPNS_OK)
 	{
-		sui_text([pos_x + 16, pos_y + 60], MPN_SZ, (mpn_state == MPNS_FAIL) ? "The patch notes could not be loaded." : "Loading the patch notes...", COL_DIM, 1, 0);
+		sui_text(pos, MPN_SZ, (mpn_state == MPNS_FAIL) ? "The patch notes could not be loaded." : "Loading the patch notes...", COL_DIM, 1, 0);
+		if (mpn_state == MPNS_FAIL)
+		if (ui_button("mpn_retry", pos + '0 28 0', [120, 28], "Try again"))
+			mpn_next = 0;
 		return;
 	}
-	if (mpn_wrapw != w - 48)
-		MU_NotesWrap(w - 48);
-	sui_list_view_begin("mpn_list", [pos_x + 16, pos_y + 54], [w - 22, h - 62], [w - 32, MPN_ROW],
+	cur = MU_VerNum(cvar_string("ui_release_version"));
+	if (mpn_wrapw != iw)
+		MU_NotesWrap(iw);
+	sui_list_view_begin("mpn_list", pos, size, [size_x - 10, MPN_ROW],
 	                    buf_getsize(mpn_lines), mpn_scroll, [0, 10]);
 	rp = '0 0 0';
 	for (i = sui_list_item(rp); i > -1; i = sui_list_item(rp))
@@ -396,13 +336,13 @@ void(vector screensize) MU_Notes =
 			if (cur > 0 && vn > cur) tag = "NEW";
 			else if (cur > 0 && vn == cur) tag = "INSTALLED";
 			if (tag != "")
-				sui_text(rp + [w - 48 - stringwidth(tag, TRUE, '12 12 0'), 7], '12 12 0', tag, (vn > cur) ? COL_ACCENT : COL_DIM, 1, 0);
+				sui_text(rp + [iw - stringwidth(tag, TRUE, '12 12 0'), 7], '12 12 0', tag, (vn > cur) ? COL_ACCENT : COL_DIM, 1, 0);
 		}
 		else if (!strcmp(k, "P"))
 		{
 			if (i > 0)
 			if (strcmp(substring(bufstr_get(mpn_lines, i - 1), 0, 1), "R"))
-				sui_fill(rp + '0 1 0', [w - 48, 1], SUI_THEME_EDGE, 0.6, 0);
+				sui_fill(rp + '0 1 0', [iw, 1], SUI_THEME_EDGE, 0.6, 0);
 			sp = strstrofs(t, " ", 0);
 			if (sp < 0)
 				sui_text(rp + '0 3 0', MPN_SZ, t, COL_ACCENT, 1, 0);
@@ -463,10 +403,11 @@ void(float right, float y, float width, vector size, string text, vector color) 
 	sui_text([right - stringwidth(text, TRUE, size), y], size, text, color, 1, 0);
 };
 
-void(vector screensize) MU_Status =
+// P902: the updater's state and its one switch, in F2; returns the y under what it drew.
+float(vector pos, float w) MU_StatusAt =
 {
-	local string st, label, latest, current, err, word;
-	local float w, right, consent, bw, x, y;
+	local string st, label, latest, current, err, word, say;
+	local float consent, bw, x, y;
 	st = cvar_string("update_state");
 	consent = cvar("update_consent");
 	current = cvar_string("ui_release_version");
@@ -474,7 +415,7 @@ void(vector screensize) MU_Status =
 	latest = cvar_string("update_version");
 	if (latest == "") latest = "not checked";
 	label = "Updates";
-	if (consent != 1) label = "Updates off";
+	if (consent != 1) label = "Updates are off";
 	else if (strcmp(st, "checking") == 0) label = "Checking for updates";
 	else if (strcmp(st, "uptodate") == 0) label = "Up to date";
 	else if (strcmp(st, "downloading") == 0 || strcmp(st, "applying") == 0) label = "Updating...";
@@ -482,47 +423,37 @@ void(vector screensize) MU_Status =
 	else if (strcmp(st, "restart") == 0) label = "Update ready";
 	else if (strcmp(st, "launcher") == 0) label = "Update needs the launcher";
 	else if (strcmp(st, "error") == 0) label = "Update check unavailable";
-	w = min(320, screensize_x - 32);
-	right = screensize_x - 16;
 	Font_Set(ui_font_ui);
-	MU_StatusLine(right, 16, w, SZ_LABEL, label, COL_ACCENT);
-	MU_StatusLine(right, 38, w, '12 12 0', strcat("Your version: ", current), COL_TEXT);
-	MU_StatusLine(right, 58, w, '12 12 0', strcat("Latest: ", latest), COL_DIM);
-	// The Updates screen's message line: a failed check, restart or launcher handoff says why.
+	sui_text(pos, SZ_LABEL, label, COL_ACCENT, 1, 0);
+	sui_text(pos + '0 28 0', SZ_LABEL, ui_fit_text(strcat("Your version: ", current), w, SZ_LABEL), COL_TEXT, 1, 0);
+	sui_text(pos + '0 50 0', SZ_LABEL, ui_fit_text(strcat("Latest: ", latest), w, SZ_LABEL), COL_DIM, 1, 0);
+	y = pos_y + 80;
 	err = "";
 	if (consent == 1)
 	if (strcmp(st, "error") == 0 || strcmp(st, "restart") == 0 || strcmp(st, "launcher") == 0)
 		err = cvar_string("update_error");
-	y = 82;
 	if (strlen(err))
-	{
-		// Wrapped when long, as the screen did: the actionable part (a URL, the retry) comes last.
-		if (stringwidth(err, TRUE, '12 12 0') <= w)
-		{
-			MU_StatusLine(right, 78, w, '12 12 0', err, SUI_THEME_WARN);
-			y = 100;
-		}
-		else
-			y = 78 + ui_para([right - w, 78], w, '12 12 0', 15, err, SUI_THEME_WARN, TRUE) + 6;
-	}
-	mu_foot = y + 28;
-	if (menu_screen != SCREEN_MAIN)
-		return;
-	// Right to left: the switch, then what the state asks for. The switch is the old
-	// screen's Disable, which earlier terms promised; turning on needs online terms.
-	x = right;
+		y = y + ui_para([pos_x, y], w, SZ_LABEL, 20, err, SUI_THEME_WARN, TRUE) + 8;
+	if (consent == 1)
+		say = "The game checks for updates at the title screen and installs one between games; restart when it says one is ready.";
+	else if (ms_consent >= FS_TERMS_ONLINE)
+		say = "Updates are off: the game does not check for or install new versions.";
+	else
+		say = "Updates are off. Turning them on needs the online terms (the Terms page).";
+	y = y + ui_para([pos_x, y], w, SZ_LABEL, 20, say, COL_DIM, TRUE) + 14;
+	// Left to right: the switch, then what the state asks for. Turning on needs online
+	// terms and a real click (earlier terms promised this off switch).
+	x = pos_x;
 	if (consent == 1)
 	{
 		bw = stringwidth("Turn off updates", TRUE, SZ_LABEL) + 28;
-		x = x - bw;
 		if (ui_button("mu_disable", [x, y], [bw, 28], "Turn off updates"))
 			MU_Consent(FALSE);
-		x = x - 8;
+		x = x + bw + 8;
 	}
 	else if (ms_consent >= FS_TERMS_ONLINE)
 	{
 		bw = stringwidth("Turn on updates", TRUE, SZ_LABEL) + 28;
-		x = x - bw;
 		if (ui_button("mu_enable", [x, y], [bw, 28], "Turn on updates"))
 		{
 			if (ui_synth())
@@ -530,9 +461,12 @@ void(vector screensize) MU_Status =
 			else
 				MU_Consent(TRUE);
 		}
+		x = x + bw + 8;
 	}
+	else
+		return y;
 	if (consent != 1)
-		return;
+		return y + 28;
 	word = "";
 	if (clientstate() == 1)
 	if (strcmp(st, "restart") == 0 || strcmp(st, "launcher") == 0)
@@ -540,49 +474,71 @@ void(vector screensize) MU_Status =
 	if (strlen(word))
 	{
 		bw = stringwidth(word, TRUE, SZ_LABEL) + 28;
-		x = x - bw;
 		if (ui_button("mu_restart", [x, y], [bw, 28], word, TRUE))
 			MU_Action(6);
-		x = x - 8;
 	}
 	else if (strcmp(st, "error") == 0)
 	{
 		bw = stringwidth("Check again", TRUE, SZ_LABEL) + 28;
-		x = x - bw;
 		if (ui_button("mu_check", [x, y], [bw, 28], "Check again"))
 			MU_Action(1);
-		x = x - 8;
 	}
-	// P876: the notes again after a Close, or before anything showed them.
-	if (!mpn_shown)
-	if (MU_NotesCan())
-	{
-		bw = stringwidth("Patch notes", TRUE, SZ_LABEL) + 28;
-		if (ui_button("mu_notes", [x - bw, y], [bw, 28], "Patch notes"))
-		{
-			mpn_open = TRUE;
-			mpn_closed = FALSE;
-			mpn_scroll = '0 0 0';
-			if (mpn_state == MPNS_FAIL) mpn_next = 0;      // a click asks again now
-		}
-	}
+	return y + 28;
 };
 
-// ui_notes status|open|close|scroll <px>: the harness's handle on the panel.
+// P902: all the title screen keeps of the updater, as text: the two versions (Lex kept
+// those from P823's corner), a line naming F2, and one more while an update downloads or
+// waits for a restart.
+void(vector screensize) MU_Hint =
+{
+	local string st, msg, current, latest;
+	local float w, cur;
+	if (ms_consent < FS_TERMS_VERSION)
+		return;
+	w = min(440, screensize_x - 32);
+	current = cvar_string("ui_release_version");
+	cur = MU_VerNum(current);
+	if (current == "") current = strcat(UI_MENU_VERSION, " (dev)");
+	latest = cvar_string("update_version");
+	Font_Set(ui_font_ui);
+	MU_StatusLine(screensize_x - 16, 16, w, '12 12 0', strcat("Your version: ", current), COL_TEXT);
+	MU_StatusLine(screensize_x - 16, 34, w, '12 12 0', strcat("Latest: ", (latest == "") ? "unknown" : latest),
+	              (cur > 0 && MU_VerNum(latest) > cur) ? COL_ACCENT : COL_DIM);
+	MU_StatusLine(screensize_x - 16, 56, w, '12 12 0', "F2   patch notes, updates, input journal, terms", COL_DIM);
+	st = cvar_string("update_state");
+	msg = "";
+	if (cvar("update_consent") == 1)
+	{
+		if (!strcmp(st, "restart"))
+			msg = "Update ready -- restart the game (F2)";
+		else if (!strcmp(st, "launcher"))
+			msg = "Update ready -- restart through the launcher (F2)";
+		else if (!strcmp(st, "downloading") || !strcmp(st, "applying"))
+			msg = "Downloading an update";
+	}
+	if (msg != "")
+		MU_StatusLine(screensize_x - 16, 76, w, SZ_LABEL, msg, COL_ACCENT);
+};
+
+// ui_notes status|open|close|scroll <px>: the harness's handle; open and close are F2 now.
 void(string what) MU_NotesCommand =
 {
 	if (!strcmp(what, "open"))
 	{
-		mpn_open = TRUE;
-		mpn_closed = FALSE;
+		ui_f2_tab = 0;
+		menu_screen = SCREEN_JOURNAL;
+		m_open();
 		if (mpn_state == MPNS_FAIL) mpn_next = 0;
 	}
 	else if (!strcmp(what, "close"))
-		MU_NotesClose();
+	{
+		if (menu_screen == SCREEN_JOURNAL)
+			menu_screen = SCREEN_MAIN;
+	}
 	else if (!strcmp(what, "scroll"))
 		mpn_scroll_y = stof(argv(2));
 	print(sprintf("ui_notes: state %g shown %g items %g lines %g wrap %g scroll %g\n",
-	              mpn_state, mpn_shown, buf_getsize(mpn_items), buf_getsize(mpn_lines), mpn_wrapw, mpn_scroll_y));
+	              mpn_state, menu_screen == SCREEN_JOURNAL && ui_f2_tab == 0, buf_getsize(mpn_items), buf_getsize(mpn_lines), mpn_wrapw, mpn_scroll_y));
 	print(sprintf("ui_notes: installed %s listed %g seen %s url %s\n",
 	              cvar_string("ui_release_version"), mpn_hascur, cvar_string("ui_notes_seen"), MU_NotesUrl()));
 };

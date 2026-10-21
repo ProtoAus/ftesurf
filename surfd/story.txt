@@ -112,7 +112,10 @@ level surf_kitsune
   bronze finish
   silver time 1:46
   gold   time 1:39          // record 0:59.970
-level soon
+level surf_tendies                // P905: placeholder challenges, Lex will set them
+  bronze finish
+  silver speed 2500       "Reach 2500 u/s"
+  gold   improve 5%       "Beat your best by 5%"
 level soon
 level soon
 level soon
@@ -168,7 +171,10 @@ level surf_fruits
   silver time 2:43
   gold   time 2:33          // record 1:32.669
 level surf_vegetables                 // no zones yet
-level soon
+level surf_affliction             // P905: placeholder challenges, Lex will set them
+  bronze finish
+  silver speed 2000       "Reach 2000 u/s"
+  gold   improve 5%       "Beat your best by 5%"
 level soon
 chapter "Tier 3"
 level surf_executioner
