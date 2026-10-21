@@ -320,7 +320,8 @@ class Tests(unittest.TestCase):
             self.assertEqual(G.tick(self.cache, download=lambda f: binary()), (1, 1))
             self.assertEqual(G.tick(self.cache, download=lambda f: self.fail('warm download')), (0, 0))
 
-    def test_fixed_origin_ua_and_body_failures_park_entire_host(self):
+    def test_fixed_origin_ua_and_body_failures_set_their_file_aside(self):
+        # Patch 896: a body broken after the headers is the file's -- set aside, no park.
         other = raw(playerID=8, steamID='STEAM_0:0:124', record_id=112,
                     file='replay_css_5_0_8_1700000000.rec')
         K.write_rows([K.rec_row('surf_test', 0, 0, other)])
@@ -345,8 +346,9 @@ class Tests(unittest.TestCase):
                 self.assertEqual(req.full_url, K.KSF_BASE+'/api/replays/'+self.r['file']+'?game=66t')
                 self.assertEqual(req.get_header('User-agent'), K.UA)
                 self.assertEqual(self_count, [64<<10])
-            self.assertGreater(K._load(os.path.join(self.cache, '.refused'))['until'], time.time())
-            self.assertEqual(len(K._load(os.path.join(self.cache, 'demos.json'))['jobs']), 2)
+            self.assertFalse((Path(self.cache)/'.refused').exists())
+            state = K._load(os.path.join(self.cache, 'demos.json'))
+            self.assertEqual((len(state['jobs']), len(state['failed'])), (1, 1))
         with self.assertRaises(ValueError): G.fetch('../file.rec')
 
     def test_streaming_byte_cap_and_body_deadline_act_before_decode(self):
@@ -1367,60 +1369,55 @@ print('RESTART_COUNTS='+json.dumps([made, linked, *counts]))
         self.assertTrue(G.ready(self.conn, G.candidate('surf_test', 3, 0, self.r, 4)))
 
     def test_one_broken_file_is_set_aside_not_the_host(self):
-        other = raw(playerID=8, steamID='STEAM_0:0:124', record_id=112,
-                    file='replay_css_5_0_8_1700000000.rec')
-        K.write_rows([K.rec_row('surf_test', 0, 0, other)])
-        self.board([self.r, other])
+        rows = self.many(5)
+        broken = {rows[0]['file'], rows[2]['file'], rows[3]['file'], rows[4]['file']}
         asked = []
 
         def serve(file):
             asked.append(file)
-            if file == self.r['file']:
+            if file in broken:
                 raise G.BodyBroken('ConnectionResetError after the headers')
             return binary()
         base = int(time.time())
-        with patch.object(G.time, 'sleep'):
-            for i, made in enumerate(((1, 0), (1, 0), (1, 1))):
-                with patch.object(G.time, 'time', return_value=base + i * (K.COOLDOWN * 2 + 1)):
-                    self.assertEqual(G.tick(self.cache, download=serve), made)
-                if i < 2:   # every failure still parks the host
-                    self.assertEqual(K._load(os.path.join(self.cache, '.refused'))['n'], i + 1)
-        self.assertEqual(asked, [self.r['file'], self.r['file'], other['file']])
+        with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=base):
+            # A broken file is set aside and ends the tick's downloads; the host is not parked.
+            self.assertEqual(G.tick(self.cache, maximum=6, download=serve), (1, 0))
+            self.assertFalse((Path(self.cache) / '.refused').exists())
+            # A whole file in between resets the run of failures: 2 more broken, still no park.
+            self.assertEqual(G.tick(self.cache, maximum=6, download=serve), (2, 1))
+            self.assertEqual(G.tick(self.cache, maximum=6, download=serve), (1, 0))
+            self.assertFalse((Path(self.cache) / '.refused').exists())
+            # The third broken file in a row is the host's: parked.
+            self.assertEqual(G.tick(self.cache, maximum=6, download=serve), (1, 0))
+        self.assertEqual(K._load(os.path.join(self.cache, '.refused'))['n'], 1)
+        self.assertEqual(len(asked), 5)
         state = K._load(os.path.join(self.cache, 'demos.json'))
-        self.assertEqual(state['jobs'], {})
-        self.assertEqual([k.split('|')[3] for k in state['failed']], [self.job['runid']])
-        # Still broken when it comes back a week later: set aside on its first failure.
-        back = base + (K.COOLDOWN * 2 + 1) + 7 * 86400 + 60
-        with patch.object(G.time, 'sleep'), patch.object(G.time, 'time', return_value=back):
-            self.assertEqual(G.tick(self.cache, download=serve), (1, 0))
-        self.assertEqual(asked[3:], [self.r['file']])
-        self.assertEqual(K._load(os.path.join(self.cache, '.refused'))['n'], 3)
-        self.assertEqual(len(K._load(os.path.join(self.cache, 'demos.json'))['failed']), 1)
-        # An HTTP 500 for the one file is that file's too.
-        for name in ('.refused', 'demos.json'):
-            (Path(self.cache)/name).unlink(missing_ok=True)
-        self.conn.execute('UPDATE runs SET replay_id=0'); self.conn.commit()
+        self.assertEqual((state['jobs'], len(state['failed'])), ({}, 4))
+        # An HTTP 500 for one file is that file's too; a 404 the same.
+        for code in (500, 404):
+            for name in ('.refused', 'demos.json'):
+                (Path(self.cache)/name).unlink(missing_ok=True)
+            self.conn.execute('UPDATE runs SET replay_id=0'); self.conn.commit()
 
-        def five(file):
-            raise urllib.error.HTTPError('public', 500, 'broken', {}, io.BytesIO())
-        with patch.object(G.time, 'sleep'):
-            for i in range(2):
-                with patch.object(G.time, 'time', return_value=base + i * (K.COOLDOWN * 2 + 1)):
-                    self.assertEqual(G.tick(self.cache, download=five), (1, 0))
-        self.assertEqual(len(K._load(os.path.join(self.cache, 'demos.json'))['failed']), 1)
-        # What a host that is down or refusing answers never sets a file aside.
+            def fail(file):
+                raise urllib.error.HTTPError('public', code, 'broken', {}, io.BytesIO())
+            with patch.object(G.time, 'sleep'):
+                self.assertEqual(G.tick(self.cache, maximum=6, download=fail), (1, 0))
+            self.assertFalse((Path(self.cache) / '.refused').exists(), code)
+            self.assertEqual(len(K._load(os.path.join(self.cache, 'demos.json'))['failed']), 1)
+        # What a host that is down or refusing answers parks every time, and sets nothing aside.
         for failure in (urllib.error.HTTPError('public', 429, 'refused', {}, io.BytesIO()),
                         urllib.error.HTTPError('public', 503, 'busy', {}, io.BytesIO()),
                         ConnectionRefusedError('down'), TimeoutError('slow')):
             for name in ('.refused', 'demos.json'):
                 (Path(self.cache)/name).unlink(missing_ok=True)
 
-            def fail(file):
+            def down(file):
                 raise failure
             with self.subTest(failure=failure), patch.object(G.time, 'sleep'):
                 for i in range(3):
                     with patch.object(G.time, 'time', return_value=base + i * (K.COOLDOWN * 4 + 1)):
-                        self.assertEqual(G.tick(self.cache, download=fail), (1, 0))
+                        self.assertEqual(G.tick(self.cache, maximum=6, download=down), (1, 0))
                 self.assertEqual(K._load(os.path.join(self.cache, '.refused'))['n'], 3)
                 self.assertEqual(K._load(os.path.join(self.cache, 'demos.json'))['failed'], {})
 
@@ -1528,6 +1525,25 @@ print('RESTART_COUNTS='+json.dumps([made, linked, *counts]))
                 K.unblock_step(self.cache, {}, maps, prio, K.Pacer(0, 4), 2, [], now + i)
         self.assertEqual(asked, [K.KSF_BASE + '/api/maps/surf_test/records/zone/0/1?game=css&mode=0'])
         self.assertGreaterEqual(K.board_load(self.cache, 'surf_test', 0)['top'], now)   # page 1's own path
+
+    def test_unblock_skips_boards_asked_this_tick_bad_state_and_set_aside_boards(self):
+        self.conn.execute('DELETE FROM runs'); self.conn.commit()
+        legacy = dict(self.r)
+        del legacy['record_id'], legacy['file']
+        K.write_rows([K.rec_row('surf_test', 0, 0, legacy)])
+        row = dict(self.r, rank=27)
+        K._save(K.board_path(self.cache, 'surf_test', 0), dict(rows=[row], done=True, next=41))
+        K._save(os.path.join(self.cache, 'unblock.json'), dict(cursor=None, wanted_cursor=7, asked=[]))
+        now = int(time.time())
+        with patch.object(K, 'fetch', side_effect=AssertionError('asked again')):
+            # topup or rewalk already asked this board this tick
+            self.assertEqual(K.unblock_step(self.cache, {}, {'surf_test'}, set(), K.Pacer(0, 4), 2,
+                                            [('surf_test', 0, 0, [])], now), 0)
+            # strike() set it aside, whatever index.json says
+            doc = K.board_load(self.cache, 'surf_test', 0)
+            K._save(K.board_path(self.cache, 'surf_test', 0), dict(doc, skip='refused 3 times'))
+            self.assertEqual(K.unblock_step(self.cache, {}, {'surf_test'}, set(), K.Pacer(0, 4), 2,
+                                            [], now), 0)
 
     def test_path_kind_and_escape_refusal(self):
         rid = G.install(self.conn, self.job, binary())

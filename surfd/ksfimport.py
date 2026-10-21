@@ -844,15 +844,23 @@ def unblock_step(cache, idx, maps, prio, pacer, budget, fetched, now):
     st = st if isinstance(st, dict) else {}
     asked = st.get("asked") if isinstance(st.get("asked"), dict) else {}
     asked = {k: t for k, t in asked.items() if type(t) is int and 0 <= now - t < UNBLOCK_DAYS * 86400}
+    names = []
     try:
-        names = sorted("%s/%s" % (mp, f) for mp in os.listdir(folder) if mp in maps
-                       and os.path.isdir(os.path.join(folder, mp))
-                       for f in os.listdir(os.path.join(folder, mp)) if f.endswith(".json"))
+        dirs = os.listdir(folder)
     except OSError:
         return 0
+    for mp in dirs:
+        if mp in maps:
+            try:                            # one unreadable map must not turn the step off
+                names += ["%s/%s" % (mp, f) for f in os.listdir(os.path.join(folder, mp))
+                          if f.endswith(".json")]
+            except OSError:
+                continue
+    names.sort()
+    done = {(mp, z, m) for mp, z, m, _ in fetched}   # a board this tick already asked
 
     def turn(pool, key, n):
-        after = st.get(key, "")
+        after = st.get(key) if isinstance(st.get(key), str) else ""
         return ([x for x in pool if x > after] + [x for x in pool if x <= after])[:n]
     wanted = [x for x in names if x.split("/")[0] in prio]
     first = turn(wanted, "wanted_cursor", UNBLOCK_SCAN // 2)
@@ -863,22 +871,26 @@ def unblock_step(cache, idx, maps, prio, pacer, budget, fetched, now):
     conn = S.connect()
     try:
         for cursor, name in order:
+            before = st.get(cursor)
             st[cursor] = name               # before any test: a refused name must not stall it
             m = re.fullmatch(r"([a-z0-9_]{1,64})/z([0-9]{1,2})(?:m([1-3]))?\.json", name)
             if not m:
                 continue
             mp, zone, mode = m[1], int(m[2]), int(m[3] or 0)
             state = idx.get(_ikey(mp, zone, mode))
-            if isinstance(state, list) and len(state) > 3 and state[3]:
-                continue                    # struck: refresh and sweep leave it alone too
+            if (isinstance(state, list) and len(state) > 3 and state[3]) or (mp, zone, mode) in done:
+                continue                    # struck, or asked this tick already
             try:
                 if os.path.getsize(board_path(cache, mp, zone, mode)) > 8 << 20:
                     continue                # ksfgrab's bound on a board file, too
             except OSError:
                 continue
+            doc = board_load(cache, mp, zone, mode)
+            if doc.get("skip"):
+                continue                    # set aside by strike(), whatever the index says
             track, leg = zone_track_leg(zone)
             starts = set()
-            for rec in board_load(cache, mp, zone, mode)["rows"]:
+            for rec in doc["rows"]:
                 if (not isinstance(rec, dict) or not rec.get("file")
                         or type(rec.get("rank")) is not int or rec["rank"] < 1):
                     continue
@@ -889,10 +901,11 @@ def unblock_step(cache, idx, maps, prio, pacer, budget, fetched, now):
                         (mp, track, leg, KSF_MODES[mode], str(sid))).fetchone():
                     starts.add((rec["rank"] - 1) // KSF_PAGE * KSF_PAGE + 1)
             for start in sorted(starts):
-                key = "%s|%d" % (name, start)
+                key = "%s|%d|%d|%d" % (mp, zone, mode, start)
                 if key in asked:
                     continue
                 if made >= budget or pacer.left() <= 0:
+                    st[cursor] = before     # its other pages come first next tick
                     break
                 fetched.append((mp, zone, mode,
                                 board_page_at(cache, mp, zone, pacer, mode, start, idx)))

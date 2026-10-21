@@ -36,7 +36,7 @@ MAX_QUEUE = 256
 MAX_RECOVER = 2
 MAX_FAILED = 2048
 MAX_PROVENANCE = 16 << 10
-FILEFAIL_DAYS = 14         # Patch 891: a file's own failures this far apart are one fault
+FILESTREAK = 3             # Patch 896: this many file-level failures in a row are the host's
 FLOOR = 15 << 30           # Patch 896: no download or install below this much free disk
 SCAN = 32
 BINDING = ('map', 'track', 'leg', 'style', 'player', 'runid', 'millis', 'when', 'file')
@@ -484,11 +484,6 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                        if (type(t) is int and t > now) or
                        (isinstance(t, dict) and type(t.get('retry')) is int
                         and type(t.get('strikes')) is int and 0 < t['strikes'] < 3)}
-    # Patch 891: when each file was last set aside for failing the way only a file can.
-    # Kept past the set-aside, so a file still broken when it returns goes back on one park.
-    marks = state.get('filefail') if isinstance(state.get('filefail'), dict) else {}
-    marks = {k: t for k, t in marks.items() if type(t) is int and 0 <= now - t <= FILEFAIL_DAYS * 86400}
-    state['filefail'] = dict(sorted(marks.items(), key=lambda kt: kt[1])[-MAX_FAILED:])
     if len(state['failed']) > MAX_FAILED:
         # Older writers appended terminal failures after their initial truncation.
         # Preserve that input verbatim; normal expiry can unblock a later tick.
@@ -545,6 +540,7 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                 continue
             try:
                 data = None
+                asked = False
                 if local_only:
                     recovered += 1
                 digest = retained_digest(job)
@@ -565,44 +561,48 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                     # Sleep before FIRST request: the board crawler just acted.
                     time.sleep(max(3.0, delay))
                     made += 1
+                    asked = True
                     data = transport(download, job['file'])
+                if asked:
+                    state['filestreak'] = 0     # the host just served a whole file
                 rid = install(conn, job, data)
                 if rid:
                     linked += 1
                     state['failed'].pop(key, None)
                     jobs.pop(key, None)
             except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
-                # Refusal belongs to the HOST, not whichever demo happened to
-                # be asked. All non-2xx/redirects/network failures stop this tick.
+                # Refusal belongs to the HOST, not whichever demo happened to be asked: every
+                # non-2xx, redirect or network failure stops this tick, and parks the crawler --
+                # except (Patch 896) a failure only a file can have: 404/500, or a body broken
+                # after the headers. surf_ab's and then surf_kultur's replays break mid-body on
+                # every ask (21 Oct), and parking for each such file stalled every map's demos
+                # for days. That file is set aside 7 days; FILESTREAK of them in a row is the host.
+                code = getattr(e, 'code', 0)
+                own = code in (404, 500) or isinstance(getattr(e, 'reason', None), BodyBroken)
+                prev = state.get('filestreak')
+                streak = ((prev if type(prev) is int else 0) + 1) if own else 0
+                state['filestreak'] = streak if streak < FILESTREAK else 0
+                if own:
+                    if key in state['failed'] or len(state['failed']) < MAX_FAILED:
+                        state['failed'][key] = now + 7 * 86400
+                        jobs.pop(key, None)
+                    else:
+                        job.update(retry=now + 7 * 86400, terminal=True)
+                if own and streak < FILESTREAK:
+                    print('KSF demo set aside: network %d on its own file (%d in a row)' % (code, streak))
+                    break
                 n = int(park.get('n') or 0) + 1
                 wait = min(K.COOLDOWN * 2 ** min(n - 1, 8), K.COOLDOWN_MAX)
-                code = getattr(e, 'code', 0)
                 K._save(os.path.join(cache, '.refused'),
                         dict(at=now, until=now + wait, n=n, why='demo network %d' % code))
                 job['retry'] = now + wait
                 print('KSF demos refused: network %d; shared crawler parked' % code)
-                # Patch 891: the host still parks, but a file that failed the way only a file can
-                # (404/500, or a body broken after the headers) twice in 14 days is not asked
-                # first again. surf_ab's broke mid-body on every ask from 19 Oct, parking all.
-                if code in (404, 500) or isinstance(getattr(e, 'reason', None), BodyBroken):
-                    seen = max([t for t in (job.get('filefail'), state['filefail'].get(key))
-                                if type(t) is int] + [0])
-                    if now - seen <= FILEFAIL_DAYS * 86400:
-                        if key in state['failed'] or len(state['failed']) < MAX_FAILED:
-                            state['failed'][key] = now + 7 * 86400
-                            jobs.pop(key, None)
-                        else:
-                            job.update(retry=now + 7 * 86400, terminal=True)
-                        state['filefail'][key] = now
-                        print('KSF demo set aside: the same file failed twice')
-                    else:
-                        job['filefail'] = now
                 break
             except (OSError, ValueError) as e:
                 job['retry'] = now + 86400
                 job['why'] = type(e).__name__
                 job['strikes'] = job.get('strikes', 0) + 1
-                print('KSF demo deferred: %s' % type(e).__name__)
+                print('KSF demo deferred: %s: %s' % (type(e).__name__, ' '.join(str(e).split())[:120]))
                 if job['strikes'] >= 3:
                     # Bounded durable tombstone frees the queue for later maps.
                     if key in state['failed'] or len(state['failed']) < MAX_FAILED:
