@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P910 — recording from spectating
+
+- Spectate another player, open an existing recording, stop it: your own body and
+  run column return. Try a quick stop too; no flash back to the watched player.
+- A missing recording keeps you spectating. Opening immediately after requesting
+  spectate may ask you to wait until entry completes.
+- Native delay/ownership controls passed; human camera feel PENDING. Charging
+  elapsed viewing time to the run is separate work, not a P910 acceptance pass.
+
 ## P909 — leaderboard defaults and styling (rollout pending backend handoff)
 
 - Load a map: World of Surf records first. Choose another game explicitly;

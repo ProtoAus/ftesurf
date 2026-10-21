@@ -21,6 +21,11 @@
 
 ## next
 
+### P910 Open a recording while spectating
+- You can open a recorded run while watching another player, then return to your own body and run display. Closing replay quickly no longer lets a delayed spectator update take the view back.
+- If you have only just requested spectating and have not entered it yet, wait for entry before opening the recording. A missing recording leaves you spectating.
+- This patch does not yet change how viewing time is charged to your run; that timer change is separate work.
+
 ### P909 Clearer leaderboard filters
 - Loading a map starts the leaderboard on World of Surf records. Choosing a direction no longer switches you to KSF.
 - Styles read Normal, Sideways, Half-Sideways and Backwards. Segmented is a separate switch that works with any direction; existing times are not reclassified, and empty categories stay empty.

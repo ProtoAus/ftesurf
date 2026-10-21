@@ -1,5 +1,19 @@
 # AGENT_NOTES.md
 
+## Spectator-to-replay ownership (P910, 2026-10-21)
+
+- Restore the player's own sequence column before Watch_OpenIn borrows the save
+  slot. A failed recording load must not release spectating.
+- Suppression cannot depend only on rec_wt_open: quick replay close can precede
+  the server's release stat. spc_handover lives until actual stat-zero ack, even
+  after Watch_Stop. Initial pending spectate entry is refused before loading,
+  because its pre-entry zero is not a release acknowledgment.
+- Actual supported 600ms packet-delay control: old candidate 63/63 stale-state
+  frames reclaimed view; fixed 0/64. Native pending-entry stat0/request1 acts,
+  refusal preserves request, acknowledged entry later permits the same replay.
+- This is camera/telemetry ownership only. It does not establish inclusive viewing
+  time, a different body-return policy or native run eligibility.
+
 ## WOS-first boards, two style axes (P909, 2026-10-21)
 
 - Owner's new default overrides P635's historical all-games default: each map

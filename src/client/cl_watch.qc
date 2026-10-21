@@ -78,6 +78,7 @@
   The block in cl_keys.qc holds exactly the ones the HUD and the timer read,
   and keeping it to those is what makes it obvious what a replay overrides.
 */
+void() Spec_HandOver;           // cl_spectate.qc: return your telemetry before replay borrows it
 float  rec_wt_open;              // a recording is loaded (drawing or paused)
 float  rec_wt_slseq;             // a raw cmd sl_load also replaces the viewer
 float  rec_wt_tag;               // RT_*, from the filename
@@ -4686,11 +4687,12 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 	mark = wt_nextmark;             // Patch 789: likewise
 	wt_nextmark = "";
 
-	// Patch 744: spectate holds your segment column where the build pass would
-	// (Watch_SeqSave).  Spec_Request refuses the other order.
-	if (Spec_Active())
+	// A pre-entry zero stat is not a replay handover's release acknowledgment.
+	// Wait until the requested spectator entry has actually arrived.
+	if (spc_want)
+	if (getstatf(STAT_FS_SPEC) <= 0)
 	{
-		print("replay: leave spectate first\n");
+		print("replay: wait for spectate entry, then open the recording again\n");
 		return FALSE;
 	}
 
@@ -4838,6 +4840,9 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 	rec_wt_rcur   = -1;
 	rec_wt_lastreal = cltime;
 	rec_wt_clkerr   = 0;
+	// A validated recording takes over. Return your column before the build
+	// pass borrows its save slot; rec_watch below transfers the server pin.
+	Spec_HandOver();
 	rec_wt_open   = TRUE;
 	rec_wt_slseq  = getstatf(STAT_FS_SLSEQ);
 

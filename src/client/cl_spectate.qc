@@ -36,6 +36,7 @@
 
 float  spc_mode;                // SPM_*; kept for the map
 float  spc_wantat;              // spc_want, spc_leaving, Spec_Active: cl_keys.qc
+float  spc_handover;            // replay took ownership; wait for the spectator release stat
 float  spc_kheld;
 float  spc_lastt;
 vector spc_camorg;              // the camera, all modes (first person tracks the eye)
@@ -272,6 +273,11 @@ float(float slot) Spec_Request =
 	local float e, bp;
 	local string nm;
 
+	if (spc_handover)
+	{
+		Spec_Flash("waiting for spectator release");
+		return FALSE;
+	}
 	if (serverkeyfloat("fs_spec") != 1)
 	{
 		Spec_Flash("this server does not offer it");
@@ -467,6 +473,20 @@ void() Spec_TmClose =
 	seq_fadeat = spc_tmfade;        // a list that was fading for a new run still goes
 };
 
+// rec_watch releases the server's spectator hold itself: do not send a separate
+// leave (or countdown) between holds. The replay must save YOUR column, not the
+// watched player's, even while the old spectator stat is still in flight.
+void() Spec_HandOver =
+{
+	if (!Spec_Active())
+		return;
+	Spec_TmClose();
+	spc_handover = TRUE;
+	spc_want = 0;
+	spc_leaving = cltime;
+	Spec_TurnRelease();
+};
+
 // One sample, through the same three machines your own frames drive.
 void(entity b, entity c) Spec_FeedCell =
 {
@@ -591,6 +611,10 @@ void(float st) Spec_Edges =
 	else
 		Spec_TurnRelease();
 
+	// Replay may already be closed. Only the server's release acknowledgment
+	// lets spectator state own the camera or borrow the column again.
+	if (!st)
+		spc_handover = FALSE;
 	was = spc_stat;
 	if (spc_want)
 	if (st == spc_want)
@@ -708,7 +732,9 @@ void() Spec_Frame =
 	spc_hideslot = 0;
 	spc_clr = -1;
 	spc_allow = -1;
-	if (st <= 0)
+	// rec_watch transfers the server hold, but its stat may take a round trip.
+	// Do not let that old target reclaim the camera or telemetry from replay.
+	if (rec_wt_open || spc_handover || st <= 0)
 		return;
 
 	t = st - 1;

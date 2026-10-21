@@ -4551,7 +4551,7 @@ void(entity e, float on) SV_WatchHold =
 	// Switching viewers is one server command: restore the spectator's body
 	// before the replay takes its own pin, without a countdown between owners.
 	if (e.run_pmhold)
-		SV_SpecRelease(e, "replay");
+		SV_SpecRelease(e, "leave");  // existing evidence reason: leaving spectate for replay
 
 	e.rec_wt_hold     = TRUE;
 	e.rec_wt_holdmove = e.movetype;
