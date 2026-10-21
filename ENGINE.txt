@@ -13,7 +13,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   65a5950e9f6304a3801760465e4918828ecb23e7
+commit   f323cb68f8673f272c16e5d64503ae890702daf4
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -24,8 +24,15 @@ commit   65a5950e9f6304a3801760465e4918828ecb23e7
 #   below tracks ENGINE_PATCHES.md and moves with every entry, so the two lines
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
-tag      patch-879
-patch    890
+tag      patch-895
+patch    895
+# Patches 894, 895 (client exe + hl2 plugin + csprogs; tag patch-895, main f323cb68f on 65a5950e9): hud_gfx
+# rows switch live (the plugin's material cvars get the renderer's shader-system flag; light sampler cvars
+# key the model-light cache; decals/overlays/sprites/light shafts re-place in CSQC) -- arm: translucent,
+# env maps, overlays, sprites, water live = loaded; world/brush Refract panes share one screen copy per view
+# (Source: brushes never copy) -- surf_pantheon start at r_renderscale 2: 61 -> 19 copies, 6.80 -> 2.50 ms,
+# 127 -> 275 fps. Exe f7523bbe (git-7671-patch-895-0-gf323cb68f), hl2 e9d70a34, cod 2144350c, both installs
+# 2026-10-21 02:24Z (.prev 2b94393b / aec7a92e / e7535d19, aa5905ff); server unchanged 164d0a86.
 # Patch 879 (client exe + hl2 plugin, on patch-890 2af5c856f): one water reflection and refraction per view,
 # as Source -- r_waterviews 1 weighs each level water plane by its on-screen solid angle (occlusion-traced)
 # and every same-facing water shares that capture; $forcecheap water is Source's opaque cheap water. Lex's

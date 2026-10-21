@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P894, P895 — graphics settings without a map reload; surf_pantheon's waterfalls at 2x
+
+- surf_pantheon at your r_renderscale 2: the start area should run ~275 fps instead of ~125 (its
+  waterfalls took 61 full-screen copies a frame; now 19). The waterfalls should look the same.
+- hud_gfx: Translucent, Overlays and Sprites switch at once (a short hitch, 50-350 ms, while
+  materials rebuild). Rows still marked `*` need a map reload. Installed 02:24Z 21 Oct UTC
+  (13:24 your time); csprogs to the installs and lobbies with this record. Verdicts PENDING.
+
 ## P879 — water reflections at Source's cost (surf_garden saves 1-3, ~120 fps)
 
 Your 2.2x draw calls came from `hl2_water 2` at map load: it splits the water per height, and every

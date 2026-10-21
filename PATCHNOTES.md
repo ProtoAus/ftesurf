@@ -25,6 +25,13 @@
 - KSF recordings now arrive three times faster, including those of older KSF times imported before recordings were linked.
 - A broken file on KSF's side no longer holds up everyone else's recordings.
 
+### P895 Refracting waterfalls and glass draw much faster
+- Refracting world surfaces, such as surf_pantheon's waterfalls, share one copy of the screen instead of taking one each: at 2x render scale its start went from 124 to about 275 fps.
+
+### P894 Graphics settings switch without a map reload
+- Translucent, Overlays and Sprites in the graphics menu now take effect immediately.
+- Bump maps, glass, animated textures, dithering, decals, light shafts and model lighting also switch live; the menu still marks the ones not confirmed in testing.
+
 ### P890 Map fixes: surf_network2008_final's falls go back to the start
 - Maps can carry small fixes the way surf servers patch them. The first sends every fall on surf_network2008_final back to the start, stopped, instead of its round-based jail, and one player can no longer reset everyone else there.
 
