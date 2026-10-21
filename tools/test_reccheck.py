@@ -876,7 +876,7 @@ def case_v9_seed():
 
 def case_v9_field_values():
     for lines, want, what in (
-            (row(build(), fl=8), "is outside 0..7", "'in' fl 8"),
+            (row(build(), fl=16), "is outside 0..15", "'in' fl 16"),
             (row(build(), fwd="450.5"), "non-integer", "'in' fwd 450.5"),
             (edit(build(**V9_ALL), "warp", 11, 2), "is not 0 or 1", "warp fl 2"),
             (edit(build(**V9_ALL), "pe", 3, 0x1000000), "24-bit", "pe crc 2^24"),
@@ -891,6 +891,7 @@ def case_v9_field_values():
         faults_with(lines, want, "%s is a fault" % what)
     notes_with(row(build(), fl=4), "never occur on a clean run",
                "'in' fl 4 is a note, not a fault")
+    ok_clean(row(build(), fl=8), "'in' fl 8 (a later part of a split usercmd, Patch 893) passes")
 
 
 def case_v8_as_before():
@@ -1720,6 +1721,41 @@ def case_angle_one_frame_rule():
           "a 0.5 deg rotation is caught on the ticks that held one frame")
     if not f:
         print("        NO FAULT")
+
+
+def case_split_part_rows_are_not_joined():
+    """Patch 893: the server runs a usercmd of several ticks one tick per part, and a later part's
+    row (fl 8) carries the COMMAND's angles at a tick where the client drew a later frame.  The
+    one-frame rule must skip those rows -- and the same rows without the bit must fault, or the bit
+    is not what passes them."""
+    L = build(sweep=128, packets=400)
+    view = view_for(L)
+
+    def split(bit):
+        out, prev, k = [], None, 0
+        for l in L:
+            if l.startswith("in "):
+                f = l.split()
+                if prev is not None:
+                    k += 1
+                    if k % 2 == 0:
+                        f[7], f[8] = prev[7], prev[8]
+                        f[11] = str(int(f[11]) | bit)
+                        l = " ".join(f)
+                prev = f
+            out.append(l)
+        return out
+
+    f, _ = run(split(8), view=view)
+    check(not any("not this recording" in x or "does not describe" in x for x in f),
+          "a later part's row (fl 8) with the command's angles is not joined to its tick's frame")
+    if f:
+        print("        %s" % f)
+    f, _ = run(split(0), view=view)
+    check(any("not this recording" in x or "does not describe" in x for x in f),
+          "...and the same rows without fl 8 are a fault (the control)")
+    f, _ = run(insert_before(build(), "inend", "in 0 0 0 0 0 0 0 0 0 0 16"))
+    check(any("fl 16 is outside 0..15" in x for x in f), "fl 16 is still outside the grammar")
 
 
 def case_angle_one_frame_rule_reaches_a_still_camera():
@@ -3073,6 +3109,7 @@ def main():
                case_below_horizon, case_carry_bound, case_button_width,
                case_instart_ordering, case_resume_is_not_a_fault,
                case_offgrid_angle_is_a_note, case_v9_offgrid_angle_is_a_fault,
+               case_split_part_rows_are_not_joined,
                case_v5_trailer_still_four_fields,
                case_v6_trailer_still_five_fields,
                case_warp_shape, case_warp_count, case_warp_below_horizon,

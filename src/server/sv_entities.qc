@@ -9,6 +9,15 @@
 ===========================================================================
 */
 
+// P675's command context, published per usercmd part by the engine: the warp ops (sv_warpop.qc) and
+// the recorder's split-part flag (Patch 893, SV_TimerInFrame) read it.
+float input_cmd_kind;
+float input_cmd_sequence_lo;
+float input_cmd_sequence_hi;
+__used float input_cmd_msec;     // all six or the engine exports none
+__used float input_cmd_piece_msec;
+__used float input_cmd_offset_msec;
+
 /*
   FORWARD DECLARATIONS, because sv_progs.src compiles this file FIRST.
 

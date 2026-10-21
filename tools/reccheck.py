@@ -1257,9 +1257,12 @@ def check_rec(path, verbose=False, *, data=None):
                     r.fault("line %d: 'in' projected angle tick is below the initial "
                             "timer origin" % (lineno + 1))
                     ang_holdbad = True
-                ang_mt.append(ang_prev)
-                ang_pit.append(ang[0])
-                ang_yaw.append(ang[1])
+                # Patch 893: a later part of a split usercmd carries the command's angles at a
+                # tick where the client drew a later frame; only the command's first row is joined.
+                if not (ver >= 9 and infl & 8):
+                    ang_mt.append(ang_prev)
+                    ang_pit.append(ang[0])
+                    ang_yaw.append(ang[1])
             if in_pk is None or pk != in_pk:
                 in_packets += 1
             spec_restates(r, lineno + 1, "the 'in' row", mt, carry, spec_pend)
@@ -1317,9 +1320,10 @@ def check_rec(path, verbose=False, *, data=None):
                         % (lineno + 1, bt))
 
             if ver >= 9:
-                if infl < 0 or infl > 7:
-                    r.fault("line %d: fl %d is outside 0..7 -- three bits (1 "
-                            "onground, 2 teleport_time, 4 movetype not WALK)"
+                if infl < 0 or infl > 15:
+                    r.fault("line %d: fl %d is outside 0..15 -- four bits (1 "
+                            "onground, 2 teleport_time, 4 movetype not WALK, "
+                            "8 a later part of a split usercmd)"
                             % (lineno + 1, infl))
                 elif infl & 6:
                     in_flx += 1

@@ -3135,7 +3135,11 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             SV_RunCmd leaves stale while fixangle is set; and
                             <fl> is the state the engine reads next: 1
                             FL_ONGROUND, 2 teleport_time set, 4 movetype not
-                            WALK (2 and 4 never occur on a clean run).  Rows are
+                            WALK (2 and 4 never occur on a clean run); Patch
+                            893 adds 8, a later part of a usercmd the server
+                            split one tick per part: its angles are the
+                            command's, not a frame's, and the angle check skips
+                            the row.  Rows are
                             numbered by position from 0: <row> in the records
                             below is that index.
                             v6, build 82.  ONE SIMULATED MOVE -- what the mover
@@ -13728,6 +13732,8 @@ void(entity e) SV_TimerInFrame =
 	if (e.flags & FL_ONGROUND)      fl = fl + 1;
 	if (e.teleport_time)            fl = fl + 2;
 	if (e.movetype != MOVETYPE_WALK) fl = fl + 4;
+	// Patch 893: a later part of a usercmd the server split; its angles are the command's.
+	if (input_cmd_offset_msec > 0 && (input_cmd_kind == 1 || input_cmd_kind == 2)) fl = fl + 8;
 
 	was = e.rec_rec_lines;
 	row = strcat(sprintf("in %d %d %.9g %d %d %d ",
