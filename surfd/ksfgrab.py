@@ -3,8 +3,8 @@
 Original bytes and row provenance are retained, normalized text gets kind=ksf,
 and ONLY an exact current KSF PB is linked. Never probe a filename or submit a
 native result. Called under ksfimport's shared lock in unattended --watch --go.
-No network from HTTP handlers. A tick scans <=32 board files and downloads <=2
-advertised CSS/66t files, sequentially, after the board crawler's last request.
+No network from HTTP handlers. A tick scans <=32 board files and downloads <=6
+(ksfimport.DEMO_MAX) advertised CSS/66t files, sequentially, after the board crawler's last request.
 """
 import hashlib
 import http.client

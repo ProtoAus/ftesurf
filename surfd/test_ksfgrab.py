@@ -1506,6 +1506,29 @@ print('RESTART_COUNTS='+json.dumps([made, linked, *counts]))
             self.assertEqual(K.unblock_step(self.cache, {}, {'surf_test'}, set(), K.Pacer(0, 4), 4,
                                             [], now + 30 * 86400), 0)
 
+    def test_unblock_rotation_is_not_held_by_wanted_or_refused_boards(self):
+        self.conn.execute('DELETE FROM runs'); self.conn.commit()
+        legacy = dict(self.r)
+        del legacy['record_id'], legacy['file']
+        K.write_rows([K.rec_row('surf_test', 0, 0, legacy)])
+        row = dict(self.r, rank=3)
+        K._save(K.board_path(self.cache, 'surf_test', 0), dict(rows=[row], done=True, next=21))
+        for z in range(70):
+            K._save(K.board_path(self.cache, 'surf_want', z), dict(rows=[], done=True))
+            K._save(K.board_path(self.cache, 'surf_a-b', z), dict(rows=[], done=True))
+        asked = []
+
+        def page(url):
+            asked.append(url)
+            return json.dumps([row]).encode()
+        now = int(time.time())
+        maps, prio = {'surf_test', 'surf_want', 'surf_a-b'}, {'surf_want'}
+        with patch.object(K, 'fetch', side_effect=page):
+            for i in range(5):
+                K.unblock_step(self.cache, {}, maps, prio, K.Pacer(0, 4), 2, [], now + i)
+        self.assertEqual(asked, [K.KSF_BASE + '/api/maps/surf_test/records/zone/0/1?game=css&mode=0'])
+        self.assertGreaterEqual(K.board_load(self.cache, 'surf_test', 0)['top'], now)   # page 1's own path
+
     def test_path_kind_and_escape_refusal(self):
         rid = G.install(self.conn, self.job, binary())
         row = dict(self.conn.execute('SELECT * FROM replays WHERE id=?', (rid,)).fetchone())

@@ -162,9 +162,9 @@ KSF_LIST_PAGE = 10         # maps per /api/maps/new page (measured 5 Oct)
 WATCH_BOARDS = 8           # board requests a --watch tick; --demos downloads come on top
 DEMO_MAX = 6               # Patch 896, Lex 21 Oct: "6 per 5 minutes" (was 2 of 10)
 WATCH_MAX = WATCH_BOARDS + DEMO_MAX
-UNBLOCK_MAX = 4            # Patch 896: pages a tick re-asks for recordings on null-ID rows
+UNBLOCK_MAX = 2            # Patch 896: pages a tick re-asks for recordings on null-ID rows
 UNBLOCK_SCAN = 64          # boards a tick looks through for them
-UNBLOCK_DAYS = 7           # a page re-asked this recently is not asked again
+UNBLOCK_DAYS = 60          # a page re-asked this recently is not asked again
 WATCH_DELAY = 3.0          # s between requests
 COOLDOWN = 6 * 3600        # s parked after a refusal, doubling to COOLDOWN_MAX
 COOLDOWN_MAX = 48 * 3600
@@ -804,7 +804,11 @@ def wanted_maps(now):
 
 
 def board_page_at(cache, mp, zone, pacer, mode, start, idx=None):
-    """Patch 896: one page from rank `start`, folded in; the walking cursor is not moved."""
+    """Patch 896: one page from rank `start`, folded in; the walking cursor is not moved.
+    Page 1 goes through board_page's own top path, which also reopens a board new players
+    pushed down."""
+    if start == 1:
+        return board_page(cache, mp, zone, pacer, mode, top=True, idx=idx)[1]
     doc = board_load(cache, mp, zone, mode)
     mark_owed(cache, mp, zone, mode)
     page = pacer.get("/api/maps/%s/records/zone/%d/%d?game=css&mode=%d"
@@ -818,8 +822,6 @@ def board_page_at(cache, mp, zone, pacer, mode, start, idx=None):
         raise Refused("a records page carried no SteamID -- their format has "
                       "probably changed", board=True)
     merge_page(doc, page)
-    if start == 1:
-        doc["top"] = int(time.time())
     _save(board_path(cache, mp, zone, mode), doc)
     if idx is not None:
         idx[_ikey(mp, zone, mode)] = _state(doc)
@@ -829,9 +831,11 @@ def board_page_at(cache, mp, zone, pacer, mode, start, idx=None):
 def unblock_step(cache, idx, maps, prio, pacer, budget, fetched, now):
     """Patch 896: re-ask the page holding an advertised recording whose row is a null-ID
     PB (ksf_unbound). Only a page fetched this tick binds such a row, and refresh_step asks
-    page 1 alone, so 44,338 of 48,803 recordings sat unlinkable (21 Oct). Wanted maps' boards
-    first, then a rotation over the rest, UNBLOCK_SCAN boards a tick; a page asked in the last
-    UNBLOCK_DAYS is skipped, so one whose rows still do not bind is not asked every tick."""
+    page 1 alone, so 44,338 of 48,803 recordings sat unlinkable (21 Oct). Each tick looks
+    through UNBLOCK_SCAN boards, half of them wanted maps' on their own cursor (as
+    ksfgrab.discover_wanted), the rest a rotation over every board. A page asked in the last
+    UNBLOCK_DAYS is skipped: one fetch binds what it can, and a row still blocked after it
+    (its rank moved, its record went) waits for the ordinary refresh."""
     if budget <= 0 or pacer.left() <= 0:
         return 0
     folder = os.path.join(cache, "boards")
@@ -846,23 +850,32 @@ def unblock_step(cache, idx, maps, prio, pacer, budget, fetched, now):
                        for f in os.listdir(os.path.join(folder, mp)) if f.endswith(".json"))
     except OSError:
         return 0
-    after = st.get("cursor", "")
-    rotation = [n for n in names if n > after] + [n for n in names if n <= after]
-    order = ([n for n in names if n.split("/")[0] in prio]
-             + [n for n in rotation if n.split("/")[0] not in prio])
+
+    def turn(pool, key, n):
+        after = st.get(key, "")
+        return ([x for x in pool if x > after] + [x for x in pool if x <= after])[:n]
+    wanted = [x for x in names if x.split("/")[0] in prio]
+    first = turn(wanted, "wanted_cursor", UNBLOCK_SCAN // 2)
+    rest = [x for x in turn([x for x in names if x.split("/")[0] not in prio], "cursor",
+                            UNBLOCK_SCAN) if x not in first]
+    order = [("wanted_cursor", x) for x in first] + [("cursor", x) for x in rest[:UNBLOCK_SCAN - len(first)]]
     made = 0
     conn = S.connect()
     try:
-        for name in order[:UNBLOCK_SCAN]:
+        for cursor, name in order:
+            st[cursor] = name               # before any test: a refused name must not stall it
             m = re.fullmatch(r"([a-z0-9_]{1,64})/z([0-9]{1,2})(?:m([1-3]))?\.json", name)
             if not m:
                 continue
             mp, zone, mode = m[1], int(m[2]), int(m[3] or 0)
-            if mp not in prio:
-                st["cursor"] = name
             state = idx.get(_ikey(mp, zone, mode))
             if isinstance(state, list) and len(state) > 3 and state[3]:
-                continue                    # struck: refresh/sweep leave it alone too
+                continue                    # struck: refresh and sweep leave it alone too
+            try:
+                if os.path.getsize(board_path(cache, mp, zone, mode)) > 8 << 20:
+                    continue                # ksfgrab's bound on a board file, too
+            except OSError:
+                continue
             track, leg = zone_track_leg(zone)
             starts = set()
             for rec in board_load(cache, mp, zone, mode)["rows"]:
@@ -1281,7 +1294,7 @@ def main():
     ap.add_argument("--watch", action="store_true",
                     help="one unattended crawl tick, for cron (see the docstring)")
     ap.add_argument("--demos", action="store_true",
-                    help="--watch --go: reserve up to two requests to download advertised demos")
+                    help="--watch --go: download up to DEMO_MAX (6) advertised demos after the board requests")
     ap.add_argument("--delay", type=float, default=None,
                     help="--from-maps/--watch: seconds between requests\n(default %.1f, --watch %.1f)"
                     % (KSF_DELAY_MS / 1000.0, WATCH_DELAY))
