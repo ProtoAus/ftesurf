@@ -21,6 +21,10 @@
 
 ## next
 
+### P896 Every KSF recording, three times faster
+- KSF recordings now arrive three times faster, including those of older KSF times imported before recordings were linked.
+- A broken file on KSF's side no longer holds up everyone else's recordings.
+
 ### P890 Map fixes: surf_network2008_final's falls go back to the start
 - Maps can carry small fixes the way surf servers patch them. The first sends every fall on surf_network2008_final back to the start, stopped, instead of its round-based jail, and one player can no longer reset everyone else there.
 
@@ -35,10 +39,6 @@
 
 ### P881 Triggers made of see-through brushes fire
 - Teleports and other triggers built from grate or see-through brushes now work: surf_network2008_final's falls no longer leave you standing on the floor under the map.
-
-### P896 Every KSF recording, three times faster
-- KSF recordings now arrive three times faster, including those of older KSF times imported before recordings were linked.
-- A broken file on KSF's side no longer holds up everyone else's recordings.
 
 ### P891 KSF stage recordings
 - KSF recordings of single stages can be watched from the stage boards, starting with surf_kepler's.
