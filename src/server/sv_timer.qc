@@ -2555,6 +2555,9 @@ float(entity e, string path) SV_RecSnapshot =
   NOT by SV_StageOpen, which a fail also goes through and which would therefore
   reset the count it exists to keep.
 */
+.float run_st_nocliponly; // dirty provenance: no other refusal since StageOpen
+.float run_reset_attemptzone;
+.float run_reset_attemptcarry; // explicit same-leg reset count + 1, consumed by Arm
 .float  run_st_armed;            // the clock has not rebased yet; the box can still start it
 .float  run_st_hold;             // observed inside that zone since it opened
 .float  run_st_zone;             // SV_StageZone's cached answer, or -1
@@ -8188,6 +8191,7 @@ void(entity e, float seg, float ticks) SV_StageOpen =
 	e.run_st_dirty  = (e.movetype == MOVETYPE_NOCLIP);   // build 43, unchanged
 	e.run_st_cheat  = SV_CheatLevel(e);                  // build 44's half
 	e.run_st_stitch = FALSE;
+	e.run_st_nocliponly = (e.movetype == MOVETYPE_NOCLIP && !SV_CheatsOn());
 	if (e.run_st_cheat)
 		e.run_st_dirty = TRUE;
 	e.run_st_ghost  = e.rec_gh_on ? TRUE : FALSE;
@@ -8520,6 +8524,18 @@ void(entity e) SV_StageLaunch =
 */
 void(entity e, float ticks) SV_StageStart =
 {
+	// A new WALK departure from this held start leaves the in-box noclip
+	// behind. Main practice/segmentation and stage stitch/ghost gates survive.
+	if (e.run_st_hold)
+	if (e.run_st_nocliponly)
+	if (!e.run_st_stitch)
+	if (e.movetype == MOVETYPE_WALK)
+	if (!e.rec_gh_on)
+	{
+		e.run_st_dirty = SV_CheatsOn();
+		e.run_st_cheat = SV_CheatLevel(e);
+		e.run_st_nocliponly = FALSE;
+	}
 	SV_StageLaunch(e);                  // Patch 360: primed? (stage fill-in)
 	SV_RecPut(e, sprintf("stagestart %d %d", e.run_st_seg, ticks));
 
@@ -9642,6 +9658,7 @@ void(entity e) SV_TimerIdle =
 	e.run_st_armed   = FALSE;
 	e.run_st_hold    = FALSE;
 	e.run_st_fails   = 0;
+	e.run_reset_attemptcarry = 0;
 	e.run_st_tp      = 0;
 	e.run_st_zseg    = -1;   // and a map change reloads the zone table under it
 
@@ -10026,6 +10043,7 @@ void(entity e) SV_TimerPractice =
 	  they do on top of that for the run.  See SV_NoclipWatch.
 	*/
 	e.run_st_dirty = TRUE;
+	e.run_st_nocliponly = FALSE;
 
 	/*
 	  BUILD 44: THE PRINT FIRES ON A CLASS UPGRADE, NOT ON THE FIRST TAINT.
@@ -11581,6 +11599,12 @@ void(entity e) SV_TimerRestartSeg =
 	if (e.run_t_state != TS_RUNNING)
 		return;
 
+	// A reset while waiting in the start box is still the same attempt.
+	if (!SV_ZoneInBox(e.run_leg_zone, e.origin, '0 0 0', '0 0 0'))
+	{
+		e.run_st_fails = e.run_st_fails + 1;
+		e.lobby_sty_fails = e.lobby_sty_fails + 1;
+	}
 	now = SV_TimerTicks(e);
 	e.run_t_split = now;
 	e.run_t_delta = 0;
@@ -11600,7 +11624,6 @@ void(entity e) SV_TimerRestartSeg =
 
 	sprint(e, PRINT_HIGH, sprintf("^3stage %g restarted^7 -- the run clock keeps going\n",
 	                              e.run_t_seg + 1));
-	e.lobby_sty_fails = e.lobby_sty_fails + 1;      // Patch 856
 
 	SV_RecPut(e, sprintf("restart %d %d", e.run_t_seg, now));
 
@@ -11672,8 +11695,57 @@ float(entity e, float n) SV_TimerWouldRestartSeg =
 	return restart;
 };
 
+// Only the run's opening leg may replace its reset position.
+float(entity e, float z) SV_TimerAtRunOrigin =
+{
+	if (z < 0 || z >= zone_count) return FALSE;
+	if (zone_type[z] != ZONE_START && zone_type[z] != ZONE_STAGE) return FALSE;
+	if (e.run_t_state == TS_IDLE) return TRUE;
+	if (zone_track[z] != e.run_t_track) return FALSE;
+	if (zone_seg[z] != e.run_t_startseg) return FALSE;
+	if (e.run_t_state == TS_RUNNING)
+	if (zone_seg[z] != e.run_t_seg) return FALSE;
+	return TRUE;
+};
+
+float(entity e) SV_TimerMarkZone =
+{
+	local float z;
+	if (e.run_t_state != TS_ARMED) return -1;
+	if (e.movetype != MOVETYPE_WALK) return -1;
+	if (e.rec_sl_hold || e.run_pmhold || e.rec_gh_on) return -1;
+	z = e.run_t_armzone;
+	if (!SV_TimerAtRunOrigin(e, z)) return -1;
+	if (!Zone_PointInside(z, e.origin)) return -1;
+	return z;
+};
+
+// A normal fail teleport keeps its map destination. Carry an attempt only
+// when it actually lands back in this run's opening box; Arm consumes it.
+void(entity e, vector before) SV_TimerFailResetAttempt =
+{
+	local float z;
+	if (e.run_t_state != TS_RUNNING && e.run_t_state != TS_ARMED) return;
+	z = e.run_progzone;
+	if (!SV_TimerAtRunOrigin(e, z)) return;
+	if (!SV_ZoneInBox(z, e.origin, '0 0 0', '0 0 0')) return;
+	if (SV_ZoneInBox(z, before, '0 0 0', '0 0 0')) return;
+	e.run_reset_attemptcarry = e.run_st_fails + 2;
+	e.run_reset_attemptzone = z;
+};
+
 float(entity e, float n) SV_TimerTeleported =
 {
+	local float attempts;
+	attempts = 0;
+	if (e.run_t_state != TS_IDLE)
+	if (SV_ZoneSameBox(n, e.run_leg_zone))
+	if (!SV_TimerWouldRestartSeg(e, n))
+	{
+		attempts = e.run_st_fails + 1;
+		if (!SV_ZoneInBox(n, e.origin, '0 0 0', '0 0 0'))
+			attempts = attempts + 1;
+	}
 	if (SV_TimerWouldRestartSeg(e, n))
 	{
 		SV_TimerRestartSeg(e);
@@ -11681,6 +11753,8 @@ float(entity e, float n) SV_TimerTeleported =
 	}
 
 	SV_TimerVoid(e, "teleported");
+	e.run_reset_attemptcarry = attempts;
+	e.run_reset_attemptzone = n;
 	return FALSE;
 };
 
@@ -11730,6 +11804,11 @@ float(entity e, string word, float n) SV_TimerChatLeg =
 // until you leave THAT zone -- see the start check in SV_TimerFrame.
 void(entity e, float z) SV_TimerArm =
 {
+	local float attempts;
+	attempts = 0;
+	if (e.run_t_state == TS_ARMED)
+	if (SV_ZoneSameBox(z, e.run_t_armzone))
+		attempts = e.run_st_fails;
 	e.run_t_handcarry = 0;          // Patch 478 r11: SV_TimerHandArm reads it first
 	// Patch 817: a run on the clock that re-arms (a fail into its box, a walk back)
 	// keeps its recording for the rewind until the next one opens -- through a `!r`
@@ -11855,7 +11934,11 @@ void(entity e, float z) SV_TimerArm =
 	*/
 	e.run_st_armed   = FALSE;
 	e.run_st_hold    = FALSE;
-	e.run_st_fails   = 0;
+	e.run_st_fails   = attempts;
+	if (e.run_reset_attemptcarry > 0)
+	if (SV_ZoneSameBox(z, e.run_reset_attemptzone))
+		e.run_st_fails = max(0, e.run_reset_attemptcarry - 1);
+	e.run_reset_attemptcarry = 0;
 	e.run_st_tp      = 0;
 	e.run_st_ghost   = e.rec_gh_on ? TRUE : FALSE;
 	// Build 44.  The stitch half zeroes here -- a save-lock load before the arm is
@@ -11920,6 +12003,7 @@ void(entity e, float z) SV_TimerArm =
 	*/
 	e.run_t_dirty  = (e.movetype == MOVETYPE_NOCLIP);
 	e.run_st_dirty = e.run_t_dirty;
+	e.run_st_nocliponly = (e.movetype == MOVETYPE_NOCLIP && !SV_CheatsOn());
 
 	/*
 	  BUILD 44: the cheat latch, cleared the same way and from a WIDER level.
@@ -12224,6 +12308,7 @@ void(entity e, float ticks) SV_TimerFinish =
 		e.run_t_flags  = e.run_t_flags | TF_PRACTICE;
 		e.run_t_dirty  = TRUE;
 		e.run_st_dirty = TRUE;
+		e.run_st_nocliponly = FALSE;
 	}
 
 	/*
@@ -13190,7 +13275,6 @@ void(entity e) SV_TimerStart =
 	e.run_st_prime  = pr;
 	e.run_st_launch = ln;
 	e.run_st_armed = FALSE;
-	e.run_st_fails = 0;
 	e.run_st_tp    = 0;
 };
 

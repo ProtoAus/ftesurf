@@ -67,6 +67,8 @@ void() WarpOp_RegisterCvars =
 	registercommand("goto_start");
 	registercommand("reset");
 	registercommand("goto_spawn");
+	registercommand("startmark");
+	registercommand("mom_start_mark_set");
 };
 
 float() WarpOp_Able =
@@ -725,6 +727,32 @@ float(string text) WarpOp_Chat =
 float() WarpOp_Console =
 {
 	local float n;
+	local string action;
+
+	if (!strcmp(argv(0), "startmark") || !strcmp(argv(0), "mom_start_mark_set"))
+	{
+		action = argv(1);
+		if (argv_start_index(2) < 0)
+		{
+			if (argv_start_index(1) < 0 || !strcmp(action, "set"))
+			{
+				localcmd("cmd startmark set\n");
+				return TRUE;
+			}
+			if (!strcmp(action, "clear"))
+			{
+				localcmd("cmd startmark clear\n");
+				return TRUE;
+			}
+			if (!strcmp(action, "status"))
+			{
+				localcmd("cmd startmark status\n");
+				return TRUE;
+			}
+		}
+		print("startmark [set|clear|status]\n");
+		return TRUE;
+	}
 
 	// Patch 848: reset is `!r`, the start of the leg you are on (mid-run past the leg's first
 	// segment, a stage restart: SV_TimerWouldRestartSeg). goto_start is the start of the run:

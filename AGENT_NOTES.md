@@ -1,5 +1,26 @@
 # AGENT_NOTES.md
 
+## Start-box reset contracts (P911, 2026-10-21)
+
+- Startmarks are per-player/map, keyed by actual box identity. Only the run's
+  first-leg reset uses a mark, with standing-room validation and ordinary-start
+  fallback; later-leg placement is unchanged. Clear before zone replacement
+  and on disconnect. Marked targets must match prepared/published warp answers.
+- Bare QW commands are not automatically forwarded like unknown Q2 commands.
+  Register startmark/mom_start_mark_set through the existing CSQC command path;
+  forward only static set/clear/status literals. Native control proved ten actual
+  forwards/responses and four bad/extra-argument refusals, including empty args.
+- Fresh stage-attempt state and cumulative attempt/fail counters are different.
+  Preserve non-noclip provenance across restore; do not use a blanket dirty clear.
+  Native paired finish/restore controls and independent review cover this seam.
+- Clean stage PB plus VIEW already survive main cancellation (native proved).
+  This is not an archive of every non-PB attempt; that policy remains undecided.
+- The default reader sweep also visits old save prefixes. An existing kept
+  prefix can be access-denied; do not alter ACLs/player data to make it pass.
+  Record the blocked prefix sweep separately and pass the explicit required runs
+  corpus to the existing reader. Here runs stayed 402 files/275 existing faults;
+  reader bytes unchanged, suite 820/0, focused generated recordings zero faults.
+
 ## Spectator-to-replay ownership (P910, 2026-10-21)
 
 - Both Windows installs received source cba54ffc at 18:49 UTC, all three progs

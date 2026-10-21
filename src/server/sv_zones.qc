@@ -151,6 +151,107 @@ void(entity e, string why) SV_TimerVoid;
 void() SV_TimerMapInit;
 void(entity e, float z) SV_TimerArm;
 void(entity e) SV_TimerWarped;
+float(entity e, float z) SV_TimerAtRunOrigin;
+float(entity e) SV_TimerMarkZone;
+float(float a, float b) SV_ZoneSameBox;
+.entity run_startmarks;
+.entity run_mark_next;
+.float run_mark_zone;
+.vector run_mark_angles;
+
+void(entity e) SV_WarpOpResetChanged;
+
+void(entity e) SV_StartMarkForget =
+{
+	local entity mark, following;
+	mark = e.run_startmarks;
+	while (mark)
+	{
+		if (strcmp(mark.classname, "startmark") != 0) break;
+		following = mark.run_mark_next;
+		remove(mark);
+		mark = following;
+	}
+	e.run_startmarks = world;
+	SV_WarpOpResetChanged(e);
+};
+
+entity(entity e, float z) SV_StartMarkFind =
+{
+	local entity mark;
+	mark = e.run_startmarks;
+	while (mark)
+	{
+		if (strcmp(mark.classname, "startmark") != 0) break;
+		if (SV_ZoneSameBox(mark.run_mark_zone, z))
+			return mark;
+		mark = mark.run_mark_next;
+	}
+	return world;
+};
+
+float(entity e, entity mark) SV_StartMarkUsable =
+{
+	if (!mark) return FALSE;
+	if (!Zone_PointInside(mark.run_mark_zone, mark.origin)) return FALSE;
+	tracebox(mark.origin, PM_HULL_MINS, PM_HULL_MAXS, mark.origin, FALSE, e);
+	return !trace_startsolid && !trace_allsolid;
+};
+
+void(string action) SV_StartMarkCommand =
+{
+	local float z;
+	local entity mark;
+	if (action == "clear")
+	{
+		SV_StartMarkForget(self);
+		sprint(self, PRINT_HIGH, "startmark: cleared all marks for this map\n");
+		return;
+	}
+	if (action == "status")
+	{
+		mark = self.run_startmarks;
+		if (!mark) sprint(self, PRINT_HIGH, "startmark: no marks for this map\n");
+		while (mark)
+		{
+			sprint(self, PRINT_HIGH, sprintf("startmark: zone %g at %v angles %v\n",
+				mark.run_mark_zone, mark.origin, mark.run_mark_angles));
+			mark = mark.run_mark_next;
+		}
+		return;
+	}
+	if (action != "" && action != "set")
+	{
+		sprint(self, PRINT_HIGH, "startmark [set|clear|status]\n");
+		return;
+	}
+	z = SV_TimerMarkZone(self);
+	if (z < 0)
+	{
+		sprint(self, PRINT_HIGH, "startmark: stand inside the run's start zone before starting\n");
+		return;
+	}
+	tracebox(self.origin, PM_HULL_MINS, PM_HULL_MAXS, self.origin, FALSE, self);
+	if (trace_startsolid || trace_allsolid)
+	{
+		sprint(self, PRINT_HIGH, "startmark: need standing room here\n");
+		return;
+	}
+	mark = SV_StartMarkFind(self, z);
+	if (!mark)
+	{
+		mark = spawn();
+		mark.classname = "startmark";
+		mark.run_mark_zone = z;
+		mark.run_mark_next = self.run_startmarks;
+		self.run_startmarks = mark;
+	}
+	mark.origin = self.origin;
+	mark.run_mark_angles = self.v_angle;
+	SV_WarpOpResetChanged(self);
+	sprint(self, PRINT_HIGH, sprintf("startmark: set zone %g at %v\n", z, mark.origin));
+};
+
 float(entity e, float n) SV_TimerTeleported;
 // Patch 445: and the hopped-start taint's one clear.  It lives in sv_timer.qc with
 // the field, and it is called from HERE because this is the function that zeroes the
@@ -162,6 +263,12 @@ void() SV_ZoneLoad =
 	local entity p;
 	local float ok;
 
+	p = find(world, classname, "player");
+	while (p)
+	{
+		SV_StartMarkForget(p);
+		p = find(p, classname, "player");
+	}
 	zone_mapname = mapname;
 	Zone_Clear();
 
@@ -1066,6 +1173,22 @@ void(float n, vector at, float atyaw, float atpit, float haveat, float havepit)
 		SV_TimerArm(self, n);
 };
 
+// Fail triggers use the same reset lifecycle, but never borrow a later stage's mark.
+float(entity p) SV_StartMarkFail =
+{
+	local entity mark, os;
+	local float z;
+	z = p.run_progzone;
+	if (!SV_TimerAtRunOrigin(p, z)) return FALSE;
+	mark = SV_StartMarkFind(p, z);
+	if (!SV_StartMarkUsable(p, mark)) return FALSE;
+	os = self;
+	self = p;
+	SV_ZoneMoveAt(z, mark.origin, mark.run_mark_angles_y, mark.run_mark_angles_x, TRUE, TRUE);
+	self = os;
+	return TRUE;
+};
+
 void(float n) SV_ZoneMove =
 {
 	SV_ZoneMoveAt(n, '0 0 0', 0, 0, FALSE, FALSE);
@@ -1398,6 +1521,7 @@ void(string word, float n) SV_ZoneChatCommand =
 	local string what;
 	local vector sorg;              // Patch 415: the save `!r` landed on, if any
 	local float  syaw, spit;
+	local entity mark;
 
 	if (SV_MsBusy(self))
 		return;
@@ -1483,6 +1607,17 @@ void(string word, float n) SV_ZoneChatCommand =
 			  Nested ifs, not `&&`: this file's rule, and the picker writes three
 			  __out parameters that must not be evaluated speculatively.
 			*/
+			if (SV_TimerAtRunOrigin(self, self.run_leg_zone))
+			{
+				mark = SV_StartMarkFind(self, self.run_leg_zone);
+				if (SV_StartMarkUsable(self, mark))
+				{
+					SV_ZoneMoveAt(self.run_leg_zone, mark.origin, mark.run_mark_angles_y,
+						mark.run_mark_angles_x, TRUE, TRUE);
+					SV_ZoneSayWhere(word, what, self.run_leg_zone, "your startmark");
+					return;
+				}
+			}
 			if (!SV_TimerWouldRestartSeg(self, self.run_leg_zone))
 			if (SV_SaveLocPickInZone(self, self.run_leg_zone, sorg, syaw, spit))
 			{

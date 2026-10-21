@@ -335,6 +335,7 @@ void() ClientConnect =
 
 void() ClientDisconnect =
 {
+	SV_StartMarkForget(self);
 	Lobby_AnnDisconnect(self);          // Patch 371: the chat line, if the join was said
 
 	// Before the timer teardown, because it only removes an entity and the
@@ -706,16 +707,22 @@ void() PlayerPreThink =
 */
 void(entity e) SV_NoclipWatch =
 {
-	local float nc, sc;
+	local float nc, sc, nocliponly;
 
 	nc = (e.movetype == MOVETYPE_NOCLIP) ? TRUE : FALSE;
 	sc = SV_CheatsOn();
 
 	// ---- LEVEL: every tick either is true, whatever fired when ----------
 	if (nc)
+	{
+		if (!e.run_st_dirty) e.run_st_nocliponly = TRUE;
 		e.run_st_dirty = TRUE;
+	}
 	if (sc)
+	{
 		e.run_st_dirty = TRUE;
+		e.run_st_nocliponly = FALSE;
+	}
 	if (SV_CheatLevel(e))
 		e.run_st_cheat = TRUE;
 
@@ -724,7 +731,9 @@ void(entity e) SV_NoclipWatch =
 	if (nc)
 	if (e.run_lastmovetype != MOVETYPE_NOCLIP)
 	{
+		nocliponly = e.run_st_nocliponly;
 		SV_TimerCheat(e);
+		e.run_st_nocliponly = nocliponly;
 		e.run_t_handcarry = e.run_t_handcarry | TF_CHEAT;
 	}
 
@@ -1586,6 +1595,12 @@ void(string cmd) SV_ParseClientCommand =
 		was = self.origin;
 		SV_ZoneGotoAng(stof(argv(1)), 0, 0, FALSE);
 		SV_RewindWarped(self, was);
+		return;
+	}
+
+	if (c == "startmark" || c == "mom_start_mark_set")
+	{
+		SV_StartMarkCommand(argv(1));
 		return;
 	}
 

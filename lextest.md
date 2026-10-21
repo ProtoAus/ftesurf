@@ -1,5 +1,23 @@
 # lextest.md — things waiting on a human
 
+## P911 — personal startmarks and fresh stage retries
+
+Native placement, lifecycle, prediction and stage-validity controls passed;
+human reset feel PENDING. Run this after matching client/server progs deploy.
+
+- Stand inside a run's start before leaving it, face a distinctive direction,
+  type `startmark` (or bind/use `mom_start_mark_set`), then reset or hit a fail
+  on its first leg. Check the marked position and view angle feel right.
+- Reset outside the current stage's start: attempt count increases once and
+  stays increased after normal movement. Resets inside the box do not inflate it.
+- A later leg of the enclosing run should still use its ordinary reset point.
+  `startmark status` lists marks; `startmark clear` removes this map's marks.
+- In a practice main, return to a later stage's start after noclip, switch to
+  WALK inside the box, then leave and finish: a genuinely fresh clean stage can
+  qualify while the enclosing main remains practice. Counters stay retained.
+- Native evidence proves clean stage PB/VIEW retention after main cancellation;
+  keeping every non-PB attempt is a separate policy question, not claimed here.
+
 ## P910 — recording from spectating (Windows files deployed; Pi pending)
 
 Windows files are from `cba54ffc` (21 Oct 18:49 UTC). The fleet restart was

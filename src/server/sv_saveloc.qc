@@ -2407,6 +2407,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 			  retry of a dirty one stays dirty.
 			*/
 			e.run_st_dirty = e.run_t_dirty;
+			e.run_st_nocliponly = FALSE;
 
 			/*
 			  BUILD 44: and the CLASS with it, from the run's own word.

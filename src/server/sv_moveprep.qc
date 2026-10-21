@@ -19,6 +19,7 @@
 #define MP_REWIND 5
 #define MP_DEST_ZONE 1
 #define MP_DEST_SAVE 2
+#define MP_DEST_STARTMARK 3
 #define MP_KEEP 0
 #define MP_SET 1
 #define MP_CLEAR 2
@@ -477,6 +478,7 @@ float(entity e, string word, float n, moveprep_t *out) SV_MovePrepReset =
 {
 	local float status, z, blk, row, yaw, pit, haveyaw, fallback, pick;
 	local vector org;
+	local entity mark;
 	SV_MovePrepClear(out);
 	if (!out) return MP_REFUSED;
 	status = MP_ZoneContext(e);
@@ -487,8 +489,22 @@ float(entity e, string word, float n, moveprep_t *out) SV_MovePrepReset =
 	z = SV_ZoneRequestZone(e, word, n);
 	if (!(z >= 0 && z < zone_count && z == floor(z))) return MP_MISSING;
 	pick = FALSE; row = -1; pit = yaw = fallback = blk = 0; org = '0 0 0';
+	mark = world;
 	if (!strcmp(word, "!r"))
 	if (e.run_leg_zone >= 0 && e.run_leg_zone < zone_count)
+	if (SV_TimerAtRunOrigin(e, e.run_leg_zone))
+	{
+		mark = SV_StartMarkFind(e, e.run_leg_zone);
+		if (SV_StartMarkUsable(e, mark))
+		{
+			org = mark.origin; yaw = mark.run_mark_angles_y; pit = mark.run_mark_angles_x;
+			pick = TRUE;
+		}
+		else mark = world;
+	}
+	if (!strcmp(word, "!r"))
+	if (e.run_leg_zone >= 0 && e.run_leg_zone < zone_count)
+	if (!pick)
 	if (!SV_TimerWouldRestartSeg(e, z))
 	{
 		blk = SL_Blk(e);
@@ -515,7 +531,9 @@ float(entity e, string word, float n, moveprep_t *out) SV_MovePrepReset =
 	status = MP_ZonePolicy(e, z, org, yaw, pit, haveyaw, out);
 	if (status != MP_READY) return status;
 	out->kind = MP_RESET; out->destination_fallback = fallback;
-	if (pick)
+	if (mark)
+		out->destination_source = MP_DEST_STARTMARK;
+	else if (pick)
 	{
 		out->destination_source = MP_DEST_SAVE; out->block = blk;
 		out->id = rec_sl_id[row]; out->seq = rec_sl_seq[row];

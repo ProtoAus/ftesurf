@@ -25,6 +25,14 @@ float  wop_live;                 // fs_wop published
 .float  wop_sig, wop_sig2, wop_sig3, wop_pubt;
 moveprep_t *wop_mp;
 
+// Mark edits bypass the ordinary leg/save signatures. Drop the old answer
+// and force the next normal publication to resolve the new mark precedence.
+void(entity e) SV_WarpOpResetChanged =
+{
+	e.wop_rorg = e.wop_rang = '0 0 0';
+	e.wop_pubt = time - 2;
+};
+
 // Patch 759: STAT_FS_WOPROW, the rows sl_next/prev/first/last would load.
 .vector wop_norg, wop_nang, wop_nvel;
 .vector wop_porg, wop_pang, wop_pvel;

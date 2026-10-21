@@ -7826,15 +7826,22 @@ void(entity p, entity t, entity dest) SV_MomTeleport =
 
 void(entity p, entity t, float z) SV_MomZoneTeleport;  // sv_zones.qc: the zone's destination
 
+float(entity p) SV_StartMarkFail;
+void(entity e, vector before) SV_TimerFailResetAttempt;
+
 // A failed hop: the trigger's target (HandleTeleport's m_target wins), else the
 // progress trigger, else its zone.
 void(entity t, entity p, float usetarget) SV_MomFail =
 {
 	local entity d;
+	local vector before;
 
+	if (SV_StartMarkFail(p)) return;
+	before = p.origin;
 	if (usetarget && t.target != "")
 	{
 		SV_MomTeleport(p, t, SV_FindByName(t.target, world));
+		SV_TimerFailResetAttempt(p, before);
 		return;
 	}
 	d = SV_ProgressDest(p);
@@ -7842,6 +7849,7 @@ void(entity t, entity p, float usetarget) SV_MomFail =
 		SV_MomTeleport(p, t, d);
 	else if (p.run_progzone >= 0)
 		SV_MomZoneTeleport(p, t, p.run_progzone);
+	SV_TimerFailResetAttempt(p, before);
 };
 
 void() trigger_momentum_progress_touch =

@@ -21,6 +21,13 @@
 
 ## next
 
+### P911 Choose your reset point with startmark
+- Use startmark or mom_start_mark_set while standing in a run's start box to choose its reset point and view angle. Marks are per player and map; startmark status and startmark clear inspect or remove them.
+- Resets and fails use the mark only when returning to that run's first leg. Later legs keep their ordinary reset point, and a blocked mark falls back to the ordinary start.
+- Returning to the start after noclip no longer leaves a genuinely fresh stage stuck in practice. Fresh retries keep their attempt/fail counters; this does not clear the enclosing run's practice state or change saved-attempt eligibility.
+- Using reset outside the current stage's start now counts another attempt. Resetting inside the box does not inflate the counter, and the count stays updated after you move.
+- Clean stage PB recordings survive cancellation of the main run. This is not a new archive of every non-PB stage attempt.
+
 ### P910 Open a recording while spectating
 - You can open a recorded run while watching another player, then return to your own body and run display. Closing replay quickly no longer lets a delayed spectator update take the view back.
 - If you have only just requested spectating and have not entered it yet, wait for entry before opening the recording. A missing recording leaves you spectating.
