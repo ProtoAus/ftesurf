@@ -2,8 +2,10 @@
 
 ## P911 — personal startmarks and fresh stage retries
 
-Native placement, lifecycle, prediction and stage-validity controls passed;
-human reset feel PENDING. Run this after matching client/server progs deploy.
+Source `40793459` deployed to both Windows installs and all 12 Pi lobbies at
+21 Oct 19:26 UTC; all destination hashes match, services active, health/directory
+HTTP 200. Empty-player guard passed, previous pair kept, no backend app reload.
+Native controls passed; human reset feel PENDING. Matching progs are now ready.
 
 - Stand inside a run's start before leaving it, face a distinctive direction,
   type `startmark` (or bind/use `mom_start_mark_set`), then reset or hit a fail
@@ -18,11 +20,11 @@ human reset feel PENDING. Run this after matching client/server progs deploy.
 - Native evidence proves clean stage PB/VIEW retention after main cancellation;
   keeping every non-PB attempt is a separate policy question, not claimed here.
 
-## P910 — recording from spectating (Windows files deployed; Pi pending)
+## P910 — recording from spectating (Windows and Pi deployed)
 
-Windows files are from `cba54ffc` (21 Oct 18:49 UTC). The fleet restart was
-refused before upload because a lobby had a player; no force or backend reload.
-Online acceptance needs the matching Pi progs, not merely the new local files.
+Initially Windows-only at 18:49 UTC; included in the 19:26 UTC P911 rollout from
+`40793459` to both installs and all 12 Pi lobbies. The later empty-player guard
+passed; no force or backend app reload. Matching progs are now ready.
 
 - Spectate another player, open an existing recording, stop it: your own body and
   run column return. Try a quick stop too; no flash back to the watched player.
@@ -31,7 +33,7 @@ Online acceptance needs the matching Pi progs, not merely the new local files.
 - Native delay/ownership controls passed; human camera feel PENDING. Charging
   elapsed viewing time to the run is separate work, not a P910 acceptance pass.
 
-## P909 — leaderboard defaults and styling (Windows files deployed; backend extension pending)
+## P909 — leaderboard defaults and styling (client deployed; backend extension pending)
 
 - Load a map: World of Surf records first. Choose another game explicitly;
   choosing Normal/Sideways/Half-Sideways/Backwards must not change that game.
@@ -39,9 +41,9 @@ Online acceptance needs the matching Pi progs, not merely the new local files.
   empty categories are expected until they have records/style support. No old
   clean times should appear as segmented. There is no +100 KSF button.
 - Native 640x480 knob/label click and all query controls passed; owner readability
-  and real-use feel remain PENDING. The menu can be checked locally now; online
-  TAB also needs the fleet progs swap. The three new segmented-direction queries
-  still need the separately approved backend handoff; backend acceptance pending.
+  and real-use feel remain PENDING. Menu and online TAB client files are deployed.
+  The three new segmented-direction queries still need the separately approved
+  backend handoff; backend acceptance pending.
 
 ## P907, P908 — F2 version choice and the post-title catalogue hitch
 

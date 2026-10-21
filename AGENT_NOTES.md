@@ -2,6 +2,11 @@
 
 ## Start-box reset contracts (P911, 2026-10-21)
 
+- Source 40793459 deployed to both Windows installs and all 12 Pi lobbies at
+  19:26 UTC: six Windows files hash-equal, both Pi dat hashes match after swap,
+  all 12 services active, health/directory HTTP200. Empty-player guard passed;
+  previous pair kept. Includes P909 client and P910; backend app not reloaded,
+  and three new segmented-direction backend queries still await handoff approval.
 - Startmarks are per-player/map, keyed by actual box identity. Only the run's
   first-leg reset uses a mark, with standing-room validation and ordinary-start
   fallback; later-leg placement is unchanged. Clear before zone replacement
