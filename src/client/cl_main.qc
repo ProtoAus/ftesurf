@@ -1516,6 +1516,8 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	//  engine as r_skybox_default -- see the essay at the top of this file.)
 	if (serverkey("map") != vbsp_decal_map)
 		Decal_LoadForMap();
+	else if (cvar("vbsp_decals") != vbsp_decal_want || cvar("vbsp_overlays") != vbsp_overlay_want)
+		Decal_LoadForMap();     // Patch 894: live, without a map reload
 
 	// Two edges: the server switching this player's fog controller (54 maps do,
 	// 397 times), and the player toggling vbsp_fog.  Both are string/float

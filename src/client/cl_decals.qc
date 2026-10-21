@@ -64,7 +64,42 @@ float(string shadername, vector origin, vector up, vector side,
   Source's baked overlays need all three; see Overlay_Place.
 */
 
+// Patch 894: removedecal under its own name -- cl_paint.qc declares it later in the .src.
+void(float handle) Decal_RemoveStatic = #0:removedecal;
+
 float  vbsp_decal_n;          // placed on this map
+float  vbsp_decal_hbuf;       // Patch 894: this map's decal + overlay handles (paint keeps its own)
+float  vbsp_decal_hbuf_have;
+float  vbsp_decal_want;       // vbsp_decals / vbsp_overlays as the last load read them
+float  vbsp_overlay_want;
+
+void(float h) Decal_Keep =
+{
+	if (!vbsp_decal_hbuf_have)
+	{
+		vbsp_decal_hbuf = buf_create();
+		vbsp_decal_hbuf_have = TRUE;
+	}
+	bufstr_add(vbsp_decal_hbuf, ftos(h), TRUE);
+};
+
+// remove: TRUE on the same map (a live toggle). A map change already wiped them in the
+// engine (CL_WipePersistentDecals), and the old handles may name the new map's decals.
+void(float remove) Decal_Forget =
+{
+	local float i, n;
+
+	if (!vbsp_decal_hbuf_have)
+		return;
+	if (remove)
+	{
+		n = buf_getsize(vbsp_decal_hbuf);
+		for (i = 0; i < n; i = i + 1)
+			Decal_RemoveStatic(stof(bufstr_get(vbsp_decal_hbuf, i)));
+	}
+	buf_del(vbsp_decal_hbuf);
+	vbsp_decal_hbuf_have = FALSE;
+};
 float  vbsp_decal_seen;       // infodecal entities found, placed or not
 string vbsp_decal_map;        // lazy-reload latch, same idiom as the skybox
 
@@ -178,7 +213,10 @@ void(vector org, string tex, float size) Decal_Place =
 	                    tang * (1 / size),
 	                    '1 1 1', '1 1 0');   // alpha 1, aspect 1, lifetime 0
 	if (h >= 0)
+	{
 		vbsp_decal_n = vbsp_decal_n + 1;
+		Decal_Keep(h);
+	}
 };
 
 /*
@@ -258,7 +296,10 @@ void(vector org, vector n, vector up, float w, float h,
 	                      '1 1 1', [1, aspect, 0],
 	                      srange, trange);
 	if (hnd >= 0)
+	{
 		vbsp_overlay_n = vbsp_overlay_n + 1;
+		Decal_Keep(hnd);
+	}
 };
 
 /*
@@ -325,6 +366,7 @@ void() Decal_LoadForMap =
 	  the 3D skybox away with the decals, which is not what that cvar says.
 	*/
 	wantdecals = cvar("vbsp_decals");
+	Decal_Forget(!strcmp(map, vbsp_decal_map));
 
 	size = cvar("vbsp_decal_size");
 	if (size <= 0)
@@ -454,6 +496,8 @@ void() Decal_LoadForMap =
 	if (!opened)
 		return;
 	vbsp_decal_map = map;
+	vbsp_decal_want = wantdecals;
+	vbsp_overlay_want = wantoverlays;
 
 	// A real print, matching the server's props/water lines: the gap between
 	// "seen" and "placed" is the only signal that a map's decals failed to

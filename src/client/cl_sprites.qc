@@ -466,6 +466,7 @@ float  beam_n;
 
 // ------------------------------------------------------------------ counters
 string vbsp_spr_map;                      // lazy-reload latch, as the decals use
+float  spr_want_spr, spr_want_beam, spr_want_glow;   // Patch 894: the cvars as the last load read them
 float  vbsp_spr_seen;                     // sprite entities found, drawn or not
 float  vbsp_spr_off;                      // skipped: named and not "start on"
 float  vbsp_spr_nomat;                    // skipped: the material did not resolve
@@ -1452,6 +1453,9 @@ void() Sprite_LoadForMap =
 	wantspr  = cvar("vbsp_sprites");
 	wantbeam = cvar("vbsp_spotlights");
 	wantglow = cvar("vbsp_lightglow");
+	spr_want_spr = wantspr;
+	spr_want_beam = wantbeam;
+	spr_want_glow = wantglow;
 
 	Sprite_FreeMaterials();
 	/*
@@ -2503,6 +2507,9 @@ void() Sprite_Draw =
 
 	if (serverkey("map") != vbsp_spr_map)
 		Sprite_LoadForMap();
+	else if (cvar("vbsp_sprites") != spr_want_spr || cvar("vbsp_spotlights") != spr_want_beam ||
+	         cvar("vbsp_lightglow") != spr_want_glow)
+		Sprite_LoadForMap();    // Patch 894: live, without a map reload
 
 	/*
 	  BUILD 58 -- THE RELOAD HOOK MOVED ABOVE THE EARLY RETURN, because below it
