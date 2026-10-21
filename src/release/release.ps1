@@ -1745,7 +1745,7 @@ if (-not $SkipSite) {
     Copy-Item -LiteralPath (Join-Path $SurfDir 'LICENSE')                                -Destination (Join-Path $pageDir 'LICENSE.txt')
     # site.css, site.js, anticheat.html and the pictures (src/release/site).
     try { $siteFiles = @(Copy-SiteFiles (Join-Path $RelDir 'site') $pageDir) } catch { Fail $_.Exception.Message }
-    # The page's side panel and the title menu read this (releaselib ConvertFrom-PatchNotes).
+    # The page's side panel and F2's Patch notes page read this (releaselib ConvertFrom-PatchNotes).
     try { $notes = ConvertFrom-PatchNotes ([IO.File]::ReadAllText((Join-Path $SurfDir 'PATCHNOTES.md'))) -Version $Ver -Date $nowUtc.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture) } catch { Fail $_.Exception.Message }
     [System.IO.File]::WriteAllText((Join-Path $pageDir 'patchnotes.json'), (ConvertTo-PatchNotesJson $notes), (New-Object System.Text.UTF8Encoding $false))
     # THE PUBLISHED RECEIPT IS NOT A BYTE COPY OF THE dist\ ONE, and this is the

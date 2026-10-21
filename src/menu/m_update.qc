@@ -2,7 +2,7 @@
 // No HTTP before explicit update consent. The server cannot set these engine cvars.
 // Menu-only engine capability; intentionally absent from server-supplied CSQC.
 // P823: no Updates screen. Play online on the terms turns the permission on
-// (ui_tm_answer); the title menu's corner shows the state and turns it off or on.
+// (ui_tm_answer); F2's Updates page shows the state and turns it off or on (P902).
 float(float action) gameupdate = #0;
 float(float action) MU_Action =
 {
@@ -52,7 +52,6 @@ string mpn_forver, mpn_askver; // update_version at the last good reply / the as
 void() MU_Init =
 {
 	registercvar("ui_release_version", "", 0);
-	registercvar("ui_notes_seen", "", 32);
 	mu_checked = FALSE;
 	mu_apply_sent = FALSE;
 	mu_lastcheck = 0;
@@ -60,37 +59,11 @@ void() MU_Init =
 	mpn_lines = buf_create();
 };
 
-// The permission, from the terms answer or the corner's button; a new "on" checks at once.
+// The permission, from the terms answer or F2's Updates page; a new "on" checks at once.
 void(float on) MU_Consent =
 {
 	if (MU_Action(on ? 4 : 5) && on)
 		mu_checked = FALSE;
-};
-
-float(string st) MU_Pending =
-{
-	return (!strcmp(st, "available") || !strcmp(st, "downloading") || !strcmp(st, "applying") ||
-	        !strcmp(st, "restart") || !strcmp(st, "launcher"));
-};
-
-// Digits and two dots, as release.ps1 stamps ui_release_version. A server can set that
-// cvar, so nothing else becomes the notes' title or reaches a command line.
-float(string v) MU_IsVer =
-{
-	local float i, n, c, dots;
-	n = strlen(v);
-	if (n < 5 || n > 16)
-		return FALSE;
-	dots = 0;
-	for (i = 0; i < n; i++)
-	{
-		c = str2chr(v, i);
-		if (c == 46)
-			dots++;
-		else if (c < 48 || c > 57)
-			return FALSE;
-	}
-	return (dots == 2);
 };
 
 string() MU_NotesUrl;
@@ -118,7 +91,7 @@ string() MU_NotesUrl =
 	return m;
 };
 
-// Once while F2 is up, again when the feed names a new version.
+// Once while the Patch notes page is up, again when the feed names a new version.
 void(string st) MU_NotesAsk =
 {
 	local string url;
@@ -134,7 +107,7 @@ void(string st) MU_NotesAsk =
 	}
 	if (!MU_NotesCan())
 		return;
-	if (menu_screen != SCREEN_JOURNAL)      // P902: asked only while F2 is up
+	if (menu_screen != SCREEN_JOURNAL || ui_f2_tab != 0)   // P902: only on F2's Patch notes page
 		return;
 	if (mpn_state == MPNS_OK && !strcmp(mpn_forver, cvar_string("update_version")))
 		return;
@@ -412,8 +385,8 @@ float(vector pos, float w) MU_StatusAt =
 	consent = cvar("update_consent");
 	current = cvar_string("ui_release_version");
 	if (current == "") current = strcat(UI_MENU_VERSION, " (dev)");
-	latest = cvar_string("update_version");
-	if (latest == "") latest = "not checked";
+	latest = (consent == 1) ? cvar_string("update_version") : "";
+	if (latest == "") latest = "unknown";
 	label = "Updates";
 	if (consent != 1) label = "Updates are off";
 	else if (strcmp(st, "checking") == 0) label = "Checking for updates";
@@ -499,7 +472,7 @@ void(vector screensize) MU_Hint =
 	current = cvar_string("ui_release_version");
 	cur = MU_VerNum(current);
 	if (current == "") current = strcat(UI_MENU_VERSION, " (dev)");
-	latest = cvar_string("update_version");
+	latest = (cvar("update_consent") == 1) ? cvar_string("update_version") : "";  // never cleared by the engine
 	Font_Set(ui_font_ui);
 	MU_StatusLine(screensize_x - 16, 16, w, '12 12 0', strcat("Your version: ", current), COL_TEXT);
 	MU_StatusLine(screensize_x - 16, 34, w, '12 12 0', strcat("Latest: ", (latest == "") ? "unknown" : latest),
@@ -539,6 +512,6 @@ void(string what) MU_NotesCommand =
 		mpn_scroll_y = stof(argv(2));
 	print(sprintf("ui_notes: state %g shown %g items %g lines %g wrap %g scroll %g\n",
 	              mpn_state, menu_screen == SCREEN_JOURNAL && ui_f2_tab == 0, buf_getsize(mpn_items), buf_getsize(mpn_lines), mpn_wrapw, mpn_scroll_y));
-	print(sprintf("ui_notes: installed %s listed %g seen %s url %s\n",
-	              cvar_string("ui_release_version"), mpn_hascur, cvar_string("ui_notes_seen"), MU_NotesUrl()));
+	print(sprintf("ui_notes: installed %s listed %g url %s\n",
+	              cvar_string("ui_release_version"), mpn_hascur, MU_NotesUrl()));
 };

@@ -7,7 +7,8 @@
   "F2  patch notes, updates, input journal, terms" (plus "Update ready -- restart the game (F2)"
   when one is). F2: four tabs -- Patch notes, Updates (on/off, Restart, Check again), Input journal
   (the same text and Allow/Stop switch), Terms (what you accepted; "Read the terms" shows them with
-  a Back button, nothing to answer). Below the online terms, that button is the real terms screen.
+  a Back button, nothing to answer). Below the online terms, that button is the real terms screen
+  (summary, journal box, Stay offline / Play online) with a Back to F2 that changes nothing.
 - STORY on a fresh start shows the ladder and your trophies on the first click (they load on the
   title screen). surf_tendies (Tier 1) and surf_affliction (Tier 2) are in the ladder once the
   story file is pushed; their challenges are placeholders for you to set. Verdicts PENDING.

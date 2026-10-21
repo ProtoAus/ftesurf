@@ -63,6 +63,8 @@ screenshot p876_3_closed
 waitms 2500
 menu_restart
 waitms 8000
+ui_journal updates
+waitms 3000
 ui_notes status
 ui_notes open
 waitms 3000
@@ -155,7 +157,7 @@ def main():
         log, ok = run(a, 'subject', newest, a.port)
         asked = Quiet.seen[:]
         st = re.findall(r'ui_notes: state (\S+) shown (\S+) items (\S+) lines (\S+) wrap (\S+) scroll (\S+)', log)
-        inst = re.findall(r'ui_notes: installed (\S*) listed (\S+) seen (\S*) url (\S*)', log)
+        inst = re.findall(r'ui_notes: installed (\S*) listed (\S+) url (\S*)', log)
         report['subject'] = {'requests': asked, 'status': st, 'installed': inst,
                              'parsed': re.findall(r'notes:(?:\^7)? ([^\n]*)', log)}
         check(ok and 'P876 ARM COMPLETE' in log, 'subject: the cfg ran to its end')
@@ -174,9 +176,9 @@ def main():
               'subject: F2 shows the notes, wrapped into more lines than items')
         check(full and st[3][5] == '900', 'subject: the list took the scroll')
         check(full and st[4][1] == '0' and st[5][1] == '0', 'subject: close left F2')
-        check(full and st[6][:2] == ('0', '0'), 'subject: after menu_restart nothing asked or shown')
+        check(full and st[6][:2] == ('0', '0'), 'subject: after menu_restart, F2 on its Updates page for 3 s: nothing asked')
         check(full and st[8][:2] == ('2', '1') and len(ask) == 2, 'subject: ui_notes open asked and showed it again')
-        check(full and inst[9][3] == '', 'subject: no http URL without update_allow_insecure')
+        check(full and inst[9][2] == '', 'subject: no http URL without update_allow_insecure')
         check(not re.search(r'(?i)boundcheck|runaway|stack overflow|QC crash|PR_memfree', log), 'subject: no menu VM faults')
 
         for name, kw in (('inert', {'real': False}), ('noperm', {'permit': False})):

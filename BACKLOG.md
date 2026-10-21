@@ -200,25 +200,26 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 - The jump watch runs once per packet from run_t_lastorg, so with several commands per packet a hop is
   judged by where the packet began (predates P885).
 
+## F2 (P902): what review left open
+
+- **Two-state buttons swap their label in place.** F2's "Allow/Stop journal uploads" and
+  "Turn on/off updates" redraw at the same x with the other word, so a double-click undoes itself
+  (P796/P823, carried into F2). Falsifier: two real clicks 100 ms apart leave the setting as it was.
+- tools/test_update_corner.py's layout fixture patches MU_Status, which P902 removed; it was
+  already not runnable (its control wants a pre-P733 menu).
+
 ## Patch notes (P876): what review left open
 
-- **Unsigned text under a signed title.** patchnotes.json is outside update.json's signature, so
-  whoever holds the web host (not the signing key) can put any text under "Update <v>". Fix: its
+- **Unsigned text.** patchnotes.json is outside update.json's signature, so whoever holds the web
+  host (not the signing key) can put any text on F2's Patch notes page. Fix: its
   hash in the signed feed (updatefeed.ps1) and a check in m_update.qc MU_NotesReply. Falsifier: a
   tampered file on the p876notes.py loopback server must not draw.
 - **Engine JSON parser depth** (pre-existing, not run): json.c JSON_ParseNode recurses with no
   limit, and httpclient.c buffers a body up to 2 GB before the menu's 256 KiB test; ~20 KB of `[`
   should overflow the stack. The updater parses update.json's outer layer the same way. Falsifier:
   that body served to `ui_notes open` must not crash the client.
-- **"Update <v>" not seen in a rig**: update_state is engine read-only and a newer signed feed is
-  needed. Check at the next release: a 0.1.29 install at the title shows "Update 0.1.30" with
-  0.1.30 tagged NEW.
 - PATCHNOTES.md's "highest patch first" is advice; nothing checks it.
-- From the fix review (nits): an empty update_version reads as "never closed" (mpn_closedupd), so a
-  pending "launcher" state on a platform the feed does not cover never shows the panel by itself;
-  update_autocheck 0 gates the asks, not the showing of notes already held; at 640 px the panel
-  starts at x=304, near the main menu's item hit areas (not checked against clicks). Outside P876:
-  MU_Poll's 600 s title-menu recheck (MU_Action(1)) runs even with update_autocheck 0.
+- MU_Poll's 600 s title-menu recheck (MU_Action(1)) runs even with update_autocheck 0.
 
 ## Map entities after P869-P874: what is left
 

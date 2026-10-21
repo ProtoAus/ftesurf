@@ -5526,7 +5526,7 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_head(p, draw, "What is never recorded");
 		ui_tm_par(p, w, draw, "Anything you type. While the console or a menu has focus the journal keeps the timing of a keypress and drops which key it was, so a password typed in the console cannot end up in a file. Nothing outside this game's window is watched, ever.", COL_TEXT);
 		ui_tm_head(p, draw, "Updates");
-		ui_tm_par(p, w, draw, "Choosing Play online also turns on automatic updates: World of Surf checks proto.bar and downloads game-owned files from dl.proto.bar. Those services see your IP address; settings, recordings and mounted game assets are not uploaded. Play offline does not turn them on. The title menu's top-right corner turns them off.", COL_TEXT);
+		ui_tm_par(p, w, draw, "Choosing Play online also turns on automatic updates: World of Surf checks proto.bar and downloads game-owned files from dl.proto.bar. Those services see your IP address; settings, recordings and mounted game assets are not uploaded. Play offline does not turn them on. F2's Updates page turns them off.", COL_TEXT);
 		ui_tm_head(p, draw, "Turning it off");
 		ui_tm_par(p, w, draw, "rec_hid 0 stops the raw input journal. Runs recorded without it are marked as such, rather than passing as runs that had one.", COL_TEXT);
 	}
@@ -5550,7 +5550,8 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 
 /*
   The terms screen.  No "back", by design -- the only ways off it are an
-  answer and quitting, because "later" is not a state this can be in: the very
+  answer and quitting (P902: opened from F2, also a Back to it), because
+  "later" is not a state this can be in: the very
   next thing the player does is load a map, and that is the thing being
   consented to.
 
@@ -5582,7 +5583,7 @@ float ui_synth_aim;     // helper-selected focus needs real motion/navigation
 float ui_tm_ph, ui_tm_w, ui_tm_two, ui_tm_sx, ui_tm_sy;     // the terms as last laid out, for ui_strip_test
 float ui_tm_full;               // P796: the cards are up instead of the summary
 float ui_tm_jbox, ui_tm_jtouched;   // P796: the journal box; the player changed it on this visit
-float ui_tm_review;                 // P902: opened from F2 by someone with nothing left to accept
+float ui_tm_f2;                     // P902: opened from F2's Terms page; reset on leaving
 
 float() ui_synth =
 {
@@ -5731,7 +5732,7 @@ void(vector screensize) screen_terms =
 	sui_style_panel(p, [w, ph], 12, 1);
 
 	Font_Set(ui_font_ui);
-	sui_text([p_x + 16, p_y + 12], SZ_HEAD, (ui_tm_review && ms_consent >= FS_TERMS_ONLINE) ? "the terms you accepted" : "before you play", COL_ACCENT, 1, 0);
+	sui_text([p_x + 16, p_y + 12], SZ_HEAD, (ui_tm_f2 && ms_consent >= FS_TERMS_ONLINE) ? "the current terms" : "before you play", COL_ACCENT, 1, 0);
 	ui_para([p_x + TM_PAD, p_y + TM_TOP], w - TM_PAD * 2, tm_sz, tm_pitch, lead, COL_DIM, TRUE);
 
 	if (!ui_tm_full)
@@ -5753,7 +5754,8 @@ void(vector screensize) screen_terms =
 		sui_style_box(q, [colw + TM_CARD * 2, by + x + TM_CARD * 2], 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
 		sui_text([q_x + TM_CARD, q_y + TM_CARD], tm_sz, "PUBLIC LOBBIES", COL_DIM, 1, 0);
 		sui_text([q_x + TM_CARD + stringwidth("PUBLIC LOBBIES", TRUE, tm_sz) + 10, q_y + TM_CARD],
-		         tm_sz, "only if you turn them on below", SUI_THEME_MUTED, 1, 0);
+		         tm_sz, (ui_tm_f2 && ms_consent >= FS_TERMS_ONLINE) ? "chosen with Play online; switches in F2"
+		         : "only if you turn them on below", SUI_THEME_MUTED, 1, 0);
 		ui_terms_col(1, [q_x + TM_CARD, q_y + TM_CARD + x], colw, TRUE);
 	}
 
@@ -5771,13 +5773,10 @@ void(vector screensize) screen_terms =
 		sui_text([p_x + TM_PAD, by - tm_pitch - 10], tm_sz, foot, SUI_THEME_MUTED, 1, 0);
 
 	// P902: read from F2 at the top tier, there is nothing to answer -- Back, and no write.
-	if (ui_tm_review && ms_consent >= FS_TERMS_ONLINE)
+	if (ui_tm_f2 && ms_consent >= FS_TERMS_ONLINE)
 	{
 		if (ui_button("tm_back", [p_x + w - TM_PAD - 100, by], [100, 30], "Back", TRUE))
-		{
-			ui_tm_full = FALSE;
 			menu_screen = SCREEN_JOURNAL;
-		}
 		return;
 	}
 	// Placed from their labels' widths (ui_button grows to fit one): at fixed
@@ -5811,7 +5810,13 @@ void(vector screensize) screen_terms =
 		}
 	}
 
-	if (ui_button("tm_exit", [p_x + TM_PAD, by], [72, 30], "Quit"))
+	// P902: from F2 (so past the first boot), Back to it writes nothing; Quit otherwise.
+	if (ui_tm_f2 && ms_consent >= FS_TERMS_VERSION)
+	{
+		if (ui_button("tm_exit", [p_x + TM_PAD, by], [72, 30], "Back"))
+			menu_screen = SCREEN_JOURNAL;
+	}
+	else if (ui_button("tm_exit", [p_x + TM_PAD, by], [72, 30], "Quit"))
 		localcmd("quit\n");
 	if (ui_button("tm_more", [p_x + TM_PAD + 84, by], [120, 30], ui_tm_full ? "Summary" : "Full details"))
 		ui_tm_full = !ui_tm_full;
@@ -6042,6 +6047,17 @@ void(vector screensize) screen_name =
 // window here is ~690x390 menu units, and the four did not fit one panel. The title screen
 // keeps a hint line (MU_Hint); the first boot's terms screen is still the gate.
 float ui_f2_tab;                    // 0 patch notes, 1 updates, 2 input journal, 3 terms
+
+// "" keeps the last page, or Updates while an update waits for a restart.
+void(string pg) ui_f2_open =
+{
+	if (pg == "updates") ui_f2_tab = 1;
+	else if (pg == "notes") ui_f2_tab = 0;
+	else if (pg == "journal") ui_f2_tab = 2;
+	else if (pg == "terms") ui_f2_tab = 3;
+	else if (cvar_string("update_state") == "restart" || cvar_string("update_state") == "launcher") ui_f2_tab = 1;
+	menu_screen = SCREEN_JOURNAL;
+};
 void(vector screensize) screen_journal =
 {
 	local vector p;
@@ -6111,7 +6127,8 @@ void(vector screensize) screen_journal =
 	}
 	else
 	{
-		// Below the online tier the button opens the terms screen itself, with its two answers.
+		// Below the online tier the button opens the terms screen itself, on the summary
+		// where the journal box is; at it, the full text to read.
 		if (ms_consent >= FS_TERMS_ONLINE)
 			terms = "You have accepted the terms for offline and online play. The Updates and Input journal pages turn updates and journal uploads off.";
 		else
@@ -6119,8 +6136,8 @@ void(vector screensize) screen_journal =
 		y = y + ui_para([p_x + 16, y], lw, SZ_LABEL, 20, terms, COL_TEXT, TRUE) + 18;
 		if (ui_button("journal_terms", [p_x + 16, y], [170, 30], "Read the terms"))
 		{
-			ui_tm_full = TRUE;
-			ui_tm_review = TRUE;
+			ui_tm_full = (ms_consent >= FS_TERMS_ONLINE);
+			ui_tm_f2 = TRUE;
 			menu_screen = SCREEN_TERMS;
 		}
 	}
@@ -8198,7 +8215,8 @@ void(vector screensize) m_draw =
 	if (menu_screen != SCREEN_TERMS)
 	{
 		ui_tm_jtouched = FALSE;         // P796: left unanswered, the box mirrors the cvar again
-		ui_tm_review = FALSE;
+		ui_tm_f2 = FALSE;
+		ui_tm_full = FALSE;             // P902: so the next entry opens on the summary and its box
 	}
 
 	// ROADMAP 9: the leaderboard panel lives only over the create screen.
@@ -8340,7 +8358,7 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 	if (ms_consent >= FS_TERMS_VERSION)
 	{
 		sui_text_unfocus();
-		menu_screen = SCREEN_JOURNAL;
+		ui_f2_open("");
 		return TRUE;
 	}
 	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && menu_screen == SCREEN_JOURNAL)
@@ -8471,11 +8489,8 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 			*/
 			if (menu_screen == SCREEN_TERMS)
 			{
-				if (ui_tm_review && ms_consent >= FS_TERMS_ONLINE)
-				{
-					ui_tm_full = FALSE;
-					menu_screen = SCREEN_JOURNAL;   // P902: a review, not the gate
-				}
+				if (ui_tm_f2 && ms_consent >= FS_TERMS_VERSION)
+					menu_screen = SCREEN_JOURNAL;   // P902: opened from F2, not the gate
 				return TRUE;
 			}
 
@@ -8537,16 +8552,10 @@ float(string cmd) m_consolecommand =
 {
 	tokenize(cmd);
 
-	// P902: ui_journal [notes|updates|journal|terms] (F2 keeps the last page, Updates when
-	// one waits for a restart); ui_updates is the Updates page.
+	// P902: ui_journal [notes|updates|journal|terms]; ui_updates is the Updates page.
 	if (strcmp(argv(0), "ui_journal") == 0 || strcmp(argv(0), "ui_updates") == 0)
 	{
-		if (argv(0) == "ui_updates" || argv(1) == "updates") ui_f2_tab = 1;
-		else if (argv(1) == "notes") ui_f2_tab = 0;
-		else if (argv(1) == "journal") ui_f2_tab = 2;
-		else if (argv(1) == "terms") ui_f2_tab = 3;
-		else if (cvar_string("update_state") == "restart" || cvar_string("update_state") == "launcher") ui_f2_tab = 1;
-		menu_screen = SCREEN_JOURNAL;
+		ui_f2_open((argv(0) == "ui_updates") ? "updates" : argv(1));
 		m_open();
 		return TRUE;
 	}
