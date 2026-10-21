@@ -760,8 +760,8 @@ def check_rec(path, verbose=False, *, data=None):
     if tickrate <= 0:
         r.fault("tickrate %r is not positive" % head.get("tickrate"))
         tickrate = 0.015
-    elif not math.isfinite(tickrate) or tickrate < 0.001:
-        r.fault("tickrate %r is not a usable rate (finite, 1 ms or more)" % head.get("tickrate"))
+    elif not math.isfinite(tickrate) or tickrate < 0.001 or tickrate > 1.0:
+        r.fault("tickrate %r is not a usable rate (finite, 1 ms to 1 s)" % head.get("tickrate"))
         tickrate = 0.015
 
     # Build 74: the game's cached rate against the mover's own.  A FAULT and not
@@ -1068,7 +1068,7 @@ def check_rec(path, verbose=False, *, data=None):
     in_flx = 0              # v9: rows with fl 2 or 4 (never on a clean run)
     in_split = in_split_odd = 0   # Patch 893: fl 8 rows, and those that are not a split's later part
     in_prevtok = None
-    in_chain = 0                  # consecutive later parts: one usercmd is at most 500 ms
+    in_chain = 0                  # fl 8 rows since the last row without it: one usercmd is at most 500 ms
     # Patch 493: the move triple against the header's `movebnd`.  Counted as the
     # rows stream past, for the reason this whole block exists.
     in_moveoor = 0          # `in` rows whose largest |axis| exceeds the bound
@@ -1268,8 +1268,8 @@ def check_rec(path, verbose=False, *, data=None):
             in_later = (ver >= 9 and infl & 8 and head.get("tickparts") == "1" and in_prevtok is not None
                         and (tok[1], tok[4:11]) == (in_prevtok[1], in_prevtok[4:11])
                         and mt == int(in_prevtok[2]) + 1
-                        and in_chain < math.ceil(0.5 / tickrate))
-            in_chain = in_chain + 1 if in_later else 0
+                        and in_chain < math.ceil(0.5 / max(tickrate, 0.0078125)))   # the header cannot lift it past 128 Hz's
+            in_chain = in_chain + 1 if (ver >= 9 and infl & 8) else 0   # past the cap, the rest of it is joined
             if not excluded:
                 ang_prev = mt - ang_frozen if holdclock == "1" else mt
                 if not -2147483648 <= ang_prev <= 2147483647:
@@ -3069,10 +3069,17 @@ def check_rec(path, verbose=False, *, data=None):
         mts = array.array("i")
         yaw = array.array("f")
         pit = array.array("f")
+        badst = False
         for st, sv in samples:
             if st < 0:
                 continue        # the pre-start padding has no run tick
-            mts.append(int(round(st / tickrate)))
+            t = st / tickrate
+            if not math.isfinite(t) or abs(t) > 2147483647:
+                if not badst:
+                    r.fault("a sample at %r s cannot be a run tick" % st)
+                    badst = True
+                continue
+            mts.append(int(round(t)))
             pit.append(sv[7])
             yaw.append(sv[8])
         if len(mts):

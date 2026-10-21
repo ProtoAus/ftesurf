@@ -2895,9 +2895,9 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             row out of the angle join only in a `tickparts 1`
                             file and only when it repeats the row before it
                             (pk, moves, angles, bt) at that row's mt + 1, and
-                            no more of them in a row than ceil(0.5 / tickrate)
-                            (a usercmd is at most 500 ms).  sv_tickparts is a
-                            locked movevar.
+                            no more of them in a row than ceil(0.5 / tickrate),
+                            the rate floored at 1/128 s (a usercmd is at most
+                            500 ms).  sv_tickparts is a locked movevar.
     proprule <n>            which prop-geometry rule built this run's collision
                             world.  Absent or 0 = prop scale as the map wrote it;
                             1 = floored to the 1/16 the wire carries, so the

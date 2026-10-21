@@ -1798,15 +1798,35 @@ def case_split_part_rows_are_not_joined():
             out.append(l)
         return out
 
-    # A hostile header rate must fault, not raise: the cap divides by it (review 5).
-    for bad in ("nan", "inf", "1e-320", "abc"):
-        Lb = [("tickrate %s" % bad) if l.startswith("tickrate ") else
-              ("movetickrate %s" % bad) if l.startswith("movetickrate ") else l for l in chain(5)]
+    # A hostile header rate must fault, not raise: the cap divides by it (reviews 5 and 6).
+    def header(L2, key, val):
+        return [("%s %s" % (key, val)) if l.startswith(key + " ") else l for l in L2]
+    for bad, says in (("nan", "is not a usable rate"), ("inf", "is not a usable rate"),
+                      ("1e-320", "is not a usable rate"), ("1e308", "is not a usable rate"),
+                      ("abc", "is not positive")):
         try:
-            f, _ = run(Lb, view=view)
-            check(any("tickrate" in x for x in f), "a header tickrate of %s is a fault, not a crash" % bad)
+            f, _ = run(header(chain(5), "tickrate", bad), view=view)
+            check(any(x.startswith("tickrate ") and says in x for x in f),
+                  "a header tickrate of %s is a fault (%s), not a crash" % (bad, says))
         except Exception as ex:          # noqa: BLE001 -- the finding is that it raised
             check(False, "a header tickrate of %s is a fault, not a crash (raised %s)" % (bad, type(ex).__name__))
+    f, _ = run(header(chain(5), "movetickrate", "abc"), view=view)
+    check(any("movetickrate 'abc' is not a number" in x for x in f), "a non-number movetickrate is a fault")
+    # A sample time no run tick can hold (a file with no `in` rows reads its angles off the samples).
+    Ls = build(inputs=False, instart=False, inend=False)
+    k = next(i for i, l in enumerate(Ls) if l[:1].isdigit() and not l.startswith("-") and float(l.split()[0]) >= 0)
+    Ls[k] = "1e12" + Ls[k][len(Ls[k].split()[0]):]
+    try:
+        f, _ = run(Ls)
+        check(any("cannot be a run tick" in x for x in f), "a sample at 1e12 s is a fault, not a crash")
+    except Exception as ex:              # noqa: BLE001
+        check(False, "a sample at 1e12 s is a fault, not a crash (raised %s)" % type(ex).__name__)
+
+    # The cap does not rise with a forged rate: at 1 ms a chain of 100 still passes the 128 Hz cap of 64.
+    Lf = header(header(chain(100), "tickrate", "0.001"), "movetickrate", "0.001")
+    f, n = run(Lf, view=view)
+    check(any(x.startswith("36 'in' row(s) flagged fl 8 are not") for x in n),
+          "a header rate of 1 ms does not lift the chain cap past 64")
 
     cap = math.ceil(0.5 / TICK)
     f, n = run(chain(cap), view=view)
