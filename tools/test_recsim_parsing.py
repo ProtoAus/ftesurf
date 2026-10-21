@@ -60,6 +60,15 @@ class Parsing(Fixture):
         self.a.write_text(base.replace(original, 'fzin\t' + original[3:]).replace('FTESURF-REC 11', 'FTESURF-REC 9'))
         self.assertIsNone(rs.parse_rec(str(self.a)))
 
+    def test_sv_timer_viewclock_format_is_explicitly_unsupported(self):
+        for version in (12, 13):
+            with self.subTest(version=version):
+                self.a.write_text(recording().replace('FTESURF-REC 9',
+                                                      'FTESURF-REC %d' % version))
+                self.assertIsNone(rs.parse_rec(str(self.a)))
+                self.assertEqual(rs.compare_paths(str(self.a), str(self.b))[0],
+                                 'malformed input')
+
     def test_each_malformed_required_row_abstains(self):
         for position in (0, 40, 79):
             for column in (2, 4, 5, 6, 10):

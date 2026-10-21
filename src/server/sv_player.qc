@@ -766,6 +766,7 @@ void() PlayerPostThink =
 	*/
 	if (self.run_pmhold)
 	{
+		if (self.run_t_state == TS_RUNNING) self.run_t_ticks = SV_TimerTicks(self);
 		self.run_bhop_launch_zone = self.run_bhop_launch_denied = 0;
 		self.run_t_tpin = FALSE;         // Patch 775: no frame reads it
 		self.run_pushed = self.run_jumpcmd = FALSE;

@@ -21,6 +21,11 @@
 
 ## next
 
+### P914 Your run clock keeps going while you watch
+- Spectating another player or watching a recording no longer pauses your own run timer. Your body stays held; the time spent watching is added to the run and current stage without inventing movement.
+- Repeated viewing and supported save, rewind and resume paths preserve the accumulated time. Older recordings keep their original timing rather than being reinterpreted.
+- Runs containing viewing time are not natively verified yet; ordinary supported runs without it still can be. This patch does not add the time spent disconnected from a server.
+
 ### P913 Automatic resume is for clean whole-main runs
 - Automatic resume accepts only clean whole-main runs, not practice, segmented, bonus or standalone-stage attempts. Older or ineligible stored slots are left untouched until you explicitly discard them.
 - If a stored slot cannot prove that classification, resume will not consume it or move your body. Use !discard to remove it when you choose. Manual saves are unchanged.

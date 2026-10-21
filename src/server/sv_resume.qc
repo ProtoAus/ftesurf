@@ -37,6 +37,7 @@ entity  rec_ms_owner;   // one copy per lobby: the first fgets reads the whole f
 float  ms_ticks, ms_seg, ms_segs, ms_track, ms_leg, ms_sess, ms_day, ms_tickrate;
 float  ms_maxvel;               // P841: -1 = a slot written before the cap was recorded
 float  ms_lines, ms_bytes, ms_n, ms_padn, ms_cp, ms_in, ms_pk, ms_warp, ms_ride;
+float ms_views;
 float  ms_pm, ms_pe, ms_portal, ms_pauses, ms_rsess, ms_posts, ms_pinned, ms_full;
 float  ms_stseg, ms_sttick, ms_starmed, ms_legzone, ms_legtrack, ms_legseg;
 string ms_why, ms_mapcrc, ms_zonecrc, ms_zonerule, ms_rec, ms_rid;
@@ -117,6 +118,7 @@ void(entity e, float ticks, string why, string mode, float bytes) SV_MsWriteMeta
 	fputs(f, sprintf("reclines %d %d %d %d\n", e.rec_rec_lines, e.rec_rec_n, e.rec_rec_padn, e.rec_rec_cp));
 	fputs(f, sprintf("recrows %d %d %d %d\n", e.rec_rec_in, e.rec_rec_pk, e.rec_rec_warp, e.rec_rec_ride));
 	fputs(f, sprintf("recstate %d %d %d %d\n", e.rec_rec_pm, e.rec_rec_pe, e.rec_rec_portal, e.rec_rec_pinned));
+	fputs(f, sprintf("recviews %d\n", e.rec_rec_views));
 	fputs(f, sprintf("recsess %d %d %d %d\n", e.rec_rec_pauses, e.rec_rec_sess, e.rec_rec_posts, e.rec_rec_full));
 	if (e.rec_rec_rid != "")
 		fputs(f, sprintf("runid %s\n", e.rec_rec_rid));
@@ -135,6 +137,7 @@ float(string path) SV_MsReadMeta =
 	ms_ticks = ms_seg = ms_segs = ms_track = ms_leg = ms_sess = ms_day = ms_tickrate = 0;
 	ms_maxvel = -1;
 	ms_lines = ms_n = ms_padn = ms_cp = ms_in = ms_pk = ms_warp = ms_ride = 0;
+	ms_views = 0;
 	ms_pm = ms_pe = ms_portal = ms_pauses = ms_rsess = ms_posts = ms_pinned = ms_full = 0;
 	ms_bytes = -1;
 	ms_stseg = ms_legzone = -1;
@@ -175,6 +178,7 @@ float(string path) SV_MsReadMeta =
 			if (n >= 4)
 				ms_zonerule = sprintf("%s %s %s", argv(1), argv(2), argv(3));
 		}
+		else if (!strcmp(k, "recviews")) ms_views = stof(argv(1));
 		else if (n >= 5)
 		{
 			if (k == "run")
@@ -802,6 +806,7 @@ void(entity e) SV_MsRecAttach =
 		e.rec_rec_pinned = ms_pinned;
 		e.rec_rec_pauses = ms_pauses;
 		e.rec_rec_sess = ms_rsess;
+		e.rec_rec_views = ms_views;
 		e.rec_rec_full = ms_full;
 		if (e.rec_rec_pk < ms_pk)
 			e.rec_rec_pk = ms_pk;

@@ -980,6 +980,8 @@ float(entity e) SV_TimerTicks;      // defined below SV_TimerArm; SV_TimerRestar
 // report.  Forward declared rather than moved so the diff of the build that made
 // it the clock is the clock, not a hundred lines of relocation.
 float(entity e) SV_TickCounted;
+float(entity e) SV_ViewTicks;
+float(entity e) SV_TimerElapsed;
 void(entity e) SV_TimerPractice;    // defined below SV_TimerWarped; SV_TimerFreeze is above it
 // Build 44.  Beside their funnel, for the same reason: SV_StageOpen and
 // SV_TimerStart both sit above the definitions and both consume a taint.
@@ -1194,6 +1196,11 @@ float rec_retry_armed;
   land whole rather than in pieces.  See TF_NOCLOCK.
 */
 .float  run_t_starttick;         // run_movetick at the start; -1 = never latched
+.float run_t_viewsec;           // authoritative closed viewing seconds, separate from mover
+.float run_t_viewwall;          // opening sv_ck_frame
+.float run_t_viewbase;          // physical elapsed at spectator entry (sampled fallback too)
+.float run_t_viewowner;         // 0 body, 1 spectator, 2 recorded replay
+.float rec_rec_views;           // exact number of body viewclock edges
 .float  run_t_tickcarry;         // Patch 363: ticks restored by SV_TimerResume, counted on top
 .float  run_t_resumesec;         // Patch 363: the restored seconds, for a latch deferred to the first packet
 .float  run_t_frzticks;          // ticks elapsed while frozen
@@ -2303,7 +2310,7 @@ float(entity e) SV_RecMoveTrace =
 {
 	if (!e.run_t_frzon)
 		return TRUE;
-	if (e.rec_rec_ver == 11)
+	if (e.rec_rec_ver >= 11)
 	if (!e.run_t_freeze)
 		return TRUE;
 	return FALSE;
@@ -2397,6 +2404,7 @@ void(string dst) SV_RecCopyDrop =
 int   rec_snap_bytes;                   // SV_RecSnapshot -> SV_RecSaveKeys, one save
 int   rs_bytes;                         // the save being loaded: 0 = no stream copy
 float rs_gen, rs_ver, rs_flagofs, rs_pend;
+float rs_views;
 float rs_in, rs_pk, rs_warp, rs_ride, rs_pm, rs_pe, rs_portal, rs_pinned;
 float rs_pauses, rs_sess, rs_inmt, rs_incy, rs_infz;
 string rs_rid, rs_branch;
@@ -2857,7 +2865,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 ===========================================================================
   The recorder
 
-  FTESURF-REC 11, in full, because four different things are going to read this
+  FTESURF-REC 12, in full, because four different things are going to read this
   and a grammar spread across five functions is one nobody can check against.
 
   (This heading said "FTESURF-REC 5" while the writer emitted 6, from build 82
@@ -2865,8 +2873,16 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
   who edits this block by following its own title documents the wrong version,
   and that is a trap worth one sentence.)
 
-    FTESURF-REC 11          new recordings (P842); retained v9/v10 prefixes keep
-                            their version, with v9 -> v10 on pause (Patch 364)
+    FTESURF-REC 12          new recordings; retained v9/v10/v11 prefixes keep
+                            their semantics and cannot open inclusive viewing
+                            windows. v9 -> v10 on pause remains Patch 364.
+    viewclock 1            v12 capability: cumulative authoritative viewing-wall
+                            seconds, measured on StartFrame's sv_ck_frame, not
+                            command-local `time`. Add floor(seconds/tickrate + 0.5)
+                            ONCE to physical counted ticks, in QC float32. Samples,
+                            checkpoints, splits, saves, receipts and the live stat
+                            all use this same inclusive clock. No invented input.
+                            Unsupported readers MUST refuse the version.
     map <name>              header, one key per line, ANY ORDER, and an
     track <n>               unknown key MUST be skipped rather than rejected --
     startseg <n>            that rule is what let v3 add three keys to v2's
@@ -3710,8 +3726,34 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             save's flags can also carry the bit).  Absent: the
                             sampled clock, or a server older than this.
 
+  v12 viewing-window edges (ordinary body input remains absent while held):
+
+    viewclock spec|replay <on> <wall> <totalSeconds>
+                            An opener (1) preserves closed carry; a closer (0)
+                            adds wall minus opening wall. Owners cannot overlap;
+                            handoff closes/opens at the same server-world wall.
+                            Decode %.9g fields as float32; conserve carry by
+                            subtracting endpoints, THEN adding prior carry, each
+                            operation rounded as QC float32. World-wall order is
+                            local to an epoch: validated resume/retry metadata or
+                            a matched pause/session may begin another epoch ONLY
+                            with no viewing owner open. Carry never resets there.
+                            Legacy `spec` endpoints still restate PHYSICAL counted
+                            ticks and exact body state, not inclusive clock ticks.
+                            Saves while viewing are refused. Returned saves store
+                            viewseconds separately from inclusive ticks/elapsed;
+                            restores subtract carry before rebasing physical origins.
+                            Rebased stage slices remain sample-only v5, with no
+                            native trajectory/clock claim for a viewed interval.
+
   Then, written at close:
 
+    clockend viewing <start> <tickcarry> <frozen> <viewSeconds>
+                          v12: physical origin/carry/exclusions retain v11 meanings.
+                          end = inend.mt - start + tickcarry - frozen (QC float32,
+                          integer rounding) + cumulative viewclock ticks above.
+                          viewSeconds equals the final CLOSED edge carry. Positive
+                          viewing carry is not a supported native eligibility path.
     clockend counted <start> <tickcarry> <frozen>
                           v11: current native timer origin, carried rank ticks
                           (%.9g), FINAL cumulative excluded mover ticks. Uses
@@ -3749,6 +3791,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
         <pms> <pes> <portals>                                   (v9, one line)
         <sessions>                                              (v10: `session`s)
         <clocks>                                                (v11: clockend)
+        <views>                                                 (v12: body viewclock edges)
     split <seg> <ticks>     one per completed segment, ascending
 
   <pms> <pes> <portals> ARE v9 AND COUNTED BY LANDED LINE, like <rides>: `pm` is a
@@ -4166,7 +4209,7 @@ void(entity e) SV_RecSession =
 		return;
 	if (e.run_movetickrate <= 0)
 		return;
-	tk = e.run_t_tickcarry;
+	tk = e.run_t_tickcarry + SV_ViewTicks(e);
 	if (e.run_t_starttick != -2)
 		tk = SV_TimerTicks(e);
 	was = e.rec_rec_lines;
@@ -5008,6 +5051,56 @@ void(entity e) SV_RecFailKeep =
 
 float(entity e) SV_ProfileWhy;          // Patch 840: the header's verdict
 
+// One server-world clock in every hook. Round the cumulative carry only once.
+float(entity e) SV_ViewSeconds =
+{
+	if (e.run_t_viewowner)
+		return e.run_t_viewsec + max(0, sv_ck_frame - e.run_t_viewwall);
+	return e.run_t_viewsec;
+};
+
+float(entity e) SV_ViewTicks =
+{
+	if (run_t_tick <= 0) return 0;
+	return floor(SV_ViewSeconds(e) / run_t_tick + 0.5);
+};
+
+float(entity e) SV_ViewAllowed =
+{
+	if (e.run_t_state == TS_RUNNING)
+	if (SV_RecLive(e))
+	if (e.rec_rec_ver != 12)
+	{
+		sprint(e, PRINT_HIGH, "^3view: this saved recording uses an older clock; restart the attempt first\n");
+		return FALSE;
+	}
+	return TRUE;
+};
+
+void(entity e, float owner) SV_ViewWindow =
+{
+	local float was;
+	local string name;
+	if (e.run_t_viewowner == owner) return;
+	if (e.run_t_viewowner)
+	{
+		name = (e.run_t_viewowner == 1) ? "spec" : "replay";
+		e.run_t_viewsec = SV_ViewSeconds(e);
+		e.run_t_viewowner = 0;
+		was = e.rec_rec_lines;
+		SV_RecPut(e, sprintf("viewclock %s 0 %.9g %.9g", name, sv_ck_frame, e.run_t_viewsec));
+		if (e.rec_rec_lines != was) e.rec_rec_views = e.rec_rec_views + 1;
+	}
+	if (!owner || e.run_t_state != TS_RUNNING) return;
+	e.run_t_viewbase = SV_TimerElapsed(e) - e.run_t_viewsec;
+	e.run_t_viewwall = sv_ck_frame;
+	e.run_t_viewowner = owner;
+	name = (owner == 1) ? "spec" : "replay";
+	was = e.rec_rec_lines;
+	SV_RecPut(e, sprintf("viewclock %s 1 %.9g %.9g", name, sv_ck_frame, e.run_t_viewsec));
+	if (e.rec_rec_lines != was) e.rec_rec_views = e.rec_rec_views + 1;
+};
+
 void(entity e) SV_RecOpen =
 {
 	local float i, s, base;
@@ -5020,7 +5113,8 @@ void(entity e) SV_RecOpen =
 	SV_RecFailDrop(e);                  // Patch 817: you left the start
 	SV_RecCopyFlush(e);                 // Patch 375: the part file is about to be reopened
 	SV_RecGenBegin(e);
-	e.rec_rec_ver = 11;
+	e.rec_rec_ver = 12;
+	e.rec_rec_views = 0;
 	e.rec_rec_inmt = -1;
 	e.rec_rec_infz = FALSE;
 	e.rec_mc_n = e.rec_mc_bad = 0;      // Patch 376
@@ -5145,7 +5239,7 @@ void(entity e) SV_RecOpen =
 	  already joined to the row that shows it.  Same shape as the padding ring:
 	  the cheap route was the one that added nothing.
 	*/
-	SV_RecPut(e, "FTESURF-REC 11");
+	SV_RecPut(e, "FTESURF-REC 12");
 	SV_RecPut(e, sprintf("map %s", mapname));
 	SV_RecPut(e, sprintf("track %g", e.run_t_track));
 	SV_RecPut(e, sprintf("startseg %g", e.run_t_startseg));
@@ -5220,6 +5314,7 @@ void(entity e) SV_RecOpen =
 	*/
 	SV_RecPut(e, sprintf("clock %s", e.run_t_clock ? "counted" : "sampled"));
 	SV_RecPut(e, "holdclock 1");
+	SV_RecPut(e, "viewclock 1");
 	SV_RecPut(e, sprintf("owner %s", e.netname));
 	// Patch 360: kept (zoned) as the run's id for stage posts and the evidence
 	// file; a lobby appends its port -- 12 lobbies share one data dir.  Readers
@@ -5522,7 +5617,7 @@ void(entity e) SV_RecOpen =
 // Kept prefixes have a different horizon; do not apply live offsets to them.
 void(entity e, float kept) SV_RecClockEnd =
 {
-	if (e.rec_rec_ver != 11)
+	if (e.rec_rec_ver < 11)
 		return;
 	if (kept)
 		SV_RecPut(e, "clockend kept");
@@ -5530,13 +5625,16 @@ void(entity e, float kept) SV_RecClockEnd =
 		SV_RecPut(e, "clockend sampled");
 	else if (SV_TickCounted(e) < 0)
 		SV_RecPut(e, "clockend pending");
+	else if (e.rec_rec_ver == 12)
+		SV_RecPut(e, sprintf("clockend viewing %d %.9g %d %.9g",
+		                     e.run_t_starttick, e.run_t_tickcarry, e.run_t_frzticks, SV_ViewSeconds(e)));
 	else
 		SV_RecPut(e, sprintf("clockend counted %d %.9g %d",
 		                     e.run_t_starttick, e.run_t_tickcarry, e.run_t_frzticks));
 };
 
 // The `end` trailer. Two sprintfs: ten values against the eight-argument cap.
-// v11 always includes sessions and one required closing declaration.
+// v11+ includes sessions and one closing declaration; v12 also counts view edges.
 void(entity e, float ticks) SV_RecTrailer =
 {
 	local string s;
@@ -5545,10 +5643,12 @@ void(entity e, float ticks) SV_RecTrailer =
 	           sprintf("%d %d %d %d %d",
 	                   e.rec_rec_warp, e.rec_rec_ride, e.rec_rec_pm,
 	                   e.rec_rec_pe, e.rec_rec_portal));
-	if (e.rec_rec_ver == 11)
+	if (e.rec_rec_ver >= 11)
 		s = strcat(s, sprintf(" %d 1", e.rec_rec_sess));
 	else if (e.rec_rec_pauses > 0)
 		s = strcat(s, sprintf(" %d", e.rec_rec_sess));
+	if (e.rec_rec_ver == 12)
+		s = strcat(s, sprintf(" %d", e.rec_rec_views));
 	SV_RecPut(e, s);
 };
 
@@ -5559,6 +5659,8 @@ float(entity e) SV_RecKeepEvidence =
 
 	if (e.rec_rec_posts <= 0 || e.rec_rec_rid == "")
 		return FALSE;
+	// Seal logical viewing before serialization, never thaw the physical pin here.
+	SV_ViewWindow(e, 0);
 	ticks = SV_TimerTicks(e);
 	flags = e.run_t_flags - (e.run_t_flags & TF_RECORDING) - (e.run_t_flags & TF_FROZEN);
 	SV_RecPut(e, sprintf("abandon %d", ticks));
@@ -5571,7 +5673,7 @@ float(entity e) SV_RecKeepEvidence =
 	{
 		endmt = e.run_t_frzmt;
 		endcarry = e.run_t_frzcarry;
-		if (e.rec_rec_ver == 11 && e.rec_rec_infz)
+		if (e.rec_rec_ver >= 11 && e.rec_rec_infz)
 		{
 			endmt = e.run_movetick;
 			endcarry = e.run_movecarry;
@@ -6428,6 +6530,7 @@ void(entity e, filestream f) SV_RecSaveKeys =
 	if (rec_snap_bytes <= 0)
 		return;
 	fputs(f, sprintf("recbytes %s\n", itos(rec_snap_bytes)));
+	fputs(f, sprintf("recviews %d\n", e.rec_rec_views));
 	fputs(f, sprintf("recstream %d %d %d\n", e.rec_rec_ver, e.rec_rec_flagofs, e.rec_rec_sesspend));
 	fputs(f, sprintf("recrows %d %d %d %d\n", e.rec_rec_in, e.rec_rec_pk, e.rec_rec_warp, e.rec_rec_ride));
 	fputs(f, sprintf("recstate %d %d %d %d\n", e.rec_rec_pm, e.rec_rec_pe, e.rec_rec_portal, e.rec_rec_pinned));
@@ -6448,6 +6551,7 @@ void() SV_RecKeysReset =
 		strunzone(rs_branch);
 	rs_branch = "";
 	rs_ver = 9;
+	rs_views = 0;
 	rs_flagofs = -1;
 	rs_pend = rs_in = rs_pk = rs_warp = rs_ride = rs_pm = rs_pe = rs_portal = 0;
 	rs_pinned = rs_pauses = rs_sess = rs_incy = rs_infz = 0;
@@ -6457,6 +6561,7 @@ void() SV_RecKeysReset =
 // One state.txt line, already tokenized; TRUE if it was ours.
 float(string k, float n) SV_RecKeyRead =
 {
+	if (!strcmp(k, "recviews")) { rs_views = stof(argv(1)); return TRUE; }
 	if (k == "recgen")    { rs_gen = stof(argv(1)); return TRUE; }
 	if (k == "recrid")    { if (rs_rid != "") strunzone(rs_rid); rs_rid = strzone(argv(1)); return TRUE; }
 	if (k == "recbranch") { if (rs_branch != "") strunzone(rs_branch); rs_branch = strzone(argv(1)); return TRUE; }
@@ -6491,6 +6596,7 @@ void(entity e, float mark, float samples, float padn, float cps) SV_RecRestore =
 	e.rec_rec_pinned = rs_pinned;
 	e.rec_rec_pauses = rs_pauses;
 	e.rec_rec_sess = rs_sess;
+	e.rec_rec_views = rs_views;
 	if (e.rec_rec_pk < rs_pk)
 		e.rec_rec_pk = rs_pk;
 	e.rec_rec_sesspend = rs_pend;
@@ -6568,7 +6674,7 @@ float(entity e, string path, float mark, float serial,
 	if (fh < 0)
 		return FALSE;
 	ofs = (rs_ver >= 10) ? 15 : 14;     // two-digit version, or v9
-	fputs(fh, sprintf("FTESURF-REC %d\n", (rs_ver == 11) ? 11 : 10));
+	fputs(fh, sprintf("FTESURF-REC %d\n", (rs_ver >= 11) ? rs_ver : 10));
 	n = fappendrange(fh, path, ofs, b - ofs + 1);   // one over: the copy must END at b
 	if (n != b - ofs)
 	{
@@ -6580,7 +6686,7 @@ float(entity e, string path, float mark, float serial,
 	}
 	e.rec_rec_fh = fh;
 	e.rec_rec_stream = TRUE;
-	e.rec_rec_ver = (rs_ver == 11) ? 11 : 10;
+	e.rec_rec_ver = (rs_ver >= 11) ? rs_ver : 10;
 	e.rec_rec_flagofs = (rs_flagofs >= 0) ? rs_flagofs + 15 - ofs : -1;
 	SV_RecRestore(e, mark, samples, padn, cps);
 	SV_RecGenBegin(e);
@@ -6608,6 +6714,7 @@ void(entity e) SV_RecRecount =
 	e.rec_rec_pauses = e.rec_rec_sess = e.rec_rec_pinned = 0;     // Patch 364
 	e.rec_rec_inmt = -1;
 	e.rec_rec_incy = e.rec_rec_infz = 0;
+	e.rec_rec_views = 0;
 	last = -1;
 	pend = FALSE;
 	for (i = 0; i < e.rec_rec_lines; i = i + 1)
@@ -6620,6 +6727,10 @@ void(entity e) SV_RecRecount =
 			e.rec_rec_in = e.rec_rec_in + 1;
 			last = i;
 		}
+		else if (c == 118 &&
+		         (substring(l, 0, 15) == "viewclock spec " ||
+		          substring(l, 0, 17) == "viewclock replay "))
+			e.rec_rec_views = e.rec_rec_views + 1;
 		else if (c == 115 && substring(l, 0, 8) == "session ")    // s
 		{
 			e.rec_rec_sess = e.rec_rec_sess + 1;
@@ -7890,7 +8001,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	bufstr_set(buf, buf_getsize(buf), sprintf("tickrate %g", run_t_tick));
 	bufstr_set(buf, buf_getsize(buf), sprintf("movetickrate %g", e.run_movetickrate));
 	bufstr_set(buf, buf_getsize(buf),
-	           sprintf("clock %s", e.run_t_clock ? "counted" : "sampled"));
+	           sprintf("clock %s", e.run_t_viewsec > 0 ? "sampled" : (e.run_t_clock ? "counted" : "sampled")));
 	bufstr_set(buf, buf_getsize(buf), sprintf("owner %s", e.netname));
 	bufstr_set(buf, buf_getsize(buf),
 	           sprintf("runid %s-s%g", strftime(TRUE, "%Y%m%d-%H%M%S"), seg));
@@ -9181,6 +9292,8 @@ void(entity e, float ticks, float elapsed) SV_TimerResume =
 	local float now;
 
 	now = SV_ClockSec(e);
+	elapsed = elapsed - e.run_t_viewsec;
+	ticks = ticks - SV_ViewTicks(e);
 
 	e.run_t_startsec  = now - elapsed;
 	// Patch 363: the counter restarts per map (a `retry` is a map_restart), so
@@ -9270,9 +9383,11 @@ void(entity e, float ticks, float elapsed) SV_TimerResume =
 */
 float(entity e) SV_TimerElapsed =
 {
+	if (e.run_t_viewowner == 1)
+		return e.run_t_viewbase + SV_ViewSeconds(e);
 	if (e.run_t_frzon)
-		return e.run_t_frzat;
-	return SV_ClockSec(e) - e.run_t_startsec - e.run_t_frzsec;
+		return e.run_t_frzat + SV_ViewSeconds(e);
+	return SV_ClockSec(e) - e.run_t_startsec - e.run_t_frzsec + SV_ViewSeconds(e);
 };
 
 /*
@@ -9692,6 +9807,7 @@ void(entity e) SV_TimerIdle =
 	*/
 	e.run_t_starttick = -1;
 	e.run_t_tickcarry = 0;
+	e.run_t_viewsec = e.run_t_viewwall = e.run_t_viewowner = 0;
 	e.run_t_frzticks  = 0;
 	e.run_ms_sessions = 0;
 };
@@ -9954,7 +10070,7 @@ void(entity e, float on, string why) SV_TimerSpecMark =
 	}
 
 	fl = (e.flags & FL_ONGROUND) ? 1 : 0;
-	l = strcat(sprintf("spec %d %.9g %.9g %.9g ", on ? 1 : 0, SV_TimerTicks(e),
+	l = strcat(sprintf("spec %d %.9g %.9g %.9g ", on ? 1 : 0, SV_TickCounted(e),
 	                   e.run_movetick, e.run_movecarry),
 	           sprintf("%.9v %.9v %d %.3f", e.origin, e.velocity, fl, time));
 	if (!on)
@@ -11882,6 +11998,7 @@ void(entity e, float z) SV_TimerArm =
 	// as having started at the map load.  See run_t_starttick and SV_TickReport.
 	e.run_t_starttick   = -1;
 	e.run_t_tickcarry   = 0;
+	e.run_t_viewsec = e.run_t_viewwall = e.run_t_viewowner = 0;
 	// Patch 493: 0, and see the declaration for why these two are not -1.
 	e.run_t_moveoor     = 0;
 	e.run_t_movebig     = 0;
@@ -12143,7 +12260,7 @@ float(entity e) SV_TimerTicks =
 	{
 		ct = SV_TickCounted(e);
 		if (ct >= 0)
-			return ct;
+			return ct + SV_ViewTicks(e);
 	}
 
 	if (run_t_tick <= 0)
@@ -13122,6 +13239,7 @@ void(entity e) SV_TimerStart =
 	e.run_t_startsec  = SV_ClockSec(e);
 	e.run_t_starttick = e.run_movetick;
 	e.run_t_tickcarry = 0;
+	e.run_t_viewsec = e.run_t_viewwall = e.run_t_viewowner = 0;
 	e.run_ms_sessions = 0;
 	e.run_t_frzticks  = 0;
 	e.run_t_frzsec    = 0;
@@ -15613,6 +15731,9 @@ void(entity e) SV_TimerReport =
 	// means the run is not RUNNING, which is the only legitimate way to get it.
 	sprint(e, PRINT_HIGH, sprintf("        clock: want freeze %g, frozen %g at %.4fs\n",
 	       e.run_t_freeze ? 1 : 0, e.run_t_frzon ? 1 : 0, e.run_t_frzat));
+	sprint(e, PRINT_HIGH, sprintf("        viewing: owner %d seconds %.9g ticks %d total %d physical %d elapsed %.9g\n",
+	       e.run_t_viewowner, SV_ViewSeconds(e), SV_ViewTicks(e), e.run_t_ticks,
+	       SV_TickCounted(e), SV_TimerElapsed(e)));
 
 	/*
 	  BUILD 23: the name this run WOULD be written under if it finished now.

@@ -3181,8 +3181,108 @@ def case_v11_fzin():
     faults_with(old, "requires format 11", "old prefixes cannot silently claim new input semantics")
 
 
+def v12_fixture(seconds=0.0):
+    from reccheck import viewing_ticks, qc_float
+    seconds = qc_float(seconds)
+    lines = v11_fixture()
+    lines[0] = "FTESURF-REC 12"
+    lines.insert(lines.index("begin"), "viewclock 1")
+    close = next(i for i, l in enumerate(lines) if l.startswith("clockend "))
+    edges = []
+    if seconds:
+        edges = ["viewclock replay 1 0 0", "viewclock replay 0 %.9g %.9g" % (seconds, seconds)]
+    lines[close:close] = edges
+    close += len(edges)
+    lines[close] = lines[close].replace("clockend counted", "clockend viewing") + " %.9g" % seconds
+    ix = next(i for i, l in enumerate(lines) if l.startswith("end "))
+    tail = lines[ix].split()
+    tail[1] = str(int(tail[1]) + viewing_ticks(seconds, TICK))
+    tail.append(str(len(edges)))
+    lines[ix] = " ".join(tail)
+    return lines
+
+
+def case_sv_timer_viewclock():
+    for seconds in (0.0, 5.0, 5.0049, 5.0051, 0.004999999888):
+        ok_clean(v12_fixture(seconds), "explicit v12 cumulative viewing seconds %.4f closes" % seconds)
+    base = v12_fixture(5.0)
+    faults, notes = run(base, view=view_for(base, rot=90))
+    check(not faults and any('held camera join not modelled' in n for n in notes),
+          'v12 positive carry sidecar abstention survives epoch initialization')
+    faults, _ = run(v12_fixture().copy() + ['viewclock replay 0 nan 0'])
+    check(bool(faults), 'v12 malformed nonfinite wall is not silently ignored')
+    mutations = [
+        ("negative carry", "viewclock replay 0 5 5", "viewclock replay 0 5 -5"),
+        ("wrong delta", "viewclock replay 0 5 5", "viewclock replay 0 5 4"),
+        ("wrong owner", "viewclock replay 0 5 5", "viewclock spec 0 5 5"),
+        ("wall backwards", "viewclock replay 0 5 5", "viewclock replay 0 -1 5"),
+        ("nonfinite carry", "viewclock replay 0 5 5", "viewclock replay 0 5 nan"),
+        ("no opener", "viewclock replay 1 0 0", ""),
+        ("open at finish", "viewclock replay 0 5 5", ""),
+        ("missing capability", "viewclock 1", ""),
+        ("old header", "FTESURF-REC 12", "FTESURF-REC 11"),
+    ]
+    for name, a, b in mutations:
+        faults, _ = run([l.replace(a, b) for l in base])
+        check(bool(faults), "v12 refuses " + name)
+    ix = next(i for i,l in enumerate(base) if l.startswith("end "))
+    wrong = base[:]; t=wrong[ix].split();t[-1]="0";wrong[ix]=" ".join(t)
+    faults_with(wrong, "edge count", "v12 exact viewing edge trailer")
+    wrong = base[:]; t=wrong[ix].split();t[1]=str(int(t[1])-1);wrong[ix]=" ".join(t)
+    faults_with(wrong, "clockend predicts", "v12 exact inclusive closing equation")
+    repeated = v12_fixture(0)
+    ix=next(i for i,l in enumerate(repeated) if l.startswith("clockend "))
+    repeated[ix:ix]=["viewclock spec 1 0 0", "viewclock spec 0 0.004 0.004", "viewclock replay 1 0.004 0.004", "viewclock replay 0 0.008 0.008"]
+    ix=next(i for i,l in enumerate(repeated) if l.startswith("clockend "))
+    repeated[ix]=repeated[ix][:-1]+"0.008"
+    ix=next(i for i,l in enumerate(repeated) if l.startswith("end "))
+    t=repeated[ix].split();t[1]=str(int(t[1])+1);t[-1]="4";repeated[ix]=" ".join(t)
+    ok_clean(repeated, "v12 rounds cumulative windows, not each tiny window")
+
+
+def case_sv_timer_viewclock_review():
+    from reccheck import qc_float
+    for start, end in (("16384", "16384.0156"), ("16384.0156", "16384.0312")):
+        lines = [l.replace("viewclock replay 1 0 0", "viewclock replay 1 %s 0" % start)
+                 .replace("viewclock replay 0 0.015625 0.015625",
+                          "viewclock replay 0 %s 0.015625" % end)
+                 for l in v12_fixture(0.015625)]
+        ok_clean(lines, "v12 float32 world endpoints round-trip at " + start)
+        faults_with([l.replace("%s 0.015625" % end, "%s 0.015624" % end) for l in lines],
+                    "closed carry", "v12 independently changed carry still faults")
+    total = qc_float(qc_float(0.008) + qc_float(0.015625))
+    lines = v12_fixture(total)
+    ix = next(i for i, l in enumerate(lines) if l.startswith("viewclock replay 1"))
+    lines[ix:ix+2] = ["viewclock replay 1 0 0", "viewclock replay 0 0.008 0.008",
+                      "viewclock replay 1 16384 0.008",
+                      "viewclock replay 0 16384.0156 %.9g" % total]
+    t = lines[-1].split(); t[-1] = "4"; lines[-1] = " ".join(t)
+    ok_clean(lines, "v12 subtracts endpoints before adding prior carry")
+    for marker in ("resume 1 2", "retry 2"):
+        lines = v12_fixture(2)
+        ix = next(i for i,l in enumerate(lines) if l.startswith("viewclock replay 1"))
+        lines[ix:ix+2] = ["viewclock replay 1 100 0", "viewclock replay 0 101 1", marker,
+                          "viewclock replay 1 2 1", "viewclock replay 0 3 2"]
+        t = lines[-1].split(); t[-1] = "4"; lines[-1] = " ".join(t)
+        ok_clean(lines, "v12 validated restore starts new closed-owner wall epoch: " + marker)
+        faults_with([l for l in lines if l != marker], "wall runs backwards",
+                    "v12 no arbitrary backwards wall without restore")
+        faults_with([l.replace(marker, "resume -1 2") for l in lines], "wall runs backwards",
+                    "v12 malformed restore cannot authorize wall epoch")
+    lines = v12_fixture(1)
+    ix = next(i for i,l in enumerate(lines) if l.startswith("viewclock replay 0"))
+    lines.insert(ix, "resume 1 2")
+    faults_with(lines, "open across resume", "v12 restore cannot bridge an open owner")
+    lines = v12_fixture(33554432)
+    edges = [l for l in lines if l.startswith("viewclock replay ")]
+    lines = [l for l in lines if l not in edges]
+    ix = next(i for i,l in enumerate(lines) if l.startswith("in "))
+    lines[ix:ix] = edges
+    faults_with(lines, "projected angle tick", "v12 full angle projection is bounded, not OverflowError")
+
+
 def main():
-    for fn in (case_control,
+    for fn in (case_sv_timer_viewclock, case_sv_timer_viewclock_review, case_control,
                case_no_horizon, case_horizon_without_rows,
                case_trailer_width, case_trailer_count,
                case_row_width,

@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P914 — clock while watching (matching deployment pending)
+
+Native live-body/clock, save/continuation, reader and malformed-input controls
+passed; owner feel PENDING. After the matching rollout, start a clean run, watch
+another player or a recording for a few seconds, then return. Your own run and
+stage clock should have kept advancing, with your body/velocity restored. Try a
+second viewing window and an ordinary save/load without losing or doubling time.
+Positive viewing-time runs remain outside native verification; disconnected
+wall time is not added by this patch. Do not test against the old live P911.
+
 ## P913 — restrictive automatic resume (matching deployment pending)
 
 Native park, countdown and rejection/nonmutation controls passed; owner check

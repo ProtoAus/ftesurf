@@ -1,5 +1,28 @@
 # AGENT_NOTES.md
 
+## Inclusive viewing clock and reader integration (P914, 2026-10-21)
+
+- Viewing duration is server-frame time, not physical input. Add its cumulative
+  rounded projection once; do not synthesize mover/input rows or reinterpret
+  old9/10/11 files. Version12 native positive-view remains explicitly unsupported.
+- Buffered recount matches owner-bearing body records, never its capability
+  header. Reset only the wall-origin floor at a validated closed continuation;
+  preserve accumulated carry. Kept evidence closes its logical owner without
+  physically thawing a body still owned by the viewer.
+- Writer9g float fields require finite float32 reconstruction and the SAME
+  subtract-then-add order. Bound the complete projected angle timestamp before
+  signed-array append. Native token widths are not word boundaries: consume
+  whole whitespace-delimited fields before conversion and reject a whole
+  overlong word. Legacy parser branches stay unchanged.
+- Parent merge preserves both P912 Story hooks and P913 restrictive gates.
+  Accepted file differences were only CRLF normalization where noted; all10
+  added/removed clock deltas and nativeC match the frozen reviewed source.
+- Corpus CLI takes FILES, not a directory: passing a directory raises, and exit1
+  is not evidence of existing corpus faults. Use its check_rec/check_view APIs
+  with paired sidecars. Parent actual402REC+117VIEW/519stablehashes retain every
+  per-file fault list (275 faulty checks). Failed CLI diagnostics are retained,
+  not graded as passes. Private read_rec-only totals use another method.
+
 ## Restrictive automatic resume classification (P913, 2026-10-21)
 
 - Use FS_RunClass plus track0/FS_LegOf0, not startseg alone: standalone stage1

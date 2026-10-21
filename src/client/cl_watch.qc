@@ -1988,8 +1988,8 @@ void() Watch_Scan =
 	// skips like `in`; the in row's new column and the trailer's are unread here.
 	// Patch 364: 10.  `pause`/`session` are skipped too; `t` runs on across them.
 	// P842: 11. fzin/clockend are metadata here; sample/camera grammar is unchanged.
-	if (ver > 11)
-		print(sprintf("^3replay: %s is FTESURF-REC %g and this build knows 11; "
+	if (ver > 12)
+		print(sprintf("^3replay: %s is FTESURF-REC %g and this build knows 12; "
 		              "reading it anyway\n", rec_wt_path, ver));
 };
 

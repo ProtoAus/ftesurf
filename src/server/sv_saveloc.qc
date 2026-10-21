@@ -1264,6 +1264,7 @@ void(entity e, float id, float seq) SV_SaveWriteState =
 	  always unsound and it used to be nearly right; it is now a statement about
 	  the start phase, which no reader knows.
 	*/
+	fputs(f, sprintf("viewseconds %.9g\n", SV_ViewSeconds(e)));
 	fputs(f, sprintf("elapsed %.6f\n",
 	                 (e.run_t_state == TS_RUNNING) ? SV_TimerElapsed(e) : 0));
 	/*
@@ -1710,6 +1711,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	local filestream f;
 	local string k;
 	local float n;
+	local float viewseconds;
 	local float ticks, elapsed, haveelapsed, mark, samples, padn, cps, serial;
 	local float st, tr, ss, sg, sgs, spl, dlt, flg, pbv, dty, rfrom;
 	local float cht;                // build 44, the cheat latch
@@ -1739,6 +1741,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 
 	// Defaults are "what an idle timer looks like", so a save file missing a key
 	// restores a sane state rather than an undefined one.
+	viewseconds = 0;
 	ticks = elapsed = haveelapsed = mark = samples = padn = cps = serial = 0;
 	st = TS_IDLE; tr = ss = sg = spl = dlt = flg = pbv = dty = rfrom = 0;
 	cht = 0;                        // a pre-44 save file knows nothing about it
@@ -1787,6 +1790,7 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		if (k == "seg")        { sg  = stof(argv(1)); continue; }
 		if (k == "segs")       { sgs = stof(argv(1)); continue; }
 		if (k == "ticks")      { ticks = stof(argv(1)); continue; }
+		if (!strcmp(k, "viewseconds")) { viewseconds = stof(argv(1)); continue; }
 		if (k == "elapsed")    { elapsed = stof(argv(1)); haveelapsed = TRUE; continue; }
 		if (k == "split")      { spl = stof(argv(1)); continue; }
 		if (k == "delta")      { dlt = stof(argv(1)); continue; }
@@ -1867,6 +1871,12 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	}
 	fclose(f);
 
+	if (viewseconds < 0 || viewseconds - viewseconds != 0)
+		return FALSE;
+	if (st == TS_RUNNING)
+	if (haveelapsed)
+	if (viewseconds > elapsed)
+		return FALSE;
 	// Patch 735: finish old exit cleanup, then replace its abandoned progress.
 	// Legacy saves have no marker: retain their old behavior, never guess one.
 	if (hasname)
@@ -2163,6 +2173,8 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 	  the seconds -- which is what the old single-argument call had to do, and
 	  what cost it up to half a tick.  See SV_TimerResume, which got shorter.
 	*/
+	e.run_t_viewsec = viewseconds;
+	e.run_t_viewowner = 0;
 	if (st == TS_RUNNING)
 		SV_TimerResume(e, ticks, elapsed);
 	else
@@ -3188,10 +3200,10 @@ void(entity e) SV_SaveLocCreate =
 	*/
 	if (!SV_SaveLocBegin(e, FALSE))
 		return;
-	// Patch 382: a held body's recording ends in an open `spec` window.
-	if (e.run_pmhold)
+	// An inclusive viewing prefix ends in open owner edges; save only after return.
+	if (e.run_pmhold || e.run_t_viewowner)
 	{
-		sprint(e, PRINT_HIGH, "^3save: stop spectating first\n");
+		sprint(e, PRINT_HIGH, "^3save: return to your body before saving\n");
 		return;
 	}
 	// Patch 477 review round 24: nor in a resume phase, whose body SV_MsFrame
@@ -4407,6 +4419,7 @@ void(entity e) SV_WatchRelease =
 	if (!e.rec_wt_hold)
 		return;
 
+	SV_ViewWindow(e, 0);
 	e.rec_wt_hold = FALSE;
 	SV_ViewEyeDetach(e);
 
@@ -4534,6 +4547,7 @@ void(entity e, float on) SV_WatchHold =
 		return;
 	}
 
+	if (!SV_ViewAllowed(e)) return;
 	if (e.rec_wt_hold)
 		return;                 // already watching; must not stack a movetype
 
@@ -4554,6 +4568,7 @@ void(entity e, float on) SV_WatchHold =
 	if (e.run_pmhold)
 		SV_SpecRelease(e, "leave");  // existing evidence reason: leaving spectate for replay
 
+	SV_ViewWindow(e, 2);
 	e.rec_wt_hold     = TRUE;
 	e.rec_wt_holdmove = e.movetype;
 
@@ -4878,6 +4893,7 @@ void(entity e, float n) SV_SpecStart =
 	local float  pend, intrig;
 
 	t = edict_num(n);
+	if (!SV_ViewAllowed(e)) return;
 	if (!SV_SpecOffered())
 	{
 		SV_SpecRefuse(e, "this server does not offer it");
@@ -5021,6 +5037,7 @@ void(entity e, float n) SV_SpecStart =
 		e.run_t_flags = e.run_t_flags | TF_SPEC;
 		e.run_st_sp = TRUE;
 		SV_TimerSpecMark(e, TRUE, "");
+		SV_ViewWindow(e, 1);
 	}
 	SV_SpecWatch(e, t);
 	sprint(e, PRINT_HIGH, sprintf("^5spectate:^7 watching %s -- your body is held\n",
@@ -5086,6 +5103,7 @@ void(entity e, string why) SV_SpecRelease =
 	e.run_t_ckwall = e.run_t_ckwall + (time - e.run_sp_t0);   // Patch 840, the same span
 	e.run_t_ckskip = time + 1;      // ...and the zero-time usercmds still in flight
 
+	SV_ViewWindow(e, 0);
 	SV_TimerSpecMark(e, FALSE, why);
 
 	// Engine noclip ("move") changed it: that movetype is the player's now.

@@ -221,6 +221,8 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
                         r.ver = int(line.split()[1])
                     except (IndexError, ValueError):
                         r.ver = 0
+                    if r.ver >= 12:
+                        raise MalformedRec("inclusive viewing-clock format is not modelled")
                 elif line.startswith("map "):
                     f = line.split()
                     if len(f) < 2:
