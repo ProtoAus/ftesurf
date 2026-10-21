@@ -428,7 +428,9 @@ STYLE_SW = "sw"
 STYLE_HSW = "hsw"
 STYLE_BW = "bw"
 STYLES_KSF = (STYLE_SW, STYLE_HSW, STYLE_BW)
-STYLES_READ = STYLES + STYLES_KSF
+# Query vocabulary only: a filter never relabels a run or permits a submission.
+# Independent segmentation is also available for directions with no times yet.
+STYLES_READ = STYLES + STYLES_KSF + tuple('segmented_' + s for s in STYLES_KSF)
 
 # sh_defs.qc's TF_* word, as it stood AT THE FINISH.  Kept in sync by name, and
 # test_board.py pins each value against the QC header so a renumber there fails

@@ -1,5 +1,19 @@
 # AGENT_NOTES.md
 
+## WOS-first boards, two style axes (P909, 2026-10-21)
+
+- Owner's new default overrides P635's historical all-games default: each map
+  starts on WOS/ranked, menu board too. Source/direction/segmentation are independent.
+- sh_boardstyle.qc spells the four full names and eight exact query keys. Normal
+  keeps `clean`/`segmented`; other segmented directions have distinct read keys.
+  This is a filter change, not style detection or permission to reclassify runs.
+- Menu controls measure/wrap; reserve Segmented plus refresh before choosing the
+  final table origin. Native 640x480 knob and label clicks both act, target bounds
+  (48,156,150,26) vs (508,156,84,26). Both manual +100 KSF buttons removed.
+- Fixture pitfalls: consent.txt uses `version`, not `terms`; quote http:// config
+  values. Give menu_restart's queued migration a frame before fixture overrides,
+  or the test can silently ask the public board instead of the counted local one.
+
 ## Catalogue boot hitch and the missing-map fallback (P908, 2026-10-21)
 
 - F2 is not the expensive collector here: notes requests are visibility/consent

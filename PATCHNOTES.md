@@ -21,6 +21,11 @@
 
 ## next
 
+### P909 Clearer leaderboard filters
+- Loading a map starts the leaderboard on World of Surf records. Choosing a direction no longer switches you to KSF.
+- Styles read Normal, Sideways, Half-Sideways and Backwards. Segmented is a separate switch that works with any direction; existing times are not reclassified, and empty categories stay empty.
+- The menu board keeps the map name and filter summary readable and wraps its controls in small windows. The manual +100 KSF button is gone; the existing automatic import/download work remains.
+
 ### P908 Less of a hitch just after the title screen appears
 - Loading the map catalogue no longer checks missing maps twice on current clients. On the test catalogue, the blocking load fell from about 2.07 seconds to 0.85 seconds, with the same maps and download offers. Story and map preloading stay on.
 

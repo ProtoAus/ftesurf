@@ -154,14 +154,8 @@ float sb_viewtab, sb_viewksf;    // the board and KSF style Scoreboard goes back
   handle the older arms use, for the session and on no control.
 */
 float rec_sb_imponly;
-float rec_sb_ksfstyle;           // 0 Forward, 1 SW, 2 HSW, 3 BW; Online only
-string(float i) Scores_KsfName =
-{
-	if (i == 1) return "SW";
-	if (i == 2) return "HSW";
-	if (i == 3) return "BW";
-	return "FW";
-};
+float rec_sb_ksfstyle;           // direction: 0 Normal, 1 Sideways, 2 Half-Sideways, 3 Backwards
+string(float i) Scores_KsfName = { return FS_BoardDirectionName(i); };
 float rec_sb_lnall;              // the LINE heading clicked this frame (Scores_LineAll)
 // What that click did, in the footer for a few seconds in place of the count: when
 // it ticks nothing (every slot held elsewhere) nothing else on the board says so.
@@ -215,14 +209,7 @@ float(float evtype, float scanx, float chary, float devid) Scores_NativeInput;
 float() Scores_IsOnline = { return (rec_sb_tab == SB_T_ONLINE || rec_sb_tab == SB_T_SEGMENT); };
 string() Scores_StyleOf =
 {
-	if (rec_sb_tab == SB_T_SEGMENT) return "segmented";
-	if (rec_sb_tab == SB_T_ONLINE)
-	{
-		if (rec_sb_ksfstyle == 1) return "sw";
-		if (rec_sb_ksfstyle == 2) return "hsw";
-		if (rec_sb_ksfstyle == 3) return "bw";
-	}
-	return "clean";
+	return FS_BoardStyle(rec_sb_ksfstyle, rec_sb_tab == SB_T_SEGMENT);
 };
 
 /*
@@ -230,14 +217,13 @@ string() Scores_StyleOf =
   string for the same reason StyleOf is: Momentum is a TIER, not a style, so it
   varies the parameter surfd keeps in the runs primary key beside `style`.
 
-  The imported board is clean-only. Segmented has no meaning for a run this game
-  did not time -- the class comes from our own TF_SEGMENT, which no imported run
-  carries -- so the momentum tab asks for "clean" and StyleOf already answers
-  that for any tab that is not SB_T_SEGMENT.
+  Game, direction and segmentation are independent board filters. Imports
+  currently contain only non-segmented runs; selecting a segmented import
+  shows no times, never a clean run relabelled as segmented.
 */
 // Patch 635: what the online list holds.  0 ours alone; 1 every game merged; 2
 // Momentum alone; 3 KSF alone; 4 both imports without ours (rec_sb_imponly).
-// Segmented is always ours: an imported run is clean by definition (above).
+// A fresh map defaults to WOS. Direction choices do not silently change game.
 #define SB_IMP_OFF   0
 #define SB_IMP_ALL   1
 #define SB_IMP_MOM   2
@@ -247,9 +233,8 @@ float() Scores_ImpState =
 {
 	local float f;
 
-	if (rec_sb_tab != SB_T_ONLINE)
+	if (!Scores_IsOnline())
 		return SB_IMP_OFF;
-	if (rec_sb_ksfstyle > 0) return SB_IMP_KSF;
 	if (rec_sb_imponly)
 		return SB_IMP_ONLY;
 	if (cvar("sb_filter") <= 0)
@@ -298,7 +283,6 @@ string() Scores_TierOf =
 void(float on, float src) Scores_ImpSet =
 {
 	rec_sb_imponly = FALSE;
-	if (!on || src != 2) rec_sb_ksfstyle = 0;
 	cvar_set("sb_filter", on ? "1" : "0");
 	cvar_set("sb_filter_src", ftos(bound(0, rint(src), 2)));
 	rec_sb_oscroll = '0 0 0';
@@ -326,7 +310,7 @@ string() Scores_ImpWord =
 	if (f == SB_IMP_MOM)  return "Momentum";
 	if (f == SB_IMP_KSF)  return "KSF";
 	if (f == SB_IMP_ONLY) return "imported";
-	return Scores_StyleOf();           // ours, or every game's (the footer adds which)
+	return FS_BoardStyleName(Scores_StyleOf());
 };
 
 /*
@@ -974,6 +958,8 @@ void() Scores_Refresh =
 		rec_sb_legmap   = strzone(m);
 		rec_sb_legzoned = TRUE;
 
+		Scores_TabSet(SB_T_ONLINE);
+		Scores_ImpSet(TRUE, 0);
 		Scores_BuildLegs();
 		rec_sb_leg      = 0;
 		rec_sb_legbuilt = -1;
@@ -3126,7 +3112,7 @@ void() Scores_ShowBoard =
 {
 	if (rec_sb_tab != SB_T_PLAYERS) return;
 	Scores_TabSet(sb_viewtab);
-	if (sb_viewtab == SB_T_ONLINE) rec_sb_ksfstyle = sb_viewksf;
+	if (sb_viewtab == SB_T_ONLINE || sb_viewtab == SB_T_SEGMENT) rec_sb_ksfstyle = sb_viewksf;
 	rec_sb_tabauto = FALSE;
 	Profile_OnClear();
 };
@@ -3152,7 +3138,7 @@ void(vector scr) Scores_Draw =
 	local vector p, sz, rp, rs, lp;
 	local float scale, bs, pad, w, h, x0, y0, sidew, tabh, chiph, chipw, segw, listh, n, vh;
 	local float ytabs, yhead, ylist, yfoot, yc, x, idx, on, hot, pick, native, online;
-	local float roomw, have, need, floorw, ow, tablew, rows, chrome, step, px, legh;
+	local float roomw, have, need, floorw, ow, tablew, rows, chrome, step, px, legh, stylew;
 	local string s, rid;
 
 	if (!rec_sb_open && !sc_held)
@@ -3355,6 +3341,7 @@ void(vector scr) Scores_Draw =
 	// A source or a leg chosen is the board asked for again: a player's times
 	// (Patch 666) give the table back.
 	if (Scores_Seg("sb_t0", [x0 + pad, ytabs], [segw, tabh], "Online", Scores_IsOnline()))
+	if (!Scores_IsOnline())
 	{
 		Scores_TabSet(SB_T_ONLINE);
 		rec_sb_tabauto = FALSE;         // the player chose; the follow leaves it
@@ -3421,52 +3408,43 @@ void(vector scr) Scores_Draw =
 	}
 
 	// Patch 635: the filter, on Online, left of the refresh chip.
-	if (rec_sb_tab == SB_T_ONLINE)
+	if (online)
 		Scores_FilterDraw(x - ceil(pad * 0.75), ytabs, tabh);
 
-	// Styles: our segmented board, then KSF's styles (SW/HSW/BW force KSF and
-	// never join Forward).
+	// Direction chips and an independent segmented switch. Neither changes game.
 	if (online)
 	{
 		x = x0 + pad;
 		yc = ytabs + tabh + pad * 0.5;
 		Scores_Text([x, yc + (chiph - rec_sb_szhead) * 0.5], rec_sb_szhead, "Styles", SBC_DIM, 1);
 		x = x + ceil(stringwidth("Styles", TRUE, [rec_sb_szhead, rec_sb_szhead]) + pad);
-		if (Scores_Chip("sb_t1", [x, yc], [chipw, chiph], "Segmented", rec_sb_tab == SB_T_SEGMENT))
-		{
-			Scores_TabSet(SB_T_SEGMENT);
-			rec_sb_tabauto = FALSE;
-			rec_sb_oscroll = '0 0 0';
-			Profile_OnClear();
-		}
-		x = x + chipw + 4;
 		for (idx = 0; idx < 4; idx = idx + 1)
 		{
 			rid = strcat("sb_ks", ftos(idx));
-			if (Scores_Chip(rid, [x, yc], [chipw * 0.65, chiph], Scores_KsfName(idx),
-			                rec_sb_tab == SB_T_ONLINE && idx == rec_sb_ksfstyle))
+			stylew = ceil(stringwidth(Scores_KsfName(idx), TRUE, [sb_szui, sb_szui]) + pad * 1.5);
+			if (Scores_Chip(rid, [x, yc], [stylew, chiph], Scores_KsfName(idx), idx == rec_sb_ksfstyle))
 			{
-				if (rec_sb_tab != SB_T_ONLINE)
-				{
-					Scores_TabSet(SB_T_ONLINE);
-					rec_sb_tabauto = FALSE;
-				}
-				Scores_ImpSet(TRUE, 2);
 				rec_sb_ksfstyle = idx;
+				rec_sb_tabauto = FALSE;
 				rec_sb_oscroll = '0 0 0';
 				Profile_OnClear();
 			}
-			x = x + chipw * 0.65 + 4;
+			x = x + stylew + 4;
 		}
-		if (rec_sb_tab == SB_T_ONLINE)
-		if (Scores_Chip("sb_ksmore", [x, yc], [chipw * 2, chiph], "fetch +100 KSF", FALSE))
-		if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
-			Online_KsfMore(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], Scores_StyleOf());
-		if (rec_sb_tab == SB_T_ONLINE)
-		if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
+		x = x + pad;
+		stylew = chiph * 1.6;
+		sui_action_element([x, yc], [stylew + pad + chipw, chiph], "sb_t1", sui_noop);
+		sui_roundbox([x, yc + 2], [stylew, chiph - 4], (chiph - 4) * 0.5, SUI_THEME_WELL, 1);
+		on = (rec_sb_tab == SB_T_SEGMENT);
+		sui_roundbox([x + (on ? stylew - chiph + 4 : 2), yc + 4], [chiph - 8, chiph - 8],
+		             (chiph - 8) * 0.5, on ? SUI_THEME_ACCENT : SUI_THEME_DIM, 1);
+		Scores_Text([x + stylew + pad * 0.5, yc + (chiph - sb_szui) * 0.5], sb_szui, "Segmented", SBC_TEXT, 1);
+		if (sui_is_released("sb_t1"))
 		{
-			s = Online_KsfState(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], Scores_StyleOf());
-			Scores_Text([x + chipw * 2 + pad, yc + (chiph - rec_sb_szhead) * 0.5], rec_sb_szhead, s, SBC_DIM, 1);
+			rec_sb_tab = on ? SB_T_ONLINE : SB_T_SEGMENT;
+			rec_sb_tabauto = FALSE;
+			rec_sb_oscroll = '0 0 0';
+			Profile_OnClear();
 		}
 	}
 	ytabs = ytabs + chiph + pad * 0.5;
@@ -4062,11 +4040,12 @@ float(string cmd) Scores_ConsoleCommand =
 		}
 		else if (argv(1) == "style")
 		{
-			Scores_TabSet(SB_T_ONLINE);
-			Scores_ImpSet(TRUE, 2);
-			if (argv(2) == "sw") rec_sb_ksfstyle = 1;
-			else if (argv(2) == "hsw") rec_sb_ksfstyle = 2;
-			else if (argv(2) == "bw") rec_sb_ksfstyle = 3;
+			rec_sb_ksfstyle = FS_BoardDirection(argv(2));
+			if (!Scores_IsOnline()) rec_sb_tab = SB_T_ONLINE;
+		}
+		else if (argv(1) == "segmented")
+		{
+			rec_sb_tab = stof(argv(2)) ? SB_T_SEGMENT : SB_T_ONLINE;
 		}
 		else if (argv(1) == "ksfmore")
 		{
@@ -4450,7 +4429,7 @@ void() Scores_RegisterCvars =
 	registercvar("sb_ln_lineleg", "0");
 	// Patch 635: the Online list's filter switch and its slider's stop (0 FTESurf,
 	// 1 Momentum, 2 KSF).  Saved: a switch is a setting, a tab a place.
-	registercvar("sb_filter", "0", CVAR_ARCHIVE);
+	registercvar("sb_filter", "1", CVAR_ARCHIVE);
 	registercvar("sb_filter_src", "0", CVAR_ARCHIVE);
 	registercvar("ui_native_scores", "0", CVAR_ARCHIVE);
 	registercvar("ui_native_scores_font", "13", CVAR_ARCHIVE);

@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P909 — leaderboard defaults and styling (rollout pending backend handoff)
+
+- Load a map: World of Surf records first. Choose another game explicitly;
+  choosing Normal/Sideways/Half-Sideways/Backwards must not change that game.
+- Segmented is its own switch. Check it with a direction and switch it back;
+  empty categories are expected until they have records/style support. No old
+  clean times should appear as segmented. There is no +100 KSF button.
+- Native 640x480 knob/label click and all query controls passed; owner readability
+  and real-use feel remain PENDING. Backend live acceptance is separately pending.
+
 ## P907, P908 — F2 version choice and the post-title catalogue hitch
 
 - Restart the client; F2 -> Patch notes -> select an older version, then back.

@@ -280,6 +280,16 @@ check("the segmented board holds only the segmented run",
 check("...and the faster segmented run does NOT undercut the clean board",
       names(board(m, style="clean")), ["clean1"])
 
+# Direction and segmentation are independent query axes, not reclassification.
+for direction in ('sw', 'hsw', 'bw'):
+    check('empty segmented direction is a valid filter: ' + direction,
+          names(board(m, style='segmented_' + direction)), [])
+check('direction filters never relabel clean/segmented runs',
+      (names(board(m, style='clean')), names(board(m, style='segmented'))),
+      (['clean1'], ['seg1']))
+check('unknown segmented direction is still rejected',
+      board(m, style='segmented_freestyle'), 'HTTP 400')
+
 # One player, both styles: they are peer achievements and must coexist.
 submit(m, player="both", flags=0, ticks=5000)
 submit(m, player="both", flags=TF_SEGMENT, ticks=2000)
