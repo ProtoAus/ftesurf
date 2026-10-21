@@ -2,6 +2,14 @@
 
 ## Spectator-to-replay ownership (P910, 2026-10-21)
 
+- Both Windows installs received source cba54ffc at 18:49 UTC, all three progs
+  zero warnings and destination hashes equal. `build.ps1 -Pi` refused before
+  upload because a lobby had one player; no force, Pi files/restarts untouched.
+  Read-only roster query also returned one nonempty, non-unnamed player row.
+  P909 client files are included, but its three new segmented-direction read
+  categories still require the separately approved backend generation handoff.
+  Do not equate installed files with the owner client's loaded state or fleet.
+
 - Restore the player's own sequence column before Watch_OpenIn borrows the save
   slot. A failed recording load must not release spectating.
 - Suppression cannot depend only on rec_wt_open: quick replay close can precede

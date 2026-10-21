@@ -1,6 +1,10 @@
 # lextest.md — things waiting on a human
 
-## P910 — recording from spectating
+## P910 — recording from spectating (Windows files deployed; Pi pending)
+
+Windows files are from `cba54ffc` (21 Oct 18:49 UTC). The fleet restart was
+refused before upload because a lobby had a player; no force or backend reload.
+Online acceptance needs the matching Pi progs, not merely the new local files.
 
 - Spectate another player, open an existing recording, stop it: your own body and
   run column return. Try a quick stop too; no flash back to the watched player.
@@ -9,7 +13,7 @@
 - Native delay/ownership controls passed; human camera feel PENDING. Charging
   elapsed viewing time to the run is separate work, not a P910 acceptance pass.
 
-## P909 — leaderboard defaults and styling (rollout pending backend handoff)
+## P909 — leaderboard defaults and styling (Windows files deployed; backend extension pending)
 
 - Load a map: World of Surf records first. Choose another game explicitly;
   choosing Normal/Sideways/Half-Sideways/Backwards must not change that game.
@@ -17,7 +21,9 @@
   empty categories are expected until they have records/style support. No old
   clean times should appear as segmented. There is no +100 KSF button.
 - Native 640x480 knob/label click and all query controls passed; owner readability
-  and real-use feel remain PENDING. Backend live acceptance is separately pending.
+  and real-use feel remain PENDING. The menu can be checked locally now; online
+  TAB also needs the fleet progs swap. The three new segmented-direction queries
+  still need the separately approved backend handoff; backend acceptance pending.
 
 ## P907, P908 — F2 version choice and the post-title catalogue hitch
 
