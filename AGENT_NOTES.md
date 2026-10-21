@@ -1,5 +1,19 @@
 # AGENT_NOTES.md
 
+## Catalogue boot hitch and the missing-map fallback (P908, 2026-10-21)
+
+- F2 is not the expensive collector here: notes requests are visibility/consent
+  gated. P781 warms the map catalogue half a second after first menu draw.
+- ui_dl_load used native mapfilekb, then fopen for the same missing map. Native
+  mapfilekb zero means absent/invalid/zero-sized; all shipped and accepted network
+  map names pass its domain. Only engines lacking that builtin need fopen.
+- Same-client 2,314-map fixture: catalogue preload 2,066 -> 853 ms; final
+  uninstrumented 859 ms. Maps/offers/NEW/wrong-build counts remain
+  2314/363/365/44. Not a total-startup claim. Preserve automatic Story prefetch.
+- Native Players roster control: disconnect/reused slot/active empty name/second
+  disconnect drew 2/1/2/2/1 rows. Empty name becomes legitimate active `unnamed`;
+  do not filter that name to hide the unproven intermittent departed-player bug.
+
 ## Map entity fixes and Momentum's limit zones (P881, P882, P890, 2026-10-21)
 
 - `cfg/maps/entfix_<map>.cfg` (Stripper:Source syntax, gl_model.c Mod_EntFix) changes a map's entities

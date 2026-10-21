@@ -21,6 +21,9 @@
 
 ## next
 
+### P908 Less of a hitch just after the title screen appears
+- Loading the map catalogue no longer checks missing maps twice on current clients. On the test catalogue, the blocking load fell from about 2.07 seconds to 0.85 seconds, with the same maps and download offers. Story and map preloading stay on.
+
 ### P907 Choose the patch notes version in F2
 - F2's Patch notes page has a version list. Pick a release to read just its changes, starting with your installed version when it is listed. Switching versions does not download the notes again.
 

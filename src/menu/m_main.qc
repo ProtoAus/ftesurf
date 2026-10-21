@@ -2431,7 +2431,8 @@ void() ui_dl_load =
 		*/
 		local float hkb;
 		hkb = ui_dl_kb_ready() ? mapfilekb(nm) : 0;
-		if (hkb <= 0)
+		// mapfilekb already reports absence. Only older engines need an open probe.
+		if (!ui_dl_kb_ready())
 			if (ui_file_exists(strcat("maps/", nm, ".bsp")))
 				hkb = -1;               // present; size unknown on this engine
 

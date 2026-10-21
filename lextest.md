@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P907, P908 — F2 version choice and the post-title catalogue hitch
+
+- Restart the client; F2 -> Patch notes -> select an older version, then back.
+  Only that release should show, starting at the top. Native screenshots and
+  permission/network controls passed; actual click/keyboard feel is PENDING.
+- After the title first appears, move the cursor/open Story. The catalogue still
+  preloads but should hitch less; isolated preload was 2.07 -> 0.85 seconds.
+  This is not a measured claim for your install. Human startup feel PENDING.
+
 ## P892, P893, P897, P906 — zone-tool triggers, zones checked every tick, a quiet console
 
 Live 21 Oct UTC on the lobbies (07:07-07:50Z) and in both installs; in 0.1.29.
