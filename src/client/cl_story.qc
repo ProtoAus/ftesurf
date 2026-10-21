@@ -7,10 +7,59 @@
 float sty_tinit, sty_tstart, sty_tend, sty_tm, sty_ttot;
 string sty_tkey, sty_tmap, sty_ttext, sty_tch;
 
+float sty_localinit, sty_localack;
+string sty_localkey;
+
+// Completion facts are distinct from the decorative best-medal HTTP toast.
+void() StoryLocal_Poll =
+{
+	local string v;
+	local float ack;
+	if (!sty_localinit)
+	{
+		sty_localinit = TRUE;
+		registercvar("ui_story_scope", "0");
+		registercvar("ui_story_changed", "0");
+		registercvar("ui_story_preview", "");
+		registercvar("ui_story_preview_who", "");
+		registercvar("ui_story_preview_until", "0");
+		registercvar("ui_story_ack", "0");
+		cvar_set("ui_story_scope", ftos(cvar("ui_story_scope") + 1));
+		cvar_set("ui_story_preview_until", "0");
+		cvar_set("ui_story_ack", "0");
+		v = getplayerkeyvalue(player_localnum, "*story_local");
+		sty_localkey = (v == "") ? "" : strzone(v);
+		return; // an inherited key on load is not a new completion
+	}
+	v = getplayerkeyvalue(player_localnum, "*story_local");
+	if (strcmp(v, sty_localkey))
+	{
+		if (sty_localkey != "") strunzone(sty_localkey);
+		sty_localkey = (v == "") ? "" : strzone(v);
+		if (v != "")
+		{
+			cvar_set("ui_story_preview", v);
+			cvar_set("ui_story_preview_who", cvar_string("ui_story_local"));
+			cvar_set("ui_story_preview_until", ftos(gettime(0) + 45));
+			cvar_set("ui_story_changed", ftos(cvar("ui_story_changed") + 1));
+			if (cvar("developer")) print(sprintf("story: local finish generation %g at %g\n", cvar("ui_story_changed"), gettime(0)));
+		}
+	}
+	// Facts are published first; an ack can only reconcile already-seen tasks.
+	ack = stof(getplayerkeyvalue(player_localnum, "*story_ack"));
+	if (ack != sty_localack)
+	{
+		sty_localack = ack;
+		cvar_set("ui_story_ack", ftos(ack));
+		if (cvar("developer")) print(sprintf("story: completion ack %g at %g\n", ack, gettime(0)));
+	}
+};
+
 void() StoryToast_Poll =
 {
 	local string v, m;
 
+	StoryLocal_Poll();
 	v = getplayerkeyvalue(player_localnum, "*story");
 	if (sty_tinit && !strcmp(v, sty_tkey))
 		return;

@@ -13,6 +13,7 @@
 #define STY_ROW_H       52
 #define STY_PROW_H      44
 #define STY_SIDE_W      300
+#define STY_PROGRESS_RETRIES 6     // pending-only waits: 1, 2, 4, 8, 8, 8 seconds
 #define STY_FRESH       60          // seconds a reply is reused
 #define STY_WAIT        15          // seconds before an unanswered ask has failed
 #define STY_RETRY       5           // P905: first wait before a failed ladder is asked again
@@ -29,6 +30,7 @@
 #define STY_FAIL        3
 
 float sty_ready, sty_tab, sty_plist, sty_n, sty_idxcount;
+float sty_rules[STY_LISTS];
 float sty_lvmap[STY_LISTS], sty_lvinfo[STY_LISTS], sty_lvtxt[STY_LISTS], sty_lvidx[STY_LISTS];
 float sty_chtitle[STY_LISTS], sty_chbar[STY_LISTS], sty_rows[STY_LISTS], sty_prog[STY_LISTS];
 float sty_nlv[STY_LISTS], sty_nch[STY_LISTS], sty_nrow[STY_LISTS];
@@ -43,6 +45,31 @@ float sty_preq, sty_pst, sty_pat;
 float sty_kreq, sty_kst, sty_kat, sty_kfor;
 float sty_mreq, sty_mphase, sty_mat, sty_mnext, sty_notet;
 string sty_me, sty_who, sty_whoname, sty_note, sty_lnote;
+float sty_changed;
+float sty_pending, sty_pretries, sty_pnext, sty_pgeneration;
+float sty_preview[STY_LISTS], sty_previewtotal[STY_LISTS];
+float sty_previewuntil, sty_previewgeneration, sty_previewscope, sty_previewserial, sty_pack;
+#define STY_AWAIT_MAX 32
+float sty_await[STY_AWAIT_MAX], sty_awaitcount, sty_awaitoverflow;
+float sty_ackseen, sty_ackscope;
+string sty_previewwho, sty_revision, sty_prevision;
+float sty_previewdrawgeneration;
+
+void() Sty_ClearPreview =
+{
+	local float L;
+	for (L = 0; L < STY_AWAIT_MAX; L = L + 1) sty_await[L] = 0;
+	sty_awaitcount = sty_awaitoverflow = 0;
+	for (L = 0; L < STY_LISTS; L = L + 1)
+	{
+		if (sty_preview[L]) buf_del(sty_preview[L]);
+		sty_preview[L] = buf_create();
+		sty_previewtotal[L] = 0;
+	}
+	sty_previewuntil = 0;
+	if (sty_previewwho != "") strunzone(sty_previewwho);
+	sty_previewwho = "";
+};
 float sty_lfail, sty_lnone;         // P905: failed ladder asks in a row; the board said it has none
 
 // P905: what the story asks and hears is for developer 1 only -- the title screen asks now.
@@ -71,6 +98,7 @@ float() Sty_Init =
 		return TRUE;
 	for (L = 0; L < STY_LISTS; L = L + 1)
 	{
+		sty_rules[L] = buf_create();
 		sty_lvmap[L] = buf_create();
 		sty_lvinfo[L] = buf_create();
 		sty_lvtxt[L] = buf_create();
@@ -90,12 +118,15 @@ void() Sty_LoadMe =
 {
 	local filestream fh;
 	local string s;
+	registercvar("ui_story_local", "", 0);
+	cvar_set("ui_story_local", "");
 	fh = fopen(STY_ME_FILE, FILE_READ);
 	if (fh < 0) return;
 	if (fgets(fh) == STY_ME_HEAD)
 	{
 		s = fgets(fh);
 		if (MF_Hex(s, 12)) Sty_Set(s, sty_me);
+		cvar_set("ui_story_local", sty_me);
 	}
 	fclose(fh);
 };
@@ -153,11 +184,19 @@ void() Sty_AskList =
 		"Story needs online play: turn it on in Settings / Privacy.", sty_lnote);
 };
 
+void() Sty_Preview;
+
 void() Sty_AskProg =
 {
 	// P905: never before the ladder -- an answer that lands first matches no list, reads
 	// as 0 trophies and chapter 1, and stood until the list's own re-ask (Sty_Reply).
+	// Every entrypoint, including UI open/list callbacks, consumes the mailbox
+	// before snapshotting GET eligibility; a same-frame event cannot be skipped.
+	if (sty_lst == STY_OK) Sty_Preview();
 	if (sty_who == "" || sty_pst == STY_ASK || sty_lst != STY_OK) return;
+	sty_pgeneration = cvar("ui_story_changed");
+	sty_pack = (sty_awaitcount == 0 && !sty_awaitoverflow);
+	Sty_Set(sty_revision, sty_prevision);
 	sty_preq = Sty_Get(strcat("story=player&who=", sty_who));
 	sty_pst = sty_preq ? STY_ASK : STY_FAIL;
 	sty_pat = time;
@@ -191,6 +230,11 @@ void(string who) Sty_View =
 {
 	local float L;
 	if (who != "" && !MF_Hex(who, 12)) return;
+	if (strcmp(who, sty_who))
+	{
+		Sty_ClearPreview();
+		sty_previewgeneration = cvar("ui_story_changed");
+	}
 	Sty_Set(who, sty_who);
 	Sty_Set("", sty_whoname);
 	for (L = 0; L < STY_LISTS; L = L + 1)
@@ -201,6 +245,7 @@ void(string who) Sty_View =
 		sty_prog[L] = buf_create();
 	}
 	sty_pst = STY_IDLE;
+	sty_pending = sty_pretries = sty_pnext = 0;
 	sty_preq = 0;
 	Sty_AskProg();
 };
@@ -224,6 +269,8 @@ void(string body) Sty_ParseList =
 	lists = json_find_object_child(root, "lists");
 	n = min(json_get_length(lists), STY_LISTS);
 	rev = json_get_string(json_find_object_child(root, "rev"));
+	if (strcmp(rev, sty_revision)) Sty_ClearPreview();
+	Sty_Set(rev, sty_revision);
 	for (L = 0; L < n; L = L + 1)
 	{
 		o = json_get_child_at_index(lists, L);
@@ -234,6 +281,7 @@ void(string body) Sty_ParseList =
 		buf_del(sty_lvmap[L]); sty_lvmap[L] = buf_create();
 		buf_del(sty_lvinfo[L]); sty_lvinfo[L] = buf_create();
 		buf_del(sty_lvtxt[L]); sty_lvtxt[L] = buf_create();
+		buf_del(sty_rules[L]); sty_rules[L] = buf_create();
 		buf_del(sty_lvidx[L]); sty_lvidx[L] = buf_create();
 		buf_del(sty_rows[L]); sty_rows[L] = buf_create();
 		chs = json_find_object_child(o, "chapters");
@@ -279,6 +327,10 @@ void(string body) Sty_ParseList =
 				j = (mk == "b") ? 0 : (mk == "s") ? 1 : (mk == "g") ? 2 : -1;
 				if (j < 0) continue;
 				bufstr_set(sty_lvtxt[L], k * 3 + j, substring(json_get_string(json_find_object_child(c, "t")), 0, 80));
+				bufstr_set(sty_rules[L], k * 3 + j, sprintf("%s %g %g",
+				           json_get_string(json_find_object_child(c, "k")),
+				           json_get_float(json_find_object_child(c, "v")),
+				           json_get_float(json_find_object_child(c, "w"))));
 				kinds = (json_get_float(json_find_object_child(c, "live")) == 1) ? 0 : 1;
 				if (j == 0) kb = kinds;
 				else if (j == 1) ks = kinds;
@@ -354,6 +406,27 @@ void(string body) Sty_ParseProg =
 			bufstr_set(sty_prog[L], json_get_float(json_get_child_at_index(x, 0)),
 			           sprintf("%g %g", json_get_float(json_get_child_at_index(x, 1)),
 			                   json_get_float(json_get_child_at_index(x, 2))));
+		}
+	}
+	sty_pending = json_get_float(json_find_object_child(root, "pending"));
+	sty_pnext = 0;
+	if (sty_pending)
+	{
+		if (sty_pretries < STY_PROGRESS_RETRIES)
+		{
+			sty_pnext = time + min(8, pow(2, sty_pretries));
+			sty_pretries = sty_pretries + 1;
+		}
+	}
+	else
+	{
+		sty_pretries = 0;
+		if (sty_pgeneration == cvar("ui_story_changed") && sty_pack
+		    && !strcmp(sty_prevision, sty_revision)
+		    && !strcmp(json_get_string(json_find_object_child(root, "rev")), sty_revision))
+		{
+			Sty_ClearPreview();
+			sty_previewgeneration = sty_pgeneration;
 		}
 	}
 	json_free(root);
@@ -447,9 +520,23 @@ void(string body) Sty_MeReply =
 	if (strcmp(who, sty_me))
 	{
 		viewing = (sty_who != "" && strcmp(sty_who, sty_me));
-		Sty_Set(who, sty_me);
+		if (sty_me == "" && !viewing && sty_previewuntil > 0)
+		{
+			// Bind a connection-local preview when this install first resolves.
+			Sty_Set(who, sty_previewwho);
+			Sty_Set(who, sty_me);
+			Sty_Set(who, sty_who);
+			sty_pst = STY_IDLE;
+			Sty_AskProg();
+		}
+		else
+		{
+			Sty_ClearPreview();
+			Sty_Set(who, sty_me);
+			if (!viewing) Sty_View(sty_me);
+		}
+		cvar_set("ui_story_local", sty_me);
 		Sty_SaveMe();
-		if (!viewing) Sty_View(sty_me);
 	}
 };
 
@@ -503,9 +590,154 @@ float(float reqid, float code, string body) Sty_Reply =
 	return FALSE;
 };
 
+// Only pending player progress retries quickly; list/roster keep their own timers.
+void() Sty_RetryProgress =
+{
+	if (!Sty_Online()) return;
+	if (sty_pnext > 0 && time >= sty_pnext && sty_pst != STY_ASK)
+	{
+		sty_pnext = 0;
+		Sty_AskProg();
+	}
+};
+
+// Only facts known at completion may assert local tasks. Global first/rank/via
+// stay unknown until authority; their decorative HTTP toast is not a task payload.
+float(string rule, float leg, float ms, float fails, float mask, float top, float prevms) Sty_LocalTask =
+{
+	local string kind;
+	local float v, w;
+	if (tokenize(rule) < 3) return FALSE;
+	kind = argv(0); v = stof(argv(1)); w = stof(argv(2));
+	if (!strcmp(kind, "reach")) return (leg == 0 || (leg > 0 && leg >= v - 1));
+	if (!strcmp(kind, "stage")) return (leg == v && ms < w);
+	if (leg != 0) return FALSE;
+	if (!strcmp(kind, "finish")) return TRUE;
+	if (!strcmp(kind, "time")) return (ms < v);
+	if (!strcmp(kind, "nofail")) return (fails == 0);
+	if (!strcmp(kind, "speed")) return (top >= v);
+	if (!strcmp(kind, "improve")) return (prevms > 0 && ms * 100 <= prevms * (100 - v));
+	if (mask < 0) return FALSE;
+	if (!strcmp(kind, "wonly")) return !(mask & 14);
+	if (!strcmp(kind, "nojump")) return !(mask & 16);
+	if (!strcmp(kind, "sw")) return !(mask & 12);
+	if (!strcmp(kind, "hsw")) return !(mask & 1024);
+	return FALSE;
+};
+
+void() Sty_Preview =
+{
+	local string event, map;
+	local float generation, track, leg, ms, fails, mask, top, serial;
+	local float L, i, m, medal, prior, held, prevms, dated, opens, closes, changed, slot;
+	generation = cvar("ui_story_changed");
+	if (sty_previewuntil > 0)
+	if (!Sty_Online() || gettime(0) >= sty_previewuntil
+	    || sty_previewscope != cvar("ui_story_scope")
+	    || strcmp(sty_previewwho, sty_me) || strcmp(sty_who, sty_me)) Sty_ClearPreview();
+	if (generation == sty_previewgeneration || sty_lst != STY_OK) return;
+	if (!Sty_Online()) return;
+	sty_previewgeneration = generation;
+	// Empty/empty is the local connection's unresolved self, not another profile.
+	if (strcmp(sty_who, sty_me)) return;
+	if (strcmp(cvar_string("ui_story_preview_who"), sty_me)) return;
+	if (cvar("ui_story_preview_until") <= gettime(0)) return;
+	event = cvar_string("ui_story_preview");
+	if (tokenizebyseparator(event, "|") != 2) return;
+	event = argv(0);
+	if (tokenize(event) != 8) return;
+	serial = stof(argv(0)); track = stof(argv(1)); leg = stof(argv(2)); ms = stof(argv(3));
+	fails = stof(argv(5)); mask = stof(argv(6)); top = stof(argv(7));
+	if (serial < 1 || ms < 1) return;
+	// Keep map stable while the rule evaluator tokenizes individual challenges.
+	tokenizebyseparator(cvar_string("ui_story_preview"), "|");
+	map = strzone(argv(1));
+	changed = FALSE;
+	for (L = 0; L < sty_n; L = L + 1)
+	for (i = 0; i < sty_nlv[L]; i = i + 1)
+	{
+		if (strcmp(map, bufstr_get(sty_lvmap[L], i))) continue;
+		tokenize(bufstr_get(sty_lvinfo[L], i));
+		if (track != stof(argv(0)) || !stof(argv(2))) continue;
+		dated = stof(argv(9)); opens = stof(argv(10)); closes = stof(argv(11));
+		if (dated)
+		if (time - sty_lrecv < opens || time - sty_lrecv >= closes) continue;
+		prevms = 0; held = 0;
+		if (tokenize(bufstr_get(sty_prog[L], i)) >= 2)
+		{
+			held = stof(argv(0)); prevms = stof(argv(1));
+		}
+		medal = held;
+		if (sty_preview[L]) medal = max(medal, stof(bufstr_get(sty_preview[L], i)));
+		prior = medal;
+		for (m = 0; m < 3; m = m + 1)
+			if (Sty_LocalTask(bufstr_get(sty_rules[L], i * 3 + m), leg, ms, fails, mask, top, prevms)) medal = max(medal, m + 1);
+		if (medal <= prior) continue;
+		changed = TRUE;
+		if (!sty_preview[L]) sty_preview[L] = buf_create();
+		bufstr_set(sty_preview[L], i, ftos(medal));
+		// Highest medal per level is its points; update every matching list/level.
+		sty_previewtotal[L] = max(sty_t[L], sty_previewtotal[L]) + medal - prior;
+		Sty_Log(sprintf("story: local provisional list %g level %g medal %g total %g at %g\n", L, i + 1, medal, sty_previewtotal[L], gettime(0)));
+	}
+	strunzone(map);
+	if (!changed) return; // unrelated stages neither confirm nor clear prior tasks
+	slot = -1;
+	for (i = 0; i < STY_AWAIT_MAX; i = i + 1)
+		if (sty_await[i] == 0 && slot < 0) slot = i;
+	if (slot < 0) sty_awaitoverflow = TRUE; // conservative until expiry, never pretend acked
+	else
+	{
+		sty_await[slot] = serial;
+		sty_awaitcount = sty_awaitcount + 1;
+	}
+	sty_previewserial = serial;
+	sty_previewscope = cvar("ui_story_scope");
+	Sty_Set(sty_me, sty_previewwho);
+	sty_previewuntil = cvar("ui_story_preview_until");
+};
+
+float(float L) Sty_Total = { return max(sty_t[L], sty_previewtotal[L]); };
+float(float L) Sty_OpenChapter =
+{
+	local float j, opened;
+	opened = sty_open[L];
+	if (!sty_previewuntil) return opened;
+	for (j = 1; j < sty_nch[L]; j = j + 1)
+		if (Sty_Total(L) >= stof(bufstr_get(sty_chbar[L], j))) opened = max(opened, j + 1);
+	return opened;
+};
+
+void() Sty_Refresh;
+
+void() Sty_AckProgress =
+{
+	local float i, ack;
+	if (sty_ackscope != cvar("ui_story_scope"))
+	{
+		sty_ackscope = cvar("ui_story_scope");
+		sty_ackseen = 0;
+	}
+	ack = cvar("ui_story_ack");
+	if (ack == sty_ackseen) return;
+	sty_ackseen = ack;
+	if (ack <= 0) return;
+	for (i = 0; i < STY_AWAIT_MAX; i = i + 1)
+	if (sty_await[i] == ack)
+	{
+		sty_await[i] = 0;
+		sty_awaitcount = sty_awaitcount - 1;
+	}
+	if (sty_previewuntil > 0 && sty_awaitcount == 0 && !sty_awaitoverflow) Sty_Refresh();
+};
+
 // Answers that never came, and refreshes while the screen is up.
 void() Sty_Poll =
 {
+	Sty_Preview();
+	Sty_AckProgress();
+	if (sty_changed != cvar("ui_story_changed")) Sty_Refresh();
+	Sty_RetryProgress();
 	if (sty_lst == STY_ASK && time - sty_lat > STY_WAIT)
 		Sty_ListFailed("The board did not answer. Try again shortly.");
 	if (sty_pst == STY_ASK && time - sty_pat > STY_WAIT) { sty_preq = 0; sty_pst = STY_FAIL; }
@@ -525,11 +757,28 @@ void() Sty_Poll =
 // P905 (Lex: "sometimes it doesn't load on first click"): the ladder, the saved "me" and
 // its progress are asked from the title screen once online play is allowed, so the first
 // STORY click finds them; three tries at most, on Sty_RetryIn's waits, none after a 404.
-float sty_pref;
+float sty_pref, sty_opened;
+
+void() Sty_Refresh =
+{
+	sty_changed = cvar("ui_story_changed");
+	sty_preq = 0;
+	sty_pst = STY_IDLE;
+	sty_pending = sty_pretries = sty_pnext = 0;
+	sty_pat = -STY_FRESH;
+	sty_kat = -STY_FRESH;
+	if (sty_me == "") sty_mnext = 0;
+	Sty_AskProg();
+};
 void() Sty_Prefetch =
 {
 	if (!Sty_Online() || !Sty_Init())
 		return;
+	Sty_Preview();
+	Sty_AckProgress();
+	if (sty_changed != cvar("ui_story_changed")) Sty_Refresh();
+	Sty_RetryProgress();
+	if (sty_lst == STY_OK && sty_pst == STY_IDLE) Sty_AskProg();
 	if (sty_lst == STY_ASK && time - sty_lat > STY_WAIT)
 		Sty_ListFailed("");
 	if (sty_lst == STY_OK || sty_lst == STY_ASK || sty_lnone || sty_pref >= 3)
@@ -547,6 +796,10 @@ void() Sty_Prefetch =
 void() Sty_Open =
 {
 	if (!Sty_Init()) return;
+	// First entry reuses P905's prefetch; returning from play never reuses progress.
+	if (((sty_opened || clientstate() == 2) && menu_screen != SCREEN_STORY)
+	    || sty_changed != cvar("ui_story_changed")) Sty_Refresh();
+	sty_opened = TRUE;
 	if (ms_count == 0)
 		ui_create_open();           // the map rows Play and the thumbnails come from
 	if (sty_me == "") Sty_LoadMe();
@@ -568,12 +821,39 @@ void() Sty_Esc =
 	menu_screen = SCREEN_MAIN;
 };
 
+// Counts are lobby occupants on maps in this ladder, not medal holders.
+float(float L, string map) Sty_LivePlayers =
+{
+	local float i, k, found, total;
+	if (!Sty_Online() || !Lob_Fresh()) return -1;
+	total = 0;
+	for (i = 0; i < Lob_Count(); i = i + 1)
+	{
+		if (!Lob_Live(i)) continue;
+		found = FALSE;
+		for (k = 0; k < sty_nlv[L]; k = k + 1)
+			if (!strcasecmp(Lob_Map(i), bufstr_get(sty_lvmap[L], k))) found = TRUE;
+		if (map != "" && strcasecmp(map, Lob_Map(i))) found = FALSE;
+		if (found) total = total + max(0, Lob_Players(i));
+	}
+	return total;
+};
+
+string(float n) Sty_Population =
+{
+	if (n < 0) return "Players live: unavailable";
+	return sprintf("%g %s live", n, n == 1 ? "player" : "players");
+};
+
 // ---------------------------------------------------------------- drawing --
 
 float(float L, float i) Sty_Medal =
 {
-	if (tokenize(bufstr_get(sty_prog[L], i)) < 2) return 0;
-	return stof(argv(0));
+	local float official;
+	official = 0;
+	if (tokenize(bufstr_get(sty_prog[L], i)) >= 2) official = stof(argv(0));
+	if (sty_preview[L]) return max(official, stof(bufstr_get(sty_preview[L], i)));
+	return official;
 };
 
 float(float L, float i) Sty_Ms =
@@ -685,7 +965,7 @@ void(vector pos, float w) Sty_Hero =
 	local string line, togo;
 
 	L = min(sty_tab, STY_LISTS - 1);
-	t = sty_t[L];
+	t = Sty_Total(L);
 	g = s = b = 0;
 	for (i = 0; i < sty_nlv[L]; i = i + 1)
 	{
@@ -702,7 +982,7 @@ void(vector pos, float w) Sty_Hero =
 	sui_text([pos_x + x, pos_y + 38], SZ_LABEL, sty_ltitle[L], COL_DIM, 0.8, 0);
 	x = x + 150;
 
-	nx = sty_open[L];                  // 0-based index of the next chapter
+	nx = Sty_OpenChapter(L);                  // 0-based index of the next chapter
 	if (sty_nch[L] == 0)
 		line = sty_lst == STY_ASK ? "Loading the ladder..." : "";
 	else if (nx >= sty_nch[L])
@@ -732,7 +1012,7 @@ void(vector pos, float w) Sty_Hero =
 	sui_text([pos_x + x + 230, pos_y + 49], SZ_LABEL, sprintf("%g bronze", b), COL_DIM, 1, 0);
 	if (sty_nch[L])
 		sui_text([pos_x + x + 330, pos_y + 49], SZ_LABEL,
-		         sprintf("chapter %g of %g", min(sty_open[L], sty_nch[L]), sty_nch[L]), COL_DIM, 1, 0);
+		         sprintf("chapter %g of %g", min(Sty_OpenChapter(L), sty_nch[L]), sty_nch[L]), COL_DIM, 1, 0);
 };
 
 void(vector rp, vector rs, float L, float j, float hot) Sty_ChapterRow =
@@ -742,7 +1022,7 @@ void(vector rp, vector rs, float L, float j, float hot) Sty_ChapterRow =
 	local vector k;
 
 	bar = stof(bufstr_get(sty_chbar[L], j));
-	locked = (j >= sty_open[L]);
+	locked = (j >= Sty_OpenChapter(L));
 	got = off = 0;
 	for (i = 0; i < sty_nlv[L]; i = i + 1)
 	{
@@ -764,7 +1044,7 @@ void(vector rp, vector rs, float L, float j, float hot) Sty_ChapterRow =
 	if (title != "")
 		sui_text([rp_x + 20 + m, rp_y + 25], SZ_LABEL, title, COL_DIM, 1, 0);
 	if (locked)
-		meta = sprintf("^9LOCKED^7  opens at %g trophies, %g to go", bar, max(0, bar - sty_t[L]));
+		meta = sprintf("^9LOCKED^7  opens at %g trophies, %g to go", bar, max(0, bar - Sty_Total(L)));
 	else
 		meta = sprintf("%g of %g trophies", got, off);
 	sui_text([rp_x + rs_x - 12 - stringwidth(meta, TRUE, SZ_LABEL), rp_y + 25], SZ_LABEL, meta,
@@ -785,7 +1065,7 @@ void(vector rp, vector rs, float L, float i, float on, float hot) Sty_LevelRow =
 	chap = stof(argv(1));
 	timed = stof(argv(2));
 	kinds = Sty_Kinds(L, i);
-	locked = (chap >= sty_open[L]);
+	locked = (chap >= Sty_OpenChapter(L));
 	a = locked ? 0.35 : 1;
 	med = Sty_Medal(L, i);
 	ms = Sty_Ms(L, i);
@@ -810,7 +1090,7 @@ void(vector rp, vector rs, float L, float i, float on, float hot) Sty_LevelRow =
 	tw = rs_x - (nx - rp_x) - 92 - 80 - 110;
 	sui_text([nx + 92, rp_y + 7], SZ_ROW, ui_fit_text(map, tw, SZ_ROW),
 	         ((on || hot) && !locked) ? COL_ACCENT : COL_TEXT, a, 0);
-	sub = track ? sprintf("bonus %g", track) : "";
+	sub = strcat(Sty_Population(Sty_LivePlayers(L, map)), track ? sprintf("  bonus %g", track) : "");
 	if (when != "")
 		sub = strcat(sub, sub == "" ? "" : "  ", "^xfc3", when, "^7");
 	if (!timed)
@@ -842,7 +1122,7 @@ void(vector rp, vector rs, float L, float i, float on, float hot) Sty_LevelRow =
 float(float L, float i) Sty_Locked =
 {
 	if (tokenize(bufstr_get(sty_lvinfo[L], i)) < 9) return TRUE;
-	return (stof(argv(1)) >= sty_open[L]);
+	return (stof(argv(1)) >= Sty_OpenChapter(L));
 };
 
 void(float L, float i) Sty_Play =
@@ -891,7 +1171,7 @@ void(vector pos, vector size, float L) Sty_Side =
 	track = stof(argv(0)); chap = stof(argv(1)); timed = stof(argv(2));
 	hb = stof(argv(3)); hs = stof(argv(4)); hg = stof(argv(5));
 	kinds = Sty_Kinds(L, i);
-	locked = (chap >= sty_open[L]);
+	locked = (chap >= Sty_OpenChapter(L));
 	med = Sty_Medal(L, i);
 	ms = Sty_Ms(L, i);
 	Sty_Thumb([pos_x + 12, y], [size_x - 24, floor((size_x - 24) * 9 / 16)], Sty_MapRow(L, i));
@@ -902,7 +1182,9 @@ void(vector pos, vector size, float L) Sty_Side =
 	txt = Sty_When(L, i);
 	sui_text([pos_x + 12, y], SZ_LABEL, sprintf("Level %g, chapter %g%s", i + 1, chap + 1,
 	         txt == "" ? "" : strcat(", ", txt)), COL_DIM, 1, 0);
-	y = y + 30;
+	y = y + 20;
+	sui_text([pos_x + 12, y], SZ_LABEL, Sty_Population(Sty_LivePlayers(L, map)), COL_DIM, 1, 0);
+	y = y + 24;
 	for (m = 0; m < 3; m = m + 1)
 	{
 		txt = bufstr_get(sty_lvtxt[L], i * 3 + m);
@@ -1004,7 +1286,13 @@ void(vector screensize) screen_story =
 	local float L, side, y, by, idx, n, k, on, hot, x, w;
 	local string rid, msg;
 
+	Lob_Poll();
 	Sty_Poll();
+	if (sty_previewuntil > 0 && sty_previewdrawgeneration != sty_previewgeneration)
+	{
+		sty_previewdrawgeneration = sty_previewgeneration;
+		Sty_Log(sprintf("story: preview draw generation %g at %g\n", sty_previewgeneration, gettime(0)));
+	}
 	size = [min(screensize_x - 32, 1100), min(screensize_y - 32, 808)];
 	pos = [floor((screensize_x - size_x) * 0.5), floor((screensize_y - size_y) * 0.5)];
 	sui_style_panel(pos, size, 12, 1);
@@ -1039,6 +1327,8 @@ void(vector screensize) screen_story =
 			Sty_View(sty_me);
 		sui_text([size_x - 16 - 120 - 16 - w, 53], SZ_LABEL, msg, SUI_THEME_ACCENT2, 1, 0);
 	}
+	else if (sty_previewuntil > 0)
+		sui_text([size_x - 300, 53], SZ_LABEL, "Provisional progress - confirming...", SUI_THEME_WARN, 1, 0);
 	else if (sty_note != "" && time - sty_notet < 8)
 		sui_text([size_x - 16 - stringwidth(sty_note, TRUE, SZ_LABEL), 53], SZ_LABEL, sty_note, COL_DIM, 1, 0);
 	else if (sty_me == "" && sty_mphase == 0)
@@ -1098,6 +1388,9 @@ void(vector screensize) screen_story =
 			Sty_Side([size_x - 16 - side, y], [side, ls_y], L);
 	}
 
+	if (sty_tab < sty_n)
+		sui_text([180, 18], SZ_LABEL, strcat(Sty_Population(Sty_LivePlayers(sty_tab, "")), " on this ladder's maps"), COL_DIM, 1, 0);
+
 	// The foot: back, the join strip, and Play for the selected level.
 	if (ui_button("sty_back", [16, by], [100, 30], "back"))
 		Sty_Esc();
@@ -1133,10 +1426,15 @@ void(string what, string arg) Sty_Command =
 		print(sprintf("story_probe: tab %g lists %g rows %g/%g me %s who %s name %S\n",
 		              sty_tab, sty_n, sty_nrow[0], sty_nrow[1], sty_me == "" ? "-" : sty_me,
 		              sty_who == "" ? "-" : sty_who, sty_whoname));
-		print(sprintf("story_probe: trophies %g/%g open %g/%g ", sty_t[0], sty_t[1], sty_open[0], sty_open[1]),
+		print(sprintf("story_probe: trophies %g/%g open %g/%g ", Sty_Total(0), Sty_Total(1), Sty_OpenChapter(0), Sty_OpenChapter(1)),
 		      sprintf("sel %g map %s medal %g ms %g\n", i, map == "" ? "-" : map, med, ms));
 		print(sprintf("story_probe: players %g of %g on %s locked %g\n", sty_npl, sty_pltotal,
 		              sty_n ? sty_lid[sty_kfor] : "-", (i < sty_nlv[L]) ? Sty_Locked(L, i) : -1));
+		print(sprintf("story_probe: provisional until %g official %g shown %g\n", sty_previewuntil, sty_t[L], Sty_Total(L)));
+		print(sprintf("story_probe: local serial %g ack %g identity %S scope %g\n", sty_previewserial, cvar("ui_story_ack"), sty_previewwho, sty_previewscope));
+		print(sprintf("story_probe: awaiting %g overflow %g GET-confirmed %g\n", sty_awaitcount, sty_awaitoverflow, sty_pack));
+		print(sprintf("story_probe: pending %g retries %g next %g\n", sty_pending, sty_pretries, sty_pnext));
+		print(sprintf("story_probe: live map %g ladder %g fresh %g\n", Sty_LivePlayers(L, map), Sty_LivePlayers(L, ""), Lob_Fresh()));
 		print(sprintf("story_probe: list %s when %S\n", sty_lid[L], (i < sty_nlv[L]) ? Sty_When(L, i) : ""));
 		return;
 	}

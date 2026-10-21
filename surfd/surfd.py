@@ -2306,6 +2306,7 @@ def game_json(payload):
 def lobbies_json():
     now = int(time.time())
     lobbies = []
+    ttl = LOBBY_TTL
     try:
         for row in live_rows(now):
             lobbies.append(
@@ -2321,7 +2322,9 @@ def lobbies_json():
     except sqlite3.Error as exc:
         # The menu must always get parseable JSON with a lobbies array.
         log.exception("lobbies.json db error: %s", exc)
-    body = game_json({"v": 1, "t": now, "lobbies": lobbies})
+        ttl = 0
+        lobbies = []
+    body = game_json({"v": 1, "t": now, "ttl": ttl, "lobbies": lobbies})
     return Response(body, status=200, mimetype="application/json")
 
 
@@ -5488,7 +5491,7 @@ def _story_current(db, now):
             return None, ""
         fresh = _story["at"] is not None and 0 <= now - _story["at"] < STORY_TTL
         if _story.get("calc_rev") == rev and _story["calc"] is not None:
-            if not fresh:
+            if not fresh or _story["calc"].get("seq") != _story["seq"]:
                 _story_kick(lists, rev, now)
             return _story["calc"], rev
     with _story_cold:                   # one first build, not one per thread
@@ -5777,7 +5780,12 @@ def game_story(what, now):
     def av(who):
         return accounts.who_of(who) if who in have else ""
 
-    body = {"v": 1, "t": now, "rev": rev}
+    # Compare the served snapshot, not whichever calc a worker installed while
+    # avatars/body preparation ran. A newly installed stale-seq pass is pending too.
+    with _story_lock:
+        pending = (calc.get("seq") != _story["seq"] or rev != _story["rev"]
+                   or not 0 <= now - calc["at"] < STORY_TTL)
+    body = {"v": 1, "t": now, "rev": rev, "pending": int(pending)}
     if what == "list":
         body["lists"] = [{
             "id": L["id"], "title": L["title"], "pct": L["pct"],
@@ -5789,7 +5797,8 @@ def game_story(what, now):
                         "from": lv["win"][0] if lv["win"] else 0,
                         "to": lv["win"][1] if lv["win"] else 0,
                         "ch": [{"m": c["m"], "k": c["k"], "t": c["t"],
-                                "live": 1 if _story_live(c, lv) else 0} for c in lv["ch"]]},
+                                "live": 1 if _story_live(c, lv) else 0,
+                                "v": c.get("v", 0), "w": c.get("w", 0)} for c in lv["ch"]]},
                         **({"in": [lv["win"][0] - now, lv["win"][1] - now]} if lv["win"] else {}))
                        for lv, h in zip(L["levels"], L["hold"])]}
             for L in calc["lists"]]

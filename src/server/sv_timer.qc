@@ -8939,13 +8939,16 @@ void(entity e, float ticks) SV_StageClose =
 	e.run_st_endlaunch = e.run_st_launch;
 	Lobby_RqDetail(e);                  // ABOVE the braceless if: it gates the submit
 	if (SV_StageFillable(e, seg, e.run_st_endticks))
-	if (Lobby_SubmitStage(e, e.run_t_track, FS_LegOf(seg, TRUE), e.run_st_endticks,
-	                      SV_StageSubmitFlags(e)))
 	{
-		e.run_st_endword = e.run_st_endword | SF_POSTED;
-		SV_RecPut(e, sprintf("stagepost %d %d %d", seg, e.run_st_endticks,
-		                     rint(e.run_st_launch)));
-		e.rec_rec_posts = e.rec_rec_posts + 1;
+		Lobby_StoryLocal(e, e.run_t_track, FS_LegOf(seg, TRUE), e.run_st_endticks, SV_StageSubmitFlags(e));
+		if (Lobby_SubmitStage(e, e.run_t_track, FS_LegOf(seg, TRUE), e.run_st_endticks,
+		                      SV_StageSubmitFlags(e)))
+		{
+			e.run_st_endword = e.run_st_endword | SF_POSTED;
+			SV_RecPut(e, sprintf("stagepost %d %d %d", seg, e.run_st_endticks,
+			                     rint(e.run_st_launch)));
+			e.rec_rec_posts = e.rec_rec_posts + 1;
+		}
 	}
 	e.run_st_endrec   = e.run_st_endrec + 1;
 
@@ -12655,6 +12658,7 @@ void(entity e, float ticks) SV_TimerFinish =
 		                Lobby_ChatName(e), Lobby_Where(e.run_t_track), SV_TimerString(ticks),
 		                (pb > 0) ? strcat(", ", SV_TimerString(pb - ticks), " faster") : ""));
 
+	Lobby_StoryLocal(e, e.run_t_track, leg, ticks, e.run_t_flags);
 	Lobby_RqDetail(e);
 	Lobby_SubmitRun(e, e.run_t_track, leg, ticks, e.run_t_flags,
 	                SV_RecKeptLeaf(e), e.rec_rec_bytes, e.rec_rec_full);

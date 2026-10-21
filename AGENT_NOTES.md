@@ -1,5 +1,43 @@
 # AGENT_NOTES.md
 
+## Story completion preview and combined compiler capacity (P912, 2026-10-21)
+
+- Completion facts must precede upload replies and be separate from the one
+  decorative medal toast. Evaluate every locally decidable Story/Events match;
+  rank/first/via facts still require authority. Local connection/profile-scoped
+  preview is not an official trophy, record or verification decision.
+- Reconciliation is exact per contributing request, never a monotonic ack max.
+  No-event completions must carry token zero, not the previous emitted counter.
+  Progress GETs consume pending facts before capturing request/catalogue revision
+  and completion generation; a later contribution cannot be erased by old data.
+  Missing/coalesced/superseded acknowledgements expire conservatively at45s.
+- P905 early title preload is reused. Occupancy needs fresh valid directory data;
+  failed/malformed data is unavailable, not zero. Later trophy gates use prior
+  available capacity, are strictly increasing, and may reclose a later chapter.
+- Combined P909/P911/Story CSQC exceeded fteqcc's131072 global-DEFINITION limit
+  at131081. Shared src/qcc.cfg now sets MAX_GLOBALS163840 before allocation for
+  ordinary builds AND standalone harness compiles; build.ps1-only flags miss the
+  latter. This is not a runtime scalar-slot limit or new VM format. Exact native
+  combined smoke proved FTE32,
+  131081 definitions/184046 scalar slots, cached DAT hash equal, local poll and
+  Story/Players/HUD draws on the existing installed engine. Other compiler limits
+  and actual VM formats stay unchanged.
+- Matching SSQC/CSQC/menu/backend deployment is required. Source/API/native/review
+  acceptance does not authorize replacing the guarded backend generation.
+
+## Roster probe and private test-log hygiene (2026-10-21)
+
+- A scores pin command toggles: it does not ensure pin-on. pl_rows is cached
+  while closed. Require a fresh visible pinned Players redraw plus authoritative
+  socket status; closed/cached counts are not ghost evidence. One owned abrupt
+  client kill, timeout20/zombie2: actual post-timeout redraw and UDP both1;
+  connected literal unnamed remains a valid spectate target. Intermittent owner
+  case still unreproduced; do not suppress all nameless/unnamed players.
+- An engine RCON log can echo a test credential. Read secrets inside the driver,
+  never print raw matching lines, and redact known owned test secrets before
+  tool/report output; retire the credential when its owned server stops. A
+  private session containing a retired test token still must not be exported.
+
 ## Start-box reset contracts (P911, 2026-10-21)
 
 - Source 40793459 deployed to both Windows installs and all 12 Pi lobbies at
@@ -2176,7 +2214,9 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   died. Patches 640 and 641 moved six float tables out (1,024 and 510); it
   is 129,663 after both and 642. `-max_globals` on the command line would lift it and
   the engine has no such table, but about nineteen `tools/*.py` compile
-  `cl_progs.src` themselves and would not have the flag: keep moving tables.
+  `cl_progs.src` themselves and would not have the flag. P912 uses shared
+  `src/qcc.cfg` instead, read before allocation by both entrypoints; big new
+  tables still belong in memalloc rather than definition arrays.
   `float *a, *b;` declares b a `float**`: one declarator a line.
 - QC-only change → default build is enough. Treat "0 warnings" as the bar, but
   check whether a warning is yours: this tree usually carries other people's

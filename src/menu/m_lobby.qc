@@ -102,6 +102,7 @@ strbuf lb_addr;                 // "ip:port", ready for connect
 strbuf lb_playv;               // players, as text
 strbuf lb_maxv;                 // slots, as text
 strbuf lb_name;                 // the server's hostname
+strbuf lb_age;                  // heartbeat age when the directory replied
 strbuf lb_roww;                 // cached ms_name index, filled in by the drawer
 
 float  lb_count;                // rows actually held, 0..LB_MAX
@@ -109,6 +110,7 @@ float  lb_ready;                // a reply has been parsed at least once
 float  lb_next;                 // time of the next poll
 float  lb_req;                  // uri request id, so a stale reply is ignored
 float  lb_fail;                 // consecutive failures, for the backoff
+float lb_received, lb_ttl;       // directory freshness, not the poll schedule
 float  lb_lastcode;             // last status, so a broken poll logs once
 
 /*
@@ -185,6 +187,7 @@ void() Lob_MigrateDir =
 
 void() Lob_Init =
 {
+	lb_age   = buf_create();
 	lb_map   = buf_create();
 	lb_addr  = buf_create();
 	lb_playv = buf_create();
@@ -259,6 +262,17 @@ string(float i)  Lob_Addr    = { return bufstr_get(lb_addr,  i); };
 string(float i)  Lob_Name    = { return bufstr_get(lb_name,  i); };
 float(float i)   Lob_Players = { return stof(bufstr_get(lb_playv, i)); };
 float(float i)   Lob_Max     = { return stof(bufstr_get(lb_maxv,  i)); };
+
+float() Lob_Fresh =
+{
+	return (lb_ready && lb_ttl > 0 && time >= lb_received && time - lb_received < lb_ttl);
+};
+
+float(float i) Lob_Live =
+{
+	if (!Lob_Fresh()) return FALSE;
+	return (stof(bufstr_get(lb_age, i)) + time - lb_received < lb_ttl);
+};
 
 /*
   The lobby's name as a cell can afford to draw it.  Build 57.
@@ -375,6 +389,7 @@ void() Lob_Clear =
 
 	for (i = 0; i < lb_count; i = i + 1)
 	{
+		bufstr_free(lb_age,   i);
 		bufstr_free(lb_map,   i);
 		bufstr_free(lb_addr,  i);
 		bufstr_free(lb_playv, i);
@@ -441,10 +456,11 @@ float(string a) Lob_PortOf =
 	return v;
 };
 
-// One row of every lb_ buffer, copied.  All six, so a buffer added later
+// One row of every lb_ buffer, copied, so a buffer added later
 // without a line here is the only way a moved row can arrive half-moved.
 void(float from, float to) Lob_CopyRow =
 {
+	bufstr_set(lb_age,   to, bufstr_get(lb_age, from));
 	bufstr_set(lb_map,   to, bufstr_get(lb_map,   from));
 	bufstr_set(lb_addr,  to, bufstr_get(lb_addr,  from));
 	bufstr_set(lb_name,  to, bufstr_get(lb_name,  from));
@@ -460,6 +476,8 @@ void(string body) Lob_Parse =
 	local string m, ad;
 
 	Lob_Clear();
+	lb_ready = FALSE;
+	lb_ttl = 0;
 
 	root = json_parse(body);
 	if (!root)
@@ -473,6 +491,8 @@ void(string body) Lob_Parse =
 
 	arr = json_find_object_child(root, "lobbies");
 	n   = json_get_length(arr);
+	lb_received = time;
+	lb_ttl = json_get_float(json_find_object_child(root, "ttl"));
 
 	// Every row is looked at, not the first LB_MAX: a sixth row may have a
 	// lower port than one already held, and that one is kept instead.
@@ -528,6 +548,7 @@ void(string body) Lob_Parse =
 		  depends on exactly that: the slot is chosen above, and nothing here
 		  appends.
 		*/
+		bufstr_set(lb_age,   at, ftos(max(0, json_get_float(json_find_object_child(o, "age")))));
 		bufstr_set(lb_map,   at, m);
 		bufstr_set(lb_addr,  at, ad);
 		bufstr_set(lb_name,  at, json_get_string(json_find_object_child(o, "name")));

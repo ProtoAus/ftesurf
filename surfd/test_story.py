@@ -134,6 +134,77 @@ class Story(unittest.TestCase):
             form["nonce"], "list", "-")).encode()).hex()
         return self.client.post("/api/social/menu", data=form).get_json()
 
+    def test_lobby_population_freshness_contract(self):
+        self.db.execute("DELETE FROM lobbies")
+        for node, age, players in (("fresh", 0, 1), ("old", S.LOBBY_TTL, 99)):
+            self.db.execute("INSERT INTO lobbies(node,map,players,maxplayers,addr,name,last_seen)"
+                            " VALUES(?, 'surf_one', ?, 128, '127.0.0.1:27510', 'Fixture', ?)",
+                            (node, players, self.now - age))
+        self.db.commit()
+        reply = self.client.get("/lobbies.json").get_json()
+        self.assertEqual(reply["ttl"], S.LOBBY_TTL)
+        self.assertEqual([(r["players"], r["age"]) for r in reply["lobbies"]], [(1, 0)])
+        self.assertNotIn("node", reply["lobbies"][0])
+
+    def test_lobby_directory_failure_is_not_fresh_empty(self):
+        with patch.object(S, "live_rows", side_effect=sqlite3.OperationalError("fixture unavailable")):
+            reply = self.client.get("/lobbies.json").get_json()
+        self.assertEqual((reply["ttl"], reply["lobbies"]), (0, []))
+        with patch.object(S, "live_rows", return_value=[]):
+            reply = self.client.get("/lobbies.json").get_json()
+        self.assertEqual((reply["ttl"], reply["lobbies"]), (S.LOBBY_TTL, []))
+
+    def test_story_list_exports_local_criteria_for_every_matching_level(self):
+        text = Path(__file__).with_name("story.txt").read_text()
+        (HOME / "story.txt").write_text(text)
+        S._story_conf()
+        lists, problems = S.story_parse(text)
+        self.assertFalse(problems)
+        maps = {lv["map"] for L in lists for c in L["chapters"] for lv in c["levels"] if lv["map"]}
+        with patch.object(S, "map_index", lambda now=None: ({m: m for m in maps}, maps)):
+            calc = S._story_calc(self.db, lists, self.now)
+        with S._story_lock:
+            S._story_install(calc, S._story["rev"], self.now, S._story["seq"])
+        body = self.get(story="list")[1]
+        matches = [(L["id"], lv) for L in body["lists"] for lv in L["levels"]
+                   if lv["map"] == "surf_cyberwave" and lv["track"] == 0]
+        self.assertEqual({lid for lid, _ in matches}, {"story", "events"})
+        for _, lv in matches:
+            for ch in lv["ch"]:
+                self.assertTrue({"m", "t", "live", "k", "v", "w"} <= ch.keys())
+        # Full finish locally decides Story bronze and Events gold independently;
+        # the HTTP toast's best-medal choice is not the local task payload.
+        finish_medals = {lid: [ch["m"] for ch in lv["ch"] if ch["k"] == "finish"]
+                         for lid, lv in matches}
+        self.assertEqual(finish_medals, {"story": ["b"], "events": ["g"]})
+
+    def test_shipped_story_gate_curve_is_reachable(self):
+        text = Path(__file__).with_name("story.txt").read_text()
+        lists, problems = S.story_parse(text)
+        self.assertFalse(problems)
+        # Source-marked unzoned maps must not be needed to open later chapters.
+        unzoned = {line.split()[1] for line in text.splitlines()
+                   if line.startswith("level ") and "no zones yet" in line}
+        maps = {lv["map"] for L in lists for c in L["chapters"] for lv in c["levels"]
+                if lv["map"]} - unzoned
+        with patch.object(S, "map_index", lambda now=None: ({m: m for m in maps}, maps)):
+            calc = S._story_calc(self.db, lists, self.now)
+        ladder = calc["lists"][0]
+        bars = ladder["bars"]
+        self.assertEqual(bars, [0, 9, 18, 27, 29, 38, 47, 51, 58, 60, 69,
+                                86, 99, 110, 112, 120, 122, 131, 141, 147])
+        avail = 0
+        for j, bar in enumerate(bars):
+            self.assertLessEqual(bar, avail, (j, bar, avail))
+            if j:
+                self.assertGreater(bar, bars[j - 1])
+            if j >= 11:
+                pct = 65 if j == 11 else 70
+                self.assertEqual(bar, -(-avail * pct // 100))
+            avail += sum(max(S.STORY_POINTS[ch["m"]] for ch in lv["ch"]
+                             if S._story_live(ch, lv))
+                         for lv in ladder["levels"] if lv["chap"] == j and lv["timed"])
+
     def test_parse_grammar_and_problems(self):
         lists, problems = S.story_parse(STORY)
         self.assertEqual([L["id"] for L in lists], ["story", "events"])
@@ -264,6 +335,58 @@ class Story(unittest.TestCase):
             if t.name == "story":
                 t.join(10)
         self.assertEqual(self.mine(A)[0], 3)
+
+    def test_pending_progress_until_inflight_recompute_installs(self):
+        self.assertEqual(self.get(story="player", who=handle(A))[1]["pending"], 0)
+        self.run_row("surf_two", A, 61000)
+        with S._story_lock:
+            S._story["seq"] += 1
+        started, release = threading.Event(), threading.Event()
+        original = S._story_calc
+
+        def held_calc(db, lists, now):
+            started.set()
+            if not release.wait(10):
+                raise AssertionError("test did not release Story recompute")
+            return original(db, lists, now)
+
+        with patch.object(S, "_story_calc", held_calc):
+            try:
+                old = self.get(story="player", who=handle(A))[1]
+                self.assertTrue(started.wait(5))
+                self.assertEqual((old["pending"], old["lists"][0]["t"]), (1, 0))
+                # Repeated reads neither wait nor call the stale snapshot fresh.
+                again = self.get(story="player", who=handle(A))[1]
+                self.assertEqual((again["pending"], again["lists"][0]["t"]), (1, 0))
+            finally:
+                release.set()
+                for _ in range(5):
+                    workers = [t for t in threading.enumerate() if t.name == "story"]
+                    for t in workers:
+                        t.join(10)
+                    if not workers:
+                        break
+        fresh = self.get(story="player", who=handle(A))[1]
+        self.assertEqual((fresh["pending"], fresh["lists"][0]["t"]), (0, 3))
+
+    def test_pending_uses_served_snapshot_if_worker_installs_during_response(self):
+        self.mine(A)
+        old = S._story["calc"]
+        with S._story_lock:
+            S._story["seq"] += 1
+        replacement = dict(old)
+        original_avatars = S.avatars
+
+        def install_during_response(now, db):
+            with S._story_lock:
+                S._story_install(replacement, S._story["rev"], now, S._story["seq"])
+            return original_avatars(now, db)
+
+        with patch.object(S, "_story_kick"), patch.object(S, "avatars", install_during_response):
+            served = self.get(story="player", who=handle(A))[1]
+        self.assertIsNot(old, S._story["calc"])
+        self.assertEqual(served["pending"], 1)
+        self.assertEqual(self.get(story="player", who=handle(A))[1]["pending"], 0)
 
     def test_names_never_publish_a_guid(self):
         self.run_row("surf_two", G2, 70000, tier="community", name=G2)

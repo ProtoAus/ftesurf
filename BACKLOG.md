@@ -2,15 +2,19 @@
 
 ## Intermittent departed player left as unnamed, not spectatable (owner, 21 Oct)
 
-- Surface not yet identified beyond the player/lobby list. Ordinary real dedicated
-  disconnect, same-slot reconnect, active empty-name and second disconnect all
-  clean up correctly (Players draws 2/1/2/2/1). Active `unnamed` is valid; do not
-  suppress it speculatively. Sites: cl_players PL_Count/PL_Slot and engine
-  CL_UpdateUserinfo/CL_ProcessUserInfo, or a different roster once identified.
-- Falsifier: capture the exact list while the departed row remains, departure
-  type (quit/crash/timeout), slot/userid lifecycle and whether the server still
-  counts that slot. Crash/timeout and the reported intermittent path remain
-  untested. No fix claimed by P908.
+- Surface not yet identified beyond the player/lobby list. Prior ordinary
+  disconnect/reuse controls did not reproduce it. A further single real abrupt
+  owned-client kill with timeout20/zombie2 ended with a fresh pinned Players
+  redraw and authoritative UDP both1. The pre-timeout retained connection is
+  legitimate, not a ghost. Slot reuse and connected literal `unnamed` remain
+  spectatable. Do not suppress names speculatively. Sites: cl_players PL_Count/
+  PL_Slot and engine CL_UpdateUserinfo/CL_ProcessUserInfo, or another roster.
+- Probe pitfall: `scores pin` toggles. Closed-board `pl_rows` is cached and was
+  explicitly NOT graded; only the actual post-timeout redraw is UI evidence.
+- Falsifier: capture the exact visible list while the departed row remains,
+  quit/crash/timeout type, slot/userid lifecycle, latest draw stamp and whether
+  the server still counts it. Crash/timeout now has one negative control, not
+  proof every intermittent path is fixed. No product/engine change claimed.
 
 Open bugs and follow-ups that someone found and did not fix. One entry each:
 what, where, how to check it, where it came from. Add what you find and leave;

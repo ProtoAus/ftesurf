@@ -1,5 +1,19 @@
 # lextest.md — things waiting on a human
 
+## P912 — immediate Story tasks (matching deployment pending)
+
+Source/native/API controls and independent review passed; owner feel PENDING.
+Do this only after matching server/client/menu/backend handoff, not on P911.
+
+- Keep Story open while completing one visible task. Its provisional progress
+  should change without closing/reopening; later validation reconciles it.
+- First-time unresolved profile may preview locally, but it must not transfer
+  to a different connection/profile or become an official award by itself.
+- Compare the map's Player/s count with actual occupants in Story lobbies;
+  unavailable snapshots should say unavailable, not zero.
+- Later chapters should show increasing trophy requirements. Existing earned
+  progress remains, but a chapter can reclose until its new threshold is met.
+
 ## P911 — personal startmarks and fresh stage retries
 
 Source `40793459` deployed to both Windows installs and all 12 Pi lobbies at

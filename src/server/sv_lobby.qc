@@ -167,6 +167,8 @@
   the answer to the run you just set is the one you want, and the stale one
   would draw a rank for a run that is no longer on screen.
 */
+.float lobby_sty_local_serial, lobby_sty_completion_serial;
+.float lobby_rq_local_serial, lobby_sq_local_serial;
 .float   lobby_rq_id;
 .float   lobby_rq_track;
 .float   lobby_rq_leg;
@@ -2634,6 +2636,33 @@ void(entity e, int root) Lobby_StoryTell =
 	}
 };
 
+// UI-only completion facts, before any directory/identity/HTTP submission gate.
+// No medals are asserted here; the menu evaluates its loaded ladder provisionally.
+void(entity e, float track, float leg, float ticks, float flags) Lobby_StoryLocal =
+{
+	local float ms, fails, mask, top;
+	local string facts;
+	// A non-emitting completion must not reuse the last emitted event.
+	e.lobby_sty_completion_serial = 0;
+	if (ticks < 1 || e.run_movetickrate <= 0) return;
+	if (FS_RunClass(flags) != RC_CLEAN) return;
+	// run_movetickrate is seconds per mover tick, as Lobby_RunBody converts to Hz.
+	ms = rint(ticks * 1000 * e.run_movetickrate);
+	fails = mask = top = -1;
+	if (leg == 0 && !(flags & TF_MULTISESSION) && e.lobby_sty_ok)
+	{
+		fails = e.lobby_sty_fails;
+		mask = e.lobby_sty_mask;
+		top = e.lobby_sty_top;
+	}
+	e.lobby_sty_local_serial = e.lobby_sty_local_serial + 1;
+	e.lobby_sty_completion_serial = e.lobby_sty_local_serial;
+	facts = strcat(sprintf("%g %g %g %g %g ", e.lobby_sty_local_serial, track, leg, ms, flags),
+	               sprintf("%g %g %g", fails, mask, top));
+	forceinfokey(e, "*story_local", strcat(facts, "|", mapname));
+	if (cvar("developer")) print(sprintf("story: local completion serial %g leg %g before HTTP at %g\n", e.lobby_sty_local_serial, leg, time));
+};
+
 void(float reqid, float code, string body) Lobby_RunReply =
 {
 	local entity who;
@@ -2654,7 +2683,11 @@ void(float reqid, float code, string body) Lobby_RunReply =
 	strk = sleg = sfl = 0;
 	who = findfloat(world, lobby_rq_id, reqid);
 	if (who != world)
+	{
 		who.lobby_rq_id = 0;            // answered; do not match it twice
+		if (who.lobby_rq_local_serial > 0)
+			forceinfokey(who, "*story_ack", ftos(who.lobby_rq_local_serial));
+	}
 	else
 	{
 		// A stage posted from a main run (Patch 360): its own id, its own key.
@@ -2662,6 +2695,8 @@ void(float reqid, float code, string body) Lobby_RunReply =
 		if (who != world)
 		{
 			who.lobby_sq_id = 0;
+			if (who.lobby_sq_local_serial > 0)
+				forceinfokey(who, "*story_ack", ftos(who.lobby_sq_local_serial));
 			isstage = TRUE;
 			strk = who.lobby_sq_track;
 			sleg = who.lobby_sq_leg;
@@ -3147,7 +3182,12 @@ void(entity e, float track, float leg, float ticks, float flags,
      string rec, float recbytes, float rectrunc) Lobby_SubmitRun =
 {
 	local string url, body;
+	local float story_serial;
 
+	// Consume even when a submission gate returns early. Only this completion
+	// may associate its emitted event with the request about to be created.
+	story_serial = e.lobby_sty_completion_serial;
+	e.lobby_sty_completion_serial = 0;
 	body = Lobby_RunBody(e, track, leg, ticks, flags, rec, recbytes, rectrunc);
 	if (body == "")
 		return;
@@ -3177,11 +3217,13 @@ void(entity e, float track, float leg, float ticks, float flags,
 	  design cannot detect afterwards.  It costs nothing to be in the right
 	  order and the wrong order is untestable.
 	*/
+	e.lobby_rq_local_serial = story_serial;
 	e.lobby_rq_id    = lobby_run_id;
 	e.lobby_rq_track = track;
 	e.lobby_rq_leg   = leg;
 	e.lobby_rq_ticks = ticks;
 	e.lobby_rq_flags = flags;
+	if (cvar("developer")) print(sprintf("story: request %g local serial %g flags %d\n", e.lobby_rq_id, story_serial, flags));
 	Lobby_RankPending(e, "*wrank", track, leg, ticks);
 
 	lobby_run_sent = lobby_run_sent + 1;
@@ -3231,7 +3273,10 @@ void(entity e, float track, float leg, float ticks, float flags,
 float(entity e, float track, float leg, float ticks, float flags) Lobby_SubmitStage =
 {
 	local string url, body;
+	local float story_serial;
 
+	story_serial = e.lobby_sty_completion_serial;
+	e.lobby_sty_completion_serial = 0;
 	body = Lobby_RunBody(e, track, leg, ticks, flags, "", -1, 0);
 	if (body == "")
 		return FALSE;
@@ -3244,6 +3289,7 @@ float(entity e, float track, float leg, float ticks, float flags) Lobby_SubmitSt
 		e.lobby_sq_oldleg   = e.lobby_sq_leg;
 		e.lobby_sq_oldflags = e.lobby_sq_flags;
 	}
+	e.lobby_sq_local_serial = story_serial;
 	e.lobby_sq_id    = Lobby_NextRunId();
 	e.lobby_sq_track = track;
 	e.lobby_sq_leg   = leg;
@@ -3609,6 +3655,9 @@ void(entity e, string k) Lobby_RunKey =
 
 void(entity p) Lobby_ClientConnect =
 {
+	p.lobby_sty_local_serial = 0;
+	forceinfokey(p, "*story_local", "");
+	forceinfokey(p, "*story_ack", "");
 
 	// Fresh connection on a possibly-recycled edict: whatever colour the
 	// previous occupant of this slot had is not this player's.  Cleared here

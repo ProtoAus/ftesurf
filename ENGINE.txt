@@ -25,7 +25,7 @@ commit   f6dc5007590ab40404bf0b464880ed768884e6ad
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 tag      patch-900
-patch    911
+patch    912
 # Patches 898, 900, 903 (client exe; tag patch-900 = f6dc50075, on ftesurf-2a's patch-893 2ec65d027 + log
 # 371c059e0): ALT+ENTER toggles windowed <-> borderless (ENTER asks Windows whether ALT is held; a player's
 # ALT+ENTER bind wins); the HTTP redirect line is developer-only and stops at '?'; r_blendsort 2 sorts a brush

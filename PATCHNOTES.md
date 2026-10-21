@@ -21,6 +21,12 @@
 
 ## next
 
+### P912 Story tasks update as you finish
+- Story and Events now show provisional task progress as soon as you finish, before the upload reply. All locally decidable matches update, not just the medal shown in the toast; confirmation or rejection reconciles the preview with the server.
+- First-time players can see a temporary local preview before their profile resolves. It is scoped to their connection and expires if it cannot be confirmed; it never grants an official trophy or record.
+- Story's Player/s count uses fresh live map occupancy. Missing or failed data shows unavailable, not a misleading zero. Story still begins loading before you first open it.
+- Later Story chapters require progressively more trophies from earlier chapters. Some previously accessible later chapters may lock again until you meet the new requirement; earned progress is not removed.
+
 ### P911 Choose your reset point with startmark
 - Use startmark or mom_start_mark_set while standing in a run's start box to choose its reset point and view angle. Marks are per player and map; startmark status and startmark clear inspect or remove them.
 - Resets and fails use the mark only when returning to that run's first leg. Later legs keep their ordinary reset point, and a blocked mark falls back to the ordinary start.

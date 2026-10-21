@@ -119,8 +119,9 @@ level surf_tendies                // P905: placeholder challenges, Lex will set 
 level soon
 level soon
 level soon
-// Chapters 5 on hold the bars they had before P905 added two levels (60% would raise
-// each by 2-4 and close chapters players had opened); drop an `unlock` to go back to 60%.
+// Chapters 5-11 keep the existing early bars. From Tier 5 the share rises:
+// 65% of prior timed trophies at Tier 5, then 70% from Tier 6 on (rounded up).
+// Empty slots and the maps marked no zones offer no trophies toward these bars.
 chapter "Tier 2" unlock 29
 level surf_me
   bronze finish
@@ -244,7 +245,7 @@ level surf_runewords2
   silver time 3:04
   gold   time 2:52          // record 1:44.639
 level soon
-chapter "Tier 5" unlock 76
+chapter "Tier 5" unlock 86
 level surf_stonework3                 // no zones yet
 level surf_spacemonkeys
   bronze finish
@@ -259,7 +260,7 @@ level surf_monkeys2
   silver time 2:38
   gold   time 2:29          // record 1:30.135
 level soon
-chapter "Tier 6" unlock 81
+chapter "Tier 6" unlock 99
 level surf_666
   bronze finish
   silver time 5:08
@@ -280,7 +281,7 @@ level surf_garden_h
   bronze finish
   silver time 3:12
   gold   time 3:00          // record 1:49.425
-chapter "Tier 6" unlock 90
+chapter "Tier 6" unlock 110
 level surf_sinister_evil
   bronze finish
   silver time 2:20
@@ -289,7 +290,7 @@ level soon
 level soon
 level soon
 level soon
-chapter "Tier 7" unlock 92
+chapter "Tier 7" unlock 112
 level surf_sandtrap2 bonus 4
   bronze finish
   silver time 0:14
@@ -307,7 +308,7 @@ level surf_spectra
   silver time 2:42
   gold   time 2:32          // record 1:32.328
 level surf_starvald                 // no zones yet
-chapter "Tier 7" unlock 99
+chapter "Tier 7" unlock 120
 level surf_olivia                 // no zones yet
 level surf_sidistic
   bronze finish
@@ -316,7 +317,7 @@ level surf_sidistic
 level soon
 level soon
 level soon
-chapter "Tier 8" unlock 101
+chapter "Tier 8" unlock 122
 level surf_axiom bonus 4
   bronze finish
   silver time 0:25
@@ -334,7 +335,7 @@ level surf_corruption
   bronze finish
   silver time 5:04
   gold   time 4:46          // record 2:53.430
-chapter "Tier 8" unlock 108
+chapter "Tier 8" unlock 131
 level surf_ruse
   bronze finish
   silver time 2:26
@@ -355,7 +356,7 @@ level surf_joutsenlaulu
   bronze finish
   silver time 6:44
   gold   time 6:19          // record 3:50.295
-chapter "Tier 9" unlock 117
+chapter "Tier 9" unlock 141
 level surf_devil
   bronze finish
   silver time 5:48
@@ -370,7 +371,7 @@ level surf_tensor2
   gold   time 5:29          // record 3:19.830
 level soon
 level soon
-chapter "Tier 10" unlock 123
+chapter "Tier 10" unlock 147
 level surf_anubis
   bronze finish
   silver time 38:47
