@@ -2629,7 +2629,11 @@ void(float down) HE_ProbeClick =
 		print("^3hud_edit^7: no number row has been drawn\n");
 		return;
 	}
+	// A pointer that travels there, as a hand's does: sui wakes its mouse cursor on
+	// the first ~10 px of motion and only a move after that sets the hover a press reads.
 	c = he_nrow_p + he_nrow_s * 0.5;
+	CL_InputEvent(IE_MOUSEABS, c_x - 24, c_y, 0);
+	CL_InputEvent(IE_MOUSEABS, c_x - 2, c_y, 0);
 	CL_InputEvent(IE_MOUSEABS, c_x, c_y, 0);
 	took = CL_InputEvent(down ? IE_KEYDOWN : IE_KEYUP, K_MOUSE1, 0, 0);
 	print(sprintf("^5hud_edit^7: mouse1 %s at %g %g -> taken %g\n", down ? "down" : "up",
