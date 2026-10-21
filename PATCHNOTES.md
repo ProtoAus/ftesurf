@@ -21,6 +21,9 @@
 
 ## next
 
+### P906 No snap-back on surf_reverie
+- On maps whose zone-tool triggers use a Momentum filter this game does not support yet, such as surf_reverie, the game no longer predicts a teleport the server does not make, which pulled you back every frame.
+
 ### P897 Quieter console in your own games
 - Debug lines from map triggers, runs, saves and spectating no longer fill the console in your own games, such as surf_boreas's spinning symbols; developer 1 shows them again.
 
