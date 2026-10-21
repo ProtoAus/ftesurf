@@ -49,7 +49,8 @@ void() SV_WarpOpCommand =
 	if (input_cmd_kind != 1 && input_cmd_kind != 2)
 	{
 		if (op >= WOP_RESET && op <= WOP_TOP)
-			dprint(sprintf("warpop: %g dropped, not a decoded command\n", op));
+			if (SV_DevOn())
+				dprint(sprintf("warpop: %g dropped, not a decoded command\n", op));
 		return;
 	}
 	if (!wop_live)
@@ -69,7 +70,8 @@ void() SV_WarpOpCommand =
 	self.wop_ack = input_cmd_sequence_hi * 65536 + input_cmd_sequence_lo;
 	if (self.classname != "player" || !self.run_inserver)
 		return;
-	dprint(sprintf("warpop: %g at command %g\n", op, input_cmd_sequence_hi * 65536 + input_cmd_sequence_lo));
+	if (SV_DevOn())
+		dprint(sprintf("warpop: %g at command %g\n", op, input_cmd_sequence_hi * 65536 + input_cmd_sequence_lo));
 
 	if (op == WOP_RELEASE)
 	{

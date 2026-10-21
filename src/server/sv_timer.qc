@@ -2365,9 +2365,10 @@ void(entity e, int budget) SV_RecCopyStep =
 void(entity e) SV_RecCopyFlush =
 {
 	if (e.rec_cp_q >= 1)
-		dprint(sprintf("timer: finishing %g pending save cop%s now\n",
-		               buf_getsize(e.rec_cp_q) - e.rec_cp_head,
-		               (buf_getsize(e.rec_cp_q) - e.rec_cp_head == 1) ? "y" : "ies"));
+		if (SV_DevOn())
+			dprint(sprintf("timer: finishing %g pending save cop%s now\n",
+			               buf_getsize(e.rec_cp_q) - e.rec_cp_head,
+			               (buf_getsize(e.rec_cp_q) - e.rec_cp_head == 1) ? "y" : "ies"));
 	while (e.rec_cp_q >= 1)
 		SV_RecCopyStep(e, FS_RECCOPY_MAX);
 };
@@ -4982,8 +4983,9 @@ void(entity e) SV_RecFailKeep =
 	}
 	e.rec_fa_take = TRUE;
 	e.rec_fa_on = TRUE;
-	dprint(sprintf("timer: the failed attempt kept for the rewind: %g lines, %s\n", e.rec_fa_lines,
-	               e.rec_fa_stream ? e.rec_fa_path : "buffered"));
+	if (SV_DevOn())
+		dprint(sprintf("timer: the failed attempt kept for the rewind: %g lines, %s\n", e.rec_fa_lines,
+		               e.rec_fa_stream ? e.rec_fa_path : "buffered"));
 };
 
 float(entity e) SV_ProfileWhy;          // Patch 840: the header's verdict
@@ -4995,7 +4997,8 @@ void(entity e) SV_RecOpen =
 	local string pin;	// build 87
 
 	if (e.rec_fa_on)
-		dprint("timer: a new recording drops the kept attempt\n");
+		if (SV_DevOn())
+			dprint("timer: a new recording drops the kept attempt\n");
 	SV_RecFailDrop(e);                  // Patch 817: you left the start
 	SV_RecCopyFlush(e);                 // Patch 375: the part file is about to be reopened
 	SV_RecGenBegin(e);
@@ -5363,8 +5366,9 @@ void(entity e) SV_RecOpen =
 	  and it is a fixed width a reader can rely on.
 	*/
 	if (run_t_startjit > 0)
-		dprint(sprintf("timer: startjit %.4f %.4f %.4f\n", run_t_startjit,
-		               e.run_t_jitter_x, e.run_t_jitter_y));
+		if (SV_DevOn())
+			dprint(sprintf("timer: startjit %.4f %.4f %.4f\n", run_t_startjit,
+			               e.run_t_jitter_x, e.run_t_jitter_y));
 	if (run_t_startjit > 0)
 		SV_RecPut(e, sprintf("startjit %.4f %.4f %.4f %.4f", run_t_startjit,
 		                     e.run_t_jitter_x, e.run_t_jitter_y,
@@ -5645,7 +5649,8 @@ void(string pat) SV_EvidenceSweepPat =
 		if (today - d > days)
 			fremove(fn);
 	}
-	dprint(sprintf("timer: evidence sweep %s (%g file(s) considered)\n", pat, n));
+	if (SV_DevOn())
+		dprint(sprintf("timer: evidence sweep %s (%g file(s) considered)\n", pat, n));
 	search_end(h);
 };
 
@@ -5917,7 +5922,8 @@ void(entity e, float leg, string tag, string who, string keepme) SV_RecPrune =
 		fremove(fn);
 		fremove(strcat(stem, ".view"));
 		fremove(strcat(stem, ".hid"));
-		dprint(sprintf("timer: pruned %s\n", fn));
+		if (SV_DevOn())
+			dprint(sprintf("timer: pruned %s\n", fn));
 	}
 	search_end(h);
 };
@@ -6161,8 +6167,9 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		else
 		{
 			e.rec_rec_saved = TRUE;
-			dprint(sprintf("timer: streamed %s (%g samples, %g padding)\n",
-			               dst, e.rec_rec_n, e.rec_rec_padn));
+			if (SV_DevOn())
+				dprint(sprintf("timer: streamed %s (%g samples, %g padding)\n",
+				               dst, e.rec_rec_n, e.rec_rec_padn));
 			if (stamp >= 0)
 				SV_RecPrune(e, FS_LegOf(e.run_t_startseg, e.run_t_stagerun),
 				            SV_RecTagName(tag), who,
@@ -6196,8 +6203,9 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		// A buffered handle's one-argument fseek is the bytes written.
 		e.rec_rec_bytes = fseek(fh);
 		fclose(fh);
-		dprint(sprintf("timer: wrote %s (%g samples, %g padding)\n",
-		               dst, e.rec_rec_n, e.rec_rec_padn));
+		if (SV_DevOn())
+			dprint(sprintf("timer: wrote %s (%g samples, %g padding)\n",
+			               dst, e.rec_rec_n, e.rec_rec_padn));
 		// The buffered recorder writes straight to its final name -- no part
 		// file, no rename -- so reaching here IS the file landing.
 		e.rec_rec_saved = TRUE;
@@ -6510,13 +6518,15 @@ float(entity e, string path, float mark, float serial,
 					SV_RecRestore(e, mark, samples, padn, cps);
 					SV_RecGenPush(e, mark);
 					SV_RecNoncePublish(e, FALSE);   // Patch 416: same file
-					dprint(sprintf("timer: load warm, cut to %s bytes\n", itos(b)));
+					if (SV_DevOn())
+						dprint(sprintf("timer: load warm, cut to %s bytes\n", itos(b)));
 					return TRUE;
 				}
 			}
 		}
 	}
-	dprint(sprintf("timer: load cold (%s): %s bytes from %s\n", why, itos(b), path));
+	if (SV_DevOn())
+		dprint(sprintf("timer: load cold (%s): %s bytes from %s\n", why, itos(b), path));
 
 	// COLD: a new stream from the slot's copy, line 0 rewritten to 10 for the
 	// `pause` the caller writes.  The old recording goes as the buffered path's
@@ -7771,8 +7781,9 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	*/
 	if (e.rec_rec_stream)
 	{
-		dprint(sprintf("stage: seg %g not lifted -- this run is streamed, and a "
-		               "slice needs the buffer\n", seg));
+		if (SV_DevOn())
+			dprint(sprintf("stage: seg %g not lifted -- this run is streamed, and a "
+			               "slice needs the buffer\n", seg));
 		return;
 	}
 
@@ -8024,8 +8035,9 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 	{
 		buf_writefile(fh, buf, 0, buf_getsize(buf));
 		fclose(fh);
-		dprint(sprintf("stage: wrote %s (%g samples from lines %g..%g)\n",
-		               dst, samples, first, last));
+		if (SV_DevOn())
+			dprint(sprintf("stage: wrote %s (%g samples from lines %g..%g)\n",
+			               dst, samples, first, last));
 
 		// Same pruner and the same rule as a full run: the archive grows one
 		// file per improvement and is capped per leg, per player.
@@ -9563,7 +9575,8 @@ void(entity e) SV_TimerIdle =
 {
 	// Patch 382: every funnel that ends a run releases a spectate first.
 	if (e.run_sp_open)
-		dprint(sprintf("spectate: %s's run torn down inside a window\n", e.netname));
+		if (SV_DevOn())
+			dprint(sprintf("spectate: %s's run torn down inside a window\n", e.netname));
 	SV_RecDiscard(e);
 	e.run_t_state    = TS_IDLE;
 	e.run_t_ticks    = 0;
@@ -9746,7 +9759,8 @@ void(entity e, string why) SV_TimerForgiveHop =
 	e.run_t_hopped  = FALSE;
 	e.run_t_jumps   = 0;
 	e.run_t_hopsaid = 0;          // round 7: told afresh if it happens again
-	dprint(sprintf("hop: %s's hopped-start taint cleared by %s\n", e.netname, why));
+	if (SV_DevOn())
+		dprint(sprintf("hop: %s's hopped-start taint cleared by %s\n", e.netname, why));
 	sprint(e, PRINT_HIGH, "^2start re-armed^7 -- the hopped start is forgiven\n");
 };
 
@@ -9899,7 +9913,8 @@ void(entity e, float on, string why) SV_TimerSpecMark =
 	if (e.run_t_state != TS_RUNNING || !SV_RecLive(e))
 	{
 		if (!on)
-			dprint(sprintf("spectate: %s's `spec 0` has no recording left to go in\n", e.netname));
+			if (SV_DevOn())
+				dprint(sprintf("spectate: %s's `spec 0` has no recording left to go in\n", e.netname));
 		return;
 	}
 
@@ -11352,10 +11367,11 @@ float(entity e) SV_TimerJumpWatch =
 				else
 				{
 					if (!e.run_t_hopped)
-						dprint(sprintf("hop: %s tagged a hopped start "
-						               "(dwell %.2f of %.2f, jumps %g, dirty %g)\n",
-						               e.netname, dwell, want, e.run_t_jumps,
-						               e.run_t_dirty ? 1 : 0));
+						if (SV_DevOn())
+							dprint(sprintf("hop: %s tagged a hopped start "
+							               "(dwell %.2f of %.2f, jumps %g, dirty %g)\n",
+							               e.netname, dwell, want, e.run_t_jumps,
+							               e.run_t_dirty ? 1 : 0));
 					e.run_t_hopped = TRUE;   // TS_ARMED; the outer test says so
 					// Patch 454: one bit cannot tell two attempts' tags apart, so a
 					// fresh tag drops any forgiveness a finish armed -- otherwise
@@ -11437,11 +11453,12 @@ float(entity e) SV_TimerJumpWatch =
 				cap = PM_RUN_SPEED;     // the mover's own fallback, sh_defs.qc
 			if (vlen(hv) <= cap)
 			{
-				dprint(sprintf("hop: %s's hopped-start taint cleared -- %s "
-				               "armed it and %.0f u/s is at or below sv_maxspeed "
-				               "%.0f, so there is no prespeed to launder\n",
-				               e.netname, (e.run_t_finfgv == 2) ? "a reset into the box" : "the finish",
-				               vlen(hv), cap));
+				if (SV_DevOn())
+					dprint(sprintf("hop: %s's hopped-start taint cleared -- %s "
+					               "armed it and %.0f u/s is at or below sv_maxspeed "
+					               "%.0f, so there is no prespeed to launder\n",
+					               e.netname, (e.run_t_finfgv == 2) ? "a reset into the box" : "the finish",
+					               vlen(hv), cap));
 				sprint(e, PRINT_HIGH,
 				       "^2start re-armed^7 -- the hopped start died with that run\n");
 				e.run_t_hopped  = FALSE;
@@ -12732,9 +12749,10 @@ void(entity e, float z) SV_TimerEvent =
 		*/
 		if (e.run_t_hopped)
 		{
-			dprint(sprintf("hop: %s finished with the tag up -- forgiveness armed, "
-			               "taken when grounded at or below sv_maxspeed\n",
-			               e.netname));
+			if (SV_DevOn())
+				dprint(sprintf("hop: %s finished with the tag up -- forgiveness armed, "
+				               "taken when grounded at or below sv_maxspeed\n",
+				               e.netname));
 			e.run_t_finfgv = TRUE;
 		}
 		return;
@@ -13251,7 +13269,8 @@ void(entity e, float z) SV_TimerTryArm =
 	if (zone_type[z] == ZONE_START)
 	{
 		if (e.gravity)
-			dprint(sprintf("gravity: %s reset at the start (was %g)\n", e.netname, e.gravity));
+			if (SV_DevOn())
+				dprint(sprintf("gravity: %s reset at the start (was %g)\n", e.netname, e.gravity));
 		e.gravity = 0;
 		e.vbsp_grav_trig = world;
 	}
@@ -13386,11 +13405,12 @@ void(entity e, float z) SV_TimerTryArm =
 		sprint(e, PRINT_HIGH, "^3run cancelled^7 (back in the start)\n");
 	}
 	if (was == TS_RUNNING)          // Patch 775: the re-arm's own line
-		dprint(sprintf("timer: %s's %s re-armed in %s zone %g%s at %.0f u/s\n", e.netname,
-		               wasstage ? "stage run" : "run",
-		               (zone_type[z] == ZONE_START) ? "START" : "STAGE", z,
-		               e.run_t_tpnow ? " by a map teleport" : "",
-		               vlen([e.velocity_x + e.run_basevel_x, e.velocity_y + e.run_basevel_y, 0])));
+		if (SV_DevOn())
+			dprint(sprintf("timer: %s's %s re-armed in %s zone %g%s at %.0f u/s\n", e.netname,
+			               wasstage ? "stage run" : "run",
+			               (zone_type[z] == ZONE_START) ? "START" : "STAGE", z,
+			               e.run_t_tpnow ? " by a map teleport" : "",
+			               vlen([e.velocity_x + e.run_basevel_x, e.velocity_y + e.run_basevel_y, 0])));
 
 	/*
 	  Patch 775: `!r` is safe because it zeroes the velocity; this reset keeps it, so
@@ -13410,9 +13430,10 @@ void(entity e, float z) SV_TimerTryArm =
 		if (!e.run_t_hopped)
 			sprint(e, PRINT_HIGH, "^3back in the box at speed^7 -- stop moving, "
 			       "or ^2!r^7, for a clean start\n");
-		dprint(sprintf("hop: %s re-armed at %.0f u/s, %.0f vertical -- tagged, forgiven at rest\n",
-		               e.netname, vlen([e.velocity_x + e.run_basevel_x,
-		                                e.velocity_y + e.run_basevel_y, 0]), e.velocity_z));
+		if (SV_DevOn())
+			dprint(sprintf("hop: %s re-armed at %.0f u/s, %.0f vertical -- tagged, forgiven at rest\n",
+			               e.netname, vlen([e.velocity_x + e.run_basevel_x,
+			                                e.velocity_y + e.run_basevel_y, 0]), e.velocity_z));
 		e.run_t_hopped = TRUE;
 		e.run_t_finfgv = 2;
 	}
@@ -14442,8 +14463,9 @@ void(entity e) SV_TimerFrame =
 	if (e.run_t_state == TS_ARMED)
 	if (SV_ZoneSameBox(az, e.run_t_armzone))
 	{
-		dprint(sprintf("hop: %s teleported into the box with the tag up -- forgiveness "
-		               "armed, taken when grounded at or below sv_maxspeed\n", e.netname));
+		if (SV_DevOn())
+			dprint(sprintf("hop: %s teleported into the box with the tag up -- forgiveness "
+			               "armed, taken when grounded at or below sv_maxspeed\n", e.netname));
 		e.run_t_finfgv = 2;
 	}
 	e.run_t_tpnow = e.run_t_tpfin = FALSE;

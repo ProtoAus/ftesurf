@@ -17,6 +17,11 @@ float input_cmd_sequence_hi;
 __used float input_cmd_msec;     // all six or the engine exports none
 __used float input_cmd_piece_msec;
 __used float input_cmd_offset_msec;
+// Patch 897: server QC's dprint is builtin 25, which QW progs get as an unconditional print
+// (pr_cmds.c), so a play-time line reached an offline player's console at developer 0.  Those
+// lines print through this: developer (or log_developer) on, or a lobby, whose log is read.
+float() SV_DevOn = { return cvar("developer") || cvar("log_developer") || cvar("lobby_enable"); };
+
 // Patch 893: declaring this is what lets the engine split a usercmd one tick per part; it is 1
 // during a later part's PreThink, whatever the command's kind (a budget-trimmed one is split too).
 __used float input_cmd_later;
@@ -2083,7 +2088,8 @@ void(entity t, string who, entity act) SV_PointTeleport =
 
 	if (SV_MapMoveHeld(p))
 		return;
-	dprint(sprintf("point_teleport %s: %s to %v\n", t.targetname, p.netname, t.origin));
+	if (SV_DevOn())
+		dprint(sprintf("point_teleport %s: %s to %v\n", t.targetname, p.netname, t.origin));
 	SV_PlacePlayer(p, t.origin);
 	// Absent is Source's own point_teleport (pointteleport.cpp:143 Teleport with the
 	// entity's angles); the Momentum FGD's key, when written, decides.
@@ -2146,7 +2152,8 @@ float(entity t, entity act, string then) SV_BreakableBreakThen =
 		return FALSE;
 	}
 	t.vbsp_brk = 0;
-	dprint(sprintf("break: %s %s\n", t.classname, t.model));
+	if (SV_DevOn())
+		dprint(sprintf("break: %s %s\n", t.classname, t.model));
 	SV_FireOutput(t, "OnBreak", act);
 	if (then != "" && !wasfreed(t))
 		SV_FireOutput(t, then, act);
@@ -6217,7 +6224,8 @@ void() trigger_teleport_touch =
 		dest = find(world, targetname, self.target);
 	if (!dest)
 	{
-		dprint(sprintf("trigger_teleport: no destination '%s'\n", self.target));
+		if (SV_DevOn())
+			dprint(sprintf("trigger_teleport: no destination '%s'\n", self.target));
 		return;
 	}
 
@@ -6544,7 +6552,8 @@ void() trigger_gravity_touch =
 	SV_TriggerIOTouch(self, other);
 
 	if (other.gravity != self.gravity)
-		dprint(sprintf("trigger_gravity %s: gravity %g persist '%s'\n", self.model, self.gravity, self.persist));
+		if (SV_DevOn())
+			dprint(sprintf("trigger_gravity %s: gravity %g persist '%s'\n", self.model, self.gravity, self.persist));
 	other.gravity = self.gravity;
 	if (self.persist != "" && !stof(self.persist))
 	{
@@ -6563,7 +6572,8 @@ void(entity p) SV_GravityFrame =
 		return;
 	if (!p.vbsp_grav_touch)
 	{
-		dprint(sprintf("trigger_gravity %s: left, gravity restored\n", p.vbsp_grav_trig.model));
+		if (SV_DevOn())
+			dprint(sprintf("trigger_gravity %s: left, gravity restored\n", p.vbsp_grav_trig.model));
 		p.gravity = 0;
 		p.vbsp_grav_trig = world;
 	}
@@ -6638,7 +6648,8 @@ void() trigger_teleport_relative_touch =
 		if (!trace_startsolid && !trace_allsolid)
 		{
 			p = p + '0 0 1';
-			dprint(sprintf("telerel: %s lifted 1 at %v\n", other.netname, p));
+			if (SV_DevOn())
+				dprint(sprintf("telerel: %s lifted 1 at %v\n", other.netname, p));
 		}
 	}
 	setorigin(other, p);
@@ -7784,7 +7795,8 @@ void(entity p, entity t, vector org, vector dang) SV_MomTeleportTo =
 		makevectors(dang);
 		p.velocity = v_forward * spd;
 	}
-	dprint(sprintf("momtrigger %s %s: teleport to %v mode %g\n", t.classname, t.model, org, vm));
+	if (SV_DevOn())
+		dprint(sprintf("momtrigger %s %s: teleport to %v mode %g\n", t.classname, t.model, org, vm));
 	SV_PlacePlayer(p, org + '0 0 1');
 	if (SV_KeyTri(t.resetang, "") != 0 || vm == 3)
 	{
@@ -7840,7 +7852,8 @@ void() trigger_momentum_progress_touch =
 	if (!SV_TouchEntered(self, other))
 		return;
 	SV_FireOutput(self, "OnResetOnehops", other);
-	dprint(sprintf("momtrigger progress %s: number %g\n", self.model, self.progress_number));
+	if (SV_DevOn())
+		dprint(sprintf("momtrigger progress %s: number %g\n", self.model, self.progress_number));
 	other.run_progtrig = self;
 	other.run_prognum = self.progress_number;
 	SV_OnehopsClear(other);
@@ -7947,7 +7960,8 @@ void() trigger_momentum_onehop_touch =
 		if (e.spawnflags & SF_TELEPORT_RESET_ONEHOP)
 			e.vbsp_onehop = e.vbsp_onehop & ~bit;
 	self.vbsp_onehop = self.vbsp_onehop | bit;
-	dprint(sprintf("momtrigger onehop %s: first landing\n", self.model));
+	if (SV_DevOn())
+		dprint(sprintf("momtrigger onehop %s: first landing\n", self.model));
 	if (!self.vbsp_onehop_fired)
 	{
 		self.vbsp_onehop_fired = TRUE;
@@ -8006,7 +8020,8 @@ void() trigger_momentum_reversespeed_touch =
 		v = [-v_x, -v_y, v_z];
 	if (SV_Key2(self.ReverseVertical, self.reversevertical))
 		v_z = -v_z;
-	dprint(sprintf("momtrigger reversespeed %s: %v -> %v\n", self.model, other.velocity, v));
+	if (SV_DevOn())
+		dprint(sprintf("momtrigger reversespeed %s: %v -> %v\n", self.model, other.velocity, v));
 	SV_MomSetVelocity(other, v, "reverse");
 };
 void() trigger_momentum_reversespeed = { if (SV_MomTrigSpawn()) self.touch = trigger_momentum_reversespeed_touch; };
@@ -8129,7 +8144,8 @@ void(entity p) SV_MomLimitFrame =
 	if (!(lim & 64))
 		cool = 0;
 	if (p.run_momlimit != lim || p.run_momslide != slide || p.run_momcool != cool)
-		dprint(sprintf("momlimit %s: limit %g slide %g cool %g\n", p.netname, lim, slide, cool));
+		if (SV_DevOn())
+			dprint(sprintf("momlimit %s: limit %g slide %g cool %g\n", p.netname, lim, slide, cool));
 	p.run_momlimit = lim;
 	p.run_momslide = slide;
 	p.run_momcool = cool;
@@ -8163,14 +8179,16 @@ void(entity t, entity p, float k, float now, float was) SV_UserInputKey =
 	b = pow(2, k);		// SV_UserKeys' bit for Momentum's key number
 	if ((now & b) && !(was & b))
 	{
-		dprint(sprintf("userinput %s: key %g pressed\n", t.model, k));
+		if (SV_DevOn())
+			dprint(sprintf("userinput %s: key %g pressed\n", t.model, k));
 		SV_FireOutput(t, "OnKeyPressed", p);
 	}
 	if (now & b)
 		SV_FireOutput(t, "OnKeyHeld", p);
 	if (!(now & b) && (was & b))
 	{
-		dprint(sprintf("userinput %s: key %g released\n", t.model, k));
+		if (SV_DevOn())
+			dprint(sprintf("userinput %s: key %g released\n", t.model, k));
 		SV_FireOutput(t, "OnKeyReleased", p);
 	}
 };
@@ -8303,7 +8321,8 @@ void() trigger_catapult_touch =
 		v = SV_CatapultAim(self, other, tgt, spd);
 	else
 		v = dir * spd;
-	dprint(sprintf("catapult %s: %v\n", self.model, v));
+	if (SV_DevOn())
+		dprint(sprintf("catapult %s: %v\n", self.model, v));
 	SV_MomSetVelocity(other, v, "catapult");
 	SV_FireOutput(self, "OnCatapulted", other);
 };
@@ -8364,7 +8383,8 @@ void(entity t, entity p) SV_MapTextTo =
 void(entity t, entity act) SV_MapText =
 {
 	local entity p;
-	dprint(sprintf("game_text %s: '%s'\n", t.targetname, t.message));
+	if (SV_DevOn())
+		dprint(sprintf("game_text %s: '%s'\n", t.targetname, t.message));
 	if (t.spawnflags & 1)
 	{
 		for (p = find(world, classname, "player"); p; p = find(p, classname, "player"))
@@ -8388,7 +8408,8 @@ void(entity t, entity p, float show) SV_MapHintTo =
 void(entity t, entity act, float show) SV_MapHint =
 {
 	local entity p;
-	dprint(sprintf("env_hudhint %s: %g '%s'\n", t.targetname, show, t.message));
+	if (SV_DevOn())
+		dprint(sprintf("env_hudhint %s: %g '%s'\n", t.targetname, show, t.message));
 	if (t.spawnflags & 1)
 	{
 		for (p = find(world, classname, "player"); p; p = find(p, classname, "player"))
@@ -8423,7 +8444,8 @@ void(entity t, entity p, float rev) SV_MapFadeTo =
 void(entity t, entity act, float rev) SV_MapFade =
 {
 	local entity p;
-	dprint(sprintf("env_fade %s: rev %g\n", t.targetname, rev));
+	if (SV_DevOn())
+		dprint(sprintf("env_fade %s: rev %g\n", t.targetname, rev));
 	if (t.spawnflags & 4)
 	{
 		if (act.classname == "player")
@@ -8442,7 +8464,8 @@ void(entity t, float amp) SV_MapShake =
 	local entity p;
 	local float a, d;
 
-	dprint(sprintf("env_shake %s: amplitude %g\n", t.targetname, amp));
+	if (SV_DevOn())
+		dprint(sprintf("env_shake %s: amplitude %g\n", t.targetname, amp));
 	// 32 "don't shake view" shakes ropes and physics only; a frequency of 0 shakes nothing.
 	if (amp > 0 && (t.spawnflags & 32 || t.frequency <= 0))
 		return;
@@ -9425,7 +9448,8 @@ void(entity e, float v) SV_SpLinSet =
 		return;
 	}
 	e.vbsp_sp_dir = (v > p) ? 1 : -1;
-	dprint(sprintf("spin %s: slides to %g from %g at %g u/s\n", e.model, v, p, e.speed));
+	if (SV_DevOn())
+		dprint(sprintf("spin %s: slides to %g from %g at %g u/s\n", e.model, v, p, e.speed));
 };
 
 void(entity e) SV_SpRotUse =
@@ -9630,7 +9654,8 @@ void(entity e) SV_SpDrop =
 		setsize(e, e.vbsp_sp_mins0, e.vbsp_sp_maxs0);
 		setorigin(e, e.vbsp_sp_o0);
 	}
-	dprint(sprintf("spin %s: went solid, back at its spawn pose and stopped\n", e.model));
+	if (SV_DevOn())
+		dprint(sprintf("spin %s: went solid, back at its spawn pose and stopped\n", e.model));
 	e.vbsp_sp_kind = 0;
 	e.vbsp_sp_depth = 0;
 };
@@ -10236,7 +10261,8 @@ void(entity t, entity att, float dmg) SV_EntityDamage =
 				return;
 			code = BUTTON_RETURN;
 		}
-		dprint(sprintf("damage: button %s code %g locked %g\n", t.model, code, t.vbsp_mv_locked));
+		if (SV_DevOn())
+			dprint(sprintf("damage: button %s code %g locked %g\n", t.model, code, t.vbsp_mv_locked));
 		SV_FireOutput(t, "OnDamaged", att);
 		if (t.vbsp_mv_locked)
 			return;
@@ -10256,7 +10282,8 @@ void(entity t, entity att, float dmg) SV_EntityDamage =
 		if (dmg >= t.minhealthdmg)
 		{
 			t.health = t.health - dmg;
-			dprint(sprintf("damage: %s %s health %g\n", t.classname, t.model, t.health));
+			if (SV_DevOn())
+				dprint(sprintf("damage: %s %s health %g\n", t.classname, t.model, t.health));
 			SV_FireOutput(t, "OnHealthChanged", att);
 		}
 		if (wasfreed(t))
@@ -10302,7 +10329,8 @@ void(entity pl) SV_ShootFrame =
 	pl.hitcontentsmaski = CONTENTBITS_POINTSOLID | CONTENTBIT_MONSTERCLIP;
 	traceline(src, src + v_forward * 8192, FALSE, pl);
 	pl.hitcontentsmaski = mask;
-	dprint(sprintf("shot: %s %s at %v\n", trace_ent.classname, trace_ent.model, trace_endpos));
+	if (SV_DevOn())
+		dprint(sprintf("shot: %s %s at %v\n", trace_ent.classname, trace_ent.model, trace_endpos));
 	if (!trace_ent || trace_ent == world)
 		return;
 	SV_EntityDamage(trace_ent, pl, cvar("run_shoot_damage"));
