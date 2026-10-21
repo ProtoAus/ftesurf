@@ -1391,8 +1391,11 @@ print('RESTART_COUNTS='+json.dumps([made, linked, *counts]))
             self.assertEqual(G.tick(self.cache, maximum=6, download=serve), (1, 0))
         self.assertEqual(K._load(os.path.join(self.cache, '.refused'))['n'], 1)
         self.assertEqual(len(asked), 5)
+        # The run that parked was the host's: its first two files go back, the third stays queued.
         state = K._load(os.path.join(self.cache, 'demos.json'))
-        self.assertEqual((state['jobs'], len(state['failed'])), ({}, 4))
+        self.assertEqual([k.split('|')[3] for k in state['failed']],
+                         [G.candidate('surf_test', 0, 0, rows[0])['runid']])
+        self.assertEqual([j['file'] for j in state['jobs'].values()], [rows[4]['file']])
         # An HTTP 500 for one file is that file's too; a 404 the same.
         for code in (500, 404):
             for name in ('.refused', 'demos.json'):
@@ -1420,6 +1423,27 @@ print('RESTART_COUNTS='+json.dumps([made, linked, *counts]))
                         self.assertEqual(G.tick(self.cache, maximum=6, download=down), (1, 0))
                 self.assertEqual(K._load(os.path.join(self.cache, '.refused'))['n'], 3)
                 self.assertEqual(K._load(os.path.join(self.cache, 'demos.json'))['failed'], {})
+
+    def test_a_host_failing_every_file_parks_and_sets_none_aside(self):
+        self.many(4)
+
+        def five(file):
+            raise urllib.error.HTTPError('public', 500, 'broken', {}, io.BytesIO())
+        base = int(time.time())
+        with patch.object(G.time, 'sleep'):
+            for i, parked in ((0, False), (1, False), (2, True)):
+                with patch.object(G.time, 'time', return_value=base + i * 300):
+                    self.assertEqual(G.tick(self.cache, maximum=6, download=five), (1, 0))
+                self.assertEqual((Path(self.cache) / '.refused').exists(), parked)
+        self.assertEqual(K._load(os.path.join(self.cache, 'demos.json'))['failed'], {})
+        # A run more than a day old starts again: two, a day's gap, one more -- no park.
+        for name in ('.refused', 'demos.json'):
+            (Path(self.cache)/name).unlink(missing_ok=True)
+        with patch.object(G.time, 'sleep'):
+            for when in (base, base + 300, base + 300 + 86401):
+                with patch.object(G.time, 'time', return_value=when):
+                    G.tick(self.cache, maximum=6, download=five)
+        self.assertFalse((Path(self.cache) / '.refused').exists())
 
     def test_only_a_body_broken_after_the_headers_is_the_files(self):
         class Body:

@@ -36,7 +36,7 @@ MAX_QUEUE = 256
 MAX_RECOVER = 2
 MAX_FAILED = 2048
 MAX_PROVENANCE = 16 << 10
-FILESTREAK = 3             # Patch 896: this many file-level failures in a row are the host's
+FILESTREAK = 3             # Patch 896: this many file-level failures in a day, in a row, are the host's
 FLOOR = 15 << 30           # Patch 896: no download or install below this much free disk
 SCAN = 32
 BINDING = ('map', 'track', 'leg', 'style', 'player', 'runid', 'millis', 'when', 'file')
@@ -484,6 +484,7 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                        if (type(t) is int and t > now) or
                        (isinstance(t, dict) and type(t.get('retry')) is int
                         and type(t.get('strikes')) is int and 0 < t['strikes'] < 3)}
+    state.pop('filefail', None)         # P891's ledger, superseded by P896's rule
     if len(state['failed']) > MAX_FAILED:
         # Older writers appended terminal failures after their initial truncation.
         # Preserve that input verbatim; normal expiry can unblock a later tick.
@@ -564,7 +565,7 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                     asked = True
                     data = transport(download, job['file'])
                 if asked:
-                    state['filestreak'] = 0     # the host just served a whole file
+                    state['filestreak'] = {}    # the host just served a whole file
                 rid = install(conn, job, data)
                 if rid:
                     linked += 1
@@ -579,18 +580,26 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                 # for days. That file is set aside 7 days; FILESTREAK of them in a row is the host.
                 code = getattr(e, 'code', 0)
                 own = code in (404, 500) or isinstance(getattr(e, 'reason', None), BodyBroken)
-                prev = state.get('filestreak')
-                streak = ((prev if type(prev) is int else 0) + 1) if own else 0
-                state['filestreak'] = streak if streak < FILESTREAK else 0
-                if own:
+                run = state.get('filestreak') if isinstance(state.get('filestreak'), dict) else {}
+                at = run.get('at') if type(run.get('at')) is int else 0
+                held = [k for k in (run.get('keys') if isinstance(run.get('keys'), list) else [])
+                        if isinstance(k, str)] if 0 <= now - at <= 86400 else []
+                if own and len(held) + 1 < FILESTREAK:
                     if key in state['failed'] or len(state['failed']) < MAX_FAILED:
                         state['failed'][key] = now + 7 * 86400
                         jobs.pop(key, None)
                     else:
                         job.update(retry=now + 7 * 86400, terminal=True)
-                if own and streak < FILESTREAK:
-                    print('KSF demo set aside: network %d on its own file (%d in a row)' % (code, streak))
+                    state['filestreak'] = dict(at=now, keys=held + [key])
+                    print('KSF demo set aside: network %d on its own file (%d in a row)'
+                          % (code, len(held) + 1))
                     break
+                # The host's -- and so was a run of file-looking failures that reached
+                # FILESTREAK, so the files it set aside go back to the queue.
+                if own:
+                    for k in held:
+                        state['failed'].pop(k, None)
+                state['filestreak'] = {}
                 n = int(park.get('n') or 0) + 1
                 wait = min(K.COOLDOWN * 2 ** min(n - 1, 8), K.COOLDOWN_MAX)
                 K._save(os.path.join(cache, '.refused'),
