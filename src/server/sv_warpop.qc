@@ -14,12 +14,7 @@
   a repeat of lastcmd carries the same impulse and must not act twice.  A server
   engine without P675 never publishes `fs_wop`, so no client sends ops to it.
 */
-float input_cmd_kind;
-float input_cmd_sequence_lo;
-float input_cmd_sequence_hi;
-__used float input_cmd_msec;     // all six or the engine exports none
-__used float input_cmd_piece_msec;
-__used float input_cmd_offset_msec;
+// The P675 command context globals (input_cmd_*) are declared at the top of sv_entities.qc.
 
 .float wop_lo, wop_hi;           // the last op's command
 .float wop_ack;                  // Patch 759: the same, one number (STAT_FS_WOPACK)
@@ -54,7 +49,8 @@ void() SV_WarpOpCommand =
 	if (input_cmd_kind != 1 && input_cmd_kind != 2)
 	{
 		if (op >= WOP_RESET && op <= WOP_TOP)
-			dprint(sprintf("warpop: %g dropped, not a decoded command\n", op));
+			if (SV_DevOn())
+				dprint(sprintf("warpop: %g dropped, not a decoded command\n", op));
 		return;
 	}
 	if (!wop_live)
@@ -74,7 +70,8 @@ void() SV_WarpOpCommand =
 	self.wop_ack = input_cmd_sequence_hi * 65536 + input_cmd_sequence_lo;
 	if (self.classname != "player" || !self.run_inserver)
 		return;
-	dprint(sprintf("warpop: %g at command %g\n", op, input_cmd_sequence_hi * 65536 + input_cmd_sequence_lo));
+	if (SV_DevOn())
+		dprint(sprintf("warpop: %g at command %g\n", op, input_cmd_sequence_hi * 65536 + input_cmd_sequence_lo));
 
 	if (op == WOP_RELEASE)
 	{

@@ -300,7 +300,8 @@ HEAD_V8 = HEAD_V7
 HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd", "holdclock",
                      "inprof",      # Patch 840, additive
                      "momtrig",     # Patch 869, additive
-                     "entfile"}     # Patch 890, additive
+                     "entfile",     # Patch 890, additive
+                     "tickparts"}   # Patch 893, additive
 # v10 (Patch 364): no new header key.  A file is v10 exactly when it carries a
 # `pause`: the buffered writer rewrites line 0 when the first one lands.
 HEAD_V10 = HEAD_V9
@@ -750,9 +751,17 @@ def check_rec(path, verbose=False, *, data=None):
             r.fault("header is missing %r" % k)
     r.info.update(head)
 
-    tickrate = float(head.get("tickrate", 0) or 0)
+    # Patch 893 review 5: a rate the reader divides by (the exempt-chain cap) -- nan, inf or a
+    # subnormal from a hostile writer raised there, and every fault of the file became "not checked".
+    try:
+        tickrate = float(head.get("tickrate", 0) or 0)
+    except ValueError:
+        tickrate = 0.0
     if tickrate <= 0:
         r.fault("tickrate %r is not positive" % head.get("tickrate"))
+        tickrate = 0.015
+    elif not math.isfinite(tickrate) or tickrate < 0.001 or tickrate > 1.0:
+        r.fault("tickrate %r is not a usable rate (finite, 1 ms to 1 s)" % head.get("tickrate"))
         tickrate = 0.015
 
     # Build 74: the game's cached rate against the mover's own.  A FAULT and not
@@ -762,8 +771,13 @@ def check_rec(path, verbose=False, *, data=None):
     # Absent or zero means no engine value (pre-325, or the Source mover off),
     # which is unknown rather than wrong and must not fault: the whole library of
     # existing recordings has no such line.
-    mtr = float(head.get("movetickrate", 0) or 0)
-    if mtr > 0 and abs(mtr - tickrate) > 1e-6:
+    try:
+        mtr = float(head.get("movetickrate", 0) or 0)
+    except ValueError:
+        mtr = float("nan")
+    if not math.isfinite(mtr) and head.get("movetickrate") is not None:
+        r.fault("movetickrate %r is not a number" % head.get("movetickrate"))
+    elif mtr > 0 and abs(mtr - tickrate) > 1e-6:
         r.fault("movetickrate %g disagrees with tickrate %g -- every time in "
                 "this file is out by a factor of %.6f" % (mtr, tickrate, mtr / tickrate))
 
@@ -1052,6 +1066,9 @@ def check_rec(path, verbose=False, *, data=None):
     in_offgrid_ln = None    # v9: first such row, for the fault
     in_badshape = 0         # rows this tool could not parse (reported once)
     in_flx = 0              # v9: rows with fl 2 or 4 (never on a clean run)
+    in_split = in_split_odd = 0   # Patch 893: fl 8 rows, and those that are not a split's later part
+    in_prevtok = None
+    in_chain = 0                  # fl 8 rows since the last row without it: one usercmd is at most 500 ms
     # Patch 493: the move triple against the header's `movebnd`.  Counted as the
     # rows stream past, for the reason this whole block exists.
     in_moveoor = 0          # `in` rows whose largest |axis| exceeds the bound
@@ -1246,6 +1263,13 @@ def check_rec(path, verbose=False, *, data=None):
             if ang_holdmt is not None and mt < ang_holdmt:
                 r.fault("line %d: 'in' below the preceding hold horizon" % (lineno + 1))
                 ang_holdbad = True
+            # Patch 893: a later part of a split usercmd, in a file whose server splits, repeats the row
+            # before it (packet, moves, angles, buttons) one tick on.  Only such a row leaves the join.
+            in_later = (ver >= 9 and infl & 8 and head.get("tickparts") == "1" and in_prevtok is not None
+                        and (tok[1], tok[4:11]) == (in_prevtok[1], in_prevtok[4:11])
+                        and mt == int(in_prevtok[2]) + 1
+                        and in_chain < math.ceil(0.5 / max(tickrate, 0.0078125)))   # the header cannot lift it past 128 Hz's
+            in_chain = in_chain + 1 if (ver >= 9 and infl & 8) else 0   # past the cap, the rest of it is joined
             if not excluded:
                 ang_prev = mt - ang_frozen if holdclock == "1" else mt
                 if not -2147483648 <= ang_prev <= 2147483647:
@@ -1257,9 +1281,12 @@ def check_rec(path, verbose=False, *, data=None):
                     r.fault("line %d: 'in' projected angle tick is below the initial "
                             "timer origin" % (lineno + 1))
                     ang_holdbad = True
-                ang_mt.append(ang_prev)
-                ang_pit.append(ang[0])
-                ang_yaw.append(ang[1])
+                # Patch 893: a later part carries the command's angles at a tick where the client drew
+                # a later frame; only the command's first row is joined.
+                if not in_later:
+                    ang_mt.append(ang_prev)
+                    ang_pit.append(ang[0])
+                    ang_yaw.append(ang[1])
             if in_pk is None or pk != in_pk:
                 in_packets += 1
             spec_restates(r, lineno + 1, "the 'in' row", mt, carry, spec_pend)
@@ -1317,12 +1344,18 @@ def check_rec(path, verbose=False, *, data=None):
                         % (lineno + 1, bt))
 
             if ver >= 9:
-                if infl < 0 or infl > 7:
-                    r.fault("line %d: fl %d is outside 0..7 -- three bits (1 "
-                            "onground, 2 teleport_time, 4 movetype not WALK)"
+                if infl < 0 or infl > 15:
+                    r.fault("line %d: fl %d is outside 0..15 -- four bits (1 "
+                            "onground, 2 teleport_time, 4 movetype not WALK, "
+                            "8 a later part of a split usercmd)"
                             % (lineno + 1, infl))
                 elif infl & 6:
                     in_flx += 1
+                if infl & 8:
+                    in_split += 1
+                    if not in_later and not excluded:
+                        in_split_odd += 1
+                in_prevtok = tok
 
             # DID THESE ANGLES COME OFF THE WIRE?  usercmd angles are 16-bit, so
             # every one the protocol can deliver is a multiple of 360/65536 =
@@ -2073,6 +2106,12 @@ def check_rec(path, verbose=False, *, data=None):
 
     if inrows:
         r.info["inputs"] = inrows
+        if in_split:
+            r.info["split_rows"] = in_split
+        if in_split_odd:
+            r.note("%d 'in' row(s) flagged fl 8 are not a split's later part (no `tickparts 1`, not the "
+                   "row before them repeated one tick on, or past one usercmd's 500 ms) and were joined "
+                   "like any row" % in_split_odd)
         r.info["in_packets"] = in_packets
         # THE WHOLE REASON THE PACKET ORDINAL IS IN THE FILE, expressed as one
         # number.  The run's start and finish are latched once per packet, not
@@ -3030,10 +3069,17 @@ def check_rec(path, verbose=False, *, data=None):
         mts = array.array("i")
         yaw = array.array("f")
         pit = array.array("f")
+        badst = False
         for st, sv in samples:
             if st < 0:
                 continue        # the pre-start padding has no run tick
-            mts.append(int(round(st / tickrate)))
+            t = st / tickrate
+            if not math.isfinite(t) or abs(t) > 2147483647:
+                if not badst:
+                    r.fault("a sample at %r s cannot be a run tick" % st)
+                    badst = True
+                continue
+            mts.append(int(round(t)))
             pit.append(sv[7])
             yaw.append(sv[8])
         if len(mts):
@@ -3156,7 +3202,12 @@ ANG_SOLO_HOLD = 1.0      # per cent of them past ANG_SOLO that is a fault
 # reads BLIND rather than OK, and the note says how much it missed.  The
 # property that buys is modest and worth stating plainly: a forger can still
 # hide ticks from the tight rule, but not quietly, because hiding them is what
-# takes their own review page from OK to BLIND.
+# takes their own review page from OK to BLIND.  EXCEPT Patch 893's later parts:
+# an exempt row leaves the denominator too (it is a repeat of a joined row, not
+# a move of its own), so a writer of the .rec alone can exempt up to 64 rows in
+# 65 and stay OK -- review 7 measured 98% exempt, sidecar turned 90 deg, `tight`.
+# Only `split_rows` and `in_per_packet` show it; the recorded input still
+# changes only at a joined row.
 #
 # 75% because that is the middle of the empty band, and the band is what makes
 # the number safe rather than the number itself.  Honest v9 coverage measured
@@ -4108,7 +4159,7 @@ def emit(r, verbose):
                   # `instart` prints whenever the key is present and `inputs`
                   # whenever the body has rows, so the two disagreeing is
                   # visible at a glance and not only through the fault.
-                  "instart", "inputs", "in_packets", "in_per_packet",
+                  "instart", "inputs", "in_packets", "in_per_packet", "split_rows",
                   "in_per_sample", "holdclock", "hold_epochs",
                   # Build 83, added in the same edit as the code that computes
                   # them, which is the rule the paragraph above sets after this

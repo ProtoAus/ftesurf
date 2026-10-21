@@ -403,8 +403,9 @@ void(entity e, string why) SV_MsPark =
 	e.rec_rec_buf = -1;
 	SV_TimerIdle(e);
 
-	dprint(sprintf("resume: parked %s's run on %s at %s (%s, recording %s)\n",
-	               e.netname, mapname, SV_TimerString(ticks), why, mode));
+	if (SV_DevOn())
+		dprint(sprintf("resume: parked %s's run on %s at %s (%s, recording %s)\n",
+		               e.netname, mapname, SV_TimerString(ticks), why, mode));
 
 	// A reconnect whose old connection had not timed out yet spawned before
 	// this slot existed.

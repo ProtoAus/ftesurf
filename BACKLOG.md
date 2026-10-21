@@ -5,20 +5,65 @@ what, where, how to check it, where it came from. Add what you find and leave;
 delete the entry in the commit that fixes it. A "Known" paragraph in
 ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
 
+## Zone-tool triggers and one tick per part (P892, P893): what is left
+
+- **filter_momentum_surface_collision is not evaluated (P892).** 64 zone-tool boxes on ~14 maps sit behind
+  it (directly or in a filter_multi): "touch a surface and reset" volumes in Momentum. They stay inert
+  here, because a filter this game cannot evaluate passes everyone and surf_reverie's box covers the whole
+  map; those maps' boards do not compare with Momentum's. Implementing the filter (the body touched a
+  displacement or brush surface this tick) would bring them back. Falsifier: surf_reverie, the box acts
+  only on a surface touch.
+- **5 solid func_brush zone-tool boxes on 3 maps (P892)** -- surf_oasis, surf_sunday, surf_year3000 --
+  are still removed: they collide, so they are physents and would change the `pe` digest. Needs its own
+  decision and a late spawn like P892's.
+- **The stash's round trip (P892)** cuts a string field over ~4 KB (getentityfieldstring's line) and prints
+  a float below 1e-6 as 0. No zone-tool trigger in the library comes near either; the outputs field, the
+  long one, goes raw.
+- **A low-rate client's prediction tests triggers once a command (P893).** The server runs a command of
+  two or more ticks one tick per part; the client still splits only past 50 ms (cl_pred.c), and the
+  trigger mirror tests the command's end (and the unpadded box, where the server pads a unit). At a thin
+  trigger such a client is corrected by the server. Fix shape: split the same way in CL_PredictUsercmdPart
+  when serverinfo `sv_tickparts` is 1.
+- **PreThink runs per part (P893)**, so the start-zone cap, run_pushlift and the story top-speed sample act
+  every tick for a split command, as they would at a full send rate. Intended; noted for whoever reads a
+  low-rate run's speeds.
+- **recsim's playback detection (tools/census/recsim.py)** cannot match a recording from before P893
+  against one after it for a low-rate player: one row a command against one a part.
+- **turnstats.py treats every `in` row as a move**, so fl 8 rows break up turn plateaus for low-rate
+  players. A classifier, no verdict.
+- **Boards mix runs from before and after P892 on 47 maps.** The new triggers (teleports, limits) change
+  routes; `entfile`-style, nothing in a recording says which set it was made under.
+- **The 6 named model-less triggers that never get a box** (surf_overgrowth2 teleport_stage1/4,
+  surf_simpsons2 zone_stage04_start_spy/nojump, surf_simpsons_source z4/z8) are re-created and stay
+  inert.
+- **A portal crossing inside a split command (P893).** The mover rotates pmove.angles on a crossing, and
+  PM_PlayerMove resets them from cmd.angles each call, so the server's later parts move with the command's
+  unrotated angles while the client's one prediction call keeps the rotation: a low-rate client on a
+  mover-portal map is corrected after crossing. No evidence effect (pm_verify replays each row's angles).
+  Fix shape: carry the rotation into later parts' movement without changing the angles the row records.
+- **P865's late stash (SV_LateStash) has P892's first weakness:** a tab separator and no unescape on
+  restore. Latent: 0 of 2,684 stashed entities in the census carry a tab, newline, quote or backslash.
+  Same fix as SV_ToolTrig's (char 31, raw outputs, SV_FieldUnescape), with its own arm.
+- **A `tickparts 1` header is not evidence that triggers were touched every tick (P893).** reccheck does
+  not check that a split file's rows span one tick each; writing `tickparts 0` is accepted too.
+- **The exempt-chain cap assumes gamespeed 1 (P893).** reccheck caps later parts at ceil(0.5 / tickrate);
+  at sv_gamespeed 1.5 a 500 ms usercmd makes 49 at 15 ms. gamespeed is off-ruleset anywhere else, but a
+  mode or per-map ruleset file may set it; then read it from `pmpin` into the cap.
+- **A run parked before the P893 deploy and resumed after it** writes fl 8 rows under a header with no
+  `tickparts 1`; SV_MsStale does not compare tickparts. Today only a note (resumed files are outside the
+  angle join); add tickparts to SV_MsStale before a reader joins across sessions.
+- **reccheck still raises on some hostile single tokens (pre-existing, review 7 of P893):** a sample
+  pitch/yaw of nan (angle_join's int(round())), an `in` angle of nan/inf or a float32-overflowing digit
+  string, a sample fl/keys of nan/inf, a header flags of inf, a non-numeric `end` field, a non-numeric
+  move in a v6-v8 `in` row. rcptcheck turns a raise into "not checked" notes; the CLI stops at the
+  file. No live path feeds a player's own file to these readers today. One hardening pass: every
+  float() of a file token through a finite-or-fault helper. Fuzz: rev893r7/fuzz.py (scratchpad).
+- **The exempt-row share is unbounded (P893):** a writer of the .rec alone can exempt 64 rows in 65 and
+  keep the angle verdict OK, since exempt rows leave the coverage denominator; only split_rows and
+  in_per_packet show it. A writer who also writes the .view beats the join anyway.
+
 ## Map entities 2 (P881, P882, P886, P890): what is left
 
-- **Limits are read once per command (P882; Lex: ship now, fix after).** QC tests the limit and
-  slide triggers where a command's move starts and the mover applies the result to every tick of
-  it, so a command of several ticks can enter a thin limit trigger partway without being limited
-  until the next; Momentum touches per tick. Detail (which maps) in a private note. Fix direction:
-  hand the triggers to the mover as physents with flags (P280's func_slide pattern) so it tests them
-  per tick and the `pe` digest pins them.
-- **34 limit/slide triggers on 8 maps never exist (P882).** Momentum's zone tool writes them
-  without a model and shapes them at OnMapSpawn (`AddOutput solid 2`, `mins`, `maxs`);
-  SV_MomTrigSpawn removes a model-less trigger and SV_IOAddOutput takes neither key. surf_greek
-  25, surf_aeron 4, surf_anoobis, surf_christmas2 (jump+crouch+bhop), surf_excavation,
-  surf_overgrowth, surf_parc_colore, surf_voyager -- mostly bhop limits at checkpoints. Falsifier:
-  `momlimit` dprints inside surf_greek's first checkpoint.
 - **A limit that changes writes a full `pm` row (P882).** momlimit/momcool/momslide are in the pin,
   so each change bumps pmepoch and the recorder writes the whole pin (~1.3 KB) where the line caps
   assume ~98 bytes a line; trigger_gravity's persist 0 has the same shape. A small per-row record or

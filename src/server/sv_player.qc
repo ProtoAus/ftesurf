@@ -1538,7 +1538,8 @@ void(string cmd) SV_ParseClientCommand =
 		if (self.run_sp_phase == 2)
 		{
 			if (cmdargc >= 4)
-				dprint(sprintf("spectate: %s eye claim ignored (countdown)\n", self.netname));
+				if (SV_DevOn())
+					dprint(sprintf("spectate: %s eye claim ignored (countdown)\n", self.netname));
 			return;
 		}
 		if (self.run_sp_phase)

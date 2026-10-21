@@ -328,8 +328,9 @@ void(entity e, string who) Account_Mark =
 		forceinfokey(e, "*phash", who);
 	else
 		forceinfokey(e, "*phash", "");  // not linked
-	dprint(sprintf("^5account:^7 client %g is marked '%s' on the board\n", num_for_edict(e),
-	              infokey(e, "*phash")));
+	if (SV_DevOn())
+		dprint(sprintf("^5account:^7 client %g is marked '%s' on the board\n", num_for_edict(e),
+		              infokey(e, "*phash")));
 };
 
 // surfd said which way it ranks.  The first word of a map re-marks everybody:

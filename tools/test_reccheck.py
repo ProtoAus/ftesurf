@@ -20,6 +20,7 @@ ever disagree, that disagreement is the finding.
 NOTHING HERE IS WRITTEN UNDER data/.  Everything lands in a temporary directory
 and is removed, so no synthetic file can be mistaken for a run somebody made.
 """
+import math
 import os
 import shutil
 import subprocess
@@ -876,7 +877,7 @@ def case_v9_seed():
 
 def case_v9_field_values():
     for lines, want, what in (
-            (row(build(), fl=8), "is outside 0..7", "'in' fl 8"),
+            (row(build(), fl=16), "is outside 0..15", "'in' fl 16"),
             (row(build(), fwd="450.5"), "non-integer", "'in' fwd 450.5"),
             (edit(build(**V9_ALL), "warp", 11, 2), "is not 0 or 1", "warp fl 2"),
             (edit(build(**V9_ALL), "pe", 3, 0x1000000), "24-bit", "pe crc 2^24"),
@@ -891,6 +892,7 @@ def case_v9_field_values():
         faults_with(lines, want, "%s is a fault" % what)
     notes_with(row(build(), fl=4), "never occur on a clean run",
                "'in' fl 4 is a note, not a fault")
+    ok_clean(row(build(), fl=8), "'in' fl 8 (a later part of a split usercmd, Patch 893) passes")
 
 
 def case_v8_as_before():
@@ -1720,6 +1722,121 @@ def case_angle_one_frame_rule():
           "a 0.5 deg rotation is caught on the ticks that held one frame")
     if not f:
         print("        NO FAULT")
+
+
+def case_split_part_rows_are_not_joined():
+    """Patch 893: the server runs a usercmd of several ticks one tick per part, and a later part's
+    row (fl 8) carries the COMMAND's angles at a tick where the client drew a later frame.  The
+    one-frame rule must skip those rows -- and the same rows without the bit must fault, or the bit
+    is not what passes them."""
+    L = build(sweep=128, packets=400)
+    view = view_for(L)
+
+    def split(bit, keep="", step=1, header=True):
+        # A later part repeats its usercmd (packet, moves, angles, buttons) one tick on; `keep` names
+        # what the forged row keeps of its own instead ("angles" -- the fixture turns every row -- or
+        # "packet").
+        out, prev, k = [], None, 0
+        for l in L:
+            if header and l == "begin":
+                out.append("tickparts 1")
+            if l.startswith("in "):
+                f = l.split()
+                if prev is not None:
+                    k += 1
+                    if k % 2 == 0:
+                        own = f[:]
+                        f[1] = prev[1]
+                        f[4:11] = prev[4:11]
+                        if keep == "angles":
+                            f[7:10] = own[7:10]
+                            f[8] = "%.4f" % (float(own[8]) + 5.0)   # and off its frames: joined, it faults
+                        elif keep == "packet":
+                            f[1] = own[1]
+                        f[2] = str(int(prev[2]) + step)
+                        f[11] = str(int(f[11]) | bit)
+                        l = " ".join(f)
+                prev = f
+            out.append(l)
+        return out
+
+    def joined(f):
+        return any("not this recording" in x or "does not describe" in x for x in f)
+
+    f, n = run(split(8), view=view)
+    check(not joined(f), "a later part's row (fl 8) with the command's angles is not joined to its tick's frame")
+    if f:
+        print("        %s" % f)
+    check(not any("not a split's later part" in x for x in n), "...and draws no note")
+    for what, kw in (("whose angles differ from the row before and its frames", dict(keep="angles")),
+                     ("whose packet differs from the row before", dict(keep="packet")),
+                     ("two ticks after the row before", dict(step=2)),
+                     ("in a file without `tickparts 1`", dict(header=False))):
+        f, n = run(split(8, **kw), view=view)
+        check(joined(f) and any("not a split's later part" in x for x in n),
+              "an fl 8 row %s is joined (and faults) and is noted" % what)
+    f, _ = run(split(0), view=view)
+    check(joined(f), "...and the same rows without fl 8 are a fault (the control)")
+
+    def chain(length, at=100):
+        # One usercmd's later parts: rows at+1 .. at+length repeat row `at` one tick apart.
+        out, rows, head = [], 0, None
+        for l in L:
+            if l == "begin":
+                out.append("tickparts 1")
+            if l.startswith("in "):
+                f = l.split()
+                if rows == at:
+                    head = f
+                elif head is not None and at < rows <= at + length:
+                    f[1] = head[1]
+                    f[4:11] = head[4:11]
+                    f[2] = str(int(head[2]) + rows - at)
+                    f[11] = str(int(f[11]) | 8)
+                    l = " ".join(f)
+                rows += 1
+            out.append(l)
+        return out
+
+    # A hostile header rate must fault, not raise: the cap divides by it (reviews 5 and 6).
+    def header(L2, key, val):
+        return [("%s %s" % (key, val)) if l.startswith(key + " ") else l for l in L2]
+    for bad, says in (("nan", "is not a usable rate"), ("inf", "is not a usable rate"),
+                      ("1e-320", "is not a usable rate"), ("1e308", "is not a usable rate"),
+                      ("abc", "is not positive")):
+        try:
+            f, _ = run(header(chain(5), "tickrate", bad), view=view)
+            check(any(x.startswith("tickrate ") and says in x for x in f),
+                  "a header tickrate of %s is a fault (%s), not a crash" % (bad, says))
+        except Exception as ex:          # noqa: BLE001 -- the finding is that it raised
+            check(False, "a header tickrate of %s is a fault, not a crash (raised %s)" % (bad, type(ex).__name__))
+    f, _ = run(header(chain(5), "movetickrate", "abc"), view=view)
+    check(any("movetickrate 'abc' is not a number" in x for x in f), "a non-number movetickrate is a fault")
+    # A sample time no run tick can hold (a file with no `in` rows reads its angles off the samples).
+    Ls = build(inputs=False, instart=False, inend=False)
+    k = next(i for i, l in enumerate(Ls) if l[:1].isdigit() and not l.startswith("-") and float(l.split()[0]) >= 0)
+    Ls[k] = "1e12" + Ls[k][len(Ls[k].split()[0]):]
+    try:
+        f, _ = run(Ls)
+        check(any("cannot be a run tick" in x for x in f), "a sample at 1e12 s is a fault, not a crash")
+    except Exception as ex:              # noqa: BLE001
+        check(False, "a sample at 1e12 s is a fault, not a crash (raised %s)" % type(ex).__name__)
+
+    # The cap does not rise with a forged rate: at 1 ms a chain of 100 still passes the 128 Hz cap of 64.
+    Lf = header(header(chain(100), "tickrate", "0.001"), "movetickrate", "0.001")
+    f, n = run(Lf, view=view)
+    check(any(x.startswith("36 'in' row(s) flagged fl 8 are not") for x in n),
+          "a header rate of 1 ms does not lift the chain cap past 64")
+
+    cap = math.ceil(0.5 / TICK)
+    f, n = run(chain(cap), view=view)
+    check(not any("not a split's later part" in x for x in n),
+          "a chain of %d later parts (one 500 ms usercmd) is a split" % cap)
+    f, n = run(chain(cap + 1), view=view)
+    check(any(x.startswith("1 'in' row(s) flagged fl 8 are not") for x in n),
+          "...and the row past it is joined and noted")
+    f, _ = run(insert_before(build(), "inend", "in 0 0 0 0 0 0 0 0 0 0 16"))
+    check(any("fl 16 is outside 0..15" in x for x in f), "fl 16 is still outside the grammar")
 
 
 def case_angle_one_frame_rule_reaches_a_still_camera():
@@ -3073,6 +3190,7 @@ def main():
                case_below_horizon, case_carry_bound, case_button_width,
                case_instart_ordering, case_resume_is_not_a_fault,
                case_offgrid_angle_is_a_note, case_v9_offgrid_angle_is_a_fault,
+               case_split_part_rows_are_not_joined,
                case_v5_trailer_still_four_fields,
                case_v6_trailer_still_five_fields,
                case_warp_shape, case_warp_count, case_warp_below_horizon,

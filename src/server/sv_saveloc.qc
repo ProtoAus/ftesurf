@@ -469,10 +469,12 @@ float(entity e, float r) SL_RowGrounded =
 	  TWO LINES, because seven of the eight varargs slots is as close to the cap as
 	  this tree goes and fteqcc drops the ninth SILENTLY.
 	*/
-	dprint(sprintf("save: row %g support %g at z %.4f (emb %g frac %.3f nz %.3f)\n",
-	               r, ok, o_z, emb, trace_fraction, trace_plane_normal_z));
+	if (SV_DevOn())
+		dprint(sprintf("save: row %g support %g at z %.4f (emb %g frac %.3f nz %.3f)\n",
+		               r, ok, o_z, emb, trace_fraction, trace_plane_normal_z));
 	if (q > 0)
-		dprint(sprintf("save: row %g quadrants %g of 4\n", r, q));
+		if (SV_DevOn())
+			dprint(sprintf("save: row %g quadrants %g of 4\n", r, q));
 	return ok;
 };
 .vector rec_sl_curorg;           // Patch 430: STAT_FS_SLORG, the cursor row, SV_SaveLocSync
@@ -542,7 +544,8 @@ float(entity p) SV_MapMoveHeld =
 {
 	if (!(p.run_pmhold || p.rec_wt_hold || p.rec_sl_hold || p.run_ms_phase))
 		return FALSE;
-	dprint(sprintf("map move: %s is held, skipped\n", p.netname));
+	if (SV_DevOn())
+		dprint(sprintf("map move: %s is held, skipped\n", p.netname));
 	return TRUE;
 };
 .float rec_wt_pin;               // Patch 477: STAT_FS_PIN -- the rewind's open serial while its pin is held, -serial once refused or let go, else 0
@@ -644,7 +647,8 @@ void(string p) SL_Adopt =
 	if (!Lobby_Active())
 		return;
 	frename(p, p);
-	dprint(sprintf("saveloc: adopted %s\n", p));
+	if (SV_DevOn())
+		dprint(sprintf("saveloc: adopted %s\n", p));
 };
 string() SL_GenPath = { return strcat(sl_root, "/gen.txt"); };
 
@@ -1695,8 +1699,9 @@ void(entity e) SV_SaveLoadLatch =
 	}
 	else
 		e.run_t_pbad = 0;
-	dprint(sprintf("timer: a load's latches: profile %g ruleset %g%s\n", e.run_t_pbad, e.run_t_rbreach,
-	               e.run_t_pev ? "" : " (no report since serverdata)"));
+	if (SV_DevOn())
+		dprint(sprintf("timer: a load's latches: profile %g ruleset %g%s\n", e.run_t_pbad, e.run_t_rbreach,
+		               e.run_t_pev ? "" : " (no report since serverdata)"));
 };
 
 float(entity e, float id, float retry) SV_SaveApplyState =
@@ -4792,14 +4797,16 @@ void(entity e) SV_SpecStat =
 void(entity e, string why) SV_SpecEyeServer =
 {
 	if (e.run_sp_eyeat)
-		dprint(sprintf("spectate: %s eye -> server (%s)\n", e.netname, why));
+		if (SV_DevOn())
+			dprint(sprintf("spectate: %s eye -> server (%s)\n", e.netname, why));
 	e.run_sp_eyeat = 0;
 };
 
 void(entity e) SV_SpecEyeClient =
 {
 	if (!e.run_sp_eyeat)
-		dprint(sprintf("spectate: %s eye -> client\n", e.netname));
+		if (SV_DevOn())
+			dprint(sprintf("spectate: %s eye -> client\n", e.netname));
 	e.run_sp_eyeat = time;
 };
 
@@ -4983,8 +4990,9 @@ void(entity e, float n) SV_SpecStart =
 
 	e.run_sp_trig = intrig;
 	if (intrig)
-		dprint(sprintf("spectate: %s held inside a trigger (touch %g, pending %g)\n", e.netname,
-		               (e.run_trig_pkn >= e.run_pkn && e.run_trig_pkn) ? 1 : 0, pend));
+		if (SV_DevOn())
+			dprint(sprintf("spectate: %s held inside a trigger (touch %g, pending %g)\n", e.netname,
+			               (e.run_trig_pkn >= e.run_pkn && e.run_trig_pkn) ? 1 : 0, pend));
 
 	e.run_sp_org  = e.origin;
 	e.run_sp_vel  = e.velocity;
@@ -5082,8 +5090,9 @@ void(entity e, string why) SV_SpecRelease =
 	e.run_sp_stat = 0;
 	e.run_t_flags = e.run_t_flags - (e.run_t_flags & TF_FROZEN);
 	SV_ViewEyeDetach(e);
-	dprint(sprintf("spectate: %s released (%s) after %.3f s%s\n", e.netname, why,
-	               time - e.run_sp_t0, (rb != "") ? strcat(", rolled back:", rb) : ""));
+	if (SV_DevOn())
+		dprint(sprintf("spectate: %s released (%s) after %.3f s%s\n", e.netname, why,
+		               time - e.run_sp_t0, (rb != "") ? strcat(", rolled back:", rb) : ""));
 };
 
 // Once per packet from the held PlayerPostThink.
@@ -5140,7 +5149,8 @@ void(entity e) SV_SpecNudge =
 	SV_TimerCheat(e);
 	e.run_t_handcarry = e.run_t_handcarry | TF_CHEAT;
 	setorigin(e, e.origin + '0 16 0');
-	dprint(sprintf("spectate: %s nudged to %v\n", e.netname, e.origin));
+	if (SV_DevOn())
+		dprint(sprintf("spectate: %s nudged to %v\n", e.netname, e.origin));
 };
 
 // ClientConnect: the edict may be a recycled one.  Nothing is written.

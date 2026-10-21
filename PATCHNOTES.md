@@ -43,6 +43,17 @@
 - Windows made of several glass layers, such as bhop_eazy's, no longer break into patches or swap tints when seen at an angle: panes are drawn back to front by which side of each pane you are on.
 - Graphics menu: the Glass option "Dithered" now reads "Dithered if textured". Glass without a texture of its own, which is most glass (surf_boreas's ice included), has always drawn as Translucent in that mode.
 
+### P897 Quieter console in your own games
+- Debug lines from map triggers, runs, saves and spectating no longer fill the console in your own games, such as surf_boreas's spinning symbols; developer 1 shows them again.
+
+### P893 Zones and triggers checked every tick
+- The server checks triggers and zones on every tick, as Source does: sending fewer, longer updates no longer lets you pass through a thin zone or fail plate.
+
+### P892 Triggers from Momentum's zone tool
+- 195 triggers that Momentum's zone tool adds to maps now exist on 47 maps: 133 teleports on 30 maps catch falls that went nowhere, and surf_greek's 25 checkpoint no-bhop zones work.
+- Zone-tool checkpoint triggers with actions, such as surf_cannonball's, now carry them out (21 on 13 maps).
+- Triggers behind a Momentum surface filter this game does not support yet stay off, so surf_reverie does not reset everyone.
+
 ### P896 Every KSF recording, three times faster
 - KSF recordings now arrive three times faster, including those of older KSF times imported before recordings were linked.
 - A broken file on KSF's side no longer holds up everyone else's recordings.

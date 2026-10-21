@@ -9,6 +9,23 @@
 ===========================================================================
 */
 
+// P675's command context, published per usercmd part by the engine: the warp ops (sv_warpop.qc) and
+// the recorder's split-part flag (Patch 893, SV_TimerInFrame) read it.
+float input_cmd_kind;
+float input_cmd_sequence_lo;
+float input_cmd_sequence_hi;
+__used float input_cmd_msec;     // all six or the engine exports none
+__used float input_cmd_piece_msec;
+__used float input_cmd_offset_msec;
+// Patch 897: server QC's dprint is builtin 25, which QW progs get as an unconditional print
+// (pr_cmds.c), so a play-time line reached an offline player's console at developer 0.  Those
+// lines print through this: developer (or log_developer) on, or a lobby, whose log is read.
+float() SV_DevOn = { return cvar("developer") || cvar("log_developer") || cvar("lobby_enable"); };
+
+// Patch 893: declaring this is what lets the engine split a usercmd one tick per part; it is 1
+// during a later part's PreThink, whatever the command's kind (a budget-trimmed one is split too).
+__used float input_cmd_later;
+
 /*
   FORWARD DECLARATIONS, because sv_progs.src compiles this file FIRST.
 
@@ -473,6 +490,8 @@ float  vbsp_io_over_map;	// refused by the map-wide ceiling
 .float  vbsp_io_rawn;		// how many are in it -- see VBSP_IO_MAXRAW
 .entity vbsp_io_out;		// head of this entity's output list
 .float  vbsp_io_solid;	// .solid as spawned, so Enable can put it BACK
+.float  vbsp_tooltrig;	// Patch 892: a model-less trigger kept for AddOutput mins/maxs (SV_ToolTrig)
+.float  vbsp_toolshape;	// ...the box keys it has taken: 1 mins, 2 maxs
 .float  vbsp_slide_skin;	// Patch 280: a func_slide's tag, worn on .skin only while solid
 
 // On an vbsp_output entity.  .owner is the source entity.
@@ -1587,6 +1606,8 @@ float(entity f, entity act) SV_VelocityFilter =
   31 inputs in the library).
 */
 strbuf vbsp_late_buf;
+float  vbsp_late_respawn;       // Patch 892: SV_LateSpawnAll is running a stashed tool trigger's spawn
+strbuf vbsp_late_tool;          // ...and the stash (SV_ToolTrig)
 
 // Unset at spawn.  A string "0" is a value: snapvelocitytodestangles "0" and an
 // absent key read differently (SV_KeyTri).
@@ -1604,6 +1625,28 @@ string(float fld, entity e) SV_FieldComp =
 	local string v;
 	v = getentityfieldstring(fld, e);
 	return (v == "") ? "0" : v;
+};
+
+// getentityfieldstring escapes a string's newline, quote and backslash; putentityfieldstring keeps its
+// argument as given (QCGC: PR_AllocTempString, not ED_NewString), so a stash undoes the escape itself.
+string(string s) SV_FieldUnescape =
+{
+	local float i, j;
+	local string o, c;
+
+	i = strstrofs(s, "\\", 0);
+	if (i < 0)
+		return s;
+	o = "";
+	j = 0;
+	while (i >= 0)
+	{
+		c = substring(s, i + 1, 1);
+		o = strcat(o, substring(s, j, i - j), c == "n" ? "\n" : c);
+		j = i + 2;
+		i = strstrofs(s, "\\", j);
+	}
+	return strcat(o, substring(s, j, -1));
 };
 
 string(float fld, entity e) SV_FieldStr =
@@ -1656,6 +1699,51 @@ void() SV_LateSpawnAll =
 	for (e = nextent(world); e; e = nextent(e))
 		last = num_for_edict(e);
 	dprint(sprintf("lump: last edict #%g\n", last));
+
+	// Patch 892: the zone-tool triggers SV_ToolTrig stashed, through their own spawn functions.
+	if (vbsp_late_tool > 0)
+	{
+		local entity oself;
+		n = buf_getsize(vbsp_late_tool);
+		for (i = 0; i < n; i = i + 1)
+		{
+			e = spawn();
+			ntok = tokenizebyseparator(bufstr_get(vbsp_late_tool, i), chr2str(31));
+			for (j = 0; j + 1 < ntok; j = j + 2)
+			{
+				if (argv(j) == "vbsp_io_raw")
+				{
+					e.vbsp_io_raw = argv(j + 1);
+					continue;
+				}
+				fld = findentityfield(argv(j));
+				if (fld)
+					putentityfieldstring(fld, e, entityfieldtype(fld) == EV_STRING ? SV_FieldUnescape(argv(j + 1)) : argv(j + 1));
+			}
+			if (!isfunction(e.classname))
+			{
+				remove(e);
+				continue;
+			}
+			ntok = 0;
+			j = strstrofs(e.vbsp_io_raw, "\n", 0);
+			while (j >= 0)
+			{
+				ntok = ntok + 1;
+				j = strstrofs(e.vbsp_io_raw, "\n", j + 1);
+			}
+			dprint(sprintf("late tool %s '%s': %g outputs\n", e.classname, e.targetname, ntok));
+			oself = self;
+			self = e;
+			vbsp_late_respawn = TRUE;
+			callfunction(e.classname);
+			vbsp_late_respawn = FALSE;
+			self = oself;
+		}
+		dprint(sprintf("late spawn: %g zone-tool triggers re-created after the lump\n", n));
+		buf_del(vbsp_late_tool);
+		vbsp_late_tool = 0;
+	}
 
 	if (vbsp_late_buf <= 0)
 		return;
@@ -1840,6 +1928,31 @@ float(entity f, entity act) SV_FilterPasses =
 	return SV_FilterPassesD(f, act, 0);
 };
 
+// Patch 892: whether SV_FilterPassesD evaluates this filter (and every filter_multi child), rather
+// than failing open.  A zone-tool box behind one it cannot is left inert: open, it fires on everyone.
+float(entity f, float depth) SV_FilterKnownD =
+{
+	local float i;
+	local string nm;
+
+	if (!f || depth > 4)
+		return FALSE;
+	if (f.classname == "filter_multi")
+	{
+		for (i = 1; i <= 8; i = i + 1)
+		{
+			nm = SV_MultiSub(f, i);
+			if (nm != "")
+			if (!SV_FilterKnownD(SV_FindByName(nm, world), depth + 1))
+				return FALSE;
+		}
+		return TRUE;
+	}
+	return (f.classname == "filter_activator_name" || f.classname == "filter_activator_team" ||
+	        f.classname == "filter_activator_class" || f.classname == "filter_velocity" ||
+	        f.classname == "filter_momentum_progress");
+};
+
 float(entity trig, entity act) SV_PassesFilter =
 {
 	local entity f;
@@ -1975,7 +2088,8 @@ void(entity t, string who, entity act) SV_PointTeleport =
 
 	if (SV_MapMoveHeld(p))
 		return;
-	dprint(sprintf("point_teleport %s: %s to %v\n", t.targetname, p.netname, t.origin));
+	if (SV_DevOn())
+		dprint(sprintf("point_teleport %s: %s to %v\n", t.targetname, p.netname, t.origin));
 	SV_PlacePlayer(p, t.origin);
 	// Absent is Source's own point_teleport (pointteleport.cpp:143 Teleport with the
 	// entity's angles); the Momentum FGD's key, when written, decides.
@@ -2038,7 +2152,8 @@ float(entity t, entity act, string then) SV_BreakableBreakThen =
 		return FALSE;
 	}
 	t.vbsp_brk = 0;
-	dprint(sprintf("break: %s %s\n", t.classname, t.model));
+	if (SV_DevOn())
+		dprint(sprintf("break: %s %s\n", t.classname, t.model));
 	SV_FireOutput(t, "OnBreak", act);
 	if (then != "" && !wasfreed(t))
 		SV_FireOutput(t, then, act);
@@ -2096,10 +2211,43 @@ void(entity t, string param) SV_IOAddOutput =
 		if (t.classname == "player")
 		{
 			t.run_srcclass = v;
-			dprint(sprintf("addoutput: %s classname %s\n", t.netname, v));
+			if (SV_DevOn())
+				dprint(sprintf("addoutput: %s classname %s\n", t.netname, v));
 		}
 		return;
 	}
+	// Patch 892: a zone-tool trigger's box and solid (SV_ToolTrig); every other entity ignores them.
+	// On a lobby a box takes its shape once (map edits are held there).
+	if (t.vbsp_tooltrig)
+	if (k == "mins" || k == "maxs" || k == "solid")
+	{
+		if (t.vbsp_toolshape == 3 && !vbsp_mapedit_ok)
+			return;
+		if (t.filtername != "" && !SV_FilterKnownD(SV_FindByName(t.filtername, world), 0))
+		{
+			if (t.vbsp_io_solid != SOLID_NOT)
+				dprint(sprintf("tooltrig %s '%s': filter '%s' is not one this game evaluates -- inert\n",
+				               t.classname, t.targetname, t.filtername));
+			t.vbsp_io_solid = t.solid = SOLID_NOT;
+			setorigin(t, t.origin);
+			return;
+		}
+		if (k == "mins" || k == "maxs")
+		{
+			if (k == "mins")
+				setsize(t, stov(v), t.maxs);
+			else
+				setsize(t, t.mins, stov(v));
+			t.vbsp_toolshape = t.vbsp_toolshape | ((k == "mins") ? 1 : 2);
+			setorigin(t, t.origin);
+			dprint(sprintf("tooltrig %s '%s': %v .. %v\n", t.classname, t.targetname, t.mins, t.maxs));
+			return;
+		}
+		t.solid = (stof(v) && !SV_Key2(t.StartDisabled, t.startdisabled)) ? t.vbsp_io_solid : SOLID_NOT;
+		setorigin(t, t.origin);
+		return;
+	}
+
 	// Patch 870: game_text's text (190 outputs on 8 maps).
 	if (k == "message")
 	{
@@ -2376,6 +2524,8 @@ void(entity t, float on) SV_IOEnable =
 	{
 		if (t.model != "" && substring(t.model, 0, 1) == "*")
 			t.solid = t.vbsp_io_solid ? t.vbsp_io_solid : SOLID_BSP;
+		else if (t.vbsp_tooltrig)
+			t.solid = t.vbsp_io_solid;	// Patch 892: a zone-tool box (SOLID_NOT behind an unknown filter)
 		if (t.vbsp_sp_kind && t.solid != SOLID_NOT)
 			SV_SpDrop(t);				// Patch 860: never solid while moving
 		t.effects = t.effects - (t.effects & EF_NODRAW);
@@ -6075,7 +6225,8 @@ void() trigger_teleport_touch =
 		dest = find(world, targetname, self.target);
 	if (!dest)
 	{
-		dprint(sprintf("trigger_teleport: no destination '%s'\n", self.target));
+		if (SV_DevOn())
+			dprint(sprintf("trigger_teleport: no destination '%s'\n", self.target));
 		return;
 	}
 
@@ -6294,21 +6445,87 @@ void() SV_BindInvisibleBrush =
 	self.effects = self.effects | EF_NODRAW;
 };
 
+/*
+  Patch 892: Momentum's zone tool writes triggers with no brush and shapes them at map spawn --
+  a logic_auto's OnMapSpawn AddOutput "solid 2", then "mins ..." and "maxs ..." (169 on 47 maps:
+  133 teleports, 34 limitmovement, 19 multiples, 3 Momentum teleports, a push).  A named one is
+  kept, not solid, until SV_IOAddOutput gives it a box; an unnamed one can never be shaped.
+*/
+/*
+  0: not a zone-tool trigger (the caller frees it).  2: one, stashed whole and freed here, so its
+  slot goes back as before Patch 892 and no later edict renumbers (the physent digest numbers
+  them, Patch 865); SV_LateSpawnAll re-creates it after the lump, before the outputs are wired and
+  OnMapSpawn fires.  1: that late pass -- keep it.
+*/
+float() SV_ToolTrig =
+{
+	local float fld, n, ty;
+	local string rec, nm, val, sfx;
+
+	if (self.model != "" || self.targetname == "")
+		return 0;
+	if (vbsp_late_respawn)
+	{
+		self.vbsp_tooltrig = TRUE;
+		self.movetype = MOVETYPE_NONE;
+		setorigin(self, self.origin);
+		return 1;
+	}
+	// Everything the parse set: at spawn nothing else is, so the set fields are the keyvalues.
+	// .vbsp_io_raw, the outputs, goes last and raw: its tabs and newlines rule those out as the
+	// separator, and getentityfieldstring's 4 KB line would cut a long one.
+	rec = strcat("classname", chr2str(31), self.classname);
+	n = numentityfields();
+	for (fld = 1; fld < n; fld = fld + 1)
+	{
+		ty = entityfieldtype(fld);
+		if (ty != EV_STRING && ty != EV_FLOAT && ty != EV_VECTOR)
+			continue;
+		nm = entityfieldname(fld);
+		sfx = substring(nm, strlen(nm) - 2, 2);
+		if (nm == "classname" || nm == "vbsp_io_raw" || sfx == "_x" || sfx == "_y" || sfx == "_z")
+			continue;
+		val = SV_FieldStr(fld, self);
+		if (!SV_LateIsUnset(fld, val))
+			rec = strcat(rec, chr2str(31), nm, chr2str(31), val);
+	}
+	if (self.vbsp_io_raw != "")
+		rec = strcat(rec, chr2str(31), "vbsp_io_raw", chr2str(31), self.vbsp_io_raw);
+	if (vbsp_late_tool <= 0)
+		vbsp_late_tool = buf_create();
+	bufstr_add(vbsp_late_tool, rec, TRUE);
+	remove(self);
+	return 2;
+};
+
+// A trigger's solid as spawned; a tool trigger's waits for AddOutput's box.  A box is SOLID_TRIGGER:
+// the touch pass clips a model-less SOLID_BSPTRIGGER with MASK_WORLDSOLID, which a box never
+// matches, so it would never touch (measured); SOLID_TRIGGER is its padded bounds, a unit or two early.
+void() SV_TrigSolid =
+{
+	self.vbsp_io_solid = self.vbsp_tooltrig ? SOLID_TRIGGER : SOLID_BSPTRIGGER;
+	self.solid = self.vbsp_tooltrig ? SOLID_NOT : SOLID_BSPTRIGGER;
+};
+
 void() trigger_teleport =
 {
-	if (!self.model)
+	local float tt;
+
+	tt = self.model ? 1 : SV_ToolTrig();
+	if (tt != 1)
 	{
-		remove(self);
+		if (!tt)
+			remove(self);
 		return;
 	}
-	SV_BindInvisibleBrush();
+	if (!self.vbsp_tooltrig)
+		SV_BindInvisibleBrush();
 	self.movetype = MOVETYPE_NONE;
-	self.solid = SOLID_BSPTRIGGER;
 	self.touch = trigger_teleport_touch;
 
 	// Build 37: remembered so Enable restores a TRIGGER rather than a wall,
 	// and counted so a map full of disabled teleports says so at load.
-	self.vbsp_io_solid = SOLID_BSPTRIGGER;
+	SV_TrigSolid();
 	if (SV_Key2(self.StartDisabled, self.startdisabled))
 		vbsp_tele_disabled_n = vbsp_tele_disabled_n + 1;
 };
@@ -6336,7 +6553,8 @@ void() trigger_gravity_touch =
 	SV_TriggerIOTouch(self, other);
 
 	if (other.gravity != self.gravity)
-		dprint(sprintf("trigger_gravity %s: gravity %g persist '%s'\n", self.model, self.gravity, self.persist));
+		if (SV_DevOn())
+			dprint(sprintf("trigger_gravity %s: gravity %g persist '%s'\n", self.model, self.gravity, self.persist));
 	other.gravity = self.gravity;
 	if (self.persist != "" && !stof(self.persist))
 	{
@@ -6355,7 +6573,8 @@ void(entity p) SV_GravityFrame =
 		return;
 	if (!p.vbsp_grav_touch)
 	{
-		dprint(sprintf("trigger_gravity %s: left, gravity restored\n", p.vbsp_grav_trig.model));
+		if (SV_DevOn())
+			dprint(sprintf("trigger_gravity %s: left, gravity restored\n", p.vbsp_grav_trig.model));
 		p.gravity = 0;
 		p.vbsp_grav_trig = world;
 	}
@@ -6430,7 +6649,8 @@ void() trigger_teleport_relative_touch =
 		if (!trace_startsolid && !trace_allsolid)
 		{
 			p = p + '0 0 1';
-			dprint(sprintf("telerel: %s lifted 1 at %v\n", other.netname, p));
+			if (SV_DevOn())
+				dprint(sprintf("telerel: %s lifted 1 at %v\n", other.netname, p));
 		}
 	}
 	setorigin(other, p);
@@ -6970,9 +7190,13 @@ void() trigger_push_touch =
 
 void() trigger_push =
 {
-	if (!self.model)
+	local float tt;
+
+	tt = self.model ? 1 : SV_ToolTrig();
+	if (tt != 1)
 	{
-		remove(self);
+		if (!tt)
+			remove(self);
 		return;
 	}
 	/*
@@ -6987,11 +7211,13 @@ void() trigger_push =
 	  CTriggerPush::Spawn applies 100 when the key is absent, and an already
 	  compiled map that omitted the key is asking for the code default.
 	*/
-	SV_BindInvisibleBrush();
+	if (!self.vbsp_tooltrig)
+		SV_BindInvisibleBrush();
 	self.movetype = MOVETYPE_NONE;
-	self.solid = SOLID_BSPTRIGGER;
+	SV_TrigSolid();
 	self.touch = trigger_push_touch;
-	if (!(self.spawnflags & SF_PUSH_ONCE))
+	// The client matches this state by brush model; a tool push has none, so it is not sent.
+	if (!(self.spawnflags & SF_PUSH_ONCE) && !self.vbsp_tooltrig)
 	{
 		self.SendEntity = SV_TrigStateSend;
 		self.SendFlags = 1;
@@ -7010,7 +7236,8 @@ void() trigger_push =
 	  vbsp_io_solid is what lets SV_IOEnable put it BACK as a trigger rather
 	  than flattening it to SOLID_BSP, which would turn a booster into a wall.
 	*/
-	self.vbsp_io_solid = SOLID_BSPTRIGGER;
+	if (!self.vbsp_tooltrig)
+		self.vbsp_io_solid = SOLID_BSPTRIGGER;
 	if (SV_Key2(self.StartDisabled, self.startdisabled))
 		self.solid = SOLID_NOT;
 };
@@ -7413,15 +7640,19 @@ float() SV_MomTrigGate =
 // the map's numbering is what it was.  FALSE: no brush, freed.
 float() SV_MomTrigSpawn =
 {
-	if (!self.model)
+	local float tt;
+
+	tt = self.model ? 1 : SV_ToolTrig();
+	if (tt != 1)
 	{
-		remove(self);
+		if (!tt)
+			remove(self);
 		return FALSE;
 	}
-	SV_BindInvisibleBrush();
+	if (!self.vbsp_tooltrig)
+		SV_BindInvisibleBrush();
 	self.movetype = MOVETYPE_NONE;
-	self.solid = SOLID_BSPTRIGGER;
-	self.vbsp_io_solid = SOLID_BSPTRIGGER;
+	SV_TrigSolid();
 	setorigin(self, self.origin);   // relink as a trigger: setmodel linked it SOLID_NOT
 	return TRUE;
 };
@@ -7565,7 +7796,8 @@ void(entity p, entity t, vector org, vector dang) SV_MomTeleportTo =
 		makevectors(dang);
 		p.velocity = v_forward * spd;
 	}
-	dprint(sprintf("momtrigger %s %s: teleport to %v mode %g\n", t.classname, t.model, org, vm));
+	if (SV_DevOn())
+		dprint(sprintf("momtrigger %s %s: teleport to %v mode %g\n", t.classname, t.model, org, vm));
 	SV_PlacePlayer(p, org + '0 0 1');
 	if (SV_KeyTri(t.resetang, "") != 0 || vm == 3)
 	{
@@ -7621,7 +7853,8 @@ void() trigger_momentum_progress_touch =
 	if (!SV_TouchEntered(self, other))
 		return;
 	SV_FireOutput(self, "OnResetOnehops", other);
-	dprint(sprintf("momtrigger progress %s: number %g\n", self.model, self.progress_number));
+	if (SV_DevOn())
+		dprint(sprintf("momtrigger progress %s: number %g\n", self.model, self.progress_number));
 	other.run_progtrig = self;
 	other.run_prognum = self.progress_number;
 	SV_OnehopsClear(other);
@@ -7728,7 +7961,8 @@ void() trigger_momentum_onehop_touch =
 		if (e.spawnflags & SF_TELEPORT_RESET_ONEHOP)
 			e.vbsp_onehop = e.vbsp_onehop & ~bit;
 	self.vbsp_onehop = self.vbsp_onehop | bit;
-	dprint(sprintf("momtrigger onehop %s: first landing\n", self.model));
+	if (SV_DevOn())
+		dprint(sprintf("momtrigger onehop %s: first landing\n", self.model));
 	if (!self.vbsp_onehop_fired)
 	{
 		self.vbsp_onehop_fired = TRUE;
@@ -7787,7 +8021,8 @@ void() trigger_momentum_reversespeed_touch =
 		v = [-v_x, -v_y, v_z];
 	if (SV_Key2(self.ReverseVertical, self.reversevertical))
 		v_z = -v_z;
-	dprint(sprintf("momtrigger reversespeed %s: %v -> %v\n", self.model, other.velocity, v));
+	if (SV_DevOn())
+		dprint(sprintf("momtrigger reversespeed %s: %v -> %v\n", self.model, other.velocity, v));
 	SV_MomSetVelocity(other, v, "reverse");
 };
 void() trigger_momentum_reversespeed = { if (SV_MomTrigSpawn()) self.touch = trigger_momentum_reversespeed_touch; };
@@ -7842,7 +8077,7 @@ float(entity t, entity p) SV_MomLimitTouches =
 	local entity was;
 	local float hit;
 
-	if (t.solid != SOLID_BSPTRIGGER || SV_Key2(t.StartDisabled, t.startdisabled))
+	if ((t.solid != SOLID_BSPTRIGGER && t.solid != SOLID_TRIGGER) || SV_Key2(t.StartDisabled, t.startdisabled))
 		return FALSE;
 	if (p.absmin_x > t.absmax_x || p.absmin_y > t.absmax_y || p.absmin_z > t.absmax_z ||
 	    p.absmax_x < t.absmin_x || p.absmax_y < t.absmin_y || p.absmax_z < t.absmin_z)
@@ -7910,7 +8145,8 @@ void(entity p) SV_MomLimitFrame =
 	if (!(lim & 64))
 		cool = 0;
 	if (p.run_momlimit != lim || p.run_momslide != slide || p.run_momcool != cool)
-		dprint(sprintf("momlimit %s: limit %g slide %g cool %g\n", p.netname, lim, slide, cool));
+		if (SV_DevOn())
+			dprint(sprintf("momlimit %s: limit %g slide %g cool %g\n", p.netname, lim, slide, cool));
 	p.run_momlimit = lim;
 	p.run_momslide = slide;
 	p.run_momcool = cool;
@@ -7944,14 +8180,16 @@ void(entity t, entity p, float k, float now, float was) SV_UserInputKey =
 	b = pow(2, k);		// SV_UserKeys' bit for Momentum's key number
 	if ((now & b) && !(was & b))
 	{
-		dprint(sprintf("userinput %s: key %g pressed\n", t.model, k));
+		if (SV_DevOn())
+			dprint(sprintf("userinput %s: key %g pressed\n", t.model, k));
 		SV_FireOutput(t, "OnKeyPressed", p);
 	}
 	if (now & b)
 		SV_FireOutput(t, "OnKeyHeld", p);
 	if (!(now & b) && (was & b))
 	{
-		dprint(sprintf("userinput %s: key %g released\n", t.model, k));
+		if (SV_DevOn())
+			dprint(sprintf("userinput %s: key %g released\n", t.model, k));
 		SV_FireOutput(t, "OnKeyReleased", p);
 	}
 };
@@ -8084,7 +8322,8 @@ void() trigger_catapult_touch =
 		v = SV_CatapultAim(self, other, tgt, spd);
 	else
 		v = dir * spd;
-	dprint(sprintf("catapult %s: %v\n", self.model, v));
+	if (SV_DevOn())
+		dprint(sprintf("catapult %s: %v\n", self.model, v));
 	SV_MomSetVelocity(other, v, "catapult");
 	SV_FireOutput(self, "OnCatapulted", other);
 };
@@ -8145,7 +8384,8 @@ void(entity t, entity p) SV_MapTextTo =
 void(entity t, entity act) SV_MapText =
 {
 	local entity p;
-	dprint(sprintf("game_text %s: '%s'\n", t.targetname, t.message));
+	if (SV_DevOn())
+		dprint(sprintf("game_text %s: '%s'\n", t.targetname, t.message));
 	if (t.spawnflags & 1)
 	{
 		for (p = find(world, classname, "player"); p; p = find(p, classname, "player"))
@@ -8169,7 +8409,8 @@ void(entity t, entity p, float show) SV_MapHintTo =
 void(entity t, entity act, float show) SV_MapHint =
 {
 	local entity p;
-	dprint(sprintf("env_hudhint %s: %g '%s'\n", t.targetname, show, t.message));
+	if (SV_DevOn())
+		dprint(sprintf("env_hudhint %s: %g '%s'\n", t.targetname, show, t.message));
 	if (t.spawnflags & 1)
 	{
 		for (p = find(world, classname, "player"); p; p = find(p, classname, "player"))
@@ -8204,7 +8445,8 @@ void(entity t, entity p, float rev) SV_MapFadeTo =
 void(entity t, entity act, float rev) SV_MapFade =
 {
 	local entity p;
-	dprint(sprintf("env_fade %s: rev %g\n", t.targetname, rev));
+	if (SV_DevOn())
+		dprint(sprintf("env_fade %s: rev %g\n", t.targetname, rev));
 	if (t.spawnflags & 4)
 	{
 		if (act.classname == "player")
@@ -8223,7 +8465,8 @@ void(entity t, float amp) SV_MapShake =
 	local entity p;
 	local float a, d;
 
-	dprint(sprintf("env_shake %s: amplitude %g\n", t.targetname, amp));
+	if (SV_DevOn())
+		dprint(sprintf("env_shake %s: amplitude %g\n", t.targetname, amp));
 	// 32 "don't shake view" shakes ropes and physics only; a frequency of 0 shakes nothing.
 	if (amp > 0 && (t.spawnflags & 32 || t.frequency <= 0))
 		return;
@@ -8978,7 +9221,6 @@ void(entity t, float v, float now) SV_RotButtonSet =
 		t.vbsp_rb_dir = 0;				// there already: nothing fires (:1141-1146)
 		return;
 	}
-	dprint(sprintf("rotbutton %s: SetPosition %g from %g at %g deg/s\n", t.model, v, p, t.speed));
 	SV_RotButtonWake();
 };
 
@@ -9207,7 +9449,8 @@ void(entity e, float v) SV_SpLinSet =
 		return;
 	}
 	e.vbsp_sp_dir = (v > p) ? 1 : -1;
-	dprint(sprintf("spin %s: slides to %g from %g at %g u/s\n", e.model, v, p, e.speed));
+	if (SV_DevOn())
+		dprint(sprintf("spin %s: slides to %g from %g at %g u/s\n", e.model, v, p, e.speed));
 };
 
 void(entity e) SV_SpRotUse =
@@ -9412,7 +9655,8 @@ void(entity e) SV_SpDrop =
 		setsize(e, e.vbsp_sp_mins0, e.vbsp_sp_maxs0);
 		setorigin(e, e.vbsp_sp_o0);
 	}
-	dprint(sprintf("spin %s: went solid, back at its spawn pose and stopped\n", e.model));
+	if (SV_DevOn())
+		dprint(sprintf("spin %s: went solid, back at its spawn pose and stopped\n", e.model));
 	e.vbsp_sp_kind = 0;
 	e.vbsp_sp_depth = 0;
 };
@@ -10018,7 +10262,8 @@ void(entity t, entity att, float dmg) SV_EntityDamage =
 				return;
 			code = BUTTON_RETURN;
 		}
-		dprint(sprintf("damage: button %s code %g locked %g\n", t.model, code, t.vbsp_mv_locked));
+		if (SV_DevOn())
+			dprint(sprintf("damage: button %s code %g locked %g\n", t.model, code, t.vbsp_mv_locked));
 		SV_FireOutput(t, "OnDamaged", att);
 		if (t.vbsp_mv_locked)
 			return;
@@ -10038,7 +10283,8 @@ void(entity t, entity att, float dmg) SV_EntityDamage =
 		if (dmg >= t.minhealthdmg)
 		{
 			t.health = t.health - dmg;
-			dprint(sprintf("damage: %s %s health %g\n", t.classname, t.model, t.health));
+			if (SV_DevOn())
+				dprint(sprintf("damage: %s %s health %g\n", t.classname, t.model, t.health));
 			SV_FireOutput(t, "OnHealthChanged", att);
 		}
 		if (wasfreed(t))
@@ -10084,7 +10330,8 @@ void(entity pl) SV_ShootFrame =
 	pl.hitcontentsmaski = CONTENTBITS_POINTSOLID | CONTENTBIT_MONSTERCLIP;
 	traceline(src, src + v_forward * 8192, FALSE, pl);
 	pl.hitcontentsmaski = mask;
-	dprint(sprintf("shot: %s %s at %v\n", trace_ent.classname, trace_ent.model, trace_endpos));
+	if (SV_DevOn())
+		dprint(sprintf("shot: %s %s at %v\n", trace_ent.classname, trace_ent.model, trace_endpos));
 	if (!trace_ent || trace_ent == world)
 		return;
 	SV_EntityDamage(trace_ent, pl, cvar("run_shoot_damage"));
@@ -10711,9 +10958,13 @@ void(entity p, float t0) SV_TrigResume =
 
 void() trigger_multiple =
 {
-	if (!self.model)
+	local float tt;
+
+	tt = self.model ? 1 : SV_ToolTrig();
+	if (tt != 1)
 	{
-		remove(self);
+		if (!tt)
+			remove(self);
 		return;
 	}
 
@@ -10741,10 +10992,10 @@ void() trigger_multiple =
 		return;
 	}
 
-	SV_BindInvisibleBrush();
+	if (!self.vbsp_tooltrig)
+		SV_BindInvisibleBrush();
 	self.movetype = MOVETYPE_NONE;
-	self.solid = SOLID_BSPTRIGGER;
-	self.vbsp_io_solid = SOLID_BSPTRIGGER;
+	SV_TrigSolid();
 	self.touch = trigger_multiple_touch;
 
 	if (SV_Key2(self.StartDisabled, self.startdisabled))
