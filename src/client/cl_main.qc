@@ -1116,8 +1116,8 @@ float(float scanx) CL_ButtonBit =
 	if (scanx == K_SPACE)      return CLB_SPC;
 	if (scanx == K_MOUSE1)     return CLB_M1;
 	if (scanx == K_MOUSE2)     return CLB_M2;
-	// MOUSE3 is a bind (paint); nothing in the chain takes it since Patch 904,
-	// and the bit pairs a release only for a press that was taken.
+	// MOUSE3 is left to its bind (paint, with the default binds): the results card
+	// stopped asking for it in Patch 904.  A press something else takes pairs here.
 	if (scanx == K_MOUSE3)     return CLB_M3;
 	if (scanx == K_MWHEELUP)   return CLB_WUP;
 	if (scanx == K_MWHEELDOWN) return CLB_WDN;
@@ -1150,6 +1150,12 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	// A release of the editor's press is still its own after closing/changing modes.
 	if (evtype == IE_KEYUP)
 		if (ZoneEdit_InputEvent(evtype, scanx, chary, devid)) return TRUE;
+	// Patch 901: hud_edit's number field, while open, before a chat bind can open a
+	// draft over it.  The editor's own place below still takes everything else.
+	if (ui_he_open && he_fcv != "")
+	if (evtype == IE_KEYDOWN || evtype == IE_KEYUP)
+	if (HUD_EditInputEvent(evtype, scanx, chary, devid))
+		return TRUE;
 	if (Chat_InputEvent(evtype, scanx, chary, devid))
 		return TRUE;
 

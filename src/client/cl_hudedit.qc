@@ -1013,6 +1013,7 @@ float(float lo, float mid, float hi, float lim, float axis) HE_Snap =
 ===========================================================================
 */
 void() HE_NumStop;
+void() HE_NumForget;
 
 void() HUD_EditClose =
 {
@@ -1022,6 +1023,7 @@ void() HUD_EditClose =
 	ui_he_drag = FALSE;
 	ui_he_held = "";
 	HE_NumStop();
+	HE_NumForget();
 	sui_tooltip_reset();
 
 	/*
@@ -1168,7 +1170,17 @@ string he_ftext;
 float  he_fcaret;
 string he_fnote;                // why the last Enter was refused
 float  *he_fkeys;               // 1 = pressed while typing, eaten on its release
-float  he_fseen;                // the open field drew this frame
+float  he_fseen;                // the open field drew this frame, or a click opened it
+vector he_nrow_p, he_nrow_s;    // the number row's chip or box, as last drawn
+float  he_nrow_t;               // cltime it was; 0 = never
+
+// The release handler runs only while the editor is open, so a close forgets
+// which keys the field took (their releases go to the engine).
+void() HE_NumForget =
+{
+	if (he_fkeys)
+		memfill8(he_fkeys, 0i, sizeof(float) * HE_FKEYS);
+};
 
 void(string s) HE_NumNote =
 {
@@ -1232,6 +1244,20 @@ void(string cv, string vals) HE_NumBegin =
 	sui_field_focus("he_num");
 };
 
+// %.6f with its trailing zeros and point dropped.
+string(float v) HE_NumTrim =
+{
+	local string s;
+	local float n;
+	s = sprintf("%.6f", v);
+	n = strlen(s);
+	while (n > 1 && substring(s, n - 1, 1) == "0")
+		n = n - 1;
+	if (substring(s, n - 1, 1) == ".")
+		n = n - 1;
+	return substring(s, 0, n);
+};
+
 // Enter.  -> the field closed (written, or left as it was when empty), or FALSE
 // with he_fnote saying why.
 float() HE_NumApply =
@@ -1255,8 +1281,8 @@ float() HE_NumApply =
 		print(sprintf("^3hud_edit^7: %s takes %s, not \"%s\"\n", he_fcv, he_fnote, he_ftext));
 		return FALSE;
 	}
-	localcmd(sprintf("seta %s %.9g\n", he_fcv, v / sc));
-	print(sprintf("^5hud_edit^7: %s %.9g (typed %g)\n", he_fcv, v / sc, v));
+	localcmd(sprintf("seta %s %s\n", he_fcv, HE_NumTrim(v / sc)));
+	print(sprintf("^5hud_edit^7: %s %s (typed %g)\n", he_fcv, HE_NumTrim(v / sc), v));
 	ui_he_dirty = TRUE;
 	HE_NumNote("");
 	HE_NumStop();
@@ -1268,7 +1294,9 @@ void(float evtype, float scan, float char) HE_NumKey =
 	local string was;
 	was = he_ftext;
 	sui_text_event(evtype, scan, char, "he_num", he_ftext, he_fcaret);
-	he_ftext  = strzone(substring(he_ftext, 0, 12));
+	he_ftext  = substring(he_ftext, 0, 12);
+	if (he_ftext != "")
+		he_ftext = strzone(he_ftext);     // never a zoned "": it would leak (see HE_NumStop)
 	he_fcaret = min(he_fcaret, strlen(he_ftext));
 	if (was != "") strunzone(was);
 	if (evtype == IE_KEYDOWN)
@@ -1278,7 +1306,7 @@ void(float evtype, float scan, float char) HE_NumKey =
 // Patch 901: one pasted character, for the field while it is open.
 float(float c) HUD_EditPaste =
 {
-	if (c < 32 || c > 126 || !ui_he_open || he_fcv == "")
+	if (c < 32 || c > 126 || !ui_he_open || he_fcv == "" || !he_fseen || chat_typing)
 		return FALSE;
 	HE_NumKey(IE_KEYDOWN, 0, c);
 	return TRUE;
@@ -1287,30 +1315,43 @@ float(float c) HUD_EditPaste =
 void(string cv, string vals, string unit, string tip, vector pos, vector sz, float sc) HE_NumRow =
 {
 	local vector glyph, tp;
-	local float tw;
+	local float tw, uw, room, scroll;
 	glyph = sui_native_text_size(8 * sc);
+	he_nrow_p = pos;
+	he_nrow_s = sz;
+	he_nrow_t = cltime;
 	if (he_fcv != cv)
 	{
 		if (HE_Chip(strcat("he_n_", cv), pos, sz,
 		            strcat((cvar(cv) > 0) ? "+" : "", HE_NumShow(cv, vals), " ", unit),
 		            cvar(cv) != 0, sc, tip))
+		{
 			HE_NumBegin(cv, vals);
+			he_fseen = TRUE;    // opened inside this draw: the field itself draws from the next
+		}
 		return;
 	}
 	he_fseen = TRUE;
 	sui_style_box(pos, sz, 3 * sc, SUI_THEME_WELL,
 	              (he_fnote != "") ? SUI_THEME_BAD : SUI_THEME_ACCENT, 1);
-	sui_text_metrics(4 * sc, glyph);
+	// The text is clipped short of the unit, and scrolled to keep the caret in view.
+	uw   = stringwidth(unit, TRUE, glyph);
+	room = sz_x - uw - 12 * sc;
+	tw   = stringwidth(substring(he_ftext, 0, he_fcaret), TRUE, glyph);
+	scroll = max(0, tw - room);
+	sui_text_metrics(4 * sc - scroll, glyph);
 	sui_text_input("he_num", pos, sz, he_ftext, he_fcaret);
 	tp = [pos_x + 4 * sc, pos_y + (sz_y - glyph_y) * 0.5, 0];
+	drawsetcliparea(tp_x, pos_y, room + 2, sz_y);
 	if (he_ftext == "")
 		sui_native_text(tp, HE_NumShow(cv, vals), 8 * sc, SUI_THEME_MUTED, 1);
 	else
-		sui_native_text(tp, he_ftext, 8 * sc, SUI_THEME_TEXT, 1);
+		sui_native_text(tp - [scroll, 0, 0], he_ftext, 8 * sc, SUI_THEME_TEXT, 1);
 	tw = stringwidth(substring(he_ftext, 0, he_fcaret), TRUE, glyph);
 	if (sui_text_has_focus("he_num"))
-		drawfill(tp + [tw, -1, 0], [1, glyph_y + 2, 0], SUI_THEME_ACCENT, 1, 0);
-	sui_native_text([pos_x + sz_x - stringwidth(unit, TRUE, glyph) - 4 * sc, tp_y, 0],
+		drawfill(tp + [tw - scroll, -1, 0], [1, glyph_y + 2, 0], SUI_THEME_ACCENT, 1, 0);
+	drawresetcliparea();
+	sui_native_text([pos_x + sz_x - uw - 4 * sc, tp_y, 0],
 	                unit, 8 * sc, (he_fnote != "") ? SUI_THEME_BAD : SUI_THEME_MUTED, 1);
 	sui_tooltip_for("he_num", (he_fnote != "") ? strcat("Enter ", he_fnote, ". ESC leaves it.")
 	                : "Type, then Enter. Empty or ESC leaves it as it was.", sc);
@@ -2554,36 +2595,53 @@ void() HUD_EditUIProbe =
 	}
 };
 
-float(float evtype, float scanx, float chary, float devid) HUD_EditInputEvent;
+float(float evtype, float scanx, float chary, float devid) CL_InputEvent;
 
 /*
-  Patch 901: `hud_edit type <cvar> <keys...>` -- a click on the open pane's number
-  row for cvar, then each key as an IE_KEYDOWN/IE_KEYUP pair through
-  HUD_EditInputEvent.  @enter, @esc and @bs are those keys; anything else is
-  typed a character at a time.  A capture run has no hand (see `hud_edit <id>`).
+  Patch 901: the number field's test hooks, through CL_InputEvent -- the gate a real
+  key or click passes after CSQC_InputEvent -- because a capture run has no hand
+  (see `hud_edit <id>`).  Neither opens the field: only a click does.
+    hud_edit click down|up      MOUSE1 at the centre of the number row as last drawn
+    hud_edit key <scan> down|up one key event
+    hud_edit type <keys...>     each key a down/up pair; @enter @esc @bs, else characters
 */
-void(string cv, string keys) HE_NumProbe =
+void() HE_NumState =
 {
-	local float r, k, n, c, j;
-	local string def, vals, a;
+	print(sprintf("^5hud_edit^7: field %s \"%s\" focus %g chat %g, %s\n",
+	              (he_fcv != "") ? he_fcv : "closed", he_ftext, sui_text_has_focus("he_num"), chat_typing,
+	              cvar_string("hud_ghost_offset")));
+};
 
-	vals = "";
-	if (ui_he_open && ui_he_sel >= 0 && ui_he_sel < he_n)
-	for (r = 0; r < 32; r = r + 1)
+void(float evtype, float scan, float char) HE_ProbeKey =
+{
+	local float took;
+	took = CL_InputEvent(evtype, scan, char, 0);
+	print(sprintf("^5hud_edit^7: key %g %s -> taken %g\n", scan,
+	              (evtype == IE_KEYDOWN) ? "down" : "up", took));
+};
+
+void(float down) HE_ProbeClick =
+{
+	local vector c;
+	local float took;
+	if (!ui_he_open || he_nrow_t <= 0)
 	{
-		def = HE_OptDef(he_id[ui_he_sel], r);
-		if (def == "")
-			break;
-		if (Gfx_Field(def, 0, "|") == cv && Gfx_Field(def, 2, "|") == "n")
-			vals = Gfx_Field(def, 3, "|");
-	}
-	if (vals == "")
-	{
-		print(sprintf("^3hud_edit^7: no number row for %s in the open pane\n", cv));
+		print("^3hud_edit^7: no number row has been drawn\n");
 		return;
 	}
-	if (he_fcv != cv)
-		HE_NumBegin(cv, vals);
+	c = he_nrow_p + he_nrow_s * 0.5;
+	CL_InputEvent(IE_MOUSEABS, c_x, c_y, 0);
+	took = CL_InputEvent(down ? IE_KEYDOWN : IE_KEYUP, K_MOUSE1, 0, 0);
+	print(sprintf("^5hud_edit^7: mouse1 %s at %g %g -> taken %g\n", down ? "down" : "up",
+	              c_x, c_y, took));
+	HE_NumState();
+};
+
+void(string keys) HE_NumProbe =
+{
+	local float k, n, c, j;
+	local string a;
+
 	n = tokenize(keys);
 	for (k = 0; k < n; k = k + 1)
 	{
@@ -2596,19 +2654,18 @@ void(string cv, string keys) HE_NumProbe =
 		if (a == "@bs")    { c = K_BACKSPACE; j = 8; }
 		if (c >= 0)
 		{
-			HUD_EditInputEvent(IE_KEYDOWN, c, j, 0);
-			HUD_EditInputEvent(IE_KEYUP, c, j, 0);
+			CL_InputEvent(IE_KEYDOWN, c, j, 0);
+			CL_InputEvent(IE_KEYUP, c, j, 0);
 			continue;
 		}
 		for (j = 0; j < strlen(a); j = j + 1)
 		{
 			c = str2chr(a, j);
-			HUD_EditInputEvent(IE_KEYDOWN, c, c, 0);
-			HUD_EditInputEvent(IE_KEYUP, c, c, 0);
+			CL_InputEvent(IE_KEYDOWN, c, c, 0);
+			CL_InputEvent(IE_KEYUP, c, c, 0);
 		}
 	}
-	print(sprintf("^5hud_edit^7: type %s -> field \"%s\" %s, %s %s\n", cv, he_ftext,
-	              (he_fcv != "") ? "open" : "closed", cv, cvar_string(cv)));
+	HE_NumState();
 };
 
 float(string cmd) HUD_EditConsoleCommand =
@@ -2652,10 +2709,20 @@ float(string cmd) HUD_EditConsoleCommand =
 
 	if (argv(1) == "type")
 	{
-		if (argv(3) == "")
-			HE_NumProbe(argv(2), "");
-		else
-			HE_NumProbe(argv(2), substring(cmd, argv_start_index(3), -1));
+		if (argv(2) != "")
+			HE_NumProbe(substring(cmd, argv_start_index(2), -1));
+		HE_NumState();
+		return TRUE;
+	}
+	if (argv(1) == "click")
+	{
+		HE_ProbeClick(argv(2) != "up");
+		return TRUE;
+	}
+	if (argv(1) == "key")
+	{
+		HE_ProbeKey((argv(3) == "up") ? IE_KEYUP : IE_KEYDOWN, stof(argv(2)), stof(argv(2)));
+		HE_NumState();
 		return TRUE;
 	}
 
@@ -2787,6 +2854,11 @@ float(float evtype, float scanx, float chary, float devid) HUD_EditInputEvent =
 	if (scanx != K_MOUSE1 && scanx != K_MOUSE2 && scanx != K_MWHEELUP && scanx != K_MWHEELDOWN)
 	if (scanx != K_LSHIFT && scanx != K_RSHIFT)
 	{
+		// A repeat of a key held from before the field had focus (chat_rep, Chat_Track):
+		// not typed and not owned, so its release reaches the engine and its -command
+		// runs (the chat draft's round-25 rule).
+		if (chat_rep && !owned)
+			return TRUE;
 		if (!he_fkeys)
 		{
 			he_fkeys = memalloc(sizeof(float) * HE_FKEYS);
