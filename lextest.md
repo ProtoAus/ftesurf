@@ -86,16 +86,15 @@ PENDING.
 
 ## P891 — KSF recordings on surf_kepler
 
-KSF times for all of surf_kepler's stages and both bonuses are on the boards, and 48 KSF
-recordings can be watched: main (21), bonus 1 (10), bonus 2 (17), on the KSF rows of the Online
-boards. The 96 stage recordings are downloaded and wait for the surfd update (P891), which also
-lets the crawler fetch stage recordings for every map.
+KSF times for all of surf_kepler's stages and both bonuses are on the boards, and 144 KSF
+recordings can be watched from the KSF rows of the Online boards: main 21, bonus 1 10, bonus 2 17,
+and stages 1-9 6/5/14/10/11/14/13/10/13. surfd runs P891 since 00:30:37Z 21 Oct (UTC), so the
+crawler now fetches stage recordings for every map, two at a time.
 
-- Main and bonuses now: open surf_kepler's KSF board, watch rossberg's 58.88 (rank 1).
-- Stages, after the update: stage 3 rank 1 (rossberg 5.214), and stage 9 (its finish is placed
-  by the KSF time, as no file marks it).
+- Main: rossberg's 58.88 (rank 1). Stage 3: rossberg 5.214 (rank 1).
+- Stage 9: its finish is placed by the KSF time, as no file marks it; it should end in the end zone.
 
-"Main / bonus recordings play ok, or <what looks wrong>". Verdict PENDING.
+"Main / bonus / stage recordings play ok, or <what looks wrong>". Verdict PENDING.
 
 ## P883 — vid_restart and ent_view crashes
 

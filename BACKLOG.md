@@ -1244,9 +1244,9 @@ Fixed items are removed; remaining reader contracts need acting controls.
   and ones whose official time is over a tick from the frame count (17 of 155 on
   2026-10-17, tools/p757ksfconvert.md).
 - KSF STAGE demos: Patch 891 imports them (each stage is its own KSF file), designed
-  from surf_kepler's 100 stage files. Live only once a surfd generation carries P891
-  (the sealed generation's import guard refuses a backfill run from other code); the
-  100 kept originals wait in the Pi's data/ksfstages/surf_kepler/ with their board rows.
+  from surf_kepler's 100 stage files; live in surfd generation d56fddc3 since 2026-10-21
+  00:30:37Z. kepler's 96 were installed from the kept originals (the Pi's
+  data/ksfstages/surf_kepler/, which can go once Lex has watched them).
 - P891 leftovers: the last stage's unbookmarked finish (placed by the official time) is
   measured on one map; another map's last stage may bookmark zone 99 or N+1. The
   client's own converter (cl_ksf.qc, `replay` of a local KSF file) reads main and bonus

@@ -39,6 +39,10 @@
   (sys.path that directory, python3.11 -I). Its import guard refuses a runtime module loaded
   from elsewhere ("preloaded runtime module outside source_home"): new grabber code reaches the
   database only as a new generation (tools/surfd_successor).
+- Live: surfd generation d56fddc3 (P891) serves from /srv/nvme/agent-work/surfd891-20261021T0023Z
+  since 2026-10-21 00:30:37Z (503s 00:30:27.96-00:30:37.58); OLD p861-7c8dc161 CLOSED and kept
+  for rollback, and the next successor's OLD. kepler's 96 stage replays went in afterwards from
+  the kept originals through the generation's own ksfgrab (artifacts/kepler_stages.py).
 - Null-ID main rows (ksf_unbound, from the schema-18 migration) bind only from a page fetched in
   the same --go run. `--from-maps --depth N` applies to every board and the index's row count
   decides what a board wants, so a full board fetched earlier never refetches: reset its cursor
