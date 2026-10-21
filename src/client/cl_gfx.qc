@@ -251,15 +251,15 @@ string(float row) Gfx_Def =
 	{
 		if (ui_gfx_waterbudget)
 			return "hl2_water|Water|0 1 2 3 4|Flat sheet;Cheap reflect;Full reflect;Dithered;Budget (no captures)|";
-		return "hl2_water|Water|0 1 2 3|Flat sheet;Cheap reflect;Full reflect;Dithered|*";
+		return "hl2_water|Water|0 1 2 3|Flat sheet;Cheap reflect;Full reflect;Dithered|";
 	}
 	if (row == 2)  return "hl2_refract|Glass|0 1 2|Translucent;Refracting;Dithered|*";
-	if (row == 3)  return "hl2_translucent|Translucent|0 1|Opaque;As authored|*";
+	if (row == 3)  return "hl2_translucent|Translucent|0 1|Opaque;As authored|";
 	/*
 	  BUILD 33, and it belongs on this page because it is the same kind of thing
 	  as the three above it: one read at material generation (mat_vmt.c:1114).
-	  Its requested CVAR_SHADERSYSTEM flag is masked by Plugin_GetCvar, so a
-	  change does not rebuild an already-cached material automatically.
+	  Its requested CVAR_SHADERSYSTEM flag is masked by Plugin_GetCvar; Patch 894
+	  gives it a renderer-owned one, but no flipbook was in its arm, so the `*` stays.
 
 	  Patch 195 is what made it work -- img_vtf.c had `frames = 1;//vtf->numframes;`,
 	  so a 331-frame flipbook like surf_demise's smoke could not cycle no matter
@@ -279,8 +279,11 @@ string(float row) Gfx_Def =
 	  a row that claims to be instant when it is not is the exact failure this
 	  whole `*` convention exists to prevent.  Reflections (row 8) is the one to
 	  reach for if you want it off NOW.
+	  Patch 894: with the renderer's flag a live 0 and 1 each matched a fresh load at
+	  surf_demise save 3 (0.20% / 0.31% of pixels, against 18.5% between the two), so the
+	  `*` is gone.
 	*/
-	if (row == 7)  return "hl2_envmap|Env maps|0 1|Off;On|*";
+	if (row == 7)  return "hl2_envmap|Env maps|0 1|Off;On|";
 
 	// -- page 2: reflections and surface detail -------------------------------
 	/*
@@ -339,8 +342,10 @@ string(float row) Gfx_Def =
 	  on the first load -- however many times you press 7.  Which also means
 	  every `*` row below that is read at BSP-load time has the same problem;
 	  that is a separate defect and is not fixed here.
+	  Patch 894: a toggle now re-runs Decal_LoadForMap on the same map (handles kept and
+	  removed), measured live == loaded on surf_rise's 105 overlays.
 	*/
-	if (row == 13) return "vbsp_overlays|Overlays|0 1|Off;On|*";
+	if (row == 13) return "vbsp_overlays|Overlays|0 1|Off;On|";
 
 	/*
 	  SPRITES and SPOTLIGHTS, Patch 248.  Source's sprite entities, which were
@@ -357,7 +362,7 @@ string(float row) Gfx_Def =
 	  likely to be the thing somebody wants gone, and folding them into one
 	  switch would have meant losing every glow to turn off the shafts.
 	*/
-	if (row == 14) return "vbsp_sprites|Sprites|0 1|Off;On|*";
+	if (row == 14) return "vbsp_sprites|Sprites|0 1|Off;On|";    // Patch 894: re-run live
 	if (row == 15) return "vbsp_spotlights|Light shafts|0 1|Off;On|*";
 
 	/*
