@@ -21,6 +21,9 @@
 
 ## next
 
+### P906 No snap-back on surf_reverie
+- On maps whose zone-tool triggers use a Momentum filter this game does not support yet, such as surf_reverie, the game no longer predicts a teleport the server does not make, which pulled you back every frame.
+
 ### P905 Story is ready before you open it
 - The story ladder and your trophies load while you are on the title screen, so the first STORY click shows them straight away. If the board does not answer, it is asked again after 5 seconds instead of a minute.
 - surf_tendies (Tier 1) and surf_affliction (Tier 2) join the story, with placeholder challenges for now.

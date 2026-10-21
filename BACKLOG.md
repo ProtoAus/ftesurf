@@ -33,6 +33,13 @@ ENGINE_PATCHES.md is a record, not a to-do -- put the item here as well.
   players. A classifier, no verdict.
 - **Boards mix runs from before and after P892 on 47 maps.** The new triggers (teleports, limits) change
   routes; `entfile`-style, nothing in a recording says which set it was made under.
+- **Brush triggers behind filter_momentum_progress are predicted fail-open (P906 review).** The server
+  judges that filter per player; the client's TF_EvalD passes it. Returning UNKNOWN for the class would stop
+  predicting them (and an OR of it with a passing team filter, which P906 now leaves unpredicted on a box).
+  No map in the library has one today.
+- **TF_Find searches filter entities only, SV_FindByName every entity (P906 review).** Four names on four
+  maps are shared with a non-filter entity, all on brush triggers (client UNKNOWN, safe); on a box the client
+  could predict one the server leaves inert.
 - **The 6 named model-less triggers that never get a box** (surf_overgrowth2 teleport_stage1/4,
   surf_simpsons2 zone_stage04_start_spy/nojump, surf_simpsons_source z4/z8) are re-created and stay
   inert.

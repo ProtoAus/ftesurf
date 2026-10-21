@@ -335,6 +335,27 @@ float(float r, float depth) TF_EvalD =
 	return pass;
 };
 
+// Patch 906: whether TF_EvalD's verdict on this filter is evaluated rather than failed open.  The
+// server leaves a zone-tool box inert behind a filter it cannot evaluate (SV_FilterKnownD) and checks
+// filter_momentum_progress itself; a box the client cannot judge is not predicted.
+float(float r, float depth) TF_KnownD =
+{
+	local float i;
+
+	if (r < 0 || depth > 4)
+		return FALSE;
+	if (tf_class[r] == "filter_multi")
+	{
+		for (i = 0; i < 8; i = i + 1)
+			if (tf_sub[r * 8 + i] != "")
+			if (!TF_KnownD(TF_Find(tf_sub[r * 8 + i]), depth + 1))
+				return FALSE;
+		return TRUE;
+	}
+	return (tf_class[r] == "filter_activator_team" || tf_class[r] == "filter_activator_class" ||
+	        tf_class[r] == "filter_activator_name" || tf_class[r] == "filter_velocity");
+};
+
 float(string s) TT_Find =
 {
 	local float i;
@@ -1840,9 +1861,11 @@ void() Trig_LoadForMap =
 	// consumer -- fire loop and the trig_* commands alike -- skips the slot.
 	for (i = 0; i < tg_n; i = i + 1)
 	{
-		if (tg_filt[i] == "")
-			continue;
+		if (tg_filt[i] == "" || !tg_kind[i])
+			continue;                   // no filter, or TG_ShapeBoxes demoted it already
 		r = tf_over ? TFR_UNKNOWN : TF_EvalD(TF_Find(tg_filt[i]), 0);
+		if (r == TFR_PASS && tg_ent[i].tg_isbox && !TF_KnownD(TF_Find(tg_filt[i]), 0))
+			r = TFR_UNKNOWN;            // Patch 906: the server's box is inert, or judged there
 		if (r == TFR_PASS)
 		{
 			tg_c_filtok = tg_c_filtok + 1;
@@ -1863,6 +1886,8 @@ void() Trig_LoadForMap =
 		        (tg_kind[i] == TG_SPEED) ? "trigger_setspeed" :
 		                                  "trigger_multiple",
 		        tg_filt[i]);
+		if (tg_ent[i].tg_isbox)
+			tg_c_box = tg_c_box - 1;    // the trig line's boxes are predicted ones
 		remove(tg_ent[i]);
 		tg_ent[i]  = world;
 		tg_kind[i] = 0;
