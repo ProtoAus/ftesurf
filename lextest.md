@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P901, P904 — typed ghost offset; the results card in the Dusk look
+
+- hud_edit (c) -> Ghost: the new row "Offset in ms" under Time offset. Click it (it opens empty,
+  the current value greyed), type e.g. 250 or -1250, Enter; the ghost should run that far
+  ahead/behind. Esc or Enter on an empty box leaves it unchanged (a second Esc closes hud_edit);
+  letters or values past +-60000 turn the box red and say why in the console. Keys typed into
+  the box should not fire their binds (try 1, which is sl_save) -- the rig could not press real keys.
+- Finish any run: the card (right of centre) is the new rounded panel -- map and run kind on
+  top, the time large with the PB gain/loss pill, Local/World in one box, splits with their
+  gain/loss, F1/MOUSE3/ESC as keycaps. Same information as before. "Card ok / <what's off>".
+  Verdicts PENDING.
+
 ## P894, P895 — graphics settings without a map reload; surf_pantheon's waterfalls at 2x
 
 - surf_pantheon at your r_renderscale 2: the start area should run ~275 fps instead of ~125 (its

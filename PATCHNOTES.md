@@ -21,6 +21,15 @@
 
 ## next
 
+### P904 The results card in the new look
+- The card after a finish now matches the rest of the new interface: rounded panel, the time large with a coloured gain or loss against your PB, and your previous PB under it.
+- Local and world placement sit together in one box, and a run without a world rank says why in plain words.
+- The splits table shows each split's gain or loss against your PB, and the card is only as tall as its rows.
+- The one-line stage toast (shown when stage banners are off) gets the same look.
+
+### P901 Type the ghost's time offset
+- The Ghost settings in hud_edit have a new row, Offset in ms: click it, type any offset from -60000 to 60000 ms and press Enter (Esc leaves it as it was). The old quick steps are still there.
+
 ### P896 Every KSF recording, three times faster
 - KSF recordings now arrive three times faster, including those of older KSF times imported before recordings were linked.
 - A broken file on KSF's side no longer holds up everyone else's recordings.
