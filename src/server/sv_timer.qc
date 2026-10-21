@@ -2887,6 +2887,10 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             verifier whose value differs refuses, and refuses
                             one that is not a decimal in 0..16777215.  Absent
                             = 0 (before Patch 890; no install shipped a .ent).
+    tickparts <n>           Patch 893: 1 when the server runs a usercmd of several
+                            ticks one tick per part (sv_tickparts), each part
+                            its own `in` row and a later part's flagged fl 8;
+                            0 or absent, one row a usercmd.
     proprule <n>            which prop-geometry rule built this run's collision
                             world.  Absent or 0 = prop scale as the map wrote it;
                             1 = floored to the 1/16 the wire carries, so the
@@ -5169,6 +5173,7 @@ void(entity e) SV_RecOpen =
 	SV_RecPut(e, "proprule 1");
 	SV_RecPut(e, sprintf("momtrig %g", e.run_momon));     // Patch 869, additive
 	SV_RecPut(e, strcat("entfile ", ftos(stof(serverkey("*entfile")))));     // Patch 890: "" = 0
+	SV_RecPut(e, strcat("tickparts ", ftos(cvar("sv_tickparts"))));          // Patch 893
 	/*
 	  BUILD 76: WHICH OF THE TWO CLOCKS TIMED THIS RUN.  `counted` or `sampled`.
 
@@ -13732,8 +13737,7 @@ void(entity e) SV_TimerInFrame =
 	if (e.flags & FL_ONGROUND)      fl = fl + 1;
 	if (e.teleport_time)            fl = fl + 2;
 	if (e.movetype != MOVETYPE_WALK) fl = fl + 4;
-	// Patch 893: a later part of a usercmd the server split; its angles are the command's.
-	if (input_cmd_offset_msec > 0 && (input_cmd_kind == 1 || input_cmd_kind == 2)) fl = fl + 8;
+	if (input_cmd_later)            fl = fl + 8;    // Patch 893: a later part of a split usercmd
 
 	was = e.rec_rec_lines;
 	row = strcat(sprintf("in %d %d %.9g %d %d %d ",

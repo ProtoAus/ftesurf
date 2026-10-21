@@ -300,7 +300,8 @@ HEAD_V8 = HEAD_V7
 HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd", "holdclock",
                      "inprof",      # Patch 840, additive
                      "momtrig",     # Patch 869, additive
-                     "entfile"}     # Patch 890, additive
+                     "entfile",     # Patch 890, additive
+                     "tickparts"}   # Patch 893, additive
 # v10 (Patch 364): no new header key.  A file is v10 exactly when it carries a
 # `pause`: the buffered writer rewrites line 0 when the first one lands.
 HEAD_V10 = HEAD_V9
@@ -1052,6 +1053,8 @@ def check_rec(path, verbose=False, *, data=None):
     in_offgrid_ln = None    # v9: first such row, for the fault
     in_badshape = 0         # rows this tool could not parse (reported once)
     in_flx = 0              # v9: rows with fl 2 or 4 (never on a clean run)
+    in_split = in_split_odd = 0   # Patch 893: fl 8 rows, and those not repeating the row before
+    in_prevtok = None
     # Patch 493: the move triple against the header's `movebnd`.  Counted as the
     # rows stream past, for the reason this whole block exists.
     in_moveoor = 0          # `in` rows whose largest |axis| exceeds the bound
@@ -1327,6 +1330,12 @@ def check_rec(path, verbose=False, *, data=None):
                             % (lineno + 1, infl))
                 elif infl & 6:
                     in_flx += 1
+                if infl & 8:
+                    # Patch 893: a later part repeats its usercmd: packet, moves, angles, buttons.
+                    in_split += 1
+                    if in_prevtok is not None and (tok[1], tok[4:11]) != (in_prevtok[1], in_prevtok[4:11]):
+                        in_split_odd += 1
+                in_prevtok = tok
 
             # DID THESE ANGLES COME OFF THE WIRE?  usercmd angles are 16-bit, so
             # every one the protocol can deliver is a multiple of 360/65536 =
@@ -2077,6 +2086,11 @@ def check_rec(path, verbose=False, *, data=None):
 
     if inrows:
         r.info["inputs"] = inrows
+        if in_split:
+            r.info["split_rows"] = in_split
+        if in_split_odd:
+            r.note("%d 'in' row(s) flagged fl 8 (a later part of a split usercmd) do not repeat "
+                   "the row before them" % in_split_odd)
         r.info["in_packets"] = in_packets
         # THE WHOLE REASON THE PACKET ORDINAL IS IN THE FILE, expressed as one
         # number.  The run's start and finish are latched once per packet, not
@@ -4112,7 +4126,7 @@ def emit(r, verbose):
                   # `instart` prints whenever the key is present and `inputs`
                   # whenever the body has rows, so the two disagreeing is
                   # visible at a glance and not only through the fault.
-                  "instart", "inputs", "in_packets", "in_per_packet",
+                  "instart", "inputs", "in_packets", "in_per_packet", "split_rows",
                   "in_per_sample", "holdclock", "hold_epochs",
                   # Build 83, added in the same edit as the code that computes
                   # them, which is the rule the paragraph above sets after this

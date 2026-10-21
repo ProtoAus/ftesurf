@@ -1731,7 +1731,8 @@ def case_split_part_rows_are_not_joined():
     L = build(sweep=128, packets=400)
     view = view_for(L)
 
-    def split(bit):
+    def split(bit, repeat=True):
+        # A later part repeats its usercmd: packet, moves, angles and buttons; mt and carry move on.
         out, prev, k = [], None, 0
         for l in L:
             if l.startswith("in "):
@@ -1739,18 +1740,26 @@ def case_split_part_rows_are_not_joined():
                 if prev is not None:
                     k += 1
                     if k % 2 == 0:
-                        f[7], f[8] = prev[7], prev[8]
+                        if repeat:
+                            f[1] = prev[1]
+                            f[4:11] = prev[4:11]
+                        else:
+                            f[7], f[8] = prev[7], prev[8]
                         f[11] = str(int(f[11]) | bit)
                         l = " ".join(f)
                 prev = f
             out.append(l)
         return out
 
-    f, _ = run(split(8), view=view)
+    f, n = run(split(8), view=view)
     check(not any("not this recording" in x or "does not describe" in x for x in f),
           "a later part's row (fl 8) with the command's angles is not joined to its tick's frame")
     if f:
         print("        %s" % f)
+    check(not any("do not repeat" in x for x in n), "...and a row that repeats its command draws no note")
+    f, n = run(split(8, repeat=False), view=view)
+    check(any("do not repeat" in x for x in n),
+          "an fl 8 row whose packet, moves or buttons differ from the row before is noted")
     f, _ = run(split(0), view=view)
     check(any("not this recording" in x or "does not describe" in x for x in f),
           "...and the same rows without fl 8 are a fault (the control)")

@@ -17,6 +17,9 @@ float input_cmd_sequence_hi;
 __used float input_cmd_msec;     // all six or the engine exports none
 __used float input_cmd_piece_msec;
 __used float input_cmd_offset_msec;
+// Patch 893: declaring this is what lets the engine split a usercmd one tick per part; it is 1
+// during a later part's PreThink, whatever the command's kind (a budget-trimmed one is split too).
+__used float input_cmd_later;
 
 /*
   FORWARD DECLARATIONS, because sv_progs.src compiles this file FIRST.
@@ -1619,6 +1622,28 @@ string(float fld, entity e) SV_FieldComp =
 	return (v == "") ? "0" : v;
 };
 
+// getentityfieldstring escapes a string's newline, quote and backslash; putentityfieldstring keeps its
+// argument as given (QCGC: PR_AllocTempString, not ED_NewString), so a stash undoes the escape itself.
+string(string s) SV_FieldUnescape =
+{
+	local float i, j;
+	local string o, c;
+
+	i = strstrofs(s, "\\", 0);
+	if (i < 0)
+		return s;
+	o = "";
+	j = 0;
+	while (i >= 0)
+	{
+		c = substring(s, i + 1, 1);
+		o = strcat(o, substring(s, j, i - j), c == "n" ? "\n" : c);
+		j = i + 2;
+		i = strstrofs(s, "\\", j);
+	}
+	return strcat(o, substring(s, j, -1));
+};
+
 string(float fld, entity e) SV_FieldStr =
 {
 	local string nm;
@@ -1678,18 +1703,31 @@ void() SV_LateSpawnAll =
 		for (i = 0; i < n; i = i + 1)
 		{
 			e = spawn();
-			ntok = tokenizebyseparator(bufstr_get(vbsp_late_tool, i), "\t");
+			ntok = tokenizebyseparator(bufstr_get(vbsp_late_tool, i), chr2str(31));
 			for (j = 0; j + 1 < ntok; j = j + 2)
 			{
+				if (argv(j) == "vbsp_io_raw")
+				{
+					e.vbsp_io_raw = argv(j + 1);
+					continue;
+				}
 				fld = findentityfield(argv(j));
 				if (fld)
-					putentityfieldstring(fld, e, argv(j + 1));
+					putentityfieldstring(fld, e, entityfieldtype(fld) == EV_STRING ? SV_FieldUnescape(argv(j + 1)) : argv(j + 1));
 			}
 			if (!isfunction(e.classname))
 			{
 				remove(e);
 				continue;
 			}
+			ntok = 0;
+			j = strstrofs(e.vbsp_io_raw, "\n", 0);
+			while (j >= 0)
+			{
+				ntok = ntok + 1;
+				j = strstrofs(e.vbsp_io_raw, "\n", j + 1);
+			}
+			dprint(sprintf("late tool %s '%s': %g outputs\n", e.classname, e.targetname, ntok));
 			oself = self;
 			self = e;
 			vbsp_late_respawn = TRUE;
@@ -6424,9 +6462,10 @@ float() SV_ToolTrig =
 		setorigin(self, self.origin);
 		return 1;
 	}
-	// Everything the parse set: at spawn nothing else is, so the set fields are the keyvalues
-	// (and .vbsp_io_raw, the outputs).  A vector carries its components.
-	rec = strcat("classname\t", self.classname);
+	// Everything the parse set: at spawn nothing else is, so the set fields are the keyvalues.
+	// .vbsp_io_raw, the outputs, goes last and raw: its tabs and newlines rule those out as the
+	// separator, and getentityfieldstring's 4 KB line would cut a long one.
+	rec = strcat("classname", chr2str(31), self.classname);
 	n = numentityfields();
 	for (fld = 1; fld < n; fld = fld + 1)
 	{
@@ -6435,12 +6474,14 @@ float() SV_ToolTrig =
 			continue;
 		nm = entityfieldname(fld);
 		sfx = substring(nm, strlen(nm) - 2, 2);
-		if (nm == "classname" || sfx == "_x" || sfx == "_y" || sfx == "_z")
+		if (nm == "classname" || nm == "vbsp_io_raw" || sfx == "_x" || sfx == "_y" || sfx == "_z")
 			continue;
 		val = SV_FieldStr(fld, self);
 		if (!SV_LateIsUnset(fld, val))
-			rec = strcat(rec, "\t", nm, "\t", val);
+			rec = strcat(rec, chr2str(31), nm, chr2str(31), val);
 	}
+	if (self.vbsp_io_raw != "")
+		rec = strcat(rec, chr2str(31), "vbsp_io_raw", chr2str(31), self.vbsp_io_raw);
 	if (vbsp_late_tool <= 0)
 		vbsp_late_tool = buf_create();
 	bufstr_add(vbsp_late_tool, rec, TRUE);
