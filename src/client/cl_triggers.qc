@@ -451,6 +451,14 @@ string io_tgt[TIO_MAX];
 
 string tg_tname[TG_MAX];
 float  tg_sd[TG_MAX];           // the StartDisabled key, as authored
+// Patch 892: zone-tool boxes.  Fields, not arrays: the client is at the global limit.
+.float  tg_isbox;               // on a slot's entity: no brush, shaped by TG_ShapeBoxes
+.entity tgs_next;               // an OnMapSpawn AddOutput mins/maxs row, chained from tgs_head
+.string tgs_tgt;
+.float  tgs_ismin;
+.vector tgs_val;
+entity  tgs_head;
+float   tg_c_box;
 float  tg_io_on[TG_MAX];        // committed enabled state
 float  tg_io_gated[TG_MAX];     // state gate applies to this slot
 float  tg_io_own[TG_MAX];       // owns mirrored edge outputs
@@ -488,7 +496,7 @@ float(string lk) TG_IOEvOf =
 // captures it and parsed as SV_EntityIOBuild parses it.
 void(string key, string val) TG_IOParse =
 {
-	local string sep, lk, p0, w;
+	local string sep, lk, p0, w, kn;
 	local float  ev, nt, sp, inp, parm;
 
 	if (io_n >= TIO_MAX)
@@ -497,6 +505,7 @@ void(string key, string val) TG_IOParse =
 		return;
 	}
 	lk = strtolower(key);
+	kn = lk;
 	ev = TG_IOEvOf(lk);
 
 	sep = ",";
@@ -536,6 +545,21 @@ void(string key, string val) TG_IOParse =
 		}
 		else if (w == "target")
 			inp = IN_STATE;
+		else if ((w == "mins" || w == "maxs") && kn == "onmapspawn")
+		{
+			// Patch 892: a zone-tool trigger's box, static from map spawn (TG_ShapeBoxes).
+			if (sp >= 0)
+			{
+				local entity row;
+				row = spawn();
+				row.tgs_tgt = strzone(strtolower(argv(0)));
+				row.tgs_ismin = (w == "mins");
+				row.tgs_val = stov(substring(p0, sp + 1, -1));
+				row.tgs_next = tgs_head;
+				tgs_head = row;
+			}
+			return;
+		}
 		else
 			return;
 	}
@@ -787,6 +811,50 @@ void(float i, float why) TG_DemoteIO =
 	tg_kind[i] = 0;
 	tg_bmin[i] = '1 1 1';
 	tg_bmax[i] = '-1 -1 -1';
+};
+
+// Patch 892: a box slot takes its logic_auto's OnMapSpawn mins and maxs, as the server's AddOutput
+// does a second after spawn; one without both is demoted.
+void() TG_ShapeBoxes =
+{
+	local float i, gotlo, gothi;
+	local vector lo, hi;
+	local string nm;
+	local entity row, nx;
+
+	for (i = 0; i < tg_n; i = i + 1)
+	{
+		if (!tg_kind[i] || !tg_ent[i].tg_isbox)
+			continue;
+		nm = strtolower(tg_tname[i]);
+		gotlo = gothi = 0;
+		lo = hi = '0 0 0';
+		for (row = tgs_head; row; row = row.tgs_next)
+		{
+			if (strcmp(row.tgs_tgt, nm))
+				continue;
+			if (row.tgs_ismin) { lo = row.tgs_val; gotlo = 1; }
+			else               { hi = row.tgs_val; gothi = 1; }
+		}
+		if (!gotlo || !gothi)
+		{
+			TG_DemoteIO(i, TG_SK_NOBRUSH);
+			continue;
+		}
+		setsize(tg_ent[i], lo, hi);
+		tg_ent[i].solid = SOLID_TRIGGER;
+		setorigin(tg_ent[i], tg_ent[i].origin);
+		tg_bmin[i] = tg_ent[i].origin + lo;
+		tg_bmax[i] = tg_ent[i].origin + hi;
+		tg_c_box = tg_c_box + 1;
+	}
+	for (row = tgs_head; row; row = nx)
+	{
+		nx = row.tgs_next;
+		strunzone(row.tgs_tgt);
+		remove(row);
+	}
+	tgs_head = world;
 };
 
 // Brush submodel numbers are shared by the BSP on both sides. State arrives
@@ -1461,7 +1529,7 @@ void() Trig_LoadForMap =
 	local float  hmode, hs, hsmode, vsmode, hsp, vsp, ssstrict;
 	local float  negu, negl, ftype, fi, r;
 	local float  keeph, keepv, hsamount, vsamount, onthink, interval, everytick;
-	local float  kind, i, opened, pend0, waitk;
+	local float  kind, i, opened, pend0, waitk, box;
 	local entity e;
 
 	// free the previous map's probe edicts
@@ -1483,6 +1551,8 @@ void() Trig_LoadForMap =
 	tg_needload = 0;
 	io_n = 0;
 	io_over = 0;
+	tgs_head = world;
+	tg_c_box = 0;
 	ior_n = 0;
 	ior_lost = 0;
 	tg_io_clock = 0;
@@ -1648,8 +1718,10 @@ void() Trig_LoadForMap =
 			continue;
 		}
 
-		// Not a brush, or not predictable from the lump alone.
-		if (mdl == "" || substring(mdl, 0, 1) != "*")
+		// Not a brush, or not predictable from the lump alone -- except a named trigger with no
+		// brush, which may be a zone-tool box (Patch 892, TG_ShapeBoxes).
+		box = (mdl == "" && tname != "");
+		if (!box && (mdl == "" || substring(mdl, 0, 1) != "*"))
 		{
 			TG_Skip(TG_SK_NOBRUSH, cn, mdl);
 			continue;
@@ -1669,9 +1741,15 @@ void() Trig_LoadForMap =
 
 		i = tg_n;
 		e = spawn();
-		setmodel(e, mdl);
-		e.solid = TG_SOLID_BSPTRIGGER;
+		if (box)
+			e.solid = SOLID_NOT;	// shaped, or demoted, after the walk
+		else
+		{
+			setmodel(e, mdl);
+			e.solid = TG_SOLID_BSPTRIGGER;
+		}
 		setorigin(e, org);
+		e.tg_isbox = box;
 		tg_ent[i]   = e;
 		tg_kind[i]  = kind;
 		tg_flags[i] = spawnflags;
@@ -1755,6 +1833,8 @@ void() Trig_LoadForMap =
 
 	tf_team = (tf_ctspawn || !tf_tspawn) ? 3 : 2;
 
+	TG_ShapeBoxes();
+
 	// Filter resolution, after the walk.  A trigger whose verdict is not a
 	// static PASS is demoted: edict freed, kind zeroed, box inverted so every
 	// consumer -- fire loop and the trig_* commands alike -- skips the slot.
@@ -1794,8 +1874,8 @@ void() Trig_LoadForMap =
 	Body_TrigSeed();
 
 	tg_map = serverkey("map");
-	print(sprintf("trig: %s -- %g teleports, %g pushes, %g setspeeds predicted\n",
-	              tg_map, tg_c_tele, tg_c_push, tg_c_speed));
+	print(sprintf("trig: %s -- %g teleports, %g pushes, %g setspeeds predicted (%g zone-tool boxes)\n",
+	              tg_map, tg_c_tele, tg_c_push, tg_c_speed, tg_c_box));
 	print(sprintf("trig: skipped %g filtered, %g startdisabled, %g over cap; "
 	              "%g filtered resolved static; %g targetname rows, %g filters\n",
 	              tg_c_filt, tg_c_dis, tg_c_over, tg_c_filtok, tt_n, tf_n));

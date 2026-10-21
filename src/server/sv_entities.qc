@@ -473,6 +473,8 @@ float  vbsp_io_over_map;	// refused by the map-wide ceiling
 .float  vbsp_io_rawn;		// how many are in it -- see VBSP_IO_MAXRAW
 .entity vbsp_io_out;		// head of this entity's output list
 .float  vbsp_io_solid;	// .solid as spawned, so Enable can put it BACK
+.float  vbsp_tooltrig;	// Patch 892: a model-less trigger kept for AddOutput mins/maxs (SV_ToolTrig)
+.float  vbsp_toolshape;	// ...the box keys it has taken: 1 mins, 2 maxs
 .float  vbsp_slide_skin;	// Patch 280: a func_slide's tag, worn on .skin only while solid
 
 // On an vbsp_output entity.  .owner is the source entity.
@@ -1587,6 +1589,8 @@ float(entity f, entity act) SV_VelocityFilter =
   31 inputs in the library).
 */
 strbuf vbsp_late_buf;
+float  vbsp_late_respawn;       // Patch 892: SV_LateSpawnAll is running a stashed tool trigger's spawn
+strbuf vbsp_late_tool;          // ...and the stash (SV_ToolTrig)
 
 // Unset at spawn.  A string "0" is a value: snapvelocitytodestangles "0" and an
 // absent key read differently (SV_KeyTri).
@@ -1656,6 +1660,38 @@ void() SV_LateSpawnAll =
 	for (e = nextent(world); e; e = nextent(e))
 		last = num_for_edict(e);
 	dprint(sprintf("lump: last edict #%g\n", last));
+
+	// Patch 892: the zone-tool triggers SV_ToolTrig stashed, through their own spawn functions.
+	if (vbsp_late_tool > 0)
+	{
+		local entity oself;
+		n = buf_getsize(vbsp_late_tool);
+		for (i = 0; i < n; i = i + 1)
+		{
+			e = spawn();
+			ntok = tokenizebyseparator(bufstr_get(vbsp_late_tool, i), "\t");
+			for (j = 0; j + 1 < ntok; j = j + 2)
+			{
+				fld = findentityfield(argv(j));
+				if (fld)
+					putentityfieldstring(fld, e, argv(j + 1));
+			}
+			if (!isfunction(e.classname))
+			{
+				remove(e);
+				continue;
+			}
+			oself = self;
+			self = e;
+			vbsp_late_respawn = TRUE;
+			callfunction(e.classname);
+			vbsp_late_respawn = FALSE;
+			self = oself;
+		}
+		dprint(sprintf("late spawn: %g zone-tool triggers re-created after the lump\n", n));
+		buf_del(vbsp_late_tool);
+		vbsp_late_tool = 0;
+	}
 
 	if (vbsp_late_buf <= 0)
 		return;
@@ -1838,6 +1874,31 @@ float(entity f, entity act, float depth) SV_FilterPassesD =
 float(entity f, entity act) SV_FilterPasses =
 {
 	return SV_FilterPassesD(f, act, 0);
+};
+
+// Patch 892: whether SV_FilterPassesD evaluates this filter (and every filter_multi child), rather
+// than failing open.  A zone-tool box behind one it cannot is left inert: open, it fires on everyone.
+float(entity f, float depth) SV_FilterKnownD =
+{
+	local float i;
+	local string nm;
+
+	if (!f || depth > 4)
+		return FALSE;
+	if (f.classname == "filter_multi")
+	{
+		for (i = 1; i <= 8; i = i + 1)
+		{
+			nm = SV_MultiSub(f, i);
+			if (nm != "")
+			if (!SV_FilterKnownD(SV_FindByName(nm, world), depth + 1))
+				return FALSE;
+		}
+		return TRUE;
+	}
+	return (f.classname == "filter_activator_name" || f.classname == "filter_activator_team" ||
+	        f.classname == "filter_activator_class" || f.classname == "filter_velocity" ||
+	        f.classname == "filter_momentum_progress");
 };
 
 float(entity trig, entity act) SV_PassesFilter =
@@ -2100,6 +2161,38 @@ void(entity t, string param) SV_IOAddOutput =
 		}
 		return;
 	}
+	// Patch 892: a zone-tool trigger's box and solid (SV_ToolTrig); every other entity ignores them.
+	// On a lobby a box takes its shape once (map edits are held there).
+	if (t.vbsp_tooltrig)
+	if (k == "mins" || k == "maxs" || k == "solid")
+	{
+		if (t.vbsp_toolshape == 3 && !vbsp_mapedit_ok)
+			return;
+		if (t.filtername != "" && !SV_FilterKnownD(SV_FindByName(t.filtername, world), 0))
+		{
+			if (t.vbsp_io_solid != SOLID_NOT)
+				dprint(sprintf("tooltrig %s '%s': filter '%s' is not one this game evaluates -- inert\n",
+				               t.classname, t.targetname, t.filtername));
+			t.vbsp_io_solid = t.solid = SOLID_NOT;
+			setorigin(t, t.origin);
+			return;
+		}
+		if (k == "mins" || k == "maxs")
+		{
+			if (k == "mins")
+				setsize(t, stov(v), t.maxs);
+			else
+				setsize(t, t.mins, stov(v));
+			t.vbsp_toolshape = t.vbsp_toolshape | ((k == "mins") ? 1 : 2);
+			setorigin(t, t.origin);
+			dprint(sprintf("tooltrig %s '%s': %v .. %v\n", t.classname, t.targetname, t.mins, t.maxs));
+			return;
+		}
+		t.solid = (stof(v) && !SV_Key2(t.StartDisabled, t.startdisabled)) ? t.vbsp_io_solid : SOLID_NOT;
+		setorigin(t, t.origin);
+		return;
+	}
+
 	// Patch 870: game_text's text (190 outputs on 8 maps).
 	if (k == "message")
 	{
@@ -2376,6 +2469,8 @@ void(entity t, float on) SV_IOEnable =
 	{
 		if (t.model != "" && substring(t.model, 0, 1) == "*")
 			t.solid = t.vbsp_io_solid ? t.vbsp_io_solid : SOLID_BSP;
+		else if (t.vbsp_tooltrig)
+			t.solid = t.vbsp_io_solid;	// Patch 892: a zone-tool box (SOLID_NOT behind an unknown filter)
 		if (t.vbsp_sp_kind && t.solid != SOLID_NOT)
 			SV_SpDrop(t);				// Patch 860: never solid while moving
 		t.effects = t.effects - (t.effects & EF_NODRAW);
@@ -6294,21 +6389,84 @@ void() SV_BindInvisibleBrush =
 	self.effects = self.effects | EF_NODRAW;
 };
 
+/*
+  Patch 892: Momentum's zone tool writes triggers with no brush and shapes them at map spawn --
+  a logic_auto's OnMapSpawn AddOutput "solid 2", then "mins ..." and "maxs ..." (169 on 47 maps:
+  133 teleports, 34 limitmovement, 19 multiples, 3 Momentum teleports, a push).  A named one is
+  kept, not solid, until SV_IOAddOutput gives it a box; an unnamed one can never be shaped.
+*/
+/*
+  0: not a zone-tool trigger (the caller frees it).  2: one, stashed whole and freed here, so its
+  slot goes back as before Patch 892 and no later edict renumbers (the physent digest numbers
+  them, Patch 865); SV_LateSpawnAll re-creates it after the lump, before the outputs are wired and
+  OnMapSpawn fires.  1: that late pass -- keep it.
+*/
+float() SV_ToolTrig =
+{
+	local float fld, n, ty;
+	local string rec, nm, val, sfx;
+
+	if (self.model != "" || self.targetname == "")
+		return 0;
+	if (vbsp_late_respawn)
+	{
+		self.vbsp_tooltrig = TRUE;
+		self.movetype = MOVETYPE_NONE;
+		setorigin(self, self.origin);
+		return 1;
+	}
+	// Everything the parse set: at spawn nothing else is, so the set fields are the keyvalues
+	// (and .vbsp_io_raw, the outputs).  A vector carries its components.
+	rec = strcat("classname\t", self.classname);
+	n = numentityfields();
+	for (fld = 1; fld < n; fld = fld + 1)
+	{
+		ty = entityfieldtype(fld);
+		if (ty != EV_STRING && ty != EV_FLOAT && ty != EV_VECTOR)
+			continue;
+		nm = entityfieldname(fld);
+		sfx = substring(nm, strlen(nm) - 2, 2);
+		if (nm == "classname" || sfx == "_x" || sfx == "_y" || sfx == "_z")
+			continue;
+		val = SV_FieldStr(fld, self);
+		if (!SV_LateIsUnset(fld, val))
+			rec = strcat(rec, "\t", nm, "\t", val);
+	}
+	if (vbsp_late_tool <= 0)
+		vbsp_late_tool = buf_create();
+	bufstr_add(vbsp_late_tool, rec, TRUE);
+	remove(self);
+	return 2;
+};
+
+// A trigger's solid as spawned; a tool trigger's waits for AddOutput's box.  A box is SOLID_TRIGGER:
+// the touch pass clips a model-less SOLID_BSPTRIGGER with MASK_WORLDSOLID, which a box never
+// matches, so it would never touch (measured); SOLID_TRIGGER is its padded bounds, a unit or two early.
+void() SV_TrigSolid =
+{
+	self.vbsp_io_solid = self.vbsp_tooltrig ? SOLID_TRIGGER : SOLID_BSPTRIGGER;
+	self.solid = self.vbsp_tooltrig ? SOLID_NOT : SOLID_BSPTRIGGER;
+};
+
 void() trigger_teleport =
 {
-	if (!self.model)
+	local float tt;
+
+	tt = self.model ? 1 : SV_ToolTrig();
+	if (tt != 1)
 	{
-		remove(self);
+		if (!tt)
+			remove(self);
 		return;
 	}
-	SV_BindInvisibleBrush();
+	if (!self.vbsp_tooltrig)
+		SV_BindInvisibleBrush();
 	self.movetype = MOVETYPE_NONE;
-	self.solid = SOLID_BSPTRIGGER;
 	self.touch = trigger_teleport_touch;
 
 	// Build 37: remembered so Enable restores a TRIGGER rather than a wall,
 	// and counted so a map full of disabled teleports says so at load.
-	self.vbsp_io_solid = SOLID_BSPTRIGGER;
+	SV_TrigSolid();
 	if (SV_Key2(self.StartDisabled, self.startdisabled))
 		vbsp_tele_disabled_n = vbsp_tele_disabled_n + 1;
 };
@@ -6970,9 +7128,13 @@ void() trigger_push_touch =
 
 void() trigger_push =
 {
-	if (!self.model)
+	local float tt;
+
+	tt = self.model ? 1 : SV_ToolTrig();
+	if (tt != 1)
 	{
-		remove(self);
+		if (!tt)
+			remove(self);
 		return;
 	}
 	/*
@@ -6987,11 +7149,13 @@ void() trigger_push =
 	  CTriggerPush::Spawn applies 100 when the key is absent, and an already
 	  compiled map that omitted the key is asking for the code default.
 	*/
-	SV_BindInvisibleBrush();
+	if (!self.vbsp_tooltrig)
+		SV_BindInvisibleBrush();
 	self.movetype = MOVETYPE_NONE;
-	self.solid = SOLID_BSPTRIGGER;
+	SV_TrigSolid();
 	self.touch = trigger_push_touch;
-	if (!(self.spawnflags & SF_PUSH_ONCE))
+	// The client matches this state by brush model; a tool push has none, so it is not sent.
+	if (!(self.spawnflags & SF_PUSH_ONCE) && !self.vbsp_tooltrig)
 	{
 		self.SendEntity = SV_TrigStateSend;
 		self.SendFlags = 1;
@@ -7010,7 +7174,8 @@ void() trigger_push =
 	  vbsp_io_solid is what lets SV_IOEnable put it BACK as a trigger rather
 	  than flattening it to SOLID_BSP, which would turn a booster into a wall.
 	*/
-	self.vbsp_io_solid = SOLID_BSPTRIGGER;
+	if (!self.vbsp_tooltrig)
+		self.vbsp_io_solid = SOLID_BSPTRIGGER;
 	if (SV_Key2(self.StartDisabled, self.startdisabled))
 		self.solid = SOLID_NOT;
 };
@@ -7413,15 +7578,19 @@ float() SV_MomTrigGate =
 // the map's numbering is what it was.  FALSE: no brush, freed.
 float() SV_MomTrigSpawn =
 {
-	if (!self.model)
+	local float tt;
+
+	tt = self.model ? 1 : SV_ToolTrig();
+	if (tt != 1)
 	{
-		remove(self);
+		if (!tt)
+			remove(self);
 		return FALSE;
 	}
-	SV_BindInvisibleBrush();
+	if (!self.vbsp_tooltrig)
+		SV_BindInvisibleBrush();
 	self.movetype = MOVETYPE_NONE;
-	self.solid = SOLID_BSPTRIGGER;
-	self.vbsp_io_solid = SOLID_BSPTRIGGER;
+	SV_TrigSolid();
 	setorigin(self, self.origin);   // relink as a trigger: setmodel linked it SOLID_NOT
 	return TRUE;
 };
@@ -7842,7 +8011,7 @@ float(entity t, entity p) SV_MomLimitTouches =
 	local entity was;
 	local float hit;
 
-	if (t.solid != SOLID_BSPTRIGGER || SV_Key2(t.StartDisabled, t.startdisabled))
+	if ((t.solid != SOLID_BSPTRIGGER && t.solid != SOLID_TRIGGER) || SV_Key2(t.StartDisabled, t.startdisabled))
 		return FALSE;
 	if (p.absmin_x > t.absmax_x || p.absmin_y > t.absmax_y || p.absmin_z > t.absmax_z ||
 	    p.absmax_x < t.absmin_x || p.absmax_y < t.absmin_y || p.absmax_z < t.absmin_z)
@@ -10711,9 +10880,13 @@ void(entity p, float t0) SV_TrigResume =
 
 void() trigger_multiple =
 {
-	if (!self.model)
+	local float tt;
+
+	tt = self.model ? 1 : SV_ToolTrig();
+	if (tt != 1)
 	{
-		remove(self);
+		if (!tt)
+			remove(self);
 		return;
 	}
 
@@ -10741,10 +10914,10 @@ void() trigger_multiple =
 		return;
 	}
 
-	SV_BindInvisibleBrush();
+	if (!self.vbsp_tooltrig)
+		SV_BindInvisibleBrush();
 	self.movetype = MOVETYPE_NONE;
-	self.solid = SOLID_BSPTRIGGER;
-	self.vbsp_io_solid = SOLID_BSPTRIGGER;
+	SV_TrigSolid();
 	self.touch = trigger_multiple_touch;
 
 	if (SV_Key2(self.StartDisabled, self.startdisabled))
