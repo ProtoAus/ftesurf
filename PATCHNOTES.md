@@ -26,6 +26,7 @@
 - Local and world placement sit together in one box, and a run without a world rank says why in plain words.
 - The splits table shows each split's gain or loss against your PB, and the card is only as tall as its rows.
 - The one-line stage toast (shown when stage banners are off) gets the same look.
+- The middle mouse button no longer takes the card's cursor, so it paints as bound; F1 still does.
 
 ### P901 Type the ghost's time offset
 - The Ghost settings in hud_edit have a new row, Offset in ms: click it, type any offset from -60000 to 60000 ms and press Enter (Esc leaves it as it was). The old quick steps are still there.

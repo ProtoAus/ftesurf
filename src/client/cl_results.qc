@@ -1206,8 +1206,7 @@ void(vector scr) Results_Draw =
 	x = p_x + pad;
 	if (!ui_rs_cursor)
 	{
-		x = Results_Hint(x, y, "F1", "", lsz, a * 0.9);
-		x = Results_Hint(x, y, "MOUSE3", "cursor", lsz, a * 0.9);
+		x = Results_Hint(x, y, "F1", "cursor", lsz, a * 0.9);
 	}
 	Results_Hint(x, y, "ESC", "close", lsz, a * 0.9);
 
@@ -1251,10 +1250,8 @@ float(float evtype, float scanx, float chary, float devid) Results_InputEvent =
 /*
   The passive half: the two gestures that ASK for the cursor.
 
-  F1 AND MOUSE3, both, because the request was "a key or a click" and a literal
-  left click is not available -- MOUSE1 and MOUSE2 are +duck and +jump in
-  cfg/default.cfg, so taking either would cost movement.  MOUSE3 is free in the
-  shipped config and is the only click there is.
+  F1 only.  MOUSE3 asked too until Patch 904: the default binds put paint on it,
+  and a card that took it would eat every paint press after a finish.
 
   Reached from the key path in cl_main.qc while the card is open and the cursor
   has NOT been taken.  Returns TRUE only when it consumed the press.
@@ -1273,9 +1270,9 @@ float(float scanx) Results_PassiveKey =
 	if (!ui_rs_open || !cvar("hud_results"))
 		return FALSE;
 
-	// F1 / MOUSE3 during the banner's hold skip to the card (the banner yields
-	// to a taken cursor); ESC then still reaches the menu.
-	if (scanx == K_F1 || scanx == K_MOUSE3)
+	// F1 during the banner's hold skips to the card (the banner yields to a
+	// taken cursor); ESC then still reaches the menu.
+	if (scanx == K_F1)
 	{
 		Results_TakeCursor();
 		return TRUE;

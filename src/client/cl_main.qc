@@ -1116,8 +1116,8 @@ float(float scanx) CL_ButtonBit =
 	if (scanx == K_SPACE)      return CLB_SPC;
 	if (scanx == K_MOUSE1)     return CLB_M1;
 	if (scanx == K_MOUSE2)     return CLB_M2;
-	// MOUSE3 belongs here too: Results_PassiveKey takes its press while a card is
-	// up (Patch 809: ent_view's MOUSE3 is a bind now, not taken here).
+	// MOUSE3 is a bind (paint); nothing in the chain takes it since Patch 904,
+	// and the bit pairs a release only for a press that was taken.
 	if (scanx == K_MOUSE3)     return CLB_M3;
 	if (scanx == K_MWHEELUP)   return CLB_WUP;
 	if (scanx == K_MWHEELDOWN) return CLB_WDN;
@@ -1288,7 +1288,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 
 		// Build 48: the two gestures that ASK the passive card for the cursor,
 		// plus ESC to dismiss it.  Offered before the two menus below because it
-		// answers only F1, MOUSE3 and ESC, and only while a card is actually up.
+		// answers only F1 and ESC (Patch 904), and only while a card is actually up.
 		if (Results_PassiveKey(scanx))
 			return TRUE;
 		// Multi-Session: F2 takes a paused run's offer, only while one is up.
@@ -1445,7 +1445,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputEvent =
 		Keys_ModEdge(scanx, evtype == IE_KEYDOWN);
 
 	// Recorded on the WHOLE chain's answer, not a single handler's, so the
-	// passive-key path (MOUSE3 taking a cursor) pairs the same way.
+	// passive-key path (F1 taking a cursor) pairs the same way.
 	if (took && bit && evtype == IE_KEYDOWN)
 		cl_btn_taken = cl_btn_taken | bit;
 	return took;

@@ -9,7 +9,8 @@
   the box should not fire their binds (try 1, which is sl_save) -- the rig could not press real keys.
 - Finish any run: the card (right of centre) is the new rounded panel -- map and run kind on
   top, the time large with the PB gain/loss pill, Local/World in one box, splits with their
-  gain/loss, F1/MOUSE3/ESC as keycaps. Same information as before. "Card ok / <what's off>".
+  gain/loss, F1/ESC as keycaps. MOUSE3 no longer takes the card's cursor, so paint works over
+  it. Same information as before. "Card ok / <what's off>".
   Verdicts PENDING.
 
 ## P894, P895 — graphics settings without a map reload; surf_pantheon's waterfalls at 2x
