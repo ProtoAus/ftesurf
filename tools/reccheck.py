@@ -751,9 +751,17 @@ def check_rec(path, verbose=False, *, data=None):
             r.fault("header is missing %r" % k)
     r.info.update(head)
 
-    tickrate = float(head.get("tickrate", 0) or 0)
+    # Patch 893 review 5: a rate the reader divides by (the exempt-chain cap) -- nan, inf or a
+    # subnormal from a hostile writer raised there, and every fault of the file became "not checked".
+    try:
+        tickrate = float(head.get("tickrate", 0) or 0)
+    except ValueError:
+        tickrate = 0.0
     if tickrate <= 0:
         r.fault("tickrate %r is not positive" % head.get("tickrate"))
+        tickrate = 0.015
+    elif not math.isfinite(tickrate) or tickrate < 0.001:
+        r.fault("tickrate %r is not a usable rate (finite, 1 ms or more)" % head.get("tickrate"))
         tickrate = 0.015
 
     # Build 74: the game's cached rate against the mover's own.  A FAULT and not
@@ -763,8 +771,13 @@ def check_rec(path, verbose=False, *, data=None):
     # Absent or zero means no engine value (pre-325, or the Source mover off),
     # which is unknown rather than wrong and must not fault: the whole library of
     # existing recordings has no such line.
-    mtr = float(head.get("movetickrate", 0) or 0)
-    if mtr > 0 and abs(mtr - tickrate) > 1e-6:
+    try:
+        mtr = float(head.get("movetickrate", 0) or 0)
+    except ValueError:
+        mtr = float("nan")
+    if not math.isfinite(mtr) and head.get("movetickrate") is not None:
+        r.fault("movetickrate %r is not a number" % head.get("movetickrate"))
+    elif mtr > 0 and abs(mtr - tickrate) > 1e-6:
         r.fault("movetickrate %g disagrees with tickrate %g -- every time in "
                 "this file is out by a factor of %.6f" % (mtr, tickrate, mtr / tickrate))
 

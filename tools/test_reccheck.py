@@ -1798,6 +1798,16 @@ def case_split_part_rows_are_not_joined():
             out.append(l)
         return out
 
+    # A hostile header rate must fault, not raise: the cap divides by it (review 5).
+    for bad in ("nan", "inf", "1e-320", "abc"):
+        Lb = [("tickrate %s" % bad) if l.startswith("tickrate ") else
+              ("movetickrate %s" % bad) if l.startswith("movetickrate ") else l for l in chain(5)]
+        try:
+            f, _ = run(Lb, view=view)
+            check(any("tickrate" in x for x in f), "a header tickrate of %s is a fault, not a crash" % bad)
+        except Exception as ex:          # noqa: BLE001 -- the finding is that it raised
+            check(False, "a header tickrate of %s is a fault, not a crash (raised %s)" % (bad, type(ex).__name__))
+
     cap = math.ceil(0.5 / TICK)
     f, n = run(chain(cap), view=view)
     check(not any("not a split's later part" in x for x in n),
