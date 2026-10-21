@@ -2309,6 +2309,15 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
 
 ## Run and test
 
+- **Cross-platform `pm_dettest` needs the same shipped map rules (22 Oct 2026).**
+  `spec_chat_smoke.prepare` copies `cfg/default.cfg`, not `cfg/maps/`. Missing
+  pantheon/axil overrides left Windows at maxvelocity 3500 while ARM used
+  10000/4500: trace/libm rows matched, but all five mover rows differed on each
+  map. Fresh processes did not fix it; copying the exact shipped map configs
+  restored all 12 named rows on both maps (all 60 across the five-map gate).
+  The command pins several movevars, but not this ceiling. Check the actual
+  startup ruleset before interpreting a mover-hash difference as arithmetic.
+
 - Normal launch: `./ftesurf64.exe` (or `ftesurf.bat`).
 - Headless: `./ftesurf64.exe -WindowStyle Minimized +exec <name>` with cfgs in
   `ftesurf/cfg/test/`; output in `ftesurf/logs/<log_name>.log` and

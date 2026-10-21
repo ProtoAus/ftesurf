@@ -1,5 +1,25 @@
 # ROADMAP.md — maps, demos, run lines and rewind
 
+## Requested: automatic movement-style detection (Lex, 21 Oct 2026)
+
+P909 supplies the manual Normal, Sideways, Half-Sideways and Backwards filters,
+with Segmented independent of direction. Automatic style detection was explicitly
+requested for later; it is not implemented. Detection thresholds, automatic board
+assignment and historical reclassification are not implied by the manual filters.
+
+## Requested: disconnected clocks and cancelled-main stage archives (21 Oct 2026)
+
+P914 counts time spent spectating or watching a recording while connected. P913
+restricts automatic resume to clean whole-main runs, excluding practice, segmented
+and standalone-stage runs. Counting disconnected time is still unbuilt: whether
+all offline time (including overnight) counts, and what qualifies as a stage the
+player "cannot beat", await Lex's decision. The old day-only save metadata is not
+an exact disconnect timestamp.
+
+P911 verified that a completed clean stage PB and its replay survive cancellation
+of the enclosing main. Retaining every non-PB completed stage attempt is not an
+implemented all-attempt archive; that retention policy also awaits clarification.
+
 ## Requested: Story and Event mode, the parts not built yet (Lex, 20 Oct 2026)
 
 Patch 854 built the ladder (STORY on the main menu, medals from WOS rows, chapters on trophies,
