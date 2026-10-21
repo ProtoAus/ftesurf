@@ -31,6 +31,10 @@
 ### P901 Type the ghost's time offset
 - The Ghost settings in hud_edit have a new row, Offset in ms: click it, type any offset from -60000 to 60000 ms and press Enter (Esc leaves it as it was). The old quick steps are still there.
 
+### P900 Layered glass draws in the right order
+- Windows made of several glass layers, such as bhop_eazy's, no longer break into patches or swap tints when seen at an angle: panes are drawn back to front by which side of each pane you are on.
+- Graphics menu: the Glass option "Dithered" now reads "Dithered if textured". Glass without a texture of its own, which is most glass (surf_boreas's ice included), has always drawn as Translucent in that mode.
+
 ### P896 Every KSF recording, three times faster
 - KSF recordings now arrive three times faster, including those of older KSF times imported before recordings were linked.
 - A broken file on KSF's side no longer holds up everyone else's recordings.

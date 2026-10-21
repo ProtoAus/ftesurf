@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P900 — bhop_eazy's layered windows; Glass "Dithered"
+
+- bhop_eazy saves 14 and 15, your r_blendsort 2: the three window layers should look even at any angle
+  (the patches at save 14 gone). Engine exe 0fe4a0c6 (git-7676-patch-895-5-g79503b6fc).
+- hud_gfx/gfx_menu Glass: option 2 now reads "Dithered if textured". On glass with its own texture
+  (bhop_ceaseless's cyan panes) it is a visible dither; on the rest (surf_boreas's ice) it is
+  Translucent, as before. Not yet looked at in the menu. Verdicts PENDING.
+
 ## P901, P904 — typed ghost offset; the results card in the Dusk look
 
 - hud_edit (c) -> Ghost: the new row "Offset in ms" under Time offset. Click it (it opens empty,
