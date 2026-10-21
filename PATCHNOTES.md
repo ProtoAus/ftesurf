@@ -3,8 +3,8 @@
 <!--
   What each update changes, written for players. The release turns this file into
   patchnotes.json beside update.json (src/release/releaselib.ps1 ConvertFrom-PatchNotes);
-  the download page lists it down its right-hand side and the title menu shows it
-  when an update is waiting or has just installed.
+  the download page lists it down its right-hand side and the game shows it on F2's
+  Patch notes page.
 
   Every patch a player can see or feel gets an entry under "## next" in the commit
   that lands it. The release names "next" (release.ps1 refuses one without it), and
@@ -21,12 +21,20 @@
 
 ## next
 
+### P905 Story is ready before you open it
+- The story ladder and your trophies load while you are on the title screen, so the first STORY click shows them straight away. If the board does not answer, it is asked again after 5 seconds instead of a minute.
+- surf_tendies (Tier 1) and surf_affliction (Tier 2) join the story, with placeholder challenges for now.
+
 ### P904 The results card in the new look
 - The card after a finish now matches the rest of the new interface: rounded panel, the time large with a coloured gain or loss against your PB, and your previous PB under it.
 - Local and world placement sit together in one box, and a run without a world rank says why in plain words.
 - The splits table shows each split's gain or loss against your PB, and the card is only as tall as its rows and always fits the screen.
 - The one-line stage toast (shown when stage banners are off) gets the same look.
 - The middle mouse button no longer takes the card's cursor, so it does what it is bound to (paint, with the default binds); F1 still takes it.
+
+### P902 A quieter title screen: updates, patch notes and terms move to F2
+- The update corner and the patch notes panel are gone from the title screen. F2 holds them instead, one page each: Patch notes, Updates (turn on or off, restart, check again), Input journal and Terms.
+- The title screen keeps your version and the latest one in the top right, as text, with a line pointing at F2, and says when an update is ready for a restart.
 
 ### P901 Type the ghost's time offset
 - The Ghost settings in hud_edit have a new row, Offset in ms: click it, type any offset from -60000 to 60000 ms and press Enter (Esc leaves it as it was). The old quick steps are still there.

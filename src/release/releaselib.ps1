@@ -311,7 +311,7 @@ function Copy-SiteFiles ([string]$From, [string]$To) {
 
 # --- patch notes -----------------------------------------------------------------------
 # PATCHNOTES.md -> patchnotes.json beside update.json, read by the page's side panel
-# (site.js) and the title menu (m_update.qc). Newest release first: `## next` (the
+# (site.js) and F2's Patch notes page (m_update.qc). Newest release first: `## next` (the
 # one being prepared) or `## <version> <yyyy-mm-dd>`; `### P<n> <title>`; `- <point>`
 # one line each. Other lines are prose and skipped. Printable ASCII and no ^: the
 # menu draws ^ as a colour code. -Version: `next` becomes that release, dated -Date.

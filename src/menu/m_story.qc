@@ -15,6 +15,7 @@
 #define STY_SIDE_W      300
 #define STY_FRESH       60          // seconds a reply is reused
 #define STY_WAIT        15          // seconds before an unanswered ask has failed
+#define STY_RETRY       5           // P905: first wait before a failed ladder is asked again
 #define STY_ME_FILE     "data/story_me.txt"
 #define STY_ME_HEAD     "FTESURF-STORYME 1"
 #define STY_GOLD        SUI_THEME_WARN
@@ -42,6 +43,10 @@ float sty_preq, sty_pst, sty_pat;
 float sty_kreq, sty_kst, sty_kat, sty_kfor;
 float sty_mreq, sty_mphase, sty_mat, sty_mnext, sty_notet;
 string sty_me, sty_who, sty_whoname, sty_note, sty_lnote;
+float sty_lfail, sty_lnone;         // P905: failed ladder asks in a row; the board said it has none
+
+// P905: what the story asks and hears is for developer 1 only -- the title screen asks now.
+void(string s) Sty_Log = { if (cvar("developer")) print(s); };
 
 // A passing line beside the tabs, gone after 8 s.
 void(string s) Sty_Note =
@@ -114,8 +119,27 @@ float(string q) Sty_Get =
 	if (dir == "") return 0;
 	id = Lob_NextReq();
 	if (!uri_get(strcat(dir, "/api/board?", q), id)) return 0;
-	print(sprintf("^5story:^7 asked id %g: %s\n", id, q));
+	Sty_Log(sprintf("^5story:^7 asked id %g: %s\n", id, q));
 	return id;
+};
+
+// P905: a ladder ask that failed; the next waits 5, 10, 20, 40, then 60 s (Sty_RetryIn).
+void(string why) Sty_ListFailed =
+{
+	sty_lreq = 0;
+	sty_lst = STY_FAIL;
+	sty_lat = time;
+	sty_lfail = sty_lfail + 1;
+	if (why != "") Sty_Set(why, sty_lnote);
+};
+
+float() Sty_RetryIn =
+{
+	local float d, k;
+	d = STY_RETRY;
+	for (k = 1; k < sty_lfail && d < 60; k = k + 1)
+		d = d * 2;
+	return min(d, 60);
 };
 
 void() Sty_AskList =
@@ -124,13 +148,16 @@ void() Sty_AskList =
 	sty_lreq = Sty_Get("story=list");
 	sty_lst = sty_lreq ? STY_ASK : STY_FAIL;
 	sty_lat = time;
+	if (!sty_lreq) sty_lfail = sty_lfail + 1;
 	if (!sty_lreq) Sty_Set(Sty_Online() ? "Could not ask the board for the ladder." :
 		"Story needs online play: turn it on in Settings / Privacy.", sty_lnote);
 };
 
 void() Sty_AskProg =
 {
-	if (sty_who == "" || sty_pst == STY_ASK) return;
+	// P905: never before the ladder -- an answer that lands first matches no list, reads
+	// as 0 trophies and chapter 1, and stood until the list's own re-ask (Sty_Reply).
+	if (sty_who == "" || sty_pst == STY_ASK || sty_lst != STY_OK) return;
 	sty_preq = Sty_Get(strcat("story=player&who=", sty_who));
 	sty_pst = sty_preq ? STY_ASK : STY_FAIL;
 	sty_pat = time;
@@ -191,8 +218,7 @@ void(string body) Sty_ParseList =
 	root = json_parse(body);
 	if (!root)
 	{
-		sty_lst = STY_FAIL;
-		Sty_Set("The board sent a ladder this game cannot read.", sty_lnote);
+		Sty_ListFailed("The board sent a ladder this game cannot read.");
 		return;
 	}
 	lists = json_find_object_child(root, "lists");
@@ -286,8 +312,10 @@ void(string body) Sty_ParseList =
 	sty_idxcount = -1;
 	json_free(root);
 	sty_lst = STY_OK;
+	sty_lfail = 0;
+	sty_lnone = FALSE;
 	Sty_Set("", sty_lnote);
-	print(sprintf("^5story:^7 list rev %s: %g list(s), %g/%g level(s)\n", rev, n, sty_nlv[0], sty_nlv[1]));
+	Sty_Log(sprintf("^5story:^7 list rev %s: %g list(s), %g/%g level(s)\n", rev, n, sty_nlv[0], sty_nlv[1]));
 };
 
 void(string body) Sty_ParseProg =
@@ -330,7 +358,7 @@ void(string body) Sty_ParseProg =
 	}
 	json_free(root);
 	sty_pst = STY_OK;
-	print(sprintf("^5story:^7 progress of %s: %g / %g trophies, chapter %g / %g\n",
+	Sty_Log(sprintf("^5story:^7 progress of %s: %g / %g trophies, chapter %g / %g\n",
 	              sty_who, sty_t[0], sty_t[1], sty_open[0], sty_open[1]));
 };
 
@@ -363,7 +391,7 @@ void(string body) Sty_ParsePlayers =
 	sty_pltotal = json_get_float(json_find_object_child(root, "total"));
 	json_free(root);
 	sty_kst = STY_OK;
-	print(sprintf("^5story:^7 %g of %g player(s) on %s\n", n, sty_pltotal, sty_lid[sty_kfor]));
+	Sty_Log(sprintf("^5story:^7 %g of %g player(s) on %s\n", n, sty_pltotal, sty_lid[sty_kfor]));
 };
 
 void(string body) Sty_MeReply =
@@ -376,7 +404,7 @@ void(string body) Sty_MeReply =
 	if (!root) { sty_mphase = 0; return; }
 	if (json_get_float(json_find_object_child(root, "ok")) != 1)
 	{
-		print(sprintf("^5story:^7 who-am-I refused: %s\n", json_get_string(json_find_object_child(root, "error"))));
+		Sty_Log(sprintf("^5story:^7 who-am-I refused: %s\n", json_get_string(json_find_object_child(root, "error"))));
 		sty_mphase = 0;
 		json_free(root);
 		return;
@@ -409,12 +437,12 @@ void(string body) Sty_MeReply =
 	sty_mnext = time + 600;
 	if (who == "")
 	{
-		print("^5story:^7 this install has no WOS runs on the board yet\n");
+		Sty_Log("^5story:^7 this install has no WOS runs on the board yet\n");
 		Sty_Note("Finish a run on a lobby and your medals start here.");
 		return;
 	}
 	if (!MF_Hex(who, 12)) return;
-	print(sprintf("^5story:^7 this install plays as %s\n", who));
+	Sty_Log(sprintf("^5story:^7 this install plays as %s\n", who));
 	Sty_Note("");
 	if (strcmp(who, sty_me))
 	{
@@ -430,7 +458,7 @@ float(float reqid, float code, string body) Sty_Reply =
 	if (!reqid) return FALSE;
 	if (reqid == sty_mreq && sty_mphase)
 	{
-		if (code) { print(sprintf("^5story:^7 who-am-I returned %g\n", code)); sty_mphase = 0; }
+		if (code) { Sty_Log(sprintf("^5story:^7 who-am-I returned %g\n", code)); sty_mphase = 0; }
 		else Sty_MeReply(body);
 		return TRUE;
 	}
@@ -440,8 +468,9 @@ float(float reqid, float code, string body) Sty_Reply =
 		sty_lat = time;
 		if (code)
 		{
-			sty_lst = STY_FAIL;
-			print(sprintf("^5story:^7 list returned %g\n", code));
+			Sty_ListFailed("");
+			sty_lnone = (code == 404);      // no list at all: not asked again until STORY is opened
+			Sty_Log(sprintf("^5story:^7 list returned %g\n", code));
 			if (code < 0)
 				Sty_Set("Could not reach the board. Try again shortly.", sty_lnote);
 			else
@@ -478,21 +507,41 @@ float(float reqid, float code, string body) Sty_Reply =
 void() Sty_Poll =
 {
 	if (sty_lst == STY_ASK && time - sty_lat > STY_WAIT)
-	{
-		sty_lreq = 0;
-		sty_lst = STY_FAIL;
-		Sty_Set("The board did not answer. Try again shortly.", sty_lnote);
-	}
+		Sty_ListFailed("The board did not answer. Try again shortly.");
 	if (sty_pst == STY_ASK && time - sty_pat > STY_WAIT) { sty_preq = 0; sty_pst = STY_FAIL; }
 	if (sty_kst == STY_ASK && time - sty_kat > STY_WAIT) { sty_kreq = 0; sty_kst = STY_FAIL; }
 	if (sty_mphase && time - sty_mat > STY_WAIT) sty_mphase = 0;
 	Sty_AskMe();
-	if (sty_lst != STY_ASK && time - sty_lat > STY_FRESH)
+	// P905: a failed ladder backs off from STY_RETRY instead of waiting STY_FRESH; a 404 waits for STORY.
+	if (sty_lst != STY_ASK && !(sty_lst == STY_FAIL && sty_lnone))
+	if (time - sty_lat > ((sty_lst == STY_FAIL) ? Sty_RetryIn() : STY_FRESH))
 		Sty_AskList();
 	if (sty_lst == STY_OK && sty_pst != STY_ASK && sty_who != "" && time - sty_pat > STY_FRESH)
 		Sty_AskProg();
 	if (sty_tab == STY_TABS - 1 && sty_kst != STY_ASK && (sty_kfor != sty_plist || time - sty_kat > STY_FRESH))
 		Sty_AskPlayers(sty_plist);
+};
+
+// P905 (Lex: "sometimes it doesn't load on first click"): the ladder, the saved "me" and
+// its progress are asked from the title screen once online play is allowed, so the first
+// STORY click finds them; three tries at most, on Sty_RetryIn's waits, none after a 404.
+float sty_pref;
+void() Sty_Prefetch =
+{
+	if (!Sty_Online() || !Sty_Init())
+		return;
+	if (sty_lst == STY_ASK && time - sty_lat > STY_WAIT)
+		Sty_ListFailed("");
+	if (sty_lst == STY_OK || sty_lst == STY_ASK || sty_lnone || sty_pref >= 3)
+		return;
+	if (sty_lst == STY_FAIL && time - sty_lat < Sty_RetryIn())
+		return;
+	sty_pref = sty_pref + 1;
+	if (sty_me == "") Sty_LoadMe();
+	if (sty_who == "" && sty_me != "") Sty_View(sty_me);
+	Sty_AskList();
+	Sty_AskMe();
+	Sty_Log(sprintf("^5story:^7 prefetch %g from the title screen\n", sty_pref));
 };
 
 void() Sty_Open =
@@ -502,7 +551,7 @@ void() Sty_Open =
 		ui_create_open();           // the map rows Play and the thumbnails come from
 	if (sty_me == "") Sty_LoadMe();
 	// Older than 10 s is asked again now; an ask in flight is left to land.
-	if (sty_lst != STY_ASK && time - sty_lat > 10) sty_lat = -STY_FRESH;
+	if (sty_lst != STY_ASK && time - sty_lat > 10) { sty_lat = -STY_FRESH; sty_lnone = FALSE; }
 	if (sty_pst != STY_ASK && time - sty_pat > 10) sty_pat = -STY_FRESH;
 	if (sty_kst != STY_ASK && time - sty_kat > 10) sty_kat = -STY_FRESH;
 	if (sty_who == "" && sty_me != "") Sty_View(sty_me);
