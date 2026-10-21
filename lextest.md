@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P892, P893, P897, P906 — zone-tool triggers, zones checked every tick, a quiet console
+
+Live 21 Oct UTC on the lobbies (07:07-07:50Z) and in both installs; in 0.1.29.
+- Falls that went nowhere now teleport on 30 maps whose triggers Momentum's zone tool made, such as
+  bhop_cloudburst's wall-skip fixes; surf_greek's 25 checkpoint slabs are no-bhop zones (a short wait on the
+  floor after landing in one).
+- surf_reverie plays normally: its zone-tool box (behind a Momentum surface filter this game cannot judge
+  yet) stays off, with no snap-back.
+- Thin zones and fail plates catch you even with a low cl_netfps.
+- Offline (your own game, developer 0), surf_boreas's spinning symbols and other map triggers no longer put
+  lines in the console; developer 1 shows them again.
+"Zone-tool teleports ok, or <map>", "greek ok", "reverie ok", "console quiet". Verdicts PENDING.
+
 ## P902, P905 — F2 holds updates, patch notes, journal and terms; story loads before the click
 
 - Title screen: no update corner, no Patch notes button or panel; top right is text only --

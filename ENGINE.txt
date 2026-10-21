@@ -34,6 +34,16 @@ patch    900
 # surf_pantheon still 19 copies. P893 (ftesurf-2a) is server-side: lobbies native 8b940174 since 07:15Z.
 # Exe 8109f66d, server 62a0ab24 (git-7690-patch-900-0-gf6dc50075), hl2 a31abb5f, cod 4a6cb9ff, imgui
 # 97e033be; Linux drop fteqw64 0330ad48, hl2 3b742f02 (10/10 gates). Release 0.1.29.
+# Patches 892, 893, 897, 906 (tag patch-893 = 2ec65d027 on f323cb68f; log 371c059e0, cd3a30f45; FTESurf
+# 230d0ebf, P906 7dfd7e92): zone-tool triggers (195 on 47 maps) stashed past the lump and re-created (no edict
+# renumbers; outputs carried raw); a usercmd the mover runs as n >= 2 ticks runs as n one-tick parts, only for
+# progs declaring input_cmd_later (sv_tickparts, a locked movevar; a later part's row is fl 8, the header says
+# `tickparts`; reccheck exempts a real split's later part from the one-frame join); play-time server dprints
+# print with developer or on a lobby; the client predicts no box it cannot judge (surf_reverie). Pi reccheck
+# 80af85da 2026-10-21 07:06:15Z; lobby QC 96c0d288 / 391784ef 07:07Z; lobby native 8b940174 + hl2 91438f53
+# 07:15Z, sv_tickparts 1 on all 12 (gate: dettest equal x5, four PASS on both, sv_tickparts new only; rollback
+# *.pre893-20261021T071459Z = the patch-890 pair; never below 890); P906 csprogs b4de829b 07:49:51Z. Installs
+# ran exe 7128cc24 (git-7675-patch-893-0-g2ec65d027) from 07:11Z until 0.1.29's 8109f66d.
 # Patches 894, 895 (client exe + hl2 plugin + csprogs; tag patch-895, main f323cb68f on 65a5950e9): hud_gfx
 # rows switch live (the plugin's material cvars get the renderer's shader-system flag; light sampler cvars
 # key the model-light cache; decals/overlays/sprites/light shafts re-place in CSQC) -- arm: translucent,
