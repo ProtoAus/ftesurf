@@ -16,7 +16,7 @@
 ## P900 — bhop_eazy's layered windows; Glass "Dithered"
 
 - bhop_eazy saves 14 and 15, your r_blendsort 2: the three window layers should look even at any angle
-  (the patches at save 14 gone). Engine exe 0fe4a0c6 (git-7676-patch-895-5-g79503b6fc).
+  (the patches at save 14 gone). Engine exe 8109f66d (git-7690-patch-900-0-gf6dc50075).
 - hud_gfx/gfx_menu Glass: option 2 now reads "Dithered if textured". On glass with its own texture
   (bhop_ceaseless's cyan panes) it is a visible dither; on the rest (surf_boreas's ice) it is
   Translucent, as before. Not yet looked at in the menu. Verdicts PENDING.
