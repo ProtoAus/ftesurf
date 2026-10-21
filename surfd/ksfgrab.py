@@ -37,6 +37,7 @@ MAX_RECOVER = 2
 MAX_FAILED = 2048
 MAX_PROVENANCE = 16 << 10
 FILEFAIL_DAYS = 14         # Patch 891: a file's own failures this far apart are one fault
+FLOOR = 15 << 30           # Patch 896: no download or install below this much free disk
 SCAN = 32
 BINDING = ('map', 'track', 'leg', 'style', 'player', 'runid', 'millis', 'when', 'file')
 STYLES = {0: 'FW', 1: 'SW', 2: 'HSW', 3: 'BW'}
@@ -511,6 +512,14 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
         # Give each lane one original slot when both have eligible work; viewed maps first.
         queued = sorted(jobs.items(), key=lambda kj: kj[1].get('map') not in prio)
         work = overflow[:1] + [(k, j, None) for k, j in queued] + overflow[1:]
+        # Patch 896: all of KSF's advertised recordings are ~46 GB (21 Oct), more than the
+        # Pi can spare beside its lobbies; install()'s 256 MiB reserve is the last ditch only.
+        probe = Path(S.KSF_DIR)
+        while not probe.exists():
+            probe = probe.parent
+        if shutil.disk_usage(probe).free < FLOOR:
+            print('KSF demos paused: under %d GiB free beside the archive' % (FLOOR >> 30))
+            work = []
         for key, job, board in work:
             local_only = board is not None
             if local_only:
@@ -550,7 +559,7 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
                 if data is None:
                     if local_only:
                         continue
-                    if (made >= min(2, max(0, maximum))
+                    if (made >= min(K.DEMO_MAX, max(0, maximum))
                             or now < int(park.get('until') or 0)):
                         continue
                     # Sleep before FIRST request: the board crawler just acted.

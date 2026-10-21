@@ -99,6 +99,7 @@ import io
 import json
 import logging
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -158,7 +159,12 @@ KSF_MODES = {0: S.STYLE_CLEAN, 1: S.STYLE_SW, 2: S.STYLE_HSW, 3: S.STYLE_BW}
 KSF_LIST_PAGE = 10         # maps per /api/maps/new page (measured 5 Oct)
 
 # --watch, the unattended crawl.  10 requests every 5 minutes is ~2,900 a day.
-WATCH_MAX = 10
+WATCH_BOARDS = 8           # board requests a --watch tick; --demos downloads come on top
+DEMO_MAX = 6               # Patch 896, Lex 21 Oct: "6 per 5 minutes" (was 2 of 10)
+WATCH_MAX = WATCH_BOARDS + DEMO_MAX
+UNBLOCK_MAX = 4            # Patch 896: pages a tick re-asks for recordings on null-ID rows
+UNBLOCK_SCAN = 64          # boards a tick looks through for them
+UNBLOCK_DAYS = 7           # a page re-asked this recently is not asked again
 WATCH_DELAY = 3.0          # s between requests
 COOLDOWN = 6 * 3600        # s parked after a refusal, doubling to COOLDOWN_MAX
 COOLDOWN_MAX = 48 * 3600
@@ -797,6 +803,97 @@ def wanted_maps(now):
         return set()
 
 
+def board_page_at(cache, mp, zone, pacer, mode, start, idx=None):
+    """Patch 896: one page from rank `start`, folded in; the walking cursor is not moved."""
+    doc = board_load(cache, mp, zone, mode)
+    mark_owed(cache, mp, zone, mode)
+    page = pacer.get("/api/maps/%s/records/zone/%d/%d?game=css&mode=%d"
+                     % (urllib.parse.quote(mp), zone, start, mode),
+                     _ikey(mp, zone, mode))
+    if not isinstance(page, list):
+        raise Refused("a records page was not a list -- their format has "
+                      "probably changed", board=True)
+    page = [r for r in page if isinstance(r, dict)]
+    if page and not any(steam64(str(r.get("steamID") or "")) for r in page):
+        raise Refused("a records page carried no SteamID -- their format has "
+                      "probably changed", board=True)
+    merge_page(doc, page)
+    if start == 1:
+        doc["top"] = int(time.time())
+    _save(board_path(cache, mp, zone, mode), doc)
+    if idx is not None:
+        idx[_ikey(mp, zone, mode)] = _state(doc)
+    return page
+
+
+def unblock_step(cache, idx, maps, prio, pacer, budget, fetched, now):
+    """Patch 896: re-ask the page holding an advertised recording whose row is a null-ID
+    PB (ksf_unbound). Only a page fetched this tick binds such a row, and refresh_step asks
+    page 1 alone, so 44,338 of 48,803 recordings sat unlinkable (21 Oct). Wanted maps' boards
+    first, then a rotation over the rest, UNBLOCK_SCAN boards a tick; a page asked in the last
+    UNBLOCK_DAYS is skipped, so one whose rows still do not bind is not asked every tick."""
+    if budget <= 0 or pacer.left() <= 0:
+        return 0
+    folder = os.path.join(cache, "boards")
+    sf = os.path.join(cache, "unblock.json")
+    st = _load(sf)
+    st = st if isinstance(st, dict) else {}
+    asked = st.get("asked") if isinstance(st.get("asked"), dict) else {}
+    asked = {k: t for k, t in asked.items() if type(t) is int and 0 <= now - t < UNBLOCK_DAYS * 86400}
+    try:
+        names = sorted("%s/%s" % (mp, f) for mp in os.listdir(folder) if mp in maps
+                       and os.path.isdir(os.path.join(folder, mp))
+                       for f in os.listdir(os.path.join(folder, mp)) if f.endswith(".json"))
+    except OSError:
+        return 0
+    after = st.get("cursor", "")
+    rotation = [n for n in names if n > after] + [n for n in names if n <= after]
+    order = ([n for n in names if n.split("/")[0] in prio]
+             + [n for n in rotation if n.split("/")[0] not in prio])
+    made = 0
+    conn = S.connect()
+    try:
+        for name in order[:UNBLOCK_SCAN]:
+            m = re.fullmatch(r"([a-z0-9_]{1,64})/z([0-9]{1,2})(?:m([1-3]))?\.json", name)
+            if not m:
+                continue
+            mp, zone, mode = m[1], int(m[2]), int(m[3] or 0)
+            if mp not in prio:
+                st["cursor"] = name
+            state = idx.get(_ikey(mp, zone, mode))
+            if isinstance(state, list) and len(state) > 3 and state[3]:
+                continue                    # struck: refresh/sweep leave it alone too
+            track, leg = zone_track_leg(zone)
+            starts = set()
+            for rec in board_load(cache, mp, zone, mode)["rows"]:
+                if (not isinstance(rec, dict) or not rec.get("file")
+                        or type(rec.get("rank")) is not int or rec["rank"] < 1):
+                    continue
+                sid = steam64(str(rec.get("steamID") or ""))
+                if sid and conn.execute(
+                        "SELECT 1 FROM ksf_unbound WHERE map=? AND track=? AND leg=?"
+                        " AND style=? AND player=?",
+                        (mp, track, leg, KSF_MODES[mode], str(sid))).fetchone():
+                    starts.add((rec["rank"] - 1) // KSF_PAGE * KSF_PAGE + 1)
+            for start in sorted(starts):
+                key = "%s|%d" % (name, start)
+                if key in asked:
+                    continue
+                if made >= budget or pacer.left() <= 0:
+                    break
+                fetched.append((mp, zone, mode,
+                                board_page_at(cache, mp, zone, pacer, mode, start, idx)))
+                asked[key] = now
+                made += 1
+            if made >= budget or pacer.left() <= 0:
+                break
+    finally:
+        conn.close()
+        st["asked"] = asked
+        _save(sf, st)
+    return made
+
+
 def refresh_step(cache, idx, maps, prio, pacer, budget, now, fetched):
     """Re-ask the first page of boards not asked for REFRESH_DAYS -- wanted
     maps first, then the fullest -- within `budget` requests."""
@@ -904,6 +1001,7 @@ def watch_mode(args, have, cache):
     pacer = Pacer(args.delay, args.max)
     args._topups = []
     fetched, refreshed, left, prio, maps = [], 0, 0, set(), set()
+    unblocked = 0
     filing = []
     if now < int(park.get("until") or 0):
         print("parked: refused (%s) at %s, nothing asked until %s"
@@ -926,6 +1024,8 @@ def watch_mode(args, have, cache):
             maps = {m for m in names if m in have}
             prio = wanted_maps(now) & maps
             topup_step(cache, idx, pacer, args._topups, fetched, filing)
+            unblocked = unblock_step(cache, idx, maps, prio, pacer,
+                                     min(UNBLOCK_MAX, args.max // 2), fetched, now)
             if cat["done"]:
                 refreshed = refresh_step(cache, idx, maps, prio, pacer,
                                          max(1, args.max // 4), now, fetched)
@@ -993,9 +1093,9 @@ def watch_mode(args, have, cache):
         rows += board_rows(cache, *b)
         files.append(b)
         recovered += 1
-    print("watch: %d request(s), %d page(s) (%d refreshed), %d owed board(s) filed, "
-          "%d row(s); %d map(s), %d wanted; %d board(s) wanting more"
-          % (pacer.made, len(fetched), refreshed, recovered, len(rows), len(maps),
+    print("watch: %d request(s), %d page(s) (%d refreshed, %d unblocking), %d owed board(s) "
+          "filed, %d row(s); %d map(s), %d wanted; %d board(s) wanting more"
+          % (pacer.made, len(fetched), refreshed, unblocked, recovered, len(rows), len(maps),
              len(prio), left))
     return rows, files
 
@@ -1206,7 +1306,8 @@ def main():
         args.delay = WATCH_DELAY if args.watch else KSF_DELAY_MS / 1000.0
     if args.watch:
         # A tick files only what it fetched, so a dry one fetches nothing.
-        args.max = 0 if not args.go else (WATCH_MAX if args.max is None else args.max)
+        args.max = 0 if not args.go else (args.max if args.max is not None else
+                                          WATCH_MAX if args.demos else WATCH_BOARDS)
     elif args.from_maps is None:
         if args.max is None:
             args.max = KSF_MAX_DEFAULT
@@ -1240,7 +1341,7 @@ def main():
 
     demo_max = 0
     if args.watch and args.go and args.demos:
-        demo_max = min(2, max(0, args.max // 3))
+        demo_max = min(DEMO_MAX, max(0, args.max - WATCH_BOARDS))   # boards keep the first 8
         args.max -= demo_max
     lock = take_lock(cache)
     if lock is None:

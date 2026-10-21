@@ -589,11 +589,16 @@ class Tests(unittest.TestCase):
         def demos(cache, maximum, delay):
             self.assertIsNone(K.take_lock(cache))  # The real main lock still acts.
             seen.append(('demos', maximum))
-        argv = ['ksfimport.py','--watch','--go','--demos','--cache',self.cache,'--max','6']
-        with patch.object(sys, 'argv', argv), patch.object(K, 'playable_maps', return_value={'surf_test'}), \
-             patch.object(K, 'watch_mode', side_effect=watch), patch.object(G, 'tick', side_effect=demos):
-            self.assertEqual(K.main(), 0)
-        self.assertEqual(seen, [('boards',4), ('demos',2)])
+        # Patch 896: boards keep the first 8 requests of a tick, downloads get up to 6 above.
+        for extra, want in ((['--max', '6'], [('boards', 6), ('demos', 0)]),
+                            (['--max', '10'], [('boards', 8), ('demos', 2)]),
+                            ([], [('boards', 8), ('demos', 6)])):
+            seen.clear()
+            argv = ['ksfimport.py','--watch','--go','--demos','--cache',self.cache] + extra
+            with patch.object(sys, 'argv', argv), patch.object(K, 'playable_maps', return_value={'surf_test'}), \
+                 patch.object(K, 'watch_mode', side_effect=watch), patch.object(G, 'tick', side_effect=demos):
+                self.assertEqual(K.main(), 0)
+            self.assertEqual(seen, want, extra)
         held = K.take_lock(self.cache)
         self.assertIsNotNone(held)
         held.close()
@@ -1434,6 +1439,72 @@ print('RESTART_COUNTS='+json.dumps([made, linked, *counts]))
             with self.assertRaises(urllib.error.URLError) as cm:
                 G.transport(G.fetch, self.r['file'])
             self.assertNotIsInstance(cm.exception.reason, G.BodyBroken)
+
+    def many(self, n):
+        rows = [raw(playerID=10 + i, steamID='STEAM_0:0:%d' % (500 + i), record_id=300 + i,
+                    file='replay_css_5_0_%d_1700000000.rec' % (10 + i)) for i in range(n)]
+        K.write_rows([K.rec_row('surf_test', 0, 0, r) for r in rows])
+        self.board(rows)
+        return rows
+
+    def test_six_downloads_a_tick(self):
+        self.many(7)
+        asked = []
+        with patch.object(G.time, 'sleep'):
+            self.assertEqual(G.tick(self.cache, maximum=6,
+                                    download=lambda f: asked.append(f) or binary()), (6, 6))
+            self.assertEqual(G.tick(self.cache, maximum=99,
+                                    download=lambda f: asked.append(f) or binary()), (1, 1))
+        self.assertEqual(len(set(asked)), 7)
+
+    def test_disk_floor_pauses_without_a_strike(self):
+        self.many(2)
+        low = SimpleNamespace(total=1 << 40, used=1 << 40, free=G.FLOOR - 1)
+        with patch.object(G.time, 'sleep'), patch.object(G.shutil, 'disk_usage', return_value=low):
+            self.assertEqual(G.tick(self.cache, maximum=6,
+                                    download=lambda f: self.fail('downloaded under the floor')), (0, 0))
+        state = K._load(os.path.join(self.cache, 'demos.json'))
+        self.assertEqual(len(state['jobs']), 2)
+        self.assertFalse(any(j.get('strikes') or j.get('retry') for j in state['jobs'].values()))
+        self.assertFalse((Path(self.cache) / '.refused').exists())
+        with patch.object(G.time, 'sleep'):
+            self.assertEqual(G.tick(self.cache, maximum=6, download=lambda f: binary()), (2, 2))
+
+    def test_unblock_reasks_the_page_of_a_recording_on_a_null_id_row(self):
+        self.conn.execute('DELETE FROM runs'); self.conn.commit()
+        legacy = dict(self.r)
+        del legacy['record_id'], legacy['file']
+        K.write_rows([K.rec_row('surf_test', 0, 0, legacy)])          # an old null-ID PB
+        self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM ksf_unbound').fetchone()[0], 1)
+        row = dict(self.r, rank=27)
+        K._save(K.board_path(self.cache, 'surf_test', 0), dict(rows=[row], done=True, next=41))
+        asked = []
+
+        def page(url):
+            asked.append(url)
+            return json.dumps([row]).encode()
+        now = int(time.time())
+        for i in range(2):
+            fetched = []
+            with patch.object(K, 'fetch', side_effect=page):
+                made = K.unblock_step(self.cache, {}, {'surf_test'}, set(), K.Pacer(0, 4), 4,
+                                      fetched, now + i)
+            self.assertEqual(made, 1 - i)          # the same page is not asked again within days
+        self.assertEqual(asked, [K.KSF_BASE + '/api/maps/surf_test/records/zone/0/21?game=css&mode=0'])
+        doc = K.board_load(self.cache, 'surf_test', 0)
+        self.assertEqual((doc['next'], doc['done']), (41, True))     # the walking cursor stays
+        with patch.object(K, 'fetch', side_effect=page):
+            fetched = []
+            K.unblock_step(self.cache, {}, {'surf_test'}, set(), K.Pacer(0, 4), 4, fetched,
+                           now + K.UNBLOCK_DAYS * 86400)
+        rows, _, _ = K.map_rows(self.cache, {'surf_test': dict(name='surf_test')}, (0,), fetched)
+        K.write_rows(rows)
+        self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM ksf_unbound').fetchone()[0], 0)
+        self.assertTrue(G.current(self.conn, self.job))
+        # Nothing to unblock: nothing asked.
+        with patch.object(K, 'fetch', side_effect=AssertionError('asked with nothing blocked')):
+            self.assertEqual(K.unblock_step(self.cache, {}, {'surf_test'}, set(), K.Pacer(0, 4), 4,
+                                            [], now + 30 * 86400), 0)
 
     def test_path_kind_and_escape_refusal(self):
         rid = G.install(self.conn, self.job, binary())
