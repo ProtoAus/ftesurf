@@ -38,6 +38,12 @@
   surf_ab's and surf_kultur's replays mid-transfer on every ask) sets that file aside 7 days and
   ends the tick's downloads without parking. Three such in a row within a day are the host's:
   the host parks and the run's files go back to the queue. Everything else parks as before.
+- Live: surfd generation 2d951ff5 from /srv/nvme/agent-work/surfd896-20261021T0211Z since 2026-10-21
+  02:16:44Z (503s 02:16:34.94-02:16:44.53; OLD surfd891-20261021T0023Z kept). First ticks (02:31,
+  02:36Z): 2 unblocking pages each; a 4th broken file (surf_stonework's was the 3rd, 143,641 bytes
+  like surf_kultur's) set aside without a park; then 6 downloads, 5 linked, 1 refused (time 0.044 s
+  off). 905 -> 910 replays, ksf_unbound 393,997 -> 393,845. Broken files are common enough that
+  each one ending its tick's downloads matters to the rate: count them before raising anything.
 
 ## KSF stage demos and the stuck demo grab (P891, 2026-10-20)
 
