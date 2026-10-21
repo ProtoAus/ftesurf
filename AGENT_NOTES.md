@@ -6537,6 +6537,17 @@ Measured Windows/NanoPi cleanup pitfalls (2026-10-08), not a product patch:
   the real values. Use no-follow `lstat` for reparse-point, hardlink and
   before/after identity checks. A real junction control must prove rejection
   and that unlinking only the junction leaves a target sentinel intact.
+- **An external bind mount can alias a directory INSIDE the archive being
+  deleted.** No-follow traversal, same-device checks and rejecting mounts BELOW
+  the deletion root do not protect this reverse alias. Inspect ALL mountinfo
+  filesystem roots for overlap, and match external mounted directory identities
+  against the source inventory BEFORE unlinking. On 21 Oct an archive cleanup
+  emptied three external bind views this way, despite never following its two
+  symlinks. The data was verified in R2 and the bind-source restore was started;
+  the privileged remount remains a separate required step. Recreating the source
+  pathname does not reconnect mounts pinned to the deleted inode. Preserve the
+  old read-only/read-write mount flags and do not delete a still-required bind
+  source merely because its cloud copy is verified.
 - **POSIX unlink changes surviving hardlink aliases' ctime.** A strict guard
   can stop after deleting one alias even though the other name's bytes have
   not changed. Do not broadly ignore ctime: accept only an inode this exact
