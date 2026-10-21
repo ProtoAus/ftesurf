@@ -3202,7 +3202,12 @@ ANG_SOLO_HOLD = 1.0      # per cent of them past ANG_SOLO that is a fault
 # reads BLIND rather than OK, and the note says how much it missed.  The
 # property that buys is modest and worth stating plainly: a forger can still
 # hide ticks from the tight rule, but not quietly, because hiding them is what
-# takes their own review page from OK to BLIND.
+# takes their own review page from OK to BLIND.  EXCEPT Patch 893's later parts:
+# an exempt row leaves the denominator too (it is a repeat of a joined row, not
+# a move of its own), so a writer of the .rec alone can exempt up to 64 rows in
+# 65 and stay OK -- review 7 measured 98% exempt, sidecar turned 90 deg, `tight`.
+# Only `split_rows` and `in_per_packet` show it; the recorded input still
+# changes only at a joined row.
 #
 # 75% because that is the middle of the empty band, and the band is what makes
 # the number safe rather than the number itself.  Honest v9 coverage measured
