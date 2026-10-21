@@ -253,7 +253,9 @@ string(float row) Gfx_Def =
 			return "hl2_water|Water|0 1 2 3 4|Flat sheet;Cheap reflect;Full reflect;Dithered;Budget (no captures)|";
 		return "hl2_water|Water|0 1 2 3|Flat sheet;Cheap reflect;Full reflect;Dithered|*";
 	}
-	if (row == 2)  return "hl2_refract|Glass|0 1 2|Translucent;Refracting;Dithered|*";
+	// Patch 900: 2 dithers only a pane with its own texture (P859); 879 of the 1,047 pak Refract
+	// VMTs in the 1,926-map library have none -- surf_boreas's ice among them -- and draw as 0.
+	if (row == 2)  return "hl2_refract|Glass|0 1 2|Translucent;Refracting;Dithered if textured|*";
 	if (row == 3)  return "hl2_translucent|Translucent|0 1|Opaque;As authored|e";
 	/*
 	  BUILD 33, and it belongs on this page because it is the same kind of thing
