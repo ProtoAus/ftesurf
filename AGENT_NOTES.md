@@ -22,6 +22,23 @@
 - Mover numbers: 9 is P888, 10 is P882. NEVER roll the sweeper below 890. Deploy record:
   tools/lobby-engine-p890-20261021.md.
 
+## KSF demos: all of them, 6 a tick (P896, 2026-10-21)
+
+- Lex wants every advertised KSF recording (48,803 in the cached boards on 21 Oct, ~46 GB at
+  ~950 KB each: 243 KB original + 705 KB converted text) "6 per 5 minutes". A --watch --demos tick
+  keeps its 8 board requests (WATCH_BOARDS) and downloads up to DEMO_MAX 6 above them; the Pi's
+  cron passes no --max, so the default (14) applies. ksfgrab downloads and installs nothing while
+  the archive's disk has under 15 GiB free (FLOOR), with no strike.
+- 44,338 of those recordings sat on null-ID rows (ksf_unbound, 394,108 rows from the schema-18
+  migration): write_rows binds one only from a page fetched in the same tick, and refresh_step
+  asks page 1 alone. unblock_step re-asks the page holding such a recording, 2 pages a tick
+  (11,259 pages on 7,006 boards then: ~3 weeks, freeing ~2,250 recordings a day), wanted maps'
+  boards on their own cursor, the rest a rotation, 64 boards a tick; a page asked waits 60 days.
+- A download failure only a file can have (404, 500, a body broken after the headers: KSF aborts
+  surf_ab's and surf_kultur's replays mid-transfer on every ask) sets that file aside 7 days and
+  ends the tick's downloads without parking. Three such in a row within a day are the host's:
+  the host parks and the run's files go back to the queue. Everything else parks as before.
+
 ## KSF stage demos and the stuck demo grab (P891, 2026-10-20)
 
 - KSF serves each stage as its own replay (a series per stage: kepler's main is 4459, stages

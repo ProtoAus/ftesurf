@@ -1261,6 +1261,11 @@ Fixed items are removed; remaining reader contracts need acting controls.
   from surf_kepler's 100 stage files; live in surfd generation d56fddc3 since 2026-10-21
   00:30:37Z. kepler's 96 were installed from the kept originals (the Pi's
   data/ksfstages/surf_kepler/, which can go once Lex has watched them).
+- P896 leftovers: an HTTP 200 whose bytes the converter refuses still counts as a served file
+  and resets the failure run; a topup board whose page came back empty is skipped by
+  unblock_step for that tick; a recording whose rank moved off its cached page stays blocked
+  until the board's ordinary refresh (60 days before unblock asks that page again). The demo
+  queue's head deferred two downloads with ValueError on 21 Oct 01:56Z: the log now says why.
 - P891 leftovers: the last stage's unbookmarked finish (placed by the official time) is
   measured on one map; another map's last stage may bookmark zone 99 or N+1. The
   client's own converter (cl_ksf.qc, `replay` of a local KSF file) reads main and bonus

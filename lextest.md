@@ -100,6 +100,15 @@ save 10: you should drop straight through, and the route past the butterflies sh
 `ent_here` on one now reads `solid NOT`. "lovetunnel ok, or <where it still stops you>". Verdict
 PENDING.
 
+## P896 — every KSF recording, 6 per 5 minutes
+
+The crawler now downloads up to 6 KSF recordings every 5 minutes (was 2) and finds the recordings
+of the old KSF times we imported before record ids were kept: ~48,800 in all, filling in over
+about 4 weeks, paused automatically if the Pi drops under 15 GB free. A file KSF cannot send is
+skipped instead of stopping every download for hours.
+
+"More KSF rows get a watch button over the next days, or <what looks wrong>". Verdict PENDING.
+
 ## P891 — KSF recordings on surf_kepler
 
 KSF times for all of surf_kepler's stages and both bonuses are on the boards, and 144 KSF
