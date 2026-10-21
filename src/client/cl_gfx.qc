@@ -245,16 +245,16 @@ void(vector scr) Gfx_DrawMissing =
 string(float row) Gfx_Def =
 {
 	// -- page 1: surface policy ---------------------------------------------
-	// Plugin_GetCvar drops CVAR_SHADERSYSTEM. Water opts into the engine's
-	// live shader policy; other generated-material rows need a rebuild.
+	// Plugin_GetCvar drops CVAR_SHADERSYSTEM; the renderer re-registers the material rows
+	// with it (Water, dither; Patch 894 the rest). `e` marks a row live only on such an engine.
 	if (row == 1)
 	{
 		if (ui_gfx_waterbudget)
 			return "hl2_water|Water|0 1 2 3 4|Flat sheet;Cheap reflect;Full reflect;Dithered;Budget (no captures)|";
-		return "hl2_water|Water|0 1 2 3|Flat sheet;Cheap reflect;Full reflect;Dithered|";
+		return "hl2_water|Water|0 1 2 3|Flat sheet;Cheap reflect;Full reflect;Dithered|*";
 	}
 	if (row == 2)  return "hl2_refract|Glass|0 1 2|Translucent;Refracting;Dithered|*";
-	if (row == 3)  return "hl2_translucent|Translucent|0 1|Opaque;As authored|";
+	if (row == 3)  return "hl2_translucent|Translucent|0 1|Opaque;As authored|e";
 	/*
 	  BUILD 33, and it belongs on this page because it is the same kind of thing
 	  as the three above it: one read at material generation (mat_vmt.c:1114).
@@ -279,11 +279,11 @@ string(float row) Gfx_Def =
 	  a row that claims to be instant when it is not is the exact failure this
 	  whole `*` convention exists to prevent.  Reflections (row 8) is the one to
 	  reach for if you want it off NOW.
-	  Patch 894: with the renderer's flag a live 0 and 1 each matched a fresh load at
-	  surf_demise save 3 (0.20% / 0.31% of pixels, against 18.5% between the two), so the
-	  `*` is gone.
+	  Patch 894: with the renderer's flag a live 0 and 1 each matched a `retry` at surf_demise
+	  save 3, but a retry keeps the BSP, and whether a batch keeps its cubemap is decided at
+	  map load (Mod_Batches_Build) -- so a map loaded with it off still needs one.
 	*/
-	if (row == 7)  return "hl2_envmap|Env maps|0 1|Off;On|";
+	if (row == 7)  return "hl2_envmap|Env maps|0 1|Off;On|*";
 
 	// -- page 2: reflections and surface detail -------------------------------
 	/*
@@ -343,7 +343,7 @@ string(float row) Gfx_Def =
 	  every `*` row below that is read at BSP-load time has the same problem;
 	  that is a separate defect and is not fixed here.
 	  Patch 894: a toggle now re-runs Decal_LoadForMap on the same map (handles kept and
-	  removed), measured live == loaded on surf_rise's 105 overlays.
+	  removed), measured live == a retry on surf_rise (103 of its 105 overlays placed).
 	*/
 	if (row == 13) return "vbsp_overlays|Overlays|0 1|Off;On|";
 
@@ -469,9 +469,16 @@ string(float row) Gfx_Label = { return Gfx_Field(Gfx_Def(row), 1, "|"); };
 
 // Rows needing a material rebuild or fresh map/client load. Readback alone
 // does not prove the cached appearance changed; retry may reuse BSP data.
+#define GFX_TYPEFLAG_ENGINE 8	// CVAR_TYPEFLAG_ENGINE (pr_common.h): not user/plugin-created
+
 float(float row) Gfx_NeedsReload =
 {
-	return Gfx_Field(Gfx_Def(row), 4, "|") == "*";
+	local string m;
+
+	m = Gfx_Field(Gfx_Def(row), 4, "|");
+	if (m == "e")
+		return !(cvar_type(Gfx_Cvar(row)) & GFX_TYPEFLAG_ENGINE);
+	return m == "*";
 };
 
 /*
