@@ -2150,8 +2150,8 @@ void(vector scr) Ev_Panel =
   the chain.  (It is not what keeps the view still: in_generic.c:1242-1243 zeroes
   the mouse delta whenever the cursor is free, before CSQC is asked.)
 
-  MOUSE1 and MOUSE2 are taken because default.cfg binds them to +duck and +jump,
-  and the wheel over the panel scrolls the key list.  Everything else falls
+  MOUSE1 and MOUSE2 are taken because default.cfg binds them (+left and +right
+  since Patch 898), and the wheel over the panel scrolls the key list.  Everything else falls
   through, so you can still walk -- and wheel-jump -- while pointing.
 
   BUILD 56 review: A RELEASE GOES WHERE ITS PRESS WENT.  Every MOUSE1/MOUSE2 up

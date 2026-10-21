@@ -157,6 +157,7 @@ float  rec_sl_quiet;
 
 .float rec_sl_count;             // networked mirror of the caller's block; SV_SaveLocSync
 .float rec_sl_index;             // 1-based cursor; 0 when the list is empty
+.float rec_sl_auto;              // Patch 899: placed on the newest row, not moved by the player since
 .float rec_sl_delall;            // Patch 428: a delete-all sweeping; rows deleted + 1
 .float rec_sl_tok;               // Patch 428: SV_SaveLocBegin's bucket...
 .float rec_sl_tokt;              // ...the time it was last filled...
@@ -2788,7 +2789,10 @@ void() SV_SaveLocReset =
 	{
 		i = rec_sl_nb[SL_Blk(p)];
 		if (i > 0)
+		{
 			p.rec_sl_index = i;
+			p.rec_sl_auto = TRUE;       // Patch 899
+		}
 	}
 };
 
@@ -2876,8 +2880,12 @@ void(entity e) SV_SaveLocSync =
 	if (e.rec_sl_index > cnt)
 		e.rec_sl_index = cnt;
 	// Patch 899: no cursor yet (a map load, a join, a lobby block scanned late) starts on the
-	// newest save -- the last row, rows being sorted by seq (SV_SaveSort) -- not the first.
+	// newest save -- the last row, rows being sorted by seq (SV_SaveSort) -- not the first, and
+	// stays on it until the player's own sl_ command: rows a save sync appends after the join
+	// (SV_SaveSyncAdd) are newer still.
 	if (cnt > 0 && e.rec_sl_index < 1)
+		e.rec_sl_auto = TRUE;
+	if (cnt > 0 && e.rec_sl_auto)
 		e.rec_sl_index = cnt;
 
 	e.rec_sl_savetick = 0;

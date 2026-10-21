@@ -29,10 +29,12 @@
 
 ### P898 New-install defaults, binds and ALT+ENTER
 - A new install starts in borderless fullscreen at 2x render scale, with sensitivity 0.5, fov 95 and no fps counter.
-- Console messages no longer stack up over the game (con_notifylines 0).
+- Console messages no longer stack up over the game (con_notifylines 0). A value you set yourself is now kept between launches.
+- The graphics menu has a Render scale setting (1x, 1.5x, 2x): 1x is the first step for a slower graphics card.
 - New default binds: q/e and mouse 1/2 turn, mouse 3 paints, t rewinds, p opens the player panel (player_edit). Saved binds are kept.
-- ALT+ENTER switches between windowed and borderless fullscreen in the game, the menus and the console. Your own ALT+ENTER bind wins; in_altenter 0 turns it off.
-- New installs get Lex's HUD layout. The keyboard and mouse input displays stay together in the bottom right at every screen size, and dropping the mouse display on the keys joins them again.
+- ALT+ENTER switches between windowed and borderless fullscreen in the game, the menus and the console, and with ALT still held, ENTER switches back. Your own ALT+ENTER bind wins; in_altenter 0 turns it off.
+- Lex's HUD layout is the new default, for new installs and for every HUD setting you never changed; the ones you changed stay yours.
+- The keyboard and mouse input displays stay together in the bottom right at every screen size. Dropping the mouse display where it sits beside the keys joins them again.
 
 ### P896 Every KSF recording, three times faster
 - KSF recordings now arrive three times faster, including those of older KSF times imported before recordings were linked.

@@ -1,7 +1,7 @@
 /*
   Patch 871: hud_fps -- the HUD's pure panels drawn into a render target at a capped rate and
-  pasted every frame. 0 (the default) draws them every frame as before; N redraws N times a
-  second; -1 once an input frame (clientcommandframe), the trainer's own sampling rate.
+  pasted every frame. 0 draws them every frame as before; N redraws N times a second; -1 (the
+  default since Patch 898) once an input frame (clientcommandframe), the trainer's own rate.
 
   Only panels that do nothing but draw are inside a layer (the Patch 871 audit: the trainer, the
   net panel and the boarding window in layer 0, the key strip and the missing-graphics note in
