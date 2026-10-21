@@ -43,6 +43,7 @@
 */
 
 #define RS_ROWS   10            // table rows drawn; the tail, newest last
+#define RS_FIXED  149           // Patch 904: the card's height without rows, in hud units (a row is 12)
 
 // Palette: the leaderboard's, deliberately.  This panel sits beside that one in
 // the player's head and a second palette would make them look like two games.
@@ -957,6 +958,7 @@ void(vector scr) Results_DrawToast =
 	h = sz + 8 * u;
 
 	p = [floor(scr_x * cvar("hud_splits_x")), floor(scr_y * cvar("hud_splits_y") * 0.62 - 4 * u), 0];
+	p_y = bound(2 * u, p_y, max(2 * u, scr_y - h - 2 * u));
 	sui_style_hud(scr);
 	_sui_round_draw(p, [w, h, 0], h * 0.5, SUI_THEME_EDGE, a * 0.95);
 	_sui_round_draw(p + '1 1 0', [w - 2, h - 2, 0], h * 0.5 - 1, SUI_THEME_PANEL, a * 0.95);
@@ -1028,7 +1030,11 @@ void(vector scr) Results_Draw =
 	if (a > 1)
 		a = 1;
 
-	u   = ui_cv_scale;
+	// Fits the screen's height: the scale shrinks until three rows fit (RS_FIXED is
+	// the card without rows, in units), then rows past what fits drop from the top.
+	first = max(0, ui_sp_n - RS_ROWS);
+	nrows = ui_sp_n - first;
+	u   = min(ui_cv_scale, (scr_y - 8) / (RS_FIXED + 12 * min(nrows, 3)));
 	pad = 10 * u;
 	Font_Set(ui_font_ui);
 	lsz = Font_Px(7 * u);
@@ -1042,12 +1048,16 @@ void(vector scr) Results_Draw =
 
 	// The table is the TAIL of ui_sp_*: on a long map the stages you just did are
 	// the ones you came to read.
-	first = max(0, ui_sp_n - RS_ROWS);
-	nrows = ui_sp_n - first;
-
 	w   = 300 * u;
 	hgt = pad + tsz + 6 * u + hsz + 4 * u + lsz + 10 * u + wellh + 10 * u
-	    + lsz + 5 * u + nrows * rowh + 8 * u + lsz + 4 * u + pad;
+	    + lsz + 5 * u + 8 * u + lsz + 4 * u + pad;
+	tw  = max(0, floor((scr_y - 8 * u - hgt) / rowh));
+	if (nrows > tw)
+	{
+		first = ui_sp_n - tw;
+		nrows = tw;
+	}
+	hgt = hgt + nrows * rowh;
 	x = bound(4 * u, scr_x * cvar("hud_results_x") - w * 0.5, max(4 * u, scr_x - w - 4 * u));
 	y = bound(4 * u, scr_y * cvar("hud_results_y") - hgt * 0.5, max(4 * u, scr_y - hgt - 4 * u));
 	p = [floor(x), floor(y), 0];
@@ -1250,7 +1260,7 @@ float(float evtype, float scanx, float chary, float devid) Results_InputEvent =
 /*
   The passive half: the two gestures that ASK for the cursor.
 
-  F1 only.  MOUSE3 asked too until Patch 904: the default binds put paint on it,
+  F1 only.  MOUSE3 asked too until Patch 904: with the default binds it paints,
   and a card that took it would eat every paint press after a finish.
 
   Reached from the key path in cl_main.qc while the card is open and the cursor
