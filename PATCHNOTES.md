@@ -21,6 +21,9 @@
 
 ## next
 
+### P907 Choose the patch notes version in F2
+- F2's Patch notes page has a version list. Pick a release to read just its changes, starting with your installed version when it is listed. Switching versions does not download the notes again.
+
 ## 0.1.29 2026-10-21
 
 ### P906 No snap-back on surf_reverie

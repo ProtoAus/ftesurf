@@ -56,6 +56,13 @@ ui_notes scroll 900
 waitms 1000
 screenshot p876_2_scrolled
 waitms 2500
+ui_notes select @OLDER@
+waitms 500
+ui_notes status
+screenshot p876_5_older
+ui_notes select @NEWEST@
+waitms 500
+ui_notes status
 ui_notes close
 waitms 1000
 ui_notes status
@@ -95,7 +102,7 @@ def run(a, name, version, port, real=True, permit=True, extra=()):
         if permit:
             (base / '.ftesurf-updater').mkdir()
             (base / '.ftesurf-updater/consent').write_text('1\n')
-    (game / 'probe.cfg').write_text(CFG)
+    (game / 'probe.cfg').write_text(CFG.replace('@OLDER@', a.older).replace('@NEWEST@', version))
     proc = subprocess.Popen(
         [str(a.client), '-nohome', '-noreset', '-nobrowse', '-basedir', str(base),
          '-manifest', str(base / 'default.fmf'), '-window', '-width', '1280', '-height', '800',
@@ -138,6 +145,8 @@ def main():
     notes = json.loads(a.notes.read_text(encoding='utf-8'))
     newest = notes['releases'][0]['version']
     items = sum(1 + sum(1 + len(p['points']) for p in r['patches']) for r in notes['releases'])
+    a.older = notes['releases'][-1]['version']
+    selected_items = 1 + sum(1 + len(p['points']) for p in notes['releases'][0]['patches'])
     served = a.out / 'served'
     served.mkdir()
     shutil.copy2(a.notes, served / 'patchnotes.json')
@@ -167,13 +176,23 @@ def main():
               f'subject: parsed {len(notes["releases"])} releases and {items} items, {newest} listed')
         # One status per ui_notes command: status, open, status, scroll, close, status,
         # status, open, status, status.
+        selections = re.findall(r'ui_notes: selected (\S+) of (\d+)', log)
+        check((a.older, str(len(notes['releases']))) in selections,
+              'subject: an older version was selected')
+        check(len(ask := re.findall(r'notes:(?:\^7)? asking http', log)) == 2,
+              'subject: version selection does not fetch the feed again')
+        check(len(st) == 14 and st[5][5] == '0' and st[7][5] == '0',
+              'subject: changing version resets the reading position')
+        # Exclude the select/status pairs for the original permission/lifecycle checks.
+        st = st[:4] + st[8:]
+        inst = inst[:4] + inst[8:]
         full = len(st) == 10 and len(inst) == 10
         ask = [m.start() for m in re.finditer(r'notes:(?:\^7)? asking http', log)]
         opened = [m.start() for m in re.finditer(r'ui_notes: state', log)]
         check(full and st[0][:2] == ('0', '0') and ask and ask[0] > opened[1],
               'subject: nothing asked or shown on the title screen; asked after the open')
-        check(full and st[1][1] == '1' and st[2][:2] == ('2', '1') and int(st[2][3]) > items,
-              'subject: F2 shows the notes, wrapped into more lines than items')
+        check(full and st[1][1] == '1' and st[2][:2] == ('2', '1') and int(st[2][3]) > selected_items,
+              'subject: F2 shows the selected release, wrapped into more lines than its items')
         check(full and st[3][5] == '900', 'subject: the list took the scroll')
         check(full and st[4][1] == '0' and st[5][1] == '0', 'subject: close left F2')
         check(full and st[6][:2] == ('0', '0'), 'subject: after menu_restart, F2 on its Updates page for 3 s: nothing asked')
@@ -188,7 +207,7 @@ def main():
             report[name] = {'requests': Quiet.seen[:], 'status': st}
             check(ok and 'P876 ARM COMPLETE' in log, f'{name}: the cfg ran to its end')
             check('/patchnotes.json' not in Quiet.seen and 'asking http' not in log, f'{name}: no request')
-            check(len(st) == 10 and all(s[0] == '0' for s in st), f'{name}: nothing loaded, even when opened')
+            check(len(st) == 14 and all(s[0] == '0' for s in st), f'{name}: nothing loaded, even when opened')
 
     finally:
         httpd.shutdown()

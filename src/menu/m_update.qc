@@ -44,9 +44,9 @@ float mu_live;                  // gameupdate answered: this is FTESurf's update
 #define MPNS_OK      2
 #define MPNS_FAIL    3
 
-strbuf mpn_items, mpn_lines;
-float  mpn_state, mpn_req, mpn_sent, mpn_next, mpn_wrapw, mpn_hascur;
-vector mpn_scroll;
+strbuf mpn_items, mpn_lines, mpn_releases;
+float  mpn_state, mpn_req, mpn_sent, mpn_next, mpn_wrapw, mpn_hascur, mpn_selected;
+vector mpn_scroll, mpn_versions_scroll;
 string mpn_forver, mpn_askver; // update_version at the last good reply / the ask in flight
 
 void() MU_Init =
@@ -57,6 +57,7 @@ void() MU_Init =
 	mu_lastcheck = 0;
 	mpn_items = buf_create();
 	mpn_lines = buf_create();
+	mpn_releases = buf_create();
 };
 
 // The permission, from the terms answer or F2's Updates page; a new "on" checks at once.
@@ -175,7 +176,11 @@ float(float reqid, float code, string body) MU_NotesReply =
 	}
 	buf_del(mpn_items);
 	mpn_items = buf_create();
+	buf_del(mpn_releases);
+	mpn_releases = buf_create();
 	mpn_hascur = FALSE;
+	mpn_selected = 0;
+	mpn_scroll = '0 0 0';
 	rels = json_find_object_child(root, "releases");
 	nr = json_get_length(rels);
 	if (nr > MPN_MAXREL)
@@ -185,7 +190,11 @@ float(float reqid, float code, string body) MU_NotesReply =
 		rel = json_get_child_at_index(rels, i);
 		v = MU_NotesText(json_find_object_child(rel, "version"), 16);
 		if (!strcmp(v, cvar_string("ui_release_version")))
+		{
 			mpn_hascur = TRUE;
+			mpn_selected = buf_getsize(mpn_releases);
+		}
+		bufstr_add(mpn_releases, v, TRUE);
 		bufstr_add(mpn_items, strcat("R", v, " ", MU_NotesDate(MU_NotesText(json_find_object_child(rel, "date"), 10))), TRUE);
 		pats = json_find_object_child(rel, "patches");
 		np = json_get_length(pats);
@@ -235,21 +244,21 @@ void(string kind, string more, string text, float w) MU_NotesWrapOne =
 
 void(float w) MU_NotesWrap =
 {
-	local float i, n;
+	local float i, n, release;
 	local string it, k;
 	buf_del(mpn_lines);
 	mpn_lines = buf_create();
 	mpn_wrapw = w;
 	n = buf_getsize(mpn_items);
+	release = -1;
 	for (i = 0; i < n && buf_getsize(mpn_lines) < MPN_MAXLINE; i++)
 	{
 		it = bufstr_get(mpn_items, i);
 		k = substring(it, 0, 1);
+		if (!strcmp(k, "R")) release = release + 1;
+		if (release != mpn_selected) continue;
 		if (!strcmp(k, "R"))
-		{
-			if (i) bufstr_add(mpn_lines, "G", TRUE);
 			bufstr_add(mpn_lines, it, TRUE);
-		}
 		else if (!strcmp(k, "P"))
 			MU_NotesWrapOne("P", "Q", substring(it, 1, -1), w);
 		else
@@ -265,15 +274,23 @@ float(string v) MU_VerNum =
 	return stof(argv(0)) * 1000000 + stof(argv(1)) * 1000 + stof(argv(2));
 };
 
-// P902: F2's Patch notes page, MPN_ROW rows in a list view.
+void(float release) MU_NotesSelect =
+{
+	release = bound(0, release, max(0, buf_getsize(mpn_releases) - 1));
+	if (release == mpn_selected) return;
+	mpn_selected = release;
+	mpn_wrapw = 0;
+	mpn_scroll = '0 0 0';
+};
+
+// A separate version list leaves only the selected release in the reading pane.
 void(vector pos, vector size) MU_NotesAt =
 {
 	local vector rp;
-	local float iw, i, cur, vn, sp;
+	local float iw, i, cur, vn, sp, sidebar;
 	local string ln, k, t, tag;
 
 	Font_Set(ui_font_ui);
-	iw = size_x - 16;
 	if (!MU_NotesCan())
 	{
 		ui_para(pos, size_x, SZ_LABEL, 20, (cvar("update_consent") == 1) ? "This build does not use the update server, so it has no patch notes."
@@ -289,6 +306,21 @@ void(vector pos, vector size) MU_NotesAt =
 		return;
 	}
 	cur = MU_VerNum(cvar_string("ui_release_version"));
+	sidebar = min(136, size_x * 0.28);
+	sui_text(pos, SZ_LABEL, "Version", COL_DIM, 1, 0);
+	sui_list_view_begin("mpn_versions", pos + '0 26 0', [sidebar, size_y - 26], [sidebar - 10, 36],
+	                    buf_getsize(mpn_releases), mpn_versions_scroll, [0, 4]);
+	rp = '0 0 0';
+	for (i = sui_list_item(rp); i > -1; i = sui_list_item(rp))
+	{
+		t = bufstr_get(mpn_releases, i);
+		ui_chip(rp, strcat("mpn_version", ftos(i)), t, mpn_selected == i);
+		if (sui_is_released(strcat("mpn_version", ftos(i)))) MU_NotesSelect(i);
+	}
+	sui_list_view_end();
+	pos_x = pos_x + sidebar + 12;
+	size_x = size_x - sidebar - 12;
+	iw = size_x - 16;
 	if (mpn_wrapw != iw)
 		MU_NotesWrap(iw);
 	sui_list_view_begin("mpn_list", pos, size, [size_x - 10, MPN_ROW],
@@ -493,9 +525,10 @@ void(vector screensize) MU_Hint =
 		MU_StatusLine(screensize_x - 16, 76, w, SZ_LABEL, msg, COL_ACCENT);
 };
 
-// ui_notes status|open|close|scroll <px>: the harness's handle; open and close are F2 now.
+// ui_notes status|open|close|scroll <px>|select <version>: F2's notes controls.
 void(string what) MU_NotesCommand =
 {
+	local float i;
 	if (!strcmp(what, "open"))
 	{
 		ui_f2_tab = 0;
@@ -510,6 +543,12 @@ void(string what) MU_NotesCommand =
 	}
 	else if (!strcmp(what, "scroll"))
 		mpn_scroll_y = stof(argv(2));
+	else if (!strcmp(what, "select"))
+	{
+		for (i = 0; i < buf_getsize(mpn_releases); i++)
+			if (!strcmp(bufstr_get(mpn_releases, i), argv(2))) MU_NotesSelect(i);
+	}
+	print(sprintf("ui_notes: selected %s of %g\n", bufstr_get(mpn_releases, mpn_selected), buf_getsize(mpn_releases)));
 	print(sprintf("ui_notes: state %g shown %g items %g lines %g wrap %g scroll %g\n",
 	              mpn_state, menu_screen == SCREEN_JOURNAL && ui_f2_tab == 0, buf_getsize(mpn_items), buf_getsize(mpn_lines), mpn_wrapw, mpn_scroll_y));
 	print(sprintf("ui_notes: installed %s listed %g url %s\n",
