@@ -21,6 +21,10 @@
 
 ## next
 
+### P913 Automatic resume is for clean whole-main runs
+- Automatic resume accepts only clean whole-main runs, not practice, segmented, bonus or standalone-stage attempts. Older or ineligible stored slots are left untouched until you explicitly discard them.
+- If a stored slot cannot prove that classification, resume will not consume it or move your body. Use !discard to remove it when you choose. Manual saves are unchanged.
+
 ### P912 Story tasks update as you finish
 - Story and Events now show provisional task progress as soon as you finish, before the upload reply. All locally decidable matches update, not just the medal shown in the toast; confirmation or rejection reconciles the preview with the server.
 - First-time players can see a temporary local preview before their profile resolves. It is scoped to their connection and expires if it cannot be confirmed; it never grants an official trophy or record.

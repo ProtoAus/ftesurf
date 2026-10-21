@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P913 — restrictive automatic resume (matching deployment pending)
+
+Native park, countdown and rejection/nonmutation controls passed; owner check
+PENDING. After matching deployment, reconnect with a clean whole-main parked
+run and confirm the ordinary resume route still works. Practice, segmented,
+bonus and standalone-stage slots must refuse without moving you or disappearing;
+!discard is explicit removal. Manual saves remain usable. This patch does NOT
+add disconnected wall time or select a cannot-beat-stage threshold.
+
 ## P912 — immediate Story tasks (matching deployment pending)
 
 Source/native/API controls and independent review passed; owner feel PENDING.

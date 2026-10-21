@@ -1,5 +1,19 @@
 # AGENT_NOTES.md
 
+## Restrictive automatic resume classification (P913, 2026-10-21)
+
+- Use FS_RunClass plus track0/FS_LegOf0, not startseg alone: standalone stage1
+  also has startseg0. Inspect required saved classification without applying it,
+  and reread before claim/movement. Keep unknown/ineligible slots discardable,
+  including expired slots; never reinterpret missing fields as clean defaults.
+- Canonical ftos(stof) plus floor is not an integer-domain proof. An actual
+  oversized canonical value reached class bitops; require ordered nonnegative
+  signed-int32 bounds too. Convert the exclusive bound from a string to avoid
+  the measured near-limit qcc literal crash. Infinity was already refused by
+  the native canonical round trip; do not claim a speculative infinity bypass.
+- This is only the clean whole-main restriction. Offline elapsed time and the
+  owner's cannot-beat-stage criterion remain unresolved, not guessed.
+
 ## Story completion preview and combined compiler capacity (P912, 2026-10-21)
 
 - Completion facts must precede upload replies and be separate from the one

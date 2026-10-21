@@ -305,8 +305,60 @@ void(entity e, string v) SV_MsKeySet =
   Park
 ===========================================================================
 */
+float(float flags, float track, float startseg, float stagerun) SV_MsCleanMain =
+{
+	return (FS_RunClass(flags) == RC_CLEAN && track == 0
+	        && FS_LegOf(startseg, stagerun) == 0);
+};
+
+// Read only the existing state classification; never apply a save to inspect it.
+// Missing classification is not proof of a clean whole-main attempt.
+float(string path) SV_MsSlotCleanMain =
+{
+	local filestream f;
+	local string line, k;
+	local float flags, track, startseg, stagerun, valid, n;
+
+	flags = track = startseg = stagerun = -1;
+	valid = TRUE;
+	f = fopen(path, FILE_READ);
+	if (f < 0)
+		return FALSE;
+	while ((line = fgets(f)) != "")
+	{
+		n = tokenize(line);
+		k = argv(0);
+		if (k == "flags" || k == "track" || k == "startseg" || k == "stagerun")
+		{
+			// Class bitops require a finite nonnegative signed-int32 value.
+			if (n != 2 || strcmp(argv(1), ftos(stof(argv(1)))) != 0
+			    || !(stof(argv(1)) >= 0 && stof(argv(1)) < stof("2147483648"))
+			    || stof(argv(1)) != floor(stof(argv(1))))
+				valid = FALSE;
+		}
+		if (n != 2)
+			continue;
+		if (k == "flags") flags = stof(argv(1));
+		else if (k == "track") track = stof(argv(1));
+		else if (k == "startseg") startseg = stof(argv(1));
+		else if (k == "stagerun") stagerun = stof(argv(1));
+	}
+	fclose(f);
+	if (!valid || flags < 0 || track < 0 || startseg < 0 || stagerun < 0)
+		return FALSE;
+	return SV_MsCleanMain(flags, track, startseg, stagerun);
+};
+
+void(entity e) SV_MsRefuseClass =
+{
+	sprint(e, PRINT_HIGH, "^5resume:^7 only clean whole-main runs can resume automatically; "
+	       "this slot is unchanged -- say ^5!discard^7 to drop it\n");
+};
+
 float(entity e) SV_MsEligible =
 {
+	if (!SV_MsCleanMain(e.run_t_flags, e.run_t_track, e.run_t_startseg, e.run_t_stagerun))
+		return FALSE;
 	if (!cvar("run_resume"))
 		return FALSE;
 	if (e.run_t_state != TS_RUNNING)
@@ -436,6 +488,15 @@ void(entity e) SV_MsCheck =
 	SV_MsAdopt(e);
 	if (!SV_MsReadMeta(SV_MsPath(e, "ms.txt")))
 		return;
+	// Keep legacy ineligible slots, including stale ones, reachable by !discard.
+	if (!SV_MsSlotCleanMain(SV_MsPath(e, "state.txt")))
+	{
+		e.run_ms_offer = TRUE;
+		SV_MsKeySet(e, sprintf("O %d %d %d %d %d %d", ms_ticks, ms_seg, ms_segs,
+		                       ms_track, ms_leg, ms_sess));
+		SV_MsRefuseClass(e);
+		return;
+	}
 	why = SV_MsStale();
 	if (why != "")
 	{
@@ -568,6 +629,12 @@ void(entity e) SV_MsAccept =
 		e.run_ms_offer = FALSE;
 		SV_MsKeySet(e, "");
 		sprint(e, PRINT_HIGH, "^5resume:^7 the paused run is gone (another server resumed it?)\n");
+		return;
+	}
+	// Re-read at accept too: an old offer is not authority to consume the slot.
+	if (!SV_MsSlotCleanMain(SV_MsPath(e, "state.txt")))
+	{
+		SV_MsRefuseClass(e);
 		return;
 	}
 	// Patch 629: a paused run is offered on the guid, which is not a secret.
@@ -1129,6 +1196,8 @@ void() SV_MsSweep =
 			cut = cut - 1;
 		dir = substring(fn, 0, cut + 1);
 		leaf = substring(fn, cut + 1, strlen(fn) - cut - 1);
+		if (!SV_MsSlotCleanMain(strcat(dir, "state.txt")))
+			continue;
 		SV_MsWipeDir(dir, leaf);
 	}
 	search_end(h);
