@@ -21,6 +21,8 @@
 
 ## next
 
+## 0.1.29 2026-10-21
+
 ### P906 No snap-back on surf_reverie
 - On maps whose zone-tool triggers use a Momentum filter this game does not support yet, such as surf_reverie, the game no longer predicts a teleport the server does not make, which pulled you back every frame.
 
