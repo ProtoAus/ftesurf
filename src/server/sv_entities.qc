@@ -9197,7 +9197,6 @@ void(entity t, float v, float now) SV_RotButtonSet =
 		t.vbsp_rb_dir = 0;				// there already: nothing fires (:1141-1146)
 		return;
 	}
-	dprint(sprintf("rotbutton %s: SetPosition %g from %g at %g deg/s\n", t.model, v, p, t.speed));
 	SV_RotButtonWake();
 };
 
