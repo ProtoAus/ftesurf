@@ -118,7 +118,7 @@ void() Trail_Init =
 void() Trail_RegisterCvars =
 {
 	Trail_Init();
-	registercvar("hud_trail",      "1",   CVAR_ARCHIVE);
+	registercvar("hud_trail",      "0",   CVAR_ARCHIVE);
 	registercvar("hud_trail_fade", "1.0", CVAR_ARCHIVE);
 	registercvar("hud_trail_prev", "1",   CVAR_ARCHIVE);
 	registercommand("trail");

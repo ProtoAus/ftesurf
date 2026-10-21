@@ -807,7 +807,7 @@ void() HUD_RegisterCvars =
 		if (cvar("hud_speed_show") == 1)
 			localcmd("seta hud_speed_show 0\n");
 	}
-	registercvar("hud_energy_ref", "1");
+	registercvar("hud_energy_ref", "0");
 
 	/*
 	  BUILD 65 -- THE PER-ELEMENT TEXT SIZES.  See HUD_Size.
@@ -840,7 +840,7 @@ void() HUD_RegisterCvars =
 	  hud_edit and expected to survive a quit.  The matching chip is the Text row
 	  of hud_edit's Display Info pane (Patch 798).
 	*/
-	registercvar("hud_font_outline", "2", CVAR_ARCHIVE);
+	registercvar("hud_font_outline", "0", CVAR_ARCHIVE);
 
 	/*
 	  The ring's eight offsets, filled once rather than spelled at every call.
@@ -900,7 +900,7 @@ void() HUD_RegisterCvars =
 	registercvar("hud_strafe",  "1", CVAR_ARCHIVE);
 	registercvar("hud_board",   "1", CVAR_ARCHIVE);
 	registercvar("hud_keys",    "1", CVAR_ARCHIVE);
-	registercvar("hud_keys_size", "1", CVAR_ARCHIVE);   // Patch 630: 1 1.25 1.5 2
+	registercvar("hud_keys_size", "1.5", CVAR_ARCHIVE);   // Patch 630: 1 1.25 1.5 2
 
 	// OFF by default now.  It is a physics debugger, not a surf HUD, and it
 	// sits over the left third of the screen.
@@ -979,8 +979,8 @@ void() HUD_RegisterCvars =
 	  why it is published by the engine rather than parsed here.
 	*/
 	registercvar("hud_mapinfo",   "1",    CVAR_ARCHIVE);
-	registercvar("hud_mapinfo_x", "0.99", CVAR_ARCHIVE);
-	registercvar("hud_mapinfo_y", "0.02", CVAR_ARCHIVE);
+	registercvar("hud_mapinfo_x", "0.9917", CVAR_ARCHIVE);
+	registercvar("hud_mapinfo_y", "0.0125", CVAR_ARCHIVE);
 	registercvar("hud_mapinfo_timeleft", "1", CVAR_ARCHIVE);   // Patch 372
 
 	/*
@@ -993,7 +993,7 @@ void() HUD_RegisterCvars =
 	  the newest one is always in the same place under your eye however many
 	  there are.
 	*/
-	registercvar("hud_seq",      "1", CVAR_ARCHIVE);
+	registercvar("hud_seq",      "0", CVAR_ARCHIVE);
 	registercvar("hud_seq_x",    "-0.1951", CVAR_ARCHIVE);	// offset from screen centre; Patch 637 (build 13 had -0.25, off the strafe bar)
 	registercvar("hud_seq_y",    "0.483", CVAR_ARCHIVE);	// the block is CENTRED on this, not hung below it
 	registercvar("hud_seq_rows", "10");
@@ -1036,7 +1036,7 @@ void() HUD_RegisterCvars =
 	  energy plus a translation rather than a third unit: the board panel and the
 	  single-line readout keep saying energy and are unaffected.
 	*/
-	registercvar("hud_seq_units", "0", CVAR_ARCHIVE);
+	registercvar("hud_seq_units", "1", CVAR_ARCHIVE);
 
 	/*
 	  BUILD 65 -- THE SEGMENT ROW'S PARTS, each its own switch.
@@ -1056,7 +1056,7 @@ void() HUD_RegisterCvars =
 	  the only way back to build 64's row, and that is exactly what they are for.
 	*/
 	registercvar("hud_seq_name",  "1", CVAR_ARCHIVE);
-	registercvar("hud_seq_abs",   "0", CVAR_ARCHIVE);
+	registercvar("hud_seq_abs",   "1", CVAR_ARCHIVE);
 	registercvar("hud_seq_delta", "1", CVAR_ARCHIVE);
 	registercvar("hud_seq_time",  "1", CVAR_ARCHIVE);
 
@@ -1274,7 +1274,7 @@ void() HUD_RegisterCvars =
 	    hud_update   0 = every frame (default since Patch 637), -1 = per server snapshot, N = N Hz
 	    hud_round    0 = off, or 1 (default, a no-op) / 2 / 5
 	*/
-	registercvar("hud_update",   "0", CVAR_ARCHIVE);
+	registercvar("hud_update",   "-1", CVAR_ARCHIVE);
 	registercvar("hud_round",    "1",  CVAR_ARCHIVE);
 
 	/*

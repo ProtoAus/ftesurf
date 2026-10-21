@@ -4105,7 +4105,7 @@ void() Line_RegisterCvars =
 	// is dense on a bhop run; 3 (Patch 632) the peaks alone.  OFF by default since
 	// Patch 637, the owner's own layout as the template; 451 had turned them on at
 	// his asking and 627 made that 2.
-	registercvar("hud_lines_nums",    "0", CVAR_ARCHIVE);
+	registercvar("hud_lines_nums",    "2", CVAR_ARCHIVE);
 	// Patch 632: your line and the others, each 0 speed, 1 gain, 2 contact, 3 energy,
 	// 4 air control, or 5 its plain colour (blue; by time).  hud_watch_path_color,
 	// the one setting they replace, is no longer read: a saved value of it would
@@ -4144,7 +4144,7 @@ void() Line_RegisterCvars =
 	// Patch 649: of the ticked lines (sixty-four at most now), the first this many have
 	// marks and numbers; the rest are lines.  The graph and the names are the first
 	// eight's whatever this says.
-	registercvar("hud_lines_marked", "8", CVAR_ARCHIVE);
+	registercvar("hud_lines_marked", "64", CVAR_ARCHIVE);
 	// Patch 645: 0 draws lines and plots with the QC loop on an engine that has the
 	// native one (the comparison, and the way back).  Not saved.
 	registercvar("hud_lines_native", "1");

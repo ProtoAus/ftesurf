@@ -73,3 +73,17 @@ BEFORE = {
     'hud_round': '1', 'hud_scale': '2', 'hud_crosshair': '1',
     'hud_font_outline': '2', 'hud_edit_panel_x': '0.01', 'hud_edit_panel_y': '0.08',
 }
+
+# Patch 898 (21 Oct 2026): the owner's layout again, for the names it moved since.  Applied over
+# the tables above so the arm grades today's defaults.
+P898 = {
+    'hud_banner': '0', 'hud_banner_x': '0.4885', 'hud_banner_y': '0.2203', 'hud_compare': '0',
+    'hud_edit_panel_x': '0.1512', 'hud_edit_panel_y': '0.0624', 'hud_energy_ref': '0',
+    'hud_font_outline': '0', 'hud_keys_size': '1.5', 'hud_lines_nums': '2', 'hud_mapinfo_x': '0.9917',
+    'hud_mapinfo_y': '0.0125', 'hud_seq_abs': '1',
+    'hud_seq_units': '1', 'hud_trail': '0', 'hud_trainer_x': '0.1875', 'hud_trainer_y': '0.5332',
+    'hud_update': '-1', 'hud_watch_path_far': '3000', 'hud_watch_path_px': '2',
+    'hud_results_x': '0.7782', 'hud_results_y': '0.4867', 'hud_seq': '0', 'hud_linegraph': '0',
+}
+for _n, _v in P898.items():
+    (CHANGED if _n in CHANGED else BEFORE)[_n] = _v

@@ -1486,7 +1486,7 @@ void() Trn_RegisterCvars =
 	  Patch 637: 0.2833/0.5963 is where the owner has it; the collisions above
 	  were measured against the layout before his.
 	*/
-	registercvar("hud_trainer_x", "0.2833", CVAR_ARCHIVE);
-	registercvar("hud_trainer_y", "0.5963", CVAR_ARCHIVE);
+	registercvar("hud_trainer_x", "0.1875", CVAR_ARCHIVE);
+	registercvar("hud_trainer_y", "0.5332", CVAR_ARCHIVE);
 	Trn_Clear();
 };

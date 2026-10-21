@@ -2875,8 +2875,10 @@ void(entity e) SV_SaveLocSync =
 
 	if (e.rec_sl_index > cnt)
 		e.rec_sl_index = cnt;
+	// Patch 899: no cursor yet (a map load, a join, a lobby block scanned late) starts on the
+	// newest save -- the last row, rows being sorted by seq (SV_SaveSort) -- not the first.
 	if (cnt > 0 && e.rec_sl_index < 1)
-		e.rec_sl_index = 1;
+		e.rec_sl_index = cnt;
 
 	e.rec_sl_savetick = 0;
 	e.rec_sl_curorg = '0 0 0';

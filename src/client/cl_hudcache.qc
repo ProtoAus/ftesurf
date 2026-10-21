@@ -31,7 +31,7 @@ vector hc_size;
 
 void() HC_Register =
 {
-	registercvar("hud_fps", "0", CVAR_ARCHIVE);
+	registercvar("hud_fps", "-1", CVAR_ARCHIVE);
 	registercommand("hudcache");
 };
 

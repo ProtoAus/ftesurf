@@ -70,14 +70,14 @@ void() RG_RegisterCvars =
 {
 	local float s;
 
-	registercvar("hud_ghost",        "1",    CVAR_ARCHIVE);
+	registercvar("hud_ghost",        "3",    CVAR_ARCHIVE);
 	registercvar("hud_ghost_sync",   "0",    CVAR_ARCHIVE);
 	registercvar("hud_ghost_pb",     "1",    CVAR_ARCHIVE);
-	registercvar("hud_ghost_lines",  "4",    CVAR_ARCHIVE);
-	registercvar("hud_ghost_offset", "0",    CVAR_ARCHIVE);
-	registercvar("hud_ghost_alpha",  "0.55", CVAR_ARCHIVE);
+	registercvar("hud_ghost_lines",  "1",    CVAR_ARCHIVE);
+	registercvar("hud_ghost_offset", "0.5",  CVAR_ARCHIVE);
+	registercvar("hud_ghost_alpha",  "0.25", CVAR_ARCHIVE);
 	registercvar("hud_ghost_dither", "1",    CVAR_ARCHIVE);
-	registercvar("hud_ghost_near",   "96",   CVAR_ARCHIVE);
+	registercvar("hud_ghost_near",   "256",  CVAR_ARCHIVE);
 	registercvar("hud_ghost_names",  "1",    CVAR_ARCHIVE);
 	registercommand("raceghost");
 	rg_stg    = memalloc(sizeof(float) * LN_SLOTS * RG_STG);

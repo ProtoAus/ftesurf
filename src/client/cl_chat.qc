@@ -1487,16 +1487,16 @@ void() Chat_RegisterCvars =
 	*/
 	registercvar("hud_chat",       "1",     CVAR_ARCHIVE);
 	registercvar("hud_chat_x",     "0.05",  CVAR_ARCHIVE);
-	registercvar("hud_chat_y",     "0.95",  CVAR_ARCHIVE);
+	registercvar("hud_chat_y",     "0.9424", CVAR_ARCHIVE);
 	registercvar("hud_chat_lines", "6",     CVAR_ARCHIVE);
 	registercvar("hud_chat_time",  "30",    CVAR_ARCHIVE);
 	registercvar("hud_chat_fade",  "5",     CVAR_ARCHIVE);
 	registercvar("hud_chat_size",  "20",    CVAR_ARCHIVE);   // Patch 821: was 24 (HE_MigrateDefaults)
 	// Patch 824: the box's width (of the screen's), rows, full height open, opacity.
-	registercvar("hud_chat_w",     "0.35",  CVAR_ARCHIVE);
-	registercvar("hud_chat_rows",  "10",    CVAR_ARCHIVE);
-	registercvar("hud_chat_full",  "0",     CVAR_ARCHIVE);
-	registercvar("hud_chat_bg",    "0.88",  CVAR_ARCHIVE);
+	registercvar("hud_chat_w",     "0.3",   CVAR_ARCHIVE);
+	registercvar("hud_chat_rows",  "12",    CVAR_ARCHIVE);
+	registercvar("hud_chat_full",  "1",     CVAR_ARCHIVE);
+	registercvar("hud_chat_bg",    "0.5",   CVAR_ARCHIVE);
 
 	chat_typing = FALSE;
 	chat_buf    = "";

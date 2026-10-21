@@ -21,6 +21,19 @@
 
 ## next
 
+### P903 No signed download addresses in the console
+- Downloading a map's zones no longer prints the long signed address the download is redirected to.
+
+### P899 The newest save is selected when you load a map
+- Loading into a map now selects the last save you made in the save menu, not the first.
+
+### P898 New-install defaults, binds and ALT+ENTER
+- A new install starts in borderless fullscreen at 2x render scale, with sensitivity 0.5, fov 95 and no fps counter.
+- Console messages no longer stack up over the game (con_notifylines 0).
+- New default binds: q/e and mouse 1/2 turn, mouse 3 paints, t rewinds, p opens the player panel (player_edit). Saved binds are kept.
+- ALT+ENTER switches between windowed and borderless fullscreen in the game, the menus and the console. Your own ALT+ENTER bind wins; in_altenter 0 turns it off.
+- New installs get Lex's HUD layout. The keyboard and mouse input displays stay together in the bottom right at every screen size, and dropping the mouse display on the keys joins them again.
+
 ### P896 Every KSF recording, three times faster
 - KSF recordings now arrive three times faster, including those of older KSF times imported before recordings were linked.
 - A broken file on KSF's side no longer holds up everyone else's recordings.

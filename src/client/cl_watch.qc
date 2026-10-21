@@ -6887,7 +6887,7 @@ void() Watch_RegisterCvars =
 	  six-pixel line.  Patch 432: 1, anti-aliased (cl_lines.qc).
 	*/
 	registercvar("hud_watch_path_mode", "2", CVAR_ARCHIVE);
-	registercvar("hud_watch_path_px", "1", CVAR_ARCHIVE);
+	registercvar("hud_watch_path_px", "2", CVAR_ARCHIVE);
 	// The board's ticked lines and your own run's; -1 follows hud_watch_path_px.
 	registercvar("hud_watch_path_px_board", "-1", CVAR_ARCHIVE);
 	registercvar("hud_watch_path_px_trail", "-1", CVAR_ARCHIVE);
@@ -6896,13 +6896,13 @@ void() Watch_RegisterCvars =
 	// How far an imported run's line is pulled toward blue: 0 off, 1 all blue.
 	// A blend, so it composes with the five readings rather than replacing them.
 	registercvar("hud_watch_path_foreign", "0.55", CVAR_ARCHIVE);
-	registercvar("hud_watch_path_far", "12000", CVAR_ARCHIVE);  // fade out by here, 0 never
+	registercvar("hud_watch_path_far", "3000", CVAR_ARCHIVE);  // fade out by here, 0 never
 	registercvar("hud_watch_path_probe", "0");
 
 	registercvar("hud_watch_idle_speed", "20", CVAR_ARCHIVE);
 	registercvar("hud_watch_idle_time", "0.5", CVAR_ARCHIVE);
 	registercvar("hud_watch_idle_pad", "0", CVAR_ARCHIVE);
 	registercvar("hud_watch_skipidle", "1", CVAR_ARCHIVE);
-	registercvar("hud_watch_skipfail", "0", CVAR_ARCHIVE);     // Patch 778
-	registercvar("hud_watch_path_fails", "1", CVAR_ARCHIVE);   // 0: successful attempts only
+	registercvar("hud_watch_skipfail", "1", CVAR_ARCHIVE);     // Patch 778
+	registercvar("hud_watch_path_fails", "0", CVAR_ARCHIVE);   // 0: successful attempts only
 };
