@@ -4560,20 +4560,23 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	svt = e.rec_end_ticks;
 	if (rid != "" && ticks != sprintf("%d", svt))
 	{
-		dprint(sprintf("timer: receipt refused -- it signs ticks %s and the run "
-		               "held for one ended at %d\n", ticks, svt));
+		if (SV_DevOn())
+			dprint(sprintf("timer: receipt refused -- it signs ticks %s and the run "
+			               "held for one ended at %d\n", ticks, svt));
 		return;
 	}
 	if (rid == "")
 	{
 	if (e.rec_rec_rid == "" || e.rec_rec_nonce == "")
 	{
-		dprint("timer: receipt refused -- no run id or no nonce\n");
+		if (SV_DevOn())
+			dprint("timer: receipt refused -- no run id or no nonce\n");
 		return;
 	}
 	if (!(e.run_t_flags & TF_NONCE))
 	{
-		dprint("timer: receipt refused -- the nonce was never answered\n");
+		if (SV_DevOn())
+			dprint("timer: receipt refused -- the nonce was never answered\n");
 		return;
 	}
 	/*
@@ -4588,12 +4591,14 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	*/
 	if (e.run_t_flags & TF_RECORDING)
 	{
-		dprint("timer: receipt refused -- the run is still recording\n");
+		if (SV_DevOn())
+			dprint("timer: receipt refused -- the run is still recording\n");
 		return;
 	}
 	if (e.rec_rec_rcpt)                 // one per run
 	{
-		dprint("timer: receipt refused -- this run already has one\n");
+		if (SV_DevOn())
+			dprint("timer: receipt refused -- this run already has one\n");
 		return;
 	}
 	rid = e.rec_rec_rid;
@@ -4605,22 +4610,26 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	// refusal that has to be debugged twice.
 	if (!SV_RecIsHex(pub, 64))
 	{
-		dprint(sprintf("timer: receipt refused -- pub %s\n", pub));
+		if (SV_DevOn())
+			dprint(sprintf("timer: receipt refused -- pub %s\n", pub));
 		return;
 	}
 	if (!SV_RecIsHex(sig, 128))
 	{
-		dprint(sprintf("timer: receipt refused -- sig %s\n", sig));
+		if (SV_DevOn())
+			dprint(sprintf("timer: receipt refused -- sig %s\n", sig));
 		return;
 	}
 	if (hid != "-" && !SV_RecIsHex(hid, 64))
 	{
-		dprint(sprintf("timer: receipt refused -- hid %s\n", hid));
+		if (SV_DevOn())
+			dprint(sprintf("timer: receipt refused -- hid %s\n", hid));
 		return;
 	}
 	if (view != "-" && !SV_RecIsHex(view, 64))
 	{
-		dprint(sprintf("timer: receipt refused -- view %s\n", view));
+		if (SV_DevOn())
+			dprint(sprintf("timer: receipt refused -- view %s\n", view));
 		return;
 	}
 	/*
@@ -4639,17 +4648,20 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	*/
 	if (!SV_RecIsInt(ticks, TRUE) || !SV_RecIsInt(hidlen, FALSE))
 	{
-		dprint(sprintf("timer: receipt refused -- ticks %s hidlen %s\n", ticks, hidlen));
+		if (SV_DevOn())
+			dprint(sprintf("timer: receipt refused -- ticks %s hidlen %s\n", ticks, hidlen));
 		return;
 	}
 	if (stof(ticks) < -1)
 	{
-		dprint(sprintf("timer: receipt refused -- ticks %s\n", ticks));
+		if (SV_DevOn())
+			dprint(sprintf("timer: receipt refused -- ticks %s\n", ticks));
 		return;
 	}
 	if (kept != "0" && kept != "1")
 	{
-		dprint(sprintf("timer: receipt refused -- kept %s\n", kept));
+		if (SV_DevOn())
+			dprint(sprintf("timer: receipt refused -- kept %s\n", kept));
 		return;
 	}
 	/*
@@ -4664,7 +4676,8 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	svname = SV_RecCleanLine(svname);
 	if (svname == "")
 	{
-		dprint("timer: receipt refused -- empty server name\n");
+		if (SV_DevOn())
+			dprint("timer: receipt refused -- empty server name\n");
 		return;
 	}
 
@@ -4690,7 +4703,8 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 		if (fh >= 0)
 		{
 			fclose(fh);
-			dprint(sprintf("timer: receipt refused -- %s already has one\n", rid));
+			if (SV_DevOn())
+				dprint(sprintf("timer: receipt refused -- %s already has one\n", rid));
 			if (rid == e.rec_rec_rid)       // or the live path would write it (round 6)
 				e.rec_rec_rcpt = TRUE;
 			SV_RecEndHold(e, "", "", 0);    // it can never be written
@@ -4752,7 +4766,8 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	fputs(fh, sprintf("signed hid %s %s %s\n", hid, hidlen, kept));
 	fputs(fh, sprintf("signed view %s\n", view));
 	fclose(fh);
-	dprint(sprintf("timer: receipt %s\n", path));
+	if (SV_DevOn())
+		dprint(sprintf("timer: receipt %s\n", path));
 
 	/*
 	  PATCH 418: AND NOW ASK FOR THE FILE THE CLIENT HAS JUST COMMITTED TO.

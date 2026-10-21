@@ -490,9 +490,9 @@ vector(float n, __out float yaw, __out float haveyaw) SV_ZoneDest =
 		dprint(sprintf("zones: no info_teleport_destination '%s' for zone %g\n", zone_td_name[n], n));
 		zone_td_kind[n] = ZTD_NONE; // live path alone caches a missing target
 	}
-	else if (fallback == ZDEST_VOID)
+	else if (fallback == ZDEST_VOID && SV_DevOn())
 		dprint(sprintf("zones: no floor within %g units under zone %g, using the raw destination\n", ZONE_SNAP_DROP, n));
-	else if (fallback == ZDEST_SOLID)
+	else if (fallback == ZDEST_SOLID && SV_DevOn())
 		dprint(sprintf("zones: ground snap for zone %g lands solid, using the raw destination\n", n));
 	return dest;
 };

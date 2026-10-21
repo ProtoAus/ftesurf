@@ -2211,7 +2211,8 @@ void(entity t, string param) SV_IOAddOutput =
 		if (t.classname == "player")
 		{
 			t.run_srcclass = v;
-			dprint(sprintf("addoutput: %s classname %s\n", t.netname, v));
+			if (SV_DevOn())
+				dprint(sprintf("addoutput: %s classname %s\n", t.netname, v));
 		}
 		return;
 	}

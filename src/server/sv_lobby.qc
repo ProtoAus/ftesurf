@@ -1335,7 +1335,8 @@ void(entity except, string msg) Lobby_SayOthers =
 		e = edict_num(i);
 		t = clienttype(e);
 	}
-	dprint(strcat("said> ", msg));          // the server log's copy (log_developer)
+	if (SV_DevOn())
+		dprint(strcat("said> ", msg));          // the server log's copy (log_developer)
 };
 
 void(entity p) Lobby_AnnConnect =
