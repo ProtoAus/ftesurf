@@ -1366,7 +1366,8 @@ float(float c) Av_Paste =
 */
 float(string cmd) Av_ConsoleCommand =
 {
-	if (argv(0) != "hud_player")
+	// Patch 898: `player_edit` is the name Lex binds (p); `hud_player` stays for configs and arms.
+	if (strcmp(argv(0), "hud_player") && strcmp(argv(0), "player_edit"))
 		return FALSE;
 
 	if (argv(1) == "open")
@@ -1442,6 +1443,7 @@ void() Av_RegisterCvars =
 	  a toggle like `scores`, and a cvar would archive a panel left open.
 	*/
 	registercommand("hud_player");
+	registercommand("player_edit");
 
 	/*
 	  The server's colour mirror, registered beside its read (the rule this

@@ -32,6 +32,9 @@
 - The one-line stage toast (shown when stage banners are off) gets the same look.
 - The middle mouse button no longer takes the card's cursor, so it does what it is bound to (paint, with the default binds); F1 still takes it.
 
+### P903 No signed download addresses in the console
+- Downloading a map's zones no longer prints the long signed address the download is redirected to.
+
 ### P902 A quieter title screen: updates, patch notes and terms move to F2
 - The update corner and the patch notes panel are gone from the title screen. F2 holds them instead, one page each: Patch notes, Updates (turn on or off, restart, check again), Input journal and Terms.
 - The title screen keeps your version and the latest one in the top right, as text, with a line pointing at F2, and says when an update is ready for a restart.
@@ -42,6 +45,18 @@
 ### P900 Layered glass draws in the right order
 - Windows made of several glass layers, such as bhop_eazy's, no longer break into patches or swap tints when seen at an angle: panes are drawn back to front by which side of each pane you are on.
 - Graphics menu: the Glass option "Dithered" now reads "Dithered if textured". Glass without a texture of its own, which is most glass (surf_boreas's ice included), has always drawn as Translucent in that mode.
+
+### P899 The newest save is selected when you load a map
+- Loading into a map now selects the last save you made in the save menu, not the first.
+
+### P898 New-install defaults, binds and ALT+ENTER
+- A new install starts in borderless fullscreen at 2x render scale, with sensitivity 0.5, fov 95 and no fps counter.
+- Console messages no longer stack up over the game (con_notifylines 0). A value you set yourself is now kept between launches.
+- The graphics menu has a Render scale setting (1x, 1.5x, 2x): 1x is the first step for a slower graphics card.
+- New default binds: q/e and mouse 1/2 turn, mouse 3 paints, t rewinds, p opens the player panel (player_edit). Saved binds are kept.
+- ALT+ENTER switches between windowed and borderless fullscreen in the game, the menus and the console, and with ALT still held, ENTER switches back. Your own ALT+ENTER bind wins; in_altenter 0 turns it off.
+- Lex's HUD layout is the new default, for new installs and for every HUD setting you never changed; the ones you changed stay yours.
+- The keyboard and mouse input displays stay together in the bottom right at every screen size. Dropping the mouse display where it sits beside the keys joins them again.
 
 ### P897 Quieter console in your own games
 - Debug lines from map triggers, runs, saves and spectating no longer fill the console in your own games, such as surf_boreas's spinning symbols; developer 1 shows them again.

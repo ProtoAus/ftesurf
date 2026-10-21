@@ -194,8 +194,8 @@ void() Results_RegisterCvars =
 	*/
 	registercvar("hud_results", "1", CVAR_ARCHIVE);
 
-	registercvar("hud_results_x", "0.7792", CVAR_ARCHIVE);
-	registercvar("hud_results_y", "0.50", CVAR_ARCHIVE);
+	registercvar("hud_results_x", "0.7782", CVAR_ARCHIVE);
+	registercvar("hud_results_y", "0.4867", CVAR_ARCHIVE);
 
 	/*
 	  THE RANK SCAN, AND THIS IS THE HONESTY SWITCH AND THE PERFORMANCE A/B IN

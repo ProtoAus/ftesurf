@@ -46,7 +46,7 @@ float ui_gfx_waterbudget;       // LOCAL native renderer + loaded plugin capabil
   from ten settings to twenty-six and cost four more keystrokes, which is the
   whole point of having paged rather than found a tenth key.
 */
-#define GFX_ROWS     30         // highest row index (Patch 874 added Sun and Ropes)
+#define GFX_ROWS     31         // highest row index (Patch 898 added Render scale)
 #define GFX_PER_PAGE 6          // digits 1..6; 7 reloads, 8/9 page, 0 closes
 
 void() Gfx_WaterSupport =
@@ -429,6 +429,8 @@ string(float row) Gfx_Def =
 	if (row == 28) return "vbsp_emit|Map particles|0 1|Off;On|";
 	if (row == 29) return "vbsp_sun|Sun|0 1|Off;On|";       // Patch 874, cl_sun.qc
 	if (row == 30) return "vbsp_ropes|Ropes|0 1|Off;On|";   // cl_ropes.qc
+	// Patch 898: new installs draw at 2x; the step down for a slower GPU.  Live, the next frame.
+	if (row == 31) return "r_renderscale|Render scale|1 1.5 2|1x;1.5x;2x|";
 
 	return "";
 };
@@ -861,6 +863,7 @@ string(float page) Gfx_PageName =
 	if (page == 1) return "Reflections and detail";
 	if (page == 2) return "Map content";
 	if (page == 3) return "Collision and prop light";
+	if (page == 5) return "Display";        // Patch 898: Render scale
 	return "Models, fog and particles";
 };
 

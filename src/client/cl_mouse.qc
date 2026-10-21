@@ -41,6 +41,7 @@ float  ui_mp_pa, ui_mp_pd;      // last frame's A/D, for the rising edges
 float  ui_mp_newer;             // -1 = A pressed later, +1 = D, 0 = neither
 float  ui_mp_head, ui_mp_len, ui_mp_lastt;
 vector ui_mp_bpos, ui_mp_bsize; // the box, whole pixels
+float  ui_mp_joinchk;           // Patch 898: -1 armed by the layout migration, then the time to look
 vector ui_mp_px;                // one physical pixel, virtual units
 
 void() MPad_RegisterCvars =
@@ -256,7 +257,17 @@ void() MPad_Frame =
 		MPad_Push();
 };
 
-// Attached (either cvar < 0): the keys' height, 16:10, one gap left, tops aligned.
+// Attached: the keys' height, 16:10, one gap left of them, tops aligned (HUD_KeysGeom first).
+vector() MPad_AttachPos =
+{
+	local vector p;
+	p = [ui_kb_pos_x - ui_kb_gap - ui_kb_size_y * 1.6, ui_kb_pos_y, 0];
+	if (p_x < 0)                        // keys dragged to the left edge: their right
+		p_x = ui_kb_pos_x + ui_kb_size_x + ui_kb_gap;
+	return p;
+};
+
+// Attached (either cvar < 0): MPad_AttachPos.
 void(vector scr) MPad_Geom =
 {
 	local vector ps, vs, p, sz;
@@ -271,13 +282,25 @@ void(vector scr) MPad_Geom =
 	HUD_KeysGeom(scr);
 	sz = [ui_kb_size_y * 1.6, ui_kb_size_y, 0];
 	if (cvar("hud_mouse_x") < 0 || cvar("hud_mouse_y") < 0)
-	{
-		p = [ui_kb_pos_x - ui_kb_gap - sz_x, ui_kb_pos_y, 0];
-		if (p_x < 0)                    // keys dragged to the left edge: their right
-			p_x = ui_kb_pos_x + ui_kb_size_x + ui_kb_gap;
-	}
+		p = MPad_AttachPos();
 	else
+	{
 		p = [scr_x * cvar("hud_mouse_x"), scr_y * cvar("hud_mouse_y"), 0];
+		// Patch 898: once, 2 s after the layout migration -- hud_keys_size 1 -> 1.5 grows the keys
+		// into a pad placed beside the size-1 block -- a pad over the keys joins them.
+		if (ui_mp_joinchk < 0)
+			ui_mp_joinchk = time + 2;
+		else if (ui_mp_joinchk && time >= ui_mp_joinchk)
+		{
+			ui_mp_joinchk = 0;
+			if (p_x < ui_kb_pos_x + ui_kb_size_x && ui_kb_pos_x < p_x + sz_x)
+			if (p_y < ui_kb_pos_y + ui_kb_size_y && ui_kb_pos_y < p_y + sz_y)
+			{
+				localcmd("seta hud_mouse_x -1\nseta hud_mouse_y -1\n");
+				print("hud: the input display is attached to the keys again, bottom right\n");
+			}
+		}
+	}
 
 	// Whole pixels, so the 1 px edge is one column.
 	ui_mp_bpos  = [floor(p_x / ui_mp_px_x + 0.5) * ui_mp_px_x,

@@ -40,9 +40,9 @@ float  cmp_byt, cmp_bys, cmp_bye, cmp_btt, cmp_bts, cmp_bte;   // Cmp_Block's si
 
 void() Cmp_RegisterCvars =
 {
-	registercvar("hud_compare",        "1",      CVAR_ARCHIVE);
-	registercvar("hud_compare_x",      "0.0333", CVAR_ARCHIVE);
-	registercvar("hud_compare_y",      "0.66",   CVAR_ARCHIVE);
+	registercvar("hud_compare",        "0",      CVAR_ARCHIVE);
+	registercvar("hud_compare_x",      "0.5859", CVAR_ARCHIVE);
+	registercvar("hud_compare_y",      "0.4613", CVAR_ARCHIVE);
 	registercvar("hud_compare_size",   "0",      CVAR_ARCHIVE);
 	registercvar("hud_compare_splits", "1",      CVAR_ARCHIVE);
 	registercvar("hud_compare_segs",   "1",      CVAR_ARCHIVE);

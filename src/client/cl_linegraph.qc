@@ -308,7 +308,7 @@ void() LineGraph_Reset =
 
 void() LineGraph_Register =
 {
-	registercvar("hud_linegraph", "1", CVAR_ARCHIVE);
+	registercvar("hud_linegraph", "0", CVAR_ARCHIVE);
 	registercvar("hud_linegraph_labels", "1", CVAR_ARCHIVE);
 	registercvar("hud_linegraph_cache", "1", CVAR_ARCHIVE);     // Patch 837: the still layer from a render target
 	registercvar("hud_linegraph_live", "1", CVAR_ARCHIVE);     // Patch 622: your own run on the graphs

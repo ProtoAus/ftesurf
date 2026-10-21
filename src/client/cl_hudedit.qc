@@ -873,6 +873,21 @@ float(string id, string dragged) HE_Riding =
 	    && (cvar("hud_mouse_x") < 0 || cvar("hud_mouse_y") < 0);
 };
 
+// Patch 898: the pad let go within a snap of where it attaches (left of the keys, tops level)
+// joins them (-1 -1), so the two keep their side and gap at every screen size; SHIFT places it
+// free, as it does the snap.  A hidden pad has no fresh rect (MPad_Geom runs only to draw it).
+void(float lim) HE_MouseJoin =
+{
+	local vector at;
+	if (!cvar("hud_mouse"))
+		return;
+	at = MPad_AttachPos();
+	if (fabs(ui_mp_bpos_x - at_x) > lim || fabs(ui_mp_bpos_y - at_y) > lim)
+		return;
+	localcmd("seta hud_mouse_x -1\nseta hud_mouse_y -1\n");
+	print("hud: input display attached to the keys\n");
+};
+
 vector(float r, vector scr) HE_AnchorOf =
 {
 	local float x, y;
@@ -1564,6 +1579,8 @@ void(vector scr) HUD_EditDraw =
 
 	if (ui_he_drag && !sui_click_held())
 	{
+		if (ui_he_held == "mouse" && lim > 0 && !ui_he_shift)
+			HE_MouseJoin(lim);
 		ui_he_drag = FALSE;
 		ui_he_held = "";
 	}
@@ -2148,23 +2165,23 @@ void(float r) HE_Default =
 	if (id == "splits")  localcmd("seta hud_splits_x 0.0695\nseta hud_splits_y 0.1784\n");
 	if (id == "seq")     localcmd("seta hud_seq_x -0.1951\nseta hud_seq_y 0.483\n");
 	if (id == "strafe")  localcmd("seta hud_strafe_x 0.5\nseta hud_strafe_y 0.42\n");
-	if (id == "trainer") localcmd("seta hud_trainer_x 0.2833\nseta hud_trainer_y 0.5963\n");
+	if (id == "trainer") localcmd("seta hud_trainer_x 0.1875\nseta hud_trainer_y 0.5332\n");
 	if (id == "graph")   localcmd("seta hud_linegraph_x 0.9667\nseta hud_linegraph_y 0.3435\n");
-	if (id == "compare") localcmd("seta hud_compare_x 0.0333\nseta hud_compare_y 0.66\n");   // Patch 779
+	if (id == "compare") localcmd("seta hud_compare_x 0.5859\nseta hud_compare_y 0.4613\n");   // Patch 779
 	if (id == "board")   localcmd("seta hud_board_x 0.5\nseta hud_board_y 0.5\n");
 	if (id == "speed")   localcmd("seta hud_speed_x 0.5\nseta hud_speed_y 0.6269\n");
-	if (id == "banner")  localcmd("seta hud_banner_x 0.5\nseta hud_banner_y 0.25\n");
+	if (id == "banner")  localcmd("seta hud_banner_x 0.4885\nseta hud_banner_y 0.2203\n");
 	// Patch 798: Input display's reset puts the key block back too.
 	if (id == "keys" || id == "mouse") localcmd("seta hud_keys_x 0\nseta hud_keys_y 0.84\n");
 	if (id == "debug")   localcmd("seta hud_debug_x 0.0333\nseta hud_debug_y 0.0405\n");
 	if (id == "saveloc") localcmd("seta hud_saveloc_x 0.0333\nseta hud_saveloc_y 0.3695\n");
 	if (id == "gfx")     localcmd("seta hud_gfx_x 0.0333\nseta hud_gfx_y 0.338\n");
 	if (id == "vote")    localcmd("seta hud_vote_x 0.0333\nseta hud_vote_y 0.4028\n");
-	if (id == "mapinfo") localcmd("seta hud_mapinfo_x 0.99\nseta hud_mapinfo_y 0.02\n");
+	if (id == "mapinfo") localcmd("seta hud_mapinfo_x 0.9917\nseta hud_mapinfo_y 0.0125\n");
 	if (id == "specby")  localcmd("seta hud_specby_x 0.99\nseta hud_specby_y 0.18\n");
 	// Patch 798: missing since Patch 762, so the strip's reset chip did nothing.
-	if (id == "keyhint") localcmd("seta hud_keyhint_x 0.0333\nseta hud_keyhint_y 0.955\n");
-	if (id == "chat")    localcmd("seta hud_chat_x 0.05\nseta hud_chat_y 0.95\n");   // Patch 824
+	if (id == "keyhint") localcmd("seta hud_keyhint_x 0.0448\nseta hud_keyhint_y 0.9582\n");
+	if (id == "chat")    localcmd("seta hud_chat_x 0.05\nseta hud_chat_y 0.9424\n");   // Patch 824
 
 	/*
 	  BUILD 65 (until Patch 637, see above HE_Default).  boarding's pair is the -1
@@ -2179,7 +2196,7 @@ void(float r) HE_Default =
 	*/
 	if (id == "boarding") localcmd("seta hud_boarding_x 0.6646\nseta hud_boarding_y 0.5\n");
 	if (id == "net")      localcmd("seta hud_net_x 0.7616\nseta hud_net_y 0.02\n");
-	if (id == "results")  localcmd("seta hud_results_x 0.7792\nseta hud_results_y 0.50\n");
+	if (id == "results")  localcmd("seta hud_results_x 0.7782\nseta hud_results_y 0.4867\n");
 	if (id == "mouse")    localcmd("seta hud_mouse_x -1\nseta hud_mouse_y -1\n");  // Patch 390: attached
 
 	ui_he_dirty = TRUE;
@@ -2260,15 +2277,15 @@ void() HE_ResetAll =
 	// that are not positions (those are HE_Default's), for the same reason.
 	localcmd("seta hud_lines_order 4\nseta hud_linegraph_plots 3\n");
 	localcmd("seta hud_lines_demo -1\nseta hud_lines_demo_far -1\n");      // Patch 745
-	localcmd("seta hud_watch_path_fails 1\n");                              // Patch 778
+	localcmd("seta hud_watch_path_fails 0\nseta hud_watch_skipfail 1\n");   // Patch 778
 	localcmd("seta hud_compare_splits 1\nseta hud_compare_segs 1\n");       // Patch 779
-	localcmd("seta hud_ghost 1\nseta hud_ghost_sync 0\nseta hud_ghost_pb 1\nseta hud_ghost_lines 4\n"
-	         "seta hud_ghost_offset 0\nseta hud_ghost_alpha 0.55\nseta hud_ghost_dither 1\nseta hud_ghost_near 96\n"
+	localcmd("seta hud_ghost 3\nseta hud_ghost_sync 0\nseta hud_ghost_pb 1\nseta hud_ghost_lines 1\n"
+	         "seta hud_ghost_offset 0.5\nseta hud_ghost_alpha 0.25\nseta hud_ghost_dither 1\nseta hud_ghost_near 256\n"
 	         "seta hud_ghost_names 1\n");
 	localcmd("seta hud_chat 1\n");          // Patch 798: default.cfg never sets it
 	// Patch 824: the Chat pane's, literals for the same reason (only the game code registers them).
-	localcmd("seta hud_chat_size 20\nseta hud_chat_w 0.35\nseta hud_chat_rows 10\nseta hud_chat_full 0\n"
-	         "seta hud_chat_lines 6\nseta hud_chat_time 30\nseta hud_chat_bg 0.88\n");
+	localcmd("seta hud_chat_size 20\nseta hud_chat_w 0.3\nseta hud_chat_rows 12\nseta hud_chat_full 1\n"
+	         "seta hud_chat_lines 6\nseta hud_chat_time 30\nseta hud_chat_bg 0.5\n");
 
 	// And the panel itself, which can be dragged into a corner like anything else.
 	HE_ResetCvar("hud_edit_panel_x");
@@ -2303,8 +2320,8 @@ void() HUD_EditRegisterCvars =
 	// Where the tool panel sits, as screen fractions.  Saved, because a panel you
 	// have to move out of the way of your own layout every session is a panel you
 	// have to move out of the way every session.  See the drag essay at the top.
-	registercvar("hud_edit_panel_x", "0.010", CVAR_ARCHIVE);
-	registercvar("hud_edit_panel_y", "0.080", CVAR_ARCHIVE);
+	registercvar("hud_edit_panel_x", "0.1512", CVAR_ARCHIVE);
+	registercvar("hud_edit_panel_y", "0.0624", CVAR_ARCHIVE);
 };
 
 /*
@@ -2367,12 +2384,68 @@ void() HE_MigrateDefaults =
 		localcmd("seta hud_chat_rev 821\n");
 	}
 	registercvar("hud_layout_rev", "0", CVAR_ARCHIVE);
+	/*
+	  Patch 898: Lex's layout of 21 Oct for every setting still on the default it replaced.  The
+	  names default.cfg sets move by themselves unless saved; these moves catch a saved old default
+	  (the names only the game code registers, which every config saves, and anything "reset all"
+	  wrote with seta).  His own pad place goes back to attached: it sat beside the keys by a screen
+	  fraction while the keys size by hud_scale.  After Patch 641's moves, so a config older than
+	  them waits one boot; a fresh install runs it on its second boot and moves nothing.
+	*/
+	registercvar("hud_lex_rev", "0", CVAR_ARCHIVE);
+	if (cvar("hud_lex_rev") < 898 && cvar("hud_layout_rev") >= 637)
+	{
+		n = 0;
+		n += HE_MovePair("hud_banner_x", 0.5, "0.4885", "hud_banner_y", 0.25, "0.2203");
+		n += HE_MovePair("hud_edit_panel_x", 0.01, "0.1512", "hud_edit_panel_y", 0.08, "0.0624");
+		n += HE_MovePair("hud_keyhint_x", 0.0333, "0.0448", "hud_keyhint_y", 0.955, "0.9582");
+		n += HE_MovePair("hud_mapinfo_x", 0.99, "0.9917", "hud_mapinfo_y", 0.02, "0.0125");
+		n += HE_MovePair("hud_trainer_x", 0.2833, "0.1875", "hud_trainer_y", 0.5963, "0.5332");
+		n += HE_MovePair("hud_chat_x", 0.05, "0.05", "hud_chat_y", 0.95, "0.9424");
+		n += HE_MovePair("hud_compare_x", 0.0333, "0.5859", "hud_compare_y", 0.66, "0.4613");
+		n += HE_MovePair("hud_results_x", 0.7792, "0.7782", "hud_results_y", 0.5, "0.4867");
+		n += HE_MovePair("hud_mouse_x", 0.7141, "-1", "hud_mouse_y", 0.7967, "-1");
+		n += HE_MoveOne("hud_banner", 1, "0");
+		n += HE_MoveOne("hud_compare", 1, "0");
+		n += HE_MoveOne("hud_energy_ref", 1, "0");
+		n += HE_MoveOne("hud_font_outline", 2, "0");
+		n += HE_MoveOne("hud_ghost", 1, "3");
+		n += HE_MoveOne("hud_ghost_alpha", 0.55, "0.25");
+		n += HE_MoveOne("hud_ghost_lines", 4, "1");
+		n += HE_MoveOne("hud_ghost_near", 96, "256");
+		n += HE_MoveOne("hud_ghost_offset", 0, "0.5");
+		n += HE_MoveOne("hud_keys_size", 1, "1.5");
+		n += HE_MoveOne("hud_lines_nums", 0, "2");
+		n += HE_MoveOne("hud_seq_abs", 0, "1");
+		n += HE_MoveOne("hud_seq_units", 0, "1");
+		n += HE_MoveOne("hud_trail", 1, "0");
+		n += HE_MoveOne("hud_update", 0, "-1");
+		n += HE_MoveOne("hud_watch_path_fails", 1, "0");
+		n += HE_MoveOne("hud_watch_path_far", 12000, "3000");
+		n += HE_MoveOne("hud_watch_path_px", 1, "2");
+		n += HE_MoveOne("hud_watch_skipfail", 0, "1");
+		n += HE_MoveOne("hud_chat_bg", 0.88, "0.5");
+		n += HE_MoveOne("hud_chat_full", 0, "1");
+		n += HE_MoveOne("hud_chat_rows", 10, "12");
+		n += HE_MoveOne("hud_chat_w", 0.35, "0.3");
+		n += HE_MoveOne("hud_fps", 0, "-1");
+		n += HE_MoveOne("hud_seq", 1, "0");
+		n += HE_MoveOne("hud_linegraph", 1, "0");
+		n += HE_MoveOne("hud_lines_marked", 8, "64");
+		localcmd("seta hud_lex_rev 898\n");
+		ui_mp_joinchk = -1;             // and a pad the bigger keys now cover joins them (MPad_Geom)
+		if (n)
+			print(sprintf("hud: %g element(s) and setting(s) still on the old defaults now follow Lex's layout\n", n));
+	}
+	// Patch 898: hud_seq_abs, hud_seq_units, hud_lines_nums and hud_update are off the list below --
+	// Lex's layout put them back on the values it moved them from, and a fresh install runs it
+	// (rev 0) and would be moved off them.
 	if (cvar("hud_layout_rev") >= 637)
 		return;
 	n = HE_MovePair("hud_timer_x", 0.5, "0.5", "hud_timer_y", 0.035, "0.0405");
 	n += HE_MovePair("hud_splits_x", 0.045, "0.0695", "hud_splits_y", 0.20, "0.1784");
 	n += HE_MovePair("hud_seq_x", -0.25, "-0.1951", "hud_seq_y", 0.5, "0.483");
-	n += HE_MovePair("hud_trainer_x", 0.28, "0.2833", "hud_trainer_y", 0.27, "0.5963");
+	n += HE_MovePair("hud_trainer_x", 0.28, "0.1875", "hud_trainer_y", 0.27, "0.5332");
 	n += HE_MovePair("hud_board_x", -1, "0.5", "hud_board_y", -1, "0.5");
 	n += HE_MovePair("hud_boarding_x", -1, "0.6646", "hud_boarding_y", -1, "0.5");
 	n += HE_MovePair("hud_speed_x", 0.5, "0.5", "hud_speed_y", 0.68, "0.6269");
@@ -2382,11 +2455,9 @@ void() HE_MigrateDefaults =
 	n += HE_MovePair("hud_gfx_x", 0.018, "0.0333", "hud_gfx_y", 0.10, "0.338");
 	n += HE_MovePair("hud_vote_x", 0.018, "0.0333", "hud_vote_y", 0.30, "0.4028");
 	n += HE_MovePair("hud_net_x", 0.78, "0.7616", "hud_net_y", 0.30, "0.02");
-	n += HE_MovePair("hud_results_x", 0.72, "0.7792", "hud_results_y", 0.5, "0.5");
+	n += HE_MovePair("hud_results_x", 0.72, "0.7782", "hud_results_y", 0.5, "0.4867");
 	n += HE_MoveOne("hud_boarding", 1, "0");
-	n += HE_MoveOne("hud_seq_abs", 1, "0");
 	n += HE_MoveOne("hud_seq_pct", 1, "0");
-	n += HE_MoveOne("hud_seq_units", 1, "0");
 	n += HE_MoveOne("hud_board_seg", 1, "0");
 	n += HE_MoveOne("hud_board_ramp", 1, "0");
 	n += HE_MoveOne("hud_board_words", 1, "0");
@@ -2394,12 +2465,10 @@ void() HE_MigrateDefaults =
 	n += HE_MoveOne("hud_strafe_why", 1, "0");
 	n += HE_MoveOne("hud_strafe_best", 2, "0");
 	n += HE_MoveOne("hud_lines_order", 8, "4");
-	n += HE_MoveOne("hud_lines_nums", 2, "0");
-	n += HE_MoveOne("hud_watch_path_far", 6000, "12000");
+	n += HE_MoveOne("hud_watch_path_far", 6000, "3000");
 	n += HE_MoveOne("hud_linegraph_plots", 1, "3");
 	n += HE_MoveOne("hud_mouse_span", 90, "360");
 	n += HE_MoveOne("hud_mouse_trail", 0.5, "1");
-	n += HE_MoveOne("hud_update", -1, "0");
 	localcmd("seta hud_layout_rev 637\n");
 	if (n)
 		print(sprintf("hud: %g element(s) and setting(s) still on the old defaults now follow the new layout\n", n));

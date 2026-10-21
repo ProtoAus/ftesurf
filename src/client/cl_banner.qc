@@ -67,11 +67,11 @@ float  ui_bn_chatpend;          // ...and this finish's PENDING key has been see
 
 void() Banner_RegisterCvars =
 {
-	registercvar("hud_banner", "1", CVAR_ARCHIVE);
+	registercvar("hud_banner", "0", CVAR_ARCHIVE);
 	registercvar("hud_banner_stages", "1", CVAR_ARCHIVE);  // 0: the one-line toast instead
 	registercvar("hud_banner_hold", "3.5", CVAR_ARCHIVE);
-	registercvar("hud_banner_x", "0.5", CVAR_ARCHIVE);
-	registercvar("hud_banner_y", "0.25", CVAR_ARCHIVE);
+	registercvar("hud_banner_x", "0.4885", CVAR_ARCHIVE);
+	registercvar("hud_banner_y", "0.2203", CVAR_ARCHIVE);
 	registercvar("hud_banner_size", "0", CVAR_ARCHIVE);    // 0 = 32 * hud_scale
 	registercvar("hud_banner_sound", "1", CVAR_ARCHIVE);
 	registercvar("hud_banner_chat", "1", CVAR_ARCHIVE);   // Patch 371: the chatbox line

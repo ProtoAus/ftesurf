@@ -36,16 +36,16 @@ string(float i) KC_Def =
 	if (i == 1)  return "back|Back|+back||s|Movement";
 	if (i == 2)  return "left|Strafe left|+moveleft||a|Movement";
 	if (i == 3)  return "right|Strafe right|+moveright||d|Movement";
-	if (i == 4)  return "jump|Jump|+jump||SPACE MWHEELUP MWHEELDOWN MOUSE2|Movement";
-	if (i == 5)  return "duck|Duck|+duck||LCTRL MOUSE1|Movement";
+	if (i == 4)  return "jump|Jump|+jump||SPACE MWHEELUP MWHEELDOWN|Movement";
+	if (i == 5)  return "duck|Duck|+duck||LCTRL|Movement";
 	if (i == 6)  return "walk|Walk|+speed||LSHIFT|Movement";
-	if (i == 7)  return "turnleft|Turn left|+left||e|Movement";
-	if (i == 8)  return "turnright|Turn right|+right||q|Movement";
+	if (i == 7)  return "turnleft|Turn left|+left||q MOUSE1|Movement";
+	if (i == 8)  return "turnright|Turn right|+right||e MOUSE2|Movement";
 	if (i == 9)  return "hud|HUD editor|hud_edit||c|Menus";
 	if (i == 10) return "gfx|Graphics|gfx_menu||x|Menus";
 	if (i == 11) return "keys|Key config|config_menu||k|Menus";
-	if (i == 12) return "player|Player|hud_player||p|Menus";   // Patch 806
-	if (i == 13) return "entview|Entity view|ent_cursor|ent_view|MOUSE3|Menus";   // Patch 809
+	if (i == 12) return "player|Player|player_edit|hud_player|p|Menus";   // Patch 806; 898 player_edit
+	if (i == 13) return "entview|Entity view|ent_cursor|ent_view||Menus";   // Patch 809; 898: MOUSE3 paints
 	if (i == 14) return "savemenu|Save menu|save_menu|saveloc_menu;mom_saveloc_close|z|Saves";
 	if (i == 15) return "save|Save|sl_save|mom_saveloc_create|1|Saves";
 	if (i == 16) return "load|Load (hold)|+sl_hold|sl_load;+mom_saveloc_current;mom_saveloc_current|2|Saves";
@@ -55,9 +55,9 @@ string(float i) KC_Def =
 	if (i == 20) return "restart|Restart run|goto_start|say !m|m|Run";
 	if (i == 21) return "reset|Reset stage|reset|say !r|r|Run";     // Patch 848
 	if (i == 22) return "respawn|Go to spawn|goto_spawn|||Run";     // Patch 845
-	if (i == 23) return "rewind|Rewind|rewind||BACKSPACE|Run";
+	if (i == 23) return "rewind|Rewind|rewind||t BACKSPACE|Run";
 	if (i == 24) return "noclip|Noclip|noclip||v|Run";
-	if (i == 25) return "paint|Paint (hold)|+paint|paint||Run";     // Patch 772: unbound by default
+	if (i == 25) return "paint|Paint (hold)|paint|+paint|MOUSE3|Run";     // Patch 772; 898 on MOUSE3
 	if (i == 26) return "share|Share (look at a player)|share||f|Run";  // Patch 777
 	return "";
 };
@@ -114,8 +114,8 @@ void() KC_Register =
 {
 	registercommand("config_menu");
 	registercvar("hud_keyhint",   "1",      CVAR_ARCHIVE);
-	registercvar("hud_keyhint_x", "0.0333", CVAR_ARCHIVE);
-	registercvar("hud_keyhint_y", "0.955",  CVAR_ARCHIVE);
+	registercvar("hud_keyhint_x", "0.0448", CVAR_ARCHIVE);
+	registercvar("hud_keyhint_y", "0.9582", CVAR_ARCHIVE);
 	kc_cap_i = -1;
 	kc_eatkey = -1;
 	kc_hov_i = -1;

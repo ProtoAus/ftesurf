@@ -34,6 +34,23 @@
   it. Same information as before. "Card ok / <what's off>".
   Verdicts PENDING.
 
+## P898, P899, P903 — new-install defaults and binds, ALT+ENTER, the newest save, quiet redirects
+
+- ALT+ENTER: windowed <-> borderless, in game, menus and console; keep ALT held and ENTER switches
+  back. A bind of your own on ALT+ENTER wins; `in_altenter 0` turns it off. "Alt+enter ok / <where
+  it did not>".
+- hud_gfx page 6: Render scale 1x / 1.5x / 2x. `con_notifylines` you set now survives a restart.
+- Your input display: it was detached at your screen's fractions, so at another size it slid over
+  the keys. Your place (0.7141 0.7967) goes back to attached once, so the two stay together in the
+  bottom right; dropping the mouse display onto the keys in hud_edit joins them again (SHIFT
+  places it free). "Input display ok".
+- Load a map with several saves: the save menu should be on the last one you made.
+- The zone download's 302 line (with the signed address) is gone from the console; with
+  `developer 1; log_developer 1` the log gets it without the signature.
+- A new install: borderless, 2x render scale, your binds and your HUD layout. Players who never
+  changed a HUD setting get your value for it once (a saved old default moves too); your own
+  config is unchanged except the input display above. Verdicts PENDING.
+
 ## P894, P895 — graphics settings without a map reload; surf_pantheon's waterfalls at 2x
 
 - surf_pantheon at your r_renderscale 2: the start area should run ~275 fps instead of ~125 (its

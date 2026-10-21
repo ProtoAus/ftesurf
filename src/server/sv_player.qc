@@ -1162,6 +1162,9 @@ void(string cmd) SV_ParseClientCommand =
 			if (!SV_SaveLocRate(self))
 				return;
 		}
+		// Patch 899: the player's own command; from here the cursor is theirs.
+		if (c != "sl_list" && c != "sl_holdoff")
+			self.rec_sl_auto = FALSE;
 	}
 
 	if (c == "noclip")
