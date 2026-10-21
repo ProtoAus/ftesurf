@@ -20,6 +20,7 @@ ever disagree, that disagreement is the finding.
 NOTHING HERE IS WRITTEN UNDER data/.  Everything lands in a temporary directory
 and is removed, so no synthetic file can be mistaken for a run somebody made.
 """
+import math
 import os
 import shutil
 import subprocess
@@ -1731,8 +1732,10 @@ def case_split_part_rows_are_not_joined():
     L = build(sweep=128, packets=400)
     view = view_for(L)
 
-    def split(bit, repeat=True, step=1, header=True):
-        # A later part repeats its usercmd (packet, moves, angles, buttons) one tick on.
+    def split(bit, keep="", step=1, header=True):
+        # A later part repeats its usercmd (packet, moves, angles, buttons) one tick on; `keep` names
+        # what the forged row keeps of its own instead ("angles" -- the fixture turns every row -- or
+        # "packet").
         out, prev, k = [], None, 0
         for l in L:
             if header and l == "begin":
@@ -1742,11 +1745,14 @@ def case_split_part_rows_are_not_joined():
                 if prev is not None:
                     k += 1
                     if k % 2 == 0:
-                        if repeat:
-                            f[1] = prev[1]
-                            f[4:11] = prev[4:11]
-                        else:
-                            f[7], f[8] = prev[7], prev[8]
+                        own = f[:]
+                        f[1] = prev[1]
+                        f[4:11] = prev[4:11]
+                        if keep == "angles":
+                            f[7:10] = own[7:10]
+                            f[8] = "%.4f" % (float(own[8]) + 5.0)   # and off its frames: joined, it faults
+                        elif keep == "packet":
+                            f[1] = own[1]
                         f[2] = str(int(prev[2]) + step)
                         f[11] = str(int(f[11]) | bit)
                         l = " ".join(f)
@@ -1762,7 +1768,8 @@ def case_split_part_rows_are_not_joined():
     if f:
         print("        %s" % f)
     check(not any("not a split's later part" in x for x in n), "...and draws no note")
-    for what, kw in (("whose angles differ from the row before", dict(repeat=False)),
+    for what, kw in (("whose angles differ from the row before and its frames", dict(keep="angles")),
+                     ("whose packet differs from the row before", dict(keep="packet")),
                      ("two ticks after the row before", dict(step=2)),
                      ("in a file without `tickparts 1`", dict(header=False))):
         f, n = run(split(8, **kw), view=view)
@@ -1770,6 +1777,34 @@ def case_split_part_rows_are_not_joined():
               "an fl 8 row %s is joined (and faults) and is noted" % what)
     f, _ = run(split(0), view=view)
     check(joined(f), "...and the same rows without fl 8 are a fault (the control)")
+
+    def chain(length, at=100):
+        # One usercmd's later parts: rows at+1 .. at+length repeat row `at` one tick apart.
+        out, rows, head = [], 0, None
+        for l in L:
+            if l == "begin":
+                out.append("tickparts 1")
+            if l.startswith("in "):
+                f = l.split()
+                if rows == at:
+                    head = f
+                elif head is not None and at < rows <= at + length:
+                    f[1] = head[1]
+                    f[4:11] = head[4:11]
+                    f[2] = str(int(head[2]) + rows - at)
+                    f[11] = str(int(f[11]) | 8)
+                    l = " ".join(f)
+                rows += 1
+            out.append(l)
+        return out
+
+    cap = math.ceil(0.5 / TICK)
+    f, n = run(chain(cap), view=view)
+    check(not any("not a split's later part" in x for x in n),
+          "a chain of %d later parts (one 500 ms usercmd) is a split" % cap)
+    f, n = run(chain(cap + 1), view=view)
+    check(any(x.startswith("1 'in' row(s) flagged fl 8 are not") for x in n),
+          "...and the row past it is joined and noted")
     f, _ = run(insert_before(build(), "inend", "in 0 0 0 0 0 0 0 0 0 0 16"))
     check(any("fl 16 is outside 0..15" in x for x in f), "fl 16 is still outside the grammar")
 

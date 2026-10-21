@@ -1055,6 +1055,7 @@ def check_rec(path, verbose=False, *, data=None):
     in_flx = 0              # v9: rows with fl 2 or 4 (never on a clean run)
     in_split = in_split_odd = 0   # Patch 893: fl 8 rows, and those that are not a split's later part
     in_prevtok = None
+    in_chain = 0                  # consecutive later parts: one usercmd is at most 500 ms
     # Patch 493: the move triple against the header's `movebnd`.  Counted as the
     # rows stream past, for the reason this whole block exists.
     in_moveoor = 0          # `in` rows whose largest |axis| exceeds the bound
@@ -1253,7 +1254,9 @@ def check_rec(path, verbose=False, *, data=None):
             # before it (packet, moves, angles, buttons) one tick on.  Only such a row leaves the join.
             in_later = (ver >= 9 and infl & 8 and head.get("tickparts") == "1" and in_prevtok is not None
                         and (tok[1], tok[4:11]) == (in_prevtok[1], in_prevtok[4:11])
-                        and mt == int(in_prevtok[2]) + 1)
+                        and mt == int(in_prevtok[2]) + 1
+                        and in_chain < math.ceil(0.5 / tickrate))
+            in_chain = in_chain + 1 if in_later else 0
             if not excluded:
                 ang_prev = mt - ang_frozen if holdclock == "1" else mt
                 if not -2147483648 <= ang_prev <= 2147483647:
@@ -1337,7 +1340,7 @@ def check_rec(path, verbose=False, *, data=None):
                     in_flx += 1
                 if infl & 8:
                     in_split += 1
-                    if not in_later:
+                    if not in_later and not excluded:
                         in_split_odd += 1
                 in_prevtok = tok
 
@@ -2093,8 +2096,9 @@ def check_rec(path, verbose=False, *, data=None):
         if in_split:
             r.info["split_rows"] = in_split
         if in_split_odd:
-            r.note("%d 'in' row(s) flagged fl 8 are not a split's later part (no `tickparts 1`, or not "
-                   "the row before them repeated one tick on) and were joined like any row" % in_split_odd)
+            r.note("%d 'in' row(s) flagged fl 8 are not a split's later part (no `tickparts 1`, not the "
+                   "row before them repeated one tick on, or past one usercmd's 500 ms) and were joined "
+                   "like any row" % in_split_odd)
         r.info["in_packets"] = in_packets
         # THE WHOLE REASON THE PACKET ORDINAL IS IN THE FILE, expressed as one
         # number.  The run's start and finish are latched once per packet, not

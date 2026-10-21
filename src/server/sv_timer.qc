@@ -2894,7 +2894,10 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             absent, one row a usercmd.  A reader takes an fl 8
                             row out of the angle join only in a `tickparts 1`
                             file and only when it repeats the row before it
-                            (pk, moves, angles, bt) at that row's mt + 1.
+                            (pk, moves, angles, bt) at that row's mt + 1, and
+                            no more of them in a row than ceil(0.5 / tickrate)
+                            (a usercmd is at most 500 ms).  sv_tickparts is a
+                            locked movevar.
     proprule <n>            which prop-geometry rule built this run's collision
                             world.  Absent or 0 = prop scale as the map wrote it;
                             1 = floored to the 1/16 the wire carries, so the
@@ -3146,8 +3149,8 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             WALK (2 and 4 never occur on a clean run); Patch
                             893 adds 8, a later part of a usercmd the server
                             split one tick per part: its angles are the
-                            command's, not a frame's, and the angle check skips
-                            the row.  Rows are
+                            command's, not a frame's (see `tickparts` for when
+                            the angle check skips the row).  Rows are
                             numbered by position from 0: <row> in the records
                             below is that index.
                             v6, build 82.  ONE SIMULATED MOVE -- what the mover
@@ -5177,7 +5180,7 @@ void(entity e) SV_RecOpen =
 	SV_RecPut(e, "proprule 1");
 	SV_RecPut(e, sprintf("momtrig %g", e.run_momon));     // Patch 869, additive
 	SV_RecPut(e, strcat("entfile ", ftos(stof(serverkey("*entfile")))));     // Patch 890: "" = 0
-	SV_RecPut(e, strcat("tickparts ", ftos(cvar("sv_tickparts"))));          // Patch 893
+	SV_RecPut(e, strcat("tickparts ", ftos(cvar("sv_tickparts") >= 1)));     // Patch 893: as the engine's ival > 0
 	/*
 	  BUILD 76: WHICH OF THE TWO CLOCKS TIMED THIS RUN.  `counted` or `sampled`.
 
